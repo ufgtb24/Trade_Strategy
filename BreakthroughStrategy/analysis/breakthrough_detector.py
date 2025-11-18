@@ -1,0 +1,529 @@
+"""
+突破检测模块（增量式架构）
+
+基于增量式算法重构，核心特性：
+1. 增量添加价格数据，维护活跃峰值列表
+2. 支持价格相近的峰值共存（形成阻力区）
+3. 一次突破可能突破多个峰值
+4. 支持持久化缓存（可选）
+5. 计算峰值质量特征
+"""
+
+import pandas as pd
+import numpy as np
+import pickle
+import json
+from pathlib import Path
+from dataclasses import dataclass
+from datetime import date
+from typing import List, Optional, Tuple
+import hashlib
+
+
+@dataclass
+class Peak:
+    """
+    峰值数据结构（增强版）
+
+    包含质量评估特征
+    """
+    index: int                      # 在价格序列中的索引
+    price: float                    # 峰值价格
+    date: date                      # 峰值日期
+
+    # 质量特征
+    volume_surge_ratio: float = 0.0      # 放量倍数
+    candle_change_pct: float = 0.0       # K线涨跌幅
+    left_suppression_days: int = 0       # 左侧压制天数
+    right_suppression_days: int = 0      # 右侧压制天数（突破时更新）
+    relative_height: float = 0.0         # 相对高度
+
+    # 质量评分（由QualityScorer计算）
+    quality_score: Optional[float] = None
+
+
+@dataclass
+class BreakoutInfo:
+    """
+    突破信息（简化版，由增量检测直接返回）
+
+    一次突破可能突破多个峰值
+    """
+    current_index: int              # 突破点索引
+    current_price: float            # 突破价格
+    current_date: date              # 突破日期
+
+    # 被突破的峰值列表（关键：支持多个）
+    broken_peaks: List[Peak]        # 被突破的所有峰值
+
+    @property
+    def num_peaks_broken(self) -> int:
+        """突破的峰值数量"""
+        return len(self.broken_peaks)
+
+    @property
+    def highest_peak_broken(self) -> Peak:
+        """被突破的最高峰值"""
+        return max(self.broken_peaks, key=lambda p: p.price)
+
+    @property
+    def lowest_peak_broken(self) -> Peak:
+        """被突破的最低峰值"""
+        return min(self.broken_peaks, key=lambda p: p.price)
+
+    @property
+    def peak_price_range(self) -> float:
+        """被突破峰值的价格范围"""
+        if len(self.broken_peaks) == 0:
+            return 0.0
+        prices = [p.price for p in self.broken_peaks]
+        return max(prices) - min(prices)
+
+    @property
+    def avg_peak_price(self) -> float:
+        """被突破峰值的平均价格"""
+        if len(self.broken_peaks) == 0:
+            return 0.0
+        return sum(p.price for p in self.broken_peaks) / len(self.broken_peaks)
+
+
+@dataclass
+class Breakthrough:
+    """
+    完整的突破对象（包含丰富特征）
+
+    由FeatureCalculator从BreakoutInfo计算得到
+    """
+    symbol: str
+    date: date
+    price: float
+    index: int
+
+    # 被突破的峰值列表
+    broken_peaks: List[Peak]
+
+    # 突破特征
+    breakthrough_type: str          # 'yang', 'yin', 'shadow'
+    price_change_pct: float         # 突破日涨跌幅
+    gap_up: bool                    # 是否跳空
+    gap_up_pct: float               # 跳空幅度
+    volume_surge_ratio: float       # 放量倍数
+    continuity_days: int            # 连续上涨天数
+    stability_score: float          # 稳定性分数
+
+    # 质量评分（由QualityScorer计算）
+    quality_score: Optional[float] = None
+
+    @property
+    def num_peaks_broken(self) -> int:
+        return len(self.broken_peaks)
+
+    @property
+    def highest_peak_broken(self) -> Peak:
+        return max(self.broken_peaks, key=lambda p: p.price)
+
+    @property
+    def peak_price_range(self) -> float:
+        if len(self.broken_peaks) == 0:
+            return 0.0
+        prices = [p.price for p in self.broken_peaks]
+        return max(prices) - min(prices)
+
+
+class BreakthroughDetector:
+    """
+    突破检测器（增量式架构）
+
+    核心特性：
+    - 增量添加价格数据
+    - 维护活跃峰值列表
+    - 支持峰值共存（阻力区）
+    - 可选持久化缓存
+    """
+
+    def __init__(self,
+                 symbol: str,
+                 window: int = 5,
+                 exceed_threshold: float = 0.005,
+                 peak_merge_threshold: float = 0.03,
+                 use_cache: bool = False,
+                 cache_dir: str = "./cache"):
+        """
+        初始化突破检测器
+
+        Args:
+            symbol: 股票代码
+            window: 峰值识别窗口（前后各window天）
+            exceed_threshold: 突破确认阈值（默认0.5%）
+            peak_merge_threshold: 峰值覆盖阈值（默认3%）
+                - 新峰值超过旧峰值 < 3% → 两者共存（形成阻力区）
+                - 新峰值超过旧峰值 > 3% → 删除旧峰值（已被明显超越）
+            use_cache: 是否使用持久化缓存（实时监控=True，回测=False）
+            cache_dir: 缓存目录
+        """
+        self.symbol = symbol
+        self.window = window
+        self.exceed_threshold = exceed_threshold
+        self.peak_merge_threshold = peak_merge_threshold
+        self.use_cache = use_cache
+        self.cache_dir = Path(cache_dir)
+
+        # 核心状态
+        self.prices = []           # 价格历史（close）
+        self.highs = []            # 最高价历史
+        self.lows = []             # 最低价历史
+        self.opens = []            # 开盘价历史
+        self.volumes = []          # 成交量历史
+        self.dates = []            # 日期历史
+        self.active_peaks = []     # 活跃峰值列表: [Peak对象, ...]
+
+        self.last_updated = None
+
+        # 如果启用缓存，尝试加载
+        if use_cache:
+            self.cache_dir.mkdir(exist_ok=True)
+            self._load_cache()
+
+    def add_bar(self,
+                row: pd.Series,
+                auto_save: bool = True) -> Optional[BreakoutInfo]:
+        """
+        添加新的K线数据
+
+        Args:
+            row: K线数据（包含open, high, low, close, volume）
+            auto_save: 是否自动保存缓存
+
+        Returns:
+            如果有突破，返回BreakoutInfo；否则返回None
+        """
+        current_idx = len(self.prices)
+
+        # 提取数据
+        price = row['close']
+        high = row['high']
+        low = row['low']
+        open_price = row['open']
+        volume = row['volume']
+        bar_date = row.name.date() if isinstance(row.name, pd.Timestamp) else row.name
+
+        # 添加到历史
+        self.prices.append(price)
+        self.highs.append(high)
+        self.lows.append(low)
+        self.opens.append(open_price)
+        self.volumes.append(volume)
+        self.dates.append(bar_date)
+
+        # 1. 检查突破（使用high价格）
+        breakout_info = self._check_breakouts(current_idx, high, bar_date)
+
+        # 2. 检查是否应该添加新峰值
+        # 注意：需要等待window天后才能确认峰值
+        if current_idx >= self.window * 2:
+            self._check_and_add_peak(current_idx - self.window)
+
+        # 3. 保存缓存
+        if self.use_cache and auto_save:
+            if len(self.prices) % 10 == 0 or breakout_info:
+                self._save_cache()
+
+        return breakout_info
+
+    def batch_add_bars(self,
+                      df: pd.DataFrame,
+                      return_breakouts: bool = True) -> List[BreakoutInfo]:
+        """
+        批量添加K线数据
+
+        用于初始化或历史回测
+
+        Args:
+            df: OHLCV数据
+            return_breakouts: 是否返回突破列表
+
+        Returns:
+            所有突破信息
+        """
+        all_breakouts = []
+
+        for i in range(len(df)):
+            row = df.iloc[i]
+            breakout_info = self.add_bar(row, auto_save=False)
+
+            if return_breakouts and breakout_info:
+                all_breakouts.append(breakout_info)
+
+        if self.use_cache:
+            self._save_cache()
+
+        return all_breakouts
+
+    def _check_and_add_peak(self, idx: int):
+        """
+        检查并添加峰值
+
+        支持价格相近的峰值共存，形成阻力区
+        """
+        if idx < self.window or idx >= len(self.highs) - self.window:
+            return
+
+        high = self.highs[idx]
+        date_val = self.dates[idx]
+
+        # 1. 检查是否是峰值（high比前后window天都高）
+        is_peak = True
+
+        for i in range(idx - self.window, idx):
+            if self.highs[i] >= high:
+                is_peak = False
+                break
+
+        if is_peak:
+            for i in range(idx + 1, min(idx + self.window + 1, len(self.highs))):
+                if self.highs[i] >= high:
+                    is_peak = False
+                    break
+
+        if not is_peak:
+            return
+
+        # 2. 计算峰值质量特征
+        peak = self._create_peak(idx, high, date_val)
+
+        # 3. 决定保留哪些旧峰值（支持共存）
+        remaining_peaks = []
+
+        for old_peak in self.active_peaks:
+            if old_peak.price > high:
+                # 旧峰值更高 → 始终保留
+                remaining_peaks.append(old_peak)
+            else:
+                # 新峰值更高，检查价格差距
+                exceed_pct = (high - old_peak.price) / old_peak.price
+
+                if exceed_pct < self.peak_merge_threshold:
+                    # 差距小于阈值 → 保留（形成阻力区）
+                    remaining_peaks.append(old_peak)
+                # else: 差距大于阈值 → 删除（已被明显超越）
+
+        # 4. 添加新峰值
+        self.active_peaks = remaining_peaks
+        self.active_peaks.append(peak)
+
+    def _create_peak(self, idx: int, price: float, date_val: date) -> Peak:
+        """
+        创建Peak对象并计算质量特征
+        """
+        # 计算放量倍数
+        window_start = max(0, idx - 63)
+        avg_volume = np.mean(self.volumes[window_start:idx]) if idx > window_start else 1.0
+        volume_surge_ratio = self.volumes[idx] / avg_volume if avg_volume > 0 else 1.0
+
+        # 计算K线涨跌幅
+        candle_change_pct = (self.prices[idx] - self.opens[idx]) / self.opens[idx] if self.opens[idx] > 0 else 0.0
+
+        # 计算左侧压制天数
+        left_suppression = 0
+        for i in range(idx - 1, max(0, idx - 60), -1):
+            if self.highs[i] < price:
+                left_suppression += 1
+            else:
+                break
+
+        # 右侧压制天数暂时为0（突破时会更新）
+        right_suppression = 0
+
+        # 计算相对高度
+        lookback_start = max(0, idx - 60)
+        lookback_low = min(self.lows[lookback_start:idx+1]) if idx >= lookback_start else price
+        relative_height = (price - lookback_low) / lookback_low if lookback_low > 0 else 0.0
+
+        return Peak(
+            index=idx,
+            price=price,
+            date=date_val,
+            volume_surge_ratio=volume_surge_ratio,
+            candle_change_pct=candle_change_pct,
+            left_suppression_days=left_suppression,
+            right_suppression_days=right_suppression,
+            relative_height=relative_height
+        )
+
+    def _check_breakouts(self,
+                        current_idx: int,
+                        current_high: float,
+                        current_date: date) -> Optional[BreakoutInfo]:
+        """
+        检查突破
+
+        Returns:
+            如果有突破，返回BreakoutInfo（包含所有被突破的峰值）
+            如果没有突破，返回None
+        """
+        broken_peaks = []
+        remaining_peaks = []
+
+        for peak in self.active_peaks:
+            threshold = peak.price * (1 + self.exceed_threshold)
+
+            if current_high > threshold:
+                # 更新峰值的右侧压制天数
+                peak.right_suppression_days = current_idx - peak.index - 1
+
+                # 突破了这个峰值
+                broken_peaks.append(peak)
+            else:
+                # 未突破，保留
+                remaining_peaks.append(peak)
+
+        # 更新活跃峰值列表
+        self.active_peaks = remaining_peaks
+
+        # 如果有突破，返回信息
+        if broken_peaks:
+            return BreakoutInfo(
+                current_index=current_idx,
+                current_price=current_high,
+                current_date=current_date,
+                broken_peaks=broken_peaks
+            )
+
+        return None
+
+    def _save_cache(self):
+        """保存缓存到磁盘"""
+        if not self.use_cache:
+            return
+
+        try:
+            cache_data = {
+                'symbol': self.symbol,
+                'prices': self.prices,
+                'highs': self.highs,
+                'lows': self.lows,
+                'opens': self.opens,
+                'volumes': self.volumes,
+                'dates': [d.isoformat() for d in self.dates],
+                'active_peaks': [
+                    {
+                        'index': p.index,
+                        'price': p.price,
+                        'date': p.date.isoformat(),
+                        'volume_surge_ratio': p.volume_surge_ratio,
+                        'candle_change_pct': p.candle_change_pct,
+                        'left_suppression_days': p.left_suppression_days,
+                        'right_suppression_days': p.right_suppression_days,
+                        'relative_height': p.relative_height,
+                        'quality_score': p.quality_score
+                    }
+                    for p in self.active_peaks
+                ],
+                'window': self.window,
+                'exceed_threshold': self.exceed_threshold,
+                'peak_merge_threshold': self.peak_merge_threshold
+            }
+
+            cache_path = self._get_cache_path()
+            with open(cache_path, 'wb') as f:
+                pickle.dump(cache_data, f)
+
+            # 保存元数据
+            metadata = {
+                'symbol': self.symbol,
+                'data_points': len(self.prices),
+                'active_peaks_count': len(self.active_peaks),
+                'last_date': self.dates[-1].isoformat() if self.dates else None
+            }
+
+            meta_path = self._get_metadata_path()
+            with open(meta_path, 'w') as f:
+                json.dump(metadata, f, indent=2)
+
+        except Exception as e:
+            print(f"✗ 保存缓存失败: {e}")
+
+    def _load_cache(self):
+        """从磁盘加载缓存"""
+        cache_path = self._get_cache_path()
+
+        if not cache_path.exists():
+            return False
+
+        try:
+            with open(cache_path, 'rb') as f:
+                cache_data = pickle.load(f)
+
+            # 验证参数匹配
+            if (cache_data.get('window') != self.window or
+                cache_data.get('exceed_threshold') != self.exceed_threshold or
+                cache_data.get('peak_merge_threshold') != self.peak_merge_threshold):
+                print(f"⚠ 缓存参数不匹配，跳过加载")
+                return False
+
+            # 恢复状态
+            self.prices = cache_data['prices']
+            self.highs = cache_data['highs']
+            self.lows = cache_data['lows']
+            self.opens = cache_data['opens']
+            self.volumes = cache_data['volumes']
+            self.dates = [date.fromisoformat(d) for d in cache_data['dates']]
+
+            # 恢复峰值
+            self.active_peaks = [
+                Peak(
+                    index=p['index'],
+                    price=p['price'],
+                    date=date.fromisoformat(p['date']),
+                    volume_surge_ratio=p['volume_surge_ratio'],
+                    candle_change_pct=p['candle_change_pct'],
+                    left_suppression_days=p['left_suppression_days'],
+                    right_suppression_days=p['right_suppression_days'],
+                    relative_height=p['relative_height'],
+                    quality_score=p.get('quality_score')
+                )
+                for p in cache_data['active_peaks']
+            ]
+
+            print(f"✓ 缓存加载成功: {self.symbol}, {len(self.prices)}个数据点, "
+                  f"{len(self.active_peaks)}个活跃峰值")
+            return True
+
+        except Exception as e:
+            print(f"✗ 加载缓存失败: {e}")
+            return False
+
+    def _get_cache_path(self) -> Path:
+        """获取缓存文件路径"""
+        safe_symbol = self.symbol.replace('/', '_')
+        return self.cache_dir / f"{safe_symbol}_w{self.window}.pkl"
+
+    def _get_metadata_path(self) -> Path:
+        """获取元数据文件路径"""
+        safe_symbol = self.symbol.replace('/', '_')
+        return self.cache_dir / f"{safe_symbol}_w{self.window}_meta.json"
+
+    def clear_cache(self):
+        """清除缓存文件"""
+        try:
+            cache_path = self._get_cache_path()
+            meta_path = self._get_metadata_path()
+
+            if cache_path.exists():
+                cache_path.unlink()
+            if meta_path.exists():
+                meta_path.unlink()
+
+            print(f"✓ 缓存已清除: {self.symbol}")
+        except Exception as e:
+            print(f"✗ 清除缓存失败: {e}")
+
+    def get_status(self) -> dict:
+        """获取状态信息"""
+        return {
+            'symbol': self.symbol,
+            'total_bars': len(self.prices),
+            'active_peaks': len(self.active_peaks),
+            'last_date': self.dates[-1].isoformat() if self.dates else None,
+            'cache_exists': self._get_cache_path().exists() if self.use_cache else False
+        }
