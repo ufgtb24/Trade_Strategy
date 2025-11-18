@@ -54,8 +54,8 @@ Trade_Strategy/
     ├── utils/                      # 工具模块（待实现）
     └── docs/                       # 技术文档
         ├── plans/                  # 开发计划
-        ├── modules/                # 模块设计文档（10个）
-        └── summaries/              # 算法总结
+        ├── module_plans/           # 模块设计文档（10个）
+        └── module_summaries/       # 模块开发总结文档
 ```
 
 ### 模块分层
@@ -83,43 +83,6 @@ Trade_Strategy/
 ### 增量式突破检测
 
 系统使用**增量式架构**维护活跃峰值列表：
-
-```python
-from BreakthroughStrategy.analysis import (
-    BreakthroughDetector,
-    FeatureCalculator,
-    QualityScorer
-)
-
-# 创建检测器
-detector = BreakthroughDetector(
-    symbol='AAPL',
-    window=5,                    # 峰值识别窗口（前后各5天）
-    exceed_threshold=0.005,      # 0.5%突破确认阈值
-    peak_merge_threshold=0.03,   # 3%峰值共存阈值
-    use_cache=False              # 回测场景不用缓存
-)
-
-# 批量添加历史数据
-breakout_infos = detector.batch_add_bars(df, return_breakouts=True)
-
-# 计算特征和评分
-feature_calc = FeatureCalculator()
-scorer = QualityScorer()
-
-breakthroughs = []
-for info in breakout_infos:
-    # 为峰值评分
-    for peak in info.broken_peaks:
-        scorer.score_peak(peak)
-
-    # 计算突破特征
-    bt = feature_calc.enrich_breakthrough(df, info, 'AAPL')
-    breakthroughs.append(bt)
-
-# 突破质量评分
-scorer.score_breakthroughs_batch(breakthroughs)
-```
 
 ### 关键算法特性
 
@@ -192,23 +155,32 @@ python test_integrated_system.py
 3. 编写单元测试验证功能
 4. 更新模块的`__init__.py`导出接口
 
-### 参数调优
-
-关键参数位置：
-- `window`：峰值识别窗口，影响阻力位强度
-- `exceed_threshold`：突破确认阈值，减少假突破
-- `peak_merge_threshold`：峰值共存阈值，影响密集阻力区识别
-- 质量评分权重：位于`QualityScorer`类中
 
 ### 扩展技术指标
 
 在 `analysis/indicators.py` 中添加新指标函数，然后在 `FeatureCalculator` 中调用。
 
-## 参考文档
+## 文档管理
 
-- **开发计划**：`BreakthroughStrategy/docs/plans/initial_plan.md`
-- **算法总结**：`BreakthroughStrategy/docs/summaries/技术分析模块算法总结.md`
-- **模块设计**：`BreakthroughStrategy/docs/modules/01-10_*.md`（10个模块的详细设计）
+本项目采用**三层文档体系**（规划-设计-总结）管理开发过程。
+
+→ 详见 @BreakthroughStrategy/docs/CLAUDE.md 了解完整的文档管理策略
+
+### 核心文档
+
+- **文档管理说明**：`BreakthroughStrategy/docs/CLAUDE.md`（三层文档体系说明）
+- **开发计划**：`BreakthroughStrategy/docs/plans/initial_plan.md`（宏观规划，标注模块完成状态）
+- **模块设计**：`BreakthroughStrategy/docs/module_plans/`（10个模块的详细设计，01-10编号）
+- **模块总结**：`BreakthroughStrategy/docs/module_summaries/`（与设计文档一一对应，编号一致）
+
+**文档对应关系**：
+```
+module_plans/02_技术分析模块设计.md  ←→  module_summaries/02_技术分析模块总结.md
+    （开发前）                              （开发后，✅ 已完成）
+```
+
+### 外部文档
+
 - **Tiger API文档**：https://quant.itigerup.com/openapi/zh/python/overview/introduction.html
 
 ## 质量标准

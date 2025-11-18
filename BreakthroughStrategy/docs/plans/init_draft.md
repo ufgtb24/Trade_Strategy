@@ -137,46 +137,9 @@
 - **方案二**：每次波动视为独立突破，重新执行完整流程
 - [需要进一步分析哪种方案更有效]
 
-## 七、参数配置
 
-### 7.1 时间参数
-- `HISTORICAL_SEARCH_DAYS`: 历史搜索天数（默认：7天）
-- `REALTIME_OBSERVATION_DAYS`: 实时观察池观察期（默认：1天）
-- `DAILY_OBSERVATION_DAYS`: 日K观察池观察期（默认：30天）
-- `PEAK_LOOKBACK_BARS`: 判断凸点时向前查看的K线数量
-- `PEAK_LOOKFORWARD_BARS`: 判断凸点时向后查看的K线数量
 
-### 7.2 价格参数
-- `REALTIME_BUY_THRESHOLD_PCT`: 实时买入触发阈值（相对突破日K线实体上沿的百分比）
-- `DAILY_BUY_SIGNAL_THRESHOLD`: 日K买入信号强度阈值
-- `BREAKOUT_MIN_EXCEED_PCT`: 确认突破的最小超越幅度
-
-### 7.3 风险管理参数
-- `STOP_LOSS_PCT`: 止损百分比
-- `TRAILING_STOP_PCT`: 跟踪止盈百分比
-- `TARGET_PROFIT_PCT`: 目标止盈百分比
-- `MAX_POSITION_SIZE_PCT`: 单只股票最大仓位占比
-- `MAX_HOLDINGS`: 最大持仓股票数量
-
-### 7.4 质量评估参数
-- `VOLUME_SURGE_MULTIPLIER`: 放量判定倍数（相对平均成交量）
-- `LONG_CANDLE_THRESHOLD_PCT`: 长K线判定阈值（涨跌幅百分比）
-- `PEAK_QUALITY_MIN_SCORE`: 凸点质量最低分数要求
-- `BREAKOUT_QUALITY_MIN_SCORE`: 突破质量最低分数要求
-- `PEAK_MERGE_THRESHOLD_PCT`: 凸点合并价格阈值（价格差异百分比）
-
-### 7.5 搜索参数
-- `MARKET_CAP_MIN`: 最小市值要求（过滤低市值股票）
-- `AVG_VOLUME_MIN`: 最小平均成交量要求（确保流动性）
-- `PRICE_MIN`: 最低股价要求（避免仙股）
-
-### 7.6 API配置参数
-- `TIGER_API_RATE_LIMIT`: API请求频率限制（请求/秒）
-- `DATA_FETCH_RETRY_COUNT`: 数据获取失败重试次数
-- `WEBSOCKET_RECONNECT_INTERVAL`: WebSocket断线重连间隔（秒）
-- `MARKET_DATA_CACHE_DURATION`: 市场数据缓存时长（分钟）
-
-## 八、待完善内容
+## 七、待完善内容
 
 1. **量化参数**
    - 突破判定的具体标准
