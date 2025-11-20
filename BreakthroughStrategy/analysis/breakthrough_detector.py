@@ -31,6 +31,9 @@ class Peak:
     price: float                    # 峰值价格
     date: date                      # 峰值日期
 
+    # Peak 唯一标识符
+    id: Optional[int] = None        # 峰值唯一ID（用于追踪）
+
     # 质量特征
     volume_surge_ratio: float = 0.0      # 放量倍数
     candle_change_pct: float = 0.0       # K线涨跌幅
@@ -60,6 +63,11 @@ class BreakoutInfo:
     def num_peaks_broken(self) -> int:
         """突破的峰值数量"""
         return len(self.broken_peaks)
+
+    @property
+    def broken_peak_ids(self) -> List[int]:
+        """被突破的峰值ID列表"""
+        return [p.id for p in self.broken_peaks if p.id is not None]
 
     @property
     def highest_peak_broken(self) -> Peak:
@@ -117,6 +125,11 @@ class Breakthrough:
     @property
     def num_peaks_broken(self) -> int:
         return len(self.broken_peaks)
+
+    @property
+    def broken_peak_ids(self) -> List[int]:
+        """被突破的峰值ID列表"""
+        return [p.id for p in self.broken_peaks if p.id is not None]
 
     @property
     def highest_peak_broken(self) -> Peak:
@@ -177,6 +190,7 @@ class BreakthroughDetector:
         self.dates = []            # 日期历史
         self.active_peaks = []     # 活跃峰值列表: [Peak对象, ...]
 
+        self.peak_id_counter = 0   # Peak ID 计数器（用于生成唯一ID）
         self.last_updated = None
 
         # 如果启用缓存，尝试加载
@@ -315,6 +329,10 @@ class BreakthroughDetector:
         """
         创建Peak对象并计算质量特征
         """
+        # 分配唯一ID
+        peak_id = self.peak_id_counter
+        self.peak_id_counter += 1
+
         # 计算放量倍数
         window_start = max(0, idx - 63)
         avg_volume = np.mean(self.volumes[window_start:idx]) if idx > window_start else 1.0
@@ -343,6 +361,7 @@ class BreakthroughDetector:
             index=idx,
             price=price,
             date=date_val,
+            id=peak_id,
             volume_surge_ratio=volume_surge_ratio,
             candle_change_pct=candle_change_pct,
             left_suppression_days=left_suppression,
@@ -410,6 +429,7 @@ class BreakthroughDetector:
                         'index': p.index,
                         'price': p.price,
                         'date': p.date.isoformat(),
+                        'id': p.id,
                         'volume_surge_ratio': p.volume_surge_ratio,
                         'candle_change_pct': p.candle_change_pct,
                         'left_suppression_days': p.left_suppression_days,
@@ -419,6 +439,7 @@ class BreakthroughDetector:
                     }
                     for p in self.active_peaks
                 ],
+                'peak_id_counter': self.peak_id_counter,
                 'window': self.window,
                 'exceed_threshold': self.exceed_threshold,
                 'peak_merge_threshold': self.peak_merge_threshold
@@ -475,6 +496,7 @@ class BreakthroughDetector:
                     index=p['index'],
                     price=p['price'],
                     date=date.fromisoformat(p['date']),
+                    id=p.get('id'),  # 兼容旧缓存
                     volume_surge_ratio=p['volume_surge_ratio'],
                     candle_change_pct=p['candle_change_pct'],
                     left_suppression_days=p['left_suppression_days'],
@@ -484,6 +506,9 @@ class BreakthroughDetector:
                 )
                 for p in cache_data['active_peaks']
             ]
+
+            # 恢复 peak_id_counter（兼容旧缓存）
+            self.peak_id_counter = cache_data.get('peak_id_counter', 0)
 
             print(f"✓ 缓存加载成功: {self.symbol}, {len(self.prices)}个数据点, "
                   f"{len(self.active_peaks)}个活跃峰值")

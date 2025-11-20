@@ -1,0 +1,32 @@
+# 批量扫描通用配置文件
+# 用于技术分析模块的扫描任务
+
+# 数据设置
+data:
+  # 股票数据目录（相对于项目根目录）
+  data_dir: "/home/yu/PycharmProjects/Trade_Strategy/datasets/test_pkls"
+
+  # 最大扫描股票数（null表示不限制）
+  max_stocks: null
+
+  # 数据截取时段 (YYYY-MM-DD, null表示不限制)
+  start_date: "2023-01-01"
+  end_date: null
+
+# 输出设置
+output:
+  # 扫描结果输出目录（相对于项目根目录）
+  output_dir: "outputs/scan_results"
+
+# 性能设置
+performance:
+  # 并行worker数量
+  num_workers: 8
+
+  # checkpoint间隔（每扫描多少只股票保存一次checkpoint）
+  checkpoint_interval: 100
+
+# 参数配置引用
+params:
+  # 参数配置文件路径（相对于项目根目录）
+  config_file: "configs/analysis/params/breakthrough_0.yaml"
