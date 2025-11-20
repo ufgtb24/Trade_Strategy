@@ -1,2 +1,5 @@
 .idea/*
 datasets
+outputs/*
+__pycache__/
+prompt_template/

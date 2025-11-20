@@ -1,0 +1,34 @@
+# 可视化界面配置文件
+
+# 扫描结果路径设置
+scan_results:
+  # 默认的扫描结果存放路径（相对于项目根目录）
+  default_dir: "outputs/scan_results"
+
+  # 最近使用的扫描结果文件（可选，留空表示无）
+  recent_file: ""
+
+# 股票数据路径设置
+stock_data:
+  # 股票数据搜索路径（按优先级顺序，第一个为默认优先路径）
+  search_paths:
+    - "datasets/test_pkls"
+    # - "datasets/pkls"
+
+# UI显示设置
+ui:
+  # 默认窗口大小
+  window_width: 1600
+  window_height: 900
+
+  # 左侧股票列表面板宽度比例（0-1）
+  left_panel_weight: 0.3
+
+  # 右侧图表面板宽度比例（0-1）
+  right_panel_weight: 0.7
+
+# 扫描设置
+scan_settings:
+  # 数据截取时段 (YYYY-MM-DD, null表示不限制)
+  start_date: "2025-01-01"
+  end_date: null
