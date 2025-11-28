@@ -63,7 +63,7 @@ class BasePlotter:
             (fig, axes) 元组
         """
         if height_ratios is None:
-            height_ratios = [3, 1, 0.3][:nrows]
+            height_ratios = [10, 0.3][:nrows]
 
         fig, axes = plt.subplots(
             nrows=nrows,
@@ -77,8 +77,8 @@ class BasePlotter:
         if nrows == 1:
             axes = [axes]
 
-        # 调整子图间距
-        plt.subplots_adjust(hspace=0.1)
+        # 调整子图间距和边距
+        plt.subplots_adjust(left=0.06, right=0.98, top=0.98, bottom=0.08, hspace=0.15)
 
         return fig, axes
 
@@ -149,7 +149,7 @@ class BasePlotter:
 
         fig.suptitle(
             full_title,
-            fontsize=14,
+            fontsize=40,
             weight='bold',
             y=0.995
         )
@@ -171,6 +171,6 @@ class BasePlotter:
             by_label.values(),
             by_label.keys(),
             loc=loc,
-            fontsize=9,
+            fontsize=26,
             framealpha=0.9
         )

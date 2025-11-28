@@ -1,0 +1,6 @@
+需求:为 peaks 设置 id, 扫描时记录，bt也会记录被突破的 peaks 的 id
+
+疑似 bug：
+BreakthroughDetector.add_bar 中：
+先 _check_breakouts， 再 _check_and_add_peak，那么可能会产生的情况是：
+某个新 bt 明明突破了 n 个 pks，但是由于最后一个 pk 还没有被计算，所以只得到他 bt 突破了 n-1 个活跃峰值

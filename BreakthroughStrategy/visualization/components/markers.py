@@ -39,10 +39,10 @@ class MarkerComponent:
                 peak_x,
                 peak_price,
                 marker='^',
-                s=100,
+                s=400,  # 从100增加到400，更明显
                 color=color,
                 edgecolors='white',
-                linewidths=1.5,
+                linewidths=3,  # 从1.5增加到3，边框更粗
                 zorder=5,
                 alpha=0.9,
                 label='Peak' if peak == peaks[0] else None
@@ -54,7 +54,7 @@ class MarkerComponent:
                     peak_x,
                     peak_price * 1.01,
                     f'{peak.quality_score:.0f}',
-                    fontsize=7,
+                    fontsize=18,
                     ha='center',
                     va='bottom',
                     color=color,
@@ -111,7 +111,7 @@ class MarkerComponent:
                     bt_x,
                     bt_price * 1.02,
                     f'{bt.num_peaks_broken}',
-                    fontsize=9,
+                    fontsize=22,
                     ha='center',
                     va='bottom',
                     color='black',

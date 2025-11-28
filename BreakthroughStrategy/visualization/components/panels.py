@@ -23,7 +23,7 @@ class PanelComponent:
                 'No breakthroughs detected',
                 ha='center',
                 va='center',
-                fontsize=12,
+                fontsize=28,
                 color='gray'
             )
             return
@@ -68,7 +68,7 @@ class PanelComponent:
         ax.text(
             0.02, 0.5,
             info_text,
-            fontsize=11,
+            fontsize=14,
             va='center',
             ha='left',
             family='monospace'
@@ -114,7 +114,7 @@ class PanelComponent:
             line3 = peaks_str + ", ".join(peak_parts)
 
         # 绘制三行文本
-        ax.text(0.02, 0.7, line1, fontsize=10, va='center', ha='left', family='monospace')
-        ax.text(0.02, 0.5, line2, fontsize=10, va='center', ha='left', family='monospace')
+        ax.text(0.02, 0.7, line1, fontsize=14, va='center', ha='left', family='monospace')
+        ax.text(0.02, 0.5, line2, fontsize=14, va='center', ha='left', family='monospace')
         if line3:
-            ax.text(0.02, 0.3, line3, fontsize=10, va='center', ha='left', family='monospace')
+            ax.text(0.02, 0.3, line3, fontsize=14, va='center', ha='left', family='monospace')

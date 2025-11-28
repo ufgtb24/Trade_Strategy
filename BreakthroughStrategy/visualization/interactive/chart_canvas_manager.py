@@ -38,29 +38,73 @@ class ChartCanvasManager:
         # 1. 清理旧图表（防内存泄漏）
         self._cleanup()
 
-        # 2. 创建新图表（完全复用BreakthroughPlotter逻辑）
-        self.fig = plt.Figure(figsize=(12, 8), dpi=100)
-        axes = self.fig.subplots(3, 1, height_ratios=[3, 1, 0.3])
-        ax_main, ax_volume, ax_stats = axes
+        # 2. 创建新图表（2个子图：主图+统计面板）
+        # 动态计算图表大小，适应容器尺寸
+        self.container.update_idletasks()  # 强制更新容器尺寸
+        container_width = self.container.winfo_width()
+        container_height = self.container.winfo_height()
+        dpi = 100
 
-        # 设置全局字体大小
+        # 计算合适的figsize（单位：英寸）
+        # 如果容器尺寸太小（窗口未初始化），使用默认值
+        if container_width < 100 or container_height < 100:
+            fig_width, fig_height = 12, 8
+        else:
+            fig_width = container_width / dpi
+            fig_height = container_height / dpi
+
+        self.fig = plt.Figure(figsize=(fig_width, fig_height), dpi=dpi)
+        axes = self.fig.subplots(2, 1, height_ratios=[10, 0.3])
+        ax_main, ax_stats = axes
+
+        # 优化布局边距，减少空白区域，顶到最上沿
+        self.fig.subplots_adjust(left=0.06, right=0.98, top=0.99, bottom=0.08, hspace=0.15)
+
+        # 设置全局字体大小（2倍放大）
         plt.rcParams.update({
-            'font.size': 12,
-            'axes.titlesize': 14,
-            'axes.labelsize': 12,
-            'xtick.labelsize': 11,
-            'ytick.labelsize': 11,
-            'legend.fontsize': 11
+            'font.size': 32,
+            'axes.titlesize': 40,
+            'axes.labelsize': 28,
+            'xtick.labelsize': 22,
+            'ytick.labelsize': 22,
+            'legend.fontsize': 26
         })
 
-        # 3. 调用现有组件绘图（完全复用）
+        # 3. 调用现有组件绘图
+        # 先绘制成交量作为背景
+        breakthrough_dates = [df.index[bt.index] for bt in breakthroughs]
+        self.plotter.candlestick.draw_volume_background(
+            ax_main, df,
+            highlight_dates=breakthrough_dates
+        )
+
+        # 然后绘制K线（叠加在成交量上）
         self.plotter.candlestick.draw(ax_main, df)
 
-        if detector and hasattr(detector, 'active_peaks'):
+        # 收集所有被突破的峰值
+        all_broken_peaks = []
+        for bt in breakthroughs:
+            if hasattr(bt, 'broken_peaks') and bt.broken_peaks:
+                all_broken_peaks.extend(bt.broken_peaks)
+
+        # 绘制被突破的峰值（如果有）
+        if all_broken_peaks:
             self.plotter.marker.draw_peaks(
-                ax_main, df, detector.active_peaks,
+                ax_main, df, all_broken_peaks,
                 quality_color_map=True
             )
+
+        # 额外绘制 active_peaks（如果存在且不重复）
+        if detector and hasattr(detector, 'active_peaks'):
+            # 过滤掉已经在 broken_peaks 中的峰值
+            broken_peak_indices = {p.index for p in all_broken_peaks}
+            active_only_peaks = [p for p in detector.active_peaks
+                               if p.index not in broken_peak_indices]
+            if active_only_peaks:
+                self.plotter.marker.draw_peaks(
+                    ax_main, df, active_only_peaks,
+                    quality_color_map=True
+                )
 
         self.plotter.marker.draw_breakthroughs(
             ax_main, df, breakthroughs,
@@ -72,17 +116,9 @@ class ChartCanvasManager:
             alpha=0.15
         )
 
-        breakthrough_dates = [df.index[bt.index] for bt in breakthroughs]
-        self.plotter.candlestick.draw_volume(
-            ax_volume, df,
-            highlight_dates=breakthrough_dates
-        )
-
         self.plotter.panel.draw_statistics_panel(ax_stats, breakthroughs)
 
-        # 添加标题
-        ax_main.set_title(f"{symbol} - Breakthrough Analysis ({len(breakthroughs)} breakthroughs)",
-                         fontsize=16, fontweight='bold')
+        # 不添加标题，因为信息已显示在UI右上角，避免浪费空间
 
         # 4. 嵌入Tkinter Canvas
         self.canvas = FigureCanvasTkAgg(self.fig, master=self.container)
@@ -119,7 +155,7 @@ class ChartCanvasManager:
             textcoords="offset points",
             bbox=dict(boxstyle="round", fc="w", alpha=0.9),
             arrowprops=dict(arrowstyle="->", connectionstyle="arc3,rad=0"),
-            fontsize=11
+            fontsize=36
         )
         self.annotation.set_visible(False)
 

@@ -38,6 +38,16 @@ class InteractiveUI:
         width, height = self.config_loader.get_window_size()
         self.root.geometry(f"{width}x{height}")
 
+        # 启动时窗口最大化（跨平台兼容）
+        try:
+            # Windows
+            self.root.state('zoomed')
+        except tk.TclError:
+            # Linux/Mac - 使用全屏尺寸
+            screen_width = self.root.winfo_screenwidth()
+            screen_height = self.root.winfo_screenheight()
+            self.root.geometry(f"{screen_width}x{screen_height}+0+0")
+
         self.scan_data = None  # 扫描数据
         self.current_symbol = None  # 当前选中股票
 
@@ -76,18 +86,7 @@ class InteractiveUI:
             self.root, self.stock_list_panel.fixed_tree, self._on_navigation_trigger
         )
 
-        # 显示欢迎信息
-        self._show_welcome()
-
-    def _show_welcome(self):
-        """显示欢迎信息"""
-        welcome_label = ttk.Label(
-            self.chart_manager.container,
-            text='Welcome to Interactive Breakthrough Analysis Tool\n\nClick "Load Scan Results" to start',
-            font=("Arial", 14),
-            foreground="gray",
-        )
-        welcome_label.pack(expand=True)
+        # 不显示欢迎信息，让右侧保持空白（为K线图预留空间）
 
     def load_scan_results(self, json_path: str):
         """

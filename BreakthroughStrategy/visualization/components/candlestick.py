@@ -22,9 +22,9 @@ class CandlestickComponent:
         df = CandlestickComponent._normalize_columns(df)
 
         # 颜色配置
-        up_color = '#26A69A'  # 绿色 (上涨)
-        down_color = '#EF5350'  # 红色 (下跌)
-        width = 0.6
+        up_color = '#4CAF50'  # 浅绿色 (上涨)
+        down_color = '#B71C1C'  # 深红色 (下跌)
+        width = 0.8
 
         # 使用整数索引绘制K线
         for i in range(len(df)):
@@ -35,7 +35,7 @@ class CandlestickComponent:
             color = up_color if c >= o else down_color
 
             # 绘制上下影线
-            ax.plot([i, i], [l, h], color=color, linewidth=1.2, solid_capstyle='round', zorder=2)
+            ax.plot([i, i], [l, h], color=color, linewidth=3.0, solid_capstyle='round', zorder=2)
 
             # 绘制实体
             body_low = min(o, c)
@@ -56,9 +56,64 @@ class CandlestickComponent:
         # 设置X轴刻度和标签
         CandlestickComponent._format_xaxis(ax, df)
 
-        ax.set_ylabel('Price ($)', fontsize=10)
+        ax.set_ylabel('Price ($)', fontsize=24)
         ax.set_xlim(-0.5, len(df) - 0.5)
         ax.grid(True, alpha=0.3, linestyle='--', axis='y')
+
+    @staticmethod
+    def draw_volume_background(ax, df: pd.DataFrame, highlight_dates: Optional[list] = None,
+                              volume_scale_ratio: float = 0.2):
+        """
+        在主图上绘制成交量作为背景（参考 new_trade 实现）
+
+        Args:
+            ax: matplotlib Axes 对象（主K线图的axes）
+            df: OHLCV DataFrame
+            highlight_dates: 需要高亮的日期列表 (突破日期)
+            volume_scale_ratio: 成交量占显示高度的比例（默认20%）
+        """
+        df = CandlestickComponent._normalize_columns(df)
+
+        if len(df) == 0:
+            return
+
+        # 计算价格范围和显示区域
+        price_min = df[['Open', 'High', 'Low', 'Close']].min().min()
+        price_max = df[['Open', 'High', 'Low', 'Close']].max().max()
+        price_range = price_max - price_min
+
+        # 使用90%空间显示价格，顶部5%和底部5%留白用于成交量和标记
+        display_height = price_range / 0.9
+        display_bottom = price_min - (display_height * 0.05)
+
+        # 成交量缩放因子
+        volume_max = df['Volume'].max()
+        volume_scale_factor = (display_height * volume_scale_ratio) / volume_max if volume_max > 0 else 1.0
+
+        # 设置Y轴范围
+        y_bottom = display_bottom
+        y_top = display_bottom + display_height
+        ax.set_ylim(y_bottom, y_top)
+
+        # 绘制成交量柱状图作为背景
+        for i in range(len(df)):
+            row = df.iloc[i]
+            volume = row['Volume']
+            o, c = row['Open'], row['Close']
+
+            # 确定颜色
+            if df.index[i] in (highlight_dates or []):
+                volume_color = '#FFD700'  # 金色高亮（突破日期）
+            elif c >= o:
+                volume_color = '#D3D3D3'  # 浅灰色（上涨）
+            else:
+                volume_color = '#696969'  # 深灰色（下跌）
+
+            # 绘制成交量柱
+            volume_height = volume * volume_scale_factor
+            ax.bar(i, volume_height, bottom=display_bottom, width=1.0,
+                  color=volume_color, edgecolor='black', linewidth=0.5,
+                  alpha=0.8, zorder=1)
 
     @staticmethod
     def draw_volume(ax, df: pd.DataFrame, highlight_dates: Optional[list] = None):
@@ -76,20 +131,21 @@ class CandlestickComponent:
         colors = []
         for i in range(len(df)):
             if df.index[i] in (highlight_dates or []):
-                colors.append('#FFD700')  # 金色高亮
-            elif i > 0 and df['Close'].iloc[i] >= df['Close'].iloc[i-1]:
-                colors.append('#26A69A')  # 绿色 (上涨)
+                colors.append('#FFD700')  # 金色高亮（保留突破日期特色）
+            elif df['Close'].iloc[i] >= df['Open'].iloc[i]:
+                colors.append('#D3D3D3')  # 浅灰色 (上涨)
             else:
-                colors.append('#EF5350')  # 红色 (下跌)
+                colors.append('#696969')  # 深灰色 (下跌)
 
         # 使用整数索引而不是日期索引
         x_positions = range(len(df))
-        ax.bar(x_positions, df['Volume'], color=colors, alpha=0.6, width=0.8)
+        ax.bar(x_positions, df['Volume'], color=colors, alpha=0.8, width=1.0,
+               edgecolor='black', linewidth=0.5)
 
         # 设置X轴刻度和标签
         CandlestickComponent._format_xaxis(ax, df)
 
-        ax.set_ylabel('Volume', fontsize=10)
+        ax.set_ylabel('Volume', fontsize=24)
         ax.set_xlim(-0.5, len(df) - 0.5)
         ax.grid(True, alpha=0.3, linestyle='--', axis='y')
 
@@ -119,7 +175,7 @@ class CandlestickComponent:
 
         # 设置刻度
         ax.set_xticks(tick_positions)
-        ax.set_xticklabels(tick_labels, rotation=45, ha='right', fontsize=8)
+        ax.set_xticklabels(tick_labels, rotation=45, ha='right', fontsize=20)
 
     @staticmethod
     def _normalize_columns(df: pd.DataFrame) -> pd.DataFrame:
