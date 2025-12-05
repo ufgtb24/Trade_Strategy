@@ -42,7 +42,7 @@ def show_error_dialog(parent, title, message, font_size=16):
     msg_label = ttk.Label(
         frame,
         text=message,
-        font=("TkDefaultFont", font_size),
+        font=("Arial", font_size),
         wraplength=500,
         foreground="red"
     )

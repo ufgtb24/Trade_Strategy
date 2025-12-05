@@ -78,8 +78,9 @@ class CustomFileDialog(tk.Toplevel):
 
     def _create_ui(self):
         """创建UI组件"""
-        main_font = ("TkDefaultFont", self.font_size)
-        icon_font = ("TkDefaultFont", self.font_size + 4)
+        # 使用 Arial 字体以保持与全局样式一致
+        main_font = ("Arial", self.font_size)
+        icon_font = ("Arial", self.font_size + 4)
 
         # 顶部路径栏
         path_frame = ttk.Frame(self, padding="10 10 10 5")
@@ -129,7 +130,7 @@ class CustomFileDialog(tk.Toplevel):
         )
         style.configure(
             "FileDialog.Treeview.Heading",
-            font=("TkDefaultFont", self.font_size, "bold"),
+            font=("Arial", self.font_size, "bold"),
         )
 
         # 滚动条

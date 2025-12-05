@@ -1,5 +1,5 @@
-.idea/*
+.idea
 datasets
-outputs/*
+outputs
 __pycache__/
 prompt_template/

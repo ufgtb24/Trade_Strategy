@@ -15,11 +15,16 @@ import matplotlib
 matplotlib.use('TkAgg')  # 切换到交互式后端
 
 from BreakthroughStrategy.visualization.interactive import InteractiveUI
+from BreakthroughStrategy.visualization.interactive.ui_styles import configure_global_styles
 
 
 def main():
     """主函数"""
     root = tk.Tk()
+
+    # 配置全局UI样式（必须在创建UI组件之前）
+    configure_global_styles(root)
+
     app = InteractiveUI(root)
 
     # 可选：自动加载最新扫描结果

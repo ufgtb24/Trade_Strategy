@@ -2,7 +2,6 @@
 
 import time
 import tkinter as tk
-from functools import lru_cache
 from pathlib import Path
 from tkinter import ttk
 
@@ -11,13 +10,11 @@ import pandas as pd
 
 from BreakthroughStrategy.analysis import BreakthroughDetector
 from BreakthroughStrategy.analysis.breakthrough_detector import Breakthrough, Peak
-from BreakthroughStrategy.analysis.features import FeatureCalculator
-from BreakthroughStrategy.analysis.quality_scorer import QualityScorer
 
 from .chart_canvas_manager import ChartCanvasManager
 from .navigation_manager import NavigationManager
 from .parameter_panel import ParameterPanel
-from .scan_manager import ScanManager
+from .scan_manager import ScanManager, compute_breakthroughs_from_dataframe
 from .stock_list_panel import StockListPanel
 from .ui_config_loader import get_ui_config_loader
 from .utils import show_error_dialog
@@ -59,6 +56,10 @@ class InteractiveUI:
         self.current_breakthroughs = None
         self.current_detector = None
 
+        # DataFrame缓存：{(symbol, start_date, end_date): DataFrame}
+        # 用于支持多时间范围缓存
+        self._data_cache = {}
+
         # 创建UI
         self._create_ui()
 
@@ -83,6 +84,9 @@ class InteractiveUI:
         self.stock_list_panel = StockListPanel(
             left_frame, on_selection_callback=self._on_stock_selected
         )
+
+        # 将 stock_list_panel 引用传递给 param_panel
+        self.param_panel.set_stock_list_panel(self.stock_list_panel)
 
         # 右侧：图表Canvas（70%宽度）
         right_frame = ttk.Frame(paned)
@@ -112,6 +116,9 @@ class InteractiveUI:
             # 使用ScanManager加载
             manager = ScanManager()
             self.scan_data = manager.load_results(json_path)
+
+            # 清空DataFrame缓存（新JSON可能有不同的时间范围）
+            self._data_cache.clear()
 
             # 加载到股票列表
             self.stock_list_panel.load_data(self.scan_data)
@@ -146,19 +153,28 @@ class InteractiveUI:
         self.current_symbol = symbol
         self.param_panel.set_status(f"Loading {symbol}...", "blue")
 
+        # 获取该股票的时间范围（优先使用JSON中的记录）
+        start_date, end_date = self.config_loader.get_time_range_for_stock(
+            symbol, self.scan_data
+        )
+
         # 加载股票数据
-        df = self._load_stock_data(symbol)
+        df = self._load_stock_data(symbol, start_date, end_date)
         params = self.param_panel.get_params()
 
         # 尝试使用JSON缓存（快速路径）
         if self._can_use_json_cache(symbol, params, df):
             # try:
-            load_start=time.time()
+            load_start = time.time()
             breakthroughs, detector = self._load_from_json_cache(symbol, params, df)
-            load_end=time.time()
-            print(f"[UI] JSON cache load time for {symbol}: {load_end - load_start:.6f} seconds")
-            self.param_panel.set_status(f"{symbol}: Loaded from cache ⚡", "blue")
-            # except Exception as e:
+            load_end = time.time()
+            print(
+                f"[UI] JSON cache load time for {symbol}: {load_end - load_start:.6f} seconds"
+            )
+            self.param_panel.set_status(
+                f"{symbol}: Loaded from cache ⚡", "blue", font=("Arial", 20)
+            )
+            # except Exception as e:stock
             #     # 缓存加载失败，降级到慢速路径
             #     print(
             #         f"[UI] Cache load failed for {symbol}: {e}, falling back to full computation"
@@ -166,10 +182,24 @@ class InteractiveUI:
             #     breakthroughs, detector = self._full_computation(symbol, params, df)
         else:
             # 完整计算（慢速路径）
-            load_start=time.time()
+            load_start = time.time()
             breakthroughs, detector = self._full_computation(symbol, params, df)
-            load_end=time.time()
-            print(f"[UI] Full computation time for {symbol}: {load_end - load_start:.6f} seconds")
+            load_end = time.time()
+            print(
+                f"[UI] Full computation time for {symbol}: {load_end - load_start:.6f} seconds"
+            )
+
+            # 区分状态显示
+            if self.param_panel.get_use_ui_params():
+                self.param_panel.set_status(
+                    f"{symbol}: Computed with UI params 🔧",
+                    "green",
+                    font=("Arial", 20),
+                )
+            else:
+                self.param_panel.set_status(
+                    f"{symbol}: Computed (cache unavailable) 🐌", "gray"
+                )
 
         if not breakthroughs:
             self.param_panel.set_status(f"{symbol}: No breakthroughs", "gray")
@@ -188,7 +218,7 @@ class InteractiveUI:
 
     def _full_computation(self, symbol: str, params: dict, df: pd.DataFrame) -> tuple:
         """
-        完整计算路径（慢速）
+        完整计算路径（慢速）- 使用统一函数
 
         Args:
             symbol: 股票代码
@@ -198,20 +228,20 @@ class InteractiveUI:
         Returns:
             (breakthroughs, detector) 元组
         """
-        # 运行突破检测
-        detector = BreakthroughDetector(
+        # 从 UI 参数加载器获取配置
+        feature_cfg = self.param_panel.param_loader.get_feature_calculator_params()
+        scorer_cfg = self.param_panel.param_loader.get_quality_scorer_params()
+
+        # 使用统一函数计算突破
+        breakthroughs, detector = compute_breakthroughs_from_dataframe(
             symbol=symbol,
+            df=df,
             window=params["window"],
             exceed_threshold=params["exceed_threshold"],
-            use_cache=False,
+            peak_merge_threshold=params.get("peak_merge_threshold", 0.03),
+            feature_calc_config=feature_cfg,
+            quality_scorer_config=scorer_cfg,
         )
-        breakout_infos = detector.batch_add_bars(df, return_breakouts=True)
-
-        if not breakout_infos:
-            return [], detector
-
-        # 特征计算和评分
-        breakthroughs = self._enrich_breakthroughs(breakout_infos, df, symbol, detector)
 
         self.param_panel.set_status(
             f"{symbol}: Computed {len(breakthroughs)} breakthrough(s)", "green"
@@ -221,36 +251,27 @@ class InteractiveUI:
 
     def _can_use_json_cache(self, symbol: str, params: dict, df: pd.DataFrame) -> bool:
         """
-        判断是否可以使用JSON缓存（优化版）
+        判断是否可以使用JSON缓存（v3.0优化版）
 
-        条件：
-        1. 已加载JSON数据
-        2. 参数匹配（window, exceed_threshold, peak_merge_threshold）
-        3. UI时间范围包含于JSON扫描范围（df_range ⊆ json_range）
+        新逻辑：
+        1. 如果勾选了 "Use UI Params"，强制重新计算
+        2. 否则，只要 JSON 存在且时间范围匹配，就使用缓存
+        3. 不再检查参数匹配（用户负责确保 JSON 的参数是期望的）
 
         Args:
             symbol: 股票代码
-            params: 参数字典
+            params: 参数字典（未使用，保留向后兼容）
             df: DataFrame
 
         Returns:
             是否可以使用缓存
         """
+        # 优先检查复选框状态
+        if self.param_panel.get_use_ui_params():
+            return False  # 用户强制使用 UI 参数重新扫描
+
+        # 检查 JSON 是否已加载
         if not hasattr(self, "scan_data") or not self.scan_data:
-            return False
-
-        metadata = self.scan_data.get("scan_metadata", {})
-
-        # 检查参数匹配
-        if (
-            metadata.get("window") != params["window"]
-            or abs(metadata.get("exceed_threshold") - params["exceed_threshold"]) > 1e-6
-            or abs(
-                metadata.get("peak_merge_threshold", 0.03)
-                - params.get("peak_merge_threshold", 0.03)
-            )
-            > 1e-6
-        ):
             return False
 
         # 查找该股票的数据
@@ -324,7 +345,7 @@ class InteractiveUI:
                 if isinstance(new_index, slice):
                     # 如果是切片，取第一个索引
                     new_index = new_index.start
-                elif hasattr(new_index, '__iter__'):
+                elif hasattr(new_index, "__iter__"):
                     # 如果是数组/列表，取第一个 True 的位置
                     new_index = np.where(new_index)[0][0]
                 # 确保是整数类型
@@ -358,7 +379,9 @@ class InteractiveUI:
 
             # 过滤：只保留 broken_peaks 中仍然存在的峰值（已通过时间范围过滤）
             broken_peak_ids = bt_data["broken_peak_ids"]
-            broken_peaks = [all_peaks[pid] for pid in broken_peak_ids if pid in all_peaks]
+            broken_peaks = [
+                all_peaks[pid] for pid in broken_peak_ids if pid in all_peaks
+            ]
 
             # 如果所有 broken_peaks 都被过滤掉了，跳过该突破点
             if not broken_peaks:
@@ -371,7 +394,7 @@ class InteractiveUI:
                 if isinstance(new_index, slice):
                     # 如果是切片，取第一个索引
                     new_index = new_index.start
-                elif hasattr(new_index, '__iter__'):
+                elif hasattr(new_index, "__iter__"):
                     # 如果是数组/列表，取第一个 True 的位置
                     new_index = np.where(new_index)[0][0]
                 # 确保是整数类型
@@ -394,10 +417,14 @@ class InteractiveUI:
                 index=new_index,  # 使用重新映射的索引
                 broken_peaks=broken_peaks,
                 breakthrough_type=bt_data.get("breakthrough_type", "yang"),
-                price_change_pct=price_change_pct if price_change_pct is not None else 0.0,
+                price_change_pct=price_change_pct
+                if price_change_pct is not None
+                else 0.0,
                 gap_up=(gap_up_pct if gap_up_pct is not None else 0.0) > 0,
                 gap_up_pct=gap_up_pct if gap_up_pct is not None else 0.0,
-                volume_surge_ratio=volume_surge_ratio if volume_surge_ratio is not None else 0.0,
+                volume_surge_ratio=volume_surge_ratio
+                if volume_surge_ratio is not None
+                else 0.0,
                 continuity_days=continuity_days if continuity_days is not None else 0,
                 stability_score=stability_score if stability_score is not None else 0.0,
                 quality_score=bt_data.get("quality_score"),
@@ -425,17 +452,32 @@ class InteractiveUI:
 
         return breakthroughs, detector
 
-    @lru_cache(maxsize=10)
-    def _load_stock_data(self, symbol: str) -> pd.DataFrame:
+    def _load_stock_data(
+        self,
+        symbol: str,
+        start_date: str = None,
+        end_date: str = None,
+    ) -> pd.DataFrame:
         """
-        加载股票数据（带LRU缓存）
+        加载股票数据（支持per-stock时间范围缓存）
 
         Args:
             symbol: 股票代码
+            start_date: 起始日期（可选，None表示使用全局配置）
+            end_date: 结束日期（可选，None表示使用全局配置）
 
         Returns:
             DataFrame
         """
+        # 如果未指定时间范围，使用全局配置
+        if start_date is None and end_date is None:
+            start_date, end_date = self.config_loader.get_date_range()
+
+        # 检查缓存
+        cache_key = (symbol, start_date, end_date)
+        if cache_key in self._data_cache:
+            return self._data_cache[cache_key]
+
         # 从配置文件获取搜索路径列表
         search_paths = self.config_loader.get_stock_data_search_paths()
 
@@ -445,15 +487,14 @@ class InteractiveUI:
             if data_path.exists():
                 df = pd.read_pickle(data_path)
 
-                # 获取数据截取配置
-                start_date, end_date = self.config_loader.get_date_range()
-
                 # 数据截取
                 if start_date:
                     df = df[df.index >= start_date]
                 if end_date:
                     df = df[df.index <= end_date]
 
+                # 缓存并返回
+                self._data_cache[cache_key] = df
                 return df
 
         # 如果都找不到，抛出异常
@@ -461,46 +502,13 @@ class InteractiveUI:
             f"Data file for {symbol} not found in: {', '.join(search_paths)}"
         )
 
-    def _enrich_breakthroughs(self, breakout_infos, df, symbol, detector):
-        """
-        丰富突破数据（特征计算和质量评分）
-
-        Args:
-            breakout_infos: 原始突破信息
-            df: 数据
-            symbol: 股票代码
-            detector: 检测器
-
-        Returns:
-            丰富后的突破列表
-        """
-        feature_calc = FeatureCalculator()
-        quality_scorer = QualityScorer()
-
-        breakthroughs = []
-        for info in breakout_infos:
-            # 为峰值评分
-            for peak in info.broken_peaks:
-                if peak.quality_score is None:
-                    quality_scorer.score_peak(peak)
-
-            # 特征计算
-            bt = feature_calc.enrich_breakthrough(df, info, symbol)
-            breakthroughs.append(bt)
-
-        # 批量评分
-        quality_scorer.score_breakthroughs_batch(breakthroughs)
-
-        # 为检测器的活跃峰值评分
-        if detector and hasattr(detector, "active_peaks"):
-            for peak in detector.active_peaks:
-                if peak.quality_score is None:
-                    quality_scorer.score_peak(peak)
-
-        return breakthroughs
-
     def _on_param_changed(self):
         """参数变化回调"""
+        # 清空DataFrame缓存（参数变化可能影响数据加载）
+        # 注意：这里不需要清空缓存，因为DataFrame缓存是基于时间范围的
+        # 参数变化只影响突破检测算法，不影响数据加载
+        # self._data_cache.clear()
+
         if not self.current_symbol:
             return  # 没有选中股票，不刷新
 
@@ -511,22 +519,56 @@ class InteractiveUI:
             for stock in self.stock_list_panel.filtered_data:
                 if stock["symbol"] == self.current_symbol:
                     self._on_stock_selected(self.current_symbol, stock["raw_data"])
+
+                    # 参数变更后，如果使用 UI Params，需要更新 StockListPanel 的统计信息
+                    if self.param_panel.get_use_ui_params() and self.current_breakthroughs:
+                        self._update_stock_list_statistics(
+                            self.current_symbol, self.current_breakthroughs
+                        )
                     break
+
+    def _update_stock_list_statistics(self, symbol: str, breakthroughs: list):
+        """
+        更新 StockListPanel 中指定股票的统计信息
+
+        Args:
+            symbol: 股票代码
+            breakthroughs: 突破列表
+        """
+        # 计算新的统计信息（与 ScanManager 保持一致）
+        quality_scores = [
+            bt.quality_score for bt in breakthroughs if bt.quality_score is not None
+        ]
+        avg_quality = (
+            sum(quality_scores) / len(quality_scores) if quality_scores else 0.0
+        )
+        max_quality = max(quality_scores) if quality_scores else 0.0
+
+        # 更新 StockListPanel 中的数据
+        for stock in self.stock_list_panel.stock_data:
+            if stock["symbol"] == symbol:
+                stock["avg_quality"] = avg_quality
+                stock["max_quality"] = max_quality
+                stock["bts"] = len(breakthroughs)
+                break
+
+        # 同步更新 filtered_data
+        for stock in self.stock_list_panel.filtered_data:
+            if stock["symbol"] == symbol:
+                stock["avg_quality"] = avg_quality
+                stock["max_quality"] = max_quality
+                stock["bts"] = len(breakthroughs)
+                break
+
+        # 刷新显示
+        self.stock_list_panel._update_tree()
 
     def _on_navigation_trigger(self):
         """键盘导航触发图表更新"""
-        # 获取当前选中的股票
-        selection = self.stock_list_panel.fixed_tree.selection()
-        if not selection:
-            return
-
-        symbol = selection[0]
-
-        # 找到对应的原始数据
-        for stock in self.stock_list_panel.filtered_data:
-            if stock["symbol"] == symbol:
-                self._on_stock_selected(symbol, stock["raw_data"])
-                break
+        # 注意：此方法已被 StockListPanel 的选择回调覆盖
+        # 保留此方法仅为向后兼容，实际不应被调用
+        # 因为 _on_fixed_select/_on_main_select 已经触发了 on_selection_callback
+        pass
 
     def _on_display_option_changed(self):
         """显示选项变化回调（只重绘，不重新计算）"""

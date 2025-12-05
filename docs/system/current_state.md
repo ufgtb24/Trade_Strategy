@@ -7,7 +7,6 @@
 - 项目概况 → [PRD.md](PRD.md)
 - 文档导航 → [../README.md](../README.md)
 - 模块设计 → [../modules/plans/](../modules/plans/)
-- 模块文档说明 → [../modules/README.md](../modules/README.md)
 
 ---
 
@@ -19,7 +18,7 @@
 |------|------|---------|---------|
 | 02 | 技术分析模块 | 2025-11-18 | `BreakthroughStrategy/analysis/` |
 | 11 | 可视化模块 | 2025-11-24 | `BreakthroughStrategy/visualization/` |
-| 12 | 交互式UI | 2025-11-26 | `BreakthroughStrategy/visualization/interactive/` |
+| 12 | UI | 2025-11-26 | `BreakthroughStrategy/visualization/interactive/` |
 
 **模块02 - 技术分析模块**：
 - ✅ 增量式架构：支持实时监控和回测
@@ -57,28 +56,10 @@
 ---
 
 ## 下一步计划
-
-1. 开发数据层模块（编号01）
-2. 申请 Tiger API 账号和权限
-3. 开发搜索系统（编号03）
-4. 开发回测系统（编号08）
-
+观察池系统开发（模块04）
 ---
 
 ## 研究报告
-
-### 算法研究
-
-- 暂无
-
-### 技术调研
-
-- 暂无
-
-### 数据分析
-
-- 暂无
-
 **说明**：研究报告由子代理生成，存放在 [../research/](../research/) 目录
 
 ---

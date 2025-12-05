@@ -156,6 +156,80 @@ class UIParamLoader:
         except Exception as e:
             raise RuntimeError(f"保存参数文件失败: {e}")
 
+    def get_feature_calculator_params(self) -> Dict[str, Any]:
+        """
+        获取 FeatureCalculator 参数
+
+        Returns:
+            参数字典，包含: stability_lookforward, continuity_lookback
+        """
+        feature_params = self._params.get('feature_calculator', {})
+
+        validated = {
+            'stability_lookforward': self._validate_int(
+                feature_params.get('stability_lookforward', 10), 5, 30, 10
+            ),
+            'continuity_lookback': self._validate_int(
+                feature_params.get('continuity_lookback', 5), 1, 10, 5
+            ),
+        }
+
+        return validated
+
+    def get_quality_scorer_params(self) -> Dict[str, Any]:
+        """
+        获取 QualityScorer 参数
+
+        Returns:
+            参数字典，包含所有权重值
+        """
+        quality_params = self._params.get('quality_scorer', {})
+
+        # Peak weights
+        peak_weights = quality_params.get('peak_weights', {})
+        validated = {
+            'peak_weight_volume': self._validate_float(
+                peak_weights.get('volume', 0.25), 0.0, 1.0, 0.25
+            ),
+            'peak_weight_candle': self._validate_float(
+                peak_weights.get('candle', 0.20), 0.0, 1.0, 0.20
+            ),
+            'peak_weight_suppression': self._validate_float(
+                peak_weights.get('suppression', 0.25), 0.0, 1.0, 0.25
+            ),
+            'peak_weight_height': self._validate_float(
+                peak_weights.get('height', 0.15), 0.0, 1.0, 0.15
+            ),
+            'peak_weight_merged': self._validate_float(
+                peak_weights.get('merged', 0.15), 0.0, 1.0, 0.15
+            ),
+        }
+
+        # Breakthrough weights
+        bt_weights = quality_params.get('breakthrough_weights', {})
+        validated.update({
+            'bt_weight_change': self._validate_float(
+                bt_weights.get('change', 0.20), 0.0, 1.0, 0.20
+            ),
+            'bt_weight_gap': self._validate_float(
+                bt_weights.get('gap', 0.10), 0.0, 1.0, 0.10
+            ),
+            'bt_weight_volume': self._validate_float(
+                bt_weights.get('volume', 0.20), 0.0, 1.0, 0.20
+            ),
+            'bt_weight_continuity': self._validate_float(
+                bt_weights.get('continuity', 0.15), 0.0, 1.0, 0.15
+            ),
+            'bt_weight_stability': self._validate_float(
+                bt_weights.get('stability', 0.15), 0.0, 1.0, 0.15
+            ),
+            'bt_weight_resistance': self._validate_float(
+                bt_weights.get('resistance', 0.20), 0.0, 1.0, 0.20
+            ),
+        })
+
+        return validated
+
     def _validate_int(self, value, min_val: int, max_val: int, default: int) -> int:
         """
         验证整数参数

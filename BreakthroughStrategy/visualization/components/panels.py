@@ -68,7 +68,7 @@ class PanelComponent:
         ax.text(
             0.02, 0.5,
             info_text,
-            fontsize=14,
+            fontsize=17,
             va='center',
             ha='left',
             family='monospace'

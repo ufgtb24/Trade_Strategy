@@ -255,16 +255,16 @@ class CandlestickComponent:
         # 添加垂直网格线 (代表日期的纵坐标刻度线)
         ax.grid(True, axis="x", linestyle="-", alpha=0.3, color="gray")
 
-        # 在图形底部中间显示间隔信息
+        # 在右下角显示间隔信息
         # 使用 transform=ax.transAxes 使得坐标相对于 axes (0-1)
         ax.text(
-            0.5,
-            0.02,
+            0.98,
+            -0.02,
             interval_label,
-            ha="center",
+            ha="right",
             va="bottom",
             transform=ax.transAxes,
-            fontsize=12,
+            fontsize=17,
             color="black",
             alpha=0.8,
             bbox=dict(

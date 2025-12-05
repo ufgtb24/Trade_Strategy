@@ -45,14 +45,6 @@ feature_calculator:
     # 小实体阈值（实体长度/总长度）
     small_body_threshold: 0.3
 
-# 技术指标参数
-technical_indicators:
-  # 移动平均线周期
-  ma_periods: [5, 10, 20, 60]
-
-  # RSI周期
-  rsi_period: 14
-
 # 质量评分器参数
 quality_scorer:
   # 峰值质量评分权重

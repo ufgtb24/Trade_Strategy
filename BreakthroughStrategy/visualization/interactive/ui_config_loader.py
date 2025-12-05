@@ -209,6 +209,42 @@ class UIConfigLoader:
         end_date = scan_settings.get("end_date")
         return (start_date, end_date)
 
+    def get_time_range_for_stock(
+        self, symbol: str, json_data: Optional[Dict] = None
+    ) -> tuple[Optional[str], Optional[str]]:
+        """
+        获取指定股票的时间范围，支持优先级机制
+
+        优先级：
+        1. 如果 use_json_time_range=true 且 JSON 中有该股票的扫描记录
+           -> 返回 JSON 中的 scan_start_date/scan_end_date
+        2. 否则返回全局配置的 start_date/end_date
+
+        Args:
+            symbol: 股票代码
+            json_data: 扫描结果 JSON 数据（可选）
+
+        Returns:
+            (start_date, end_date) 元组
+        """
+        scan_settings = self._config.get("scan_settings", {})
+        use_json_time_range = scan_settings.get("use_json_time_range", False)
+
+        # 优先级1: 使用 JSON 中的 per-stock 时间范围
+        if use_json_time_range and json_data:
+            results = json_data.get("results", [])
+            for stock_result in results:
+                if stock_result.get("symbol") == symbol:
+                    start_date = stock_result.get("scan_start_date")
+                    end_date = stock_result.get("scan_end_date")
+                    if start_date and end_date:
+                        return (start_date, end_date)
+
+        # 优先级2: 使用全局配置
+        start_date = scan_settings.get("start_date")
+        end_date = scan_settings.get("end_date")
+        return (start_date, end_date)
+
     def get_display_options_defaults(self) -> Dict[str, bool]:
         """
         获取显示选项默认值
@@ -219,6 +255,57 @@ class UIConfigLoader:
         return self._config.get("ui", {}).get(
             "display_options", {"show_peak_score": True, "show_bt_score": True}
         )
+
+    def get_stock_list_column_config(self) -> Dict[str, Any]:
+        """
+        获取股票列表列显示配置（包含总开关和具体列）
+
+        Returns:
+            列显示配置字典，包含：
+            - columns_enabled: bool - 列总开关（一键显示/隐藏）
+            - visible_columns: List[str] - 可见列列表
+            - column_priority: List[str] - 列排序优先级
+            - column_labels: Dict[str, str] - 自定义列标签
+        """
+        default = {
+            "columns_enabled": True,
+            "visible_columns": ["bts", "active_peaks", "max_quality"],
+            "column_priority": ["bts", "active_peaks", "avg_quality", "max_quality"],
+            "column_labels": {},
+        }
+        return self._config.get("ui", {}).get("stock_list_columns", default)
+
+    def set_columns_enabled(self, enabled: bool):
+        """
+        设置列总开关（一键显示/隐藏所有属性列）
+
+        Args:
+            enabled: True=显示列，False=隐藏所有属性列（只显示Symbol）
+        """
+        # 确保配置结构存在
+        if "ui" not in self._config:
+            self._config["ui"] = {}
+        if "stock_list_columns" not in self._config["ui"]:
+            self._config["ui"]["stock_list_columns"] = self.get_stock_list_column_config()
+
+        self._config["ui"]["stock_list_columns"]["columns_enabled"] = enabled
+        self.save_config()
+
+    def set_visible_columns(self, columns: List[str]):
+        """
+        设置可见列列表（用户自定义配置）
+
+        Args:
+            columns: 可见列名列表
+        """
+        # 确保配置结构存在
+        if "ui" not in self._config:
+            self._config["ui"] = {}
+        if "stock_list_columns" not in self._config["ui"]:
+            self._config["ui"]["stock_list_columns"] = self.get_stock_list_column_config()
+
+        self._config["ui"]["stock_list_columns"]["visible_columns"] = columns
+        self.save_config()
 
 
 def get_ui_config_loader(config_path: Optional[str] = None) -> UIConfigLoader:

@@ -1,0 +1,34 @@
+breakthrough_detector:
+  cache_dir: ./cache
+  exceed_threshold: 0.005
+  peak_merge_threshold: 0.03
+  use_cache: false
+  window: 5
+feature_calculator:
+  candle_classification:
+    big_body_threshold: 0.6
+    small_body_threshold: 0.3
+  continuity_lookback: 5
+  stability_lookforward: 10
+peak_features:
+  relative_height_lookback: 20
+  suppression_days_threshold: 3
+  volume_surge_threshold: 1.5
+quality_scorer:
+  breakthrough_weights:
+    change: 0.2
+    continuity: 0.15
+    gap: 0.1
+    resistance: 0.2
+    stability: 0.15
+    volume: 0.2
+  peak_weights:
+    candle: 0.2
+    height: 0.15
+    merged: 0.15
+    suppression: 0.25
+    volume: 0.25
+  resistance_weights:
+    density: 0.3
+    quality: 0.4
+    quantity: 0.3

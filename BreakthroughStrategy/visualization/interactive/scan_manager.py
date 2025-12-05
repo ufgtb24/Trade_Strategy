@@ -4,7 +4,7 @@ import json
 from datetime import datetime
 from multiprocessing import Pool
 from pathlib import Path
-from typing import Dict, List
+from typing import Dict, List, Tuple
 
 import pandas as pd
 
@@ -15,12 +15,76 @@ from BreakthroughStrategy.analysis.quality_scorer import QualityScorer
 from .utils import ensure_dir
 
 
+def compute_breakthroughs_from_dataframe(
+    symbol: str,
+    df: pd.DataFrame,
+    window: int,
+    exceed_threshold: float,
+    peak_merge_threshold: float,
+    feature_calc_config: dict = None,
+    quality_scorer_config: dict = None,
+) -> Tuple[List, BreakthroughDetector]:
+    """
+    从 DataFrame 计算突破（统一函数，供 batch_scan 和 UI 使用）
+
+    Args:
+        symbol: 股票代码
+        df: 数据 DataFrame
+        window: 检测窗口大小
+        exceed_threshold: 突破阈值
+        peak_merge_threshold: 峰值合并阈值
+        feature_calc_config: FeatureCalculator 配置字典
+        quality_scorer_config: QualityScorer 配置字典
+
+    Returns:
+        (breakthroughs, detector) 元组
+    """
+    # 运行突破检测
+    detector = BreakthroughDetector(
+        symbol=symbol,
+        window=window,
+        exceed_threshold=exceed_threshold,
+        peak_merge_threshold=peak_merge_threshold,
+        use_cache=False,
+    )
+    breakout_infos = detector.batch_add_bars(df, return_breakouts=True)
+
+    if not breakout_infos:
+        return [], detector
+
+    # 特征计算和评分（使用传入的配置）
+    feature_calc = FeatureCalculator(config=feature_calc_config or {})
+    quality_scorer = QualityScorer(config=quality_scorer_config or {})
+
+    breakthroughs = []
+    for info in breakout_infos:
+        # 为峰值评分
+        for peak in info.broken_peaks:
+            if peak.quality_score is None:
+                quality_scorer.score_peak(peak)
+
+        # 特征计算
+        bt = feature_calc.enrich_breakthrough(df, info, symbol)
+        breakthroughs.append(bt)
+
+    # 批量评分
+    quality_scorer.score_breakthroughs_batch(breakthroughs)
+
+    # 为检测器的活跃峰值评分
+    for peak in detector.active_peaks:
+        if peak.quality_score is None:
+            quality_scorer.score_peak(peak)
+
+    return breakthroughs, detector
+
+
 def _scan_single_stock(args):
     """
     扫描单只股票（用于多进程）
 
     Args:
-        args: (symbol, data_dir, window, exceed_threshold, peak_merge_threshold, start_date, end_date)
+        args: (symbol, data_dir, window, exceed_threshold, peak_merge_threshold, start_date, end_date,
+               feature_calc_config, quality_scorer_config)
 
     Returns:
         结果字典
@@ -33,6 +97,8 @@ def _scan_single_stock(args):
         peak_merge_threshold,
         start_date,
         end_date,
+        feature_calc_config,
+        quality_scorer_config,
     ) = args
 
     file_path = Path(data_dir) / f"{symbol}.pkl"
@@ -53,42 +119,27 @@ def _scan_single_stock(args):
         if df.empty:
             return {"symbol": symbol, "error": "Empty dataframe after filtering"}
 
-        # 运行突破检测
-        detector = BreakthroughDetector(
+        # 使用统一函数计算突破
+        breakthroughs, detector = compute_breakthroughs_from_dataframe(
             symbol=symbol,
+            df=df,
             window=window,
             exceed_threshold=exceed_threshold,
             peak_merge_threshold=peak_merge_threshold,
-            use_cache=False,  # 扫描时不使用缓存
+            feature_calc_config=feature_calc_config,
+            quality_scorer_config=quality_scorer_config,
         )
-        breakout_infos = detector.batch_add_bars(df, return_breakouts=True)
 
-        if not breakout_infos:
+        if not breakthroughs:
             return {
                 "symbol": symbol,
                 "data_points": len(df),
                 "active_peaks": len(detector.active_peaks),
                 "total_breakthroughs": 0,
+                "avg_quality": 0.0,
+                "max_quality": 0.0,
                 "breakthroughs": [],
             }
-
-        # 特征计算和评分
-        feature_calc = FeatureCalculator()
-        quality_scorer = QualityScorer()
-
-        breakthroughs = []
-        for info in breakout_infos:
-            # 为峰值评分
-            for peak in info.broken_peaks:
-                if peak.quality_score is None:
-                    quality_scorer.score_peak(peak)
-
-            # 特征计算
-            bt = feature_calc.enrich_breakthrough(df, info, symbol)
-            breakthroughs.append(bt)
-
-        # 批量评分
-        quality_scorer.score_breakthroughs_batch(breakthroughs)
 
         # 收集所有峰值（active + broken）并分配唯一ID
         all_peaks_dict = {}  # {id: Peak}
@@ -114,6 +165,17 @@ def _scan_single_stock(args):
         # 3. 标记active状态
         active_peak_ids = {p.id for p in detector.active_peaks}
 
+        # 计算质量评分统计（per-stock）
+        quality_scores = [
+            bt.quality_score
+            for bt in breakthroughs
+            if bt.quality_score is not None
+        ]
+        avg_quality = (
+            sum(quality_scores) / len(quality_scores) if quality_scores else 0.0
+        )
+        max_quality = max(quality_scores) if quality_scores else 0.0
+
         # 转换为可序列化格式
         result = {
             "symbol": symbol,
@@ -126,6 +188,8 @@ def _scan_single_stock(args):
             "data_points": len(df),
             "active_peaks": len(detector.active_peaks),
             "total_breakthroughs": len(breakthroughs),
+            "avg_quality": avg_quality,
+            "max_quality": max_quality,
             "all_peaks": [
                 {
                     "id": peak.id,
@@ -206,6 +270,8 @@ class ScanManager:
         peak_merge_threshold=0.03,
         start_date=None,
         end_date=None,
+        feature_calc_config=None,
+        quality_scorer_config=None,
     ):
         """
         初始化扫描管理器
@@ -217,6 +283,8 @@ class ScanManager:
             peak_merge_threshold: 峰值合并阈值
             start_date: 起始日期 (YYYY-MM-DD)
             end_date: 结束日期 (YYYY-MM-DD)
+            feature_calc_config: FeatureCalculator 配置字典
+            quality_scorer_config: QualityScorer 配置字典
         """
         self.output_dir = Path(output_dir)
         ensure_dir(self.output_dir)
@@ -227,6 +295,10 @@ class ScanManager:
         self.start_date = start_date
         self.end_date = end_date
         self.scan_date = datetime.now().isoformat()
+
+        # 保存特征计算和评分配置
+        self.feature_calc_config = feature_calc_config if feature_calc_config else {}
+        self.quality_scorer_config = quality_scorer_config if quality_scorer_config else {}
 
     def scan_stock(self, symbol: str, data_dir: str = "datasets/pkls") -> Dict:
         """
@@ -248,6 +320,8 @@ class ScanManager:
                 self.peak_merge_threshold,
                 self.start_date,
                 self.end_date,
+                self.feature_calc_config,
+                self.quality_scorer_config,
             )
         )
 
@@ -257,6 +331,7 @@ class ScanManager:
         data_dir: str = "datasets/pkls",
         num_workers: int = 8,
         checkpoint_interval: int = 100,
+        stock_time_ranges: Dict[str, tuple] = None,
     ) -> List[Dict]:
         """
         并行扫描多只股票
@@ -266,6 +341,9 @@ class ScanManager:
             data_dir: 数据目录
             num_workers: 并行worker数
             checkpoint_interval: checkpoint间隔
+            stock_time_ranges: 每只股票的时间范围（可选）
+                              格式：{symbol: (start_date, end_date)}
+                              如果为None，使用全局的 self.start_date 和 self.end_date
 
         Returns:
             结果列表
@@ -275,8 +353,14 @@ class ScanManager:
         print(
             f"参数: window={self.window}, exceed_threshold={self.exceed_threshold}, peak_merge_threshold={self.peak_merge_threshold}"
         )
-        if self.start_date or self.end_date:
-            print(f"时间范围: {self.start_date} - {self.end_date}")
+
+        # 打印模式信息
+        if stock_time_ranges:
+            print(f"扫描模式: CSV索引模式（每只股票独立时间范围）")
+        else:
+            print(f"扫描模式: 全局时间范围模式")
+            if self.start_date or self.end_date:
+                print(f"时间范围: {self.start_date} - {self.end_date}")
 
         all_results = []
 
@@ -290,19 +374,28 @@ class ScanManager:
                 f"({batch_start + 1}-{batch_end}/{len(symbols)})"
             )
 
-            # 并行扫描
-            args = [
-                (
-                    sym,
-                    data_dir,
-                    self.window,
-                    self.exceed_threshold,
-                    self.peak_merge_threshold,
-                    self.start_date,
-                    self.end_date,
+            # ========== 核心改动：构建参数列表 ==========
+            args = []
+            for sym in batch_symbols:
+                # 判断使用 per-stock 时间范围还是全局时间范围
+                if stock_time_ranges and sym in stock_time_ranges:
+                    start_date, end_date = stock_time_ranges[sym]
+                else:
+                    start_date, end_date = self.start_date, self.end_date
+
+                args.append(
+                    (
+                        sym,
+                        data_dir,
+                        self.window,
+                        self.exceed_threshold,
+                        self.peak_merge_threshold,
+                        start_date,
+                        end_date,
+                        self.feature_calc_config,
+                        self.quality_scorer_config,
+                    )
                 )
-                for sym in batch_symbols
-            ]
 
             with Pool(processes=num_workers) as pool:
                 batch_results = pool.map(_scan_single_stock, args)
@@ -340,16 +433,21 @@ class ScanManager:
 
         output_data = {
             "scan_metadata": {
-                "schema_version": "2.0",  # 新版本格式标识
+                "schema_version": "3.0",  # 升级到v3.0，保存完整参数
                 "scan_date": self.scan_date,
                 "total_stocks": len(results),
                 "stocks_scanned": len(successful_scans),
                 "scan_errors": len(error_scans),
-                "window": self.window,
-                "exceed_threshold": self.exceed_threshold,
-                "peak_merge_threshold": self.peak_merge_threshold,
                 "start_date": self.start_date,
                 "end_date": self.end_date,
+                # 分组保存参数（v3.0新格式）
+                "detector_params": {
+                    "window": self.window,
+                    "exceed_threshold": self.exceed_threshold,
+                    "peak_merge_threshold": self.peak_merge_threshold,
+                },
+                "feature_calculator_params": self.feature_calc_config,
+                "quality_scorer_params": self.quality_scorer_config,
             },
             "results": results,
             "summary_stats": {
@@ -417,12 +515,29 @@ class ScanManager:
         with open(input_path, "r", encoding="utf-8") as f:
             data = json.load(f)
 
-        # 版本检查：只支持新版本格式
+        # 版本检查和自动迁移
         schema_version = data.get("scan_metadata", {}).get("schema_version", "1.0")
-        if schema_version != "2.0":
+        metadata = data["scan_metadata"]
+
+        if schema_version == "2.0":
+            # v2.0 → v3.0 自动迁移
+            print(f"检测到 v2.0 格式，自动迁移到 v3.0...")
+            # 重构参数结构
+            metadata["detector_params"] = {
+                "window": metadata.pop("window"),
+                "exceed_threshold": metadata.pop("exceed_threshold"),
+                "peak_merge_threshold": metadata.pop("peak_merge_threshold"),
+            }
+            # 添加默认参数
+            metadata["feature_calculator_params"] = self._get_default_feature_params()
+            metadata["quality_scorer_params"] = self._get_default_scorer_params()
+            metadata["schema_version"] = "3.0"
+            print("迁移完成（使用默认特征和评分参数）")
+
+        elif schema_version != "3.0":
             raise ValueError(
                 f"Unsupported JSON format (version {schema_version}). "
-                f"Please re-scan with the latest version to generate v2.0 JSON."
+                f"Please re-scan with the latest version to generate v3.0 JSON."
             )
 
         print(f"加载扫描结果: {input_path}")
@@ -431,3 +546,26 @@ class ScanManager:
         print(f"成功扫描: {data['scan_metadata']['stocks_scanned']}")
 
         return data
+
+    def _get_default_feature_params(self) -> Dict:
+        """获取 FeatureCalculator 默认参数（用于 v2.0 迁移）"""
+        return {
+            "stability_lookforward": 10,
+            "continuity_lookback": 5,
+        }
+
+    def _get_default_scorer_params(self) -> Dict:
+        """获取 QualityScorer 默认参数（用于 v2.0 迁移）"""
+        return {
+            "peak_weight_volume": 0.25,
+            "peak_weight_candle": 0.20,
+            "peak_weight_suppression": 0.25,
+            "peak_weight_height": 0.15,
+            "peak_weight_merged": 0.15,
+            "bt_weight_change": 0.20,
+            "bt_weight_gap": 0.10,
+            "bt_weight_volume": 0.20,
+            "bt_weight_continuity": 0.15,
+            "bt_weight_stability": 0.15,
+            "bt_weight_resistance": 0.20,
+        }

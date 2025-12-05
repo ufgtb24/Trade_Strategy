@@ -1,41 +1,71 @@
+# 突破检测参数配置文件
+# 这是默认的参数配置，可以创建多个参数文件用于不同的策略
+
+# 突破检测器参数
 breakthrough_detector:
-  cache_dir: ./cache
-  exceed_threshold: 0.005
-  peak_merge_threshold: 0.03
-  use_cache: false
+  # 滑动窗口大小
   window: 5
-feature_calculator:
-  candle_classification:
-    big_body_threshold: 0.6
-    small_body_threshold: 0.3
-  continuity_lookback: 5
-  stability_lookforward: 10
+
+  # 突破确认阈值（价格需要超过峰值多少比例才算突破）
+  exceed_threshold: 0.005
+
+  # 峰值合并阈值（两个峰值价格相差多少比例内会被合并）
+  peak_merge_threshold: 0.03
+
+  # 是否使用缓存
+  use_cache: false
+
+  # 缓存目录
+  cache_dir: "./cache"
+
+# 峰值特征参数
 peak_features:
-  relative_height_lookback: 20
-  suppression_days_threshold: 3
+  # 放量倍数阈值（峰值成交量 / 平均成交量）
   volume_surge_threshold: 1.5
+
+  # 压制天数阈值
+  suppression_days_threshold: 3
+
+  # 相对高度计算回看天数
+  relative_height_lookback: 20
+
+# 特征计算器参数
+feature_calculator:
+  # 突破后稳定性前瞻天数
+  stability_lookforward: 10
+
+  # 连续性回看天数
+  continuity_lookback: 5
+
+  # K线分类参数
+  candle_classification:
+    # 大实体阈值（实体长度/总长度）
+    big_body_threshold: 0.6
+
+    # 小实体阈值（实体长度/总长度）
+    small_body_threshold: 0.3
+
+# 质量评分器参数
 quality_scorer:
-  breakthrough_weights:
-    change: 0.2
-    continuity: 0.15
-    gap: 0.1
-    resistance: 0.2
-    stability: 0.15
-    volume: 0.2
+  # 峰值质量评分权重
   peak_weights:
-    candle: 0.2
-    height: 0.15
-    merged: 0.15
-    suppression: 0.25
-    volume: 0.25
+    volume: 0.25        # 放量权重
+    candle: 0.20        # K线形态权重
+    suppression: 0.25   # 压制天数权重
+    height: 0.15        # 相对高度权重
+    merged: 0.15        # 合并峰值权重
+
+  # 突破质量评分权重
+  breakthrough_weights:
+    change: 0.20        # 价格变化权重
+    gap: 0.10           # 跳空缺口权重
+    volume: 0.20        # 成交量权重
+    continuity: 0.15    # 连续性权重
+    stability: 0.15     # 稳定性权重
+    resistance: 0.20    # 阻力突破权重
+
+  # 阻力强度评分权重
   resistance_weights:
-    density: 0.3
-    quality: 0.4
-    quantity: 0.3
-technical_indicators:
-  ma_periods:
-  - 5
-  - 10
-  - 20
-  - 60
-  rsi_period: 14
+    quantity: 0.30      # 峰值数量权重
+    density: 0.30       # 峰值密度权重
+    quality: 0.40       # 峰值质量权重

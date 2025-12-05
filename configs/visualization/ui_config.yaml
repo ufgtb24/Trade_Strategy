@@ -1,54 +1,47 @@
-# 可视化界面配置文件
-
-# 扫描结果路径设置
 scan_results:
-  # 默认的扫描结果存放路径（相对于项目根目录）
-  default_dir: "outputs/scan_results"
-
-  # 最近使用的扫描结果文件（可选，留空表示无）
-  recent_file: ""
-
-# 股票数据路径设置
-stock_data:
-  # 股票数据搜索路径（按优先级顺序，第一个为默认优先路径）
-  search_paths:
-    - "/home/yu/PycharmProjects/Trade_Strategy/datasets/test_pkls"
-    # - "datasets/pkls"
-
-# UI显示设置
-ui:
-  # 默认窗口大小
-  window_width: 1600
-  window_height: 900
-
-  # 左侧股票列表面板宽度比例（0-1）
-  left_panel_weight: 0.3
-
-  # 右侧图表面板宽度比例（0-1）
-  right_panel_weight: 0.7
-
-  # 显示选项默认值
-  display_options:
-    show_peak_score: false
-    show_bt_score: false
-
-  # 颜色设置
-  colors:
-    resistance_zone: "#5D5932"  # 阻力区颜色 (黄色)
-    candlestick_up: "#4CAF50"   # K线上涨颜色 (浅绿)
-    candlestick_down: "#B71C1C" # K线下跌颜色 (深红)
-    volume_up: "#D3D3D3"        # 成交量上涨颜色 (浅灰)
-    volume_down: "#696969"      # 成交量下跌颜色 (深灰)
-    volume_highlight: "#FFD700" # 成交量高亮颜色 (金色)
-    peak_marker: "#000000"      # 峰值标记颜色 (黑色)
-    peak_text_id: "#000000"     # 峰值ID文字颜色 (黑色)
-    peak_text_score: "#969696"  # 峰值分数文字颜色 (灰色)
-    breakthrough_marker: "#0000FF" # 突破标记颜色 (蓝色)
-    breakthrough_text_bg: "#FFFFFF" # 突破文字背景颜色 (白色)
-    breakthrough_text_score: "#FF0000" # 突破分数文字颜色 (红色)
-
-# 扫描设置
+  default_dir: outputs/scan_results
+  recent_file: ''
 scan_settings:
-  # 数据截取时段 (YYYY-MM-DD, null表示不限制)
-  start_date: "2024-01-01"
   end_date: null
+  start_date: '2024-01-01'
+  use_json_time_range: true
+stock_data:
+  search_paths:
+  - /home/yu/PycharmProjects/Trade_Strategy/datasets/pkls
+ui:
+  colors:
+    breakthrough_marker: '#0000FF'
+    breakthrough_text_bg: '#FFFFFF'
+    breakthrough_text_score: '#FF0000'
+    candlestick_down: '#B71C1C'
+    candlestick_up: '#4CAF50'
+    peak_marker: '#000000'
+    peak_text_id: '#000000'
+    peak_text_score: '#969696'
+    resistance_zone: '#5D5932'
+    volume_down: '#696969'
+    volume_highlight: '#FFD700'
+    volume_up: '#D3D3D3'
+  display_options:
+    show_bt_score: false
+    show_peak_score: false
+  left_panel_weight: 0.3
+  right_panel_weight: 0.7
+  stock_list_columns:
+    column_labels:
+      active_peaks: Active Peaks
+      avg_quality: Avg Quality
+      bts: Breakthroughs
+      max_quality: Max Quality
+    column_priority:
+    - bts
+    - active_peaks
+    - avg_quality
+    - max_quality
+    columns_enabled: false
+    visible_columns:
+    - bts
+    - active_peaks
+    - max_quality
+  window_height: 900
+  window_width: 1600
