@@ -6,22 +6,21 @@ import matplotlib.pyplot as plt
 import pandas as pd
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 
+from ..styles import get_chart_colors
 from .components import CandlestickComponent, MarkerComponent, PanelComponent
 
 
 class ChartCanvasManager:
     """图表Canvas管理器"""
 
-    def __init__(self, parent_container, ui_config=None):
+    def __init__(self, parent_container):
         """
         初始化图表管理器
 
         Args:
             parent_container: 父容器
-            ui_config: UI配置字典
         """
         self.container = parent_container
-        self.ui_config = ui_config or {}
         # 直接使用绘图组件
         self.candlestick = CandlestickComponent()
         self.marker = MarkerComponent()
@@ -104,7 +103,7 @@ class ChartCanvasManager:
         )
 
         # 获取颜色配置
-        colors = self.ui_config.get("ui", {}).get("colors", {})
+        colors = get_chart_colors()
 
         # 3. 调用现有组件绘图
         # 先绘制成交量作为背景

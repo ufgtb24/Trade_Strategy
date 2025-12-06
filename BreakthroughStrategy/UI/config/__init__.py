@@ -1,6 +1,6 @@
 """配置管理系统"""
 
-from .definitions import (
+from .param_editor_schema import (
     PARAM_CONFIGS,
     SECTION_TITLES,
     get_param_count,

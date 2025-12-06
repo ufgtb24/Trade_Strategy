@@ -2,7 +2,124 @@
 
 import tkinter as tk
 from tkinter import ttk
-from typing import Callable, Dict, Optional
+from typing import Callable, Dict, Optional, Any
+
+
+class HeaderTooltip:
+    """列标题 Tooltip 管理器"""
+
+    def __init__(self, treeview: ttk.Treeview, column_config: Dict[str, Any]):
+        """
+        初始化 Tooltip 管理器
+
+        Args:
+            treeview: 关联的 Treeview 组件
+            column_config: 列配置字典，包含 tooltip 信息
+        """
+        self.treeview = treeview
+        self.column_config = column_config
+        self.tooltip_window = None
+        self.current_column = None
+        self._after_id = None
+        self._delay_ms = 500  # 显示延迟
+
+        # 绑定事件
+        self.treeview.bind("<Motion>", self._on_motion)
+        self.treeview.bind("<Leave>", self._on_leave)
+
+    def update_config(self, column_config: Dict[str, Any]):
+        """更新列配置"""
+        self.column_config = column_config
+
+    def _on_motion(self, event):
+        """鼠标移动事件"""
+        # 检查是否在表头区域
+        region = self.treeview.identify_region(event.x, event.y)
+        if region != "heading":
+            self._hide_tooltip()
+            return
+
+        # 获取当前列
+        col_id = self.treeview.identify_column(event.x)
+        if not col_id or col_id == "#0":
+            self._hide_tooltip()
+            return
+
+        try:
+            col_index = int(col_id.replace("#", "")) - 1
+            columns = self.treeview["columns"]
+            if 0 <= col_index < len(columns):
+                column = columns[col_index]
+            else:
+                self._hide_tooltip()
+                return
+        except (ValueError, IndexError):
+            self._hide_tooltip()
+            return
+
+        # 如果是同一列，不重复处理
+        if column == self.current_column:
+            return
+
+        # 取消之前的延迟显示
+        if self._after_id:
+            self.treeview.after_cancel(self._after_id)
+            self._after_id = None
+
+        self._hide_tooltip()
+        self.current_column = column
+
+        # 延迟显示 tooltip
+        self._after_id = self.treeview.after(
+            self._delay_ms, lambda: self._show_tooltip(event, column)
+        )
+
+    def _on_leave(self, event):
+        """鼠标离开事件"""
+        if self._after_id:
+            self.treeview.after_cancel(self._after_id)
+            self._after_id = None
+        self._hide_tooltip()
+
+    def _show_tooltip(self, event, column: str):
+        """显示 tooltip"""
+        # 获取 tooltip 文本（tooltip 已包含完整名称和描述）
+        col_info = self.column_config.get(column, {})
+        if isinstance(col_info, dict):
+            tooltip_text = col_info.get("tooltip", "")
+        else:
+            tooltip_text = ""
+
+        if not tooltip_text:
+            return
+
+        # 创建 tooltip 窗口
+        self.tooltip_window = tk.Toplevel(self.treeview)
+        self.tooltip_window.wm_overrideredirect(True)
+        self.tooltip_window.wm_attributes("-topmost", True)
+
+        frame = ttk.Frame(self.tooltip_window, relief="solid", borderwidth=1)
+        frame.pack()
+
+        label = ttk.Label(
+            frame,
+            text=tooltip_text,
+            justify=tk.LEFT,
+            padding=(5, 3),
+        )
+        label.pack()
+
+        # 定位：在鼠标下方
+        x = self.treeview.winfo_rootx() + event.x + 10
+        y = self.treeview.winfo_rooty() + event.y + 20
+        self.tooltip_window.wm_geometry(f"+{x}+{y}")
+
+    def _hide_tooltip(self):
+        """隐藏 tooltip"""
+        self.current_column = None
+        if self.tooltip_window:
+            self.tooltip_window.destroy()
+            self.tooltip_window = None
 
 
 class StockListPanel:
@@ -35,8 +152,13 @@ class StockListPanel:
         self._drag_indicator = None  # 拖拽指示器窗口
         self._drag_threshold = 10  # 拖拽阈值（像素），超过才开始拖拽
 
+        # 列配置（从配置文件加载）
+        self._column_labels = {}  # 列标签配置
+        self._header_tooltip = None  # Tooltip 管理器
+
         # 创建UI
         self._create_ui()
+        self._load_column_config()
 
     def _create_ui(self):
         """创建UI组件"""
@@ -109,39 +231,40 @@ class StockListPanel:
         self.fixed_tree.bind("<<TreeviewSelect>>", self._on_fixed_select)
         self.main_tree.bind("<<TreeviewSelect>>", self._on_main_select)
 
-        # 筛选面板
-        filter_frame = ttk.Frame(container)
-        filter_frame.pack(fill=tk.X, pady=5)
+    def _load_column_config(self):
+        """从配置文件加载列标签配置"""
+        from ..config import get_ui_config_loader
 
-        ttk.Label(filter_frame, text="Filter:").pack(side=tk.LEFT, padx=5)
+        config_loader = get_ui_config_loader()
+        config = config_loader.get_stock_list_column_config()
 
-        ttk.Label(filter_frame, text="Min Quality:").pack(side=tk.LEFT)
-        self.min_quality_var = tk.DoubleVar(value=0.0)
-        ttk.Spinbox(
-            filter_frame,
-            from_=0,
-            to=100,
-            textvariable=self.min_quality_var,
-            width=8,
-            command=self._on_filter_changed,
-        ).pack(side=tk.LEFT, padx=5)
+        # 加载列标签配置
+        self._column_labels = config.get("column_labels", {})
 
-        ttk.Label(filter_frame, text="Min Breakthroughs:").pack(
-            side=tk.LEFT, padx=(10, 0)
-        )
-        self.min_bts_var = tk.IntVar(value=0)
-        ttk.Spinbox(
-            filter_frame,
-            from_=0,
-            to=1000,
-            textvariable=self.min_bts_var,
-            width=8,
-            command=self._on_filter_changed,
-        ).pack(side=tk.LEFT, padx=5)
+        # 初始化 main_tree 的 Tooltip 管理器
+        if self._header_tooltip is None:
+            self._header_tooltip = HeaderTooltip(self.main_tree, self._column_labels)
+        else:
+            self._header_tooltip.update_config(column_config=self._column_labels)
 
-        ttk.Button(filter_frame, text="Reset", command=self._reset_filters).pack(
-            side=tk.LEFT, padx=5
-        )
+    def _get_column_display_name(self, column: str) -> str:
+        """
+        获取列的显示名称
+
+        Args:
+            column: 列名（内部键名）
+
+        Returns:
+            显示名称
+        """
+        col_info = self._column_labels.get(column, {})
+        if isinstance(col_info, dict):
+            return col_info.get("display", column.replace("_", " ").title())
+        elif isinstance(col_info, str):
+            # 兼容旧格式：直接是字符串
+            return col_info
+        else:
+            return column.replace("_", " ").title()
 
     def _bind_mouse_wheel(self, widget):
         """绑定鼠标滚轮事件"""
@@ -226,8 +349,8 @@ class StockListPanel:
         self.main_tree["columns"] = columns
 
         for col in columns:
-            # 格式化标题: snake_case -> Title Case
-            title = col.replace("_", " ").title()
+            # 使用配置中的缩写名作为标题
+            title = self._get_column_display_name(col)
 
             # 绑定排序命令
             # 注意：lambda中的col需要默认参数绑定当前值
@@ -235,8 +358,9 @@ class StockListPanel:
                 col, text=title, command=lambda c=col: self.sort_by(c)
             )
 
-            # 动态计算宽度: 字符数 * 12 + 20 padding
-            width = len(title) * 15 + 15
+            # 动态计算宽度: 字符数 * 系数 + padding，确保最小宽度
+            # 使用较大的系数确保标题完整显示
+            width = max(len(title) * 20 + 30, 70)
             self.main_tree.column(col, width=width, anchor=tk.CENTER, stretch=False)
 
         # 绑定右键菜单（每次配置列时重新绑定）
@@ -287,18 +411,13 @@ class StockListPanel:
                 )
                 item["max_quality"] = max(quality_scores) if quality_scores else 0
 
-            # 2. 动态添加其他标量字段
-            # 映射常用字段名以保持兼容性
-            mappings = {"total_breakthroughs": "bts", "active_peaks": "active_peaks"}
-
+            # 2. 动态添加其他标量字段（直接使用 JSON 原始字段名）
             for k, v in result.items():
                 if k in ["symbol", "breakthroughs", "error"]:
-                    continue  # 如果是映射字段，使用新名字
-                key = mappings.get(k, k)
-
+                    continue
                 # 只添加标量值
                 if isinstance(v, (int, float, str, bool)):
-                    item[key] = v
+                    item[k] = v
 
             self.stock_data.append(item)
 
@@ -330,8 +449,8 @@ class StockListPanel:
 
             self._configure_tree_columns(columns)
 
-        # 初始化过滤数据
-        self.filtered_data = self.stock_data.copy()
+        # 直接使用原始数据（无筛选）
+        self.filtered_data = self.stock_data
         self._update_tree()
 
     def calculate_required_width(self) -> int:
@@ -361,10 +480,9 @@ class StockListPanel:
         # 计算所有可见列的总宽度
         total_column_width = 0
         for col in columns:
-            # 格式化标题（与 _configure_tree_columns 中的逻辑一致）
-            title = col.replace("_", " ").title()
-            # 使用相同的计算公式（line 227）
-            col_width = len(title) * 15 + 15
+            # 使用配置中的缩写名（与 _configure_tree_columns 中的逻辑一致）
+            title = self._get_column_display_name(col)
+            col_width = max(len(title) * 20 + 30, 70)
             total_column_width += col_width
 
         # 总宽度 = Symbol列 + 所有属性列 + 滚动条 + Padding
@@ -427,27 +545,6 @@ class StockListPanel:
             # 检查该股票是否还在筛选后的列表中
             if any(s["symbol"] == current_selection for s in self.filtered_data):
                 self._restore_selection(current_selection)
-
-    def _on_filter_changed(self, *args):
-        """筛选条件变化"""
-        min_quality = self.min_quality_var.get()
-        min_bts = self.min_bts_var.get()
-
-        self.filtered_data = [
-            stock
-            for stock in self.stock_data
-            if stock.get("max_quality", 0) >= min_quality
-            and stock.get("bts", 0) >= min_bts
-        ]
-
-        self._update_tree()
-
-    def _reset_filters(self):
-        """重置筛选"""
-        self.min_quality_var.set(0.0)
-        self.min_bts_var.set(0)
-        self.filtered_data = self.stock_data.copy()
-        self._update_tree()
 
     def sort_by(self, column: str, reverse: bool = None):
         """
@@ -575,7 +672,8 @@ class StockListPanel:
         self._menu_vars = []
 
         for col in all_columns:
-            display_name = col.replace("_", " ").title()
+            # 在右键菜单中也显示缩写名（保持一致）
+            display_name = self._get_column_display_name(col)
             is_visible = col in visible_columns
 
             # 使用自定义标记符号代替默认复选框（更大更明显）

@@ -116,7 +116,7 @@ class ColumnConfigDialog:
     def _reset_default(self):
         """重置为默认（3个核心列）"""
         self.listbox.selection_clear(0, tk.END)
-        default_columns = ["bts", "active_peaks", "max_quality"]
+        default_columns = ["total_breakthroughs", "active_peaks", "max_quality"]
         for idx, col in enumerate(self.available_columns):
             if col in default_columns:
                 self.listbox.selection_set(idx)

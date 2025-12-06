@@ -162,14 +162,6 @@ class UIConfigLoader:
         right = ui_config.get("right_panel_weight", 0.7)
         return (left, right)
 
-    def get_colors(self) -> Dict[str, str]:
-        """
-        获取颜色配置
-
-        Returns:
-            颜色配置字典
-        """
-        return self._config.get("ui", {}).get("colors", {})
 
     def get_all_config(self) -> Dict[str, Any]:
         """
@@ -197,53 +189,32 @@ class UIConfigLoader:
         with open(config_path, "w", encoding="utf-8") as f:
             yaml.dump(self._config, f, allow_unicode=True, default_flow_style=False)
 
-    def get_date_range(self) -> tuple[Optional[str], Optional[str]]:
-        """
-        获取数据截取时段配置
-
-        Returns:
-            (start_date, end_date) 元组
-        """
-        scan_settings = self._config.get("scan_settings", {})
-        start_date = scan_settings.get("start_date")
-        end_date = scan_settings.get("end_date")
-        return (start_date, end_date)
-
     def get_time_range_for_stock(
         self, symbol: str, json_data: Optional[Dict] = None
     ) -> tuple[Optional[str], Optional[str]]:
         """
-        获取指定股票的时间范围，支持优先级机制
-
-        优先级：
-        1. 如果 use_json_time_range=true 且 JSON 中有该股票的扫描记录
-           -> 返回 JSON 中的 scan_start_date/scan_end_date
-        2. 否则返回全局配置的 start_date/end_date
+        获取指定股票的时间范围（始终使用 JSON 中的 per-stock 时间范围）
 
         Args:
             symbol: 股票代码
-            json_data: 扫描结果 JSON 数据（可选）
+            json_data: 扫描结果 JSON 数据
 
         Returns:
-            (start_date, end_date) 元组
+            (start_date, end_date) 元组，如果未找到则返回 (None, None)
         """
-        scan_settings = self._config.get("scan_settings", {})
-        use_json_time_range = scan_settings.get("use_json_time_range", False)
+        if not json_data:
+            return (None, None)
 
-        # 优先级1: 使用 JSON 中的 per-stock 时间范围
-        if use_json_time_range and json_data:
-            results = json_data.get("results", [])
-            for stock_result in results:
-                if stock_result.get("symbol") == symbol:
-                    start_date = stock_result.get("scan_start_date")
-                    end_date = stock_result.get("scan_end_date")
-                    if start_date and end_date:
-                        return (start_date, end_date)
+        # 使用 JSON 中的 per-stock 时间范围
+        results = json_data.get("results", [])
+        for stock_result in results:
+            if stock_result.get("symbol") == symbol:
+                start_date = stock_result.get("scan_start_date")
+                end_date = stock_result.get("scan_end_date")
+                if start_date and end_date:
+                    return (start_date, end_date)
 
-        # 优先级2: 使用全局配置
-        start_date = scan_settings.get("start_date")
-        end_date = scan_settings.get("end_date")
-        return (start_date, end_date)
+        return (None, None)
 
     def get_display_options_defaults(self) -> Dict[str, bool]:
         """
@@ -269,8 +240,8 @@ class UIConfigLoader:
         """
         default = {
             "columns_enabled": True,
-            "visible_columns": ["bts", "active_peaks", "max_quality"],
-            "column_priority": ["bts", "active_peaks", "avg_quality", "max_quality"],
+            "visible_columns": ["total_breakthroughs", "active_peaks", "max_quality"],
+            "column_priority": ["total_breakthroughs", "active_peaks", "avg_quality", "max_quality"],
             "column_labels": {},
         }
         return self._config.get("ui", {}).get("stock_list_columns", default)

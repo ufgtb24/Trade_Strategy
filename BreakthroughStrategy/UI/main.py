@@ -75,12 +75,12 @@ class InteractiveUI:
         self.paned = ttk.PanedWindow(self.root, orient=tk.HORIZONTAL)
         self.paned.pack(fill=tk.BOTH, expand=True)
 
-        # 左侧：股票列表（30%宽度）
-        left_frame = ttk.Frame(self.paned, width=400)
-        self.paned.add(left_frame, weight=1)
+        # 左侧：股票列表容器（初始隐藏）
+        self.left_frame = ttk.Frame(self.paned, width=400)
+        # 注意：初始不添加到 paned，加载数据后再添加
 
         self.stock_list_panel = StockListPanel(
-            left_frame,
+            self.left_frame,
             on_selection_callback=self._on_stock_selected,
             on_width_changed_callback=self._on_panel_width_changed,
         )
@@ -88,13 +88,14 @@ class InteractiveUI:
         # 将 stock_list_panel 引用传递给 param_panel
         self.param_panel.set_stock_list_panel(self.stock_list_panel)
 
-        # 右侧：图表Canvas（70%宽度）
-        right_frame = ttk.Frame(self.paned)
-        self.paned.add(right_frame, weight=3)
+        # 右侧：图表Canvas（初始占满整个区域）
+        self.right_frame = ttk.Frame(self.paned)
+        self.paned.add(self.right_frame, weight=1)
 
-        self.chart_manager = ChartCanvasManager(
-            right_frame, ui_config=self.config_loader.get_all_config()
-        )
+        self.chart_manager = ChartCanvasManager(self.right_frame)
+
+        # 标记左侧面板是否已显示
+        self._left_panel_visible = False
 
         # 键盘导航管理器
         self.navigation_manager = NavigationManager(
@@ -122,6 +123,9 @@ class InteractiveUI:
 
             # 加载到股票列表
             self.stock_list_panel.load_data(self.scan_data)
+
+            # 显示左侧面板（如果尚未显示）
+            self._show_left_panel()
 
             # 更新状态
             total_stocks = self.scan_data["scan_metadata"]["stocks_scanned"]
@@ -463,15 +467,13 @@ class InteractiveUI:
 
         Args:
             symbol: 股票代码
-            start_date: 起始日期（可选，None表示使用全局配置）
-            end_date: 结束日期（可选，None表示使用全局配置）
+            start_date: 起始日期（来自 JSON 的 per-stock 时间范围）
+            end_date: 结束日期（来自 JSON 的 per-stock 时间范围）
 
         Returns:
             DataFrame
         """
-        # 如果未指定时间范围，使用全局配置
-        if start_date is None and end_date is None:
-            start_date, end_date = self.config_loader.get_date_range()
+        # 时间范围必须由调用方从 JSON 获取并传入
 
         # 检查缓存
         cache_key = (symbol, start_date, end_date)
@@ -549,7 +551,7 @@ class InteractiveUI:
             if stock["symbol"] == symbol:
                 stock["avg_quality"] = avg_quality
                 stock["max_quality"] = max_quality
-                stock["bts"] = len(breakthroughs)
+                stock["total_breakthroughs"] = len(breakthroughs)
                 break
 
         # 同步更新 filtered_data
@@ -557,7 +559,7 @@ class InteractiveUI:
             if stock["symbol"] == symbol:
                 stock["avg_quality"] = avg_quality
                 stock["max_quality"] = max_quality
-                stock["bts"] = len(breakthroughs)
+                stock["total_breakthroughs"] = len(breakthroughs)
                 break
 
         # 刷新显示
@@ -587,6 +589,27 @@ class InteractiveUI:
             display_options,
         )
 
+    def _show_left_panel(self):
+        """
+        显示左侧股票列表面板
+
+        在首次加载数据时调用，将左侧面板添加到 PanedWindow
+        """
+        if self._left_panel_visible:
+            return  # 已经显示，无需重复添加
+
+        # 将左侧面板插入到右侧面板之前（位置 0）
+        self.paned.insert(0, self.left_frame, weight=1)
+
+        # 更新右侧面板的权重
+        self.paned.pane(self.right_frame, weight=3)
+
+        self._left_panel_visible = True
+
+        # 首次显示后，立即调整宽度（因为之前的回调被跳过了）
+        required_width = self.stock_list_panel.calculate_required_width()
+        self.root.after(10, lambda: self._adjust_sash_position(required_width))
+
     def _on_panel_width_changed(self, required_width: int):
         """
         StockListPanel 宽度变化回调
@@ -596,6 +619,10 @@ class InteractiveUI:
         Args:
             required_width: StockListPanel 所需的宽度（像素）
         """
+        # 只有当左侧面板可见时才调整
+        if not self._left_panel_visible:
+            return
+
         # 使用 after() 延迟执行，确保 PanedWindow 已完成布局
         # 避免初始化时的时序问题
         self.root.after(10, lambda: self._adjust_sash_position(required_width))
