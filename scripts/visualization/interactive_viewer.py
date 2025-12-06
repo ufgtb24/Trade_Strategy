@@ -14,8 +14,7 @@ import tkinter as tk
 import matplotlib
 matplotlib.use('TkAgg')  # 切换到交互式后端
 
-from BreakthroughStrategy.visualization.interactive import InteractiveUI
-from BreakthroughStrategy.visualization.interactive.ui_styles import configure_global_styles
+from BreakthroughStrategy.UI import InteractiveUI, configure_global_styles
 
 
 def main():

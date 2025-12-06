@@ -11,7 +11,7 @@ sys.path.insert(0, str(project_root))
 
 import yfinance as yf
 import pandas as pd
-from BreakthroughStrategy.visualization.interactive import ScanManager
+from BreakthroughStrategy.UI import ScanManager
 
 
 def main():

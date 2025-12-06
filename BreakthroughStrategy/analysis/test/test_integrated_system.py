@@ -49,12 +49,12 @@ def test_integrated_system():
         symbol="AAPL",
         window=5,
         exceed_threshold=0.005,
-        peak_merge_threshold=0.03,
+        peak_supersede_threshold=0.03,
         use_cache=False,
     )
     print(f"    window={detector.window}")
     print(f"    exceed_threshold={detector.exceed_threshold}")
-    print(f"    peak_merge_threshold={detector.peak_merge_threshold}")
+    print(f"    peak_supersede_threshold={detector.peak_supersede_threshold}")
     print()
 
     # 批量添加历史数据，获取所有突破

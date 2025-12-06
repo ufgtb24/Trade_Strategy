@@ -7,9 +7,7 @@ from pathlib import Path
 project_root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(project_root))
 
-from BreakthroughStrategy.visualization.interactive.ui_param_loader import (
-    get_ui_param_loader,
-)
+from BreakthroughStrategy.UI import get_ui_param_loader
 
 
 def main():
@@ -47,14 +45,14 @@ def main():
     print(f"  重新加载后 exceed_threshold: {reloaded_params['exceed_threshold']}")
 
     print("\n【6. 使用说明】")
-    print("  1. 在外部编辑器中修改 configs/analysis/params/ui_params.yaml")
-    print("  2. 在UI中点击 'Reload Parameters' 按钮")
-    print("  3. 参数将自动重新加载并应用到检测算法")
+    print("  1. 在UI中点击 'Edit Parameters' 按钮打开参数编辑器")
+    print("  2. 直接在编辑器中修改参数并点击 'Apply' 按钮")
+    print("  3. 参数将自动保存到 ui_params.yaml 并应用到检测算法")
 
     print("\n【7. 参数范围】")
     print("  window: 3-20 (超出范围会自动修正)")
     print("  exceed_threshold: 0.001-0.02 (超出范围会自动修正)")
-    print("  peak_merge_threshold: 0.01-0.1 (超出范围会自动修正)")
+    print("  peak_supersede_threshold: 0.01-0.1 (超出范围会自动修正)")
 
     print("\n" + "="*60)
     print("示例运行完成")

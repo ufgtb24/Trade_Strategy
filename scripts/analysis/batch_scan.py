@@ -14,7 +14,7 @@ import yaml
 project_root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(project_root))
 
-from BreakthroughStrategy.visualization.interactive import ScanManager
+from BreakthroughStrategy.UI import ScanManager
 
 
 def load_config(config_path: str = None) -> dict:
@@ -160,7 +160,7 @@ def main():
     output_dir = "outputs/analysis"
     window = 5
     exceed_threshold = 0.005
-    peak_merge_threshold = 0.03
+    peak_supersede_threshold = 0.03
     num_workers = 8
     max_stocks = None
     checkpoint_interval = 100
@@ -181,7 +181,7 @@ def main():
 
         window = params["breakthrough_detector"]["window"]
         exceed_threshold = params["breakthrough_detector"]["exceed_threshold"]
-        peak_merge_threshold = params["breakthrough_detector"]["peak_merge_threshold"]
+        peak_supersede_threshold = params["breakthrough_detector"]["peak_supersede_threshold"]
 
         # 提取 FeatureCalculator 和 QualityScorer 配置
         feature_calc_config = params.get("feature_calculator", {})
@@ -195,7 +195,7 @@ def main():
         print(f"Loaded parameters from: {params_path}")
         print(f"  - Window: {window}")
         print(f"  - Exceed threshold: {exceed_threshold}")
-        print(f"  - Peak merge threshold: {peak_merge_threshold}")
+        print(f"  - Peak merge threshold: {peak_supersede_threshold}")
         print(f"  - Date range: {start_date} to {end_date}")
     except FileNotFoundError as e:
         print(f"Warning: {e}")
@@ -246,7 +246,7 @@ def main():
             output_dir=output_dir_path,
             window=window,
             exceed_threshold=exceed_threshold,
-            peak_merge_threshold=peak_merge_threshold,
+            peak_supersede_threshold=peak_supersede_threshold,
             start_date=None,  # CSV模式下忽略全局时间
             end_date=None,
             feature_calc_config=feature_calc_config,
@@ -287,7 +287,7 @@ def main():
             output_dir=output_dir_path,
             window=window,
             exceed_threshold=exceed_threshold,
-            peak_merge_threshold=peak_merge_threshold,
+            peak_supersede_threshold=peak_supersede_threshold,
             start_date=start_date,
             end_date=end_date,
             feature_calc_config=feature_calc_config,

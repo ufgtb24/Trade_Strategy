@@ -1,0 +1,1409 @@
+# 配置管理模块技术设计文档
+
+## 文档信息
+
+- **模块名称**：配置管理（Config Management）
+- **模块路径**：`BreakthroughStrategy/config/`
+- **文档版本**：v1.0
+- **创建日期**：2025-11-16
+- **最后更新**：2025-11-16
+- **作者**：开发团队
+- **状态**：设计中
+
+---
+
+## 一、模块概述
+
+### 1.1 模块职责
+
+配置管理模块负责管理突破选股策略系统的所有参数配置，提供统一的配置接口，确保配置的一致性、有效性和可追溯性。
+
+**核心职责**：
+1. 从YAML配置文件加载参数
+2. 验证配置参数的合法性和一致性
+3. 提供配置查询和更新接口
+4. 支持多环境配置（开发、测试、生产）
+5. 配置参数持久化和版本管理
+6. 提供默认配置值
+
+### 1.2 设计目标
+
+- **易用性**：提供简洁的API，方便其他模块获取配置
+- **安全性**：验证所有配置参数，防止无效配置导致系统错误
+- **灵活性**：支持运行时动态修改配置（部分参数）
+- **可追溯性**：记录配置变更历史，便于问题排查
+- **模块化**：配置按功能模块分组，易于维护
+
+### 1.3 依赖关系
+
+**外部依赖**：
+- `pyyaml`：YAML配置文件解析
+- `jsonschema`：配置结构验证
+
+**内部依赖**：
+- `utils.logger`：日志记录
+- `utils.date_utils`：日期参数验证
+
+**被依赖模块**：
+- 所有其他模块（data, analysis, search, observation, monitoring, trading, risk, backtest）
+
+---
+
+## 二、架构设计
+
+### 2.1 模块内部架构
+
+```
+BreakthroughStrategy/config/
+├── __init__.py              # 导出ConfigManager
+├── manager.py               # ConfigManager主类
+├── validator.py             # ParameterValidator参数验证器
+├── defaults.py              # DefaultConfigs默认配置
+├── schemas/                 # 配置结构定义（JSON Schema）
+│   ├── time_schema.json
+│   ├── price_schema.json
+│   ├── risk_schema.json
+│   ├── quality_schema.json
+│   ├── search_schema.json
+│   └── api_schema.json
+└── configs/                 # 配置文件目录
+    ├── default.yaml         # 默认配置
+    ├── development.yaml     # 开发环境配置
+    ├── testing.yaml         # 测试环境配置
+    └── production.yaml      # 生产环境配置
+```
+
+### 2.2 类图
+
+```
+┌─────────────────────────────────────┐
+│         ConfigManager               │
+│ ─────────────────────────────────── │
+│ - _config: dict                     │
+│ - _validator: ParameterValidator    │
+│ - _defaults: DefaultConfigs         │
+│ - _env: str                         │
+│ - _history: List[ConfigChange]      │
+│ ─────────────────────────────────── │
+│ + __init__(env, config_path)        │
+│ + load_config(path) -> dict         │
+│ + get(key, default) -> Any          │
+│ + get_section(section) -> dict      │
+│ + update(key, value) -> bool        │
+│ + validate() -> bool                │
+│ + save(path) -> None                │
+│ + get_history() -> List             │
+└─────────────────────────────────────┘
+            │
+            ├─────────────────────────────────┐
+            ↓                                 ↓
+┌─────────────────────────────────────┐ ┌─────────────────────────────────────┐
+│     ParameterValidator              │ │       DefaultConfigs                │
+│ ─────────────────────────────────── │ │ ─────────────────────────────────── │
+│ - _schemas: dict                    │ │ + TIME_DEFAULTS: dict               │
+│ ─────────────────────────────────── │ │ + PRICE_DEFAULTS: dict              │
+│ + validate_config(config) -> bool   │ │ + RISK_DEFAULTS: dict               │
+│ + validate_section(section) -> bool │ │ + QUALITY_DEFAULTS: dict            │
+│ + validate_param(key, value) -> bool│ │ + SEARCH_DEFAULTS: dict             │
+│ + get_errors() -> List[str]         │ │ + API_DEFAULTS: dict                │
+└─────────────────────────────────────┘ │ + get_default_config() -> dict      │
+                                        └─────────────────────────────────────┘
+```
+
+### 2.3 配置文件结构
+
+配置文件采用YAML格式，按功能模块分组：
+
+```yaml
+# config/configs/default.yaml
+
+# ============================================
+# 环境配置
+# ============================================
+environment: "default"
+version: "1.0.0"
+
+# ============================================
+# 时间参数配置 (Time Parameters)
+# ============================================
+time:
+  # 历史搜索天数：搜索过去N天内完成突破的股票
+  historical_search_days: 7
+
+  # 实时观察池观察期限（交易日）
+  realtime_observation_days: 1
+
+  # 日K观察池观察期限（交易日）
+  daily_observation_days: 30
+
+  # 判断凸点时向前查看的K线数量
+  peak_lookback_bars: 20
+
+  # 判断凸点时向后查看的K线数量
+  peak_lookforward_bars: 10
+
+  # 判断凸点压制时间的最小天数
+  peak_suppression_min_days: 10
+
+# ============================================
+# 价格参数配置 (Price Parameters)
+# ============================================
+price:
+  # 实时买入触发阈值（相对突破日K线实体上沿的百分比）
+  # 例如：0.02 表示价格超过突破日K线实体上沿2%时买入
+  realtime_buy_threshold_pct: 0.02
+
+  # 日K买入信号强度阈值（0-100分）
+  daily_buy_signal_threshold: 70
+
+  # 确认突破的最小超越幅度（百分比）
+  # 例如：0.005 表示突破点最高价必须超过凸点最高价0.5%
+  breakout_min_exceed_pct: 0.005
+
+  # 突破后允许的最大回撤幅度（百分比，用于判断假突破）
+  breakout_max_pullback_pct: 0.10
+
+# ============================================
+# 风险管理参数配置 (Risk Parameters)
+# ============================================
+risk:
+  # 固定止损百分比（相对买入价）
+  stop_loss_pct: 0.05  # 5%
+
+  # 跟踪止盈百分比（相对最高价）
+  trailing_stop_pct: 0.03  # 3%
+
+  # 目标止盈百分比（相对买入价）
+  target_profit_pct: 0.15  # 15%
+
+  # 单只股票最大仓位占比（相对总资金）
+  max_position_size_pct: 0.10  # 10%
+
+  # 最大持仓股票数量
+  max_holdings: 10
+
+  # 最大总资金使用率
+  max_capital_usage_pct: 0.80  # 80%
+
+  # 单日最大交易次数
+  max_trades_per_day: 20
+
+  # 单只股票最大日内交易次数
+  max_trades_per_symbol_per_day: 3
+
+  # 最大回撤容忍度（触发系统暂停）
+  max_drawdown_tolerance_pct: 0.20  # 20%
+
+# ============================================
+# 质量评估参数配置 (Quality Parameters)
+# ============================================
+quality:
+  # 放量判定倍数（相对平均成交量）
+  # 例如：2.0 表示成交量超过平均成交量2倍视为放量
+  volume_surge_multiplier: 2.0
+
+  # 长K线判定阈值（涨跌幅百分比）
+  # 例如：0.05 表示涨跌幅超过5%视为长K线
+  long_candle_threshold_pct: 0.05
+
+  # 凸点质量最低分数要求（0-100分）
+  peak_quality_min_score: 60
+
+  # 突破质量最低分数要求（0-100分）
+  breakout_quality_min_score: 70
+
+  # 峰值取代阈值（价格差异百分比）
+  # 例如：0.03 表示新峰值超过旧峰值3%以上时，旧峰值被删除
+  peak_supersede_threshold_pct: 0.03
+
+  # 凸点质量评分权重
+  peak_quality_weights:
+    volume_surge: 0.25      # 放量
+    long_candle: 0.20       # 长K线
+    suppression_time: 0.25  # 压制时间
+    multiple_peaks: 0.15    # 同价多凸点
+    relative_height: 0.15   # 相对高度
+
+  # 突破质量评分权重
+  breakout_quality_weights:
+    price_change: 0.25      # 涨跌幅
+    gap_up: 0.15            # 跳空
+    volume_surge: 0.25      # 放量
+    continuity: 0.20        # 连续性
+    stability: 0.15         # 稳定性
+
+# ============================================
+# 搜索参数配置 (Search Parameters)
+# ============================================
+search:
+  # 最小市值要求（美元，过滤低市值股票）
+  market_cap_min: 1000000000  # 10亿美元
+
+  # 最小平均成交量要求（股数，确保流动性）
+  avg_volume_min: 1000000  # 100万股
+
+  # 最低股价要求（美元，避免仙股）
+  price_min: 5.0
+
+  # 最高股价（可选，避免高价股）
+  price_max: null  # null表示不限制
+
+  # 数据质量要求：最少历史数据天数
+  min_history_days: 252  # 约1年
+
+  # 搜索并发数（多进程）
+  search_workers: 8
+
+  # 每批次处理的股票数量
+  batch_size: 100
+
+  # 是否缓存搜索结果
+  enable_cache: true
+
+  # 缓存有效期（小时）
+  cache_duration_hours: 24
+
+# ============================================
+# API配置 (API Configuration)
+# ============================================
+api:
+  # Tiger API配置
+  tiger:
+    # API请求频率限制（请求/秒）
+    rate_limit: 10
+
+    # 数据获取失败重试次数
+    data_fetch_retry_count: 3
+
+    # 重试间隔（秒）
+    retry_interval: 5
+
+    # WebSocket断线重连间隔（秒）
+    websocket_reconnect_interval: 60
+
+    # 市场数据缓存时长（分钟）
+    market_data_cache_duration: 60
+
+    # 连接超时（秒）
+    connection_timeout: 30
+
+    # 读取超时（秒）
+    read_timeout: 60
+
+  # API密钥配置（敏感信息，从环境变量读取）
+  credentials:
+    tiger_id: ${TIGER_ID}
+    account: ${TIGER_ACCOUNT}
+    private_key_path: ${TIGER_PRIVATE_KEY_PATH}
+
+# ============================================
+# 数据管理配置 (Data Management)
+# ============================================
+data:
+  # 数据存储路径
+  storage:
+    database_path: "datasets/breakthrough.db"
+    cache_path: "datasets/cache/"
+    log_path: "logs/"
+
+  # 数据库配置
+  database:
+    type: "sqlite"  # 'sqlite' 或 'postgresql'
+    # PostgreSQL配置（如果使用）
+    postgres:
+      host: "localhost"
+      port: 5432
+      database: "breakthrough"
+      user: ${DB_USER}
+      password: ${DB_PASSWORD}
+
+  # 数据清洗配置
+  cleaning:
+    # 异常价格变动阈值（单日涨跌幅超过此值视为异常）
+    abnormal_change_threshold: 0.50  # 50%
+
+    # 缺失值填充方法：'forward', 'backward', 'interpolate'
+    fill_method: "forward"
+
+    # 最大连续缺失值容忍天数
+    max_consecutive_missing: 5
+
+# ============================================
+# 日志配置 (Logging Configuration)
+# ============================================
+logging:
+  # 日志级别：DEBUG, INFO, WARNING, ERROR, CRITICAL
+  level: "INFO"
+
+  # 日志格式
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+
+  # 日志输出
+  handlers:
+    console:
+      enabled: true
+      level: "INFO"
+
+    file:
+      enabled: true
+      level: "DEBUG"
+      filename: "logs/breakthrough_{date}.log"
+      max_bytes: 10485760  # 10MB
+      backup_count: 30
+
+  # 各模块日志级别（可覆盖全局级别）
+  modules:
+    data: "INFO"
+    analysis: "INFO"
+    search: "INFO"
+    observation: "DEBUG"
+    monitoring: "DEBUG"
+    trading: "INFO"
+    risk: "WARNING"
+
+# ============================================
+# 监控与警报配置 (Monitoring & Alerting)
+# ============================================
+monitoring:
+  # 是否启用实时监控
+  enable_realtime_monitoring: true
+
+  # 监控刷新间隔（秒）
+  refresh_interval: 5
+
+  # 警报配置
+  alerts:
+    # 是否启用警报
+    enabled: true
+
+    # 警报方式：'console', 'file', 'email', 'webhook'
+    channels:
+      - "console"
+      - "file"
+
+    # 邮件警报配置（如果启用）
+    email:
+      smtp_host: "smtp.gmail.com"
+      smtp_port: 587
+      sender: ${EMAIL_SENDER}
+      password: ${EMAIL_PASSWORD}
+      recipients:
+        - ${EMAIL_RECIPIENT}
+
+    # Webhook警报配置（如果启用）
+    webhook:
+      url: ${WEBHOOK_URL}
+      method: "POST"
+
+# ============================================
+# 回测配置 (Backtest Configuration)
+# ============================================
+backtest:
+  # 初始资金（美元）
+  initial_capital: 100000
+
+  # 手续费率（买入和卖出各一次）
+  commission_rate: 0.001  # 0.1%
+
+  # 滑点（百分比）
+  slippage: 0.001  # 0.1%
+
+  # 回测时间范围
+  start_date: "2020-01-01"
+  end_date: "2024-12-31"
+
+  # 是否使用复利
+  compound: true
+
+  # 基准指数（用于计算相对收益）
+  benchmark: "SPY"  # S&P 500 ETF
+
+# ============================================
+# 优化配置 (Optimization Configuration)
+# ============================================
+optimization:
+  # 优化框架：'optuna', 'grid', 'random'
+  framework: "optuna"
+
+  # 优化目标：'return', 'sharpe', 'sortino', 'calmar'
+  objective: "sharpe"
+
+  # 优化试验次数
+  n_trials: 100
+
+  # 优化超时（秒）
+  timeout: 7200  # 2小时
+
+  # 交叉验证折数
+  cv_folds: 5
+
+  # 是否使用多进程
+  use_multiprocessing: true
+
+  # 进程数
+  n_jobs: 4
+```
+
+---
+
+## 三、接口定义
+
+### 3.1 ConfigManager类
+
+#### 3.1.1 初始化
+
+```python
+class ConfigManager:
+    """配置管理器主类"""
+
+    def __init__(
+        self,
+        env: str = "default",
+        config_path: Optional[str] = None,
+        enable_validation: bool = True
+    ):
+        """
+        初始化配置管理器
+
+        Args:
+            env: 环境名称 ('default', 'development', 'testing', 'production')
+            config_path: 自定义配置文件路径（可选，默认使用环境对应的配置文件）
+            enable_validation: 是否启用配置验证
+
+        Raises:
+            FileNotFoundError: 配置文件不存在
+            ValueError: 配置验证失败
+        """
+```
+
+#### 3.1.2 加载配置
+
+```python
+def load_config(self, path: str) -> dict:
+    """
+    从YAML文件加载配置
+
+    Args:
+        path: YAML配置文件路径
+
+    Returns:
+        配置字典
+
+    Raises:
+        FileNotFoundError: 文件不存在
+        yaml.YAMLError: YAML解析错误
+    """
+```
+
+#### 3.1.3 获取配置参数
+
+```python
+def get(self, key: str, default: Any = None) -> Any:
+    """
+    获取配置参数（支持嵌套键，如 'time.historical_search_days'）
+
+    Args:
+        key: 配置键（支持点号分隔的嵌套键）
+        default: 默认值（如果键不存在）
+
+    Returns:
+        配置值
+
+    Example:
+        >>> config.get('time.historical_search_days')
+        7
+        >>> config.get('risk.stop_loss_pct')
+        0.05
+    """
+
+def get_section(self, section: str) -> dict:
+    """
+    获取配置的某个section（如 'time', 'risk'）
+
+    Args:
+        section: section名称
+
+    Returns:
+        section配置字典
+
+    Raises:
+        KeyError: section不存在
+
+    Example:
+        >>> config.get_section('risk')
+        {'stop_loss_pct': 0.05, 'trailing_stop_pct': 0.03, ...}
+    """
+```
+
+#### 3.1.4 更新配置
+
+```python
+def update(self, key: str, value: Any, validate: bool = True) -> bool:
+    """
+    更新配置参数（运行时动态修改）
+
+    Args:
+        key: 配置键（支持嵌套键）
+        value: 新值
+        validate: 是否验证新值
+
+    Returns:
+        是否更新成功
+
+    Raises:
+        ValueError: 验证失败
+
+    Example:
+        >>> config.update('risk.stop_loss_pct', 0.08)
+        True
+    """
+
+def update_section(self, section: str, values: dict, validate: bool = True) -> bool:
+    """
+    批量更新某个section的配置
+
+    Args:
+        section: section名称
+        values: 新值字典
+        validate: 是否验证
+
+    Returns:
+        是否更新成功
+    """
+```
+
+#### 3.1.5 验证配置
+
+```python
+def validate(self) -> bool:
+    """
+    验证整个配置的有效性
+
+    Returns:
+        是否验证通过
+
+    Raises:
+        ValueError: 验证失败（包含详细错误信息）
+    """
+```
+
+#### 3.1.6 保存配置
+
+```python
+def save(self, path: Optional[str] = None) -> None:
+    """
+    将当前配置保存到YAML文件
+
+    Args:
+        path: 保存路径（可选，默认覆盖原文件）
+
+    Raises:
+        IOError: 文件写入失败
+    """
+```
+
+#### 3.1.7 配置历史
+
+```python
+def get_history(self, limit: int = 100) -> List[ConfigChange]:
+    """
+    获取配置变更历史
+
+    Args:
+        limit: 返回最近N条记录
+
+    Returns:
+        ConfigChange对象列表
+    """
+
+def rollback(self, steps: int = 1) -> bool:
+    """
+    回滚配置到之前的状态
+
+    Args:
+        steps: 回滚步数
+
+    Returns:
+        是否成功
+    """
+```
+
+### 3.2 ParameterValidator类
+
+```python
+class ParameterValidator:
+    """参数验证器"""
+
+    def validate_config(self, config: dict) -> Tuple[bool, List[str]]:
+        """
+        验证整个配置字典
+
+        Args:
+            config: 配置字典
+
+        Returns:
+            (是否通过, 错误信息列表)
+        """
+
+    def validate_section(self, section: str, values: dict) -> Tuple[bool, List[str]]:
+        """验证某个section的配置"""
+
+    def validate_param(self, key: str, value: Any) -> Tuple[bool, str]:
+        """验证单个参数"""
+
+    def get_schema(self, section: str) -> dict:
+        """获取section的JSON Schema"""
+```
+
+### 3.3 DefaultConfigs类
+
+```python
+class DefaultConfigs:
+    """默认配置提供者"""
+
+    TIME_DEFAULTS = {...}
+    PRICE_DEFAULTS = {...}
+    RISK_DEFAULTS = {...}
+    QUALITY_DEFAULTS = {...}
+    SEARCH_DEFAULTS = {...}
+    API_DEFAULTS = {...}
+
+    @staticmethod
+    def get_default_config() -> dict:
+        """获取完整的默认配置"""
+
+    @staticmethod
+    def get_section_defaults(section: str) -> dict:
+        """获取某个section的默认配置"""
+```
+
+---
+
+## 四、核心算法
+
+### 4.1 配置加载流程
+
+```python
+def load_config(path: str) -> dict:
+    """
+    配置加载算法
+
+    流程：
+    1. 读取YAML文件
+    2. 解析环境变量占位符（如 ${TIGER_ID}）
+    3. 合并默认配置（对于缺失的键）
+    4. 验证配置有效性
+    5. 返回配置字典
+    """
+    # 步骤1：读取YAML文件
+    with open(path, 'r', encoding='utf-8') as f:
+        config = yaml.safe_load(f)
+
+    # 步骤2：解析环境变量
+    config = _resolve_env_variables(config)
+
+    # 步骤3：合并默认配置
+    config = _merge_with_defaults(config)
+
+    # 步骤4：验证配置
+    if not _validate_config(config):
+        raise ValueError("Configuration validation failed")
+
+    # 步骤5：返回
+    return config
+```
+
+**复杂度分析**：
+- 时间复杂度：O(n)，n为配置项数量
+- 空间复杂度：O(n)
+
+### 4.2 环境变量解析算法
+
+```python
+def _resolve_env_variables(config: dict) -> dict:
+    """
+    递归解析配置中的环境变量占位符
+
+    支持格式：
+    - ${VAR_NAME}：读取环境变量VAR_NAME
+    - ${VAR_NAME:default_value}：如果环境变量不存在，使用默认值
+
+    算法：
+    1. 遍历配置字典的所有键值对
+    2. 如果值是字符串，检查是否包含 ${...} 占位符
+    3. 如果值是字典，递归处理
+    4. 替换占位符为环境变量值
+    """
+    import os
+    import re
+
+    pattern = r'\$\{([^}:]+)(?::([^}]*))?\}'
+
+    def resolve_value(value):
+        if isinstance(value, str):
+            def replacer(match):
+                var_name = match.group(1)
+                default_value = match.group(2)
+                return os.environ.get(var_name, default_value or '')
+            return re.sub(pattern, replacer, value)
+        elif isinstance(value, dict):
+            return {k: resolve_value(v) for k, v in value.items()}
+        elif isinstance(value, list):
+            return [resolve_value(item) for item in value]
+        else:
+            return value
+
+    return resolve_value(config)
+```
+
+**复杂度分析**：
+- 时间复杂度：O(n*m)，n为配置项数量，m为平均字符串长度
+- 空间复杂度：O(n)
+
+### 4.3 配置验证算法
+
+```python
+def validate_config(config: dict, schema: dict) -> Tuple[bool, List[str]]:
+    """
+    使用JSON Schema验证配置
+
+    算法：
+    1. 加载对应section的JSON Schema
+    2. 使用jsonschema库验证
+    3. 进行额外的业务逻辑验证（如：参数间的一致性检查）
+    4. 收集所有错误信息
+    5. 返回验证结果
+    """
+    from jsonschema import validate, ValidationError
+
+    errors = []
+
+    # 步骤1-2：JSON Schema验证
+    try:
+        validate(instance=config, schema=schema)
+    except ValidationError as e:
+        errors.append(f"Schema validation error: {e.message}")
+
+    # 步骤3：业务逻辑验证
+    # 示例：检查 stop_loss_pct < trailing_stop_pct < target_profit_pct
+    if 'risk' in config:
+        risk = config['risk']
+        if risk.get('stop_loss_pct', 0) >= risk.get('target_profit_pct', 1):
+            errors.append("stop_loss_pct must be less than target_profit_pct")
+
+        if risk.get('max_position_size_pct', 0) > risk.get('max_capital_usage_pct', 1):
+            errors.append("max_position_size_pct cannot exceed max_capital_usage_pct")
+
+    # 示例：检查时间参数为正整数
+    if 'time' in config:
+        time_params = config['time']
+        for key, value in time_params.items():
+            if isinstance(value, int) and value <= 0:
+                errors.append(f"time.{key} must be a positive integer, got {value}")
+
+    # 步骤4-5：返回结果
+    return (len(errors) == 0, errors)
+```
+
+**复杂度分析**：
+- 时间复杂度：O(n)，n为配置项数量
+- 空间复杂度：O(e)，e为错误数量
+
+### 4.4 配置合并算法
+
+```python
+def merge_configs(base: dict, override: dict) -> dict:
+    """
+    深度合并两个配置字典
+
+    算法：
+    1. 递归遍历override字典
+    2. 如果键在base中不存在，直接添加
+    3. 如果键存在且值都是字典，递归合并
+    4. 否则，override的值覆盖base的值
+
+    示例：
+        base = {'a': 1, 'b': {'c': 2, 'd': 3}}
+        override = {'b': {'c': 20}, 'e': 5}
+        result = {'a': 1, 'b': {'c': 20, 'd': 3}, 'e': 5}
+    """
+    result = base.copy()
+
+    for key, value in override.items():
+        if key in result and isinstance(result[key], dict) and isinstance(value, dict):
+            result[key] = merge_configs(result[key], value)
+        else:
+            result[key] = value
+
+    return result
+```
+
+**复杂度分析**：
+- 时间复杂度：O(n)，n为配置项数量
+- 空间复杂度：O(n)
+
+---
+
+## 五、数据结构
+
+### 5.1 ConfigChange（配置变更记录）
+
+```python
+from dataclasses import dataclass
+from datetime import datetime
+from typing import Any
+
+@dataclass
+class ConfigChange:
+    """配置变更记录"""
+    timestamp: datetime       # 变更时间
+    key: str                 # 变更的配置键
+    old_value: Any           # 旧值
+    new_value: Any           # 新值
+    user: str                # 操作用户（系统用户或程序名）
+    reason: str              # 变更原因（可选）
+
+    def to_dict(self) -> dict:
+        """转换为字典格式（用于持久化）"""
+        return {
+            'timestamp': self.timestamp.isoformat(),
+            'key': self.key,
+            'old_value': self.old_value,
+            'new_value': self.new_value,
+            'user': self.user,
+            'reason': self.reason
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> 'ConfigChange':
+        """从字典创建ConfigChange对象"""
+        return cls(
+            timestamp=datetime.fromisoformat(data['timestamp']),
+            key=data['key'],
+            old_value=data['old_value'],
+            new_value=data['new_value'],
+            user=data['user'],
+            reason=data.get('reason', '')
+        )
+```
+
+### 5.2 JSON Schema示例（时间参数）
+
+```json
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Time Parameters Schema",
+  "type": "object",
+  "properties": {
+    "historical_search_days": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 365,
+      "description": "历史搜索天数"
+    },
+    "realtime_observation_days": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 10,
+      "description": "实时观察池观察期限"
+    },
+    "daily_observation_days": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 365,
+      "description": "日K观察池观察期限"
+    },
+    "peak_lookback_bars": {
+      "type": "integer",
+      "minimum": 5,
+      "maximum": 100,
+      "description": "判断凸点时向前查看的K线数量"
+    },
+    "peak_lookforward_bars": {
+      "type": "integer",
+      "minimum": 5,
+      "maximum": 100,
+      "description": "判断凸点时向后查看的K线数量"
+    }
+  },
+  "required": [
+    "historical_search_days",
+    "realtime_observation_days",
+    "daily_observation_days",
+    "peak_lookback_bars",
+    "peak_lookforward_bars"
+  ],
+  "additionalProperties": false
+}
+```
+
+---
+
+## 六、异常处理
+
+### 6.1 异常类型定义
+
+```python
+class ConfigError(Exception):
+    """配置相关错误的基类"""
+    pass
+
+class ConfigNotFoundError(ConfigError):
+    """配置文件未找到"""
+    pass
+
+class ConfigValidationError(ConfigError):
+    """配置验证失败"""
+    def __init__(self, errors: List[str]):
+        self.errors = errors
+        super().__init__(f"Configuration validation failed: {'; '.join(errors)}")
+
+class ConfigParseError(ConfigError):
+    """配置解析错误"""
+    pass
+
+class ConfigUpdateError(ConfigError):
+    """配置更新错误"""
+    pass
+```
+
+### 6.2 异常处理策略
+
+| 异常场景 | 处理策略 | 示例 |
+|---------|---------|------|
+| 配置文件不存在 | 抛出ConfigNotFoundError，使用默认配置 | `raise ConfigNotFoundError(f"Config file not found: {path}")` |
+| YAML解析错误 | 抛出ConfigParseError，记录详细错误信息 | `raise ConfigParseError(f"Failed to parse YAML: {str(e)}")` |
+| 配置验证失败 | 抛出ConfigValidationError，包含所有错误 | `raise ConfigValidationError(errors)` |
+| 环境变量缺失 | 使用默认值（如果有），否则抛出ValueError | `logger.warning(f"Env var {var} not found, using default")` |
+| 运行时更新失败 | 抛出ConfigUpdateError，保持原配置不变 | `raise ConfigUpdateError(f"Invalid value for {key}")` |
+| 配置回滚失败 | 记录错误，返回False | `logger.error("Rollback failed: insufficient history")` |
+
+### 6.3 异常处理示例
+
+```python
+def load_config_with_fallback(path: str, fallback_to_default: bool = True) -> dict:
+    """
+    加载配置，支持回退到默认配置
+    """
+    try:
+        config = load_config(path)
+        logger.info(f"Successfully loaded config from {path}")
+        return config
+
+    except ConfigNotFoundError as e:
+        if fallback_to_default:
+            logger.warning(f"Config file not found, using default config: {e}")
+            return DefaultConfigs.get_default_config()
+        else:
+            raise
+
+    except ConfigParseError as e:
+        logger.error(f"Failed to parse config: {e}")
+        if fallback_to_default:
+            logger.warning("Falling back to default config")
+            return DefaultConfigs.get_default_config()
+        else:
+            raise
+
+    except ConfigValidationError as e:
+        logger.error(f"Configuration validation failed:")
+        for error in e.errors:
+            logger.error(f"  - {error}")
+        if fallback_to_default:
+            logger.warning("Falling back to default config")
+            return DefaultConfigs.get_default_config()
+        else:
+            raise
+```
+
+---
+
+## 七、性能考虑
+
+### 7.1 性能瓶颈分析
+
+| 操作 | 预期频率 | 性能瓶颈 | 优化方案 |
+|------|---------|---------|---------|
+| 配置加载 | 启动时1次 | YAML解析、环境变量解析 | 解析后缓存，避免重复加载 |
+| 配置查询 | 极高（每次获取参数） | 字典嵌套查询 | 使用缓存、扁平化查询 |
+| 配置验证 | 启动时1次 + 更新时 | JSON Schema验证 | 只验证变更的section |
+| 配置更新 | 低频 | 验证 + 历史记录 | 批量更新、异步记录 |
+| 配置保存 | 极低频 | 文件I/O | 异步保存、限制保存频率 |
+
+### 7.2 优化策略
+
+#### 7.2.1 配置查询优化
+
+```python
+class ConfigManager:
+    def __init__(self, ...):
+        self._config = {}
+        self._flat_cache = {}  # 扁平化缓存，加速嵌套查询
+
+    def get(self, key: str, default: Any = None) -> Any:
+        """优化的配置查询"""
+        # 先查缓存
+        if key in self._flat_cache:
+            return self._flat_cache[key]
+
+        # 查询并缓存
+        value = self._get_nested(key, default)
+        self._flat_cache[key] = value
+        return value
+
+    def _get_nested(self, key: str, default: Any = None) -> Any:
+        """嵌套查询实现"""
+        keys = key.split('.')
+        value = self._config
+        for k in keys:
+            if isinstance(value, dict) and k in value:
+                value = value[k]
+            else:
+                return default
+        return value
+```
+
+**优化效果**：
+- 首次查询：O(k)，k为嵌套层数
+- 后续查询：O(1)
+
+#### 7.2.2 增量验证
+
+```python
+def update(self, key: str, value: Any, validate: bool = True) -> bool:
+    """更新配置时只验证相关section"""
+    if validate:
+        # 只验证受影响的section，而不是整个配置
+        section = key.split('.')[0]
+        section_config = self.get_section(section).copy()
+
+        # 更新section配置
+        nested_key = '.'.join(key.split('.')[1:])
+        _set_nested(section_config, nested_key, value)
+
+        # 只验证这个section
+        is_valid, errors = self._validator.validate_section(section, section_config)
+        if not is_valid:
+            raise ConfigValidationError(errors)
+
+    # 更新配置
+    old_value = self.get(key)
+    _set_nested(self._config, key, value)
+
+    # 清除缓存
+    self._flat_cache.clear()
+
+    # 记录历史
+    self._add_history(key, old_value, value)
+
+    return True
+```
+
+#### 7.2.3 延迟加载
+
+```python
+class ConfigManager:
+    def __init__(self, env: str = "default", lazy_load: bool = True):
+        """支持延迟加载"""
+        self._env = env
+        self._config = None
+        self._loaded = False
+
+        if not lazy_load:
+            self._load()
+
+    def _ensure_loaded(self):
+        """确保配置已加载"""
+        if not self._loaded:
+            self._load()
+
+    def get(self, key: str, default: Any = None) -> Any:
+        self._ensure_loaded()
+        # ... 查询逻辑
+```
+
+---
+
+## 八、测试方案
+
+### 8.1 单元测试
+
+#### 8.1.1 测试ConfigManager
+
+```python
+# tests/config/test_manager.py
+
+import pytest
+from BreakthroughStrategy.config import ConfigManager
+from BreakthroughStrategy.config.manager import ConfigValidationError
+
+class TestConfigManager:
+
+    def test_load_default_config(self):
+        """测试加载默认配置"""
+        config = ConfigManager(env='default')
+        assert config.get('time.historical_search_days') == 7
+        assert config.get('risk.stop_loss_pct') == 0.05
+
+    def test_load_custom_config(self, tmp_path):
+        """测试加载自定义配置"""
+        config_file = tmp_path / "test_config.yaml"
+        config_file.write_text("""
+time:
+  historical_search_days: 14
+risk:
+  stop_loss_pct: 0.08
+""")
+        config = ConfigManager(config_path=str(config_file))
+        assert config.get('time.historical_search_days') == 14
+        assert config.get('risk.stop_loss_pct') == 0.08
+
+    def test_get_nested_key(self):
+        """测试嵌套键查询"""
+        config = ConfigManager()
+        value = config.get('quality.peak_quality_weights.volume_surge')
+        assert value == 0.25
+
+    def test_get_section(self):
+        """测试获取section"""
+        config = ConfigManager()
+        risk_config = config.get_section('risk')
+        assert 'stop_loss_pct' in risk_config
+        assert 'trailing_stop_pct' in risk_config
+
+    def test_update_config(self):
+        """测试更新配置"""
+        config = ConfigManager()
+        config.update('risk.stop_loss_pct', 0.10)
+        assert config.get('risk.stop_loss_pct') == 0.10
+
+    def test_update_invalid_value(self):
+        """测试更新无效值"""
+        config = ConfigManager()
+        with pytest.raises(ConfigValidationError):
+            config.update('risk.stop_loss_pct', -0.05)  # 负数无效
+
+    def test_config_history(self):
+        """测试配置历史"""
+        config = ConfigManager()
+        config.update('risk.stop_loss_pct', 0.10)
+        config.update('risk.trailing_stop_pct', 0.05)
+
+        history = config.get_history(limit=2)
+        assert len(history) == 2
+        assert history[0].key == 'risk.trailing_stop_pct'
+        assert history[1].key == 'risk.stop_loss_pct'
+
+    def test_rollback(self):
+        """测试配置回滚"""
+        config = ConfigManager()
+        original = config.get('risk.stop_loss_pct')
+        config.update('risk.stop_loss_pct', 0.10)
+        config.rollback(steps=1)
+        assert config.get('risk.stop_loss_pct') == original
+
+    def test_save_and_load(self, tmp_path):
+        """测试保存和加载"""
+        config = ConfigManager()
+        config.update('risk.stop_loss_pct', 0.10)
+
+        save_path = tmp_path / "saved_config.yaml"
+        config.save(str(save_path))
+
+        loaded_config = ConfigManager(config_path=str(save_path))
+        assert loaded_config.get('risk.stop_loss_pct') == 0.10
+```
+
+#### 8.1.2 测试ParameterValidator
+
+```python
+# tests/config/test_validator.py
+
+import pytest
+from BreakthroughStrategy.config.validator import ParameterValidator
+
+class TestParameterValidator:
+
+    def test_validate_valid_config(self):
+        """测试验证有效配置"""
+        validator = ParameterValidator()
+        config = {
+            'time': {
+                'historical_search_days': 7,
+                'realtime_observation_days': 1,
+                'daily_observation_days': 30,
+                'peak_lookback_bars': 20,
+                'peak_lookforward_bars': 10
+            }
+        }
+        is_valid, errors = validator.validate_section('time', config['time'])
+        assert is_valid
+        assert len(errors) == 0
+
+    def test_validate_invalid_type(self):
+        """测试验证无效类型"""
+        validator = ParameterValidator()
+        config = {
+            'time': {
+                'historical_search_days': "seven",  # 应该是整数
+            }
+        }
+        is_valid, errors = validator.validate_section('time', config['time'])
+        assert not is_valid
+        assert len(errors) > 0
+
+    def test_validate_out_of_range(self):
+        """测试验证超出范围"""
+        validator = ParameterValidator()
+        config = {
+            'time': {
+                'historical_search_days': 0,  # 必须 >= 1
+            }
+        }
+        is_valid, errors = validator.validate_section('time', config['time'])
+        assert not is_valid
+
+    def test_validate_business_logic(self):
+        """测试业务逻辑验证"""
+        validator = ParameterValidator()
+        config = {
+            'risk': {
+                'stop_loss_pct': 0.10,
+                'target_profit_pct': 0.05  # 止盈应该大于止损
+            }
+        }
+        is_valid, errors = validator.validate_config(config)
+        assert not is_valid
+```
+
+### 8.2 集成测试
+
+```python
+# tests/config/test_integration.py
+
+import os
+import pytest
+from BreakthroughStrategy.config import ConfigManager
+
+class TestConfigIntegration:
+
+    def test_env_variable_resolution(self):
+        """测试环境变量解析"""
+        os.environ['TEST_TIGER_ID'] = 'test_id_123'
+
+        config_content = """
+api:
+  credentials:
+    tiger_id: ${TEST_TIGER_ID}
+"""
+        # ... 测试环境变量是否正确解析
+
+    def test_config_merge(self):
+        """测试配置合并"""
+        # 测试default配置与environment配置的合并
+        pass
+
+    def test_multi_environment(self):
+        """测试多环境配置"""
+        # 测试development, testing, production环境配置加载
+        pass
+```
+
+### 8.3 测试覆盖率目标
+
+- 单元测试覆盖率：> 90%
+- 分支覆盖率：> 85%
+- 关键路径覆盖率：100%
+
+---
+
+## 九、未决问题
+
+### 9.1 待讨论的技术选型
+
+1. **数据库选择**：
+   - 问题：使用SQLite还是PostgreSQL存储配置历史？
+   - SQLite优势：简单、无需额外服务
+   - PostgreSQL优势：性能更好、支持并发
+   - 建议：初期使用SQLite，后期根据需求迁移到PostgreSQL
+
+2. **配置热更新**：
+   - 问题：是否支持运行时热更新配置（不重启系统）？
+   - 风险：部分参数的变更可能导致系统状态不一致
+   - 建议：仅允许部分参数热更新（如日志级别、警报阈值），关键参数需要重启
+
+3. **配置加密**：
+   - 问题：API密钥等敏感信息是否需要加密存储？
+   - 方案一：使用环境变量（不加密，依赖系统安全）
+   - 方案二：使用加密库加密配置文件中的敏感字段
+   - 建议：初期使用环境变量，生产环境考虑使用密钥管理服务（如AWS Secrets Manager）
+
+### 9.2 待完善的功能
+
+1. **配置版本管理**：
+   - 是否需要支持配置版本标签（如v1.0, v1.1）？
+   - 是否需要支持配置回滚到特定版本？
+
+2. **配置分发**：
+   - 如果部署多个实例，如何同步配置？
+   - 是否需要集中式配置管理（如使用etcd、Consul）？
+
+3. **配置审计**：
+   - 是否需要更详细的审计日志（谁在何时修改了什么配置）？
+   - 审计日志的存储和查询方案？
+
+---
+
+## 十、实施检查清单
+
+### 10.1 开发阶段
+
+- [ ] 实现ConfigManager类
+- [ ] 实现ParameterValidator类
+- [ ] 实现DefaultConfigs类
+- [ ] 编写JSON Schema定义文件
+- [ ] 编写默认配置文件（default.yaml）
+- [ ] 编写环境配置文件（development.yaml, testing.yaml, production.yaml）
+- [ ] 实现环境变量解析
+- [ ] 实现配置验证
+- [ ] 实现配置历史记录
+- [ ] 实现配置回滚
+
+### 10.2 测试阶段
+
+- [ ] 编写单元测试（覆盖率 > 90%）
+- [ ] 编写集成测试
+- [ ] 测试环境变量解析
+- [ ] 测试配置验证（有效和无效配置）
+- [ ] 测试配置更新和回滚
+- [ ] 测试多环境配置加载
+- [ ] 性能测试（配置查询性能）
+
+### 10.3 文档阶段
+
+- [ ] 编写API文档
+- [ ] 编写配置参数说明文档
+- [ ] 编写配置最佳实践文档
+- [ ] 编写故障排查指南
+
+### 10.4 部署阶段
+
+- [ ] 准备生产环境配置文件
+- [ ] 配置环境变量
+- [ ] 验证生产配置
+- [ ] 配置备份和恢复机制
+
+---
+
+## 十一、参考资料
+
+- [YAML 1.2 Specification](https://yaml.org/spec/1.2/spec.html)
+- [JSON Schema Documentation](https://json-schema.org/)
+- [Python pyyaml Documentation](https://pyyaml.org/wiki/PyYAMLDocumentation)
+- [Python jsonschema Documentation](https://python-jsonschema.readthedocs.io/)
+- [12-Factor App: Config](https://12factor.net/config)
+
+---
+
+**文档状态**：待评审
+**下一步**：评审本设计文档，确认技术方案后开始编码实现

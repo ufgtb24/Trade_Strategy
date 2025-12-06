@@ -69,13 +69,13 @@ class ConfigLoader:
         Get BreakthroughDetector configuration
 
         Returns:
-            Dictionary with: window, exceed_threshold, peak_merge_threshold, use_cache, cache_dir
+            Dictionary with: window, exceed_threshold, peak_supersede_threshold, use_cache, cache_dir
         """
         detector_cfg = self.params.get('breakthrough_detector', {})
         return {
             'window': detector_cfg.get('window', 5),
             'exceed_threshold': detector_cfg.get('exceed_threshold', 0.005),
-            'peak_merge_threshold': detector_cfg.get('peak_merge_threshold', 0.03),
+            'peak_supersede_threshold': detector_cfg.get('peak_supersede_threshold', 0.03),
             'use_cache': detector_cfg.get('use_cache', False),
             'cache_dir': detector_cfg.get('cache_dir', './cache')
         }

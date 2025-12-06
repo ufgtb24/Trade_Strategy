@@ -3,7 +3,7 @@ breakthrough_detector:
   exceed_threshold: 0.005
   peak_supersede_threshold: 0.03
   use_cache: false
-  window: 5
+  window: 8
 feature_calculator:
   candle_classification:
     big_body_threshold: 0.6

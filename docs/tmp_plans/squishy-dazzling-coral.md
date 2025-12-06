@@ -47,7 +47,7 @@
 ### 配置状态（两层）
 
 ```yaml
-# configs/visualization/ui_config.yaml
+# configs/UI/ui_config.yaml
 ui:
   stock_list_columns:
     # 第一层：总开关（一键显示/隐藏）

@@ -7,9 +7,7 @@ from pathlib import Path
 project_root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(project_root))
 
-from BreakthroughStrategy.visualization.interactive.ui_config_loader import (
-    get_ui_config_loader,
-)
+from BreakthroughStrategy.UI import get_ui_config_loader
 
 
 def main():

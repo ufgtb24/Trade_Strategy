@@ -158,7 +158,7 @@ class BreakthroughDetector:
                  symbol: str,
                  window: int = 5,
                  exceed_threshold: float = 0.005,
-                 peak_merge_threshold: float = 0.03,
+                 peak_supersede_threshold: float = 0.03,
                  use_cache: bool = False,
                  cache_dir: str = "./cache"):
         """
@@ -168,7 +168,7 @@ class BreakthroughDetector:
             symbol: 股票代码
             window: 峰值识别窗口（前后各window天）
             exceed_threshold: 突破确认阈值（默认0.5%）
-            peak_merge_threshold: 峰值覆盖阈值（默认3%）
+            peak_supersede_threshold: 峰值覆盖阈值（默认3%）
                 - 新峰值超过旧峰值 < 3% → 两者共存（形成阻力区）
                 - 新峰值超过旧峰值 > 3% → 删除旧峰值（已被明显超越）
             use_cache: 是否使用持久化缓存（实时监控=True，回测=False）
@@ -177,7 +177,7 @@ class BreakthroughDetector:
         self.symbol = symbol
         self.window = window
         self.exceed_threshold = exceed_threshold
-        self.peak_merge_threshold = peak_merge_threshold
+        self.peak_supersede_threshold = peak_supersede_threshold
         self.use_cache = use_cache
         self.cache_dir = Path(cache_dir)
 
@@ -316,7 +316,7 @@ class BreakthroughDetector:
                 # 新峰值更高，检查价格差距
                 exceed_pct = (high - old_peak.price) / old_peak.price
 
-                if exceed_pct < self.peak_merge_threshold:
+                if exceed_pct < self.peak_supersede_threshold:
                     # 差距小于阈值 → 保留（形成阻力区）
                     remaining_peaks.append(old_peak)
                 # else: 差距大于阈值 → 删除（已被明显超越）
@@ -442,7 +442,7 @@ class BreakthroughDetector:
                 'peak_id_counter': self.peak_id_counter,
                 'window': self.window,
                 'exceed_threshold': self.exceed_threshold,
-                'peak_merge_threshold': self.peak_merge_threshold
+                'peak_supersede_threshold': self.peak_supersede_threshold
             }
 
             cache_path = self._get_cache_path()
@@ -478,7 +478,7 @@ class BreakthroughDetector:
             # 验证参数匹配
             if (cache_data.get('window') != self.window or
                 cache_data.get('exceed_threshold') != self.exceed_threshold or
-                cache_data.get('peak_merge_threshold') != self.peak_merge_threshold):
+                cache_data.get('peak_supersede_threshold') != self.peak_supersede_threshold):
                 print(f"⚠ 缓存参数不匹配，跳过加载")
                 return False
 

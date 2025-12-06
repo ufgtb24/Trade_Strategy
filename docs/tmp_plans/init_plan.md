@@ -580,7 +580,7 @@ quality:
   long_candle_threshold_pct: 0.05   # 5%
   peak_quality_min_score: 60
   breakout_quality_min_score: 70
-  peak_merge_threshold_pct: 0.01    # 1%
+  peak_supersede_threshold_pct: 0.03    # 3%
 
 # 搜索参数
 search:
