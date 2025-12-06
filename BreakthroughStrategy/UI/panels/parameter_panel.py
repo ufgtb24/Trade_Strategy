@@ -50,15 +50,6 @@ class ParameterPanel:
         # 当前参数文件名（不含路径）
         self.current_param_file = "ui_params.yaml"
 
-        # StockListPanel 引用（稍后设置）
-        self.stock_list_panel = None
-
-        # 列显示总开关状态
-        column_config = config_loader.get_stock_list_column_config()
-        self.toggle_columns_var = tk.BooleanVar(
-            value=column_config.get("columns_enabled", True)
-        )
-
         # 参数加载器
         self.param_loader = get_ui_param_loader()
 
@@ -132,25 +123,6 @@ class ParameterPanel:
             text="BT Score",
             variable=self.show_bt_score_var,
             command=self._on_checkbox_changed,
-        ).pack(side=tk.LEFT, padx=5)
-
-        ttk.Separator(container, orient=tk.VERTICAL).pack(
-            side=tk.LEFT, fill=tk.Y, padx=10
-        )
-
-        # 列配置按钮
-        ttk.Button(
-            container,
-            text="Configure Columns",
-            command=self._on_configure_columns_clicked,
-        ).pack(side=tk.LEFT, padx=5)
-
-        # 列显示总开关（Checkbutton样式）
-        ttk.Checkbutton(
-            container,
-            text="👁 Show Columns",
-            variable=self.toggle_columns_var,
-            command=self._on_toggle_columns_clicked,
         ).pack(side=tk.LEFT, padx=5)
 
         # 状态标签
@@ -322,52 +294,6 @@ class ParameterPanel:
         # 保持当前选中值
         if current_value in new_files:
             self.param_file_combobox.set(current_value)
-
-    def set_stock_list_panel(self, stock_list_panel):
-        """
-        设置 StockListPanel 引用
-
-        Args:
-            stock_list_panel: StockListPanel 实例
-        """
-        self.stock_list_panel = stock_list_panel
-
-    def _on_configure_columns_clicked(self):
-        """打开列配置对话框"""
-        from ..dialogs import ColumnConfigDialog
-
-        if not self.stock_list_panel or not self.stock_list_panel.stock_data:
-            return  # 没有数据时不打开
-
-        # 动态发现所有字段
-        first_item = self.stock_list_panel.stock_data[0]
-        available_columns = [
-            k for k in first_item.keys() if k not in ["symbol", "raw_data"]
-        ]
-
-        # 当前可见列
-        config_loader = get_ui_config_loader()
-        config = config_loader.get_stock_list_column_config()
-        visible_columns = config.get("visible_columns", [])
-
-        # 打开对话框
-        ColumnConfigDialog(
-            parent=self.parent.winfo_toplevel(),
-            available_columns=available_columns,
-            visible_columns=visible_columns,
-            on_apply_callback=self._on_columns_applied,
-        )
-
-    def _on_columns_applied(self, new_visible_columns: list):
-        """应用列配置回调"""
-        if self.stock_list_panel:
-            self.stock_list_panel.set_visible_columns(new_visible_columns)
-
-    def _on_toggle_columns_clicked(self):
-        """一键开关回调"""
-        if self.stock_list_panel:
-            new_state = self.stock_list_panel.toggle_columns_enabled()
-            self.toggle_columns_var.set(new_state)
 
     def _get_available_param_files(self):
         """

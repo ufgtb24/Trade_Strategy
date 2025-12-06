@@ -171,6 +171,36 @@ class StockListPanel:
         container = ttk.Frame(self.parent)
         container.pack(fill=tk.BOTH, expand=True)
 
+        # 工具栏（列配置控件）
+        toolbar = ttk.Frame(container)
+        toolbar.pack(fill=tk.X, padx=2, pady=(2, 0))
+
+        # 列显示开关（复选框，无标签）
+        from ..config import get_ui_config_loader
+
+        config_loader = get_ui_config_loader()
+        column_config = config_loader.get_stock_list_column_config()
+        self._columns_enabled_var = tk.BooleanVar(
+            value=column_config.get("columns_enabled", True)
+        )
+
+        self._toggle_checkbox = ttk.Checkbutton(
+            toolbar,
+            text="👁",
+            variable=self._columns_enabled_var,
+            command=self._on_toggle_columns,
+            width=3,
+        )
+        self._toggle_checkbox.pack(side=tk.LEFT)
+
+        # 列配置按钮
+        ttk.Button(
+            toolbar,
+            text="Columns",
+            command=self._on_configure_columns,
+            width=8,
+        ).pack(side=tk.LEFT, padx=(2, 0))
+
         # 列表容器 (包含两个Treeview和滚动条)
         list_frame = ttk.Frame(container)
         list_frame.pack(fill=tk.BOTH, expand=True)
@@ -230,6 +260,9 @@ class StockListPanel:
         # 绑定选择同步
         self.fixed_tree.bind("<<TreeviewSelect>>", self._on_fixed_select)
         self.main_tree.bind("<<TreeviewSelect>>", self._on_main_select)
+
+        # 绑定右键菜单到 fixed_tree（当所有属性列隐藏时，仍可通过 Symbol 列头弹出菜单）
+        self.fixed_tree.bind("<Button-3>", self._show_column_context_menu)
 
     def _load_column_config(self):
         """从配置文件加载列标签配置"""
@@ -614,6 +647,38 @@ class StockListPanel:
         self._configure_tree_columns(columns)
         self._update_tree()
 
+    def _on_toggle_columns(self):
+        """工具栏复选框回调：切换列显示"""
+        new_state = self.toggle_columns_enabled()
+        self._columns_enabled_var.set(new_state)
+
+    def _on_configure_columns(self):
+        """工具栏按钮回调：打开列配置对话框"""
+        from ..dialogs import ColumnConfigDialog
+        from ..config import get_ui_config_loader
+
+        if not self.stock_data:
+            return  # 没有数据时不打开
+
+        # 动态发现所有字段
+        first_item = self.stock_data[0]
+        available_columns = [
+            k for k in first_item.keys() if k not in ["symbol", "raw_data"]
+        ]
+
+        # 当前可见列
+        config_loader = get_ui_config_loader()
+        config = config_loader.get_stock_list_column_config()
+        visible_columns = config.get("visible_columns", [])
+
+        # 打开对话框
+        ColumnConfigDialog(
+            parent=self.parent.winfo_toplevel(),
+            available_columns=available_columns,
+            visible_columns=visible_columns,
+            on_apply_callback=self.set_visible_columns,
+        )
+
     def toggle_columns_enabled(self):
         """
         一键开关：显示/隐藏所有属性列
@@ -686,10 +751,9 @@ class StockListPanel:
             )
 
         # 显示菜单
-        try:
-            menu.tk_popup(event.x_root, event.y_root)
-        finally:
-            menu.grab_release()
+        # 点击菜单外区域时自动关闭菜单
+        menu.bind("<FocusOut>", lambda e: menu.unpost())
+        menu.tk_popup(event.x_root, event.y_root)
 
     def _toggle_column(self, column: str):
         """切换单个列的显示/隐藏"""

@@ -85,9 +85,6 @@ class InteractiveUI:
             on_width_changed_callback=self._on_panel_width_changed,
         )
 
-        # 将 stock_list_panel 引用传递给 param_panel
-        self.param_panel.set_stock_list_panel(self.stock_list_panel)
-
         # 右侧：图表Canvas（初始占满整个区域）
         self.right_frame = ttk.Frame(self.paned)
         self.paned.add(self.right_frame, weight=1)

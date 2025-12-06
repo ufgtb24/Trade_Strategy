@@ -53,7 +53,7 @@ argument-hint: [command_type] [optional: description]
 2.  **查找** 该模块对应的设计文档 `docs/modules/specs/[编号]_[模块名]_PLAN.md` 或实现文档 `docs/modules/specs/[编号]_[模块名]_IMPL.md`。
 3.  **处理文档**：
     -   **情况 A (首次提炼)**：如果存在 `_PLAN.md` 但不存在 `_IMPL.md`：
-        -   **读取** `_PLAN.md` 的内容作为参考（了解初衷）。
+        -   **读取** `_PLAN.md` 的内容作为参考（了解初衷,但是以代码信息为准）。
         -   **删除** `_PLAN.md`。
         -   **新建** `_IMPL.md`。
     -   **情况 B (更新提炼)**：如果已存在 `_IMPL.md`：
@@ -63,7 +63,6 @@ argument-hint: [command_type] [optional: description]
     -   **核心流程**：数据流转逻辑（使用 Mermaid 流程图）。
     -   **关键决策**：为什么选择这个算法/模式？（Why）。
     -   **已知局限**：当前实现的边界和限制。
-    -   *(如果是首次提炼)* **偏差分析**：简要说明最终实现与原计划（Plan）的主要差异。
 5.  **写入** `_IMPL.md`，使其反映当前的架构意图。
 6.  **标记** 文档顶部：`> 状态：已实现 (Implemented) | 最后更新：YYYY-MM-DD`。
 7.  **更新引用**：
