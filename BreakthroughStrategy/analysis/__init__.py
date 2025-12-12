@@ -31,7 +31,7 @@ from .breakthrough_detector import (
 from .features import FeatureCalculator
 
 # 质量评分
-from .quality_scorer import QualityScorer
+from .quality_scorer import QualityScorer, FeatureScoreDetail, ScoreBreakdown
 
 
 __all__ = [
@@ -48,4 +48,6 @@ __all__ = [
 
     # 质量评分
     'QualityScorer',
+    'FeatureScoreDetail',
+    'ScoreBreakdown',
 ]

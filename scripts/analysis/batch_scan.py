@@ -40,21 +40,21 @@ def load_config(config_path: str = None) -> dict:
     return config
 
 
-def load_params(params_path: str = None) -> dict:
+def load_params(params_path: str) -> dict:
     """Load params configuration from YAML file
 
     Args:
-        params_path: Path to params file. If None, uses default configs/analysis/params/breakthrough_0.yaml
+        params_path: Path to params file (required, configured in config.yaml)
 
     Returns:
         Params configuration dictionary
+
+    Raises:
+        ValueError: If params_path is None or empty
     """
-    if params_path is None:
-        params_path = (
-            project_root / "configs" / "analysis" / "params" / "breakthrough_0.yaml"
-        )
-    else:
-        params_path = Path(params_path)
+    if not params_path:
+        raise ValueError("params_path is required, please configure it in config.yaml")
+    params_path = Path(params_path)
 
     if not params_path.exists():
         raise FileNotFoundError(f"Params file not found: {params_path}")
@@ -153,31 +153,20 @@ def load_csv_stock_list(csv_path: str, mon_before: int, mon_after: int) -> dict:
 def main():
     # Default configuration
     config_path = project_root / "configs" / "analysis" / "config.yaml"
-    params_path = (
-        project_root / "configs" / "analysis" / "params" / "breakthrough_0.yaml"
-    )
-    data_dir = "datasets/test_pkls"
-    output_dir = "outputs/analysis"
-    window = 5
-    exceed_threshold = 0.005
-    peak_supersede_threshold = 0.03
-    num_workers = 8
-    max_stocks = None
-    checkpoint_interval = 100
-    start_date = None
-    end_date = None
-    feature_calc_config = {}
-    quality_scorer_config = {}
 
     try:
         config = load_config(config_path)
-        params = load_params(params_path)
+
+        # 从 config 中获取 params 配置文件路径
+        params_path_str = config["params"]["config_file"]
+        if not Path(params_path_str).is_absolute():
+            params_path_str = str(project_root / params_path_str)
+        params = load_params(params_path_str)
 
         data_dir = config["data"]["data_dir"]
         output_dir = config["output"]["output_dir"]
         num_workers = config["performance"]["num_workers"]
         max_stocks = config["data"]["max_stocks"]
-        checkpoint_interval = config["performance"]["checkpoint_interval"]
 
         window = params["breakthrough_detector"]["window"]
         exceed_threshold = params["breakthrough_detector"]["exceed_threshold"]
@@ -192,17 +181,17 @@ def main():
         end_date = config["data"].get("end_date")
 
         print(f"Loaded configuration from: {config_path}")
-        print(f"Loaded parameters from: {params_path}")
+        print(f"Loaded parameters from: {params_path_str}")
         print(f"  - Window: {window}")
         print(f"  - Exceed threshold: {exceed_threshold}")
         print(f"  - Peak merge threshold: {peak_supersede_threshold}")
         print(f"  - Date range: {start_date} to {end_date}")
     except FileNotFoundError as e:
-        print(f"Warning: {e}")
-        print("Using default parameters")
+        print(f"Error: {e}")
+        return
     except Exception as e:
         print(f"Error loading config: {e}")
-        print("Using default parameters")
+        return
 
     # ========== 核心改动：判断扫描模式 ==========
     csv_file = config["data"].get("csv_file")
@@ -258,7 +247,6 @@ def main():
             symbols,
             data_dir=str(data_dir_path),
             num_workers=num_workers,
-            checkpoint_interval=checkpoint_interval,
             stock_time_ranges=stock_time_ranges,  # ← 新增参数
         )
     else:
@@ -299,8 +287,6 @@ def main():
             symbols,
             data_dir=str(data_dir_path),
             num_workers=num_workers,
-            checkpoint_interval=checkpoint_interval,
-            # stock_time_ranges 参数未传递，默认为 None
         )
 
     # 保存结果（两种模式共用）

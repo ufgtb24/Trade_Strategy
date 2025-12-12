@@ -1,6 +1,6 @@
 # 技术分析模块 - 实现文档
 
-> 状态：已实现 (Implemented) | 最后更新：2025-12-05
+> 状态：已实现 (Implemented) | 最后更新：2025-12-12
 
 **模块路径**：`BreakthroughStrategy/analysis/`
 
@@ -113,15 +113,16 @@ for old_peak in active_peaks:
 **评分因素（总分100）**：
 ```yaml
 评分维度:
-  - 放量（25%）: volume_surge_ratio (2倍=50分, 5倍=100分)
+  - 放量（30%）: volume_surge_ratio (2倍=50分, 5倍=100分)
   - 长K线（20%）: candle_change_pct (5%=50分, 10%=100分)
-  - 压制时间（25%）: left + right suppression days (30天=50分, 60天=100分)
-  - 相对高度（15%）: relative_height (5%=50分, 10%=100分)
-  - merged保留（15%）: 向后兼容（固定50分）
+  - 压制时间（30%）: left + right suppression days (30天=50分, 60天=100分)
+  - 相对高度（20%）: relative_height (5%=50分, 10%=100分)
 ```
 
 **核心逻辑**：
 - 历史意义 = 形成难度（放量+长K线）+ 维持时间（压制天数）+ 相对位置（高度）
+
+> **变更记录**：2025-12-12 移除了无效的 `merged` 权重（原15%），重新分配给放量、压制时间、相对高度
 
 ### 4.2 突破质量评分（Breakthrough Quality Score）
 
@@ -136,7 +137,25 @@ for old_peak in active_peaks:
   - 阻力强度（20%）: 综合指标（数量+密集度+质量）
 ```
 
-### 4.3 阻力强度评分（改进版）
+### 4.3 评分方法架构（重构后）
+
+**设计决策**：评分逻辑单一来源
+
+```
+score_peak()           ──委托──>  get_peak_score_breakdown()
+score_breakthrough()   ──委托──>  get_breakthrough_score_breakdown()
+_score_resistance_strength() ──委托──> _get_resistance_breakdown()
+```
+
+**Why 这样设计？**
+- `get_xxx_breakdown()` 方法返回详细的评分分解（用于 UI 浮动窗口显示）
+- `score_xxx()` 方法只需要总分，直接复用 breakdown 计算
+- **避免重复代码**：评分逻辑只存在于一处，修改权重时无需同步多处
+- **一致性保证**：`score()` 返回的总分与 `breakdown.total_score` 永远一致
+
+> **变更记录**：2025-12-12 重构，消除 `score_xxx()` 与 `get_xxx_breakdown()` 之间的代码重复
+
+### 4.4 阻力强度评分（改进版）
 
 **核心改进**：修复密集度计算，识别密集子集而非整体范围
 
@@ -233,14 +252,13 @@ window: 5                          # 峰值识别窗口
 exceed_threshold: 0.005            # 突破确认阈值（0.5%）
 peak_supersede_threshold: 0.03     # 峰值覆盖阈值（3%）
 
-# 质量评分权重（峰值）
-peak_weight_volume: 0.25           # 放量权重
+# 质量评分权重（峰值）- 总和 1.0
+peak_weight_volume: 0.30           # 放量权重
 peak_weight_candle: 0.20           # 长K线权重
-peak_weight_suppression: 0.25      # 压制时间权重
-peak_weight_height: 0.15           # 相对高度权重
-peak_weight_merged: 0.15           # merged权重（兼容）
+peak_weight_suppression: 0.30      # 压制时间权重
+peak_weight_height: 0.20           # 相对高度权重
 
-# 质量评分权重（突破）
+# 质量评分权重（突破）- 总和 1.0
 bt_weight_change: 0.20             # 涨跌幅权重
 bt_weight_gap: 0.10                # 跳空权重
 bt_weight_volume: 0.20             # 放量权重
@@ -248,7 +266,7 @@ bt_weight_continuity: 0.15         # 连续性权重
 bt_weight_stability: 0.15          # 稳定性权重
 bt_weight_resistance: 0.20         # 阻力强度权重
 
-# 阻力强度子权重
+# 阻力强度子权重 - 总和 1.0
 res_weight_quantity: 0.30          # 峰值数量权重
 res_weight_density: 0.30           # 密集度权重
 res_weight_quality: 0.40           # 峰值质量权重
@@ -384,4 +402,4 @@ print(f"被突破的最高峰值: {breakthrough.highest_peak_broken.price}")
 ---
 
 **维护者**：Claude Code
-**最后审核**：2025-12-05
+**最后审核**：2025-12-12

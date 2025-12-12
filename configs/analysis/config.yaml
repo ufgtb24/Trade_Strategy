@@ -47,10 +47,7 @@ performance:
   # 并行worker数量
   num_workers: 8
 
-  # checkpoint间隔（每扫描多少只股票保存一次checkpoint）
-  checkpoint_interval: 100
-
 # 参数配置引用
 params:
   # 参数配置文件路径（相对于项目根目录）
-  config_file: "configs/analysis/params/breakthrough_0.yaml"
+  config_file: "configs/analysis/params/ui_params.yaml"

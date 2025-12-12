@@ -172,6 +172,55 @@ def configure_global_styles(root=None):
 
 
 # ============================================================================
+# 评分详情浮动窗口样式配置
+# ============================================================================
+
+SCORE_TOOLTIP_COLORS = {
+    # 峰值主题（蓝色系）
+    "peak_header_bg": "#1E3A5F",
+    "peak_header_fg": "#FFFFFF",
+    "peak_border": "#2E5A8F",
+    # 突破主题（绿色系）
+    "bt_header_bg": "#1E5F3A",
+    "bt_header_fg": "#FFFFFF",
+    "bt_border": "#2E8F5A",
+    # 分数颜色（动态）
+    "score_high": "#2E7D32",    # >=80 绿色
+    "score_medium": "#F57C00",  # 50-79 橙色
+    "score_low": "#C62828",     # <50 红色
+    # 表格
+    "row_bg": "#F8F9FA",
+    "row_alt_bg": "#FFFFFF",
+    "formula_bg": "#FFFDE7",
+    "separator": "#E0E0E0",
+    # 通用
+    "window_bg": "#FFFFFF",
+    "text_primary": "#212121",
+    "text_secondary": "#757575",
+    "sub_feature_bg": "#F0F0F0",
+}
+
+SCORE_TOOLTIP_FONTS = {
+    "header": (FONT_FAMILY, 14, "bold"),
+    "header_small": (FONT_FAMILY, 12),
+    "table_header": (FONT_FAMILY, 12, "bold"),
+    "table_cell": (FONT_FAMILY, 12),
+    "formula": ("Consolas", 11),
+    "sub_feature": (FONT_FAMILY, 11),
+}
+
+
+def get_score_tooltip_colors() -> dict:
+    """获取评分详情浮动窗口颜色配置"""
+    return SCORE_TOOLTIP_COLORS.copy()
+
+
+def get_score_tooltip_fonts() -> dict:
+    """获取评分详情浮动窗口字体配置"""
+    return SCORE_TOOLTIP_FONTS.copy()
+
+
+# ============================================================================
 # 便捷函数
 # ============================================================================
 

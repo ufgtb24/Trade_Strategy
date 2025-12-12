@@ -1,24 +1,28 @@
 """图表Canvas管理器"""
 
 import tkinter as tk
+from typing import Optional, List
 
 import matplotlib.pyplot as plt
 import pandas as pd
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 
 from ..styles import get_chart_colors
-from .components import CandlestickComponent, MarkerComponent, PanelComponent
+from .components import CandlestickComponent, MarkerComponent, PanelComponent, ScoreDetailWindow
+from ...analysis.quality_scorer import QualityScorer
+from ...analysis.breakthrough_detector import Peak, Breakthrough
 
 
 class ChartCanvasManager:
     """图表Canvas管理器"""
 
-    def __init__(self, parent_container):
+    def __init__(self, parent_container, scorer: Optional[QualityScorer] = None):
         """
         初始化图表管理器
 
         Args:
             parent_container: 父容器
+            scorer: 质量评分器实例（用于评分详情窗口）
         """
         self.container = parent_container
         # 直接使用绘图组件
@@ -30,6 +34,15 @@ class ChartCanvasManager:
         self.annotation = None  # 用于悬停显示
         self.crosshair_v = None  # 垂直十字线
         self.crosshair_h = None  # 水平十字线
+
+        # 评分详情窗口相关
+        self.scorer = scorer or QualityScorer()
+        self.score_detail_windows: List[ScoreDetailWindow] = []  # 打开的窗口列表
+        self._hovered_peak: Optional[Peak] = None  # 当前悬停的峰值
+        self._hovered_bt: Optional[Breakthrough] = None  # 当前悬停的突破
+        self._hover_position: tuple = (0, 0)  # 悬停位置（屏幕坐标）
+        self._all_peaks: List[Peak] = []  # 所有峰值（用于查找）
+        self._all_breakthroughs: List[Breakthrough] = []  # 所有突破（用于查找）
 
     def update_chart(
         self,
@@ -193,6 +206,13 @@ class ChartCanvasManager:
         self.crosshair_v = None
         self.crosshair_h = None
 
+        # 清理评分详情窗口相关状态
+        self._hovered_peak = None
+        self._hovered_bt = None
+        self._all_peaks = []
+        self._all_breakthroughs = []
+        # 注意：不关闭已打开的窗口，让用户可以继续查看
+
     def _attach_hover(self, ax, df, breakthroughs, peaks=None):
         """
         绑定鼠标悬停事件
@@ -203,6 +223,10 @@ class ChartCanvasManager:
             breakthroughs: 突破列表
             peaks: 峰值列表 (可选)
         """
+        # 保存数据供快捷键回调使用
+        self._all_peaks = peaks or []
+        self._all_breakthroughs = breakthroughs or []
+
         # 创建十字线（初始隐藏）
         self.crosshair_v = ax.axvline(
             0, color="#0088CC", linestyle="--", linewidth=1.5, alpha=0.7, visible=False
@@ -231,6 +255,9 @@ class ChartCanvasManager:
                 self.annotation.set_visible(False)
                 self.crosshair_v.set_visible(False)
                 self.crosshair_h.set_visible(False)
+                # 清除悬停状态
+                self._hovered_peak = None
+                self._hovered_bt = None
                 self.canvas.draw_idle()
                 return
 
@@ -243,12 +270,26 @@ class ChartCanvasManager:
                 self.annotation.set_visible(False)
                 self.crosshair_v.set_visible(False)
                 self.crosshair_h.set_visible(False)
+                # 清除悬停状态
+                self._hovered_peak = None
+                self._hovered_bt = None
                 self.canvas.draw_idle()
                 return
+
+            # 保存悬停位置（屏幕坐标）
+            canvas_widget = self.canvas.get_tk_widget()
+            self._hover_position = (
+                canvas_widget.winfo_rootx() + event.x,
+                canvas_widget.winfo_rooty() + event.y
+            )
 
             # 获取数据
             row = df.iloc[x]
             date = df.index[x]
+
+            # 重置悬停状态
+            self._hovered_peak = None
+            self._hovered_bt = None
 
             # 构建显示文本
             text = f"Date: {date.strftime('%Y-%m-%d')}\n"
@@ -261,6 +302,7 @@ class ChartCanvasManager:
             # 检查是否是突破点
             for bt in breakthroughs:
                 if bt.index == x:
+                    self._hovered_bt = bt  # 记录悬停的突破
                     text += "\n\n* Breakthrough!"
                     text += f"\nPeaks Broken: {bt.num_peaks_broken}"
                     if hasattr(bt, "broken_peak_ids") and bt.broken_peak_ids:
@@ -268,17 +310,20 @@ class ChartCanvasManager:
                         text += f"\nPeak IDs: [{peak_ids_text}]"
                     if bt.quality_score:
                         text += f"\nQuality: {bt.quality_score:.1f}"
+                    text += "\n[Press D for details]"
                     break
 
             # 检查是否是峰值
             if peaks:
                 for peak in peaks:
                     if peak.index == x:
+                        self._hovered_peak = peak  # 记录悬停的峰值
                         text += "\n\n▼ Peak"
                         if peak.id is not None:
                             text += f"\nID: {peak.id}"
                         if peak.quality_score is not None:
                             text += f"\nScore: {peak.quality_score:.1f}"
+                        text += "\n[Press D for details]"
                         break
 
             # 更新十字线位置（指示实际的 K线数据点）
@@ -299,5 +344,84 @@ class ChartCanvasManager:
             self.annotation.set_visible(True)
             self.canvas.draw_idle()
 
-        # 绑定事件
+        # 绑定 matplotlib 鼠标移动事件
         self.canvas.mpl_connect("motion_notify_event", on_hover)
+
+        # 绑定快捷键事件（需要绑定到 tk widget）
+        canvas_widget = self.canvas.get_tk_widget()
+
+        # 确保 canvas 可以接收键盘焦点
+        canvas_widget.configure(takefocus=True)
+
+        # 绑定 D 键显示评分详情
+        canvas_widget.bind("<d>", self._on_score_detail_key)
+        canvas_widget.bind("<D>", self._on_score_detail_key)
+
+        # 绑定 Escape 键关闭最近的窗口
+        canvas_widget.bind("<Escape>", self._on_close_window_key)
+
+        # 绑定 Shift+Escape 关闭所有窗口
+        canvas_widget.bind("<Shift-Escape>", self._on_close_all_windows_key)
+
+        # 鼠标点击时让 canvas 获得焦点（以便接收键盘事件）
+        canvas_widget.bind("<Button-1>", lambda e: canvas_widget.focus_set())
+
+    def _on_score_detail_key(self, event):
+        """
+        D 键按下回调：显示评分详情窗口
+
+        Args:
+            event: Tkinter 键盘事件
+        """
+        # 检查是否有悬停的峰值或突破
+        if self._hovered_peak is None and self._hovered_bt is None:
+            return  # 没有悬停在任何标记点上，忽略
+
+        # 创建评分详情窗口
+        window = ScoreDetailWindow(
+            parent=self.container,
+            peak=self._hovered_peak,
+            breakthrough=self._hovered_bt,
+            scorer=self.scorer,
+            position=self._hover_position
+        )
+
+        # 添加到窗口列表
+        self.score_detail_windows.append(window)
+
+        # 清理已关闭的窗口
+        self._cleanup_closed_windows()
+
+    def _on_close_window_key(self, event):
+        """
+        Escape 键按下回调：关闭最近打开的窗口
+
+        Args:
+            event: Tkinter 键盘事件
+        """
+        self._cleanup_closed_windows()
+
+        if self.score_detail_windows:
+            window = self.score_detail_windows.pop()
+            window.close()
+
+    def _on_close_all_windows_key(self, event):
+        """
+        Shift+Escape 键按下回调：关闭所有窗口
+
+        Args:
+            event: Tkinter 键盘事件
+        """
+        for window in self.score_detail_windows:
+            window.close()
+        self.score_detail_windows.clear()
+
+    def _cleanup_closed_windows(self):
+        """清理已关闭的窗口"""
+        self.score_detail_windows = [
+            w for w in self.score_detail_windows if w.is_open()
+        ]
+
+    def close_all_score_windows(self):
+        """关闭所有评分详情窗口（供外部调用）"""
+        self._on_close_all_windows_key(None)

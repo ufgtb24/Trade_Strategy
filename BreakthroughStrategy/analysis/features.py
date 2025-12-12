@@ -138,7 +138,8 @@ class FeatureCalculator:
         """
         计算连续上涨天数
 
-        从突破日向前查找，统计连续收阳线的天数
+        从突破日前一天向前查找，统计连续收阳线的天数
+        注意：不包括突破日本身，因为突破日可能是阴线突破（靠上影线突破）
 
         Args:
             df: 行情数据
@@ -149,7 +150,12 @@ class FeatureCalculator:
         """
         continuity_days = 0
 
-        for i in range(index, max(0, index - self.continuity_lookback), -1):
+        # 从突破日前一天开始计算，避免阴线突破时直接返回0
+        start_index = index - 1
+        if start_index < 0:
+            return 0
+
+        for i in range(start_index, max(-1, start_index - self.continuity_lookback), -1):
             row = df.iloc[i]
             if row['close'] > row['open']:
                 continuity_days += 1

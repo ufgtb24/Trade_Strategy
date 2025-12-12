@@ -6,11 +6,10 @@
 2. 综合所有被突破峰值的质量评分
 
 峰值质量评分因素（总分100）：
-- 放量（25%）：volume_surge_ratio越大越好
+- 放量（30%）：volume_surge_ratio越大越好
 - 长K线（20%）：candle_change_pct越大越好
-- 压制时间（25%）：left_suppression_days + right_suppression_days越长越好
-- 相对高度（15%）：relative_height越大越好
-- 保留merged（15%）：向后兼容
+- 压制时间（30%）：left_suppression_days + right_suppression_days越长越好
+- 相对高度（20%）：relative_height越大越好
 
 突破质量评分因素（总分100）：
 - 涨跌幅（20%）：price_change_pct越大越好
@@ -21,8 +20,53 @@
 - 阻力强度（20%）：综合指标（数量+密集度+质量）
 """
 
+from dataclasses import dataclass, field
 from typing import List, Optional, Tuple
 from .breakthrough_detector import Peak, Breakthrough
+
+
+# =============================================================================
+# 评分分解数据类（用于浮动窗口显示）
+# =============================================================================
+
+@dataclass
+class FeatureScoreDetail:
+    """单个特征的评分详情"""
+    name: str           # 显示名称
+    raw_value: float    # 原始数值
+    unit: str           # 单位 ('x', '%', 'd', 'pks', '')
+    score: float        # 分数 (0-100)
+    weight: float       # 权重 (0-1)
+    # 子因素（用于 Resistance 展开显示）
+    sub_features: List['FeatureScoreDetail'] = field(default_factory=list)
+
+
+@dataclass
+class ScoreBreakdown:
+    """评分分解"""
+    entity_type: str                      # 'peak' or 'breakthrough'
+    entity_id: Optional[int]              # Peak ID (if peak)
+    total_score: float                    # 总分
+    features: List[FeatureScoreDetail]    # 各特征详情
+    broken_peak_ids: Optional[List[int]] = None  # 被突破的峰值ID（仅突破）
+
+    def get_formula_string(self) -> str:
+        """
+        生成计算公式字符串
+
+        Returns:
+            如 "60×30% + 75×20% + 75×30% + 82×20% = 72.5"
+        """
+        terms = []
+        for f in self.features:
+            # 跳过子因素（它们在 Resistance 里展开）
+            if f.sub_features:
+                terms.append(f"{f.score:.0f}×{f.weight*100:.0f}%")
+            else:
+                terms.append(f"{f.score:.0f}×{f.weight*100:.0f}%")
+
+        formula = " + ".join(terms)
+        return f"{formula} = {self.total_score:.1f}"
 
 
 class QualityScorer:
@@ -38,13 +82,12 @@ class QualityScorer:
         if config is None:
             config = {}
 
-        # 峰值评分权重
+        # 峰值评分权重（已移除无效的 merged 权重，重新分配给其他维度）
         self.peak_weights = {
-            'volume': config.get('peak_weight_volume', 0.25),
+            'volume': config.get('peak_weight_volume', 0.30),
             'candle': config.get('peak_weight_candle', 0.20),
-            'suppression': config.get('peak_weight_suppression', 0.25),
-            'height': config.get('peak_weight_height', 0.15),
-            'merged': config.get('peak_weight_merged', 0.15)  # 保留，向后兼容
+            'suppression': config.get('peak_weight_suppression', 0.30),
+            'height': config.get('peak_weight_height', 0.20),
         }
 
         # 突破评分权重
@@ -76,63 +119,13 @@ class QualityScorer:
         Returns:
             质量分数（0-100）
         """
-        # 1. 放量评分（2倍=50分，5倍=100分）
-        volume_score = self._linear_score(
-            peak.volume_surge_ratio,
-            low_value=2.0,
-            high_value=5.0,
-            min_score=0,
-            max_score=100
-        )
-
-        # 2. 长K线评分（5%=50分，10%=100分）
-        candle_score = self._linear_score(
-            abs(peak.candle_change_pct),
-            low_value=0.05,
-            high_value=0.10,
-            min_score=0,
-            max_score=100
-        )
-
-        # 3. 压制时间评分（30天=50分，60天=100分）
-        suppression_days = peak.left_suppression_days + peak.right_suppression_days
-        suppression_score = self._linear_score(
-            suppression_days,
-            low_value=30,
-            high_value=60,
-            min_score=0,
-            max_score=100
-        )
-
-        # 4. 相对高度评分（5%=50分，10%=100分）
-        height_score = self._linear_score(
-            peak.relative_height,
-            low_value=0.05,
-            high_value=0.10,
-            min_score=0,
-            max_score=100
-        )
-
-        # 5. merged评分（保留，向后兼容，默认50分）
-        merged_score = 50.0
-
-        # 加权求和
-        total_score = (
-            volume_score * self.peak_weights['volume'] +
-            candle_score * self.peak_weights['candle'] +
-            suppression_score * self.peak_weights['suppression'] +
-            height_score * self.peak_weights['height'] +
-            merged_score * self.peak_weights['merged']
-        )
-
-        # 写入peak对象
-        peak.quality_score = total_score
-
-        return total_score
+        breakdown = self.get_peak_score_breakdown(peak)
+        peak.quality_score = breakdown.total_score
+        return breakdown.total_score
 
     def score_breakthrough(self, breakthrough: Breakthrough) -> float:
         """
-        评估突破质量（改进版）
+        评估突破质量
 
         将分数写入breakthrough.quality_score
 
@@ -142,62 +135,9 @@ class QualityScorer:
         Returns:
             质量分数（0-100）
         """
-        # 1. 涨跌幅评分（3%=50分，6%=100分）
-        change_score = self._linear_score(
-            abs(breakthrough.price_change_pct),
-            low_value=0.03,
-            high_value=0.06,
-            min_score=0,
-            max_score=100
-        )
-
-        # 2. 跳空评分（1%=50分，2%=100分）
-        gap_score = self._linear_score(
-            breakthrough.gap_up_pct,
-            low_value=0.01,
-            high_value=0.02,
-            min_score=0,
-            max_score=100
-        )
-
-        # 3. 放量评分（2倍=50分，5倍=100分）
-        volume_score = self._linear_score(
-            breakthrough.volume_surge_ratio,
-            low_value=2.0,
-            high_value=5.0,
-            min_score=0,
-            max_score=100
-        )
-
-        # 4. 连续性评分（3天=50分，5天=100分）
-        continuity_score = self._linear_score(
-            breakthrough.continuity_days,
-            low_value=3,
-            high_value=5,
-            min_score=0,
-            max_score=100
-        )
-
-        # 5. 稳定性评分（已经是0-100分）
-        stability_score = breakthrough.stability_score
-
-        # 6. 阻力强度评分（改进版）
-        resistance_score = self._score_resistance_strength(breakthrough)
-
-        # 加权求和
-        total_score = (
-            change_score * self.breakthrough_weights['change'] +
-            gap_score * self.breakthrough_weights['gap'] +
-            volume_score * self.breakthrough_weights['volume'] +
-            continuity_score * self.breakthrough_weights['continuity'] +
-            stability_score * self.breakthrough_weights['stability'] +
-            resistance_score * self.breakthrough_weights['resistance']
-        )
-
-        # 写入breakthrough对象
-        breakthrough.quality_score = total_score
-
-        return total_score
+        breakdown = self.get_breakthrough_score_breakdown(breakthrough)
+        breakthrough.quality_score = breakdown.total_score
+        return breakdown.total_score
 
     def score_peaks_batch(self, peaks: List[Peak]) -> List[Peak]:
         """
@@ -234,42 +174,12 @@ class QualityScorer:
 
     def _score_resistance_strength(self, breakthrough: Breakthrough) -> float:
         """
-        阻力强度评分（改进版）
+        阻力强度评分
 
-        综合考虑：
-        1. 峰值数量（quantity）
-        2. 峰值密集度（density）← 修复：识别密集子集
-        3. 峰值质量（quality）← 新增：综合所有峰值质量
+        委托给 _get_resistance_breakdown() 以保持评分逻辑单一来源
         """
-        broken_peaks = breakthrough.broken_peaks
-        num_peaks = len(broken_peaks)
-
-        if num_peaks == 0:
-            return 0.0
-
-        if num_peaks == 1:
-            # 单峰值：主要看峰值质量
-            peak = broken_peaks[0]
-            quality = peak.quality_score if peak.quality_score else 50.0
-            return quality * 0.7 + 30 * 0.3
-
-        # 1. 数量评分
-        quantity_score = self._score_quantity(num_peaks)
-
-        # 2. 密集度评分（改进：识别密集子集）
-        density_score = self._score_density(broken_peaks)
-
-        # 3. 质量评分（新增：综合峰值质量）
-        quality_score = self._score_peak_quality_aggregate(broken_peaks)
-
-        # 加权融合
-        total = (
-            quantity_score * self.resistance_weights['quantity'] +
-            density_score * self.resistance_weights['density'] +
-            quality_score * self.resistance_weights['quality']
-        )
-
-        return total
+        feature = self._get_resistance_breakdown(breakthrough)
+        return feature.score
 
     def _score_quantity(self, num_peaks: int) -> float:
         """峰值数量评分"""
@@ -338,7 +248,12 @@ class QualityScorer:
             return (n, 0.0)
 
         max_cluster_size = 1
-        best_cluster_density = 999.0
+        best_cluster_density = None  # 用 None 表示尚未找到密集簇
+
+        # 计算整体分散度（作为备用值）
+        overall_range = prices[-1] - prices[0]
+        overall_avg = sum(prices) / n
+        overall_density = overall_range / overall_avg if overall_avg > 0 else 0.0
 
         # 滑动窗口找密集子集
         for i in range(n):
@@ -360,6 +275,10 @@ class QualityScorer:
                     elif len(cluster) == max_cluster_size:
                         # 同样大小，选择更密集的
                         best_cluster_density = min(best_cluster_density, density)
+
+        # 如果没有找到密集簇，返回整体分散度
+        if best_cluster_density is None:
+            best_cluster_density = overall_density
 
         return (max_cluster_size, best_cluster_density)
 
@@ -437,3 +356,247 @@ class QualityScorer:
         score = max(min_score, min(max_score, score))
 
         return score
+
+    # =========================================================================
+    # 评分分解方法（用于浮动窗口显示）
+    # =========================================================================
+
+    def get_peak_score_breakdown(self, peak: Peak) -> ScoreBreakdown:
+        """
+        获取峰值评分的详细分解
+
+        Args:
+            peak: 峰值对象
+
+        Returns:
+            ScoreBreakdown 包含各特征的详细评分
+        """
+        features = []
+
+        # 1. 放量评分
+        volume_score = self._linear_score(
+            peak.volume_surge_ratio, 2.0, 5.0, 0, 100
+        )
+        features.append(FeatureScoreDetail(
+            name="Volume Surge",
+            raw_value=peak.volume_surge_ratio,
+            unit="x",
+            score=volume_score,
+            weight=self.peak_weights['volume']
+        ))
+
+        # 2. K线涨跌幅评分
+        candle_score = self._linear_score(
+            abs(peak.candle_change_pct), 0.05, 0.10, 0, 100
+        )
+        features.append(FeatureScoreDetail(
+            name="Candle Change",
+            raw_value=abs(peak.candle_change_pct) * 100,  # 转为百分比
+            unit="%",
+            score=candle_score,
+            weight=self.peak_weights['candle']
+        ))
+
+        # 3. 压制时间评分
+        suppression_days = peak.left_suppression_days + peak.right_suppression_days
+        suppression_score = self._linear_score(
+            suppression_days, 30, 60, 0, 100
+        )
+        features.append(FeatureScoreDetail(
+            name="Suppression",
+            raw_value=suppression_days,
+            unit="d",
+            score=suppression_score,
+            weight=self.peak_weights['suppression']
+        ))
+
+        # 4. 相对高度评分
+        height_score = self._linear_score(
+            peak.relative_height, 0.05, 0.10, 0, 100
+        )
+        features.append(FeatureScoreDetail(
+            name="Rel. Height",
+            raw_value=peak.relative_height * 100,  # 转为百分比
+            unit="%",
+            score=height_score,
+            weight=self.peak_weights['height']
+        ))
+
+        # 计算总分
+        total_score = sum(f.score * f.weight for f in features)
+
+        return ScoreBreakdown(
+            entity_type='peak',
+            entity_id=peak.id,
+            total_score=total_score,
+            features=features
+        )
+
+    def get_breakthrough_score_breakdown(
+        self, breakthrough: Breakthrough
+    ) -> ScoreBreakdown:
+        """
+        获取突破评分的详细分解
+
+        Args:
+            breakthrough: 突破对象
+
+        Returns:
+            ScoreBreakdown 包含各特征的详细评分，阻力强度含子因素
+        """
+        features = []
+
+        # 1. 涨跌幅评分
+        change_score = self._linear_score(
+            abs(breakthrough.price_change_pct), 0.03, 0.06, 0, 100
+        )
+        features.append(FeatureScoreDetail(
+            name="Price Change",
+            raw_value=abs(breakthrough.price_change_pct) * 100,
+            unit="%",
+            score=change_score,
+            weight=self.breakthrough_weights['change']
+        ))
+
+        # 2. 跳空评分
+        gap_score = self._linear_score(
+            breakthrough.gap_up_pct, 0.01, 0.02, 0, 100
+        )
+        features.append(FeatureScoreDetail(
+            name="Gap Up",
+            raw_value=breakthrough.gap_up_pct * 100,
+            unit="%",
+            score=gap_score,
+            weight=self.breakthrough_weights['gap']
+        ))
+
+        # 3. 放量评分
+        volume_score = self._linear_score(
+            breakthrough.volume_surge_ratio, 2.0, 5.0, 0, 100
+        )
+        features.append(FeatureScoreDetail(
+            name="Volume Surge",
+            raw_value=breakthrough.volume_surge_ratio,
+            unit="x",
+            score=volume_score,
+            weight=self.breakthrough_weights['volume']
+        ))
+
+        # 4. 连续性评分
+        continuity_score = self._linear_score(
+            breakthrough.continuity_days, 3, 5, 0, 100
+        )
+        features.append(FeatureScoreDetail(
+            name="Continuity",
+            raw_value=breakthrough.continuity_days,
+            unit="d",
+            score=continuity_score,
+            weight=self.breakthrough_weights['continuity']
+        ))
+
+        # 5. 稳定性评分
+        stability_score = breakthrough.stability_score
+        features.append(FeatureScoreDetail(
+            name="Stability",
+            raw_value=breakthrough.stability_score,
+            unit="%",
+            score=stability_score,
+            weight=self.breakthrough_weights['stability']
+        ))
+
+        # 6. 阻力强度评分（含子因素展开）
+        resistance_feature = self._get_resistance_breakdown(breakthrough)
+        features.append(resistance_feature)
+
+        # 计算总分
+        total_score = sum(f.score * f.weight for f in features)
+
+        # 获取被突破的峰值ID
+        broken_peak_ids = [p.id for p in breakthrough.broken_peaks if p.id is not None]
+
+        return ScoreBreakdown(
+            entity_type='breakthrough',
+            entity_id=None,
+            total_score=total_score,
+            features=features,
+            broken_peak_ids=broken_peak_ids
+        )
+
+    def _get_resistance_breakdown(
+        self, breakthrough: Breakthrough
+    ) -> FeatureScoreDetail:
+        """
+        获取阻力强度的详细分解（含三个子因素）
+
+        Args:
+            breakthrough: 突破对象
+
+        Returns:
+            FeatureScoreDetail 含 sub_features
+        """
+        broken_peaks = breakthrough.broken_peaks
+        num_peaks = len(broken_peaks)
+        sub_features = []
+
+        if num_peaks == 0:
+            return FeatureScoreDetail(
+                name="Resistance",
+                raw_value=0,
+                unit="",
+                score=0,
+                weight=self.breakthrough_weights['resistance'],
+                sub_features=[]
+            )
+
+        # 1. 数量评分
+        quantity_score = self._score_quantity(num_peaks)
+        sub_features.append(FeatureScoreDetail(
+            name="Quantity",
+            raw_value=num_peaks,
+            unit="pks",
+            score=quantity_score,
+            weight=self.resistance_weights['quantity']
+        ))
+
+        # 2. 密集度评分
+        if num_peaks >= 2:
+            prices = sorted([p.price for p in broken_peaks])
+            max_cluster_size, cluster_density = self._find_densest_cluster(prices)
+            density_score = self._score_density(broken_peaks)
+            density_value = cluster_density * 100  # 转为百分比
+        else:
+            density_score = 50.0
+            density_value = 0.0
+
+        sub_features.append(FeatureScoreDetail(
+            name="Density",
+            raw_value=density_value,
+            unit="%",
+            score=density_score,
+            weight=self.resistance_weights['density']
+        ))
+
+        # 3. 质量评分
+        quality_score = self._score_peak_quality_aggregate(broken_peaks)
+        qualities = [p.quality_score for p in broken_peaks if p.quality_score]
+        avg_quality = sum(qualities) / len(qualities) if qualities else 50.0
+
+        sub_features.append(FeatureScoreDetail(
+            name="Quality",
+            raw_value=avg_quality,
+            unit="",
+            score=quality_score,
+            weight=self.resistance_weights['quality']
+        ))
+
+        # 计算阻力强度总分
+        resistance_score = sum(sf.score * sf.weight for sf in sub_features)
+
+        return FeatureScoreDetail(
+            name="Resistance",
+            raw_value=resistance_score,  # 用总分作为 raw_value 显示
+            unit="",
+            score=resistance_score,
+            weight=self.breakthrough_weights['resistance'],
+            sub_features=sub_features
+        )

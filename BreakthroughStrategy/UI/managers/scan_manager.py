@@ -330,7 +330,6 @@ class ScanManager:
         symbols: List[str],
         data_dir: str = "datasets/pkls",
         num_workers: int = 8,
-        checkpoint_interval: int = 100,
         stock_time_ranges: Dict[str, tuple] = None,
     ) -> List[Dict]:
         """
@@ -340,7 +339,6 @@ class ScanManager:
             symbols: 股票代码列表
             data_dir: 数据目录
             num_workers: 并行worker数
-            checkpoint_interval: checkpoint间隔
             stock_time_ranges: 每只股票的时间范围（可选）
                               格式：{symbol: (start_date, end_date)}
                               如果为None，使用全局的 self.start_date 和 self.end_date
@@ -362,50 +360,31 @@ class ScanManager:
             if self.start_date or self.end_date:
                 print(f"时间范围: {self.start_date} - {self.end_date}")
 
-        all_results = []
+        # 构建参数列表
+        args = []
+        for sym in symbols:
+            # 判断使用 per-stock 时间范围还是全局时间范围
+            if stock_time_ranges and sym in stock_time_ranges:
+                start_date, end_date = stock_time_ranges[sym]
+            else:
+                start_date, end_date = self.start_date, self.end_date
 
-        # 分批处理，支持checkpoint
-        for batch_start in range(0, len(symbols), checkpoint_interval):
-            batch_end = min(batch_start + checkpoint_interval, len(symbols))
-            batch_symbols = symbols[batch_start:batch_end]
-
-            print(
-                f"\n处理批次 {batch_start // checkpoint_interval + 1} "
-                f"({batch_start + 1}-{batch_end}/{len(symbols)})"
+            args.append(
+                (
+                    sym,
+                    data_dir,
+                    self.window,
+                    self.exceed_threshold,
+                    self.peak_supersede_threshold,
+                    start_date,
+                    end_date,
+                    self.feature_calc_config,
+                    self.quality_scorer_config,
+                )
             )
 
-            # ========== 核心改动：构建参数列表 ==========
-            args = []
-            for sym in batch_symbols:
-                # 判断使用 per-stock 时间范围还是全局时间范围
-                if stock_time_ranges and sym in stock_time_ranges:
-                    start_date, end_date = stock_time_ranges[sym]
-                else:
-                    start_date, end_date = self.start_date, self.end_date
-
-                args.append(
-                    (
-                        sym,
-                        data_dir,
-                        self.window,
-                        self.exceed_threshold,
-                        self.peak_supersede_threshold,
-                        start_date,
-                        end_date,
-                        self.feature_calc_config,
-                        self.quality_scorer_config,
-                    )
-                )
-
-            with Pool(processes=num_workers) as pool:
-                batch_results = pool.map(_scan_single_stock, args)
-
-            all_results.extend(batch_results)
-
-            # 保存checkpoint
-            checkpoint_file = self.output_dir / f"checkpoint_{batch_end}.json"
-            self._save_results_internal(all_results, checkpoint_file)
-            print(f"Checkpoint已保存: {checkpoint_file}")
+        with Pool(processes=num_workers) as pool:
+            all_results = pool.map(_scan_single_stock, args)
 
         print(f"\n扫描完成！共 {len(all_results)} 只股票")
         return all_results

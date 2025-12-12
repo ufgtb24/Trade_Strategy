@@ -152,7 +152,7 @@ class ConfigLoader:
         Get scanning configuration
 
         Returns:
-            Dictionary with: data_dir, output_dir, num_workers, checkpoint_interval, max_stocks
+            Dictionary with: data_dir, output_dir, num_workers, max_stocks
         """
         data_cfg = self.config.get('data', {})
         output_cfg = self.config.get('output', {})
@@ -163,7 +163,6 @@ class ConfigLoader:
             'max_stocks': data_cfg.get('max_stocks', None),
             'output_dir': output_cfg.get('output_dir', 'outputs/analysis'),
             'num_workers': perf_cfg.get('num_workers', 8),
-            'checkpoint_interval': perf_cfg.get('checkpoint_interval', 100)
         }
 
     def get_all_config(self) -> Dict[str, Any]:

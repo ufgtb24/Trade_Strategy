@@ -33,3 +33,14 @@ git fetch origin
 - 2. 将本地 master 分支强制重置为远程 origin/master 的状态
 git reset --hard origin/master
 
+## 设置默认编辑器
+echo "export EDITOR='/snap/bin/pycharm-community --wait'" >> ~/.bashrc
+source ~/.bashrc
+
+echo 'export EDITOR="/home/yu/apps/pycharm-community-2024.3.5/bin/pycharm.sh --wait"' >> ~/.bashrc
+source ~/.bashrc
+
+取消(恢复 vscode)：
+sed -i '/pycharm-community --wait/d' ~/.bashrc
+source ~/.bashrc
+

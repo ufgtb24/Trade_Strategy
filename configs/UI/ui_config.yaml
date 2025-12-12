@@ -34,7 +34,7 @@ ui:
     - max_quality
     columns_enabled: true
     visible_columns:
-    - total_breakthroughs
+    - avg_quality
     - max_quality
   window_height: 900
   window_width: 1600

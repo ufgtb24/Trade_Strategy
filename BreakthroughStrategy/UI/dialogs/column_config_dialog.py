@@ -31,17 +31,22 @@ class ColumnConfigDialog:
         # 创建模态窗口
         self.window = tk.Toplevel(parent)
         self.window.title("Configure Columns")
-        self.window.geometry("400x500")
         self.window.transient(parent)
         self.window.grab_set()
 
         self._create_ui()
 
-        # 居中显示
+        # 自适应调整窗口大小
         self.window.update_idletasks()
-        x = parent.winfo_x() + (parent.winfo_width() - self.window.winfo_width()) // 2
-        y = parent.winfo_y() + (parent.winfo_height() - self.window.winfo_height()) // 2
-        self.window.geometry(f"+{x}+{y}")
+        req_width = self.window.winfo_reqwidth()
+        req_height = max(self.window.winfo_reqheight(), 400)  # 最小高度 400
+        self.window.geometry(f"{req_width}x{req_height}")
+        self.window.minsize(req_width, 400)
+
+        # 居中显示
+        x = parent.winfo_x() + (parent.winfo_width() - req_width) // 2
+        y = parent.winfo_y() + (parent.winfo_height() - req_height) // 2
+        self.window.geometry(f"{req_width}x{req_height}+{x}+{y}")
 
     def _create_ui(self):
         """创建UI组件"""
@@ -90,7 +95,7 @@ class ColumnConfigDialog:
         )
 
         ttk.Button(
-            shortcut_frame, text="Reset to Default", command=self._reset_default
+            shortcut_frame, text="Reset", command=self._reset_default
         ).pack(side=tk.LEFT, padx=5)
 
         # 底部按钮
