@@ -245,10 +245,11 @@ class FeatureCalculator:
 
             # 1. 在M天内找最低 close 及其位置
             min_close = future_min_data['close'].min()
-            min_close_idx = future_min_data['close'].idxmin()  # DataFrame 原始索引
+            # argmin() 返回相对位置索引，加上起始位置得到在 df 中的绝对位置
+            min_close_pos = index + 1 + future_min_data['close'].argmin()
 
             # 2. 从最低点之后到N天内找最高 high
-            future_max_data = df.iloc[min_close_idx + 1:max_end]
+            future_max_data = df.iloc[min_close_pos + 1:max_end]
 
             if len(future_max_data) == 0:
                 # 最低点在窗口末尾，没有后续数据计算最高价
