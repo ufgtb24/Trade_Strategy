@@ -7,6 +7,15 @@
 from tkinter import ttk
 
 # ============================================================================
+# JSON 参数对比颜色
+# ============================================================================
+
+JSON_DIFF_BG = "#FFFACD"      # 浅黄色 (LemonChiffon) - UI 值与 JSON 值不同时
+JSON_MATCH_BG = "#F0F0F0"     # 默认浅灰背景 - 值相同时
+JSON_NA_FG = "#999999"        # N/A 文字颜色 (灰色) - JSON 中不存在该参数时
+
+
+# ============================================================================
 # 图表颜色配置
 # ============================================================================
 
@@ -28,6 +37,9 @@ CHART_COLORS = {
     "breakthrough_text_score": "#FF0000",  # 突破分数文字（红色）
     # 阻力区
     "resistance_zone": "#5D5932",     # 阻力区颜色（橄榄色）
+    # 十字线
+    "crosshair_normal": "#0088CC",    # 普通模式十字线（蓝色）
+    "crosshair_ctrl": "#FF6600",      # Ctrl模式横线（橙色）
 }
 
 
@@ -119,8 +131,10 @@ def configure_global_styles(root=None):
                     font=FONT_LABEL,
                     indicatordiameter=CHECKBUTTON_INDICATOR_SIZE)
 
-    # 单选框：14号字体
-    style.configure("TRadiobutton", font=FONT_LABEL)
+    # 单选框：14号字体 + 统一尺寸
+    style.configure("TRadiobutton",
+                    font=FONT_LABEL,
+                    indicatordiameter=CHECKBUTTON_INDICATOR_SIZE)
 
     # 下拉框：14号字体
     style.configure("TCombobox", font=FONT_INPUT)
@@ -148,6 +162,17 @@ def configure_global_styles(root=None):
     # ========================================
     # 自定义样式（用于特殊场景）
     # ========================================
+
+    # 可选择 Label 样式（去除边框，背景透明）
+    style.configure("SelectableLabel.TEntry",
+                    font=FONT_PARAM_LABEL,
+                    fieldbackground="#F0F0F0",
+                    borderwidth=0,
+                    relief="flat")
+    # 设置只读状态下的样式
+    style.map("SelectableLabel.TEntry",
+              fieldbackground=[("readonly", "#F0F0F0")],
+              foreground=[("readonly", "black")])
 
     # 错误状态的输入框（红色边框）
     style.configure("Error.TEntry",
@@ -184,10 +209,14 @@ SCORE_TOOLTIP_COLORS = {
     "bt_header_bg": "#1E5F3A",
     "bt_header_fg": "#FFFFFF",
     "bt_border": "#2E8F5A",
-    # 分数颜色（动态）
+    # 分数颜色（用于浅色背景）
     "score_high": "#2E7D32",    # >=80 绿色
     "score_medium": "#F57C00",  # 50-79 橙色
     "score_low": "#C62828",     # <50 红色
+    # 分数颜色（用于深色背景，如标题栏）
+    "score_high_light": "#7FFF7F",    # >=80 亮绿色
+    "score_medium_light": "#FFD700",  # 50-79 金色
+    "score_low_light": "#FF6B6B",     # <50 亮红色
     # 表格
     "row_bg": "#F8F9FA",
     "row_alt_bg": "#FFFFFF",

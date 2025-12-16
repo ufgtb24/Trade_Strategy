@@ -124,13 +124,29 @@ class UIParamLoader:
         获取 BreakthroughDetector 参数（带验证）
 
         Returns:
-            参数字典，包含: window, exceed_threshold, peak_supersede_threshold, use_cache, cache_dir
+            参数字典，包含: total_window, min_side_bars, min_relative_height,
+                         exceed_threshold, peak_supersede_threshold, use_cache, cache_dir
         """
         detector_params = self._params.get('breakthrough_detector', {})
 
         # 参数验证和默认值
+        total_window = self._validate_int(
+            detector_params.get('total_window', 10), 6, 30, 10
+        )
+        min_side_bars = self._validate_int(
+            detector_params.get('min_side_bars', 2), 1, 10, 2
+        )
+
+        # 约束验证：min_side_bars * 2 <= total_window
+        if min_side_bars * 2 > total_window:
+            min_side_bars = total_window // 2
+
         validated = {
-            'window': self._validate_int(detector_params.get('window', 5), 3, 20, 5),
+            'total_window': total_window,
+            'min_side_bars': min_side_bars,
+            'min_relative_height': self._validate_float(
+                detector_params.get('min_relative_height', 0.05), 0.0, 0.3, 0.05
+            ),
             'exceed_threshold': self._validate_float(
                 detector_params.get('exceed_threshold', 0.005), 0.001, 0.02, 0.005
             ),
@@ -202,6 +218,7 @@ class UIParamLoader:
 
         Returns:
             参数字典，包含: stability_lookforward, continuity_lookback
+            注意: label_configs 已移至 UIScanConfigLoader
         """
         feature_params = self._params.get('feature_calculator', {})
 
@@ -221,50 +238,89 @@ class UIParamLoader:
         获取 QualityScorer 参数
 
         Returns:
-            参数字典，包含所有权重值
+            参数字典，包含所有权重值和配置参数
+            键名格式与 QualityScorer.__init__() 的 config 参数一致
         """
         quality_params = self._params.get('quality_scorer', {})
 
-        # Peak weights
+        # Peak weights (移除 suppression，只保留 volume, candle, height)
         peak_weights = quality_params.get('peak_weights', {})
         validated = {
             'peak_weight_volume': self._validate_float(
-                peak_weights.get('volume', 0.25), 0.0, 1.0, 0.25
+                peak_weights.get('volume', 0.35), 0.0, 1.0, 0.35
             ),
             'peak_weight_candle': self._validate_float(
-                peak_weights.get('candle', 0.20), 0.0, 1.0, 0.20
-            ),
-            'peak_weight_suppression': self._validate_float(
-                peak_weights.get('suppression', 0.25), 0.0, 1.0, 0.25
+                peak_weights.get('candle', 0.25), 0.0, 1.0, 0.25
             ),
             'peak_weight_height': self._validate_float(
-                peak_weights.get('height', 0.15), 0.0, 1.0, 0.15
-            ),
-            'peak_weight_merged': self._validate_float(
-                peak_weights.get('merged', 0.15), 0.0, 1.0, 0.15
+                peak_weights.get('height', 0.40), 0.0, 1.0, 0.40
             ),
         }
 
-        # Breakthrough weights
+        # Breakthrough weights (包含 historical)
         bt_weights = quality_params.get('breakthrough_weights', {})
         validated.update({
             'bt_weight_change': self._validate_float(
-                bt_weights.get('change', 0.20), 0.0, 1.0, 0.20
+                bt_weights.get('change', 0.15), 0.0, 1.0, 0.15
             ),
             'bt_weight_gap': self._validate_float(
-                bt_weights.get('gap', 0.10), 0.0, 1.0, 0.10
+                bt_weights.get('gap', 0.08), 0.0, 1.0, 0.08
             ),
             'bt_weight_volume': self._validate_float(
-                bt_weights.get('volume', 0.20), 0.0, 1.0, 0.20
+                bt_weights.get('volume', 0.17), 0.0, 1.0, 0.17
             ),
             'bt_weight_continuity': self._validate_float(
-                bt_weights.get('continuity', 0.15), 0.0, 1.0, 0.15
+                bt_weights.get('continuity', 0.12), 0.0, 1.0, 0.12
             ),
             'bt_weight_stability': self._validate_float(
-                bt_weights.get('stability', 0.15), 0.0, 1.0, 0.15
+                bt_weights.get('stability', 0.13), 0.0, 1.0, 0.13
             ),
             'bt_weight_resistance': self._validate_float(
-                bt_weights.get('resistance', 0.20), 0.0, 1.0, 0.20
+                bt_weights.get('resistance', 0.18), 0.0, 1.0, 0.18
+            ),
+            'bt_weight_historical': self._validate_float(
+                bt_weights.get('historical', 0.17), 0.0, 1.0, 0.17
+            ),
+        })
+
+        # Resistance weights (子权重)
+        res_weights = quality_params.get('resistance_weights', {})
+        validated.update({
+            'res_weight_quantity': self._validate_float(
+                res_weights.get('quantity', 0.30), 0.0, 1.0, 0.30
+            ),
+            'res_weight_density': self._validate_float(
+                res_weights.get('density', 0.30), 0.0, 1.0, 0.30
+            ),
+            'res_weight_quality': self._validate_float(
+                res_weights.get('quality', 0.40), 0.0, 1.0, 0.40
+            ),
+        })
+
+        # Historical weights (子权重)
+        hist_weights = quality_params.get('historical_weights', {})
+        validated.update({
+            'hist_weight_oldest_age': self._validate_float(
+                hist_weights.get('oldest_age', 0.55), 0.0, 1.0, 0.55
+            ),
+            'hist_weight_suppression': self._validate_float(
+                hist_weights.get('suppression_span', 0.45), 0.0, 1.0, 0.45
+            ),
+        })
+
+        # 标量参数
+        validated.update({
+            'time_decay_baseline': self._validate_float(
+                quality_params.get('time_decay_baseline', 0.3), 0.0, 0.5, 0.3
+            ),
+            'time_decay_half_life': self._validate_int(
+                quality_params.get('time_decay_half_life', 84), 21, 252, 84
+            ),
+            'historical_significance_saturation': self._validate_int(
+                quality_params.get('historical_significance_saturation', 252), 63, 504, 252
+            ),
+            'historical_quality_threshold': self._validate_int(
+                quality_params.get('historical_quality_threshold', 70), 50, 90, 70
             ),
         })
 

@@ -1,34 +1,35 @@
 breakthrough_detector:
   cache_dir: ./cache
-  exceed_threshold: 0.005
+  exceed_threshold: 0.004
+  min_relative_height: 0.1
+  min_side_bars: 1
   peak_supersede_threshold: 0.03
+  total_window: 20
   use_cache: false
-  window: 5
 feature_calculator:
-  candle_classification:
-    big_body_threshold: 0.6
-    small_body_threshold: 0.3
   continuity_lookback: 5
   stability_lookforward: 10
-peak_features:
-  relative_height_lookback: 20
-  suppression_days_threshold: 3
-  volume_surge_threshold: 1.5
 quality_scorer:
   breakthrough_weights:
-    change: 0.2
+    change: 0.05
     continuity: 0.15
-    gap: 0.1
-    resistance: 0.2
-    stability: 0.15
-    volume: 0.2
+    gap: 0.05
+    historical: 0.25
+    resistance: 0.3
+    stability: 0.1
+    volume: 0.1
+  historical_quality_threshold: 60
+  historical_significance_saturation: 252
+  historical_weights:
+    oldest_age: 0.55
+    suppression_span: 0.45
   peak_weights:
     candle: 0.2
-    height: 0.15
-    merged: 0.15
-    suppression: 0.25
-    volume: 0.25
+    height: 0.35
+    volume: 0.45
   resistance_weights:
     density: 0.3
     quality: 0.4
     quantity: 0.3
+  time_decay_baseline: 0.3
+  time_decay_half_life: 84

@@ -4,6 +4,10 @@ import tkinter as tk
 from tkinter import ttk
 from typing import Callable, Dict, Optional, Any
 
+# 临时行常量
+TEMP_ROW_PREFIX = "__temp_"
+TEMP_ROW_TAG = "temp_stats"
+
 
 class HeaderTooltip:
     """列标题 Tooltip 管理器"""
@@ -201,6 +205,22 @@ class StockListPanel:
             width=8,
         ).pack(side=tk.LEFT, padx=(2, 0))
 
+        # 标签类型选择器
+        label_frame = ttk.Frame(toolbar)
+        label_frame.pack(side=tk.LEFT, padx=(10, 0))
+
+        ttk.Label(label_frame, text="Label:").pack(side=tk.LEFT)
+        self._label_type_var = tk.StringVar(value="avg")
+        self._label_type_combo = ttk.Combobox(
+            label_frame,
+            textvariable=self._label_type_var,
+            values=["avg", "max", "best_quality", "latest"],
+            width=10,
+            state="readonly",
+        )
+        self._label_type_combo.pack(side=tk.LEFT, padx=(2, 0))
+        self._label_type_combo.bind("<<ComboboxSelected>>", self._on_label_type_changed)
+
         # 列表容器 (包含两个Treeview和滚动条)
         list_frame = ttk.Frame(container)
         list_frame.pack(fill=tk.BOTH, expand=True)
@@ -263,6 +283,22 @@ class StockListPanel:
 
         # 绑定右键菜单到 fixed_tree（当所有属性列隐藏时，仍可通过 Symbol 列头弹出菜单）
         self.fixed_tree.bind("<Button-3>", self._show_column_context_menu)
+
+        # 配置临时行样式（黄色背景 + 黑色字）
+        self.fixed_tree.tag_configure(
+            TEMP_ROW_TAG,
+            background="#FFF3CD",
+            foreground="#000000"
+        )
+        self.main_tree.tag_configure(
+            TEMP_ROW_TAG,
+            background="#FFF3CD",
+            foreground="#000000"
+        )
+
+        # 临时行状态
+        self._current_temp_iid = None
+        self._current_temp_stats = None  # (symbol, stats) 元组，用于排序后重建
 
     def _load_column_config(self):
         """从配置文件加载列标签配置"""
@@ -358,6 +394,12 @@ class StockListPanel:
     def _handle_selection(self, symbol):
         """处理选择逻辑"""
 
+        # 忽略临时行的选择，自动跳转到实际股票行
+        if symbol.startswith(TEMP_ROW_PREFIX):
+            actual_symbol = symbol.replace(TEMP_ROW_PREFIX, "")
+            self._restore_selection(actual_symbol)
+            return
+
         # 防止重复处理同一只股票（由于事件异步排队导致）
         if symbol == self._last_selected_symbol:
             return
@@ -414,6 +456,10 @@ class StockListPanel:
         Args:
             scan_results: 扫描结果字典
         """
+        # 清除临时行状态（重新加载数据时）
+        self._remove_temp_row()
+        self._current_temp_stats = None
+
         self.stock_data = []
 
         for result in scan_results.get("results", []):
@@ -445,12 +491,24 @@ class StockListPanel:
                 item["max_quality"] = max(quality_scores) if quality_scores else 0
 
             # 2. 动态添加其他标量字段（直接使用 JSON 原始字段名）
+            # 注意：排除 label_ 开头的字段，避免在 Configure Columns 中显示
             for k, v in result.items():
                 if k in ["symbol", "breakthroughs", "error"]:
                     continue
+                if k.startswith("label_"):
+                    continue  # 跳过标签统计量字段
                 # 只添加标量值
                 if isinstance(v, (int, float, str, bool)):
                     item[k] = v
+
+            # 3. 从突破点的 labels 计算标签统计量
+            breakthroughs = result.get("breakthroughs", [])
+            label_stats = self._calculate_label_stats(breakthroughs)
+            item["_label_stats"] = label_stats  # 内部字段，不会被 Configure Columns 发现
+
+            # 4. 初始化 label 字段（根据当前选择的类型）
+            label_type = self._label_type_var.get()
+            item["label"] = label_stats.get(label_type)
 
             self.stock_data.append(item)
 
@@ -458,9 +516,12 @@ class StockListPanel:
         if self.stock_data:
             from ..config import get_ui_config_loader
 
-            # 动态发现所有标量字段
+            # 动态发现所有标量字段（排除内部字段和特殊字段）
             first_item = self.stock_data[0]
-            all_columns = [k for k in first_item.keys() if k not in ["symbol", "raw_data"]]
+            all_columns = [
+                k for k in first_item.keys()
+                if k not in ["symbol", "raw_data"] and not k.startswith("_")
+            ]
 
             # 从配置加载列设置
             config_loader = get_ui_config_loader()
@@ -598,9 +659,19 @@ class StockListPanel:
         self._last_sort_reverse = reverse
 
         # 排序
-        # 使用 get(column, 0) 处理缺失值
-        self.filtered_data.sort(key=lambda x: x.get(column, 0), reverse=reverse)
+        # 使用 get(column, 0) 处理缺失值，同时处理 None 值
+        def sort_key(x):
+            val = x.get(column)
+            if val is None:
+                return (0, 0)  # None 值排在最后（倒序时）或最前（正序时）
+            return (1, val)
+        self.filtered_data.sort(key=sort_key, reverse=reverse)
         self._update_tree()
+
+        # 排序后重新插入临时行（如果存在）
+        if self._current_temp_stats:
+            symbol, stats = self._current_temp_stats
+            self.show_temp_row(symbol, stats)
 
     def get_selected_symbol(self):
         """获取当前选中的股票代码"""
@@ -660,10 +731,11 @@ class StockListPanel:
         if not self.stock_data:
             return  # 没有数据时不打开
 
-        # 动态发现所有字段
+        # 动态发现所有字段（排除内部字段）
         first_item = self.stock_data[0]
         available_columns = [
-            k for k in first_item.keys() if k not in ["symbol", "raw_data"]
+            k for k in first_item.keys()
+            if k not in ["symbol", "raw_data"] and not k.startswith("_")
         ]
 
         # 当前可见列
@@ -678,6 +750,73 @@ class StockListPanel:
             visible_columns=visible_columns,
             on_apply_callback=self.set_visible_columns,
         )
+
+    def _on_label_type_changed(self, event=None):
+        """标签类型切换时更新显示"""
+        label_type = self._label_type_var.get()
+
+        # 从内部统计量字典中获取对应类型的值
+        for stock in self.stock_data:
+            label_stats = stock.get("_label_stats", {})
+            stock["label"] = label_stats.get(label_type)
+
+        # 同步到 filtered_data 并更新显示
+        self.filtered_data = self.stock_data
+        self._update_tree()
+
+    def _calculate_label_stats(self, breakthroughs: list) -> dict:
+        """
+        从突破点的 labels 计算标签统计量
+
+        Args:
+            breakthroughs: 突破点列表（来自 JSON）
+
+        Returns:
+            统计量字典：{"avg": 0.12, "max": 0.25, "best_quality": 0.18, "latest": 0.10}
+        """
+        if not breakthroughs:
+            return {}
+
+        # 获取第一个有效的 label_key
+        label_key = None
+        for bt in breakthroughs:
+            labels = bt.get("labels", {})
+            if labels:
+                label_key = list(labels.keys())[0]
+                break
+
+        if not label_key:
+            return {}
+
+        # 收集所有有效的标签值
+        valid_labels = []
+        for bt in breakthroughs:
+            labels = bt.get("labels", {})
+            val = labels.get(label_key)
+            if val is not None:
+                valid_labels.append(val)
+
+        stats = {}
+
+        # 1. 平均值
+        stats["avg"] = sum(valid_labels) / len(valid_labels) if valid_labels else None
+
+        # 2. 最大值
+        stats["max"] = max(valid_labels) if valid_labels else None
+
+        # 3. 最高质量突破的标签
+        best_quality_bt = max(
+            breakthroughs, key=lambda x: x.get("quality_score") or 0
+        )
+        best_labels = best_quality_bt.get("labels", {})
+        stats["best_quality"] = best_labels.get(label_key)
+
+        # 4. 最近突破的标签（按日期排序）
+        latest_bt = max(breakthroughs, key=lambda x: x.get("date", ""))
+        latest_labels = latest_bt.get("labels", {})
+        stats["latest"] = latest_labels.get(label_key)
+
+        return stats
 
     def toggle_columns_enabled(self):
         """
@@ -701,9 +840,12 @@ class StockListPanel:
             if new_state:
                 # 恢复用户配置的列
                 visible_columns = config.get("visible_columns", [])
-                # 过滤出实际存在的列
+                # 过滤出实际存在的列（排除内部字段）
                 first_item = self.stock_data[0]
-                all_columns = [k for k in first_item.keys() if k not in ["symbol", "raw_data"]]
+                all_columns = [
+                    k for k in first_item.keys()
+                    if k not in ["symbol", "raw_data"] and not k.startswith("_")
+                ]
                 columns = [c for c in visible_columns if c in all_columns]
                 self._configure_tree_columns(columns)
             else:
@@ -716,12 +858,15 @@ class StockListPanel:
 
     def _show_column_context_menu(self, event):
         """显示列右键菜单"""
-        # 获取所有可用列
+        # 获取所有可用列（排除内部字段）
         if not self.stock_data:
             return
 
         first_item = self.stock_data[0]
-        all_columns = [k for k in first_item.keys() if k not in ["symbol", "raw_data"]]
+        all_columns = [
+            k for k in first_item.keys()
+            if k not in ["symbol", "raw_data"] and not k.startswith("_")
+        ]
 
         # 获取当前可见列
         from ..config import get_ui_config_loader
@@ -1015,3 +1160,95 @@ class StockListPanel:
         # 重新配置列显示
         self._configure_tree_columns(columns)
         self._update_tree()
+
+    # ==================== 临时统计行功能 ====================
+
+    def get_label_type(self) -> str:
+        """
+        获取当前选择的 label 类型
+
+        Returns:
+            label 类型: "avg", "max", "best_quality", "latest"
+        """
+        return self._label_type_var.get()
+
+    def show_temp_row(self, symbol: str, temp_stats: dict):
+        """
+        在指定股票下方插入临时统计行
+
+        Args:
+            symbol: 股票代码
+            temp_stats: 临时统计量字典 {
+                "avg_quality": float,
+                "max_quality": float,
+                "total_breakthroughs": int,
+                "label": float,
+                ...
+            }
+        """
+        # 1. 移除现有临时行
+        self._remove_temp_row()
+
+        # 2. 查找选中行的位置
+        children = list(self.fixed_tree.get_children())
+        try:
+            index = children.index(symbol)
+        except ValueError:
+            return  # 股票不存在
+
+        # 3. 计算插入位置（选中行之后）
+        insert_index = index + 1
+
+        # 4. 构建临时行 iid
+        temp_iid = f"{TEMP_ROW_PREFIX}{symbol}"
+
+        # 5. 插入左侧固定列（Symbol 显示为 "↳ (UI)"）
+        self.fixed_tree.insert(
+            "", insert_index,
+            iid=temp_iid,
+            values=("↳ (UI)",),
+            tags=(TEMP_ROW_TAG,)
+        )
+
+        # 6. 插入右侧动态列
+        columns = self.main_tree["columns"]
+        values = []
+        for col in columns:
+            val = temp_stats.get(col, "")
+            if isinstance(val, float):
+                values.append(f"{val:.1f}")
+            elif val is None:
+                values.append("")
+            else:
+                values.append(str(val))
+
+        self.main_tree.insert(
+            "", insert_index,
+            iid=temp_iid,
+            values=values,
+            tags=(TEMP_ROW_TAG,)
+        )
+
+        # 7. 记录当前临时行状态（用于排序后重建）
+        self._current_temp_iid = temp_iid
+        self._current_temp_stats = (symbol, temp_stats)
+
+    def _remove_temp_row(self):
+        """移除当前临时行（如存在）"""
+        if self._current_temp_iid:
+            try:
+                self.fixed_tree.delete(self._current_temp_iid)
+            except tk.TclError:
+                pass  # 行已不存在
+            try:
+                self.main_tree.delete(self._current_temp_iid)
+            except tk.TclError:
+                pass  # 行已不存在
+            self._current_temp_iid = None
+
+    def hide_temp_row(self):
+        """
+        隐藏临时行（切换到 Browse Mode 时调用）
+        """
+        self._remove_temp_row()
+        self._current_temp_stats = None

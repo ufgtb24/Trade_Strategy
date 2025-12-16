@@ -12,7 +12,7 @@ from BreakthroughStrategy.analysis import BreakthroughDetector
 from BreakthroughStrategy.analysis.breakthrough_detector import Breakthrough, Peak
 
 from .charts import ChartCanvasManager
-from .config import get_ui_config_loader
+from .config import get_ui_config_loader, get_ui_scan_config_loader
 from .managers import NavigationManager, ScanManager, compute_breakthroughs_from_dataframe
 from .panels import ParameterPanel, StockListPanel
 from .utils import show_error_dialog
@@ -33,6 +33,7 @@ class InteractiveUI:
 
         # 从配置文件加载窗口大小
         self.config_loader = get_ui_config_loader()
+        self.scan_config_loader = get_ui_scan_config_loader()
         width, height = self.config_loader.get_window_size()
         self.root.geometry(f"{width}x{height}")
 
@@ -47,6 +48,7 @@ class InteractiveUI:
             self.root.geometry(f"{screen_width}x{screen_height}+0+0")
 
         self.scan_data = None  # 扫描数据
+        self.current_json_path = None  # 当前加载的 JSON 文件路径
         self.current_symbol = None  # 当前选中股票
 
         # 缓存当前计算结果，用于快速重绘
@@ -63,12 +65,18 @@ class InteractiveUI:
 
     def _create_ui(self):
         """创建UI布局"""
+        # 模式指示器（最顶部）
+        self._create_mode_indicator()
+
         # 参数面板（顶部）
         self.param_panel = ParameterPanel(
             self.root,
             on_load_callback=self.load_scan_results,
             on_param_changed_callback=self._on_param_changed,
             on_display_option_changed_callback=self._on_display_option_changed,
+            on_rescan_all_callback=self._on_rescan_all_clicked,
+            on_new_scan_callback=self._on_new_scan_clicked,
+            get_json_params_callback=self._get_scan_data,
         )
 
         # 主容器（PanedWindow分割）
@@ -114,6 +122,7 @@ class InteractiveUI:
             # 使用ScanManager加载
             manager = ScanManager()
             self.scan_data = manager.load_results(json_path)
+            self.current_json_path = json_path  # 保存当前文件路径
 
             # 清空DataFrame缓存（新JSON可能有不同的时间范围）
             self._data_cache.clear()
@@ -124,12 +133,16 @@ class InteractiveUI:
             # 显示左侧面板（如果尚未显示）
             self._show_left_panel()
 
-            # 更新状态
+            # 更新状态（显示文件名）
             total_stocks = self.scan_data["scan_metadata"]["stocks_scanned"]
             total_bts = self.scan_data["summary_stats"]["total_breakthroughs"]
+            filename = Path(json_path).name
             self.param_panel.set_status(
-                f"Loaded {total_stocks} stocks, {total_bts} breakthroughs", "green"
+                f"Loaded {filename}: {total_stocks} stocks, {total_bts} breakthroughs", "green"
             )
+
+            # 更新模式指示器（显示文件名）
+            self._update_mode_indicator()
 
             # 成功时不弹框，只更新状态栏
 
@@ -204,6 +217,8 @@ class InteractiveUI:
 
         if not breakthroughs:
             self.param_panel.set_status(f"{symbol}: No breakthroughs", "gray")
+            # 无突破时也需要隐藏临时行
+            self.stock_list_panel.hide_temp_row()
             return
 
         # 缓存结果
@@ -216,6 +231,16 @@ class InteractiveUI:
         self.chart_manager.update_chart(
             df, breakthroughs, detector, symbol, display_options
         )
+
+        # 计算完成后，检查是否需要显示临时行
+        if self.param_panel.get_use_ui_params():
+            # Analysis Mode: 计算临时统计量并显示
+            label_type = self.stock_list_panel.get_label_type()
+            temp_stats = self._calculate_temp_stats(breakthroughs, label_type)
+            self.stock_list_panel.show_temp_row(symbol, temp_stats)
+        else:
+            # Browse Mode: 隐藏临时行
+            self.stock_list_panel.hide_temp_row()
 
     def _full_computation(self, symbol: str, params: dict, df: pd.DataFrame) -> tuple:
         """
@@ -231,13 +256,17 @@ class InteractiveUI:
         """
         # 从 UI 参数加载器获取配置
         feature_cfg = self.param_panel.param_loader.get_feature_calculator_params()
+        # 合并 label_configs（从扫描配置获取）
+        feature_cfg['label_configs'] = self.scan_config_loader.get_label_configs()
         scorer_cfg = self.param_panel.param_loader.get_quality_scorer_params()
 
         # 使用统一函数计算突破
         breakthroughs, detector = compute_breakthroughs_from_dataframe(
             symbol=symbol,
             df=df,
-            window=params["window"],
+            total_window=params["total_window"],
+            min_side_bars=params["min_side_bars"],
+            min_relative_height=params["min_relative_height"],
             exceed_threshold=params["exceed_threshold"],
             peak_supersede_threshold=params.get("peak_supersede_threshold", 0.03),
             feature_calc_config=feature_cfg,
@@ -435,7 +464,9 @@ class InteractiveUI:
         # 3. 重建BreakthroughDetector状态（用于绘图）
         detector = BreakthroughDetector(
             symbol=symbol,
-            window=params["window"],
+            total_window=params["total_window"],
+            min_side_bars=params["min_side_bars"],
+            min_relative_height=params["min_relative_height"],
             exceed_threshold=params["exceed_threshold"],
             use_cache=False,
         )
@@ -501,12 +532,33 @@ class InteractiveUI:
             f"Data file for {symbol} not found in: {', '.join(search_paths)}"
         )
 
+    def _get_scan_data(self):
+        """
+        获取当前加载的 scan_data
+
+        用于 Parameter Editor 获取 JSON 参数进行对比显示
+
+        Returns:
+            scan_data 字典，如果未加载则返回 None
+        """
+        return self.scan_data if hasattr(self, 'scan_data') and self.scan_data else None
+
     def _on_param_changed(self):
-        """参数变化回调"""
-        # 清空DataFrame缓存（参数变化可能影响数据加载）
-        # 注意：这里不需要清空缓存，因为DataFrame缓存是基于时间范围的
-        # 参数变化只影响突破检测算法，不影响数据加载
-        # self._data_cache.clear()
+        """
+        参数变化回调
+
+        双模式设计：
+        - Browse Mode: 使用 JSON 缓存，不修改 stock list
+        - Analysis Mode: 使用 UI 参数计算，但【不更新 stock list】
+          （避免不同股票基于不同参数导致数据混乱）
+        """
+        # 更新模式指示器
+        self._update_mode_indicator()
+
+        # 模式切换时处理临时行
+        if not self.param_panel.get_use_ui_params():
+            # 切换到 Browse Mode，隐藏临时行
+            self.stock_list_panel.hide_temp_row()
 
         if not self.current_symbol:
             return  # 没有选中股票，不刷新
@@ -518,12 +570,8 @@ class InteractiveUI:
             for stock in self.stock_list_panel.filtered_data:
                 if stock["symbol"] == self.current_symbol:
                     self._on_stock_selected(self.current_symbol, stock["raw_data"])
-
-                    # 参数变更后，如果使用 UI Params，需要更新 StockListPanel 的统计信息
-                    if self.param_panel.get_use_ui_params() and self.current_breakthroughs:
-                        self._update_stock_list_statistics(
-                            self.current_symbol, self.current_breakthroughs
-                        )
+                    # 【关键改动】Analysis Mode 不再更新 stock list 统计值
+                    # 删除原有的 _update_stock_list_statistics() 调用
                     break
 
     def _update_stock_list_statistics(self, symbol: str, breakthroughs: list):
@@ -561,6 +609,68 @@ class InteractiveUI:
 
         # 刷新显示
         self.stock_list_panel._update_tree()
+
+    def _calculate_temp_stats(self, breakthroughs: list, label_type: str) -> dict:
+        """
+        从突破点列表计算临时统计量
+
+        Args:
+            breakthroughs: 突破点列表
+            label_type: 当前选择的 label 类型 ("avg", "max", "best_quality", "latest")
+
+        Returns:
+            统计量字典，键名与 Stock List 列名一致
+        """
+        quality_scores = [
+            bt.quality_score for bt in breakthroughs
+            if bt.quality_score is not None
+        ]
+
+        stats = {
+            "avg_quality": sum(quality_scores) / len(quality_scores) if quality_scores else 0.0,
+            "max_quality": max(quality_scores) if quality_scores else 0.0,
+            "total_breakthroughs": len(breakthroughs),
+        }
+
+        # 计算 label 列的临时统计量
+        label_stats = self._calculate_label_stats_from_breakthroughs(breakthroughs)
+        stats["label"] = label_stats.get(label_type)
+
+        return stats
+
+    def _calculate_label_stats_from_breakthroughs(self, breakthroughs: list) -> dict:
+        """
+        从 Breakthrough 对象列表计算标签统计量
+
+        Args:
+            breakthroughs: Breakthrough 对象列表
+
+        Returns:
+            统计量字典: {"avg": float, "max": float, "best_quality": float, "latest": float}
+        """
+        if not breakthroughs:
+            return {}
+
+        # 从 breakthroughs 提取 labels
+        valid_labels = []
+        for bt in breakthroughs:
+            if hasattr(bt, 'labels') and bt.labels:
+                # 获取第一个 label key 的值
+                label_key = list(bt.labels.keys())[0]
+                val = bt.labels.get(label_key)
+                if val is not None:
+                    valid_labels.append((val, bt.quality_score or 0, bt.date))
+
+        if not valid_labels:
+            return {}
+
+        stats = {}
+        stats["avg"] = sum(v[0] for v in valid_labels) / len(valid_labels)
+        stats["max"] = max(v[0] for v in valid_labels)
+        stats["best_quality"] = max(valid_labels, key=lambda x: x[1])[0]
+        stats["latest"] = max(valid_labels, key=lambda x: x[2])[0]
+
+        return stats
 
     def _on_navigation_trigger(self):
         """键盘导航触发图表更新"""
@@ -643,3 +753,511 @@ class InteractiveUI:
             # 可选：启用调试日志
             # print(f"[UI] Failed to adjust sash position: {e}")
             pass
+
+    # ==================== 双模式架构 ====================
+
+    def _create_mode_indicator(self):
+        """创建模式指示器（顶部状态栏）"""
+        self.mode_indicator_frame = tk.Frame(self.root, height=30)
+        self.mode_indicator_frame.pack(fill=tk.X)
+        self.mode_indicator_frame.pack_propagate(False)  # 固定高度
+
+        self.mode_indicator_label = tk.Label(
+            self.mode_indicator_frame,
+            text="",
+            font=("Arial", 11),
+            anchor="w",
+            padx=15,
+            pady=5,
+        )
+        self.mode_indicator_label.pack(fill=tk.BOTH, expand=True)
+
+        # 初始状态：Browse Mode
+        self._update_mode_indicator()
+
+    def _update_mode_indicator(self):
+        """更新模式指示器显示"""
+        mode = self.param_panel.get_mode() if hasattr(self, "param_panel") else "browse"
+
+        # 获取文件名（两种模式都显示）
+        filename = self._get_loaded_filename()
+        # 使用多个空格分隔模式名和文件名
+        separator = "          "  # 10个空格
+
+        if mode == "browse":
+            # 黄色背景
+            if filename:
+                text = f"Browse Mode{separator}{filename}"
+            else:
+                text = "Browse Mode"
+            self.mode_indicator_label.config(
+                text=text,
+                bg="#FFF3CD",  # 浅黄色
+                fg="#856404",
+            )
+            self.mode_indicator_frame.config(bg="#FFF3CD")
+        else:
+            # 蓝色背景
+            if filename:
+                text = f"Analysis Mode{separator}{filename}"
+            else:
+                text = "Analysis Mode"
+            self.mode_indicator_label.config(
+                text=text,
+                bg="#CCE5FF",  # 浅蓝色
+                fg="#004085",
+            )
+            self.mode_indicator_frame.config(bg="#CCE5FF")
+
+    def _get_loaded_filename(self) -> str:
+        """获取当前加载的 JSON 文件名"""
+        if hasattr(self, "current_json_path") and self.current_json_path:
+            return Path(self.current_json_path).name
+        return ""
+
+    def _get_json_params_summary(self) -> str:
+        """获取 JSON 参数摘要用于显示"""
+        if not hasattr(self, "scan_data") or not self.scan_data:
+            return "No data loaded"
+
+        metadata = self.scan_data.get("scan_metadata", {})
+        scan_date = metadata.get("scan_date", "Unknown")[:10]  # 只取日期部分
+        total_stocks = metadata.get("stocks_scanned", 0)
+
+        # 尝试获取参数文件名（如果有）
+        detector_params = metadata.get("detector_params", {})
+        if detector_params:
+            window = detector_params.get("total_window", "?")
+            threshold = detector_params.get("exceed_threshold", "?")
+            return f"window={window}, threshold={threshold}, {total_stocks} stocks, {scan_date}"
+
+        return f"{total_stocks} stocks, {scan_date}"
+
+    def _on_rescan_all_clicked(self):
+        """Rescan All 按钮点击回调"""
+        from tkinter import messagebox
+
+        from .dialogs import RescanModeDialog
+
+        if not hasattr(self, "scan_data") or not self.scan_data:
+            messagebox.showwarning("Warning", "No scan results loaded")
+            return
+
+        if not self.current_json_path:
+            messagebox.showwarning("Warning", "No JSON file path available")
+            return
+
+        # 弹出 Rescan 模式选择对话框
+        dialog = RescanModeDialog(self.root, self.current_json_path)
+        result = dialog.show()
+
+        if not result:
+            return  # 用户取消
+
+        mode, filename_or_path = result
+
+        # 启动后台扫描
+        if mode == RescanModeDialog.MODE_OVERWRITE:
+            # 覆盖模式：使用完整路径作为文件名
+            self._start_background_rescan(output_filepath=filename_or_path)
+        else:
+            # 新建文件模式：使用文件名（不含路径）
+            self._start_background_rescan(output_filename=filename_or_path)
+
+    def _on_new_scan_clicked(self):
+        """New Scan 按钮点击回调 - 根据 config.yaml 从头扫描"""
+        from tkinter import messagebox
+
+        from .dialogs import FilenameDialog
+
+        # 获取扫描配置摘要
+        scan_summary = self.scan_config_loader.get_scan_summary()
+        scan_mode = self.scan_config_loader.get_scan_mode()
+
+        # 确定股票数量
+        if scan_mode == "csv":
+            try:
+                stock_time_ranges = self.scan_config_loader.load_csv_stock_list()
+                stock_count = len(stock_time_ranges)
+            except Exception as e:
+                messagebox.showerror(
+                    "CSV Error",
+                    f"Failed to load CSV file:\n{str(e)}\n\n"
+                    "Please check Scan Settings.",
+                )
+                return
+        else:
+            # 全局模式：扫描 data_dir 中的所有 pkl 文件
+            from pathlib import Path
+
+            data_dir = Path(self.scan_config_loader.get_data_dir())
+            if not data_dir.exists():
+                messagebox.showerror(
+                    "Data Directory Error",
+                    f"Data directory not found:\n{data_dir}\n\n"
+                    "Please check Scan Settings.",
+                )
+                return
+
+            pkl_files = list(data_dir.glob("*.pkl"))
+            stock_count = len(pkl_files)
+
+            if stock_count == 0:
+                messagebox.showwarning(
+                    "No Data",
+                    f"No .pkl files found in:\n{data_dir}",
+                )
+                return
+
+        # 确认对话框
+        result = messagebox.askyesno(
+            "New Scan",
+            f"Start a new scan with current settings?\n\n"
+            f"Configuration: {scan_summary}\n"
+            f"Stocks to scan: {stock_count}\n\n"
+            "This may take a while. Continue?",
+        )
+
+        if not result:
+            return
+
+        # 弹出文件命名对话框
+        filename_dialog = FilenameDialog(self.root, title="Save New Scan Results")
+        filename = filename_dialog.show()
+
+        if not filename:
+            return  # 用户取消
+
+        # 启动后台新扫描
+        self._start_new_scan(output_filename=filename)
+
+    def _start_background_rescan(
+        self, output_filename: str = None, output_filepath: str = None
+    ):
+        """启动后台批量扫描（使用 config.yaml 的时间范围配置）
+
+        Args:
+            output_filename: 输出文件名（不含路径，保存到 output_dir）
+            output_filepath: 输出文件完整路径（覆盖模式使用）
+        """
+        import threading
+        from tkinter import messagebox
+
+        # 获取股票列表
+        symbols = [
+            r["symbol"]
+            for r in self.scan_data.get("results", [])
+            if "error" not in r
+        ]
+
+        if not symbols:
+            messagebox.showwarning("Warning", "No valid stocks to scan")
+            return
+
+        # 获取当前 UI 参数
+        params = self.param_panel.get_params()
+        feature_cfg = self.param_panel.param_loader.get_feature_calculator_params()
+        # 合并 label_configs（从扫描配置获取）
+        feature_cfg['label_configs'] = self.scan_config_loader.get_label_configs()
+        scorer_cfg = self.param_panel.param_loader.get_quality_scorer_params()
+
+        # 从 scan_config_loader 获取扫描配置
+        scan_mode = self.scan_config_loader.get_scan_mode()
+        data_dir = self.scan_config_loader.get_data_dir()
+        output_dir = self.scan_config_loader.get_output_dir()
+        num_workers = self.scan_config_loader.get_num_workers()
+
+        # 准备时间范围配置
+        scan_time_config = {"mode": scan_mode}
+
+        if scan_mode == "csv":
+            # CSV 模式：加载每只股票的独立时间范围
+            try:
+                stock_time_ranges = self.scan_config_loader.load_csv_stock_list()
+                scan_time_config["stock_time_ranges"] = stock_time_ranges
+
+                # 过滤 symbols：只保留 CSV 中存在的股票
+                csv_symbols = set(stock_time_ranges.keys())
+                symbols = [s for s in symbols if s in csv_symbols]
+
+                if not symbols:
+                    messagebox.showwarning(
+                        "Warning",
+                        "No stocks found in both scan results and CSV file"
+                    )
+                    return
+
+            except Exception as e:
+                messagebox.showerror(
+                    "CSV Load Error",
+                    f"Failed to load CSV file:\n{str(e)}"
+                )
+                return
+        else:
+            # 全局时间范围模式
+            start_date, end_date = self.scan_config_loader.get_date_range()
+            scan_time_config["start_date"] = start_date
+            scan_time_config["end_date"] = end_date
+
+        # 禁用 UI 交互
+        self.param_panel.rescan_all_btn.config(state="disabled")
+        mode_desc = self.scan_config_loader.get_scan_summary()
+        self.param_panel.set_status(
+            f"Scanning {len(symbols)} stocks ({mode_desc})...", "blue"
+        )
+
+        # 创建进度窗口
+        self._create_progress_window(len(symbols))
+
+        # 启动后台线程
+        thread = threading.Thread(
+            target=self._do_background_rescan,
+            args=(
+                symbols,
+                params,
+                feature_cfg,
+                scorer_cfg,
+                data_dir,
+                output_dir,
+                num_workers,
+                scan_time_config,
+                output_filename,
+                output_filepath,
+            ),
+            daemon=True,
+        )
+        thread.start()
+
+    def _start_new_scan(self, output_filename: str = None):
+        """启动新扫描（根据 config.yaml 配置从头扫描）
+
+        Args:
+            output_filename: 输出文件名（不含路径，保存到 output_dir）
+        """
+        import threading
+        from pathlib import Path
+        from tkinter import messagebox
+
+        # 获取扫描配置
+        scan_mode = self.scan_config_loader.get_scan_mode()
+        data_dir = self.scan_config_loader.get_data_dir()
+        output_dir = self.scan_config_loader.get_output_dir()
+        num_workers = self.scan_config_loader.get_num_workers()
+        max_stocks = self.scan_config_loader.get_max_stocks()
+
+        # 获取 UI 参数
+        params = self.param_panel.get_params()
+        feature_cfg = self.param_panel.param_loader.get_feature_calculator_params()
+        # 合并 label_configs（从扫描配置获取）
+        feature_cfg['label_configs'] = self.scan_config_loader.get_label_configs()
+        scorer_cfg = self.param_panel.param_loader.get_quality_scorer_params()
+
+        # 准备时间范围配置和股票列表
+        scan_time_config = {"mode": scan_mode}
+
+        if scan_mode == "csv":
+            # CSV 模式
+            stock_time_ranges = self.scan_config_loader.load_csv_stock_list()
+            symbols = list(stock_time_ranges.keys())
+            scan_time_config["stock_time_ranges"] = stock_time_ranges
+        else:
+            # 全局模式
+            data_dir_path = Path(data_dir)
+            symbols = [f.stem for f in data_dir_path.glob("*.pkl")]
+            start_date, end_date = self.scan_config_loader.get_date_range()
+            scan_time_config["start_date"] = start_date
+            scan_time_config["end_date"] = end_date
+
+        # 应用 max_stocks 限制
+        if max_stocks and len(symbols) > max_stocks:
+            symbols = symbols[:max_stocks]
+
+        if not symbols:
+            messagebox.showwarning("Warning", "No stocks to scan")
+            return
+
+        # 禁用 UI 交互
+        self.param_panel.new_scan_btn.config(state="disabled")
+        self.param_panel.rescan_all_btn.config(state="disabled")
+        mode_desc = self.scan_config_loader.get_scan_summary()
+        self.param_panel.set_status(
+            f"New scan: {len(symbols)} stocks ({mode_desc})...", "blue"
+        )
+
+        # 创建进度窗口
+        self._create_progress_window(len(symbols), title="New Scan")
+
+        # 启动后台线程
+        thread = threading.Thread(
+            target=self._do_background_rescan,
+            args=(
+                symbols,
+                params,
+                feature_cfg,
+                scorer_cfg,
+                data_dir,
+                output_dir,
+                num_workers,
+                scan_time_config,
+                output_filename,
+                None,  # output_filepath
+            ),
+            daemon=True,
+        )
+        thread.start()
+
+    def _create_progress_window(self, total: int, title: str = "Rescanning..."):
+        """创建进度窗口"""
+        self.progress_window = tk.Toplevel(self.root)
+        self.progress_window.title(title)
+        self.progress_window.geometry("400x120")
+        self.progress_window.transient(self.root)
+        self.progress_window.grab_set()
+
+        # 禁止关闭
+        self.progress_window.protocol("WM_DELETE_WINDOW", lambda: None)
+
+        ttk.Label(
+            self.progress_window,
+            text="Rescanning all stocks with UI parameters...",
+            font=("Arial", 12),
+        ).pack(pady=15)
+
+        self.progress_var = tk.DoubleVar(value=0)
+        self.progress_bar = ttk.Progressbar(
+            self.progress_window,
+            variable=self.progress_var,
+            maximum=total,
+            length=350,
+        )
+        self.progress_bar.pack(pady=5)
+
+        self.progress_label = ttk.Label(
+            self.progress_window,
+            text=f"0 / {total}",
+        )
+        self.progress_label.pack(pady=5)
+
+        self._progress_total = total
+
+    def _do_background_rescan(
+        self,
+        symbols,
+        params,
+        feature_cfg,
+        scorer_cfg,
+        data_dir,
+        output_dir,
+        num_workers,
+        scan_time_config,
+        output_filename=None,
+        output_filepath=None,
+    ):
+        """后台执行批量扫描（支持两种时间范围模式）
+
+        Args:
+            symbols: 股票代码列表
+            params: 检测器参数
+            feature_cfg: 特征计算器配置
+            scorer_cfg: 质量评分器配置
+            data_dir: 数据目录
+            output_dir: 输出目录
+            num_workers: 并行worker数量
+            scan_time_config: 扫描时间配置，包含：
+                - mode: "csv" 或 "global"
+                - stock_time_ranges: CSV模式下的股票时间范围字典
+                - start_date/end_date: 全局模式下的时间范围
+            output_filename: 输出文件名（不含路径，保存到 output_dir）
+            output_filepath: 输出文件完整路径（覆盖模式使用，优先级高于 output_filename）
+        """
+        from pathlib import Path
+
+        scan_mode = scan_time_config.get("mode", "global")
+
+        if scan_mode == "csv":
+            # CSV 模式：每只股票有独立的时间范围
+            stock_time_ranges = scan_time_config.get("stock_time_ranges", {})
+
+            # 创建 ScanManager（不设置全局时间范围）
+            manager = ScanManager(
+                output_dir=output_dir,
+                total_window=params["total_window"],
+                min_side_bars=params["min_side_bars"],
+                min_relative_height=params["min_relative_height"],
+                exceed_threshold=params["exceed_threshold"],
+                peak_supersede_threshold=params.get("peak_supersede_threshold", 0.03),
+                start_date=None,
+                end_date=None,
+                feature_calc_config=feature_cfg,
+                quality_scorer_config=scorer_cfg,
+            )
+
+            # 执行扫描（传递 per-stock 时间范围）
+            results = manager.parallel_scan(
+                symbols,
+                data_dir=str(data_dir),
+                num_workers=num_workers,
+                stock_time_ranges=stock_time_ranges,
+            )
+        else:
+            # 全局时间范围模式
+            start_date = scan_time_config.get("start_date")
+            end_date = scan_time_config.get("end_date")
+
+            # 创建 ScanManager（使用全局时间范围）
+            manager = ScanManager(
+                output_dir=output_dir,
+                total_window=params["total_window"],
+                min_side_bars=params["min_side_bars"],
+                min_relative_height=params["min_relative_height"],
+                exceed_threshold=params["exceed_threshold"],
+                peak_supersede_threshold=params.get("peak_supersede_threshold", 0.03),
+                start_date=start_date,
+                end_date=end_date,
+                feature_calc_config=feature_cfg,
+                quality_scorer_config=scorer_cfg,
+            )
+
+            # 执行扫描（不传递 per-stock 时间范围）
+            results = manager.parallel_scan(
+                symbols,
+                data_dir=str(data_dir),
+                num_workers=num_workers,
+            )
+
+        # 保存结果
+        if output_filepath:
+            # 覆盖模式：直接写入指定的完整路径
+            output_file = Path(output_filepath)
+            manager._save_results_internal(results, output_file)
+        else:
+            # 新建文件模式：使用 output_filename 或自动生成
+            output_file = manager.save_results(results, filename=output_filename)
+
+        # 回到主线程更新 UI
+        self.root.after(0, lambda: self._on_rescan_complete(str(output_file)))
+
+    def _on_rescan_complete(self, output_file: str):
+        """扫描完成回调"""
+        from tkinter import messagebox
+
+        # 关闭进度窗口
+        if hasattr(self, "progress_window") and self.progress_window.winfo_exists():
+            self.progress_window.destroy()
+
+        # 恢复 UI 交互
+        self.param_panel.new_scan_btn.config(state="normal")
+        self.param_panel.rescan_all_btn.config(state="normal")
+
+        # 重新加载结果
+        self.load_scan_results(output_file)
+
+        # 切换回 Browse Mode
+        self.param_panel.use_ui_params_var.set(False)
+        self.param_panel._update_combobox_state()
+        self._update_mode_indicator()
+
+        messagebox.showinfo(
+            "Scan Complete",
+            f"Scan completed successfully.\n\nResults saved to:\n{output_file}",
+        )

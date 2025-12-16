@@ -5,7 +5,7 @@
 """
 
 import pandas as pd
-from typing import Optional
+from typing import Dict, List, Optional
 from .breakthrough_detector import BreakoutInfo, Breakthrough
 
 
@@ -24,6 +24,10 @@ class FeatureCalculator:
 
         self.stability_lookforward = config.get('stability_lookforward', 10)
         self.continuity_lookback = config.get('continuity_lookback', 5)
+
+        # 回测标签配置
+        # 格式: [{"min_days": 5, "max_days": 20}, {"min_days": 3, "max_days": 10}]
+        self.label_configs: List[Dict] = config.get('label_configs', [])
 
     def enrich_breakthrough(self,
                            df: pd.DataFrame,
@@ -71,6 +75,9 @@ class FeatureCalculator:
         highest_peak = breakout_info.highest_peak_broken
         stability_score = self._calculate_stability(df, idx, highest_peak.price)
 
+        # 计算回测标签
+        labels = self._calculate_labels(df, idx)
+
         return Breakthrough(
             symbol=symbol,
             date=breakout_info.current_date,
@@ -83,7 +90,8 @@ class FeatureCalculator:
             gap_up_pct=gap_up_pct,
             volume_surge_ratio=volume_surge_ratio,
             continuity_days=continuity_days,
-            stability_score=stability_score
+            stability_score=stability_score,
+            labels=labels
         )
 
     def _classify_type(self, row: pd.Series) -> str:
@@ -196,3 +204,65 @@ class FeatureCalculator:
         stability_score = (stable_days / total_days) * 100 if total_days > 0 else 50.0
 
         return stability_score
+
+    def _calculate_labels(self,
+                          df: pd.DataFrame,
+                          index: int) -> Dict[str, Optional[float]]:
+        """
+        计算回测标签
+
+        标签定义：(最低点之后到N天内的最高价 - M天内最低价) / M天内最低价
+        - M天内最低价：使用 close 价格
+        - 最高价范围：从最低点出现日之后到N天内，使用 high 价格
+        - M < N，均不包括突破当日
+
+        Args:
+            df: OHLCV数据
+            index: 突破点索引
+
+        Returns:
+            标签字典，格式：{"label_5_20": 0.15, "label_3_10": None}
+            数据不足时对应值为 None
+        """
+        labels = {}
+
+        for config in self.label_configs:
+            min_days = config.get('min_days', 5)   # M: 最低价窗口
+            max_days = config.get('max_days', 20)  # N: 最高价窗口
+
+            label_key = f"label_{min_days}_{max_days}"
+
+            # 计算数据范围（不包括突破当日）
+            min_end = min(len(df), index + min_days + 1)
+            max_end = min(len(df), index + max_days + 1)
+
+            future_min_data = df.iloc[index + 1:min_end]  # M天内数据
+
+            # 检查数据是否充足
+            if len(future_min_data) < min_days or (max_end - index - 1) < max_days:
+                labels[label_key] = None
+                continue
+
+            # 1. 在M天内找最低 close 及其位置
+            min_close = future_min_data['close'].min()
+            min_close_idx = future_min_data['close'].idxmin()  # DataFrame 原始索引
+
+            # 2. 从最低点之后到N天内找最高 high
+            future_max_data = df.iloc[min_close_idx + 1:max_end]
+
+            if len(future_max_data) == 0:
+                # 最低点在窗口末尾，没有后续数据计算最高价
+                labels[label_key] = None
+                continue
+
+            max_high = future_max_data['high'].max()
+
+            # 计算标签
+            if min_close > 0:
+                label_value = (max_high - min_close) / min_close
+            else:
+                label_value = None
+
+            labels[label_key] = label_value
+
+        return labels

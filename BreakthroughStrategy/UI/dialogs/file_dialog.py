@@ -2,7 +2,7 @@
 
 import os
 import tkinter as tk
-from tkinter import ttk
+from tkinter import messagebox, ttk
 from typing import List, Optional, Tuple
 
 
@@ -50,8 +50,6 @@ class CustomFileDialog(tk.Toplevel):
             self.current_dir = os.path.abspath(".")
 
         # 配置窗口
-        self.geometry("850x600")
-        self.minsize(700, 500)
         self.transient(parent)
         self.grab_set()
 
@@ -61,19 +59,41 @@ class CustomFileDialog(tk.Toplevel):
         # 加载初始目录
         self._load_directory(self.current_dir)
 
-        # 居中显示
-        self._center_window()
+        # 自适应窗口大小
+        self._adjust_window_size()
 
         # 等待窗口关闭
         self.protocol("WM_DELETE_WINDOW", self._on_cancel)
 
-    def _center_window(self):
-        """将窗口居中显示"""
+    def _adjust_window_size(self):
+        """自适应调整窗口大小"""
         self.update_idletasks()
-        width = self.winfo_width()
-        height = self.winfo_height()
-        x = (self.winfo_screenwidth() // 2) - (width // 2)
-        y = (self.winfo_screenheight() // 2) - (height // 2)
+
+        # 获取内容所需的尺寸
+        req_width = self.winfo_reqwidth()
+        req_height = self.winfo_reqheight()
+
+        # 设置合理的尺寸范围
+        # 宽度：至少能显示完整路径，最大不超过屏幕 80%
+        # 高度：至少能显示几个文件，最大不超过屏幕 70%
+        screen_width = self.winfo_screenwidth()
+        screen_height = self.winfo_screenheight()
+
+        min_width = max(600, req_width)
+        min_height = max(400, req_height)
+        max_width = int(screen_width * 0.8)
+        max_height = int(screen_height * 0.7)
+
+        # 计算最终尺寸
+        width = min(max(min_width, req_width + 50), max_width)
+        height = min(max(min_height, req_height + 50), max_height)
+
+        # 设置最小尺寸
+        self.minsize(min_width, min_height)
+
+        # 居中显示
+        x = (screen_width - width) // 2
+        y = (screen_height - height) // 2
         self.geometry(f"{width}x{height}+{x}+{y}")
 
     def _create_ui(self):
@@ -146,6 +166,7 @@ class CustomFileDialog(tk.Toplevel):
         # 绑定事件
         self.tree.bind("<Double-1>", self._on_double_click)
         self.tree.bind("<<TreeviewSelect>>", self._on_select)
+        self.tree.bind("<Delete>", self._on_delete_key)
 
         # 底部区域容器
         bottom_container = ttk.Frame(self, padding="10 5 10 10")
@@ -327,6 +348,44 @@ class CustomFileDialog(tk.Toplevel):
             # 选择文件
             self.result = full_path
             self.destroy()
+
+    def _on_delete_key(self, event):
+        """Delete 键删除选中的文件"""
+        name = self._get_selected_name()
+        if not name:
+            return
+
+        # 不允许删除文件夹
+        if self._is_folder_selected():
+            messagebox.showwarning(
+                "Cannot Delete",
+                "Cannot delete folders. Only files can be deleted.",
+                parent=self,
+            )
+            return
+
+        full_path = os.path.join(self.current_dir, name)
+
+        # 确认删除
+        confirm = messagebox.askyesno(
+            "Confirm Delete",
+            f"Are you sure you want to delete:\n\n{name}",
+            parent=self,
+        )
+
+        if confirm:
+            try:
+                os.remove(full_path)
+                # 刷新目录列表
+                self._load_directory(self.current_dir)
+                # 清空文件名输入框
+                self.filename_var.set("")
+            except OSError as e:
+                messagebox.showerror(
+                    "Delete Error",
+                    f"Failed to delete file:\n{e}",
+                    parent=self,
+                )
 
     def _on_path_enter(self, event):
         """路径输入框回车"""

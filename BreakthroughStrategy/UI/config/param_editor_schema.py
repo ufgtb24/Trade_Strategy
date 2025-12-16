@@ -9,11 +9,23 @@
 PARAM_CONFIGS = {
     # 突破检测器参数
     "breakthrough_detector": {
-        "window": {
+        "total_window": {
             "type": int,
-            "range": (3, 20),
-            "default": 5,
-            "description": "Sliding window size for detection",
+            "range": (6, 30),
+            "default": 10,
+            "description": "Total window size (left + right bars)",
+        },
+        "min_side_bars": {
+            "type": int,
+            "range": (1, 10),
+            "default": 2,
+            "description": "Minimum bars on each side of peak",
+        },
+        "min_relative_height": {
+            "type": float,
+            "range": (0.0, 0.3),
+            "default": 0.05,
+            "description": "Minimum relative height from window low",
         },
         "exceed_threshold": {
             "type": float,
@@ -38,27 +50,6 @@ PARAM_CONFIGS = {
             "description": "Cache directory path",
         },
     },
-    # 峰值特征参数
-    "peak_features": {
-        "volume_surge_threshold": {
-            "type": float,
-            "range": (1.0, 5.0),
-            "default": 1.5,
-            "description": "Volume surge multiplier threshold",
-        },
-        "suppression_days_threshold": {
-            "type": int,
-            "range": (1, 10),
-            "default": 3,
-            "description": "Minimum suppression days for peak",
-        },
-        "relative_height_lookback": {
-            "type": int,
-            "range": (10, 50),
-            "default": 20,
-            "description": "Lookback period for relative height calculation",
-        },
-    },
     # 特征计算器参数
     "feature_calculator": {
         "stability_lookforward": {
@@ -73,69 +64,36 @@ PARAM_CONFIGS = {
             "default": 5,
             "description": "Lookback period for continuity analysis",
         },
-        "candle_classification": {
-            "type": dict,
-            "default": {"big_body_threshold": 0.6, "small_body_threshold": 0.3},
-            "description": "Candle classification thresholds",
-            "sub_params": {
-                "big_body_threshold": {
-                    "type": float,
-                    "range": (0.5, 0.9),
-                    "default": 0.6,
-                    "description": "Big body threshold (body/total ratio)",
-                },
-                "small_body_threshold": {
-                    "type": float,
-                    "range": (0.1, 0.5),
-                    "default": 0.3,
-                    "description": "Small body threshold (body/total ratio)",
-                },
-            },
-        },
     },
-    # 质量评分器参数
+    # 质量评分器参数（双维度时间模型版）
     "quality_scorer": {
         "peak_weights": {
             "type": dict,
             "is_weight_group": True,  # 标记为权重组，总和必须为1.0
             "default": {
-                "volume": 0.25,
-                "candle": 0.20,
-                "suppression": 0.25,
-                "height": 0.15,
-                "merged": 0.15,
+                "volume": 0.35,
+                "candle": 0.25,
+                "height": 0.40,
             },
             "description": "Peak quality scoring weights (sum must = 1.0)",
             "sub_params": {
                 "volume": {
                     "type": float,
                     "range": (0.0, 1.0),
-                    "default": 0.25,
+                    "default": 0.35,
                     "description": "Volume surge weight",
                 },
                 "candle": {
                     "type": float,
                     "range": (0.0, 1.0),
-                    "default": 0.20,
-                    "description": "Candle pattern weight",
-                },
-                "suppression": {
-                    "type": float,
-                    "range": (0.0, 1.0),
                     "default": 0.25,
-                    "description": "Suppression days weight",
+                    "description": "Candle pattern weight",
                 },
                 "height": {
                     "type": float,
                     "range": (0.0, 1.0),
-                    "default": 0.15,
+                    "default": 0.40,
                     "description": "Relative height weight",
-                },
-                "merged": {
-                    "type": float,
-                    "range": (0.0, 1.0),
-                    "default": 0.15,
-                    "description": "Merged peaks weight",
                 },
             },
         },
@@ -143,50 +101,57 @@ PARAM_CONFIGS = {
             "type": dict,
             "is_weight_group": True,
             "default": {
-                "change": 0.20,
-                "gap": 0.10,
-                "volume": 0.20,
-                "continuity": 0.15,
-                "stability": 0.15,
-                "resistance": 0.20,
+                "change": 0.15,
+                "gap": 0.08,
+                "volume": 0.17,
+                "continuity": 0.12,
+                "stability": 0.13,
+                "resistance": 0.18,
+                "historical": 0.17,
             },
             "description": "Breakthrough quality scoring weights (sum must = 1.0)",
             "sub_params": {
                 "change": {
                     "type": float,
                     "range": (0.0, 1.0),
-                    "default": 0.20,
+                    "default": 0.15,
                     "description": "Price change weight",
                 },
                 "gap": {
                     "type": float,
                     "range": (0.0, 1.0),
-                    "default": 0.10,
+                    "default": 0.08,
                     "description": "Gap weight",
                 },
                 "volume": {
                     "type": float,
                     "range": (0.0, 1.0),
-                    "default": 0.20,
+                    "default": 0.17,
                     "description": "Volume weight",
                 },
                 "continuity": {
                     "type": float,
                     "range": (0.0, 1.0),
-                    "default": 0.15,
+                    "default": 0.12,
                     "description": "Continuity weight",
                 },
                 "stability": {
                     "type": float,
                     "range": (0.0, 1.0),
-                    "default": 0.15,
+                    "default": 0.13,
                     "description": "Stability weight",
                 },
                 "resistance": {
                     "type": float,
                     "range": (0.0, 1.0),
-                    "default": 0.20,
-                    "description": "Resistance breakthrough weight",
+                    "default": 0.18,
+                    "description": "Resistance strength weight",
+                },
+                "historical": {
+                    "type": float,
+                    "range": (0.0, 1.0),
+                    "default": 0.17,
+                    "description": "Historical significance weight",
                 },
             },
         },
@@ -194,7 +159,7 @@ PARAM_CONFIGS = {
             "type": dict,
             "is_weight_group": True,
             "default": {"quantity": 0.30, "density": 0.30, "quality": 0.40},
-            "description": "Resistance strength scoring weights (sum must = 1.0)",
+            "description": "Resistance strength sub-weights (sum must = 1.0). Note: recency is now integrated into quality.",
             "sub_params": {
                 "quantity": {
                     "type": float,
@@ -212,9 +177,53 @@ PARAM_CONFIGS = {
                     "type": float,
                     "range": (0.0, 1.0),
                     "default": 0.40,
-                    "description": "Peak quality weight",
+                    "description": "Effective quality weight (includes time decay)",
                 },
             },
+        },
+        "time_decay_baseline": {
+            "type": float,
+            "range": (0.0, 0.5),
+            "default": 0.3,
+            "description": "Baseline resistance ratio for old peaks (0.3 = 30% minimum)",
+        },
+        "historical_weights": {
+            "type": dict,
+            "is_weight_group": True,
+            "default": {"oldest_age": 0.55, "suppression_span": 0.45},
+            "description": "Historical significance sub-weights (sum must = 1.0)",
+            "sub_params": {
+                "oldest_age": {
+                    "type": float,
+                    "range": (0.0, 1.0),
+                    "default": 0.55,
+                    "description": "Oldest broken peak age weight",
+                },
+                "suppression_span": {
+                    "type": float,
+                    "range": (0.0, 1.0),
+                    "default": 0.45,
+                    "description": "Suppression span weight",
+                },
+            },
+        },
+        "time_decay_half_life": {
+            "type": int,
+            "range": (21, 252),
+            "default": 84,
+            "description": "Half-life for resistance decay (trading days, 84≈4mo)",
+        },
+        "historical_significance_saturation": {
+            "type": int,
+            "range": (63, 504),
+            "default": 252,
+            "description": "Saturation period for historical significance (trading days, 252≈1yr)",
+        },
+        "historical_quality_threshold": {
+            "type": int,
+            "range": (50, 90),
+            "default": 70,
+            "description": "Min peak quality to contribute to historical significance (Phase 2)",
         },
     },
 }
@@ -223,7 +232,6 @@ PARAM_CONFIGS = {
 # 分组显示名称映射（用于UI显示）
 SECTION_TITLES = {
     "breakthrough_detector": "Breakthrough Detector",
-    "peak_features": "Peak Features",
     "feature_calculator": "Feature Calculator",
     "quality_scorer": "Quality Scorer",
 }
@@ -248,7 +256,7 @@ def get_param_count(section_key: str) -> int:
     for param_name, param_config in section.items():
         param_type = param_config.get("type")
         if param_type == dict and "sub_params" in param_config:
-            # 有子参数的字典（如candle_classification或权重组）
+            # 有子参数的字典（如权重组）
             count += len(param_config["sub_params"])
         else:
             # 普通参数

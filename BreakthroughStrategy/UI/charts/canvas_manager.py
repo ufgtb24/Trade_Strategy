@@ -43,6 +43,13 @@ class ChartCanvasManager:
         self._hover_position: tuple = (0, 0)  # 悬停位置（屏幕坐标）
         self._all_peaks: List[Peak] = []  # 所有峰值（用于查找）
         self._all_breakthroughs: List[Breakthrough] = []  # 所有突破（用于查找）
+        self._current_symbol: str = ""  # 当前股票代码
+
+        # Ctrl模式状态（自由Y轴悬停）
+        self._ctrl_pressed: bool = False  # Ctrl键是否按下
+        self._last_mouse_y: float = 0.0   # 鼠标Y坐标（数据坐标系）
+        self._last_hover_x: int = 0       # 最近悬停的K线索引
+        self._hover_df: Optional[pd.DataFrame] = None  # 保存df引用
 
     def update_chart(
         self,
@@ -64,6 +71,9 @@ class ChartCanvasManager:
         """
         # 1. 清理旧图表（防内存泄漏）
         self._cleanup()
+
+        # 保存当前股票代码
+        self._current_symbol = symbol
 
         display_options = display_options or {}
         show_peak_score = display_options.get("show_peak_score", True)
@@ -213,6 +223,12 @@ class ChartCanvasManager:
         self._all_breakthroughs = []
         # 注意：不关闭已打开的窗口，让用户可以继续查看
 
+        # 重置Ctrl模式状态
+        self._ctrl_pressed = False
+        self._last_mouse_y = 0.0
+        self._last_hover_x = 0
+        self._hover_df = None
+
     def _attach_hover(self, ax, df, breakthroughs, peaks=None):
         """
         绑定鼠标悬停事件
@@ -226,13 +242,17 @@ class ChartCanvasManager:
         # 保存数据供快捷键回调使用
         self._all_peaks = peaks or []
         self._all_breakthroughs = breakthroughs or []
+        self._hover_df = df  # 保存df引用供Ctrl模式使用
+
+        # 获取颜色配置
+        colors = get_chart_colors()
 
         # 创建十字线（初始隐藏）
         self.crosshair_v = ax.axvline(
-            0, color="#0088CC", linestyle="--", linewidth=1.5, alpha=0.7, visible=False
+            0, color=colors["crosshair_normal"], linestyle="--", linewidth=1.5, alpha=0.7, visible=False
         )
         self.crosshair_h = ax.axhline(
-            0, color="#0088CC", linestyle="--", linewidth=1.5, alpha=0.7, visible=False
+            0, color=colors["crosshair_normal"], linestyle="--", linewidth=1.5, alpha=0.7, visible=False
         )
 
         # 创建annotation（用于显示悬停信息）
@@ -287,48 +307,104 @@ class ChartCanvasManager:
             row = df.iloc[x]
             date = df.index[x]
 
+            # 保存鼠标位置（用于Ctrl模式）
+            self._last_mouse_y = event.ydata
+            self._last_hover_x = x
+
             # 重置悬停状态
             self._hovered_peak = None
             self._hovered_bt = None
 
-            # 构建显示文本
-            text = f"Date: {date.strftime('%Y-%m-%d')}\n"
-            text += f"Open: {row['open']:.2f}\n"
-            text += f"High: {row['high']:.2f}\n"
-            text += f"Low: {row['low']:.2f}\n"
-            text += f"Close: {row['close']:.2f}\n"
-            text += f"Volume: {int(row['volume']):,}"
+            # 根据Ctrl状态选择不同的显示模式
+            if self._ctrl_pressed:
+                # Ctrl模式：只显示鼠标位置的价格
+                text = f"Price: {event.ydata:.2f}"
 
-            # 检查是否是突破点
-            for bt in breakthroughs:
-                if bt.index == x:
-                    self._hovered_bt = bt  # 记录悬停的突破
-                    text += "\n\n* Breakthrough!"
-                    text += f"\nPeaks Broken: {bt.num_peaks_broken}"
-                    if hasattr(bt, "broken_peak_ids") and bt.broken_peak_ids:
-                        peak_ids_text = ", ".join(map(str, bt.broken_peak_ids))
-                        text += f"\nPeak IDs: [{peak_ids_text}]"
-                    if bt.quality_score:
-                        text += f"\nQuality: {bt.quality_score:.1f}"
-                    text += "\n[Press D for details]"
-                    break
+                # 更新十字线位置（横线跟随鼠标Y轴）
+                self.crosshair_v.set_xdata(x)
+                self.crosshair_h.set_ydata(event.ydata)
+                self.crosshair_h.set_color(colors["crosshair_ctrl"])
+            else:
+                # 普通模式：显示完整OHLC信息
 
-            # 检查是否是峰值
-            if peaks:
-                for peak in peaks:
-                    if peak.index == x:
-                        self._hovered_peak = peak  # 记录悬停的峰值
-                        text += "\n\n▼ Peak"
-                        if peak.id is not None:
-                            text += f"\nID: {peak.id}"
-                        if peak.quality_score is not None:
-                            text += f"\nScore: {peak.quality_score:.1f}"
-                        text += "\n[Press D for details]"
+                # 计算 Chg (涨跌幅)
+                if x > 0:
+                    prev_close = df.iloc[x - 1]['close']
+                    chg = (row['close'] - prev_close) / prev_close * 100
+                    chg_str = f"+{chg:.2f}%" if chg >= 0 else f"{chg:.2f}%"
+                else:
+                    chg_str = "N/A"
+
+                # 计算 RV (相对成交量, 基于约60个交易日)
+                lookback = min(60, x)  # 最多回看60天
+                if lookback > 0:
+                    avg_vol = df.iloc[x - lookback:x]['volume'].mean()
+                    rv = row['volume'] / avg_vol if avg_vol > 0 else 0
+                    rv_str = f"{rv:.2f}"
+                else:
+                    rv_str = "N/A"
+
+                # 构建显示文本
+                text = f"Date: {date.strftime('%Y-%m-%d')}\n"
+                text += f"Open: {row['open']:.2f}\n"
+                text += f"High: {row['high']:.2f}\n"
+                text += f"Low: {row['low']:.2f}\n"
+                text += f"Close: {row['close']:.2f}\n"
+                text += f"Chg: {chg_str}\n"
+                text += f"Volume: {int(row['volume']):,}\n"
+                text += f"RV: {rv_str}"
+
+                # 计算该 K 线时刻的 active peaks
+                # 1. 收集在当前位置之前或当前被突破的峰值 ID
+                broken_at_x = set()
+                for bt in breakthroughs:
+                    if bt.index <= x:  # 该突破发生在当前 K 线之前或当前
+                        broken_at_x.update(bt.broken_peak_ids)
+
+                # 2. 筛选在当前位置之前创建、且未被突破的峰值
+                if peaks:
+                    active_at_x = [
+                        p for p in peaks
+                        if p.index < x and p.id not in broken_at_x
+                    ]
+
+                    # 3. 显示 active peaks id 列表
+                    if active_at_x:
+                        active_ids = [str(p.id) for p in active_at_x]
+                        text += f"\nActive: [{','.join(active_ids)}]"
+
+                # 检查是否是突破点
+                for bt in breakthroughs:
+                    if bt.index == x:
+                        self._hovered_bt = bt  # 记录悬停的突破
+                        peak_ids_text = ",".join(map(str, bt.broken_peak_ids)) if hasattr(bt, "broken_peak_ids") and bt.broken_peak_ids else ""
+                        score_text = f"{bt.quality_score:.0f}" if bt.quality_score else "N/A"
+                        text += f"\n\nBT:\n[{peak_ids_text}],{score_text}"
+                        # 显示 labels（如果存在）
+                        if hasattr(bt, "labels") and bt.labels:
+                            label_parts = []
+                            for key, val in bt.labels.items():
+                                if val is not None:
+                                    label_parts.append(f"{key}:{val:.2%}")
+                            if label_parts:
+                                text += f"\nLabel: {', '.join(label_parts)}"
                         break
 
-            # 更新十字线位置（指示实际的 K线数据点）
-            self.crosshair_v.set_xdata(x)
-            self.crosshair_h.set_ydata(row["close"])
+                # 检查是否是峰值
+                if peaks:
+                    for peak in peaks:
+                        if peak.index == x:
+                            self._hovered_peak = peak  # 记录悬停的峰值
+                            id_text = str(peak.id) if peak.id is not None else "N/A"
+                            score_text = f"{peak.quality_score:.0f}" if peak.quality_score is not None else "N/A"
+                            text += f"\n\nPeak:\n{id_text},{score_text}"
+                            break
+
+                # 更新十字线位置（横线锁定收盘价）
+                self.crosshair_v.set_xdata(x)
+                self.crosshair_h.set_ydata(row["close"])
+                self.crosshair_h.set_color(colors["crosshair_normal"])
+
             self.crosshair_v.set_visible(True)
             self.crosshair_h.set_visible(True)
 
@@ -363,6 +439,18 @@ class ChartCanvasManager:
         # 绑定 Shift+Escape 关闭所有窗口
         canvas_widget.bind("<Shift-Escape>", self._on_close_all_windows_key)
 
+        # 绑定 Ctrl 键事件（用于自由Y轴悬停模式）
+        canvas_widget.bind("<Control_L>", self._on_ctrl_press)
+        canvas_widget.bind("<Control_R>", self._on_ctrl_press)
+        canvas_widget.bind("<KeyRelease-Control_L>", self._on_ctrl_release)
+        canvas_widget.bind("<KeyRelease-Control_R>", self._on_ctrl_release)
+
+        # 鼠标进入时自动获取焦点（以便接收键盘事件）
+        canvas_widget.bind("<Enter>", lambda e: canvas_widget.focus_set())
+
+        # 窗口失焦时重置Ctrl状态
+        canvas_widget.bind("<FocusOut>", lambda e: setattr(self, '_ctrl_pressed', False))
+
         # 鼠标点击时让 canvas 获得焦点（以便接收键盘事件）
         canvas_widget.bind("<Button-1>", lambda e: canvas_widget.focus_set())
 
@@ -383,7 +471,8 @@ class ChartCanvasManager:
             peak=self._hovered_peak,
             breakthrough=self._hovered_bt,
             scorer=self.scorer,
-            position=self._hover_position
+            position=self._hover_position,
+            symbol=self._current_symbol
         )
 
         # 添加到窗口列表
@@ -421,6 +510,51 @@ class ChartCanvasManager:
         self.score_detail_windows = [
             w for w in self.score_detail_windows if w.is_open()
         ]
+
+    def _on_ctrl_press(self, event):
+        """
+        Ctrl键按下回调：切换到自由Y轴悬停模式
+
+        Args:
+            event: Tkinter键盘事件
+        """
+        if self._ctrl_pressed:
+            return  # 已经在Ctrl模式，避免重复处理
+
+        self._ctrl_pressed = True
+
+        # 立即更新横线颜色和位置
+        if self.crosshair_h and self.crosshair_h.get_visible():
+            colors = get_chart_colors()
+            self.crosshair_h.set_color(colors["crosshair_ctrl"])
+            # 如果有保存的鼠标Y位置，立即应用
+            if self._last_mouse_y:
+                self.crosshair_h.set_ydata(self._last_mouse_y)
+            if self.canvas:
+                self.canvas.draw_idle()
+
+    def _on_ctrl_release(self, event):
+        """
+        Ctrl键释放回调：恢复锁定收盘价模式
+
+        Args:
+            event: Tkinter键盘事件
+        """
+        if not self._ctrl_pressed:
+            return  # 不在Ctrl模式，忽略
+
+        self._ctrl_pressed = False
+
+        # 恢复横线颜色，并锁定回收盘价
+        if self.crosshair_h and self.crosshair_h.get_visible():
+            colors = get_chart_colors()
+            self.crosshair_h.set_color(colors["crosshair_normal"])
+            # 恢复到当前K线的收盘价
+            if self._hover_df is not None and 0 <= self._last_hover_x < len(self._hover_df):
+                row = self._hover_df.iloc[self._last_hover_x]
+                self.crosshair_h.set_ydata(row["close"])
+            if self.canvas:
+                self.canvas.draw_idle()
 
     def close_all_score_windows(self):
         """关闭所有评分详情窗口（供外部调用）"""

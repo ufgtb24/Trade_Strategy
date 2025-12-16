@@ -1,6 +1,6 @@
 # 技术分析模块 - 实现文档
 
-> 状态：已实现 (Implemented) | 最后更新：2025-12-12
+> 状态：已实现 (Implemented) | 最后更新：2025-12-14
 
 **模块路径**：`BreakthroughStrategy/analysis/`
 
@@ -21,6 +21,7 @@
 1. **峰值共存机制**：允许价格相近的峰值同时存在（形成"阻力区"），反映真实市场的价格密集带
 2. **一次突破多峰**：单次突破可突破多个峰值，更准确反映市场行为
 3. **峰值唯一ID**：每个峰值分配唯一ID，支持追踪和去重
+4. **不对称窗口检测**（v2.0新增）：峰值确认采用灵活的不对称窗口 + 相对高度下限，更符合实际市场形态
 
 ---
 
@@ -69,7 +70,10 @@ sequenceDiagram
     end
 
     Detector->>Detector: 检查是否应添加新峰值
-    alt window天后确认峰值
+    alt min_side_bars天后确认峰值
+        Detector->>Detector: 计算左侧/右侧连续低于该点的K线数
+        Detector->>Detector: 验证窗口条件(total_window, min_side_bars)
+        Detector->>Detector: 计算相对高度，验证 min_relative_height
         Detector->>Detector: 创建Peak对象
         Detector->>PeakList: 应用峰值覆盖规则
         Note over Detector,PeakList: 价格差<3%: 共存<br/>价格差>3%: 删除旧峰值
@@ -80,10 +84,60 @@ sequenceDiagram
 ```
 
 **关键决策点**：
-- **峰值确认延迟**：等待 `window` 天后才确认峰值（避免假峰值）
+- **不对称窗口**：左右两侧合计 `total_window` 根，单侧至少 `min_side_bars` 根
+- **相对高度下限**：峰值相对窗口内最低点的幅度 >= `min_relative_height`
 - **峰值覆盖阈值**：默认3%，可配置（平衡共存与清理）
 
-### 3.2 峰值共存规则
+### 3.2 峰值判定规则（v2.0 不对称窗口）
+
+**核心逻辑**：
+```python
+def _check_and_add_peak(idx):
+    high = self.highs[idx]
+
+    # 1. 计算左侧连续低于 high 的K线数量
+    left_bars = 0
+    for i in range(idx - 1, -1, -1):
+        if self.highs[i] >= high:
+            break
+        left_bars += 1
+
+    # 2. 计算右侧连续低于 high 的K线数量
+    right_bars = 0
+    for i in range(idx + 1, len(self.highs)):
+        if self.highs[i] >= high:
+            break
+        right_bars += 1
+
+    # 3. 验证窗口条件
+    if left_bars < min_side_bars or right_bars < min_side_bars:
+        return  # 单侧不满足最小要求
+    if left_bars + right_bars < total_window:
+        return  # 总窗口不满足要求
+
+    # 4. 计算相对高度（取两侧窗口最低点中的较低者）
+    left_low = min(lows[idx-left_bars:idx])
+    right_low = min(lows[idx+1:idx+1+right_bars])
+    window_low = min(left_low, right_low)
+
+    relative_height = (high - window_low) / window_low
+    if relative_height < min_relative_height:
+        return  # 相对高度不满足要求
+
+    # 5. 通过所有条件，创建峰值
+    ...
+```
+
+**Why 不对称窗口？**
+- **符合实际形态**：上涨趋势中的顶部（左长右短）vs 下跌初期的顶部（左短右长）
+- **灵活性**：允许 左8+右2 或 左2+右8，只要合计满足 total_window
+- **单侧保障**：`min_side_bars` 防止极端情况（如0+10）
+
+**Why 相对高度下限？**
+- 过滤横盘震荡中的噪声峰值
+- 确保峰值具有足够的"显著性"来构成有效阻力
+
+### 3.3 峰值共存规则
 
 ```python
 # 核心逻辑（伪代码）
@@ -113,29 +167,36 @@ for old_peak in active_peaks:
 **评分因素（总分100）**：
 ```yaml
 评分维度:
-  - 放量（30%）: volume_surge_ratio (2倍=50分, 5倍=100分)
+  - 放量（45%）: volume_surge_ratio (2倍=50分, 5倍=100分)
   - 长K线（20%）: candle_change_pct (5%=50分, 10%=100分)
-  - 压制时间（30%）: left + right suppression days (30天=50分, 60天=100分)
-  - 相对高度（20%）: relative_height (5%=50分, 10%=100分)
+  - 相对高度（35%）: relative_height (5%=50分, 10%=100分)
 ```
 
 **核心逻辑**：
-- 历史意义 = 形成难度（放量+长K线）+ 维持时间（压制天数）+ 相对位置（高度）
+- 峰值质量 = 形成难度（放量+长K线）+ 相对位置（高度）
+- **不含压制时间**：压制时间已移至"历史意义"维度单独评估
 
-> **变更记录**：2025-12-12 移除了无效的 `merged` 权重（原15%），重新分配给放量、压制时间、相对高度
+> **变更记录**：
+> - 2025-12-12 移除了无效的 `merged` 权重
+> - 2025-12-14 **Phase 1** 移除 `suppression`，压制时间改为历史意义子因素
 
 ### 4.2 突破质量评分（Breakthrough Quality Score）
 
 **评分因素（总分100）**：
 ```yaml
 评分维度:
-  - 涨跌幅（20%）: price_change_pct (3%=50分, 6%=100分)
-  - 跳空（10%）: gap_up_pct (1%=50分, 2%=100分)
-  - 放量（20%）: volume_surge_ratio (2倍=50分, 5倍=100分)
-  - 连续性（15%）: continuity_days (3天=50分, 5天=100分)
-  - 稳定性（15%）: stability_score (后续N天不跌破峰值)
-  - 阻力强度（20%）: 综合指标（数量+密集度+质量）
+  - 涨跌幅（10%）: price_change_pct (3%=50分, 6%=100分)
+  - 跳空（5%）: gap_up_pct (1%=50分, 2%=100分)
+  - 放量（17%）: volume_surge_ratio (2倍=50分, 5倍=100分)
+  - 连续性（13%）: continuity_days (3天=50分, 5天=100分)
+  - 稳定性（10%）: stability_score (后续N天不跌破峰值)
+  - 阻力强度（25%）: 数量 + 密集度 + 有效质量(质量×时间因子)
+  - 历史意义（20%）: 最远峰值年龄 + 压制跨度（仅高质量峰值参与）
 ```
+
+> **变更记录**：
+> - 2025-12-14 **Phase 1** 新增"历史意义"独立维度，阻力强度中的 recency 整合入 quality
+> - 2025-12-14 **Phase 2** 历史意义仅计算高质量峰值（>=阈值）
 
 ### 4.3 评分方法架构（重构后）
 
@@ -155,34 +216,56 @@ _score_resistance_strength() ──委托──> _get_resistance_breakdown()
 
 > **变更记录**：2025-12-12 重构，消除 `score_xxx()` 与 `get_xxx_breakdown()` 之间的代码重复
 
-### 4.4 阻力强度评分（改进版）
+### 4.4 阻力强度评分（双维度时间模型版）
 
-**核心改进**：修复密集度计算，识别密集子集而非整体范围
+**核心改进**：
+1. 修复密集度计算，识别密集子集而非整体范围
+2. **Phase 1**：`recency` 整合入 `quality`，采用乘法模型
 
 ```python
-# 示例对比
-peaks = [3.79, 3.81, 3.82, 3.9]  # 4个峰值
-
-# 旧版本（错误）
-range = 3.9 - 3.79 = 0.11  # 看整体范围 → 评分低
-
-# 新版本（正确）
-densest_cluster = [3.79, 3.81, 3.82]  # 识别密集子集
-cluster_range = 3.82 - 3.79 = 0.03  # < 3%阈值
-density_score = 高分（有密集区 + 额外分散峰值）
+# 有效质量计算（Phase 1 核心改动）
+for peak in broken_peaks:
+    age_bars = breakthrough.index - peak.index
+    decay = 0.5 ** (age_bars / half_life)  # 指数衰减
+    time_factor = baseline + (1 - baseline) * decay  # 保留30%基线
+    effective_quality = peak.quality_score * time_factor
 ```
 
-**评分逻辑**：
-1. **数量评分（30%）**：1-5个峰值线性映射到30-80分
-2. **密集度评分（30%）**：
-   - 找到最大密集子集（滑动窗口算法）
-   - 基础分：子集大小（3+个=80分，2个=60分）
-   - 密集度加成：子集内价格范围<1%=20分，<3%=10分
-   - 多样性加成：有密集区+分散峰值=10分
-3. **质量评分（40%）**：
-   - 平均质量（基础分）
-   - 最高质量加成（>80分=10分）
-   - 一致性加成（所有峰值>60分=10分）
+**Why 乘法模型？**
+- 语义正确：时间衰减作用于质量，而非独立相加
+- 边界合理：峰值很老时，有效质量趋近于 `quality × baseline`
+- 避免：无峰值时 recency 仍有分数的荒谬情况
+
+**评分逻辑（Phase 1 后）**：
+1. **数量评分（30%）**：1-5个峰值线性映射到30-80分（结构因素，不衰减）
+2. **密集度评分（30%）**：识别密集子集（结构因素，不衰减）
+3. **有效质量评分（40%）**：`avg(quality × time_factor)`
+
+### 4.5 历史意义评分（双维度时间模型版）
+
+**核心设计**：与阻力强度形成**对称的双维度**
+
+| 维度 | 时间效应 | 数学模型 | 物理意义 |
+|------|---------|---------|---------|
+| 阻力强度 | 衰减 | 指数衰减 `0.5^(t/半衰期)` | 套牢盘离场 |
+| 历史意义 | 增长 | 对数增长 `log(t)/log(饱和点)` | 突破历史记录 |
+
+**子因素**：
+1. **最远峰值年龄（55%）**：突破的最远峰值距今多久（对数增长）
+2. **压制跨度（45%）**：被突破峰值的平均压制时间
+
+**Phase 2 改进：条件性历史加成**
+```python
+# 仅高质量峰值参与历史意义计算
+threshold = historical_quality_threshold  # 默认60
+significant_peaks = [p for p in broken_peaks if p.quality_score >= threshold]
+if not significant_peaks:
+    significant_peaks = broken_peaks  # 回退机制
+```
+
+**Why 条件性？**
+- 低质量峰值 = 弱阻力 → 突破它们不具有"历史意义"
+- 避免噪声干扰 → 小的价格波动不应影响历史意义评分
 
 ---
 
@@ -190,7 +273,7 @@ density_score = 高分（有密集区 + 额外分散峰值）
 
 ### 5.1 峰值确认延迟
 
-**现状**：峰值需等待 `window` 天后才能确认
+**现状**：峰值需等待 `min_side_bars` 天后才能确认（确保右侧有足够数据）
 
 **影响**：
 - ✅ 优点：避免假峰值，提高准确性
@@ -225,51 +308,46 @@ density_score = 高分（有密集区 + 额外分散峰值）
 
 ---
 
-## 六、与原计划（Plan）的偏差
-
-### 主要变更
-
-| 原计划 | 实际实现 | 原因 |
-|--------|---------|------|
-| 分离 `PeakDetector` 和 `BreakoutDetector` | 统一为 `BreakthroughDetector` | 增量式架构要求统一状态管理 |
-| 凸点合并阈值1% | 峰值覆盖阈值3% | 更合理反映市场价格密集带 |
-| 特殊意义点检测 | 未实现 | 复杂度高，暂时搁置（保留接口） |
-| 使用 Backtrader | 自研特征计算 | 更灵活，避免框架锁定 |
-
-### 新增功能
-
-1. **峰值唯一ID**：原计划未涉及，实现时添加以支持追踪
-2. **多峰值突破**：原计划为1:1关系，实现时改为1:N（更真实）
-3. **持久化缓存**：原计划未强调，实现时作为核心特性
-
----
-
 ## 七、配置参数说明
 
 ```yaml
-# 核心参数（示例）
-window: 5                          # 峰值识别窗口
+# 核心参数（v2.0 不对称窗口）
+total_window: 10                   # 总窗口大小（左右合计需超过的K线数）
+min_side_bars: 2                   # 单侧最少K线数
+min_relative_height: 0.10          # 最小相对高度（10%）
 exceed_threshold: 0.005            # 突破确认阈值（0.5%）
 peak_supersede_threshold: 0.03     # 峰值覆盖阈值（3%）
 
-# 质量评分权重（峰值）- 总和 1.0
-peak_weight_volume: 0.30           # 放量权重
+# 参数约束：min_side_bars * 2 <= total_window
+
+# 质量评分权重（峰值）- 总和 1.0（Phase 1 后移除 suppression）
+peak_weight_volume: 0.45           # 放量权重
 peak_weight_candle: 0.20           # 长K线权重
-peak_weight_suppression: 0.30      # 压制时间权重
-peak_weight_height: 0.20           # 相对高度权重
+peak_weight_height: 0.35           # 相对高度权重
 
-# 质量评分权重（突破）- 总和 1.0
-bt_weight_change: 0.20             # 涨跌幅权重
-bt_weight_gap: 0.10                # 跳空权重
-bt_weight_volume: 0.20             # 放量权重
-bt_weight_continuity: 0.15         # 连续性权重
-bt_weight_stability: 0.15          # 稳定性权重
-bt_weight_resistance: 0.20         # 阻力强度权重
+# 质量评分权重（突破）- 总和 1.0（Phase 1 后新增 historical）
+bt_weight_change: 0.10             # 涨跌幅权重
+bt_weight_gap: 0.05                # 跳空权重
+bt_weight_volume: 0.17             # 放量权重
+bt_weight_continuity: 0.13         # 连续性权重
+bt_weight_stability: 0.10          # 稳定性权重
+bt_weight_resistance: 0.25         # 阻力强度权重
+bt_weight_historical: 0.20         # 历史意义权重
 
-# 阻力强度子权重 - 总和 1.0
+# 阻力强度子权重 - 总和 1.0（Phase 1 后移除 recency）
 res_weight_quantity: 0.30          # 峰值数量权重
 res_weight_density: 0.30           # 密集度权重
-res_weight_quality: 0.40           # 峰值质量权重
+res_weight_quality: 0.40           # 有效质量权重（含时间衰减）
+
+# 历史意义子权重 - 总和 1.0
+hist_weight_oldest_age: 0.55       # 最远峰值年龄权重
+hist_weight_suppression: 0.45      # 压制跨度权重
+
+# 时间函数参数（Phase 1/2 新增）
+time_decay_half_life: 84           # 阻力衰减半衰期（交易日，84≈4个月）
+time_decay_baseline: 0.3           # 衰减基线（即使无限远仍保留30%阻力）
+historical_significance_saturation: 252  # 历史意义饱和点（交易日，252≈1年）
+historical_quality_threshold: 60   # 历史意义质量阈值（Phase 2，低于此不计入）
 ```
 
 ---
@@ -284,10 +362,12 @@ from BreakthroughStrategy.analysis import (
 )
 import pandas as pd
 
-# 1. 初始化检测器（增量式）
+# 1. 初始化检测器（增量式，v2.0 不对称窗口）
 detector = BreakthroughDetector(
     symbol='AAPL',
-    window=5,
+    total_window=10,           # 左右合计至少10根K线
+    min_side_bars=2,           # 单侧至少2根
+    min_relative_height=0.10,  # 相对高度至少10%
     exceed_threshold=0.005,
     peak_supersede_threshold=0.03,
     use_cache=True  # 启用持久化
@@ -401,5 +481,24 @@ print(f"被突破的最高峰值: {breakthrough.highest_peak_broken.price}")
 
 ---
 
+## 十二、架构演进记录
+
+### 2025-12-14 双维度时间模型重构
+
+**Phase 1：recency 整合入 quality**
+- 问题：原 `recency` 作为独立评分项与其他维度平行相加，语义错误
+- 改进：采用乘法模型 `effective_quality = quality × time_factor`
+- 新增 `time_decay_baseline` 参数（默认0.3），确保极老峰值仍有基础阻力
+
+**Phase 2：条件性历史加成**
+- 问题：所有峰值都参与历史意义计算，噪声干扰
+- 改进：仅高质量峰值（>=阈值）参与历史意义评分
+- 新增 `historical_quality_threshold` 参数（默认60）
+- 回退机制：若无高质量峰值，使用所有峰值
+
+**理论依据**：详见 `docs/research/阻力衰减.md`
+
+---
+
 **维护者**：Claude Code
-**最后审核**：2025-12-12
+**最后审核**：2025-12-14

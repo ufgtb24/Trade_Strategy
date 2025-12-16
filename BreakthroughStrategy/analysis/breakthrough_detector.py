@@ -14,10 +14,9 @@ import numpy as np
 import pickle
 import json
 from pathlib import Path
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date
-from typing import List, Optional, Tuple
-import hashlib
+from typing import Dict, List, Optional, Tuple
 
 
 @dataclass
@@ -122,6 +121,10 @@ class Breakthrough:
     # 质量评分（由QualityScorer计算）
     quality_score: Optional[float] = None
 
+    # 回测标签（由FeatureCalculator计算）
+    # 格式：{"label_5_20": 0.15, "label_3_10": None}
+    labels: Dict[str, Optional[float]] = field(default_factory=dict)
+
     @property
     def num_peaks_broken(self) -> int:
         return len(self.broken_peaks)
@@ -156,7 +159,9 @@ class BreakthroughDetector:
 
     def __init__(self,
                  symbol: str,
-                 window: int = 5,
+                 total_window: int = 10,
+                 min_side_bars: int = 2,
+                 min_relative_height: float = 0.05,
                  exceed_threshold: float = 0.005,
                  peak_supersede_threshold: float = 0.03,
                  use_cache: bool = False,
@@ -166,7 +171,9 @@ class BreakthroughDetector:
 
         Args:
             symbol: 股票代码
-            window: 峰值识别窗口（前后各window天）
+            total_window: 总窗口大小（左右两侧合计需超过的K线数）
+            min_side_bars: 单侧最少K线数（左右各至少超过此数量）
+            min_relative_height: 最小相对高度（峰值相对窗口内最低点的幅度下限）
             exceed_threshold: 突破确认阈值（默认0.5%）
             peak_supersede_threshold: 峰值覆盖阈值（默认3%）
                 - 新峰值超过旧峰值 < 3% → 两者共存（形成阻力区）
@@ -174,8 +181,17 @@ class BreakthroughDetector:
             use_cache: 是否使用持久化缓存（实时监控=True，回测=False）
             cache_dir: 缓存目录
         """
+        # 参数验证
+        if min_side_bars * 2 > total_window:
+            raise ValueError(
+                f"min_side_bars ({min_side_bars}) * 2 > total_window ({total_window}), "
+                "无法满足窗口条件"
+            )
+
         self.symbol = symbol
-        self.window = window
+        self.total_window = total_window
+        self.min_side_bars = min_side_bars
+        self.min_relative_height = min_relative_height
         self.exceed_threshold = exceed_threshold
         self.peak_supersede_threshold = peak_supersede_threshold
         self.use_cache = use_cache
@@ -233,9 +249,9 @@ class BreakthroughDetector:
         breakout_info = self._check_breakouts(current_idx, high, bar_date)
 
         # 2. 检查是否应该添加新峰值
-        # 注意：需要等待window天后才能确认峰值
-        if current_idx >= self.window * 2:
-            self._check_and_add_peak(current_idx - self.window)
+        # 注意：需要等待 min_side_bars 天后才能确认峰值（确保右侧有足够数据）
+        if current_idx >= self.min_side_bars:
+            self._check_and_add_peak(current_idx - self.min_side_bars)
 
         # 3. 保存缓存
         if self.use_cache and auto_save:
@@ -275,37 +291,54 @@ class BreakthroughDetector:
 
     def _check_and_add_peak(self, idx: int):
         """
-        检查并添加峰值
+        检查并添加峰值（不对称窗口 + 相对高度下限）
+
+        峰值判定条件：
+        1. 左侧连续 left_bars 根K线的 high < 当前 high
+        2. 右侧连续 right_bars 根K线的 high < 当前 high
+        3. left_bars + right_bars >= total_window
+        4. left_bars >= min_side_bars AND right_bars >= min_side_bars
+        5. 相对高度（峰值相对窗口内最低点）>= min_relative_height
 
         支持价格相近的峰值共存，形成阻力区
         """
-        if idx < self.window or idx >= len(self.highs) - self.window:
-            return
-
         high = self.highs[idx]
         date_val = self.dates[idx]
 
-        # 1. 检查是否是峰值（high比前后window天都高）
-        is_peak = True
-
-        for i in range(idx - self.window, idx):
+        # 1. 计算左侧连续低于 high 的K线数量
+        left_bars = 0
+        for i in range(idx - 1, -1, -1):
             if self.highs[i] >= high:
-                is_peak = False
                 break
+            left_bars += 1
 
-        if is_peak:
-            for i in range(idx + 1, min(idx + self.window + 1, len(self.highs))):
-                if self.highs[i] >= high:
-                    is_peak = False
-                    break
+        # 2. 计算右侧连续低于 high 的K线数量
+        right_bars = 0
+        for i in range(idx + 1, len(self.highs)):
+            if self.highs[i] >= high:
+                break
+            right_bars += 1
 
-        if not is_peak:
-            return
+        # 3. 验证窗口条件
+        if left_bars < self.min_side_bars or right_bars < self.min_side_bars:
+            return  # 单侧不满足最小要求
 
-        # 2. 计算峰值质量特征
+        if left_bars + right_bars < self.total_window:
+            return  # 总窗口不满足要求
+
+        # 4. 计算相对高度（取两侧窗口最低点中的较低者）
+        left_low = min(self.lows[max(0, idx - left_bars):idx]) if left_bars > 0 else high
+        right_low = min(self.lows[idx + 1:idx + 1 + right_bars]) if right_bars > 0 else high
+        window_low = min(left_low, right_low)
+
+        relative_height_check = (high - window_low) / window_low if window_low > 0 else 0.0
+        if relative_height_check < self.min_relative_height:
+            return  # 相对高度不满足要求
+
+        # 5. 通过所有条件，创建峰值
         peak = self._create_peak(idx, high, date_val)
 
-        # 3. 决定保留哪些旧峰值（支持共存）
+        # 6. 决定保留哪些旧峰值（支持共存）
         remaining_peaks = []
 
         for old_peak in self.active_peaks:
@@ -321,7 +354,7 @@ class BreakthroughDetector:
                     remaining_peaks.append(old_peak)
                 # else: 差距大于阈值 → 删除（已被明显超越）
 
-        # 4. 添加新峰值
+        # 7. 添加新峰值
         self.active_peaks = remaining_peaks
         self.active_peaks.append(peak)
 
@@ -440,7 +473,9 @@ class BreakthroughDetector:
                     for p in self.active_peaks
                 ],
                 'peak_id_counter': self.peak_id_counter,
-                'window': self.window,
+                'total_window': self.total_window,
+                'min_side_bars': self.min_side_bars,
+                'min_relative_height': self.min_relative_height,
                 'exceed_threshold': self.exceed_threshold,
                 'peak_supersede_threshold': self.peak_supersede_threshold
             }
@@ -476,7 +511,9 @@ class BreakthroughDetector:
                 cache_data = pickle.load(f)
 
             # 验证参数匹配
-            if (cache_data.get('window') != self.window or
+            if (cache_data.get('total_window') != self.total_window or
+                cache_data.get('min_side_bars') != self.min_side_bars or
+                cache_data.get('min_relative_height') != self.min_relative_height or
                 cache_data.get('exceed_threshold') != self.exceed_threshold or
                 cache_data.get('peak_supersede_threshold') != self.peak_supersede_threshold):
                 print(f"⚠ 缓存参数不匹配，跳过加载")
@@ -521,12 +558,12 @@ class BreakthroughDetector:
     def _get_cache_path(self) -> Path:
         """获取缓存文件路径"""
         safe_symbol = self.symbol.replace('/', '_')
-        return self.cache_dir / f"{safe_symbol}_w{self.window}.pkl"
+        return self.cache_dir / f"{safe_symbol}_tw{self.total_window}_ms{self.min_side_bars}.pkl"
 
     def _get_metadata_path(self) -> Path:
         """获取元数据文件路径"""
         safe_symbol = self.symbol.replace('/', '_')
-        return self.cache_dir / f"{safe_symbol}_w{self.window}_meta.json"
+        return self.cache_dir / f"{safe_symbol}_tw{self.total_window}_ms{self.min_side_bars}_meta.json"
 
     def clear_cache(self):
         """清除缓存文件"""

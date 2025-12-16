@@ -2,7 +2,7 @@
 ## 🚀 上下文获取 (Context & Navigation)
 **开始任务前，根据需求读取对应文档：**
 - **了解进度/查找模块** → `docs/system/current_state.md` (开发状态索引)
-- **理解架构/业务逻辑** → `docs/system/PRD.md` (项目需求与设计)
+- **理解架构/业务逻辑** → `docs/system/PRD.md` (项目需求与设计) N
 - **查看具体设计细节** → `docs/modules/specs/` (各模块详细设计与架构意图)
 
 ## 🗺️ 代码地图 (Code Map)

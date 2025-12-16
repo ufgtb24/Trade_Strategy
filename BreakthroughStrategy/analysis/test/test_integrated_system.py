@@ -47,12 +47,14 @@ def test_integrated_system():
     print("[2] 创建突破检测器（增量式）...")
     detector = BreakthroughDetector(
         symbol="AAPL",
-        window=5,
+        total_window=10,
+        min_side_bars=2,
+        min_relative_height=0.05,
         exceed_threshold=0.005,
         peak_supersede_threshold=0.03,
         use_cache=False,
     )
-    print(f"    window={detector.window}")
+    print(f"    total_window={detector.total_window}, min_side_bars={detector.min_side_bars}")
     print(f"    exceed_threshold={detector.exceed_threshold}")
     print(f"    peak_supersede_threshold={detector.peak_supersede_threshold}")
     print()

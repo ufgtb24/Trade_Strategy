@@ -1,6 +1,11 @@
 ## 最有效的管理 Git 分支和工作树的方法：
 git merge --squash feature-branch
 
+## interactive rebase 方式整理提交记录
+git rebase -i HEAD~n  # n 是要整理的提交数量
+或使用 
+git rebase -i <commit-hash>  # 使用特定的提交哈希
+
 ## 创建 Git worktree 并管理多个工作树
 - 1. 创建并切换到新的 worktree
 git worktree add -b feature /home/yu/PycharmProjects/worktrees/feature

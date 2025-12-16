@@ -104,7 +104,7 @@ class AccordionSection:
         """获取该分组所有参数值"""
         values = {}
         for param_input in self.param_inputs:
-            # 处理嵌套参数（如candle_classification.big_body_threshold）
+            # 处理嵌套参数（如 peak_weights.volume）
             if "." in param_input.param_name:
                 parts = param_input.param_name.split(".")
                 parent_key = parts[0]
@@ -178,6 +178,9 @@ class ScrollableAccordion:
 
     def _on_mousewheel(self, event):
         """鼠标滚轮事件处理"""
+        # 检查 canvas 是否仍然存在
+        if not self.canvas.winfo_exists():
+            return
         if event.num == 4 or event.delta > 0:
             self.canvas.yview_scroll(-1, "units")
         elif event.num == 5 or event.delta < 0:
@@ -208,6 +211,7 @@ class ParameterEditorWindow:
         parent,
         ui_param_loader: UIParamLoader,
         on_apply_callback: Optional[Callable] = None,
+        json_params: Optional[Dict] = None,
     ):
         """
         初始化参数编辑器窗口
@@ -216,12 +220,18 @@ class ParameterEditorWindow:
             parent: 主窗口
             ui_param_loader: UIParamLoader实例（复用验证逻辑）
             on_apply_callback: Apply时的回调函数（触发图表刷新）
+            json_params: JSON 文件中的扫描参数（来自 scan_metadata）
         """
         self.parent = parent
         self.loader = ui_param_loader
         self.on_apply_callback = on_apply_callback
         self.param_configs = PARAM_CONFIGS
         self.section_map = {}  # section_key -> AccordionSection 的映射
+
+        # JSON 参数相关
+        self._json_params = json_params  # 原始 JSON 参数
+        self._json_column_visible = False  # JSON 列显示状态
+        self._json_param_map = self._build_json_param_map()  # 参数名到 JSON 值的映射
 
         # 初始化状态管理器
         self.state_manager = ParameterStateManager()
@@ -256,6 +266,85 @@ class ParameterEditorWindow:
         self.loader.add_before_switch_hook(self._on_before_file_switch)
         # 注册状态变化监听器（主界面切换后同步加载）
         self.loader.add_listener(self._on_loader_state_changed)
+
+    def _build_json_param_map(self) -> Dict[str, Any]:
+        """
+        构建 UI 参数名到 JSON 参数值的映射
+
+        处理两种情况:
+        1. 直接映射: breakthrough_detector.total_window -> detector_params.total_window
+        2. 权重映射: quality_scorer.peak_weights.volume -> quality_scorer_params.peak_weight_volume
+
+        Returns:
+            参数名到 JSON 值的映射字典
+        """
+        if not self._json_params:
+            return {}
+
+        param_map = {}
+
+        # detector_params 映射
+        detector = self._json_params.get("detector_params", {})
+        param_map["breakthrough_detector.total_window"] = detector.get("total_window")
+        param_map["breakthrough_detector.min_side_bars"] = detector.get("min_side_bars")
+        param_map["breakthrough_detector.min_relative_height"] = detector.get("min_relative_height")
+        param_map["breakthrough_detector.exceed_threshold"] = detector.get("exceed_threshold")
+        param_map["breakthrough_detector.peak_supersede_threshold"] = detector.get("peak_supersede_threshold")
+        # use_cache 和 cache_dir 不保存到 JSON（运行时配置）
+
+        # feature_calculator_params 映射
+        feature = self._json_params.get("feature_calculator_params", {})
+        param_map["feature_calculator.stability_lookforward"] = feature.get("stability_lookforward")
+        param_map["feature_calculator.continuity_lookback"] = feature.get("continuity_lookback")
+        # label_configs 是列表，特殊处理（不在 UI 参数编辑器中显示）
+
+        # quality_scorer_params 映射 (处理权重组的扁平化)
+        scorer = self._json_params.get("quality_scorer_params", {})
+
+        # peak_weights (JSON: peak_weight_* -> UI: peak_weights.*)
+        param_map["quality_scorer.peak_weights.volume"] = scorer.get("peak_weight_volume")
+        param_map["quality_scorer.peak_weights.candle"] = scorer.get("peak_weight_candle")
+        param_map["quality_scorer.peak_weights.height"] = scorer.get("peak_weight_height")
+
+        # breakthrough_weights (JSON: bt_weight_* -> UI: breakthrough_weights.*)
+        param_map["quality_scorer.breakthrough_weights.change"] = scorer.get("bt_weight_change")
+        param_map["quality_scorer.breakthrough_weights.gap"] = scorer.get("bt_weight_gap")
+        param_map["quality_scorer.breakthrough_weights.volume"] = scorer.get("bt_weight_volume")
+        param_map["quality_scorer.breakthrough_weights.continuity"] = scorer.get("bt_weight_continuity")
+        param_map["quality_scorer.breakthrough_weights.stability"] = scorer.get("bt_weight_stability")
+        param_map["quality_scorer.breakthrough_weights.resistance"] = scorer.get("bt_weight_resistance")
+        param_map["quality_scorer.breakthrough_weights.historical"] = scorer.get("bt_weight_historical")
+
+        # resistance_weights (JSON: res_weight_* -> UI: resistance_weights.*)
+        param_map["quality_scorer.resistance_weights.quantity"] = scorer.get("res_weight_quantity")
+        param_map["quality_scorer.resistance_weights.density"] = scorer.get("res_weight_density")
+        param_map["quality_scorer.resistance_weights.quality"] = scorer.get("res_weight_quality")
+
+        # historical_weights (JSON: hist_weight_* -> UI: historical_weights.*)
+        param_map["quality_scorer.historical_weights.oldest_age"] = scorer.get("hist_weight_oldest_age")
+        param_map["quality_scorer.historical_weights.suppression_span"] = scorer.get("hist_weight_suppression")
+
+        # 标量参数 (直接映射)
+        param_map["quality_scorer.time_decay_baseline"] = scorer.get("time_decay_baseline")
+        param_map["quality_scorer.time_decay_half_life"] = scorer.get("time_decay_half_life")
+        param_map["quality_scorer.historical_significance_saturation"] = scorer.get("historical_significance_saturation")
+        param_map["quality_scorer.historical_quality_threshold"] = scorer.get("historical_quality_threshold")
+
+        return param_map
+
+    def _get_json_value(self, section_key: str, param_name: str) -> Optional[Any]:
+        """
+        获取指定参数的 JSON 值
+
+        Args:
+            section_key: 分组键（如 'breakthrough_detector'）
+            param_name: 参数名（如 'total_window' 或 'peak_weights.volume'）
+
+        Returns:
+            JSON 参数值，如果不存在则返回 None
+        """
+        full_key = f"{section_key}.{param_name}"
+        return self._json_param_map.get(full_key)
 
     def _create_widgets(self):
         """创建窗口组件"""
@@ -297,9 +386,27 @@ class ParameterEditorWindow:
 
         # Discard Changes 按钮（保存引用，用于启用/禁用）
         self.discard_button = ttk.Button(
-            toolbar, text="Discard Changes", command=self.discard_changes, width=15
+            toolbar, text="Discard", command=self.discard_changes, width=10
         )
         self.discard_button.pack(side="left", padx=2)
+
+        # 分隔符
+        ttk.Separator(toolbar, orient="vertical").pack(
+            side="left", fill="y", padx=10, pady=2
+        )
+
+        # JSON 对比按钮
+        self.json_toggle_btn = ttk.Button(
+            toolbar,
+            text="Show JSON",
+            command=self._toggle_json_column,
+            width=12,
+        )
+        self.json_toggle_btn.pack(side="left", padx=2)
+
+        # 如果没有 JSON 数据，禁用按钮
+        if not self._json_params:
+            self.json_toggle_btn.config(state="disabled")
 
         # 分隔符
         ttk.Separator(toolbar, orient="vertical").pack(
@@ -348,6 +455,48 @@ class ParameterEditorWindow:
             font=FONT_STATUS,
         )
         self.status_bar.pack(side="bottom", fill="x")
+
+    def _toggle_json_column(self):
+        """切换 JSON 列的显示/隐藏"""
+        self._json_column_visible = not self._json_column_visible
+
+        # 更新按钮文字
+        btn_text = "Hide JSON" if self._json_column_visible else "Show JSON"
+        self.json_toggle_btn.config(text=btn_text)
+
+        # 遍历所有分组的所有参数输入组件
+        for section in self.section_map.values():
+            for param_input in section.param_inputs:
+                param_input.show_json_column(self._json_column_visible)
+
+        # 调整窗口大小
+        self._adjust_window_size()
+
+    def update_json_params(self, json_params: Dict):
+        """
+        更新 JSON 参数并刷新显示
+
+        当主窗口加载新的 JSON 文件时调用
+
+        Args:
+            json_params: 新的 JSON 参数（来自 scan_metadata）
+        """
+        self._json_params = json_params
+        self._json_param_map = self._build_json_param_map()
+
+        # 更新 JSON 按钮状态
+        if self._json_params:
+            self.json_toggle_btn.config(state="normal")
+        else:
+            self.json_toggle_btn.config(state="disabled")
+            self._json_column_visible = False
+            self.json_toggle_btn.config(text="Show JSON")
+
+        # 更新所有参数输入组件的 JSON 值
+        for section_key, section in self.section_map.items():
+            for param_input in section.param_inputs:
+                json_val = self._get_json_value(section_key, param_input.param_name)
+                param_input.set_json_value(json_val)
 
     def _adjust_window_size(self):
         """
@@ -435,13 +584,17 @@ class ParameterEditorWindow:
             param_input.frame.destroy()
         section.param_inputs.clear()
 
+        # 清空 content_frame 中残留的 LabelFrame（字典类型参数的容器）
+        for child in section.content_frame.winfo_children():
+            child.destroy()
+
         # 重新添加参数输入
         for param_name, param_config in section_config.items():
             param_type = param_config.get("type")
             param_value = section_data.get(param_name)
 
             if param_type == dict and "sub_params" in param_config:
-                # 有子参数的字典（如candle_classification或权重组）
+                # 有子参数的字典（如权重组）
                 self._add_dict_params(
                     section, param_name, param_config, param_value or {}
                 )
@@ -461,6 +614,9 @@ class ParameterEditorWindow:
         param_path = f"{section.section_key}.{param_name}"
         tooltip_text = self.comment_parser.get_comment(param_path)
 
+        # 获取对应的 JSON 值
+        json_value = self._get_json_value(section.section_key, param_name)
+
         param_input = ParameterInputFactory.create(
             section.content_frame,
             param_name,
@@ -468,6 +624,7 @@ class ParameterEditorWindow:
             param_config,
             on_change_callback=self._on_param_value_changed,  # 参数值改变回调
             tooltip_text=tooltip_text,
+            json_value=json_value,  # JSON 参数值
         )
         section.add_parameter(param_input)
 
@@ -510,6 +667,9 @@ class ParameterEditorWindow:
             param_path = f"{section.section_key}.{full_name}"
             tooltip_text = self.comment_parser.get_comment(param_path)
 
+            # 获取对应的 JSON 值
+            json_value = self._get_json_value(section.section_key, full_name)
+
             # 组合回调：脏状态标记 + 权重组总和更新（如果是权重组）
             def create_callback(parent=parent_name, is_weight=is_weight_group):
                 def callback():
@@ -525,6 +685,7 @@ class ParameterEditorWindow:
                 sub_config,
                 on_change_callback=create_callback(),
                 tooltip_text=tooltip_text,
+                json_value=json_value,  # JSON 参数值
             )
             section.add_parameter(sub_input)
             sub_inputs.append(sub_input)

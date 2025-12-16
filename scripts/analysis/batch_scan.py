@@ -168,7 +168,9 @@ def main():
         num_workers = config["performance"]["num_workers"]
         max_stocks = config["data"]["max_stocks"]
 
-        window = params["breakthrough_detector"]["window"]
+        total_window = params["breakthrough_detector"]["total_window"]
+        min_side_bars = params["breakthrough_detector"]["min_side_bars"]
+        min_relative_height = params["breakthrough_detector"]["min_relative_height"]
         exceed_threshold = params["breakthrough_detector"]["exceed_threshold"]
         peak_supersede_threshold = params["breakthrough_detector"]["peak_supersede_threshold"]
 
@@ -182,7 +184,9 @@ def main():
 
         print(f"Loaded configuration from: {config_path}")
         print(f"Loaded parameters from: {params_path_str}")
-        print(f"  - Window: {window}")
+        print(f"  - Total window: {total_window}")
+        print(f"  - Min side bars: {min_side_bars}")
+        print(f"  - Min relative height: {min_relative_height}")
         print(f"  - Exceed threshold: {exceed_threshold}")
         print(f"  - Peak merge threshold: {peak_supersede_threshold}")
         print(f"  - Date range: {start_date} to {end_date}")
@@ -233,7 +237,9 @@ def main():
         # 创建ScanManager（不使用全局时间范围）
         manager = ScanManager(
             output_dir=output_dir_path,
-            window=window,
+            total_window=total_window,
+            min_side_bars=min_side_bars,
+            min_relative_height=min_relative_height,
             exceed_threshold=exceed_threshold,
             peak_supersede_threshold=peak_supersede_threshold,
             start_date=None,  # CSV模式下忽略全局时间
@@ -273,7 +279,9 @@ def main():
         # 创建ScanManager（使用全局时间范围）
         manager = ScanManager(
             output_dir=output_dir_path,
-            window=window,
+            total_window=total_window,
+            min_side_bars=min_side_bars,
+            min_relative_height=min_relative_height,
             exceed_threshold=exceed_threshold,
             peak_supersede_threshold=peak_supersede_threshold,
             start_date=start_date,

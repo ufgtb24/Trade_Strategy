@@ -2,10 +2,12 @@
 
 import tkinter as tk
 from tkinter import filedialog, ttk
-from typing import Callable, Optional
+from typing import Callable, Dict, Optional
 
 from ..config import get_ui_config_loader
 from ..config import get_ui_param_loader
+from ..config import get_ui_scan_config_loader
+from ..dialogs import askopenfilename as custom_askopenfilename
 
 
 class ParameterPanel:
@@ -17,6 +19,9 @@ class ParameterPanel:
         on_load_callback: Optional[Callable] = None,
         on_param_changed_callback: Optional[Callable] = None,
         on_display_option_changed_callback: Optional[Callable] = None,
+        on_rescan_all_callback: Optional[Callable] = None,
+        on_new_scan_callback: Optional[Callable] = None,
+        get_json_params_callback: Optional[Callable[[], Optional[Dict]]] = None,
     ):
         """
         初始化参数面板
@@ -26,11 +31,17 @@ class ParameterPanel:
             on_load_callback: 加载文件回调
             on_param_changed_callback: 参数变化回调
             on_display_option_changed_callback: 显示选项变化回调
+            on_rescan_all_callback: Rescan All 按钮点击回调
+            on_new_scan_callback: New Scan 按钮点击回调
+            get_json_params_callback: 获取 JSON 扫描参数的回调（返回 scan_data）
         """
         self.parent = parent
         self.on_load_callback = on_load_callback
         self.on_param_changed_callback = on_param_changed_callback
         self.on_display_option_changed_callback = on_display_option_changed_callback
+        self.on_rescan_all_callback = on_rescan_all_callback
+        self.on_new_scan_callback = on_new_scan_callback
+        self.get_json_params_callback = get_json_params_callback
 
         # 加载默认显示选项
         config_loader = get_ui_config_loader()
@@ -53,6 +64,9 @@ class ParameterPanel:
         # 参数加载器
         self.param_loader = get_ui_param_loader()
 
+        # 扫描配置加载器
+        self.scan_config_loader = get_ui_scan_config_loader()
+
         # 订阅 UIParamLoader 状态变化（统一状态同步）
         self.param_loader.add_listener(self._on_param_loader_state_changed)
 
@@ -71,6 +85,12 @@ class ParameterPanel:
         ttk.Button(
             container, text="Load Scan Results", command=self._on_load_scan_clicked
         ).pack(side=tk.LEFT, padx=5)
+
+        # New Scan 按钮
+        self.new_scan_btn = ttk.Button(
+            container, text="New Scan", command=self._on_new_scan_clicked
+        )
+        self.new_scan_btn.pack(side=tk.LEFT, padx=5)
 
         ttk.Separator(container, orient=tk.VERTICAL).pack(
             side=tk.LEFT, fill=tk.Y, padx=10
@@ -100,11 +120,30 @@ class ParameterPanel:
         self.param_file_combobox.bind("<<ComboboxSelected>>", self._on_param_file_selected)
 
         # Edit 按钮
-        ttk.Button(
+        self.edit_btn = ttk.Button(
             param_group_frame,
             text="Edit",
             command=self._on_edit_params_clicked,
-        ).pack(side=tk.LEFT, padx=5)
+            state="disabled",  # Browse Mode 默认禁用
+        )
+        self.edit_btn.pack(side=tk.LEFT, padx=5)
+
+        # Rescan All 按钮（仅 Analysis Mode 可用）
+        self.rescan_all_btn = ttk.Button(
+            param_group_frame,
+            text="Rescan All",
+            command=self._on_rescan_all_clicked,
+            state="disabled",  # Browse Mode 默认禁用
+        )
+        self.rescan_all_btn.pack(side=tk.LEFT, padx=5)
+
+        # Scan Settings 按钮（始终可用）
+        self.scan_settings_btn = ttk.Button(
+            param_group_frame,
+            text="Scan Settings",
+            command=self._on_scan_settings_clicked,
+        )
+        self.scan_settings_btn.pack(side=tk.LEFT, padx=5)
 
         ttk.Separator(container, orient=tk.VERTICAL).pack(
             side=tk.LEFT, fill=tk.Y, padx=10
@@ -135,7 +174,9 @@ class ParameterPanel:
         config_loader = get_ui_config_loader()
         default_dir = config_loader.get_scan_results_dir()
 
-        file_path = filedialog.askopenfilename(
+        # 使用自定义文件对话框（支持 Delete 键删除文件）
+        file_path = custom_askopenfilename(
+            parent=self.parent.winfo_toplevel(),
             title="Select Scan Results",
             initialdir=default_dir,
             filetypes=[("JSON files", "*.json"), ("All files", "*.*")],
@@ -189,6 +230,16 @@ class ParameterPanel:
         """获取 Use UI Params 复选框状态"""
         return self.use_ui_params_var.get()
 
+    def get_mode(self) -> str:
+        """
+        获取当前模式
+
+        Returns:
+            "browse" - 浏览模式（使用 JSON 缓存）
+            "analysis" - 分析模式（使用 UI 参数实时计算）
+        """
+        return "analysis" if self.use_ui_params_var.get() else "browse"
+
     def _on_edit_params_clicked(self):
         """Edit 按钮点击 - 打开编辑器，加载当前下拉菜单选中的文件"""
         selected_file = self.param_file_combobox.get()
@@ -222,10 +273,18 @@ class ParameterPanel:
 
             root = self.parent.winfo_toplevel()
 
+            # 获取 JSON 参数（来自 scan_metadata）
+            json_params = None
+            if self.get_json_params_callback:
+                scan_data = self.get_json_params_callback()
+                if scan_data:
+                    json_params = scan_data.get("scan_metadata", {})
+
             self.editor_window = ParameterEditorWindow(
                 parent=root,
                 ui_param_loader=self.param_loader,
                 on_apply_callback=self._on_params_applied,
+                json_params=json_params,
             )
 
             # 预加载文件
@@ -412,8 +471,63 @@ class ParameterPanel:
             traceback.print_exc()
 
     def _update_combobox_state(self):
-        """根据复选框状态更新下拉菜单的启用/禁用"""
+        """
+        根据模式更新 UI 组件的启用/禁用状态
+
+        Browse Mode: 参数下拉框、Edit 按钮、Rescan All 按钮禁用
+        Analysis Mode: 参数下拉框、Edit 按钮、Rescan All 按钮启用
+        """
         if self.use_ui_params_var.get():
-            self.param_file_combobox.config(state="readonly")  # 启用
+            # Analysis Mode
+            self.param_file_combobox.config(state="readonly")
+            self.edit_btn.config(state="normal")
+            self.rescan_all_btn.config(state="normal")
         else:
-            self.param_file_combobox.config(state="disabled")  # 禁用但显示文件名
+            # Browse Mode
+            self.param_file_combobox.config(state="disabled")
+            self.edit_btn.config(state="disabled")
+            self.rescan_all_btn.config(state="disabled")
+
+    def _on_rescan_all_clicked(self):
+        """Rescan All 按钮点击回调"""
+        if self.on_rescan_all_callback:
+            self.on_rescan_all_callback()
+
+    def _on_new_scan_clicked(self):
+        """New Scan 按钮点击回调"""
+        if self.on_new_scan_callback:
+            self.on_new_scan_callback()
+
+    def _on_scan_settings_clicked(self):
+        """Scan Settings 按钮点击 - 打开扫描配置对话框"""
+        self._open_scan_config_dialog()
+
+    def _open_scan_config_dialog(self):
+        """打开扫描配置对话框（单例模式）"""
+        # 检查是否已经打开
+        if (
+            hasattr(self, "scan_config_dialog")
+            and self.scan_config_dialog.window.winfo_exists()
+        ):
+            # 窗口已存在，提升到前台
+            self.scan_config_dialog.window.lift()
+            return
+
+        # 创建新的对话框
+        try:
+            from ..dialogs import ScanConfigDialog
+
+            root = self.parent.winfo_toplevel()
+
+            self.scan_config_dialog = ScanConfigDialog(
+                parent=root,
+                scan_config_loader=self.scan_config_loader,
+            )
+
+            self.set_status("Scan config dialog opened", "blue")
+
+        except Exception as e:
+            self.set_status(f"Failed to open dialog: {str(e)}", "red")
+            import traceback
+
+            traceback.print_exc()

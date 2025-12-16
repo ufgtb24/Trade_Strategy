@@ -39,7 +39,8 @@ class ScoreDetailWindow:
         peak: Optional[Peak],
         breakthrough: Optional[Breakthrough],
         scorer: QualityScorer,
-        position: Tuple[int, int]
+        position: Tuple[int, int],
+        symbol: str = ""
     ):
         """
         创建评分详情窗口
@@ -50,12 +51,14 @@ class ScoreDetailWindow:
             breakthrough: 突破对象（可选）
             scorer: 质量评分器实例
             position: 窗口位置 (x, y)
+            symbol: 股票代码
         """
         self.parent = parent
         self.peak = peak
         self.breakthrough = breakthrough
         self.scorer = scorer
         self.position = position
+        self.symbol = symbol
 
         # 创建窗口
         self.window = tk.Toplevel(parent)
@@ -68,7 +71,9 @@ class ScoreDetailWindow:
 
     def _setup_window(self):
         """设置窗口属性"""
-        self.window.title("Score Details")
+        # 标题中加入股票代码
+        title = f"Score Details - {self.symbol}" if self.symbol else "Score Details"
+        self.window.title(title)
         self.window.resizable(False, False)
         self.window.configure(bg=self.COLORS["window_bg"])
 
@@ -155,14 +160,13 @@ class ScoreDetailWindow:
         )
         title_label.pack(side=tk.LEFT)
 
-        # 右侧总分
-        score_color = self._get_score_color(breakdown.total_score)
+        # 右侧总分（统一使用金色，在深色背景上醒目）
         score_label = tk.Label(
             header,
             text=f"Score: {breakdown.total_score:.1f}",
             font=self.FONTS["header"],
             bg=self.COLORS["peak_header_bg"],
-            fg=score_color,
+            fg=self.COLORS["score_medium_light"],
             padx=10,
             pady=6
         )
@@ -203,14 +207,13 @@ class ScoreDetailWindow:
         )
         title_label.pack(side=tk.LEFT)
 
-        # 右侧总分
-        score_color = self._get_score_color(breakdown.total_score)
+        # 右侧总分（统一使用金色，在深色背景上醒目）
         score_label = tk.Label(
             header,
             text=f"Score: {breakdown.total_score:.1f}",
             font=self.FONTS["header"],
             bg=self.COLORS["bt_header_bg"],
-            fg=score_color,
+            fg=self.COLORS["score_medium_light"],
             padx=10,
             pady=6
         )
@@ -437,14 +440,24 @@ class ScoreDetailWindow:
         else:
             return f"{value:.1f}"
 
-    def _get_score_color(self, score: float) -> str:
-        """根据分数返回颜色"""
+    def _get_score_color(self, score: float, for_dark_bg: bool = False) -> str:
+        """
+        根据分数返回颜色
+
+        Args:
+            score: 分数值
+            for_dark_bg: 是否用于深色背景（标题栏）
+
+        Returns:
+            颜色代码
+        """
+        suffix = "_light" if for_dark_bg else ""
         if score >= 80:
-            return self.COLORS["score_high"]
+            return self.COLORS[f"score_high{suffix}"]
         elif score >= 50:
-            return self.COLORS["score_medium"]
+            return self.COLORS[f"score_medium{suffix}"]
         else:
-            return self.COLORS["score_low"]
+            return self.COLORS[f"score_low{suffix}"]
 
     def _position_window(self):
         """定位窗口"""

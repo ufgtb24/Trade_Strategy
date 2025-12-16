@@ -8,7 +8,50 @@ from tkinter import ttk
 from typing import Any, Tuple, Callable, Optional
 
 from ..config import InputValidator
-from ..styles import FONT_PARAM_LABEL, FONT_PARAM_INPUT, FONT_PARAM_HINT
+from ..styles import FONT_PARAM_LABEL, FONT_PARAM_INPUT, FONT_PARAM_HINT, JSON_DIFF_BG, JSON_MATCH_BG, JSON_NA_FG
+
+
+class SelectableLabel(ttk.Entry):
+    """可选择复制的 Label 组件
+
+    使用只读 Entry 实现，外观接近 Label 但支持文本选择和复制
+    """
+
+    def __init__(self, parent, text: str = "", width: int = 25, font=None, **kwargs):
+        """
+        初始化可选择的 Label
+
+        Args:
+            parent: 父容器
+            text: 显示文本
+            width: 宽度（字符数）
+            font: 字体
+            **kwargs: 其他参数
+        """
+        self._var = tk.StringVar(value=text)
+        super().__init__(
+            parent,
+            textvariable=self._var,
+            width=width,
+            font=font,
+            state="readonly",
+            style="SelectableLabel.TEntry",
+            **kwargs
+        )
+        # 配置只读样式，使其看起来更像 Label
+        self.configure(cursor="arrow")
+
+    def config(self, **kwargs):
+        """兼容 Label 的 config 方法"""
+        if "text" in kwargs:
+            self._var.set(kwargs.pop("text"))
+        super().configure(**kwargs)
+
+    def configure(self, **kwargs):
+        """兼容 Label 的 configure 方法"""
+        if "text" in kwargs:
+            self._var.set(kwargs.pop("text"))
+        super().configure(**kwargs)
 
 
 class ToolTip:
@@ -75,6 +118,7 @@ class BaseParameterInput:
         param_config: dict,
         on_change_callback: Optional[Callable] = None,
         tooltip_text: Optional[str] = None,
+        json_value: Optional[Any] = None,
     ):
         """
         初始化参数输入组件
@@ -86,6 +130,7 @@ class BaseParameterInput:
             param_config: 参数配置，包含type, range, description等
             on_change_callback: 值变化时的回调函数
             tooltip_text: 鼠标悬浮提示文本（中文注释）
+            json_value: JSON 文件中对应的参数值（只读显示）
         """
         self.parent = parent
         self.param_name = param_name
@@ -93,6 +138,7 @@ class BaseParameterInput:
         self.param_config = param_config
         self.on_change_callback = on_change_callback
         self.tooltip_text = tooltip_text
+        self.json_value = json_value
 
         # 主容器
         self.frame = ttk.Frame(parent)
@@ -100,22 +146,20 @@ class BaseParameterInput:
         # 组件引用
         self.label = None
         self.input_widget = None
-        self.range_label = None
-        self.error_indicator = None
+        self.json_label = None  # JSON 值显示标签
+        self._json_visible = False  # JSON 列可见性
 
         # 创建组件
         self._create_widgets()
 
-        # 绑定 tooltip
-        if self.tooltip_text and self.label:
-            ToolTip(self.label, self.tooltip_text)
+        # tooltip 在子类中处理（合并范围提示）
 
     def _get_display_name(self) -> str:
         """
         获取参数的显示名称（移除组名前缀）
 
         例如: peak_weights.volume -> volume
-              candle_classification.big_body_threshold -> big_body_threshold
+              resistance_weights.quantity -> quantity
 
         Returns:
             显示名称
@@ -141,7 +185,7 @@ class BaseParameterInput:
         raise NotImplementedError
 
     def highlight_error(self, show: bool):
-        """显示/隐藏错误高亮"""
+        """显示/隐藏错误高亮（使用输入框样式）"""
         if show:
             if hasattr(self.input_widget, "config"):
                 try:
@@ -155,6 +199,63 @@ class BaseParameterInput:
                 except Exception:
                     pass
 
+    def show_json_column(self, visible: bool):
+        """显示/隐藏 JSON 列"""
+        self._json_visible = visible
+        if self.json_label is None:
+            return
+
+        if visible:
+            self.json_label.grid(row=0, column=2, padx=5, pady=2)
+            self._update_json_highlight()
+        else:
+            self.json_label.grid_remove()
+
+    def _update_json_highlight(self):
+        """更新 JSON 值差异高亮"""
+        if not self._json_visible or self.json_label is None:
+            return
+
+        if self.json_value is None:
+            # JSON 中不存在该参数
+            self.json_label.config(foreground=JSON_NA_FG, background=JSON_MATCH_BG)
+            return
+
+        current = self.get_value()
+        is_different = not self._values_are_equal(current, self.json_value)
+
+        if is_different:
+            self.json_label.config(background=JSON_DIFF_BG, foreground="black")
+        else:
+            self.json_label.config(background=JSON_MATCH_BG, foreground="black")
+
+    def _values_are_equal(self, ui_value: Any, json_value: Any) -> bool:
+        """比较 UI 值和 JSON 值是否相等"""
+        if json_value is None:
+            return True  # JSON 无值时不标记差异
+
+        # 类型转换比较
+        if isinstance(ui_value, float) and isinstance(json_value, (int, float)):
+            return abs(ui_value - float(json_value)) < 0.0001
+        elif isinstance(ui_value, int) and isinstance(json_value, int):
+            return ui_value == json_value
+        elif isinstance(ui_value, bool) and isinstance(json_value, bool):
+            return ui_value == json_value
+        elif isinstance(ui_value, list) and isinstance(json_value, list):
+            return ui_value == json_value
+        else:
+            return str(ui_value) == str(json_value)
+
+    def set_json_value(self, value: Any):
+        """更新 JSON 值并刷新显示"""
+        self.json_value = value
+        if self.json_label:
+            display_text = str(value) if value is not None else "N/A"
+            self.json_label.config(text=display_text)
+            if value is None:
+                self.json_label.config(foreground=JSON_NA_FG)
+            self._update_json_highlight()
+
 
 class IntInput(BaseParameterInput):
     """整数输入组件（使用Spinbox）"""
@@ -162,16 +263,20 @@ class IntInput(BaseParameterInput):
     def _create_widgets(self):
         """创建整数输入组件"""
         min_val, max_val = self.param_config.get("range", (0, 100))
-        description = self.param_config.get("description", "")
 
-        # 标签 - 14号字体，使用显示名称
+        # Column 0: 标签
         display_name = self._get_display_name()
-        self.label = ttk.Label(
+        self.label = SelectableLabel(
             self.frame, text=f"{display_name}:", width=25, font=FONT_PARAM_LABEL
         )
         self.label.grid(row=0, column=0, sticky="w", padx=5, pady=2)
 
-        # Spinbox - 14号字体
+        # 范围提示合并到 Tooltip
+        range_hint = f"Range: {min_val} - {max_val}"
+        combined_tooltip = f"{self.tooltip_text}\n{range_hint}" if self.tooltip_text else range_hint
+        ToolTip(self.label, combined_tooltip)
+
+        # Column 1: Spinbox
         self.spinbox_var = tk.IntVar(value=self.param_value or min_val)
         self.input_widget = ttk.Spinbox(
             self.frame,
@@ -187,23 +292,21 @@ class IntInput(BaseParameterInput):
         # 绑定键盘输入事件
         self.input_widget.bind("<KeyRelease>", lambda e: self._on_value_changed())
 
-        # 范围提示 - 14号字体
-        self.range_label = ttk.Label(
+        # Column 2: JSON 值标签（初始隐藏）
+        json_display = str(self.json_value) if self.json_value is not None else "N/A"
+        self.json_label = tk.Label(
             self.frame,
-            text=f"({min_val} - {max_val})",
-            foreground="gray",
+            text=json_display,
+            width=15,
             font=FONT_PARAM_HINT,
+            anchor="center",
+            foreground=JSON_NA_FG if self.json_value is None else "black",
         )
-        self.range_label.grid(row=0, column=2, padx=5, pady=2)
-
-        # 错误指示器 - 14号字体
-        self.error_indicator = ttk.Label(
-            self.frame, text="", foreground="red", font=FONT_PARAM_LABEL
-        )
-        self.error_indicator.grid(row=0, column=3, padx=5, pady=2)
+        # 初始不 grid，由 show_json_column() 控制显示
 
     def _on_value_changed(self):
         """值变化时的回调"""
+        self._update_json_highlight()  # 更新差异高亮
         if self.on_change_callback:
             self.on_change_callback()
 
@@ -225,10 +328,8 @@ class IntInput(BaseParameterInput):
         value_str = self.input_widget.get()
         is_valid, _, error_msg = InputValidator.validate_int(value_str, min_val, max_val)
 
-        if not is_valid:
-            self.error_indicator.config(text="✗")
-        else:
-            self.error_indicator.config(text="")
+        # 使用输入框样式标识错误
+        self.highlight_error(not is_valid)
 
         return is_valid, error_msg
 
@@ -239,16 +340,20 @@ class FloatInput(BaseParameterInput):
     def _create_widgets(self):
         """创建浮点数输入组件"""
         min_val, max_val = self.param_config.get("range", (0.0, 1.0))
-        description = self.param_config.get("description", "")
 
-        # 标签 - 14号字体，使用显示名称
+        # Column 0: 标签
         display_name = self._get_display_name()
-        self.label = ttk.Label(
+        self.label = SelectableLabel(
             self.frame, text=f"{display_name}:", width=25, font=FONT_PARAM_LABEL
         )
         self.label.grid(row=0, column=0, sticky="w", padx=5, pady=2)
 
-        # Entry - 14号字体
+        # 范围提示合并到 Tooltip
+        range_hint = f"Range: {min_val} - {max_val}"
+        combined_tooltip = f"{self.tooltip_text}\n{range_hint}" if self.tooltip_text else range_hint
+        ToolTip(self.label, combined_tooltip)
+
+        # Column 1: Entry
         self.entry_var = tk.StringVar(value=str(self.param_value or min_val))
         self.input_widget = ttk.Entry(
             self.frame, textvariable=self.entry_var, width=15, font=FONT_PARAM_INPUT
@@ -258,25 +363,23 @@ class FloatInput(BaseParameterInput):
         # 绑定键盘输入事件
         self.input_widget.bind("<KeyRelease>", self._on_value_changed)
 
-        # 范围提示 - 14号字体
-        self.range_label = ttk.Label(
+        # Column 2: JSON 值标签（初始隐藏）
+        json_display = str(self.json_value) if self.json_value is not None else "N/A"
+        self.json_label = tk.Label(
             self.frame,
-            text=f"({min_val} - {max_val})",
-            foreground="gray",
+            text=json_display,
+            width=15,
             font=FONT_PARAM_HINT,
+            anchor="center",
+            foreground=JSON_NA_FG if self.json_value is None else "black",
         )
-        self.range_label.grid(row=0, column=2, padx=5, pady=2)
-
-        # 错误指示器 - 14号字体
-        self.error_indicator = ttk.Label(
-            self.frame, text="", foreground="red", font=FONT_PARAM_LABEL
-        )
-        self.error_indicator.grid(row=0, column=3, padx=5, pady=2)
+        # 初始不 grid，由 show_json_column() 控制显示
 
     def _on_value_changed(self, event=None):
         """值变化时的回调"""
         # 实时验证
         is_valid, _ = self.validate()
+        self._update_json_highlight()  # 更新差异高亮
         if self.on_change_callback:
             self.on_change_callback()
 
@@ -300,10 +403,8 @@ class FloatInput(BaseParameterInput):
             value_str, min_val, max_val
         )
 
-        if not is_valid:
-            self.error_indicator.config(text="✗")
-        else:
-            self.error_indicator.config(text="")
+        # 使用输入框样式标识错误
+        self.highlight_error(not is_valid)
 
         return is_valid, error_msg
 
@@ -313,24 +414,39 @@ class BoolInput(BaseParameterInput):
 
     def _create_widgets(self):
         """创建布尔输入组件"""
-        description = self.param_config.get("description", "")
-
-        # 标签 - 14号字体，使用显示名称
+        # Column 0: 标签
         display_name = self._get_display_name()
-        self.label = ttk.Label(
+        self.label = SelectableLabel(
             self.frame, text=f"{display_name}:", width=25, font=FONT_PARAM_LABEL
         )
         self.label.grid(row=0, column=0, sticky="w", padx=5, pady=2)
 
-        # Checkbutton
+        # Tooltip（如果有）
+        if self.tooltip_text:
+            ToolTip(self.label, self.tooltip_text)
+
+        # Column 1: Checkbutton
         self.bool_var = tk.BooleanVar(value=bool(self.param_value))
         self.input_widget = ttk.Checkbutton(
             self.frame, variable=self.bool_var, command=self._on_value_changed
         )
         self.input_widget.grid(row=0, column=1, sticky="w", padx=5, pady=2)
 
+        # Column 2: JSON 值标签（初始隐藏）
+        json_display = str(self.json_value) if self.json_value is not None else "N/A"
+        self.json_label = tk.Label(
+            self.frame,
+            text=json_display,
+            width=15,
+            font=FONT_PARAM_HINT,
+            anchor="center",
+            foreground=JSON_NA_FG if self.json_value is None else "black",
+        )
+        # 初始不 grid，由 show_json_column() 控制显示
+
     def _on_value_changed(self):
         """值变化时的回调"""
+        self._update_json_highlight()  # 更新差异高亮
         if self.on_change_callback:
             self.on_change_callback()
 
@@ -357,16 +473,21 @@ class ListInput(BaseParameterInput):
     def _create_widgets(self):
         """创建列表输入组件"""
         element_type = self.param_config.get("element_type", int)
-        description = self.param_config.get("description", "")
 
-        # 标签 - 14号字体，使用显示名称
+        # Column 0: 标签
         display_name = self._get_display_name()
-        self.label = ttk.Label(
+        self.label = SelectableLabel(
             self.frame, text=f"{display_name}:", width=25, font=FONT_PARAM_LABEL
         )
         self.label.grid(row=0, column=0, sticky="w", padx=5, pady=2)
 
-        # Entry - 14号字体
+        # 格式提示合并到 Tooltip
+        type_name = element_type.__name__ if hasattr(element_type, "__name__") else "int"
+        format_hint = f"Format: comma-separated {type_name}s"
+        combined_tooltip = f"{self.tooltip_text}\n{format_hint}" if self.tooltip_text else format_hint
+        ToolTip(self.label, combined_tooltip)
+
+        # Column 1: Entry
         # 将列表转为逗号分隔字符串
         if self.param_value:
             value_str = ", ".join(str(v) for v in self.param_value)
@@ -381,26 +502,23 @@ class ListInput(BaseParameterInput):
         # 绑定键盘输入事件
         self.input_widget.bind("<KeyRelease>", self._on_value_changed)
 
-        # 提示 - 14号字体
-        type_name = element_type.__name__ if hasattr(element_type, "__name__") else "int"
-        self.range_label = ttk.Label(
+        # Column 2: JSON 值标签（初始隐藏）
+        json_display = str(self.json_value) if self.json_value is not None else "N/A"
+        self.json_label = tk.Label(
             self.frame,
-            text=f"(comma-separated {type_name}s)",
-            foreground="gray",
+            text=json_display,
+            width=15,
             font=FONT_PARAM_HINT,
+            anchor="center",
+            foreground=JSON_NA_FG if self.json_value is None else "black",
         )
-        self.range_label.grid(row=0, column=2, padx=5, pady=2)
-
-        # 错误指示器 - 14号字体
-        self.error_indicator = ttk.Label(
-            self.frame, text="", foreground="red", font=FONT_PARAM_LABEL
-        )
-        self.error_indicator.grid(row=0, column=3, padx=5, pady=2)
+        # 初始不 grid，由 show_json_column() 控制显示
 
     def _on_value_changed(self, event=None):
         """值变化时的回调"""
         # 实时验证
         is_valid, _ = self.validate()
+        self._update_json_highlight()  # 更新差异高亮
         if self.on_change_callback:
             self.on_change_callback()
 
@@ -425,10 +543,8 @@ class ListInput(BaseParameterInput):
         value_str = self.entry_var.get()
         is_valid, _, error_msg = InputValidator.validate_list(value_str, element_type)
 
-        if not is_valid:
-            self.error_indicator.config(text="✗")
-        else:
-            self.error_indicator.config(text="")
+        # 使用输入框样式标识错误
+        self.highlight_error(not is_valid)
 
         return is_valid, error_msg
 
@@ -438,16 +554,18 @@ class StrInput(BaseParameterInput):
 
     def _create_widgets(self):
         """创建字符串输入组件"""
-        description = self.param_config.get("description", "")
-
-        # 标签 - 14号字体，使用显示名称
+        # Column 0: 标签
         display_name = self._get_display_name()
-        self.label = ttk.Label(
+        self.label = SelectableLabel(
             self.frame, text=f"{display_name}:", width=25, font=FONT_PARAM_LABEL
         )
         self.label.grid(row=0, column=0, sticky="w", padx=5, pady=2)
 
-        # Entry - 14号字体
+        # Tooltip（如果有）
+        if self.tooltip_text:
+            ToolTip(self.label, self.tooltip_text)
+
+        # Column 1: Entry
         self.entry_var = tk.StringVar(value=str(self.param_value or ""))
         self.input_widget = ttk.Entry(
             self.frame, textvariable=self.entry_var, width=30, font=FONT_PARAM_INPUT
@@ -457,8 +575,21 @@ class StrInput(BaseParameterInput):
         # 绑定键盘输入事件
         self.input_widget.bind("<KeyRelease>", self._on_value_changed)
 
+        # Column 2: JSON 值标签（初始隐藏）
+        json_display = str(self.json_value) if self.json_value is not None else "N/A"
+        self.json_label = tk.Label(
+            self.frame,
+            text=json_display,
+            width=15,
+            font=FONT_PARAM_HINT,
+            anchor="center",
+            foreground=JSON_NA_FG if self.json_value is None else "black",
+        )
+        # 初始不 grid，由 show_json_column() 控制显示
+
     def _on_value_changed(self, event=None):
         """值变化时的回调"""
+        self._update_json_highlight()  # 更新差异高亮
         if self.on_change_callback:
             self.on_change_callback()
 
@@ -486,6 +617,7 @@ class ParameterInputFactory:
         param_config: dict,
         on_change_callback: Optional[Callable] = None,
         tooltip_text: Optional[str] = None,
+        json_value: Optional[Any] = None,
     ) -> BaseParameterInput:
         """
         根据参数配置创建相应的输入组件
@@ -501,6 +633,7 @@ class ParameterInputFactory:
                 - description: 参数说明
             on_change_callback: 值变化时的回调函数
             tooltip_text: 鼠标悬浮提示文本（中文注释）
+            json_value: JSON 文件中对应的参数值（只读显示）
 
         Returns:
             对应类型的参数输入组件
@@ -509,26 +642,26 @@ class ParameterInputFactory:
 
         if param_type == int:
             return IntInput(
-                parent, param_name, param_value, param_config, on_change_callback, tooltip_text
+                parent, param_name, param_value, param_config, on_change_callback, tooltip_text, json_value
             )
         elif param_type == float:
             return FloatInput(
-                parent, param_name, param_value, param_config, on_change_callback, tooltip_text
+                parent, param_name, param_value, param_config, on_change_callback, tooltip_text, json_value
             )
         elif param_type == bool:
             return BoolInput(
-                parent, param_name, param_value, param_config, on_change_callback, tooltip_text
+                parent, param_name, param_value, param_config, on_change_callback, tooltip_text, json_value
             )
         elif param_type == list:
             return ListInput(
-                parent, param_name, param_value, param_config, on_change_callback, tooltip_text
+                parent, param_name, param_value, param_config, on_change_callback, tooltip_text, json_value
             )
         elif param_type == str:
             return StrInput(
-                parent, param_name, param_value, param_config, on_change_callback, tooltip_text
+                parent, param_name, param_value, param_config, on_change_callback, tooltip_text, json_value
             )
         else:
             # 默认使用字符串输入
             return StrInput(
-                parent, param_name, param_value, param_config, on_change_callback, tooltip_text
+                parent, param_name, param_value, param_config, on_change_callback, tooltip_text, json_value
             )

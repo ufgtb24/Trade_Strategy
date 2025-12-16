@@ -18,7 +18,9 @@ from ..utils import ensure_dir
 def compute_breakthroughs_from_dataframe(
     symbol: str,
     df: pd.DataFrame,
-    window: int,
+    total_window: int,
+    min_side_bars: int,
+    min_relative_height: float,
     exceed_threshold: float,
     peak_supersede_threshold: float,
     feature_calc_config: dict = None,
@@ -30,7 +32,9 @@ def compute_breakthroughs_from_dataframe(
     Args:
         symbol: 股票代码
         df: 数据 DataFrame
-        window: 检测窗口大小
+        total_window: 总窗口大小（左右合计）
+        min_side_bars: 单侧最少K线数
+        min_relative_height: 最小相对高度
         exceed_threshold: 突破阈值
         peak_supersede_threshold: 峰值合并阈值
         feature_calc_config: FeatureCalculator 配置字典
@@ -42,7 +46,9 @@ def compute_breakthroughs_from_dataframe(
     # 运行突破检测
     detector = BreakthroughDetector(
         symbol=symbol,
-        window=window,
+        total_window=total_window,
+        min_side_bars=min_side_bars,
+        min_relative_height=min_relative_height,
         exceed_threshold=exceed_threshold,
         peak_supersede_threshold=peak_supersede_threshold,
         use_cache=False,
@@ -83,7 +89,8 @@ def _scan_single_stock(args):
     扫描单只股票（用于多进程）
 
     Args:
-        args: (symbol, data_dir, window, exceed_threshold, peak_supersede_threshold, start_date, end_date,
+        args: (symbol, data_dir, total_window, min_side_bars, min_relative_height,
+               exceed_threshold, peak_supersede_threshold, start_date, end_date,
                feature_calc_config, quality_scorer_config)
 
     Returns:
@@ -92,7 +99,9 @@ def _scan_single_stock(args):
     (
         symbol,
         data_dir,
-        window,
+        total_window,
+        min_side_bars,
+        min_relative_height,
         exceed_threshold,
         peak_supersede_threshold,
         start_date,
@@ -123,7 +132,9 @@ def _scan_single_stock(args):
         breakthroughs, detector = compute_breakthroughs_from_dataframe(
             symbol=symbol,
             df=df,
-            window=window,
+            total_window=total_window,
+            min_side_bars=min_side_bars,
+            min_relative_height=min_relative_height,
             exceed_threshold=exceed_threshold,
             peak_supersede_threshold=peak_supersede_threshold,
             feature_calc_config=feature_calc_config,
@@ -176,6 +187,9 @@ def _scan_single_stock(args):
         )
         max_quality = max(quality_scores) if quality_scores else 0.0
 
+        # 统计 multi-peak 数量（突破多个峰值的突破点数）
+        multi_peak_count = sum(1 for bt in breakthroughs if bt.num_peaks_broken > 1)
+
         # 转换为可序列化格式
         result = {
             "symbol": symbol,
@@ -190,6 +204,7 @@ def _scan_single_stock(args):
             "total_breakthroughs": len(breakthroughs),
             "avg_quality": avg_quality,
             "max_quality": max_quality,
+            "multi_peak_count": multi_peak_count,
             "all_peaks": [
                 {
                     "id": peak.id,
@@ -244,6 +259,11 @@ def _scan_single_stock(args):
                     "quality_score": float(bt.quality_score)
                     if bt.quality_score
                     else None,
+                    # 回测标签
+                    "labels": {
+                        k: float(v) if v is not None else None
+                        for k, v in (bt.labels or {}).items()
+                    },
                 }
                 for bt in sorted(
                     breakthroughs,
@@ -252,6 +272,9 @@ def _scan_single_stock(args):
                 )
             ],
         }
+
+        # 注意：股票级标签统计量（avg/max/best_quality/latest）在 UI 层动态计算
+        # 避免在 Configure Columns 中显示冗余的统计量选项
 
         return result
 
@@ -265,7 +288,9 @@ class ScanManager:
     def __init__(
         self,
         output_dir="outputs/analysis",
-        window=5,
+        total_window=10,
+        min_side_bars=2,
+        min_relative_height=0.05,
         exceed_threshold=0.005,
         peak_supersede_threshold=0.03,
         start_date=None,
@@ -278,7 +303,9 @@ class ScanManager:
 
         Args:
             output_dir: 输出目录
-            window: 检测窗口大小
+            total_window: 总窗口大小（左右合计）
+            min_side_bars: 单侧最少K线数
+            min_relative_height: 最小相对高度
             exceed_threshold: 突破阈值
             peak_supersede_threshold: 峰值合并阈值
             start_date: 起始日期 (YYYY-MM-DD)
@@ -289,7 +316,9 @@ class ScanManager:
         self.output_dir = Path(output_dir)
         ensure_dir(self.output_dir)
 
-        self.window = window
+        self.total_window = total_window
+        self.min_side_bars = min_side_bars
+        self.min_relative_height = min_relative_height
         self.exceed_threshold = exceed_threshold
         self.peak_supersede_threshold = peak_supersede_threshold
         self.start_date = start_date
@@ -315,7 +344,9 @@ class ScanManager:
             (
                 symbol,
                 data_dir,
-                self.window,
+                self.total_window,
+                self.min_side_bars,
+                self.min_relative_height,
                 self.exceed_threshold,
                 self.peak_supersede_threshold,
                 self.start_date,
@@ -349,7 +380,8 @@ class ScanManager:
         print(f"开始扫描 {len(symbols)} 只股票...")
         print(f"使用 {num_workers} 个并行进程")
         print(
-            f"参数: window={self.window}, exceed_threshold={self.exceed_threshold}, peak_supersede_threshold={self.peak_supersede_threshold}"
+            f"参数: total_window={self.total_window}, min_side_bars={self.min_side_bars}, "
+            f"min_relative_height={self.min_relative_height}, exceed_threshold={self.exceed_threshold}"
         )
 
         # 打印模式信息
@@ -373,7 +405,9 @@ class ScanManager:
                 (
                     sym,
                     data_dir,
-                    self.window,
+                    self.total_window,
+                    self.min_side_bars,
+                    self.min_relative_height,
                     self.exceed_threshold,
                     self.peak_supersede_threshold,
                     start_date,
@@ -421,7 +455,9 @@ class ScanManager:
                 "end_date": self.end_date,
                 # 分组保存参数（v3.0新格式）
                 "detector_params": {
-                    "window": self.window,
+                    "total_window": self.total_window,
+                    "min_side_bars": self.min_side_bars,
+                    "min_relative_height": self.min_relative_height,
                     "exceed_threshold": self.exceed_threshold,
                     "peak_supersede_threshold": self.peak_supersede_threshold,
                 },
@@ -501,9 +537,12 @@ class ScanManager:
         if schema_version == "2.0":
             # v2.0 → v3.0 自动迁移
             print(f"检测到 v2.0 格式，自动迁移到 v3.0...")
-            # 重构参数结构
+            # 重构参数结构（将旧的 window 转换为新的三个参数）
+            old_window = metadata.pop("window", 5)
             metadata["detector_params"] = {
-                "window": metadata.pop("window"),
+                "total_window": old_window * 2,  # 旧逻辑：左右各window，新逻辑：合计
+                "min_side_bars": old_window,     # 保持单侧要求
+                "min_relative_height": 0.0,      # 旧逻辑不检查相对高度
                 "exceed_threshold": metadata.pop("exceed_threshold"),
                 "peak_supersede_threshold": metadata.pop("peak_supersede_threshold"),
             }
@@ -536,15 +575,28 @@ class ScanManager:
     def _get_default_scorer_params(self) -> Dict:
         """获取 QualityScorer 默认参数（用于 v2.0 迁移）"""
         return {
-            "peak_weight_volume": 0.25,
-            "peak_weight_candle": 0.20,
-            "peak_weight_suppression": 0.25,
-            "peak_weight_height": 0.15,
-            "peak_weight_merged": 0.15,
-            "bt_weight_change": 0.20,
-            "bt_weight_gap": 0.10,
-            "bt_weight_volume": 0.20,
-            "bt_weight_continuity": 0.15,
-            "bt_weight_stability": 0.15,
-            "bt_weight_resistance": 0.20,
+            # Peak weights (移除 suppression)
+            "peak_weight_volume": 0.35,
+            "peak_weight_candle": 0.25,
+            "peak_weight_height": 0.40,
+            # Breakthrough weights
+            "bt_weight_change": 0.15,
+            "bt_weight_gap": 0.08,
+            "bt_weight_volume": 0.17,
+            "bt_weight_continuity": 0.12,
+            "bt_weight_stability": 0.13,
+            "bt_weight_resistance": 0.18,
+            "bt_weight_historical": 0.17,
+            # Resistance sub-weights
+            "res_weight_quantity": 0.30,
+            "res_weight_density": 0.30,
+            "res_weight_quality": 0.40,
+            # Historical sub-weights
+            "hist_weight_oldest_age": 0.55,
+            "hist_weight_suppression": 0.45,
+            # Scalar params
+            "time_decay_baseline": 0.3,
+            "time_decay_half_life": 84,
+            "historical_significance_saturation": 252,
+            "historical_quality_threshold": 70,
         }

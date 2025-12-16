@@ -1,27 +1,30 @@
 """
-质量评分模块（改进版）
+质量评分模块（双维度时间模型版）
 
 核心改进：
-1. 修复密集度加成：识别密集子集而非整体范围
-2. 综合所有被突破峰值的质量评分
+1. 移除峰值评分中的压制时间（suppression）- 压制时间不应作为峰值质量的正向因子
+2. Phase 1: recency 整合入 quality - 阻力强度 = 数量 + 密集度 + (质量 × 时间调制)
+3. Phase 2: 条件性历史加成 - 仅高质量峰值(>=70分)参与历史意义计算
+4. 双维度时间模型：阻力衰减（指数）+ 历史意义增长（对数）
 
 峰值质量评分因素（总分100）：
-- 放量（30%）：volume_surge_ratio越大越好
-- 长K线（20%）：candle_change_pct越大越好
-- 压制时间（30%）：left_suppression_days + right_suppression_days越长越好
-- 相对高度（20%）：relative_height越大越好
+- 放量（35%）：volume_surge_ratio越大越好
+- 长K线（25%）：candle_change_pct越大越好
+- 相对高度（40%）：relative_height越大越好
 
 突破质量评分因素（总分100）：
-- 涨跌幅（20%）：price_change_pct越大越好
-- 跳空（10%）：gap_up_pct越大越好
-- 放量（20%）：volume_surge_ratio越大越好
-- 连续性（15%）：continuity_days越多越好
-- 稳定性（15%）：stability_score（突破后不跌破凸点）
-- 阻力强度（20%）：综合指标（数量+密集度+质量）
+- 涨跌幅（15%）：price_change_pct越大越好
+- 跳空（8%）：gap_up_pct越大越好
+- 放量（17%）：volume_surge_ratio越大越好
+- 连续性（12%）：continuity_days越多越好
+- 稳定性（13%）：stability_score（突破后不跌破凸点）
+- 阻力强度（18%）：数量 + 密集度 + 有效质量(质量×时间因子)
+- 历史意义（17%）：最远峰值年龄 + 压制跨度（仅高质量峰值参与）
 """
 
+import math
 from dataclasses import dataclass, field
-from typing import List, Optional, Tuple
+from typing import List, Optional
 from .breakthrough_detector import Peak, Breakthrough
 
 
@@ -82,30 +85,52 @@ class QualityScorer:
         if config is None:
             config = {}
 
-        # 峰值评分权重（已移除无效的 merged 权重，重新分配给其他维度）
+        # 峰值评分权重（移除 suppression，重新分配权重）
         self.peak_weights = {
-            'volume': config.get('peak_weight_volume', 0.30),
-            'candle': config.get('peak_weight_candle', 0.20),
-            'suppression': config.get('peak_weight_suppression', 0.30),
-            'height': config.get('peak_weight_height', 0.20),
+            'volume': config.get('peak_weight_volume', 0.35),
+            'candle': config.get('peak_weight_candle', 0.25),
+            'height': config.get('peak_weight_height', 0.40),
         }
 
-        # 突破评分权重
+        # 突破评分权重（新增 historical）
         self.breakthrough_weights = {
-            'change': config.get('bt_weight_change', 0.20),
-            'gap': config.get('bt_weight_gap', 0.10),
-            'volume': config.get('bt_weight_volume', 0.20),
-            'continuity': config.get('bt_weight_continuity', 0.15),
-            'stability': config.get('bt_weight_stability', 0.15),
-            'resistance': config.get('bt_weight_resistance', 0.20)  # 阻力强度
+            'change': config.get('bt_weight_change', 0.15),
+            'gap': config.get('bt_weight_gap', 0.08),
+            'volume': config.get('bt_weight_volume', 0.17),
+            'continuity': config.get('bt_weight_continuity', 0.12),
+            'stability': config.get('bt_weight_stability', 0.13),
+            'resistance': config.get('bt_weight_resistance', 0.18),
+            'historical': config.get('bt_weight_historical', 0.17)  # 历史意义
         }
 
-        # 阻力强度评分的子权重
+        # 阻力强度评分的子权重（recency 已整合入 quality）
+        # Phase 1 重构：recency 不再独立，而是调制 quality
         self.resistance_weights = {
-            'quantity': config.get('res_weight_quantity', 0.30),   # 峰值数量
-            'density': config.get('res_weight_density', 0.30),     # 峰值密集度
-            'quality': config.get('res_weight_quality', 0.40)      # 峰值质量
+            'quantity': config.get('res_weight_quantity', 0.30),
+            'density': config.get('res_weight_density', 0.30),
+            'quality': config.get('res_weight_quality', 0.40),  # 含时间衰减
         }
+
+        # 时间衰减基线：即使峰值很老，仍保留一定比例的基础阻力
+        self.time_decay_baseline = config.get('time_decay_baseline', 0.3)
+
+        # 历史意义评分的子权重
+        self.historical_weights = {
+            'oldest_age': config.get('hist_weight_oldest_age', 0.55),
+            'suppression_span': config.get('hist_weight_suppression', 0.45)
+        }
+
+        # 时间函数参数（单位：交易日）
+        self.time_decay_half_life = config.get('time_decay_half_life', 84)  # 4个月
+        self.historical_significance_saturation = config.get(
+            'historical_significance_saturation', 252  # 1年
+        )
+
+        # Phase 2: 条件性历史加成 - 仅高质量峰值参与历史意义计算
+        # 低于此阈值的峰值不计入"历史意义"维度（但仍计入阻力强度）
+        self.historical_quality_threshold = config.get(
+            'historical_quality_threshold', 70  # 默认70分
+        )
 
     def score_peak(self, peak: Peak) -> float:
         """
@@ -182,78 +207,69 @@ class QualityScorer:
         return feature.score
 
     def _score_quantity(self, num_peaks: int) -> float:
-        """峰值数量评分"""
-        return self._linear_score(num_peaks, 1, 5, 30, 80)
-
-    def _score_density(self, broken_peaks: List[Peak]) -> float:
         """
-        密集度评分（改进版）
+        峰值数量评分
 
-        修复问题：识别最大密集子集，而非看整体范围
-
-        示例：
-        - [3.79, 3.81, 3.82]: 100%密集 → 高分
-        - [3.6, 3.79, 3.81, 3.82, 3.9]: 有密集子集[3.79-3.82] → 高分
-        - [3.0, 3.5, 4.0]: 完全分散 → 低分
+        1个峰值 → 0分（最少阻力）
+        5+个峰值 → 100分（强阻力区）
         """
-        prices = sorted([p.price for p in broken_peaks])
-        n = len(prices)
+        return self._linear_score(num_peaks, 1, 5, 0, 100)
+
+    def _score_density(
+        self,
+        broken_peaks: List[Peak],
+        max_cluster_size: int = None
+    ) -> float:
+        """
+        密集度评分（简化版）
+
+        评分逻辑：
+        - 无密集簇：0分
+        - 2个峰值：50分（基础阻力区）
+        - 3个峰值：75分
+        - 4+个峰值：100分（强阻力区）
+
+        注：密集簇由 _find_densest_cluster 用 3% 阈值识别，
+        通过阈值的簇已经"足够密集"，只需按簇大小评分。
+
+        Args:
+            broken_peaks: 被突破的峰值列表
+            max_cluster_size: 可选的预计算结果（最大簇大小）
+        """
+        n = len(broken_peaks)
 
         if n <= 1:
-            return 50.0
+            return 0.0
 
-        # 找到最大密集子集
-        max_cluster_size, cluster_density = self._find_densest_cluster(prices)
+        # 获取密集簇大小
+        if max_cluster_size is None:
+            prices = sorted([p.price for p in broken_peaks])
+            max_cluster_size = self._find_densest_cluster(prices)
 
-        # 基础分：密集子集大小
-        if max_cluster_size >= 3:
-            size_score = 80
-        elif max_cluster_size == 2:
-            size_score = 60
-        else:
-            size_score = 40  # 无密集子集
+        if max_cluster_size <= 1:
+            return 0.0
 
-        # 密集度加成
-        if cluster_density < 0.01:  # < 1%
-            density_bonus = 20
-        elif cluster_density < 0.03:  # < 3%
-            density_bonus = 10
-        else:
-            density_bonus = 0
-
-        # 多样性加成（有密集区 + 分散峰值）
-        if max_cluster_size >= 2 and n > max_cluster_size:
-            diversity_bonus = 10
-        else:
-            diversity_bonus = 0
-
-        total = min(100, size_score + density_bonus + diversity_bonus)
-        return total
+        # 仅根据簇大小评分：2个→50, 4+个→100
+        return self._linear_score(max_cluster_size, 2, 4, 50, 100)
 
     def _find_densest_cluster(self,
                              prices: List[float],
-                             density_threshold: float = 0.03) -> Tuple[int, float]:
+                             density_threshold: float = 0.03) -> int:
         """
-        找到最大的密集子集
+        找到最大的密集簇
 
         Args:
             prices: 排序后的价格列表
             density_threshold: 密集度阈值（默认3%）
 
         Returns:
-            (最大簇大小, 簇内密集度)
+            最大簇包含的峰值数量
         """
         n = len(prices)
         if n <= 1:
-            return (n, 0.0)
+            return n
 
         max_cluster_size = 1
-        best_cluster_density = None  # 用 None 表示尚未找到密集簇
-
-        # 计算整体分散度（作为备用值）
-        overall_range = prices[-1] - prices[0]
-        overall_avg = sum(prices) / n
-        overall_density = overall_range / overall_avg if overall_avg > 0 else 0.0
 
         # 滑动窗口找密集子集
         for i in range(n):
@@ -267,20 +283,10 @@ class QualityScorer:
 
                 density = cluster_range / cluster_avg
 
-                if density <= density_threshold:
-                    # 这是一个密集子集
-                    if len(cluster) > max_cluster_size:
-                        max_cluster_size = len(cluster)
-                        best_cluster_density = density
-                    elif len(cluster) == max_cluster_size:
-                        # 同样大小，选择更密集的
-                        best_cluster_density = min(best_cluster_density, density)
+                if density <= density_threshold and len(cluster) > max_cluster_size:
+                    max_cluster_size = len(cluster)
 
-        # 如果没有找到密集簇，返回整体分散度
-        if best_cluster_density is None:
-            best_cluster_density = overall_density
-
-        return (max_cluster_size, best_cluster_density)
+        return max_cluster_size
 
     def _score_peak_quality_aggregate(self, broken_peaks: List[Peak]) -> float:
         """
@@ -322,6 +328,151 @@ class QualityScorer:
         total = min(100, base_score + max_bonus + consistency_bonus)
         return total
 
+    # =========================================================================
+    # 时间函数方法（双维度时间模型）
+    # =========================================================================
+
+    def _calculate_time_decay_factor(self, peak_age_bars: int) -> float:
+        """
+        计算时间衰减因子（指数衰减）
+
+        阻力强度随时间衰减：近期峰值阻力强，远期峰值阻力弱
+        公式：decay = 0.5^(bars / half_life)
+
+        Args:
+            peak_age_bars: 峰值距今K线数（交易日，非日历日）
+
+        Returns:
+            衰减因子 (0.1, 1.0]，越新的峰值越接近 1.0
+        """
+        if peak_age_bars <= 0:
+            return 1.0
+
+        decay = math.pow(0.5, peak_age_bars / self.time_decay_half_life)
+        return max(0.1, decay)  # 保留 10% 底线阻力
+
+    def _score_effective_quality(
+        self,
+        broken_peaks: List[Peak],
+        breakthrough_index: int
+    ) -> tuple:
+        """
+        计算有效质量评分（Phase 1 核心方法）
+
+        设计理念：
+        - 阻力 = 峰值质量 × 时间调制因子
+        - 时间调制因子 = baseline + (1 - baseline) × decay
+        - baseline 保证即使很老的峰值也保留部分阻力（默认30%）
+
+        物理类比：
+        - peak_quality 是"墙的原始厚度"
+        - time_factor 是"风化程度"（0.3~1.0）
+        - effective_quality 是"当前有效厚度"
+
+        Args:
+            broken_peaks: 被突破的峰值列表
+            breakthrough_index: 突破点的索引
+
+        Returns:
+            (effective_quality_score, avg_raw_quality, avg_time_factor)
+            - effective_quality_score: 有效质量分数 (0-100)
+            - avg_raw_quality: 原始质量均值（用于 UI 显示）
+            - avg_time_factor: 时间因子均值（用于 UI 显示）
+        """
+        if not broken_peaks:
+            return 0.0, 0.0, 0.0
+
+        baseline = self.time_decay_baseline  # 默认 0.3
+
+        effective_qualities = []
+        raw_qualities = []
+        time_factors = []
+
+        for peak in broken_peaks:
+            # 原始质量
+            raw_quality = peak.quality_score if peak.quality_score else 50.0
+            raw_qualities.append(raw_quality)
+
+            # 时间衰减
+            age_bars = breakthrough_index - peak.index
+            decay = self._calculate_time_decay_factor(age_bars)
+
+            # 时间调制因子：baseline + (1-baseline) × decay
+            # 含义：即使 decay→0，仍保留 baseline 比例的阻力
+            time_factor = baseline + (1 - baseline) * decay
+            time_factors.append(time_factor)
+
+            # 有效质量 = 原始质量 × 时间调制因子
+            effective_quality = raw_quality * time_factor
+            effective_qualities.append(effective_quality)
+
+        # 计算平均值
+        avg_effective = sum(effective_qualities) / len(effective_qualities)
+        avg_raw = sum(raw_qualities) / len(raw_qualities)
+        avg_time_factor = sum(time_factors) / len(time_factors)
+
+        # 有效质量分数已经在 0-100 范围内（因为 quality 是 0-100，factor 是 0.3-1.0）
+        return avg_effective, avg_raw, avg_time_factor
+
+    def _score_recency(
+        self,
+        broken_peaks: List[Peak],
+        breakthrough_index: int
+    ) -> float:
+        """
+        评估峰值的时间近度（已废弃，保留用于向后兼容）
+
+        注意：Phase 1 重构后，此方法不再被 _get_resistance_breakdown 调用
+        recency 已整合入 _score_effective_quality
+
+        Args:
+            broken_peaks: 被突破的峰值列表
+            breakthrough_index: 突破点的索引
+
+        Returns:
+            时间近度分数 (0-100)
+        """
+        if not broken_peaks:
+            return 0.0
+
+        # 计算每个峰值的衰减因子
+        decay_factors = []
+        for peak in broken_peaks:
+            age_bars = breakthrough_index - peak.index  # K线索引差 = 交易日数
+            decay = self._calculate_time_decay_factor(age_bars)
+            decay_factors.append(decay)
+
+        # 简单平均
+        avg_decay = sum(decay_factors) / len(decay_factors)
+
+        # 映射到 0-100 分数
+        return avg_decay * 100
+
+    def _score_suppression_span(self, broken_peaks: List[Peak]) -> float:
+        """
+        压制跨度评分（用于历史意义维度）
+
+        考虑所有被突破峰值的总压制时间跨度
+
+        Args:
+            broken_peaks: 被突破的峰值列表
+
+        Returns:
+            压制跨度分数 (0-100)
+        """
+        if not broken_peaks:
+            return 0.0
+
+        # 计算平均压制天数
+        total_suppression = sum(
+            p.left_suppression_days + p.right_suppression_days
+            for p in broken_peaks
+        )
+        avg_suppression = total_suppression / len(broken_peaks)
+
+        # 线性映射：30天->0分，90天->100分
+        return self._linear_score(avg_suppression, 30, 90, 0, 100)
+
     @staticmethod
     def _linear_score(
         value: float,
@@ -357,6 +508,56 @@ class QualityScorer:
 
         return score
 
+    @staticmethod
+    def _log_score(
+        value: float,
+        base_value: float = 1.0,
+        saturation_value: float = 10.0,
+        min_score: float = 0,
+        max_score: float = 100
+    ) -> float:
+        """
+        对数映射评分（边际效益递减）
+
+        使用对数函数实现边际效益递减：
+        - 1x → 2x 的增益 等于 2x → 4x 的增益
+        - 符合成交量的对数正态分布特性
+        - 抗极端值（超大放量评分趋于饱和）
+
+        Args:
+            value: 待评分的值（如放量倍数）
+            base_value: 基准值，低于此值得0分（默认1.0，正常量）
+            saturation_value: 饱和值，达到此值得满分（默认10.0）
+            min_score: 最低分数（默认0）
+            max_score: 最高分数（默认100）
+
+        Returns:
+            评分结果（限制在[min_score, max_score]范围内）
+
+        Example:
+            _log_score(2.0, 1.0, 10.0) ≈ 30  # 2倍量
+            _log_score(4.0, 1.0, 10.0) ≈ 60  # 4倍量（翻倍才等值增益）
+            _log_score(8.0, 1.0, 10.0) ≈ 90  # 8倍量
+        """
+        if value <= base_value:
+            return min_score
+
+        if saturation_value <= base_value:
+            return min_score
+
+        # 对数映射: log(value/base) / log(saturation/base)
+        log_value = math.log(value / base_value)
+        log_saturation = math.log(saturation_value / base_value)
+        ratio = log_value / log_saturation
+
+        # 映射到分数范围
+        score = min_score + ratio * (max_score - min_score)
+
+        # 限制在[min_score, max_score]范围内
+        score = max(min_score, min(max_score, score))
+
+        return score
+
     # =========================================================================
     # 评分分解方法（用于浮动窗口显示）
     # =========================================================================
@@ -373,9 +574,9 @@ class QualityScorer:
         """
         features = []
 
-        # 1. 放量评分
-        volume_score = self._linear_score(
-            peak.volume_surge_ratio, 2.0, 5.0, 0, 100
+        # 1. 放量评分（对数函数，边际效益递减）
+        volume_score = self._log_score(
+            peak.volume_surge_ratio, 1.0, 10.0, 0, 100
         )
         features.append(FeatureScoreDetail(
             name="Volume Surge",
@@ -387,7 +588,7 @@ class QualityScorer:
 
         # 2. K线涨跌幅评分
         candle_score = self._linear_score(
-            abs(peak.candle_change_pct), 0.05, 0.10, 0, 100
+            abs(peak.candle_change_pct), 0.03, 0.20, 0, 100
         )
         features.append(FeatureScoreDetail(
             name="Candle Change",
@@ -397,22 +598,9 @@ class QualityScorer:
             weight=self.peak_weights['candle']
         ))
 
-        # 3. 压制时间评分
-        suppression_days = peak.left_suppression_days + peak.right_suppression_days
-        suppression_score = self._linear_score(
-            suppression_days, 30, 60, 0, 100
-        )
-        features.append(FeatureScoreDetail(
-            name="Suppression",
-            raw_value=suppression_days,
-            unit="d",
-            score=suppression_score,
-            weight=self.peak_weights['suppression']
-        ))
-
-        # 4. 相对高度评分
+        # 3. 相对高度评分（权重已调整）
         height_score = self._linear_score(
-            peak.relative_height, 0.05, 0.10, 0, 100
+            peak.relative_height, 0.05, 0.3, 0, 100
         )
         features.append(FeatureScoreDetail(
             name="Rel. Height",
@@ -470,9 +658,9 @@ class QualityScorer:
             weight=self.breakthrough_weights['gap']
         ))
 
-        # 3. 放量评分
-        volume_score = self._linear_score(
-            breakthrough.volume_surge_ratio, 2.0, 5.0, 0, 100
+        # 3. 放量评分（对数函数，边际效益递减）
+        volume_score = self._log_score(
+            breakthrough.volume_surge_ratio, 1.0, 8.0, 0, 100
         )
         features.append(FeatureScoreDetail(
             name="Volume Surge",
@@ -508,6 +696,10 @@ class QualityScorer:
         resistance_feature = self._get_resistance_breakdown(breakthrough)
         features.append(resistance_feature)
 
+        # 7. 历史意义评分（新增，含子因素展开）
+        historical_feature = self._get_historical_breakdown(breakthrough)
+        features.append(historical_feature)
+
         # 计算总分
         total_score = sum(f.score * f.weight for f in features)
 
@@ -526,7 +718,17 @@ class QualityScorer:
         self, breakthrough: Breakthrough
     ) -> FeatureScoreDetail:
         """
-        获取阻力强度的详细分解（含三个子因素）
+        获取阻力强度的详细分解（Phase 1 重构版）
+
+        设计理念（基于阻力衰减研究）：
+        - Recency 不再作为独立维度，而是调制 Quality
+        - 公式：effective_quality = peak_quality × (baseline + (1-baseline) × decay)
+        - 这样符合物理直觉："阻力墙的厚度"随时间"风化"
+
+        子因素：
+        1. Quantity: 峰值数量（结构因素，不衰减）
+        2. Density: 峰值密集度（结构因素，不衰减）
+        3. Eff.Quality: 有效质量 = 峰值质量 × 时间调制因子
 
         Args:
             breakthrough: 突破对象
@@ -548,7 +750,7 @@ class QualityScorer:
                 sub_features=[]
             )
 
-        # 1. 数量评分
+        # 1. 数量评分（结构因素，不受时间影响）
         quantity_score = self._score_quantity(num_peaks)
         sub_features.append(FeatureScoreDetail(
             name="Quantity",
@@ -558,34 +760,34 @@ class QualityScorer:
             weight=self.resistance_weights['quantity']
         ))
 
-        # 2. 密集度评分
+        # 2. 密集度评分（结构因素，不受时间影响）
         if num_peaks >= 2:
             prices = sorted([p.price for p in broken_peaks])
-            max_cluster_size, cluster_density = self._find_densest_cluster(prices)
-            density_score = self._score_density(broken_peaks)
-            density_value = cluster_density * 100  # 转为百分比
+            max_cluster_size = self._find_densest_cluster(prices)
+            density_score = self._score_density(broken_peaks, max_cluster_size)
         else:
-            density_score = 50.0
-            density_value = 0.0
+            # 单一峰值：密集度概念不适用，得 0 分
+            max_cluster_size = num_peaks
+            density_score = 0.0
 
         sub_features.append(FeatureScoreDetail(
             name="Density",
-            raw_value=density_value,
-            unit="%",
+            raw_value=max_cluster_size,
+            unit="pks",
             score=density_score,
             weight=self.resistance_weights['density']
         ))
 
-        # 3. 质量评分
-        quality_score = self._score_peak_quality_aggregate(broken_peaks)
-        qualities = [p.quality_score for p in broken_peaks if p.quality_score]
-        avg_quality = sum(qualities) / len(qualities) if qualities else 50.0
+        # 3. 有效质量评分（质量 × 时间调制因子）
+        # Phase 1 核心改动：recency 整合入 quality
+        effective_quality_score, avg_raw_quality, avg_time_factor = \
+            self._score_effective_quality(broken_peaks, breakthrough.index)
 
         sub_features.append(FeatureScoreDetail(
-            name="Quality",
-            raw_value=avg_quality,
-            unit="",
-            score=quality_score,
+            name="Eff.Quality",
+            raw_value=avg_raw_quality,  # 显示原始质量
+            unit=f"×{avg_time_factor:.0%}",  # 单位显示时间因子
+            score=effective_quality_score,
             weight=self.resistance_weights['quality']
         ))
 
@@ -598,5 +800,102 @@ class QualityScorer:
             unit="",
             score=resistance_score,
             weight=self.breakthrough_weights['resistance'],
+            sub_features=sub_features
+        )
+
+    def _get_historical_breakdown(
+        self, breakthrough: Breakthrough
+    ) -> FeatureScoreDetail:
+        """
+        获取历史意义的详细分解（含两个子因素）
+
+        Phase 2 改进：条件性历史加成
+        - 仅高质量峰值（quality_score >= threshold）参与计算
+        - 若无高质量峰值，回退到使用所有峰值
+
+        子因素：
+        1. Oldest Age: 最远被突破峰值的年龄（对数增长）
+        2. Suppression Span: 平均压制跨度
+
+        Args:
+            breakthrough: 突破对象
+
+        Returns:
+            FeatureScoreDetail 含 sub_features
+        """
+        broken_peaks = breakthrough.broken_peaks
+        num_peaks = len(broken_peaks)
+        sub_features = []
+
+        if num_peaks == 0:
+            return FeatureScoreDetail(
+                name="Historical",
+                raw_value=0,
+                unit="",
+                score=0,
+                weight=self.breakthrough_weights['historical'],
+                sub_features=[]
+            )
+
+        # Phase 2: 条件性历史加成 - 筛选高质量峰值
+        threshold = self.historical_quality_threshold
+        significant_peaks = [
+            p for p in broken_peaks
+            if p.quality_score is not None and p.quality_score >= threshold
+        ]
+
+        # 若无高质量峰值，回退到所有峰值
+        if not significant_peaks:
+            significant_peaks = broken_peaks
+            used_all_peaks = True
+        else:
+            used_all_peaks = False
+
+        num_significant = len(significant_peaks)
+
+        # 1. 最远峰值年龄评分（仅从高质量峰值中选择）
+        oldest_peak = max(significant_peaks, key=lambda p: breakthrough.index - p.index)
+        oldest_age = breakthrough.index - oldest_peak.index
+        oldest_age_score = self._log_score(
+            oldest_age + 1,  # +1 处理 log(0) 边界
+            base_value=1.0,
+            saturation_value=self.historical_significance_saturation + 1
+        )
+
+        # 单位显示是否使用了回退逻辑
+        age_unit = "d" if used_all_peaks else f"d({num_significant}pk)"
+
+        sub_features.append(FeatureScoreDetail(
+            name="Oldest Age",
+            raw_value=oldest_age,
+            unit=age_unit,
+            score=oldest_age_score,
+            weight=self.historical_weights['oldest_age']
+        ))
+
+        # 2. 压制跨度评分（仅从高质量峰值中计算）
+        suppression_span_score = self._score_suppression_span(significant_peaks)
+        avg_suppression = sum(
+            p.left_suppression_days + p.right_suppression_days
+            for p in significant_peaks
+        ) / num_significant
+
+        sub_features.append(FeatureScoreDetail(
+            name="Suppression Span",
+            raw_value=avg_suppression,
+            unit="d",
+            score=suppression_span_score,
+            weight=self.historical_weights['suppression_span']
+        ))
+
+        # 计算历史意义总分
+        historical_score = sum(sf.score * sf.weight for sf in sub_features)
+
+        return FeatureScoreDetail(
+            name="Historical",
+            raw_value=historical_score,
+            unit="",
+            score=historical_score,
+            weight=self.breakthrough_weights['historical'],
             sub_features=sub_features
         )
