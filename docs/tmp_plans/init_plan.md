@@ -87,14 +87,14 @@
 
 ### 2.3 目录结构设计
 
-建议新建独立目录 `BreakthroughStrategy/`，与现有 `ScreenerDayFeature/` 和 `ScreenerBackTrader/` 平行：
+建议新建独立目录 `BreakoutStrategy/`，与现有 `ScreenerDayFeature/` 和 `ScreenerBackTrader/` 平行：
 
 ```
 new_trade/
 ├── DataProcess/              # 现有：数据下载（可扩展支持Tiger API）
 ├── ScreenerDayFeature/       # 现有：第一阶段选股
 ├── ScreenerBackTrader/       # 现有：第二阶段选股
-├── BreakthroughStrategy/     # 新增：突破选股策略系统
+├── BreakoutStrategy/     # 新增：突破选股策略系统
 │   ├── data/                 # 数据层
 │   ├── analysis/             # 技术分析模块
 │   ├── search/               # 搜索系统
@@ -109,7 +109,7 @@ new_trade/
 ├── datasets/                 # 现有：数据存储（可扩展）
 ├── ext_file/                 # 现有：输出文件（可扩展）
 └── docs/                     # 文档
-    ├── breakthrough_strategy.md  # 现有：策略文档
+    ├── breakout_strategy.md  # 现有：策略文档
     └── 开发计划.md                # 本文档
 ```
 
@@ -196,7 +196,7 @@ new_trade/
 
 ## 四、核心模块详细设计
 
-### 4.1 数据层（BreakthroughStrategy/data/）
+### 4.1 数据层（BreakoutStrategy/data/）
 
 **职责**：
 - 与Tiger Open API交互，获取美股历史和实时行情数据
@@ -228,7 +228,7 @@ new_trade/
 
 ---
 
-### 4.2 技术分析模块（BreakthroughStrategy/analysis/）
+### 4.2 技术分析模块（BreakoutStrategy/analysis/）
 
 **职责**：
 - 实现凸点识别算法（核心算法）
@@ -270,7 +270,7 @@ new_trade/
 
 ---
 
-### 4.3 搜索系统（BreakthroughStrategy/search/）
+### 4.3 搜索系统（BreakoutStrategy/search/）
 
 **职责**：
 - 扫描美股市场，找到已完成突破的股票
@@ -300,7 +300,7 @@ new_trade/
 
 **输出格式**（详细格式见技术设计文档）：
 ```
-symbol,breakthrough_date,peak_date,peak_price,breakthrough_price,peak_quality,breakthrough_quality,combined_score
+symbol,breakout_date,peak_date,peak_price,breakout_price,peak_quality,breakout_quality,combined_score
 AAPL,2024-01-15,2023-12-20,195.50,196.20,85.5,78.3,82.1
 TSLA,2024-01-14,2023-11-10,245.00,248.50,92.3,88.7,90.6
 ```
@@ -313,7 +313,7 @@ TSLA,2024-01-14,2023-11-10,245.00,248.50,92.3,88.7,90.6
 
 ---
 
-### 4.4 观察池系统（BreakthroughStrategy/observation/）
+### 4.4 观察池系统（BreakoutStrategy/observation/）
 
 **职责**：
 - 管理双观察池（实时观察池、日K观察池）
@@ -337,9 +337,9 @@ TSLA,2024-01-14,2023-11-10,245.00,248.50,92.3,88.7,90.6
 ObservationEntry = {
     'symbol': str,               # 股票代码
     'add_date': datetime,        # 加入日期
-    'breakthrough_date': datetime, # 突破日期
+    'breakout_date': datetime, # 突破日期
     'peak_info': dict,           # 凸点信息
-    'breakthrough_info': dict,   # 突破信息
+    'breakout_info': dict,   # 突破信息
     'quality_scores': dict,      # 质量分数
     'status': str,               # 'active', 'bought', 'timeout', 'expired'
     'retry_count': int,          # 重试次数（循环跟踪）
@@ -361,7 +361,7 @@ ObservationEntry = {
 
 ---
 
-### 4.5 监测系统（BreakthroughStrategy/monitoring/）
+### 4.5 监测系统（BreakoutStrategy/monitoring/）
 
 **职责**：
 - 实时监控观察池中的股票行情
@@ -403,7 +403,7 @@ ObservationEntry = {
 
 ---
 
-### 4.6 交易执行（BreakthroughStrategy/trading/）
+### 4.6 交易执行（BreakoutStrategy/trading/）
 
 **职责**：
 - 与Tiger Open API交互，执行买卖操作
@@ -440,7 +440,7 @@ ObservationEntry = {
 
 ---
 
-### 4.7 风险管理（BreakthroughStrategy/risk/）
+### 4.7 风险管理（BreakoutStrategy/risk/）
 
 **职责**：
 - 实施止损策略
@@ -489,7 +489,7 @@ ObservationEntry = {
 
 ---
 
-### 4.8 回测系统（BreakthroughStrategy/backtest/）
+### 4.8 回测系统（BreakoutStrategy/backtest/）
 
 **职责**：
 - 使用历史数据验证策略有效性
@@ -532,7 +532,7 @@ ObservationEntry = {
 
 ---
 
-### 4.9 配置管理（BreakthroughStrategy/config/）
+### 4.9 配置管理（BreakoutStrategy/config/）
 
 **职责**：
 - 管理所有参数配置
@@ -605,7 +605,7 @@ api:
 
 ---
 
-### 4.10 工具与辅助（BreakthroughStrategy/utils/）
+### 4.10 工具与辅助（BreakoutStrategy/utils/）
 
 **职责**：
 - 提供日志系统
@@ -627,7 +627,7 @@ api:
 主要表：
 - `historical_data`：历史行情数据缓存
 - `peaks`：凸点信息
-- `breakthroughs`：突破信息
+- `breakouts`：突破信息
 - `observation_pool_realtime`：实时观察池
 - `observation_pool_daily`：日K观察池
 - `orders`：订单记录
@@ -1003,7 +1003,7 @@ api:
 
 3. **创建项目目录结构**
    ```bash
-   mkdir -p BreakthroughStrategy/{data,analysis,search,observation,monitoring,trading,risk,backtest,config,utils}
+   mkdir -p BreakoutStrategy/{data,analysis,search,observation,monitoring,trading,risk,backtest,config,utils}
    mkdir -p docs/modules
    ```
 
@@ -1038,7 +1038,7 @@ api:
 - Tiger Open API官方文档：https://quant.itigerup.com/openapi/zh/python/overview/introduction.html
 - Backtrader官方文档：https://www.backtrader.com/docu/
 - Optuna官方文档：https://optuna.readthedocs.io/
-- 突破选股策略原始文档：`docs/breakthrough_strategy.md`
+- 突破选股策略原始文档：`docs/breakout_strategy.md`
 
 ### 10.3 联系方式
 

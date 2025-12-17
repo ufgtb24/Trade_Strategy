@@ -1,6 +1,6 @@
 # 回测系统技术设计文档
 
-**模块路径**：`BreakthroughStrategy/backtest/`
+**模块路径**：`BreakoutStrategy/backtest/`
 **创建日期**：2025-11-16
 
 ---
@@ -26,7 +26,7 @@
 ## 二、模块架构
 
 ```
-BreakthroughStrategy/backtest/
+BreakoutStrategy/backtest/
 ├── __init__.py
 ├── backtest_engine.py        # BacktestEngine - 回测引擎
 ├── performance.py             # PerformanceAnalyzer - 性能分析
@@ -100,7 +100,7 @@ class BacktestEngine:
             config: 回测配置
         """
         if config is None:
-            from BreakthroughStrategy.config import ConfigManager
+            from BreakoutStrategy.config import ConfigManager
             cfg = ConfigManager.get_instance()
             self.config = cfg.get_section('backtest')
             self.risk_config = cfg.get_section('risk')
@@ -127,13 +127,13 @@ class BacktestEngine:
         self.equity_curve = []  # [(date, equity), ...]
 
         # 依赖模块
-        from BreakthroughStrategy.search import SearchEngine
-        from BreakthroughStrategy.data import DataManager
+        from BreakoutStrategy.search import SearchEngine
+        from BreakoutStrategy.data import DataManager
 
         self.search_engine = SearchEngine()
         self.data_manager = DataManager()
 
-        from BreakthroughStrategy.utils.logger import Logger
+        from BreakoutStrategy.utils.logger import Logger
         self.logger = Logger.get_logger('backtest.engine')
 
     def run_backtest(
@@ -156,7 +156,7 @@ class BacktestEngine:
         self.logger.info(f"Starting backtest: {start_date} to {end_date}")
 
         # 1. 生成回测日期序列
-        from BreakthroughStrategy.utils.date_utils import DateUtils
+        from BreakoutStrategy.utils.date_utils import DateUtils
         trading_days = DateUtils.get_trading_days(
             datetime.strptime(start_date, '%Y-%m-%d').date(),
             datetime.strptime(end_date, '%Y-%m-%d').date()
@@ -209,7 +209,7 @@ class BacktestEngine:
     def _search_and_buy(self, current_date: date):
         """搜索突破并尝试买入"""
         # 搜索过去N天的突破
-        from BreakthroughStrategy.config import ConfigManager
+        from BreakoutStrategy.config import ConfigManager
         cfg = ConfigManager.get_instance()
         historical_days = cfg.get('time.historical_search_days', 7)
 
@@ -400,7 +400,7 @@ class BacktestEngine:
 
     def _calculate_performance(self) -> Dict:
         """计算性能指标"""
-        from BreakthroughStrategy.backtest.performance import PerformanceAnalyzer
+        from BreakoutStrategy.backtest.performance import PerformanceAnalyzer
 
         analyzer = PerformanceAnalyzer(
             trades=self.trades,
@@ -622,7 +622,7 @@ class ParameterOptimizer:
         """
         self.objective_metric = objective_metric
 
-        from BreakthroughStrategy.utils.logger import Logger
+        from BreakoutStrategy.utils.logger import Logger
         self.logger = Logger.get_logger('backtest.optimizer')
 
     def optimize(
@@ -669,7 +669,7 @@ class ParameterOptimizer:
         # 创建Optuna study
         study = optuna.create_study(
             direction='maximize',
-            study_name='breakthrough_strategy_optimization'
+            study_name='breakout_strategy_optimization'
         )
 
         # 执行优化
@@ -692,7 +692,7 @@ class ParameterOptimizer:
 ### 7.1 简单回测
 
 ```python
-from BreakthroughStrategy.backtest import BacktestEngine
+from BreakoutStrategy.backtest import BacktestEngine
 
 # 1. 初始化回测引擎
 engine = BacktestEngine()
@@ -705,7 +705,7 @@ result = engine.run_backtest(
 )
 
 # 3. 查看性能
-from BreakthroughStrategy.backtest.performance import PerformanceAnalyzer
+from BreakoutStrategy.backtest.performance import PerformanceAnalyzer
 analyzer = PerformanceAnalyzer(
     result['trades'],
     result['equity_curve'],
@@ -715,7 +715,7 @@ analyzer = PerformanceAnalyzer(
 print(analyzer.generate_summary())
 
 # 4. 可视化
-from BreakthroughStrategy.utils.visualizer import Visualizer
+from BreakoutStrategy.utils.visualizer import Visualizer
 viz = Visualizer()
 
 # 绘制权益曲线
@@ -730,7 +730,7 @@ viz.plot_drawdown(equity_df['equity'])
 ### 7.2 参数优化
 
 ```python
-from BreakthroughStrategy.backtest import ParameterOptimizer
+from BreakoutStrategy.backtest import ParameterOptimizer
 
 # 1. 初始化优化器
 optimizer = ParameterOptimizer(objective_metric='sharpe_ratio')
@@ -788,7 +788,7 @@ Trade Statistics:
 ```python
 # tests/backtest/test_backtest_engine.py
 import pytest
-from BreakthroughStrategy.backtest import BacktestEngine
+from BreakoutStrategy.backtest import BacktestEngine
 
 class TestBacktestEngine:
 
@@ -810,7 +810,7 @@ class TestBacktestEngine:
 
     def test_performance_metrics(self):
         """测试性能指标计算"""
-        from BreakthroughStrategy.backtest.performance import PerformanceAnalyzer
+        from BreakoutStrategy.backtest.performance import PerformanceAnalyzer
 
         # 构造测试数据
         # ...

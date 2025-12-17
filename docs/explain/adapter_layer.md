@@ -1,0 +1,214 @@
+# 适配器层 (Adapter Layer)
+
+> 创建日期: 2025-12-31
+
+## 一、概述
+
+### 1.1 做了什么
+
+创建了 `BreakoutStrategy/observation/adapters/` 模块，包含两个核心组件：
+
+| 组件 | 文件 | 职责 |
+|------|------|------|
+| `BreakoutJSONAdapter` | `json_adapter.py` | JSON 扫描结果 ↔ Breakout 对象转换 |
+| `EvaluationContextBuilder` | `context_builder.py` | 构建买入评估所需的上下文数据 |
+
+### 1.2 目的
+
+**解决的问题**：突破扫描模块产生的 JSON 结果无法直接被观察池系统使用。
+
+**之前的状态**：
+- JSON → Breakout 转换逻辑存在于 `UI/main.py:_load_from_json_cache()` 私有方法中
+- 观察池和回测引擎无法复用这段逻辑
+- 三个模块（扫描、UI、观察池）使用同一个 Breakout 类，但数据流不通
+
+**适配器的作用**：作为**桥梁**，连接数据生产者（扫描模块）和数据消费者（UI、观察池、回测引擎）。
+
+```
+┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
+│  突破扫描模块    │ --> │    JSON 文件     │ --> │   适配器层      │
+│  (Producer)     │     │  (Storage)      │     │   (Bridge)      │
+└─────────────────┘     └─────────────────┘     └────────┬────────┘
+                                                         │
+                         ┌───────────────────────────────┼───────────────────────────────┐
+                         │                               │                               │
+                         ▼                               ▼                               ▼
+                ┌─────────────────┐            ┌─────────────────┐            ┌─────────────────┐
+                │       UI        │            │    观察池系统    │            │    回测引擎     │
+                │   (Consumer)    │            │   (Consumer)    │            │   (Consumer)    │
+                └─────────────────┘            └─────────────────┘            └─────────────────┘
+```
+
+## 二、使用方式
+
+### 2.1 使用者类型
+
+| 使用者 | 类型 | 说明 |
+|--------|------|------|
+| UI (`main.py`) | 模块调用 | 加载 JSON 显示图表 |
+| 回测引擎 (`BacktestEngine`) | 模块调用 | 批量加载历史突破 |
+| 其他分析脚本 | 模块调用 | 自定义分析需求 |
+
+**注意**：适配器是**内部模块**，不直接面向终端用户。用户通过 UI 或回测脚本间接使用。
+
+### 2.2 代码示例
+
+#### 场景 1：单股票加载（UI 使用）
+
+```python
+from BreakoutStrategy.observation.adapters import BreakoutJSONAdapter
+
+# 初始化适配器
+adapter = BreakoutJSONAdapter(detector_params=params)
+
+# 加载单个股票
+result = adapter.load_single(symbol, stock_data, df)
+
+# 使用结果
+breakouts = result.breakouts      # List[Breakout]
+detector = result.detector        # BreakoutDetector (用于绘图)
+peaks = result.peaks              # Dict[id, Peak]
+```
+
+#### 场景 2：批量加载（回测使用）
+
+```python
+from BreakoutStrategy.observation.adapters import BreakoutJSONAdapter
+
+adapter = BreakoutJSONAdapter()
+
+# 从文件批量加载，按日期分组
+breakouts_by_date = adapter.load_from_file(
+    'outputs/scan_results.json',
+    'datasets/pkls',
+    start_date=date(2024, 1, 1),
+    end_date=date(2024, 6, 30)
+)
+
+# 结果结构: {date: [Breakout, ...]}
+for bo_date, breakouts in breakouts_by_date.items():
+    print(f"{bo_date}: {len(breakouts)} breakouts")
+```
+
+#### 场景 3：构建评估上下文
+
+```python
+from BreakoutStrategy.observation.adapters import EvaluationContextBuilder
+
+builder = EvaluationContextBuilder()
+
+# 批量构建 price_data 和 context
+price_data, contexts = builder.build_full_evaluation_data(
+    entries_with_breakouts,  # [(PoolEntry, Breakout), ...]
+    df_cache,                # {symbol: DataFrame}
+    as_of_date               # 评估日期
+)
+
+# 用于观察池评估
+signals = pool_mgr.check_buy_signals(price_data, contexts)
+```
+
+## 三、数据流程图
+
+### 3.1 JSON → Breakout 转换流程
+
+```
+                                    BreakoutJSONAdapter
+                                           │
+                    ┌──────────────────────┴──────────────────────┐
+                    │                                              │
+                    ▼                                              ▼
+            ┌───────────────┐                              ┌───────────────┐
+            │  load_single  │                              │  load_batch   │
+            │  (单股票加载)  │                              │  (批量加载)    │
+            └───────┬───────┘                              └───────┬───────┘
+                    │                                              │
+        ┌───────────┼───────────┐                    ┌─────────────┼─────────────┐
+        │           │           │                    │             │             │
+        ▼           ▼           ▼                    ▼             ▼             ▼
+   ┌─────────┐ ┌─────────┐ ┌─────────┐        ┌──────────┐  ┌──────────┐  ┌──────────┐
+   │ rebuild │ │ rebuild │ │ rebuild │        │  Symbol  │  │  Symbol  │  │  Symbol  │
+   │  Peaks  │ │Breakouts│ │Detector │        │    A     │  │    B     │  │    C     │
+   └────┬────┘ └────┬────┘ └────┬────┘        └────┬─────┘  └────┬─────┘  └────┬─────┘
+        │           │           │                  │             │             │
+        └───────────┼───────────┘                  └─────────────┼─────────────┘
+                    │                                            │
+                    ▼                                            ▼
+            ┌───────────────┐                          ┌───────────────────┐
+            │  LoadResult   │                          │ {date: [Breakout]}│
+            │ (breakouts,   │                          │  按日期分组        │
+            │  detector,    │                          └───────────────────┘
+            │  peaks)       │
+            └───────────────┘
+```
+
+### 3.2 索引重映射流程
+
+```
+JSON 中的原始索引                    DataFrame (可能不同时间范围)
+       │                                      │
+       │ peak_data["date"] = "2024-03-15"    │ df.index = ["2024-03-01", ..., "2024-06-30"]
+       │ peak_data["index"] = 245            │
+       │                                      │
+       └──────────────┬───────────────────────┘
+                      │
+                      ▼
+              ┌───────────────┐
+              │ _get_df_index │
+              │ 日期 → 新索引  │
+              └───────┬───────┘
+                      │
+                      ▼
+              new_index = 10  (在当前 DataFrame 中的位置)
+```
+
+### 3.3 评估上下文构建流程
+
+```
+                    ┌─────────────────────────────┐
+                    │   EvaluationContextBuilder  │
+                    └─────────────┬───────────────┘
+                                  │
+            ┌─────────────────────┼─────────────────────┐
+            │                     │                     │
+            ▼                     ▼                     ▼
+    ┌───────────────┐    ┌───────────────┐    ┌───────────────┐
+    │ build_price   │    │ build_context │    │ build_full    │
+    │ _data         │    │ _for_entry    │    │ _evaluation   │
+    └───────┬───────┘    └───────┬───────┘    │ _data         │
+            │                    │            └───────┬───────┘
+            ▼                    ▼                    │
+    ┌───────────────┐    ┌───────────────┐           │
+    │ {symbol:      │    │ {             │           │
+    │   Series(     │    │  atr_value,   │           │
+    │   OHLCV)}     │    │  volume_ma20, │           │
+    └───────────────┘    │  prev_close,  │           │
+                         │  baseline_vol │           │
+                         │ }             │           │
+                         └───────────────┘           │
+                                                     ▼
+                                           ┌─────────────────┐
+                                           │ (price_data,    │
+                                           │  contexts)      │
+                                           │  组合返回        │
+                                           └─────────────────┘
+```
+
+## 四、设计决策
+
+| 决策 | 理由 |
+|------|------|
+| 放在 `observation/` 内 | 主要服务于观察池系统，UI 作为调用方 |
+| 不修改 Breakout 类 | 三模块继续共用同一类定义 |
+| 上下文实时计算 | `volume_ma20` 从 DataFrame 计算，避免 JSON 膨胀 |
+| ATR 复用 JSON | 已在扫描时计算，直接读取 |
+| 支持时间范围过滤 | UI 可能显示不同的时间范围 |
+
+## 五、文件清单
+
+```
+BreakoutStrategy/observation/adapters/
+├── __init__.py           # 导出 BreakoutJSONAdapter, LoadResult, EvaluationContextBuilder
+├── json_adapter.py       # BreakoutJSONAdapter 类 (~280行)
+└── context_builder.py    # EvaluationContextBuilder 类 (~150行)
+```

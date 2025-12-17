@@ -3,7 +3,7 @@
 ## 文档信息
 
 - **模块名称**：配置管理（Config Management）
-- **模块路径**：`BreakthroughStrategy/config/`
+- **模块路径**：`BreakoutStrategy/config/`
 - **文档版本**：v1.0
 - **创建日期**：2025-11-16
 - **最后更新**：2025-11-16
@@ -54,7 +54,7 @@
 ### 2.1 模块内部架构
 
 ```
-BreakthroughStrategy/config/
+BreakoutStrategy/config/
 ├── __init__.py              # 导出ConfigManager
 ├── manager.py               # ConfigManager主类
 ├── validator.py             # ParameterValidator参数验证器
@@ -302,7 +302,7 @@ api:
 data:
   # 数据存储路径
   storage:
-    database_path: "datasets/breakthrough.db"
+    database_path: "datasets/breakout.db"
     cache_path: "datasets/cache/"
     log_path: "logs/"
 
@@ -313,7 +313,7 @@ data:
     postgres:
       host: "localhost"
       port: 5432
-      database: "breakthrough"
+      database: "breakout"
       user: ${DB_USER}
       password: ${DB_PASSWORD}
 
@@ -347,7 +347,7 @@ logging:
     file:
       enabled: true
       level: "DEBUG"
-      filename: "logs/breakthrough_{date}.log"
+      filename: "logs/breakout_{date}.log"
       max_bytes: 10485760  # 10MB
       backup_count: 30
 
@@ -1134,8 +1134,8 @@ class ConfigManager:
 # tests/config/test_manager.py
 
 import pytest
-from BreakthroughStrategy.config import ConfigManager
-from BreakthroughStrategy.config.manager import ConfigValidationError
+from BreakoutStrategy.config import ConfigManager
+from BreakoutStrategy.config.manager import ConfigValidationError
 
 class TestConfigManager:
 
@@ -1220,7 +1220,7 @@ risk:
 # tests/config/test_validator.py
 
 import pytest
-from BreakthroughStrategy.config.validator import ParameterValidator
+from BreakoutStrategy.config.validator import ParameterValidator
 
 class TestParameterValidator:
 
@@ -1283,7 +1283,7 @@ class TestParameterValidator:
 
 import os
 import pytest
-from BreakthroughStrategy.config import ConfigManager
+from BreakoutStrategy.config import ConfigManager
 
 class TestConfigIntegration:
 
