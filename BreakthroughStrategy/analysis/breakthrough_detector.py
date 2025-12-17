@@ -245,13 +245,14 @@ class BreakthroughDetector:
         self.volumes.append(volume)
         self.dates.append(bar_date)
 
-        # 1. 检查突破（使用high价格）
-        breakout_info = self._check_breakouts(current_idx, high, bar_date)
+        # 1. 先进行峰值检测（在固定窗口内）
+        #    峰值不会在窗口的最后 min_side_bars 个位置，
+        #    所以峰值会在突破检测之前被添加
+        if current_idx >= self.total_window:
+            self._detect_peak_in_window(current_idx)
 
-        # 2. 检查是否应该添加新峰值
-        # 注意：需要等待 min_side_bars 天后才能确认峰值（确保右侧有足够数据）
-        if current_idx >= self.min_side_bars:
-            self._check_and_add_peak(current_idx - self.min_side_bars)
+        # 2. 再检查突破（使用high价格）
+        breakout_info = self._check_breakouts(current_idx, high, bar_date)
 
         # 3. 保存缓存
         if self.use_cache and auto_save:
@@ -289,72 +290,73 @@ class BreakthroughDetector:
 
         return all_breakouts
 
-    def _check_and_add_peak(self, idx: int):
+    def _detect_peak_in_window(self, current_idx: int):
         """
-        检查并添加峰值（不对称窗口 + 相对高度下限）
+        在固定窗口内检测峰值
 
-        峰值判定条件：
-        1. 左侧连续 left_bars 根K线的 high < 当前 high
-        2. 右侧连续 right_bars 根K线的 high < 当前 high
-        3. left_bars + right_bars >= total_window
-        4. left_bars >= min_side_bars AND right_bars >= min_side_bars
-        5. 相对高度（峰值相对窗口内最低点）>= min_relative_height
+        窗口：[current_idx - total_window, current_idx - 1]，共 total_window 个元素
+
+        峰值判定条件（3点必须都满足）：
+        1. 在窗口内是最高点
+        2. 该点的局部索引不在前 min_side_bars 或后 min_side_bars 个位置
+        3. (peak_high - window_min_low) / window_min_low >= min_relative_height
 
         支持价格相近的峰值共存，形成阻力区
         """
-        high = self.highs[idx]
-        date_val = self.dates[idx]
+        window_start = current_idx - self.total_window
 
-        # 1. 计算左侧连续低于 high 的K线数量
-        left_bars = 0
-        for i in range(idx - 1, -1, -1):
-            if self.highs[i] >= high:
-                break
-            left_bars += 1
+        if window_start < 0:
+            return
 
-        # 2. 计算右侧连续低于 high 的K线数量
-        right_bars = 0
-        for i in range(idx + 1, len(self.highs)):
-            if self.highs[i] >= high:
-                break
-            right_bars += 1
+        # 窗口 [window_start, current_idx)，包含 total_window 个元素，不含 current_idx
+        window_highs = self.highs[window_start:current_idx]
+        window_size = len(window_highs)  # = total_window
 
-        # 3. 验证窗口条件
-        if left_bars < self.min_side_bars or right_bars < self.min_side_bars:
-            return  # 单侧不满足最小要求
+        # 条件1：找到窗口内的最高点
+        max_high = max(window_highs)
+        max_local_idx = window_highs.index(max_high)
 
-        if left_bars + right_bars < self.total_window:
-            return  # 总窗口不满足要求
+        # 条件2：检查是否在有效范围内
+        # 前 min_side_bars 个位置：局部索引 [0, min_side_bars - 1]
+        # 后 min_side_bars 个位置：局部索引 [window_size - min_side_bars, window_size - 1]
+        if max_local_idx < self.min_side_bars:
+            return  # 在窗口前部，不是有效峰值
+        if max_local_idx >= window_size - self.min_side_bars:
+            return  # 在窗口后部，不是有效峰值
 
-        # 4. 计算相对高度（取两侧窗口最低点中的较低者）
-        left_low = min(self.lows[max(0, idx - left_bars):idx]) if left_bars > 0 else high
-        right_low = min(self.lows[idx + 1:idx + 1 + right_bars]) if right_bars > 0 else high
-        window_low = min(left_low, right_low)
+        # 计算全局索引
+        peak_global_idx = window_start + max_local_idx
 
-        relative_height_check = (high - window_low) / window_low if window_low > 0 else 0.0
-        if relative_height_check < self.min_relative_height:
-            return  # 相对高度不满足要求
+        # 检查是否已经添加过这个峰值（避免重复添加）
+        for existing_peak in self.active_peaks:
+            if existing_peak.index == peak_global_idx:
+                return
 
-        # 5. 通过所有条件，创建峰值
-        peak = self._create_peak(idx, high, date_val)
+        # 条件3：检查相对高度
+        window_lows = self.lows[window_start:current_idx]
+        window_min_low = min(window_lows)
+        relative_height = (max_high - window_min_low) / window_min_low if window_min_low > 0 else 0
+        if relative_height < self.min_relative_height:
+            return  # 相对高度不足
 
-        # 6. 决定保留哪些旧峰值（支持共存）
+        # 所有条件满足，创建峰值
+        peak = self._create_peak(peak_global_idx, max_high, self.dates[peak_global_idx])
+
+        # 决定保留哪些旧峰值（支持共存）
         remaining_peaks = []
-
         for old_peak in self.active_peaks:
-            if old_peak.price > high:
+            if old_peak.price > max_high:
                 # 旧峰值更高 → 始终保留
                 remaining_peaks.append(old_peak)
             else:
                 # 新峰值更高，检查价格差距
-                exceed_pct = (high - old_peak.price) / old_peak.price
-
+                exceed_pct = (max_high - old_peak.price) / old_peak.price
                 if exceed_pct < self.peak_supersede_threshold:
                     # 差距小于阈值 → 保留（形成阻力区）
                     remaining_peaks.append(old_peak)
                 # else: 差距大于阈值 → 删除（已被明显超越）
 
-        # 7. 添加新峰值
+        # 添加新峰值
         self.active_peaks = remaining_peaks
         self.active_peaks.append(peak)
 

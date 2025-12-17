@@ -41,22 +41,28 @@ class NavigationManager:
 
         selection = self.tree.selection()
         if not selection:
-            # 没有选择，选择第一个
-            self.tree.selection_set(children[0])
-            self.tree.see(children[0])
-            if self.chart_update_callback:
-                self.chart_update_callback()
+            # 没有选择，选择最后一个非临时行
+            for child in reversed(children):
+                if not child.startswith("__temp_"):
+                    self.tree.selection_set(child)
+                    self.tree.see(child)
+                    if self.chart_update_callback:
+                        self.chart_update_callback()
+                    break
             return "break"
 
         current = selection[0]
         try:
             idx = list(children).index(current)
-            if idx > 0:
-                new_target = children[idx - 1]
-                self.tree.selection_set(new_target)
-                self.tree.see(new_target)
-                if self.chart_update_callback:
-                    self.chart_update_callback()
+            # 查找上一个非临时行
+            for i in range(idx - 1, -1, -1):
+                if not children[i].startswith("__temp_"):
+                    new_target = children[i]
+                    self.tree.selection_set(new_target)
+                    self.tree.see(new_target)
+                    if self.chart_update_callback:
+                        self.chart_update_callback()
+                    break
         except ValueError:
             pass
 
@@ -75,22 +81,28 @@ class NavigationManager:
 
         selection = self.tree.selection()
         if not selection:
-            # 没有选择，选择第一个
-            self.tree.selection_set(children[0])
-            self.tree.see(children[0])
-            if self.chart_update_callback:
-                self.chart_update_callback()
+            # 没有选择，选择第一个非临时行
+            for child in children:
+                if not child.startswith("__temp_"):
+                    self.tree.selection_set(child)
+                    self.tree.see(child)
+                    if self.chart_update_callback:
+                        self.chart_update_callback()
+                    break
             return "break"
 
         current = selection[0]
         try:
             idx = list(children).index(current)
-            if idx < len(children) - 1:
-                new_target = children[idx + 1]
-                self.tree.selection_set(new_target)
-                self.tree.see(new_target)
-                if self.chart_update_callback:
-                    self.chart_update_callback()
+            # 查找下一个非临时行
+            for i in range(idx + 1, len(children)):
+                if not children[i].startswith("__temp_"):
+                    new_target = children[i]
+                    self.tree.selection_set(new_target)
+                    self.tree.see(new_target)
+                    if self.chart_update_callback:
+                        self.chart_update_callback()
+                    break
         except ValueError:
             pass
 

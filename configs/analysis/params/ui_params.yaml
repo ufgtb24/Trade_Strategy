@@ -1,8 +1,8 @@
 breakthrough_detector:
   cache_dir: ./cache
   exceed_threshold: 0.004
-  min_relative_height: 0.1
-  min_side_bars: 1
+  min_relative_height: 0.3
+  min_side_bars: 3
   peak_supersede_threshold: 0.03
   total_window: 20
   use_cache: false
