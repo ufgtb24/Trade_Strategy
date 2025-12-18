@@ -1,25 +1,25 @@
 """
 质量评分模块（双维度时间模型版）
 
-核心改进：
-1. 移除峰值评分中的压制时间（suppression）- 压制时间不应作为峰值质量的正向因子
-2. Phase 1: recency 整合入 quality - 阻力强度 = 数量 + 密集度 + (质量 × 时间调制)
-3. Phase 2: 条件性历史加成 - 仅高质量峰值(>=70分)参与历史意义计算
-4. 双维度时间模型：阻力衰减（指数）+ 历史意义增长（对数）
+核心设计：
+1. 峰值质量仅包含筹码堆积因子（volume + candle），相对高度移至历史意义（心理阻力）
+2. recency 整合入 quality - 阻力强度 = 数量 + 密集度 + (质量 × 时间调制)
+3. 双维度时间模型：阻力衰减（指数）+ 历史意义增长（对数）
+4. 所有被突破峰值都参与 Historical 计算（简化逻辑，避免过拟合）
 
-峰值质量评分因素（总分100）：
-- 放量（35%）：volume_surge_ratio越大越好
-- 长K线（25%）：candle_change_pct越大越好
-- 相对高度（40%）：relative_height越大越好
+峰值质量评分因素（总分100）- 反映筹码堆积强度：
+- 放量（60%）：volume_surge_ratio越大越好，反映单点成交密集
+- 长K线（40%）：candle_change_pct越大越好，反映单点价格波动剧烈
 
 突破质量评分因素（总分100）：
-- 涨跌幅（15%）：price_change_pct越大越好
-- 跳空（8%）：gap_up_pct越大越好
-- 放量（17%）：volume_surge_ratio越大越好
-- 连续性（12%）：continuity_days越多越好
-- 稳定性（13%）：stability_score（突破后不跌破凸点）
-- 阻力强度（18%）：数量 + 密集度 + 有效质量(质量×时间因子)
-- 历史意义（17%）：最远峰值年龄 + 压制跨度（仅高质量峰值参与）
+- 涨跌幅：price_change_pct越大越好
+- 跳空：gap_up_pct越大越好
+- 放量：volume_surge_ratio越大越好
+- 连续性：continuity_days越多越好
+- 稳定性：stability_score（突破后不跌破凸点）
+- 阻力强度：数量 + 密集度 + 有效质量(质量×时间因子)
+- 历史意义：最远峰值年龄 + 最大相对高度
+- 连续突破（Momentum）：近期突破次数加成
 """
 
 import math
@@ -85,14 +85,14 @@ class QualityScorer:
         if config is None:
             config = {}
 
-        # 峰值评分权重（移除 suppression，重新分配权重）
+        # 峰值评分权重（仅保留筹码堆积因子：volume + candle）
+        # 相对高度已移至 Historical 维度（心理阻力）
         self.peak_weights = {
-            'volume': config.get('peak_weight_volume', 0.35),
-            'candle': config.get('peak_weight_candle', 0.25),
-            'height': config.get('peak_weight_height', 0.40),
+            'volume': config.get('peak_weight_volume', 0.60),
+            'candle': config.get('peak_weight_candle', 0.40),
         }
 
-        # 突破评分权重（新增 historical）
+        # 突破评分权重（新增 historical 和 momentum）
         self.breakthrough_weights = {
             'change': config.get('bt_weight_change', 0.15),
             'gap': config.get('bt_weight_gap', 0.08),
@@ -100,7 +100,8 @@ class QualityScorer:
             'continuity': config.get('bt_weight_continuity', 0.12),
             'stability': config.get('bt_weight_stability', 0.13),
             'resistance': config.get('bt_weight_resistance', 0.18),
-            'historical': config.get('bt_weight_historical', 0.17)  # 历史意义
+            'historical': config.get('bt_weight_historical', 0.17),  # 历史意义
+            'momentum': config.get('bt_weight_momentum', 0.0)  # 连续突破加成（默认0，需配置启用）
         }
 
         # 阻力强度评分的子权重（recency 已整合入 quality）
@@ -115,21 +116,16 @@ class QualityScorer:
         self.time_decay_baseline = config.get('time_decay_baseline', 0.3)
 
         # 历史意义评分的子权重
+        # relative_height 反映心理阻力（如 W 型突破）
         self.historical_weights = {
             'oldest_age': config.get('hist_weight_oldest_age', 0.55),
-            'suppression_span': config.get('hist_weight_suppression', 0.45)
+            'relative_height': config.get('hist_weight_relative_height', 0.45)
         }
 
         # 时间函数参数（单位：交易日）
         self.time_decay_half_life = config.get('time_decay_half_life', 84)  # 4个月
         self.historical_significance_saturation = config.get(
             'historical_significance_saturation', 252  # 1年
-        )
-
-        # Phase 2: 条件性历史加成 - 仅高质量峰值参与历史意义计算
-        # 低于此阈值的峰值不计入"历史意义"维度（但仍计入阻力强度）
-        self.historical_quality_threshold = config.get(
-            'historical_quality_threshold', 70  # 默认70分
         )
 
     def score_peak(self, peak: Peak) -> float:
@@ -193,7 +189,7 @@ class QualityScorer:
             评分后的突破点列表（原列表）
         """
         for breakthrough in breakthroughs:
-            self.score_breakthrough(breakthrough)
+            self.score_breakthrough(breakthrough) ## str(breakthrough.date) == "2024-05-15"
 
         return breakthroughs
 
@@ -598,17 +594,7 @@ class QualityScorer:
             weight=self.peak_weights['candle']
         ))
 
-        # 3. 相对高度评分（权重已调整）
-        height_score = self._linear_score(
-            peak.relative_height, 0.05, 0.3, 0, 100
-        )
-        features.append(FeatureScoreDetail(
-            name="Rel. Height",
-            raw_value=peak.relative_height * 100,  # 转为百分比
-            unit="%",
-            score=height_score,
-            weight=self.peak_weights['height']
-        ))
+        # 注：相对高度已移至 Historical 维度（心理阻力），不再作为峰值质量因子
 
         # 计算总分
         total_score = sum(f.score * f.weight for f in features)
@@ -633,7 +619,7 @@ class QualityScorer:
             ScoreBreakdown 包含各特征的详细评分，阻力强度含子因素
         """
         features = []
-
+        # 断点条件： breakthrough.symbol == "600519" and str(breakthrough.date.date) == "2024-05-15"
         # 1. 涨跌幅评分
         change_score = self._linear_score(
             abs(breakthrough.price_change_pct), 0.03, 0.06, 0, 100
@@ -700,6 +686,10 @@ class QualityScorer:
         historical_feature = self._get_historical_breakdown(breakthrough)
         features.append(historical_feature)
 
+        # 8. 连续突破加成（Momentum）
+        momentum_feature = self._get_momentum_breakdown(breakthrough)
+        features.append(momentum_feature)
+
         # 计算总分
         total_score = sum(f.score * f.weight for f in features)
 
@@ -736,6 +726,7 @@ class QualityScorer:
         Returns:
             FeatureScoreDetail 含 sub_features
         """
+        # breakthrough.symbol == "VRAX" and str(breakthrough.date) == "2024-08-14"
         broken_peaks = breakthrough.broken_peaks
         num_peaks = len(broken_peaks)
         sub_features = []
@@ -787,7 +778,7 @@ class QualityScorer:
             name="Eff.Quality",
             raw_value=avg_raw_quality,  # 显示原始质量
             unit=f"×{avg_time_factor:.0%}",  # 单位显示时间因子
-            score=effective_quality_score,
+            score=effective_quality_score,  # 时间
             weight=self.resistance_weights['quality']
         ))
 
@@ -814,8 +805,8 @@ class QualityScorer:
         - 若无高质量峰值，回退到使用所有峰值
 
         子因素：
-        1. Oldest Age: 最远被突破峰值的年龄（对数增长）
-        2. Suppression Span: 平均压制跨度
+        1. Oldest Age: 最远被突破峰值的年龄（对数增长）- 时间维度
+        2. Max Rel.Height: 最大相对高度 - 价格维度的心理阻力（如 W 型突破）
 
         Args:
             breakthrough: 突破对象
@@ -837,24 +828,10 @@ class QualityScorer:
                 sub_features=[]
             )
 
-        # Phase 2: 条件性历史加成 - 筛选高质量峰值
-        threshold = self.historical_quality_threshold
-        significant_peaks = [
-            p for p in broken_peaks
-            if p.quality_score is not None and p.quality_score >= threshold
-        ]
+        # 所有被突破峰值都参与 Historical 计算（简化逻辑，避免过拟合）
 
-        # 若无高质量峰值，回退到所有峰值
-        if not significant_peaks:
-            significant_peaks = broken_peaks
-            used_all_peaks = True
-        else:
-            used_all_peaks = False
-
-        num_significant = len(significant_peaks)
-
-        # 1. 最远峰值年龄评分（仅从高质量峰值中选择）
-        oldest_peak = max(significant_peaks, key=lambda p: breakthrough.index - p.index)
+        # 1. 最远峰值年龄评分 - 时间维度
+        oldest_peak = max(broken_peaks, key=lambda p: breakthrough.index - p.index)
         oldest_age = breakthrough.index - oldest_peak.index
         oldest_age_score = self._log_score(
             oldest_age + 1,  # +1 处理 log(0) 边界
@@ -862,30 +839,27 @@ class QualityScorer:
             saturation_value=self.historical_significance_saturation + 1
         )
 
-        # 单位显示是否使用了回退逻辑
-        age_unit = "d" if used_all_peaks else f"d({num_significant}pk)"
-
         sub_features.append(FeatureScoreDetail(
             name="Oldest Age",
             raw_value=oldest_age,
-            unit=age_unit,
+            unit="d",
             score=oldest_age_score,
             weight=self.historical_weights['oldest_age']
         ))
 
-        # 2. 压制跨度评分（仅从高质量峰值中计算）
-        suppression_span_score = self._score_suppression_span(significant_peaks)
-        avg_suppression = sum(
-            p.left_suppression_days + p.right_suppression_days
-            for p in significant_peaks
-        ) / num_significant
+        # 2. 最大相对高度评分（价格维度的心理阻力）
+        # 使用被突破峰值中的最大相对高度，因为心理阻力由最显著的那个峰值决定
+        max_height_peak = max(broken_peaks, key=lambda p: p.relative_height)
+        max_relative_height = max_height_peak.relative_height
+        # 评分: 5%->0分, 30%->100分
+        height_score = self._linear_score(max_relative_height, 0.05, 0.30, 0, 100)
 
         sub_features.append(FeatureScoreDetail(
-            name="Suppression Span",
-            raw_value=avg_suppression,
-            unit="d",
-            score=suppression_span_score,
-            weight=self.historical_weights['suppression_span']
+            name="Max Rel.Height",
+            raw_value=max_relative_height * 100,  # 转为百分比显示
+            unit="%",
+            score=height_score,
+            weight=self.historical_weights['relative_height']
         ))
 
         # 计算历史意义总分
@@ -898,4 +872,42 @@ class QualityScorer:
             score=historical_score,
             weight=self.breakthrough_weights['historical'],
             sub_features=sub_features
+        )
+
+    def _get_momentum_breakdown(
+        self, breakthrough: Breakthrough
+    ) -> FeatureScoreDetail:
+        """
+        获取连续突破加成的详细分解
+
+        评分逻辑：
+        - 1次 → 0分（首次突破，无加成）
+        - 2次 → 50分（有连续性）
+        - 3次 → 75分
+        - 4+次 → 100分（强势突破序列）
+
+        Args:
+            breakthrough: 突破对象
+
+        Returns:
+            FeatureScoreDetail
+        """
+        count = breakthrough.recent_breakthrough_count
+
+        # 评分映射：1→0, 2→50, 3→75, 4+→100
+        if count >= 4:
+            score = 100
+        elif count == 3:
+            score = 75
+        elif count == 2:
+            score = 50
+        else:
+            score = 0
+
+        return FeatureScoreDetail(
+            name="Momentum",
+            raw_value=count,
+            unit="bt",  # breakthroughs
+            score=score,
+            weight=self.breakthrough_weights['momentum']
         )

@@ -10,6 +10,7 @@ import pandas as pd
 
 from BreakthroughStrategy.analysis import BreakthroughDetector
 from BreakthroughStrategy.analysis.breakthrough_detector import Breakthrough, Peak
+from BreakthroughStrategy.analysis.quality_scorer import QualityScorer
 
 from .charts import ChartCanvasManager
 from .config import get_ui_config_loader, get_ui_scan_config_loader
@@ -97,7 +98,10 @@ class InteractiveUI:
         self.right_frame = ttk.Frame(self.paned)
         self.paned.add(self.right_frame, weight=1)
 
-        self.chart_manager = ChartCanvasManager(self.right_frame)
+        # 使用 UI 参数配置创建 QualityScorer
+        scorer_cfg = self.param_panel.param_loader.get_quality_scorer_params()
+        scorer = QualityScorer(config=scorer_cfg)
+        self.chart_manager = ChartCanvasManager(self.right_frame, scorer=scorer)
 
         # 标记左侧面板是否已显示
         self._left_panel_visible = False
@@ -439,6 +443,7 @@ class InteractiveUI:
             volume_surge_ratio = bt_data.get("volume_surge_ratio")
             continuity_days = bt_data.get("continuity_days")
             stability_score = bt_data.get("stability_score")
+            recent_breakthrough_count = bt_data.get("recent_breakthrough_count", 1)
 
             bt = Breakthrough(
                 symbol=symbol,
@@ -458,6 +463,7 @@ class InteractiveUI:
                 continuity_days=continuity_days if continuity_days is not None else 0,
                 stability_score=stability_score if stability_score is not None else 0.0,
                 quality_score=bt_data.get("quality_score"),
+                recent_breakthrough_count=recent_breakthrough_count,
             )
             breakthroughs.append(bt)
 
@@ -554,6 +560,10 @@ class InteractiveUI:
         """
         # 更新模式指示器
         self._update_mode_indicator()
+
+        # 更新 ChartCanvasManager 的 scorer，确保 Score Details 窗口显示正确的权重
+        scorer_cfg = self.param_panel.param_loader.get_quality_scorer_params()
+        self.chart_manager.scorer = QualityScorer(config=scorer_cfg)
 
         # 模式切换时处理临时行
         if not self.param_panel.get_use_ui_params():

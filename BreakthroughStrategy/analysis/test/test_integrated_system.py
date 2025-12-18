@@ -81,8 +81,8 @@ def test_integrated_system():
             if peak.quality_score is None:
                 scorer.score_peak(peak)
 
-        # 计算突破特征
-        bt = feature_calc.enrich_breakthrough(df, info, "AAPL")
+        # 计算突破特征（传递 detector 以获取连续突破信息）
+        bt = feature_calc.enrich_breakthrough(df, info, "AAPL", detector=detector)
         breakthroughs.append(bt)
 
     print(f"    转换为 {len(breakthroughs)} 个Breakthrough对象")

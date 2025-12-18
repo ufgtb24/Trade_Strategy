@@ -243,43 +243,43 @@ class UIParamLoader:
         """
         quality_params = self._params.get('quality_scorer', {})
 
-        # Peak weights (移除 suppression，只保留 volume, candle, height)
+        # Peak weights (仅保留筹码堆积因子: volume + candle)
         peak_weights = quality_params.get('peak_weights', {})
         validated = {
             'peak_weight_volume': self._validate_float(
-                peak_weights.get('volume', 0.35), 0.0, 1.0, 0.35
+                peak_weights.get('volume', 0.60), 0.0, 1.0, 0.60
             ),
             'peak_weight_candle': self._validate_float(
-                peak_weights.get('candle', 0.25), 0.0, 1.0, 0.25
-            ),
-            'peak_weight_height': self._validate_float(
-                peak_weights.get('height', 0.40), 0.0, 1.0, 0.40
+                peak_weights.get('candle', 0.40), 0.0, 1.0, 0.40
             ),
         }
 
-        # Breakthrough weights (包含 historical)
+        # Breakthrough weights (包含 historical 和 momentum)
         bt_weights = quality_params.get('breakthrough_weights', {})
         validated.update({
             'bt_weight_change': self._validate_float(
-                bt_weights.get('change', 0.15), 0.0, 1.0, 0.15
+                bt_weights.get('change', 0.05), 0.0, 1.0, 0.05
             ),
             'bt_weight_gap': self._validate_float(
-                bt_weights.get('gap', 0.08), 0.0, 1.0, 0.08
+                bt_weights.get('gap', 0.0), 0.0, 1.0, 0.0
             ),
             'bt_weight_volume': self._validate_float(
-                bt_weights.get('volume', 0.17), 0.0, 1.0, 0.17
+                bt_weights.get('volume', 0.10), 0.0, 1.0, 0.10
             ),
             'bt_weight_continuity': self._validate_float(
-                bt_weights.get('continuity', 0.12), 0.0, 1.0, 0.12
+                bt_weights.get('continuity', 0.20), 0.0, 1.0, 0.20
             ),
             'bt_weight_stability': self._validate_float(
-                bt_weights.get('stability', 0.13), 0.0, 1.0, 0.13
+                bt_weights.get('stability', 0.0), 0.0, 1.0, 0.0
             ),
             'bt_weight_resistance': self._validate_float(
-                bt_weights.get('resistance', 0.18), 0.0, 1.0, 0.18
+                bt_weights.get('resistance', 0.30), 0.0, 1.0, 0.30
             ),
             'bt_weight_historical': self._validate_float(
-                bt_weights.get('historical', 0.17), 0.0, 1.0, 0.17
+                bt_weights.get('historical', 0.25), 0.0, 1.0, 0.25
+            ),
+            'bt_weight_momentum': self._validate_float(
+                bt_weights.get('momentum', 0.10), 0.0, 1.0, 0.10
             ),
         })
 
@@ -297,14 +297,14 @@ class UIParamLoader:
             ),
         })
 
-        # Historical weights (子权重)
+        # Historical weights (子权重: oldest_age + relative_height)
         hist_weights = quality_params.get('historical_weights', {})
         validated.update({
             'hist_weight_oldest_age': self._validate_float(
                 hist_weights.get('oldest_age', 0.55), 0.0, 1.0, 0.55
             ),
-            'hist_weight_suppression': self._validate_float(
-                hist_weights.get('suppression_span', 0.45), 0.0, 1.0, 0.45
+            'hist_weight_relative_height': self._validate_float(
+                hist_weights.get('relative_height', 0.45), 0.0, 1.0, 0.45
             ),
         })
 

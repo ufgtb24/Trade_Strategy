@@ -105,11 +105,10 @@ class ConfigLoader:
         """
         scorer_cfg = self.params.get('quality_scorer', {})
 
-        # Peak weights (移除 suppression)
+        # Peak weights (仅保留筹码堆积因子：volume + candle)
         peak_weights = scorer_cfg.get('peak_weights', {})
-        peak_weight_volume = peak_weights.get('volume', 0.35)
-        peak_weight_candle = peak_weights.get('candle', 0.25)
-        peak_weight_height = peak_weights.get('height', 0.40)
+        peak_weight_volume = peak_weights.get('volume', 0.60)
+        peak_weight_candle = peak_weights.get('candle', 0.40)
 
         # Breakthrough weights (新增 historical)
         bt_weights = scorer_cfg.get('breakthrough_weights', {})
@@ -127,10 +126,10 @@ class ConfigLoader:
         res_weight_density = res_weights.get('density', 0.30)
         res_weight_quality = res_weights.get('quality', 0.40)
 
-        # Historical weights
+        # Historical weights (relative_height 替换 suppression_span)
         hist_weights = scorer_cfg.get('historical_weights', {})
         hist_weight_oldest_age = hist_weights.get('oldest_age', 0.55)
-        hist_weight_suppression = hist_weights.get('suppression_span', 0.45)
+        hist_weight_relative_height = hist_weights.get('relative_height', 0.45)
 
         # Time parameters (单位：交易日)
         # 支持两种格式：嵌套在 time_params 或直接在 quality_scorer 下
@@ -149,10 +148,9 @@ class ConfigLoader:
         historical_quality_threshold = scorer_cfg.get('historical_quality_threshold', 70)
 
         return {
-            # Peak weights
+            # Peak weights (仅 volume + candle)
             'peak_weight_volume': peak_weight_volume,
             'peak_weight_candle': peak_weight_candle,
-            'peak_weight_height': peak_weight_height,
 
             # Breakthrough weights
             'bt_weight_change': bt_weight_change,
@@ -168,9 +166,9 @@ class ConfigLoader:
             'res_weight_density': res_weight_density,
             'res_weight_quality': res_weight_quality,
 
-            # Historical weights
+            # Historical weights (relative_height 替换 suppression_span)
             'hist_weight_oldest_age': hist_weight_oldest_age,
-            'hist_weight_suppression': hist_weight_suppression,
+            'hist_weight_relative_height': hist_weight_relative_height,
 
             # Time parameters
             'time_decay_half_life': time_decay_half_life,

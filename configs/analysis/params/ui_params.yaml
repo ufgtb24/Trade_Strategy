@@ -2,7 +2,7 @@ breakthrough_detector:
   cache_dir: ./cache
   exceed_threshold: 0.004
   min_relative_height: 0.3
-  min_side_bars: 3
+  min_side_bars: 5
   peak_supersede_threshold: 0.03
   total_window: 20
   use_cache: false
@@ -12,21 +12,21 @@ feature_calculator:
 quality_scorer:
   breakthrough_weights:
     change: 0.05
-    continuity: 0.15
-    gap: 0.05
+    continuity: 0.1
+    gap: 0.0
     historical: 0.25
+    momentum: 0.2
     resistance: 0.3
-    stability: 0.1
+    stability: 0.0
     volume: 0.1
   historical_quality_threshold: 60
   historical_significance_saturation: 252
   historical_weights:
     oldest_age: 0.55
-    suppression_span: 0.45
+    relative_height: 0.45
   peak_weights:
-    candle: 0.2
-    height: 0.35
-    volume: 0.45
+    candle: 0.4
+    volume: 0.6
   resistance_weights:
     density: 0.3
     quality: 0.4

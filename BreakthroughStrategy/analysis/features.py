@@ -32,7 +32,8 @@ class FeatureCalculator:
     def enrich_breakthrough(self,
                            df: pd.DataFrame,
                            breakout_info: BreakoutInfo,
-                           symbol: str) -> Breakthrough:
+                           symbol: str,
+                           detector=None) -> Breakthrough:
         """
         从BreakoutInfo计算完整特征
 
@@ -40,6 +41,7 @@ class FeatureCalculator:
             df: OHLCV数据
             breakout_info: 增量检测返回的突破信息
             symbol: 股票代码
+            detector: BreakthroughDetector实例（可选，用于获取连续突破信息）
 
         Returns:
             包含所有特征的Breakthrough对象
@@ -78,6 +80,11 @@ class FeatureCalculator:
         # 计算回测标签
         labels = self._calculate_labels(df, idx)
 
+        # 计算连续突破次数（PLAN A: Momentum）
+        recent_breakthrough_count = 1
+        if detector is not None:
+            recent_breakthrough_count = detector.get_recent_breakthrough_count(idx)
+
         return Breakthrough(
             symbol=symbol,
             date=breakout_info.current_date,
@@ -91,7 +98,8 @@ class FeatureCalculator:
             volume_surge_ratio=volume_surge_ratio,
             continuity_days=continuity_days,
             stability_score=stability_score,
-            labels=labels
+            labels=labels,
+            recent_breakthrough_count=recent_breakthrough_count
         )
 
     def _classify_type(self, row: pd.Series) -> str:

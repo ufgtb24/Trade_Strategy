@@ -302,9 +302,9 @@ class ParameterEditorWindow:
         scorer = self._json_params.get("quality_scorer_params", {})
 
         # peak_weights (JSON: peak_weight_* -> UI: peak_weights.*)
+        # 注: height 已移至 Historical (心理阻力)，peak 仅保留筹码堆积因子
         param_map["quality_scorer.peak_weights.volume"] = scorer.get("peak_weight_volume")
         param_map["quality_scorer.peak_weights.candle"] = scorer.get("peak_weight_candle")
-        param_map["quality_scorer.peak_weights.height"] = scorer.get("peak_weight_height")
 
         # breakthrough_weights (JSON: bt_weight_* -> UI: breakthrough_weights.*)
         param_map["quality_scorer.breakthrough_weights.change"] = scorer.get("bt_weight_change")
@@ -322,7 +322,7 @@ class ParameterEditorWindow:
 
         # historical_weights (JSON: hist_weight_* -> UI: historical_weights.*)
         param_map["quality_scorer.historical_weights.oldest_age"] = scorer.get("hist_weight_oldest_age")
-        param_map["quality_scorer.historical_weights.suppression_span"] = scorer.get("hist_weight_suppression")
+        param_map["quality_scorer.historical_weights.relative_height"] = scorer.get("hist_weight_relative_height")
 
         # 标量参数 (直接映射)
         param_map["quality_scorer.time_decay_baseline"] = scorer.get("time_decay_baseline")

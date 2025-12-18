@@ -53,7 +53,7 @@ def compute_breakthroughs_from_dataframe(
         peak_supersede_threshold=peak_supersede_threshold,
         use_cache=False,
     )
-    breakout_infos = detector.batch_add_bars(df, return_breakouts=True)
+    breakout_infos = detector.batch_add_bars(df, return_breakouts=True) # symbol == "600519
 
     if not breakout_infos:
         return [], detector
@@ -65,12 +65,12 @@ def compute_breakthroughs_from_dataframe(
     breakthroughs = []
     for info in breakout_infos:
         # 为峰值评分
-        for peak in info.broken_peaks:
+        for peak in info.broken_peaks: # info.current_date == date(2024, 5, 15)
             if peak.quality_score is None:
                 quality_scorer.score_peak(peak)
 
         # 特征计算
-        bt = feature_calc.enrich_breakthrough(df, info, symbol)
+        bt = feature_calc.enrich_breakthrough(df, info, symbol, detector=detector)
         breakthroughs.append(bt)
 
     # 批量评分
@@ -259,6 +259,10 @@ def _scan_single_stock(args):
                     "quality_score": float(bt.quality_score)
                     if bt.quality_score
                     else None,
+                    # 连续突破次数（Momentum）
+                    "recent_breakthrough_count": int(bt.recent_breakthrough_count)
+                    if hasattr(bt, "recent_breakthrough_count")
+                    else 1,
                     # 回测标签
                     "labels": {
                         k: float(v) if v is not None else None
@@ -575,10 +579,9 @@ class ScanManager:
     def _get_default_scorer_params(self) -> Dict:
         """获取 QualityScorer 默认参数（用于 v2.0 迁移）"""
         return {
-            # Peak weights (移除 suppression)
-            "peak_weight_volume": 0.35,
-            "peak_weight_candle": 0.25,
-            "peak_weight_height": 0.40,
+            # Peak weights (仅筹码堆积因子: volume + candle)
+            "peak_weight_volume": 0.60,
+            "peak_weight_candle": 0.40,
             # Breakthrough weights
             "bt_weight_change": 0.15,
             "bt_weight_gap": 0.08,
@@ -591,9 +594,9 @@ class ScanManager:
             "res_weight_quantity": 0.30,
             "res_weight_density": 0.30,
             "res_weight_quality": 0.40,
-            # Historical sub-weights
+            # Historical sub-weights (relative_height 替换 suppression)
             "hist_weight_oldest_age": 0.55,
-            "hist_weight_suppression": 0.45,
+            "hist_weight_relative_height": 0.45,
             # Scalar params
             "time_decay_baseline": 0.3,
             "time_decay_half_life": 84,

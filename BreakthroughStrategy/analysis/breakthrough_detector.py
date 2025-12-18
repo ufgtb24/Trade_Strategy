@@ -95,6 +95,19 @@ class BreakoutInfo:
 
 
 @dataclass
+class BreakthroughRecord:
+    """
+    突破历史记录（轻量级，仅用于连续突破判断）
+
+    用于追踪近期突破，计算 Momentum 评分
+    """
+    index: int          # 突破点索引
+    date: date          # 突破日期
+    price: float        # 突破价格
+    num_peaks: int      # 突破的峰值数量
+
+
+@dataclass
 class Breakthrough:
     """
     完整的突破对象（包含丰富特征）
@@ -124,6 +137,9 @@ class Breakthrough:
     # 回测标签（由FeatureCalculator计算）
     # 格式：{"label_5_20": 0.15, "label_3_10": None}
     labels: Dict[str, Optional[float]] = field(default_factory=dict)
+
+    # 连续突破信息（由 FeatureCalculator 填充）
+    recent_breakthrough_count: int = 1  # 近期突破次数（至少包括自己）
 
     @property
     def num_peaks_broken(self) -> int:
@@ -164,6 +180,7 @@ class BreakthroughDetector:
                  min_relative_height: float = 0.05,
                  exceed_threshold: float = 0.005,
                  peak_supersede_threshold: float = 0.03,
+                 momentum_window: int = 20,
                  use_cache: bool = False,
                  cache_dir: str = "./cache"):
         """
@@ -178,6 +195,7 @@ class BreakthroughDetector:
             peak_supersede_threshold: 峰值覆盖阈值（默认3%）
                 - 新峰值超过旧峰值 < 3% → 两者共存（形成阻力区）
                 - 新峰值超过旧峰值 > 3% → 删除旧峰值（已被明显超越）
+            momentum_window: 连续突破统计窗口（默认20个交易日）
             use_cache: 是否使用持久化缓存（实时监控=True，回测=False）
             cache_dir: 缓存目录
         """
@@ -194,6 +212,7 @@ class BreakthroughDetector:
         self.min_relative_height = min_relative_height
         self.exceed_threshold = exceed_threshold
         self.peak_supersede_threshold = peak_supersede_threshold
+        self.momentum_window = momentum_window
         self.use_cache = use_cache
         self.cache_dir = Path(cache_dir)
 
@@ -208,6 +227,9 @@ class BreakthroughDetector:
 
         self.peak_id_counter = 0   # Peak ID 计数器（用于生成唯一ID）
         self.last_updated = None
+
+        # 突破历史（用于连续突破加成）
+        self.breakthrough_history: List[BreakthroughRecord] = []
 
         # 如果启用缓存，尝试加载
         if use_cache:
@@ -340,7 +362,7 @@ class BreakthroughDetector:
             return  # 相对高度不足
 
         # 所有条件满足，创建峰值
-        peak = self._create_peak(peak_global_idx, max_high, self.dates[peak_global_idx])
+        peak = self._create_peak(peak_global_idx, max_high, self.dates[peak_global_idx], current_idx)
 
         # 决定保留哪些旧峰值（支持共存）
         remaining_peaks = []
@@ -360,9 +382,15 @@ class BreakthroughDetector:
         self.active_peaks = remaining_peaks
         self.active_peaks.append(peak)
 
-    def _create_peak(self, idx: int, price: float, date_val: date) -> Peak:
+    def _create_peak(self, idx: int, price: float, date_val: date, current_idx: int) -> Peak:
         """
         创建Peak对象并计算质量特征
+
+        Args:
+            idx: 峰值的全局索引
+            price: 峰值价格
+            date_val: 峰值日期
+            current_idx: 当前处理到的位置（用于确定右侧边界）
         """
         # 分配唯一ID
         peak_id = self.peak_id_counter
@@ -387,10 +415,13 @@ class BreakthroughDetector:
         # 右侧压制天数暂时为0（突破时会更新）
         right_suppression = 0
 
-        # 计算相对高度
-        lookback_start = max(0, idx - 60)
-        lookback_low = min(self.lows[lookback_start:idx+1]) if idx >= lookback_start else price
-        relative_height = (price - lookback_low) / lookback_low if lookback_low > 0 else 0.0
+        # 计算相对高度（使用对称窗口，反映局部突出程度）
+        # 避免长窗口跨越其他峰值导致 relative_height 被稀释
+        side_bars = self.total_window // 2  # 与检测窗口一致（默认10）
+        left_start = max(0, idx - side_bars)
+        right_end = min(current_idx, idx + side_bars + 1)  # 右边界不超过当前处理位置
+        window_low = min(self.lows[left_start:right_end])
+        relative_height = (price - window_low) / window_low if window_low > 0 else 0.0
 
         return Peak(
             index=idx,
@@ -411,6 +442,15 @@ class BreakthroughDetector:
         """
         检查突破
 
+        采用双阈值设计：
+        - exceed_threshold (0.5%): 用于突破检测（敏感）
+        - peak_supersede_threshold (3%): 用于峰值移除（保守）
+
+        这样设计的目的：
+        - 突破幅度在 0.5%-3% 之间时，记录突破但保留峰值
+        - 保留的峰值可以在后续突破中再次被突破（突破巩固）
+        - 多个价格接近的峰值可以在同一次突破中被同时突破
+
         Returns:
             如果有突破，返回BreakoutInfo（包含所有被突破的峰值）
             如果没有突破，返回None
@@ -419,14 +459,19 @@ class BreakthroughDetector:
         remaining_peaks = []
 
         for peak in self.active_peaks:
-            threshold = peak.price * (1 + self.exceed_threshold)
+            exceed_threshold_price = peak.price * (1 + self.exceed_threshold)
+            supersede_threshold_price = peak.price * (1 + self.peak_supersede_threshold)
 
-            if current_high > threshold:
-                # 更新峰值的右侧压制天数
+            if current_high > exceed_threshold_price:
+                # 突破检测（敏感阈值 0.5%）
                 peak.right_suppression_days = current_idx - peak.index - 1
-
-                # 突破了这个峰值
                 broken_peaks.append(peak)
+
+                # 峰值移除判断（保守阈值 3%）
+                if current_high <= supersede_threshold_price:
+                    # 突破幅度 <= 3%：保留峰值，下次还能被突破（突破巩固）
+                    remaining_peaks.append(peak)
+                # else: 突破幅度 > 3%：真正移除峰值
             else:
                 # 未突破，保留
                 remaining_peaks.append(peak)
@@ -436,6 +481,14 @@ class BreakthroughDetector:
 
         # 如果有突破，返回信息
         if broken_peaks:
+            # 记录突破历史（用于连续突破加成）
+            self.breakthrough_history.append(BreakthroughRecord(
+                index=current_idx,
+                date=current_date,
+                price=current_high,
+                num_peaks=len(broken_peaks)
+            ))
+
             return BreakoutInfo(
                 current_index=current_idx,
                 current_price=current_high,
@@ -444,6 +497,22 @@ class BreakthroughDetector:
             )
 
         return None
+
+    def get_recent_breakthrough_count(self, current_idx: int) -> int:
+        """
+        获取时间窗口内的突破次数（包括当前突破）
+
+        Args:
+            current_idx: 当前K线索引
+
+        Returns:
+            近期突破次数
+        """
+        count = sum(
+            1 for h in self.breakthrough_history
+            if h.index <= current_idx and current_idx - h.index <= self.momentum_window
+        )
+        return max(count, 1)  # 至少返回1（包括自己）
 
     def _save_cache(self):
         """保存缓存到磁盘"""
@@ -479,7 +548,17 @@ class BreakthroughDetector:
                 'min_side_bars': self.min_side_bars,
                 'min_relative_height': self.min_relative_height,
                 'exceed_threshold': self.exceed_threshold,
-                'peak_supersede_threshold': self.peak_supersede_threshold
+                'peak_supersede_threshold': self.peak_supersede_threshold,
+                'momentum_window': self.momentum_window,
+                'breakthrough_history': [
+                    {
+                        'index': h.index,
+                        'date': h.date.isoformat(),
+                        'price': h.price,
+                        'num_peaks': h.num_peaks
+                    }
+                    for h in self.breakthrough_history
+                ]
             }
 
             cache_path = self._get_cache_path()
@@ -549,8 +628,19 @@ class BreakthroughDetector:
             # 恢复 peak_id_counter（兼容旧缓存）
             self.peak_id_counter = cache_data.get('peak_id_counter', 0)
 
+            # 恢复 breakthrough_history（兼容旧缓存）
+            self.breakthrough_history = [
+                BreakthroughRecord(
+                    index=h['index'],
+                    date=date.fromisoformat(h['date']),
+                    price=h['price'],
+                    num_peaks=h['num_peaks']
+                )
+                for h in cache_data.get('breakthrough_history', [])
+            ]
+
             print(f"✓ 缓存加载成功: {self.symbol}, {len(self.prices)}个数据点, "
-                  f"{len(self.active_peaks)}个活跃峰值")
+                  f"{len(self.active_peaks)}个活跃峰值, {len(self.breakthrough_history)}个突破历史")
             return True
 
         except Exception as e:
