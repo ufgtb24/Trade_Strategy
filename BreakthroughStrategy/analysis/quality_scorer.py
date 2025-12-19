@@ -1,25 +1,24 @@
 """
-质量评分模块（双维度时间模型版）
+质量评分模块（全 Bonus 乘法模型版）
 
 核心设计：
-1. 峰值质量仅包含筹码堆积因子（volume + candle），相对高度移至历史意义（心理阻力）
-2. recency 整合入 quality - 阻力强度 = 数量 + 密集度 + (质量 × 时间调制)
-3. 双维度时间模型：阻力衰减（指数）+ 历史意义增长（对数）
-4. 所有被突破峰值都参与 Historical 计算（简化逻辑，避免过拟合）
+1. 基准分模型：总分 = BASE × bonus1 × bonus2 × ... × bonusN
+2. 所有因素统一为乘数形式，避免权重归一化
+3. 满足条件时获得对应 bonus 乘数（>1.0），否则为 1.0（无加成）
+4. 总分可超过 100，只要同一基准下可比即可
 
-峰值质量评分因素（总分100）- 反映筹码堆积强度：
-- 放量（60%）：volume_surge_ratio越大越好，反映单点成交密集
-- 长K线（40%）：candle_change_pct越大越好，反映单点价格波动剧烈
+评分因素（全部为 Bonus 乘数）：
+- age_bonus: 最老峰值年龄（远期 > 近期）
+- test_bonus: 测试次数（簇内峰值数）
+- height_bonus: 最大相对高度
+- volume_bonus: 成交量放大
+- gap_bonus: 跳空缺口
+- continuity_bonus: 连续阳线
+- momentum_bonus: 连续突破
 
-突破质量评分因素（总分100）：
-- 涨跌幅：price_change_pct越大越好
-- 跳空：gap_up_pct越大越好
-- 放量：volume_surge_ratio越大越好
-- 连续性：continuity_days越多越好
-- 稳定性：stability_score（突破后不跌破凸点）
-- 阻力强度：数量 + 密集度 + 有效质量(质量×时间因子)
-- 历史意义：最远峰值年龄 + 最大相对高度
-- 连续突破（Momentum）：近期突破次数加成
+峰值质量评分（保留原有加权模型）：
+- 放量（60%）：volume_surge_ratio
+- 长K线（40%）：candle_change_pct
 """
 
 import math
@@ -34,7 +33,7 @@ from .breakthrough_detector import Peak, Breakthrough
 
 @dataclass
 class FeatureScoreDetail:
-    """单个特征的评分详情"""
+    """单个特征的评分详情（加权模型用）"""
     name: str           # 显示名称
     raw_value: float    # 原始数值
     unit: str           # 单位 ('x', '%', 'd', 'pks', '')
@@ -45,28 +44,49 @@ class FeatureScoreDetail:
 
 
 @dataclass
+class BonusDetail:
+    """单个 Bonus 的详情（乘法模型用）"""
+    name: str           # 显示名称（如 "Age", "Volume"）
+    raw_value: float    # 原始数值（如 180天, 2.5倍）
+    unit: str           # 单位 ('d', 'x', '%', 'bt')
+    bonus: float        # bonus 乘数（如 1.30）
+    triggered: bool     # 是否触发（bonus > 1.0）
+    level: int          # 触发级别（0=未触发, 1=级别1, 2=级别2, ...）
+
+
+@dataclass
 class ScoreBreakdown:
     """评分分解"""
     entity_type: str                      # 'peak' or 'breakthrough'
     entity_id: Optional[int]              # Peak ID (if peak)
     total_score: float                    # 总分
-    features: List[FeatureScoreDetail]    # 各特征详情
+    features: List[FeatureScoreDetail]    # 各特征详情（加权模型）
     broken_peak_ids: Optional[List[int]] = None  # 被突破的峰值ID（仅突破）
+    # 新增：Bonus 模型字段
+    base_score: Optional[float] = None    # 基准分（Bonus模型）
+    bonuses: Optional[List[BonusDetail]] = None  # Bonus 列表（Bonus模型）
 
     def get_formula_string(self) -> str:
         """
         生成计算公式字符串
 
         Returns:
-            如 "60×30% + 75×20% + 75×30% + 82×20% = 72.5"
+            加权模型: "60×30% + 75×20% + 75×30% + 82×20% = 72.5"
+            Bonus模型: "50 × 1.30 × 1.25 × 1.15 × 1.20 = 112.1"
         """
+        # Bonus 模型
+        if self.bonuses is not None and self.base_score is not None:
+            terms = [f"{self.base_score:.0f}"]
+            for b in self.bonuses:
+                if b.triggered:
+                    terms.append(f"×{b.bonus:.2f}")
+            formula = " ".join(terms)
+            return f"{formula} = {self.total_score:.1f}"
+
+        # 加权模型（原有逻辑）
         terms = []
         for f in self.features:
-            # 跳过子因素（它们在 Resistance 里展开）
-            if f.sub_features:
-                terms.append(f"{f.score:.0f}×{f.weight*100:.0f}%")
-            else:
-                terms.append(f"{f.score:.0f}×{f.weight*100:.0f}%")
+            terms.append(f"{f.score:.0f}×{f.weight*100:.0f}%")
 
         formula = " + ".join(terms)
         return f"{formula} = {self.total_score:.1f}"
@@ -133,6 +153,42 @@ class QualityScorer:
         self.age_base_days = config.get('age_base_days', 21)  # 1个月
         self.age_saturation_days = config.get('age_saturation_days', 504)  # 2年
 
+        # =====================================================================
+        # Bonus 乘法模型配置
+        # =====================================================================
+
+        # 基准分：存在有效突破这件事本身的价值
+        self.bonus_base_score = config.get('bonus_base_score', 50)
+
+        # Age bonus 阈值和乘数
+        # 远期阻力 > 近期阻力（技术分析共识）
+        self.age_bonus_thresholds = config.get('age_bonus_thresholds', [21, 63, 252])  # 1月, 3月, 1年
+        self.age_bonus_values = config.get('age_bonus_values', [1.15, 1.30, 1.50])
+
+        # Test count bonus（测试次数 = 簇内峰值数）
+        self.test_bonus_thresholds = config.get('test_bonus_thresholds', [2, 3, 4])
+        self.test_bonus_values = config.get('test_bonus_values', [1.10, 1.25, 1.40])
+
+        # Height bonus（相对高度）
+        self.height_bonus_thresholds = config.get('height_bonus_thresholds', [0.10, 0.20])  # 10%, 20%
+        self.height_bonus_values = config.get('height_bonus_values', [1.15, 1.30])
+
+        # Volume bonus（成交量放大）
+        self.volume_bonus_thresholds = config.get('volume_bonus_thresholds', [1.5, 2.0])
+        self.volume_bonus_values = config.get('volume_bonus_values', [1.15, 1.30])
+
+        # Gap bonus（跳空缺口）
+        self.gap_bonus_thresholds = config.get('gap_bonus_thresholds', [0.01, 0.02])  # 1%, 2%
+        self.gap_bonus_values = config.get('gap_bonus_values', [1.10, 1.20])
+
+        # Continuity bonus（连续阳线）
+        self.continuity_bonus_thresholds = config.get('continuity_bonus_thresholds', [3])
+        self.continuity_bonus_values = config.get('continuity_bonus_values', [1.15])
+
+        # Momentum bonus（连续突破）
+        self.momentum_bonus_thresholds = config.get('momentum_bonus_thresholds', [2])
+        self.momentum_bonus_values = config.get('momentum_bonus_values', [1.20])
+
     def score_peak(self, peak: Peak) -> float:
         """
         评估峰值质量
@@ -151,7 +207,7 @@ class QualityScorer:
 
     def score_breakthrough(self, breakthrough: Breakthrough) -> float:
         """
-        评估突破质量
+        评估突破质量（使用 Bonus 乘法模型）
 
         将分数写入breakthrough.quality_score
 
@@ -159,9 +215,9 @@ class QualityScorer:
             breakthrough: 突破点对象
 
         Returns:
-            质量分数（0-100）
+            质量分数（可超过100）
         """
-        breakdown = self.get_breakthrough_score_breakdown(breakthrough)
+        breakdown = self.get_breakthrough_score_breakdown_bonus(breakthrough)
         breakthrough.quality_score = breakdown.total_score
         return breakdown.total_score
 
@@ -1213,4 +1269,327 @@ class QualityScorer:
             unit="bt",  # breakthroughs
             score=score,
             weight=self.breakthrough_weights['momentum']
+        )
+
+    # =========================================================================
+    # Bonus 乘法模型方法
+    # =========================================================================
+
+    def _get_bonus_value(
+        self,
+        value: float,
+        thresholds: List[float],
+        bonus_values: List[float]
+    ) -> tuple:
+        """
+        根据阈值获取 bonus 值
+
+        Args:
+            value: 待评估的值
+            thresholds: 阈值列表（升序）
+            bonus_values: 对应的 bonus 值列表
+
+        Returns:
+            (bonus, level): bonus 乘数和触发级别
+            - level=0 表示未触发任何阈值
+            - level=1,2,3 表示触发的级别
+        """
+        bonus = 1.0
+        level = 0
+
+        for i, threshold in enumerate(thresholds):
+            if value >= threshold:
+                bonus = bonus_values[i]
+                level = i + 1
+            else:
+                break
+
+        return bonus, level
+
+    def _get_age_bonus(self, oldest_age: int) -> BonusDetail:
+        """
+        计算年龄 bonus
+
+        远期阻力 > 近期阻力（技术分析共识）
+
+        Args:
+            oldest_age: 最老峰值距突破的交易日数
+
+        Returns:
+            BonusDetail
+        """
+        bonus, level = self._get_bonus_value(
+            oldest_age,
+            self.age_bonus_thresholds,
+            self.age_bonus_values
+        )
+
+        return BonusDetail(
+            name="Age",
+            raw_value=oldest_age,
+            unit="d",
+            bonus=bonus,
+            triggered=(bonus > 1.0),
+            level=level
+        )
+
+    def _get_test_bonus(self, test_count: int) -> BonusDetail:
+        """
+        计算测试次数 bonus
+
+        多次测试 > 单次测试
+
+        Args:
+            test_count: 测试次数（簇内峰值数）
+
+        Returns:
+            BonusDetail
+        """
+        bonus, level = self._get_bonus_value(
+            test_count,
+            self.test_bonus_thresholds,
+            self.test_bonus_values
+        )
+
+        return BonusDetail(
+            name="Tests",
+            raw_value=test_count,
+            unit="x",
+            bonus=bonus,
+            triggered=(bonus > 1.0),
+            level=level
+        )
+
+    def _get_height_bonus(self, max_height: float) -> BonusDetail:
+        """
+        计算高度 bonus
+
+        高位阻力 > 低位阻力
+
+        Args:
+            max_height: 最大相对高度（小数形式，如 0.15 表示 15%）
+
+        Returns:
+            BonusDetail
+        """
+        bonus, level = self._get_bonus_value(
+            max_height,
+            self.height_bonus_thresholds,
+            self.height_bonus_values
+        )
+
+        return BonusDetail(
+            name="Height",
+            raw_value=max_height * 100,  # 转为百分比显示
+            unit="%",
+            bonus=bonus,
+            triggered=(bonus > 1.0),
+            level=level
+        )
+
+    def _get_volume_bonus(self, volume_surge_ratio: float) -> BonusDetail:
+        """
+        计算成交量 bonus
+
+        放量突破 > 缩量突破
+
+        Args:
+            volume_surge_ratio: 成交量放大倍数
+
+        Returns:
+            BonusDetail
+        """
+        bonus, level = self._get_bonus_value(
+            volume_surge_ratio,
+            self.volume_bonus_thresholds,
+            self.volume_bonus_values
+        )
+
+        return BonusDetail(
+            name="Volume",
+            raw_value=volume_surge_ratio,
+            unit="x",
+            bonus=bonus,
+            triggered=(bonus > 1.0),
+            level=level
+        )
+
+    def _get_gap_bonus(self, gap_up_pct: float) -> BonusDetail:
+        """
+        计算跳空 bonus
+
+        跳空突破更强势
+
+        Args:
+            gap_up_pct: 跳空百分比（小数形式）
+
+        Returns:
+            BonusDetail
+        """
+        bonus, level = self._get_bonus_value(
+            gap_up_pct,
+            self.gap_bonus_thresholds,
+            self.gap_bonus_values
+        )
+
+        return BonusDetail(
+            name="Gap",
+            raw_value=gap_up_pct * 100,  # 转为百分比显示
+            unit="%",
+            bonus=bonus,
+            triggered=(bonus > 1.0),
+            level=level
+        )
+
+    def _get_continuity_bonus(self, continuity_days: int) -> BonusDetail:
+        """
+        计算连续性 bonus
+
+        连续阳线增强确认
+
+        Args:
+            continuity_days: 连续阳线天数
+
+        Returns:
+            BonusDetail
+        """
+        bonus, level = self._get_bonus_value(
+            continuity_days,
+            self.continuity_bonus_thresholds,
+            self.continuity_bonus_values
+        )
+
+        return BonusDetail(
+            name="Continuity",
+            raw_value=continuity_days,
+            unit="d",
+            bonus=bonus,
+            triggered=(bonus > 1.0),
+            level=level
+        )
+
+    def _get_momentum_bonus(self, recent_breakthrough_count: int) -> BonusDetail:
+        """
+        计算动量 bonus
+
+        连续突破表明趋势强劲
+
+        Args:
+            recent_breakthrough_count: 近期突破次数
+
+        Returns:
+            BonusDetail
+        """
+        bonus, level = self._get_bonus_value(
+            recent_breakthrough_count,
+            self.momentum_bonus_thresholds,
+            self.momentum_bonus_values
+        )
+
+        return BonusDetail(
+            name="Momentum",
+            raw_value=recent_breakthrough_count,
+            unit="bt",
+            bonus=bonus,
+            triggered=(bonus > 1.0),
+            level=level
+        )
+
+    def get_breakthrough_score_breakdown_bonus(
+        self, breakthrough: Breakthrough
+    ) -> ScoreBreakdown:
+        """
+        获取突破评分的详细分解（Bonus 乘法模型）
+
+        公式：总分 = BASE × age_bonus × test_bonus × height_bonus ×
+                      volume_bonus × gap_bonus × continuity_bonus × momentum_bonus
+
+        Args:
+            breakthrough: 突破对象
+
+        Returns:
+            ScoreBreakdown（使用 bonuses 字段）
+        """
+        broken_peaks = breakthrough.broken_peaks
+        bonuses = []
+
+        # 必要条件：存在被突破的阻力位
+        if not broken_peaks:
+            return ScoreBreakdown(
+                entity_type='breakthrough',
+                entity_id=None,
+                total_score=0,
+                features=[],
+                broken_peak_ids=[],
+                base_score=0,
+                bonuses=[]
+            )
+
+        # 1. 将峰值分组成簇，找到最重要的簇
+        clusters = self._group_peaks_into_clusters(
+            broken_peaks,
+            self.cluster_density_threshold
+        )
+
+        # 找到最重要的簇（用于 age, test, height）
+        best_cluster = None
+        best_importance = 0
+        for cluster in clusters:
+            importance = self._score_cluster_importance(cluster, breakthrough.index)
+            if importance > best_importance:
+                best_importance = importance
+                best_cluster = cluster
+
+        if best_cluster is None:
+            best_cluster = broken_peaks
+
+        # 2. 提取关键指标
+        oldest_age = max(breakthrough.index - p.index for p in best_cluster)
+        test_count = len(best_cluster)
+        max_height = max(p.relative_height for p in best_cluster)
+
+        # 3. 计算各个 Bonus
+
+        # 阻力属性 Bonus
+        age_bonus = self._get_age_bonus(oldest_age)
+        bonuses.append(age_bonus)
+
+        test_bonus = self._get_test_bonus(test_count)
+        bonuses.append(test_bonus)
+
+        height_bonus = self._get_height_bonus(max_height)
+        bonuses.append(height_bonus)
+
+        # 突破行为 Bonus
+        volume_bonus = self._get_volume_bonus(breakthrough.volume_surge_ratio)
+        bonuses.append(volume_bonus)
+
+        gap_bonus = self._get_gap_bonus(breakthrough.gap_up_pct)
+        bonuses.append(gap_bonus)
+
+        continuity_bonus = self._get_continuity_bonus(breakthrough.continuity_days)
+        bonuses.append(continuity_bonus)
+
+        momentum_bonus = self._get_momentum_bonus(breakthrough.recent_breakthrough_count)
+        bonuses.append(momentum_bonus)
+
+        # 4. 计算总分（乘法聚合）
+        base_score = self.bonus_base_score
+        total_multiplier = 1.0
+        for b in bonuses:
+            total_multiplier *= b.bonus
+
+        total_score = base_score * total_multiplier
+
+        # 获取被突破的峰值ID
+        broken_peak_ids = [p.id for p in broken_peaks if p.id is not None]
+
+        return ScoreBreakdown(
+            entity_type='breakthrough',
+            entity_id=None,
+            total_score=total_score,
+            features=[],  # Bonus 模型不使用 features
+            broken_peak_ids=broken_peak_ids,
+            base_score=base_score,
+            bonuses=bonuses
         )

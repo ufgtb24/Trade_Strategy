@@ -10,19 +10,60 @@ feature_calculator:
   continuity_lookback: 5
   stability_lookforward: 10
 quality_scorer:
-  breakthrough_weights:
-    change: 0.05
-    continuity: 0.1
-    gap: 0.0
-    momentum: 0.2
-    resistance: 0.50  # 合并原 resistance(0.3) + historical(0.25)，略降
-    stability: 0.0
-    volume: 0.15
+  # 峰值评分权重（保留原有加权模型）
   peak_weights:
     candle: 0.4
     volume: 0.6
-  # 阻力重要性参数（新架构）
-  resistance_importance:
-    cluster_density_threshold: 0.03  # 簇分组阈值
-    age_base_days: 21                # 年龄基准（1个月）
-    age_saturation_days: 504         # 年龄饱和（2年）
+
+  # 簇分组阈值（用于阻力位聚类）
+  cluster_density_threshold: 0.03
+
+  # =====================================================================
+  # Bonus 乘法模型配置
+  # 公式：总分 = base × age_bonus × test_bonus × height_bonus × ...
+  # =====================================================================
+
+  # 基准分：存在有效突破的基础价值
+  bonus_base_score: 50
+
+  # Age bonus（年龄加成）
+  # 远期阻力 > 近期阻力（技术分析共识）
+  age_bonus:
+    thresholds: [21, 63, 252]     # 1月, 3月, 1年
+    values: [1.15, 1.30, 1.50]
+
+  # Test bonus（测试次数加成）
+  # 多次测试 > 单次测试
+  test_bonus:
+    thresholds: [2, 3, 4]
+    values: [1.10, 1.25, 1.40]
+
+  # Height bonus（高度加成）
+  # 高位阻力 > 低位阻力
+  height_bonus:
+    thresholds: [0.10, 0.20]      # 10%, 20%
+    values: [1.15, 1.30]
+
+  # Volume bonus（成交量加成）
+  # 放量突破更可靠
+  volume_bonus:
+    thresholds: [1.5, 2.0]
+    values: [1.15, 1.30]
+
+  # Gap bonus（跳空加成）
+  # 跳空突破更强势
+  gap_bonus:
+    thresholds: [0.01, 0.02]      # 1%, 2%
+    values: [1.10, 1.20]
+
+  # Continuity bonus（连续性加成）
+  # 连续阳线增强确认
+  continuity_bonus:
+    thresholds: [3]
+    values: [1.15]
+
+  # Momentum bonus（动量加成）
+  # 连续突破表明趋势强劲
+  momentum_bonus:
+    thresholds: [2]
+    values: [1.20]

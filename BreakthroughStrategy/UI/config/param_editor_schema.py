@@ -65,7 +65,7 @@ PARAM_CONFIGS = {
             "description": "Lookback period for continuity analysis",
         },
     },
-    # 质量评分器参数（双维度时间模型版）
+    # 质量评分器参数（全 Bonus 乘法模型版）
     "quality_scorer": {
         "peak_weights": {
             "type": dict,
@@ -90,91 +90,163 @@ PARAM_CONFIGS = {
                 },
             },
         },
-        "breakthrough_weights": {
+        "cluster_density_threshold": {
+            "type": float,
+            "range": (0.01, 0.10),
+            "default": 0.03,
+            "description": "Price proximity threshold for clustering peaks (%)",
+        },
+        "bonus_base_score": {
+            "type": int,
+            "range": (10, 100),
+            "default": 50,
+            "description": "Base score for breakthrough (multiplied by bonuses)",
+        },
+        # Bonus 配置组
+        "age_bonus": {
             "type": dict,
-            "is_weight_group": True,
+            "is_bonus_group": True,  # 标记为 Bonus 配置组
             "default": {
-                "change": 0.05,
-                "gap": 0.0,
-                "volume": 0.15,
-                "continuity": 0.10,
-                "stability": 0.0,
-                "resistance": 0.50,  # 合并原 resistance + historical
-                "momentum": 0.20,
+                "thresholds": [21, 63, 252],
+                "values": [1.15, 1.30, 1.50],
             },
-            "description": "Breakthrough quality scoring weights (sum must = 1.0)",
+            "description": "Age bonus (远期 > 近期): thresholds in days, values are multipliers",
             "sub_params": {
-                "change": {
-                    "type": float,
-                    "range": (0.0, 1.0),
-                    "default": 0.05,
-                    "description": "Price change weight",
+                "thresholds": {
+                    "type": list,
+                    "default": [21, 63, 252],
+                    "description": "Threshold levels (1mo, 3mo, 1yr)",
                 },
-                "gap": {
-                    "type": float,
-                    "range": (0.0, 1.0),
-                    "default": 0.0,
-                    "description": "Gap weight",
-                },
-                "volume": {
-                    "type": float,
-                    "range": (0.0, 1.0),
-                    "default": 0.15,
-                    "description": "Volume weight",
-                },
-                "continuity": {
-                    "type": float,
-                    "range": (0.0, 1.0),
-                    "default": 0.10,
-                    "description": "Continuity weight",
-                },
-                "stability": {
-                    "type": float,
-                    "range": (0.0, 1.0),
-                    "default": 0.0,
-                    "description": "Stability weight",
-                },
-                "resistance": {
-                    "type": float,
-                    "range": (0.0, 1.0),
-                    "default": 0.50,
-                    "description": "Resistance importance weight (merged resistance + historical)",
-                },
-                "momentum": {
-                    "type": float,
-                    "range": (0.0, 1.0),
-                    "default": 0.20,
-                    "description": "Momentum weight (consecutive breakthroughs bonus)",
+                "values": {
+                    "type": list,
+                    "default": [1.15, 1.30, 1.50],
+                    "description": "Bonus multipliers for each level",
                 },
             },
         },
-        "resistance_importance": {
+        "test_bonus": {
             "type": dict,
-            "is_weight_group": False,  # 不是权重组，是参数组
+            "is_bonus_group": True,
             "default": {
-                "cluster_density_threshold": 0.03,
-                "age_base_days": 21,
-                "age_saturation_days": 504,
+                "thresholds": [2, 3, 4],
+                "values": [1.10, 1.25, 1.40],
             },
-            "description": "Resistance importance calculation parameters (new architecture)",
+            "description": "Test count bonus (多次测试 > 单次): thresholds are peak counts",
             "sub_params": {
-                "cluster_density_threshold": {
-                    "type": float,
-                    "range": (0.01, 0.10),
-                    "default": 0.03,
-                    "description": "Price proximity threshold for clustering peaks (%)",
+                "thresholds": {
+                    "type": list,
+                    "default": [2, 3, 4],
+                    "description": "Threshold levels (2x, 3x, 4x tests)",
                 },
-                "age_base_days": {
-                    "type": int,
-                    "range": (7, 63),
-                    "default": 21,
-                    "description": "Base age for scoring (trading days, 21≈1mo)",
+                "values": {
+                    "type": list,
+                    "default": [1.10, 1.25, 1.40],
+                    "description": "Bonus multipliers for each level",
                 },
-                "age_saturation_days": {
-                    "type": int,
-                    "range": (252, 756),
-                    "default": 504,
-                    "description": "Saturation age for max score (trading days, 504≈2yr)",
+            },
+        },
+        "height_bonus": {
+            "type": dict,
+            "is_bonus_group": True,
+            "default": {
+                "thresholds": [0.10, 0.20],
+                "values": [1.15, 1.30],
+            },
+            "description": "Height bonus (高位 > 低位): thresholds are relative height ratios",
+            "sub_params": {
+                "thresholds": {
+                    "type": list,
+                    "default": [0.10, 0.20],
+                    "description": "Threshold levels (10%, 20%)",
+                },
+                "values": {
+                    "type": list,
+                    "default": [1.15, 1.30],
+                    "description": "Bonus multipliers for each level",
+                },
+            },
+        },
+        "volume_bonus": {
+            "type": dict,
+            "is_bonus_group": True,
+            "default": {
+                "thresholds": [1.5, 2.0],
+                "values": [1.15, 1.30],
+            },
+            "description": "Volume bonus (放量突破): thresholds are volume surge ratios",
+            "sub_params": {
+                "thresholds": {
+                    "type": list,
+                    "default": [1.5, 2.0],
+                    "description": "Threshold levels (1.5x, 2.0x volume)",
+                },
+                "values": {
+                    "type": list,
+                    "default": [1.15, 1.30],
+                    "description": "Bonus multipliers for each level",
+                },
+            },
+        },
+        "gap_bonus": {
+            "type": dict,
+            "is_bonus_group": True,
+            "default": {
+                "thresholds": [0.01, 0.02],
+                "values": [1.10, 1.20],
+            },
+            "description": "Gap bonus (跳空突破): thresholds are gap percentages",
+            "sub_params": {
+                "thresholds": {
+                    "type": list,
+                    "default": [0.01, 0.02],
+                    "description": "Threshold levels (1%, 2% gap)",
+                },
+                "values": {
+                    "type": list,
+                    "default": [1.10, 1.20],
+                    "description": "Bonus multipliers for each level",
+                },
+            },
+        },
+        "continuity_bonus": {
+            "type": dict,
+            "is_bonus_group": True,
+            "default": {
+                "thresholds": [3],
+                "values": [1.15],
+            },
+            "description": "Continuity bonus (连续阳线): thresholds are day counts",
+            "sub_params": {
+                "thresholds": {
+                    "type": list,
+                    "default": [3],
+                    "description": "Threshold levels (3+ days)",
+                },
+                "values": {
+                    "type": list,
+                    "default": [1.15],
+                    "description": "Bonus multipliers for each level",
+                },
+            },
+        },
+        "momentum_bonus": {
+            "type": dict,
+            "is_bonus_group": True,
+            "default": {
+                "thresholds": [2],
+                "values": [1.20],
+            },
+            "description": "Momentum bonus (连续突破): thresholds are breakthrough counts",
+            "sub_params": {
+                "thresholds": {
+                    "type": list,
+                    "default": [2],
+                    "description": "Threshold levels (2+ breakthroughs)",
+                },
+                "values": {
+                    "type": list,
+                    "default": [1.20],
+                    "description": "Bonus multipliers for each level",
                 },
             },
         },

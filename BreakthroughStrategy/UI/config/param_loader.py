@@ -254,45 +254,54 @@ class UIParamLoader:
             ),
         }
 
-        # Breakthrough weights (新架构：移除 historical，合并到 resistance)
-        bt_weights = quality_params.get('breakthrough_weights', {})
-        validated.update({
-            'bt_weight_change': self._validate_float(
-                bt_weights.get('change', 0.05), 0.0, 1.0, 0.05
-            ),
-            'bt_weight_gap': self._validate_float(
-                bt_weights.get('gap', 0.0), 0.0, 1.0, 0.0
-            ),
-            'bt_weight_volume': self._validate_float(
-                bt_weights.get('volume', 0.15), 0.0, 1.0, 0.15
-            ),
-            'bt_weight_continuity': self._validate_float(
-                bt_weights.get('continuity', 0.10), 0.0, 1.0, 0.10
-            ),
-            'bt_weight_stability': self._validate_float(
-                bt_weights.get('stability', 0.0), 0.0, 1.0, 0.0
-            ),
-            'bt_weight_resistance': self._validate_float(
-                bt_weights.get('resistance', 0.50), 0.0, 1.0, 0.50
-            ),
-            'bt_weight_momentum': self._validate_float(
-                bt_weights.get('momentum', 0.20), 0.0, 1.0, 0.20
-            ),
-        })
+        # 簇分组阈值
+        validated['cluster_density_threshold'] = self._validate_float(
+            quality_params.get('cluster_density_threshold', 0.03), 0.01, 0.10, 0.03
+        )
 
-        # Resistance importance 参数（新架构）
-        res_importance = quality_params.get('resistance_importance', {})
-        validated.update({
-            'cluster_density_threshold': self._validate_float(
-                res_importance.get('cluster_density_threshold', 0.03), 0.01, 0.10, 0.03
-            ),
-            'age_base_days': self._validate_int(
-                res_importance.get('age_base_days', 21), 7, 63, 21
-            ),
-            'age_saturation_days': self._validate_int(
-                res_importance.get('age_saturation_days', 504), 252, 756, 504
-            ),
-        })
+        # =====================================================================
+        # Bonus 乘法模型配置
+        # =====================================================================
+
+        # 基准分
+        validated['bonus_base_score'] = self._validate_int(
+            quality_params.get('bonus_base_score', 50), 10, 100, 50
+        )
+
+        # Age bonus
+        age_bonus = quality_params.get('age_bonus', {})
+        validated['age_bonus_thresholds'] = age_bonus.get('thresholds', [21, 63, 252])
+        validated['age_bonus_values'] = age_bonus.get('values', [1.15, 1.30, 1.50])
+
+        # Test bonus
+        test_bonus = quality_params.get('test_bonus', {})
+        validated['test_bonus_thresholds'] = test_bonus.get('thresholds', [2, 3, 4])
+        validated['test_bonus_values'] = test_bonus.get('values', [1.10, 1.25, 1.40])
+
+        # Height bonus
+        height_bonus = quality_params.get('height_bonus', {})
+        validated['height_bonus_thresholds'] = height_bonus.get('thresholds', [0.10, 0.20])
+        validated['height_bonus_values'] = height_bonus.get('values', [1.15, 1.30])
+
+        # Volume bonus
+        volume_bonus = quality_params.get('volume_bonus', {})
+        validated['volume_bonus_thresholds'] = volume_bonus.get('thresholds', [1.5, 2.0])
+        validated['volume_bonus_values'] = volume_bonus.get('values', [1.15, 1.30])
+
+        # Gap bonus
+        gap_bonus = quality_params.get('gap_bonus', {})
+        validated['gap_bonus_thresholds'] = gap_bonus.get('thresholds', [0.01, 0.02])
+        validated['gap_bonus_values'] = gap_bonus.get('values', [1.10, 1.20])
+
+        # Continuity bonus
+        continuity_bonus = quality_params.get('continuity_bonus', {})
+        validated['continuity_bonus_thresholds'] = continuity_bonus.get('thresholds', [3])
+        validated['continuity_bonus_values'] = continuity_bonus.get('values', [1.15])
+
+        # Momentum bonus
+        momentum_bonus = quality_params.get('momentum_bonus', {})
+        validated['momentum_bonus_thresholds'] = momentum_bonus.get('thresholds', [2])
+        validated['momentum_bonus_values'] = momentum_bonus.get('values', [1.20])
 
         return validated
 
