@@ -122,11 +122,16 @@ class QualityScorer:
             'relative_height': config.get('hist_weight_relative_height', 0.45)
         }
 
-        # 时间函数参数（单位：交易日）
+        # 时间函数参数（单位：交易日）- 保留用于向后兼容
         self.time_decay_half_life = config.get('time_decay_half_life', 84)  # 4个月
         self.historical_significance_saturation = config.get(
             'historical_significance_saturation', 252  # 1年
         )
+
+        # 阻力重要性评分参数（新架构）
+        self.cluster_density_threshold = config.get('cluster_density_threshold', 0.03)
+        self.age_base_days = config.get('age_base_days', 21)  # 1个月
+        self.age_saturation_days = config.get('age_saturation_days', 504)  # 2年
 
     def score_peak(self, peak: Peak) -> float:
         """
@@ -283,6 +288,197 @@ class QualityScorer:
                     max_cluster_size = len(cluster)
 
         return max_cluster_size
+
+    # =========================================================================
+    # 阻力簇分组与评分（新架构）
+    # =========================================================================
+
+    def _group_peaks_into_clusters(
+        self,
+        peaks: List[Peak],
+        density_threshold: float = 0.03
+    ) -> List[List[Peak]]:
+        """
+        将峰值按价格相近度分组成阻力簇
+
+        算法：贪心聚类，相邻峰值价差 < threshold 则归入同簇
+
+        Args:
+            peaks: 被突破的峰值列表
+            density_threshold: 密集度阈值（默认3%）
+
+        Returns:
+            簇列表，每个簇是 List[Peak]
+        """
+        if not peaks:
+            return []
+
+        if len(peaks) == 1:
+            return [peaks]
+
+        # 按价格排序
+        sorted_peaks = sorted(peaks, key=lambda p: p.price)
+
+        clusters = []
+        current_cluster = [sorted_peaks[0]]
+
+        for i in range(1, len(sorted_peaks)):
+            prev_peak = sorted_peaks[i - 1]
+            curr_peak = sorted_peaks[i]
+
+            # 计算价差比例（相对于较低价格）
+            price_diff_ratio = (curr_peak.price - prev_peak.price) / prev_peak.price
+
+            if price_diff_ratio <= density_threshold:
+                # 价差小于阈值，归入当前簇
+                current_cluster.append(curr_peak)
+            else:
+                # 价差过大，结束当前簇，开始新簇
+                clusters.append(current_cluster)
+                current_cluster = [curr_peak]
+
+        # 处理最后一个簇
+        clusters.append(current_cluster)
+
+        return clusters
+
+    def _score_age_factor(self, oldest_age: int) -> float:
+        """
+        年龄因子评分（远期 > 近期，反转时间效应）
+
+        设计理念：
+        - 突破远期阻力位比突破近期阻力位更有意义
+        - 使用对数增长，边际递减
+
+        映射：
+        - 21天（1个月）→ 30分（基础分）
+        - 63天（3个月）→ 50分
+        - 126天（6个月）→ 70分
+        - 252天（1年）→ 90分
+        - 504天（2年）→ 100分（饱和）
+
+        Args:
+            oldest_age: 最老峰值距突破的K线数（交易日）
+
+        Returns:
+            年龄因子分数 (0-100)
+        """
+        if oldest_age <= 0:
+            return 0.0
+
+        base_age = self.age_base_days  # 默认21天
+        saturation_age = self.age_saturation_days  # 默认504天
+
+        if oldest_age < base_age:
+            # 不足基准期，线性递增到30分
+            return self._linear_score(oldest_age, 0, base_age, 0, 30)
+
+        # 对数增长：30分起步，到饱和期达到100分
+        return self._log_score(
+            oldest_age,
+            base_value=base_age,
+            saturation_value=saturation_age,
+            min_score=30,
+            max_score=100
+        )
+
+    def _score_test_factor(self, test_count: int) -> float:
+        """
+        测试次数因子评分
+
+        设计理念：
+        - 价格多次回测同一区域，说明该阻力位被市场认可
+        - 边际递减：1→2次增益大于4→5次
+
+        映射：
+        - 1次 → 40分（基础阻力）
+        - 2次 → 60分（二次确认）
+        - 3次 → 75分（强阻力）
+        - 4次 → 85分
+        - 5+次 → 100分（超强阻力）
+
+        Args:
+            test_count: 测试次数（簇内峰值数）
+
+        Returns:
+            测试次数因子分数 (0-100)
+        """
+        score_map = {1: 40, 2: 60, 3: 75, 4: 85}
+        if test_count >= 5:
+            return 100.0
+        return float(score_map.get(test_count, 40))
+
+    def _score_height_factor(self, max_height: float) -> float:
+        """
+        高度因子评分
+
+        设计理念：
+        - 相对高度反映心理阻力强度
+        - 高位套牢盘的解套压力更大
+
+        映射：
+        - 5% → 0分（基础过滤线）
+        - 10% → 40分
+        - 20% → 70分
+        - 30%+ → 100分
+
+        Args:
+            max_height: 簇内最大相对高度
+
+        Returns:
+            高度因子分数 (0-100)
+        """
+        return self._linear_score(max_height, 0.05, 0.30, 0, 100)
+
+    def _score_cluster_importance(
+        self,
+        cluster_peaks: List[Peak],
+        breakthrough_index: int
+    ) -> float:
+        """
+        评估单个阻力簇的重要性（乘法结构）
+
+        公式：importance = (age_factor × test_factor × height_factor)^(1/3) × 100
+
+        设计理念：
+        - 乘法确保任一因子为0则整体为0
+        - 乘法产生的排序符合技术分析共识：
+          远期+多测试 > 远期+单测试 > 近期+多测试 > 近期+单测试
+        - 开三次方根归一化到0-100
+
+        Args:
+            cluster_peaks: 簇内的峰值列表
+            breakthrough_index: 突破点的索引
+
+        Returns:
+            簇重要性分数 (0-100)
+        """
+        if not cluster_peaks:
+            return 0.0
+
+        # 簇的年龄（用最老峰值，代表阻力位的历史起源）
+        oldest_age = max(breakthrough_index - p.index for p in cluster_peaks)
+
+        # 测试次数 = 簇内峰值数
+        test_count = len(cluster_peaks)
+
+        # 高度（用最高峰值的相对高度）
+        max_height = max(p.relative_height for p in cluster_peaks)
+
+        # 计算三个因子
+        age_score = self._score_age_factor(oldest_age)
+        test_score = self._score_test_factor(test_count)
+        height_score = self._score_height_factor(max_height)
+
+        # 乘法结构 + 归一化
+        # 每个因子范围 [0, 100]，归一化到 [0, 1] 后相乘
+        raw = (age_score / 100) * (test_score / 100) * (height_score / 100)
+
+        # 开三次方根后缩放回 0-100
+        # 这样 (100, 100, 100) → 100, (50, 50, 50) → 50
+        normalized = (raw ** (1/3)) * 100
+
+        return normalized
 
     def _score_peak_quality_aggregate(self, broken_peaks: List[Peak]) -> float:
         """
@@ -678,15 +874,11 @@ class QualityScorer:
             weight=self.breakthrough_weights['stability']
         ))
 
-        # 6. 阻力强度评分（含子因素展开）
-        resistance_feature = self._get_resistance_breakdown(breakthrough)
+        # 6. 阻力重要性评分（新架构，合并原 Resistance 和 Historical）
+        resistance_feature = self._get_resistance_importance(breakthrough)
         features.append(resistance_feature)
 
-        # 7. 历史意义评分（新增，含子因素展开）
-        historical_feature = self._get_historical_breakdown(breakthrough)
-        features.append(historical_feature)
-
-        # 8. 连续突破加成（Momentum）
+        # 7. 连续突破加成（Momentum）
         momentum_feature = self._get_momentum_breakdown(breakthrough)
         features.append(momentum_feature)
 
@@ -702,6 +894,117 @@ class QualityScorer:
             total_score=total_score,
             features=features,
             broken_peak_ids=broken_peak_ids
+        )
+
+    def _get_resistance_importance(
+        self, breakthrough: Breakthrough
+    ) -> FeatureScoreDetail:
+        """
+        获取阻力重要性评分（新架构，合并原 Resistance 和 Historical）
+
+        核心设计（基于技术分析共识）：
+        - 以"阻力簇"为评分单位
+        - 簇大小 = 测试次数（价格多次回测该区域）
+        - 排序：远期+多测试 > 远期+单测试 > 近期+多测试 > 近期+单测试
+
+        子因素（用于 UI 展开显示）：
+        1. Clusters: 簇数量
+        2. Best Age: 最重要簇的年龄（远期 > 近期）
+        3. Best Tests: 最重要簇的测试次数
+        4. Max Height: 最大相对高度
+
+        Args:
+            breakthrough: 突破对象
+
+        Returns:
+            FeatureScoreDetail 含 sub_features
+        """
+        broken_peaks = breakthrough.broken_peaks
+        sub_features = []
+
+        if not broken_peaks:
+            return FeatureScoreDetail(
+                name="Resistance",
+                raw_value=0,
+                unit="",
+                score=0,
+                weight=self.breakthrough_weights['resistance'],
+                sub_features=[]
+            )
+
+        # 1. 将峰值分组成簇
+        clusters = self._group_peaks_into_clusters(
+            broken_peaks,
+            self.cluster_density_threshold
+        )
+
+        # 2. 评估每个簇的重要性，取最高分
+        cluster_scores = []
+        for cluster in clusters:
+            importance = self._score_cluster_importance(cluster, breakthrough.index)
+            cluster_scores.append((cluster, importance))
+
+        # 按重要性排序
+        cluster_scores.sort(key=lambda x: x[1], reverse=True)
+        best_cluster, best_score = cluster_scores[0]
+
+        # 最终分数 = 最重要簇的分数
+        total_score = best_score
+
+        # 3. 提取最佳簇的详细信息用于 UI 显示
+        best_oldest_age = max(breakthrough.index - p.index for p in best_cluster)
+        best_test_count = len(best_cluster)
+        best_max_height = max(p.relative_height for p in best_cluster)
+
+        # 4. 构建子因素
+
+        # 4.1 簇数量
+        cluster_count_score = self._linear_score(len(clusters), 1, 3, 40, 100)
+        sub_features.append(FeatureScoreDetail(
+            name="Clusters",
+            raw_value=len(clusters),
+            unit="",
+            score=cluster_count_score,
+            weight=0.15
+        ))
+
+        # 4.2 最佳簇年龄
+        age_score = self._score_age_factor(best_oldest_age)
+        sub_features.append(FeatureScoreDetail(
+            name="Best Age",
+            raw_value=best_oldest_age,
+            unit="d",
+            score=age_score,
+            weight=0.35
+        ))
+
+        # 4.3 最佳簇测试次数
+        test_score = self._score_test_factor(best_test_count)
+        sub_features.append(FeatureScoreDetail(
+            name="Best Tests",
+            raw_value=best_test_count,
+            unit="x",
+            score=test_score,
+            weight=0.30
+        ))
+
+        # 4.4 最大高度
+        height_score = self._score_height_factor(best_max_height)
+        sub_features.append(FeatureScoreDetail(
+            name="Max Height",
+            raw_value=best_max_height * 100,
+            unit="%",
+            score=height_score,
+            weight=0.20
+        ))
+
+        return FeatureScoreDetail(
+            name="Resistance",
+            raw_value=total_score,
+            unit="",
+            score=total_score,
+            weight=self.breakthrough_weights['resistance'],
+            sub_features=sub_features
         )
 
     def _get_resistance_breakdown(

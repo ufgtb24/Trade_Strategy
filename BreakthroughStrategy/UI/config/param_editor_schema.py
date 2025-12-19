@@ -96,12 +96,11 @@ PARAM_CONFIGS = {
             "default": {
                 "change": 0.05,
                 "gap": 0.0,
-                "volume": 0.10,
-                "continuity": 0.20,
+                "volume": 0.15,
+                "continuity": 0.10,
                 "stability": 0.0,
-                "resistance": 0.30,
-                "historical": 0.25,
-                "momentum": 0.10,
+                "resistance": 0.50,  # 合并原 resistance + historical
+                "momentum": 0.20,
             },
             "description": "Breakthrough quality scoring weights (sum must = 1.0)",
             "sub_params": {
@@ -120,13 +119,13 @@ PARAM_CONFIGS = {
                 "volume": {
                     "type": float,
                     "range": (0.0, 1.0),
-                    "default": 0.10,
+                    "default": 0.15,
                     "description": "Volume weight",
                 },
                 "continuity": {
                     "type": float,
                     "range": (0.0, 1.0),
-                    "default": 0.20,
+                    "default": 0.10,
                     "description": "Continuity weight",
                 },
                 "stability": {
@@ -138,92 +137,46 @@ PARAM_CONFIGS = {
                 "resistance": {
                     "type": float,
                     "range": (0.0, 1.0),
-                    "default": 0.30,
-                    "description": "Resistance strength weight",
-                },
-                "historical": {
-                    "type": float,
-                    "range": (0.0, 1.0),
-                    "default": 0.25,
-                    "description": "Historical significance weight",
+                    "default": 0.50,
+                    "description": "Resistance importance weight (merged resistance + historical)",
                 },
                 "momentum": {
                     "type": float,
                     "range": (0.0, 1.0),
-                    "default": 0.10,
+                    "default": 0.20,
                     "description": "Momentum weight (consecutive breakthroughs bonus)",
                 },
             },
         },
-        "resistance_weights": {
+        "resistance_importance": {
             "type": dict,
-            "is_weight_group": True,
-            "default": {"quantity": 0.30, "density": 0.30, "quality": 0.40},
-            "description": "Resistance strength sub-weights (sum must = 1.0). Note: recency is now integrated into quality.",
+            "is_weight_group": False,  # 不是权重组，是参数组
+            "default": {
+                "cluster_density_threshold": 0.03,
+                "age_base_days": 21,
+                "age_saturation_days": 504,
+            },
+            "description": "Resistance importance calculation parameters (new architecture)",
             "sub_params": {
-                "quantity": {
+                "cluster_density_threshold": {
                     "type": float,
-                    "range": (0.0, 1.0),
-                    "default": 0.30,
-                    "description": "Peak quantity weight",
+                    "range": (0.01, 0.10),
+                    "default": 0.03,
+                    "description": "Price proximity threshold for clustering peaks (%)",
                 },
-                "density": {
-                    "type": float,
-                    "range": (0.0, 1.0),
-                    "default": 0.30,
-                    "description": "Peak density weight",
+                "age_base_days": {
+                    "type": int,
+                    "range": (7, 63),
+                    "default": 21,
+                    "description": "Base age for scoring (trading days, 21≈1mo)",
                 },
-                "quality": {
-                    "type": float,
-                    "range": (0.0, 1.0),
-                    "default": 0.40,
-                    "description": "Effective quality weight (includes time decay)",
+                "age_saturation_days": {
+                    "type": int,
+                    "range": (252, 756),
+                    "default": 504,
+                    "description": "Saturation age for max score (trading days, 504≈2yr)",
                 },
             },
-        },
-        "time_decay_baseline": {
-            "type": float,
-            "range": (0.0, 0.5),
-            "default": 0.3,
-            "description": "Baseline resistance ratio for old peaks (0.3 = 30% minimum)",
-        },
-        "historical_weights": {
-            "type": dict,
-            "is_weight_group": True,
-            "default": {"oldest_age": 0.55, "relative_height": 0.45},
-            "description": "Historical significance sub-weights (心理阻力, sum must = 1.0)",
-            "sub_params": {
-                "oldest_age": {
-                    "type": float,
-                    "range": (0.0, 1.0),
-                    "default": 0.55,
-                    "description": "Oldest broken peak age weight (time dimension)",
-                },
-                "relative_height": {
-                    "type": float,
-                    "range": (0.0, 1.0),
-                    "default": 0.45,
-                    "description": "Max relative height weight (price dimension, W-pattern)",
-                },
-            },
-        },
-        "time_decay_half_life": {
-            "type": int,
-            "range": (21, 252),
-            "default": 84,
-            "description": "Half-life for resistance decay (trading days, 84≈4mo)",
-        },
-        "historical_significance_saturation": {
-            "type": int,
-            "range": (63, 504),
-            "default": 252,
-            "description": "Saturation period for historical significance (trading days, 252≈1yr)",
-        },
-        "historical_quality_threshold": {
-            "type": int,
-            "range": (50, 90),
-            "default": 70,
-            "description": "Min peak quality to contribute to historical significance (Phase 2)",
         },
     },
 }

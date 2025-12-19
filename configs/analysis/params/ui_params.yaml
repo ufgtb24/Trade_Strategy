@@ -14,22 +14,15 @@ quality_scorer:
     change: 0.05
     continuity: 0.1
     gap: 0.0
-    historical: 0.25
     momentum: 0.2
-    resistance: 0.3
+    resistance: 0.50  # 合并原 resistance(0.3) + historical(0.25)，略降
     stability: 0.0
-    volume: 0.1
-  historical_quality_threshold: 60
-  historical_significance_saturation: 252
-  historical_weights:
-    oldest_age: 0.55
-    relative_height: 0.45
+    volume: 0.15
   peak_weights:
     candle: 0.4
     volume: 0.6
-  resistance_weights:
-    density: 0.3
-    quality: 0.4
-    quantity: 0.3
-  time_decay_baseline: 0.3
-  time_decay_half_life: 84
+  # 阻力重要性参数（新架构）
+  resistance_importance:
+    cluster_density_threshold: 0.03  # 簇分组阈值
+    age_base_days: 21                # 年龄基准（1个月）
+    age_saturation_days: 504         # 年龄饱和（2年）

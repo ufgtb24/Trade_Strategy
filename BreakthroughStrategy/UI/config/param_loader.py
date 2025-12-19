@@ -254,7 +254,7 @@ class UIParamLoader:
             ),
         }
 
-        # Breakthrough weights (包含 historical 和 momentum)
+        # Breakthrough weights (新架构：移除 historical，合并到 resistance)
         bt_weights = quality_params.get('breakthrough_weights', {})
         validated.update({
             'bt_weight_change': self._validate_float(
@@ -264,63 +264,33 @@ class UIParamLoader:
                 bt_weights.get('gap', 0.0), 0.0, 1.0, 0.0
             ),
             'bt_weight_volume': self._validate_float(
-                bt_weights.get('volume', 0.10), 0.0, 1.0, 0.10
+                bt_weights.get('volume', 0.15), 0.0, 1.0, 0.15
             ),
             'bt_weight_continuity': self._validate_float(
-                bt_weights.get('continuity', 0.20), 0.0, 1.0, 0.20
+                bt_weights.get('continuity', 0.10), 0.0, 1.0, 0.10
             ),
             'bt_weight_stability': self._validate_float(
                 bt_weights.get('stability', 0.0), 0.0, 1.0, 0.0
             ),
             'bt_weight_resistance': self._validate_float(
-                bt_weights.get('resistance', 0.30), 0.0, 1.0, 0.30
-            ),
-            'bt_weight_historical': self._validate_float(
-                bt_weights.get('historical', 0.25), 0.0, 1.0, 0.25
+                bt_weights.get('resistance', 0.50), 0.0, 1.0, 0.50
             ),
             'bt_weight_momentum': self._validate_float(
-                bt_weights.get('momentum', 0.10), 0.0, 1.0, 0.10
+                bt_weights.get('momentum', 0.20), 0.0, 1.0, 0.20
             ),
         })
 
-        # Resistance weights (子权重)
-        res_weights = quality_params.get('resistance_weights', {})
+        # Resistance importance 参数（新架构）
+        res_importance = quality_params.get('resistance_importance', {})
         validated.update({
-            'res_weight_quantity': self._validate_float(
-                res_weights.get('quantity', 0.30), 0.0, 1.0, 0.30
+            'cluster_density_threshold': self._validate_float(
+                res_importance.get('cluster_density_threshold', 0.03), 0.01, 0.10, 0.03
             ),
-            'res_weight_density': self._validate_float(
-                res_weights.get('density', 0.30), 0.0, 1.0, 0.30
+            'age_base_days': self._validate_int(
+                res_importance.get('age_base_days', 21), 7, 63, 21
             ),
-            'res_weight_quality': self._validate_float(
-                res_weights.get('quality', 0.40), 0.0, 1.0, 0.40
-            ),
-        })
-
-        # Historical weights (子权重: oldest_age + relative_height)
-        hist_weights = quality_params.get('historical_weights', {})
-        validated.update({
-            'hist_weight_oldest_age': self._validate_float(
-                hist_weights.get('oldest_age', 0.55), 0.0, 1.0, 0.55
-            ),
-            'hist_weight_relative_height': self._validate_float(
-                hist_weights.get('relative_height', 0.45), 0.0, 1.0, 0.45
-            ),
-        })
-
-        # 标量参数
-        validated.update({
-            'time_decay_baseline': self._validate_float(
-                quality_params.get('time_decay_baseline', 0.3), 0.0, 0.5, 0.3
-            ),
-            'time_decay_half_life': self._validate_int(
-                quality_params.get('time_decay_half_life', 84), 21, 252, 84
-            ),
-            'historical_significance_saturation': self._validate_int(
-                quality_params.get('historical_significance_saturation', 252), 63, 504, 252
-            ),
-            'historical_quality_threshold': self._validate_int(
-                quality_params.get('historical_quality_threshold', 70), 50, 90, 70
+            'age_saturation_days': self._validate_int(
+                res_importance.get('age_saturation_days', 504), 252, 756, 504
             ),
         })
 
