@@ -1,6 +1,6 @@
 # 观察池系统技术设计文档
 
-**模块路径**：`BreakthroughStrategy/observation/`
+**模块路径**：`BreakoutStrategy/observation/`
 **创建日期**：2025-11-16
 
 ---
@@ -25,7 +25,7 @@
 ## 二、模块架构
 
 ```
-BreakthroughStrategy/observation/
+BreakoutStrategy/observation/
 ├── __init__.py
 ├── pool_manager.py           # PoolManager - 观察池管理器（总控）
 ├── realtime_pool.py          # RealtimePool - 实时观察池
@@ -50,10 +50,10 @@ class PoolEntry:
     # 基本信息
     symbol: str                      # 股票代码
     add_date: date                   # 加入日期
-    breakthrough_date: date          # 突破日期
+    breakout_date: date          # 突破日期
 
     # 突破信息
-    breakthrough_info: Dict = field(default_factory=dict)  # {price, type, quality_score, ...}
+    breakout_info: Dict = field(default_factory=dict)  # {price, type, quality_score, ...}
 
     # 凸点信息
     peak_info: Dict = field(default_factory=dict)          # {date, price, quality_score, ...}
@@ -74,8 +74,8 @@ class PoolEntry:
         return {
             'symbol': self.symbol,
             'add_date': self.add_date.isoformat(),
-            'breakthrough_date': self.breakthrough_date.isoformat(),
-            'breakthrough_info': str(self.breakthrough_info),
+            'breakout_date': self.breakout_date.isoformat(),
+            'breakout_info': str(self.breakout_info),
             'peak_info': str(self.peak_info),
             'status': self.status,
             'retry_count': self.retry_count,
@@ -91,8 +91,8 @@ class PoolEntry:
             id=data.get('id'),
             symbol=data['symbol'],
             add_date=date.fromisoformat(data['add_date']),
-            breakthrough_date=date.fromisoformat(data['breakthrough_date']),
-            breakthrough_info=ast.literal_eval(data['breakthrough_info']),
+            breakout_date=date.fromisoformat(data['breakout_date']),
+            breakout_info=ast.literal_eval(data['breakout_info']),
             peak_info=ast.literal_eval(data['peak_info']),
             status=data['status'],
             retry_count=data['retry_count'],
@@ -129,19 +129,19 @@ class RealtimePool:
             config: 配置字典
         """
         if db_manager is None:
-            from BreakthroughStrategy.utils.database import DatabaseManager
+            from BreakoutStrategy.utils.database import DatabaseManager
             self.db = DatabaseManager.get_instance()
         else:
             self.db = db
 
         if config is None:
-            from BreakthroughStrategy.config import ConfigManager
+            from BreakoutStrategy.config import ConfigManager
             cfg = ConfigManager.get_instance()
             self.observation_days = cfg.get('time.realtime_observation_days', 1)
         else:
             self.observation_days = config.get('observation_days', 1)
 
-        from BreakthroughStrategy.utils.logger import Logger
+        from BreakoutStrategy.utils.logger import Logger
         self.logger = Logger.get_logger('observation.realtime_pool')
 
     def add(self, entry: PoolEntry) -> bool:
@@ -169,7 +169,7 @@ class RealtimePool:
             entry_dict = entry.to_dict()
             entry.id = self.db.insert('observation_pool_realtime', entry_dict)
 
-            self.logger.info(f"Added {entry.symbol} to realtime pool (breakthrough: {entry.breakthrough_date})")
+            self.logger.info(f"Added {entry.symbol} to realtime pool (breakout: {entry.breakout_date})")
             return True
 
         except Exception as e:
@@ -296,19 +296,19 @@ class DailyPool:
     def __init__(self, db_manager=None, config=None):
         """初始化日K观察池"""
         if db_manager is None:
-            from BreakthroughStrategy.utils.database import DatabaseManager
+            from BreakoutStrategy.utils.database import DatabaseManager
             self.db = DatabaseManager.get_instance()
         else:
             self.db = db_manager
 
         if config is None:
-            from BreakthroughStrategy.config import ConfigManager
+            from BreakoutStrategy.config import ConfigManager
             cfg = ConfigManager.get_instance()
             self.observation_days = cfg.get('time.daily_observation_days', 30)
         else:
             self.observation_days = config.get('observation_days', 30)
 
-        from BreakthroughStrategy.utils.logger import Logger
+        from BreakoutStrategy.utils.logger import Logger
         self.logger = Logger.get_logger('observation.daily_pool')
 
     def add(self, entry: PoolEntry, allow_duplicate: bool = False) -> bool:
@@ -442,7 +442,7 @@ class PoolManager:
         self.realtime_pool = RealtimePool(db_manager, config)
         self.daily_pool = DailyPool(db_manager, config)
 
-        from BreakthroughStrategy.utils.logger import Logger
+        from BreakoutStrategy.utils.logger import Logger
         self.logger = Logger.get_logger('observation.manager')
 
     def add_from_search_results(self, search_results: pd.DataFrame):
@@ -462,11 +462,11 @@ class PoolManager:
             entry = PoolEntry(
                 symbol=row['symbol'],
                 add_date=today,
-                breakthrough_date=row['breakthrough_date'],
-                breakthrough_info={
-                    'price': row['breakthrough_price'],
-                    'type': row['breakthrough_type'],
-                    'quality_score': row['breakthrough_quality_score']
+                breakout_date=row['breakout_date'],
+                breakout_info={
+                    'price': row['breakout_price'],
+                    'type': row['breakout_type'],
+                    'quality_score': row['breakout_quality_score']
                 },
                 peak_info={
                     'date': row['peak_date'],
@@ -476,7 +476,7 @@ class PoolManager:
             )
 
             # 判断加入哪个池
-            if row['breakthrough_date'] == today:
+            if row['breakout_date'] == today:
                 self.realtime_pool.add(entry)
             else:
                 self.daily_pool.add(entry)
@@ -508,8 +508,8 @@ class PoolManager:
         entry = PoolEntry(
             symbol=symbol,
             add_date=datetime.now().date(),
-            breakthrough_date=entry_info['breakthrough_date'],
-            breakthrough_info=entry_info['breakthrough_info'],
+            breakout_date=entry_info['breakout_date'],
+            breakout_info=entry_info['breakout_info'],
             peak_info=entry_info['peak_info'],
             retry_count=entry_info.get('retry_count', 0) + 1  # 增加重试次数
         )
@@ -560,8 +560,8 @@ class PoolManager:
 ### 7.1 添加搜索结果到观察池
 
 ```python
-from BreakthroughStrategy.observation import PoolManager
-from BreakthroughStrategy.search import SearchEngine
+from BreakoutStrategy.observation import PoolManager
+from BreakoutStrategy.search import SearchEngine
 
 # 1. 搜索突破
 engine = SearchEngine()
@@ -614,8 +614,8 @@ def on_trade_closed(symbol: str, pnl: float):
     if entry:
         # 重新加入观察池（循环跟踪）
         pool_manager.re_add_after_trade(symbol, {
-            'breakthrough_date': entry.breakthrough_date,
-            'breakthrough_info': entry.breakthrough_info,
+            'breakout_date': entry.breakout_date,
+            'breakout_info': entry.breakout_info,
             'peak_info': entry.peak_info,
             'retry_count': entry.retry_count
         })
@@ -631,8 +631,8 @@ CREATE TABLE observation_pool_realtime (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     symbol VARCHAR(20) NOT NULL,
     add_date DATE NOT NULL,
-    breakthrough_date DATE NOT NULL,
-    breakthrough_info TEXT,
+    breakout_date DATE NOT NULL,
+    breakout_info TEXT,
     peak_info TEXT,
     status VARCHAR(20) DEFAULT 'active',
     retry_count INTEGER DEFAULT 0,
@@ -647,8 +647,8 @@ CREATE TABLE observation_pool_daily (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     symbol VARCHAR(20) NOT NULL,
     add_date DATE NOT NULL,
-    breakthrough_date DATE NOT NULL,
-    breakthrough_info TEXT,
+    breakout_date DATE NOT NULL,
+    breakout_info TEXT,
     peak_info TEXT,
     status VARCHAR(20) DEFAULT 'active',
     retry_count INTEGER DEFAULT 0,
@@ -666,7 +666,7 @@ CREATE INDEX idx_pool_daily_status ON observation_pool_daily(status);
 ```python
 # tests/observation/test_pool_manager.py
 import pytest
-from BreakthroughStrategy.observation import PoolManager, PoolEntry
+from BreakoutStrategy.observation import PoolManager, PoolEntry
 from datetime import date, datetime, timedelta
 
 class TestPoolManager:
@@ -680,8 +680,8 @@ class TestPoolManager:
         entry = PoolEntry(
             symbol='TEST',
             add_date=date.today(),
-            breakthrough_date=date.today(),
-            breakthrough_info={'price': 100.0},
+            breakout_date=date.today(),
+            breakout_info={'price': 100.0},
             peak_info={'price': 95.0}
         )
 
@@ -699,7 +699,7 @@ class TestPoolManager:
         entry = PoolEntry(
             symbol='TEST',
             add_date=date.today() - timedelta(days=2),  # 2天前
-            breakthrough_date=date.today() - timedelta(days=2)
+            breakout_date=date.today() - timedelta(days=2)
         )
         pool_manager.realtime_pool.add(entry)
 

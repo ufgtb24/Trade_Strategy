@@ -3,7 +3,7 @@
 ## 文档信息
 
 - **模块名称**：工具与辅助（Utils & Helpers）
-- **模块路径**：`BreakthroughStrategy/utils/`
+- **模块路径**：`BreakoutStrategy/utils/`
 - **文档版本**：v1.0
 - **创建日期**：2025-11-16
 - **最后更新**：2025-11-16
@@ -52,7 +52,7 @@
 ### 2.1 模块内部架构
 
 ```
-BreakthroughStrategy/utils/
+BreakoutStrategy/utils/
 ├── __init__.py                # 导出主要工具类
 ├── logger.py                  # Logger - 日志系统
 ├── database.py                # DatabaseManager - 数据库管理
@@ -191,7 +191,7 @@ class Logger:
 
         # 从配置读取日志设置
         if config is None:
-            from BreakthroughStrategy.config import ConfigManager
+            from BreakoutStrategy.config import ConfigManager
             config_mgr = ConfigManager.get_instance()
             config = config_mgr.get_section('logging')
 
@@ -329,33 +329,33 @@ CREATE TABLE peaks (
 );
 CREATE INDEX idx_peaks_symbol ON peaks(symbol);
 
--- breakthroughs: 突破信息
-CREATE TABLE breakthroughs (
+-- breakouts: 突破信息
+CREATE TABLE breakouts (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     symbol VARCHAR(20) NOT NULL,
-    breakthrough_date DATE NOT NULL,
-    breakthrough_price REAL NOT NULL,
-    breakthrough_type VARCHAR(20),  -- 'yang', 'yin', 'shadow'
+    breakout_date DATE NOT NULL,
+    breakout_price REAL NOT NULL,
+    breakout_type VARCHAR(20),  -- 'yang', 'yin', 'shadow'
     peak_id INTEGER,  -- 关联的凸点ID
     quality_score REAL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (peak_id) REFERENCES peaks(id),
-    UNIQUE(symbol, breakthrough_date)
+    UNIQUE(symbol, breakout_date)
 );
-CREATE INDEX idx_breakthroughs_symbol ON breakthroughs(symbol);
+CREATE INDEX idx_breakouts_symbol ON breakouts(symbol);
 
 -- observation_pool_realtime: 实时观察池
 CREATE TABLE observation_pool_realtime (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     symbol VARCHAR(20) NOT NULL,
-    breakthrough_id INTEGER NOT NULL,
+    breakout_id INTEGER NOT NULL,
     add_date DATE NOT NULL,
     status VARCHAR(20) DEFAULT 'active',  -- 'active', 'bought', 'timeout'
     retry_count INTEGER DEFAULT 0,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (breakthrough_id) REFERENCES breakthroughs(id),
-    UNIQUE(symbol, breakthrough_id)
+    FOREIGN KEY (breakout_id) REFERENCES breakouts(id),
+    UNIQUE(symbol, breakout_id)
 );
 CREATE INDEX idx_pool_realtime_status ON observation_pool_realtime(status);
 
@@ -363,14 +363,14 @@ CREATE INDEX idx_pool_realtime_status ON observation_pool_realtime(status);
 CREATE TABLE observation_pool_daily (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     symbol VARCHAR(20) NOT NULL,
-    breakthrough_id INTEGER NOT NULL,
+    breakout_id INTEGER NOT NULL,
     add_date DATE NOT NULL,
     status VARCHAR(20) DEFAULT 'active',  -- 'active', 'bought', 'expired'
     retry_count INTEGER DEFAULT 0,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (breakthrough_id) REFERENCES breakthroughs(id),
-    UNIQUE(symbol, breakthrough_id)
+    FOREIGN KEY (breakout_id) REFERENCES breakouts(id),
+    UNIQUE(symbol, breakout_id)
 );
 CREATE INDEX idx_pool_daily_status ON observation_pool_daily(status);
 
@@ -577,7 +577,7 @@ class DatabaseManager:
 
     def __init__(self, config: Optional[dict] = None):
         if config is None:
-            from BreakthroughStrategy.config import ConfigManager
+            from BreakoutStrategy.config import ConfigManager
             config_mgr = ConfigManager.get_instance()
             config = config_mgr.get_section('data')['database']
 
@@ -585,7 +585,7 @@ class DatabaseManager:
         self._conn = None
 
         if self._db_type == 'sqlite':
-            db_path = config.get('path', 'datasets/breakthrough.db')
+            db_path = config.get('path', 'datasets/breakout.db')
             self._conn = sqlite3.connect(db_path, check_same_thread=False)
             self._conn.row_factory = sqlite3.Row  # 返回字典格式
 
@@ -884,7 +884,7 @@ def retry(max_attempts: int = 3, delay: float = 1.0, backoff: float = 2.0):
 ```python
 # tests/utils/test_logger.py
 import pytest
-from BreakthroughStrategy.utils.logger import Logger
+from BreakoutStrategy.utils.logger import Logger
 
 class TestLogger:
 
@@ -905,7 +905,7 @@ class TestLogger:
 
 # tests/utils/test_database.py
 import pytest
-from BreakthroughStrategy.utils.database import DatabaseManager
+from BreakoutStrategy.utils.database import DatabaseManager
 
 class TestDatabaseManager:
 
@@ -944,7 +944,7 @@ class TestDatabaseManager:
 
 # tests/utils/test_date_utils.py
 from datetime import date
-from BreakthroughStrategy.utils.date_utils import DateUtils
+from BreakoutStrategy.utils.date_utils import DateUtils
 
 class TestDateUtils:
 

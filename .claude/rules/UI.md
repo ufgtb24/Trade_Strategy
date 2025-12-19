@@ -1,5 +1,5 @@
 ---
-paths: BreakthroughStrategy/UI/**/*
+paths: BreakoutStrategy/UI/**/*
 ---
 
 # UI Development Rules

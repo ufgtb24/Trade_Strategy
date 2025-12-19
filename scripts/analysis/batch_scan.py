@@ -14,20 +14,20 @@ import yaml
 project_root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(project_root))
 
-from BreakthroughStrategy.UI import ScanManager
+from BreakoutStrategy.UI import ScanManager
 
 
 def load_config(config_path: str = None) -> dict:
     """Load scan configuration from YAML file
 
     Args:
-        config_path: Path to config file. If None, uses default configs/analysis/config.yaml
+        config_path: Path to config file. If None, uses default configs/scan_config.yaml
 
     Returns:
         Configuration dictionary
     """
     if config_path is None:
-        config_path = project_root / "configs" / "analysis" / "config.yaml"
+        config_path = project_root / "configs" / "scan_config.yaml"
     else:
         config_path = Path(config_path)
 
@@ -44,7 +44,7 @@ def load_params(params_path: str) -> dict:
     """Load params configuration from YAML file
 
     Args:
-        params_path: Path to params file (required, configured in config.yaml)
+        params_path: Path to params file (required, configured in scan_config.yaml)
 
     Returns:
         Params configuration dictionary
@@ -53,7 +53,7 @@ def load_params(params_path: str) -> dict:
         ValueError: If params_path is None or empty
     """
     if not params_path:
-        raise ValueError("params_path is required, please configure it in config.yaml")
+        raise ValueError("params_path is required, please configure it in scan_config.yaml")
     params_path = Path(params_path)
 
     if not params_path.exists():
@@ -152,7 +152,7 @@ def load_csv_stock_list(csv_path: str, mon_before: int, mon_after: int) -> dict:
 
 def main():
     # Default configuration
-    config_path = project_root / "configs" / "analysis" / "config.yaml"
+    config_path = project_root / "configs" / "scan_config.yaml"
 
     try:
         config = load_config(config_path)
@@ -168,11 +168,11 @@ def main():
         num_workers = config["performance"]["num_workers"]
         max_stocks = config["data"]["max_stocks"]
 
-        total_window = params["breakthrough_detector"]["total_window"]
-        min_side_bars = params["breakthrough_detector"]["min_side_bars"]
-        min_relative_height = params["breakthrough_detector"]["min_relative_height"]
-        exceed_threshold = params["breakthrough_detector"]["exceed_threshold"]
-        peak_supersede_threshold = params["breakthrough_detector"]["peak_supersede_threshold"]
+        total_window = params["breakout_detector"]["total_window"]
+        min_side_bars = params["breakout_detector"]["min_side_bars"]
+        min_relative_height = params["breakout_detector"]["min_relative_height"]
+        exceed_threshold = params["breakout_detector"]["exceed_threshold"]
+        peak_supersede_threshold = params["breakout_detector"]["peak_supersede_threshold"]
 
         # 提取 FeatureCalculator 和 QualityScorer 配置
         feature_calc_config = params.get("feature_calculator", {})

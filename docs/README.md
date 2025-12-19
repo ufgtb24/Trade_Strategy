@@ -45,7 +45,7 @@ docs/
 **获取已完成模块信息的方式**：
 1. **开发前**：阅读 `plans/XX_模块名设计.md`（接口定义、算法伪代码、数据结构）
 2. **开发后**：
-   - 查看代码位置（如 `BreakthroughStrategy/analysis/`）
+   - 查看代码位置（如 `BreakoutStrategy/analysis/`）
    - 阅读模块 `__init__.py` 的 docstring（模块概述）
    - 阅读关键类的 docstring 和注释（实现细节）
    - 运行示例脚本（如 `scripts/visual_demo.py`）
@@ -59,7 +59,7 @@ docs/
 
 ## 相关路径
 
-- 代码仓库：`/home/yu/PycharmProjects/Trade_Strategy/BreakthroughStrategy/`
+- 代码仓库：`/home/yu/PycharmProjects/Trade_Strategy/BreakoutStrategy/`
 - 主配置：`CLAUDE.md`
 - 手动更新命令：`.claude/commands/update_doc.md`
 

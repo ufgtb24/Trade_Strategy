@@ -1,0 +1,49 @@
+scan_results:
+  default_dir: outputs/scan_results
+  recent_file: ''
+stock_data:
+  search_paths:
+  - /home/yu/PycharmProjects/Trade_Strategy/datasets/pkls
+ui:
+  display_options:
+    show_bo_score: true
+    show_peak_score: false
+  left_panel_weight: 0.3
+  right_panel_weight: 0.7
+  stock_list_columns:
+    column_labels:
+      active_peaks:
+        display: A.Pks
+        tooltip: 'Active Peaks: Number of currently active peak points'
+      avg_quality:
+        display: Avg Q
+        tooltip: 'Avg Quality: Average quality score of all breakouts'
+      label:
+        display: Label
+        tooltip: 'Backtest Label: Gain from M-day low to N-day high after breakout'
+      max_quality:
+        display: Max Q
+        tooltip: 'Max Quality: Maximum quality score among all breakouts'
+      multi_peak_count:
+        display: MP
+        tooltip: 'Multi-Peak: Number of breakouts that broke multiple peaks'
+      symbol:
+        display: Sym
+        tooltip: 'Symbol: Stock ticker symbol'
+      total_breakouts:
+        display: Bts
+        tooltip: 'Breakouts: Total number of breakouts detected'
+    column_priority:
+    - total_breakouts
+    - active_peaks
+    - avg_quality
+    - max_quality
+    - label
+    - multi_peak_count
+    columns_enabled: true
+    visible_columns:
+    - avg_quality
+    - max_quality
+    - label
+  window_height: 900
+  window_width: 1600

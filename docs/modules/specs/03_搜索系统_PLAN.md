@@ -1,6 +1,6 @@
 # 搜索系统技术设计文档
 
-**模块路径**：`BreakthroughStrategy/search/`
+**模块路径**：`BreakoutStrategy/search/`
 **创建日期**：2025-11-16
 
 ---
@@ -26,7 +26,7 @@
 ## 二、模块架构
 
 ```
-BreakthroughStrategy/search/
+BreakoutStrategy/search/
 ├── __init__.py
 ├── search_engine.py          # SearchEngine - 搜索引擎主控
 ├── stock_filter.py           # StockFilter - 股票过滤器
@@ -65,7 +65,7 @@ class StockFilter:
             config: 过滤参数配置
         """
         if config is None:
-            from BreakthroughStrategy.config import ConfigManager
+            from BreakoutStrategy.config import ConfigManager
             cfg = ConfigManager.get_instance()
             self.config = cfg.get_section('search')
         else:
@@ -76,7 +76,7 @@ class StockFilter:
         self.price_min = self.config.get('price_min', 5.0)
         self.price_max = self.config.get('price_max', None)
 
-        from BreakthroughStrategy.utils.logger import Logger
+        from BreakoutStrategy.utils.logger import Logger
         self.logger = Logger.get_logger('search.filter')
 
     def filter_by_basics(self, symbols: List[str], market_data: pd.DataFrame) -> List[str]:
@@ -126,7 +126,7 @@ class StockFilter:
             return False
 
         # 数据验证
-        from BreakthroughStrategy.data.data_validator import DataValidator
+        from BreakoutStrategy.data.data_validator import DataValidator
         is_valid, errors = DataValidator.validate_dataframe(df)
         if not is_valid:
             self.logger.warning(f"{symbol}: data validation failed - {errors}")
@@ -152,7 +152,7 @@ class HistoricalScanner:
     def __init__(self, config: Optional[dict] = None):
         """初始化扫描器"""
         if config is None:
-            from BreakthroughStrategy.config import ConfigManager
+            from BreakoutStrategy.config import ConfigManager
             cfg = ConfigManager.get_instance()
             self.config = cfg.get_section('search')
             self.time_config = cfg.get_section('time')
@@ -161,15 +161,15 @@ class HistoricalScanner:
             self.time_config = config.get('time', {})
 
         # 初始化依赖模块
-        from BreakthroughStrategy.data import DataManager
-        from BreakthroughStrategy.analysis import PeakDetector, BreakoutDetector, QualityScorer
+        from BreakoutStrategy.data import DataManager
+        from BreakoutStrategy.analysis import PeakDetector, BreakoutDetector, QualityScorer
 
         self.data_manager = DataManager()
         self.peak_detector = PeakDetector()
         self.breakout_detector = BreakoutDetector()
         self.quality_scorer = QualityScorer()
 
-        from BreakthroughStrategy.utils.logger import Logger
+        from BreakoutStrategy.utils.logger import Logger
         self.logger = Logger.get_logger('search.scanner')
 
     def scan_symbol(
@@ -191,8 +191,8 @@ class HistoricalScanner:
             {
                 'symbol': str,
                 'peaks': List[Peak],
-                'breakthroughs': List[Breakthrough],
-                'recent_breakthroughs': List[Breakthrough],  # 最近N天的突破
+                'breakouts': List[Breakout],
+                'recent_breakouts': List[Breakout],  # 最近N天的突破
                 'success': bool
             }
         """
@@ -211,30 +211,30 @@ class HistoricalScanner:
             self.logger.debug(f"{symbol}: found {len(peaks)} peaks")
 
             # 3. 检测突破
-            breakthroughs = self.breakout_detector.detect_breakthroughs(df, peaks)
-            self.logger.debug(f"{symbol}: found {len(breakthroughs)} breakthroughs")
+            breakouts = self.breakout_detector.detect_breakouts(df, peaks)
+            self.logger.debug(f"{symbol}: found {len(breakouts)} breakouts")
 
             # 4. 质量评分
             self.quality_scorer.score_peaks_batch(peaks)
-            self.quality_scorer.score_breakthroughs_batch(breakthroughs)
+            self.quality_scorer.score_breakouts_batch(breakouts)
 
             # 5. 筛选最近的突破（搜索目标时间范围内）
             historical_search_days = self.time_config.get('historical_search_days', 7)
             cutoff_date = datetime.strptime(end_date, '%Y-%m-%d') - timedelta(days=historical_search_days)
 
-            recent_breakthroughs = [
-                bt for bt in breakthroughs
-                if bt.date >= cutoff_date.date()
+            recent_breakouts = [
+                bo for bo in breakouts
+                if bo.date >= cutoff_date.date()
             ]
 
-            self.logger.info(f"{symbol}: {len(recent_breakthroughs)} recent breakthroughs "
-                           f"(quality scores: {[bt.quality_score for bt in recent_breakthroughs]})")
+            self.logger.info(f"{symbol}: {len(recent_breakouts)} recent breakouts "
+                           f"(quality scores: {[bo.quality_score for bo in recent_breakouts]})")
 
             return {
                 'symbol': symbol,
                 'peaks': peaks,
-                'breakthroughs': breakthroughs,
-                'recent_breakthroughs': recent_breakthroughs,
+                'breakouts': breakouts,
+                'recent_breakouts': recent_breakouts,
                 'success': True
             }
 
@@ -318,7 +318,7 @@ class SearchEngine:
         self.scanner = HistoricalScanner(config)
 
         if config is None:
-            from BreakthroughStrategy.config import ConfigManager
+            from BreakoutStrategy.config import ConfigManager
             cfg = ConfigManager.get_instance()
             self.config = cfg.get_section('search')
             self.quality_config = cfg.get_section('quality')
@@ -326,10 +326,10 @@ class SearchEngine:
             self.config = config
             self.quality_config = config.get('quality', {})
 
-        from BreakthroughStrategy.data import DataManager
+        from BreakoutStrategy.data import DataManager
         self.data_manager = DataManager()
 
-        from BreakthroughStrategy.utils.logger import Logger
+        from BreakoutStrategy.utils.logger import Logger
         self.logger = Logger.get_logger('search.engine')
 
     def search(
@@ -349,12 +349,12 @@ class SearchEngine:
         Returns:
             搜索结果DataFrame，包含列：
             - symbol: 股票代码
-            - breakthrough_date: 突破日期
-            - breakthrough_price: 突破价格
+            - breakout_date: 突破日期
+            - breakout_price: 突破价格
             - peak_date: 凸点日期
             - peak_price: 凸点价格
             - peak_quality_score: 凸点质量分数
-            - breakthrough_quality_score: 突破质量分数
+            - breakout_quality_score: 突破质量分数
             - combined_score: 综合分数
         """
         # 1. 确定搜索时间范围
@@ -362,7 +362,7 @@ class SearchEngine:
             end_date = datetime.now().strftime('%Y-%m-%d')
 
         if historical_days is None:
-            from BreakthroughStrategy.config import ConfigManager
+            from BreakoutStrategy.config import ConfigManager
             cfg = ConfigManager.get_instance()
             historical_days = cfg.get('time.historical_search_days', 7)
 
@@ -388,17 +388,17 @@ class SearchEngine:
         )
 
         # 5. 提取有效结果
-        valid_results = [r for r in scan_results if r.get('success') and r.get('recent_breakthroughs')]
-        self.logger.info(f"Found {len(valid_results)} stocks with recent breakthroughs")
+        valid_results = [r for r in scan_results if r.get('success') and r.get('recent_breakouts')]
+        self.logger.info(f"Found {len(valid_results)} stocks with recent breakouts")
 
         # 6. 转换为DataFrame
         results_df = self._convert_to_dataframe(valid_results)
 
         # 7. 过滤低质量突破
-        min_breakthrough_score = self.quality_config.get('breakout_quality_min_score', 70)
-        high_quality = results_df[results_df['breakthrough_quality_score'] >= min_breakthrough_score]
+        min_breakout_score = self.quality_config.get('breakout_quality_min_score', 70)
+        high_quality = results_df[results_df['breakout_quality_score'] >= min_breakout_score]
 
-        self.logger.info(f"High quality breakthroughs: {len(high_quality)}")
+        self.logger.info(f"High quality breakouts: {len(high_quality)}")
 
         # 8. 排序（按综合分数降序）
         high_quality = high_quality.sort_values('combined_score', ascending=False)
@@ -438,39 +438,39 @@ class SearchEngine:
 
         for result in scan_results:
             symbol = result['symbol']
-            for bt in result['recent_breakthroughs']:
+            for bo in result['recent_breakouts']:
                 row = {
                     'symbol': symbol,
-                    'breakthrough_date': bt.date,
-                    'breakthrough_price': bt.price,
-                    'breakthrough_type': bt.breakthrough_type,
-                    'peak_date': bt.peak.date,
-                    'peak_price': bt.peak.price,
-                    'peak_type': bt.peak.peak_type,
-                    'peak_quality_score': bt.peak.quality_score,
-                    'breakthrough_quality_score': bt.quality_score,
-                    'combined_score': self._calculate_combined_score(bt),
+                    'breakout_date': bo.date,
+                    'breakout_price': bo.price,
+                    'breakout_type': bo.breakout_type,
+                    'peak_date': bo.peak.date,
+                    'peak_price': bo.peak.price,
+                    'peak_type': bo.peak.peak_type,
+                    'peak_quality_score': bo.peak.quality_score,
+                    'breakout_quality_score': bo.quality_score,
+                    'combined_score': self._calculate_combined_score(bo),
                     # 额外信息
-                    'exceed_pct': bt.exceed_pct,
-                    'volume_surge_ratio': bt.volume_surge_ratio,
-                    'gap_up': bt.gap_up,
-                    'continuity_days': bt.continuity_days,
-                    'stability_score': bt.stability_score
+                    'exceed_pct': bo.exceed_pct,
+                    'volume_surge_ratio': bo.volume_surge_ratio,
+                    'gap_up': bo.gap_up,
+                    'continuity_days': bo.continuity_days,
+                    'stability_score': bo.stability_score
                 }
                 rows.append(row)
 
         if not rows:
             # 返回空DataFrame但保留列结构
             return pd.DataFrame(columns=[
-                'symbol', 'breakthrough_date', 'breakthrough_price', 'breakthrough_type',
+                'symbol', 'breakout_date', 'breakout_price', 'breakout_type',
                 'peak_date', 'peak_price', 'peak_type',
-                'peak_quality_score', 'breakthrough_quality_score', 'combined_score',
+                'peak_quality_score', 'breakout_quality_score', 'combined_score',
                 'exceed_pct', 'volume_surge_ratio', 'gap_up', 'continuity_days', 'stability_score'
             ])
 
         return pd.DataFrame(rows)
 
-    def _calculate_combined_score(self, breakthrough) -> float:
+    def _calculate_combined_score(self, breakout) -> float:
         """
         计算综合分数（凸点质量 + 突破质量）
 
@@ -479,11 +479,11 @@ class SearchEngine:
         - 突破质量：60%
         """
         peak_weight = 0.4
-        breakthrough_weight = 0.6
+        breakout_weight = 0.6
 
         return (
-            breakthrough.peak.quality_score * peak_weight +
-            breakthrough.quality_score * breakthrough_weight
+            breakout.peak.quality_score * peak_weight +
+            breakout.quality_score * breakout_weight
         )
 ```
 
@@ -530,20 +530,20 @@ class ResultFormatter:
             db_manager: DatabaseManager实例
         """
         for _, row in df.iterrows():
-            # 插入或更新breakthroughs表
+            # 插入或更新breakouts表
             db_manager.execute("""
-                INSERT OR REPLACE INTO breakthroughs
-                (symbol, breakthrough_date, breakthrough_price, breakthrough_type,
+                INSERT OR REPLACE INTO breakouts
+                (symbol, breakout_date, breakout_price, breakout_type,
                  peak_date, peak_price, quality_score, created_at)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 row['symbol'],
-                row['breakthrough_date'],
-                row['breakthrough_price'],
-                row['breakthrough_type'],
+                row['breakout_date'],
+                row['breakout_price'],
+                row['breakout_type'],
                 row['peak_date'],
                 row['peak_price'],
-                row['breakthrough_quality_score'],
+                row['breakout_quality_score'],
                 datetime.now().isoformat()
             ))
 
@@ -560,11 +560,11 @@ class ResultFormatter:
         for _, row in df.iterrows():
             entry = {
                 'symbol': row['symbol'],
-                'breakthrough_date': row['breakthrough_date'],
-                'breakthrough_info': {
-                    'price': row['breakthrough_price'],
-                    'type': row['breakthrough_type'],
-                    'quality_score': row['breakthrough_quality_score']
+                'breakout_date': row['breakout_date'],
+                'breakout_info': {
+                    'price': row['breakout_price'],
+                    'type': row['breakout_type'],
+                    'quality_score': row['breakout_quality_score']
                 },
                 'peak_info': {
                     'date': row['peak_date'],
@@ -587,16 +587,16 @@ class ResultFormatter:
             报告文本
         """
         if df.empty:
-            return "No breakthroughs found."
+            return "No breakouts found."
 
         report = []
-        report.append(f"=== Breakthrough Search Report ===")
+        report.append(f"=== Breakout Search Report ===")
         report.append(f"Generated at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-        report.append(f"\nTotal breakthroughs: {len(df)}")
+        report.append(f"\nTotal breakouts: {len(df)}")
         report.append(f"Unique symbols: {df['symbol'].nunique()}")
         report.append(f"\n--- Quality Distribution ---")
         report.append(f"Average combined score: {df['combined_score'].mean():.1f}")
-        report.append(f"Average breakthrough score: {df['breakthrough_quality_score'].mean():.1f}")
+        report.append(f"Average breakout score: {df['breakout_quality_score'].mean():.1f}")
         report.append(f"Average peak score: {df['peak_quality_score'].mean():.1f}")
 
         report.append(f"\n--- Top 10 Candidates ---")
@@ -604,10 +604,10 @@ class ResultFormatter:
         for idx, row in top10.iterrows():
             report.append(
                 f"{row['symbol']:6s} | "
-                f"{row['breakthrough_date']} | "
-                f"Price: ${row['breakthrough_price']:7.2f} | "
+                f"{row['breakout_date']} | "
+                f"Price: ${row['breakout_price']:7.2f} | "
                 f"Score: {row['combined_score']:5.1f} | "
-                f"Type: {row['breakthrough_type']:6s}"
+                f"Type: {row['breakout_type']:6s}"
             )
 
         return "\n".join(report)
@@ -620,7 +620,7 @@ class ResultFormatter:
 ### 8.1 简单搜索
 
 ```python
-from BreakthroughStrategy.search import SearchEngine, ResultFormatter
+from BreakoutStrategy.search import SearchEngine, ResultFormatter
 
 # 1. 初始化搜索引擎
 engine = SearchEngine()
@@ -629,12 +629,12 @@ engine = SearchEngine()
 results = engine.search()
 
 # 3. 查看结果
-print(f"Found {len(results)} high-quality breakthroughs")
-print(results[['symbol', 'breakthrough_date', 'combined_score']].head(10))
+print(f"Found {len(results)} high-quality breakouts")
+print(results[['symbol', 'breakout_date', 'combined_score']].head(10))
 
 # 4. 保存结果
 formatter = ResultFormatter()
-formatter.save_to_file(results, 'output/breakthroughs_20240116.csv')
+formatter.save_to_file(results, 'output/breakouts_20240116.csv')
 
 # 5. 生成报告
 report = formatter.generate_summary_report(results)
@@ -671,7 +671,7 @@ def daily_search():
     # 保存结果
     timestamp = datetime.now().strftime('%Y%m%d')
     formatter = ResultFormatter()
-    formatter.save_to_file(results, f'output/breakthroughs_{timestamp}.csv')
+    formatter.save_to_file(results, f'output/breakouts_{timestamp}.csv')
 
     # 发送报告
     report = formatter.generate_summary_report(results)
@@ -679,13 +679,13 @@ def daily_search():
 
     # 如果有高质量突破，添加到观察池
     if len(results) > 0:
-        from BreakthroughStrategy.observation import PoolManager
+        from BreakoutStrategy.observation import PoolManager
         pool_manager = PoolManager()
 
         entries = formatter.format_for_observation_pool(results)
         for entry in entries:
             # 根据突破日期决定加入哪个观察池
-            if entry['breakthrough_date'] == datetime.now().date():
+            if entry['breakout_date'] == datetime.now().date():
                 pool_manager.add_to_realtime_pool(entry)
             else:
                 pool_manager.add_to_daily_pool(entry)
@@ -757,7 +757,7 @@ def search_in_batches(symbols: List[str], batch_size: int = 100):
 ```python
 # tests/search/test_search_engine.py
 import pytest
-from BreakthroughStrategy.search import SearchEngine
+from BreakoutStrategy.search import SearchEngine
 from datetime import datetime, timedelta
 
 class TestSearchEngine:
@@ -774,7 +774,7 @@ class TestSearchEngine:
 
         # 验证结果格式
         assert 'symbol' in results.columns
-        assert 'breakthrough_date' in results.columns
+        assert 'breakout_date' in results.columns
         assert 'combined_score' in results.columns
 
         # 验证质量分数范围
@@ -791,7 +791,7 @@ class TestSearchEngine:
 
         assert result['success'] == True
         assert 'peaks' in result
-        assert 'breakthroughs' in result
+        assert 'breakouts' in result
         assert isinstance(result['peaks'], list)
 ```
 
@@ -802,7 +802,7 @@ class TestSearchEngine:
 ### 11.1 CSV格式
 
 ```csv
-symbol,breakthrough_date,breakthrough_price,breakthrough_type,peak_date,peak_price,peak_quality_score,breakthrough_quality_score,combined_score
+symbol,breakout_date,breakout_price,breakout_type,peak_date,peak_price,peak_quality_score,breakout_quality_score,combined_score
 AAPL,2024-01-15,195.50,yang,2023-12-20,190.00,85.5,88.3,87.2
 TSLA,2024-01-14,248.50,yang,2023-11-10,245.00,92.3,90.7,91.3
 NVDA,2024-01-13,520.00,gap_up,2024-01-05,510.00,78.5,95.2,88.4
@@ -814,8 +814,8 @@ NVDA,2024-01-13,520.00,gap_up,2024-01-05,510.00,78.5,95.2,88.4
 [
   {
     "symbol": "AAPL",
-    "breakthrough_date": "2024-01-15",
-    "breakthrough_info": {
+    "breakout_date": "2024-01-15",
+    "breakout_info": {
       "price": 195.50,
       "type": "yang",
       "quality_score": 88.3

@@ -4,11 +4,11 @@
 
 ## 进度概览
 - [x] [02 技术分析模块](../modules/specs/02_技术分析模块_IMPL.md) (已实现)
-- [x] [12 交互式UI](../modules/specs/12_交互式UI_IMPL.md) (已实现 - 2025-12-16 更新：完善对话框组件)
+- [x] [12 交互式UI](../modules/specs/12_交互式UI_IMPL.md) (已实现 - 2025-12-22 更新：默认 Analysis Mode)
 - [ ] 01 数据层 (High Priority)
 - [ ] 03 搜索系统 (High Priority)
 - [ ] 08 回测系统 (High Priority)
-- [ ] 04 观察池系统 (Medium Priority)
+- [x] [04 观察池系统](../modules/specs/04_观察池系统_IMPL.md) (已实现)
 - [ ] 05-07 实盘交易系统 (Medium Priority)
 - [ ] 09 配置管理 (Low Priority)
 - [ ] 10 工具与辅助 (Low Priority)
