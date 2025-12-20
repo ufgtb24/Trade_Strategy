@@ -283,6 +283,11 @@ class UIParamLoader:
         validated['height_bonus_thresholds'] = height_bonus.get('thresholds', [0.10, 0.20])
         validated['height_bonus_values'] = height_bonus.get('values', [1.15, 1.30])
 
+        # Peak Volume bonus（峰值放量）
+        peak_volume_bonus = quality_params.get('peak_volume_bonus', {})
+        validated['peak_volume_bonus_thresholds'] = peak_volume_bonus.get('thresholds', [2.0, 4.0])
+        validated['peak_volume_bonus_values'] = peak_volume_bonus.get('values', [1.15, 1.30])
+
         # Volume bonus
         volume_bonus = quality_params.get('volume_bonus', {})
         validated['volume_bonus_thresholds'] = volume_bonus.get('thresholds', [1.5, 2.0])

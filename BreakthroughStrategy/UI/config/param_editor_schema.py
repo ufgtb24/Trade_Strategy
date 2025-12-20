@@ -23,7 +23,7 @@ PARAM_CONFIGS = {
         },
         "min_relative_height": {
             "type": float,
-            "range": (0.0, 0.3),
+            "range": (0.0, 1.0),
             "default": 0.05,
             "description": "Minimum relative height from window low",
         },
@@ -114,11 +114,13 @@ PARAM_CONFIGS = {
             "sub_params": {
                 "thresholds": {
                     "type": list,
+                    "element_type": int,
                     "default": [21, 63, 252],
                     "description": "Threshold levels (1mo, 3mo, 1yr)",
                 },
                 "values": {
                     "type": list,
+                    "element_type": float,
                     "default": [1.15, 1.30, 1.50],
                     "description": "Bonus multipliers for each level",
                 },
@@ -135,11 +137,13 @@ PARAM_CONFIGS = {
             "sub_params": {
                 "thresholds": {
                     "type": list,
+                    "element_type": int,
                     "default": [2, 3, 4],
                     "description": "Threshold levels (2x, 3x, 4x tests)",
                 },
                 "values": {
                     "type": list,
+                    "element_type": float,
                     "default": [1.10, 1.25, 1.40],
                     "description": "Bonus multipliers for each level",
                 },
@@ -156,11 +160,36 @@ PARAM_CONFIGS = {
             "sub_params": {
                 "thresholds": {
                     "type": list,
+                    "element_type": float,
                     "default": [0.10, 0.20],
                     "description": "Threshold levels (10%, 20%)",
                 },
                 "values": {
                     "type": list,
+                    "element_type": float,
+                    "default": [1.15, 1.30],
+                    "description": "Bonus multipliers for each level",
+                },
+            },
+        },
+        "peak_volume_bonus": {
+            "type": dict,
+            "is_bonus_group": True,
+            "default": {
+                "thresholds": [2.0, 4.0],
+                "values": [1.15, 1.30],
+            },
+            "description": "Peak Volume bonus (峰值放量): thresholds are volume surge ratios",
+            "sub_params": {
+                "thresholds": {
+                    "type": list,
+                    "element_type": float,
+                    "default": [2.0, 4.0],
+                    "description": "Threshold levels (2x, 4x volume)",
+                },
+                "values": {
+                    "type": list,
+                    "element_type": float,
                     "default": [1.15, 1.30],
                     "description": "Bonus multipliers for each level",
                 },
@@ -177,11 +206,13 @@ PARAM_CONFIGS = {
             "sub_params": {
                 "thresholds": {
                     "type": list,
+                    "element_type": float,
                     "default": [1.5, 2.0],
                     "description": "Threshold levels (1.5x, 2.0x volume)",
                 },
                 "values": {
                     "type": list,
+                    "element_type": float,
                     "default": [1.15, 1.30],
                     "description": "Bonus multipliers for each level",
                 },
@@ -198,11 +229,13 @@ PARAM_CONFIGS = {
             "sub_params": {
                 "thresholds": {
                     "type": list,
+                    "element_type": float,
                     "default": [0.01, 0.02],
                     "description": "Threshold levels (1%, 2% gap)",
                 },
                 "values": {
                     "type": list,
+                    "element_type": float,
                     "default": [1.10, 1.20],
                     "description": "Bonus multipliers for each level",
                 },
@@ -219,11 +252,13 @@ PARAM_CONFIGS = {
             "sub_params": {
                 "thresholds": {
                     "type": list,
+                    "element_type": int,
                     "default": [3],
                     "description": "Threshold levels (3+ days)",
                 },
                 "values": {
                     "type": list,
+                    "element_type": float,
                     "default": [1.15],
                     "description": "Bonus multipliers for each level",
                 },
@@ -240,11 +275,13 @@ PARAM_CONFIGS = {
             "sub_params": {
                 "thresholds": {
                     "type": list,
+                    "element_type": int,
                     "default": [2],
                     "description": "Threshold levels (2+ breakthroughs)",
                 },
                 "values": {
                     "type": list,
+                    "element_type": float,
                     "default": [1.20],
                     "description": "Bonus multipliers for each level",
                 },

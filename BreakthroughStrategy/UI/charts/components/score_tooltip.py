@@ -15,6 +15,7 @@ from typing import Optional, Tuple, List
 from ....analysis.quality_scorer import (
     ScoreBreakdown,
     FeatureScoreDetail,
+    BonusDetail,
     QualityScorer
 )
 from ....analysis.breakthrough_detector import Peak, Breakthrough
@@ -189,7 +190,7 @@ class ScoreDetailWindow:
 
     def _build_breakthrough_card(self, parent: tk.Frame):
         """构建突破卡片"""
-        breakdown = self.scorer.get_breakthrough_score_breakdown(self.breakthrough)
+        breakdown = self.scorer.get_breakthrough_score_breakdown_bonus(self.breakthrough)
 
         # 标题栏
         header = tk.Frame(parent, bg=self.COLORS["bt_header_bg"])
@@ -241,8 +242,8 @@ class ScoreDetailWindow:
         )
         content.pack(fill=tk.X)
 
-        # 表格（含阻力强度展开）
-        self._build_score_table(content, breakdown.features, expand_resistance=True)
+        # Bonus 表格
+        self._build_bonus_table(content, breakdown.bonuses)
 
         # 公式区域
         self._build_formula_area(content, breakdown)
@@ -394,6 +395,93 @@ class ScoreDetailWindow:
 
         # 配置列权重
         for col in range(4):
+            table.columnconfigure(col, weight=1)
+
+    def _build_bonus_table(
+        self,
+        parent: tk.Frame,
+        bonuses: List[BonusDetail]
+    ):
+        """
+        构建 Bonus 评分表格
+
+        Args:
+            parent: 父容器
+            bonuses: Bonus 列表
+        """
+        table = tk.Frame(parent, bg=self.COLORS["window_bg"])
+        table.pack(fill=tk.X, padx=8, pady=8)
+
+        # 表头
+        headers = ["Factor", "Value", "Bonus"]
+        widths = [12, 8, 8]
+
+        for col, (text, width) in enumerate(zip(headers, widths)):
+            lbl = tk.Label(
+                table,
+                text=text,
+                font=self.FONTS["table_header"],
+                bg=self.COLORS["separator"],
+                width=width,
+                anchor=tk.CENTER,
+                padx=4,
+                pady=4
+            )
+            lbl.grid(row=0, column=col, sticky="ew", padx=1, pady=1)
+
+        # 数据行
+        row_idx = 1
+        for bonus in bonuses:
+            bg_color = self.COLORS["row_bg"] if row_idx % 2 == 1 else self.COLORS["row_alt_bg"]
+
+            # 根据触发状态选择颜色
+            if bonus.triggered:
+                bonus_color = self.COLORS.get("bonus_triggered", "#2E7D32")
+            else:
+                bonus_color = self.COLORS.get("bonus_not_triggered", "#9E9E9E")
+
+            # Factor 名称
+            tk.Label(
+                table,
+                text=bonus.name,
+                font=self.FONTS["table_cell"],
+                bg=bg_color,
+                fg=bonus_color,
+                anchor=tk.W,
+                padx=6,
+                pady=3
+            ).grid(row=row_idx, column=0, sticky="ew", padx=1, pady=1)
+
+            # 原始值
+            value_text = self._format_value(bonus.raw_value, bonus.unit)
+            tk.Label(
+                table,
+                text=value_text,
+                font=self.FONTS["table_cell"],
+                bg=bg_color,
+                fg=bonus_color,
+                anchor=tk.CENTER,
+                padx=4,
+                pady=3
+            ).grid(row=row_idx, column=1, sticky="ew", padx=1, pady=1)
+
+            # Bonus 乘数
+            bonus_text = f"×{bonus.bonus:.2f}"
+            tk.Label(
+                table,
+                text=bonus_text,
+                font=self.FONTS["table_cell"],
+                bg=bg_color,
+                fg=bonus_color,
+                anchor=tk.CENTER,
+                padx=4,
+                pady=3
+            ).grid(row=row_idx, column=2, sticky="ew", padx=1, pady=1)
+
+            row_idx += 1
+
+        # 配置列权重
+        for col in range(3):
             table.columnconfigure(col, weight=1)
 
     def _build_formula_area(self, parent: tk.Frame, breakdown: ScoreBreakdown):
