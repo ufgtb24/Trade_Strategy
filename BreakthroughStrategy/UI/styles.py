@@ -229,7 +229,7 @@ SCORE_TOOLTIP_COLORS = {
     "sub_feature_bg": "#F0F0F0",
     # Bonus 状态颜色
     "bonus_triggered": "#212121",      # 黑色，已触发
-    "bonus_not_triggered": "#9E9E9E",  # 灰色，未触发
+    "bonus_not_triggered": "#7C7C7C",  # 灰色，未触发
 }
 
 SCORE_TOOLTIP_FONTS = {

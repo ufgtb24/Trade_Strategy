@@ -1,17 +1,15 @@
 """
-技术分析模块（重构版）
+技术分析模块
 
-基于增量式算法重构，核心特性：
+基于增量式算法，核心特性：
 - 增量添加价格数据，维护活跃峰值列表
 - 支持价格相近的峰值共存（形成阻力区）
 - 一次突破可能突破多个峰值
 - 支持持久化缓存（可选）
-- 改进的质量评分系统（修复密集度评分，综合峰值质量）
 
-主要类：
-- BreakthroughDetector: 突破检测器（增量式）
-- FeatureCalculator: 特征计算器
-- QualityScorer: 质量评分器（改进版）
+评分系统：
+- PeakScorer: 峰值评分器（加权模型）
+- BreakthroughScorer: 突破评分器（Bonus 乘法模型）
 
 数据结构：
 - Peak: 峰值（包含质量特征）
@@ -30,8 +28,14 @@ from .breakthrough_detector import (
 # 特征计算
 from .features import FeatureCalculator
 
-# 质量评分
-from .quality_scorer import QualityScorer, FeatureScoreDetail, ScoreBreakdown
+# 峰值评分（加权模型）
+from .peak_scorer import PeakScorer, FeatureScoreDetail
+
+# 突破评分（Bonus 乘法模型）
+from .breakthrough_scorer import BreakthroughScorer, BonusDetail, ScoreBreakdown
+
+# 向后兼容别名
+QualityScorer = BreakthroughScorer
 
 
 __all__ = [
@@ -46,8 +50,15 @@ __all__ = [
     # 特征计算
     'FeatureCalculator',
 
-    # 质量评分
-    'QualityScorer',
+    # 峰值评分
+    'PeakScorer',
     'FeatureScoreDetail',
+
+    # 突破评分
+    'BreakthroughScorer',
+    'BonusDetail',
     'ScoreBreakdown',
+
+    # 向后兼容
+    'QualityScorer',
 ]

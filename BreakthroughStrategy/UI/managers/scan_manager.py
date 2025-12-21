@@ -10,7 +10,8 @@ import pandas as pd
 
 from BreakthroughStrategy.analysis import BreakthroughDetector
 from BreakthroughStrategy.analysis.features import FeatureCalculator
-from BreakthroughStrategy.analysis.quality_scorer import QualityScorer
+from BreakthroughStrategy.analysis.peak_scorer import PeakScorer
+from BreakthroughStrategy.analysis.breakthrough_scorer import BreakthroughScorer
 
 from ..utils import ensure_dir
 
@@ -24,7 +25,7 @@ def compute_breakthroughs_from_dataframe(
     exceed_threshold: float,
     peak_supersede_threshold: float,
     feature_calc_config: dict = None,
-    quality_scorer_config: dict = None,
+    scorer_config: dict = None,
 ) -> Tuple[List, BreakthroughDetector]:
     """
     从 DataFrame 计算突破（统一函数，供 batch_scan 和 UI 使用）
@@ -38,7 +39,7 @@ def compute_breakthroughs_from_dataframe(
         exceed_threshold: 突破阈值
         peak_supersede_threshold: 峰值合并阈值
         feature_calc_config: FeatureCalculator 配置字典
-        quality_scorer_config: QualityScorer 配置字典
+        scorer_config: 评分器配置字典（同时用于 PeakScorer 和 BreakthroughScorer）
 
     Returns:
         (breakthroughs, detector) 元组
@@ -60,26 +61,27 @@ def compute_breakthroughs_from_dataframe(
 
     # 特征计算和评分（使用传入的配置）
     feature_calc = FeatureCalculator(config=feature_calc_config or {})
-    quality_scorer = QualityScorer(config=quality_scorer_config or {})
+    peak_scorer = PeakScorer(config=scorer_config or {})
+    breakthrough_scorer = BreakthroughScorer(config=scorer_config or {})
 
     breakthroughs = []
     for info in breakout_infos:
         # 为峰值评分
         for peak in info.broken_peaks: # info.current_date == date(2024, 5, 15)
             if peak.quality_score is None:
-                quality_scorer.score_peak(peak)
+                peak_scorer.score_peak(peak)
 
         # 特征计算
         bt = feature_calc.enrich_breakthrough(df, info, symbol, detector=detector)
         breakthroughs.append(bt)
 
     # 批量评分
-    quality_scorer.score_breakthroughs_batch(breakthroughs)
+    breakthrough_scorer.score_breakthroughs_batch(breakthroughs)
 
     # 为检测器的活跃峰值评分
     for peak in detector.active_peaks:
         if peak.quality_score is None:
-            quality_scorer.score_peak(peak)
+            peak_scorer.score_peak(peak)
 
     return breakthroughs, detector
 
@@ -91,7 +93,7 @@ def _scan_single_stock(args):
     Args:
         args: (symbol, data_dir, total_window, min_side_bars, min_relative_height,
                exceed_threshold, peak_supersede_threshold, start_date, end_date,
-               feature_calc_config, quality_scorer_config)
+               feature_calc_config, scorer_config)
 
     Returns:
         结果字典
@@ -107,7 +109,7 @@ def _scan_single_stock(args):
         start_date,
         end_date,
         feature_calc_config,
-        quality_scorer_config,
+        scorer_config,
     ) = args
 
     file_path = Path(data_dir) / f"{symbol}.pkl"
@@ -138,7 +140,7 @@ def _scan_single_stock(args):
             exceed_threshold=exceed_threshold,
             peak_supersede_threshold=peak_supersede_threshold,
             feature_calc_config=feature_calc_config,
-            quality_scorer_config=quality_scorer_config,
+            scorer_config=scorer_config,
         )
 
         if not breakthroughs:
@@ -300,7 +302,7 @@ class ScanManager:
         start_date=None,
         end_date=None,
         feature_calc_config=None,
-        quality_scorer_config=None,
+        scorer_config=None,
     ):
         """
         初始化扫描管理器
@@ -315,7 +317,7 @@ class ScanManager:
             start_date: 起始日期 (YYYY-MM-DD)
             end_date: 结束日期 (YYYY-MM-DD)
             feature_calc_config: FeatureCalculator 配置字典
-            quality_scorer_config: QualityScorer 配置字典
+            scorer_config: 评分器配置字典
         """
         self.output_dir = Path(output_dir)
         ensure_dir(self.output_dir)
@@ -331,7 +333,7 @@ class ScanManager:
 
         # 保存特征计算和评分配置
         self.feature_calc_config = feature_calc_config if feature_calc_config else {}
-        self.quality_scorer_config = quality_scorer_config if quality_scorer_config else {}
+        self.scorer_config = scorer_config if scorer_config else {}
 
     def scan_stock(self, symbol: str, data_dir: str = "datasets/pkls") -> Dict:
         """
@@ -356,7 +358,7 @@ class ScanManager:
                 self.start_date,
                 self.end_date,
                 self.feature_calc_config,
-                self.quality_scorer_config,
+                self.scorer_config,
             )
         )
 
@@ -417,7 +419,7 @@ class ScanManager:
                     start_date,
                     end_date,
                     self.feature_calc_config,
-                    self.quality_scorer_config,
+                    self.scorer_config,
                 )
             )
 
@@ -466,7 +468,7 @@ class ScanManager:
                     "peak_supersede_threshold": self.peak_supersede_threshold,
                 },
                 "feature_calculator_params": self.feature_calc_config,
-                "quality_scorer_params": self.quality_scorer_config,
+                "quality_scorer_params": self.scorer_config,
             },
             "results": results,
             "summary_stats": {
@@ -577,7 +579,7 @@ class ScanManager:
         }
 
     def _get_default_scorer_params(self) -> Dict:
-        """获取 QualityScorer 默认参数（用于 v2.0 迁移）"""
+        """获取评分器默认参数（用于 v2.0 迁移）"""
         return {
             # Peak weights (仅筹码堆积因子: volume + candle)
             "peak_weight_volume": 0.60,

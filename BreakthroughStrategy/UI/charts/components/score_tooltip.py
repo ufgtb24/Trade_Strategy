@@ -12,12 +12,8 @@ import tkinter as tk
 from tkinter import ttk
 from typing import Optional, Tuple, List
 
-from ....analysis.quality_scorer import (
-    ScoreBreakdown,
-    FeatureScoreDetail,
-    BonusDetail,
-    QualityScorer
-)
+from ....analysis.peak_scorer import PeakScorer, FeatureScoreDetail
+from ....analysis.breakthrough_scorer import BreakthroughScorer, ScoreBreakdown, BonusDetail
 from ....analysis.breakthrough_detector import Peak, Breakthrough
 from ...styles import SCORE_TOOLTIP_COLORS, SCORE_TOOLTIP_FONTS
 
@@ -39,7 +35,8 @@ class ScoreDetailWindow:
         parent: tk.Widget,
         peak: Optional[Peak],
         breakthrough: Optional[Breakthrough],
-        scorer: QualityScorer,
+        peak_scorer: PeakScorer,
+        breakthrough_scorer: BreakthroughScorer,
         position: Tuple[int, int],
         symbol: str = ""
     ):
@@ -50,14 +47,16 @@ class ScoreDetailWindow:
             parent: 父窗口
             peak: 峰值对象（可选）
             breakthrough: 突破对象（可选）
-            scorer: 质量评分器实例
+            peak_scorer: 峰值评分器
+            breakthrough_scorer: 突破评分器
             position: 窗口位置 (x, y)
             symbol: 股票代码
         """
         self.parent = parent
         self.peak = peak
         self.breakthrough = breakthrough
-        self.scorer = scorer
+        self.peak_scorer = peak_scorer
+        self.breakthrough_scorer = breakthrough_scorer
         self.position = position
         self.symbol = symbol
 
@@ -142,7 +141,7 @@ class ScoreDetailWindow:
 
     def _build_peak_card(self, parent: tk.Frame):
         """构建峰值卡片"""
-        breakdown = self.scorer.get_peak_score_breakdown(self.peak)
+        breakdown = self.peak_scorer.get_peak_score_breakdown(self.peak)
 
         # 标题栏
         header = tk.Frame(parent, bg=self.COLORS["peak_header_bg"])
@@ -190,7 +189,7 @@ class ScoreDetailWindow:
 
     def _build_breakthrough_card(self, parent: tk.Frame):
         """构建突破卡片"""
-        breakdown = self.scorer.get_breakthrough_score_breakdown_bonus(self.breakthrough)
+        breakdown = self.breakthrough_scorer.get_breakthrough_score_breakdown_bonus(self.breakthrough)
 
         # 标题栏
         header = tk.Frame(parent, bg=self.COLORS["bt_header_bg"])

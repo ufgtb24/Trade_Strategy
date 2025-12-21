@@ -233,13 +233,13 @@ class UIParamLoader:
 
         return validated
 
-    def get_quality_scorer_params(self) -> Dict[str, Any]:
+    def get_scorer_params(self) -> Dict[str, Any]:
         """
-        获取 QualityScorer 参数
+        获取评分器参数
 
         Returns:
             参数字典，包含所有权重值和配置参数
-            键名格式与 QualityScorer.__init__() 的 config 参数一致
+            同时用于 PeakScorer 和 BreakthroughScorer 的初始化
         """
         quality_params = self._params.get('quality_scorer', {})
 

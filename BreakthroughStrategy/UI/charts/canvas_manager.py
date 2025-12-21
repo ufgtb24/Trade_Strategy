@@ -9,20 +9,27 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 
 from ..styles import get_chart_colors
 from .components import CandlestickComponent, MarkerComponent, PanelComponent, ScoreDetailWindow
-from ...analysis.quality_scorer import QualityScorer
+from ...analysis.peak_scorer import PeakScorer
+from ...analysis.breakthrough_scorer import BreakthroughScorer
 from ...analysis.breakthrough_detector import Peak, Breakthrough
 
 
 class ChartCanvasManager:
     """图表Canvas管理器"""
 
-    def __init__(self, parent_container, scorer: Optional[QualityScorer] = None):
+    def __init__(
+        self,
+        parent_container,
+        peak_scorer: Optional[PeakScorer] = None,
+        breakthrough_scorer: Optional[BreakthroughScorer] = None
+    ):
         """
         初始化图表管理器
 
         Args:
             parent_container: 父容器
-            scorer: 质量评分器实例（用于评分详情窗口）
+            peak_scorer: 峰值评分器实例
+            breakthrough_scorer: 突破评分器实例
         """
         self.container = parent_container
         # 直接使用绘图组件
@@ -36,7 +43,8 @@ class ChartCanvasManager:
         self.crosshair_h = None  # 水平十字线
 
         # 评分详情窗口相关
-        self.scorer = scorer or QualityScorer()
+        self.peak_scorer = peak_scorer or PeakScorer()
+        self.breakthrough_scorer = breakthrough_scorer or BreakthroughScorer()
         self.score_detail_windows: List[ScoreDetailWindow] = []  # 打开的窗口列表
         self._hovered_peak: Optional[Peak] = None  # 当前悬停的峰值
         self._hovered_bt: Optional[Breakthrough] = None  # 当前悬停的突破
@@ -470,7 +478,8 @@ class ChartCanvasManager:
             parent=self.container,
             peak=self._hovered_peak,
             breakthrough=self._hovered_bt,
-            scorer=self.scorer,
+            peak_scorer=self.peak_scorer,
+            breakthrough_scorer=self.breakthrough_scorer,
             position=self._hover_position,
             symbol=self._current_symbol
         )

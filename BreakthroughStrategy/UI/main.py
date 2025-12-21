@@ -10,7 +10,8 @@ import pandas as pd
 
 from BreakthroughStrategy.analysis import BreakthroughDetector
 from BreakthroughStrategy.analysis.breakthrough_detector import Breakthrough, Peak
-from BreakthroughStrategy.analysis.quality_scorer import QualityScorer
+from BreakthroughStrategy.analysis.peak_scorer import PeakScorer
+from BreakthroughStrategy.analysis.breakthrough_scorer import BreakthroughScorer
 
 from .charts import ChartCanvasManager
 from .config import get_ui_config_loader, get_ui_scan_config_loader
@@ -98,10 +99,15 @@ class InteractiveUI:
         self.right_frame = ttk.Frame(self.paned)
         self.paned.add(self.right_frame, weight=1)
 
-        # 使用 UI 参数配置创建 QualityScorer
-        scorer_cfg = self.param_panel.param_loader.get_quality_scorer_params()
-        scorer = QualityScorer(config=scorer_cfg)
-        self.chart_manager = ChartCanvasManager(self.right_frame, scorer=scorer)
+        # 使用 UI 参数配置创建评分器
+        scorer_cfg = self.param_panel.param_loader.get_scorer_params()
+        peak_scorer = PeakScorer(config=scorer_cfg)
+        breakthrough_scorer = BreakthroughScorer(config=scorer_cfg)
+        self.chart_manager = ChartCanvasManager(
+            self.right_frame,
+            peak_scorer=peak_scorer,
+            breakthrough_scorer=breakthrough_scorer
+        )
 
         # 标记左侧面板是否已显示
         self._left_panel_visible = False
@@ -262,7 +268,7 @@ class InteractiveUI:
         feature_cfg = self.param_panel.param_loader.get_feature_calculator_params()
         # 合并 label_configs（从扫描配置获取）
         feature_cfg['label_configs'] = self.scan_config_loader.get_label_configs()
-        scorer_cfg = self.param_panel.param_loader.get_quality_scorer_params()
+        scorer_cfg = self.param_panel.param_loader.get_scorer_params()
 
         # 使用统一函数计算突破
         breakthroughs, detector = compute_breakthroughs_from_dataframe(
@@ -274,7 +280,7 @@ class InteractiveUI:
             exceed_threshold=params["exceed_threshold"],
             peak_supersede_threshold=params.get("peak_supersede_threshold", 0.03),
             feature_calc_config=feature_cfg,
-            quality_scorer_config=scorer_cfg,
+            scorer_config=scorer_cfg,
         )
 
         self.param_panel.set_status(
@@ -561,9 +567,10 @@ class InteractiveUI:
         # 更新模式指示器
         self._update_mode_indicator()
 
-        # 更新 ChartCanvasManager 的 scorer，确保 Score Details 窗口显示正确的权重
-        scorer_cfg = self.param_panel.param_loader.get_quality_scorer_params()
-        self.chart_manager.scorer = QualityScorer(config=scorer_cfg)
+        # 更新 ChartCanvasManager 的评分器，确保 Score Details 窗口显示正确的权重
+        scorer_cfg = self.param_panel.param_loader.get_scorer_params()
+        self.chart_manager.peak_scorer = PeakScorer(config=scorer_cfg)
+        self.chart_manager.breakthrough_scorer = BreakthroughScorer(config=scorer_cfg)
 
         # 模式切换时处理临时行
         if not self.param_panel.get_use_ui_params():
@@ -969,7 +976,7 @@ class InteractiveUI:
         feature_cfg = self.param_panel.param_loader.get_feature_calculator_params()
         # 合并 label_configs（从扫描配置获取）
         feature_cfg['label_configs'] = self.scan_config_loader.get_label_configs()
-        scorer_cfg = self.param_panel.param_loader.get_quality_scorer_params()
+        scorer_cfg = self.param_panel.param_loader.get_scorer_params()
 
         # 从 scan_config_loader 获取扫描配置
         scan_mode = self.scan_config_loader.get_scan_mode()
@@ -1060,7 +1067,7 @@ class InteractiveUI:
         feature_cfg = self.param_panel.param_loader.get_feature_calculator_params()
         # 合并 label_configs（从扫描配置获取）
         feature_cfg['label_configs'] = self.scan_config_loader.get_label_configs()
-        scorer_cfg = self.param_panel.param_loader.get_quality_scorer_params()
+        scorer_cfg = self.param_panel.param_loader.get_scorer_params()
 
         # 准备时间范围配置和股票列表
         scan_time_config = {"mode": scan_mode}
@@ -1199,7 +1206,7 @@ class InteractiveUI:
                 start_date=None,
                 end_date=None,
                 feature_calc_config=feature_cfg,
-                quality_scorer_config=scorer_cfg,
+                scorer_config=scorer_cfg,
             )
 
             # 执行扫描（传递 per-stock 时间范围）
@@ -1225,7 +1232,7 @@ class InteractiveUI:
                 start_date=start_date,
                 end_date=end_date,
                 feature_calc_config=feature_cfg,
-                quality_scorer_config=scorer_cfg,
+                scorer_config=scorer_cfg,
             )
 
             # 执行扫描（不传递 per-stock 时间范围）
