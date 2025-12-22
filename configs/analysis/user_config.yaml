@@ -5,11 +5,11 @@ data:
   end_date: null
   csv_file: /home/yu/PycharmProjects/new_trade/ext_file/ui/clear_feature.txt
   mon_before: 6
-  mon_after: 2
+  mon_after: 1
 output:
   output_dir: /home/yu/PycharmProjects/Trade_Strategy/outputs/scan_results
 performance:
-  num_workers: 26
+  num_workers: 0
 params:
   config_file: configs/analysis/params/ui_params.yaml
 label:

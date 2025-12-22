@@ -1,10 +1,10 @@
 breakthrough_detector:
   cache_dir: ./cache
-  exceed_threshold: 0.005
+  exceed_threshold: 0.001
   min_relative_height: 0.3
   min_side_bars: 5
   peak_supersede_threshold: 0.03
-  total_window: 20
+  total_window: 30
   use_cache: false
 feature_calculator:
   continuity_lookback: 5
@@ -20,7 +20,6 @@ quality_scorer:
     - 1.3
     - 1.5
   bonus_base_score: 50
-  # cluster_density_threshold 已移除，自动引用 breakthrough_detector.peak_supersede_threshold
   continuity_bonus:
     thresholds:
     - 3
