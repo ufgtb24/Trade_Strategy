@@ -48,9 +48,6 @@ class ParameterPanel:
         defaults = config_loader.get_display_options_defaults()
 
         # 显示选项变量
-        self.show_peak_score_var = tk.BooleanVar(
-            value=defaults.get("show_peak_score", True)
-        )
         self.show_bt_score_var = tk.BooleanVar(
             value=defaults.get("show_bt_score", True)
         )
@@ -152,13 +149,6 @@ class ParameterPanel:
         # 显示选项复选框
         ttk.Checkbutton(
             container,
-            text="Peak Score",
-            variable=self.show_peak_score_var,
-            command=self._on_checkbox_changed,
-        ).pack(side=tk.LEFT, padx=5)
-
-        ttk.Checkbutton(
-            container,
             text="BT Score",
             variable=self.show_bt_score_var,
             command=self._on_checkbox_changed,
@@ -222,7 +212,6 @@ class ParameterPanel:
     def get_display_options(self):
         """获取显示选项"""
         return {
-            "show_peak_score": self.show_peak_score_var.get(),
             "show_bt_score": self.show_bt_score_var.get(),
         }
 

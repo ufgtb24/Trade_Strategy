@@ -10,7 +10,6 @@ import pandas as pd
 
 from BreakthroughStrategy.analysis import BreakthroughDetector
 from BreakthroughStrategy.analysis.features import FeatureCalculator
-from BreakthroughStrategy.analysis.peak_scorer import PeakScorer
 from BreakthroughStrategy.analysis.breakthrough_scorer import BreakthroughScorer
 
 from ..utils import ensure_dir
@@ -39,7 +38,7 @@ def compute_breakthroughs_from_dataframe(
         exceed_threshold: 突破阈值
         peak_supersede_threshold: 峰值合并阈值
         feature_calc_config: FeatureCalculator 配置字典
-        scorer_config: 评分器配置字典（同时用于 PeakScorer 和 BreakthroughScorer）
+        scorer_config: BreakthroughScorer 配置字典
 
     Returns:
         (breakthroughs, detector) 元组
@@ -54,34 +53,23 @@ def compute_breakthroughs_from_dataframe(
         peak_supersede_threshold=peak_supersede_threshold,
         use_cache=False,
     )
-    breakout_infos = detector.batch_add_bars(df, return_breakouts=True) # symbol == "600519
+    breakout_infos = detector.batch_add_bars(df, return_breakouts=True)
 
     if not breakout_infos:
         return [], detector
 
-    # 特征计算和评分（使用传入的配置）
+    # 特征计算和评分
     feature_calc = FeatureCalculator(config=feature_calc_config or {})
-    peak_scorer = PeakScorer(config=scorer_config or {})
     breakthrough_scorer = BreakthroughScorer(config=scorer_config or {})
 
     breakthroughs = []
     for info in breakout_infos:
-        # 为峰值评分
-        for peak in info.broken_peaks: # info.current_date == date(2024, 5, 15)
-            if peak.quality_score is None:
-                peak_scorer.score_peak(peak)
-
         # 特征计算
         bt = feature_calc.enrich_breakthrough(df, info, symbol, detector=detector)
         breakthroughs.append(bt)
 
     # 批量评分
     breakthrough_scorer.score_breakthroughs_batch(breakthroughs)
-
-    # 为检测器的活跃峰值评分
-    for peak in detector.active_peaks:
-        if peak.quality_score is None:
-            peak_scorer.score_peak(peak)
 
     return breakthroughs, detector
 
@@ -228,9 +216,6 @@ def _scan_single_stock(args):
                     "relative_height": float(peak.relative_height)
                     if peak.relative_height
                     else 0.0,
-                    "quality_score": float(peak.quality_score)
-                    if peak.quality_score
-                    else None,
                     "is_active": peak.id in active_peak_ids,
                 }
                 for peak in sorted(all_peaks_dict.values(), key=lambda p: p.index)
@@ -241,6 +226,7 @@ def _scan_single_stock(args):
                     "price": float(bt.price),
                     "index": int(bt.index),
                     "broken_peak_ids": bt.broken_peak_ids,  # 使用ID引用而非完整对象
+                    "superseded_peak_ids": bt.superseded_peak_ids,  # 被真正移除的峰值ID
                     "num_peaks_broken": int(bt.num_peaks_broken),
                     "breakthrough_type": bt.breakthrough_type,
                     "price_change_pct": float(bt.price_change_pct)

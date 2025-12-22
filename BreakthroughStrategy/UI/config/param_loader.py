@@ -238,26 +238,25 @@ class UIParamLoader:
         获取评分器参数
 
         Returns:
-            参数字典，包含所有权重值和配置参数
-            同时用于 PeakScorer 和 BreakthroughScorer 的初始化
+            参数字典，用于 BreakthroughScorer 的初始化
         """
         quality_params = self._params.get('quality_scorer', {})
+        validated = {}
 
-        # Peak weights (仅保留筹码堆积因子: volume + candle)
-        peak_weights = quality_params.get('peak_weights', {})
-        validated = {
-            'peak_weight_volume': self._validate_float(
-                peak_weights.get('volume', 0.60), 0.0, 1.0, 0.60
-            ),
-            'peak_weight_candle': self._validate_float(
-                peak_weights.get('candle', 0.40), 0.0, 1.0, 0.40
-            ),
-        }
-
-        # 簇分组阈值
-        validated['cluster_density_threshold'] = self._validate_float(
-            quality_params.get('cluster_density_threshold', 0.03), 0.01, 0.10, 0.03
+        # 簇分组阈值（默认引用 peak_supersede_threshold）
+        # 先获取 detector 的 peak_supersede_threshold 作为默认值
+        detector_params = self._params.get('breakthrough_detector', {})
+        peak_supersede_threshold = self._validate_float(
+            detector_params.get('peak_supersede_threshold', 0.03), 0.01, 0.10, 0.03
         )
+        # 传递给 scorer，以便其内部可以回退到这个值
+        validated['peak_supersede_threshold'] = peak_supersede_threshold
+        # 如果 cluster_density_threshold 未显式配置，使用 peak_supersede_threshold
+        if 'cluster_density_threshold' in quality_params:
+            validated['cluster_density_threshold'] = self._validate_float(
+                quality_params.get('cluster_density_threshold'), 0.01, 0.10, 0.03
+            )
+        # 否则不设置，让 BreakthroughScorer 自动回退到 peak_supersede_threshold
 
         # =====================================================================
         # Bonus 乘法模型配置

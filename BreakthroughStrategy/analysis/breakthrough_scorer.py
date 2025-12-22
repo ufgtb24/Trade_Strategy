@@ -21,16 +21,11 @@
 - gap_bonus: 跳空缺口
 - continuity_bonus: 连续阳线
 - momentum_bonus: 连续突破
-
-峰值评分已分离至 peak_scorer.py
 """
 
 from dataclasses import dataclass, field
-from typing import List, Optional, TYPE_CHECKING
+from typing import List, Optional
 from .breakthrough_detector import Peak, Breakthrough
-
-if TYPE_CHECKING:
-    from .peak_scorer import FeatureScoreDetail
 
 
 # =============================================================================
@@ -50,15 +45,14 @@ class BonusDetail:
 
 @dataclass
 class ScoreBreakdown:
-    """评分分解"""
-    entity_type: str                      # 'peak' or 'breakthrough'
-    entity_id: Optional[int]              # Peak ID (if peak)
+    """评分分解（Bonus 乘法模型）"""
+    entity_type: str                      # 'breakthrough'
+    entity_id: Optional[int]              # (unused, for compatibility)
     total_score: float                    # 总分
-    features: List['FeatureScoreDetail'] = field(default_factory=list)  # 各特征详情（加权模型）
-    broken_peak_ids: Optional[List[int]] = None  # 被突破的峰值ID（仅突破）
+    broken_peak_ids: Optional[List[int]] = None  # 被突破的峰值ID
     # Bonus 模型字段
-    base_score: Optional[float] = None    # 基准分（Bonus模型）
-    bonuses: Optional[List[BonusDetail]] = None  # Bonus 列表（Bonus模型）
+    base_score: Optional[float] = None    # 基准分
+    bonuses: Optional[List[BonusDetail]] = None  # Bonus 列表
 
     def get_formula_string(self) -> str:
         """
@@ -99,8 +93,11 @@ class BreakthroughScorer:
         if config is None:
             config = {}
 
-        # 阻力簇分组阈值
-        self.cluster_density_threshold = config.get('cluster_density_threshold', 0.03)
+        # 阻力簇分组阈值（默认引用 peak_supersede_threshold，保持一致性）
+        self.cluster_density_threshold = config.get(
+            'cluster_density_threshold',
+            config.get('peak_supersede_threshold', 0.03)
+        )
 
         # =====================================================================
         # Bonus 乘法模型配置
@@ -505,7 +502,6 @@ class BreakthroughScorer:
                 entity_type='breakthrough',
                 entity_id=None,
                 total_score=0,
-                features=[],
                 broken_peak_ids=[],
                 base_score=0,
                 bonuses=[]
@@ -573,7 +569,6 @@ class BreakthroughScorer:
             entity_type='breakthrough',
             entity_id=None,
             total_score=total_score,
-            features=[],  # Bonus 模型不使用 features
             broken_peak_ids=broken_peak_ids,
             base_score=base_score,
             bonuses=bonuses

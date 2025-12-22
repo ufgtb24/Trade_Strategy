@@ -301,11 +301,6 @@ class ParameterEditorWindow:
         # quality_scorer_params 映射 (处理权重组的扁平化)
         scorer = self._json_params.get("quality_scorer_params", {})
 
-        # peak_weights (JSON: peak_weight_* -> UI: peak_weights.*)
-        # 注: height 已移至 Historical (心理阻力)，peak 仅保留筹码堆积因子
-        param_map["quality_scorer.peak_weights.volume"] = scorer.get("peak_weight_volume")
-        param_map["quality_scorer.peak_weights.candle"] = scorer.get("peak_weight_candle")
-
         # breakthrough_weights (JSON: bt_weight_* -> UI: breakthrough_weights.*)
         param_map["quality_scorer.breakthrough_weights.change"] = scorer.get("bt_weight_change")
         param_map["quality_scorer.breakthrough_weights.gap"] = scorer.get("bt_weight_gap")

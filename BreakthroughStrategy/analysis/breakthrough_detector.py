@@ -6,7 +6,6 @@
 2. 支持价格相近的峰值共存（形成阻力区）
 3. 一次突破可能突破多个峰值
 4. 支持持久化缓存（可选）
-5. 计算峰值质量特征
 """
 
 import pandas as pd
@@ -22,9 +21,7 @@ from typing import Dict, List, Optional, Tuple
 @dataclass
 class Peak:
     """
-    峰值数据结构（增强版）
-
-    包含质量评估特征
+    峰值数据结构
     """
     index: int                      # 在价格序列中的索引
     price: float                    # 峰值价格
@@ -33,15 +30,12 @@ class Peak:
     # Peak 唯一标识符
     id: Optional[int] = None        # 峰值唯一ID（用于追踪）
 
-    # 质量特征
+    # 峰值特征
     volume_surge_ratio: float = 0.0      # 放量倍数
     candle_change_pct: float = 0.0       # K线涨跌幅
     left_suppression_days: int = 0       # 左侧压制天数
     right_suppression_days: int = 0      # 右侧压制天数（突破时更新）
     relative_height: float = 0.0         # 相对高度
-
-    # 质量评分（由QualityScorer计算）
-    quality_score: Optional[float] = None
 
 
 @dataclass
@@ -57,6 +51,7 @@ class BreakoutInfo:
 
     # 被突破的峰值列表（关键：支持多个）
     broken_peaks: List[Peak]        # 被突破的所有峰值
+    superseded_peaks: List[Peak] = field(default_factory=list)  # 被真正移除的峰值（突破幅度 > supersede_threshold）
 
     @property
     def num_peaks_broken(self) -> int:
@@ -67,6 +62,11 @@ class BreakoutInfo:
     def broken_peak_ids(self) -> List[int]:
         """被突破的峰值ID列表"""
         return [p.id for p in self.broken_peaks if p.id is not None]
+
+    @property
+    def superseded_peak_ids(self) -> List[int]:
+        """被真正移除的峰值ID列表"""
+        return [p.id for p in self.superseded_peaks if p.id is not None]
 
     @property
     def highest_peak_broken(self) -> Peak:
@@ -141,6 +141,9 @@ class Breakthrough:
     # 连续突破信息（由 FeatureCalculator 填充）
     recent_breakthrough_count: int = 1  # 近期突破次数（至少包括自己）
 
+    # 被真正移除的峰值（突破幅度 > supersede_threshold）
+    superseded_peaks: List[Peak] = field(default_factory=list)
+
     @property
     def num_peaks_broken(self) -> int:
         return len(self.broken_peaks)
@@ -149,6 +152,11 @@ class Breakthrough:
     def broken_peak_ids(self) -> List[int]:
         """被突破的峰值ID列表"""
         return [p.id for p in self.broken_peaks if p.id is not None]
+
+    @property
+    def superseded_peak_ids(self) -> List[int]:
+        """被真正移除的峰值ID列表"""
+        return [p.id for p in self.superseded_peaks if p.id is not None]
 
     @property
     def highest_peak_broken(self) -> Peak:
@@ -456,6 +464,7 @@ class BreakthroughDetector:
             如果没有突破，返回None
         """
         broken_peaks = []
+        superseded_peaks = []  # 被真正移除的峰值
         remaining_peaks = []
 
         for peak in self.active_peaks:
@@ -471,7 +480,9 @@ class BreakthroughDetector:
                 if current_high <= supersede_threshold_price:
                     # 突破幅度 <= 3%：保留峰值，下次还能被突破（突破巩固）
                     remaining_peaks.append(peak)
-                # else: 突破幅度 > 3%：真正移除峰值
+                else:
+                    # 突破幅度 > 3%：真正移除峰值
+                    superseded_peaks.append(peak)
             else:
                 # 未突破，保留
                 remaining_peaks.append(peak)
@@ -493,7 +504,8 @@ class BreakthroughDetector:
                 current_index=current_idx,
                 current_price=current_high,
                 current_date=current_date,
-                broken_peaks=broken_peaks
+                broken_peaks=broken_peaks,
+                superseded_peaks=superseded_peaks
             )
 
         return None
@@ -538,8 +550,7 @@ class BreakthroughDetector:
                         'candle_change_pct': p.candle_change_pct,
                         'left_suppression_days': p.left_suppression_days,
                         'right_suppression_days': p.right_suppression_days,
-                        'relative_height': p.relative_height,
-                        'quality_score': p.quality_score
+                        'relative_height': p.relative_height
                     }
                     for p in self.active_peaks
                 ],
@@ -619,8 +630,7 @@ class BreakthroughDetector:
                     candle_change_pct=p['candle_change_pct'],
                     left_suppression_days=p['left_suppression_days'],
                     right_suppression_days=p['right_suppression_days'],
-                    relative_height=p['relative_height'],
-                    quality_score=p.get('quality_score')
+                    relative_height=p['relative_height']
                 )
                 for p in cache_data['active_peaks']
             ]

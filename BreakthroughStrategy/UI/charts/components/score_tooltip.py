@@ -1,18 +1,16 @@
 """
 评分详情浮动窗口组件
 
-提供峰值和突破点的评分详情展示，包括：
-- 各特征的原始数值、分数、权重
+提供突破点的评分详情展示，包括：
+- 各特征的原始数值、bonus
 - 阻力强度的子因素展开
 - 完整的计算公式
-- 支持复合情况（峰值+突破同一K线）
 """
 
 import tkinter as tk
 from tkinter import ttk
 from typing import Optional, Tuple, List
 
-from ....analysis.peak_scorer import PeakScorer, FeatureScoreDetail
 from ....analysis.breakthrough_scorer import BreakthroughScorer, ScoreBreakdown, BonusDetail
 from ....analysis.breakthrough_detector import Peak, Breakthrough
 from ...styles import SCORE_TOOLTIP_COLORS, SCORE_TOOLTIP_FONTS
@@ -22,7 +20,7 @@ class ScoreDetailWindow:
     """
     评分详情浮动窗口
 
-    通过快捷键触发显示，展示峰值或突破点的评分详情。
+    通过快捷键触发显示，展示突破点的评分详情。
     窗口可拖拽、可关闭，支持同时打开多个窗口对比。
     """
 
@@ -35,7 +33,6 @@ class ScoreDetailWindow:
         parent: tk.Widget,
         peak: Optional[Peak],
         breakthrough: Optional[Breakthrough],
-        peak_scorer: PeakScorer,
         breakthrough_scorer: BreakthroughScorer,
         position: Tuple[int, int],
         symbol: str = ""
@@ -45,9 +42,8 @@ class ScoreDetailWindow:
 
         Args:
             parent: 父窗口
-            peak: 峰值对象（可选）
+            peak: 峰值对象（可选，用于悬停检测）
             breakthrough: 突破对象（可选）
-            peak_scorer: 峰值评分器
             breakthrough_scorer: 突破评分器
             position: 窗口位置 (x, y)
             symbol: 股票代码
@@ -55,7 +51,6 @@ class ScoreDetailWindow:
         self.parent = parent
         self.peak = peak
         self.breakthrough = breakthrough
-        self.peak_scorer = peak_scorer
         self.breakthrough_scorer = breakthrough_scorer
         self.position = position
         self.symbol = symbol
@@ -93,99 +88,11 @@ class ScoreDetailWindow:
         )
         main_frame.pack(fill=tk.BOTH, expand=True)
 
-        # 判断显示模式
-        has_peak = self.peak is not None
-        has_bt = self.breakthrough is not None
-
-        if has_peak and has_bt:
-            # 复合模式：垂直堆叠
-            self._build_combined_view(main_frame)
-        elif has_peak:
-            # 仅峰值
-            self._build_peak_view(main_frame)
-        elif has_bt:
-            # 仅突破
-            self._build_breakthrough_view(main_frame)
-
-    def _build_combined_view(self, parent: tk.Frame):
-        """构建复合视图（峰值 + 突破）"""
-        # 峰值部分
-        peak_frame = tk.Frame(parent, bg=self.COLORS["window_bg"])
-        peak_frame.pack(fill=tk.X, padx=4, pady=(4, 2))
-        self._build_peak_card(peak_frame)
-
-        # 分隔线
-        separator = tk.Frame(
-            parent,
-            bg=self.COLORS["separator"],
-            height=2
-        )
-        separator.pack(fill=tk.X, padx=8, pady=4)
-
-        # 突破部分
-        bt_frame = tk.Frame(parent, bg=self.COLORS["window_bg"])
-        bt_frame.pack(fill=tk.X, padx=4, pady=(2, 4))
-        self._build_breakthrough_card(bt_frame)
-
-    def _build_peak_view(self, parent: tk.Frame):
-        """构建峰值视图"""
-        frame = tk.Frame(parent, bg=self.COLORS["window_bg"])
-        frame.pack(fill=tk.X, padx=4, pady=4)
-        self._build_peak_card(frame)
-
-    def _build_breakthrough_view(self, parent: tk.Frame):
-        """构建突破视图"""
-        frame = tk.Frame(parent, bg=self.COLORS["window_bg"])
-        frame.pack(fill=tk.X, padx=4, pady=4)
-        self._build_breakthrough_card(frame)
-
-    def _build_peak_card(self, parent: tk.Frame):
-        """构建峰值卡片"""
-        breakdown = self.peak_scorer.get_peak_score_breakdown(self.peak)
-
-        # 标题栏
-        header = tk.Frame(parent, bg=self.COLORS["peak_header_bg"])
-        header.pack(fill=tk.X)
-
-        # 左侧标题
-        peak_id_text = f"Peak #{self.peak.id}" if self.peak.id else "Peak"
-        title_label = tk.Label(
-            header,
-            text=peak_id_text,
-            font=self.FONTS["header"],
-            bg=self.COLORS["peak_header_bg"],
-            fg=self.COLORS["peak_header_fg"],
-            padx=10,
-            pady=6
-        )
-        title_label.pack(side=tk.LEFT)
-
-        # 右侧总分（统一使用金色，在深色背景上醒目）
-        score_label = tk.Label(
-            header,
-            text=f"Score: {breakdown.total_score:.1f}",
-            font=self.FONTS["header"],
-            bg=self.COLORS["peak_header_bg"],
-            fg=self.COLORS["score_medium_light"],
-            padx=10,
-            pady=6
-        )
-        score_label.pack(side=tk.RIGHT)
-
-        # 内容区
-        content = tk.Frame(
-            parent,
-            bg=self.COLORS["window_bg"],
-            highlightbackground=self.COLORS["peak_border"],
-            highlightthickness=1
-        )
-        content.pack(fill=tk.X)
-
-        # 表格
-        self._build_score_table(content, breakdown.features)
-
-        # 公式区域
-        self._build_formula_area(content, breakdown)
+        # 只处理 breakthrough
+        if self.breakthrough is not None:
+            frame = tk.Frame(main_frame, bg=self.COLORS["window_bg"])
+            frame.pack(fill=tk.X, padx=4, pady=4)
+            self._build_breakthrough_card(frame)
 
     def _build_breakthrough_card(self, parent: tk.Frame):
         """构建突破卡片"""
@@ -246,155 +153,6 @@ class ScoreDetailWindow:
 
         # 公式区域
         self._build_formula_area(content, breakdown)
-
-    def _build_score_table(
-        self,
-        parent: tk.Frame,
-        features: List[FeatureScoreDetail],
-        expand_resistance: bool = False
-    ):
-        """
-        构建评分表格
-
-        Args:
-            parent: 父容器
-            features: 特征列表
-            expand_resistance: 是否展开阻力强度子因素
-        """
-        table = tk.Frame(parent, bg=self.COLORS["window_bg"])
-        table.pack(fill=tk.X, padx=8, pady=8)
-
-        # 表头
-        headers = ["Factor", "Value", "Score", "Weight"]
-        widths = [14, 8, 6, 7]
-
-        for col, (text, width) in enumerate(zip(headers, widths)):
-            lbl = tk.Label(
-                table,
-                text=text,
-                font=self.FONTS["table_header"],
-                bg=self.COLORS["separator"],
-                width=width,
-                anchor=tk.CENTER,
-                padx=4,
-                pady=4
-            )
-            lbl.grid(row=0, column=col, sticky="ew", padx=1, pady=1)
-
-        # 数据行
-        row_idx = 1
-        for feature in features:
-            bg_color = self.COLORS["row_bg"] if row_idx % 2 == 1 else self.COLORS["row_alt_bg"]
-
-            # 特征名
-            tk.Label(
-                table,
-                text=feature.name,
-                font=self.FONTS["table_cell"],
-                bg=bg_color,
-                anchor=tk.W,
-                padx=6,
-                pady=3
-            ).grid(row=row_idx, column=0, sticky="ew", padx=1, pady=1)
-
-            # 原始值
-            value_text = self._format_value(feature.raw_value, feature.unit)
-            tk.Label(
-                table,
-                text=value_text,
-                font=self.FONTS["table_cell"],
-                bg=bg_color,
-                anchor=tk.CENTER,
-                padx=4,
-                pady=3
-            ).grid(row=row_idx, column=1, sticky="ew", padx=1, pady=1)
-
-            # 分数
-            score_color = self._get_score_color(feature.score)
-            tk.Label(
-                table,
-                text=f"{feature.score:.0f}",
-                font=self.FONTS["table_cell"],
-                bg=bg_color,
-                fg=score_color,
-                anchor=tk.CENTER,
-                padx=4,
-                pady=3
-            ).grid(row=row_idx, column=2, sticky="ew", padx=1, pady=1)
-
-            # 权重
-            tk.Label(
-                table,
-                text=f"{feature.weight*100:.0f}%",
-                font=self.FONTS["table_cell"],
-                bg=bg_color,
-                fg=self.COLORS["text_secondary"],
-                anchor=tk.CENTER,
-                padx=4,
-                pady=3
-            ).grid(row=row_idx, column=3, sticky="ew", padx=1, pady=1)
-
-            row_idx += 1
-
-            # 展开阻力强度子因素
-            if expand_resistance and feature.sub_features:
-                for sub in feature.sub_features:
-                    sub_bg = self.COLORS["sub_feature_bg"]
-
-                    # 子特征名（缩进）
-                    tk.Label(
-                        table,
-                        text=f"  - {sub.name}",
-                        font=self.FONTS["sub_feature"],
-                        bg=sub_bg,
-                        fg=self.COLORS["text_secondary"],
-                        anchor=tk.W,
-                        padx=6,
-                        pady=2
-                    ).grid(row=row_idx, column=0, sticky="ew", padx=1, pady=1)
-
-                    # 子特征值
-                    sub_value_text = self._format_value(sub.raw_value, sub.unit)
-                    tk.Label(
-                        table,
-                        text=sub_value_text,
-                        font=self.FONTS["sub_feature"],
-                        bg=sub_bg,
-                        fg=self.COLORS["text_secondary"],
-                        anchor=tk.CENTER,
-                        padx=4,
-                        pady=2
-                    ).grid(row=row_idx, column=1, sticky="ew", padx=1, pady=1)
-
-                    # 子特征分数
-                    tk.Label(
-                        table,
-                        text=f"{sub.score:.0f}",
-                        font=self.FONTS["sub_feature"],
-                        bg=sub_bg,
-                        fg=self.COLORS["text_secondary"],
-                        anchor=tk.CENTER,
-                        padx=4,
-                        pady=2
-                    ).grid(row=row_idx, column=2, sticky="ew", padx=1, pady=1)
-
-                    # 子特征权重（显示在括号中）
-                    tk.Label(
-                        table,
-                        text=f"({sub.weight*100:.0f}%)",
-                        font=self.FONTS["sub_feature"],
-                        bg=sub_bg,
-                        fg=self.COLORS["text_secondary"],
-                        anchor=tk.CENTER,
-                        padx=4,
-                        pady=2
-                    ).grid(row=row_idx, column=3, sticky="ew", padx=1, pady=1)
-
-                    row_idx += 1
-
-        # 配置列权重
-        for col in range(4):
-            table.columnconfigure(col, weight=1)
 
     def _build_bonus_table(
         self,

@@ -37,7 +37,7 @@ PARAM_CONFIGS = {
             "type": float,
             "range": (0.01, 0.1),
             "default": 0.03,
-            "description": "Threshold for superseding old peaks when new peaks exceed them (ratio)",
+            "description": "Resistance zone threshold: peak superseding & cluster grouping (ratio)",
         },
         "use_cache": {
             "type": bool,
@@ -65,37 +65,8 @@ PARAM_CONFIGS = {
             "description": "Lookback period for continuity analysis",
         },
     },
-    # 质量评分器参数（全 Bonus 乘法模型版）
+    # 质量评分器参数（Bonus 乘法模型）
     "quality_scorer": {
-        "peak_weights": {
-            "type": dict,
-            "is_weight_group": True,  # 标记为权重组，总和必须为1.0
-            "default": {
-                "volume": 0.60,
-                "candle": 0.40,
-            },
-            "description": "Peak quality scoring weights (筹码堆积因子, sum must = 1.0)",
-            "sub_params": {
-                "volume": {
-                    "type": float,
-                    "range": (0.0, 1.0),
-                    "default": 0.60,
-                    "description": "Volume surge weight (reflects trading density)",
-                },
-                "candle": {
-                    "type": float,
-                    "range": (0.0, 1.0),
-                    "default": 0.40,
-                    "description": "Candle pattern weight (reflects price intensity)",
-                },
-            },
-        },
-        "cluster_density_threshold": {
-            "type": float,
-            "range": (0.01, 0.10),
-            "default": 0.03,
-            "description": "Price proximity threshold for clustering peaks (%)",
-        },
         "bonus_base_score": {
             "type": int,
             "range": (10, 100),

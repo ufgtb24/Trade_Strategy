@@ -12,9 +12,7 @@ class MarkerComponent:
         ax,
         df: pd.DataFrame,
         peaks: list,
-        quality_color_map: bool = True,
         colors: dict = None,
-        show_score: bool = True,
     ):
         """
         绘制峰值标记
@@ -23,9 +21,7 @@ class MarkerComponent:
             ax: matplotlib Axes 对象
             df: OHLCV DataFrame (必须有 DatetimeIndex)
             peaks: Peak 对象列表
-            quality_color_map: 是否根据质量分数映射颜色
             colors: 颜色配置字典
-            show_score: 是否显示分数
         """
         if not peaks:
             return
@@ -33,7 +29,6 @@ class MarkerComponent:
         colors = colors or {}
         marker_color = colors.get("peak_marker", "#000000")
         text_id_color = colors.get("peak_text_id", "#000000")
-        text_score_color = colors.get("peak_text_score", "#808080")
 
         # 尝试获取 high/low 列，处理大小写
         high_col = "high" if "high" in df.columns else "High"
@@ -92,63 +87,11 @@ class MarkerComponent:
                 label="Peak" if peak == peaks[0] else None,
             )
 
-            # 2. 添加 id:score 标注 (位于标记上方)
+            # 2. 添加 ID 标注 (位于标记上方)
             # 文本位于标记上方：标记位置 + 0.6 * 单位 (1.2% Range)
             text_y = marker_y + offset_unit * 0.6
 
-            if quality_color_map and peak.quality_score is not None:
-                # 如果有 id，显示 id:score，否则只显示 score
-                if peak.id is not None:
-                    if show_score:
-                        # 分开绘制 id 和 score 以支持不同颜色
-                        # id: (右对齐到中心)
-                        ax.text(
-                            peak_x,
-                            text_y,
-                            f"{peak.id}",
-                            fontsize=20,
-                            ha="right",
-                            va="bottom",
-                            color=text_id_color,
-                            weight="bold",
-                        )
-                        # score (左对齐到中心)
-                        ax.text(
-                            peak_x,
-                            text_y,
-                            f":{peak.quality_score:.0f}",
-                            fontsize=20,
-                            ha="left",
-                            va="bottom",
-                            color=text_score_color,
-                            weight="bold",
-                        )
-                    else:
-                        # 不显示分数时，ID居中显示且不带冒号
-                        ax.text(
-                            peak_x,
-                            text_y,
-                            f"{peak.id}",
-                            fontsize=20,
-                            ha="center",
-                            va="bottom",
-                            color=text_id_color,
-                            weight="bold",
-                        )
-                elif show_score:
-                    text = f"{peak.quality_score:.0f}"
-                    ax.text(
-                        peak_x,
-                        text_y,
-                        text,
-                        fontsize=20,
-                        ha="center",
-                        va="bottom",
-                        color=text_score_color,
-                        weight="bold",
-                    )
-            elif peak.id is not None:
-                # 如果没有质量分数，但有 id，只显示 id
+            if peak.id is not None:
                 ax.text(
                     peak_x,
                     text_y,

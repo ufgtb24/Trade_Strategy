@@ -109,8 +109,8 @@ class PanelComponent:
             peaks_str = "Broken Peaks: "
             peak_parts = []
             for i, peak in enumerate(breakthrough.broken_peaks[:5], 1):
-                quality_str = f"Q={peak.quality_score:.0f}" if peak.quality_score else "Q=N/A"
-                peak_parts.append(f"${peak.price:.2f}({quality_str})")
+                id_str = f"#{peak.id}" if peak.id is not None else ""
+                peak_parts.append(f"${peak.price:.2f}{id_str}")
             line3 = peaks_str + ", ".join(peak_parts)
 
         # 绘制三行文本

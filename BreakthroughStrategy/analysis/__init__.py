@@ -8,11 +8,10 @@
 - 支持持久化缓存（可选）
 
 评分系统：
-- PeakScorer: 峰值评分器（加权模型）
 - BreakthroughScorer: 突破评分器（Bonus 乘法模型）
 
 数据结构：
-- Peak: 峰值（包含质量特征）
+- Peak: 峰值
 - BreakoutInfo: 突破信息（简化版，由检测器直接返回）
 - Breakthrough: 完整突破对象（包含丰富特征）
 """
@@ -27,9 +26,6 @@ from .breakthrough_detector import (
 
 # 特征计算
 from .features import FeatureCalculator
-
-# 峰值评分（加权模型）
-from .peak_scorer import PeakScorer, FeatureScoreDetail
 
 # 突破评分（Bonus 乘法模型）
 from .breakthrough_scorer import BreakthroughScorer, BonusDetail, ScoreBreakdown
@@ -49,10 +45,6 @@ __all__ = [
 
     # 特征计算
     'FeatureCalculator',
-
-    # 峰值评分
-    'PeakScorer',
-    'FeatureScoreDetail',
 
     # 突破评分
     'BreakthroughScorer',

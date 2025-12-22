@@ -224,7 +224,7 @@ class UIConfigLoader:
             显示选项默认值字典
         """
         return self._config.get("ui", {}).get(
-            "display_options", {"show_peak_score": True, "show_bt_score": True}
+            "display_options", {"show_bt_score": True}
         )
 
     def get_stock_list_column_config(self) -> Dict[str, Any]:

@@ -76,11 +76,6 @@ def test_integrated_system():
     print("[5] 计算丰富特征...")
     breakthroughs = []
     for info in breakout_infos:
-        # 先为峰值评分
-        for peak in info.broken_peaks:
-            if peak.quality_score is None:
-                scorer.score_peak(peak)
-
         # 计算突破特征（传递 detector 以获取连续突破信息）
         bt = feature_calc.enrich_breakthrough(df, info, "AAPL", detector=detector)
         breakthroughs.append(bt)
@@ -146,19 +141,11 @@ def test_integrated_system():
         if bt.num_peaks_broken > 1:
             # 显示被突破的所有峰值
             prices = [p.price for p in bt.broken_peaks]
-            qualities = [p.quality_score for p in bt.broken_peaks if p.quality_score]
-
             print(f"    峰值价格: {prices}")
             print(f"    价格范围: ${bt.peak_price_range:.2f}")
-
-            if qualities:
-                print(
-                    f"    峰值质量: min={min(qualities):.1f}, avg={sum(qualities) / len(qualities):.1f}, max={max(qualities):.1f}"
-                )
         else:
             peak = bt.broken_peaks[0]
             print(f"    峰值价格: ${peak.price:.2f}")
-            print(f"    峰值质量: {peak.quality_score:.1f}")
 
         print("    ---")
         print(f"    ⭐️ 突破质量: {bt.quality_score:.1f}/100")
@@ -183,7 +170,6 @@ def test_integrated_system():
             print(f"  峰值{i}:")
             print(f"    日期: {peak.date}")
             print(f"    价格: ${peak.price:.2f}")
-            print(f"    质量: {peak.quality_score:.1f}/100")
             print(f"    放量: {peak.volume_surge_ratio:.2f}倍")
             print(
                 f"    压制: 左{peak.left_suppression_days}天, 右{peak.right_suppression_days}天"

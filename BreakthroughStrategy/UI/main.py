@@ -10,7 +10,6 @@ import pandas as pd
 
 from BreakthroughStrategy.analysis import BreakthroughDetector
 from BreakthroughStrategy.analysis.breakthrough_detector import Breakthrough, Peak
-from BreakthroughStrategy.analysis.peak_scorer import PeakScorer
 from BreakthroughStrategy.analysis.breakthrough_scorer import BreakthroughScorer
 
 from .charts import ChartCanvasManager
@@ -101,11 +100,9 @@ class InteractiveUI:
 
         # 使用 UI 参数配置创建评分器
         scorer_cfg = self.param_panel.param_loader.get_scorer_params()
-        peak_scorer = PeakScorer(config=scorer_cfg)
         breakthrough_scorer = BreakthroughScorer(config=scorer_cfg)
         self.chart_manager = ChartCanvasManager(
             self.right_frame,
-            peak_scorer=peak_scorer,
             breakthrough_scorer=breakthrough_scorer
         )
 
@@ -404,7 +401,6 @@ class InteractiveUI:
                 left_suppression_days=peak_data.get("left_suppression_days", 0),
                 right_suppression_days=peak_data.get("right_suppression_days", 0),
                 relative_height=peak_data.get("relative_height", 0.0),
-                quality_score=peak_data.get("quality_score"),
             )
             all_peaks[peak.id] = peak
 
@@ -421,6 +417,12 @@ class InteractiveUI:
             broken_peak_ids = bt_data["broken_peak_ids"]
             broken_peaks = [
                 all_peaks[pid] for pid in broken_peak_ids if pid in all_peaks
+            ]
+
+            # 恢复 superseded_peaks（兼容旧缓存）
+            superseded_peak_ids = bt_data.get("superseded_peak_ids", [])
+            superseded_peaks = [
+                all_peaks[pid] for pid in superseded_peak_ids if pid in all_peaks
             ]
 
             # 如果所有 broken_peaks 都被过滤掉了，跳过该突破点
@@ -457,6 +459,7 @@ class InteractiveUI:
                 price=bt_data["price"],
                 index=new_index,  # 使用重新映射的索引
                 broken_peaks=broken_peaks,
+                superseded_peaks=superseded_peaks,
                 breakthrough_type=bt_data.get("breakthrough_type", "yang"),
                 price_change_pct=price_change_pct
                 if price_change_pct is not None
@@ -567,9 +570,8 @@ class InteractiveUI:
         # 更新模式指示器
         self._update_mode_indicator()
 
-        # 更新 ChartCanvasManager 的评分器，确保 Score Details 窗口显示正确的权重
+        # 更新 ChartCanvasManager 的评分器
         scorer_cfg = self.param_panel.param_loader.get_scorer_params()
-        self.chart_manager.peak_scorer = PeakScorer(config=scorer_cfg)
         self.chart_manager.breakthrough_scorer = BreakthroughScorer(config=scorer_cfg)
 
         # 模式切换时处理临时行

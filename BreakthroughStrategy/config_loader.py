@@ -98,17 +98,12 @@ class ConfigLoader:
 
     def get_quality_scorer_config(self) -> Dict[str, Any]:
         """
-        Get QualityScorer configuration (双维度时间模型版)
+        Get QualityScorer configuration (Bonus 乘法模型版)
 
         Returns:
             Dictionary with all scoring weights and thresholds
         """
         scorer_cfg = self.params.get('quality_scorer', {})
-
-        # Peak weights (仅保留筹码堆积因子：volume + candle)
-        peak_weights = scorer_cfg.get('peak_weights', {})
-        peak_weight_volume = peak_weights.get('volume', 0.60)
-        peak_weight_candle = peak_weights.get('candle', 0.40)
 
         # Breakthrough weights (新增 historical)
         bt_weights = scorer_cfg.get('breakthrough_weights', {})
@@ -148,10 +143,6 @@ class ConfigLoader:
         historical_quality_threshold = scorer_cfg.get('historical_quality_threshold', 70)
 
         return {
-            # Peak weights (仅 volume + candle)
-            'peak_weight_volume': peak_weight_volume,
-            'peak_weight_candle': peak_weight_candle,
-
             # Breakthrough weights
             'bt_weight_change': bt_weight_change,
             'bt_weight_gap': bt_weight_gap,

@@ -9,7 +9,6 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 
 from ..styles import get_chart_colors
 from .components import CandlestickComponent, MarkerComponent, PanelComponent, ScoreDetailWindow
-from ...analysis.peak_scorer import PeakScorer
 from ...analysis.breakthrough_scorer import BreakthroughScorer
 from ...analysis.breakthrough_detector import Peak, Breakthrough
 
@@ -20,7 +19,6 @@ class ChartCanvasManager:
     def __init__(
         self,
         parent_container,
-        peak_scorer: Optional[PeakScorer] = None,
         breakthrough_scorer: Optional[BreakthroughScorer] = None
     ):
         """
@@ -28,7 +26,6 @@ class ChartCanvasManager:
 
         Args:
             parent_container: 父容器
-            peak_scorer: 峰值评分器实例
             breakthrough_scorer: 突破评分器实例
         """
         self.container = parent_container
@@ -43,7 +40,6 @@ class ChartCanvasManager:
         self.crosshair_h = None  # 水平十字线
 
         # 评分详情窗口相关
-        self.peak_scorer = peak_scorer or PeakScorer()
         self.breakthrough_scorer = breakthrough_scorer or BreakthroughScorer()
         self.score_detail_windows: List[ScoreDetailWindow] = []  # 打开的窗口列表
         self._hovered_peak: Optional[Peak] = None  # 当前悬停的峰值
@@ -84,7 +80,6 @@ class ChartCanvasManager:
         self._current_symbol = symbol
 
         display_options = display_options or {}
-        show_peak_score = display_options.get("show_peak_score", True)
         show_bt_score = display_options.get("show_bt_score", True)
 
         # 2. 创建新图表（2个子图：主图+统计面板）
@@ -146,11 +141,15 @@ class ChartCanvasManager:
         # 然后绘制K线（叠加在成交量上）
         self.candlestick.draw(ax_main, df, colors=colors)
 
-        # 收集所有被突破的峰值
+        # 收集所有被突破的峰值（按 id 去重，同一峰值可能因"突破巩固"被多次突破）
+        seen_peak_ids = set()
         all_broken_peaks = []
         for bt in breakthroughs:
             if hasattr(bt, "broken_peaks") and bt.broken_peaks:
-                all_broken_peaks.extend(bt.broken_peaks)
+                for p in bt.broken_peaks:
+                    if p.id not in seen_peak_ids:
+                        seen_peak_ids.add(p.id)
+                        all_broken_peaks.append(p)
 
         # 绘制被突破的峰值（如果有）
         if all_broken_peaks:
@@ -158,9 +157,7 @@ class ChartCanvasManager:
                 ax_main,
                 df,
                 all_broken_peaks,
-                quality_color_map=True,
                 colors=colors,
-                show_score=show_peak_score,
             )
 
         # 额外绘制 active_peaks（如果存在且不重复）
@@ -176,9 +173,7 @@ class ChartCanvasManager:
                     ax_main,
                     df,
                     active_only_peaks,
-                    quality_color_map=True,
                     colors=colors,
-                    show_score=show_peak_score,
                 )
 
         # 合并所有绘制的 peaks，用于碰撞检测
@@ -363,22 +358,22 @@ class ChartCanvasManager:
                 text += f"RV: {rv_str}"
 
                 # 计算该 K 线时刻的 active peaks
-                # 1. 收集在当前位置之前或当前被突破的峰值 ID
-                broken_at_x = set()
+                # 1. 收集在当前位置之前或当前被真正移除的峰值 ID（突破幅度 > supersede_threshold）
+                superseded_at_x = set()
                 for bt in breakthroughs:
                     if bt.index <= x:  # 该突破发生在当前 K 线之前或当前
-                        broken_at_x.update(bt.broken_peak_ids)
+                        superseded_at_x.update(bt.superseded_peak_ids)
 
-                # 2. 筛选在当前位置之前创建、且未被突破的峰值
+                # 2. 筛选在当前位置之前创建、且未被真正移除的峰值
                 if peaks:
                     active_at_x = [
                         p for p in peaks
-                        if p.index < x and p.id not in broken_at_x
+                        if p.index < x and p.id not in superseded_at_x
                     ]
 
-                    # 3. 显示 active peaks id 列表
+                    # 3. 显示 active peaks id 列表（按 ID 排序）
                     if active_at_x:
-                        active_ids = [str(p.id) for p in active_at_x]
+                        active_ids = [str(p.id) for p in sorted(active_at_x, key=lambda p: p.id)]
                         text += f"\nActive: [{','.join(active_ids)}]"
 
                 # 检查是否是突破点
@@ -404,8 +399,7 @@ class ChartCanvasManager:
                         if peak.index == x:
                             self._hovered_peak = peak  # 记录悬停的峰值
                             id_text = str(peak.id) if peak.id is not None else "N/A"
-                            score_text = f"{peak.quality_score:.0f}" if peak.quality_score is not None else "N/A"
-                            text += f"\n\nPeak:\n{id_text},{score_text}"
+                            text += f"\n\nPeak:\n{id_text}"
                             break
 
                 # 更新十字线位置（横线锁定收盘价）
@@ -478,7 +472,6 @@ class ChartCanvasManager:
             parent=self.container,
             peak=self._hovered_peak,
             breakthrough=self._hovered_bt,
-            peak_scorer=self.peak_scorer,
             breakthrough_scorer=self.breakthrough_scorer,
             position=self._hover_position,
             symbol=self._current_symbol
