@@ -186,6 +186,8 @@ class BreakthroughDetector:
                  total_window: int = 10,
                  min_side_bars: int = 2,
                  min_relative_height: float = 0.05,
+                 min_local_prominence: float = 0.03,
+                 min_strict_height: float = 0.15,
                  exceed_threshold: float = 0.005,
                  peak_supersede_threshold: float = 0.03,
                  momentum_window: int = 20,
@@ -198,7 +200,11 @@ class BreakthroughDetector:
             symbol: 股票代码
             total_window: 总窗口大小（左右两侧合计需超过的K线数）
             min_side_bars: 单侧最少K线数（左右各至少超过此数量）
-            min_relative_height: 最小相对高度（峰值相对窗口内最低点的幅度下限）
+            min_relative_height: 最小相对高度（峰值 high 相对窗口内最低 low 的幅度下限）
+            min_local_prominence: 最小局部突出度（峰值 high 相对邻域内最高 high 的超出比例）
+                                 默认 0.03（3%），用于过滤横盘区的小凸起
+            min_strict_height: 最小严格高度（峰值 high 相对窗口内最低 high 的比例）
+                              使用 high vs high 提供更严格的过滤，默认 0.15（15%）
             exceed_threshold: 突破确认阈值（默认0.5%）
             peak_supersede_threshold: 峰值覆盖阈值（默认3%）
                 - 新峰值超过旧峰值 < 3% → 两者共存（形成阻力区）
@@ -218,6 +224,8 @@ class BreakthroughDetector:
         self.total_window = total_window
         self.min_side_bars = min_side_bars
         self.min_relative_height = min_relative_height
+        self.min_local_prominence = min_local_prominence
+        self.min_strict_height = min_strict_height
         self.exceed_threshold = exceed_threshold
         self.peak_supersede_threshold = peak_supersede_threshold
         self.momentum_window = momentum_window
@@ -326,10 +334,12 @@ class BreakthroughDetector:
 
         窗口：[current_idx - total_window, current_idx - 1]，共 total_window 个元素
 
-        峰值判定条件（3点必须都满足）：
+        峰值判定条件（5点必须都满足）：
         1. 在窗口内是最高点
         2. 该点的局部索引不在前 min_side_bars 或后 min_side_bars 个位置
-        3. (peak_high - window_min_low) / window_min_low >= min_relative_height
+        3. (peak_high - window_min_low) / window_min_low >= min_relative_height (high vs low)
+        4. (peak_high - max_neighbor_high) / max_neighbor_high >= min_local_prominence (局部突出度)
+        5. (peak_high - window_min_high) / window_min_high >= min_strict_height (high vs high)
 
         支持价格相近的峰值共存，形成阻力区
         """
@@ -362,12 +372,38 @@ class BreakthroughDetector:
             if existing_peak.index == peak_global_idx:
                 return
 
-        # 条件3：检查相对高度
+        # 条件3：检查相对高度 (high vs low)
         window_lows = self.lows[window_start:current_idx]
         window_min_low = min(window_lows)
         relative_height = (max_high - window_min_low) / window_min_low if window_min_low > 0 else 0
         if relative_height < self.min_relative_height:
             return  # 相对高度不足
+
+        # 条件4：检查局部突出度 (high vs neighbor max high)
+        # 邻域范围：峰值左右各 min_side_bars 根 K 线
+        if self.min_local_prominence > 0:
+            left_neighbor_start = max(window_start, peak_global_idx - self.min_side_bars)
+            right_neighbor_end = min(current_idx, peak_global_idx + self.min_side_bars + 1)
+
+            neighbor_highs = [
+                self.highs[i] for i in range(left_neighbor_start, right_neighbor_end)
+                if i != peak_global_idx
+            ]
+
+            if neighbor_highs:
+                max_neighbor_high = max(neighbor_highs)
+                if max_neighbor_high > 0:
+                    local_prominence = (max_high - max_neighbor_high) / max_neighbor_high
+                    if local_prominence < self.min_local_prominence:
+                        return  # 局部突出度不足
+
+        # 条件5：检查严格高度 (high vs window min high)
+        if self.min_strict_height > 0:
+            window_min_high = min(window_highs)
+            if window_min_high > 0:
+                strict_height = (max_high - window_min_high) / window_min_high
+                if strict_height < self.min_strict_height:
+                    return  # 严格高度不足
 
         # 所有条件满足，创建峰值
         peak = self._create_peak(peak_global_idx, max_high, self.dates[peak_global_idx], current_idx)

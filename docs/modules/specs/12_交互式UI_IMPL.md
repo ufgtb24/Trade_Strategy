@@ -1,6 +1,6 @@
 # 12 交互式UI模块 (UI)
 
-> 状态：已实现 (Implemented) | 最后更新：2025-12-16
+> 状态：已实现 (Implemented) | 最后更新：2025-12-22
 
 ## 一、模块概述
 
@@ -133,13 +133,15 @@ flowchart TD
 
 | 模式 | 触发条件 | 数据来源 | UI 状态 |
 |------|---------|---------|--------|
-| **Browse** | 加载 JSON 后默认 | Stock list 和图表都使用 JSON 缓存 | 参数编辑禁用 |
-| **Analysis** | 勾选复选框 | 图表使用 UI 参数实时计算，stock list 不变 | 参数编辑启用 |
+| **Browse** | 取消勾选复选框 | Stock list 和图表都使用 JSON 缓存 | 参数编辑禁用 |
+| **Analysis** | 启动时默认 / 勾选复选框 | 图表使用 UI 参数实时计算，stock list 不变 | 参数编辑启用 |
 
 **关键行为**：
 - Browse Mode：切换股票时使用 JSON 缓存，速度快
-- Analysis Mode：Apply 参数后只更新图表，不更新 stock list 统计值
+- Analysis Mode（默认）：使用 UI 参数进行 full compute，切换股票时实时计算
 - Rescan All：在 Analysis Mode 中可用，用当前参数重新扫描所有股票
+
+> **2025-12-22 变更**：默认模式从 Browse 改为 Analysis，更符合分析工作流
 
 ### 3.2 扫描配置管理 (UIScanConfigLoader)
 
@@ -178,7 +180,9 @@ performance:
 
 **解决方案**：
 - **JSON 缓存路径**（快速）：Browse Mode 时从 JSON 重建 `Breakthrough` 和 `Peak` 对象
-- **完整计算路径**（慢速）：Analysis Mode 或缓存失效时调用 `BreakthroughDetector`
+- **完整计算路径**（默认）：Analysis Mode 时调用 `BreakthroughDetector` 实时计算
+
+> **注意**：默认使用完整计算路径，确保图表反映当前 UI 参数设置
 
 ### 3.5 索引重映射机制
 

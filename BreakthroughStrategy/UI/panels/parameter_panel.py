@@ -52,8 +52,8 @@ class ParameterPanel:
             value=defaults.get("show_bt_score", True)
         )
 
-        # UI 参数选项（默认不选中 = 使用 JSON cache）
-        self.use_ui_params_var = tk.BooleanVar(value=False)
+        # UI 参数选项（默认选中 = 使用 UI 参数进行 full compute）
+        self.use_ui_params_var = tk.BooleanVar(value=True)
 
         # 当前参数文件名（不含路径）
         self.current_param_file = "ui_params.yaml"
@@ -157,6 +157,9 @@ class ParameterPanel:
         # 状态标签
         self.status_label = ttk.Label(container, text="Ready", foreground="gray")
         self.status_label.pack(side=tk.RIGHT, padx=10)
+
+        # 根据 use_ui_params_var 初始值同步组件状态
+        self._update_combobox_state()
 
     def _on_load_scan_clicked(self):
         """加载扫描结果按钮点击"""

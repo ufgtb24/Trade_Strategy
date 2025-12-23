@@ -25,7 +25,19 @@ PARAM_CONFIGS = {
             "type": float,
             "range": (0.0, 1.0),
             "default": 0.05,
-            "description": "Minimum relative height from window low",
+            "description": "Minimum relative height from window low (high vs low)",
+        },
+        "min_local_prominence": {
+            "type": float,
+            "range": (0.0, 0.2),
+            "default": 0.03,
+            "description": "Minimum local prominence (peak high vs neighbor max high)",
+        },
+        "min_strict_height": {
+            "type": float,
+            "range": (0.0, 0.5),
+            "default": 0.15,
+            "description": "Minimum strict height (peak high vs window min high)",
         },
         "exceed_threshold": {
             "type": float,

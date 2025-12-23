@@ -365,16 +365,16 @@ class ChartCanvasManager:
                         superseded_at_x.update(bt.superseded_peak_ids)
 
                 # 2. 筛选在当前位置之前创建、且未被真正移除的峰值
+                active_at_x = []
                 if peaks:
                     active_at_x = [
                         p for p in peaks
                         if p.index < x and p.id not in superseded_at_x
                     ]
 
-                    # 3. 显示 active peaks id 列表（按 ID 排序）
-                    if active_at_x:
-                        active_ids = [str(p.id) for p in sorted(active_at_x, key=lambda p: p.id)]
-                        text += f"\nActive: [{','.join(active_ids)}]"
+                # 3. 始终显示 active peaks id 列表（按 ID 排序），即使为空
+                active_ids = [str(p.id) for p in sorted(active_at_x, key=lambda p: p.id)]
+                text += f"\nActive: [{','.join(active_ids)}]"
 
                 # 检查是否是突破点
                 for bt in breakthroughs:

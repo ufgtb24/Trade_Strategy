@@ -36,7 +36,7 @@ data:
   # 相对时间范围参数（仅CSV模式有效）
   # 检测范围 = [date - mon_before个月, date + mon_after个月]
   mon_before: 6  # 基准日期前N个月
-  mon_after: 1   # 基准日期后N个月
+  mon_after: 2   # 基准日期后N个月
 
 # 输出设置
 output:

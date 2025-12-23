@@ -54,7 +54,6 @@ argument-hint: [command_type] [optional: description]
 3.  **处理文档**：
     -   **情况 A (首次提炼)**：如果存在 `_PLAN.md` 但不存在 `_IMPL.md`：
         -   **读取** `_PLAN.md` 的内容作为参考（了解初衷,但是以代码信息为准）。
-        -   **删除** `_PLAN.md`。
         -   **新建** `_IMPL.md`。
     -   **情况 B (更新提炼)**：如果已存在 `_IMPL.md`：
         -   **读取** `_IMPL.md`。

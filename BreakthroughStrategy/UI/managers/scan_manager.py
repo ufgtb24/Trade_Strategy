@@ -21,6 +21,8 @@ def compute_breakthroughs_from_dataframe(
     total_window: int,
     min_side_bars: int,
     min_relative_height: float,
+    min_local_prominence: float,
+    min_strict_height: float,
     exceed_threshold: float,
     peak_supersede_threshold: float,
     feature_calc_config: dict = None,
@@ -35,6 +37,8 @@ def compute_breakthroughs_from_dataframe(
         total_window: 总窗口大小（左右合计）
         min_side_bars: 单侧最少K线数
         min_relative_height: 最小相对高度
+        min_local_prominence: 最小局部突出度
+        min_strict_height: 最小严格高度
         exceed_threshold: 突破阈值
         peak_supersede_threshold: 峰值合并阈值
         feature_calc_config: FeatureCalculator 配置字典
@@ -49,6 +53,8 @@ def compute_breakthroughs_from_dataframe(
         total_window=total_window,
         min_side_bars=min_side_bars,
         min_relative_height=min_relative_height,
+        min_local_prominence=min_local_prominence,
+        min_strict_height=min_strict_height,
         exceed_threshold=exceed_threshold,
         peak_supersede_threshold=peak_supersede_threshold,
         use_cache=False,
@@ -80,6 +86,7 @@ def _scan_single_stock(args):
 
     Args:
         args: (symbol, data_dir, total_window, min_side_bars, min_relative_height,
+               min_local_prominence, min_strict_height,
                exceed_threshold, peak_supersede_threshold, start_date, end_date,
                feature_calc_config, scorer_config)
 
@@ -92,6 +99,8 @@ def _scan_single_stock(args):
         total_window,
         min_side_bars,
         min_relative_height,
+        min_local_prominence,
+        min_strict_height,
         exceed_threshold,
         peak_supersede_threshold,
         start_date,
@@ -125,6 +134,8 @@ def _scan_single_stock(args):
             total_window=total_window,
             min_side_bars=min_side_bars,
             min_relative_height=min_relative_height,
+            min_local_prominence=min_local_prominence,
+            min_strict_height=min_strict_height,
             exceed_threshold=exceed_threshold,
             peak_supersede_threshold=peak_supersede_threshold,
             feature_calc_config=feature_calc_config,
@@ -283,6 +294,8 @@ class ScanManager:
         total_window=10,
         min_side_bars=2,
         min_relative_height=0.05,
+        min_local_prominence=0,
+        min_strict_height=0,
         exceed_threshold=0.005,
         peak_supersede_threshold=0.03,
         start_date=None,
@@ -298,6 +311,8 @@ class ScanManager:
             total_window: 总窗口大小（左右合计）
             min_side_bars: 单侧最少K线数
             min_relative_height: 最小相对高度
+            min_local_prominence: 最小局部突出度
+            min_strict_height: 最小严格高度
             exceed_threshold: 突破阈值
             peak_supersede_threshold: 峰值合并阈值
             start_date: 起始日期 (YYYY-MM-DD)
@@ -311,6 +326,8 @@ class ScanManager:
         self.total_window = total_window
         self.min_side_bars = min_side_bars
         self.min_relative_height = min_relative_height
+        self.min_local_prominence = min_local_prominence
+        self.min_strict_height = min_strict_height
         self.exceed_threshold = exceed_threshold
         self.peak_supersede_threshold = peak_supersede_threshold
         self.start_date = start_date
@@ -339,6 +356,8 @@ class ScanManager:
                 self.total_window,
                 self.min_side_bars,
                 self.min_relative_height,
+                self.min_local_prominence,
+                self.min_strict_height,
                 self.exceed_threshold,
                 self.peak_supersede_threshold,
                 self.start_date,
@@ -400,6 +419,8 @@ class ScanManager:
                     self.total_window,
                     self.min_side_bars,
                     self.min_relative_height,
+                    self.min_local_prominence,
+                    self.min_strict_height,
                     self.exceed_threshold,
                     self.peak_supersede_threshold,
                     start_date,

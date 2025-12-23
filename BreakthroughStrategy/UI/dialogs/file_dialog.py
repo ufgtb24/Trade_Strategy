@@ -350,13 +350,35 @@ class CustomFileDialog(tk.Toplevel):
             self.destroy()
 
     def _on_delete_key(self, event):
-        """Delete 键删除选中的文件"""
-        name = self._get_selected_name()
-        if not name:
+        """Delete 键删除所有选中的文件"""
+        selection = self.tree.selection()
+        if not selection:
             return
 
-        # 不允许删除文件夹
-        if self._is_folder_selected():
+        # 收集所有选中的文件（排除文件夹）
+        files_to_delete = []
+        folders_skipped = 0
+
+        for item_id in selection:
+            tags = self.tree.item(item_id, "tags")
+            if "folder" in tags:
+                folders_skipped += 1
+                continue
+
+            values = self.tree.item(item_id, "values")
+            if not values:
+                continue
+
+            # 去除图标前缀
+            name = values[0]
+            for icon in [self.FOLDER_ICON, self.FILE_ICON]:
+                if name.startswith(icon):
+                    name = name[len(icon):].strip()
+                    break
+            files_to_delete.append(name)
+
+        # 如果有文件夹被选中，显示警告
+        if folders_skipped > 0 and not files_to_delete:
             messagebox.showwarning(
                 "Cannot Delete",
                 "Cannot delete folders. Only files can be deleted.",
@@ -364,26 +386,48 @@ class CustomFileDialog(tk.Toplevel):
             )
             return
 
-        full_path = os.path.join(self.current_dir, name)
+        if not files_to_delete:
+            return
 
         # 确认删除
+        if len(files_to_delete) == 1:
+            msg = f"Are you sure you want to delete:\n\n{files_to_delete[0]}"
+        else:
+            msg = f"Are you sure you want to delete {len(files_to_delete)} files?\n\n"
+            # 显示前几个文件名
+            display_files = files_to_delete[:5]
+            msg += "\n".join(f"  • {f}" for f in display_files)
+            if len(files_to_delete) > 5:
+                msg += f"\n  ... and {len(files_to_delete) - 5} more"
+
+        if folders_skipped > 0:
+            msg += f"\n\n(Note: {folders_skipped} folder(s) will be skipped)"
+
         confirm = messagebox.askyesno(
             "Confirm Delete",
-            f"Are you sure you want to delete:\n\n{name}",
+            msg,
             parent=self,
         )
 
         if confirm:
-            try:
-                os.remove(full_path)
-                # 刷新目录列表
-                self._load_directory(self.current_dir)
-                # 清空文件名输入框
-                self.filename_var.set("")
-            except OSError as e:
+            errors = []
+            for name in files_to_delete:
+                full_path = os.path.join(self.current_dir, name)
+                try:
+                    os.remove(full_path)
+                except OSError as e:
+                    errors.append(f"{name}: {e}")
+
+            # 刷新目录列表
+            self._load_directory(self.current_dir)
+            # 清空文件名输入框
+            self.filename_var.set("")
+
+            # 如果有错误，显示错误信息
+            if errors:
                 messagebox.showerror(
                     "Delete Error",
-                    f"Failed to delete file:\n{e}",
+                    f"Failed to delete some files:\n\n" + "\n".join(errors),
                     parent=self,
                 )
 

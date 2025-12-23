@@ -125,6 +125,7 @@ class UIParamLoader:
 
         Returns:
             参数字典，包含: total_window, min_side_bars, min_relative_height,
+                         min_local_prominence, min_strict_height,
                          exceed_threshold, peak_supersede_threshold, use_cache, cache_dir
         """
         detector_params = self._params.get('breakthrough_detector', {})
@@ -145,7 +146,13 @@ class UIParamLoader:
             'total_window': total_window,
             'min_side_bars': min_side_bars,
             'min_relative_height': self._validate_float(
-                detector_params.get('min_relative_height', 0.05), 0.0, 0.3, 0.05
+                detector_params.get('min_relative_height', 0.05), 0.0, 1.0, 0.05
+            ),
+            'min_local_prominence': self._validate_float(
+                detector_params.get('min_local_prominence', 0.03), 0.0, 0.2, 0.03
+            ),
+            'min_strict_height': self._validate_float(
+                detector_params.get('min_strict_height', 0.15), 0.0, 0.5, 0.15
             ),
             'exceed_threshold': self._validate_float(
                 detector_params.get('exceed_threshold', 0.005), 0.001, 0.02, 0.005
