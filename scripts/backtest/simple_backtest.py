@@ -14,7 +14,6 @@
     python scripts/backtest/simple_backtest.py
 """
 
-import argparse
 import sys
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
@@ -725,41 +724,54 @@ class SimpleBacktestEngine:
         return equity
 
 
-# ===== 命令行入口 =====
+# ===== 入口函数 =====
 
 def main():
-    parser = argparse.ArgumentParser(description='Simple Backtest Script')
-    parser.add_argument('--symbols', type=str, default=None,
-                        help='Comma-separated list of symbols (default: all in data_dir)')
-    parser.add_argument('--data-dir', type=str, default='datasets/pkls',
-                        help='Data directory')
-    parser.add_argument('--start-date', type=str, default='2023-01-01',
-                        help='Start date (YYYY-MM-DD)')
-    parser.add_argument('--end-date', type=str, default='2024-01-01',
-                        help='End date (YYYY-MM-DD)')
-    parser.add_argument('--initial-capital', type=float, default=100000,
-                        help='Initial capital')
-    parser.add_argument('--stop-loss', type=float, default=0.05,
-                        help='Stop loss percentage')
-    parser.add_argument('--take-profit', type=float, default=0.15,
-                        help='Take profit percentage')
-    parser.add_argument('--max-holdings', type=int, default=10,
-                        help='Maximum number of holdings')
-    parser.add_argument('--min-quality', type=float, default=60,
-                        help='Minimum quality score threshold')
+    # ==================== 参数配置 ====================
+    # 股票列表（None = 扫描 data_dir 下所有股票）
+    symbols = ['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'META', 'TSLA', 'NVDA', 'AMD']
+    # symbols = None  # 使用所有股票
 
-    args = parser.parse_args()
+    # 数据目录
+    data_dir = 'datasets/pkls'
+
+    # 回测时间范围
+    start_date = '2023-01-01'
+    end_date = '2024-01-01'
+
+    # 资金参数
+    initial_capital = 100000  # 初始资金
+    commission_rate = 0.001   # 手续费率
+    slippage = 0.001          # 滑点
+
+    # 风险管理参数
+    stop_loss_pct = 0.05      # 止损比例 (5%)
+    trailing_stop_pct = 0.03  # 移动止损比例 (3%)
+    take_profit_pct = 0.15    # 止盈比例 (15%)
+    max_holdings = 10         # 最大持仓数
+    max_position_size_pct = 0.10  # 单仓位最大占比 (10%)
+    max_holding_days = 30     # 最大持仓天数
+
+    # 突破检测参数
+    detector_params = {
+        'total_window': 30,
+        'min_side_bars': 5,
+        'min_relative_height': 0.3,
+        'exceed_threshold': 0.001,
+        'peak_supersede_threshold': 0.03
+    }
+
+    # 质量阈值（只买入 quality_score >= 此值的突破）
+    min_quality_score = 50
+    # ==================== 参数配置结束 ====================
 
     # 获取股票列表
-    if args.symbols:
-        symbols = [s.strip() for s in args.symbols.split(',')]
-    else:
-        # 扫描数据目录
-        data_path = Path(args.data_dir)
+    if symbols is None:
+        data_path = Path(data_dir)
         if data_path.exists():
             symbols = [f.stem for f in data_path.glob('*.pkl')]
         else:
-            print(f"Data directory not found: {args.data_dir}")
+            print(f"Data directory not found: {data_dir}")
             return
 
     if not symbols:
@@ -768,32 +780,38 @@ def main():
 
     print(f"Backtest Configuration:")
     print(f"  Symbols: {len(symbols)}")
-    print(f"  Period: {args.start_date} to {args.end_date}")
-    print(f"  Initial Capital: ${args.initial_capital:,.2f}")
-    print(f"  Stop Loss: {args.stop_loss*100:.1f}%")
-    print(f"  Take Profit: {args.take_profit*100:.1f}%")
-    print(f"  Max Holdings: {args.max_holdings}")
-    print(f"  Min Quality Score: {args.min_quality}")
+    print(f"  Period: {start_date} to {end_date}")
+    print(f"  Initial Capital: ${initial_capital:,.2f}")
+    print(f"  Stop Loss: {stop_loss_pct*100:.1f}%")
+    print(f"  Take Profit: {take_profit_pct*100:.1f}%")
+    print(f"  Max Holdings: {max_holdings}")
+    print(f"  Min Quality Score: {min_quality_score}")
 
     # 创建回测引擎
     config = {
-        'initial_capital': args.initial_capital,
-        'stop_loss_pct': args.stop_loss,
-        'take_profit_pct': args.take_profit,
-        'max_holdings': args.max_holdings,
-        'min_quality_score': args.min_quality,
+        'initial_capital': initial_capital,
+        'commission_rate': commission_rate,
+        'slippage': slippage,
+        'stop_loss_pct': stop_loss_pct,
+        'trailing_stop_pct': trailing_stop_pct,
+        'take_profit_pct': take_profit_pct,
+        'max_holdings': max_holdings,
+        'max_position_size_pct': max_position_size_pct,
+        'max_holding_days': max_holding_days,
+        'detector_params': detector_params,
+        'min_quality_score': min_quality_score,
     }
 
     engine = SimpleBacktestEngine(config)
 
     # 加载数据
-    loaded = engine.load_data(symbols, args.data_dir)
+    loaded = engine.load_data(symbols, data_dir)
     if loaded == 0:
         print("No data loaded")
         return
 
     # 运行回测
-    result = engine.run_backtest(args.start_date, args.end_date)
+    result = engine.run_backtest(start_date, end_date)
 
     # 输出交易明细
     print(f"\n=== Trade Details ({len(result['trades'])} trades) ===")

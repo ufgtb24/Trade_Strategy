@@ -3,7 +3,7 @@ breakthrough_detector:
   exceed_threshold: 0.001
   min_local_prominence: 0.0
   min_relative_height: 0.3
-  min_side_bars: 5
+  min_side_bars: 3
   min_strict_height: 0.0
   peak_supersede_threshold: 0.03
   total_window: 30
