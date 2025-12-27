@@ -1,6 +1,6 @@
 # 技术分析模块 - 实现文档
 
-> 状态：已实现 (Implemented) | 最后更新：2025-12-21
+> 状态：已实现 (Implemented) | 最后更新：2025-12-27
 
 **模块路径**：`BreakoutStrategy/analysis/`
 
@@ -198,6 +198,9 @@ for old_peak in active_peaks:
   Gap:        # 跳空缺口
     - 1%: 1.10
     - 2%: 1.20
+  DailyReturn: # 日间涨幅（ATR标准化）
+    - 1.5x ATR: 1.10
+    - 3.0x ATR: 1.20
   Continuity: # 连续阳线
     - 3天: 1.15
   Momentum:   # 连续突破
@@ -272,6 +275,11 @@ test_count = len(best_cluster)
 动量特征:
   - recent_breakout_count: 近期突破次数（momentum_window 内）
 
+ATR相关特征（可选）:
+  - daily_return_atr_ratio: 日间涨幅的ATR标准化值 (close[i]-close[i-1])/ATR[i-1]
+  - atr_value: ATR值（使用前一天的ATR，避免用自身作为标准）
+  - atr_normalized_height: 突破幅度/ATR
+
 回测标签:
   - labels: {"label_5_20": 0.15, ...}
 ```
@@ -280,11 +288,14 @@ test_count = len(best_cluster)
 
 ## 六、技术指标模块
 
-**TechnicalIndicators 职责**：提供常用技术指标计算
+**TechnicalIndicators 职责**：基于 `pandas_ta` 库提供常用技术指标计算
+
+**依赖**：`pandas_ta>=0.3.14b`（必需）
 
 **支持的指标**：
 - `calculate_ma(series, period)`: 移动平均线
-- `calculate_rsi(close, period)`: RSI 指标（优先使用 pandas-ta）
+- `calculate_rsi(close, period)`: RSI 指标（使用 pandas_ta）
+- `calculate_atr(high, low, close, period)`: ATR 指标（Wilder's smoothing，与 TradingView 一致）
 - `calculate_relative_volume(volume, period)`: 相对成交量
 - `add_indicators(df)`: 批量添加 ma_20, ma_50, rsi_14, rv_63
 
@@ -374,6 +385,20 @@ continuity_bonus_values: [1.15]
 # Momentum bonus 阈值和乘数
 momentum_bonus_thresholds: [2]
 momentum_bonus_values: [1.20]
+
+# Peak Volume bonus 阈值和乘数（阻力属性）
+peak_volume_bonus_thresholds: [2.0, 5.0]
+peak_volume_bonus_values: [1.10, 1.20]
+
+# Daily Return bonus 阈值和乘数（ATR标准化）
+daily_return_bonus_thresholds: [1.5, 3.0]  # ATR倍数
+daily_return_bonus_values: [1.10, 1.20]
+
+# ATR 标准化配置（可选功能）
+use_atr_normalization: false       # 是否启用 ATR 标准化高度 bonus
+atr_normalized_height_thresholds: [1.5, 2.5]
+atr_normalized_height_values: [1.10, 1.20]
+atr_period: 14                     # ATR 计算周期
 
 # 阻力簇参数
 cluster_density_threshold: 0.03    # 簇密集度阈值（用于峰值分组）
@@ -530,7 +555,21 @@ for bonus in breakdown.bonuses:
 - 加权模型需要权重归一化，新增因素困难
 - 乘法模型更符合"多个利好叠加"的直觉
 
+### 2025-12-27 ATR 标准化与 DailyReturn Bonus
+
+**改动**：
+- 新增 `daily_return_atr_ratio` 特征：日间涨幅的 ATR 标准化值
+- 新增 `_get_daily_return_bonus()` 方法：基于 ATR 标准化日间涨幅的 Bonus
+- `TechnicalIndicators` 新增 `calculate_atr()` 方法，使用 `pandas_ta` 库
+- `Breakout` 数据结构新增字段：`daily_return_atr_ratio`, `atr_value`, `atr_normalized_height`
+- 可选功能：ATR 标准化高度 Bonus（通过 `use_atr_normalization` 启用）
+
+**原因**：
+- 日间涨幅（close[i] - close[i-1]）使用 ATR 标准化后可跨股票比较
+- 低波动率股票的相同幅度涨幅更有意义
+- ATR 使用前一天的值（ATR[i-1]），避免用自身作为标准
+
 ---
 
 **维护者**：Claude Code
-**最后审核**：2025-12-21
+**最后审核**：2025-12-27
