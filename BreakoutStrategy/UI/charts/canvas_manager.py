@@ -199,6 +199,12 @@ class ChartCanvasManager:
 
         # 4. 嵌入Tkinter Canvas
         self.canvas = FigureCanvasTkAgg(self.fig, master=self.container)
+
+        # 禁用 matplotlib 3.9+ 的自动 DPI 缩放 (PR #28588)
+        # 在高 DPI Linux 环境下，matplotlib 会自动检测 DPI 并放大渲染，
+        # 导致图表超出容器边界。通过 patch _update_device_pixel_ratio 方法禁用此行为。
+        self._disable_auto_dpi_scaling()
+
         self.canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
         self.canvas.draw()
 
@@ -231,6 +237,29 @@ class ChartCanvasManager:
         self._last_mouse_y = 0.0
         self._last_hover_x = 0
         self._hover_df = None
+
+    def _disable_auto_dpi_scaling(self):
+        """
+        禁用 matplotlib 3.9+ 的自动 DPI 缩放
+
+        matplotlib 3.9+ 在 Linux 上会通过 <Map> 事件自动检测屏幕 DPI 并缩放渲染，
+        导致高 DPI 环境下图表超出容器边界。此方法通过解绑 <Map> 事件来禁用此行为。
+
+        参考: matplotlib/backends/_backend_tk.py (PR #28588)
+        """
+        if self.canvas is None:
+            return
+
+        # 获取底层 Tk canvas widget
+        tk_canvas = self.canvas.get_tk_widget()
+
+        # 解绑 <Map> 事件，阻止 matplotlib 自动调用 _update_device_pixel_ratio
+        # 这是 matplotlib 3.9+ 在 Linux 上触发 DPI 缩放的入口
+        tk_canvas.unbind("<Map>")
+
+        # 强制设置 device_pixel_ratio 为 1.0（如果方法存在）
+        if hasattr(self.canvas, '_set_device_pixel_ratio'):
+            self.canvas._set_device_pixel_ratio(1.0)
 
     def _attach_hover(self, ax, df, breakouts, peaks=None):
         """
@@ -403,8 +432,8 @@ class ChartCanvasManager:
                             break
 
                 # 更新十字线位置（横线锁定收盘价）
-                self.crosshair_v.set_xdata(x)
-                self.crosshair_h.set_ydata(row["close"])
+                self.crosshair_v.set_xdata([x])
+                self.crosshair_h.set_ydata([row["close"]])
                 self.crosshair_h.set_color(colors["crosshair_normal"])
 
             self.crosshair_v.set_visible(True)

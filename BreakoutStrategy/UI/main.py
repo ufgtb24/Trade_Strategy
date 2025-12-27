@@ -454,6 +454,8 @@ class InteractiveUI:
             continuity_days = bo_data.get("continuity_days")
             stability_score = bo_data.get("stability_score")
             recent_breakout_count = bo_data.get("recent_breakout_count", 1)
+            atr_value = bo_data.get("atr_value")
+            atr_normalized_height = bo_data.get("atr_normalized_height")
 
             bo = Breakout(
                 symbol=symbol,
@@ -475,6 +477,8 @@ class InteractiveUI:
                 stability_score=stability_score if stability_score is not None else 0.0,
                 quality_score=bo_data.get("quality_score"),
                 recent_breakout_count=recent_breakout_count,
+                atr_value=atr_value if atr_value is not None else 0.0,
+                atr_normalized_height=atr_normalized_height if atr_normalized_height is not None else 0.0,
             )
             breakouts.append(bo)
 

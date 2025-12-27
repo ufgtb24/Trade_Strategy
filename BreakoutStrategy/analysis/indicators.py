@@ -1,13 +1,19 @@
 """
 技术指标模块
 
-提供常用技术指标的计算功能，优先使用pandas-ta库（如果可用），
-否则使用自实现的简单版本。
+基于 pandas_ta 库提供常用技术指标的计算功能。
 """
 
 import pandas as pd
 import numpy as np
-from typing import Optional
+
+try:
+    import pandas_ta as ta
+except ImportError as e:
+    raise ImportError(
+        "pandas_ta 是计算技术指标的必需依赖。"
+        "请使用以下命令安装: uv add pandas-ta>=0.3.14b"
+    ) from e
 
 
 class TechnicalIndicators:
@@ -30,38 +36,39 @@ class TechnicalIndicators:
     @staticmethod
     def calculate_rsi(close: pd.Series, period: int = 14) -> pd.Series:
         """
-        计算RSI指标（Relative Strength Index）
-
-        优先使用pandas-ta库，如果未安装则使用自实现版本
+        计算 RSI 指标（Relative Strength Index）
 
         Args:
             close: 收盘价序列
-            period: RSI周期（默认14）
+            period: RSI 周期（默认14）
 
         Returns:
-            RSI值序列（0-100）
+            RSI 值序列（0-100）
         """
-        try:
-            # 尝试使用pandas-ta
-            import pandas_ta as ta
-            return ta.rsi(close, length=period)
-        except ImportError:
-            # Fallback：自实现RSI
-            delta = close.diff()
+        return ta.rsi(close, length=period)
 
-            # 分离涨跌
-            gain = delta.where(delta > 0, 0)
-            loss = -delta.where(delta < 0, 0)
+    @staticmethod
+    def calculate_atr(
+        high: pd.Series,
+        low: pd.Series,
+        close: pd.Series,
+        period: int = 14
+    ) -> pd.Series:
+        """
+        计算 ATR（Average True Range）
 
-            # 计算平均涨跌幅
-            avg_gain = gain.rolling(window=period).mean()
-            avg_loss = loss.rolling(window=period).mean()
+        使用 Wilder's smoothing (RMA) 方法，与 TradingView 一致。
 
-            # 计算RS和RSI
-            rs = avg_gain / avg_loss
-            rsi = 100 - 100 / (1 + rs)
+        Args:
+            high: 最高价序列
+            low: 最低价序列
+            close: 收盘价序列
+            period: ATR 周期（默认14）
 
-            return rsi
+        Returns:
+            ATR 值序列
+        """
+        return ta.atr(high, low, close, length=period)
 
     @staticmethod
     def calculate_relative_volume(volume: pd.Series, period: int = 63) -> pd.Series:

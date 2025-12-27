@@ -137,8 +137,18 @@ class BreakoutScorer:
 
         # Peak Volume bonus（峰值放量，阻力属性）
         # 被突破峰值中的最大成交量放大倍数
-        self.peak_volume_bonus_thresholds = config.get('peak_volume_bonus_thresholds', [5.0, 10.0])
+        self.peak_volume_bonus_thresholds = config.get('peak_volume_bonus_thresholds', [2.0, 5.0])
         self.peak_volume_bonus_values = config.get('peak_volume_bonus_values', [1.10, 1.20])
+
+        # Daily Return bonus（日间涨幅，ATR 标准化）
+        # 阈值为 ATR 倍数
+        self.daily_return_bonus_thresholds = config.get('daily_return_bonus_thresholds', [1.5, 3.0])
+        self.daily_return_bonus_values = config.get('daily_return_bonus_values', [1.10, 1.20])
+
+        # ATR 标准化配置
+        self.use_atr_normalization = config.get('use_atr_normalization', False)
+        self.atr_normalized_height_thresholds = config.get('atr_normalized_height_thresholds', [1.5, 2.5])
+        self.atr_normalized_height_values = config.get('atr_normalized_height_values', [1.10, 1.20])
 
     def score_breakout(self, breakout: Breakout) -> float:
         """
@@ -424,6 +434,62 @@ class BreakoutScorer:
             level=level
         )
 
+    def _get_daily_return_bonus(self, daily_return_atr_ratio: float) -> BonusDetail:
+        """
+        计算日间涨幅 bonus（ATR 标准化版本）
+
+        daily_return_atr_ratio = (close[i] - close[i-1]) / ATR
+        使用 ATR 标准化可以跨股票比较，低波动股票的相同幅度涨幅更有意义
+
+        Args:
+            daily_return_atr_ratio: 日间涨幅的 ATR 标准化值
+
+        Returns:
+            BonusDetail
+        """
+        bonus, level = self._get_bonus_value(
+            daily_return_atr_ratio,
+            self.daily_return_bonus_thresholds,
+            self.daily_return_bonus_values
+        )
+
+        return BonusDetail(
+            name="DailyReturn",
+            raw_value=daily_return_atr_ratio,
+            unit="x ATR",
+            bonus=bonus,
+            triggered=(bonus > 1.0),
+            level=level
+        )
+
+    def _get_atr_normalized_height_bonus(self, atr_normalized_height: float) -> BonusDetail:
+        """
+        计算 ATR 标准化高度 bonus（可选功能）
+
+        突破幅度 / ATR 越大，表示突破越显著
+        低波动率环境下的突破更有意义
+
+        Args:
+            atr_normalized_height: 突破幅度 / ATR
+
+        Returns:
+            BonusDetail
+        """
+        bonus, level = self._get_bonus_value(
+            atr_normalized_height,
+            self.atr_normalized_height_thresholds,
+            self.atr_normalized_height_values
+        )
+
+        return BonusDetail(
+            name="ATR-Height",
+            raw_value=atr_normalized_height,
+            unit="x",
+            bonus=bonus,
+            triggered=(bonus > 1.0),
+            level=level
+        )
+
     def _get_continuity_bonus(self, continuity_days: int) -> BonusDetail:
         """
         计算连续性 bonus
@@ -547,6 +613,15 @@ class BreakoutScorer:
 
         gap_bonus = self._get_gap_bonus(breakout.gap_up_pct)
         bonuses.append(gap_bonus)
+
+        # Daily Return bonus（日间涨幅，ATR 标准化）
+        daily_return_bonus = self._get_daily_return_bonus(breakout.daily_return_atr_ratio)
+        bonuses.append(daily_return_bonus)
+
+        # ATR 标准化高度 bonus（可选功能）
+        if self.use_atr_normalization and breakout.atr_normalized_height > 0:
+            atr_height_bonus = self._get_atr_normalized_height_bonus(breakout.atr_normalized_height)
+            bonuses.append(atr_height_bonus)
 
         continuity_bonus = self._get_continuity_bonus(breakout.continuity_days)
         bonuses.append(continuity_bonus)

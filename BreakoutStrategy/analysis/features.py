@@ -9,6 +9,7 @@ from typing import Dict, List, Optional
 import pandas as pd
 
 from .breakout_detector import BreakoutInfo, Breakout
+from .indicators import TechnicalIndicators
 
 
 class FeatureCalculator:
@@ -26,6 +27,10 @@ class FeatureCalculator:
 
         self.stability_lookforward = config.get("stability_lookforward", 10)
         self.continuity_lookback = config.get("continuity_lookback", 5)
+
+        # ATR 配置（可选功能）
+        self.atr_period = config.get("atr_period", 14)
+        self.use_atr_normalization = config.get("use_atr_normalization", False)
 
         # 回测标签配置
         # 格式: [{"min_days": 5, "max_days": 20}, {"min_days": 3, "max_days": 10}]
@@ -58,18 +63,44 @@ class FeatureCalculator:
         else:
             price_change_pct = 0.0
 
+        # 获取前一日收盘价（用于跳空和日间涨幅计算）
+        prev_close = df["close"].iloc[idx - 1] if idx > 0 else 0.0
+
         # 计算跳空
-        if idx > 0:
-            prev_close = df["close"].iloc[idx - 1]
+        if idx > 0 and prev_close > 0:
             gap_up = row["open"] > prev_close
             gap_up_pct = (
                 (row["open"] - prev_close) / prev_close
-                if prev_close > 0 and gap_up
+                if gap_up
                 else 0.0
             )
         else:
             gap_up = False
             gap_up_pct = 0.0
+
+        # 计算 ATR（使用前一天的值 ATR[i-1]，不包含突破当天）
+        # 复用 indicators.py 中的实现，支持 pandas_ta
+        atr_value = 0.0
+        if idx >= self.atr_period and idx > 0:
+            atr_series = TechnicalIndicators.calculate_atr(
+                df["high"], df["low"], df["close"], self.atr_period
+            )
+            # 使用 ATR[i-1]，即前一天的 ATR，自己不该以自己作为标准
+            if pd.notna(atr_series.iloc[idx - 1]):
+                atr_value = atr_series.iloc[idx - 1]
+
+        # 计算日间涨幅的 ATR 标准化版本
+        # daily_return_atr_ratio = (close - prev_close) / ATR[i-1]
+        daily_return_atr_ratio = 0.0
+        if atr_value > 0 and idx > 0:
+            daily_return_atr_ratio = (row["close"] - prev_close) / atr_value
+
+        # 计算突破幅度的 ATR 标准化（可选功能）
+        atr_normalized_height = 0.0
+        if self.use_atr_normalization and atr_value > 0:
+            highest_peak = breakout_info.highest_peak_broken
+            breakout_amplitude = row["close"] - highest_peak.price
+            atr_normalized_height = breakout_amplitude / atr_value
 
         # 计算放量倍数
         volume_surge_ratio = self._calculate_volume_ratio(df, idx)
@@ -105,6 +136,9 @@ class FeatureCalculator:
             stability_score=stability_score,
             labels=labels,
             recent_breakout_count=recent_breakout_count,
+            daily_return_atr_ratio=daily_return_atr_ratio,
+            atr_value=atr_value,
+            atr_normalized_height=atr_normalized_height,
         )
 
     def _classify_type(self, row: pd.Series) -> str:

@@ -131,6 +131,13 @@ class Breakout:
     continuity_days: int            # 连续上涨天数
     stability_score: float          # 稳定性分数
 
+    # 日间涨幅 ATR 标准化：(close[i] - close[i-1]) / ATR
+    daily_return_atr_ratio: float = 0.0
+
+    # ATR 相关字段（可选功能）
+    atr_value: float = 0.0               # ATR 值
+    atr_normalized_height: float = 0.0   # 突破幅度 / ATR
+
     # 质量评分（由QualityScorer计算）
     quality_score: Optional[float] = None
 

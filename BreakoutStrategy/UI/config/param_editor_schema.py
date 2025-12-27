@@ -225,6 +225,29 @@ PARAM_CONFIGS = {
                 },
             },
         },
+        "daily_return_bonus": {
+            "type": dict,
+            "is_bonus_group": True,
+            "default": {
+                "thresholds": [0.03, 0.05, 0.07],
+                "values": [1.10, 1.15, 1.20],
+            },
+            "description": "Daily Return bonus (日间涨幅): thresholds are return percentages",
+            "sub_params": {
+                "thresholds": {
+                    "type": list,
+                    "element_type": float,
+                    "default": [0.03, 0.05, 0.07],
+                    "description": "Threshold levels (3%, 5%, 7% return)",
+                },
+                "values": {
+                    "type": list,
+                    "element_type": float,
+                    "default": [1.10, 1.15, 1.20],
+                    "description": "Bonus multipliers for each level",
+                },
+            },
+        },
         "continuity_bonus": {
             "type": dict,
             "is_bonus_group": True,

@@ -234,6 +234,12 @@ class UIParamLoader:
             ),
         }
 
+        # ATR 配置传递到 FeatureCalculator
+        quality_params = self._params.get('quality_scorer', {})
+        atr_config = quality_params.get('atr_normalization', {})
+        validated['use_atr_normalization'] = atr_config.get('enabled', False)
+        validated['atr_period'] = self._validate_int(atr_config.get('atr_period', 14), 5, 30, 14)
+
         return validated
 
     def get_scorer_params(self) -> Dict[str, Any]:
@@ -309,6 +315,20 @@ class UIParamLoader:
         momentum_bonus = quality_params.get('momentum_bonus', {})
         validated['momentum_bonus_thresholds'] = momentum_bonus.get('thresholds', [2])
         validated['momentum_bonus_values'] = momentum_bonus.get('values', [1.20])
+
+        # Daily Return bonus（日间涨幅，ATR 标准化）
+        # 阈值为 ATR 倍数
+        daily_return_bonus = quality_params.get('daily_return_bonus', {})
+        validated['daily_return_bonus_thresholds'] = daily_return_bonus.get('thresholds', [1.5, 3.0])
+        validated['daily_return_bonus_values'] = daily_return_bonus.get('values', [1.10, 1.20])
+
+        # ATR 标准化配置
+        atr_config = quality_params.get('atr_normalization', {})
+        validated['use_atr_normalization'] = atr_config.get('enabled', False)
+        validated['atr_period'] = self._validate_int(atr_config.get('atr_period', 14), 5, 30, 14)
+        normalized_height = atr_config.get('normalized_height_bonus', {})
+        validated['atr_normalized_height_thresholds'] = normalized_height.get('thresholds', [1.5, 2.5])
+        validated['atr_normalized_height_values'] = normalized_height.get('values', [1.10, 1.20])
 
         return validated
 

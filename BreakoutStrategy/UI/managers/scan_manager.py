@@ -261,6 +261,13 @@ def _scan_single_stock(args):
                     "recent_breakout_count": int(bo.recent_breakout_count)
                     if hasattr(bo, "recent_breakout_count")
                     else 1,
+                    # ATR 相关
+                    "atr_value": float(bo.atr_value)
+                    if hasattr(bo, "atr_value") and bo.atr_value
+                    else None,
+                    "atr_normalized_height": float(bo.atr_normalized_height)
+                    if hasattr(bo, "atr_normalized_height") and bo.atr_normalized_height
+                    else None,
                     # 回测标签
                     "labels": {
                         k: float(v) if v is not None else None

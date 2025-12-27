@@ -24,7 +24,11 @@
   - `visualization/`: 可视化演示脚本
 - `docs/`: 项目文档库
 
-## 📝 编码规范 (Coding Standards)
+## �️ 开发环境 (Development Environment)
+- **包管理**: 强制使用 `uv` 管理 Python 环境与依赖。
+- **操作**: 优先使用 `uv add`, `uv run`, `uv sync` 等命令维护 `pyproject.toml`。
+
+## �📝 编码规范 (Coding Standards)
 - **语言**: 界面显示用英文，代码注释/文档内容用中文。
 - **Docstrings**: `__init__.py` 需包含模块概述；类/函数需说明用途、参数及算法逻辑。
 - **术语**: breakout/bo (突破点), peak/pk (峰值/凸点)
