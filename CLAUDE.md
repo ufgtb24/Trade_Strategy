@@ -2,7 +2,7 @@
 ## 🚀 上下文获取 (Context & Navigation)
 **开始任务前，根据需求读取对应文档：**
 - **了解进度/查找模块** → `docs/system/current_state.md` (开发状态索引)
-- **理解架构/业务逻辑** → `docs/system/PRD.md` (项目需求与设计) N
+- **理解架构/业务逻辑** → `docs/system/PRD.md` (项目需求与设计)
 - **查看具体设计细节** → `docs/modules/specs/` (各模块详细设计与架构意图)
 
 ## 🗺️ 代码地图 (Code Map)
@@ -28,6 +28,7 @@
 - **语言**: 界面显示用英文，代码注释/文档内容用中文。
 - **Docstrings**: `__init__.py` 需包含模块概述；类/函数需说明用途、参数及算法逻辑。
 - **术语**: breakout/bo (突破点), peak/pk (峰值/凸点)
+- **文档输出**: 若用户要求输出研究/分析文档且未指定路径，默认保存在 `docs/research/`。
 
 ## 🤖 代理工作流 (Agent Workflow)
 - **自定义代理路由 (Custom Agent Routing)**: 遇到复杂推导或分析任务时，**除非用户指定特定代理**，否则需先评估任务难度：

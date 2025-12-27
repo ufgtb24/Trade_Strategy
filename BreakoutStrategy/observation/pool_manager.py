@@ -17,6 +17,11 @@ from .interfaces import ITimeProvider, IPoolStorage
 from .pool_base import ObservationPoolBase
 from .pool_entry import PoolEntry
 from .signals import BuySignal, PoolEvent, PoolEventType
+from .evaluators import (
+    CompositeBuyEvaluator,
+    BuyConditionConfig,
+    EvaluationAction,
+)
 
 if TYPE_CHECKING:
     from BreakoutStrategy.analysis import Breakout
@@ -95,8 +100,39 @@ class PoolManager:
         self.min_quality_threshold = config.get('min_quality_score', 0)
         self.buy_confirm_threshold = config.get('buy_confirm_threshold', 0.02)
 
+        # 初始化买入条件评估器
+        self._init_buy_evaluator(config)
+
         # 事件监听器
         self._event_listeners: List[Callable[[PoolEvent], None]] = []
+
+    def _init_buy_evaluator(self, config: dict) -> None:
+        """
+        初始化买入条件评估器
+
+        Args:
+            config: 配置参数，可包含：
+                - buy_condition_config: BuyConditionConfig 实例
+                - buy_condition_config_path: YAML 配置文件路径
+                - mode: 'realtime' | 'backtest'
+        """
+        # 检查是否提供了评估器配置
+        if 'buy_condition_config' in config:
+            buy_config = config['buy_condition_config']
+        elif 'buy_condition_config_path' in config:
+            buy_config = BuyConditionConfig.from_yaml(config['buy_condition_config_path'])
+        else:
+            # 使用默认配置
+            buy_config = BuyConditionConfig()
+
+        # 根据时间提供者类型设置模式
+        if self.time_provider.is_backtest_mode():
+            buy_config.mode = 'backtest'
+        else:
+            buy_config.mode = config.get('mode', 'realtime')
+
+        self.buy_evaluator = CompositeBuyEvaluator(buy_config)
+        self.buy_condition_config = buy_config
 
     # ===== 输入接口 =====
 
@@ -335,48 +371,146 @@ class PoolManager:
     def _evaluate_buy_condition(self,
                                 entry: PoolEntry,
                                 bar: pd.Series,
-                                current_date: date) -> Optional[BuySignal]:
+                                current_date: date,
+                                context: Optional[Dict] = None) -> Optional[BuySignal]:
         """
         评估买入条件
 
-        简化版买入逻辑：价格站稳在峰值上方一定比例
+        使用多维度评估器（时间窗口、价格确认、成交量验证、风险过滤）
+        计算综合评分并决定是否生成买入信号。
 
         Args:
             entry: 池条目
-            bar: 当日价格数据
+            bar: 当日价格数据 (包含 open, high, low, close, volume)
             current_date: 当前日期
+            context: 额外上下文（如分时数据、成交量基准等）
 
         Returns:
             买入信号，不满足条件时返回 None
         """
-        current_price = bar.get('close', 0)
-        if current_price <= 0:
+        context = context or {}
+
+        # 准备评估上下文
+        eval_context = self._prepare_evaluation_context(entry, bar, context)
+
+        # 执行多维度评估
+        result = self.buy_evaluator.evaluate(
+            entry=entry,
+            current_bar=bar,
+            time_provider=self.time_provider,
+            context=eval_context
+        )
+
+        # 更新 entry 评估状态
+        current_price = bar.get('close', 0) if bar is not None else 0
+        if current_price > 0:
+            entry.update_evaluation(result.total_score, current_price)
+
+        # 处理评估结果
+        if result.action == EvaluationAction.REMOVE:
+            # 触发移出
+            self._handle_remove(entry, result.reason)
             return None
 
-        reference_price = entry.highest_peak_price
-        if reference_price <= 0:
-            reference_price = entry.breakout_price
+        if result.action == EvaluationAction.TRANSFER:
+            # 触发转移到日K池
+            self._handle_transfer_to_daily(entry, result.reason)
+            return None
 
-        # 买入条件：价格超过参考价一定比例
-        threshold = reference_price * (1 + self.buy_confirm_threshold)
-
-        if current_price > threshold:
-            # 计算止损价（参考价下方一定比例）
-            stop_loss = reference_price * 0.97
-
+        # 生成买入信号
+        if result.is_buy_signal:
             return BuySignal(
                 symbol=entry.symbol,
                 signal_date=current_date,
-                signal_price=current_price,
-                signal_strength=min(entry.quality_score / 100, 1.0),
+                signal_price=result.suggested_entry_price or current_price,
+                signal_strength=result.signal_strength,
                 entry=entry,
-                reason=f'{entry.pool_type}_confirmation',
-                suggested_entry_price=current_price,
-                suggested_stop_loss=stop_loss,
-                suggested_position_size_pct=0.10
+                reason=result.reason,
+                suggested_entry_price=result.suggested_entry_price or current_price,
+                suggested_stop_loss=result.suggested_stop_loss,
+                suggested_position_size_pct=result.suggested_position_pct,
+                metadata={
+                    'evaluation_result': result.to_dict(),
+                    'total_score': result.total_score,
+                    'action': result.action.value,
+                }
             )
 
         return None
+
+    def _prepare_evaluation_context(
+        self,
+        entry: PoolEntry,
+        bar: pd.Series,
+        extra_context: Dict
+    ) -> Dict:
+        """
+        准备评估上下文
+
+        Args:
+            entry: 池条目
+            bar: 当前K线数据
+            extra_context: 额外上下文
+
+        Returns:
+            完整的评估上下文
+        """
+        context = dict(extra_context)
+
+        # 添加基准成交量
+        if entry.baseline_volume > 0:
+            context.setdefault('volume_ma20', entry.baseline_volume)
+            context.setdefault('baseline_volume', entry.baseline_volume)
+
+        # 添加前收盘价
+        if 'prev_close' not in context:
+            context['prev_close'] = entry.highest_peak_price or entry.breakout_price
+
+        return context
+
+    def _handle_remove(self, entry: PoolEntry, reason: str) -> None:
+        """
+        处理移出动作
+
+        Args:
+            entry: 池条目
+            reason: 移出原因
+        """
+        entry.mark_failed(reason)
+        self.remove_entry(entry.symbol)
+
+        self._emit_event(PoolEvent(
+            event_type=PoolEventType.ENTRY_REMOVED,
+            entry=entry,
+            timestamp=datetime.now(),
+            metadata={'reason': reason, 'action': 'remove_by_evaluation'}
+        ))
+
+    def _handle_transfer_to_daily(self, entry: PoolEntry, reason: str) -> None:
+        """
+        处理转移到日K池的动作
+
+        Args:
+            entry: 池条目
+            reason: 转移原因
+        """
+        if entry.pool_type != 'realtime':
+            return
+
+        # 从实时池移除
+        self.realtime_pool.remove(entry.symbol)
+
+        # 更新状态并加入日K池
+        entry.pool_type = 'daily'
+        entry.status = 'active'
+        self.daily_pool.add(entry)
+
+        self._emit_event(PoolEvent(
+            event_type=PoolEventType.POOL_TRANSFER,
+            entry=entry,
+            timestamp=datetime.now(),
+            metadata={'reason': reason, 'from': 'realtime', 'to': 'daily'}
+        ))
 
     # ===== 条目操作 =====
 

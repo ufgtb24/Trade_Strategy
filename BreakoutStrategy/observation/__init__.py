@@ -71,6 +71,15 @@ from .strategies import (
 from .pool_base import ObservationPoolBase
 from .pool_manager import PoolManager
 
+# 买入条件评估模块
+from .evaluators import (
+    BuyConditionConfig,
+    CompositeBuyEvaluator,
+    EvaluationAction,
+    EvaluationResult,
+    DimensionScore,
+)
+
 
 __all__ = [
     # 数据结构
@@ -96,6 +105,13 @@ __all__ = [
     # 核心类
     'ObservationPoolBase',
     'PoolManager',
+
+    # 买入条件评估
+    'BuyConditionConfig',
+    'CompositeBuyEvaluator',
+    'EvaluationAction',
+    'EvaluationResult',
+    'DimensionScore',
 
     # 工厂函数
     'create_backtest_pool_manager',

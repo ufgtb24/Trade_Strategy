@@ -41,12 +41,21 @@ class PoolEntry:
 
     # ===== 状态 =====
     pool_type: str = 'realtime'  # 'realtime' | 'daily'
-    status: str = 'active'       # 'active' | 'bought' | 'timeout' | 'expired'
+    # 状态值: 'active' | 'monitoring' | 'confirmed' | 'bought' | 'timeout' | 'expired' | 'failed'
+    status: str = 'active'
     retry_count: int = 0
 
     # ===== 监控状态（实盘用）=====
     last_price: Optional[float] = None
     last_update: Optional[datetime] = None
+
+    # ===== 买入评估状态 =====
+    monitoring_start_time: Optional[datetime] = None  # 开始监控时间
+    last_evaluation_score: float = 0.0                # 最近评估分数
+    peak_price_since_add: float = 0.0                 # 加入后最高价
+    lowest_price_since_add: float = 0.0               # 加入后最低价
+    evaluation_count: int = 0                          # 评估次数
+    baseline_volume: float = 0.0                       # 基准成交量 (MA20)
 
     # ===== 元数据 =====
     created_at: datetime = field(default_factory=datetime.now)
@@ -178,6 +187,43 @@ class PoolEntry:
         """标记为过期（日K池过期）"""
         self.status = 'expired'
         self.updated_at = datetime.now()
+
+    def mark_monitoring(self) -> None:
+        """标记为监控中（进入实时监控）"""
+        self.status = 'monitoring'
+        self.monitoring_start_time = datetime.now()
+        self.updated_at = datetime.now()
+
+    def mark_confirmed(self) -> None:
+        """标记为确认买入（评估通过，等待执行）"""
+        self.status = 'confirmed'
+        self.updated_at = datetime.now()
+
+    def mark_failed(self, reason: str = '') -> None:
+        """标记为失败（跌破阈值等，从观察池移出）"""
+        self.status = 'failed'
+        self.updated_at = datetime.now()
+
+    def update_evaluation(self, score: float, price: float) -> None:
+        """
+        更新评估状态
+
+        Args:
+            score: 评估分数
+            price: 当前价格
+        """
+        self.last_evaluation_score = score
+        self.evaluation_count += 1
+        self.last_price = price
+        self.last_update = datetime.now()
+        self.updated_at = datetime.now()
+
+        # 更新价格极值
+        if price > 0:
+            if self.peak_price_since_add == 0 or price > self.peak_price_since_add:
+                self.peak_price_since_add = price
+            if self.lowest_price_since_add == 0 or price < self.lowest_price_since_add:
+                self.lowest_price_since_add = price
 
     def update_price(self, price: float) -> None:
         """更新最新价格"""
