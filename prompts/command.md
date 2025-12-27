@@ -13,22 +13,22 @@ squash E ...     ← 合并到 B
 
 ## 创建 Git worktree 并管理多个工作树
 - 1. 创建并切换到新的 worktree
-git worktree add -b feature /home/yu/PycharmProjects/worktrees/feature
+git worktree add -b feature ../worktrees/feature
 git commit -m "Add new feature"
 
 - 2. 回到 main worktree
 git checkout main
 
 - 3. 合并 feature 分支
-git merge feature
+git merge --squash feature
 
 - 4. 推送合并后的 main
 git push
 
 - 5. 清理不需要的 worktree
-git worktree remove /home/yu/PycharmProjects/worktrees/feature
+git worktree remove ../worktrees/feature
 如果有未提交的更改，可以使用强制删除：
-git worktree remove -f /home/yu/PycharmProjects/worktrees/feature
+git worktree remove -f ../worktrees/feature
 
 - 6. 删除已合并的分支(可选)
 git branch -d feature
