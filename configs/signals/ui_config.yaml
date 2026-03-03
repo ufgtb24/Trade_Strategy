@@ -1,0 +1,97 @@
+scan_results:
+  default_dir: outputs/scan_results
+  recent_file: ''
+scan_settings:
+  as_of_date: '2025-06-20'
+  forward_return:
+    days: 42
+    enabled: true
+  scan_date: '2025-01-20'
+  stock_filter:
+    enabled: true
+    price_max: 3.0
+    price_min: 1.0
+    volume_min: 100000
+stock_data:
+  search_paths:
+  - /home/yu/PycharmProjects/Trade_Strategy/datasets/pkls
+ui:
+  composite_highlight:
+    high_ws_threshold: 5.0
+  display_options:
+    show_bo_score: true
+    show_peak_score: false
+  left_panel_weight: 0.3
+  right_panel_weight: 0.7
+  stock_list_columns:
+    column_labels:
+      active_peaks:
+        display: A.Pks
+        tooltip: 'Active Peaks: Number of currently active peak points'
+      amplitude:
+        display: Runup
+        tooltip: 'Max Runup: Largest directional rise in lookback window (>80% = turbulent)'
+      avg_quality:
+        display: Avg Q
+        tooltip: 'Avg Quality: Average quality score of all breakouts'
+      b_count:
+        display: B
+      d_count:
+        display: D
+        tooltip: 'D Count: Number of Double Trough (DT) signals'
+      forward_return:
+        display: FR
+        tooltip: 'Forward Return: Max gain from scan_date close to N-day high'
+      label:
+        display: Label
+        tooltip: 'Backtest Label: Gain from M-day low to N-day high after breakout'
+      max_quality:
+        display: Max Q
+        tooltip: 'Max Quality: Maximum quality score among all breakouts'
+      multi_peak_count:
+        display: MP
+        tooltip: 'Multi-Peak: Number of breakouts that broke multiple peaks'
+      sequence_label:
+        display: Sequence
+        tooltip: 'Sequence: Signal timeline (e.g. D(2) -> B(3) -> V)'
+      signal_count:
+        display: All
+      symbol:
+        display: Sym
+        tooltip: 'Symbol: Stock ticker symbol'
+      total_breakouts:
+        display: Bts
+        tooltip: 'Breakouts: Total number of breakouts detected'
+      v_count:
+        display: V
+      weighted_sum:
+        display: W.Sum
+        tooltip: 'Weighted Sum: Signal strength weighted by pk_num/tr_num'
+      y_count:
+        display: Y
+    column_priority:
+    - total_breakouts
+    - active_peaks
+    - avg_quality
+    - max_quality
+    - label
+    - multi_peak_count
+    columns_enabled: true
+    visible_columns:
+    - weighted_sum
+    - sequence_label
+    - amplitude
+    - b_count
+    - v_count
+    - y_count
+    - d_count
+    - forward_return
+  symbol_filter:
+    show_bo: true
+    show_by: true
+    show_dt: true
+    show_hv: true
+    show_peak: false
+    show_trough: false
+  window_height: 900
+  window_width: 1600

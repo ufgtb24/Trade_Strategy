@@ -6,25 +6,36 @@ git rebase -i HEAD~n  # n 是要整理的提交数量
 或使用 
 git rebase -i <commit-hash>  # 使用特定的提交哈希
 
+pick B ...       ← 保持 pick（作为合并目标）
+squash C ...     ← 合并到 B
+squash D ...     ← 合并到 B
+squash E ...     ← 合并到 B
+
 ## 创建 Git worktree 并管理多个工作树
 - 1. 创建并切换到新的 worktree
-git worktree add -b feature /home/yu/PycharmProjects/worktrees/feature
+git worktree add -b feature ../worktrees/feature
 git commit -m "Add new feature"
 
 - 2. 回到 main worktree
 git checkout main
 
 - 3. 合并 feature 分支
-git merge feature
+git merge --squash feature
 
 - 4. 推送合并后的 main
 git push
 
 - 5. 清理不需要的 worktree
-git worktree remove /home/yu/PycharmProjects/worktrees/feature
+git worktree remove ../worktrees/feature
+如果有未提交的更改，可以使用强制删除：
+git worktree remove -f ../worktrees/feature
 
 - 6. 删除已合并的分支(可选)
 git branch -d feature
+
+## 压缩提交(和 rebase 类似，但更简单)
+git reset --soft HEAD~1
+git push --force-with-lease
 
 ## 强制推送和重置 Git 分支的方法：
 本地进度覆盖远程进度
@@ -49,3 +60,5 @@ source ~/.bashrc
 sed -i '/pycharm-community --wait/d' ~/.bashrc
 source ~/.bashrc
 
+## 条件断点
+self.symbol == 'AAPL' and str(self.dates[peak_global_idx]) == '2023-01-01'

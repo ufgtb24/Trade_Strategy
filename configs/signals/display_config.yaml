@@ -1,0 +1,6 @@
+# Display Configuration
+# 独立的显示配置，仅控制K线图表显示范围，不参与信号检测
+
+display:
+  after_months: 2
+  before_months: 4
