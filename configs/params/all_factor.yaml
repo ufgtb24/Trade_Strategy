@@ -1,0 +1,141 @@
+breakout_detector:
+  breakout_mode: close
+  cache_dir: ./cache
+  exceed_threshold: 0.005
+  min_relative_height: 0.1
+  min_side_bars: 6
+  peak_measure: body_top
+  peak_supersede_threshold: 0.03
+  total_window: 20
+  use_cache: false
+general_feature:
+  atr_period: 14
+  ma_period: 20
+  stability_lookforward: 5
+quality_scorer:
+  age_factor:
+    enabled: true
+    thresholds:
+    - 42
+    - 63
+    - 252
+    values:
+    - 0.98
+    - 0.97
+    - 0.95
+    mode: lte
+  day_str_factor:
+    enabled: true
+    thresholds:
+    - 1.5
+    - 2.5
+    values:
+    - 1.2
+    - 1.35
+  drought_factor:
+    enabled: true
+    thresholds:
+    - 60.0
+    - 80.0
+    - 120.0
+    values:
+    - 1.25
+    - 1.1
+    - 1.05
+  factor_base_score: 50
+  height_factor:
+    enabled: true
+    thresholds:
+    - 0.2
+    - 0.4
+    - 0.7
+    values:
+    - 1.3
+    - 1.6
+    - 2.0
+  ma_pos_factor:
+    enabled: true
+    period: 20
+    thresholds:
+    - 0.05
+    - 0.1
+    - 0.2
+    values:
+    - 1.1
+    - 1.2
+    - 1.35
+  overshoot_factor:
+    enabled: true
+    gain_window: 5
+    thresholds:
+    - 4.0
+    - 5.0
+    values:
+    - 0.8
+    - 0.6
+    mode: lte
+  pbm_factor:
+    enabled: true
+    lookback: 5
+    thresholds:
+    - 0.7
+    - 1.45
+    values:
+    - 1.15
+    - 1.3
+  peak_vol_factor:
+    enabled: true
+    thresholds:
+    - 3.0
+    - 5.0
+    values:
+    - 0.9
+    - 0.8
+  pk_mom_factor:
+    enabled: true
+    lookback: 30
+    thresholds:
+    - 1.2
+    - 1.5
+    values:
+    - 1.2
+    - 1.5
+    mode: lte
+  pre_vol_factor:
+    enabled: true
+    thresholds:
+    - 5.0
+    - 10.0
+    values:
+    - 1.15
+    - 1.25
+    window: 40
+  streak_factor:
+    enabled: true
+    thresholds:
+    - 2
+    - 4
+    values:
+    - 0.9
+    - 0.75
+    window: 10
+    mode: lte
+  test_factor:
+    enabled: true
+    thresholds:
+    - 2
+    - 3
+    - 4
+    values:
+    - 1.1
+    - 1.25
+    - 1.4
+    mode: lte
+  volume_factor:
+    enabled: true
+    thresholds:
+    - 5.0
+    - 10.0
+    values:
+    - 1.5
+    - 2.0

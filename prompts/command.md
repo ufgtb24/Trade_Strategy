@@ -1,27 +1,48 @@
+claude -r --dangerously-skip-permissions
+## 使用 ralph-loop 进行迭代改进
+/ralph-loop:ralph-loop "根据新的人类模拟基准数据和分析报告对公式进行迭代改进，直到公式结果接近模拟结果" --completion-promise "Satisfied human cognition" --max-iterations 10
+/ralph-loop:cancel-ralph
+
 ## 最有效的管理 Git 分支和工作树的方法：
 git merge --squash feature-branch
+
+## 恢复提交但保留更改
+git reset --soft HEAD~1  # 恢复上一个提交但保留更改   
+git reset --soft commit-hash  # 恢复到特定提交但保留更改
+git push --force-with-lease  # 强制推送更改到远程仓库
 
 ## interactive rebase 方式整理提交记录
 git rebase -i HEAD~n  # n 是要整理的提交数量
 或使用 
 git rebase -i <commit-hash>  # 使用特定的提交哈希
 
+pick B ...       ← 保持 pick（作为合并目标,第一个必须为 pick）
+squash C ...     ← 合并到 B
+squash D ...     ← 合并到 B
+squash E ...     ← 合并到 B
+
+## 将沿途分支 head 置于某个 commit 上
+git branch -f simple-pool D'的新hash
+
+
 ## 创建 Git worktree 并管理多个工作树
 - 1. 创建并切换到新的 worktree
-git worktree add -b feature /home/yu/PycharmProjects/worktrees/feature
+git worktree add -b feature ../worktrees/feature
 git commit -m "Add new feature"
 
 - 2. 回到 main worktree
 git checkout main
 
 - 3. 合并 feature 分支
-git merge feature
+git merge --squash feature
 
 - 4. 推送合并后的 main
 git push
 
 - 5. 清理不需要的 worktree
-git worktree remove /home/yu/PycharmProjects/worktrees/feature
+git worktree remove ../worktrees/feature
+如果有未提交的更改，可以使用强制删除：
+git worktree remove -f ../worktrees/feature
 
 - 6. 删除已合并的分支(可选)
 git branch -d feature
@@ -49,3 +70,5 @@ source ~/.bashrc
 sed -i '/pycharm-community --wait/d' ~/.bashrc
 source ~/.bashrc
 
+## 条件断点
+self.symbol == 'AAPL' and str(self.dates[peak_global_idx]) == '2023-01-01'

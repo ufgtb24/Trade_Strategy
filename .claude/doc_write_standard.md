@@ -57,7 +57,7 @@
 - 质量评分系统
 
 主要类：
-- BreakthroughDetector: 核心检测器
+- BreakoutDetector: 核心检测器
 - FeatureCalculator: 特征计算
 - QualityScorer: 质量评分
 
@@ -65,7 +65,7 @@
 设计文档：docs/modules/plans/02_技术分析模块设计.md
 """
 
-class BreakthroughDetector:
+class BreakoutDetector:
     """
     增量式突破检测器
 

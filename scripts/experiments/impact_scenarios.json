@@ -1,0 +1,563 @@
+[
+    {
+        "id": 1,
+        "items": [
+            {"s": "positive", "impact": "extreme"}
+        ]
+    },
+    {
+        "id": 2,
+        "items": [
+            {"s": "negative", "impact": "extreme"}
+        ]
+    },
+    {
+        "id": 3,
+        "items": [
+            {"s": "negative", "impact": "low"}
+        ]
+    },
+    {
+        "id": 4,
+        "items": [
+            {"s": "negative", "impact": "negligible"}
+        ]
+    },
+    {
+        "id": 5,
+        "items": [
+            {"s": "positive", "impact": "medium"}
+        ]
+    },
+    {
+        "id": 6,
+        "items": [
+            {"s": "positive", "impact": "extreme"},
+            {"s": "positive", "impact": "negligible"}
+        ]
+    },
+    {
+        "id": 7,
+        "items": [
+            {"s": "negative", "impact": "high"},
+            {"s": "negative", "impact": "low"}
+        ]
+    },
+    {
+        "id": 8,
+        "items": [
+            {"s": "positive", "impact": "high"},
+            {"s": "negative", "impact": "medium"}
+        ]
+    },
+    {
+        "id": 9,
+        "items": [
+            {"s": "positive", "impact": "low"},
+            {"s": "negative", "impact": "extreme"}
+        ]
+    },
+    {
+        "id": 10,
+        "items": [
+            {"s": "positive", "impact": "low"},
+            {"s": "positive", "impact": "low"},
+            {"s": "positive", "impact": "low"},
+            {"s": "positive", "impact": "low"},
+            {"s": "positive", "impact": "low"},
+            {"s": "positive", "impact": "extreme"}
+        ]
+    },
+    {
+        "id": 11,
+        "items": [
+            {"s": "positive", "impact": "low"},
+            {"s": "positive", "impact": "low"},
+            {"s": "positive", "impact": "low"},
+            {"s": "negative", "impact": "extreme"}
+        ]
+    },
+    {
+        "id": 12,
+        "items": [
+            {"s": "neutral", "impact": "medium"},
+            {"s": "neutral", "impact": "medium"},
+            {"s": "neutral", "impact": "medium"},
+            {"s": "positive", "impact": "extreme"},
+            {"s": "positive", "impact": "extreme"},
+            {"s": "negative", "impact": "negligible"}
+        ]
+    },
+    {
+        "id": 13,
+        "items": [
+            {"s": "positive", "impact": "medium"},
+            {"s": "positive", "impact": "medium"},
+            {"s": "negative", "impact": "high"}
+        ]
+    },
+    {
+        "id": 14,
+        "items": [
+            {"s": "positive", "impact": "medium"},
+            {"s": "negative", "impact": "low"},
+            {"s": "negative", "impact": "low"},
+            {"s": "negative", "impact": "low"}
+        ]
+    },
+    {
+        "id": 15,
+        "items": [
+            {"s": "positive", "impact": "high"},
+            {"s": "positive", "impact": "low"},
+            {"s": "positive", "impact": "negligible"}
+        ]
+    },
+    {
+        "id": 16,
+        "items": [
+            {"s": "negative", "impact": "medium"},
+            {"s": "negative", "impact": "medium"},
+            {"s": "negative", "impact": "medium"},
+            {"s": "negative", "impact": "medium"}
+        ]
+    },
+    {
+        "id": 17,
+        "items": [
+            {"s": "negative", "impact": "high"},
+            {"s": "negative", "impact": "high"},
+            {"s": "negative", "impact": "high"},
+            {"s": "positive", "impact": "negligible"},
+            {"s": "positive", "impact": "negligible"},
+            {"s": "positive", "impact": "negligible"}
+        ]
+    },
+    {
+        "id": 18,
+        "items": [
+            {"s": "neutral", "impact": "low"},
+            {"s": "neutral", "impact": "low"},
+            {"s": "neutral", "impact": "low"},
+            {"s": "neutral", "impact": "low"}
+        ]
+    },
+    {
+        "id": 19,
+        "items": [
+            {"s": "positive", "impact": "high"},
+            {"s": "positive", "impact": "high"},
+            {"s": "positive", "impact": "high"},
+            {"s": "negative", "impact": "high"}
+        ]
+    },
+    {
+        "id": 20,
+        "items": [
+            {"s": "positive", "impact": "low"},
+            {"s": "positive", "impact": "low"},
+            {"s": "positive", "impact": "low"},
+            {"s": "negative", "impact": "low"}
+        ]
+    },
+    {
+        "id": 21,
+        "items": [
+            {"s": "positive", "impact": "negligible"},
+            {"s": "positive", "impact": "negligible"},
+            {"s": "positive", "impact": "negligible"},
+            {"s": "positive", "impact": "negligible"},
+            {"s": "positive", "impact": "negligible"},
+            {"s": "positive", "impact": "negligible"},
+            {"s": "positive", "impact": "negligible"},
+            {"s": "positive", "impact": "negligible"},
+            {"s": "positive", "impact": "negligible"},
+            {"s": "positive", "impact": "negligible"}
+        ]
+    },
+    {
+        "id": 22,
+        "items": [
+            {"s": "positive", "impact": "medium"},
+            {"s": "positive", "impact": "medium"},
+            {"s": "positive", "impact": "medium"},
+            {"s": "positive", "impact": "medium"},
+            {"s": "positive", "impact": "medium"},
+            {"s": "negative", "impact": "medium"},
+            {"s": "negative", "impact": "medium"},
+            {"s": "negative", "impact": "medium"},
+            {"s": "negative", "impact": "medium"},
+            {"s": "negative", "impact": "medium"}
+        ]
+    },
+    {
+        "id": 23,
+        "items": [
+            {"s": "negative", "impact": "low"},
+            {"s": "negative", "impact": "low"},
+            {"s": "negative", "impact": "low"},
+            {"s": "negative", "impact": "low"},
+            {"s": "negative", "impact": "low"},
+            {"s": "negative", "impact": "high"},
+            {"s": "negative", "impact": "high"},
+            {"s": "negative", "impact": "high"}
+        ]
+    },
+    {
+        "id": 24,
+        "items": [
+            {"s": "neutral", "impact": "low"},
+            {"s": "neutral", "impact": "low"},
+            {"s": "neutral", "impact": "low"},
+            {"s": "neutral", "impact": "low"},
+            {"s": "neutral", "impact": "low"},
+            {"s": "neutral", "impact": "low"},
+            {"s": "neutral", "impact": "low"},
+            {"s": "neutral", "impact": "low"},
+            {"s": "positive", "impact": "low"},
+            {"s": "positive", "impact": "low"}
+        ]
+    },
+    {
+        "id": 25,
+        "items": [
+            {"s": "neutral", "impact": "medium"},
+            {"s": "neutral", "impact": "medium"},
+            {"s": "neutral", "impact": "medium"},
+            {"s": "neutral", "impact": "medium"},
+            {"s": "neutral", "impact": "medium"},
+            {"s": "neutral", "impact": "medium"},
+            {"s": "neutral", "impact": "medium"},
+            {"s": "neutral", "impact": "medium"},
+            {"s": "positive", "impact": "medium"},
+            {"s": "negative", "impact": "medium"}
+        ]
+    },
+    {
+        "id": 26,
+        "items": [
+            {"s": "positive", "impact": "high"},
+            {"s": "positive", "impact": "high"},
+            {"s": "positive", "impact": "high"},
+            {"s": "positive", "impact": "high"},
+            {"s": "positive", "impact": "high"},
+            {"s": "positive", "impact": "high"},
+            {"s": "negative", "impact": "high"},
+            {"s": "negative", "impact": "high"}
+        ]
+    },
+    {
+        "id": 27,
+        "items": [
+            {"s": "positive", "impact": "low"},
+            {"s": "positive", "impact": "low"},
+            {"s": "positive", "impact": "low"},
+            {"s": "positive", "impact": "low"},
+            {"s": "positive", "impact": "low"},
+            {"s": "negative", "impact": "medium"},
+            {"s": "negative", "impact": "medium"},
+            {"s": "neutral", "impact": "low"},
+            {"s": "neutral", "impact": "low"},
+            {"s": "neutral", "impact": "low"}
+        ]
+    },
+    {
+        "id": 28,
+        "items": [
+            {"s": "negative", "impact": "medium"},
+            {"s": "negative", "impact": "medium"},
+            {"s": "negative", "impact": "medium"},
+            {"s": "negative", "impact": "medium"},
+            {"s": "negative", "impact": "medium"},
+            {"s": "negative", "impact": "medium"},
+            {"s": "positive", "impact": "high"},
+            {"s": "positive", "impact": "high"}
+        ]
+    },
+    {
+        "id": 29,
+        "items": [
+            {"s": "negative", "impact": "low"},
+            {"s": "negative", "impact": "low"},
+            {"s": "negative", "impact": "low"},
+            {"s": "negative", "impact": "low"},
+            {"s": "negative", "impact": "low"},
+            {"s": "negative", "impact": "low"},
+            {"s": "negative", "impact": "low"},
+            {"s": "positive", "impact": "extreme"}
+        ]
+    },
+    {
+        "id": 30,
+        "items": [
+            {"s": "positive", "impact": "high"},
+            {"s": "positive", "impact": "high"},
+            {"s": "positive", "impact": "high"},
+            {"s": "positive", "impact": "high"},
+            {"s": "negative", "impact": "low"},
+            {"s": "negative", "impact": "low"},
+            {"s": "negative", "impact": "low"},
+            {"s": "negative", "impact": "low"},
+            {"s": "neutral", "impact": "low"},
+            {"s": "neutral", "impact": "low"}
+        ]
+    },
+    {
+        "id": 31,
+        "items": [
+            {"s": "positive", "impact": "negligible"},
+            {"s": "positive", "impact": "negligible"},
+            {"s": "negative", "impact": "low"},
+            {"s": "negative", "impact": "low"},
+            {"s": "negative", "impact": "low"},
+            {"s": "negative", "impact": "low"},
+            {"s": "negative", "impact": "low"},
+            {"s": "negative", "impact": "low"},
+            {"s": "negative", "impact": "low"},
+            {"s": "negative", "impact": "low"}
+        ]
+    },
+    {
+        "id": 32,
+        "items": [
+            {"s": "positive", "impact": "medium"},
+            {"s": "positive", "impact": "medium"},
+            {"s": "positive", "impact": "medium"},
+            {"s": "negative", "impact": "low"},
+            {"s": "negative", "impact": "low"},
+            {"s": "negative", "impact": "low"},
+            {"s": "negative", "impact": "low"},
+            {"s": "negative", "impact": "low"},
+            {"s": "negative", "impact": "medium"},
+            {"s": "negative", "impact": "medium"}
+        ]
+    },
+    {
+        "id": 33,
+        "items": [
+            {"s": "positive", "impact": "extreme"},
+            {"s": "positive", "impact": "low"},
+            {"s": "positive", "impact": "low"},
+            {"s": "positive", "impact": "low"},
+            {"s": "negative", "impact": "medium"},
+            {"s": "negative", "impact": "medium"},
+            {"s": "negative", "impact": "medium"},
+            {"s": "negative", "impact": "medium"}
+        ]
+    },
+    {
+        "id": 34,
+        "items": [
+            {"s": "positive", "impact": "low"},
+            {"s": "positive", "impact": "low"},
+            {"s": "positive", "impact": "low"},
+            {"s": "positive", "impact": "low"},
+            {"s": "positive", "impact": "low"},
+            {"s": "positive", "impact": "low"},
+            {"s": "positive", "impact": "low"},
+            {"s": "positive", "impact": "low"},
+            {"s": "positive", "impact": "low"},
+            {"s": "positive", "impact": "low"},
+            {"s": "positive", "impact": "low"},
+            {"s": "positive", "impact": "low"},
+            {"s": "positive", "impact": "low"},
+            {"s": "positive", "impact": "low"},
+            {"s": "positive", "impact": "low"},
+            {"s": "neutral", "impact": "low"},
+            {"s": "neutral", "impact": "low"},
+            {"s": "neutral", "impact": "low"},
+            {"s": "neutral", "impact": "low"},
+            {"s": "neutral", "impact": "low"}
+        ]
+    },
+    {
+        "id": 35,
+        "items": [
+            {"s": "negative", "impact": "low"},
+            {"s": "negative", "impact": "low"},
+            {"s": "negative", "impact": "low"},
+            {"s": "negative", "impact": "low"},
+            {"s": "negative", "impact": "low"},
+            {"s": "negative", "impact": "low"},
+            {"s": "negative", "impact": "low"},
+            {"s": "negative", "impact": "low"},
+            {"s": "negative", "impact": "low"},
+            {"s": "negative", "impact": "low"},
+            {"s": "negative", "impact": "low"},
+            {"s": "negative", "impact": "low"},
+            {"s": "negative", "impact": "high"},
+            {"s": "negative", "impact": "high"},
+            {"s": "negative", "impact": "high"}
+        ]
+    },
+    {
+        "id": 36,
+        "items": [
+            {"s": "neutral", "impact": "negligible"},
+            {"s": "neutral", "impact": "negligible"},
+            {"s": "neutral", "impact": "negligible"},
+            {"s": "neutral", "impact": "negligible"},
+            {"s": "neutral", "impact": "negligible"},
+            {"s": "neutral", "impact": "negligible"},
+            {"s": "neutral", "impact": "negligible"},
+            {"s": "neutral", "impact": "negligible"},
+            {"s": "neutral", "impact": "negligible"},
+            {"s": "neutral", "impact": "negligible"},
+            {"s": "neutral", "impact": "negligible"},
+            {"s": "neutral", "impact": "negligible"},
+            {"s": "neutral", "impact": "negligible"},
+            {"s": "neutral", "impact": "negligible"},
+            {"s": "neutral", "impact": "negligible"},
+            {"s": "positive", "impact": "high"},
+            {"s": "positive", "impact": "high"},
+            {"s": "negative", "impact": "low"}
+        ]
+    },
+    {
+        "id": 37,
+        "items": [
+            {"s": "positive", "impact": "extreme"},
+            {"s": "neutral", "impact": "negligible"},
+            {"s": "neutral", "impact": "negligible"},
+            {"s": "neutral", "impact": "negligible"},
+            {"s": "neutral", "impact": "negligible"},
+            {"s": "neutral", "impact": "negligible"},
+            {"s": "neutral", "impact": "negligible"},
+            {"s": "neutral", "impact": "negligible"},
+            {"s": "neutral", "impact": "negligible"},
+            {"s": "neutral", "impact": "negligible"},
+            {"s": "neutral", "impact": "negligible"},
+            {"s": "neutral", "impact": "negligible"},
+            {"s": "neutral", "impact": "negligible"},
+            {"s": "neutral", "impact": "negligible"},
+            {"s": "neutral", "impact": "negligible"},
+            {"s": "negative", "impact": "negligible"}
+        ]
+    },
+    {
+        "id": 38,
+        "items": [
+            {"s": "neutral", "impact": "low"},
+            {"s": "neutral", "impact": "low"},
+            {"s": "neutral", "impact": "low"},
+            {"s": "neutral", "impact": "low"},
+            {"s": "neutral", "impact": "low"},
+            {"s": "neutral", "impact": "low"},
+            {"s": "neutral", "impact": "low"},
+            {"s": "neutral", "impact": "low"},
+            {"s": "neutral", "impact": "low"},
+            {"s": "neutral", "impact": "low"},
+            {"s": "neutral", "impact": "low"},
+            {"s": "neutral", "impact": "low"},
+            {"s": "neutral", "impact": "low"},
+            {"s": "neutral", "impact": "low"},
+            {"s": "neutral", "impact": "low"},
+            {"s": "neutral", "impact": "low"},
+            {"s": "positive", "impact": "medium"},
+            {"s": "positive", "impact": "medium"},
+            {"s": "negative", "impact": "medium"},
+            {"s": "negative", "impact": "medium"}
+        ]
+    },
+    {
+        "id": 39,
+        "items": [
+            {"s": "positive", "impact": "low"},
+            {"s": "positive", "impact": "low"},
+            {"s": "positive", "impact": "low"},
+            {"s": "positive", "impact": "low"},
+            {"s": "positive", "impact": "medium"},
+            {"s": "positive", "impact": "medium"},
+            {"s": "positive", "impact": "medium"},
+            {"s": "positive", "impact": "medium"},
+            {"s": "positive", "impact": "high"},
+            {"s": "positive", "impact": "high"},
+            {"s": "positive", "impact": "high"},
+            {"s": "positive", "impact": "high"},
+            {"s": "negative", "impact": "low"},
+            {"s": "negative", "impact": "low"},
+            {"s": "negative", "impact": "low"},
+            {"s": "negative", "impact": "low"}
+        ]
+    },
+    {
+        "id": 40,
+        "items": [
+            {"s": "negative", "impact": "low"},
+            {"s": "negative", "impact": "low"},
+            {"s": "negative", "impact": "low"},
+            {"s": "negative", "impact": "low"},
+            {"s": "negative", "impact": "low"},
+            {"s": "negative", "impact": "low"},
+            {"s": "negative", "impact": "low"},
+            {"s": "negative", "impact": "low"},
+            {"s": "negative", "impact": "low"},
+            {"s": "negative", "impact": "low"},
+            {"s": "negative", "impact": "low"},
+            {"s": "negative", "impact": "low"},
+            {"s": "positive", "impact": "medium"},
+            {"s": "positive", "impact": "medium"},
+            {"s": "positive", "impact": "medium"}
+        ]
+    },
+    {
+        "id": 41,
+        "items": [
+            {"s": "positive", "impact": "medium"},
+            {"s": "positive", "impact": "medium"},
+            {"s": "positive", "impact": "medium"},
+            {"s": "positive", "impact": "medium"},
+            {"s": "positive", "impact": "medium"},
+            {"s": "positive", "impact": "medium"},
+            {"s": "positive", "impact": "medium"},
+            {"s": "positive", "impact": "medium"},
+            {"s": "positive", "impact": "medium"},
+            {"s": "positive", "impact": "medium"},
+            {"s": "negative", "impact": "high"},
+            {"s": "negative", "impact": "high"},
+            {"s": "negative", "impact": "high"},
+            {"s": "negative", "impact": "high"},
+            {"s": "negative", "impact": "high"}
+        ]
+    },
+    {
+        "id": 42,
+        "items": [
+            {"s": "positive", "impact": "low"},
+            {"s": "positive", "impact": "low"},
+            {"s": "positive", "impact": "low"},
+            {"s": "positive", "impact": "low"},
+            {"s": "positive", "impact": "low"},
+            {"s": "positive", "impact": "low"},
+            {"s": "positive", "impact": "low"},
+            {"s": "positive", "impact": "low"},
+            {"s": "positive", "impact": "high"},
+            {"s": "positive", "impact": "high"},
+            {"s": "positive", "impact": "high"},
+            {"s": "positive", "impact": "high"},
+            {"s": "negative", "impact": "extreme"},
+            {"s": "negative", "impact": "extreme"},
+            {"s": "negative", "impact": "extreme"}
+        ]
+    },
+    {
+        "id": 43,
+        "items": [
+            {"s": "negative", "impact": "medium"},
+            {"s": "negative", "impact": "medium"},
+            {"s": "negative", "impact": "medium"},
+            {"s": "negative", "impact": "medium"},
+            {"s": "negative", "impact": "medium"},
+            {"s": "negative", "impact": "medium"},
+            {"s": "negative", "impact": "medium"},
+            {"s": "negative", "impact": "medium"},
+            {"s": "negative", "impact": "medium"},
+            {"s": "negative", "impact": "medium"},
+            {"s": "negative", "impact": "high"},
+            {"s": "negative", "impact": "high"},
+            {"s": "negative", "impact": "high"},
+            {"s": "positive", "impact": "extreme"},
+            {"s": "positive", "impact": "extreme"}
+        ]
+    }
+]

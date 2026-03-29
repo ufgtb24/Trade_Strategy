@@ -1,0 +1,260 @@
+[
+    {
+        "id": 1,
+        "sentiment": "positive",
+        "sentiment_score": 0.55,
+        "reasoning": "原标注0.65偏高。单条extreme正面受Scarcity严格保护（仅1条方向性新闻），应压至强区间底部。修正为0.55。"
+    },
+    {
+        "id": 2,
+        "sentiment": "negative",
+        "sentiment_score": -0.75,
+        "reasoning": "原标注-0.78。单条extreme负面，Scarcity保护同样适用。损失厌恶倍率=0.75/0.55=1.36（相对ID1），符合1.3-1.5倍要求。修正为-0.75。"
+    },
+    {
+        "id": 3,
+        "sentiment": "negative",
+        "sentiment_score": -0.15,
+        "reasoning": "单条low负面，Scarcity保护+低impact，弱区间底部。标注合理。"
+    },
+    {
+        "id": 4,
+        "sentiment": "negative",
+        "sentiment_score": -0.05,
+        "reasoning": "单条negligible负面，极弱区间。近乎噪音，标注合理。"
+    },
+    {
+        "id": 5,
+        "sentiment": "positive",
+        "sentiment_score": 0.22,
+        "reasoning": "单条medium正面，Scarcity保护，弱区间上部。标注合理。"
+    },
+    {
+        "id": 6,
+        "sentiment": "positive",
+        "sentiment_score": 0.57,
+        "reasoning": "原标注0.68，比ID1高0.13，变化过大。仅多了一条negligible（近乎透明），不应有大的分数变化。修正为0.57（仅比修正后的ID1微增0.02）。"
+    },
+    {
+        "id": 7,
+        "sentiment": "negative",
+        "sentiment_score": -0.48,
+        "reasoning": "原标注-0.55偏高。仅2条方向性新闻在Scarcity边界，应偏保守。high负面锚定+low确认，中等区间偏下。修正为-0.48。"
+    },
+    {
+        "id": 8,
+        "sentiment": "positive",
+        "sentiment_score": 0.1,
+        "reasoning": "冲突场景：high正面vs medium负面。冲突压低，损失厌恶缩小差距。标注合理。"
+    },
+    {
+        "id": 9,
+        "sentiment": "negative",
+        "sentiment_score": -0.72,
+        "reasoning": "原标注-0.75与纯extreme负面(ID2修正后-0.75)相同，但这里有1条low正面微弱对冲，应略低。修正为-0.72。"
+    },
+    {
+        "id": 10,
+        "sentiment": "positive",
+        "sentiment_score": 0.78,
+        "reasoning": "extreme锚定+5条low方向确认，大样本无反向。Scarcity不再限制，极强区间底部。标注合理。"
+    },
+    {
+        "id": 11,
+        "sentiment": "negative",
+        "sentiment_score": -0.68,
+        "reasoning": "原标注-0.72与ID9相同，但ID11有3条low正面（vs ID9的1条），对冲力度更大，应略低。修正为-0.68。"
+    },
+    {
+        "id": 12,
+        "sentiment": "positive",
+        "sentiment_score": 0.85,
+        "reasoning": "2条extreme正面叠加，negligible负面透明，neutral不稀释。极强区间。标注合理。"
+    },
+    {
+        "id": 13,
+        "sentiment": "negative",
+        "sentiment_score": -0.2,
+        "reasoning": "冲突场景：2条medium正面vs1条high负面。high>>medium非线性+损失厌恶使负面占优，冲突压低。弱区间中部，标注合理。"
+    },
+    {
+        "id": 14,
+        "sentiment": "negative",
+        "sentiment_score": -0.12,
+        "reasoning": "冲突场景：1条medium正面vs3条low负面。medium>low非线性，但3条低impact负面+损失厌恶构成平衡。微偏负合理。"
+    },
+    {
+        "id": 15,
+        "sentiment": "positive",
+        "sentiment_score": 0.42,
+        "reasoning": "纯正面：high锚定+low确认+negligible透明。3条方向性刚过Scarcity阈值，中等区间偏下。标注合理。"
+    },
+    {
+        "id": 16,
+        "sentiment": "negative",
+        "sentiment_score": -0.62,
+        "reasoning": "4条medium纯负面，无反向，样本充足+损失厌恶。强区间底部。标注合理。"
+    },
+    {
+        "id": 17,
+        "sentiment": "negative",
+        "sentiment_score": -0.8,
+        "reasoning": "3条high负面主导，3条negligible正面近乎透明。等效纯负面大样本，强区间上部。标注合理。"
+    },
+    {
+        "id": 18,
+        "sentiment": "neutral",
+        "sentiment_score": 0.0,
+        "reasoning": "全部neutral，无方向性信号。标注合理。"
+    },
+    {
+        "id": 19,
+        "sentiment": "positive",
+        "sentiment_score": 0.35,
+        "reasoning": "3:1同级high冲突。损失厌恶使1负面≈1.5正面，净效果偏正。中等区间。与ID26(6:2 high)对比合理——ID26样本更大更有信心(0.52>0.35)。"
+    },
+    {
+        "id": 20,
+        "sentiment": "positive",
+        "sentiment_score": 0.12,
+        "reasoning": "3:1同级low冲突。与ID19同比例但low代替high，幅度远小(0.12 vs 0.35)，反映high vs low非线性差距。弱区间，标注合理。"
+    },
+    {
+        "id": 21,
+        "sentiment": "positive",
+        "sentiment_score": 0.06,
+        "reasoning": "10条negligible正面。Negligible近乎透明原则，数量再多不质变。极弱区间，标注合理。"
+    },
+    {
+        "id": 22,
+        "sentiment": "neutral",
+        "sentiment_score": -0.05,
+        "reasoning": "5正5负medium完美冲突。冲突压低至≈0，损失厌恶微偏负。标注合理。"
+    },
+    {
+        "id": 23,
+        "sentiment": "negative",
+        "sentiment_score": -0.85,
+        "reasoning": "原标注-0.82略低。8条纯负面大样本（3high+5low），无反向+损失厌恶。样本充足足以进入极强区间底部0.85。修正为-0.85。"
+    },
+    {
+        "id": 24,
+        "sentiment": "positive",
+        "sentiment_score": 0.1,
+        "reasoning": "2条low正面+neutral不稀释。Scarcity保护（仅2条方向性）+低impact，弱区间。标注合理。"
+    },
+    {
+        "id": 25,
+        "sentiment": "neutral",
+        "sentiment_score": -0.02,
+        "reasoning": "1正1负medium完美抵消+neutral不稀释。冲突压低至≈0，损失厌恶微偏负。标注合理。"
+    },
+    {
+        "id": 26,
+        "sentiment": "positive",
+        "sentiment_score": 0.52,
+        "reasoning": "6:2同级high（3:1比例），大样本。损失厌恶后净效果偏正，强区间底部。与ID19(3:1 high, 0.35)对比合理——更大样本带来更高信心。"
+    },
+    {
+        "id": 27,
+        "sentiment": "negative",
+        "sentiment_score": -0.18,
+        "reasoning": "原标注-0.12偏低。2条medium负面+损失厌恶对抗5条low正面，medium>>low非线性差距+损失厌恶应让偏移更显著。弱区间中部。修正为-0.18。"
+    },
+    {
+        "id": 28,
+        "sentiment": "negative",
+        "sentiment_score": -0.35,
+        "reasoning": "原标注-0.28偏低。6条medium负面叠加力量很强（参考ID16: 4条medium纯负面=-0.62），2条high正面对冲有限。6条medium负面+损失厌恶vs2条high正面，净效果应在中等区间。修正为-0.35。"
+    },
+    {
+        "id": 29,
+        "sentiment": "positive",
+        "sentiment_score": 0.4,
+        "reasoning": "extreme正面锚定主导，7条low负面无法对抗（extreme>>low高度非线性）。Impact主导原则，但7条低impact负面+损失厌恶构成一定拖累。中等区间。标注合理。"
+    },
+    {
+        "id": 30,
+        "sentiment": "positive",
+        "sentiment_score": 0.5,
+        "reasoning": "4条high正面vs4条low负面+neutral不稀释。high>>low，正面impact远优。大样本，强区间底部。存在冲突但impact差距大，标注合理。"
+    },
+    {
+        "id": 31,
+        "sentiment": "negative",
+        "sentiment_score": -0.4,
+        "reasoning": "原标注-0.35偏低。negligible正面近乎透明，实质等效纯负面。8条low纯负面大样本，low的量变应产生一定质变，应进入中等区间。修正为-0.40。"
+    },
+    {
+        "id": 32,
+        "sentiment": "negative",
+        "sentiment_score": -0.38,
+        "reasoning": "原标注-0.30偏低。Medium层面3正vs2负+损失厌恶大致平衡略偏负，加上5条low负面净余无对冲。中等区间负面。修正为-0.38。"
+    },
+    {
+        "id": 33,
+        "sentiment": "positive",
+        "sentiment_score": 0.38,
+        "reasoning": "extreme正面锚定+3low确认vs4medium负面+损失厌恶。Impact主导但负面拖累显著。中等区间。标注合理。"
+    },
+    {
+        "id": 34,
+        "sentiment": "positive",
+        "sentiment_score": 0.3,
+        "reasoning": "15条low正面大样本纯同向+neutral不稀释。low量变质变但受impact限制。中等区间底部，标注合理。"
+    },
+    {
+        "id": 35,
+        "sentiment": "negative",
+        "sentiment_score": -0.88,
+        "reasoning": "纯负面大样本：3high锚定+12low确认。15条无反向+损失厌恶。与ID23(修正后-0.85, 8条)对比，ID35多7条low确认，更高合理。极强区间。"
+    },
+    {
+        "id": 36,
+        "sentiment": "positive",
+        "sentiment_score": 0.48,
+        "reasoning": "2条high正面主导，1条low负面微弱对冲，neutral不稀释。中等区间偏上。标注合理。"
+    },
+    {
+        "id": 37,
+        "sentiment": "positive",
+        "sentiment_score": 0.57,
+        "reasoning": "原标注0.68偏高。Neutral不稀释不增强，negligible负面透明。应≈ID1（修正后0.55），微降因negligible负面。修正为0.57（≈ID6水平，与ID1一致性检验通过）。"
+    },
+    {
+        "id": 38,
+        "sentiment": "neutral",
+        "sentiment_score": -0.03,
+        "reasoning": "2正2负medium完美冲突+neutral不稀释。冲突压低至≈0，损失厌恶微偏负。标注合理。"
+    },
+    {
+        "id": 39,
+        "sentiment": "positive",
+        "sentiment_score": 0.58,
+        "reasoning": "12条正面(4high+4medium+4low)vs4条low负面。正面impact远优+数量3:1+大样本。强区间。标注合理。"
+    },
+    {
+        "id": 40,
+        "sentiment": "negative",
+        "sentiment_score": -0.2,
+        "reasoning": "原标注-0.15偏低。12条low负面数量极多+损失厌恶的叠加力量应略强于3条medium正面。弱区间中上部。修正为-0.20。"
+    },
+    {
+        "id": 41,
+        "sentiment": "negative",
+        "sentiment_score": -0.42,
+        "reasoning": "原标注-0.35偏低。5条high负面+损失厌恶的力量应更显著超过10条medium正面（high>>medium非线性差距）。中等区间。修正为-0.42。"
+    },
+    {
+        "id": 42,
+        "sentiment": "negative",
+        "sentiment_score": -0.72,
+        "reasoning": "原标注-0.65偏低。3条extreme负面力量极强+损失厌恶，12条正面(4high+8low)的impact等级远低于extreme，对冲有限。强区间中上部。修正为-0.72。"
+    },
+    {
+        "id": 43,
+        "sentiment": "negative",
+        "sentiment_score": -0.5,
+        "reasoning": "原标注-0.45偏低。13条负面(3high+10medium)数量压倒+损失厌恶的叠加力量很强，2条extreme正面虽然单条信号极强但难以完全对抗。中等区间中部。修正为-0.50。"
+    }
+]

@@ -1,0 +1,57 @@
+proxy: "http://127.0.0.1:7890"
+
+collectors:
+  finnhub:
+    enable: true
+    timeout: 10
+  alphavantage:
+    enable: false
+    timeout: 10
+  edgar:
+    enable: false
+    user_agent: "TradeStrategy research@example.com"
+
+# API keys 存放在 configs/api_keys.yaml（已加入 .gitignore）
+filter:
+  max_items: 20                  # 静态回退值（仅日期解析失败时使用，正常由 dynamic_max_items 覆盖）
+  # 与低价值模板的 cosine similarity 阈值，超过则过滤
+  # 调高(→0.8)：只过滤非常明显的垃圾，保留更多新闻
+  # 调低(→0.5)：更激进过滤，可能误杀正常财经新闻
+  semantic_filter_threshold: 0.65
+  # 两条新闻标题的 cosine similarity 阈值，超过则视为同一事件去重
+  # 调高(→0.85)：只合并几乎相同的标题，保留更多相似报道
+  # 调低(→0.65)：更激进去重，相关但不同角度的报道也会被合并
+  semantic_dedup_threshold: 0.75
+  # 新闻标题与 "{公司名} {ticker}" 参考向量的 cosine similarity 阈值
+  # 低于阈值视为无关新闻（如 AAPL 分析中出现 VW 财报）
+  # 调高(→0.6)：更严格，可能误杀间接相关的供应链/行业新闻
+  # 调低(→0.4)：更宽松，保留更多潜在相关新闻
+  relevance_threshold: 0.55
+  dynamic_max_items:              # 动态计算: max_items = clamp(base × √days, min, max)
+    base: 10.0
+    min: 15
+    max: 100
+  time_decay:
+    enable: true
+    half_life: 3.0                # 半衰期（天），3天前权重50%
+    sample_prefer_recent: false   # LLM 预算优化：采样偏好近期新闻（资源受限时开启）
+    sample_alpha: 0.25            # 偏好强度（仅 sample_prefer_recent=true 时生效）
+
+analyzer:
+  backend: "deepseek"          # "glm" | "deepseek" | "finbert_roberta"
+  # model 与 backend 对应:
+  #   deepseek -> "deepseek-chat"
+  #   glm      -> "glm-4.7-flash"
+  #   finbert_roberta -> 忽略此字段（使用固定的 HuggingFace 模型）
+  model: "deepseek-chat"
+  temperature: 0.1
+  max_concurrency: 20
+
+output:
+  output_dir: "outputs/news_sentiment"
+
+cache:
+  enable: true
+  cache_dir: "cache/news_sentiment"
+  news_ttl_days: 30          # 新闻30天后过期
+  sentiment_ttl_days: 0      # 情感结果永不过期

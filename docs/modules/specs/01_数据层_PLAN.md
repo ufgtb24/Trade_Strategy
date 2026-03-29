@@ -1,6 +1,6 @@
 # 数据层技术设计文档
 
-**模块路径**：`BreakthroughStrategy/data/`
+**模块路径**：`BreakoutStrategy/data/`
 **创建日期**：2025-11-16
 
 ---
@@ -24,7 +24,7 @@
 ## 二、模块架构
 
 ```
-BreakthroughStrategy/data/
+BreakoutStrategy/data/
 ├── __init__.py
 ├── tiger_adapter.py          # TigerDataAdapter - Tiger API封装
 ├── cache_manager.py          # DataCache - 数据缓存
@@ -93,7 +93,7 @@ class TigerDataAdapter:
             config: Tiger API配置（如果为None，从ConfigManager读取）
         """
         if config is None:
-            from BreakthroughStrategy.config import ConfigManager
+            from BreakoutStrategy.config import ConfigManager
             cfg = ConfigManager.get_instance()
             api_config = cfg.get_section('api')
             credentials = api_config['credentials']
@@ -109,11 +109,11 @@ class TigerDataAdapter:
         self.quote_client = QuoteClient(self.client_config)
 
         # 速率限制
-        from BreakthroughStrategy.utils.decorators import RateLimiter
+        from BreakoutStrategy.utils.decorators import RateLimiter
         self.rate_limiter = RateLimiter(max_calls=api_config['tiger']['rate_limit'], period=1.0)
 
         # 日志
-        from BreakthroughStrategy.utils.logger import Logger
+        from BreakoutStrategy.utils.logger import Logger
         self.logger = Logger.get_logger('data.tiger_adapter')
 
     def get_historical_data(
@@ -342,14 +342,14 @@ class DataCache:
             cache_duration_minutes: 缓存有效期（分钟）
         """
         if db_manager is None:
-            from BreakthroughStrategy.utils.database import DatabaseManager
+            from BreakoutStrategy.utils.database import DatabaseManager
             self.db = DatabaseManager.get_instance()
         else:
             self.db = db_manager
 
         self.cache_duration = timedelta(minutes=cache_duration_minutes)
 
-        from BreakthroughStrategy.utils.logger import Logger
+        from BreakoutStrategy.utils.logger import Logger
         self.logger = Logger.get_logger('data.cache')
 
     def get_cached_data(
@@ -459,7 +459,7 @@ class RealtimeStream:
     def __init__(self, config=None):
         """初始化WebSocket客户端"""
         if config is None:
-            from BreakthroughStrategy.config import ConfigManager
+            from BreakoutStrategy.config import ConfigManager
             cfg = ConfigManager.get_instance()
             credentials = cfg.get_section('api')['credentials']
         else:
@@ -477,7 +477,7 @@ class RealtimeStream:
         self.callbacks = {}  # {symbol: [callback1, callback2, ...]}
 
         # 日志
-        from BreakthroughStrategy.utils.logger import Logger
+        from BreakoutStrategy.utils.logger import Logger
         self.logger = Logger.get_logger('data.realtime')
 
         # 连接状态
@@ -692,7 +692,7 @@ class DataManager:
         self.stream = RealtimeStream()
         self.validator = DataValidator()
 
-        from BreakthroughStrategy.utils.logger import Logger
+        from BreakoutStrategy.utils.logger import Logger
         self.logger = Logger.get_logger('data.manager')
 
     def get_historical_data(
@@ -770,7 +770,7 @@ class DataManager:
 ## 九、使用示例
 
 ```python
-from BreakthroughStrategy.data import DataManager
+from BreakoutStrategy.data import DataManager
 
 # 初始化数据管理器
 dm = DataManager()
@@ -844,7 +844,7 @@ def get_multiple_symbols(
 ```python
 # tests/data/test_tiger_adapter.py
 import pytest
-from BreakthroughStrategy.data.tiger_adapter import TigerDataAdapter
+from BreakoutStrategy.data.tiger_adapter import TigerDataAdapter
 
 class TestTigerDataAdapter:
 
