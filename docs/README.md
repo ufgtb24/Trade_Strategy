@@ -1,20 +1,27 @@
 # 文档系统说明
 
-**用途**：AI 获取项目文档结构和索引的入口
+**用途**：`docs/` 目录存放用户可读文档；AI 上下文文档请见 `.claude/docs/`
 
 ---
 
-## 核心入口
+## 文档分工
 
-**primary**: [system/current_state.md](system/current_state.md)
-- 模块完成状态（已完成/待开发）
-- 下一步开发计划
-- 研究报告索引
+| 目录 | 用途 | 维护者 |
+|------|------|--------|
+| `.claude/docs/` | AI 上下文（系统概览、模块架构摘要） | `update-ai-context` skill |
+| `docs/research/` | 研究报告（子代理分析输出） | `write-user-doc` skill |
+| `docs/explain/` | 代码解释文档（面向人类） | `write-user-doc` skill |
+| `docs/tmp/` | 临时计划与设计草稿 | `write-user-doc` skill |
+| `docs/superpowers/` | Superpowers 插件相关文档 | 手动维护 |
 
-**secondary**: [system/PRD.md](system/PRD.md)
-- 项目概述和核心策略
-- 系统架构和模块划分
-- 术语表
+---
+
+## AI 上下文入口
+
+AI 获取项目背景时，请阅读：
+
+- **系统概览**：`.claude/docs/system_outline.md`（项目状态、架构、模块划分）
+- **模块详情**：`.claude/docs/modules/<模块名>.md`（各模块架构意图与关键设计）
 
 ---
 
@@ -22,48 +29,14 @@
 
 ```
 docs/
-├── README.md              # 文档系统说明
-├── system/
-│   ├── PRD.md            # 项目需求文档（静态）
-│   └── current_state.md  # 开发状态索引（动态）
-├── modules/
-│   ├── plans/           # 模块设计文档（开发前）
-│   ├── README.md        # 模块文档说明
-└── research/            # 研究报告（子代理输出）
+├── README.md          # 本文件（文档系统说明）
+├── research/          # 研究报告
+├── explain/           # 代码解释文档
+├── tmp/               # 临时计划与设计草稿
+└── superpowers/       # Superpowers 插件文档
 ```
 
-## 文档类型
-
-| 文档类型 | 位置 | 何时创建 | 何时更新 |
-|---------|------|---------|---------|
-| PRD.md | system/ | 项目初期 | 很少 |
-| current_state.md | system/ | 项目初期 | 频繁 |
-| 模块设计 | modules/plans/ | 开发前 | 设计调整时 |
-| 研究报告 | research/ | 研究完成后 | 很少 |
-| 代码文档 | 代码中 | 开发时 | 代码修改时 |
-
-**获取已完成模块信息的方式**：
-1. **开发前**：阅读 `plans/XX_模块名设计.md`（接口定义、算法伪代码、数据结构）
-2. **开发后**：
-   - 查看代码位置（如 `BreakoutStrategy/analysis/`）
-   - 阅读模块 `__init__.py` 的 docstring（模块概述）
-   - 阅读关键类的 docstring 和注释（实现细节）
-   - 运行示例脚本（如 `scripts/visual_demo.py`）
-
-**更新 current_state.md 时机**：
-- 模块开发完成（使用 `/update_doc module` 命令）
-- 重大架构调整
-- 研究报告生成（可选）
-
 ---
 
-## 相关路径
-
-- 代码仓库：`/home/yu/PycharmProjects/Trade_Strategy/BreakoutStrategy/`
-- 主配置：`CLAUDE.md`
-- 手动更新命令：`.claude/commands/update_doc.md`
-
----
-
-**版本**：v3.0（代码即文档）
-**更新日期**：2025-11-28
+**版本**：v4.0（AI/用户文档分离）
+**更新日期**：2026-04-02

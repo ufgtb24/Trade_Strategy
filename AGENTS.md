@@ -65,8 +65,8 @@ Use this guide to understand the codebase architecture, workflows, and conventio
   - **First Principles**: Drill down to core requirements. Avoid assumptions.
   - **Occam's Razor**: Simplest solution is best. Avoid over-engineering.
 - **Workflow**:
-  - **Context**: Check `docs/system/current_state.md` and `PRD.md` before starting complex tasks.
-  - **Planning**: Use `docs/tmp_plans/` for drafting complex implementation strategies.
+  - **Context**: Check `.claude/docs/system_outline.md` before starting complex tasks. For module-specific detail, see `.claude/docs/modules/<模块名>.md`.
+  - **Planning**: Use `docs/tmp/` for drafting complex implementation strategies.
   - **Documentation**: Put code explanations in `docs/explain/` and research in `docs/research/`.
 - **Agent Roles**:
   - **Standard**: Routine coding, bug fixes.
