@@ -1,7 +1,7 @@
 [project]
 name = "Trade_Strategy"
 version = "0.1.0"
-description = "Breakout strategy analysis and observation system"
+description = "Breakout scanning and multi-factor filtering system for US equities"
 requires-python = ">=3.12"
 dependencies = [
     "pandas>=2.0.0",

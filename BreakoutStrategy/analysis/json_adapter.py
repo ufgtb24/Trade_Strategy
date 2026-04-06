@@ -17,7 +17,7 @@ from typing import Dict, List, Optional
 import numpy as np
 import pandas as pd
 
-from BreakoutStrategy.analysis import Breakout, Peak
+from BreakoutStrategy.analysis.breakout_detector import Breakout, Peak
 
 
 @dataclass

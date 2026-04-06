@@ -53,4 +53,11 @@ __all__ = [
 
     # 向后兼容
     'QualityScorer',
+
+    # JSON 适配器
+    'BreakoutJSONAdapter',
+    'LoadResult',
 ]
+
+# JSON 适配器（从 JSON 扫描结果重建 Breakout 对象）
+from .json_adapter import BreakoutJSONAdapter, LoadResult

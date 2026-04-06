@@ -70,9 +70,6 @@ class InteractiveUI:
         self.template_manager = TemplateManager()
         self.template_matched = {}  # {symbol: [matched_bo_indices]}
 
-        # 观察池管理器（懒加载）
-        self._pool_mgr = None
-
         # 创建UI
         self._create_ui()
 
@@ -90,7 +87,6 @@ class InteractiveUI:
             on_rescan_all_callback=self._on_rescan_all_clicked,
             on_new_scan_callback=self._on_new_scan_clicked,
             get_json_params_callback=self._get_scan_data,
-            on_add_to_pool_callback=self.add_to_observation_pool,
             on_use_template_changed_callback=self._on_use_template_changed,
             on_template_file_changed_callback=self._on_template_file_changed,
             get_file_validator_callback=self._get_template_file_validator,
@@ -456,7 +452,7 @@ class InteractiveUI:
         Raises:
             ValueError: 如果股票数据未找到
         """
-        from BreakoutStrategy.observation.adapters import BreakoutJSONAdapter
+        from BreakoutStrategy.analysis import BreakoutJSONAdapter
 
         # 查找股票数据
         stock_data = None
@@ -1638,77 +1634,3 @@ class InteractiveUI:
             "Scan Complete",
             f"Scan completed successfully.\n\nResults saved to:\n{output_file}",
         )
-
-    # ==================== 观察池集成 ====================
-
-    def _get_or_create_pool_manager(self):
-        """
-        获取或创建观察池管理器（懒加载）
-
-        Returns:
-            PoolManager 实例
-        """
-        if self._pool_mgr is None:
-            from datetime import date
-            from BreakoutStrategy.observation import create_backtest_pool_manager
-            self._pool_mgr = create_backtest_pool_manager(date.today())
-        return self._pool_mgr
-
-    def add_to_observation_pool(self):
-        """
-        将当前股票的突破添加到观察池
-
-        此方法将当前显示的所有突破添加到观察池中，
-        用于后续的买入信号评估。
-        """
-        from tkinter import messagebox
-
-        if not hasattr(self, 'current_breakouts') or not self.current_breakouts:
-            self.param_panel.set_status("No breakouts to add", "orange")
-            return
-
-        pool_mgr = self._get_or_create_pool_manager()
-        added = 0
-        for bo in self.current_breakouts:
-            if pool_mgr.add_from_breakout(bo):
-                added += 1
-
-        # 更新状态
-        symbol = self.current_symbol or "Unknown"
-        if added > 0:
-            self.param_panel.set_status(
-                f"Added {added} breakouts from {symbol} to pool", "green"
-            )
-        else:
-            self.param_panel.set_status(
-                f"No new breakouts added (may already exist)", "orange"
-            )
-
-    def show_pool_status(self):
-        """
-        显示观察池状态
-
-        在状态栏中显示当前观察池的统计信息。
-        """
-        pool_mgr = self._get_or_create_pool_manager()
-
-        realtime_count = len(pool_mgr.realtime_pool.get_all('active'))
-        daily_count = len(pool_mgr.daily_pool.get_all('active'))
-        total = realtime_count + daily_count
-
-        status_msg = f"Pool Status: Realtime={realtime_count}, Daily={daily_count}, Total={total}"
-        self.param_panel.set_status(status_msg, "blue")
-
-    def clear_observation_pool(self):
-        """
-        清空观察池
-
-        移除所有观察池中的条目。
-        """
-        if self._pool_mgr is None:
-            self.param_panel.set_status("Pool is empty", "gray")
-            return
-
-        result = self._pool_mgr.clear_all()
-        cleared = result['realtime_cleared'] + result['daily_cleared']
-        self.param_panel.set_status(f"Cleared {cleared} entries from pool", "green")

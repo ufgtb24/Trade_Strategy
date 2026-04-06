@@ -22,7 +22,6 @@ class ParameterPanel:
         on_rescan_all_callback: Optional[Callable] = None,
         on_new_scan_callback: Optional[Callable] = None,
         get_json_params_callback: Optional[Callable[[], Optional[Dict]]] = None,
-        on_add_to_pool_callback: Optional[Callable] = None,
         on_use_template_changed_callback: Optional[Callable] = None,
         on_template_file_changed_callback: Optional[Callable] = None,
         get_file_validator_callback: Optional[Callable] = None,
@@ -38,7 +37,6 @@ class ParameterPanel:
             on_rescan_all_callback: Rescan All 按钮点击回调
             on_new_scan_callback: New Scan 按钮点击回调
             get_json_params_callback: 获取 JSON 扫描参数的回调（返回 scan_data）
-            on_add_to_pool_callback: Add to Pool 按钮点击回调
             on_use_template_changed_callback: Use Template 复选框状态变化回调
             on_template_file_changed_callback: 模板文件选择变化回调
             get_file_validator_callback: 获取文件验证器的回调（模板模式下返回兼容性验证器）
@@ -50,7 +48,6 @@ class ParameterPanel:
         self.on_rescan_all_callback = on_rescan_all_callback
         self.on_new_scan_callback = on_new_scan_callback
         self.get_json_params_callback = get_json_params_callback
-        self.on_add_to_pool_callback = on_add_to_pool_callback
         self.on_use_template_changed_callback = on_use_template_changed_callback
         self.on_template_file_changed_callback = on_template_file_changed_callback
         self.get_file_validator_callback = get_file_validator_callback
@@ -206,18 +203,6 @@ class ParameterPanel:
             self.current_template_file = template_files[0]
         self.template_file_combobox.bind("<<ComboboxSelected>>", self._on_template_file_selected)
 
-        ttk.Separator(container, orient=tk.VERTICAL).pack(
-            side=tk.LEFT, fill=tk.Y, padx=10
-        )
-
-        # 观察池按钮
-        self.add_to_pool_btn = ttk.Button(
-            container,
-            text="Add to Pool",
-            command=self._on_add_to_pool_clicked,
-        )
-        self.add_to_pool_btn.pack(side=tk.LEFT, padx=5)
-
         # 状态标签
         self.status_label = ttk.Label(container, text="Ready", foreground="gray")
         self.status_label.pack(side=tk.RIGHT, padx=10)
@@ -263,11 +248,6 @@ class ParameterPanel:
         # 触发参数变化回调
         if self.on_param_changed_callback:
             self.on_param_changed_callback()
-
-    def _on_add_to_pool_clicked(self):
-        """Add to Pool 按钮点击回调"""
-        if self.on_add_to_pool_callback:
-            self.on_add_to_pool_callback()
 
     def set_status(self, text: str, color: str = "gray", font=None):
         """
