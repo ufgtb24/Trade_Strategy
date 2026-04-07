@@ -37,12 +37,15 @@ def main():
     print(f"Total items: {len(report.items)}")
     s = report.summary
     print(f"\nSummary:")
-    print(f"  Sentiment Score: {s.sentiment_score:+.4f}  ({s.sentiment})")
+    print(f"  Sentiment: {s.sentiment} ({s.sentiment_score:+.4f})")
+    print(f"  Decomposition:")
+    print(f"    Polarity (rho):  {s.rho:+.4f}")
+    print(f"    Confidence:       {s.confidence:.4f}")
+    print(f"    Score = sign(rho) x confidence")
     print(f"  Reasoning: {s.reasoning}")
     print(f"  Breakdown: positive={s.positive_count} "
           f"negative={s.negative_count} "
           f"neutral={s.neutral_count}")
-    print(f"  Internals: rho={s.rho:+.4f}, confidence={s.confidence:.4f}")
     if s.fail_count > 0:
         print(f"  Analysis failed: {s.fail_count}/{s.total_count}")
     print(f"{'='*60}")

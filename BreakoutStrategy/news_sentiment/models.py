@@ -51,7 +51,7 @@ class SummaryResult:
 
     核心选股字段:
         rho: 极性分数 [-1, 1]，正/负面新闻的加权强度比
-        sentiment_score: 有符号评分 [-0.80, +0.80]，= sign(rho) × confidence
+        sentiment_score: 有符号评分，= sign(rho) × confidence（连续映射，无死区截断）
     """
     sentiment: str
     confidence: float

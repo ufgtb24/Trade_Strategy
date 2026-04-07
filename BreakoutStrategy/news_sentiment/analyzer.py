@@ -22,13 +22,13 @@ from BreakoutStrategy.news_sentiment.models import (
 logger = logging.getLogger(__name__)
 
 
-# ── 三分支 certainty × sufficiency 聚合参数 ──
+# ── certainty × sufficiency 聚合参数 ──
 # 设计原则：每个参数控制一个独立语义维度，无跨层级级联
-# 详见 docs/research/intuition_calibration.md
+# 详见 docs/research/rho-confidence-sentiment-score.md
 
 # 方向判定层（rho）
 _W0_RHO = 0.1         # neutral 在 rho 分母中的权重
-_DELTA = 0.07         # 死区阈值（|rho| < DELTA → neutral）
+_DELTA = 0.07         # 标签阈值（|rho| < DELTA → neutral 标签，仅用于显示，不影响 score）
 _EMPH = 2.1           # impact emphasis 指数（极端事件非线性权重，用于 rho 方向判定）
 _LA = 1.26            # 损失厌恶系数（rho 中负面加权，仅影响方向判定）
 
@@ -38,15 +38,10 @@ _SCARCITY_N = 1.5     # 方向性新闻最少条数阈值（稀缺性保护）
 _BLEND_N = 4.0        # evidence 混合过渡点（n_dir > BLEND_N 时引入 impact-weighted mean）
 
 # 信心层（certainty × sufficiency × opp_penalty）
-_CERT_BOOST = 0.54    # certainty 放大系数（|rho| × (1 + CERT_BOOST)，正负分支对称）
-_GAMMA = 0.70         # positive 被 negative 反对的惩罚系数（2:1 符合 Kahneman-Tversky）
-_OPP_NEG = 0.35       # negative 被 positive 反对的惩罚系数
+_K_TANH = 2.0         # tanh certainty 斜率（替代硬截断 min(|rho|×1.54, 1.0)）
+_GAMMA = 0.70         # positive 被 negative 反对的惩罚系数（基于 raw weights）
+_OPP_NEG = 0.35       # negative 被 positive 反对的惩罚系数（基于 raw weights）
 _NEG_AMP = 1.40       # 负面 confidence 统一放大（合并旧 BETA 不对称 + LA_NEG）
-
-# Neutral 分支
-_K_NEU = 2.47         # pure neutral 饱和速度（n_u 为整数计数，独立于归一化 _K）
-_CONFLICT_POW = 3.0   # 冲突型 neutral balance 幂次
-_CONFLICT_CAP = 0.15  # 冲突型 neutral confidence 天花板
 
 
 def _impact_emphasis(iv: float) -> float:
@@ -177,33 +172,34 @@ class SentimentAnalyzer:
                    time_decay: TimeDecayConfig | None = None,
     ) -> SummaryResult:
         """
-        Stage 2: 三分支 certainty × sufficiency 乘法聚合（解耦版）
+        Stage 2: certainty × sufficiency 连续映射聚合
 
         参数解耦设计：
         - 方向判定层：LA 仅影响 rho，不影响 confidence 幅度
-        - 信心层：CERT_BOOST 对称用于正负分支，NEG_AMP 统一放大负面 confidence
+        - 信心层：tanh(K_TANH × |rho|) 对称用于正负分支，NEG_AMP 统一放大负面
         - 证据层：SCARCITY_N（稀缺性）与 BLEND_N（混合过渡）独立
+        - opp_penalty 使用 raw weights（与 rho 的 emphasized weights 解耦，消除 double-counting）
 
         算法：
         0. 有效/无效分离 + 分组统计
-           - raw weights: 用于 evidence/sufficiency
-           - emphasized weights: 用于 rho 方向判定 + opp_penalty
+           - raw weights: 用于 evidence/sufficiency/opp_penalty
+           - emphasized weights: 仅用于 rho 方向判定
         1. 极性分数 rho = (W_p_emph - W_n_emph×LA) / (...)
-        2. 死区判定 sentiment 标签（|rho| < DELTA → neutral）
-        3. 三分支 confidence:
-           - positive: certainty(CERT_BOOST) × sufficiency × (1 - GAMMA×opp)
-           - negative: certainty(CERT_BOOST) × sufficiency × (1 - OPP_NEG×opp) × NEG_AMP
-           - neutral: 共识型饱和(K_NEU) 或 冲突型衰减(CONFLICT_*)
+        2. sentiment 标签判定（|rho| < DELTA → neutral，仅用于显示）
+        3. confidence（统一路径，纯 neutral 特判）:
+           - n_dir > 0: tanh(K_TANH×|rho|) × sufficiency × (1 - opp_penalty)
+           - n_dir == 0: 0（无方向性新闻）
+           - 负面分支额外 × NEG_AMP
         4. clamp confidence ∈ [0, 1]
-        5. sentiment_score = sign(rho) × confidence
+        5. sentiment_score = sign(rho) × confidence（连续映射，无死区截断）
            选股阈值：>+0.30 正面 | [-0.15, +0.30] 中性 | <-0.15 负面 | <-0.40 强否决
         """
         n_total = len(analyzed_items)
 
         # Step 0: 有效/无效分离 + 分组统计（可选时间加权）
         # 保存 raw 和 emphasized 两套 impact values：
-        #   - raw: 用于 evidence/sufficiency/opp_penalty（幅度控制）
-        #   - emphasized: 用于 rho（方向判定，极端事件权重更高）
+        #   - raw: 用于 evidence/sufficiency/opp_penalty
+        #   - emphasized: 仅用于 rho 方向判定（极端事件权重更高）
         pos_impacts: list[float] = []
         neg_impacts: list[float] = []
         pos_impacts_emph: list[float] = []
@@ -264,54 +260,52 @@ class SentimentAnalyzer:
         else:
             sentiment = 'neutral'
 
-        # Step 3: 三分支 confidence（certainty × sufficiency）
+        # Step 3: confidence（certainty × sufficiency，统一路径）
         # evidence 混合：小样本用 mean，大样本引入 impact-weighted mean
         # BLEND_N 独立于 SCARCITY_N，分别控制混合过渡和稀缺性保护
-        tw_sum_dir = sum(pos_tw) + sum(neg_tw)
-        evidence_mean = (w_p + w_n) / tw_sum_dir if tw_sum_dir > 0 else 0.0
         n_dir = n_p + n_n
-        alpha = min(1.0, _BLEND_N / n_dir) if n_dir > 0 else 1.0
-        if alpha < 1.0 and (w_p + w_n) > 0:
-            sum_sq = (
-                sum(c * c * t for c, t in zip(pos_impacts, pos_tw))
-                + sum(c * c * t for c, t in zip(neg_impacts, neg_tw))
-            )
-            evidence_iw = sum_sq / (w_p + w_n)
-            evidence = alpha * evidence_mean + (1.0 - alpha) * evidence_iw
+        if n_dir == 0:
+            # 纯 neutral：无方向性新闻，confidence = 0
+            base_conf = 0.0
         else:
-            evidence = evidence_mean
-        scarcity = min(1.0, n_dir / _SCARCITY_N)
-
-        # certainty 对称（正负分支共用 CERT_BOOST），损失厌恶集中于 NEG_AMP
-        w_total_emph = w_p_emph + w_n_emph
-        if sentiment == 'positive':
-            sufficiency = (1.0 - math.exp(-evidence / _K)) * scarcity
-            certainty = min(abs(rho) * (1 + _CERT_BOOST), 1.0)
-            opp_penalty = _GAMMA * (w_n_emph / w_total_emph) if w_n_emph > 0 else 0.0
-            base_conf = certainty * sufficiency * (1.0 - opp_penalty)
-        elif sentiment == 'negative':
-            sufficiency = (1.0 - math.exp(-evidence / _K)) * scarcity
-            certainty = min(abs(rho) * (1 + _CERT_BOOST), 1.0)
-            opp_penalty = _OPP_NEG * (w_p_emph / w_total_emph) if w_p_emph > 0 else 0.0
-            base_conf = certainty * sufficiency * (1.0 - opp_penalty)
-            base_conf *= _NEG_AMP  # 损失厌恶：统一放大负面 confidence
-        else:
-            if n_p == 0 and n_n == 0:
-                # 共识型 neutral：confidence 随 neutral 数量增长（用 n_u 计数，不受时间衰减影响）
-                base_conf = 1.0 - math.exp(-n_u / _K_NEU)
+            tw_sum_dir = sum(pos_tw) + sum(neg_tw)
+            evidence_mean = (w_p + w_n) / tw_sum_dir if tw_sum_dir > 0 else 0.0
+            alpha = min(1.0, _BLEND_N / n_dir)
+            if alpha < 1.0 and (w_p + w_n) > 0:
+                sum_sq = (
+                    sum(c * c * t for c, t in zip(pos_impacts, pos_tw))
+                    + sum(c * c * t for c, t in zip(neg_impacts, neg_tw))
+                )
+                evidence_iw = sum_sq / (w_p + w_n)
+                evidence = alpha * evidence_mean + (1.0 - alpha) * evidence_iw
             else:
-                # 冲突型 neutral：正负抵消，confidence 不随 evidence 增长
-                balance = 1.0 - abs(w_p - w_n) / (w_p + w_n) if (w_p + w_n) > 0 else 0.0
-                balance = balance ** _CONFLICT_POW
-                base_conf = balance * _CONFLICT_CAP
+                evidence = evidence_mean
+            scarcity = min(1.0, n_dir / _SCARCITY_N)
+
+            # certainty: tanh 平滑映射（替代 min 硬截断，消除 cap 信息丢失）
+            certainty = math.tanh(_K_TANH * abs(rho))
+            sufficiency = (1.0 - math.exp(-evidence / _K)) * scarcity
+            # opp_penalty: 使用 raw weights（与 rho 的 emphasized weights 解耦，消除 double-counting）
+            w_total_raw = w_p + w_n
+            if rho >= 0:
+                opp_penalty = _GAMMA * (w_n / w_total_raw) if w_n > 0 else 0.0
+                base_conf = certainty * sufficiency * (1.0 - opp_penalty)
+            else:
+                opp_penalty = _OPP_NEG * (w_p / w_total_raw) if w_p > 0 else 0.0
+                base_conf = certainty * sufficiency * (1.0 - opp_penalty)
+                base_conf *= _NEG_AMP  # 损失厌恶：统一放大负面 confidence
 
         # Step 4: clamp confidence（失败项在 Step 0 已过滤，对公式透明）
         n = n_p + n_n + n_u  # 有效项数
         confidence = round(max(0.0, min(1.0, base_conf)), 4)
 
         # Step 5: sentiment_score + reasoning
-        s_sign = 1 if sentiment == 'positive' else (-1 if sentiment == 'negative' else 0)
-        s_score = round(s_sign * confidence, 4)
+        # score 基于 rho 符号（连续映射，不依赖死区分支）
+        if n_dir == 0:
+            s_score = 0.0
+        else:
+            s_sign = 1 if rho >= 0 else -1
+            s_score = round(s_sign * confidence, 4)
 
         reasoning = self._generate_reasoning(
             ticker, date_from, date_to,
@@ -356,27 +350,16 @@ class SentimentAnalyzer:
             f"{n_u} neutral."
         )
 
-        if sentiment == 'positive':
+        if n_p == 0 and n_n == 0:
             parts.append(
-                f"Sentiment score {sentiment_score:+.4f} (positive). "
-                f"Polarity {rho:+.2f}, confidence {confidence:.4f}."
-            )
-        elif sentiment == 'negative':
-            parts.append(
-                f"Sentiment score {sentiment_score:+.4f} (negative). "
-                f"Polarity {rho:+.2f}, confidence {confidence:.4f}."
+                f"Sentiment score {sentiment_score:+.4f} (neutral). "
+                f"No directional news detected."
             )
         else:
-            if n_p == 0 and n_n == 0:
-                parts.append(
-                    f"Sentiment score {sentiment_score:+.4f} (neutral). "
-                    f"No directional news detected."
-                )
-            else:
-                parts.append(
-                    f"Sentiment score {sentiment_score:+.4f} (neutral). "
-                    f"Polarity {rho:+.2f} within deadzone; signals roughly balance."
-                )
+            parts.append(
+                f"Sentiment score {sentiment_score:+.4f} ({sentiment}). "
+                f"Polarity {rho:+.2f}, confidence {confidence:.4f}."
+            )
 
         if fail_count > 0:
             parts.append(
