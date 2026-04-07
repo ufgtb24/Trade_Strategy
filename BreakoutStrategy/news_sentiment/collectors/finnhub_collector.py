@@ -2,10 +2,12 @@
 Finnhub 采集器
 
 采集公司新闻 (/company-news) 和财报日历 (/calendar/earnings)。
-免费 tier: 60次/分钟，无日限。
+免费 tier: 60次/分钟，无日限。rate_limit 配置控制调用间隔（0=不限流）。
 """
 
 import logging
+import threading
+import time
 from datetime import datetime
 
 import finnhub
@@ -18,6 +20,25 @@ from .base import BaseCollector
 logger = logging.getLogger(__name__)
 
 
+class _RateLimiter:
+    """线程安全的最小间隔限流器，min_interval<=0 时不限流"""
+
+    def __init__(self, min_interval: float):
+        self._min_interval = min_interval
+        self._last_call = 0.0
+        self._lock = threading.Lock()
+
+    def acquire(self):
+        if self._min_interval <= 0:
+            return
+        with self._lock:
+            now = time.monotonic()
+            elapsed = now - self._last_call
+            if elapsed < self._min_interval:
+                time.sleep(self._min_interval - elapsed)
+            self._last_call = time.monotonic()
+
+
 class FinnhubCollector(BaseCollector):
     """Finnhub 新闻采集器"""
 
@@ -27,6 +48,7 @@ class FinnhubCollector(BaseCollector):
         self._config = config
         self._proxy = proxy
         self._client: finnhub.Client | None = None
+        self._limiter = _RateLimiter(config.rate_limit)
 
     def is_available(self) -> bool:
         return bool(self._config.api_key)
@@ -48,13 +70,35 @@ class FinnhubCollector(BaseCollector):
         logger.info(f"[Finnhub] {ticker}: collected {len(items)} items")
         return items
 
+    def get_company_name(self, ticker: str) -> str:
+        """查询公司名称（用于 relevance_filter 参考向量）"""
+        self._limiter.acquire()
+        try:
+            profile = self._get_client().company_profile2(symbol=ticker)
+            name = profile.get("name", "")
+            logger.info(f"Company name: '{name}'")
+            return name
+        except finnhub.FinnhubAPIException as e:
+            if e.status_code == 429:
+                logger.warning(f"[Finnhub] Rate limited on company_profile2 for {ticker}")
+            return ""
+        except Exception:
+            return ""
+
     def _fetch_company_news(
         self, client: finnhub.Client, ticker: str,
         date_from: str, date_to: str,
     ) -> list[NewsItem]:
         """采集公司新闻"""
+        self._limiter.acquire()
         try:
             raw_news = client.company_news(ticker, _from=date_from, to=date_to)
+        except finnhub.FinnhubAPIException as e:
+            if e.status_code == 429:
+                logger.warning(f"[Finnhub] Rate limited on company_news for {ticker}")
+            else:
+                logger.warning(f"[Finnhub] Failed to fetch news for {ticker}: {e}")
+            return []
         except Exception as e:
             logger.warning(f"[Finnhub] Failed to fetch news for {ticker}: {e}")
             return []
@@ -86,9 +130,16 @@ class FinnhubCollector(BaseCollector):
         date_from: str, date_to: str,
     ) -> list[NewsItem]:
         """采集财报日历"""
+        self._limiter.acquire()
         try:
             data = client.earnings_calendar(_from=date_from, to=date_to, symbol=ticker)
             earnings_list = data.get('earningsCalendar', [])
+        except finnhub.FinnhubAPIException as e:
+            if e.status_code == 429:
+                logger.warning(f"[Finnhub] Rate limited on earnings_calendar for {ticker}")
+            else:
+                logger.warning(f"[Finnhub] Failed to fetch earnings for {ticker}: {e}")
+            return []
         except Exception as e:
             logger.warning(f"[Finnhub] Failed to fetch earnings for {ticker}: {e}")
             return []

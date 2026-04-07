@@ -4,6 +4,7 @@ collectors:
   finnhub:
     enable: true
     timeout: 10
+    rate_limit: 1.02   # API 最小调用间隔（秒），0 = 不限流（付费 tier）
   alphavantage:
     enable: false
     timeout: 10

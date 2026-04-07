@@ -35,6 +35,7 @@ def analyze(
     date_from: str,
     date_to: str,
     config: NewsSentimentConfig | None = None,
+    save: bool = True,
 ) -> AnalysisReport:
     """
     收集指定股票在时间段内的新闻/公告/财报，执行情感分析。
@@ -80,17 +81,17 @@ def analyze(
             # 从缓存获取已有新闻
             cached_items = cache.get_news(ticker, date_from, date_to, collector.name)
 
-            # 仅采集未覆盖范围
+            # 仅采集未覆盖范围（只在成功采集到数据时标记覆盖）
             new_items: list[NewsItem] = []
             for uc_from, uc_to in uncovered:
                 fetched = collector.collect(ticker, uc_from, uc_to)
                 new_items.extend(fetched)
+                if fetched:
+                    cache.update_coverage(ticker, collector.name, uc_from, uc_to)
 
             # 写入缓存
             if new_items:
                 cache.put_news(ticker, collector.name, new_items)
-            for uc_from, uc_to in uncovered:
-                cache.update_coverage(ticker, collector.name, uc_from, uc_to)
 
             combined = cached_items + new_items
             source_stats[collector.name] = len(combined)
@@ -107,12 +108,7 @@ def analyze(
     company_name = ""
     for collector in collectors:
         if isinstance(collector, FinnhubCollector) and collector.is_available():
-            try:
-                profile = collector._get_client().company_profile2(symbol=ticker)
-                company_name = profile.get("name", "")
-                logger.info(f"Company name: '{company_name}'")
-            except Exception:
-                pass
+            company_name = collector.get_company_name(ticker)
             break
 
     # 2.8 动态调整 max_items（使用副本，不修改传入的 config）
@@ -166,10 +162,11 @@ def analyze(
         source_stats=source_stats,
     )
 
-    try:
-        filepath = save_report(report, config.output_dir)
-        logger.info(f"Report saved to {filepath}")
-    except Exception as e:
-        logger.error(f"Failed to save report: {e}")
+    if save:
+        try:
+            filepath = save_report(report, config.output_dir)
+            logger.info(f"Report saved to {filepath}")
+        except Exception as e:
+            logger.error(f"Failed to save report: {e}")
 
     return report

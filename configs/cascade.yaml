@@ -1,0 +1,23 @@
+# 级联验证配置
+cascade:
+  # 情感分析时间窗口
+  lookback_days: 14                # 突破前回溯天数
+
+  # 筛选阈值
+  thresholds:
+    strong_reject: -0.40          # 强否决线
+    reject: -0.15                 # 排除线
+    positive_boost: 0.30          # 正面标记线（统计用，不影响筛选）
+
+  # 数据充足度
+  min_total_count: 1              # 新闻数低于此值标记为 insufficient_data
+  max_fail_ratio: 0.5             # fail_count/total_count 超过此值标记为 insufficient_data
+
+  # 效率控制
+  max_concurrent_tickers: 5       # 同时分析的 ticker 数
+  max_retries: 2                  # 单 ticker 最大重试
+  retry_delay: 5.0                # 重试间隔（秒）
+  save_individual_reports: false   # 是否保存每只股票的 JSON 报告
+
+  # 报告
+  report_name: "cascade_report.md"

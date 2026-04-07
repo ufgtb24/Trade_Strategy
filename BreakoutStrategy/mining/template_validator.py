@@ -812,6 +812,8 @@ def materialize_trial(
     data_dir: Path | None = None,
     shrinkage_k: int = 1,
     report_name: str = "validation_report.md",
+    run_cascade: bool = False,
+    cascade_config: dict | None = None,
 ):
     """物化指定 trial 的完整产出 + 可选 OOS 验证。
 
@@ -932,7 +934,7 @@ def materialize_trial(
     df_test, integrity_info = _build_test_dataframe(
         test_json_path, thresholds, negative_factors,
     )
-    test_csv = archive_dir / "factor_analysis_test.csv"
+    test_csv = trial_dir / "factor_analysis_test.csv"
     save_dataframe(df_test, test_csv)
     print(f"  测试样本: {integrity_info['valid_count']}")
 
@@ -982,6 +984,50 @@ def materialize_trial(
     print(f"  Verdict: {verdict}")
     print(f"  产出目录: {trial_dir}")
 
+    # ── Step 6: Cascade 验证（可选）──
+    if not run_cascade:
+        return
+
+    print("=" * 60)
+    print("[Step 6] Cascade 情感验证...")
+
+    from BreakoutStrategy.cascade.batch_analyzer import run_cascade as _run_cascade
+    from BreakoutStrategy.cascade.filter import load_cascade_config
+    from BreakoutStrategy.cascade.reporter import generate_cascade_report
+
+    cascade_cfg = cascade_config or load_cascade_config()
+
+    # 构建 top_k_names 映射 (key → template_name)
+    top_k_names_map = {}
+    for m in matched:
+        if m["name"] in d4["top_k_names"]:
+            top_k_names_map[m["target_key"]] = m["name"]
+
+    def _cascade_progress(completed, total, ticker, result):
+        print(f"  [{completed}/{total}] {ticker}: {result.category} "
+              f"(score={result.sentiment_score:+.4f})")
+
+    cascade_report = _run_cascade(
+        df_test=df_test,
+        keys_test=keys_test_arr,
+        top_k_keys=set(top_k_names_map.keys()),
+        top_k_names=top_k_names_map,
+        cascade_config=cascade_cfg,
+        on_progress=_cascade_progress,
+    )
+
+    cascade_report_path = trial_dir / cascade_cfg["report_name"]
+    pre_metrics = {
+        "template_lift": d4["template_lift"],
+        "matched_median": d4.get("matched_median", baseline_train),
+    }
+    generate_cascade_report(cascade_report, pre_metrics, cascade_report_path)
+
+    print(f"  Cascade lift: {cascade_report.cascade_lift:+.4f}")
+    print(f"  Pass: {cascade_report.pass_count} (boost: {cascade_report.positive_boost_count})")
+    print(f"  Reject: {cascade_report.reject_count + cascade_report.strong_reject_count}")
+    print(f"  Report: {cascade_report_path}")
+
 
 # ---------------------------------------------------------------------------
 # 11. 主入口
@@ -1005,6 +1051,7 @@ def main():
     run_validation = True           # 运行时开关
     shrinkage_k = 1                 # TPE 优化目标 Top-K
     report_name = "validation_report1.md"  # 验证报告文件名
+    run_cascade_flag = False          # 是否执行级联情感验证
 
     # ── 验证参数 ──
     validation_config = {
@@ -1033,6 +1080,7 @@ def main():
         data_dir=data_dir,
         shrinkage_k=shrinkage_k,
         report_name=report_name,
+        run_cascade=run_cascade_flag,
     )
 
 

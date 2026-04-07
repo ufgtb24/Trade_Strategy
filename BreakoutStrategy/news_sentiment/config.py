@@ -25,6 +25,7 @@ class CollectorConfig:
     api_key: str
     timeout: int
     enable: bool
+    rate_limit: float = 1.02  # API 最小调用间隔（秒），0 = 不限流
 
 
 @dataclass
@@ -149,11 +150,13 @@ def load_config(config_path: str | Path | None = None) -> NewsSentimentConfig:
             api_key=os.environ.get('FINNHUB_API_KEY', api_keys.get('finnhub', '')),
             timeout=finnhub_cfg.get('timeout', 10),
             enable=finnhub_cfg.get('enable', True),
+            rate_limit=finnhub_cfg.get('rate_limit', 1.1),
         ),
         alphavantage=CollectorConfig(
             api_key=os.environ.get('ALPHAVANTAGE_API_KEY', api_keys.get('alphavantage', '')),
             timeout=av_cfg.get('timeout', 10),
             enable=av_cfg.get('enable', True),
+            rate_limit=av_cfg.get('rate_limit', 0),
         ),
         edgar=EdgarConfig(
             user_agent=edgar_cfg.get('user_agent', 'TradeStrategy research@example.com'),

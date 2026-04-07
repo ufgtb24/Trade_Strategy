@@ -71,4 +71,4 @@ Use this guide to understand the codebase architecture, workflows, and conventio
 - **Agent Roles**:
   - **Standard**: Routine coding, bug fixes.
   - **tom (High Difficulty)**: Deep research, architecture review, first-principles thinking, innovative algorithms.
-  - **Team**: Default to `tom` for leading multi-agent teams.
+  - **Team**: Default to `tom` for leading multi-agent teams. **Agent teams do NOT write code by default** — they focus on analysis, reasoning, and producing documentation (saved to `docs/research/`). Only implement code when the user explicitly requests it.

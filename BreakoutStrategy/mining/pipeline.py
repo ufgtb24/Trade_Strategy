@@ -83,8 +83,6 @@ def main():
     # ── 归档路径 ──
     analysis_csv = str(archive_dir / ANALYSIS_CSV)
     raw_report = archive_dir / RAW_REPORT
-    mining_report = archive_dir / MINING_REPORT
-    filter_yaml = str(archive_dir / FILTER_YAML)
     factor_diag_yaml = str(archive_dir / FACTOR_DIAG_YAML)
     checkpoint_path = str(archive_dir / OPTUNA_PKL)
 
@@ -137,7 +135,7 @@ def main():
     from BreakoutStrategy.mining.threshold_optimizer import main as opt_main
     # 优化器使用 diag 输出的 corrected yaml（包含方向修正）
     opt_main(input_csv=analysis_csv, factor_yaml=factor_diag_yaml,
-             output_yaml=filter_yaml, report_name=mining_report,
+             output_yaml=None, report_name=None,
              optimizer_config=optimizer_config, checkpoint_path=checkpoint_path)
 
     # ── Step 4/4 ──

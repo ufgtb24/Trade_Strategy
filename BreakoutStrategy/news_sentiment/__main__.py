@@ -13,7 +13,7 @@ from BreakoutStrategy.news_sentiment.api import analyze
 
 def main():
     # === 参数配置（不使用 argparse） ===
-    ticker = "AAPL"
+    ticker = "TSLA"
     date_from = "2026-03-01"
     date_to = "2026-03-15"
     log_level = "INFO"

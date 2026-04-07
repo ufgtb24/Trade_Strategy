@@ -172,8 +172,8 @@ FACTOR_REGISTRY: list[FactorInfo] = [
 # --- 总开关：在此集合中的因子 key 将在所有模块中不可见 ---
 # 与 YAML 中的 enabled（评分开关）不同，这里控制因子是否参与系统的所有环节
 # 使用场景：触发率100%的无效因子、数据质量不足待优化的因子
-INACTIVE_FACTORS: set[str] = {}
-# INACTIVE_FACTORS: set[str] = {'ma_curve', 'dd_recov'}
+# INACTIVE_FACTORS: set[str] = {}
+INACTIVE_FACTORS: set[str] = {'ma_curve', 'dd_recov'}
 # 使用方式：将无效因子的 key 加入集合，如 {'age', 'streak'}
 # 示例：
 # INACTIVE_FACTORS = {'age'}  # 触发率100%，无区分力

@@ -661,44 +661,45 @@ def main(input_csv, factor_yaml, output_yaml, report_name=None,
             rate = (raw_values[key] >= t).mean()
             print(f"      {key:<10s}: >= {t:.4f}  (trigger rate: {rate:.1%})")
 
-    templates = best['templates'][:10]
+    if output_yaml is not None:
+        templates = best['templates'][:10]
 
-    yaml_data = build_yaml_output(templates, df, input_csv, min_count,
-                                  generator='BreakoutStrategy.mining.threshold_optimizer')
+        yaml_data = build_yaml_output(templates, df, input_csv, min_count,
+                                      generator='BreakoutStrategy.mining.threshold_optimizer')
 
-    yaml_data['_meta']['optimization'] = {
-        'method': 'greedy_beam_search + optuna_tpe_top1_shrinkage',
-        'n_trials': len(study.trials),
-        'n_startup_trials': n_startup_trials,
-        'active_factors': all_factors,
-        'thresholds': {k: round(float(v), 4) for k, v in best['thresholds'].items()},
-        'negative_factors': sorted(negative_factors),
-        'shrinkage_score': round(float(best['shrinkage_score']), 4),
-        'shrinkage_n': shrinkage_n,
-        'shrinkage_k': shrinkage_k,
-        'baseline_median': round(baseline_median, 4),
-        'min_stability': round(float(best['min_stability']), 3),
-    }
+        yaml_data['_meta']['optimization'] = {
+            'method': 'greedy_beam_search + optuna_tpe_top1_shrinkage',
+            'n_trials': len(study.trials),
+            'n_startup_trials': n_startup_trials,
+            'active_factors': all_factors,
+            'thresholds': {k: round(float(v), 4) for k, v in best['thresholds'].items()},
+            'negative_factors': sorted(negative_factors),
+            'shrinkage_score': round(float(best['shrinkage_score']), 4),
+            'shrinkage_n': shrinkage_n,
+            'shrinkage_k': shrinkage_k,
+            'baseline_median': round(baseline_median, 4),
+            'min_stability': round(float(best['min_stability']), 3),
+        }
 
-    # 嵌入扫描参数快照（自包含，不依赖外部文件）
-    with open(factor_yaml, 'r', encoding='utf-8') as f:
-        all_params = yaml.safe_load(f)
-    scan_params = {}
-    for section in ('breakout_detector', 'general_feature', 'quality_scorer'):
-        if section in all_params:
-            scan_params[section] = all_params[section]
-    # 排除运行时参数
-    scan_params.get('breakout_detector', {}).pop('cache_dir', None)
-    scan_params.get('breakout_detector', {}).pop('use_cache', None)
-    yaml_data['scan_params'] = scan_params
-    yaml_data['_meta']['version'] = 4
+        # 嵌入扫描参数快照（自包含，不依赖外部文件）
+        with open(factor_yaml, 'r', encoding='utf-8') as f:
+            all_params = yaml.safe_load(f)
+        scan_params = {}
+        for section in ('breakout_detector', 'general_feature', 'quality_scorer'):
+            if section in all_params:
+                scan_params[section] = all_params[section]
+        # 排除运行时参数
+        scan_params.get('breakout_detector', {}).pop('cache_dir', None)
+        scan_params.get('breakout_detector', {}).pop('use_cache', None)
+        yaml_data['scan_params'] = scan_params
+        yaml_data['_meta']['version'] = 4
 
-    write_yaml(yaml_data, output_yaml,
-               header_comment="# configs/params/filter.yaml\n"
-                              "# 由 BreakoutStrategy.mining.threshold_optimizer 自动生成\n\n")
-    print(f"\n  Output: {output_yaml}")
+        write_yaml(yaml_data, output_yaml,
+                   header_comment="# configs/params/filter.yaml\n"
+                                  "# 由 BreakoutStrategy.mining.threshold_optimizer 自动生成\n\n")
+        print(f"\n  Output: {output_yaml}")
 
-    print_summary(yaml_data)
+        print_summary(yaml_data)
 
     if report_name is not None:
         from BreakoutStrategy.mining.data_pipeline import apply_binary_levels
