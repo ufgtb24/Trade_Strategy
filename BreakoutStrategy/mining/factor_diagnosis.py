@@ -9,12 +9,63 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import numpy as np
 import yaml
 from scipy.stats import spearmanr, shapiro, skew
 
-from BreakoutStrategy.factor_registry import get_active_factors, get_factor, LABEL_COL
+from BreakoutStrategy.factor_registry import (
+    FACTOR_REGISTRY, INACTIVE_FACTORS,
+    get_active_factors, get_factor, LABEL_COL,
+)
 from BreakoutStrategy.mining.data_pipeline import prepare_raw_values
+
+
+def detect_non_monotonicity(raw: np.ndarray, labels: np.ndarray,
+                            n_segments: int = 3,
+                            flip_threshold: float = 0.02) -> dict:
+    """
+    分段 Spearman 非单调性检测。
+
+    按因子值的分位数切分为若干段，各段分别计算 Spearman 相关系数，
+    检测段间符号是否翻转。若翻转则判定为非单调。
+
+    Args:
+        raw: 因子原始值数组
+        labels: label 数组
+        n_segments: 分段数（默认三分位）
+        flip_threshold: 忽略绝对值低于此阈值的段（噪声过滤）
+
+    Returns:
+        {is_non_monotonic, segments: [{quantile_range, spearman_r, n_samples}]}
+    """
+    quantiles = np.linspace(0, 1, n_segments + 1)
+    boundaries = np.quantile(raw, quantiles)
+
+    segment_results = []
+    for i in range(n_segments):
+        if i == n_segments - 1:
+            mask = (raw >= boundaries[i]) & (raw <= boundaries[i + 1])
+        else:
+            mask = (raw >= boundaries[i]) & (raw < boundaries[i + 1])
+        seg_raw, seg_labels = raw[mask], labels[mask]
+        if len(seg_raw) > 10:
+            r, p = spearmanr(seg_raw, seg_labels)
+            segment_results.append({
+                'quantile_range': (round(float(quantiles[i]), 2),
+                                   round(float(quantiles[i + 1]), 2)),
+                'spearman_r': round(float(r), 4),
+                'spearman_p': round(float(p), 6),
+                'n_samples': int(len(seg_raw)),
+            })
+
+    # 检测符号翻转（忽略绝对值过小的段）
+    signs = [np.sign(s['spearman_r']) for s in segment_results
+             if abs(s['spearman_r']) > flip_threshold]
+    is_non_monotonic = len(set(signs)) > 1
+
+    return {'is_non_monotonic': is_non_monotonic, 'segments': segment_results}
 
 
 def diagnose_direction(raw_values: dict[str, np.ndarray],
@@ -68,18 +119,29 @@ def diagnose_direction(raw_values: dict[str, np.ndarray],
         r, p = spearmanr(valid_raw, valid_labels)
 
         if abs(r) < weak_threshold:
-            direction, mode = 'weak', 'gte'
+            # 全局 Spearman 弱 → 可能是非单调，追加分段检测
+            nm = detect_non_monotonicity(valid_raw, valid_labels)
+            if nm['is_non_monotonic']:
+                # 取各段中绝对值最大的 Spearman 方向作为主导 mode
+                strongest = max(nm['segments'], key=lambda s: abs(s['spearman_r']))
+                mode = 'lte' if strongest['spearman_r'] < 0 else 'gte'
+                direction = 'non_monotonic'
+            else:
+                direction, mode = 'weak', 'gte'
         elif r > 0:
             direction, mode = 'positive', 'gte'
         else:
             direction, mode = 'negative', 'lte'
 
-        results[key] = {
+        result_entry = {
             'direction': direction,
             'mode': mode,
             'spearman_r': round(float(r), 4),
             'spearman_p': round(float(p), 6),
         }
+        if direction == 'non_monotonic':
+            result_entry['segments'] = nm['segments']
+        results[key] = result_entry
     return results
 
 
@@ -169,31 +231,18 @@ def diagnose_log_scale(raw_values: dict[str, np.ndarray],
     return results
 
 
-def load_current_modes(yaml_path: str) -> dict[str, str]:
-    """从 all_factor.yaml 读取当前各因子的 mode 配置。"""
-    with open(yaml_path) as f:
-        cfg = yaml.safe_load(f)
-    qs = cfg.get('quality_scorer', {})
-
-    modes = {}
-    for fi in get_active_factors():
-        entry = qs.get(fi.yaml_key, {})
-        modes[fi.key] = entry.get('mode', 'gte')
-    return modes
-
-
-def apply_corrections(yaml_path: str, corrections: dict[str, str]):
-    """将方向修正写入 all_factor.yaml。"""
-    with open(yaml_path) as f:
+def write_diagnosed_yaml(source_yaml: str, output_yaml: str, modes: dict[str, str]):
+    """读取 source_yaml 结构，写入所有因子的诊断方向，输出 output_yaml。"""
+    with open(source_yaml) as f:
         cfg = yaml.safe_load(f)
     qs = cfg['quality_scorer']
 
-    # 构建 key → yaml_key 映射
     key_to_yaml = {fi.key: fi.yaml_key for fi in get_active_factors()}
 
-    for key, new_mode in corrections.items():
-        yaml_key = key_to_yaml[key]
-        # 为 REGISTRY 中有但 YAML 中无的因子合成默认条目
+    for key, mode in modes.items():
+        yaml_key = key_to_yaml.get(key)
+        if not yaml_key:
+            continue
         if yaml_key not in qs:
             fi = get_factor(key)
             qs[yaml_key] = {
@@ -202,9 +251,15 @@ def apply_corrections(yaml_path: str, corrections: dict[str, str]):
                 'values': list(fi.default_values),
                 **{sp.yaml_name: sp.default for sp in fi.sub_params},
             }
-        qs[yaml_key]['mode'] = new_mode
+        qs[yaml_key]['mode'] = mode
 
-    with open(yaml_path, 'w') as f:
+    # 移除非活跃因子条目
+    inactive_yaml_keys = {f.yaml_key for f in FACTOR_REGISTRY if f.key in INACTIVE_FACTORS}
+    for ik in inactive_yaml_keys:
+        qs.pop(ik, None)
+
+    Path(output_yaml).parent.mkdir(parents=True, exist_ok=True)
+    with open(output_yaml, 'w') as f:
         yaml.dump(cfg, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
 
 
@@ -212,9 +267,16 @@ def apply_corrections(yaml_path: str, corrections: dict[str, str]):
 # 入口
 # ---------------------------------------------------------------------------
 
-def main(input_csv, yaml_path, auto_apply):
-    from pathlib import Path
+def main(input_csv, yaml_path, output_yaml, auto_apply):
+    """
+    诊断所有因子方向并全量写入 output_yaml。
 
+    Args:
+        input_csv: 分析数据 CSV
+        yaml_path: 输入的 all_factor.yaml（结构模板，只读）
+        output_yaml: 输出的 factor_diag.yaml（包含所有因子的 mode）
+        auto_apply: 是否写入 output_yaml
+    """
     import pandas as pd
 
     print(f"Loading: {input_csv}")
@@ -225,46 +287,45 @@ def main(input_csv, yaml_path, auto_apply):
     raw_values = prepare_raw_values(df)
     labels = df[LABEL_COL].values
     diagnosis = diagnose_direction(raw_values, labels)
-    current_modes = load_current_modes(yaml_path)
 
     all_factors = get_active_factors()
-    print(f"\n  {'Factor':<10s} {'Spearman':>10s} {'Direction':>10s} {'Recommend':>10s} {'Current':>10s} {'Action':>10s}")
-    print("  " + "-" * 63)
+    print(f"\n  {'Factor':<10s} {'Spearman':>10s} {'Direction':>10s} {'Mode':>6s}")
+    print("  " + "-" * 40)
 
-    corrections = {}
+    diagnosed_modes = {}
     for fi in all_factors:
         key = fi.key
         d = diagnosis.get(key, {})
         r = d.get('spearman_r')
         r_str = f"{r:+.4f}" if r is not None else "N/A"
         direction = d.get('direction', '?')
-        recommended = d.get('mode', 'gte')
-        current = current_modes.get(key, 'gte')
-        action = "FLIP" if recommended != current else "OK"
-        if d.get('direction') == 'override':
-            action = "OVERRIDE"
-        if recommended != current:
-            corrections[key] = recommended
-        print(f"  {key:<10s} {r_str:>10s} {direction:>10s} {recommended:>10s} {current:>10s} {action:>10s}")
+        mode = d.get('mode', 'gte')
+        diagnosed_modes[key] = mode
+        print(f"  {key:<10s} {r_str:>10s} {direction:>10s} {mode:>6s}")
 
-    if corrections:
-        print(f"\n  Corrections needed: {len(corrections)}")
-        for key, mode in corrections.items():
-            print(f"    {key}: {current_modes[key]} -> {mode}")
-        if auto_apply:
-            apply_corrections(yaml_path, corrections)
-            print(f"\n  Applied to {yaml_path}")
-        else:
-            print(f"\n  Set BONUS_AUTO_APPLY=1 to auto-apply.")
+    # 非单调因子分段详情
+    nm_factors = {k: v for k, v in diagnosis.items() if v.get('direction') == 'non_monotonic'}
+    if nm_factors:
+        print(f"\n  Non-monotonic factors detected: {len(nm_factors)}")
+        for key, d in nm_factors.items():
+            print(f"    {key} (global r={d['spearman_r']:+.4f}):")
+            for seg in d['segments']:
+                qr = seg['quantile_range']
+                print(f"      Q{qr[0]:.0%}-{qr[1]:.0%}: r={seg['spearman_r']:+.4f}  "
+                      f"(n={seg['n_samples']}, p={seg['spearman_p']:.4f})")
+
+    if auto_apply:
+        write_diagnosed_yaml(yaml_path, output_yaml, diagnosed_modes)
+        print(f"\n  Diagnosed {len(diagnosed_modes)} factors. Written to {output_yaml}")
     else:
-        print(f"\n  All factor directions are correct.")
+        print(f"\n  Diagnosed {len(diagnosed_modes)} factors. (dry run)")
 
 
 if __name__ == "__main__":
-    from pathlib import Path
     PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
     main(
         input_csv=str(PROJECT_ROOT / "outputs/analysis/factor_analysis_data.csv"),
         yaml_path=str(PROJECT_ROOT / "configs/params/all_factor.yaml"),
+        output_yaml=str(PROJECT_ROOT / "configs/params/all_factor.yaml"),  # 独立运行时原地修改
         auto_apply=False,
     )

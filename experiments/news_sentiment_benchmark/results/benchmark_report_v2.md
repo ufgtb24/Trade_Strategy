@@ -90,7 +90,7 @@
 
 ## Changes from v1 Ground Truth
 
-v1 used a single Tom (Sonnet 4.6) agent with all 40 items in one prompt.
+v1 used a single tom (Sonnet 4.6) agent with all 40 items in one prompt.
 v2 uses 40 independent Opus 4.6 subagents (one per item, fully isolated).
 
 5 labels changed (12.5%):

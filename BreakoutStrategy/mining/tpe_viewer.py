@@ -4,7 +4,7 @@ TPE Optimization Checkpoint Viewer
 浏览器可视化 Optuna Study 的 pickle 检查点数据。
 展示优化收敛曲线、参数分布对比、并行坐标图和 Trial 详情表格。
 
-启动: uv run python scripts/visualization/tpe_viewer.py
+启动: uv run python BreakoutStrategy/mining/tpe_viewer.py
 """
 
 import pickle
@@ -365,7 +365,7 @@ def create_app(df: pd.DataFrame, param_names: list[str], pkl_path: str) -> dash.
 
 def main():
     # === 参数声明 ===
-    pkl_path = "outputs/optuna/tpe_160.pkl"
+    pkl_path = "outputs/statistics/20260330_114654/optuna.pkl"
     host = "127.0.0.1"
     port = 8050
     debug = True

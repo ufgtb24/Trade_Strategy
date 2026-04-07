@@ -7,7 +7,7 @@ Step 1b: Optuna TPE 单目标搜索（shrinkage score 精细优化）
 Step 2: Bootstrap 验证 + 最优解选择
 
 输入: factor_analysis_data DataFrame + all_factor.yaml (mode)
-输出: factor_filter.yaml 的模板列表
+输出: filter.yaml 的模板列表
 """
 
 from __future__ import annotations
@@ -149,19 +149,15 @@ def decode_templates(triggered, labels, factor_names, min_count=10):
 
 
 def load_factor_modes(yaml_path):
-    """从 all_factor.yaml 读取各因子的 mode，返回反向因子集合。
-    若 FactorInfo.mining_mode 有值则覆盖 YAML 中的 mode。"""
+    """从 factor_diag.yaml 读取各因子的 mode，返回反向因子集合。"""
     with open(yaml_path) as f:
         cfg = yaml.safe_load(f)
     qs = cfg.get('quality_scorer', {})
 
     negative = set()
     for fi in get_active_factors():
-        if fi.mining_mode is not None:
-            mode = fi.mining_mode
-        else:
-            entry = qs.get(fi.yaml_key, {})
-            mode = entry.get('mode', 'gte')
+        entry = qs.get(fi.yaml_key, {})
+        mode = entry.get('mode', 'gte')
         if mode == 'lte':
             negative.add(fi.key)
     return frozenset(negative)
@@ -381,13 +377,40 @@ def stage3b_optuna_search(raw_values, labels, active_factors,
     from tqdm import tqdm
     pbar = tqdm(total=remaining, initial=0, desc="TPE")
 
+    try:
+        prev_best_number = study.best_trial.number
+    except ValueError:
+        prev_best_number = -1
+
     def progress_callback(study, trial):
+        nonlocal prev_best_number
         pbar.update(1)
         try:
             bt = study.best_trial
             best_val = bt.value
             med = bt.user_attrs.get('top_median')
             cnt = bt.user_attrs.get('top_count')
+            if bt.number != prev_best_number:
+                prev_best_number = bt.number
+                entry = {
+                    'trial_id': bt.number,
+                    'value': round(float(best_val), 4),
+                    'top_median': round(float(med), 4) if med is not None else None,
+                    'top_count': cnt,
+                }
+                history = study.user_attrs.get('best_history', [])
+                history.append(entry)
+                study.set_user_attr('best_history', history)
+                if checkpoint_path:
+                    history_path = Path(checkpoint_path).parent / "best_trials.md"
+                    with open(history_path, 'w') as hf:
+                        hf.write("# Best Trial History\n\n")
+                        hf.write("| # | Trial ID | Score | Median | Count |\n")
+                        hf.write("|---|----------|-------|--------|-------|\n")
+                        for idx, h in enumerate(history, 1):
+                            m = f"{h['top_median']:.4f}" if h.get('top_median') is not None else "N/A"
+                            c = str(h.get('top_count', 'N/A'))
+                            hf.write(f"| {idx} | {h['trial_id']} | {h['value']:.4f} | {m} | {c} |\n")
             if med is not None:
                 pbar.set_postfix_str(f"best={best_val:.4f} #={bt.number} top(med={med:.3f},n={cnt},r={cnt/n_total:.2%})")
             else:
@@ -520,27 +543,30 @@ def select_best_trial(study, raw_values, labels, active_factors,
 # 入口
 # ---------------------------------------------------------------------------
 
-def main(input_csv, factor_yaml, output_yaml, report_name=None):
+def main(input_csv, factor_yaml, output_yaml, report_name=None,
+         optimizer_config: dict = None, checkpoint_path: str = None):
     from pathlib import Path
     from BreakoutStrategy.mining.template_generator import build_yaml_output, print_summary, write_yaml
 
-    # 搜索参数
-    beam_width = 3
-    n_trials = 50000
-    min_count = 30
-    shrinkage_k = 1
-    shrinkage_n0 = 200
-    n_startup_trials = 1000
-    min_viable_count = 30
-    bootstrap_n = 1000
-    sampler = "tpe"           # 'tpe' | 'multivariate_tpe'
-    enable_log = True          # True: 用 diagnose_log_scale 自动判断; False: 全部禁用 log
-    quantile_margin = 0.02     # 分位数边界预留，搜索范围为 [P(margin), P(1-margin)]
-    overwrite_checkpoint = False   # True: 删除旧检查点从零开始; False: 读取旧的继续训练
+    # 从 optimizer_config 读取搜索参数，提供默认值
+    cfg = optimizer_config or {}
+    beam_width = cfg.get('beam_width', 3)
+    n_trials = cfg.get('n_trials', 50000)
+    min_count = cfg.get('min_count', 30)
+    shrinkage_k = cfg.get('shrinkage_k', 1)
+    shrinkage_n = cfg.get('shrinkage_n', 200)
+    n_startup_trials = cfg.get('n_startup_trials', 1000)
+    min_viable_count = cfg.get('min_viable_count', 30)
+    bootstrap_n = cfg.get('bootstrap_n', 1000)
+    sampler = cfg.get('sampler', 'tpe')
+    enable_log = cfg.get('enable_log', True)
+    quantile_margin = cfg.get('quantile_margin', 0.02)
+    overwrite_checkpoint = cfg.get('overwrite_checkpoint', False)
 
-    # Optuna pickle 检查点路径（不同 sampler 用不同文件，避免恢复冲突）
-    project_root = Path(input_csv).resolve().parent.parent.parent
-    checkpoint_path = str(project_root / "outputs" / "optuna" / f"tpe_{shrinkage_n0}_single.pkl")
+    # checkpoint_path 默认值
+    if checkpoint_path is None:
+        project_root = Path(input_csv).resolve().parent.parent.parent
+        checkpoint_path = str(project_root / "outputs" / "optuna" / f"tpe_{shrinkage_n}_single.pkl")
 
     # === 加载数据 ===
     print(f"Loading: {input_csv}")
@@ -587,7 +613,7 @@ def main(input_csv, factor_yaml, output_yaml, report_name=None):
 
     # === Step 1b: Optuna TPE top-1 shrinkage（无 trigger rate 约束）===
     print(f"\n=== Step 1b: Optuna TPE Top-1 Shrinkage ({n_trials} trials, "
-          f"n0={shrinkage_n0}, startup={n_startup_trials}) ===")
+          f"n0={shrinkage_n}, startup={n_startup_trials}) ===")
     print(f"  Checkpoint: {checkpoint_path}")
     study = stage3b_optuna_search(
         raw_values, labels, all_factors,
@@ -595,7 +621,7 @@ def main(input_csv, factor_yaml, output_yaml, report_name=None):
         n_trials=n_trials, min_count=min_count,
         top_k=shrinkage_k,
         negative_factors=negative_factors,
-        baseline_median=baseline_median, shrinkage_n0=shrinkage_n0,
+        baseline_median=baseline_median, shrinkage_n0=shrinkage_n,
         checkpoint_path=checkpoint_path, n_startup_trials=n_startup_trials,
         sampler=sampler, enable_log=enable_log,
         quantile_margin=quantile_margin,
@@ -648,7 +674,7 @@ def main(input_csv, factor_yaml, output_yaml, report_name=None):
         'thresholds': {k: round(float(v), 4) for k, v in best['thresholds'].items()},
         'negative_factors': sorted(negative_factors),
         'shrinkage_score': round(float(best['shrinkage_score']), 4),
-        'shrinkage_n0': shrinkage_n0,
+        'shrinkage_n': shrinkage_n,
         'shrinkage_k': shrinkage_k,
         'baseline_median': round(baseline_median, 4),
         'min_stability': round(float(best['min_stability']), 3),
@@ -668,7 +694,7 @@ def main(input_csv, factor_yaml, output_yaml, report_name=None):
     yaml_data['_meta']['version'] = 4
 
     write_yaml(yaml_data, output_yaml,
-               header_comment="# configs/params/factor_filter.yaml\n"
+               header_comment="# configs/params/filter.yaml\n"
                               "# 由 BreakoutStrategy.mining.threshold_optimizer 自动生成\n\n")
     print(f"\n  Output: {output_yaml}")
 
@@ -691,5 +717,5 @@ if __name__ == "__main__":
     main(
         input_csv=str(PROJECT_ROOT / "outputs/analysis/factor_analysis_data.csv"),
         factor_yaml=str(PROJECT_ROOT / "configs/params/all_factor.yaml"),
-        output_yaml=str(PROJECT_ROOT / "configs/params/factor_filter.yaml"),
+        output_yaml=str(PROJECT_ROOT / "configs/params/filter.yaml"),
     )

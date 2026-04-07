@@ -8,7 +8,7 @@ from typing import Callable, Optional
 class TemplatePanel:
     """模板列表面板（左侧面板上部）
 
-    显示 factor_filter.yaml 中的模板列表，支持单选。
+    显示 filter.yaml 中的模板列表，支持单选。
     列: # | Med | N | R（序号列，模板名通过悬浮提示显示）
     按 median 降序排列。
     """

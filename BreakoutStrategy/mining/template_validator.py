@@ -1,8 +1,8 @@
 """
 组合模板样本外验证模块
 
-在独立测试集上验证 factor_filter.yaml 中组合模板的预测能力。
-通过五维度指标（基础统计、排序保持、分布稳定、全局有效性、样本覆盖）
+在独立测试集上验证 filter.yaml 中组合模板的预测能力。
+通过四维度指标（基础统计、Top-K留存、分布稳定、全局有效性）
 评估模板从训练集到测试集的泛化表现。
 
 用法:
@@ -17,7 +17,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import yaml
-from scipy.stats import ks_2samp, kendalltau, spearmanr
+from scipy.stats import ks_2samp
 
 from BreakoutStrategy.mining.data_pipeline import (
     apply_binary_levels,
@@ -26,7 +26,7 @@ from BreakoutStrategy.mining.data_pipeline import (
     save_dataframe,
 )
 from BreakoutStrategy.factor_registry import LABEL_COL, get_active_factors
-from BreakoutStrategy.mining.threshold_optimizer import build_triggered_matrix
+from BreakoutStrategy.mining.threshold_optimizer import build_triggered_matrix, decode_templates, load_factor_modes
 from BreakoutStrategy.UI.managers.scan_manager import ScanManager
 
 logger = logging.getLogger(__name__)
@@ -54,6 +54,21 @@ def _load_train_metadata(json_path: Path) -> dict:
         "scorer_config": meta["quality_scorer_params"],
         "label_max_days": label_max_days,
     }
+
+
+def _should_rescan(existing_json: Path, target_start: str, target_end: str) -> bool:
+    """检查已有扫描结果的时间范围是否与目标一致。不一致或不存在则需要重新扫描。"""
+    if not existing_json.exists():
+        return True
+    with open(existing_json) as f:
+        meta = json.load(f)["scan_metadata"]
+    existing_start = meta.get("start_date", "")
+    existing_end = meta.get("end_date", "")
+    if existing_start != target_start or existing_end != target_end:
+        logger.info("测试集时间范围不匹配: 已有 %s~%s, 目标 %s~%s, 将重新扫描",
+                     existing_start, existing_end, target_start, target_end)
+        return True
+    return False
 
 
 # ---------------------------------------------------------------------------
@@ -226,7 +241,7 @@ def _match_templates(
 
 
 # ---------------------------------------------------------------------------
-# 5. 五维度验证指标
+# 5. 四维度验证指标
 # ---------------------------------------------------------------------------
 
 def _compute_validation_metrics(
@@ -234,15 +249,15 @@ def _compute_validation_metrics(
     labels_test: np.ndarray,
     keys_test: np.ndarray,
     baseline_train: float,
+    shrinkage_k: int = 1,
     bootstrap_n: int = 1000,
 ) -> dict:
-    """计算五维度验证指标。
+    """计算四维度验证指标。
 
     D1: 基础统计量（per-template）
-    D2: 排序保持（Spearman, Kendall, Top-K）
+    D2: Top-K 留存（K = shrinkage_k）
     D3: 分布稳定性（KS 检验, Bootstrap CI）
     D4: 全局有效性（baseline shift, above-ratio, lift）
-    D5: 样本量与覆盖率
     """
     rng = np.random.default_rng(42)
 
@@ -257,42 +272,26 @@ def _compute_validation_metrics(
             else:
                 m[key] = np.nan
 
-    # ── D2: 排序保持（仅 test_count >= 10 的模板）──
+    # ── 提取 top-K 模板集合（按训练集 median，共享给 D2 和 D4）──
     eligible = [m for m in matched if m["test"]["count"] >= 10]
+    sorted_by_train_median = sorted(eligible, key=lambda x: x["train"]["median"], reverse=True)
+    top_k_templates = sorted_by_train_median[:shrinkage_k]
+    top_k_names = set(m["name"] for m in top_k_templates)
+    top_k_keys = set(m["target_key"] for m in top_k_templates)
 
-    d2 = {"eligible_count": len(eligible)}
+    # ── D2: Top-K retention（K = shrinkage_k）──
+    d2 = {"eligible_count": len(eligible), "k": shrinkage_k}
+
     for q_name in ["q25", "median", "q75"]:
         q_result = {}
-        if len(eligible) >= 3:
-            train_vals = [m["train"][q_name] for m in eligible]
-            test_vals = [m["test"][q_name] for m in eligible]
-
-            sp_rho, sp_p = spearmanr(train_vals, test_vals)
-            kt_tau, kt_p = kendalltau(train_vals, test_vals)
-            q_result["spearman_rho"] = float(sp_rho)
-            q_result["spearman_p"] = float(sp_p)
-            q_result["kendall_tau"] = float(kt_tau)
-            q_result["kendall_p"] = float(kt_p)
-
-            # Top-K retention
+        if len(eligible) >= shrinkage_k:
             sorted_train = sorted(eligible, key=lambda x: x["train"][q_name], reverse=True)
             sorted_test = sorted(eligible, key=lambda x: x["test"][q_name], reverse=True)
-            train_names = [m["name"] for m in sorted_train]
-            test_names = [m["name"] for m in sorted_test]
-
-            for k in [5, 10]:
-                if len(eligible) >= k:
-                    top_train = set(train_names[:k])
-                    top_test = set(test_names[:k])
-                    q_result[f"top_{k}_retention"] = len(top_train & top_test) / k
-                else:
-                    q_result[f"top_{k}_retention"] = np.nan
+            top_train = set(m["name"] for m in sorted_train[:shrinkage_k])
+            top_test = set(m["name"] for m in sorted_test[:shrinkage_k])
+            q_result["top_k_retention"] = len(top_train & top_test) / shrinkage_k
         else:
-            q_result = {
-                "spearman_rho": np.nan, "spearman_p": np.nan,
-                "kendall_tau": np.nan, "kendall_p": np.nan,
-                "top_5_retention": np.nan, "top_10_retention": np.nan,
-            }
+            q_result["top_k_retention"] = np.nan
         d2[q_name] = q_result
 
     # ── D3: 分布稳定性（双侧 count >= 15）──
@@ -326,63 +325,41 @@ def _compute_validation_metrics(
                 "train_in_ci": train_in_ci,
             })
 
-    # ── D4: 全局有效性 ──
+    # ── D4: 全局有效性（仅评估 top-K 模板）──
     test_baseline_median = float(np.median(labels_test))
 
-    # above_baseline_ratio: test median > baseline 的模板占比
-    testable = [m for m in matched if m["test"]["count"] >= 10]
-    if testable:
-        above_count = sum(1 for m in testable if m["test"]["median"] > baseline_train)
-        above_baseline_ratio = above_count / len(testable)
+    # above_baseline_ratio: top-K 模板中 test median > baseline 的占比
+    top_k_testable = [m for m in top_k_templates if m["test"]["count"] >= 10]
+    if top_k_testable:
+        above_count = sum(1 for m in top_k_testable if m["test"]["median"] > baseline_train)
+        above_baseline_ratio = above_count / len(top_k_testable)
     else:
         above_baseline_ratio = 0.0
 
-    # template_lift: 被模板匹配样本 vs 未匹配样本
-    all_template_keys = set(m["target_key"] for m in matched)
-    matched_mask = np.isin(keys_test, list(all_template_keys))
-    matched_labels = labels_test[matched_mask]
-    unmatched_labels = labels_test[~matched_mask]
+    # template_lift: top-K 模板命中样本 vs 未命中样本
+    top_k_mask = np.isin(keys_test, list(top_k_keys))
+    matched_labels = labels_test[top_k_mask]
+    unmatched_labels = labels_test[~top_k_mask]
 
     has_both = len(matched_labels) > 0 and len(unmatched_labels) > 0
     template_lift = (
         float(np.median(matched_labels) - np.median(unmatched_labels))
         if has_both else 0.0
     )
-    template_lift_q25 = (
-        float(np.percentile(matched_labels, 25) - np.percentile(unmatched_labels, 25))
-        if has_both else 0.0
-    )
-    template_lift_q75 = (
-        float(np.percentile(matched_labels, 75) - np.percentile(unmatched_labels, 75))
-        if has_both else 0.0
-    )
-
-    # above_baseline_ratio 多分位数版本
-    if testable:
-        above_count_q25 = sum(1 for m in testable if m["test"]["q25"] > np.percentile(labels_test, 25))
-        above_count_q75 = sum(1 for m in testable if m["test"]["q75"] > np.percentile(labels_test, 75))
-        above_baseline_ratio_q25 = above_count_q25 / len(testable)
-        above_baseline_ratio_q75 = above_count_q75 / len(testable)
-    else:
-        above_baseline_ratio_q25 = 0.0
-        above_baseline_ratio_q75 = 0.0
 
     d4 = {
         "train_baseline_median": baseline_train,
         "test_baseline_median": test_baseline_median,
         "baseline_shift": test_baseline_median - baseline_train,
         "above_baseline_ratio": above_baseline_ratio,
-        "above_baseline_ratio_q25": above_baseline_ratio_q25,
-        "above_baseline_ratio_q75": above_baseline_ratio_q75,
-        "above_count": above_count if testable else 0,
-        "testable_count": len(testable),
+        "above_count": above_count if top_k_testable else 0,
+        "testable_count": len(top_k_testable),
         "template_lift": template_lift,
-        "template_lift_q25": template_lift_q25,
-        "template_lift_q75": template_lift_q75,
         "matched_median": float(np.median(matched_labels)) if len(matched_labels) > 0 else np.nan,
         "unmatched_median": float(np.median(unmatched_labels)) if len(unmatched_labels) > 0 else np.nan,
-        "matched_n": int(matched_mask.sum()),
-        "unmatched_n": int((~matched_mask).sum()),
+        "matched_n": int(top_k_mask.sum()),
+        "unmatched_n": int((~top_k_mask).sum()),
+        "top_k_names": sorted(top_k_names),
     }
 
     # ── D5: 样本量与覆盖率 ──
@@ -421,24 +398,19 @@ def _compute_validation_metrics(
 def _judge_result(metrics: dict) -> tuple[str, list[str]]:
     """三级判定：PASS / CONDITIONAL PASS / FAIL。
 
+    判定维度（3 个）：
+    - top_k: 训练集 Top-K 模板在测试集中的留存率（K = shrinkage_k）
+    - above_baseline: 测试集中模板 median 超过训练集 baseline 的比例
+    - lift: 测试集中被模板命中样本 vs 未命中样本的 median 差
+
     Returns:
         (verdict, reasons)
     """
     d2 = metrics["d2_rank"]
     d4 = metrics["d4_global"]
-    d2_med = d2["median"]  # 判定基于 median 分位数
+    d2_med = d2["median"]
 
     checks = {}
-
-    # Spearman rho（基于 median）
-    rho = d2_med["spearman_rho"]
-    p = d2_med["spearman_p"]
-    if not np.isnan(rho) and rho >= 0.50 and p < 0.05:
-        checks["spearman"] = "PASS"
-    elif not np.isnan(rho) and rho >= 0.30:
-        checks["spearman"] = "CONDITIONAL"
-    else:
-        checks["spearman"] = "FAIL"
 
     # Above-baseline ratio
     abr = d4["above_baseline_ratio"]
@@ -456,14 +428,11 @@ def _judge_result(metrics: dict) -> tuple[str, list[str]]:
     else:
         checks["lift"] = "FAIL"
 
-    # Top-10 retention（基于 median）
-    top10 = d2_med.get("top_10_retention", np.nan)
-    if np.isnan(top10):
-        # 回退到 top-5
-        top10 = d2_med.get("top_5_retention", np.nan)
-    if not np.isnan(top10) and top10 >= 0.50:
+    # Top-K retention（基于 median，K = shrinkage_k）
+    top_k = d2_med.get("top_k_retention", np.nan)
+    if not np.isnan(top_k) and top_k >= 1.0:
         checks["top_k"] = "PASS"
-    elif not np.isnan(top10) and top10 >= 0.30:
+    elif not np.isnan(top_k) and top_k > 0:
         checks["top_k"] = "CONDITIONAL"
     else:
         checks["top_k"] = "FAIL"
@@ -519,6 +488,10 @@ def _generate_report(
     # ── 0. Summary & Verdict ──
     w("## 0. Summary & Verdict")
     w()
+    w('> 三个判定维度：**above_baseline**（Top-K 模板的测试集 median 是否超过训练集基线）、'
+       '**lift**（Top-K 模板命中样本 vs 未命中样本的收益差）、'
+       '**top_k_retention**（训练集最优模板在测试集是否保持最优）。'
+       '全 PASS → PASS，无 FAIL → CONDITIONAL PASS，有 FAIL → FAIL。\n')
     w(f"**Verdict: {verdict}**")
     w()
     if reasons:
@@ -528,21 +501,15 @@ def _generate_report(
         w()
 
     d2_med = d2["median"]
-    d2_q25 = d2["q25"]
-    d2_q75 = d2["q75"]
-
+    k = d2.get("k", 1)
+    top_k_label = f"Top-{k}" if k > 1 else "Top-1"
+    top_k_names = set(d4['top_k_names'])
     w("| Metric | Value |")
     w("|--------|-------|")
-    w(f"| Spearman rho (q25) | {d2_q25['spearman_rho']:.4f} (p={d2_q25['spearman_p']:.4f}) |")
-    w(f"| Spearman rho (median) | {d2_med['spearman_rho']:.4f} (p={d2_med['spearman_p']:.4f}) |")
-    w(f"| Spearman rho (q75) | {d2_q75['spearman_rho']:.4f} (p={d2_q75['spearman_p']:.4f}) |")
-    w(f"| Kendall tau (median) | {d2_med['kendall_tau']:.4f} (p={d2_med['kendall_p']:.4f}) |")
-    w(f"| Above-baseline ratio | {d4['above_baseline_ratio']:.2%} ({d4['above_count']}/{d4['testable_count']}) |")
-    w(f"| Template lift (median) | {d4['template_lift']:+.4f} |")
-    top10 = d2_med.get("top_10_retention", np.nan)
-    top5 = d2_med.get("top_5_retention", np.nan)
-    w(f"| Top-5 retention | {top5:.2%} |" if not np.isnan(top5) else "| Top-5 retention | N/A |")
-    w(f"| Top-10 retention | {top10:.2%} |" if not np.isnan(top10) else "| Top-10 retention | N/A |")
+    w(f"| Above-baseline ratio ({top_k_label}) | {d4['above_baseline_ratio']:.2%} ({d4['above_count']}/{d4['testable_count']}) |")
+    w(f"| Template lift ({top_k_label}, median) | {d4['template_lift']:+.4f} |")
+    top_k = d2_med.get("top_k_retention", np.nan)
+    w(f"| Top-{k} retention (median) | {top_k:.2%} |" if not np.isnan(top_k) else f"| Top-{k} retention (median) | N/A |")
     w(f"| Found ratio | {d5['found_ratio']:.2%} ({d5['sufficient'] + d5['marginal']}/{d5['total_templates']}) |")
     w(f"| Coverage rate | {d5['coverage_rate']:.2%} ({d5['total_matched']}/{d5['total_test']}) |")
     w()
@@ -573,53 +540,70 @@ def _generate_report(
     w()
 
     # ── 3. Per-Template Comparison ──
-    w("## 3. Per-Template Comparison")
+    top_k_matched = [m for m in matched if m['name'] in top_k_names]
+    w(f"## 3. Per-Template Comparison ({top_k_label} only)")
     w()
+    w('> 每个模板在训练集和测试集中的统计量对比。'
+       '重点关注 **Med**（中位数收益，抗极值）和 **N**（样本量，决定结论可信度）。'
+       '训练 → 测试的 median 回撤在 20-30% 内属正常样本外衰减。\n')
     w("| # | Template | Train N | Tr q25 | Tr Mean | Tr Med | Tr q75 | Test N | Te q25 | Te Mean | Te Med | Te q75 |")
     w("|---|----------|---------|--------|---------|--------|--------|--------|--------|---------|--------|--------|")
-    for i, m in enumerate(matched, 1):
+    for i, m in enumerate(top_k_matched, 1):
         tr = m["train"]
         te = m["test"]
         fmt = lambda v: f"{v:.4f}" if not np.isnan(v) else "N/A"
         w(f"| {i} | {m['name']} | {tr['count']} | {fmt(tr['q25'])} | {fmt(tr['mean'])} | {fmt(tr['median'])} | {fmt(tr['q75'])} | {te['count']} | {fmt(te['q25'])} | {fmt(te['mean'])} | {fmt(te['median'])} | {fmt(te['q75'])} |")
     w()
 
-    # ── 4. Rank Preservation ──
-    w("## 4. Rank Preservation")
+    # ── 4. Top-K Retention ──
+    w("## 4. Top-K Retention")
     w()
+    w('> 训练集中按各分位数（q25/median/q75）排名第一的模板，在测试集中是否仍排名第一。'
+       '100% = 保持，0% = 被其他模板超越。**判定只看 median 行。**'
+       'q25/q75 是补充视角：三行全 100% 说明收益分布形状也稳定，只有 median 保持说明尾部特征有漂移。\n')
+    w(f"- K = {k} (= shrinkage_k, TPE optimization target)")
     w(f"- Eligible templates (test N >= 10): {d2['eligible_count']}")
     w()
-    w("| Quantile | Spearman rho | p-value | Kendall tau | p-value | Top-5 | Top-10 |")
-    w("|----------|-------------|---------|-------------|---------|-------|--------|")
+    w(f"| Quantile | Top-{k} Retention |")
+    w(f"|----------|{'---' * 5}|")
     for q_name in ["q25", "median", "q75"]:
         qd = d2[q_name]
-        fmt_v = lambda v: f"{v:.4f}" if not np.isnan(v) else "N/A"
-        fmt_p = lambda v: f"{v:.2%}" if not np.isnan(v) else "N/A"
-        w(f"| {q_name} | {fmt_v(qd['spearman_rho'])} | {fmt_v(qd['spearman_p'])} | {fmt_v(qd['kendall_tau'])} | {fmt_v(qd['kendall_p'])} | {fmt_p(qd['top_5_retention'])} | {fmt_p(qd['top_10_retention'])} |")
+        val = qd.get('top_k_retention', np.nan)
+        fmt_v = f"{val:.2%}" if not np.isnan(val) else "N/A"
+        w(f"| {q_name} | {fmt_v} |")
     w()
 
     # ── 5. Global Effectiveness ──
-    w("## 5. Global Effectiveness")
+    w(f"## 5. Global Effectiveness ({top_k_label} templates only)")
     w()
+    w('> **Above-baseline ratio**: Top-K 模板的测试集 median 是否超过训练集全局 median（baseline），'
+       '只回答"是否超过"，不回答"超过多少"\n'
+       '> **Template lift**: 测试集中被 Top-K 模板命中的样本 median 减去未命中样本 median，'
+       '衡量模板的实际筛选增益\n'
+       '> **Baseline shift**: 测试集整体 median 与训练集的差异，正值说明测试期市场整体更好，'
+       '会导致 above-baseline 偏高（被"免费"抬升）\n')
+    w(f"- Evaluated templates: {', '.join(d4['top_k_names'])}")
     w(f"- Train baseline median: {d4['train_baseline_median']:.4f}")
     w(f"- Test baseline median: {d4['test_baseline_median']:.4f} (shift: {d4['baseline_shift']:+.4f})")
-    w(f"- Above-baseline ratio (median): {d4['above_baseline_ratio']:.2%}")
-    w(f"- Above-baseline ratio (q25): {d4['above_baseline_ratio_q25']:.2%}")
-    w(f"- Above-baseline ratio (q75): {d4['above_baseline_ratio_q75']:.2%}")
-    w(f"- Template matched median: {d4['matched_median']:.4f} (N={d4['matched_n']})")
+    w(f"- Above-baseline ratio: {d4['above_baseline_ratio']:.2%} ({d4['above_count']}/{d4['testable_count']})")
+    w(f"- {top_k_label} matched median: {d4['matched_median']:.4f} (N={d4['matched_n']})")
     w(f"- Non-matched median: {d4['unmatched_median']:.4f} (N={d4['unmatched_n']})")
-    w(f"- **Template lift (q25)**: {d4['template_lift_q25']:+.4f}")
     w(f"- **Template lift (median)**: {d4['template_lift']:+.4f}")
-    w(f"- **Template lift (q75)**: {d4['template_lift_q75']:+.4f}")
     w()
 
     # ── 5.1 Distribution Stability ──
     if d3:
-        w("### Distribution Stability (KS test + Bootstrap CI)")
+        top_k_d3 = [r for r in d3 if r['name'] in top_k_names]
+        w(f"### Distribution Stability ({top_k_label} only, KS test + Bootstrap CI)")
         w()
+        w('> **KS test**（Kolmogorov-Smirnov 检验）：检验同一模板在训练集和测试集中命中样本的收益分布是否一致。'
+           'KS stat 小 + p > 0.05 = 无显著分布漂移\n'
+           '> **Bootstrap CI**：对测试集命中样本做 1000 次有放回重采样，每次算一个 median，'
+           '取 2.5% 和 97.5% 分位数得到 95% 置信区间。'
+           'In CI = Yes 表示训练集 median 落在此区间内，即衰减属正常抽样波动\n')
         w("| Template | KS stat | KS p | 95% CI | Train Med | In CI? |")
         w("|----------|---------|------|--------|-----------|--------|")
-        for r in d3:
+        for r in top_k_d3:
             in_ci = "Yes" if r["train_in_ci"] else "No"
             w(f"| {r['name']} | {r['ks_stat']:.3f} | {r['ks_p']:.4f} | [{r['ci_low']:.4f}, {r['ci_high']:.4f}] | {r['train_median']:.4f} | {in_ci} |")
         w()
@@ -627,6 +611,9 @@ def _generate_report(
     # ── 6. Sample Coverage ──
     w("## 6. Sample Coverage")
     w()
+    w('> 模板在测试集中的样本量分布。'
+       'Sufficient（N >= 20）结论可信；Marginal（10-19）可参考；Unreliable（< 10）不可靠。'
+       'Coverage rate = 被任意模板命中的测试样本占比。\n')
     w(f"- Total templates: {d5['total_templates']}")
     w(f"- Sufficient (N >= 20): {d5['sufficient']}")
     w(f"- Marginal (10 <= N < 20): {d5['marginal']}")
@@ -659,143 +646,315 @@ def _generate_report(
 
 
 # ---------------------------------------------------------------------------
-# 8. 主入口
+# 8. 从 Optuna pkl 加载 trial
 # ---------------------------------------------------------------------------
 
-def main():
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s [%(levelname)s] %(message)s",
-        datefmt="%H:%M:%S",
+def _load_from_trial(pkl_path, train_csv_path, factor_yaml_path, trial_id=None):
+    """从 Optuna pkl 加载指定 trial 的参数并重建模板。
+
+    Args:
+        pkl_path: optuna.pkl 路径
+        train_csv_path: 训练分析数据 CSV
+        factor_yaml_path: all_factor.yaml（用于读取反向因子）
+        trial_id: None → 使用最新 best trial; int → 指定 trial number
+
+    Returns:
+        (templates, thresholds, baseline_train, negative_factors)
+    """
+    import pickle
+
+    with open(pkl_path, 'rb') as f:
+        study = pickle.load(f)
+
+    # 打印 best history
+    best_history = study.user_attrs.get('best_history', [])
+    if best_history:
+        print(f"  Best trial history ({len(best_history)} entries):")
+        print(f"    {'#':>4s} {'trial_id':>10s} {'score':>10s} {'median':>10s} {'count':>8s}")
+        for i, h in enumerate(best_history):
+            med_str = f"{h['top_median']:.4f}" if h.get('top_median') is not None else "N/A"
+            cnt_str = str(h.get('top_count', 'N/A'))
+            print(f"    {i+1:4d} {h['trial_id']:10d} {h['value']:10.4f} {med_str:>10s} {cnt_str:>8s}")
+    else:
+        print("  No best_history found in study (old checkpoint?)")
+
+    # 选择 trial
+    if trial_id is not None:
+        matches = [t for t in study.trials if t.number == trial_id]
+        if not matches:
+            raise ValueError(f"Trial #{trial_id} not found in study ({len(study.trials)} trials)")
+        trial = matches[0]
+        print(f"  Using trial #{trial_id} (value={trial.value:.4f})")
+    else:
+        trial = study.best_trial
+        print(f"  Using best trial #{trial.number} (value={trial.value:.4f})")
+
+    # 提取阈值
+    all_factors = [f.key for f in get_active_factors()]
+    thresholds = {key: trial.params[key] for key in all_factors if key in trial.params}
+
+    # 加载训练数据
+    df_train = pd.read_csv(train_csv_path)
+    df_train = df_train.dropna(subset=[LABEL_COL]).reset_index(drop=True)
+    raw_values = prepare_raw_values(df_train)
+    labels = df_train[LABEL_COL].values
+    baseline_train = float(np.median(labels))
+
+    # 加载反向因子
+    negative_factors = frozenset(load_factor_modes(factor_yaml_path))
+
+    # 重建模板
+    triggered = build_triggered_matrix(raw_values, thresholds, all_factors, negative_factors)
+    templates = decode_templates(triggered, labels, all_factors, min_count=30)
+
+    print(f"  Templates rebuilt: {len(templates)}")
+    print(f"  Thresholds: {len(thresholds)} factors")
+    print(f"  Baseline median: {baseline_train:.4f}")
+    print(f"  Negative factors: {sorted(negative_factors) if negative_factors else 'none'}")
+
+    return templates, thresholds, baseline_train, negative_factors
+
+
+# ---------------------------------------------------------------------------
+# 9. Trial 文件生成
+# ---------------------------------------------------------------------------
+
+def _generate_trial_files(
+    trial_dir: Path,
+    templates: list[dict],
+    thresholds: dict,
+    negative_factors: frozenset,
+    train_csv: Path,
+    base_yaml: Path,
+    factor_yaml: Path,
+    min_count: int = 30,
+):
+    """为指定 trial 生成 3 个产出文件。
+
+    Args:
+        trial_dir: trials/<trial_id>/ 目录
+        templates: decode_templates 产出的模板列表
+        thresholds: trial 的阈值 dict
+        negative_factors: 反向因子集合
+        train_csv: 训练分析数据 CSV
+        base_yaml: 归档根目录的 all_factor.yaml（方向修正版）
+        factor_yaml: 用于嵌入 scan_params 的 YAML
+        min_count: 模板最小样本量
+    """
+    import yaml as _yaml
+    from BreakoutStrategy.mining.template_generator import build_yaml_output, write_yaml
+    from BreakoutStrategy.mining.param_writer import build_mined_params, write_mined_yaml
+    from BreakoutStrategy.mining.data_pipeline import apply_binary_levels
+    from BreakoutStrategy.mining.stats_analysis import run_analysis
+    from BreakoutStrategy.mining.report_generator import generate_report
+
+    trial_dir.mkdir(parents=True, exist_ok=True)
+
+    # --- 加载训练 DataFrame ---
+    df_train = pd.read_csv(train_csv)
+    df_train = df_train.dropna(subset=[LABEL_COL]).reset_index(drop=True)
+
+    # --- 1. filter.yaml ---
+    filter_path = trial_dir / "filter.yaml"
+    yaml_data = build_yaml_output(
+        templates, df_train, str(train_csv), min_count,
+        generator='BreakoutStrategy.mining.template_validator',
     )
 
-    PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
+    all_factors = [f.key for f in get_active_factors()]
+    yaml_data['_meta']['optimization'] = {
+        'thresholds': {k: round(float(v), 4) for k, v in thresholds.items()},
+        'negative_factors': sorted(negative_factors),
+    }
+    yaml_data['_meta']['version'] = 4
 
-    # ── 输入路径 ──
-    train_json = PROJECT_ROOT / "outputs" / "scan_results" / "scan_results_all.json"
-    train_csv = PROJECT_ROOT / "outputs" / "analysis" / "factor_analysis_data.csv"
-    factor_filter_yaml = PROJECT_ROOT / "configs" / "templates" / "factor_filter.yaml"
-    data_dir = PROJECT_ROOT / "datasets" / "pkls"
+    # 嵌入扫描参数快照
+    with open(factor_yaml, 'r', encoding='utf-8') as f:
+        all_params = _yaml.safe_load(f)
+    scan_params = {}
+    for section in ('breakout_detector', 'general_feature', 'quality_scorer'):
+        if section in all_params:
+            scan_params[section] = all_params[section]
+    scan_params.get('breakout_detector', {}).pop('cache_dir', None)
+    scan_params.get('breakout_detector', {}).pop('use_cache', None)
+    yaml_data['scan_params'] = scan_params
 
-    # ── 输出路径 ──
-    test_json = PROJECT_ROOT / "outputs" / "scan_results" / "scan_results_test.json"
-    test_csv = PROJECT_ROOT / "outputs" / "analysis" / "factor_analysis_test.csv"
-    report_path = PROJECT_ROOT / "docs" / "statistics" / "validation_report.md"
+    write_yaml(yaml_data, filter_path,
+               header_comment="# filter.yaml\n"
+                              "# 由 BreakoutStrategy.mining.template_validator 自动生成\n\n")
+    logger.info("filter.yaml → %s", filter_path)
 
-    # ── 测试集时间范围 ──
-    test_start_date = "2025-08-01"
-    test_end_date = "2025-11-01"
+    # --- 2. mining_report.md ---
+    report_path = trial_dir / "mining_report.md"
+    apply_binary_levels(df_train, thresholds, negative_factors)
+    results = run_analysis(df_train, thresholds=thresholds,
+                           negative_factors=negative_factors)
+    generate_report(results, output_path=report_path)
+    logger.info("mining_report.md → %s", report_path)
 
-    # ── 突破价格筛选（与训练一致） ──
-    min_price = 1.0
-    max_price = 10.0
-    min_volume = 10000
+    # --- 3. all_factor.yaml ---
+    mined_yaml_path = trial_dir / "all_factor.yaml"
+    data, applied = build_mined_params(str(base_yaml), str(filter_path))
+    write_mined_yaml(data, mined_yaml_path, applied)
+    logger.info("all_factor.yaml → %s (%d factors)", mined_yaml_path, len(applied))
 
-    # ── 扫描/验证参数 ──
-    num_workers = 8
-    skip_scan = False
-    bootstrap_n = 1000
-    min_count = 20  # noqa: F841 — 预留参数
 
-    # ================================================================
-    # Step 1: 加载训练 metadata + 模板 + 阈值 + 反向因子
-    # ================================================================
+# ---------------------------------------------------------------------------
+# 10. Trial Materializer 公共 API
+# ---------------------------------------------------------------------------
+
+def materialize_trial(
+    archive_dir: Path,
+    train_json: Path,
+    trial_id: int | None = None,
+    run_validation: bool = False,
+    validation_config: dict | None = None,
+    data_dir: Path | None = None,
+    shrinkage_k: int = 1,
+    report_name: str = "validation_report.md",
+):
+    """物化指定 trial 的完整产出 + 可选 OOS 验证。
+
+    必选产出: trials/<trial_id>/filter.yaml, mining_report.md, all_factor.yaml
+    可选产出: trials/<trial_id>/<report_name> (run_validation=True)
+
+    Args:
+        archive_dir: 归档根目录 (outputs/statistics/<run_name>/)
+        train_json: 训练 scan_results JSON 路径
+        trial_id: None → best trial; int → 指定 trial number
+        run_validation: 运行时开关，是否执行 OOS 验证
+        validation_config: 验证参数字典，保存到 trial 目录的 validation_config.yaml
+            keys: test_start_date, test_end_date, min_price, max_price,
+                  min_volume, num_workers, bootstrap_n
+        data_dir: 股票数据目录 (run_validation=True 时必填)
+    """
+    archive_dir = Path(archive_dir)
+    train_csv = archive_dir / "factor_analysis_data.csv"
+    pkl_path = archive_dir / "optuna.pkl"
+    base_yaml = archive_dir / "factor_diag.yaml"
+
+    # ── Step 1: 加载 trial ──
     print("=" * 60)
-    print("[Step 1/7] 加载训练参数与模板配置...")
+    print(f"[Materializer] Archive: {archive_dir}")
+    print("[Step 1] 加载 trial...")
+
+    actual_trial_id = None if trial_id is None else trial_id
+    templates, thresholds, baseline_train, negative_factors = _load_from_trial(
+        pkl_path, train_csv, base_yaml, actual_trial_id,
+    )
+    negative_factors = frozenset(negative_factors)
+
+    # 获取实际 trial_id（用于目录名）
+    if trial_id is None:
+        import pickle
+        with open(pkl_path, 'rb') as f:
+            study = pickle.load(f)
+        resolved_trial_id = study.best_trial.number
+    else:
+        resolved_trial_id = trial_id
+
+    trial_dir = archive_dir / "trials" / str(resolved_trial_id)
+    print(f"  Trial: #{resolved_trial_id}")
+    print(f"  Output: {trial_dir}")
+
+    # ── Step 2-4: 生成 3 个文件 ──
+    print("=" * 60)
+    print("[Step 2-4] 生成 trial 产出文件...")
+    _generate_trial_files(
+        trial_dir=trial_dir,
+        templates=templates,
+        thresholds=thresholds,
+        negative_factors=negative_factors,
+        train_csv=train_csv,
+        base_yaml=base_yaml,
+        factor_yaml=base_yaml,
+    )
+
+    # ── 保存 validation_config.yaml ──
+    if validation_config:
+        import yaml as _yaml
+        vc_path = trial_dir / "validation_config.yaml"
+        vc_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(vc_path, 'w', encoding='utf-8') as f:
+            _yaml.dump(validation_config, f, default_flow_style=False, sort_keys=False)
+        logger.info("validation_config.yaml → %s", vc_path)
+
+    # ── Step 5: OOS 验证（可选）──
+    if not run_validation:
+        print("=" * 60)
+        print("[Materializer] OOS 验证已跳过 (run_validation=False)")
+        print(f"产出目录: {trial_dir}")
+        return
+
+    vc = validation_config or {}
+    test_start_date = vc.get('test_start_date', '')
+    test_end_date = vc.get('test_end_date', '')
+    min_price = vc.get('min_price', 1.0)
+    max_price = vc.get('max_price', 10.0)
+    min_volume = vc.get('min_volume', 10000)
+    num_workers = vc.get('num_workers', 8)
+    bootstrap_n = vc.get('bootstrap_n', 1000)
+
+    if not test_start_date or not test_end_date:
+        raise ValueError("run_validation=True 时 validation_config 必须包含 test_start_date 和 test_end_date")
+    if data_dir is None:
+        raise ValueError("run_validation=True 时必须提供 data_dir")
+
+    print("=" * 60)
+    print("[Step 5] OOS 验证...")
+
     train_meta = _load_train_metadata(train_json)
 
-    with open(factor_filter_yaml) as f:
-        filter_data = yaml.safe_load(f)
-    templates = filter_data["templates"]
-    optimization = filter_data["_meta"]["optimization"]
-    thresholds = optimization["thresholds"]
-    baseline_train = filter_data["_meta"]["baseline_median"]
+    # 5a. 检测扫描结果是否可复用
+    test_json = archive_dir / "scan_results_test.json"
+    need_rescan = _should_rescan(test_json, test_start_date, test_end_date)
 
-    negative_factors = frozenset(optimization.get("negative_factors", []))
+    if need_rescan:
+        print("  扫描测试集...")
+        test_json_path = _scan_test_period(
+            metadata=train_meta,
+            start_date=test_start_date,
+            end_date=test_end_date,
+            data_dir=Path(data_dir),
+            output_dir=archive_dir,
+            output_filename="scan_results_test.json",
+            min_price=min_price,
+            max_price=max_price,
+            min_volume=min_volume,
+            num_workers=num_workers,
+            skip_if_exists=False,
+        )
+    else:
+        test_json_path = test_json
+        print(f"  复用已有扫描结果: {test_json}")
 
-    print(f"  模板数: {len(templates)}")
-    print(f"  阈值因子数: {len(thresholds)}")
-    print(f"  反向因子: {negative_factors}")
-    print(f"  训练 baseline median: {baseline_train:.4f}")
-    print(f"  label_max_days: {train_meta['label_max_days']}")
-
-    # ================================================================
-    # Step 2: 扫描测试数据
-    # ================================================================
-    print("=" * 60)
-    print("[Step 2/7] 扫描测试期数据...")
-    test_json_path = _scan_test_period(
-        metadata=train_meta,
-        start_date=test_start_date,
-        end_date=test_end_date,
-        data_dir=data_dir,
-        output_dir=test_json.parent,
-        output_filename=test_json.name,
-        min_price=min_price,
-        max_price=max_price,
-        min_volume=min_volume,
-        num_workers=num_workers,
-        skip_if_exists=skip_scan,
-    )
-
-    # ================================================================
-    # Step 3: 构建测试 DataFrame + 二值化 + label 完整性验证
-    # ================================================================
-    print("=" * 60)
-    print("[Step 3/7] 构建测试 DataFrame...")
+    # 5b. 构建测试 DataFrame
     df_test, integrity_info = _build_test_dataframe(
         test_json_path, thresholds, negative_factors,
     )
+    test_csv = archive_dir / "factor_analysis_test.csv"
     save_dataframe(df_test, test_csv)
-    print(f"  总 breakouts: {integrity_info['total_breakouts']}")
-    print(f"  有效样本: {integrity_info['valid_count']}")
-    print(f"  丢弃 (None label): {integrity_info['dropped']} ({integrity_info['drop_rate']:.1%})")
+    print(f"  测试样本: {integrity_info['valid_count']}")
 
-    # ================================================================
-    # Step 4: 加载训练 DataFrame + 二值化
-    # ================================================================
-    print("=" * 60)
-    print("[Step 4/7] 加载训练 DataFrame...")
+    # 5c. 加载训练 DataFrame + 二值化
     df_train = pd.read_csv(train_csv)
     apply_binary_levels(df_train, thresholds, negative_factors)
-    print(f"  训练样本数: {len(df_train)}")
 
-    # ================================================================
-    # Step 5: 排除性模板匹配
-    # ================================================================
-    print("=" * 60)
-    print("[Step 5/7] 模板匹配...")
+    # 5d. 模板匹配 + 验证
     factor_names = [f.key for f in get_active_factors()]
     matched, keys_test_arr, labels_test_arr = _match_templates(
         df_train, df_test, templates, thresholds, factor_names, negative_factors,
     )
 
-    found = sum(1 for m in matched if m["test"]["count"] >= 10)
-    print(f"  匹配完成: {found}/{len(matched)} 模板有 >= 10 测试样本")
-
-    # ================================================================
-    # Step 6: 五维度验证 + 判定
-    # ================================================================
-    print("=" * 60)
-    print("[Step 6/7] 计算验证指标...")
     metrics = _compute_validation_metrics(
         matched, labels_test_arr, keys_test_arr,
-        baseline_train, bootstrap_n,
+        baseline_train,
+        shrinkage_k=shrinkage_k,
+        bootstrap_n=bootstrap_n,
     )
     verdict, reasons = _judge_result(metrics)
 
-    d4 = metrics["d4_global"]
-    d2 = metrics["d2_rank"]
-    print(f"  Spearman rho (median): {d2['median']['spearman_rho']:.4f}")
-    print(f"  Above-baseline: {d4['above_baseline_ratio']:.2%}")
-    print(f"  Template lift: {d4['template_lift']:+.4f}")
-    print(f"  Verdict: {verdict}")
-
-    # ================================================================
-    # Step 7: 生成报告
-    # ================================================================
-    print("=" * 60)
-    print("[Step 7/7] 生成验证报告...")
+    report_path = trial_dir / report_name
     _generate_report(
         metrics=metrics,
         verdict=verdict,
@@ -808,13 +967,73 @@ def main():
         output_path=report_path,
     )
 
+    d4 = metrics["d4_global"]
+    d2 = metrics["d2_rank"]
+    d2_med = d2["median"]
+    top_k = d2_med.get("top_k_retention", np.nan)
+    top_k_str = f"{top_k:.2%}" if not np.isnan(top_k) else "N/A"
+    print(f"  Top-{d2.get('k', '?')} retention (median): {top_k_str}")
+    print(f"  Template lift: {d4['template_lift']:+.4f}")
+    print(f"  Verdict: {verdict}")
+
     print("=" * 60)
-    print(f"VERDICT: {verdict}")
-    if reasons:
-        for r in reasons:
-            print(f"  - {r}")
-    print(f"报告: {report_path}")
-    print("完成!")
+    print(f"[Materializer] 完成!")
+    print(f"  Trial: #{resolved_trial_id}")
+    print(f"  Verdict: {verdict}")
+    print(f"  产出目录: {trial_dir}")
+
+
+# ---------------------------------------------------------------------------
+# 11. 主入口
+# ---------------------------------------------------------------------------
+
+def main():
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s [%(levelname)s] %(message)s",
+        datefmt="%H:%M:%S",
+    )
+
+    PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
+
+    # ── 配置 ──
+    # archive_name = "best"    # 归档名
+    # trial_id = 15795                 # None → best trial; int → 指定 trial
+    archive_name = "20260402_225019"    # 归档名
+    trial_id = 14373                 # None → best trial; int → 指定 trial
+    # trial_id = None                 # None → best trial; int → 指定 trial
+    run_validation = True           # 运行时开关
+    shrinkage_k = 1                 # TPE 优化目标 Top-K
+    report_name = "validation_report1.md"  # 验证报告文件名
+
+    # ── 验证参数 ──
+    validation_config = {
+        # 'test_start_date': '2025-08-01',
+        # 'test_end_date': '2025-11-01',
+        'test_start_date': '2023-12-01',
+        'test_end_date': '2024-02-01',
+        'min_price': 1.0,
+        'max_price': 10.0,
+        'min_volume': 10000,
+        'num_workers': 8,
+        'bootstrap_n': 1000,
+    }
+
+    # ── 路径 ──
+    train_json = PROJECT_ROOT / "outputs" / "scan_results" / "scan_results_all.json"
+    data_dir = PROJECT_ROOT / "datasets" / "pkls"
+    archive_dir = PROJECT_ROOT / "outputs" / "statistics" / archive_name
+
+    materialize_trial(
+        archive_dir=archive_dir,
+        train_json=train_json,
+        trial_id=trial_id,
+        run_validation=run_validation,
+        validation_config=validation_config,
+        data_dir=data_dir,
+        shrinkage_k=shrinkage_k,
+        report_name=report_name,
+    )
 
 
 if __name__ == "__main__":

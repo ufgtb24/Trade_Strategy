@@ -13,7 +13,7 @@
 - factor_diagnosis: 因子方向诊断 + YAML 修正
 - template_generator: 模板枚举 + YAML 输出
 - threshold_optimizer: 全因子阈值优化（Beam Search + Optuna）
-- param_writer: 参数文件生成（all_factor_mined.yaml）
+- param_writer: 参数文件生成（all_factor.yaml）
 - pipeline: 全管线编排（1→2→3→4）
 
 入口命令:

@@ -1,8 +1,8 @@
 """
 参数文件生成器
 
-读取 threshold_optimizer 优化后的阈值（factor_filter.yaml），
-将其写入 all_factor_mined.yaml：复制 all_factor.yaml 的完整结构，
+读取 threshold_optimizer 优化后的阈值（filter.yaml），
+将其写入 all_factor.yaml：复制 all_factor.yaml 的完整结构，
 替换 quality_scorer 中各因子的 thresholds 为单一二值阈值，
 values 由 mode 方向决定：gte→[1.2](奖励)，lte→[0.8](惩罚)。
 
@@ -20,11 +20,11 @@ from BreakoutStrategy.factor_registry import get_active_factors, get_factor
 
 def build_mined_params(base_yaml_path: str, filter_yaml_path: str) -> tuple[dict, list[str]]:
     """
-    合并 all_factor.yaml 的完整结构与 factor_filter.yaml 的优化阈值。
+    合并 all_factor.yaml 的完整结构与 filter.yaml 的优化阈值。
 
     Args:
         base_yaml_path: all_factor.yaml 路径（完整结构模板）
-        filter_yaml_path: factor_filter.yaml 路径（含优化阈值）
+        filter_yaml_path: filter.yaml 路径（含优化阈值）
 
     Returns:
         (合并后的完整 YAML dict, 已应用优化的因子 key 列表)
@@ -35,7 +35,7 @@ def build_mined_params(base_yaml_path: str, filter_yaml_path: str) -> tuple[dict
     with open(filter_yaml_path) as f:
         filter_data = yaml.safe_load(f)
 
-    # 从 factor_filter.yaml 的 _meta.optimization.thresholds 读取优化阈值
+    # 从 filter.yaml 的 _meta.optimization.thresholds 读取优化阈值
     optimization = filter_data.get('_meta', {}).get('optimization', {})
     mined_thresholds = optimization.get('thresholds', {})
 
@@ -69,23 +69,27 @@ def build_mined_params(base_yaml_path: str, filter_yaml_path: str) -> tuple[dict
 
         entry = qs[yaml_key]
         entry['thresholds'] = [round(float(threshold), 4)]
-        # mode 优先级：FactorInfo.mining_mode > YAML mode > 默认 'gte'
-        fi = get_factor(key)
-        mode = fi.mining_mode if fi.mining_mode is not None else entry.get('mode', 'gte')
+        mode = entry.get('mode', 'gte')
         entry['mode'] = mode
         entry['values'] = [0.8] if mode == 'lte' else [1.2]
         applied.append(key)
+
+    # 移除非活跃因子条目
+    from BreakoutStrategy.factor_registry import FACTOR_REGISTRY, INACTIVE_FACTORS
+    inactive_yaml_keys = {f.yaml_key for f in FACTOR_REGISTRY if f.key in INACTIVE_FACTORS}
+    for ik in inactive_yaml_keys:
+        qs.pop(ik, None)
 
     return base, applied
 
 
 def write_mined_yaml(data: dict, output_path: str | Path, applied: list[str]):
-    """写入 all_factor_mined.yaml"""
+    """写入 all_factor.yaml"""
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
     header = (
-        "# configs/params/all_factor_mined.yaml\n"
+        "# configs/params/all_factor.yaml\n"
         "# 由 BreakoutStrategy.mining.param_writer 自动生成\n"
         f"# 已优化因子: {', '.join(applied)}\n"
         "# thresholds = 挖掘阈值, values: gte→1.2(奖励) lte→0.8(惩罚)\n\n"
@@ -122,6 +126,6 @@ if __name__ == "__main__":
     PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
     main(
         base_yaml=str(PROJECT_ROOT / "configs/params/all_factor.yaml"),
-        filter_yaml=str(PROJECT_ROOT / "configs/params/factor_filter.yaml"),
-        output_yaml=str(PROJECT_ROOT / "configs/params/all_factor_mined.yaml"),
+        filter_yaml=str(PROJECT_ROOT / "configs/params/filter.yaml"),
+        output_yaml=str(PROJECT_ROOT / "configs/params/all_factor.yaml"),
     )

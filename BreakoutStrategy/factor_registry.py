@@ -80,7 +80,7 @@ FACTOR_REGISTRY: list[FactorInfo] = [
                unit='%', display_transform='pct100'),
     FactorInfo('peak_vol', 'Peak Volume', '峰值量能',
                (3.0, 5.0), (1.1, 1.2),
-               category='resistance',
+               mining_mode='gte', category='resistance',
                unit='x', display_transform='identity'),
 
     # === 突破行为 Factor ===
@@ -110,7 +110,7 @@ FACTOR_REGISTRY: list[FactorInfo] = [
                )),
     FactorInfo('streak', 'Streak', '连续突破',
                (2, 4), (0.9, 0.75),
-               is_discrete=True, category='breakout',
+               is_discrete=True, mining_mode='lte', category='breakout',
                unit='bo', display_transform='identity',
                sub_params=(
                    SubParamDef('window', 'streak_window', int, 20,
@@ -123,7 +123,7 @@ FACTOR_REGISTRY: list[FactorInfo] = [
                unit='d', display_transform='identity', nullable=True),
     FactorInfo('pk_mom', 'Peak Momentum', '峰值动量',
                (1.2, 1.5), (1.2, 1.5),
-               has_nan_group=True, category='breakout',
+               has_nan_group=True, category='breakout', mining_mode='gte',
                unit='', display_transform='round2',
                sub_params=(
                    SubParamDef('lookback', 'pk_lookback', int, 30,
@@ -131,7 +131,7 @@ FACTOR_REGISTRY: list[FactorInfo] = [
                )),
     FactorInfo('pre_vol', 'Pre-Breakout Volume', '突破前放量',
                (3.0, 5.0), (1.15, 1.25),
-               category='context',
+               category='context', mining_mode='gte',
                unit='x', display_transform='round2',
                sub_params=(
                    SubParamDef('window', 'pre_vol_window', int, 10,
@@ -145,13 +145,35 @@ FACTOR_REGISTRY: list[FactorInfo] = [
                    SubParamDef('period', 'ma_pos_period', int, 20,
                                (10, 50), 'MA period for position calculation'),
                )),
+    FactorInfo('dd_recov', 'Drawdown Recovery', '回撤恢复度',
+               (0.02, 0.04, 0.06), (1.15, 1.25, 1.40),
+               category='context',
+               unit='', display_transform='round2', zero_guard=True,
+               mining_mode='gte',
+               sub_params=(
+                   SubParamDef('lookback', 'dd_recov_lookback', int, 252,
+                               (60, 504), 'Lookback window for peak detection'),
+                   SubParamDef('best_recovery', 'dd_recov_best_recovery', float, 0.25,
+                               (0.10, 0.50), 'Recovery ratio at which factor peaks (lower=more conservative)'),
+               )),
+    FactorInfo('ma_curve', 'MA Curvature', 'MA曲率',
+               (0.05, 0.15, 0.30), (1.15, 1.25, 1.40),
+               category='context',
+               unit='', display_transform='round2', zero_guard=True,
+               mining_mode='gte',
+               sub_params=(
+                   SubParamDef('period', 'ma_curve_period', int, 50,
+                               (20, 100), 'MA period for curvature calculation'),
+                   SubParamDef('stride', 'ma_curve_stride', int, 5,
+                               (2, 10), 'Stride for wide-interval curvature calculation (days)'),
+               )),
 ]
 
 # --- 总开关：在此集合中的因子 key 将在所有模块中不可见 ---
 # 与 YAML 中的 enabled（评分开关）不同，这里控制因子是否参与系统的所有环节
 # 使用场景：触发率100%的无效因子、数据质量不足待优化的因子
-# INACTIVE_FACTORS: set[str] = {'age', 'test','streak'}
 INACTIVE_FACTORS: set[str] = {}
+# INACTIVE_FACTORS: set[str] = {'ma_curve', 'dd_recov'}
 # 使用方式：将无效因子的 key 加入集合，如 {'age', 'streak'}
 # 示例：
 # INACTIVE_FACTORS = {'age'}  # 触发率100%，无区分力

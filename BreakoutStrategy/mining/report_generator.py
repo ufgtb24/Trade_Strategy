@@ -119,6 +119,22 @@ def _extract_key_findings(results: dict) -> list:
         f"(factor levels alone explain {'limited' if rf_r2 < 0.1 else 'moderate' if rf_r2 < 0.3 else 'substantial'} variance)"
     )
 
+    # 高相关因子对（可能冗余）
+    if 'factor_correlation' in results:
+        top_pairs = results['factor_correlation']['top_pairs']
+        if not top_pairs.empty:
+            high_corr = top_pairs[
+                (top_pairs['spearman_r'].abs() > 0.5) & (top_pairs['p_value'] < 0.01)
+            ]
+            if not high_corr.empty:
+                pair = high_corr.iloc[0]
+                n_high = len(high_corr)
+                findings.append(
+                    f"**Highly correlated factor pairs**: {n_high} pair(s) with |r| > 0.5. "
+                    f"Strongest: {pair['factor_a']} & {pair['factor_b']} "
+                    f"(r = {pair['spearman_r']:.4f}) — consider redundancy"
+                )
+
     return findings
 
 
@@ -186,6 +202,24 @@ def generate_report(results: dict, output_path: str | Path | None = None) -> str
     lines.append(_df_to_md_table(corr))
     lines.append('> \\* p<0.05, \\*\\* p<0.01, \\*\\*\\* p<0.001\n')
 
+    # Direction Alert: 仅在 mining_report 中检查 level Spearman < 0
+    if 'threshold_profile' in results:
+        neg_corr = corr[corr['spearman_r'] < 0]
+        if not neg_corr.empty:
+            profile = results['threshold_profile']['profile']
+            dir_map = dict(zip(profile['factor'], profile['direction']))
+            lines.append('> **Direction Alert**: 以下因子的 level Spearman < 0，'
+                         '即被触发的样本（level=1）表现反而更差，'
+                         '挖掘方向可能与因子最佳作用方向相反：\n'
+                         '>\n'
+                         '> | factor | spearman_r | current direction |\n'
+                         '> | --- | --- | --- |')
+            for _, row in neg_corr.iterrows():
+                d = dir_map.get(row['factor'], '?')
+                lines.append(f"> | {row['factor']} | {_fmt(row['spearman_r'])} | {d} |")
+            lines.append('>\n'
+                         '> 建议检查这些因子在 `factor_registry.py` 中的 `mining_mode` 设置。\n')
+
     lines.append('### 1.2 Label Distribution by Factor Level\n')
     lines.append('> 下面逐个展示每个 Factor 在不同 level 下的涨幅分布。每张表的列含义：\n'
                  '> - **level**：该 Factor 的等级（0 = 未触发，1/2/3 = 逐级增强）\n'
@@ -203,6 +237,20 @@ def generate_report(results: dict, output_path: str | Path | None = None) -> str
         lines.append(f'#### {display_name}\n')
         lines.append(_df_to_md_table(level_df))
         lines.append('')
+
+    # 1.3 非单调性检测（仅 raw_report，mining_report 跳过）
+    if 'non_monotonicity' in results and 'threshold_profile' not in results:
+        nm = results['non_monotonicity']
+        summary = nm['summary']
+        lines.append('### 1.3 Non-Monotonicity Detection (raw value vs label)\n')
+        lines.append('> 按因子原始值的三分位切段，各段分别计算 Spearman 相关系数。'
+                     '若段间符号翻转（如低段为负、高段为正），说明因子与收益的关系不是单调的，'
+                     '单一 gte/lte 方向可能无法完整捕捉其作用模式。\n')
+        if not summary.empty:
+            lines.append(_df_to_md_table(summary))
+            lines.append('')
+        else:
+            lines.append('*All factors show monotonic behavior.*\n')
 
     # 2. 组合分析
     lines.append('## 2. Combination Analysis (Core)\n')
@@ -321,10 +369,43 @@ def generate_report(results: dict, output_path: str | Path | None = None) -> str
     lines.append(_df_to_md_table(imp['rf_importance']))
     lines.append('')
 
-    # 5. 挖掘阈值画像（仅在有阈值数据时输出）
+    # 5. 因子间相关性分析
+    if 'factor_correlation' in results:
+        lines.append('## 5. Factor Correlation Analysis\n')
+        lines.append('> **目的**：检查因子之间的统计关联性，识别信息高度重叠的因子对（可能冗余）。\n'
+                     '>\n'
+                     '> - **Spearman 相关系数**衡量两个因子之间的单调关系，范围 -1 到 1\n'
+                     '> - |r| > 0.7：高度相关，很可能冗余（保留区分力更强的一个即可）\n'
+                     '> - |r| 0.5~0.7：中度相关，需关注是否提供增量信息\n'
+                     '> - |r| < 0.3：低相关，信息维度独立\n'
+                     '> - 注意：与第 3 章交互效应不同——相关性度量的是因子之间的统计关联，'
+                     '交互效应度量的是因子组合对收益率的联合影响\n')
+
+        lines.append('### 5.1 Correlation Matrix\n')
+        corr_matrix = results['factor_correlation']['matrix']
+        if not corr_matrix.empty:
+            fmt_matrix = corr_matrix.map(lambda x: _fmt(x, 3) if not pd.isna(x) else '-')
+            lines.append(_df_to_md_table(
+                fmt_matrix.reset_index().rename(columns={'index': 'Factor'}), float_fmt=3))
+        else:
+            lines.append('*No data*\n')
+        lines.append('')
+
+        lines.append('### 5.2 Top Correlated Pairs\n')
+        lines.append('> 按 |r| 降序排列的因子对，带显著性标记。\n')
+        top_pairs = results['factor_correlation']['top_pairs']
+        if not top_pairs.empty:
+            display_pairs = top_pairs.head(15).copy()
+            display_pairs['significance'] = display_pairs['p_value'].apply(_significance_stars)
+            lines.append(_df_to_md_table(display_pairs))
+        else:
+            lines.append('*No data*\n')
+        lines.append('')
+
+    # 6. 挖掘阈值画像（仅在有阈值数据时输出）
     if 'threshold_profile' in results:
         profile = results['threshold_profile']['profile']
-        lines.append('## 5. Mined Threshold Profile\n')
+        lines.append('## 6. Mined Threshold Profile\n')
         lines.append('> **目的**：展示每个因子被挖掘到的最优阈值处于原始数据分布中的什么位置，'
                      '以及该阈值对应的激活率（有多少样本满足条件）。\n'
                      '>\n'
@@ -339,8 +420,8 @@ def generate_report(results: dict, output_path: str | Path | None = None) -> str
             lines.append('*No threshold data available.*\n')
         lines.append('')
 
-    # 6. 关键发现与结论
-    lines.append('## 6. Key Findings\n')
+    # 7. 关键发现与结论
+    lines.append('## 7. Key Findings\n')
     lines.append('> 以下是算法从上述分析中自动提取的要点摘要。\n')
 
     findings = _extract_key_findings(results)

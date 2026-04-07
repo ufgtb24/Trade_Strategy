@@ -168,6 +168,8 @@ class Breakout:
     # 突破前环境因子
     pre_vol: float = 0.0               # 突破前 window 天内最大放量倍数（逐日 63 天基线）
     ma_pos: float = 0.0                # 突破日收盘价相对 N 日均线的溢价率（中期动量积累）
+    dd_recov: float = 0.0              # 回撤恢复度（drawdown * recovery * (1-recovery)^(b-1)，底部启动信号）
+    ma_curve: float = 0.0              # MA曲率（均线二阶导数归一化值，趋势拐点信号）
 
     # 被真正移除的峰值（突破幅度 > supersede_threshold）
     superseded_peaks: List[Peak] = field(default_factory=list)

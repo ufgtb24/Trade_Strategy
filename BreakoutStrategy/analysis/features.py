@@ -53,6 +53,15 @@ class FeatureCalculator:
         # ma_pos 均线周期
         self.ma_pos_period = config.get("ma_pos_period", 20)
 
+        # dd_recov 配置
+        self.dd_recov_lookback = config.get("dd_recov_lookback", 252)
+        best_recov = config.get("dd_recov_best_recovery", 0.25)
+        self.dd_recov_decay_power = 1.0 / best_recov  # b = 1/r*, 峰值在 r* = 1/b
+
+        # ma_curve 配置
+        self.ma_curve_period = config.get("ma_curve_period", 50)
+        self.ma_curve_stride = config.get("ma_curve_stride", 5)
+
         # 阻力簇聚类阈值（与 scorer 保持一致，默认引用 peak_supersede_threshold）
         self.cluster_density_threshold = config.get(
             "cluster_density_threshold",
@@ -174,7 +183,9 @@ class FeatureCalculator:
         if 'pre_vol' not in inactive and vol_ratio_series is not None:
             pre_vol = self._calculate_pre_breakout_volume(vol_ratio_series, idx, self.pre_vol_window)
 
-        ma_pos = self._calculate_ma_pos(df, idx)
+        ma_pos = self._calculate_ma_pos(df, idx) if 'ma_pos' not in inactive else 0.0
+        dd_recov = self._calculate_dd_recov(df, idx) if 'dd_recov' not in inactive else 0.0
+        ma_curve = self._calculate_ma_curve(df, idx) if 'ma_curve' not in inactive else 0.0
 
         return Breakout(
             symbol=symbol,
@@ -204,6 +215,8 @@ class FeatureCalculator:
             height=height,
             pre_vol=pre_vol,
             ma_pos=ma_pos,
+            dd_recov=dd_recov,
+            ma_curve=ma_curve,
         )
 
     def _classify_type(self, row: pd.Series) -> str:
@@ -721,6 +734,97 @@ class FeatureCalculator:
         if pd.notna(ma_val) and ma_val > 0:
             return df["close"].iloc[idx] / ma_val - 1.0
         return 0.0
+
+    def _calculate_dd_recov(self, df: pd.DataFrame, idx: int) -> float:
+        """
+        回撤恢复度（幂次衰减版）
+
+        在 lookback 窗口内找到最高点，计算 drawdown 和 recovery_ratio，
+        用 decay_power 控制右侧衰减，使"底部早期恢复"获得最高分。
+
+        dd_recov = drawdown * recovery * (1 - recovery)^(decay_power - 1)
+
+        峰值位置 r* = 1/decay_power：
+        - decay_power=2: r*=0.50（对称，原始版本）
+        - decay_power=4: r*=0.25（推荐，惩罚追高）
+
+        Args:
+            df: OHLCV 数据
+            idx: 突破点索引
+
+        Returns:
+            回撤恢复度，无回撤时返回 0.0
+        """
+        lookback = self.dd_recov_lookback
+        decay_power = self.dd_recov_decay_power
+        start = max(0, idx - lookback)
+
+        highs = df["high"].values[start:idx + 1]
+        peak_local_idx = np.argmax(highs)
+        peak_price = highs[peak_local_idx]
+        peak_abs_idx = start + peak_local_idx
+
+        current_price = df["close"].values[idx]
+
+        # 无回撤（当前就是最高点）-> 非底部
+        if peak_price <= 0 or current_price >= peak_price:
+            return 0.0
+
+        drawdown = (peak_price - current_price) / peak_price
+
+        # 从 peak 之后的最低点
+        trough_price = df["low"].values[peak_abs_idx:idx + 1].min()
+        range_total = peak_price - trough_price
+        if range_total <= 0:
+            return 0.0
+
+        recovery_ratio = (current_price - trough_price) / range_total
+
+        return drawdown * recovery_ratio * (1 - recovery_ratio) ** (decay_power - 1)
+
+    def _calculate_ma_curve(self, df: pd.DataFrame, idx: int) -> float:
+        """
+        MA 曲率因子：宽间隔二阶差分的归一化值
+
+        使用 stride=k 的 3 点采样计算 MA 的二阶导数：
+          d2 = (MA[t] - 2*MA[t-k] + MA[t-2k]) / k²
+
+        等价于比较最近 k 天的 MA 斜率与前一个 k 天的 MA 斜率。
+        正值 = MA 下跌减速或上涨加速 → 底部反转信号
+        负值 = MA 上涨减速或下跌加速
+
+        归一化：d2 / MA[t] * period²，使不同价格水平和周期可比。
+
+        Args:
+            df: OHLCV 数据（可能含 ma_50 预计算列）
+            idx: 突破点索引
+
+        Returns:
+            归一化曲率值
+        """
+        period = self.ma_curve_period   # 默认 50
+        k = self.ma_curve_stride        # 宽间隔步幅，默认 5
+
+        if idx < period + 2 * k:
+            return 0.0
+
+        # 只需 3 个 MA 采样点：t, t-k, t-2k
+        ma_col = f"ma_{period}"
+        if ma_col in df.columns:
+            ma_t = df[ma_col].iat[idx]
+            ma_tk = df[ma_col].iat[idx - k]
+            ma_t2k = df[ma_col].iat[idx - 2 * k]
+        else:
+            close = df["close"].values
+            ma_t = close[idx - period + 1: idx + 1].mean()
+            ma_tk = close[idx - k - period + 1: idx - k + 1].mean()
+            ma_t2k = close[idx - 2 * k - period + 1: idx - 2 * k + 1].mean()
+
+        if np.isnan(ma_t) or np.isnan(ma_tk) or np.isnan(ma_t2k) or ma_t <= 0:
+            return 0.0
+
+        d2 = (ma_t - 2 * ma_tk + ma_t2k) / (k ** 2)
+        return (d2 / ma_t) * (period ** 2)
 
     @staticmethod
     def precompute_vol_ratio_series(df: pd.DataFrame, lookback: int = 63) -> pd.Series:

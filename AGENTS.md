@@ -70,6 +70,5 @@ Use this guide to understand the codebase architecture, workflows, and conventio
   - **Documentation**: Put code explanations in `docs/explain/` and research in `docs/research/`.
 - **Agent Roles**:
   - **Standard**: Routine coding, bug fixes.
-  - **Tom (Mid-High Difficulty)**: deeply researched architecture changes, logical analysis.
-  - **Tommy (High Difficulty)**: Innovative algorithms, first-principles redesigns.
-  - **Team**: Default to `Tommy` for leading multi-agent teams.
+  - **tom (High Difficulty)**: Deep research, architecture review, first-principles thinking, innovative algorithms.
+  - **Team**: Default to `tom` for leading multi-agent teams.

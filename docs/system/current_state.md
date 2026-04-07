@@ -12,7 +12,7 @@
 - [x] [13 Daily观察池](../modules/specs/13_Daily观察池_IMPL.md) (已实现 - 阶段状态机模型)
 - [x] [14 Simple Pool](../modules/specs/14_Simple_Pool_IMPL.md) (已实现 - 2026-01-08 新增：MVP 即时判断模型)
 - [ ] 05-07 实盘交易系统 (Medium Priority)
-- [x] [15 数据挖掘](../modules/specs/15_数据挖掘模块_IMPL.md) (已实现 - 12因子注册表+阈值优化管线+样本外验证+SSOT完整闭环)
+- [x] [15 数据挖掘](../modules/specs/15_数据挖掘模块_IMPL.md) (已实现 - 方向单一来源+Trial物化闭环+非单调检测+样本外验证)
 - [x] [16 新闻情感分析](../modules/specs/16_新闻情感分析_IMPL.md) (已实现 - 多源采集+可插拔Backend+时间衰减+缓存)
 - [ ] 09 配置管理 (Low Priority)
 - [ ] 10 工具与辅助 (Low Priority)

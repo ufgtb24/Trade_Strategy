@@ -26,7 +26,7 @@ Trade_Strategy 项目的 `BreakoutStrategy/news_sentiment` 模块负责采集股
 
 ### Agent 1（金融分析师角色）
 
-使用 Tommy（Opus 4.6 模型）作为 Agent 1。
+使用 tom（Opus 4.6 模型）作为 Agent 1。
 
 **Agent 1 的 Prompt 要求：**
 
@@ -39,7 +39,7 @@ Trade_Strategy 项目的 `BreakoutStrategy/news_sentiment` 模块负责采集股
 
 ### Agent 2（审核员角色）
 
-使用 Tommy（Opus 4.6 模型）作为 Agent 2。
+使用 tom（Opus 4.6 模型）作为 Agent 2。
 
 **Agent 2 的 Prompt 要求：**
 

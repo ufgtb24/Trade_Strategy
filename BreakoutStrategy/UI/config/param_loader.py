@@ -162,10 +162,13 @@ class UIParamLoader:
         for fi in get_active_factors():
             for sp in fi.sub_params:
                 if sp.consumer == 'detector':
-                    validated[sp.internal_name] = self._validate_int(
-                        quality_params.get(fi.yaml_key, {}).get(sp.yaml_name, sp.default),
-                        sp.range[0], sp.range[1], sp.default
-                    )
+                    raw_val = quality_params.get(fi.yaml_key, {}).get(sp.yaml_name, sp.default)
+                    if sp.param_type is float:
+                        validated[sp.internal_name] = self._validate_float(
+                            raw_val, sp.range[0], sp.range[1], sp.default)
+                    else:
+                        validated[sp.internal_name] = self._validate_int(
+                            raw_val, sp.range[0], sp.range[1], sp.default)
 
         return validated
 
@@ -243,10 +246,13 @@ class UIParamLoader:
         for fi in get_active_factors():
             for sp in fi.sub_params:
                 if sp.consumer == 'feature_calculator':
-                    validated[sp.internal_name] = self._validate_int(
-                        quality_params.get(fi.yaml_key, {}).get(sp.yaml_name, sp.default),
-                        sp.range[0], sp.range[1], sp.default
-                    )
+                    raw_val = quality_params.get(fi.yaml_key, {}).get(sp.yaml_name, sp.default)
+                    if sp.param_type is float:
+                        validated[sp.internal_name] = self._validate_float(
+                            raw_val, sp.range[0], sp.range[1], sp.default)
+                    else:
+                        validated[sp.internal_name] = self._validate_int(
+                            raw_val, sp.range[0], sp.range[1], sp.default)
 
         # ATR 配置传递（向后兼容）
         atr_config = quality_params.get('atr_normalization', {})

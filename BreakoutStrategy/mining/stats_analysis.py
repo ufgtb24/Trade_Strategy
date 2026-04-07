@@ -1,11 +1,12 @@
 """
 组合统计分析引擎
 
-提供 run_analysis(df) 入口，执行 4 个维度的统计分析：
+提供 run_analysis(df) 入口，执行 5 个维度的统计分析：
 1. 单因子分析 — 每个 factor level vs label 的统计量 + Spearman 相关
 2. 组合分析 — 二值化 triggered 组合枚举，找出最佳组合
 3. 交互效应 — 两两 factor 交互效应矩阵
 4. 决策树特征重要性 — DecisionTree + RandomForest
+5. 因子间相关性 — Spearman 相关矩阵 + 高相关因子对
 """
 
 from __future__ import annotations
@@ -20,6 +21,7 @@ from BreakoutStrategy.factor_registry import (
     get_level_cols, get_factor_display, get_active_factors, LABEL_COL,
 )
 from BreakoutStrategy.mining.data_pipeline import prepare_raw_values
+from BreakoutStrategy.mining.factor_diagnosis import detect_non_monotonicity
 
 MIN_COMBO_SAMPLES = 20
 
@@ -249,7 +251,96 @@ def _feature_importance_analysis(df: pd.DataFrame) -> dict:
 
 
 # =========================================================================
-# 5. 挖掘阈值画像
+# 5. 因子间相关性分析
+# =========================================================================
+
+def _factor_correlation_analysis(df: pd.DataFrame) -> dict:
+    """
+    因子间 Spearman 相关性矩阵 + 高相关因子对提取。
+
+    使用原始值（raw key 列）而非 level 列，避免离散化损失信息。
+
+    Returns:
+        {
+            'matrix': DataFrame(n×n, index/columns=factor key),
+            'top_pairs': DataFrame(factor_a, factor_b, spearman_r, p_value),
+        }
+    """
+    raw_values = prepare_raw_values(df)
+    keys = list(raw_values.keys())
+
+    # 构建原始值 DataFrame
+    raw_df = pd.DataFrame(raw_values)
+
+    # Spearman 相关矩阵
+    corr_matrix = raw_df.corr(method='spearman')
+
+    # 提取上三角所有因子对（含 p_value）
+    pair_rows = []
+    for i in range(len(keys)):
+        for j in range(i + 1, len(keys)):
+            valid = raw_df[[keys[i], keys[j]]].dropna()
+            if len(valid) > 2:
+                r, p = spearmanr(valid[keys[i]], valid[keys[j]])
+            else:
+                r, p = np.nan, np.nan
+            pair_rows.append({
+                'factor_a': keys[i],
+                'factor_b': keys[j],
+                'spearman_r': r,
+                'p_value': p,
+            })
+
+    top_pairs = pd.DataFrame(pair_rows)
+    if not top_pairs.empty:
+        top_pairs = (top_pairs
+                     .assign(abs_r=lambda x: x['spearman_r'].abs())
+                     .sort_values('abs_r', ascending=False)
+                     .drop(columns='abs_r')
+                     .reset_index(drop=True))
+
+    return {'matrix': corr_matrix, 'top_pairs': top_pairs}
+
+
+# =========================================================================
+# 6. 非单调性检测
+# =========================================================================
+
+def _non_monotonicity_analysis(df: pd.DataFrame) -> dict:
+    """
+    对每个因子做分段 Spearman 非单调性检测（raw value vs label）。
+
+    Returns:
+        {'factors': {key: detect_non_monotonicity() 结果}, 'summary': DataFrame}
+    """
+    raw_values = prepare_raw_values(df)
+    labels = df[LABEL_COL].values
+
+    factors = {}
+    rows = []
+    for fi in get_active_factors():
+        key = fi.key
+        if key not in raw_values:
+            continue
+        raw = raw_values[key]
+        valid = ~np.isnan(raw) & ~np.isnan(labels)
+        result = detect_non_monotonicity(raw[valid], labels[valid])
+        factors[key] = result
+        if result['is_non_monotonic']:
+            seg_strs = [f"Q{s['quantile_range'][0]:.0%}-{s['quantile_range'][1]:.0%}: "
+                        f"r={s['spearman_r']:+.4f}"
+                        for s in result['segments']]
+            rows.append({
+                'factor': key,
+                'segments': ' / '.join(seg_strs),
+            })
+
+    summary = pd.DataFrame(rows)
+    return {'factors': factors, 'summary': summary}
+
+
+# =========================================================================
+# 7. 挖掘阈值画像
 # =========================================================================
 
 def _threshold_position_analysis(
@@ -328,7 +419,7 @@ def run_analysis(
     negative_factors: frozenset = frozenset(),
 ) -> dict:
     """
-    执行统计分析（4 个基础维度 + 可选的阈值画像）
+    执行统计分析（6 个基础维度 + 可选的阈值画像）
 
     Args:
         df: 包含 factor levels + label 的 DataFrame
@@ -353,20 +444,26 @@ def run_analysis(
         },
     }
 
-    print("[Analysis] 1/4 Single factor analysis...")
+    print("[Analysis] 1/6 Single factor analysis...")
     results['single_factor'] = _single_factor_analysis(df)
 
-    print("[Analysis] 2/4 Combination analysis...")
+    print("[Analysis] 2/6 Combination analysis...")
     results['combination'] = _combination_analysis(df)
 
-    print("[Analysis] 3/4 Interaction analysis...")
+    print("[Analysis] 3/6 Interaction analysis...")
     results['interaction'] = _interaction_analysis(df)
 
-    print("[Analysis] 4/4 Feature importance analysis...")
+    print("[Analysis] 4/6 Feature importance analysis...")
     results['importance'] = _feature_importance_analysis(df)
 
+    print("[Analysis] 5/6 Factor correlation analysis...")
+    results['factor_correlation'] = _factor_correlation_analysis(df)
+
+    print("[Analysis] 6/6 Non-monotonicity analysis...")
+    results['non_monotonicity'] = _non_monotonicity_analysis(df)
+
     if thresholds is not None:
-        print("[Analysis] 5/5 Threshold position analysis...")
+        print("[Analysis] +1 Threshold position analysis...")
         results['threshold_profile'] = _threshold_position_analysis(
             df, thresholds, negative_factors,
         )

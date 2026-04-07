@@ -3,7 +3,7 @@
 
 从 factor_analysis_data 枚举所有 factor 组合（二值化触发），
 计算 count/median/q25 统计量，筛选 n >= min_count 的组合，
-按 median 降序输出到 factor_filter.yaml。
+按 median 降序输出到 filter.yaml。
 """
 
 from __future__ import annotations
@@ -197,7 +197,7 @@ def main(input_csv, output_yaml, min_count):
 
     yaml_data = build_yaml_output(templates, df, input_csv, min_count)
     write_yaml(yaml_data, output_yaml,
-               header_comment="# configs/params/factor_filter.yaml\n"
+               header_comment="# configs/params/filter.yaml\n"
                               "# 由 BreakoutStrategy.mining.template_generator 自动生成\n\n")
     print(f"  Output: {output_yaml}")
     print_summary(yaml_data)
@@ -207,6 +207,6 @@ if __name__ == "__main__":
     PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
     main(
         input_csv=str(PROJECT_ROOT / "outputs/analysis/factor_analysis_data.csv"),
-        output_yaml=str(PROJECT_ROOT / "configs/params/factor_filter.yaml"),
+        output_yaml=str(PROJECT_ROOT / "configs/params/filter.yaml"),
         min_count=10,
     )

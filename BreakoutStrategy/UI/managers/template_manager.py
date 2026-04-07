@@ -1,4 +1,4 @@
-"""模板匹配管理器 — 加载 factor_filter YAML 并执行突破-模板匹配"""
+"""模板匹配管理器 — 加载 filter YAML 并执行突破-模板匹配"""
 
 import yaml
 from pathlib import Path
@@ -20,7 +20,7 @@ class TemplateManager:
         return self._loaded
 
     def load_filter_yaml(self, path: str) -> dict:
-        """加载 factor_filter YAML 文件。
+        """加载 filter YAML 文件。
 
         Args:
             path: YAML 文件路径

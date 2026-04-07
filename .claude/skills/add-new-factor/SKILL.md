@@ -40,7 +40,28 @@ FactorInfo('key', 'English Name', '中文名',
 
 自动派生：`level_col = f"{key}_level"`, `yaml_key = f"{key}_factor"`
 
-### 2. Breakout Dataclass (`BreakoutStrategy/analysis/breakout_detector.py`)
+### 2. 方向判定
+
+根据因子的**设计意图**判定方向："这个因子的值越高，对突破质量意味着什么？"
+
+> `mining_mode` 和 `default_values` 均在步骤 1 的 `FactorInfo` 注册中设置。"锁定"指显式设置 `mining_mode='gte'` 或 `'lte'`，使挖掘管线跳过 Spearman 自动推断，直接使用指定方向。
+
+**值越高越好（如量能）→ gte**
+
+- `mining_mode = 'gte'` — 锁定
+- `default_values = (1.2,)` 或按阈值档位递增（奖励型）
+
+**值越高越差（如超涨）→ lte**
+
+- `mining_mode = 'lte'` — 锁定
+- `default_values = (0.8,)` 或按阈值档位递减（惩罚型）
+
+**方向不确定**
+
+- `mining_mode = None` — 不锁定，由 Spearman 自动推断
+- `default_values = (1.0,)`
+
+### 3. Breakout Dataclass (`BreakoutStrategy/analysis/breakout_detector.py`)
 
 在 `Breakout` dataclass 中添加字段（带默认值）：
 
@@ -48,7 +69,7 @@ FactorInfo('key', 'English Name', '中文名',
     new_factor: float = 0.0  # 因子说明
 ```
 
-### 3. Feature Calculator (`BreakoutStrategy/analysis/features.py`)
+### 4. Feature Calculator (`BreakoutStrategy/analysis/features.py`)
 
 - 添加计算方法（如 `_calculate_xxx()`）
 - 在 `enrich_breakout()` 中调用并赋值到 Breakout 构造器

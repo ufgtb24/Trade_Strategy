@@ -6,3 +6,4 @@ prompt_template/
 .worktrees/
 configs/api_keys.yaml
 cache/
+.contexts/
