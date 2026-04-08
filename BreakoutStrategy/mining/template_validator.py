@@ -11,7 +11,7 @@
 
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import numpy as np
@@ -482,6 +482,234 @@ def _classify_sentiment(
     if sentiment_score < thresholds["reject"]:
         return "reject"
     return "pass"
+
+
+# ---------------------------------------------------------------------------
+# 7b. 情感筛选批量编排
+# ---------------------------------------------------------------------------
+
+_SENTIMENT_DEFAULTS = {
+    "lookback_days": 7,
+    "thresholds": {
+        "strong_reject": -0.40,
+        "reject": -0.15,
+        "positive_boost": 0.30,
+    },
+    "min_total_count": 1,
+    "max_fail_ratio": 0.5,
+    "max_concurrent_tickers": 3,
+    "max_retries": 2,
+    "retry_delay": 2,
+    "save_individual_reports": True,
+}
+
+
+def _run_sentiment_filter(
+    df_test: pd.DataFrame,
+    keys_test: np.ndarray,
+    top_k_keys: set[int],
+    top_k_names: dict[int, str],
+    sentiment_config: dict,
+    on_progress=None,
+) -> tuple[dict, list[dict]]:
+    """批量情感筛选：提取 top-K 匹配样本 → 去重 → 并发分析 → 分类汇总。
+
+    替代 cascade/batch_analyzer.run_cascade，使用 plain dict 而非 dataclass。
+
+    Args:
+        df_test: 测试集 DataFrame（需包含 symbol, date, LABEL_COL 列）
+        keys_test: 每行的 template key (bit-packed int array)
+        top_k_keys: top-K 模板的 key 集合
+        top_k_names: key → template_name 映射
+        sentiment_config: 情感筛选配置 dict（缺失字段用 _SENTIMENT_DEFAULTS 补齐）
+        on_progress: 进度回调 (completed, total, ticker) → None
+
+    Returns:
+        (sentiment_stats, sample_results)
+        - sentiment_stats: 聚合统计 dict
+        - sample_results: 逐样本结果 list[dict]
+    """
+    import time
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
+    from BreakoutStrategy.news_sentiment.api import analyze
+    from BreakoutStrategy.news_sentiment.config import load_config as load_sentiment_config
+
+    # --- 配置合并 ---
+    cfg = {**_SENTIMENT_DEFAULTS, **sentiment_config}
+    thresholds = cfg["thresholds"]
+    lookback = cfg["lookback_days"]
+    max_concurrent = cfg["max_concurrent_tickers"]
+    max_retries = cfg["max_retries"]
+    retry_delay = cfg["retry_delay"]
+    save_reports = cfg["save_individual_reports"]
+    min_total_count = cfg["min_total_count"]
+    max_fail_ratio = cfg["max_fail_ratio"]
+
+    # 加载 news_sentiment 配置（用于传给 analyze()）
+    sent_cfg = load_sentiment_config()
+
+    # --- Step 1: 提取 top-K 匹配样本 ---
+    mask = np.isin(keys_test, list(top_k_keys))
+    indices = np.where(mask)[0]
+
+    empty_stats = {
+        "total_samples": 0, "unique_tickers": 0,
+        "analyzed_count": 0, "error_count": 0,
+        "pass_count": 0, "reject_count": 0, "strong_reject_count": 0,
+        "insufficient_data_count": 0, "positive_boost_count": 0,
+        "pre_filter_median": 0.0, "post_filter_median": 0.0,
+        "cascade_lift": 0.0,
+    }
+
+    if len(indices) == 0:
+        logger.warning("No top-K matched samples found")
+        return empty_stats, []
+
+    # 构建样本列表
+    samples = []
+    for idx in indices:
+        row = df_test.iloc[idx]
+        key = int(keys_test[idx])
+        samples.append({
+            "symbol": row["symbol"],
+            "date": row["date"],
+            "label": float(row[LABEL_COL]),
+            "template_name": top_k_names.get(key, f"key_{key}"),
+            "template_key": key,
+        })
+
+    logger.info("Extracted %d top-K matched samples", len(samples))
+
+    # --- Step 2: 按 (symbol, date) 去重生成分析任务 ---
+    tasks: dict[tuple[str, str], dict] = {}
+    for s in samples:
+        task_key = (s["symbol"], s["date"])
+        if task_key not in tasks:
+            bo_date = datetime.strptime(s["date"], "%Y-%m-%d")
+            tasks[task_key] = {
+                "date_from": (bo_date - timedelta(days=lookback)).strftime("%Y-%m-%d"),
+                "date_to": s["date"],
+            }
+
+    unique_tickers = len(set(k[0] for k in tasks))
+    logger.info("Deduplicated into %d analysis tasks (%d unique tickers)",
+                len(tasks), unique_tickers)
+
+    # --- Step 3: 并发情感分析 ---
+    def _analyze_single(ticker, date_from, date_to):
+        """含重试逻辑的单次分析。"""
+        for attempt in range(max_retries + 1):
+            try:
+                return analyze(ticker, date_from, date_to,
+                               config=sent_cfg, save=save_reports)
+            except Exception as e:
+                if attempt < max_retries:
+                    logger.warning("[%s] Attempt %d failed: %s, retrying in %.0fs",
+                                   ticker, attempt + 1, e, retry_delay)
+                    time.sleep(retry_delay)
+                else:
+                    logger.error("[%s] All %d attempts failed: %s",
+                                 ticker, max_retries + 1, e)
+                    return None
+
+    task_reports: dict[tuple[str, str], object] = {}
+    completed_count = 0
+    total_tasks = len(tasks)
+
+    with ThreadPoolExecutor(max_workers=max_concurrent) as executor:
+        futures = {}
+        for task_key, window in tasks.items():
+            ticker, bo_date = task_key
+            fut = executor.submit(
+                _analyze_single, ticker, window["date_from"], window["date_to"],
+            )
+            futures[fut] = task_key
+
+        for future in as_completed(futures):
+            task_key = futures[future]
+            report = future.result()
+            task_reports[task_key] = report
+            completed_count += 1
+            ticker, bo_date = task_key
+            logger.info("[%d/%d] %s (%s): %s",
+                        completed_count, total_tasks, ticker, bo_date,
+                        "OK" if report else "FAILED")
+
+    # --- Step 4: 关联回每个样本 + 分类 ---
+    results: list[dict] = []
+    for sample in samples:
+        task_key = (sample["symbol"], sample["date"])
+        report = task_reports.get(task_key)
+
+        if report is None:
+            results.append({
+                **sample,
+                "sentiment_score": 0.0,
+                "sentiment": "neutral",
+                "confidence": 0.0,
+                "category": "error",
+                "total_count": 0,
+            })
+        else:
+            summary = report.summary
+            category = _classify_sentiment(
+                summary.sentiment_score,
+                summary.total_count,
+                summary.fail_count,
+                thresholds,
+                min_total_count,
+                max_fail_ratio,
+            )
+            results.append({
+                **sample,
+                "sentiment_score": summary.sentiment_score,
+                "sentiment": summary.sentiment,
+                "confidence": summary.confidence,
+                "category": category,
+                "total_count": summary.total_count,
+            })
+
+        if on_progress:
+            on_progress(len(results), len(samples), sample["symbol"])
+
+    # --- Step 5: 聚合统计 ---
+    pass_count = sum(1 for r in results if r["category"] == "pass")
+    reject_count = sum(1 for r in results if r["category"] == "reject")
+    strong_reject_count = sum(1 for r in results if r["category"] == "strong_reject")
+    insufficient_count = sum(1 for r in results if r["category"] == "insufficient_data")
+    error_count = sum(1 for r in results if r["category"] == "error")
+    positive_boost_count = sum(
+        1 for r in results
+        if r["category"] == "pass"
+        and r["sentiment_score"] >= thresholds["positive_boost"]
+    )
+
+    all_labels = np.array([r["label"] for r in results])
+    passed_labels = np.array([
+        r["label"] for r in results
+        if r["category"] in ("pass", "insufficient_data", "error")
+    ])
+
+    pre_median = float(np.median(all_labels)) if len(all_labels) > 0 else 0.0
+    post_median = float(np.median(passed_labels)) if len(passed_labels) > 0 else 0.0
+
+    stats = {
+        "total_samples": len(results),
+        "unique_tickers": unique_tickers,
+        "analyzed_count": len(results) - error_count,
+        "error_count": error_count,
+        "pass_count": pass_count,
+        "reject_count": reject_count,
+        "strong_reject_count": strong_reject_count,
+        "insufficient_data_count": insufficient_count,
+        "positive_boost_count": positive_boost_count,
+        "pre_filter_median": pre_median,
+        "post_filter_median": post_median,
+        "cascade_lift": post_median - pre_median,
+    }
+
+    return stats, results
 
 
 # ---------------------------------------------------------------------------
