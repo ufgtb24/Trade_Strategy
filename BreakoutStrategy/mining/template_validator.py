@@ -671,7 +671,8 @@ def _run_sentiment_filter(
             })
 
         if on_progress:
-            on_progress(len(results), len(samples), sample["symbol"])
+            r = results[-1]
+            on_progress(len(results), len(samples), r["symbol"], r)
 
     # --- Step 5: 聚合统计 ---
     pass_count = sum(1 for r in results if r["category"] == "pass")
@@ -1514,10 +1515,24 @@ def main():
     trial_id = 14373                 # None → best trial; int → 指定 trial
     # trial_id = None                 # None → best trial; int → 指定 trial
     run_validation = True           # 运行时开关
-    run_sentiment = False           # 是否执行情感验证
+    run_sentiment = True           # 是否执行情感验证
     shrinkage_k = 1                 # TPE 优化目标 Top-K
     report_name = "validation_report.md"  # 验证报告文件名
 
+
+    # ── 验证参数 ──
+    validation_config = {
+        'test_start_date': '2025-08-01',
+        'test_end_date': '2025-11-01',
+        # 'test_start_date': '2023-12-01',
+        # 'test_end_date': '2024-02-01',
+        'min_price': 1.0,
+        'max_price': 10.0,
+        'min_volume': 10000,
+        'num_workers': 8,
+        'bootstrap_n': 1000,
+    }
+    
     # ── 情感验证参数 ──
     sentiment_config = {
         'lookback_days': 14,
@@ -1532,19 +1547,6 @@ def main():
         'max_retries': 2,
         'retry_delay': 5.0,
         'save_individual_reports': False,
-    }
-
-    # ── 验证参数 ──
-    validation_config = {
-        # 'test_start_date': '2025-08-01',
-        # 'test_end_date': '2025-11-01',
-        'test_start_date': '2023-12-01',
-        'test_end_date': '2024-02-01',
-        'min_price': 1.0,
-        'max_price': 10.0,
-        'min_volume': 10000,
-        'num_workers': 8,
-        'bootstrap_n': 1000,
     }
 
     # ── 路径 ──
