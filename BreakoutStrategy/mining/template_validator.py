@@ -918,6 +918,8 @@ def _generate_report(
     test_end: str,
     train_sample_size: int,
     output_path: Path,
+    sentiment_section: list[str] | None = None,
+    sentiment_verdict: str | None = None,
 ):
     """生成 Markdown 验证报告。"""
     d2 = metrics["d2_rank"]
@@ -944,6 +946,8 @@ def _generate_report(
        '**top_k_retention**（训练集最优模板在测试集是否保持最优）。'
        '全 PASS → PASS，无 FAIL → CONDITIONAL PASS，有 FAIL → FAIL。\n')
     w(f"**Verdict: {verdict}**")
+    if sentiment_verdict:
+        w(f"**Sentiment Verdict: {sentiment_verdict}**")
     w()
     if reasons:
         w("Issues:")
@@ -1073,10 +1077,18 @@ def _generate_report(
     w(f"- Coverage rate: {d5['coverage_rate']:.2%}")
     w()
 
-    # ── 7. Conclusion ──
-    w("## 7. Conclusion")
+    # ── Sentiment Filter (optional) ──
+    if sentiment_section:
+        for line in sentiment_section:
+            w(line)
+
+    # ── Conclusion ──
+    conclusion_num = 8 if sentiment_section else 7
+    w(f"## {conclusion_num}. Conclusion")
     w()
     w(f"**Final Verdict: {verdict}**")
+    if sentiment_verdict:
+        w(f" | **Sentiment: {sentiment_verdict}**")
     w()
     if verdict == "PASS":
         w("All validation criteria met. Templates demonstrate robust out-of-sample predictive power.")
@@ -1259,12 +1271,12 @@ def materialize_trial(
     train_json: Path,
     trial_id: int | None = None,
     run_validation: bool = False,
+    run_sentiment: bool = False,
     validation_config: dict | None = None,
+    sentiment_config: dict | None = None,
     data_dir: Path | None = None,
     shrinkage_k: int = 1,
     report_name: str = "validation_report.md",
-    run_cascade: bool = False,
-    cascade_config: dict | None = None,
 ):
     """物化指定 trial 的完整产出 + 可选 OOS 验证。
 
@@ -1276,9 +1288,11 @@ def materialize_trial(
         train_json: 训练 scan_results JSON 路径
         trial_id: None → best trial; int → 指定 trial number
         run_validation: 运行时开关，是否执行 OOS 验证
+        run_sentiment: 是否在 OOS 验证后执行情感验证
         validation_config: 验证参数字典，保存到 trial 目录的 validation_config.yaml
             keys: test_start_date, test_end_date, min_price, max_price,
                   min_volume, num_workers, bootstrap_n
+        sentiment_config: 情感验证参数字典
         data_dir: 股票数据目录 (run_validation=True 时必填)
     """
     archive_dir = Path(archive_dir)
@@ -1335,7 +1349,10 @@ def materialize_trial(
     # ── Step 5: OOS 验证（可选）──
     if not run_validation:
         print("=" * 60)
-        print("[Materializer] OOS 验证已跳过 (run_validation=False)")
+        msg = "[Materializer] OOS 验证已跳过 (run_validation=False)"
+        if run_sentiment:
+            msg += "，情感验证同步跳过"
+        print(msg)
         print(f"产出目录: {trial_dir}")
         return
 
@@ -1406,7 +1423,47 @@ def materialize_trial(
         bootstrap_n=bootstrap_n,
     )
     verdict, reasons = _judge_result(metrics)
+    d4 = metrics["d4_global"]
 
+    # ── Step 6: Sentiment verification (optional) ──
+    sentiment_section = None
+    sentiment_verdict = None
+    if run_sentiment:
+        print("=" * 60)
+        print("[Step 6] Sentiment verification...")
+
+        # 构建 top_k_names 映射 (key → template_name)
+        top_k_names_map = {}
+        for m in matched:
+            if m["name"] in d4["top_k_names"]:
+                top_k_names_map[m["target_key"]] = m["name"]
+
+        def _sentiment_progress(completed, total, ticker, result):
+            print(f"  [{completed}/{total}] {ticker}: {result['category']} "
+                  f"(score={result['sentiment_score']:+.4f})")
+
+        sentiment_stats, sentiment_results = _run_sentiment_filter(
+            df_test=df_test,
+            keys_test=keys_test_arr,
+            top_k_keys=set(top_k_names_map.keys()),
+            top_k_names=top_k_names_map,
+            sentiment_config=sentiment_config,
+            on_progress=_sentiment_progress,
+        )
+
+        pre_metrics = {
+            "template_lift": d4["template_lift"],
+            "matched_median": d4.get("matched_median", baseline_train),
+        }
+        sentiment_section, sentiment_verdict, _ = _generate_sentiment_section(
+            sentiment_stats, sentiment_results, pre_metrics,
+        )
+
+        print(f"  Cascade lift: {sentiment_stats['cascade_lift']:+.4f}")
+        print(f"  Pass: {sentiment_stats['pass_count']} (boost: {sentiment_stats['positive_boost_count']})")
+        print(f"  Reject: {sentiment_stats['reject_count'] + sentiment_stats['strong_reject_count']}")
+
+    # 生成报告（含可选 sentiment section）
     report_path = trial_dir / report_name
     _generate_report(
         metrics=metrics,
@@ -1418,9 +1475,10 @@ def materialize_trial(
         test_end=test_end_date,
         train_sample_size=len(df_train),
         output_path=report_path,
+        sentiment_section=sentiment_section,
+        sentiment_verdict=sentiment_verdict,
     )
 
-    d4 = metrics["d4_global"]
     d2 = metrics["d2_rank"]
     d2_med = d2["median"]
     top_k = d2_med.get("top_k_retention", np.nan)
@@ -1434,50 +1492,6 @@ def materialize_trial(
     print(f"  Trial: #{resolved_trial_id}")
     print(f"  Verdict: {verdict}")
     print(f"  产出目录: {trial_dir}")
-
-    # ── Step 6: Cascade 验证（可选）──
-    if not run_cascade:
-        return
-
-    print("=" * 60)
-    print("[Step 6] Cascade 情感验证...")
-
-    from BreakoutStrategy.cascade.batch_analyzer import run_cascade as _run_cascade
-    from BreakoutStrategy.cascade.filter import load_cascade_config
-    from BreakoutStrategy.cascade.reporter import generate_cascade_report
-
-    cascade_cfg = cascade_config or load_cascade_config()
-
-    # 构建 top_k_names 映射 (key → template_name)
-    top_k_names_map = {}
-    for m in matched:
-        if m["name"] in d4["top_k_names"]:
-            top_k_names_map[m["target_key"]] = m["name"]
-
-    def _cascade_progress(completed, total, ticker, result):
-        print(f"  [{completed}/{total}] {ticker}: {result.category} "
-              f"(score={result.sentiment_score:+.4f})")
-
-    cascade_report = _run_cascade(
-        df_test=df_test,
-        keys_test=keys_test_arr,
-        top_k_keys=set(top_k_names_map.keys()),
-        top_k_names=top_k_names_map,
-        cascade_config=cascade_cfg,
-        on_progress=_cascade_progress,
-    )
-
-    cascade_report_path = trial_dir / cascade_cfg["report_name"]
-    pre_metrics = {
-        "template_lift": d4["template_lift"],
-        "matched_median": d4.get("matched_median", baseline_train),
-    }
-    generate_cascade_report(cascade_report, pre_metrics, cascade_report_path)
-
-    print(f"  Cascade lift: {cascade_report.cascade_lift:+.4f}")
-    print(f"  Pass: {cascade_report.pass_count} (boost: {cascade_report.positive_boost_count})")
-    print(f"  Reject: {cascade_report.reject_count + cascade_report.strong_reject_count}")
-    print(f"  Report: {cascade_report_path}")
 
 
 # ---------------------------------------------------------------------------
@@ -1500,9 +1514,25 @@ def main():
     trial_id = 14373                 # None → best trial; int → 指定 trial
     # trial_id = None                 # None → best trial; int → 指定 trial
     run_validation = True           # 运行时开关
+    run_sentiment = False           # 是否执行情感验证
     shrinkage_k = 1                 # TPE 优化目标 Top-K
     report_name = "validation_report.md"  # 验证报告文件名
-    run_cascade_flag = False          # 是否执行级联情感验证
+
+    # ── 情感验证参数 ──
+    sentiment_config = {
+        'lookback_days': 14,
+        'thresholds': {
+            'strong_reject': -0.40,
+            'reject': -0.15,
+            'positive_boost': 0.30,
+        },
+        'min_total_count': 1,
+        'max_fail_ratio': 0.5,
+        'max_concurrent_tickers': 5,
+        'max_retries': 2,
+        'retry_delay': 5.0,
+        'save_individual_reports': False,
+    }
 
     # ── 验证参数 ──
     validation_config = {
@@ -1527,11 +1557,12 @@ def main():
         train_json=train_json,
         trial_id=trial_id,
         run_validation=run_validation,
+        run_sentiment=run_sentiment,
         validation_config=validation_config,
+        sentiment_config=sentiment_config,
         data_dir=data_dir,
         shrinkage_k=shrinkage_k,
         report_name=report_name,
-        run_cascade=run_cascade_flag,
     )
 
 
