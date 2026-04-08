@@ -65,8 +65,10 @@ def analyze(
         collectors.append(EdgarCollector(config.edgar, proxy=config.proxy))
 
     # 2. 增量采集（缓存感知）
+    # 覆盖标记延迟到分析完成后统一写入，防止 Ctrl+C 中断导致缓存污染
     all_items: list[NewsItem] = []
     source_stats: dict[str, int] = {}
+    pending_coverage: list[tuple[str, str, str, str]] = []
 
     for collector in collectors:
         if not collector.is_available():
@@ -81,13 +83,13 @@ def analyze(
             # 从缓存获取已有新闻
             cached_items = cache.get_news(ticker, date_from, date_to, collector.name)
 
-            # 仅采集未覆盖范围（只在成功采集到数据时标记覆盖）
+            # 仅采集未覆盖范围（覆盖标记延迟提交）
             new_items: list[NewsItem] = []
             for uc_from, uc_to in uncovered:
                 fetched = collector.collect(ticker, uc_from, uc_to)
                 new_items.extend(fetched)
                 if fetched:
-                    cache.update_coverage(ticker, collector.name, uc_from, uc_to)
+                    pending_coverage.append((ticker, collector.name, uc_from, uc_to))
 
             # 写入缓存
             if new_items:
@@ -151,7 +153,11 @@ def analyze(
             fail_count=0,
         )
 
-    # 5. 生成报告
+    # 5. 提交覆盖标记（分析完成后才标记，Ctrl+C 中断时不会留下虚假覆盖）
+    for cov_ticker, cov_collector, cov_from, cov_to in pending_coverage:
+        cache.update_coverage(cov_ticker, cov_collector, cov_from, cov_to)
+
+    # 6. 生成报告
     report = AnalysisReport(
         ticker=ticker,
         date_from=date_from,
