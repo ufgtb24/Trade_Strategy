@@ -454,6 +454,37 @@ def _judge_result(metrics: dict) -> tuple[str, list[str]]:
 
 
 # ---------------------------------------------------------------------------
+# 7a. 情感筛选辅助函数
+# ---------------------------------------------------------------------------
+
+def _classify_sentiment(
+    sentiment_score: float,
+    total_count: int,
+    fail_count: int,
+    thresholds: dict,
+    min_total_count: int = 1,
+    max_fail_ratio: float = 0.5,
+) -> str:
+    """根据 sentiment_score 和数据充足度分类。
+
+    优先级：数据充足度检查 > 阈值判定。
+
+    Returns:
+        "strong_reject" | "reject" | "pass" | "insufficient_data"
+    """
+    if total_count < min_total_count:
+        return "insufficient_data"
+    if total_count > 0 and fail_count / total_count > max_fail_ratio:
+        return "insufficient_data"
+
+    if sentiment_score <= thresholds["strong_reject"]:
+        return "strong_reject"
+    if sentiment_score < thresholds["reject"]:
+        return "reject"
+    return "pass"
+
+
+# ---------------------------------------------------------------------------
 # 7. 报告生成
 # ---------------------------------------------------------------------------
 
@@ -1045,12 +1076,12 @@ def main():
     # ── 配置 ──
     # archive_name = "best"    # 归档名
     # trial_id = 15795                 # None → best trial; int → 指定 trial
-    archive_name = "20260402_225019"    # 归档名
+    archive_name = "pk_gte"    # 归档名
     trial_id = 14373                 # None → best trial; int → 指定 trial
     # trial_id = None                 # None → best trial; int → 指定 trial
     run_validation = True           # 运行时开关
     shrinkage_k = 1                 # TPE 优化目标 Top-K
-    report_name = "validation_report1.md"  # 验证报告文件名
+    report_name = "validation_report.md"  # 验证报告文件名
     run_cascade_flag = False          # 是否执行级联情感验证
 
     # ── 验证参数 ──
