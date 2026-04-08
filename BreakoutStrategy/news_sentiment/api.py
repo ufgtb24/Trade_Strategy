@@ -84,12 +84,12 @@ def analyze(
             cached_items = cache.get_news(ticker, date_from, date_to, collector.name)
 
             # 仅采集未覆盖范围（覆盖标记延迟提交）
+            # 无论是否获取到新闻都标记 coverage，防止重复抓取导致非确定性
             new_items: list[NewsItem] = []
             for uc_from, uc_to in uncovered:
                 fetched = collector.collect(ticker, uc_from, uc_to)
                 new_items.extend(fetched)
-                if fetched:
-                    pending_coverage.append((ticker, collector.name, uc_from, uc_to))
+                pending_coverage.append((ticker, collector.name, uc_from, uc_to))
 
             # 写入缓存
             if new_items:
@@ -106,12 +106,15 @@ def analyze(
             logger.error(f"[{collector.name}] Unexpected error: {e}")
             source_stats[collector.name] = 0
 
-    # 2.5 查找公司名（用于 relevance_filter 参考向量）
-    company_name = ""
-    for collector in collectors:
-        if isinstance(collector, FinnhubCollector) and collector.is_available():
-            company_name = collector.get_company_name(ticker)
-            break
+    # 2.5 查找公司名（用于 relevance_filter 参考向量，缓存避免重复 API 调用）
+    company_name = cache.get_company_name(ticker) or ""
+    if not company_name:
+        for collector in collectors:
+            if isinstance(collector, FinnhubCollector) and collector.is_available():
+                company_name = collector.get_company_name(ticker)
+                if company_name:
+                    cache.put_company_name(ticker, company_name)
+                break
 
     # 2.8 动态调整 max_items（使用副本，不修改传入的 config）
     try:

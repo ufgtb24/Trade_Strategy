@@ -186,6 +186,13 @@ def semantic_dedup(
     if len(items) <= 1:
         return items, embeddings
 
+    # 预排序：summary 长度降序，等长时 published_at 降序，title 兜底（确保贪心去重确定性）
+    order = sorted(range(len(items)),
+                   key=lambda i: (len(items[i].summary), items[i].published_at or '', items[i].title),
+                   reverse=True)
+    items = [items[i] for i in order]
+    embeddings = embeddings[order]
+
     # 全局 cosine similarity 矩阵
     sim = cosine_similarity_matrix(embeddings, embeddings)
 
@@ -233,7 +240,11 @@ def _infer_company_name(items: list[NewsItem], ticker: str) -> str:
                 word_counts[w] += 1
     # 排除 ticker 本身，避免 "AAPL AAPL" 这种冗余
     word_counts.pop(ticker, None)
-    return word_counts.most_common(1)[0][0] if word_counts else ticker
+    if not word_counts:
+        return ticker
+    # 按频次降序，同频次按字母升序（确保确定性，Counter.most_common 对同频次按插入序不确定）
+    top = sorted(word_counts.items(), key=lambda x: (-x[1], x[0]))
+    return top[0][0]
 
 
 def relevance_filter(

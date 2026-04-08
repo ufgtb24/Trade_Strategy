@@ -139,6 +139,12 @@ class SentimentCache:
                 date_to TEXT NOT NULL,
                 PRIMARY KEY (ticker, collector, date_from, date_to)
             );
+
+            CREATE TABLE IF NOT EXISTS company_names (
+                ticker TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                created_at TEXT DEFAULT (date('now'))
+            );
         """)
         self._conn.commit()
 
@@ -172,7 +178,8 @@ class SentimentCache:
         c = self._conn.cursor()
         c.execute(
             "SELECT data FROM news WHERE ticker=? AND collector=? "
-            "AND published_date >= ? AND published_date <= ?",
+            "AND published_date >= ? AND published_date <= ? "
+            "ORDER BY published_date, fingerprint",
             (ticker, collector, date_from, date_to),
         )
         items = []
@@ -235,6 +242,26 @@ class SentimentCache:
             "INSERT OR REPLACE INTO coverage (ticker, collector, date_from, date_to) "
             "VALUES (?, ?, ?, ?)",
             (ticker, collector, date_from, date_to),
+        )
+        self._conn.commit()
+
+    def get_company_name(self, ticker: str) -> str | None:
+        """查询缓存的公司名"""
+        if not self._enabled:
+            return None
+        c = self._conn.cursor()
+        c.execute("SELECT name FROM company_names WHERE ticker=?", (ticker,))
+        row = c.fetchone()
+        return row[0] if row else None
+
+    def put_company_name(self, ticker: str, name: str) -> None:
+        """缓存公司名"""
+        if not self._enabled or not name:
+            return
+        c = self._conn.cursor()
+        c.execute(
+            "INSERT OR REPLACE INTO company_names (ticker, name) VALUES (?, ?)",
+            (ticker, name),
         )
         self._conn.commit()
 
