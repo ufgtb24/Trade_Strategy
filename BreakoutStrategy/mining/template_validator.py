@@ -362,32 +362,11 @@ def _compute_validation_metrics(
         "top_k_names": sorted(top_k_names),
     }
 
-    # ── D5: 样本量与覆盖率 ──
-    sufficient = [m for m in matched if m["test"]["count"] >= 20]
-    marginal = [m for m in matched if 10 <= m["test"]["count"] < 20]
-    unreliable = [m for m in matched if m["test"]["count"] < 10]
-    found_ratio = (len(sufficient) + len(marginal)) / len(matched) if matched else 0
-
-    total_matched = sum(m["test"]["count"] for m in matched)
-    coverage_rate = total_matched / len(labels_test) if len(labels_test) > 0 else 0
-
-    d5 = {
-        "total_templates": len(matched),
-        "sufficient": len(sufficient),
-        "marginal": len(marginal),
-        "unreliable": len(unreliable),
-        "found_ratio": found_ratio,
-        "coverage_rate": coverage_rate,
-        "total_matched": total_matched,
-        "total_test": len(labels_test),
-    }
-
     return {
         "d1_per_template": matched,
         "d2_rank": d2,
         "d3_distribution": d3_results,
         "d4_global": d4,
-        "d5_coverage": d5,
     }
 
 
@@ -559,7 +538,7 @@ def _run_sentiment_filter(
         "pass_count": 0, "reject_count": 0, "strong_reject_count": 0,
         "insufficient_data_count": 0, "positive_boost_count": 0,
         "pre_filter_median": 0.0, "post_filter_median": 0.0,
-        "cascade_lift": 0.0,
+        "sentiment_lift": 0.0,
     }
 
     if len(indices) == 0:
@@ -707,7 +686,7 @@ def _run_sentiment_filter(
         "positive_boost_count": positive_boost_count,
         "pre_filter_median": pre_median,
         "post_filter_median": post_median,
-        "cascade_lift": post_median - pre_median,
+        "sentiment_lift": post_median - pre_median,
     }
 
     return stats, results
@@ -740,7 +719,7 @@ def _generate_sentiment_section(
     def w(text=""):
         lines.append(text)
 
-    w("## 7. Sentiment Filter")
+    w("## 6. Sentiment Filter")
     w()
 
     # ── Summary table ──
@@ -752,16 +731,18 @@ def _generate_sentiment_section(
     w(f"| Reject | {s['reject_count']} |")
     w(f"| Strong reject | {s['strong_reject_count']} |")
     w(f"| Insufficient data | {s['insufficient_data_count']} |")
-    w(f"| **Cascade lift** | **{s['cascade_lift']:+.4f}** |")
+    w(f"| **Sentiment lift** | **{s['sentiment_lift']:+.4f}** |")
+    not_rejected = s["pass_count"] + s["insufficient_data_count"] + s["error_count"]
+    coverage = s["pass_count"] / not_rejected if not_rejected > 0 else 0
+    w(f"| Coverage ratio | {coverage:.0%} ({s['pass_count']}/{not_rejected}) |")
     w()
 
     w(f"- Template lift (from validation): {pre_filter_metrics.get('template_lift', 0):+.4f}")
     w(f"- Matched median (from validation): {pre_filter_metrics.get('matched_median', 0):.4f}")
-    w(f"- Pre-filter median (sentiment input): {s['pre_filter_median']:.4f}")
     w()
 
     # ── 7.1 Sentiment Distribution ──
-    w("### 7.1 Sentiment Distribution")
+    w("### 6.1 Sentiment Distribution")
     w()
 
     categories = ["pass", "reject", "strong_reject", "insufficient_data", "error"]
@@ -791,14 +772,16 @@ def _generate_sentiment_section(
         w("```")
         w()
 
-    # ── 7.2 Cascade Effect ──
-    w("### 7.2 Cascade Effect")
+    # ── 6.2 Sentiment Effect ──
+    w("### 6.2 Sentiment Effect")
     w()
 
-    passed = [r for r in sample_results
-              if r["category"] in ("pass", "insufficient_data", "error")]
-    passed_labels = np.array([r["label"] for r in passed]) if passed else np.array([])
     all_labels = np.array([r["label"] for r in sample_results]) if sample_results else np.array([])
+    not_rejected = [r for r in sample_results
+                    if r["category"] in ("pass", "insufficient_data", "error")]
+    not_rejected_labels = np.array([r["label"] for r in not_rejected]) if not_rejected else np.array([])
+    pass_only = [r for r in sample_results if r["category"] == "pass"]
+    pass_only_labels = np.array([r["label"] for r in pass_only]) if pass_only else np.array([])
 
     def _fmt(arr):
         if len(arr) == 0:
@@ -809,19 +792,37 @@ def _generate_sentiment_section(
                 f"{np.mean(arr):.4f}")
 
     pre_q25, pre_med, pre_q75, pre_mean = _fmt(all_labels)
-    post_q25, post_med, post_q75, post_mean = _fmt(passed_labels)
+    post_q25, post_med, post_q75, post_mean = _fmt(not_rejected_labels)
+    pass_q25, pass_med, pass_q75, pass_mean = _fmt(pass_only_labels)
+
+    w("> Post-filter = pass + insufficient_data + error（排除 reject / strong_reject，"
+      "未被排除的样本均视为通过）")
+    w()
 
     w("| Metric | Pre-filter | Post-filter | Delta |")
     w("|--------|-----------|-------------|-------|")
-    w(f"| Count | {s['total_samples']} | {len(passed)} | {len(passed) - s['total_samples']} |")
-    w(f"| Median | {pre_med} | {post_med} | {s['cascade_lift']:+.4f} |")
+    w(f"| Count | {s['total_samples']} | {len(not_rejected)} | {len(not_rejected) - s['total_samples']} |")
+    w(f"| Median | {pre_med} | {post_med} | {s['sentiment_lift']:+.4f} |")
     w(f"| Q25 | {pre_q25} | {post_q25} | |")
     w(f"| Q75 | {pre_q75} | {post_q75} | |")
     w(f"| Mean | {pre_mean} | {post_mean} | |")
     w()
 
-    # ── 7.3 Rejected Sample Analysis ──
-    w("### 7.3 Rejected Sample Analysis")
+    pass_only_lift = float(np.median(pass_only_labels) - np.median(all_labels)) if len(pass_only_labels) > 0 and len(all_labels) > 0 else 0.0
+    w("| Metric | Pre-filter | Pass-only | Delta |")
+    w("|--------|-----------|-----------|-------|")
+    w(f"| Count | {s['total_samples']} | {len(pass_only)} | {len(pass_only) - s['total_samples']} |")
+    w(f"| Median | {pre_med} | {pass_med} | {pass_only_lift:+.4f} |")
+    w(f"| Q25 | {pre_q25} | {pass_q25} | |")
+    w(f"| Q75 | {pre_q75} | {pass_q75} | |")
+    w(f"| Mean | {pre_mean} | {pass_mean} | |")
+    if len(pass_only_labels) < 15:
+        w()
+        w(f"⚠ Pass N={len(pass_only_labels)} < 15, statistically unreliable")
+    w()
+
+    # ── 6.3 Rejected Sample Analysis ──
+    w("### 6.3 Rejected Sample Analysis")
     w()
     w("| Group | N | Median | Q25 | Q75 |")
     w("|-------|---|--------|-----|-----|")
@@ -836,7 +837,7 @@ def _generate_sentiment_section(
     w()
 
     # ── 7.4 Positive Boost Analysis ──
-    w("### 7.4 Positive Boost Analysis")
+    w("### 6.4 Positive Boost Analysis")
     w()
     boost_labels = [r["label"] for r in sample_results
                     if r["category"] == "pass" and r["sentiment_score"] > 0.30]
@@ -861,7 +862,7 @@ def _generate_sentiment_section(
     w()
 
     # ── 7.5 Judgment ──
-    w("### 7.5 Sentiment Judgment")
+    w("### 6.5 Sentiment Judgment")
     w()
 
     pass_labels_list = [r["label"] for r in sample_results
@@ -875,9 +876,9 @@ def _generate_sentiment_section(
     error_rate = s["error_count"] / s["total_samples"] if s["total_samples"] > 0 else 0.0
 
     reasons = []
-    if s["cascade_lift"] <= 0:
+    if s["sentiment_lift"] <= 0:
         verdict = "INEFFECTIVE"
-        reasons.append(f"cascade_lift={s['cascade_lift']:+.4f} <= 0")
+        reasons.append(f"sentiment_lift={s['sentiment_lift']:+.4f} <= 0")
     elif reject_labels_list and reject_med_val >= pass_med_val:
         verdict = "MARGINAL"
         reasons.append(f"rejected_median ({reject_med_val:.4f}) >= pass_median ({pass_med_val:.4f})")
@@ -892,10 +893,17 @@ def _generate_sentiment_section(
     if verdict == "EFFECTIVE":
         w("Sentiment filtering adds incremental value to template-based selection.")
     elif verdict == "MARGINAL":
-        w("Cascade lift is positive but rejected samples don't have lower labels than passed ones.")
+        w("Sentiment lift is positive but rejected samples don't have lower labels than passed ones.")
     else:
         w("Sentiment filtering does not improve selection quality. Consider adjusting thresholds or lookback window.")
     w()
+
+    insuf_ratio = s["insufficient_data_count"] / s["total_samples"] if s["total_samples"] > 0 else 0
+    if insuf_ratio > 0.60:
+        w(f"Note: insufficient_data ratio = {insuf_ratio:.0%} — reflects low news coverage for "
+          "micro-cap universe; sentiment filtering operates in risk-exclusion mode.")
+        w()
+
     if reasons:
         w("Details:")
         for reason in reasons:
@@ -926,7 +934,6 @@ def _generate_report(
     d2 = metrics["d2_rank"]
     d3 = metrics["d3_distribution"]
     d4 = metrics["d4_global"]
-    d5 = metrics["d5_coverage"]
     matched = metrics["d1_per_template"]
 
     lines = []
@@ -966,8 +973,6 @@ def _generate_report(
     w(f"| Template lift ({top_k_label}, median) | {d4['template_lift']:+.4f} |")
     top_k = d2_med.get("top_k_retention", np.nan)
     w(f"| Top-{k} retention (median) | {top_k:.2%} |" if not np.isnan(top_k) else f"| Top-{k} retention (median) | N/A |")
-    w(f"| Found ratio | {d5['found_ratio']:.2%} ({d5['sufficient'] + d5['marginal']}/{d5['total_templates']}) |")
-    w(f"| Coverage rate | {d5['coverage_rate']:.2%} ({d5['total_matched']}/{d5['total_test']}) |")
     w()
 
     # ── 1. Data Overview ──
@@ -1064,27 +1069,13 @@ def _generate_report(
             w(f"| {r['name']} | {r['ks_stat']:.3f} | {r['ks_p']:.4f} | [{r['ci_low']:.4f}, {r['ci_high']:.4f}] | {r['train_median']:.4f} | {in_ci} |")
         w()
 
-    # ── 6. Sample Coverage ──
-    w("## 6. Sample Coverage")
-    w()
-    w('> 模板在测试集中的样本量分布。'
-       'Sufficient（N >= 20）结论可信；Marginal（10-19）可参考；Unreliable（< 10）不可靠。'
-       'Coverage rate = 被任意模板命中的测试样本占比。\n')
-    w(f"- Total templates: {d5['total_templates']}")
-    w(f"- Sufficient (N >= 20): {d5['sufficient']}")
-    w(f"- Marginal (10 <= N < 20): {d5['marginal']}")
-    w(f"- Unreliable (N < 10): {d5['unreliable']}")
-    w(f"- Found ratio: {d5['found_ratio']:.2%}")
-    w(f"- Coverage rate: {d5['coverage_rate']:.2%}")
-    w()
-
     # ── Sentiment Filter (optional) ──
     if sentiment_section:
         for line in sentiment_section:
             w(line)
 
     # ── Conclusion ──
-    conclusion_num = 8 if sentiment_section else 7
+    conclusion_num = 7 if sentiment_section else 6
     w(f"## {conclusion_num}. Conclusion")
     w()
     w(f"**Final Verdict: {verdict}**")
@@ -1460,7 +1451,7 @@ def materialize_trial(
             sentiment_stats, sentiment_results, pre_metrics,
         )
 
-        print(f"  Cascade lift: {sentiment_stats['cascade_lift']:+.4f}")
+        print(f"  Sentiment lift: {sentiment_stats['sentiment_lift']:+.4f}")
         print(f"  Pass: {sentiment_stats['pass_count']} (boost: {sentiment_stats['positive_boost_count']})")
         print(f"  Reject: {sentiment_stats['reject_count'] + sentiment_stats['strong_reject_count']}")
 

@@ -44,4 +44,4 @@
 | level | 因子评级（离散化后的因子档位） |
 | factor | 评分因子（由 `FACTOR_REGISTRY` 统一注册） |
 | trial | 挖掘流水线的一次参数组合实验 |
-| cascade_lift | 情感筛选前后的 median label 差值 |
+| sentiment_lift | 情感筛选前后的 median label 差值 |

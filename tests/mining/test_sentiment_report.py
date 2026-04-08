@@ -41,7 +41,7 @@ def _make_stats(results):
         "insufficient_data_count": 1, "positive_boost_count": 1,
         "pre_filter_median": float(np.median(all_labels)),
         "post_filter_median": float(np.median(passed_labels)),
-        "cascade_lift": float(np.median(passed_labels) - np.median(all_labels)),
+        "sentiment_lift": float(np.median(passed_labels) - np.median(all_labels)),
     }
 
 
@@ -67,15 +67,18 @@ class TestGenerateSentimentSection:
         lines, _, _ = _generate_sentiment_section(stats, results, pre)
         content = "\n".join(lines)
 
-        assert "## 7. Sentiment Filter" in content
-        assert "### 7.1 Sentiment Distribution" in content
-        assert "### 7.2 Cascade Effect" in content
-        assert "### 7.3 Rejected Sample Analysis" in content
-        assert "### 7.4 Positive Boost Analysis" in content
-        assert "### 7.5 Sentiment Judgment" in content
+        assert "## 6. Sentiment Filter" in content
+        assert "### 6.1 Sentiment Distribution" in content
+        assert "### 6.2 Sentiment Effect" in content
+        assert "### 6.3 Rejected Sample Analysis" in content
+        assert "### 6.4 Positive Boost Analysis" in content
+        assert "### 6.5 Sentiment Judgment" in content
+        assert "Post-filter = pass + insufficient_data + error" in content
+        assert "| Pre-filter | Pass-only |" in content
+        assert "Coverage ratio" in content
 
     def test_verdict_effective(self):
-        """cascade_lift > 0 且 rejected_median < pass_median → EFFECTIVE"""
+        """sentiment_lift > 0 且 rejected_median < pass_median → EFFECTIVE"""
         results = _make_sample_results()
         stats = _make_stats(results)
         pre = {"template_lift": 0.02, "matched_median": 0.04}
@@ -84,7 +87,7 @@ class TestGenerateSentimentSection:
         assert verdict == "EFFECTIVE"
 
     def test_verdict_ineffective_when_lift_zero(self):
-        """cascade_lift <= 0 → INEFFECTIVE"""
+        """sentiment_lift <= 0 → INEFFECTIVE"""
         results = [
             {"symbol": "AAPL", "date": "2024-01-15", "label": 0.05,
              "template_name": "t1", "sentiment_score": 0.10,
@@ -97,7 +100,7 @@ class TestGenerateSentimentSection:
             "pass_count": 1, "reject_count": 0, "strong_reject_count": 0,
             "insufficient_data_count": 0, "positive_boost_count": 0,
             "pre_filter_median": 0.05, "post_filter_median": 0.05,
-            "cascade_lift": 0.0,
+            "sentiment_lift": 0.0,
         }
         pre = {"template_lift": 0.02, "matched_median": 0.04}
 
@@ -112,10 +115,10 @@ class TestGenerateSentimentSection:
             "pass_count": 0, "reject_count": 0, "strong_reject_count": 0,
             "insufficient_data_count": 0, "positive_boost_count": 0,
             "pre_filter_median": 0.0, "post_filter_median": 0.0,
-            "cascade_lift": 0.0,
+            "sentiment_lift": 0.0,
         }
         pre = {"template_lift": 0.0, "matched_median": 0.0}
 
         lines, verdict, _ = _generate_sentiment_section(stats, [], pre)
-        assert "## 7. Sentiment Filter" in "\n".join(lines)
+        assert "## 6. Sentiment Filter" in "\n".join(lines)
         assert verdict == "INEFFECTIVE"
