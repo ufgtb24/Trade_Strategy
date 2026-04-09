@@ -57,15 +57,15 @@ def _load_train_metadata(json_path: Path) -> dict:
 
 
 def _should_rescan(existing_json: Path, target_start: str, target_end: str) -> bool:
-    """检查已有扫描结果的时间范围是否与目标一致。不一致或不存在则需要重新扫描。"""
+    """检查已有扫描结果的时间范围是否覆盖目标。未覆盖或不存在则需要重新扫描。"""
     if not existing_json.exists():
         return True
     with open(existing_json) as f:
         meta = json.load(f)["scan_metadata"]
     existing_start = meta.get("start_date", "")
     existing_end = meta.get("end_date", "")
-    if existing_start != target_start or existing_end != target_end:
-        logger.info("测试集时间范围不匹配: 已有 %s~%s, 目标 %s~%s, 将重新扫描",
+    if existing_start > target_start or existing_end < target_end:
+        logger.info("测试集时间范围未覆盖: 已有 %s~%s, 目标 %s~%s, 将重新扫描",
                      existing_start, existing_end, target_start, target_end)
         return True
     return False
@@ -244,24 +244,36 @@ def _match_templates(
 # 5. 四维度验证指标
 # ---------------------------------------------------------------------------
 
+def _shrinkage_score(median: float, count: int, baseline: float, n0: float) -> float:
+    """James-Stein 收缩评分，与 threshold_optimizer.fast_evaluate 一致。"""
+    if n0 <= 0 or count == 0 or np.isnan(median):
+        return median if not np.isnan(median) else -np.inf
+    w = count / (count + n0)
+    return w * median + (1 - w) * baseline
+
+
 def _compute_validation_metrics(
     matched: list[dict],
     labels_test: np.ndarray,
     keys_test: np.ndarray,
     baseline_train: float,
     shrinkage_k: int = 1,
+    shrinkage_n0: float = 50,
+    n_train: int = 0,
     bootstrap_n: int = 1000,
 ) -> dict:
     """计算四维度验证指标。
 
     D1: 基础统计量（per-template）
-    D2: Top-K 留存（K = shrinkage_k）
+    D2: Top-K 留存（K = shrinkage_k，按 shrinkage_score 排序）
     D3: 分布稳定性（KS 检验, Bootstrap CI）
     D4: 全局有效性（baseline shift, above-ratio, lift）
     """
     rng = np.random.default_rng(42)
 
-    # ── D1: 基础统计量 ──
+    # ── D1: 基础统计量 + shrinkage_score ──
+    n_test = len(labels_test)
+    n0_test = shrinkage_n0 * (n_test / n_train) if n_train > 0 else shrinkage_n0
     for m in matched:
         for q_name in ["q25", "median", "q75"]:
             tr_val = m["train"][q_name]
@@ -271,28 +283,29 @@ def _compute_validation_metrics(
                 m[key] = (te_val - tr_val) / abs(tr_val)
             else:
                 m[key] = np.nan
+        m["train"]["s_score"] = _shrinkage_score(
+            m["train"]["median"], m["train"]["count"], baseline_train, shrinkage_n0)
+        m["test"]["s_score"] = _shrinkage_score(
+            m["test"]["median"], m["test"]["count"], baseline_train, n0_test)
 
-    # ── 提取 top-K 模板集合（按训练集 median，共享给 D2 和 D4）──
+    # ── 提取 top-K 模板集合（按训练集 shrinkage_score，共享给 D2 和 D4）──
     eligible = [m for m in matched if m["test"]["count"] >= 10]
-    sorted_by_train_median = sorted(eligible, key=lambda x: x["train"]["median"], reverse=True)
-    top_k_templates = sorted_by_train_median[:shrinkage_k]
+    sorted_by_train_sscore = sorted(eligible, key=lambda x: x["train"]["s_score"], reverse=True)
+    top_k_templates = sorted_by_train_sscore[:shrinkage_k]
     top_k_names = set(m["name"] for m in top_k_templates)
     top_k_keys = set(m["target_key"] for m in top_k_templates)
 
-    # ── D2: Top-K retention（K = shrinkage_k）──
-    d2 = {"eligible_count": len(eligible), "k": shrinkage_k}
-
-    for q_name in ["q25", "median", "q75"]:
-        q_result = {}
-        if len(eligible) >= shrinkage_k:
-            sorted_train = sorted(eligible, key=lambda x: x["train"][q_name], reverse=True)
-            sorted_test = sorted(eligible, key=lambda x: x["test"][q_name], reverse=True)
-            top_train = set(m["name"] for m in sorted_train[:shrinkage_k])
-            top_test = set(m["name"] for m in sorted_test[:shrinkage_k])
-            q_result["top_k_retention"] = len(top_train & top_test) / shrinkage_k
-        else:
-            q_result["top_k_retention"] = np.nan
-        d2[q_name] = q_result
+    # ── D2: Top-K retention（K = shrinkage_k，按 shrinkage_score 排序）──
+    d2 = {"eligible_count": len(eligible), "k": shrinkage_k,
+          "n0_train": shrinkage_n0, "n0_test": n0_test}
+    if len(eligible) >= shrinkage_k:
+        sorted_train = sorted(eligible, key=lambda x: x["train"]["s_score"], reverse=True)
+        sorted_test = sorted(eligible, key=lambda x: x["test"]["s_score"], reverse=True)
+        top_train = set(m["name"] for m in sorted_train[:shrinkage_k])
+        top_test = set(m["name"] for m in sorted_test[:shrinkage_k])
+        d2["top_k_retention"] = len(top_train & top_test) / shrinkage_k
+    else:
+        d2["top_k_retention"] = np.nan
 
     # ── D3: 分布稳定性（双侧 count >= 15）──
     d3_results = []
@@ -387,7 +400,6 @@ def _judge_result(metrics: dict) -> tuple[str, list[str]]:
     """
     d2 = metrics["d2_rank"]
     d4 = metrics["d4_global"]
-    d2_med = d2["median"]
 
     checks = {}
 
@@ -407,8 +419,8 @@ def _judge_result(metrics: dict) -> tuple[str, list[str]]:
     else:
         checks["lift"] = "FAIL"
 
-    # Top-K retention（基于 median，K = shrinkage_k）
-    top_k = d2_med.get("top_k_retention", np.nan)
+    # Top-K retention（按 shrinkage_score 排序）
+    top_k = d2.get("top_k_retention", np.nan)
     if not np.isnan(top_k) and top_k >= 1.0:
         checks["top_k"] = "PASS"
     elif not np.isnan(top_k) and top_k > 0:
@@ -859,6 +871,9 @@ def _generate_sentiment_section(
         boost_lift = float(np.median(boost_labels) - np.median(normal_labels))
         w()
         w(f"**Boost lift**: {boost_lift:+.4f}")
+    if boost_labels and len(all_labels) > 0:
+        boost_vs_pre = float(np.median(boost_labels) - np.median(all_labels))
+        w(f"**Boost vs Pre-filter lift**: {boost_vs_pre:+.4f}")
     w()
 
     # ── 7.5 Judgment ──
@@ -927,6 +942,8 @@ def _generate_report(
     test_end: str,
     train_sample_size: int,
     output_path: Path,
+    shrinkage_n0: float = 50,
+    n_train: int = 0,
     sentiment_section: list[str] | None = None,
     sentiment_verdict: str | None = None,
 ):
@@ -951,7 +968,7 @@ def _generate_report(
     w()
     w('> 三个判定维度：**above_baseline**（Top-K 模板的测试集 median 是否超过训练集基线）、'
        '**lift**（Top-K 模板命中样本 vs 未命中样本的收益差）、'
-       '**top_k_retention**（训练集最优模板在测试集是否保持最优）。'
+       '**top_k_retention**（训练集最优模板在测试集是否保持最优，按 shrinkage_score 排序）。'
        '全 PASS → PASS，无 FAIL → CONDITIONAL PASS，有 FAIL → FAIL。\n')
     w(f"**Verdict: {verdict}**")
     if sentiment_verdict:
@@ -963,7 +980,6 @@ def _generate_report(
             w(f"- {r}")
         w()
 
-    d2_med = d2["median"]
     k = d2.get("k", 1)
     top_k_label = f"Top-{k}" if k > 1 else "Top-1"
     top_k_names = set(d4['top_k_names'])
@@ -971,8 +987,8 @@ def _generate_report(
     w("|--------|-------|")
     w(f"| Above-baseline ratio ({top_k_label}) | {d4['above_baseline_ratio']:.2%} ({d4['above_count']}/{d4['testable_count']}) |")
     w(f"| Template lift ({top_k_label}, median) | {d4['template_lift']:+.4f} |")
-    top_k = d2_med.get("top_k_retention", np.nan)
-    w(f"| Top-{k} retention (median) | {top_k:.2%} |" if not np.isnan(top_k) else f"| Top-{k} retention (median) | N/A |")
+    top_k = d2.get("top_k_retention", np.nan)
+    w(f"| Top-{k} retention (s_score) | {top_k:.2%} |" if not np.isnan(top_k) else f"| Top-{k} retention (s_score) | N/A |")
     w()
 
     # ── 1. Data Overview ──
@@ -1000,38 +1016,42 @@ def _generate_report(
         w(f"**WARNING: {integrity_info['dropped']} breakouts lack complete label data.**")
     w()
 
-    # ── 3. Per-Template Comparison ──
-    top_k_matched = [m for m in matched if m['name'] in top_k_names]
-    w(f"## 3. Per-Template Comparison ({top_k_label} only)")
+    # ── 3. Per-Template Comparison (top 5 by shrinkage_score) ──
+    all_sorted = sorted(matched, key=lambda x: x["train"]["s_score"], reverse=True)
+    show_n = min(5, len(all_sorted))
+    w(f"## 3. Per-Template Comparison (top {show_n} of {len(all_sorted)} templates)")
     w()
-    w('> 每个模板在训练集和测试集中的统计量对比。'
-       '重点关注 **Med**（中位数收益，抗极值）和 **N**（样本量，决定结论可信度）。'
-       '训练 → 测试的 median 回撤在 20-30% 内属正常样本外衰减。\n')
-    w("| # | Template | Train N | Tr q25 | Tr Mean | Tr Med | Tr q75 | Test N | Te q25 | Te Mean | Te Med | Te q75 |")
-    w("|---|----------|---------|--------|---------|--------|--------|--------|--------|---------|--------|--------|")
-    for i, m in enumerate(top_k_matched, 1):
+    w('> 按训练集 shrinkage_score 降序排列。'
+       's_sc = shrinkage_score（综合 median 和样本量的收缩估计，与 TPE 优化目标一致）。'
+       f' n0_train={shrinkage_n0:.0f},'
+       f' n0_test={d2.get("n0_test", shrinkage_n0):.1f}'
+       f' (按 N_test/N_train 比例校正)。'
+       f' {top_k_label} 模板名后标 `*`。\n')
+    w("| # | Template | Tr s_sc | Tr Q25 | Tr Q75 | Tr Mean | Tr N | Tr Med || Te s_sc | Te Q25 | Te Q75 | Te Mean | Te N | Te Med |")
+    w("|---|----------|---------|--------|--------|---------|------|--------|---|---------|--------|--------|---------|------|--------|")
+    for i, m in enumerate(all_sorted[:show_n], 1):
         tr = m["train"]
         te = m["test"]
         fmt = lambda v: f"{v:.4f}" if not np.isnan(v) else "N/A"
-        w(f"| {i} | {m['name']} | {tr['count']} | {fmt(tr['q25'])} | {fmt(tr['mean'])} | {fmt(tr['median'])} | {fmt(tr['q75'])} | {te['count']} | {fmt(te['q25'])} | {fmt(te['mean'])} | {fmt(te['median'])} | {fmt(te['q75'])} |")
+        name = m['name'] + ' *' if m['name'] in top_k_names else m['name']
+        w(f"| {i} | {name} | {fmt(tr['s_score'])} | {fmt(tr['q25'])} | {fmt(tr['q75'])} | {fmt(tr['mean'])} | {tr['count']} | {fmt(tr['median'])} || {fmt(te['s_score'])} | {fmt(te['q25'])} | {fmt(te['q75'])} | {fmt(te['mean'])} | {te['count']} | {fmt(te['median'])} |")
     w()
 
     # ── 4. Top-K Retention ──
     w("## 4. Top-K Retention")
     w()
-    w('> 训练集中按各分位数（q25/median/q75）排名第一的模板，在测试集中是否仍排名第一。'
-       '100% = 保持，0% = 被其他模板超越。**判定只看 median 行。**'
-       'q25/q75 是补充视角：三行全 100% 说明收益分布形状也稳定，只有 median 保持说明尾部特征有漂移。\n')
-    w(f"- K = {k} (= shrinkage_k, TPE optimization target)")
+    w('> 训练集和测试集各自按 shrinkage_score 排序，检查训练集 Top-K 模板在测试集中是否仍在 Top-K。'
+       ' 测试集 n0 按 `n0_test = n0_train × (N_test / N_train)` 比例校正，'
+       '两集共用 baseline_train 作为收缩锚点。\n')
+    w(f"- K = {k} (= shrinkage_k)")
+    w(f"- n0_train = {d2.get('n0_train', 'N/A')}, n0_test = {d2.get('n0_test', 'N/A'):.1f}")
     w(f"- Eligible templates (test N >= 10): {d2['eligible_count']}")
     w()
-    w(f"| Quantile | Top-{k} Retention |")
-    w(f"|----------|{'---' * 5}|")
-    for q_name in ["q25", "median", "q75"]:
-        qd = d2[q_name]
-        val = qd.get('top_k_retention', np.nan)
-        fmt_v = f"{val:.2%}" if not np.isnan(val) else "N/A"
-        w(f"| {q_name} | {fmt_v} |")
+    retention_val = d2.get("top_k_retention", np.nan)
+    fmt_ret = f"{retention_val:.2%}" if not np.isnan(retention_val) else "N/A"
+    w(f"| Metric | Top-{k} Retention |")
+    w("|--------|------------------|")
+    w(f"| shrinkage_score | {fmt_ret} |")
     w()
 
     # ── 5. Global Effectiveness ──
@@ -1292,6 +1312,16 @@ def materialize_trial(
     pkl_path = archive_dir / "optuna.pkl"
     base_yaml = archive_dir / "factor_diag.yaml"
 
+    # 从 optimizer_config.yaml 读取 shrinkage_n0（TPE 运行时快照，SSOT）
+    opt_cfg_path = archive_dir / "optimizer_config.yaml"
+    if opt_cfg_path.exists():
+        with open(opt_cfg_path, encoding='utf-8') as f:
+            opt_cfg = yaml.safe_load(f) or {}
+        shrinkage_n0 = opt_cfg.get('shrinkage_n0', 200)
+    else:
+        shrinkage_n0 = 200
+        logger.warning("optimizer_config.yaml not found, using default shrinkage_n0=%d", shrinkage_n0)
+
     # ── Step 1: 加载 trial ──
     print("=" * 60)
     print(f"[Materializer] Archive: {archive_dir}")
@@ -1412,6 +1442,8 @@ def materialize_trial(
         matched, labels_test_arr, keys_test_arr,
         baseline_train,
         shrinkage_k=shrinkage_k,
+        shrinkage_n0=shrinkage_n0,
+        n_train=len(df_train),
         bootstrap_n=bootstrap_n,
     )
     verdict, reasons = _judge_result(metrics)
@@ -1467,15 +1499,16 @@ def materialize_trial(
         test_end=test_end_date,
         train_sample_size=len(df_train),
         output_path=report_path,
+        shrinkage_n0=shrinkage_n0,
+        n_train=len(df_train),
         sentiment_section=sentiment_section,
         sentiment_verdict=sentiment_verdict,
     )
 
     d2 = metrics["d2_rank"]
-    d2_med = d2["median"]
-    top_k = d2_med.get("top_k_retention", np.nan)
+    top_k = d2.get("top_k_retention", np.nan)
     top_k_str = f"{top_k:.2%}" if not np.isnan(top_k) else "N/A"
-    print(f"  Top-{d2.get('k', '?')} retention (median): {top_k_str}")
+    print(f"  Top-{d2.get('k', '?')} retention (s_score): {top_k_str}")
     print(f"  Template lift: {d4['template_lift']:+.4f}")
     print(f"  Verdict: {verdict}")
 
@@ -1507,13 +1540,14 @@ def main():
     # trial_id = None                 # None → best trial; int → 指定 trial
     run_validation = True           # 运行时开关
     run_sentiment = True           # 是否执行情感验证
-    shrinkage_k = 1                 # TPE 优化目标 Top-K
+    shrinkage_k = 1                # TPE 优化目标 Top-K
     report_name = "validation_report.md"  # 验证报告文件名
 
 
     # ── 验证参数 ──
     validation_config = {
-        'test_start_date': '2025-08-01',
+        # 'test_start_date': '2024-04-01',
+        'test_start_date': '2025-06-01',
         'test_end_date': '2025-11-01',
         # 'test_start_date': '2023-12-01',
         # 'test_end_date': '2024-02-01',

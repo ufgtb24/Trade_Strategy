@@ -45,7 +45,7 @@ def main():
         'n_trials': 50000,
         'min_count': 30,
         'shrinkage_k': 1,
-        'shrinkage_n': 200,
+        'shrinkage_n0': 200,
         'n_startup_trials': 1000,
         'min_viable_count': 30,
         'bootstrap_n': 1000,

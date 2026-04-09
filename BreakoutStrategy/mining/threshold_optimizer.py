@@ -554,7 +554,7 @@ def main(input_csv, factor_yaml, output_yaml, report_name=None,
     n_trials = cfg.get('n_trials', 50000)
     min_count = cfg.get('min_count', 30)
     shrinkage_k = cfg.get('shrinkage_k', 1)
-    shrinkage_n = cfg.get('shrinkage_n', 200)
+    shrinkage_n0 = cfg.get('shrinkage_n0', 200)
     n_startup_trials = cfg.get('n_startup_trials', 1000)
     min_viable_count = cfg.get('min_viable_count', 30)
     bootstrap_n = cfg.get('bootstrap_n', 1000)
@@ -566,7 +566,7 @@ def main(input_csv, factor_yaml, output_yaml, report_name=None,
     # checkpoint_path 默认值
     if checkpoint_path is None:
         project_root = Path(input_csv).resolve().parent.parent.parent
-        checkpoint_path = str(project_root / "outputs" / "optuna" / f"tpe_{shrinkage_n}_single.pkl")
+        checkpoint_path = str(project_root / "outputs" / "optuna" / f"tpe_{shrinkage_n0}_single.pkl")
 
     # === 加载数据 ===
     print(f"Loading: {input_csv}")
@@ -613,7 +613,7 @@ def main(input_csv, factor_yaml, output_yaml, report_name=None,
 
     # === Step 1b: Optuna TPE top-1 shrinkage（无 trigger rate 约束）===
     print(f"\n=== Step 1b: Optuna TPE Top-1 Shrinkage ({n_trials} trials, "
-          f"n0={shrinkage_n}, startup={n_startup_trials}) ===")
+          f"n0={shrinkage_n0}, startup={n_startup_trials}) ===")
     print(f"  Checkpoint: {checkpoint_path}")
     study = stage3b_optuna_search(
         raw_values, labels, all_factors,
@@ -621,7 +621,7 @@ def main(input_csv, factor_yaml, output_yaml, report_name=None,
         n_trials=n_trials, min_count=min_count,
         top_k=shrinkage_k,
         negative_factors=negative_factors,
-        baseline_median=baseline_median, shrinkage_n0=shrinkage_n,
+        baseline_median=baseline_median, shrinkage_n0=shrinkage_n0,
         checkpoint_path=checkpoint_path, n_startup_trials=n_startup_trials,
         sampler=sampler, enable_log=enable_log,
         quantile_margin=quantile_margin,
@@ -675,7 +675,7 @@ def main(input_csv, factor_yaml, output_yaml, report_name=None,
             'thresholds': {k: round(float(v), 4) for k, v in best['thresholds'].items()},
             'negative_factors': sorted(negative_factors),
             'shrinkage_score': round(float(best['shrinkage_score']), 4),
-            'shrinkage_n': shrinkage_n,
+            'shrinkage_n0': shrinkage_n0,
             'shrinkage_k': shrinkage_k,
             'baseline_median': round(baseline_median, 4),
             'min_stability': round(float(best['min_stability']), 3),
