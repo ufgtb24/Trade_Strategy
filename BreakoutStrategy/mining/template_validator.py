@@ -11,6 +11,7 @@
 
 import json
 import logging
+import os
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -64,7 +65,7 @@ def _should_rescan(existing_json: Path, target_start: str, target_end: str) -> b
         meta = json.load(f)["scan_metadata"]
     existing_start = meta.get("start_date", "")
     existing_end = meta.get("end_date", "")
-    if existing_start > target_start or existing_end < target_end:
+    if existing_start != target_start or existing_end != target_end:
         logger.info("测试集时间范围未覆盖: 已有 %s~%s, 目标 %s~%s, 将重新扫描",
                      existing_start, existing_end, target_start, target_end)
         return True
@@ -1550,14 +1551,14 @@ def main():
     # ── 验证参数 ──
     validation_config = {
         # 'test_start_date': '2024-04-01',
-        'test_start_date': '2025-06-01',
+        'test_start_date': '2025-08-01',
         'test_end_date': '2025-11-01',
         # 'test_start_date': '2023-12-01',
         # 'test_end_date': '2024-02-01',
         'min_price': 1.0,
         'max_price': 10.0,
         'min_volume': 10000,
-        'num_workers': 8,
+        'num_workers': os.cpu_count() - 2,
         'bootstrap_n': 1000,
     }
     
