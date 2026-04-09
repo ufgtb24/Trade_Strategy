@@ -492,6 +492,7 @@ _SENTIMENT_DEFAULTS = {
     "max_retries": 2,
     "retry_delay": 2,
     "save_individual_reports": True,
+    "include_breakout_day": True,
 }
 
 
@@ -530,6 +531,7 @@ def _run_sentiment_filter(
     cfg = {**_SENTIMENT_DEFAULTS, **sentiment_config}
     thresholds = cfg["thresholds"]
     lookback = cfg["lookback_days"]
+    include_bo_day = cfg["include_breakout_day"]
     max_concurrent = cfg["max_concurrent_tickers"]
     max_retries = cfg["max_retries"]
     retry_delay = cfg["retry_delay"]
@@ -578,9 +580,10 @@ def _run_sentiment_filter(
         task_key = (s["symbol"], s["date"])
         if task_key not in tasks:
             bo_date = datetime.strptime(s["date"], "%Y-%m-%d")
+            end_date = bo_date if include_bo_day else bo_date - timedelta(days=1)
             tasks[task_key] = {
                 "date_from": (bo_date - timedelta(days=lookback)).strftime("%Y-%m-%d"),
-                "date_to": s["date"],
+                "date_to": end_date.strftime("%Y-%m-%d"),
             }
 
     unique_tickers = len(set(k[0] for k in tasks))
@@ -1572,6 +1575,7 @@ def main():
         'max_retries': 2,
         'retry_delay': 5.0,
         'save_individual_reports': False,
+        'include_breakout_day': True,
     }
 
     # ── 路径 ──
