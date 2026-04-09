@@ -149,8 +149,9 @@ class SentimentAnalyzer:
             if uncached_items:
                 new_sentiments = self._backend.analyze_all(uncached_items, ticker)
                 for idx, sent in zip(uncached_indices, new_sentiments):
-                    fp = news_fingerprint(items[idx])
-                    self._cache.put_sentiment(fp, backend_name, model_name, sent)
+                    if sent.impact_value > 0:
+                        fp = news_fingerprint(items[idx])
+                        self._cache.put_sentiment(fp, backend_name, model_name, sent)
                     cached_results[idx] = sent
 
             sentiments = [cached_results[i] for i in range(len(items))]

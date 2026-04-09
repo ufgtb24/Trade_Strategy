@@ -84,12 +84,13 @@ def analyze(
             cached_items = cache.get_news(ticker, date_from, date_to, collector.name)
 
             # 仅采集未覆盖范围（覆盖标记延迟提交）
-            # 无论是否获取到新闻都标记 coverage，防止重复抓取导致非确定性
+            # 只在成功获取到新闻时标记 coverage，空结果保留重试机会
             new_items: list[NewsItem] = []
             for uc_from, uc_to in uncovered:
                 fetched = collector.collect(ticker, uc_from, uc_to)
                 new_items.extend(fetched)
-                pending_coverage.append((ticker, collector.name, uc_from, uc_to))
+                if fetched:
+                    pending_coverage.append((ticker, collector.name, uc_from, uc_to))
 
             # 写入缓存
             if new_items:

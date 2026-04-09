@@ -125,7 +125,7 @@ def test_relevance_filter_removes_unrelated():
         _item("Fed Raises Interest Rates by 25 Basis Points"),
     ]
     embeddings = embed_texts([i.title for i in items])
-    result, result_emb = relevance_filter(items, embeddings, ticker="AAPL", threshold=0.55)
+    result, result_emb = relevance_filter(items, embeddings, ticker="AAPL", threshold=0.55, company_name="Apple")
     titles = [r.title for r in result]
     assert "Apple Reports Record Q1 Revenue" in titles
     assert "Apple Launches New iPhone Model" in titles
@@ -141,7 +141,7 @@ def test_relevance_filter_keeps_related():
         _item("Apple Cuts App Store Commission"),
     ]
     embeddings = embed_texts([i.title for i in items])
-    result, _ = relevance_filter(items, embeddings, ticker="AAPL", threshold=0.55)
+    result, _ = relevance_filter(items, embeddings, ticker="AAPL", threshold=0.55, company_name="Apple")
     assert len(result) == 3
 
 

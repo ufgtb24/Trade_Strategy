@@ -178,8 +178,7 @@ class SentimentCache:
         c = self._conn.cursor()
         c.execute(
             "SELECT data FROM news WHERE ticker=? AND collector=? "
-            "AND published_date >= ? AND published_date <= ? "
-            "ORDER BY published_date, fingerprint",
+            "AND published_date >= ? AND published_date <= ?",
             (ticker, collector, date_from, date_to),
         )
         items = []
