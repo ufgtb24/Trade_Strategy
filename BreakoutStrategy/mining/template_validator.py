@@ -11,7 +11,8 @@
 
 import json
 import logging
-from datetime import datetime
+import os
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import numpy as np
@@ -57,7 +58,7 @@ def _load_train_metadata(json_path: Path) -> dict:
 
 
 def _should_rescan(existing_json: Path, target_start: str, target_end: str) -> bool:
-    """检查已有扫描结果的时间范围是否与目标一致。不一致或不存在则需要重新扫描。"""
+    """检查已有扫描结果的时间范围是否覆盖目标。未覆盖或不存在则需要重新扫描。"""
     if not existing_json.exists():
         return True
     with open(existing_json) as f:
@@ -65,7 +66,7 @@ def _should_rescan(existing_json: Path, target_start: str, target_end: str) -> b
     existing_start = meta.get("start_date", "")
     existing_end = meta.get("end_date", "")
     if existing_start != target_start or existing_end != target_end:
-        logger.info("测试集时间范围不匹配: 已有 %s~%s, 目标 %s~%s, 将重新扫描",
+        logger.info("测试集时间范围未覆盖: 已有 %s~%s, 目标 %s~%s, 将重新扫描",
                      existing_start, existing_end, target_start, target_end)
         return True
     return False
@@ -244,24 +245,36 @@ def _match_templates(
 # 5. 四维度验证指标
 # ---------------------------------------------------------------------------
 
+def _shrinkage_score(median: float, count: int, baseline: float, n0: float) -> float:
+    """James-Stein 收缩评分，与 threshold_optimizer.fast_evaluate 一致。"""
+    if n0 <= 0 or count == 0 or np.isnan(median):
+        return median if not np.isnan(median) else -np.inf
+    w = count / (count + n0)
+    return w * median + (1 - w) * baseline
+
+
 def _compute_validation_metrics(
     matched: list[dict],
     labels_test: np.ndarray,
     keys_test: np.ndarray,
     baseline_train: float,
     shrinkage_k: int = 1,
+    shrinkage_n0: float = 50,
+    n_train: int = 0,
     bootstrap_n: int = 1000,
 ) -> dict:
     """计算四维度验证指标。
 
     D1: 基础统计量（per-template）
-    D2: Top-K 留存（K = shrinkage_k）
+    D2: Top-K 留存（K = shrinkage_k，按 shrinkage_score 排序）
     D3: 分布稳定性（KS 检验, Bootstrap CI）
     D4: 全局有效性（baseline shift, above-ratio, lift）
     """
     rng = np.random.default_rng(42)
 
-    # ── D1: 基础统计量 ──
+    # ── D1: 基础统计量 + shrinkage_score ──
+    n_test = len(labels_test)
+    n0_test = shrinkage_n0 * (n_test / n_train) if n_train > 0 else shrinkage_n0
     for m in matched:
         for q_name in ["q25", "median", "q75"]:
             tr_val = m["train"][q_name]
@@ -271,28 +284,29 @@ def _compute_validation_metrics(
                 m[key] = (te_val - tr_val) / abs(tr_val)
             else:
                 m[key] = np.nan
+        m["train"]["s_score"] = _shrinkage_score(
+            m["train"]["median"], m["train"]["count"], baseline_train, shrinkage_n0)
+        m["test"]["s_score"] = _shrinkage_score(
+            m["test"]["median"], m["test"]["count"], baseline_train, n0_test)
 
-    # ── 提取 top-K 模板集合（按训练集 median，共享给 D2 和 D4）──
+    # ── 提取 top-K 模板集合（按训练集 shrinkage_score，共享给 D2 和 D4）──
     eligible = [m for m in matched if m["test"]["count"] >= 10]
-    sorted_by_train_median = sorted(eligible, key=lambda x: x["train"]["median"], reverse=True)
-    top_k_templates = sorted_by_train_median[:shrinkage_k]
+    sorted_by_train_sscore = sorted(eligible, key=lambda x: x["train"]["s_score"], reverse=True)
+    top_k_templates = sorted_by_train_sscore[:shrinkage_k]
     top_k_names = set(m["name"] for m in top_k_templates)
     top_k_keys = set(m["target_key"] for m in top_k_templates)
 
-    # ── D2: Top-K retention（K = shrinkage_k）──
-    d2 = {"eligible_count": len(eligible), "k": shrinkage_k}
-
-    for q_name in ["q25", "median", "q75"]:
-        q_result = {}
-        if len(eligible) >= shrinkage_k:
-            sorted_train = sorted(eligible, key=lambda x: x["train"][q_name], reverse=True)
-            sorted_test = sorted(eligible, key=lambda x: x["test"][q_name], reverse=True)
-            top_train = set(m["name"] for m in sorted_train[:shrinkage_k])
-            top_test = set(m["name"] for m in sorted_test[:shrinkage_k])
-            q_result["top_k_retention"] = len(top_train & top_test) / shrinkage_k
-        else:
-            q_result["top_k_retention"] = np.nan
-        d2[q_name] = q_result
+    # ── D2: Top-K retention（K = shrinkage_k，按 shrinkage_score 排序）──
+    d2 = {"eligible_count": len(eligible), "k": shrinkage_k,
+          "n0_train": shrinkage_n0, "n0_test": n0_test}
+    if len(eligible) >= shrinkage_k:
+        sorted_train = sorted(eligible, key=lambda x: x["train"]["s_score"], reverse=True)
+        sorted_test = sorted(eligible, key=lambda x: x["test"]["s_score"], reverse=True)
+        top_train = set(m["name"] for m in sorted_train[:shrinkage_k])
+        top_test = set(m["name"] for m in sorted_test[:shrinkage_k])
+        d2["top_k_retention"] = len(top_train & top_test) / shrinkage_k
+    else:
+        d2["top_k_retention"] = np.nan
 
     # ── D3: 分布稳定性（双侧 count >= 15）──
     d3_results = []
@@ -362,32 +376,11 @@ def _compute_validation_metrics(
         "top_k_names": sorted(top_k_names),
     }
 
-    # ── D5: 样本量与覆盖率 ──
-    sufficient = [m for m in matched if m["test"]["count"] >= 20]
-    marginal = [m for m in matched if 10 <= m["test"]["count"] < 20]
-    unreliable = [m for m in matched if m["test"]["count"] < 10]
-    found_ratio = (len(sufficient) + len(marginal)) / len(matched) if matched else 0
-
-    total_matched = sum(m["test"]["count"] for m in matched)
-    coverage_rate = total_matched / len(labels_test) if len(labels_test) > 0 else 0
-
-    d5 = {
-        "total_templates": len(matched),
-        "sufficient": len(sufficient),
-        "marginal": len(marginal),
-        "unreliable": len(unreliable),
-        "found_ratio": found_ratio,
-        "coverage_rate": coverage_rate,
-        "total_matched": total_matched,
-        "total_test": len(labels_test),
-    }
-
     return {
         "d1_per_template": matched,
         "d2_rank": d2,
         "d3_distribution": d3_results,
         "d4_global": d4,
-        "d5_coverage": d5,
     }
 
 
@@ -408,7 +401,6 @@ def _judge_result(metrics: dict) -> tuple[str, list[str]]:
     """
     d2 = metrics["d2_rank"]
     d4 = metrics["d4_global"]
-    d2_med = d2["median"]
 
     checks = {}
 
@@ -428,8 +420,8 @@ def _judge_result(metrics: dict) -> tuple[str, list[str]]:
     else:
         checks["lift"] = "FAIL"
 
-    # Top-K retention（基于 median，K = shrinkage_k）
-    top_k = d2_med.get("top_k_retention", np.nan)
+    # Top-K retention（按 shrinkage_score 排序）
+    top_k = d2.get("top_k_retention", np.nan)
     if not np.isnan(top_k) and top_k >= 1.0:
         checks["top_k"] = "PASS"
     elif not np.isnan(top_k) and top_k > 0:
@@ -454,7 +446,494 @@ def _judge_result(metrics: dict) -> tuple[str, list[str]]:
 
 
 # ---------------------------------------------------------------------------
-# 7. 报告生成
+# 7a. 情感筛选辅助函数
+# ---------------------------------------------------------------------------
+
+def _classify_sentiment(
+    sentiment_score: float,
+    total_count: int,
+    fail_count: int,
+    thresholds: dict,
+    min_total_count: int = 1,
+    max_fail_ratio: float = 0.5,
+) -> str:
+    """根据 sentiment_score 和数据充足度分类。
+
+    优先级：数据充足度检查 > 阈值判定。
+
+    Returns:
+        "strong_reject" | "reject" | "pass" | "insufficient_data"
+    """
+    if total_count < min_total_count:
+        return "insufficient_data"
+    if total_count > 0 and fail_count / total_count > max_fail_ratio:
+        return "insufficient_data"
+
+    if sentiment_score <= thresholds["strong_reject"]:
+        return "strong_reject"
+    if sentiment_score < thresholds["reject"]:
+        return "reject"
+    return "pass"
+
+
+# ---------------------------------------------------------------------------
+# 7b. 情感筛选批量编排
+# ---------------------------------------------------------------------------
+
+_SENTIMENT_DEFAULTS = {
+    "lookback_days": 7,
+    "thresholds": {
+        "strong_reject": -0.40,
+        "reject": -0.15,
+        "positive_boost": 0.30,
+    },
+    "min_total_count": 1,
+    "max_fail_ratio": 0.5,
+    "max_concurrent_tickers": 3,
+    "max_retries": 2,
+    "retry_delay": 2,
+    "save_individual_reports": True,
+    "include_breakout_day": True,
+}
+
+
+def _run_sentiment_filter(
+    df_test: pd.DataFrame,
+    keys_test: np.ndarray,
+    top_k_keys: set[int],
+    top_k_names: dict[int, str],
+    sentiment_config: dict,
+    on_progress=None,
+) -> tuple[dict, list[dict]]:
+    """批量情感筛选：提取 top-K 匹配样本 → 去重 → 并发分析 → 分类汇总。
+
+    替代 cascade/batch_analyzer.run_cascade，使用 plain dict 而非 dataclass。
+
+    Args:
+        df_test: 测试集 DataFrame（需包含 symbol, date, LABEL_COL 列）
+        keys_test: 每行的 template key (bit-packed int array)
+        top_k_keys: top-K 模板的 key 集合
+        top_k_names: key → template_name 映射
+        sentiment_config: 情感筛选配置 dict（缺失字段用 _SENTIMENT_DEFAULTS 补齐）
+        on_progress: 进度回调 (completed, total, ticker) → None
+
+    Returns:
+        (sentiment_stats, sample_results)
+        - sentiment_stats: 聚合统计 dict
+        - sample_results: 逐样本结果 list[dict]
+    """
+    import time
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
+    from BreakoutStrategy.news_sentiment.api import analyze
+    from BreakoutStrategy.news_sentiment.config import load_config as load_sentiment_config
+
+    # --- 配置合并 ---
+    cfg = {**_SENTIMENT_DEFAULTS, **sentiment_config}
+    thresholds = cfg["thresholds"]
+    lookback = cfg["lookback_days"]
+    include_bo_day = cfg["include_breakout_day"]
+    max_concurrent = cfg["max_concurrent_tickers"]
+    max_retries = cfg["max_retries"]
+    retry_delay = cfg["retry_delay"]
+    save_reports = cfg["save_individual_reports"]
+    min_total_count = cfg["min_total_count"]
+    max_fail_ratio = cfg["max_fail_ratio"]
+
+    # 加载 news_sentiment 配置（用于传给 analyze()）
+    sent_cfg = load_sentiment_config()
+
+    # --- Step 1: 提取 top-K 匹配样本 ---
+    mask = np.isin(keys_test, list(top_k_keys))
+    indices = np.where(mask)[0]
+
+    empty_stats = {
+        "total_samples": 0, "unique_tickers": 0,
+        "analyzed_count": 0, "error_count": 0,
+        "pass_count": 0, "reject_count": 0, "strong_reject_count": 0,
+        "insufficient_data_count": 0, "positive_boost_count": 0,
+        "pre_filter_median": 0.0, "post_filter_median": 0.0,
+        "sentiment_lift": 0.0,
+    }
+
+    if len(indices) == 0:
+        logger.warning("No top-K matched samples found")
+        return empty_stats, []
+
+    # 构建样本列表
+    samples = []
+    for idx in indices:
+        row = df_test.iloc[idx]
+        key = int(keys_test[idx])
+        samples.append({
+            "symbol": row["symbol"],
+            "date": row["date"],
+            "label": float(row[LABEL_COL]),
+            "template_name": top_k_names.get(key, f"key_{key}"),
+            "template_key": key,
+        })
+
+    logger.info("Extracted %d top-K matched samples", len(samples))
+
+    # --- Step 2: 按 (symbol, date) 去重生成分析任务 ---
+    tasks: dict[tuple[str, str], dict] = {}
+    for s in samples:
+        task_key = (s["symbol"], s["date"])
+        if task_key not in tasks:
+            bo_date = datetime.strptime(s["date"], "%Y-%m-%d")
+            end_date = bo_date if include_bo_day else bo_date - timedelta(days=1)
+            tasks[task_key] = {
+                "date_from": (bo_date - timedelta(days=lookback)).strftime("%Y-%m-%d"),
+                "date_to": end_date.strftime("%Y-%m-%d"),
+            }
+
+    unique_tickers = len(set(k[0] for k in tasks))
+    logger.info("Deduplicated into %d analysis tasks (%d unique tickers)",
+                len(tasks), unique_tickers)
+
+    # --- Step 3: 并发情感分析 ---
+    def _analyze_single(ticker, date_from, date_to):
+        """含重试逻辑的单次分析。"""
+        for attempt in range(max_retries + 1):
+            try:
+                return analyze(ticker, date_from, date_to,
+                               config=sent_cfg, save=save_reports)
+            except Exception as e:
+                if attempt < max_retries:
+                    logger.warning("[%s] Attempt %d failed: %s, retrying in %.0fs",
+                                   ticker, attempt + 1, e, retry_delay)
+                    time.sleep(retry_delay)
+                else:
+                    logger.error("[%s] All %d attempts failed: %s",
+                                 ticker, max_retries + 1, e)
+                    return None
+
+    task_reports: dict[tuple[str, str], object] = {}
+    completed_count = 0
+    total_tasks = len(tasks)
+
+    with ThreadPoolExecutor(max_workers=max_concurrent) as executor:
+        futures = {}
+        for task_key, window in tasks.items():
+            ticker, bo_date = task_key
+            fut = executor.submit(
+                _analyze_single, ticker, window["date_from"], window["date_to"],
+            )
+            futures[fut] = task_key
+
+        for future in as_completed(futures):
+            task_key = futures[future]
+            report = future.result()
+            task_reports[task_key] = report
+            completed_count += 1
+            ticker, bo_date = task_key
+            logger.info("[%d/%d] %s (%s): %s",
+                        completed_count, total_tasks, ticker, bo_date,
+                        "OK" if report else "FAILED")
+
+    # --- Step 4: 关联回每个样本 + 分类 ---
+    results: list[dict] = []
+    for sample in samples:
+        task_key = (sample["symbol"], sample["date"])
+        report = task_reports.get(task_key)
+
+        if report is None:
+            results.append({
+                **sample,
+                "sentiment_score": 0.0,
+                "sentiment": "neutral",
+                "confidence": 0.0,
+                "category": "error",
+                "total_count": 0,
+            })
+        else:
+            summary = report.summary
+            category = _classify_sentiment(
+                summary.sentiment_score,
+                summary.total_count,
+                summary.fail_count,
+                thresholds,
+                min_total_count,
+                max_fail_ratio,
+            )
+            results.append({
+                **sample,
+                "sentiment_score": summary.sentiment_score,
+                "sentiment": summary.sentiment,
+                "confidence": summary.confidence,
+                "category": category,
+                "total_count": summary.total_count,
+            })
+
+        if on_progress:
+            r = results[-1]
+            on_progress(len(results), len(samples), r["symbol"], r)
+
+    # --- Step 5: 聚合统计 ---
+    pass_count = sum(1 for r in results if r["category"] == "pass")
+    reject_count = sum(1 for r in results if r["category"] == "reject")
+    strong_reject_count = sum(1 for r in results if r["category"] == "strong_reject")
+    insufficient_count = sum(1 for r in results if r["category"] == "insufficient_data")
+    error_count = sum(1 for r in results if r["category"] == "error")
+    positive_boost_count = sum(
+        1 for r in results
+        if r["category"] == "pass"
+        and r["sentiment_score"] >= thresholds["positive_boost"]
+    )
+
+    all_labels = np.array([r["label"] for r in results])
+    passed_labels = np.array([
+        r["label"] for r in results
+        if r["category"] in ("pass", "insufficient_data", "error")
+    ])
+
+    pre_median = float(np.median(all_labels)) if len(all_labels) > 0 else 0.0
+    post_median = float(np.median(passed_labels)) if len(passed_labels) > 0 else 0.0
+
+    stats = {
+        "total_samples": len(results),
+        "unique_tickers": unique_tickers,
+        "analyzed_count": len(results) - error_count,
+        "error_count": error_count,
+        "pass_count": pass_count,
+        "reject_count": reject_count,
+        "strong_reject_count": strong_reject_count,
+        "insufficient_data_count": insufficient_count,
+        "positive_boost_count": positive_boost_count,
+        "pre_filter_median": pre_median,
+        "post_filter_median": post_median,
+        "sentiment_lift": post_median - pre_median,
+    }
+
+    return stats, results
+
+
+# ---------------------------------------------------------------------------
+# 7. 情感筛选报告段落
+# ---------------------------------------------------------------------------
+
+def _generate_sentiment_section(
+    sentiment_stats: dict,
+    sample_results: list[dict],
+    pre_filter_metrics: dict,
+) -> tuple[list[str], str, list[str]]:
+    """生成情感筛选报告段落，供嵌入 validation report。
+
+    Args:
+        sentiment_stats: _run_sentiment_filter 返回的统计字典
+        sample_results: _run_sentiment_filter 返回的逐样本结果列表
+        pre_filter_metrics: {"template_lift": float, "matched_median": float}
+
+    Returns:
+        (lines, verdict, reasons)
+        - lines: Markdown 行列表（Section 7）
+        - verdict: "EFFECTIVE" | "MARGINAL" | "INEFFECTIVE"
+        - reasons: 判定理由列表
+    """
+    s = sentiment_stats
+    lines = []
+    def w(text=""):
+        lines.append(text)
+
+    w("## 6. Sentiment Filter")
+    w()
+
+    # ── Summary table ──
+    w("| Metric | Value |")
+    w("|--------|-------|")
+    w(f"| Input samples | {s['total_samples']} ({s['unique_tickers']} tickers) |")
+    w(f"| Analyzed | {s['analyzed_count']} (errors: {s['error_count']}) |")
+    w(f"| Pass | {s['pass_count']} (boost: {s['positive_boost_count']}) |")
+    w(f"| Reject | {s['reject_count']} |")
+    w(f"| Strong reject | {s['strong_reject_count']} |")
+    w(f"| Insufficient data | {s['insufficient_data_count']} |")
+    w(f"| **Sentiment lift** | **{s['sentiment_lift']:+.4f}** |")
+    not_rejected = s["pass_count"] + s["insufficient_data_count"] + s["error_count"]
+    coverage = s["pass_count"] / not_rejected if not_rejected > 0 else 0
+    w(f"| Coverage ratio | {coverage:.0%} ({s['pass_count']}/{not_rejected}) |")
+    w()
+
+    w(f"- Template lift (from validation): {pre_filter_metrics.get('template_lift', 0):+.4f}")
+    w(f"- Matched median (from validation): {pre_filter_metrics.get('matched_median', 0):.4f}")
+    w()
+
+    # ── 7.1 Sentiment Distribution ──
+    w("### 6.1 Sentiment Distribution")
+    w()
+
+    categories = ["pass", "reject", "strong_reject", "insufficient_data", "error"]
+    w("| Category | Count | % | Median Label |")
+    w("|----------|-------|---|--------------|")
+    for cat in categories:
+        cat_results = [r for r in sample_results if r["category"] == cat]
+        count = len(cat_results)
+        pct = count / s["total_samples"] * 100 if s["total_samples"] > 0 else 0
+        labels = [r["label"] for r in cat_results]
+        med = f"{np.median(labels):.4f}" if labels else "N/A"
+        w(f"| {cat} | {count} | {pct:.1f}% | {med} |")
+    w()
+
+    scores = [r["sentiment_score"] for r in sample_results if r["category"] != "error"]
+    if scores:
+        bins = [(-1.0, -0.40), (-0.40, -0.15), (-0.15, 0.0),
+                (0.0, 0.15), (0.15, 0.30), (0.30, 1.0)]
+        bin_labels = ["<-0.40", "-0.40~-0.15", "-0.15~0.00",
+                      "0.00~0.15", "0.15~0.30", ">0.30"]
+        w("Score distribution:")
+        w("```")
+        for (lo, hi), label in zip(bins, bin_labels):
+            count = sum(1 for sc in scores if lo <= sc < hi)
+            bar = "#" * count
+            w(f"  {label:>14s} | {bar} ({count})")
+        w("```")
+        w()
+
+    # ── 6.2 Sentiment Effect ──
+    w("### 6.2 Sentiment Effect")
+    w()
+
+    all_labels = np.array([r["label"] for r in sample_results]) if sample_results else np.array([])
+    not_rejected = [r for r in sample_results
+                    if r["category"] in ("pass", "insufficient_data", "error")]
+    not_rejected_labels = np.array([r["label"] for r in not_rejected]) if not_rejected else np.array([])
+    pass_only = [r for r in sample_results if r["category"] == "pass"]
+    pass_only_labels = np.array([r["label"] for r in pass_only]) if pass_only else np.array([])
+
+    def _fmt(arr):
+        if len(arr) == 0:
+            return "N/A", "N/A", "N/A", "N/A"
+        return (f"{np.percentile(arr, 25):.4f}",
+                f"{np.median(arr):.4f}",
+                f"{np.percentile(arr, 75):.4f}",
+                f"{np.mean(arr):.4f}")
+
+    pre_q25, pre_med, pre_q75, pre_mean = _fmt(all_labels)
+    post_q25, post_med, post_q75, post_mean = _fmt(not_rejected_labels)
+    pass_q25, pass_med, pass_q75, pass_mean = _fmt(pass_only_labels)
+
+    w("> Post-filter = pass + insufficient_data + error（排除 reject / strong_reject，"
+      "未被排除的样本均视为通过）")
+    w()
+
+    w("| Metric | Pre-filter | Post-filter | Delta |")
+    w("|--------|-----------|-------------|-------|")
+    w(f"| Count | {s['total_samples']} | {len(not_rejected)} | {len(not_rejected) - s['total_samples']} |")
+    w(f"| Median | {pre_med} | {post_med} | {s['sentiment_lift']:+.4f} |")
+    w(f"| Q25 | {pre_q25} | {post_q25} | |")
+    w(f"| Q75 | {pre_q75} | {post_q75} | |")
+    w(f"| Mean | {pre_mean} | {post_mean} | |")
+    w()
+
+    pass_only_lift = float(np.median(pass_only_labels) - np.median(all_labels)) if len(pass_only_labels) > 0 and len(all_labels) > 0 else 0.0
+    w("| Metric | Pre-filter | Pass-only | Delta |")
+    w("|--------|-----------|-----------|-------|")
+    w(f"| Count | {s['total_samples']} | {len(pass_only)} | {len(pass_only) - s['total_samples']} |")
+    w(f"| Median | {pre_med} | {pass_med} | {pass_only_lift:+.4f} |")
+    w(f"| Q25 | {pre_q25} | {pass_q25} | |")
+    w(f"| Q75 | {pre_q75} | {pass_q75} | |")
+    w(f"| Mean | {pre_mean} | {pass_mean} | |")
+    if len(pass_only_labels) < 15:
+        w()
+        w(f"⚠ Pass N={len(pass_only_labels)} < 15, statistically unreliable")
+    w()
+
+    # ── 6.3 Rejected Sample Analysis ──
+    w("### 6.3 Rejected Sample Analysis")
+    w()
+    w("| Group | N | Median | Q25 | Q75 |")
+    w("|-------|---|--------|-----|-----|")
+    for cat in categories:
+        cat_labels = [r["label"] for r in sample_results if r["category"] == cat]
+        if cat_labels:
+            arr = np.array(cat_labels)
+            w(f"| {cat} | {len(arr)} | {np.median(arr):.4f} | "
+              f"{np.percentile(arr, 25):.4f} | {np.percentile(arr, 75):.4f} |")
+        else:
+            w(f"| {cat} | 0 | N/A | N/A | N/A |")
+    w()
+
+    # ── 7.4 Positive Boost Analysis ──
+    w("### 6.4 Positive Boost Analysis")
+    w()
+    boost_labels = [r["label"] for r in sample_results
+                    if r["category"] == "pass" and r["sentiment_score"] > 0.30]
+    normal_labels = [r["label"] for r in sample_results
+                     if r["category"] == "pass" and r["sentiment_score"] <= 0.30]
+
+    w("| Group | N | Median | Q25 | Q75 | Mean |")
+    w("|-------|---|--------|-----|-----|------|")
+    for label_name, arr_list in [("positive_boost", boost_labels), ("normal_pass", normal_labels)]:
+        if arr_list:
+            arr = np.array(arr_list)
+            w(f"| {label_name} | {len(arr)} | {np.median(arr):.4f} | "
+              f"{np.percentile(arr, 25):.4f} | {np.percentile(arr, 75):.4f} | "
+              f"{np.mean(arr):.4f} |")
+        else:
+            w(f"| {label_name} | 0 | N/A | N/A | N/A | N/A |")
+
+    if boost_labels and normal_labels:
+        boost_lift = float(np.median(boost_labels) - np.median(normal_labels))
+        w()
+        w(f"**Boost lift**: {boost_lift:+.4f}")
+    if boost_labels and len(all_labels) > 0:
+        boost_vs_pre = float(np.median(boost_labels) - np.median(all_labels))
+        w(f"**Boost vs Pre-filter lift**: {boost_vs_pre:+.4f}")
+    w()
+
+    # ── 7.5 Judgment ──
+    w("### 6.5 Sentiment Judgment")
+    w()
+
+    pass_labels_list = [r["label"] for r in sample_results
+                        if r["category"] in ("pass", "insufficient_data", "error")]
+    reject_labels_list = [r["label"] for r in sample_results
+                          if r["category"] in ("reject", "strong_reject")]
+
+    pass_med_val = float(np.median(pass_labels_list)) if pass_labels_list else 0.0
+    reject_med_val = float(np.median(reject_labels_list)) if reject_labels_list else 0.0
+
+    error_rate = s["error_count"] / s["total_samples"] if s["total_samples"] > 0 else 0.0
+
+    reasons = []
+    if s["sentiment_lift"] <= 0:
+        verdict = "INEFFECTIVE"
+        reasons.append(f"sentiment_lift={s['sentiment_lift']:+.4f} <= 0")
+    elif reject_labels_list and reject_med_val >= pass_med_val:
+        verdict = "MARGINAL"
+        reasons.append(f"rejected_median ({reject_med_val:.4f}) >= pass_median ({pass_med_val:.4f})")
+    else:
+        verdict = "EFFECTIVE"
+
+    if error_rate >= 0.20:
+        reasons.append(f"error_rate={error_rate:.0%} >= 20%")
+
+    w(f"**{verdict}**")
+    w()
+    if verdict == "EFFECTIVE":
+        w("Sentiment filtering adds incremental value to template-based selection.")
+    elif verdict == "MARGINAL":
+        w("Sentiment lift is positive but rejected samples don't have lower labels than passed ones.")
+    else:
+        w("Sentiment filtering does not improve selection quality. Consider adjusting thresholds or lookback window.")
+    w()
+
+    insuf_ratio = s["insufficient_data_count"] / s["total_samples"] if s["total_samples"] > 0 else 0
+    if insuf_ratio > 0.60:
+        w(f"Note: insufficient_data ratio = {insuf_ratio:.0%} — reflects low news coverage for "
+          "micro-cap universe; sentiment filtering operates in risk-exclusion mode.")
+        w()
+
+    if reasons:
+        w("Details:")
+        for reason in reasons:
+            w(f"- {reason}")
+        w()
+
+    return lines, verdict, reasons
+
+
+# ---------------------------------------------------------------------------
+# 8. 报告生成
 # ---------------------------------------------------------------------------
 
 def _generate_report(
@@ -467,12 +946,15 @@ def _generate_report(
     test_end: str,
     train_sample_size: int,
     output_path: Path,
+    shrinkage_n0: float = 50,
+    n_train: int = 0,
+    sentiment_section: list[str] | None = None,
+    sentiment_verdict: str | None = None,
 ):
     """生成 Markdown 验证报告。"""
     d2 = metrics["d2_rank"]
     d3 = metrics["d3_distribution"]
     d4 = metrics["d4_global"]
-    d5 = metrics["d5_coverage"]
     matched = metrics["d1_per_template"]
 
     lines = []
@@ -490,9 +972,11 @@ def _generate_report(
     w()
     w('> 三个判定维度：**above_baseline**（Top-K 模板的测试集 median 是否超过训练集基线）、'
        '**lift**（Top-K 模板命中样本 vs 未命中样本的收益差）、'
-       '**top_k_retention**（训练集最优模板在测试集是否保持最优）。'
+       '**top_k_retention**（训练集最优模板在测试集是否保持最优，按 shrinkage_score 排序）。'
        '全 PASS → PASS，无 FAIL → CONDITIONAL PASS，有 FAIL → FAIL。\n')
     w(f"**Verdict: {verdict}**")
+    if sentiment_verdict:
+        w(f"**Sentiment Verdict: {sentiment_verdict}**")
     w()
     if reasons:
         w("Issues:")
@@ -500,7 +984,6 @@ def _generate_report(
             w(f"- {r}")
         w()
 
-    d2_med = d2["median"]
     k = d2.get("k", 1)
     top_k_label = f"Top-{k}" if k > 1 else "Top-1"
     top_k_names = set(d4['top_k_names'])
@@ -508,10 +991,8 @@ def _generate_report(
     w("|--------|-------|")
     w(f"| Above-baseline ratio ({top_k_label}) | {d4['above_baseline_ratio']:.2%} ({d4['above_count']}/{d4['testable_count']}) |")
     w(f"| Template lift ({top_k_label}, median) | {d4['template_lift']:+.4f} |")
-    top_k = d2_med.get("top_k_retention", np.nan)
-    w(f"| Top-{k} retention (median) | {top_k:.2%} |" if not np.isnan(top_k) else f"| Top-{k} retention (median) | N/A |")
-    w(f"| Found ratio | {d5['found_ratio']:.2%} ({d5['sufficient'] + d5['marginal']}/{d5['total_templates']}) |")
-    w(f"| Coverage rate | {d5['coverage_rate']:.2%} ({d5['total_matched']}/{d5['total_test']}) |")
+    top_k = d2.get("top_k_retention", np.nan)
+    w(f"| Top-{k} retention (s_score) | {top_k:.2%} |" if not np.isnan(top_k) else f"| Top-{k} retention (s_score) | N/A |")
     w()
 
     # ── 1. Data Overview ──
@@ -539,38 +1020,42 @@ def _generate_report(
         w(f"**WARNING: {integrity_info['dropped']} breakouts lack complete label data.**")
     w()
 
-    # ── 3. Per-Template Comparison ──
-    top_k_matched = [m for m in matched if m['name'] in top_k_names]
-    w(f"## 3. Per-Template Comparison ({top_k_label} only)")
+    # ── 3. Per-Template Comparison (top 5 by shrinkage_score) ──
+    all_sorted = sorted(matched, key=lambda x: x["train"]["s_score"], reverse=True)
+    show_n = min(5, len(all_sorted))
+    w(f"## 3. Per-Template Comparison (top {show_n} of {len(all_sorted)} templates)")
     w()
-    w('> 每个模板在训练集和测试集中的统计量对比。'
-       '重点关注 **Med**（中位数收益，抗极值）和 **N**（样本量，决定结论可信度）。'
-       '训练 → 测试的 median 回撤在 20-30% 内属正常样本外衰减。\n')
-    w("| # | Template | Train N | Tr q25 | Tr Mean | Tr Med | Tr q75 | Test N | Te q25 | Te Mean | Te Med | Te q75 |")
-    w("|---|----------|---------|--------|---------|--------|--------|--------|--------|---------|--------|--------|")
-    for i, m in enumerate(top_k_matched, 1):
+    w('> 按训练集 shrinkage_score 降序排列。'
+       's_sc = shrinkage_score（综合 median 和样本量的收缩估计，与 TPE 优化目标一致）。'
+       f' n0_train={shrinkage_n0:.0f},'
+       f' n0_test={d2.get("n0_test", shrinkage_n0):.1f}'
+       f' (按 N_test/N_train 比例校正)。'
+       f' {top_k_label} 模板名后标 `*`。\n')
+    w("| # | Template | Tr s_sc | Tr Q25 | Tr Q75 | Tr Mean | Tr N | Tr Med || Te s_sc | Te Q25 | Te Q75 | Te Mean | Te N | Te Med |")
+    w("|---|----------|---------|--------|--------|---------|------|--------|---|---------|--------|--------|---------|------|--------|")
+    for i, m in enumerate(all_sorted[:show_n], 1):
         tr = m["train"]
         te = m["test"]
         fmt = lambda v: f"{v:.4f}" if not np.isnan(v) else "N/A"
-        w(f"| {i} | {m['name']} | {tr['count']} | {fmt(tr['q25'])} | {fmt(tr['mean'])} | {fmt(tr['median'])} | {fmt(tr['q75'])} | {te['count']} | {fmt(te['q25'])} | {fmt(te['mean'])} | {fmt(te['median'])} | {fmt(te['q75'])} |")
+        name = m['name'] + ' *' if m['name'] in top_k_names else m['name']
+        w(f"| {i} | {name} | {fmt(tr['s_score'])} | {fmt(tr['q25'])} | {fmt(tr['q75'])} | {fmt(tr['mean'])} | {tr['count']} | {fmt(tr['median'])} || {fmt(te['s_score'])} | {fmt(te['q25'])} | {fmt(te['q75'])} | {fmt(te['mean'])} | {te['count']} | {fmt(te['median'])} |")
     w()
 
     # ── 4. Top-K Retention ──
     w("## 4. Top-K Retention")
     w()
-    w('> 训练集中按各分位数（q25/median/q75）排名第一的模板，在测试集中是否仍排名第一。'
-       '100% = 保持，0% = 被其他模板超越。**判定只看 median 行。**'
-       'q25/q75 是补充视角：三行全 100% 说明收益分布形状也稳定，只有 median 保持说明尾部特征有漂移。\n')
-    w(f"- K = {k} (= shrinkage_k, TPE optimization target)")
+    w('> 训练集和测试集各自按 shrinkage_score 排序，检查训练集 Top-K 模板在测试集中是否仍在 Top-K。'
+       ' 测试集 n0 按 `n0_test = n0_train × (N_test / N_train)` 比例校正，'
+       '两集共用 baseline_train 作为收缩锚点。\n')
+    w(f"- K = {k} (= shrinkage_k)")
+    w(f"- n0_train = {d2.get('n0_train', 'N/A')}, n0_test = {d2.get('n0_test', 'N/A'):.1f}")
     w(f"- Eligible templates (test N >= 10): {d2['eligible_count']}")
     w()
-    w(f"| Quantile | Top-{k} Retention |")
-    w(f"|----------|{'---' * 5}|")
-    for q_name in ["q25", "median", "q75"]:
-        qd = d2[q_name]
-        val = qd.get('top_k_retention', np.nan)
-        fmt_v = f"{val:.2%}" if not np.isnan(val) else "N/A"
-        w(f"| {q_name} | {fmt_v} |")
+    retention_val = d2.get("top_k_retention", np.nan)
+    fmt_ret = f"{retention_val:.2%}" if not np.isnan(retention_val) else "N/A"
+    w(f"| Metric | Top-{k} Retention |")
+    w("|--------|------------------|")
+    w(f"| shrinkage_score | {fmt_ret} |")
     w()
 
     # ── 5. Global Effectiveness ──
@@ -608,24 +1093,18 @@ def _generate_report(
             w(f"| {r['name']} | {r['ks_stat']:.3f} | {r['ks_p']:.4f} | [{r['ci_low']:.4f}, {r['ci_high']:.4f}] | {r['train_median']:.4f} | {in_ci} |")
         w()
 
-    # ── 6. Sample Coverage ──
-    w("## 6. Sample Coverage")
-    w()
-    w('> 模板在测试集中的样本量分布。'
-       'Sufficient（N >= 20）结论可信；Marginal（10-19）可参考；Unreliable（< 10）不可靠。'
-       'Coverage rate = 被任意模板命中的测试样本占比。\n')
-    w(f"- Total templates: {d5['total_templates']}")
-    w(f"- Sufficient (N >= 20): {d5['sufficient']}")
-    w(f"- Marginal (10 <= N < 20): {d5['marginal']}")
-    w(f"- Unreliable (N < 10): {d5['unreliable']}")
-    w(f"- Found ratio: {d5['found_ratio']:.2%}")
-    w(f"- Coverage rate: {d5['coverage_rate']:.2%}")
-    w()
+    # ── Sentiment Filter (optional) ──
+    if sentiment_section:
+        for line in sentiment_section:
+            w(line)
 
-    # ── 7. Conclusion ──
-    w("## 7. Conclusion")
+    # ── Conclusion ──
+    conclusion_num = 7 if sentiment_section else 6
+    w(f"## {conclusion_num}. Conclusion")
     w()
     w(f"**Final Verdict: {verdict}**")
+    if sentiment_verdict:
+        w(f" | **Sentiment: {sentiment_verdict}**")
     w()
     if verdict == "PASS":
         w("All validation criteria met. Templates demonstrate robust out-of-sample predictive power.")
@@ -808,12 +1287,12 @@ def materialize_trial(
     train_json: Path,
     trial_id: int | None = None,
     run_validation: bool = False,
+    run_sentiment: bool = False,
     validation_config: dict | None = None,
+    sentiment_config: dict | None = None,
     data_dir: Path | None = None,
     shrinkage_k: int = 1,
     report_name: str = "validation_report.md",
-    run_cascade: bool = False,
-    cascade_config: dict | None = None,
 ):
     """物化指定 trial 的完整产出 + 可选 OOS 验证。
 
@@ -825,15 +1304,27 @@ def materialize_trial(
         train_json: 训练 scan_results JSON 路径
         trial_id: None → best trial; int → 指定 trial number
         run_validation: 运行时开关，是否执行 OOS 验证
+        run_sentiment: 是否在 OOS 验证后执行情感验证
         validation_config: 验证参数字典，保存到 trial 目录的 validation_config.yaml
             keys: test_start_date, test_end_date, min_price, max_price,
                   min_volume, num_workers, bootstrap_n
+        sentiment_config: 情感验证参数字典
         data_dir: 股票数据目录 (run_validation=True 时必填)
     """
     archive_dir = Path(archive_dir)
     train_csv = archive_dir / "factor_analysis_data.csv"
     pkl_path = archive_dir / "optuna.pkl"
     base_yaml = archive_dir / "factor_diag.yaml"
+
+    # 从 optimizer_config.yaml 读取 shrinkage_n0（TPE 运行时快照，SSOT）
+    opt_cfg_path = archive_dir / "optimizer_config.yaml"
+    if opt_cfg_path.exists():
+        with open(opt_cfg_path, encoding='utf-8') as f:
+            opt_cfg = yaml.safe_load(f) or {}
+        shrinkage_n0 = opt_cfg.get('shrinkage_n0', 200)
+    else:
+        shrinkage_n0 = 200
+        logger.warning("optimizer_config.yaml not found, using default shrinkage_n0=%d", shrinkage_n0)
 
     # ── Step 1: 加载 trial ──
     print("=" * 60)
@@ -884,7 +1375,10 @@ def materialize_trial(
     # ── Step 5: OOS 验证（可选）──
     if not run_validation:
         print("=" * 60)
-        print("[Materializer] OOS 验证已跳过 (run_validation=False)")
+        msg = "[Materializer] OOS 验证已跳过 (run_validation=False)"
+        if run_sentiment:
+            msg += "，情感验证同步跳过"
+        print(msg)
         print(f"产出目录: {trial_dir}")
         return
 
@@ -952,10 +1446,52 @@ def materialize_trial(
         matched, labels_test_arr, keys_test_arr,
         baseline_train,
         shrinkage_k=shrinkage_k,
+        shrinkage_n0=shrinkage_n0,
+        n_train=len(df_train),
         bootstrap_n=bootstrap_n,
     )
     verdict, reasons = _judge_result(metrics)
+    d4 = metrics["d4_global"]
 
+    # ── Step 6: Sentiment verification (optional) ──
+    sentiment_section = None
+    sentiment_verdict = None
+    if run_sentiment:
+        print("=" * 60)
+        print("[Step 6] Sentiment verification...")
+
+        # 构建 top_k_names 映射 (key → template_name)
+        top_k_names_map = {}
+        for m in matched:
+            if m["name"] in d4["top_k_names"]:
+                top_k_names_map[m["target_key"]] = m["name"]
+
+        def _sentiment_progress(completed, total, ticker, result):
+            print(f"  [{completed}/{total}] {ticker}: {result['category']} "
+                  f"(score={result['sentiment_score']:+.4f})")
+
+        sentiment_stats, sentiment_results = _run_sentiment_filter(
+            df_test=df_test,
+            keys_test=keys_test_arr,
+            top_k_keys=set(top_k_names_map.keys()),
+            top_k_names=top_k_names_map,
+            sentiment_config=sentiment_config,
+            on_progress=_sentiment_progress,
+        )
+
+        pre_metrics = {
+            "template_lift": d4["template_lift"],
+            "matched_median": d4.get("matched_median", baseline_train),
+        }
+        sentiment_section, sentiment_verdict, _ = _generate_sentiment_section(
+            sentiment_stats, sentiment_results, pre_metrics,
+        )
+
+        print(f"  Sentiment lift: {sentiment_stats['sentiment_lift']:+.4f}")
+        print(f"  Pass: {sentiment_stats['pass_count']} (boost: {sentiment_stats['positive_boost_count']})")
+        print(f"  Reject: {sentiment_stats['reject_count'] + sentiment_stats['strong_reject_count']}")
+
+    # 生成报告（含可选 sentiment section）
     report_path = trial_dir / report_name
     _generate_report(
         metrics=metrics,
@@ -967,14 +1503,16 @@ def materialize_trial(
         test_end=test_end_date,
         train_sample_size=len(df_train),
         output_path=report_path,
+        shrinkage_n0=shrinkage_n0,
+        n_train=len(df_train),
+        sentiment_section=sentiment_section,
+        sentiment_verdict=sentiment_verdict,
     )
 
-    d4 = metrics["d4_global"]
     d2 = metrics["d2_rank"]
-    d2_med = d2["median"]
-    top_k = d2_med.get("top_k_retention", np.nan)
+    top_k = d2.get("top_k_retention", np.nan)
     top_k_str = f"{top_k:.2%}" if not np.isnan(top_k) else "N/A"
-    print(f"  Top-{d2.get('k', '?')} retention (median): {top_k_str}")
+    print(f"  Top-{d2.get('k', '?')} retention (s_score): {top_k_str}")
     print(f"  Template lift: {d4['template_lift']:+.4f}")
     print(f"  Verdict: {verdict}")
 
@@ -983,50 +1521,6 @@ def materialize_trial(
     print(f"  Trial: #{resolved_trial_id}")
     print(f"  Verdict: {verdict}")
     print(f"  产出目录: {trial_dir}")
-
-    # ── Step 6: Cascade 验证（可选）──
-    if not run_cascade:
-        return
-
-    print("=" * 60)
-    print("[Step 6] Cascade 情感验证...")
-
-    from BreakoutStrategy.cascade.batch_analyzer import run_cascade as _run_cascade
-    from BreakoutStrategy.cascade.filter import load_cascade_config
-    from BreakoutStrategy.cascade.reporter import generate_cascade_report
-
-    cascade_cfg = cascade_config or load_cascade_config()
-
-    # 构建 top_k_names 映射 (key → template_name)
-    top_k_names_map = {}
-    for m in matched:
-        if m["name"] in d4["top_k_names"]:
-            top_k_names_map[m["target_key"]] = m["name"]
-
-    def _cascade_progress(completed, total, ticker, result):
-        print(f"  [{completed}/{total}] {ticker}: {result.category} "
-              f"(score={result.sentiment_score:+.4f})")
-
-    cascade_report = _run_cascade(
-        df_test=df_test,
-        keys_test=keys_test_arr,
-        top_k_keys=set(top_k_names_map.keys()),
-        top_k_names=top_k_names_map,
-        cascade_config=cascade_cfg,
-        on_progress=_cascade_progress,
-    )
-
-    cascade_report_path = trial_dir / cascade_cfg["report_name"]
-    pre_metrics = {
-        "template_lift": d4["template_lift"],
-        "matched_median": d4.get("matched_median", baseline_train),
-    }
-    generate_cascade_report(cascade_report, pre_metrics, cascade_report_path)
-
-    print(f"  Cascade lift: {cascade_report.cascade_lift:+.4f}")
-    print(f"  Pass: {cascade_report.pass_count} (boost: {cascade_report.positive_boost_count})")
-    print(f"  Reject: {cascade_report.reject_count + cascade_report.strong_reject_count}")
-    print(f"  Report: {cascade_report_path}")
 
 
 # ---------------------------------------------------------------------------
@@ -1045,25 +1539,44 @@ def main():
     # ── 配置 ──
     # archive_name = "best"    # 归档名
     # trial_id = 15795                 # None → best trial; int → 指定 trial
-    archive_name = "20260402_225019"    # 归档名
+    archive_name = "pk_gte"    # 归档名
     trial_id = 14373                 # None → best trial; int → 指定 trial
     # trial_id = None                 # None → best trial; int → 指定 trial
     run_validation = True           # 运行时开关
-    shrinkage_k = 1                 # TPE 优化目标 Top-K
-    report_name = "validation_report1.md"  # 验证报告文件名
-    run_cascade_flag = False          # 是否执行级联情感验证
+    run_sentiment = True           # 是否执行情感验证
+    shrinkage_k = 1                # TPE 优化目标 Top-K
+    report_name = "validation_report.md"  # 验证报告文件名
+
 
     # ── 验证参数 ──
     validation_config = {
-        # 'test_start_date': '2025-08-01',
-        # 'test_end_date': '2025-11-01',
-        'test_start_date': '2023-12-01',
-        'test_end_date': '2024-02-01',
+        # 'test_start_date': '2024-04-01',
+        'test_start_date': '2025-08-01',
+        'test_end_date': '2025-11-01',
+        # 'test_start_date': '2023-12-01',
+        # 'test_end_date': '2024-02-01',
         'min_price': 1.0,
         'max_price': 10.0,
         'min_volume': 10000,
-        'num_workers': 8,
+        'num_workers': os.cpu_count() - 2,
         'bootstrap_n': 1000,
+    }
+    
+    # ── 情感验证参数 ──
+    sentiment_config = {
+        'lookback_days': 14,
+        'thresholds': {
+            'strong_reject': -0.40,
+            'reject': -0.15,
+            'positive_boost': 0.30,
+        },
+        'min_total_count': 1,
+        'max_fail_ratio': 0.5,
+        'max_concurrent_tickers': 5,
+        'max_retries': 2,
+        'retry_delay': 5.0,
+        'save_individual_reports': False,
+        'include_breakout_day': True,
     }
 
     # ── 路径 ──
@@ -1076,11 +1589,12 @@ def main():
         train_json=train_json,
         trial_id=trial_id,
         run_validation=run_validation,
+        run_sentiment=run_sentiment,
         validation_config=validation_config,
+        sentiment_config=sentiment_config,
         data_dir=data_dir,
         shrinkage_k=shrinkage_k,
         report_name=report_name,
-        run_cascade=run_cascade_flag,
     )
 
 

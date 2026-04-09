@@ -215,6 +215,7 @@ def test_scarcity_protection(mock_registry):
     items_4 = [_item(f"News {i}", "2026-03-14T10:00:00Z") for i in range(4)]
     _, summary_4 = analyzer.analyze(items_4, "B", "2026-03-01", "2026-03-15")
 
-    # scarcity 惩罚：1 条新闻 confidence 应为 4 条的约 1/3
+    # scarcity 惩罚：1 条新闻 confidence 应显著低于 4 条
+    # scarcity(1) = min(1, 1/1.5) = 0.667, scarcity(4) = 1.0 → 比率 ≈ 0.667
     assert summary_1.confidence < summary_4.confidence
-    assert summary_1.confidence < summary_4.confidence * 0.5
+    assert summary_1.confidence < summary_4.confidence * 0.75

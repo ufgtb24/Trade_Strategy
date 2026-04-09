@@ -6,7 +6,6 @@
 """
 
 import logging
-from collections import Counter
 from datetime import date
 
 import numpy as np
@@ -186,6 +185,13 @@ def semantic_dedup(
     if len(items) <= 1:
         return items, embeddings
 
+    # 预排序：summary 长度降序，等长时 published_at 降序，title 兜底（确保贪心去重确定性）
+    order = sorted(range(len(items)),
+                   key=lambda i: (len(items[i].summary), items[i].published_at or '', items[i].title),
+                   reverse=True)
+    items = [items[i] for i in order]
+    embeddings = embeddings[order]
+
     # 全局 cosine similarity 矩阵
     sim = cosine_similarity_matrix(embeddings, embeddings)
 
@@ -208,34 +214,6 @@ def semantic_dedup(
     return [items[i] for i in kept], embeddings[kept]
 
 
-# _infer_company_name 使用的停用词（标题中常见的非公司名专有名词）
-_TITLE_STOP_WORDS = frozenset({
-    'The', 'In', 'On', 'At', 'For', 'To', 'Of', 'A', 'An', 'And',
-    'Is', 'Are', 'Was', 'Were', 'Has', 'Have', 'Had', 'Will', 'Its',
-    'New', 'After', 'Over', 'With', 'From', 'By', 'Up', 'Down', 'Out',
-    'About', 'How', 'Why', 'What', 'This', 'That', 'Says', 'Report',
-    'Reports', 'Q1', 'Q2', 'Q3', 'Q4', 'CEO', 'Inc', 'Corp', 'Ltd',
-    'Stock', 'Shares', 'Market', 'Price', 'Buy', 'Sell',
-})
-
-
-def _infer_company_name(items: list[NewsItem], ticker: str) -> str:
-    """
-    从新闻标题中推断公司名
-
-    API 返回的新闻大部分与目标股票相关，公司名应是最频繁的专有名词。
-    找不到时回退到 ticker 本身。
-    """
-    word_counts: Counter[str] = Counter()
-    for item in items:
-        for w in item.title.split():
-            if len(w) > 1 and w[0].isupper() and w not in _TITLE_STOP_WORDS:
-                word_counts[w] += 1
-    # 排除 ticker 本身，避免 "AAPL AAPL" 这种冗余
-    word_counts.pop(ticker, None)
-    return word_counts.most_common(1)[0][0] if word_counts else ticker
-
-
 def relevance_filter(
     items: list[NewsItem],
     embeddings: np.ndarray,
@@ -248,11 +226,9 @@ def relevance_filter(
 
     用 "{company_name} {ticker}" 作为参考向量，
     计算每条新闻的 cosine similarity，低于阈值则视为与目标股票无关。
-    company_name 未提供时回退到标题频率推断。
+    company_name 未提供时直接使用 ticker 作为参考向量。
     """
-    if not company_name:
-        company_name = _infer_company_name(items, ticker)
-    ref_text = f"{company_name} {ticker}"
+    ref_text = f"{company_name} {ticker}" if company_name else ticker
     logger.info(f"[Filter] Relevance ref: '{ref_text}'")
 
     ref_embedding = embed_texts([ref_text])
