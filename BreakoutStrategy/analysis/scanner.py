@@ -19,7 +19,11 @@ from BreakoutStrategy.analysis.breakout_scorer import BreakoutScorer
 from BreakoutStrategy.analysis.indicators import TechnicalIndicators
 from BreakoutStrategy.factor_registry import get_active_factors
 
-from BreakoutStrategy.UI.utils import ensure_dir
+def ensure_dir(directory):
+    """确保目录存在（从 BreakoutStrategy.UI.utils 内联，避免对 UI 层的反向依赖）"""
+    os.makedirs(directory, exist_ok=True)
+    return directory
+
 
 def _serialize_factor_fields(bo) -> dict:
     """从 FACTOR_REGISTRY 动态序列化因子字段"""
