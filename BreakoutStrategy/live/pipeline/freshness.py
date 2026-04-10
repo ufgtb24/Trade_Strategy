@@ -8,9 +8,12 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
+import logging
 
 import pandas as pd
 import pandas_market_calendars as mcal
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -62,7 +65,8 @@ class DataFreshnessChecker:
                 df = pd.read_pickle(f)
                 if len(df) > 0:
                     latest.append(df.index.max().date())
-            except Exception:
+            except Exception as e:
+                logger.warning("Failed to read %s: %s", f, e)
                 continue
         if not latest:
             return None
