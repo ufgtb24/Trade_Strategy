@@ -1,9 +1,12 @@
 """MatchedBreakout 数据类及缓存 I/O。"""
 
 import json
+import logging
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -47,7 +50,8 @@ def load_cached_results(path: Path) -> CachedResults | None:
     try:
         with open(path, encoding="utf-8") as f:
             data = json.load(f)
-    except (json.JSONDecodeError, OSError):
+    except (json.JSONDecodeError, OSError) as e:
+        logger.warning("load_cached_results: 无法读取缓存文件 %s (%s)", path, e)
         return None
 
     try:
@@ -57,5 +61,6 @@ def load_cached_results(path: Path) -> CachedResults | None:
             scan_date=data["scan_date"],
             last_scan_bar_date=data["last_scan_bar_date"],
         )
-    except (KeyError, TypeError):
+    except (KeyError, TypeError) as e:
+        logger.warning("load_cached_results: 缓存结构异常 %s (%s)", path, e)
         return None
