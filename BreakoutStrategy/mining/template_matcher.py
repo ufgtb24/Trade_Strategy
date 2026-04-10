@@ -1,4 +1,8 @@
-"""模板匹配管理器 — 加载 filter YAML 并执行突破-模板匹配"""
+"""模板匹配器 — 加载 filter.yaml 并执行突破-模板匹配。
+
+从 BreakoutStrategy/UI/managers/template_manager.py 迁移。
+业务逻辑归位：模板匹配属于 mining 层，不是 UI 层。
+"""
 
 import yaml
 from pathlib import Path

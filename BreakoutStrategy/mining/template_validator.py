@@ -28,7 +28,7 @@ from BreakoutStrategy.mining.data_pipeline import (
 )
 from BreakoutStrategy.factor_registry import LABEL_COL, get_active_factors
 from BreakoutStrategy.mining.threshold_optimizer import build_triggered_matrix, decode_templates, load_factor_modes
-from BreakoutStrategy.UI.managers.scan_manager import ScanManager
+from BreakoutStrategy.analysis.scanner import ScanManager
 
 logger = logging.getLogger(__name__)
 

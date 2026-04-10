@@ -1,4 +1,8 @@
-"""批量扫描管理器"""
+"""批量扫描管理器
+
+从 BreakoutStrategy/UI/managers/scan_manager.py 迁移。
+业务逻辑归位：扫描引擎属于 analysis 层，不是 UI 层。
+"""
 
 import json
 import os
@@ -15,7 +19,7 @@ from BreakoutStrategy.analysis.breakout_scorer import BreakoutScorer
 from BreakoutStrategy.analysis.indicators import TechnicalIndicators
 from BreakoutStrategy.factor_registry import get_active_factors
 
-from ..utils import ensure_dir
+from BreakoutStrategy.UI.utils import ensure_dir
 
 def _serialize_factor_fields(bo) -> dict:
     """从 FACTOR_REGISTRY 动态序列化因子字段"""
