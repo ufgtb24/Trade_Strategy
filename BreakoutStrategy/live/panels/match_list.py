@@ -118,7 +118,7 @@ class MatchList(ttk.Frame):
         self.tree.tag_configure("neg", foreground="#d00")
         self.tree.tag_configure("neu", foreground="#666")
         self.tree.tag_configure("pos", foreground="#080")
-        self.tree.tag_configure("na", foreground="#aaa")
+        self.tree.tag_configure("na", foreground="#aaa", font=("TkDefaultFont", 9, "italic"))
 
         # 滚动条
         vsb = ttk.Scrollbar(tree_frame, orient="vertical", command=self.tree.yview)
@@ -180,6 +180,8 @@ class MatchList(ttk.Frame):
             self.tree.delete(iid)
         for it in sorted_items:
             self.tree.insert("", tk.END, values=self._row_values(it), tags=(self._row_tag(it),))
+        # 过滤/排序改变后，之前的选中行已消失；通知外部清空详情面板
+        self._on_select(None)
 
     def _apply_filters(
         self, items: list["MatchedBreakout"]
