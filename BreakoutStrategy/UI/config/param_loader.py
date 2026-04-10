@@ -500,7 +500,7 @@ class UIParamLoader:
         Returns:
             UIParamLoader 实例，内部 _params 状态等价于从相应 YAML 文件加载
         """
-        instance = cls.__new__(cls)
+        instance = object.__new__(cls)
         instance._params_path = None  # 无关联文件
         instance._params = raw_params
         instance._project_root = None
