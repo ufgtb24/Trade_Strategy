@@ -54,6 +54,30 @@ def get_us_tickers_fast():
         return tickers
 
 
+def _fetch_us_daily_qfq(tic):
+    """包装 akshare stock_us_daily，绕开上游 qfq 分支里的只读 bug。
+
+    akshare/stock/stock_us_sina.py:167 有一行:
+        new_range.index.values[0] = pd.to_datetime(str(data_df.index.date[0]))
+    当 qfq_factor_df.index[0] == 1900-01-01（即无公司行为的占位因子）时，
+    该行被触发，对 Index 底层 ndarray 做写入；某些 numpy/pandas 组合下
+    `.index.values` 是只读的，直接抛 ValueError: assignment destination is
+    read-only。AERO/AEHR/FB 这类无分红/拆股的 ticker 全部踩坑。
+
+    Fix: 先用 adjust="qfq-factor" 嗅探因子表：
+      - 若只有一行且 date == 1900-01-01 → 无需复权，直接调 adjust=""
+        返回原始价格。qfq_factor=1、adjust=0 时 raw == qfq 恒等成立。
+      - 否则（真实有因子的 ticker）→ akshare qfq 分支里 len(new_range) > 1，
+        不会执行 line 167，安全调用 adjust="qfq"。
+    """
+    factor_df = ak.stock_us_daily(symbol=tic, adjust="qfq-factor")
+    placeholder = (
+        len(factor_df) == 1
+        and pd.to_datetime(factor_df.iloc[0]["date"]) == pd.Timestamp("1900-01-01")
+    )
+    return ak.stock_us_daily(symbol=tic, adjust="" if placeholder else "qfq")
+
+
 def download_stock(tic, path, days_from_now, file_format="pkl"):
     """全量下载股票数据，覆盖已存在文件。
 
@@ -78,19 +102,32 @@ def download_stock(tic, path, days_from_now, file_format="pkl"):
     start_date = datetime.datetime.now() - datetime.timedelta(days=days_from_now)
     end_date = datetime.datetime.now()
 
-    # akshare 在某些 ticker 上返回内部 numpy 数组是只读的 DataFrame，
-    # 任何 inplace 或列赋值都会报 "assignment destination is read-only"。
-    # 用 method chain + 逐列 to_numpy().copy() 强制所有列重建为可写数组。
-    raw = ak.stock_us_daily(symbol=tic, adjust="qfq")
-    df_new = pd.DataFrame(
-        {col: raw[col].to_numpy().copy() for col in raw.columns}
-    )
-    df_new = (
-        df_new
-        .assign(date=lambda d: pd.to_datetime(d["date"]))
-        .set_index("date")
-        .loc[start_date:end_date]
-    )
+    # 通过 _fetch_us_daily_qfq 绕开 akshare qfq 分支在占位因子 ticker 上的
+    # Index 写入 bug。拿到后再逐列 to_numpy().copy() 强制重建为可写数组，
+    # 防止任何 inplace/列赋值触发 "assignment destination is read-only"。
+    #
+    # akshare 对特殊证券（优先股/权证/退市/OTC/粉单/SPAC warrant 等）
+    # 返回格式不稳定，统一在这里静默吸收为"跳过该 ticker"：
+    #   - IndexError: 上游 result[0] 越界（原在 worker L146 过滤）
+    #   - KeyError 'date': 返回空/缺列 df，我们的 assign/iloc 取不到 date
+    #   - SyntaxError: akshare 内部 eval sina 响应失败（服务端返回乱码）
+    #   - KeyError(Timestamp): 返回 date 列混入离谱年份（如 2153-02-02）→
+    #     set_index 后 index 非单调 → .loc 切片抛 KeyError
+    # 这些都是上游数据异常，不是本地 bug，打印出来只会污染日志。
+    try:
+        raw = _fetch_us_daily_qfq(tic)
+        df_new = pd.DataFrame(
+            {col: raw[col].to_numpy().copy() for col in raw.columns}
+        )
+        df_new = (
+            df_new
+            .assign(date=lambda d: pd.to_datetime(d["date"]))
+            .set_index("date")
+            .loc[start_date:end_date]
+        )
+    except (IndexError, KeyError, SyntaxError):
+        return
+
     if len(df_new) < 12 * 21:
         return
 
@@ -117,10 +154,8 @@ def worker(task_queue, save_root, days_from_now, file_format):
         try:
             download_stock(tic, save_path, days_from_now, file_format)
         except Exception as e:
-            # 抑制 akshare 对优先股/权证等特殊证券的常见失败（内部 result[0]
-            # 越界），这类 ticker SEC EDGAR 会列出但 akshare 没数据，不是 bug
-            if "list index out of range" in str(e):
-                continue
+            # download_stock 已吸收所有已知的 akshare 上游噪音；能走到这里
+            # 的都是真正未预期的异常（磁盘满、权限错误等），保留打印便于排障。
             print(f"Error: {tic} {e}")
 
 
@@ -161,24 +196,24 @@ def multi_download_stock(
     for p in processes:
         p.start()
 
-    # Function to stop all processes gracefully
-    def stop_processes(signal, frame):
-        print("Received signal, stopping processes...")
-        for p in processes:
-            p.terminate()
-            p.join()
-        sys.exit(0)
-
-    # Register signal handlers to stop processes on interrupt or termination
-    signal.signal(signal.SIGINT, stop_processes)
-    signal.signal(signal.SIGTERM, stop_processes)
-
     # Wait for all worker processes to complete
     for p in processes:
         p.join()
 
 
 if __name__ == "__main__":
+    # CLI 场景下注册 signal handler：Ctrl-C / SIGTERM 时优雅退出。
+    # 在 fork worker 子进程前注册，子进程会继承该 handler，收到 SIGINT
+    # 也会走 sys.exit(0)，multiprocessing 的 atexit 清理会 terminate
+    # 任何残留子进程。函数 multi_download_stock 本身不再触碰 signal 模块，
+    # 以便 UI 等非主线程调用方可以安全复用它。
+    def _cli_stop(signum, frame):
+        print("Received signal, exiting...")
+        sys.exit(0)
+
+    signal.signal(signal.SIGINT, _cli_stop)
+    signal.signal(signal.SIGTERM, _cli_stop)
+
     use_cache = True
     if os.path.exists("datasets/stock_list.pkl") and use_cache:
         print("load local stock list")
@@ -198,7 +233,7 @@ if __name__ == "__main__":
         all_tickers,
         save_root="datasets/pkls",  # cur_pkls   pkls
         days_from_now=365 * 5,
-        clear=True,
+        clear=False,
         num_workers=os.cpu_count(),
         # num_workers=1,
         file_format="pkl",  # Change to 'csv' or 'pkl'

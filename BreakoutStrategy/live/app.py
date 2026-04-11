@@ -10,6 +10,7 @@ from tkinter import messagebox, ttk
 
 import pandas as pd
 
+from BreakoutStrategy.live.chart_adapter import adapt_breakout, adapt_peaks
 from BreakoutStrategy.live.config import LiveConfig
 from BreakoutStrategy.live.dialogs.progress_dialog import ProgressDialog
 from BreakoutStrategy.live.dialogs.update_confirm import confirm_update
@@ -136,7 +137,9 @@ class LiveApp:
                 self.root.after(0, lambda: self._on_pipeline_done(matched))
             except Exception as e:
                 tb = traceback.format_exc()
-                self.root.after(0, lambda: self._on_pipeline_error(e, tb))
+                # Python 3 在 except 块退出时会 del e；lambda 通过 self.root.after
+                # 延后到主线程执行，此时 e 已越作用域。用默认参数早期绑定避免 NameError。
+                self.root.after(0, lambda e=e, tb=tb: self._on_pipeline_error(e, tb))
 
         threading.Thread(target=_worker, daemon=True).start()
 
@@ -179,20 +182,21 @@ class LiveApp:
         except Exception:
             return
 
-        # 复用 ChartCanvasManager.update_chart 接口
-        # 注意：raw_breakout 是 dict，ChartCanvasManager 原本期望 Breakout 对象；
-        # 实施时若类型不兼容，需要在此处做 dict → Breakout 的转换（参考开发 UI
-        # 是如何从 JSON 加载 breakouts 并传给 chart 的）
+        # raw_breakout / raw_peaks 是 scanner.py 跨进程返回的 dict 格式
+        # （见 scanner.py:389-458），ChartCanvasManager 期望属性访问的对象。
+        # 用 chart_adapter 把 dict 翻译成最小的 ChartBreakout / ChartPeak，
+        # 只填图表链路真正读到的字段。
+        chart_peaks, peaks_by_id = adapt_peaks(item.raw_peaks)
+        chart_bo = adapt_breakout(item.raw_breakout, peaks_by_id)
         try:
             self.chart.update_chart(
                 df=df,
-                breakouts=[item.raw_breakout],
-                active_peaks=item.raw_peaks,
+                breakouts=[chart_bo],
+                active_peaks=chart_peaks,
                 superseded_peaks=[],
                 symbol=item.symbol,
                 display_options={},
                 template_matched_indices=[0],
             )
         except Exception as e:
-            # 实施时待验证 [6]: 可能需要 dict → Breakout 适配层
             print(f"[LiveApp] Chart render failed: {e}", file=sys.stderr)

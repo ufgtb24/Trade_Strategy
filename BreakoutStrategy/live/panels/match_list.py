@@ -2,8 +2,11 @@
 
 import tkinter as tk
 from datetime import datetime, timedelta
+from tkinter import font as tkfont
 from tkinter import ttk
 from typing import Callable, TYPE_CHECKING
+
+from BreakoutStrategy.UI.styles import FONT_LABEL
 
 if TYPE_CHECKING:
     from BreakoutStrategy.live.pipeline.results import MatchedBreakout
@@ -97,6 +100,15 @@ class MatchList(ttk.Frame):
     def _build_treeview(self) -> None:
         tree_frame = ttk.Frame(self)
         tree_frame.pack(fill=tk.BOTH, expand=True, padx=4, pady=(2, 4))
+
+        # configure_global_styles 里全局 rowheight=25 是为更小的默认字体留的，
+        # 但 FONT_LABEL (Arial 14pt) 在 HiDPI 下 linespace 可达 42px，25px 会
+        # 让相邻行的文字上下重叠。这里按 font metrics 动态算出合适的行高，
+        # 随字号变化自动跟上。ttk.Style 是进程全局的，但 live 进程只有 MatchList
+        # 这一个 Treeview，不会有外溢副作用。
+        linespace = tkfont.Font(font=FONT_LABEL).metrics("linespace")
+        rowheight = linespace + 6  # 少量上下 padding，避免字符紧贴行边
+        ttk.Style().configure("Treeview", rowheight=rowheight)
 
         cols = ("symbol", "date", "price", "score")
         self.tree = ttk.Treeview(tree_frame, columns=cols, show="headings", selectmode="browse")

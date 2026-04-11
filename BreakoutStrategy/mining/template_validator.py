@@ -69,6 +69,10 @@ def _should_rescan(existing_json: Path, target_start: str, target_end: str) -> b
         logger.info("测试集时间范围未覆盖: 已有 %s~%s, 目标 %s~%s, 将重新扫描",
                      existing_start, existing_end, target_start, target_end)
         return True
+    # 空结果视为失败缓存，强制重扫（常见于数据源更新后旧 json 未失效的场景）
+    if meta.get("total_stocks", 0) == 0:
+        logger.info("已有扫描结果为空（total_stocks=0），将重新扫描：%s", existing_json)
+        return True
     return False
 
 
@@ -156,6 +160,14 @@ def _build_test_dataframe(
         len(stock.get("breakouts", []))
         for stock in data.get("results", [])
     )
+
+    if total_breakouts == 0:
+        raise ValueError(
+            f"测试集无任何 breakout：{json_path}。"
+            f"请检查：(1) pkl 数据是否覆盖 scan 的 start_date/end_date；"
+            f"(2) min_price/max_price/min_volume 筛选是否过严；"
+            f"(3) 旧的 scan_results_test.json 是否需要删除后重扫。"
+        )
 
     # build_dataframe 内部过滤 None label
     df = build_dataframe(json_path)
@@ -1543,7 +1555,7 @@ def main():
     trial_id = 14373                 # None → best trial; int → 指定 trial
     # trial_id = None                 # None → best trial; int → 指定 trial
     run_validation = True           # 运行时开关
-    run_sentiment = True           # 是否执行情感验证
+    run_sentiment = False           # 是否执行情感验证
     shrinkage_k = 1                # TPE 优化目标 Top-K
     report_name = "validation_report.md"  # 验证报告文件名
 
@@ -1551,8 +1563,8 @@ def main():
     # ── 验证参数 ──
     validation_config = {
         # 'test_start_date': '2024-04-01',
-        'test_start_date': '2025-08-01',
-        'test_end_date': '2025-11-01',
+        'test_start_date': '2024-01-01',
+        'test_end_date': '2024-04-01',
         # 'test_start_date': '2023-12-01',
         # 'test_end_date': '2024-02-01',
         'min_price': 1.0,
