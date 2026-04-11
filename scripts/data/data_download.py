@@ -78,17 +78,23 @@ def download_stock(tic, path, days_from_now, file_format="pkl"):
     start_date = datetime.datetime.now() - datetime.timedelta(days=days_from_now)
     end_date = datetime.datetime.now()
 
-    # .copy() 强制得到可写 DataFrame — akshare 在某些 ticker 上返回只读数组，
-    # 后续 inplace 操作会报 "assignment destination is read-only"
-    df_new = ak.stock_us_daily(symbol=tic, adjust="qfq").copy()
-    df_new["date"] = pd.to_datetime(df_new["date"])
-    df_new.set_index("date", inplace=True)
-    df_new = df_new.loc[start_date:end_date]
+    # akshare 在某些 ticker 上返回内部 numpy 数组是只读的 DataFrame，
+    # 任何 inplace 或列赋值都会报 "assignment destination is read-only"。
+    # 用 method chain + 逐列 to_numpy().copy() 强制所有列重建为可写数组。
+    raw = ak.stock_us_daily(symbol=tic, adjust="qfq")
+    df_new = pd.DataFrame(
+        {col: raw[col].to_numpy().copy() for col in raw.columns}
+    )
+    df_new = (
+        df_new
+        .assign(date=lambda d: pd.to_datetime(d["date"]))
+        .set_index("date")
+        .loc[start_date:end_date]
+    )
     if len(df_new) < 12 * 21:
         return
 
-    df_new.ffill(inplace=True)  # Fill missing values forward
-    df_new.index = pd.to_datetime(df_new.index)
+    df_new = df_new.ffill()  # Fill missing values forward
     if file_format == "csv":
         df_new.to_csv(path)
     else:
