@@ -10,7 +10,6 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 import logging
 
-import pandas as pd
 import pandas_market_calendars as mcal
 
 logger = logging.getLogger(__name__)
@@ -37,8 +36,6 @@ class FreshnessStatus:
 class DataFreshnessChecker:
     """检查本地 PKL 数据是否覆盖到最近一个已收盘的 NYSE 交易日。"""
 
-    _SAMPLE_SIZE = 10  # 抽样检查本地数据的 PKL 数量
-
     def __init__(
         self,
         data_dir: Path,
@@ -58,37 +55,21 @@ class DataFreshnessChecker:
         )
 
     def _newest_local_data_date(self) -> str | None:
-        """返回本地数据最新日期（ISO YYYY-MM-DD），无数据返回 None。
+        """返回本地数据最新日期（ISO YYYY-MM-DD），无 marker 返回 None。
 
-        优先读 data_dir/.last_full_update marker 文件，它由 DailyPipeline
-        在成功完成下载后写入。如果 marker 不存在（首次运行 / 旧版本），
-        降级到抽样 N 个 PKL 取 df.index.max() 的最大值。
+        依赖 DailyPipeline._step1_download_data 成功完成时写入的
+        data_dir/.last_full_update marker 文件。marker 不存在或读取
+        失败时返回 None，触发 UI 的"数据陈旧"流程。
         """
         marker = self.data_dir / _DOWNLOAD_MARKER_FILENAME
-        if marker.exists():
-            try:
-                return marker.read_text(encoding="utf-8").strip()
-            except OSError as e:
-                logger.warning("Failed to read marker %s: %s", marker, e)
-                # 降级到抽样
-
-        # Fallback: 抽样 N 个 PKL 取最新日期（向后兼容首次运行）
-        pkl_files = sorted(self.data_dir.glob("*.pkl"))
-        if not pkl_files:
+        if not marker.exists():
             return None
-        sample = pkl_files[: self._SAMPLE_SIZE]
-        latest: list = []
-        for f in sample:
-            try:
-                df = pd.read_pickle(f)
-                if len(df) > 0:
-                    latest.append(df.index.max().date())
-            except Exception as e:
-                logger.warning("Failed to read %s: %s", f, e)
-                continue
-        if not latest:
+        try:
+            content = marker.read_text(encoding="utf-8").strip()
+            return content or None
+        except OSError as e:
+            logger.warning("Failed to read marker %s: %s", marker, e)
             return None
-        return max(latest).isoformat()
 
     def _missing_trading_days(self, newest_local: str | None) -> list[str]:
         """返回 (newest_local, now] 区间内已收盘但未覆盖的交易日。"""
