@@ -60,9 +60,20 @@ def download_stock(tic, path, days_from_now, file_format="pkl"):
     akshare 的 stock_us_daily 无法指定时间参数，每次调用都返回全部历史。
     前复权（adjust="qfq"）会回溯修改历史价格（分红/拆股调整），所以
     每次都用最新的全量数据覆盖旧文件，避免价格历史失真。
+
+    同日内已下载过的文件（mtime == 今天）会被跳过：这支持"中断后
+    重跑"的场景——已完成的股票不会被再次下载，只有剩下的和 mtime
+    不是今天的才会触发真正的 akshare 调用。次日启动时所有文件
+    mtime 都变成昨天，会被重新下载，符合预期。
     """
     if file_format not in ["csv", "pkl"]:
         raise ValueError("file_format must be either 'csv' or 'pkl'")
+
+    # 同日内已下载过 → 跳过（支持中断后重跑不浪费已完成的工作）
+    if os.path.exists(path):
+        mtime_date = datetime.date.fromtimestamp(os.path.getmtime(path))
+        if mtime_date == datetime.date.today():
+            return
 
     start_date = datetime.datetime.now() - datetime.timedelta(days=days_from_now)
     end_date = datetime.datetime.now()
