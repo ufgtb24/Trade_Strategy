@@ -71,7 +71,7 @@ class DailyPipeline:
     def _step1_download_data(self) -> None:
         """Step 1: 全量下载全市场 PKL 数据。
 
-        下载完成后写 marker 文件 datasets/pkls/.last_full_update 记录当天日期，
+        下载完成后写 marker 文件 datasets/pkls_live/.last_full_update 记录当天日期，
         供 DataFreshnessChecker 判断"上次是不是整体更新成功了"。如果下载中途
         崩溃，marker 不会被写，下次启动会被判定为 stale，触发重试。
 

@@ -305,7 +305,7 @@ def _on_list_select(self, item: MatchedBreakout):
 ```yaml
 # 实盘 UI 配置
 trial_dir: outputs/statistics/pk_gte/trials/14373
-data_dir: datasets/pkls
+data_dir: datasets/pkls_live
 scan_window_days: 90
 min_price: 1.0
 max_price: 10.0

@@ -48,4 +48,7 @@ class LiveConfig:
         )
         # 确保 cache 目录存在
         config.cache_path.parent.mkdir(parents=True, exist_ok=True)
+        # 确保 data 目录存在（首次启动时创建，避免 download_stock 的
+        # to_pickle 因父目录缺失而失败；多次启动幂等）
+        config.data_dir.mkdir(parents=True, exist_ok=True)
         return config
