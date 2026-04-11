@@ -52,7 +52,7 @@ class LiveApp:
     # ---------- UI 构建 ----------
 
     def _build_ui(self) -> None:
-        self.toolbar = Toolbar(self.root, on_refresh=self._on_refresh_clicked)
+        self.toolbar = Toolbar(self.root)
         self.toolbar.pack(side=tk.TOP, fill=tk.X)
 
         main_paned = ttk.PanedWindow(self.root, orient=tk.HORIZONTAL)
@@ -162,9 +162,6 @@ class LiveApp:
         messagebox.showerror("Pipeline failed", f"{error}\n\n{tb}")
 
     # ---------- 交互回调 ----------
-
-    def _on_refresh_clicked(self) -> None:
-        self._run_pipeline_async()
 
     def _on_item_selected(self, item: MatchedBreakout | None) -> None:
         self.state.selected = item
