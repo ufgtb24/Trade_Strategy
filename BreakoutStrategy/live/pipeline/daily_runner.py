@@ -1,5 +1,6 @@
 """每日扫描流水线：下载 → 扫描 → 匹配 → 情感。"""
 
+import os
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -7,6 +8,10 @@ from typing import Callable
 
 from BreakoutStrategy.live.pipeline.results import MatchedBreakout
 from BreakoutStrategy.live.pipeline.trial_loader import TrialBundle
+
+# Marker 文件：标记上一次 _step1_download_data 成功完成的日期。
+# DataFreshnessChecker 优先读这个，避免"部分更新"时抽样误判为 fresh。
+DOWNLOAD_MARKER_FILENAME = ".last_full_update"
 
 
 @dataclass
@@ -66,13 +71,16 @@ class DailyPipeline:
     def _step1_download_data(self) -> None:
         """Step 1: 增量下载全市场 PKL 数据。
 
-        注意：
-        - 默认启用 append_data=True（增量模式）
-        - 实施时待验证：增量 vs 全量的耗时差异，根据实测决定最终默认策略
-        - days_from_now 留足 scan_window_days + 400 的缓冲，确保有足够历史
-          供 ATR/MA/年化波动率等指标计算
+        下载完成后写 marker 文件 datasets/pkls/.last_full_update 记录当天日期，
+        供 DataFreshnessChecker 判断"上次是不是整体更新成功了"。如果下载中途
+        崩溃，marker 不会被写，下次启动会被判定为 stale，触发重试。
+
+        下载是 I/O-bound，并发数独立于 scan 阶段，使用 cpu_count-2
+        （留 2 核给系统，避免与 Tkinter 主线程争抢）。
         """
         from scripts.data.data_download import get_us_tickers_fast, multi_download_stock
+
+        download_workers = max(1, (os.cpu_count() or 2) - 2)
 
         tickers = get_us_tickers_fast()
         multi_download_stock(
@@ -81,9 +89,13 @@ class DailyPipeline:
             days_from_now=self.scan_window_days + 400,
             append_data=True,
             clear=False,  # 不清空现有数据，走增量追加
-            num_workers=self.num_workers,
+            num_workers=download_workers,
             file_format="pkl",
         )
+
+        # 写 marker（只在所有 ticker 全部成功处理完毕后执行）
+        marker = self.data_dir / DOWNLOAD_MARKER_FILENAME
+        marker.write_text(datetime.now().date().isoformat(), encoding="utf-8")
 
     def _step2_scan(self) -> list[dict]:
         """Step 2: 用 trial 的扫描参数扫描近 N 天窗口。

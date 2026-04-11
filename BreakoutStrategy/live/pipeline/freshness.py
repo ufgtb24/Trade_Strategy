@@ -15,6 +15,10 @@ import pandas_market_calendars as mcal
 
 logger = logging.getLogger(__name__)
 
+# 与 daily_runner.DOWNLOAD_MARKER_FILENAME 保持一致。
+# 不 import 以避免模块耦合（daily_runner 是 freshness 的下游消费者）。
+_DOWNLOAD_MARKER_FILENAME = ".last_full_update"
+
 
 @dataclass
 class FreshnessStatus:
@@ -54,7 +58,21 @@ class DataFreshnessChecker:
         )
 
     def _newest_local_data_date(self) -> str | None:
-        """抽样 N 个 PKL 取最新日期；无文件返回 None。"""
+        """返回本地数据最新日期（ISO YYYY-MM-DD），无数据返回 None。
+
+        优先读 data_dir/.last_full_update marker 文件，它由 DailyPipeline
+        在成功完成下载后写入。如果 marker 不存在（首次运行 / 旧版本），
+        降级到抽样 N 个 PKL 取 df.index.max() 的最大值。
+        """
+        marker = self.data_dir / _DOWNLOAD_MARKER_FILENAME
+        if marker.exists():
+            try:
+                return marker.read_text(encoding="utf-8").strip()
+            except OSError as e:
+                logger.warning("Failed to read marker %s: %s", marker, e)
+                # 降级到抽样
+
+        # Fallback: 抽样 N 个 PKL 取最新日期（向后兼容首次运行）
         pkl_files = sorted(self.data_dir.glob("*.pkl"))
         if not pkl_files:
             return None

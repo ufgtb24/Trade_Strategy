@@ -96,3 +96,43 @@ def test_no_local_data_reports_stale(tmp_path: Path):
         status = checker.check()
     assert not status.is_fresh
     assert status.newest_local_date is None
+
+
+def test_marker_file_is_used_when_present(fake_data_dir):
+    """当 marker 文件存在时，应优先读它而非抽样 PKL。"""
+    tz = ZoneInfo("America/New_York")
+    fake_now = datetime(2026, 4, 11, 10, 0, tzinfo=tz)
+
+    # fake_data_dir 有 PKL 数据到 2026-04-07
+    # 写一个声称已经更新到 2026-04-10 的 marker
+    marker = fake_data_dir / ".last_full_update"
+    marker.write_text("2026-04-10", encoding="utf-8")
+
+    with _mock_now(fake_now):
+        checker = DataFreshnessChecker(fake_data_dir)
+        status = checker.check()
+
+    # 应该以 marker 为准：2026-04-10
+    assert status.newest_local_date == "2026-04-10"
+
+
+def test_marker_file_stale_triggers_update(fake_data_dir):
+    """marker 文件日期早于最近已收盘交易日 → 判定 stale。"""
+    tz = ZoneInfo("America/New_York")
+    # 周五盘后
+    fake_now = datetime(2026, 4, 10, 17, 0, tzinfo=tz)
+
+    # marker 停留在周二
+    marker = fake_data_dir / ".last_full_update"
+    marker.write_text("2026-04-07", encoding="utf-8")
+
+    with _mock_now(fake_now):
+        checker = DataFreshnessChecker(fake_data_dir)
+        status = checker.check()
+
+    assert not status.is_fresh
+    assert status.newest_local_date == "2026-04-07"
+    # 周三周四周五都应在 missing 里
+    assert "2026-04-08" in status.missing_trading_days
+    assert "2026-04-09" in status.missing_trading_days
+    assert "2026-04-10" in status.missing_trading_days
