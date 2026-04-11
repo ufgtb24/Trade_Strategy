@@ -78,7 +78,9 @@ def download_stock(tic, path, days_from_now, file_format="pkl"):
     start_date = datetime.datetime.now() - datetime.timedelta(days=days_from_now)
     end_date = datetime.datetime.now()
 
-    df_new = ak.stock_us_daily(symbol=tic, adjust="qfq")
+    # .copy() 强制得到可写 DataFrame — akshare 在某些 ticker 上返回只读数组，
+    # 后续 inplace 操作会报 "assignment destination is read-only"
+    df_new = ak.stock_us_daily(symbol=tic, adjust="qfq").copy()
     df_new["date"] = pd.to_datetime(df_new["date"])
     df_new.set_index("date", inplace=True)
     df_new = df_new.loc[start_date:end_date]
@@ -109,6 +111,10 @@ def worker(task_queue, save_root, days_from_now, file_format):
         try:
             download_stock(tic, save_path, days_from_now, file_format)
         except Exception as e:
+            # 抑制 akshare 对优先股/权证等特殊证券的常见失败（内部 result[0]
+            # 越界），这类 ticker SEC EDGAR 会列出但 akshare 没数据，不是 bug
+            if "list index out of range" in str(e):
+                continue
             print(f"Error: {tic} {e}")
 
 
