@@ -95,8 +95,14 @@ def download_stock(tic, path, days_from_now, file_format="pkl"):
 
 
 def worker(task_queue, save_root, days_from_now, file_format):
-    while not task_queue.empty():
+    # Sentinel 模式：每个 worker 会在队列中拿到一个 None 作为结束信号。
+    # 不使用 `while not task_queue.empty()` 因为 empty() 在 multiprocessing.Queue
+    # 中不可靠，会导致多个 worker 同时通过检查后竞争最后一个元素，失败者永久
+    # 阻塞在 get() 上，主进程 join() 也永远等不到它们退出。
+    while True:
         tic = task_queue.get()
+        if tic is None:
+            return
         save_path = os.path.join(
             save_root, tic + (".csv" if file_format == "csv" else ".pkl")
         )
@@ -125,6 +131,10 @@ def multi_download_stock(
     q = Queue()
     for tic in sorted(tickers):
         q.put(tic)
+    # Sentinel：为每个 worker 放一个 None 作为结束信号，
+    # 避免 worker 用 empty() 检查导致的竞态死锁
+    for _ in range(num_workers):
+        q.put(None)
 
     # Prepare input parameters for worker processes
     input_dict = dict(
