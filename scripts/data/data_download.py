@@ -54,68 +54,43 @@ def get_us_tickers_fast():
         return tickers
 
 
-def download_stock(tic, path, days_from_now, append_data=False, file_format="pkl"):
+def download_stock(tic, path, days_from_now, file_format="pkl"):
+    """全量下载股票数据，覆盖已存在文件。
+
+    akshare 的 stock_us_daily 无法指定时间参数，每次调用都返回全部历史。
+    前复权（adjust="qfq"）会回溯修改历史价格（分红/拆股调整），所以
+    每次都用最新的全量数据覆盖旧文件，避免价格历史失真。
+    """
     if file_format not in ["csv", "pkl"]:
         raise ValueError("file_format must be either 'csv' or 'pkl'")
-    if os.path.exists(path):
-        if append_data:
-            # Read the existing data
-            if file_format == "csv":
-                df_old = pd.read_csv(path, parse_dates=True, index_col=0)
-            else:
-                df_old = pd.read_pickle(path)
-            start_date = df_old.index[-1].date() + datetime.timedelta(days=1)
-            end_date = datetime.date.today()
-            # If the data is already up-to-date
-            if start_date == end_date:
-                print("Already latest")
-            else:
-                df_new = ak.stock_us_daily(symbol=tic, adjust="qfq")
-                df_new["date"] = pd.to_datetime(df_new["date"])
-                df_new.set_index("date", inplace=True)
-                df_new = df_new.loc[start_date:end_date]
 
-                df_new = pd.concat([df_old, df_new])
-                df_new = df_new[~df_new.index.duplicated(keep="first")]
-                df_new.ffill(inplace=True)  # Fill missing values forward
-                df_new.index = pd.to_datetime(df_new.index)
-                if file_format == "csv":
-                    df_new.to_csv(path)
-                else:
-                    df_new.to_pickle(path)
-                print(f"Append {tic}")
-        else:
-            print(f"{tic} already exists")
+    start_date = datetime.datetime.now() - datetime.timedelta(days=days_from_now)
+    end_date = datetime.datetime.now()
+
+    df_new = ak.stock_us_daily(symbol=tic, adjust="qfq")
+    df_new["date"] = pd.to_datetime(df_new["date"])
+    df_new.set_index("date", inplace=True)
+    df_new = df_new.loc[start_date:end_date]
+    if len(df_new) < 12 * 21:
+        return
+
+    df_new.ffill(inplace=True)  # Fill missing values forward
+    df_new.index = pd.to_datetime(df_new.index)
+    if file_format == "csv":
+        df_new.to_csv(path)
     else:
-        # Download data from scratch
-        start_date = datetime.datetime.now() - datetime.timedelta(days=days_from_now)
-        end_date = datetime.datetime.now()
-
-        df_new = ak.stock_us_daily(symbol=tic, adjust="qfq")
-        df_new["date"] = pd.to_datetime(df_new["date"])
-        df_new.set_index("date", inplace=True)
-        df_new = df_new.loc[start_date:end_date]
-        if len(df_new) < 12 * 21:
-            # print(f'Warning: {tic} has less than  months of data, skipping.')
-            return
-
-        df_new.ffill(inplace=True)  # Fill missing values forward
-        df_new.index = pd.to_datetime(df_new.index)
-        if file_format == "csv":
-            df_new.to_csv(path)
-        else:
-            df_new.to_pickle(path)
-        print(f"Download {tic}")
+        df_new.to_pickle(path)
+    print(f"Download {tic}")
 
 
-def worker(task_queue, save_root, days_from_now, append_data, file_format):
+def worker(task_queue, save_root, days_from_now, file_format):
     while not task_queue.empty():
         tic = task_queue.get()
         save_path = os.path.join(
             save_root, tic + (".csv" if file_format == "csv" else ".pkl")
         )
         try:
-            download_stock(tic, save_path, days_from_now, append_data, file_format)
+            download_stock(tic, save_path, days_from_now, file_format)
         except Exception as e:
             print(f"Error: {tic} {e}")
 
@@ -124,7 +99,6 @@ def multi_download_stock(
     tickers,
     save_root,
     days_from_now,
-    append_data,
     clear,
     num_workers=os.cpu_count(),
     file_format="pkl",
@@ -146,7 +120,6 @@ def multi_download_stock(
         task_queue=q,
         save_root=save_root,
         days_from_now=days_from_now,
-        append_data=append_data,
         file_format=file_format,
     )
 
@@ -191,8 +164,7 @@ if __name__ == "__main__":
     multi_download_stock(
         all_tickers,
         save_root="datasets/pkls",  # cur_pkls   pkls
-        days_from_now=365 * 5,  #
-        append_data=False,  # use 7 minites for append, while 4 minites for download from scratch
+        days_from_now=365 * 5,
         clear=True,
         num_workers=os.cpu_count(),
         # num_workers=1,

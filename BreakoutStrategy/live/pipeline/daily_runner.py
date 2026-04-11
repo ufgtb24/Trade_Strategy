@@ -69,14 +69,18 @@ class DailyPipeline:
         return matched
 
     def _step1_download_data(self) -> None:
-        """Step 1: 增量下载全市场 PKL 数据。
+        """Step 1: 全量下载全市场 PKL 数据。
 
         下载完成后写 marker 文件 datasets/pkls/.last_full_update 记录当天日期，
         供 DataFreshnessChecker 判断"上次是不是整体更新成功了"。如果下载中途
         崩溃，marker 不会被写，下次启动会被判定为 stale，触发重试。
 
         下载是 I/O-bound，并发数独立于 scan 阶段，使用 cpu_count-2
-        （留 2 核给系统，避免与 Tkinter 主线程争抢）。
+        （留 2 核给系统 + Tkinter 主线程，避免卡 UI）。
+
+        全量模式（非 append）是刻意选择：akshare 无法做真正的增量下载
+        （stock_us_daily 总是返回全部历史），而且前复权 qfq 会回溯修改
+        历史价格，全量覆盖才能跟上分红/拆股调整。
         """
         from scripts.data.data_download import get_us_tickers_fast, multi_download_stock
 
@@ -87,8 +91,7 @@ class DailyPipeline:
             tickers=tickers,
             save_root=str(self.data_dir),
             days_from_now=self.scan_window_days + 400,
-            append_data=True,
-            clear=False,  # 不清空现有数据，走增量追加
+            clear=False,  # 不清空目录，让 download_stock 覆盖各个文件
             num_workers=download_workers,
             file_format="pkl",
         )
