@@ -237,3 +237,29 @@ def test_enrich_breakout_sufficient_lookback_all_factors_computed():
     assert bo.pbm is not None
     assert bo.day_str is not None
     assert bo.annual_volatility is not None
+
+
+# ---------------------------------------------------------------------------
+# Task 9: _check_breakouts gate 移除 — drought 跨 gate 语义回归
+# ---------------------------------------------------------------------------
+from BreakoutStrategy.analysis.breakout_detector import BreakoutRecord
+
+
+def test_drought_cross_gate():
+    """两个 BO，一个 idx 小、一个 idx 大，后者 drought 应为差值（不是 None）。
+
+    用最小可控 fixture：直接操纵 detector.breakout_history。"""
+    from BreakoutStrategy.analysis import BreakoutDetector
+    from datetime import date as D
+
+    det = BreakoutDetector(symbol='TEST', total_window=20, min_side_bars=6,
+                           min_relative_height=0.1, exceed_threshold=0.005,
+                           peak_supersede_threshold=0.03)
+    det.breakout_history = [
+        BreakoutRecord(index=100, date=D(2024, 1, 1), price=10.0, num_peaks=1),
+        BreakoutRecord(index=260, date=D(2024, 7, 1), price=15.0, num_peaks=1),
+    ]
+    # 对 idx=260，get_days_since_last_breakout 应 =260-100=160
+    assert det.get_days_since_last_breakout(260) == 160
+    # 对 idx=100，应 None（无更早 BO）
+    assert det.get_days_since_last_breakout(100) is None

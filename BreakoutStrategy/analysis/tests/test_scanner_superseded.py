@@ -110,6 +110,16 @@ def test_cvgi_2025_11_28_peak_is_not_active(cvgi_scan_args):
     )
 
 
+@pytest.mark.skip(
+    reason=(
+        "per-factor gate 移除了 detector 顶端的 max_buffer 短路（per-factor-gating Spec 1, T9）。"
+        "旧 gate 会保护 idx<252 的 peak 不被早期 BO 消费，让它们在后续被新峰值结构性 supersede。"
+        "新语义下早期 BO 正常 fire，peak 直接被 broken，不再走 supersede 路径。"
+        "CVGI 在 [2025-10-15, 2026-04-14] 区间下 superseded_by_new_peak 集为空。"
+        "commit 2022b34 引入的序列化逻辑仍正确（_scan_single_stock 输出 detector.superseded_by_new_peak），"
+        "只是缺乏新 fixture 来验证。后续可以另写一个合成 detector fixture 直接覆盖序列化路径。"
+    )
+)
 def test_cvgi_has_at_least_one_superseded_peak(cvgi_scan_args):
     """Fix 2022b34 的序列化契约：scanner 必须将 detector.superseded_by_new_peak
     纳入 all_peaks 输出，且至少一个峰值被标记 is_superseded=True。
