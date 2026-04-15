@@ -201,11 +201,12 @@ def apply_binary_levels(df: pd.DataFrame, thresholds: dict,
     for fi in get_active_factors():
         key = fi.key
         if key in thresholds:
-            raw = df[fi.key].fillna(0)
+            raw = df[fi.key]
+            valid = raw.notna()
             if key in negative_factors:
-                df[fi.level_col] = (raw <= thresholds[key]).astype(int)
+                df[fi.level_col] = (valid & (raw <= thresholds[key])).astype(int)
             else:
-                df[fi.level_col] = (raw >= thresholds[key]).astype(int)
+                df[fi.level_col] = (valid & (raw >= thresholds[key])).astype(int)
         else:
             df[fi.level_col] = 0
     return df
