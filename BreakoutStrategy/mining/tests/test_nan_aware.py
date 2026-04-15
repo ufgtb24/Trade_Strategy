@@ -61,3 +61,23 @@ def test_build_dataframe_preserves_none_as_nan(tmp_path):
     assert pd.isna(df.iloc[1]['pbm'])
     # age (non-nullable buffer=0 factor) is preserved as int
     assert df.iloc[1]['age'] == 60
+
+
+def test_prepare_raw_values_preserves_nan():
+    """prepare_raw_values 不再 fillna(0)；NaN 自然承载。"""
+    df = pd.DataFrame({
+        'symbol': ['A', 'B'],
+        'date': ['2024-01-01', '2024-01-02'],
+        'volume': [2.5, np.nan],      # volume nullable 因子
+        'volume_level': [0, 0],
+        'age': [100, 60],              # buffer=0 非 nullable 因子
+        'age_level': [1, 0],
+        'label': [0.05, 0.03],
+    })
+    raw = prepare_raw_values(df, factors=['volume', 'age'])
+    # volume 保留 NaN
+    assert np.isnan(raw['volume'][1])
+    assert raw['volume'][0] == 2.5
+    # age 无 NaN（buffer=0 因子原始数据无 None）
+    assert raw['age'][0] == 100
+    assert raw['age'][1] == 60

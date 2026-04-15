@@ -164,7 +164,8 @@ def prepare_raw_values(df: pd.DataFrame, factors=None) -> dict[str, np.ndarray]:
                  默认 None 表示所有已注册因子。
 
     Returns:
-        {key: 原始值 numpy 数组}
+        {key: 原始值 numpy 数组}；nullable 因子的 NaN 保留（per-factor gate 语义），
+        下游函数（build_triggered_matrix/TPE bounds/greedy beam）通过 ~np.isnan 过滤。
     """
     if factors is None:
         factor_list = get_active_factors()
@@ -179,7 +180,8 @@ def prepare_raw_values(df: pd.DataFrame, factors=None) -> dict[str, np.ndarray]:
 
     raw = {}
     for fi in factor_list:
-        raw[fi.key] = df[fi.key].fillna(0).values.astype(np.float64)
+        # per-factor gate: 保留 NaN，下游统计各自决策（NaN-aware filter）
+        raw[fi.key] = df[fi.key].values.astype(np.float64)
 
     return raw
 
