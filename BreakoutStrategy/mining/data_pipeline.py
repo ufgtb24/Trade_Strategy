@@ -93,13 +93,17 @@ def build_dataframe(json_path) -> pd.DataFrame:
             }
 
             # 注册因子：原始值 + level（动态）
+            # per-factor gate 语义：nullable 因子的 None 透传（raw 列 NaN，level=0 未触发）；
+            # 非 nullable 因子沿用数据错容错（仅 buffer=0 的 age/test/height/peak_vol/streak）。
             for fi in get_active_factors():
                 raw_val = bo.get(fi.key)
-                if fi.has_nan_group:
-                    # 保留 None 语义（如 drought 首次突破、pk_mom 无近期 peak）
-                    level_input = raw_val if raw_val is not None else 0
+                if raw_val is None:
+                    if fi.nullable or fi.has_nan_group:
+                        level_input = 0  # None raw 透传，level 未触发
+                    else:
+                        raw_val = 0 if fi.is_discrete else 0.0
+                        level_input = raw_val
                 else:
-                    raw_val = raw_val or (0 if fi.is_discrete else 0.0)
                     level_input = raw_val
                 row[fi.key] = raw_val
                 row[fi.level_col] = get_level(level_input, factor_thresholds[fi.key])
