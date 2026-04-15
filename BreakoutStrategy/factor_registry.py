@@ -104,7 +104,7 @@ FACTOR_REGISTRY: list[FactorInfo] = [
                (5.0, 10.0), (1.5, 2.0),
                category='breakout',
                unit='x', display_transform='identity',
-               buffer=63),  # VOLUME_LOOKBACK in features._calculate_volume_ratio
+               buffer=63, nullable=True),  # VOLUME_LOOKBACK in features._calculate_volume_ratio
     FactorInfo('overshoot', 'Overshoot', '超涨比',
                (4.0, 5.0), (0.80, 0.60),
                mining_mode='lte', category='breakout',
@@ -113,12 +113,12 @@ FACTOR_REGISTRY: list[FactorInfo] = [
                    SubParamDef('gain_window', 'gain_window', int, 5,
                                (1, 30), 'Gain measurement window'),
                ),
-               buffer=252),  # 依赖 annual_volatility (252 day window)
+               buffer=252, nullable=True),  # 依赖 annual_volatility (252 day window)
     FactorInfo('day_str', 'Breakout Day Strength', '突破日强度',
                (1.5, 2.5), (1.2, 1.35),
                category='breakout',
                unit='σ', display_transform='round1', zero_guard=True,
-               buffer=252),  # 依赖 annual_volatility (252 day window)
+               buffer=252, nullable=True),  # 依赖 annual_volatility (252 day window)
     FactorInfo('pbm', 'Pre-Breakout Momentum', '突破前动量',
                (0.7, 1.45), (1.15, 1.3),
                category='breakout',
@@ -127,7 +127,7 @@ FACTOR_REGISTRY: list[FactorInfo] = [
                    SubParamDef('lookback', 'continuity_lookback', int, 5,
                                (1, 9999), 'Lookback period for momentum calculation'),
                ),
-               buffer=252),  # 依赖 annual_volatility (252 day window)
+               buffer=252, nullable=True),  # 依赖 annual_volatility (252 day window)
     FactorInfo('streak', 'Streak', '连续突破',
                (2, 4), (0.9, 0.75),
                is_discrete=True, mining_mode='lte', category='breakout',
@@ -149,7 +149,7 @@ FACTOR_REGISTRY: list[FactorInfo] = [
                    SubParamDef('lookback', 'pk_lookback', int, 30,
                                (1, 9999), 'Time window for recent peak detection'),
                ),
-               buffer=44),  # pk_lookback(30) + atr_period(14)
+               buffer=44, nullable=True),  # pk_lookback(30) + atr_period(14)
     FactorInfo('pre_vol', 'Pre-Breakout Volume', '突破前放量',
                (3.0, 5.0), (1.15, 1.25),
                category='context', mining_mode='gte',
@@ -158,7 +158,7 @@ FACTOR_REGISTRY: list[FactorInfo] = [
                    SubParamDef('window', 'pre_vol_window', int, 10,
                                (1, 60), 'Pre-breakout volume lookback window'),
                ),
-               buffer=73),  # vol_ratio rolling(63) + pre_vol_window(10)
+               buffer=73, nullable=True),  # vol_ratio rolling(63) + pre_vol_window(10)
     FactorInfo('ma_pos', 'MA Position', '均线位置',
                (0.05, 0.10, 0.20), (1.1, 1.2, 1.35),
                category='context',
@@ -167,7 +167,7 @@ FACTOR_REGISTRY: list[FactorInfo] = [
                    SubParamDef('period', 'ma_pos_period', int, 20,
                                (10, 50), 'MA period for position calculation'),
                ),
-               buffer=20),  # ma_pos_period
+               buffer=20, nullable=True),  # ma_pos_period
     FactorInfo('dd_recov', 'Drawdown Recovery', '回撤恢复度',
                (0.02, 0.04, 0.06), (1.15, 1.25, 1.40),
                category='context',
@@ -179,7 +179,7 @@ FACTOR_REGISTRY: list[FactorInfo] = [
                    SubParamDef('best_recovery', 'dd_recov_best_recovery', float, 0.25,
                                (0.10, 0.50), 'Recovery ratio at which factor peaks (lower=more conservative)'),
                ),
-               buffer=252),  # dd_recov_lookback default; INACTIVE 当前
+               buffer=252, nullable=True),  # dd_recov_lookback default; INACTIVE 当前
     FactorInfo('ma_curve', 'MA Curvature', 'MA曲率',
                (0.05, 0.15, 0.30), (1.15, 1.25, 1.40),
                category='context',
@@ -191,7 +191,7 @@ FACTOR_REGISTRY: list[FactorInfo] = [
                    SubParamDef('stride', 'ma_curve_stride', int, 5,
                                (2, 10), 'Stride for wide-interval curvature calculation (days)'),
                ),
-               buffer=50),  # ma_curve_period default; INACTIVE 当前
+               buffer=50, nullable=True),  # ma_curve_period default; INACTIVE 当前
 ]
 
 # --- 总开关：在此集合中的因子 key 将在所有模块中不可见 ---
