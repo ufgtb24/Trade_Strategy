@@ -1,5 +1,13 @@
 """Per-Factor Gating Spec 1 核心测试集合。"""
+import numpy as np
+import pandas as pd
+from datetime import date
+
+from BreakoutStrategy.analysis.breakout_detector import Breakout
+from BreakoutStrategy.analysis.breakout_scorer import BreakoutScorer, FactorDetail
+from BreakoutStrategy.analysis.features import FeatureCalculator
 from BreakoutStrategy.factor_registry import FACTOR_REGISTRY
+from BreakoutStrategy.UI.styles import SCORE_TOOLTIP_COLORS
 
 
 def test_all_lookback_factors_are_nullable():
@@ -13,9 +21,6 @@ def test_all_lookback_factors_are_nullable():
                 f"Factor '{fi.key}' has buffer={fi.buffer} but nullable=False; "
                 f"per-factor gate requires nullable=True"
             )
-
-
-from BreakoutStrategy.analysis.breakout_scorer import FactorDetail, BreakoutScorer
 
 
 def test_factor_detail_default_unavailable_false():
@@ -44,13 +49,8 @@ def test_factor_detail_normal_path_unavailable_false():
 
 def test_styles_has_factor_unavailable_color():
     """UI styles 必须导出 factor_unavailable 颜色。"""
-    from BreakoutStrategy.UI.styles import SCORE_TOOLTIP_COLORS
     assert "factor_unavailable" in SCORE_TOOLTIP_COLORS
     assert SCORE_TOOLTIP_COLORS["factor_unavailable"].startswith("#")
-
-
-from datetime import date
-from BreakoutStrategy.analysis.breakout_detector import Breakout
 
 
 def test_breakout_accepts_none_for_lookback_factors():
@@ -71,3 +71,32 @@ def test_breakout_accepts_none_for_lookback_factors():
     assert bo.pre_vol is None
     assert bo.ma_pos is None
     assert bo.annual_volatility is None
+
+
+def _mk_test_df(n_bars: int) -> pd.DataFrame:
+    """造合成 OHLCV 数据，长度为 n_bars。"""
+    rng = np.random.default_rng(42)
+    close = 10 + np.cumsum(rng.normal(0, 0.5, n_bars))
+    df = pd.DataFrame({
+        'open': close * 0.99, 'high': close * 1.02,
+        'low': close * 0.98, 'close': close,
+        'volume': rng.integers(1_000_000, 5_000_000, n_bars).astype(float),
+    }, index=pd.date_range('2020-01-01', periods=n_bars, freq='B'))
+    return df
+
+
+def test_annual_volatility_insufficient_returns_none():
+    """idx<252 时 _calculate_annual_volatility 返回 None，不 raise。"""
+    calc = FeatureCalculator()
+    df = _mk_test_df(300)
+    assert calc._calculate_annual_volatility(df, 100) is None
+    assert calc._calculate_annual_volatility(df, 251) is None
+
+
+def test_annual_volatility_sufficient_returns_float():
+    """idx>=252 时 _calculate_annual_volatility 返回 float。"""
+    calc = FeatureCalculator()
+    df = _mk_test_df(300)
+    result = calc._calculate_annual_volatility(df, 252)
+    assert isinstance(result, float)
+    assert result > 0

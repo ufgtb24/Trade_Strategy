@@ -497,36 +497,26 @@ class FeatureCalculator:
 
         return (close[idx] - close[idx - self.gain_window]) / close[idx - self.gain_window]
 
-    def _calculate_annual_volatility(self, df: pd.DataFrame, idx: int) -> float:
+    def _calculate_annual_volatility(self, df: pd.DataFrame, idx: int) -> Optional[float]:
         """
         计算年化波动率（基于过去 252 天日收益率标准差）
 
-        用于波动率动态阈值：
-        - 低波动股票（如公用事业）的超涨阈值应该更低
-        - 高波动股票（如成长股）的超涨阈值应该更高
-
-        公式：annual_vol = std(daily_returns) * sqrt(252)
+        用于波动率动态阈值判断：不同波动率的股票有不同的"超涨"绝对阈值
 
         Args:
             df: OHLCV 数据
             idx: 当前 bar 索引
 
         Returns:
-            年化波动率（小数形式，如 0.30 表示 30%）
+            年化波动率（小数形式，如 0.30 表示 30%）；idx<252 时返回 None
+            （per-factor gate 语义：该 BO 无法计算 annual_volatility，
+            依赖它的因子一并标为不可算）。
 
-        Raises:
-            ValueError: 当 idx < 252 时。生产路径上 BreakoutDetector 的
-                max_buffer gate 已经保证不会以 idx<252 的 BO 进入因子计算。
-                如果触发，说明上游漏配了 max_buffer，需要排查调用链而非
-                在这里悄悄降级。
+        公式：annual_vol = std(daily_returns) * sqrt(252)
         """
         LOOKBACK = 252
         if idx < LOOKBACK:
-            raise ValueError(
-                f"annual_volatility requires idx >= {LOOKBACK}, got idx={idx}. "
-                f"Upstream BreakoutDetector should have gated this BO via max_buffer "
-                f"(see factor_registry.get_max_buffer())."
-            )
+            return None
 
         close = df["close"].values
 
