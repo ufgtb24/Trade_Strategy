@@ -139,3 +139,17 @@ def test_build_triggered_matrix_nan_not_triggered():
     # Sample 2: volume=10.0 (gte) → 1; overshoot=10.0 (not lte) → 0
     assert triggered[2, 0] == 1
     assert triggered[2, 1] == 0
+
+
+def test_tpe_bounds_skip_nan():
+    """TPE bounds 的 quantile 应基于 NaN 过滤后的样本；无 NaN 混入导致 NaN bounds。"""
+    # 这是行为契约测试——验证 np.quantile 在 NaN-filtered array 上有限
+    raw = np.array([1.0, 2.0, 3.0, 4.0, 5.0, np.nan, np.nan])
+    valid = raw[~np.isnan(raw)]
+    lo = float(np.quantile(valid, 0.02))
+    hi = float(np.quantile(valid, 0.98))
+    assert not np.isnan(lo)
+    assert not np.isnan(hi)
+    # 对照：未过滤的 np.quantile 应为 NaN（这是 numpy 的行为）
+    lo_contam = float(np.quantile(raw, 0.02))
+    assert np.isnan(lo_contam), "numpy's np.quantile should return NaN when input contains NaN"

@@ -180,11 +180,15 @@ def stage3a_greedy_beam_search(raw_values, labels, active_factors,
     candidates = {}
     for key in active_factors:
         raw = raw_values[key]
-        if len(raw) < n_candidates:
-            candidates[key] = np.unique(raw)
+        valid = raw[~np.isnan(raw)]
+        if len(valid) == 0:
+            candidates[key] = np.array([])  # 该因子无有效样本
+            continue
+        if len(valid) < n_candidates:
+            candidates[key] = np.unique(valid)
         else:
             percentiles = np.linspace(10, 90, n_candidates)
-            candidates[key] = np.unique(np.percentile(raw, percentiles))
+            candidates[key] = np.unique(np.percentile(valid, percentiles))
 
     beam = [{'thresholds': {}, 'mask': np.ones(n_total, dtype=bool),
              'median': float(np.median(labels)), 'count': n_total}]
@@ -203,11 +207,12 @@ def stage3a_greedy_beam_search(raw_values, labels, active_factors,
                     continue
                 raw = raw_values[factor]
 
+                valid_mask = ~np.isnan(raw)
                 for threshold in candidates.get(factor, []):
                     if factor in negative_factors:
-                        sub_mask = current_mask & (raw <= threshold)
+                        sub_mask = current_mask & valid_mask & (raw <= threshold)
                     else:
-                        sub_mask = current_mask & (raw >= threshold)
+                        sub_mask = current_mask & valid_mask & (raw >= threshold)
                     n_sub = sub_mask.sum()
                     if n_sub < min_samples:
                         continue
@@ -296,8 +301,12 @@ def stage3b_optuna_search(raw_values, labels, active_factors,
     for key in active_factors:
         fi = get_factor(key)
         raw = raw_values[key]
-        lo = float(np.quantile(raw, quantile_margin))
-        hi = float(np.quantile(raw, 1 - quantile_margin))
+        # per-factor gate: 从 NaN-aware raw 里过滤出有效样本，quantile 才有意义
+        valid = raw[~np.isnan(raw)]
+        if len(valid) == 0:
+            continue  # 该因子无任何有效样本，跳过（bounds 无意义）
+        lo = float(np.quantile(valid, quantile_margin))
+        hi = float(np.quantile(valid, 1 - quantile_margin))
         if fi.is_discrete:
             lo, hi = int(lo), int(hi)
         use_log = log_diagnosis.get(key, {}).get('use_log', False) if enable_log else False
