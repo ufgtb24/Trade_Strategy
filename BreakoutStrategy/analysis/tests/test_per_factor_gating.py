@@ -15,10 +15,11 @@ def test_all_lookback_factors_are_nullable():
     Per-factor gate 下，features 层对 lookback 不足返回 None，scorer 的 nullable 分支
     是 None → FactorDetail.unavailable=True 的唯一入口。
     """
+    calc = FeatureCalculator()
     for fi in FACTOR_REGISTRY:
-        if fi.buffer > 0:
+        if calc._effective_buffer(fi) > 0:
             assert fi.nullable is True, (
-                f"Factor '{fi.key}' has buffer={fi.buffer} but nullable=False; "
+                f"Factor '{fi.key}' has effective_buffer>0 but nullable=False; "
                 f"per-factor gate requires nullable=True"
             )
 
@@ -263,3 +264,16 @@ def test_drought_cross_gate():
     assert det.get_days_since_last_breakout(260) == 160
     # 对 idx=100，应 None（无更早 BO）
     assert det.get_days_since_last_breakout(100) is None
+
+
+def test_factor_info_has_no_buffer_field():
+    """buffer 字段已从 FactorInfo 移除；SSOT 归 FeatureCalculator._effective_buffer。"""
+    from dataclasses import fields
+    fi_field_names = {f.name for f in fields(FactorInfo)}
+    assert 'buffer' not in fi_field_names
+
+
+def test_get_max_buffer_removed():
+    """get_max_buffer 函数已从模块删除。"""
+    from BreakoutStrategy import factor_registry
+    assert not hasattr(factor_registry, 'get_max_buffer')
