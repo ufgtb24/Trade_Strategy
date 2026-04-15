@@ -222,8 +222,7 @@ class BreakoutDetector:
                  breakout_mode: str = 'body_top',
                  streak_window: int = 20,
                  use_cache: bool = False,
-                 cache_dir: str = "./cache",
-                 max_buffer: int = 0):
+                 cache_dir: str = "./cache"):
         """
         初始化突破检测器
 
@@ -247,8 +246,6 @@ class BreakoutDetector:
             streak_window: 连续突破统计窗口（默认20个交易日）
             use_cache: 是否使用持久化缓存（实时监控=True，回测=False）
             cache_dir: 缓存目录
-            max_buffer: 已废弃，保留字段供下一阶段清理。per-factor gate 架构下
-                _check_breakouts 不再有 max_buffer 短路，该参数不产生任何效果。
         """
         # 参数验证
         if min_side_bars * 2 > total_window:
@@ -268,7 +265,6 @@ class BreakoutDetector:
         self.streak_window = streak_window
         self.use_cache = use_cache
         self.cache_dir = Path(cache_dir)
-        self.max_buffer = max_buffer
 
         # 核心状态
         self.prices = []           # 价格历史（close）

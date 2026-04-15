@@ -17,7 +17,7 @@ from BreakoutStrategy.analysis import BreakoutDetector
 from BreakoutStrategy.analysis.features import FeatureCalculator
 from BreakoutStrategy.analysis.breakout_scorer import BreakoutScorer
 from BreakoutStrategy.analysis.indicators import TechnicalIndicators
-from BreakoutStrategy.factor_registry import get_active_factors, get_max_buffer
+from BreakoutStrategy.factor_registry import get_active_factors
 
 def ensure_dir(directory):
     """确保目录存在（从 BreakoutStrategy.UI.utils 内联，避免对 UI 层的反向依赖）"""
@@ -119,7 +119,6 @@ def compute_breakouts_from_dataframe(
     valid_start_index: int = 0,
     valid_end_index: int = None,
     streak_window: int = 20,
-    max_buffer: int = 0,
 ) -> Tuple[List, BreakoutDetector]:
     """
     从 DataFrame 计算突破（统一突破计算函数）
@@ -138,8 +137,6 @@ def compute_breakouts_from_dataframe(
         scorer_config: BreakoutScorer 配置字典
         valid_start_index: 有效检测范围起始索引（之前的数据仅用于 ATR 等指标计算）
         valid_end_index: 有效检测范围结束索引（之后的数据为 Label 缓冲区，不检测）
-        max_buffer: BO 级 buffer 硬下限，传给 BreakoutDetector 做 idx 门控；
-            生产路径用 factor_registry.get_max_buffer()，默认 0=无 gate。
 
     Returns:
         (breakouts, detector) 元组
@@ -156,7 +153,6 @@ def compute_breakouts_from_dataframe(
         breakout_mode=breakout_mode,
         streak_window=streak_window,
         use_cache=False,
-        max_buffer=max_buffer,
     )
     breakout_infos = detector.batch_add_bars(
         df,
@@ -227,7 +223,6 @@ def _scan_single_stock(args):
         min_price,
         max_price,
         min_volume,
-        max_buffer,
     ) = args
 
     file_path = Path(data_dir) / f"{symbol}.pkl"
@@ -240,9 +235,9 @@ def _scan_single_stock(args):
         df = pd.read_pickle(file_path)
 
         # 注：旧的 `if len(df) < ANNUAL_VOL_LOOKBACK_BUFFER: skip` 股票级门槛
-        # 已删除（实测筛 0/5981 股票，dead code）。改为 BO 级 max_buffer gate
-        # （由 BreakoutDetector 在 _check_breakouts 入口判断），更精细 ——
-        # 同一只股票内的早期低 idx BO 被剔，晚期 BO 仍保留。
+        # 已删除（实测筛 0/5981 股票，dead code）。per-factor gate 架构下
+        # 门控逻辑已移至各因子计算层，同一只股票内早期低 idx BO 的因子值
+        # 缺失会导致该因子门控失效，晚期 BO 仍保留。
 
         # ===== 股票筛选条件检查（成交量 stock-level 预筛）=====
         if min_volume is not None:
@@ -321,7 +316,6 @@ def _scan_single_stock(args):
             valid_start_index=valid_start_index,
             valid_end_index=valid_end_index,
             streak_window=streak_window,
-            max_buffer=max_buffer,
         )
 
         # Breakout-level 价格过滤（按突破当日价格）
@@ -550,10 +544,6 @@ class ScanManager:
         self.max_price = max_price
         self.min_volume = min_volume
 
-        # BO 级 buffer：从 factor_registry 读，所有生产路径的扫描通过 ScanManager
-        # 都会用上，保证 live / validator / dev UI 批量扫描语义一致。
-        self.max_buffer = get_max_buffer()
-
     def scan_stock(self, symbol: str, data_dir: str = "datasets/pkls") -> Dict:
         """
         扫描单只股票
@@ -585,7 +575,6 @@ class ScanManager:
                 self.min_price,
                 self.max_price,
                 self.min_volume,
-                self.max_buffer,
             )
         )
 
@@ -660,7 +649,6 @@ class ScanManager:
                     min_price,
                     max_price,
                     min_volume,
-                    self.max_buffer,
                 )
             )
 

@@ -16,7 +16,6 @@ import pandas as pd
 import pytest
 
 from BreakoutStrategy.analysis.scanner import _scan_single_stock
-from BreakoutStrategy.factor_registry import get_max_buffer
 
 
 CVGI_PKL = Path(__file__).parents[3] / "datasets" / "pkls_live" / "CVGI.pkl"
@@ -48,7 +47,6 @@ def cvgi_scan_args():
         1.0,                                       # min_price
         10.0,                                      # max_price
         10000,                                     # min_volume
-        get_max_buffer(),                          # max_buffer（与生产一致）
     )
 
 
