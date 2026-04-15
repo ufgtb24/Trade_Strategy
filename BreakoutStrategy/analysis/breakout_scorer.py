@@ -31,6 +31,7 @@ class FactorDetail:
     multiplier: float   # factor 乘数（如 1.30）
     triggered: bool     # 是否触发（level > 0）
     level: int          # 触发级别（0=未触发, 1=级别1, 2=级别2, ...）
+    unavailable: bool = False  # True = 因 lookback 不足等原因无法计算（非"未触发"）
 
 
 
@@ -187,12 +188,13 @@ class BreakoutScorer:
         cfg = self._factor_configs[key]
         fi = cfg['fi']
 
-        # Nullable: None 有语义（如 drought 首次突破）
+        # Nullable: None 表示因子对该 BO 不可算（lookback 不足 / 首次突破等）
         if raw_value is None:
             if fi.nullable:
                 return FactorDetail(
                     name=fi.key, raw_value=0, unit=fi.unit,
-                    multiplier=1.0, triggered=False, level=0
+                    multiplier=1.0, triggered=False, level=0,
+                    unavailable=True,
                 )
             raw_value = 0 if fi.is_discrete else 0.0
 

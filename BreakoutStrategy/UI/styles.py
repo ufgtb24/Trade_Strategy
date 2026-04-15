@@ -246,6 +246,7 @@ SCORE_TOOLTIP_COLORS = {
     # Factor 状态颜色
     "factor_triggered": "#212121",      # 黑色，已触发
     "factor_not_triggered": "#7C7C7C",  # 灰色，未触发
+    "factor_unavailable": "#B8B8B8",    # 浅灰，该因子 lookback 不足（不可算）
 }
 
 SCORE_TOOLTIP_FONTS = {
