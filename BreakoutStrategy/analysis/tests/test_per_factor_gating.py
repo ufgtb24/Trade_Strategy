@@ -100,3 +100,19 @@ def test_annual_volatility_sufficient_returns_float():
     result = calc._calculate_annual_volatility(df, 252)
     assert isinstance(result, float)
     assert result > 0
+
+
+def test_day_str_returns_none_when_annual_vol_none():
+    calc = FeatureCalculator()
+    assert calc._calculate_day_str(0.01, 0.0, None) is None
+
+
+def test_overshoot_returns_none_when_annual_vol_none():
+    calc = FeatureCalculator()
+    assert calc._calculate_overshoot(0.05, None) is None
+
+
+def test_pbm_returns_none_when_annual_vol_none():
+    calc = FeatureCalculator()
+    df = _mk_test_df(100)
+    assert calc._calculate_pbm(df, 50, None) is None

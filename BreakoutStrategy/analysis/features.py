@@ -536,8 +536,8 @@ class FeatureCalculator:
         self,
         intraday_change_pct: float,
         gap_up_pct: float,
-        annual_volatility: float,
-    ) -> float:
+        annual_volatility: Optional[float],
+    ) -> Optional[float]:
         """
         计算突破日强度比率（DayStr），σ 单位
 
@@ -549,8 +549,11 @@ class FeatureCalculator:
             annual_volatility: 年化波动率
 
         Returns:
-            突破日强度比率（σ 单位），波动率无效时返回 0.0
+            突破日强度比率（σ 单位）；annual_volatility=None 时返回 None（不可算），
+            annual_volatility<=0 时返回 0.0（波动率无效）。
         """
+        if annual_volatility is None:
+            return None
         if annual_volatility <= 0:
             return 0.0
         daily_vol = annual_volatility / math.sqrt(252)
@@ -561,8 +564,8 @@ class FeatureCalculator:
     def _calculate_overshoot(
         self,
         gain_5d: float,
-        annual_volatility: float,
-    ) -> float:
+        annual_volatility: Optional[float],
+    ) -> Optional[float]:
         """
         计算超涨比率（Overshoot），σ 单位
 
@@ -573,8 +576,11 @@ class FeatureCalculator:
             annual_volatility: 年化波动率
 
         Returns:
-            超涨比率（σ 单位），波动率无效时返回 0.0
+            超涨比率（σ 单位）；annual_volatility=None 返回 None；
+            annual_volatility<=0 返回 0.0。
         """
+        if annual_volatility is None:
+            return None
         if annual_volatility <= 0:
             return 0.0
         five_day_vol = annual_volatility / math.sqrt(50.4)
@@ -584,8 +590,8 @@ class FeatureCalculator:
         self,
         df: pd.DataFrame,
         idx: int,
-        annual_volatility: float,
-    ) -> float:
+        annual_volatility: Optional[float],
+    ) -> Optional[float]:
         """
         计算突破前涨势强度（PBM），标准化为 σ_N 单位
 
@@ -598,8 +604,11 @@ class FeatureCalculator:
             annual_volatility: 年化波动率
 
         Returns:
-            标准化后的 PBM 值
+            标准化后的 PBM 值；annual_volatility=None 返回 None；
+            annual_volatility<=0 或 n_bars<=0 返回 0.0。
         """
+        if annual_volatility is None:
+            return None
         raw_momentum, n_bars = self._calculate_momentum(df, idx)
         if annual_volatility > 0 and n_bars > 0:
             daily_vol = annual_volatility / math.sqrt(252)
