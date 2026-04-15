@@ -20,10 +20,10 @@ FactorInfo('key', 'English Name', '中文名',
            (threshold1, threshold2), (value1, value2),
            category='context',
            unit='x', display_transform='round2',
-           buffer=N,                           # ← 必填：BO 级 lookback 需求
+           nullable=True,  # ← 若 effective buffer>0 必填：per-factor gate 下 None = 不可算
            # 可选：
            # is_discrete=True, has_nan_group=True,
-           # mining_mode='lte', zero_guard=True, nullable=True,
+           # mining_mode='lte', zero_guard=True,
            # sub_params=(SubParamDef(...),),
            ),
 ```
@@ -36,9 +36,8 @@ FactorInfo('key', 'English Name', '中文名',
 - `unit`: 显示单位 (`'d'`, `'x'`, `'%'`, `'bo'`, `'σ'`, `'σN'`, `''`)
 - `display_transform`: `'identity'` | `'pct100'` | `'round1'` | `'round2'`
 - `zero_guard`: `True` 当 value <= 0 时 factor disabled
-- `nullable`: `True` 当 None 有语义（如 drought 首次突破）
+- `nullable`: `True` 当 effective_buffer>0 或 None 语义有效时必填（如 drought 首次突破、lookback 不足）
 - `sub_params`: 计算参数元组，每个 `SubParamDef(yaml_name, internal_name, param_type, default, range, description, consumer)`
-- `buffer`: BO 级 lookback 硬下限（trading days）—— 详见 §"BO 级 buffer" 小节
 
 自动派生：`level_col = f"{key}_level"`, `yaml_key = f"{key}_factor"`
 
@@ -68,48 +67,54 @@ FactorInfo('key', 'English Name', '中文名',
 在 `Breakout` dataclass 中添加字段（带默认值）：
 
 ```python
-    new_factor: float = 0.0  # 因子说明
+new_factor: float | None = None  # 因子说明；None 表示 lookback 不足
 ```
 
 ### 4. Feature Calculator (`BreakoutStrategy/analysis/features.py`)
 
 - 添加计算方法（如 `_calculate_xxx()`）
-- 在 `enrich_breakout()` 中调用并赋值到 Breakout 构造器
+- 在 `enrich_breakout()` 中加一行 `key = self._calculate_xxx(...) if has_buffer('key') else None`
 - 如需预计算序列（如 rolling），参照 `atr_series` 模式：在 caller 预计算一次，作为可选参数传入
 
-**严格 lookback 契约**：如果你的因子需要 N 根历史 bar，在 `_calculate_xxx` 入口加：
+**Per-factor lookback 自检**：如果你的因子需要 N 根历史 bar，在 `_calculate_xxx` 入口加：
 
-```python
-if idx < N:
-    raise ValueError(
-        f"<factor_name> requires idx >= {N}, got idx={idx}. "
-        f"Upstream BreakoutDetector should have gated this BO via max_buffer "
-        f"(check FactorInfo.buffer in factor_registry.py)."
-    )
+```text
+def _calculate_xxx(self, df, idx):
+    if idx < N:                # N = 该因子的 effective buffer
+        return None            # lookback 不足 → 该因子对该 BO 不可算
+    # 正常计算 ...
 ```
 
-这样万一 §5 的 `buffer` 字段填错或漏填，扫描时第一时间崩出来，不会静默给噪声。参考 `_calculate_annual_volatility`（features.py:518）。
+这是第二道防线（第一道是 `has_buffer` 在 `enrich_breakout` 里拦截）。保留它使 `_calculate_xxx` 可以独立被测试/调用。
 
-### 5. BO 级 buffer（`FactorInfo.buffer`）
+### 5. Per-factor effective buffer（`FeatureCalculator._effective_buffer`）
 
-每个因子在 §1 的 `FactorInfo` 里**必须显式声明** `buffer=N`，告诉 BreakoutDetector "BO 在 idx<N 处不要产出"。`get_max_buffer()` 取所有活跃因子的最大值作为 detector 的硬下限。
+每个因子的 effective buffer（`idx >= N` 才能算）**必须**在 `FeatureCalculator._effective_buffer` 里注册一个 case。未注册的 fi.key 会 raise ValueError，在第一次扫描时立即暴露漏注册。
+
+**伪代码**：
+
+```python
+def _effective_buffer(self, fi) -> int:
+    if fi.key in {'age', 'test', 'height', 'peak_vol', 'streak', 'drought'}:
+        return 0
+    if fi.key == 'volume':  return 63
+    if fi.key == 'pk_mom':  return self.pk_lookback + self.atr_period
+    # ... 新因子在这里加 case
+    raise ValueError(f"No effective_buffer registered for factor '{fi.key}'")
+```
 
 **取值规则**：
 
-| 因子类型 | buffer 值 | 例 |
+| 因子类型 | effective buffer | 例 |
 |---|---|---|
-| 无历史 lookback（peak 属性 / detector 状态） | `0`（默认，可省略） | `age`, `streak` |
-| 单一窗口因子 | 窗口长度 | `volume=63` (VOLUME_LOOKBACK) |
-| 组合窗口（多个 sub_params 串联） | 各部分之和 | `pk_mom=44` (pk_lookback=30 + atr_period=14) |
-| 依赖 vol/MA/其他派生量 | 被依赖量的 buffer | `day_str=252`, `overshoot=252`, `pbm=252` (都依赖 annual_vol) |
+| 无历史 lookback（peak 属性 / detector 状态） | `0` | `age`, `streak`, `drought` |
+| 单一窗口因子 | 窗口长度 | `volume` → `63` |
+| 组合窗口（多个 sub_params 串联） | 各部分之和 | `pk_mom` → `self.pk_lookback + self.atr_period` |
+| 依赖 vol/MA/其他派生量 | 被依赖量的 buffer | `day_str/overshoot/pbm` → `252` (annual_volatility) |
 
-**注意事项**：
+**重要**：sub_params 通过 `self.xxx` 动态读；用户修改 YAML 里的 sub_param，`_effective_buffer` 自动反映实际 buffer 值。
 
-- buffer 假设 sub_params 取**默认值**。如果将来 sub_param 改大，需要同步调高 buffer，否则上游 gate 不充分，下游 `_calculate_xxx` 的严格契约会触发 raise（这就是 §4 那个契约的作用）
-- 即使是 INACTIVE 因子也填合理 buffer，未来重激活时不需要再回头补
-- buffer=0 是默认值，无 lookback 的因子可以省略不写
-
-设计背景：`docs/research/bo-level-buffer-redesign.md`
+**不再使用 `FactorInfo.buffer` 字段**（Spec 1 per-factor gate 改造后删除），SSOT 统一归 `_effective_buffer`。
 
 ## 不需要改动的文件（FACTOR_REGISTRY 自动驱动）
 
@@ -141,7 +146,7 @@ if idx < N:
 
 ```bash
 # 1. Registry
-uv run python -c "from BreakoutStrategy.factor_registry import get_factor; fi = get_factor('xxx'); print(fi); print('buffer =', fi.buffer)"
+uv run python -c "from BreakoutStrategy.factor_registry import get_factor; fi = get_factor('xxx'); print(fi)"
 
 # 2. Scorer（确认因子出现在评分分解中）
 uv run python -c "
@@ -156,8 +161,14 @@ from BreakoutStrategy.UI.config.param_editor_schema import PARAM_CONFIGS
 print('xxx_factor' in PARAM_CONFIGS['quality_scorer'])
 "
 
-# 4. max_buffer（确认新因子的 buffer 被聚合，必要时变更 detector gate）
-uv run python -c "from BreakoutStrategy.factor_registry import get_max_buffer; print('max_buffer =', get_max_buffer())"
+# 4. effective buffer（确认新因子已注册）
+uv run python -c "
+from BreakoutStrategy.analysis.features import FeatureCalculator
+from BreakoutStrategy.factor_registry import get_factor
+calc = FeatureCalculator()
+fi = get_factor('xxx')
+print('effective_buffer =', calc._effective_buffer(fi))
+"
 ```
 
 ## Common Pitfalls
@@ -168,4 +179,5 @@ uv run python -c "from BreakoutStrategy.factor_registry import get_max_buffer; p
 | Breakout dataclass 字段缺失 | `getattr(bo, key)` 返回默认值 0 |
 | features.py 未赋值 | 因子永远为 0（静默失效） |
 | sub_params 的 consumer 写错 | 参数传递到错误的消费者 |
-| `FactorInfo.buffer` 漏填或填错（< 实际 lookback） | 上游 gate 不充分 → `_calculate_xxx` 在 idx 不足时 raise（如有契约）或静默给噪声（无契约）。**所以新因子务必加 §4 的 raise 契约**作为兜底 |
+| `_effective_buffer` 忘加 case | 扫描时立即 `ValueError: No effective_buffer registered for factor 'xxx'`（strict contract 早暴露） |
+| `nullable=True` 漏加（且 effective_buffer>0） | scorer 对 None 走非 nullable 分支，raw_value 被当作 0 处理，FactorDetail.unavailable 不会显示，tooltip 不显示 "N/A" |
