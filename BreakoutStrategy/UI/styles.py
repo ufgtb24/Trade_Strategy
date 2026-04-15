@@ -38,6 +38,9 @@ CHART_COLORS = {
     "breakout_marker": "#0000FF",      # 突破标记（蓝色）
     "breakout_text_bg": "#FFFFFF",     # 突破文字背景（白色）
     "breakout_text_score": "#FF0000",  # 突破分数文字（红色）
+    "bo_marker_current": "#0000FF",    # 当前选中 matched BO（与 dev UI breakout_marker 同色）
+    "bo_marker_visible": "#00AEFFFF",    # 通过 filter 但未选中 matched BO（浅蓝）
+    "bo_marker_filtered_out": "#14DCB8",  # 被 filter 过滤掉的 matched BO（青绿，用户自定义）
     # 阻力区
     "resistance_zone": "#5D5932",     # 阻力区颜色（橄榄色）
     # 十字线

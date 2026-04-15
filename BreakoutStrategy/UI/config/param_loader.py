@@ -488,6 +488,29 @@ class UIParamLoader:
         return True
 
     @classmethod
+    def from_dict(cls, raw_params: dict) -> "UIParamLoader":
+        """从 dict 构造 UIParamLoader，避免临时文件 I/O。
+
+        用于实盘 UI 从 filter.yaml 的 scan_params 字段直接加载参数。
+
+        Args:
+            raw_params: 包含 breakout_detector / general_feature / quality_scorer
+                        三个顶层 key 的 dict
+
+        Returns:
+            UIParamLoader 实例，内部 _params 状态等价于从相应 YAML 文件加载
+        """
+        instance = object.__new__(cls)
+        instance._params_path = None  # 无关联文件
+        instance._params = raw_params
+        instance._project_root = None
+        instance._active_file = None
+        instance._is_memory_only = False
+        instance._listeners = []
+        instance._before_switch_hooks = []
+        return instance
+
+    @classmethod
     def parse_params(cls, raw_params: dict) -> tuple[dict, dict, dict]:
         """从原始参数字典解析出三组扫描参数，不影响单例状态。
 

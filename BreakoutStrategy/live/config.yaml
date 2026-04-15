@@ -1,0 +1,25 @@
+# 实盘 UI 配置
+# 路径相对于项目根目录
+
+# Trial 产出目录（策略知识的唯一来源）
+trial_dir: outputs/statistics/pk_gte/trials/14373
+
+# 股票数据目录（实盘独立，与开发 UI 的 datasets/pkls 隔离）
+data_dir: datasets/pkls_live
+
+# 扫描窗口（日历天）
+scan_window_days: 180
+
+# 价格和成交量过滤
+min_price: 1.0
+max_price: 10.0
+min_volume: 10000
+
+# 并发
+num_workers: 24
+
+# 结果缓存
+cache_path: outputs/live/last_results.json
+
+# 市场时区（用于数据新鲜度判断）
+market_timezone: America/New_York

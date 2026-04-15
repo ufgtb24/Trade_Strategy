@@ -1,6 +1,6 @@
 ---
 name: add-new-factor
-description: Use when adding a new factor to the breakout detection factor system - covers registration, computation, and dataclass field across 3 required files
+description: Use when adding a new factor to the breakout detection factor system - covers registration, computation, dataclass field, and BO-level buffer across required files
 ---
 
 # Add New Factor to Breakout System
@@ -20,6 +20,7 @@ FactorInfo('key', 'English Name', '中文名',
            (threshold1, threshold2), (value1, value2),
            category='context',
            unit='x', display_transform='round2',
+           buffer=N,                           # ← 必填：BO 级 lookback 需求
            # 可选：
            # is_discrete=True, has_nan_group=True,
            # mining_mode='lte', zero_guard=True, nullable=True,
@@ -37,6 +38,7 @@ FactorInfo('key', 'English Name', '中文名',
 - `zero_guard`: `True` 当 value <= 0 时 factor disabled
 - `nullable`: `True` 当 None 有语义（如 drought 首次突破）
 - `sub_params`: 计算参数元组，每个 `SubParamDef(yaml_name, internal_name, param_type, default, range, description, consumer)`
+- `buffer`: BO 级 lookback 硬下限（trading days）—— 详见 §"BO 级 buffer" 小节
 
 自动派生：`level_col = f"{key}_level"`, `yaml_key = f"{key}_factor"`
 
@@ -75,6 +77,40 @@ FactorInfo('key', 'English Name', '中文名',
 - 在 `enrich_breakout()` 中调用并赋值到 Breakout 构造器
 - 如需预计算序列（如 rolling），参照 `atr_series` 模式：在 caller 预计算一次，作为可选参数传入
 
+**严格 lookback 契约**：如果你的因子需要 N 根历史 bar，在 `_calculate_xxx` 入口加：
+
+```python
+if idx < N:
+    raise ValueError(
+        f"<factor_name> requires idx >= {N}, got idx={idx}. "
+        f"Upstream BreakoutDetector should have gated this BO via max_buffer "
+        f"(check FactorInfo.buffer in factor_registry.py)."
+    )
+```
+
+这样万一 §5 的 `buffer` 字段填错或漏填，扫描时第一时间崩出来，不会静默给噪声。参考 `_calculate_annual_volatility`（features.py:518）。
+
+### 5. BO 级 buffer（`FactorInfo.buffer`）
+
+每个因子在 §1 的 `FactorInfo` 里**必须显式声明** `buffer=N`，告诉 BreakoutDetector "BO 在 idx<N 处不要产出"。`get_max_buffer()` 取所有活跃因子的最大值作为 detector 的硬下限。
+
+**取值规则**：
+
+| 因子类型 | buffer 值 | 例 |
+|---|---|---|
+| 无历史 lookback（peak 属性 / detector 状态） | `0`（默认，可省略） | `age`, `streak` |
+| 单一窗口因子 | 窗口长度 | `volume=63` (VOLUME_LOOKBACK) |
+| 组合窗口（多个 sub_params 串联） | 各部分之和 | `pk_mom=44` (pk_lookback=30 + atr_period=14) |
+| 依赖 vol/MA/其他派生量 | 被依赖量的 buffer | `day_str=252`, `overshoot=252`, `pbm=252` (都依赖 annual_vol) |
+
+**注意事项**：
+
+- buffer 假设 sub_params 取**默认值**。如果将来 sub_param 改大，需要同步调高 buffer，否则上游 gate 不充分，下游 `_calculate_xxx` 的严格契约会触发 raise（这就是 §4 那个契约的作用）
+- 即使是 INACTIVE 因子也填合理 buffer，未来重激活时不需要再回头补
+- buffer=0 是默认值，无 lookback 的因子可以省略不写
+
+设计背景：`docs/research/bo-level-buffer-redesign.md`
+
 ## 不需要改动的文件（FACTOR_REGISTRY 自动驱动）
 
 以下模块通过遍历 `get_active_factors()` 动态驱动，添加新因子后**零修改**：
@@ -105,7 +141,7 @@ FactorInfo('key', 'English Name', '中文名',
 
 ```bash
 # 1. Registry
-uv run python -c "from BreakoutStrategy.factor_registry import get_factor; fi = get_factor('xxx'); print(fi)"
+uv run python -c "from BreakoutStrategy.factor_registry import get_factor; fi = get_factor('xxx'); print(fi); print('buffer =', fi.buffer)"
 
 # 2. Scorer（确认因子出现在评分分解中）
 uv run python -c "
@@ -119,6 +155,9 @@ uv run python -c "
 from BreakoutStrategy.UI.config.param_editor_schema import PARAM_CONFIGS
 print('xxx_factor' in PARAM_CONFIGS['quality_scorer'])
 "
+
+# 4. max_buffer（确认新因子的 buffer 被聚合，必要时变更 detector gate）
+uv run python -c "from BreakoutStrategy.factor_registry import get_max_buffer; print('max_buffer =', get_max_buffer())"
 ```
 
 ## Common Pitfalls
@@ -129,3 +168,4 @@ print('xxx_factor' in PARAM_CONFIGS['quality_scorer'])
 | Breakout dataclass 字段缺失 | `getattr(bo, key)` 返回默认值 0 |
 | features.py 未赋值 | 因子永远为 0（静默失效） |
 | sub_params 的 consumer 写错 | 参数传递到错误的消费者 |
+| `FactorInfo.buffer` 漏填或填错（< 实际 lookback） | 上游 gate 不充分 → `_calculate_xxx` 在 idx 不足时 raise（如有契约）或静默给噪声（无契约）。**所以新因子务必加 §4 的 raise 契约**作为兜底 |

@@ -513,23 +513,29 @@ class FeatureCalculator:
 
         Returns:
             年化波动率（小数形式，如 0.30 表示 30%）
+
+        Raises:
+            ValueError: 当 idx < 252 时。生产路径上 BreakoutDetector 的
+                max_buffer gate 已经保证不会以 idx<252 的 BO 进入因子计算。
+                如果触发，说明上游漏配了 max_buffer，需要排查调用链而非
+                在这里悄悄降级。
         """
-        # 使用最多 252 天数据，至少需要 20 天
-        lookback = min(252, idx)
-        if lookback < 20:
-            return 0.0
+        LOOKBACK = 252
+        if idx < LOOKBACK:
+            raise ValueError(
+                f"annual_volatility requires idx >= {LOOKBACK}, got idx={idx}. "
+                f"Upstream BreakoutDetector should have gated this BO via max_buffer "
+                f"(see factor_registry.get_max_buffer())."
+            )
 
         close = df["close"].values
 
         # 计算日收益率
         returns = []
-        for i in range(idx - lookback + 1, idx + 1):
+        for i in range(idx - LOOKBACK + 1, idx + 1):
             if i >= 1 and close[i - 1] > 0:
                 ret = (close[i] - close[i - 1]) / close[i - 1]
                 returns.append(ret)
-
-        if len(returns) < 20:
-            return 0.0
 
         # 年化波动率 = 日收益率标准差 * sqrt(252)
         return np.std(returns) * np.sqrt(252)

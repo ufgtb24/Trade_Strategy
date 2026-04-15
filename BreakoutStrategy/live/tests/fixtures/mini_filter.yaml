@@ -1,0 +1,39 @@
+_meta:
+  version: 4
+  sample_size: 100
+  baseline_median: 0.1
+  optimization:
+    thresholds:
+      age: 23.0
+      test: 3.0
+      height: 0.46
+      volume: 5.0
+    negative_factors:
+    - age
+    - test
+
+templates:
+- name: "age+test+height+volume"
+  factors: [age, test, height, volume]
+  count: 20
+  median: 0.5
+- name: "age+test+height"
+  factors: [age, test, height]
+  count: 15
+  median: 0.4
+
+scan_params:
+  breakout_detector:
+    total_window: 20
+    min_side_bars: 6
+    min_relative_height: 0.1
+    exceed_threshold: 0.005
+    peak_supersede_threshold: 0.03
+    peak_measure: body_top
+    breakout_mode: close
+  general_feature:
+    atr_period: 14
+    ma_period: 20
+    stability_lookforward: 5
+  quality_scorer:
+    factor_base_score: 50

@@ -4,6 +4,31 @@ import matplotlib.patches as mpatches
 import pandas as pd
 
 
+def _classify_bo(
+    idx: int,
+    current: int | None,
+    visible: set[int],
+    filtered_out: set[int],
+) -> str:
+    """Classify a BO into one of 4 live-UI tiers.
+
+    Args:
+        idx: This BO's chart-df index.
+        current: Currently-selected BO's chart-df index (or None).
+        visible: matched BO indices that appear in the MatchList right now.
+        filtered_out: matched BO indices that are hidden by MatchList filter.
+
+    Returns one of: "current" | "visible" | "filtered_out" | "plain".
+    """
+    if current is not None and idx == current:
+        return "current"
+    if idx in visible:
+        return "visible"
+    if idx in filtered_out:
+        return "filtered_out"
+    return "plain"
+
+
 class MarkerComponent:
     """标记绘制组件"""
 
@@ -251,6 +276,133 @@ class MarkerComponent:
                         alpha=0.9,
                     ),
                 )
+
+    @staticmethod
+    def draw_breakouts_live_mode(
+        ax,
+        df: pd.DataFrame,
+        breakouts: list,
+        current_bo_index,
+        visible_matched_indices: set[int] | None = None,
+        filtered_out_matched_indices: set[int] | None = None,
+        peaks: list = None,
+        colors: dict = None,
+    ):
+        """Live UI 专用：按 4 级（current/visible/filtered_out/plain）画圆圈 marker + 蓝字 label。
+
+        - current BO：深蓝实心、zorder=13、picker
+        - visible matched BO：浅蓝实心、zorder=12、picker
+        - filtered_out matched BO：青绿实心 alpha=0.7、zorder=11、picker（点击仅提示）
+        - plain BO：浅蓝空心、zorder=10、无 picker
+
+        每组独立 `ax.scatter`，以便 pick_event 通过 artist 区分归属。三组可点击
+        scatter 在 artist 上挂 `.bo_chart_indices` 列表，pick 回调用 event.ind[0]
+        反查。label [broken_peak_ids] 共用一次循环独立画。
+        """
+        if not breakouts:
+            return
+
+        if visible_matched_indices is None:
+            visible_matched_indices = set()
+        if filtered_out_matched_indices is None:
+            filtered_out_matched_indices = set()
+        colors = colors or {}
+        color_current = colors.get("bo_marker_current", "#1565C0")
+        color_visible = colors.get("bo_marker_visible", "#64B5F6")
+        color_filtered = colors.get("bo_marker_filtered_out", "#9E9E9E")
+        text_bg_color = colors.get("breakout_text_bg", "#FFFFFF")
+
+        # y 偏移计算（与 draw_breakouts 保持一致）
+        high_col = "high" if "high" in df.columns else "High"
+        low_col = "low" if "low" in df.columns else "Low"
+        has_high = high_col in df.columns
+        has_low = low_col in df.columns
+
+        ylim = ax.get_ylim()
+        if ylim != (0.0, 1.0) and ylim[1] > ylim[0]:
+            price_range = ylim[1] - ylim[0]
+        elif has_high and has_low:
+            price_range = (df[high_col].max() - df[low_col].min()) * 1.1
+        else:
+            price_range = df.iloc[0]["close"] * 0.2 if not df.empty else 1.0
+        if price_range == 0:
+            price_range = df[high_col].mean() * 0.1 if has_high else 1.0
+        offset_unit = price_range * 0.02
+
+        peak_indices = {p.index for p in peaks} if peaks else set()
+
+        # 按 4 级分桶
+        buckets: dict[str, list[tuple[int, float, float]]] = {
+            "current": [], "visible": [], "filtered_out": [], "plain": [],
+        }
+        label_items: list[tuple[int, float, str]] = []
+
+        for bo in breakouts:
+            bo_x = bo.index
+            base_price = (
+                df.iloc[bo_x][high_col] if has_high and 0 <= bo_x < len(df) else bo.price
+            )
+
+            is_overlap = bo_x in peak_indices
+            if is_overlap:
+                label_y = base_price + offset_unit * 2.2
+                marker_y = base_price + offset_unit * 4.0
+            else:
+                label_y = base_price + offset_unit * 0.6
+                marker_y = base_price + offset_unit * 2.4
+
+            tier = _classify_bo(
+                bo_x, current_bo_index, visible_matched_indices, filtered_out_matched_indices,
+            )
+            buckets[tier].append((bo_x, marker_y, base_price))
+
+            if hasattr(bo, "broken_peak_ids") and bo.broken_peak_ids:
+                peak_ids_text = ",".join(map(str, bo.broken_peak_ids))
+                label_items.append((bo_x, label_y, f"[{peak_ids_text}]"))
+
+        # 画 4 组 scatter，zorder 逐级抬高，可点击三组挂属性
+        def _draw_group(name, face, edge, zorder, pickable, alpha=1.0):
+            pts = buckets[name]
+            if not pts:
+                return
+            xs = [p[0] for p in pts]
+            ys = [p[1] for p in pts]
+            idxs = [p[0] for p in pts]
+            kwargs = dict(
+                marker="o", s=400, facecolors=face, edgecolors=edge,
+                linewidths=2, zorder=zorder, alpha=alpha,
+            )
+            if pickable:
+                kwargs["picker"] = True
+                kwargs["pickradius"] = 8
+            sc = ax.scatter(xs, ys, **kwargs)
+            # 所有组都挂，pick 回调只会对 pickable 的触发
+            sc.bo_chart_indices = idxs
+            sc.bo_tier = name
+            return sc
+
+        # plain：空心 + 深蓝边（与 current 同色，仅形状/填充区分）
+        # 三种实心（filtered_out/visible/current）：黑色边，face 体现 tier
+        edge_filled = "#000000"
+        _draw_group("plain", "none", color_current, zorder=10, pickable=False)
+        _draw_group("filtered_out", color_filtered, edge_filled, zorder=11, pickable=True, alpha=0.7)
+        _draw_group("visible", color_visible, edge_filled, zorder=12, pickable=True)
+        _draw_group("current", color_current, edge_filled, zorder=13, pickable=True)
+
+        # label 颜色统一用 current 深蓝，不随 tier 变——4 种背景+4 种 label 色会让
+        # 密集 BO 区域视觉过载；marker 形状/色已足以区分 tier，label 仅需可读
+        label_color = color_current
+        for bo_x, label_y, text in label_items:
+            ax.text(
+                bo_x, label_y, text,
+                fontsize=20, ha="center", va="bottom",
+                color=label_color, weight="bold", zorder=10,
+                bbox=dict(
+                    boxstyle="round,pad=0.3",
+                    facecolor=text_bg_color, edgecolor=label_color,
+                    linewidth=1.5, alpha=0.9,
+                ),
+            )
 
     @staticmethod
     def draw_resistance_zones(

@@ -222,7 +222,8 @@ class BreakoutDetector:
                  breakout_mode: str = 'body_top',
                  streak_window: int = 20,
                  use_cache: bool = False,
-                 cache_dir: str = "./cache"):
+                 cache_dir: str = "./cache",
+                 max_buffer: int = 0):
         """
         初始化突破检测器
 
@@ -246,6 +247,10 @@ class BreakoutDetector:
             streak_window: 连续突破统计窗口（默认20个交易日）
             use_cache: 是否使用持久化缓存（实时监控=True，回测=False）
             cache_dir: 缓存目录
+            max_buffer: BO 级 buffer 硬下限（trading days）。current_idx < max_buffer
+                时 _check_breakouts 直接 return None，等价于"该位置没检测到突破"。
+                生产路径应传 factor_registry.get_max_buffer()；测试和单股直调
+                可用默认 0（无 gate）保持 backward-compat。
         """
         # 参数验证
         if min_side_bars * 2 > total_window:
@@ -265,6 +270,7 @@ class BreakoutDetector:
         self.streak_window = streak_window
         self.use_cache = use_cache
         self.cache_dir = Path(cache_dir)
+        self.max_buffer = max_buffer
 
         # 核心状态
         self.prices = []           # 价格历史（close）
@@ -558,6 +564,14 @@ class BreakoutDetector:
             如果有突破，返回BreakoutInfo（包含所有被突破的峰值）
             如果没有突破，返回None
         """
+        # BO 级 buffer 硬门槛：current_idx 不足以让所有活跃因子的 lookback 成熟时
+        # 直接当作没检测到 —— 避免在因子计算时落入"短窗自适应"的噪声区间
+        # （详见 docs/research/bo-level-buffer-redesign.md）。
+        # 注意：这里在峰值检测/累积之外，前面 _detect_peak_in_window 已正常运行，
+        # 不影响阻力位的历史构建；仅"BO 的诞生"被 gate 住，无任何副作用。
+        if current_idx < self.max_buffer:
+            return None
+
         # 一次性确定突破判定价格和 elevation 价格
         breakout_price = self._get_measure_price(current_idx, self.breakout_mode)
         elevation_price = self._get_measure_price(current_idx, self.peak_measure)

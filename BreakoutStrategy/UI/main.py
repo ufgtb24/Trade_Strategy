@@ -12,6 +12,7 @@ import pandas as pd
 from BreakoutStrategy.analysis import BreakoutDetector
 from BreakoutStrategy.analysis.breakout_detector import Breakout, Peak
 from BreakoutStrategy.analysis.breakout_scorer import BreakoutScorer
+from BreakoutStrategy.factor_registry import get_max_buffer
 
 from .charts import ChartCanvasManager
 from .config import get_ui_config_loader, get_ui_scan_config_loader
@@ -379,6 +380,7 @@ class InteractiveUI:
             valid_start_index=valid_start_index,
             valid_end_index=valid_end_index,
             streak_window=params.get("streak_window", 20),
+            max_buffer=get_max_buffer(),  # 与生产 scanner 语义一致
         )
 
         # Breakout-level 价格过滤（与批量扫描一致，使用当前 scan settings）
