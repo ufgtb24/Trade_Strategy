@@ -72,6 +72,34 @@ class FeatureCalculator:
         # 格式: [{"max_days": 40}]
         self.label_configs: List[Dict] = config.get("label_configs", [])
 
+    def _effective_buffer(self, fi) -> int:
+        """因子级 lookback 的 SSOT。根据实例 sub_params attrs 计算真实 buffer。
+
+        新因子必须在这里注册一个 case。未注册时立即抛 ValueError（strict contract），
+        避免静默退化。
+        """
+        key = fi.key
+        if key in {'age', 'test', 'height', 'peak_vol', 'streak', 'drought'}:
+            return 0
+        if key == 'volume':
+            return 63  # VOLUME_LOOKBACK
+        if key == 'pk_mom':
+            return self.pk_lookback + self.atr_period
+        if key == 'pre_vol':
+            return 63 + self.pre_vol_window
+        if key == 'ma_pos':
+            return self.ma_pos_period
+        if key == 'ma_curve':
+            return self.ma_curve_period + 2 * self.ma_curve_stride
+        if key == 'dd_recov':
+            return self.dd_recov_lookback
+        if key in {'overshoot', 'day_str', 'pbm'}:
+            return 252  # annual_volatility LOOKBACK
+        raise ValueError(
+            f"No effective_buffer registered for factor '{key}'. "
+            f"Add a case in FeatureCalculator._effective_buffer."
+        )
+
     def enrich_breakout(
         self,
         df: pd.DataFrame,

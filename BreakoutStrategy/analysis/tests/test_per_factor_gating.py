@@ -6,7 +6,7 @@ from datetime import date
 from BreakoutStrategy.analysis.breakout_detector import Breakout
 from BreakoutStrategy.analysis.breakout_scorer import BreakoutScorer, FactorDetail
 from BreakoutStrategy.analysis.features import FeatureCalculator
-from BreakoutStrategy.factor_registry import FACTOR_REGISTRY
+from BreakoutStrategy.factor_registry import FACTOR_REGISTRY, FactorInfo, get_factor
 from BreakoutStrategy.UI.styles import SCORE_TOOLTIP_COLORS
 
 
@@ -139,3 +139,50 @@ def test_gain_5d_returns_none_when_idx_insufficient():
     calc = FeatureCalculator()
     df = _mk_test_df(20)
     assert calc._calculate_gain_5d(df, 3) is None
+
+
+def test_effective_buffer_zero_factors():
+    calc = FeatureCalculator()
+    for key in ('age', 'test', 'height', 'peak_vol', 'streak', 'drought'):
+        fi = get_factor(key)
+        assert calc._effective_buffer(fi) == 0, f"{key} should have buffer=0"
+
+
+def test_effective_buffer_volume_is_63():
+    calc = FeatureCalculator()
+    fi = get_factor('volume')
+    assert calc._effective_buffer(fi) == 63
+
+
+def test_effective_buffer_depends_on_sub_params():
+    """ma_pos_period=30 → _effective_buffer('ma_pos')=30"""
+    calc = FeatureCalculator(config={'ma_pos_period': 30})
+    fi = get_factor('ma_pos')
+    assert calc._effective_buffer(fi) == 30
+
+
+def test_effective_buffer_pk_mom_combines_sub_params():
+    """pk_mom buffer = pk_lookback + atr_period, 默认 30+14=44"""
+    calc = FeatureCalculator()
+    fi = get_factor('pk_mom')
+    assert calc._effective_buffer(fi) == 44
+
+    calc2 = FeatureCalculator(config={'pk_lookback': 50, 'atr_period': 20})
+    assert calc2._effective_buffer(fi) == 70
+
+
+def test_effective_buffer_annual_vol_dependent_factors():
+    """day_str/overshoot/pbm 的 buffer 都是 252（annual_volatility 的 lookback）"""
+    calc = FeatureCalculator()
+    for key in ('day_str', 'overshoot', 'pbm'):
+        fi = get_factor(key)
+        assert calc._effective_buffer(fi) == 252, f"{key} should be 252"
+
+
+def test_effective_buffer_unregistered_raises():
+    """伪造未注册的 fi.key → 抛 ValueError"""
+    import pytest
+    calc = FeatureCalculator()
+    fake_fi = FactorInfo('__fake__', 'Fake', '假', (), ())
+    with pytest.raises(ValueError, match="No effective_buffer registered"):
+        calc._effective_buffer(fake_fi)
