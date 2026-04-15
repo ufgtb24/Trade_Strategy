@@ -186,3 +186,54 @@ def test_effective_buffer_unregistered_raises():
     fake_fi = FactorInfo('__fake__', 'Fake', '假', (), ())
     with pytest.raises(ValueError, match="No effective_buffer registered"):
         calc._effective_buffer(fake_fi)
+
+
+# ---------------------------------------------------------------------------
+# Task 8: enrich_breakout has_buffer 集中调度测试
+# ---------------------------------------------------------------------------
+from BreakoutStrategy.analysis.breakout_detector import BreakoutInfo, Peak
+from BreakoutStrategy.analysis.indicators import TechnicalIndicators
+
+
+def test_enrich_breakout_short_lookback_produces_none_factors():
+    """idx=100 的 BO：volume(buffer=63) 有值；pbm/day_str/overshoot(buffer=252) 为 None。"""
+    calc = FeatureCalculator()
+    df = _mk_test_df(200)
+
+    peak = Peak(index=80, price=float(df['close'].iloc[80]), date=df.index[80].date(),
+                id=1)
+    bi = BreakoutInfo(
+        current_index=100, current_price=float(df['close'].iloc[100]),
+        current_date=df.index[100].date(),
+        broken_peaks=[peak], superseded_peaks=[],
+    )
+
+    bo = calc.enrich_breakout(df, bi, 'TEST')
+    # idx=100 >= 63，volume 应有值
+    assert bo.volume is not None
+    # idx=100 < 252，annual_volatility 依赖的几个应为 None
+    assert bo.pbm is None
+    assert bo.day_str is None
+    assert bo.overshoot is None
+    assert bo.annual_volatility is None
+
+
+def test_enrich_breakout_sufficient_lookback_all_factors_computed():
+    """idx>=252 时所有因子都应算出（非 None）。"""
+    calc = FeatureCalculator()
+    df = _mk_test_df(400)
+    atr_series = TechnicalIndicators.calculate_atr(df['high'], df['low'], df['close'], 14)
+
+    peak = Peak(index=270, price=float(df['close'].iloc[270]), date=df.index[270].date(),
+                id=1)
+    bi = BreakoutInfo(
+        current_index=300, current_price=float(df['close'].iloc[300]),
+        current_date=df.index[300].date(),
+        broken_peaks=[peak], superseded_peaks=[],
+    )
+
+    bo = calc.enrich_breakout(df, bi, 'TEST', atr_series=atr_series)
+    assert bo.volume is not None
+    assert bo.pbm is not None
+    assert bo.day_str is not None
+    assert bo.annual_volatility is not None

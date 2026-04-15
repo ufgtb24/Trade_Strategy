@@ -157,14 +157,24 @@ class FeatureCalculator:
             if pd.notna(atr_prev) and atr_prev > 0:
                 atr_value = float(atr_prev)
 
-        # 计算波动率相关字段（Breakout 基础字段 + 多因子共享中间变量，始终计算）
+        # 计算波动率相关字段（多因子共享中间变量）
         inactive = INACTIVE_FACTORS
-        annual_volatility = self._calculate_annual_volatility(df, idx)
-        gain_5d = self._calculate_gain_5d(df, idx) if 'overshoot' not in inactive else 0.0
+        from BreakoutStrategy.factor_registry import get_factor
 
-        # 注册因子计算（受总开关控制）
-        day_str = self._calculate_day_str(intraday_change_pct, gap_up_pct, annual_volatility) if 'day_str' not in inactive else 0.0
-        overshoot = self._calculate_overshoot(gain_5d, annual_volatility) if 'overshoot' not in inactive else 0.0
+        def has_buffer(key: str) -> bool:
+            """判断该因子在当前 idx 下是否满足 effective buffer。"""
+            if key in inactive:
+                return False
+            return idx >= self._effective_buffer(get_factor(key))
+
+        annual_volatility = self._calculate_annual_volatility(df, idx)
+        gain_5d = self._calculate_gain_5d(df, idx) if has_buffer('overshoot') else None
+
+        # 注册因子计算（受 per-factor gate 控制）
+        day_str = self._calculate_day_str(intraday_change_pct, gap_up_pct, annual_volatility) \
+                  if has_buffer('day_str') else None
+        overshoot = self._calculate_overshoot(gain_5d if gain_5d is not None else 0.0, annual_volatility) \
+                    if has_buffer('overshoot') else None
 
         # 计算突破幅度的 ATR 标准化（可选功能）
         atr_normalized_height = 0.0
@@ -173,8 +183,8 @@ class FeatureCalculator:
             breakout_amplitude = row["close"] - highest_peak.price
             atr_normalized_height = breakout_amplitude / atr_value
 
-        volume = self._calculate_volume_ratio(df, idx) if 'volume' not in inactive else 0.0
-        pbm = self._calculate_pbm(df, idx, annual_volatility) if 'pbm' not in inactive else 0.0
+        volume = self._calculate_volume_ratio(df, idx) if has_buffer('volume') else None
+        pbm = self._calculate_pbm(df, idx, annual_volatility) if has_buffer('pbm') else None
 
         # 计算稳定性
         highest_peak = breakout_info.highest_peak_broken
@@ -193,7 +203,7 @@ class FeatureCalculator:
         test = self._calculate_test(broken_peaks) if 'test' not in inactive else 0
 
         # pk_mom（使用距离 breakout 最近的 peak）
-        if 'pk_mom' not in inactive:
+        if has_buffer('pk_mom'):
             nearest_peak = max(breakout_info.broken_peaks, key=lambda p: p.index)
             pk_mom = self._calculate_pk_momentum(
                 df=df,
@@ -204,14 +214,15 @@ class FeatureCalculator:
                 atr_series=atr_series,
             )
         else:
-            pk_mom = 0.0
+            pk_mom = None
 
         # pre_vol
-        pre_vol = 0.0
-        if 'pre_vol' not in inactive and vol_ratio_series is not None:
+        if has_buffer('pre_vol') and vol_ratio_series is not None:
             pre_vol = self._calculate_pre_breakout_volume(vol_ratio_series, idx, self.pre_vol_window)
+        else:
+            pre_vol = None
 
-        ma_pos = self._calculate_ma_pos(df, idx) if 'ma_pos' not in inactive else 0.0
+        ma_pos = self._calculate_ma_pos(df, idx) if has_buffer('ma_pos') else None
         dd_recov = self._calculate_dd_recov(df, idx) if 'dd_recov' not in inactive else 0.0
         ma_curve = self._calculate_ma_curve(df, idx) if 'ma_curve' not in inactive else 0.0
 
