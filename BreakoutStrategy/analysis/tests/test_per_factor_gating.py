@@ -116,3 +116,26 @@ def test_pbm_returns_none_when_annual_vol_none():
     calc = FeatureCalculator()
     df = _mk_test_df(100)
     assert calc._calculate_pbm(df, 50, None) is None
+
+
+def test_ma_pos_returns_none_when_idx_insufficient():
+    """ma_pos_period 默认 20，无 ma_20 列时 idx<19 返回 None。"""
+    calc = FeatureCalculator(config={'ma_pos_period': 20})
+    df = _mk_test_df(100)
+    # df 没有 ma_20 列，走动态计算分支
+    result = calc._calculate_ma_pos(df, 10)
+    assert result is None
+
+
+def test_ma_curve_returns_none_when_idx_insufficient():
+    """ma_curve_period 默认 50，stride 默认 5，idx<60 时返回 None。"""
+    calc = FeatureCalculator()
+    df = _mk_test_df(100)
+    assert calc._calculate_ma_curve(df, 30) is None
+
+
+def test_gain_5d_returns_none_when_idx_insufficient():
+    """gain_window 默认 5，idx<5 时返回 None。"""
+    calc = FeatureCalculator()
+    df = _mk_test_df(20)
+    assert calc._calculate_gain_5d(df, 3) is None

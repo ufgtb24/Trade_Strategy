@@ -474,7 +474,7 @@ class FeatureCalculator:
         # pk_momentum = 1 + log(1 + D_atr)
         return 1.0 + math.log(1 + d_atr)
 
-    def _calculate_gain_5d(self, df: pd.DataFrame, idx: int) -> float:
+    def _calculate_gain_5d(self, df: pd.DataFrame, idx: int) -> Optional[float]:
         """
         计算 5 日涨幅（绝对值）
 
@@ -485,10 +485,10 @@ class FeatureCalculator:
             idx: 当前 bar 索引
 
         Returns:
-            5 日涨幅（小数形式，如 0.15 表示 15%）
+            5 日涨幅（小数形式，如 0.15 表示 15%）；lookback 不足时返回 None
         """
         if idx < self.gain_window:
-            return 0.0
+            return None
 
         close = df["close"].values
 
@@ -711,7 +711,7 @@ class FeatureCalculator:
                 current_cluster = 1
         return max(best_cluster, current_cluster)
 
-    def _calculate_ma_pos(self, df: pd.DataFrame, idx: int) -> float:
+    def _calculate_ma_pos(self, df: pd.DataFrame, idx: int) -> Optional[float]:
         """
         计算均线位置（MA Position）：突破日收盘价相对 N 日均线的溢价率
 
@@ -722,7 +722,7 @@ class FeatureCalculator:
             idx: 突破点索引
 
         Returns:
-            close / MA_N - 1.0，MA 无效时返回 0.0
+            close / MA_N - 1.0，MA 无效时返回 0.0；动态计算分支 lookback 不足时返回 None
         """
         period = self.ma_pos_period
         ma_col = f"ma_{period}"
@@ -733,7 +733,7 @@ class FeatureCalculator:
         else:
             # 动态计算（当 period 非 20/50 时）
             if idx < period - 1:
-                return 0.0
+                return None
             ma_val = df["close"].iloc[idx - period + 1: idx + 1].mean()
 
         if pd.notna(ma_val) and ma_val > 0:
@@ -787,7 +787,7 @@ class FeatureCalculator:
 
         return drawdown * recovery_ratio * (1 - recovery_ratio) ** (decay_power - 1)
 
-    def _calculate_ma_curve(self, df: pd.DataFrame, idx: int) -> float:
+    def _calculate_ma_curve(self, df: pd.DataFrame, idx: int) -> Optional[float]:
         """
         MA 曲率因子：宽间隔二阶差分的归一化值
 
@@ -805,13 +805,13 @@ class FeatureCalculator:
             idx: 突破点索引
 
         Returns:
-            归一化曲率值
+            归一化曲率值；lookback 不足时返回 None
         """
         period = self.ma_curve_period   # 默认 50
         k = self.ma_curve_stride        # 宽间隔步幅，默认 5
 
         if idx < period + 2 * k:
-            return 0.0
+            return None
 
         # 只需 3 个 MA 采样点：t, t-k, t-2k
         ma_col = f"ma_{period}"
