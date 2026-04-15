@@ -8,7 +8,9 @@ if TYPE_CHECKING:
     from BreakoutStrategy.live.pipeline.results import MatchedBreakout
 
 
-def _fmt(value: float) -> str:
+def _fmt(value) -> str:
+    if value is None:
+        return "N/A"
     if isinstance(value, int):
         return str(value)
     return f"{value:.2f}"
