@@ -191,8 +191,10 @@ class ScoreDetailWindow:
         for f in factors:
             bg_color = self.COLORS["row_bg"] if row_idx % 2 == 1 else self.COLORS["row_alt_bg"]
 
-            # 根据触发状态选择颜色
-            if f.triggered:
+            # 根据状态选择颜色：triggered > unavailable > not_triggered
+            if f.unavailable:
+                factor_color = self.COLORS.get("factor_unavailable", "#B8B8B8")
+            elif f.triggered:
                 factor_color = self.COLORS.get("factor_triggered", "#2E7D32")
             else:
                 factor_color = self.COLORS.get("factor_not_triggered", "#9E9E9E")
@@ -209,8 +211,8 @@ class ScoreDetailWindow:
                 pady=3
             ).grid(row=row_idx, column=0, sticky="ew", padx=1, pady=1)
 
-            # 原始值
-            value_text = self._format_value(f.raw_value, f.unit)
+            # 原始值（unavailable 时显示 N/A）
+            value_text = "N/A" if f.unavailable else self._format_value(f.raw_value, f.unit)
             tk.Label(
                 table,
                 text=value_text,
@@ -222,8 +224,8 @@ class ScoreDetailWindow:
                 pady=3
             ).grid(row=row_idx, column=1, sticky="ew", padx=1, pady=1)
 
-            # Factor 乘数
-            multiplier_text = f"×{f.multiplier:.2f}"
+            # Factor 乘数（unavailable 时显示 em-dash 表示"不参与运算"）
+            multiplier_text = "—" if f.unavailable else f"×{f.multiplier:.2f}"
             tk.Label(
                 table,
                 text=multiplier_text,
