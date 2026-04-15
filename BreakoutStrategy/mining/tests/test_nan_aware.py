@@ -111,3 +111,31 @@ def test_apply_binary_levels_positive_factor_nan_not_triggered():
     assert df['volume_level'].iloc[0] == 0
     assert df['volume_level'].iloc[1] == 0  # NaN
     assert df['volume_level'].iloc[2] == 1
+
+
+def test_build_triggered_matrix_nan_not_triggered():
+    """NaN 样本在正向/反向因子上都判为未触发（level=0）。"""
+    from BreakoutStrategy.mining.threshold_optimizer import build_triggered_matrix
+
+    raw_values = {
+        'volume': np.array([2.5, np.nan, 10.0]),
+        'overshoot': np.array([2.0, np.nan, 10.0]),
+    }
+    thresholds = {'volume': 5.0, 'overshoot': 5.0}
+    factor_order = ['volume', 'overshoot']
+
+    # volume gte 5.0; overshoot lte 5.0
+    triggered = build_triggered_matrix(
+        raw_values, thresholds, factor_order,
+        negative_factors={'overshoot'},
+    )
+
+    # Sample 0: volume=2.5 (not gte 5) → 0; overshoot=2.0 (lte 5) → 1
+    assert triggered[0, 0] == 0
+    assert triggered[0, 1] == 1
+    # Sample 1: NaN NaN → both 0（missing-as-fail）
+    assert triggered[1, 0] == 0
+    assert triggered[1, 1] == 0
+    # Sample 2: volume=10.0 (gte) → 1; overshoot=10.0 (not lte) → 0
+    assert triggered[2, 0] == 1
+    assert triggered[2, 1] == 0

@@ -32,8 +32,10 @@ def build_triggered_matrix(raw_values, thresholds, factor_order,
     正向因子: value >= threshold → triggered=1
     反向因子: value <= threshold → triggered=1
 
+    per-factor gate: NaN 样本一律 triggered=0（missing-as-fail）。
+
     Args:
-        raw_values: prepare_raw_values() 的输出
+        raw_values: prepare_raw_values() 的输出（可能含 NaN）
         thresholds: {key: threshold_value}
         factor_order: 因子顺序列表（决定 bit 位置）
         negative_factors: 反向因子集合，使用 <= 触发
@@ -46,10 +48,12 @@ def build_triggered_matrix(raw_values, thresholds, factor_order,
     triggered = np.zeros((n, n_factors), dtype=np.int64)
     for i, key in enumerate(factor_order):
         if key in thresholds and key in raw_values:
+            raw = raw_values[key]
+            valid = ~np.isnan(raw)
             if key in negative_factors:
-                triggered[:, i] = (raw_values[key] <= thresholds[key]).astype(np.int64)
+                triggered[:, i] = (valid & (raw <= thresholds[key])).astype(np.int64)
             else:
-                triggered[:, i] = (raw_values[key] >= thresholds[key]).astype(np.int64)
+                triggered[:, i] = (valid & (raw >= thresholds[key])).astype(np.int64)
     return triggered
 
 
