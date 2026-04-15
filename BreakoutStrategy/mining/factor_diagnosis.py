@@ -231,8 +231,17 @@ def diagnose_log_scale(raw_values: dict[str, np.ndarray],
     return results
 
 
-def write_diagnosed_yaml(source_yaml: str, output_yaml: str, modes: dict[str, str]):
-    """读取 source_yaml 结构，写入所有因子的诊断方向，输出 output_yaml。"""
+def write_diagnosed_yaml(source_yaml: str, output_yaml: str, modes: dict[str, str],
+                         audit_info: dict[str, dict] | None = None):
+    """读取 source_yaml 结构，写入所有因子的诊断方向及审计字段，输出 output_yaml。
+
+    Args:
+        source_yaml: 结构模板 yaml 路径
+        output_yaml: 输出路径
+        modes: {factor_key: 'gte'|'lte'}
+        audit_info: 可选。{factor_key: {valid_count, valid_ratio, buffer}}。
+                   per-factor gate 下让用户看到每因子的统计基础。
+    """
     with open(source_yaml) as f:
         cfg = yaml.safe_load(f)
     qs = cfg['quality_scorer']
@@ -252,6 +261,15 @@ def write_diagnosed_yaml(source_yaml: str, output_yaml: str, modes: dict[str, st
                 **{sp.yaml_name: sp.default for sp in fi.sub_params},
             }
         qs[yaml_key]['mode'] = mode
+        # per-factor gate: 审计字段（让用户直接看到每因子的统计基础）
+        if audit_info and key in audit_info:
+            info = audit_info[key]
+            if 'valid_count' in info:
+                qs[yaml_key]['valid_count'] = info['valid_count']
+            if 'valid_ratio' in info:
+                qs[yaml_key]['valid_ratio'] = round(info['valid_ratio'], 4)
+            if 'buffer' in info:
+                qs[yaml_key]['buffer'] = info['buffer']
 
     # 移除非活跃因子条目
     inactive_yaml_keys = {f.yaml_key for f in FACTOR_REGISTRY if f.key in INACTIVE_FACTORS}
@@ -314,8 +332,26 @@ def main(input_csv, yaml_path, output_yaml, auto_apply):
                 print(f"      Q{qr[0]:.0%}-{qr[1]:.0%}: r={seg['spearman_r']:+.4f}  "
                       f"(n={seg['n_samples']}, p={seg['spearman_p']:.4f})")
 
+    # per-factor gate: 为每因子计算审计字段（valid_count/valid_ratio/buffer）
+    from BreakoutStrategy.analysis.features import FeatureCalculator
+    calc = FeatureCalculator()
+    audit_info = {}
+    total_bo = len(df)
+    for fi in all_factors:
+        key = fi.key
+        arr = raw_values.get(key)
+        if arr is None:
+            continue
+        valid_count = int(np.sum(~np.isnan(arr)))
+        audit_info[key] = {
+            'valid_count': valid_count,
+            'valid_ratio': valid_count / total_bo if total_bo > 0 else 0.0,
+            'buffer': calc._effective_buffer(fi),
+        }
+
     if auto_apply:
-        write_diagnosed_yaml(yaml_path, output_yaml, diagnosed_modes)
+        write_diagnosed_yaml(yaml_path, output_yaml, diagnosed_modes,
+                             audit_info=audit_info)
         print(f"\n  Diagnosed {len(diagnosed_modes)} factors. Written to {output_yaml}")
     else:
         print(f"\n  Diagnosed {len(diagnosed_modes)} factors. (dry run)")

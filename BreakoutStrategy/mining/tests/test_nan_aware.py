@@ -153,3 +153,35 @@ def test_tpe_bounds_skip_nan():
     # 对照：未过滤的 np.quantile 应为 NaN（这是 numpy 的行为）
     lo_contam = float(np.quantile(raw, 0.02))
     assert np.isnan(lo_contam), "numpy's np.quantile should return NaN when input contains NaN"
+
+
+def test_factor_diag_yaml_has_audit_fields(tmp_path):
+    """factor_diag.yaml 每因子条目含 valid_count/valid_ratio/buffer。"""
+    import yaml
+    from BreakoutStrategy.mining.factor_diagnosis import write_diagnosed_yaml
+
+    # 造一个最小 source yaml
+    source_yaml = tmp_path / "source.yaml"
+    source_yaml.write_text(yaml.dump({
+        'quality_scorer': {
+            'volume_factor': {
+                'enabled': True,
+                'thresholds': [5.0, 10.0],
+                'values': [1.5, 2.0],
+            },
+        },
+    }))
+
+    output_yaml = tmp_path / "factor_diag.yaml"
+
+    # 提供 modes + 新增的 audit_info
+    modes = {'volume': 'gte'}
+    audit_info = {'volume': {'valid_count': 1000, 'valid_ratio': 0.85, 'buffer': 63}}
+    write_diagnosed_yaml(str(source_yaml), str(output_yaml), modes, audit_info=audit_info)
+
+    loaded = yaml.safe_load(output_yaml.read_text())
+    vol = loaded['quality_scorer']['volume_factor']
+    assert vol['mode'] == 'gte'
+    assert vol['valid_count'] == 1000
+    assert vol['valid_ratio'] == 0.85
+    assert vol['buffer'] == 63
