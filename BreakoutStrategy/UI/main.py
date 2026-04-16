@@ -14,6 +14,7 @@ from BreakoutStrategy.analysis.breakout_detector import Breakout, Peak
 from BreakoutStrategy.analysis.breakout_scorer import BreakoutScorer
 
 from .charts import ChartCanvasManager
+from .charts.range_utils import ChartRangeSpec, trim_df_to_display, adjust_indices
 from .config import get_ui_config_loader, get_ui_scan_config_loader
 from .managers import NavigationManager, ScanManager, TemplateManager, compute_breakouts_from_dataframe, preprocess_dataframe
 from .panels import ParameterPanel, StockListPanel, TemplatePanel
@@ -268,32 +269,12 @@ class InteractiveUI:
         self.current_active_peaks = active_peaks
         self.current_superseded_peaks = superseded_peaks
 
-        # 裁剪 df 到显示范围（移除 ATR 缓冲期，保留 Label 缓冲期）
-        # 注意：_load_stock_data 添加前后缓冲，图表显示 [start_date, end_date + label_buffer]
-        display_df, index_offset, label_buffer_start = self._trim_df_for_display(
-            df, start_date, end_date
-        )
-
-        # 调整 breakout 和 peak 的 index 以匹配裁剪后的 df
-        display_breakouts = self._adjust_breakout_indices(breakouts, index_offset)
-        display_active_peaks = self._adjust_peak_indices(active_peaks, index_offset)
-        display_superseded_peaks = self._adjust_peak_indices(superseded_peaks, index_offset)
-
         # 获取显示选项并更新图表
         display_options = self.param_panel.get_display_options()
 
-        # 计算模板匹配索引
-        template_indices = None
-        if self.param_panel.get_use_template() and self.current_symbol in self.template_matched:
-            template_indices = self._get_template_display_indices(
-                symbol, display_breakouts, index_offset
-            )
-
-        self.chart_manager.update_chart(
-            display_df, display_breakouts, display_active_peaks,
-            display_superseded_peaks, symbol, display_options,
-            label_buffer_start_idx=label_buffer_start,
-            template_matched_indices=template_indices,
+        self._render_chart(
+            df, breakouts, active_peaks, superseded_peaks,
+            symbol, display_options, start_date, end_date,
         )
 
         # 计算完成后，检查是否需要显示临时行
@@ -379,6 +360,8 @@ class InteractiveUI:
             valid_start_index=valid_start_index,
             valid_end_index=valid_end_index,
             streak_window=params.get("streak_window", 20),
+            scan_start_date=start_date,
+            scan_end_date=end_date,
         )
 
         # Breakout-level 价格过滤（与批量扫描一致，使用当前 scan settings）
@@ -547,106 +530,70 @@ class InteractiveUI:
         """
         return self.scan_data if hasattr(self, 'scan_data') and self.scan_data else None
 
-    def _trim_df_for_display(
-        self, df: pd.DataFrame, start_date: str = None, end_date: str = None
-    ) -> tuple:
+    def _render_chart(
+        self,
+        df: pd.DataFrame,
+        breakouts: list,
+        active_peaks: list,
+        superseded_peaks: list,
+        symbol: str,
+        display_options: dict,
+        start_date: str,
+        end_date: str,
+    ) -> None:
         """
-        裁剪 DataFrame 到显示范围（移除 ATR 缓冲期，保留 Label 缓冲期）
+        统一图表渲染入口：构造 ChartRangeSpec，裁切数据，调整索引，调用 update_chart。
 
         Args:
-            df: 包含缓冲期的 DataFrame
-            start_date: 用户配置的起始日期 (YYYY-MM-DD)
-            end_date: 用户配置的结束日期 (YYYY-MM-DD)
-
-        Returns:
-            (display_df, index_offset, label_buffer_start_idx) 元组
-            - display_df: 裁剪后的 DataFrame（包含 Label 缓冲期）
-            - index_offset: 前置裁剪掉的行数（用于调整 breakout/peak index）
-            - label_buffer_start_idx: Label 缓冲区在 display_df 中的起始索引（用于视觉区分）
-        """
-        label_buffer_start_idx = None
-
-        # 前置裁剪（移除 ATR 缓冲期）
-        if not start_date:
-            first_idx = 0
-        else:
-            start_dt = pd.to_datetime(start_date)
-            mask = df.index >= start_dt
-            if not mask.any():
-                return df, 0, None
-            first_idx = mask.argmax()
-
-        # 计算 Label 缓冲区起始位置（end_date 之后的第一个位置）
-        if end_date:
-            end_dt = pd.to_datetime(end_date)
-            # 找到 <= end_date 的最后一个位置（在原 df 中）
-            end_mask = df.index <= end_dt
-            if end_mask.any():
-                # 使用 searchsorted 找到正确位置
-                end_positions = df.index.searchsorted(end_dt, side='right')
-                if end_positions > first_idx:
-                    # Label 缓冲区起始索引（相对于 display_df）
-                    label_buffer_start_idx = end_positions - first_idx
-
-        display_df = df.iloc[first_idx:].copy()
-        return display_df, first_idx, label_buffer_start_idx
-
-    def _adjust_breakout_indices(self, breakouts: list, offset: int) -> list:
-        """
-        调整 breakout 对象的 index 以匹配裁剪后的 DataFrame
-
-        Args:
+            df: preprocessed DataFrame（含 df.attrs["range_meta"]）
             breakouts: 原始 breakout 列表
-            offset: index 偏移量
-
-        Returns:
-            调整后的 breakout 列表（浅拷贝，只修改 index）
+            active_peaks: 原始 active peak 列表
+            superseded_peaks: 原始 superseded peak 列表
+            symbol: 股票代码
+            display_options: 显示选项字典
+            start_date: 扫描起始日期字符串 (YYYY-MM-DD)
+            end_date: 扫描结束日期字符串 (YYYY-MM-DD)
         """
-        if offset == 0:
-            return breakouts
+        # 从 df.attrs 读 range_meta，构造 spec（Dev UI 用全展开模式：display_min_window=None）
+        _meta = df.attrs.get("range_meta", {})
+        _display_end = _meta.get("label_buffer_end_actual") or df.index[-1].date()
+        spec = ChartRangeSpec.from_df_and_scan(
+            df,
+            scan_start=start_date,
+            scan_end=end_date,
+            display_end=_display_end,
+            display_min_window=None,  # Dev UI 全展开
+        )
 
-        adjusted = []
-        for bo in breakouts:
-            # 跳过在显示范围之前的 breakout
-            if bo.index < offset:
-                continue
-            # 创建浅拷贝并调整 index
-            new_bo = bo.__class__.__new__(bo.__class__)
-            new_bo.__dict__.update(bo.__dict__)
-            new_bo.index = bo.index - offset
-            # 同时调整 broken_peaks 的 index
-            if hasattr(new_bo, 'broken_peaks') and new_bo.broken_peaks:
-                new_bo.broken_peaks = self._adjust_peak_indices(
-                    new_bo.broken_peaks, offset
-                )
-            adjusted.append(new_bo)
-        return adjusted
+        # 裁切 + 调整索引
+        display_df, index_offset = trim_df_to_display(df, spec)
+        display_breakouts = adjust_indices(breakouts, index_offset)
+        display_active_peaks = adjust_indices(active_peaks, index_offset)
+        # superseded_peaks 顶层单独调整（adjust_indices 不递归 superseded_peaks）
+        display_superseded_peaks = adjust_indices(superseded_peaks, index_offset)
 
-    def _adjust_peak_indices(self, peaks: list, offset: int) -> list:
-        """
-        调整 peak 对象的 index 以匹配裁剪后的 DataFrame
+        # 向后兼容：从 spec 推导 label_buffer_start_idx（Dev UI 保留旧的 label_buffer 灰色区）
+        label_buffer_start = None
+        if spec.scan_end_actual and len(display_df):
+            _end_dt = pd.to_datetime(spec.scan_end_actual)
+            _mask = display_df.index > _end_dt
+            if _mask.any():
+                label_buffer_start = int(_mask.argmax())
 
-        Args:
-            peaks: 原始 peak 列表
-            offset: index 偏移量
+        # 计算模板匹配的显示索引
+        template_indices = None
+        if self.param_panel.get_use_template() and symbol in self.template_matched:
+            template_indices = self._get_template_display_indices(
+                symbol, display_breakouts, index_offset
+            )
 
-        Returns:
-            调整后的 peak 列表（浅拷贝，只修改 index）
-        """
-        if offset == 0:
-            return peaks
-
-        adjusted = []
-        for peak in peaks:
-            # 跳过在显示范围之前的 peak
-            if peak.index < offset:
-                continue
-            # 创建浅拷贝并调整 index
-            new_peak = peak.__class__.__new__(peak.__class__)
-            new_peak.__dict__.update(peak.__dict__)
-            new_peak.index = peak.index - offset
-            adjusted.append(new_peak)
-        return adjusted
+        self.chart_manager.update_chart(
+            display_df, display_breakouts, display_active_peaks,
+            display_superseded_peaks, symbol, display_options,
+            label_buffer_start_idx=label_buffer_start,
+            template_matched_indices=template_indices,
+            spec=spec,
+        )
 
     def _on_param_changed(self):
         """
@@ -982,27 +929,13 @@ class InteractiveUI:
         start_date, end_date = self.config_loader.get_time_range_for_stock(
             self.current_symbol, self.scan_data
         )
-        display_df, index_offset, label_buffer_start = self._trim_df_for_display(
-            self.current_df, start_date, end_date
-        )
-        display_breakouts = self._adjust_breakout_indices(self.current_breakouts or [], index_offset)
-        display_active_peaks = self._adjust_peak_indices(self.current_active_peaks or [], index_offset)
-        display_superseded_peaks = self._adjust_peak_indices(
-            self.current_superseded_peaks or [], index_offset
-        )
 
-        # 计算模板匹配的显示索引
-        template_indices = None
-        if self.param_panel.get_use_template() and self.current_symbol in self.template_matched:
-            template_indices = self._get_template_display_indices(
-                self.current_symbol, display_breakouts, index_offset
-            )
-
-        self.chart_manager.update_chart(
-            display_df, display_breakouts, display_active_peaks,
-            display_superseded_peaks, self.current_symbol, display_options,
-            label_buffer_start_idx=label_buffer_start,
-            template_matched_indices=template_indices,
+        self._render_chart(
+            self.current_df,
+            self.current_breakouts or [],
+            self.current_active_peaks or [],
+            self.current_superseded_peaks or [],
+            self.current_symbol, display_options, start_date, end_date,
         )
 
     def _get_template_display_indices(
