@@ -8,7 +8,12 @@ from typing import Callable, Optional
 
 import pandas as pd
 
-from BreakoutStrategy.UI.charts.range_utils import ChartRangeSpec
+from BreakoutStrategy.UI.charts.range_utils import ChartRangeSpec, DISPLAY_MIN_WINDOW
+from BreakoutStrategy.analysis.scanner import (
+    VOLUME_LOOKBACK_BUFFER,
+    ANNUAL_VOL_LOOKBACK_BUFFER,
+    TRADING_TO_CALENDAR_RATIO,
+)
 from BreakoutStrategy.live.pipeline.results import MatchedBreakout
 from BreakoutStrategy.live.pipeline.trial_loader import TrialBundle
 
@@ -16,9 +21,33 @@ from BreakoutStrategy.live.pipeline.trial_loader import TrialBundle
 # DataFreshnessChecker 优先读这个，避免"部分更新"时抽样误判为 fresh。
 DOWNLOAD_MARKER_FILENAME = ".last_full_update"
 
-# Download window covers: 3-year display (1095d) + safety margin (30d).
-# akshare 下载始终是全部历史，此参数只控制本地保存范围。
-DOWNLOAD_DAYS = 1125
+
+def _compute_download_days(
+    scan_window_days: int,
+    ma_period: int = 200,
+    label_max_days: int = 20,
+    safety_days: int = 30,
+    display_window_days: int = DISPLAY_MIN_WINDOW.days,
+) -> int:
+    """推导 Live pkl 下载窗口天数（从三层范围常量派生）。
+
+    公式：max(display_window, scan_window + compute_buffer + label_buffer) + safety
+
+    Args:
+        scan_window_days: 扫描窗口（来自 LiveConfig）
+        ma_period: 最长 MA 周期（当前 Live 默认 200）
+        label_max_days: label 所需后置天数
+        safety_days: 安全垫
+        display_window_days: 显示窗口下限（来自 range_utils.DISPLAY_MIN_WINDOW）
+
+    Returns:
+        下载保留的日历天数。覆盖显示 + 计算 + label + 安全垫。
+    """
+    required_trading_days = max(ma_period, VOLUME_LOOKBACK_BUFFER, ANNUAL_VOL_LOOKBACK_BUFFER)
+    compute_buffer_days = int(required_trading_days * TRADING_TO_CALENDAR_RATIO)
+    label_buffer_days = int(label_max_days * 1.5)
+    compute_need = scan_window_days + compute_buffer_days + label_buffer_days
+    return max(display_window_days, compute_need) + safety_days
 
 
 def _build_range_spec_for_symbol(pkl_path, scan_start: str, scan_end: str) -> Optional[ChartRangeSpec]:
@@ -127,7 +156,7 @@ class DailyPipeline:
         multi_download_stock(
             tickers=tickers,
             save_root=str(self.data_dir),
-            days_from_now=DOWNLOAD_DAYS,
+            days_from_now=_compute_download_days(scan_window_days=self.scan_window_days),
             clear=False,  # 不清空目录，让 download_stock 覆盖各个文件
             num_workers=download_workers,
             file_format="pkl",
