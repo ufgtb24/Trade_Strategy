@@ -463,14 +463,46 @@ class ChartCanvasManager:
         ax.add_patch(rect)
 
     def _draw_range_spec_shading(self, ax, df, spec):
-        """按 spec 绘制三段阴影：pre-scan / main / post-scan。
+        """按 spec 绘制三段阴影 + 降级虚线。
 
-        只绘制两端灰色（alpha=0.15），中间主扫描区不绘制。
+        三段阴影：pre-scan / main / post-scan。
+        降级虚线：scan_start_degraded 或 scan_end_degraded 时，在对应位置画橙色虚线。
         """
         if spec is None:
             return
+
+        # 三段阴影
         self._draw_shade(ax, df, spec.display_start, spec.scan_start_actual)
         self._draw_shade(ax, df, spec.scan_end_actual, spec.display_end)
+
+        # 降级虚线
+        if spec.scan_start_degraded:
+            self._draw_degradation_line(
+                ax, df, spec.scan_start_actual,
+                label=f"scan start (req {spec.scan_start_ideal})",
+            )
+        if spec.scan_end_degraded:
+            self._draw_degradation_line(
+                ax, df, spec.scan_end_actual,
+                label=f"scan end (req {spec.scan_end_ideal})",
+            )
+
+    def _draw_degradation_line(self, ax, df, date_value, label, color="#FF8800"):
+        """在指定日期画橙色虚线，顶部附文字标注。"""
+        if date_value is None:
+            return
+        dt = pd.to_datetime(date_value)
+        mask = df.index >= dt
+        if not mask.any():
+            return
+        idx = int(mask.argmax())
+        ax.axvline(x=idx, color=color, linestyle="--", linewidth=1.0, zorder=5, alpha=0.8)
+        _ymin, ymax = ax.get_ylim()
+        ax.text(
+            idx, ymax * 0.98, label,
+            color=color, fontsize=8, ha="left", va="top",
+            bbox=dict(facecolor="white", edgecolor=color, alpha=0.9, boxstyle="round,pad=0.3"),
+        )
 
     def _draw_shade(self, ax, df, start_date, end_date, alpha=0.15, color="#808080"):
         """在 ax 上绘制 [start_date, end_date] 区间的灰色阴影（基于 df 行号）。
