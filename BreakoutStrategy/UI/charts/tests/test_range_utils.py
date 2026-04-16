@@ -275,3 +275,19 @@ def test_from_df_and_scan_display_min_window_none_means_full_scan():
     )
     # display_start 沿 scan_start_actual
     assert spec.display_start == spec.scan_start_actual
+
+
+def test_from_df_and_scan_works_without_compute_breakouts():
+    """JSON cache 路径：只 preprocess、不 compute_breakouts，工厂应仍可构造 spec。"""
+    df = _make_pkl_for_spec()
+    df = preprocess_dataframe(df, start_date="2024-01-01", end_date="2024-12-31")
+    # 注意：不调用 compute_breakouts_from_dataframe
+    spec = ChartRangeSpec.from_df_and_scan(
+        df,
+        scan_start="2024-01-01",
+        scan_end="2024-12-31",
+        display_end=date(2024, 12, 31),
+        display_min_window=None,
+    )
+    assert spec.scan_start_actual == date(2024, 1, 1)
+    assert spec.scan_end_actual == date(2024, 12, 31)

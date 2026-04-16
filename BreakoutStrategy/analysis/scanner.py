@@ -110,7 +110,32 @@ def preprocess_dataframe(
         df["high"], df["low"], df["close"], atr_period
     )
 
-    # 写入范围元数据（scan_start/end_actual 留待 compute_breakouts_from_dataframe 补齐）
+    # 计算 scan_start/end_actual（df 已经被裁到 [buffer_start, buffer_end]）
+    scan_start_actual = None
+    scan_end_actual = None
+    if len(df):
+        if start_date:
+            start_dt = pd.to_datetime(start_date)
+            mask_start = df.index >= start_dt
+            if mask_start.any():
+                scan_start_actual = df.index[int(mask_start.argmax())].date()
+            else:
+                # df 中全部早于 start_date（理论上不应发生）
+                scan_start_actual = df.index[-1].date()
+        else:
+            scan_start_actual = df.index[0].date()
+        if end_date:
+            end_dt = pd.to_datetime(end_date)
+            idx_le = df.index[df.index <= end_dt]
+            if len(idx_le):
+                # 找到最后一个 <= end_date 的位置
+                scan_end_actual = idx_le[-1].date()
+            else:
+                scan_end_actual = df.index[0].date()
+        else:
+            scan_end_actual = df.index[-1].date()
+
+    # 写入范围元数据
     df.attrs["range_meta"] = {
         "pkl_start": pkl_start,
         "pkl_end": pkl_end,
@@ -120,6 +145,8 @@ def preprocess_dataframe(
         "compute_start_actual": df.index[0].date() if len(df) else None,
         "label_buffer_end_ideal": buffer_end.date() if buffer_end is not None else None,
         "label_buffer_end_actual": df.index[-1].date() if len(df) else None,
+        "scan_start_actual": scan_start_actual,
+        "scan_end_actual": scan_end_actual,
     }
 
     return df

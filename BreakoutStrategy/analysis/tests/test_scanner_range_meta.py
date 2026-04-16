@@ -122,3 +122,22 @@ def test_compute_breakouts_logs_scan_end_degradation(caplog):
     meta = df.attrs["range_meta"]
     assert meta["scan_end_actual"] < pd.to_datetime("2024-12-31").date()
     assert any("scan_end degraded" in r.message for r in caplog.records)
+
+
+def test_preprocess_writes_scan_start_end_actual():
+    """preprocess 应该在裁切后就能写入 scan_*_actual（即使未调用 compute_breakouts）。"""
+    df = _make_pkl()
+    out = preprocess_dataframe(df.copy(), start_date="2024-01-01", end_date="2024-12-31")
+    meta = out.attrs["range_meta"]
+    assert "scan_start_actual" in meta
+    assert "scan_end_actual" in meta
+    assert str(meta["scan_start_actual"]) == "2024-01-01"
+    assert str(meta["scan_end_actual"]) == "2024-12-31"
+
+
+def test_preprocess_scan_start_actual_degrades_when_pkl_starts_later():
+    """pkl 起点晚于 scan_start → preprocess 写的 scan_start_actual 也降级。"""
+    df = _make_pkl(start="2024-03-01", periods=500)
+    out = preprocess_dataframe(df.copy(), start_date="2024-01-01", end_date="2024-12-31")
+    meta = out.attrs["range_meta"]
+    assert str(meta["scan_start_actual"]) == "2024-03-01"
