@@ -79,8 +79,8 @@ class ChartRangeSpec:
             )
 
         return cls(
-            scan_start_ideal=pd.to_datetime(scan_start).date(),
-            scan_end_ideal=pd.to_datetime(scan_end).date(),
+            scan_start_ideal=(pd.to_datetime(scan_start).date() if scan_start else meta["scan_start_actual"]),
+            scan_end_ideal=(pd.to_datetime(scan_end).date() if scan_end else meta["scan_end_actual"]),
             scan_start_actual=scan_start_actual,
             scan_end_actual=meta["scan_end_actual"],
             compute_start_ideal=meta["compute_start_ideal"],

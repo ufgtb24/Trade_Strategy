@@ -291,3 +291,25 @@ def test_from_df_and_scan_works_without_compute_breakouts():
     )
     assert spec.scan_start_actual == date(2024, 1, 1)
     assert spec.scan_end_actual == date(2024, 12, 31)
+
+
+def test_from_df_and_scan_handles_none_scan_dates():
+    """当 scan_start/scan_end 为 None 时，ideal 字段 fallback 到 actual，不崩。"""
+    df = _make_pkl_for_spec()
+    df = preprocess_dataframe(df, start_date="2024-01-01", end_date="2024-12-31")
+    compute_breakouts_from_dataframe(
+        symbol="TEST", df=df,
+        scan_start_date="2024-01-01", scan_end_date="2024-12-31",
+        **_DETECTOR_KWARGS,
+    )
+    spec = ChartRangeSpec.from_df_and_scan(
+        df,
+        scan_start=None,  # type: ignore
+        scan_end=None,    # type: ignore
+        display_end=date(2024, 12, 31),
+        display_min_window=None,
+    )
+    assert spec.scan_start_ideal == spec.scan_start_actual
+    assert spec.scan_end_ideal == spec.scan_end_actual
+    assert spec.scan_start_degraded is False
+    assert spec.scan_end_degraded is False
