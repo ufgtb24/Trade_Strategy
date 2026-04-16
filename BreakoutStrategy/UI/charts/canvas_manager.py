@@ -87,6 +87,7 @@ class ChartCanvasManager:
         template_matched_indices: list[int] = None,
         initial_window_days: int | None = None,
         filter_cutoff_date=None,
+        spec=None,
     ):
         """
         更新图表显示
@@ -102,7 +103,10 @@ class ChartCanvasManager:
             template_matched_indices: 模板匹配命中的 K 线索引列表（用于绘制高亮条）
             initial_window_days: 初始显示窗口（日历日数），None 表示保留 candlestick 默认全范围
             filter_cutoff_date: Filter 时间范围可视化的截止日期，由 Task 5 的 _draw_filter_range 消费
+            spec: ChartRangeSpec，可选。本 task 仅存储不消费
         """
+        self._last_spec = spec
+
         # 1. 清理旧图表（防内存泄漏）
         self._cleanup()
 

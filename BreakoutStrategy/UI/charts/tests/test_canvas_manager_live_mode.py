@@ -158,3 +158,9 @@ def test_live_mode_pick_event_invokes_on_bo_picked(tk_container, minimal_df):
     fake_event = SimpleNamespace(artist=target, ind=[0])
     mgr._on_pick(fake_event)
     assert received == [target.bo_chart_indices[0]]
+
+
+def test_update_chart_signature_has_spec_parameter():
+    import inspect
+    sig = inspect.signature(ChartCanvasManager.update_chart)
+    assert "spec" in sig.parameters, "update_chart missing 'spec' parameter"
