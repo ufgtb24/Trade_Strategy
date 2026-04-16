@@ -47,6 +47,50 @@ class ChartRangeSpec:
     def compute_buffer_degraded(self) -> bool:
         return self.compute_start_actual > self.compute_start_ideal
 
+    @classmethod
+    def from_df_and_scan(
+        cls,
+        df: pd.DataFrame,
+        scan_start: str,
+        scan_end: str,
+        display_end: date,
+        display_min_window: Optional[timedelta] = DISPLAY_MIN_WINDOW,
+    ) -> "ChartRangeSpec":
+        """
+        基于 preprocessed df.attrs + 扫描配置构造完整 spec。
+
+        要求 df.attrs["range_meta"] 已包含 scan_start_actual / scan_end_actual
+        （由 scanner.compute_breakouts_from_dataframe 写入）。
+
+        - display_min_window=None：Dev UI 全展开模式，display_start = max(pkl_start, scan_start_actual)
+        - display_min_window=timedelta(...)：Live UI，display_start = max(pkl_start, min(scan_start_actual, display_end - window))
+        """
+        meta = df.attrs["range_meta"]
+        pkl_start = meta["pkl_start"]
+        scan_start_actual = meta["scan_start_actual"]
+
+        if display_min_window is None:
+            # Dev UI: 全展开，display_start 沿 scan_start_actual（若更早则到 pkl 起点）
+            display_start = max(pkl_start, scan_start_actual)
+        else:
+            display_start = max(
+                pkl_start,
+                min(scan_start_actual, display_end - display_min_window),
+            )
+
+        return cls(
+            scan_start_ideal=pd.to_datetime(scan_start).date(),
+            scan_end_ideal=pd.to_datetime(scan_end).date(),
+            scan_start_actual=scan_start_actual,
+            scan_end_actual=meta["scan_end_actual"],
+            compute_start_ideal=meta["compute_start_ideal"],
+            compute_start_actual=meta["compute_start_actual"],
+            display_start=display_start,
+            display_end=display_end,
+            pkl_start=pkl_start,
+            pkl_end=meta["pkl_end"],
+        )
+
 
 def trim_df_to_display(df: pd.DataFrame, spec: ChartRangeSpec) -> tuple[pd.DataFrame, int]:
     """
@@ -86,3 +130,15 @@ def adjust_indices(items: list, offset: int) -> list:
             new_item.broken_peaks = adjust_indices(new_item.broken_peaks, offset)
         result.append(new_item)
     return result
+
+
+def _collect_warnings(spec: ChartRangeSpec) -> list[str]:
+    """汇总 spec 上所有降级状态，返回可显示的字符串列表（顺序稳定）。"""
+    warnings = []
+    if spec.scan_start_degraded:
+        warnings.append(f"scan_start→{spec.scan_start_actual}")
+    if spec.scan_end_degraded:
+        warnings.append(f"scan_end→{spec.scan_end_actual}")
+    if spec.compute_buffer_degraded:
+        warnings.append("MA buffer short")
+    return warnings
