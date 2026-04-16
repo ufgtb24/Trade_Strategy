@@ -273,8 +273,10 @@ class ChartCanvasManager:
             colors=colors,
         )
 
-        # 绘制 Label 缓冲区视觉标记（分割线 + 浅灰背景）
-        if label_buffer_start_idx is not None and label_buffer_start_idx < len(df):
+        # 优先按 spec 绘三段；spec 为 None 时保留旧的 label_buffer 逻辑
+        if self._last_spec is not None:
+            self._draw_range_spec_shading(ax_main, df, self._last_spec)
+        elif label_buffer_start_idx is not None and label_buffer_start_idx < len(df):
             self._draw_label_buffer_zone(ax_main, df, label_buffer_start_idx, colors)
 
         self.panel.draw_statistics_panel(ax_stats, breakouts)
@@ -459,6 +461,37 @@ class ChartCanvasManager:
             linewidth=0,
         )
         ax.add_patch(rect)
+
+    def _draw_range_spec_shading(self, ax, df, spec):
+        """按 spec 绘制三段阴影：pre-scan / main / post-scan。
+
+        只绘制两端灰色（alpha=0.15），中间主扫描区不绘制。
+        """
+        if spec is None:
+            return
+        self._draw_shade(ax, df, spec.display_start, spec.scan_start_actual)
+        self._draw_shade(ax, df, spec.scan_end_actual, spec.display_end)
+
+    def _draw_shade(self, ax, df, start_date, end_date, alpha=0.15, color="#808080"):
+        """在 ax 上绘制 [start_date, end_date] 区间的灰色阴影（基于 df 行号）。
+
+        start_date/end_date 为 datetime.date；区间空/逆序时跳过。
+        """
+        if start_date is None or end_date is None:
+            return
+        if start_date >= end_date:
+            return
+        start_dt = pd.to_datetime(start_date)
+        end_dt = pd.to_datetime(end_date)
+        start_mask = df.index >= start_dt
+        if not start_mask.any():
+            return
+        start_idx = int(start_mask.argmax())
+        # end_idx: 在 df 中找 <= end_date 的最后一个位置的后一位
+        end_idx = int(df.index.searchsorted(end_dt, side="right"))
+        if end_idx <= start_idx:
+            return
+        ax.axvspan(start_idx - 0.5, end_idx - 0.5, alpha=alpha, color=color, zorder=0)
 
     def _draw_filter_range(self, ax, df, cutoff_date):
         """绘制 filter 的时间范围：浅灰背景 + 黑色虚线左边界。
