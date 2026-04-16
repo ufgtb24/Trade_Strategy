@@ -14,7 +14,7 @@ from BreakoutStrategy.analysis.breakout_detector import Breakout, Peak
 from BreakoutStrategy.analysis.breakout_scorer import BreakoutScorer
 
 from .charts import ChartCanvasManager
-from .charts.range_utils import ChartRangeSpec, trim_df_to_display, adjust_indices
+from .charts.range_utils import ChartRangeSpec, trim_df_to_display, adjust_indices, _collect_warnings
 from .config import get_ui_config_loader, get_ui_scan_config_loader
 from .managers import NavigationManager, ScanManager, TemplateManager, compute_breakouts_from_dataframe, preprocess_dataframe
 from .panels import ParameterPanel, StockListPanel, TemplatePanel
@@ -272,10 +272,19 @@ class InteractiveUI:
         # 获取显示选项并更新图表
         display_options = self.param_panel.get_display_options()
 
-        self._render_chart(
+        spec = self._render_chart(
             df, breakouts, active_peaks, superseded_peaks,
             symbol, display_options, start_date, end_date,
         )
+
+        # 若 spec 有降级警告，追加到当前状态栏文字
+        if spec:
+            warnings = _collect_warnings(spec)
+            if warnings:
+                # 读取当前状态文字，追加 ⚠ 警告信息
+                current_text = self.param_panel.status_label.cget("text")
+                warning_suffix = f" ⚠ {', '.join(warnings)}"
+                self.param_panel.set_status(current_text + warning_suffix, "orange")
 
         # 计算完成后，检查是否需要显示临时行
         if self.param_panel.get_use_ui_params():
@@ -540,7 +549,7 @@ class InteractiveUI:
         display_options: dict,
         start_date: str,
         end_date: str,
-    ) -> None:
+    ) -> ChartRangeSpec:
         """
         统一图表渲染入口：构造 ChartRangeSpec，裁切数据，调整索引，调用 update_chart。
 
@@ -553,6 +562,9 @@ class InteractiveUI:
             display_options: 显示选项字典
             start_date: 扫描起始日期字符串 (YYYY-MM-DD)
             end_date: 扫描结束日期字符串 (YYYY-MM-DD)
+
+        Returns:
+            构造好的 ChartRangeSpec（供调用者读取 warnings）
         """
         # 从 df.attrs 读 range_meta，构造 spec（Dev UI 用全展开模式：display_min_window=None）
         _meta = df.attrs.get("range_meta", {})
@@ -594,6 +606,7 @@ class InteractiveUI:
             template_matched_indices=template_indices,
             spec=spec,
         )
+        return spec
 
     def _on_param_changed(self):
         """
