@@ -52,3 +52,51 @@ def test_preprocess_compute_start_actual_equals_pkl_start_when_pkl_shorter():
     meta = out.attrs["range_meta"]
     # pkl 起点晚于 buffer_start (约 2022-11-13)，compute_start_actual 应跟随 pkl
     assert str(meta["compute_start_actual"]) == "2023-08-01"
+
+
+import logging
+from BreakoutStrategy.analysis.scanner import compute_breakouts_from_dataframe
+
+
+def test_compute_breakouts_writes_scan_actual_when_no_degradation(caplog):
+    df = _make_pkl()
+    df = preprocess_dataframe(df, start_date="2024-01-01", end_date="2024-12-31")
+    with caplog.at_level(logging.INFO, logger="BreakoutStrategy.analysis.scanner"):
+        compute_breakouts_from_dataframe(
+            df, scan_start_date="2024-01-01", scan_end_date="2024-12-31"
+        )
+    meta = df.attrs["range_meta"]
+    assert str(meta["scan_start_actual"]) == "2024-01-01"
+    assert str(meta["scan_end_actual"]) == "2024-12-31"
+    # 未降级：不应有 INFO 日志
+    assert not any("degraded" in r.message for r in caplog.records)
+
+
+def test_compute_breakouts_logs_and_records_scan_start_degradation(caplog):
+    """pkl 起点晚于 scan_start 时，compute_breakouts 应记录 actual > ideal 并写日志。"""
+    # pkl 起点 2024-03-01，scan_start 2024-01-01 —— scan_start 被降级
+    df = _make_pkl(start="2024-03-01", periods=500)
+    df = preprocess_dataframe(df, start_date="2024-01-01", end_date="2024-12-31")
+    with caplog.at_level(logging.INFO, logger="BreakoutStrategy.analysis.scanner"):
+        compute_breakouts_from_dataframe(
+            df, scan_start_date="2024-01-01", scan_end_date="2024-12-31"
+        )
+    meta = df.attrs["range_meta"]
+    assert str(meta["scan_start_actual"]) == "2024-03-01"
+    assert any(
+        "scan_start degraded" in r.message for r in caplog.records
+    ), f"no degradation log found, records: {[r.message for r in caplog.records]}"
+
+
+def test_compute_breakouts_logs_scan_end_degradation(caplog):
+    """pkl 终点早于 scan_end 时，scan_end 被降级。"""
+    # pkl 终点 2024-06-30，scan_end 2024-12-31 —— scan_end 被降级
+    df = _make_pkl(start="2022-01-01", periods=912)  # 截止 2024-06-30
+    df = preprocess_dataframe(df, start_date="2024-01-01", end_date="2024-12-31")
+    with caplog.at_level(logging.INFO, logger="BreakoutStrategy.analysis.scanner"):
+        compute_breakouts_from_dataframe(
+            df, scan_start_date="2024-01-01", scan_end_date="2024-12-31"
+        )
+    meta = df.attrs["range_meta"]
+    assert meta["scan_end_actual"] < pd.to_datetime("2024-12-31").date()
+    assert any("scan_end degraded" in r.message for r in caplog.records)

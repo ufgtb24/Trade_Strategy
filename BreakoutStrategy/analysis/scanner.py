@@ -5,11 +5,14 @@
 """
 
 import json
+import logging
 import os
 from datetime import datetime
 from multiprocessing import Pool
 from pathlib import Path
 from typing import Dict, List, Tuple
+
+logger = logging.getLogger(__name__)
 
 import pandas as pd
 
@@ -123,13 +126,13 @@ def preprocess_dataframe(
 
 
 def compute_breakouts_from_dataframe(
-    symbol: str,
     df: pd.DataFrame,
-    total_window: int,
-    min_side_bars: int,
-    min_relative_height: float,
-    exceed_threshold: float,
-    peak_supersede_threshold: float,
+    symbol: str = "",
+    total_window: int = 60,
+    min_side_bars: int = 5,
+    min_relative_height: float = 0.02,
+    exceed_threshold: float = 0.01,
+    peak_supersede_threshold: float = 0.02,
     peak_measure: str = 'body_top',
     breakout_mode: str = 'body_top',
     feature_calc_config: dict = None,
@@ -137,13 +140,15 @@ def compute_breakouts_from_dataframe(
     valid_start_index: int = 0,
     valid_end_index: int = None,
     streak_window: int = 20,
+    scan_start_date: str = None,
+    scan_end_date: str = None,
 ) -> Tuple[List, BreakoutDetector]:
     """
     从 DataFrame 计算突破（统一突破计算函数）
 
     Args:
-        symbol: 股票代码
         df: 数据 DataFrame
+        symbol: 股票代码
         total_window: 总窗口大小（左右合计）
         min_side_bars: 单侧最少K线数
         min_relative_height: 最小相对高度
@@ -155,10 +160,51 @@ def compute_breakouts_from_dataframe(
         scorer_config: BreakoutScorer 配置字典
         valid_start_index: 有效检测范围起始索引（之前的数据仅用于 ATR 等指标计算）
         valid_end_index: 有效检测范围结束索引（之后的数据为 Label 缓冲区，不检测）
+        scan_start_date: 扫描起始日期字符串（用于写 actual 字段和降级日志）
+        scan_end_date: 扫描结束日期字符串（用于写 actual 字段和降级日志）
 
     Returns:
         (breakouts, detector) 元组
     """
+    _valid_end = valid_end_index if valid_end_index is not None else len(df)
+
+    # 补齐 scan_start/end_actual 到 df.attrs["range_meta"] + 降级日志
+    if len(df) and (scan_start_date or scan_end_date):
+        meta = df.attrs.get("range_meta", {})
+
+        if scan_start_date:
+            ideal_start = pd.to_datetime(scan_start_date).date()
+            # 找到 df 中第一个 >= scan_start_date 的日期（即实际扫描起点）
+            mask_start = df.index >= pd.to_datetime(scan_start_date)
+            if mask_start.any():
+                scan_start_actual = df.index[mask_start.argmax()].date()
+            else:
+                scan_start_actual = df.index[-1].date()
+            meta["scan_start_actual"] = scan_start_actual
+            if scan_start_actual > ideal_start:
+                logger.info(
+                    "scan_start degraded: requested=%s, actual=%s (pkl starts later)",
+                    ideal_start, scan_start_actual,
+                )
+
+        if scan_end_date:
+            ideal_end = pd.to_datetime(scan_end_date).date()
+            # 找到 df 中最后一个 <= scan_end_date 的日期（即实际扫描终点）
+            mask_end = df.index <= pd.to_datetime(scan_end_date)
+            if mask_end.any():
+                last_idx = len(df) - mask_end[::-1].argmax() - 1
+                scan_end_actual = df.index[last_idx].date()
+            else:
+                scan_end_actual = df.index[0].date()
+            meta["scan_end_actual"] = scan_end_actual
+            if scan_end_actual < ideal_end:
+                logger.info(
+                    "scan_end degraded: requested=%s, actual=%s (pkl ends earlier)",
+                    ideal_end, scan_end_actual,
+                )
+
+        df.attrs["range_meta"] = meta
+
     # 运行突破检测
     detector = BreakoutDetector(
         symbol=symbol,
