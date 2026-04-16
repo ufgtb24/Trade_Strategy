@@ -619,10 +619,16 @@ class MatchList(ttk.Frame):
     # ---------- 行渲染 ----------
 
     def _row_values(self, it: "MatchedBreakout") -> tuple:
+        from BreakoutStrategy.UI.charts.range_utils import _collect_warnings
+
         symbol = it.symbol
         # 星标规则：sentiment_score > 0.30
         if it.sentiment_score is not None and it.sentiment_score > 0.30:
             symbol += " ★"
+        # 范围降级标记：任一 warning 触发 ⚠
+        if it.range_spec is not None and _collect_warnings(it.range_spec):
+            symbol += " ⚠"
+
         date_txt = it.breakout_date
         price_txt = f"{it.breakout_price:.2f}"
         if it.sentiment_score is None:
