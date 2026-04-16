@@ -111,6 +111,96 @@ def test_roundtrip_preserves_new_fields(tmp_path):
     assert restored.all_matched_bo_chart_indices == [100]
 
 
+def _make_range_spec():
+    from datetime import date
+    from BreakoutStrategy.UI.charts.range_utils import ChartRangeSpec
+    return ChartRangeSpec(
+        scan_start_ideal=date(2024, 1, 1),
+        scan_end_ideal=date(2024, 12, 31),
+        scan_start_actual=date(2024, 6, 1),
+        scan_end_actual=date(2024, 12, 31),
+        compute_start_ideal=date(2023, 11, 13),
+        compute_start_actual=date(2024, 1, 1),
+        display_start=date(2022, 1, 1),
+        display_end=date(2024, 12, 31),
+        pkl_start=date(2023, 6, 1),
+        pkl_end=date(2024, 12, 31),
+    )
+
+
+def test_serialize_match_strips_range_spec():
+    """_serialize_match 把含 datetime.date 的 range_spec 置 None，保证可 json.dumps。"""
+    import json
+    from BreakoutStrategy.live.pipeline.results import MatchedBreakout, _serialize_match
+
+    mb = MatchedBreakout(
+        symbol="AAPL",
+        breakout_date="2024-08-15",
+        breakout_price=200.0,
+        factors={},
+        sentiment_score=None,
+        sentiment_category="pending",
+        sentiment_summary=None,
+        raw_breakout={"index": 0, "date": "2024-08-15", "price": 200.0},
+        raw_peaks=[],
+        range_spec=_make_range_spec(),
+    )
+    d = _serialize_match(mb)
+    assert d["range_spec"] is None        # 序列化时 range_spec 被清除
+    json_str = json.dumps(d)              # 不应抛 TypeError
+    assert isinstance(json_str, str)
+
+
+def test_save_cached_results_with_range_spec_does_not_raise(tmp_path):
+    """含 range_spec 的 MatchedBreakout 能被 save_cached_results 写入，不抛 TypeError。"""
+    mb = MatchedBreakout(
+        symbol="AAPL",
+        breakout_date="2024-08-15",
+        breakout_price=200.0,
+        factors={"f": 1.0},
+        sentiment_score=None,
+        sentiment_category="pending",
+        sentiment_summary=None,
+        raw_breakout={"index": 0, "date": "2024-08-15", "price": 200.0},
+        raw_peaks=[],
+        range_spec=_make_range_spec(),
+    )
+    cached = CachedResults(
+        items=[mb],
+        scan_date="2024-08-15T18:00:00",
+        last_scan_bar_date="2024-08-15",
+    )
+    path = tmp_path / "cache.json"
+    save_cached_results(cached, path)     # 不应抛
+    assert path.exists()
+
+
+def test_load_cached_results_after_range_spec_save_has_range_spec_none(tmp_path):
+    """save 后 load，range_spec 为 None（由调用方在需要时重建）。"""
+    mb = MatchedBreakout(
+        symbol="AAPL",
+        breakout_date="2024-08-15",
+        breakout_price=200.0,
+        factors={},
+        sentiment_score=None,
+        sentiment_category="pending",
+        sentiment_summary=None,
+        raw_breakout={"index": 0},
+        raw_peaks=[],
+        range_spec=_make_range_spec(),
+    )
+    cached = CachedResults(
+        items=[mb],
+        scan_date="2024-08-15T18:00:00",
+        last_scan_bar_date="2024-08-15",
+    )
+    path = tmp_path / "cache.json"
+    save_cached_results(cached, path)
+    loaded = load_cached_results(path)
+    assert loaded is not None
+    assert loaded.items[0].range_spec is None
+
+
 def test_load_cached_results_legacy_file_without_new_fields(tmp_path):
     """旧缓存 JSON 缺 all_stock_breakouts / all_matched_bo_chart_indices 字段 → 加载后两字段退化为空 list。"""
     import json

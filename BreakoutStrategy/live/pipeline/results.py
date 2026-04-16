@@ -39,11 +39,22 @@ class CachedResults:
     last_scan_bar_date: str               # 扫描使用的最新 K 线日期 YYYY-MM-DD
 
 
+def _serialize_match(match: MatchedBreakout) -> dict:
+    """把 MatchedBreakout 转为可被 json.dump 序列化的 dict。
+
+    range_spec 包含 datetime.date，无法直接被 json.dump 处理，因此序列化时
+    置 None。反序列化后由 _rebuild_chart 的 fallback 分支现场重建。
+    """
+    d = asdict(match)
+    d["range_spec"] = None
+    return d
+
+
 def save_cached_results(cached: CachedResults, path: Path) -> None:
     """把 CachedResults 保存为 JSON。创建父目录（如需）。"""
     path.parent.mkdir(parents=True, exist_ok=True)
     data = {
-        "items": [asdict(it) for it in cached.items],
+        "items": [_serialize_match(it) for it in cached.items],
         "scan_date": cached.scan_date,
         "last_scan_bar_date": cached.last_scan_bar_date,
     }
