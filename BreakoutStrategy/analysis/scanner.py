@@ -63,7 +63,7 @@ def preprocess_dataframe(
     atr_period: int = 14,
 ) -> pd.DataFrame:
     """
-    数据预处理：截取时间范围 + 计算技术指标
+    数据预处理：截取时间范围 + 计算技术指标 + 写入 range_meta 元数据
 
     Args:
         df: 原始 OHLCV DataFrame
@@ -74,17 +74,23 @@ def preprocess_dataframe(
         atr_period: ATR 计算周期，默认 14
 
     Returns:
-        预处理后的 DataFrame，包含 ma_xxx 和 atr 列
+        预处理后的 DataFrame，包含 ma_xxx / atr 列和 df.attrs["range_meta"]
     """
     if ma_periods is None:
         ma_periods = [200]
 
-    # 动态计算缓冲区：取均线周期、成交量回看、年化波动率回看的最大值，转换为日历天
+    # 记录 pkl 原始边界（在 df 被裁切之前）
+    pkl_start = df.index[0].date() if len(df) else None
+    pkl_end = df.index[-1].date() if len(df) else None
+
+    # 动态计算缓冲区
     max_ma_period = max(ma_periods) if ma_periods else 200
     required_trading_days = max(max_ma_period, VOLUME_LOOKBACK_BUFFER, ANNUAL_VOL_LOOKBACK_BUFFER)
     buffer_days = int(required_trading_days * TRADING_TO_CALENDAR_RATIO)
     label_buffer_days = int(label_max_days * 1.5)
 
+    buffer_start = None
+    buffer_end = None
     if start_date:
         buffer_start = pd.to_datetime(start_date) - pd.Timedelta(days=buffer_days)
         df = df[df.index >= buffer_start]
@@ -92,14 +98,26 @@ def preprocess_dataframe(
         buffer_end = pd.to_datetime(end_date) + pd.Timedelta(days=label_buffer_days)
         df = df[df.index <= buffer_end]
 
-    # 计算均线（在缓冲数据上计算，确保显示时有完整值）
+    # 计算均线
     for period in ma_periods:
         df[f"ma_{period}"] = df["close"].rolling(window=period).mean()
 
-    # 计算 ATR（用于突破检测和特征计算）
+    # 计算 ATR
     df["atr"] = TechnicalIndicators.calculate_atr(
         df["high"], df["low"], df["close"], atr_period
     )
+
+    # 写入范围元数据（scan_start/end_actual 留待 compute_breakouts_from_dataframe 补齐）
+    df.attrs["range_meta"] = {
+        "pkl_start": pkl_start,
+        "pkl_end": pkl_end,
+        "scan_start_ideal": pd.to_datetime(start_date).date() if start_date else None,
+        "scan_end_ideal": pd.to_datetime(end_date).date() if end_date else None,
+        "compute_start_ideal": buffer_start.date() if buffer_start is not None else None,
+        "compute_start_actual": df.index[0].date() if len(df) else None,
+        "label_buffer_end_ideal": buffer_end.date() if buffer_end is not None else None,
+        "label_buffer_end_actual": df.index[-1].date() if len(df) else None,
+    }
 
     return df
 
