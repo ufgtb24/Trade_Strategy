@@ -100,6 +100,17 @@ class FeatureCalculator:
             f"Add a case in FeatureCalculator._effective_buffer."
         )
 
+    @classmethod
+    def max_effective_buffer(cls, config: Optional[dict] = None) -> int:
+        """返回所有已注册因子在给定配置下的最大 lookback（trading days）。
+
+        迭代完整 FACTOR_REGISTRY（含 inactive 因子），使未来激活 inactive
+        因子时下载 / preprocess buffer 自动传导，无需修改此处。
+        """
+        from BreakoutStrategy.factor_registry import FACTOR_REGISTRY
+        calc = cls(config or {})
+        return max(calc._effective_buffer(fi) for fi in FACTOR_REGISTRY)
+
     def enrich_breakout(
         self,
         df: pd.DataFrame,

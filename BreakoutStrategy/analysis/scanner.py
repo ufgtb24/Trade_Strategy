@@ -50,12 +50,6 @@ DEBUG_VOLUME = os.environ.get("DEBUG_VOLUME", "0") == "1"
 # 加 10% 安全余量 → 系数 1.65
 TRADING_TO_CALENDAR_RATIO = 1.65
 
-# 成交量回看窗口（需与 features.py 中的 VOLUME_LOOKBACK 保持一致）
-VOLUME_LOOKBACK_BUFFER = 63
-
-# 年化波动率回看窗口（用于 Overshoot Penalty, Breakout Day Strength Bonus）
-ANNUAL_VOL_LOOKBACK_BUFFER = 252
-
 
 def preprocess_dataframe(
     df: pd.DataFrame,
@@ -64,6 +58,7 @@ def preprocess_dataframe(
     label_max_days: int = 20,
     ma_periods: list = None,
     atr_period: int = 14,
+    feat_params: dict = None,
 ) -> pd.DataFrame:
     """
     数据预处理：截取时间范围 + 计算技术指标 + 写入 range_meta 元数据
@@ -75,6 +70,7 @@ def preprocess_dataframe(
         label_max_days: Label 计算所需的后置天数
         ma_periods: 要计算的均线周期列表，默认 [200]
         atr_period: ATR 计算周期，默认 14
+        feat_params: FeatureCalculator 配置字典。None 时用默认因子 lookback。
 
     Returns:
         预处理后的 DataFrame，包含 ma_xxx / atr 列和 df.attrs["range_meta"]
@@ -86,9 +82,10 @@ def preprocess_dataframe(
     pkl_start = df.index[0].date() if len(df) else None
     pkl_end = df.index[-1].date() if len(df) else None
 
-    # 动态计算缓冲区
+    # 动态计算缓冲区：预计算列（MA/ATR）+ 全部因子 lookback 的最大值
     max_ma_period = max(ma_periods) if ma_periods else 200
-    required_trading_days = max(max_ma_period, VOLUME_LOOKBACK_BUFFER, ANNUAL_VOL_LOOKBACK_BUFFER)
+    factor_lookback = FeatureCalculator.max_effective_buffer(feat_params)
+    required_trading_days = max(max_ma_period, atr_period, factor_lookback)
     buffer_days = int(required_trading_days * TRADING_TO_CALENDAR_RATIO)
     label_buffer_days = int(label_max_days * 1.5)
 
@@ -343,6 +340,7 @@ def _scan_single_stock(args):
             label_max_days=label_max_days or 20,
             ma_periods=[ma_period],
             atr_period=atr_period,
+            feat_params=feature_calc_config,
         )
 
         scan_start_date = start_date  # 保存原始扫描起始日期

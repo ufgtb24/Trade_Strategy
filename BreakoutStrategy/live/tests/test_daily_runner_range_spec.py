@@ -71,3 +71,26 @@ def test_compute_download_days_scales_with_ma_period():
     days_ma200 = _compute_download_days(scan_window_days=180, ma_period=200, display_window_days=0)
     days_ma400 = _compute_download_days(scan_window_days=180, ma_period=400, display_window_days=0)
     assert days_ma400 > days_ma200
+
+
+def test_compute_download_days_scales_with_factor_lookback():
+    """feat_params 中因子 lookback 调大时，download_days 应跟随（通过 FeatureCalculator.max_effective_buffer）。"""
+    from BreakoutStrategy.live.pipeline.daily_runner import _compute_download_days
+    # 默认 feat_params: factor_lookback = 252
+    # dd_recov_lookback=500: factor_lookback = 500
+    # 用 display_window_days=0 暴露 buffer 差异
+    days_default = _compute_download_days(
+        scan_window_days=180, display_window_days=0,
+    )
+    days_extended = _compute_download_days(
+        scan_window_days=180, display_window_days=0,
+        feat_params={"dd_recov_lookback": 500},
+    )
+    assert days_extended > days_default
+
+
+def test_compute_download_days_default_equals_1125():
+    """数值不变性：默认参数下 download_days 仍为 1125（删常量零行为变更）。"""
+    from BreakoutStrategy.live.pipeline.daily_runner import _compute_download_days
+    # scan_window_days=90 是 LiveConfig 的典型默认
+    assert _compute_download_days(scan_window_days=90) == 1125

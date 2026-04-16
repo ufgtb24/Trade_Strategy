@@ -9,11 +9,8 @@ from typing import Callable, Optional
 import pandas as pd
 
 from BreakoutStrategy.UI.charts.range_utils import ChartRangeSpec, DISPLAY_MIN_WINDOW
-from BreakoutStrategy.analysis.scanner import (
-    VOLUME_LOOKBACK_BUFFER,
-    ANNUAL_VOL_LOOKBACK_BUFFER,
-    TRADING_TO_CALENDAR_RATIO,
-)
+from BreakoutStrategy.analysis.features import FeatureCalculator
+from BreakoutStrategy.analysis.scanner import TRADING_TO_CALENDAR_RATIO
 from BreakoutStrategy.live.pipeline.results import MatchedBreakout
 from BreakoutStrategy.live.pipeline.trial_loader import TrialBundle
 
@@ -25,6 +22,8 @@ DOWNLOAD_MARKER_FILENAME = ".last_full_update"
 def _compute_download_days(
     scan_window_days: int,
     ma_period: int = 200,
+    atr_period: int = 14,
+    feat_params: Optional[dict] = None,
     label_max_days: int = 20,
     safety_days: int = 30,
     display_window_days: int = DISPLAY_MIN_WINDOW.days,
@@ -35,7 +34,9 @@ def _compute_download_days(
 
     Args:
         scan_window_days: 扫描窗口（来自 LiveConfig）
-        ma_period: 最长 MA 周期（当前 Live 默认 200）
+        ma_period: 最长 MA 周期（预计算列需求）
+        atr_period: ATR 周期（预计算列需求）
+        feat_params: FeatureCalculator 配置。None 时用默认因子 lookback。
         label_max_days: label 所需后置天数
         safety_days: 安全垫
         display_window_days: 显示窗口下限（来自 range_utils.DISPLAY_MIN_WINDOW）
@@ -43,7 +44,8 @@ def _compute_download_days(
     Returns:
         下载保留的日历天数。覆盖显示 + 计算 + label + 安全垫。
     """
-    required_trading_days = max(ma_period, VOLUME_LOOKBACK_BUFFER, ANNUAL_VOL_LOOKBACK_BUFFER)
+    factor_lookback = FeatureCalculator.max_effective_buffer(feat_params)
+    required_trading_days = max(ma_period, atr_period, factor_lookback)
     compute_buffer_days = int(required_trading_days * TRADING_TO_CALENDAR_RATIO)
     label_buffer_days = int(label_max_days * 1.5)
     compute_need = scan_window_days + compute_buffer_days + label_buffer_days

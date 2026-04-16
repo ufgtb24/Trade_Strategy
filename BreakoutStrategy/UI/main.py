@@ -506,6 +506,7 @@ class InteractiveUI:
                 # 获取技术指标周期（从参数面板配置）
                 atr_period = 14  # 默认值
                 ma_period = 200  # 默认值
+                feature_cfg = None
                 if hasattr(self, 'param_panel') and self.param_panel:
                     feature_cfg = self.param_panel.param_loader.get_feature_calculator_params()
                     atr_period = feature_cfg.get("atr_period", 14)
@@ -517,6 +518,7 @@ class InteractiveUI:
                     label_max_days=label_max_days,
                     ma_periods=[ma_period],
                     atr_period=atr_period,
+                    feat_params=feature_cfg,
                 )
 
                 # 缓存并返回
