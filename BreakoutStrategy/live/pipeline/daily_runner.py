@@ -16,6 +16,10 @@ from BreakoutStrategy.live.pipeline.trial_loader import TrialBundle
 # DataFreshnessChecker 优先读这个，避免"部分更新"时抽样误判为 fresh。
 DOWNLOAD_MARKER_FILENAME = ".last_full_update"
 
+# Download window covers: 3-year display (1095d) + safety margin (30d).
+# akshare 下载始终是全部历史，此参数只控制本地保存范围。
+DOWNLOAD_DAYS = 1125
+
 
 def _build_range_spec_for_symbol(pkl_path, scan_start: str, scan_end: str) -> Optional[ChartRangeSpec]:
     """从 pkl 读取 + preprocess 构造 ChartRangeSpec。
@@ -123,7 +127,7 @@ class DailyPipeline:
         multi_download_stock(
             tickers=tickers,
             save_root=str(self.data_dir),
-            days_from_now=self.scan_window_days + 400,
+            days_from_now=DOWNLOAD_DAYS,
             clear=False,  # 不清空目录，让 download_stock 覆盖各个文件
             num_workers=download_workers,
             file_format="pkl",

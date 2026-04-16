@@ -35,3 +35,8 @@ def test_build_range_spec_returns_none_on_missing_pkl(tmp_path):
         scan_end="2024-12-31",
     )
     assert spec is None
+
+
+def test_download_days_constant_is_1125():
+    from BreakoutStrategy.live.pipeline.daily_runner import DOWNLOAD_DAYS
+    assert DOWNLOAD_DAYS == 1125
