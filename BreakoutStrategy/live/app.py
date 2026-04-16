@@ -4,13 +4,19 @@ import sys
 import threading
 import tkinter as tk
 import traceback
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from tkinter import messagebox, ttk
 
 import pandas as pd
 
+from BreakoutStrategy.analysis.scanner import preprocess_dataframe
 from BreakoutStrategy.live.chart_adapter import adapt_breakout, adapt_peaks
+from BreakoutStrategy.UI.charts.range_utils import (
+    ChartRangeSpec,
+    trim_df_to_display,
+    adjust_indices,
+)
 from BreakoutStrategy.live.config import LiveConfig
 from BreakoutStrategy.live.dialogs.progress_dialog import ProgressDialog
 from BreakoutStrategy.live.dialogs.update_confirm import confirm_update
@@ -240,7 +246,11 @@ class LiveApp:
         )
 
     def _rebuild_chart(self) -> None:
-        """按 state 当前的 current_selected 重绘图表。无选中时清空图表。"""
+        """按 state 当前的 current_selected 重绘图表。无选中时清空图表。
+
+        走 preprocess → trim_df_to_display → adjust_indices 统一流程。
+        优先复用 current.range_spec（daily_runner 已构造）；缺失时现场重建。
+        """
         current = self.state.current_selected
         if current is None:
             self.chart.clear()
@@ -250,31 +260,73 @@ class LiveApp:
         if not pkl_path.exists():
             self.chart.clear()
             return
+
+        # 运行时构造 scan 窗口（Live 默认：最近 scan_window_days 天）
+        today = datetime.now().date()
+        scan_start = (today - timedelta(days=self.config.scan_window_days)).isoformat()
+        scan_end = today.isoformat()
+
+        # preprocess: 计算 MA/ATR + 写 df.attrs["range_meta"]
         try:
-            df = pd.read_pickle(pkl_path)
-        except Exception:
+            raw_df = pd.read_pickle(pkl_path)
+            df = preprocess_dataframe(raw_df, start_date=scan_start, end_date=scan_end)
+        except Exception as e:
+            print(f"[LiveApp] preprocess failed for {current.symbol}: {e}", file=sys.stderr)
             self.chart.clear()
             return
+
+        # 构造 spec（优先复用已有）
+        meta = df.attrs.get("range_meta", {})
+        display_end = meta.get("label_buffer_end_actual") or df.index[-1].date()
+        spec = current.range_spec
+        if spec is None:
+            # fallback：旧缓存或构造失败，现场重建
+            try:
+                spec = ChartRangeSpec.from_df_and_scan(
+                    df,
+                    scan_start=scan_start,
+                    scan_end=scan_end,
+                    display_end=display_end,
+                    # Live UI 保持默认 DISPLAY_MIN_WINDOW（3 年）
+                )
+            except Exception as e:
+                print(f"[LiveApp] spec construction failed for {current.symbol}: {e}", file=sys.stderr)
+                spec = None
+
+        # trim + adjust
+        if spec is not None:
+            display_df, offset = trim_df_to_display(df, spec)
+        else:
+            display_df, offset = df, 0
 
         chart_active_peaks, chart_superseded_peaks, peaks_by_id = adapt_peaks(current.raw_peaks)
         raw_bos = current.all_stock_breakouts or [current.raw_breakout]
         all_chart_bos = [adapt_breakout(raw_bo, peaks_by_id) for raw_bo in raw_bos]
 
-        # 4 级分类所需索引集
-        visible_idx = self.match_list.get_visible_bo_indices(current.symbol)
-        all_matched = set(current.all_matched_bo_chart_indices)
+        all_chart_bos = adjust_indices(all_chart_bos, offset)
+        chart_active_peaks = adjust_indices(chart_active_peaks, offset)
+        chart_superseded_peaks = adjust_indices(chart_superseded_peaks, offset)
+
+        # 索引集合（按 offset 调整）
+        visible_idx_raw = self.match_list.get_visible_bo_indices(current.symbol)
+        visible_idx = {i - offset for i in visible_idx_raw if i >= offset}
+        all_matched = {i - offset for i in current.all_matched_bo_chart_indices if i >= offset}
         filtered_out_idx = all_matched - visible_idx
+
+        current_bo_index = current.raw_breakout["index"] - offset
+        if current_bo_index < 0:
+            current_bo_index = 0
 
         try:
             self.chart.update_chart(
-                df=df,
+                df=display_df,
                 breakouts=all_chart_bos,
                 active_peaks=chart_active_peaks,
                 superseded_peaks=chart_superseded_peaks,
                 symbol=current.symbol,
                 display_options={
                     "live_mode": True,
-                    "current_bo_index": current.raw_breakout["index"],
+                    "current_bo_index": current_bo_index,
                     "visible_matched_indices": visible_idx,
                     "filtered_out_matched_indices": filtered_out_idx,
                     "on_bo_picked": self._on_chart_bo_picked,
@@ -282,6 +334,7 @@ class LiveApp:
                 },
                 initial_window_days=180,
                 filter_cutoff_date=self.match_list.get_date_cutoff(),
+                spec=spec,
             )
         except Exception as e:
             print(f"[LiveApp] Chart render failed: {e}", file=sys.stderr)
