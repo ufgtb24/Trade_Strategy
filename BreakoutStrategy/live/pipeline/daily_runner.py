@@ -4,14 +4,47 @@ import os
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Callable
+from typing import Callable, Optional
 
+import pandas as pd
+
+from BreakoutStrategy.UI.charts.range_utils import ChartRangeSpec
 from BreakoutStrategy.live.pipeline.results import MatchedBreakout
 from BreakoutStrategy.live.pipeline.trial_loader import TrialBundle
 
 # Marker 文件：标记上一次 _step1_download_data 成功完成的日期。
 # DataFreshnessChecker 优先读这个，避免"部分更新"时抽样误判为 fresh。
 DOWNLOAD_MARKER_FILENAME = ".last_full_update"
+
+
+def _build_range_spec_for_symbol(pkl_path, scan_start: str, scan_end: str) -> Optional[ChartRangeSpec]:
+    """从 pkl 读取 + preprocess 构造 ChartRangeSpec。
+
+    失败（pkl 不存在、读取/preprocess 出错）时返回 None。
+    scan_start / scan_end 为 YYYY-MM-DD 字符串。
+    """
+    from BreakoutStrategy.analysis.scanner import preprocess_dataframe
+
+    try:
+        path = Path(pkl_path)
+        if not path.exists():
+            return None
+        raw_df = pd.read_pickle(path)
+        df = preprocess_dataframe(raw_df, start_date=scan_start, end_date=scan_end)
+        if df.attrs.get("range_meta") is None or len(df) == 0:
+            return None
+        # display_end：Live UI 场景，用 pkl 终点或 label_buffer_end_actual
+        meta = df.attrs["range_meta"]
+        display_end = meta.get("label_buffer_end_actual") or df.index[-1].date()
+        return ChartRangeSpec.from_df_and_scan(
+            df,
+            scan_start=scan_start,
+            scan_end=scan_end,
+            display_end=display_end,
+            # Live UI 保持默认 DISPLAY_MIN_WINDOW=3 年（spec 定义）
+        )
+    except Exception:
+        return None
 
 
 @dataclass
@@ -154,6 +187,14 @@ class DailyPipeline:
         matcher.sample_size = 1
         matcher._loaded = True
 
+        # 推导 scan 窗口（与 _step2_scan 一致）
+        today = datetime.now().date()
+        scan_start = (today - timedelta(days=self.scan_window_days)).strftime("%Y-%m-%d")
+        scan_end = today.strftime("%Y-%m-%d")
+
+        # 为每个 symbol 缓存构造的 spec，避免同 symbol 多个 BO 时重复 preprocess
+        spec_cache: dict[str, Optional[ChartRangeSpec]] = {}
+
         candidates: list[MatchedBreakout] = []
         for stock_result in scan_results:
             if "error" in stock_result or "breakouts" not in stock_result:
@@ -163,10 +204,20 @@ class DailyPipeline:
             matched_chart_indices = [
                 stock_result["breakouts"][i]["index"] for i in matched_indices
             ]
+
+            symbol = stock_result["symbol"]
+            if symbol not in spec_cache:
+                pkl_path = self.data_dir / f"{symbol}.pkl"
+                spec_cache[symbol] = _build_range_spec_for_symbol(
+                    pkl_path=pkl_path,
+                    scan_start=scan_start,
+                    scan_end=scan_end,
+                )
+
             for idx in matched_indices:
                 bo = stock_result["breakouts"][idx]
                 candidates.append(MatchedBreakout(
-                    symbol=stock_result["symbol"],
+                    symbol=symbol,
                     breakout_date=bo["date"],
                     breakout_price=float(bo["price"]),
                     factors={f: bo[f] for f in self.trial.template["factors"] if f in bo},
@@ -177,6 +228,7 @@ class DailyPipeline:
                     raw_peaks=stock_result.get("all_peaks", []),
                     all_stock_breakouts=stock_result.get("breakouts", []),
                     all_matched_bo_chart_indices=matched_chart_indices,
+                    range_spec=spec_cache[symbol],
                 ))
         return candidates
 

@@ -4,8 +4,10 @@ from unittest.mock import MagicMock
 from BreakoutStrategy.live.pipeline.daily_runner import DailyPipeline
 
 
-def _stub_pipeline(trial_template):
+def _stub_pipeline(trial_template, tmp_path=None):
     """Construct a DailyPipeline stub with the minimum needed to run _step3."""
+    from pathlib import Path
+
     trial = MagicMock()
     trial.template = trial_template
     trial.thresholds = {}
@@ -13,6 +15,8 @@ def _stub_pipeline(trial_template):
 
     pipeline = DailyPipeline.__new__(DailyPipeline)
     pipeline.trial = trial
+    pipeline.scan_window_days = 90
+    pipeline.data_dir = Path(tmp_path) if tmp_path else Path("/tmp/stub_data_dir")
     return pipeline
 
 
