@@ -4,7 +4,9 @@ import json
 import logging
 from dataclasses import asdict, dataclass, field, fields
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
+
+from BreakoutStrategy.UI.charts.range_utils import ChartRangeSpec
 
 logger = logging.getLogger(__name__)
 
@@ -25,6 +27,8 @@ class MatchedBreakout:
     all_stock_breakouts: list[dict] = field(default_factory=list)
     # 新增：该股票所有 matched BO 在 chart-df 的行索引
     all_matched_bo_chart_indices: list[int] = field(default_factory=list)
+    # 新增：该突破对应的图表范围规格
+    range_spec: Optional[ChartRangeSpec] = None
 
 
 @dataclass
