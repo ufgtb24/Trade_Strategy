@@ -58,12 +58,30 @@ import logging
 from BreakoutStrategy.analysis.scanner import compute_breakouts_from_dataframe
 
 
+_COMMON_KWARGS = dict(
+    total_window=60,
+    min_side_bars=5,
+    min_relative_height=0.02,
+    exceed_threshold=0.01,
+    peak_supersede_threshold=0.02,
+)
+
+
 def test_compute_breakouts_writes_scan_actual_when_no_degradation(caplog):
     df = _make_pkl()
     df = preprocess_dataframe(df, start_date="2024-01-01", end_date="2024-12-31")
+    # 计算有效检测范围索引（与 _scan_single_stock 保持一致）
+    mask_start = df.index >= pd.to_datetime("2024-01-01")
+    valid_start_index = int(mask_start.argmax()) if mask_start.any() else 0
+    mask_end = df.index <= pd.to_datetime("2024-12-31")
+    valid_end_index = int(len(df) - mask_end[::-1].argmax()) if mask_end.any() else len(df)
     with caplog.at_level(logging.INFO, logger="BreakoutStrategy.analysis.scanner"):
         compute_breakouts_from_dataframe(
-            df, scan_start_date="2024-01-01", scan_end_date="2024-12-31"
+            symbol="TEST", df=df,
+            valid_start_index=valid_start_index,
+            valid_end_index=valid_end_index,
+            scan_start_date="2024-01-01", scan_end_date="2024-12-31",
+            **_COMMON_KWARGS,
         )
     meta = df.attrs["range_meta"]
     assert str(meta["scan_start_actual"]) == "2024-01-01"
@@ -79,7 +97,9 @@ def test_compute_breakouts_logs_and_records_scan_start_degradation(caplog):
     df = preprocess_dataframe(df, start_date="2024-01-01", end_date="2024-12-31")
     with caplog.at_level(logging.INFO, logger="BreakoutStrategy.analysis.scanner"):
         compute_breakouts_from_dataframe(
-            df, scan_start_date="2024-01-01", scan_end_date="2024-12-31"
+            symbol="TEST", df=df,
+            scan_start_date="2024-01-01", scan_end_date="2024-12-31",
+            **_COMMON_KWARGS,
         )
     meta = df.attrs["range_meta"]
     assert str(meta["scan_start_actual"]) == "2024-03-01"
@@ -95,7 +115,9 @@ def test_compute_breakouts_logs_scan_end_degradation(caplog):
     df = preprocess_dataframe(df, start_date="2024-01-01", end_date="2024-12-31")
     with caplog.at_level(logging.INFO, logger="BreakoutStrategy.analysis.scanner"):
         compute_breakouts_from_dataframe(
-            df, scan_start_date="2024-01-01", scan_end_date="2024-12-31"
+            symbol="TEST", df=df,
+            scan_start_date="2024-01-01", scan_end_date="2024-12-31",
+            **_COMMON_KWARGS,
         )
     meta = df.attrs["range_meta"]
     assert meta["scan_end_actual"] < pd.to_datetime("2024-12-31").date()

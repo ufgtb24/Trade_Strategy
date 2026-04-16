@@ -126,13 +126,13 @@ def preprocess_dataframe(
 
 
 def compute_breakouts_from_dataframe(
+    symbol: str,
     df: pd.DataFrame,
-    symbol: str = "",
-    total_window: int = 60,
-    min_side_bars: int = 5,
-    min_relative_height: float = 0.02,
-    exceed_threshold: float = 0.01,
-    peak_supersede_threshold: float = 0.02,
+    total_window: int,
+    min_side_bars: int,
+    min_relative_height: float,
+    exceed_threshold: float,
+    peak_supersede_threshold: float,
     peak_measure: str = 'body_top',
     breakout_mode: str = 'body_top',
     feature_calc_config: dict = None,
@@ -169,18 +169,17 @@ def compute_breakouts_from_dataframe(
     _valid_end = valid_end_index if valid_end_index is not None else len(df)
 
     # 补齐 scan_start/end_actual 到 df.attrs["range_meta"] + 降级日志
-    if len(df) and (scan_start_date or scan_end_date):
+    if len(df) and _valid_end > valid_start_index:
+        scan_start_actual = df.index[valid_start_index].date()
+        scan_end_actual = df.index[_valid_end - 1].date()
+
         meta = df.attrs.get("range_meta", {})
+        meta["scan_start_actual"] = scan_start_actual
+        meta["scan_end_actual"] = scan_end_actual
+        df.attrs["range_meta"] = meta
 
         if scan_start_date:
             ideal_start = pd.to_datetime(scan_start_date).date()
-            # 找到 df 中第一个 >= scan_start_date 的日期（即实际扫描起点）
-            mask_start = df.index >= pd.to_datetime(scan_start_date)
-            if mask_start.any():
-                scan_start_actual = df.index[mask_start.argmax()].date()
-            else:
-                scan_start_actual = df.index[-1].date()
-            meta["scan_start_actual"] = scan_start_actual
             if scan_start_actual > ideal_start:
                 logger.info(
                     "scan_start degraded: requested=%s, actual=%s (pkl starts later)",
@@ -189,21 +188,11 @@ def compute_breakouts_from_dataframe(
 
         if scan_end_date:
             ideal_end = pd.to_datetime(scan_end_date).date()
-            # 找到 df 中最后一个 <= scan_end_date 的日期（即实际扫描终点）
-            mask_end = df.index <= pd.to_datetime(scan_end_date)
-            if mask_end.any():
-                last_idx = len(df) - mask_end[::-1].argmax() - 1
-                scan_end_actual = df.index[last_idx].date()
-            else:
-                scan_end_actual = df.index[0].date()
-            meta["scan_end_actual"] = scan_end_actual
             if scan_end_actual < ideal_end:
                 logger.info(
                     "scan_end degraded: requested=%s, actual=%s (pkl ends earlier)",
                     ideal_end, scan_end_actual,
                 )
-
-        df.attrs["range_meta"] = meta
 
     # 运行突破检测
     detector = BreakoutDetector(
