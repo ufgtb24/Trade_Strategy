@@ -13,8 +13,8 @@ from BreakoutStrategy.analysis import BreakoutDetector
 from BreakoutStrategy.analysis.breakout_detector import Breakout, Peak
 from BreakoutStrategy.analysis.breakout_scorer import BreakoutScorer
 
-from .charts import ChartCanvasManager
-from .charts.range_utils import ChartRangeSpec, trim_df_to_display, adjust_indices, _collect_warnings
+from BreakoutStrategy.UI.charts import ChartCanvasManager
+from BreakoutStrategy.UI.charts.range_utils import ChartRangeSpec, trim_df_to_display, adjust_indices, _collect_warnings
 from .config import get_ui_config_loader, get_ui_scan_config_loader
 from .managers import NavigationManager, ScanManager, TemplateManager, compute_breakouts_from_dataframe, preprocess_dataframe
 from .panels import ParameterPanel, StockListPanel, TemplatePanel
@@ -1235,12 +1235,12 @@ class InteractiveUI:
         Returns:
             (detector_params, feature_calculator_params, scorer_params)
         """
-        from .config.param_loader import UIParamLoader
+        from BreakoutStrategy.param_loader import ParamLoader
 
         if self.param_panel.get_use_template() and self.template_manager.loaded:
             scan_params = self.template_manager.get_scan_params()
             if scan_params:
-                return UIParamLoader.parse_params(scan_params)
+                return ParamLoader.parse_params(scan_params)
 
         params = self.param_panel.get_params()
         feature_cfg = self.param_panel.param_loader.get_feature_calculator_params()

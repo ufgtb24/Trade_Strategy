@@ -10,10 +10,13 @@ Use this guide to understand the codebase architecture, workflows, and conventio
 - **Observation Pools**:
   - `daily_pool/`: Daily timeframe analysis with State Machine (`PhaseStateMachine`) for tracking stock phases.
   - `observation/`: Real-time monitoring (5-min intervals) with scoring strategies.
-- **UI (`BreakoutStrategy/UI/`)**:
-  - `tkinter`-based interactive dashboard.
+- **Dev UI (`BreakoutStrategy/dev/`)**:
+  - `tkinter`-based interactive dashboard (策略开发台).
   - Entry point: `scripts/visualization/interactive_viewer.py`.
-  - **Single Source of Truth** for parameters: `BreakoutStrategy/UI/config/param_loader.py`.
+- **Shared UI (`BreakoutStrategy/UI/`)**:
+  - Pure UI infrastructure (charts, styles) reused by both dev and live.
+- **Param SSoT (`BreakoutStrategy/param_loader.py`)**:
+  - Top-level single source of truth for strategy params (scan_params + quality_scorer).
 
 ## 2. Critical Workflows
 - **Running the System**:
@@ -48,9 +51,10 @@ Use this guide to understand the codebase architecture, workflows, and conventio
 - **New Feature in Strategy**:
   - Update `BreakoutStrategy/analysis/` logic.
   - Add parameter to `configs/analysis/params/scan_params.yaml`.
-  - Update `UIParamLoader` if necessary to expose it to UI.
+  - Update `BreakoutStrategy/param_loader.py` (top-level SSoT) if necessary to expose it.
 - **UI Modification**:
-  - Components in `BreakoutStrategy/UI/panels/` or `charts/`.
+  - Dev-specific components in `BreakoutStrategy/dev/panels/`, `dev/editors/`, `dev/dialogs/`, etc.
+  - Shared chart / style primitives in `BreakoutStrategy/UI/charts/` or `BreakoutStrategy/UI/styles.py`.
   - Layouts use `pack()` or `grid()`.
 - **Debugging**:
   - Check `outputs/logs/` (if configured) or console output.

@@ -11,13 +11,20 @@ This project implements a **Breakout Stock Selection Strategy** for US markets. 
 - **Quality Scoring**: Evaluates breakouts based on volume, price action, and resistance duration (`breakout_scorer.py`).
 - **Incremental Processing**: The detector supports incremental data updates for efficiency.
 
-### User Interface (`BreakoutStrategy/UI/`)
-- **Framework**: Python `tkinter` with `matplotlib` for charting.
-- **Entry Point**: `scripts/visualization/interactive_viewer.py` launches the `InteractiveUI`.
-- **Components**:
-    - `panels/`: UI layout components.
-    - `charts/`: Canvas managers for stock charts.
-    - `config/`: UI-specific parameter management (`param_loader.py` acts as the Single Source of Truth).
+### User Interfaces
+- **Dev UI (`BreakoutStrategy/dev/`)** — 策略开发台
+  - **Framework**: Python `tkinter` with `matplotlib` for charting.
+  - **Entry Point**: `scripts/visualization/interactive_viewer.py` launches the `InteractiveUI`.
+  - **Components**:
+      - `panels/`: UI layout components.
+      - `editors/`, `dialogs/`, `managers/`: dev-specific interactions.
+      - `config/`: dev-local state (`param_editor_state.py`, `scan_config_loader.py`, etc.).
+- **Live UI (`BreakoutStrategy/live/`)** — 日常盯盘台 (consumes finalized Trials).
+- **Shared UI (`BreakoutStrategy/UI/`)**
+  - Pure UI primitives reused by both dev and live.
+  - `charts/`: Canvas managers + range spec + chart components.
+  - `styles.py`: Shared fonts / colors / ttk styles.
+- **Param SSoT**: `BreakoutStrategy/param_loader.py` (top-level) is the Single Source of Truth for strategy parameters.
 
 ### Configuration (`configs/`)
 - **Format**: YAML files.

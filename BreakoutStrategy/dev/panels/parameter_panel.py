@@ -4,9 +4,11 @@ import tkinter as tk
 from tkinter import filedialog, ttk
 from typing import Callable, Dict, Optional
 
+from BreakoutStrategy.param_loader import get_param_loader
+
 from ..config import get_ui_config_loader
-from ..config import get_ui_param_loader
 from ..config import get_ui_scan_config_loader
+from ..config.param_editor_state import get_param_editor_state
 from ..dialogs import askopenfilename as custom_askopenfilename
 
 
@@ -72,14 +74,17 @@ class ParameterPanel:
         # 当前参数文件名（不含路径）
         self.current_param_file = "all_factor.yaml"
 
-        # 参数加载器
-        self.param_loader = get_ui_param_loader()
+        # 参数加载器（纯读：只读策略参数）
+        self.param_loader = get_param_loader()
+
+        # 编辑器 UI 状态（活跃文件、dirty、监听器、切换钩子）
+        self.editor_state = get_param_editor_state()
 
         # 扫描配置加载器
         self.scan_config_loader = get_ui_scan_config_loader()
 
-        # 订阅 UIParamLoader 状态变化（统一状态同步）
-        self.param_loader.add_listener(self._on_param_loader_state_changed)
+        # 订阅 ParamEditorState 状态变化（统一状态同步）
+        self.editor_state.add_listener(self._on_param_loader_state_changed)
 
         # 创建UI
         self._create_ui()
@@ -373,14 +378,14 @@ class ParameterPanel:
 
     def _on_param_loader_state_changed(self):
         """
-        响应 UIParamLoader 状态变化的监听器
+        响应 ParamEditorState 状态变化的监听器
 
-        当编辑器 Load/Apply/Save 时，UIParamLoader 会通知此方法，
+        当编辑器 Load/Apply/Save 时，ParamEditorState 会通知此方法，
         自动同步下拉菜单显示
         """
         try:
             # 获取当前活跃文件名
-            active_file = self.param_loader.get_active_file_name()
+            active_file = self.editor_state.get_active_file_name()
             if active_file:
                 # 同步下拉菜单显示
                 self.param_file_combobox.set(active_file)
@@ -430,7 +435,7 @@ class ParameterPanel:
 
     def _load_param_file(self, file_path):
         """
-        加载指定参数文件到 UIParamLoader 内存
+        加载指定参数文件到 ParamEditorState 内存
 
         Args:
             file_path: 参数文件的完整路径（Path对象或字符串）
@@ -453,7 +458,7 @@ class ParameterPanel:
             raise ValueError(f"Parameter file is empty: {file_path}")
 
         # 使用统一的 API 更新状态（会触发监听器通知）
-        self.param_loader.set_active_file(file_path, params)
+        self.editor_state.set_active_file(file_path, params)
 
     def _on_param_file_selected(self, event=None):
         """
@@ -492,7 +497,7 @@ class ParameterPanel:
 
             # 使用 request_file_switch 请求切换（会触发钩子检查）
             # 如果编辑器有未保存的更改，会弹出提示框
-            if not self.param_loader.request_file_switch(file_path, params):
+            if not self.editor_state.request_file_switch(file_path, params):
                 # 切换被阻止（用户取消），恢复下拉菜单显示
                 self.param_file_combobox.set(self.current_param_file)
                 return

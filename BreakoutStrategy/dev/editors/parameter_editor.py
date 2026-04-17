@@ -10,6 +10,8 @@ from typing import Any, Callable, Dict, Optional
 
 import yaml
 
+from BreakoutStrategy.param_loader import ParamLoader
+
 from ..config import (
     PARAM_CONFIGS,
     SECTION_TITLES,
@@ -18,9 +20,9 @@ from ..config import (
 )
 from .input_factory import BaseParameterInput, ParameterInputFactory
 from ..config import WeightGroupValidator
-from ..config import UIParamLoader
 from ..config import ParameterStateManager
-from ..styles import FONT_SECTION_TITLE, FONT_STATUS, FONT_WEIGHT_SUM
+from ..config.param_editor_state import get_param_editor_state
+from BreakoutStrategy.UI.styles import FONT_SECTION_TITLE, FONT_STATUS, FONT_WEIGHT_SUM
 from ..config import YamlCommentParser
 
 
@@ -209,7 +211,7 @@ class ParameterEditorWindow:
     def __init__(
         self,
         parent,
-        ui_param_loader: UIParamLoader,
+        ui_param_loader: ParamLoader,
         on_apply_callback: Optional[Callable] = None,
         json_params: Optional[Dict] = None,
     ):
@@ -218,12 +220,13 @@ class ParameterEditorWindow:
 
         Args:
             parent: 主窗口
-            ui_param_loader: UIParamLoader实例（复用验证逻辑）
+            ui_param_loader: ParamLoader 实例（纯读策略参数）
             on_apply_callback: Apply时的回调函数（触发图表刷新）
             json_params: JSON 文件中的扫描参数（来自 scan_metadata）
         """
         self.parent = parent
         self.loader = ui_param_loader
+        self._editor_state = get_param_editor_state()
         self.on_apply_callback = on_apply_callback
         self.param_configs = PARAM_CONFIGS
         self.section_map = {}  # section_key -> AccordionSection 的映射
@@ -256,16 +259,16 @@ class ParameterEditorWindow:
         self._create_widgets()
 
         # 默认加载当前活跃的参数文件
-        active_path = self.loader.get_active_file() or scan_params_path
+        active_path = self._editor_state.get_active_file() or scan_params_path
         self._load_file_internal(active_path)
 
         # 初始化完成后调整窗口大小以适应内容
         self.window.after(100, self._adjust_window_size)
 
         # 注册文件切换前钩子（监听主界面 Combobox 的文件切换）
-        self.loader.add_before_switch_hook(self._on_before_file_switch)
+        self._editor_state.add_before_switch_hook(self._on_before_file_switch)
         # 注册状态变化监听器（主界面切换后同步加载）
-        self.loader.add_listener(self._on_loader_state_changed)
+        self._editor_state.add_listener(self._on_loader_state_changed)
 
     def _build_json_param_map(self) -> Dict[str, Any]:
         """
@@ -548,9 +551,9 @@ class ParameterEditorWindow:
             for weight_group in get_weight_group_names():
                 self._update_weight_sum(weight_group)
 
-            # 【新增】同步到 UIParamLoader（统一状态管理）
+            # 【新增】同步到 ParamEditorState（统一状态管理）
             # 这样主界面的下拉菜单会自动更新
-            self.loader.set_active_file(file_path, params)
+            self._editor_state.set_active_file(file_path, params)
 
             # 更新窗口状态
             self._update_window_title()
@@ -802,7 +805,7 @@ class ParameterEditorWindow:
 
             # 保存后自动应用参数
             # 使用 set_active_file 同步状态（已保存，非仅内存）
-            self.loader.set_active_file(
+            self._editor_state.set_active_file(
                 self.state_manager.current_file_path, params_dict
             )
 
@@ -870,7 +873,7 @@ class ParameterEditorWindow:
 
             # 保存后自动应用参数
             # 使用 set_active_file 同步状态（已保存，非仅内存）
-            self.loader.set_active_file(
+            self._editor_state.set_active_file(
                 self.state_manager.current_file_path, params_dict
             )
 
@@ -926,7 +929,7 @@ class ParameterEditorWindow:
         """
         应用到内存（不保存文件）
 
-        将编辑器参数提交到 UIParamLoader 的内存中，
+        将编辑器参数提交到 ParamEditorState 的内存中，
         自动勾选主界面的 "Use UI Params" 并触发图表刷新
         """
         # 验证所有参数
@@ -955,10 +958,10 @@ class ParameterEditorWindow:
             # 更新状态管理器
             self.state_manager.editor_params = params_dict
 
-            # 更新 UIParamLoader 的内存参数（不保存文件）
+            # 更新 ParamEditorState 的内存参数（不保存文件）
             # 传递 source_file 以同步主界面下拉菜单显示
             source_file = self.state_manager.current_file_path
-            self.loader.update_memory_params(params_dict, source_file)
+            self._editor_state.update_memory_params(params_dict, source_file)
 
             # 标记已 Apply（用于关闭窗口检查）
             self.state_manager.mark_applied()
@@ -1101,8 +1104,8 @@ class ParameterEditorWindow:
                 self.save_to_file()
 
         # 清理钩子和监听器
-        self.loader.remove_before_switch_hook(self._on_before_file_switch)
-        self.loader.remove_listener(self._on_loader_state_changed)
+        self._editor_state.remove_before_switch_hook(self._on_before_file_switch)
+        self._editor_state.remove_listener(self._on_loader_state_changed)
 
         self.window.destroy()
 
@@ -1151,7 +1154,7 @@ class ParameterEditorWindow:
 
     def _on_loader_state_changed(self):
         """
-        响应 UIParamLoader 状态变化（文件切换后）
+        响应 ParamEditorState 状态变化（文件切换后）
 
         当主界面 Combobox 成功切换文件后，同步加载到编辑器
         """
@@ -1160,7 +1163,7 @@ class ParameterEditorWindow:
             return
 
         # 获取当前活跃文件
-        active_file = self.loader.get_active_file()
+        active_file = self._editor_state.get_active_file()
         if not active_file:
             return
 

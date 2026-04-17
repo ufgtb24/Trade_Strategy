@@ -6,11 +6,11 @@
 
 独立的**只读日常盯盘 UI**，消费挖掘模块产出的 Top-1 Trial 参数，每天对全市场做一次突破扫描+情感评估，把候选集投到筛选面板供用户人工复核。
 
-与 `UI/` 的分工：
-- `UI/` 是**策略开发台**——可载入任意历史窗口反复调参、回测、导出模板，关注"这个配置在过去哪些股票/时段好"。
+与 `dev/` 的分工：
+- `dev/` 是**策略开发台**——可载入任意历史窗口反复调参、回测、导出模板，关注"这个配置在过去哪些股票/时段好"。
 - `live/` 是**生产盯盘台**——使用定稿 Trial，每天刷新到最新交易日，关注"今天有谁进入候选集，值不值得看"。
 
-两者都复用 `analysis/` 的扫描能力和 `UI/charts/` 的图表组件，但数据目录、状态机、渲染细节不共享。
+两者都复用 `analysis/` 的扫描能力和 `BreakoutStrategy/UI/charts/`（顶层共享 UI 基础设施）的图表组件，但数据目录、状态机、渲染细节不共享。
 
 ---
 
@@ -43,7 +43,7 @@ flowchart TD
 
 ### 1. Live 与 Dev UI 物理隔离，不是"同一个 UI 加开关"
 
-**决策**：独立包、独立入口（`python -m BreakoutStrategy.live`）、独立状态机，共享的只是 `UI/charts/` 组件。
+**决策**：独立包、独立入口（`python -m BreakoutStrategy.live`）、独立状态机，共享的只是 `BreakoutStrategy/UI/charts/`（顶层共享 UI 包）组件。
 
 **理由**：
 - 两者的主循环不同——Dev 是"载入一次、反复调参"，Live 是"每天刷新、点点看看"；把两套状态塞进一个 App 会让 state.py 迅速复杂化
@@ -89,7 +89,7 @@ flowchart TD
 
 ### 7. 图表数据流与 Dev UI 统一
 
-**决策**：`_rebuild_chart` 走 `preprocess_dataframe → ChartRangeSpec.from_df_and_scan → trim_df_to_display → adjust_indices → canvas_manager.update_chart(spec=...)` 流程，与 Dev UI 的 `_render_chart` 复用同一条 `UI/charts/range_utils.py` 管线。
+**决策**：`_rebuild_chart` 走 `preprocess_dataframe → ChartRangeSpec.from_df_and_scan → trim_df_to_display → adjust_indices → canvas_manager.update_chart(spec=...)` 流程，与 Dev UI 的 `_render_chart` 复用同一条 `BreakoutStrategy/UI/charts/range_utils.py` 管线（顶层共享 UI 包）。
 
 **理由**：旧路径直接 `pd.read_pickle` 喂 canvas，依赖"scanner df 行数 == pkl 行数"的隐式不变量（由 `days_from_now = scan_window + 400` 与 scanner buffer 的数值巧合保证）；任何一侧常量变动会无声破坏 BO index 对齐。统一后 BO/peak index 由 `trim_df_to_display` 返回的 offset 显式补偿，MA 从 `preprocess_dataframe` 预计算列取（避免 canvas fallback rolling 前 N 根 NaN）。
 
@@ -109,7 +109,7 @@ flowchart TD
 
 **MatchList**（`panels/match_list.py`）：`_row_values` 检查 `it.range_spec is not None and _collect_warnings(it.range_spec)`，降级时 symbol 字段追加 " ⚠"。该列表每行可能对应不同 symbol，各自 spec 独立判定。
 
-**chart canvas**：`update_chart` 接 `spec` 参数后，`canvas_manager._draw_range_spec_shading` 绘三段阴影 + 降级橙虚线（与 Dev UI 共用，详见 `.claude/docs/modules/交互式UI.md` §3.10）。
+**chart canvas**：`update_chart` 接 `spec` 参数后，`canvas_manager._draw_range_spec_shading` 绘三段阴影 + 降级橙虚线（与 Dev UI 共用，详见 `.claude/docs/modules/dev.md` §3.10）。
 
 **detail_panel._fmt**：因子可能 `unavailable`（per-factor gate 返回 None），`_fmt(None)` 统一返回 `"N/A"`；原先只处理 int/float 分支，None 会抛 TypeError。
 
@@ -120,10 +120,10 @@ flowchart TD
 | 被复用 | 入口 | 用途 |
 |---|---|---|
 | `analysis.scanner.ScanManager` | `daily_runner.py` Step2 | 突破检测，与 Dev UI 共用同一个 scanner |
-| `UI.config.param_loader.UIParamLoader` | `daily_runner.py` | 合并 Trial 的 scan_params 与默认配置 |
+| `BreakoutStrategy.param_loader.ParamLoader` | `daily_runner.py` | 合并 Trial 的 scan_params 与默认配置（顶层 SSoT） |
 | `mining.template_matcher.TemplateManager` | `daily_runner.py` Step3 | 用 Trial 的 Top-1 模板过滤扫描结果 |
 | `news_sentiment.api.analyze` | `daily_runner.py` Step4 | 每个候选调一次情感分析 |
-| `UI.charts.ChartCanvasManager / MarkerComponent` | `app.py` + `chart_adapter.py` | 图表渲染（live_mode 分支） |
+| `UI.charts.ChartCanvasManager / MarkerComponent` | `app.py` + `chart_adapter.py` | 图表渲染（共享 UI 包，live_mode 分支） |
 | `scripts.data.data_download` | `daily_runner.py` Step1 | akshare 全美股下载 |
 | `pandas_market_calendars` | `freshness.py` | NYSE 交易日判定 |
 

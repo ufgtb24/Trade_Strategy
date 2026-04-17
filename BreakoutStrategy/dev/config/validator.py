@@ -1,6 +1,6 @@
 """参数验证器
 
-复用 UIParamLoader 的验证逻辑，并提供额外的验证功能
+复用 ParamLoader 的验证逻辑，并提供额外的验证功能
 """
 
 from typing import Any, Tuple, List

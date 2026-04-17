@@ -3,7 +3,8 @@
 管理编辑器参数的三层状态：File → Editor → Memory
 - File State: 磁盘上的 YAML 文件（持久化）
 - Editor State: 编辑器临时参数（用户正在调整）
-- Memory State: UIParamLoader._params（运行时，由 UIParamLoader 管理）
+- Memory State: ParamLoader._params（运行时，由 ParamLoader 管理；
+  UI 编辑器侧的活跃文件/dirty/监听器状态由 ParamEditorState 包装）
 """
 
 import copy

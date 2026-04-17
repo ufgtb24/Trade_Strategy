@@ -171,12 +171,12 @@ class DailyPipeline:
     def _step2_scan(self) -> list[dict]:
         """Step 2: 用 trial 的扫描参数扫描近 N 天窗口。
 
-        通过 UIParamLoader.from_dict 合并 trial.scan_params → 扫描参数。
+        通过 ParamLoader.from_dict 合并 trial.scan_params → 扫描参数。
         """
         from BreakoutStrategy.analysis.scanner import ScanManager
-        from BreakoutStrategy.UI.config.param_loader import UIParamLoader
+        from BreakoutStrategy.param_loader import ParamLoader
 
-        loader = UIParamLoader.from_dict(self.trial.scan_params)
+        loader = ParamLoader.from_dict(self.trial.scan_params)
         feat = loader.get_feature_calculator_params()
         scorer = loader.get_scorer_params()
 

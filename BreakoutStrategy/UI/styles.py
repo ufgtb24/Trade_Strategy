@@ -324,7 +324,7 @@ def get_font(component_type: str = "label") -> tuple:
 1. 在主入口文件中配置全局样式：
 
     import tkinter as tk
-    from BreakoutStrategy.UI.interactive.ui_styles import configure_global_styles
+    from BreakoutStrategy.dev.interactive.ui_styles import configure_global_styles
 
     root = tk.Tk()
     configure_global_styles(root)  # 必须在创建UI组件前调用！
@@ -333,14 +333,14 @@ def get_font(component_type: str = "label") -> tuple:
 
 2. 在创建组件时使用预定义字体：
 
-    from BreakoutStrategy.UI.interactive.ui_styles import get_font
+    from BreakoutStrategy.dev.interactive.ui_styles import get_font
 
     # 方法1：使用get_font()函数
     label = ttk.Label(parent, text="Hello", font=get_font("label"))
     button = ttk.Button(parent, text="Click", font=get_font("button"))
 
     # 方法2：直接导入字体常量
-    from BreakoutStrategy.UI.interactive.ui_styles import FONT_LABEL, FONT_BUTTON
+    from BreakoutStrategy.dev.interactive.ui_styles import FONT_LABEL, FONT_BUTTON
     label = ttk.Label(parent, text="Hello", font=FONT_LABEL)
     button = ttk.Button(parent, text="Click", font=FONT_BUTTON)
 

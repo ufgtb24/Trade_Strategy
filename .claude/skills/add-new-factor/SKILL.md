@@ -157,7 +157,7 @@ print('xxx' in scorer._factor_configs)
 
 # 3. UI Schema（确认因子出现在参数编辑器中）
 uv run python -c "
-from BreakoutStrategy.UI.config.param_editor_schema import PARAM_CONFIGS
+from BreakoutStrategy.dev.config.param_editor_schema import PARAM_CONFIGS
 print('xxx_factor' in PARAM_CONFIGS['quality_scorer'])
 "
 

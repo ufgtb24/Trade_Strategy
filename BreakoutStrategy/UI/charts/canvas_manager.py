@@ -262,8 +262,8 @@ class ChartCanvasManager:
         )
 
         # 绘制均线（从参数面板获取周期）
-        from ..config.param_loader import get_ui_param_loader
-        loader = get_ui_param_loader()
+        from BreakoutStrategy.param_loader import get_param_loader
+        loader = get_param_loader()
         feature_params = loader.get_feature_calculator_params()
         ma_period = feature_params.get("ma_period", 200)
         self.marker.draw_moving_averages(
@@ -630,8 +630,8 @@ class ChartCanvasManager:
         self._hover_df = df  # 保存df引用供Ctrl模式使用
 
         # 获取 ATR 序列（用于 tooltip 显示）
-        from ..config.param_loader import get_ui_param_loader
-        loader = get_ui_param_loader()
+        from BreakoutStrategy.param_loader import get_param_loader
+        loader = get_param_loader()
         feature_params = loader.get_feature_calculator_params()
         self._atr_period = feature_params.get("atr_period", 14)
         # 优先使用预计算的 ATR 列（在 preprocess_dataframe 中计算，包含缓冲区）

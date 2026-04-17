@@ -23,7 +23,7 @@ from BreakoutStrategy.analysis.indicators import TechnicalIndicators
 from BreakoutStrategy.factor_registry import get_active_factors
 
 def ensure_dir(directory):
-    """确保目录存在（从 BreakoutStrategy.UI.utils 内联，避免对 UI 层的反向依赖）"""
+    """确保目录存在（从 BreakoutStrategy.dev.utils 内联，避免对 UI 层的反向依赖）"""
     os.makedirs(directory, exist_ok=True)
     return directory
 

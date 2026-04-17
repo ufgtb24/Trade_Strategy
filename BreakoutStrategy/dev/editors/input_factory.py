@@ -8,7 +8,7 @@ from tkinter import ttk
 from typing import Any, Tuple, Callable, Optional
 
 from ..config import InputValidator
-from ..styles import FONT_PARAM_LABEL, FONT_PARAM_INPUT, FONT_PARAM_HINT, JSON_DIFF_BG, JSON_MATCH_BG, JSON_NA_FG
+from BreakoutStrategy.UI.styles import FONT_PARAM_LABEL, FONT_PARAM_INPUT, FONT_PARAM_HINT, JSON_DIFF_BG, JSON_MATCH_BG, JSON_NA_FG
 
 
 class SelectableLabel(ttk.Entry):

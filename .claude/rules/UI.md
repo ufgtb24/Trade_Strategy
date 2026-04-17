@@ -1,5 +1,5 @@
 ---
-paths: BreakoutStrategy/UI/**/*
+paths: BreakoutStrategy/dev/**/*
 ---
 
 # UI Development Rules

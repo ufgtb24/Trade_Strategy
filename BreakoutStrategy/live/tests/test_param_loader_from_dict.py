@@ -1,9 +1,9 @@
-"""Test UIParamLoader.from_dict classmethod."""
-from BreakoutStrategy.UI.config.param_loader import UIParamLoader
+"""Test ParamLoader.from_dict classmethod."""
+from BreakoutStrategy.param_loader import ParamLoader
 
 
 def test_from_dict_accepts_scan_params():
-    """UIParamLoader.from_dict 应接受 dict 并返回可用的 loader 实例。"""
+    """ParamLoader.from_dict 应接受 dict 并返回可用的 loader 实例。"""
     raw = {
         "breakout_detector": {
             "total_window": 20,
@@ -23,7 +23,7 @@ def test_from_dict_accepts_scan_params():
             "factor_base_score": 50,
         },
     }
-    loader = UIParamLoader.from_dict(raw)
+    loader = ParamLoader.from_dict(raw)
     feat = loader.get_feature_calculator_params()
     assert feat["atr_period"] == 14
     assert feat["ma_period"] == 20
@@ -58,12 +58,12 @@ def test_from_dict_does_not_corrupt_singleton():
         singleton_path = tf.name
 
     try:
-        singleton = UIParamLoader(singleton_path)
+        singleton = ParamLoader(singleton_path)
         singleton_feat_before = singleton.get_feature_calculator_params()
         assert singleton_feat_before['atr_period'] == 7
 
         # 2. 用 from_dict 创建独立实例（用不同参数）
-        dict_loader = UIParamLoader.from_dict({
+        dict_loader = ParamLoader.from_dict({
             'breakout_detector': {
                 'total_window': 20,
                 'min_side_bars': 6,

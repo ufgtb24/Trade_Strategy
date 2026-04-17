@@ -17,7 +17,11 @@
   - `analysis/` — 突破检测、因子计算、质量评分
   - `mining/` — 因子阈值挖掘 + 模板组合生成
   - `news_sentiment/` — 新闻情感分析
-  - `UI/` — 交互式界面（批量扫描、参数编辑、图表浏览）
+  - `dev/` — 开发态 UI（批量扫描、参数编辑、图表浏览、模板生成工作流）
+  - `live/` — 实盘盯盘应用（UI + pipeline）
+  - `UI/` — dev/live 共享的纯 UI 基础设施（charts、styles）
+  - `param_loader.py`（顶层）— 策略参数 SSoT
+  - `factor_registry.py`（顶层）— 因子元数据
 - `configs/` — YAML 配置（`params/`, `scan_config.yaml`, `ui_config.yaml`, `news_sentiment.yaml`, `api_keys.yaml`）
 - `datasets/pkls/` — 美股历史数据（Pickle）
 - `scripts/` — 运行入口脚本
