@@ -1,0 +1,122 @@
+breakout_detector:
+  breakout_mode: close
+  cache_dir: ./cache
+  exceed_threshold: 0.005
+  min_relative_height: 0.1
+  min_side_bars: 6
+  peak_measure: body_top
+  peak_supersede_threshold: 0.03
+  total_window: 20
+  use_cache: false
+general_feature:
+  atr_period: 14
+  ma_period: 20
+  stability_lookforward: 5
+quality_scorer:
+  age_factor:
+    enabled: false
+    thresholds:
+    - 63
+    values:
+    - 1.2
+  day_str_factor:
+    enabled: false
+    thresholds:
+    - 1.5
+    - 2.5
+    values:
+    - 1.2
+    - 1.35
+  drought_factor:
+    enabled: false
+    thresholds:
+    - 80.0
+    values:
+    - 1.2
+  factor_base_score: 50
+  height_factor:
+    enabled: false
+    thresholds:
+    - 0.2
+    - 0.4
+    - 0.7
+    values:
+    - 1.3
+    - 1.6
+    - 2.0
+  ma_pos_factor:
+    enabled: false
+    period: 20
+    thresholds:
+    - 0.05
+    - 0.1
+    - 0.2
+    values:
+    - 1.1
+    - 1.2
+    - 1.35
+  overshoot_factor:
+    enabled: false
+    gain_window: 5
+    thresholds:
+    - 4.0
+    - 5.0
+    values:
+    - 0.8
+    - 0.6
+  pbm_factor:
+    enabled: false
+    lookback: 4
+    thresholds:
+    - 0.7
+    - 1.45
+    values:
+    - 1.15
+    - 1.3
+  peak_vol_factor:
+    enabled: false
+    thresholds:
+    - 3.0
+    - 5.0
+    values:
+    - 1.1
+    - 1.2
+  pk_mom_factor:
+    enabled: false
+    lookback: 30
+    thresholds:
+    - 1.5
+    - 1.9
+    values:
+    - 1.2
+    - 1.5
+  pre_vol_factor:
+    enabled: false
+    thresholds:
+    - 3.0
+    - 5.0
+    values:
+    - 1.15
+    - 1.25
+    window: 10
+  streak_factor:
+    enabled: false
+    thresholds:
+    - 2
+    - 4
+    values:
+    - 0.9
+    - 0.75
+    window: 10
+  test_factor:
+    enabled: true
+    thresholds:
+    - 3
+    values:
+    - 1.2
+  volume_factor:
+    enabled: true
+    thresholds:
+    - 10.0
+    values:
+    - 1.2

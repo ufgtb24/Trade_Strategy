@@ -40,11 +40,14 @@
 
 ## 术语
 
-| 术语 | 含义 |
-|------|------|
-| breakout / bo | 突破点（价格有效穿越阻力位的 K 线） |
-| peak / pk | 凸点，即被识别的阻力位 |
-| level | 因子评级（离散化后的因子档位） |
-| factor | 评分因子（由 `FACTOR_REGISTRY` 统一注册） |
-| trial | 挖掘流水线的一次参数组合实验 |
-| sentiment_lift | 情感筛选前后的 median label 差值 |
+| 术语               | 含义 |
+|------------------|------|
+| breakout / bo    | 突破点（价格有效穿越阻力位的 K 线） |
+| peak / pk        | 凸点，即被识别的阻力位 |
+| level            | 因子评级（离散化后的因子档位） |
+| factor           | 评分因子（由 `FACTOR_REGISTRY` 统一注册） |
+| trial            | 挖掘流水线的一次参数组合实验 |
+| sentiment_lift   | 情感筛选前后的 median label 差值 |
+| effective_buffer | 因子自身所需最小 lookback，由 `FeatureCalculator._effective_buffer` SSOT；`max_effective_buffer` 聚合为下游 buffer 派生 |
+| range_meta       | `df.attrs["range_meta"]`，scanner 写入的三层范围元数据（pkl/scan/compute/label ideal-actual 双值） |
+| ChartRangeSpec   | 图表范围契约 dataclass，由 `UI/charts/range_utils.py` 导出，Dev/Live UI 共用降级可视化 |

@@ -1,4 +1,4 @@
-> 最后更新：2026-04-14
+> 最后更新：2026-04-16
 
 # Live 日常监控模块
 
@@ -86,6 +86,32 @@ flowchart TD
 **决策**：`_run_pipeline_async` 启 worker 线程跑下载/扫描/情感，进度和完成通过 `root.after()` 调回主线程更新 Tkinter 控件。
 
 **理由**：Tkinter 不是线程安全的；直接从 worker 动控件会偶发崩溃。`after()` 把回调塞进主循环队列，保证 UI 变更只在主线程发生。
+
+### 7. 图表数据流与 Dev UI 统一
+
+**决策**：`_rebuild_chart` 走 `preprocess_dataframe → ChartRangeSpec.from_df_and_scan → trim_df_to_display → adjust_indices → canvas_manager.update_chart(spec=...)` 流程，与 Dev UI 的 `_render_chart` 复用同一条 `UI/charts/range_utils.py` 管线。
+
+**理由**：旧路径直接 `pd.read_pickle` 喂 canvas，依赖"scanner df 行数 == pkl 行数"的隐式不变量（由 `days_from_now = scan_window + 400` 与 scanner buffer 的数值巧合保证）；任何一侧常量变动会无声破坏 BO index 对齐。统一后 BO/peak index 由 `trim_df_to_display` 返回的 offset 显式补偿，MA 从 `preprocess_dataframe` 预计算列取（避免 canvas fallback rolling 前 N 根 NaN）。
+
+### 8. `MatchedBreakout.range_spec` 持久化策略
+
+**决策**：`MatchedBreakout` 新增 `range_spec: Optional[ChartRangeSpec]` 字段，由 `daily_runner._build_range_spec_for_symbol`（按 symbol 缓存）在 Step3 构造。缓存 JSON 序列化时 `_serialize_match` 将该字段置 None（`datetime.date` 非 JSON 原生可序列化），加载后由 `_rebuild_chart` fallback 分支现场重建（`ChartRangeSpec.from_df_and_scan(df, scan_start, scan_end, display_end)`）。
+
+**理由**：range_spec 可从 pkl + preprocess 廉价重建，无必要跨进程 JSON 往返。MatchList 行尾 `⚠` 小标依赖 spec 做 `_collect_warnings(range_spec)` 判定；若为 None（旧缓存）自然无小标，行为 graceful。
+
+### 9. 下载窗口从三层常量派生
+
+**决策**：`daily_runner._compute_download_days(scan_window_days, ma_period, atr_period, feat_params, label_max_days, safety_days, display_window_days)` 按公式 `max(display_window, scan_window + compute_buffer + label_buffer) + safety` 计算，其中 `compute_buffer = max(ma, atr, FeatureCalculator.max_effective_buffer(feat_params)) × TRADING_TO_CALENDAR_RATIO`。`_step1_download_data` 调用时默认 `feat_params=None`（FeatureCalculator 默认值）。
+
+**理由**：历史上 `days_from_now = scan_window + 400` 是魔法数，和 scanner 的 `VOLUME_LOOKBACK_BUFFER=63 / ANNUAL_VOL_LOOKBACK_BUFFER=252` 是同一事实的两份 duplicate。现在唯一事实源是 `FeatureCalculator._effective_buffer`，任何因子 lookback / MA 周期 / display 窗口变化自动传导到下载量和 preprocess buffer。默认参数下结果恰为 1125 天（3y display + 30 天安全垫），与旧行为数值一致。
+
+### 10. UI 降级可见性
+
+**MatchList**（`panels/match_list.py`）：`_row_values` 检查 `it.range_spec is not None and _collect_warnings(it.range_spec)`，降级时 symbol 字段追加 " ⚠"。该列表每行可能对应不同 symbol，各自 spec 独立判定。
+
+**chart canvas**：`update_chart` 接 `spec` 参数后，`canvas_manager._draw_range_spec_shading` 绘三段阴影 + 降级橙虚线（与 Dev UI 共用，详见 `.claude/docs/modules/交互式UI.md` §3.10）。
+
+**detail_panel._fmt**：因子可能 `unavailable`（per-factor gate 返回 None），`_fmt(None)` 统一返回 `"N/A"`；原先只处理 int/float 分支，None 会抛 TypeError。
 
 ---
 

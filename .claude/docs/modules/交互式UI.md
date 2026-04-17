@@ -1,6 +1,6 @@
-# 12 交互式UI模块 (UI)
+# 交互式UI模块 (UI)
 
-> 状态：已实现 (Implemented) | 最后更新：2026-03-13
+> 最后更新：2026-04-16
 
 ## 一、模块概述
 
@@ -248,6 +248,37 @@ performance:
 - `param_loader.py`：`get_scorer_params()` 对 YAML 中缺失的因子 fallback 到 `FactorInfo.default_thresholds` / `default_values`
 
 整个链路保证：注册新因子后，UI 参数编辑器无需任何手动适配即可正常工作。
+
+### 3.9 三层范围模型（`charts/range_utils.py`）
+
+**问题**：Dev/Live UI 图表历史上走两套数据流（Dev 用 `_trim_df_for_display`，Live 直接 `pd.read_pickle`），导致 BO index 对齐隐式依赖常量关系、MA 显示不一致、缺乏降级可观测性。
+
+**解决方案**：新增 `UI/charts/range_utils.py` 作为 Dev/Live 共用的范围契约层。
+- `ChartRangeSpec` frozen dataclass：显式承载**扫描层**（`scan_start/end_{ideal,actual}`）、**运算层**（`compute_start_{ideal,actual}`，`= scan_start - compute_buffer`）、**显示层**（`display_start/end`，`display_start = max(pkl_start, min(scan_start_actual, display_end - DISPLAY_MIN_WINDOW))`）三层独立范围。
+- `trim_df_to_display(df, spec)` / `adjust_indices(items, offset)`：从 UI 主类迁出的共用变换（原 `_trim_df_for_display` / `_adjust_breakout_indices` / `_adjust_peak_indices` 私有方法已移除）。
+- `_collect_warnings(spec)`：汇总 `scan_start_degraded / scan_end_degraded / compute_buffer_degraded` 为可显示字符串列表。
+- 工厂 `ChartRangeSpec.from_df_and_scan(df, scan_start, scan_end, display_end, display_min_window)`：从 `df.attrs["range_meta"]`（由 scanner 写入）构造完整 spec；`display_min_window=None` 退化为 Dev UI 全展开模式。
+
+**Why 三层解耦（范围定义耦合、降级执行独立）**：
+- 范围定义上：display ⊇ scan（由 `min` 公式保证），compute 派生自 scan（`scan_start - compute_buffer`）。
+- 降级执行上：display 按 pkl 实际范围展示；compute 按实际起点算 MA/ATR（前缀自动 NaN）；scan 由 per-factor gate 独立降级。任一层 pkl 不足 → 对应层 gracefully degrade，不 raise。
+
+### 3.10 降级可见性（status bar + 图表视觉）
+
+通过 `UI/main.py` 的 `_render_chart`（抽出的共用渲染方法）把 spec 传递给 `canvas_manager`：
+
+- **status bar**：降级时 status 变橙，文字追加 `⚠ {warnings}`（`_collect_warnings` 产出）。
+- **canvas_manager 三段阴影**：`[display_start, scan_start_actual]` 灰（pre-scan）、中段无阴影（扫描区）、`[scan_end_actual, display_end]` 灰（post-scan / label buffer）。
+- **降级虚线**：`scan_start_degraded` / `scan_end_degraded` 在对应 actual 位置画橙虚线 + 文字 `scan start (req YYYY-MM-DD)`。`compute_buffer_degraded` 仅 status bar 提示（MA 线自然 NaN 即视觉信号）。
+
+### 3.11 score_tooltip 三态渲染
+
+`FactorDetail.unavailable` 字段驱动三态：
+- **unavailable=True**：灰色 `factor_unavailable` + `N/A` + em-dash（"数据不够算"）
+- **level=0 且 unavailable=False**：灰色（"可算但未触发"）
+- **level>0**：按因子方向色（触发）
+
+这种区分让用户在 tooltip 就能看到"缓冲区不足导致因子缺失"与"该因子本身不成立"的差别，避免误判。
 
 ## 四、组件职责
 

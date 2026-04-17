@@ -1,8 +1,8 @@
 data:
   data_dir: /home/yu/PycharmProjects/Trade_Strategy/datasets/pkls
   max_stocks: null
-  start_date: '2025-08-01'
-  end_date: '2026-04-14'
+  start_date: '2024-04-01'
+  end_date: '2025-06-01'
   csv_file: null
   mon_before: 6
   mon_after: 3
