@@ -153,6 +153,13 @@ class AxesInteractionController:
             return 1.0
         return self._initial_width / width
 
+    @property
+    def _needs_reset(self) -> bool:
+        """视图偏离默认状态时返回 True（FREE 模式 或 缩放非 1.0）。"""
+        if self.mode == self.MODE_FREE:
+            return True
+        return abs(self.zoom_level - 1.0) > 0.01
+
     def attach(
         self,
         data_span: Tuple[float, float],
@@ -250,13 +257,14 @@ class AxesInteractionController:
         new_x0, new_x1 = self._apply_constraints(new_x0, new_x1)
         self._ax.set_xlim(new_x0, new_x1)
         self._update_zoom_text()
+        self._update_reset_button_style()
         self._canvas.draw_idle()
 
     def _on_press(self, event) -> None:
-        # Reset 按钮区域：FREE 模式触发 reset；RIGHT_ALIGNED 模式静默拦截
-        # （防止灰色按钮被点反而误进 FREE 模式 + pan）
+        # Reset 按钮区域：视图偏离默认时触发 reset；否则静默拦截
+        # （防止默认态按钮被点反而误进 FREE 模式 + pan）
         if event.button == 1 and self._is_in_reset_button(event):
-            if self.mode == self.MODE_FREE:
+            if self._needs_reset:
                 self.reset()
             return
 
@@ -328,7 +336,7 @@ class AxesInteractionController:
     def _update_reset_button_style(self) -> None:
         if self._reset_button is None:
             return
-        if self.mode == self.MODE_FREE:
+        if self._needs_reset:
             self._reset_button.set_color("black")
             self._reset_button.get_bbox_patch().set_edgecolor("#888888")
             self._reset_button.get_bbox_patch().set_alpha(0.9)

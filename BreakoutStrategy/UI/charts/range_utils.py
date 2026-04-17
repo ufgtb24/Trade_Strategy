@@ -62,8 +62,8 @@ class ChartRangeSpec:
         要求 df.attrs["range_meta"] 已包含 scan_start_actual / scan_end_actual
         （由 scanner.compute_breakouts_from_dataframe 写入）。
 
-        - display_min_window=None：Dev UI 全展开模式，display_start = max(pkl_start, scan_start_actual)
-        - display_min_window=timedelta(...)：Live UI，display_start = max(pkl_start, min(scan_start_actual, display_end - window))
+        - display_min_window=DISPLAY_MIN_WINDOW（默认 3 年）：display_start = max(pkl_start, min(scan_start_actual, display_end - window))
+        - display_min_window=None：不设下限，display_start = max(pkl_start, scan_start_actual)
         """
         meta = df.attrs["range_meta"]
         pkl_start = meta["pkl_start"]

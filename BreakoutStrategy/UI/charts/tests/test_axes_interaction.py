@@ -496,30 +496,28 @@ def test_reset_method_restores_right_aligned_initial_width():
     plt.close(fig)
 
 
-def test_reset_button_click_in_right_aligned_is_ignored():
-    """RIGHT_ALIGNED 模式下点击 Reset 按钮区域 → 不触发 reset、xlim 不变。"""
+def test_reset_button_click_in_right_aligned_at_1x_is_ignored():
+    """RIGHT_ALIGNED + zoom_level==1.0 下点击 Reset 按钮 → 不触发 reset、xlim 不变。"""
     from BreakoutStrategy.UI.charts.axes_interaction import AxesInteractionController
 
     fig = plt.figure(figsize=(5, 4))
     ax = fig.add_subplot(111)
     ax.plot(range(100), range(100))
-    ax.set_xlim(20, 80)  # 非默认 xlim
+    ax.set_xlim(50, 100)  # 与 initial_width=50, right_anchor=100 一致 → zoom=1.0
     fig.canvas.draw()
 
     ctrl = AxesInteractionController(ax, fig.canvas)
     ctrl.attach(data_span=(0.0, 100.0), bar_anchor=95.0, initial_width=50.0)
-    # 此时 mode=RIGHT_ALIGNED；attach 不会动 xlim
     assert ctrl.mode == ctrl.MODE_RIGHT_ALIGNED
+    assert ctrl.zoom_level == pytest.approx(1.0)
 
-    # 触发一次绘制让 transAxes 坐标可计算
     fig.canvas.draw()
 
-    # 取 reset 按钮中心像素并合成 button_press
     bbox_artist = ctrl._reset_button.get_window_extent(renderer=fig.canvas.get_renderer())
     cx = (bbox_artist.x0 + bbox_artist.x1) / 2
     cy = (bbox_artist.y0 + bbox_artist.y1) / 2
     pre_xlim = ax.get_xlim()
-    _mouse("button_press_event", fig.canvas, ax, cx, cy, button=1, xdata=50.0, ydata=0)
+    _mouse("button_press_event", fig.canvas, ax, cx, cy, button=1, xdata=75.0, ydata=0)
 
     assert ax.get_xlim() == pre_xlim  # 没动
     assert not ctrl.is_panning           # 也没进入 pan
@@ -559,3 +557,74 @@ def test_reset_button_click_in_free_mode_triggers_reset():
 
     ctrl.detach()
     plt.close(fig)
+
+
+# ---------- Reset 按钮 + 缩放交互测试 ----------
+
+def test_scroll_zoom_enables_reset_button_in_right_aligned(controller_fig):
+    """RIGHT_ALIGNED 模式下缩放 → Reset 按钮变黑可用。"""
+    fig, ax, canvas, ctrl = controller_fig
+    assert ctrl.mode == ctrl.MODE_RIGHT_ALIGNED
+
+    # 初始 Reset 按钮应为灰色（zoom=1.0 + RIGHT_ALIGNED）
+    assert ctrl._reset_button.get_color() == "#BBBBBB"
+
+    _scroll(canvas, ax, xdata=50.0, step=1)  # zoom in
+
+    assert ctrl.mode == ctrl.MODE_RIGHT_ALIGNED  # 模式不变
+    assert ctrl.zoom_level > 1.0
+    assert ctrl._reset_button.get_color() == "black"  # 按钮变黑
+
+
+def test_scroll_zoom_then_click_reset_in_right_aligned():
+    """RIGHT_ALIGNED 模式下缩放后点击 Reset → xlim 恢复 + zoom 回 1.0。"""
+    from BreakoutStrategy.UI.charts.axes_interaction import AxesInteractionController
+
+    fig = plt.figure(figsize=(5, 4))
+    ax = fig.add_subplot(111)
+    ax.plot(range(100), range(100))
+    ax.set_xlim(50, 100)
+    fig.canvas.draw()
+
+    ctrl = AxesInteractionController(ax, fig.canvas)
+    ctrl.attach(data_span=(0.0, 100.0), bar_anchor=95.0, initial_width=50.0)
+
+    # 缩放（保持 RIGHT_ALIGNED）
+    _scroll(fig.canvas, ax, xdata=70.0, step=1)
+    _scroll(fig.canvas, ax, xdata=70.0, step=1)
+    assert ctrl.zoom_level > 1.0
+    assert ctrl.mode == ctrl.MODE_RIGHT_ALIGNED
+
+    fig.canvas.draw()
+
+    # 点击 Reset 按钮
+    bbox_artist = ctrl._reset_button.get_window_extent(renderer=fig.canvas.get_renderer())
+    cx = (bbox_artist.x0 + bbox_artist.x1) / 2
+    cy = (bbox_artist.y0 + bbox_artist.y1) / 2
+    _mouse("button_press_event", fig.canvas, ax, cx, cy, button=1, xdata=75.0, ydata=0)
+
+    assert ctrl.mode == ctrl.MODE_RIGHT_ALIGNED
+    assert ctrl.zoom_level == pytest.approx(1.0)
+    x0, x1 = ax.get_xlim()
+    assert (x0, x1) == pytest.approx((50.0, 100.0))
+
+    ctrl.detach()
+    plt.close(fig)
+
+
+def test_zoom_back_to_1x_disables_reset_button(controller_fig):
+    """缩放后再缩回 ~1.0x → Reset 按钮恢复灰色。"""
+    fig, ax, canvas, ctrl = controller_fig
+    assert ctrl._reset_button.get_color() == "#BBBBBB"
+
+    # zoom in 4 步
+    for _ in range(4):
+        _scroll(canvas, ax, xdata=50.0, step=1)
+    assert ctrl._reset_button.get_color() == "black"
+
+    # zoom out 4 步（回到约 1.0x）
+    for _ in range(4):
+        _scroll(canvas, ax, xdata=50.0, step=-1)
+
+    assert ctrl.zoom_level == pytest.approx(1.0, abs=0.01)
+    assert ctrl._reset_button.get_color() == "#BBBBBB"

@@ -568,7 +568,7 @@ class InteractiveUI:
         Returns:
             构造好的 ChartRangeSpec（供调用者读取 warnings）
         """
-        # 从 df.attrs 读 range_meta，构造 spec（Dev UI 用全展开模式：display_min_window=None）
+        # 从 df.attrs 读 range_meta，构造 spec（Dev/Live 统一 3 年显示窗口）
         _meta = df.attrs.get("range_meta", {})
         _display_end = _meta.get("label_buffer_end_actual") or df.index[-1].date()
         spec = ChartRangeSpec.from_df_and_scan(
@@ -576,7 +576,6 @@ class InteractiveUI:
             scan_start=start_date,
             scan_end=end_date,
             display_end=_display_end,
-            display_min_window=None,  # Dev UI 全展开
         )
 
         # 裁切 + 调整索引
@@ -601,11 +600,15 @@ class InteractiveUI:
                 symbol, display_breakouts, index_offset
             )
 
+        # 初始显示窗口从 scan_start 到 display_end（灰色区域需左滑才可见）
+        initial_days = (spec.display_end - spec.scan_start_actual).days
+
         self.chart_manager.update_chart(
             display_df, display_breakouts, display_active_peaks,
             display_superseded_peaks, symbol, display_options,
             label_buffer_start_idx=label_buffer_start,
             template_matched_indices=template_indices,
+            initial_window_days=initial_days,
             spec=spec,
         )
         return spec
