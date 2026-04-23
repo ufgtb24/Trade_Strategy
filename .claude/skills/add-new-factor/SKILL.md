@@ -1,6 +1,6 @@
 ---
 name: add-new-factor
-description: Use when adding a new factor to the breakout detection factor system - covers registration, computation, and dataclass field across 3 required files
+description: Use when adding a new factor to the breakout detection factor system - covers registration, computation, dataclass field, and BO-level buffer across required files
 ---
 
 # Add New Factor to Breakout System
@@ -20,9 +20,10 @@ FactorInfo('key', 'English Name', '中文名',
            (threshold1, threshold2), (value1, value2),
            category='context',
            unit='x', display_transform='round2',
+           nullable=True,  # ← 若 effective buffer>0 必填：per-factor gate 下 None = 不可算
            # 可选：
            # is_discrete=True, has_nan_group=True,
-           # mining_mode='lte', zero_guard=True, nullable=True,
+           # mining_mode='lte', zero_guard=True,
            # sub_params=(SubParamDef(...),),
            ),
 ```
@@ -35,7 +36,7 @@ FactorInfo('key', 'English Name', '中文名',
 - `unit`: 显示单位 (`'d'`, `'x'`, `'%'`, `'bo'`, `'σ'`, `'σN'`, `''`)
 - `display_transform`: `'identity'` | `'pct100'` | `'round1'` | `'round2'`
 - `zero_guard`: `True` 当 value <= 0 时 factor disabled
-- `nullable`: `True` 当 None 有语义（如 drought 首次突破）
+- `nullable`: `True` 当 effective_buffer>0 或 None 语义有效时必填（如 drought 首次突破、lookback 不足）
 - `sub_params`: 计算参数元组，每个 `SubParamDef(yaml_name, internal_name, param_type, default, range, description, consumer)`
 
 自动派生：`level_col = f"{key}_level"`, `yaml_key = f"{key}_factor"`
@@ -66,14 +67,54 @@ FactorInfo('key', 'English Name', '中文名',
 在 `Breakout` dataclass 中添加字段（带默认值）：
 
 ```python
-    new_factor: float = 0.0  # 因子说明
+new_factor: float | None = None  # 因子说明；None 表示 lookback 不足
 ```
 
 ### 4. Feature Calculator (`BreakoutStrategy/analysis/features.py`)
 
 - 添加计算方法（如 `_calculate_xxx()`）
-- 在 `enrich_breakout()` 中调用并赋值到 Breakout 构造器
+- 在 `enrich_breakout()` 中加一行 `key = self._calculate_xxx(...) if has_buffer('key') else None`
 - 如需预计算序列（如 rolling），参照 `atr_series` 模式：在 caller 预计算一次，作为可选参数传入
+
+**Per-factor lookback 自检**：如果你的因子需要 N 根历史 bar，在 `_calculate_xxx` 入口加：
+
+```text
+def _calculate_xxx(self, df, idx):
+    if idx < N:                # N = 该因子的 effective buffer
+        return None            # lookback 不足 → 该因子对该 BO 不可算
+    # 正常计算 ...
+```
+
+这是第二道防线（第一道是 `has_buffer` 在 `enrich_breakout` 里拦截）。保留它使 `_calculate_xxx` 可以独立被测试/调用。
+
+### 5. Per-factor effective buffer（`FeatureCalculator._effective_buffer`）
+
+每个因子的 effective buffer（`idx >= N` 才能算）**必须**在 `FeatureCalculator._effective_buffer` 里注册一个 case。未注册的 fi.key 会 raise ValueError，在第一次扫描时立即暴露漏注册。
+
+**伪代码**：
+
+```python
+def _effective_buffer(self, fi) -> int:
+    if fi.key in {'age', 'test', 'height', 'peak_vol', 'streak', 'drought'}:
+        return 0
+    if fi.key == 'volume':  return 63
+    if fi.key == 'pk_mom':  return self.pk_lookback + self.atr_period
+    # ... 新因子在这里加 case
+    raise ValueError(f"No effective_buffer registered for factor '{fi.key}'")
+```
+
+**取值规则**：
+
+| 因子类型 | effective buffer | 例 |
+|---|---|---|
+| 无历史 lookback（peak 属性 / detector 状态） | `0` | `age`, `streak`, `drought` |
+| 单一窗口因子 | 窗口长度 | `volume` → `63` |
+| 组合窗口（多个 sub_params 串联） | 各部分之和 | `pk_mom` → `self.pk_lookback + self.atr_period` |
+| 依赖 vol/MA/其他派生量 | 被依赖量的 buffer | `day_str/overshoot/pbm` → `252` (annual_volatility) |
+
+**重要**：sub_params 通过 `self.xxx` 动态读；用户修改 YAML 里的 sub_param，`_effective_buffer` 自动反映实际 buffer 值。
+
+**不再使用 `FactorInfo.buffer` 字段**（Spec 1 per-factor gate 改造后删除），SSOT 统一归 `_effective_buffer`。
 
 ## 不需要改动的文件（FACTOR_REGISTRY 自动驱动）
 
@@ -116,8 +157,17 @@ print('xxx' in scorer._factor_configs)
 
 # 3. UI Schema（确认因子出现在参数编辑器中）
 uv run python -c "
-from BreakoutStrategy.UI.config.param_editor_schema import PARAM_CONFIGS
+from BreakoutStrategy.dev.config.param_editor_schema import PARAM_CONFIGS
 print('xxx_factor' in PARAM_CONFIGS['quality_scorer'])
+"
+
+# 4. effective buffer（确认新因子已注册）
+uv run python -c "
+from BreakoutStrategy.analysis.features import FeatureCalculator
+from BreakoutStrategy.factor_registry import get_factor
+calc = FeatureCalculator()
+fi = get_factor('xxx')
+print('effective_buffer =', calc._effective_buffer(fi))
 "
 ```
 
@@ -129,3 +179,5 @@ print('xxx_factor' in PARAM_CONFIGS['quality_scorer'])
 | Breakout dataclass 字段缺失 | `getattr(bo, key)` 返回默认值 0 |
 | features.py 未赋值 | 因子永远为 0（静默失效） |
 | sub_params 的 consumer 写错 | 参数传递到错误的消费者 |
+| `_effective_buffer` 忘加 case | 扫描时立即 `ValueError: No effective_buffer registered for factor 'xxx'`（strict contract 早暴露） |
+| `nullable=True` 漏加（且 effective_buffer>0） | scorer 对 None 走非 nullable 分支，raw_value 被当作 0 处理，FactorDetail.unavailable 不会显示，tooltip 不显示 "N/A" |

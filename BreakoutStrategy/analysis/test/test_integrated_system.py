@@ -135,8 +135,10 @@ def test_integrated_system():
         print(
             f"    突破类型: {bo.breakout_type}, 日内涨幅: {bo.intraday_change_pct * 100:.2f}%"
         )
+        vol_str = f"{bo.volume:.2f}倍" if bo.volume is not None else "N/A"
+        pbm_str = f"{bo.pbm*1000:.2f}‰" if bo.pbm is not None else "N/A"
         print(
-            f"    放量: {bo.volume:.2f}倍, PBM: {bo.pbm*1000:.2f}‰, 稳定性: {bo.stability_score:.0f}%"
+            f"    放量: {vol_str}, PBM: {pbm_str}, 稳定性: {bo.stability_score:.0f}%"
         )
         print("    ---")
         print(f"    被突破峰值数: {bo.num_peaks_broken}")

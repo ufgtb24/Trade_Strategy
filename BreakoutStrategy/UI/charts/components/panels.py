@@ -94,12 +94,14 @@ class PanelComponent:
         )
 
         quality_str = f"{breakout.quality_score:.1f}" if breakout.quality_score else "N/A"
+        volume_str = f"{breakout.volume:.2f}x" if breakout.volume is not None else "N/A"
+        pbm_str = f"{breakout.pbm:.2f}σN" if breakout.pbm is not None else "N/A"
         line2 = (
             f"Quality Score: {quality_str} | "
             f"Intraday Change: {breakout.intraday_change_pct*100:.2f}% | "
-            f"Volume Surge: {breakout.volume:.2f}x | "
+            f"Volume Surge: {volume_str} | "
             f"Gap Up: {'Yes' if breakout.gap_up_pct > 0 else 'No'} | "
-            f"PBM: {breakout.pbm:.2f}σN | "
+            f"PBM: {pbm_str} | "
             f"Stability: {breakout.stability_score:.1f}"
         )
 

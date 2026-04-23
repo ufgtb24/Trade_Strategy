@@ -72,6 +72,45 @@ class FeatureCalculator:
         # 格式: [{"max_days": 40}]
         self.label_configs: List[Dict] = config.get("label_configs", [])
 
+    def _effective_buffer(self, fi) -> int:
+        """因子级 lookback 的 SSOT。根据实例 sub_params attrs 计算真实 buffer。
+
+        新因子必须在这里注册一个 case。未注册时立即抛 ValueError（strict contract），
+        避免静默退化。
+        """
+        key = fi.key
+        if key in {'age', 'test', 'height', 'peak_vol', 'streak', 'drought'}:
+            return 0
+        if key == 'volume':
+            return 63  # VOLUME_LOOKBACK
+        if key == 'pk_mom':
+            return self.pk_lookback + self.atr_period
+        if key == 'pre_vol':
+            return 63 + self.pre_vol_window
+        if key == 'ma_pos':
+            return self.ma_pos_period
+        if key == 'ma_curve':
+            return self.ma_curve_period + 2 * self.ma_curve_stride
+        if key == 'dd_recov':
+            return self.dd_recov_lookback
+        if key in {'overshoot', 'day_str', 'pbm'}:
+            return 252  # annual_volatility LOOKBACK
+        raise ValueError(
+            f"No effective_buffer registered for factor '{key}'. "
+            f"Add a case in FeatureCalculator._effective_buffer."
+        )
+
+    @classmethod
+    def max_effective_buffer(cls, config: Optional[dict] = None) -> int:
+        """返回所有已注册因子在给定配置下的最大 lookback（trading days）。
+
+        迭代完整 FACTOR_REGISTRY（含 inactive 因子），使未来激活 inactive
+        因子时下载 / preprocess buffer 自动传导，无需修改此处。
+        """
+        from BreakoutStrategy.factor_registry import FACTOR_REGISTRY
+        calc = cls(config or {})
+        return max(calc._effective_buffer(fi) for fi in FACTOR_REGISTRY)
+
     def enrich_breakout(
         self,
         df: pd.DataFrame,
@@ -129,14 +168,24 @@ class FeatureCalculator:
             if pd.notna(atr_prev) and atr_prev > 0:
                 atr_value = float(atr_prev)
 
-        # 计算波动率相关字段（Breakout 基础字段 + 多因子共享中间变量，始终计算）
+        # 计算波动率相关字段（多因子共享中间变量）
         inactive = INACTIVE_FACTORS
-        annual_volatility = self._calculate_annual_volatility(df, idx)
-        gain_5d = self._calculate_gain_5d(df, idx) if 'overshoot' not in inactive else 0.0
+        from BreakoutStrategy.factor_registry import get_factor
 
-        # 注册因子计算（受总开关控制）
-        day_str = self._calculate_day_str(intraday_change_pct, gap_up_pct, annual_volatility) if 'day_str' not in inactive else 0.0
-        overshoot = self._calculate_overshoot(gain_5d, annual_volatility) if 'overshoot' not in inactive else 0.0
+        def has_buffer(key: str) -> bool:
+            """判断该因子在当前 idx 下是否满足 effective buffer。"""
+            if key in inactive:
+                return False
+            return idx >= self._effective_buffer(get_factor(key))
+
+        annual_volatility = self._calculate_annual_volatility(df, idx)
+        gain_5d = self._calculate_gain_5d(df, idx) if has_buffer('overshoot') else None
+
+        # 注册因子计算（受 per-factor gate 控制）
+        day_str = self._calculate_day_str(intraday_change_pct, gap_up_pct, annual_volatility) \
+                  if has_buffer('day_str') else None
+        overshoot = self._calculate_overshoot(gain_5d if gain_5d is not None else 0.0, annual_volatility) \
+                    if has_buffer('overshoot') else None
 
         # 计算突破幅度的 ATR 标准化（可选功能）
         atr_normalized_height = 0.0
@@ -145,8 +194,8 @@ class FeatureCalculator:
             breakout_amplitude = row["close"] - highest_peak.price
             atr_normalized_height = breakout_amplitude / atr_value
 
-        volume = self._calculate_volume_ratio(df, idx) if 'volume' not in inactive else 0.0
-        pbm = self._calculate_pbm(df, idx, annual_volatility) if 'pbm' not in inactive else 0.0
+        volume = self._calculate_volume_ratio(df, idx) if has_buffer('volume') else None
+        pbm = self._calculate_pbm(df, idx, annual_volatility) if has_buffer('pbm') else None
 
         # 计算稳定性
         highest_peak = breakout_info.highest_peak_broken
@@ -165,7 +214,7 @@ class FeatureCalculator:
         test = self._calculate_test(broken_peaks) if 'test' not in inactive else 0
 
         # pk_mom（使用距离 breakout 最近的 peak）
-        if 'pk_mom' not in inactive:
+        if has_buffer('pk_mom'):
             nearest_peak = max(breakout_info.broken_peaks, key=lambda p: p.index)
             pk_mom = self._calculate_pk_momentum(
                 df=df,
@@ -176,14 +225,15 @@ class FeatureCalculator:
                 atr_series=atr_series,
             )
         else:
-            pk_mom = 0.0
+            pk_mom = None
 
         # pre_vol
-        pre_vol = 0.0
-        if 'pre_vol' not in inactive and vol_ratio_series is not None:
+        if has_buffer('pre_vol') and vol_ratio_series is not None:
             pre_vol = self._calculate_pre_breakout_volume(vol_ratio_series, idx, self.pre_vol_window)
+        else:
+            pre_vol = None
 
-        ma_pos = self._calculate_ma_pos(df, idx) if 'ma_pos' not in inactive else 0.0
+        ma_pos = self._calculate_ma_pos(df, idx) if has_buffer('ma_pos') else None
         dd_recov = self._calculate_dd_recov(df, idx) if 'dd_recov' not in inactive else 0.0
         ma_curve = self._calculate_ma_curve(df, idx) if 'ma_curve' not in inactive else 0.0
 
@@ -474,7 +524,7 @@ class FeatureCalculator:
         # pk_momentum = 1 + log(1 + D_atr)
         return 1.0 + math.log(1 + d_atr)
 
-    def _calculate_gain_5d(self, df: pd.DataFrame, idx: int) -> float:
+    def _calculate_gain_5d(self, df: pd.DataFrame, idx: int) -> Optional[float]:
         """
         计算 5 日涨幅（绝对值）
 
@@ -485,10 +535,10 @@ class FeatureCalculator:
             idx: 当前 bar 索引
 
         Returns:
-            5 日涨幅（小数形式，如 0.15 表示 15%）
+            5 日涨幅（小数形式，如 0.15 表示 15%）；lookback 不足时返回 None
         """
         if idx < self.gain_window:
-            return 0.0
+            return None
 
         close = df["close"].values
 
@@ -497,39 +547,35 @@ class FeatureCalculator:
 
         return (close[idx] - close[idx - self.gain_window]) / close[idx - self.gain_window]
 
-    def _calculate_annual_volatility(self, df: pd.DataFrame, idx: int) -> float:
+    def _calculate_annual_volatility(self, df: pd.DataFrame, idx: int) -> Optional[float]:
         """
         计算年化波动率（基于过去 252 天日收益率标准差）
 
-        用于波动率动态阈值：
-        - 低波动股票（如公用事业）的超涨阈值应该更低
-        - 高波动股票（如成长股）的超涨阈值应该更高
-
-        公式：annual_vol = std(daily_returns) * sqrt(252)
+        用于波动率动态阈值判断：不同波动率的股票有不同的"超涨"绝对阈值
 
         Args:
             df: OHLCV 数据
             idx: 当前 bar 索引
 
         Returns:
-            年化波动率（小数形式，如 0.30 表示 30%）
+            年化波动率（小数形式，如 0.30 表示 30%）；idx<252 时返回 None
+            （per-factor gate 语义：该 BO 无法计算 annual_volatility，
+            依赖它的因子一并标为不可算）。
+
+        公式：annual_vol = std(daily_returns) * sqrt(252)
         """
-        # 使用最多 252 天数据，至少需要 20 天
-        lookback = min(252, idx)
-        if lookback < 20:
-            return 0.0
+        LOOKBACK = 252
+        if idx < LOOKBACK:
+            return None
 
         close = df["close"].values
 
         # 计算日收益率
         returns = []
-        for i in range(idx - lookback + 1, idx + 1):
+        for i in range(idx - LOOKBACK + 1, idx + 1):
             if i >= 1 and close[i - 1] > 0:
                 ret = (close[i] - close[i - 1]) / close[i - 1]
                 returns.append(ret)
-
-        if len(returns) < 20:
-            return 0.0
 
         # 年化波动率 = 日收益率标准差 * sqrt(252)
         return np.std(returns) * np.sqrt(252)
@@ -540,8 +586,8 @@ class FeatureCalculator:
         self,
         intraday_change_pct: float,
         gap_up_pct: float,
-        annual_volatility: float,
-    ) -> float:
+        annual_volatility: Optional[float],
+    ) -> Optional[float]:
         """
         计算突破日强度比率（DayStr），σ 单位
 
@@ -553,8 +599,11 @@ class FeatureCalculator:
             annual_volatility: 年化波动率
 
         Returns:
-            突破日强度比率（σ 单位），波动率无效时返回 0.0
+            突破日强度比率（σ 单位）；annual_volatility=None 时返回 None（不可算），
+            annual_volatility<=0 时返回 0.0（波动率无效）。
         """
+        if annual_volatility is None:
+            return None
         if annual_volatility <= 0:
             return 0.0
         daily_vol = annual_volatility / math.sqrt(252)
@@ -565,8 +614,8 @@ class FeatureCalculator:
     def _calculate_overshoot(
         self,
         gain_5d: float,
-        annual_volatility: float,
-    ) -> float:
+        annual_volatility: Optional[float],
+    ) -> Optional[float]:
         """
         计算超涨比率（Overshoot），σ 单位
 
@@ -577,8 +626,11 @@ class FeatureCalculator:
             annual_volatility: 年化波动率
 
         Returns:
-            超涨比率（σ 单位），波动率无效时返回 0.0
+            超涨比率（σ 单位）；annual_volatility=None 返回 None；
+            annual_volatility<=0 返回 0.0。
         """
+        if annual_volatility is None:
+            return None
         if annual_volatility <= 0:
             return 0.0
         five_day_vol = annual_volatility / math.sqrt(50.4)
@@ -588,8 +640,8 @@ class FeatureCalculator:
         self,
         df: pd.DataFrame,
         idx: int,
-        annual_volatility: float,
-    ) -> float:
+        annual_volatility: Optional[float],
+    ) -> Optional[float]:
         """
         计算突破前涨势强度（PBM），标准化为 σ_N 单位
 
@@ -602,8 +654,11 @@ class FeatureCalculator:
             annual_volatility: 年化波动率
 
         Returns:
-            标准化后的 PBM 值
+            标准化后的 PBM 值；annual_volatility=None 返回 None；
+            annual_volatility<=0 或 n_bars<=0 返回 0.0。
         """
+        if annual_volatility is None:
+            return None
         raw_momentum, n_bars = self._calculate_momentum(df, idx)
         if annual_volatility > 0 and n_bars > 0:
             daily_vol = annual_volatility / math.sqrt(252)
@@ -706,7 +761,7 @@ class FeatureCalculator:
                 current_cluster = 1
         return max(best_cluster, current_cluster)
 
-    def _calculate_ma_pos(self, df: pd.DataFrame, idx: int) -> float:
+    def _calculate_ma_pos(self, df: pd.DataFrame, idx: int) -> Optional[float]:
         """
         计算均线位置（MA Position）：突破日收盘价相对 N 日均线的溢价率
 
@@ -717,7 +772,7 @@ class FeatureCalculator:
             idx: 突破点索引
 
         Returns:
-            close / MA_N - 1.0，MA 无效时返回 0.0
+            close / MA_N - 1.0，MA 无效时返回 0.0；动态计算分支 lookback 不足时返回 None
         """
         period = self.ma_pos_period
         ma_col = f"ma_{period}"
@@ -728,7 +783,7 @@ class FeatureCalculator:
         else:
             # 动态计算（当 period 非 20/50 时）
             if idx < period - 1:
-                return 0.0
+                return None
             ma_val = df["close"].iloc[idx - period + 1: idx + 1].mean()
 
         if pd.notna(ma_val) and ma_val > 0:
@@ -782,7 +837,7 @@ class FeatureCalculator:
 
         return drawdown * recovery_ratio * (1 - recovery_ratio) ** (decay_power - 1)
 
-    def _calculate_ma_curve(self, df: pd.DataFrame, idx: int) -> float:
+    def _calculate_ma_curve(self, df: pd.DataFrame, idx: int) -> Optional[float]:
         """
         MA 曲率因子：宽间隔二阶差分的归一化值
 
@@ -800,13 +855,13 @@ class FeatureCalculator:
             idx: 突破点索引
 
         Returns:
-            归一化曲率值
+            归一化曲率值；lookback 不足时返回 None
         """
         period = self.ma_curve_period   # 默认 50
         k = self.ma_curve_stride        # 宽间隔步幅，默认 5
 
         if idx < period + 2 * k:
-            return 0.0
+            return None
 
         # 只需 3 个 MA 采样点：t, t-k, t-2k
         ma_col = f"ma_{period}"

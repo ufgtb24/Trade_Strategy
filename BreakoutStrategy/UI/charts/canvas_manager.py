@@ -1,14 +1,19 @@
 """图表Canvas管理器"""
 
 import tkinter as tk
+from datetime import timedelta
 from typing import Optional, List
 
+import matplotlib.patches as mpatches
 import matplotlib.pyplot as plt
 import pandas as pd
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 
 from ..styles import get_chart_colors
 from .components import CandlestickComponent, MarkerComponent, PanelComponent, ScoreDetailWindow
+from .axes_interaction import AxesInteractionController
+from .filter_range import compute_left_idx
+from .tooltip_anchor import compute_tooltip_anchor
 from ...analysis.breakout_scorer import BreakoutScorer
 from ...analysis.breakout_detector import Peak, Breakout
 from ...analysis.indicators import TechnicalIndicators
@@ -63,6 +68,13 @@ class ChartCanvasManager:
         # 放量倍数序列（用于 tooltip 显示 RV，与因子系统共用计算源）
         self._vol_ratio_series: Optional[pd.Series] = None
 
+        # 交互控制器（滚轮水平缩放 + 右键水平拖拽平移）
+        self.interaction: Optional[AxesInteractionController] = None
+
+        # Filter 时间范围可视化：浅灰背景 Rectangle + 黑色虚线左边界
+        self._filter_span = None
+        self._filter_line = None
+
     def update_chart(
         self,
         df: pd.DataFrame,
@@ -73,6 +85,9 @@ class ChartCanvasManager:
         display_options: dict = None,
         label_buffer_start_idx: int = None,
         template_matched_indices: list[int] = None,
+        initial_window_days: int | None = None,
+        filter_cutoff_date=None,
+        spec=None,
     ):
         """
         更新图表显示
@@ -85,7 +100,13 @@ class ChartCanvasManager:
             symbol: 股票代码
             display_options: 显示选项
             label_buffer_start_idx: Label 缓冲区在 df 中的起始索引（用于视觉区分）
+            template_matched_indices: 模板匹配命中的 K 线索引列表（用于绘制高亮条）
+            initial_window_days: 初始显示窗口（日历日数），None 表示保留 candlestick 默认全范围
+            filter_cutoff_date: Filter 时间范围可视化的截止日期，由 Task 5 的 _draw_filter_range 消费
+            spec: ChartRangeSpec，可选。本 task 仅存储不消费
         """
+        self._last_spec = spec
+
         # 1. 清理旧图表（防内存泄漏）
         self._cleanup()
 
@@ -148,7 +169,7 @@ class ChartCanvasManager:
         # 3. 调用现有组件绘图
         # 先绘制成交量作为背景
         breakout_dates = [df.index[bo.index] for bo in breakouts]
-        self.candlestick.draw_volume_background(
+        _vol_bars = self.candlestick.draw_volume_background(
             ax_main, df, highlight_dates=breakout_dates, colors=colors
         )
 
@@ -210,23 +231,41 @@ class ChartCanvasManager:
         # 合并所有绘制的 peaks，用于碰撞检测
         all_drawn_peaks = all_broken_peaks + active_only_peaks + superseded_only_peaks
 
-        self.marker.draw_breakouts(
-            ax_main,
-            df,
-            breakouts,
-            highlight_multi_peak=True,
-            peaks=all_drawn_peaks,  # 传入 peaks 以处理重叠
-            colors=colors,
-            show_score=show_bo_score,
-        )
+        # BO 绘制：live_mode=True 走 4-tier annotation 渲染（无 scatter）；否则走 Dev UI 原路径
+        _live_mode = display_options.get("live_mode", False)
+        if _live_mode:
+            self.marker.draw_breakouts_live_mode(
+                ax_main,
+                df,
+                breakouts,
+                current_bo_index=display_options.get("current_bo_index"),
+                visible_matched_indices=display_options.get("visible_matched_indices", set()),
+                filtered_out_matched_indices=display_options.get("filtered_out_matched_indices", set()),
+                peaks=all_drawn_peaks,
+                colors=colors,
+            )
+            # 暂存回调；pick_event 连线在 canvas 创建后进行（见下方）
+            self._on_bo_picked_callback = display_options.get("on_bo_picked")
+            # Up/Down 快捷键：chart 获焦时也能切换左侧列表。
+            self._on_navigate_list_callback = display_options.get("on_navigate_list")
+        else:
+            self.marker.draw_breakouts(
+                ax_main,
+                df,
+                breakouts,
+                highlight_multi_peak=True,
+                peaks=all_drawn_peaks,
+                colors=colors,
+                show_score=show_bo_score,
+            )
 
         self.marker.draw_resistance_zones(
             ax_main, df, breakouts, alpha=0.15, color=None, colors=colors
         )
 
         # 绘制均线（从参数面板获取周期）
-        from ..config.param_loader import get_ui_param_loader
-        loader = get_ui_param_loader()
+        from BreakoutStrategy.param_loader import get_param_loader
+        loader = get_param_loader()
         feature_params = loader.get_feature_calculator_params()
         ma_period = feature_params.get("ma_period", 200)
         self.marker.draw_moving_averages(
@@ -236,8 +275,10 @@ class ChartCanvasManager:
             colors=colors,
         )
 
-        # 绘制 Label 缓冲区视觉标记（分割线 + 浅灰背景）
-        if label_buffer_start_idx is not None and label_buffer_start_idx < len(df):
+        # 优先按 spec 绘三段；spec 为 None 时保留旧的 label_buffer 逻辑
+        if self._last_spec is not None:
+            self._draw_range_spec_shading(ax_main, df, self._last_spec)
+        elif label_buffer_start_idx is not None and label_buffer_start_idx < len(df):
             self._draw_label_buffer_zone(ax_main, df, label_buffer_start_idx, colors)
 
         self.panel.draw_statistics_panel(ax_stats, breakouts)
@@ -246,27 +287,113 @@ class ChartCanvasManager:
         if template_matched_indices:
             self.marker.draw_template_highlights(ax_main, template_matched_indices)
 
+        # 左侧 padding（与 candlestick.py:72 一致），供 data_span_left 界定 zoom-out 极限
+        margin_left = max(1, len(df) * 0.02) if len(df) > 0 else 1
+
+        # 提取 highs/lows/volumes 供动态 Y 轴缩放（兼容大小写列名）
+        import numpy as np
+        _h_col = "High" if "High" in df.columns else ("high" if "high" in df.columns else None)
+        _l_col = "Low" if "Low" in df.columns else ("low" if "low" in df.columns else None)
+        _v_col = "Volume" if "Volume" in df.columns else ("volume" if "volume" in df.columns else None)
+        _highs = df[_h_col].values if _h_col else None
+        _lows = df[_l_col].values if _l_col else None
+        _volumes = df[_v_col].values.astype(float) if _v_col else None
+
+        # 3b. 计算交互控制器几何参数：
+        # - right_anchor：xlim_right 上限
+        # - data_span_left：xlim_left 下限（全数据 + 左 padding）
+        # initial_window_days=None 时退化为"全数据视图"。
+        if len(df) > 0:
+            if initial_window_days is not None:
+                default_cutoff = df.index[-1] - timedelta(days=initial_window_days)
+                visible_left_idx = compute_left_idx(df.index, default_cutoff)
+            else:
+                visible_left_idx = 0
+            visible_bars = max(1, len(df) - visible_left_idx)
+            initial_margin_right = max(2, visible_bars * 0.05)
+
+            right_anchor = len(df) - 0.5 + initial_margin_right
+            data_span_left = -0.5 - margin_left
+            initial_width = right_anchor - (visible_left_idx - 0.5)
+
+            ax_main.set_xlim(right_anchor - initial_width, right_anchor)
+        else:
+            right_anchor = 0.5
+            data_span_left = -0.5
+            initial_width = 1.0
+
+        # 3c. 绘制 filter 时间范围背景（左边界虚线 + 浅灰 span）
+        if filter_cutoff_date is not None:
+            self._draw_filter_range(ax_main, df, filter_cutoff_date)
+
         # 不添加标题，因为信息已显示在UI右上角，避免浪费空间
 
         # 4. 嵌入Tkinter Canvas
         self.canvas = FigureCanvasTkAgg(self.fig, master=self.container)
 
         # 禁用 matplotlib 3.9+ 的自动 DPI 缩放 (PR #28588)
-        # 在高 DPI Linux 环境下，matplotlib 会自动检测 DPI 并放大渲染，
-        # 导致图表超出容器边界。通过 patch _update_device_pixel_ratio 方法禁用此行为。
         self._disable_auto_dpi_scaling()
 
         self.canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
         self.canvas.draw()
 
-        # 5. 绑定鼠标悬停事件
+        # pick_event 连线（live_mode）；幂等：先 disconnect 上次的 cid
+        if _live_mode:
+            if getattr(self, "_pick_cid", None) is not None:
+                try:
+                    self.canvas.mpl_disconnect(self._pick_cid)
+                except Exception:
+                    pass
+            self._pick_cid = self.canvas.mpl_connect("pick_event", self._on_pick)
+
+        # 5. 绑定交互控制器（默认鼠标锚点缩放，Ctrl 瞬态切右锚，动态 Y 轴）
+        self.interaction = AxesInteractionController(
+            ax_main,
+            self.canvas,
+            on_pan_state_change=self._on_pan_state_change,
+            is_ctrl_pressed=lambda: self._ctrl_pressed,
+        )
+        self.interaction.attach(
+            data_span=(data_span_left, right_anchor),
+            n_bars=len(df),
+            initial_width=initial_width,
+            highs=_highs,
+            lows=_lows,
+            volumes=_volumes,
+            vol_bars=_vol_bars,
+        )
+
+        # 6. 绑定鼠标悬停事件
         self._attach_hover(ax_main, df, breakouts, peaks=all_drawn_peaks)
+
+    def _on_pick(self, event):
+        """matplotlib pick_event handler：BO marker 点击反向同步到 MatchList。"""
+        cb = getattr(self, "_on_bo_picked_callback", None)
+        if cb is None:
+            return
+        artist = event.artist
+        idx = getattr(artist, "bo_chart_idx", None)
+        if idx is None:
+            return
+        cb(idx)
 
     def _cleanup(self):
         """清理旧图表，防止内存泄漏"""
+        if self.interaction is not None:
+            self.interaction.detach()
+            self.interaction = None
+
+        # Filter 范围 artists 随 fig 关闭自动释放，这里只清引用
+        self._filter_span = None
+        self._filter_line = None
+
         if self.canvas:
             self.canvas.get_tk_widget().destroy()
             self.canvas = None
+            # canvas 销毁后，旧 _pick_cid 已失效；清空避免下次 update_chart
+            # 对已死 canvas 做 stale disconnect
+            if hasattr(self, "_pick_cid"):
+                self._pick_cid = None
 
         if self.fig:
             plt.close(self.fig)
@@ -293,6 +420,17 @@ class ChartCanvasManager:
         self._last_hover_x = 0
         self._hover_df = None
 
+    def _on_pan_state_change(self, panning: bool) -> None:
+        """拖拽期间隐藏 hover annotation/crosshair，避免视觉闪烁。"""
+        if self.annotation is not None:
+            self.annotation.set_visible(not panning and self.annotation.get_text() != "")
+        if self.crosshair_v is not None:
+            self.crosshair_v.set_visible(False if panning else self.crosshair_v.get_visible())
+        if self.crosshair_h is not None:
+            self.crosshair_h.set_visible(False if panning else self.crosshair_h.get_visible())
+        if self.canvas is not None:
+            self.canvas.draw_idle()
+
     def _draw_label_buffer_zone(
         self, ax, df: pd.DataFrame, buffer_start_idx: int, colors: dict
     ):
@@ -305,8 +443,6 @@ class ChartCanvasManager:
             buffer_start_idx: 缓冲区起始索引（在 df 中的位置）
             colors: 颜色配置
         """
-        import matplotlib.patches as mpatches
-
         # 1. 分割线（垂直虚线）
         ax.axvline(
             x=buffer_start_idx - 0.5,
@@ -333,6 +469,135 @@ class ChartCanvasManager:
             linewidth=0,
         )
         ax.add_patch(rect)
+
+    def _draw_range_spec_shading(self, ax, df, spec):
+        """按 spec 绘制三段阴影 + 降级虚线。
+
+        三段阴影：pre-scan / main / post-scan。
+        降级虚线：scan_start_degraded 或 scan_end_degraded 时，在对应位置画橙色虚线。
+        """
+        if spec is None:
+            return
+
+        # 三段阴影
+        self._draw_shade(ax, df, spec.display_start, spec.scan_start_actual)
+        self._draw_shade(ax, df, spec.scan_end_actual, spec.display_end)
+
+        # 降级虚线
+        if spec.scan_start_degraded:
+            self._draw_degradation_line(
+                ax, df, spec.scan_start_actual,
+                label=f"scan start (req {spec.scan_start_ideal})",
+            )
+        if spec.scan_end_degraded:
+            self._draw_degradation_line(
+                ax, df, spec.scan_end_actual,
+                label=f"scan end (req {spec.scan_end_ideal})",
+            )
+
+    def _draw_degradation_line(self, ax, df, date_value, label, color="#FF8800"):
+        """在指定日期画橙色虚线，顶部附文字标注。"""
+        if date_value is None:
+            return
+        dt = pd.to_datetime(date_value)
+        mask = df.index >= dt
+        if not mask.any():
+            return
+        idx = int(mask.argmax())
+        ax.axvline(x=idx, color=color, linestyle="--", linewidth=1.0, zorder=5, alpha=0.8)
+        _ymin, ymax = ax.get_ylim()
+        ax.text(
+            idx, ymax * 0.98, label,
+            color=color, fontsize=8, ha="left", va="top",
+            bbox=dict(facecolor="white", edgecolor=color, alpha=0.9, boxstyle="round,pad=0.3"),
+        )
+
+    def _draw_shade(self, ax, df, start_date, end_date, alpha=0.15, color="#808080"):
+        """在 ax 上绘制 [start_date, end_date] 区间的灰色阴影（基于 df 行号）。
+
+        start_date/end_date 为 datetime.date；区间空/逆序时跳过。
+        """
+        if start_date is None or end_date is None:
+            return
+        if start_date >= end_date:
+            return
+        start_dt = pd.to_datetime(start_date)
+        end_dt = pd.to_datetime(end_date)
+        start_mask = df.index >= start_dt
+        if not start_mask.any():
+            return
+        start_idx = int(start_mask.argmax())
+        # end_idx: 在 df 中找 <= end_date 的最后一个位置的后一位
+        end_idx = int(df.index.searchsorted(end_dt, side="right"))
+        if end_idx <= start_idx:
+            return
+        ax.axvspan(start_idx - 0.5, end_idx - 0.5, alpha=alpha, color=color, zorder=0)
+
+    def _draw_filter_range(self, ax, df, cutoff_date):
+        """绘制 filter 的时间范围：浅灰背景 + 黑色虚线左边界。
+
+        Args:
+            ax: 主 axes（ax_main）
+            df: 当前 OHLCV DataFrame
+            cutoff_date: filter 的 date cutoff（datetime.date）
+        """
+        left_idx = compute_left_idx(df.index, cutoff_date)
+        if left_idx >= len(df):
+            # cutoff 晚于最新数据 → 无可绘制范围
+            return
+
+        ylim = ax.get_ylim()
+        if ylim[0] == 0.0 and ylim[1] == 1.0:
+            # Y 轴尚未初始化，跳过背景绘制
+            return
+
+        self._filter_span = mpatches.Rectangle(
+            (left_idx - 0.5, ylim[0]),
+            len(df) - left_idx,
+            ylim[1] - ylim[0],
+            color="#D8D8D8",
+            alpha=0.25,
+            zorder=0,
+            linewidth=0,
+        )
+        ax.add_patch(self._filter_span)
+        self._filter_line = ax.axvline(
+            x=left_idx - 0.5,
+            color="black",
+            linestyle="--",
+            linewidth=1.5,
+            alpha=0.8,
+            zorder=4,
+        )
+
+    def update_filter_range(self, cutoff_date):
+        """Surgical 更新 filter 背景/边界位置（不重绘 figure）。
+
+        Args:
+            cutoff_date: filter 的 date cutoff（datetime.date）
+        """
+        if (
+            self._filter_span is None
+            or self._filter_line is None
+            or self._hover_df is None
+        ):
+            return
+        df = self._hover_df
+        left_idx = compute_left_idx(df.index, cutoff_date)
+
+        if left_idx >= len(df):
+            self._filter_span.set_visible(False)
+            self._filter_line.set_visible(False)
+        else:
+            ylim = self._filter_span.axes.get_ylim()
+            self._filter_span.set_xy((left_idx - 0.5, ylim[0]))
+            self._filter_span.set_width(len(df) - left_idx)
+            self._filter_line.set_xdata([left_idx - 0.5, left_idx - 0.5])
+            self._filter_span.set_visible(True)
+            self._filter_line.set_visible(True)
+
+        if self.canvas is not None:
+            self.canvas.draw_idle()
 
     def _disable_auto_dpi_scaling(self):
         """
@@ -373,8 +638,8 @@ class ChartCanvasManager:
         self._hover_df = df  # 保存df引用供Ctrl模式使用
 
         # 获取 ATR 序列（用于 tooltip 显示）
-        from ..config.param_loader import get_ui_param_loader
-        loader = get_ui_param_loader()
+        from BreakoutStrategy.param_loader import get_param_loader
+        loader = get_param_loader()
         feature_params = loader.get_feature_calculator_params()
         self._atr_period = feature_params.get("atr_period", 14)
         # 优先使用预计算的 ATR 列（在 preprocess_dataframe 中计算，包含缓冲区）
@@ -418,6 +683,9 @@ class ChartCanvasManager:
 
         def on_hover(event):
             """鼠标悬停回调"""
+            # 拖拽平移期间完全跳过悬停渲染，避免与控制器冲突
+            if self.interaction is not None and self.interaction.is_panning:
+                return
             if event.inaxes != ax:
                 self.annotation.set_visible(False)
                 self.crosshair_v.set_visible(False)
@@ -559,14 +827,18 @@ class ChartCanvasManager:
             self.crosshair_v.set_visible(True)
             self.crosshair_h.set_visible(True)
 
-            # 始终显示在鼠标右上角
-            # 偏移量要足够大，避免遮挡鼠标
-            offset_x = 40
-            offset_y = 40
+            # 边缘感知：右/上边不够时自动翻到可见象限
+            fig_w, fig_h = self.canvas.get_width_height()
+            offset_x, offset_y, ha, va = compute_tooltip_anchor(
+                cursor_px=(event.x, event.y),
+                fig_size=(fig_w, fig_h),
+                est_tooltip_size=(400, 350),
+            )
 
-            # 更新annotation（锚点在鼠标位置，不在 K线数据点）
-            self.annotation.xy = (event.xdata, event.ydata)  # 锚点在鼠标位置
-            self.annotation.xyann = (offset_x, offset_y)  # 固定右上角偏移
+            self.annotation.xy = (event.xdata, event.ydata)
+            self.annotation.xyann = (offset_x, offset_y)
+            self.annotation.set_ha(ha)
+            self.annotation.set_va(va)
             self.annotation.set_text(text)
             self.annotation.set_visible(True)
             self.canvas.draw_idle()
@@ -583,6 +855,14 @@ class ChartCanvasManager:
         # 绑定 D 键显示评分详情
         canvas_widget.bind("<d>", self._on_score_detail_key)
         canvas_widget.bind("<D>", self._on_score_detail_key)
+
+        # 绑定 R 键重置图表视图（等效于点击 [Reset] 按钮）
+        canvas_widget.bind("<r>", self._on_reset_key)
+        canvas_widget.bind("<R>", self._on_reset_key)
+
+        # 绑定 ↑/↓ 键切换左侧列表（仅 live_mode 有回调；dev 模式 no-op）
+        canvas_widget.bind("<Up>", self._on_navigate_key)
+        canvas_widget.bind("<Down>", self._on_navigate_key)
 
         # 绑定 Escape 键关闭最近的窗口
         canvas_widget.bind("<Escape>", self._on_close_window_key)
@@ -603,7 +883,8 @@ class ChartCanvasManager:
         canvas_widget.bind("<FocusOut>", lambda e: setattr(self, '_ctrl_pressed', False))
 
         # 鼠标点击时让 canvas 获得焦点（以便接收键盘事件）
-        canvas_widget.bind("<Button-1>", lambda e: canvas_widget.focus_set())
+        # add="+" 避免替换 matplotlib TkAgg 内部的 <Button-1> 绑定
+        canvas_widget.bind("<Button-1>", lambda e: canvas_widget.focus_set(), add="+")
 
     def _on_score_detail_key(self, event):
         """
@@ -631,6 +912,20 @@ class ChartCanvasManager:
 
         # 清理已关闭的窗口
         self._cleanup_closed_windows()
+
+    def _on_reset_key(self, event):
+        """R 键按下回调：重置图表到初始视图（等效于点击 [Reset] 按钮）。"""
+        if self.interaction is not None:
+            self.interaction.reset()
+
+    def _on_navigate_key(self, event):
+        """↑/↓ 键按下回调：切换左侧列表选中行（live_mode 专用）。"""
+        cb = getattr(self, "_on_navigate_list_callback", None)
+        if cb is None:
+            return
+        direction = -1 if event.keysym == "Up" else 1
+        cb(direction)
+        return "break"
 
     def _on_close_window_key(self, event):
         """
@@ -729,3 +1024,8 @@ class ChartCanvasManager:
     def close_all_score_windows(self):
         """关闭所有评分详情窗口（供外部调用）"""
         self._on_close_all_windows_key(None)
+
+    def clear(self) -> None:
+        """清空图表（无选中时调用）。_cleanup 已 destroy 掉 canvas widget，
+        无需再 draw_idle——下次 update_chart 会重建。"""
+        self._cleanup()

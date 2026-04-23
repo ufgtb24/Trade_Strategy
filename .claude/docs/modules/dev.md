@@ -1,0 +1,403 @@
+# 开发态 UI (dev) 模块
+
+> 最后更新：2026-04-17
+
+## 一、模块概述
+
+`dev` 模块是一个基于 Tkinter 的桌面交互式应用，作为**策略开发台**的统一入口，承担批量扫描、股票列表浏览、K线图表可视化、参数实时调整等完整功能。
+
+**核心职责**：
+- **统一扫描入口**：New Scan（从头扫描）、Rescan All（重新扫描）
+- **配置管理**：扫描配置（scan_config.yaml）、检测参数（params/*.yaml）
+- 加载并展示批量扫描生成的 JSON 结果
+- 提供交互式 K线图表，标注突破点和峰值
+- 支持参数编辑和实时图表刷新
+- 提供键盘导航和列配置等便捷交互
+
+## 二、架构设计
+
+### 2.1 分层结构
+
+```
+BreakoutStrategy/dev/
+├── main.py              # 主窗口 (InteractiveUI) - 统一入口
+├── utils.py             # 工具函数
+├── panels/              # UI 面板组件
+│   ├── parameter_panel.py   # 参数面板（含 New Scan、Scan Settings）
+│   └── stock_list_panel.py  # 股票列表面板
+├── editors/             # 参数编辑器
+│   ├── parameter_editor.py  # 编辑器窗口
+│   └── input_factory.py     # 输入控件工厂
+├── dialogs/             # 对话框
+│   ├── file_dialog.py           # 文件对话框
+│   ├── column_config_dialog.py  # 列配置对话框
+│   ├── scan_config_dialog.py    # 扫描配置对话框
+│   ├── rescan_mode_dialog.py    # Rescan 模式选择对话框
+│   └── filename_dialog.py       # 文件命名对话框
+├── managers/            # 业务逻辑管理器
+│   ├── scan_manager.py      # 扫描管理器
+│   └── navigation_manager.py # 键盘导航管理器
+├── plotters/            # 开发态专用绘图（若有）
+└── config/              # dev 专属配置
+    ├── ui_loader.py             # UI 配置加载器
+    ├── param_editor_state.py    # ParamEditorState（dev 编辑器临时状态，单例）
+    ├── param_state_manager.py   # 参数状态管理
+    ├── param_editor_schema.py   # 编辑器 Schema（由 FACTOR_REGISTRY 驱动）
+    ├── scan_config_loader.py    # 扫描配置加载器
+    ├── validator.py             # 输入验证器
+    └── yaml_parser.py           # YAML 解析器
+```
+
+> **共享 UI 基础设施**（`BreakoutStrategy/UI/charts/`、`BreakoutStrategy/UI/styles.py`）独立于 dev，由 dev / live 双方共用；策略参数 SSoT（`BreakoutStrategy/param_loader.py`）也在顶层，dev 的 `config/param_editor_state.py` 只承担"编辑器临时状态"这一职能。
+
+### 2.2 UI 统一入口架构
+
+```mermaid
+flowchart TD
+    subgraph UI["UI (统一入口)"]
+        NewScan[New Scan 按钮]
+        RescanAll[Rescan All 按钮]
+        LoadResults[Load Results 按钮]
+        ScanSettings[Scan Settings 按钮]
+    end
+
+    subgraph ConfigLoaders["配置加载器"]
+        ScanConfigLoader[UIScanConfigLoader<br/>scan_config.yaml]
+        ParamLoader[ParamLoader 顶层 SSoT<br/>params/*.yaml]
+        UIConfigLoader[UIConfigLoader<br/>ui_config.yaml]
+    end
+
+    subgraph ScanExecution["扫描执行"]
+        ScanManager[ScanManager<br/>parallel_scan]
+        JSONOutput[JSON 结果文件]
+    end
+
+    NewScan --> ScanConfigLoader
+    RescanAll --> ScanConfigLoader
+    ScanSettings --> ScanConfigDialog[ScanConfigDialog]
+    ScanConfigDialog --> ScanConfigLoader
+
+    NewScan --> ParamLoader
+    RescanAll --> ParamLoader
+
+    ScanConfigLoader --> ScanManager
+    ParamLoader --> ScanManager
+    ScanManager --> JSONOutput
+    JSONOutput --> LoadResults
+```
+
+### 2.3 核心数据流
+
+```mermaid
+flowchart TD
+    subgraph 数据加载
+        JSON[JSON 扫描结果] --> ScanMgr[ScanManager]
+        ScanMgr --> StockList[StockListPanel]
+        PKL[PKL 股票数据] --> Main[InteractiveUI]
+    end
+
+    subgraph 用户交互
+        StockList -->|选择股票| Main
+        ParamPanel[ParameterPanel] -->|参数变化| Main
+        ParamPanel -->|显示选项变化| Main
+    end
+
+    subgraph 图表渲染
+        Main -->|双路径加载| Decision{使用缓存?}
+        Decision -->|Browse Mode| JSONCache[从 JSON 重建对象]
+        Decision -->|Analysis Mode| FullComp[完整计算]
+        JSONCache --> ChartMgr[ChartCanvasManager]
+        FullComp --> ChartMgr
+        ChartMgr --> Canvas[K线图表]
+    end
+
+    subgraph 评分详情
+        Canvas -->|鼠标悬停| HoverState[记录悬停的 Peak/BO]
+        HoverState -->|按 D 键| ScoreWindow[ScoreDetailWindow]
+        ScoreWindow -->|显示| DetailTable[特征表格 + 公式]
+    end
+```
+
+## 三、关键设计决策
+
+### 3.1 双模式架构 (Browse / Analysis)
+
+**问题**：用户修改参数后，stock list 中不同股票基于不同参数的数据会产生混乱。
+
+**解决方案**：明确区分两种工作模式
+
+| 模式 | 触发条件 | 数据来源 | UI 状态 |
+|------|---------|---------|--------|
+| **Browse** | 取消勾选复选框 | Stock list 和图表都使用 JSON 缓存 | 参数编辑禁用 |
+| **Analysis** | 启动时默认 / 勾选复选框 | 图表使用 UI 参数实时计算，stock list 不变 | 参数编辑启用 |
+
+**关键行为**：
+- Browse Mode：切换股票时使用 JSON 缓存，速度快
+- Analysis Mode（默认）：使用 UI 参数进行 full compute，切换股票时实时计算
+- Rescan All：在 Analysis Mode 中可用，用当前参数重新扫描所有股票
+
+> **2025-12-22 变更**：默认模式从 Browse 改为 Analysis，更符合分析工作流
+
+### 3.2 扫描配置管理 (UIScanConfigLoader)
+
+**问题**：Rescan All 需要知道时间范围配置才能正确执行扫描。
+
+**解决方案**：引入 `UIScanConfigLoader` 统一管理 `config.yaml`
+
+**支持两种扫描模式**：
+- **Global 模式**：使用 `start_date` / `end_date` 全局时间范围
+- **CSV 模式**：从 CSV 文件读取股票列表，每只股票有独立的时间窗口（`date ± mon_before/mon_after`）
+
+**配置项**：
+```yaml
+data:
+  data_dir: "/path/to/pkls"
+  csv_file: "/path/to/list.csv"  # null = Global模式
+  start_date: "2023-01-01"
+  end_date: null
+  mon_before: 6
+  mon_after: 1
+  # 股票筛选条件（仅 Global 模式，扫描前过滤整只股票）
+  min_price: null      # 最低价格限制：时间范围内 low 必须 > min_price
+  max_price: null      # 最高价格限制：时间范围内 high 必须 < max_price
+  min_volume: null     # 最小平均成交量限制
+performance:
+  num_workers: 8
+```
+
+### 3.3 股票筛选条件 (Stock Filter)
+
+**用途**：在扫描阶段过滤掉不符合条件的股票，减少无效计算。
+
+**仅 Global Time Range 模式有效**：CSV 模式下每只股票有独立的时间窗口和用途，不适用统一筛选。
+
+**筛选条件**：
+- `min_price`：时间范围内所有 K 线的 `low` 必须 > `min_price`
+- `max_price`：时间范围内所有 K 线的 `high` 必须 < `max_price`
+- `min_volume`：时间范围内的平均成交量必须 > `min_volume`
+
+**处理流程**：
+```
+加载股票数据
+    ↓
+截取扫描时间范围（不含缓冲区）
+    ↓
+检查筛选条件
+    ↓ 不满足
+返回 None（不记录到 JSON）
+    ↓ 满足
+继续正常扫描流程
+```
+
+**UI 布局**：
+```
+┌─ Global Time Range ──────────────────────────────────┐
+│ Start Date:  [___________] (YYYY-MM-DD, empty=none)  │
+│ End Date:    [___________] (YYYY-MM-DD, empty=none)  │
+│ ──────────────────────────────────────────────────── │
+│ Min Price:   [_______]  Max Price: [_______]         │
+│ Min Volume:  [___________] (empty = no limit)        │
+└──────────────────────────────────────────────────────┘
+```
+
+### 3.4 New Scan vs Rescan All
+
+| 功能 | New Scan | Rescan All |
+|------|----------|------------|
+| **前提条件** | 无需加载 JSON | 必须先加载 JSON |
+| **股票列表来源** | config.yaml（CSV/pkl目录） | 已加载的 scan_data |
+| **适用场景** | 首次扫描、更换数据集 | 参数调整后重新扫描 |
+
+### 3.5 双路径加载策略 (JSON Cache vs Full Computation)
+
+**问题**：每次切换股票都重新计算突破检测，延迟明显。
+
+**解决方案**：
+- **JSON 缓存路径**（快速）：Browse Mode 时从 JSON 重建 `Breakout` 和 `Peak` 对象
+- **完整计算路径**（默认）：Analysis Mode 时调用 `BreakoutDetector` 实时计算
+
+> **注意**：默认使用完整计算路径，确保图表反映当前 UI 参数设置
+
+### 3.6 索引重映射机制
+
+**问题**：JSON 中的索引是基于扫描时的 DataFrame，但 UI 可能加载不同时间范围的数据。
+
+**解决方案**：在 `_load_from_json_cache` 中根据日期重新映射索引到当前 DataFrame 的位置。
+
+### 3.7 参数编辑器三层状态管理
+
+**问题**：参数编辑器、下拉菜单、顶层 `ParamLoader` 三方状态需要同步。
+
+**解决方案**：`ParameterStateManager` 管理三层状态
+- **File State**: 磁盘上的 YAML 文件（由顶层 `BreakoutStrategy.param_loader.ParamLoader` 统一加载）
+- **Editor State**: 编辑器临时参数（dev 专属 `ParamEditorState`，位于 `config/param_editor_state.py`）
+- **Memory State**: 运行时参数（通过 `ParamLoader` 供 scanner / scorer 消费）
+
+### 3.8 FACTOR_REGISTRY 驱动的参数编辑
+
+**问题**：新因子注册到 `FACTOR_REGISTRY` 后，如果 YAML 中尚无对应条目，参数编辑器会收到 `None` 值，导致 UI 控件异常。
+
+**解决方案**：
+- `dev/config/param_editor_schema.py`：从 `FACTOR_REGISTRY` 动态生成编辑器 Schema，新因子自动出现在编辑面板
+- `dev/editors/input_factory.py`：`BaseParameterInput` 在 `param_value=None` 时 fallback 到 `param_config.get("default")`，确保各类控件（Int/Float/Bool/List）正常渲染
+- `BreakoutStrategy/param_loader.py`（顶层 SSoT）：`get_scorer_params()` 对 YAML 中缺失的因子 fallback 到 `FactorInfo.default_thresholds` / `default_values`
+
+整个链路保证：注册新因子后，UI 参数编辑器无需任何手动适配即可正常工作。
+
+### 3.9 三层范围模型（`charts/range_utils.py`）
+
+**问题**：Dev/Live UI 图表历史上走两套数据流（Dev 用 `_trim_df_for_display`，Live 直接 `pd.read_pickle`），导致 BO index 对齐隐式依赖常量关系、MA 显示不一致、缺乏降级可观测性。
+
+**解决方案**：`BreakoutStrategy/UI/charts/range_utils.py`（共享 UI 包）作为 Dev/Live 共用的范围契约层。
+- `ChartRangeSpec` frozen dataclass：显式承载**扫描层**（`scan_start/end_{ideal,actual}`）、**运算层**（`compute_start_{ideal,actual}`，`= scan_start - compute_buffer`）、**显示层**（`display_start/end`，`display_start = max(pkl_start, min(scan_start_actual, display_end - DISPLAY_MIN_WINDOW))`）三层独立范围。
+- `trim_df_to_display(df, spec)` / `adjust_indices(items, offset)`：从 UI 主类迁出的共用变换（原 `_trim_df_for_display` / `_adjust_breakout_indices` / `_adjust_peak_indices` 私有方法已移除）。
+- `_collect_warnings(spec)`：汇总 `scan_start_degraded / scan_end_degraded / compute_buffer_degraded` 为可显示字符串列表。
+- 工厂 `ChartRangeSpec.from_df_and_scan(df, scan_start, scan_end, display_end, display_min_window)`：从 `df.attrs["range_meta"]`（由 scanner 写入）构造完整 spec；`display_min_window=None` 退化为 Dev UI 全展开模式。
+
+**Why 三层解耦（范围定义耦合、降级执行独立）**：
+- 范围定义上：display ⊇ scan（由 `min` 公式保证），compute 派生自 scan（`scan_start - compute_buffer`）。
+- 降级执行上：display 按 pkl 实际范围展示；compute 按实际起点算 MA/ATR（前缀自动 NaN）；scan 由 per-factor gate 独立降级。任一层 pkl 不足 → 对应层 gracefully degrade，不 raise。
+
+### 3.10 降级可见性（status bar + 图表视觉）
+
+通过 `dev/main.py` 的 `_render_chart`（抽出的共用渲染方法）把 spec 传递给 `canvas_manager`（共享 UI 包 `BreakoutStrategy.UI.charts.canvas_manager`）：
+
+- **status bar**：降级时 status 变橙，文字追加 `⚠ {warnings}`（`_collect_warnings` 产出）。
+- **canvas_manager 三段阴影**：`[display_start, scan_start_actual]` 灰（pre-scan）、中段无阴影（扫描区）、`[scan_end_actual, display_end]` 灰（post-scan / label buffer）。
+- **降级虚线**：`scan_start_degraded` / `scan_end_degraded` 在对应 actual 位置画橙虚线 + 文字 `scan start (req YYYY-MM-DD)`。`compute_buffer_degraded` 仅 status bar 提示（MA 线自然 NaN 即视觉信号）。
+
+### 3.11 score_tooltip 三态渲染
+
+`FactorDetail.unavailable` 字段驱动三态：
+- **unavailable=True**：灰色 `factor_unavailable` + `N/A` + em-dash（"数据不够算"）
+- **level=0 且 unavailable=False**：灰色（"可算但未触发"）
+- **level>0**：按因子方向色（触发）
+
+这种区分让用户在 tooltip 就能看到"缓冲区不足导致因子缺失"与"该因子本身不成立"的差别，避免误判。
+
+## 四、组件职责
+
+### 4.1 InteractiveUI (main.py)
+
+主窗口协调器，负责：
+- 创建和布局所有子面板
+- 管理 DataFrame 缓存
+- 协调股票选择 → 数据加载 → 图表渲染流程
+- **实现 New Scan 和 Rescan All 后台扫描逻辑**
+
+### 4.2 ParameterPanel (panels/parameter_panel.py)
+
+参数面板，提供：
+- **Load Scan Results** 按钮
+- **New Scan** 按钮
+- 参数文件下拉菜单和 **Edit** 按钮
+- **Rescan All** 按钮
+- **Scan Settings** 按钮
+- 显示选项复选框
+
+### 4.3 ScanConfigDialog (dialogs/scan_config_dialog.py)
+
+扫描配置对话框，提供：
+- 模式切换（Global / CSV）
+- Global 模式：start_date, end_date 编辑
+- **股票筛选条件**（仅 Global 模式）：min_price, max_price, min_volume
+- CSV 模式：csv_file 选择, mon_before/mon_after 设置
+- 通用配置：data_dir, output_dir, num_workers, Label
+- Apply / Save / Reload 操作
+
+### 4.4 UIScanConfigLoader (config/scan_config_loader.py)
+
+扫描配置加载器，负责：
+- 加载和解析 `configs/scan_config.yaml`
+- 提供两种扫描模式的配置访问 API
+- CSV 文件解析和 per-stock 时间范围计算
+- **股票筛选条件配置**：`get_filter_config()`, `set_filter_config(min_price, max_price, min_volume)`
+- 配置持久化
+
+### 4.5 ScanManager (managers/scan_manager.py)
+
+批量扫描管理器，服务于：
+- **New Scan / Rescan All**：`parallel_scan()` 多进程扫描
+- **UI 加载**：`load_results()` 加载 JSON
+- **股票筛选**：`min_price` / `max_price` / `min_volume` 参数，扫描前过滤不符合条件的股票
+
+### 4.6 ChartCanvasManager (charts/canvas_manager.py)
+
+图表渲染管理器，负责：
+- 创建 Matplotlib Figure 并嵌入 Tkinter
+- 协调 K线、成交量、标记、统计面板的绘制
+- 实现鼠标悬停 Tooltip 和十字线
+- 管理评分详情窗口的生命周期
+
+### 4.7 RescanModeDialog (dialogs/rescan_mode_dialog.py)
+
+Rescan 模式选择对话框，提供：
+- **覆盖原文件**：使用当前参数重新扫描，覆盖原 JSON 文件
+- **另存为新文件**：保存到新文件，保留原文件
+
+### 4.8 FilenameDialog (dialogs/filename_dialog.py)
+
+文件命名对话框，提供：
+- 用于 New Scan 和另存为时输入输出文件名
+- 自动补全 `.json` 扩展名
+
+## 五、配置系统
+
+### 5.1 配置文件
+
+| 文件 | 用途 | 加载器 |
+|------|------|--------|
+| `configs/UI/ui_config.yaml` | UI 布局配置 | `dev.config.ui_loader.UIConfigLoader` |
+| `configs/analysis/config.yaml` | 扫描配置（数据源、时间范围） | `dev.config.scan_config_loader.UIScanConfigLoader` |
+| `configs/analysis/params/*.yaml` | 检测器参数 | `BreakoutStrategy.param_loader.ParamLoader`（顶层 SSoT） |
+
+### 5.2 配置加载器关系
+
+```
+UIConfigLoader ─────→ UI 布局、窗口大小、列配置 (dev 专属)
+UIScanConfigLoader ─→ 数据目录、时间范围、并行数 (dev 专属)
+ParamLoader ────────→ 检测器参数、评分器参数 (顶层 SSoT，dev/live 共用)
+ParamEditorState ───→ dev 编辑器的临时状态（dev 专属）
+```
+
+## 六、UI 布局
+
+```
+┌─────────────────────────────────────────────────────────────────────────────────────────┐
+│ [Load] [New Scan] │ [○] [▼ params.yaml] [Edit] [Rescan All] [Scan Settings] │ ☑Peak ☑BO │
+├───────────────────┴─────────────────────────────────────────────────────────────────────┤
+│                                                                                          │
+│   Stock List        │              K-Line Chart                                         │
+│   ┌──────────────┐  │   ┌─────────────────────────────────────────────────────────┐    │
+│   │ Symbol │ ... │  │   │                                                         │    │
+│   ├────────┼─────┤  │   │                     Candlestick                         │    │
+│   │ AAPL   │ ... │  │   │                        Chart                            │    │
+│   │ GOOGL  │ ... │  │   │                                                         │    │
+│   │ ...    │ ... │  │   └─────────────────────────────────────────────────────────┘    │
+│   └────────┴─────┘  │                                                                   │
+│                     │                                                                   │
+└─────────────────────┴───────────────────────────────────────────────────────────────────┘
+```
+
+## 七、快捷键
+
+| 快捷键 | 功能 |
+|--------|------|
+| `↑/↓` | 上下导航股票列表 |
+| `D` | 显示当前悬停峰值/突破的评分详情 |
+| `Escape` | 关闭最近打开的评分详情窗口 |
+| `Shift+Escape` | 关闭所有评分详情窗口 |
+
+## 八、已知局限
+
+1. **单线程 UI**：数据加载在主线程，大文件可能卡顿（扫描已用后台线程）
+2. **内存缓存**：DataFrame 缓存无大小限制，长时间运行可能占用较多内存
+3. **Matplotlib 渲染**：大数据量时渲染较慢，未做数据抽样
+4. **跨平台兼容**：窗口最大化逻辑在不同系统表现可能不同
+
+## 九、扩展点
+
+- **导出功能**：图表导出为图片、数据导出为 CSV
+- **多窗口对比**：同时打开多个股票对比分析
+- **自定义指标**：在图表上叠加自定义技术指标
+- **实时数据**：集成实时行情，动态更新图表

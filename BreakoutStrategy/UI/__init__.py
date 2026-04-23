@@ -1,60 +1,20 @@
+"""共享 UI 基础设施 (shared UI infrastructure).
+
+提供 dev / live 两个应用共用的纯 UI 组件：
+- charts/: K 线图画布、范围规范、坐标轴交互等
+- styles.py: 字体、颜色常量、tkinter ttk 样式配置
+
+本包不含任何业务逻辑或策略参数，只承载与具体应用无关的界面原语。
 """
-UI 模块 (原 UI)
 
-提供交互式UI用于突破检测结果的可视化和分析
-"""
-
-# 主UI接口
-from .main import InteractiveUI
-
-# 业务管理器 (被外部脚本使用)
-from .managers import ScanManager, NavigationManager
-
-# 配置加载器 (被外部脚本使用)
-from .config import get_ui_config_loader, get_ui_param_loader
-
-# UI样式配置
-from .styles import configure_global_styles
-
-# 图表组件 (高级用户可能需要)
 from .charts import ChartCanvasManager
 from .charts.components import CandlestickComponent, MarkerComponent, PanelComponent
-
-# 工具函数
-from .utils import (
-    quality_to_color,
-    ensure_datetime_index,
-    format_date,
-    format_price,
-    filter_date_range,
-    show_error_dialog,
-)
-
-__version__ = '2.0.0'
+from .styles import configure_global_styles
 
 __all__ = [
-    # === 主要接口 (常用) ===
-    'InteractiveUI',
-    'ScanManager',
-    'configure_global_styles',
-    'get_ui_config_loader',
-    'get_ui_param_loader',
-
-    # === 高级接口 ===
-    # 图表管理器
-    'ChartCanvasManager',
-    'NavigationManager',
-
-    # 绘图组件
-    'CandlestickComponent',
-    'MarkerComponent',
-    'PanelComponent',
-
-    # 工具函数
-    'quality_to_color',
-    'ensure_datetime_index',
-    'format_date',
-    'format_price',
-    'filter_date_range',
-    'show_error_dialog',
+    "ChartCanvasManager",
+    "CandlestickComponent",
+    "MarkerComponent",
+    "PanelComponent",
+    "configure_global_styles",
 ]

@@ -127,16 +127,16 @@ class Breakout:
     breakout_type: str          # 'yang', 'yin', 'shadow'
     intraday_change_pct: float      # 日内涨幅（收盘 vs 开盘）
     gap_up_pct: float               # 跳空幅度（百分比）
-    volume: float                   # 放量倍数
-    pbm: float                      # 突破前涨势强度 (PBM)
     stability_score: float          # 稳定性分数
+    volume: Optional[float] = None  # 放量倍数
+    pbm: Optional[float] = None     # 突破前涨势强度 (PBM)
 
     # 近期 peak 凹陷深度（0 表示无近期 peak）
     # pk_mom = 1 + log(1 + D_atr)，其中 D_atr = (peak - trough) / ATR
-    pk_mom: float = 0.0
+    pk_mom: Optional[float] = None
 
     # 年化波动率（基于 252 天日收益率标准差）
-    annual_volatility: float = 0.0
+    annual_volatility: Optional[float] = None
 
     # ATR 相关字段（可选功能）
     atr_value: float = 0.0               # ATR 值
@@ -154,10 +154,10 @@ class Breakout:
     drought: Optional[int] = None               # 距上次突破的交易日间隔，None=首次突破
 
     # 突破日强度比率：max(intraday/daily_vol, gap/daily_vol)，σ 单位
-    day_str: float = 0.0
+    day_str: Optional[float] = None
 
     # 超涨比率：gain_5d / five_day_vol，σ 单位
-    overshoot: float = 0.0
+    overshoot: Optional[float] = None
 
     # 阻力属性因子（从 broken_peaks 聚合，由 FeatureCalculator 计算）
     age: int = 0                        # 最老被突破峰值的年龄（天数）
@@ -166,8 +166,8 @@ class Breakout:
     height: float = 0.0                # 峰值最大相对高度
 
     # 突破前环境因子
-    pre_vol: float = 0.0               # 突破前 window 天内最大放量倍数（逐日 63 天基线）
-    ma_pos: float = 0.0                # 突破日收盘价相对 N 日均线的溢价率（中期动量积累）
+    pre_vol: Optional[float] = None    # 突破前 window 天内最大放量倍数（逐日 63 天基线）
+    ma_pos: Optional[float] = None     # 突破日收盘价相对 N 日均线的溢价率（中期动量积累）
     dd_recov: float = 0.0              # 回撤恢复度（drawdown * recovery * (1-recovery)^(b-1)，底部启动信号）
     ma_curve: float = 0.0              # MA曲率（均线二阶导数归一化值，趋势拐点信号）
 
@@ -553,6 +553,10 @@ class BreakoutDetector:
         采用双阈值设计：
         - exceed_threshold (0.5%): 用于突破检测（敏感）
         - peak_supersede_threshold (3%): 用于峰值移除（保守）
+
+        per-factor gate 架构：突破判定是纯局部事实（仅依赖 active_peaks 与当前 bar
+        的价格），与因子 lookback 解耦。因子 lookback 不足由下游 _calculate_xxx
+        各自自检返回 None（见 FeatureCalculator._has_buffer / _effective_buffer）。
 
         Returns:
             如果有突破，返回BreakoutInfo（包含所有被突破的峰值）

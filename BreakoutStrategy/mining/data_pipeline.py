@@ -93,13 +93,17 @@ def build_dataframe(json_path) -> pd.DataFrame:
             }
 
             # 注册因子：原始值 + level（动态）
+            # per-factor gate 语义：nullable 因子的 None 透传（raw 列 NaN，level=0 未触发）；
+            # 非 nullable 因子沿用数据错容错（仅 buffer=0 的 age/test/height/peak_vol/streak）。
             for fi in get_active_factors():
                 raw_val = bo.get(fi.key)
-                if fi.has_nan_group:
-                    # 保留 None 语义（如 drought 首次突破、pk_mom 无近期 peak）
-                    level_input = raw_val if raw_val is not None else 0
+                if raw_val is None:
+                    if fi.nullable or fi.has_nan_group:
+                        level_input = 0  # None raw 透传，level 未触发
+                    else:
+                        raw_val = 0 if fi.is_discrete else 0.0
+                        level_input = raw_val
                 else:
-                    raw_val = raw_val or (0 if fi.is_discrete else 0.0)
                     level_input = raw_val
                 row[fi.key] = raw_val
                 row[fi.level_col] = get_level(level_input, factor_thresholds[fi.key])
@@ -160,7 +164,8 @@ def prepare_raw_values(df: pd.DataFrame, factors=None) -> dict[str, np.ndarray]:
                  默认 None 表示所有已注册因子。
 
     Returns:
-        {key: 原始值 numpy 数组}
+        {key: 原始值 numpy 数组}；nullable 因子的 NaN 保留（per-factor gate 语义），
+        下游函数（build_triggered_matrix/TPE bounds/greedy beam）通过 ~np.isnan 过滤。
     """
     if factors is None:
         factor_list = get_active_factors()
@@ -175,7 +180,8 @@ def prepare_raw_values(df: pd.DataFrame, factors=None) -> dict[str, np.ndarray]:
 
     raw = {}
     for fi in factor_list:
-        raw[fi.key] = df[fi.key].fillna(0).values.astype(np.float64)
+        # per-factor gate: 保留 NaN，下游统计各自决策（NaN-aware filter）
+        raw[fi.key] = df[fi.key].values.astype(np.float64)
 
     return raw
 
@@ -195,11 +201,12 @@ def apply_binary_levels(df: pd.DataFrame, thresholds: dict,
     for fi in get_active_factors():
         key = fi.key
         if key in thresholds:
-            raw = df[fi.key].fillna(0)
+            raw = df[fi.key]
+            valid = raw.notna()
             if key in negative_factors:
-                df[fi.level_col] = (raw <= thresholds[key]).astype(int)
+                df[fi.level_col] = (valid & (raw <= thresholds[key])).astype(int)
             else:
-                df[fi.level_col] = (raw >= thresholds[key]).astype(int)
+                df[fi.level_col] = (valid & (raw >= thresholds[key])).astype(int)
         else:
             df[fi.level_col] = 0
     return df

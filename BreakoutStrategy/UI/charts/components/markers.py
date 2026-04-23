@@ -4,6 +4,36 @@ import matplotlib.patches as mpatches
 import pandas as pd
 
 
+def _classify_bo(
+    idx: int,
+    current: int | None,
+    visible: set[int],
+    filtered_out: set[int],
+) -> tuple[str, bool]:
+    """Classify a BO into visual tier + pickability.
+
+    Visual tier (3 values) drives bbox color via BO_LABEL_TIER_STYLE;
+    pickability is independent — matched BOs passing the filter are clickable,
+    matched BOs outside the filter share the same visual but are inert.
+
+    Args:
+        idx: This BO's chart-df index.
+        current: Currently-selected BO's chart-df index (or None).
+        visible: matched BO indices that appear in the MatchList right now.
+        filtered_out: matched BO indices that are hidden by MatchList filter.
+
+    Returns:
+        (tier, pickable) where tier is "current" | "matched" | "plain".
+    """
+    if current is not None and idx == current:
+        return "current", True
+    if idx in visible:
+        return "matched", True
+    if idx in filtered_out:
+        return "matched", False
+    return "plain", False
+
+
 class MarkerComponent:
     """标记绘制组件"""
 
@@ -37,36 +67,15 @@ class MarkerComponent:
             marker_color = colors.get("peak_marker", "#000000")
             text_id_color = colors.get("peak_text_id", "#000000")
 
-        # 尝试获取 high/low 列，处理大小写
+        # 尝试获取 high 列，处理大小写
         high_col = "high" if "high" in df.columns else "High"
-        low_col = "low" if "low" in df.columns else "Low"
         has_high = high_col in df.columns
-        has_low = low_col in df.columns
 
-        # 计算偏移单位
-        # 优先使用坐标轴当前的显示范围 (ylim)，这样能保证相对于面板的比例是绝对固定的
-        ylim = ax.get_ylim()
-        # 检查 ylim 是否有效（不是默认的 0, 1）
-        if ylim != (0.0, 1.0) and ylim[1] > ylim[0]:
-            price_range = ylim[1] - ylim[0]
-        elif has_high and has_low:
-            # 如果坐标轴还没初始化，回退到使用数据范围
-            price_range = df[high_col].max() - df[low_col].min()
-            # 考虑 matplotlib 默认 padding (约 10%)
-            price_range *= 1.1
-        else:
-            price_range = df.iloc[0]["close"] * 0.2 if not df.empty else 1.0
-
-        # 避免 range 为 0
-        if price_range == 0:
-            price_range = df[high_col].mean() * 0.1 if has_high else 1.0
-
-        # 使用价格范围的 2% 作为基本偏移单位
-        offset_unit = price_range * 0.02
+        from matplotlib.transforms import offset_copy
+        from BreakoutStrategy.UI.styles import compute_marker_offsets_pt
 
         for peak in peaks:
-            # 使用整数索引而不是日期对象
-            peak_x = peak.index  # 整数索引
+            peak_x = peak.index
 
             # 获取基准高度 (K bar high)
             if has_high and 0 <= peak_x < len(df):
@@ -74,35 +83,39 @@ class MarkerComponent:
             else:
                 base_price = peak.price
 
-            # 1. 绘制峰值标记（倒三角，位于 K bar 上方）
-            # 使用固定偏移量：基准 + 0.5 * 单位 (1% Range)
-            marker_y = base_price + offset_unit * 0.6
+            color = marker_color
 
-            # 确定颜色
-            color = marker_color  # 使用配置颜色
+            layers = ["triangle", "peak_id"] if peak.id is not None else ["triangle"]
+            offsets = compute_marker_offsets_pt(layers)
 
-            ax.scatter(
-                peak_x,
-                marker_y,
-                marker="v",  # 倒三角
-                s=400,
-                facecolors="none" if style == "normal" else color,  # superseded 用填充
-                edgecolors=color,  # 边缘颜色
-                linewidths=2,
-                zorder=5,
-                alpha=1.0 if style == "normal" else 0.6,  # superseded 半透明
-                label="Peak" if peak == peaks[0] else None,
+            marker_trans = offset_copy(
+                ax.transData, fig=ax.get_figure(),
+                x=0.0, y=offsets["triangle"], units="points",
             )
 
-            # 2. 添加 ID 标注 (位于标记上方)
-            # 文本位于标记上方：标记位置 + 0.6 * 单位 (1.2% Range)
-            text_y = marker_y + offset_unit * 0.6
+            # 1. 绘制峰值标记（倒三角，像素偏移避免遮挡 K 线）
+            ax.scatter(
+                peak_x,
+                base_price,
+                marker="v",
+                s=400,
+                facecolors="none" if style == "normal" else color,
+                edgecolors=color,
+                linewidths=2,
+                zorder=5,
+                alpha=1.0 if style == "normal" else 0.6,
+                label="Peak" if peak == peaks[0] else None,
+                transform=marker_trans,
+            )
 
+            # 2. 添加 ID 标注（像素偏移，不受 Y 轴缩放影响）
             if peak.id is not None:
-                ax.text(
-                    peak_x,
-                    text_y,
+                ax.annotate(
                     f"{peak.id}",
+                    xy=(peak_x, base_price),
+                    xycoords="data",
+                    xytext=(0, offsets["peak_id"]),
+                    textcoords="offset points",
                     fontsize=20,
                     ha="center",
                     va="bottom",
@@ -140,81 +153,65 @@ class MarkerComponent:
         text_bg_color = colors.get("breakout_text_bg", "#FFFFFF")
         text_score_color = colors.get("breakout_text_score", "#FF0000")
 
-        # 尝试获取 high/low 列
+        # 尝试获取 high 列
         high_col = "high" if "high" in df.columns else "High"
-        low_col = "low" if "low" in df.columns else "Low"
         has_high = high_col in df.columns
-        has_low = low_col in df.columns
 
-        # 计算偏移单位
-        # 优先使用坐标轴当前的显示范围 (ylim)，这样能保证相对于面板的比例是绝对固定的
-        ylim = ax.get_ylim()
-        # 检查 ylim 是否有效（不是默认的 0, 1）
-        if ylim != (0.0, 1.0) and ylim[1] > ylim[0]:
-            price_range = ylim[1] - ylim[0]
-        elif has_high and has_low:
-            # 如果坐标轴还没初始化，回退到使用数据范围
-            price_range = df[high_col].max() - df[low_col].min()
-            # 考虑 matplotlib 默认 padding (约 10%)
-            price_range *= 1.1
-        else:
-            price_range = df.iloc[0]["close"] * 0.2 if not df.empty else 1.0
+        from BreakoutStrategy.UI.styles import compute_marker_offsets_pt
 
-        # 避免 range 为 0
-        if price_range == 0:
-            price_range = df[high_col].mean() * 0.1 if has_high else 1.0
-
-        # 使用价格范围的 2% 作为基本偏移单位
-        offset_unit = price_range * 0.02
-
-        # 构建峰值索引集合，用于快速查找重叠
+        # 构建峰值索引集合（两层：是否存在 peak / peak 是否带 id）
         peak_indices = {p.index for p in peaks} if peaks else set()
+        peak_id_indices = (
+            {p.index for p in peaks if getattr(p, "id", None) is not None}
+            if peaks else set()
+        )
 
         for bo in breakouts:
-            # 使用整数索引而不是日期对象
-            bo_x = bo.index  # 整数索引
+            bo_x = bo.index
 
-            # 获取基准高度
             if has_high and 0 <= bo_x < len(df):
                 base_price = df.iloc[bo_x][high_col]
             else:
                 base_price = bo.price
 
-            # 确定颜色
             color = marker_color
 
-            # 检查是否与峰值重叠
-            is_overlap = bo_x in peak_indices
-
-            # 确定文本位置
-            if is_overlap:
-                # 如果重叠，显示在峰值信息上方
-                # KBar -> Marker(0.5) -> PeakText(1.1) -> BOText(2.0)
-                # 之前 PeakText 是 marker_y(0.5) + 0.6 = 1.1
-                # 所以这里设为 2.0 比较安全 (4% Range)
-                text_y = base_price + offset_unit * 2.2
-            else:
-                # 如果不重叠，显示在 KBar 上方
-                # KBar -> BOText(0.8) (1.6% Range)
-                text_y = base_price + offset_unit * 0.6
-
-            # 绘制突破分数
-            if (
+            has_broken_ids = bool(getattr(bo, "broken_peak_ids", None))
+            has_score = (
                 show_score
                 and hasattr(bo, "quality_score")
                 and bo.quality_score is not None
-            ):
-                # 如果有 IDs，分数显示在 IDs 上方
-                score_y = text_y
-                if hasattr(bo, "broken_peak_ids") and bo.broken_peak_ids:
-                    score_y += offset_unit * 1.2
+            )
+
+            # 构造本 bar 实际存在的堆叠层（自下而上）
+            layers: list[str] = []
+            if bo_x in peak_indices:
+                layers.append("triangle")
+                if bo_x in peak_id_indices:
+                    layers.append("peak_id")
+            if has_broken_ids:
+                layers.append("bo_label")
+            if has_score and has_broken_ids:
+                layers.append("bo_score")
+
+            offsets = compute_marker_offsets_pt(layers) if layers else {}
+
+            # 绘制突破分数（在 bo_label 上方；若无 broken_peak_ids 则 score 退到 bo_label 位置）
+            if has_score:
+                if has_broken_ids:
+                    score_y = offsets["bo_score"]
+                else:
+                    # 只有 score、无 label：临时把 "bo_label" 作为最上层占 score 的位置
+                    tmp_layers = layers + ["bo_label"]
+                    score_y = compute_marker_offsets_pt(tmp_layers)["bo_label"]
 
                 score_text = f"{bo.quality_score:.0f}"
-
-                ax.text(
-                    bo_x,
-                    score_y,
+                ax.annotate(
                     score_text,
+                    xy=(bo_x, base_price),
+                    xycoords="data",
+                    xytext=(0, score_y),
+                    textcoords="offset points",
                     fontsize=20,
                     ha="center",
                     va="bottom",
@@ -231,12 +228,14 @@ class MarkerComponent:
                 )
 
             # 在上方显示被突破的 peaks id 列表
-            if hasattr(bo, "broken_peak_ids") and bo.broken_peak_ids:
+            if has_broken_ids:
                 peak_ids_text = ",".join(map(str, bo.broken_peak_ids))
-                ax.text(
-                    bo_x,
-                    text_y,
+                ax.annotate(
                     f"[{peak_ids_text}]",
+                    xy=(bo_x, base_price),
+                    xycoords="data",
+                    xytext=(0, offsets["bo_label"]),
+                    textcoords="offset points",
                     fontsize=20,
                     ha="center",
                     va="bottom",
@@ -251,6 +250,116 @@ class MarkerComponent:
                         alpha=0.9,
                     ),
                 )
+
+    @staticmethod
+    def draw_breakouts_live_mode(
+        ax,
+        df: pd.DataFrame,
+        breakouts: list,
+        current_bo_index,
+        visible_matched_indices: set[int] | None = None,
+        filtered_out_matched_indices: set[int] | None = None,
+        peaks: list = None,
+        colors: dict = None,
+    ):
+        """Live UI 专用：以 bo_label annotation 作为单一 BO marker。
+
+        视觉三态（current / matched / plain）通过 BO_LABEL_TIER_STYLE 查背景/
+        文字色，边框统一为 CHART_COLORS['bo_marker_current']（深蓝）。
+
+        Pickability 与视觉独立：current 与通过 filter 的 matched 挂 picker=True
+        并记 `.bo_chart_idx`；被 filter 过滤掉的 matched 与 plain 不可点击。
+        所有 annotation 都会记 `.bo_tier` 便于测试/调试。
+
+        注：`colors` 参数为签名兼容保留（canvas_manager 仍会传入），实际使用的
+        颜色一律取自 BO_LABEL_TIER_STYLE / CHART_COLORS（SSoT）。
+        """
+        if not breakouts:
+            return
+
+        if visible_matched_indices is None:
+            visible_matched_indices = set()
+        if filtered_out_matched_indices is None:
+            filtered_out_matched_indices = set()
+
+        from BreakoutStrategy.UI.styles import (
+            BO_LABEL_TIER_STYLE,
+            CHART_COLORS,
+            compute_marker_offsets_pt,
+        )
+
+        border_color = CHART_COLORS["bo_marker_current"]
+
+        high_col = "high" if "high" in df.columns else "High"
+        has_high = high_col in df.columns
+
+        peak_indices = {p.index for p in peaks} if peaks else set()
+        peak_id_indices = (
+            {p.index for p in peaks if getattr(p, "id", None) is not None}
+            if peaks else set()
+        )
+
+        tier_zorder = {
+            "current": 13,
+            "matched": 11,
+            "plain": 10,
+        }
+
+        for bo in breakouts:
+            if not getattr(bo, "broken_peak_ids", None):
+                continue
+
+            bo_x = bo.index
+            base_price = (
+                df.iloc[bo_x][high_col]
+                if has_high and 0 <= bo_x < len(df)
+                else bo.price
+            )
+
+            tier, pickable = _classify_bo(
+                bo_x,
+                current_bo_index,
+                visible_matched_indices,
+                filtered_out_matched_indices,
+            )
+
+            # 构造本 bar 实际存在的堆叠层（自下而上）
+            if bo_x in peak_id_indices:
+                layers = ["triangle", "peak_id", "bo_label"]
+            elif bo_x in peak_indices:
+                layers = ["triangle", "bo_label"]
+            else:
+                layers = ["bo_label"]
+            offset_pt = compute_marker_offsets_pt(layers)["bo_label"]
+
+            style = BO_LABEL_TIER_STYLE[tier]
+            text = "[" + ",".join(map(str, bo.broken_peak_ids)) + "]"
+
+            kwargs = dict(
+                xy=(bo_x, base_price),
+                xycoords="data",
+                xytext=(0, offset_pt),
+                textcoords="offset points",
+                fontsize=20,
+                ha="center",
+                va="bottom",
+                color=style["fg"],
+                weight="bold",
+                zorder=tier_zorder[tier],
+                bbox=dict(
+                    boxstyle="round,pad=0.3",
+                    facecolor=style["bg"],
+                    edgecolor=border_color,
+                    linewidth=1.5,
+                    alpha=0.9,
+                ),
+            )
+            if pickable:
+                kwargs["picker"] = True
+
+            ann = ax.annotate(text, **kwargs)
+            ann.bo_chart_idx = bo_x
+            ann.bo_tier = tier
 
     @staticmethod
     def draw_resistance_zones(

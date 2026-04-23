@@ -38,6 +38,7 @@ CHART_COLORS = {
     "breakout_marker": "#0000FF",      # 突破标记（蓝色）
     "breakout_text_bg": "#FFFFFF",     # 突破文字背景（白色）
     "breakout_text_score": "#FF0000",  # 突破分数文字（红色）
+    "bo_marker_current": "#0000FF",    # 当前选中 matched BO（与 dev UI breakout_marker 同色）
     # 阻力区
     "resistance_zone": "#5D5932",     # 阻力区颜色（橄榄色）
     # 十字线
@@ -64,6 +65,69 @@ def get_chart_colors() -> dict:
         颜色配置字典
     """
     return CHART_COLORS.copy()
+
+
+# ============================================================================
+# Marker 堆叠间距（单位: points）
+# ============================================================================
+#
+# 每层值 = "到下方相邻层的像素间距"；当此层是堆叠最底时，"下方"即 K 线 High。
+# 字典中 key 顺序无语义；实际堆叠顺序由 draw_* 调用时传入的 layers 列表决定。
+#
+# 用途：dev 和 live 两种 chart 渲染路径共用，几何属于 UI 基础设施。
+# 调整此处数值即可统一生效。
+
+MARKER_STACK_GAPS_PT = {
+    "triangle": 20,   # peak 倒三角
+    "peak_id":  14,   # peak ID 数字文本
+    "bo_label": 14,   # BO 的 [broken_peak_ids] 方框
+    "bo_score": 30,   # BO 分数方框（仅 dev）
+}
+
+
+def compute_marker_offsets_pt(layers: list[str]) -> dict[str, float]:
+    """按堆叠顺序（自下而上）累加 gap，返回每层到 K 线 High 的累计像素偏移。
+
+    Args:
+        layers: 本 bar 实际存在的 marker 层名，自下而上顺序。
+
+    Returns:
+        dict mapping layer name -> cumulative pt offset from High.
+
+    Example:
+        >>> compute_marker_offsets_pt(["triangle", "peak_id", "bo_label", "bo_score"])
+        {'triangle': 14, 'peak_id': 28, 'bo_label': 38, 'bo_score': 68}
+
+    Raises:
+        KeyError: layer 名不在 MARKER_STACK_GAPS_PT 中。
+    """
+    offsets: dict[str, float] = {}
+    cumulative = 0.0
+    for layer in layers:
+        cumulative += MARKER_STACK_GAPS_PT[layer]
+        offsets[layer] = cumulative
+    return offsets
+
+
+# ============================================================================
+# Live 模式 bo_label 三态配色（dev 模式不使用）
+# ============================================================================
+#
+# current : 当前选中 matched BO —— 深蓝底 + 白字（强调）
+# matched : 其他 matched BO —— 灰底 + 黑字
+#           （是否在 filter 内仅影响 pickability，不改变外观；filter 状态
+#            已由竖线 + 右侧深色背景在视觉上表达，色差区分会造成冗余）
+# plain   : 未匹配 template —— 白底 + 深蓝字
+#
+# 所有 tier 的边框统一使用 CHART_COLORS["bo_marker_current"]（深蓝）。
+#
+# 调整"matched"灰度：改 bg 字段（如更深 "#A0A0A0" 或更浅 "#D3D3D3"）。
+
+BO_LABEL_TIER_STYLE = {
+    "current": {"bg": CHART_COLORS["bo_marker_current"], "fg": "#FFFFFF"},
+    "matched": {"bg": "#D8E300",                         "fg": "#000000"},
+    "plain":   {"bg": CHART_COLORS["breakout_text_bg"],  "fg": CHART_COLORS["bo_marker_current"]},
+}
 
 
 # ============================================================================
@@ -243,6 +307,7 @@ SCORE_TOOLTIP_COLORS = {
     # Factor 状态颜色
     "factor_triggered": "#212121",      # 黑色，已触发
     "factor_not_triggered": "#7C7C7C",  # 灰色，未触发
+    "factor_unavailable": "#B8B8B8",    # 浅灰，该因子 lookback 不足（不可算）
 }
 
 SCORE_TOOLTIP_FONTS = {
@@ -320,7 +385,7 @@ def get_font(component_type: str = "label") -> tuple:
 1. 在主入口文件中配置全局样式：
 
     import tkinter as tk
-    from BreakoutStrategy.UI.interactive.ui_styles import configure_global_styles
+    from BreakoutStrategy.dev.interactive.ui_styles import configure_global_styles
 
     root = tk.Tk()
     configure_global_styles(root)  # 必须在创建UI组件前调用！
@@ -329,14 +394,14 @@ def get_font(component_type: str = "label") -> tuple:
 
 2. 在创建组件时使用预定义字体：
 
-    from BreakoutStrategy.UI.interactive.ui_styles import get_font
+    from BreakoutStrategy.dev.interactive.ui_styles import get_font
 
     # 方法1：使用get_font()函数
     label = ttk.Label(parent, text="Hello", font=get_font("label"))
     button = ttk.Button(parent, text="Click", font=get_font("button"))
 
     # 方法2：直接导入字体常量
-    from BreakoutStrategy.UI.interactive.ui_styles import FONT_LABEL, FONT_BUTTON
+    from BreakoutStrategy.dev.interactive.ui_styles import FONT_LABEL, FONT_BUTTON
     label = ttk.Label(parent, text="Hello", font=FONT_LABEL)
     button = ttk.Button(parent, text="Click", font=FONT_BUTTON)
 

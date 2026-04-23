@@ -126,6 +126,7 @@ class CandlestickComponent:
         ax.set_ylim(y_bottom, y_top)
 
         # 绘制成交量柱状图作为背景
+        vol_bars = []
         for i in range(len(df)):
             row = df.iloc[i]
             volume = row["Volume"]
@@ -141,7 +142,7 @@ class CandlestickComponent:
 
             # 绘制成交量柱
             volume_height = volume * volume_scale_factor
-            ax.bar(
+            container = ax.bar(
                 i,
                 volume_height,
                 bottom=display_bottom,
@@ -152,6 +153,9 @@ class CandlestickComponent:
                 alpha=0.8,
                 zorder=1,
             )
+            vol_bars.append(container[0])  # Rectangle artist
+
+        return vol_bars
 
     @staticmethod
     def draw_volume(
