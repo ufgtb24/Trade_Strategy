@@ -132,6 +132,8 @@ class MarkerComponent:
         peaks: list = None,
         colors: dict = None,
         show_score: bool = True,
+        show_label: bool = False,
+        label_n: int = 20,
     ):
         """
         绘制突破标记
@@ -143,7 +145,9 @@ class MarkerComponent:
             highlight_multi_peak: 多峰值突破是否使用大标记
             peaks: 当前图表中绘制的峰值列表 (用于避免重叠)
             colors: 颜色配置字典
-            show_score: 是否显示分数
+            show_score: 是否显示 quality_score
+            show_label: 是否显示回测 label 值（窗口 = label_n 天）
+            label_n: label 计算窗口天数
         """
         if not breakouts:
             return
@@ -153,11 +157,14 @@ class MarkerComponent:
         text_bg_color = colors.get("breakout_text_bg", "#FFFFFF")
         text_score_color = colors.get("breakout_text_score", "#FF0000")
 
-        # 尝试获取 high 列
         high_col = "high" if "high" in df.columns else "High"
         has_high = high_col in df.columns
 
-        from BreakoutStrategy.UI.styles import compute_marker_offsets_pt
+        from BreakoutStrategy.UI.styles import (
+            BO_LABEL_VALUE_TIER_STYLE,
+            compute_marker_offsets_pt,
+        )
+        from BreakoutStrategy.analysis.features import compute_label_value
 
         # 构建峰值索引集合（两层：是否存在 peak / peak 是否带 id）
         peak_indices = {p.index for p in peaks} if peaks else set()
@@ -166,6 +173,18 @@ class MarkerComponent:
             if peaks else set()
         )
 
+        # 第 1 遍：若开启 show_label，为所有 BO 预先计算 label value，并找出最大值
+        bo_label_values: dict[int, float] = {}
+        max_label_value = None
+        if show_label:
+            for bo in breakouts:
+                v = compute_label_value(df, bo.index, label_n)
+                if v is not None:
+                    bo_label_values[bo.index] = v
+            if bo_label_values:
+                max_label_value = max(bo_label_values.values())
+
+        # 第 2 遍：逐 BO 绘制
         for bo in breakouts:
             bo_x = bo.index
 
@@ -182,6 +201,7 @@ class MarkerComponent:
                 and hasattr(bo, "quality_score")
                 and bo.quality_score is not None
             )
+            has_label_value = show_label and bo_x in bo_label_values
 
             # 构造本 bar 实际存在的堆叠层（自下而上）
             layers: list[str] = []
@@ -193,15 +213,16 @@ class MarkerComponent:
                 layers.append("bo_label")
             if has_score and has_broken_ids:
                 layers.append("bo_score")
+            if has_label_value and (has_score or has_broken_ids):
+                layers.append("bo_label_value")
 
             offsets = compute_marker_offsets_pt(layers) if layers else {}
 
-            # 绘制突破分数（在 bo_label 上方；若无 broken_peak_ids 则 score 退到 bo_label 位置）
+            # 绘制突破分数
             if has_score:
                 if has_broken_ids:
                     score_y = offsets["bo_score"]
                 else:
-                    # 只有 score、无 label：临时把 "bo_label" 作为最上层占 score 的位置
                     tmp_layers = layers + ["bo_label"]
                     score_y = compute_marker_offsets_pt(tmp_layers)["bo_label"]
 
@@ -224,6 +245,49 @@ class MarkerComponent:
                         edgecolor=text_score_color,
                         linewidth=1.0,
                         alpha=0.8,
+                    ),
+                )
+
+            # 绘制回测 label 值
+            if has_label_value:
+                value = bo_label_values[bo_x]
+                # Tier 分类（浮点等值用容差）
+                is_max = (
+                    max_label_value is not None
+                    and abs(value - max_label_value) < 1e-9
+                )
+                tier = "max" if is_max else "other"
+                tier_style = BO_LABEL_VALUE_TIER_STYLE[tier]
+
+                # 计算 y 偏移
+                if "bo_label_value" in offsets:
+                    label_value_y = offsets["bo_label_value"]
+                else:
+                    # 只有 label_value，无 score 无 broken_ids：退到 bo_score 位
+                    tmp_layers = layers + ["bo_score"]
+                    label_value_y = compute_marker_offsets_pt(tmp_layers)["bo_score"]
+
+                sign = "+" if value >= 0 else ""
+                value_text = f"{sign}{value * 100:.1f}%"
+
+                ax.annotate(
+                    value_text,
+                    xy=(bo_x, base_price),
+                    xycoords="data",
+                    xytext=(0, label_value_y),
+                    textcoords="offset points",
+                    fontsize=20,
+                    ha="center",
+                    va="bottom",
+                    color=tier_style["fg"],
+                    weight="bold",
+                    zorder=14 if tier == "max" else 12,
+                    bbox=dict(
+                        boxstyle="round,pad=0.2",
+                        facecolor=tier_style["bg"],
+                        edgecolor=tier_style["fg"],
+                        linewidth=1.0,
+                        alpha=0.9,
                     ),
                 )
 

@@ -116,6 +116,8 @@ class ChartCanvasManager:
         display_options = display_options or {}
         show_bo_score = display_options.get("show_bo_score", True)
         show_superseded_peaks = display_options.get("show_superseded_peaks", False)
+        show_bo_label = display_options.get("show_bo_label", False)
+        bo_label_n = display_options.get("bo_label_n", 20)
 
         # 2. 创建新图表（2个子图：主图+统计面板）
         # 动态计算图表大小，适应容器尺寸
@@ -257,6 +259,8 @@ class ChartCanvasManager:
                 peaks=all_drawn_peaks,
                 colors=colors,
                 show_score=show_bo_score,
+                show_label=show_bo_label,
+                label_n=bo_label_n,
             )
 
         self.marker.draw_resistance_zones(

@@ -1,6 +1,7 @@
 .idea
 datasets
 outputs
+feature_library
 __pycache__/
 prompt_template/
 .worktrees/

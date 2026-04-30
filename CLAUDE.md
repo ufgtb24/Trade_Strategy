@@ -8,6 +8,7 @@
 注：
 **`.claude/docs/` 只存放 system_outline.md 和 已实现模块架构意图，作为持久化上下文，任何其他内容都不应该放在这里。**
 **`.claude/docs/` 下的文档只反映当前代码状态，不包含开发历史相关信息、不包含未实现的设计。**
+**`.claude/docs/` 如果当前代码状态与 `.claude/docs/` 冲突时，以代码为准。永远不要根据 `.claude/docs/` 修改代码。**
 
 需要更新这些文档时，运行 `update-ai-context` skill。
 需要生成面向人类阅读的研究报告 / 代码解释 / 临时计划时，运行 `write-user-doc` skill。
