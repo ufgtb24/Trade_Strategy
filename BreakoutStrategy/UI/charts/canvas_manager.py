@@ -2,7 +2,7 @@
 
 import tkinter as tk
 from datetime import timedelta
-from typing import Optional, List
+from typing import Callable, Optional, List
 
 import matplotlib.patches as mpatches
 import matplotlib.pyplot as plt
@@ -13,6 +13,7 @@ from ..styles import get_chart_colors
 from .components import CandlestickComponent, MarkerComponent, PanelComponent, ScoreDetailWindow
 from .axes_interaction import AxesInteractionController
 from .filter_range import compute_left_idx
+from .keyboard_picker import KeyboardPicker
 from .tooltip_anchor import compute_tooltip_anchor
 from ...analysis.breakout_scorer import BreakoutScorer
 from ...analysis.breakout_detector import Peak, Breakout
@@ -60,6 +61,7 @@ class ChartCanvasManager:
         self._last_mouse_x: float = 0.0   # 鼠标X坐标（数据坐标系，实际位置）
         self._last_mouse_y: float = 0.0   # 鼠标Y坐标（数据坐标系）
         self._last_hover_x: int = 0       # 最近悬停的K线索引
+        self._hover_in_chart: bool = False  # 鼠标是否在 chart 上（用于 picker 区分"未 hover"和"hover 在 bar 0"）
         self._hover_df: Optional[pd.DataFrame] = None  # 保存df引用
 
         # ATR 相关（用于 tooltip 显示）
@@ -74,6 +76,12 @@ class ChartCanvasManager:
         # Filter 时间范围可视化：浅灰背景 Rectangle + 黑色虚线左边界
         self._filter_span = None
         self._filter_line = None
+
+        # KeyboardPicker：dev UI 中用户挑 BO sample 端点
+        # 实际依赖项（hover bar / BO 集合 / 渲染回调）在 update_chart 时通过
+        # _wire_picker() 完成绑定（因为这些依赖每次 update_chart 都变）
+        self._picker: KeyboardPicker | None = None
+        self._endpoint_marker_lines: list = []   # 当前画在 ax_price 上的端点 axvline
 
     def update_chart(
         self,
@@ -116,6 +124,8 @@ class ChartCanvasManager:
         display_options = display_options or {}
         show_bo_score = display_options.get("show_bo_score", True)
         show_superseded_peaks = display_options.get("show_superseded_peaks", False)
+        show_bo_label = display_options.get("show_bo_label", False)
+        bo_label_n = display_options.get("bo_label_n", 20)
 
         # 2. 创建新图表（2个子图：主图+统计面板）
         # 动态计算图表大小，适应容器尺寸
@@ -132,6 +142,7 @@ class ChartCanvasManager:
             fig_width = container_width / dpi
             fig_height = container_height / dpi
 
+        self._cancel_picker_toast()  # 清掉旧 fig 上的 toast,避免 artist 悬挂在已弃 fig 上
         self.fig = plt.Figure(figsize=(fig_width, fig_height), dpi=dpi)
         self.fig.patch.set_facecolor("white")  # 设置背景为白色
         axes = self.fig.subplots(2, 1, height_ratios=[10, 0.3])
@@ -257,6 +268,8 @@ class ChartCanvasManager:
                 peaks=all_drawn_peaks,
                 colors=colors,
                 show_score=show_bo_score,
+                show_label=show_bo_label,
+                label_n=bo_label_n,
             )
 
         self.marker.draw_resistance_zones(
@@ -366,6 +379,13 @@ class ChartCanvasManager:
         # 6. 绑定鼠标悬停事件
         self._attach_hover(ax_main, df, breakouts, peaks=all_drawn_peaks)
 
+        # 7. 绑定 keyboard picker（依赖每次重画后的 ax_price / df / breakouts）
+        on_endpoints_picked = display_options.get("on_endpoints_picked")
+        self._wire_picker(
+            ax_price=ax_main, df=df, breakouts=breakouts,
+            on_endpoints_picked=on_endpoints_picked,
+        )
+
     def _on_pick(self, event):
         """matplotlib pick_event handler：BO marker 点击反向同步到 MatchList。"""
         cb = getattr(self, "_on_bo_picked_callback", None)
@@ -418,6 +438,7 @@ class ChartCanvasManager:
         self._last_mouse_x = 0.0
         self._last_mouse_y = 0.0
         self._last_hover_x = 0
+        self._hover_in_chart = False
         self._hover_df = None
 
     def _on_pan_state_change(self, panning: bool) -> None:
@@ -693,6 +714,7 @@ class ChartCanvasManager:
                 # 清除悬停状态
                 self._hovered_peak = None
                 self._hovered_bo = None
+                self._hover_in_chart = False
                 self.canvas.draw_idle()
                 return
 
@@ -708,6 +730,7 @@ class ChartCanvasManager:
                 # 清除悬停状态
                 self._hovered_peak = None
                 self._hovered_bo = None
+                self._hover_in_chart = False
                 self.canvas.draw_idle()
                 return
 
@@ -726,6 +749,7 @@ class ChartCanvasManager:
             self._last_mouse_x = event.xdata
             self._last_mouse_y = event.ydata
             self._last_hover_x = x
+            self._hover_in_chart = True
 
             # 重置悬停状态
             self._hovered_peak = None
@@ -864,6 +888,10 @@ class ChartCanvasManager:
         canvas_widget.bind("<Up>", self._on_navigate_key)
         canvas_widget.bind("<Down>", self._on_navigate_key)
 
+        # 绑定 P 键触发 sample picker（归一化方案 B + chart input 方案）
+        canvas_widget.bind("<p>", self._on_picker_p_key)
+        canvas_widget.bind("<P>", self._on_picker_p_key)
+
         # 绑定 Escape 键关闭最近的窗口
         canvas_widget.bind("<Escape>", self._on_close_window_key)
 
@@ -928,12 +956,16 @@ class ChartCanvasManager:
         return "break"
 
     def _on_close_window_key(self, event):
-        """
-        Escape 键按下回调：关闭最近打开的窗口
+        """Escape 键按下回调。优先让 KeyboardPicker 处理（picking 状态时取消）；
+        picker 未消费时再走原有关窗逻辑。
 
         Args:
             event: Tkinter 键盘事件
         """
+        if self._picker is not None and self._picker.on_press_escape():
+            return   # picker 消费了，不走原关窗逻辑
+
+        # 原有关窗逻辑保持不变
         self._cleanup_closed_windows()
 
         if self.score_detail_windows:
@@ -956,6 +988,182 @@ class ChartCanvasManager:
         self.score_detail_windows = [
             w for w in self.score_detail_windows if w.is_open()
         ]
+
+    # ---------- KeyboardPicker 集成 ----------
+
+    def _wire_picker(
+        self,
+        ax_price,
+        df,
+        breakouts: list,
+        on_endpoints_picked: Optional[Callable[[int, int, 'pd.DataFrame', list], None]],
+    ) -> None:
+        """把 KeyboardPicker 绑到当前图表上下文。
+
+        每次 update_chart 重画完图后调用——hover bar、BO 集合、渲染回调
+        在每次重画后都需要重新绑定。
+
+        Args:
+            ax_price: 价格面板的 matplotlib Axes。
+            df: update_chart 时传入的 display DataFrame（display-space 索引）。
+            breakouts: update_chart 时传入的 Breakout 列表（含 .index 字段）。
+            on_endpoints_picked: 用户完成挑选后的回调，签名 (left, right, df, breakouts)；
+                传 None 时禁用 picker（self._picker = None）。
+        """
+        if on_endpoints_picked is None:
+            self._picker = None
+            return
+
+        def get_hovered_bar() -> Optional[int]:
+            # 区分"未 hover 任何 bar"（return None）和"hover 在 bar 0"（return 0）
+            if not getattr(self, "_hover_in_chart", False):
+                return None
+            return getattr(self, "_last_hover_x", None)
+
+        def get_bo_indices() -> frozenset:
+            # 从 update_chart 时传入的 breakouts 列表读 .index 字段构造集合
+            # （Breakout dataclass 字段是 .index，不是 .idx — 见 breakout_detector.py）
+            return frozenset(b.index for b in breakouts)
+
+        def on_render(left, right):
+            # UX: 截图渲染是同步阻塞调用,直接在主线程跑会让 UI 看上去"卡死"。
+            # 先把进度反馈(双 marker + sticky)同步刷到屏幕,再启动长任务,
+            # 完成后由 picker._reset_silent 统一清场(marker [] / sticky "")。
+            self._cancel_picker_toast()  # 不让上一条警告 toast 烤进 chart.png 截图
+            self._redraw_endpoint_markers(ax_price, [left, right])
+            self._set_picker_sticky("Capturing screenshot...")
+            self.canvas.draw()           # 同步绘制(非 draw_idle),立即出图
+            self.canvas.flush_events()   # 让 Tk 主循环处理待办事件
+            # 把 wired 的 display_df + display_breakouts 一起回传给 dev/main,
+            # 避免 dev/main 用错(自身 self.current_df 是 full pre-processed df)
+            on_endpoints_picked(left, right, df, breakouts)
+
+        def on_toast(kind: str, text: str):
+            self._show_picker_toast(kind, text)
+
+        def on_sticky(text: str):
+            self._set_picker_sticky(text)
+
+        def on_marker_redraw(bars):
+            self._redraw_endpoint_markers(ax_price, bars)
+
+        self._picker = KeyboardPicker(
+            get_hovered_bar=get_hovered_bar,
+            get_bo_indices=get_bo_indices,   # D-10 新增：注入 BO 集合闭包
+            on_render=on_render,
+            on_toast=on_toast,
+            on_sticky=on_sticky,
+            on_marker_redraw=on_marker_redraw,
+        )
+
+    def _redraw_endpoint_markers(self, ax_price, bars) -> None:
+        """重画端点 marker（黄色实线 axvline）。"""
+        for line in self._endpoint_marker_lines:
+            try:
+                line.remove()
+            except Exception:
+                pass
+        self._endpoint_marker_lines = []
+        for bar in bars:
+            line = ax_price.axvline(
+                x=bar, color="#FFD700", linestyle="-", linewidth=2.0, zorder=50,
+            )
+            self._endpoint_marker_lines.append(line)
+        self.canvas.draw_idle()
+
+    def _show_picker_toast(self, kind: str, text: str) -> None:
+        """toast 提示:terminal log + chart overlay,2.5s 自动消失。
+
+        保留 print 维持 dev audit log;chart 上同步显示在 sticky 之下,
+        让用户不切 terminal 也能感知错点反馈(warning=红 / info=蓝)。
+        """
+        prefix = {"info": "ℹ️", "warning": "⚠️"}.get(kind, "")
+        print(f"[Picker] {prefix} {text}")
+
+        if not hasattr(self, "_picker_toast_artist"):
+            self._picker_toast_artist = None
+            self._picker_toast_after_id = None
+
+        ax = self.fig.axes[0] if self.fig and self.fig.axes else None
+        if ax is None:
+            return
+
+        self._cancel_picker_toast()  # 清掉前一个 toast(若存在)及其 after timer
+        if not text:
+            return
+
+        palette = {
+            "warning": dict(color="#D32F2F", facecolor="#FFEBEE", edgecolor="#D32F2F"),
+            "info":    dict(color="#1976D2", facecolor="#E3F2FD", edgecolor="#1976D2"),
+        }.get(kind, dict(color="#424242", facecolor="white", edgecolor="#888888"))
+
+        self._picker_toast_artist = ax.text(
+            0.5, 0.93, text, transform=ax.transAxes,
+            ha="center", va="top",
+            fontsize=18, color=palette["color"],
+            bbox=dict(facecolor=palette["facecolor"], alpha=0.9,
+                      edgecolor=palette["edgecolor"], boxstyle="round,pad=0.3"),
+            zorder=99,
+        )
+        self.canvas.draw_idle()
+
+        # 2.5s 后自动消失;非 TkAgg backend 时静默 fallthrough
+        try:
+            widget = self.canvas.get_tk_widget()
+            self._picker_toast_after_id = widget.after(2500, self._cancel_picker_toast)
+        except Exception:
+            pass
+
+    def _cancel_picker_toast(self) -> None:
+        """清除当前 toast artist + 取消 pending after timer(可重入安全)。"""
+        aid = getattr(self, "_picker_toast_after_id", None)
+        if aid is not None:
+            try:
+                self.canvas.get_tk_widget().after_cancel(aid)
+            except Exception:
+                pass
+            self._picker_toast_after_id = None
+        art = getattr(self, "_picker_toast_artist", None)
+        if art is not None:
+            try:
+                art.remove()
+            except Exception:
+                pass
+            self._picker_toast_artist = None
+            try:
+                self.canvas.draw_idle()
+            except Exception:
+                pass
+
+    def _set_picker_sticky(self, text: str) -> None:
+        """sticky 状态栏提示：在 chart 标题区域（axes[0] 上方）显示。"""
+        if not hasattr(self, "_picker_sticky_artist"):
+            self._picker_sticky_artist = None
+        ax = self.fig.axes[0] if self.fig and self.fig.axes else None
+        if ax is None:
+            return
+        if self._picker_sticky_artist is not None:
+            try:
+                self._picker_sticky_artist.remove()
+            except Exception:
+                pass
+            self._picker_sticky_artist = None
+        if text:
+            # 画在 axes 内部顶端: subplots_adjust(top=0.99) 已把 axes 顶贴到 figure 顶,
+            # 早先用 y=1.02 + va="bottom" 时文字落在 figure 外被裁掉。
+            self._picker_sticky_artist = ax.text(
+                0.5, 0.98, text, transform=ax.transAxes,
+                ha="center", va="top",
+                fontsize=18, color="#FF6F00", fontweight="bold",
+                bbox=dict(facecolor="white", alpha=0.85, edgecolor="#FF6F00", boxstyle="round,pad=0.3"),
+                zorder=100,
+            )
+        self.canvas.draw_idle()
+
+    def _on_picker_p_key(self, event):
+        """P 键回调：转发给 KeyboardPicker。"""
+        if self._picker is not None:
+            self._picker.on_press_p()
 
     def _on_ctrl_press(self, event):
         """

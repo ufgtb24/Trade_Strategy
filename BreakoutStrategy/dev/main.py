@@ -74,6 +74,14 @@ class InteractiveUI:
         # 创建UI
         self._create_ui()
 
+        # 检查 GLM-4V backend 是否就绪（P 键 picker 依赖 zhipuai key）
+        from BreakoutStrategy.dev.sample_picker_handler import get_glm4v_backend_lazy
+        if get_glm4v_backend_lazy() is None:
+            print(
+                "[dev] 警告：GLM-4V backend 未就绪 "
+                "(configs/api_keys.yaml 中缺 zhipuai key)，sample picker (P 键) 将无效"
+            )
+
     def _create_ui(self):
         """创建UI布局"""
         # 模式指示器（最顶部）
@@ -159,6 +167,13 @@ class InteractiveUI:
 
             # 清空DataFrame缓存（新JSON可能有不同的时间范围）
             self._data_cache.clear()
+
+            # 从 scan metadata 读取 label_configs[0].max_days，更新 Spinbox 默认 N
+            label_max_days = self.config_loader.get_label_max_days_from_json(
+                self.scan_data
+            )
+            if label_max_days is not None:
+                self.param_panel.set_bo_label_n_default(label_max_days)
 
             # 加载到股票列表
             self.stock_list_panel.load_data(self.scan_data)
@@ -271,6 +286,7 @@ class InteractiveUI:
 
         # 获取显示选项并更新图表
         display_options = self.param_panel.get_display_options()
+        display_options["on_endpoints_picked"] = self._make_on_endpoints_picked()
 
         spec = self._render_chart(
             df, breakouts, active_peaks, superseded_peaks,
@@ -943,6 +959,7 @@ class InteractiveUI:
             return
 
         display_options = self.param_panel.get_display_options()
+        display_options["on_endpoints_picked"] = self._make_on_endpoints_picked()
 
         start_date, end_date = self.config_loader.get_time_range_for_stock(
             self.current_symbol, self.scan_data
@@ -955,6 +972,62 @@ class InteractiveUI:
             self.current_superseded_peaks or [],
             self.current_symbol, display_options, start_date, end_date,
         )
+
+    def _make_on_endpoints_picked(self):
+        """构造 KeyboardPicker → preprocess_sample 集成回调。
+
+        返回闭包，捕获当前 current_symbol / current_df 快照。
+        注入到 display_options["on_endpoints_picked"]，由 canvas_manager 在
+        用户完成端点挑选后调用。
+        """
+        from datetime import datetime
+
+        from BreakoutStrategy.dev.sample_picker_handler import (
+            get_glm4v_backend_lazy,
+            handle_endpoints_picked,
+        )
+
+        def _on_endpoints_picked(
+            left_idx: int,
+            right_idx: int,
+            display_df,
+            display_breakouts,
+        ) -> None:
+            """KeyboardPicker → preprocess_sample 集成。
+
+            display_df / display_breakouts 来自 canvas_manager._wire_picker 时的快照，
+            与 picker 输出的 (left_idx, right_idx) 同 index 空间，避免 dev/main 自身
+            self.current_df（full pre-processed df）的索引偏移导致 sample 错位。
+            """
+            backend = get_glm4v_backend_lazy()
+            if backend is None:
+                print(
+                    "[dev] picker: GLM-4V backend 未就绪 "
+                    "（configs/api_keys.yaml 中 zhipuai key 缺失）"
+                )
+                return
+            ticker = self.current_symbol
+            if display_df is None or ticker is None:
+                print("[dev] picker: 无活跃 ticker / df，跳过")
+                return
+
+            def on_done(sample_id):
+                if sample_id:
+                    print(f"[dev] picker: ✅ 已挑选 sample → {sample_id}")
+                else:
+                    print("[dev] picker: ❌ preprocess_sample 失败")
+
+            handle_endpoints_picked(
+                left_idx=left_idx,
+                right_idx=right_idx,
+                ticker=ticker,
+                df=display_df,   # 关键修改：用 display_df 而非 self.current_df
+                picked_at=datetime.now(),
+                backend=backend,
+                on_done=on_done,
+            )
+
+        return _on_endpoints_picked
 
     def _get_template_display_indices(
         self, symbol: str, display_breakouts: list, index_offset: int

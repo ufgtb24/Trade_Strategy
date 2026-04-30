@@ -78,10 +78,11 @@ def get_chart_colors() -> dict:
 # 调整此处数值即可统一生效。
 
 MARKER_STACK_GAPS_PT = {
-    "triangle": 20,   # peak 倒三角
-    "peak_id":  14,   # peak ID 数字文本
-    "bo_label": 14,   # BO 的 [broken_peak_ids] 方框
-    "bo_score": 30,   # BO 分数方框（仅 dev）
+    "triangle":       20,   # peak 倒三角
+    "peak_id":        14,   # peak ID 数字文本
+    "bo_label":       14,   # BO 的 [broken_peak_ids] 方框
+    "bo_score":       30,   # BO 分数方框（仅 dev）
+    "bo_label_value": 30,   # BO 回测 label 值方框（仅 dev，最顶层）
 }
 
 
@@ -125,8 +126,24 @@ def compute_marker_offsets_pt(layers: list[str]) -> dict[str, float]:
 
 BO_LABEL_TIER_STYLE = {
     "current": {"bg": CHART_COLORS["bo_marker_current"], "fg": "#FFFFFF"},
-    "matched": {"bg": "#D8E300",                         "fg": "#000000"},
+    "matched": {"bg": "#BFBFBF",                         "fg": "#000000"},
     "plain":   {"bg": CHART_COLORS["breakout_text_bg"],  "fg": CHART_COLORS["bo_marker_current"]},
+}
+
+
+# ============================================================================
+# Dev 模式 bo_label_value 两态配色
+# ============================================================================
+#
+# max   : 所有可见 BO 中 label 值最大的那个（若并列最大，全部算 max）——
+#         黄底 + 深蓝字（强烈高亮，便于一眼定位"窗口内最高涨幅"的 BO）。
+# other : 其他有 label 值的 BO —— 橙底 + 深蓝字。
+#
+# 边框统一使用 fg（深蓝）。
+
+BO_LABEL_VALUE_TIER_STYLE = {
+    "max":   {"bg": "#FFD700", "fg": "#0000FF"},  # 黄底深蓝字
+    "other": {"bg": "#FFA500", "fg": "#0000FF"},  # 橙底深蓝字
 }
 
 

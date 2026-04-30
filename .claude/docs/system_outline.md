@@ -37,6 +37,7 @@
 | 日常盯盘 | `BreakoutStrategy/live/` | [modules/live.md](modules/live.md) | 消费定稿 Trial + 每日全市场扫描 + 筛选面板（生产态） |
 | 共享 UI | `BreakoutStrategy/UI/` | [modules/UI.md](modules/UI.md) | dev / live 共用的纯 UI 基础设施（charts、styles） |
 | 策略参数 SSoT | `BreakoutStrategy/param_loader.py` | — | 统一加载 / 访问 scan_params、quality_scorer 参数 |
+| 特征库 | `BreakoutStrategy/feature_library/` | [modules/feature_library.md](modules/feature_library.md) | breakout 样本 → GLM-4V 多图归纳 candidate → Librarian L0 cosine 合并 + Beta-Binomial 累积 P5 |
 
 > 添加/更新模块文档：运行 `update-ai-context` skill。
 

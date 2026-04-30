@@ -5,7 +5,7 @@ from BreakoutStrategy.UI.styles import MARKER_STACK_GAPS_PT, compute_marker_offs
 
 
 def test_single_layer_triangle():
-    assert compute_marker_offsets_pt(["triangle"]) == {"triangle": 14}
+    assert compute_marker_offsets_pt(["triangle"]) == {"triangle": 20}
 
 
 def test_dev_full_stack():
@@ -13,24 +13,43 @@ def test_dev_full_stack():
         ["triangle", "peak_id", "bo_label", "bo_score"]
     )
     assert offsets == {
-        "triangle": 14,
-        "peak_id": 28,
-        "bo_label": 38,
-        "bo_score": 68,
+        "triangle": 20,
+        "peak_id": 34,
+        "bo_label": 48,
+        "bo_score": 78,
     }
 
 
 def test_live_stack_with_peak():
     assert compute_marker_offsets_pt(
         ["triangle", "peak_id", "bo_label"]
-    ) == {"triangle": 14, "peak_id": 28, "bo_label": 38}
+    ) == {"triangle": 20, "peak_id": 34, "bo_label": 48}
 
 
 def test_pure_bo_stack():
     assert compute_marker_offsets_pt(["bo_label", "bo_score"]) == {
-        "bo_label": 10,
-        "bo_score": 40,
+        "bo_label": 14,
+        "bo_score": 44,
     }
+
+
+def test_full_stack_with_label_value():
+    offsets = compute_marker_offsets_pt(
+        ["triangle", "peak_id", "bo_label", "bo_score", "bo_label_value"]
+    )
+    assert offsets == {
+        "triangle": 20,
+        "peak_id": 34,
+        "bo_label": 48,
+        "bo_score": 78,
+        "bo_label_value": 108,
+    }
+
+
+def test_label_value_alone_above_bo_label():
+    # BO Label on, BO Score off: label_value stacks directly above bo_label
+    offsets = compute_marker_offsets_pt(["bo_label", "bo_label_value"])
+    assert offsets == {"bo_label": 14, "bo_label_value": 44}
 
 
 def test_unknown_layer_raises():
@@ -40,7 +59,7 @@ def test_unknown_layer_raises():
 
 def test_dict_keys_match_expected():
     assert set(MARKER_STACK_GAPS_PT.keys()) == {
-        "triangle", "peak_id", "bo_label", "bo_score",
+        "triangle", "peak_id", "bo_label", "bo_score", "bo_label_value",
     }
 
 
@@ -56,12 +75,29 @@ def test_bo_label_tier_style_colors_follow_spec():
     assert BO_LABEL_TIER_STYLE["current"]["bg"] == current_color
     assert BO_LABEL_TIER_STYLE["current"]["fg"] == "#FFFFFF"
 
-    # matched 统一灰底黑字，不再使用深蓝
-    assert BO_LABEL_TIER_STYLE["matched"]["bg"] == "#BFBFBF"
+    # matched 黄绿底黑字（Live 模式三色区分，与 plain 的白底和 current 的深蓝底拉开对比）
+    assert BO_LABEL_TIER_STYLE["matched"]["bg"] == "#D8E300"
     assert BO_LABEL_TIER_STYLE["matched"]["fg"] == "#000000"
 
     assert BO_LABEL_TIER_STYLE["plain"]["bg"] == CHART_COLORS["breakout_text_bg"]
     assert BO_LABEL_TIER_STYLE["plain"]["fg"] == current_color
+
+
+def test_bo_label_value_tier_style_structure():
+    from BreakoutStrategy.UI.styles import BO_LABEL_VALUE_TIER_STYLE
+    assert set(BO_LABEL_VALUE_TIER_STYLE.keys()) == {"max", "other"}
+    for tier in ("max", "other"):
+        assert set(BO_LABEL_VALUE_TIER_STYLE[tier].keys()) == {"bg", "fg"}
+
+
+def test_bo_label_value_tier_style_colors_follow_spec():
+    from BreakoutStrategy.UI.styles import BO_LABEL_VALUE_TIER_STYLE
+    # max: 黄底深蓝字
+    assert BO_LABEL_VALUE_TIER_STYLE["max"]["bg"] == "#FFD700"
+    assert BO_LABEL_VALUE_TIER_STYLE["max"]["fg"] == "#0000FF"
+    # other: 橙底深蓝字
+    assert BO_LABEL_VALUE_TIER_STYLE["other"]["bg"] == "#FFA500"
+    assert BO_LABEL_VALUE_TIER_STYLE["other"]["fg"] == "#0000FF"
 
 
 import matplotlib
@@ -102,14 +138,14 @@ def test_draw_peaks_without_id_has_no_text(axes_with_df):
     assert len(ax.texts) == 0
 
 
-def test_draw_peaks_with_id_annotation_at_28pt(axes_with_df):
+def test_draw_peaks_with_id_annotation_at_34pt(axes_with_df):
     ax, df = axes_with_df
     peak = SimpleNamespace(index=2, price=1.2, id=7)
     MarkerComponent.draw_peaks(ax, df, [peak])
     ann = _find_annotation_by_text(ax, "7")
     assert ann is not None
-    # xytext y should equal triangle(14) + peak_id(14) = 28
-    assert ann.xyann[1] == pytest.approx(28)
+    # xytext y should equal triangle(20) + peak_id(14) = 34
+    assert ann.xyann[1] == pytest.approx(34)
 
 
 def test_draw_breakouts_pure_bo_offsets(axes_with_df):
@@ -118,10 +154,10 @@ def test_draw_breakouts_pure_bo_offsets(axes_with_df):
     MarkerComponent.draw_breakouts(ax, df, [bo], peaks=[])
     label = _find_annotation_by_text(ax, "[5]")
     assert label is not None
-    assert label.xyann[1] == pytest.approx(10)   # bo_label gap=10, no layers below
+    assert label.xyann[1] == pytest.approx(14)   # bo_label gap=14, no layers below
     score = _find_annotation_by_text(ax, "80")
     assert score is not None
-    assert score.xyann[1] == pytest.approx(40)   # bo_label(10) + bo_score(30)
+    assert score.xyann[1] == pytest.approx(44)   # bo_label(14) + bo_score(30)
 
 
 def test_draw_breakouts_peak_overlap_offsets(axes_with_df):
@@ -131,12 +167,12 @@ def test_draw_breakouts_peak_overlap_offsets(axes_with_df):
     MarkerComponent.draw_breakouts(ax, df, [bo], peaks=[peak])
     label = _find_annotation_by_text(ax, "[5]")
     assert label is not None
-    # triangle(14) + peak_id(14) + bo_label(10) = 38
-    assert label.xyann[1] == pytest.approx(38)
+    # triangle(20) + peak_id(14) + bo_label(14) = 48
+    assert label.xyann[1] == pytest.approx(48)
     score = _find_annotation_by_text(ax, "80")
     assert score is not None
-    # 38 + bo_score(30) = 68
-    assert score.xyann[1] == pytest.approx(68)
+    # 48 + bo_score(30) = 78
+    assert score.xyann[1] == pytest.approx(78)
 
 
 def test_draw_breakouts_peak_without_id_overlap_offsets(axes_with_df):
@@ -145,8 +181,8 @@ def test_draw_breakouts_peak_without_id_overlap_offsets(axes_with_df):
     peak_no_id = SimpleNamespace(index=2, price=1.2, id=None)
     MarkerComponent.draw_breakouts(ax, df, [bo], peaks=[peak_no_id])
     label = _find_annotation_by_text(ax, "[5]")
-    # triangle(14) + bo_label(10) = 24 (peak_id layer skipped because id is None)
-    assert label.xyann[1] == pytest.approx(24)
+    # triangle(20) + bo_label(14) = 34 (peak_id layer skipped because id is None)
+    assert label.xyann[1] == pytest.approx(34)
 
 
 def test_draw_breakouts_score_without_broken_peak_ids_takes_bo_label_slot(axes_with_df):
@@ -161,7 +197,7 @@ def test_draw_breakouts_score_without_broken_peak_ids_takes_bo_label_slot(axes_w
     MarkerComponent.draw_breakouts(ax, df, [bo], peaks=[])
     score = _find_annotation_by_text(ax, "80")
     assert score is not None
-    # Score takes bo_label's slot (10pt) because no label to stack above.
-    assert score.xyann[1] == pytest.approx(10)
+    # Score takes bo_label's slot (14pt) because no label to stack above.
+    assert score.xyann[1] == pytest.approx(14)
     # No label annotation because broken_peak_ids is None.
     assert _find_annotation_by_text(ax, "[") is None

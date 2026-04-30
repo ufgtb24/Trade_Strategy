@@ -1,0 +1,30 @@
+{
+  "source_path": "/home/yu/PycharmProjects/Trade_Strategy/docs/superpowers/specs/2026-04-25-feature-induction-framework-design.md",
+  "type": "ADR",
+  "confidence": "high",
+  "manifest_override": true,
+  "title": "AI 特征归纳框架 — 设计 Spec",
+  "summary": "Locks the architectural decisions for an AI feature-induction framework: three AI roles, Beta-Binomial posterior, three-tier cost ladder, and merge semantics policies.",
+  "scope": [
+    "AI feature induction framework",
+    "Inducer / Librarian / Critic roles",
+    "CLI Scheduler (feature-mine)",
+    "Beta-Binomial conjugate posterior",
+    "three-tier cost ladder (Opus / DeepSeek / fastembed)",
+    "multi-epoch four mechanisms (Replay / Re-induction / Re-verification / Shuffled Re-induction)",
+    "Merge semantics (full / supersede-only / reject-merge)",
+    "ObservationLog and provenance",
+    "decoupling from mining pipeline"
+  ],
+  "cross_refs": [
+    "docs/research/feature_mining_v2_unified_decision.md",
+    "docs/research/feature_mining_unified_schema.md",
+    "docs/research/feature_mining_stats_models.md",
+    "docs/research/feature_mining_base_rate.md",
+    "docs/research/feature_mining_philosophy_decision.md",
+    "docs/explain/ai_feature_mining_plain.md"
+  ],
+  "locked": true,
+  "precedence": 0,
+  "notes": "Manifest-declared ADR with precedence 0. Filename and self-description say 'Spec', but TL;DR locks architecture-level decisions (3 AI roles, Beta-Binomial, cost ladder, merge semantics), so manifest override to ADR is honored. Treated as LOCKED per manifest authority."
+}

@@ -1,0 +1,28 @@
+# GSD ingest-docs manifest — Trade_Strategy
+#
+# Drafted on 2026-04-29.
+#
+# Rationale:
+#   - docs/superpowers/specs/* 是当前已沉淀的"决定性"规划文档。
+#   - 2026-04-25-feature-induction-framework-design.md 锁定架构层决策
+#     (3 AI 角色 / Beta-Binomial / 成本阶梯 / merge semantics 三策略 ...),
+#     按 ADR 语义对待 (precedence 0).
+#   - 2026-04-27-phase1-librarian-inducer-mvp.md 定义 Phase 1 交付边界,
+#     按 SPEC 语义对待 (precedence 1).
+#   - docs/research/* 已被上述 specs 沉淀,且包含早于决议的竞争性变体,
+#     全部排除以避免反向触发 conflict-engine BLOCKER/WARNING.
+#   - docs/superpowers/plans/* 是执行 HOW,非规划 WHAT,排除.
+#   - docs/setup/, docs/explain/, docs/README.md 非规划文档,排除.
+#
+# Precedence: lower = higher priority. ADR > SPEC by spec rule.
+#
+# To run:
+#   /gsd-ingest-docs --manifest .gsd-manifest.yaml
+
+docs:
+  - path: docs/superpowers/specs/2026-04-25-feature-induction-framework-design.md
+    type: ADR
+    precedence: 0
+  - path: docs/superpowers/specs/2026-04-27-phase1-librarian-inducer-mvp.md
+    type: SPEC
+    precedence: 1
