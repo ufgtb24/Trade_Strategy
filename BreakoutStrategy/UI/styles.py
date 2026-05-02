@@ -71,38 +71,42 @@ def get_chart_colors() -> dict:
 # Marker 堆叠间距（单位: points）
 # ============================================================================
 #
-# 每层值 = "到下方相邻层的像素间距"；当此层是堆叠最底时，"下方"即 K 线 High。
+# 每层值 = "到下方相邻层 bbox 下沿的像素间距"。K线本身在堆叠系统里也以
+# "kline" gap 占位（其 stacking bottom = K线 High − kline_gap），使最底层
+# marker 同样有一个明确的"下方对象"，bottom-to-bottom 语义对所有层统一适用。
 # 字典中 key 顺序无语义；实际堆叠顺序由 draw_* 调用时传入的 layers 列表决定。
 #
 # 用途：dev 和 live 两种 chart 渲染路径共用，几何属于 UI 基础设施。
 # 调整此处数值即可统一生效。
 
 MARKER_STACK_GAPS_PT = {
-    "triangle": 20,   # peak 倒三角
-    "peak_id":  14,   # peak ID 数字文本
-    "bo_label": 14,   # BO 的 [broken_peak_ids] 方框
-    "bo_score": 30,   # BO 分数方框（仅 dev）
+    "kline":          20,   # K线在堆叠系统中的虚拟 stacking 高度（其它层从 K线 High 之下 kline_gap 处累加）
+    "triangle":       40,   # peak 倒三角（含 kline_gap 补偿，三角中心仍在 K线 High 上方 20 pt）
+    "peak_id":        15,   # peak ID 数字文本
+    "bo_label":       35,   # BO 的 [broken_peak_ids] 方框
+    "bo_score":       30,   # BO 分数方框（仅 dev）
+    "bo_label_value": 30,   # BO 回测 label 值方框（仅 dev，最顶层）
 }
 
 
 def compute_marker_offsets_pt(layers: list[str]) -> dict[str, float]:
-    """按堆叠顺序（自下而上）累加 gap，返回每层到 K 线 High 的累计像素偏移。
+    """按堆叠顺序（自下而上）从 K线 stacking bottom 累加 gap，返回每层 bbox 下沿到 K线 High 的偏移。
 
     Args:
         layers: 本 bar 实际存在的 marker 层名，自下而上顺序。
 
     Returns:
-        dict mapping layer name -> cumulative pt offset from High.
+        dict mapping layer name -> cumulative pt offset from K线 High.
 
     Example:
         >>> compute_marker_offsets_pt(["triangle", "peak_id", "bo_label", "bo_score"])
-        {'triangle': 14, 'peak_id': 28, 'bo_label': 38, 'bo_score': 68}
+        {'triangle': 20, 'peak_id': 35, 'bo_label': 65, 'bo_score': 95}
 
     Raises:
         KeyError: layer 名不在 MARKER_STACK_GAPS_PT 中。
     """
     offsets: dict[str, float] = {}
-    cumulative = 0.0
+    cumulative = -MARKER_STACK_GAPS_PT["kline"]   # 起点 = K线 stacking bottom
     for layer in layers:
         cumulative += MARKER_STACK_GAPS_PT[layer]
         offsets[layer] = cumulative
@@ -125,8 +129,24 @@ def compute_marker_offsets_pt(layers: list[str]) -> dict[str, float]:
 
 BO_LABEL_TIER_STYLE = {
     "current": {"bg": CHART_COLORS["bo_marker_current"], "fg": "#FFFFFF"},
-    "matched": {"bg": "#D8E300",                         "fg": "#000000"},
+    "matched": {"bg": "#BFBFBF",                         "fg": "#000000"},
     "plain":   {"bg": CHART_COLORS["breakout_text_bg"],  "fg": CHART_COLORS["bo_marker_current"]},
+}
+
+
+# ============================================================================
+# Dev 模式 bo_label_value 两态配色
+# ============================================================================
+#
+# max   : 所有可见 BO 中 label 值最大的那个（若并列最大，全部算 max）——
+#         黄底 + 深蓝字（强烈高亮，便于一眼定位"窗口内最高涨幅"的 BO）。
+# other : 其他有 label 值的 BO —— 橙底 + 深蓝字。
+#
+# 边框统一使用 fg（深蓝）。
+
+BO_LABEL_VALUE_TIER_STYLE = {
+    "max":   {"bg": "#FFD700", "fg": "#0000FF"},  # 黄底深蓝字
+    "other": {"bg": "#FFA500", "fg": "#0000FF"},  # 橙底深蓝字
 }
 
 

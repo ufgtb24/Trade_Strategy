@@ -116,6 +116,8 @@ class ChartCanvasManager:
         display_options = display_options or {}
         show_bo_score = display_options.get("show_bo_score", True)
         show_superseded_peaks = display_options.get("show_superseded_peaks", False)
+        show_bo_label = display_options.get("show_bo_label", False)
+        bo_label_n = display_options.get("bo_label_n", 20)
 
         # 2. 创建新图表（2个子图：主图+统计面板）
         # 动态计算图表大小，适应容器尺寸
@@ -257,6 +259,8 @@ class ChartCanvasManager:
                 peaks=all_drawn_peaks,
                 colors=colors,
                 show_score=show_bo_score,
+                show_label=show_bo_label,
+                label_n=bo_label_n,
             )
 
         self.marker.draw_resistance_zones(
@@ -335,7 +339,6 @@ class ChartCanvasManager:
         self._disable_auto_dpi_scaling()
 
         self.canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
-        self.canvas.draw()
 
         # pick_event 连线（live_mode）；幂等：先 disconnect 上次的 cid
         if _live_mode:
@@ -347,6 +350,9 @@ class ChartCanvasManager:
             self._pick_cid = self.canvas.mpl_connect("pick_event", self._on_pick)
 
         # 5. 绑定交互控制器（默认鼠标锚点缩放，Ctrl 瞬态切右锚，动态 Y 轴）
+        # attach() 末尾会调 _rescale_y() 把 ylim 拟合到可见 xlim，必须在
+        # canvas.draw() 之前完成，否则首帧会用 candlestick.draw_volume_background
+        # 设的全 df ylim 渲染（长历史/拆股股票会把可见窗口压到底部）。
         self.interaction = AxesInteractionController(
             ax_main,
             self.canvas,
@@ -362,6 +368,8 @@ class ChartCanvasManager:
             volumes=_volumes,
             vol_bars=_vol_bars,
         )
+
+        self.canvas.draw()
 
         # 6. 绑定鼠标悬停事件
         self._attach_hover(ax_main, df, breakouts, peaks=all_drawn_peaks)

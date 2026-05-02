@@ -196,6 +196,10 @@ class AxesInteractionController:
             self._canvas.mpl_connect("button_release_event", self._on_release),
         ]
 
+        # 把 ylim 拟合到当前可见 xlim 切片：candlestick.draw_volume_background
+        # 用全 df min/max 设的初始 ylim，对长历史 + 拆股股票会把可见窗口压到底部。
+        self._rescale_y()
+
     def detach(self) -> None:
         for cid in self._cids:
             self._canvas.mpl_disconnect(cid)

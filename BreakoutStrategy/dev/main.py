@@ -160,6 +160,13 @@ class InteractiveUI:
             # 清空DataFrame缓存（新JSON可能有不同的时间范围）
             self._data_cache.clear()
 
+            # 从 scan metadata 读取 label_configs[0].max_days，更新 Spinbox 默认 N
+            label_max_days = self.config_loader.get_label_max_days_from_json(
+                self.scan_data
+            )
+            if label_max_days is not None:
+                self.param_panel.set_bo_label_n_default(label_max_days)
+
             # 加载到股票列表
             self.stock_list_panel.load_data(self.scan_data)
 

@@ -62,14 +62,19 @@ class ParameterPanel:
 
         # 显示选项变量
         self.show_bo_score_var = tk.BooleanVar(
-            value=defaults.get("show_bo_score", True)
+            value=defaults.get("show_bo_score", False)
         )
         self.show_superseded_peaks_var = tk.BooleanVar(
             value=defaults.get("show_superseded_peaks", True)
         )
+        self.show_bo_label_var = tk.BooleanVar(
+            value=defaults.get("show_bo_label", True)
+        )
+        # bo_label_n 的初始值来自默认 20；scan 加载后由 set_bo_label_n_default 更新
+        self.bo_label_n_var = tk.IntVar(value=20)
 
-        # UI 参数选项（默认选中 = 使用 UI 参数进行 full compute）
-        self.use_ui_params_var = tk.BooleanVar(value=True)
+        # UI 参数选项（默认不选中 = Browse Mode，加载 scan 后直接浏览已算结果）
+        self.use_ui_params_var = tk.BooleanVar(value=False)
 
         # 当前参数文件名（不含路径）
         self.current_param_file = "all_factor.yaml"
@@ -173,6 +178,36 @@ class ParameterPanel:
             command=self._on_checkbox_changed,
         ).pack(side=tk.LEFT, padx=5)
 
+        # BO Label 复选框 + N Spinbox（同一组）
+        self.show_bo_label_checkbox = ttk.Checkbutton(
+            container,
+            text="BO Label",
+            variable=self.show_bo_label_var,
+            command=self._on_bo_label_toggle,
+        )
+        self.show_bo_label_checkbox.pack(side=tk.LEFT, padx=(5, 2))
+
+        ttk.Label(container, text="N:").pack(side=tk.LEFT)
+        # 不传 command=，箭头点击 / 滚轮滚动仅改变 Spinbox 显示值，不触发重绘；
+        # 用户在任意调整后按 Enter 才确认提交。这样滚轮滚动顺畅可控。
+        self.bo_label_n_spin = ttk.Spinbox(
+            container,
+            from_=1,
+            to=200,
+            increment=1,
+            textvariable=self.bo_label_n_var,
+            width=4,
+            # 初始 state 跟随 BO Label checkbox，避免与默认勾选状态不一致
+            state="normal" if self.show_bo_label_var.get() else "disabled",
+        )
+        self.bo_label_n_spin.pack(side=tk.LEFT, padx=(2, 5))
+
+        # Enter（主键盘或小键盘）是唯一的提交入口——输入 / 箭头 / 滚轮调整后，
+        # 用户按 Enter 才真正刷新 chart。不监听 FocusOut，避免回车刷新重建 chart
+        # 造成焦点切走从而双重触发。
+        self.bo_label_n_spin.bind("<Return>", self._on_bo_label_n_enter)
+        self.bo_label_n_spin.bind("<KP_Enter>", self._on_bo_label_n_enter)
+
         ttk.Checkbutton(
             container,
             text="SU_PK",
@@ -245,6 +280,24 @@ class ParameterPanel:
         elif self.on_param_changed_callback:
             self.on_param_changed_callback()
 
+    def _on_bo_label_toggle(self):
+        """BO Label checkbox toggle：同步 Spinbox 启停，并触发重绘。"""
+        if self.show_bo_label_var.get():
+            self.bo_label_n_spin.config(state="normal")
+        else:
+            self.bo_label_n_spin.config(state="disabled")
+        self._on_checkbox_changed()
+
+    def _on_bo_label_n_enter(self, _event):
+        """Spinbox Enter：触发 chart 重绘，然后把焦点还给 Spinbox。
+
+        重绘会销毁并重建 matplotlib canvas，新 canvas 默认抢键盘焦点；不还回来的话
+        下一次 Enter 会送到 canvas，Spinbox 的 <Return> 绑定不再触发。用 after_idle
+        排到事件队列末尾，确保在 canvas 自动抢焦之后执行。
+        """
+        self._on_checkbox_changed()
+        self.bo_label_n_spin.after_idle(self.bo_label_n_spin.focus_set)
+
     def _on_use_ui_params_changed(self):
         """Use UI Params 复选框状态改变回调"""
         # 更新下拉菜单状态
@@ -274,10 +327,29 @@ class ParameterPanel:
 
     def get_display_options(self):
         """获取显示选项"""
+        try:
+            n = self.bo_label_n_var.get()
+        except tk.TclError:
+            # Spinbox 文本非整数（用户输入非法字符时），回退默认
+            n = 20
         return {
             "show_bo_score": self.show_bo_score_var.get(),
             "show_superseded_peaks": self.show_superseded_peaks_var.get(),
+            "show_bo_label": self.show_bo_label_var.get(),
+            "bo_label_n": n,
         }
+
+    def set_bo_label_n_default(self, max_days: int):
+        """把 Spinbox 当前值重置为指定默认值。
+
+        通常在加载新 scan 时由 main.py 调用，让 Spinbox 默认反映扫描时的
+        label_configs[0].max_days，与股票列表 Label 列的聚合基准一致。
+
+        Args:
+            max_days: 扫描的窗口天数；clamp 到 [1, 200]
+        """
+        n = max(1, min(200, int(max_days)))
+        self.bo_label_n_var.set(n)
 
     def get_use_ui_params(self) -> bool:
         """获取 Use UI Params 复选框状态"""

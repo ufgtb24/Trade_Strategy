@@ -20,6 +20,11 @@ FactorInfo('key', 'English Name', '中文名',
            (threshold1, threshold2), (value1, value2),
            category='context',
            unit='x', display_transform='round2',
+           description=(
+               '算法：<1 句计算公式或算法>。\n\n'
+               'source: BreakoutStrategy/analysis/features.py:<line>\n\n'
+               '意义：<数值高/低含义、判别力来源>'
+           ),
            nullable=True,  # ← 若 effective buffer>0 必填：per-factor gate 下 None = 不可算
            # 可选：
            # is_discrete=True, has_nan_group=True,
@@ -38,6 +43,7 @@ FactorInfo('key', 'English Name', '中文名',
 - `zero_guard`: `True` 当 value <= 0 时 factor disabled
 - `nullable`: `True` 当 effective_buffer>0 或 None 语义有效时必填（如 drought 首次突破、lookback 不足）
 - `sub_params`: 计算参数元组，每个 `SubParamDef(yaml_name, internal_name, param_type, default, range, description, consumer)`
+- `description`: **必填**。两段中文，第一段 "算法：…" 含 `source: file:line` 引用；第二段 "意义：…" 解释数值高/低对突破质量的影响。dev UI 参数编辑器据此在因子组标题上渲染 hover tooltip；不传该参数或传空字符串都会使 tooltip 不显示
 
 自动派生：`level_col = f"{key}_level"`, `yaml_key = f"{key}_factor"`
 
@@ -181,3 +187,4 @@ print('effective_buffer =', calc._effective_buffer(fi))
 | sub_params 的 consumer 写错 | 参数传递到错误的消费者 |
 | `_effective_buffer` 忘加 case | 扫描时立即 `ValueError: No effective_buffer registered for factor 'xxx'`（strict contract 早暴露） |
 | `nullable=True` 漏加（且 effective_buffer>0） | scorer 对 None 走非 nullable 分支，raw_value 被当作 0 处理，FactorDetail.unavailable 不会显示，tooltip 不显示 "N/A" |
+| `description` 缺失 | 参数编辑器中该因子标题 hover 无说明，新人无法理解因子含义 |
