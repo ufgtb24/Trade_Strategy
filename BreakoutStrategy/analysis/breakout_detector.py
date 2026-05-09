@@ -38,6 +38,9 @@ class Peak:
     relative_height: float = 0.0         # 相对高度
     original_price: Optional[float] = None  # 被 elevate 前的原始峰值价格
 
+    # 该 peak 作为 killer 时令哪些旧 peak 退场（peak→peak supersede）
+    superseded_peak_ids: List[int] = field(default_factory=list)
+
 
 @dataclass
 class BreakoutInfo:
@@ -275,6 +278,11 @@ class BreakoutDetector:
         self.dates = []            # 日期历史
         self.active_peaks = []     # 活跃峰值列表: [Peak对象, ...]
         self.superseded_by_new_peak: List[Peak] = []  # 被新峰值取代的旧峰值
+        # 历史上创建过的所有峰值（不过滤、不去重）。下游消费者（scanner JSON
+        # 输出、dev UI 灰色 SU_PK 绘制）应以此为权威来源；active_peaks /
+        # superseded_by_new_peak / breakout.broken_peaks 都是它的子集，且任一
+        # 子集都可能因 BO 价格过滤而漏 peak。
+        self.all_peaks: List[Peak] = []
 
         self.peak_id_counter = 0   # Peak ID 计数器（用于生成唯一ID）
         self.last_updated = None
@@ -486,6 +494,9 @@ class BreakoutDetector:
             else:
                 # 被新峰值明显超越，记录以便UI显示
                 self.superseded_by_new_peak.append(old_peak)
+                # killer→victim 关系：新 peak 显式记录被它干掉的 peak ids
+                if old_peak.id is not None:
+                    peak.superseded_peak_ids.append(old_peak.id)
 
         # 添加新峰值
         self.active_peaks = remaining_peaks
@@ -532,7 +543,7 @@ class BreakoutDetector:
         window_low = min(self.lows[left_start:right_end])
         relative_height = (price - window_low) / window_low if window_low > 0 else 0.0
 
-        return Peak(
+        peak = Peak(
             index=idx,
             price=price,
             date=date_val,
@@ -543,6 +554,8 @@ class BreakoutDetector:
             right_suppression_days=right_suppression,
             relative_height=relative_height
         )
+        self.all_peaks.append(peak)
+        return peak
 
     def _check_breakouts(self,
                         current_idx: int,
@@ -572,7 +585,10 @@ class BreakoutDetector:
 
         for peak in self.active_peaks:
             exceed_threshold_price = peak.price * (1 + self.exceed_threshold)
-            supersede_threshold_price = peak.price * (1 + self.peak_supersede_threshold)
+            # supersede 锚定原始价：peak.price 在小幅突破后会被 elevation 抬升，
+            # 若仍以其为基准会让缓步上行的累计涨幅永远进不到 supersede 分支
+            supersede_base_price = peak.original_price if peak.original_price is not None else peak.price
+            supersede_threshold_price = supersede_base_price * (1 + self.peak_supersede_threshold)
 
             if breakout_price > exceed_threshold_price:
                 # 突破确认

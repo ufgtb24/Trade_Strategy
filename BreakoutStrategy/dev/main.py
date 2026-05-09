@@ -16,8 +16,8 @@ from BreakoutStrategy.analysis.breakout_scorer import BreakoutScorer
 from BreakoutStrategy.UI.charts import ChartCanvasManager
 from BreakoutStrategy.UI.charts.range_utils import ChartRangeSpec, trim_df_to_display, adjust_indices, _collect_warnings
 from .config import get_ui_config_loader, get_ui_scan_config_loader
-from .managers import NavigationManager, ScanManager, TemplateManager, compute_breakouts_from_dataframe, preprocess_dataframe
-from .panels import ParameterPanel, StockListPanel, TemplatePanel
+from .managers import NavigationManager, ScanManager, compute_breakouts_from_dataframe, preprocess_dataframe
+from .panels import ParameterPanel, StockListPanel
 from .utils import show_error_dialog
 
 # 设置环境变量 DEBUG_VOLUME=1 启用成交量计算调试输出
@@ -62,14 +62,11 @@ class InteractiveUI:
         self.current_breakouts = None
         self.current_active_peaks = None  # 活跃峰值列表
         self.current_superseded_peaks = None  # 被新峰值取代的峰值列表
+        self.current_filtered_infos = None  # 被价格门过滤的 BreakoutInfo 列表
 
         # DataFrame缓存：{(symbol, start_date, end_date): DataFrame}
         # 用于支持多时间范围缓存
         self._data_cache = {}
-
-        # 模板筛选状态
-        self.template_manager = TemplateManager()
-        self.template_matched = {}  # {symbol: [matched_bo_indices]}
 
         # 创建UI
         self._create_ui()
@@ -88,9 +85,6 @@ class InteractiveUI:
             on_rescan_all_callback=self._on_rescan_all_clicked,
             on_new_scan_callback=self._on_new_scan_clicked,
             get_json_params_callback=self._get_scan_data,
-            on_use_template_changed_callback=self._on_use_template_changed,
-            on_template_file_changed_callback=self._on_template_file_changed,
-            get_file_validator_callback=self._get_template_file_validator,
         )
 
         # 主容器（PanedWindow分割）
@@ -100,11 +94,6 @@ class InteractiveUI:
         # 左侧：股票列表容器（初始隐藏）
         self.left_frame = ttk.Frame(self.paned, width=400)
         # 注意：初始不添加到 paned，加载数据后再添加
-
-        self.template_panel = TemplatePanel(
-            self.left_frame,
-            on_template_selected_callback=self._on_template_selected,
-        )
 
         self.stock_list_panel = StockListPanel(
             self.left_frame,
@@ -149,16 +138,15 @@ class InteractiveUI:
             self.scan_data = manager.load_results(json_path)
             self.current_json_path = json_path  # 保存当前文件路径
 
-            # 如果模板已启用，验证兼容性（安全兜底，正常流程已有预过滤）
-            if self.param_panel.get_use_template() and self.template_manager.loaded:
-                metadata = self.scan_data.get("scan_metadata", {})
-                is_compatible, mismatches = self.template_manager.check_compatibility(metadata)
-                if not is_compatible:
-                    self._show_incompatible_dialog(mismatches)
-                    return
-
             # 清空DataFrame缓存（新JSON可能有不同的时间范围）
             self._data_cache.clear()
+
+            # 从 scan metadata 读取 label_configs[0].max_days，更新 Spinbox 默认 N
+            label_max_days = self.config_loader.get_label_max_days_from_json(
+                self.scan_data
+            )
+            if label_max_days is not None:
+                self.param_panel.set_bo_label_n_default(label_max_days)
 
             # 加载到股票列表
             self.stock_list_panel.load_data(self.scan_data)
@@ -176,10 +164,6 @@ class InteractiveUI:
 
             # 更新模式指示器（显示文件名）
             self._update_mode_indicator()
-
-            # 如果模板筛选已启用，对新加载的数据执行匹配
-            if self.param_panel.get_use_template() and self.template_manager.loaded:
-                self._apply_template_filter()
 
             # 成功时不弹框，只更新状态栏
 
@@ -217,9 +201,9 @@ class InteractiveUI:
         if self._can_use_json_cache(symbol):
             # try:
             load_start = time.time()
-            breakouts, active_peaks = self._load_from_json_cache(symbol, df)
-            # JSON 缓存不包含 superseded_peaks，使用空列表
-            superseded_peaks = []
+            breakouts, active_peaks, superseded_peaks, filtered_infos = (
+                self._load_from_json_cache(symbol, df)
+            )
             load_end = time.time()
             print(
                 f"[UI] JSON cache load time for {symbol}: {load_end - load_start:.6f} seconds"
@@ -232,12 +216,12 @@ class InteractiveUI:
             #     print(
             #         f"[UI] Cache load failed for {symbol}: {e}, falling back to full computation"
             #     )
-            #     breakouts, active_peaks, superseded_peaks = self._full_computation(symbol, params, df)
+            #     breakouts, active_peaks, superseded_peaks, filtered_infos = self._full_computation(symbol, params, df)
         else:
             # 完整计算（慢速路径）
             # 传入 start_date 和 end_date 用于过滤缓冲区内的突破和峰值，确保与 JSON 模式一致
             load_start = time.time()
-            breakouts, active_peaks, superseded_peaks = self._full_computation(
+            breakouts, active_peaks, superseded_peaks, filtered_infos = self._full_computation(
                 symbol, params, df, start_date=start_date, end_date=end_date
             )
             load_end = time.time()
@@ -268,6 +252,7 @@ class InteractiveUI:
         self.current_breakouts = breakouts
         self.current_active_peaks = active_peaks
         self.current_superseded_peaks = superseded_peaks
+        self.current_filtered_infos = filtered_infos
 
         # 获取显示选项并更新图表
         display_options = self.param_panel.get_display_options()
@@ -275,6 +260,7 @@ class InteractiveUI:
         spec = self._render_chart(
             df, breakouts, active_peaks, superseded_peaks,
             symbol, display_options, start_date, end_date,
+            filtered_infos=filtered_infos,
         )
 
         # 若 spec 有降级警告，追加到当前状态栏文字
@@ -311,7 +297,9 @@ class InteractiveUI:
             end_date: 扫描结束日期（用于确定有效检测范围结束索引）
 
         Returns:
-            (breakouts, active_peaks, superseded_peaks) 元组
+            (breakouts, active_peaks, superseded_peaks, filtered_infos) 元组。
+            filtered_infos 是被价格门过滤的 BreakoutInfo 列表，由 FT_BO 复
+            选框控制是否在图上以灰色绘制。
         """
         # 从 UI 参数加载器获取配置（算法参数）
         feature_cfg = self.param_panel.param_loader.get_feature_calculator_params()
@@ -353,8 +341,9 @@ class InteractiveUI:
                   f"df_range=[{df_start}, {df_end}], len(df)={len(df)}, "
                   f"valid_start_index={valid_start_index}, valid_end_index={valid_end_index}")
 
-        # 使用统一函数计算突破（检测范围前置限定）
-        breakouts, detector = compute_breakouts_from_dataframe(
+        # 使用统一函数计算突破（检测范围前置限定，价格过滤前置）
+        min_price, max_price, _min_volume = self.scan_config_loader.get_filter_config()
+        breakouts, filtered_infos, detector = compute_breakouts_from_dataframe(
             symbol=symbol,
             df=df,
             total_window=params["total_window"],
@@ -371,27 +360,24 @@ class InteractiveUI:
             streak_window=params.get("streak_window", 20),
             scan_start_date=start_date,
             scan_end_date=end_date,
+            min_price=min_price,
+            max_price=max_price,
         )
 
-        # Breakout-level 价格过滤（与批量扫描一致，使用当前 scan settings）
-        min_price, max_price, _min_volume = self.scan_config_loader.get_filter_config()
-        if breakouts and (min_price is not None or max_price is not None):
-            breakouts = [
-                bo for bo in breakouts
-                if (min_price is None or bo.price >= min_price)
-                and (max_price is None or bo.price <= max_price)
-            ]
-
-        # 提取 active_peaks 和 superseded_peaks
+        # 提取 active_peaks 和 superseded_peaks（严格语义）
         # 注意：峰值和突破已在检测阶段通过 valid_start_index/valid_end_index 过滤，无需事后过滤
         active_peaks = detector.active_peaks if detector else []
+        # superseded_peaks 严格只含被新 peak 结构性 supersed 的 peak（受 SU_PK
+        # 控制）。被过滤 BO 击穿的 peak 不走这条路——它们通过
+        # filtered_infos[].broken_peaks 进入 canvas 的 all_broken_peaks 集合，
+        # 在 peak 位置以正常黑色 ▽ 绘制（与可见 BO 击穿的 peak 同样处理）。
         superseded_peaks = detector.superseded_by_new_peak if detector else []
 
         self.param_panel.set_status(
             f"{symbol}: Computed {len(breakouts)} breakout(s)", "green"
         )
 
-        return breakouts, active_peaks, superseded_peaks
+        return breakouts, active_peaks, superseded_peaks, filtered_infos
 
     def _can_use_json_cache(self, symbol: str) -> bool:
         """
@@ -439,7 +425,10 @@ class InteractiveUI:
             df: DataFrame
 
         Returns:
-            (breakouts, active_peaks) 元组
+            (breakouts, active_peaks, superseded_peaks, filtered_infos) 元组。
+            superseded_peaks 严格只含 JSON 中 is_superseded=true 的峰值（与
+            _full_computation 严格语义对齐），filtered_infos 是被价格门过滤
+            的 BreakoutInfo 列表（FT_BO 灰色标签 + 击穿 peak 的来源）。
 
         Raises:
             ValueError: 如果股票数据未找到
@@ -460,7 +449,12 @@ class InteractiveUI:
         adapter = BreakoutJSONAdapter()
         result = adapter.load_single(symbol, stock_data, df)
 
-        return result.breakouts, result.active_peaks
+        return (
+            result.breakouts,
+            result.active_peaks,
+            result.superseded_peaks,
+            result.filtered_breakouts,
+        )
 
     def _load_stock_data(
         self,
@@ -551,6 +545,7 @@ class InteractiveUI:
         display_options: dict,
         start_date: str,
         end_date: str,
+        filtered_infos: list = None,
     ) -> ChartRangeSpec:
         """
         统一图表渲染入口：构造 ChartRangeSpec，裁切数据，调整索引，调用 update_chart。
@@ -564,6 +559,7 @@ class InteractiveUI:
             display_options: 显示选项字典
             start_date: 扫描起始日期字符串 (YYYY-MM-DD)
             end_date: 扫描结束日期字符串 (YYYY-MM-DD)
+            filtered_infos: 被价格门过滤的 BreakoutInfo 列表（FT_BO 灰色绘制）
 
         Returns:
             构造好的 ChartRangeSpec（供调用者读取 warnings）
@@ -584,6 +580,20 @@ class InteractiveUI:
         display_active_peaks = adjust_indices(active_peaks, index_offset)
         # superseded_peaks 顶层单独调整（adjust_indices 不递归 superseded_peaks）
         display_superseded_peaks = adjust_indices(superseded_peaks, index_offset)
+        # filtered_infos: BreakoutInfo 形式（current_index 字段），与 BO/Peak
+        # 一样需要做 index 偏移；adjust_indices 按 .index 属性裁切，所以这里
+        # 暂用一份临时列表绕开（BreakoutInfo 字段名是 current_index）
+        display_filtered_infos = []
+        if filtered_infos:
+            for info in filtered_infos:
+                if info.current_index < index_offset:
+                    continue
+                new_info = info.__class__.__new__(info.__class__)
+                new_info.__dict__.update(info.__dict__)
+                new_info.current_index = info.current_index - index_offset
+                # broken_peaks 也要随之偏移（用于灰色 [ids] 标签）
+                new_info.broken_peaks = adjust_indices(info.broken_peaks, index_offset)
+                display_filtered_infos.append(new_info)
 
         # 向后兼容：从 spec 推导 label_buffer_start_idx（Dev UI 保留旧的 label_buffer 灰色区）
         label_buffer_start = None
@@ -593,23 +603,20 @@ class InteractiveUI:
             if _mask.any():
                 label_buffer_start = int(_mask.argmax())
 
-        # 计算模板匹配的显示索引
-        template_indices = None
-        if self.param_panel.get_use_template() and symbol in self.template_matched:
-            template_indices = self._get_template_display_indices(
-                symbol, display_breakouts, index_offset
-            )
-
         # 初始显示窗口从 scan_start 到 display_end（灰色区域需左滑才可见）
         initial_days = (spec.display_end - spec.scan_start_actual).days
+
+        # max_price 上限线（持久显示，与 FT_BO 解耦）
+        _min_p, max_price_for_line, _ = self.scan_config_loader.get_filter_config()
 
         self.chart_manager.update_chart(
             display_df, display_breakouts, display_active_peaks,
             display_superseded_peaks, symbol, display_options,
             label_buffer_start_idx=label_buffer_start,
-            template_matched_indices=template_indices,
             initial_window_days=initial_days,
             spec=spec,
+            filtered_breakouts=display_filtered_infos,
+            max_price=max_price_for_line,
         )
         return spec
 
@@ -641,6 +648,9 @@ class InteractiveUI:
         if not self.current_symbol:
             return  # 没有选中股票，不刷新
 
+        # 模式切换前捕获当前视角（缩放/平移），重渲染后恢复，避免回到默认窗口
+        preserved_xlim = self.chart_manager.get_view_xlim()
+
         # 重新加载当前股票（触发图表刷新）
         selected_data = self.stock_list_panel.get_selected_symbol()
         if selected_data:
@@ -651,6 +661,9 @@ class InteractiveUI:
                     # 【关键改动】Analysis Mode 不再更新 stock list 统计值
                     # 删除原有的 _update_stock_list_statistics() 调用
                     break
+
+        if preserved_xlim is not None:
+            self.chart_manager.restore_view_xlim(preserved_xlim)
 
     def _update_stock_list_statistics(self, symbol: str, breakouts: list):
         """
@@ -763,182 +776,8 @@ class InteractiveUI:
             return
         self._refresh_current_chart()
 
-    def _on_template_file_changed(self, filename: str):
-        """模板文件下拉框切换回调"""
-        file_path = self.param_panel.get_template_file_path()
-        if not file_path:
-            return
-        try:
-            self.template_manager.load_filter_yaml(file_path)
-            display_list = self.template_manager.get_template_display_list()
-            self.template_panel.load_templates(display_list)
-            self.template_panel.show()
-            self.param_panel.set_status(f"Loaded template: {filename}", "green")
-
-            # 如果 Use Template 已勾选且有 scan_data，检查兼容性并匹配
-            if self.param_panel.get_use_template() and self.scan_data:
-                metadata = self.scan_data.get("scan_metadata", {})
-                is_compatible, mismatches = self.template_manager.check_compatibility(metadata)
-                if is_compatible:
-                    self._apply_template_filter()
-                else:
-                    self._show_incompatible_dialog(mismatches)
-        except Exception as e:
-            self.param_panel.set_status(f"Failed to load template: {e}", "red")
-
-    def _on_use_template_changed(self, enabled: bool):
-        """Use Template 复选框变化回调"""
-        if enabled:
-            # 加载模板文件（如果尚未加载）
-            if not self.template_manager.loaded:
-                file_path = self.param_panel.get_template_file_path()
-                if file_path:
-                    try:
-                        self.template_manager.load_filter_yaml(file_path)
-                        display_list = self.template_manager.get_template_display_list()
-                        self.template_panel.load_templates(display_list)
-                        self.template_panel.show()
-                    except Exception as e:
-                        self.param_panel.set_status(f"Failed to load template: {e}", "red")
-                        return
-                else:
-                    self.param_panel.set_status("No template file selected", "red")
-                    return
-
-            # 如果没有 scan_data，只显示模板面板
-            if not self.scan_data:
-                self.template_panel.show()
-                self.param_panel.set_status("Template enabled. Load or scan to apply.", "blue")
-                return
-
-            # 有 scan_data：检查兼容性
-            metadata = self.scan_data.get("scan_metadata", {})
-            is_compatible, mismatches = self.template_manager.check_compatibility(metadata)
-
-            if is_compatible:
-                self.template_panel.show()
-                self._apply_template_filter()
-            else:
-                self._show_incompatible_dialog(mismatches)
-        else:
-            # 取消勾选
-            self.template_panel.hide()
-            self.template_matched.clear()
-            self.stock_list_panel.remove_t_count()
-            self._refresh_current_chart()
-
-    def _show_incompatible_dialog(self, mismatches: list[str]):
-        """扫描参数不兼容时的三选一对话框"""
-        from tkinter import messagebox
-
-        detail = "\n".join(mismatches[:5])
-        if len(mismatches) > 5:
-            detail += f"\n... and {len(mismatches) - 5} more"
-
-        msg = (
-            "Current scan data was generated with different parameters.\n\n"
-            f"Mismatches:\n{detail}\n\n"
-            "Choose an action:\n"
-            "  [Yes] Rescan with template parameters\n"
-            "  [No]  Load a compatible scan file\n"
-            "  [Cancel] Cancel template activation"
-        )
-
-        result = messagebox.askyesnocancel(
-            "Incompatible Scan Parameters",
-            msg,
-            parent=self.root,
-        )
-
-        if result is True:
-            # Rescan
-            self.template_panel.show()
-            self._start_new_scan()
-        elif result is False:
-            # Load compatible file
-            self.template_panel.show()
-            self._on_load_with_template_filter()
-        else:
-            # Cancel
-            self.param_panel.use_template_var.set(False)
-            self.param_panel._update_template_combobox_state()
-            self.param_panel._update_combobox_state()
-
-    def _get_template_file_validator(self):
-        """模板模式激活时返回兼容性验证器，否则返回 None
-
-        供 Load Result 按钮和模板兼容加载对话框共用。
-        """
-        if not self.param_panel.get_use_template() or not self.template_manager.loaded:
-            return None
-
-        def validator(filepath: str) -> bool:
-            """检查 JSON 文件是否与当前模板兼容"""
-            try:
-                import json
-                with open(filepath, 'r') as f:
-                    data = json.load(f)
-                metadata = data.get("scan_metadata", {})
-                ok, _ = self.template_manager.check_compatibility(metadata)
-                return ok
-            except Exception:
-                return False
-
-        return validator
-
-    def _on_load_with_template_filter(self):
-        """模板模式下的 Load：预过滤兼容文件"""
-        from .dialogs import askopenfilename as custom_askopenfilename
-        from .config import get_ui_config_loader
-
-        config_loader = get_ui_config_loader()
-        default_dir = config_loader.get_scan_results_dir()
-
-        file_path = custom_askopenfilename(
-            parent=self.root,
-            title="Select Compatible Scan Results",
-            initialdir=default_dir,
-            filetypes=[("JSON files", "*.json"), ("All files", "*.*")],
-            file_validator=self._get_template_file_validator(),
-        )
-
-        if file_path:
-            self.load_scan_results(file_path)
-
-    def _on_template_selected(self, template_name: str):
-        """模板列表选择回调（场景 4：切换模板）"""
-        if not self.param_panel.get_use_template():
-            return
-        if not self.scan_data:
-            return
-        self._apply_template_filter()
-
-    def _apply_template_filter(self):
-        """执行模板筛选（统一入口）"""
-        template_name = self.template_panel.get_selected_template_name()
-        if not template_name:
-            return
-
-        template = self.template_manager.find_template_by_name(template_name)
-        if not template:
-            return
-
-        # 批量匹配
-        self.template_matched = self.template_manager.match_all_stocks(
-            self.scan_data, template
-        )
-
-        # 更新 stock list 的 t_count 列
-        if any("t_count" in s for s in self.stock_list_panel.stock_data):
-            self.stock_list_panel.update_t_count(self.template_matched)
-        else:
-            self.stock_list_panel.add_t_count(self.template_matched)
-
-        # 刷新当前图表
-        self._refresh_current_chart()
-
     def _refresh_current_chart(self):
-        """刷新当前 K 线图（带或不带模板高亮）"""
+        """刷新当前 K 线图"""
         if not self.current_symbol or self.current_df is None:
             return
 
@@ -948,51 +787,17 @@ class InteractiveUI:
             self.current_symbol, self.scan_data
         )
 
+        preserved_xlim = self.chart_manager.get_view_xlim()
         self._render_chart(
             self.current_df,
             self.current_breakouts or [],
             self.current_active_peaks or [],
             self.current_superseded_peaks or [],
             self.current_symbol, display_options, start_date, end_date,
+            filtered_infos=self.current_filtered_infos or [],
         )
-
-    def _get_template_display_indices(
-        self, symbol: str, display_breakouts: list, index_offset: int
-    ) -> list[int]:
-        """将模板匹配的突破索引转换为显示坐标。
-
-        template_matched[symbol] 存储的是 scan_data breakouts 列表中的索引位置。
-        需要找到对应突破在 display_df 中的 x 坐标（即 bo.index）。
-        """
-        matched_positions = set(self.template_matched.get(symbol, []))
-        if not matched_positions:
-            return []
-
-        # 找到 scan_data 中该股票的 breakouts
-        stock_data = None
-        for result in self.scan_data.get("results", []):
-            if result["symbol"] == symbol:
-                stock_data = result
-                break
-        if not stock_data:
-            return []
-
-        # 收集匹配突破的 (date, price) 键
-        matched_keys = set()
-        scan_breakouts = stock_data.get("breakouts", [])
-        for pos in matched_positions:
-            if pos < len(scan_breakouts):
-                bo = scan_breakouts[pos]
-                matched_keys.add((bo.get("date"), bo.get("price")))
-
-        # 在 display_breakouts 中查找对应的 x 坐标
-        display_indices = []
-        for bo in display_breakouts:
-            bo_date = bo.date.isoformat() if hasattr(bo.date, "isoformat") else str(bo.date)
-            if (bo_date, bo.price) in matched_keys:
-                display_indices.append(bo.index)
-
-        return display_indices
+        if preserved_xlim is not None:
+            self.chart_manager.restore_view_xlim(preserved_xlim)
 
     def _show_left_panel(self):
         """
@@ -1230,18 +1035,11 @@ class InteractiveUI:
         self._start_new_scan(output_filename=filename)
 
     def _get_scan_params(self) -> tuple[dict, dict, dict]:
-        """获取扫描参数三元组（根据模板状态选择来源）
+        """获取扫描参数三元组
 
         Returns:
             (detector_params, feature_calculator_params, scorer_params)
         """
-        from BreakoutStrategy.param_loader import ParamLoader
-
-        if self.param_panel.get_use_template() and self.template_manager.loaded:
-            scan_params = self.template_manager.get_scan_params()
-            if scan_params:
-                return ParamLoader.parse_params(scan_params)
-
         params = self.param_panel.get_params()
         feature_cfg = self.param_panel.param_loader.get_feature_calculator_params()
         scorer_cfg = self.param_panel.param_loader.get_scorer_params()

@@ -10,7 +10,7 @@ data:
   max_price: 10.0
   min_volume: 10000
 output:
-  output_dir: /home/yu/PycharmProjects/Trade_Strategy/outputs/scan_results
+  output_dir: outputs/scan_results
 performance:
   num_workers: 26
 params:

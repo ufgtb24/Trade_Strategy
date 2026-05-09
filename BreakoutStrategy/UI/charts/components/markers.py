@@ -132,6 +132,8 @@ class MarkerComponent:
         peaks: list = None,
         colors: dict = None,
         show_score: bool = True,
+        show_label: bool = False,
+        label_n: int = 20,
     ):
         """
         绘制突破标记
@@ -143,7 +145,9 @@ class MarkerComponent:
             highlight_multi_peak: 多峰值突破是否使用大标记
             peaks: 当前图表中绘制的峰值列表 (用于避免重叠)
             colors: 颜色配置字典
-            show_score: 是否显示分数
+            show_score: 是否显示 quality_score
+            show_label: 是否显示回测 label 值（窗口 = label_n 天）
+            label_n: label 计算窗口天数
         """
         if not breakouts:
             return
@@ -153,11 +157,14 @@ class MarkerComponent:
         text_bg_color = colors.get("breakout_text_bg", "#FFFFFF")
         text_score_color = colors.get("breakout_text_score", "#FF0000")
 
-        # 尝试获取 high 列
         high_col = "high" if "high" in df.columns else "High"
         has_high = high_col in df.columns
 
-        from BreakoutStrategy.UI.styles import compute_marker_offsets_pt
+        from BreakoutStrategy.UI.styles import (
+            BO_LABEL_VALUE_TIER_STYLE,
+            compute_marker_offsets_pt,
+        )
+        from BreakoutStrategy.analysis.features import compute_label_value
 
         # 构建峰值索引集合（两层：是否存在 peak / peak 是否带 id）
         peak_indices = {p.index for p in peaks} if peaks else set()
@@ -166,6 +173,18 @@ class MarkerComponent:
             if peaks else set()
         )
 
+        # 第 1 遍：若开启 show_label，为所有 BO 预先计算 label value，并找出最大值
+        bo_label_values: dict[int, float] = {}
+        max_label_value = None
+        if show_label:
+            for bo in breakouts:
+                v = compute_label_value(df, bo.index, label_n)
+                if v is not None:
+                    bo_label_values[bo.index] = v
+            if bo_label_values:
+                max_label_value = max(bo_label_values.values())
+
+        # 第 2 遍：逐 BO 绘制
         for bo in breakouts:
             bo_x = bo.index
 
@@ -182,6 +201,7 @@ class MarkerComponent:
                 and hasattr(bo, "quality_score")
                 and bo.quality_score is not None
             )
+            has_label_value = show_label and bo_x in bo_label_values
 
             # 构造本 bar 实际存在的堆叠层（自下而上）
             layers: list[str] = []
@@ -193,15 +213,16 @@ class MarkerComponent:
                 layers.append("bo_label")
             if has_score and has_broken_ids:
                 layers.append("bo_score")
+            if has_label_value and (has_score or has_broken_ids):
+                layers.append("bo_label_value")
 
             offsets = compute_marker_offsets_pt(layers) if layers else {}
 
-            # 绘制突破分数（在 bo_label 上方；若无 broken_peak_ids 则 score 退到 bo_label 位置）
+            # 绘制突破分数
             if has_score:
                 if has_broken_ids:
                     score_y = offsets["bo_score"]
                 else:
-                    # 只有 score、无 label：临时把 "bo_label" 作为最上层占 score 的位置
                     tmp_layers = layers + ["bo_label"]
                     score_y = compute_marker_offsets_pt(tmp_layers)["bo_label"]
 
@@ -224,6 +245,49 @@ class MarkerComponent:
                         edgecolor=text_score_color,
                         linewidth=1.0,
                         alpha=0.8,
+                    ),
+                )
+
+            # 绘制回测 label 值
+            if has_label_value:
+                value = bo_label_values[bo_x]
+                # Tier 分类（浮点等值用容差）
+                is_max = (
+                    max_label_value is not None
+                    and abs(value - max_label_value) < 1e-9
+                )
+                tier = "max" if is_max else "other"
+                tier_style = BO_LABEL_VALUE_TIER_STYLE[tier]
+
+                # 计算 y 偏移
+                if "bo_label_value" in offsets:
+                    label_value_y = offsets["bo_label_value"]
+                else:
+                    # 只有 label_value，无 score 无 broken_ids：退到 bo_score 位
+                    tmp_layers = layers + ["bo_score"]
+                    label_value_y = compute_marker_offsets_pt(tmp_layers)["bo_score"]
+
+                sign = "+" if value >= 0 else ""
+                value_text = f"{sign}{value * 100:.1f}%"
+
+                ax.annotate(
+                    value_text,
+                    xy=(bo_x, base_price),
+                    xycoords="data",
+                    xytext=(0, label_value_y),
+                    textcoords="offset points",
+                    fontsize=20,
+                    ha="center",
+                    va="bottom",
+                    color=tier_style["fg"],
+                    weight="bold",
+                    zorder=14 if tier == "max" else 12,
+                    bbox=dict(
+                        boxstyle="round,pad=0.2",
+                        facecolor=tier_style["bg"],
+                        edgecolor=tier_style["fg"],
+                        linewidth=1.0,
+                        alpha=0.9,
                     ),
                 )
 
@@ -360,6 +424,93 @@ class MarkerComponent:
             ann = ax.annotate(text, **kwargs)
             ann.bo_chart_idx = bo_x
             ann.bo_tier = tier
+
+    @staticmethod
+    def draw_filtered_breakouts(
+        ax,
+        df: pd.DataFrame,
+        infos: list,
+        peaks: list = None,
+        colors: dict = None,
+    ):
+        """绘制被价格门过滤的 BO（仅参考显示）。
+
+        简化版：灰色 [broken_peak_ids] 标签框，无 quality_score / label_value
+        / 阻力区（这些字段在过滤路径下根本没计算，is by-design）。
+
+        若同一根 K 线上存在已绘制的 peak（active/broken/superseded），按
+        compute_marker_offsets_pt 做层堆叠避免覆盖——与 draw_breakouts_
+        live_mode 同样的方式。
+
+        Args:
+            ax: matplotlib Axes
+            df: OHLCV DataFrame
+            infos: BreakoutInfo 列表（不是 Breakout）
+            peaks: 当前图上已绘制的 peak 列表（用于堆叠计算）
+            colors: 颜色配置字典（复用 peak_marker_superseded 的灰色调）
+        """
+        if not infos:
+            return
+
+        colors = colors or {}
+        marker_color = colors.get("peak_marker_superseded", "#808080")
+        text_bg_color = colors.get("breakout_text_bg", "#FFFFFF")
+
+        high_col = "high" if "high" in df.columns else "High"
+        has_high = high_col in df.columns
+
+        from BreakoutStrategy.UI.styles import compute_marker_offsets_pt
+
+        # 与 draw_breakouts_live_mode 一致的层堆叠规则
+        peak_indices = {p.index for p in peaks} if peaks else set()
+        peak_id_indices = (
+            {p.index for p in peaks if getattr(p, "id", None) is not None}
+            if peaks else set()
+        )
+
+        for info in infos:
+            bo_x = info.current_index
+
+            if has_high and 0 <= bo_x < len(df):
+                base_price = df.iloc[bo_x][high_col]
+            else:
+                base_price = info.current_price
+
+            broken_ids = [p.id for p in info.broken_peaks if p.id is not None]
+            if not broken_ids:
+                continue
+
+            # 决定本 bar 上方实际堆叠层；filtered BO 的标签层语义对齐 bo_label
+            if bo_x in peak_id_indices:
+                layers = ["triangle", "peak_id", "bo_label"]
+            elif bo_x in peak_indices:
+                layers = ["triangle", "bo_label"]
+            else:
+                layers = ["bo_label"]
+            offset_pt = compute_marker_offsets_pt(layers)["bo_label"]
+
+            text = "[" + ",".join(map(str, broken_ids)) + "]"
+            ax.annotate(
+                text,
+                xy=(bo_x, base_price),
+                xycoords="data",
+                xytext=(0, offset_pt),
+                textcoords="offset points",
+                fontsize=20,
+                ha="center",
+                va="bottom",
+                color=marker_color,
+                weight="bold",
+                zorder=8,
+                alpha=0.7,
+                bbox=dict(
+                    boxstyle="round,pad=0.3",
+                    facecolor=text_bg_color,
+                    edgecolor=marker_color,
+                    linewidth=1.0,
+                    alpha=0.7,
+                ),
+            )
 
     @staticmethod
     def draw_resistance_zones(
@@ -511,19 +662,89 @@ class MarkerComponent:
             )
 
     @staticmethod
-    def draw_template_highlights(
+    def draw_peak_supersedes(
         ax,
-        matched_indices: list[int],
-        color: str = "#00FF00",
-        alpha: float = 0.15,
+        df: pd.DataFrame,
+        killer_to_victims: dict[int, list[int]],
+        colors: dict = None,
     ):
-        """绘制模板匹配突破的全高垂直高亮条。
+        """在 killer bar 下影线下方绘制 ▲ 三角 + [victim_ids] 方框。
+
+        与上方 peak/bo 标记镜像：锚点为 K线 Low，使用 LOWER_MARKER_STACK_GAPS_PT
+        的负偏移堆叠（详见 styles.compute_marker_offsets_below_pt）。
 
         Args:
-            ax: matplotlib Axes 对象
-            matched_indices: 匹配突破的整数索引列表（在 display_df 中的位置）
-            color: 高亮颜色
-            alpha: 透明度
+            ax: matplotlib Axes
+            df: OHLCV DataFrame（需含 low / Low 列）
+            killer_to_victims: {bar_index: [victim_peak_id, ...]} —— 每个 killer
+                bar 对应它令哪些 peak ids 退场。空列表跳过。
+            colors: 颜色配置（可选；缺省取灰色调，与 SU_PK 灰色 victim ▽ 同色系）
         """
-        for idx in matched_indices:
-            ax.axvspan(idx - 0.4, idx + 0.4, color=color, alpha=alpha, zorder=0)
+        if not killer_to_victims:
+            return
+
+        from matplotlib.transforms import offset_copy
+        from BreakoutStrategy.UI.styles import compute_marker_offsets_below_pt
+
+        colors = colors or {}
+        # killer 三角用黑色实心，与 victim 灰色 ▽ 区分（killer 强调 / victim 标记位置）
+        triangle_color = "#000000"
+        # [ids] 方框边框跟随三角色，文字保持黑色，背景白色
+        text_color = colors.get("peak_text_id_superseded", "#000000")
+        text_bg = colors.get("breakout_text_bg", "#FFFFFF")
+
+        low_col = "low" if "low" in df.columns else ("Low" if "Low" in df.columns else None)
+        if low_col is None:
+            return
+
+        offsets = compute_marker_offsets_below_pt(
+            ["triangle_down", "supersede_label"]
+        )
+
+        for bar_idx, victim_ids in killer_to_victims.items():
+            if not victim_ids:
+                continue
+            if bar_idx < 0 or bar_idx >= len(df):
+                continue
+            base_low = df.iloc[bar_idx][low_col]
+
+            # 1. ▲ 三角（黑色实心，指向 K 线方向）：scatter offset_copy 走负 y
+            tri_trans = offset_copy(
+                ax.transData, fig=ax.get_figure(),
+                x=0.0, y=offsets["triangle_down"], units="points",
+            )
+            ax.scatter(
+                bar_idx,
+                base_low,
+                marker="^",
+                s=400,
+                facecolors=triangle_color,
+                edgecolors=triangle_color,
+                linewidths=2,
+                zorder=5,
+                transform=tri_trans,
+            )
+
+            # 2. [ids] 方框：annotation va="top"，bbox 上沿对齐 supersede_label offset
+            ids_text = "[" + ",".join(map(str, victim_ids)) + "]"
+            ann = ax.annotate(
+                ids_text,
+                xy=(bar_idx, base_low),
+                xycoords="data",
+                xytext=(0, offsets["supersede_label"]),
+                textcoords="offset points",
+                fontsize=20,
+                ha="center",
+                va="top",
+                color=text_color,
+                weight="bold",
+                zorder=11,
+                bbox=dict(
+                    boxstyle="round,pad=0.3",
+                    facecolor=text_bg,
+                    edgecolor=triangle_color,
+                    linewidth=1.5,
+                    alpha=0.9,
+                ),
+            )
+            ann.is_supersede_label = True

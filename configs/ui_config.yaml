@@ -6,8 +6,10 @@ stock_data:
   - /home/yu/PycharmProjects/Trade_Strategy/datasets/pkls
 ui:
   display_options:
-    show_bo_score: true
-    show_peak_score: false
+    show_bo_score: false
+    show_bo_label: false
+    show_filtered_breakouts: true
+    show_supersede_killer: false
   left_panel_weight: 0.3
   right_panel_weight: 0.7
   stock_list_columns:

@@ -3,6 +3,15 @@ claude -r --dangerously-skip-permissions
 /ralph-loop:ralph-loop "根据新的人类模拟基准数据和分析报告对公式进行迭代改进，直到公式结果接近模拟结果" --completion-promise "Satisfied human cognition" --max-iterations 10
 /ralph-loop:cancel-ralph
 
+## 工作数双向同步法
+  # B 上：压缩 + rebase
+  git reset --soft $(git merge-base B A)                                                                                                
+  git commit -m "feature B"
+  git rebase A                                                                                                                          
+                                                                  
+  # A 上：fast-forward 合并                                                                                                             
+  git merge B          # 直接 ff，无需任何参数       
+
 ## 最有效的管理 Git 分支和工作树的方法：
 git merge --squash feature-branch
 

@@ -196,6 +196,10 @@ class AxesInteractionController:
             self._canvas.mpl_connect("button_release_event", self._on_release),
         ]
 
+        # 把 ylim 拟合到当前可见 xlim 切片：candlestick.draw_volume_background
+        # 用全 df min/max 设的初始 ylim，对长历史 + 拆股股票会把可见窗口压到底部。
+        self._rescale_y()
+
     def detach(self) -> None:
         for cid in self._cids:
             self._canvas.mpl_disconnect(cid)
@@ -220,6 +224,17 @@ class AxesInteractionController:
         if self._right_anchor is None or self._initial_width is None:
             return
         self._ax.set_xlim(self._initial_x0, self._right_anchor)
+        self._rescale_y()
+        self._update_zoom_text()
+        self._update_reset_button_style()
+        self._canvas.draw_idle()
+
+    def restore_xlim(self, xlim: Tuple[float, float]) -> None:
+        """Restore a previously captured xlim (clamped to current data span) + rescale Y."""
+        if self._right_anchor is None:
+            return
+        x0, x1 = self._apply_constraints(xlim[0], xlim[1])
+        self._ax.set_xlim(x0, x1)
         self._rescale_y()
         self._update_zoom_text()
         self._update_reset_button_style()

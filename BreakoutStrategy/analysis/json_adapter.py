@@ -17,7 +17,7 @@ from typing import Dict, List, Optional
 import numpy as np
 import pandas as pd
 
-from BreakoutStrategy.analysis.breakout_detector import Breakout, Peak
+from BreakoutStrategy.analysis.breakout_detector import Breakout, BreakoutInfo, Peak
 
 
 @dataclass
@@ -26,6 +26,14 @@ class LoadResult:
     breakouts: List[Breakout]
     active_peaks: List[Peak]  # 活跃峰值列表（用于 UI 绘图）
     peaks: Dict[str, Peak]  # {peak_id: Peak}
+    superseded_peaks: List[Peak] = None  # 严格被新 peak 结构性 supersed 的峰值（SU_PK 灰色绘制）
+    filtered_breakouts: List[BreakoutInfo] = None  # 被价格门过滤的 BO（FT_BO 灰色标签 + 击穿 peak 的来源）
+
+    def __post_init__(self):
+        if self.superseded_peaks is None:
+            self.superseded_peaks = []
+        if self.filtered_breakouts is None:
+            self.filtered_breakouts = []
 
 
 class BreakoutJSONAdapter:
@@ -90,13 +98,19 @@ class BreakoutJSONAdapter:
         # 2. 重建 Breakout 对象
         breakouts = self._rebuild_breakouts(symbol, stock_data, df, all_peaks)
 
-        # 3. 提取活跃峰值
+        # 3. 提取活跃峰值 / 严格 superseded / 重建 filtered BOs
         active_peaks = self._extract_active_peaks(stock_data, all_peaks)
+        superseded_peaks = self._extract_superseded_peaks(stock_data, all_peaks)
+        filtered_breakouts = self._rebuild_filtered_breakouts(
+            stock_data, df, all_peaks
+        )
 
         return LoadResult(
             breakouts=breakouts,
             active_peaks=active_peaks,
-            peaks=all_peaks
+            peaks=all_peaks,
+            superseded_peaks=superseded_peaks,
+            filtered_breakouts=filtered_breakouts,
         )
 
     def load_batch(
@@ -211,6 +225,7 @@ class BreakoutJSONAdapter:
                 left_suppression_days=peak_data.get("left_suppression_days", 0),
                 right_suppression_days=peak_data.get("right_suppression_days", 0),
                 relative_height=peak_data.get("relative_height", 0.0),
+                superseded_peak_ids=list(peak_data.get("superseded_peak_ids", [])),
             )
             all_peaks[peak.id] = peak
 
@@ -316,6 +331,55 @@ class BreakoutJSONAdapter:
             )
         ]
         return active_peaks
+
+    def _extract_superseded_peaks(
+        self,
+        stock_data: dict,
+        all_peaks: Dict[str, Peak]
+    ) -> List[Peak]:
+        """从 JSON 提取严格被新 peak supersed 的峰值（is_superseded=true）。"""
+        superseded_ids = {
+            peak_data["id"]
+            for peak_data in stock_data.get("all_peaks", [])
+            if peak_data.get("is_superseded", False)
+        }
+        return [p for pid, p in all_peaks.items() if pid in superseded_ids]
+
+    def _rebuild_filtered_breakouts(
+        self,
+        stock_data: dict,
+        df: pd.DataFrame,
+        all_peaks: Dict[str, Peak],
+    ) -> List[BreakoutInfo]:
+        """从 JSON `filtered_breakouts` 字段重建 BreakoutInfo 列表。
+
+        filtered BO 不带 enrich/score 字段，仅保留 canvas 绘制所需的最小集合：
+        current_index/current_price/current_date/broken_peaks。
+        """
+        result: List[BreakoutInfo] = []
+        for fb_data in stock_data.get("filtered_breakouts", []):
+            fb_date = datetime.fromisoformat(fb_data["date"]).date()
+            new_index = self._get_df_index(df, fb_date)
+            if new_index is None:
+                continue
+            broken_peak_ids = fb_data.get("broken_peak_ids", [])
+            broken_peaks = [
+                all_peaks[pid] for pid in broken_peak_ids if pid in all_peaks
+            ]
+            if not broken_peaks:
+                continue
+            superseded_peak_ids = fb_data.get("superseded_peak_ids", [])
+            superseded_peaks = [
+                all_peaks[pid] for pid in superseded_peak_ids if pid in all_peaks
+            ]
+            result.append(BreakoutInfo(
+                current_index=new_index,
+                current_price=fb_data["price"],
+                current_date=fb_date,
+                broken_peaks=broken_peaks,
+                superseded_peaks=superseded_peaks,
+            ))
+        return result
 
     def _get_df_index(self, df: pd.DataFrame, target_date: date) -> Optional[int]:
         """

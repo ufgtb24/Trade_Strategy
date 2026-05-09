@@ -84,10 +84,11 @@ class ChartCanvasManager:
         symbol: str,
         display_options: dict = None,
         label_buffer_start_idx: int = None,
-        template_matched_indices: list[int] = None,
         initial_window_days: int | None = None,
         filter_cutoff_date=None,
         spec=None,
+        filtered_breakouts: list = None,
+        max_price: float = None,
     ):
         """
         更新图表显示
@@ -100,7 +101,6 @@ class ChartCanvasManager:
             symbol: 股票代码
             display_options: 显示选项
             label_buffer_start_idx: Label 缓冲区在 df 中的起始索引（用于视觉区分）
-            template_matched_indices: 模板匹配命中的 K 线索引列表（用于绘制高亮条）
             initial_window_days: 初始显示窗口（日历日数），None 表示保留 candlestick 默认全范围
             filter_cutoff_date: Filter 时间范围可视化的截止日期，由 Task 5 的 _draw_filter_range 消费
             spec: ChartRangeSpec，可选。本 task 仅存储不消费
@@ -115,7 +115,10 @@ class ChartCanvasManager:
 
         display_options = display_options or {}
         show_bo_score = display_options.get("show_bo_score", True)
-        show_superseded_peaks = display_options.get("show_superseded_peaks", False)
+        show_supersede_killer = display_options.get("show_supersede_killer", False)
+        show_filtered_breakouts = display_options.get("show_filtered_breakouts", False)
+        show_bo_label = display_options.get("show_bo_label", False)
+        bo_label_n = display_options.get("bo_label_n", 20)
 
         # 2. 创建新图表（2个子图：主图+统计面板）
         # 动态计算图表大小，适应容器尺寸
@@ -176,10 +179,16 @@ class ChartCanvasManager:
         # 然后绘制K线（叠加在成交量上）
         self.candlestick.draw(ax_main, df, colors=colors)
 
-        # 收集所有被突破的峰值（按 id 去重，同一峰值可能因"突破巩固"被多次突破）
+        # 收集所有被突破的峰值（按 id 去重，同一峰值可能因"突破巩固"被多次突破）。
+        # 来源含 visible BOs 与 filtered BOs——这两类 BO 击穿的 peak 在 peak
+        # 位置都以正常黑色 ▽ 绘制（与 SU_PK / FT_BO 解耦）。过滤 BO 自身的
+        # 灰色 [ids] 标签由 FT_BO 单独控制，与 peak 绘制无关。
         seen_peak_ids = set()
         all_broken_peaks = []
-        for bo in breakouts:
+        bo_sources = list(breakouts)
+        if filtered_breakouts:
+            bo_sources.extend(filtered_breakouts)
+        for bo in bo_sources:
             if hasattr(bo, "broken_peaks") and bo.broken_peaks:
                 for p in bo.broken_peaks:
                     if p.id not in seen_peak_ids:
@@ -211,10 +220,10 @@ class ChartCanvasManager:
                     colors=colors,
                 )
 
-        # 绘制被取代的峰值（如果启用）
+        # 绘制被取代的峰值（victim 灰色 ▽）：永远显示，与任何 flag 解耦。
+        # killer→victim 关系通过 SU_PK (show_supersede_killer) 单独控制（见下方）。
         superseded_only_peaks = []
-        if show_superseded_peaks and superseded_peaks:
-            # 过滤掉已绘制的峰值（按 index 去重）
+        if superseded_peaks:
             drawn_indices = {p.index for p in all_broken_peaks + active_only_peaks}
             superseded_only_peaks = [
                 p for p in superseded_peaks if p.index not in drawn_indices
@@ -257,17 +266,38 @@ class ChartCanvasManager:
                 peaks=all_drawn_peaks,
                 colors=colors,
                 show_score=show_bo_score,
+                show_label=show_bo_label,
+                label_n=bo_label_n,
             )
 
         self.marker.draw_resistance_zones(
             ax_main, df, breakouts, alpha=0.15, color=None, colors=colors
         )
 
-        # 绘制均线（从参数面板获取周期）
-        from BreakoutStrategy.param_loader import get_param_loader
-        loader = get_param_loader()
-        feature_params = loader.get_feature_calculator_params()
-        ma_period = feature_params.get("ma_period", 200)
+        # FT_BO：被价格门过滤的 BO 灰色简化绘制 + max_price 上限虚线
+        if show_filtered_breakouts and filtered_breakouts:
+            self.marker.draw_filtered_breakouts(
+                ax_main, df, filtered_breakouts,
+                peaks=all_drawn_peaks,
+                colors=colors,
+            )
+        if max_price is not None:
+            self.marker.draw_price_line(
+                ax_main, df,
+                price=max_price,
+                label=f"max_price: {max_price}",
+                color="gray",
+                linestyle="--",
+            )
+
+        # 绘制均线：display_options['display_ma_period'] 优先（dev UI 临时调节，
+        # 仅影响渲染，不参与因子计算）；缺省时回退到 param_loader 默认值。
+        ma_period = display_options.get("display_ma_period")
+        if ma_period is None:
+            from BreakoutStrategy.param_loader import get_param_loader
+            loader = get_param_loader()
+            feature_params = loader.get_feature_calculator_params()
+            ma_period = feature_params.get("ma_period", 200)
         self.marker.draw_moving_averages(
             ax_main,
             df,
@@ -283,9 +313,45 @@ class ChartCanvasManager:
 
         self.panel.draw_statistics_panel(ax_stats, breakouts)
 
-        # 绘制模板匹配高亮条
-        if template_matched_indices:
-            self.marker.draw_template_highlights(ax_main, template_matched_indices)
+        # SU_PK：在 killer bar 下方显示 ▲ + [victim_ids]。
+        # killer 来源：(active+broken+superseded) peaks 中带 superseded_peak_ids 的，
+        # 与 breakouts 中带 superseded_peaks 的，按 bar_index 合并去重。
+        if show_supersede_killer:
+            killer_to_victims: dict[int, list[int]] = {}
+
+            def _add(idx: int, ids: list[int]):
+                if not ids:
+                    return
+                bucket = killer_to_victims.setdefault(idx, [])
+                for vid in ids:
+                    if vid not in bucket:
+                        bucket.append(vid)
+
+            for pk in (active_peaks or []):
+                _add(pk.index, list(getattr(pk, "superseded_peak_ids", []) or []))
+            for pk in (all_broken_peaks or []):
+                _add(pk.index, list(getattr(pk, "superseded_peak_ids", []) or []))
+            for pk in (superseded_peaks or []):
+                _add(pk.index, list(getattr(pk, "superseded_peak_ids", []) or []))
+            for bo in (breakouts or []):
+                bo_supersedes = getattr(bo, "superseded_peaks", None)
+                if bo_supersedes:
+                    _add(bo.index, [p.id for p in bo_supersedes if p.id is not None])
+            # filtered BO（FT_BO）也可能 supersede peaks——detector 内部 BO 检测
+            # 不感知价格门，supersede 已在检测期完成。这里把 filtered BO 也算
+            # 进 killer，使 victim 完整可视。
+            for fbo in (filtered_breakouts or []):
+                fbo_supersedes = getattr(fbo, "superseded_peaks", None)
+                if fbo_supersedes:
+                    _add(
+                        fbo.current_index,
+                        [p.id for p in fbo_supersedes if p.id is not None],
+                    )
+
+            if killer_to_victims:
+                self.marker.draw_peak_supersedes(
+                    ax_main, df, killer_to_victims=killer_to_victims, colors=colors,
+                )
 
         # 左侧 padding（与 candlestick.py:72 一致），供 data_span_left 界定 zoom-out 极限
         margin_left = max(1, len(df) * 0.02) if len(df) > 0 else 1
@@ -335,7 +401,6 @@ class ChartCanvasManager:
         self._disable_auto_dpi_scaling()
 
         self.canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
-        self.canvas.draw()
 
         # pick_event 连线（live_mode）；幂等：先 disconnect 上次的 cid
         if _live_mode:
@@ -347,6 +412,9 @@ class ChartCanvasManager:
             self._pick_cid = self.canvas.mpl_connect("pick_event", self._on_pick)
 
         # 5. 绑定交互控制器（默认鼠标锚点缩放，Ctrl 瞬态切右锚，动态 Y 轴）
+        # attach() 末尾会调 _rescale_y() 把 ylim 拟合到可见 xlim，必须在
+        # canvas.draw() 之前完成，否则首帧会用 candlestick.draw_volume_background
+        # 设的全 df ylim 渲染（长历史/拆股股票会把可见窗口压到底部）。
         self.interaction = AxesInteractionController(
             ax_main,
             self.canvas,
@@ -362,6 +430,8 @@ class ChartCanvasManager:
             volumes=_volumes,
             vol_bars=_vol_bars,
         )
+
+        self.canvas.draw()
 
         # 6. 绑定鼠标悬停事件
         self._attach_hover(ax_main, df, breakouts, peaks=all_drawn_peaks)
@@ -1020,6 +1090,18 @@ class ChartCanvasManager:
 
         if need_redraw and self.canvas:
             self.canvas.draw_idle()
+
+    def get_view_xlim(self) -> Optional[tuple]:
+        """Return current xlim, or None if no chart is active."""
+        if self.interaction is None or self.interaction._ax is None:
+            return None
+        return tuple(self.interaction._ax.get_xlim())
+
+    def restore_view_xlim(self, xlim: tuple) -> None:
+        """Restore a previously captured xlim on the current chart (no-op if no chart)."""
+        if self.interaction is None or xlim is None:
+            return
+        self.interaction.restore_xlim(xlim)
 
     def close_all_score_windows(self):
         """关闭所有评分详情窗口（供外部调用）"""

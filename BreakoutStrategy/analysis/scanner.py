@@ -166,9 +166,15 @@ def compute_breakouts_from_dataframe(
     streak_window: int = 20,
     scan_start_date: str = None,
     scan_end_date: str = None,
-) -> Tuple[List, BreakoutDetector]:
+    min_price: float = None,
+    max_price: float = None,
+) -> Tuple[List, List, BreakoutDetector]:
     """
     从 DataFrame 计算突破（统一突破计算函数）
+
+    BO 价格过滤前置：当 min_price/max_price 提供时，在 enrich+score 之前
+    partition breakout_infos——只对通过价格门的 BO 跑 enrich+score（省 CPU），
+    被过滤的 BO 以原始 BreakoutInfo 形式返回，由 dev UI 用于灰色绘制。
 
     Args:
         df: 数据 DataFrame
@@ -186,9 +192,14 @@ def compute_breakouts_from_dataframe(
         valid_end_index: 有效检测范围结束索引（之后的数据为 Label 缓冲区，不检测）
         scan_start_date: 扫描起始日期字符串（用于写 actual 字段和降级日志）
         scan_end_date: 扫描结束日期字符串（用于写 actual 字段和降级日志）
+        min_price: BO 突破日价格下限（None=不过滤）
+        max_price: BO 突破日价格上限（None=不过滤）
 
     Returns:
-        (breakouts, detector) 元组
+        (kept_breakouts, filtered_infos, detector) 元组：
+        - kept_breakouts: 通过价格门的 Breakout 列表（含完整因子+评分）
+        - filtered_infos: 被过滤的 BreakoutInfo 列表（无因子，仅原始检测信息）
+        - detector: BreakoutDetector 实例
     """
     _valid_end = valid_end_index if valid_end_index is not None else len(df)
 
@@ -239,9 +250,25 @@ def compute_breakouts_from_dataframe(
     )
 
     if not breakout_infos:
-        return [], detector
+        return [], [], detector
 
-    # 特征计算和评分
+    # Partition by price gate before enrich——被过滤的 BO 不算因子，节省 CPU
+    kept_infos: List = []
+    filtered_infos: List = []
+    if min_price is not None or max_price is not None:
+        for info in breakout_infos:
+            if (min_price is None or info.current_price >= min_price) and \
+               (max_price is None or info.current_price <= max_price):
+                kept_infos.append(info)
+            else:
+                filtered_infos.append(info)
+    else:
+        kept_infos = list(breakout_infos)
+
+    if not kept_infos:
+        return [], filtered_infos, detector
+
+    # 特征计算和评分（仅对 kept_infos）
     feature_calc = FeatureCalculator(config=feature_calc_config or {})
     breakout_scorer = BreakoutScorer(config=scorer_config or {})
 
@@ -254,7 +281,7 @@ def compute_breakouts_from_dataframe(
     vol_ratio_series = FeatureCalculator.precompute_vol_ratio_series(df)
 
     breakouts = []
-    for info in breakout_infos:
+    for info in kept_infos:
         # 特征计算（传递预计算的 ATR 序列）
         bo = feature_calc.enrich_breakout(
             df, info, symbol, detector=detector,
@@ -265,7 +292,7 @@ def compute_breakouts_from_dataframe(
     # 批量评分
     breakout_scorer.score_breakouts_batch(breakouts)
 
-    return breakouts, detector
+    return breakouts, filtered_infos, detector
 
 
 def _scan_single_stock(args):
@@ -378,8 +405,12 @@ def _scan_single_stock(args):
                   f"df_range=[{df_start}, {df_end}], len(df)={len(df)}, "
                   f"valid_start_index={valid_start_index}, valid_end_index={valid_end_index}")
 
-        # 使用统一函数计算突破（检测范围前置限定）
-        breakouts, detector = compute_breakouts_from_dataframe(
+        # 使用统一函数计算突破（检测范围前置限定，价格过滤前置）
+        # 被价格门过滤的 BO 不参与 enrich+score（节省 CPU）；filtered_infos
+        # 以最小字段（index/date/price/broken_peak_ids）持久化进 JSON，使
+        # 浏览模式（cache 路径）能像分析模式一样把 filtered BO 击穿的 peak
+        # 走 all_broken_peaks 路径绘制为正常黑色 ▽。
+        breakouts, filtered_infos, detector = compute_breakouts_from_dataframe(
             symbol=symbol,
             df=df,
             total_window=total_window,
@@ -394,51 +425,22 @@ def _scan_single_stock(args):
             valid_start_index=valid_start_index,
             valid_end_index=valid_end_index,
             streak_window=streak_window,
+            min_price=min_price,
+            max_price=max_price,
         )
-
-        # Breakout-level 价格过滤（按突破当日价格）
-        if breakouts and (min_price is not None or max_price is not None):
-            breakouts = [
-                bo for bo in breakouts
-                if (min_price is None or bo.price >= min_price)
-                and (max_price is None or bo.price <= max_price)
-            ]
 
         if not breakouts:
             return None
 
-        # 收集所有峰值（active + broken + superseded）并分配唯一ID
-        all_peaks_dict = {}  # {id: Peak}
-        peak_id_counter = 1
+        # 收集所有曾创建过的峰值。
+        # 以 detector.all_peaks 为权威来源：union(active, broken_via_BOs,
+        # superseded_by_new_peak) 会漏掉那些"被 price-filtered BO 击穿"的
+        # peak（例如 ARQQ 在 [1.0, 10.0] 价格门下 11 个 BO 中 10 个被滤除，
+        # 它们携带的 8 个 peak 在旧路径下整体丢失）。detector.all_peaks 在
+        # peak 创建时填充，与下游过滤完全解耦。
+        # 注意：峰值已在检测阶段通过 valid_start_index 过滤，无需事后过滤。
+        all_peaks_dict = {p.id: p for p in detector.all_peaks if p.id is not None}
 
-        # 1. 收集active peaks并分配ID
-        for peak in detector.active_peaks:
-            if peak.id is None:
-                peak.id = peak_id_counter
-                peak_id_counter += 1
-            all_peaks_dict[peak.id] = peak
-
-        # 2. 收集broken peaks并分配ID（去重）
-        for bo in breakouts:
-            for peak in bo.broken_peaks:
-                if peak.id is None:  # 未分配ID
-                    peak.id = peak_id_counter
-                    all_peaks_dict[peak_id_counter] = peak
-                    peak_id_counter += 1
-                elif peak.id not in all_peaks_dict:
-                    all_peaks_dict[peak.id] = peak
-
-        # 3. 收集被新峰值替代的峰值（>3% 幅度，从未被击破）
-        for peak in detector.superseded_by_new_peak:
-            if peak.id is None:  # 未分配ID
-                peak.id = peak_id_counter
-                all_peaks_dict[peak_id_counter] = peak
-                peak_id_counter += 1
-            elif peak.id not in all_peaks_dict:
-                all_peaks_dict[peak.id] = peak
-
-        # 4. 标记active状态
-        # 注意：峰值已在检测阶段通过 valid_start_index 过滤，无需事后过滤
         active_peak_ids = {p.id for p in detector.active_peaks if p.id in all_peaks_dict}
         superseded_peak_ids = {p.id for p in detector.superseded_by_new_peak if p.id in all_peaks_dict}
 
@@ -494,6 +496,7 @@ def _scan_single_stock(args):
                     else 0.0,
                     "is_active": peak.id in active_peak_ids,
                     "is_superseded": peak.id in superseded_peak_ids,
+                    "superseded_peak_ids": list(peak.superseded_peak_ids),
                 }
                 for peak in sorted(all_peaks_dict.values(), key=lambda p: p.index)
             ],
@@ -541,6 +544,16 @@ def _scan_single_stock(args):
                     key=lambda x: x.quality_score if x.quality_score else 0,
                     reverse=True,
                 )
+            ],
+            "filtered_breakouts": [
+                {
+                    "date": info.current_date.isoformat(),
+                    "price": float(info.current_price),
+                    "index": int(info.current_index),
+                    "broken_peak_ids": info.broken_peak_ids,
+                    "superseded_peak_ids": info.superseded_peak_ids,
+                }
+                for info in filtered_infos
             ],
         }
 

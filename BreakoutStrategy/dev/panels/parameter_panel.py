@@ -24,9 +24,6 @@ class ParameterPanel:
         on_rescan_all_callback: Optional[Callable] = None,
         on_new_scan_callback: Optional[Callable] = None,
         get_json_params_callback: Optional[Callable[[], Optional[Dict]]] = None,
-        on_use_template_changed_callback: Optional[Callable] = None,
-        on_template_file_changed_callback: Optional[Callable] = None,
-        get_file_validator_callback: Optional[Callable] = None,
     ):
         """
         初始化参数面板
@@ -39,9 +36,6 @@ class ParameterPanel:
             on_rescan_all_callback: Rescan All 按钮点击回调
             on_new_scan_callback: New Scan 按钮点击回调
             get_json_params_callback: 获取 JSON 扫描参数的回调（返回 scan_data）
-            on_use_template_changed_callback: Use Template 复选框状态变化回调
-            on_template_file_changed_callback: 模板文件选择变化回调
-            get_file_validator_callback: 获取文件验证器的回调（模板模式下返回兼容性验证器）
         """
         self.parent = parent
         self.on_load_callback = on_load_callback
@@ -50,11 +44,6 @@ class ParameterPanel:
         self.on_rescan_all_callback = on_rescan_all_callback
         self.on_new_scan_callback = on_new_scan_callback
         self.get_json_params_callback = get_json_params_callback
-        self.on_use_template_changed_callback = on_use_template_changed_callback
-        self.on_template_file_changed_callback = on_template_file_changed_callback
-        self.get_file_validator_callback = get_file_validator_callback
-        self.use_template_var = tk.BooleanVar(value=False)
-        self.current_template_file = ""
 
         # 加载默认显示选项
         config_loader = get_ui_config_loader()
@@ -62,20 +51,36 @@ class ParameterPanel:
 
         # 显示选项变量
         self.show_bo_score_var = tk.BooleanVar(
-            value=defaults.get("show_bo_score", True)
+            value=defaults.get("show_bo_score", False)
         )
-        self.show_superseded_peaks_var = tk.BooleanVar(
-            value=defaults.get("show_superseded_peaks", True)
+        # SU_PK：显示 killer bar 下方的 ▲ + [victim_ids] 标记
+        self.show_supersede_killer_var = tk.BooleanVar(
+            value=defaults.get("show_supersede_killer", False)
         )
+        self.show_filtered_breakouts_var = tk.BooleanVar(
+            value=defaults.get("show_filtered_breakouts", False)
+        )
+        self.show_bo_label_var = tk.BooleanVar(
+            value=defaults.get("show_bo_label", True)
+        )
+        # bo_label_n 的初始值来自默认 20；scan 加载后由 set_bo_label_n_default 更新
+        self.bo_label_n_var = tk.IntVar(value=20)
 
-        # UI 参数选项（默认选中 = 使用 UI 参数进行 full compute）
-        self.use_ui_params_var = tk.BooleanVar(value=True)
+        # UI 参数选项（默认不选中 = Browse Mode，加载 scan 后直接浏览已算结果）
+        self.use_ui_params_var = tk.BooleanVar(value=False)
 
         # 当前参数文件名（不含路径）
         self.current_param_file = "all_factor.yaml"
 
         # 参数加载器（纯读：只读策略参数）
         self.param_loader = get_param_loader()
+
+        # Chart 显示用 MA 周期：仅影响 K 线图渲染，不参与因子计算。
+        # 初值取 feature_params['ma_period'] 以保留旧行为。
+        _initial_ma = self.param_loader.get_feature_calculator_params().get(
+            "ma_period", 200
+        )
+        self.display_ma_period_var = tk.IntVar(value=int(_initial_ma))
 
         # 编辑器 UI 状态（活跃文件、dirty、监听器、切换钩子）
         self.editor_state = get_param_editor_state()
@@ -173,40 +178,64 @@ class ParameterPanel:
             command=self._on_checkbox_changed,
         ).pack(side=tk.LEFT, padx=5)
 
+        # BO Label 复选框 + N Spinbox（同一组）
+        self.show_bo_label_checkbox = ttk.Checkbutton(
+            container,
+            text="BO Label",
+            variable=self.show_bo_label_var,
+            command=self._on_bo_label_toggle,
+        )
+        self.show_bo_label_checkbox.pack(side=tk.LEFT, padx=(5, 2))
+
+        ttk.Label(container, text="N:").pack(side=tk.LEFT)
+        # 不传 command=，箭头点击 / 滚轮滚动仅改变 Spinbox 显示值，不触发重绘；
+        # 用户在任意调整后按 Enter 才确认提交。这样滚轮滚动顺畅可控。
+        self.bo_label_n_spin = ttk.Spinbox(
+            container,
+            from_=1,
+            to=200,
+            increment=1,
+            textvariable=self.bo_label_n_var,
+            width=4,
+            # 初始 state 跟随 BO Label checkbox，避免与默认勾选状态不一致
+            state="normal" if self.show_bo_label_var.get() else "disabled",
+        )
+        self.bo_label_n_spin.pack(side=tk.LEFT, padx=(2, 5))
+
+        # Enter（主键盘或小键盘）是唯一的提交入口——输入 / 箭头 / 滚轮调整后，
+        # 用户按 Enter 才真正刷新 chart。不监听 FocusOut，避免回车刷新重建 chart
+        # 造成焦点切走从而双重触发。
+        self.bo_label_n_spin.bind("<Return>", self._on_bo_label_n_enter)
+        self.bo_label_n_spin.bind("<KP_Enter>", self._on_bo_label_n_enter)
+
         ttk.Checkbutton(
             container,
             text="SU_PK",
-            variable=self.show_superseded_peaks_var,
+            variable=self.show_supersede_killer_var,
             command=self._on_checkbox_changed,
         ).pack(side=tk.LEFT, padx=5)
 
-        ttk.Separator(container, orient=tk.VERTICAL).pack(
-            side=tk.LEFT, fill=tk.Y, padx=10
-        )
+        ttk.Checkbutton(
+            container,
+            text="FT_BO",
+            variable=self.show_filtered_breakouts_var,
+            command=self._on_checkbox_changed,
+        ).pack(side=tk.LEFT, padx=5)
 
-        # 模板选择组
-        template_group_frame = ttk.Frame(container)
-        template_group_frame.pack(side=tk.LEFT, padx=5)
-
-        self.use_template_checkbox = ttk.Checkbutton(
-            template_group_frame,
-            variable=self.use_template_var,
-            command=self._on_use_template_changed,
+        # MA 显示周期：仅渲染层覆盖，与因子运算解耦
+        ttk.Label(container, text="MA:").pack(side=tk.LEFT, padx=(10, 2))
+        self.display_ma_period_spin = ttk.Spinbox(
+            container,
+            from_=1,
+            to=500,
+            increment=1,
+            textvariable=self.display_ma_period_var,
+            width=4,
         )
-        self.use_template_checkbox.pack(side=tk.LEFT, padx=(0, 5))
-
-        self.template_file_combobox = ttk.Combobox(
-            template_group_frame,
-            state="disabled",
-            width=20,
-            values=self._get_available_template_files(),
-        )
-        self.template_file_combobox.pack(side=tk.LEFT, padx=5)
-        template_files = self._get_available_template_files()
-        if template_files:
-            self.template_file_combobox.set(template_files[0])
-            self.current_template_file = template_files[0]
-        self.template_file_combobox.bind("<<ComboboxSelected>>", self._on_template_file_selected)
+        self.display_ma_period_spin.pack(side=tk.LEFT, padx=(0, 5))
+        # Enter 才提交，与 BO Label N 行为一致
+        self.display_ma_period_spin.bind("<Return>", self._on_display_ma_enter)
+        self.display_ma_period_spin.bind("<KP_Enter>", self._on_display_ma_enter)
 
         # 状态标签
         self.status_label = ttk.Label(container, text="Ready", foreground="gray")
@@ -221,18 +250,12 @@ class ParameterPanel:
         config_loader = get_ui_config_loader()
         default_dir = config_loader.get_scan_results_dir()
 
-        # 模板模式激活时，获取兼容性验证器进行预过滤
-        validator = None
-        if self.get_file_validator_callback:
-            validator = self.get_file_validator_callback()
-
         # 使用自定义文件对话框（支持 Delete 键删除文件）
         file_path = custom_askopenfilename(
             parent=self.parent.winfo_toplevel(),
             title="Select Scan Results",
             initialdir=default_dir,
             filetypes=[("JSON files", "*.json"), ("All files", "*.*")],
-            file_validator=validator,
         )
 
         if file_path and self.on_load_callback:
@@ -244,6 +267,29 @@ class ParameterPanel:
             self.on_display_option_changed_callback()
         elif self.on_param_changed_callback:
             self.on_param_changed_callback()
+
+    def _on_bo_label_toggle(self):
+        """BO Label checkbox toggle：同步 Spinbox 启停，并触发重绘。"""
+        if self.show_bo_label_var.get():
+            self.bo_label_n_spin.config(state="normal")
+        else:
+            self.bo_label_n_spin.config(state="disabled")
+        self._on_checkbox_changed()
+
+    def _on_bo_label_n_enter(self, _event):
+        """Spinbox Enter：触发 chart 重绘，然后把焦点还给 Spinbox。
+
+        重绘会销毁并重建 matplotlib canvas，新 canvas 默认抢键盘焦点；不还回来的话
+        下一次 Enter 会送到 canvas，Spinbox 的 <Return> 绑定不再触发。用 after_idle
+        排到事件队列末尾，确保在 canvas 自动抢焦之后执行。
+        """
+        self._on_checkbox_changed()
+        self.bo_label_n_spin.after_idle(self.bo_label_n_spin.focus_set)
+
+    def _on_display_ma_enter(self, _event):
+        """MA Spinbox Enter：触发图表重绘，并把焦点还给 Spinbox。"""
+        self._on_checkbox_changed()
+        self.display_ma_period_spin.after_idle(self.display_ma_period_spin.focus_set)
 
     def _on_use_ui_params_changed(self):
         """Use UI Params 复选框状态改变回调"""
@@ -274,10 +320,35 @@ class ParameterPanel:
 
     def get_display_options(self):
         """获取显示选项"""
+        try:
+            n = self.bo_label_n_var.get()
+        except tk.TclError:
+            # Spinbox 文本非整数（用户输入非法字符时），回退默认
+            n = 20
+        try:
+            ma = self.display_ma_period_var.get()
+        except tk.TclError:
+            ma = 200
         return {
             "show_bo_score": self.show_bo_score_var.get(),
-            "show_superseded_peaks": self.show_superseded_peaks_var.get(),
+            "show_supersede_killer": self.show_supersede_killer_var.get(),
+            "show_filtered_breakouts": self.show_filtered_breakouts_var.get(),
+            "show_bo_label": self.show_bo_label_var.get(),
+            "bo_label_n": n,
+            "display_ma_period": ma,
         }
+
+    def set_bo_label_n_default(self, max_days: int):
+        """把 Spinbox 当前值重置为指定默认值。
+
+        通常在加载新 scan 时由 main.py 调用，让 Spinbox 默认反映扫描时的
+        label_configs[0].max_days，与股票列表 Label 列的聚合基准一致。
+
+        Args:
+            max_days: 扫描的窗口天数；clamp 到 [1, 200]
+        """
+        n = max(1, min(200, int(max_days)))
+        self.bo_label_n_var.set(n)
 
     def get_use_ui_params(self) -> bool:
         """获取 Use UI Params 复选框状态"""
@@ -523,26 +594,15 @@ class ParameterPanel:
     def _update_combobox_state(self):
         """根据模式更新 UI 组件的启用/禁用状态
 
-        三种模式优先级：Template Mode > Analysis Mode > Browse Mode
+        两种模式：Analysis Mode（勾选 Use UI Params）/ Browse Mode（默认）
         """
-        template_active = self.use_template_var.get()
-
-        if template_active:
-            # Template Mode：强制 Browse，禁用 Analysis 相关控件
-            self.use_ui_params_var.set(False)
-            self.use_ui_params_checkbox.config(state="disabled")
-            self.param_file_combobox.config(state="disabled")
-            self.edit_btn.config(state="disabled")
-            self.rescan_all_btn.config(state="disabled")
-        elif self.use_ui_params_var.get():
+        if self.use_ui_params_var.get():
             # Analysis Mode
-            self.use_ui_params_checkbox.config(state="normal")
             self.param_file_combobox.config(state="readonly")
             self.edit_btn.config(state="normal")
             self.rescan_all_btn.config(state="normal")
         else:
             # Browse Mode
-            self.use_ui_params_checkbox.config(state="normal")
             self.param_file_combobox.config(state="disabled")
             self.edit_btn.config(state="disabled")
             self.rescan_all_btn.config(state="disabled")
@@ -591,44 +651,3 @@ class ParameterPanel:
 
             traceback.print_exc()
 
-    def _get_available_template_files(self) -> list[str]:
-        """扫描 configs/templates/ 目录获取所有 .yaml 文件"""
-        templates_dir = self.param_loader.get_project_root() / "configs" / "templates"
-        if not templates_dir.exists():
-            return []
-        yaml_files = sorted(f.name for f in templates_dir.glob("*.yaml"))
-        return yaml_files
-
-    def _on_use_template_changed(self):
-        """Use Template 复选框状态变化"""
-        self._update_template_combobox_state()
-        self._update_combobox_state()  # 同步 Analysis 控件状态
-        if self.on_use_template_changed_callback:
-            self.on_use_template_changed_callback(self.use_template_var.get())
-
-    def _on_template_file_selected(self, event=None):
-        """模板文件下拉框选择变化"""
-        selected = self.template_file_combobox.get()
-        if selected == self.current_template_file:
-            return
-        self.current_template_file = selected
-        if self.on_template_file_changed_callback:
-            self.on_template_file_changed_callback(selected)
-
-    def _update_template_combobox_state(self):
-        """根据复选框状态启用/禁用模板下拉框"""
-        if self.use_template_var.get():
-            self.template_file_combobox.config(state="readonly")
-        else:
-            self.template_file_combobox.config(state="disabled")
-
-    def get_use_template(self) -> bool:
-        """获取 Use Template 复选框状态"""
-        return self.use_template_var.get()
-
-    def get_template_file_path(self) -> str | None:
-        """获取当前选中的模板文件完整路径"""
-        filename = self.template_file_combobox.get()
-        if not filename:
-            return None
-        return str(self.param_loader.get_project_root() / "configs" / "templates" / filename)
