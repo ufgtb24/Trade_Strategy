@@ -21,6 +21,37 @@ DEBUG_MOMENTUM = os.environ.get("DEBUG_MOMENTUM", "0") == "1"
 DEBUG_VOLUME = os.environ.get("DEBUG_VOLUME", "0") == "1"
 
 
+def compute_label_value(
+    df: pd.DataFrame, index: int, max_days: int
+) -> Optional[float]:
+    """计算单个突破点的回测 label 值。
+
+    公式：(未来 max_days 天内最高收盘价 - 突破日收盘价) / 突破日收盘价
+    - 基准价：突破日收盘价
+    - 窗口：突破后 1 到 max_days 天（不含突破当日）
+    - 未来价格用 close（与原 `_calculate_labels` 实现一致）
+
+    Args:
+        df: OHLCV DataFrame
+        index: 突破点索引
+        max_days: 回看窗口天数
+
+    Returns:
+        label 值；数据不足 max_days 天、或突破日收盘价非正时返回 None
+    """
+    breakout_price = df.iloc[index]["close"]
+    if breakout_price <= 0:
+        return None
+
+    max_end = min(len(df), index + max_days + 1)
+    future_data = df.iloc[index + 1 : max_end]
+    if len(future_data) < max_days:
+        return None
+
+    max_high = future_data["close"].max()
+    return (max_high - breakout_price) / breakout_price
+
+
 class FeatureCalculator:
     """特征计算器"""
 
@@ -418,45 +449,23 @@ class FeatureCalculator:
     def _calculate_labels(
         self, df: pd.DataFrame, index: int
     ) -> Dict[str, Optional[float]]:
-        """
-        计算回测标签
+        """计算回测标签字典。
 
-        标签定义：(N天内最高价 - 突破日收盘价) / 突破日收盘价
-        - 基准价：突破日收盘价（不编码任何交易策略假设）
-        - 最高价范围：突破后1到N天内，使用 high 价格
-        - 不包括突破当日
+        对 self.label_configs 中每个 config 调用模块级 compute_label_value。
+        键名格式：label_{max_days}，如 {"label_20": 0.15, "label_40": None}。
 
         Args:
-            df: OHLCV数据
+            df: OHLCV 数据
             index: 突破点索引
 
         Returns:
-            标签字典，格式：{"label_40": 0.15, "label_20": None}
-            数据不足时对应值为 None
+            标签字典；数据不足时对应值为 None
         """
-        labels = {}
-        breakout_price = df.iloc[index]["close"]
-
+        labels: Dict[str, Optional[float]] = {}
         for config in self.label_configs:
             max_days = config.get("max_days", 20)
             label_key = f"label_{max_days}"
-
-            max_end = min(len(df), index + max_days + 1)
-            future_data = df.iloc[index + 1 : max_end]
-
-            if len(future_data) < max_days:
-                labels[label_key] = None
-                continue
-
-            max_high = future_data["close"].max()
-
-            if breakout_price > 0:
-                label_value = (max_high - breakout_price) / breakout_price
-            else:
-                label_value = None
-
-            labels[label_key] = label_value
-
+            labels[label_key] = compute_label_value(df, index, max_days)
         return labels
 
     def _calculate_pk_momentum(

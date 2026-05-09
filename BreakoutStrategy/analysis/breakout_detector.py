@@ -572,7 +572,10 @@ class BreakoutDetector:
 
         for peak in self.active_peaks:
             exceed_threshold_price = peak.price * (1 + self.exceed_threshold)
-            supersede_threshold_price = peak.price * (1 + self.peak_supersede_threshold)
+            # supersede 锚定原始价：peak.price 在小幅突破后会被 elevation 抬升，
+            # 若仍以其为基准会让缓步上行的累计涨幅永远进不到 supersede 分支
+            supersede_base_price = peak.original_price if peak.original_price is not None else peak.price
+            supersede_threshold_price = supersede_base_price * (1 + self.peak_supersede_threshold)
 
             if breakout_price > exceed_threshold_price:
                 # 突破确认

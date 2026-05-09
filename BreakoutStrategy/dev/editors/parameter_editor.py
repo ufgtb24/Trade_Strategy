@@ -11,6 +11,9 @@ from typing import Any, Callable, Dict, Optional
 import yaml
 
 from BreakoutStrategy.param_loader import ParamLoader
+from BreakoutStrategy.factor_registry import find_factor_by_yaml_key
+
+from .factor_group_frame import FactorGroupFrame
 
 from ..config import (
     PARAM_CONFIGS,
@@ -646,12 +649,23 @@ class ParameterEditorWindow:
             end_idx = description.find(")")
             constraint_info = " " + description[start_idx : end_idx + 1]
 
-        # 创建子参数Frame - 只显示组名和约束信息
-        sub_frame = ttk.LabelFrame(
-            section.content_frame,
-            text=f"{parent_name}{constraint_info}",
-            padding=10,
-        )
+        # 判定：parent_name 是否对应 FACTOR_REGISTRY 中的因子
+        factor_info = find_factor_by_yaml_key(parent_name)
+
+        if factor_info is not None:
+            # 因子组 → FactorGroupFrame，绑 description tooltip
+            sub_frame = FactorGroupFrame(
+                section.content_frame,
+                title=f"{parent_name}{constraint_info}",
+                tooltip_text=factor_info.description or None,
+            )
+        else:
+            # 非因子组（权重组等）→ 维持原有 ttk.LabelFrame
+            sub_frame = ttk.LabelFrame(
+                section.content_frame,
+                text=f"{parent_name}{constraint_info}",
+                padding=10,
+            )
         sub_frame.pack(fill="x", pady=5)
 
         # 添加子参数

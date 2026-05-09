@@ -31,18 +31,6 @@ quality_scorer:
     values:
     - 1.2
     - 1.35
-  dd_recov_factor:
-    best_recovery: 0.25
-    enabled: true
-    lookback: 252
-    thresholds:
-    - 0.02
-    - 0.04
-    - 0.06
-    values:
-    - 1.15
-    - 1.25
-    - 1.4
   drought_factor:
     enabled: true
     thresholds:
@@ -64,18 +52,6 @@ quality_scorer:
     - 1.3
     - 1.6
     - 2.0
-  ma_curve_factor:
-    enabled: true
-    period: 40
-    stride: 5
-    thresholds:
-    - 0.05
-    - 0.15
-    - 0.3
-    values:
-    - 1.15
-    - 1.25
-    - 1.4
   ma_pos_factor:
     enabled: true
     period: 20

@@ -1,6 +1,8 @@
 .idea
 datasets
 outputs
+feature_library
+experiments/analyze_stock_charts
 __pycache__/
 prompt_template/
 .worktrees/

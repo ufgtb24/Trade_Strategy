@@ -57,16 +57,18 @@ class SelectableLabel(ttk.Entry):
 class ToolTip:
     """悬浮提示工具类"""
 
-    def __init__(self, widget, text: str):
+    def __init__(self, widget, text: str, wraplength: int = 300):
         """
         初始化 tooltip
 
         Args:
             widget: 要绑定 tooltip 的组件
             text: 提示文本
+            wraplength: 自动换行宽度（像素）。CJK 文本建议 ≥500
         """
         self.widget = widget
         self.text = text
+        self.wraplength = wraplength
         self.tipwindow = None
 
         # 绑定鼠标事件
@@ -96,7 +98,7 @@ class ToolTip:
             relief=tk.SOLID,
             borderwidth=1,
             font=("Arial", 12),
-            wraplength=300,
+            wraplength=self.wraplength,
         )
         label.pack()
 

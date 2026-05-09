@@ -1,4 +1,4 @@
-> 最后更新：2026-04-16
+> 最后更新：2026-04-22
 
 # Live 日常监控模块
 
@@ -32,7 +32,7 @@ flowchart TD
     UI -->|选中一项| SEL["_on_item_selected"]
     SEL --> ADAPT["chart_adapter<br/>dict → ChartPeak/ChartBreakout"]
     ADAPT --> CM["ChartCanvasManager.update_chart<br/>live_mode=True"]
-    CM --> DM["MarkerComponent.draw_breakouts_live_mode<br/>(三级 BO 着色 + overlap 检测)"]
+    CM --> DM[MarkerComponent.draw_breakouts_live_mode]
 ```
 
 **四步 Pipeline** 在 `pipeline/daily_runner.py`：原子提交——任一步失败都不写 `.last_full_update` marker，下次启动仍判为"过期"，避免残缺缓存被当成有效结果。
@@ -71,9 +71,9 @@ flowchart TD
 **决策**：`MarkerComponent` 加 `draw_breakouts_live_mode` 静态方法，`canvas_manager.update_chart` 根据 `display_options["live_mode"]` 分派。
 
 **理由**：
-- Dev 路径展示 quality_score（红字数字），是调参用户的决策信号；Live 用户不调参，看分数反而是噪音
-- Live 需要区分当前选中 BO（绿色实心）/其他 matched BO（蓝色实心）/plain BO（蓝色空心），Dev 没有"当前选中"的概念
-- 直接改 `draw_breakouts` 要加一堆分支，改动面波及 Dev 的 6 个渲染测试；加新方法各走各路，互不干扰
+- Dev 展示 quality_score 是调参用户的决策信号；Live 用户不调参，看分数反而是噪音
+- Live 有独立的"当前选中" + "点击 marker 反向同步列表"语义，Dev 没有
+- 直接改 `draw_breakouts` 会把 Dev 测试一起卷入；加新方法各走各路，互不干扰
 
 ### 5. `MatchedBreakout` 携带全股票 BO 上下文
 
@@ -137,4 +137,3 @@ flowchart TD
 2. **全量下载成本高**：Step1 每天一次全美股（~6000+ ticker）重下载，受 akshare 限流和网络抖动影响，实测 10–30 min；增量下载因为前复权调整不可行。
 3. **Marker 原子性仅保证完整刷新**：`.last_full_update` 在 Step1 成功后写入，但 Step2/3/4 失败时当前不清除 marker——下次启动认为数据新鲜，直接用不完整结果。实际回退依赖 CachedResults 的存在性（见 `app.py:_on_startup`）。
 4. **Sentiment 失败降级**：单候选 sentiment API 失败返回 `None`，归类为"error"而非阻断整批，用户要自己识别这种状态。
-5. **Chart 缩放极限下 BO marker 仍可能挤 label**：`draw_breakouts_live_mode` 用数据坐标 `offset_unit * 倍数`，极端放大（price_range 缩到初始 <25%）可能重叠；当前取 `marker_y - label_y = 1.8u` 作为折衷，更高鲁棒性需改成 `textcoords="offset points"` 像素偏移。
