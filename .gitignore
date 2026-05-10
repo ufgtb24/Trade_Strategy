@@ -8,3 +8,4 @@ prompt_template/
 configs/api_keys.yaml
 cache/
 .contexts/
+docs/tmp/loop/
