@@ -3,6 +3,8 @@
 > 研究单位：pattern-arch-design agent team（bo-arch-analyst / condition-ind-analyst / pattern-arch-researcher / team-lead）
 > 完成日期：2026-05-09
 > 引用底稿：`_team_drafts/bo_arch_analysis.md`、`_team_drafts/condition_ind_analysis.md`、`_team_drafts/alt_pattern_architectures.md`
+>
+> **⚠️ 修订通知（2026-05-09 后续研究）**：本文 Stage 2 推荐的 `ChainCondition + post_event_lookforward 因子` 已被 [condition_ind_evaluation.md](condition_ind_evaluation.md) 修订。基于对 Condition_Ind 在生产中真实使用的实证分析（cind-evaluation team），ChainCondition 这一抽象层应被砍掉，改为"DataFrame 谓词代数 + BO-anchored 窗口原语 + Python 状态机类"的三层工具集。Stage 1 与 Stage 3 不变。读本文 §4 时请同步参考修订报告。
 
 ---
 
