@@ -89,6 +89,36 @@ FACTOR_REGISTRY: list[FactorInfo] = [
                    'source: BreakoutStrategy/analysis/features.py:749\n\n'
                    '意义：同价区被测试次数越多，阻力越经充分验证，突破后获买方共识越强。'
                )),
+    FactorInfo('pk_count', 'Peak Count', '突破峰数',
+               (2, 4, 6), (1.1, 1.25, 1.4),
+               is_discrete=True, mining_mode='gte', category='resistance',
+               unit='x', display_transform='identity',
+               description=(
+                   '算法：len(broken_peaks)。\n\n'
+                   'source: BreakoutStrategy/analysis/features.py:776\n\n'
+                   '意义：本次突破吃掉的所有历史 peak 总数。与 test 互补——'
+                   'test 衡量"同价位被反复试探"的强度，本因子衡量"清掉的阻力层广度"。'
+                   '一次性吃掉的 peak 越多，说明趋势转折越彻底，多层阻力被同时清理，'
+                   '突破后空间更充分。'
+               )),
+    FactorInfo('pk_streak', 'Peak Streak', '累计突破峰数',
+               (3, 6, 10), (1.1, 1.25, 1.4),
+               is_discrete=True, mining_mode='gte', category='resistance',
+               unit='x', display_transform='identity',
+               sub_params=(
+                   SubParamDef('window', 'pk_streak_window', int, 20,
+                               (1, 9999), 'Window for pk_streak counting',
+                               consumer='detector'),
+               ),
+               description=(
+                   '算法：窗口 [idx - pk_streak_window, idx] 内所有突破（含当次）'
+                   'broken_peak_ids 的并集大小。\n\n'
+                   'source: BreakoutStrategy/analysis/features.py:781\n\n'
+                   '意义：近期累计清掉的不同 peak 数量。与 streak 互补——'
+                   'streak 看突破频率，本因子看跨突破累计的阻力广度。'
+                   '同窗口内多次突破若覆盖不同 peak，说明阻力被多层次清理；'
+                   '若反复啃同一组 peak，pk_streak 不会重复计数，避免假信号。'
+               )),
     FactorInfo('height', 'Height', '峰值高度',
                (0.2, 0.4, 0.7), (1.3, 1.6, 2.0),
                category='resistance',
@@ -132,7 +162,7 @@ FACTOR_REGISTRY: list[FactorInfo] = [
                ),
                nullable=True,
                description=(
-                   '算法：突破后 gain_window 日涨幅 / (年化波动率 / sqrt(50.4))，σ 单位。\n\n'
+                   '算法：突破前 gain_window 日涨幅 / (年化波动率 / sqrt(50.4))，σ 单位。\n\n'
                    'source: BreakoutStrategy/analysis/features.py:623\n\n'
                    '意义：值越大说明突破后短期涨幅相对自身波动率越极端，'
                    '过高往往意味着透支行情、回调风险增加，故本因子取 lte（越低越好）。'
@@ -235,6 +265,24 @@ FACTOR_REGISTRY: list[FactorInfo] = [
                    '意义：突破时股价在均线上方越多，说明中期趋势越强健，'
                    '动量积累充分，突破后上行空间更大。'
                )),
+    FactorInfo('ma_z_atr', 'MA Distance (ATR-norm)', '均线距(ATR标准化)',
+               (3.0, 6.0, 10.0), (0.95, 0.85, 0.70),
+               mining_mode='lte', category='context',
+               unit='ATR', display_transform='round1',
+               zero_guard=True, nullable=True,
+               sub_params=(
+                   SubParamDef('period', 'ma_z_atr_period', int, 50,
+                               (20, 200), 'MA period for ATR-normalized distance'),
+               ),
+               description=(
+                   '算法：(close - MA_period) / atr_series.iloc[idx-1]。'
+                   'period 默认 50（中长期），ATR 用前一日值（与 pk_mom 同约定）。\n\n'
+                   'source: BreakoutStrategy/analysis/features.py:834\n\n'
+                   '意义：每 ATR 单位下，价格距 MA 多少个日波动单位（跨标的可比）。'
+                   '与 ma_pos 互补：ma_pos 缺 ATR 归一化，本因子补足 vol-norm 维度。'
+                   '强锁 lte 是结构性设计：在以动量为主的因子集合里专门承担'
+                   '"长周期超涨刹车"角色，与 gte 因子形成上下界约束，避免评分体系单边追涨。'
+               )),
     FactorInfo('dd_recov', 'Drawdown Recovery', '回撤恢复度',
                (0.02, 0.04, 0.06), (1.15, 1.25, 1.40),
                category='context',
@@ -278,8 +326,8 @@ FACTOR_REGISTRY: list[FactorInfo] = [
 # --- 总开关：在此集合中的因子 key 将在所有模块中不可见 ---
 # 与 YAML 中的 enabled（评分开关）不同，这里控制因子是否参与系统的所有环节
 # 使用场景：触发率100%的无效因子、数据质量不足待优化的因子
-INACTIVE_FACTORS: set[str] = {}
-# INACTIVE_FACTORS: set[str] = {'ma_curve', 'dd_recov'}
+INACTIVE_FACTORS: set[str] = {'ma_curve', 'day_str', 'streak','overshoot'}
+# INACTIVE_FACTORS: set[str] = {'ma_curve', 'dd_recov'}'test', 'streak'}
 # 使用方式：将无效因子的 key 加入集合，如 {'age', 'streak'}
 # 示例：
 # INACTIVE_FACTORS = {'age'}  # 触发率100%，无区分力
