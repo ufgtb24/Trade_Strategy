@@ -1,8 +1,10 @@
 # 路径二的真实优势 — 你的直觉为什么是对的
 
-> 完成日期:2026-05-10
-> 主旨:**剥离改造成本后**,清晰列出路径二相对路径一的本质优势,以及路径一仅剩的局部优势(如果有)
+> 完成日期:2026-05-10(2026-05-12 方法论修订)
+> 主旨:基于**框架表达能力**的单一评估轴,清晰列出路径二相对路径一的本质优势,以及路径一仅剩的局部优势(如果有)
 > 关联文档:[`path1_vs_path2_pure_firstprinciples.md`](path1_vs_path2_pure_firstprinciples.md)(完整研究报告);本文是其聚焦版
+>
+> **⚠️ 方法论修订(2026-05-12)**:本文早期版本把"改造成本 / mining 兼容性"作为与"表达力"并列的评估维度,这是方法论错误 — **mining 是因子框架的下游优化措施,不能反过来约束上游框架选型**。框架表达力是本质,优化措施是表象,本质优先于优化。本次修订删除了"剥离改造成本后"这类对冲式 framing,以及任何把 mining 流水线复杂度作为 Path 2 代价的论述。修订后**结论加强**:Path 2 在单一表达力轴上即决定性胜出,不存在"成本视角下另有答案"的二元 framing。
 
 ---
 
@@ -18,16 +20,16 @@
 
 ### 优势 1:**统计正确性** — 1 个簇 = 1 个样本
 
-**路径一**:5 个 BO 组成的 1 个簇 → mining 数据表里有 **5 行**,每行带相同的 cluster_size、cluster_first_drought、簇内放量等"广播因子"。
+**路径一**:5 个 BO 组成的 1 个簇 → 评估表里有 **5 行**,每行带相同的 cluster_size、cluster_first_drought、簇内放量等"广播因子"。
 
 - 这 5 行**协变量高度相关**(cluster_size 完全相同,簇属性全部一致)
 - 它们的 label 来自 **5 个高度重叠的未来时间窗**(BO_1 之后 20 天 vs BO_2 之后 20 天 vs ...)
-- 这违反了 mining 流水线 IID 假设
-- 解决方案是 **group-by-cluster split / dedup 补丁** — 等于在数据流水线层补救 schema 层的错配
+- 这违反了 IID 假设(1 个簇被算成 5 个统计样本)
+- 解决方案是 **group-by-cluster split / dedup 补丁** — 等于在下游层补救 schema 层的错配
 
 **路径二**:1 个簇 = 1 行 row,IID 干净。
 
-> path1-advocate 在 phase 2 自己承认:"sample inflation 是真问题,group-split 是补丁。在不考虑改造成本前提下,**让架构本身正确**比**让训练流程修复架构错误**更接近第一性原理。"
+> path1-advocate 在 phase 2 自己承认:"sample inflation 是真问题,group-split 是补丁。**让架构本身正确**比**用下游补丁修复架构错误**更接近第一性原理。"
 
 ---
 
@@ -56,7 +58,7 @@ cluster.pk_total = sum(len(bo.broken_peaks) for bo in cluster.bos)
 
 **一行**,直接走容器对成员 reduce,Python 一等操作。
 
-> 团队前一份研究 [`cind_pattern_coverage_test.md`](cind_pattern_coverage_test.md) 已诚实标记:**特征 4 在路径一下需要"跨层,诚实分工"**,这不是优雅闭合 — 是承认入口一架构的边界。
+> 团队前一轮覆盖测试已诚实标记:**特征 4 在路径一下需要"跨层,诚实分工"**,这不是优雅闭合 — 是承认入口一架构的边界。
 
 ---
 
@@ -99,7 +101,7 @@ step_chain = platform_chain.after(K3).detect_step()
 - 没有 PK
 - 没有持久身份
 - 不能被命名 / 持有 / 传引用
-- 只是 mining 时的 `groupby(cluster_id).transform(...)` 中间状态
+- 只是查询时的 `groupby(cluster_id).transform(...)` 中间状态
 
 簇属性是 BO row 上的"标签广播",**簇本身没有自己的 row** — 它只在分析查询时短暂存在。
 
@@ -119,7 +121,7 @@ step_chain = platform_chain.after(K3).detect_step()
 
 路径一的 schema 设计有一个隐性矛盾:
 - 它声称"评估单位 = BO"
-- 但 mining 时为了避免 sample inflation,**实际上需要按 cluster_id group split** — 等于私下承认评估单位是簇
+- 但训练样本切分时为了避免 sample inflation,**实际上需要按 cluster_id group split** — 等于私下承认评估单位是簇
 
 > path1-advocate 在 phase 2 承认:"如果训练时只能用簇首 BO,那从一开始就生成 5 行的设计就是浪费;如果坚持 5 行都用,就在和 IID 假设作斗争。两难都站不住。"
 
@@ -127,28 +129,25 @@ step_chain = platform_chain.after(K3).detect_step()
 
 ---
 
-## 2. 路径一仅剩的局部优势(剥离改造成本后)
+## 2. 路径一仅剩的局部优势
 
-经过 phase 2 互喷,path1-advocate 自己**主动让步**了大部分论点。剥离改造成本后,只剩 2 项**真实但局部**的优势:
+经过 phase 2 互喷,path1-advocate 自己**主动让步**了大部分论点。在**单一表达力评估轴**上,只剩 1 项**真实但局部**的优势:
 
-### 局部优势 A:**单一 row schema 的简洁性**
+### 局部优势 A(已撤回):**单一 row schema 的简洁性**
 
-只有一种 row 类型(BO row),不需要维护 L1 / L2 / L3 三层 schema。
-
-**这个优势的限定**:
-- ✅ 仅当团队**坚决拒绝**多 row schema 复杂度时成立
-- ❌ 但路径一为了"用 BO 统一一切"付出的代价是:特征 4 跨层、特征 7 lookforward 三态、簇属性广播 + group-split 补丁。**简洁性是表面的** — 它把复杂度从 schema 层挤到了流水线层和补丁层
-- 严格说,这不是"路径一更简洁",而是"路径一把同样的复杂度藏到了别处"
+> **修订删除**(2026-05-12):本条曾被列为 Path 1 的局部优势,理由是"只有一种 row 类型"。重新审视后撤回 — 这条所谓简洁性的实质是 **mining 流水线层面的单一性**(避免维护 L1/L2/L3 三套流水线),而 mining 是优化措施,不能作为框架选型的评估维度。从**表达力**本身看,Path 1 用单一 row 容纳簇语义的代价是:特征 4 跨层、特征 7 lookforward 三态、簇属性广播 — 这些都是**表达层的代价**,不是"被藏到别处"的复杂度,是实打实地降低了表达清晰度。所以在表达力单一轴下,本条不是优势。
 
 ### 局部优势 B:**广义场景下"早预警 + 晚确认"的两段策略原生支持**
+
+> 这是一项**真实的表达力**优势(与 mining 无关,只关乎 live 信号语义),保留。
 
 如果用户的产品需求**明确包含**"早预警(小仓试探,容许 false positive)+ 晚确认(加仓建仓)"两段策略 — 路径一可以用同一个 BO row 的 `partial → confirmed` 两态自然表达。
 
 **这个优势的限定**:
 - 在用户的 7 特征场景下,**不成立** — partial signal 是噪声(path1 让步)
 - 在其他形态下(例如交易者主动想要"看到簇正在形成时建立小仓"),**部分成立**
-- 路径二的等价方案是"L1 BO row 早信号 + L2 cluster row 晚信号"两通道 — schema 更清晰,但实现复杂度更高
-- 这是**路径一在 schema 紧凑度上的局部胜利**,不是表达力的胜利
+- 路径二的等价方案是"L1 BO row 早信号 + L2 cluster row 晚信号"两通道 — schema 更清晰但 row 数更多
+- 这是**路径一在单 schema 紧凑表达上的局部胜利**,在表达力轴上是一个**特定信号语义场景**的局部优势
 
 ### 不算优势的"伪优势"清单(path1-advocate 让步)
 
@@ -187,7 +186,7 @@ step_chain = platform_chain.after(K3).detect_step()
 
 > **如果在你的思考里,"簇"是一个名词(一个对象,有自己的 first BO、last BO、簇内成员、累计 pk 数、post-平台属性),那么数据模型里它就应该是一行 row。**
 >
-> 不是用 BO row 上的若干"广播标签"模拟簇的存在,**也不是**让 cluster 只在 mining 查询时短暂出现 — **是让 cluster row 与 BO row 平级共存**,各有各的字段、各有各的统计单位、各有各的 mining 流水线。
+> 不是用 BO row 上的若干"广播标签"模拟簇的存在,**也不是**让 cluster 只在查询时临时聚合 — **是让 cluster row 与 BO row 平级共存**,各有各的字段、各有各的统计单位、各有各的评估单元。
 
 这正是 path2-advocate 在 phase 2 修正后的"多级事件框架"主张:
 
@@ -197,7 +196,7 @@ L2 cluster row  ← 7 特征簇形态在这里(cluster.first_bo / last_bo / bos 
 L3 platform row ← 三级派生事件(由 L2 cluster + post-K 天形成)
 ```
 
-**路径一是这个框架的退化情况**(只承认 L1)。在不考虑改造成本前提下,**多级框架是更普适的建模**。
+**路径一是这个框架的退化情况**(只承认 L1)。在框架表达力评估轴上,**多级框架是更普适的建模**。
 
 ---
 
@@ -215,15 +214,12 @@ L3 platform row ← 三级派生事件(由 L2 cluster + post-K 天形成)
 |---|---|---|
 | 本文(`path2_advantages.md`) | 聚焦路径二优势,通俗解释 | 路径二(多级框架) |
 | [`path1_vs_path2_pure_firstprinciples.md`](path1_vs_path2_pure_firstprinciples.md) | 完整研究报告(含底稿引用、对照表、收敛过程)| 路径二(多级框架) |
-| [`cind_compute_layer_design.md`](cind_compute_layer_design.md) | **考虑改造成本**前提下的工程性价比推荐 | 路径一(BO 主干 + 广播)|
-| [`cind_pattern_coverage_test.md`](cind_pattern_coverage_test.md) | 路径一对 7 特征的覆盖测试(承认跨层 + lookforward 是路径一的诚实代价) | 路径一(在 7/7 闭合下,但 2/7 走绕路) |
-| [`architecture_research_plain.md`](architecture_research_plain.md) | 全部研究的人话版总结(早期版本,未含本轮 path2 修正)| 综合 |
 
-**两个推荐都成立但前提不同**:
-- 不顾成本 → 路径二(多级框架)
-- 顾成本 → 路径一(BO 主干)
+**两份文档在单一评估轴(框架表达力)上同一结论**:路径二(多级事件框架)胜出。
 
-最终架构决策**是产品 / 团队层面的"架构纯度 vs 工程性价比"权衡**,但**你的直觉在第一性原理层面是正确的**,本文给出了清晰论证。
+不存在"成本视角下另有答案"的二元 framing — mining 是因子框架的下游优化,改造成本是优化层的代价,不能反过来约束上游框架选型。
+
+**你的直觉在第一性原理层面是正确的**,本文给出了清晰论证。最终架构决策由你拍板,但应当基于"框架表达力"这一单一本质轴 — 任何把"mining 流水线兼容"或"改造工作量"塞回作为对冲 weight 的论证,都已被本次方法论修订排除在外。
 
 ---
 
