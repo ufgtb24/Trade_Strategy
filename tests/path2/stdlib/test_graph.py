@@ -80,6 +80,24 @@ def test_validate_kof_k_range():
         validate_kof(build_graph(edges), k=0, n_edges=2)
 
 
+def test_validate_kof_single_wcc_required():
+    """redesign §10.7:Kof edges 必须弱连通(单 WCC),否则构造期 ValueError。
+
+    跨 WCC 的 k-of-n 在逐 WCC 分解下无法统计且无明确表达意义。
+    """
+    # 单 WCC(A-B-C 弱连通):通过
+    validate_kof(
+        build_graph([TemporalEdge("A", "B"), TemporalEdge("B", "C")]),
+        k=1, n_edges=2,
+    )
+    # 多 WCC(A→B 与 C→D 不连通):拒绝
+    with pytest.raises(ValueError, match="连通"):
+        validate_kof(
+            build_graph([TemporalEdge("A", "B"), TemporalEdge("C", "D")]),
+            k=1, n_edges=2,
+        )
+
+
 def test_validate_neg_requires_forbid_and_later_in_forward():
     fwd = build_graph([TemporalEdge("A", "B")])
     validate_neg(fwd, forbid=[TemporalEdge("N", "A")])  # later=A 在正向

@@ -124,13 +124,22 @@ class Dag:
 
 
 class Kof:
-    """k-of-n 边松弛 Detector(redesign §3.3/§5)。
+    """k-of-n 边松弛 Detector —— **LEF-DFS 结构姊妹**(redesign §10,权威)。
 
-    n = edges 条数,k = 至少须满足的边数;满足 = 两端均有实例且 gap 在
-    [min_gap, max_gap] 内。算法为滑窗计数,复杂度 O(ΣN·n)。与 Chain/Dag
-    不同:Kof 不要求所有 edge 同时满足,只要 >= k 条满足即命中。
+    n = edges 条数,k = 至少须满足的边数。与 Chain/Dag 不同:Kof 不要求
+    所有 edge 同时满足,只要 >= k 条满足即命中(但**全标签必在场**,
+    no partial)。算法 = 成员组合枚举/回溯 + 叶层 k-of-n 接受 + 全成员
+    非重叠消费;复用 LEF-DFS 的 key 序 / WCC / `#seq` 框架(`_kof_dfs`
+    独立,不改 `_lef_dfs`)。
 
-    锚定语义:非重叠贪心(`non-overlapping-greedy`,唯一支持值)。
+    缓冲(诚实账,redesign §10.6):单 WCC 零 / 多 WCC ≤(p−1)(与 Dag
+    同);`validate_kof` 强制单 WCC ⇒ 常态零缓冲;产出天然 end_idx 升序。
+    时间标签数维度**诚实指数**(松弛无窗口剪枝,内在不可消除,**常态**
+    非仅病态)。
+
+    锚定语义:`non-overlapping-greedy`(唯一支持值,冻结面)。"greedy"
+    指**生产循环按全成员非重叠贪进**;**成员选择是枚举/回溯**,非贪心
+    单选。
     """
 
     def __init__(

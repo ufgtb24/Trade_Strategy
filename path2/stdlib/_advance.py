@@ -1,7 +1,9 @@
 """约束推进核心 —— LEF-DFS(redesign §3,权威)。
 
-`advance_dag` 是四 Detector 共用的约束推进核心(Chain/Dag/Neg 复用,
-Kof 另有滑窗实现)。算法 = **LEF-DFS**(redesign §3):固定拓扑序,
+`advance_dag` 是 Chain/Dag/Neg 共用的约束推进核心;`advance_kof` 是其
+**结构姊妹**(redesign §10:独立 `_kof_dfs`/`_kof_produce_wcc`,复用
+同一 key 序 / 非重叠消费 / WCC / `_emit` 框架,仅 4 处差异;`_lef_dfs`
+不改)。算法 = **LEF-DFS**(redesign §3):固定拓扑序,
 对当前消费前沿后缀做带回溯的深度优先搜索,按
 `key=(start_idx, end_idx, position_in_S[L])` 字典序取最早可行赋值
 (earliest-feasible,redesign §2.2),产出后对每个用到的标签做
@@ -271,6 +273,153 @@ def _produce_wcc(
             ptr[lab] = chosen_idx[lab] + 1
 
 
+def _kof_dfs(
+    order: List[str],
+    k: int,
+    assign: Dict[str, Event],
+    chosen_idx: Dict[str, int],
+    ptr: Dict[str, int],
+    streams: Dict[str, List[Event]],
+    edges: List[TemporalEdge],
+    k_of_n: int,
+) -> Optional[Tuple[Dict[str, Event], Dict[str, int]]]:
+    """Kof DFS 递归(redesign §10.5 KOF_DFS)。
+
+    LEF-DFS 结构姊妹,**仅 4 处差异 vs `_lef_dfs`**(redesign §10.5):
+    1. **无窗口过滤**:候选 = 整后缀 `S[v][ptr[v]:]`(边可不满足,不能据
+       某边裁候选)——修 CRITICAL-1;
+    2. **叶子 k-of-n 显式接受**:`k==len(order)` 时统计满足边数 `sat`,
+       `sat >= k_of_n` 才接受,否则回溯(返回 None);
+    3. **关闭 INV-C 前沿割记忆**(无窗口约束 ⇒ 前沿割不表征剩余可行域);
+    4. **不做 C1 等-end 塌缩**(gap 看 start 和 end;等-end 不同 start
+       对 sat 贡献不同,全候选都要试)。
+
+    复用:start-first key `(start_idx, end_idx, position)` 排序、INV-A
+    全后缀新鲜扫描、回溯。**全标签在场**(no partial,redesign §10.4):
+    叶子前所有标签均已赋值;某标签后缀为空 ⇒ 其 for 循环不执行 ⇒ 该前缀
+    返回 None ⇒ 不产出缺标签部分命中。
+    """
+    if k == len(order):
+        # 叶子:k-of-n 接受谓词(redesign §10.1/§10.5)。
+        sat = sum(
+            1
+            for e in edges
+            if e.min_gap
+            <= assign[e.later].start_idx - assign[e.earlier].end_idx
+            <= e.max_gap
+        )
+        if sat >= k_of_n:
+            return (dict(assign), dict(chosen_idx))
+        return None
+
+    v = order[k]
+    lst = streams.get(v, [])
+    # INV-A:对当前消费前沿后缀 [ptr[v]:] 做新鲜全后缀扫描。
+    # 差异 1:无窗口过滤,候选 = 整后缀。
+    cands: List[Tuple[Event, int]] = [
+        (lst[i], i) for i in range(ptr[v], len(lst))
+    ]
+    # start-first key 排序(§2.2,与 LEF-DFS 同一把 key)。
+    # 差异 4:不做 _collapse_equal_end_keep_keymin。
+    cands.sort(key=lambda ei: (ei[0].start_idx, ei[0].end_idx, ei[1]))
+
+    for e, i in cands:
+        assign[v] = e
+        chosen_idx[v] = i
+        r = _kof_dfs(
+            order, k + 1, assign, chosen_idx, ptr, streams, edges, k_of_n
+        )
+        if r is not None:
+            return r
+        del assign[v]
+        del chosen_idx[v]
+
+    return None  # 差异 3:无 INV-C memo 记录
+
+
+def _kof_produce_wcc(
+    g: Graph,
+    streams: Dict[str, List[Event]],
+    edges: List[TemporalEdge],
+    k: int,
+    label: str,
+    seen_ids: Dict[str, int],
+) -> Iterator[PatternMatch]:
+    """单 WCC 的 Kof 生产循环(redesign §10.5 KOF_PRODUCE)。
+
+    与 `_produce_wcc` 同构:逐 LEF(此处 `_kof_dfs`)→ 产出 → INV-B
+    全成员非重叠消费 → 无命中则推进最早仍有备选的源后重试,直到任一源
+    后缀耗尽。**无 INV-C memo**(每次调用不重置 memo —— Kof 不用)。
+    """
+    order = topo_order(g)
+    ptr: Dict[str, int] = {n: 0 for n in g.nodes}
+    sources = [n for n in order if g.indeg[n] == 0]
+
+    while True:
+        # 任一源后缀耗尽 ⇒ 该分量无更多命中。
+        if any(ptr[s] >= len(streams.get(s, [])) for s in sources):
+            return
+        result = _kof_dfs(order, 0, {}, {}, ptr, streams, edges, k)
+        if result is None:
+            # 当前消费前沿无新命中。_kof_dfs 已对全节点做完整回溯,证明
+            # 当前 ptr 组合下无可行 k-of-n 命中;推进最早仍有备选的源后
+            # 重试,所有源耗尽则结束(终止性:每次产出 ≥1 指针严格前移)。
+            advanced = False
+            for s in sources:
+                if ptr[s] + 1 < len(streams.get(s, [])):
+                    ptr[s] += 1
+                    advanced = True
+                    break
+            if not advanced:
+                return
+            continue
+        assign, chosen_idx = result
+        yield _emit(assign, label, seen_ids)
+        # INV-B:全成员非重叠消费,按被选实例真实整数下标推进。
+        for lab in assign:
+            ptr[lab] = chosen_idx[lab] + 1
+
+
+def _pway_merge(
+    g: Graph,
+    streams: Dict[str, List[Event]],
+    label: str,
+    seen_ids: Dict[str, int],
+    produce,
+) -> Iterator[PatternMatch]:
+    """逐 WCC 独立生产 + p 路 end_idx 升序归并(redesign §2.0)。
+
+    `produce(subgraph, streams, label, seen_ids) -> Iterator[PatternMatch]`
+    为单 WCC 生产器(`_produce_wcc` / `_kof_produce_wcc` 偏函数)。
+    单 WCC 时直接透传(零缓冲);多 WCC 时 ≤(p−1) 结构常数级前沿缓冲。
+    """
+    comps = _wcc(g)
+
+    if len(comps) == 1:
+        # 单 WCC(Chain 恒为此;Kof 经 validate_kof 强制为此):零缓冲透传。
+        yield from produce(g, streams, label, seen_ids)
+        return
+
+    # 多 WCC:p 路归并,按 emitted end_idx 升序(各分量内已升序)。
+    gens = [
+        produce(_subgraph(g, set(c)), streams, label, seen_ids)
+        for c in comps
+    ]
+    heads: List[Optional[PatternMatch]] = [next(gen, None) for gen in gens]
+
+    while True:
+        best = -1
+        for idx, h in enumerate(heads):
+            if h is None:
+                continue
+            if best == -1 or h.end_idx < heads[best].end_idx:
+                best = idx
+        if best == -1:
+            return
+        yield heads[best]
+        heads[best] = next(gens[best], None)
+
+
 def advance_kof(
     g: Graph,
     streams: Dict[str, List[Event]],
@@ -278,82 +427,33 @@ def advance_kof(
     k: int,
     label: str,
 ) -> Iterator[PatternMatch]:
-    """k-of-n 边松弛滑窗计数(redesign §3.3/§5)。
+    """k-of-n 边松弛 = **LEF-DFS 结构姊妹**(redesign §10,权威)。
 
-    n = edges 条数,k = 至少须满足的边数;满足条件 = 两端事件均已选且
-    gap 在 [min_gap, max_gap] 内。算法为**滑窗计数**,非 LEF-DFS:
+    n = edges 条数,k = 至少须满足的边数。一次命中 = 全标签赋值 `φ` 且
+    `|{e: min_gap(e) ≤ φ(e.later).start − φ(e.earlier).end ≤ max_gap(e)}|
+    ≥ k`(**全标签在场,no partial**;某标签后缀无候选 ⇒ 该前缀无命中)。
 
-    - 锚 = `topo_order(g)[0]`(最早拓扑序源节点)的每个实例;
-    - 对每个锚实例:窗口 `[a.start_idx, a.start_idx + horizon]`;
-    - 每个非锚标签:在窗口内用 start-first key `(start_idx, end_idx, position)`
-      取最小的候选(redesign §2.2);
-    - 统计满足的边数,>= k 即命中;
-    - `event_id` 消歧共享 detect()-局部 `seen_ids`(redesign §7,不再 Kof
-      专属),复用 `_emit` — 保证 `#<seq>` 约定与 LEF-DFS 字节级一致;
-    - 封口:`buffer` 按 end_idx 排序;锚前移后 `end_idx <= 本锚 start` 的
-      匹配弹出;最终全量弹出;输出保证 end_idx 非递减。
+    成员组合枚举/回溯(`_kof_dfs`,修 CRITICAL-1:松弛破坏全满足单调,
+    不能逐标签盲取 argmin)+ 叶层 k-of-n 接受 + 全成员非重叠消费(INV-B,
+    §6 Part D)。复用 `_wcc`/`_subgraph`/`topo_order`/`_emit`(共享
+    detect()-局部 `seen_ids`+`#seq`,与 LEF-DFS **字节一致**)+ 与
+    `advance_dag` 同一 p 路 end_idx 归并;`_lef_dfs` 不改(独立
+    `_kof_dfs`,不污染已打磨核心)。
 
-    复杂度 O(ΣN·n),n=边数(非 LEF-DFS 指数情形)。
+    缓冲(诚实账,redesign §10.6):复用 LEF 生产循环 ⇒ §6 Part D 单调性
+    证明(仅依赖全成员非重叠消费 + end_idx 升序输入,**与接受谓词无关**)
+    对 Kof 成立 ⇒ 缓冲 = **单 WCC 零 / 多 WCC ≤(p−1)**(与 Dag 同);
+    产出天然 end_idx 升序。`validate_kof` 已强制单 WCC ⇒ 常态零缓冲。
+    **代价转移到时间**:Kof 无窗口剪枝(松弛内在,不能据某边裁候选),
+    `_kof_dfs` 最坏 `∏_{L∈V}|后缀(L)|`,**标签数维度指数,且为常态**
+    (非如 Dag 仅病态)——诚实承认,不粉饰。
     """
-    order = topo_order(g)
-    finite_max = [e.max_gap for e in edges if e.max_gap != float("inf")]
-    horizon = max(finite_max) if finite_max else None
-
-    buffer: List[PatternMatch] = []
     seen_ids: Dict[str, int] = {}
 
-    def _flush(upto_end: Optional[int]) -> Iterator[PatternMatch]:
-        buffer.sort(key=lambda m: m.end_idx)
-        keep: List[PatternMatch] = []
-        for m in buffer:
-            if upto_end is None or m.end_idx <= upto_end:
-                yield m
-            else:
-                keep.append(m)
-        buffer[:] = keep
+    def _produce(sub_g, sub_streams, lab, sids):
+        return _kof_produce_wcc(sub_g, sub_streams, edges, k, lab, sids)
 
-    anchor_label = order[0]
-    anchor_stream = streams[anchor_label]
-
-    for a in anchor_stream:
-        assign: Dict[str, Event] = {anchor_label: a}
-        # 候选下界:只要事件在锚之后开始即纳入(保证非重叠;无上界过滤,
-        # gap 约束由 sat 计数来评估)。horizon 仅用于 buffer 封口。
-        win_lo = a.start_idx
-
-        # 每个非锚标签:取 win_lo 之后 start-first key 最小的候选
-        for lab in order:
-            if lab == anchor_label:
-                continue
-            lab_stream = streams[lab]
-            # start-first 候选:遍历 end_idx-sorted 流,筛出 start >= win_lo 的,
-            # 取 key=(start_idx, end_idx, position) 最小(redesign §2.2)。
-            best: Optional[Tuple[Event, int]] = None
-            for i, cand in enumerate(lab_stream):
-                if cand.start_idx >= win_lo:
-                    key = (cand.start_idx, cand.end_idx, i)
-                    if best is None or key < (
-                        best[0].start_idx, best[0].end_idx, best[1]
-                    ):
-                        best = (cand, i)
-            if best is not None:
-                assign[lab] = best[0]
-
-        # 统计满足的边数
-        sat = 0
-        for e in edges:
-            if e.earlier in assign and e.later in assign:
-                gap = assign[e.later].start_idx - assign[e.earlier].end_idx
-                if e.min_gap <= gap <= e.max_gap:
-                    sat += 1
-
-        if sat >= k:
-            buffer.append(_emit(assign, label, seen_ids))
-
-        # 锚前移后封口:end_idx <= 本锚 start_idx 的匹配已无后续可超越
-        yield from _flush(a.start_idx)
-
-    yield from _flush(None)  # 收尾全量弹出
+    yield from _pway_merge(g, streams, label, seen_ids, _produce)
 
 
 def advance_dag(
@@ -368,30 +468,4 @@ def advance_dag(
     共享,保证单 run event_id 唯一(redesign §7)。
     """
     seen_ids: Dict[str, int] = {}
-    comps = _wcc(g)
-
-    if len(comps) == 1:
-        # 单 WCC(Chain 恒为此;含全连通 Dag):无需归并。
-        yield from _produce_wcc(g, streams, label, seen_ids)
-        return
-
-    # 多 WCC:p 路归并,按 emitted end_idx 升序(各分量内已升序)。
-    gens = [
-        _produce_wcc(_subgraph(g, set(c)), streams, label, seen_ids)
-        for c in comps
-    ]
-    heads: List[Optional[PatternMatch]] = []
-    for gen in gens:
-        heads.append(next(gen, None))
-
-    while True:
-        best = -1
-        for idx, h in enumerate(heads):
-            if h is None:
-                continue
-            if best == -1 or h.end_idx < heads[best].end_idx:
-                best = idx
-        if best == -1:
-            return
-        yield heads[best]
-        heads[best] = next(gens[best], None)
+    yield from _pway_merge(g, streams, label, seen_ids, _produce_wcc)

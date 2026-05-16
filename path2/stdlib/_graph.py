@@ -118,6 +118,13 @@ def validate_kof(g: Graph, k: int, n_edges: int) -> None:
         raise ValueError(
             f"Kof k={k} 越界,须 1 <= k <= 边数({n_edges})"
         )
+    # redesign §10.7:跨 WCC 的 k-of-n 与逐 WCC 分解(缓冲/产出顺序所需)
+    # 冲突且无明确表达意义 ⇒ Kof edges 必须弱连通(单 WCC)。
+    if not _connected(g):
+        raise ValueError(
+            "Kof edges 必须弱连通(单 WCC):多个不连通分量的 k-of-n "
+            "无明确语义(redesign §10.7)"
+        )
 
 
 def validate_neg(forward: Graph, forbid: List[TemporalEdge]) -> None:
