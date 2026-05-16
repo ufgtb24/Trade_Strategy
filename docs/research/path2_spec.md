@@ -1,7 +1,7 @@
 # Path 2 框架规范(Spec)
 
-> **版本**:v0.1(2026-05-12)
-> **状态**:规范初稿,等待 plan 阶段验证
+> **版本**:v0.1(2026-05-12);**§9 附 v0.2 反馈**(2026-05-16,协议层 plan 阶段实现回写)
+> **状态**:协议层已实现并通过两阶段 review;v0.1 正文保持原样,实测发现的偏差/补强集中记于 **§9**(read v0.1 时凡涉及 §1.3 / §5.1 请并看 §9)
 > **目的**:精确定义 Path 2 的协议表面 — Event、Detector、关系算子、TemporalEdge、schema 不变式。开发者**只读本文档即可实现 Path 2**,不需要回头看研究 / 教程类文档。
 >
 > **范围声明**:Path 2 是独立的事件表达框架。本规范**不涉及** mining / TPE / 因子框架 / FactorInfo / FeatureCalculator 等概念 — 那些属于既有因子框架的下游优化措施。Path 2 的下游流水线(若需要)另作规范。
@@ -153,7 +153,7 @@ class TemporalEdge:
     earlier: str            # 较早事件的 event_id
     later: str              # 较晚事件的 event_id
     min_gap: int = 0        # 最小间隔(含),单位:bar
-    max_gap: int = math.inf # 最大间隔(含),单位:bar;math.inf 表示无上限
+    max_gap: int = math.inf # 最大间隔(含),单位:bar;math.inf 表示无上限  ← v0.2:类型应为 float(见 §9 偏差②)
 ```
 
 #### 1.3.1 gap 的精确定义
@@ -323,7 +323,7 @@ class Pattern:
 
 | 违规 | 错误类型 | 抛错位置 |
 |---|---|---|
-| Event 子类没用 `@dataclass(frozen=True)` | `TypeError` | base class `__init_subclass__` |
+| Event 子类没用 `@dataclass(frozen=True)` | `TypeError` | ~~base class `__init_subclass__`~~ → **Python `@dataclass` 装饰期原生强制**(见 §9 偏差①) |
 | Detector yield 出 Event 的某 float 字段是 NaN(若 runtime check 开启)| `ValueError` | `Event.__post_init__` |
 | Detector yield 顺序不符 `end_idx` 升序(若 runtime check 开启)| `ValueError` | Detector wrapper |
 | `start_idx > end_idx` | `ValueError` | `Event.__post_init__` |
@@ -374,7 +374,39 @@ class Pattern:
 ## 8. 版本与变更
 
 - **v0.1**(2026-05-12):初稿。基于 `path2_advantages.md` / `path2_vs_condition_ind_coverage.md` / `framework_expressiveness_shootout.md` / `path2_tutorial.md` 的累计共识固化
+- **v0.2 反馈**(2026-05-16):协议层按 `docs/superpowers/plans/2026-05-16-path2-protocol-layer.md` 实现并通过两阶段 review。实测发现的偏差/补强集中记于 §9,待正式 v0.2 修订时并入正文
 - 后续变更通过 plan 阶段的实现反馈推动 v0.2+
+
+---
+
+## 9. v0.2 反馈(plan 阶段实现回写,2026-05-16)
+
+> v0.1 正文未改动(仅 §1.3 / §5.1 加了指向本节的行内标记)。以下为协议层实现实测得到的、需在正式 v0.2 修订并入正文的条目。
+
+### 9.1 偏差(spec v0.1 写法与现实不符)
+
+| # | v0.1 原文 | 实测现实 | v0.2 应改为 |
+|---|---|---|---|
+| ① | §1.1.2 / §5.1:frozen 由协议层在 `__init_subclass__` 抛 `TypeError` | Python `@dataclass` 在**装饰期**即拒绝"非 frozen 子类继承 frozen `Event`"(`TypeError: cannot inherit non-frozen dataclass from a frozen one`),比任何协议层自检更早更强。原设想的 `__init_subclass__`/`__post_init__` 自检为**不可达死代码**(已实测;唯一进入路径是完全不加 `@dataclass` 的纯子类,而它继承 `Event` 的 `frozen=True` 而判定通过) | §5.1 frozen 行改为"由 Python `@dataclass` 装饰期原生强制,非协议层自检";§1.1.2 删除"实现层应在 base class 加 runtime check"的 frozen 自检要求 |
+| ② | §1.3:`max_gap: int = math.inf` | `math.inf` 是 `float`,`int` 注解类型不自洽 | `max_gap: float = math.inf` |
+
+### 9.2 补强项(spec §5 是最小必报集,实现额外加的合理卫语,不与 v0.1 冲突)
+
+| 卫语 | 错误类型 | 抛出位置 | 建议 |
+|---|---|---|---|
+| `start_idx`/`end_idx` 非 `int` | `TypeError` | `Event.__post_init__` | v0.2 纳入 §5.1 |
+| `run()` yield 出非 `Event` 对象 | `TypeError` | `run()`(Detector wrapper) | v0.2 纳入 §5.1 |
+| `TemporalEdge` `min_gap<0` 或 `min_gap>max_gap` | `ValueError` | `TemporalEdge.__post_init__` | v0.2 纳入 §5.1(spec §5.2 原列为"不必报错",实现选择报错,属合理收紧) |
+
+### 9.3 已知边界(v0.2 待决策,当前知情保留)
+
+- `isinstance(x, int)` 接受 `bool`(`bool ⊂ int`):`start_idx=True` 会通过 int 卫语(`True`→1,数值上区间不变式仍成立)。当前**知情保留**,不报错。v0.2 需决策是否显式拒绝 `bool`(`isinstance(x, bool) or not isinstance(x, int)`)。
+
+### 9.4 实现产物指针
+
+- 设计稿:`docs/superpowers/specs/2026-05-16-path2-protocol-layer-design.md`(§2.4 已同步偏差①)
+- 实现 plan:`docs/superpowers/plans/2026-05-16-path2-protocol-layer.md`
+- 代码:`path2/`(`config` / `core` / `operators` / `pattern` / `runner`),50 测试全过
 
 ---
 
