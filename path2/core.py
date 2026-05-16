@@ -46,3 +46,22 @@ class Event(ABC):
             if isinstance(getattr(self, f.name), (int, float))
             and not isinstance(getattr(self, f.name), bool)
         }
+
+
+@dataclass(frozen=True)
+class TemporalEdge:
+    """显式声明两个事件之间的时间关系约束。
+
+    gap = later.start_idx - earlier.end_idx
+    """
+
+    earlier: str
+    later: str
+    min_gap: int = 0
+    max_gap: float = math.inf
+
+    def __post_init__(self) -> None:
+        if config.RUNTIME_CHECKS and (
+            self.min_gap < 0 or self.min_gap > self.max_gap
+        ):
+            raise ValueError(f"非法 gap 区间 [{self.min_gap},{self.max_gap}]")
