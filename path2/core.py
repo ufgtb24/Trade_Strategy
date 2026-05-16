@@ -65,3 +65,10 @@ class TemporalEdge:
             self.min_gap < 0 or self.min_gap > self.max_gap
         ):
             raise ValueError(f"非法 gap 区间 [{self.min_gap},{self.max_gap}]")
+
+
+@runtime_checkable
+class Detector(Protocol):
+    """从下层数据 / 事件流产生上层 Event 的生产者。"""
+
+    def detect(self, source: Any) -> Iterator[Event]: ...
