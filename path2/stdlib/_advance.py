@@ -91,14 +91,12 @@ def _subgraph(g: Graph, nodes: Set[str]) -> Graph:
     ]
     if sub_edges:
         return build_graph(sub_edges)
-    # 单孤立节点分量(无边)——理论上不出现于合法 Detector,但保持健壮:
-    sg = Graph()
-    for n in nodes:
-        sg.nodes.add(n)
-        sg.adj.setdefault(n, [])
-        sg.indeg.setdefault(n, 0)
-        sg.outdeg.setdefault(n, 0)
-    return sg
+    # 每个 Graph 节点都源自一条 edge 端点(build_graph 不变式);一个 WCC
+    # 至少含一条内部边 ⇒ sub_edges 永不为空。空 = 上游不变式被破坏,
+    # 显式炸而非静默吞掉(否则会用空子图掩盖未来的不变式回归)。
+    raise AssertionError(
+        "unreachable: every Graph node originates from an edge endpoint"
+    )
 
 
 def _emit(
@@ -254,6 +252,9 @@ def _produce_wcc(
         if result is None:
             # 当前消费前沿无新 LEF。按非重叠语义推进最早仍有备选的源后重试;
             # 所有源耗尽则结束(终止性:每次产出 ≥1 指针严格前移)。
+            # 只推进第一个源是无损的:_lef_dfs 已对全节点做完整回溯,证明
+            # 当前 ptr 组合下不存在任何可行匹配;故向前滑动任一个源都不会
+            # 跳过匹配,后续 LEF 调用会对所有节点备选重新探索。
             advanced = False
             for s in sources:
                 if ptr[s] + 1 < len(streams.get(s, [])):

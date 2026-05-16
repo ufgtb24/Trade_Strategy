@@ -341,3 +341,158 @@ def test_run_invariants():
         for tup in m.role_index.values():
             starts = [c.start_idx for c in tup]
             assert starts == sorted(starts)
+
+
+# ---------------------------------------------------------------------------
+# 差分回归(守护 INV-C / v2-break 类):随机小用例下,advance_dag 输出必须
+# 与一个 *无 memo* 的独立参考实现逐匹配一致。
+#
+# 参考实现刻意 NOT 含 INV-C 前沿割记忆,其余语义(逐 WCC 独立 LEF + 全节点
+# 完整回溯 + 全成员非重叠消费 + p 路 end_idx 升序归并)与 _produce_wcc 等价。
+# 任何 memo 过剪(把 v2-break 类的合法分支误剪)都会让两者发散 → 测试爆。
+# ---------------------------------------------------------------------------
+import math
+import random
+
+from path2.stdlib._graph import topo_order
+from path2.stdlib._advance import _wcc, _subgraph, _preds
+
+
+def _ref_lef_dfs_no_memo(order, k, assign, chosen, ptr, streams, pred):
+    """无 memo 的 LEF-DFS 参考(全节点完整回溯,等同 _lef_dfs 但不剪)。"""
+    if k == len(order):
+        return dict(assign), dict(chosen)
+    v = order[k]
+    ps = pred[v]
+    lst = streams[v]
+    if not ps:
+        lo, hi = float("-inf"), float("inf")
+    else:
+        lo = max(assign[u].end_idx + e.min_gap for u, e in ps)
+        hi = min(assign[u].end_idx + e.max_gap for u, e in ps)
+        if lo > hi:
+            return None
+    cands = [
+        (lst[i], i)
+        for i in range(ptr[v], len(lst))
+        if lo <= lst[i].start_idx <= hi
+    ]
+    cands.sort(key=lambda ei: (ei[0].start_idx, ei[0].end_idx, ei[1]))
+    # 等-end 塌缩(代表 = 簇内 key argmin;输入已按 key 升序)
+    seen_end, collapsed = set(), []
+    for e, i in cands:
+        if e.end_idx in seen_end:
+            continue
+        seen_end.add(e.end_idx)
+        collapsed.append((e, i))
+    for e, i in collapsed:
+        assign[v] = e
+        chosen[v] = i
+        r = _ref_lef_dfs_no_memo(
+            order, k + 1, assign, chosen, ptr, streams, pred
+        )
+        if r is not None:
+            return r
+        del assign[v]
+        del chosen[v]
+    return None
+
+
+def _ref_produce_wcc_no_memo(g, streams):
+    order = topo_order(g)
+    pred = _preds(g)
+    ptr = {n: 0 for n in g.nodes}
+    sources = [n for n in order if g.indeg[n] == 0]
+    out = []
+    while True:
+        if any(ptr[s] >= len(streams.get(s, [])) for s in sources):
+            return out
+        result = _ref_lef_dfs_no_memo(order, 0, {}, {}, ptr, streams, pred)
+        if result is None:
+            advanced = False
+            for s in sources:
+                if ptr[s] + 1 < len(streams.get(s, [])):
+                    ptr[s] += 1
+                    advanced = True
+                    break
+            if not advanced:
+                return out
+            continue
+        assign, chosen = result
+        members = sorted(assign.values(), key=lambda e: e.start_idx)
+        out.append(tuple((c.start_idx, c.end_idx) for c in members))
+        for lab in assign:
+            ptr[lab] = chosen[lab] + 1
+
+
+def _ref_advance_no_memo(g, streams):
+    """无 memo 参考:逐 WCC 独立 + p 路 end_idx 升序归并。"""
+    comps = _wcc(g)
+    seqs = [
+        _ref_produce_wcc_no_memo(_subgraph(g, set(c)), streams)
+        for c in comps
+    ]
+    idxs = [0] * len(seqs)
+    merged = []
+    while True:
+        best = -1
+        for j, seq in enumerate(seqs):
+            if idxs[j] >= len(seq):
+                continue
+            cur_end = max(e for _, e in seq[idxs[j]])
+            if best == -1:
+                best, best_end = j, cur_end
+            elif cur_end < best_end:
+                best, best_end = j, cur_end
+        if best == -1:
+            return merged
+        merged.append(seqs[best][idxs[best]])
+        idxs[best] += 1
+
+
+def test_differential_vs_memo_free_oracle():
+    rng = random.Random(0xC0FFEE)
+    LABELS = ["A", "B", "C", "D"]
+    trials = 400
+    for t in range(trials):
+        n_edges = rng.randint(1, 5)
+        edges = []
+        for _ in range(n_edges):
+            u, v = rng.sample(LABELS, 2)
+            # 保证 DAG:边方向按 LABELS 字典序(earlier < later)
+            if u > v:
+                u, v = v, u
+            min_gap = rng.randint(0, 3)
+            max_gap = rng.choice([min_gap, min_gap + rng.randint(0, 4),
+                                   math.inf])
+            edges.append(TemporalEdge(u, v, min_gap=min_gap,
+                                      max_gap=max_gap))
+        try:
+            g = build_graph(edges)
+            topo_order(g)  # 跳过偶发自环/重边导致的退化
+        except ValueError:
+            continue
+        used = sorted(g.nodes)
+        streams = {}
+        for lab in used:
+            cnt = rng.randint(0, 4)
+            evs = []
+            for _ in range(cnt):
+                s = rng.randint(0, 8)
+                e = s + rng.randint(0, 6)
+                evs.append(ev(s, e))
+            # 输入侧不变式:按 end_idx 升序(start 可非单调,允许重复)
+            evs.sort(key=lambda x: x.end_idx)
+            streams[lab] = evs
+
+        got = [
+            tuple((c.start_idx, c.end_idx) for c in m.children)
+            for m in advance_dag(g, streams, label="dag")
+        ]
+        expected = _ref_advance_no_memo(g, streams)
+        assert got == expected, (
+            f"trial {t} divergence (INV-C regression?)\n"
+            f"edges={[(e.earlier, e.later, e.min_gap, e.max_gap) for e in edges]}\n"
+            f"streams={{ {', '.join(f'{k}:{[(x.start_idx, x.end_idx) for x in v]}' for k, v in streams.items())} }}\n"
+            f"got={got}\nexpected={expected}"
+        )
