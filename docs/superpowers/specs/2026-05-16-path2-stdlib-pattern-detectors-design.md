@@ -77,12 +77,14 @@ class PatternMatch(Event):
 
 - **归属**:#3/#4 **共享 stdlib 件** `default_event_id(kind: str, start_idx: int, end_idx: int) -> str`。#3 spec 内联 5 行私有桩实现契约,#4 落地后替换为共享件,**签名冻结不变** → 零改 #3。
 - **格式**:`f"{kind}_{start_idx}_{end_idx}"`,kind = `pattern_label`,沿用 dogfood `vc_{s}_{e}` 惯例。
-- **run() 单次唯一性**:Chain/Dag/Neg 在 earliest-feasible + 非重叠下 (start,end) 区间天然不重复 → `{label}_{s}_{e}` 足够。**Kof 例外**:同窗口选不同成员可产出 (s,e) 相同的不同匹配 → 追加单调序号 `#<seq>`(`kof_30_45`、`kof_30_45#1`)。seq 是 `detect()` 内局部计数器(协议 §1.2.4 状态局部于 detect(),单 run 唯一天然成立;跨 run 不要求,符合 §1.1.1)。常态(无撞)id 仍是干净的 `{label}_{s}_{e}`。
-- **已知边界**:Kof `#<seq>` 兜底使 event_id 跨 run 不稳定;协议 §1.1.1 只要求单 run 唯一,不违约;远期 #7 流水线若需跨 run 稳定 id,此处需重审。现记为已知边界,不阻塞 #3。
+- **run() 单次唯一性(已被 redesign 取代 — CRITICAL-3)**:~~Chain/Dag/Neg 在 earliest-feasible + 非重叠下 (start,end) 天然不重复~~ —— **该断言为假**(值相等实例 / 同区间不同成员同样会撞;redesign §1 CRITICAL-3)。**修正**:`#<seq>` 改为**无条件、四 Detector 共享**的 `detect()`-局部 `seen_ids` 去重(`base=f"{label}_{s}_{e}"`,撞则 `base#<n>` n 从 1)。生产侧 yield 前保证唯一,`run()` 校验为后盾。`pattern_label` 不得含 `#`(构造期 `ValueError`)。详见 redesign §7。
+- **已知边界**:`#<seq>` 使 event_id 跨 run 不稳定;协议 §1.1.1 只要求单 run 唯一,不违约;远期 #7 流水线若需跨 run 稳定 id 须重审。
 
 ---
 
 ## 3. 四种 Detector:语义 + 最优实现
+
+> **⚠️ 算法权威性(2026-05-17 重设计后)**:本 §3 的**约束推进算法、复杂度、缓冲**已被 `docs/research/path2_algo_core_redesign.md`(下称 redesign)**取代为权威**。原"单调双指针 O(ΣN) 永不回退"(§3.1/§3.2)经 agent team 3 轮对抗证伪查出 5 个根缺陷(C1 源-only 回溯不完整 / C2 多源只回溯首源 / C3 单 run event_id 重复 / C4 不健全 start_idx 单调假设 / I1 `.index` 值相等错位),**已推翻**。修正核心 = **LEF-DFS**(redesign §3,INV-A/B/C 三态分离 + 前沿割记忆)。本节以下小节的**语义**(命中定义、edges 拓扑、Kof k-of-n、Neg forbid)仍有效;**"最优实现 O(ΣN)" 与 "零缓冲" 字样作废**,以 redesign §3/§5/§6 为准。`earliest-feasible` 精确定义见 redesign §2.2(start-first key,dogfood report §5 为权威)。协议层 / spec 零改动不变。
 
 ### 3.0 通用前置层(4 种共享,#3 自包含)
 
@@ -98,7 +100,7 @@ class PatternMatch(Event):
 | Detector | edges 必须构成 | 构造期校验(失败即 ValueError) |
 |---|---|---|
 | **Chain** | 单一线性路径:节点入度≤1、出度≤1,弱连通,恰一源一汇,无环 | 任一节点入/出度 >1 / 不连通 / 有环 → 报错 |
-| **Dag** | 任意 DAG(多入度多出度、多源多汇) | 环(拓扑排序失败)/ 孤立节点 → 报错 |
+| **Dag** | 任意 DAG(多入度多出度、多源多汇;**多 WCC 合法**) | 环(拓扑排序失败)/ **度为 0 的未引用孤立节点** → 报错。注:"孤立节点"仅指度为 0 的未引用节点;**多弱连通分量(各节点度≥1 的多个不连通子 DAG)合法**,非此处所禁(redesign §8.2 §3.0.1 裁定)。`validate_dag` 须新增度为 0 拒绝(关闭既有 plan 缺口) |
 | **Kof** | 节点集 + 候选 edge 集(edges 端点定义 n 个 label) | k 未声明 / k<1 / k>边数 / 端点 label 数<2 → 报错 |
 | **Neg** | 正向子图(Chain 或 Dag 形态)+ ≥1 条否定 edge | 正向子图按 Chain/Dag 校验;无否定 edge / 否定 edge 的 later 不在正向子图 → 报错 |
 
@@ -106,15 +108,15 @@ class PatternMatch(Event):
 
 - **语义**:线性路径 `L1→...→Lm`。一次命中 = 实例序列 `(e1∈L1,...,em∈Lm)`,每条相邻边 gap 满足 `min_gap ≤ e_{i+1}.start_idx - e_i.end_idx ≤ max_gap`。
 - **锚定** = earliest-feasible + 非重叠贪心:从最早 e1 起锚,每节贪心取满足前一节 gap 的**最早可行实例**;凑齐 m 节产出一个 PatternMatch,下次起锚从所有已用实例之后继续。**一起锚一匹配,不枚举组合**(枚举是 Kof 的事)。
-- **最优实现**:单调双指针 O(ΣN)。m 个游标各指物化列表;`e_i` 定后 `p_{i+1}` 单调右移到首个满足 min_gap 处,检查 max_gap;超界则 e1 指针 +1 重试;凑齐则所有指针跳到已用实例之后。earliest-feasible + min_gap 单调 ⇒ 指针**永不回退** ⇒ 线性。
-- **封口**:跨匹配成员严格后移 ⇒ 产出 end_idx 天然单调不减 ⇒ 凑齐即可 yield,**零缓冲**。
+- **实现(已被 redesign 取代)**:~~单调双指针 O(ΣN) 永不回退~~ **作废**(redesign CRITICAL-1/4)。修正实现 = LEF-DFS(redesign §3),Chain 结构上前沿割宽度 `f=1` ⇒ **多项式 / 近线性**(redesign §5 headline);非旧的失实 O(ΣN)。
+- **缓冲**:Chain `validate_chain` 强制 `p=1`(单源单汇连通)⇒ **literally 零缓冲**(redesign §6,此项 Chain 仍成立)。
 
 ### 3.2 Dag
 
 - **语义**:为每节点选一实例使**所有边** gap 同时满足。多入度节点 `c`(`a→c`,`b→c`):start_idx 下界 = `max(各前驱.end_idx + min_gap)`,上界 = `min(各前驱.end_idx + max_gap)`;下界>上界则起锚失败。
 - **锚定**:earliest-feasible 推广到拓扑序,非重叠贪心,一起锚一匹配。多源 DAG:多个入度 0 节点各起锚指针,按"所有源实例 max end_idx 最早"贪心。
-- **最优实现**:拓扑序(构造期算好可缓存)+ 区间剪枝。节点 v 可行 start 区间 = ∩(各已定前驱施加的 [u.end+min_gap, u.end+max_gap]);指针单调右移到下界,超上界则回溯到最近"有备选"的源指针 +1(回溯受非重叠+单调约束,均摊近线性)。复杂度 O(ΣN·d),d=最大入度(实务 2~3)≈O(ΣN)。
-- **封口**:end_idx = max(成员 end_idx);earliest-feasible+非重叠下产出 end_idx 单调不减 ⇒ **零缓冲**。
+- **实现(已被 redesign 取代)**:~~拓扑序 + 区间剪枝 + 源指针回溯,O(ΣN·d)~~ **作废**(redesign CRITICAL-1/2:源-only 回溯不完整 + 多源只回溯首源)。修正实现 = LEF-DFS 全节点回溯(redesign §3)。**诚实复杂度**:`Θ(M·m·Δ^f·w)` 时间 / `Θ(Δ^f)` 空间,`f`=前沿割宽度(非最大入度 d);有界 `f` 多项式,病态宽前沿 DAG **时间空间同为指数**(内在 interval-CSP-over-DAG 难度,显式承认;redesign §5)。
+- **缓冲**:多 WCC 下**非零** —— `≤(p−1)` 结构常数级前沿(`p`=WCC 数,数据无关结构常数,与输入规模无关;redesign §6)。**"零缓冲"对 Dag 作废**。
 
 ### 3.3 Kof
 
@@ -130,19 +132,21 @@ class PatternMatch(Event):
 - **forbid 中一条 `TemporalEdge(earlier='A', later='N', min_gap, max_gap)` 语义**:正向匹配里扮演 A 的实例 `e_A` 定后,**不存在**任何标签 N 实例 `e_N` 满足 `min_gap ≤ e_N.start_idx − e_A.end_idx ≤ max_gap`;存在即该匹配作废。
 - **never_before**:"A 之前 W 内不得有 N" = `forbid=[TemporalEdge(earlier='N', later='A', min_gap=0, max_gap=W)]`(语义="不存在 N 使 A 在 N 后 W 内"="A 前 W 无 N")。gap 公式 `later.start - earlier.end` 原样复用,无新公式。
 - **N 的实例不进 children/role_index**(否定标签是排除条件非匹配成员;§2.2 已定,此处闭合)。`role_index` 只含正向标签。
-- **最优实现**:先按正向子图(Chain/Dag)跑候选匹配 O(ΣN);对每候选每条 forbid edge,在否定标签物化列表上双指针检查区间内是否存在实例(指针随候选 end_idx 单调前移 → O(ΣN_neg) 全程)。存在则丢弃,全 forbid 通过则产出。总 O(ΣN)。
-- **封口**:不改正向 end_idx,只做通过/丢弃过滤;正向升序产出过滤后仍升序 ⇒ **零缓冲**。
+- **实现**:正向子图复用**修正核心 LEF-DFS**(redesign §3,非旧 O(ΣN) 描述);对每候选每条 forbid edge,在否定标签物化列表上按候选 end_idx 单调前移的双指针检查区间内是否存在实例,存在则丢弃,全 forbid 通过则产出。复杂度继承正向(redesign §5)。
+- **缓冲**:谓词过滤不改序;缓冲**继承正向子图**(正向=Chain⇒零;正向=Dag⇒≤(p−1);redesign §6),非无条件"零"。
 
-### 3.5 "输入物化、输出有序流"调和
+### 3.5 "输入物化、输出有序流"调和(已被 redesign §6 取代为权威)
 
-| Detector | 产出 end_idx 天然升序 | 缓冲 | 封口判据 |
-|---|---|---|---|
-| Chain | 是(earliest-feasible+非重叠⇒成员严格后移) | 零缓冲 | 凑齐 m 节即 yield |
-| Dag | 是(偏序保持不变式) | 零缓冲 | 所有节点定下即 yield |
-| Neg | 是(继承正向,谓词过滤不改序) | 零缓冲 | 正向封口 + forbid 通过 |
-| **Kof** | **否**(松弛破坏单调) | **有界小缓冲**(max_gap 限界) | 输入 end_idx 越过锚 max_gap 视界 |
+> 原扁平"零缓冲 Chain/Dag/Neg"是**被纠正的过度声明**(多 WCC Dag 下为假)。逐 Detector 精确界(redesign §6):
 
-输入物化只为前瞻(吃掉 dogfood §5 头号痛点:用户不再手写 `list(spikes)`+贪心),不影响输出有序。earliest-feasible 锚定的决定性价值 = 让 Chain/Dag/Neg 产出顺序自动等于 end_idx 升序,§1.2.2 零成本满足。Kof 唯一例外但缓冲被 max_gap 严格限界,不退化为全量。"输入物化、输出有序流"**不阻碍任何最优实现**。
+| Detector | 产出 end_idx 天然升序 | 缓冲界(权威:redesign §6) |
+|---|---|---|
+| Chain | 是 | **零缓冲**(`validate_chain` 强制 `p=1` 结构保证) |
+| Dag | 是(各 WCC 升序,p 路归并仍升序) | **≤(p−1) 结构常数级前沿**,`p`=WCC 数,数据无关、与输入规模无关。**非"零"** |
+| Neg | 是(继承正向,谓词过滤不改序) | **条件**:正向=Chain⇒零;正向=Dag⇒≤(p−1) |
+| **Kof** | **否**(松弛破坏单调) | **有界 max_gap 视界缓冲**(非全量) |
+
+**承重不变式**:非重叠**全成员**消费是 Chain/Dag/Neg 满足 §1.2.2 零/有界缓冲的**承重正确性不变式**(redesign §6 Part D);**部分消费会破坏 end_idx 单调,不健全**。输入物化只为前瞻(吃掉 dogfood §5 头号痛点),不影响输出有序。
 
 ---
 
@@ -162,7 +166,7 @@ Neg  (*positional_streams, edges=[...], forbid=[...], key=None, label=None,
 ```
 
 - 均实现 `Detector` 协议:`detect(self, source) -> Iterator[PatternMatch]`,经 `run()` 驱动。
-- `anchoring` 默认值拍死(Chain/Dag/Neg=`earliest-feasible`,Kof=`non-overlapping-greedy`,沿用 dogfood VolCluster 已验证贪心),均允许显式覆盖。dogfood §5 第二痛点闭合。
+- `anchoring` 默认值拍死(Chain/Dag/Neg=`earliest-feasible`,Kof=`non-overlapping-greedy`),#3 仅实现默认,非默认值 → `ValueError`(plan 决策)。**`earliest-feasible` 精确定义见 redesign §2.2**:`key=(start_idx, end_idx, position_in_S[L])` 字典序最小可行赋值(start-first;position 为终极 tiebreak,不依赖 event_id 唯一性);权威依据 = dogfood report §5"窗口锚定首成员" + vc_* 实际首成员 start 锚定。
 - 构造期(`__init__`)做全部静态校验(拓扑、标签解析可行性、k 范围、forbid 存在性、环检测)。
 
 ---
