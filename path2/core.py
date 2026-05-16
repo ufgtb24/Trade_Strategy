@@ -28,6 +28,8 @@ class Event(ABC):
         # 会在类定义时即抛 TypeError),无需在此自检。
         if not isinstance(self.start_idx, int) or not isinstance(self.end_idx, int):
             raise TypeError("start_idx/end_idx 必须是 int")
+        if type(self.start_idx) is bool or type(self.end_idx) is bool:
+            raise TypeError("start_idx/end_idx 不能是 bool(bool ⊂ int,语义错误)")
         if self.start_idx < 0 or self.start_idx > self.end_idx:
             raise ValueError(f"非法区间 [{self.start_idx},{self.end_idx}]")
         for f in dataclasses.fields(self):

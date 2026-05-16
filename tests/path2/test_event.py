@@ -73,3 +73,13 @@ def test_checks_off_allows_invalid():
     config.set_runtime_checks(False)
     e = _Vol(event_id="v", start_idx=9, end_idx=3, ratio=math.nan)
     assert e.start_idx == 9 and e.end_idx == 3   # 未抛错
+
+
+def test_bool_start_idx_rejected():
+    with pytest.raises(TypeError):
+        _Vol(event_id="b", start_idx=True, end_idx=1)
+
+
+def test_bool_end_idx_rejected():
+    with pytest.raises(TypeError):
+        _Vol(event_id="b", start_idx=0, end_idx=False)
