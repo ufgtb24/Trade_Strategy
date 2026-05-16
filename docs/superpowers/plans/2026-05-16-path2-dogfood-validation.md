@@ -481,7 +481,13 @@ Create `scripts/path2_dogfood_chart.py`:
 
 输出:docs/research/path2_dogfood_chart.png
 """
+import sys
 from pathlib import Path
+
+# 独立脚本(非 pytest)运行时 repo root 不在 sys.path,需手动加入,
+# 否则 `from tests.path2...` 会 ModuleNotFoundError。
+REPO = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(REPO))
 
 import matplotlib
 
@@ -492,7 +498,6 @@ import pandas as pd
 from path2 import run
 from tests.path2.dogfood_detectors import VolClusterDetector, VolSpikeDetector
 
-REPO = Path(__file__).resolve().parents[1]
 FIXTURE = REPO / "tests" / "path2" / "fixtures" / "aapl_vol_slice.csv"
 OUT = REPO / "docs" / "research" / "path2_dogfood_chart.png"
 
