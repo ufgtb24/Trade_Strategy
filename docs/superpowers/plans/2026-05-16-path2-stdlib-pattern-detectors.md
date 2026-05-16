@@ -1250,11 +1250,42 @@ git commit -m "feat(path2-stdlib): Dag 公开类"
 
 ---
 
-## Task 8: `Kof` — 滑窗计数 + 有界缓冲 + `#<seq>` 去重
+## Task 8: `Kof` — LEF-DFS 姊妹(枚举/回溯 + 叶层 k-of-n 接受;已按 redesign §10 重写)
 
-> **redesign 修正注**:`#<seq>` 去重改用 Task 5 建立的**无条件、四 Detector 共享的 `detect()`-局部 `seen_ids`** 机制(不再 Kof 专属;redesign §7)。`earliest-feasible` 用 start-first key(redesign §2.2)。`pattern_label` 含 `#` → 构造期 `ValueError`。其余(n=边数、k 阈值、滑窗计数、max_gap 视界有界缓冲、枚举仅 Kof)不变。
+> **⚠️ 本 Task 已被 `docs/research/path2_algo_core_redesign.md` §10 取代为权威。下方 Step 1–6 的"滑窗计数 + 有界 max_gap 视界缓冲 + `_flush` 重排 + 逐标签 start-first argmin 单选"参考实现含 CRITICAL-1(漏匹配:盲取 argmin 不管是否满足边)/ CRITICAL-2(缓冲 `m.end_idx≤anchor.start_idx` 跨量纲比较→O(N) 无界,`horizon` 死代码)/ IMPORTANT-2(每锚从整流重选→非锚实例跨锚复用重叠),经 opus 对抗审查 + tom 第一性原理裁定推翻,SUPERSEDED —— 不得照抄。** 实现以本 OVERRIDE 块 + redesign §10 为准。
 
-design §3.3。n = edges 条数,k = 至少满足条数;earliest-feasible(start-first key)+ 非重叠贪心;封口=锚 max_gap 视界过后,有界缓冲按 end_idx 排序弹出;同 (label,s,e) 撞 → 共享 `seen_ids` `#<seq>`。
+**目标**:`advance_kof` = **LEF-DFS 结构姊妹**(redesign §10.5):复用 `_lef_dfs`/`_produce_wcc` 的 DFS+回溯+start-first key(§2.2)+全成员非重叠消费(§6 Part D)+`_wcc`/`_subgraph`/`topo_order`/`_emit`(共享 `seen_ids`+`#seq` 与 LEF-DFS 字节一致)框架,**新增独立 `_kof_dfs` + `_kof_produce_wcc`**(**不**给已定案的 `_lef_dfs` 加 mode 分支)。仅 4 处差异 vs Dag:
+- **无窗口过滤**:候选 = 整后缀 `S[v][ptr[v]:]`(边可不满足,不能据某边裁候选)——修 CRITICAL-1。
+- **叶子 k-of-n 接受谓词**:`j==len(order)` 时 `sat=Σ_{e∈edges}[min_gap≤assign[e.later].start−assign[e.earlier].end≤max_gap]`,`sat≥k` 接受否则回溯。
+- **关闭 INV-C** 前沿割记忆(无窗口约束⇒前沿割不健全)。
+- **不做 C1 等-end 塌缩**(gap 看 start 和 end;等-end 不同 start 对 sat 贡献不同)。
+- INV-A 全后缀 scan / INV-B 非重叠消费 / key 序 / WCC 框架 / `_emit` **全部直接复用**。
+**删** `advance_kof` 现有 `horizon`/`buffer`/`_flush` 全部。伪代码见 redesign §10.5。
+
+**缓冲/复杂度(诚实账,redesign §10.6)**:复用 LEF 生产循环 ⇒ §6 Part D 单调性证明(仅依赖全成员非重叠消费 + end_idx 升序输入,**与接受谓词无关**)对 Kof 成立 ⇒ **缓冲 单 WCC 零 / 多 WCC ≤(p−1)(与 Dag 同)**,产出天然 end_idx 升序;**代价转移到时间:标签数维度指数且为常态**(松弛无窗口剪枝,内在不可消除——docstring 必须诚实写明,不得保留 "O(ΣN·n)"/"滑窗计数"/"有界 max_gap 视界缓冲" 字样)。
+
+**新增校验(redesign §10.7)**:`validate_kof`(`path2/stdlib/_graph.py`)**新增"edges 必须弱连通(单 WCC)"校验**(类比 `validate_chain` 的 `_connected`),不连通 → 构造期 `ValueError`(消息含 "连通" 或 "WCC")。保留既有 k 范围 / 端点数校验。同步更新 `tests/path2/stdlib/test_graph.py`。
+
+**no partial(redesign §10.4)**:全标签在场;某标签后缀无候选 ⇒ 该前缀无命中,**绝不**产出缺标签的部分匹配。
+
+**构造期守卫**:`Kof.__init__` 沿用 Chain/Dag 一致的三守卫(anchoring 非默认 `non-overlapping-greedy`→ValueError 含 "anchoring";`#`-in-label→ValueError 含 `#`;`key`+`named_streams`→ValueError 含 "不可同时使用",在 resolve_labels 前)+ `validate_kof`(现含单 WCC)。`anchoring` 默认串保持 `"non-overlapping-greedy"` 不改(冻结面);docstring 澄清 "greedy" 指生产循环非重叠贪进、成员选择是枚举/回溯。守卫提取仍 lead-deferred 到 Task 10,勿提取。
+
+**TDD 验收锚(全部 pin 死,取自 redesign §10.8)**:
+- [ ] **A-KOF-C1**:`edges=[TemporalEdge("A","B",10,10)]`,k=1,`A=[ev(0,0)]`,`B=[ev(1,1),ev(10,10)]` → 恰 1 命中,role_index keys `{"A","B"}`,B=ev(10,10),children=(A(0,0),B(10,10)),start=0 end=10。
+- [ ] **A-KOF-C2**:`edges=[TemporalEdge("A","B",0,inf)]`,k=1,`A=[ev(i,i) i∈range(N)]`,`B=[ev(i,1_000_000_000+i) i∈range(N)]`,N=3000 → 产出 N 个,emitted end_idx 单调不减,`run(d)` 不抛/不 OOM;**断言缓冲有界**(可:包一个计数代理流断言任意时刻 advance_kof 已物化未 yield 的匹配数 ≤ 小常数,或退一步断言 N 个且 end_idx 升序 + 进程不 OOM)。
+- [ ] **A-KOF-OV**:`edges=[TemporalEdge("A","B",0,5)]`,k=1,`A=[ev(0,0),ev(1,1)]`,`B=[ev(2,2)]` → 恰 **1** 命中(非重叠;B(2,2) 被首命中消费)。
+- [ ] **A-KOF-NP**:`edges=[TemporalEdge("A","B",0,5),TemporalEdge("B","C",0,5),TemporalEdge("A","C",0,2)]`,k=1,`A=[ev(0,0)]`,`B=[ev(1,1)]`,`C=[]` → `list(run(d))==[]`;改 `C=[ev(3,3)]` → 恰 1 命中,`set(ms[0].role_index)=={"A","B","C"}`。
+- [ ] **A-KOF-WCC**:`Kof(edges=[TemporalEdge("A","B"),TemporalEdge("C","D")], k=1, A=[ev(0)],B=[ev(1)],C=[ev(2)],D=[ev(3)])` → 构造期 `ValueError`(不连通/单 WCC)。
+- [ ] **A-KOF-ID**:`edges=[TemporalEdge("A","B",0,0)]`,k=1,`A=[ev(5,5),ev(5,5)]`,`B=[ev(5,5),ev(5,5)]` → ids ⊆ {"kof_5_5","kof_5_5#1"},`run()` 不抛,end_idx 升序,`set(flatten(role_index.values()))==set(children)`。
+- [ ] **保留 plan 原 5 个 Kof 测试**(test_kof_2_of_3_satisfied 等)**全部断言不删弱**——它们语义仍有效,须在 §10 算法下通过(test_kof_2_of_3_satisfied 的 `set(ms[0].role_index)=={"A","B","C"}` 与 no-partial 一致)。
+
+**实现步骤**:(1) 写全部 A-KOF-* + 保留原 5 测 + test_graph 单 WCC 测(失败先行);(2) 跑确认失败;(3) 改 `validate_kof` 加单 WCC;(4) 新增 `_kof_dfs`/`_kof_produce_wcc`,重写 `advance_kof`(WCC 分解+归并复用,删 horizon/buffer/_flush);(5) `Kof` 类三守卫 + docstring 诚实化;(6) 跑 `uv run pytest tests/path2/stdlib/test_kof.py tests/path2/stdlib/test_graph.py -q` 全绿,再 `uv run pytest tests/path2/ -q` 无回归;(7) Commit:`fix(path2-stdlib): Task 8 Kof 重写为 LEF-DFS 姊妹(修 C1/C2/IMPORTANT-2,redesign §10)`。
+
+**以下 Step 1–6 为 SUPERSEDED 历史参考(旧缺陷滑窗算法),实现时忽略,仅供对照"为何被推翻":**
+
+---
+
+design §3.3(已作废)。n = edges 条数,k = 至少满足条数;earliest-feasible(start-first key)+ 非重叠贪心;封口=锚 max_gap 视界过后,有界缓冲按 end_idx 排序弹出;同 (label,s,e) 撞 → 共享 `seen_ids` `#<seq>`。
 
 **Files:**
 - Modify: `path2/stdlib/_advance.py`(追加 `advance_kof`)
