@@ -9,7 +9,7 @@ from typing import Callable, Iterator, Optional
 
 from path2.core import Event
 from path2.stdlib._advance import advance_dag
-from path2.stdlib._graph import build_graph, validate_chain
+from path2.stdlib._graph import build_graph, validate_chain, validate_dag
 from path2.stdlib._labels import resolve_labels
 from path2.stdlib.pattern_match import PatternMatch
 
@@ -61,6 +61,56 @@ class Chain:
 
         self._graph = build_graph(self._edges)
         validate_chain(self._graph)
+        self._streams = resolve_labels(
+            positional=positional_streams,
+            named=named_streams,
+            key=key,
+            strict_key=strict_key,
+            endpoint_labels=_endpoint_labels(self._edges),
+        )
+
+    def detect(self, source=None) -> Iterator[PatternMatch]:
+        yield from advance_dag(self._graph, self._streams, self._label)
+
+
+class Dag:
+    """任意 DAG(多入度多出度、多 WCC 合法)。复用 LEF-DFS 核心(advance_dag),逐 WCC 独立 + p 路 end_idx 归并;诚实复杂度见 redesign §5(Chain f=1 近线性,病态宽前沿 DAG 时间空间同指数)。"""
+
+    def __init__(
+        self,
+        *positional_streams,
+        edges,
+        key: Optional[Callable[[Event], str]] = None,
+        strict_key: bool = False,
+        label: Optional[str] = None,
+        anchoring: str = "earliest-feasible",
+        **named_streams,
+    ):
+        # anchoring 非默认值 → 拒绝
+        if anchoring != "earliest-feasible":
+            raise ValueError(
+                f"Dag 仅支持默认 anchoring='earliest-feasible',"
+                f"收到 {anchoring!r}"
+            )
+
+        self._edges = list(edges)
+        self._label = label or "dag"
+
+        # redesign §7:pattern_label 不得含 '#'(event_id 消歧分隔符)
+        if "#" in self._label:
+            raise ValueError(
+                f"pattern_label 不得含 '#'(它是 event_id 消歧分隔符):{self._label!r}"
+            )
+
+        # key 与具名流(kwarg)互斥(carried-forward Task 3 review footgun)
+        if key is not None and named_streams:
+            raise ValueError(
+                "key 与具名流(kwarg)不可同时使用:"
+                "二者是互斥的标签解析机制(redesign §1.2 三段解析优先级)"
+            )
+
+        self._graph = build_graph(self._edges)
+        validate_dag(self._graph)
         self._streams = resolve_labels(
             positional=positional_streams,
             named=named_streams,

@@ -101,8 +101,14 @@ def validate_chain(g: Graph) -> None:
 
 
 def validate_dag(g: Graph) -> None:
+    # 多弱连通分量(多个各节点度≥1 的不连通子 DAG)合法,仅拒绝度为 0 的未引用孤立节点
     if _has_cycle(g):
         raise ValueError("Dag 检测到环")
+    for n in g.nodes:
+        if g.indeg[n] == 0 and g.outdeg[n] == 0:
+            raise ValueError(
+                f"validate_dag 拒绝度为 0 的孤立节点 {n!r}(design §3.0.1)"
+            )
 
 
 def validate_kof(g: Graph, k: int, n_edges: int) -> None:

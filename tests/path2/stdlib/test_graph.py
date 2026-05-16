@@ -87,3 +87,27 @@ def test_validate_neg_requires_forbid_and_later_in_forward():
         validate_neg(fwd, forbid=[])
     with pytest.raises(ValueError, match="正向子图"):
         validate_neg(fwd, forbid=[TemporalEdge("N", "Z")])  # Z 不在正向
+
+
+def test_validate_dag_isolated_node_raises():
+    """度为 0 的孤立节点(indeg==0 AND outdeg==0)应被 validate_dag 拒绝。
+
+    build_graph 本身无法产生度-0 节点(每个节点均源自 edge 端点),
+    因此直接构造 Graph 以测试防御性契约(design §3.0.1)。
+    """
+    from path2.stdlib._graph import Graph
+    g = Graph(
+        nodes={"A", "B", "iso"},
+        adj={"A": [("B", TemporalEdge("A", "B"))], "B": [], "iso": []},
+        indeg={"A": 0, "B": 1, "iso": 0},
+        outdeg={"A": 1, "B": 0, "iso": 0},
+        edges=[TemporalEdge("A", "B")],
+    )
+    with pytest.raises(ValueError, match="孤立节点"):
+        validate_dag(g)
+
+
+def test_validate_dag_multi_wcc_ok():
+    """多弱连通分量(各节点度 >= 1 的不连通子 DAG)应合法。"""
+    g = build_graph([TemporalEdge("A", "B"), TemporalEdge("C", "D")])
+    validate_dag(g)  # 不应抛出
