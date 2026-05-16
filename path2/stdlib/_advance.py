@@ -39,12 +39,20 @@ emitted `end_idx` 升序的 p 路归并(避免跨分量消费耦合扼杀匹配)
 """
 from __future__ import annotations
 
-from typing import Dict, Iterator, List, Optional, Set, Tuple
+from typing import Callable, Dict, Iterator, List, Optional, Set, Tuple
 
 from path2.core import Event, TemporalEdge
 from path2.stdlib._graph import Graph, build_graph, topo_order
 from path2.stdlib._ids import default_event_id
 from path2.stdlib.pattern_match import PatternMatch
+
+# 单 WCC 生产器契约:`_produce_wcc` 直接匹配此 4 参签名;
+# `_kof_produce_wcc` 经 advance_kof 内 4 参闭包适配。`_pway_merge`
+# 被 advance_dag + advance_kof 共享,契约显式化。
+_ProduceFn = Callable[
+    [Graph, Dict[str, List[Event]], str, Dict[str, int]],
+    Iterator[PatternMatch],
+]
 
 
 def _preds(g: Graph) -> Dict[str, List[Tuple[str, TemporalEdge]]]:
@@ -385,7 +393,7 @@ def _pway_merge(
     streams: Dict[str, List[Event]],
     label: str,
     seen_ids: Dict[str, int],
-    produce,
+    produce: _ProduceFn,
 ) -> Iterator[PatternMatch]:
     """逐 WCC 独立生产 + p 路 end_idx 升序归并(redesign §2.0)。
 

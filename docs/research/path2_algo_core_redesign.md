@@ -359,6 +359,8 @@ function KOF_DFS(order,j,assign,chosen,ptr,S,edges,k):
 
 复用 `_wcc`/`_subgraph`/`topo_order`/`_emit` 与 `_produce_wcc` 同构的 `_kof_produce_wcc` + p 路 end_idx 归并;**删 `advance_kof` 现有 `horizon`/`buffer`/`_flush` 全部**。
 
+> `KOF_PRODUCE` 的"DFS 失败时推进最早仍有备选源 or 返回"无损性**继承 Task 5 已证论证**(`_kof_dfs` 对当前各标签后缀做穷尽回溯 ⇒ 当前 ptr 组合下无可行 k-of-n 命中已被证明;向前滑动任一源只收缩搜索空间、不跳过任何命中——与 `_produce_wcc` 同一不变式),不再重新推导。
+
 ### 10.6 缓冲与复杂度(诚实账,修 CRITICAL-2)
 
 旧 §6 Kof 行"有界 max_gap 视界缓冲"建立在滑窗+缓冲重排模型,该模型经 CRITICAL-2 复现确认产出 end_idx 与锚序无单调关系、缓冲实际 O(N) 无界(`m.end_idx ≤ anchor.start_idx` 跨量纲比较;`horizon` 为死代码)。**整体作废**。修正 Kof 走 §10.5 LEF 生产循环:§6 Part D 单调性证明仅依赖"全成员非重叠消费 + end_idx 升序输入",**与接受谓词无关**,故对 Kof 成立 ⇒ **Kof 缓冲 = 单 WCC 零 / 多 WCC ≤(p−1),与 Dag 同**;产出天然 end_idx 升序,§1.2.2 自洽。**代价转移到时间**:Kof 无窗口剪枝(松弛内在),`_kof_dfs` 最坏 `∏_{L∈V}|后缀(L)|`,**标签数维度指数,且为常态(非如 Dag 仅病态)**——诚实承认,不粉饰。redesign §6 Kof 行改为:产出 end_idx 升序=是;缓冲=单 WCC 零/多 WCC ≤(p−1);依据=复用 §10.5 LEF 生产循环,Part D 与接受谓词无关。
