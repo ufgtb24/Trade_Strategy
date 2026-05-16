@@ -37,45 +37,55 @@
 
 **Files:**
 - Modify: `docs/research/path2_spec.md`(§9.3)
-- Modify: `.claude/docs/modules/path2.md`(已知局限 bool 条)
 - Modify: `docs/superpowers/specs/2026-05-16-path2-dogfood-validation-design.md`(§3 记录已落地)
 
-- [ ] **Step 1: Update spec §9.3**
+> **范围更正(controller):** 原计划含 `.claude/docs/modules/path2.md` 编辑,但该文件**不在本分支**(它在主 checkout 未提交,`complex_framing` 无)。`.claude/docs/` 是 update-ai-context skill 维护的"反映当前代码状态"区,不应随 feature 分支走。故本分支**不动** `.claude/docs/`;该刷新**延后到 dogfood 合入后,在主 checkout 跑 update-ai-context** 一并反映已合并代码。
 
-`docs/research/path2_spec.md` 中定位 §9.3(bool-as-idx,当前措辞为"知情保留"一类)。把该条结论改写为已决议,措辞:
+- [ ] **Step 1: Update spec §9.3 (exact replacement)**
 
-```
-§9.3 bool-as-idx —— 已决议(2026-05-16,dogfood 验证轮):显式拒绝。
-Event.__post_init__ 增 `type(start_idx) is bool or type(end_idx) is bool → raise TypeError`。
-理由:bool ⊂ int,start_idx=True 当 1 用几乎总是 bug,构造点拦截定位最准;
-与 features 属性排除 bool 的先例一致。本项已闭环,不再属 roadmap #2 的待并入项。
-```
-
-(保留章节号与上下文叙述风格;只改这一小节的结论,不动 §9 其它小节。)
-
-- [ ] **Step 2: Update `.claude/docs/modules/path2.md`**
-
-定位"已知局限与边界"中关于 `bool` 通过 int 卫语的那一条(原文:`bool` 通过 int 卫语 / `start_idx=True` 不被拒绝 / 当前知情保留)。整条替换为:
+In `docs/research/path2_spec.md`, replace this exact block:
 
 ```
-- **`bool` 已显式拒绝**:`Event.__post_init__` 用 `type(idx) is bool` 精确判定拒 `bool`(`bool ⊂ int`,`start_idx=True` 当 1 用是语义错误),与 `features` 排除 bool 同源。
+### 9.3 已知边界(v0.2 待决策,当前知情保留)
+
+- `isinstance(x, int)` 接受 `bool`(`bool ⊂ int`):`start_idx=True` 会通过 int 卫语(`True`→1,数值上区间不变式仍成立)。当前**知情保留**,不报错。v0.2 需决策是否显式拒绝 `bool`(`isinstance(x, bool) or not isinstance(x, int)`)。
 ```
 
-注意:`.claude/docs/` 只反映当前代码状态——Task 1 已改代码,此处即为当前事实。
+with:
 
-- [ ] **Step 3: Mark resolution in design doc §3**
+```
+### 9.3 bool-as-idx —— 已决议(显式拒绝)
 
-`docs/superpowers/specs/2026-05-16-path2-dogfood-validation-design.md` §3 末尾"配套文档同改"列表,在 spec §9.3 与 modules 两条行尾各追加 ` —— 已落地(Task 2)`。
+- 2026-05-16(dogfood 验证轮)决议:**显式拒绝 `bool` 作 `start_idx`/`end_idx`**。`Event.__post_init__` 在 int 卫语后增 `type(start_idx) is bool or type(end_idx) is bool → raise TypeError`(用精确 `type() is bool`,不破坏 int 卫语)。理由:`bool ⊂ int`,`start_idx=True` 当 1 用几乎总是 bug,构造点拦截定位最准;与 `features` 属性排除 bool 的先例同源。回归测试见 `tests/path2/test_event.py`。本项已闭环,**不再属 roadmap #2 的待并入项**。
+```
 
-- [ ] **Step 4: Run full path2 suite (no code change, sanity only)**
+(只替换 §9.3 这一小节;§9.2 表格、§9.4 指针不动。)
+
+- [ ] **Step 2: Mark resolution in design doc §3**
+
+In `docs/superpowers/specs/2026-05-16-path2-dogfood-validation-design.md`, find the "**配套文档同改**(属本改动一部分):" list. Replace these two lines:
+
+```
+- `docs/research/path2_spec.md` §9.3:"知情保留" → "已决议:显式拒绝"
+- `.claude/docs/modules/path2.md` "已知局限" bool 条:改为已拒绝
+```
+
+with:
+
+```
+- `docs/research/path2_spec.md` §9.3:"知情保留" → "已决议:显式拒绝" —— 已落地(Task 2)
+- `.claude/docs/modules/path2.md` "已知局限" bool 条 —— 延后至 dogfood 合入后跑 update-ai-context(该文件不在本分支)
+```
+
+- [ ] **Step 3: Run full path2 suite (no code change, sanity only)**
 
 Run: `uv run pytest tests/path2/ -q`
 Expected: `52 passed`(Task 2 不改代码,确认无意外回归)
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 4: Commit**
 
 ```bash
-git add docs/research/path2_spec.md .claude/docs/modules/path2.md docs/superpowers/specs/2026-05-16-path2-dogfood-validation-design.md
+git add docs/research/path2_spec.md docs/superpowers/specs/2026-05-16-path2-dogfood-validation-design.md
 git commit -m "docs(path2): record bool-as-idx resolution (spec §9.3 closed)"
 ```
 

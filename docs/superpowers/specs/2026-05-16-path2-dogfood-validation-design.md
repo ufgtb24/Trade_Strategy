@@ -94,8 +94,8 @@ if type(self.start_idx) is bool or type(self.end_idx) is bool:
 
 **配套文档同改**(属本改动一部分):
 
-- `docs/research/path2_spec.md` §9.3:"知情保留" → "已决议:显式拒绝"
-- `.claude/docs/modules/path2.md` "已知局限" bool 条:改为已拒绝
+- `docs/research/path2_spec.md` §9.3:"知情保留" → "已决议:显式拒绝" —— 已落地(Task 2)
+- `.claude/docs/modules/path2.md` "已知局限" bool 条 —— 延后至 dogfood 合入后跑 update-ai-context(该文件不在本分支)
 - 本设计稿:记录决策
 
 ## 4. 测试

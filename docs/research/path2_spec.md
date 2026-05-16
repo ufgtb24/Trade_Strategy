@@ -398,9 +398,9 @@ class Pattern:
 | `run()` yield 出非 `Event` 对象 | `TypeError` | `run()`(Detector wrapper) | v0.2 纳入 §5.1 |
 | `TemporalEdge` `min_gap<0` 或 `min_gap>max_gap` | `ValueError` | `TemporalEdge.__post_init__` | v0.2 纳入 §5.1(spec §5.2 原列为"不必报错",实现选择报错,属合理收紧) |
 
-### 9.3 已知边界(v0.2 待决策,当前知情保留)
+### 9.3 bool-as-idx —— 已决议(显式拒绝)
 
-- `isinstance(x, int)` 接受 `bool`(`bool ⊂ int`):`start_idx=True` 会通过 int 卫语(`True`→1,数值上区间不变式仍成立)。当前**知情保留**,不报错。v0.2 需决策是否显式拒绝 `bool`(`isinstance(x, bool) or not isinstance(x, int)`)。
+- 2026-05-16(dogfood 验证轮)决议:**显式拒绝 `bool` 作 `start_idx`/`end_idx`**。`Event.__post_init__` 在 int 卫语后增 `type(start_idx) is bool or type(end_idx) is bool → raise TypeError`(用精确 `type() is bool`,不破坏 int 卫语)。理由:`bool ⊂ int`,`start_idx=True` 当 1 用几乎总是 bug,构造点拦截定位最准;与 `features` 属性排除 bool 的先例同源。回归测试见 `tests/path2/test_event.py`。本项已闭环,**不再属 roadmap #2 的待并入项**。
 
 ### 9.4 实现产物指针
 
