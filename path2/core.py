@@ -24,9 +24,8 @@ class Event(ABC):
     def __post_init__(self) -> None:
         if not config.RUNTIME_CHECKS:
             return
-        params = getattr(type(self), "__dataclass_params__", None)
-        if params is None or not params.frozen:
-            raise TypeError(f"{type(self).__name__} 必须是 @dataclass(frozen=True)")
+        # frozen 一致性由 @dataclass 在装饰期原生强制(非 frozen 子类继承 frozen Event
+        # 会在类定义时即抛 TypeError),无需在此自检。
         if not isinstance(self.start_idx, int) or not isinstance(self.end_idx, int):
             raise TypeError("start_idx/end_idx 必须是 int")
         if self.start_idx < 0 or self.start_idx > self.end_idx:

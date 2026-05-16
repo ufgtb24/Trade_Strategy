@@ -21,6 +21,8 @@ def test_valid_construction():
 
 
 def test_non_frozen_subclass_raises():
+    # Python @dataclass 在装饰期就拒绝"非 frozen 子类继承 frozen 父类",
+    # 此处验证该行为保证(由 Python 原生强制,而非 Event.__post_init__)。
     with pytest.raises(TypeError):
         @dataclass  # 缺 frozen=True — Python 3.12 raises at class definition time
         class _Bad(Event):
