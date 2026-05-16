@@ -68,12 +68,17 @@ def test_run_invariants_genuinely_hold_on_real_stream():
 def test_pattern_all_filter_on_clusters():
     df = _load()
     clusters = list(run(VolClusterDetector(), run(VolSpikeDetector(), df)))
+    # 前置:本切片确有两个簇(span 分别为 7 / 3),否则下面的"过滤掉一个"
+    # 就失去判别力。
+    assert [c.event_id for c in clusters] == ["vc_60_67", "vc_264_267"]
+    # span_bars <= 5 会真实排除 vc_60_67(span 7),保留 vc_264_267(span 3)——
+    # Pattern.all 必须真的过滤,而非恒真放行。
     tight = Pattern.all(
         lambda c: c.count >= 3,
-        lambda c: c.span_bars <= 10,
+        lambda c: c.span_bars <= 5,
     )
     matched = [c for c in clusters if tight(c)]
-    assert [c.event_id for c in matched] == ["vc_60_67", "vc_264_267"]
+    assert [c.event_id for c in matched] == ["vc_264_267"]
 
 
 def test_any_operator_spikes_within_first_cluster():
@@ -84,5 +89,10 @@ def test_any_operator_spikes_within_first_cluster():
     in_span = [
         s for s in spikes if first.start_idx <= s.start_idx <= first.end_idx
     ]
+    # 失败时给出可诊断信息(实际在簇内的 ratio),而非裸 assert False
+    ratios = [round(s.ratio, 3) for s in in_span]
+    assert in_span, f"first cluster {first.event_id} span 内无 spike"
     # 簇内至少存在一个 ratio > 3 的强放量 spike
-    assert Any(events=in_span, predicate=lambda s: s.ratio > 3.0)
+    assert Any(events=in_span, predicate=lambda s: s.ratio > 3.0), (
+        f"{first.event_id} 簇内无 ratio>3 的 spike;实际 ratios={ratios}"
+    )
