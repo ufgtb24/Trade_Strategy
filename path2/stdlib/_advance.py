@@ -271,6 +271,91 @@ def _produce_wcc(
             ptr[lab] = chosen_idx[lab] + 1
 
 
+def advance_kof(
+    g: Graph,
+    streams: Dict[str, List[Event]],
+    edges: List[TemporalEdge],
+    k: int,
+    label: str,
+) -> Iterator[PatternMatch]:
+    """k-of-n 边松弛滑窗计数(redesign §3.3/§5)。
+
+    n = edges 条数,k = 至少须满足的边数;满足条件 = 两端事件均已选且
+    gap 在 [min_gap, max_gap] 内。算法为**滑窗计数**,非 LEF-DFS:
+
+    - 锚 = `topo_order(g)[0]`(最早拓扑序源节点)的每个实例;
+    - 对每个锚实例:窗口 `[a.start_idx, a.start_idx + horizon]`;
+    - 每个非锚标签:在窗口内用 start-first key `(start_idx, end_idx, position)`
+      取最小的候选(redesign §2.2);
+    - 统计满足的边数,>= k 即命中;
+    - `event_id` 消歧共享 detect()-局部 `seen_ids`(redesign §7,不再 Kof
+      专属),复用 `_emit` — 保证 `#<seq>` 约定与 LEF-DFS 字节级一致;
+    - 封口:`buffer` 按 end_idx 排序;锚前移后 `end_idx <= 本锚 start` 的
+      匹配弹出;最终全量弹出;输出保证 end_idx 非递减。
+
+    复杂度 O(ΣN·n),n=边数(非 LEF-DFS 指数情形)。
+    """
+    order = topo_order(g)
+    finite_max = [e.max_gap for e in edges if e.max_gap != float("inf")]
+    horizon = max(finite_max) if finite_max else None
+
+    buffer: List[PatternMatch] = []
+    seen_ids: Dict[str, int] = {}
+
+    def _flush(upto_end: Optional[int]) -> Iterator[PatternMatch]:
+        buffer.sort(key=lambda m: m.end_idx)
+        keep: List[PatternMatch] = []
+        for m in buffer:
+            if upto_end is None or m.end_idx <= upto_end:
+                yield m
+            else:
+                keep.append(m)
+        buffer[:] = keep
+
+    anchor_label = order[0]
+    anchor_stream = streams[anchor_label]
+
+    for a in anchor_stream:
+        assign: Dict[str, Event] = {anchor_label: a}
+        # 候选下界:只要事件在锚之后开始即纳入(保证非重叠;无上界过滤,
+        # gap 约束由 sat 计数来评估)。horizon 仅用于 buffer 封口。
+        win_lo = a.start_idx
+
+        # 每个非锚标签:取 win_lo 之后 start-first key 最小的候选
+        for lab in order:
+            if lab == anchor_label:
+                continue
+            lab_stream = streams[lab]
+            # start-first 候选:遍历 end_idx-sorted 流,筛出 start >= win_lo 的,
+            # 取 key=(start_idx, end_idx, position) 最小(redesign §2.2)。
+            best: Optional[Tuple[Event, int]] = None
+            for i, cand in enumerate(lab_stream):
+                if cand.start_idx >= win_lo:
+                    key = (cand.start_idx, cand.end_idx, i)
+                    if best is None or key < (
+                        best[0].start_idx, best[0].end_idx, best[1]
+                    ):
+                        best = (cand, i)
+            if best is not None:
+                assign[lab] = best[0]
+
+        # 统计满足的边数
+        sat = 0
+        for e in edges:
+            if e.earlier in assign and e.later in assign:
+                gap = assign[e.later].start_idx - assign[e.earlier].end_idx
+                if e.min_gap <= gap <= e.max_gap:
+                    sat += 1
+
+        if sat >= k:
+            buffer.append(_emit(assign, label, seen_ids))
+
+        # 锚前移后封口:end_idx <= 本锚 start_idx 的匹配已无后续可超越
+        yield from _flush(a.start_idx)
+
+    yield from _flush(None)  # 收尾全量弹出
+
+
 def advance_dag(
     g: Graph,
     streams: Dict[str, List[Event]],
