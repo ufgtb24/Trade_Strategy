@@ -39,7 +39,7 @@ class Chain:
         # anchoring 非默认值 → 拒绝
         if anchoring != "earliest-feasible":
             raise ValueError(
-                f"Chain 仅支持默认 anchoring='earliest-feasible',"
+                f"Chain 仅支持默认 anchoring='earliest-feasible', "
                 f"收到 {anchoring!r}"
             )
 
@@ -89,7 +89,7 @@ class Dag:
         # anchoring 非默认值 → 拒绝
         if anchoring != "earliest-feasible":
             raise ValueError(
-                f"Dag 仅支持默认 anchoring='earliest-feasible',"
+                f"Dag 仅支持默认 anchoring='earliest-feasible', "
                 f"收到 {anchoring!r}"
             )
 

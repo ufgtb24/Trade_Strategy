@@ -40,6 +40,7 @@ def test_dag_multi_indegree_convergence():
     ms = list(run(d))
     assert len(ms) == 1
     assert ms[0].end_idx == 7
+    assert set(ms[0].role_index) == {"A", "B", "C"}
 
 
 def test_dag_cycle_rejected_at_construction():
@@ -62,6 +63,18 @@ def test_dag_default_label():
     ms = list(run(d))
     assert len(ms) == 1
     assert ms[0].pattern_label == "dag"
+    assert ms[0].event_id == "dag_0_2"
+
+
+def test_dag_non_default_anchoring_rejected():
+    """非默认 anchoring 应在构造期抛出 ValueError 含 "anchoring"。"""
+    with pytest.raises(ValueError, match="anchoring"):
+        Dag(
+            edges=[TemporalEdge("A", "B")],
+            A=[ev(0)],
+            B=[ev(1)],
+            anchoring="latest-feasible",
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -86,6 +99,8 @@ def test_dag_multi_wcc_merged():
     end_idxs = [m.end_idx for m in ms]
     assert end_idxs == sorted(end_idxs), "end_idx 须升序(p 路归并正确性)"
     assert end_idxs == [2, 3]
+    assert set(ms[0].role_index) == {"A", "B"}
+    assert set(ms[1].role_index) == {"C", "D"}
 
 
 def test_dag_pattern_label_hash_rejected():
