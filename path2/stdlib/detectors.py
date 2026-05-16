@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from typing import Callable, Iterator, Optional
 
-from path2.core import Event, TemporalEdge
+from path2.core import Event
 from path2.stdlib._advance import advance_dag
 from path2.stdlib._graph import build_graph, validate_chain
 from path2.stdlib._labels import resolve_labels

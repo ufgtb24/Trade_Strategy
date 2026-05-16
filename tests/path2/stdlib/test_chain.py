@@ -86,9 +86,22 @@ def test_chain_pattern_label_with_hash_rejected():
 # ---------------------------------------------------------------------------
 
 def test_chain_key_and_named_together_rejected():
-    with pytest.raises(ValueError, match="互斥|key"):
+    with pytest.raises(ValueError, match="不可同时使用"):
         Chain(
             edges=[TemporalEdge("A", "B")],
             key=lambda e: "A",
             A=[ev(0)], B=[ev(1)],
         )
+
+
+# ---------------------------------------------------------------------------
+# 边界:无可行匹配时产出空(不抛异常)
+# ---------------------------------------------------------------------------
+
+def test_chain_no_match_yields_empty():
+    d = Chain(
+        edges=[TemporalEdge("A", "B", max_gap=5)],
+        A=[ev(0)], B=[ev(100)],
+        label="z",
+    )
+    assert list(run(d)) == []
