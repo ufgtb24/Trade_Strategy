@@ -24,6 +24,26 @@ def test_topo_order_linear():
     assert topo_order(g) == ["A", "B", "C"]
 
 
+def test_topo_order_diamond_deterministic_and_multiedge_safe():
+    diamond = build_graph(
+        [
+            TemporalEdge("A", "B"),
+            TemporalEdge("A", "C"),
+            TemporalEdge("B", "D"),
+            TemporalEdge("C", "D"),
+        ]
+    )
+    assert topo_order(diamond) == ["A", "B", "C", "D"]
+    multiedge = build_graph(
+        [
+            TemporalEdge("A", "B", min_gap=1),
+            TemporalEdge("A", "B", min_gap=2),
+            TemporalEdge("B", "C"),
+        ]
+    )
+    assert topo_order(multiedge) == ["A", "B", "C"]
+
+
 def test_validate_chain_ok():
     validate_chain(build_graph([TemporalEdge("A", "B"), TemporalEdge("B", "C")]))
 

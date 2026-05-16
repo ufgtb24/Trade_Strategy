@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Dict, List, Set
+from typing import Dict, List, Set, Tuple
 
 from path2.core import TemporalEdge
 
@@ -10,7 +10,7 @@ from path2.core import TemporalEdge
 @dataclass
 class Graph:
     nodes: Set[str] = field(default_factory=set)
-    adj: Dict[str, List[tuple]] = field(default_factory=dict)  # u -> [(v, edge)]
+    adj: Dict[str, List[Tuple[str, TemporalEdge]]] = field(default_factory=dict)  # u -> [(v, edge)]
     indeg: Dict[str, int] = field(default_factory=dict)
     outdeg: Dict[str, int] = field(default_factory=dict)
     edges: List[TemporalEdge] = field(default_factory=list)
@@ -57,7 +57,7 @@ def topo_order(g: Graph) -> List[str]:
     while ready:
         u = ready.pop(0)
         order.append(u)
-        for v, _ in sorted(g.adj[u]):
+        for v, _ in sorted(g.adj[u], key=lambda t: t[0]):
             indeg[v] -= 1
             if indeg[v] == 0:
                 ready.append(v)
