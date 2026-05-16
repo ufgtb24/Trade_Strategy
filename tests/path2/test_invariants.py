@@ -1,5 +1,7 @@
 from dataclasses import dataclass
 
+import pytest
+
 import path2
 from path2 import (After, Any, At, Before, Detector, Event, Pattern,
                     TemporalEdge, config, run, set_runtime_checks)
@@ -43,7 +45,6 @@ def test_end_to_end_checks_off_behavior_difference():
             yield E(event_id="a", start_idx=5, end_idx=5)
             yield E(event_id="a", start_idx=3, end_idx=3)  # 递减+重复id
 
-    import pytest
     with pytest.raises(ValueError):
         list(run(Bad(), None))
 

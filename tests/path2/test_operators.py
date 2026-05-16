@@ -20,7 +20,6 @@ def _anchor(s, e):
 # ---- Before ----
 def test_before_idx_window_left_closed_right_open():
     a = _anchor(10, 10)
-    hit = [i for i in range(0, 20) if Before(a, lambda x, i=i: x == i, window=3)]
     # 窗口 [7,10):7,8,9 命中,10(anchor 自身)不含
     assert Before(a, lambda x: x == 9, window=3) is True
     assert Before(a, lambda x: x == 10, window=3) is False  # 排除 anchor
