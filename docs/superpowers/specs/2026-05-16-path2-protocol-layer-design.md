@@ -67,9 +67,8 @@ class Event(ABC):
     def __post_init__(self):
         if not config.RUNTIME_CHECKS:
             return
-        params = getattr(type(self), "__dataclass_params__", None)
-        if params is None or not params.frozen:
-            raise TypeError(f"{type(self).__name__} 必须是 @dataclass(frozen=True)")
+        # frozen 一致性由 @dataclass 在装饰期原生强制(非 frozen 子类继承 frozen
+        # Event 会在类定义时即抛 TypeError),无需在此自检。
         if not isinstance(self.start_idx, int) or not isinstance(self.end_idx, int):
             raise TypeError("start_idx/end_idx 必须是 int")
         if self.start_idx < 0 or self.start_idx > self.end_idx:
@@ -120,10 +119,10 @@ gap 公式(spec §1.3.1):`gap = later.start_idx - earlier.end_idx`。
 
 | # | spec 原文 | 实际实现 | 原因 |
 |---|---|---|---|
-| ① | §5.1:frozen 检查抛错位置 = `__init_subclass__` | 改在 `__post_init__`(首次实例化时) | `__init_subclass__` 在 `@dataclass` 装饰器生效前触发,此刻读不到 `__dataclass_params__.frozen` —— spec 写法技术上不可行 |
+| ① | §5.1:frozen 检查由协议层代码在 `__init_subclass__` 抛 `TypeError` | **不写任何自定义 frozen 检查** —— 由 Python `@dataclass` 在**装饰期**原生强制 | plan 阶段实测(2026-05-16):非 frozen 子类继承 frozen `Event` 在**类定义时**即被 Python 抛 `TypeError: cannot inherit non-frozen dataclass from a frozen one`,更早更强;原 design 稿设想的"移到 `__post_init__` 自检"经实测为**不可达死代码**(唯一进入路径是完全不加 `@dataclass` 的纯子类,而它继承 `Event` 的 `frozen=True` 而判定通过)。用户已批准删除该死分支(commit `0ecb053`);spec §5.1 frozen 行应在 v0.2 重写为"由 Python `@dataclass` 原生强制,非协议层自检" |
 | ② | §1.3:`max_gap: int = math.inf` | `max_gap: float = math.inf` | `math.inf` 是 float,`int` 注解类型不自洽 |
 
-两处属 spec v0.1"等待 plan 验证"正中靶心的反馈,plan 阶段应回写 spec v0.2。
+两处属 spec v0.1"等待 plan 验证"正中靶心的反馈,plan 阶段应回写 spec v0.2。偏差① 已在 Task 3 实现中按用户决策落地(删除死代码 + 行为测试改为验证 Python 原生强制)。
 
 ---
 
@@ -214,7 +213,7 @@ def set_runtime_checks(enabled: bool) -> None:
 
 | 违规 | 错误类型 | 抛出位置(本实现) | spec 依据 |
 |---|---|---|---|
-| 子类非 `frozen` dataclass | `TypeError` | `Event.__post_init__` | §5.1 行1(偏差①) |
+| 子类非 `frozen` dataclass | `TypeError` | **Python `@dataclass` 装饰期原生强制**(非协议层代码) | §5.1 行1(偏差①:实测 Python 在类定义时即拒绝,无需自检) |
 | float 字段 NaN | `ValueError` | `Event.__post_init__` | §5.1 行2 |
 | `start_idx>end_idx` 或 `<0` | `ValueError` | `Event.__post_init__` | §5.1 行4 |
 | `start/end_idx` 非 int | `TypeError` | `Event.__post_init__` | 本实现补强(类型卫语) |
