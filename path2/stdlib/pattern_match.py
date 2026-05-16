@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Mapping, Tuple
+from typing import Mapping
 
 from path2 import config
 from path2.core import Event
@@ -11,8 +11,8 @@ from path2.core import Event
 @dataclass(frozen=True)
 class PatternMatch(Event):
     # 协议层继承:event_id, start_idx, end_idx
-    children: Tuple[Event, ...] = ()
-    role_index: Mapping[str, Tuple[Event, ...]] = None  # 标签 -> 命中实例(恒 tuple)
+    children: tuple[Event, ...] = ()
+    role_index: Mapping[str, tuple[Event, ...]] | None = None  # 标签 -> 命中实例(恒 tuple)
     pattern_label: str = ""
 
     def __post_init__(self) -> None:

@@ -59,6 +59,8 @@ def test_each_role_tuple_internally_ascending():
         PatternMatch(
             event_id="x", start_idx=1, end_idx=3,
             children=(a1, a2),
+            # flatten 集合刻意满足({id(a2),id(a1)} == {id(a1),id(a2)}),
+            # 故触发的是各 role tuple 内升序检查
             role_index={"A": (a2, a1)},           # tuple 内逆序
             pattern_label="chain",
         )
