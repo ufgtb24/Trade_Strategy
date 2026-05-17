@@ -1,0 +1,1 @@
+- [Path 2 #4 裁定结论](project_path2_4_ruling.md) — #4 收缩为 BarEvent/BarwiseDetector/span_id 三件;砍其余;痛点2 归 #3 Kof
