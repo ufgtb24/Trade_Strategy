@@ -7,7 +7,8 @@ from pathlib import Path
 
 import pandas as pd
 
-from path2 import run, span_id
+from path2 import Chain, run, span_id
+from path2.core import TemporalEdge
 from path2.stdlib.templates import BarwiseDetector
 from tests.path2.dogfood_detectors import VolSpike, VolSpikeDetector
 
@@ -71,23 +72,25 @@ def test_rewritten_subclass_has_no_explicit_scan_loop():
     assert "range(" not in src
 
 
-from path2 import Chain
-from path2.core import TemporalEdge
-
 # §7.4-B:同一条 L1 spike 流喂 Chain(A→B,gap∈[1,10]),诚实 pin 真实产出。
 # 下面 _CHAIN_REAL 由 Step 2 首跑真值回填(同任务内固化,不留 TODO)。
-_CHAIN_REAL: list[tuple[int, int, int]] = [(60, 61, 2), (61, 67, 2), (264, 265, 2), (265, 267, 2)]  # (start_idx, end_idx, len(children)) — §7.4-B 实跑真值固化
+# (start_idx, end_idx, len(children)) — §7.4-B 实跑真值固化
+_CHAIN_REAL: list[tuple[int, int, int]] = [(60, 61, 2), (61, 67, 2), (264, 265, 2), (265, 267, 2)]
 
 
-def test_chain_chaining_invariants_hold():
-    df = _load()
-    spikes = list(run(BarwiseVolSpike(), df))
-    d = Chain(
+def _make_sp_chain():
+    """§7.4-B 公共构造:#4 L1 spike 流喂 #3 Chain(A→B,gap∈[1,10])。"""
+    spikes = list(run(BarwiseVolSpike(), _load()))
+    return Chain(
         edges=[TemporalEdge("A", "B", min_gap=1, max_gap=10)],
         A=spikes,
         B=spikes,
         label="sp",
     )
+
+
+def test_chain_chaining_invariants_hold():
+    d = _make_sp_chain()
     matches = list(run(d))
     # 协议层不变式经 run() 真实贯通:
     assert matches, "Chain 在真实 spike 流上应有非空产出"
@@ -101,13 +104,6 @@ def test_chain_chaining_invariants_hold():
 
 
 def test_chain_real_output_pinned():
-    df = _load()
-    spikes = list(run(BarwiseVolSpike(), df))
-    d = Chain(
-        edges=[TemporalEdge("A", "B", min_gap=1, max_gap=10)],
-        A=spikes,
-        B=spikes,
-        label="sp",
-    )
+    d = _make_sp_chain()
     got = [(m.start_idx, m.end_idx, len(m.children)) for m in run(d)]
     assert got == _CHAIN_REAL  # Step 2 回填后此断言固化真实产出
