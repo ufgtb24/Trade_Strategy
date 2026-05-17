@@ -723,31 +723,39 @@ Pattern 接收一个候选 Event,返回 bool。问自己:
 ### Step 5:跑
 
 ```python
-events = list(MyDetector().detect(source))
+from path2 import run
+
+events = list(run(MyDetector(), source))      # 推荐:run() 驱动
 matched = [e for e in events if my_pattern(e)]
 ```
+
+**推荐用 `run(detector, *source)` 而不是直接 `detector.detect(source)`**:`run()` 在事件流上加一层跨事件安全网——`end_idx` 升序、`event_id` 单 run 唯一、yield 出的必须是 `Event`——出问题在源头就抛错,而不是让脏数据流到下游。它是流式的(不物化,内存只占去重集),L2+ 的 `run(detector, stream, df)` 多参也支持。直接 `detect()` 仍然合法(心智最简),只是少了这层网;本教程前面的例子为聚焦概念用了裸 `detect()`,真实代码建议套 `run()`。
+
+> 安全网受运行时开关门控;生产环境可整体关掉走零开销直通。详见 `path2_spec.md` §1.2.5 / §5.1。
 
 ---
 
 ## 10.5 前瞻 — 哪些以后不用你自己写
 
-本教程教的是**当下的协议层**:`Event` / `Detector` / 6 个关系算子。你在例 5/6/练习里手写的"扫簇""嵌套 Before 串 A→B→C""链式组合"这类代码,**有一部分将来不用你自己写**。
+本教程教的是**协议层**:`Event` / `Detector` / 关系算子。你在例 5/6/练习里手写的"扫簇""嵌套 Before 串 A→B→C""链式组合"这类代码,其中"声明事件间时序约束让消费者跑"的部分**已有 stdlib 标准件,不用你自己写**。
 
-| 形态 | 现在(过渡) | 将来(stdlib 沉淀) |
+| 形态 | 手写(协议层) | stdlib 标准件(已就绪) |
 |---|---|---|
-| 线性链 `a→b→c` | 手写嵌套 `Before` 或自写组合 Detector | `ChainPatternDetector(streams, edges)`(带最优实现,单调双指针 O(N)) |
-| DAG / 多入度(`a→c, b→c`) | 手写 | `DagPatternDetector` |
-| k 选 n 满足 | 手写计数 | `KofPatternDetector` |
-| 链 + 否定窗口("中间不能有 X") | 手写反向扫描 | `NegPatternDetector` |
+| 线性链 `a→b→c` | 手写嵌套 `Before` 或自写组合 Detector | `Chain(streams, edges)` |
+| DAG / 多入度(`a→c, b→c`) | 手写 | `Dag` |
+| k 选 n 满足 | 手写计数 | `Kof` |
+| 链 + 否定窗口("中间不能有 X") | 手写反向扫描 | `Neg` |
+
+四者经 `path2/__init__` 出口,统一产出 `PatternMatch`,用 `TemporalEdge` 声明 `edges`。其约束推进核心是 **LEF-DFS**(算法权威见 `docs/research/path2_algo_core_redesign.md`;复杂度是诚实账:Chain 近线性 headline,病态宽前沿 DAG 指数——不是先前设想的"单调双指针 O(N) 永不回退",那条已被实现轮证伪)。
 
 **关键:思维模型完全不变**。stdlib 件只是把"用户会写出几乎一样"的高频组合**沉淀成带最优实现的标准件** —— 你仍然是"想清楚事件分层 → 声明事件间时序约束(`edges`)→ 让消费者跑"。区别只是:**声明仍由你写,执行交给 stdlib**(协议层只定 schema,不绑实现)。
 
 所以学本教程的手写写法**不浪费**:
-1. stdlib 件就绪前,这就是你唯一的写法
-2. stdlib 件就绪后,你仍需理解底盘才能在标准件不够用时降级手写(escape hatch)
+1. stdlib 标准件覆盖不到的形态,手写仍是唯一写法
+2. 标准件不够用时要能降级手写(escape hatch);理解协议层底盘是用好 stdlib 的前提
 3. 这套"事件 + 容器 + 时序"的思考方式,无论用不用 stdlib 都不变
 
-> 详见 `path2_qa.md` Q1 备忘 B、`path2_spec.md` §7.1。
+> 详见 `path2_qa.md` Q1 备忘 B、`path2_spec.md` §7.1、算法权威 `docs/research/path2_algo_core_redesign.md`。
 
 ---
 

@@ -45,21 +45,20 @@ Path 2 = **独立的多级事件表达框架**(独立业务,与突破选股/mini
 | # | 工作 | 来源 | cycle 拆分 |
 |---|---|---|---|
 | ~~1~~ | ✅ **已完成**:dogfood 两级形态端到端验证,报告 + 集成测试已合入;bool-as-idx 已拍板=显式拒绝 | 见 §1 | 已收口 |
-| **2** | **spec v0.2 正式修订**:§9 并入 v0.1 正文 + 补 `run()` 推荐驱动文档(bool-as-idx 子项**已由 #1 闭环,移出本项**)| spec §9 / design §3.3 | 纯文档,无独立 plan(单独小改)|
+| ~~2~~ | ✅ **已完成**:spec v0.2 正式修订——§9 并入正文(§1.1.2 frozen/§1.2.5 run()/§1.3 max_gap+earlier_later 标签/§5.1 补强卫语+bool),§9 转变更摘要;`earlier`/`later`=声明期端点标签写回已落地 | 见 §1 | 已收口 |
 | ~~3~~ | ✅ **已完成**:`Chain`/`Dag`/`Kof`/`Neg` + `PatternMatch` 合入(@ 047b4e5);核心经 agent team 重设计为 LEF-DFS,156 测试全过 | 见 §1 | 已收口 |
 | **4** | **stdlib:常用 Event 类 / Detector 模板**(BarEvent/Peak/BO/VolSpike;Barwise/FSM/Windowed/Threshold)| spec §7.2 / qa.md B | 1 份 spec + 1 份 plan(完整 cycle);优先级由 #1 痛感定 |
 | 5 | **DSL 层**(压缩简单连锁)| spec §7.2 / qa.md C | 可选;需求倒逼才启;1 份 spec + 1 份 plan |
-| 6 | tutorial/api_reference 补 `run()` 推荐驱动说明 | design §3.3 | 小文档项,可并入 #2 |
+| ~~6~~ | ✅ **已完成**:tutorial §10 Step5 + §10.5、api_reference §0.2/§1.3/§1.4 补 `run()` 推荐驱动 + 改正 stdlib 已就绪/LEF-DFS(随 #2 一并) | design §3.3 | 已收口 |
 | 7 | Path 2 自有下游流水线 | spec §0.2 | 远期,框架被 #1 证明前不碰 |
 
-**排序逻辑**:#1/#3 已过并合入;**下一步主线默认做 #4**(stdlib 常用 Event/Detector 模板,优先级由 dogfood 报告 §5 浮动);#5 默认不做;#2/#6 便宜可捆绑;#7 远期。
+**排序逻辑**:#1/#3 已过并合入,#2/#6 文档已收口;**下一步主线 = #4**(stdlib 常用 Event/Detector 模板,优先级由 dogfood 报告 §5 浮动);#5 默认不做;#7 远期。
 **工作模式**:#4/#5 各走完整 superpowers 管线(brainstorming→writing-plans→subagent-driven-development,独立 worktree),勿跳 brainstorm。重大算法/设计缺口经审查暴露时:轻量→tom 裁定,重大→agent team(#3 LEF-DFS 即此先例,见 `path2_algo_core_redesign.md`)。
 
 ## 3. 当前在途位置
 
-**#1、#3 均已收口并合入,各自 post-merge 收尾(update-ai-context)已做,worktree/branch 已清理。无在途任务。** 下一步入口见 §4。
+**#1、#3 均已收口并合入(post-merge update-ai-context 已做,worktree/branch 已清理);#2/#6 文档修订已完成(spec/tutorial/api_reference,未提交)。无在途任务。** 下一步入口见 §4。
 
 ## 4. 接下来做什么
 
-1. **(主线)** 启动 **#4 stdlib 常用 Event 类 / Detector 模板**(BarEvent/Peak/BO/VolSpike;Barwise/FSM/Windowed/Threshold):重新进入 `superpowers:brainstorming`。输入材料:dogfood 报告 `docs/research/path2_dogfood_report.md` §5(框架贴合度痛点,定 #4 优先级);spec §7.2;qa.md Q1 备忘 B;#3 已落地的 `path2/stdlib/` + 算法权威 `path2_algo_core_redesign.md`(#4 模板须与 LEF-DFS PatternDetector 协作)。走完整 brainstorm→spec→plan→subagent-driven,独立 worktree。
-2. **(可捆绑)** #2 spec v0.2 修订(§9 并入正文 + `run()` 驱动文档),纯文档小改;#6 tutorial/api_reference 补 `run()` 说明可并入。注:#3 实测的 spec 关键回写(`earlier`/`later` 是声明期端点标签非 event_id;§2.3 假"天然不重复"删除→#seq 无条件共享)应一并并入 #2,见 `path2_algo_core_redesign.md` §8/§11.6。
+**唯一主线:#4 stdlib 常用 Event 类 / Detector 模板**(BarEvent/Peak/BO/VolSpike;Barwise/FSM/Windowed/Threshold)。重新进入 `superpowers:brainstorming`(注:brainstorming 阶段每个澄清/设计问题派 tom 裁定,见 memory `feedback_path2_delegate_tom`)。输入材料:dogfood 报告 `docs/research/path2_dogfood_report.md` §5(框架贴合度痛点,定 #4 优先级);spec §7.2;qa.md Q1 备忘 B;#3 已落地的 `path2/stdlib/` + 算法权威 `path2_algo_core_redesign.md`(#4 模板须与 LEF-DFS PatternDetector 协作)。走完整 brainstorm→spec→plan→subagent-driven,独立 worktree。

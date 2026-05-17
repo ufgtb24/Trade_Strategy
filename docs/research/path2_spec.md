@@ -61,7 +61,7 @@ class Event(ABC):
 
 - **Event 必须是 `@dataclass(frozen=True)`**。一旦被 Detector yield,字段不可再改
 - 这是 "Row 落地 = 字段完成" 不变式的实现保证(详见 §3.1)
-- 违反方式:子类用 `@dataclass`(非 frozen)或动态 setattr。**实现层应在 base class 加 runtime check**
+- **frozen 一致性由 Python `@dataclass` 在装饰期原生强制**:非 frozen 子类继承 frozen `Event` 在类定义时即抛 `TypeError: cannot inherit non-frozen dataclass from a frozen one`,比任何协议层自检更早更强;故协议层**不写** frozen 自检(原 v0.1 设想的 `__init_subclass__`/`__post_init__` 自检为不可达死代码)。动态 `setattr` 由 frozen dataclass 原生抛 `FrozenInstanceError`
 
 #### 1.1.3 子类化规则
 
@@ -138,6 +138,14 @@ class Detector(Protocol):
 - **单次 `detect()` 调用内的状态独立**:同一个 Detector 实例对不同 source 调用 `detect()` 时,状态不应跨调用泄漏
 - 实现建议:状态全部声明在 `detect()` 函数内部(局部变量),而非 `self.*`,以避免跨调用污染
 
+#### 1.2.5 `run()` —— 推荐驱动
+
+- `run(detector, *source)` 是驱动 Detector 的**推荐入口**:它包裹 `detector.detect(*source)`,在流上施加 §1.2.2 / §5.1 的**跨事件安全网**(`end_idx` 升序、`event_id` 单 run 唯一、yield 出的对象必须是 `Event`)
+- **非强制**:直接 `MyDetector().detect(df)` 仍合法(保留极简心智模型),只是少了跨事件检查
+- `*source` 变参支撑 L2+ 的 `detect(stream, df)` 形态;**流式不物化**(generator 边跑边查,内存只占去重所需的 `seen_ids`)
+- 安全网整体受运行时开关门控(见 §5.1 "若 runtime check 开启";关闭时 `run()` 走 fast-path 零开销直通)
+- §5.1 表中标注抛错位置为 "Detector wrapper" 的违规,即由 `run()` 这层检出
+
 ---
 
 ### 1.3 `TemporalEdge`
@@ -148,13 +156,15 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True)
 class TemporalEdge:
-    """显式声明两个事件之间的时间关系约束。"""
+    """声明两个**端点标签**之间的时间关系约束(声明性 datatype,本身不计算)。"""
 
-    earlier: str            # 较早事件的 event_id
-    later: str              # 较晚事件的 event_id
+    earlier: str            # 较早端点的声明期标签(非 event_id)
+    later: str              # 较晚端点的声明期标签(非 event_id)
     min_gap: int = 0        # 最小间隔(含),单位:bar
-    max_gap: int = math.inf # 最大间隔(含),单位:bar;math.inf 表示无上限  ← v0.2:类型应为 float(见 §9 偏差②)
+    max_gap: float = math.inf  # 最大间隔(含),单位:bar;math.inf 表示无上限
 ```
+
+> **`earlier` / `later` 是声明期端点标签,不是 `event_id`。** 一条 `TemporalEdge` 声明的是"标签 X 的某事件"与"标签 Y 的某事件"之间的约束;消费它的 stdlib PatternDetector(`Chain`/`Dag`/`Kof`/`Neg`)在 run 时把每个标签解析到一条事件流,再据 gap 公式驱动匹配。协议层只定该 schema 与 gap 公式,不绑定标签如何解析(见 §7.1)。
 
 #### 1.3.1 gap 的精确定义
 
@@ -323,11 +333,15 @@ class Pattern:
 
 | 违规 | 错误类型 | 抛错位置 |
 |---|---|---|
-| Event 子类没用 `@dataclass(frozen=True)` | `TypeError` | ~~base class `__init_subclass__`~~ → **Python `@dataclass` 装饰期原生强制**(见 §9 偏差①) |
-| Detector yield 出 Event 的某 float 字段是 NaN(若 runtime check 开启)| `ValueError` | `Event.__post_init__` |
-| Detector yield 顺序不符 `end_idx` 升序(若 runtime check 开启)| `ValueError` | Detector wrapper |
+| Event 子类没用 `@dataclass(frozen=True)` | `TypeError` | Python `@dataclass` 装饰期原生强制(见 §1.1.2) |
+| `start_idx` / `end_idx` 非 `int` | `TypeError` | `Event.__post_init__` |
+| `start_idx` / `end_idx` 为 `bool`(`bool ⊂ int` 仍显式拒绝)| `TypeError` | `Event.__post_init__` |
 | `start_idx > end_idx` | `ValueError` | `Event.__post_init__` |
-| 同一 Detector 单次 run 内 `event_id` 重复(若 runtime check 开启)| `ValueError` | Detector wrapper |
+| Detector yield 出 Event 的某 float 字段是 NaN(若 runtime check 开启)| `ValueError` | `Event.__post_init__` |
+| Detector yield 顺序不符 `end_idx` 升序(若 runtime check 开启)| `ValueError` | `run()`(Detector wrapper)|
+| 同一 Detector 单次 run 内 `event_id` 重复(若 runtime check 开启)| `ValueError` | `run()`(Detector wrapper)|
+| `run()` yield 出非 `Event` 对象(若 runtime check 开启)| `TypeError` | `run()`(Detector wrapper)|
+| `TemporalEdge` `min_gap < 0` 或 `min_gap > max_gap` | `ValueError` | `TemporalEdge.__post_init__` |
 
 ### 5.2 不必报错(行为未定义)
 
@@ -374,39 +388,27 @@ class Pattern:
 ## 8. 版本与变更
 
 - **v0.1**(2026-05-12):初稿。基于 `path2_advantages.md` / `path2_vs_condition_ind_coverage.md` / `framework_expressiveness_shootout.md` / `path2_tutorial.md` 的累计共识固化
-- **v0.2 反馈**(2026-05-16):协议层按 `docs/superpowers/plans/2026-05-16-path2-protocol-layer.md` 实现并通过两阶段 review。实测发现的偏差/补强集中记于 §9,待正式 v0.2 修订时并入正文
+- **v0.2**(2026-05-17):正式修订。协议层 + stdlib PatternDetector(`Chain`/`Dag`/`Kof`/`Neg`)两轮实现反馈**已并入正文**;原 §9 反馈表转为下方变更摘要
 - 后续变更通过 plan 阶段的实现反馈推动 v0.2+
 
 ---
 
-## 9. v0.2 反馈(plan 阶段实现回写,2026-05-16)
+## 9. v0.2 变更摘要(已并入正文)
 
-> v0.1 正文未改动(仅 §1.3 / §5.1 加了指向本节的行内标记)。以下为协议层实现实测得到的、需在正式 v0.2 修订并入正文的条目。
+> v0.1→v0.2 的实测反馈已写入正文对应小节;本节仅留变更索引与实现产物指针(不再保留 "v0.1 原文 vs 实测" 历史对照表——正文即权威)。
 
-### 9.1 偏差(spec v0.1 写法与现实不符)
+- **偏差①(frozen)** → §1.1.2 / §5.1:frozen 由 Python `@dataclass` 装饰期原生强制,协议层不写自检(原 `__init_subclass__` 自检为不可达死代码)
+- **偏差②(max_gap 类型)** → §1.3:`max_gap: float = math.inf`
+- **补强卫语** → §5.1:`start_idx`/`end_idx` 非 int → `TypeError`;`run()` yield 非 `Event` → `TypeError`;`TemporalEdge` `min_gap<0`/`min_gap>max_gap` → `ValueError`
+- **bool-as-idx(已决议=显式拒绝)** → §1.1.2 / §5.1:`type(idx) is bool → TypeError`(`bool ⊂ int`,语义错误;与 `features` 排除 bool 同源)。回归测试 `tests/path2/test_event.py`
+- **`earlier`/`later` 语义澄清**(#3 stdlib 实测)→ §1.3:二者是声明期端点标签,非 `event_id`;由消费的 stdlib PatternDetector 解析到事件流
+- **`run()` 推荐驱动** → 新增 §1.2.5
 
-| # | v0.1 原文 | 实测现实 | v0.2 应改为 |
-|---|---|---|---|
-| ① | §1.1.2 / §5.1:frozen 由协议层在 `__init_subclass__` 抛 `TypeError` | Python `@dataclass` 在**装饰期**即拒绝"非 frozen 子类继承 frozen `Event`"(`TypeError: cannot inherit non-frozen dataclass from a frozen one`),比任何协议层自检更早更强。原设想的 `__init_subclass__`/`__post_init__` 自检为**不可达死代码**(已实测;唯一进入路径是完全不加 `@dataclass` 的纯子类,而它继承 `Event` 的 `frozen=True` 而判定通过) | §5.1 frozen 行改为"由 Python `@dataclass` 装饰期原生强制,非协议层自检";§1.1.2 删除"实现层应在 base class 加 runtime check"的 frozen 自检要求 |
-| ② | §1.3:`max_gap: int = math.inf` | `math.inf` 是 `float`,`int` 注解类型不自洽 | `max_gap: float = math.inf` |
+### 9.1 实现产物指针
 
-### 9.2 补强项(spec §5 是最小必报集,实现额外加的合理卫语,不与 v0.1 冲突)
-
-| 卫语 | 错误类型 | 抛出位置 | 建议 |
-|---|---|---|---|
-| `start_idx`/`end_idx` 非 `int` | `TypeError` | `Event.__post_init__` | v0.2 纳入 §5.1 |
-| `run()` yield 出非 `Event` 对象 | `TypeError` | `run()`(Detector wrapper) | v0.2 纳入 §5.1 |
-| `TemporalEdge` `min_gap<0` 或 `min_gap>max_gap` | `ValueError` | `TemporalEdge.__post_init__` | v0.2 纳入 §5.1(spec §5.2 原列为"不必报错",实现选择报错,属合理收紧) |
-
-### 9.3 bool-as-idx —— 已决议(显式拒绝)
-
-- 2026-05-16(dogfood 验证轮)决议:**显式拒绝 `bool` 作 `start_idx`/`end_idx`**。`Event.__post_init__` 在 int 卫语后增 `type(start_idx) is bool or type(end_idx) is bool → raise TypeError`(用精确 `type() is bool`,不破坏 int 卫语)。理由:`bool ⊂ int`,`start_idx=True` 当 1 用几乎总是 bug,构造点拦截定位最准;与 `features` 属性排除 bool 的先例同源。回归测试见 `tests/path2/test_event.py`。本项已闭环,**不再属 roadmap #2 的待并入项**。
-
-### 9.4 实现产物指针
-
-- 设计稿:`docs/superpowers/specs/2026-05-16-path2-protocol-layer-design.md`(§2.4 已同步偏差①)
-- 实现 plan:`docs/superpowers/plans/2026-05-16-path2-protocol-layer.md`
-- 代码:`path2/`(`config` / `core` / `operators` / `pattern` / `runner`),50 测试全过
+- **协议层**:design `docs/superpowers/specs/2026-05-16-path2-protocol-layer-design.md`;plan `docs/superpowers/plans/2026-05-16-path2-protocol-layer.md`;代码 `path2/`(`config`/`core`/`operators`/`pattern`/`runner`)
+- **dogfood 验证**:`docs/research/path2_dogfood_report.md`
+- **stdlib PatternDetector(#3)**:design `docs/superpowers/specs/2026-05-16-path2-stdlib-pattern-detectors-design.md`;plan `docs/superpowers/plans/2026-05-16-path2-stdlib-pattern-detectors.md`;**算法权威 `docs/research/path2_algo_core_redesign.md`**(LEF-DFS §1-9 / Kof §10 / Neg §11);代码 `path2/stdlib/`
 
 ---
 

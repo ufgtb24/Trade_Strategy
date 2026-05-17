@@ -23,13 +23,14 @@ Path 2 的全部 API 围绕三个角色:
 
 **关键**:Pattern **不是一个类**,是一个**判定函数** — 由关系算子 + `Pattern.all` 组合而来,返回 `bool`,绑定一条事件流来评估。
 
-### 0.2 API 全集(本手册仅此 8 项)
+### 0.2 API 全集(本手册的协议层 10 项)
 
 | 类型 | API | 一句话 |
 |---|---|---|
 | 核心类型 | `Event` | 事件 row 的基类(frozen dataclass) |
 | 核心类型 | `Detector` | 产出事件的协议 |
-| 核心类型 | `TemporalEdge` | 声明两事件间的时序边约束 |
+| 核心类型 | `TemporalEdge` | 声明两端点标签间的时序边约束 |
+| 驱动 | `run(detector, *source)` | 推荐驱动:套安全网驱动 Detector(见 §1.4) |
 | 关系算子 | `Before(anchor, predicate, window)` | anchor 之前 N bar 内满足 |
 | 关系算子 | `At(anchor, predicate)` | anchor 自身满足 |
 | 关系算子 | `After(anchor, predicate, window)` | anchor 之后 N bar 内满足 |
@@ -37,7 +38,7 @@ Path 2 的全部 API 围绕三个角色:
 | 关系算子 | `Any(events, predicate)` | 容器至少一个满足 |
 | 组合子 | `Pattern.all(*predicates)` | AND 组合成最终 predicate |
 
-**就这 9 个**。其他都是用户自己定义的子类 / Detector / Pattern 函数。
+**协议层就这 10 个**;其他都是用户自定义的子类 / Detector / Pattern 函数。另有 stdlib 标准 PatternDetector(`Chain`/`Dag`/`Kof`/`Neg` + `PatternMatch`,经 `path2/__init__` 出口)消费 `TemporalEdge` 声明——不属本手册协议层范围,见 `path2_spec.md` §7.1 与算法权威 `docs/research/path2_algo_core_redesign.md`。
 
 ---
 
@@ -238,15 +239,15 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True)
 class TemporalEdge:
-    earlier: str            # 较早事件的 event_id
-    later: str              # 较晚事件的 event_id
-    min_gap: int = 0        # 最小间隔(含),单位:bar
-    max_gap: int = math.inf # 最大间隔(含)
+    earlier: str               # 较早端点的声明期标签(非 event_id)
+    later: str                 # 较晚端点的声明期标签(非 event_id)
+    min_gap: int = 0           # 最小间隔(含),单位:bar
+    max_gap: float = math.inf  # 最大间隔(含);math.inf 无上限
 ```
 
 #### 概念
 
-`TemporalEdge` 是**声明性的时序约束 datatype**。它本身**不参与计算**,只描述"两个具名事件之间应满足什么样的间隔"。被多流 Pattern 组合(用户自写的组合 Detector,或将来 stdlib 中可能提供的 `PatternDetector` 模板)消费,作为匹配规则。
+`TemporalEdge` 是**声明性的时序约束 datatype**。它本身**不参与计算**,只描述"标签 X 的某事件与标签 Y 的某事件之间应满足什么样的间隔"。`earlier`/`later` 是**声明期端点标签,不是 `event_id`**;由消费的 stdlib PatternDetector(`Chain`/`Dag`/`Kof`/`Neg`)在 run 时把每个标签解析到一条事件流,据 gap 公式驱动匹配。
 
 #### gap 精确定义
 
@@ -280,15 +281,49 @@ edges = [
 
 | 错误 | 原因 |
 |---|---|
-| `earlier` / `later` 写成 event 对象而非 `event_id` 字符串 | `TemporalEdge` 是"命名引用",对象级匹配在消费端做 |
-| 把 `TemporalEdge` 当成可执行的检测器 | 它只是声明 — 必须由 Detector 消费才会落到事件流 |
-| `min_gap > max_gap` | 不变量违反;协议层未强制 check,但建议在消费端 assert |
+| 把 `earlier` / `later` 当成具体 event 的 `event_id` | 它们是**声明期端点标签**;每个标签由消费的 PatternDetector 解析到一条事件流,对象级匹配在消费端做 |
+| 把 `TemporalEdge` 当成可执行的检测器 | 它只是声明 — 必须由 PatternDetector 消费才会落到事件流 |
+| `min_gap > max_gap` 或 `min_gap < 0` | `TemporalEdge.__post_init__` 直接抛 `ValueError`(构造点拦截) |
 
 > **说明**:`TemporalEdge` 是**声明性 datatype**,本身不计算 — 必须有消费者读它的字段、按 §1.3.1 gap 公式驱动匹配,才会落到事件流。
 >
-> **消费者由谁写(已确定)**:消费 `TemporalEdge` 的标准 PatternDetector 系列 —— `ChainPatternDetector`(线性链,单调双指针 O(N))/ `DagPatternDetector`(DAG 多入度)/ `KofPatternDetector`(k 选 n)/ `NegPatternDetector`(链 + 否定窗口)—— **必须由 Path 2 stdlib 沉淀,带最优实现,不允许用户自写**(见 `path2_qa.md` Q1 备忘 B、`path2_spec.md` §7.1)。**协议层只定 schema(`TemporalEdge` + gap 公式),不绑实现;用户写声明(`edges`),stdlib 跑执行**。
+> **消费者(已就绪)**:stdlib 标准 PatternDetector —— `Chain`(线性链)/ `Dag`(DAG 多入度)/ `Kof`(k 选 n)/ `Neg`(链 + 否定窗口)—— 已沉淀于 `path2/stdlib/`,经 `path2/__init__` 出口,统一产出 `PatternMatch`,**不允许用户自写**(见 `path2_spec.md` §7.1)。其约束推进核心是 **LEF-DFS**;复杂度是诚实账(Chain 近线性 headline,病态宽前沿 DAG 指数——非先前设想的"单调双指针 O(N)",已被实现轮证伪)。算法权威见 `docs/research/path2_algo_core_redesign.md`。**协议层只定 schema(`TemporalEdge` + gap 公式),不绑实现;用户写声明(`edges`),stdlib 跑执行**。
 >
-> **stdlib 就绪前的过渡写法**:在标准 PatternDetector 落地前,写"A→B→C"类形态可**直接用嵌套 `Before` 算子**(无需 `TemporalEdge`),或**临时自写组合 Detector 接受 `edges: List[TemporalEdge]`**,内部按 gap 公式逐对校验后 yield 组合事件。这是过渡手段,不是长期形态。
+> **escape hatch**:标准件不够用时仍可降级——"A→B→C"类形态直接用嵌套 `Before` 算子(无需 `TemporalEdge`),或自写组合 Detector 接受 `edges: List[TemporalEdge]` 内部按 gap 公式逐对校验后 yield。理解协议层底盘是用好 stdlib 与降级的前提。
+
+---
+
+### 1.4 `run(detector, *source)` —— 推荐驱动
+
+#### 概念
+
+驱动 Detector 的推荐入口。包裹 `detector.detect(*source)`,在产出流上施加**跨事件安全网**:`end_idx` 升序、`event_id` 单 run 唯一、yield 出的对象必须是 `Event`。违规在源头即抛错(见 §1.2.2 / `path2_spec.md` §5.1),而非让脏数据流到下游。
+
+- **非强制**:直接 `MyDetector().detect(df)` 仍合法(心智最简),只是少这层网
+- `*source` 变参支撑 L2+ 的 `run(detector, stream, df)` 形态
+- **流式不物化**:generator 边跑边查,内存只占去重所需的 `seen_ids`
+- 安全网受运行时开关门控;关闭时 `run()` 走 fast-path 零开销直通(生产可关)
+
+#### 用法示例
+
+```python
+from path2 import run
+
+# L1:驱动单 Detector
+events = list(run(MyL1Detector(), df))
+matched = [e for e in events if my_pattern(e)]
+
+# L2+:下层流 + df 作多 source
+l2 = list(run(MyL2Detector(), run(MyL1Detector(), df), df))
+```
+
+#### 陷阱
+
+| 错误 | 原因 |
+|---|---|
+| 用 `from path2.config import RUNTIME_CHECKS` 缓存开关 | import 期把布尔拷死,`set_runtime_checks()` 热切失效;须 `config.RUNTIME_CHECKS` 属性访问 |
+| 期望 `run()` 校验"匹配完整性" | 它只管序 + id 唯一 + 类型;算法完整性是 stdlib/测试守护,不在协议运行时检查范围 |
+| 关掉 runtime check 后仍期望抛 NaN/顺序错 | 关闭即零开销直通,所有跨事件检查跳过 |
 
 ---
 
