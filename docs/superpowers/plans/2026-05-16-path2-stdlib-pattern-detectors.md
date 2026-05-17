@@ -5,6 +5,8 @@
 **Goal:** 在 `path2/stdlib/` 落地消费 `TemporalEdge` 声明的四个标准 PatternDetector(`Chain`/`Dag`/`Kof`/`Neg`)+ 统一产出类 `PatternMatch`,用户只写声明。
 
 **Architecture:** 四 Detector = 一个核心(标签解析 → edges 拓扑构建 → 约束推进)的四种约束形态。约束推进核心 = **LEF-DFS**(`docs/research/path2_algo_core_redesign.md` 权威;INV-A/B/C 三态分离 + 前沿割记忆 + start-first key;**取代原失实的"单调双指针 O(ΣN) 永不回退"**)。Chain = Dag 加严线性校验的退化特例(结构 `f=1` ⇒ 多项式/近线性),二者共用 LEF-DFS 核心;Kof = 滑窗计数 + 有界缓冲;Neg = 正向子图(复用 LEF-DFS)+ forbid 谓词过滤。复杂度诚实账:有界前沿多项式,病态宽前沿 DAG 时间空间同指数(redesign §5)。协议层(`path2/`)与 spec 零改动。
+>
+> **⚠️ Kof/Neg 描述已被取代**:本行及 Task 8/9 非 OVERRIDE 正文中"Kof=滑窗计数+有界缓冲 / Neg 旧 forbid 表述"均**作废**,以 **Task 8 OVERRIDE + redesign §10**(Kof = LEF-DFS 结构姊妹,单 WCC 零缓冲+诚实指数)、**Task 9 OVERRIDE + redesign §11**(Neg = forbid 成员资格谓词)为权威。Chain/Dag 用 LEF-DFS,Kof/Neg 见各自 OVERRIDE。
 
 **Tech Stack:** Python 3 stdlib(`dataclasses`),`pytest`,`uv run`。无第三方依赖。
 
