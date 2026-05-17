@@ -3,7 +3,9 @@
 > 日期:2026-05-17 · 上游:roadmap #4 · brainstorming 产出
 > 范围声明:Path 2 是独立的多级事件表达框架,**与 mining / TPE / 因子框架 / Condition_Ind / BreakoutStrategy 等概念无关**,本设计严禁引入。
 > 协议层(`path2/`)+ #3 stdlib PatternDetector(`Chain/Dag/Kof/Neg`)均已冻结;本设计**不改协议层任何字段/类型,不改 #3 任何代码/行为**,只在其上叠两个新符号。
-> 决策依据:多轮第一性原理裁定(tom),每条经 adopt/redo gate;关键裁定经 pinned 测试硬核查纠正一次(D1)。
+> 决策依据:多轮第一性原理裁定(tom),每条经 adopt/redo gate;关键裁定经硬核查纠正两次(D1 pinned 测试 / §7.4 Kof 代码级核查)。
+
+> **写回横幅(plan 起草期实现核查驱动)**:brainstorming 原裁定「痛点2 = 窗口聚合归 #3 `Kof`」被 plan 阶段对 `Kof` 的代码级核查**证伪**——`Kof` 是 k-of-n **边松弛**(全标签必在场、成员数=label 数恒为编译期常量),**本质无法表达「滑动窗口内 ≥N(动态计数)」**(证据:`_kof_dfs:310/334` 全 label 必赋值 + 各 label 独立扫后缀无单 match 内互斥;`resolve_labels:46-57` 同类流多角色构造期 ValueError;且 Kof 枚举/回溯+全成员非重叠消费 ≠ 旧贪心锚首成员分组)。**红线不变**(#4 不造 `WindowedDetector`/任何贪心计数 detector),但理由已改(见 §3、§8);§7.4 已据此降级(见 §7)。本横幅所述为权威,正文 §3/§7/§8 已同步。
 
 ---
 
@@ -50,7 +52,7 @@
 - `ThresholdDetector`:砍。阈值穿越是 `BarwiseDetector.emit` 内一行领域判据的退化特例,不值独立类。
 - `FSMDetector` / `WindowedDetector`:砍,零 dogfood 证据。
 
-**红线(实现期最大风险,spec 显式封死)**:dogfood 痛点2「窗口锚定首成员 vs 滑动窗口 / 窗口内 ≥N 个」**已由 #3 `Kof` 覆盖**。#4 **严禁**重造任何窗口/聚合原语(`WindowedDetector` 等)。窗口语义统一归 `Kof`;#4 只做「逐 bar 单点」这一层,前瞻/聚合一律交给 #3。D3 的 Kof 串联验证即此裁定的活体证明。
+**红线(实现期最大风险,spec 显式封死)**:#4 **严禁**重造任何窗口/聚合/滑动计数原语(`WindowedDetector`、贪心 cluster detector 等)。**理由(经 plan 期 Kof 核查修正)**:dogfood 痛点2「窗口内 ≥N 个」是**滑动动态计数**,#3 `Kof` 是 k-of-n 边松弛(成员数恒=label 数),**并不覆盖**它(详见写回横幅);该滑动计数样板**目前无足够复用证据进 stdlib**——dogfood 仅一次出现,使用方暂自管(如 dogfood 脚手架 `VolClusterDetector` 的做法),待 #5/#7 出现真实重复再立类。红线不依赖任何「已被某 Detector 覆盖」的声明,故更稳:#4 只做「逐 bar 单点」这一层,前瞻/窗口/聚合一律不进 #4。
 
 ### 3.1 `BarwiseDetector` 精确契约(D2 钉死)
 
@@ -150,7 +152,7 @@ path2/__init__.py   ← 出口加 BarwiseDetector, span_id(与 Chain/Kof 并列)
 
 ## 7. 验证设计(D3 钉死)
 
-#4 无新业务语义,**最强验证 = 对 dogfood 已 pin 死的旧行为做等价改写**(老 idx 是金标准,比造新形态更强的回归证据)。四项,缺一不可:
+#4 无新业务语义,**最强验证 = 对 dogfood 已 pin 死的旧行为做等价改写**(老 idx 是金标准,比造新形态更强的回归证据)。项 1–3 + §7.4(拆 A/B),缺一不可:
 
 1. **样板消除(核心)**:用 `BarwiseDetector` 重写 dogfood 的 `VolSpikeDetector`,重写后子类体**只剩 `emit` 内领域判据**(`ratio = vol[i]/mean(...); return VolSpike(...) if ratio>2 else None` + `if i<LOOKBACK: return None`),**不得出现** `for i in range(...)` 主循环。「重写后子类不含显式扫描循环」作为可检收口判据——直接证明吃掉痛点1 样板循环。
 2. **行为逐事件等价(核心)**:重写版经 `run()` 驱动,产出与 dogfood pin 死的 11 个 idx `[34,60,61,67,97,130,176,194,264,265,267]` 及各自 `ratio` **逐字段相等**。复用已提交 fixture `tests/path2/fixtures/aapl_vol_slice.csv`,确定可复现。
@@ -161,15 +163,20 @@ path2/__init__.py   ← 出口加 BarwiseDetector, span_id(与 Chain/Kof 并列)
    assert span_id("vc", 60, 67)        == "vc_60_67"  # #4 公开:区间
    ```
    且 `_ids.py` 改动后 **#3 现有 156 测试全过**(证明 `default_event_id` 一字节不改、对 #3 零行为变更)。
-4. **端到端串联 #3**:重写版 L1 流 `run()` → 喂 `Kof`(重现 dogfood「窗口内 ≥3」)→ 产出 2 个簇 pin 死(`vc_60_67` count3 / `vc_264_267` count3)。证明「#4 模板产出能喂 #3」价值命题,并活体闭环痛点2 归 `Kof` 裁定(用 `Kof` 而非重造 `Windowed`)。
+**§7.4 端到端串联 #3(经 plan 期 Kof 核查拆 A/B)**:
 
-不需要新形态/新数据/新 dogfood(会引入无关变量)。
+- **§7.4-A(核心,充分)**:即上述项 1+2——L1 逐事件 pin 死 11 idx + 子类无显式循环。这已**充分**证明 #4 的真实价值命题(模板吃掉痛点1 样板循环 + 行为保真);§7.4-A 单独成立即 #4 验证下限。
+- **§7.4-B(补充,降级为诚实 pin)**:验证「#4 模板产出能经 `run()` 喂给 #3 PatternDetector + `run()` 链式贯通」。**不复刻** dogfood 旧贪心 2 簇——`Kof` 是 k-of-n 边松弛(全标签必在场、成员数恒=label 数),**本质无法表达滑动「窗口内 ≥N」**(写回横幅;#3 设计权威:Kof「全标签必在场 no partial」)。故 §7.4-B 取**诚实 pin**:用一个 #3 PatternDetector(`Chain`,最简:声明 spike→spike 一条 `TemporalEdge`、`max_gap` 取定值,经 key/具名流把 L1 spike 流接入)消费 #4 重写版的 L1 流,**单验证任务两步**——步骤1 首次运行得真实产出 `G_real`(`[(pm.start_idx, pm.end_idx, len(pm.children)), ...]`),步骤2 **同一任务内**把 `G_real` 回填为字面量断言并固化(**不留 TODO / 不留占位**;plan 把"先跑得真值再于同任务回填"写成显式两步)。验证目标仅:链式 `run(#3Det, run(BarwiseRewrite(), df))` 不抛、产出非空且 end_idx 升序、event_id 唯一(协议层不变式真实贯通)。
+
+> §7.4-B 用 `Chain` 而非 `Kof`/`Neg`:`Chain` 是表达「两个 spike 有时间先后 + gap 约束」的最简 #3 消费者,足以证「#4 产出能喂 #3」;不追求复刻任何旧业务分组(诚实原则:复现即真,不强行等于旧贪心)。`Chain` 单边的精确 `edges`/标签接入由 plan 依 `Chain.__init__` 与 `resolve_labels` 实情写死。
+
+不需要新形态/新数据/新 dogfood(会引入无关变量)。痛点2 红线由 §3(理由已修正)单独封死,不依赖 §7.4-B。
 
 ---
 
 ## 8. 最大设计风险
 
-实现期被诱导造与 #3 `Kof` 语义不一致的窗口原语(`WindowedDetector` 等)。**§3 红线 + §7.4 Kof 串联验证**双重封死:plan 阶段不得新增任何窗口/聚合类,验证强制走 `Kof`。
+实现期被诱导造滑动窗口/贪心计数原语(`WindowedDetector`、cluster detector 等)。**§3 红线**(理由已修正为「无足够复用证据进 stdlib,使用方自管,待 #5/#7」,不依赖任何 Detector 覆盖声明)单独封死:plan 阶段不得新增任何窗口/聚合/计数类,#4 只交付 `BarwiseDetector` + `span_id`。次要风险:§7.4-B 误被写成「强行复刻 dogfood 2 簇」——已降级为诚实 pin `Chain` 真实产出(§7),plan 必须照 A/B 拆分实现。
 
 ---
 
