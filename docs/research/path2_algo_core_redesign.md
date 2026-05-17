@@ -195,7 +195,7 @@ INV-A 是"**不**携带"(搜索正确性);INV-B 是"**正确地**携带"(流式 
 - **Dag**:LEF-DFS 直接即是 Dag 推进核心(§3)。
 - **Chain = Dag + 线性构造期断言**:构造期校验节点入/出度 ≤1、弱连通、恰一源一汇、无环(design §3.0.1);通过则复用同一 LEF-DFS 核心。**单一实现的支点**。Chain 结构上 `f=1`(单边前沿割),近线性。
 - **Kof = k-of-n 边松弛** —— ⚠️ **本条已被 §10 取代为权威**(2026-05-17)。旧表述"滑窗 + 窗内计数 + 有界小缓冲 + 按 end_idx 排序弹出"经 opus 审查推翻(CRITICAL-1 漏匹配 / CRITICAL-2 缓冲无界)。**以 §10 为准**:Kof = LEF-DFS 结构姊妹(无窗口过滤 + 叶子 k-of-n 接受谓词 + 关 INV-C + 不塔缩 + 全成员非重叠消费),缓冲单 WCC 零/多 WCC ≤(p−1)(继承 §6 Part D),时间标签维诚实指数;全标签在场;`validate_kof` 加单 WCC 校验。
-- **Neg = 正向子图 + forbid 谓词**:先按正向子图(Chain/Dag 形态)跑 LEF-DFS 候选;对每候选每条 `forbid` 边,在否定标签物化列表上按候选 `end_idx` 单调前移的双指针检查区间内是否存在实例,存在即丢弃。否定标签实例**不进** `children`/`role_index`。正向升序经谓词过滤后仍升序。
+- **Neg = 正向子图 + forbid 谓词** —— ⚠️ **本条已被 §11 取代为权威**(2026-05-17)。旧表述隐含"forbid `later`=否定标签"单方向假设(plan/Task4 错因),与 never_before `forbid(N→A)` 矛盾。**以 §11 为准**:forbid 边端点角色 = 成员资格(∈ forward.nodes ⇒ 正向锚,∉ ⇒ 否定标签,与方向无关;两端皆∈/皆∉ 构造期报错);gap 按声明方向原样代入 spec §1.3.1;否定流空 ⇒ 放行;多 forbid 合取;复用 `advance_dag` 跑正向,子序列过滤继承 end_idx 升序与缓冲界;N 不进 children/role_index 结构性成立。
 
 四者共享:三段标签解析(design §1.2)→ edges 拓扑构建 → 构造期静态校验 → §3 约束推进。
 
@@ -383,3 +383,79 @@ function KOF_DFS(order,j,assign,chosen,ptr,S,edges,k):
 **改写**:redesign §2.3(加脚注:枚举=成员维度非产出重叠)、§3.3 Kof 段(改为 §10.5)、§4 Kof 段(删"有界小缓冲")、§5(加 Kof 行:成员组合枚举标签维指数、缓冲零/结构常数)、§6 Kof 行(§10.6);plan Task 8(OVERRIDE);`advance_kof`/`Kof` docstring。`validate_kof` 加单 WCC 校验(§10.7)。协议层/spec/`Kof` 类 `anchoring` 默认串 `"non-overlapping-greedy"` **不改**(冻结面;仅 docstring 澄清 greedy 指生产循环非重叠贪进、成员选择是枚举)。**风险(诚实)**:① 时间标签维指数且常态(松弛无剪枝内在代价,不可消除);② C1 不塌缩放大值相等簇枚举;③ start-first 命中非"满足最多边"(有意,与 §4 一致;产出形状不携带"哪 k 条满足",已知边界);④ k==n 比 Dag 慢(可选优化注记)。
 
 **Kof 裁定结束。**
+
+---
+
+## 11. Neg 语义与算法裁定(2026-05-17 补;tom 裁定,team-lead 接受;**Neg 部分以本节为权威**)
+
+> 背景:Neg = 正向子图 + forbid 谓词过滤,被当作"显然"未细化。plan/Task4 参考代码隐含"forbid 边 `later` 永远是否定标签"单方向假设,与 design §3.4 自身两个合法形态(`forbid(A→N)` / never_before `forbid(N→A)`)矛盾,plan Task9 四测试在其自身参考代码下互相不可满足。本节取代 §3.4/§4/§6 中 Neg 旧表述及 plan Task4 `validate_neg`/Task9 `advance_neg`。协议层 `path2/` / spec 零改动(§11.6 逐项确认)。
+
+### 11.1 端点角色识别 = 成员资格(与 earlier/later 方向无关)
+
+`forward = build_graph(edges)`(仅正向 edges)。对 forbid 边 `fe=(earlier=X, later=Y, min,max)`:
+
+| `X∈forward.nodes` | `Y∈forward.nodes` | 裁定 |
+|---|---|---|
+| 是 | 否 | 合法:anchor=X、neg=Y(`forbid(A→N)` 形态) |
+| 否 | 是 | 合法:anchor=Y、neg=X(never_before `forbid(N→A)` 形态) |
+| 是 | 是 | **非法**:无否定标签(两端皆正向匹配成员)→ 构造期 `ValueError` |
+| 否 | 否 | **非法**:无正向锚点,语义空 → 构造期 `ValueError` |
+
+**正向锚 = forbid 边上 ∈ forward.nodes 的端点;否定标签 = ∉ 的端点。** earlier/later 仅用于 §11.2 gap 代入,不用于角色识别。成员资格是唯一能同时无歧义覆盖两方向的判据(plan/Task4 固定看 `later` 必错一个方向)。同名复用(否定端点也在正向 edges)→ 落"两端皆正向"→ 拒绝(一个标签不能既是匹配成员又是否定条件,否则与"N 不进 children/role_index"自相矛盾;构造点拦截,强制改名)。
+
+### 11.2 forbid 语义形式化
+
+正向匹配 `φ: forward.nodes→Event`(LEF-DFS 在 forward 上产出,每正向标签单实例)。一条 fe,anchor_label=∈端、neg_label=∉端,`e_anchor=φ[anchor_label]`,`S_neg=streams.get(neg_label,[])`(end_idx 升序)。**单条 forbid 命中** ⟺ `∃ e_n∈S_neg` 使 gap∈[min,max],gap 按 fe **声明方向原样**代入 spec §1.3.1 `later.start_idx − earlier.end_idx`(anchor 侧用 e_anchor、neg 侧用 e_n;`forbid(A→N)`:gap=e_n.start−e_anchor.end;never_before `forbid(N→A)`:gap=e_anchor.start−e_n.end)。**零新公式。** `S_neg` 空 ⇒ ∃ 假 ⇒ **不否决(放行)**。多条 forbid **合取**:任一命中即作废(`φ 产出 ⟺ ∀fe ¬VETO`)。识别(声明期看结构)与求值(运行期看数据)正交:流空只影响求值,不影响"N 是否定标签"的构造期判定。
+
+### 11.3 修正 `validate_neg`(`path2/stdlib/_graph.py`)
+
+构造期(违反即 `ValueError`):**C1** `forbid` 非空(消息含 `"至少需"`,Task4 现 `if not forbid` 段保留不变);**C2** 每条 fe:`(X∈nodes) XOR (Y∈nodes)` 必为真——两端皆∈ → 报错(消息含 `"正向子图"`);两端皆∉ → 报错(消息含 `"正向子图"`)。**删 Task4 现 `for fe: if fe.later not in forward.nodes: raise` 单方向判断**,换 XOR 成员资格判定。Task4 现测试 `test_validate_neg_requires_forbid_and_later_in_forward`:`forbid=[TE("N","A")]` 现正确通过(N∉/A∈ XOR 真),`forbid=[TE("N","Z")]` 仍报错(皆∉,消息含"正向子图")——兼容;但须补 `forbid=[TE("A","N")]` 不抛锚(现测试缺失方向)+ `forbid=[TE("A","B")]` 皆正向报错锚,建议改名 `test_validate_neg_forbid_endpoint_membership`。
+
+### 11.4 修正 `advance_neg`(算法,非仓库代码)
+
+```
+function ADVANCE_NEG(forward_graph, streams, forbid, label):
+    plan ← []
+    for fe in forbid:                       # 构造期 validate_neg 已保证 XOR
+        if fe.earlier in forward_graph.nodes:
+            plan.append(role=ANCHOR_IS_EARLIER, anchor=fe.earlier, neg=fe.later, g_lo, g_hi)
+        else:
+            plan.append(role=ANCHOR_IS_LATER,  anchor=fe.later,  neg=fe.earlier, g_lo, g_hi)
+    for m in advance_dag(forward_graph, streams, label):    # 复用已验证 LEF-DFS
+        vetoed ← False
+        for p in plan:
+            if p.anchor not in m.role_index: continue        # 多 WCC:本 forbid 锚不在该 WCC 匹配 ⇒ 不适用,跳过
+            e_anchor ← m.role_index[p.anchor][0]
+            for e_n in streams.get(p.neg, []):               # 空/缺 ⇒ 空集 ⇒ 不否决
+                gap ← (e_n.start_idx − e_anchor.end_idx) if p.role==ANCHOR_IS_EARLIER
+                       else (e_anchor.start_idx − e_n.end_idx)
+                if p.g_lo ≤ gap ≤ p.g_hi: vetoed ← True; break
+            if vetoed: break
+        if not vetoed: yield m
+```
+
+修正点 vs plan Task9:① 角色按成员资格预计算(非硬编 fe.earlier);② gap 双方向(never_before 用 e_anchor.start−e_n.end);③ **删 plan 的 `if not e_a: continue`**(它因看错 later 误跳整条 forbid),换为 `if p.anchor not in m.role_index: continue`(多 WCC 正向时该 forbid 锚不在本 WCC 匹配则合理跳过;单 WCC 永不触发)。复杂度=正向 LEF-DFS(redesign §5)+ `O(M·|forbid|·ΣN_neg)` 朴素扫描(单调双指针优化可选,不阻塞)。
+
+### 11.5 N 不进 children/role_index + 缓冲/流式
+
+`build_graph(edges)` 不含 N(N∉正向 edges),LEF-DFS 只在正向 graph 赋值,φ 定义域≡forward.nodes,`_emit` 仅由 φ 构造 ⇒ **N 永不进 children/role_index,结构性保证,无需额外代码**;`advance_neg` 对 N 仅 `streams.get` 只读。Neg 过滤是 `advance_dag` 输出的**子序列选取**(纯 yield/丢弃,无缓冲无重排)⇒ end_idx 单调性、event_id 单 run 唯一(子集)由子序列继承,§1.2.2 自洽。缓冲严格继承正向:Chain⇒零;Dag(多 WCC)⇒≤(p−1)。**redesign §6 Neg 行不改值**(已是"条件:正向=Chain⇒零;正向=Dag⇒≤(p−1)"),补子序列承重句。**Neg 不引入 Kof §10.7 那类单 WCC 强制**(Neg 无跨 WCC 统计问题,多 WCC Dag 语义清晰,保持 `validate_dag`)。
+
+### 11.6 改写范围 + 协议/spec 零改动确认 + 风险
+
+**改写**:本 §11(新增,Neg 权威);§3.4/§4/§6 Neg 旧表述以 §11 为权威(补"角色=成员资格"句);design §3.0.1 Neg 行(改"later 不在正向子图→报错"为"forbid 须恰一端∈正向子图 XOR,否则报错")+ §3.4(端点角色由成员资格定、补空流放行/多 forbid 合取);plan Task4 `validate_neg`+测试、Task9 `advance_neg`+测试(OVERRIDE);docstring(validate_neg/advance_neg/Neg)。**协议层 `path2/`(Event/TemporalEdge/gap 公式/`run()`/seen_ids)零改动**:forbid 复用冻结 TemporalEdge,gap 公式原样,无新字段/公式;Neg 是正向输出子序列,id 子集仍单 run 唯一。**spec `path2_spec.md` 零改动,无 §9**(角色识别/forbid 语义是 stdlib 消费层;spec 只定 schema+gap 公式均不变)。**风险(诚实)**:① `_endpoint_labels(edges,forbid)` 使否定标签纳入 `resolve_labels` 强制"必须有来源"——用户须显式传否定流(可空 `N=[]`),完全不传该 kwarg 则构造期 `missing` 报错;**有意保留**(构造点拦截:打错 forbid 标签名当场暴露,胜过静默永不否决),记 stdlib 文档已知边界,不改 `_endpoint_labels`/`resolve_labels`;② 同名复用一律拒绝(§11.1),有意表达力边界;③ never_before `min_gap=0` 含 A 紧接 N(gap=0 边界相接也否决),spec §1.3.1 既有语义正确后果,想"严格之前"用 `min_gap=1`,记文档;④ 多 WCC 正向 + forbid 锚不在某 WCC 匹配 → §11.4 `if p.anchor not in m.role_index: continue` 正确处理(单 WCC 永不触发)。
+
+### 11.7 回归锚(钉死,重实现 TDD;桩 `_E(Event)`/`ev(s,e=None)`,驱动 `list(run(d))`)
+
+- **R1** forbid(A→N) 否决:`edges=[TE("A","B",1)]`,`forbid=[TE("A","N",1,5)]`,`A=[ev(0)]`,`B=[ev(2)]`,`N=[ev(3)]` → `[]`(gap=3∈[1,5])。
+- **R2** 不否决:同 R1 `N=[ev(9)]` → 1 match,`set(role_index)=={"A","B"}`,`"N" not in role_index`。
+- **R3** never_before 否决:`edges=[TE("A","B",1)]`,`forbid=[TE("N","A",0,4)]`,`A=[ev(10)]`,`B=[ev(12)]`,`N=[ev(7)]` → `[]`(gap=10−7=3∈[0,4])。
+- **R4** never_before 不否决:同 R3 `N=[ev(2)]`(gap=8∉[0,4]) → 1 match。
+- **R5** 否定流空放行:`forbid=[TE("A","N",1,3)]`,`A=[ev(0)]`,`B=[ev(2)]`,`N=[]`,`edges=[TE("A","B",1)]` → 1 match,`"N" not in role_index`。
+- **R6** N 不进:`edges=[TE("A","B",0)]`,`forbid=[TE("A","N",100,200)]`,`A=[ev(0)]`,`B=[ev(0)]`,`N=[ev(0)]` → 1 match,`set(flatten(role_index.values()))==set(children)`,N 不在任何成员/keys。
+- **R7** validate:`TE("A","B")` 正向下 `validate_neg`:`forbid=[TE("A","B")]`→ValueError match"正向子图";`forbid=[TE("N","Z")]`→match"正向子图";`forbid=[TE("A","N")]`→不抛;`forbid=[TE("N","A")]`→不抛;`forbid=[]`→match"至少需"。
+- **R8** 多 forbid 合取否决:`edges=[TE("A","B",0)]`,`forbid=[TE("A","N",1,3),TE("B","M",0,2)]`,`A=[ev(0)]`,`B=[ev(0)]`,`N=[ev(10)]`,`M=[ev(1)]` → `[]`(第二条命中)。
+- **R9** 多 forbid 全不命中:同 R8 `M=[ev(9)]` → 1 match。
+- **R10** run() 不变式:`edges=[TE("A","B",0,0)]`,`forbid=[TE("A","N",100,200)]`,`A=[ev(5),ev(5)]`,`B=[ev(5),ev(5)]`,`N=[]` → 2 matches,id⊆{"neg_5_5","neg_5_5#1"},`run()`不抛,end_idx 升序,每 match role_index/children 一致。
+- **保留 plan Task9 原 4 测试**(test_neg_passes_when_no_forbidden_event / test_neg_vetoed_when_forbidden_event_present / test_neg_never_before / test_neg_requires_forbid)——本裁定下**全部可满足**,断言不删弱。
+
+**Neg 裁定结束。**

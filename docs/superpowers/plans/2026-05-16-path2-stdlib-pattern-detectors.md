@@ -1545,11 +1545,30 @@ git commit -m "feat(path2-stdlib): Kof 滑窗计数 + 有界缓冲 + #seq 去重
 
 ---
 
-## Task 9: `Neg` — 正向子图 + forbid 谓词过滤
+## Task 9: `Neg` — 正向子图 + forbid 成员资格谓词过滤(已按 redesign §11 重写)
 
-> **redesign 修正注**:正向子图复用 Task 5 的 **LEF-DFS** 核心(非旧 O(ΣN) 描述)。缓冲**继承正向**(正向=Chain⇒零;正向=Dag⇒≤(p−1);redesign §6),非无条件零。`pattern_label` 含 `#` → 构造期 `ValueError`。forbid 语义 / never_before / 否定标签不进 children-role_index 不变。
+> **⚠️ 本 Task 已被 `docs/research/path2_algo_core_redesign.md` §11 取代为权威。下方 Step 1–6 的 `advance_neg` 参考(硬编 `fe.earlier`=正向锚 / `fe.later`=否定标签 + `if not e_a: continue`)与 Task 4 现 `validate_neg`(`if fe.later not in forward.nodes: raise`)均含单方向假设缺陷:`forbid(A→N)` 构造期误报、never_before `forbid(N→A)` 被静默跳过失效;plan 自身 Task9 四测试在其参考代码下互相不可满足。经 tom 第一性原理裁定推翻,SUPERSEDED——不得照抄。** 实现以本 OVERRIDE + redesign §11 为准。
 
-design §3.4。`Neg(edges=[...正向...], forbid=[...否定 TemporalEdge...])`;forbid 一条 `(earlier=A, later=N, min_gap, max_gap)` = "扮演 A 的实例定后不存在 N 实例满足 gap";命中即作废。N 不进 children/role_index。
+**本 Task 含两处代码修改**:
+
+**(a) 修正 `path2/stdlib/_graph.py::validate_neg`(Task 4 落地的回溯修正,redesign §11.3)**:删 `for fe in forbid: if fe.later not in forward.nodes: raise` 单方向判断;改为:`if not forbid: raise ValueError(...至少需...)`(C1 保留);每条 fe 计 `a_in=fe.earlier in forward.nodes`、`b_in=fe.later in forward.nodes`;`a_in and b_in` → `ValueError`(消息含 `"正向子图"`,两端皆正向);`not a_in and not b_in` → `ValueError`(消息含 `"正向子图"`,两端皆非正向)。即 **XOR 成员资格**。同步改 `tests/path2/stdlib/test_graph.py` 的 `test_validate_neg_*`:补 `forbid=[TemporalEdge("A","N")]` 不抛锚(现测试缺失方向)、`forbid=[TemporalEdge("A","B")]`(正向 `[A,B]`)抛 `match="正向子图"` 锚;保留 `forbid=[TemporalEdge("N","A")]` 不抛 / `forbid=[TemporalEdge("N","Z")]` 抛"正向子图" / `forbid=[]` 抛"至少需";建议改名 `test_validate_neg_forbid_endpoint_membership`,不删弱原断言。
+
+**(b) `advance_neg`(`_advance.py` 追加)+ `Neg`(`detectors.py` 追加)按 redesign §11.4 算法**:
+- **角色识别 = 成员资格**(§11.1,与 earlier/later 方向无关):预计算每条 forbid 的 `plan` —— `fe.earlier in forward.nodes` ⇒ `anchor=fe.earlier, neg=fe.later, role=ANCHOR_IS_EARLIER`;否则 `anchor=fe.later, neg=fe.earlier, role=ANCHOR_IS_LATER`。
+- 复用已验证 `advance_dag(forward_graph, streams, label)` 跑正向候选 `m`。对每条 `p`:**`if p.anchor not in m.role_index: continue`**(多 WCC 正向时该 forbid 锚不在本 WCC 匹配 ⇒ 不适用,跳过;**替换 plan 原 `if not e_a: continue` 的错误跳过**);`e_anchor = m.role_index[p.anchor][0]`;遍历 `streams.get(p.neg, [])`:`gap = e_n.start_idx − e_anchor.end_idx` if `ANCHOR_IS_EARLIER` else `e_anchor.start_idx − e_n.end_idx`;`p.g_lo ≤ gap ≤ p.g_hi` ⇒ `vetoed`。任一 forbid 命中即丢弃(合取);全不命中 `yield m`。否定流空/缺 ⇒ 不否决。N 不进 children/role_index 结构性成立(正向 graph 不含 N)。
+- `Neg.__init__`:三守卫(anchoring 非默认 `earliest-feasible`→ValueError 含 "anchoring";`#`-in-label→ValueError 含 `#`;`key`+`named_streams`→ValueError 含 "不可同时使用",在 resolve_labels 前)+ `build_graph(self._edges)` → `validate_dag`(正向按 Dag 校验,Chain 是特例;**不引入 Kof §10.7 单 WCC 强制**)→ `validate_neg(self._graph, self._forbid)`(现 XOR 版)→ `resolve_labels(..., endpoint_labels=_endpoint_labels(self._edges, self._forbid))`。docstring 删失实 "O(ΣN)",写"正向子图复用 LEF-DFS(redesign §3/§5)+ forbid 成员资格谓词过滤;缓冲继承正向(Chain 零/Dag ≤(p−1));N 结构性不进 children/role_index"。守卫提取仍 lead-deferred 到 Task 10。
+
+**已知边界(redesign §11.6,写 Neg docstring)**:否定标签经 `_endpoint_labels` 纳入 `resolve_labels` 强制"必须有来源"——用户须显式传否定流(可空 `N=[]`);完全不传该 kwarg → 构造期 `missing` 报错。**有意保留**(构造点拦截:打错 forbid 标签名当场暴露)。
+
+**TDD 验收锚**:redesign §11.7 全部 R1–R10 + Task 4 的 R7 validate 锚组,**且保留 plan Task9 原 4 测试**(test_neg_passes_when_no_forbidden_event / test_neg_vetoed_when_forbidden_event_present / test_neg_never_before / test_neg_requires_forbid)——本裁定下全部可满足,断言不删弱。
+
+**实现步骤**:(1) 写全部 R1–R10 + test_graph R7 锚 + 保留原测(失败先行);(2) 跑确认失败;(3) 改 `validate_neg`(XOR)+ test_graph;(4) 追加 `advance_neg`(§11.4)+ `Neg` 类(三守卫);(5) 跑 `uv run pytest tests/path2/stdlib/test_neg.py tests/path2/stdlib/test_graph.py -q` 全绿,再 `uv run pytest tests/path2/ -q` 无回归;(6) Commit:`fix(path2-stdlib): Task 9 Neg forbid 成员资格语义 + validate_neg 修正(redesign §11)`。
+
+**以下 Step 1–6 为 SUPERSEDED 历史参考(单方向假设缺陷),实现忽略,仅供对照:**
+
+---
+
+design §3.4(参考实现已作废,语义见 redesign §11)。`Neg(edges=[...正向...], forbid=[...否定 TemporalEdge...])`;forbid 一条 `(earlier=A, later=N, min_gap, max_gap)` = "扮演 A 的实例定后不存在 N 实例满足 gap";命中即作废。N 不进 children/role_index。
 
 **Files:**
 - Modify: `path2/stdlib/_advance.py`(追加 `advance_neg`)
