@@ -227,6 +227,8 @@ events = list(VolSpikeDetector().detect(df))
 
 **触类旁通**:任何"某根 K 线满足条件就是一个事件"的形态,都可以照这个模板写一个 Detector。
 
+> 这里手写的 `for i in range(20, len(df))` 扫描主循环 + `event_id=f"vol_{i}"` 正是最高频的样板。**stdlib 已沉淀便利件**:用 `BarwiseDetector`(子类只写 `emit(df, i)`,循环交给模板)+ `span_id("vol", i, i)`,这段可压成纯领域判据。详见 §10.5。本教程仍先教手写——理解协议层底盘是用好 stdlib 与必要时降级的前提。
+
 ---
 
 ## 3. 例子 2(组合)— "今天放量 + 站上 MA20"
@@ -747,6 +749,15 @@ matched = [e for e in events if my_pattern(e)]
 | 链 + 否定窗口("中间不能有 X") | 手写反向扫描 | `Neg` |
 
 四者经 `path2/__init__` 出口,统一产出 `PatternMatch`,用 `TemporalEdge` 声明 `edges`。其约束推进核心是 **LEF-DFS**(算法权威见 `docs/research/path2_algo_core_redesign.md`;复杂度是诚实账:Chain 近线性 headline,病态宽前沿 DAG 指数——不是先前设想的"单调双指针 O(N) 永不回退",那条已被实现轮证伪)。
+
+此外,**stdlib 便利层(已就绪)** 沉淀了两个最高频的非时序样板:
+
+| 样板 | 手写(协议层) | stdlib 便利件(已就绪) |
+|---|---|---|
+| 逐 bar 单点扫描(例 1/2 那种 `for i in range(...): if ...: yield`) | 自写 Detector + 扫描主循环 | `BarwiseDetector`:子类只实现 `emit(df, i) -> Optional[Event]`,主循环 + None 过滤由模板拥有 |
+| `event_id` 命名(`f"vol_{i}"` / `f"vc_{s}_{e}"`) | 自己拼字符串 | `span_id(kind, s, e)`:单点 `s==e` → `kind_s`,区间 → `kind_s_e` |
+
+二者经 `path2/__init__` 出口(`from path2 import BarwiseDetector, span_id`)。**`BarwiseDetector` 对 `i` 零领域假设**:lookback(例 1 的"从第 20 根开始")由你在 `emit` 里 `if i < 20: return None` 自管;模板不做任何跨事件校验(那是 `run()` 的事)。**stdlib 不提供任何 Event 子类**——你的 L1 事件总带使用方私有领域字段(如 `VolSpike.ratio`),按定义无法被预先沉淀;协议层 `Event` + 自动 `.features` 已够。**也没有"窗口内 ≥N 个"的现成 detector**:那是滑动动态计数,`Kof` 是 k-of-n 边松弛(成员数恒=label 数)并不覆盖它,这类仍按例 5/§8.3 手写(详见 #4 设计 `docs/superpowers/specs/2026-05-17-path2-4-stdlib-templates-design.md` 写回横幅)。
 
 **关键:思维模型完全不变**。stdlib 件只是把"用户会写出几乎一样"的高频组合**沉淀成带最优实现的标准件** —— 你仍然是"想清楚事件分层 → 声明事件间时序约束(`edges`)→ 让消费者跑"。区别只是:**声明仍由你写,执行交给 stdlib**(协议层只定 schema,不绑实现)。
 

@@ -38,7 +38,10 @@ Path 2 的全部 API 围绕三个角色:
 | 关系算子 | `Any(events, predicate)` | 容器至少一个满足 |
 | 组合子 | `Pattern.all(*predicates)` | AND 组合成最终 predicate |
 
-**协议层就这 10 个**;其他都是用户自定义的子类 / Detector / Pattern 函数。另有 stdlib 标准 PatternDetector(`Chain`/`Dag`/`Kof`/`Neg` + `PatternMatch`,经 `path2/__init__` 出口)消费 `TemporalEdge` 声明——不属本手册协议层范围,见 `path2_spec.md` §7.1 与算法权威 `docs/research/path2_algo_core_redesign.md`。
+**协议层就这 10 个**;其他都是用户自定义的子类 / Detector / Pattern 函数。另有 stdlib(经 `path2/__init__` 出口,不属本手册协议层范围):
+
+- **标准 PatternDetector**:`Chain`/`Dag`/`Kof`/`Neg` + `PatternMatch`,消费 `TemporalEdge` 声明——见 `path2_spec.md` §7.1 与算法权威 `docs/research/path2_algo_core_redesign.md`。
+- **便利层**:`BarwiseDetector`(逐 bar 单点扫描模板,子类只实现 `emit(df, i) -> Optional[Event]`,主循环 + None 过滤归模板;零领域假设/零跨事件校验)+ `span_id(kind, s, e)`(单点 `s==e` → `kind_s`,区间 → `kind_s_e`)——见 `docs/superpowers/specs/2026-05-17-path2-4-stdlib-templates-design.md`。stdlib **不提供任何 Event 子类**(领域字段使用方私有不可预沉淀),**不提供"窗口内 ≥N"detector**(滑动动态计数,`Kof` 边松弛不覆盖,见该 spec 写回横幅)。
 
 ---
 
@@ -218,6 +221,8 @@ class ClusterDetector:
                 i += 1
 ```
 
+> **便利件(stdlib,已就绪)**:例 1「逐 bar 触发型」是最高频样板,可用 `BarwiseDetector` 免写扫描主循环——子类只实现 `emit(self, df, i) -> Optional[Event]`(命中返回你的 Event 子类,否则 `None`);lookback 由 `emit` 内 `if i < N: return None` 自管,模板对 `i` 零领域假设、零跨事件校验。`event_id` 可用 `span_id(kind, s, e)`。例 2(FSM)/例 3(L2 簇,滑动计数)**无现成件**,仍按此处手写(`Kof` 边松弛不覆盖滑动 ≥N)。详见 `docs/superpowers/specs/2026-05-17-path2-4-stdlib-templates-design.md`。
+
 #### 陷阱
 
 | 错误 | 原因 |
@@ -274,7 +279,7 @@ edges = [
     TemporalEdge(earlier='b', later='c', min_gap=0, max_gap=10),
 ]
 
-# 这些边由组合 Detector 消费(用户自写,或将来由 stdlib PatternDetector 模板提供)
+# 这些边由 stdlib 标准 PatternDetector 消费(Chain/Dag/Kof/Neg,已就绪;见下方说明)
 ```
 
 #### 陷阱
