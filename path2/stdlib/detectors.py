@@ -36,6 +36,10 @@ def _check_guards(
     Guard 1:anchoring 非默认值 → ValueError(消息含 "anchoring")
     Guard 2:pattern_label 含 '#' → ValueError(消息含 '#')
     Guard 3:key 与 named_streams 同时给出 → ValueError(消息含 "不可同时使用")
+
+    顺序约定(review advisory):四个 Detector 均在 `self._edges = list(edges)`
+    物化之后调用本卫语句(intentional)——文档化接口接收的是 list 而非惰性
+    iterable,故先物化再校验保持四者一致,不构成提前消费副作用。
     """
     if anchoring != expected_anchoring:
         raise ValueError(

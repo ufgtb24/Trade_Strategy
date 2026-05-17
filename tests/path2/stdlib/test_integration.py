@@ -77,3 +77,37 @@ def test_run_invariants_across_all_four():
         ids = [m.event_id for m in ms]
         assert ends == sorted(ends)
         assert len(ids) == len(set(ids))
+
+
+def test_kof_neg_via_public_import():
+    # Kof/Neg 经 top-level `from path2 import` 公开面端到端驱动(覆盖缺口)
+    kd = Kof(
+        edges=[TemporalEdge("A", "B", min_gap=1)],
+        k=1,
+        A=[_mk(Spike, 0)],
+        B=[_mk(Drop, 2)],
+        label="k",
+    )
+    kms = list(run(kd))
+    assert len(kms) == 1
+    assert kms[0].pattern_label == "k"
+    k_ends = [m.end_idx for m in kms]
+    k_ids = [m.event_id for m in kms]
+    assert k_ends == sorted(k_ends)
+    assert len(k_ids) == len(set(k_ids))
+
+    nd = Neg(
+        edges=[TemporalEdge("A", "B", min_gap=1)],
+        forbid=[TemporalEdge("A", "N", 1, 5)],
+        A=[_mk(Spike, 0)],
+        B=[_mk(Drop, 2)],
+        N=[],
+        label="ng",
+    )
+    nms = list(run(nd))
+    assert len(nms) == 1
+    assert "N" not in nms[0].role_index
+    n_ends = [m.end_idx for m in nms]
+    n_ids = [m.event_id for m in nms]
+    assert n_ends == sorted(n_ends)
+    assert len(n_ids) == len(set(n_ids))
