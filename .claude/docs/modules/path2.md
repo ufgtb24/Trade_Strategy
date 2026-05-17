@@ -2,7 +2,7 @@
 
 > 最后更新：2026-05-17
 > 顶层包 `path2/`。**独立事件表达框架**,与 `BreakoutStrategy/` 因子框架/突破选股数据流**无任何耦合**(独立业务,自带未来流水线,与 mining/TPE/因子框架无关)。
-> 两层:`path2/`(协议层,冻结)+ `path2/stdlib/`(标准 PatternDetector)。算法权威 `docs/research/path2_algo_core_redesign.md`。
+> 两层:`path2/`(协议层,冻结)+ `path2/stdlib/`(标准 PatternDetector + 便利层:`BarwiseDetector`/`span_id`)。算法权威 `docs/research/path2_algo_core_redesign.md`。
 
 ## 定位
 
@@ -54,18 +54,25 @@ flowchart TD
 - **Kof = LEF-DFS 结构姊妹**:差异仅 4 处——无窗口过滤(边可不满足,不能据某边裁候选)/ 叶层 k-of-n 接受谓词 / 关 INV-C / 不做等-end 塌缩。缓冲继承零/结构常数,代价转为时间标签维诚实指数(松弛无剪枝的内在代价)。构造期强制单 WCC(跨 WCC 的 k-of-n 无明确语义)。
 - **Neg = 正向子图 + forbid 成员资格谓词**:forbid 边端点角色由**成员资格**(∈ forward.nodes ⇒ 正向锚,∉ ⇒ 否定标签)识别,**与 earlier/later 方向无关**;两端皆∈/皆∉ 构造期报错。gap 按声明方向原样代入,否定流空 ⇒ 放行,多 forbid 合取。正向复用 `advance_dag`,子序列过滤继承升序与缓冲界;否定标签结构性不进 children/role_index。
 
+## stdlib 便利层关键决策与理由(Why)
+
+- **`BarwiseDetector` 是唯一沉淀的 Detector 模板**:从 dogfood 真实痛点倒推——"逐 bar 单点扫描"循环是唯一高频+易错+未被 PatternDetector 覆盖的样板。模板拥有 `for i in range(len(df))` 主循环 + None 过滤,用户子类只实现领域判据 `emit(df,i)->Optional[Event]`。**模板对 `i` 零领域假设**:lookback 由子类在 `emit` 内 `return None` 自管(lookback 是领域知识,不焊进框架契约,故不暴露 `warmup`);**零跨事件校验**(end_idx 升序/id 唯一仍归 `run()`,模板做=与 run 重复二义)。`detect(df)` 即对接 `run(MyDet(),df)`。
+- **不沉淀任何 Event 类**:用户真实 L1 事件总带使用方私有领域字段,按定义无法被 stdlib 预沉淀;协议层 `Event` + 自动 `.features` 已够。候选 `Peak/BO` 命名还违反"与突破业务无关"独立业务约束。
+- **不造窗口/聚合/滑动计数原语(红线)**:"窗口内 ≥N" 是滑动动态计数,`Kof` 是 k-of-n 边松弛(成员数恒=label 数)**并不覆盖**它;该样板暂无足够复用证据进 stdlib,使用方自管,待真实重复再立。红线不依赖任何"已被某 Detector 覆盖"声明。
+- **`span_id` 与 `default_event_id` 两函数刻意并存**:`span_id`(公开)单点 `start==end` 塌缩 `kind_i` 否则 `kind_s_e`,吸收单点/区间两种惯例;`default_event_id`(#3 内部,不公开)恒区间——#3 已用 pinned 测试锁定该语义,归一会 break。实体数=必要语义数(奥卡姆),非过度设计。
+
 ## 对外 API
 
-`path2/__init__.py` 出口:协议层 `Event`/`Detector`/`TemporalEdge`/`Before`/`At`/`After`/`Over`/`Any`/`Pattern`/`run`/`config`/`set_runtime_checks` + stdlib `Chain`/`Dag`/`Kof`/`Neg`/`PatternMatch`。`TemporalEdge`:`earlier/later/min_gap/max_gap`,`gap=later.start_idx-earlier.end_idx`;声明性 datatype,由 stdlib PatternDetector 解析驱动(`earlier/later` 是声明期端点标签,非 event_id)。
+`path2/__init__.py` 出口:协议层 `Event`/`Detector`/`TemporalEdge`/`Before`/`At`/`After`/`Over`/`Any`/`Pattern`/`run`/`config`/`set_runtime_checks` + stdlib PatternDetector `Chain`/`Dag`/`Kof`/`Neg`/`PatternMatch` + 便利层 `BarwiseDetector`/`span_id`(`default_event_id` 不公开)。`TemporalEdge`:`earlier/later/min_gap/max_gap`,`gap=later.start_idx-earlier.end_idx`;声明性 datatype,由 stdlib PatternDetector 解析驱动(`earlier/later` 是声明期端点标签,非 event_id)。
 
 ## 依赖关系
 
-无第三方依赖,仅 stdlib(`dataclasses`/`typing`/`math`/`os`/`operator`)。协议层内部 `core`/`runner`→`config`,`operators`/`pattern`→`core`。`path2/stdlib/` 依赖协议层 + `_ids.py`(`default_event_id` 内联桩,签名冻结 `(str,int,int)->str`,是 stdlib 唯一对未来 #4 共享件的跨界依赖点)。无环。
+仅 stdlib(`dataclasses`/`typing`/`math`/`os`/`operator`/`abc`)+ `BarwiseDetector` 用 `pandas`(L1 模板天然吃 df)。协议层内部 `core`/`runner`→`config`,`operators`/`pattern`→`core`。`path2/stdlib/`:PatternDetector 依赖协议层 + `_ids.default_event_id`(#3 内部桩);便利层 `templates.py`(`BarwiseDetector`)依赖 `core.Event`,`_ids.span_id` 独立公开。无环。
 
 ## 已知局限与边界
 
-- **stdlib 未含**:常用 Event 子类 / Detector 模板(BarEvent/Peak/...,属未来 #4)、DSL 层。
+- **stdlib 未含(刻意)**:任何 Event 子类(领域字段使用方私有,不可预沉淀)、任何窗口/聚合/滑动计数 Detector(红线,使用方自管)、DSL 层(未来 #5,默认不做)。仅 `BarwiseDetector` 一个 Detector 模板。
 - **Kof 时间最坏指数于出现标签数**(松弛无窗口剪枝,常态;非如 Dag 仅病态),且强制单 WCC。
 - **Neg 否定标签须显式传流**(可空 `N=[]`);完全不传该 kwarg → 构造期 `missing` 报错(有意:打错 forbid 标签名当场暴露)。
 - **`#<seq>` 使 event_id 跨 run 不稳定**:协议 §1.1.1 只要求单 run 唯一,不违约;远期跨 run 稳定 id 需求须重审。
-- spec/设计:`docs/research/path2_spec.md`、`docs/research/path2_algo_core_redesign.md`(LEF-DFS §1-9 / Kof §10 / Neg §11,算法权威)、`docs/superpowers/specs|plans/2026-05-16-path2-*`;dogfood `docs/research/path2_dogfood_report.md`。
+- spec/设计:`docs/research/path2_spec.md`、`docs/research/path2_algo_core_redesign.md`(LEF-DFS §1-9 / Kof §10 / Neg §11,算法权威)、`docs/superpowers/specs|plans/2026-05-16-path2-*`(协议层/dogfood/PatternDetector)、`docs/superpowers/specs/2026-05-17-path2-4-stdlib-templates-design.md`(便利层,含写回横幅:Kof 不覆盖滑动计数);dogfood `docs/research/path2_dogfood_report.md`;路线 `docs/research/path2_roadmap.md`。
