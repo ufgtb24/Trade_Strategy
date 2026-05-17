@@ -128,12 +128,28 @@ def validate_kof(g: Graph, k: int, n_edges: int) -> None:
 
 
 def validate_neg(forward: Graph, forbid: List[TemporalEdge]) -> None:
+    """校验 Neg forbid 列表(redesign §11.3)。
+
+    C1:forbid 非空(含"至少需")。
+    C2:每条 fe 的两端点对 forward.nodes 的成员资格必须 XOR 为真:
+        - 两端皆∈正向子图 → ValueError(含"正向子图"):无否定标签。
+        - 两端皆∉正向子图 → ValueError(含"正向子图"):无正向锚点。
+        - 恰好一端∈ → 合法(anchor=∈端,neg=∉端),不抛。
+    """
     if not forbid:
         raise ValueError(
             "Neg 至少需 1 条否定约束,否则等价 Chain/Dag"
         )
     for fe in forbid:
-        if fe.later not in forward.nodes:
+        a_in = fe.earlier in forward.nodes
+        b_in = fe.later in forward.nodes
+        if a_in and b_in:
             raise ValueError(
-                f"Neg 否定 edge 的 later={fe.later!r} 不在正向子图"
+                f"Neg forbid 边 ({fe.earlier!r}→{fe.later!r}) 两端均在正向子图中,"
+                "无否定标签:每条 forbid 边须恰好一端属于正向子图(XOR)(redesign §11.3)"
+            )
+        if not a_in and not b_in:
+            raise ValueError(
+                f"Neg forbid 边 ({fe.earlier!r}→{fe.later!r}) 两端均不在正向子图中,"
+                "无正向锚点:每条 forbid 边须恰好一端属于正向子图(XOR)(redesign §11.3)"
             )

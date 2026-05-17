@@ -98,13 +98,34 @@ def test_validate_kof_single_wcc_required():
         )
 
 
-def test_validate_neg_requires_forbid_and_later_in_forward():
+def test_validate_neg_forbid_endpoint_membership():
+    """redesign §11.3:XOR 成员资格判定(完整四格矩阵)。
+
+    - forbid=[TE("N","A")] → 不抛(N∉前向,A∈;XOR=True)
+    - forbid=[TE("A","N")] → 不抛(A∈前向,N∉;XOR=True,现测试缺失方向)
+    - forbid=[TE("A","B")] → ValueError match "正向子图"(两端皆∈正向)
+    - forbid=[TE("N","Z")] → ValueError match "正向子图"(两端皆∉正向)
+    - forbid=[]             → ValueError match "至少需"
+    """
     fwd = build_graph([TemporalEdge("A", "B")])
-    validate_neg(fwd, forbid=[TemporalEdge("N", "A")])  # later=A 在正向
+
+    # N∉,A∈ → 不抛(never_before 形态)
+    validate_neg(fwd, forbid=[TemporalEdge("N", "A")])
+
+    # A∈,N∉ → 不抛(forbid(A→N) 形态;旧实现缺失此方向)
+    validate_neg(fwd, forbid=[TemporalEdge("A", "N")])
+
+    # 两端皆∈正向 → 报错(含"正向子图")
+    with pytest.raises(ValueError, match="正向子图"):
+        validate_neg(fwd, forbid=[TemporalEdge("A", "B")])
+
+    # 两端皆∉正向 → 报错(含"正向子图")
+    with pytest.raises(ValueError, match="正向子图"):
+        validate_neg(fwd, forbid=[TemporalEdge("N", "Z")])
+
+    # 空 forbid → 报错(含"至少需")
     with pytest.raises(ValueError, match="至少需"):
         validate_neg(fwd, forbid=[])
-    with pytest.raises(ValueError, match="正向子图"):
-        validate_neg(fwd, forbid=[TemporalEdge("N", "Z")])  # Z 不在正向
 
 
 def test_validate_dag_isolated_node_raises():

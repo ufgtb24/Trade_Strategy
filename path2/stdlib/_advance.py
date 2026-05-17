@@ -464,6 +464,76 @@ def advance_kof(
     yield from _pway_merge(g, streams, label, seen_ids, _produce)
 
 
+def advance_neg(
+    forward_graph: Graph,
+    streams: Dict[str, List[Event]],
+    forbid: List[TemporalEdge],
+    label: str,
+) -> Iterator[PatternMatch]:
+    """正向子图 + forbid 谓词过滤(redesign §11.4,权威)。
+
+    算法:
+    1. 预计算 `plan`:对每条 fe ∈ forbid,按成员资格(§11.1)识别角色——
+       `fe.earlier ∈ forward_graph.nodes` ⇒ anchor=earlier,neg=later
+       (`ANCHOR_IS_EARLIER`);否则 anchor=later,neg=earlier
+       (`ANCHOR_IS_LATER`)。角色识别与 earlier/later 声明方向无关。
+    2. 对 `advance_dag` 产出的每个正向匹配 m:
+       对 plan 中每条记录 p:
+         - `if p.anchor not in m.role_index: continue`
+           (多 WCC:本 forbid 锚不在该 WCC 匹配 ⇒ 不适用,跳过;
+            单 WCC 永不触发)
+         - `e_anchor = m.role_index[p.anchor][0]`
+         - 遍历 `streams.get(p.neg, [])`:
+             gap = e_n.start_idx − e_anchor.end_idx  (ANCHOR_IS_EARLIER)
+                 | e_anchor.start_idx − e_n.end_idx   (ANCHOR_IS_LATER)
+             gap ∈ [p.g_lo, p.g_hi] ⇒ vetoed=True; break
+         - 任一 forbid 否决 ⇒ skip m
+       未被否决 ⇒ yield m。
+
+    N 不进 children/role_index:结构性保证(N∉正向 edges ⇒ LEF-DFS 定义域
+    不含 N ⇒ _emit 输出不含 N)。advance_neg 对 N 仅 streams.get 只读。
+
+    缓冲:advance_neg 是 advance_dag 输出的**子序列选取**(纯 yield/丢弃,无
+    重排),end_idx 单调性与 event_id 单 run 唯一性由子序列继承;缓冲严格
+    继承正向:正向=Chain ⇒ 零,正向=Dag(多 WCC)⇒ ≤(p−1)(redesign §11.5)。
+
+    已知边界(诚实,见 §11.6):
+    - 否定标签须以 kwarg 显式传入(可空 `N=[]`);漏传 ⇒ 构造期 missing 报错。
+    - never_before min_gap=0 含 gap=0(边界相接也否决);严格之前用 min_gap=1。
+    - 同名复用一律拒绝(validate_neg):一标签不可既是正向成员又是否定条件。
+    """
+    # 预计算 plan:每条 fe 的角色(成员资格,与 earlier/later 方向无关)。
+    _EARLIER = 0
+    _LATER = 1
+    plan = []
+    for fe in forbid:
+        if fe.earlier in forward_graph.nodes:
+            plan.append((fe.earlier, fe.later, fe.min_gap, fe.max_gap, _EARLIER))
+        else:
+            plan.append((fe.later, fe.earlier, fe.min_gap, fe.max_gap, _LATER))
+    # plan 元素:(anchor_label, neg_label, g_lo, g_hi, role)
+
+    for m in advance_dag(forward_graph, streams, label):
+        vetoed = False
+        for anchor_label, neg_label, g_lo, g_hi, role in plan:
+            # 多 WCC:本 forbid 锚不在该 WCC 匹配 ⇒ 不适用,跳过。
+            if anchor_label not in m.role_index:
+                continue
+            e_anchor = m.role_index[anchor_label][0]
+            for e_n in streams.get(neg_label, []):
+                if role == _EARLIER:
+                    gap = e_n.start_idx - e_anchor.end_idx
+                else:  # ANCHOR_IS_LATER
+                    gap = e_anchor.start_idx - e_n.end_idx
+                if g_lo <= gap <= g_hi:
+                    vetoed = True
+                    break
+            if vetoed:
+                break
+        if not vetoed:
+            yield m
+
+
 def advance_dag(
     g: Graph,
     streams: Dict[str, List[Event]],
