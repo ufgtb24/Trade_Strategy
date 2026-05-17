@@ -28,6 +28,7 @@ class BarwiseVolSpike(BarwiseDetector):
     def emit(self, df, i):
         if i < self.LOOKBACK:
             return None
+        # 每 bar 重取 numpy 视图:与旧实现逐位等价,本测试规模可忽略开销
         vol = df["volume"].to_numpy()
         mean = vol[i - self.LOOKBACK : i].mean()
         ratio = float(vol[i] / mean)
@@ -45,7 +46,10 @@ def test_rewrite_is_field_equivalent_to_legacy():
     df = _load()
     ref = list(run(VolSpikeDetector(), df))
     got = list(run(BarwiseVolSpike(), df))
-    proj = lambda xs: [(s.start_idx, s.end_idx, s.event_id, s.ratio) for s in xs]
+
+    def proj(xs):
+        return [(s.start_idx, s.end_idx, s.event_id, s.ratio) for s in xs]
+
     assert proj(got) == proj(ref)
 
 
@@ -61,6 +65,7 @@ def test_rewrite_hits_gold_pinned_indices():
 def test_rewritten_subclass_has_no_explicit_scan_loop():
     # 痛点1 收口判据:重写后子类体不含显式扫描循环
     src = inspect.getsource(BarwiseVolSpike)
+    # 注:getsource 含 docstring/注释,故本类内这些文本也须无 for/while/range( 字面量
     assert "for " not in src
     assert "while " not in src
     assert "range(" not in src
