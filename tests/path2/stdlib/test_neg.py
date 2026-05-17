@@ -254,6 +254,7 @@ def test_neg_passes_when_no_forbidden_event():
     )
     results = list(run(d))
     assert len(results) == 1
+    assert set(results[0].role_index) == {"A", "B"}
     assert "N" not in results[0].role_index
 
 
