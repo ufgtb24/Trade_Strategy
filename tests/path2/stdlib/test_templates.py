@@ -43,3 +43,12 @@ def test_template_does_no_cross_event_checks():
     raw = list(D().detect(df))  # 绕过 run(),直检模板裸行为
     assert [e.start_idx for e in raw] == [4, 3, 2]
     assert all(e.event_id == "dup" for e in raw)
+
+
+def test_barwise_detector_publicly_exported():
+    import path2
+    from path2.stdlib.templates import BarwiseDetector as _BD
+
+    assert path2.BarwiseDetector is _BD
+    assert "BarwiseDetector" in path2.__all__
+    assert "span_id" in path2.__all__

@@ -6,7 +6,7 @@ from path2.core import Detector, Event, TemporalEdge
 from path2.operators import After, Any, At, Before, Over
 from path2.pattern import Pattern
 from path2.runner import run
-from path2.stdlib import Chain, Dag, Kof, Neg, PatternMatch
+from path2.stdlib import BarwiseDetector, Chain, Dag, Kof, Neg, PatternMatch, span_id
 
 __all__ = [
     "Event",
@@ -26,4 +26,6 @@ __all__ = [
     "Kof",
     "Neg",
     "PatternMatch",
+    "BarwiseDetector",
+    "span_id",
 ]
