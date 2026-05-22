@@ -37,7 +37,10 @@
 | 日常盯盘 | `BreakoutStrategy/live/` | [modules/live.md](modules/live.md) | 消费定稿 Trial + 每日全市场扫描 + 筛选面板（生产态） |
 | 共享 UI | `BreakoutStrategy/UI/` | [modules/UI.md](modules/UI.md) | dev / live 共用的纯 UI 基础设施（charts、styles） |
 | 策略参数 SSoT | `BreakoutStrategy/param_loader.py` | — | 统一加载 / 访问 scan_params、quality_scorer 参数 |
+| Path 2 协议层 | `path2/`（顶层） | [modules/path2.md](modules/path2.md) | **独立事件表达框架的协议层**，与上方突破选股数据流**无耦合**（独立业务） |
 
+> Path 2 是独立框架，不出现在上方"核心数据流"图中——它自带未来流水线，与突破选股 / mining / 因子框架无关。
+>
 > 添加/更新模块文档：运行 `update-ai-context` skill。
 
 ## 术语

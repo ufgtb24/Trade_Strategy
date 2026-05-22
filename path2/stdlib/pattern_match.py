@@ -1,0 +1,30 @@
+"""PatternMatch:4 种 PatternDetector 的统一产出 Event 子类(design §2)。"""
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import Mapping
+
+from path2 import config
+from path2.core import Event
+
+
+@dataclass(frozen=True)
+class PatternMatch(Event):
+    # 协议层继承:event_id, start_idx, end_idx
+    children: tuple[Event, ...] = ()
+    role_index: Mapping[str, Event] | None = None  # 标签 -> 该标签命中的唯一 Event
+    pattern_label: str = ""
+
+    def __post_init__(self) -> None:
+        super().__post_init__()
+        if not config.RUNTIME_CHECKS:
+            return
+        ri = self.role_index or {}
+        # children 必须按 start_idx 升序(§3.3)
+        if list(self.children) != sorted(
+            self.children, key=lambda e: e.start_idx
+        ):
+            raise ValueError("children 未按 start_idx 升序")
+        # role_index 值集合 == children 集合(两视图不漂移)
+        if {id(e) for e in ri.values()} != {id(e) for e in self.children}:
+            raise ValueError("role_index 值集合 != children 集合")

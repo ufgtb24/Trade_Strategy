@@ -21,14 +21,16 @@ ralph-loop 启动 (--completion-promise "APPROVED" --max-iterations 15)
 ┌──────────────────────────────────────────────────────────────┐
 │  主会话单轮（同一 Claude Code session，每轮重新执行）          │
 │                                                              │
-│  1. 读 question.md          (用户原始问题与约束，跨轮不变)     │
-│  2. 读 design.md            (自己上轮的产出，首轮可空)         │
-│  3. 读 reviews/<latest>     (上轮 reviewer 的判词，首轮无)     │
+│  1. 读 question.md + principles.md  (问题 + 共享八维标准)      │
+│  2. 读 design.md                    (自己上轮的产出)           │
+│  3. 读 reviews/<latest>             (上轮 reviewer 的判词)     │
 │  4. 思考 → 覆盖式改写 design.md                                │
-│  5. Agent 工具派发隔离 reviewer (subagent_type: tom)           │
-│       - reviewer 读 question/design/全部 reviews              │
+│  5. 对照 principles.md 八维 self-check (能自己看到的失败先改)  │
+│  6. Agent 工具派发隔离 reviewer (subagent_type: tom)           │
+│       - reviewer 读 question + principles + design + reviews  │
+│       - reviewer 按 principles.md 八维评 ✓/✗                  │
 │       - reviewer 写 review_<N>.md                            │
-│  6. 主会话读 review_<N>.md 末尾的 VERDICT 行                   │
+│  7. 主会话读 review_<N>.md 末尾的 VERDICT 行                   │
 │       APPROVED          → 输出 <promise>APPROVED</promise>    │
 │       OBJECTIONS_REMAIN → 不输出 promise，正常结束本轮         │
 │                                                              │
@@ -44,6 +46,7 @@ ralph-loop 启动 (--completion-promise "APPROVED" --max-iterations 15)
 docs/tmp/loop/<task-slug>/
 ├── prompt.md              # 主会话每轮的 ralph-loop body（跨任务复用）
 ├── reviewer_prompt.md     # reviewer subagent 的指令模板（跨任务复用）
+├── principles.md          # 共享评判 rubric (designer + reviewer 都读，跨任务复用)
 ├── question.md            # 用户原始问题，任务特殊化（每个任务一份）
 ├── reference.png          # 可选：图像或其他附件
 ├── design.md              # 主会话当前立场（覆盖式更新）
@@ -62,24 +65,36 @@ docs/tmp/loop/<task-slug>/
 - **`design.md` 单文件覆盖**：reviewer 评判的是当前立场，不是历史立场；想看 diff 用 git 或自行 backup。
 - **`reviews/` 累积**：reviewer 跨轮"记忆"全部源于此目录。文件名 `review_<NNN>.md`（三位零填充以便排序），N 由 reviewer 数现有文件数 + 1 得到。
 
+## `principles.md` 骨架（共享评判 rubric）
+
+**这是 designer 和 reviewer 共享的标准** —— 不是 reviewer 私有的检查表。设计的核心是：让评判维度对 designer 透明，使 designer 能按目标设计、能在派发 reviewer 前自检明显失败的轴，缩短迭代次数。
+
+文件内容三段：
+
+1. **角色说明**：定义这是共享 rubric，designer 写 design.md，reviewer 评判 design.md，**两者按同一标准**。说明默认基线是"未达标"，approved 是 example 而非 goal。
+2. **八维评判维度**（与原 reviewer_prompt.md 内联的版本一致）：唯一性 / 对题性 / 充分比较（条件性） / 无挥手 / 跨轮一致性 / 可落地 / 第一性·奥卡姆 / 守界。每条带可操作判据。
+3. **角色使用说明**：designer 如何用（每轮读 + 写完 design.md 后 self-check）、reviewer 如何用（每轮读 + 逐维 ✓/✗ + 任意 ✗ → OBJECTIONS_REMAIN）。
+
+关键约束：八维必须**单一来源** —— 只在 principles.md 维护。prompt.md 和 reviewer_prompt.md 都不内联八维内容（避免 drift），它们只指向 principles.md。
+
 ## `prompt.md` 骨架
 
 主会话每轮看到的 ralph-loop body，分四段：
 
-1. **角色**：你正在 self-iterative 思考用户提出的问题；reviewer subagent 会以全新隔离上下文质询你。
-2. **每轮固定流程**（procedural checklist）：读 question.md → 读 design.md → 读 reviews/ → 改写 design.md → 用 `Agent` 工具（`subagent_type: tom`）派发 reviewer，prompt 是 `reviewer_prompt.md` 内容 + 任务目录绝对路径 → 读新生成的 `reviews/review_<N>.md`。
+1. **角色**：你正在 self-iterative 思考用户提出的问题；reviewer subagent 会以全新隔离上下文按 principles.md 的标准质询你。
+2. **每轮固定流程**（procedural checklist）：读 question.md + principles.md → 读 design.md → 读 reviews/ → 改写 design.md → **对照 principles.md 八维 self-check**（明显失败的先自己改） → 用 `Agent` 工具（`subagent_type: tom`）派发 reviewer，prompt 是 `reviewer_prompt.md` 内容 + 任务目录绝对路径 → 读新生成的 `reviews/review_<N>.md`。
 3. **退出协议**：grep 最新 review 的 VERDICT 行；`APPROVED` → 输出 `<promise>APPROVED</promise>`（外层标签必不可少）；`OBJECTIONS_REMAIN` 或 grep 不到 → 不输出 promise，正常结束本轮。
-4. **诚信约束**：绝不为脱离 loop 而伪造 verdict 或编造 reviewer 没说过的批准；max-iterations 即将耗尽也不例外。
+4. **诚信约束**：绝不为脱离 loop 而伪造 verdict 或编造 reviewer 没说过的批准；max-iterations 即将耗尽也不例外；self-check 不替代 reviewer 判定。
 
 首轮特殊处理：`prompt.md` 必须显式说明"如果 design.md 不存在或为空，这是首轮，基于 question.md 产出第一版完整设计"。
 
-## `reviewer_prompt.md` 骨架（含通用八维评判）
+## `reviewer_prompt.md` 骨架
 
-五段：
+五段（**不**内联八维 —— 八维只在 principles.md）：
 
 1. **角色锁死**：你是 devil's advocate critic。**绝不提出你自己的替代设计**；想说"应该这样做"时，转写成"主会话没有论证为什么不这样做"。所有产出都是质询，不是方案。
-2. **每轮工作流**：读 question.md（评判基准）→ 读 design.md → 读 reviews/ 全部历史（跨轮记忆）→ 必要时用 Read/Bash/Grep 验证 design 对代码现状的描述。
-3. **批判维度结构**：对题性、覆盖度、歧义、跨轮一致性、事实核查。
+2. **每轮工作流**：读 question.md + **principles.md**（与 designer 共享的评判标准）→ 读 design.md → 读 reviews/ 全部历史（跨轮记忆）→ 必要时用 Read/Bash/Grep 验证 design 对代码现状的描述。
+3. **指向 principles.md** + 决策规则：八维评判维度在 principles.md；任意 ✗ → OBJECTIONS_REMAIN；全 ✓ → APPROVED。
 4. **review 文件强制结构**：
    ```
    # Review N
@@ -98,17 +113,7 @@ docs/tmp/loop/<task-slug>/
    ## 最终判定
    VERDICT: APPROVED   ← 八条全 ✓ 才能批准
    ```
-5. **通用八维评判（APPROVED 的高门槛）**：
-   1. **唯一性 / 决断性** — 有且只有一条选定路径，不允许"看情况而定"。
-   2. **对题性** — design 显式回应了 question.md 中陈述的所有约束（reviewer 自己抽取）。
-   3. **充分比较**（条件性） — 问题暗示多候选时，被淘汰候选必须有显式反对论证；纯调查类问题要求推理链可追溯。
-   4. **无挥手 / 无歧义** — 每一步具体到知道在主张什么；"通过某种机制"视为未完成。
-   5. **跨轮一致性** — 上轮异议要么被实质回应，要么 design 显式承认无法回应并解释为何不影响推荐。换措辞重复立场不算回应。
-   6. **可落地 / 可证伪** — 主张能还原为可检验的下一步或对照现实的判断。
-   7. **第一性 / 奥卡姆** — 每个组件都由问题本身要求，无为想象未来需求的复杂度。
-   8. **守界** — 不漂移到 question.md 之外的问题，不发明 question.md 没有的约束。
-
-   **任意一条 ✗ → `OBJECTIONS_REMAIN`**。"你的工作不是让主会话开心，是守门。"
+5. **gatekeeping 姿态**：默认拒绝，approved 是 example 而非 goal；"你的工作不是让主会话开心，是守门。"（八维定义在 principles.md，不在此重复。）
 
 ## 首次任务：`question.md` 内容骨架
 
