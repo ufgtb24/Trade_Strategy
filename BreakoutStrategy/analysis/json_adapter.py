@@ -18,6 +18,7 @@ import numpy as np
 import pandas as pd
 
 from BreakoutStrategy.analysis.breakout_detector import Breakout, BreakoutInfo, Peak
+from BreakoutStrategy.factor_registry import get_active_factors
 
 
 @dataclass
@@ -279,7 +280,19 @@ class BreakoutJSONAdapter:
             if new_index is None:
                 continue
 
-            # 处理可能为 None 的字段
+            # 注册因子动态读入（与 scanner._serialize_factor_fields 对称）
+            factor_kwargs = {}
+            for fi in get_active_factors():
+                raw_val = bo_data.get(fi.key)
+                if raw_val is None:
+                    if fi.nullable:
+                        factor_kwargs[fi.key] = None
+                    else:
+                        factor_kwargs[fi.key] = 0 if fi.is_discrete else 0.0
+                else:
+                    factor_kwargs[fi.key] = int(raw_val) if fi.is_discrete else float(raw_val)
+
+            # 处理可能为 None 的字段（非 registry 字段保持硬编码）
             bo = Breakout(
                 symbol=symbol,
                 date=bo_date,
@@ -290,18 +303,12 @@ class BreakoutJSONAdapter:
                 breakout_type=bo_data.get("breakout_type", "yang"),
                 intraday_change_pct=bo_data.get("intraday_change_pct") or 0.0,
                 gap_up_pct=bo_data.get("gap_up_pct") or 0.0,
-                volume=bo_data.get("volume"),
-                pbm=bo_data.get("pbm"),
                 stability_score=bo_data.get("stability_score") or 0.0,
                 quality_score=bo_data.get("quality_score"),
-                streak=bo_data.get("streak", 1),
-                drought=bo_data.get("drought"),
                 atr_value=bo_data.get("atr_value") or 0.0,
                 atr_normalized_height=bo_data.get("atr_normalized_height") or 0.0,
-                pk_mom=bo_data.get("pk_mom"),
                 annual_volatility=bo_data.get("annual_volatility"),
-                day_str=bo_data.get("day_str"),
-                overshoot=bo_data.get("overshoot"),
+                **factor_kwargs,
             )
             breakouts.append(bo)
 

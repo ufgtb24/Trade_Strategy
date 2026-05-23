@@ -315,6 +315,8 @@ def stage3b_optuna_search(raw_values, labels, active_factors,
     def objective(trial):
         thresholds = {}
         for key in active_factors:
+            if key not in bounds:
+                continue  # 全 NaN 因子（被 bounds 构建阶段跳过）不参与采样
             lo, hi, discrete, use_log = bounds[key]
             if lo >= hi:
                 thresholds[key] = float(lo)
@@ -366,12 +368,16 @@ def stage3b_optuna_search(raw_values, labels, active_factors,
         for seed in greedy_seeds:
             params = {}
             for key in active_factors:
+                if key not in bounds:
+                    continue  # 全 NaN 因子跳过，不进 warm-start 字典
                 lo, hi, discrete, _ = bounds[key]
                 if key in seed['thresholds']:
                     val = seed['thresholds'][key]
                 else:
-                    raw = raw_values[key]
-                    val = float(np.median(raw))
+                    # 贪心未使用的因子：取"不过滤任何样本"的中性阈值，
+                    # 使 Trial 0 的 triggered matrix 与贪心路径一致，warm-start 锚点准确。
+                    # gte: lo（≈ 全样本 >= lo） / lte: hi（≈ 全样本 <= hi）
+                    val = hi if key in negative_factors else lo
                 params[key] = int(np.clip(val, lo, hi)) if discrete else float(np.clip(val, lo, hi))
             study.enqueue_trial(params)
 

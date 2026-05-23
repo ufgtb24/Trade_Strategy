@@ -84,6 +84,9 @@ class FeatureCalculator:
         # ma_pos 均线周期
         self.ma_pos_period = config.get("ma_pos_period", 20)
 
+        # ma_z_atr 均线周期（ATR 归一化的长周期 MA 距离，结构性 anti-overshoot）
+        self.ma_z_atr_period = config.get("ma_z_atr_period", 50)
+
         # dd_recov 配置
         self.dd_recov_lookback = config.get("dd_recov_lookback", 252)
         best_recov = config.get("dd_recov_best_recovery", 0.25)
@@ -110,7 +113,7 @@ class FeatureCalculator:
         避免静默退化。
         """
         key = fi.key
-        if key in {'age', 'test', 'height', 'peak_vol', 'streak', 'drought'}:
+        if key in {'age', 'test', 'pk_count', 'pk_streak', 'height', 'peak_vol', 'streak', 'drought'}:
             return 0
         if key == 'volume':
             return 63  # VOLUME_LOOKBACK
@@ -120,6 +123,8 @@ class FeatureCalculator:
             return 63 + self.pre_vol_window
         if key == 'ma_pos':
             return self.ma_pos_period
+        if key == 'ma_z_atr':
+            return max(self.ma_z_atr_period, self.atr_period)
         if key == 'ma_curve':
             return self.ma_curve_period + 2 * self.ma_curve_stride
         if key == 'dd_recov':
@@ -236,6 +241,7 @@ class FeatureCalculator:
         labels = self._calculate_labels(df, idx)
 
         streak = self._calculate_streak(detector, idx) if 'streak' not in inactive else 1
+        pk_streak = self._calculate_pk_streak(detector, idx) if 'pk_streak' not in inactive else 1
         drought = self._calculate_drought(detector, idx) if 'drought' not in inactive else None
 
         broken_peaks = breakout_info.broken_peaks
@@ -243,6 +249,7 @@ class FeatureCalculator:
         height = self._calculate_height(broken_peaks) if 'height' not in inactive else 0.0
         peak_vol = self._calculate_peak_vol(broken_peaks) if 'peak_vol' not in inactive else 0.0
         test = self._calculate_test(broken_peaks) if 'test' not in inactive else 0
+        pk_count = self._calculate_pk_count(broken_peaks) if 'pk_count' not in inactive else 0
 
         # pk_mom（使用距离 breakout 最近的 peak）
         if has_buffer('pk_mom'):
@@ -265,6 +272,7 @@ class FeatureCalculator:
             pre_vol = None
 
         ma_pos = self._calculate_ma_pos(df, idx) if has_buffer('ma_pos') else None
+        ma_z_atr = self._calculate_ma_z_atr(df, idx, atr_series) if has_buffer('ma_z_atr') else None
         dd_recov = self._calculate_dd_recov(df, idx) if 'dd_recov' not in inactive else 0.0
         ma_curve = self._calculate_ma_curve(df, idx) if 'ma_curve' not in inactive else 0.0
 
@@ -292,10 +300,13 @@ class FeatureCalculator:
             overshoot=overshoot,
             age=age,
             test=test,
+            pk_count=pk_count,
+            pk_streak=pk_streak,
             peak_vol=peak_vol,
             height=height,
             pre_vol=pre_vol,
             ma_pos=ma_pos,
+            ma_z_atr=ma_z_atr,
             dd_recov=dd_recov,
             ma_curve=ma_curve,
         )
@@ -691,6 +702,22 @@ class FeatureCalculator:
         return 1
 
     @staticmethod
+    def _calculate_pk_streak(detector, idx: int) -> int:
+        """
+        计算窗口内累计被清理的不同 peak 数量（pk_streak）。
+
+        Args:
+            detector: BreakoutDetector 实例（可为 None）
+            idx: 突破点索引
+
+        Returns:
+            pk_streak_window 内所有突破 broken_peak_ids 的并集大小（无 detector 时返回 1）
+        """
+        if detector is not None:
+            return detector.get_recent_peak_union_count(idx)
+        return 1
+
+    @staticmethod
     def _calculate_drought(detector, idx: int) -> Optional[int]:
         """
         计算距上次突破的交易日间隔
@@ -770,6 +797,11 @@ class FeatureCalculator:
                 current_cluster = 1
         return max(best_cluster, current_cluster)
 
+    @staticmethod
+    def _calculate_pk_count(broken_peaks) -> int:
+        """统计本次突破吃掉的历史 peak 总数（不去重）。"""
+        return len(broken_peaks)
+
     def _calculate_ma_pos(self, df: pd.DataFrame, idx: int) -> Optional[float]:
         """
         计算均线位置（MA Position）：突破日收盘价相对 N 日均线的溢价率
@@ -798,6 +830,40 @@ class FeatureCalculator:
         if pd.notna(ma_val) and ma_val > 0:
             return df["close"].iloc[idx] / ma_val - 1.0
         return 0.0
+
+    def _calculate_ma_z_atr(self, df: pd.DataFrame, idx: int,
+                             atr_series: Optional[pd.Series]) -> Optional[float]:
+        """
+        ATR 归一化的 MA 距离：(close - MA_period) / ATR_prev
+
+        与 ma_pos 互补：ma_pos 测百分比偏离（无 vol 归一化），本因子测 ATR
+        单位下的偏离（跨标的可比，长周期 anti-overshoot）。
+
+        Args:
+            df: OHLCV 数据（可能含 ma_xxx 预计算列）
+            idx: 突破点索引
+            atr_series: 预计算的 ATR 序列（与 pk_mom 共用）
+
+        Returns:
+            ATR 单位下的 MA 偏离；inputs 无效 / lookback 不足时返回 None
+        """
+        period = self.ma_z_atr_period
+        if idx < max(period, self.atr_period):
+            return None
+
+        ma_col = f"ma_{period}"
+        if ma_col in df.columns:
+            ma_val = df[ma_col].iloc[idx]
+        else:
+            ma_val = df["close"].iloc[idx - period + 1: idx + 1].mean()
+
+        if atr_series is None or idx - 1 < 0:
+            return None
+        atr_val = atr_series.iloc[idx - 1]
+
+        if pd.isna(ma_val) or pd.isna(atr_val) or atr_val <= 0:
+            return None
+        return (df["close"].iloc[idx] - ma_val) / atr_val
 
     def _calculate_dd_recov(self, df: pd.DataFrame, idx: int) -> float:
         """

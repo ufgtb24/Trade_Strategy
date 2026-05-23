@@ -109,6 +109,7 @@ class BreakoutRecord:
     date: date          # 突破日期
     price: float        # 突破价格
     num_peaks: int      # 突破的峰值数量
+    broken_peak_ids: List[int] = field(default_factory=list)  # 被突破的 peak ID 列表（用于 pk_streak 等窗口聚合因子）
 
 
 @dataclass
@@ -165,12 +166,15 @@ class Breakout:
     # 阻力属性因子（从 broken_peaks 聚合，由 FeatureCalculator 计算）
     age: int = 0                        # 最老被突破峰值的年龄（天数）
     test: int = 0                       # 最大阻力簇峰值数（贪心聚类 3%）
+    pk_count: int = 0                   # 被突破的 peak 总数（不去重）
+    pk_streak: int = 0                  # 窗口内所有突破累计的 peak ID 并集大小
     peak_vol: float = 0.0              # 峰值最大放量倍数
     height: float = 0.0                # 峰值最大相对高度
 
     # 突破前环境因子
     pre_vol: Optional[float] = None    # 突破前 window 天内最大放量倍数（逐日 63 天基线）
     ma_pos: Optional[float] = None     # 突破日收盘价相对 N 日均线的溢价率（中期动量积累）
+    ma_z_atr: Optional[float] = None   # (close - MA_period) / ATR：长周期超涨度量
     dd_recov: float = 0.0              # 回撤恢复度（drawdown * recovery * (1-recovery)^(b-1)，底部启动信号）
     ma_curve: float = 0.0              # MA曲率（均线二阶导数归一化值，趋势拐点信号）
 
@@ -224,6 +228,7 @@ class BreakoutDetector:
                  peak_measure: str = 'body_top',
                  breakout_mode: str = 'body_top',
                  streak_window: int = 20,
+                 pk_streak_window: int = 20,
                  use_cache: bool = False,
                  cache_dir: str = "./cache"):
         """
@@ -247,6 +252,7 @@ class BreakoutDetector:
                 - 'close': 收盘价突破时确认
                 - 'high': 最高价突破时确认
             streak_window: 连续突破统计窗口（默认20个交易日）
+            pk_streak_window: 累计突破峰数（pk_streak）的窗口长度（默认20个交易日）
             use_cache: 是否使用持久化缓存（实时监控=True，回测=False）
             cache_dir: 缓存目录
         """
@@ -266,6 +272,7 @@ class BreakoutDetector:
         self.peak_measure = peak_measure
         self.breakout_mode = breakout_mode
         self.streak_window = streak_window
+        self.pk_streak_window = pk_streak_window
         self.use_cache = use_cache
         self.cache_dir = Path(cache_dir)
 
@@ -616,7 +623,8 @@ class BreakoutDetector:
                 index=current_idx,
                 date=current_date,
                 price=breakout_price,
-                num_peaks=len(broken_peaks)
+                num_peaks=len(broken_peaks),
+                broken_peak_ids=[p.id for p in broken_peaks if p.id is not None],
             ))
 
             return BreakoutInfo(
@@ -654,6 +662,25 @@ class BreakoutDetector:
                   f"result={result}")
 
         return result
+
+    def get_recent_peak_union_count(self, current_idx: int) -> int:
+        """
+        统计 [current_idx - pk_streak_window, current_idx] 窗口内所有突破
+        （含当次）的 broken_peak_ids 并集大小。
+
+        用于 pk_streak 因子：衡量近期累计被清理的不同 peak 数量。
+
+        Args:
+            current_idx: 当前K线索引
+
+        Returns:
+            窗口内 peak ID 去重并集的大小（至少 1，因为当次突破已被追加进 history）
+        """
+        peak_ids: set[int] = set()
+        for h in self.breakout_history:
+            if h.index <= current_idx and current_idx - h.index <= self.pk_streak_window:
+                peak_ids.update(h.broken_peak_ids)
+        return max(len(peak_ids), 1)
 
     def get_days_since_last_breakout(self, current_idx: int) -> Optional[int]:
         """
@@ -710,12 +737,14 @@ class BreakoutDetector:
                 'peak_measure': self.peak_measure,
                 'breakout_mode': self.breakout_mode,
                 'streak_window': self.streak_window,
+                'pk_streak_window': self.pk_streak_window,
                 'breakout_history': [
                     {
                         'index': h.index,
                         'date': h.date.isoformat(),
                         'price': h.price,
-                        'num_peaks': h.num_peaks
+                        'num_peaks': h.num_peaks,
+                        'broken_peak_ids': list(h.broken_peak_ids),
                     }
                     for h in self.breakout_history
                 ]
@@ -790,13 +819,14 @@ class BreakoutDetector:
             # 恢复 peak_id_counter（兼容旧缓存）
             self.peak_id_counter = cache_data.get('peak_id_counter', 0)
 
-            # 恢复 breakout_history（兼容旧缓存）
+            # 恢复 breakout_history（兼容旧缓存：broken_peak_ids 缺失则空列表）
             self.breakout_history = [
                 BreakoutRecord(
                     index=h['index'],
                     date=date.fromisoformat(h['date']),
                     price=h['price'],
-                    num_peaks=h['num_peaks']
+                    num_peaks=h['num_peaks'],
+                    broken_peak_ids=list(h.get('broken_peak_ids', [])),
                 )
                 for h in cache_data.get('breakout_history', [])
             ]

@@ -164,6 +164,7 @@ def compute_breakouts_from_dataframe(
     valid_start_index: int = 0,
     valid_end_index: int = None,
     streak_window: int = 20,
+    pk_streak_window: int = 20,
     scan_start_date: str = None,
     scan_end_date: str = None,
     min_price: float = None,
@@ -240,6 +241,7 @@ def compute_breakouts_from_dataframe(
         peak_measure=peak_measure,
         breakout_mode=breakout_mode,
         streak_window=streak_window,
+        pk_streak_window=pk_streak_window,
         use_cache=False,
     )
     breakout_infos = detector.batch_add_bars(
@@ -302,8 +304,8 @@ def _scan_single_stock(args):
     Args:
         args: (symbol, data_dir, total_window, min_side_bars, min_relative_height,
                exceed_threshold, peak_supersede_threshold, peak_measure, breakout_mode,
-               streak_window, start_date, end_date, feature_calc_config, scorer_config,
-               label_max_days, min_price, max_price, min_volume)
+               streak_window, pk_streak_window, start_date, end_date, feature_calc_config,
+               scorer_config, label_max_days, min_price, max_price, min_volume)
 
     Returns:
         结果字典，若被过滤返回 None
@@ -319,6 +321,7 @@ def _scan_single_stock(args):
         peak_measure,
         breakout_mode,
         streak_window,
+        pk_streak_window,
         start_date,
         end_date,
         feature_calc_config,
@@ -425,6 +428,7 @@ def _scan_single_stock(args):
             valid_start_index=valid_start_index,
             valid_end_index=valid_end_index,
             streak_window=streak_window,
+            pk_streak_window=pk_streak_window,
             min_price=min_price,
             max_price=max_price,
         )
@@ -580,6 +584,7 @@ class ScanManager:
         peak_measure='body_top',
         breakout_mode='body_top',
         streak_window=20,
+        pk_streak_window=20,
         start_date=None,
         end_date=None,
         feature_calc_config=None,
@@ -621,6 +626,7 @@ class ScanManager:
         self.peak_measure = peak_measure
         self.breakout_mode = breakout_mode
         self.streak_window = streak_window
+        self.pk_streak_window = pk_streak_window
         self.start_date = start_date
         self.end_date = end_date
         self.scan_date = datetime.now().isoformat()
@@ -658,6 +664,7 @@ class ScanManager:
                 self.peak_measure,
                 self.breakout_mode,
                 self.streak_window,
+                self.pk_streak_window,
                 self.start_date,
                 self.end_date,
                 self.feature_calc_config,
@@ -732,6 +739,7 @@ class ScanManager:
                     self.peak_measure,
                     self.breakout_mode,
                     self.streak_window,
+                    self.pk_streak_window,
                     start_date,
                     end_date,
                     self.feature_calc_config,

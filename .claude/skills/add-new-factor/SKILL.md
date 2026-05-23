@@ -131,6 +131,7 @@ def _effective_buffer(self, fi) -> int:
 | `breakout_scorer.py` | `_compute_factor()` 循环 |
 | `data_pipeline.py` | `build_dataframe()` 循环 |
 | `scan_manager.py` | `_serialize_factor_fields()` 循环 |
+| `json_adapter.py` | `_extract_breakouts()` 中 `factor_kwargs` 动态遍历 `get_active_factors()` 重建 Breakout（与 scanner 序列化对称）|
 | `param_editor_schema.py` | `_build_factor_schemas()` 生成 |
 | `input_factory.py` | `param_value=None` 时 fallback 到 schema default |
 | `param_loader.py` | `get_scorer_params()` 循环 |
@@ -140,6 +141,8 @@ def _effective_buffer(self, fi) -> int:
 | `template_generator.py` | 遍历 level_cols |
 | `factor_diagnosis.py` | 遍历 factors |
 | `param_writer.py` | 遍历 factors |
+
+**特别提醒（json_adapter 历史 bug）**：早期 `json_adapter._extract_breakouts` 是硬编码字段映射（`pk_mom=bo_data.get("pk_mom"), ...`），新增因子在浏览模式（从 JSON 重建 Breakout）下被静默归零，与分析模式（实时 enrich）评分不一致。已重构为动态遍历 `get_active_factors()`，与 scanner 序列化形成对称闭环。**新增因子前后请验证浏览模式评分与分析模式一致**（同一 BO 的 score 应相同）。
 
 ## YAML 配置
 
@@ -175,7 +178,20 @@ calc = FeatureCalculator()
 fi = get_factor('xxx')
 print('effective_buffer =', calc._effective_buffer(fi))
 "
+
+# 5. JSON 序列化↔反序列化对称性（json_adapter 是否动态读因子）
+uv run python -c "
+from BreakoutStrategy.analysis.json_adapter import BreakoutJSONAdapter
+from BreakoutStrategy.factor_registry import get_active_factors
+import inspect, ast
+src = inspect.getsource(BreakoutJSONAdapter._extract_breakouts)
+# 应当包含 'for fi in get_active_factors()' 形式的动态遍历
+assert 'get_active_factors()' in src, 'json_adapter 仍是硬编码！需重构为动态遍历'
+print('json_adapter 动态遍历 OK，新因子', 'xxx', '会被反序列化')
+"
 ```
+
+**重新扫描 + 浏览模式抽样**（能力验证最强）：跑一次扫描，dev UI 浏览模式打开任一 BO 的 Score Details tooltip，确认新因子的 raw value 不为 0/N/A。如果是 0/N/A，但分析模式是正常值，几乎可以判定 json_adapter 漏读了该因子。
 
 ## Common Pitfalls
 
