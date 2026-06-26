@@ -23,8 +23,10 @@
 </template>
 
 <script setup lang="ts">
+import { onMounted } from 'vue'
 import { usePatternsStore } from '../stores/patterns'
 const ps = usePatternsStore()
+onMounted(() => { if (!ps.loaded) void ps.loadPatterns() })
 </script>
 
 <style scoped>
