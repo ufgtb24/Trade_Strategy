@@ -9,6 +9,15 @@
         :title="opt.title"
         @click="view.setLevel(opt.value)"
       >{{ opt.label }}</button>
+      <select :value="view.activePatternId ?? ''"
+              data-role="active-pattern"
+              @change="onActivePatternChange"
+              class="active-pattern-select"
+              v-if="view.patternIds.length > 0">
+        <option v-for="pid in view.patternIds" :key="pid" :value="pid">
+          {{ view.scanFile?.per_pattern[pid]?.pattern_spec.display_name ?? pid }}
+        </option>
+      </select>
     </div>
     <!-- row1: 拓扑控制 -->
     <TopologyControl @hover-role="onHoverRole" />
@@ -36,6 +45,10 @@ const LEVEL_OPTIONS: { value: Level; label: string; title: string }[] = [
 ]
 
 function onHoverRole(_nodeId: string | null) { /* 高亮交互留 KlineChart 内部增强,见 Task 12 微调 */ }
+
+function onActivePatternChange(e: Event) {
+  view.setActivePattern((e.target as HTMLSelectElement).value)
+}
 </script>
 
 <style scoped>
@@ -71,4 +84,6 @@ function onHoverRole(_nodeId: string | null) { /* 高亮交互留 KlineChart 内
 }
 .level-btn:hover { background: #2a2a4a; color: #ddd; }
 .level-btn.active { background: #4a4aaa; color: #fff; border-color: #6a6acc; }
+
+.active-pattern-select { margin-left: 8px; font-size: 12px; padding: 2px 4px; }
 </style>
