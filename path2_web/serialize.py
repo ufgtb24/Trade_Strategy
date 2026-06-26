@@ -235,3 +235,47 @@ def serialize_pattern(spec) -> dict:
         "topology": {"nodes": nodes, "edges": edges},
         "event_styles": _event_styles(spec, topo),
     }
+
+
+def serialize_per_pattern_result(res, end_role: str, label_horizon: int,
+                                  win, start_ts, end_ts) -> dict:
+    """单股单 pattern 投影,服务多 pattern worker。
+
+    args:
+        res: AnalysisResult(已 analyze 完整 buf_win)
+        end_role: pattern 的买点 role(从 eval_meta 取)
+        label_horizon: 前瞻收益天数
+        win: 已切好的 DataFrame(含 date 列 + OHLC)
+        start_ts/end_ts: pd.Timestamp,严格窗左右边界(含)
+
+    返回 {summary, analysis, max_forward_return}:
+      - analysis.events: 全集照旧(含缓冲段;K 线灰色层数据源)
+      - analysis.matches: 仅保留 end_role event 起点 ∈ [start_ts, end_ts] 的 match,
+                          每条注入 forward_return
+      - summary["matches"]: 窗内 match 数(覆写)
+      - max_forward_return: max over filtered matches 中非 None 的 forward_return;
+                            空 / 全 None → None
+    """
+    from path2.eval import match_forward_returns
+
+    ret_by_id: dict = {}
+    for m in res.matches:
+        ev = m.role_index[end_role]
+        buy_date = win["date"].iat[ev.start_idx]
+        if not (start_ts <= buy_date <= end_ts):
+            continue
+        ret_by_id[m.event_id] = match_forward_returns(
+            m, end_role, win, [label_horizon])[label_horizon]
+    analysis = serialize_analysis(res)
+    analysis["matches"] = [
+        {**md, "forward_return": ret_by_id[md["event_id"]]}
+        for md in analysis["matches"] if md["event_id"] in ret_by_id
+    ]
+    summary = summarize(res)
+    summary["matches"] = len(analysis["matches"])
+
+    rets = [md["forward_return"] for md in analysis["matches"]
+            if md["forward_return"] is not None]
+    max_ret = max(rets) if rets else None
+
+    return {"summary": summary, "analysis": analysis, "max_forward_return": max_ret}
