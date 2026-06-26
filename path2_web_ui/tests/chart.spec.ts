@@ -312,9 +312,9 @@ describe('buildKlineOption — D2 highlight overlay', () => {
     expect(hlPrice.data.length).toBe(1)
     const item = hlPrice.data[0]
     expect(item.event_id).toBe('bo9')
-    // value encoding = [start_idx, y_price] matching pricePointData
+    // value encoding = [start_idx, bar.h] matching pricePointData (pixel offset handled in renderItem)
     expect(item.value[0]).toBe(9)
-    expect(item.value[1]).toBeCloseTo(bars[9].h * 1.005, 5)
+    expect(item.value[1]).toBeCloseTo(bars[9].h, 5)
   })
 
   it('highlight data has correct event_id and kind=interval for an interval event', () => {
@@ -483,10 +483,10 @@ describe('chart render_grid 分流 + satellites', () => {
     expect(pp.xAxisIndex).toBe(0)
     expect(pp.yAxisIndex).toBe(0)
     expect(pp.data.map((d: any) => d.event_id).sort()).toEqual(['bo11', 'bo9', 'boX'])
-    // value = [start_idx, price-derived y]; y 应高于 bar high (bars[9].h = 11+9 = 20, so 20 * 1.005)
+    // value = [start_idx, bar.h]; 像素偏移由 renderPricePoint 在 renderItem 中处理
     const bo9row = pp.data.find((d: any) => d.event_id === 'bo9')
     expect(bo9row.value[0]).toBe(9)
-    expect(bo9row.value[1]).toBeCloseTo(bars[9].h * 1.005, 5)
+    expect(bo9row.value[1]).toBeCloseTo(bars[9].h, 5)
   })
 
   it('新 satellites 系列承载 bo.referenced_points (每点一条 record)', () => {
@@ -500,9 +500,10 @@ describe('chart render_grid 分流 + satellites', () => {
     const labels = sat.data.map((d: any) => d.label)
     expect(labels).toContain('pk0')
     expect(labels).toContain('pk1')
-    // value = [bar_idx, price] 透传
+    // value = [bar_idx, bar.h] — PK 卫星锚定到其 bar 的 high; 像素偏移由 renderSatellite 处理
+    // bars[5].h = 11 + 5 = 16
     const pk0 = sat.data.find((d: any) => d.label === 'pk0')
-    expect(pk0.value).toEqual([5, 12.5])
+    expect(pk0.value).toEqual([5, bars[5].h])
   })
 
   it('时间锚定事件 (tb / trend / burst) 仍走原 grid2 通道', () => {
@@ -515,6 +516,66 @@ describe('chart render_grid 分流 + satellites', () => {
     const intervalIds = intervals.data.map((d: any) => d.event_id)
     expect(intervalIds).toContain('burst1')
     expect(intervalIds).toContain('down1')
+  })
+
+  // ── BO 方框 / PK 卫星新字段 ────────────────────────────────────────────────
+
+  it('bo9 price-point item carries boLabelText=[0,1] (peak ids from referenced_points)', () => {
+    // bo9.referenced_points = [[5,12.5,'pk0'],[7,13.0,'pk1']]
+    // boLabelText should be '[0,1]' (strip 'pk' prefix, comma-join, wrap in [])
+    const opt: any = buildKlineOption(bars, EVENTS, MATCHES, buildInput('detected'))
+    const pp = opt.series.find((s: any) => s.name === 'price-points')
+    const bo9 = pp.data.find((d: any) => d.event_id === 'bo9')
+    expect(bo9.boLabelText).toBe('[0,1]')
+  })
+
+  it('bo11 price-point item has null boLabelText (no referenced_points)', () => {
+    // bo11 has no referenced_points field
+    const opt: any = buildKlineOption(bars, EVENTS, MATCHES, buildInput('detected'))
+    const pp = opt.series.find((s: any) => s.name === 'price-points')
+    const bo11 = pp.data.find((d: any) => d.event_id === 'bo11')
+    expect(bo11.boLabelText).toBeNull()
+  })
+
+  it('bo9 hasPks=false when no PK satellite coincides with bo9.start_idx=9', () => {
+    // bo9.start_idx=9; referenced_points barIdx=5 and 7 (neither is 9)
+    // → pkBarIndices has 5,7 but not 9 → hasPks=false
+    const opt: any = buildKlineOption(bars, EVENTS, MATCHES, buildInput('detected'))
+    const pp = opt.series.find((s: any) => s.name === 'price-points')
+    const bo9 = pp.data.find((d: any) => d.event_id === 'bo9')
+    expect(bo9.hasPks).toBe(false)
+  })
+
+  it('satellite barH field equals bars[barIdx].h, used for pixel-space anchoring', () => {
+    // pk0 at barIdx=5, bars[5].h = 11+5=16
+    const opt: any = buildKlineOption(bars, EVENTS, MATCHES, buildInput('detected'))
+    const sat = opt.series.find((s: any) => s.name === 'satellites')
+    const pk0 = sat.data.find((d: any) => d.label === 'pk0')
+    expect(pk0.barH).toBe(bars[5].h)   // barH must equal bar.h, not raw price
+  })
+
+  it('hasPks=true when a BO start_idx coincides with a PK satellite barIdx from any BO', () => {
+    // Inject a BO event at start_idx=5 (same as pk0's barIdx=5 in bo9.referenced_points)
+    const eventsWithCoincidence = [
+      ...EVENTS,
+      { class_id: 'bo', event_id: 'bo5_at5', source_tag: 'bo', start_idx: 5, end_idx: 5,
+        referenced_points: [] as [number, number, string][] },
+    ]
+    const { tagToNodes, tagList } = deriveTagMap(TOPOLOGY.nodes)
+    const isolated = isolatedNodeIds(TOPOLOGY)
+    const mIds = matchedIds(MATCHES)
+    const input = {
+      topology: TOPOLOGY, isolatedNodeIds: isolated, tagList, level: 'detected' as Level,
+      roleColors: { down: '#f59e0b', side: '#f59e0b', burst: '#2563eb', tb: '#16a34a', bo: '#dc2626' },
+      eventTier: (e: EventDict) => eventTierOf(e, mIds, new Set()),
+      roleOfEventByBand: (e: EventDict) => roleOfEventByBand(e, tagToNodes, tagList),
+      bandKeyOf: (e: EventDict) => bandKeyOf(e, tagList),
+    }
+    const opt: any = buildKlineOption(bars, eventsWithCoincidence, MATCHES, input)
+    const pp = opt.series.find((s: any) => s.name === 'price-points')
+    // bo5_at5 at start_idx=5; bo9 has pk0 at barIdx=5 → pkBarIndices contains 5
+    const bo5 = pp.data.find((d: any) => d.event_id === 'bo5_at5')
+    expect(bo5.hasPks).toBe(true)
   })
 })
 

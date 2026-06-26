@@ -30,7 +30,7 @@ describe('view store — multi pattern', () => {
 
   it('loadScanFile prefers config.last_selected_pattern when in pattern_ids', () => {
     const cfg = useConfigStore()
-    cfg.config.last_selected_pattern = 'bbb'
+    cfg.config!.last_selected_pattern = 'bbb'
     const v = useViewStore()
     v.loadScanFile(makeFile())
     expect(v.activePatternId).toBe('bbb')
@@ -38,7 +38,7 @@ describe('view store — multi pattern', () => {
 
   it('loadScanFile falls back to pattern_ids[0] when last_selected not in pattern_ids', () => {
     const cfg = useConfigStore()
-    cfg.config.last_selected_pattern = 'not_present'
+    cfg.config!.last_selected_pattern = 'not_present'
     const v = useViewStore()
     v.loadScanFile(makeFile())
     expect(v.activePatternId).toBe('bo_only')

@@ -7,8 +7,9 @@ describe('windowOf', () => {
     expect(windowOf({ start_date: 'a', end_date: 'b', win_start: 'wa', win_end: 'wb' }))
       .toEqual({ start: 'wa', end: 'wb' })
   })
-  it('旧文件回退 start/end', () => {
-    expect(windowOf({ start_date: 'a', end_date: 'b' })).toEqual({ start: 'a', end: 'b' })
+  it('win_start/win_end 存在时优先返回 win_*', () => {
+    expect(windowOf({ start_date: 'a', end_date: 'b', win_start: 'wa2', win_end: 'wb2' }))
+      .toEqual({ start: 'wa2', end: 'wb2' })
   })
 })
 
