@@ -1,5 +1,5 @@
 // 可见集辅助函数(band/tier/tag/tooltip)。level 门控由 chart 层消费,此处仅提供纯函数原语。
-import type { EventDict, MatchDict, TopoNode, Topology, AttrRow, Diagnostics, Tier, ClauseWitness } from '../types'
+import type { EventDict, MatchDict, TopoNode, Topology, AttrRow, Diagnostics, Tier, ClauseWitness, ScanMeta } from '../types'
 
 /** 所有匹配内实例 event_id 的并集。
  *  若提供 events,沿事件 dict 的 `members`(event_id 数组)和 `anchor_bo_id`(单个 event_id)
@@ -117,9 +117,15 @@ export function isBandVisible(
 
 // ─── label(N 日前瞻收益)/ 缓冲窗辅助 ─────────────────────────────────────────
 
-/** 结果文件的实际渲染窗口:缓冲扫描用 win_*,旧文件回退 start/end(对齐铁律:与扫描同窗)。 */
-export function windowOf(scan: { start_date: string; end_date: string; win_start?: string; win_end?: string }): { start: string; end: string } {
-  return { start: scan.win_start ?? scan.start_date, end: scan.win_end ?? scan.end_date }
+/** 结果文件的实际渲染窗口:铁律 eval_meta 后 win_start/win_end 永远非空;缺则 throw。 */
+export function windowOf(scan: Pick<ScanMeta, 'win_start' | 'win_end' | 'start_date' | 'end_date'>):
+  { start: string; end: string } {
+  // 铁律 eval_meta 后 win_*/end_role/label_horizon 永远非 null;
+  // 旧文件回退分支删除(spec §3.6)。
+  if (!scan.win_start || !scan.win_end) {
+    throw new Error('windowOf: scan.win_start/win_end required (eval_meta 铁律下应永远非空)')
+  }
+  return { start: scan.win_start, end: scan.win_end }
 }
 
 /** forward_return 显示格式:null → '—';数值 → 带符号一位小数百分比。 */
