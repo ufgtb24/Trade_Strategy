@@ -30,8 +30,7 @@
     </div>
 
     <ScanResultDialog
-      v-if="dialogOpen && selectedArray.length > 0"
-      :pattern-id="selectedArray[0]"
+      v-if="dialogOpen"
       @close="dialogOpen = false"
     />
 
