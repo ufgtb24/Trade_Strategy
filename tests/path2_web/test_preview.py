@@ -75,18 +75,16 @@ def test_preview_uses_buffered_window_when_eval_meta_present(tmp_path):
 
 
 def test_preview_falls_back_when_eval_meta_missing(tmp_path, monkeypatch):
-    """mock 掉 eval_meta → 走严格窗,end_role/label_horizon 为 null。"""
+    """mock 掉 eval_meta(在 client 建好后) → require_eval_meta raises ValueError → 500。
+    铁律下 discovery 已闸过滤,此路径属防御性;测试仅验证 500 返回、不报其他错。
+    注:必须先建 client(让 discovery 正常跑通),再 delattr,否则 discovery 把 pattern 排除 → 404。"""
     import path2_apps.bottom_breakout_burst.dag_spec as bbb_dag
+    c = _client(tmp_path)   # 先建 client,discovery 已正常注册 bottom_breakout_burst
     monkeypatch.delattr(bbb_dag, "eval_meta", raising=False)
-    c = _client(tmp_path)
-    body = c.get("/preview", params={"pattern_id": "bottom_breakout_burst",
-                                      "symbol": "AAA", "start": "2025-06-01",
-                                      "end": "2025-06-30", "label_horizon": 20}).json()
-    scan = body["scan"]
-    assert scan["win_start"] == "2025-06-01"
-    assert scan["win_end"] == "2025-06-30"
-    assert scan["end_role"] is None
-    assert scan["label_horizon"] is None
+    r = c.get("/preview", params={"pattern_id": "bottom_breakout_burst",
+                                   "symbol": "AAA", "start": "2025-06-01",
+                                   "end": "2025-06-30", "label_horizon": 20})
+    assert r.status_code == 500
 
 
 def test_preview_unknown_pattern_404(tmp_path):
@@ -130,12 +128,14 @@ def test_preview_no_match_returns_empty_matches_not_error(tmp_path):
 
 
 def test_preview_yaml_value_error_returns_500(tmp_path, monkeypatch):
-    """yaml load 抛 ValueError(如未知字段)→ 500 detail 含错误描述。"""
+    """yaml load 抛 ValueError(如未知字段)→ 500 detail 含错误描述。
+    注:必须先建 client(让 discovery 正常跑通),再 patch load_params,
+    否则 discovery 调用 load_params 抛 → pattern 排除 → 404。"""
     import path2_apps.bottom_breakout_burst.dag_spec as bbb_dag
+    c = _client(tmp_path)   # 先建 client,discovery 已正常注册
     def _raise():
         raise ValueError("params.yaml ... 含未知字段: ['bo_typooo']")
     monkeypatch.setattr(bbb_dag, "load_params", _raise)
-    c = _client(tmp_path)
     r = c.get("/preview", params={"pattern_id": "bottom_breakout_burst",
                                    "symbol": "AAA", "start": "2025-01-01",
                                    "end": "2025-12-31", "label_horizon": 20})
@@ -143,13 +143,14 @@ def test_preview_yaml_value_error_returns_500(tmp_path, monkeypatch):
     assert "未知字段" in r.json()["detail"] or "ValueError" in r.json()["detail"]
 
 
-def test_preview_analyze_single_exception_returns_500(tmp_path, monkeypatch):
-    """analyze_single 抛任意异常 → 500 detail 含 type:msg。"""
-    import path2_web.scan as scan_mod
-    def _raise(**kwargs):
+def test_preview_analyze_exception_returns_500(tmp_path, monkeypatch):
+    """mod.analyze 抛任意异常 → 500 detail 含 type:msg。
+    mod 是 dag_spec 模块;须 patch dag_spec.analyze(非 bbb 包 __init__ 的 analyze)。"""
+    import path2_apps.bottom_breakout_burst.dag_spec as bbb_dag
+    c = _client(tmp_path)   # 先建 client,discovery 已正常注册
+    def _raise(win, params=None):
         raise RuntimeError("simulated downstream failure")
-    monkeypatch.setattr(scan_mod, "analyze_single", _raise)
-    c = _client(tmp_path)
+    monkeypatch.setattr(bbb_dag, "analyze", _raise)
     r = c.get("/preview", params={"pattern_id": "bottom_breakout_burst",
                                    "symbol": "AAA", "start": "2025-01-01",
                                    "end": "2025-12-31", "label_horizon": 20})
