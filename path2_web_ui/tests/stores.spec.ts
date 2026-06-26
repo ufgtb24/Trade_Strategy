@@ -113,11 +113,11 @@ describe('view store clearScanFile', () => {
 describe('scan store remove + cancel', () => {
   beforeEach(() => setActivePinia(createPinia()))
 
-  it('remove(pid, ts) calls deleteScan with both args', async () => {
+  it('remove(ts) calls deleteScan with scanTs', async () => {
     const { deleteScan } = await import('../src/api')
     const s = useScanStore()
-    await s.remove('pat_x', '20260601T100000')
-    expect(deleteScan).toHaveBeenCalledWith('pat_x', '20260601T100000')
+    await s.remove('20260601T100000')
+    expect(deleteScan).toHaveBeenCalledWith('20260601T100000')
   })
 
   it('cancel no-op when not running', async () => {
@@ -129,11 +129,14 @@ describe('scan store remove + cancel', () => {
   })
 
   it('cancel(true) calls cancelScan(scan_id, true) when running', async () => {
-    const { cancelScan } = await import('../src/api')
+    const { cancelScan, listScans, loadScan } = await import('../src/api')
+    vi.mocked(listScans).mockResolvedValueOnce([
+      { scan_ts: 'scan_id_x', hits: 0, total: 0, size: 100, partial: true } as any
+    ])
+    vi.mocked(loadScan).mockResolvedValueOnce(SCAN_FILE as any)
     const s = useScanStore()
     ;(s as any).running = true
     ;(s as any).currentScanId = 'scan_id_x'
-    setTimeout(() => { (s as any).running = false }, 0)
     await s.cancel(true)
     expect(cancelScan).toHaveBeenCalledWith('scan_id_x', true)
   })
@@ -166,7 +169,7 @@ describe('scan store ignores progress while cancelling', () => {
     })
     vi.mocked(cancelScan).mockResolvedValueOnce({ ok: true })
     const s = useScanStore()
-    await s.run({ pattern_id: 'pat_p', start_date: '2025-01-01', end_date: '2025-12-31',
+    await s.run({ pattern_ids: ['pat_p'], start_date: '2025-01-01', end_date: '2025-12-31',
                   workers: 1, ticker_regex: null, label_horizon: 20 })
     // 扫描中一条 progress event — 正常更新 store.progress
     onEvt!({ scanned: 10, total: 100, hits: 1, errors: 0 })
@@ -194,17 +197,17 @@ describe('scan store auto-load on done', () => {
       return { close: () => {} } as any
     })
     const s = useScanStore()
-    await s.run({ pattern_id: 'pat_x', start_date: '2025-01-01', end_date: '2025-12-31',
+    await s.run({ pattern_ids: ['pat_x'], start_date: '2025-01-01', end_date: '2025-12-31',
                   workers: 1, ticker_regex: null, label_horizon: 20 })
     onEvt!(done)
     await flushPromises()
   }
 
-  it('done success → loadScan(pid, scan_ts) called + view.scanFile injected', async () => {
+  it('done success → loadScan(scan_ts) called + view.scanFile injected', async () => {
     const { loadScan } = await import('../src/api')
     await dispatchDone({ type: 'done', hits: 1, errors: 0, total: 1,
-                         pattern_id: 'pat_x', scan_ts: '20260618T100000' })
-    expect(loadScan).toHaveBeenCalledWith('pat_x', '20260618T100000')
+                         scan_ts: '20260618T100000' })
+    expect(loadScan).toHaveBeenCalledWith('20260618T100000')
     expect(useViewStore().scanFile).not.toBeNull()
   })
 

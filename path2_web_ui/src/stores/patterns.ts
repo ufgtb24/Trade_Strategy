@@ -1,15 +1,37 @@
 import { defineStore } from 'pinia'
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import type { SerializedPattern } from '../types'
 import { getPatterns } from '../api'
 
 export const usePatternsStore = defineStore('patterns', () => {
   const list = ref<SerializedPattern[]>([])
-  const selectedId = ref<string | null>(null)
-  async function load() {
+  const selectedIds = ref<Set<string>>(new Set())
+  const loaded = ref(false)
+
+  async function loadPatterns() {
     list.value = await getPatterns()
-    if (!selectedId.value && list.value.length) selectedId.value = list.value[0].pattern_id
+    loaded.value = true
   }
-  function select(id: string) { selectedId.value = id }
-  return { list, selectedId, load, select }
+
+  function toggleSelected(id: string) {
+    const s = new Set(selectedIds.value)
+    if (s.has(id)) s.delete(id); else s.add(id)
+    selectedIds.value = s
+  }
+  function selectAll() {
+    selectedIds.value = new Set(list.value.map(p => p.pattern_id))
+  }
+  function selectNone() {
+    selectedIds.value = new Set()
+  }
+  function invertSelection() {
+    const s = new Set<string>()
+    for (const p of list.value) if (!selectedIds.value.has(p.pattern_id)) s.add(p.pattern_id)
+    selectedIds.value = s
+  }
+
+  const selectedArray = computed(() => Array.from(selectedIds.value))
+
+  return { list, loaded, selectedIds, selectedArray,
+           loadPatterns, toggleSelected, selectAll, selectNone, invertSelection }
 })
