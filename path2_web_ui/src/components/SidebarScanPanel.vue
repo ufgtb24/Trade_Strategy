@@ -8,7 +8,7 @@
     <input v-model.number="labelHorizon" type="number" min="1" />
 
     <button
-      :disabled="!selectedId"
+      :disabled="selectedArray.length === 0"
       :class="{ 'btn-stop': running }"
       @click="onPrimary"
     >
@@ -16,7 +16,7 @@
     </button>
 
     <button
-      :disabled="!selectedId || running"
+      :disabled="selectedArray.length === 0 || running"
       @click="dialogOpen = true"
     >
       打开历史…
@@ -30,8 +30,8 @@
     </div>
 
     <ScanResultDialog
-      v-if="dialogOpen && selectedId"
-      :pattern-id="selectedId"
+      v-if="dialogOpen && selectedArray.length > 0"
+      :pattern-id="selectedArray[0]"
       @close="dialogOpen = false"
     />
 
@@ -57,7 +57,7 @@ import StopScanDialog from './StopScanDialog.vue'
 const patterns = usePatternsStore()
 const scan = useScanStore()
 const cfg = useConfigStore()
-const { selectedId } = storeToRefs(patterns)
+const { selectedArray } = storeToRefs(patterns)
 const { running, progress, lastDone } = storeToRefs(scan)
 
 const start = ref('2025-01-01')
@@ -81,7 +81,7 @@ onMounted(async () => {
 })
 
 async function onPrimary() {
-  if (!selectedId.value) return
+  if (selectedArray.value.length === 0) return
   if (running.value) {
     // 正在扫:已命中数 > 0 → 弹 StopScanDialog 让用户选;= 0 → 直接 cancel(false)
     if ((progress.value?.hits ?? 0) > 0) {
@@ -95,14 +95,14 @@ async function onPrimary() {
 }
 
 async function onScan() {
-  if (!selectedId.value) return
+  if (selectedArray.value.length === 0) return
   const s = {
     start_date: start.value, end_date: end.value,
     workers: workers.value, ticker_regex: tickerRegex.value,
     label_horizon: labelHorizon.value,
   }
   if (cfg.config) await cfg.save({ ...cfg.config, scan: s })
-  scan.run({ pattern_id: selectedId.value, ...s })
+  scan.run({ pattern_ids: selectedArray.value, ...s })
 }
 
 async function onStopSave()    { stopDialogOpen.value = false; await scan.cancel(true) }

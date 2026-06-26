@@ -22,7 +22,7 @@ describe('SidebarScanPanel', () => {
   beforeEach(() => setActivePinia(createPinia()))
 
   it('button shows 开始扫描 when not running', async () => {
-    const p = usePatternsStore(); (p as any).selectedId = 'pat_x'
+    const p = usePatternsStore(); p.selectedIds = new Set(['pat_x'])
     const w = mount(SidebarScanPanel)
     await flushPromises()
     const primary = w.findAll('button')[0]
@@ -30,7 +30,7 @@ describe('SidebarScanPanel', () => {
   })
 
   it('button shows 停止扫描 + btn-stop class when running', async () => {
-    const p = usePatternsStore(); (p as any).selectedId = 'pat_x'
+    const p = usePatternsStore(); p.selectedIds = new Set(['pat_x'])
     const s = useScanStore()
     ;(s as any).running = true
     const w = mount(SidebarScanPanel)
@@ -41,7 +41,7 @@ describe('SidebarScanPanel', () => {
   })
 
   it('「打开历史」button disabled while running', async () => {
-    const p = usePatternsStore(); (p as any).selectedId = 'pat_x'
+    const p = usePatternsStore(); p.selectedIds = new Set(['pat_x'])
     const s = useScanStore()
     ;(s as any).running = true
     const w = mount(SidebarScanPanel)
@@ -51,7 +51,7 @@ describe('SidebarScanPanel', () => {
   })
 
   it('clicking 停止扫描 calls scan.cancel', async () => {
-    const p = usePatternsStore(); (p as any).selectedId = 'pat_x'
+    const p = usePatternsStore(); p.selectedIds = new Set(['pat_x'])
     const s = useScanStore()
     ;(s as any).running = true
     ;(s as any).currentScanId = 'scan_id_x'
@@ -63,7 +63,7 @@ describe('SidebarScanPanel', () => {
   })
 
   it('clicking 打开历史 mounts ScanResultDialog', async () => {
-    const p = usePatternsStore(); (p as any).selectedId = 'pat_x'
+    const p = usePatternsStore(); p.selectedIds = new Set(['pat_x'])
     const w = mount(SidebarScanPanel, { attachTo: document.body })
     await flushPromises()
     await w.findAll('button')[1].trigger('click')
@@ -82,7 +82,7 @@ describe('SidebarScanPanel onPrimary 三分支', () => {
     ;(scan as any).progress = { scanned: 5, total: 100, hits: 0, errors: 0 }
     ;(scan as any).currentScanId = 'sid'
     const cancelSpy = vi.spyOn(scan, 'cancel').mockResolvedValue()
-    const p = usePatternsStore(); (p as any).selectedId = 'pat_x'
+    const p = usePatternsStore(); p.selectedIds = new Set(['pat_x'])
     const w = mount(SidebarScanPanel)
     await flushPromises()
     await w.get('button.btn-stop').trigger('click')
@@ -96,7 +96,7 @@ describe('SidebarScanPanel onPrimary 三分支', () => {
     ;(scan as any).progress = { scanned: 5, total: 100, hits: 3, errors: 0 }
     ;(scan as any).currentScanId = 'sid'
     const cancelSpy = vi.spyOn(scan, 'cancel').mockResolvedValue()
-    const p = usePatternsStore(); (p as any).selectedId = 'pat_x'
+    const p = usePatternsStore(); p.selectedIds = new Set(['pat_x'])
     const w = mount(SidebarScanPanel)
     await flushPromises()
     await w.get('button.btn-stop').trigger('click')
@@ -110,7 +110,7 @@ describe('SidebarScanPanel onPrimary 三分支', () => {
     ;(scan as any).progress = { scanned: 5, total: 100, hits: 3, errors: 0 }
     ;(scan as any).currentScanId = 'sid'
     const cancelSpy = vi.spyOn(scan, 'cancel').mockResolvedValue()
-    const p = usePatternsStore(); (p as any).selectedId = 'pat_x'
+    const p = usePatternsStore(); p.selectedIds = new Set(['pat_x'])
     const w = mount(SidebarScanPanel)
     await flushPromises()
     await w.get('button.btn-stop').trigger('click')
@@ -127,7 +127,7 @@ describe('SidebarScanPanel onPrimary 三分支', () => {
     ;(scan as any).progress = { scanned: 5, total: 100, hits: 3, errors: 0 }
     ;(scan as any).currentScanId = 'sid'
     const cancelSpy = vi.spyOn(scan, 'cancel').mockResolvedValue()
-    const p = usePatternsStore(); (p as any).selectedId = 'pat_x'
+    const p = usePatternsStore(); p.selectedIds = new Set(['pat_x'])
     const w = mount(SidebarScanPanel)
     await flushPromises()
     await w.get('button.btn-stop').trigger('click')
@@ -144,7 +144,7 @@ describe('SidebarScanPanel onPrimary 三分支', () => {
     ;(scan as any).progress = { scanned: 5, total: 100, hits: 3, errors: 0 }
     ;(scan as any).currentScanId = 'sid'
     const cancelSpy = vi.spyOn(scan, 'cancel').mockResolvedValue()
-    const p = usePatternsStore(); (p as any).selectedId = 'pat_x'
+    const p = usePatternsStore(); p.selectedIds = new Set(['pat_x'])
     const w = mount(SidebarScanPanel)
     await flushPromises()
     await w.get('button.btn-stop').trigger('click')
@@ -160,7 +160,7 @@ describe('SidebarScanPanel onPrimary 三分支', () => {
     ;(scan as any).running = true
     ;(scan as any).progress = { scanned: 5, total: 100, hits: 3, errors: 0 }
     ;(scan as any).currentScanId = 'sid'
-    const p = usePatternsStore(); (p as any).selectedId = 'pat_x'
+    const p = usePatternsStore(); p.selectedIds = new Set(['pat_x'])
     const w = mount(SidebarScanPanel)
     await flushPromises()
     await w.get('button.btn-stop').trigger('click')
