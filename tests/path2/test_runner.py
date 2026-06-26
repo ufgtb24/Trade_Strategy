@@ -9,7 +9,7 @@ from path2.runner import run
 
 @dataclass(frozen=True)
 class _E(Event):
-    pass
+    class_id = "test_runner_e"
 
 
 def _e(i, eid=None):

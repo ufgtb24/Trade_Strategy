@@ -6,11 +6,11 @@ data:
   csv_file: null
   mon_before: 6
   mon_after: 3
-  min_price: 1.0
-  max_price: 10.0
+  min_price: 0.5
+  max_price: 20.0
   min_volume: 10000
 output:
-  output_dir: outputs/scan_results
+  output_dir: /home/yu/PycharmProjects/Trade_Strategy/outputs/scan_results
 performance:
   num_workers: 26
 params:

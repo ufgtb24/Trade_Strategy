@@ -1,32 +1,18 @@
-"""Path 2 协议层公开 API。"""
+"""path2 公开 API:独立多级事件表达框架。
 
+协议地基(core/runner/config)+ go-forward 的 dag 引擎(见 path2.dag 子包)。
+事件用 path2.atoms 的 Detector 产出;形态用 path2.dag 的 NodeSpec/类型化边/where 声明,
+交 path2.dag.engine.analyze 匹配。详见 docs/path2/。
+"""
 from path2 import config
 from path2.config import set_runtime_checks
-from path2.core import Detector, Event, TemporalEdge
-from path2.operators import After, Any, At, Before, Over, Overlaps
-from path2.pattern import Pattern
+from path2.core import Detector, Event
 from path2.runner import run
-from path2.stdlib import BarwiseDetector, Chain, Dag, Kof, Neg, PatternMatch, span_id
 
 __all__ = [
     "Event",
     "Detector",
-    "TemporalEdge",
-    "Before",
-    "At",
-    "After",
-    "Over",
-    "Any",
-    "Overlaps",
-    "Pattern",
     "run",
     "config",
     "set_runtime_checks",
-    "Chain",
-    "Dag",
-    "Kof",
-    "Neg",
-    "PatternMatch",
-    "BarwiseDetector",
-    "span_id",
 ]

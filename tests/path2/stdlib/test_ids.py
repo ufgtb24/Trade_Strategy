@@ -24,5 +24,5 @@ def test_default_event_id_unchanged_pins_still_hold():
 
 
 def test_span_id_is_publicly_exported():
-    from path2 import span_id as span_id_public
+    from path2.stdlib import span_id as span_id_public
     assert span_id_public is span_id

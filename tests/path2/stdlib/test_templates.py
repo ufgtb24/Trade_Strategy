@@ -11,7 +11,7 @@ from path2.stdlib.templates import BarwiseDetector
 
 @dataclass(frozen=True)
 class _Ev(Event):
-    pass
+    class_id = "test_templates_ev"
 
 
 def test_cannot_instantiate_without_emit():
@@ -46,9 +46,10 @@ def test_template_does_no_cross_event_checks():
 
 
 def test_barwise_detector_publicly_exported():
-    import path2
-    from path2.stdlib.templates import BarwiseDetector as _BD
+    import path2.stdlib
+    from path2.stdlib import BarwiseDetector as _BD
+    from path2.stdlib.templates import BarwiseDetector as _BD2
 
-    assert path2.BarwiseDetector is _BD
-    assert "BarwiseDetector" in path2.__all__
-    assert "span_id" in path2.__all__
+    assert _BD is _BD2
+    assert "BarwiseDetector" in path2.stdlib.__all__
+    assert "span_id" in path2.stdlib.__all__

@@ -1,0 +1,4 @@
+- [nested event 共享 stream X/Y 裁定](project_nested_event_shared_stream.md) — skeptic 亲核：排除 X(垃圾污染下游)、采 StreamSpec(复用 consumes_stream)；两条收口审查均通过
+- [禁用"是否被消费"论证机制价值](feedback_no_consumption_value_framing.md) — 用户为后续 app 预建、已拍板做；奥卡姆只对准"机制内部是否过度"不对准"是否该做"
+- [skill 集成多场景路由 + authoring skill 第二轮](project_skill_integration_routing.md) — 集成是否抬出错率=共享设计树 vs 平行路径之分(brainstorming 官方先例);path2 authoring skill 集成创建+修改可行、v1 无 Workflow(18s 扫描套 Workflow 是过度设计)
+- [skill 自动写回 design-heuristics 自我升级裁定](project_skill_self_upgrade_writeback.md) — 有条件可行;全自动无闸门=跨会话慢性中毒(未验证文本进必读文件被自回归复制),只接受会话末候选+用户确认+绝不写数值

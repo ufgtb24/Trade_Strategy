@@ -3,17 +3,9 @@ claude -r --dangerously-skip-permissions
 /ralph-loop:ralph-loop "根据新的人类模拟基准数据和分析报告对公式进行迭代改进，直到公式结果接近模拟结果" --completion-promise "Satisfied human cognition" --max-iterations 10
 /ralph-loop:cancel-ralph
 
-## 有 worktree 的时候， 如何 resume cc session in main branch
-拿最新一条 session 的 uuid
-ls -t ~/.claude/projects/-home-*PycharmProjects-Trade_Strategy/*.jsonl 2>/dev/null \
-  | head -1 | xargs -n1 basename | sed 's/.jsonl$//'
-
-然后:
-claude --resume <uuid>
-
-## 工作数双向同步法
+## 工作数双向同步法(A 和 B 统一到全局最新)
   # B 上：压缩 + rebase
-  git reset --soft $(git merge-base B A)                                                                                                
+  git reset --soft $(git merge-base B A)  # AB 分叉点的 hash                                                                                               
   git commit -m "feature B"
   git rebase A                                                                                                                          
                                                                   

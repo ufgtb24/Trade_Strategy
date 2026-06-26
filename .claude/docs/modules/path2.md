@@ -1,80 +1,150 @@
-# Path 2 协议层 + stdlib
+# path2 框架架构意图
 
-> 最后更新：2026-05-23
-> 顶层包 `path2/`。**独立事件表达框架**,与 `BreakoutStrategy/` 因子框架/突破选股数据流**无任何耦合**(独立业务,自带未来流水线,与 mining/TPE/因子框架无关)。
-> 两层:`path2/`(协议层,冻结)+ `path2/stdlib/`(标准 PatternDetector + 便利层:`BarwiseDetector`/`span_id`)。算法权威 `docs/research/path2_algo_core_redesign.md`。
+> 最后更新：2026-06-16
+> 覆盖：`path2/`（协议地基 + dag 引擎 + atoms + calc + stdlib + eval）。
+> 应用层见 [path2_apps.md](path2_apps.md)；web 调试/可视化见 [path2_web.md](path2_web.md)。
+> **codebase 的主线功能**；独立事件表达框架，与 `BreakoutStrategy/` 零耦合。
+
+---
 
 ## 定位
 
-Path 2 把"股票形态"建模为**多级事件**:事件是一等的、不可变的结构化数据行;形态由"造事件 + 约束事件关系"两步表达。协议层定类型契约 + 关系算子 + 安全网;stdlib 在其上提供**消费 `TemporalEdge` 声明的标准 PatternDetector**——用户只写声明(edges + 每标签一条流),stdlib 跑实现。
+path2 把"股票形态"建模为**多级不可变事件**：事件是有类型的冻结数据行（frozen dataclass）；形态由"声明节点 + 声明类型化边"两步表达，不写命令式编排。引擎负责跑 detector、求解约束图、物化匹配；app 只 `build_pattern(params)` 后交 `analyze`。
 
-## 三角色叙事(理解协议层的钥匙)
+设计脊梁是 **where（一元，节点）vs satisfies（二元，边）的正交分工**：where 读单实例自身属性（`drought>=THR`、`regime=="sideways"`），satisfies 读一对实例间关系（gap、包含、否定）。声明作者根本看不到命令式循环。
 
-| 角色 | 性质 | 代码载体 |
-|---|---|---|
-| `Event` | 名词(数据行) | frozen dataclass ABC,必有 `event_id/start_idx/end_idx` |
-| `Detector` | 动词(产出事件) | `runtime_checkable` Protocol,`detect(source)->Iterator[Event]` |
-| Pattern | 形容词(约束关系) | **不是类**:5 个关系算子 + `Pattern.all` 组合出的 `Event->bool` 判定函数 |
+---
 
-`Detector` 是事件层之间唯一的桥(`df`→L1→L2→…);Pattern 只评估、不产出。
+## 层次结构
 
-## 核心流程
-
-```mermaid
-flowchart TD
-    df[原始数据 df] -->|Detector.detect| L1[Event 流]
-    L1 -->|run 驱动 + 跨事件检查| S[已校验事件流]
-    L1 -->|上层 Detector 消费下层| L2[聚合/派生 Event 流]
-    L2 --> S
-    decl[edges 声明 + 每标签流] -->|stdlib PatternDetector| L2
-    S -->|Pattern.all 关系算子组合| P{判定函数}
-    P -->|调用方列表推导过滤| M[匹配子集]
-    cfg[config.RUNTIME_CHECKS] -.门控.-> L1
-    cfg -.门控.-> S
+```
+path2/core.py    协议地基:Event(ABC,frozen) / Detector(Protocol) / class_id 注册表
+path2/runner.py  run() 驱动 + 跨事件安全网(end_idx 升序 / event_id 单 run 唯一)
+path2/config.py  RUNTIME_CHECKS 开关(set_runtime_checks)
+path2/dag/       go-forward 唯一引擎:DAG 声明 + 约束求解 + 匹配物化 + per-role 诊断
+path2/atoms/     走势-无关 L1 Detector 库(BO/Trend/Platform/Distribution/Throwback)
+path2/calc/      纯数值函数(无 Event/Detector)
+path2/stdlib/    span_id + BarwiseDetector 便利层(atoms 依赖)
+path2/eval.py    走势-无关 match 买点 N 日前瞻收益(pattern 质量度量)
 ```
 
-## 协议层关键决策与理由(Why)
+---
 
-- **`Event` 必须 frozen + "Row 落地=字段完成"不变式**:事件一旦 yield,所有字段已就绪(无 NaN/partial)。需要后置窗口才能算的字段,Detector 等够再 yield。消费方永不判断"字段是否 ready",事件可安全跨层复用。
-- **两层安全网,按状态需求拆分**:单事件不变式(int 类型、非 bool、`start≤end`、NaN 扫描)放 `Event.__post_init__`(错误在**构造点**立即暴露);跨事件不变式(yield `end_idx` 升序、`event_id` 单 run 唯一)需跨事件状态,放 `runner.run()`。算子层保持纯函数零状态。
-- **不写自定义 frozen 检查**:Python `@dataclass` 装饰期即拒绝"非 frozen 子类继承 frozen `Event`",比协议层自检更早更强;自检为不可达死代码。
-- **`run()` 非强制**:`MyDetector().detect(df)` 直用仍可(极简心智),只是少跨事件检查;`run(detector,*source)` 是推荐驱动,变参支撑 L2+ 的 `detect(stream,df)`,**流式不物化**(generator 边跑边查,内存只占 `seen_ids`)。
-- **`config.RUNTIME_CHECKS` 必须属性访问**:用 `config.RUNTIME_CHECKS`,禁止 `from path2.config import RUNTIME_CHECKS`(import 期拷死布尔,热切失效)。关掉时全走 fast-path 零开销。
-- **算子纯函数 + `Pattern.all` 唯一组合子**:协议层刻意瘦,表达力靠组合非内建子类。窗口边界精确且不对称(刻意):`Before` idx 形态 `[max(0,start-w), start)`、stream 形态不 clamp;`After` idx `(end, end+w]`;`window<=0` 一律 False。
-- **`Before`/`After` 的 `predicate` 可选,存在性是基准问题**:`predicate=None` 即"窗内 `stream` 是否存在任一事件落窗"——"什么算合格事件"是产 `stream` 的 Detector 的身份判据,不在算子处二次施加(避免同一判据散落 N 个调用点的泄漏抽象)。`predicate` 给出则细化为 opt-in。`window` 必填 keyword-only(强制 `window=N` 具名,与既有惯例一致且自解释)。`predicate=None` 且 `stream=None` 无流可作存在性检测 → **调用点 `ValueError`**(同 bool-as-idx / 标签冲突的"构造点拦截、绝不静默退化"族);`window<=0 → False` 短路保持在最前,优先于该 ValueError(空窗语义不回归)。`stream=None` 形态 `predicate` 收 bar 索引(int)、`stream` 形态收 `Event`。仅 `Before`/`After`;`At`(+⊤ 退化恒真无判别力)/`Over`(无 predicate 参)/`Any`(容器存在性另类)不涉及。
-- **`Overlaps` = 区间相交族,与 Before/After 互补**:`Before`/`After` 看 stream 事件 `end_idx` 落在锚点**前/后**外窗;`Overlaps` 看两区间如何**相交**("overlap" 取宽义=任意相交)。单算子 + `mode`(可传一组,任一命中即 True)承载 5 种相交形状:`contains`(A 含 B)/`within`(A 属 B)/`overlapped_front`/`overlapped_back`(部分穿插)/`equals`(同段)。包含用 `≤`(共享端点归包含、A==B 三命中);重叠要真交叠(meets 单点相接不命中);点事件下 contains/within/equals 退化等价(同 idx 共现)。`stream` 必填(区间关系对裸 bar 索引无意义,无 `stream=None` 索引形态、无 `window`);未知/空 mode → `ValueError`;`predicate` 可选同 Before/After。多 mode 是使用方需求的设计取向(非"单语义最小")。
-- **`bool` 一律拒绝**:`bool⊂int` 但布尔当索引/数值特征是语义错误。`Event.__post_init__` 用 `type(x) is bool` 精确拒 `start_idx/end_idx`;`features` 用 `not isinstance(v,bool)` 排除。
+## 协议地基（core.py / runner.py）
 
-## stdlib 关键决策与理由(Why)
+`Event`（ABC，`@dataclass(frozen=True)`）：公共字段 `event_id` / `start_idx` / `end_idx`。frozen 容器字段一律 tuple（防 list in-place mutate 突破 frozen），`__post_init__` 在 RUNTIME_CHECKS 下校验区间合法 + 禁 NaN（"Row 落地 = 字段完成"）。
 
-- **4 个 Detector = 一个约束推进核心的四种形态**:Chain(线性)/Dag(偏序)/Kof(k-of-n 松弛)/Neg(偏序+排除)。Chain = Dag 加严线性构造期断言、复用同核心——单一实现的支点。
-- **核心 = LEF-DFS,三态分离不可混淆**:INV-A(逐节点访问 scan,全后缀新鲜、不跨 anchor/回溯携带——因输入仅 `end_idx` 升序、`start_idx` 无序,不可早停);INV-B(持久消费指针,产出后全成员按真实整数下标 `+1` 非重叠消费——这是 `end_idx` 升序流式产出的承重正确性不变式,部分消费不健全);INV-C(FAILED 前沿割记忆,仅一次 LEF 调用内有效、调用间重置)。`earliest-feasible := key=(start_idx,end_idx,position)` 字典序最小,position 终极 tiebreak 使算法不依赖 `event_id` 唯一性。逐弱连通分量(WCC)独立跑 + 按 `end_idx` p 路归并。
-- **诚实复杂度**:Chain 前沿割宽 `f=1` ⇒ 多项式/近线性(headline);病态宽前沿 DAG 时间空间同为指数(内在 interval-CSP-over-DAG 难度,显式承认,不粉饰)。
-- **统一产出 `PatternMatch`**:4 种都产同一 frozen Event 子类(`children` 按 start 升序 / `role_index: Mapping[str, Event]` 标签→该标签命中的唯一 Event / `pattern_label`)。四 Detector 经唯一产出点 `_emit` 每标签恒绑定单成员(Kof 松弛的是满足的*边*数,非每标签多事件),故 `role_index` 值是裸 Event:类型如实表达"一标签一命中",消费方直接取用无需解包。`__post_init__` 仅留两条有判别力的不变式:`children` 按 start 升序、`role_index` 值集合 == `children` 集合(两视图不漂移)。不设每 Detector 专属子类——"哪种算法拼的"是无人消费的运行期细节;统一类型才能跨 Detector 一致回查、嵌套复用。`pattern_label` 由用户声明时给,替代"类名默认"解嵌套。
-- **三段标签解析**:具名流(kwarg)> key 函数 > 类名/pattern_label 默认。冲突一律构造期 `ValueError`("构造点拦截、绝不静默合并",与协议层 bool 决议同源)。
-- **event_id 单 run 唯一机制**:无条件、四 Detector 共享的 `detect()`-局部 `seen_ids`,`base=f"{label}_{s}_{e}"`,撞则 `base#<n>`。生产侧 yield 前保证唯一,`run()` 校验为后盾。`pattern_label` 不得含 `#`。
-- **Kof = LEF-DFS 结构姊妹**:差异仅 4 处——无窗口过滤(边可不满足,不能据某边裁候选)/ 叶层 k-of-n 接受谓词 / 关 INV-C / 不做等-end 塌缩。缓冲继承零/结构常数,代价转为时间标签维诚实指数(松弛无剪枝的内在代价)。构造期强制单 WCC(跨 WCC 的 k-of-n 无明确语义)。
-- **Neg = 正向子图 + forbid 成员资格谓词**:forbid 边端点角色由**成员资格**(∈ forward.nodes ⇒ 正向锚,∉ ⇒ 否定标签)识别,**与 earlier/later 方向无关**;两端皆∈/皆∉ 构造期报错。gap 按声明方向原样代入,否定流空 ⇒ 放行,多 forbid 合取。正向复用 `advance_dag`,子序列过滤继承升序与缓冲界;否定标签结构性不进 children/role_index。
+`Detector`（Protocol）：`detect(source) -> Iterator[Event]`。`run(detector, *source)` 透传给 detect——按调用处传 1 个（df）或 2 个（上游流, df）source。
 
-## stdlib 便利层关键决策与理由(Why)
+### 身份与去重（取代旧 event_type，三处正交机制）
 
-- **`BarwiseDetector` 是唯一沉淀的 Detector 模板**:从 dogfood 真实痛点倒推——"逐 bar 单点扫描"循环是唯一高频+易错+未被 PatternDetector 覆盖的样板。模板拥有 `for i in range(len(df))` 主循环 + None 过滤,用户子类只实现领域判据 `emit(df,i)->Optional[Event]`。**模板对 `i` 零领域假设**:lookback 由子类在 `emit` 内 `return None` 自管(lookback 是领域知识,不焊进框架契约,故不暴露 `warmup`);**零跨事件校验**(end_idx 升序/id 唯一仍归 `run()`,模板做=与 run 重复二义)。`detect(df)` 即对接 `run(MyDet(),df)`。
-- **不沉淀任何 Event 类**:用户真实 L1 事件总带使用方私有领域字段,按定义无法被 stdlib 预沉淀;协议层 `Event` + 自动 `.features` 已够。候选 `Peak/BO` 命名还违反"与突破业务无关"独立业务约束。
-- **不造窗口/聚合/滑动计数原语(红线)**:"窗口内 ≥N" 是滑动动态计数,`Kof` 是 k-of-n 边松弛(成员数恒=label 数)**并不覆盖**它;该样板暂无足够复用证据进 stdlib,使用方自管,待真实重复再立。红线不依赖任何"已被某 Detector 覆盖"声明。
-- **`span_id` 与 `default_event_id` 两函数刻意并存**:`span_id`(公开)单点 `start==end` 塌缩 `kind_i` 否则 `kind_s_e`,吸收单点/区间两种惯例;`default_event_id`(#3 内部,不公开)恒区间——#3 已用 pinned 测试锁定该语义,归一会 break。实体数=必要语义数(奥卡姆),非过度设计。
+1. **class_id（类型身份）**：`Event.class_id` 是 `ClassVar[str]`，子类必须覆盖为非空全局唯一值。`__init_subclass__` 在类定义期校验非空 + 入 `_CLASS_ID_REGISTRY` 查重（冲突即抛）。class_id 是面板上色、`to_topology`、summary 计数、序列化的唯一类型键。值：`bo` / `burst` / `trend` / `platform` / `dist` / `tb` / `match`。
+2. **source_tag（实例身份）**：event_id 前缀，默认 None → 回退 class_id；event_id 经 `span_id(source_tag or class_id, start, end)` 生成。当同一 class_id 有 **≥2 个独立 detector 实例**（如某走势让 down / side 各持一个 `TrendSegmentDetector`）时，引擎 `assign_auto_source_tags`（`run_streams` 顶部，analyze 与 diagnose 共用）按 nodes 首现序给未显式命名者自动填 `f"{class_id}{i}"`（trend0 / trend1），使前缀不撞。单实例 / 共享实例 / 已显式命名的**不动** → event_id 向后兼容、幂等。多实例化要求该 detector 暴露 `source_tag` 钩子（无钩子又多实例 = 抛）。
+3. **双层去重（流共享）**：同一 detector **实例**喂多个 node_id（共享一个对象、非多实例化）时，引擎按两键去重保证 event_id 全局唯一——`run_streams` 按 `(id(detector), consumes_stream)` 只物化一遍流（多 node_id 指向同一 list）；`AnalysisResult.events` 按 `id(stream)` 去重平铺。`AnalysisResult.__post_init__` 断言 events 的 event_id 无重复。
 
-## 对外 API
+---
 
-`path2/__init__.py` 出口:协议层 `Event`/`Detector`/`TemporalEdge`/`Before`/`At`/`After`/`Over`/`Any`/`Overlaps`/`Pattern`/`run`/`config`/`set_runtime_checks` + stdlib PatternDetector `Chain`/`Dag`/`Kof`/`Neg`/`PatternMatch` + 便利层 `BarwiseDetector`/`span_id`(`default_event_id` 不公开)。`TemporalEdge`:`earlier/later/min_gap/max_gap`,`gap=later.start_idx-earlier.end_idx`;声明性 datatype,由 stdlib PatternDetector 解析驱动(`earlier/later` 是声明期端点标签,非 event_id)。
+## dag 引擎（path2/dag/）
 
-## 依赖关系
+dag/ 是 **Kleene-free 单 Event 引擎**：所有节点绑单 Event，求解期无区间绑定 / 串聚合 / 双端点签名。子结构聚合统一走"复合事件"路径（detector 直接把子序列封成宽事件）。Kleene 历史代码完整归档至 `docs/legacy/kleene/`，供未来"段聚合判据需读外层 role 字段"场景参考复活。
 
-仅 stdlib(`dataclasses`/`typing`/`math`/`os`/`operator`/`abc`)+ `BarwiseDetector` 用 `pandas`(L1 模板天然吃 df)。协议层内部 `core`/`runner`→`config`,`operators`/`pattern`→`core`。`path2/stdlib/`:PatternDetector 依赖协议层 + `_ids.default_event_id`(#3 内部桩);便利层 `templates.py`(`BarwiseDetector`)依赖 `core.Event`,`_ids.span_id` 独立公开。无环。
+### 节点：NodeSpec（nodes.py）
 
-## 已知局限与边界
+`NodeSpec` = 角色唯一键 `node_id` + 生产者 `detector` + 节点级一元谓词 `where`（`(clause_id, fn)` 列表 AND 合取）+ `consumes_stream`（None = 从 df 产流；填 node_id = 消费该上游流，如 throwback 吃 bo 流）+ `label`。同一 detector 类型可用不同 node_id 承担不同角色。class_id 由 `detector.event_cls.class_id` 取。`WherePredicate` 签名严格 `(Event, MatchContext) -> bool`（无 tuple 形态）。
 
-- **stdlib 未含(刻意)**:任何 Event 子类(领域字段使用方私有,不可预沉淀)、任何窗口/聚合/滑动计数 Detector(红线,使用方自管)、DSL 层(未来 #5,默认不做)。仅 `BarwiseDetector` 一个 Detector 模板。
-- **Kof 时间最坏指数于出现标签数**(松弛无窗口剪枝,常态;非如 Dag 仅病态),且强制单 WCC。
-- **Neg 否定标签须显式传流**(可空 `N=[]`);完全不传该 kwarg → 构造期 `missing` 报错(有意:打错 forbid 标签名当场暴露)。
-- **`#<seq>` 使 event_id 跨 run 不稳定**:协议 §1.1.1 只要求单 run 唯一,不违约;远期跨 run 稳定 id 需求须重审。
-- spec/设计:`docs/research/path2_spec.md`、`docs/research/path2_algo_core_redesign.md`(LEF-DFS §1-9 / Kof §10 / Neg §11,算法权威)、`docs/superpowers/specs|plans/2026-05-16-path2-*`(协议层/dogfood/PatternDetector)、`docs/superpowers/specs/2026-05-17-path2-4-stdlib-templates-design.md`(便利层,含写回横幅:Kof 不覆盖滑动计数);dogfood `docs/research/path2_dogfood_report.md`;路线 `docs/research/path2_roadmap.md`。
+**铁律**：where 谓词严禁读 `ctx.bound`（跨节点）。引擎剪枝期用 `_TRIPWIRE` 哨兵替换 bound，违规立即抛。
+
+### 复合事件（嵌套，表达"段聚合"的唯一现役路径）
+
+把"一段子结构"绑成单元参与外层 DAG 的方式：让 detector 直接把子结构聚合成**一个复合宽事件**。例：`BurstDetector` 消费 bo 流、切极大段、产 `BurstEvent`（`start=首成员 / end=尾成员`，携 `members` tuple + 预算标量 `count/distinct_pk/max_vol_ratio/first_drought`）。复合事件实现 `child(key)` / `children(key)` / `child_slots()` 暴露内部结构。这样"一串 bo"在图里就是**一等宽事件**：where 读预算标量（聚合属性，与单实例同式、零特例）；外层边经 `Child` selector 连其串首 / 尾 bo。收益＝把"相对子成员的代价"类约束表达成普通边、绕开 role 展开（指数爆炸）。
+
+### 类型化边（edges.py）
+
+边是 DAG 骨架，src→dst 同时定义拓扑序 + 引擎前沿推进 + 面板箭头方向。六个子类，引擎只通过 `satisfies / feasible_window / signature_fields` 多态消费（零边类型分支，新增关系 = 加子类）：
+
+- `TemporalEdge`：dst 在 src 结束后 `gap∈[min,max]` 内开始（`strict=True` ⇒ next 语义：窗内无更早同类 dst，bind-time 校验）
+- `ContainmentEdge`：src ⊇ dst（大→小规范方向，dst 整体被包含）
+- `StartContainmentEdge`：只约束 dst.start ∈ src 区间（dst.end 不限）——宽 dst 落入 src 的 match-preserving 包含（如 side ⊇ burst.start）
+- `OverlapEdge`：dst 从 src 内部起、延伸到 src 之后
+- `EqualsEdge`：区间完全相等（引擎对其 src 关 C1 等-end 塌缩，否则漏匹配）
+- `NegationEdge`：src 锚定窗口内禁止满足条件的 dst（satisfies 语义反转，全称量词消费；dst 不进 role_index，只作约束）
+
+**端点 selector `Child(node, key)`**（服务复合事件）：边的 src/dst 可填 `Child("burst","first_bo")` 而非裸 node_id，表示"取该节点所绑复合事件的 `child(key)`"参与 satisfies。`__post_init__` 把 Child 归一化为 `(dst="burst", dst_selector="first_bo")`——spec 校验 / WCC 图构建仍只看纯 str（selector 不参与边身份），求值期才经 `endpoint()` 投影到子事件。让外层边连复合事件的内部端点（串首 / 尾 bo），无需展开成员为 role。
+
+**anchor 字段**（基类 `DependencyEdge` 持有）：`anchor_field` / `anchor_src_field` 表达"dst 端某身份字段 == src 端某身份字段"的引用约束（典型 use case：`anchor_field="anchor_to_src"` 让 dst 必须显式指回某个 src 实例）。`_anchor_ok(src_ep, e_dst)` 在求解器 satisfies 复核处与几何 `satisfies` 复合 AND；`anchor_field=None` 时恒 True（字节等价无 anchor 旧行为）。`anchor_src_field=None` 默认 `'event_id'`。
+
+### where 便利层 W.*（where.py）
+
+四个工厂（`attr` / `all` / `child` / `children`），均返回 `_Pred`——一个 callable `(x, ctx) -> bool`，**额外带 `.meta`（kind/field/op/threshold）+ `.measure(x, ctx)`（实测值）**。这是富诊断的机制源头：`_solve`/`_reify` 把它当普通 lambda 调（零感知），但 reify 与 diagnose 读 `.measure` 产实测对照、serialize 读 `.meta` 产静态规则串。None 属性安全返回 False（与旧 app `x is not None and x op thr` 同短路语义）。组合子 `all` 无单一阈值，`meta=None`。
+
+`W.children(key, agg)` 把 `event.children(key)`（tuple of child Events）传给 `agg` 谓词——`agg` 可以是用户自定义 lambda（path2 不再提供 seq 聚合工厂，原 `W.distinct/W.any/W.count` 等已归档；如需 children 聚合判据请用自定义 lambda 或在 detector 阶段算成预算标量）。
+
+### 声明容器 PatternSpec（spec.py）
+
+`PatternSpec` = `pattern_id` + `display_name` + `nodes` + `edges` + `root` + `event_styles` + `stock_list_columns`。`__post_init__` 五类校验：DAG（root/边端点在 nodes、Kahn 无环）、`consumes_stream` 引用合法、where `clause_id` 同 node 内唯一（跨 node 可重名）、`_validate_anchor`（anchor_field 在 dst event_cls 上、anchor_src_field 在 src event_cls 上 + 拒单调坐标 start_idx/end_idx，引导改用 EqualsEdge 走结构剪枝）。
+
+`to_topology()` 零派生直投 nodes/edges 为 `PatternTopology`（`TopoNode` 字段 `node_id/class_id/label` 三项；`TopoEdge.kind` = 边子类名）。面板与 serialize 据此渲染。`eq_src_nodes()` 供引擎对 EqualsEdge 的 src 关闭 C1 塌缩。
+
+### 引擎入口（engine.py）
+
+`analyze(spec, df, params) -> AnalysisResult` 四阶段：① detector 编排（`run_streams`：顶部 `assign_auto_source_tags` 自动消歧 + 按 `consumes_stream` 拓扑序跑流，含上述双层去重）② `compile_plan` 编约束图 ③ `solve(plan, streams, ctx)` 求解（单函数,无 next/any 二选一）④ `reify` 物化 PatternMatch。**出口过滤**：丢弃"role_index 只含孤立无边 role"的残缺 match——孤立 node（无任何边、自成单元素 WCC、每候选一解）通常只为产流给他人消费的**流源**（如 bo 喂 burst / tb），不该自成匹配；判据从 `spec.edges` 自动推（无需流源标记）。`matches()` = 命中数 > 0。
+
+### 求解器（_solve.py）
+
+`solve(plan, streams, ctx)` = 唯一求解入口。语义：枚举所有满足 dag 约束的绑定（`_dfs` 回溯）+ 按 leaf event 跨 prefix 去重（reachable-leaves always-on：`emitted_leaves: dict[node_id, set[stream_idx]]` 跨 WCC 共享）。`use_memo / collapse / memo_mode` 是差分测试参数；production 默认 `collapse=False, memo_mode='charitable'`。
+
+**`compile_plan` 的 `c1_off` 5 源总表**（在这些节点上禁用 C1 等-end 塌缩，否则漏匹配）：
+1. `EqualsEdge.src`：window 把 start 钉死、非单调（漏匹配 reviewer §6.2 验证）
+2. `dst_selector` 非 None 入边的 dst 节点：satisfies 看 child 端点而非父端点
+3. `NegationEdge.src` 且 `src_selector` 非 None：negation 读 child 端点但 signature_fields 为空、C1 学不到
+4. 出边为空的叶子节点（`plan.leaves`）：同 end 桶内多 leaf 候选不能被 C1 塌缩（reachable-leaves 兜不住的局部丢点）
+5. `anchor_field` 非空边的 src 节点：anchor 边 signature_fields 为空、C1 学不到 src 身份在 satisfies 中参与（机理同 NegationEdge.src_selector 关 C1）
+
+`_dfs` 内 satisfies 复核 = `edge.satisfies(src_ep, dst_ep) and edge._anchor_ok(src_ep, dst_ep)`（几何 + anchor 身份合取）。
+
+### 结果与诊断（result.py / diagnose.py）
+
+`AnalysisResult`：`events`（所有节点流去重平铺，含未命中中间事件）+ `matches` + `spec`（供面板）。
+
+`PatternMatch`（继承 Event，class_id="match"）：`role_index`（`node_id → Event`，单 Event 一对一）+ `children`（role_index 平铺、start 升序，role_index 的冗余镜像）+ `predicate_trace`。`__post_init__` 断言 `list(role_index.values())` 集合 == `children` 集合。
+
+`PredicateTrace` 富诊断：`where_results`（node_id → {clause_id: `ClauseWitness`}）+ `edge_results`（(src,dst) → `EdgeWitness`）。`ClauseWitness` 字段 satisfied/measured/op/threshold，`__bool__` == satisfied（向后兼容旧 `if where_results[nid][cid]`）。`EdgeWitness` 留两端实例 + 实测量。
+
+`diagnose(spec, df, params) -> RoleDiagnostics`（per-role 健康检查，web 调试用）：坐标轴是 **role 不是 event**——event 级"失败归因"因 where 多值 + 求解短路 path-dependent 而 ill-defined，故按 role 独立诊断"哪些候选能当这个 role、卡在哪条 where"（`AttrRow` 属性）+ "找不找得到关系伙伴"（`RelRow` 关系）。复用 `run_streams` 产流，**不碰 _solve 求解核心**；单 role 局部，通过不代表能凑成完整匹配。
+
+---
+
+## atoms 层（path2/atoms/）
+
+走势-无关 L1 Detector 库。入库门槛：至少两条不相关走势会用，或表达单一通用物理事件。**形状偏见命名拒入**（`RoundedBottom` 等退到 path2_apps）。所有 Detector 内部状态不跨 detect 调用；Event frozen + 容器字段 tuple。
+
+- **BO**（class_id=`bo`，breakout.py）：滑窗 peak 识别 + 单点突破。`drought` = 距上次 BO 的 bar 间距，**首 BO 为 None**（语义即"无前序"，非"未知"）；`broken_peak_ids`(tuple) 供 distinct 计数；`vol_ratio` 基线不足时 None。继承 BarwiseDetector。
+- **Burst**（class_id=`burst`，breakout.py）：`BurstDetector` 消费 bo 流（独立性原则：不 new BODetector），按"段首 + span 内吸纳 + 极大段贪心不回头"切串，每段聚合成一个 `BurstEvent`（复合宽事件，见上）。只切串 + detect 期算一次预算标量，阈值过滤交 burst 节点的 where。
+- **Trend**（class_id=`trend`，trend.py）：SMA per-bar 变化 + hysteresis 平滑，切 df 为连续三态区间流（down/sideways/up），末段必 yield。`drawdown` = 区段振幅。唯一暴露 `source_tag` 的 detector。
+- **Platform**（class_id=`platform`，platform.py）：非重叠贪心扫窗，窄幅震荡平台段。
+- **Distribution**（class_id=`dist`，distribution.py）：高位派发单 bar（放量阴线 + 长上影）。
+- **Throwback**（class_id=`tb`，throwback.py）：**设计判据**——throwback 只能以 BO 锚点推断、无法独立枚举，故核心是锚点谓词函数 `evaluate_throwback(bo, df, ...)`；`ThrowbackDetector` 是事件壳（`consumes_stream='bo'`，逐 BO 调用，仅 confirmed 产 `ThrowbackEvent`）。
+
+---
+
+## calc 层（path2/calc/）
+
+纯函数计算库，无 Event/Detector，仅依赖 pandas/numpy，可被任意 atom/app 调用。覆盖：ATR（Wilder RMA）、MA 全家（均线/相对位置/ATR 归一 z 值/曲率/斜率）、单 K 线几何比例（上下影/实体）、量比、回撤恢复度、滚动振幅/标准差占比、突破后稳定性。
+
+---
+
+## stdlib 层（path2/stdlib/）
+
+atoms 依赖的便利层：`span_id(kind, start, end)`（单点塌缩为 `kind_start`，区间为 `kind_start_end`）+ `BarwiseDetector`（逐 bar 单点扫描模板：模板拥有扫描主循环，子类只实现 `emit` 领域判据；lookback 子类自管，跨事件校验全留协议层 `run`）。
+
+---
+
+## 评估层（path2/eval.py）
+
+走势-无关的 pattern 质量度量：`match_forward_returns(match, end_role, df, horizons) -> {n: 均值}` 按 end_role event 内逐买点日算 `close[t+n]/close[t]-1`，每 horizon 一项均值。**为什么放在 path2 层而不是 calc/**：calc/ 约定纯数值无 Event 依赖，本模块要碰 `PatternMatch.role_index`，故独立成模块。end_role / horizons 由调用方提供，path2 不知道任何具体走势。复用方：`path2_web/eval_runner.py`（设计期评估器三 mode）+ `path2_web/scan.py`（web UI 缓冲扫描的 label 注入）。
+
+---
+
+## 隔离约束
+
+`path2/` 内任何文件零 `from BreakoutStrategy`（`tests/path2/test_self_contained.py` grep 强制）。

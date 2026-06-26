@@ -9,3 +9,9 @@ configs/api_keys.yaml
 cache/
 .contexts/
 docs/tmp/loop/
+.claude/ralph-loop.local.md
+.claude/.ralph-loop.local.md
+.claude/web-loop/
+
+# Visual brainstorming companion artifacts
+.superpowers/

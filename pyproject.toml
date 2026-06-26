@@ -28,6 +28,13 @@ dependencies = [
     "torch>=2.10.0",
     "tiktoken>=0.12.0",
     "pandas-market-calendars>=5.3.2",
+    # path2_web 后端(uvicorn/fastapi/sse-starlette)放主依赖而非 optional 组:
+    # run_path2_web.py 用裸 `uv run python -m path2_web.main`,而 `uv run` 默认剥离
+    # optional-dependencies extra,放主依赖才能让启动命令零 flag 直接可用。
+    "uvicorn[standard]>=0.48.0",
+    "fastapi>=0.115.0",
+    "sse-starlette>=2.1.0",
+    "httpx>=0.27.0",
 ]
 
 [project.optional-dependencies]

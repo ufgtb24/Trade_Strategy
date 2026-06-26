@@ -1,0 +1,8 @@
+dataset_dir: datasets/pkls
+scan:
+  start_date: '2025-01-01'
+  end_date: '2026-01-01'
+  workers: 26
+  ticker_regex: null
+  label_horizon: 20
+last_selected_pattern: bottom_breakout_burst

@@ -16,7 +16,7 @@ description: Generate user-facing documents under docs/ — research reports (do
 ## 输出目录选择
 
 - `docs/research/` — 研究报告、架构审查、可行性分析、Agent team 研究结论（分析型，含推导过程、权衡、结论）
-- `docs/explain/` — 代码解释、模块逻辑讲解，教学型（宏观 → 微观，含 Mermaid，循序渐进）
+- `docs/explain/` — 代码解释、模块逻辑讲解，教学型（宏观 → 微观，大白话，通俗易懂，可以含 Mermaid，循序渐进）
 - `docs/tmp/` — 临时计划、设计草稿、待执行 TODO（自由型，可含尝试记录、未定决策）
 
 ## 允许的内容
@@ -29,7 +29,7 @@ description: Generate user-facing documents under docs/ — research reports (do
 ## 命名建议
 
 - research：`<主题>-<简述>.md` 或 `YYYY-MM-DD-<主题>.md`
-- explain：`<模块名>_logic_analysis.md`
+- explain：`<模块名>_通俗解释.md`
 - tmp：`<日期>-<任务>.md`
 
 ## 流程

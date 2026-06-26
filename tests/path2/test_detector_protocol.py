@@ -5,7 +5,7 @@ from path2.core import Detector, Event
 
 @dataclass(frozen=True)
 class _E(Event):
-    pass
+    class_id = "test_detector_e"
 
 
 def test_conforming_class_is_detector():

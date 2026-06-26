@@ -1,0 +1,11 @@
+node_modules
+dist
+dist-ssr
+*.local
+.DS_Store
+*.tsbuildinfo
+vite.config.js
+vite.config.d.ts
+e2e-*.png
+test-results/
+playwright-report/

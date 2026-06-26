@@ -40,7 +40,7 @@ description: Refresh AI context documents in .claude/docs/ — module architectu
 1. `ls BreakoutStrategy/` 列出所有包目录。
 2. 对比 outline 模块表：代码有但表里没的 → 追加；表里有但代码没的 → 删除；目录改名的 → 同步。
 3. 数据流变化（新增/删除核心模块）→ 更新数据流图。
-4. 仅在出现新术语时追加术语表。
+4. 术语表已外移至 `.claude/docs/glossary.md`，本 skill **不维护**它（仅用户明确指定时由会话直接追加）。
 
 ## 触发判定
 

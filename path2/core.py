@@ -1,12 +1,16 @@
 from __future__ import annotations
 
 import dataclasses
+import inspect
 import math
 from abc import ABC
 from dataclasses import dataclass
-from typing import Any, Iterator, Mapping, Protocol, runtime_checkable
+from typing import Any, ClassVar, Iterator, Mapping, Protocol, Tuple, runtime_checkable
 
 from path2 import config
+
+
+_CLASS_ID_REGISTRY: dict[str, type] = {}
 
 
 @dataclass(frozen=True)
@@ -20,6 +24,21 @@ class Event(ABC):
     event_id: str
     start_idx: int
     end_idx: int
+
+    class_id: ClassVar[str] = ""   # 子类必须覆盖为非空全局唯一值(spec §2.1)
+    is_point: ClassVar[bool] = False   # 子类点事件覆写为 True(start_idx==end_idx 几何承诺)
+
+    def __init_subclass__(cls, **kwargs):
+        super().__init_subclass__(**kwargs)
+        if inspect.isabstract(cls):
+            return
+        cid = cls.__dict__.get("class_id")
+        if not cid:
+            raise TypeError(f"{cls.__name__} 必须声明非空 class_id")
+        prev = _CLASS_ID_REGISTRY.get(cid)
+        if prev is not None and prev is not cls:
+            raise ValueError(f"class_id 冲突: {cid!r} 已被 {prev.__name__} 占用")
+        _CLASS_ID_REGISTRY[cid] = cls
 
     def __post_init__(self) -> None:
         if not config.RUNTIME_CHECKS:
@@ -39,34 +58,27 @@ class Event(ABC):
                     f"字段 {f.name} 为 NaN — 违反'Row 落地=字段完成'"
                 )
 
+    def child_slots(self) -> Mapping[str, "Event | Tuple[Event, ...]"]:
+        """构成本 event 的非冗余主 child 集（展平/遍历用，不含投影别名）。叶子返回 {}。"""
+        return {}
+
+    def child(self, name: str) -> "Event":
+        """命名取单 child（含 first_*/last_* 投影别名）。用途：selector / edge 端点。"""
+        raise KeyError(name)
+
+    def children(self, name: str) -> "Tuple[Event, ...]":
+        """命名取组 child。用途：selector 聚合。"""
+        raise KeyError(name)
+
     @property
-    def features(self) -> Mapping[str, float]:
-        """默认:所有 int/float 字段(排除 bool);子类可覆盖。"""
-        return {
-            f.name: getattr(self, f.name)
-            for f in dataclasses.fields(self)
-            if isinstance(getattr(self, f.name), (int, float))
-            and not isinstance(getattr(self, f.name), bool)
-        }
-
-
-@dataclass(frozen=True)
-class TemporalEdge:
-    """显式声明两个事件之间的时间关系约束。
-
-    gap = later.start_idx - earlier.end_idx
-    """
-
-    earlier: str
-    later: str
-    min_gap: int = 0
-    max_gap: float = math.inf
-
-    def __post_init__(self) -> None:
-        if config.RUNTIME_CHECKS and (
-            self.min_gap < 0 or self.min_gap > self.max_gap
-        ):
-            raise ValueError(f"非法 gap 区间 [{self.min_gap},{self.max_gap}]")
+    def descendant_leaves(self) -> "Tuple[Event, ...]":
+        """递归展平到无 child 的 atom。终止不变式：is_leaf(e) ⟺ child_slots(e)=={}。"""
+        out = []
+        for slot in self.child_slots().values():
+            members = slot if isinstance(slot, tuple) else (slot,)
+            for m in members:
+                out.extend(m.descendant_leaves if m.child_slots() else (m,))
+        return tuple(out)
 
 
 @runtime_checkable
