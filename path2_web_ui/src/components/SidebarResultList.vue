@@ -1,6 +1,5 @@
 <template>
   <div class="list">
-    <!-- preview 工具栏(spec §4.4)-->
     <div class="preview-bar">
       <label class="toggle">
         <input type="checkbox" :checked="previewEnabled"
@@ -18,16 +17,35 @@
     </div>
 
     <div v-if="!scanFile" class="hint">未加载扫描结果</div>
-    <div
-      v-for="r in scanFile?.results ?? []" :key="r.symbol"
-      :data-symbol="r.symbol" class="row" :class="{ active: r.symbol === symbol }"
-      @click="view.selectSymbol(r.symbol)"
-    >
-      <span class="sym">{{ r.symbol }}</span>
-      <span class="badges">
-        <span v-for="(n, k) in r.summary" :key="k" class="badge">{{ k }}:{{ n }}</span>
-      </span>
-    </div>
+    <table v-else class="multi">
+      <thead>
+        <tr>
+          <th class="sym">symbol</th>
+          <th v-for="pid in patternIds" :key="pid"
+              :data-col-pid="pid"
+              :title="pid"
+              class="col"
+              @click="view.setSort(pid)">
+            {{ displayNameOf(pid) }}
+            <span v-if="sortByPid === pid" class="sort-ind">
+              {{ sortDesc ? '▼' : '▲' }}
+            </span>
+          </th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr v-for="row in sortedRows" :key="row.symbol"
+            :class="{ active: row.symbol === symbol }">
+          <td class="sym" @click="view.selectSymbol(row.symbol)">{{ row.symbol }}</td>
+          <td v-for="cell in row.cells" :key="cell.pid"
+              :data-cell-pid="cell.pid"
+              :class="['col', { matched: cell.matched }]"
+              @click="view.selectSymbol(row.symbol)">
+            {{ fmt(cell.max_ret) }}
+          </td>
+        </tr>
+      </tbody>
+    </table>
   </div>
 </template>
 
@@ -36,13 +54,21 @@ import { computed } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useViewStore } from '../stores/view'
 const view = useViewStore()
-const { scanFile, symbol, preview, previewEnabled, previewLoading, previewError }
-  = storeToRefs(view)
+const { scanFile, symbol, preview, previewEnabled, previewLoading, previewError,
+        patternIds, sortedRows, sortByPid, sortDesc } = storeToRefs(view)
 
 const canRefresh = computed(() =>
   previewEnabled.value && !!preview.value && !previewLoading.value
   && preview.value?.symbol === symbol.value)
 
+function displayNameOf(pid: string): string {
+  return scanFile.value?.per_pattern[pid]?.pattern_spec.display_name ?? pid
+}
+function fmt(v: number | null): string {
+  if (v == null) return '—'
+  const pct = (v * 100).toFixed(1)
+  return v >= 0 ? `+${pct}%` : `${pct}%`
+}
 function onToggle(e: Event) {
   void view.setPreviewEnabled((e.target as HTMLInputElement).checked)
 }
@@ -50,12 +76,9 @@ function onCloseError() { view.clearPreview() }
 </script>
 
 <style scoped>
-.list { overflow-y: auto; }
-
-.preview-bar { padding: 6px 10px; border-bottom: 1px solid #e5e7eb;
-               background: #f8fafc; }
-.toggle { display: flex; align-items: center; gap: 6px; cursor: pointer;
-          font-size: 12px; }
+.list { overflow-y: auto; height: 100%; display: flex; flex-direction: column; }
+.preview-bar { padding: 6px 10px; border-bottom: 1px solid #e5e7eb; background: #f8fafc; }
+.toggle { display: flex; align-items: center; gap: 6px; cursor: pointer; font-size: 12px; }
 .toggle input { cursor: pointer; }
 .refresh { margin-left: auto; padding: 1px 6px; font-size: 14px;
            border: 1px solid #cbd5e1; background: #fff; cursor: pointer; }
@@ -64,9 +87,14 @@ function onCloseError() { view.clearPreview() }
 .error { font-size: 11px; color: #ef4444; margin-top: 4px; }
 .error a { cursor: pointer; margin-left: 6px; }
 
-.row { padding: 6px 10px; cursor: pointer; border-bottom: 1px solid #f1f5f9; }
-.row.active { background: #eff6ff; }
-.sym { font-weight: 600; }
-.badges { display: block; font-size: 10px; color: #64748b; }
-.badge { margin-right: 6px; }
+.hint { padding: 8px 12px; font-size: 12px; color: #64748b; }
+table.multi { width: 100%; border-collapse: collapse; font-size: 12px; }
+table.multi th, table.multi td { padding: 4px 6px; border-bottom: 1px solid #f1f5f9; text-align: left; }
+table.multi th.col { cursor: pointer; user-select: none; }
+table.multi th.col:hover { background: #f1f5f9; }
+table.multi .sort-ind { color: #2563eb; margin-left: 2px; }
+table.multi td.sym { font-weight: 600; cursor: pointer; }
+table.multi td.col { cursor: pointer; text-align: right; background: #fafafa; }
+table.multi td.col.matched { background: #dcfce7; }
+tr.active { background: #eff6ff; }
 </style>
