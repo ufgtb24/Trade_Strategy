@@ -119,9 +119,9 @@ describe('visible §3 band/tier', () => {
   it('renderGridOf: bo 节点声明 price → 返回 price', () => {
     const topoWithBoPrice = {
       nodes: [
-        { node_id: 'bo', class_id: 'bo', label: '', source_tag: 'bo',
+        { node_id: 'bo', class_id: 'bo', source_tag: 'bo',
           render_grid: 'price' as const, where_rules: [] },
-        { node_id: 'tb', class_id: 'tb', label: '', source_tag: 'tb', where_rules: [] },
+        { node_id: 'tb', class_id: 'tb', source_tag: 'tb', where_rules: [] },
       ],
       edges: [],
     }
@@ -132,9 +132,9 @@ describe('visible §3 band/tier', () => {
   it('renderGridOf: tb 节点未声明 → fallback time', () => {
     const topoWithBoPrice = {
       nodes: [
-        { node_id: 'bo', class_id: 'bo', label: '', source_tag: 'bo',
+        { node_id: 'bo', class_id: 'bo', source_tag: 'bo',
           render_grid: 'price' as const, where_rules: [] },
-        { node_id: 'tb', class_id: 'tb', label: '', source_tag: 'tb', where_rules: [] },
+        { node_id: 'tb', class_id: 'tb', source_tag: 'tb', where_rules: [] },
       ],
       edges: [],
     }

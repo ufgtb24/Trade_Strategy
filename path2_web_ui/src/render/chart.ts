@@ -156,7 +156,7 @@ export function buildKlineOption(
   // bandLabels:在 grid2 左缘每 band 一行文字
   const bandLabelData = tagList.map((tag, band) => {
     const node = topology.nodes.find((n) => n.source_tag === tag)
-    const text = node ? (node.node_id || tag) : tag
+    const text = node ? node.node_id : tag
     return { value: [0, band, tagList.length], text }
   })
 

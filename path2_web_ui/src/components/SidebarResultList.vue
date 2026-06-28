@@ -23,7 +23,6 @@
           <th class="sym">symbol</th>
           <th v-for="pid in patternIds" :key="pid"
               :data-col-pid="pid"
-              :title="pid"
               class="col"
               @click="view.setSort(pid)">
             {{ pid }}

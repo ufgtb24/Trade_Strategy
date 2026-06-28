@@ -16,7 +16,6 @@
                :checked="ps.selectedIds.has(p.pattern_id)"
                @change="ps.toggleSelected(p.pattern_id)" />
         <span class="name">{{ p.pattern_id }}</span>
-        <span class="pid" :title="p.pattern_id">{{ p.pattern_id }}</span>
       </label>
     </div>
   </div>
