@@ -34,7 +34,7 @@ describe('layoutTopology', () => {
     const { nodes } = layoutTopology(NODES, EDGES)
     expect(nodes.length).toBe(4)
     const bo = nodes.find((b) => b.node.node_id === 'bo')!
-    expect(bo.node.node_id).toBe('bo')
+    expect(bo.w).toBeGreaterThan(2 * 12)  // w = 2*HPAD + chars*CH_W > bare padding
     expect(bo.h).toBe(30)
   })
 

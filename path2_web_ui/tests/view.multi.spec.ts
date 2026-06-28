@@ -74,7 +74,7 @@ describe('view store — multi pattern', () => {
       scan: {},
     }
     ;(v as any).previewEnabled = true
-    expect(v.effectivePattern?.pattern_id).toBe('bo_only')
+    expect(v.effectiveAnalysis?.events.length).toBe(1)
     // 切到 bbb → preview pattern_id 不匹配 → 退回扫描结果
     v.setActivePattern('bbb')
     expect(v.effectivePattern?.pattern_id).toBe('bbb')
