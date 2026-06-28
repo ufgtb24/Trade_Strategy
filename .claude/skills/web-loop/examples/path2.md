@@ -32,7 +32,7 @@
 - `url` = `http://localhost:${frontend_port}`
 - `healthUrl` = `http://localhost:${backend_port}/patterns`
 
-**§3 `.web-loop-refresh.md` 模板占位符**:`${backend_port}` 与上同义,主会话渲染时替换。
+**§3 `.web-loop-refresh.md` 模板占位符**:`${backend_port}` 与上同义;主会话首次落地 `.web-loop-refresh.md` 时渲染替换,既有老文件复用走 SKILL.md §2a L60 stale 分支(不强制重渲)。
 
 **配置源缺失/键缺失行为**:见 SKILL.md §2a-bis 步骤 4-5(转对话补缺,不自动写回 yaml)。
 

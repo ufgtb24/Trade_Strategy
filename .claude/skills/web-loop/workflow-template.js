@@ -266,7 +266,7 @@ await agent(
   `   - 但**不删** \`SUMMARY.md\` / \`issues.json\` / \`verified.json\` / \`reviews/\` / \`goal.md\` / \`refs/\`(文字记录 + GOAL 三件套)\n` +
   `3) bash 整删 \`.playwright-mcp/\`:\`rm -rf .playwright-mcp\`(若存在)\n` +
   `4) 返回 cleaned_runtags 数组(被清理 shots 的旧 runtag 列表),deleted_mcp 布尔。\n` +
-  `⚠ 绝不 \`git clean\`、绝不删任何 \`.web-loop-refresh.md\`、绝不删 path2 主线代码 / docs / scripts / configs 等仓库其他文件。`,
+  `⚠ 绝不 \`git clean\`、绝不删任何 \`.web-loop-refresh.md\`、绝不删项目主线代码 / docs / scripts / configs 等仓库其他文件。`,
   { label:"cleanup-old-runs", phase:"setup", model:"sonnet",
     schema:{ type:"object", required:["cleaned_runtags","deleted_mcp"],
       properties:{ cleaned_runtags:{type:"array", items:{type:"string"}}, deleted_mcp:{type:"boolean"} } } });
