@@ -101,6 +101,16 @@
         4. **回讲点头**(沿用「分级确认」):把起草草稿摘要回给用户("刷新会:① 端口 `<probe 出的 backend_port>` kill+restart 后端 ② POST /scan ③ poll /scans/... 至 results 非空 ④ 前端 reload — 对吗?")。
     ```
 
+**Subtask 1e2: §2a L214 红线说明段去字面 `lsof -ti:8000`(与 workflow-template.js L428 同步)**
+
+> L214 红线说明段把 `lsof -ti:8000` 当作"按端口精确"示例文本嵌进协议,违反"协议层零字面端口"。改为 `<port>` 占位让示例项目无关,与 workflow-template.js L428 的修法对齐。
+
+- [ ] Read SKILL.md L214 区域确认前置文本(grep "lsof -ti:8000" 定位行号)
+- [ ] Edit:
+  - file_path: `.claude/skills/web-loop/SKILL.md`
+  - old_string: `lsof -ti:8000 | xargs -r kill`
+  - new_string: `lsof -ti:<port> | xargs -r kill`
+
 **Subtask 1f: 在 §2a 末尾、§2b 之前插入新节 §2a-bis**
 
 - [ ] Read SKILL.md L69-71 确认插入点(L69 = "探不到的**必要**项 → 转「对话补缺」。",L71 = "### 2b 自然语言诊断(弱可靠,需确认)")
@@ -146,8 +156,7 @@
 - [ ] Run: `grep -n "stale\|含字面端口" .claude/skills/web-loop/SKILL.md`
   Expected: L60 区域命中 stale 检测分支
 - [ ] Run: `grep -n "8000" .claude/skills/web-loop/SKILL.md`
-  Expected: 零命中(L66 已改占位、L206 是已有红线引用区另说)
-  > 若 L206 区域(`pkill -f` 红线段)含 8000,本 plan 不动该处;只确保新增/修改区零字面端口。
+  Expected: 零命中(L66 由 subtask 1e 改占位,L214 由 subtask 1e2 改占位,三层统一无字面端口)
 - [ ] Commit:
   ```bash
   git add .claude/skills/web-loop/SKILL.md
@@ -158,6 +167,7 @@
   - §2a L60:.web-loop-refresh.md 已存在分支加 stale 端口检测
   - §2a L62 起草:端口必须用 probe 值、模板用占位
   - §2a L66:回讲示例去字面端口
+  - §2a L214 红线段:lsof -ti:8000 改 <port> 占位(与 workflow-template.js L428 同步)
   - 新增 §2a-bis 协议节(probe → fallback → 不自动写回)
 
   Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>
@@ -331,8 +341,7 @@
 - [ ] Run: `grep -Hn '\bpath2\b' .claude/skills/web-loop/SKILL.md | grep -v 'examples/path2.md'`
   Expected: 零输出(只允许保留"`examples/path2.md` 作为新项目模板示例"这种文件名引用)
 - [ ] Run: `grep -Hn '\b8000\b' .claude/skills/web-loop/SKILL.md`
-  Expected: 零或仅 L206 区域(`pkill -f` 历史红线段;本 plan 不动该处)
-  > 若命中行不在 L200+ 红线区,记入红点。
+  Expected: 零输出(协议层全文零字面端口,L214 已由 subtask 1e2 改占位)
 
 **Subtask 3b: SKILL.md 含新协议必要文本**
 
