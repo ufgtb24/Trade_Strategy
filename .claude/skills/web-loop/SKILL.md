@@ -52,21 +52,40 @@ description: 迭代改进(非从零开发)一个正在运行的、带浏览器�
 ### 2a 探测项目事实(强可靠,自动不打扰)
 读项目、跑命令,直接填出工程类 args——用户不再碰这些:
 - `uiDir`:读 `package.json`/`vite.config.*`/前端入口定位前端根。
-- `url`:探 dev server 端口(读配置默认端口 / `curl` 常见端口),填前端 URL。
+- `url`:**必须**经 §2a-bis 项目配置 probe 协议派生;**禁直接用 `examples/<项目>.md §1` 表中的字面 URL**——§1 表中端口相关行只能是占位/派生说明,不是值。
 - `smokeCmd`:读 `package.json` 的 test/lint script、CI 配置、`Makefile` → 组回归 gate 命令。
 - `rubricPath`:有 `examples/<项目>.md` 则取其中验收 spec 路径(配 `principles.md` 通用 rubric 骨架);无则转「对话补缺」问用户验收标准。
-- `restartCmd`/`healthUrl`:读后端启动方式 + 健康端点(后端改动才需要)。
+- `restartCmd`/`healthUrl`:`healthUrl` 端口同 `url` 由 §2a-bis probe 派生;`restartCmd` 直接取自 examples(命令本身无端口耦合)。
 - `refreshDataCmd`:三档处理。
-  - 项目根/`uiDir` **已有** `.web-loop-refresh.md` → 直接指向它(`refreshDataCmd = ".web-loop-refresh.md"`),不再问用户。
+  - 项目根/`uiDir` **已有** `.web-loop-refresh.md` → 先 grep 文件中 `localhost:\d+` 字面端口:
+    - **零字面端口**(已是 `${backend_port}` 占位或纯命令)→ 直接指向它(`refreshDataCmd = ".web-loop-refresh.md"`),不再问用户。
+    - **含字面端口**(老格式)→ 警告用户:"既有 .web-loop-refresh.md 含字面端口 `<grep 结果>`,可能与当前 yaml 派生端口 `<probe 值>` 不一致;建议删除该文件后重跑(主会话将按 §2a 新模板渲染)。本次先复用老文件继续。" 用户决定是否删。
   - **没有,且能用单步命令搞定**(DB seed / 缓存清空 / 单 endpoint POST)→ 走「对话补缺」问一句,填单步 shell 命令。
   - **没有,且是多步流程**(如重启后端 → 触发重扫 → poll 结果)→ 主会话**起草** `.web-loop-refresh.md` 落地到项目根,然后 `refreshDataCmd` 指向它。起草流程:
-    1. 基于 §2a 已探测到的事实(后端启动方式 / 端口 / health endpoint)+ 对话问用户"刷新数据需要走哪几步、每步打哪个 endpoint",撑出多步骨架。
+    1. 基于 §2a 已探测到的事实(后端启动方式 / 端口 / health endpoint)+ 对话问用户"刷新数据需要走哪几步、每步打哪个 endpoint",撑出多步骨架。**端口必须用 §2a-bis probe 出的值**,模板里写占位 `${backend_port}` 等,主会话渲染替换后再写盘。
     2. 命令内**用 cwd 相对路径,禁绝对路径**(`uv run ...`、`curl http://localhost:<port>/...`),保证跨 worktree 通用。
     3. kill 旧进程**按端口/PID 精确**(`lsof -ti:<port> | xargs -r kill`),**绝不 `pkill -f`**(红线,详 L206)。
-    4. **回讲点头**(沿用「分级确认」):把起草草稿摘要回给用户("刷新会:① 端口 8000 kill+restart 后端 ② POST /scan ③ poll /scans/... 至 results 非空 ④ 前端 reload — 对吗?")。
+    4. **回讲点头**(沿用「分级确认」):把起草草稿摘要回给用户("刷新会:① 端口 `<probe 出的 backend_port>` kill+restart 后端 ② POST /scan ③ poll /scans/... 至 results 非空 ④ 前端 reload — 对吗?")。
     5. 用户点头后用 `Write` 工具落地到 `<repoRoot>/.web-loop-refresh.md`(已存在则跳过覆写,改提示用户手工 review)。落地后再走 §214 allowlist 前置补 `curl`/`kill`/`uv` 等权限。
 - `shotsDir`/`workdir`/`runtag`/轮数:纯 skill 约定自定(`runtag` 由主会话生成——脚本禁 `Date.now()`;`workdir`=`.claude/web-loop/<runtag>`;`shotsDir`=`<workdir>/shots`,run 产物单目录自包含)。
 - 探不到的**必要**项 → 转「对话补缺」。
+
+### 2a-bis 项目配置 probe 协议(端口/URL 派生)
+
+`url`/`healthUrl` 类接口字段**必经此协议**派生,**禁字面值**。
+
+**步骤**:
+
+1. 读 `examples/<项目>.md` 的「§1b probe recipe」节(若无该节 → 直接转「对话补缺」问用户)。
+2. 按 recipe 的「配置源 + 键路径」读项目配置文件(支持 yaml/json/.env 等,recipe 自行声明格式)。
+3. 按 recipe 的「派生公式」算出 `url`/`healthUrl` 等具体串。
+4. 配置源缺失 / 键缺失 / 解析失败 → 转「对话补缺」问用户(口语问,如"未在 `<配置源>` 找到 `<键>`,前端 dev server 在哪个端口?")。
+5. 用户答 → **仅本次 run 生效**(不缓存,下次跑同样走步骤 1-4 可能再问);**不自动写回项目配置**(by-design,避免静默改用户工程);仅文字提示用户:"建议在 `<配置源>` 补 `<键>: <值>` 以后续静默 probe"。
+
+**适用范围**:`url` / `healthUrl` / `.web-loop-refresh.md` 模板里的端口占位符。
+**不适用**:`uiDir` / `restartCmd` / `rubricPath` / `pattern_id` 等非接口字段(直接从 examples 取字面值)。
+
+**红线**:本协议节及 SKILL.md 协议层全文**零项目名、零字面端口**。所有"去哪找、键叫什么"的知识必在 `examples/<项目>.md`。
 
 ### 2b 自然语言诊断(弱可靠,需确认)
 把用户的模糊抱怨翻译成技术 `goal` + 定 `states`/`lenses`:
@@ -211,7 +230,7 @@ CLAUDE.md 宪法是「Implementer 一律 sonnet 禁用 haiku」,本 skill 是**�
 ## 红线
 - **本地执行**:只接受 `async_launched`,remote 必 fail-fast(否则 localhost + 本地 chromium 全失效)。
 - **reviewer 永久零浏览器**:review 层只 `Read` capture 产出的 PNG + 读 diff,**禁碰 playwright(MCP/脚本都禁)**。浏览器只由 capture 单层串行持有 —— 这是绕开"多 reviewer 抢 MCP 单例串台"的根本。串台只属于共享 MCP 单例;独立 chromium 实例(含 `channel:'chrome'`)不串台。
-- **后端归属 + kill 必须精确**:前端可由用户外部启动(HMR 托管),但后端/数据层改动须由 workflow 内 agent kill+restart(用户须提供 `restartCmd`)。⚠ `restartCmd` 里 kill 旧进程**必须按 PID/端口精确**(如 `lsof -ti:8000 | xargs -r kill`),**绝不用 `pkill -f <进程名模式>`** —— 实测会误杀正在执行该命令的 shell(Exit 144)。实测重启+ready 仅 0.7s。
+- **后端归属 + kill 必须精确**:前端可由用户外部启动(HMR 托管),但后端/数据层改动须由 workflow 内 agent kill+restart(用户须提供 `restartCmd`)。⚠ `restartCmd` 里 kill 旧进程**必须按 PID/端口精确**(如 `lsof -ti:<port> | xargs -r kill`),**绝不用 `pkill -f <进程名模式>`** —— 实测会误杀正在执行该命令的 shell(Exit 144)。实测重启+ready 仅 0.7s。
 - **回归 gate 必设**:`smokeCmd` 不可省,否则多轮改代码无人拦回归。
 - **worktree 禁用**:agent 不设 `isolation` —— worktree 隔离副本会让外部 dev server 的 HMR 看不到改动,直接破坏刷新链路。
 - **完整性**:reviewer 对照 rubric 判绝对 pass/fail,不"想到更好做法就 fail";不伪造 verdict;不把 max-rounds 伪装成 converged。
