@@ -76,13 +76,17 @@ def analyze(spec, df, params=None) -> AnalysisResult:
     plan = compile_plan(spec)                                # 阶段2
     sols = solve(plan, streams, ctx)                         # 阶段3
     matches_out = tuple(reify(s, streams, plan, ctx) for s in sols)  # 阶段4
-    # A2：丢弃「role_index 只含孤立无边 role」的残缺 match（孤立 node 自成单元素 WCC、每候选一解）。
-    # 判据「孤立无边 role」从 spec.edges 自动推、无需流源标记（design §8.1）。
-    isolated = ({n.node_id for n in spec.nodes}
-                - {ep for edge in spec.edges for ep in (edge.src, edge.dst)})
-    if isolated:
+    # A2:丢弃「role_index 只含『孤立无边 AND 被消费』role」的残缺 match。
+    # 原意:流源 role(被别 node 的 consumes_stream 引用)单独命中是"被回显"的噪声、
+    # 非业务 pattern。判据加 consumes_stream 反向引用过滤,避免误伤「全孤立 pattern」
+    # (如 bo_only,单节点零边、无消费者)——其平凡 match 是唯一业务命中,合法保留。
+    isolated_consumed = (
+        {n.node_id for n in spec.nodes}
+        - {ep for edge in spec.edges for ep in (edge.src, edge.dst)}
+    ) & {n.consumes_stream for n in spec.nodes if n.consumes_stream is not None}
+    if isolated_consumed:
         matches_out = tuple(m for m in matches_out
-                            if not set((m.role_index or {}).keys()).issubset(isolated))
+                            if not set((m.role_index or {}).keys()).issubset(isolated_consumed))
     # res.events 按 stream 身份(id(s))去重:共享 detector 时多个 node_id 指同一 list,
     # 朴素平铺会重复计入;按 id 去重确保每条唯一流只计一遍。
     seen_streams = {}

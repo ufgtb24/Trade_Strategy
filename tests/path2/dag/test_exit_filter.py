@@ -1,4 +1,10 @@
-"""A2 出口过滤：孤立无边 role 产的残缺 match 被 analyze 出口丢弃，res.events/topology 仍含该 node。"""
+"""A2 出口过滤:被消费的孤立无边 role 产的残缺 match 被 analyze 出口丢弃,
+res.events/topology 仍含该 node。
+
+判据(2026-06-28 收紧):role_index ⊆ {孤立 AND 被消费} 才过滤——「被消费」=
+被某 node 的 consumes_stream 引用。未被消费的孤立 role 是合法平凡 pattern,
+不再误伤(参 test_a2_isolated_consumed.py)。
+"""
 from dataclasses import dataclass
 from typing import Iterator
 import pandas as pd
@@ -54,10 +60,11 @@ class _DetISO:
 
 
 def _spec_with_isolated():
-    # A→B 连通对 + ISO 孤立(无边)
+    # A→B 连通对 + ISO 孤立无边、被 B 的 consumes_stream 引用(模拟流源 node)
     return PatternSpec(
         pattern_id="t", display_name="t",
-        nodes=(NodeSpec("A", _DetA([1])), NodeSpec("B", _DetB([3])),
+        nodes=(NodeSpec("A", _DetA([1])),
+               NodeSpec("B", _DetB([3]), consumes_stream="ISO"),
                NodeSpec("ISO", _DetISO([5, 6, 7]))),
         edges=(TemporalEdge("A", "B", min_gap=1, max_gap=5),),
         root="A",
