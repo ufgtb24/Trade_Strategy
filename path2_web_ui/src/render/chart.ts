@@ -78,7 +78,18 @@ export function buildKlineOption(
     }
   }
 
-  // price-anchored BO 方框:蓝边白底蓝字 [id1,id2,...],锚在 bar.h
+  // bo 三态映射(dev UI styles.py:BO_LABEL_TIER_STYLE 对齐):
+  //   selectedEventId 命中 → current(深蓝底白字)
+  //   eventTier=matched     → matched(灰底黑字)
+  //   其余                  → plain(白底深蓝字)
+  type BoTier = 'current' | 'matched' | 'plain'
+  const boTierOf = (e: EventDict): BoTier => {
+    if (selectedEventId && e.event_id === selectedEventId) return 'current'
+    if (eventTier(e) === 'matched') return 'matched'
+    return 'plain'
+  }
+
+  // price-anchored BO 方框:tier 取色(current/matched/plain 三态)+ [id1,id2,...],锚在 bar.h
   // boLabelText = 从 referenced_points labels 剥去 'pk' 前缀取数字, 逗号拼接后加 []
   // hasPks: 该 bar 是否同时有 satellite PK 三角,用于控制 BO 方框的纵向堆叠偏移
   const pricePointData = priceAnchored.map((e) => {
@@ -94,6 +105,7 @@ export function buildKlineOption(
       value: [e.start_idx, barH],
       event_id: e.event_id,
       tier: eventTier(e),
+      boTier: boTierOf(e),
       boLabelText,
       hasPks,
       itemStyle: { color: eColor(e) },
@@ -274,27 +286,27 @@ export function buildKlineOption(
         renderItem: renderBracket, encode: { x: [0, 1] }, z: 11, tooltip: markerTooltip },
       // band 标签(grid1 左缘,低 z),同时叠灰阴影覆盖 grid1
       { type: 'custom', name: 'bandLabels', xAxisIndex: 1, yAxisIndex: 2,
-        data: bandLabelData, renderItem: renderBandLabel, encode: { x: 0 }, z: 5,
+        data: bandLabelData, renderItem: makeRenderBandLabel(bandLabelData), encode: { x: 0 }, z: 5,
         markArea: shadingMarkArea ?? undefined,
         tooltip: markerTooltip },
       // D2: 选中 event 描边高亮(最高 z,不影响原 points/intervals)
       { type: 'custom', name: 'highlight', xAxisIndex: 1, yAxisIndex: 2,
-        data: highlightData, renderItem: renderHighlight, encode: { x: 0 }, z: 20,
+        data: highlightData, renderItem: makeRenderHighlight(highlightData), encode: { x: 0 }, z: 20,
         tooltip: markerTooltip },
 
       // ── render_grid='price' 主三角(grid0) ──
       // clip:false 让 BO 方框/PK 三角+数字渲染到 grid 边界外(价格区顶部附近不被裁剪)
       { type: 'custom', name: 'price-points', xAxisIndex: 0, yAxisIndex: 0,
-        data: pricePointData, renderItem: renderPricePoint, encode: { x: 0, y: 1 }, z: 12, clip: false },
+        data: pricePointData, renderItem: makeRenderPricePoint(pricePointData), encode: { x: 0, y: 1 }, z: 12, clip: false },
 
       // ── 卫星 marker(referenced_points → grid0, dot + label) ──
       // clip:false 同上,PK 数字 ID 在三角上方会超出 grid 顶边
       { type: 'custom', name: 'satellites', xAxisIndex: 0, yAxisIndex: 0,
-        data: satelliteData, renderItem: renderSatellite, encode: { x: 0, y: 1 }, z: 13, clip: false },
+        data: satelliteData, renderItem: makeRenderSatellite(satelliteData), encode: { x: 0, y: 1 }, z: 13, clip: false },
 
       // D2: 选中 price-anchored event 描边高亮(grid0,置顶)
       { type: 'custom', name: 'highlight-price', xAxisIndex: 0, yAxisIndex: 0,
-        data: highlightPriceData, renderItem: renderPricePointHighlight, encode: { x: 0, y: 1 }, z: 21, clip: false },
+        data: highlightPriceData, renderItem: makeRenderPricePointHighlight(highlightPriceData), encode: { x: 0, y: 1 }, z: 21, clip: false },
     ],
   }
 }
@@ -341,42 +353,47 @@ function renderInterval(params: any, api: any) {
 
 // D2: 高亮描边:对选中 event 按其 kind 用同坐标定位画描边形状(置顶,不动原系列)
 // point → 空心放大三角描边;interval → 空心描边矩形
-function renderHighlight(params: any, api: any) {
-  const kind: 'point' | 'interval' = (params.data as any)?.kind ?? 'point'
-  if (kind === 'point') {
-    const x = api.coord([api.value(0), 0])[0]
-    const band = api.value(2) || 0
-    const nBands = api.value(3) || 1
-    const cs = params.coordSys
-    const bandH = cs.height / nBands
-    const bandTop = cs.y + band * bandH
-    const centerY = bandTop + bandH / 2
-    // 比 renderPoint 稍大(w:7 vs 5)
-    const w = 7
-    return {
-      type: 'polygon',
-      shape: { points: [[x, centerY + 6], [x - w, centerY - 4], [x + w, centerY - 4]] },
-      style: { fill: 'none', stroke: '#ffffff', lineWidth: 2 },
-      z2: 20,
-    }
-  } else {
-    // interval:复用 renderInterval 坐标逻辑,画空心描边矩形
-    const x0 = api.coord([api.value(0), 0])[0]
-    const x1 = api.coord([api.value(1), 0])[0]
-    const lane = api.value(2) || 0
-    const band = api.value(3) || 0
-    const nBands = api.value(4) || 1
-    const cs = params.coordSys
-    const bandH = cs.height / nBands
-    const bandTop = cs.y + band * bandH
-    const laneH = 7, gap = 2
-    const rawY = bandTop + bandH - laneH - lane * (laneH + gap)
-    const y = Math.max(bandTop, Math.min(rawY, bandTop + bandH - laneH))
-    return {
-      type: 'rect',
-      shape: { x: x0 - 1, y: y - 1, width: Math.max(2, x1 - x0) + 2, height: laneH + 2 },
-      style: { fill: 'none', stroke: '#ffffff', lineWidth: 2 },
-      z2: 20,
+// ECharts 5 custom series renderItem 的 params 不含 .data(实测 params.data===undefined),
+// 故工厂函数 closure 捕获 items,renderItem 内用 params.dataIndex 反查 item。
+function makeRenderHighlight(items: Array<{ value: number[]; event_id: string; kind: 'point' | 'interval' }>) {
+  return function renderHighlight(params: any, api: any) {
+    const item = items[params.dataIndex]
+    const kind: 'point' | 'interval' = item?.kind ?? 'point'
+    if (kind === 'point') {
+      const x = api.coord([api.value(0), 0])[0]
+      const band = api.value(2) || 0
+      const nBands = api.value(3) || 1
+      const cs = params.coordSys
+      const bandH = cs.height / nBands
+      const bandTop = cs.y + band * bandH
+      const centerY = bandTop + bandH / 2
+      // 比 renderPoint 稍大(w:7 vs 5)
+      const w = 7
+      return {
+        type: 'polygon',
+        shape: { points: [[x, centerY + 6], [x - w, centerY - 4], [x + w, centerY - 4]] },
+        style: { fill: 'none', stroke: '#ffffff', lineWidth: 2 },
+        z2: 20,
+      }
+    } else {
+      // interval:复用 renderInterval 坐标逻辑,画空心描边矩形
+      const x0 = api.coord([api.value(0), 0])[0]
+      const x1 = api.coord([api.value(1), 0])[0]
+      const lane = api.value(2) || 0
+      const band = api.value(3) || 0
+      const nBands = api.value(4) || 1
+      const cs = params.coordSys
+      const bandH = cs.height / nBands
+      const bandTop = cs.y + band * bandH
+      const laneH = 7, gap = 2
+      const rawY = bandTop + bandH - laneH - lane * (laneH + gap)
+      const y = Math.max(bandTop, Math.min(rawY, bandTop + bandH - laneH))
+      return {
+        type: 'rect',
+        shape: { x: x0 - 1, y: y - 1, width: Math.max(2, x1 - x0) + 2, height: laneH + 2 },
+        style: { fill: 'none', stroke: '#ffffff', lineWidth: 2 },
+        z2: 20,
+      }
     }
   }
 }
@@ -384,19 +401,23 @@ function renderHighlight(params: any, api: any) {
 // D2: price-anchored event 高亮描边(grid0 价格轴)。
 // BO 现在是方框,高亮画一个稍大的白色描边矩形覆盖在 BO 方框外侧。
 // baseOffset 与 renderPricePoint 保持一致(hasPks=true→46, false→12)。
-function renderPricePointHighlight(params: any, api: any) {
-  const [cx, cy] = api.coord([api.value(0), api.value(1)])
-  const hasPks: boolean = (params.data as any)?.hasPks ?? false
-  // 与 renderPricePoint 保持一致的偏移(fontSize=18, padV=4 → boxH≈26)
-  const baseOffset = hasPks ? 46 : 12
-  const boxY = cy - baseOffset
-  const boxH = 26   // fontSize(18) + padV*2(8) ≈ 26
-  const boxW = 70   // 保守估算最宽文字
-  return {
-    type: 'rect',
-    shape: { x: cx - boxW / 2 - 2, y: boxY - boxH - 2, width: boxW + 4, height: boxH + 4, r: 5 },
-    style: { fill: 'none', stroke: '#ffffff', lineWidth: 2 },
-    z2: 21,
+// ECharts 5 custom renderItem 不含 params.data → factory closure 捕获 items。
+function makeRenderPricePointHighlight(items: Array<{ value: number[]; event_id: string; hasPks: boolean }>) {
+  return function renderPricePointHighlight(params: any, api: any) {
+    const [cx, cy] = api.coord([api.value(0), api.value(1)])
+    const item = items[params.dataIndex]
+    const hasPks: boolean = item?.hasPks ?? false
+    // 与 renderPricePoint 保持一致的偏移(fontSize=MARKER_FONT_SIZE=16, padV=4 → boxH≈24)
+    const baseOffset = hasPks ? 44 : 12
+    const boxY = cy - baseOffset
+    const boxH = MARKER_FONT_SIZE + 8   // fontSize(16) + padV*2(8) = 24
+    const boxW = 64   // 保守估算最宽文字
+    return {
+      type: 'rect',
+      shape: { x: cx - boxW / 2 - 2, y: boxY - boxH - 2, width: boxW + 4, height: boxH + 4, r: 5 },
+      style: { fill: 'none', stroke: '#ffffff', lineWidth: 2 },
+      z2: 21,
+    }
   }
 }
 
@@ -419,87 +440,110 @@ function renderBracket(params: any, api: any) {
 }
 
 // band 标签:grid2 左缘每 band 行文字。value=[0, band, nBands]
-function renderBandLabel(params: any, api: any) {
-  const band = api.value(1) || 0
-  const nBands = api.value(2) || 1
-  const cs = params.coordSys
-  const bandH = cs.height / nBands
-  const bandTop = cs.y + band * bandH
-  const centerY = bandTop + bandH / 2
-  const text = (params.data as any)?.text ?? ''
-  return {
-    type: 'text',
-    style: {
-      text,
-      x: cs.x + 2,
-      y: centerY,
-      fill: '#94a3b8',
-      fontSize: 10,
-      textVerticalAlign: 'middle',
-    },
-    z2: 5,
+// ECharts 5 custom renderItem 不含 params.data → factory closure 捕获 items。
+function makeRenderBandLabel(items: Array<{ value: number[]; text: string }>) {
+  return function renderBandLabel(params: any, api: any) {
+    const band = api.value(1) || 0
+    const nBands = api.value(2) || 1
+    const cs = params.coordSys
+    const bandH = cs.height / nBands
+    const bandTop = cs.y + band * bandH
+    const centerY = bandTop + bandH / 2
+    const text = items[params.dataIndex]?.text ?? ''
+    return {
+      type: 'text',
+      style: {
+        text,
+        x: cs.x + 2,
+        y: centerY,
+        fill: '#94a3b8',
+        fontSize: 10,
+        textVerticalAlign: 'middle',
+      },
+      z2: 5,
+    }
   }
 }
 
-// price-anchored BO 方框: 蓝边白底蓝字圆角框 [id1,id2,...], 锚在 bar.h 像素偏移上方。
+// BO_LABEL_TIER_STYLE(对齐 dev UI BreakoutStrategy/UI/styles.py:168-172)三态查表。
+// 描边色统一 #0000FF(深蓝);bg/fg 按 tier 区分。
+const BO_TIER_STYLE: Record<'current' | 'matched' | 'plain', { bg: string; fg: string }> = {
+  current: { bg: '#0000FF', fg: '#FFFFFF' },   // selectedEventId 命中:深蓝底白字
+  matched: { bg: '#BFBFBF', fg: '#000000' },   // eventTier=matched:灰底黑字
+  plain:   { bg: '#FFFFFF', fg: '#0000FF' },   // 其余:白底深蓝字
+}
+
+// dev UI 复刻字号(94e21934 一致):dev UI fontsize=20,Web 端缩到 16 兼顾蜡烛密度可读
+const MARKER_FONT_SIZE = 16
+
+// price-anchored BO 方框: tier 取色(current/matched/plain)圆角框 [id1,id2,...], 锚在 bar.h 像素偏移上方。
 // 若 referenced_points 为空或缺(无 boLabelText),降级画一个小蓝实心三角。
 // 堆叠规则(与 renderSatellite 共享参数保持一致):
-//   仅 BO(hasPks=false): BO 方框底边距 bar.h 约 20px
-//   BO + PK 同 bar(hasPks=true): gap(8) + triH(16) + idFontSize(18) + margin(4) ≈ 46px
+//   仅 BO(hasPks=false): BO 方框底边距 bar.h 约 12px
+//   BO + PK 同 bar(hasPks=true): gap(8) + triH(16) + idFontSize(16) + margin(4) ≈ 44px
 // hasPks 由数据层(pricePointData 构造时)注入,避免 renderItem 间无状态共享限制。
 // clip:false 在系列级设置,确保方框不被 grid 顶边裁剪。
-function renderPricePoint(params: any, api: any) {
-  const [cx, cy] = api.coord([api.value(0), api.value(1)])
-  const boLabelText: string | null = (params.data as any)?.boLabelText ?? null
-  const hasPks: boolean = (params.data as any)?.hasPks ?? false
-  if (!boLabelText) {
-    // 降级: 无 referenced_points, 画蓝实心小三角(朝上↑)
-    const w = 6
-    return {
-      type: 'polygon',
-      shape: { points: [[cx, cy - 6], [cx - w, cy], [cx + w, cy]] },
-      style: { fill: '#0000FF' },
+// ECharts 5 custom renderItem 不含 params.data → factory closure 捕获 items。
+function makeRenderPricePoint(items: Array<{
+  value: number[]; event_id: string; tier: Tier;
+  boTier: 'current' | 'matched' | 'plain';
+  boLabelText: string | null; hasPks: boolean; itemStyle: object
+}>) {
+  return function renderPricePoint(params: any, api: any) {
+    const [cx, cy] = api.coord([api.value(0), api.value(1)])
+    const item = items[params.dataIndex]
+    const boLabelText: string | null = item?.boLabelText ?? null
+    const hasPks: boolean = item?.hasPks ?? false
+    const tierStyle = BO_TIER_STYLE[item?.boTier ?? 'plain']
+    if (!boLabelText) {
+      // 降级: 无 referenced_points, 画蓝实心小三角(朝上↑)
+      const w = 6
+      return {
+        type: 'polygon',
+        shape: { points: [[cx, cy - 6], [cx - w, cy], [cx + w, cy]] },
+        style: { fill: '#0000FF' },
+      }
     }
-  }
-  // 与 renderSatellite 保持一致: gap=8, triH=16, idFontSize=18, margin=4
-  // hasPks=true: 箱底 = bar.h - (gap + triH + idFontSize + margin) = bar.h - 46
-  // hasPks=false: 箱底距 bar.h 约 12px(仅留 bar 上方最小间距)
-  const baseOffset = hasPks ? 46 : 12
-  const boxY = cy - baseOffset
-  const fontSize = 18   // spec ≈ 18-20px
-  const padH = 6   // 水平内边距
-  const padV = 4   // 垂直内边距
-  // 估算文字宽度: 每字符约 10.5px @ fontSize=18
-  const textWidth = boLabelText.length * 10.5
-  const boxW = textWidth + padH * 2
-  const boxH = fontSize + padV * 2
-  const boxX = cx - boxW / 2
-  return {
-    type: 'group',
-    children: [
-      // 圆角矩形背景+边框
-      {
-        type: 'rect',
-        shape: { x: boxX, y: boxY - boxH, width: boxW, height: boxH, r: 4 },
-        style: { fill: '#FFFFFF', stroke: '#0000FF', lineWidth: 2 },
-        z2: 12,
-      },
-      // 蓝色粗体文字
-      {
-        type: 'text',
-        style: {
-          text: boLabelText,
-          x: cx,
-          y: boxY - boxH / 2,
-          fill: '#0000FF',
-          fontSize,
-          fontWeight: 'bold',
-          textAlign: 'center',
-          textVerticalAlign: 'middle',
+    // 与 renderSatellite 保持一致: gap=8, triH=16, idFontSize=MARKER_FONT_SIZE=16, margin=4
+    // hasPks=true: 箱底 = bar.h - (gap + triH + idFontSize + margin) = bar.h - 44
+    // hasPks=false: 箱底距 bar.h 约 12px(仅留 bar 上方最小间距)
+    const baseOffset = hasPks ? 44 : 12
+    const boxY = cy - baseOffset
+    const fontSize = MARKER_FONT_SIZE
+    const padH = 6   // 水平内边距
+    const padV = 4   // 垂直内边距
+    // 估算文字宽度: 粗体每字符约 0.6×fontSize(对齐 94e21934 boBoxDims)
+    const textWidth = boLabelText.length * fontSize * 0.6
+    const boxW = textWidth + padH * 2
+    const boxH = fontSize + padV * 2
+    const boxX = cx - boxW / 2
+    return {
+      type: 'group',
+      children: [
+        // 圆角矩形背景+边框(背景按 tier 取色,描边统一深蓝)
+        {
+          type: 'rect',
+          shape: { x: boxX, y: boxY - boxH, width: boxW, height: boxH, r: 4 },
+          style: { fill: tierStyle.bg, stroke: '#0000FF', lineWidth: 2 },
+          z2: 12,
         },
-        z2: 13,
-      },
-    ],
+        // 粗体文字(字色按 tier 取色)
+        {
+          type: 'text',
+          style: {
+            text: boLabelText,
+            x: cx,
+            y: boxY - boxH / 2,
+            fill: tierStyle.fg,
+            fontSize,
+            fontWeight: 'bold',
+            textAlign: 'center',
+            textVerticalAlign: 'middle',
+          },
+          z2: 13,
+        },
+      ],
+    }
   }
 }
 
@@ -510,60 +554,66 @@ function renderPricePoint(params: any, api: any) {
 //   triTopY   = triApexY - triH          ← 三角顶边(两个上角),更上
 //   ID 数字   = triTopY - 4              ← 数字在三角顶边上方(bottom 对齐)
 // clip:false 在系列级设置,确保数字 ID 不被 grid 顶边裁剪。
-// renderPricePoint(hasPks=true) 的 baseOffset 与此处 gap+triH+idFontSize+margin 保持同步。
-function renderSatellite(params: any, api: any) {
-  const [cx] = api.coord([api.value(0), api.value(1)])
-  const barH: number = (params.data as any)?.barH ?? api.value(1)
-  const [, baseY] = api.coord([api.value(0), barH])
+// renderPricePoint(hasPks=true) 的 baseOffset 与此处 gap+triH+idFontSize+margin 保持同步(8+16+16+4=44)。
+// ECharts 5 custom renderItem 不含 params.data → factory closure 捕获 items。
+function makeRenderSatellite(items: Array<{
+  value: number[]; event_id: string; label: string; barH: number; itemStyle: object
+}>) {
+  return function renderSatellite(params: any, api: any) {
+    const [cx] = api.coord([api.value(0), api.value(1)])
+    const item = items[params.dataIndex]
+    const barH: number = item?.barH ?? api.value(1)
+    const [, baseY] = api.coord([api.value(0), barH])
 
-  const label: string = (params.data as any)?.label ?? ''
-  // 剥去 'pk' 前缀取数字部分用于显示(无前缀则原样显示)
-  const displayId = label.replace(/^pk/i, '')
+    const label: string = item?.label ?? ''
+    // 剥去 'pk' 前缀取数字部分用于显示(无前缀则原样显示)
+    const displayId = label.replace(/^pk/i, '')
 
-  // 三角参数: 大小对应 matplotlib s=400 ≈ 16-20px 边长
-  const triHalfW = 11   // 顶边半宽(两个上角)
-  const triH = 16       // 三角高度
-  const gap = 8         // 三角下顶点(apex)到 bar.h 的像素间距(向上=减 y)
-  // ECharts canvas: y 向下增大,所以向上 = 减 y
-  // 倒三角▽: 顶点(apex)朝下指向 K线,两个上角在上方
-  const triApexY = baseY - gap          // 下顶点 y (最靠近 bar.h)
-  const triTopY  = triApexY - triH      // 上边 y (两个上角,更高=更小 y 值)
+    // 三角参数: 大小对应 matplotlib s=400 ≈ 16-20px 边长
+    const triHalfW = 11   // 顶边半宽(两个上角)
+    const triH = 16       // 三角高度
+    const gap = 8         // 三角下顶点(apex)到 bar.h 的像素间距(向上=减 y)
+    // ECharts canvas: y 向下增大,所以向上 = 减 y
+    // 倒三角▽: 顶点(apex)朝下指向 K线,两个上角在上方
+    const triApexY = baseY - gap          // 下顶点 y (最靠近 bar.h)
+    const triTopY  = triApexY - triH      // 上边 y (两个上角,更高=更小 y 值)
 
-  // ID 数字在三角顶边上方(bottom 对齐于 triTopY - 4)
-  const idY = triTopY - 4
+    // ID 数字在三角顶边上方(bottom 对齐于 triTopY - 4)
+    const idY = triTopY - 4
 
-  return {
-    type: 'group',
-    children: [
-      // 空心倒三角▽(顶点朝下,指向 K线 high)
-      {
-        type: 'polygon',
-        shape: {
-          points: [
-            [cx - triHalfW, triTopY],   // 左上角
-            [cx + triHalfW, triTopY],   // 右上角
-            [cx, triApexY],             // 下顶点(朝下,指向 bar.h)
-          ],
+    return {
+      type: 'group',
+      children: [
+        // 空心倒三角▽(顶点朝下,指向 K线 high)
+        {
+          type: 'polygon',
+          shape: {
+            points: [
+              [cx - triHalfW, triTopY],   // 左上角
+              [cx + triHalfW, triTopY],   // 右上角
+              [cx, triApexY],             // 下顶点(朝下,指向 bar.h)
+            ],
+          },
+          style: { fill: 'none', stroke: '#000000', lineWidth: 2 },
+          z2: 13,
         },
-        style: { fill: 'none', stroke: '#000000', lineWidth: 2 },
-        z2: 13,
-      },
-      // 数字 ID: 粗体黑色,在三角上方; spec ≈ 18-20px
-      {
-        type: 'text',
-        style: {
-          text: displayId,
-          x: cx,
-          y: idY,
-          fill: '#000000',
-          fontSize: 18,
-          fontWeight: 'bold',
-          textAlign: 'center',
-          textVerticalAlign: 'bottom',
+        // 数字 ID: 粗体黑色,在三角上方; 字号对齐 94e21934 MARKER_FONT_SIZE=16
+        {
+          type: 'text',
+          style: {
+            text: displayId,
+            x: cx,
+            y: idY,
+            fill: '#000000',
+            fontSize: MARKER_FONT_SIZE,
+            fontWeight: 'bold',
+            textAlign: 'center',
+            textVerticalAlign: 'bottom',
+          },
+          z2: 14,
         },
-        z2: 14,
-      },
-    ],
+      ],
+    }
   }
 }
 
