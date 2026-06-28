@@ -1,6 +1,6 @@
 # path2_web 调试可视化架构意图
 
-> 最后更新：2026-06-16
+> 最后更新：2026-06-28
 > 覆盖：`path2_web/`（FastAPI 后端 + 设计期评估器）+ `path2_web_ui/`（Vue3 前端）。
 > 框架见 [path2.md](path2.md)，应用层见 [path2_apps.md](path2_apps.md)。
 
@@ -38,7 +38,7 @@ eval_runner.py  设计期通用 app 评估器三 mode(run_eval/run_regress/run_h
 后端与 path2 的主耦合点（另一处：scan.py 消费 `path2.eval.match_forward_returns` 算 label，见下节）。消费 path2.dag 只读结构（AnalysisResult / PatternMatch / PredicateTrace / ClauseWitness / EdgeWitness / PatternTopology / RoleDiagnostics），投影成前端 JSON。三类产物：
 
 - `serialize_analysis` → `{events, matches}`。events 是全集（含未命中），`class_id` + 子类属性平铺（仅 tooltip）；**每 event 附 `source_tag`**（band 身份）——从 spec 权威 tag 集对 event_id 按最长前缀匹配、末级兜底 class_id；**复合事件的 `members` 不平铺进 event dict**（止 child 泄漏，结构化下钻属 future）。matches 含 role_index / children / predicate_trace。
-- `serialize_pattern` → `{pattern_id, display_name, topology{nodes, edges}, event_styles}`。**每节点附 `source_tag`**（前端据它而非解析 event_id 前缀做 band 映射）；函数顶部先 `assign_auto_source_tags`（幂等补齐）+ `_assert_injective_source_tags`（每 node 的 source_tag 须唯一，否则 band 坍缩 → 抛，挡共享实例 / 同名 source_tag 误配）。每节点带 `where_rules`（从 `W.*._Pred` 的 `.meta` 抽，组合子无 meta 跳过）；边带人读 `rule` 串；`event_styles` 缺省按 topology 出现的 class_id 用确定性调色板补齐。
+- `serialize_pattern` → `{pattern_id, topology{nodes, edges}, event_styles}`。前端直接用 `pattern_id` / `node_id` 作显示名（无 `display_name` / `label` 字段）。**每节点附 `source_tag`**（前端据它而非解析 event_id 前缀做 band 映射）；函数顶部先 `assign_auto_source_tags`（幂等补齐）+ `_assert_injective_source_tags`（每 node 的 source_tag 须唯一，否则 band 坍缩 → 抛，挡共享实例 / 同名 source_tag 误配）。每节点带 `where_rules`（从 `W.*._Pred` 的 `.meta` 抽，组合子无 meta 跳过）；边带人读 `rule` 串；`event_styles` 缺省按 topology 出现的 class_id 用确定性调色板补齐。
 - `summarize` → `{class_id: count}` ∪ `{matches: n}`（命中股计数徽章）。
 
 ### 发现 + 扫描 + 流
