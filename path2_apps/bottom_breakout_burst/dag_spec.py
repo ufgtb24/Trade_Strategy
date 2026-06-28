@@ -61,7 +61,7 @@ def build_pattern(params: Params) -> PatternSpec:
         ),
     )
     return PatternSpec(
-        pattern_id="bottom_breakout_burst",
+        pattern_id="bottom_burst",
         nodes=nodes, edges=edges,
     )
 

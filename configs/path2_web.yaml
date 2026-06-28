@@ -1,5 +1,5 @@
-backend_port: 8010   # 8000
-frontend_port: 5183   # 5173
+backend_port: 8000
+frontend_port: 5173
 dataset_dir: /home/yu/PycharmProjects/Trade_Strategy/datasets/pkls
 scan:
   start_date: '2025-01-01'
