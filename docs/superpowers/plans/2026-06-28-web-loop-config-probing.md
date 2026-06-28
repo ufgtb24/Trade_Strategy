@@ -367,6 +367,13 @@
 - [ ] Run: `grep -Hn '§1b' .claude/skills/web-loop/SKILL.md`
   Expected: 至少 1 处命中(SKILL.md §2a-bis 步骤 1 引用了 examples 的 §1b)
 
+**Subtask 3e-pre: workflow-template.js 零字面端口(回归守门)**
+
+> 历史上 L428 有 `lsof -ti:8000` 字面示例,已在本 plan 落地前修为 `<port>` 占位。此 grep 防 Task 1-3 期间无意改回。
+
+- [ ] Run: `grep -Hn '8000\|5173\|localhost:[0-9]' .claude/skills/web-loop/workflow-template.js`
+  Expected: 零输出
+
 **Subtask 3e: 项目根 `.web-loop-refresh.md` 未被本 plan 误改**
 
 - [ ] Run: `git log --oneline HEAD~3..HEAD -- .web-loop-refresh.md`
