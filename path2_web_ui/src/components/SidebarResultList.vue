@@ -26,7 +26,7 @@
               :title="pid"
               class="col"
               @click="view.setSort(pid)">
-            {{ displayNameOf(pid) }}
+            {{ pid }}
             <span v-if="sortByPid === pid" class="sort-ind">
               {{ sortDesc ? '▼' : '▲' }}
             </span>
@@ -61,9 +61,6 @@ const canRefresh = computed(() =>
   previewEnabled.value && !!preview.value && !previewLoading.value
   && preview.value?.symbol === symbol.value)
 
-function displayNameOf(pid: string): string {
-  return scanFile.value?.per_pattern[pid]?.pattern_spec.display_name ?? pid
-}
 function fmt(v: number | null): string {
   if (v == null) return '—'
   const pct = (v * 100).toFixed(1)

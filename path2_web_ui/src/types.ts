@@ -2,7 +2,7 @@
 
 export interface WhereRule { clause_id: string; op: string | null; threshold: unknown }
 export interface TopoNode {
-  node_id: string; class_id: string; label: string
+  node_id: string; class_id: string
   source_tag: string
   render_grid?: 'price' | 'time'
   where_rules: WhereRule[]
@@ -10,7 +10,7 @@ export interface TopoNode {
 export interface TopoEdge { src: string; dst: string; kind: string; rule: string }
 export interface Topology { nodes: TopoNode[]; edges: TopoEdge[] }
 export interface SerializedPattern {
-  pattern_id: string; display_name: string
+  pattern_id: string
   topology: Topology; event_styles: Record<string, string>
 }
 

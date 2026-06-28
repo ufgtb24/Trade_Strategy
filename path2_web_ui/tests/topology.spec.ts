@@ -3,16 +3,16 @@ import { layoutTopology } from '../src/render/topology'
 import type { TopoLayout } from '../src/render/topology'
 import type { TopoNode, TopoEdge } from '../src/types'
 
-function node(node_id: string, label: string): TopoNode {
-  return { node_id, class_id: 't', label, source_tag: node_id, where_rules: [] }
+function node(node_id: string): TopoNode {
+  return { node_id, class_id: 't', source_tag: node_id, where_rules: [] }
 }
 
 // bottom_breakout_burst 的 4 节点 DAG:down/side → bo → tb
 const NODES: TopoNode[] = [
-  node('down', '下跌段'),
-  node('side', '横盘段'),
-  node('bo', '突破点串'),
-  node('tb', '回踩确认'),
+  node('down'),
+  node('side'),
+  node('bo'),
+  node('tb'),
 ]
 const EDGES: TopoEdge[] = [
   { src: 'down', dst: 'bo', kind: 'TemporalEdge', rule: 'before · gap∈[1,120]' },
@@ -34,7 +34,7 @@ describe('layoutTopology', () => {
     const { nodes } = layoutTopology(NODES, EDGES)
     expect(nodes.length).toBe(4)
     const bo = nodes.find((b) => b.node.node_id === 'bo')!
-    expect(bo.node.label).toBe('突破点串')
+    expect(bo.node.node_id).toBe('bo')
     expect(bo.h).toBe(30)
   })
 
@@ -73,7 +73,7 @@ describe('layoutTopology', () => {
 
 describe('layoutTopology — type-agnostic generalization', () => {
   const node = (id: string): TopoNode =>
-    ({ node_id: id, class_id: 't', label: id.toUpperCase(), source_tag: id, where_rules: [] })
+    ({ node_id: id, class_id: 't', source_tag: id, where_rules: [] })
   const edge = (src: string, dst: string): TopoEdge =>
     ({ src, dst, kind: 'TemporalEdge', rule: '' })
   const colX = (nodes: { node: TopoNode; x: number }[], id: string) =>
@@ -115,7 +115,7 @@ describe('layoutTopology — type-agnostic generalization', () => {
 
 describe('layoutTopology — adaptive column gap fits edge labels', () => {
   const n = (id: string): TopoNode =>
-    ({ node_id: id, class_id: 't', label: id, source_tag: id, where_rules: [] })
+    ({ node_id: id, class_id: 't', source_tag: id, where_rules: [] })
   const ed = (src: string, dst: string, rule: string): TopoEdge =>
     ({ src, dst, kind: 'TemporalEdge', rule })
   // src 右缘 → dst 左缘的横向距离 = 这条边可用来放标签的长度

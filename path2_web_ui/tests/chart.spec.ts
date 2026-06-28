@@ -12,13 +12,13 @@ import type { Topology, EventDict, MatchDict, Level, Bar } from '../src/types'
 // ── 5-node topology ────────────────────────────────────────────────────────
 const TOPOLOGY: Topology = {
   nodes: [
-    { node_id: 'down',  class_id: 'trend', label: '下跌段', source_tag: 'trend0', where_rules: [] },
-    { node_id: 'side',  class_id: 'trend', label: '横盘段', source_tag: 'trend1', where_rules: [] },
-    { node_id: 'bo',    class_id: 'bo',    label: '',       source_tag: 'bo',
+    { node_id: 'down',  class_id: 'trend', source_tag: 'trend0', where_rules: [] },
+    { node_id: 'side',  class_id: 'trend', source_tag: 'trend1', where_rules: [] },
+    { node_id: 'bo',    class_id: 'bo',    source_tag: 'bo',
       render_grid: 'price',                                              // ★ 新增
       where_rules: [] },
-    { node_id: 'burst', class_id: 'burst', label: '爆发段', source_tag: 'burst',  where_rules: [] },
-    { node_id: 'tb',    class_id: 'tb',    label: '回踩',   source_tag: 'tb',     where_rules: [] },
+    { node_id: 'burst', class_id: 'burst', source_tag: 'burst',  where_rules: [] },
+    { node_id: 'tb',    class_id: 'tb',    source_tag: 'tb',     where_rules: [] },
   ],
   edges: [
     { src: 'down',  dst: 'burst', kind: 'TemporalEdge',    rule: 'before' },
@@ -189,11 +189,11 @@ describe('buildKlineOption — 2-grid band×lane (Task 7)', () => {
     expect(bl).toBeDefined()
     // tagList=[trend0,trend1,bo,burst,tb],共 5 条 label
     expect((bl.data as any[]).length).toBe(5)
-    // bo label='' → 显示 'bo'(node.label || node.node_id)
+    // 文字来自 node_id(label 字段已删)
     const boLabel = (bl.data as any[]).find((d: any) => d.text === 'bo')
     expect(boLabel).toBeDefined()
-    // down label='下跌段'
-    const downLabel = (bl.data as any[]).find((d: any) => d.text === '下跌段')
+    // down node_id='down'
+    const downLabel = (bl.data as any[]).find((d: any) => d.text === 'down')
     expect(downLabel).toBeDefined()
   })
 

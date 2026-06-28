@@ -15,14 +15,13 @@ const INLINE_SCAN: MultiScanResultFile = {
     test_pattern: {
       pattern_spec: {
         pattern_id: 'test_pattern',
-        display_name: '测试5节点',
         topology: {
           nodes: [
-            { node_id: 'down',  class_id: 'trend', label: '下跌',  source_tag: 'trend0', where_rules: [{ clause_id: 'drawdown', op: '>=', threshold: 0.30 }] },
-            { node_id: 'side',  class_id: 'trend', label: '横盘',  source_tag: 'trend1', where_rules: [] },
-            { node_id: 'bo',    class_id: 'bo',    label: 'bo串',  source_tag: 'bo',     where_rules: [] },
-            { node_id: 'burst', class_id: 'burst', label: '爆发',  source_tag: 'burst',  where_rules: [{ clause_id: 'vol', op: '>=', threshold: 2.0 }] },
-            { node_id: 'tb',    class_id: 'tb',    label: '回踩',  source_tag: 'tb',     where_rules: [] },
+            { node_id: 'down',  class_id: 'trend', source_tag: 'trend0', where_rules: [{ clause_id: 'drawdown', op: '>=', threshold: 0.30 }] },
+            { node_id: 'side',  class_id: 'trend', source_tag: 'trend1', where_rules: [] },
+            { node_id: 'bo',    class_id: 'bo',    source_tag: 'bo',     where_rules: [] },
+            { node_id: 'burst', class_id: 'burst', source_tag: 'burst',  where_rules: [{ clause_id: 'vol', op: '>=', threshold: 2.0 }] },
+            { node_id: 'tb',    class_id: 'tb',    source_tag: 'tb',     where_rules: [] },
           ],
           edges: [
             { src: 'down',  dst: 'burst', kind: 'TemporalEdge',    rule: 'before' },
@@ -182,7 +181,7 @@ describe('DetailSidebar (5-node: pattern roles + stream-source)', () => {
 
     // 找 down 漏斗行并点击
     const funnelRows = w.findAll('.funnel-row')
-    const downRow = funnelRows.find(r => r.text().includes('下跌'))
+    const downRow = funnelRows.find(r => r.text().includes('down'))
     expect(downRow).toBeTruthy()
     await downRow!.trigger('click')
 
@@ -203,7 +202,7 @@ describe('DetailSidebar (5-node: pattern roles + stream-source)', () => {
 
     // 展开 down 候选表
     const funnelRows = w.findAll('.funnel-row')
-    const downRow = funnelRows.find(r => r.text().includes('下跌'))!
+    const downRow = funnelRows.find(r => r.text().includes('down'))!
     await downRow.trigger('click')
 
     // 点 down1 的 attr-row
@@ -224,7 +223,7 @@ describe('DetailSidebar (5-node: pattern roles + stream-source)', () => {
 
     // 展开 down 候选表才能看到行
     const funnelRows = w.findAll('.funnel-row')
-    const downRow = funnelRows.find(r => r.text().includes('下跌'))!
+    const downRow = funnelRows.find(r => r.text().includes('down'))!
     await downRow.trigger('click')
 
     const attrRows = w.findAll('.attr-row')
@@ -261,7 +260,7 @@ describe('DetailSidebar (5-node: pattern roles + stream-source)', () => {
     // 找 down 漏斗行:格式为 detected ▸ qualified ▸ matched
     // detected=2(down1+down2), qualified=1(down1,因为 down1 满足 clauses), matched=1(down1)
     const funnelRows = w.findAll('.funnel-row')
-    const downRow = funnelRows.find(r => r.text().includes('下跌'))!
+    const downRow = funnelRows.find(r => r.text().includes('down'))!
     const downText = downRow.text()
     // 确认包含 2 ▸ ... ▸ 1  (detected=2, matched=1)
     const nums = downText.match(/\d+/g)?.map(Number) ?? []
@@ -269,7 +268,7 @@ describe('DetailSidebar (5-node: pattern roles + stream-source)', () => {
     expect(nums).toContain(1)   // matched=1
 
     // burst 行: detected=1, matched=1
-    const burstRow = funnelRows.find(r => r.text().includes('爆发'))!
+    const burstRow = funnelRows.find(r => r.text().includes('burst'))!
     const burstNums = burstRow.text().match(/\d+/g)?.map(Number) ?? []
     expect(burstNums).toContain(1)  // both detected and matched = 1
   })
@@ -332,7 +331,7 @@ describe('DetailSidebar (5-node: pattern roles + stream-source)', () => {
 
     // 先展开 down 候选表
     const funnelRows = w.findAll('.funnel-row')
-    const downRow = funnelRows.find(r => r.text().includes('下跌'))!
+    const downRow = funnelRows.find(r => r.text().includes('down'))!
     await downRow.trigger('click')
     expect(w.find('.candidate-table-wrap').exists()).toBe(true)
 

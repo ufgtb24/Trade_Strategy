@@ -2,16 +2,15 @@ import type { SerializedPattern, Analysis, MultiScanResultFile, Diagnostics } fr
 
 export const PATTERN: SerializedPattern = {
   pattern_id: 'bottom_breakout_burst',
-  display_name: '底部反转突破爆发',
   topology: {
     nodes: [
-      { node_id: 'down', class_id: 'trend', label: '下跌段', source_tag: 'trend0',
+      { node_id: 'down', class_id: 'trend', source_tag: 'trend0',
         where_rules: [{ clause_id: 'drawdown', op: '>=', threshold: 0.30 }] },
-      { node_id: 'side', class_id: 'trend', label: '横盘段', source_tag: 'trend1', where_rules: [] },
-      { node_id: 'bo', class_id: 'bo', label: '突破点串', source_tag: 'bo',
+      { node_id: 'side', class_id: 'trend', source_tag: 'trend1', where_rules: [] },
+      { node_id: 'bo', class_id: 'bo', source_tag: 'bo',
         render_grid: 'price',
         where_rules: [{ clause_id: 'first_drought', op: '>=', threshold: 60 }] },
-      { node_id: 'tb', class_id: 'tb', label: '回踩确认', source_tag: 'tb', where_rules: [] },
+      { node_id: 'tb', class_id: 'tb', source_tag: 'tb', where_rules: [] },
     ],
     edges: [
       { src: 'down', dst: 'bo', kind: 'TemporalEdge', rule: 'before · gap∈[1,120]' },

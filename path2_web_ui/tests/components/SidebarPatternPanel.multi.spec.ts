@@ -5,8 +5,8 @@ import SidebarPatternPanel from '../../src/components/SidebarPatternPanel.vue'
 import { usePatternsStore } from '../../src/stores/patterns'
 
 const patternsFixture = [
-  { pattern_id: 'bo_only', display_name: 'bo', topology: { nodes: [], edges: [] }, event_styles: {} },
-  { pattern_id: 'bbb',     display_name: 'BBB pattern', topology: { nodes: [], edges: [] }, event_styles: {} },
+  { pattern_id: 'bo_only', topology: { nodes: [], edges: [] }, event_styles: {} },
+  { pattern_id: 'bbb',     topology: { nodes: [], edges: [] }, event_styles: {} },
 ]
 
 describe('SidebarPatternPanel — checkbox multi-select', () => {

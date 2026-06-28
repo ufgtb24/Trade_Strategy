@@ -14,12 +14,12 @@
       >
         <!-- stream-source(孤立 node):密度徽标行 -->
         <template v-if="isolated.has(node.node_id)">
-          <span class="node-label stream-source">{{ node.label || node.node_id }}</span>
+          <span class="node-label stream-source">{{ node.node_id }}</span>
           <span class="badge">原始检测 {{ detectedCount(node) }}</span>
         </template>
         <!-- pattern role(有边):完整漏斗行 -->
         <template v-else>
-          <span class="node-label">{{ node.label || node.node_id }}</span>
+          <span class="node-label">{{ node.node_id }}</span>
           <span class="funnel-segment" :style="{ color: tierColor('detected', node.node_id) }">
             {{ detectedCount(node) }}
           </span>

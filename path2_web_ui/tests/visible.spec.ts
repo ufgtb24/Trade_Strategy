@@ -55,11 +55,11 @@ describe('matchedIds', () => {
 })
 
 const nodes: TopoNode[] = [
-  { node_id: 'down', class_id: 'trend', label: '下跌段', where_rules: [], source_tag: 'trend0' },
-  { node_id: 'side', class_id: 'trend', label: '横盘段', where_rules: [], source_tag: 'trend1' },
-  { node_id: 'bo',   class_id: 'bo',    label: '',       where_rules: [], source_tag: 'bo' },
-  { node_id: 'burst',class_id: 'burst', label: '突破爆发', where_rules: [], source_tag: 'burst' },
-  { node_id: 'tb',   class_id: 'tb',    label: '回踩确认', where_rules: [], source_tag: 'tb' },
+  { node_id: 'down', class_id: 'trend', where_rules: [], source_tag: 'trend0' },
+  { node_id: 'side', class_id: 'trend', where_rules: [], source_tag: 'trend1' },
+  { node_id: 'bo',   class_id: 'bo',    where_rules: [], source_tag: 'bo' },
+  { node_id: 'burst',class_id: 'burst', where_rules: [], source_tag: 'burst' },
+  { node_id: 'tb',   class_id: 'tb',    where_rules: [], source_tag: 'tb' },
 ]
 const edges: TopoEdge[] = [
   { src: 'down', dst: 'burst', kind: 'TemporalEdge', rule: '' },

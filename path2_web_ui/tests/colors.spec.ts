@@ -22,7 +22,7 @@ describe('deriveRoleColors', () => {
   })
   it('missing event_style falls back to neutral', () => {
     const c = deriveRoleColors(
-      { nodes: [{ node_id: 'x', class_id: 'unknown', label: '', source_tag: 'unknown', where_rules: [] }], edges: [] },
+      { nodes: [{ node_id: 'x', class_id: 'unknown', source_tag: 'unknown', where_rules: [] }], edges: [] },
       {})
     expect(c.x).toMatch(/^#/)
   })

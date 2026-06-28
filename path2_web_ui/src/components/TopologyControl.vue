@@ -32,7 +32,7 @@
         @mouseenter="emit('hover-role', box.node.node_id)"
         @mouseleave="emit('hover-role', null)"
       >
-        <span class="label">{{ box.node.label || box.node.node_id }}</span>
+        <span class="label">{{ box.node.node_id }}</span>
       </button>
 
       <!-- 边标签:HTML 绝对定位,富排版(kind 小灰上标 + rule 深色),常驻 -->

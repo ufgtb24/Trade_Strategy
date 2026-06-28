@@ -15,7 +15,7 @@
               class="active-pattern-select"
               v-if="view.patternIds.length > 0">
         <option v-for="pid in view.patternIds" :key="pid" :value="pid">
-          {{ view.scanFile?.per_pattern[pid]?.pattern_spec.display_name ?? pid }}
+          {{ pid }}
         </option>
       </select>
     </div>

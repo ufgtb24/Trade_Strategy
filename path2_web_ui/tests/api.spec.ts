@@ -53,7 +53,7 @@ describe('getPreview', () => {
   it('builds GET URL with query params + parses JSON', async () => {
     const fakeResp = { analysis: { events: [], matches: [] },
                        summary: { events: 0, matches: 0 },
-                       pattern_spec: { pattern_id: 'p', display_name: 'P',
+                       pattern_spec: { pattern_id: 'p',
                                        topology: { nodes: [], edges: [] },
                                        event_styles: {} },
                        scan: { scan_ts: '', start_date: '2025-01-01', end_date: '2025-12-31',

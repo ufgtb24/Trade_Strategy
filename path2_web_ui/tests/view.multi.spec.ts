@@ -8,8 +8,8 @@ function makeFile(): MultiScanResultFile {
   return {
     pattern_ids: ['bo_only', 'bbb'],
     per_pattern: {
-      bo_only: { pattern_spec: { pattern_id: 'bo_only', display_name: 'bo', topology: { nodes: [], edges: [] }, event_styles: {} }, end_role: 'bo' },
-      bbb:     { pattern_spec: { pattern_id: 'bbb',     display_name: 'bbb', topology: { nodes: [], edges: [] }, event_styles: {} }, end_role: 'tb' },
+      bo_only: { pattern_spec: { pattern_id: 'bo_only', topology: { nodes: [], edges: [] }, event_styles: {} }, end_role: 'bo' },
+      bbb:     { pattern_spec: { pattern_id: 'bbb',     topology: { nodes: [], edges: [] }, event_styles: {} }, end_role: 'tb' },
     },
     scan: {
       scan_ts: '20260627T120000', start_date: '2024-01-01', end_date: '2024-06-30',
@@ -70,11 +70,11 @@ describe('view store — multi pattern', () => {
     ;(v as any).preview = {
       symbol: 'AAA',
       analysis: { events: [{}], matches: [] },
-      pattern_spec: { pattern_id: 'bo_only', display_name: 'preview-bo', topology: { nodes: [], edges: [] }, event_styles: {} },
+      pattern_spec: { pattern_id: 'bo_only', topology: { nodes: [], edges: [] }, event_styles: {} },
       scan: {},
     }
     ;(v as any).previewEnabled = true
-    expect(v.effectivePattern?.display_name).toBe('preview-bo')
+    expect(v.effectivePattern?.pattern_id).toBe('bo_only')
     // 切到 bbb → preview pattern_id 不匹配 → 退回扫描结果
     v.setActivePattern('bbb')
     expect(v.effectivePattern?.pattern_id).toBe('bbb')

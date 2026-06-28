@@ -8,8 +8,8 @@ const emptyAnalysis = { events: [], matches: [] }
 const file = {
   pattern_ids: ['bo_only', 'bbb'],
   per_pattern: {
-    bo_only: { pattern_spec: { pattern_id: 'bo_only', display_name: 'BO', topology: { nodes: [], edges: [] }, event_styles: {} }, end_role: 'bo' },
-    bbb:     { pattern_spec: { pattern_id: 'bbb',     display_name: 'BBB', topology: { nodes: [], edges: [] }, event_styles: {} }, end_role: 'tb' },
+    bo_only: { pattern_spec: { pattern_id: 'bo_only', topology: { nodes: [], edges: [] }, event_styles: {} }, end_role: 'bo' },
+    bbb:     { pattern_spec: { pattern_id: 'bbb',     topology: { nodes: [], edges: [] }, event_styles: {} }, end_role: 'tb' },
   },
   scan: { scan_ts: '20260627T120000', start_date: '2024-01-01', end_date: '2024-06-30',
           workers: 1, scanned: 2, hits: 2, errors: 0, dataset_dir: '/d', params: 'd',
