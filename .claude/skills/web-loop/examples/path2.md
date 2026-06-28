@@ -6,16 +6,35 @@
 
 | arg | path2 值 |
 |---|---|
-| `url` | `http://localhost:5173` |
-| `uiDir` | `/home/yu/PycharmProjects/Trade_Strategy-path2web/path2_web_ui` |
+| `url` | 运行时派生(见 §1b probe recipe) |
+| `uiDir` | `<repoRoot>/path2_web_ui`(`<repoRoot>` 是字面占位文本,主会话据当前 cwd 即时解析为绝对路径,跨 worktree 通用) |
 | `shotsDir` | `<workdir>/shots`,即 `.claude/web-loop/<runtag>/shots`(旧值 `outputs/web_review_shots` 已废弃——共享目录跨 run 覆写截图) |
 | `rubricPath` | `docs/superpowers/specs/2026-06-02-path2-web-ui-design.md` |
 | `smokeCmd` | `uv run pytest tests/path2 tests/path2_web -q && cd path2_web_ui && npx vue-tsc --noEmit` |
 | `restartCmd` | `uv run python -m path2_web.main` |
-| `healthUrl` | `http://localhost:8000/patterns` |
+| `healthUrl` | 运行时派生(见 §1b probe recipe) |
 | `refreshDataCmd` | `.web-loop-refresh.md`(指向项目内刷新说明文件,见 §3) |
 | `states` | 见 §2 |
 | `scanSubset` | 可选,迭代压墙钟用,如 `^(AAPL\|MSFT)$` |
+
+## 1b. probe recipe(主会话「智能入口层 §2a-bis」据此动态派生端口/URL)
+
+**配置源**:`configs/path2_web.yaml`(YAML 格式)
+
+**键映射**:
+
+| 派生中间量    | 配置键          |
+|---------------|-----------------|
+| backend_port  | `backend_port`  |
+| frontend_port | `frontend_port` |
+
+**派生公式**:
+- `url` = `http://localhost:${frontend_port}`
+- `healthUrl` = `http://localhost:${backend_port}/patterns`
+
+**§3 `.web-loop-refresh.md` 模板占位符**:`${backend_port}` 与上同义,主会话渲染时替换。
+
+**配置源缺失/键缺失行为**:见 SKILL.md §2a-bis 步骤 4-5(转对话补缺,不自动写回 yaml)。
 
 ## 2. states(capture 要观测的状态轨迹;path2 5 态)
 
@@ -50,10 +69,11 @@
 当 impl.md 首行 `kind=data` 且 `refreshDataCmd` 指向本文件时,refresh agent 读它按步骤执行。把下面内容存到 path2 项目根的 `.web-loop-refresh.md`:
 
 ```markdown
+<!-- 本块为参数化源模板。.web-loop-refresh.md 项目根文件由主会话「智能入口层 §2a」起草 + 「§2a-bis」probe 渲染落地;refresh agent 只读已渲染版,不再做替换。 -->
 # path2 数据层刷新步骤(web-loop refresh agent 执行)
-1. 重启后端:`lsof -ti:8000 | xargs -r kill`(按端口精确,**勿 pkill -f**)→ `uv run python -m path2_web.main` → curl -sf http://localhost:8000/patterns 轮询至 200。
-2. 触发重扫:`POST http://localhost:8000/scan` body `{"pattern_id":"bottom_breakout_burst"}`(迭代压墙钟可加 `"ticker_regex":"^(AAPL|MSFT)$"`)→ 返回 `{"scan_id":scan_ts}`(api.py:159)。
-3. poll 结果:`GET http://localhost:8000/scans/bottom_breakout_burst/<scan_ts>` 至 200 且 results 非空(scan.py:90;扫描进行中返回 404,retry 3-5 次,不用 SSE)。
+1. 重启后端:`lsof -ti:${backend_port} | xargs -r kill`(按端口精确,**勿 pkill -f**)→ `uv run python -m path2_web.main` → curl -sf http://localhost:${backend_port}/patterns 轮询至 200。
+2. 触发重扫:`POST http://localhost:${backend_port}/scan` body `{"pattern_id":"bottom_breakout_burst"}`(迭代压墙钟可加 `"ticker_regex":"^(AAPL|MSFT)$"`)→ 返回 `{"scan_id":scan_ts}`(api.py:159)。
+3. poll 结果:`GET http://localhost:${backend_port}/scans/bottom_breakout_burst/<scan_ts>` 至 200 且 results 非空(scan.py:90;扫描进行中返回 404,retry 3-5 次,不用 SSE)。
 4. 前端 reload。
 ```
 
