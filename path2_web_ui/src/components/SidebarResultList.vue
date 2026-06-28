@@ -84,9 +84,14 @@ function onCloseError() { view.clearPreview() }
 .error a { cursor: pointer; margin-left: 6px; }
 
 .hint { padding: 8px 12px; font-size: 12px; color: #64748b; }
-table.multi { width: 100%; border-collapse: collapse; font-size: 12px; }
-table.multi th, table.multi td { padding: 4px 6px; border-bottom: 1px solid #f1f5f9; text-align: left; }
-table.multi th.col { cursor: pointer; user-select: none; }
+/* 列宽:sym 固定 60px,其余按 pattern 数等分剩余空间 — 长 pattern_id 折行不截断 */
+table.multi { width: 100%; border-collapse: collapse; font-size: 12px; table-layout: fixed; }
+table.multi th, table.multi td { padding: 4px 6px; border-bottom: 1px solid #f1f5f9; text-align: left;
+                                  vertical-align: top; }
+table.multi th.sym, table.multi td.sym { width: 60px; }
+table.multi th.col { cursor: pointer; user-select: none;
+                     /* pattern_id 是唯一命名源,长 id 在列宽不足时按字符断行,不截断 */
+                     word-break: break-all; overflow-wrap: anywhere; }
 table.multi th.col:hover { background: #f1f5f9; }
 table.multi .sort-ind { color: #2563eb; margin-left: 2px; }
 table.multi td.sym { font-weight: 600; cursor: pointer; }
