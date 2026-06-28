@@ -36,7 +36,7 @@ def _spec_with_leaf_bucket(n_dst=4):
         NodeSpec(node_id="dst", detector=_FakeDet(dst_events)),
     )
     edges = (TemporalEdge("src", "dst", min_gap=1, max_gap=20),)
-    spec = PatternSpec(pattern_id="leaf_fuzz", display_name="leaf_fuzz",
+    spec = PatternSpec(pattern_id="leaf_fuzz",
                        nodes=nodes, edges=edges, root="src")
     return spec, src_event, dst_events
 

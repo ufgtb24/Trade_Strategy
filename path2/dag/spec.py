@@ -17,7 +17,6 @@ from path2.dag.nodes import NodeSpec
 class TopoNode:
     node_id: str
     class_id: str
-    label: str = ""
 
 
 @dataclass(frozen=True)
@@ -38,7 +37,6 @@ class PatternTopology:
 class PatternSpec:
     """app 声明的全部。nodes/edges 即类型级 DAG(面板直接吃,零派生)。"""
     pattern_id: str
-    display_name: str
     nodes: Tuple[NodeSpec, ...]
     edges: Tuple[DependencyEdge, ...]
     root: str
@@ -175,7 +173,7 @@ class PatternSpec:
         """零派生直投 nodes/edges(对比旧 build_topology 从谓词元数据反推)。"""
         return PatternTopology(
             nodes=tuple(
-                TopoNode(n.node_id, n.detector.event_cls.class_id, n.label)
+                TopoNode(n.node_id, n.detector.event_cls.class_id)
                 for n in self.nodes
             ),
             edges=tuple(TopoEdge(e.src, e.dst, type(e).__name__) for e in self.edges),

@@ -62,7 +62,7 @@ class _DetISO:
 def _spec_with_isolated():
     # A→B 连通对 + ISO 孤立无边、被 B 的 consumes_stream 引用(模拟流源 node)
     return PatternSpec(
-        pattern_id="t", display_name="t",
+        pattern_id="t",
         nodes=(NodeSpec("A", _DetA([1])),
                NodeSpec("B", _DetB([3]), consumes_stream="ISO"),
                NodeSpec("ISO", _DetISO([5, 6, 7]))),

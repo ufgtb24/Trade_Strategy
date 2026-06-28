@@ -30,7 +30,6 @@ def build_pattern(params: Params) -> PatternSpec:
     edges = ()
     return PatternSpec(
         pattern_id="bo_only",
-        display_name="单点突破(bo)",
         nodes=nodes, edges=edges, root="bo",
     )
 

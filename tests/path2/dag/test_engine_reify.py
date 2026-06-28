@@ -10,7 +10,7 @@ from path2.dag._reify import reify
 
 
 def _spec(nodes, edges, root):
-    return PatternSpec(pattern_id="p", display_name="p", nodes=tuple(nodes),
+    return PatternSpec(pattern_id="p", nodes=tuple(nodes),
                        edges=tuple(edges), root=root)
 
 

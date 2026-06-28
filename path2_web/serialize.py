@@ -206,7 +206,7 @@ def _assert_injective_source_tags(nodes):
 
 
 def serialize_pattern(spec) -> dict:
-    """PatternSpec → {pattern_id, display_name, topology{nodes,edges}, event_styles}(§7.1)。
+    """PatternSpec → {pattern_id, topology{nodes,edges}, event_styles}(§7.1)。
     topology 来自 to_topology() + 每节点 where_rules(静态阈值,无实测值)。"""
     assign_auto_source_tags(spec.nodes)        # 静态序列化补齐 source_tag(幂等)
     _assert_injective_source_tags(spec.nodes)
@@ -218,7 +218,6 @@ def serialize_pattern(spec) -> dict:
         node = {
             "node_id": tn.node_id,
             "class_id": tn.class_id,
-            "label": tn.label,
             "where_rules": _rules_from_where(n.where),
             "source_tag": _source_tag_of(n.detector),
             "render_grid": n.render_grid,   # ★ 新增:透传 NodeSpec.render_grid
@@ -231,7 +230,6 @@ def serialize_pattern(spec) -> dict:
     ]
     return {
         "pattern_id": spec.pattern_id,
-        "display_name": spec.display_name,
         "topology": {"nodes": nodes, "edges": edges},
         "event_styles": _event_styles(spec, topo),
     }

@@ -8,7 +8,7 @@ from path2.dag._solve import compile_plan, solve
 
 
 def _nspec(nodes, edges, root):
-    return PatternSpec(pattern_id="n", display_name="n", nodes=tuple(nodes),
+    return PatternSpec(pattern_id="n", nodes=tuple(nodes),
                        edges=tuple(edges), root=root)
 
 

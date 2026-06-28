@@ -23,7 +23,7 @@ class FakeDetector:
 
 
 def _spec(nodes, edges, root):
-    return PatternSpec(pattern_id="a2_test", display_name="a2_test",
+    return PatternSpec(pattern_id="a2_test",
                        nodes=tuple(nodes), edges=tuple(edges), root=root)
 
 

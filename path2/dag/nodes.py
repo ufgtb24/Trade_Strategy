@@ -25,7 +25,6 @@ class NodeSpec:
                       detector.event_cls.class_id 供 to_topology / 面板上色。
     where:            节点级一元谓词 (clause_id, fn) 列表,AND 合取。
     consumes_stream:  detector 输入是 df(None)还是上游某节点流(如 throwback 吃 bo 流)。
-    label:            人类可读名(面板)。
     render_grid:      事件主 marker 渲染轴 — 'price' 钉 K线主图,需 event_cls.is_point=True;
                       'time' (默认) 走 sub-grid。详见 .claude/docs/modules/path2_web.md。
     """
@@ -33,7 +32,6 @@ class NodeSpec:
     detector: object
     where: Tuple[Tuple[str, WherePredicate], ...] = ()
     consumes_stream: Optional[str] = None
-    label: str = ""
     render_grid: str = "time"
 
 
