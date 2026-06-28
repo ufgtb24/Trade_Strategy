@@ -13,7 +13,7 @@ description: 迭代改进(非从零开发)一个正在运行的、带浏览器�
 完整可行性研究与设计依据见 `docs/research/2026-06-03-web-loop-skill-feasibility.md`。四个关键点:
 - **capture / review 解耦(命门)**:**capture 层**(单 agent 串行驱浏览器)按 states 清单截好全部 PNG + console,组成共享 manifest(manifest = `shots[]`+`consoleErrors[]`+`pageErrors[]`+`failedRequests[]`);**review 层**(ux/func/code 并行)只 `Read` manifest 里的 PNG → 多模态看图评判,**永久零浏览器**。浏览器并发只属于 capture 单层 → 绕开"多 reviewer 抢浏览器串台"。已实测坐实。
 - **收敛靠绝对标准(防死循环)**:reviewer 对照**固定 rubric**(`principles.md` + 用户的验收 spec)判**绝对** pass/fail,**不是**"还能不能挑出毛病"。问题分 `must`(挡退出)/`nice`(不挡)。对抗验证:相对标准(问题清空才退)50 轮不收敛,绝对标准 3 轮收敛。
-- **三层刷新**:前端改→Vite HMR + `page.reload()`;后端改→kill+restart(热重载技术上不可用);数据/状态改→重启 + 触发刷新(path2=重新扫描)。
+- **三层刷新**:前端改→Vite HMR + `page.reload()`;后端改→kill+restart(热重载技术上不可用);数据/状态改→重启 + 触发刷新(具体方式由项目定义,见 `examples/<项目>.md`)。
 - **回归 gate**:每轮 implement 后先跑 smoke 测试,红则 git 回滚本轮 + 记 must 强制下轮重做。
 - **GOAL 持久化(防漂移)**:多轮 fresh subagent 协作下 GOAL 会漂(reviewer 越深只盯 must / implementer 轮 ≥2 退化为修补匠 / 视觉直觉无文字通道)。本 skill 用二件套抗漂:**goal.md + refs/**(setup 阶段写入,reviewer/implementer 每轮 Read 完整版,prompt 段只放摘要);reviewer prompt 顺序固化(GOAL + 子项 + refs 占顶,issues 退后段);**收敛判据加严** = `openMust==0 && 全 GOAL 子项被本轮 verified 覆盖(coveredSubgoals 集合 ⊇ goalSubgoals 集合)`。覆盖证据强制绑本轮真实可定位标识(截图文件名+像素特征 / probe key / console 行号 / diff 函数名),仅写"看起来满足"等不可定位修辞 = evidence 不合格、不计入覆盖。
 
@@ -22,7 +22,7 @@ description: 迭代改进(非从零开发)一个正在运行的、带浏览器�
 **用户只说自然语言开发需求**(一句人话,如"K线为什么挤在下方")。`args` 是 skill 在「智能入口层」(见下节)探测/诊断/对话后**内部填出**、喂给模板的中间产物——**用户全程不接触 args 函数格式**。推断不出的必要信息,skill **反过来对话问**用户(自然语言),用户口语答 → skill 内部转 args;**绝不要求用户填"smokeCmd 参数"之类**。用户可主动多说以加速,但这是**权利非义务**。
 
 下表是 skill 内部要填出的字段语义("怎么填"见「智能入口层」节):
-> 项目特异的示例值集中在 `examples/<项目>.md`(path2 见 `examples/path2.md`);下表只给通用语义。
+> 项目特异的示例值集中在 `examples/<项目>.md`(以 `examples/path2.md` 为例);下表只给通用语义。
 
 | arg | 必填 | 说明 |
 |---|---|---|
@@ -43,7 +43,7 @@ description: 迭代改进(非从零开发)一个正在运行的、带浏览器�
 | `workdir` | 自动 | 状态/截图落盘根(`.claude/web-loop/<runtag>`) |
 | `maxRounds`/`staleRounds` | 可选 | 收敛兜底(5 / 3)。⚠ 启用 P1 meta-agent 后,触发判据 = `mustStaleStreak >= max(1, staleRounds - 1)`,始终在 stalled 退出前 1 轮(或与 staleRounds=1 时同轮)给一次智力救场;判据 (b)(c) 同样挂 max(1, staleRounds-1)。详 「三条机检判据触发说明」节 |
 
-> ⚠ **模板已项目无关**:refresh 的 `data` 档通过 `refreshDataCmd` 兜底(以 `.md` 结尾则 refresh agent read 项目内说明文件执行多步刷新);capture 的 states 默认是最小首屏态。**任何项目只需传 `states` + `refreshDataCmd`,不改模板**。path2 的 states / `.web-loop-refresh.md` 全文见 `examples/path2.md`。
+> ⚠ **模板已项目无关**:refresh 的 `data` 档通过 `refreshDataCmd` 兜底(以 `.md` 结尾则 refresh agent read 项目内说明文件执行多步刷新);capture 的 states 默认是最小首屏态。**任何项目只需传 `states` + `refreshDataCmd`,不改模板**。具体项目的 states / `.web-loop-refresh.md` 全文示例见 `examples/path2.md`。
 
 ## 智能入口层(主会话在生成 workflow 之前执行;全程自然语言)
 
