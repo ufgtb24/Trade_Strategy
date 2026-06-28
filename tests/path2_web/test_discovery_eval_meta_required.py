@@ -28,7 +28,7 @@ def test_fake_app_missing_eval_meta_is_filtered(tmp_path, monkeypatch, caplog):
         "from path2.dag.spec import PatternSpec\n"
         "from path2.atoms.breakout import BODetector\n"
         "PATTERN_DAG = PatternSpec(pattern_id='no_meta',\n"
-        "                         nodes=(NodeSpec('bo', BODetector()),), edges=(), root='bo')\n"
+        "                         nodes=(NodeSpec('bo', BODetector()),), edges=())\n"
         "def analyze(df, params=None): return None\n"
         "# 故意不定义 eval_meta\n"
     )
@@ -54,7 +54,7 @@ def test_fake_app_eval_meta_missing_end_role(tmp_path, monkeypatch, caplog):
         "from path2.dag.spec import PatternSpec\n"
         "from path2.atoms.breakout import BODetector\n"
         "PATTERN_DAG = PatternSpec(pattern_id='bad_meta',\n"
-        "                         nodes=(NodeSpec('bo', BODetector()),), edges=(), root='bo')\n"
+        "                         nodes=(NodeSpec('bo', BODetector()),), edges=())\n"
         "def analyze(df, params=None): return None\n"
         "def eval_meta(params=None): return {'head_buffer_trading_days': 60}   # 缺 end_role\n"
     )
@@ -78,7 +78,7 @@ def test_fake_app_eval_meta_missing_head_buffer(tmp_path, monkeypatch, caplog):
         "from path2.dag.spec import PatternSpec\n"
         "from path2.atoms.breakout import BODetector\n"
         "PATTERN_DAG = PatternSpec(pattern_id='bad_meta2',\n"
-        "                         nodes=(NodeSpec('bo', BODetector()),), edges=(), root='bo')\n"
+        "                         nodes=(NodeSpec('bo', BODetector()),), edges=())\n"
         "def analyze(df, params=None): return None\n"
         "def eval_meta(params=None): return {'end_role': 'bo'}   # 缺 head_buffer\n"
     )
@@ -102,7 +102,7 @@ def test_fake_app_eval_meta_raises(tmp_path, monkeypatch, caplog):
         "from path2.dag.spec import PatternSpec\n"
         "from path2.atoms.breakout import BODetector\n"
         "PATTERN_DAG = PatternSpec(pattern_id='throw_meta',\n"
-        "                         nodes=(NodeSpec('bo', BODetector()),), edges=(), root='bo')\n"
+        "                         nodes=(NodeSpec('bo', BODetector()),), edges=())\n"
         "def analyze(df, params=None): return None\n"
         "def eval_meta(params=None): raise RuntimeError('boom')\n"
     )

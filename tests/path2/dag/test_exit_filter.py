@@ -67,7 +67,6 @@ def _spec_with_isolated():
                NodeSpec("B", _DetB([3]), consumes_stream="ISO"),
                NodeSpec("ISO", _DetISO([5, 6, 7]))),
         edges=(TemporalEdge("A", "B", min_gap=1, max_gap=5),),
-        root="A",
     )
 
 

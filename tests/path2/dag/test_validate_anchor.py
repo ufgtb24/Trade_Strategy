@@ -35,7 +35,7 @@ def _build_spec_with_anchor(anchor_field=None, anchor_src_field=None):
                           anchor_field=anchor_field,
                           anchor_src_field=anchor_src_field),)
     return PatternSpec(pattern_id="anchor_test",
-                       nodes=nodes, edges=edges, root="src")
+                       nodes=nodes, edges=edges)
 
 
 def test_valid_anchor_passes():

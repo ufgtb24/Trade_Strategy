@@ -30,7 +30,7 @@ def build_pattern(params: Params) -> PatternSpec:
     edges = ()
     return PatternSpec(
         pattern_id="bo_only",
-        nodes=nodes, edges=edges, root="bo",
+        nodes=nodes, edges=edges,
     )
 
 

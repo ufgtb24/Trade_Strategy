@@ -74,7 +74,7 @@ def _build_anchor_spec(n_src=4, anchor_src_field=None, seed=0):
                           anchor_field="anchor_to_src",
                           anchor_src_field=anchor_src_field),)
     spec = PatternSpec(pattern_id="anchor_c1_off_fuzz",
-                       nodes=nodes, edges=edges, root="src")
+                       nodes=nodes, edges=edges)
     return spec, src_events, dst_events
 
 

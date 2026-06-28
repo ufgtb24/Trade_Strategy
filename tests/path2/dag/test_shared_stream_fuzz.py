@@ -80,6 +80,6 @@ def test_alias_safe_once_nodes():
         nodes = tuple(NodeSpec(node_id=n, detector=None) for n in ["X", "Y", "Z"])
         spec = PatternSpec(
             pattern_id="t",
-            nodes=nodes, edges=tuple(edges), root="X",
+            nodes=nodes, edges=tuple(edges),
         )
         _assert_alias_safe(spec, segs, z_segs, kind.__name__)

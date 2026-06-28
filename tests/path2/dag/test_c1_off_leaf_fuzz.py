@@ -37,7 +37,7 @@ def _spec_with_leaf_bucket(n_dst=4):
     )
     edges = (TemporalEdge("src", "dst", min_gap=1, max_gap=20),)
     spec = PatternSpec(pattern_id="leaf_fuzz",
-                       nodes=nodes, edges=edges, root="src")
+                       nodes=nodes, edges=edges)
     return spec, src_event, dst_events
 
 

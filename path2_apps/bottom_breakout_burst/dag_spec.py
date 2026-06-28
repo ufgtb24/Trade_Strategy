@@ -62,7 +62,7 @@ def build_pattern(params: Params) -> PatternSpec:
     )
     return PatternSpec(
         pattern_id="bottom_breakout_burst",
-        nodes=nodes, edges=edges, root="burst",  # root 退化字段,引擎不读,填合法 node_id
+        nodes=nodes, edges=edges,
     )
 
 

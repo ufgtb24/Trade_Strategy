@@ -85,7 +85,7 @@ def test_run_streams_applies_auto_source_tags():
     a = TrendSegmentDetector(ma_period=20)
     b = TrendSegmentDetector(ma_period=20)
     spec = PatternSpec(pattern_id="p",
-                       nodes=(NodeSpec("a", a), NodeSpec("b", b)), edges=(), root="a")
+                       nodes=(NodeSpec("a", a), NodeSpec("b", b)), edges=())
     run_streams(spec, _flat_df())
     assert a.source_tag == "trend0"
     assert b.source_tag == "trend1"
@@ -96,7 +96,7 @@ def test_analyze_two_trend_detectors_no_event_id_collision():
     spec = PatternSpec(pattern_id="p",
                        nodes=(NodeSpec("a", TrendSegmentDetector(ma_period=20)),
                               NodeSpec("b", TrendSegmentDetector(ma_period=20))),
-                       edges=(), root="a")
+                       edges=())
     res = analyze(spec, _flat_df())
     ids = [e.event_id for e in res.events]
     assert len(ids) == len(set(ids))                                  # 不撞
@@ -109,7 +109,7 @@ def test_backward_compat_shared_trend_event_id_unchanged():
     shared = TrendSegmentDetector(ma_period=20)
     spec = PatternSpec(pattern_id="p",
                        nodes=(NodeSpec("down", shared), NodeSpec("side", shared)),
-                       edges=(), root="down")
+                       edges=())
     res = analyze(spec, _flat_df())
     assert shared.source_tag is None
     assert res.events                                          # 至少一个事件

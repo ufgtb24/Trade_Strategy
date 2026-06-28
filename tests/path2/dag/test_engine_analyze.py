@@ -15,16 +15,16 @@ class FakeDetector:
     def detect(self, *source): return iter(self._evs)
 
 
-def _spec(nodes, edges, root):
+def _spec(nodes, edges):
     return PatternSpec(pattern_id="e2e", nodes=tuple(nodes),
-                       edges=tuple(edges), root=root)
+                       edges=tuple(edges))
 
 
 def test_analyze_chain_produces_match():
     A = NodeSpec("A", detector=FakeDetector([Ev("a", 0, 0)]))
     B = NodeSpec("B", detector=FakeDetector([Ev("b", 5, 5)]))
     edges = [TemporalEdge("A", "B", min_gap=0, max_gap=100)]
-    res = analyze(_spec([A, B], edges, "A"), df=object())
+    res = analyze(_spec([A, B], edges), df=object())
     assert isinstance(res, AnalysisResult)
     assert len(res.matches) == 1
     assert res.matches[0].role_index["B"].start_idx == 5
@@ -38,7 +38,7 @@ def test_analyze_consumes_stream_order():
     bo = NodeSpec("bo", detector=FakeDetector([Ev("bo0", 2, 2)]))
     tb = NodeSpec("tb", detector=FakeDetector([Ev("tb0", 4, 4)]), consumes_stream="bo")
     edges = [TemporalEdge("bo", "tb", min_gap=1, max_gap=5)]
-    res = analyze(_spec([bo, tb], edges, "bo"), df=object())
+    res = analyze(_spec([bo, tb], edges), df=object())
     assert len(res.matches) == 1
 
 
@@ -46,7 +46,7 @@ def test_matches_bool():
     A = NodeSpec("A", detector=FakeDetector([Ev("a", 0, 0)]))
     B = NodeSpec("B", detector=FakeDetector([]))   # B 空 -> 无匹配
     edges = [TemporalEdge("A", "B")]
-    assert matches(_spec([A, B], edges, "A"), df=object()) is False
+    assert matches(_spec([A, B], edges), df=object()) is False
 
 
 class _StrictRootDetector:
@@ -70,6 +70,6 @@ def test_analyze_calls_real_detector_arity():
     tb = NodeSpec("tb", detector=_StrictConsumerDetector([Ev("tb0", 3, 3)]),
                   consumes_stream="bo")
     edges = [TemporalEdge("bo", "tb", min_gap=1, max_gap=10)]
-    res = analyze(_spec([bo, tb], edges, "bo"), df=object())
+    res = analyze(_spec([bo, tb], edges), df=object())
     assert len(res.matches) == 1
     assert res.matches[0].role_index["tb"].start_idx == 3

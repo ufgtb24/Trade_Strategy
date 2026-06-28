@@ -22,9 +22,9 @@ class FakeDetector:
     def detect(self, *source): return iter(self._evs)
 
 
-def _spec(nodes, edges, root):
+def _spec(nodes, edges):
     return PatternSpec(pattern_id="a2_test",
-                       nodes=tuple(nodes), edges=tuple(edges), root=root)
+                       nodes=tuple(nodes), edges=tuple(edges))
 
 
 def test_all_isolated_non_consumed_pattern_emits_trivial_matches():
@@ -36,7 +36,7 @@ def test_all_isolated_non_consumed_pattern_emits_trivial_matches():
     bo = NodeSpec("bo", detector=FakeDetector([
         Ev("bo0", 1, 1), Ev("bo1", 5, 5), Ev("bo2", 9, 9),
     ]))
-    res = analyze(_spec([bo], edges=(), root="bo"), df=object())
+    res = analyze(_spec([bo], edges=()), df=object())
     assert len(res.matches) == 3
     for m in res.matches:
         assert set(m.role_index.keys()) == {"bo"}
@@ -54,7 +54,7 @@ def test_mixed_pattern_keeps_non_consumed_isolated_role_matches():
     B = NodeSpec("B", detector=FakeDetector([Ev("b0", 3, 3)]))
     X = NodeSpec("x_node", detector=FakeDetector([Ev("x0", 7, 7), Ev("x1", 8, 8)]))
     edges = [TemporalEdge("A", "B", min_gap=0, max_gap=100)]
-    res = analyze(_spec([A, B, X], edges, root="A"), df=object())
+    res = analyze(_spec([A, B, X], edges), df=object())
 
     full = [m for m in res.matches if "A" in m.role_index and "B" in m.role_index]
     x_only = [m for m in res.matches
@@ -76,7 +76,7 @@ def test_isolated_consumed_role_match_still_filtered_regression():
     tb = NodeSpec("tb", detector=FakeDetector([Ev("tb0", 6, 6)]),
                   consumes_stream="bo")
     edges = [TemporalEdge("burst", "tb", min_gap=0, max_gap=100)]
-    res = analyze(_spec([bo, burst, tb], edges, root="burst"), df=object())
+    res = analyze(_spec([bo, burst, tb], edges), df=object())
 
     bo_only_matches = [m for m in res.matches
                        if set(m.role_index.keys()) == {"bo"}]

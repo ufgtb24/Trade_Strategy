@@ -41,7 +41,7 @@ def _spec_two_src_shared_leaf():
         TemporalEdge("src", "leaf", min_gap=1, max_gap=10),
     )
     spec = PatternSpec(pattern_id="shared_leaf_fuzz",
-                       nodes=nodes, edges=edges, root="src")
+                       nodes=nodes, edges=edges)
     return spec, src_a, src_b, leaf_x
 
 

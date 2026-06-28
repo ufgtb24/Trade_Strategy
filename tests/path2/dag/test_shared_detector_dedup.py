@@ -25,7 +25,7 @@ def _spec_shared():
         NodeSpec("a", det, where=(("r", W.attr("regime", "==", "down")),)),
         NodeSpec("b", det, where=(("r", W.attr("regime", "==", "up")),)),
     )
-    return PatternSpec(pattern_id="t", nodes=nodes, edges=(), root="a")
+    return PatternSpec(pattern_id="t", nodes=nodes, edges=())
 
 
 def test_shared_detector_runs_once():

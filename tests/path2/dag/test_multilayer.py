@@ -104,7 +104,6 @@ def _build_spec():
         pattern_id="test_multilayer",
         nodes=(bo_node, burst_node, super_node),
         edges=(),
-        root="super",
     )
 
 
