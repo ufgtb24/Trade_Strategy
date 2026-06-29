@@ -439,6 +439,19 @@ describe('buildKlineOption — D2 tooltipResolver', () => {
     expect(formatter({ data: null })).toBe('')
     expect(formatter(null)).toBe('')
   })
+
+  it('global tooltip has confine: true to prevent overflow', () => {
+    const opt = buildKlineOption(bars, EVENTS, MATCHES, baseInput)
+    const tt = opt.tooltip as any
+    expect(tt.confine).toBe(true)
+  })
+
+  it('marker series tooltip has confine: true to prevent overflow', () => {
+    const opt = buildKlineOption(bars, EVENTS, MATCHES, { ...baseInput, tooltipResolver: stubResolver })
+    const series = opt.series as any[]
+    const points = series.find((s: any) => s.name === 'points')
+    expect(points.tooltip.confine).toBe(true)
+  })
 })
 
 // ── render_grid 分流 + satellites ─────────────────────────────────────────────
