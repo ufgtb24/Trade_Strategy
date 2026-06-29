@@ -5,7 +5,7 @@ import {
   qualifiedIdsOf, eventTierOf, roleOfEventByBand, isBandVisible,
   renderGridOf,   // ★ 新增
 } from '../src/render/visible'
-import type { TopoNode, TopoEdge, EventDict, AttrRow, Diagnostics } from '../src/types'
+import type { TopoNode, TopoEdge, EventDict, AttrRow, Diagnostics, Bar } from '../src/types'
 import { ANALYSIS } from './fixtures'
 
 const { matches } = ANALYSIS
@@ -188,32 +188,157 @@ describe('isBandVisible', () => {
 })
 
 describe('resolveTooltipData', () => {
+  const bars: Bar[] = [
+    { date: '2024-03-01', o: 10, h: 11, l: 9, c: 10, v: 1000, rv: 1 },
+    { date: '2024-03-02', o: 10, h: 11, l: 9, c: 10, v: 1000, rv: 1 },
+    { date: '2024-03-03', o: 10, h: 11, l: 9, c: 10, v: 1000, rv: 1 },
+    { date: '2024-03-04', o: 10, h: 11, l: 9, c: 10, v: 1000, rv: 1 },
+    { date: '2024-03-05', o: 10, h: 11, l: 9, c: 10, v: 1000, rv: 1 },
+    { date: '2024-03-06', o: 10, h: 11, l: 9, c: 10, v: 1000, rv: 1 },
+  ]
+  const events: EventDict[] = [
+    { class_id: 'trend', event_id: 'd1', start_idx: 0, end_idx: 5, source_tag: 'trend0', drawdown: 0.42 } as any,
+    { class_id: 'burst', event_id: 'b1', start_idx: 1, end_idx: 1, source_tag: 'burst', count: 3, first_drought: 0, members: [{}, {}] } as any,
+    { class_id: 'burst', event_id: 'b2', start_idx: 2, end_idx: 4, source_tag: 'burst', count: 5, max_bar_vol_ratio: 2.6378544926831706 } as any,
+  ]
   const diag: Diagnostics = {
     symbol: 'X', pattern_id: 'p', note: '',
     roles: {
-      down: { attr: [{ event_id: 'd1', start_idx: 0, end_idx: 0,
-        clauses: { drawdown: { satisfied: true, measured: 0.42, op: '>=', threshold: 0.30 } } }], rel: [] },
+      down: {
+        attr: [{ event_id: 'd1', start_idx: 0, end_idx: 5,
+          clauses: { drawdown: { satisfied: true, measured: 0.42, op: '>=', threshold: 0.30 } } }],
+        rel: [],
+      },
+      bo_burst: {
+        attr: [{ event_id: 'b1', start_idx: 1, end_idx: 1,
+          clauses: {
+            first_drought: { satisfied: false, measured: 0, op: '>=', threshold: 20 },
+            count: { satisfied: true, measured: 3, op: '>=', threshold: 2 },
+          } }],
+        rel: [],
+      },
+      tb_burst: {
+        attr: [{ event_id: 'b1', start_idx: 1, end_idx: 1,
+          clauses: {
+            first_drought: { satisfied: true, measured: 0, op: '>=', threshold: 0 },
+          } }],
+        rel: [],
+      },
     },
   }
-  const events: EventDict[] = [
-    { class_id: 'trend', event_id: 'd1', start_idx: 0, end_idx: 5, source_tag: 'trend0', regime: 'down', drawdown: 0.42 } as any,
-    { class_id: 'burst', event_id: 'b1', start_idx: 1, end_idx: 9, source_tag: 'burst', count: 3, members: [{}, {}] } as any,
-  ]
-  it('clauses 从 diag 跨 role 取对应 event_id 行', () => {
-    const r = resolveTooltipData('d1', diag, events)
-    expect(r.clauses.drawdown.measured).toBe(0.42)
-    expect(r.clauses.drawdown.satisfied).toBe(true)
+
+  it('返回结构含 identity / clauses / raw 三键', () => {
+    const r = resolveTooltipData('d1', diag, events, bars)
+    expect(Object.keys(r).sort()).toEqual(['clauses', 'identity', 'raw'])
   })
-  it('raw 排除固定四字段 + source_tag + members,保留子类属性', () => {
-    const r = resolveTooltipData('b1', diag, events)
-    expect(r.raw.count).toBe(3)
-    expect('members' in r.raw).toBe(false)
-    expect('source_tag' in r.raw).toBe(false)
+
+  it('identity.roles 单 role 时返回单元素数组', () => {
+    const r = resolveTooltipData('d1', diag, events, bars)
+    expect(r.identity.roles).toEqual(['down'])
+  })
+
+  it('identity.roles 多 role 时返回多元素数组（按 diag.roles 插入顺序）', () => {
+    const r = resolveTooltipData('b1', diag, events, bars)
+    expect(r.identity.roles).toEqual(['bo_burst', 'tb_burst'])
+  })
+
+  it('identity.roles 零 role 时返回空数组', () => {
+    const r = resolveTooltipData('b2', diag, events, bars)
+    expect(r.identity.roles).toEqual([])
+  })
+
+  it('identity 区间事件 dateStart/End 均填日期', () => {
+    const r = resolveTooltipData('d1', diag, events, bars)
+    expect(r.identity.dateStart).toBe('2024-03-01')
+    expect(r.identity.dateEnd).toBe('2024-03-06')
+  })
+
+  it('identity point 事件 dateEnd 为 null', () => {
+    const r = resolveTooltipData('b1', diag, events, bars)   // b1 start_idx=end_idx=1
+    expect(r.identity.dateStart).toBe('2024-03-02')
+    expect(r.identity.dateEnd).toBe(null)
+  })
+
+  it('identity 区间事件 dateEnd 为 end_idx 对应日期', () => {
+    const r = resolveTooltipData('b2', diag, events, bars)   // b2 start_idx=2, end_idx=4
+    expect(r.identity.dateStart).toBe('2024-03-03')
+    expect(r.identity.dateEnd).toBe('2024-03-05')
+  })
+
+  it('identity bars 越界时 fallback 到原索引字符串', () => {
+    const shortBars: Bar[] = [bars[0]]
+    const r = resolveTooltipData('d1', diag, events, shortBars)
+    expect(r.identity.dateStart).toBe('2024-03-01')
+    expect(r.identity.dateEnd).toBe('5')   // end_idx=5 越界
+  })
+
+  it('identity.eventId 直返参数', () => {
+    const r = resolveTooltipData('d1', diag, events, bars)
+    expect(r.identity.eventId).toBe('d1')
+  })
+
+  it('clauses 失败 ✗ 排在满足 ✓ 之前', () => {
+    const r = resolveTooltipData('b1', diag, events, bars)
+    const sats = r.clauses.map((c) => c.satisfied)
+    const firstSat = sats.indexOf(true)
+    const lastUnsat = sats.lastIndexOf(false)
+    expect(lastUnsat).toBeLessThan(firstSat)
+  })
+
+  it('clauses 多 role 同 cid 各保留一行（不覆盖）', () => {
+    const r = resolveTooltipData('b1', diag, events, bars)
+    const firstDroughtRows = r.clauses.filter((c) => c.cid === 'first_drought')
+    expect(firstDroughtRows.length).toBe(2)   // bo_burst 一条 + tb_burst 一条
+    const roles = firstDroughtRows.map((c) => c.role).sort()
+    expect(roles).toEqual(['bo_burst', 'tb_burst'])
+    const thresholds = firstDroughtRows.map((c) => c.threshold).sort()
+    expect(thresholds).toEqual([0, 20])
+  })
+
+  it('clauses 单 role cid 只有一条', () => {
+    const r = resolveTooltipData('b1', diag, events, bars)
+    const countRows = r.clauses.filter((c) => c.cid === 'count')
+    expect(countRows.length).toBe(1)
+    expect(countRows[0].role).toBe('bo_burst')
+  })
+
+  it('raw 排除 SKIP 集（class_id/event_id/start_idx/end_idx/source_tag/members）', () => {
+    const r = resolveTooltipData('b1', diag, events, bars)
     expect('class_id' in r.raw).toBe(false)
     expect('event_id' in r.raw).toBe(false)
+    expect('start_idx' in r.raw).toBe(false)
+    expect('end_idx' in r.raw).toBe(false)
+    expect('source_tag' in r.raw).toBe(false)
+    expect('members' in r.raw).toBe(false)
   })
-  it('未知 event / 无 diag → 空 clauses & 空 raw', () => {
-    expect(resolveTooltipData('zzz', diag, events)).toEqual({ clauses: {}, raw: {} })
-    expect(resolveTooltipData('d1', null, events).clauses).toEqual({})
+
+  it('raw 去重 clauses 已引用 cid（cid 名 ↔ 字段名命中时移除 raw 那份）', () => {
+    const r = resolveTooltipData('b1', diag, events, bars)
+    // b1 字段含 count + first_drought；diag 里 bo_burst 也评估 first_drought + count
+    expect('first_drought' in r.raw).toBe(false)
+    expect('count' in r.raw).toBe(false)
+  })
+
+  it('raw 保留 clauses 未引用的字段', () => {
+    const r = resolveTooltipData('b2', diag, events, bars)
+    // b2 不在任何 role 的 attr 表 → clauses 为空 → raw 保留全部非 SKIP 字段
+    expect(r.raw.count).toBe(5)
+    expect(r.raw.max_bar_vol_ratio).toBeCloseTo(2.6378544926831706, 10)
+  })
+
+  it('未知 event_id → 空 clauses / 空 raw / identity 仅 eventId 有值', () => {
+    const r = resolveTooltipData('zzz', diag, events, bars)
+    expect(r.clauses).toEqual([])
+    expect(r.raw).toEqual({})
+    expect(r.identity.eventId).toBe('zzz')
+    expect(r.identity.roles).toEqual([])
+  })
+
+  it('diag === null → 空 clauses，identity / raw 正常', () => {
+    const r = resolveTooltipData('d1', null, events, bars)
+    expect(r.clauses).toEqual([])
+    expect(r.identity.eventId).toBe('d1')
+    expect(r.identity.roles).toEqual([])   // 无 diag 无 role
+    expect(r.raw.drawdown).toBe(0.42)
   })
 })

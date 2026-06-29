@@ -7,7 +7,9 @@ import { ctrlState } from './ctrlState'
 
 // ─── 新签名 ──────────────────────────────────────────────────────────────────
 
-export interface TooltipClause {
+export interface TooltipClauseRow {
+  cid: string
+  role: string
   measured: unknown
   op: string | null
   threshold: unknown
@@ -15,7 +17,13 @@ export interface TooltipClause {
 }
 
 export interface TooltipPayload {
-  clauses: Record<string, TooltipClause>
+  identity: {
+    roles: string[]
+    dateStart: string
+    dateEnd: string | null
+    eventId: string
+  }
+  clauses: TooltipClauseRow[]
   raw: Record<string, unknown>
 }
 
@@ -44,6 +52,9 @@ export interface BandRenderInput {
   //    render 时从 chart.getOption().dataZoom[0] 读出再回传,实现"非换股触发
   //    re-render 时不重置 zoom")。缺省/null = 走 strictWindow 默认,旧调用零回归。
   zoomOverride?: { start: number; end: number } | null
+  // §7-4 整治：bracket marker 同时承载 match_id + 端点 event_id,让 buildMarkerTooltipFormatter
+  // 的 event 三段分支也能触发。endRole 来自 eval_meta(铁律必有);缺省=不注入 event_id(向后兼容)
+  endRole?: string
 }
 
 export function buildKlineOption(
@@ -53,7 +64,7 @@ export function buildKlineOption(
   const { topology, tagList, level, roleColors, eventTier, roleOfEventByBand, bandKeyOf,
           roleVisible, tagToNodes,
           selectedEventId, tooltipResolver, strictWindow, matchLabel, sliderShow,
-          zoomOverride } = input
+          zoomOverride, endRole } = input
 
   const dates = bars.map((b) => b.date)
   const candle = bars.map((b) => [b.o, b.c, b.l, b.h])
@@ -170,9 +181,19 @@ export function buildKlineOption(
 
   // brackets
   const brackets = packBrackets(matches)
-  const bracketData = brackets.map((m) => ({
-    value: [m.start_idx, m.end_idx, m.lane, m.ordinal], match_id: m.event_id,
-  }))
+  const bracketData = brackets.map((m) => {
+    const data: { value: number[]; match_id: string; event_id?: string } = {
+      value: [m.start_idx, m.end_idx, m.lane, m.ordinal],
+      match_id: m.event_id,
+    }
+    // §7-4：注入端点 event_id 让 tooltip 三段分支可触发；role_index 值兼容 string|string[]
+    if (endRole) {
+      const v = m.role_index?.[endRole]
+      const eid = Array.isArray(v) ? v[0] : v
+      if (eid) data.event_id = eid
+    }
+    return data
+  })
 
   // bandLabels:在 grid2 左缘每 band 一行文字
   const bandLabelData = tagList.map((tag, band) => {
@@ -254,6 +275,11 @@ export function buildKlineOption(
   // kline 系列：删 markLine，加 markArea 阴影
   const klineSeries: Record<string, unknown> = {
     type: 'candlestick', name: 'kline', data: candle, xAxisIndex: 0, yAxisIndex: 0,
+    barWidth: '70%',
+    itemStyle: {
+      borderWidth: 2,   // 默认 1;影线和实体边框同时变粗
+    },
+
   }
   if (shadingMarkArea) {
     klineSeries.markArea = shadingMarkArea
@@ -277,7 +303,8 @@ export function buildKlineOption(
         axisLine: { onZero: false }, axisLabel: { show: false }, splitLine: { show: false } },
     ],
     yAxis: [
-      // index 0: 价格(grid0)——固定 min/max 让 volume bar baseline 落在 displayBottom
+      // index 0: 价格(grid0)——固定 min/max 让 volume bar 显示区间贴 grid 底部 20%
+      // (displayBottom 钳到 ≥ 0，详见 buildVolumeSeriesAndYAxis 注释)
       { gridIndex: 0, splitArea: { show: true }, min: yAxisOverride.min, max: yAxisOverride.max },
       // index 1: 隐藏 bracket 轴(grid0)
       { scale: true, gridIndex: 0, show: false },
@@ -690,7 +717,12 @@ export function buildShadingMarkArea(
  *
  * 计算可见区间 priceMin/Max → displayHeight = priceRange / 0.8 → displayBottom 留 10% 底部空白。
  * volScale = (displayHeight * 0.2) / visVolMax，每根 bar 的 value = displayBottom + b.v * volScale。
- * yAxis[0].min/max 必须改为 displayBottom/displayTop（不能 scale:true），让 bar baseline 落在 displayBottom。
+ *
+ * displayBottom 钳到 ≥ 0：ECharts bar 的 baseline 恒为 value=0，无法像 matplotlib 那样
+ * 显式指定 bottom。若 priceMin < priceRange/8 导致 displayBottom 算成负数（低价股），
+ * 0 进入 yAxis 范围，volume bar 就会以 0 为基线双向溢出（小成交量 bar 朝下挂在 0 下方）。
+ * 钳到 ≥ 0 后 0 永远 ≤ yAxis.min，bar 被 clip 后视觉等价于"从 grid 底向上单向"。代价：
+ * 低价股底部 10% 价格 padding 被压扁、K 线最低点贴 axis 底；高价股完全无影响。
  *
  * @param bars      完整 bars 数组
  * @param visStart  可见区间起始 bar 索引（含）
@@ -702,7 +734,7 @@ export function buildVolumeSeriesAndYAxis(bars: Bar[], visStart: number, visEnd:
   const priceMax = Math.max(...visBars.map(b => b.h))
   const priceRange = priceMax - priceMin
   const displayHeight = priceRange / 0.8
-  const displayBottom = priceMin - displayHeight * 0.1
+  const displayBottom = Math.max(0, priceMin - displayHeight * 0.1)
   const displayTop = displayBottom + displayHeight
   const visVolMax = Math.max(...visBars.map(b => b.v), 1)
   const volScale = (displayHeight * 0.2) / visVolMax
@@ -713,14 +745,14 @@ export function buildVolumeSeriesAndYAxis(bars: Bar[], visStart: number, visEnd:
     xAxisIndex: 0 as const,
     yAxisIndex: 0 as const,
     barWidth: '100%' as const,
-    z: 1 as const,
+    z: 3 as const,
     data: bars.map(b => ({
       value: displayBottom + b.v * volScale,
       itemStyle: {
         color: b.c >= b.o ? '#D3D3D3' : '#696969',
         borderColor: 'black',
         borderWidth: 0.5,
-        opacity: 0.8,
+        opacity: 0.5,
       },
     })),
   }
@@ -777,30 +809,83 @@ export function buildBarTooltipFormatter(
 
 /**
  * Marker tooltip formatter (series-level item-trigger)。
- * 逻辑与原 chart.ts:192-213 等价 (只搬位置不改语义):
- *  - params.data.match_id 命中 → matchLabel 行
- *  - params.data.event_id 命中 + tooltipResolver → clauses + raw (excl. "members")
+ * 三段结构 + 可选 match 顶行：
+ *   - 顶行 (仅 params.data.match_id 命中)：Match: {matchLabel(id)}
+ *   - 段 1 Identity：role / time / id
+ *   - 段 2 Clauses：失败 ✗ 置顶 + 加粗；多 role 同 cid 行末加 (in: <role>)
+ *   - 段 3 Attributes：raw（已去重）
+ *
+ * 段空时省略段头；身份段恒存在但 role 行可省。
+ * HTML：使用 <br/> <b> <hr>（echarts tooltip formatter 支持）。
+ * 注：当前 measured 类型受控（数字 / 字符串 / 元组），不引入 HTML escape；
+ *     未来若 detector 引入用户输入字符串型 measured 且可能含 HTML，
+ *     需在 fmtNum 旁追加 escape 步骤。
+ * spec 见 docs/superpowers/specs/2026-06-29-marker-tooltip-cleanup-design.md
  */
 export function buildMarkerTooltipFormatter(
   tooltipResolver: ((eventId: string) => TooltipPayload) | undefined,
   matchLabel: ((matchId: string) => string | null) | undefined,
 ) {
-  return (params: { data?: { event_id?: string; match_id?: string } }): string => {
-    const matchId = params?.data?.match_id
-    if (matchId) return (matchLabel && matchLabel(matchId)) ?? ''
-    const eventId = params?.data?.event_id
-    if (!eventId || !tooltipResolver) return ''
-    const { clauses, raw } = tooltipResolver(eventId)
+  return (params: { data?: { event_id?: string; match_id?: string } } | null): string => {
+    const data = params?.data
+    if (!data) return ''
     const lines: string[] = []
-    for (const [cid, c] of Object.entries(clauses)) {
-      const opStr = c.op != null ? ` ${c.op} ${String(c.threshold)}` : ''
-      const mark = c.satisfied ? '✓' : '✗'
-      lines.push(`${cid}: ${String(c.measured)}${opStr} ${mark}`)
+
+    // ── 顶行：match 归属 ─────────────────────────────────────────────────
+    const matchId = data.match_id
+    if (matchId && matchLabel) {
+      const ml = matchLabel(matchId)
+      if (ml) lines.push(`Match: ${ml}`)
     }
-    for (const [k, v] of Object.entries(raw)) {
-      if (k === 'members') continue
-      lines.push(`${k}: ${String(v)}`)
+
+    // ── event 三段 ──────────────────────────────────────────────────────
+    const eventId = data.event_id
+    if (eventId && tooltipResolver) {
+      const { identity, clauses, raw } = tooltipResolver(eventId)
+
+      // 段 1 Identity
+      const idBody: string[] = []
+      if (identity.roles.length > 0) idBody.push(`role: ${identity.roles.join(' / ')}`)
+      const timeStr = identity.dateEnd == null
+        ? `time: ${identity.dateStart}`
+        : `time: ${identity.dateStart} → ${identity.dateEnd}`
+      idBody.push(timeStr)
+      idBody.push(`id:   ${identity.eventId}`)
+      if (lines.length > 0) lines.push('<hr/>')
+      lines.push('<b>Identity</b>')
+      lines.push(...idBody)
+
+      // 段 2 Clauses（失败已置顶；多 role 同 cid 行末加 (in: <role>)）
+      if (clauses.length > 0) {
+        const cidCounts: Record<string, number> = {}
+        for (const c of clauses) cidCounts[c.cid] = (cidCounts[c.cid] ?? 0) + 1
+        const clauseLines = clauses.map((c) => {
+          const opStr = c.op != null ? ` ${c.op} ${fmtNum(c.threshold)}` : ''
+          const mark = c.satisfied ? '✓' : '✗'
+          const inSuffix = cidCounts[c.cid] > 1 ? ` (in: ${c.role})` : ''
+          const body = `${c.cid}: ${fmtNum(c.measured)}${opStr} ${mark}${inSuffix}`
+          return c.satisfied ? body : `<b>${body}</b>`
+        })
+        lines.push('<hr/>')
+        lines.push('<b>Clauses</b>')
+        lines.push(...clauseLines)
+      }
+
+      // 段 3 Attributes（raw 已去重）
+      const rawEntries = Object.entries(raw)
+      if (rawEntries.length > 0) {
+        lines.push('<hr/>')
+        lines.push('<b>Attributes</b>')
+        for (const [k, v] of rawEntries) lines.push(`${k}: ${fmtNum(v)}`)
+      }
     }
+
     return lines.join('<br/>')
   }
+}
+
+/** 浮点统一 4 位小数；整数 / 非数字原样 String 化。 */
+function fmtNum(v: unknown): string {
+  if (typeof v === 'number' && !Number.isInteger(v)) return v.toFixed(4)
+  return String(v)
 }

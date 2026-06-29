@@ -364,28 +364,28 @@ describe('buildKlineOption — D2 highlight overlay', () => {
 })
 
 // ── D2: tooltipResolver ───────────────────────────────────────────────────────
-// Task 7 以后: 全局 tooltip = axis-trigger bar formatter (buildBarTooltipFormatter)
+// 全局 tooltip = axis-trigger bar formatter (buildBarTooltipFormatter)
 // marker 的 event/clause 信息 → 各 marker series 的 series-level tooltip.formatter
-// (来自 buildMarkerTooltipFormatter)。以下测试已更新至新架构。
+// (来自 buildMarkerTooltipFormatter)。
+// 2026-06-29 整治后：TooltipPayload 结构改为 identity / clauses[] / raw 三段。
 describe('buildKlineOption — D2 tooltipResolver', () => {
   const baseInput = makeInput('detected', roleColors)
 
   const stubResolver = (eventId: string) => ({
-    clauses: {
-      clause_a: { measured: 42, op: '>=', threshold: 10, satisfied: true },
-      clause_b: { measured: 3,  op: '<',  threshold: 5,  satisfied: true },
-    },
+    identity: { roles: ['bo_burst'], dateStart: '2024-01-01', dateEnd: null, eventId },
+    clauses: [
+      { cid: 'clause_a', role: 'bo_burst', measured: 42, op: '>=', threshold: 10, satisfied: true },
+      { cid: 'clause_b', role: 'bo_burst', measured: 3,  op: '<',  threshold: 5,  satisfied: true },
+    ],
     raw: {
-      start_idx: 9,
-      source_tag: 'bo',
-      members: ['bo_child1', 'bo_child2'],   // 故意混入 members
+      foo: 'bar',
+      vol: 1.23456,
     } as Record<string, unknown>,
   })
 
   it('global tooltip is axis-trigger (bar formatter) regardless of tooltipResolver', () => {
     const opt = buildKlineOption(bars, EVENTS, MATCHES, baseInput)
     const tt = opt.tooltip as any
-    // Task 7: 全局 tooltip 改为 axis-trigger bar tooltip
     expect(tt.trigger).toBe('axis')
     expect(typeof tt.formatter).toBe('function')
   })
@@ -394,7 +394,6 @@ describe('buildKlineOption — D2 tooltipResolver', () => {
     const opt = buildKlineOption(bars, EVENTS, MATCHES, baseInput)
     const series = opt.series as any[]
     const points = series.find((s: any) => s.name === 'points')
-    // 无 tooltipResolver → markerTooltip=undefined → series.tooltip=undefined
     expect(points.tooltip).toBeUndefined()
   })
 
@@ -406,24 +405,29 @@ describe('buildKlineOption — D2 tooltipResolver', () => {
     expect(typeof points.tooltip.formatter).toBe('function')
   })
 
-  it('marker series formatter returns clause info when params has event_id', () => {
+  it('marker series formatter returns identity + clauses content when params has event_id', () => {
     const opt = buildKlineOption(bars, EVENTS, MATCHES, { ...baseInput, tooltipResolver: stubResolver })
     const series = opt.series as any[]
     const points = series.find((s: any) => s.name === 'points')
     const formatter = points.tooltip.formatter
     const result: string = formatter({ data: { event_id: 'bo9' } })
+    expect(result).toContain('Identity')
+    expect(result).toContain('role: bo_burst')
+    expect(result).toContain('Clauses')
     expect(result).toContain('clause_a')
     expect(result).toContain('42')
     expect(result).toContain('✓')
   })
 
-  it('marker series formatter result does NOT contain members key', () => {
+  it('marker series formatter raw section includes foo/vol (with vol 4-digit truncation)', () => {
     const opt = buildKlineOption(bars, EVENTS, MATCHES, { ...baseInput, tooltipResolver: stubResolver })
     const series = opt.series as any[]
     const points = series.find((s: any) => s.name === 'points')
     const formatter = points.tooltip.formatter
     const result: string = formatter({ data: { event_id: 'bo9' } })
-    expect(result).not.toContain('members')
+    expect(result).toContain('Attributes')
+    expect(result).toContain('foo: bar')
+    expect(result).toContain('vol: 1.2346')   // 4 位截断
   })
 
   it('marker series formatter returns empty string when no event_id in params', () => {
@@ -434,17 +438,6 @@ describe('buildKlineOption — D2 tooltipResolver', () => {
     expect(formatter({ data: {} })).toBe('')
     expect(formatter({ data: null })).toBe('')
     expect(formatter(null)).toBe('')
-  })
-
-  it('marker series formatter includes raw fields (excluding members)', () => {
-    const opt = buildKlineOption(bars, EVENTS, MATCHES, { ...baseInput, tooltipResolver: stubResolver })
-    const series = opt.series as any[]
-    const points = series.find((s: any) => s.name === 'points')
-    const formatter = points.tooltip.formatter
-    const result: string = formatter({ data: { event_id: 'bo9' } })
-    expect(result).toContain('start_idx')
-    expect(result).toContain('source_tag')
-    expect(result).not.toContain('members')
   })
 })
 
@@ -647,5 +640,53 @@ describe('Dev UI replication (Task 7 integration)', () => {
     const opt = buildKlineOption(testBars, [], [], mkInput())
     expect((opt.tooltip as any).trigger).toBe('axis')
     expect((opt.tooltip as any).axisPointer.type).toBe('line')
+  })
+})
+
+describe('buildKlineOption — bracketData event_id 注入 (§7-4)', () => {
+  const baseInput = makeInput('detected', roleColors)
+
+  it('endRole 缺省时 bracketData 只带 match_id 不带 event_id（向后兼容）', () => {
+    const opt = buildKlineOption(bars, EVENTS, MATCHES, baseInput)
+    const series = opt.series as any[]
+    const brk = series.find((s: any) => s.name === 'brackets')
+    expect(brk).toBeDefined()
+    const items = brk.data as Array<{ match_id: string; event_id?: string }>
+    expect(items.length).toBeGreaterThan(0)
+    for (const d of items) {
+      expect(d.match_id).toBe('m1')
+      expect(d.event_id).toBeUndefined()
+    }
+  })
+
+  it('endRole=tb 时 bracketData.event_id = role_index[tb]', () => {
+    const opt = buildKlineOption(bars, EVENTS, MATCHES, { ...baseInput, endRole: 'tb' })
+    const series = opt.series as any[]
+    const brk = series.find((s: any) => s.name === 'brackets')
+    const items = brk.data as Array<{ match_id: string; event_id?: string }>
+    expect(items[0].match_id).toBe('m1')
+    expect(items[0].event_id).toBe('tb16')
+  })
+
+  it('endRole 指向不存在的 role 时 bracketData.event_id 保持 undefined（安全降级）', () => {
+    const opt = buildKlineOption(bars, EVENTS, MATCHES, { ...baseInput, endRole: 'nonexistent' })
+    const series = opt.series as any[]
+    const brk = series.find((s: any) => s.name === 'brackets')
+    const items = brk.data as Array<{ match_id: string; event_id?: string }>
+    expect(items[0].event_id).toBeUndefined()
+  })
+
+  it('role_index 值为 string[] (kleene) 时取首元素', () => {
+    const kleeneMatches: MatchDict[] = [{
+      event_id: 'mk', start_idx: 1, end_idx: 16,
+      role_index: { tb: ['tb16', 'tb18'] as any, down: 'down1', side: 'side1', burst: 'burst1' },
+      children: ['down1', 'side1', 'burst1', 'tb16', 'tb18'],
+      predicate_trace: { where_results: {}, edge_results: {} },
+    }]
+    const opt = buildKlineOption(bars, EVENTS, kleeneMatches, { ...baseInput, endRole: 'tb' })
+    const series = opt.series as any[]
+    const brk = series.find((s: any) => s.name === 'brackets')
+    const items = brk.data as Array<{ match_id: string; event_id?: string }>
+    expect(items[0].event_id).toBe('tb16')
   })
 })

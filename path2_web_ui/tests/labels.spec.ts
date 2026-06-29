@@ -65,7 +65,7 @@ describe('match tooltip label', () => {
     })
     const brackets = opt.series.find((s: any) => s.name === 'brackets')
     expect(brackets.tooltip).toBeDefined()
-    expect(brackets.tooltip.formatter({ data: { match_id: 'm1' } })).toBe('ret_20: +12.3%')
+    expect(brackets.tooltip.formatter({ data: { match_id: 'm1' } })).toBe('Match: ret_20: +12.3%')
   })
   it('matchLabel 返回 null(无 label 数据)→ 空串', () => {
     const opt: any = buildKlineOption(bars, [], [match], { ...baseInput(), matchLabel: () => null })

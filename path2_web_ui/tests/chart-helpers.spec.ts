@@ -106,6 +106,20 @@ describe('buildVolumeSeriesAndYAxis', () => {
     expect((volSeries.data[2].itemStyle as any).color).toBe('#D3D3D3')
   })
 
+  it('clamps displayBottom to >= 0 when priceMin < priceRange/8 (低价股 bug 防回归)', () => {
+    // priceMin=1, priceMax=10 → range=9, displayHeight=11.25, raw displayBottom=1-1.125=-0.125
+    // 钳前 yAxis 含 0 会触发 volume bar 双向；钳到 0 后 0 ≤ yAxis.min，bar 单向
+    const bars = mkBars2([
+      { o: 2, h: 3, l: 1, c: 2, v: 1000 },
+      { o: 5, h: 10, l: 4, c: 8, v: 500 },
+    ])
+    const { yAxisOverride, volSeries } = buildVolumeSeriesAndYAxis(bars, 0, 1)
+    expect(yAxisOverride.min).toBe(0)
+    expect(yAxisOverride.max).toBeCloseTo(11.25, 9)
+    // 所有 bar value ≥ 0（与 0 baseline 同向、单向往上）
+    expect(volSeries.data.every(d => d.value >= 0)).toBe(true)
+  })
+
   it('does not throw when vol_max is 0 (all-zero visible volumes)', () => {
     const bars = mkBars2([
       { o: 10, h: 11, l: 9, c: 10, v: 0 },
@@ -117,16 +131,16 @@ describe('buildVolumeSeriesAndYAxis', () => {
     expect(volSeries.data.every(d => d.value === yAxisOverride.min)).toBe(true)
   })
 
-  it('volume series uses borderColor black, borderWidth 0.5, opacity 0.8', () => {
+  it('volume series uses borderColor black, borderWidth 0.5, opacity 0.5', () => {
     const bars = mkBars2([{ o: 10, h: 11, l: 9, c: 10, v: 100 }])
     const { volSeries } = buildVolumeSeriesAndYAxis(bars, 0, 0)
     const itemStyle = volSeries.data[0].itemStyle as any
     expect(itemStyle.borderColor).toBe('black')
     expect(itemStyle.borderWidth).toBe(0.5)
-    expect(itemStyle.opacity).toBe(0.8)
+    expect(itemStyle.opacity).toBe(0.5)
   })
 
-  it('volSeries config: type=bar, name=volume, xAxisIndex=0, yAxisIndex=0, barWidth=100%, z=1', () => {
+  it('volSeries config: type=bar, name=volume, xAxisIndex=0, yAxisIndex=0, barWidth=100%, z=3', () => {
     const bars = mkBars2([{ o: 10, h: 11, l: 9, c: 10, v: 100 }])
     const { volSeries } = buildVolumeSeriesAndYAxis(bars, 0, 0)
     expect(volSeries.type).toBe('bar')
@@ -134,7 +148,7 @@ describe('buildVolumeSeriesAndYAxis', () => {
     expect(volSeries.xAxisIndex).toBe(0)
     expect(volSeries.yAxisIndex).toBe(0)
     expect(volSeries.barWidth).toBe('100%')
-    expect(volSeries.z).toBe(1)
+    expect(volSeries.z).toBe(3)
   })
 })
 
@@ -212,26 +226,141 @@ import { buildMarkerTooltipFormatter } from '../src/render/chart'
 import type { TooltipPayload } from '../src/render/chart'
 
 describe('buildMarkerTooltipFormatter', () => {
-  it('returns matchLabel when params.data has match_id', () => {
-    const matchLabel = (id: string) => `MATCH:${id}`
-    const fmt = buildMarkerTooltipFormatter(undefined, matchLabel)
-    expect(fmt({ data: { match_id: 'm1' } })).toBe('MATCH:m1')
+  const emptyPayload: TooltipPayload = {
+    identity: { roles: ['bo_burst'], dateStart: '2024-03-15', dateEnd: null, eventId: 'b1' },
+    clauses: [],
+    raw: {},
+  }
+
+  it('非 match 端点 + 非空 payload 渲染身份段 + 段头 Identity', () => {
+    const resolver = (_eid: string): TooltipPayload => emptyPayload
+    const fmt = buildMarkerTooltipFormatter(resolver, undefined)
+    const html = fmt({ data: { event_id: 'b1' } })
+    expect(html).toContain('<b>Identity</b>')
+    expect(html).toContain('role: bo_burst')
+    expect(html).toContain('time: 2024-03-15')
+    expect(html).toContain('id:   b1')
   })
 
-  it('uses tooltipResolver clauses + raw, excludes "members" key', () => {
+  it('match 端点 + event 信息：顶行 + 三段拼接（不再互斥）', () => {
     const resolver = (_eid: string): TooltipPayload => ({
-      clauses: { c1: { measured: 5, op: '>=', threshold: 3, satisfied: true } },
-      raw: { foo: 'bar', members: [1, 2, 3] },
+      identity: { roles: ['bo_burst'], dateStart: '2024-03-15', dateEnd: null, eventId: 'b1' },
+      clauses: [{ cid: 'first_drought', role: 'bo_burst', measured: 0, op: '>=', threshold: 20, satisfied: false }],
+      raw: { count: 2 },
+    })
+    const matchLabel = (id: string) => `MATCH:${id}`
+    const fmt = buildMarkerTooltipFormatter(resolver, matchLabel)
+    const html = fmt({ data: { event_id: 'b1', match_id: 'm1' } })
+    expect(html).toContain('Match: MATCH:m1')
+    expect(html).toContain('<b>Identity</b>')
+    expect(html).toContain('<b>Clauses</b>')
+    expect(html).toContain('<b>Attributes</b>')
+  })
+
+  it('失败 clause 用 <b>...</b> 加粗', () => {
+    const resolver = (_eid: string): TooltipPayload => ({
+      identity: { roles: ['bo_burst'], dateStart: '2024-03-15', dateEnd: null, eventId: 'b1' },
+      clauses: [
+        { cid: 'first_drought', role: 'bo_burst', measured: 0, op: '>=', threshold: 20, satisfied: false },
+        { cid: 'count', role: 'bo_burst', measured: 3, op: '>=', threshold: 2, satisfied: true },
+      ],
+      raw: {},
     })
     const fmt = buildMarkerTooltipFormatter(resolver, undefined)
-    const html = fmt({ data: { event_id: 'e1' } })
-    expect(html).toContain('c1: 5 >= 3 ✓')
-    expect(html).toContain('foo: bar')
-    expect(html).not.toContain('members')
+    const html = fmt({ data: { event_id: 'b1' } })
+    expect(html).toContain('<b>first_drought: 0 >= 20 ✗</b>')
+    expect(html).toContain('count: 3 >= 2 ✓')
+    expect(html).not.toContain('<b>count:')   // 满足行不加粗
   })
 
-  it('returns empty when no event_id and no resolver', () => {
+  it('浮点截到 4 位小数（measured 与 threshold 双向）', () => {
+    const resolver = (_eid: string): TooltipPayload => ({
+      identity: { roles: [], dateStart: '2024-03-15', dateEnd: null, eventId: 'b1' },
+      clauses: [
+        { cid: 'vol_spike', role: 'bo_burst',
+          measured: 2.6378544926831706, op: '>=', threshold: 8, satisfied: false },
+      ],
+      raw: { max_bar_vol_ratio: 2.6378544926831706 },
+    })
+    const fmt = buildMarkerTooltipFormatter(resolver, undefined)
+    const html = fmt({ data: { event_id: 'b1' } })
+    expect(html).toContain('2.6379')   // measured 截位
+    expect(html).not.toContain('2.6378544926831706')   // 原始精度不应出现
+    expect(html).toContain('max_bar_vol_ratio: 2.6379')   // raw 段也截位
+  })
+
+  it('多 role 同 cid 行末加 (in: <role>)', () => {
+    const resolver = (_eid: string): TooltipPayload => ({
+      identity: { roles: ['bo_burst', 'tb_burst'], dateStart: '2024-03-15', dateEnd: null, eventId: 'b1' },
+      clauses: [
+        { cid: 'first_drought', role: 'bo_burst', measured: 0, op: '>=', threshold: 20, satisfied: false },
+        { cid: 'first_drought', role: 'tb_burst', measured: 0, op: '>=', threshold: 0, satisfied: true },
+        { cid: 'count', role: 'bo_burst', measured: 3, op: '>=', threshold: 2, satisfied: true },
+      ],
+      raw: {},
+    })
+    const fmt = buildMarkerTooltipFormatter(resolver, undefined)
+    const html = fmt({ data: { event_id: 'b1' } })
+    expect(html).toContain('first_drought: 0 >= 20 ✗ (in: bo_burst)')
+    expect(html).toContain('first_drought: 0 >= 0 ✓ (in: tb_burst)')
+    expect(html).toContain('count: 3 >= 2 ✓')
+    expect(html).not.toContain('count: 3 >= 2 ✓ (in:')   // 单 role 不加后缀
+  })
+
+  it('零 role 时 identity.role 行省略', () => {
+    const resolver = (_eid: string): TooltipPayload => ({
+      identity: { roles: [], dateStart: '2024-03-15', dateEnd: null, eventId: 'b1' },
+      clauses: [],
+      raw: {},
+    })
+    const fmt = buildMarkerTooltipFormatter(resolver, undefined)
+    const html = fmt({ data: { event_id: 'b1' } })
+    expect(html).not.toContain('role:')
+    expect(html).toContain('time: 2024-03-15')
+    expect(html).toContain('id:   b1')
+  })
+
+  it('point 事件 time 单日期；区间事件 time 带箭头', () => {
+    const resolverPoint = (_eid: string): TooltipPayload => ({
+      identity: { roles: [], dateStart: '2024-03-15', dateEnd: null, eventId: 'b1' },
+      clauses: [], raw: {},
+    })
+    const resolverRange = (_eid: string): TooltipPayload => ({
+      identity: { roles: [], dateStart: '2024-03-15', dateEnd: '2024-03-30', eventId: 'b1' },
+      clauses: [], raw: {},
+    })
+    expect(buildMarkerTooltipFormatter(resolverPoint, undefined)({ data: { event_id: 'b1' } }))
+      .toContain('time: 2024-03-15')
+    expect(buildMarkerTooltipFormatter(resolverPoint, undefined)({ data: { event_id: 'b1' } }))
+      .not.toContain('→')
+    expect(buildMarkerTooltipFormatter(resolverRange, undefined)({ data: { event_id: 'b1' } }))
+      .toContain('time: 2024-03-15 → 2024-03-30')
+  })
+
+  it('clauses 段为空时段头 Clauses 不渲染', () => {
+    const fmt = buildMarkerTooltipFormatter((_eid) => emptyPayload, undefined)
+    const html = fmt({ data: { event_id: 'b1' } })
+    expect(html).not.toContain('<b>Clauses</b>')
+  })
+
+  it('raw 段为空时段头 Attributes 不渲染', () => {
+    const fmt = buildMarkerTooltipFormatter((_eid) => emptyPayload, undefined)
+    const html = fmt({ data: { event_id: 'b1' } })
+    expect(html).not.toContain('<b>Attributes</b>')
+  })
+
+  it('match 端点但 matchLabel 返回 null 时不渲染顶行', () => {
+    const resolver = (_eid: string): TooltipPayload => emptyPayload
+    const matchLabel = (_id: string) => null
+    const fmt = buildMarkerTooltipFormatter(resolver, matchLabel)
+    const html = fmt({ data: { event_id: 'b1', match_id: 'm1' } })
+    expect(html).not.toContain('Match:')
+    expect(html).toContain('<b>Identity</b>')   // 但 event 三段仍渲染
+  })
+
+  it('params 为 null 或 data 缺失返回空串', () => {
     const fmt = buildMarkerTooltipFormatter(undefined, undefined)
-    expect(fmt({ data: {} })).toBe('')
+    expect(fmt(null)).toBe('')
+    expect(fmt({ data: undefined })).toBe('')
   })
 })

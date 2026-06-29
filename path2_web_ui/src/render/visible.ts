@@ -1,5 +1,6 @@
 // 可见集辅助函数(band/tier/tag/tooltip)。level 门控由 chart 层消费,此处仅提供纯函数原语。
-import type { EventDict, MatchDict, TopoNode, Topology, AttrRow, Diagnostics, Tier, ClauseWitness, ScanMeta } from '../types'
+import type { EventDict, MatchDict, TopoNode, Topology, AttrRow, Diagnostics, Tier, ClauseWitness, ScanMeta, Bar } from '../types'
+import type { TooltipPayload, TooltipClauseRow } from './chart'
 
 /** 所有匹配内实例 event_id 的并集。
  *  若提供 events,沿事件 dict 的 `members`(event_id 数组)和 `anchor_bo_id`(单个 event_id)
@@ -82,24 +83,61 @@ export function roleOfEventByBand(e: EventDict, tagToNodes: Record<string, strin
   return nodesForTag && nodesForTag.length ? nodesForTag[0] : null
 }
 
-/** tooltip 数据组装(纯):从 diag 取该 event 的 clause witnesses(跨 role 找 event_id 匹配行),
- *  raw = event dict 去掉固定四字段 + source_tag + members 后的子类属性平铺。 */
+/** tooltip 数据组装（纯）：
+ *  - identity：role 反查 diag.roles（多 role 时各保留）；时间 = bars[idx].date，point 时 dateEnd=null；
+ *              bars 越界 fallback 到 String(idx)
+ *  - clauses：跨 role 累积为 ClauseRow[]，按 satisfied 排序（失败 ✗ 在前）
+ *  - raw：event dict 平铺，去掉 SKIP 集 + clauses 已引用 cid
+ *  spec 见 docs/superpowers/specs/2026-06-29-marker-tooltip-cleanup-design.md */
 export function resolveTooltipData(
-  eventId: string, diag: Diagnostics | null, events: EventDict[],
-): { clauses: Record<string, { measured: unknown; op: string | null; threshold: unknown; satisfied: boolean }>; raw: Record<string, unknown> } {
-  const clauses: Record<string, { measured: unknown; op: string | null; threshold: unknown; satisfied: boolean }> = {}
+  eventId: string,
+  diag: Diagnostics | null,
+  events: EventDict[],
+  bars: Bar[],
+): TooltipPayload {
+  // ── clauses 累积（不覆盖；多 role 同 cid 各保留）─────────────────────────
+  const clauses: TooltipClauseRow[] = []
+  const roles: string[] = []
   if (diag) {
-    for (const role of Object.values(diag.roles)) {
+    for (const [roleId, role] of Object.entries(diag.roles)) {
       const row = role.attr.find((r) => r.event_id === eventId)
-      if (row) for (const [cid, w] of Object.entries(row.clauses))
-        clauses[cid] = { measured: (w as ClauseWitness).measured, op: (w as ClauseWitness).op, threshold: (w as ClauseWitness).threshold, satisfied: (w as ClauseWitness).satisfied }
+      if (!row) continue
+      roles.push(roleId)
+      for (const [cid, w] of Object.entries(row.clauses)) {
+        const witness = w as ClauseWitness
+        clauses.push({
+          cid, role: roleId,
+          measured: witness.measured, op: witness.op, threshold: witness.threshold,
+          satisfied: witness.satisfied,
+        })
+      }
     }
   }
+  // 排序：失败 ✗ (satisfied=false) 在前；同档稳定保序
+  clauses.sort((a, b) => Number(a.satisfied) - Number(b.satisfied))
+
+  // ── identity 组装 ──────────────────────────────────────────────────────
   const ev = events.find((e) => e.event_id === eventId)
-  const raw: Record<string, unknown> = {}
+  const startIdx = (ev?.start_idx as number | undefined) ?? -1
+  const endIdx = (ev?.end_idx as number | undefined) ?? -1
+  const dateStart = bars[startIdx]?.date ?? String(startIdx)
+  const dateEnd = startIdx === endIdx ? null : (bars[endIdx]?.date ?? String(endIdx))
+
+  // ── raw 平铺 + 去重 ─────────────────────────────────────────────────────
+  const cidsInClauses = new Set(clauses.map((c) => c.cid))
   const SKIP = new Set(['class_id', 'event_id', 'start_idx', 'end_idx', 'source_tag', 'members'])
-  if (ev) for (const [k, v] of Object.entries(ev)) if (!SKIP.has(k)) raw[k] = v
-  return { clauses, raw }
+  const raw: Record<string, unknown> = {}
+  if (ev) for (const [k, v] of Object.entries(ev)) {
+    if (SKIP.has(k)) continue
+    if (cidsInClauses.has(k)) continue
+    raw[k] = v
+  }
+
+  return {
+    identity: { roles, dateStart, dateEnd, eventId },
+    clauses,
+    raw,
+  }
 }
 
 /** band 可见性判定(纯函数):band 的所有 nodeId 中有任一 roleVisible!==false 则可见。
