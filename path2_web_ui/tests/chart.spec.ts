@@ -452,6 +452,19 @@ describe('buildKlineOption — D2 tooltipResolver', () => {
     const points = series.find((s: any) => s.name === 'points')
     expect(points.tooltip.confine).toBe(true)
   })
+
+  it('global tooltip has appendToBody: true to escape chart container clipping', () => {
+    const opt = buildKlineOption(bars, EVENTS, MATCHES, baseInput)
+    const tt = opt.tooltip as any
+    expect(tt.appendToBody).toBe(true)
+  })
+
+  it('marker series tooltip has appendToBody: true to escape chart container clipping', () => {
+    const opt = buildKlineOption(bars, EVENTS, MATCHES, { ...baseInput, tooltipResolver: stubResolver })
+    const series = opt.series as any[]
+    const points = series.find((s: any) => s.name === 'points')
+    expect(points.tooltip.appendToBody).toBe(true)
+  })
 })
 
 // ── render_grid 分流 + satellites ─────────────────────────────────────────────

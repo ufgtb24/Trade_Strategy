@@ -237,6 +237,7 @@ export function buildKlineOption(
   const tooltip = {
     trigger: 'axis' as const,
     confine: true,
+    appendToBody: true,
     axisPointer: {
       // 普通模式 'line'(只竖线),横线由 KlineChart.vue 的 markLine 锁 close;
       // Ctrl 模式 KlineChart.vue 切回 'cross' 让 ECharts 自带横线跟鼠标。
@@ -249,7 +250,7 @@ export function buildKlineOption(
   }
 
   const markerTooltip = (tooltipResolver || matchLabel)
-    ? { trigger: 'item' as const, confine: true, formatter: buildMarkerTooltipFormatter(tooltipResolver, matchLabel) }
+    ? { trigger: 'item' as const, confine: true, appendToBody: true, formatter: buildMarkerTooltipFormatter(tooltipResolver, matchLabel) }
     : undefined
 
   // ── Dev UI 复刻: grid 3→2、初始 zoom 贴 [startIdx, endIdx]、yAxis[0] 动态 min/max ──
