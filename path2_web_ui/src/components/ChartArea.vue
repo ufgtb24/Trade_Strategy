@@ -76,7 +76,7 @@ function onActivePatternChange(e: Event) {
 .chart-area {
   display: grid;
   grid-template-columns: 1fr 280px;
-  grid-template-rows: auto auto 560px;
+  grid-template-rows: auto auto auto;
   gap: 0;
 }
 .chart-area.no-sidebar { grid-template-columns: 1fr; }
