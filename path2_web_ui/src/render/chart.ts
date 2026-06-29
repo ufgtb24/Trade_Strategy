@@ -256,9 +256,12 @@ export function buildKlineOption(
     animation: false,
     tooltip,
     axisPointer: { link: [{ xAxisIndex: [0, 1] }] },
+    // sliderShow=false 时把底部 ~8% 还给 grid0/grid1:grid0 扩高到 80%,grid1 下移到 84%/height 16%,
+    // 整个面板占满到底,主图+副图明显变大;sliderShow=true 保历史几何
     grid: [
-      { left: 56, right: 16, top: 40, height: '72%' },          // 新 grid0 价格(含 volume 叠加)
-      { left: 56, right: 16, top: '76%', height: '18%' },       // 新 grid1 markers (原 grid2)
+      { left: 56, right: 16, top: 40, height: (sliderShow ?? true) ? '72%' : '80%' },
+      { left: 56, right: 16, top: (sliderShow ?? true) ? '76%' : '84%',
+        height: (sliderShow ?? true) ? '18%' : '16%' },
     ],
     xAxis: [
       { type: 'category', data: dates, gridIndex: 0, boundaryGap: true,
