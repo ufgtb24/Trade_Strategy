@@ -161,5 +161,6 @@ table.multi tbody tr.vpad td { padding: 0; border: 0; height: inherit; }
 table.multi td.sym { font-weight: 600; cursor: pointer; }
 table.multi td.col { cursor: pointer; text-align: right; background: #fafafa; }
 table.multi td.col.matched { background: #dcfce7; }
-tr.active { background: #eff6ff; }
+tr.active td { background: #1d4ed8; color: #fff; }
+tr.active td.col.matched { background: #1d4ed8; }
 </style>

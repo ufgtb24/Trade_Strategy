@@ -533,24 +533,25 @@ function makeRenderBandLabel(items: Array<{ value: number[]; text: string }>) {
 // ─── dev UI 视觉常量(对齐 BreakoutStrategy/UI/styles.py CHART_COLORS / MARKER_STACK_GAPS_PT
 //     / BO_LABEL_TIER_STYLE;rubric=docs/tmp/2026-06-21-bo-pk-marker-rubric.md)──────────────
 // 整组数值相对 dev pt 值按 ~0.6 比例缩放,补偿 web grid 容器较窄、相对蜡烛宽度偏大的视觉。
-const MARKER_FONT_SIZE = 12            // dev fontsize=20pt;web px=12 对齐 dev 视觉
-const PK_TRIANGLE_HALF_WIDTH = 6       // ▽ 半宽,对应 dev s=400 (≈20pt 边长) 等比缩放
-const PK_TRIANGLE_HEIGHT = 9
+// 20pt @ 96dpi = 26.67 px;0.6× ≈ 16 px。
+const MARKER_FONT_SIZE = 16            // dev fontsize=20pt;web px=16 ≈ 0.6× 视觉对齐
+const PK_TRIANGLE_HALF_WIDTH = 8       // ▽ 半宽,对应 dev s=400 (≈20pt 边长) 0.6× 缩放
+const PK_TRIANGLE_HEIGHT = 12
 const PEAK_MARKER_COLOR = '#000000'    // CHART_COLORS["peak_marker"]
 const PEAK_TEXT_COLOR = '#000000'      // CHART_COLORS["peak_text_id"]
 const BO_BORDER_COLOR = '#0000FF'      // CHART_COLORS["bo_marker_current"](全 tier 统一)
-const BO_BOX_RADIUS = 3
-const BO_BOX_PAD_X = 4
-const BO_BOX_PAD_Y = 2
+const BO_BOX_RADIUS = 4
+const BO_BOX_PAD_X = 5
+const BO_BOX_PAD_Y = 3
 // 堆叠 px 偏移(锚 K 线 high 之上,自下而上):▽ → ID → [ids]
 // dev UI styles.py:80-86 用 pt(triangle=20/peak_id=35/bo_label=65 有 PK,bo_label=15 无 PK)
-// web 端按字号 12 等比缩:三角中心 10、ID 中心 21、BO 中心 36(有 PK)/11(无 PK)
-const TRIANGLE_STACK_PT = 10           // ▽ 中心 y = anchor - 10
-const PEAK_ID_STACK_PT = 21            // ID 中心 y = anchor - 21
-const BO_STACK_PT = 36                 // [ids] 中心 y = anchor - 36(hasPks=true 时)
+// web 端按字号 16 等比缩:三角中心 13、ID 中心 28、BO 中心 48(有 PK)/15(无 PK)
+const TRIANGLE_STACK_PT = 13           // ▽ 中心 y = anchor - 13
+const PEAK_ID_STACK_PT = 28            // ID 中心 y = anchor - 28
+const BO_STACK_PT = 48                 // [ids] 中心 y = anchor - 48(hasPks=true 时)
 // hasPks=false:同 bar 无 PK,BO 单独贴近 K 线 high(dev styles.py:80 bo_label=15pt 缩放对应)。
 // 这是 HEAD 相对 94e21934 的胜出语义点 — 按是否同 bar 有 PK 动态切换偏移。
-const BO_STACK_PT_NO_PKS = 11
+const BO_STACK_PT_NO_PKS = 15
 
 // BO_LABEL_TIER_STYLE(dev UI styles.py:168-172)三态查表
 const BO_TIER_STYLE: Record<'current' | 'matched' | 'plain', { bg: string; fg: string }> = {
@@ -602,7 +603,7 @@ function makeRenderPricePoint(
             fill: tierStyle.bg,
             stroke: BO_BORDER_COLOR,
             lineWidth: 1.5,
-            opacity: 0.95,
+            opacity: 0.75,
           },
         },
         // 2. 文本(居中,粗体,按 tier 取字色)
