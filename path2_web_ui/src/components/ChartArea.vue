@@ -76,8 +76,11 @@ function onActivePatternChange(e: Event) {
 .chart-area {
   display: grid;
   grid-template-columns: 1fr 280px;
-  grid-template-rows: auto auto auto;
+  grid-template-rows: auto auto 1fr;
   gap: 0;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
 }
 .chart-area.no-sidebar { grid-template-columns: 1fr; }
 .level-bar, .chart-area > .topology-row { grid-column: 1 / -1; }

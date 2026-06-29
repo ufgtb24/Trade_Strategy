@@ -183,5 +183,5 @@ watch([effectiveAnalysis, roleVisible, level, roleColors, selectedEventId, diag,
 
 <style scoped>
 /* min-width:0 让 grid 列能收缩到比 canvas 窄(打破 canvas 撑列死锁);overflow 裁剪 init 瞬时溢出 */
-.kline { width: 100%; height: 560px; min-width: 0; overflow: hidden; }
+.kline { width: 100%; height: 100%; min-width: 0; min-height: 0; overflow: hidden; }
 </style>

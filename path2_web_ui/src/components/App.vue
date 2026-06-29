@@ -21,5 +21,5 @@ import ChartArea from './ChartArea.vue'
 body { margin: 0; font-family: system-ui, sans-serif; color: #0f172a; }
 .app { display: grid; grid-template-columns: 300px 1fr; height: 100vh; }
 .left { border-right: 1px solid #e5e7eb; display: flex; flex-direction: column; overflow: hidden; }
-.right { overflow: auto; }
+.right { display: flex; flex-direction: column; min-height: 0; overflow: auto; }
 </style>
