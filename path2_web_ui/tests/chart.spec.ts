@@ -36,7 +36,8 @@ const EVENTS: EventDict[] = [
   { class_id: 'burst', event_id: 'burst1', source_tag: 'burst',  start_idx: 10, end_idx: 15 },
   // points: bo(多个)
   { class_id: 'bo', event_id: 'bo9',  source_tag: 'bo', start_idx: 9,  end_idx: 9,
-    referenced_points: [[5, 12.5, 'pk0'], [7, 13.0, 'pk1']] },
+    referenced_points: [[5, 12.5, 'pk0'], [7, 13.0, 'pk1']],
+    broken_peak_ids: [0, 1] },
   { class_id: 'bo', event_id: 'bo11', source_tag: 'bo', start_idx: 11, end_idx: 11 },
   // tb point
   { class_id: 'tb', event_id: 'tb16', source_tag: 'tb', start_idx: 16, end_idx: 16 },
@@ -312,9 +313,9 @@ describe('buildKlineOption — D2 highlight overlay', () => {
     expect(hlPrice.data.length).toBe(1)
     const item = hlPrice.data[0]
     expect(item.event_id).toBe('bo9')
-    // value encoding = [start_idx, bar.h] matching pricePointData (pixel offset handled in renderItem)
+    // value encoding = [start_idx, bar.h*1.005] matching pricePointData (实际渲染锚 anchorY=bar.h)
     expect(item.value[0]).toBe(9)
-    expect(item.value[1]).toBeCloseTo(bars[9].h, 5)
+    expect(item.value[1]).toBeCloseTo(bars[9].h * 1.005, 5)
   })
 
   it('highlight data has correct event_id and kind=interval for an interval event', () => {
@@ -483,10 +484,11 @@ describe('chart render_grid 分流 + satellites', () => {
     expect(pp.xAxisIndex).toBe(0)
     expect(pp.yAxisIndex).toBe(0)
     expect(pp.data.map((d: any) => d.event_id).sort()).toEqual(['bo11', 'bo9', 'boX'])
-    // value = [start_idx, bar.h]; 像素偏移由 renderPricePoint 在 renderItem 中处理
+    // value = [start_idx, bar.h*1.005] (94e21934 契约;实际渲染锚 anchorY=bar.h,像素偏移在 renderItem 内)
     const bo9row = pp.data.find((d: any) => d.event_id === 'bo9')
     expect(bo9row.value[0]).toBe(9)
-    expect(bo9row.value[1]).toBeCloseTo(bars[9].h, 5)
+    expect(bo9row.value[1]).toBeCloseTo(bars[9].h * 1.005, 5)
+    expect(bo9row.anchorY).toBe(bars[9].h)
   })
 
   it('新 satellites 系列承载 bo.referenced_points (每点一条 record)', () => {
@@ -500,10 +502,12 @@ describe('chart render_grid 分流 + satellites', () => {
     const labels = sat.data.map((d: any) => d.label)
     expect(labels).toContain('pk0')
     expect(labels).toContain('pk1')
-    // value = [bar_idx, bar.h] — PK 卫星锚定到其 bar 的 high; 像素偏移由 renderSatellite 处理
-    // bars[5].h = 11 + 5 = 16
+    // value = [bar_idx, price] (94e21934 契约;实际渲染锚 anchorY=bars[bar_idx].h,像素偏移在 renderSatellite 内)
+    // bo9.referenced_points[0] = [5, 12.5, 'pk0']
     const pk0 = sat.data.find((d: any) => d.label === 'pk0')
-    expect(pk0.value).toEqual([5, bars[5].h])
+    expect(pk0.value).toEqual([5, 12.5])
+    expect(pk0.anchorY).toBe(bars[5].h)
+    expect(pk0.pkId).toBe('0')
   })
 
   it('时间锚定事件 (tb / trend / burst) 仍走原 grid2 通道', () => {
@@ -520,21 +524,20 @@ describe('chart render_grid 分流 + satellites', () => {
 
   // ── BO 方框 / PK 卫星新字段 ────────────────────────────────────────────────
 
-  it('bo9 price-point item carries boLabelText=[0,1] (peak ids from referenced_points)', () => {
-    // bo9.referenced_points = [[5,12.5,'pk0'],[7,13.0,'pk1']]
-    // boLabelText should be '[0,1]' (strip 'pk' prefix, comma-join, wrap in [])
+  it('bo9 price-point item carries text="[0,1]" (broken_peak_ids joined)', () => {
+    // bo9.broken_peak_ids = [0, 1] → text = '[0,1]' (94e21934 契约,来自 broken_peak_ids 而非 referenced_points labels)
     const opt: any = buildKlineOption(bars, EVENTS, MATCHES, buildInput('detected'))
     const pp = opt.series.find((s: any) => s.name === 'price-points')
     const bo9 = pp.data.find((d: any) => d.event_id === 'bo9')
-    expect(bo9.boLabelText).toBe('[0,1]')
+    expect(bo9.text).toBe('[0,1]')
   })
 
-  it('bo11 price-point item has null boLabelText (no referenced_points)', () => {
-    // bo11 has no referenced_points field
+  it('bo11 price-point item falls back to text="[]" (no broken_peak_ids)', () => {
+    // bo11 has no broken_peak_ids → text="[]" 兜底(94e21934 契约)
     const opt: any = buildKlineOption(bars, EVENTS, MATCHES, buildInput('detected'))
     const pp = opt.series.find((s: any) => s.name === 'price-points')
     const bo11 = pp.data.find((d: any) => d.event_id === 'bo11')
-    expect(bo11.boLabelText).toBeNull()
+    expect(bo11.text).toBe('[]')
   })
 
   it('bo9 hasPks=false when no PK satellite coincides with bo9.start_idx=9', () => {
@@ -546,12 +549,12 @@ describe('chart render_grid 分流 + satellites', () => {
     expect(bo9.hasPks).toBe(false)
   })
 
-  it('satellite barH field equals bars[barIdx].h, used for pixel-space anchoring', () => {
-    // pk0 at barIdx=5, bars[5].h = 11+5=16
+  it('satellite anchorY field equals bars[barIdx].h, used for pixel-space anchoring', () => {
+    // pk0 at barIdx=5, bars[5].h = 11+5=16; 94e21934 用 anchorY 字段(像素锚=bar.h)
     const opt: any = buildKlineOption(bars, EVENTS, MATCHES, buildInput('detected'))
     const sat = opt.series.find((s: any) => s.name === 'satellites')
     const pk0 = sat.data.find((d: any) => d.label === 'pk0')
-    expect(pk0.barH).toBe(bars[5].h)   // barH must equal bar.h, not raw price
+    expect(pk0.anchorY).toBe(bars[5].h)   // anchorY must equal bar.h, not raw price
   })
 
   it('hasPks=true when a BO start_idx coincides with a PK satellite barIdx from any BO', () => {

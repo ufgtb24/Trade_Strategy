@@ -16,7 +16,7 @@
     </button>
 
     <button
-      :disabled="selectedArray.length === 0 || running"
+      :disabled="running"
       @click="dialogOpen = true"
     >
       打开历史…

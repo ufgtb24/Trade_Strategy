@@ -25,7 +25,9 @@ export type UnionRow  = { symbol: string; cells: UnionCell[] }
 
 export const useViewStore = defineStore('view', () => {
   // ── state ────────────────────────────────────────────────────────
-  const scanFile = ref<MultiScanResultFile | null>(null)
+  // shallowRef:scanFile 全程整体替换(loadScanFile/clearScanFile),无内部 mutate,
+  // 避免对 4000+ stocks×{events,matches,clauses} 树建深 Proxy 拖慢首屏与排序
+  const scanFile = shallowRef<MultiScanResultFile | null>(null)
   const symbol = ref<string | null>(null)
   const activePatternId = ref<string | null>(null)
   const sortByPid = ref<string | null>(null)
@@ -103,15 +105,31 @@ export const useViewStore = defineStore('view', () => {
     const pid = sortByPid.value
     if (!pid) return rows
     const dir = sortDesc.value ? -1 : 1
-    return [...rows].sort((a, b) => {
-      const av = a.cells.find(c => c.pid === pid)?.max_ret
-      const bv = b.cells.find(c => c.pid === pid)?.max_ret
+    // 一次 O(N·P) 预聚 key,后续比较器零 lookup(干掉 O(N log N · P) 的 .find())
+    const N = rows.length
+    const keys = new Float64Array(N)
+    const isNull = new Uint8Array(N)
+    for (let i = 0; i < N; i++) {
+      const cells = rows[i].cells
+      let v: number | null = null
+      for (let j = 0; j < cells.length; j++) {
+        if (cells[j].pid === pid) { v = cells[j].max_ret; break }
+      }
+      if (v == null) isNull[i] = 1
+      else keys[i] = v
+    }
+    const idx = new Array<number>(N)
+    for (let i = 0; i < N; i++) idx[i] = i
+    idx.sort((a, b) => {
       // null 永远沉底(无论升降)
-      if (av == null && bv == null) return 0
-      if (av == null) return 1
-      if (bv == null) return -1
-      return (av - bv) * dir
+      if (isNull[a] && isNull[b]) return 0
+      if (isNull[a]) return 1
+      if (isNull[b]) return -1
+      return (keys[a] - keys[b]) * dir
     })
+    const out = new Array<UnionRow>(N)
+    for (let i = 0; i < N; i++) out[i] = rows[idx[i]]
+    return out
   })
 
   // K 线 / 拓扑 等下游派生(同旧)
