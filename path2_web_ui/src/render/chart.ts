@@ -38,6 +38,8 @@ export interface BandRenderInput {
   // ── 缓冲窗/label 扩展(均可选,旧调用零改动) ──────────────────────────────────
   strictWindow?: { startIdx: number; endIdx: number } | null   // 严格窗边界(bar 索引);缺省不画
   matchLabel?: (matchId: string) => string | null              // match 归属带 tooltip 行;null 不显示
+  // ── dataZoom slider 显隐(可选,默认 true=显示,与历史行为一致) ──────────────
+  sliderShow?: boolean
 }
 
 export function buildKlineOption(
@@ -46,7 +48,7 @@ export function buildKlineOption(
 ) {
   const { topology, tagList, level, roleColors, eventTier, roleOfEventByBand, bandKeyOf,
           roleVisible, tagToNodes,
-          selectedEventId, tooltipResolver, strictWindow, matchLabel } = input
+          selectedEventId, tooltipResolver, strictWindow, matchLabel, sliderShow } = input
 
   const dates = bars.map((b) => b.date)
   const candle = bars.map((b) => [b.o, b.c, b.l, b.h])
@@ -274,7 +276,8 @@ export function buildKlineOption(
     ],
     dataZoom: [
       { type: 'inside', xAxisIndex: [0, 1], start: zoomStart, end: zoomEnd },
-      { type: 'slider', xAxisIndex: [0, 1], top: '92%', start: zoomStart, end: zoomEnd },
+      { type: 'slider', xAxisIndex: [0, 1], top: '92%', start: zoomStart, end: zoomEnd,
+        show: sliderShow ?? true },
     ],
     series: [
       // 价格蜡烛(grid0)
