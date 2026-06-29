@@ -20,7 +20,12 @@
     <table v-else class="multi" ref="tableEl">
       <thead>
         <tr>
-          <th class="sym">symbol</th>
+          <th class="sym" @click="view.setSort(SYMBOL_SORT_KEY)">
+            symbol
+            <span v-if="sortByPid === SYMBOL_SORT_KEY" class="sort-ind">
+              {{ sortDesc ? '▼' : '▲' }}
+            </span>
+          </th>
           <th v-for="pid in patternIds" :key="pid"
               :data-col-pid="pid"
               class="col"
@@ -59,7 +64,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onBeforeUnmount, ref, watch, nextTick } from 'vue'
 import { storeToRefs } from 'pinia'
-import { useViewStore } from '../stores/view'
+import { useViewStore, SYMBOL_SORT_KEY } from '../stores/view'
 const view = useViewStore()
 const { scanFile, symbol, preview, previewEnabled, previewLoading, previewError,
         patternIds, sortedRows, sortByPid, sortDesc } = storeToRefs(view)
@@ -142,6 +147,8 @@ table.multi { width: 100%; border-collapse: collapse; font-size: 12px; table-lay
 table.multi th, table.multi td { padding: 4px 6px; border-bottom: 1px solid #f1f5f9; text-align: left;
                                   vertical-align: top; }
 table.multi th.sym, table.multi td.sym { width: 60px; }
+table.multi th.sym { cursor: pointer; user-select: none; }
+table.multi th.sym:hover { background: #f1f5f9; }
 table.multi th.col { cursor: pointer; user-select: none;
                      /* pattern_id 是唯一命名源,长 id 在列宽不足时按字符断行,不截断 */
                      word-break: break-all; overflow-wrap: anywhere; }

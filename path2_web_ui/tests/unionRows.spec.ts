@@ -3,7 +3,7 @@
  */
 import { describe, it, expect, beforeEach } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
-import { useViewStore } from '../src/stores/view'
+import { useViewStore, SYMBOL_SORT_KEY } from '../src/stores/view'
 import type { MultiScanResultFile } from '../src/types'
 
 const emptyAnalysis = { events: [], matches: [] }
@@ -87,6 +87,32 @@ describe('unionRows / sortedRows', () => {
     expect(v.sortByPid).toBe('bbb')
     expect(v.sortDesc).toBe(true)
     expect(v.sortedRows.map(r => r.symbol)).toEqual(['CCC', 'AAA', 'BBB'])
+  })
+
+  it('sort by symbol desc puts Z first; second click flips asc', () => {
+    const v = useViewStore()
+    v.loadScanFile(makeFile())
+    v.setSort(SYMBOL_SORT_KEY)
+    expect(v.sortByPid).toBe(SYMBOL_SORT_KEY)
+    expect(v.sortDesc).toBe(true)
+    expect(v.sortedRows.map(r => r.symbol)).toEqual(['CCC', 'BBB', 'AAA'])
+    v.setSort(SYMBOL_SORT_KEY)
+    expect(v.sortDesc).toBe(false)
+    expect(v.sortedRows.map(r => r.symbol)).toEqual(['AAA', 'BBB', 'CCC'])
+  })
+
+  it('switching between symbol and pid resets direction to desc on the new key', () => {
+    const v = useViewStore()
+    v.loadScanFile(makeFile())
+    v.setSort(SYMBOL_SORT_KEY)
+    v.setSort(SYMBOL_SORT_KEY)   // asc
+    v.setSort('bo_only')
+    expect(v.sortByPid).toBe('bo_only')
+    expect(v.sortDesc).toBe(true)
+    v.setSort(SYMBOL_SORT_KEY)
+    expect(v.sortByPid).toBe(SYMBOL_SORT_KEY)
+    expect(v.sortDesc).toBe(true)
+    expect(v.sortedRows.map(r => r.symbol)).toEqual(['CCC', 'BBB', 'AAA'])
   })
 
   it('union row condition: at least one pattern has matches > 0', () => {

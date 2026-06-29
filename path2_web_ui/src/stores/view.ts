@@ -23,6 +23,10 @@ export type Selected =
 export type UnionCell = { pid: string; max_ret: number | null; matched: boolean }
 export type UnionRow  = { symbol: string; cells: UnionCell[] }
 
+// sortByPid 哨兵值:按 symbol 字典序排序(非 pid)。
+// '__symbol__' 双下划线前缀不会与用户 pattern_id 撞(pid 由 dag_spec 注册的人类可读字符串)。
+export const SYMBOL_SORT_KEY = '__symbol__'
+
 export const useViewStore = defineStore('view', () => {
   // ── state ────────────────────────────────────────────────────────
   // shallowRef:scanFile 全程整体替换(loadScanFile/clearScanFile),无内部 mutate,
@@ -105,6 +109,9 @@ export const useViewStore = defineStore('view', () => {
     const pid = sortByPid.value
     if (!pid) return rows
     const dir = sortDesc.value ? -1 : 1
+    if (pid === SYMBOL_SORT_KEY) {
+      return rows.slice().sort((a, b) => a.symbol.localeCompare(b.symbol) * dir)
+    }
     // 一次 O(N·P) 预聚 key,后续比较器零 lookup(干掉 O(N log N · P) 的 .find())
     const N = rows.length
     const keys = new Float64Array(N)

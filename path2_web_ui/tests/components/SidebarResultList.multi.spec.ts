@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
 import { mount } from '@vue/test-utils'
 import SidebarResultList from '../../src/components/SidebarResultList.vue'
-import { useViewStore } from '../../src/stores/view'
+import { useViewStore, SYMBOL_SORT_KEY } from '../../src/stores/view'
 
 const emptyAnalysis = { events: [], matches: [] }
 const file = {
@@ -73,6 +73,20 @@ describe('SidebarResultList — multi-pattern', () => {
     expect(v.activePatternId).toBe(before)        // 不变
     // 切了股
     expect(v.symbol).toBeTruthy()
+  })
+
+  it('clicking symbol header sets sortByPid to symbol sentinel desc; flips asc', async () => {
+    const v = useViewStore()
+    v.loadScanFile(file as any)
+    const w = mount(SidebarResultList)
+    const th = w.find('th.sym')
+    await th.trigger('click')
+    expect(v.sortByPid).toBe(SYMBOL_SORT_KEY)
+    expect(v.sortDesc).toBe(true)
+    expect(w.find('th.sym .sort-ind').text()).toBe('▼')
+    await th.trigger('click')
+    expect(v.sortDesc).toBe(false)
+    expect(w.find('th.sym .sort-ind').text()).toBe('▲')
   })
 
   it('symbol cell click selects symbol', async () => {
