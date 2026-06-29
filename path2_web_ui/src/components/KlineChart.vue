@@ -51,8 +51,17 @@ function matchLabel(matchId: string): string | null {
   return `ret_${(effectiveScan.value ?? scanFile.value?.scan)?.label_horizon}: ${formatForwardReturn(m.forward_return)}`
 }
 
-function render() {
+function render(forceResetZoom = false) {
   if (!chart || !effectiveAnalysis.value || !effectivePattern.value) return
+  // 非 reset 路径:保留用户当前 zoom(读 chart 现态作 override);
+  // 换股(forceResetZoom=true)走 strictWindow 默认,新 bars 配新初始窗
+  let zoomOverride: { start: number; end: number } | null = null
+  if (!forceResetZoom) {
+    const cur = (chart.getOption() as any)?.dataZoom?.[0]
+    if (cur && typeof cur.start === 'number' && typeof cur.end === 'number') {
+      zoomOverride = { start: cur.start, end: cur.end }
+    }
+  }
   const tagList = tagMap.value.tagList
   const opt = buildKlineOption(
     bars.value, effectiveAnalysis.value.events, effectiveAnalysis.value.matches,
@@ -72,6 +81,7 @@ function render() {
       strictWindow: strictWindowIdx(),
       matchLabel,
       sliderShow: showSlider.value,
+      zoomOverride,
     },
   )
   chart.setOption(opt as any, true)
@@ -166,7 +176,7 @@ onMounted(() => {
     })
   })
 
-  void reloadBars().then(render)
+  void reloadBars().then(() => render(true))
 })
 onBeforeUnmount(() => {
   unsubCtrl?.()
@@ -177,8 +187,13 @@ onBeforeUnmount(() => {
   chart?.dispose()
 })
 
-watch([symbol, scanFile, effectiveScan], () => void reloadBars().then(render))
-watch([effectiveAnalysis, roleVisible, level, roleColors, selectedEventId, diag, showSlider], render, { deep: true })
+// 换股 = 唯一应 reset zoom 的事件(bars 数组全换,旧 zoom% 应用到新股语义错乱)
+watch(symbol, () => void reloadBars().then(() => render(true)))
+// 同股重 load / preview 切换(scanFile/effectiveScan):bars 可能重抓,但 zoom% 保留对用户更友好
+watch([scanFile, effectiveScan], () => void reloadBars().then(() => render(false)))
+// 上层视觉/过滤/UI/高亮(level/role/showSlider 等):bars 不变,zoom 必须保留
+watch([effectiveAnalysis, roleVisible, level, roleColors, selectedEventId, diag, showSlider],
+      () => render(false), { deep: true })
 </script>
 
 <style scoped>

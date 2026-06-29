@@ -40,6 +40,10 @@ export interface BandRenderInput {
   matchLabel?: (matchId: string) => string | null              // match 归属带 tooltip 行;null 不显示
   // ── dataZoom slider 显隐(可选,默认 true=显示,与历史行为一致) ──────────────
   sliderShow?: boolean
+  // ── zoom 区间覆盖:传入则跳过 strictWindow 默认,保留用户当前 zoom(KlineChart
+  //    render 时从 chart.getOption().dataZoom[0] 读出再回传,实现"非换股触发
+  //    re-render 时不重置 zoom")。缺省/null = 走 strictWindow 默认,旧调用零回归。
+  zoomOverride?: { start: number; end: number } | null
 }
 
 export function buildKlineOption(
@@ -48,7 +52,8 @@ export function buildKlineOption(
 ) {
   const { topology, tagList, level, roleColors, eventTier, roleOfEventByBand, bandKeyOf,
           roleVisible, tagToNodes,
-          selectedEventId, tooltipResolver, strictWindow, matchLabel, sliderShow } = input
+          selectedEventId, tooltipResolver, strictWindow, matchLabel, sliderShow,
+          zoomOverride } = input
 
   const dates = bars.map((b) => b.date)
   const candle = bars.map((b) => [b.o, b.c, b.l, b.h])
@@ -229,8 +234,10 @@ export function buildKlineOption(
   const N = bars.length
   const sw = strictWindow ?? null
   const hasBuffer = sw !== null && (sw.startIdx > 0 || sw.endIdx < N - 1)
-  const zoomStart = hasBuffer ? (sw!.startIdx / N) * 100 : 0
-  const zoomEnd = hasBuffer ? ((sw!.endIdx + 1) / N) * 100 : 100
+  // zoomOverride 优先(KlineChart 把用户当前 zoom 回传以保 UI 显隐/level 等切换不重置);
+  // 缺省走 strictWindow 默认,与首次加载/换股 reset 时的初始视图一致
+  const zoomStart = zoomOverride?.start ?? (hasBuffer ? (sw!.startIdx / N) * 100 : 0)
+  const zoomEnd   = zoomOverride?.end   ?? (hasBuffer ? ((sw!.endIdx + 1) / N) * 100 : 100)
 
   // 初始可见区间 = 严格 scan 窗（有 buffer）或全集
   const initVisStart = sw ? sw.startIdx : 0

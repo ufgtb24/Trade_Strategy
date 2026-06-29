@@ -70,3 +70,30 @@ describe('buildKlineOption — grid geometry follows sliderShow', () => {
     expect(opt.grid[1].height).toBe('18%')
   })
 })
+
+describe('buildKlineOption — zoomOverride', () => {
+  it('no zoomOverride → 走 strictWindow 默认(无 buffer = 全集 0..100)', () => {
+    const opt: any = buildKlineOption(BARS, [], [], baseInput())
+    expect(opt.dataZoom[0].start).toBe(0)
+    expect(opt.dataZoom[0].end).toBe(100)
+    expect(opt.dataZoom[1].start).toBe(0)
+    expect(opt.dataZoom[1].end).toBe(100)
+  })
+
+  it('zoomOverride 传入则覆盖 strictWindow 默认(同时作用 inside + slider)', () => {
+    const opt: any = buildKlineOption(BARS, [], [], {
+      ...baseInput(),
+      zoomOverride: { start: 30, end: 70 },
+    })
+    expect(opt.dataZoom[0].start).toBe(30)
+    expect(opt.dataZoom[0].end).toBe(70)
+    expect(opt.dataZoom[1].start).toBe(30)
+    expect(opt.dataZoom[1].end).toBe(70)
+  })
+
+  it('zoomOverride=null → 等价于不传(走 strictWindow 默认)', () => {
+    const opt: any = buildKlineOption(BARS, [], [], { ...baseInput(), zoomOverride: null })
+    expect(opt.dataZoom[0].start).toBe(0)
+    expect(opt.dataZoom[0].end).toBe(100)
+  })
+})
