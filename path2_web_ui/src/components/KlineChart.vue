@@ -7,6 +7,7 @@ import { onMounted, onBeforeUnmount, ref, watch } from 'vue'
 import * as echarts from 'echarts'
 import { storeToRefs } from 'pinia'
 import { useViewStore } from '../stores/view'
+import { usePanelsStore } from '../stores/panels'
 import { getOhlc } from '../api'
 import { buildKlineOption, buildVolumeSeriesAndYAxis } from '../render/chart'
 import { ctrlState } from '../render/ctrlState'
@@ -15,6 +16,8 @@ import type { Bar } from '../types'
 
 const view = useViewStore()
 const { symbol, effectiveAnalysis, roleColors, roleVisible, level, tagMap, isolated, effectivePattern, effectiveScan, scanFile, selectedEventId, diag } = storeToRefs(view)
+const panels = usePanelsStore()
+const { showSlider } = storeToRefs(panels)
 const el = ref<HTMLElement | null>(null)
 const bars = ref<Bar[]>([])
 let chart: echarts.ECharts | null = null
@@ -68,6 +71,7 @@ function render() {
       tooltipResolver: (id: string) => resolveTooltipData(id, diag.value, effectiveAnalysis.value?.events ?? []),
       strictWindow: strictWindowIdx(),
       matchLabel,
+      sliderShow: showSlider.value,
     },
   )
   chart.setOption(opt as any, true)
@@ -174,7 +178,7 @@ onBeforeUnmount(() => {
 })
 
 watch([symbol, scanFile, effectiveScan], () => void reloadBars().then(render))
-watch([effectiveAnalysis, roleVisible, level, roleColors, selectedEventId, diag], render, { deep: true })
+watch([effectiveAnalysis, roleVisible, level, roleColors, selectedEventId, diag, showSlider], render, { deep: true })
 </script>
 
 <style scoped>
