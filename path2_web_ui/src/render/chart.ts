@@ -285,7 +285,7 @@ export function buildKlineOption(
   }
 
   const markerTooltip = (tooltipResolver || matchLabel)
-    ? { trigger: 'item' as const, show: true, confine: false, appendToBody: true, position: viewportAwareTooltipPosition, extraCssText: 'max-height: calc(100vh - 16px); overflow-y: auto;', formatter: buildMarkerTooltipFormatter(tooltipResolver, matchLabel) }
+    ? { trigger: 'item' as const, show: true, confine: false, appendToBody: true, position: viewportAwareTooltipPosition, extraCssText: 'max-height: calc(100vh - 16px); overflow-y: auto;', formatter: buildMarkerTooltipFormatter(tooltipResolver, matchLabel, { matches, candidateMatchIds: candidateMatchIds ?? new Set() }) }
     : undefined
 
   // ── Dev UI 复刻: grid 3→2、初始 zoom 贴 [startIdx, endIdx]、yAxis[0] 动态 min/max ──
@@ -946,21 +946,43 @@ export function buildBarTooltipFormatter(
 export function buildMarkerTooltipFormatter(
   tooltipResolver: ((eventId: string) => TooltipPayload) | undefined,
   matchLabel: ((matchId: string) => string | null) | undefined,
+  ctx: { matches: MatchDict[]; candidateMatchIds: ReadonlySet<string> } = { matches: [], candidateMatchIds: new Set() },
 ) {
-  return (params: { data?: { event_id?: string; match_id?: string } } | null): string => {
+  return (params: any): string => {
     const data = params?.data
     if (!data) return ''
     const lines: string[] = []
 
-    // ── 顶行：match 归属 ─────────────────────────────────────────────────
-    const matchId = data.match_id
-    if (matchId && matchLabel) {
-      const ml = matchLabel(matchId)
-      if (ml) lines.push(`Match: ${ml}`)
+    // ── bracket 段：候选首行 + matchLabel + 组成段 (M #15 / M' #25) ────────
+    const matchId = data.match_id as string | undefined
+    if (matchId) {
+      // 候选态首行 (M' #25)
+      if (ctx.candidateMatchIds.has(matchId)) {
+        lines.push('候选: click 此 bracket 选中该 group')
+      }
+      // 既有 matchLabel
+      if (matchLabel) {
+        const ml = matchLabel(matchId)
+        if (ml) lines.push(`Match: ${ml}`)
+      }
+      // 组成段 (M #15)
+      const match = ctx.matches.find((m) => m.event_id === matchId)
+      if (match) {
+        lines.push(`组成 (${match.children.length} events):`)
+        for (const [roleKey, rawVal] of Object.entries(match.role_index)) {
+          const val: string | string[] = rawVal as unknown as string | string[]
+          if (Array.isArray(val)) {
+            const first = val[0] ?? '?'
+            lines.push(`  ${roleKey}: ${first} (×${val.length} kleene)`)
+          } else {
+            lines.push(`  ${roleKey}: ${val}`)
+          }
+        }
+      }
     }
 
     // ── event 三段 ──────────────────────────────────────────────────────
-    const eventId = data.event_id
+    const eventId = data.event_id as string | undefined
     if (eventId && tooltipResolver) {
       const { identity, clauses, raw } = tooltipResolver(eventId)
 
@@ -998,6 +1020,19 @@ export function buildMarkerTooltipFormatter(
         lines.push('<hr/>')
         lines.push('<b>Attributes</b>')
         for (const [k, v] of rawEntries) lines.push(`${k}: ${fmtNum(v)}`)
+      }
+    }
+
+    // ── marker 归属节 (M #16, 仅非 bracket marker: 无 match_id) ──────────
+    if (!matchId && eventId && ctx.matches.length > 0) {
+      const ownedBy = ctx.matches.filter((m) => m.children.includes(eventId))
+      if (ownedBy.length > 0) {
+        const ORDINAL_CHARS = '①②③④⑤⑥⑦⑧⑨'
+        const ords = ownedBy.map((m) => {
+          const ord = ctx.matches.indexOf(m) + 1
+          return ord >= 1 && ord <= 9 ? ORDINAL_CHARS[ord - 1] : String(ord)
+        })
+        lines.push(`归属: match ${ords.join(' ')}`)
       }
     }
 

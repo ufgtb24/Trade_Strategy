@@ -59,17 +59,19 @@ describe('match tooltip label', () => {
   const match: MatchDict = {
     event_id: 'm1', start_idx: 0, end_idx: 1, role_index: {}, children: [], predicate_trace: null,
   }
-  it('matchLabel 提供时,brackets series tooltip 显示 label 行', () => {
+  it('matchLabel 提供时,brackets series tooltip 显示 label 行 + 组成段', () => {
     const opt: any = buildKlineOption(bars, [], [match], {
       ...baseInput(), matchLabel: (id: string) => (id === 'm1' ? 'ret_20: +12.3%' : null),
     })
     const brackets = opt.series.find((s: any) => s.name === 'brackets')
     expect(brackets.tooltip).toBeDefined()
-    expect(brackets.tooltip.formatter({ data: { match_id: 'm1' } })).toBe('Match: ret_20: +12.3%')
+    // 组成段 (M #15): matchLabel 行 + 组成 (0 events): (match.children=[])
+    expect(brackets.tooltip.formatter({ data: { match_id: 'm1' } })).toBe('Match: ret_20: +12.3%<br/>组成 (0 events):')
   })
-  it('matchLabel 返回 null(无 label 数据)→ 空串', () => {
+  it('matchLabel 返回 null(无 label 数据)→ 仅组成段', () => {
     const opt: any = buildKlineOption(bars, [], [match], { ...baseInput(), matchLabel: () => null })
     const brackets = opt.series.find((s: any) => s.name === 'brackets')
-    expect(brackets.tooltip.formatter({ data: { match_id: 'm1' } })).toBe('')
+    // 无 label 行,但组成段仍在
+    expect(brackets.tooltip.formatter({ data: { match_id: 'm1' } })).toBe('组成 (0 events):')
   })
 })
