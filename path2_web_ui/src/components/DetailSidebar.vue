@@ -52,7 +52,7 @@
                 :key="row.event_id"
                 class="attr-row"
                 :class="{ 'attr-row--selected': selectedEventId === row.event_id, 'attr-row--matched': rowTier(row) === 'matched', 'attr-row--qualified': rowTier(row) === 'qualified' }"
-                @click="view.selectEvent(row.event_id)"
+                @click="selectCandidateRow(row.event_id)"
               >
                 <td class="cell-id">seg@{{ row.start_idx }}-{{ row.end_idx }}</td>
                 <td v-for="cid in expandedClauseIds" :key="cid" class="cell-clause">
@@ -231,6 +231,12 @@ function isRoleSelected(val: string | string[]): boolean {
 function selectRoleEvent(val: string | string[]) {
   const id = roleEventId(val)
   if (id) view.selectEvent(id)
+}
+
+/** 点击候选表行:先退出 M' 候选状态(互斥),再选 event(final review fix) */
+function selectCandidateRow(eventId: string) {
+  view.clearCandidates()  // exit any M' candidate state — 互斥 §2.2
+  view.selectEvent(eventId)
 }
 
 /** 点击命中匹配列表行:选中 match(展开 trace)+ 组高亮(等价图上 bracket click) */

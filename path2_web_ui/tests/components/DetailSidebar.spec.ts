@@ -343,6 +343,32 @@ describe('DetailSidebar (5-node: pattern roles + stream-source)', () => {
     expect(w.find('.match-trace').exists()).toBe(true)
   })
 
+  // ── 断言 11b: 候选表行 click 清空 M' candidate state(互斥,final review fix) ──
+  it('候选表行 click 先 clearCandidates 再 selectEvent(spec §2.2 互斥)', async () => {
+    const v = setupStore()
+    // 注入 M' 候选状态
+    v.setCandidateMatches(['m1'])
+    v.setPendingDisambig('down1')
+    const w = mount(DetailSidebar)
+    await flushPromises()
+
+    // 展开 down 候选表
+    const funnelRows = w.findAll('.funnel-row')
+    const downRow = funnelRows.find(r => r.text().includes('down'))!
+    await downRow.trigger('click')
+
+    // 点 down1 attr-row
+    const attrRows = w.findAll('.attr-row')
+    const down1Row = attrRows.find(r => r.text().includes('1-6'))!
+    await down1Row.trigger('click')
+
+    // M' 候选状态已清
+    expect(v.candidateMatchIds.size).toBe(0)
+    expect(v.pendingDisambigEventId).toBeNull()
+    // selectEvent 已设
+    expect(v.selectedEventId).toBe('down1')
+  })
+
   // ── 断言 11: 点命中匹配行 → selectMatch + setHighlightedEvents(children) + clearCandidates ──
   it('点命中匹配行 → selected=match + 组高亮 + 候选清空', async () => {
     const v = setupStore()

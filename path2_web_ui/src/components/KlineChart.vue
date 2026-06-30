@@ -113,6 +113,13 @@ onMounted(() => {
   chart.on('click', (p: any) => {
     handleChartClick(p, effectiveAnalysis.value?.matches ?? [], view)
   })
+  // ZRender 级别 click:捕获空白画布点击(ECharts chart.on('click') 仅对 series item 触发)
+  // e.target 非 undefined → series item 已由 chart.on('click') 处理,此处跳过防双触
+  chart.getZr().on('click', (e: any) => {
+    if (!e.target) {
+      handleChartClick(null, effectiveAnalysis.value?.matches ?? [], view)
+    }
+  })
   // 容器尺寸跟随:grid 布局稳定/侧栏 mount 后 canvas resize 到正确宽度,
   // 防 ECharts 早期 init 取全宽后撑宽 grid 列、把渐进披露侧栏挤出视口。
   ro = new ResizeObserver(() => chart?.resize())
@@ -193,6 +200,7 @@ onBeforeUnmount(() => {
   window.removeEventListener('keydown', onKeyDown)
   unsubCtrl?.()
   chart?.getZr().off('mousemove')
+  chart?.getZr().off('click')
   chart?.off('datazoom')
   chart?.off('updateAxisPointer')
   ro?.disconnect()
