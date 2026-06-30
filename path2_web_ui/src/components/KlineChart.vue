@@ -13,6 +13,7 @@ import { buildKlineOption, buildVolumeSeriesAndYAxis } from '../render/chart'
 import { ctrlState } from '../render/ctrlState'
 import { bandKeyOf, roleOfEventByBand, resolveTooltipData, windowOf, formatForwardReturn } from '../render/visible'
 import type { Bar } from '../types'
+import { handleChartClick } from './KlineChart'
 
 const view = useViewStore()
 const { symbol, effectiveAnalysis, roleColors, roleVisible, level, tagMap, isolated, effectivePattern, effectiveScan, scanFile, selectedEventId, diag, activePatternId, selectedMatchId, candidateMatchIds, highlightedEventIds, pendingDisambigEventId } = storeToRefs(view)
@@ -95,17 +96,7 @@ function render(forceResetZoom = false) {
 onMounted(() => {
   chart = echarts.init(el.value!)
   chart.on('click', (p: any) => {
-    if (p.seriesName === 'brackets' && p.data?.match_id) {
-      view.selectMatch(p.data.match_id)
-      // 同步 selectedEventId → chart 高亮该 match 的第一个 child event
-      const m = effectiveAnalysis.value?.matches.find((mm) => mm.event_id === p.data.match_id)
-      if (m?.children[0]) view.selectEvent(m.children[0])
-      return
-    }
-    if ((p.seriesName === 'points' || p.seriesName === 'intervals' ||
-         p.seriesName === 'price-points' || p.seriesName === 'satellites') && p.data?.event_id) {
-      view.selectEvent(p.data.event_id)
-    }
+    handleChartClick(p, effectiveAnalysis.value?.matches ?? [], view)
   })
   // 容器尺寸跟随:grid 布局稳定/侧栏 mount 后 canvas resize 到正确宽度,
   // 防 ECharts 早期 init 取全宽后撑宽 grid 列、把渐进披露侧栏挤出视口。
