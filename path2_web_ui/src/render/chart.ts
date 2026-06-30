@@ -58,6 +58,9 @@ export interface BandRenderInput {
   // ── M #3 / M' #19: bracket 三态 fill ────────────────────────────────────────
   selectedMatchId?: string | null
   candidateMatchIds?: ReadonlySet<string>
+  // ── Task 5: highlight 三分支(group / focus / pendingDisambig) ───────────────
+  highlightedEventIds?: ReadonlySet<string>
+  pendingDisambigEventId?: string | null
 }
 
 export function buildKlineOption(
@@ -68,7 +71,11 @@ export function buildKlineOption(
           roleVisible, tagToNodes,
           selectedEventId, tooltipResolver, strictWindow, matchLabel, sliderShow,
           zoomOverride, endRole,
-          selectedMatchId, candidateMatchIds } = input
+          selectedMatchId, candidateMatchIds,
+          highlightedEventIds: _highlightedEventIds,
+          pendingDisambigEventId: _pendingDisambigEventId } = input
+  const highlightedEventIds: ReadonlySet<string> = _highlightedEventIds ?? new Set()
+  const pendingDisambigEventId: string | null = _pendingDisambigEventId ?? null
 
   const dates = bars.map((b) => b.date)
   const candle = bars.map((b) => [b.o, b.c, b.l, b.h])
@@ -207,32 +214,56 @@ export function buildKlineOption(
   })
 
   // ── D2: highlight overlay ─────────────────────────────────────────────────
-  // 找到被选中 event(在当前 level 门控后的 filtered 集合里),追加描边高亮系列。
+  // 三分支:group(M 琥珀) / pendingDisambig(M' 细白) / focus(白 2.5px,最高优先级)
+  // 渲染顺序 = push 顺序 = z 层叠顺序;group 先 → pendingDisambig 次 → focus 最后(drawn on top)
   // price-anchored events → highlightPriceData (grid0); others → highlightData (grid2)
-  const highlightData: Array<{ value: number[]; event_id: string; kind: 'point' | 'interval' }> = []
+  // 几何类型由 value.length 推断:4=point(三角), 5=interval(矩形)
+  type HlKind = 'group' | 'focus' | 'pendingDisambig'
+  const highlightData: Array<{ value: number[]; event_id: string; kind: HlKind }> = []
   const highlightPriceData: Array<{
-    value: number[]; event_id: string; anchorY: number; text: string; hasPks: boolean;
+    value: number[]; event_id: string; anchorY: number; text: string; hasPks: boolean; kind: HlKind
   }> = []
+
+  // group 高亮(M):highlightedEventIds 命中
+  if (highlightedEventIds.size > 0) {
+    for (const d of pointData) {
+      if (highlightedEventIds.has(d.event_id)) highlightData.push({ ...d, kind: 'group' })
+    }
+    for (const d of intervalData) {
+      if (highlightedEventIds.has(d.event_id)) highlightData.push({ ...d, kind: 'group' })
+    }
+    for (const d of pricePointData) {
+      if (highlightedEventIds.has(d.event_id)) highlightPriceData.push({ ...d, kind: 'group' })
+    }
+  }
+
+  // pendingDisambig 弱反馈(M'):细白描边,优先级低于 focus
+  if (pendingDisambigEventId) {
+    const pd = pointData.find((d) => d.event_id === pendingDisambigEventId)
+    if (pd) highlightData.push({ ...pd, kind: 'pendingDisambig' })
+    else {
+      const pi = intervalData.find((d) => d.event_id === pendingDisambigEventId)
+      if (pi) highlightData.push({ ...pi, kind: 'pendingDisambig' })
+      else {
+        const pp = pricePointData.find((d) => d.event_id === pendingDisambigEventId)
+        if (pp) highlightPriceData.push({ ...pp, kind: 'pendingDisambig' })
+      }
+    }
+  }
+
+  // focus 单焦点(最高优先级,最后 push → drawn on top)
   if (selectedEventId) {
     const selPoint = pointData.find((d) => d.event_id === selectedEventId)
     if (selPoint) {
-      highlightData.push({ value: selPoint.value, event_id: selectedEventId, kind: 'point' })
+      highlightData.push({ ...selPoint, kind: 'focus' })
     } else {
       const selInterval = intervalData.find((d) => d.event_id === selectedEventId)
       if (selInterval) {
-        highlightData.push({ value: selInterval.value, event_id: selectedEventId, kind: 'interval' })
+        highlightData.push({ ...selInterval, kind: 'focus' })
       } else {
         // price-anchored point events → dedicated grid0 highlight series
         const selPricePoint = pricePointData.find((d) => d.event_id === selectedEventId)
-        if (selPricePoint) {
-          highlightPriceData.push({
-            value: selPricePoint.value,
-            event_id: selectedEventId,
-            anchorY: selPricePoint.anchorY,
-            text: selPricePoint.text,
-            hasPks: selPricePoint.hasPks,
-          })
-        }
+        if (selPricePoint) highlightPriceData.push({ ...selPricePoint, kind: 'focus' })
       }
     }
   }
@@ -416,15 +447,22 @@ function renderInterval(params: any, api: any) {
   }
 }
 
-// D2: 高亮描边:对选中 event 按其 kind 用同坐标定位画描边形状(置顶,不动原系列)
-// point → 空心放大三角描边;interval → 空心描边矩形
+// D2: 高亮描边:三分支 kind(group/focus/pendingDisambig)控制 stroke 样式;
+// 几何类型由 value.length 推断(4=point 三角, 5=interval 矩形);
 // ECharts 5 custom series renderItem 的 params 不含 .data(实测 params.data===undefined),
 // 故工厂函数 closure 捕获 items,renderItem 内用 params.dataIndex 反查 item。
-function makeRenderHighlight(items: Array<{ value: number[]; event_id: string; kind: 'point' | 'interval' }>) {
+function makeRenderHighlight(items: Array<{ value: number[]; event_id: string; kind: 'group' | 'focus' | 'pendingDisambig' }>) {
   return function renderHighlight(params: any, api: any) {
     const item = items[params.dataIndex]
-    const kind: 'point' | 'interval' = item?.kind ?? 'point'
-    if (kind === 'point') {
+    const hlKind = item?.kind ?? 'focus'
+    // 颜色/线宽三分支:focus > group > pendingDisambig(优先级由 push 顺序决定,此处只定 style)
+    let stroke: string, lineWidth: number
+    if (hlKind === 'focus') { stroke = '#ffffff'; lineWidth = 2.5 }
+    else if (hlKind === 'group') { stroke = '#fbbf24'; lineWidth = 1.5 }
+    else { stroke = '#ffffff'; lineWidth = 1 } // pendingDisambig
+    // 几何类型由 value 长度推断:4=point(三角), 5=interval(矩形)
+    const isInterval = item ? item.value.length === 5 : false
+    if (!isInterval) {
       const x = api.coord([api.value(0), 0])[0]
       const band = api.value(2) || 0
       const nBands = api.value(3) || 1
@@ -438,7 +476,7 @@ function makeRenderHighlight(items: Array<{ value: number[]; event_id: string; k
       return {
         type: 'polygon',
         shape: { points: [[x, centerY + 6], [x - w, centerY - 4], [x + w, centerY - 4]] },
-        style: { fill: 'none', stroke: '#ffffff', lineWidth: 2 },
+        style: { fill: 'none', stroke, lineWidth },
         z2: 20,
       }
     } else {
@@ -457,22 +495,23 @@ function makeRenderHighlight(items: Array<{ value: number[]; event_id: string; k
       return {
         type: 'rect',
         shape: { x: x0 - 1, y: y - 1, width: Math.max(2, x1 - x0) + 2, height: laneH + 2 },
-        style: { fill: 'none', stroke: '#ffffff', lineWidth: 2 },
+        style: { fill: 'none', stroke, lineWidth },
         z2: 20,
       }
     }
   }
 }
 
-// D2: price-anchored event 高亮描边(grid0 价格轴)。
+// D2: price-anchored event 高亮描边(grid0 价格轴)。三分支 kind 控制 stroke 样式。
 // 描边新 bo 圆角矩形盒子(渲染规约见 renderPricePoint);稍微外扩以便环绕可见。
 // stackOffset 与 renderPricePoint 同步按 hasPks 切换(保留自 HEAD 的胜出语义)。
 // ⚠ closure factory:ECharts customSeries 不在 params 中传 data item,必须按 dataIndex 反查。
 function makeRenderPricePointHighlight(
-  data: Array<{ value: number[]; event_id: string; anchorY: number; text: string; hasPks: boolean }>,
+  data: Array<{ value: number[]; event_id: string; anchorY: number; text: string; hasPks: boolean; kind: 'group' | 'focus' | 'pendingDisambig' }>,
 ) {
   return function renderPricePointHighlight(params: any, api: any) {
     const item = data[params.dataIndex] ?? null
+    const hlKind = item?.kind ?? 'focus'
     const anchorY = item?.anchorY ?? api.value(1)
     const text = item?.text ?? ''
     const hasPks = item?.hasPks ?? false
@@ -482,6 +521,11 @@ function makeRenderPricePointHighlight(
     const cy = anchorPx - stackOffset
     const { w, h } = boBoxDims(text)
     const pad = 3
+    // 三分支 stroke 样式
+    let stroke: string, lineWidth: number
+    if (hlKind === 'focus') { stroke = '#ffffff'; lineWidth = 2.5 }
+    else if (hlKind === 'group') { stroke = '#fbbf24'; lineWidth = 1.5 }
+    else { stroke = '#ffffff'; lineWidth = 1 } // pendingDisambig
     return {
       type: 'rect',
       shape: {
@@ -491,7 +535,7 @@ function makeRenderPricePointHighlight(
         height: h + 2 * pad,
         r: BO_BOX_RADIUS + pad,
       },
-      style: { fill: 'none', stroke: '#ffffff', lineWidth: 2 },
+      style: { fill: 'none', stroke, lineWidth },
       z2: 21,
     }
   }

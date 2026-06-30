@@ -15,7 +15,7 @@ import { bandKeyOf, roleOfEventByBand, resolveTooltipData, windowOf, formatForwa
 import type { Bar } from '../types'
 
 const view = useViewStore()
-const { symbol, effectiveAnalysis, roleColors, roleVisible, level, tagMap, isolated, effectivePattern, effectiveScan, scanFile, selectedEventId, diag, activePatternId, selectedMatchId, candidateMatchIds } = storeToRefs(view)
+const { symbol, effectiveAnalysis, roleColors, roleVisible, level, tagMap, isolated, effectivePattern, effectiveScan, scanFile, selectedEventId, diag, activePatternId, selectedMatchId, candidateMatchIds, highlightedEventIds, pendingDisambigEventId } = storeToRefs(view)
 const panels = usePanelsStore()
 const { showSlider } = storeToRefs(panels)
 const el = ref<HTMLElement | null>(null)
@@ -85,6 +85,8 @@ function render(forceResetZoom = false) {
       endRole: scanFile.value?.per_pattern[activePatternId.value!]?.end_role ?? undefined,
       selectedMatchId: selectedMatchId.value,
       candidateMatchIds: candidateMatchIds.value,
+      highlightedEventIds: highlightedEventIds.value,
+      pendingDisambigEventId: pendingDisambigEventId.value,
     },
   )
   chart.setOption(opt as any, true)

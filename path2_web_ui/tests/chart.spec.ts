@@ -324,7 +324,9 @@ describe('buildKlineOption — D2 highlight overlay', () => {
     expect(hl.data.length).toBe(1)
     const item = hl.data[0]
     expect(item.event_id).toBe('down1')
-    expect(item.kind).toBe('interval')
+    // kind now represents highlight type (focus/group/pendingDisambig), not geometry
+    // geometry (point vs interval) is inferred from value.length (4=point, 5=interval)
+    expect(item.kind).toBe('focus')
     // value encoding matches intervalData: [start_idx, end_idx, lane, band, nBands]
     expect(item.value[0]).toBe(1)
     expect(item.value[1]).toBe(6)
