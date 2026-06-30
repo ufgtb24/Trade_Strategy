@@ -22,10 +22,6 @@ const el = ref<HTMLElement | null>(null)
 const bars = ref<Bar[]>([])
 let chart: echarts.ECharts | null = null
 let ro: ResizeObserver | null = null
-const MARKER_SERIES_NAMES = [
-  'points', 'intervals', 'brackets', 'bandLabels',
-  'highlight', 'price-points', 'satellites', 'highlight-price',
-] as const
 let unsubCtrl: (() => void) | null = null
 
 async function reloadBars() {
@@ -106,21 +102,6 @@ onMounted(() => {
          p.seriesName === 'price-points' || p.seriesName === 'satellites') && p.data?.event_id) {
       view.selectEvent(p.data.event_id)
     }
-  })
-  // ── R3 tom 报告 §5 选项 A:破 axis-trigger / item-trigger 共用 _tooltipContent 竞态 ──
-  // mousemove 时全局 K-bar tooltip 与 marker tooltip 都会 setContent 同一 DOM,
-  // _updatePosition 被 ECharts 50ms throttle 节流,落点常用 axis 维度算位置 / content 显 marker
-  // → marker tooltip 底部按 axis 高度算的位置渲染、溢出 viewport。
-  // 修:marker 系列 hover 时把全局 tooltip 临时 hide + dispatchAction hideTip 兜底当前已显示的;
-  //     mouseout 时恢复。confine + appendToBody + extraCssText 兜底仍保留作为多层防御。
-  MARKER_SERIES_NAMES.forEach((name) => {
-    chart!.on('mouseover', { seriesName: name }, () => {
-      chart?.setOption({ tooltip: { show: false } }, false, true)
-      chart?.dispatchAction({ type: 'hideTip' })
-    })
-    chart!.on('mouseout', { seriesName: name }, () => {
-      chart?.setOption({ tooltip: { show: true } }, false, true)
-    })
   })
   // 容器尺寸跟随:grid 布局稳定/侧栏 mount 后 canvas resize 到正确宽度,
   // 防 ECharts 早期 init 取全宽后撑宽 grid 列、把渐进披露侧栏挤出视口。
@@ -203,8 +184,6 @@ onBeforeUnmount(() => {
   chart?.getZr().off('mousemove')
   chart?.off('datazoom')
   chart?.off('updateAxisPointer')
-  chart?.off('mouseover')
-  chart?.off('mouseout')
   ro?.disconnect()
   chart?.dispose()
 })

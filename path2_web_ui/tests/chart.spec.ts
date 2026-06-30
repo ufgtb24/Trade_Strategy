@@ -446,11 +446,11 @@ describe('buildKlineOption — D2 tooltipResolver', () => {
     expect(tt.confine).toBe(true)
   })
 
-  it('marker series tooltip has confine: true to prevent overflow', () => {
+  it('marker series tooltip has confine: false (let viewport-aware position fn 接管)', () => {
     const opt = buildKlineOption(bars, EVENTS, MATCHES, { ...baseInput, tooltipResolver: stubResolver })
     const series = opt.series as any[]
     const points = series.find((s: any) => s.name === 'points')
-    expect(points.tooltip.confine).toBe(true)
+    expect(points.tooltip.confine).toBe(false)
   })
 
   it('global tooltip has appendToBody: true to escape chart container clipping', () => {
@@ -486,6 +486,13 @@ describe('buildKlineOption — D2 tooltipResolver', () => {
     const series = opt.series as any[]
     const points = series.find((s: any) => s.name === 'points')
     expect(points.tooltip.show).toBe(true)
+  })
+
+  it('marker series tooltip has viewport-aware position function (real flip vs ECharts chart-only confine)', () => {
+    const opt = buildKlineOption(bars, EVENTS, MATCHES, { ...baseInput, tooltipResolver: stubResolver })
+    const series = opt.series as any[]
+    const points = series.find((s: any) => s.name === 'points')
+    expect(typeof points.tooltip.position).toBe('function')
   })
 })
 

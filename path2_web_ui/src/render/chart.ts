@@ -250,7 +250,7 @@ export function buildKlineOption(
   }
 
   const markerTooltip = (tooltipResolver || matchLabel)
-    ? { trigger: 'item' as const, show: true, confine: true, appendToBody: true, extraCssText: 'max-height: calc(100vh - 16px); overflow-y: auto;', formatter: buildMarkerTooltipFormatter(tooltipResolver, matchLabel) }
+    ? { trigger: 'item' as const, show: true, confine: false, appendToBody: true, position: viewportAwareTooltipPosition, extraCssText: 'max-height: calc(100vh - 16px); overflow-y: auto;', formatter: buildMarkerTooltipFormatter(tooltipResolver, matchLabel) }
     : undefined
 
   // ── Dev UI 复刻: grid 3→2、初始 zoom 贴 [startIdx, endIdx]、yAxis[0] 动态 min/max ──
@@ -768,6 +768,56 @@ export function buildVolumeSeriesAndYAxis(bars: Bar[], visStart: number, visEnd:
     volSeries,
     yAxisOverride: { min: displayBottom, max: displayTop },
   }
+}
+
+/**
+ * Viewport-aware tooltip position(borrowed from dev UI BreakoutStrategy/UI/charts/tooltip_anchor.py 思路)。
+ *
+ * 用于 markerTooltip 的 ECharts position 字段:显式 confine tooltip 到 window viewport,
+ * 不只 chart 矩形——ECharts 内置 confine 用的是 chart canvas 维度,当 chart_bottom == viewport_bottom
+ * 时,tooltip 起点 + 尺寸仍可能出 viewport 底(R5T2 实测 90px 溢出)。
+ *
+ * 设计要点:
+ * - point 是 chart-local 坐标(zr 像素,R3 tom 报告 §B Q1 校正过)
+ * - appendToBody:true 时,ECharts 把返回值经 transformLocalCoord 转 body-local
+ *   → 我们仍返回 chart-local;但内部 flip 决策用 viewport 页坐标做
+ * - size.contentSize 是当次 tooltip 实际 DOM 尺寸(R3 tom 报告 §B Q3)
+ * - 配合 confine:false 才能让本 position fn 输出不被 ECharts 二次钳到 chart 矩形
+ * - 兜底:tooltip 比 viewport 还高时贴顶(extraCssText max-height 会截 + scroll)
+ */
+function viewportAwareTooltipPosition(
+  point: [number, number],
+  _params: unknown,
+  dom: HTMLElement,
+  _rect: unknown,
+  size: { contentSize: [number, number]; viewSize: [number, number] },
+): [number, number] {
+  const [tooltipW, tooltipH] = size.contentSize
+  const margin = 8
+  // chart-local point → 页坐标(用 dom 在 body,沿父链找 echarts 容器 rect)
+  const chartEl = (dom.ownerDocument || document).querySelector('[_echarts_instance_]')
+  const chartRect = chartEl
+    ? (chartEl as HTMLElement).getBoundingClientRect()
+    : { left: 0, top: 0 }
+  const cursorPageX = chartRect.left + point[0]
+  const cursorPageY = chartRect.top + point[1]
+  // 默认 right-down,溢 viewport 则 flip
+  let pageX = cursorPageX + margin
+  if (pageX + tooltipW > window.innerWidth - margin) {
+    pageX = cursorPageX - tooltipW - margin
+  }
+  if (pageX < margin) pageX = margin
+  let pageY = cursorPageY + margin
+  if (pageY + tooltipH > window.innerHeight - margin) {
+    pageY = cursorPageY - tooltipH - margin
+  }
+  if (pageY < margin) pageY = margin
+  // 兜底:tooltip 比 viewport 还高,贴顶(extraCssText max-height 会截断 + scroll)
+  if (pageY + tooltipH > window.innerHeight - margin) {
+    pageY = margin
+  }
+  // 返回 chart-local(ECharts 会经 transformLocalCoord 转回 body-local 因 appendToBody:true)
+  return [pageX - chartRect.left, pageY - chartRect.top]
 }
 
 /**
