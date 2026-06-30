@@ -371,6 +371,7 @@ export function buildKlineOption(
 // ── renderItem 原语(ECharts custom series;api 见 §0.6) ──
 
 // 点:在其 band 行内画小三角。value=[start_idx, start_idx, band, nBands]
+// 三角全宽与同列 K bar 同步(candlestick barWidth='70%' → 半宽=unitW*0.35)。
 function renderPoint(params: any, api: any) {
   const x = api.coord([api.value(0), 0])[0]
   const band = api.value(2) || 0
@@ -379,7 +380,8 @@ function renderPoint(params: any, api: any) {
   const bandH = cs.height / nBands
   const bandTop = cs.y + band * bandH
   const centerY = bandTop + bandH / 2
-  const w = 5
+  const unitW = api.size([1, 0])[0]
+  const w = Math.max(5, Math.min(20, unitW * 0.35))
   return {
     type: 'polygon',
     shape: { points: [[x, centerY + 4], [x - w, centerY - 3], [x + w, centerY - 3]] },
@@ -424,8 +426,9 @@ function makeRenderHighlight(items: Array<{ value: number[]; event_id: string; k
       const bandH = cs.height / nBands
       const bandTop = cs.y + band * bandH
       const centerY = bandTop + bandH / 2
-      // 比 renderPoint 稍大(w:7 vs 5)
-      const w = 7
+      // 比 renderPoint 稍大(原 7/5=1.4× 主三角宽,跟 unitW 同步缩放;下限保留原硬编码 7)
+      const unitW = api.size([1, 0])[0]
+      const w = Math.max(7, Math.min(28, unitW * 0.35 * 1.4))
       return {
         type: 'polygon',
         shape: { points: [[x, centerY + 6], [x - w, centerY - 4], [x + w, centerY - 4]] },
@@ -500,8 +503,10 @@ function renderBracket(params: any, api: any) {
     children: [
       { type: 'rect', shape: { x: x0, y: top, width: Math.max(2, x1 - x0), height: bandH },
         style: { fill: '#64748b', opacity: 0.5 } },
+      // unicode 圈圈数字 ① 的数字嵌在圆圈内、字形偏小,字号需比 BO marker 普通数字大 ~4
+      // 才能视觉对等。
       { type: 'text', style: { text: '①②③④⑤⑥⑦⑧⑨'[(api.value(3) - 1) % 9] ?? '·',
-        x: x0 + 2, y: top - 2, fill: '#334155', fontSize: 11, textVerticalAlign: 'bottom' } },
+        x: x0 + 2, y: top - 2, fill: '#334155', fontSize: MARKER_FONT_SIZE + 4, textVerticalAlign: 'bottom' } },
     ],
   }
 }
