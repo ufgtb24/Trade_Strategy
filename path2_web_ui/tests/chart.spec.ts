@@ -127,18 +127,18 @@ describe('buildKlineOption — 2-grid band×lane (Task 7)', () => {
     expect(yAxis[2].show).toBe(false)
   })
 
-  it('kline binds price yAxis(0); points/intervals bind hidden-marker yAxis(2); brackets bind hidden-bracket yAxis(1)', () => {
+  it('kline binds price yAxis(0); points/intervals/brackets bind hidden-marker yAxis(2)', () => {
     expect(S('kline').yAxisIndex).toBe(0)
     expect(S('points').yAxisIndex).toBe(2)
     expect(S('intervals').yAxisIndex).toBe(2)
-    expect(S('brackets').yAxisIndex).toBe(1)
+    expect(S('brackets').yAxisIndex).toBe(2)
   })
 
-  it('points/intervals/bandLabels use grid1 xAxis(1); brackets use grid0 xAxis(0)', () => {
+  it('points/intervals/bandLabels/brackets use grid1 xAxis(1)', () => {
     expect(S('points').xAxisIndex).toBe(1)
     expect(S('intervals').xAxisIndex).toBe(1)
     expect(S('bandLabels').xAxisIndex).toBe(1)
-    expect(S('brackets').xAxisIndex).toBe(0)
+    expect(S('brackets').xAxisIndex).toBe(1)
   })
 
   // ── 4. intervals value 含 [start, end, lane, band, nBands] ───────────────

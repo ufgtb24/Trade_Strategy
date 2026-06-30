@@ -294,9 +294,9 @@ export function buildKlineOption(
     // sliderShow=false 时把底部 ~8% 还给 grid0/grid1:grid0 扩高到 80%,grid1 下移到 84%/height 16%,
     // 整个面板占满到底,主图+副图明显变大;sliderShow=true 保历史几何
     grid: [
-      { left: 56, right: 16, top: 40, height: (sliderShow ?? true) ? '72%' : '80%' },
-      { left: 56, right: 16, top: (sliderShow ?? true) ? '76%' : '84%',
-        height: (sliderShow ?? true) ? '18%' : '16%' },
+      { left: 56, right: 16, top: 40, height: (sliderShow ?? true) ? '64%' : '72%' },
+      { left: 56, right: 16, top: (sliderShow ?? true) ? '68%' : '76%',
+        height: (sliderShow ?? true) ? '26%' : '24%' },
     ],
     xAxis: [
       { type: 'category', data: dates, gridIndex: 0, boundaryGap: true,
@@ -329,9 +329,10 @@ export function buildKlineOption(
       // 区间 markers(grid1,隐藏轴 yAxisIndex:2)
       { type: 'custom', name: 'intervals', xAxisIndex: 1, yAxisIndex: 2, data: intervalData,
         renderItem: renderInterval, encode: { x: [0, 1] }, z: 9, tooltip: markerTooltip },
-      // 归属带 brackets(grid0,隐藏 bracket 轴 yAxisIndex:1)
-      { type: 'custom', name: 'brackets', xAxisIndex: 0, yAxisIndex: 1, data: bracketData,
-        renderItem: renderBracket, encode: { x: [0, 1] }, z: 11, tooltip: markerTooltip },
+      // 归属带 brackets(grid1,隐藏 marker 轴 yAxisIndex:2)
+      { type: 'custom', name: 'brackets', xAxisIndex: 1, yAxisIndex: 2, data: bracketData,
+        renderItem: renderBracket, encode: { x: [0, 1] }, z: 11, tooltip: markerTooltip,
+        emphasis: { disabled: true } },
       // band 标签(grid1 左缘,低 z),同时叠灰阴影覆盖 grid1
       { type: 'custom', name: 'bandLabels', xAxisIndex: 1, yAxisIndex: 2,
         data: bandLabelData, renderItem: makeRenderBandLabel(bandLabelData), encode: { x: 0 }, z: 5,
@@ -506,7 +507,7 @@ function renderBracket(params: any, api: any) {
       // unicode 圈圈数字 ① 的数字嵌在圆圈内、字形偏小,字号需比 BO marker 普通数字大 ~4
       // 才能视觉对等。
       { type: 'text', style: { text: '①②③④⑤⑥⑦⑧⑨'[(api.value(3) - 1) % 9] ?? '·',
-        x: x0 + 2, y: top - 2, fill: '#334155', fontSize: MARKER_FONT_SIZE + 4, textVerticalAlign: 'bottom' } },
+        x: x0 + 2, y: top - 2, fill: '#334155', fontSize: 12, textVerticalAlign: 'bottom' } },
     ],
   }
 }

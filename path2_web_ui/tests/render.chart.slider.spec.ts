@@ -49,25 +49,25 @@ describe('buildKlineOption — dataZoom slider show toggle', () => {
 })
 
 describe('buildKlineOption — grid geometry follows sliderShow', () => {
-  it('default (sliderShow undefined) keeps historical geometry: grid0 72%, grid1 top 76% / height 18%', () => {
+  it('default (sliderShow undefined) keeps historical geometry: grid0 64%, grid1 top 68% / height 26%', () => {
     const opt: any = buildKlineOption(BARS, [], [], baseInput())
-    expect(opt.grid[0].height).toBe('72%')
-    expect(opt.grid[1].top).toBe('76%')
-    expect(opt.grid[1].height).toBe('18%')
+    expect(opt.grid[0].height).toBe('64%')
+    expect(opt.grid[1].top).toBe('68%')
+    expect(opt.grid[1].height).toBe('26%')
   })
 
-  it('sliderShow=false expands grid0 to 80% and pushes grid1 to 84% / height 16% (主图+副图占满到底)', () => {
+  it('sliderShow=false expands grid0 to 72% and pushes grid1 to 76% / height 24% (主图+副图占满到底)', () => {
     const opt: any = buildKlineOption(BARS, [], [], { ...baseInput(), sliderShow: false })
-    expect(opt.grid[0].height).toBe('80%')
-    expect(opt.grid[1].top).toBe('84%')
-    expect(opt.grid[1].height).toBe('16%')
+    expect(opt.grid[0].height).toBe('72%')
+    expect(opt.grid[1].top).toBe('76%')
+    expect(opt.grid[1].height).toBe('24%')
   })
 
   it('sliderShow=true matches default geometry', () => {
     const opt: any = buildKlineOption(BARS, [], [], { ...baseInput(), sliderShow: true })
-    expect(opt.grid[0].height).toBe('72%')
-    expect(opt.grid[1].top).toBe('76%')
-    expect(opt.grid[1].height).toBe('18%')
+    expect(opt.grid[0].height).toBe('64%')
+    expect(opt.grid[1].top).toBe('68%')
+    expect(opt.grid[1].height).toBe('26%')
   })
 })
 
