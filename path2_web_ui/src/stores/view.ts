@@ -164,6 +164,9 @@ export const useViewStore = defineStore('view', () => {
     const last = cfg.config?.last_selected_pattern
     activePatternId.value = (last && f.pattern_ids.includes(last))
       ? last : (f.pattern_ids[0] ?? null)
+    candidateMatchIds.value = new Set()
+    pendingDisambigEventId.value = null
+    highlightedEventIds.value = new Set()
   }
   function clearScanFile() {
     scanFile.value = null
@@ -177,6 +180,9 @@ export const useViewStore = defineStore('view', () => {
     previewEnabled.value = false
     preview.value = null
     previewError.value = null
+    candidateMatchIds.value = new Set()
+    pendingDisambigEventId.value = null
+    highlightedEventIds.value = new Set()
   }
   function selectSymbol(s: string) {
     // 锚-active 解耦:只切股、不动 activePatternId
@@ -186,12 +192,20 @@ export const useViewStore = defineStore('view', () => {
     hoveredEventId.value = null
     preview.value = null
     previewError.value = null
+    candidateMatchIds.value = new Set()
+    pendingDisambigEventId.value = null
+    highlightedEventIds.value = new Set()
     if (previewEnabled.value) void runPreview()
   }
   function setActivePattern(pid: string) {
     activePatternId.value = pid
     const cfg = useConfigStore()
     if (cfg.config) cfg.config.last_selected_pattern = pid
+    selected.value = null
+    selectedEventId.value = null
+    candidateMatchIds.value = new Set()
+    pendingDisambigEventId.value = null
+    highlightedEventIds.value = new Set()
     if (previewEnabled.value) void runPreview()
   }
   function setSort(pid: string) {

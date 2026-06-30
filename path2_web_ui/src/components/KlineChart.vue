@@ -93,7 +93,18 @@ function render(forceResetZoom = false) {
   chart.setOption(opt as any, true)
 }
 
+function onKeyDown(e: KeyboardEvent) {
+  if (e.key !== 'Escape') return
+  const t = e.target as HTMLElement | null
+  if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return
+  view.clearCandidates()
+  view.clearHighlight()
+  view.selectMatch(null)
+  view.selectEvent(null)
+}
+
 onMounted(() => {
+  window.addEventListener('keydown', onKeyDown)
   chart = echarts.init(el.value!)
   chart.on('click', (p: any) => {
     handleChartClick(p, effectiveAnalysis.value?.matches ?? [], view)
@@ -175,6 +186,7 @@ onMounted(() => {
   void reloadBars().then(() => render(true))
 })
 onBeforeUnmount(() => {
+  window.removeEventListener('keydown', onKeyDown)
   unsubCtrl?.()
   chart?.getZr().off('mousemove')
   chart?.off('datazoom')
@@ -188,7 +200,8 @@ watch(symbol, () => void reloadBars().then(() => render(true)))
 // 同股重 load / preview 切换(scanFile/effectiveScan):bars 可能重抓,但 zoom% 保留对用户更友好
 watch([scanFile, effectiveScan], () => void reloadBars().then(() => render(false)))
 // 上层视觉/过滤/UI/高亮(level/role/showSlider 等):bars 不变,zoom 必须保留
-watch([effectiveAnalysis, roleVisible, level, roleColors, selectedEventId, diag, showSlider],
+watch([effectiveAnalysis, roleVisible, level, roleColors, selectedEventId, diag, showSlider,
+       selectedMatchId, candidateMatchIds, highlightedEventIds, pendingDisambigEventId],
       () => render(false), { deep: true })
 </script>
 
