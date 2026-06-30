@@ -480,6 +480,13 @@ describe('buildKlineOption — D2 tooltipResolver', () => {
     expect(points.tooltip.extraCssText).toContain('max-height: calc(100vh - 16px)')
     expect(points.tooltip.extraCssText).toContain('overflow-y: auto')
   })
+
+  it('marker series tooltip has explicit show: true (cascade-aware: item path cascade 在 series 层截胡,不向上找 global)', () => {
+    const opt = buildKlineOption(bars, EVENTS, MATCHES, { ...baseInput, tooltipResolver: stubResolver })
+    const series = opt.series as any[]
+    const points = series.find((s: any) => s.name === 'points')
+    expect(points.tooltip.show).toBe(true)
+  })
 })
 
 // ── render_grid 分流 + satellites ─────────────────────────────────────────────
