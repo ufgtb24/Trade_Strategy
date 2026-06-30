@@ -465,6 +465,21 @@ describe('buildKlineOption — D2 tooltipResolver', () => {
     const points = series.find((s: any) => s.name === 'points')
     expect(points.tooltip.appendToBody).toBe(true)
   })
+
+  it('global tooltip does NOT carry extraCssText (axis K-bar tooltip 走全局,不需要 max-height)', () => {
+    const opt = buildKlineOption(bars, EVENTS, MATCHES, baseInput)
+    const tt = opt.tooltip as any
+    expect(tt.extraCssText).toBeUndefined()
+  })
+
+  it('marker series tooltip has extraCssText with max-height + overflow:auto (CSS 兜底防 viewport 溢出)', () => {
+    const opt = buildKlineOption(bars, EVENTS, MATCHES, { ...baseInput, tooltipResolver: stubResolver })
+    const series = opt.series as any[]
+    const points = series.find((s: any) => s.name === 'points')
+    expect(typeof points.tooltip.extraCssText).toBe('string')
+    expect(points.tooltip.extraCssText).toContain('max-height: calc(100vh - 16px)')
+    expect(points.tooltip.extraCssText).toContain('overflow-y: auto')
+  })
 })
 
 // ── render_grid 分流 + satellites ─────────────────────────────────────────────

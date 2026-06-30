@@ -250,7 +250,7 @@ export function buildKlineOption(
   }
 
   const markerTooltip = (tooltipResolver || matchLabel)
-    ? { trigger: 'item' as const, confine: true, appendToBody: true, formatter: buildMarkerTooltipFormatter(tooltipResolver, matchLabel) }
+    ? { trigger: 'item' as const, confine: true, appendToBody: true, extraCssText: 'max-height: calc(100vh - 16px); overflow-y: auto;', formatter: buildMarkerTooltipFormatter(tooltipResolver, matchLabel) }
     : undefined
 
   // ── Dev UI 复刻: grid 3→2、初始 zoom 贴 [startIdx, endIdx]、yAxis[0] 动态 min/max ──
