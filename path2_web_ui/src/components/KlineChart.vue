@@ -1,5 +1,8 @@
 <template>
-  <div ref="el" class="kline" />
+  <div class="kline-wrap">
+    <CandidateStatusBar :matches="effectiveAnalysis?.matches ?? []" />
+    <div ref="el" class="kline" />
+  </div>
 </template>
 
 <script setup lang="ts">
@@ -14,6 +17,7 @@ import { ctrlState } from '../render/ctrlState'
 import { bandKeyOf, roleOfEventByBand, resolveTooltipData, windowOf, formatForwardReturn } from '../render/visible'
 import type { Bar } from '../types'
 import { handleChartClick } from './KlineChart'
+import CandidateStatusBar from './CandidateStatusBar.vue'
 
 const view = useViewStore()
 const { symbol, effectiveAnalysis, roleColors, roleVisible, level, tagMap, isolated, effectivePattern, effectiveScan, scanFile, selectedEventId, diag, activePatternId, selectedMatchId, candidateMatchIds, highlightedEventIds, pendingDisambigEventId } = storeToRefs(view)
@@ -207,5 +211,6 @@ watch([effectiveAnalysis, roleVisible, level, roleColors, selectedEventId, diag,
 
 <style scoped>
 /* min-width:0 让 grid 列能收缩到比 canvas 窄(打破 canvas 撑列死锁);overflow 裁剪 init 瞬时溢出 */
-.kline { width: 100%; height: 100%; min-width: 0; min-height: 0; overflow: hidden; }
+.kline-wrap { display: flex; flex-direction: column; width: 100%; height: 100%; min-width: 0; }
+.kline { flex: 1; min-width: 0; min-height: 0; overflow: hidden; }
 </style>
