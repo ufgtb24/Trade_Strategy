@@ -81,3 +81,46 @@ describe('view store — Task 1 (M base)', () => {
     })
   })
 })
+
+describe('view store — Task 2 (M\' candidate disambig)', () => {
+  beforeEach(() => { setActivePinia(createPinia()) })
+
+  it('starts empty', () => {
+    const view = useViewStore()
+    expect(view.candidateMatchIds.size).toBe(0)
+    expect(view.pendingDisambigEventId).toBeNull()
+  })
+
+  it('setCandidateMatches replaces Set', () => {
+    const view = useViewStore()
+    const before = view.candidateMatchIds
+    view.setCandidateMatches(['m1', 'm2'])
+    expect(view.candidateMatchIds.size).toBe(2)
+    expect(view.candidateMatchIds.has('m1')).toBe(true)
+    expect(view.candidateMatchIds).not.toBe(before)
+  })
+
+  it('setPendingDisambig sets and clears', () => {
+    const view = useViewStore()
+    view.setPendingDisambig('evt_x')
+    expect(view.pendingDisambigEventId).toBe('evt_x')
+    view.setPendingDisambig(null)
+    expect(view.pendingDisambigEventId).toBeNull()
+  })
+
+  it('clearCandidates clears both', () => {
+    const view = useViewStore()
+    view.setCandidateMatches(['m1'])
+    view.setPendingDisambig('evt_x')
+    view.clearCandidates()
+    expect(view.candidateMatchIds.size).toBe(0)
+    expect(view.pendingDisambigEventId).toBeNull()
+  })
+
+  it('setCandidateMatches([]) clears pendingDisambig', () => {
+    const view = useViewStore()
+    view.setPendingDisambig('evt_x')
+    view.setCandidateMatches([])
+    expect(view.pendingDisambigEventId).toBeNull()
+  })
+})

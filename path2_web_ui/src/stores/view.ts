@@ -42,6 +42,8 @@ export const useViewStore = defineStore('view', () => {
   const level = ref<Level>('matched')
   const selectedEventId = ref<string | null>(null)
   const highlightedEventIds = ref<ReadonlySet<string>>(new Set())
+  const candidateMatchIds = ref<ReadonlySet<string>>(new Set())
+  const pendingDisambigEventId = ref<string | null>(null)
   const hoveredEventId = ref<string | null>(null)
   const diag = ref<Diagnostics | null>(null)
 
@@ -217,6 +219,17 @@ export const useViewStore = defineStore('view', () => {
   function clearHighlight() {
     highlightedEventIds.value = new Set()
   }
+  function setCandidateMatches(ids: string[]) {
+    candidateMatchIds.value = new Set(ids)
+    if (ids.length === 0) pendingDisambigEventId.value = null
+  }
+  function clearCandidates() {
+    candidateMatchIds.value = new Set()
+    pendingDisambigEventId.value = null
+  }
+  function setPendingDisambig(eid: string | null) {
+    pendingDisambigEventId.value = eid
+  }
 
   async function setPreviewEnabled(v: boolean): Promise<void> {
     previewEnabled.value = v
@@ -299,7 +312,7 @@ export const useViewStore = defineStore('view', () => {
   return {
     scanFile, symbol, activePatternId, sortByPid, sortDesc,
     roleVisible, selected,
-    level, selectedEventId, highlightedEventIds, hoveredEventId, diag,
+    level, selectedEventId, highlightedEventIds, candidateMatchIds, pendingDisambigEventId, hoveredEventId, diag,
     previewEnabled, preview, previewLoading, previewError,
     patternIds, currentPerStock, pattern, currentAnalysis,
     effectivePattern, effectiveAnalysis, effectiveScan,
@@ -308,6 +321,7 @@ export const useViewStore = defineStore('view', () => {
     loadScanFile, clearScanFile, selectSymbol, setActivePattern, setSort,
     toggleRole, selectMatch, selectRole, clearSelection,
     setLevel, selectEvent, hoverEvent, setHighlightedEvents, clearHighlight,
+    setCandidateMatches, clearCandidates, setPendingDisambig,
     setPreviewEnabled, runPreview, clearPreview,
     bandKey, eventTier,
   }
