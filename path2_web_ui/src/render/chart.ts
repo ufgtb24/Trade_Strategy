@@ -520,7 +520,7 @@ function makeRenderBracket(
       type: 'group',
       children: [
         { type: 'rect', shape: { x: x0, y: top, width: Math.max(2, x1 - x0), height: bandH },
-          style: { fill, opacity: 0.5 } },
+          style: { fill } },
         // unicode 圈圈数字 ① 的数字嵌在圆圈内、字形偏小,字号需比 BO marker 普通数字大 ~4
         // 才能视觉对等。
         { type: 'text', style: { text: '①②③④⑤⑥⑦⑧⑨'[(api.value(3) - 1) % 9] ?? '·',
