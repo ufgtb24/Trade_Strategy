@@ -1,6 +1,6 @@
 # 术语表（Glossary）
 
-> 最后更新：2026-06-24
+> 最后更新：2026-06-30
 > **维护规则**：本文件仅在用户明确指定时追加/修改；`update-ai-context` skill 不维护本文件。
 > 非必读；当沟通中出现某个项目上下文相关的术语、需确认其确切含义时，再查阅相应节。
 
@@ -104,6 +104,7 @@
 | referenced_points              | 点事件可选携带的 satellite marker 几何载体：`Tuple[Tuple[bar_idx:int, price:float, label:str], ...]`（默认空 tuple）。**当前唯一消费者**：bo event 在突破时填入被突破的 peak（label `pk<id>`），前端在 'price' 主图额外渲染同色卫星 dot；不影响匹配语义 |
 | band                           | marker 副图的分轨：每 detector 实例（source_tag）一 band；前端经 `tagMap`（source_tag → band 序）派生，不解析 event_id 前缀 |
 | lane                           | band 内重叠事件的泳道再分层（`packLanes` / `packByBand`，仅依赖 start/end，无类型特判） |
+| bracket / matched marker       | match（pattern 命中）的时间跨度可视化：每个 match 一条灰色横带 + 圆圈序号 `①..⑨`（`renderBracket` chart.ts），`bracketData[i]` 携带 `match_id`(=match.event_id) + `value=[start_idx, end_idx, lane, ordinal]`；lane 由 `packBrackets`(geometry.ts) 按 start 全局排序后 packLanes 跨 match 防重叠；ordinal ①..⑨ 全局唯一作为 match 的 join key（多 match 重叠时消歧）。当前渲染在 grid0 顶部、`yAxisIndex:1`（隐藏 bracket 轴）；2026-06-30 agent team 调研已规划移到 grid1 顶部与 role band 行垂直对齐（见 `docs/research/2026-06-30_path2-web-match-event-correlation/`） |
 | level                          | 全局显示档位旋钮：matched/qualified/detected 三档，统一控 K 线 + sidebar 的显示天花板（与 role 显隐正交） |
 | detected ⊇ qualified ⊇ matched | 事件三档可追溯深度（tier）：detected = 全集（浅灰）⊇ qualified = 过该 role 一元 where（深灰，数据自预取 diagnose）⊇ matched = 进 match（role 本色） |
 | 拓扑图/拓扑面板                       | `TopologyControl`：pattern 的 DAG 图 = role 控制器（单击节点 toggle 该 role 显隐、双击拉 per-role 诊断） |
