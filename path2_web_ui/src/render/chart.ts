@@ -55,6 +55,9 @@ export interface BandRenderInput {
   // §7-4 整治：bracket marker 同时承载 match_id + 端点 event_id,让 buildMarkerTooltipFormatter
   // 的 event 三段分支也能触发。endRole 来自 eval_meta(铁律必有);缺省=不注入 event_id(向后兼容)
   endRole?: string
+  // ── M #3 / M' #19: bracket 三态 fill ────────────────────────────────────────
+  selectedMatchId?: string | null
+  candidateMatchIds?: ReadonlySet<string>
 }
 
 export function buildKlineOption(
@@ -64,7 +67,8 @@ export function buildKlineOption(
   const { topology, tagList, level, roleColors, eventTier, roleOfEventByBand, bandKeyOf,
           roleVisible, tagToNodes,
           selectedEventId, tooltipResolver, strictWindow, matchLabel, sliderShow,
-          zoomOverride, endRole } = input
+          zoomOverride, endRole,
+          selectedMatchId, candidateMatchIds } = input
 
   const dates = bars.map((b) => b.date)
   const candle = bars.map((b) => [b.o, b.c, b.l, b.h])
@@ -331,7 +335,8 @@ export function buildKlineOption(
         renderItem: renderInterval, encode: { x: [0, 1] }, z: 9, tooltip: markerTooltip },
       // 归属带 brackets(grid1,隐藏 marker 轴 yAxisIndex:2)
       { type: 'custom', name: 'brackets', xAxisIndex: 1, yAxisIndex: 2, data: bracketData,
-        renderItem: renderBracket, encode: { x: [0, 1] }, z: 11, tooltip: markerTooltip,
+        renderItem: makeRenderBracket(selectedMatchId ?? null, candidateMatchIds ?? new Set()),
+        encode: { x: [0, 1] }, z: 11, tooltip: markerTooltip,
         emphasis: { disabled: true } },
       // band 标签(grid1 左缘,低 z),同时叠灰阴影覆盖 grid1
       { type: 'custom', name: 'bandLabels', xAxisIndex: 1, yAxisIndex: 2,
@@ -493,22 +498,35 @@ function makeRenderPricePointHighlight(
 }
 
 // 归属带:价格区顶部按 lane 的横带 + 序号(grid0 隐藏 bracket 轴)。
-function renderBracket(params: any, api: any) {
-  const x0 = api.coord([api.value(0), 0])[0]
-  const x1 = api.coord([api.value(1), 0])[0]
-  const lane = api.value(2) || 0
-  const bandH = 6, gap = 4
-  const top = params.coordSys.y + 2 + lane * (bandH + gap)
-  return {
-    type: 'group',
-    children: [
-      { type: 'rect', shape: { x: x0, y: top, width: Math.max(2, x1 - x0), height: bandH },
-        style: { fill: '#64748b', opacity: 0.5 } },
-      // unicode 圈圈数字 ① 的数字嵌在圆圈内、字形偏小,字号需比 BO marker 普通数字大 ~4
-      // 才能视觉对等。
-      { type: 'text', style: { text: '①②③④⑤⑥⑦⑧⑨'[(api.value(3) - 1) % 9] ?? '·',
-        x: x0 + 2, y: top - 2, fill: '#334155', fontSize: 12, textVerticalAlign: 'bottom' } },
-    ],
+// M #3 / M' #19: 三态 fill — selected > candidate > default
+function makeRenderBracket(
+  selectedMatchId: string | null,
+  candidateMatchIds: ReadonlySet<string>,
+) {
+  return function renderBracket(params: any, api: any) {
+    const x0 = api.coord([api.value(0), 0])[0]
+    const x1 = api.coord([api.value(1), 0])[0]
+    const lane = api.value(2) || 0
+    const bandH = 6, gap = 4
+    const top = params.coordSys.y + 2 + lane * (bandH + gap)
+    const matchId: string | undefined = params.data?.match_id
+    const fill =
+      matchId && selectedMatchId === matchId
+        ? 'rgba(251,191,36,0.85)'
+        : matchId && candidateMatchIds.has(matchId)
+          ? 'rgba(251,191,36,0.35)'
+          : '#64748b'
+    return {
+      type: 'group',
+      children: [
+        { type: 'rect', shape: { x: x0, y: top, width: Math.max(2, x1 - x0), height: bandH },
+          style: { fill, opacity: 0.5 } },
+        // unicode 圈圈数字 ① 的数字嵌在圆圈内、字形偏小,字号需比 BO marker 普通数字大 ~4
+        // 才能视觉对等。
+        { type: 'text', style: { text: '①②③④⑤⑥⑦⑧⑨'[(api.value(3) - 1) % 9] ?? '·',
+          x: x0 + 2, y: top - 2, fill: '#334155', fontSize: 12, textVerticalAlign: 'bottom' } },
+      ],
+    }
   }
 }
 
