@@ -233,12 +233,11 @@ function selectRoleEvent(val: string | string[]) {
   if (id) view.selectEvent(id)
 }
 
-/** 点击命中匹配列表行:选中 match(展开 trace)并同步高亮匹配第一个 child event */
+/** 点击命中匹配列表行:选中 match(展开 trace)+ 组高亮(等价图上 bracket click) */
 function selectMatchAndHighlight(matchId: string, children: string[]) {
+  view.setHighlightedEvents(children)
   view.selectMatch(matchId)
-  // 同步 selectedEventId → chart 高亮该 match 的第一个 child event
-  const firstChild = children[0] ?? null
-  view.selectEvent(firstChild)
+  view.clearCandidates()           // 顺手清候选,防残留
 }
 </script>
 

@@ -343,8 +343,8 @@ describe('DetailSidebar (5-node: pattern roles + stream-source)', () => {
     expect(w.find('.match-trace').exists()).toBe(true)
   })
 
-  // ── 断言 11: 点命中匹配行 → selectMatch + selectEvent(firstChild) ──────
-  it('点命中匹配行 → selected=match + selectedEventId=firstChild', async () => {
+  // ── 断言 11: 点命中匹配行 → selectMatch + setHighlightedEvents(children) + clearCandidates ──
+  it('点命中匹配行 → selected=match + 组高亮 + 候选清空', async () => {
     const v = setupStore()
     const w = mount(DetailSidebar)
     await flushPromises()
@@ -355,7 +355,11 @@ describe('DetailSidebar (5-node: pattern roles + stream-source)', () => {
 
     expect(v.selected?.kind).toBe('match')
     expect((v.selected as any)?.matchId).toBe('m1')
-    // firstChild = 'down1'
-    expect(v.selectedEventId).toBe('down1')
+    // 组高亮:children of m1 = ['down1', 'side1', ...]
+    expect([...v.highlightedEventIds]).toEqual(expect.arrayContaining(['down1', 'side1']))
+    // 候选清空:clearCandidates → candidateMatchIds = empty Set
+    expect(v.candidateMatchIds.size).toBe(0)
+    // selectedEventId 不改动(保持 null)
+    expect(v.selectedEventId).toBeNull()
   })
 })
