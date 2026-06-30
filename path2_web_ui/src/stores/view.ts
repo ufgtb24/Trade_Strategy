@@ -41,6 +41,7 @@ export const useViewStore = defineStore('view', () => {
   const selected = ref<Selected>(null)
   const level = ref<Level>('matched')
   const selectedEventId = ref<string | null>(null)
+  const highlightedEventIds = ref<ReadonlySet<string>>(new Set())
   const hoveredEventId = ref<string | null>(null)
   const diag = ref<Diagnostics | null>(null)
 
@@ -202,12 +203,20 @@ export const useViewStore = defineStore('view', () => {
   function toggleRole(nodeId: string) {
     roleVisible.value = { ...roleVisible.value, [nodeId]: roleVisible.value[nodeId] === false }
   }
-  function selectMatch(matchId: string) { selected.value = { kind: 'match', matchId } }
+  function selectMatch(matchId: string | null) {
+    selected.value = matchId === null ? null : { kind: 'match', matchId }
+  }
   function selectRole(nodeId: string) { selected.value = { kind: 'role', nodeId } }
   function clearSelection() { selected.value = null }
   function setLevel(l: Level) { level.value = l }
   function selectEvent(id: string | null) { selectedEventId.value = id }
   function hoverEvent(id: string | null) { hoveredEventId.value = id }
+  function setHighlightedEvents(ids: string[]) {
+    highlightedEventIds.value = new Set(ids)
+  }
+  function clearHighlight() {
+    highlightedEventIds.value = new Set()
+  }
 
   async function setPreviewEnabled(v: boolean): Promise<void> {
     previewEnabled.value = v
@@ -263,6 +272,9 @@ export const useViewStore = defineStore('view', () => {
     } catch { if (symbol.value === reqSymbol && activePatternId.value === reqPid) diag.value = null }
   }, { immediate: true })
 
+  const selectedMatchId = computed<string | null>(() =>
+    selected.value?.kind === 'match' ? selected.value.matchId : null)
+
   const selectedMatch = computed<MatchDict | null>(() => {
     const sel = selected.value
     if (sel?.kind !== 'match' || !effectiveAnalysis.value) return null
@@ -287,15 +299,15 @@ export const useViewStore = defineStore('view', () => {
   return {
     scanFile, symbol, activePatternId, sortByPid, sortDesc,
     roleVisible, selected,
-    level, selectedEventId, hoveredEventId, diag,
+    level, selectedEventId, highlightedEventIds, hoveredEventId, diag,
     previewEnabled, preview, previewLoading, previewError,
     patternIds, currentPerStock, pattern, currentAnalysis,
     effectivePattern, effectiveAnalysis, effectiveScan,
     unionRows, sortedRows,
-    roleColors, selectedMatch, tagMap, isolated, matchedIds, qualifiedIds,
+    roleColors, selectedMatchId, selectedMatch, tagMap, isolated, matchedIds, qualifiedIds,
     loadScanFile, clearScanFile, selectSymbol, setActivePattern, setSort,
     toggleRole, selectMatch, selectRole, clearSelection,
-    setLevel, selectEvent, hoverEvent,
+    setLevel, selectEvent, hoverEvent, setHighlightedEvents, clearHighlight,
     setPreviewEnabled, runPreview, clearPreview,
     bandKey, eventTier,
   }
