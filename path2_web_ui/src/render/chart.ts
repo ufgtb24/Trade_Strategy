@@ -948,7 +948,7 @@ export function buildMarkerTooltipFormatter(
   matchLabel: ((matchId: string) => string | null) | undefined,
   ctx: { matches: MatchDict[]; candidateMatchIds: ReadonlySet<string> } = { matches: [], candidateMatchIds: new Set() },
 ) {
-  return (params: any): string => {
+  return (params: { data?: { event_id?: string; match_id?: string; [key: string]: unknown } } | null): string => {
     const data = params?.data
     if (!data) return ''
     const lines: string[] = []
@@ -1025,11 +1025,14 @@ export function buildMarkerTooltipFormatter(
 
     // ── marker 归属节 (M #16, 仅非 bracket marker: 无 match_id) ──────────
     if (!matchId && eventId && ctx.matches.length > 0) {
-      const ownedBy = ctx.matches.filter((m) => m.children.includes(eventId))
+      // 按 start_idx 排序,与 packBrackets(geometry.ts:47-49)的 ordinal 语义一致;
+      // 同时从 sortedByStart 过滤,保证 ordinals 以升序列出
+      const sortedByStart = [...ctx.matches].sort((a, b) => a.start_idx - b.start_idx)
+      const ownedBy = sortedByStart.filter((m) => m.children.includes(eventId))
       if (ownedBy.length > 0) {
         const ORDINAL_CHARS = '①②③④⑤⑥⑦⑧⑨'
         const ords = ownedBy.map((m) => {
-          const ord = ctx.matches.indexOf(m) + 1
+          const ord = sortedByStart.indexOf(m) + 1
           return ord >= 1 && ord <= 9 ? ORDINAL_CHARS[ord - 1] : String(ord)
         })
         lines.push(`归属: match ${ords.join(' ')}`)

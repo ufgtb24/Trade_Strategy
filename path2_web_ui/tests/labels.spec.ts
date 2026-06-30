@@ -19,7 +19,7 @@ describe('formatForwardReturn', () => {
   it('null(尾部数据不足)→ —', () => expect(formatForwardReturn(null)).toBe('—'))
 })
 
-import { buildKlineOption } from '../src/render/chart'
+import { buildKlineOption, buildMarkerTooltipFormatter } from '../src/render/chart'
 import type { Bar, MatchDict, Topology } from '../src/types'
 
 const bars: Bar[] = [
@@ -73,5 +73,20 @@ describe('match tooltip label', () => {
     const brackets = opt.series.find((s: any) => s.name === 'brackets')
     // 无 label 行,但组成段仍在
     expect(brackets.tooltip.formatter({ data: { match_id: 'm1' } })).toBe('组成 (0 events):')
+  })
+})
+
+describe('buildMarkerTooltipFormatter — ordinal consistency with packBrackets (Task 9 fix)', () => {
+  it('marker 归属节 ordinal uses start_idx sort, not raw matches order', () => {
+    const matches: MatchDict[] = [
+      // 故意乱序(非 start_idx 升序):
+      { event_id: 'm_late',  start_idx: 50, end_idx: 60, role_index: {}, children: ['eShared'], predicate_trace: null },
+      { event_id: 'm_early', start_idx: 10, end_idx: 20, role_index: {}, children: ['eShared'], predicate_trace: null },
+      { event_id: 'm_mid',   start_idx: 30, end_idx: 40, role_index: {}, children: ['eShared'], predicate_trace: null },
+    ]
+    const fmt = buildMarkerTooltipFormatter(undefined, undefined, { matches, candidateMatchIds: new Set() })
+    const out = fmt({ data: { event_id: 'eShared' } })
+    // start_idx 排序后: m_early=①, m_mid=②, m_late=③ → 三者都含 eShared
+    expect(out).toContain('归属: match ① ② ③')
   })
 })
