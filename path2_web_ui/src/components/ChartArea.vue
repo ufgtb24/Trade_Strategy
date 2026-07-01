@@ -84,7 +84,7 @@ function onActivePatternChange(e: Event) {
 }
 .chart-area.no-sidebar { grid-template-columns: 1fr; }
 .level-bar, .chart-area > .topology-row { grid-column: 1 / -1; }
-.chart-area > .kline, .chart-area > .sidebar { grid-row: 3; }
+.chart-area > .kline-wrap, .chart-area > .sidebar { grid-row: 3; }
 
 .level-bar {
   display: flex;
