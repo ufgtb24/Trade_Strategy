@@ -227,10 +227,13 @@ function isRoleSelected(val: string | string[]): boolean {
   return id !== null && id === selectedEventId.value
 }
 
-/** 点击 trace role 行 → 设置 selectedEventId,实现 sidebar→chart 高亮 */
+/** 点击 trace role 行 → 单焦点 selectEvent + 顺手清候选(§2.2 状态机:candidate 中 click single-match event → clearCandidate) */
 function selectRoleEvent(val: string | string[]) {
   const id = roleEventId(val)
-  if (id) view.selectEvent(id)
+  if (id) {
+    view.clearCandidates()
+    view.selectEvent(id)
+  }
 }
 
 /** 点击候选表行:先退出 M' 候选状态(互斥),再选 event(final review fix) */

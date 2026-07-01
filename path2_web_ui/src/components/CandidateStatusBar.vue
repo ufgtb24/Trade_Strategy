@@ -41,16 +41,22 @@ const ordinalChars = computed<string[]>(() => {
 </script>
 
 <style scoped>
+/* spec §2.5:副图 grid1 顶部 16px banner。
+   由父容器 KlineChart.vue 通过 position:absolute + CSS var `--grid1-top-px` 定位到 grid1 顶部。 */
 .candidate-banner {
+  position: absolute;
+  left: 56px;              /* 与 chart.ts grid[1].left = 56 对齐 */
+  right: 16px;             /* 与 chart.ts grid[1].right = 16 对齐 */
+  top: var(--grid1-top-px, 68%);
   height: 16px;
   line-height: 16px;
   padding: 0 8px;
   font-size: 12px;
   color: #fbbf24;
-  background: rgba(0, 0, 0, 0.04);
-  border-top: 1px solid rgba(0, 0, 0, 0.08);
-  border-bottom: 1px solid rgba(251, 191, 36, 0.25);
+  background: rgba(15, 23, 42, 0.92);   /* 深底提高在浅色副图上可读性 */
+  border-radius: 3px;
   user-select: none;
-  flex-shrink: 0;
+  z-index: 10;
+  pointer-events: none;    /* 不遮挡下方 bracket click */
 }
 </style>

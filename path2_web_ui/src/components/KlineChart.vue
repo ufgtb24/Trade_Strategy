@@ -1,12 +1,12 @@
 <template>
-  <div class="kline-wrap">
-    <CandidateStatusBar :matches="effectiveAnalysis?.matches ?? []" />
+  <div class="kline-wrap" :style="wrapCssVars">
     <div ref="el" class="kline" />
+    <CandidateStatusBar :matches="effectiveAnalysis?.matches ?? []" />
   </div>
 </template>
 
 <script setup lang="ts">
-import { onMounted, onBeforeUnmount, ref, watch } from 'vue'
+import { onMounted, onBeforeUnmount, ref, watch, computed } from 'vue'
 import * as echarts from 'echarts'
 import { storeToRefs } from 'pinia'
 import { useViewStore } from '../stores/view'
@@ -25,6 +25,11 @@ const panels = usePanelsStore()
 const { showSlider } = storeToRefs(panels)
 const el = ref<HTMLElement | null>(null)
 const bars = ref<Bar[]>([])
+
+// grid1 顶部对齐 CSS 变量(与 chart.ts grid[1].top 完全同步):
+//   sliderShow=true  → '68%'
+//   sliderShow=false → '76%'
+const wrapCssVars = computed(() => ({ '--grid1-top-px': showSlider.value ? '68%' : '76%' }))
 let chart: echarts.ECharts | null = null
 let ro: ResizeObserver | null = null
 let unsubCtrl: (() => void) | null = null
@@ -218,7 +223,8 @@ watch([effectiveAnalysis, roleVisible, level, roleColors, selectedEventId, diag,
 </script>
 
 <style scoped>
-/* min-width:0 让 grid 列能收缩到比 canvas 窄(打破 canvas 撑列死锁);overflow 裁剪 init 瞬时溢出 */
-.kline-wrap { display: flex; flex-direction: column; width: 100%; height: 100%; min-width: 0; }
-.kline { flex: 1; min-width: 0; min-height: 0; overflow: hidden; }
+/* min-width:0 让 grid 列能收缩到比 canvas 窄(打破 canvas 撑列死锁);overflow 裁剪 init 瞬时溢出。
+   position:relative 提供 CandidateStatusBar 的 absolute 定位坐标系 → banner 贴 grid1 顶部。 */
+.kline-wrap { position: relative; width: 100%; height: 100%; min-width: 0; }
+.kline { width: 100%; height: 100%; min-width: 0; min-height: 0; overflow: hidden; }
 </style>

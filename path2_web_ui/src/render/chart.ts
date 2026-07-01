@@ -342,7 +342,9 @@ export function buildKlineOption(
     yAxis: [
       // index 0: 价格(grid0)——固定 min/max 让 volume bar 显示区间贴 grid 底部 20%
       // (displayBottom 钳到 ≥ 0，详见 buildVolumeSeriesAndYAxis 注释)
-      { gridIndex: 0, splitArea: { show: true }, min: yAxisOverride.min, max: yAxisOverride.max },
+      // axisLabel.formatter: 抑制 max 的浮点尾数(如 0.8787499999999999),按价格量级选精度
+      { gridIndex: 0, splitArea: { show: true }, min: yAxisOverride.min, max: yAxisOverride.max,
+        axisLabel: { formatter: (v: number) => Math.abs(v) >= 100 ? v.toFixed(0) : Math.abs(v) >= 1 ? v.toFixed(2) : v.toFixed(3) } },
       // index 1: 隐藏 bracket 轴(grid0)
       { scale: true, gridIndex: 0, show: false },
       // index 2: 隐藏 marker 轴(grid1)
@@ -366,7 +368,7 @@ export function buildKlineOption(
         renderItem: renderInterval, encode: { x: [0, 1] }, z: 9, tooltip: markerTooltip },
       // 归属带 brackets(grid1,隐藏 marker 轴 yAxisIndex:2)
       { type: 'custom', name: 'brackets', xAxisIndex: 1, yAxisIndex: 2, data: bracketData,
-        renderItem: makeRenderBracket(selectedMatchId ?? null, candidateMatchIds ?? new Set()),
+        renderItem: makeRenderBracket(bracketData, selectedMatchId ?? null, candidateMatchIds ?? new Set()),
         encode: { x: [0, 1] }, z: 11, tooltip: markerTooltip,
         emphasis: { disabled: true } },
       // band 标签(grid1 左缘,低 z),同时叠灰阴影覆盖 grid1
@@ -463,9 +465,10 @@ function makeRenderHighlight(items: Array<{ value: number[]; event_id: string; k
     // 几何类型由 value 长度推断:4=point(三角), 5=interval(矩形)
     const isInterval = item ? item.value.length === 5 : false
     if (!isInterval) {
+      // point:三角描边。同 interval 一样从 closure items 直读维度,避免 ECharts 自动 dim 推断陷阱
       const x = api.coord([api.value(0), 0])[0]
-      const band = api.value(2) || 0
-      const nBands = api.value(3) || 1
+      const band = (item?.value?.[2] as number) || 0
+      const nBands = (item?.value?.[3] as number) || 1
       const cs = params.coordSys
       const bandH = cs.height / nBands
       const bandTop = cs.y + band * bandH
@@ -481,11 +484,14 @@ function makeRenderHighlight(items: Array<{ value: number[]; event_id: string; k
       }
     } else {
       // interval:复用 renderInterval 坐标逻辑,画空心描边矩形
+      // ⚠ highlight 系列 data 混合 point(value.length=4)与 interval(value.length=5)。
+      //   ECharts 按首个 data item 自动推断 dimensions,若首个是 point 则 dim=4,
+      //   后续 interval 的 api.value(4)=null。改从 closure items 直读 value[4] 避开该坑。
       const x0 = api.coord([api.value(0), 0])[0]
       const x1 = api.coord([api.value(1), 0])[0]
-      const lane = api.value(2) || 0
-      const band = api.value(3) || 0
-      const nBands = api.value(4) || 1
+      const lane = (item?.value?.[2] as number) || 0
+      const band = (item?.value?.[3] as number) || 0
+      const nBands = (item?.value?.[4] as number) || 1
       const cs = params.coordSys
       const bandH = cs.height / nBands
       const bandTop = cs.y + band * bandH
@@ -541,9 +547,14 @@ function makeRenderPricePointHighlight(
   }
 }
 
-// 归属带:价格区顶部按 lane 的横带 + 序号(grid0 隐藏 bracket 轴)。
+// 归属带:副图 grid1 顶部按 lane 的横带 + 序号。
 // M #3 / M' #19: 三态 fill — selected > candidate > default
+// ⚠ ECharts 5 custom series renderItem(params) 不含 .data(实测 params.data===undefined),
+// 故工厂闭包捕获 items,按 params.dataIndex 反查 match_id(同 makeRenderHighlight 套路)。
+const CANDIDATE_BANNER_H = 16   // spec §2.5:banner 常驻预留在 grid1 顶部,brackets 让位
+
 function makeRenderBracket(
+  items: Array<{ match_id: string }>,
   selectedMatchId: string | null,
   candidateMatchIds: ReadonlySet<string>,
 ) {
@@ -552,8 +563,8 @@ function makeRenderBracket(
     const x1 = api.coord([api.value(1), 0])[0]
     const lane = api.value(2) || 0
     const bandH = 6, gap = 4
-    const top = params.coordSys.y + 2 + lane * (bandH + gap)
-    const matchId: string | undefined = params.data?.match_id
+    const top = params.coordSys.y + CANDIDATE_BANNER_H + 2 + lane * (bandH + gap)
+    const matchId: string | undefined = items[params.dataIndex]?.match_id
     const fill =
       matchId && selectedMatchId === matchId
         ? 'rgba(251,191,36,0.85)'
@@ -565,10 +576,12 @@ function makeRenderBracket(
       children: [
         { type: 'rect', shape: { x: x0, y: top, width: Math.max(2, x1 - x0), height: bandH },
           style: { fill } },
-        // unicode 圈圈数字 ① 的数字嵌在圆圈内、字形偏小,字号需比 BO marker 普通数字大 ~4
-        // 才能视觉对等。
+        // ordinal 放到 band 右侧(而非上方,避免与 grid0 xAxis 时间轴 label 垂直重叠):
+        //   x = x1 + 4(band 右端外 4px 空隙),y = band 垂直中心,textVerticalAlign 'middle' 保对齐。
+        //   unicode 圈圈数字 ① 字形偏小,fontSize=12 比 marker 常规 8 大一档以保可读性。
         { type: 'text', style: { text: '①②③④⑤⑥⑦⑧⑨'[(api.value(3) - 1) % 9] ?? '·',
-          x: x0 + 2, y: top - 2, fill: '#334155', fontSize: 12, textVerticalAlign: 'bottom' } },
+          x: x1 + 4, y: top + bandH / 2, fill: '#334155', fontSize: 12,
+          textAlign: 'left', textVerticalAlign: 'middle' } },
       ],
     }
   }
