@@ -102,10 +102,8 @@ def _build_spec():
                           consumes_stream="burst")
     return PatternSpec(
         pattern_id="test_multilayer",
-        display_name="三层流链机制验证",
         nodes=(bo_node, burst_node, super_node),
         edges=(),
-        root="super",
     )
 
 

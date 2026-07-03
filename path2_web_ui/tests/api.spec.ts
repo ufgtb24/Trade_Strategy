@@ -17,7 +17,7 @@ describe('api', () => {
   it('startScan POSTs body and returns scan_id', async () => {
     const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ scan_id: 'S1' }) })
     vi.stubGlobal('fetch', fetchMock)
-    const id = await api.startScan({ pattern_id: 'p', start_date: 'a', end_date: 'b', workers: 4, ticker_regex: null, label_horizon: 20 })
+    const id = await api.startScan({ pattern_ids: ['p'], start_date: 'a', end_date: 'b', workers: 4, ticker_regex: null, label_horizon: 20 })
     expect(id).toBe('S1')
     const [, opts] = fetchMock.mock.calls[0]
     expect(opts.method).toBe('POST')
@@ -53,7 +53,7 @@ describe('getPreview', () => {
   it('builds GET URL with query params + parses JSON', async () => {
     const fakeResp = { analysis: { events: [], matches: [] },
                        summary: { events: 0, matches: 0 },
-                       pattern_spec: { pattern_id: 'p', display_name: 'P',
+                       pattern_spec: { pattern_id: 'p',
                                        topology: { nodes: [], edges: [] },
                                        event_styles: {} },
                        scan: { scan_ts: '', start_date: '2025-01-01', end_date: '2025-12-31',

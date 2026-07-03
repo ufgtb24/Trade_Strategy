@@ -7,9 +7,9 @@ from path2.dag.spec import PatternSpec
 from path2.dag._solve import compile_plan, solve
 
 
-def _nspec(nodes, edges, root):
-    return PatternSpec(pattern_id="n", display_name="n", nodes=tuple(nodes),
-                       edges=tuple(edges), root=root)
+def _nspec(nodes, edges):
+    return PatternSpec(pattern_id="n", nodes=tuple(nodes),
+                       edges=tuple(edges))
 
 
 def _nodes(ids):
@@ -21,7 +21,7 @@ def test_negation_blocks_when_forbidden_present():
     edges = [TemporalEdge("A", "B", min_gap=0, max_gap=100),
              NegationEdge("A", "X", min_gap=1, max_gap=10)]
     streams = {"A": E("A", [(0, 0)]), "B": E("B", [(20, 20)]), "X": E("X", [(5, 5)])}
-    sols = solve(compile_plan(_nspec(_nodes(["A", "B", "X"]), edges, "A")), streams)
+    sols = solve(compile_plan(_nspec(_nodes(["A", "B", "X"]), edges)), streams)
     assert sols == []
 
 
@@ -30,7 +30,7 @@ def test_negation_passes_when_clear():
     edges = [TemporalEdge("A", "B", min_gap=0, max_gap=100),
              NegationEdge("A", "X", min_gap=1, max_gap=10)]
     streams = {"A": E("A", [(0, 0)]), "B": E("B", [(20, 20)]), "X": E("X", [(50, 50)])}
-    sols = solve(compile_plan(_nspec(_nodes(["A", "B", "X"]), edges, "A")), streams)
+    sols = solve(compile_plan(_nspec(_nodes(["A", "B", "X"]), edges)), streams)
     assert len(sols) >= 1
     assert "X" not in sols[0].assign          # 否定 dst 不进匹配
     assert set(sols[0].assign) == {"A", "B"}
@@ -40,5 +40,5 @@ def test_negation_matches_brute():
     edges = [TemporalEdge("A", "B", min_gap=0, max_gap=100),
              NegationEdge("A", "X", min_gap=1, max_gap=10)]
     streams = {"A": E("A", [(0, 0)]), "B": E("B", [(20, 20)]), "X": E("X", [(50, 50)])}
-    pr = keyset(solve(compile_plan(_nspec(_nodes(["A", "B", "X"]), edges, "A")), streams))
+    pr = keyset(solve(compile_plan(_nspec(_nodes(["A", "B", "X"]), edges)), streams))
     assert pr == keyset(brute_all(edges, streams))

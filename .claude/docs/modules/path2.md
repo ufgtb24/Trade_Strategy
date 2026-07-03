@@ -1,6 +1,6 @@
 # path2 框架架构意图
 
-> 最后更新：2026-06-16
+> 最后更新：2026-06-28
 > 覆盖：`path2/`（协议地基 + dag 引擎 + atoms + calc + stdlib + eval）。
 > 应用层见 [path2_apps.md](path2_apps.md)；web 调试/可视化见 [path2_web.md](path2_web.md)。
 > **codebase 的主线功能**；独立事件表达框架，与 `BreakoutStrategy/` 零耦合。
@@ -50,7 +50,7 @@ dag/ 是 **Kleene-free 单 Event 引擎**：所有节点绑单 Event，求解期
 
 ### 节点：NodeSpec（nodes.py）
 
-`NodeSpec` = 角色唯一键 `node_id` + 生产者 `detector` + 节点级一元谓词 `where`（`(clause_id, fn)` 列表 AND 合取）+ `consumes_stream`（None = 从 df 产流；填 node_id = 消费该上游流，如 throwback 吃 bo 流）+ `label`。同一 detector 类型可用不同 node_id 承担不同角色。class_id 由 `detector.event_cls.class_id` 取。`WherePredicate` 签名严格 `(Event, MatchContext) -> bool`（无 tuple 形态）。
+`NodeSpec` = 角色唯一键 `node_id` + 生产者 `detector` + 节点级一元谓词 `where`（`(clause_id, fn)` 列表 AND 合取）+ `consumes_stream`（None = 从 df 产流；填 node_id = 消费该上游流，如 throwback 吃 bo 流）。同一 detector 类型可用不同 node_id 承担不同角色。class_id 由 `detector.event_cls.class_id` 取。`WherePredicate` 签名严格 `(Event, MatchContext) -> bool`（无 tuple 形态）。node_id 即前端显示名（无独立 display label 字段）——起名按"用户面板上要看到的英文标签"定（短、可读：`bo` / `burst` / `tb`）。
 
 **铁律**：where 谓词严禁读 `ctx.bound`（跨节点）。引擎剪枝期用 `_TRIPWIRE` 哨兵替换 bound，违规立即抛。
 
@@ -81,9 +81,9 @@ dag/ 是 **Kleene-free 单 Event 引擎**：所有节点绑单 Event，求解期
 
 ### 声明容器 PatternSpec（spec.py）
 
-`PatternSpec` = `pattern_id` + `display_name` + `nodes` + `edges` + `root` + `event_styles` + `stock_list_columns`。`__post_init__` 五类校验：DAG（root/边端点在 nodes、Kahn 无环）、`consumes_stream` 引用合法、where `clause_id` 同 node 内唯一（跨 node 可重名）、`_validate_anchor`（anchor_field 在 dst event_cls 上、anchor_src_field 在 src event_cls 上 + 拒单调坐标 start_idx/end_idx，引导改用 EqualsEdge 走结构剪枝）。
+`PatternSpec` = `pattern_id` + `nodes` + `edges` + `root` + `event_styles` + `stock_list_columns`。`__post_init__` 五类校验：DAG（root/边端点在 nodes、Kahn 无环）、`consumes_stream` 引用合法、where `clause_id` 同 node 内唯一（跨 node 可重名）、`_validate_anchor`（anchor_field 在 dst event_cls 上、anchor_src_field 在 src event_cls 上 + 拒单调坐标 start_idx/end_idx，引导改用 EqualsEdge 走结构剪枝）。pattern_id 即前端显示名（无独立 display_name 字段）。
 
-`to_topology()` 零派生直投 nodes/edges 为 `PatternTopology`（`TopoNode` 字段 `node_id/class_id/label` 三项；`TopoEdge.kind` = 边子类名）。面板与 serialize 据此渲染。`eq_src_nodes()` 供引擎对 EqualsEdge 的 src 关闭 C1 塌缩。
+`to_topology()` 零派生直投 nodes/edges 为 `PatternTopology`（`TopoNode` 字段 `node_id/class_id` 两项；`TopoEdge.kind` = 边子类名）。面板与 serialize 据此渲染。`eq_src_nodes()` 供引擎对 EqualsEdge 的 src 关闭 C1 塌缩。
 
 ### 引擎入口（engine.py）
 

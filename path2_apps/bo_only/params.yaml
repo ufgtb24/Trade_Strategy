@@ -1,0 +1,12 @@
+# bo_only pattern 参数 — 复用 BODetector 默认值。
+# 与 bottom_breakout_burst 的 bo section 同义(可独立改),非引用。
+
+bo:
+  total_window: 20
+  min_side_bars: 6
+  min_relative_height: 0.2
+  exceed_threshold: 0.003
+  peak_supersede_threshold: 0.01
+  vol_baseline_period: 63
+  peak_measure: high
+  breakout_measure: high

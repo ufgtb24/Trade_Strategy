@@ -60,7 +60,7 @@ def test_config_get_put(tmp_path):
 
 def test_scan_then_stream_done(tmp_path):
     c = _client(tmp_path)
-    r = c.post("/scan", json={"pattern_id": "bottom_breakout_burst",
+    r = c.post("/scan", json={"pattern_ids": ["bottom_breakout_burst"],
                               "start_date": "2025-01-01", "end_date": "2025-12-31",
                               "workers": 1, "ticker_regex": None})
     assert r.status_code == 200
@@ -80,19 +80,22 @@ def test_scan_then_stream_done(tmp_path):
                     break
     assert saw_done
     # 历史扫描可列出 + 加载
-    scans = c.get("/scans/bottom_breakout_burst").json()
+    scans = c.get("/scans/").json()
     assert len(scans) >= 1
-    loaded = c.get(f"/scans/bottom_breakout_burst/{scans[0]['scan_ts']}").json()
+    loaded = c.get(f"/scans/{scans[0]['scan_ts']}").json()
     assert loaded["scan"]["hits"] == 0
 
 
 def test_api_delete_scan_200(tmp_path):
     c = _client(tmp_path)
-    # 手写一个结果文件
-    out = Path(tmp_path) / "outputs" / "bottom_breakout_burst"
+    # 手写一个结果文件(扁平 scans/ 路径)
+    out = Path(tmp_path) / "outputs" / "scans"
     out.mkdir(parents=True, exist_ok=True)
-    (out / "20260601T100000.json").write_text('{"scan": {"hits": 0, "scanned": 1}}')
-    r = c.delete("/scans/bottom_breakout_burst/20260601T100000")
+    (out / "20260601T100000.json").write_text(
+        '{"pattern_ids":["bottom_breakout_burst"],"per_pattern":{},'
+        '"scan":{"hits":0,"scanned":1,"partial":false},"results":[]}'
+    )
+    r = c.delete("/scans/20260601T100000")
     assert r.status_code == 200
     assert r.json() == {"ok": True}
     assert not (out / "20260601T100000.json").exists()
@@ -101,45 +104,27 @@ def test_api_delete_scan_200(tmp_path):
 def test_api_delete_scan_404_when_missing(tmp_path):
     c = _client(tmp_path)
     # 格式正确但文件不存在 → 404
-    r = c.delete("/scans/bottom_breakout_burst/20260601T100000")
+    r = c.delete("/scans/20260601T100000")
     assert r.status_code == 404
 
 
 # ── path 校验测试 ──────────────────────────────────────────────
-def test_api_list_scans_404_unknown_pattern(tmp_path):
-    c = _client(tmp_path)
-    r = c.get("/scans/no_such_pattern")
-    assert r.status_code == 404
-
-
-def test_api_load_scan_404_unknown_pattern(tmp_path):
-    c = _client(tmp_path)
-    r = c.get("/scans/no_such_pattern/20260601T100000")
-    assert r.status_code == 404
-
-
 def test_api_load_scan_422_invalid_ts_format(tmp_path):
     c = _client(tmp_path)
-    # ".." 触发 regex 校验失败 → 422
-    r = c.get("/scans/bottom_breakout_burst/../../../etc/passwd")
-    assert r.status_code in (404, 422)
+    # 非时间戳格式 → regex 校验失败 → 422
+    r = c.get("/scans/not_a_valid_timestamp_at_all")
+    assert r.status_code == 422
 
 
 def test_api_load_scan_422_bad_ts(tmp_path):
     c = _client(tmp_path)
-    r = c.get("/scans/bottom_breakout_burst/not_a_timestamp")
+    r = c.get("/scans/not_a_timestamp")
     assert r.status_code == 422
-
-
-def test_api_delete_scan_404_unknown_pattern(tmp_path):
-    c = _client(tmp_path)
-    r = c.delete("/scans/no_such_pattern/20260601T100000")
-    assert r.status_code == 404
 
 
 def test_api_delete_scan_422_bad_ts(tmp_path):
     c = _client(tmp_path)
-    r = c.delete("/scans/bottom_breakout_burst/not_a_timestamp")
+    r = c.delete("/scans/not_a_timestamp")
     assert r.status_code == 422
 
 
@@ -156,7 +141,7 @@ def test_api_scan_then_cancel_emits_cancelled_done(tmp_path):
     data_dir = Path(tmp_path) / "pkls"
     for sym in ["B1", "B2", "B3", "B4", "B5"]:
         _mk_dated_no_burst(data_dir, sym)
-    r = c.post("/scan", json={"pattern_id": "bottom_breakout_burst",
+    r = c.post("/scan", json={"pattern_ids": ["bottom_breakout_burst"],
                               "start_date": "2025-01-01", "end_date": "2025-12-31",
                               "workers": 1, "ticker_regex": None})
     scan_id = r.json()["scan_id"]
@@ -199,7 +184,7 @@ def test_post_cancel_with_save_writes_partial_file_and_done_includes_partial(tmp
     for i in range(30):
         _mk_dated_no_burst(data_dir, f"P{i:03d}")
     r = c.post("/scan", json={
-        "pattern_id": "bottom_breakout_burst",
+        "pattern_ids": ["bottom_breakout_burst"],
         "start_date": "2025-01-01", "end_date": "2025-12-31",
         "workers": 1, "ticker_regex": None,
     })
@@ -213,9 +198,9 @@ def test_post_cancel_with_save_writes_partial_file_and_done_includes_partial(tmp
     if done.get("partial") is not True:
         pytest.skip(f"cancel race lost; scan completed before cancel intercepted (done={done})")
     # ── race 赢:硬断言整链路 ──
-    assert done.get("pattern_id") == "bottom_breakout_burst"
+    assert done.get("pattern_ids") == ["bottom_breakout_burst"]
     assert "scan_ts" in done
-    out = Path(tmp_path) / "outputs" / "bottom_breakout_burst" / f"{done['scan_ts']}.json"
+    out = Path(tmp_path) / "outputs" / "scans" / f"{done['scan_ts']}.json"
     assert out.exists()
     saved = json.loads(out.read_text())
     assert saved["scan"]["partial"] is True
@@ -229,7 +214,7 @@ def test_post_cancel_with_save_false_keeps_legacy_cancelled_shape(tmp_path):
     data_dir = Path(tmp_path) / "pkls"
     for i in range(30):
         _mk_dated_no_burst(data_dir, f"Q{i:03d}")
-    r = c.post("/scan", json={"pattern_id": "bottom_breakout_burst",
+    r = c.post("/scan", json={"pattern_ids": ["bottom_breakout_burst"],
                               "start_date": "2025-01-01", "end_date": "2025-12-31",
                               "workers": 1, "ticker_regex": None})
     assert r.status_code == 200

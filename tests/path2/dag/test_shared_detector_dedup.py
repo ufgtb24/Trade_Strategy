@@ -22,10 +22,10 @@ def _df(n=200):
 def _spec_shared():
     det = TrendSegmentDetector()          # 同一对象给两 node
     nodes = (
-        NodeSpec("a", det, where=(("r", W.attr("regime", "==", "down")),), label="A"),
-        NodeSpec("b", det, where=(("r", W.attr("regime", "==", "up")),), label="B"),
+        NodeSpec("a", det, where=(("r", W.attr("regime", "==", "down")),)),
+        NodeSpec("b", det, where=(("r", W.attr("regime", "==", "up")),)),
     )
-    return PatternSpec(pattern_id="t", display_name="t", nodes=nodes, edges=(), root="a")
+    return PatternSpec(pattern_id="t", nodes=nodes, edges=())
 
 
 def test_shared_detector_runs_once():

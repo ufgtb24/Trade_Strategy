@@ -26,17 +26,19 @@ def test_refresh_idempotent():
 def test_broken_package_skipped(tmp_path, monkeypatch):
     # 在一个临时 apps 包里放一个 import 即抛错的 dag_spec → 记录 error、不崩
     import sys, importlib
-    pkg = tmp_path / "fake_apps"
+    pkg = tmp_path / "fake_apps_broken"
     (pkg / "good" ).mkdir(parents=True)
     (pkg / "bad").mkdir(parents=True)
     (pkg / "__init__.py").write_text("")
     (pkg / "good" / "__init__.py").write_text("")
     (pkg / "bad" / "__init__.py").write_text("")
     (pkg / "good" / "dag_spec.py").write_text(
-        "class _S:\n    pattern_id='good_pat'\nPATTERN_DAG=_S()\n")
+        "class _S:\n    pattern_id='good_pat'\nPATTERN_DAG=_S()\n"
+        "def eval_meta(): return {'end_role': 'bo', 'head_buffer_trading_days': 20}\n"
+    )
     (pkg / "bad" / "dag_spec.py").write_text("raise RuntimeError('boom')\n")
     monkeypatch.syspath_prepend(str(tmp_path))
     importlib.invalidate_caches()
-    reg = PatternRegistry(apps_pkg="fake_apps")
+    reg = PatternRegistry(apps_pkg="fake_apps_broken")
     assert "good_pat" in reg.ids()
     assert "bad" in reg.errors()        # 残缺包记录错误、跳过

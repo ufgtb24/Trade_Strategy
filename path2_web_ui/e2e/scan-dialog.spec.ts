@@ -8,11 +8,20 @@ async function gotoApp(page: any) {
   await expect(page.locator('select')).toContainText('底部反转突破爆发')
 }
 
+// 扫描参数已搬进 ScanConfigDialog(点顶部工具条「扫描 ⚙」打开);
+// dialog 打开时 pattern 选择默认清空,需先全选才能启用「开始扫描」。
+async function openScanDialogAndSelectAll(page: any) {
+  await page.getByRole('button', { name: /扫描 ⚙/ }).click()
+  await expect(page.locator('.pattern-list li').first()).toBeVisible({ timeout: 10_000 })
+  await page.locator('.backdrop').getByRole('button', { name: '全选' }).click()
+}
+
 async function ensureAtLeastOneScan(page: any) {
   await gotoApp(page)
   // 若历史已有记录则跳过扫描;否则触发一次等完成
   const existing = await fetch(`${API_BASE}/scans/bottom_breakout_burst`).then(r => r.json()).catch(() => [])
   if (Array.isArray(existing) && existing.length > 0) return
+  await openScanDialogAndSelectAll(page)
   await page.getByRole('button', { name: /开始扫描/ }).click()
   await expect(page.locator('.done')).toBeVisible({ timeout: 300_000 })
 }
@@ -43,6 +52,7 @@ test('3. multi-select 2 rows + Delete → confirm → 行消失', async ({ page 
   // 确保至少 2 条:若历史已 ≥2 跳过第二次扫描
   const existing2 = await fetch(`${API_BASE}/scans/bottom_breakout_burst`).then(r => r.json()).catch(() => [])
   if (!Array.isArray(existing2) || existing2.length < 2) {
+    await openScanDialogAndSelectAll(page)
     await page.getByRole('button', { name: /开始扫描/ }).click()
     await expect(page.locator('.done')).toBeVisible({ timeout: 300_000 })
   }
@@ -86,18 +96,19 @@ test('4. select currentScanTs + Delete → 红字提示 + 删后主视图清空'
   await expect(page.locator('.list .hint')).toContainText(/未加载/, { timeout: 5_000 })
 })
 
-test('5. Start scan → 按钮变红「停止扫描」→ click → cancel + 「打开历史」enabled', async ({ page }) => {
+test('5. Start scan → 按钮变红「停止扫描」→ click → cancel + 「扫描 ⚙」enabled', async ({ page }) => {
   await gotoApp(page)
+  await openScanDialogAndSelectAll(page)
   await page.getByRole('button', { name: /开始扫描/ }).click()
   // 立刻看按钮变红
   const stopBtn = page.getByRole('button', { name: /停止扫描/ })
   await expect(stopBtn).toBeVisible({ timeout: 5_000 })
   await expect(stopBtn).toHaveClass(/btn-stop/)
-  // 「打开历史」disabled
-  await expect(page.getByRole('button', { name: /打开历史/ })).toBeDisabled()
+  // 「扫描 ⚙」运行中 disabled(防止运行中改配置;新 UI 下「打开历史」不再受运行态约束)
+  await expect(page.getByRole('button', { name: /扫描 ⚙/ })).toBeDisabled()
   // 点停止
   await stopBtn.click()
   await expect(page.locator('.done')).toContainText(/扫描已取消|完成/, { timeout: 30_000 })
-  // 历史按钮恢复
-  await expect(page.getByRole('button', { name: /打开历史/ })).toBeEnabled()
+  // 扫描按钮恢复可点
+  await expect(page.getByRole('button', { name: /扫描 ⚙/ })).toBeEnabled()
 })

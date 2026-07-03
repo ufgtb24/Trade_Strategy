@@ -19,7 +19,7 @@ const LBL_CJK = 12     // 边标签 CJK 字符估宽(rule @11px)
 const LBL_ASCII = 7    // 边标签 ASCII 字符估宽
 
 function estWidth(n: TopoNode): number {
-  const chars = [...(n.label || n.node_id)].length   // 按 Unicode 码点,中文每字算 1
+  const chars = [...n.node_id].length   // 按 Unicode 码点,中文每字算 1
   return 2 * HPAD + chars * CH_W
 }
 

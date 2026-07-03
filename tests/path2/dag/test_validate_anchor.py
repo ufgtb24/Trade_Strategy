@@ -34,8 +34,8 @@ def _build_spec_with_anchor(anchor_field=None, anchor_src_field=None):
     edges = (TemporalEdge("src", "dst", min_gap=1, max_gap=5,
                           anchor_field=anchor_field,
                           anchor_src_field=anchor_src_field),)
-    return PatternSpec(pattern_id="anchor_test", display_name="anchor_test",
-                       nodes=nodes, edges=edges, root="src")
+    return PatternSpec(pattern_id="anchor_test",
+                       nodes=nodes, edges=edges)
 
 
 def test_valid_anchor_passes():

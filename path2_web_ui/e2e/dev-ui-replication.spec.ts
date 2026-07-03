@@ -28,6 +28,14 @@ import type { Page } from '@playwright/test'
 
 // ─── 共用 helper ───────────────────────────────────────────────────────────────
 
+// 扫描参数已搬进 ScanConfigDialog(点顶部工具条「扫描 ⚙」打开）；
+// dialog 打开时 pattern 选择默认清空，需先全选才能启用「开始扫描」。
+async function openScanDialogAndSelectAll(page: Page) {
+  await page.getByRole('button', { name: /扫描 ⚙/ }).click()
+  await expect(page.locator('.pattern-list li').first()).toBeVisible({ timeout: 10_000 })
+  await page.locator('.backdrop').getByRole('button', { name: '全选' }).click()
+}
+
 /**
  * 辅助：等待扫描并选第一只命中股，返回 symbol。
  * 逻辑与 flow.spec.ts:ensureScanLoaded 一致。
@@ -42,6 +50,7 @@ async function ensureScanLoaded(page: Page): Promise<string | null> {
   if (rowCount === 0) {
     await page.getByRole('button', { name: 'Cancel' }).click()
     await expect(page.locator('.backdrop')).not.toBeVisible()
+    await openScanDialogAndSelectAll(page)
     await page.getByRole('button', { name: /开始扫描/ }).click()
     await expect(page.locator('.done')).toBeVisible({ timeout: 300_000 })
     await page.getByRole('button', { name: /打开历史/ }).click()
@@ -57,16 +66,16 @@ async function ensureScanLoaded(page: Page): Promise<string | null> {
   return symbol
 }
 
-/** 等待 K 线 canvas 渲染完成（.kline canvas 可见且 chart 实例已初始化）。 */
+/** 等待 K 线 canvas 渲染完成（.main-chart canvas 可见且 chartMain 实例已初始化）。 */
 async function waitForChartReady(page: Page) {
-  await expect(page.locator('.kline canvas').first()).toBeVisible({ timeout: 15_000 })
+  await expect(page.locator('.main-chart canvas').first()).toBeVisible({ timeout: 15_000 })
   await page.waitForFunction(() => {
     const e = (window as any).__e2e
-    return e && typeof e.chart === 'function' && e.chart() != null
+    return e && typeof e.chartMain === 'function' && e.chartMain() != null
   }, { timeout: 10_000 })
   // 确保 bars 已加载（kline 系列有数据）
   await page.waitForFunction(() => {
-    const chart = (window as any).__e2e?.chart()
+    const chart = (window as any).__e2e?.chartMain()
     const opt = chart?.getOption() as any
     return (opt?.series?.find((s: any) => s.name === 'kline')?.data?.length ?? 0) > 0
   }, { timeout: 10_000 })
@@ -83,7 +92,7 @@ test('1. initial viewport: strict window with grey shading — screenshot baseli
   // 验证 strictWindow 逻辑能正确计算出 buffer（不依赖 getOption 的 zoom 值）
   const strictWindowCalc = await page.evaluate(() => {
     const view = (window as any).__e2e?.view
-    const chart = (window as any).__e2e?.chart()
+    const chart = (window as any).__e2e?.chartMain()
     const sf = view?.scanFile
     const s = sf?.scan
     if (!s || !chart) return null
@@ -122,7 +131,7 @@ test('2. after pan left, buffer bars visible; grey shading survives hover setOpt
   await waitForChartReady(page)
   await page.waitForTimeout(500)
 
-  const canvas = page.locator('.kline canvas').first()
+  const canvas = page.locator('.main-chart canvas').first()
   const box = await canvas.boundingBox()
   if (!box) throw new Error('canvas boundingBox null')
 
@@ -154,7 +163,7 @@ test('3. bar tooltip 8 lines (Date/Volume/RV); Ctrl toggles axisPointer to orang
   // ── 数据层 hard preconditions ──
   // kline / volume 数据必须存在，这是 Date:/Volume:/RV: 行的数据来源
   const dataCheck = await page.evaluate(() => {
-    const chart = (window as any).__e2e?.chart()
+    const chart = (window as any).__e2e?.chartMain()
     if (!chart) return { error: 'no chart' }
     const opt = chart.getOption() as any
     const klineSeries = opt?.series?.find((s: any) => s.name === 'kline')
@@ -194,7 +203,7 @@ test('3. bar tooltip 8 lines (Date/Volume/RV); Ctrl toggles axisPointer to orang
   // 实测：headless Playwright 中 tooltip DOM 不挂载（ZRender canvas 与 DOM tooltip 生命周期断路）。
   // 若可达 → 断言 Date: / Volume: / RV: 文本；若不可达 → vitest backstop 记录在案。
   await page.evaluate((dataIndex: number) => {
-    const chart = (window as any).__e2e?.chart()
+    const chart = (window as any).__e2e?.chartMain()
     if (!chart) return
     chart.dispatchAction({ type: 'showTip', seriesIndex: 0, dataIndex })
   }, midIdx)
@@ -225,7 +234,7 @@ test('3. bar tooltip 8 lines (Date/Volume/RV); Ctrl toggles axisPointer to orang
   // 共 7 个测试，覆盖 Date:/Volume:/RV:/Price: 全路径（path2_web_ui/tests/chart-helpers.spec.ts:155-210）
 
   await page.evaluate(() => {
-    const chart = (window as any).__e2e?.chart()
+    const chart = (window as any).__e2e?.chartMain()
     chart?.dispatchAction({ type: 'hideTip' })
   })
   await page.waitForTimeout(100)
@@ -238,7 +247,7 @@ test('3. bar tooltip 8 lines (Date/Volume/RV); Ctrl toggles axisPointer to orang
   // 验证策略：(1) 硬性断言 keydown 到达 document（事件通道完整性）
   //           (2) dispatchAction Price: 文本断言（若 tooltip DOM 可达）
   //           (3) vitest backstop 引用（行为正确性由单元测试保证）
-  const canvas = page.locator('.kline canvas').first()
+  const canvas = page.locator('.main-chart canvas').first()
   const box = await canvas.boundingBox()
   if (!box) throw new Error('canvas boundingBox null')
 
@@ -262,7 +271,7 @@ test('3. bar tooltip 8 lines (Date/Volume/RV); Ctrl toggles axisPointer to orang
 
   // 尝试 dispatchAction showTip 后读 Price: 文本（Ctrl mode formatter hard 断言）
   await page.evaluate((dataIndex: number) => {
-    const chart = (window as any).__e2e?.chart()
+    const chart = (window as any).__e2e?.chartMain()
     if (!chart) return
     chart.dispatchAction({ type: 'showTip', seriesIndex: 0, dataIndex })
   }, midIdx)
@@ -290,7 +299,7 @@ test('3. bar tooltip 8 lines (Date/Volume/RV); Ctrl toggles axisPointer to orang
 
   await page.keyboard.up('Control')
   await page.evaluate(() => {
-    const chart = (window as any).__e2e?.chart()
+    const chart = (window as any).__e2e?.chartMain()
     chart?.dispatchAction({ type: 'hideTip' })
   })
 })
@@ -323,7 +332,7 @@ test('4. hover price-point marker shows marker tooltip; path2 event fields prese
   // 实测：headless Playwright 中 tooltip DOM 不挂载（同 bar tooltip 限制）。
   // 若可达 → 断言内省字段文本、不含 Date:/Volume:；若不可达 → vitest backstop 记录在案。
   const markerSeriesInfo = await page.evaluate(() => {
-    const chart = (window as any).__e2e?.chart()
+    const chart = (window as any).__e2e?.chartMain()
     if (!chart) return null
     const opt = chart.getOption() as any
     const seriesList = opt?.series ?? []
@@ -334,7 +343,7 @@ test('4. hover price-point marker shows marker tooltip; path2 event fields prese
 
   if (markerSeriesInfo && markerSeriesInfo.ppSeriesIndex >= 0 && markerSeriesInfo.ppDataLen > 0) {
     await page.evaluate((seriesIndex: number) => {
-      const chart = (window as any).__e2e?.chart()
+      const chart = (window as any).__e2e?.chartMain()
       if (!chart) return
       chart.dispatchAction({ type: 'showTip', seriesIndex, dataIndex: 0 })
     }, markerSeriesInfo.ppSeriesIndex)
@@ -368,18 +377,18 @@ test('4. hover price-point marker shows marker tooltip; path2 event fields prese
     // E2E 层已验证: events.length>0 + class_id/event_id/start_idx/end_idx 字段完整
 
     await page.evaluate(() => {
-      const chart = (window as any).__e2e?.chart()
+      const chart = (window as any).__e2e?.chartMain()
       chart?.dispatchAction({ type: 'hideTip' })
     })
   }
 
   // ── 视觉验证：hover price-points marker 区域，截图 ──
-  const canvas = page.locator('.kline canvas').first()
+  const canvas = page.locator('.main-chart canvas').first()
   const box = await canvas.boundingBox()
   if (!box) throw new Error('canvas boundingBox null')
 
   const markerPixel = await page.evaluate(() => {
-    const chart = (window as any).__e2e?.chart()
+    const chart = (window as any).__e2e?.chartMain()
     if (!chart) return null
     const opt = chart.getOption() as any
     const ppSeries = opt?.series?.find((s: any) => s.name === 'price-points')

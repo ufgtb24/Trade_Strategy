@@ -122,8 +122,8 @@ def test_dag_engine_bo_to_tb_match(monkeypatch):
                         lambda bo, df, **kw: ThrowbackResult(bo.end_idx + 1, bo.end_idx + 3))
     bo_node = NodeSpec("bo", detector=_FakeBO([_bo(20)]))
     tb_node = NodeSpec("tb", detector=ThrowbackDetector(), consumes_stream="bo")
-    spec = PatternSpec(pattern_id="p3", display_name="p3", nodes=(bo_node, tb_node),
-                       edges=(TemporalEdge("bo", "tb", min_gap=1, max_gap=10),), root="bo")
+    spec = PatternSpec(pattern_id="p3", nodes=(bo_node, tb_node),
+                       edges=(TemporalEdge("bo", "tb", min_gap=1, max_gap=10),))
     res = analyze(spec, df=object())
     assert len(res.matches) == 1
     m = res.matches[0]

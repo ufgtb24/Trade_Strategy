@@ -1,123 +1,65 @@
 <template>
   <div class="panel">
-    <label>区间</label>
-    <input v-model="start" /> ~ <input v-model="end" />
-    <label>workers</label>
-    <input v-model.number="workers" type="number" min="1" />
-    <label>label horizon (days)</label>
-    <input v-model.number="labelHorizon" type="number" min="1" />
+    <div class="topbar">
+      <button :disabled="scan.running" @click="scanDialogOpen = true">扫描 ⚙</button>
+      <button @click="historyDialogOpen = true">打开历史 …</button>
+    </div>
 
-    <button
-      :disabled="!selectedId"
-      :class="{ 'btn-stop': running }"
-      @click="onPrimary"
-    >
-      {{ running ? '停止扫描' : '开始扫描' }}
-    </button>
-
-    <button
-      :disabled="!selectedId || running"
-      @click="dialogOpen = true"
-    >
-      打开历史…
-    </button>
-
-    <div v-if="progress" class="prog">{{ progress.scanned }}/{{ progress.total }} · 命中 {{ progress.hits }}</div>
-    <div v-if="lastDone" class="done">
+    <div v-if="scan.running" class="prog">
+      {{ progress?.scanned ?? 0 }}/{{ progress?.total ?? 0 }} · 命中 {{ progress?.hits ?? 0 }}
+      <button class="btn-stop" @click="onStopClick">停止扫描 ✕</button>
+    </div>
+    <div v-else-if="lastDone" class="done">
       <template v-if="lastDone.cancelled">扫描已取消</template>
       <template v-else-if="lastDone.error">扫描失败: {{ lastDone.error }}</template>
       <template v-else>完成: 命中 {{ lastDone.hits }} / 错误 {{ lastDone.errors }}</template>
     </div>
 
-    <ScanResultDialog
-      v-if="dialogOpen && selectedId"
-      :pattern-id="selectedId"
-      @close="dialogOpen = false"
-    />
-
-    <StopScanDialog
-      v-if="stopDialogOpen"
-      :hits="progress?.hits ?? 0"
-      @save="onStopSave"
-      @discard="onStopDiscard"
-      @continue="onStopContinue"
-    />
+    <ScanConfigDialog v-if="scanDialogOpen" @close="scanDialogOpen = false" />
+    <ScanResultDialog v-if="historyDialogOpen" @close="historyDialogOpen = false" />
+    <StopScanDialog v-if="stopDialogOpen"
+                    :hits="progress?.hits ?? 0"
+                    @save="onStopSave" @discard="onStopDiscard" @continue="onStopContinue" />
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, watch } from 'vue'
+import { ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
-import { usePatternsStore } from '../stores/patterns'
 import { useScanStore } from '../stores/scan'
-import { useConfigStore } from '../stores/config'
+import ScanConfigDialog from './ScanConfigDialog.vue'
 import ScanResultDialog from './ScanResultDialog.vue'
 import StopScanDialog from './StopScanDialog.vue'
 
-const patterns = usePatternsStore()
 const scan = useScanStore()
-const cfg = useConfigStore()
-const { selectedId } = storeToRefs(patterns)
-const { running, progress, lastDone } = storeToRefs(scan)
+const { progress, lastDone } = storeToRefs(scan)
 
-const start = ref('2025-01-01')
-const end = ref('2025-12-31')
-const workers = ref(8)
-const tickerRegex = ref<string | null>(null)
-const labelHorizon = ref(20)
-const dialogOpen = ref(false)
+const scanDialogOpen = ref(false)
+const historyDialogOpen = ref(false)
 const stopDialogOpen = ref(false)
 
-onMounted(async () => {
-  try {
-    await cfg.load()
-    const s = cfg.config?.scan
-    if (s) {
-      start.value = s.start_date; end.value = s.end_date
-      workers.value = s.workers; tickerRegex.value = s.ticker_regex
-      labelHorizon.value = s.label_horizon ?? 20
-    }
-  } catch { /* 后端不可用:保留默认 */ }
-})
-
-async function onPrimary() {
-  if (!selectedId.value) return
-  if (running.value) {
-    // 正在扫:已命中数 > 0 → 弹 StopScanDialog 让用户选;= 0 → 直接 cancel(false)
-    if ((progress.value?.hits ?? 0) > 0) {
-      stopDialogOpen.value = true
-    } else {
-      await scan.cancel(false)
-    }
+async function onStopClick() {
+  if ((progress.value?.hits ?? 0) > 0) {
+    stopDialogOpen.value = true
   } else {
-    await onScan()
+    await scan.cancel(false)
   }
 }
-
-async function onScan() {
-  if (!selectedId.value) return
-  const s = {
-    start_date: start.value, end_date: end.value,
-    workers: workers.value, ticker_regex: tickerRegex.value,
-    label_horizon: labelHorizon.value,
-  }
-  if (cfg.config) await cfg.save({ ...cfg.config, scan: s })
-  scan.run({ pattern_id: selectedId.value, ...s })
-}
-
 async function onStopSave()    { stopDialogOpen.value = false; await scan.cancel(true) }
 async function onStopDiscard() { stopDialogOpen.value = false; await scan.cancel(false) }
 function onStopContinue()      { stopDialogOpen.value = false }
 
 // dialog 开着时,扫描若自然跑完 → 自动关 dialog
-watch(running, (r) => { if (!r && stopDialogOpen.value) stopDialogOpen.value = false })
+watch(() => scan.running, (r) => { if (!r && stopDialogOpen.value) stopDialogOpen.value = false })
 </script>
 
 <style scoped>
-.panel { padding: 10px; border-top: 1px solid #e5e7eb; }
-label { font-size: 11px; color: #64748b; display: block; margin-top: 6px; }
-input { padding: 3px; width: 90px; }
-button { margin-top: 8px; width: 100%; padding: 6px; }
-button.btn-stop { background: #ef4444; color: #fff; }
-.prog, .done { font-size: 11px; margin-top: 6px; }
+.panel { padding: 8px 10px; border-bottom: 1px solid #e5e7eb; background: #f8fafc; }
+.topbar { display: flex; gap: 6px; }
+.topbar button { padding: 4px 10px; font-size: 12px; border: 1px solid #cbd5e1;
+                 background: #fff; cursor: pointer; }
+.topbar button:disabled { opacity: 0.4; cursor: not-allowed; }
+.prog, .done { font-size: 11px; margin-top: 6px; display: flex; align-items: center; gap: 8px; }
+.btn-stop { padding: 2px 8px; font-size: 11px; border: 1px solid #ef4444;
+            background: #ef4444; color: #fff; cursor: pointer; margin-left: auto; }
 </style>

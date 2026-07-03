@@ -24,9 +24,12 @@ describe('ChartArea – level control', () => {
   it('renders 3 level options (matched / qualified / detected)', () => {
     const { wrapper } = mountIt()
     const ctrl = wrapper.get('[data-testid="level-control"]')
-    const buttons = ctrl.findAll('button')
-    expect(buttons.length).toBe(3)
-    const labels = buttons.map((b) => b.text())
+    // 过滤掉 panel-toggle chip(新增 Topology/Sidebar/Slider),只看 level 按钮
+    const levelButtons = ctrl.findAll('button').filter(
+      (b) => !(b.attributes('data-testid') ?? '').startsWith('panel-toggle')
+    )
+    expect(levelButtons.length).toBe(3)
+    const labels = levelButtons.map((b) => b.text())
     expect(labels).toContain('Matched')
     expect(labels).toContain('Qualified')
     expect(labels).toContain('Detected')

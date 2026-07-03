@@ -18,11 +18,11 @@ describe('TopologyControl', () => {
 
   // ---- 行为保持回归(改造前已有) ----
 
-  it('renders a node per topology role with label', () => {
+  it('renders a node per topology role with node_id', () => {
     const { wrapper } = mountIt()
     expect(wrapper.findAll('[data-role-node]').length).toBe(4)
-    expect(wrapper.text()).toContain('下跌段')
-    expect(wrapper.text()).toContain('突破点串')
+    expect(wrapper.text()).toContain('down')
+    expect(wrapper.text()).toContain('bo')
   })
 
   it('clicking a node toggles role visibility in store', async () => {

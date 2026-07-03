@@ -9,7 +9,7 @@ vi.mock('../../src/api', () => ({
     {scan_ts: '20260603T120000', hits: 5, total: 200, size: 8192, partial: false},
     {scan_ts: '20260601T100000', hits: 0, total: 200, size: 4096, partial: false},
   ])),
-  loadScan: vi.fn(() => Promise.resolve({results: [], scan: {scan_ts: '20260603T120000'}, pattern_spec: {topology: {nodes: []}}} as any)),
+  loadScan: vi.fn(() => Promise.resolve({results: [], pattern_ids: [], scan: {scan_ts: '20260603T120000'}, pattern_spec: {topology: {nodes: []}}} as any)),
   deleteScan: vi.fn(() => Promise.resolve({ok: true})),
 }))
 
@@ -17,7 +17,7 @@ describe('ScanResultDialog', () => {
   beforeEach(() => setActivePinia(createPinia()))
 
   it('renders rows with formatted ts/hits/size', async () => {
-    const w = mount(ScanResultDialog, { props: { patternId: 'pat_x' }, attachTo: document.body })
+    const w = mount(ScanResultDialog, { attachTo: document.body })
     await flushPromises()
     const rows = w.findAll('.file-list tbody tr')
     expect(rows.length).toBe(2)
@@ -28,7 +28,7 @@ describe('ScanResultDialog', () => {
   })
 
   it('emits close on Esc / Cancel button', async () => {
-    const w = mount(ScanResultDialog, { props: { patternId: 'pat_x' }, attachTo: document.body })
+    const w = mount(ScanResultDialog, { attachTo: document.body })
     await flushPromises()
     await w.find('footer button:first-of-type').trigger('click')
     expect(w.emitted('close')).toBeTruthy()
@@ -36,7 +36,7 @@ describe('ScanResultDialog', () => {
   })
 
   it('Open button disabled when selection size != 1', async () => {
-    const w = mount(ScanResultDialog, { props: { patternId: 'pat_x' }, attachTo: document.body })
+    const w = mount(ScanResultDialog, { attachTo: document.body })
     await flushPromises()
     const openBtn = w.find('footer button:last-of-type')
     expect(openBtn.attributes('disabled')).toBeDefined()       // 无选择
@@ -49,7 +49,7 @@ describe('ScanResultDialog', () => {
   })
 
   it('Delete on selection opens confirm layer', async () => {
-    const w = mount(ScanResultDialog, { props: { patternId: 'pat_x' }, attachTo: document.body })
+    const w = mount(ScanResultDialog, { attachTo: document.body })
     await flushPromises()
     await w.findAll('.file-list tbody tr')[0].trigger('click')
     await w.find('.card').trigger('keydown', { key: 'Delete' })
@@ -65,7 +65,7 @@ describe('ScanResultDialog', () => {
       { scan_ts: '20260619T100000', hits: 3, total: 5, size: 200, partial: true },
       { scan_ts: '20260619T100100', hits: 9, total: 9, size: 500, partial: false },
     ] as any)
-    const w = mount(ScanResultDialog, { props: { patternId: 'pat_x' }, attachTo: document.body })
+    const w = mount(ScanResultDialog, { attachTo: document.body })
     await flushPromises()
     const rows = w.findAll('.file-list tbody tr')
     expect(rows[0].html()).toContain('未完成')      // partial=true 行显示标
@@ -75,8 +75,8 @@ describe('ScanResultDialog', () => {
 
   it('confirm with current loaded ts calls view.clearScanFile', async () => {
     const v = useViewStore()
-    v.loadScanFile({results: [], scan: {scan_ts: '20260603T120000'}, pattern_spec: {topology: {nodes: []}}} as any)
-    const w = mount(ScanResultDialog, { props: { patternId: 'pat_x' }, attachTo: document.body })
+    v.loadScanFile({results: [], pattern_ids: [], scan: {scan_ts: '20260603T120000'}, pattern_spec: {topology: {nodes: []}}} as any)
+    const w = mount(ScanResultDialog, { attachTo: document.body })
     await flushPromises()
     await w.findAll('.file-list tbody tr')[0].trigger('click')   // 选当前已加载
     await w.find('.card').trigger('keydown', { key: 'Delete' })

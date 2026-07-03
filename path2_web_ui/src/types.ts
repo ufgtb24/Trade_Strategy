@@ -2,23 +2,22 @@
 
 export interface WhereRule { clause_id: string; op: string | null; threshold: unknown }
 export interface TopoNode {
-  node_id: string; class_id: string; label: string
+  node_id: string; class_id: string
   source_tag: string
-  render_grid?: 'price' | 'time'   // 新增:渲染轴声明,缺省视同 'time'
+  render_grid?: 'price' | 'time'
   where_rules: WhereRule[]
 }
 export interface TopoEdge { src: string; dst: string; kind: string; rule: string }
 export interface Topology { nodes: TopoNode[]; edges: TopoEdge[] }
 export interface SerializedPattern {
-  pattern_id: string; display_name: string
+  pattern_id: string
   topology: Topology; event_styles: Record<string, string>
 }
 
-// event:固定四字段 + 子类属性平铺(仅 tooltip 用)
 export interface EventDict {
   class_id: string; event_id: string; start_idx: number; end_idx: number
   source_tag: string
-  referenced_points?: Array<[number, number, string]>   // 新增:(bar_idx, price, label) 三元组数组
+  referenced_points?: Array<[number, number, string]>
   [attr: string]: unknown
 }
 
@@ -29,27 +28,43 @@ export interface ClauseWitness {
 export interface EdgeWitness { satisfied: boolean; measured: number; src: string; dst: string }
 export interface PredicateTrace {
   where_results: Record<string, Record<string, ClauseWitness>>
-  edge_results: Record<string, EdgeWitness>           // key = "src→dst"
+  edge_results: Record<string, EdgeWitness>
 }
 export interface MatchDict {
   event_id: string; start_idx: number; end_idx: number
   role_index: Record<string, string>
   children: string[]
   predicate_trace: PredicateTrace | null
-  forward_return?: number | null                      // 仅缓冲+label 扫描存在;null=尾部数据不足
+  forward_return?: number | null
 }
 export interface Analysis { events: EventDict[]; matches: MatchDict[] }
 
+// ── 多 pattern schema ───────────────────────────────────────────────
+export interface PerPatternResult {
+  summary: Record<string, number>            // {class_id: count} ∪ {matches: n}
+  analysis: Analysis
+  max_forward_return: number | null
+}
+export interface PerPatternMeta {
+  pattern_spec: SerializedPattern
+  end_role: string
+}
 export interface ScanMeta {
   scan_ts: string; start_date: string; end_date: string; workers: number
   scanned: number; hits: number; errors: number; dataset_dir: string; params: string
-  // 缓冲扫描新增(旧结果文件无 → 全 optional)
-  win_start?: string; win_end?: string
-  label_horizon?: number | null; end_role?: string | null
+  win_start: string; win_end: string                  // 必有(非 optional)
+  label_horizon: number                                // 必有(非 optional)
+  partial?: boolean
 }
-export interface StockResult { symbol: string; summary: Record<string, number>; analysis: Analysis }
-export interface ScanResultFile {
-  pattern_id: string; pattern_spec: SerializedPattern; scan: ScanMeta; results: StockResult[]
+export interface StockResult {
+  symbol: string
+  per_pattern: Record<string, PerPatternResult>        // key = pattern_id
+}
+export interface MultiScanResultFile {
+  pattern_ids: string[]
+  per_pattern: Record<string, PerPatternMeta>          // key = pattern_id
+  scan: ScanMeta
+  results: StockResult[]
 }
 
 export interface Bar { date: string; o: number; h: number; l: number; c: number; v: number; rv: number }
@@ -66,20 +81,20 @@ export interface Diagnostics {
 }
 
 export interface ScanProgress { scanned: number; total: number; hits: number; errors: number }
-// B 实际 SSE done 二形:成功带 pattern_id/scan_ts;失败 = {type:done, error, hits:0, errors:0, total:0}(带 error 键)
 export interface ScanDone {
   type: 'done'; hits: number; errors: number; total: number
-  pattern_id?: string; scan_ts?: string; error?: string | null
+  pattern_ids?: string[]; scan_ts?: string; error?: string | null
   cancelled?: boolean
-  partial?: boolean              // save 路径下后端透传
+  partial?: boolean
 }
 
 export interface ScanHistoryEntry {
   scan_ts: string
+  pattern_ids: string[]                                 // 新增
   hits: number | null
   total: number | null
-  size: number      // bytes
-  partial: boolean               // Task 1 后端总返回(旧文件 → false)
+  size: number
+  partial: boolean
 }
 
 export interface AppConfig {
@@ -88,7 +103,6 @@ export interface AppConfig {
   last_selected_pattern: string
 }
 
-// 几何自描述:点 ⟺ start==end
 export function isPoint(e: { start_idx: number; end_idx: number }): boolean {
   return e.start_idx === e.end_idx
 }

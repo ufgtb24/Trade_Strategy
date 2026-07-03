@@ -46,7 +46,7 @@
 
 ## 轴 ② 功能正确性(lens: func)
 **判据**:关键交互链路端到端跑通,无运行时错误。
-- 【MUST】核心交互链路可完成(本项目链路占位:〔项目特化:填本项目主链路,path2 见 examples/path2.md §4〕)。
+- 【MUST】核心交互链路可完成(本项目链路占位:〔项目特化:填本项目主链路,以 examples/path2.md §4 为例〕)。
 - 【MUST】**无 console error、无 pageerror、无未捕获异常**(console error/pageerror 体现在 capture 产出的 manifest 文本里;func reviewer 读这些文本判定,不自截)。
 - 【MUST】无 4xx/5xx 破坏性网络错误致功能不可用(预期内的 404 如"扫描进行中"除外)。
 - 【NICE】边缘 case 的优雅处理(空态、加载态文案)。
@@ -63,13 +63,13 @@
 ## 轴 ④ 代码质量(lens: code,主要靠读 git diff)
 **判据**:读本轮改动,审正确性与是否埋雷。
 - 【MUST】本轮改动**无逻辑 bug**(空指针、错误边界、错用 API、状态未更新)。
-- 【MUST】**不违反项目架构红线**(〔项目特化:填本项目架构红线,path2 见 examples/path2.md §4〕)。
+- 【MUST】**不违反项目架构红线**(〔项目特化:填本项目架构红线,以 examples/path2.md §4 为例〕)。
 - 【NICE】重复代码可抽取、过度复杂可简化、命名可改进、可复用既有工具未复用。
 - **PASS**:无 bug + 不破架构红线。 **FAIL**:有 bug 或破红线。NICE 项不挡 PASS。
 
 ## 轴 ⑤ 无回归(lens: code)
 **判据**:既有测试与既有功能不被本轮改动破坏。
-- 【MUST】**既有测试套件通过**。〔项目特化:填本项目 smoke 命令(= workflow 的 smokeCmd),path2 见 examples/path2.md §4〕
+- 【MUST】**既有测试套件通过**。〔项目特化:填本项目 smoke 命令(= workflow 的 smokeCmd),以 examples/path2.md §4 为例〕
 - 【MUST】本轮未破坏 GOAL 之外的既有功能(reviewer 抽查与本轮无关的关键链路是否仍正常)。
 - 【MUST】若上一轮某问题已 fixed,本轮不得使其复现(regression)。
 - **PASS**:测试全绿 + 既有功能未退化。 **FAIL**:测试红 / 既有功能被破坏 / 出现 regression。
@@ -86,4 +86,4 @@
 - **效率(ρ=重叠度判据)**:web-loop 三 lens 看同一批被改界面(高 ρ),单点 capture 截一次、三 reviewer 复用 = 严格最优;"reviewer 各自截"在高 ρ 下是 ρ 倍重复浪费。仅当 states 海量、单态慢、分叉不可串行复用时,才在 **capture 层内部**开"独立 chromium 并行"(无 reviewer 语义、无串台),**绝不**在 review 层开"各持浏览器"。
 
 ## 项目特化占位(复用到其他项目时填这些)
-本文件给通用底线;每个轴里标〔项目特化:…〕的占位,由对应项目填值。**path2 的全套特化值见 `examples/path2.md` §4**(核心链路 / 架构红线 / smoke 命令 / 项目 spec)。换其他项目时照 `examples/path2.md` 的结构另写一份 `examples/<项目>.md`。
+本文件给通用底线;每个轴里标〔项目特化:…〕的占位,由对应项目填值。**具体项目的全套特化值见 `examples/<项目>.md` §4(本仓库示例:`examples/path2.md`)**(核心链路 / 架构红线 / smoke 命令 / 项目 spec)。换其他项目时照 `examples/path2.md` 的结构另写一份 `examples/<项目>.md`。

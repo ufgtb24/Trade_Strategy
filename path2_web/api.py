@@ -11,7 +11,7 @@ from pathlib import Path
 import pandas as pd
 from fastapi import APIRouter, HTTPException, Request
 from fastapi import Path as FPath
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, field_validator
 from sse_starlette.sse import EventSourceResponse
 
 from path2_web import scan as scan_mod
@@ -21,30 +21,36 @@ from path2_web.serialize import serialize_pattern
 
 
 class ScanRequest(BaseModel):
-    pattern_id: str
+    pattern_ids: list[str] = Field(..., min_length=1)
     start_date: str
     end_date: str
     workers: int = 8
     ticker_regex: str | None = None
     label_horizon: int = 20
 
+    @field_validator("pattern_ids")
+    @classmethod
+    def _dedupe(cls, v: list[str]) -> list[str]:
+        seen: set = set()
+        out: list = []
+        for x in v:
+            if x not in seen:
+                seen.add(x)
+                out.append(x)
+        return out
 
-def resolve_eval_meta(mod) -> dict | None:
-    """读 app 模块可选 eval_meta() 协议;缺失/非 callable/抛异常/键不全 → None(回退老行为)。
 
-    传入当前 yaml 加载的 params (mod.load_params() 若存在),让 head_buffer_trading_days
-    反映本次扫描真用的参数值 (yaml SSoT);否则 eval_meta() 内走 Params.default(),
-    切出来的缓冲窗与 worker 实际 analyze 不匹配。"""
+def require_eval_meta(mod) -> dict:
+    """读 app 模块 eval_meta() 协议。铁律下 discovery 已闸过滤,api 调到此处不可能 None。
+    若仍 None / 字段不全 → ValueError(防御性,非业务路径)。
+    """
     fn = getattr(mod, "eval_meta", None)
     if not callable(fn):
-        return None
+        raise ValueError("eval_meta missing or non-callable (discovery gate failed)")
     load_params = getattr(mod, "load_params", None)
-    try:
-        meta = fn(load_params()) if callable(load_params) else fn()
-    except Exception:           # noqa: BLE001  协议防御:任何异常都按缺失处理
-        return None
+    meta = fn(load_params()) if callable(load_params) else fn()
     if not isinstance(meta, dict) or "end_role" not in meta or "head_buffer_trading_days" not in meta:
-        return None
+        raise ValueError(f"eval_meta returned invalid dict: {meta!r}")
     return meta
 
 
@@ -119,6 +125,8 @@ def build_router(*, registry, config_path, get_config, set_config,
     _exec_factory = ((lambda w: ThreadPoolExecutor(max_workers=w)) if use_thread_pool
                      else (lambda w: ProcessPoolExecutor(max_workers=w)))
 
+    _TS_PATTERN = r"^\d{8}T\d{6}$"
+
     @router.get("/patterns")
     def get_patterns():
         out = []
@@ -149,35 +157,21 @@ def build_router(*, registry, config_path, get_config, set_config,
         set_config(cfg)
         return {"ok": True}
 
-    _TS_PATTERN = r"^\d{8}T\d{6}$"
+    @router.get("/scans/")
+    def scans_list_flat():
+        return scan_mod.list_scans_flat(outputs_root)
 
-    @router.get("/scans/{pattern_id}")
-    def scans_list(pattern_id: str):
-        if registry.get(pattern_id) is None:
-            raise HTTPException(404, "unknown pattern_id")
-        return scan_mod.list_scans(pattern_id, outputs_root)
-
-    @router.get("/scans/{pattern_id}/{scan_ts}")
-    def scan_load(
-        pattern_id: str,
-        scan_ts: str = FPath(..., pattern=_TS_PATTERN),
-    ):
-        if registry.get(pattern_id) is None:
-            raise HTTPException(404, "unknown pattern_id")
+    @router.get("/scans/{scan_ts}")
+    def scan_load_flat(scan_ts: str = FPath(..., pattern=_TS_PATTERN)):
         try:
-            return scan_mod.load_scan(pattern_id, scan_ts, outputs_root)
+            return scan_mod.load_scan_flat(scan_ts, outputs_root)
         except FileNotFoundError:
             raise HTTPException(404, "scan not found")
 
-    @router.delete("/scans/{pattern_id}/{scan_ts}")
-    def scan_delete(
-        pattern_id: str,
-        scan_ts: str = FPath(..., pattern=_TS_PATTERN),
-    ):
-        if registry.get(pattern_id) is None:
-            raise HTTPException(404, "unknown pattern_id")
+    @router.delete("/scans/{scan_ts}")
+    def scan_delete_flat(scan_ts: str = FPath(..., pattern=_TS_PATTERN)):
         try:
-            scan_mod.delete_scan(pattern_id, scan_ts, outputs_root)
+            scan_mod.delete_scan_flat(scan_ts, outputs_root)
         except FileNotFoundError:
             raise HTTPException(404, "scan not found")
         return {"ok": True}
@@ -200,8 +194,7 @@ def build_router(*, registry, config_path, get_config, set_config,
     @router.get("/preview")
     def get_preview(pattern_id: str, symbol: str, start: str, end: str,
                     label_horizon: int = 20):
-        """单股临时计算 — 复刻 /scan 的 buffered+label 链路,不落盘。
-        pattern_spec 用 mod.load_params() 实时 build(yaml SSoT,改 yaml 立即反映)。"""
+        """单股临时计算 — 复刻 multi-scan worker 的 buffered+label 链路,不落盘,单 pattern。"""
         mod = registry.get(pattern_id)
         if mod is None:
             raise HTTPException(404, f"unknown pattern: {pattern_id}")
@@ -211,66 +204,78 @@ def build_router(*, registry, config_path, get_config, set_config,
             raise HTTPException(404, f"pkl not found: {symbol}")
 
         try:
-            meta = resolve_eval_meta(mod)
-            if meta:
-                end_role = meta["end_role"]
-                head_buf = meta["head_buffer_trading_days"]
-                start_ts, end_ts = pd.to_datetime(start), pd.to_datetime(end)
-                buf_start = str((start_ts - pd.Timedelta(days=round(head_buf * scan_mod.TRADING_TO_CALENDAR_RATIO))).date())
-                buf_end   = str((end_ts   + pd.Timedelta(days=round(label_horizon * scan_mod.TRADING_TO_CALENDAR_RATIO))).date())
-                analysis, summary, scan_meta = scan_mod.analyze_single(
-                    pkl_path=str(pkl), module_path=registry.module_path(pattern_id),
-                    start_date=start, end_date=end,
-                    end_role=end_role, label_horizon=label_horizon,
-                    buf_start=buf_start, buf_end=buf_end)
-            else:
-                analysis, summary, scan_meta = scan_mod.analyze_single(
-                    pkl_path=str(pkl), module_path=registry.module_path(pattern_id),
-                    start_date=start, end_date=end,
-                    end_role=None, label_horizon=None)
-                # 强制 scan_meta 的 label_horizon=null(非 buffered 路径下不算 label)
-                scan_meta["label_horizon"] = None
+            meta = require_eval_meta(mod)
+            end_role = meta["end_role"]
+            head_buf = meta["head_buffer_trading_days"]
+            start_ts, end_ts = pd.to_datetime(start), pd.to_datetime(end)
+            buf_start = str((start_ts - pd.Timedelta(days=round(head_buf * scan_mod.TRADING_TO_CALENDAR_RATIO))).date())
+            buf_end   = str((end_ts   + pd.Timedelta(days=round(label_horizon * scan_mod.TRADING_TO_CALENDAR_RATIO))).date())
 
+            # 复刻 worker 单 pattern 调用
+            df = pd.read_pickle(pkl)
+            win = slice_window(df, buf_start, buf_end)
+            _load = getattr(mod, "load_params", None)
+            res = mod.analyze(win, _load() if callable(_load) else None)
+            from path2_web.serialize import serialize_per_pattern_result
+            out = serialize_per_pattern_result(
+                res, end_role=end_role, label_horizon=label_horizon,
+                win=win, start_ts=start_ts, end_ts=end_ts)
             pattern_spec = serialize_pattern(mod.build_pattern(mod.load_params()))
+            scan_meta = {
+                "start_date": start, "end_date": end,
+                "win_start": buf_start, "win_end": buf_end,
+                "label_horizon": label_horizon, "end_role": end_role,
+            }
         except HTTPException:
             raise
         except Exception as e:
             raise HTTPException(500, f"{type(e).__name__}: {e}") from e
-        return {"analysis": analysis, "summary": summary,
+        return {"analysis": out["analysis"], "summary": out["summary"],
                 "pattern_spec": pattern_spec, "scan": scan_meta}
 
     @router.post("/scan")
     async def post_scan(req: ScanRequest):           # async:在 event loop 线程跑,get_running_loop 可用
-        mod = registry.get(req.pattern_id)
-        if mod is None:
-            raise HTTPException(404, f"unknown pattern: {req.pattern_id}")
+        # 校验所有 pattern_id 在 registry
+        for pid in req.pattern_ids:
+            if registry.get(pid) is None:
+                raise HTTPException(404, f"unknown pattern: {pid}")
         cfg = get_config()
         scan_ts = time.strftime("%Y%m%dT%H%M%S")
-        # spec_json 每次 /scan 重新从 yaml build,前端拓扑/where 阈值反映本次扫描真用的参数
-        spec_json = serialize_pattern(mod.build_pattern(mod.load_params()))
-        meta = resolve_eval_meta(mod)
+
+        specs: dict = {}
+        module_paths: dict = {}
+        end_roles: dict = {}
+        head_bufs: list = []
+        for pid in req.pattern_ids:
+            mod = registry.get(pid)
+            spec_json = serialize_pattern(mod.build_pattern(mod.load_params()))
+            specs[pid] = spec_json
+            module_paths[pid] = registry.module_path(pid)
+            meta = require_eval_meta(mod)
+            end_roles[pid] = meta["end_role"]
+            head_bufs.append(meta["head_buffer_trading_days"])
+        head_buffer = max(head_bufs)
         loop = asyncio.get_running_loop()
 
         def job(on_progress, cancel_event, save_event):
-            return scan_mod.run_scan(
+            return scan_mod.run_scan_multi(
                 data_dir=cfg["dataset_dir"],
-                module_path=registry.module_path(req.pattern_id),
-                pattern_spec_json=spec_json,
-                pattern_id=req.pattern_id,
+                pattern_specs_json=specs,
+                module_paths=module_paths,
+                pattern_ids=req.pattern_ids,
+                end_roles=end_roles,
+                head_buffer_trading_days=head_buffer,
+                label_horizon=req.label_horizon,
                 start_date=req.start_date, end_date=req.end_date,
                 workers=req.workers, ticker_regex=req.ticker_regex,
-                end_role=meta["end_role"] if meta else None,
-                head_buffer_trading_days=meta["head_buffer_trading_days"] if meta else None,
-                label_horizon=req.label_horizon if meta else None,
                 scan_ts=scan_ts, outputs_root=outputs_root,
                 on_progress=on_progress, executor_factory=_exec_factory,
-                cancel_event=cancel_event,
-                save_event=save_event,
+                cancel_event=cancel_event, save_event=save_event,
             )
 
         def done_meta(result):
             s = result["scan"]
-            return {"pattern_id": req.pattern_id, "scan_ts": scan_ts,
+            return {"pattern_ids": req.pattern_ids, "scan_ts": scan_ts,
                     "hits": s["hits"], "errors": s["errors"], "total": s["scanned"],
                     "partial": bool(s.get("partial", False))}
 

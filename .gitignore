@@ -12,6 +12,7 @@ docs/tmp/loop/
 .claude/ralph-loop.local.md
 .claude/.ralph-loop.local.md
 .claude/web-loop/
+node_modules/
 
 # Visual brainstorming companion artifacts
 .superpowers/

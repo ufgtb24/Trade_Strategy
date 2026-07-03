@@ -2,6 +2,14 @@ import { test, expect } from '@playwright/test'
 
 // 前提:B 在 localhost:8000 在线;已有一次命中扫描(或本测试触发扫描)。
 
+// 扫描参数已搬进 ScanConfigDialog(点顶部工具条「扫描 ⚙」打开);
+// dialog 打开时 pattern 选择默认清空,需先全选才能启用「开始扫描」。
+async function openScanDialogAndSelectAll(page: any) {
+  await page.getByRole('button', { name: /扫描 ⚙/ }).click()
+  await expect(page.locator('.pattern-list li').first()).toBeVisible({ timeout: 10_000 })
+  await page.locator('.backdrop').getByRole('button', { name: '全选' }).click()
+}
+
 /**
  * 辅助:等待扫描并返回首只命中股的 symbol。
  * 若已有历史记录则直接复用首条,否则触发新扫描。
@@ -17,9 +25,10 @@ async function ensureScanLoaded(page: any) {
   await expect(page.locator('.file-list, .state')).toBeVisible({ timeout: 5_000 })
   let rowCount = await page.locator('.file-list tbody tr').count()
   if (rowCount === 0) {
-    // 关 dialog(点 Cancel),触发扫描后再开
+    // 关 dialog(点 Cancel),开扫描配置 dialog 全选 pattern 后触发扫描,再开
     await page.getByRole('button', { name: 'Cancel' }).click()
     await expect(page.locator('.backdrop')).not.toBeVisible()
+    await openScanDialogAndSelectAll(page)
     await page.getByRole('button', { name: /开始扫描/ }).click()
     await expect(page.locator('.done')).toBeVisible({ timeout: 180_000 })
     await page.getByRole('button', { name: /打开历史/ }).click()

@@ -1,5 +1,6 @@
 // 可见集辅助函数(band/tier/tag/tooltip)。level 门控由 chart 层消费,此处仅提供纯函数原语。
-import type { EventDict, MatchDict, TopoNode, Topology, AttrRow, Diagnostics, Tier, ClauseWitness } from '../types'
+import type { EventDict, MatchDict, TopoNode, Topology, AttrRow, Diagnostics, Tier, ClauseWitness, ScanMeta, Bar } from '../types'
+import type { TooltipPayload, TooltipClauseRow } from './chart'
 
 /** 所有匹配内实例 event_id 的并集。
  *  若提供 events,沿事件 dict 的 `members`(event_id 数组)和 `anchor_bo_id`(单个 event_id)
@@ -82,24 +83,61 @@ export function roleOfEventByBand(e: EventDict, tagToNodes: Record<string, strin
   return nodesForTag && nodesForTag.length ? nodesForTag[0] : null
 }
 
-/** tooltip 数据组装(纯):从 diag 取该 event 的 clause witnesses(跨 role 找 event_id 匹配行),
- *  raw = event dict 去掉固定四字段 + source_tag + members 后的子类属性平铺。 */
+/** tooltip 数据组装（纯）：
+ *  - identity：role 反查 diag.roles（多 role 时各保留）；时间 = bars[idx].date，point 时 dateEnd=null；
+ *              bars 越界 fallback 到 String(idx)
+ *  - clauses：跨 role 累积为 ClauseRow[]，按 satisfied 排序（失败 ✗ 在前）
+ *  - raw：event dict 平铺，去掉 SKIP 集 + clauses 已引用 cid
+ *  spec 见 docs/superpowers/specs/2026-06-29-marker-tooltip-cleanup-design.md */
 export function resolveTooltipData(
-  eventId: string, diag: Diagnostics | null, events: EventDict[],
-): { clauses: Record<string, { measured: unknown; op: string | null; threshold: unknown; satisfied: boolean }>; raw: Record<string, unknown> } {
-  const clauses: Record<string, { measured: unknown; op: string | null; threshold: unknown; satisfied: boolean }> = {}
+  eventId: string,
+  diag: Diagnostics | null,
+  events: EventDict[],
+  bars: Bar[],
+): TooltipPayload {
+  // ── clauses 累积（不覆盖；多 role 同 cid 各保留）─────────────────────────
+  const clauses: TooltipClauseRow[] = []
+  const roles: string[] = []
   if (diag) {
-    for (const role of Object.values(diag.roles)) {
+    for (const [roleId, role] of Object.entries(diag.roles)) {
       const row = role.attr.find((r) => r.event_id === eventId)
-      if (row) for (const [cid, w] of Object.entries(row.clauses))
-        clauses[cid] = { measured: (w as ClauseWitness).measured, op: (w as ClauseWitness).op, threshold: (w as ClauseWitness).threshold, satisfied: (w as ClauseWitness).satisfied }
+      if (!row) continue
+      roles.push(roleId)
+      for (const [cid, w] of Object.entries(row.clauses)) {
+        const witness = w as ClauseWitness
+        clauses.push({
+          cid, role: roleId,
+          measured: witness.measured, op: witness.op, threshold: witness.threshold,
+          satisfied: witness.satisfied,
+        })
+      }
     }
   }
+  // 排序：失败 ✗ (satisfied=false) 在前；同档稳定保序
+  clauses.sort((a, b) => Number(a.satisfied) - Number(b.satisfied))
+
+  // ── identity 组装 ──────────────────────────────────────────────────────
   const ev = events.find((e) => e.event_id === eventId)
-  const raw: Record<string, unknown> = {}
+  const startIdx = (ev?.start_idx as number | undefined) ?? -1
+  const endIdx = (ev?.end_idx as number | undefined) ?? -1
+  const dateStart = bars[startIdx]?.date ?? String(startIdx)
+  const dateEnd = startIdx === endIdx ? null : (bars[endIdx]?.date ?? String(endIdx))
+
+  // ── raw 平铺 + 去重 ─────────────────────────────────────────────────────
+  const cidsInClauses = new Set(clauses.map((c) => c.cid))
   const SKIP = new Set(['class_id', 'event_id', 'start_idx', 'end_idx', 'source_tag', 'members'])
-  if (ev) for (const [k, v] of Object.entries(ev)) if (!SKIP.has(k)) raw[k] = v
-  return { clauses, raw }
+  const raw: Record<string, unknown> = {}
+  if (ev) for (const [k, v] of Object.entries(ev)) {
+    if (SKIP.has(k)) continue
+    if (cidsInClauses.has(k)) continue
+    raw[k] = v
+  }
+
+  return {
+    identity: { roles, dateStart, dateEnd, eventId },
+    clauses,
+    raw,
+  }
 }
 
 /** band 可见性判定(纯函数):band 的所有 nodeId 中有任一 roleVisible!==false 则可见。
@@ -117,9 +155,15 @@ export function isBandVisible(
 
 // ─── label(N 日前瞻收益)/ 缓冲窗辅助 ─────────────────────────────────────────
 
-/** 结果文件的实际渲染窗口:缓冲扫描用 win_*,旧文件回退 start/end(对齐铁律:与扫描同窗)。 */
-export function windowOf(scan: { start_date: string; end_date: string; win_start?: string; win_end?: string }): { start: string; end: string } {
-  return { start: scan.win_start ?? scan.start_date, end: scan.win_end ?? scan.end_date }
+/** 结果文件的实际渲染窗口:铁律 eval_meta 后 win_start/win_end 永远非空;缺则 throw。 */
+export function windowOf(scan: Pick<ScanMeta, 'win_start' | 'win_end' | 'start_date' | 'end_date'>):
+  { start: string; end: string } {
+  // 铁律 eval_meta 后 win_*/end_role/label_horizon 永远非 null;
+  // 旧文件回退分支删除(spec §3.6)。
+  if (!scan.win_start || !scan.win_end) {
+    throw new Error('windowOf: scan.win_start/win_end required (eval_meta 铁律下应永远非空)')
+  }
+  return { start: scan.win_start, end: scan.win_end }
 }
 
 /** forward_return 显示格式:null → '—';数值 → 带符号一位小数百分比。 */
@@ -138,4 +182,12 @@ export function renderGridOf(
   const tag = bandKey(e)
   const node = topology.nodes.find((n) => n.source_tag === tag)
   return node?.render_grid ?? 'time'
+}
+
+/** 副图分轨 tag 列表:剔除 render_grid==='price' 的 tag(其 marker 钉主图,不占副图轨道)。
+ *  node 查找规则与 renderGridOf 一致(同 source_tag 的首个 node,缺省 'time'),
+ *  保证路由与分轨判定永远一致:timeAnchored event 的 tag 必在返回列表中。 */
+export function subBandTagList(tagList: string[], topology: Topology): string[] {
+  return tagList.filter((tag) =>
+    (topology.nodes.find((n) => n.source_tag === tag)?.render_grid ?? 'time') !== 'price')
 }

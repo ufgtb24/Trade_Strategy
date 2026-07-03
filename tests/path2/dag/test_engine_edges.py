@@ -23,9 +23,8 @@ def _spec(edges, streams):
     ids = sorted({e.src for e in edges} | {e.dst for e in edges} | set(streams))
     nodes = tuple(NodeSpec(node_id=n, detector=None) for n in ids)
     from path2.dag.spec import PatternSpec
-    root = edges[0].src if edges else ids[0]
-    return PatternSpec(pattern_id="t", display_name="t", nodes=nodes,
-                       edges=tuple(edges), root=root)
+    return PatternSpec(pattern_id="t", nodes=nodes,
+                       edges=tuple(edges))
 
 
 def _agree(name, edges, streams, expect):

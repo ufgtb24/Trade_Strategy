@@ -1,23 +1,34 @@
 <template>
   <div class="panel">
-    <label>Pattern</label>
-    <select :value="selectedId ?? ''" @change="onSelect">
-      <option v-for="p in list" :key="p.pattern_id" :value="p.pattern_id">{{ p.display_name }}</option>
-    </select>
+    <div class="hdr">
+      <span class="title">Patterns</span>
+    </div>
+    <div v-if="!scanFile" class="hint">未加载扫描结果</div>
+    <div v-for="pid in patternIds" :key="pid" class="row">
+      <label>
+        <input type="checkbox"
+               :data-pid="pid"
+               :checked="visiblePatterns.has(pid)"
+               @change="view.togglePattern(pid)" />
+        <span class="name">{{ pid }}</span>
+      </label>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { onMounted } from 'vue'
 import { storeToRefs } from 'pinia'
-import { usePatternsStore } from '../stores/patterns'
-const patterns = usePatternsStore()
-const { list, selectedId } = storeToRefs(patterns)
-onMounted(() => patterns.load())
-function onSelect(e: Event) { patterns.select((e.target as HTMLSelectElement).value) }
+import { useViewStore } from '../stores/view'
+const view = useViewStore()
+const { scanFile, patternIds, visiblePatterns } = storeToRefs(view)
 </script>
 
 <style scoped>
-.panel { padding: 10px; } label { font-size: 11px; color: #64748b; display: block; }
-select { width: 100%; padding: 4px; }
+.panel { padding: 6px 10px; border-bottom: 1px solid #e5e7eb; }
+.hdr { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+.title { font-weight: 600; }
+.row { padding: 2px 0; }
+.row label { display: flex; align-items: center; gap: 6px; cursor: pointer; font-size: 12px; }
+.name { font-weight: 500; }
+.hint { font-size: 12px; color: #64748b; }
 </style>

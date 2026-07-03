@@ -14,12 +14,12 @@
       >
         <!-- stream-source(孤立 node):密度徽标行 -->
         <template v-if="isolated.has(node.node_id)">
-          <span class="node-label stream-source">{{ node.label || node.node_id }}</span>
+          <span class="node-label stream-source">{{ node.node_id }}</span>
           <span class="badge">原始检测 {{ detectedCount(node) }}</span>
         </template>
         <!-- pattern role(有边):完整漏斗行 -->
         <template v-else>
-          <span class="node-label">{{ node.label || node.node_id }}</span>
+          <span class="node-label">{{ node.node_id }}</span>
           <span class="funnel-segment" :style="{ color: tierColor('detected', node.node_id) }">
             {{ detectedCount(node) }}
           </span>
@@ -52,7 +52,7 @@
                 :key="row.event_id"
                 class="attr-row"
                 :class="{ 'attr-row--selected': selectedEventId === row.event_id, 'attr-row--matched': rowTier(row) === 'matched', 'attr-row--qualified': rowTier(row) === 'qualified' }"
-                @click="view.selectEvent(row.event_id)"
+                @click="selectCandidateRow(row.event_id)"
               >
                 <td class="cell-id">seg@{{ row.start_idx }}-{{ row.end_idx }}</td>
                 <td v-for="cid in expandedClauseIds" :key="cid" class="cell-clause">
@@ -227,18 +227,26 @@ function isRoleSelected(val: string | string[]): boolean {
   return id !== null && id === selectedEventId.value
 }
 
-/** 点击 trace role 行 → 设置 selectedEventId,实现 sidebar→chart 高亮 */
+/** 点击 trace role 行 → 单焦点 selectEvent + 顺手清候选(§2.2 状态机:candidate 中 click single-match event → clearCandidate) */
 function selectRoleEvent(val: string | string[]) {
   const id = roleEventId(val)
-  if (id) view.selectEvent(id)
+  if (id) {
+    view.clearCandidates()
+    view.selectEvent(id)
+  }
 }
 
-/** 点击命中匹配列表行:选中 match(展开 trace)并同步高亮匹配第一个 child event */
+/** 点击候选表行:先退出 M' 候选状态(互斥),再选 event(final review fix) */
+function selectCandidateRow(eventId: string) {
+  view.clearCandidates()  // exit any M' candidate state — 互斥 §2.2
+  view.selectEvent(eventId)
+}
+
+/** 点击命中匹配列表行:选中 match(展开 trace)+ 组高亮(等价图上 bracket click) */
 function selectMatchAndHighlight(matchId: string, children: string[]) {
+  view.setHighlightedEvents(children)
   view.selectMatch(matchId)
-  // 同步 selectedEventId → chart 高亮该 match 的第一个 child event
-  const firstChild = children[0] ?? null
-  view.selectEvent(firstChild)
+  view.clearCandidates()           // 顺手清候选,防残留
 }
 </script>
 

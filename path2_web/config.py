@@ -19,7 +19,7 @@ DEFAULT_CONFIG = {
     "last_selected_pattern": "bottom_breakout_burst",
 }
 
-DEFAULT_PATH = Path("configs/path2_web.yaml")
+DEFAULT_PATH = Path(__file__).resolve().parents[1] / "configs" / "path2_web.yaml"
 
 
 def _merge(default: dict, override: dict) -> dict:

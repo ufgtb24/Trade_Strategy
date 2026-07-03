@@ -1,8 +1,5 @@
 claude -r --dangerously-skip-permissions
-## 使用 ralph-loop 进行迭代改进
-/ralph-loop:ralph-loop "根据新的人类模拟基准数据和分析报告对公式进行迭代改进，直到公式结果接近模拟结果" --completion-promise "Satisfied human cognition" --max-iterations 10
-/ralph-loop:cancel-ralph
-
+/model claude-opus-4-7
 ## 工作数双向同步法(A 和 B 统一到全局最新)
   # B 上：压缩 + rebase
   git reset --soft $(git merge-base B A)  # AB 分叉点的 hash                                                                                               
@@ -11,6 +8,13 @@ claude -r --dangerously-skip-permissions
                                                                   
   # A 上：fast-forward 合并                                                                                                             
   git merge B          # 直接 ff，无需任何参数       
+
+## 远程进度覆盖本地进度
+- 1. 获取远程最新状态
+git fetch origin
+
+- 2. 将本地 master 分支强制重置为远程 origin/master 的状态
+git reset --hard origin/master
 
 ## 最有效的管理 Git 分支和工作树的方法：
 git merge --squash feature-branch
@@ -60,14 +64,6 @@ git branch -d feature
 本地进度覆盖远程进度
 git push --force-with-lease
 
-## 远程进度覆盖本地进度
-
-- 1. 获取远程最新状态
-git fetch origin
-
-- 2. 将本地 master 分支强制重置为远程 origin/master 的状态
-git reset --hard origin/master
-
 ## 设置默认编辑器
 echo "export EDITOR='/snap/bin/pycharm-community --wait'" >> ~/.bashrc
 source ~/.bashrc
@@ -79,5 +75,6 @@ source ~/.bashrc
 sed -i '/pycharm-community --wait/d' ~/.bashrc
 source ~/.bashrc
 
-## 条件断点
-self.symbol == 'AAPL' and str(self.dates[peak_global_idx]) == '2023-01-01'
+## 使用 ralph-loop 进行迭代改进
+/ralph-loop:ralph-loop "根据新的人类模拟基准数据和分析报告对公式进行迭代改进，直到公式结果接近模拟结果" --completion-promise "Satisfied human cognition" --max-iterations 10
+/ralph-loop:cancel-ralph

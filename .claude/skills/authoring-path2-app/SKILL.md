@@ -79,6 +79,14 @@ path2/atoms/*.py),绝不引用任何文档内嵌快照(含本 skill 自己的文
 该字段是渲染层声明、与匹配/求解语义正交,但要求在 dag_spec 声明阶段就定下。
 现场参考 `path2_apps/bottom_breakout_burst/dag_spec.py` 的 bo node 写法。
 
+**id 即显示名(收尾纪律)**:path2 已删除 PatternSpec.display_name 与
+NodeSpec.label / TopoNode.label — 前端直接显示 pattern_id / node_id。
+- pattern_id / node_id 起名时即按"用户面板上要看到的英文标签"来定:
+  英文、短、可读(`burst` / `tb` / `bo` / `bottom_breakout_burst`),
+  不要写中文、不要写形如 `n1` / `role_a` 的占位 id。
+- 防御性禁用:勿写 `display_name=...` / `label=...` kwarg —
+  dataclass 会直接报 unknown keyword(编译期拦)。
+
 ### 层② detector(失效边界反思)
 每个节点选哪个 atom/detector?**强制:现场读该 detector 的判据函数**
 (throwback 的 _find_*、trend 的切段…;design-heuristics §A 告诉你去读哪里、问什么),

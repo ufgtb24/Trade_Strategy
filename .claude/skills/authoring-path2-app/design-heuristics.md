@@ -8,6 +8,14 @@
   (先例:tune workflow 内嵌的边结构快照已实锤与 dag_spec 实物漂移)。
 - §A 的失效边界描述的是**算法语义**(相对稳定),但每条都标注来源 `文件::函数`;
   使用时仍须现场读该函数核对——手册只负责告诉你「去读哪里、问什么问题」。
+- **铁律:每个 path2_apps/<pid>/ 子包必须在 dag_spec.py 暴露 `eval_meta(params=None) -> dict`,
+  返回字典必须含 `end_role: str`(买点 role node_id)和 `head_buffer_trading_days: int`
+  (本 app 全部 rolling lookback 字段的 max)**。
+  缺这个协议 = 不合规:path2_web 的 `PatternRegistry` discovery 闸过滤跳过,`/patterns`
+  不返回,前端面板不可见,无法被扫描。多 pattern 同扫时 `head_buffer = max(per-pattern
+  head_buffer)`、label_horizon 全局单值——无 fallback 路径。`head_buffer` 必须从 params
+  动态取 max(`p.<sect>.<rolling_field>`),不写硬编码常量(参数改动须自动传导)。
+  样板见 `path2_apps/bottom_breakout_burst/dag_spec.py::eval_meta`。
 
 ## §A detector 选型期速查(失效边界 + 常见误配)
 

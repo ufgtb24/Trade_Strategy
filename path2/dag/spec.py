@@ -1,6 +1,6 @@
 """声明容器 PatternSpec + 面板投影 to_topology + 校验。
 
-app 声明的全部 = nodes(NodeSpec) + edges(DependencyEdge 子类) + root。
+app 声明的全部 = nodes(NodeSpec) + edges(DependencyEdge 子类)。
 nodes/edges 即类型级 DAG,to_topology() 零派生直投(对比旧 build_topology 反推)。
 __post_init__ 做三类校验:DAG(环/端点)、detector-DAG(consumes_stream)、where(clause_id 同 node 内唯一)。
 """
@@ -17,7 +17,6 @@ from path2.dag.nodes import NodeSpec
 class TopoNode:
     node_id: str
     class_id: str
-    label: str = ""
 
 
 @dataclass(frozen=True)
@@ -38,10 +37,8 @@ class PatternTopology:
 class PatternSpec:
     """app 声明的全部。nodes/edges 即类型级 DAG(面板直接吃,零派生)。"""
     pattern_id: str
-    display_name: str
     nodes: Tuple[NodeSpec, ...]
     edges: Tuple[DependencyEdge, ...]
-    root: str
     event_styles: Mapping[str, object] = field(default_factory=dict)
     stock_list_columns: Tuple[object, ...] = ()
 
@@ -67,8 +64,6 @@ class PatternSpec:
 
     def _validate_dag(self) -> None:
         ids = self._node_ids()
-        if self.root not in ids:
-            raise ValueError(f"root={self.root!r} 不是已声明 node")
         for e in self.edges:
             if e.src not in ids:
                 raise ValueError(f"edge src={e.src!r} 不是已声明 node")
@@ -175,7 +170,7 @@ class PatternSpec:
         """零派生直投 nodes/edges(对比旧 build_topology 从谓词元数据反推)。"""
         return PatternTopology(
             nodes=tuple(
-                TopoNode(n.node_id, n.detector.event_cls.class_id, n.label)
+                TopoNode(n.node_id, n.detector.event_cls.class_id)
                 for n in self.nodes
             ),
             edges=tuple(TopoEdge(e.src, e.dst, type(e).__name__) for e in self.edges),

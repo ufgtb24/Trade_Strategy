@@ -9,16 +9,16 @@ from path2.dag._solve import compile_plan, solve
 from path2.dag._reify import reify
 
 
-def _spec(nodes, edges, root):
-    return PatternSpec(pattern_id="p", display_name="p", nodes=tuple(nodes),
-                       edges=tuple(edges), root=root)
+def _spec(nodes, edges):
+    return PatternSpec(pattern_id="p", nodes=tuple(nodes),
+                       edges=tuple(edges))
 
 
 def test_reify_role_index_and_children():
     nodes = [NodeSpec("A", detector=None), NodeSpec("B", detector=None)]
     edges = [TemporalEdge("A", "B", min_gap=0, max_gap=100)]
     streams = {"A": E("A", [(0, 0)]), "B": E("B", [(5, 8)])}
-    plan = compile_plan(_spec(nodes, edges, "A"))
+    plan = compile_plan(_spec(nodes, edges))
     sol = solve(plan, streams)[0]
     ctx = MatchContext(df=None, params=None)
     m = reify(sol, streams, plan, ctx)
@@ -33,7 +33,7 @@ def test_reify_edge_witness_measured():
     nodes = [NodeSpec("A", detector=None), NodeSpec("B", detector=None)]
     edges = [TemporalEdge("A", "B", min_gap=0, max_gap=100)]
     streams = {"A": E("A", [(0, 2)]), "B": E("B", [(5, 8)])}
-    plan = compile_plan(_spec(nodes, edges, "A"))
+    plan = compile_plan(_spec(nodes, edges))
     sol = solve(plan, streams)[0]
     m = reify(sol, streams, plan, MatchContext(df=None, params=None))
     w = m.predicate_trace.edge_results[("A", "B")]
@@ -48,7 +48,7 @@ def test_reify_where_results_recorded():
              NodeSpec("B", detector=None)]
     edges = [TemporalEdge("A", "B", min_gap=0, max_gap=100)]
     streams = {"A": E("A", [(0, 0)]), "B": E("B", [(5, 5)])}
-    plan = compile_plan(_spec(nodes, edges, "A"))
+    plan = compile_plan(_spec(nodes, edges))
     sol = solve(plan, streams, MatchContext(df=None, params=None))[0]
     m = reify(sol, streams, plan, MatchContext(df=None, params=None))
     assert m.predicate_trace.where_results["A"]["nonneg"]
@@ -81,7 +81,7 @@ def test_reify_diagnose_child_aware_endpoint():
     edge = ContainmentEdge("wrapper", Child("burst", "first_kid"))
 
     nodes = [NodeSpec("wrapper", detector=None), NodeSpec("burst", detector=None)]
-    spec = _spec(nodes, [edge], "wrapper")
+    spec = _spec(nodes, [edge])
     streams = {"wrapper": [wrapper], "burst": [burst]}
 
     plan = compile_plan(spec)
@@ -121,7 +121,7 @@ def test_reify_diagnose_child_aware_endpoint():
     plain_edge = ContainmentEdge("wrapper", "burst")
     plain_burst = WideEv("burst1", 10, 20, pos=1, kids=(first_kid, last_kid))
     plain_wrapper = Ev("wrapper1", 0, 100, pos=1)
-    plain_spec = _spec(nodes, [plain_edge], "wrapper")
+    plain_spec = _spec(nodes, [plain_edge])
     plain_streams = {"wrapper": [plain_wrapper], "burst": [plain_burst]}
     plain_plan = compile_plan(plain_spec)
     plain_sols = solve(plain_plan, plain_streams)

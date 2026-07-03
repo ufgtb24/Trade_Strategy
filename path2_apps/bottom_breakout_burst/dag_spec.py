@@ -45,11 +45,11 @@ def build_pattern(params: Params) -> PatternSpec:
                  where=(("first_drought", W.attr("first_drought", ">=", params.burst.first_drought_min)),  # ③
                         ("distinct_pk",   W.attr("distinct_pk",   ">=", params.burst.distinct_pk_min)),        # ⑤
                         ("vol_spike",     W.attr("max_bar_vol_ratio", ">=", params.burst.vol_spike_min))),   # ⑥
-                 consumes_stream="bo", label="突破爆发"),
+                 consumes_stream="bo"),
         # ⑦ 末突破后回踩(ThrowbackDetector 消费 bo 流：吃 BOEvent，不能吃 BurstEvent)
         NodeSpec("tb",
                  ThrowbackDetector(**params.throwback_kwargs()),
-                 consumes_stream="bo", label="回踩确认"),
+                 consumes_stream="bo"),
     )
     edges = (
         # ⑦ 突破后回踩：锚【末 bo】——anchor_field 使 tb.anchor_bo_id == last_bo.event_id
@@ -61,9 +61,8 @@ def build_pattern(params: Params) -> PatternSpec:
         ),
     )
     return PatternSpec(
-        pattern_id="bottom_breakout_burst",
-        display_name="底部反转突破爆发",
-        nodes=nodes, edges=edges, root="burst",  # root 退化字段,引擎不读,填合法 node_id
+        pattern_id="bottom_burst",
+        nodes=nodes, edges=edges,
     )
 
 

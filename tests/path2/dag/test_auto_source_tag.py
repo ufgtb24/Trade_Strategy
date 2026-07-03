@@ -84,8 +84,8 @@ def test_run_streams_applies_auto_source_tags():
     """run_streams 顶部调用 assign → 两同类 detector 跑流前已被赋 trend0/trend1。"""
     a = TrendSegmentDetector(ma_period=20)
     b = TrendSegmentDetector(ma_period=20)
-    spec = PatternSpec(pattern_id="p", display_name="P",
-                       nodes=(NodeSpec("a", a), NodeSpec("b", b)), edges=(), root="a")
+    spec = PatternSpec(pattern_id="p",
+                       nodes=(NodeSpec("a", a), NodeSpec("b", b)), edges=())
     run_streams(spec, _flat_df())
     assert a.source_tag == "trend0"
     assert b.source_tag == "trend1"
@@ -93,10 +93,10 @@ def test_run_streams_applies_auto_source_tags():
 
 def test_analyze_two_trend_detectors_no_event_id_collision():
     """两个同参 trend detector → 同几何段经自动消歧 → res.events event_id 不撞。"""
-    spec = PatternSpec(pattern_id="p", display_name="P",
+    spec = PatternSpec(pattern_id="p",
                        nodes=(NodeSpec("a", TrendSegmentDetector(ma_period=20)),
                               NodeSpec("b", TrendSegmentDetector(ma_period=20))),
-                       edges=(), root="a")
+                       edges=())
     res = analyze(spec, _flat_df())
     ids = [e.event_id for e in res.events]
     assert len(ids) == len(set(ids))                                  # 不撞
@@ -107,9 +107,9 @@ def test_analyze_two_trend_detectors_no_event_id_collision():
 def test_backward_compat_shared_trend_event_id_unchanged():
     """down/side 共享一个 trend detector → distinct=1 → 无后缀 → event_id 前缀仍 'trend_'。"""
     shared = TrendSegmentDetector(ma_period=20)
-    spec = PatternSpec(pattern_id="p", display_name="P",
+    spec = PatternSpec(pattern_id="p",
                        nodes=(NodeSpec("down", shared), NodeSpec("side", shared)),
-                       edges=(), root="down")
+                       edges=())
     res = analyze(spec, _flat_df())
     assert shared.source_tag is None
     assert res.events                                          # 至少一个事件

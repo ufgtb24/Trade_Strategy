@@ -266,7 +266,7 @@ await agent(
   `   - 但**不删** \`SUMMARY.md\` / \`issues.json\` / \`verified.json\` / \`reviews/\` / \`goal.md\` / \`refs/\`(文字记录 + GOAL 三件套)\n` +
   `3) bash 整删 \`.playwright-mcp/\`:\`rm -rf .playwright-mcp\`(若存在)\n` +
   `4) 返回 cleaned_runtags 数组(被清理 shots 的旧 runtag 列表),deleted_mcp 布尔。\n` +
-  `⚠ 绝不 \`git clean\`、绝不删任何 \`.web-loop-refresh.md\`、绝不删 path2 主线代码 / docs / scripts / configs 等仓库其他文件。`,
+  `⚠ 绝不 \`git clean\`、绝不删任何 \`.web-loop-refresh.md\`、绝不删项目主线代码 / docs / scripts / configs 等仓库其他文件。`,
   { label:"cleanup-old-runs", phase:"setup", model:"sonnet",
     schema:{ type:"object", required:["cleaned_runtags","deleted_mcp"],
       properties:{ cleaned_runtags:{type:"array", items:{type:"string"}}, deleted_mcp:{type:"boolean"} } } });
@@ -425,7 +425,7 @@ while(round < MAX_ROUNDS && !converged && !stalled){
 
   const refresh=await agent(`【${rtag} · refresh】读 ${WORKDIR}/rounds/${round}/impl.md 首行 kind,按档刷新:\n`+
     `- frontend:HMR 自动 → page.reload()+networkidle(纯前端,绝不碰数据层)。复用现有数据态(免重新触发数据生成)。\n`+
-    `- backend:${RESTART_CMD?`\`${RESTART_CMD}\``:'〔restartCmd〕'}(⚠ kill 旧进程**按 PID/端口精确**如 lsof -ti:8000|xargs -r kill,**绝不用 pkill -f <进程名模式>**——会误杀正在执行该命令的本 shell 致 Exit144) → curl -sf ${HEALTH_URL||'〔healthUrl〕'} 轮询至200 → 前端 reload。复用现有数据态。\n`+
+    `- backend:${RESTART_CMD?`\`${RESTART_CMD}\``:'〔restartCmd〕'}(⚠ kill 旧进程**按 PID/端口精确**如 lsof -ti:<port>|xargs -r kill,**绝不用 pkill -f <进程名模式>**——会误杀正在执行该命令的本 shell 致 Exit144) → curl -sf ${HEALTH_URL||'〔healthUrl〕'} 轮询至200 → 前端 reload。复用现有数据态。\n`+
     `- data:【仅此档走 fallback】重启后端 + 触发数据刷新。`+
       (REFRESH_DATA_CMD?`refreshDataCmd=\`${REFRESH_DATA_CMD}\`:`:`refreshDataCmd 未提供:`)+
       `若以 .md 结尾 → **read 该说明文件**(项目内多步刷新约定,如重扫+poll)按步骤执行;否则非空 → 当 shell 命令直接跑(单步,如 DB seed/缓存清空);否则 → 报 must(data 改动但无刷新方式)。完成后前端 reload。\n`+

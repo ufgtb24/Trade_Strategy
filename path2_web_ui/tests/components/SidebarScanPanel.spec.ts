@@ -2,171 +2,96 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import { setActivePinia, createPinia } from 'pinia'
 import SidebarScanPanel from '../../src/components/SidebarScanPanel.vue'
-import StopScanDialog from '../../src/components/StopScanDialog.vue'
 import { useScanStore } from '../../src/stores/scan'
-import { usePatternsStore } from '../../src/stores/patterns'
 
 vi.mock('../../src/api', () => ({
+  getPatterns: vi.fn(() => Promise.resolve([])),
+  getConfig: vi.fn(() => Promise.resolve({ dataset_dir:'', scan:{start_date:'', end_date:'', workers:1, ticker_regex:null, label_horizon:20}, last_selected_pattern:'' })),
+  putConfig: vi.fn(() => Promise.resolve()),
   listScans: vi.fn(() => Promise.resolve([])),
   loadScan: vi.fn(() => Promise.resolve({} as any)),
-  deleteScan: vi.fn(() => Promise.resolve({ok: true})),
-  cancelScan: vi.fn(() => Promise.resolve({ok: true})),
+  deleteScan: vi.fn(() => Promise.resolve({ ok: true })),
+  cancelScan: vi.fn(() => Promise.resolve({ ok: true })),
   startScan: vi.fn(() => Promise.resolve('scan_id_x')),
   streamScan: vi.fn(() => ({ close: () => {} } as any)),
   getDiagnose: vi.fn(() => Promise.resolve(null)),
-  loadConfig: vi.fn(() => Promise.resolve({scan: null} as any)),
-  saveConfig: vi.fn(() => Promise.resolve()),
 }))
 
-describe('SidebarScanPanel', () => {
+describe('SidebarScanPanel — topbar', () => {
   beforeEach(() => setActivePinia(createPinia()))
 
-  it('button shows 开始扫描 when not running', async () => {
-    const p = usePatternsStore(); (p as any).selectedId = 'pat_x'
+  it('shows [扫描 ⚙] and [打开历史 …] buttons', async () => {
     const w = mount(SidebarScanPanel)
     await flushPromises()
-    const primary = w.findAll('button')[0]
-    expect(primary.text()).toContain('开始扫描')
+    const btns = w.findAll('button').map(b => b.text())
+    expect(btns.some(t => t.includes('扫描'))).toBe(true)
+    expect(btns.some(t => t.includes('打开历史'))).toBe(true)
   })
 
-  it('button shows 停止扫描 + btn-stop class when running', async () => {
-    const p = usePatternsStore(); (p as any).selectedId = 'pat_x'
-    const s = useScanStore()
-    ;(s as any).running = true
+  it('[扫描 ⚙] disabled when scan.running', async () => {
+    const scan = useScanStore(); (scan as any).running = true
     const w = mount(SidebarScanPanel)
     await flushPromises()
-    const primary = w.findAll('button')[0]
-    expect(primary.text()).toContain('停止扫描')
-    expect(primary.classes()).toContain('btn-stop')
+    const scanBtn = w.findAll('button').find(b => b.text().includes('扫描'))!
+    expect(scanBtn.attributes('disabled')).toBeDefined()
   })
 
-  it('「打开历史」button disabled while running', async () => {
-    const p = usePatternsStore(); (p as any).selectedId = 'pat_x'
-    const s = useScanStore()
-    ;(s as any).running = true
+  it('[停止扫描] visible only when scan.running', async () => {
     const w = mount(SidebarScanPanel)
     await flushPromises()
-    const openHist = w.findAll('button')[1]
-    expect(openHist.attributes('disabled')).toBeDefined()
+    expect(w.findAll('button').find(b => b.text().includes('停止扫描'))).toBeUndefined()
+    const scan = useScanStore(); (scan as any).running = true
+    await w.vm.$nextTick()
+    expect(w.findAll('button').find(b => b.text().includes('停止扫描'))).toBeDefined()
   })
 
-  it('clicking 停止扫描 calls scan.cancel', async () => {
-    const p = usePatternsStore(); (p as any).selectedId = 'pat_x'
-    const s = useScanStore()
-    ;(s as any).running = true
-    ;(s as any).currentScanId = 'scan_id_x'
-    const spy = vi.spyOn(s, 'cancel').mockResolvedValue()
-    const w = mount(SidebarScanPanel)
-    await flushPromises()
-    await w.findAll('button')[0].trigger('click')
-    expect(spy).toHaveBeenCalled()
-  })
-
-  it('clicking 打开历史 mounts ScanResultDialog', async () => {
-    const p = usePatternsStore(); (p as any).selectedId = 'pat_x'
-    const w = mount(SidebarScanPanel, { attachTo: document.body })
-    await flushPromises()
-    await w.findAll('button')[1].trigger('click')
-    await flushPromises()
-    expect(document.body.querySelector('.backdrop')).not.toBeNull()
-    w.unmount()
-  })
-})
-
-describe('SidebarScanPanel onPrimary 三分支', () => {
-  beforeEach(() => setActivePinia(createPinia()))
-
-  it('hits=0 时点停止 → 直接 cancel(false),不弹 dialog', async () => {
+  it('progress renders scanned/total/hits when running', async () => {
     const scan = useScanStore()
     ;(scan as any).running = true
-    ;(scan as any).progress = { scanned: 5, total: 100, hits: 0, errors: 0 }
-    ;(scan as any).currentScanId = 'sid'
-    const cancelSpy = vi.spyOn(scan, 'cancel').mockResolvedValue()
-    const p = usePatternsStore(); (p as any).selectedId = 'pat_x'
+    ;(scan as any).progress = { scanned: 12, total: 500, hits: 3, errors: 0 }
     const w = mount(SidebarScanPanel)
     await flushPromises()
-    await w.get('button.btn-stop').trigger('click')
-    expect(cancelSpy).toHaveBeenCalledWith(false)
-    expect(w.findComponent(StopScanDialog).exists()).toBe(false)
+    expect(w.text()).toContain('12/500')
+    expect(w.text()).toContain('3')
   })
 
-  it('hits>0 时点停止 → 弹 StopScanDialog,不立刻调 cancel', async () => {
-    const scan = useScanStore()
-    ;(scan as any).running = true
-    ;(scan as any).progress = { scanned: 5, total: 100, hits: 3, errors: 0 }
-    ;(scan as any).currentScanId = 'sid'
-    const cancelSpy = vi.spyOn(scan, 'cancel').mockResolvedValue()
-    const p = usePatternsStore(); (p as any).selectedId = 'pat_x'
+  it('click [扫描 ⚙] mounts ScanConfigDialog', async () => {
     const w = mount(SidebarScanPanel)
     await flushPromises()
-    await w.get('button.btn-stop').trigger('click')
-    expect(cancelSpy).not.toHaveBeenCalled()
-    expect(w.findComponent(StopScanDialog).exists()).toBe(true)
+    const scanBtn = w.findAll('button').find(b => b.text().includes('扫描'))!
+    await scanBtn.trigger('click')
+    expect(w.find('.backdrop').exists()).toBe(true)   // ScanConfigDialog root
   })
 
-  it('dialog emit save → cancel(true) + 关 dialog', async () => {
-    const scan = useScanStore()
-    ;(scan as any).running = true
-    ;(scan as any).progress = { scanned: 5, total: 100, hits: 3, errors: 0 }
-    ;(scan as any).currentScanId = 'sid'
-    const cancelSpy = vi.spyOn(scan, 'cancel').mockResolvedValue()
-    const p = usePatternsStore(); (p as any).selectedId = 'pat_x'
+  it('click [打开历史 …] mounts ScanResultDialog', async () => {
     const w = mount(SidebarScanPanel)
     await flushPromises()
-    await w.get('button.btn-stop').trigger('click')
-    const dlg = w.findComponent(StopScanDialog)
-    await dlg.vm.$emit('save')
-    expect(cancelSpy).toHaveBeenCalledWith(true)
-    await flushPromises()
-    expect(w.findComponent(StopScanDialog).exists()).toBe(false)
+    const histBtn = w.findAll('button').find(b => b.text().includes('打开历史'))!
+    await histBtn.trigger('click')
+    // ScanResultDialog 组件有自己 root class(现有实现);用组件名断言
+    expect(w.findComponent({ name: 'ScanResultDialog' }).exists()).toBe(true)
   })
 
-  it('dialog emit discard → cancel(false) + 关 dialog', async () => {
+  it('click [停止扫描] with hits>0 opens StopScanDialog', async () => {
     const scan = useScanStore()
     ;(scan as any).running = true
-    ;(scan as any).progress = { scanned: 5, total: 100, hits: 3, errors: 0 }
-    ;(scan as any).currentScanId = 'sid'
-    const cancelSpy = vi.spyOn(scan, 'cancel').mockResolvedValue()
-    const p = usePatternsStore(); (p as any).selectedId = 'pat_x'
+    ;(scan as any).progress = { scanned: 12, total: 500, hits: 3, errors: 0 }
     const w = mount(SidebarScanPanel)
     await flushPromises()
-    await w.get('button.btn-stop').trigger('click')
-    const dlg = w.findComponent(StopScanDialog)
-    await dlg.vm.$emit('discard')
-    expect(cancelSpy).toHaveBeenCalledWith(false)
-    await flushPromises()
-    expect(w.findComponent(StopScanDialog).exists()).toBe(false)
+    const stopBtn = w.findAll('button').find(b => b.text().includes('停止扫描'))!
+    await stopBtn.trigger('click')
+    expect(w.findComponent({ name: 'StopScanDialog' }).exists()).toBe(true)
   })
 
-  it('dialog emit continue → 关 dialog,不调 cancel', async () => {
+  it('click [停止扫描] with hits=0 calls scan.cancel(false) directly', async () => {
     const scan = useScanStore()
     ;(scan as any).running = true
-    ;(scan as any).progress = { scanned: 5, total: 100, hits: 3, errors: 0 }
-    ;(scan as any).currentScanId = 'sid'
-    const cancelSpy = vi.spyOn(scan, 'cancel').mockResolvedValue()
-    const p = usePatternsStore(); (p as any).selectedId = 'pat_x'
+    ;(scan as any).progress = { scanned: 12, total: 500, hits: 0, errors: 0 }
+    const spy = vi.spyOn(scan, 'cancel')
     const w = mount(SidebarScanPanel)
     await flushPromises()
-    await w.get('button.btn-stop').trigger('click')
-    const dlg = w.findComponent(StopScanDialog)
-    await dlg.vm.$emit('continue')
-    expect(cancelSpy).not.toHaveBeenCalled()
-    await flushPromises()
-    expect(w.findComponent(StopScanDialog).exists()).toBe(false)
-  })
-
-  it('dialog 开着时 running 变 false → 自动关 dialog', async () => {
-    const scan = useScanStore()
-    ;(scan as any).running = true
-    ;(scan as any).progress = { scanned: 5, total: 100, hits: 3, errors: 0 }
-    ;(scan as any).currentScanId = 'sid'
-    const p = usePatternsStore(); (p as any).selectedId = 'pat_x'
-    const w = mount(SidebarScanPanel)
-    await flushPromises()
-    await w.get('button.btn-stop').trigger('click')
-    expect(w.findComponent(StopScanDialog).exists()).toBe(true)
-    ;(scan as any).running = false
-    await flushPromises()
-    expect(w.findComponent(StopScanDialog).exists()).toBe(false)
+    const stopBtn = w.findAll('button').find(b => b.text().includes('停止扫描'))!
+    await stopBtn.trigger('click')
+    expect(spy).toHaveBeenCalledWith(false)
   })
 })

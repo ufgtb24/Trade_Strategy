@@ -4,7 +4,7 @@
            @keydown.esc.stop="onCancel"
            @keydown.enter.stop="onEnter"
            @keydown.stop="onKeydown">
-        <header><h3>Scan Results — {{ patternId }}</h3></header>
+        <header><h3>Scan Results</h3></header>
 
         <div v-if="loading" class="state">Loading…</div>
         <div v-else-if="error" class="state error">
@@ -24,6 +24,7 @@
               <td>
                 {{ formatTs(r.scan_ts) }}
                 <span v-if="r.partial" class="partial-badge">未完成</span>
+                <span v-for="pid in r.pattern_ids" :key="pid" class="chip">{{ pid }}</span>
               </td>
               <td>{{ r.hits === null ? '—' : `${r.hits} / ${r.total}` }}</td>
               <td>{{ formatSize(r.size) }}</td>
@@ -63,7 +64,6 @@ import { useScanStore } from '../stores/scan'
 import { useViewStore } from '../stores/view'
 import type { ScanHistoryEntry } from '../types'
 
-const props = defineProps<{ patternId: string }>()
 const emit = defineEmits<{ (e: 'close'): void }>()
 
 const view = useViewStore()
@@ -86,7 +86,7 @@ const currentScanTs = computed(() => scanFile.value?.scan?.scan_ts ?? null)
 async function reload() {
   loading.value = true; error.value = null
   try {
-    await scan.refreshHistory(props.patternId)
+    await scan.refreshHistory()
     rows.value = [...scan.history]
   }
   catch (e: any) { error.value = `Failed to load history: ${e.message ?? e}` }
@@ -142,9 +142,9 @@ async function performDelete() {
   const targets = Array.from(selected.value)
   const failures: string[] = []
   for (const ts of targets) {
-    try { await scan.remove(props.patternId, ts) } catch { failures.push(ts) }
+    try { await scan.remove(ts) } catch { failures.push(ts) }
   }
-  await scan.refreshHistory(props.patternId)
+  await scan.refreshHistory()
   rows.value = [...scan.history]
   if (currentScanTs.value !== null && targets.includes(currentScanTs.value)) {
     view.clearScanFile()
@@ -157,11 +157,11 @@ async function performDelete() {
 async function onOpen() {
   if (selected.value.size !== 1) return
   const ts = Array.from(selected.value)[0]
-  await scan.open(props.patternId, ts)
+  await scan.open(ts)
   emit('close')
 }
 function openOne(ts: string) {
-  scan.open(props.patternId, ts).then(() => emit('close'))
+  scan.open(ts).then(() => emit('close'))
 }
 function onCancel() { emit('close') }
 
@@ -225,6 +225,8 @@ footer { display: flex; align-items: center; gap: 10px; margin-top: 12px; }
 .confirm-card p { white-space: pre-line; margin: 0 0 12px; font-size: 12px; }
 .warn { color: #b91c1c; font-size: 11px; }
 button.btn-stop { background: #ef4444; color: #fff; }
+.chip { display: inline-block; padding: 1px 6px; background: #e5e7eb;
+        border-radius: 8px; font-size: 10px; margin-right: 4px; }
 .partial-badge {
   display: inline-block;
   margin-left: 6px;

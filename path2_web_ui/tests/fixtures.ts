@@ -1,17 +1,16 @@
-import type { SerializedPattern, Analysis, ScanResultFile, Diagnostics } from '../src/types'
+import type { SerializedPattern, Analysis, MultiScanResultFile, Diagnostics } from '../src/types'
 
 export const PATTERN: SerializedPattern = {
   pattern_id: 'bottom_breakout_burst',
-  display_name: '底部反转突破爆发',
   topology: {
     nodes: [
-      { node_id: 'down', class_id: 'trend', label: '下跌段', source_tag: 'trend0',
+      { node_id: 'down', class_id: 'trend', source_tag: 'trend0',
         where_rules: [{ clause_id: 'drawdown', op: '>=', threshold: 0.30 }] },
-      { node_id: 'side', class_id: 'trend', label: '横盘段', source_tag: 'trend1', where_rules: [] },
-      { node_id: 'bo', class_id: 'bo', label: '突破点串', source_tag: 'bo',
+      { node_id: 'side', class_id: 'trend', source_tag: 'trend1', where_rules: [] },
+      { node_id: 'bo', class_id: 'bo', source_tag: 'bo',
         render_grid: 'price',
         where_rules: [{ clause_id: 'first_drought', op: '>=', threshold: 60 }] },
-      { node_id: 'tb', class_id: 'tb', label: '回踩确认', source_tag: 'tb', where_rules: [] },
+      { node_id: 'tb', class_id: 'tb', source_tag: 'tb', where_rules: [] },
     ],
     edges: [
       { src: 'down', dst: 'bo', kind: 'TemporalEdge', rule: 'before · gap∈[1,120]' },
@@ -43,13 +42,24 @@ export const ANALYSIS: Analysis = {
   ],
 }
 
-export const SCAN_FILE: ScanResultFile = {
-  pattern_id: 'bottom_breakout_burst',
-  pattern_spec: PATTERN,
-  scan: { scan_ts: '20260603T120000', start_date: '2025-01-01', end_date: '2025-12-31',
-          workers: 8, scanned: 100, hits: 1, errors: 0, dataset_dir: '/x', params: 'default' },
+export const SCAN_FILE: MultiScanResultFile = {
+  pattern_ids: ['bottom_breakout_burst'],
+  per_pattern: {
+    bottom_breakout_burst: { pattern_spec: PATTERN, end_role: 'tb' },
+  },
+  scan: {
+    scan_ts: '20260603T120000', start_date: '2025-01-01', end_date: '2025-12-31',
+    workers: 8, scanned: 100, hits: 1, errors: 0, dataset_dir: '/x', params: 'default',
+    win_start: '2025-01-01', win_end: '2025-12-31', label_horizon: 20,
+  },
   results: [
-    { symbol: 'AAPL', summary: { trend: 2, bo: 3, tb: 1, matches: 1 }, analysis: ANALYSIS },
+    { symbol: 'AAPL', per_pattern: {
+      bottom_breakout_burst: {
+        summary: { trend: 2, bo: 3, tb: 1, matches: 1 },
+        analysis: ANALYSIS,
+        max_forward_return: null,
+      },
+    }},
   ],
 }
 
