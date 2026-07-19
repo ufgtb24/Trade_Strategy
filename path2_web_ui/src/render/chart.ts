@@ -1,7 +1,7 @@
 // ECharts option 构造(纯函数,spec §8.3 方案 B)。类型无关:只依赖 start_idx/end_idx/source_tag + 色。
 import type { Bar, EventDict, MatchDict, Level, Tier, Topology } from '../types'
 import { colorOf } from './colors'
-import { splitGeometry, packByBand, packBrackets } from './geometry'
+import { packByBand, packBrackets } from './geometry'
 import { isBandVisible, renderGridOf, subBandTagList } from './visible'
 import { ctrlState } from './ctrlState'
 import {
@@ -26,7 +26,7 @@ import {
 
 export interface TooltipClauseRow {
   cid: string
-  role: string
+  node: string
   measured: unknown
   op: string | null
   threshold: unknown
@@ -35,7 +35,7 @@ export interface TooltipClauseRow {
 
 export interface TooltipPayload {
   identity: {
-    roles: string[]
+    nodes: string[]
     dateStart: string
     dateEnd: string | null
     eventId: string
@@ -49,13 +49,13 @@ export interface BandRenderInput {
   isolatedNodeIds: Set<string>
   tagList: string[]                                   // band 顺序(= deriveTagMap(topology.nodes).tagList)
   level: Level                                        // 门控档
-  roleColors: Record<string, string>
+  nodeColors: Record<string, string>
   eventTier: (e: EventDict) => Tier
-  roleOfEventByBand: (e: EventDict) => string | null
+  nodeOfEventByBand: (e: EventDict) => string | null
   bandKeyOf: (e: EventDict) => string
-  // ── roleVisible: nodeId→false=隐藏;缺键=可见 ──────────────────────────────
-  roleVisible?: Record<string, boolean>
-  // tagToNodes: bandKey → nodeId[],用于 roleVisible 联查 ──────────────────────
+  // ── nodeVisible: nodeId→false=隐藏;缺键=可见 ──────────────────────────────
+  nodeVisible?: Record<string, boolean>
+  // tagToNodes: bandKey → nodeId[],用于 nodeVisible 联查 ──────────────────────
   tagToNodes?: Record<string, string[]>
   // ── D2 可选扩展 ─────────────────────────────────────────────────────────────
   selectedEventId?: string | null
@@ -70,17 +70,21 @@ export interface BandRenderInput {
   //    re-render 时不重置 zoom")。缺省/null = 走 strictWindow 默认,旧调用零回归。
   zoomOverride?: { start: number; end: number } | null
   // §7-4 整治：bracket marker 同时承载 match_id + 端点 event_id,让 buildMarkerTooltipFormatter
-  // 的 event 三段分支也能触发。endRole 来自 eval_meta(铁律必有);缺省=不注入 event_id(向后兼容)
-  endRole?: string
+  // 的 event 三段分支也能触发。endNode 来自 eval_meta(铁律必有);缺省=不注入 event_id(向后兼容)
+  endNode?: string
   // ── M #3 / M' #19: bracket 三态 fill ────────────────────────────────────────
   selectedMatchId?: string | null
   candidateMatchIds?: ReadonlySet<string>
   // ── Task 5: highlight 三分支(group / focus / pendingDisambig) ───────────────
   highlightedEventIds?: ReadonlySet<string>
   pendingDisambigEventId?: string | null
+  // ── spec 2026-07-10: 入口 D shift+click 已选中 marker 描边高亮 ────────────
+  shiftSelectedEventIds?: ReadonlySet<string>
   matches?: MatchDict[]  // buildSubOption 的 markerTooltip formatter 用（自 KlineChart.vue 透传）
   // ── 副图 band 竖直 zoom(spec 2026-07-03):由 KlineChart 传入,default 1.0 ──────
   zoomFactor?: number
+  // ── 主图 title 显示 symbol code(居中,空/null 时隐藏,ECharts 原生 title) ──────
+  symbolLabel?: string | null
 }
 
 // ─── Task 5: 共享 event 数据抽取(供 buildMainOption/buildSubOption 消费) ──────
@@ -93,6 +97,9 @@ export interface EventBundle {
   bracketData: any[]
   highlightData: any[]
   highlightPriceData: any[]
+  // ── spec 2026-07-11: shift+click 累积器命中 marker 的白蒙+黑线 overlay 数据 ──
+  veilData: any[]         // 副图 point + interval
+  veilPriceData: any[]    // 主图 pricePoint + satellite
   candle: number[][]
   volume: number[]
   dates: string[]
@@ -102,12 +109,14 @@ export function computeEventData(
   bars: Bar[], events: EventDict[], matches: MatchDict[],
   input: BandRenderInput,
 ): EventBundle {
-  const { topology, tagList, level, roleColors, eventTier, roleOfEventByBand, bandKeyOf,
-          roleVisible, tagToNodes, selectedEventId, endRole,
+  const { topology, tagList, level, nodeColors, eventTier, nodeOfEventByBand, bandKeyOf,
+          nodeVisible, tagToNodes, selectedEventId, endNode,
           highlightedEventIds: _highlightedEventIds,
-          pendingDisambigEventId: _pendingDisambigEventId } = input
+          pendingDisambigEventId: _pendingDisambigEventId,
+          shiftSelectedEventIds: _shiftSelectedEventIds } = input
   const highlightedEventIds = _highlightedEventIds ?? new Set<string>()
   const pendingDisambigEventId = _pendingDisambigEventId ?? null
+  const shiftSelectedEventIds = _shiftSelectedEventIds ?? new Set<string>()
   // 副图分轨只含 time 轴 tag;render_grid='price' 的 tag(bo)不占轨道
   const subTags = subBandTagList(tagList, topology)
 
@@ -115,18 +124,16 @@ export function computeEventData(
   const candle = bars.map((b) => [b.o, b.c, b.l, b.h])
   const volume = bars.map((b) => b.v)
 
-  // ── level 门控 + roleVisible band 筛选 ──
+  // ── level 门控 + nodeVisible band 筛选 ──
   const RANK: Record<Level, number> = { matched: 2, qualified: 1, detected: 0 }
   const filtered = events.filter((e) =>
-    RANK[eventTier(e)] >= RANK[level] && isBandVisible(bandKeyOf(e), roleVisible, tagToNodes)
+    RANK[eventTier(e)] >= RANK[level] && isBandVisible(bandKeyOf(e), nodeVisible, tagToNodes)
   )
   const priceAnchored = filtered.filter((e) => renderGridOf(e, topology, bandKeyOf) === 'price')
   const timeAnchored = filtered.filter((e) => renderGridOf(e, topology, bandKeyOf) !== 'price')
 
   const eColor = (e: EventDict): string =>
-    colorOf(eventTier(e), roleOfEventByBand(e), roleColors)
-
-  const { points, intervals } = splitGeometry(timeAnchored)
+    colorOf(eventTier(e), nodeOfEventByBand(e), nodeColors)
 
   // pkBarIndices
   const pkBarIndices = new Set<number>()
@@ -137,13 +144,6 @@ export function computeEventData(
         pkBarIndices.add(barIdx)
       }
     }
-  }
-
-  type BoTier = 'current' | 'matched' | 'plain'
-  const boTierOf = (e: EventDict): BoTier => {
-    if (selectedEventId && e.event_id === selectedEventId) return 'current'
-    if (eventTier(e) === 'matched') return 'matched'
-    return 'plain'
   }
 
   const pricePointData = priceAnchored.map((e) => {
@@ -158,7 +158,7 @@ export function computeEventData(
       event_id: e.event_id,
       tier: eventTier(e),
       itemStyle: { color: eColor(e) },
-      anchorY, text, boTier: boTierOf(e), hasPks,
+      anchorY, text, hasPks,
     }
   })
 
@@ -181,24 +181,22 @@ export function computeEventData(
     }
   }
 
-  const packedIntervals = packByBand(intervals, subTags, bandKeyOf)
-  const intervalData = packedIntervals.map((e) => ({
-    value: [e.start_idx, e.end_idx, e.lane, e.band, e.nBands],
-    event_id: e.event_id,
-    tier: eventTier(e),
-    itemStyle: { color: eColor(e) },
-  }))
-
-  const pointData = points.map((e) => {
-    const band = subTags.indexOf(bandKeyOf(e))
-    const nBands = subTags.length
-    return {
-      value: [e.start_idx, e.start_idx, band < 0 ? 0 : band, nBands],
+  // 合并 spot + span 一并送 packByBand,同 band 内共享同一次 packLanes 分 lane
+  // (spec 2026-07-13:spot 从 band 中心固定位置改为参与 lane packing,消除视觉重叠 bug)
+  const packedAll = packByBand(timeAnchored, subTags, bandKeyOf)
+  const intervalData: any[] = []
+  const pointData: any[] = []
+  for (const e of packedAll) {
+    const isPoint = e.start_idx === e.end_idx
+    const record = {
+      value: [e.start_idx, e.end_idx, e.lane, e.band, e.nBands],
       event_id: e.event_id,
       tier: eventTier(e),
       itemStyle: { color: eColor(e) },
     }
-  })
+    if (isPoint) pointData.push(record)
+    else intervalData.push(record)
+  }
 
   const brackets = packBrackets(matches)
   const bracketData = brackets.map((m) => {
@@ -206,8 +204,8 @@ export function computeEventData(
       value: [m.start_idx, m.end_idx, m.lane, m.ordinal],
       match_id: m.event_id,
     }
-    if (endRole) {
-      const v = m.role_index?.[endRole]
+    if (endNode) {
+      const v = m.node_index?.[endNode]
       const eid = Array.isArray(v) ? v[0] : v
       if (eid) data.event_id = eid
     }
@@ -258,9 +256,32 @@ export function computeEventData(
     }
   }
 
+  // ── spec 2026-07-11: shift-veil overlay 数据(z2:22 独立层,fill 白蒙 + 黑横线) ──
+  const veilData: any[] = []
+  const veilPriceData: any[] = []
+  if (shiftSelectedEventIds.size > 0) {
+    for (const d of pointData) {
+      if (shiftSelectedEventIds.has(d.event_id))
+        veilData.push({ ...d, kind: 'point' })
+    }
+    for (const d of intervalData) {
+      if (shiftSelectedEventIds.has(d.event_id))
+        veilData.push({ ...d, kind: 'interval' })
+    }
+    for (const d of pricePointData) {
+      if (shiftSelectedEventIds.has(d.event_id))
+        veilPriceData.push({ ...d, kind: 'pricePoint' })
+    }
+    for (const d of satelliteData) {
+      if (shiftSelectedEventIds.has(d.event_id))
+        veilPriceData.push({ ...d, kind: 'satellite' })
+    }
+  }
+
   return {
     pointData, intervalData, pricePointData, satelliteData,
     bracketData, highlightData, highlightPriceData,
+    veilData, veilPriceData,
     candle, volume, dates,
   }
 }
@@ -272,16 +293,21 @@ export function buildMainOption(
   opts?: { getChartEl?: () => HTMLElement | null },
 ): unknown {
   const { strictWindow, sliderShow, zoomOverride,
-          tooltipResolver, matchLabel, candidateMatchIds } = input
-  const { dates, candle, pricePointData, satelliteData, highlightPriceData } = bundle
+          tooltipResolver, matchLabel, candidateMatchIds, symbolLabel } = input
+  const { dates, candle, pricePointData, satelliteData, highlightPriceData, veilPriceData } = bundle
 
   const N = bars.length
   const sw = strictWindow ?? null
   const hasBuffer = sw !== null && (sw.startIdx > 0 || sw.endIdx < N - 1)
   const zoomStart = zoomOverride?.start ?? (hasBuffer ? (sw!.startIdx / N) * 100 : 0)
   const zoomEnd   = zoomOverride?.end   ?? (hasBuffer ? ((sw!.endIdx + 1) / N) * 100 : 100)
-  const initVisStart = sw ? sw.startIdx : 0
-  const initVisEnd = sw ? sw.endIdx : N - 1
+  // y 轴计算窗口跟随最终生效的 zoom(而非固定 strictWindow/全窗),口径与
+  // KlineChart.vue datazoom handler 一致:否则 zoom-in 后全量 render 时 y 轴按全窗
+  // 价格范围算 → 可见段在低价区时 K 线压底、上方留白。无 zoomOverride 时数学回退到
+  // 旧值(zoomStart=(sw.startIdx/N)*100 换算回 sw.startIdx,余同)。max 兜极窄 zoom
+  // 致空切片(Math.min(...[])=Infinity)。
+  const initVisStart = Math.max(0, Math.round((zoomStart / 100) * N))
+  const initVisEnd = Math.max(initVisStart, Math.min(N - 1, Math.round((zoomEnd / 100) * N) - 1))
 
   const { volSeries, yAxisOverride } = buildVolumeSeriesAndYAxis(bars, initVisStart, initVisEnd)
   const shadingMarkArea = sw ? buildShadingMarkArea(bars, bars[sw.startIdx].date, bars[sw.endIdx].date) : null
@@ -289,7 +315,13 @@ export function buildMainOption(
   const klineSeries: Record<string, unknown> = {
     type: 'candlestick', name: 'kline', data: candle, xAxisIndex: 0, yAxisIndex: 0,
     barWidth: '70%',
-    itemStyle: { borderWidth: 2 },
+    itemStyle: {
+      borderWidth: 2,
+      color: '#47b262',
+      color0: '#eb5454',
+      borderColor: '#47b262',
+      borderColor0: '#eb5454',
+    },
   }
   if (shadingMarkArea) klineSeries.markArea = shadingMarkArea
 
@@ -310,6 +342,8 @@ export function buildMainOption(
     : undefined
 
   return {
+    ...(symbolLabel ? { title: { text: symbolLabel, left: 'center', top: 6,
+                                  textStyle: { fontSize: 14, fontWeight: 'bold', color: '#333' } } } : {}),
     animation: false,
     tooltip,
     // axisPointer.link 删除:双实例 echarts.connect 接管
@@ -368,6 +402,10 @@ export function buildMainOption(
         data: highlightPriceData, animation: true,
         renderItem: makeRenderPricePointHighlight(highlightPriceData),
         encode: { x: 0, y: 1 }, z: 21, clip: false, tooltip: markerTooltip },
+      { type: 'custom', name: 'shift-veil-price', xAxisIndex: 0, yAxisIndex: 0,
+        data: veilPriceData, animation: false, silent: true,
+        renderItem: makeRenderShiftVeilPrice(veilPriceData),
+        z: 22 },
     ],
   }
 }
@@ -481,7 +519,7 @@ export function buildSubOption(
 ): unknown {
   const { tooltipResolver, matchLabel, zoomOverride, strictWindow,
           selectedMatchId, candidateMatchIds } = input
-  const { dates, pointData, intervalData, bracketData, highlightData } = bundle
+  const { dates, pointData, intervalData, bracketData, highlightData, veilData } = bundle
   const z = input.zoomFactor ?? 1.0   // 副图 band 竖直 zoom(spec 2026-07-03)
 
   const N = bars.length
@@ -557,6 +595,11 @@ export function buildSubOption(
         data: highlightData, animation: true,
         renderItem: makeRenderHighlightWithGeom(highlightData, subGeom.bandGeom, z),
         encode: { x: 0 }, z: 20, tooltip: markerTooltip },
+      // shift-veil (z:22 高于 highlight,spec 2026-07-11):fill 白蒙 + 黑横线,与 highlight 三分支正交
+      { type: 'custom', name: 'shift-veil', xAxisIndex: 0, yAxisIndex: 0,
+        data: veilData, animation: false, silent: true,
+        renderItem: makeRenderShiftVeil(veilData, subGeom.bandGeom, z),
+        z: 22 },
     ],
   }
 }
@@ -583,12 +626,13 @@ function renderHitSpanner(params: any, api: any) {
   }
 }
 
-// 选中词汇(spec 2026-07-03-group-amber-focus-edge):琥珀实心 =「在选中 group 里」,
-// 深灰蓝边 =「focus,被点击者」。AMBER_FILL 同时是 bracket 选中 fill(原 rgba(251,191,36,0.85) 并入)。
-const AMBER_FILL = '#fbbf24'
-const HL_FOCUS_EDGE = '#1e293b'   // slate-800(用户 mockup 三色对比选定,弃同色系深棕)
+// 选中词汇(2026-07-08 改):三档皆保 node/tier 分色(matched=node本色,qualified/detected=灰),
+// group=细深边, focus=粗深边;琥珀不再代表选中。AMBER_FILL 仅剩 bracket 默认底(bracket 无 tier 语义)。
+const AMBER_FILL = '#fbbf24'      // bracket 默认底(琥珀,非选中语义)
+const HL_FOCUS_EDGE = '#1e293b'   // slate-800(group/focus 深边、BO 文本、bracket 序号)
 const HL_STROKE = '#fbbf24'       // 收窄:仅 pendingDisambig 白底垫层的琥珀边消费
-const HL_STROKE_WIDTH = 2.5
+const HL_FOCUS_STROKE_WIDTH = 2.5
+const HL_GROUP_STROKE_WIDTH = 1.5
 const HL_SHADOW = { shadowBlur: 6, shadowColor: 'rgba(15,23,42,0.4)', shadowOffsetY: 2 } as const
 
 // 闪烁关键帧(每次调用新建对象——zrender 内部状态会污染共享常量)。
@@ -606,8 +650,9 @@ export function pendingBlinkAnimation() {
   }
 }
 
-// 按三态装配放大版图形。group/focus = 琥珀实心(spec 2026-07-03-group-amber-focus-edge:
-// 琥珀=「在选中 group 里」,深灰蓝边=「focus 被点者」);color 参数仅 pending 分支消费(本色闪烁层)。
+// 按三态装配放大版图形(2026-07-08 改):group/focus 都保 node/tier 分色,
+// 靠边框粗细区分——group=细深边(1.5)、focus=粗深边(2.5),琥珀不再代表选中。
+// color 由 itemStyle.color 传入,已按 colorOf 三档分:matched=node本色 / qualified=中灰 / detected=浅灰。
 // 放大实心版盖住下层本体 marker → 一律 silent:true 让 hover/click 穿透到本体系列。
 // pending 分层固定:白底垫层(阴影+琥珀边恒定)+ 本色 fill 层(单独闪)。
 // 禁止本色静态垫层——fill 闪暗时露出同色垫层 = 视觉不闪(c94baf7 同构陷阱)。
@@ -618,12 +663,16 @@ function buildHlShape(
   z2: number,
 ): Record<string, unknown> {
   if (kind === 'group') {
-    return { ...base, style: { fill: AMBER_FILL, ...HL_SHADOW }, silent: true, z2 }
+    return {
+      ...base,
+      style: { fill: color, stroke: HL_FOCUS_EDGE, lineWidth: HL_GROUP_STROKE_WIDTH, ...HL_SHADOW },
+      silent: true, z2,
+    }
   }
   if (kind === 'focus') {
     return {
       ...base,
-      style: { fill: AMBER_FILL, stroke: HL_FOCUS_EDGE, lineWidth: HL_STROKE_WIDTH, ...HL_SHADOW },
+      style: { fill: color, stroke: HL_FOCUS_EDGE, lineWidth: HL_FOCUS_STROKE_WIDTH, ...HL_SHADOW },
       silent: true, z2,
     }
   }
@@ -631,7 +680,7 @@ function buildHlShape(
     type: 'group',
     silent: true, z2,
     children: [
-      { ...base, style: { fill: '#ffffff', stroke: HL_STROKE, lineWidth: HL_STROKE_WIDTH, ...HL_SHADOW } },
+      { ...base, style: { fill: '#ffffff', stroke: HL_STROKE, lineWidth: HL_FOCUS_STROKE_WIDTH, ...HL_SHADOW } },
       { ...base, style: { fill: color }, keyframeAnimation: pendingBlinkAnimation() },
     ],
   }
@@ -639,13 +688,12 @@ function buildHlShape(
 
 // 主图 price-anchored bo 盒放大版(grid0 价格轴)。实心放大版遮住本体文字 →
 // 重画盒+文本(字号不变)。stackOffset 与 renderPricePoint 同步按 hasPks 切换。
-// 不透明(悬浮跳出感,本体 opacity:0.75 融入感不带入);group/focus 琥珀底+深灰蓝字
-// (spec 2026-07-03-group-amber-focus-edge,原 tier 底色+蓝描边词汇让位);focus 加深灰蓝边;
-// pending 白底+闪烁分层同 buildHlShape 规约(tier bg 闪、文字 tier fg,逐字不动)。
+// 2026-07-08 改:同 buildHlShape,group/focus 保 tier 分色(matched=橙/灰) + 细/粗深边;
+// 文字色全 tier 统一 HL_FOCUS_EDGE(灰底可读,橙底可读);pending 白底+闪烁分层不动。
 // ⚠ closure factory:ECharts customSeries 不在 params 中传 data item,必须按 dataIndex 反查。
 export function makeRenderPricePointHighlight(
   data: Array<{ value: number[]; event_id: string; anchorY: number; text: string; hasPks: boolean;
-                 boTier: 'current' | 'matched' | 'plain';
+                 itemStyle: { color: string };
                  kind: 'group' | 'focus' | 'pendingDisambig' }>,
 ) {
   return function renderPricePointHighlight(params: any, api: any) {
@@ -654,7 +702,7 @@ export function makeRenderPricePointHighlight(
     const anchorY = item?.anchorY ?? api.value(1)
     const text = item?.text ?? ''
     const hasPks = item?.hasPks ?? false
-    const tierStyle = BO_TIER_STYLE[item?.boTier ?? 'plain']
+    const color = item?.itemStyle?.color ?? '#888888'
     const [cx, anchorPx] = api.coord([api.value(0), anchorY])
     const stackOffset = hasPks ? BO_STACK_PT : BO_STACK_PT_NO_PKS
     const cy = anchorPx - stackOffset
@@ -664,26 +712,24 @@ export function makeRenderPricePointHighlight(
       x: cx - w / 2 - pad, y: cy - h / 2 - pad,
       width: w + 2 * pad, height: h + 2 * pad, r: BO_BOX_RADIUS + pad,
     }
-    // group/focus 文字换深灰蓝(琥珀底可读);pending 保 tier fg(白底+tier bg 闪烁层不动)
-    const textFill = hlKind === 'pendingDisambig' ? tierStyle.fg : HL_FOCUS_EDGE
     const textEl = {
       type: 'text',
-      style: { text, x: cx, y: cy, fill: textFill, fontSize: MARKER_FONT_SIZE,
+      style: { text, x: cx, y: cy, fill: HL_FOCUS_EDGE, fontSize: MARKER_FONT_SIZE,
                fontWeight: 'bold', align: 'center', verticalAlign: 'middle' },
     }
     const children: any[] = hlKind === 'pendingDisambig'
       ? [
           { type: 'rect', shape: boxShape,
-            style: { fill: '#ffffff', stroke: HL_STROKE, lineWidth: HL_STROKE_WIDTH, ...HL_SHADOW } },
-          { type: 'rect', shape: boxShape, style: { fill: tierStyle.bg },
+            style: { fill: '#ffffff', stroke: HL_STROKE, lineWidth: HL_FOCUS_STROKE_WIDTH, ...HL_SHADOW } },
+          { type: 'rect', shape: boxShape, style: { fill: color },
             keyframeAnimation: pendingBlinkAnimation() },
           textEl,
         ]
       : [
           { type: 'rect', shape: boxShape,
             style: hlKind === 'group'
-              ? { fill: AMBER_FILL, ...HL_SHADOW }
-              : { fill: AMBER_FILL, stroke: HL_FOCUS_EDGE, lineWidth: HL_STROKE_WIDTH, ...HL_SHADOW } },
+              ? { fill: color, stroke: HL_FOCUS_EDGE, lineWidth: HL_GROUP_STROKE_WIDTH, ...HL_SHADOW }
+              : { fill: color, stroke: HL_FOCUS_EDGE, lineWidth: HL_FOCUS_STROKE_WIDTH, ...HL_SHADOW } },
           textEl,
         ]
     return { type: 'group', silent: true, z2: 21, children }
@@ -726,10 +772,13 @@ export function renderPointWithGeom(
   zoomFactor: number = 1.0,   // 副图 band 竖直 zoom(spec 2026-07-03)
 ) {
   const x = api.coord([api.value(0), 0])[0]
-  const band = api.value(2) || 0
+  const lane = api.value(2) || 0
+  const band = api.value(3) || 0
   const g = bandGeom[band]
   if (!g) return { type: 'group', children: [] }
-  const centerY = g.top + g.h / 2
+  const laneH = BAND_MARKER_H * zoomFactor
+  const gap = BAND_LANE_GAP * zoomFactor
+  const centerY = g.top + BAND_TOP_PAD + lane * (laneH + gap) + laneH / 2
   const unitW = api.size([1, 0])[0]
   const w = Math.max(5, Math.min(20, unitW * 0.35))
   return {
@@ -751,13 +800,18 @@ export function makeRenderHighlightWithGeom(
     const item = items[params.dataIndex]
     const hlKind = item?.kind ?? 'focus'
     const color = item?.itemStyle?.color ?? '#888888'
-    const isInterval = item ? item.value.length === 5 : false
+    // pointData/intervalData 均为 5 元组(spec 2026-07-13),不能再用 length 判别;
+    // 改用 start!==end(与 computeEventData 里 isPoint = start_idx===end_idx 同一口径)。
+    const isInterval = item ? item.value[0] !== item.value[1] : false
     if (!isInterval) {
       const x = api.coord([api.value(0), 0])[0]
-      const band = (item?.value?.[2] as number) || 0
+      const lane = (item?.value?.[2] as number) || 0
+      const band = (item?.value?.[3] as number) || 0
       const g = bandGeom[band]
       if (!g) return { type: 'group', children: [] }
-      const centerY = g.top + g.h / 2
+      const laneH = BAND_MARKER_H * zoomFactor
+      const gap = BAND_LANE_GAP * zoomFactor
+      const centerY = g.top + BAND_TOP_PAD + lane * (laneH + gap) + laneH / 2
       const unitW = api.size([1, 0])[0]
       // 本体三角(renderPointWithGeom):高 7(+4/−3)、半宽 ≤20;放大版:高 10(+6/−4)、半宽 ×1.4
       const w = Math.max(7, Math.min(28, unitW * 0.35 * 1.4))
@@ -789,14 +843,151 @@ export function makeRenderHighlightWithGeom(
   }
 }
 
+// ── spec 2026-07-11: shift-veil 副图 renderer(point + interval,fill 白蒙 + 黑横线) ──
+// 每条 veil 数据一个 group,children = [半透明白蒙 shape, 黑横线],
+// 复用与 renderPointWithGeom / renderIntervalWithGeom 同一 shape 派生逻辑。
+// silent:true → hover/click 穿透到本体 marker;z2:22 高于 highlight overlay(21)。
+export function makeRenderShiftVeil(
+  items: Array<{ value: number[]; event_id: string; kind: 'point' | 'interval' }>,
+  bandGeom: BandGeom[],
+  zoomFactor: number = 1.0,
+) {
+  return function renderShiftVeil(params: any, api: any) {
+    const item = items[params.dataIndex] ?? null
+    if (!item) return { type: 'group', children: [] }
+
+    if (item.kind === 'point') {
+      // 参 renderPointWithGeom:三角 polygon,底顶点在下、两上角在上
+      const x = api.coord([api.value(0), 0])[0]
+      const lane = api.value(2) || 0
+      const band = api.value(3) || 0
+      const g = bandGeom[band]
+      if (!g) return { type: 'group', children: [] }
+      const laneH = BAND_MARKER_H * zoomFactor
+      const gap = BAND_LANE_GAP * zoomFactor
+      const centerY = g.top + BAND_TOP_PAD + lane * (laneH + gap) + laneH / 2
+      const unitW = api.size([1, 0])[0]
+      const w = Math.max(5, Math.min(20, unitW * 0.35))
+      const triPoints = [
+        [x, centerY + 4 * zoomFactor],
+        [x - w, centerY - 3 * zoomFactor],
+        [x + w, centerY - 3 * zoomFactor],
+      ]
+      const lineLen = w * 2 * 0.7   // 横线长度 = 三角底宽 × 0.7
+      return {
+        type: 'group',
+        silent: true,
+        z2: 22,
+        children: [
+          { type: 'polygon', shape: { points: triPoints },
+            style: { fill: 'rgba(255,255,255,0.45)', stroke: 'none' } },
+          { type: 'line',
+            shape: { x1: x - lineLen / 2, y1: centerY, x2: x + lineLen / 2, y2: centerY },
+            style: { stroke: '#000000', lineWidth: HL_FOCUS_STROKE_WIDTH } },
+        ],
+      }
+    }
+
+    // interval 分支:参 renderIntervalWithGeom
+    const x0 = api.coord([api.value(0), 0])[0]
+    const x1 = api.coord([api.value(1), 0])[0]
+    const lane = api.value(2) || 0
+    const band = api.value(3) || 0
+    const g = bandGeom[band]
+    if (!g) return { type: 'group', children: [] }
+    const laneH = BAND_MARKER_H * zoomFactor
+    const gap = BAND_LANE_GAP * zoomFactor
+    const rawY = g.top + BAND_TOP_PAD + lane * (laneH + gap)
+    const y = Math.max(g.top + BAND_TOP_PAD, Math.min(rawY, g.top + g.h - BAND_BOT_PAD - laneH))
+    const width = Math.max(2, x1 - x0)
+    const midY = y + laneH / 2
+    const lineLen = width * 0.7
+    const lineCenterX = x0 + width / 2
+    return {
+      type: 'group',
+      silent: true,
+      z2: 22,
+      children: [
+        { type: 'rect', shape: { x: x0, y, width, height: laneH },
+          style: { fill: 'rgba(255,255,255,0.45)', stroke: 'none' } },
+        { type: 'line',
+          shape: { x1: lineCenterX - lineLen / 2, y1: midY,
+                   x2: lineCenterX + lineLen / 2, y2: midY },
+          style: { stroke: '#000000', lineWidth: HL_FOCUS_STROKE_WIDTH } },
+      ],
+    }
+  }
+}
+
+// ── spec 2026-07-11: shift-veil 主图 renderer(pricePoint + satellite,fill 白蒙 + 黑横线) ──
+export function makeRenderShiftVeilPrice(
+  items: Array<{ value: number[]; event_id: string; kind: 'pricePoint' | 'satellite';
+                 anchorY?: number; text?: string; hasPks?: boolean }>,
+) {
+  return function renderShiftVeilPrice(params: any, api: any) {
+    const item = items[params.dataIndex] ?? null
+    if (!item) return { type: 'group', children: [] }
+
+    if (item.kind === 'pricePoint') {
+      // 参 makeRenderPricePoint:圆角矩形背景,box 中心 = anchorPx - stackOffset
+      const anchorY = item.anchorY ?? api.value(1)
+      const text = item.text ?? ''
+      const hasPks = item.hasPks ?? false
+      const [cx, anchorPx] = api.coord([api.value(0), anchorY])
+      const stackOffset = hasPks ? BO_STACK_PT : BO_STACK_PT_NO_PKS
+      const cy = anchorPx - stackOffset
+      const { w, h } = boBoxDims(text)
+      const lineLen = w * 0.7
+      return {
+        type: 'group',
+        silent: true,
+        z2: 22,
+        children: [
+          { type: 'rect',
+            shape: { x: cx - w / 2, y: cy - h / 2, width: w, height: h, r: BO_BOX_RADIUS },
+            style: { fill: 'rgba(255,255,255,0.45)', stroke: 'none' } },
+          { type: 'line',
+            shape: { x1: cx - lineLen / 2, y1: cy, x2: cx + lineLen / 2, y2: cy },
+            style: { stroke: '#000000', lineWidth: HL_FOCUS_STROKE_WIDTH } },
+        ],
+      }
+    }
+
+    // satellite 分支:参 makeRenderSatellite,倒三角(顶点在下,两上角在上)
+    // 三角形 fill='none' 原本空心;白蒙给 fill 半透明白,让原轮廓仍在、内部变白
+    const anchorY = item.anchorY ?? api.value(1)
+    const [cx, anchorPx] = api.coord([api.value(0), anchorY])
+    const triCy = anchorPx - TRIANGLE_STACK_PT
+    const tw = PK_TRIANGLE_HALF_WIDTH
+    const th = PK_TRIANGLE_HEIGHT
+    const triPoints = [
+      [cx - tw, triCy - th / 2],
+      [cx + tw, triCy - th / 2],
+      [cx,      triCy + th / 2],
+    ]
+    const lineLen = 2 * tw * 0.7
+    return {
+      type: 'group',
+      silent: true,
+      z2: 22,
+      children: [
+        { type: 'polygon', shape: { points: triPoints },
+          style: { fill: 'rgba(255,255,255,0.45)', stroke: 'none' } },
+        { type: 'line',
+          shape: { x1: cx - lineLen / 2, y1: triCy, x2: cx + lineLen / 2, y2: triCy },
+          style: { stroke: '#000000', lineWidth: HL_FOCUS_STROKE_WIDTH } },
+      ],
+    }
+  }
+}
+
 // bracket:副图独立坐标(canvas 局部 y=0 起,见 subGeometry.ts 几何约定)。
 // 几何与 band interval 统一(spec 2026-07-03-bracket-band-unify):本体高 BAND_MARKER_H*z、
 // stride BAND_LANE_H*z、区顶 BAND_TOP_PAD 呼吸;选中放大 +HL_EXPAND_H*z / −HL_EXPAND_OFFSET*z
 // (比例恒 10/7)。
-// 选中词汇(spec 2026-07-03-group-amber-focus-edge):选中 = AMBER_FILL 实心放大;
-// focusOnBracket(bracket 被直接点击,selectedEventId===null)再加 HL_FOCUS_EDGE 深边;
-// candidate = 0.35 琥珀底 + 琥珀虚线边(消歧流可见性——原纯 0.35 比 plain slate 还浅,
-// 注意力层级倒置);plain 不动。
+// 选中词汇(2026-07-08 改):bracket 默认底改为琥珀 AMBER_FILL(琥珀不再代表选中);
+// selected 非 focus = 琥珀 + 细深边 + shadow(与 marker in-group 一致);
+// focusOnBracket = 琥珀 + 粗深边 + shadow;candidate = 0.35 琥珀底 + 琥珀虚线边不动。
 export function makeRenderBracket(
   items: Array<{ match_id: string }>,
   selectedMatchId: string | null,
@@ -813,7 +1004,7 @@ export function makeRenderBracket(
     const matchId: string | undefined = items[params.dataIndex]?.match_id
     const isSelected = !!matchId && selectedMatchId === matchId
     const isCandidate = !isSelected && !!matchId && candidateMatchIds.has(matchId)
-    const fill = isSelected ? AMBER_FILL : isCandidate ? 'rgba(251,191,36,0.35)' : '#64748b'
+    const fill = isCandidate ? 'rgba(251,191,36,0.35)' : AMBER_FILL
     // 选中:居中外扩 + 投影(组员悬浮语义)。
     // 居中外扩后中心不变(−1.5z + (h+3z)/2 = rectH/2)→ 序号 text 的 y 公式不动。
     const rectShape = isSelected
@@ -822,8 +1013,8 @@ export function makeRenderBracket(
       : { x: x0, y: top, width: Math.max(2, x1 - x0), height: rectH }
     const rectStyle = isSelected
       ? (focusOnBracket
-          ? { fill, stroke: HL_FOCUS_EDGE, lineWidth: HL_STROKE_WIDTH, ...HL_SHADOW }
-          : { fill, ...HL_SHADOW })
+          ? { fill, stroke: HL_FOCUS_EDGE, lineWidth: HL_FOCUS_STROKE_WIDTH, ...HL_SHADOW }
+          : { fill, stroke: HL_FOCUS_EDGE, lineWidth: HL_GROUP_STROKE_WIDTH, ...HL_SHADOW })
       : isCandidate
         ? { fill, stroke: '#f59e0b', lineWidth: 1.5, lineDash: [4, 3] }
         : { fill }
@@ -850,7 +1041,6 @@ const PK_TRIANGLE_HALF_WIDTH = 8       // ▽ 半宽,对应 dev s=400 (≈20pt �
 const PK_TRIANGLE_HEIGHT = 12
 const PEAK_MARKER_COLOR = '#000000'    // CHART_COLORS["peak_marker"]
 const PEAK_TEXT_COLOR = '#000000'      // CHART_COLORS["peak_text_id"]
-const BO_BORDER_COLOR = '#0000FF'      // CHART_COLORS["bo_marker_current"](全 tier 统一)
 const BO_BOX_RADIUS = 4
 const BO_BOX_PAD_X = 5
 const BO_BOX_PAD_Y = 3
@@ -863,13 +1053,6 @@ const BO_STACK_PT = 48                 // [ids] 中心 y = anchor - 48(hasPks=tr
 // hasPks=false:同 bar 无 PK,BO 单独贴近 K 线 high(dev styles.py:80 bo_label=15pt 缩放对应)。
 // 这是 HEAD 相对 94e21934 的胜出语义点 — 按是否同 bar 有 PK 动态切换偏移。
 const BO_STACK_PT_NO_PKS = 15
-
-// BO_LABEL_TIER_STYLE(dev UI styles.py:168-172)三态查表
-const BO_TIER_STYLE: Record<'current' | 'matched' | 'plain', { bg: string; fg: string }> = {
-  current: { bg: '#0000FF', fg: '#FFFFFF' },
-  matched: { bg: '#BFBFBF', fg: '#000000' },
-  plain:   { bg: '#FFFFFF', fg: '#0000FF' },
-}
 
 // 文本框尺寸(浏览器无 measureText 时按字宽近似,bold 字体 char_w ≈ 0.62×fontSize)
 function boBoxDims(text: string): { w: number; h: number } {
@@ -890,15 +1073,14 @@ function boBoxDims(text: string): { w: number; h: number } {
 //   过去用 (params.data as any).text 实测=undefined → text 为空字符串 → ZRText 被创建但无文字渲染。
 function makeRenderPricePoint(
   data: Array<{ value: number[]; event_id: string; anchorY: number; text: string;
-                 boTier: 'current' | 'matched' | 'plain'; tier: Tier; hasPks: boolean; itemStyle: object }>,
+                 tier: Tier; hasPks: boolean; itemStyle: { color: string } }>,
 ) {
   return function renderPricePoint(params: any, api: any) {
     const item = data[params.dataIndex] ?? null
     const anchorY = item?.anchorY ?? api.value(1)
     const text = item?.text ?? ''
-    const tier = item?.boTier ?? 'plain'
     const hasPks = item?.hasPks ?? false
-    const tierStyle = BO_TIER_STYLE[tier]
+    const color = item?.itemStyle?.color ?? '#888888'
     const [cx, anchorPx] = api.coord([api.value(0), anchorY])
     const stackOffset = hasPks ? BO_STACK_PT : BO_STACK_PT_NO_PKS
     const cy = anchorPx - stackOffset
@@ -906,25 +1088,23 @@ function makeRenderPricePoint(
     return {
       type: 'group',
       children: [
-        // 1. 圆角矩形背景 + 蓝色描边
+        // 1. 圆角矩形背景(按 tier 分色:matched=橙、qualified/detected=灰;无边框)
         {
           type: 'rect',
           shape: { x: cx - w / 2, y: cy - h / 2, width: w, height: h, r: BO_BOX_RADIUS },
           style: {
-            fill: tierStyle.bg,
-            stroke: BO_BORDER_COLOR,
-            lineWidth: 1.5,
+            fill: color,
             opacity: 0.75,
           },
         },
-        // 2. 文本(居中,粗体,按 tier 取字色)
+        // 2. 文本(居中,粗体,统一深灰蓝——橙/灰底皆可读)
         {
           type: 'text',
           style: {
             text,
             x: cx,
             y: cy,
-            fill: tierStyle.fg,
+            fill: HL_FOCUS_EDGE,
             fontSize: MARKER_FONT_SIZE,
             fontWeight: 'bold',
             align: 'center',
@@ -1005,7 +1185,7 @@ function makeRenderSatellite(
  */
 export function buildShadingMarkArea(
   bars: Bar[], scanStart: string, scanEnd: string,
-): { itemStyle: { color: string; opacity: number }; data: Array<[{ xAxis: number }, { xAxis: number }]> } | null {
+): { itemStyle: { color: string; opacity: number }; silent: true; data: Array<[{ xAxis: number }, { xAxis: number }]> } | null {
   if (bars.length === 0) return null
   const startIdx = bars.findIndex(b => b.date >= scanStart)
   if (startIdx < 0) return null
@@ -1020,6 +1200,7 @@ export function buildShadingMarkArea(
   if (data.length === 0) return null
   return {
     itemStyle: { color: '#808080', opacity: 0.15 },
+    silent: true,
     data,
   }
 }
@@ -1202,11 +1383,12 @@ export function buildBarTooltipFormatter(bars: Bar[]) {
     const volStr = Math.round(b.v).toLocaleString('en-US')
     return [
       `Date: ${b.date}`,
-      `Open:  ${b.o.toFixed(2)}`,
+      `Index: ${idx}`,
+      `<hr/>Open:  ${b.o.toFixed(2)}`,
       `High:  ${b.h.toFixed(2)}`,
       `Low:   ${b.l.toFixed(2)}`,
       `Close: ${b.c.toFixed(2)}`,
-      `Chg:   ${chgStr}`,
+      `<hr/>Chg:   ${chgStr}`,
       `Volume: ${volStr}`,
       `RV:    ${rvStr}`,
     ].join('<br/>')
@@ -1217,11 +1399,11 @@ export function buildBarTooltipFormatter(bars: Bar[]) {
  * Marker tooltip formatter (series-level item-trigger)。
  * 三段结构 + 可选 match 顶行：
  *   - 顶行 (仅 params.data.match_id 命中)：Match: {matchLabel(id)}
- *   - 段 1 Identity：role / time / id
- *   - 段 2 Clauses：失败 ✗ 置顶 + 加粗；多 role 同 cid 行末加 (in: <role>)
+ *   - 段 1 Identity：node / time / id
+ *   - 段 2 Clauses：失败 ✗ 置顶 + 加粗；多 node 同 cid 行末加 (in: <node>)
  *   - 段 3 Attributes：raw（已去重）
  *
- * 段空时省略段头；身份段恒存在但 role 行可省。
+ * 段空时省略段头；身份段恒存在但 node 行可省。
  * HTML：使用 <br/> <b> <hr>（echarts tooltip formatter 支持）。
  * 注：当前 measured 类型受控（数字 / 字符串 / 元组），不引入 HTML escape；
  *     未来若 detector 引入用户输入字符串型 measured 且可能含 HTML，
@@ -1254,13 +1436,13 @@ export function buildMarkerTooltipFormatter(
       const match = ctx.matches.find((m) => m.event_id === matchId)
       if (match) {
         lines.push(`组成 (${match.children.length} events):`)
-        for (const [roleKey, rawVal] of Object.entries(match.role_index)) {
+        for (const [nodeKey, rawVal] of Object.entries(match.node_index)) {
           const val: string | string[] = rawVal as unknown as string | string[]
           if (Array.isArray(val)) {
             const first = val[0] ?? '?'
-            lines.push(`  ${roleKey}: ${first} (×${val.length} kleene)`)
+            lines.push(`  ${nodeKey}: ${first} (×${val.length} kleene)`)
           } else {
-            lines.push(`  ${roleKey}: ${val}`)
+            lines.push(`  ${nodeKey}: ${val}`)
           }
         }
       }
@@ -1273,37 +1455,34 @@ export function buildMarkerTooltipFormatter(
 
       // 段 1 Identity
       const idBody: string[] = []
-      if (identity.roles.length > 0) idBody.push(`role: ${identity.roles.join(' / ')}`)
+      if (identity.nodes.length > 0) idBody.push(`node: ${identity.nodes.join(' / ')}`)
       const timeStr = identity.dateEnd == null
         ? `time: ${identity.dateStart}`
         : `time: ${identity.dateStart} → ${identity.dateEnd}`
       idBody.push(timeStr)
       idBody.push(`id:   ${identity.eventId}`)
-      if (lines.length > 0) lines.push('<hr/>')
-      lines.push('<b>Identity</b>')
+      lines.push(lines.length > 0 ? '<hr/><b>Identity</b>' : '<b>Identity</b>')
       lines.push(...idBody)
 
-      // 段 2 Clauses（失败已置顶；多 role 同 cid 行末加 (in: <role>)）
+      // 段 2 Clauses（失败已置顶；多 node 同 cid 行末加 (in: <node>)）
       if (clauses.length > 0) {
         const cidCounts: Record<string, number> = {}
         for (const c of clauses) cidCounts[c.cid] = (cidCounts[c.cid] ?? 0) + 1
         const clauseLines = clauses.map((c) => {
           const opStr = c.op != null ? ` ${c.op} ${fmtNum(c.threshold)}` : ''
           const mark = c.satisfied ? '✓' : '✗'
-          const inSuffix = cidCounts[c.cid] > 1 ? ` (in: ${c.role})` : ''
+          const inSuffix = cidCounts[c.cid] > 1 ? ` (in: ${c.node})` : ''
           const body = `${c.cid}: ${fmtNum(c.measured)}${opStr} ${mark}${inSuffix}`
           return c.satisfied ? body : `<b>${body}</b>`
         })
-        lines.push('<hr/>')
-        lines.push('<b>Clauses</b>')
+        lines.push('<hr/><b>Clauses</b>')
         lines.push(...clauseLines)
       }
 
       // 段 3 Attributes（raw 已去重）
       const rawEntries = Object.entries(raw)
       if (rawEntries.length > 0) {
-        lines.push('<hr/>')
-        lines.push('<b>Attributes</b>')
+        lines.push('<hr/><b>Attributes</b>')
         for (const [k, v] of rawEntries) lines.push(`${k}: ${fmtNum(v)}`)
       }
     }

@@ -16,7 +16,7 @@ from __future__ import annotations
 
 from path2.runner import run
 from path2.dag.nodes import MatchContext
-from path2.dag.result import AnalysisResult
+from path2.dag.result import AnalysisResult, DroppedMatch
 from path2.dag._graph import detector_topo_order
 from path2.dag._solve import compile_plan, solve
 from path2.dag._reify import reify
@@ -71,29 +71,43 @@ def run_streams(spec, df, params=None):
 
 
 def analyze(spec, df, params=None) -> AnalysisResult:
+    """DAG 走势包 analyze:抽出 streams → compile plan → solve → reify matches。
+    返回 AnalysisResult(events / matches / spec / dropped_matches / gate_failures)。"""
     ctx = MatchContext(df=df, params=params)
     streams = run_streams(spec, df, params)                 # 阶段1(抽出)
     plan = compile_plan(spec)                                # 阶段2
-    sols = solve(plan, streams, ctx)                         # 阶段3
+    sols = solve(plan, streams, ctx)                          # 阶段3
     matches_out = tuple(reify(s, streams, plan, ctx) for s in sols)  # 阶段4
-    # A2:丢弃「role_index 只含『孤立无边 AND 被消费』role」的残缺 match。
-    # 原意:流源 role(被别 node 的 consumes_stream 引用)单独命中是"被回显"的噪声、
+    # A2:丢弃「node_index 只含『孤立无边 AND 被消费』node」的残缺 match。
+    # 原意:流源 node(被别 node 的 consumes_stream 引用)单独命中是"被回显"的噪声、
     # 非业务 pattern。判据加 consumes_stream 反向引用过滤,避免误伤「全孤立 pattern」
     # (如 bo_only,单节点零边、无消费者)——其平凡 match 是唯一业务命中,合法保留。
     isolated_consumed = (
         {n.node_id for n in spec.nodes}
         - {ep for edge in spec.edges for ep in (edge.src, edge.dst)}
     ) & {n.consumes_stream for n in spec.nodes if n.consumes_stream is not None}
+    dropped_matches: tuple = ()
     if isolated_consumed:
-        matches_out = tuple(m for m in matches_out
-                            if not set((m.role_index or {}).keys()).issubset(isolated_consumed))
+        surviving, dropped = [], []
+        for m in matches_out:
+            if set((m.node_index or {}).keys()).issubset(isolated_consumed):
+                dropped.append(DroppedMatch(
+                    match_id=m.event_id,
+                    node_events={r: e.event_id for r, e in (m.node_index or {}).items()},
+                    drop_reason="isolated_consumed",
+                ))
+            else:
+                surviving.append(m)
+        matches_out = tuple(surviving)
+        dropped_matches = tuple(dropped)
     # res.events 按 stream 身份(id(s))去重:共享 detector 时多个 node_id 指同一 list,
     # 朴素平铺会重复计入;按 id 去重确保每条唯一流只计一遍。
     seen_streams = {}
     for s in streams.values():
         seen_streams.setdefault(id(s), s)
     events = tuple(e for s in seen_streams.values() for e in s)
-    return AnalysisResult(events=events, matches=matches_out, spec=spec)
+    return AnalysisResult(events=events, matches=matches_out, spec=spec,
+                           dropped_matches=dropped_matches)
 
 
 def matches(spec, df, params=None) -> bool:

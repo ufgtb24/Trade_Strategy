@@ -2,11 +2,14 @@
 from __future__ import annotations
 
 import asyncio
+import dataclasses
 import json
+import os
 import threading
 import time
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
 from pathlib import Path
+from typing import Optional
 
 import pandas as pd
 from fastapi import APIRouter, HTTPException, Request
@@ -14,9 +17,12 @@ from fastapi import Path as FPath
 from pydantic import BaseModel, Field, field_validator
 from sse_starlette.sse import EventSourceResponse
 
+from path2.dag import diagnose as _dag_diagnose
+from path2.dag.engine import analyze as _dag_analyze_engine
 from path2_web import scan as scan_mod
 from path2_web.data import slice_window, serialize_ohlc
-from path2_web.diagnose import diagnose_symbol
+from path2_web.diagnose import diagnose_symbol, derive_response, Query
+from path2_web.gate_collector import attach_and_collect, detach
 from path2_web.serialize import serialize_pattern
 
 
@@ -49,7 +55,7 @@ def require_eval_meta(mod) -> dict:
         raise ValueError("eval_meta missing or non-callable (discovery gate failed)")
     load_params = getattr(mod, "load_params", None)
     meta = fn(load_params()) if callable(load_params) else fn()
-    if not isinstance(meta, dict) or "end_role" not in meta or "head_buffer_trading_days" not in meta:
+    if not isinstance(meta, dict) or "end_node" not in meta or "head_buffer_trading_days" not in meta:
         raise ValueError(f"eval_meta returned invalid dict: {meta!r}")
     return meta
 
@@ -164,9 +170,24 @@ def build_router(*, registry, config_path, get_config, set_config,
     @router.get("/scans/{scan_ts}")
     def scan_load_flat(scan_ts: str = FPath(..., pattern=_TS_PATTERN)):
         try:
-            return scan_mod.load_scan_flat(scan_ts, outputs_root)
+            data = scan_mod.load_scan_flat(scan_ts, outputs_root)
         except FileNotFoundError:
             raise HTTPException(404, "scan not found")
+        # 用当前 palette 覆盖历史 scan file 里冻结的 event_styles。颜色是纯 UI 关注点,
+        # 不属于扫描结果快照的必要部分——允许调 palette 后不用重扫也生效。
+        # pattern 在 registry 缺失(被删/改名)时跳过,保留文件里的原值。
+        for pid, meta in (data.get("per_pattern") or {}).items():
+            mod = registry.get(pid)
+            if mod is None:
+                continue
+            _load = getattr(mod, "load_params", None)
+            spec = mod.build_pattern(_load()) if callable(_load) else mod.PATTERN_DAG
+            pattern_spec = meta.get("pattern_spec")
+            if isinstance(pattern_spec, dict) and "event_styles" in pattern_spec:
+                fresh = serialize_pattern(spec)
+                pattern_spec["event_styles"] = fresh["event_styles"]
+                pattern_spec["debug_enabled_classes"] = fresh["debug_enabled_classes"]  # v4 backfill:老 scan 文件补齐 non-optional 字段
+        return data
 
     @router.delete("/scans/{scan_ts}")
     def scan_delete_flat(scan_ts: str = FPath(..., pattern=_TS_PATTERN)):
@@ -177,19 +198,71 @@ def build_router(*, registry, config_path, get_config, set_config,
         return {"ok": True}
 
     @router.get("/diagnose")
-    def get_diagnose(pattern_id: str, symbol: str, start: str, end: str):
-        mod = registry.get(pattern_id)
-        if mod is None:
-            raise HTTPException(404, f"unknown pattern: {pattern_id}")
-        cfg = get_config()
-        pkl = Path(cfg["dataset_dir"]) / f"{symbol}.pkl"
-        if not pkl.exists():
-            raise HTTPException(404, f"pkl not found: {symbol}")
-        win = slice_window(pd.read_pickle(pkl), start, end)
-        # 诊断每次都重新 build_pattern(load_params())——与 /scan 同口径(yaml SSoT 热加载)。
-        # 不能复用 mod.PATTERN_DAG(它是 import 时一次性 build,Params.default() 闭合,与 yaml 漂移)。
-        spec = mod.build_pattern(mod.load_params())
-        return diagnose_symbol(spec, win, None, symbol=symbol, pattern_id=pattern_id)
+    def get_diagnose(pattern_id: str, symbol: str, start: str, end: str,
+                     scope: Optional[str] = None,
+                     src_node: Optional[str] = None, dst_node: Optional[str] = None,
+                     event_class: Optional[str] = None, event_id: Optional[str] = None,
+                     src_event_id: Optional[str] = None, dst_event_id: Optional[str] = None,
+                     edge_id: Optional[str] = None,
+                     start_bar: Optional[int] = None, end_bar: Optional[int] = None,
+                     anchor_kind: Optional[str] = None):
+        # spec 2026-07-14-path2-web-debug-breakpoints §D: time diag 写 DEBUG_BAR_RANGE
+        # 供 path2.debug_ctx.debug_break 消费。v2(2026-07-15 event-debug-dual-emit) 契约 #7:
+        # handler 结束必 pop env(request 级作用域, 防跨 request 污染 + scan pool 继承挂死)。
+        # v3(2026-07-16 node-gated-debug,后更名 anchor_kind) 契约 #7 扩展:双 env 独立
+        # (DEBUG_BAR_RANGE + DEBUG_ANCHOR_KIND)· finally 无条件 pop 两 env(即使本次未写
+        # DEBUG_ANCHOR_KIND 也 pop 兜底)。
+        if start_bar is not None and end_bar is not None:
+            os.environ["DEBUG_BAR_RANGE"] = f"{start_bar},{end_bar}"
+        if anchor_kind:                             # ★ v3 · 空串也视同未传
+            os.environ["DEBUG_ANCHOR_KIND"] = anchor_kind
+        if event_class:                             # ★ v4 · 空串也视同未传
+            os.environ["DEBUG_EVENT_CLASS"] = event_class
+        try:
+            mod = registry.get(pattern_id)
+            if mod is None:
+                raise HTTPException(404, f"unknown pattern: {pattern_id}")
+            cfg = get_config()
+            pkl = Path(cfg["dataset_dir"]) / f"{symbol}.pkl"
+            if not pkl.exists():
+                raise HTTPException(404, f"pkl not found: {symbol}")
+            win = slice_window(pd.read_pickle(pkl), start, end)
+            # 诊断每次都重新 build_pattern(load_params())——与 /scan 同口径(yaml SSoT 热加载)。
+            # 不能复用 mod.PATTERN_DAG(它是 import 时一次性 build,Params.default() 闭合,与 yaml 漂移)。
+            spec = mod.build_pattern(mod.load_params())
+            if scope is None:
+                # legacy 路径:无 scope 参数 → 字节等价,前端旧 api.ts::getDiagnose 不用改。
+                return diagnose_symbol(spec, win, None, symbol=symbol, pattern_id=pattern_id)
+            # A' 按 scope 分派(见 docs/research/2026-07-18_debug-double-pause-analysis/final_report.md §3.1):
+            # scope=nodes 只需 diag · scope=time/pair 只需 result(+ gate_failures) · 三 scope 数据依赖完全正交
+            # (derive_response 三 branch 逐字核实无 hidden cross-dep)· 只跑该 scope 需要的那 pass 消双 pause。
+            query = Query(symbol=symbol, scope=scope, src_node=src_node, dst_node=dst_node,
+                         event_class=event_class, event_id=event_id,
+                         src_event_id=src_event_id, dst_event_id=dst_event_id,
+                         edge_id=edge_id, start_bar=start_bar, end_bar=end_bar)
+            diag = None
+            result = None
+            if scope == "nodes":
+                diag = _dag_diagnose(spec, win, None)
+            elif scope in ("time", "pair"):
+                collector = attach_and_collect(spec)
+                try:
+                    result = _dag_analyze_engine(spec, win, None)
+                    result = dataclasses.replace(result, gate_failures=collector.snapshot())
+                finally:
+                    detach(spec)
+            # unknown scope 走 derive_response · 由其抛 ValueError → HTTPException(400)
+            try:
+                return derive_response(query, diag=diag, spec=spec, result=result)
+            except ValueError as e:
+                raise HTTPException(400, str(e)) from e
+        # ⚠ env is process-wide; concurrent /diagnose calls race — v2 finally-pop 让并发下互相清 env,
+        # undefined under concurrency, single-user debug tool.
+        # v4(2026-07-17 class-gate)契约扩展:第四 env DEBUG_EVENT_CLASS 同 finally 无条件 pop。
+        finally:
+            os.environ.pop("DEBUG_BAR_RANGE", None)
+            os.environ.pop("DEBUG_ANCHOR_KIND", None)   # ★ v3 · 无条件 pop 兜底
+            os.environ.pop("DEBUG_EVENT_CLASS", None)   # ★ v4 · 无条件 pop 兜底(跨 request 隔离)
 
     @router.get("/preview")
     def get_preview(pattern_id: str, symbol: str, start: str, end: str,
@@ -205,7 +278,7 @@ def build_router(*, registry, config_path, get_config, set_config,
 
         try:
             meta = require_eval_meta(mod)
-            end_role = meta["end_role"]
+            end_node = meta["end_node"]
             head_buf = meta["head_buffer_trading_days"]
             start_ts, end_ts = pd.to_datetime(start), pd.to_datetime(end)
             buf_start = str((start_ts - pd.Timedelta(days=round(head_buf * scan_mod.TRADING_TO_CALENDAR_RATIO))).date())
@@ -218,13 +291,13 @@ def build_router(*, registry, config_path, get_config, set_config,
             res = mod.analyze(win, _load() if callable(_load) else None)
             from path2_web.serialize import serialize_per_pattern_result
             out = serialize_per_pattern_result(
-                res, end_role=end_role, label_horizon=label_horizon,
+                res, end_node=end_node, label_horizon=label_horizon,
                 win=win, start_ts=start_ts, end_ts=end_ts)
             pattern_spec = serialize_pattern(mod.build_pattern(mod.load_params()))
             scan_meta = {
                 "start_date": start, "end_date": end,
                 "win_start": buf_start, "win_end": buf_end,
-                "label_horizon": label_horizon, "end_role": end_role,
+                "label_horizon": label_horizon, "end_node": end_node,
             }
         except HTTPException:
             raise
@@ -244,7 +317,7 @@ def build_router(*, registry, config_path, get_config, set_config,
 
         specs: dict = {}
         module_paths: dict = {}
-        end_roles: dict = {}
+        end_nodes: dict = {}
         head_bufs: list = []
         for pid in req.pattern_ids:
             mod = registry.get(pid)
@@ -252,7 +325,7 @@ def build_router(*, registry, config_path, get_config, set_config,
             specs[pid] = spec_json
             module_paths[pid] = registry.module_path(pid)
             meta = require_eval_meta(mod)
-            end_roles[pid] = meta["end_role"]
+            end_nodes[pid] = meta["end_node"]
             head_bufs.append(meta["head_buffer_trading_days"])
         head_buffer = max(head_bufs)
         loop = asyncio.get_running_loop()
@@ -263,7 +336,7 @@ def build_router(*, registry, config_path, get_config, set_config,
                 pattern_specs_json=specs,
                 module_paths=module_paths,
                 pattern_ids=req.pattern_ids,
-                end_roles=end_roles,
+                end_nodes=end_nodes,
                 head_buffer_trading_days=head_buffer,
                 label_horizon=req.label_horizon,
                 start_date=req.start_date, end_date=req.end_date,

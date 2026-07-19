@@ -49,6 +49,29 @@ describe('api', () => {
   })
 })
 
+describe('getNodesDiagnose', () => {
+  it('builds GET URL with scope=nodes + src_node/dst_node and parses JSON', async () => {
+    const fakeResp = {
+      scope: 'nodes',
+      payload: { edge_id: 'burst_to_tb', total_pair: 3, ok_pair: 1,
+                miss_reasons: { gap_out: 2 }, example_failed_pairs: [] },
+      caveats: [],
+    }
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify(fakeResp), { status: 200 })
+    )
+    const r = await api.getNodesDiagnose('bottom_burst', 'AAPL', '2025-01-01', '2025-12-31', 'burst', 'tb')
+    expect(r.scope).toBe('nodes')
+    expect(r.payload.edge_id).toBe('burst_to_tb')
+    expect(fetchSpy).toHaveBeenCalledOnce()
+    const url = fetchSpy.mock.calls[0][0] as string
+    expect(url).toContain('/diagnose?pattern_id=bottom_burst&symbol=AAPL')
+    expect(url).toContain('scope=nodes')
+    expect(url).toContain('src_node=burst')
+    expect(url).toContain('dst_node=tb')
+  })
+})
+
 describe('getPreview', () => {
   it('builds GET URL with query params + parses JSON', async () => {
     const fakeResp = { analysis: { events: [], matches: [] },

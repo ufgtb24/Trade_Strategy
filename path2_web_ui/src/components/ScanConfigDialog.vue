@@ -88,7 +88,7 @@ onMounted(async () => {
     tickerRegex.value = s.ticker_regex ?? ''
   }
   await patterns.loadPatterns()
-  patterns.selectedIds = new Set()
+  patterns.selectAll()
 })
 
 function onRowClick(evt: MouseEvent, i: number, pid: string) {

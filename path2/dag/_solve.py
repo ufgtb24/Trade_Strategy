@@ -254,7 +254,9 @@ def _dfs(wp: WccPlan, k, assign, chosen_idx, streams, memo, out, c1_off, ctx,
         for u, edge in ps:                            # satisfies 充要复核 + anchor 复核 + strict（dst child-aware）
             src_ep = endpoint(assign[u], edge)
             dst_ep = endpoint(e_dst, edge, "dst")
-            if not (edge.satisfies(src_ep, dst_ep) and edge._anchor_ok(src_ep, dst_ep)):
+            if not edge.satisfies(src_ep, dst_ep):
+                ok = False; break
+            if not edge._anchor_ok(src_ep, dst_ep):
                 ok = False; break
             if not strict_clear(edge, src_ep, dst_ep, streams):
                 ok = False; break

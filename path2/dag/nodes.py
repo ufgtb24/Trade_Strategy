@@ -1,4 +1,4 @@
-"""节点模型 —— NodeSpec(角色+生产者+一元谓词)/ MatchContext。
+"""节点模型 —— NodeSpec(node+生产者+一元谓词)/ MatchContext。
 
 where(一元,节点)vs satisfies(二元,边)的正交分工是整个设计的脊梁:
   where 读单实例自身属性(drought>=THR、regime=="sideways"、vol>=THR);
@@ -17,10 +17,10 @@ WherePredicate = Callable[[Event, "MatchContext"], bool]
 
 @dataclass(frozen=True)
 class NodeSpec:
-    """拓扑节点 = 一个角色 + 自带生产者 detector + 节点级一元谓词。
+    """拓扑节点 = 一个 node + 自带生产者 detector + 节点级一元谓词。
 
     node_id:          拓扑唯一键(一身多角用不同 node_id,如 down/side 同
-                      TrendSegmentDetector 不同角色)。
+                      TrendSegmentDetector 不同 node)。
     detector:         事件来源。引擎据此跑 run()(app 不手写 run(BODetector(),df));
                       detector.event_cls.class_id 供 to_topology / 面板上色。
     where:            节点级一元谓词 (clause_id, fn) 列表,AND 合取。

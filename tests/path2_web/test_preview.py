@@ -10,7 +10,7 @@ from path2_web.app import create_app
 
 
 def _mk_pkl(data_dir: Path, symbol: str):
-    from tests.path2.apps.test_matches import _synth_no_burst
+    from tests.path2_apps.bottom_breakout_burst.test_matches import _synth_no_burst
     df = _synth_no_burst()
     df.index = pd.date_range("2025-01-01", periods=len(df), freq="D", name="date")
     df.to_pickle(data_dir / f"{symbol}.pkl")
@@ -25,7 +25,7 @@ def _client(tmp_path, with_pkl: str | None = "AAA"):
         "dataset_dir": str(data_dir),
         "scan": {"start_date": "2025-01-01", "end_date": "2025-12-31",
                  "workers": 1, "ticker_regex": None},
-        "last_selected_pattern": "bottom_breakout_burst",
+        "last_selected_pattern": "bottom_burst",
     }
     app = create_app(config_override=cfg, outputs_root=str(tmp_path / "outputs"),
                      use_thread_pool=True)
@@ -34,7 +34,7 @@ def _client(tmp_path, with_pkl: str | None = "AAA"):
 
 def test_preview_returns_four_keys(tmp_path):
     c = _client(tmp_path)
-    r = c.get("/preview", params={"pattern_id": "bottom_breakout_burst",
+    r = c.get("/preview", params={"pattern_id": "bottom_burst",
                                    "symbol": "AAA", "start": "2025-01-01",
                                    "end": "2025-12-31", "label_horizon": 20})
     assert r.status_code == 200
@@ -44,7 +44,7 @@ def test_preview_returns_four_keys(tmp_path):
 
 def test_preview_analysis_schema(tmp_path):
     c = _client(tmp_path)
-    body = c.get("/preview", params={"pattern_id": "bottom_breakout_burst",
+    body = c.get("/preview", params={"pattern_id": "bottom_burst",
                                       "symbol": "AAA", "start": "2025-01-01",
                                       "end": "2025-12-31", "label_horizon": 20}).json()
     assert {"events", "matches"} <= set(body["analysis"])
@@ -52,7 +52,7 @@ def test_preview_analysis_schema(tmp_path):
 
 def test_preview_pattern_spec_has_topology(tmp_path):
     c = _client(tmp_path)
-    body = c.get("/preview", params={"pattern_id": "bottom_breakout_burst",
+    body = c.get("/preview", params={"pattern_id": "bottom_burst",
                                       "symbol": "AAA", "start": "2025-01-01",
                                       "end": "2025-12-31", "label_horizon": 20}).json()
     spec = body["pattern_spec"]
@@ -62,15 +62,15 @@ def test_preview_pattern_spec_has_topology(tmp_path):
 
 
 def test_preview_uses_buffered_window_when_eval_meta_present(tmp_path):
-    """bbb 有 eval_meta(end_role='bo', head_buffer_trading_days>0),win 应被拉宽。"""
+    """bbb 有 eval_meta(end_node='bo', head_buffer_trading_days>0),win 应被拉宽。"""
     c = _client(tmp_path)
-    body = c.get("/preview", params={"pattern_id": "bottom_breakout_burst",
+    body = c.get("/preview", params={"pattern_id": "bottom_burst",
                                       "symbol": "AAA", "start": "2025-06-01",
                                       "end": "2025-06-30", "label_horizon": 20}).json()
     scan = body["scan"]
     assert scan["win_start"] < "2025-06-01"
     assert scan["win_end"] > "2025-06-30"
-    assert scan["end_role"] == "tb"
+    assert scan["end_node"] == "tb"
     assert scan["label_horizon"] == 20
 
 
@@ -81,7 +81,7 @@ def test_preview_falls_back_when_eval_meta_missing(tmp_path, monkeypatch):
     import path2_apps.bottom_breakout_burst.dag_spec as bbb_dag
     c = _client(tmp_path)   # 先建 client,discovery 已正常注册 bottom_breakout_burst
     monkeypatch.delattr(bbb_dag, "eval_meta", raising=False)
-    r = c.get("/preview", params={"pattern_id": "bottom_breakout_burst",
+    r = c.get("/preview", params={"pattern_id": "bottom_burst",
                                    "symbol": "AAA", "start": "2025-06-01",
                                    "end": "2025-06-30", "label_horizon": 20})
     assert r.status_code == 500
@@ -98,7 +98,7 @@ def test_preview_unknown_pattern_404(tmp_path):
 
 def test_preview_pkl_not_found_404(tmp_path):
     c = _client(tmp_path, with_pkl=None)
-    r = c.get("/preview", params={"pattern_id": "bottom_breakout_burst",
+    r = c.get("/preview", params={"pattern_id": "bottom_burst",
                                    "symbol": "MISSING", "start": "2025-01-01",
                                    "end": "2025-12-31", "label_horizon": 20})
     assert r.status_code == 404
@@ -108,7 +108,7 @@ def test_preview_pkl_not_found_404(tmp_path):
 def test_preview_empty_window_returns_empty_collections(tmp_path):
     """窗口超出数据范围 → 200 + 空集 dict,非 null,非 error。"""
     c = _client(tmp_path)
-    r = c.get("/preview", params={"pattern_id": "bottom_breakout_burst",
+    r = c.get("/preview", params={"pattern_id": "bottom_burst",
                                    "symbol": "AAA", "start": "2099-01-01",
                                    "end": "2099-12-31", "label_horizon": 20})
     assert r.status_code == 200
@@ -120,7 +120,7 @@ def test_preview_empty_window_returns_empty_collections(tmp_path):
 def test_preview_no_match_returns_empty_matches_not_error(tmp_path):
     """_synth_no_burst 构造 0 命中:200 + matches=[],不报错。"""
     c = _client(tmp_path)
-    r = c.get("/preview", params={"pattern_id": "bottom_breakout_burst",
+    r = c.get("/preview", params={"pattern_id": "bottom_burst",
                                    "symbol": "AAA", "start": "2025-01-01",
                                    "end": "2025-12-31", "label_horizon": 20})
     assert r.status_code == 200
@@ -136,7 +136,7 @@ def test_preview_yaml_value_error_returns_500(tmp_path, monkeypatch):
     def _raise():
         raise ValueError("params.yaml ... 含未知字段: ['bo_typooo']")
     monkeypatch.setattr(bbb_dag, "load_params", _raise)
-    r = c.get("/preview", params={"pattern_id": "bottom_breakout_burst",
+    r = c.get("/preview", params={"pattern_id": "bottom_burst",
                                    "symbol": "AAA", "start": "2025-01-01",
                                    "end": "2025-12-31", "label_horizon": 20})
     assert r.status_code == 500
@@ -151,7 +151,7 @@ def test_preview_analyze_exception_returns_500(tmp_path, monkeypatch):
     def _raise(win, params=None):
         raise RuntimeError("simulated downstream failure")
     monkeypatch.setattr(bbb_dag, "analyze", _raise)
-    r = c.get("/preview", params={"pattern_id": "bottom_breakout_burst",
+    r = c.get("/preview", params={"pattern_id": "bottom_burst",
                                    "symbol": "AAA", "start": "2025-01-01",
                                    "end": "2025-12-31", "label_horizon": 20})
     assert r.status_code == 500
@@ -171,7 +171,7 @@ def test_preview_pattern_spec_reflects_current_yaml(tmp_path, monkeypatch):
     monkeypatch.setattr(bbb_dag, "load_params", lambda: custom)
 
     c = _client(tmp_path)
-    body = c.get("/preview", params={"pattern_id": "bottom_breakout_burst",
+    body = c.get("/preview", params={"pattern_id": "bottom_burst",
                                       "symbol": "AAA", "start": "2025-01-01",
                                       "end": "2025-12-31", "label_horizon": 20}).json()
     # spec 内某个 node 的 where_rule 阈值含 999(具体路径:burst 节点 first_drought 子句)

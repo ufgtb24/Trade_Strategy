@@ -88,7 +88,7 @@ def _build_spec():
     """构造三层 bo→burst→super consumes 链:
       bo   at [0, 2, 5]  → BurstDetector(gap_max=5, min_bos=3) 产 1 个 burst(chain all_ends:gap 2,3≤5 一簇,仅 end=5 前缀 ≥min_bos)
       burst               → SuperDetector 产 1 个 super(含该 burst 作 members)
-    edges=() 合法;所有节点为孤立 role(匹配全被 A2 过滤,但 res.events 仍完整)。
+    edges=() 合法;所有节点为孤立 node(匹配全被 A2 过滤,但 res.events 仍完整)。
     """
     bos = [
         _bo(0, drought=60, peaks=(1,), vol=3.0),

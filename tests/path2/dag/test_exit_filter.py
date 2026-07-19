@@ -1,8 +1,8 @@
-"""A2 出口过滤:被消费的孤立无边 role 产的残缺 match 被 analyze 出口丢弃,
+"""A2 出口过滤:被消费的孤立无边 node 产的残缺 match 被 analyze 出口丢弃,
 res.events/topology 仍含该 node。
 
-判据(2026-06-28 收紧):role_index ⊆ {孤立 AND 被消费} 才过滤——「被消费」=
-被某 node 的 consumes_stream 引用。未被消费的孤立 role 是合法平凡 pattern,
+判据(2026-06-28 收紧):node_index ⊆ {孤立 AND 被消费} 才过滤——「被消费」=
+被某 node 的 consumes_stream 引用。未被消费的孤立 node 是合法平凡 pattern,
 不再误伤(参 test_a2_isolated_consumed.py)。
 """
 from dataclasses import dataclass
@@ -70,13 +70,13 @@ def _spec_with_isolated():
     )
 
 
-def test_isolated_role_degenerate_matches_filtered():
+def test_isolated_node_degenerate_matches_filtered():
     spec = _spec_with_isolated()
     df = pd.DataFrame({"close": range(20)})
     res = analyze(spec, df)
     # 过滤后只剩连通 {A,B} 的完整 match；3 个 ISO 残缺 match 被丢
     for m in res.matches:
-        assert set((m.role_index or {}).keys()) != {"ISO"}
-    assert any(set((m.role_index or {}).keys()) == {"A", "B"} for m in res.matches)
+        assert set((m.node_index or {}).keys()) != {"ISO"}
+    assert any(set((m.node_index or {}).keys()) == {"A", "B"} for m in res.matches)
     # res.events 仍含 ISO 的 event（孤立 node 露面 events, design §8.1 接受）
     assert any(e.event_id.startswith("e:5") for e in res.events)

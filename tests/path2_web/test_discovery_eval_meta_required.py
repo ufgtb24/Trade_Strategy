@@ -8,7 +8,7 @@ from path2_web.discovery import _discover, PatternRegistry
 def test_real_apps_pass_gate():
     """真实 path2_apps 下的 bottom_breakout_burst 与 bo_only 都过闸。"""
     modules, errors = _discover("path2_apps")
-    assert "bottom_breakout_burst" in modules
+    assert "bottom_burst" in modules
     assert "bo_only" in modules
     # 不应当因 eval_meta 闸误杀任一现有 pattern
     assert errors == {} or all("eval_meta" not in str(e) for e in errors.values()), errors
@@ -41,8 +41,8 @@ def test_fake_app_missing_eval_meta_is_filtered(tmp_path, monkeypatch, caplog):
     assert any("eval_meta" in r.message for r in caplog.records)
 
 
-def test_fake_app_eval_meta_missing_end_role(tmp_path, monkeypatch, caplog):
-    """eval_meta 返回 dict 缺 end_role → 跳过 + warning。"""
+def test_fake_app_eval_meta_missing_end_node(tmp_path, monkeypatch, caplog):
+    """eval_meta 返回 dict 缺 end_node → 跳过 + warning。"""
     apps_dir = tmp_path / "fake_apps2"
     apps_dir.mkdir()
     (apps_dir / "__init__.py").write_text("")
@@ -56,7 +56,7 @@ def test_fake_app_eval_meta_missing_end_role(tmp_path, monkeypatch, caplog):
         "PATTERN_DAG = PatternSpec(pattern_id='bad_meta',\n"
         "                         nodes=(NodeSpec('bo', BODetector()),), edges=())\n"
         "def analyze(df, params=None): return None\n"
-        "def eval_meta(params=None): return {'head_buffer_trading_days': 60}   # 缺 end_role\n"
+        "def eval_meta(params=None): return {'head_buffer_trading_days': 60}   # 缺 end_node\n"
     )
     monkeypatch.syspath_prepend(str(tmp_path))
     with caplog.at_level(logging.WARNING):
@@ -80,7 +80,7 @@ def test_fake_app_eval_meta_missing_head_buffer(tmp_path, monkeypatch, caplog):
         "PATTERN_DAG = PatternSpec(pattern_id='bad_meta2',\n"
         "                         nodes=(NodeSpec('bo', BODetector()),), edges=())\n"
         "def analyze(df, params=None): return None\n"
-        "def eval_meta(params=None): return {'end_role': 'bo'}   # 缺 head_buffer\n"
+        "def eval_meta(params=None): return {'end_node': 'bo'}   # 缺 head_buffer\n"
     )
     monkeypatch.syspath_prepend(str(tmp_path))
     with caplog.at_level(logging.WARNING):

@@ -39,10 +39,13 @@
 ## 开发环境
 - 包管理：`uv`（`uv add` / `uv run` / `uv sync`）
 - Playwright 卫生：本回合**用过** playwright MCP（截图/快照/console log）的情况下，任务完成时清空 `.playwright-mcp/` 目录（`rm -rf .playwright-mcp/*`，保留目录本身）；本回合**没用**则不动它。该目录是 playwright 临时产物缓存（page-*.yml / console-*.log 等），不入 git、不进 PR、积累后占空间
+- Playwright 截图默认参数：调用 `browser_take_screenshot` 前先 `browser_resize(2560, 1440)`，截图统一 `scale="device"`。按场景分两种模式：
+  - **整页截图**：`fullPage=True` —— 看整体布局、多组件对照
+  - **元素级截图**：`fullPage=False`，并指定 `target=<selector>` —— 放大看单个组件细节、省 token
 
 ## 编码规范
 - 原则：第一性原理 + 奥卡姆剃刀，反对过度设计
-- 语言：界面英文，注释/文档中文
+- 语言：界面中文（与项目现有 UI 一致），注释/文档中文
 - Docstrings：`__init__.py` 含模块概述；类/函数说明用途、参数、算法逻辑
 - 术语与用语纪律 → `.claude/docs/glossary.md`
 - 入口脚本：不使用 argparse，参数声明在 `main()` 起始位置
@@ -78,6 +81,7 @@
   - **Implementer**（实现）：一律 `sonnet`，禁用 `haiku`。
   - **Reviewer**（Spec / Code Quality / Final）：一律 `opus`。
 - **计划自包含**：用 `superpowers:writing-plans` skill 产出的计划必须自包含——不依赖当前对话上下文即可被一个全新 session 直接实施。`superpowers:writing-plans` 结束后给出可供在新 session 中粘贴的执行命令即可，不要自行执行。注意，必须将需要粘贴的内容放在代码块中给出，让我能够将需要粘贴的内容和其他文本区分开。
+- **计划路径规范**：plan 里涉及**项目内**的文件/目录一律用**相对 repo root** 的路径（如 `path2/dag/_solve.py`、`docs/research/xxx/final_report.md`），禁止硬编码 `/home/yu/PycharmProjects/Trade_Strategy-*/...` 这类绝对路径。原因：plan 可能在别的 worktree 里被实施，绝对路径会指向源 worktree 造成跨 worktree 污染。为消歧义，plan 顶部 spec 里显式写一句「本 plan 中所有项目内路径均相对 repo root」。**例外**（保持绝对）：与 worktree 无关的系统路径，如 `~/.claude/...`、`/tmp/claude-*/scratchpad`、外部工具、系统级配置——这些绝对路径反而更清晰。
 - **executing-plans** 默认在新 session 中使用 subagent-driven 执行 `superpowers:executing-plans`。
 - **Plan 尽量不拆分**：默认将 spec 内容写为一份完整 plan、单 session 跑完；只有「前段实施结果大分叉迫使后段重写」才拆段，具体判据 `.claude/rules/plan-execution.md`
 

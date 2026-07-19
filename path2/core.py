@@ -5,9 +5,25 @@ import inspect
 import math
 from abc import ABC
 from dataclasses import dataclass
-from typing import Any, ClassVar, Iterator, Mapping, Protocol, Tuple, runtime_checkable
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    ClassVar,
+    Iterator,
+    Mapping,
+    Optional,
+    Protocol,
+    Tuple,
+    runtime_checkable,
+)
 
 from path2 import config
+
+if TYPE_CHECKING:
+    # 仅供静态类型检查；见下方 Detector.on_gate 注释——不可在运行时真正 import,
+    # 否则打破 core.py(地基层)不依赖 dag/(上层)的分层方向。
+    from path2.dag.gate_failure import GateFailure
 
 
 _CLASS_ID_REGISTRY: dict[str, type] = {}
@@ -83,6 +99,19 @@ class Event(ABC):
 
 @runtime_checkable
 class Detector(Protocol):
-    """从下层数据 / 事件流产生上层 Event 的生产者。"""
+    """从下层数据 / 事件流产生上层 Event 的生产者。
+
+    on_gate: optional hook · attempt 短路失败时 detector 调用它上报 GateFailure。
+    默认 None(生产路径无开销);仅诊断层挂 collector 时才启用(Task 10-12 消费)。
+    声明置于 TYPE_CHECKING 守卫内,只供静态类型检查、不进入运行时
+    __annotations__ —— Python 3.12 下 runtime_checkable 的 isinstance 结构检查会把
+    Protocol 里任何(哪怕只声明、带默认值的)属性都纳入必须项;若此处正常声明,
+    所有现有 conforming class(未显式带 on_gate,如
+    tests/path2/test_detector_protocol.py::Good)会被判定不再满足 Detector,
+    造成回归。TYPE_CHECKING 守卫两全:类型检查器仍能看到 on_gate 契约,
+    运行时 isinstance 行为不变。
+    """
+    if TYPE_CHECKING:
+        on_gate: Optional[Callable[["GateFailure"], None]]
 
     def detect(self, source: Any) -> Iterator[Event]: ...

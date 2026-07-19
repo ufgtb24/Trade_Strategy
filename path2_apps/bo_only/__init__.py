@@ -5,7 +5,7 @@
   PATTERN_DAG          : PatternSpec
   analyze(df, params)  -> AnalysisResult
   matches(df, params)  -> bool
-  eval_meta(params) -> dict   # end_role=bo, head_buffer=max(vol_baseline_period, total_window)
+  eval_meta(params) -> dict   # end_node=bo, head_buffer=max(vol_baseline_period, total_window)
   Params
   load_params() -> Params
   DEFAULT_YAML_PATH

@@ -70,6 +70,20 @@ def child(key: str, inner: WherePredicate) -> WherePredicate:
     )
 
 
+def mark_refs_other_node(pred: WherePredicate) -> WherePredicate:
+    """标注一条 where clause「引用其他 node」(硬伤 C 双落 · 编译期端)。
+
+    不改变判定/measure 语义(纯包一层),只在 .meta 里追加 refs_other_node=True,
+    供 UI(PendingIcon)与 diagnose 层(cross_node_pending caveat)静态检测消费,
+    使前端能在跨节点 clause 尚未真正 bound 前就诚实降级,而不是等运行期 _TRIPWIRE
+    (path2.dag._tripwire)兜底抛错才知道。当前 app 未用(无跨节点 clause),为未来
+    spec 预留声明入口。"""
+    meta = getattr(pred, "meta", None)
+    new_meta = {**(meta or {}), "refs_other_node": True}
+    measure = pred.measure if hasattr(pred, "measure") else (lambda x, ctx: None)
+    return _Pred(lambda x, ctx: pred(x, ctx), new_meta, measure)
+
+
 def children(key: str, agg: WherePredicate) -> WherePredicate:
     """child 组委托:agg(seq 谓词,如自定义 lambda)作用于 event.children(key)。
     outer event 类型:composite Event(实现了 children(name))。

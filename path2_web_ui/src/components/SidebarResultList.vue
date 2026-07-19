@@ -1,5 +1,19 @@
 <template>
   <div class="list" ref="listEl">
+    <div v-if="scanFile" class="search-bar">
+      <input ref="searchInputEl" type="text"
+             data-testid="symbol-search"
+             :value="symbolQuery"
+             @input="onSearchInput"
+             placeholder="搜索 symbol…"
+             spellcheck="false" autocomplete="off" />
+      <span class="count" data-testid="symbol-search-count">
+        {{ filteredSortedRows.length }} / {{ sortedRows.length }}
+      </span>
+      <button v-if="symbolQuery" class="clear"
+              data-testid="symbol-search-clear"
+              @click="onClearSearch">×</button>
+    </div>
     <div class="preview-bar">
       <label class="toggle">
         <input type="checkbox" :checked="previewEnabled"
@@ -20,7 +34,7 @@
     <div v-else class="table-wrap" ref="tableWrapEl" @scroll.passive="recalc">
       <table class="multi" ref="tableEl">
         <thead>
-          <tr class="hdr-pattern">
+          <tr class="hdr-pattern" ref="hdrPatternEl">
             <th class="sym" rowspan="2" data-cell-field="sym"
                 @click="view.setSort(SYMBOL_SORT_KEY)"
                 @contextmenu.prevent="openFieldsMenu($event)">
@@ -33,7 +47,9 @@
               <th v-if="fieldCountFor(pid) > 0"
                   class="col-pattern"
                   :colspan="fieldCountFor(pid)"
-                  :data-pattern-pid="pid">
+                  :data-pattern-pid="pid"
+                  @mouseenter="onPatternHover(pid, $event)"
+                  @mouseleave="onPatternLeave">
                 {{ pid }}
               </th>
             </template>
@@ -55,7 +71,7 @@
                   class="col col-fr"
                   @click="view.setSort(`${pid}_fr`)"
                   @contextmenu.prevent="openFieldsMenu($event)">
-                fr
+                r{{ scanFile?.scan.label_horizon }}
                 <span v-if="sortByPid === `${pid}_fr`" class="sort-ind">
                   {{ sortDesc ? '▼' : '▲' }}
                 </span>
@@ -108,9 +124,14 @@
         <input type="checkbox" data-field="fr"
                :checked="visibleFields.has('fr')"
                @change="view.toggleField('fr')" />
-        fr
+        r{{ scanFile?.scan.label_horizon }}
       </label>
     </div>
+
+    <PatternStatsTooltip v-if="hoveredStats"
+                         :stats="hoveredStats"
+                         class="hover-tooltip"
+                         :style="{ left: tooltipX + 'px', top: tooltipY + 'px' }" />
   </div>
 </template>
 
@@ -118,14 +139,25 @@
 import { computed, onMounted, onBeforeUnmount, reactive, ref, watch, nextTick } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useViewStore, SYMBOL_SORT_KEY } from '../stores/view'
+import PatternStatsTooltip from './PatternStatsTooltip.vue'
+import { isBrushToggleKey } from './klineBrushKey'
 const view = useViewStore()
 const { scanFile, symbol, preview, previewEnabled, previewLoading, previewError,
         patternIds, sortedRows, filteredSortedRows, sortByPid, sortDesc,
-        visiblePatterns, visibleFields } = storeToRefs(view)
+        visiblePatterns, visibleFields, symbolQuery } = storeToRefs(view)
 
 const canRefresh = computed(() =>
   previewEnabled.value && !!preview.value && !previewLoading.value
   && preview.value?.symbol === symbol.value)
+
+const searchInputEl = ref<HTMLInputElement | null>(null)
+function onSearchInput(e: Event) {
+  view.setSymbolQuery((e.target as HTMLInputElement).value)
+}
+function onClearSearch() {
+  view.clearSymbolQuery()
+  searchInputEl.value?.focus()
+}
 
 function fmt(v: number | null): string {
   if (v == null) return '—'
@@ -136,6 +168,37 @@ function onToggle(e: Event) {
   void view.setPreviewEnabled((e.target as HTMLInputElement).checked)
 }
 function onCloseError() { view.clearPreview() }
+
+// ── hdr-pattern hover → stats tooltip ─────────────────────────────
+const hoveredPid = ref<string | null>(null)
+const tooltipX = ref(0)
+const tooltipY = ref(0)
+
+const hoveredStats = computed(() => {
+  if (!hoveredPid.value || !scanFile.value) return null
+  return scanFile.value.per_pattern[hoveredPid.value]?.stats ?? null
+})
+
+function onPatternHover(pid: string, evt: MouseEvent) {
+  const th = evt.currentTarget as HTMLElement | null
+  if (!th) return
+  if (!scanFile.value?.per_pattern[pid]?.stats) return  // 无 stats 不挂
+  const thRect = th.getBoundingClientRect()
+  const TOOLTIP_W = 140
+  const MARGIN = 8
+  // viewport 坐标(position:fixed)· 溢出右边界则向左翻转对齐 th.right
+  let x = thRect.left
+  if (x + TOOLTIP_W + MARGIN > window.innerWidth) {
+    x = Math.max(MARGIN, thRect.right - TOOLTIP_W)
+  }
+  tooltipX.value = x
+  tooltipY.value = thRect.bottom + 2
+  hoveredPid.value = pid
+}
+
+function onPatternLeave() {
+  hoveredPid.value = null
+}
 
 // ── field menu ─────────────────────────────────────────────────────
 const fieldsMenu = reactive({ open: false, x: 0, y: 0 })
@@ -154,7 +217,72 @@ function onDocClick(e: MouseEvent) {
   if (!t.closest('.field-menu')) fieldsMenu.open = false
 }
 function onDocKey(e: KeyboardEvent) {
-  if (e.key === 'Escape') fieldsMenu.open = false
+  if (e.key !== 'Escape') return
+  // 搜索框内的 Esc:非空清 query;已空 blur。优先级高于关字段菜单。
+  if (document.activeElement === searchInputEl.value) {
+    if (symbolQuery.value !== '') {
+      view.clearSymbolQuery()
+    } else {
+      searchInputEl.value?.blur()
+    }
+    return
+  }
+  if (fieldsMenu.open) fieldsMenu.open = false
+}
+
+const CHAR_RE = /^[a-zA-Z0-9.\-]$/
+
+function onGlobalCharKey(e: KeyboardEvent) {
+  if (isBrushToggleKey(e)) return   // Shift+B 保留给 KlineChart brush toggle,不进 search
+  if (!scanFile.value) return
+  if (e.ctrlKey || e.metaKey || e.altKey) return
+  if (e.isComposing) return
+  const ae = document.activeElement as HTMLElement | null
+  // 活动元素守卫:焦点在 body 或列表面板内才劫持;对话框 / 其他面板一律放行
+  if (ae !== null && ae !== document.body && !(listEl.value?.contains(ae))) return
+  if (e.key.length !== 1 || !CHAR_RE.test(e.key)) return
+  const input = searchInputEl.value
+  if (!input) return
+  if (ae === input) return  // 已 focus 在搜索框,让浏览器默认输入生效
+  input.focus()
+  view.setSymbolQuery(view.symbolQuery + e.key)
+  e.preventDefault()
+}
+
+// ── 上/下 键切换股票 ────────────────────────────────────────────────
+function scrollRowIntoView(index: number) {
+  const wrap = tableWrapEl.value
+  if (!wrap) return
+  const stickyH = wrap.querySelector('thead')?.getBoundingClientRect().height ?? 0
+  const rowTopInContent = stickyH + index * ROW_H
+  const rowBotInContent = rowTopInContent + ROW_H
+  if (wrap.scrollTop > rowTopInContent - stickyH) {
+    wrap.scrollTop = rowTopInContent - stickyH
+  } else if (wrap.scrollTop < rowBotInContent - wrap.clientHeight) {
+    wrap.scrollTop = rowBotInContent - wrap.clientHeight
+  }
+}
+function onArrowKey(e: KeyboardEvent) {
+  if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return
+  if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return
+  if (e.isComposing) return
+  if (fieldsMenu.open) return
+  // 搜索框 focus 时 ArrowUp/Down 仍切股(input 内光标已在末尾无意义)
+  // 只保留 IME 守卫(顶部已有 e.isComposing)
+  const rows = filteredSortedRows.value
+  if (rows.length === 0) return
+
+  e.preventDefault()
+
+  const cur = rows.findIndex(r => r.symbol === symbol.value)
+  const next = cur < 0
+    ? 0
+    : e.key === 'ArrowDown'
+      ? Math.min(cur + 1, rows.length - 1)
+      : Math.max(cur - 1, 0)
+  if (rows[next].symbol === symbol.value) return
+  view.selectSymbol(rows[next].symbol)
+  scrollRowIntoView(next)
 }
 
 // ── 虚拟滚动 ───────────────────────────────────────────────────────
@@ -164,6 +292,7 @@ const listEl  = ref<HTMLElement | null>(null)
 const tableWrapEl = ref<HTMLElement | null>(null)
 const tableEl = ref<HTMLElement | null>(null)
 const tbodyEl = ref<HTMLElement | null>(null)
+const hdrPatternEl = ref<HTMLTableRowElement | null>(null)
 const startIdx = ref(0)
 const endIdx   = ref(50)
 
@@ -189,20 +318,46 @@ function recalc() {
   endIdx.value   = Math.min(N, last + OVERSCAN)
 }
 
+// 把第一级表头(hdr-pattern)的实际高度写进 --hdr-row-h,让第二级 sticky 精确贴住其下沿。
+// 硬编码 24px 与真实高度(padding+line-height+border)不符,滚动时会露出 1-3px 缝(数据行透过)。
+// ⚠ 必须 Math.floor 而非 ceil:真实高度是子像素(如 28.7),ceil→29 让第二级 top=29 起画、
+// 第一级底沿在 28.7 → 缝 0.3px(数据行透过) ← 反而制造缝隙。floor→28 让第二级 top=28 起画,
+// 视觉上第二级顶部微微覆盖第一级底部 border,无缝、无可见 overlap。
+// h===0 时(SSR/jsdom/首帧未测)保留 CSS 里 --hdr-row-h: 24px 的 fallback,不覆盖。
+function syncHdrRowH() {
+  const el = hdrPatternEl.value
+  const host = listEl.value
+  if (!el || !host) return
+  const h = Math.floor(el.getBoundingClientRect().height)
+  if (h > 0) host.style.setProperty('--hdr-row-h', h + 'px')
+}
+
 let ro: ResizeObserver | null = null
 onMounted(() => {
   recalc()
+  nextTick(syncHdrRowH)   // 初次同步(RO 也会立即触发一次,双保险防竞态)
   if (typeof ResizeObserver !== 'undefined') {
-    ro = new ResizeObserver(() => recalc())
+    ro = new ResizeObserver(() => { recalc(); syncHdrRowH() })
     if (tableWrapEl.value) ro.observe(tableWrapEl.value)
   }
   document.addEventListener('click', onDocClick, true)
   document.addEventListener('keydown', onDocKey, true)
+  document.addEventListener('keydown', onArrowKey)
+  document.addEventListener('keydown', onGlobalCharKey, true)   // capture 阶段,先于组件级 window keydown
+})
+// hdr-pattern tr 挂在 v-else(有 scanFile 时)分支下,mount 时可能不在 DOM;
+// 一旦 scanFile 载入让 tr 出现,补:同步一次 + 让 RO 也观察它(字号/列宽变化跟随)。
+watch(hdrPatternEl, (el) => {
+  if (!el) return
+  syncHdrRowH()
+  ro?.observe(el)
 })
 onBeforeUnmount(() => {
   ro?.disconnect()
   document.removeEventListener('click', onDocClick, true)
   document.removeEventListener('keydown', onDocKey, true)
+  document.removeEventListener('keydown', onArrowKey)
+  document.removeEventListener('keydown', onGlobalCharKey, true)
 })
 
 watch([filteredSortedRows, scanFile], () => { void nextTick(recalc) })
@@ -269,4 +424,22 @@ table.multi tr.active td.col.matched { background: #1d4ed8; }
 }
 .field-menu label { display: flex; align-items: center; gap: 6px; cursor: pointer; padding: 3px 0; }
 .field-menu input { cursor: pointer; }
+
+.hover-tooltip {
+  position: fixed;
+  z-index: 100;
+  pointer-events: none;
+}
+
+.search-bar { display: flex; align-items: center; gap: 6px;
+              padding: 6px 10px; border-bottom: 1px solid #e5e7eb;
+              background: #fff; }
+.search-bar input { flex: 1; min-width: 0; padding: 3px 6px;
+                    font-size: 12px; border: 1px solid #cbd5e1;
+                    border-radius: 3px; }
+.search-bar .count { font-size: 11px; color: #64748b; white-space: nowrap; }
+.search-bar .clear { padding: 0 6px; font-size: 14px; line-height: 1;
+                     border: 1px solid #cbd5e1; background: #fff;
+                     cursor: pointer; border-radius: 3px; }
+.search-bar .clear:hover { background: #f1f5f9; }
 </style>

@@ -19,25 +19,26 @@ export const PATTERN: SerializedPattern = {
     ],
   },
   event_styles: { trend: '#f59e0b', bo: '#2563eb', tb: '#16a34a' },
+  debug_enabled_classes: ['tb'],
 }
 
 export const ANALYSIS: Analysis = {
   events: [
-    { class_id: 'trend', event_id: 'down1', source_tag: 'trend0', start_idx: 1, end_idx: 6, regime: 'down', drawdown: 0.42 },
-    { class_id: 'trend', event_id: 'side1', source_tag: 'trend1', start_idx: 4, end_idx: 12, regime: 'sideways' },
+    { class_id: 'trend', event_id: 'down1', source_tag: 'trend0', start_idx: 1, end_idx: 6, regime: 'down', drawdown: 0.42, child_refs: {} },
+    { class_id: 'trend', event_id: 'side1', source_tag: 'trend1', start_idx: 4, end_idx: 12, regime: 'sideways', child_refs: {} },
     { class_id: 'bo', event_id: 'bo9', source_tag: 'bo', start_idx: 9, end_idx: 9, drought: 88, vol_ratio: 3.2,
-      referenced_points: [[5, 12.5, 'pk0'], [7, 13.0, 'pk1']] },
-    { class_id: 'bo', event_id: 'bo11', source_tag: 'bo', start_idx: 11, end_idx: 11, drought: 2, vol_ratio: 2.1 },
-    { class_id: 'tb', event_id: 'tb16', source_tag: 'tb', start_idx: 16, end_idx: 16 },
-    { class_id: 'bo', event_id: 'boX', source_tag: 'bo', start_idx: 20, end_idx: 20 }, // 未匹配
+      referenced_points: [[5, 12.5, 'pk0'], [7, 13.0, 'pk1']], child_refs: {} },
+    { class_id: 'bo', event_id: 'bo11', source_tag: 'bo', start_idx: 11, end_idx: 11, drought: 2, vol_ratio: 2.1, child_refs: {} },
+    { class_id: 'tb', event_id: 'tb16', source_tag: 'tb', start_idx: 16, end_idx: 16, child_refs: {} },
+    { class_id: 'bo', event_id: 'boX', source_tag: 'bo', start_idx: 20, end_idx: 20, child_refs: {} }, // 未匹配
   ],
   matches: [
     { event_id: 'm1', start_idx: 1, end_idx: 16,
-      role_index: { down: 'down1', side: 'side1', bo: 'bo9', tb: 'tb16' },
+      node_index: { down: 'down1', side: 'side1', bo: 'bo9', tb: 'tb16' },
       children: ['down1', 'side1', 'bo9', 'bo11', 'tb16'],
       predicate_trace: {
         where_results: { down: { drawdown: { satisfied: true, measured: 0.42, op: '>=', threshold: 0.30 } } },
-        edge_results: { 'down→bo': { satisfied: true, measured: 8, src: 'down1', dst: 'bo9' } },
+        edge_results: { 'down→bo': { satisfied: true, measured: { kind: 'gap', value: 8, label: 'gap' }, src: 'down1', dst: 'bo9' } },
       } },
   ],
 }
@@ -45,7 +46,7 @@ export const ANALYSIS: Analysis = {
 export const SCAN_FILE: MultiScanResultFile = {
   pattern_ids: ['bottom_breakout_burst'],
   per_pattern: {
-    bottom_breakout_burst: { pattern_spec: PATTERN, end_role: 'tb' },
+    bottom_breakout_burst: { pattern_spec: PATTERN, end_node: 'tb' },
   },
   scan: {
     scan_ts: '20260603T120000', start_date: '2025-01-01', end_date: '2025-12-31',
@@ -65,10 +66,10 @@ export const SCAN_FILE: MultiScanResultFile = {
 
 export const DIAG: Diagnostics = {
   symbol: 'AAPL', pattern_id: 'bottom_breakout_burst',
-  roles: {
+  nodes: {
     down: { attr: [{ event_id: 'down1', start_idx: 1, end_idx: 6,
                      clauses: { drawdown: { satisfied: true, measured: 0.42, op: '>=', threshold: 0.30 } } }], rel: [] },
     bo: { attr: [], rel: [{ src: 'down', kind: 'TemporalEdge', total_src: 3, ok_count: 1, ok_src_ids: ['down1'] }] },
   },
-  note: '单 role 局部诊断;通过不代表能凑成完整匹配',
+  note: '单 node 局部诊断;通过不代表能凑成完整匹配',
 }

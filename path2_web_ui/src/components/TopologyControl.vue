@@ -19,32 +19,50 @@
       <!-- 节点:绝对定位,完整保留现有 button 的全部绑定 -->
       <button
         v-for="box in layout.nodes" :key="box.node.node_id"
-        :data-role-node="box.node.node_id"
-        class="node" :class="{ off: roleVisible[box.node.node_id] === false }"
+        :data-node-id="box.node.node_id"
+        class="node" :class="{ off: nodeVisible[box.node.node_id] === false }"
         :style="{
           left: box.x + 'px', top: box.y + 'px', width: box.w + 'px',
-          background: roleColors[box.node.node_id] ?? '#888',
-          borderColor: roleColors[box.node.node_id] ?? '#888',
+          background: nodeColors[box.node.node_id] ?? '#888',
+          borderColor: nodeColors[box.node.node_id] ?? '#888',
         }"
         :title="ruleText(box.node)"
         @click="handleNodeClick(box.node.node_id, $event)"
         @dblclick="handleNodeDblClick(box.node.node_id)"
-        @mouseenter="emit('hover-role', box.node.node_id)"
-        @mouseleave="emit('hover-role', null)"
+        @mouseenter="emit('hover-node', box.node.node_id)"
+        @mouseleave="emit('hover-node', null)"
       >
         <span class="label">{{ box.node.node_id }}</span>
       </button>
 
-      <!-- 边标签:HTML 绝对定位,富排版(kind 小灰上标 + rule 深色),常驻 -->
+      <!-- 边标签:HTML 绝对定位,富排版(kind 小灰上标 + rule 深色),常驻;
+           点击 = 入口 B 降级(scope=nodes → PairListCard),cursor 提示可点 -->
       <div
         v-for="(e, i) in layout.edges" :key="'l' + i" class="elabel"
         :style="{ left: e.label.x + 'px', top: e.label.y + 'px' }"
+        @click="handleEdgeClick(e.edge.src, e.edge.dst)"
       >
         <span class="kind">{{ e.edge.kind.replace('Edge', '') }}</span>
         <span class="rule">{{ e.edge.rule }}</span>
       </div>
     </div>
-    <div class="hint">点节点=显隐切换 · 双击=诊断 · 悬停看类级阈值</div>
+    <div class="hint">点节点=显隐切换 · 双击=诊断 · 点边标签=miss_reasons 明细 · 悬停看类级阈值</div>
+
+    <!-- 入口 B 降级:点 edge 弹出的 miss_reasons/example_failed_pairs 卡片 -->
+    <div v-if="activeNodesEdge" class="nodes-popover">
+      <div class="nodes-popover-hdr">
+        <span>{{ activeNodesEdge.src }} → {{ activeNodesEdge.dst }}</span>
+        <button class="close-btn" @click="closeNodes">×</button>
+      </div>
+      <div v-if="nodesLoading" class="hint">加载中…</div>
+      <div v-else-if="nodesError" class="hint nodes-error">{{ nodesError }}</div>
+      <template v-else-if="nodesResponse">
+        <PairListCard :payload="nodesResponse.payload" />
+        <div v-if="nodesResponse.caveats.length" class="nodes-caveats">
+          <div v-for="c in nodesResponse.caveats" :key="c.code" class="hint">⚠ {{ c.message }}</div>
+        </div>
+      </template>
+    </div>
   </div>
 </template>
 
@@ -53,11 +71,14 @@ import { computed, ref } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useViewStore } from '../stores/view'
 import { layoutTopology, type TopoLayout } from '../render/topology'
-import type { TopoNode } from '../types'
+import { windowOf } from '../render/visible'
+import { getNodesDiagnose } from '../api'
+import PairListCard from './PairListCard.vue'
+import type { TopoNode, NodesScopeResponse } from '../types'
 
-const emit = defineEmits<{ (e: 'hover-role', nodeId: string | null): void }>()
+const emit = defineEmits<{ (e: 'hover-node', nodeId: string | null): void }>()
 const view = useViewStore()
-const { effectivePattern, roleColors, roleVisible } = storeToRefs(view)
+const { effectivePattern, nodeColors, nodeVisible, symbol, activePatternId, effectiveScan } = storeToRefs(view)
 
 const EMPTY: TopoLayout = { nodes: [], edges: [], width: 0, height: 0 }
 const layout = computed<TopoLayout>(() =>
@@ -79,7 +100,7 @@ function handleNodeClick(nodeId: string, event: MouseEvent) {
     // 可能是单击;延迟等待,若随后 dblclick 则取消
     pendingTimer.value = setTimeout(() => {
       pendingTimer.value = null
-      view.toggleRole(nodeId)
+      view.toggleNode(nodeId)
     }, 250)
   } else {
     // detail>=2 说明是双击前的第二次 click;取消延迟(dblclick handler 负责执行)
@@ -91,12 +112,44 @@ function handleNodeClick(nodeId: string, event: MouseEvent) {
 }
 
 function handleNodeDblClick(nodeId: string) {
-  // 确保延迟中的 toggleRole 已取消(detail>=2 path 已取消,但防御性再取消一次)
+  // 确保延迟中的 toggleNode 已取消(detail>=2 path 已取消,但防御性再取消一次)
   if (pendingTimer.value !== null) {
     clearTimeout(pendingTimer.value)
     pendingTimer.value = null
   }
-  view.selectRole(nodeId)
+  view.toggleExpandedNode(nodeId)
+}
+
+// ── 入口 B 降级:点 edge 标签 → scope=nodes → PairListCard(自包含,不依赖 DetailSidebar) ──
+const activeNodesEdge = ref<{ src: string; dst: string } | null>(null)
+const nodesResponse = ref<NodesScopeResponse | null>(null)
+const nodesLoading = ref(false)
+const nodesError = ref<string | null>(null)
+
+async function handleEdgeClick(src: string, dst: string) {
+  activeNodesEdge.value = { src, dst }
+  nodesResponse.value = null
+  nodesError.value = null
+  if (!symbol.value || !activePatternId.value || !effectiveScan.value) {
+    nodesError.value = '缺 symbol/pattern/窗口,无法查询'
+    return
+  }
+  const w = windowOf(effectiveScan.value as any)
+  nodesLoading.value = true
+  try {
+    nodesResponse.value = await getNodesDiagnose(
+      activePatternId.value, symbol.value, w.start, w.end, src, dst)
+  } catch (e: any) {
+    nodesError.value = String(e?.message ?? e)
+  } finally {
+    nodesLoading.value = false
+  }
+}
+
+function closeNodes() {
+  activeNodesEdge.value = null
+  nodesResponse.value = null
+  nodesError.value = null
 }
 </script>
 
@@ -115,8 +168,25 @@ function handleNodeDblClick(nodeId: string) {
   position: absolute; z-index: 2; transform: translate(-50%, -50%);
   background: rgba(255, 255, 255, 0.92); padding: 1px 5px; border-radius: 5px;
   font-size: 11px; line-height: 1.35; white-space: nowrap; text-align: center;
+  cursor: pointer;
 }
 .elabel .kind { display: block; color: #64748b; font-size: 9px; letter-spacing: 0.2px; }
 .elabel .rule { color: #0f172a; }
 .hint { margin-top: 4px; font-size: 10px; color: #94a3b8; }
+
+.nodes-popover {
+  margin-top: 6px; border: 1px solid #e2e8f0; border-radius: 6px;
+  background: #fff; overflow-x: auto; min-width: 0;
+}
+.nodes-popover-hdr {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 4px 8px; background: #f8fafc; border-bottom: 1px solid #e2e8f0;
+  font-size: 12px; font-weight: 600; color: #334155;
+}
+.close-btn {
+  border: none; background: transparent; cursor: pointer; font-size: 14px;
+  line-height: 1; color: #64748b; padding: 0 4px;
+}
+.nodes-caveats { padding: 0 10px 8px; }
+.nodes-error { color: #b91c1c; }
 </style>

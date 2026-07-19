@@ -119,7 +119,7 @@ path2 提供了 6 种现成的边，覆盖了走势里最常见的几种关系�
 
 举个具体的：一串密集突破点（`bo`，每个 `bo` 都是一根 K 线上的单点突破）。
 
-过去框架里没有一个"实体"代表**整串**——你只能把一串散点 `bo` 用一个重复量词（下文的 Kleene）勉强绑在一起。麻烦在于：想检查"这一串整体的属性"（一共几个、放量峰值多高），或者想把"这一串"当成一段画在图上、让别的事件去和它建立关系，都很别扭——因为根本没有一个对象叫"这一串"。
+过去框架里没有一个"实体"代表**整串**——你只能把一串散点 `bo` 硬绑在一起，想检查"这一串整体的属性"（一共几个、放量峰值多高），或者想把"这一串"当成一段画在图上、让别的事件去和它建立关系，都很别扭——因为根本没有一个对象叫"这一串"。
 
 **嵌套事件就是给"这一串"造一个一等公民。** 以突破爆发为例，框架里有 `BurstEvent`：
 
@@ -161,42 +161,6 @@ NodeSpec("burst",
 - `descendant_leaves`——一路递归展平到没有子事件的最底层 atom。
 
 > 💡 叶子事件（普通 `BOEvent`、`TrendSegment`……）的行为**完全没变**——基类只是多了几个默认返回空的方法。嵌套协议只对真正装着子事件的复合事件（如 `BurstEvent`）才有意义。
-
----
-
-## 进阶旁路：Kleene 区间绑定
-
-> ⚠️ **这是一个进阶/旁路特性，不是主线。** 上面的嵌套事件才是当前推荐、也是示例 app 实际采用的表达"一串"的方式。Kleene **仍是框架完整支持、随时可用的特性**——它没有被删除、也没有被废弃——只是当前唯一的示例 app（`bottom_breakout_burst`）改用了更干净的嵌套事件。什么时候考虑 Kleene？当你确实想在**求解期**把一串同类事件就地绑成序列、又**不想为它单独写一个 detector** 时，它就是顺手的选择。
-
-`KleeneSpec` 的名字来自正则里的 Kleene 闭包（那个表示"重复多次"的 `*`），你可以把它理解成走势版的"重复量词"。
-
-给某个 `NodeSpec` 加上 `kleene=KleeneSpec(...)`，引擎就会从该 detector 的事件流里取出**一段连续子序列**，把整串当成**一个绑定单元**塞进图里参与匹配。对应地，结果里 `role_index` 中这个节点的值，会从"单个 Event"升级成"一串 `Tuple[Event, ...]`"。
-
-> 💡 和嵌套事件的区别一句话：嵌套事件在 **detect 期**就把"一串"做成一个实体宽事件（`BurstEvent`）；Kleene 是在 **求解期**临时把一段连续子序列绑成序列单元，不产生独立的事件对象。
-
-来看一个例子，逐字段读懂它：
-
-```python
-KleeneSpec(
-    min_count=3,                        # 这串至少要有 3 个成员
-    span_from_first=(0, 20),            # 每个成员距"串首"的跨度落在 [0, 20] 根 K 线内
-    endpoint_for_edges="last",          # 外层的边连到本串时，用"串尾"那个端点参与关系判定
-    aggregate_where=(                   # 对【整串】的聚合条件（下面两条都要满足）
-        ("distinct_pk", W.distinct("broken_peak_ids", ">=", 3)),  # 整串突破的不同峰值 ≥ 3
-        ("vol_spike",   W.any("vol_ratio", ">=", 3.0)),           # 串里至少有一个放量 ≥ 3.0
-    ),
-)
-```
-
-逐项说明（字段名与默认值均与源码一致）：
-
-- `min_count: int = 1` / `max_count: float = math.inf`——串长的下界 / 上界。
-- `span_from_first: Optional[Tuple[int, float]]`——**成簇连续性**约束。判据是 `成员.start_idx − 串首.start_idx`（即每个成员相对**串首**的绝对跨度），必须落在给定的 `(lo, hi)` 区间内。注意它锚的是串首，不是相邻成员之间。默认 `None`（不约束）。
-- `aggregate_where: Tuple[Tuple[str, ...], ...]`——对**整串**的聚合谓词列表，每项是 `(clause_id, fn)`，多项之间 AND 合取。默认 `()`。
-- `endpoint_for_edges: str = "first"`——外层的边连到这个 Kleene 节点时，拿串的哪一端参与边的关系判定：`"first"` 用串首，`"last"` 用串尾。
-- `greedy: bool = True`——默认贪心地取"极大段"。
-
-> 💡 小贴士：上面 `aggregate_where` 里用到的 `W.distinct` / `W.any` 都是 `where` 便利层提供的"整串聚合"算子。还有 `W.first` / `W.last`（取串首 / 串尾某属性比较）、`W.count`（按串长比较）、`W.reduce`（自定义归约）。对应"单实例"的算子则是 `W.attr`。
 
 ---
 
@@ -303,7 +267,7 @@ for m in result.matches:
 
 每个 `PatternMatch` 本身就**继承自 `Event`**（所以它也有 `start_idx` / `end_idx`），此外还带：
 
-- `role_index`——`node_id → 绑定实例` 的映射。普通节点和嵌套节点都对应**单个 `Event`**（例如示例里的 `burst` 就是一个嵌套宽事件，它内部的成员 bo 通过 `event.children("members")` 取）。这是你"按角色取出命中里各段"的入口。（旁路情形：若某节点用了 Kleene，则它对应的是一串 `Tuple[Event, ...]`。）
+- `role_index`——`node_id → 绑定实例` 的映射。普通节点和嵌套节点都对应**单个 `Event`**（例如示例里的 `burst` 就是一个嵌套宽事件，它内部的成员 bo 通过 `event.children("members")` 取）。这是你"按角色取出命中里各段"的入口。
 - `children`——这次命中里所有绑定实例的扁平列表（按 `start_idx` 升序）。
 - `predicate_trace`——**可追溯的诊断**。它告诉你每个 `where` 子句在这次命中里通没通过（`where_results`），以及每条边的实测情况和两端实例（`edge_results` 里的 `EdgeWitness`，含实测 gap / overlap）。排查"为什么这里没命中 / 凭什么命中了"时，看它就对了。
 

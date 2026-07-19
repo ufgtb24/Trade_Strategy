@@ -296,20 +296,3 @@ def test_evaluate_atr_uses_bo_minus_1():
     assert r.end_idx == 23      # 若误用 ATR@bo 当根 → timeout → end=24,此断言抓出
 
 
-def test_evaluate_anchor_measure_close():
-    # 回落 low 跌破 high[bo−1]=101 但守住 close[bo−1]=100:默认(high)None;"close" 成功
-    from path2.atoms.throwback import evaluate_throwback
-    rows = _series_with_atr2(20, base=100.0)
-    rows[19] = (100.0, 104.0, 100.0, 103.0, 5000)
-    tail = [
-        (102.5, 103.0, 100.5, 102.0, 1000),   # 20 low=100.5<101 但 ≥100
-        (101.8, 102.0, 100.4, 101.7, 1000),   # 21 trough=100.4
-        (101.7, 102.5, 100.6, 102.4, 1000),   # 22
-        (102.4, 103.0, 100.8, 102.9, 1000),   # 23 → start=21
-        (102.9, 106.0, 102.5, 105.5, 1000),   # 24 high−100.4=5.6≥3 → end=23
-    ]
-    rows += tail
-    df = pd.DataFrame(rows, columns=['open', 'high', 'low', 'close', 'volume'])
-    assert evaluate_throwback(_bo_at(19), df, atr_window=14) is None
-    r = evaluate_throwback(_bo_at(19), df, atr_window=14, anchor_measure="close")
-    assert r is not None and r.start_idx == 21 and r.end_idx == 23

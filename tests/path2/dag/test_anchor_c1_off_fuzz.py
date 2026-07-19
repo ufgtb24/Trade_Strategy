@@ -10,7 +10,7 @@
   - 显式 anchor_src_field 指向非 id 身份字段(C2 通用键对键)
 
 判据:dag.solve 命中集 == brute_force_solve(oracle) 命中集
-按 last role(dst) event_id 投影做 set 相等。
+按 last node(dst) event_id 投影做 set 相等。
 """
 from __future__ import annotations
 import random
@@ -84,7 +84,7 @@ def test_anchor_src_c1_off_releases_same_end_bucket(seed, anchor_src_field):
     """同 end_idx 桶内每个 src 都能被 anchor 匹配到对应 dst(B4 c1_off 第 5 源)。
 
     等价判据:dag.solve 命中集 == brute_force_solve(oracle) 命中集
-    按 last role(dst) event_id 投影做 set 相等。
+    按 last node(dst) event_id 投影做 set 相等。
     """
     spec, src_events, dst_events = _build_anchor_spec(n_src=4, anchor_src_field=anchor_src_field, seed=seed)
     plan = compile_plan(spec)

@@ -18,7 +18,7 @@ def test_dag_spec_three_nodes_bo_node_burst_consumes():
     by = {n.node_id: n for n in PATTERN_DAG.nodes}
     assert by["burst"].consumes_stream == "bo"          # burst consumes bo 流
     assert by["tb"].consumes_stream == "bo"             # tb 仍 consumes bo(ThrowbackDetector 吃 BOEvent)
-    # bo 无边 = 孤立 role(残缺 match 由 analyze 出口过滤)
+    # bo 无边 = 孤立 node(残缺 match 由 analyze 出口过滤)
     endpoints = {ep for e in PATTERN_DAG.edges for ep in (e.src, e.dst)}
     assert "bo" not in endpoints
 
@@ -39,7 +39,7 @@ def test_nodes_present_and_typed():
 def test_bo_is_plain_isolated_node():
     """bo 是孤立 plain node（无 where、无边）。"""
     bo = {n.node_id: n for n in _spec().nodes}["bo"]
-    assert bo.where == ()                                  # 无 where（孤立 role）
+    assert bo.where == ()                                  # 无 where（孤立 node）
 
 
 def test_burst_node_structure():

@@ -8,7 +8,7 @@ from path2_web.app import create_app
 
 
 def _mk_dated_no_burst(tmp_path, symbol):
-    from tests.path2.apps.test_matches import _synth_no_burst
+    from tests.path2_apps.bottom_breakout_burst.test_matches import _synth_no_burst
     df = _synth_no_burst()
     df.index = pd.date_range("2025-01-01", periods=len(df), freq="D", name="date")
     df.to_pickle(Path(tmp_path) / f"{symbol}.pkl")
@@ -21,7 +21,7 @@ def _client(tmp_path):
     cfg = {
         "dataset_dir": str(data_dir),
         "scan": {"start_date": "2025-01-01", "end_date": "2025-12-31", "workers": 1, "ticker_regex": None},
-        "last_selected_pattern": "bottom_breakout_burst",
+        "last_selected_pattern": "bottom_burst",
     }
     app = create_app(config_override=cfg, outputs_root=str(tmp_path / "outputs"),
                      use_thread_pool=True)     # 测试用线程池,免起进程
@@ -34,8 +34,8 @@ def test_patterns_endpoint(tmp_path):
     assert r.status_code == 200
     pats = r.json()
     ids = [p["pattern_id"] for p in pats]
-    assert "bottom_breakout_burst" in ids
-    bbb = next(p for p in pats if p["pattern_id"] == "bottom_breakout_burst")
+    assert "bottom_burst" in ids
+    bbb = next(p for p in pats if p["pattern_id"] == "bottom_burst")
     assert {"topology", "event_styles"} <= set(bbb)
 
 
@@ -50,8 +50,8 @@ def test_ohlc_endpoint(tmp_path):
 
 def test_config_get_put(tmp_path):
     c = _client(tmp_path)
-    assert c.get("/config").json()["last_selected_pattern"] == "bottom_breakout_burst"
-    r = c.put("/config", json={"last_selected_pattern": "bottom_breakout_burst",
+    assert c.get("/config").json()["last_selected_pattern"] == "bottom_burst"
+    r = c.put("/config", json={"last_selected_pattern": "bottom_burst",
                                "dataset_dir": "datasets/pkls",
                                "scan": {"start_date": "2025-01-01", "end_date": "2025-12-31",
                                         "workers": 4, "ticker_regex": None}})
@@ -60,7 +60,7 @@ def test_config_get_put(tmp_path):
 
 def test_scan_then_stream_done(tmp_path):
     c = _client(tmp_path)
-    r = c.post("/scan", json={"pattern_ids": ["bottom_breakout_burst"],
+    r = c.post("/scan", json={"pattern_ids": ["bottom_burst"],
                               "start_date": "2025-01-01", "end_date": "2025-12-31",
                               "workers": 1, "ticker_regex": None})
     assert r.status_code == 200
@@ -92,7 +92,7 @@ def test_api_delete_scan_200(tmp_path):
     out = Path(tmp_path) / "outputs" / "scans"
     out.mkdir(parents=True, exist_ok=True)
     (out / "20260601T100000.json").write_text(
-        '{"pattern_ids":["bottom_breakout_burst"],"per_pattern":{},'
+        '{"pattern_ids":["bottom_burst"],"per_pattern":{},'
         '"scan":{"hits":0,"scanned":1,"partial":false},"results":[]}'
     )
     r = c.delete("/scans/20260601T100000")
@@ -141,7 +141,7 @@ def test_api_scan_then_cancel_emits_cancelled_done(tmp_path):
     data_dir = Path(tmp_path) / "pkls"
     for sym in ["B1", "B2", "B3", "B4", "B5"]:
         _mk_dated_no_burst(data_dir, sym)
-    r = c.post("/scan", json={"pattern_ids": ["bottom_breakout_burst"],
+    r = c.post("/scan", json={"pattern_ids": ["bottom_burst"],
                               "start_date": "2025-01-01", "end_date": "2025-12-31",
                               "workers": 1, "ticker_regex": None})
     scan_id = r.json()["scan_id"]
@@ -184,7 +184,7 @@ def test_post_cancel_with_save_writes_partial_file_and_done_includes_partial(tmp
     for i in range(30):
         _mk_dated_no_burst(data_dir, f"P{i:03d}")
     r = c.post("/scan", json={
-        "pattern_ids": ["bottom_breakout_burst"],
+        "pattern_ids": ["bottom_burst"],
         "start_date": "2025-01-01", "end_date": "2025-12-31",
         "workers": 1, "ticker_regex": None,
     })
@@ -198,7 +198,7 @@ def test_post_cancel_with_save_writes_partial_file_and_done_includes_partial(tmp
     if done.get("partial") is not True:
         pytest.skip(f"cancel race lost; scan completed before cancel intercepted (done={done})")
     # ── race 赢:硬断言整链路 ──
-    assert done.get("pattern_ids") == ["bottom_breakout_burst"]
+    assert done.get("pattern_ids") == ["bottom_burst"]
     assert "scan_ts" in done
     out = Path(tmp_path) / "outputs" / "scans" / f"{done['scan_ts']}.json"
     assert out.exists()
@@ -214,7 +214,7 @@ def test_post_cancel_with_save_false_keeps_legacy_cancelled_shape(tmp_path):
     data_dir = Path(tmp_path) / "pkls"
     for i in range(30):
         _mk_dated_no_burst(data_dir, f"Q{i:03d}")
-    r = c.post("/scan", json={"pattern_ids": ["bottom_breakout_burst"],
+    r = c.post("/scan", json={"pattern_ids": ["bottom_burst"],
                               "start_date": "2025-01-01", "end_date": "2025-12-31",
                               "workers": 1, "ticker_regex": None})
     assert r.status_code == 200

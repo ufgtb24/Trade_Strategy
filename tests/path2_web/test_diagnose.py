@@ -3,18 +3,18 @@ from path2_apps.bottom_breakout_burst.dag_spec import build_pattern
 from path2_web.diagnose import diagnose_symbol
 
 
-def test_diagnose_serializes_per_role():
+def test_diagnose_serializes_per_node():
     df, params = positive_case()
     spec = build_pattern(params)              # 用宽松 params 的 spec(where 闭合 params)
-    out = diagnose_symbol(spec, df, params, symbol="SYNTH", pattern_id="bottom_breakout_burst")
+    out = diagnose_symbol(spec, df, params, symbol="SYNTH", pattern_id="bottom_burst")
     assert out["symbol"] == "SYNTH"
-    assert set(out["roles"]) == {"bo", "burst", "tb"}  # 3 roles: bo isolated + burst/tb ONCE
+    assert set(out["nodes"]) == {"bo", "burst", "tb"}  # 3 nodes: bo isolated + burst/tb ONCE
     # bo 是 isolated node(无入边) → rel 为空
-    bo = out["roles"]["bo"]
+    bo = out["nodes"]["bo"]
     assert isinstance(bo["rel"], list)
     assert bo["rel"] == []
     # 关系诊断(唯一边 burst→tb):tb 仅 burst 一条入边
-    tb = out["roles"]["tb"]
+    tb = out["nodes"]["tb"]
     assert isinstance(tb["rel"], list)
     assert len(tb["rel"]) >= 1
     tb_srcs = {r["src"] for r in tb["rel"]}
@@ -23,7 +23,7 @@ def test_diagnose_serializes_per_role():
         rel = tb["rel"][0]
         assert {"src", "kind", "total_src", "ok_count", "ok_src_ids"} <= set(rel)
     # burst 无入边 → rel 为空
-    burst = out["roles"]["burst"]
+    burst = out["nodes"]["burst"]
     assert isinstance(burst["rel"], list)
     assert burst["rel"] == []
     # 局部性免责声明

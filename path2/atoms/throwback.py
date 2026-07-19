@@ -13,8 +13,9 @@ measure_at(i, support_measure) ≥ anchor(破位即不产)。ATR 取 bo-1(避开
 """
 from __future__ import annotations
 
+import sys
 from dataclasses import dataclass
-from typing import Iterable, Iterator, List, NamedTuple, Optional
+from typing import Callable, ClassVar, Iterable, Iterator, List, NamedTuple, Optional
 
 import pandas as pd
 
@@ -22,6 +23,9 @@ from path2.atoms.breakout import BOEvent
 from path2.calc.atr import calculate_atr
 from path2.calc.measure import VALID_MEASURES, measure_at
 from path2.core import Event
+from path2.dag.gate_failure import GateFailure, MeasuredKindAware
+from path2.debug import current_symbol
+from path2.debug_ctx import debug_break
 from path2.stdlib import span_id
 
 
@@ -80,9 +84,46 @@ def _atr_at(df: pd.DataFrame, idx: int, period: int) -> float:
     return v if v == v else 0.0   # NaN != NaN → fallback 0.0
 
 
+def _emit_tb_gate(bo_idx: int, gate_idx: int, gate_name: str,
+                  measured: MeasuredKindAware, threshold,
+                  atr_window: int,
+                  on_gate: Optional[Callable[[GateFailure], None]],
+                  *, op: Optional[str] = None,
+                  threshold_param: Optional[str] = None) -> None:
+    """辅助 · 组装 GateFailure 并 emit(避免 4 处埋点重复 boilerplate)。
+
+    TB 是 span 事件,attempt 定义采解读 X 松对齐(spec §2.4.2):
+    一次 evaluate_throwback = 一次 attempt,attempt 起点 = bo.end_idx + 1,
+    阶段一/二失败共用同一 failure_event_window 公式。
+    """
+    if on_gate is None:
+        return
+    # debug hook · dead-code when DEBUG_MODE=0 (see debug_ctx.py::_DEBUG_MODE).
+    # NOT the scan bypass: real scan attaches on_gate=collector.add (non-None),
+    # so this line executes during scan too. `on_gate is None` above is a local
+    # invariant (no gate-failure consumer attached), not the scan/diagnose split.
+    debug_break(gate_idx, anchor_kind='gate', class_id='tb', stop_at_frame=sys._getframe(1))
+    on_gate(GateFailure(
+        failure_event_window=(bo_idx + 1, gate_idx),
+        start_idx=bo_idx + 1,
+        gate_idx=gate_idx,
+        anchor_bar=bo_idx,
+        class_id='tb',
+        gate_name=gate_name,
+        measured=measured,
+        threshold=threshold,
+        op=op,
+        threshold_param=threshold_param,
+        evaluation_lookback=(bo_idx - atr_window, bo_idx),
+        symbol=current_symbol.get() or '',
+    ))
+
+
 def _find_start_idx(df: pd.DataFrame, bo_idx: int, anchor: float,
                     max_start_gap: int, atr: float, pullback_min_atr: float,
-                    support_measure: str = "low") -> Optional[int]:
+                    support_measure: str = "low",
+                    on_gate: Optional[Callable[[GateFailure], None]] = None,
+                    atr_window: int = 14) -> Optional[int]:
     """阶段一:定位止跌点(回落段最低点)。返回 trough_idx 或 None。
 
     从 bo_idx+1 扫到 bo_idx+max_start_gap(买点不离 bo 过远):
@@ -97,7 +138,17 @@ def _find_start_idx(df: pd.DataFrame, bo_idx: int, anchor: float,
     end = min(bo_idx + max_start_gap, len(df) - 1)
     trough_idx = bo_idx + 1
     for i in range(bo_idx + 1, end + 1):
-        if measure_at(df, i, support_measure) < anchor:
+        measured_support = measure_at(df, i, support_measure)
+        if measured_support < anchor:
+            # gate: phase1_break · 寻底扫描期间当前 bar 是否击穿 bo 前的收盘价 anchor (anchor = 突破那根 bar 的前一根收盘价)
+            # measured=anchor_delta(当前支撑价 - anchor, 负值即破位;支撑价由 support_measure 决定, 通常是 low)
+            # 判据: anchor_delta>=0 通过(仍位于 anchor 之上); <0 失败, 破位, throwback 撤销
+            _emit_tb_gate(bo_idx, i, 'phase1_break',
+                          MeasuredKindAware(kind='anchor_delta',
+                                            value=measured_support - anchor,
+                                            label='破位差'),
+                          0.0, atr_window, on_gate,
+                          op='>=', threshold_param=None)
             return None
         lo_i = float(df['low'].iat[i])
         if lo_i < float(df['low'].iat[trough_idx]):
@@ -108,15 +159,36 @@ def _find_start_idx(df: pd.DataFrame, bo_idx: int, anchor: float,
             if (lo_i >= lo_p and lo_p >= lo_pp
                     and (_has_stop_signal(df, i - 1) or _has_stop_signal(df, i))):
                 peak = float(df['high'].iloc[bo_idx: trough_idx + 1].max())
-                if peak - float(df['low'].iat[trough_idx]) >= pullback_min_atr * atr:
+                depth = peak - float(df['low'].iat[trough_idx])
+                if depth >= pullback_min_atr * atr:
+                    debug_break(trough_idx, anchor_kind='trough', class_id='tb')  # v2 · phase1 success(与 event.start_idx 对齐)
                     return trough_idx
+                # gate: phase1_pullback_shortage · 已探得止跌形态, 但从 bo 高点到止跌位的下跌幅度是否够 ATR 倍数
+                # measured=pullback_atr(下跌深度 depth 除以 ATR; depth = bo 高点价 - 止跌价; ATR = atr_window 根真实波幅的平均)
+                # 判据: pullback_atr>=pullback_min_atr 通过; 否则失败, 回撤不足, 不构成有效 throwback
+                _emit_tb_gate(bo_idx, i, 'phase1_pullback_shortage',
+                              MeasuredKindAware(kind='pullback_atr',
+                                                value=depth / atr if atr > 0 else 0.0,
+                                                label='回落深度/ATR'),
+                              pullback_min_atr, atr_window, on_gate,
+                              op='>=', threshold_param='pullback_min_atr')
                 return None
+    # gate: phase1_no_trough_timeout · 寻底扫描窗内(共 max_start_gap 根)始终未确认止跌
+    # measured=count(扫描已扫满的窗宽 = max_start_gap 根)
+    # 判据: 窗内某根需同时满足连续两根不再创新低、止跌信号触发、下跌深度达 ATR 倍数三条; 扫满未满足则失败
+    _emit_tb_gate(bo_idx, end, 'phase1_no_trough_timeout',
+                  MeasuredKindAware(kind='count', value=max_start_gap,
+                                    label='max_start_gap 扫满'),
+                  max_start_gap, atr_window, on_gate)
     return None
 
 
 def _find_end_idx(df: pd.DataFrame, start_idx: int, anchor: float,
                   max_window: int, atr: float, big_rise_k: float,
-                  support_measure: str = "low") -> Optional[int]:
+                  support_measure: str = "low",
+                  on_gate: Optional[Callable[[GateFailure], None]] = None,
+                  bo_idx: Optional[int] = None,
+                  atr_window: int = 14) -> Optional[int]:
     """阶段二:定位 end(大涨前一根 / timeout)。返回 end_idx 或 None(破位)。
 
     base_min = running min(low) over [start_idx, i-1](不含当前根 i)。
@@ -129,13 +201,25 @@ def _find_end_idx(df: pd.DataFrame, start_idx: int, anchor: float,
     end_scan = min(start_idx + max_window, len(df) - 1)
     base_min = float(df['low'].iat[start_idx])
     for i in range(start_idx + 1, end_scan + 1):
-        if measure_at(df, i, support_measure) < anchor:
+        measured_support = measure_at(df, i, support_measure)
+        if measured_support < anchor:
+            # gate: phase2_break · 反弹推进扫描期间当前 bar 是否击穿 bo 前的收盘价 anchor
+            # measured=anchor_delta(当前支撑价 - anchor, 负值即破位;含义同 phase1_break)
+            # 判据: anchor_delta>=0 通过(仍位于 anchor 之上); <0 失败, 破位, throwback 撤销
+            _emit_tb_gate(bo_idx, i, 'phase2_break',
+                          MeasuredKindAware(kind='anchor_delta',
+                                            value=measured_support - anchor,
+                                            label='破位差'),
+                          0.0, atr_window, on_gate,
+                          op='>=', threshold_param=None)
             return None
         if float(df['high'].iat[i]) - base_min >= big_rise_k * atr:
+            debug_break(i - 1, anchor_kind='end', class_id='tb')  # v2 · phase2 rise end(⚠ i-1 与 event.end_idx 对齐, 非 i)
             return i - 1
         lo_i = float(df['low'].iat[i])
         if lo_i < base_min:
             base_min = lo_i
+    debug_break(end_scan, anchor_kind='end', class_id='tb')  # v2 · phase2 timeout end(与 event.end_idx 对齐)
     return end_scan
 
 
@@ -148,14 +232,20 @@ def evaluate_throwback(
     pullback_min_atr: float = 1.0,
     anchor_measure: str = "high",
     support_measure: str = "close",
+    on_gate: Optional[Callable[[GateFailure], None]] = None,
 ) -> Optional[ThrowbackResult]:
     """对单个 BO 判可买入区间。成功返回 ThrowbackResult(start,end),失败返回 None。
 
     anchor = measure_at(bo-1, anchor_measure);必要条件 = [bo+1, end] 全程
     measure_at(i, support_measure) ≥ anchor。ATR 取 bo-1(bo 当根异常波动会污染当根 ATR)。
     start = 止跌点 ∈ [bo+1, bo+max_start_gap];end = 大涨前一根 / timeout(start+max_window)。纯走势。
+
+    on_gate:Stage 3 调试埋点(非 None 时,阶段一/二内部短路失败会吐 GateFailure);
+    一次调用本函数 = 一次 attempt(X 松对齐,详见 `_emit_tb_gate`)。bo_idx<1/atr<=0 两处
+    边界前置检查不 emit(非阶段一/二判据,brief 未列 gate_name)。
     """
     bo_idx = bo.end_idx
+    debug_break(bo_idx, anchor_kind='entry', class_id='tb')  # v2 · attempt entry(dead code when _DEBUG_MODE=False)
     if bo_idx < 1 or bo_idx >= len(df):
         return None
     atr = _atr_at(df, bo_idx - 1, atr_window)     # ★ bo-1:避开 bo 当根异常 TR
@@ -163,11 +253,13 @@ def evaluate_throwback(
         return None
     anchor = measure_at(df, bo_idx - 1, anchor_measure)
     start = _find_start_idx(df, bo_idx, anchor, max_start_gap, atr,
-                            pullback_min_atr, support_measure)
+                            pullback_min_atr, support_measure,
+                            on_gate=on_gate, atr_window=atr_window)
     if start is None:
         return None
     end = _find_end_idx(df, start, anchor, max_window, atr,
-                        big_rise_k, support_measure)
+                        big_rise_k, support_measure,
+                        on_gate=on_gate, bo_idx=bo_idx, atr_window=atr_window)
     if end is None:
         return None
     return ThrowbackResult(start, end)
@@ -208,8 +300,10 @@ class ThrowbackDetector:
 
     输出字段详见 ThrowbackEvent。
     """
+    has_debug_hooks: ClassVar[bool] = True
 
     event_cls = ThrowbackEvent
+    on_gate = None   # Detector.on_gate protocol 静态声明,运行时不自动继承;默认 None = 生产路径无开销
 
     def __init__(self, *, max_start_gap: int = 5, max_window: int = 5,
                  atr_window: int = 14, big_rise_k: float = 1.5,
@@ -228,7 +322,7 @@ class ThrowbackDetector:
     def detect(self, bo_stream: Iterable[BOEvent], df: pd.DataFrame) -> Iterator[ThrowbackEvent]:
         events = []
         for bo in bo_stream:
-            r = evaluate_throwback(bo, df, **self._kw)
+            r = evaluate_throwback(bo, df, on_gate=self.on_gate, **self._kw)
             if r is not None:
                 start = r.start_idx
                 events.append(ThrowbackEvent(

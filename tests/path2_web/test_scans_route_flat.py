@@ -35,7 +35,7 @@ def app_with_one_scan(tmp_path):
         pattern_specs_json=specs,
         module_paths={"bo_only": "path2_apps.bo_only"},
         pattern_ids=["bo_only"],
-        end_roles={"bo_only": "bo"},
+        end_nodes={"bo_only": "bo"},
         head_buffer_trading_days=63, label_horizon=20,
         start_date="2024-02-01", end_date="2024-06-30",
         workers=1, ticker_regex=None, scan_ts="20260627T130000",

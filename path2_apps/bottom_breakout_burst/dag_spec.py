@@ -2,7 +2,7 @@
 """bottom_breakout_burst dag 声明 — 3 节点 + 1 边 + anchor_field。
 
 拓扑:
-  节点: bo(孤立 role，无边) / burst(consumes bo，嵌套 event) / tb(consumes bo)
+  节点: bo(孤立 node，无边) / burst(consumes bo，嵌套 event) / tb(consumes bo)
   边:   burst.last_bo → tb  (TemporalEdge, anchor_field="anchor_bo_id")
 
 约束归宿:
@@ -33,7 +33,7 @@ from .params import Params, load_params, DEFAULT_YAML_PATH    # noqa: F401 re-ex
 def build_pattern(params: Params) -> PatternSpec:
     """参数化声明工厂:给定 params 造 PatternSpec。detector 实例 + where 阈值在此闭合。"""
     nodes = (
-        # bo 孤立 role：无边，残缺 match 由 analyze 出口过滤
+        # bo 孤立 node：无边，残缺 match 由 analyze 出口过滤
         # render_grid='price': bo 主三角钉 K线主图; pk 通过 referenced_points 字段
         # 作为卫星 marker 画在各自 bar 位置 (见 design §正面回答 Q2)
         NodeSpec("bo",
@@ -80,14 +80,14 @@ def matches(df: pd.DataFrame, params: Optional[Params] = None) -> bool:
 
 
 def eval_meta(params: Optional[Params] = None) -> dict:
-    """评估元数据(path2_web 可选协议):end_role(买点 role)+ 首部缓冲交易日数。
+    """评估元数据(path2_web 可选协议):end_node(买点 node)+ 首部缓冲交易日数。
 
     head_buffer = 本 app 全部 rolling lookback 字段的最大值——参数改动自动传导,
     不手写常量(硬编码常量不随参数变化的教训)。
     """
     p = params or Params.default()
     return {
-        "end_role": "tb",
+        "end_node": "tb",
         "head_buffer_trading_days": max(
             p.bo.vol_baseline_period,
             p.burst.vol_baseline_period,

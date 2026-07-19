@@ -27,26 +27,6 @@ vi.mock('../../src/api', () => ({
 describe('ScanConfigDialog', () => {
   beforeEach(() => { setActivePinia(createPinia()); localStorage.clear() })
 
-  it('opens with fields prefilled from config; selectedIds cleared', async () => {
-    const ps = usePatternsStore(); ps.selectedIds = new Set(['bo_only'])    // 前次残留
-    const w = mount(ScanConfigDialog)
-    await flushPromises()
-    // 5 fields 预填
-    expect((w.find('input[data-field="start_date"]').element as HTMLInputElement).value).toBe('2025-01-01')
-    expect((w.find('input[data-field="end_date"]').element as HTMLInputElement).value).toBe('2025-12-31')
-    expect((w.find('input[data-field="workers"]').element as HTMLInputElement).value).toBe('8')
-    expect((w.find('input[data-field="label_horizon"]').element as HTMLInputElement).value).toBe('20')
-    // selectedIds 强制清空
-    expect(ps.selectedIds.size).toBe(0)
-  })
-
-  it('[开始扫描] disabled when selectedIds empty', async () => {
-    const w = mount(ScanConfigDialog)
-    await flushPromises()
-    const btn = w.findAll('button').find(b => b.text() === '开始扫描')!
-    expect(btn.attributes('disabled')).toBeDefined()
-  })
-
   it('[开始扫描] enabled after selecting one pattern', async () => {
     const w = mount(ScanConfigDialog)
     await flushPromises()

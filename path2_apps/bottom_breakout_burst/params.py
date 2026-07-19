@@ -1,4 +1,4 @@
-"""Default Params for bottom_breakout_burst pattern (nested by node role)。
+"""Default Params for bottom_breakout_burst pattern (nested by node)。
 
 三件套分工:
 - `params.yaml`:web 入口(scan/api/eval_runner)的 SSoT,改完下一次 /scan 即生效(热加载)。
@@ -6,7 +6,7 @@
   (字段名/类型),默认值是"yaml 缺失字段时兜底 + CLI 脚本 / tests fixture 默认"。
 - `Params.from_yaml`/`load_params`:web 入口统一加载入口,逐 section 校验未知 key。
 
-设计:每个 NodeSpec 角色(bo/burst/tb)拥有自己的子 dataclass + yaml section,
+设计:每个 NodeSpec node(bo/burst/tb)拥有自己的子 dataclass + yaml section,
 内含 detector 构造参数 + where 阈值。共用字段(tb.max_start_gap 同时被 ThrowbackDetector
 和 burst→tb edge 复用)归入 tb section、edge 显式引用(SSoT)。edges 子 dataclass 留空
 作格式契约/未来扩展占位。
@@ -72,7 +72,7 @@ class EdgesParams:
 
 @dataclass(frozen=True)
 class Params:
-    """nested by node role:bo/burst/tb/edges 四 section 各自一个子 dataclass。"""
+    """nested by node:bo/burst/tb/edges 四 section 各自一个子 dataclass。"""
     bo: BoParams = field(default_factory=BoParams)
     burst: BurstParams = field(default_factory=BurstParams)
     tb: TbParams = field(default_factory=TbParams)

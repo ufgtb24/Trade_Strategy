@@ -79,7 +79,8 @@ def test_detector_passes_new_kwargs(monkeypatch):
                            ).detect([_bo(5)], df=None))
     assert seen == dict(max_start_gap=3, max_window=4, atr_window=10,
                         big_rise_k=2.0, pullback_min_atr=0.5,
-                        anchor_measure="close", support_measure="close")
+                        anchor_measure="close", support_measure="close",
+                        on_gate=None)   # Task 12:detect() 新增转发 self.on_gate(默认 None)
 
 
 def test_detector_empty_and_all_filtered(monkeypatch):
@@ -127,9 +128,9 @@ def test_dag_engine_bo_to_tb_match(monkeypatch):
     res = analyze(spec, df=object())
     assert len(res.matches) == 1
     m = res.matches[0]
-    assert m.role_index["bo"].end_idx == 20
-    assert m.role_index["tb"].start_idx == 21
-    assert m.role_index["tb"].end_idx == 23
+    assert m.node_index["bo"].end_idx == 20
+    assert m.node_index["tb"].start_idx == 21
+    assert m.node_index["tb"].end_idx == 23
 
 
 # ---- 去重:两个 bo 收敛到同一 span → 一个 tb 事件 ----

@@ -20,7 +20,7 @@ BUY_DATES = ("2024-12-20", "2025-01-10", "2025-03-05")
 def _match(ev):
     return PatternMatch(
         event_id=f"m_{ev.event_id}", start_idx=ev.start_idx, end_idx=ev.end_idx,
-        pattern_id="fake_eval", role_index={"tb": ev}, children=(ev,),
+        pattern_id="fake_eval", node_index={"tb": ev}, children=(ev,),
         predicate_trace=PredicateTrace(where_results={}, edge_results={}),
     )
 
@@ -35,4 +35,4 @@ def analyze(df, params=None):
 
 
 def eval_meta(params=None):
-    return {"end_role": "tb", "head_buffer_trading_days": 10}
+    return {"end_node": "tb", "head_buffer_trading_days": 10}

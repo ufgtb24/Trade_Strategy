@@ -20,7 +20,7 @@ path2_apps 是**走势-特异层**：每个子包声明一个具体形态。与 
 
 对外 API（`__init__.py` 导出）：`build_pattern(params)`、`PATTERN_DAG`（默认参数的模块级常量，供 `to_topology` / discovery）、`analyze(df, params)`、`matches(df, params)`、`eval_meta(params)`、`Params`。
 
-**`eval_meta(params) -> {end_role, head_buffer_trading_days}`** 是 path2_web 的**可选协议**：声明买点 role（手声明，如 `"tb"`）与首部缓冲深度。head_buffer = 本 app 全部 rolling lookback 字段的 **max 推导**（参数改动自动传导，不手写常量；dead 参数如 `pred4_lookback_bars` 不计入）。app 不提供该协议 → web 整链回退严格窗、无 label。app 特异知识（role 名、lookback 值）只经此协议出境，web 端零硬编码。
+**`eval_meta(params) -> {end_node, head_buffer_trading_days}`** 是 path2_web 的**可选协议**：声明买点 node（手声明，如 `"tb"`）与首部缓冲深度。head_buffer = 本 app 全部 rolling lookback 字段的 **max 推导**（参数改动自动传导，不手写常量；dead 参数如 `pred4_lookback_bars` 不计入）。app 不提供该协议 → web 整链回退严格窗、无 label。app 特异知识（node 名、lookback 值）只经此协议出境，web 端零硬编码。
 
 ---
 
@@ -41,11 +41,11 @@ pattern 链：**下跌(down) → 横盘(side) → 连续突破(burst) → 回踩
 五节点：`bo`（BODetector，**孤立流源**，无边、无 where）/ `down` / `side` / `burst`（BurstDetector，consumes bo，复合宽事件）/ `tb`（ThrowbackDetector，consumes bo）。三边链：**down→side（紧邻 gap[1,5]）→ side→burst 首 bo → burst 首 bo→tb**。
 
 关键设计：
-- **bo 是孤立流源 node**：只为产 bo 流给 burst（聚合）与 tb（回踩锚点）消费，自身无边——其单 role 残缺 match 由引擎**出口过滤**丢弃（见 path2.md）。
+- **bo 是孤立流源 node**：只为产 bo 流给 burst（聚合）与 tb（回踩锚点）消费，自身无边——其单 node 残缺 match 由引擎**出口过滤**丢弃（见 path2.md）。
 - **「一串 bo」= 复合宽事件 burst**：`BurstDetector` 切极大段聚合成 `BurstEvent`（start=首 bo / end=尾 bo，携 members + 预算标量）。② = detector 的 `min_bos`；③⑤⑥ = burst 节点 where 直读预算标量（与单实例同式、零特例）。
 - **pattern 链 down→side→burst，down 不直连 burst**：下跌段经 side 衔接（④ = 下跌段**紧邻**横盘段，`gap[1,5]`——横盘紧接下跌；不再用 `pred4_lookback_bars`），符合 下跌→横盘→突破 的真实时序；旧 down→burst 直连越过横盘、语义错位。
 - **side 与 tb 均经 `Child("burst",...)` 连 burst 的内部端点**（标准 nested 表达）：① `ContainmentEdge(side, Child(burst,"first_bo"))`——引擎投影出 `burst.child("first_bo")`（点事件）再 satisfies；与旧 `StartContainmentEdge(side, burst)` match-preserving。⑦ `TemporalEdge(Child(burst,"first_bo"), tb, gap[1,span+N])`——回踩**锚 burst 首 bo 而非末 bo**（强突破带回踩的常是首 bo；末 bo 可能弱/在窗末无回踩，锚末 bo 会系统性漏匹配），`tb.start = 锚 bo.end+1`，`max_gap=burst_max_span+throwback_N` 覆盖"回踩落在 burst 内任一突破之后"。src_selector 出边健全性同 ContainmentEdge（C1 经 dst_selector 已对 burst 关闭）。
-- **down / side 各持独立 `TrendSegmentDetector` 实例**（down_det / side_det，非共享）——引擎 `assign_auto_source_tags` 自动编 trend0 / trend1，event_id 前缀不撞、可按角色分轨。这激活了框架「同类多实例自动消歧」机制（web band-UI 的真实驱动场景）。
+- **down / side 各持独立 `TrendSegmentDetector` 实例**（down_det / side_det，非共享）——引擎 `assign_auto_source_tags` 自动编 trend0 / trend1，event_id 前缀不撞、可按 node 分轨。这激活了框架「同类多实例自动消歧」机制（web band-UI 的真实驱动场景）。
 - `root="burst"` 是退化字段，引擎不读，填合法 node_id 即可。
 
 ---

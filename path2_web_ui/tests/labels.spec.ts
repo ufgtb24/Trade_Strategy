@@ -28,9 +28,9 @@ describe('buildMarkerTooltipFormatter — ordinal consistency with packBrackets 
   it('marker 归属节 ordinal uses start_idx sort, not raw matches order', () => {
     const matches: MatchDict[] = [
       // 故意乱序(非 start_idx 升序):
-      { event_id: 'm_late',  start_idx: 50, end_idx: 60, role_index: {}, children: ['eShared'], predicate_trace: null },
-      { event_id: 'm_early', start_idx: 10, end_idx: 20, role_index: {}, children: ['eShared'], predicate_trace: null },
-      { event_id: 'm_mid',   start_idx: 30, end_idx: 40, role_index: {}, children: ['eShared'], predicate_trace: null },
+      { event_id: 'm_late',  start_idx: 50, end_idx: 60, node_index: {}, children: ['eShared'], predicate_trace: null },
+      { event_id: 'm_early', start_idx: 10, end_idx: 20, node_index: {}, children: ['eShared'], predicate_trace: null },
+      { event_id: 'm_mid',   start_idx: 30, end_idx: 40, node_index: {}, children: ['eShared'], predicate_trace: null },
     ]
     const fmt = buildMarkerTooltipFormatter(undefined, undefined, { matches, candidateMatchIds: new Set() })
     const out = fmt({ data: { event_id: 'eShared' } })
@@ -47,7 +47,7 @@ describe('buildSubOption — brackets series match tooltip label (Task 6 review 
     { date: '2025-01-02', o: 1, h: 1, l: 1, c: 1, v: 1, rv: 0 },
   ]
   const match: MatchDict = {
-    event_id: 'm1', start_idx: 0, end_idx: 1, role_index: {}, children: [], predicate_trace: null,
+    event_id: 'm1', start_idx: 0, end_idx: 1, node_index: {}, children: [], predicate_trace: null,
   }
   function baseInput(overrides: Partial<BandRenderInput> = {}): BandRenderInput {
     return {
@@ -55,9 +55,9 @@ describe('buildSubOption — brackets series match tooltip label (Task 6 review 
       isolatedNodeIds: new Set(),
       tagList: [],
       level: 'detected',
-      roleColors: {},
+      nodeColors: {},
       eventTier: () => 'detected',
-      roleOfEventByBand: () => null,
+      nodeOfEventByBand: () => null,
       bandKeyOf: () => '',
       matches: [match],
       ...overrides,

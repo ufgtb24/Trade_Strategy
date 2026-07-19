@@ -7,7 +7,7 @@ import CandidateStatusBar from '../src/components/CandidateStatusBar.vue'
 vi.mock('../src/api', () => ({
   getDiagnose: vi.fn(() => Promise.resolve(null)),
   getPreview: vi.fn(() => Promise.resolve({
-    analysis: { events: [], matches: [], role_index: {} },
+    analysis: { events: [], matches: [], node_index: {} },
     summary: { events: 0, matches: 0 },
     pattern_spec: {} as never, scan: {} as never,
   })),
@@ -33,9 +33,9 @@ describe('CandidateStatusBar (Task 10)', () => {
     const view = useViewStore()
     // Matches deliberately NOT in start_idx order — ensures ordinal is sorted by start_idx
     const matches = [
-      { event_id: 'm_late',  start_idx: 50, end_idx: 60, children: [], role_index: {}, predicate_trace: null },
-      { event_id: 'm_early', start_idx: 10, end_idx: 20, children: [], role_index: {}, predicate_trace: null },
-      { event_id: 'm_mid',   start_idx: 30, end_idx: 40, children: [], role_index: {}, predicate_trace: null },
+      { event_id: 'm_late',  start_idx: 50, end_idx: 60, children: [], node_index: {}, predicate_trace: null },
+      { event_id: 'm_early', start_idx: 10, end_idx: 20, children: [], node_index: {}, predicate_trace: null },
+      { event_id: 'm_mid',   start_idx: 30, end_idx: 40, children: [], node_index: {}, predicate_trace: null },
     ]
     const w = mount(CandidateStatusBar, { props: { matches } })
     // Subscribe to all three — start_idx sort: m_early=①, m_mid=②, m_late=③
@@ -51,9 +51,9 @@ describe('CandidateStatusBar (Task 10)', () => {
   it('subset of candidates produces non-sequential ordinals', async () => {
     const view = useViewStore()
     const matches = [
-      { event_id: 'm_late',  start_idx: 50, end_idx: 60, children: [], role_index: {}, predicate_trace: null },
-      { event_id: 'm_early', start_idx: 10, end_idx: 20, children: [], role_index: {}, predicate_trace: null },
-      { event_id: 'm_mid',   start_idx: 30, end_idx: 40, children: [], role_index: {}, predicate_trace: null },
+      { event_id: 'm_late',  start_idx: 50, end_idx: 60, children: [], node_index: {}, predicate_trace: null },
+      { event_id: 'm_early', start_idx: 10, end_idx: 20, children: [], node_index: {}, predicate_trace: null },
+      { event_id: 'm_mid',   start_idx: 30, end_idx: 40, children: [], node_index: {}, predicate_trace: null },
     ]
     const w = mount(CandidateStatusBar, { props: { matches } })
     // Candidate set is {m_early, m_late} (skip m_mid) → expected ① ③
@@ -70,7 +70,7 @@ describe('CandidateStatusBar (Task 10)', () => {
       start_idx: (i + 1) * 10,
       end_idx: (i + 1) * 10 + 5,
       children: [] as string[],
-      role_index: {} as Record<string, string>,
+      node_index: {} as Record<string, string>,
       predicate_trace: null,
     }))
     const w = mount(CandidateStatusBar, { props: { matches } })

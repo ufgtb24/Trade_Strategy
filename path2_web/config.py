@@ -7,6 +7,7 @@ import yaml
 
 DEFAULT_CONFIG = {
     "backend_port": 8000,
+    "backend_port_dbg": 8002,
     "frontend_port": 5173,
     "dataset_dir": "datasets/pkls",
     "scan": {

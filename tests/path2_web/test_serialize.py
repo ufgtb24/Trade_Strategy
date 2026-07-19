@@ -29,33 +29,17 @@ def test_serialize_events_flatten_subclass_attrs():
     assert isinstance(burst["distinct_pk"], int)
 
 
-def test_serialize_burst_members_as_event_ids():
-    """burst.members 序列化为 event_id 字符串列表(非嵌套 dict),供前端 matchedIds 沿 members 递归展开。
-    与 broken_peak_ids 不同:broken_peak_ids 是 int 列表,members 是 event_id str 列表。"""
-    res = _analyze_positive()
-    out = serialize.serialize_analysis(res)
-    burst = next(e for e in out["events"] if e["class_id"] == "burst")
-    assert "members" in burst, "burst event dict 必须含 members 字段"
-    assert isinstance(burst["members"], list)
-    assert len(burst["members"]) >= 1
-    assert all(isinstance(m, str) for m in burst["members"]), "members 内每项必须是 event_id 字符串(非 dict)"
-    # members 内所有 event_id 都能在 events 集中找到对应 bo event
-    bo_ids = {e["event_id"] for e in out["events"] if e["class_id"] == "bo"}
-    for mid in burst["members"]:
-        assert mid in bo_ids, f"burst.members 内 event_id {mid!r} 必须存在于顶层 bo events 中"
-
-
-def test_serialize_match_role_index_and_trace():
+def test_serialize_match_node_index_and_trace():
     res = _analyze_positive()
     out = serialize.serialize_analysis(res)
     assert len(out["matches"]) >= 1
     m = out["matches"][0]
-    assert {"event_id", "start_idx", "end_idx", "role_index", "children", "predicate_trace"} <= set(m)
-    # burst 是 ONCE role → str;tb 也是 ONCE role → str;bo 不进 role_index(isolated)
-    assert isinstance(m["role_index"]["burst"], str)
-    assert isinstance(m["role_index"]["tb"], str)
-    assert "bo" not in m["role_index"]
-    # children = role_index 展平,event_id 列表
+    assert {"event_id", "start_idx", "end_idx", "node_index", "children", "predicate_trace"} <= set(m)
+    # burst 是 ONCE node → str;tb 也是 ONCE node → str;bo 不进 node_index(isolated)
+    assert isinstance(m["node_index"]["burst"], str)
+    assert isinstance(m["node_index"]["tb"], str)
+    assert "bo" not in m["node_index"]
+    # children = node_index 展平,event_id 列表
     assert isinstance(m["children"], list) and all(isinstance(c, str) for c in m["children"])
     # trace:where_results 是富化 witness(measured/op/threshold)
     pt = m["predicate_trace"]
@@ -83,7 +67,7 @@ def test_summarize_counts_by_class_id_plus_matches():
 def test_serialize_pattern_topology_and_rules():
     from path2_apps.bottom_breakout_burst.dag_spec import PATTERN_DAG
     out = serialize.serialize_pattern(PATTERN_DAG)
-    assert out["pattern_id"] == "bottom_breakout_burst"
+    assert out["pattern_id"] == "bottom_burst"
     topo = out["topology"]
     ids = {n["node_id"] for n in topo["nodes"]}
     assert ids == {"bo", "burst", "tb"}   # 3 nodes: bo isolated + burst/tb ONCE
@@ -146,34 +130,6 @@ def test_injective_assert_raises_on_same_tag_distinct_instances():
         _assert_injective_source_tags(nodes)
 
 
-def test_serialize_analysis_events_have_band_source_tag():
-    import pickle
-    df = pickle.load(open("datasets/pkls/ACRS.pkl", "rb"))
-    from path2_apps.bottom_breakout_burst.dag_spec import analyze
-    from path2_web.serialize import serialize_analysis
-    res = analyze(df)
-    sa = serialize_analysis(res)
-    tags = {e["source_tag"] for e in sa["events"]}
-    assert tags <= {"bo", "burst", "tb"}      # 全归权威 band
-    assert all(e.get("source_tag") for e in sa["events"])          # 无 None/缺失
-
-
-def test_burst_event_dict_members_as_event_ids():
-    """burst event dict 的 members 是 event_id 字符串列表(不是嵌套 BOEvent dict);
-    供前端 matchedIds 沿 members 递归展开(matched composite event 的 constituent 也 matched)。
-    预算标量(count/distinct_pk)仍并存。"""
-    import pickle
-    df = pickle.load(open("datasets/pkls/ACRS.pkl", "rb"))
-    from path2_apps.bottom_breakout_burst.dag_spec import analyze
-    from path2_web.serialize import serialize_analysis
-    sa = serialize_analysis(analyze(df))
-    burst = next(e for e in sa["events"] if e["class_id"] == "burst")
-    assert "members" in burst
-    assert isinstance(burst["members"], list)
-    assert all(isinstance(m, str) for m in burst["members"])    # event_id 字符串非嵌套 dict
-    assert burst["count"] >= 1 and "distinct_pk" in burst   # 预算标量仍在
-
-
 def test_serialize_pattern_nodes_have_render_grid():
     """serialize_pattern 节点 dict 透传 render_grid; bo='price', 其余='time'。"""
     from path2_apps.bottom_breakout_burst.dag_spec import PATTERN_DAG
@@ -182,6 +138,48 @@ def test_serialize_pattern_nodes_have_render_grid():
     assert by["bo"]["render_grid"] == "price"
     assert by["burst"]["render_grid"] == "time"
     assert by["tb"]["render_grid"] == "time"
+
+
+def test_burst_event_dict_child_refs_protocol():
+    """child_refs 承载 BurstEvent.members(schema-driven,不硬编码字段名);
+    顶层 members 字段消失(不留兼容层)。"""
+    res = _analyze_positive()
+    out = serialize.serialize_analysis(res)
+    events = out["events"]
+    burst = next(e for e in events if e["class_id"] == "burst")
+    # 顶层无 members
+    assert "members" not in burst, "payload 里不再有顶层 members 字段(由 child_refs 承载)"
+    # child_refs["members"] 是 event_id 列表
+    assert "child_refs" in burst, "所有 event 必须携带 child_refs"
+    assert burst["child_refs"].get("members"), "BurstEvent child_refs.members 非空"
+    assert all(isinstance(x, str) for x in burst["child_refs"]["members"])
+    bo_ids = {e["event_id"] for e in events if e["class_id"] == "bo"}
+    for mid in burst["child_refs"]["members"]:
+        assert mid in bo_ids
+
+
+def test_leaf_event_child_refs_empty():
+    """叶子 event(BOEvent / TBEvent)child_refs 是空 dict。"""
+    res = _analyze_positive()
+    out = serialize.serialize_analysis(res)
+    events = out["events"]
+    for e in events:
+        if e["class_id"] in ("bo", "tb"):
+            assert e.get("child_refs") == {}, f"{e['event_id']}: 叶子 event child_refs 必须为空 dict"
+
+
+def test_serialize_pattern_edges_anchor_field():
+    """topology.edges 每条边携带 anchor_field(str 或 None);bottom_burst 的 burst→tb 边
+    anchor_field = 'anchor_bo_id'。"""
+    from path2_apps.bottom_breakout_burst.dag_spec import PATTERN_DAG
+    result = serialize.serialize_pattern(PATTERN_DAG)
+    edges = result["topology"]["edges"]
+    assert len(edges) >= 1
+    for e in edges:
+        assert "anchor_field" in e, f"每条边必须携带 anchor_field 键(值可为 None): {e!r}"
+    # burst→tb 边 anchor_field 为 'anchor_bo_id'
+    burst_tb = next(e for e in edges if e["src"] == "burst" and e["dst"] == "tb")
+    assert burst_tb["anchor_field"] == "anchor_bo_id"
 
 
 def test_serialize_analysis_bo_events_have_referenced_points():

@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Iterable, Iterator, List, Optional, Tuple
+from typing import ClassVar, Iterable, Iterator, List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
@@ -10,6 +10,8 @@ import pandas as pd
 from path2 import Event
 from path2.calc.measure import VALID_MEASURES, measure_at, measure_series
 from path2.calc.volume import calculate_vol_ratio
+from path2.dag.gate_failure import GateFailure, MeasuredKindAware
+from path2.debug import current_symbol
 from path2.stdlib import BarwiseDetector, span_id
 
 
@@ -114,7 +116,9 @@ class BurstDetector:
     买家因果:实例在 end 时刻即时物化,只读 ≤ end 的数据。总实例 O(n)。
     只切串 + 算预算标量;阈值过滤交给 burst node 的 where。
     """
+    has_debug_hooks: ClassVar[bool] = False
     event_cls = BurstEvent
+    on_gate = None   # Detector.on_gate protocol 静态声明,运行时不自动继承;默认 None = 生产路径无开销
 
     def __init__(self, gap_max: int, min_bos: int, vol_baseline_period: int = 63):
         self.gap_max = gap_max
@@ -128,9 +132,54 @@ class BurstDetector:
         head = 0                                       # 当前簇首在 seq 的下标
         for k in range(len(seq)):
             if k > 0 and seq[k].start_idx - seq[k - 1].start_idx > self.gap_max:
+                # gate: chain_break · 判断相邻两次突破是否紧邻, 足以视作同一簇
+                # measured=gap(相邻两次突破的起点索引之差, 单位=bar)
+                # 判据: gap<=gap_max 通过并入同簇; gap>gap_max 失败, 前一簇立即结算, 后一根另起新簇
+                if self.on_gate is not None:
+                    prev_cluster_start = seq[head].start_idx
+                    prev_cluster_end = seq[k - 1].end_idx
+                    self.on_gate(GateFailure(
+                        failure_event_window=(prev_cluster_start, seq[k].start_idx),
+                        start_idx=prev_cluster_start,
+                        gate_idx=seq[k].start_idx,
+                        anchor_bar=prev_cluster_end,
+                        class_id='burst',
+                        gate_name='chain_break',
+                        measured=MeasuredKindAware(kind='gap',
+                                                    value=seq[k].start_idx - seq[k - 1].start_idx,
+                                                    label='gap'),
+                        threshold=self.gap_max,
+                        op='<=', threshold_param='gap_max',
+                        evaluation_lookback=None,
+                        symbol=current_symbol.get() or '',
+                    ))
                 head = k                               # 断链:相邻 gap > gap_max
             if k - head + 1 >= self.min_bos:
                 out.append(self._make_burst(seq[head: k + 1], vol_ratio_series))   # 前缀实例,end=seq[k]
+
+        # 流末尾:若最后一簇 size < min_bos,从未跨过 emit 门槛 · 吐 min_bos_insufficient
+        if self.on_gate is not None and len(seq) > 0:
+            last_cluster_size = len(seq) - head
+            if last_cluster_size < self.min_bos:
+                # gate: min_bos_insufficient · 扫描结束时手头这一簇的突破数量是否达到确认门槛
+                # measured=count(当前簇内已积累的突破个数 = len(seq) - head)
+                # 判据: count>=min_bos 通过并落地为 burst; count<min_bos 失败, 该簇被丢弃
+                cluster_start = seq[head].start_idx
+                cluster_end = seq[-1].end_idx
+                self.on_gate(GateFailure(
+                    failure_event_window=(cluster_start, cluster_end),
+                    start_idx=cluster_start,
+                    gate_idx=cluster_end,
+                    anchor_bar=cluster_end,
+                    class_id='burst',
+                    gate_name='min_bos_insufficient',
+                    measured=MeasuredKindAware(kind='count', value=last_cluster_size, label='bo数'),
+                    threshold=self.min_bos,
+                    op='>=', threshold_param='min_bos',
+                    evaluation_lookback=None,
+                    symbol=current_symbol.get() or '',
+                ))
+
         out.sort(key=lambda e: (e.end_idx, e.start_idx))         # 保险;实际天然 end 升序
         yield from out
 
@@ -178,8 +227,10 @@ class BODetector(BarwiseDetector):
 
     输出字段详见 BOEvent。
     """
+    has_debug_hooks: ClassVar[bool] = False
 
     event_cls = BOEvent
+    on_gate = None   # Detector.on_gate protocol 静态声明,运行时不自动继承;默认 None = 生产路径无开销
 
     def __init__(self,
                  total_window: int = 20,
@@ -212,6 +263,13 @@ class BODetector(BarwiseDetector):
         self._last_bo_idx: Optional[int] = None
         self._peak_id_counter: int = 0
         self._vol_ratio_series: Optional[pd.Series] = None
+
+    def _eval_lookback(self, current_idx: int) -> Tuple[int, int]:
+        """detector 内部判据依赖的历史窗 · [current_idx - total_window, current_idx - 1]
+        裁剪起点至非负(不裁剪终点:current_idx=0 时得到 (0, -1),仅供 tooltip 展示、
+        不参与 ⊆ 判据,保持与 GateFailure.evaluation_lookback 语义一致的简单公式)。
+        """
+        return (max(0, current_idx - self.total_window), current_idx - 1)
 
     def detect(self, df: pd.DataFrame):
         # 重置状态(detect 之间不跨调用)
@@ -259,6 +317,21 @@ class BODetector(BarwiseDetector):
         self._active_peaks = remaining_peaks
 
         if not broken_peaks:
+            # gate: no_active_peak_broken · 当前 bar 的价格是否越过某个已登记的候选高点(含溢价倍数)
+            # measured=breakout_price(当前 bar 用来比较的价, 由 breakout_measure 决定, 一般是 close 或 high)
+            # 判据: 存在候选高点 P 使 breakout_price > P.price*(1+exceed_threshold) 则通过; 否则失败
+            if self.on_gate is not None:
+                self.on_gate(GateFailure(
+                    failure_event_window=(i, i),
+                    start_idx=i, gate_idx=i,
+                    anchor_bar=i, class_id='bo',
+                    gate_name='no_active_peak_broken',
+                    measured=MeasuredKindAware(kind='breakout_price', value=breakout_price, label='突破价'),
+                    threshold=None,
+                    op=None, threshold_param=None,
+                    evaluation_lookback=self._eval_lookback(i),
+                    symbol=current_symbol.get() or '',
+                ))
             return None
 
         # 3. 算字段
@@ -299,6 +372,21 @@ class BODetector(BarwiseDetector):
         """
         window_start = current_idx - self.total_window
         if window_start < 0:
+            # gate: peak_no_local_max(热身检查) · 当前 bar 之前是否有 total_window 根历史数据可做局部最大扫描
+            # measured=window_start(扫描窗口左端的全局索引 = current_idx - total_window)
+            # 判据: window_start>=0 通过(历史够长); <0 失败, 数据不足静默跳过, 非真失败
+            if self.on_gate is not None:
+                self.on_gate(GateFailure(
+                    failure_event_window=(current_idx, current_idx),
+                    start_idx=current_idx, gate_idx=current_idx,
+                    anchor_bar=current_idx, class_id='bo',
+                    gate_name='peak_no_local_max',
+                    measured=MeasuredKindAware(kind='window_start', value=window_start, label='窗口起点'),
+                    threshold=0,
+                    op='>=', threshold_param=None,
+                    evaluation_lookback=self._eval_lookback(current_idx),
+                    symbol=current_symbol.get() or '',
+                ))
             return
         lows = df['low'].iloc[window_start: current_idx]
         volumes = df['volume'].iloc[window_start: current_idx]
@@ -310,21 +398,100 @@ class BODetector(BarwiseDetector):
         max_local_idx = measures.index(max_measure)
 
         if max_local_idx < self.min_side_bars:
+            # gate: peak_side_bars_insufficient(首侧) · 候选高点距扫描窗口左端是否留出足够的确认空间
+            # measured=side_bars_offset(高点在窗口内的相对位置 = 距窗口左端的根数)
+            # 判据: offset>=min_side_bars 通过; <min_side_bars 失败, 高点太靠窗口起点, 尚不能算稳定极值
+            if self.on_gate is not None:
+                self.on_gate(GateFailure(
+                    failure_event_window=(current_idx, current_idx),
+                    start_idx=current_idx, gate_idx=current_idx,
+                    anchor_bar=current_idx, class_id='bo',
+                    gate_name='peak_side_bars_insufficient',
+                    measured=MeasuredKindAware(kind='side_bars_offset', value=max_local_idx, label='峰-窗首侧翼'),
+                    threshold=self.min_side_bars,
+                    op='>=', threshold_param='min_side_bars',
+                    evaluation_lookback=self._eval_lookback(current_idx),
+                    symbol=current_symbol.get() or '',
+                ))
             return
         if max_local_idx >= len(measures) - self.min_side_bars:
+            # gate: peak_side_bars_insufficient(尾侧) · 候选高点距扫描窗口右端是否留出足够的确认空间
+            # measured=side_bars_offset(距窗口右端的根数 = len(measures) - 1 - max_local_idx)
+            # 判据: offset>=min_side_bars 通过; <min_side_bars 失败, 高点太靠窗口末端, 后续可能被新高覆盖
+            if self.on_gate is not None:
+                self.on_gate(GateFailure(
+                    failure_event_window=(current_idx, current_idx),
+                    start_idx=current_idx, gate_idx=current_idx,
+                    anchor_bar=current_idx, class_id='bo',
+                    gate_name='peak_side_bars_insufficient',
+                    measured=MeasuredKindAware(
+                        kind='side_bars_offset',
+                        value=len(measures) - 1 - max_local_idx,
+                        label='峰-窗尾侧翼',
+                    ),
+                    threshold=self.min_side_bars,
+                    op='>=', threshold_param='min_side_bars',
+                    evaluation_lookback=self._eval_lookback(current_idx),
+                    symbol=current_symbol.get() or '',
+                ))
             return
 
         peak_global_idx = window_start + max_local_idx
         # 已存在
         for p in self._active_peaks:
             if p.index == peak_global_idx:
+                # gate: peak_already_active · 新识别到的高点是否已在候选高点集合里
+                # measured=peak_idx(候选高点的全局索引 = window_start + max_local_idx)
+                # 判据: 集合中未包含相同索引的高点通过; 已存在则失败(去重, 避免同一根被反复识别)
+                if self.on_gate is not None:
+                    self.on_gate(GateFailure(
+                        failure_event_window=(current_idx, current_idx),
+                        start_idx=current_idx, gate_idx=current_idx,
+                        anchor_bar=current_idx, class_id='bo',
+                        gate_name='peak_already_active',
+                        measured=MeasuredKindAware(kind='peak_idx', value=peak_global_idx, label='已存在peak索引'),
+                        threshold=None,
+                        op=None, threshold_param=None,
+                        evaluation_lookback=self._eval_lookback(current_idx),
+                        symbol=current_symbol.get() or '',
+                    ))
                 return
 
         window_min_low = min(lows)
         if window_min_low <= 0:
+            # gate: peak_no_local_max(除零守卫) · 扫描窗口内最低价是否有效, 可作相对高度的分母
+            # measured=window_min_low(窗口内所有 low 的最小值)
+            # 判据: window_min_low>0 通过; <=0 失败, 除零或负价, 相对高度无意义
+            if self.on_gate is not None:
+                self.on_gate(GateFailure(
+                    failure_event_window=(current_idx, current_idx),
+                    start_idx=current_idx, gate_idx=current_idx,
+                    anchor_bar=current_idx, class_id='bo',
+                    gate_name='peak_no_local_max',
+                    measured=MeasuredKindAware(kind='window_min_low', value=window_min_low, label='窗口最低价'),
+                    threshold=0,
+                    op='>', threshold_param=None,
+                    evaluation_lookback=self._eval_lookback(current_idx),
+                    symbol=current_symbol.get() or '',
+                ))
             return
         relative_height = (max_measure - window_min_low) / window_min_low
         if relative_height < self.min_relative_height:
+            # gate: peak_relative_height_insufficient · 高点相对窗口内最低价的抬升幅度是否达到门槛
+            # measured=relative_height((max_measure - window_min_low) / window_min_low)
+            # 判据: relative_height>=min_relative_height 通过; 否则失败, 高点太平, 不算有意义的极值
+            if self.on_gate is not None:
+                self.on_gate(GateFailure(
+                    failure_event_window=(current_idx, current_idx),
+                    start_idx=current_idx, gate_idx=current_idx,
+                    anchor_bar=current_idx, class_id='bo',
+                    gate_name='peak_relative_height_insufficient',
+                    measured=MeasuredKindAware(kind='relative_height', value=relative_height, label='相对高度'),
+                    threshold=self.min_relative_height,
+                    op='>=', threshold_param='min_relative_height',
+                    evaluation_lookback=self._eval_lookback(current_idx),
+                    symbol=current_symbol.get() or '',
+                ))
             return
 
         # 算 volume_peak (vol_ratio at peak idx)

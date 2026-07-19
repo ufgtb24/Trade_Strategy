@@ -20,9 +20,9 @@ function baseInput(overrides: Partial<BandRenderInput> = {}): BandRenderInput {
     isolatedNodeIds: new Set(),
     tagList: [],
     level: 'matched',
-    roleColors: {},
+    nodeColors: {},
     eventTier: () => 'matched',
-    roleOfEventByBand: () => null,
+    nodeOfEventByBand: () => null,
     bandKeyOf: () => '',
     ...overrides,
   }
@@ -84,6 +84,32 @@ describe('buildMainOption / buildSubOption — zoomOverride passthrough (chart.t
   })
 })
 
+describe('buildMainOption — y 轴窗口跟随 zoomOverride(修 zoom-in 后 render 留白 bug)', () => {
+  // 前低后高、价差悬殊的 10 根 bars:低价前段 h=2、高价后段 h=100。
+  // 复现「zoom-in 到低价前段后全量 render → y 轴却按全窗 high 算 → K 线压底留白」。
+  const wideBars: Bar[] = Array.from({ length: 10 }, (_, i) => {
+    const lo = i < 5 ? 1 : 50
+    const hi = i < 5 ? 2 : 100
+    return { date: `2024-02-${String(i + 1).padStart(2, '0')}`, o: lo, h: hi, l: lo, c: hi, v: 100, rv: 1 }
+  })
+  const wideBundle = (input: BandRenderInput) => computeEventData(wideBars, [], [], input)
+
+  it('zoomOverride 圈定低价前段 → yAxis.max 贴合可见窗(不回跳全局 high)', () => {
+    // 可见窗 idx 0..3 全在低价段(h=2):displayHeight=(2-1)/0.8=1.25,
+    // displayBottom=max(0,1-0.125)=0.875,displayTop=2.125。全局 high=100 → 全窗 max=123.75。
+    const input = baseInput({ zoomOverride: { start: 0, end: 40 } })
+    const opt: any = buildMainOption(wideBars, wideBundle(input), input)
+    expect(opt.yAxis[0].max).toBeLessThan(10)          // 不得回跳到全局 high(123.75)
+    expect(opt.yAxis[0].max).toBeCloseTo(2.125, 6)     // 贴合可见窗
+  })
+
+  it('无 zoomOverride → yAxis 覆盖全窗(既有行为不变)', () => {
+    const input = baseInput()
+    const opt: any = buildMainOption(wideBars, wideBundle(input), input)
+    expect(opt.yAxis[0].max).toBeCloseTo(123.75, 6)    // 全窗 displayTop
+  })
+})
+
 describe('buildMainOption — strictWindow markArea shading (chart.ts:280,287)', () => {
   it('strictWindow 存在 → kline 系列带 markArea 灰阴影', () => {
     const input = baseInput({ strictWindow: { startIdx: 1, endIdx: 1 } })
@@ -129,5 +155,28 @@ describe('S1 fix: chartSub tooltip 挂 body + 删 markerTooltip 系列级冗余'
         expect('appendToBody' in s.tooltip).toBe(false)
       }
     }
+  })
+})
+
+describe('buildMainOption — symbolLabel title (K 线图内嵌 symbol,居中)', () => {
+  it('symbolLabel="AAPL" → title.text="AAPL",left="center",top=6', () => {
+    const input = baseInput({ symbolLabel: 'AAPL' })
+    const opt: any = buildMainOption(bars, mkBundle(input), input)
+    expect(opt.title).toBeDefined()
+    expect(opt.title.text).toBe('AAPL')
+    expect(opt.title.left).toBe('center')
+    expect(opt.title.top).toBe(6)
+  })
+
+  it('symbolLabel=null → return 对象不含 title key(隐藏)', () => {
+    const input = baseInput({ symbolLabel: null })
+    const opt: any = buildMainOption(bars, mkBundle(input), input)
+    expect('title' in opt).toBe(false)
+  })
+
+  it('symbolLabel="" 空字符串 → return 对象不含 title key(隐藏)', () => {
+    const input = baseInput({ symbolLabel: '' })
+    const opt: any = buildMainOption(bars, mkBundle(input), input)
+    expect('title' in opt).toBe(false)
   })
 })

@@ -168,33 +168,19 @@ flowchart TD
 
 ---
 
-## 7. Kleene 节点：整段作一个绑定单元（现状代码的特殊分支）
-
-当前 `_solve.py` 里，角色除了普通 **ONCE**（挑一个 event），还有一种 **Kleene**（挑一**段**密集 event，如 bo 串）。填到 Kleene 角色时走另一条路 `:202-218`：
-
-- `kleene_bind`（`:127`）从候选流里**成段**：以落在窗口内的 event 为段首，把后续在 `span_from_first` 跨度内的成员收成一段，整段过 `min_count` + `node.where` + `aggregate_where`，`yield (整段, 段尾下标)`。
-- 整段当**一个绑定单元**塞进 `assign[v]`（所以 `assign` 的值可能是单个 Event，也可能是 `tuple`）。
-- 入边对**段首**判定（`_kleene_indeg_ok` `:159`）；出边/取端点由 `endpoint()`（`:89`）按 `endpoint_for_edges` 取段首或段尾。
-- 成段是**贪心极大段**（`:156` `i = j` 不回头）。
-
-> 这套 Kleene 特化是 bo 串当前的实现方式。它带来一串端点/聚合的特殊处理（`endpoint`、`aggregate_where`、`_kleene_indeg_ok`），也是 `docs/research/2026-06-08-path2-nested-event-design.md` 那份设计想用"nested event"去统一收编的对象——但**那是未实现的设计**，当前代码仍是本节描述的 Kleene。
-
----
-
-## 8. 物化（reify）
+## 7. 物化（reify）
 
 solve 吐出的是一张张**"角色→选中 event（下标）"分配表** `Solution`。阶段④ `reify`（`_reify.py`）把它翻译成完整 match 对象：每个角色的真实 event、每条 edge 的见证、可下钻数据，供前端画图与诊断。
 
 ---
 
-## 9. 代码地图（对照 `_solve.py` 速查）
+## 8. 代码地图（对照 `_solve.py` 速查）
 
 | 函数 / 结构 | 职责 | 行 |
 |---|---|---|
 | `compile_plan` | spec → Plan：拆 WCC、排拓扑序、标 eq_src | `:65` |
 | `Plan` / `WccPlan` / `Solution` | 计划与解的数据结构 | `:39` `:50` `:59` |
-| `endpoint` | 从绑定取代表 event（Kleene 取段首/尾，ONCE 直返） | `:89` |
-| `kleene_bind` | Kleene 成段（段首落窗口 + 成员跨度 + 整段过条件） | `:127` |
+| `endpoint` | 从绑定取代表 event | `:89` |
 | `_lef_dfs` | **SKIP_TILL_NEXT 核心**：按序填表 + 回溯 + 剪枝 | `:177` |
 | `feasible_window` 取交 | ① 划范围 | `:191-194` |
 | 候选生成 | ② 新鲜后缀 ∩ 窗口 | `:221` |
@@ -206,7 +192,7 @@ solve 吐出的是一张张**"角色→选中 event（下标）"分配表** `Sol
 
 ---
 
-## 10. 一句话总结
+## 9. 一句话总结
 
 > **solve = 把角色按连通性分块（WCC）→ 在每块里按拓扑序"填表"（DFS）→ 每填一格，前面的格子用 edge 给它"划范围 + 复核关系"→ 填不下去就回溯换一个 → 一路用「窗口 / memo / C1 塌缩」三招剪枝加速。**
 

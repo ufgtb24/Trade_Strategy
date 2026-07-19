@@ -6,7 +6,7 @@ describe('types', () => {
   it('fixtures conform (compiles) and helpers work', () => {
     expect(PATTERN.pattern_id).toBe('bottom_breakout_burst')
     expect(SCAN_FILE.results[0].per_pattern['bottom_breakout_burst'].analysis.matches.length).toBe(1)
-    expect(DIAG.roles.bo.rel[0].ok_count).toBe(1)
+    expect(DIAG.nodes.bo.rel[0].ok_count).toBe(1)
     // 几何自描述
     expect(isPoint(ANALYSIS.events.find(e => e.event_id === 'bo9')!)).toBe(true)
     expect(isPoint(ANALYSIS.events.find(e => e.event_id === 'down1')!)).toBe(false)

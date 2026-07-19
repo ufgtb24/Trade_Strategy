@@ -1,29 +1,45 @@
 // 可见集辅助函数(band/tier/tag/tooltip)。level 门控由 chart 层消费,此处仅提供纯函数原语。
-import type { EventDict, MatchDict, TopoNode, Topology, AttrRow, Diagnostics, Tier, ClauseWitness, ScanMeta, Bar } from '../types'
+import type { EventDict, MatchDict, TopoNode, TopoEdge, Topology, AttrRow, Diagnostics, Tier, ClauseWitness, ScanMeta, Bar } from '../types'
 import type { TooltipPayload, TooltipClauseRow } from './chart'
 
-/** 所有匹配内实例 event_id 的并集。
- *  若提供 events,沿事件 dict 的 `members`(event_id 数组)和 `anchor_bo_id`(单个 event_id)
- *  字段递归展开:matched 的 composite event(如 burst)其 constituent bo 也进入 matched 集,
- *  让 K线主图的 bo/pk geometry 与 matched 状态自然继承(schema-driven,非 class_id 分支)。 */
-export function matchedIds(matches: MatchDict[], events?: EventDict[]): Set<string> {
+/** 所有匹配内实例 event_id 的并集(schema-driven 协议驱动)。
+ *  展开规则:
+ *  - 初始集 = ⋃ match.children
+ *  - 持有型引用:沿 ev.child_refs 所有 slot value(event_id 列表)递归入队
+ *  - 弱引用:从 edges 收集所有非空 anchor_field 名字,遍历 ev 上对应字段(event_id 字符串)入队
+ *  不再硬编码 members / anchor_bo_id 字段名——协议来自 Event.child_slots +
+ *  DependencyEdge.anchor_field。matched 的 composite event(如 burst)其 constituent
+ *  bo 通过 child_refs 自然进 matched 集;tb.anchor_bo_id 通过 anchor_field 反查进入。
+ *  @param edges 拓扑边列表,用于收集 anchor_field 名字;传空数组 = 无 anchor_field 展开
+ *    (合法但退化到仅 child_refs 展开,不做弱引用反查)。 */
+export function matchedIds(
+  matches: MatchDict[],
+  events: EventDict[],
+  edges: TopoEdge[],
+): Set<string> {
   const s = new Set<string>()
   for (const m of matches) for (const c of m.children) s.add(c)
-  if (!events || s.size === 0) return s
+  if (events.length === 0 || s.size === 0) return s
   const byId = new Map(events.map(e => [e.event_id, e]))
+  const anchorFields = new Set<string>()
+  for (const e of edges) if (e.anchor_field) anchorFields.add(e.anchor_field)
   const queue: string[] = [...s]
   while (queue.length) {
     const id = queue.pop()!
     const ev = byId.get(id)
     if (!ev) continue
-    const members = (ev as Record<string, unknown>).members
-    if (Array.isArray(members)) {
-      for (const mid of members) {
-        if (typeof mid === 'string' && !s.has(mid)) { s.add(mid); queue.push(mid) }
+    // 持有型:child_refs 所有 slot
+    const refs = ev.child_refs
+    if (refs) {
+      for (const ids of Object.values(refs)) {
+        for (const cid of ids) if (!s.has(cid)) { s.add(cid); queue.push(cid) }
       }
     }
-    const anchor = (ev as Record<string, unknown>).anchor_bo_id
-    if (typeof anchor === 'string' && !s.has(anchor)) { s.add(anchor); queue.push(anchor) }
+    // 弱引用:anchor_field 反查
+    for (const af of anchorFields) {
+      const v = (ev as Record<string, unknown>)[af]
+      if (typeof v === 'string' && !s.has(v)) { s.add(v); queue.push(v) }
+    }
   }
   return s
 }
@@ -61,12 +77,12 @@ export function isQualifiedRow(row: AttrRow): boolean {
   return Object.values(row.clauses).every(c => c.satisfied)
 }
 
-/** ⋃_role { e ∈ diag.roles[nid].attr : isQualifiedRow }。返回 qualified event_id 集。 */
+/** ⋃_node { e ∈ diag.nodes[nid].attr : isQualifiedRow }。返回 qualified event_id 集。 */
 export function qualifiedIdsOf(diag: Diagnostics | null): Set<string> {
   const out = new Set<string>()
   if (!diag) return out
-  for (const role of Object.values(diag.roles))
-    for (const row of role.attr) if (isQualifiedRow(row)) out.add(row.event_id)
+  for (const node of Object.values(diag.nodes))
+    for (const row of node.attr) if (isQualifiedRow(row)) out.add(row.event_id)
   return out
 }
 
@@ -78,15 +94,15 @@ export function eventTierOf(e: EventDict, matched: Set<string>, qualified: Set<s
 }
 
 /** event 归哪个 band 的 node(1:1 下 tag→单 node)。 */
-export function roleOfEventByBand(e: EventDict, tagToNodes: Record<string, string[]>, tagList: string[]): string | null {
+export function nodeOfEventByBand(e: EventDict, tagToNodes: Record<string, string[]>, tagList: string[]): string | null {
   const nodesForTag = tagToNodes[bandKeyOf(e, tagList)]
   return nodesForTag && nodesForTag.length ? nodesForTag[0] : null
 }
 
 /** tooltip 数据组装（纯）：
- *  - identity：role 反查 diag.roles（多 role 时各保留）；时间 = bars[idx].date，point 时 dateEnd=null；
+ *  - identity：node 反查 diag.nodes（多 node 时各保留）；时间 = bars[idx].date，point 时 dateEnd=null；
  *              bars 越界 fallback 到 String(idx)
- *  - clauses：跨 role 累积为 ClauseRow[]，按 satisfied 排序（失败 ✗ 在前）
+ *  - clauses：跨 node 累积为 ClauseRow[]，按 satisfied 排序（失败 ✗ 在前）
  *  - raw：event dict 平铺，去掉 SKIP 集 + clauses 已引用 cid
  *  spec 见 docs/superpowers/specs/2026-06-29-marker-tooltip-cleanup-design.md */
 export function resolveTooltipData(
@@ -95,18 +111,18 @@ export function resolveTooltipData(
   events: EventDict[],
   bars: Bar[],
 ): TooltipPayload {
-  // ── clauses 累积（不覆盖；多 role 同 cid 各保留）─────────────────────────
+  // ── clauses 累积（不覆盖；多 node 同 cid 各保留）─────────────────────────
   const clauses: TooltipClauseRow[] = []
-  const roles: string[] = []
+  const nodes: string[] = []
   if (diag) {
-    for (const [roleId, role] of Object.entries(diag.roles)) {
-      const row = role.attr.find((r) => r.event_id === eventId)
+    for (const [nodeId, node] of Object.entries(diag.nodes)) {
+      const row = node.attr.find((r) => r.event_id === eventId)
       if (!row) continue
-      roles.push(roleId)
+      nodes.push(nodeId)
       for (const [cid, w] of Object.entries(row.clauses)) {
         const witness = w as ClauseWitness
         clauses.push({
-          cid, role: roleId,
+          cid, node: nodeId,
           measured: witness.measured, op: witness.op, threshold: witness.threshold,
           satisfied: witness.satisfied,
         })
@@ -125,7 +141,7 @@ export function resolveTooltipData(
 
   // ── raw 平铺 + 去重 ─────────────────────────────────────────────────────
   const cidsInClauses = new Set(clauses.map((c) => c.cid))
-  const SKIP = new Set(['class_id', 'event_id', 'start_idx', 'end_idx', 'source_tag', 'members'])
+  const SKIP = new Set(['class_id', 'event_id', 'start_idx', 'end_idx', 'source_tag', 'child_refs'])
   const raw: Record<string, unknown> = {}
   if (ev) for (const [k, v] of Object.entries(ev)) {
     if (SKIP.has(k)) continue
@@ -134,23 +150,23 @@ export function resolveTooltipData(
   }
 
   return {
-    identity: { roles, dateStart, dateEnd, eventId },
+    identity: { nodes, dateStart, dateEnd, eventId },
     clauses,
     raw,
   }
 }
 
-/** band 可见性判定(纯函数):band 的所有 nodeId 中有任一 roleVisible!==false 则可见。
- *  roleVisible 未传(undefined)或 tagToNodes 无该 band 条目时默认可见。 */
+/** band 可见性判定(纯函数):band 的所有 nodeId 中有任一 nodeVisible!==false 则可见。
+ *  nodeVisible 未传(undefined)或 tagToNodes 无该 band 条目时默认可见。 */
 export function isBandVisible(
   bandKey: string,
-  roleVisible: Record<string, boolean> | undefined,
+  nodeVisible: Record<string, boolean> | undefined,
   tagToNodes: Record<string, string[]> | undefined,
 ): boolean {
-  if (!roleVisible) return true
+  if (!nodeVisible) return true
   const nodeIds = tagToNodes?.[bandKey] ?? []
   if (nodeIds.length === 0) return true
-  return nodeIds.some((nid) => roleVisible[nid] !== false)
+  return nodeIds.some((nid) => nodeVisible[nid] !== false)
 }
 
 // ─── label(N 日前瞻收益)/ 缓冲窗辅助 ─────────────────────────────────────────
@@ -158,7 +174,7 @@ export function isBandVisible(
 /** 结果文件的实际渲染窗口:铁律 eval_meta 后 win_start/win_end 永远非空;缺则 throw。 */
 export function windowOf(scan: Pick<ScanMeta, 'win_start' | 'win_end' | 'start_date' | 'end_date'>):
   { start: string; end: string } {
-  // 铁律 eval_meta 后 win_*/end_role/label_horizon 永远非 null;
+  // 铁律 eval_meta 后 win_*/end_node/label_horizon 永远非 null;
   // 旧文件回退分支删除(spec §3.6)。
   if (!scan.win_start || !scan.win_end) {
     throw new Error('windowOf: scan.win_start/win_end required (eval_meta 铁律下应永远非空)')

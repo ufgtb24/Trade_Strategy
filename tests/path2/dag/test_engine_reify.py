@@ -1,5 +1,5 @@
 # tests/path2/dag/test_engine_reify.py
-"""reify:Solution -> PatternMatch(role_index/children/trace/EdgeWitness)。"""
+"""reify:Solution -> PatternMatch(node_index/children/trace/EdgeWitness)。"""
 from tests.path2.dag._oracle import E, Ev, WideEv
 from path2.dag.edges import TemporalEdge, ContainmentEdge, Child
 from path2.dag.nodes import NodeSpec, MatchContext
@@ -14,7 +14,7 @@ def _spec(nodes, edges):
                        edges=tuple(edges))
 
 
-def test_reify_role_index_and_children():
+def test_reify_node_index_and_children():
     nodes = [NodeSpec("A", detector=None), NodeSpec("B", detector=None)]
     edges = [TemporalEdge("A", "B", min_gap=0, max_gap=100)]
     streams = {"A": E("A", [(0, 0)]), "B": E("B", [(5, 8)])}
@@ -23,8 +23,8 @@ def test_reify_role_index_and_children():
     ctx = MatchContext(df=None, params=None)
     m = reify(sol, streams, plan, ctx)
     assert isinstance(m, PatternMatch)
-    assert m.role_index["A"].start_idx == 0
-    assert m.role_index["B"].end_idx == 8
+    assert m.node_index["A"].start_idx == 0
+    assert m.node_index["B"].end_idx == 8
     assert m.start_idx == 0 and m.end_idx == 8          # 跨度=children 包络
     assert [c.start_idx for c in m.children] == [0, 5]   # start 升序扁平
 
@@ -38,7 +38,10 @@ def test_reify_edge_witness_measured():
     m = reify(sol, streams, plan, MatchContext(df=None, params=None))
     w = m.predicate_trace.edge_results[("A", "B")]
     assert w.satisfied is True
-    assert w.measured == 5 - 2                            # dst.start - src.end = gap
+    # 硬伤 E · Task 13:measured 升级为 kind-aware(MeasuredKindAware),非裸 float
+    assert w.measured.kind == 'gap'
+    assert w.measured.value == 5 - 2                       # dst.start - src.end = gap
+    assert w.measured.label == 'gap'
 
 
 def test_reify_where_results_recorded():

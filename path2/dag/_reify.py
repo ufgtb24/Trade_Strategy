@@ -1,18 +1,43 @@
 # path2/dag/_reify.py
-"""Solution -> PatternMatch 物化。role_index = 节点角色 -> 单 Event;children 按 start 升序;
-PredicateTrace 重算 where(实证) + 每正向边 EdgeWitness。measured = dst.start - src.end(gap 语义)。
+"""Solution -> PatternMatch 物化。node_index = node_id -> 单 Event;children 按 start 升序;
+PredicateTrace 重算 where(实证) + 每正向边 EdgeWitness。measured 为 kind-aware(硬伤 E · Task 13):
+按 edge 类型产出 MeasuredKindAware(kind/value/label),而非笼统 gap 语义。
 """
 from __future__ import annotations
 
 from dataclasses import replace
 
-from path2.dag.edges import NegationEdge
+from path2.dag.edges import (NegationEdge, TemporalEdge, ContainmentEdge, OverlapEdge,
+                             EqualsEdge, StartContainmentEdge)
+from path2.dag.gate_failure import MeasuredKindAware
 from path2.dag.result import (PatternMatch, PredicateTrace, EdgeWitness, ClauseWitness)
 from path2.dag._solve import endpoint
 
 
 def _flat(binding):
     return [binding]
+
+
+def _make_measured(edge, u, v) -> MeasuredKindAware:
+    """kind-aware · 硬伤 E · 按 edge kind 生成 measured,取代旧的笼统 gap = dst.start - src.end。
+    u/v 已经过 endpoint() 端点投影(Child selector 已展开)。"""
+    if isinstance(edge, TemporalEdge):
+        return MeasuredKindAware(kind='gap',
+                                 value=v.start_idx - u.end_idx,
+                                 label='gap')
+    if isinstance(edge, (ContainmentEdge, OverlapEdge, EqualsEdge)):
+        return MeasuredKindAware(kind='window_offset',
+                                 value=v.start_idx - u.start_idx,
+                                 label='起点偏移')
+    if isinstance(edge, StartContainmentEdge):
+        return MeasuredKindAware(kind='anchor_delta',
+                                 value=v.start_idx - u.start_idx,
+                                 label='起点包含')
+    if isinstance(edge, NegationEdge):
+        return MeasuredKindAware(kind='negation_bars',
+                                 value=v.start_idx - u.end_idx,
+                                 label='禁区bars')
+    return MeasuredKindAware(kind='unknown', value=None, label='?')
 
 
 def reify(sol, streams, plan, ctx) -> PatternMatch:
@@ -53,12 +78,12 @@ def reify(sol, streams, plan, ctx) -> PatternMatch:
         edge_results[(e.src, e.dst)] = EdgeWitness(
             satisfied=bool(e.satisfies(a, b)),
             src_instance=a, dst_instance=b,
-            measured=float(b.start_idx - a.end_idx))
+            measured=_make_measured(e, a, b))
 
     return PatternMatch(
         event_id=f"{plan.pattern_id}@{start}-{end}",
         start_idx=start, end_idx=end,
         pattern_id=plan.pattern_id,
-        role_index=dict(assign),
+        node_index=dict(assign),
         children=tuple(children),
         predicate_trace=PredicateTrace(where_results=where_results, edge_results=edge_results))

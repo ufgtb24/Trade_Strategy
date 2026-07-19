@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Iterator, Literal
+from typing import ClassVar, Iterator, Literal
 
 import pandas as pd
 
@@ -40,10 +40,11 @@ class TrendSegmentDetector:
 
     - source_tag: per-instance 的 event_id 前缀,默认 None → 回退 class_id "trend"。
       用于区分同一 detector 类的多个实例(如 coarse/precise 两套参数)。
-      本轮仅本 detector 需要(唯一被多角色复用者);其余 detector 按需再加,勿默认铺开。
+      本轮仅本 detector 需要(唯一被多 node 复用者);其余 detector 按需再加,勿默认铺开。
 
     输出字段详见 TrendSegment。
     """
+    has_debug_hooks: ClassVar[bool] = False
 
     event_cls = TrendSegment
 

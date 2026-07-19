@@ -2,53 +2,57 @@ import { describe, it, expect } from 'vitest'
 import { matchedIds, resolveTooltipData } from '../src/render/visible'
 import {
   bandKeyOf, deriveTagMap, isolatedNodeIds, isQualifiedRow,
-  qualifiedIdsOf, eventTierOf, roleOfEventByBand, isBandVisible,
+  qualifiedIdsOf, eventTierOf, nodeOfEventByBand, isBandVisible,
   renderGridOf, subBandTagList,
 } from '../src/render/visible'
-import type { TopoNode, TopoEdge, EventDict, AttrRow, Diagnostics, Bar } from '../src/types'
+import type { TopoNode, TopoEdge, EventDict, MatchDict, AttrRow, Diagnostics, Bar } from '../src/types'
 import { ANALYSIS } from './fixtures'
 
 const { matches } = ANALYSIS
 
 describe('matchedIds', () => {
   it('matchedIds = union of all children', () => {
-    const s = matchedIds(matches)
+    const s = matchedIds(matches, [], [])
     expect(s.has('bo9')).toBe(true)
     expect(s.has('boX')).toBe(false)
   })
 
-  it('沿 members 字段递归展开:matched composite event 的 constituent 也进 matched 集', () => {
+  it('沿 child_refs.members 递归展开:matched composite event 的 constituent 也进 matched 集(协议驱动、非字段名)', () => {
+    const matches: MatchDict[] = [{ event_id: 'm1', start_idx: 0, end_idx: 10,
+      node_index: {}, children: ['burst_1'], predicate_trace: null }]
     const events: EventDict[] = [
-      { class_id: 'burst', event_id: 'burst_1_5', start_idx: 1, end_idx: 5, source_tag: 'burst',
-        members: ['bo_1', 'bo_3', 'bo_5'] },
-      { class_id: 'bo', event_id: 'bo_1', start_idx: 1, end_idx: 1, source_tag: 'bo' },
-      { class_id: 'bo', event_id: 'bo_3', start_idx: 3, end_idx: 3, source_tag: 'bo' },
-      { class_id: 'bo', event_id: 'bo_5', start_idx: 5, end_idx: 5, source_tag: 'bo' },
-      { class_id: 'bo', event_id: 'bo_99', start_idx: 99, end_idx: 99, source_tag: 'bo' },  // 不在 burst.members
+      { class_id: 'burst', event_id: 'burst_1', start_idx: 1, end_idx: 5, source_tag: 'burst',
+        child_refs: { members: ['bo_1', 'bo_3', 'bo_5'] } },
+      { class_id: 'bo', event_id: 'bo_1', start_idx: 1, end_idx: 1, source_tag: 'bo', child_refs: {} },
+      { class_id: 'bo', event_id: 'bo_3', start_idx: 3, end_idx: 3, source_tag: 'bo', child_refs: {} },
+      { class_id: 'bo', event_id: 'bo_5', start_idx: 5, end_idx: 5, source_tag: 'bo', child_refs: {} },
+      { class_id: 'bo', event_id: 'bo_99', start_idx: 99, end_idx: 99, source_tag: 'bo', child_refs: {} },
     ]
-    const ms = [{ event_id: 'M1', start_idx: 1, end_idx: 5, children: ['burst_1_5'], role_index: {}, predicate_trace: null }]
-    const s = matchedIds(ms, events)
-    expect(s.has('burst_1_5')).toBe(true)
+    const s = matchedIds(matches, events, [])
+    expect(s.has('burst_1')).toBe(true)
     expect(s.has('bo_1')).toBe(true)
     expect(s.has('bo_3')).toBe(true)
     expect(s.has('bo_5')).toBe(true)
-    expect(s.has('bo_99')).toBe(false)
+    expect(s.has('bo_99')).toBe(false)  // 不在 child_refs.members
   })
 
-  it('沿 anchor_bo_id 字段展开:tb 的 anchor_bo_id 进入 matched 集', () => {
+  it('沿 edges.anchor_field 反查:tb.anchor_bo_id 引用的 bo 也进 matched 集', () => {
+    const matches: MatchDict[] = [{ event_id: 'm1', start_idx: 0, end_idx: 10,
+      node_index: {}, children: ['tb_1'], predicate_trace: null }]
     const events: EventDict[] = [
-      { class_id: 'tb', event_id: 'tb_6', start_idx: 6, end_idx: 6, source_tag: 'tb', anchor_bo_id: 'bo_5' },
-      { class_id: 'bo', event_id: 'bo_5', start_idx: 5, end_idx: 5, source_tag: 'bo' },
+      { class_id: 'tb', event_id: 'tb_1', start_idx: 7, end_idx: 7, source_tag: 'tb',
+        child_refs: {}, anchor_bo_id: 'bo_5' },
+      { class_id: 'bo', event_id: 'bo_5', start_idx: 5, end_idx: 5, source_tag: 'bo', child_refs: {} },
     ]
-    const ms = [{ event_id: 'M1', start_idx: 5, end_idx: 6, children: ['tb_6'], role_index: {}, predicate_trace: null }]
-    const s = matchedIds(ms, events)
-    expect(s.has('tb_6')).toBe(true)
+    const edges: TopoEdge[] = [{ src: 'burst', dst: 'tb', kind: 'temporal', rule: '', anchor_field: 'anchor_bo_id' }]
+    const s = matchedIds(matches, events, edges)
+    expect(s.has('tb_1')).toBe(true)
     expect(s.has('bo_5')).toBe(true)
   })
 
-  it('不传 events:退化为旧行为(仅 children)', () => {
-    const ms = [{ event_id: 'M1', start_idx: 1, end_idx: 5, children: ['burst_1_5'], role_index: {}, predicate_trace: null }]
-    const s = matchedIds(ms)
+  it('events/edges 为空数组:退化为仅 children 的并集', () => {
+    const ms: MatchDict[] = [{ event_id: 'M1', start_idx: 1, end_idx: 5, children: ['burst_1_5'], node_index: {}, predicate_trace: null }]
+    const s = matchedIds(ms, [], [])
     expect(s.size).toBe(1)
     expect(s.has('burst_1_5')).toBe(true)
   })
@@ -67,7 +71,7 @@ const edges: TopoEdge[] = [
   { src: 'burst', dst: 'tb', kind: 'TemporalEdge', rule: '' },
 ]
 const ev = (id: string, st: string): EventDict =>
-  ({ class_id: id.split('_')[0], event_id: id, start_idx: 0, end_idx: 0, source_tag: st })
+  ({ class_id: id.split('_')[0], event_id: id, start_idx: 0, end_idx: 0, source_tag: st, child_refs: {} })
 
 describe('visible §3 band/tier', () => {
   it('isolatedNodeIds = 无边 node = {bo}', () => {
@@ -95,20 +99,20 @@ describe('visible §3 band/tier', () => {
     expect(eventTierOf(ev('t1','burst'), matched, qualified)).toBe('qualified')
     expect(eventTierOf(ev('d1','burst'), matched, qualified)).toBe('detected')
   })
-  it('roleOfEventByBand: tag→单 node', () => {
+  it('nodeOfEventByBand: tag→单 node', () => {
     const { tagToNodes, tagList } = deriveTagMap(nodes)
-    expect(roleOfEventByBand(ev('burst_1','burst'), tagToNodes, tagList)).toBe('burst')
+    expect(nodeOfEventByBand(ev('burst_1','burst'), tagToNodes, tagList)).toBe('burst')
   })
-  it('qualifiedIdsOf: ⋃_role { 全 satisfied 行 },跨 role 并集;排除 fail 行;null→空', () => {
+  it('qualifiedIdsOf: ⋃_node { 全 satisfied 行 },跨 node 并集;排除 fail 行;null→空', () => {
     const okRow = (id: string): AttrRow =>
       ({ event_id: id, start_idx: 0, end_idx: 0, clauses: { a: { satisfied: true, measured: 1, op: '>=', threshold: 0 } } })
     const failRow = (id: string): AttrRow =>
       ({ event_id: id, start_idx: 0, end_idx: 0, clauses: { a: { satisfied: false, measured: 0, op: '>=', threshold: 1 } } })
     const diag: Diagnostics = {
       symbol: 'X', pattern_id: 'p', note: '',
-      roles: {
+      nodes: {
         down:  { attr: [okRow('d1'), failRow('d2')], rel: [] },   // d1 进集,d2 排除
-        burst: { attr: [okRow('b1')],                rel: [] },   // 跨 role 并集
+        burst: { attr: [okRow('b1')],                rel: [] },   // 跨 node 并集
       },
     }
     const qualified = qualifiedIdsOf(diag)
@@ -192,23 +196,23 @@ describe('isBandVisible', () => {
     bo:     ['bo'],
   }
 
-  it('roleVisible 未传 → 所有 band 可见', () => {
+  it('nodeVisible 未传 → 所有 band 可见', () => {
     expect(isBandVisible('burst', undefined, tagToNodes)).toBe(true)
     expect(isBandVisible('trend0', undefined, tagToNodes)).toBe(true)
   })
   it('tagToNodes 无该 band 条目(空 nodeIds) → 可见', () => {
     expect(isBandVisible('unknown_band', { down: false }, tagToNodes)).toBe(true)
   })
-  it('band 内所有 node 均 roleVisible===false → 不可见', () => {
+  it('band 内所有 node 均 nodeVisible===false → 不可见', () => {
     expect(isBandVisible('burst', { burst: false }, tagToNodes)).toBe(false)
   })
-  it('band 内任一 node roleVisible!==false → 可见', () => {
+  it('band 内任一 node nodeVisible!==false → 可见', () => {
     // trend0 有两个 node:一个 false,一个未设(undefined=可见)
     const twoNodes: Record<string, string[]> = { trend0: ['down', 'side'] }
     expect(isBandVisible('trend0', { down: false }, twoNodes)).toBe(true)
     expect(isBandVisible('trend0', { down: false, side: false }, twoNodes)).toBe(false)
   })
-  it('roleVisible 为空对象(缺键) → 全部视为可见', () => {
+  it('nodeVisible 为空对象(缺键) → 全部视为可见', () => {
     expect(isBandVisible('burst', {}, tagToNodes)).toBe(true)
   })
 })
@@ -224,12 +228,12 @@ describe('resolveTooltipData', () => {
   ]
   const events: EventDict[] = [
     { class_id: 'trend', event_id: 'd1', start_idx: 0, end_idx: 5, source_tag: 'trend0', drawdown: 0.42 } as any,
-    { class_id: 'burst', event_id: 'b1', start_idx: 1, end_idx: 1, source_tag: 'burst', count: 3, first_drought: 0, members: [{}, {}] } as any,
+    { class_id: 'burst', event_id: 'b1', start_idx: 1, end_idx: 1, source_tag: 'burst', count: 3, first_drought: 0, child_refs: { members: ['bo_x', 'bo_y'] } } as any,
     { class_id: 'burst', event_id: 'b2', start_idx: 2, end_idx: 4, source_tag: 'burst', count: 5, max_bar_vol_ratio: 2.6378544926831706 } as any,
   ]
   const diag: Diagnostics = {
     symbol: 'X', pattern_id: 'p', note: '',
-    roles: {
+    nodes: {
       down: {
         attr: [{ event_id: 'd1', start_idx: 0, end_idx: 5,
           clauses: { drawdown: { satisfied: true, measured: 0.42, op: '>=', threshold: 0.30 } } }],
@@ -258,19 +262,19 @@ describe('resolveTooltipData', () => {
     expect(Object.keys(r).sort()).toEqual(['clauses', 'identity', 'raw'])
   })
 
-  it('identity.roles 单 role 时返回单元素数组', () => {
+  it('identity.nodes 单 node 时返回单元素数组', () => {
     const r = resolveTooltipData('d1', diag, events, bars)
-    expect(r.identity.roles).toEqual(['down'])
+    expect(r.identity.nodes).toEqual(['down'])
   })
 
-  it('identity.roles 多 role 时返回多元素数组（按 diag.roles 插入顺序）', () => {
+  it('identity.nodes 多 node 时返回多元素数组（按 diag.nodes 插入顺序）', () => {
     const r = resolveTooltipData('b1', diag, events, bars)
-    expect(r.identity.roles).toEqual(['bo_burst', 'tb_burst'])
+    expect(r.identity.nodes).toEqual(['bo_burst', 'tb_burst'])
   })
 
-  it('identity.roles 零 role 时返回空数组', () => {
+  it('identity.nodes 零 node 时返回空数组', () => {
     const r = resolveTooltipData('b2', diag, events, bars)
-    expect(r.identity.roles).toEqual([])
+    expect(r.identity.nodes).toEqual([])
   })
 
   it('identity 区间事件 dateStart/End 均填日期', () => {
@@ -311,31 +315,31 @@ describe('resolveTooltipData', () => {
     expect(lastUnsat).toBeLessThan(firstSat)
   })
 
-  it('clauses 多 role 同 cid 各保留一行（不覆盖）', () => {
+  it('clauses 多 node 同 cid 各保留一行（不覆盖）', () => {
     const r = resolveTooltipData('b1', diag, events, bars)
     const firstDroughtRows = r.clauses.filter((c) => c.cid === 'first_drought')
     expect(firstDroughtRows.length).toBe(2)   // bo_burst 一条 + tb_burst 一条
-    const roles = firstDroughtRows.map((c) => c.role).sort()
-    expect(roles).toEqual(['bo_burst', 'tb_burst'])
+    const nodes = firstDroughtRows.map((c) => c.node).sort()
+    expect(nodes).toEqual(['bo_burst', 'tb_burst'])
     const thresholds = firstDroughtRows.map((c) => c.threshold).sort()
     expect(thresholds).toEqual([0, 20])
   })
 
-  it('clauses 单 role cid 只有一条', () => {
+  it('clauses 单 node cid 只有一条', () => {
     const r = resolveTooltipData('b1', diag, events, bars)
     const countRows = r.clauses.filter((c) => c.cid === 'count')
     expect(countRows.length).toBe(1)
-    expect(countRows[0].role).toBe('bo_burst')
+    expect(countRows[0].node).toBe('bo_burst')
   })
 
-  it('raw 排除 SKIP 集（class_id/event_id/start_idx/end_idx/source_tag/members）', () => {
+  it('raw 排除 SKIP 集（class_id/event_id/start_idx/end_idx/source_tag/child_refs）', () => {
     const r = resolveTooltipData('b1', diag, events, bars)
     expect('class_id' in r.raw).toBe(false)
     expect('event_id' in r.raw).toBe(false)
     expect('start_idx' in r.raw).toBe(false)
     expect('end_idx' in r.raw).toBe(false)
     expect('source_tag' in r.raw).toBe(false)
-    expect('members' in r.raw).toBe(false)
+    expect('child_refs' in r.raw).toBe(false)
   })
 
   it('raw 去重 clauses 已引用 cid（cid 名 ↔ 字段名命中时移除 raw 那份）', () => {
@@ -347,7 +351,7 @@ describe('resolveTooltipData', () => {
 
   it('raw 保留 clauses 未引用的字段', () => {
     const r = resolveTooltipData('b2', diag, events, bars)
-    // b2 不在任何 role 的 attr 表 → clauses 为空 → raw 保留全部非 SKIP 字段
+    // b2 不在任何 node 的 attr 表 → clauses 为空 → raw 保留全部非 SKIP 字段
     expect(r.raw.count).toBe(5)
     expect(r.raw.max_bar_vol_ratio).toBeCloseTo(2.6378544926831706, 10)
   })
@@ -357,14 +361,14 @@ describe('resolveTooltipData', () => {
     expect(r.clauses).toEqual([])
     expect(r.raw).toEqual({})
     expect(r.identity.eventId).toBe('zzz')
-    expect(r.identity.roles).toEqual([])
+    expect(r.identity.nodes).toEqual([])
   })
 
   it('diag === null → 空 clauses，identity / raw 正常', () => {
     const r = resolveTooltipData('d1', null, events, bars)
     expect(r.clauses).toEqual([])
     expect(r.identity.eventId).toBe('d1')
-    expect(r.identity.roles).toEqual([])   // 无 diag 无 role
+    expect(r.identity.nodes).toEqual([])   // 无 diag 无 node
     expect(r.raw.drawdown).toBe(0.42)
   })
 })

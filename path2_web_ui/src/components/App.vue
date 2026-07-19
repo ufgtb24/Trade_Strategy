@@ -10,10 +10,15 @@
 </template>
 
 <script setup lang="ts">
+import { onMounted } from 'vue'
 import SidebarPatternPanel from './SidebarPatternPanel.vue'
 import SidebarScanPanel from './SidebarScanPanel.vue'
 import SidebarResultList from './SidebarResultList.vue'
 import ChartArea from './ChartArea.vue'
+import { useConfigStore } from '../stores/config'
+
+// 启动即加载 config,使 loadScanFile 能读到持久化的 last_selected_pattern
+onMounted(() => { void useConfigStore().load() })
 </script>
 
 <style>

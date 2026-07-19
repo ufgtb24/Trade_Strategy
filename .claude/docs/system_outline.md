@@ -13,7 +13,7 @@ path2 把"股票形态"建模为多级不可变事件；形态用"声明节点 +
 |------|---------|------|------|
 | path2 框架 | `path2/` | [modules/path2.md](modules/path2.md) | 协议地基 + dag 引擎 + 走势-无关 atoms + calc + stdlib + eval |
 | path2 应用层 | `path2_apps/<走势>/` | [modules/path2_apps.md](modules/path2_apps.md) | 走势-特异形态声明（唯一应用 `bottom_breakout_burst`） |
-| path2 web | `path2_web/` + `path2_web_ui/` | [modules/path2_web.md](modules/path2_web.md) | 调试可视化：缓冲扫描 + 前瞻收益 label + K 线 + 拓扑面板 + 诊断（FastAPI + Vue3） |
+| path2 web | `path2_web/` + `path2_web_ui/` | [modules/path2_web.md](modules/path2_web.md) | 调试可视化：多 pattern 缓冲扫描 + 前瞻收益 label + K 线 + 拓扑面板 + 漏检 3 web 入口诊断（FastAPI + Vue3） |
 
 > 添加 / 更新模块文档：运行 `update-ai-context` skill。
 

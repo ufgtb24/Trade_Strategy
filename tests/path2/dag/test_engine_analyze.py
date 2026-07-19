@@ -27,7 +27,7 @@ def test_analyze_chain_produces_match():
     res = analyze(_spec([A, B], edges), df=object())
     assert isinstance(res, AnalysisResult)
     assert len(res.matches) == 1
-    assert res.matches[0].role_index["B"].start_idx == 5
+    assert res.matches[0].node_index["B"].start_idx == 5
     assert len(res.events) == 2                       # 两条流平铺
     assert res.spec is not None
 
@@ -72,4 +72,4 @@ def test_analyze_calls_real_detector_arity():
     edges = [TemporalEdge("bo", "tb", min_gap=1, max_gap=10)]
     res = analyze(_spec([bo, tb], edges), df=object())
     assert len(res.matches) == 1
-    assert res.matches[0].role_index["tb"].start_idx == 3
+    assert res.matches[0].node_index["tb"].start_idx == 3

@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Iterator
+from typing import ClassVar, Iterator
 
 import numpy as np
 import pandas as pd
@@ -42,6 +42,7 @@ class PlatformDetector:
 
     输出字段详见 Platform。
     """
+    has_debug_hooks: ClassVar[bool] = False
 
     event_cls = Platform
 

@@ -1,4 +1,4 @@
-# Default params for bottom_breakout_burst pattern (V3.3 B 方案,nested by node role)。
+# Default params for bottom_breakout_burst pattern (V3.3 B 方案,nested by node)。
 # 调参在开发完成后单独进行,本文件先用合理默认值。改完下一次 web /scan 即热加载生效。
 
 bo:
@@ -13,14 +13,14 @@ bo:
 
 burst:
   # detector 构造(切串)
-  gap_max: 5
+  gap_max: 8
   vol_baseline_period: 63
   # detector + 业务约束② 共用(BurstDetector(min_bos) + len(bo 串) ≥ min_bos)
-  min_bos: 2
+  min_bos: 1
   # burst node 的 where 阈值(detector 不读,只在 NodeSpec.where 闭合)
   first_drought_min: 20
-  distinct_pk_min: 4
-  vol_spike_min: 8.0
+  distinct_pk_min: 3
+  vol_spike_min: 3.0
 
 tb:
   # 注意:max_start_gap 同时被 ThrowbackDetector 与 burst→tb edge 复用

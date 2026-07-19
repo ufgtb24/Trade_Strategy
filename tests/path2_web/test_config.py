@@ -11,11 +11,11 @@ def test_save_then_load_roundtrip(tmp_path):
     path = tmp_path / "path2_web.yaml"
     cfg = load_config(path)
     cfg["scan"]["workers"] = 4
-    cfg["last_selected_pattern"] = "bottom_breakout_burst"
+    cfg["last_selected_pattern"] = "bottom_burst"
     save_config(cfg, path)
     again = load_config(path)
     assert again["scan"]["workers"] == 4
-    assert again["last_selected_pattern"] == "bottom_breakout_burst"
+    assert again["last_selected_pattern"] == "bottom_burst"
 
 
 def test_load_merges_partial_over_default(tmp_path):

@@ -1,8 +1,9 @@
 <template>
   <div class="kline-wrap-v2" ref="wrapEl">
-    <div ref="mainEl" class="main-chart" style="flex: 1" />
+    <div ref="mainEl" class="main-chart" style="flex: 1" @contextmenu="handleContextMenu" />
     <ResizableDivider @drag="onDrag" @dragend="onDragEnd" @dblclick="onDblclick" />
     <CandidateStatusBar :matches="effectiveAnalysis?.matches ?? []" />
+    <ShiftPairBanner />
     <div class="sub-outer" :style="{ height: effectiveSubH + 'px' }" ref="subOuterEl">
       <div class="band-zoom-controls" @wheel.stop>
         <button type="button" class="band-zoom-btn"
@@ -19,17 +20,45 @@
                 title="复位到 1.0×"
                 @click="onBandZoomReset">↺</button>
       </div>
-      <div ref="subInnerEl" class="sub-inner" :style="{ height: subCanvasH + 'px' }" />
+      <div ref="subInnerEl" class="sub-inner" :style="{ height: subCanvasH + 'px' }" @contextmenu="handleContextMenu" />
+    </div>
+    <div class="brush-toggle-wrap">
+      <button type="button" class="brush-toggle-btn" :class="{ active: brushActive }"
+              title="框选主图时段 → 查询该窗口内 gate 失败样例(入口 A · 快捷键 Shift+B)"
+              @click="toggleBrush">框选</button>
     </div>
     <CrosshairOverlay :x="overlayX" />
+    <div v-if="contextMenuVisible" ref="driverMenuEl" class="driver-menu"
+         :style="{ left: contextMenuPos.x + 'px', top: contextMenuPos.y + 'px' }">
+      <!-- v2 event-debug(2026-07-15) · debug 菜单分支(marker + whitelist 命中) -->
+      <template v-if="menuDispatch.menu === 'debug' && menuDispatch.anchors">
+        <button v-for="a in menuDispatch.anchors" :key="a.key"
+                type="button" class="debug-menu-item"
+                :class="{ 'debug-menu-item-disabled': a.disabled }"
+                :title="a.disabled ? a.disabledReason : ''"
+                @click.stop="onDebugMenuClick(a)">
+          <div class="menu-item-title">Debug {{ menuDebugClassName }} {{ a.disabled ? '(未定位)' : a.label }} (bar {{ a.bar }})</div>
+          <div class="menu-item-hint">↳ {{ a.hint }}</div>
+        </button>
+        <div class="debug-menu-separator"></div>
+        <button type="button" class="copy-driver-btn" @click.stop="copyDriverScript">复制 driver 脚本</button>
+      </template>
+      <!-- driver 菜单分支(空白 K 线 / marker 不在 whitelist / 生产 env) -->
+      <template v-else>
+        <button type="button" class="copy-driver-btn" @click.stop="copyDriverScript">复制 driver 脚本</button>
+      </template>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { onMounted, onBeforeUnmount, ref, watch, computed } from 'vue'
+import { onMounted, onBeforeUnmount, ref, watch, computed, nextTick } from 'vue'
 import * as echarts from 'echarts'
+import { isBrushToggleKey } from './klineBrushKey'
+import { createBrushRequestHandler } from './klineBrushHandler'
 import { storeToRefs } from 'pinia'
 import { useViewStore } from '../stores/view'
+import { dispatchDebugMenu, type MenuDispatch } from './KlineChart.debug-menu'
 import { usePanelsStore } from '../stores/panels'
 import { getOhlc } from '../api'
 import { computeEventData, buildMainOption, buildSubOption, buildVolumeSeriesAndYAxis } from '../render/chart'
@@ -39,18 +68,19 @@ import {
   BAND_ZOOM_STEP_BUTTON, BAND_ZOOM_STEP_WHEEL,
 } from '../render/subGeometry'
 import { ctrlState } from '../render/ctrlState'
-import { bandKeyOf, roleOfEventByBand, resolveTooltipData, windowOf, formatForwardReturn, subBandTagList } from '../render/visible'
+import { bandKeyOf, nodeOfEventByBand, resolveTooltipData, windowOf, formatForwardReturn, subBandTagList } from '../render/visible'
 import type { Bar } from '../types'
-import { handleChartClick } from './KlineChart'
+import { handleChartClick, handleShiftClick, MARKER_SERIES } from './KlineChart'
 import CandidateStatusBar from './CandidateStatusBar.vue'
+import ShiftPairBanner from './ShiftPairBanner.vue'
 import ResizableDivider from './ResizableDivider.vue'
 import CrosshairOverlay from './CrosshairOverlay.vue'
 
 const view = useViewStore()
-const { symbol, effectiveAnalysis, roleColors, roleVisible, level, tagMap, isolated,
+const { symbol, effectiveAnalysis, nodeColors, nodeVisible, level, tagMap, isolated,
         effectivePattern, effectiveScan, scanFile, selectedEventId, diag,
-        activePatternId, selectedMatchId, candidateMatchIds,
-        highlightedEventIds, pendingDisambigEventId } = storeToRefs(view)
+        activePatternId, activeDetailCard, selectedMatchId, candidateMatchIds,
+        highlightedEventIds, pendingDisambigEventId, shiftSelectedEventIds } = storeToRefs(view)
 const panels = usePanelsStore()
 const { showSlider, subHeightOffset } = storeToRefs(panels)
 
@@ -62,6 +92,163 @@ const bars = ref<Bar[]>([])
 // CrosshairOverlay(DOM 一根到底竖线)的 x 坐标 + main-chart 相对 kline-wrap 的偏移(修 S3)
 const overlayX = ref<number | null>(null)
 const mainCanvasOffsetX = ref<number>(0)
+
+// ── 入口 A(Task 18):主图 brush 框选时段 → scope=time 查询 ───────────────────
+// brush 组件配置只需最简实现(spec 明确要求),不做 toolbox UI,靠下方按钮
+// takeGlobalCursor 切换刷选态;outOfBrush.colorAlpha=1 关掉默认淘选变暗视觉副作用
+// (candlestick/自定义 marker 系列不需要被 brush 的可视化管线改色)。
+// removeOnClick:false + transformable:false:框选完的 area 保持为"仅装饰"覆盖层,
+// 不吞底下 series 的 mouseover(否则框内 K-bar/marker 无法弹 tooltip)。
+const BRUSH_OPTION = {
+  xAxisIndex: 0,
+  brushType: 'lineX' as const,
+  brushMode: 'single' as const,
+  throttleType: 'debounce' as const,
+  throttleDelay: 300,
+  brushStyle: { borderWidth: 1, color: 'rgba(59,130,246,0.12)', borderColor: '#3b82f6' },
+  outOfBrush: { colorAlpha: 1 },
+  removeOnClick: false,
+  transformable: false,
+}
+const brushActive = ref(false)
+function toggleBrush() {
+  brushActive.value = !brushActive.value
+  chartMain?.dispatchAction({
+    type: 'takeGlobalCursor',
+    key: 'brush',
+    brushOption: { brushType: brushActive.value ? 'lineX' : false, brushMode: 'single' },
+  })
+}
+/** 清主图已落 brush area + 同步 brushActive=false(退出光标态)。切股/切 pattern/
+ * 离开 time 卡片时联动,防跨股残影与视觉噪音。副作用:也把 Esc/按钮/联动三条路径
+ * 收敛到同一状态,后续 watcher 依赖 brushActive 不会 desync。 */
+function clearBrushAreas() {
+  if (!chartMain) return
+  chartMain.dispatchAction({ type: 'brush', areas: [] })
+  if (brushActive.value) {
+    brushActive.value = false
+    chartMain.dispatchAction({
+      type: 'takeGlobalCursor', key: 'brush',
+      brushOption: { brushType: false, brushMode: 'single' },
+    })
+  }
+}
+
+// ── 入口 D(Task 18):marker shift+click 跨图累积 → scope=pair 查询 ───────────
+// MARKER_SERIES 上落 shift 时不进 handleChartClick 的四分支 candidate 流,转给
+// view.shiftSelectedEvents 累积器(KlineChart.ts::handleShiftClick)。返回 true = 已消费。
+function handleMaybeShiftClick(p: any, source: 'main' | 'sub'): boolean {
+  const native = p?.event?.event as MouseEvent | undefined
+  if (!native?.shiftKey || !p?.seriesName || !MARKER_SERIES.includes(p.seriesName) || !p.data?.event_id) {
+    return false
+  }
+  const eventId = p.data.event_id as string
+  const classId = effectiveAnalysis.value?.events.find((e) => e.event_id === eventId)?.class_id ?? 'unknown'
+  handleShiftClick(eventId, classId, source, view)
+  return true
+}
+
+// ── Task 23:主图右键复制 driver 脚本(V1 D0)──────────────────────────
+// 兜底 detector 内部超细节调查:主图 contextmenu → 弹菜单 → 复制一段可直接粘贴到 IDE
+// 的 driver 脚本(build_pattern + attach_and_collect + engine.analyze + detach,同
+// Task 22 scan-top-miss.py 的真实接线方式;非 brief 原始伪代码里不存在的 scan_one_symbol)。
+// 纯前端 UX,不动 backend。
+const contextMenuVisible = ref(false)
+const contextMenuPos = ref({ x: 0, y: 0 })
+const driverMenuEl = ref<HTMLElement | null>(null)
+
+// v2 event-debug(2026-07-15) · 右键菜单分流状态
+const menuDispatch = ref<MenuDispatch>({ menu: 'driver' })  // 默认 driver
+const contextMenuEventId = ref<string | null>(null)         // 右键落点 event id(null=空白)
+
+// marker 命中 flag:chartMain.on('contextmenu')(见 onMounted)命中 marker 时置 true 并自行开菜单,
+// 随后原生事件冒泡到本 div 的 DOM handler(handleContextMenu)时消费该 flag 后直接跳过 ——
+// ECharts contextmenu 只在数据项(含 marker)上触发、不覆盖空白 K 线,故留 DOM handler 兜底空白路径。
+let markerContextMenuHandled = false
+
+function handleContextMenu(ev: MouseEvent) {
+  // ⚠ preventDefault 必须无条件在 flag 判之前调 —— marker 路径下 ECharts handler 的
+  // nativeEv.preventDefault() 是在 zrender 合成 event 层,不覆盖浏览器 native 层,
+  // Chromium 对 canvas 会弹默认 image 菜单(save/copy/screenshot/inspect)。
+  // 由 DOM handler 无条件拦浏览器菜单,再按 flag 决定是否 open。
+  ev.preventDefault()
+  if (markerContextMenuHandled) {
+    markerContextMenuHandled = false
+    return  // marker handler 已 open,跳 open
+  }
+  openContextMenuAt(null, ev.clientX, ev.clientY)
+}
+
+function openContextMenuAt(eventId: string | null, x: number, y: number) {
+  // 屏蔽 ECharts marker tooltip · 右键触发时 hover 还在 marker 上会导致 tooltip 遮住菜单
+  chartMain?.dispatchAction({ type: 'hideTip' })
+  chartSub?.dispatchAction({ type: 'hideTip' })
+  contextMenuEventId.value = eventId
+  menuDispatch.value = dispatchDebugMenu({ eventId }, view)
+  contextMenuVisible.value = true
+  contextMenuPos.value = { x, y }
+  // 位置越界翻转 —— nextTick 后菜单已渲染, 读实际 rect 判是否溢出 viewport, 溢出则改用左/上定位
+  void nextTick(() => {
+    const el = driverMenuEl.value
+    if (!el) return
+    const rect = el.getBoundingClientRect()
+    const vw = window.innerWidth, vh = window.innerHeight
+    let nx = x, ny = y
+    if (rect.right > vw) nx = Math.max(0, x - rect.width)  // 右溢 → 翻左
+    if (rect.bottom > vh) ny = Math.max(0, y - rect.height)  // 下溢 → 翻上
+    if (nx !== x || ny !== y) contextMenuPos.value = { x: nx, y: ny }
+  })
+}
+
+function buildDriverScript(sym: string, patternId: string): string {
+  return `
+# path2 driver · ${sym}
+from path2.debug import set_current_symbol
+from path2_web.gate_collector import attach_and_collect, detach
+from path2.dag.engine import analyze
+from path2_apps.${patternId}.dag_spec import build_pattern
+from path2_apps.${patternId}.params import Params
+
+set_current_symbol('${sym}')
+params = Params.default()
+spec = build_pattern(params)
+# 在这里加 breakpoint() · PyCharm 断在 Detector 内部
+collector = attach_and_collect(spec)
+try:
+    result = analyze(spec, df, params)   # df 需自己 load
+finally:
+    detach(spec)
+print(f"matches: {len(result.matches)}, gate_failures: {len(collector.snapshot())}")
+`.trim()
+}
+
+function copyDriverScript() {
+  if (!symbol.value || !activePatternId.value) { contextMenuVisible.value = false; return }
+  const script = buildDriverScript(symbol.value, activePatternId.value)
+  void navigator.clipboard.writeText(script)
+  contextMenuVisible.value = false
+}
+
+// v2 event-debug(2026-07-15) · debug 菜单点击 → 触发 triggerEventDebug
+const menuDebugClassName = computed(() => {
+  if (!contextMenuEventId.value) return ''
+  const ev = view.effectiveAnalysis?.events?.find(e => e.event_id === contextMenuEventId.value)
+  return ev?.class_id ?? ''
+})
+
+function onDebugMenuClick(anchor: { key: 'entry' | 'trough' | 'end'; disabled?: boolean }) {
+  if (anchor.disabled) return
+  if (!contextMenuEventId.value) return
+  void view.triggerEventDebug(contextMenuEventId.value, anchor.key)
+  contextMenuVisible.value = false
+}
+
+function handleDocumentClick(ev: MouseEvent) {
+  if (!contextMenuVisible.value) return
+  const target = ev.target as Node | null
+  if (driverMenuEl.value && target && driverMenuEl.value.contains(target)) return
+  contextMenuVisible.value = false
+}
 
 // ── band zoom factor(spec 2026-07-03)─────────────────────────────────
 // 从 localStorage 初始化,parse 失败 / NaN / out-of-range 回 default 1.0
@@ -130,13 +317,12 @@ function deriveSubGeometry(zoomOverride?: number) {
   // 分轨只含 time 轴 tag,与 computeEventData 的 band 索引空间(subTags)对齐
   const subTags = subBandTagList(tagMap.value.tagList, effectivePattern.value!.topology)
   const bandLaneCounts: number[] = subTags.map((_, band) => {
-    let maxLane = 0
-    for (const d of bundle.intervalData) {
-      if (d.value[3] === band && d.value[2] + 1 > maxLane) maxLane = d.value[2] + 1
+    // spec 2026-07-13:spot 与 span 已合并 packLanes,统一读 value[3]=band, value[2]=lane
+    let maxLane = -1
+    for (const d of [...bundle.intervalData, ...bundle.pointData]) {
+      if (d.value[3] === band && d.value[2] > maxLane) maxLane = d.value[2]
     }
-    // points lane 恒 0 → +1
-    const hasPoint = bundle.pointData.some((d: any) => d.value[2] === band)
-    return Math.max(maxLane, hasPoint ? 1 : 0)
+    return maxLane + 1
   })
   return computeSubGeometry({ bracketLaneCount, bandLaneCounts }, z)
 }
@@ -204,11 +390,11 @@ function buildRenderInput() {
     isolatedNodeIds: isolated.value,
     tagList,
     level: level.value,
-    roleColors: roleColors.value,
+    nodeColors: nodeColors.value,
     eventTier: (e: any) => view.eventTier(e),
-    roleOfEventByBand: (e: any) => roleOfEventByBand(e, tagMap.value.tagToNodes, tagList),
+    nodeOfEventByBand: (e: any) => nodeOfEventByBand(e, tagMap.value.tagToNodes, tagList),
     bandKeyOf: (e: any) => bandKeyOf(e, tagList),
-    roleVisible: roleVisible.value,
+    nodeVisible: nodeVisible.value,
     tagToNodes: tagMap.value.tagToNodes,
     selectedEventId: selectedEventId.value,
     tooltipResolver: (id: string) => resolveTooltipData(id, diag.value, effectiveAnalysis.value?.events ?? [], bars.value),
@@ -216,12 +402,14 @@ function buildRenderInput() {
     matchLabel,
     sliderShow: showSlider.value,
     zoomOverride: readZoomOverride(),
-    endRole: scanFile.value?.per_pattern[activePatternId.value!]?.end_role ?? undefined,
+    endNode: scanFile.value?.per_pattern[activePatternId.value!]?.end_node ?? undefined,
     selectedMatchId: selectedMatchId.value,
     candidateMatchIds: candidateMatchIds.value,
     highlightedEventIds: highlightedEventIds.value,
     pendingDisambigEventId: pendingDisambigEventId.value,
+    shiftSelectedEventIds: shiftSelectedEventIds.value,
     matches: effectiveAnalysis.value?.matches ?? [],
+    symbolLabel: symbol.value,
   }
 }
 
@@ -253,17 +441,31 @@ function render(forceResetZoom = false) {
 
   chartMain.setOption(mainOpt as any, true)
   chartSub.setOption(subOpt as any, true)
+  // mainOpt 走 notMerge:true 全量替换,不含 brush 组件声明 → 每帧渲染后需合并模式补挂回来
+  // (chart.ts::buildMainOption 不在本任务改动范围,brush 只是 KlineChart.vue 自己的交互层)。
+  chartMain.setOption({ brush: BRUSH_OPTION })
   lastMarkLineKey = null
 }
 
 function onKeyDown(e: KeyboardEvent) {
-  if (e.key !== 'Escape') return
   const t = e.target as HTMLElement | null
+  // 输入框内不响应任何全局快捷键(承 Esc/Shift+B 共用同一守卫)。
   if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return
-  view.clearCandidates()
-  view.clearHighlight()
-  view.selectMatch(null)
-  view.selectEvent(null)
+  // Shift+B:切换框选光标态(与按钮 toggleBrush 同一路径 · 双向 toggle)。
+  // 让位字母 B 给 SidebarResultList 全局字符转发(输代码即定位股)。
+  if (isBrushToggleKey(e)) {
+    toggleBrush()
+    e.preventDefault()
+    return
+  }
+  if (e.key !== 'Escape') return
+  if (contextMenuVisible.value) { contextMenuVisible.value = false; return }
+  view.clearFocus()
+  // Esc 也退出 brush 光标态(sync Vue state 与 ECharts 内部,防"点两下按钮才能重开")。
+  // blur:Esc 本身是键盘事件 · 浏览器会把当前 focus 元素的 :focus-visible 判为 true,
+  // CSS `:not(:focus-visible)` 拦不住 → 手动 blur 让 focus outline 消失(开头已挡输入框)。
+  if (brushActive.value) brushActive.value = false
+  ;(document.activeElement as HTMLElement | null)?.blur()
 }
 
 // ── drag handler ────────────────────────────────────────────────────
@@ -305,17 +507,62 @@ const updateMainCanvasOffset = () => {
 // ── 挂钩 chart 生命周期 ─────────────────────────────────────────────
 onMounted(() => {
   window.addEventListener('keydown', onKeyDown)
+  document.addEventListener('click', handleDocumentClick)
 
   chartMain = echarts.init(mainEl.value!)
   chartSub  = echarts.init(subInnerEl.value!)
 
-  // click 分流:主/副 chart 各一套,handleChartClick 按 seriesName 天然分流
+  // click 分流:主/副 chart 各一套,handleChartClick 按 seriesName 天然分流;
+  // shift+click 先被 handleMaybeShiftClick 拦截(入口 D),消费后不再回退到候选四分支。
   chartMain.on('click', (p: any) => {
+    if (handleMaybeShiftClick(p, 'main')) return
     handleChartClick(p, effectiveAnalysis.value?.matches ?? [], view)
   })
   chartSub.on('click', (p: any) => {
+    if (handleMaybeShiftClick(p, 'sub')) return
     handleChartClick(p, effectiveAnalysis.value?.matches ?? [], view)
   })
+  // v2 event-debug(2026-07-15) · marker 右键 → debug 菜单(主+副图,tb marker 主要在副图泳道)
+  // ECharts element-level, 只在数据项上触发 —— 空白 K 线 / 蜡烛区由 DOM handleContextMenu 兜底,
+  // 见 markerContextMenuHandled 注释。主副 chart 共享 flag。
+  const onContextMenuMarker = (p: any) => {
+    const nativeEv = p.event?.event as MouseEvent | undefined
+    if (!nativeEv) return
+    nativeEv.preventDefault()
+    const eventId = (p.seriesName && MARKER_SERIES.includes(p.seriesName) && p.data?.event_id)
+      ? String(p.data.event_id) : null
+    if (!eventId) return
+    openContextMenuAt(eventId, nativeEv.clientX, nativeEv.clientY)
+    markerContextMenuHandled = true
+  }
+  chartMain.on('contextmenu', onContextMenuMarker)
+  chartSub.on('contextmenu', onContextMenuMarker)
+  // 菜单开启期间彻底屏蔽 tooltip · 源头拦截:
+  // (a) setOption tooltip.triggerOn='none' 让 ECharts 不响应 hover(彻底防 tooltip 渲染)
+  // (b) showTip listener 兜底任何主动 dispatchAction showTip 场景(便宜的双保险)
+  // 关闭菜单后 triggerOn 恢复 'mousemove|click'(ECharts 默认)。
+  watch(contextMenuVisible, (visible) => {
+    const opt = { tooltip: { triggerOn: visible ? 'none' : 'mousemove|click' } }
+    chartMain?.setOption(opt as any, { lazyUpdate: true } as any)
+    chartSub?.setOption(opt as any, { lazyUpdate: true } as any)
+  })
+  const suppressTipDuringMenu = (chart: any) => {
+    chart.on('showTip', () => {
+      if (contextMenuVisible.value) chart.dispatchAction({ type: 'hideTip' })
+    })
+  }
+  suppressTipDuringMenu(chartMain)
+  suppressTipDuringMenu(chartSub)
+  // 入口 A:主图 brush 完成一次框选 → 换算 bar 索引区间 → scope=time 查询
+  // 双事件模式(见 ./klineBrushHandler · docs/superpowers/specs/2026-07-18-brush-double-request-fix-design.md):
+  //   brushselected 每次拖动触发 → 只更新缓存(不发 request)· brushEnd mouseup 触发一次 → 发 1 次 request。
+  //   为何双事件:ECharts brushEnd payload 未文档化(不能可靠取 coordRange) · brushselected 每次拖动触发。
+  const brushH = createBrushRequestHandler(
+    (s, e) => { void view.triggerTimeQuery(s, e, view.currentTimeEventClass || undefined) },
+    () => bars.value.length,
+  )
+  chartMain.on('brushselected', brushH.onBrushSelected)
+  chartMain.on('brushEnd', brushH.onBrushEnd)
   // ZRender blank click:两 chart 各一套
   chartMain.getZr().on('click', (e: any) => {
     if (!e.target) handleChartClick(null, effectiveAnalysis.value?.matches ?? [], view)
@@ -455,11 +702,17 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', onKeyDown)
+  document.removeEventListener('click', handleDocumentClick)
   subOuterEl.value?.removeEventListener('wheel', subWheelCapture, { capture: true })
   mainEl.value?.removeEventListener('wheel', mainWheelCapture, { capture: true })
   unsubCtrl?.()
   chartMain?.getZr().off('click')
   chartSub?.getZr().off('click')
+  chartMain?.off('brushselected')
+  chartMain?.off('contextmenu')
+  chartSub?.off('contextmenu')
+  chartMain?.off('showTip')
+  chartSub?.off('showTip')
 
   chartMain?.getZr().off('mouseout')
   chartSub?.getZr().off('mouseout')
@@ -482,15 +735,22 @@ onBeforeUnmount(() => {
 // ── Reactive watches ────────────────────────────────────────────────
 watch(symbol, () => void reloadBars().then(() => render(true)))
 watch([scanFile, effectiveScan], () => void reloadBars().then(() => render(false)))
-watch([effectiveAnalysis, roleVisible, level, roleColors, selectedEventId, diag, showSlider,
+watch([effectiveAnalysis, nodeVisible, level, nodeColors, selectedEventId, diag, showSlider,
        selectedMatchId, candidateMatchIds, highlightedEventIds, pendingDisambigEventId,
-       bandZoomFactor],
+       shiftSelectedEventIds, bandZoomFactor],
       () => render(false), { deep: true })
 
 // subHeightOffset / subCanvasH 变化 → chart.resize()(RO 会自动触发,这里手动兜底)
 watch([subHeightOffset, subCanvasH], () => {
   chartMain?.resize()
   chartSub?.resize()
+})
+
+// 入口 A brush area 联动清理:切股/切 pattern → 清框,防跨股残影;离开 time 卡片
+// (关闭卡片或切到 pair/candidate)→ 清框,视觉自洽。选项 3 + 选项 2 一处 wire。
+watch([symbol, activePatternId], () => clearBrushAreas())
+watch(activeDetailCard, (v, prev) => {
+  if (prev === 'time' && v !== 'time') clearBrushAreas()
 })
 </script>
 
@@ -557,5 +817,80 @@ watch([subHeightOffset, subCanvasH], () => {
   font-size: 11px;
   color: #334155;
   font-variant-numeric: tabular-nums;
+}
+.brush-toggle-wrap {
+  position: absolute;
+  top: 4px;
+  left: 60px;
+  z-index: 10;
+}
+.brush-toggle-btn {
+  height: 22px;
+  padding: 0 10px;
+  border: 1px solid #cbd5e1;
+  border-radius: 4px;
+  background: rgba(248, 250, 252, 0.9);
+  color: #334155;
+  font-size: 11px;
+  cursor: pointer;
+}
+.brush-toggle-btn:hover { background: #e2e8f0; }
+.brush-toggle-btn.active { background: #3b82f6; color: #fff; border-color: #3b82f6; }
+/* 鼠标点击后不显 focus outline(Esc 关闭 brush 时按钮变白露出黑框的观感修复);
+   键盘 Tab 导航仍显 outline · 保留可访问性。 */
+.brush-toggle-btn:focus:not(:focus-visible) { outline: none; }
+.driver-menu {
+  position: fixed;
+  background: white;
+  border: 1px solid #cbd5e0;
+  padding: 4px;
+  border-radius: 4px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  z-index: 1000;
+}
+.copy-driver-btn {
+  display: block;
+  width: 100%;
+  padding: 4px 12px;
+  border: none;
+  background: transparent;
+  color: #334155;
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.copy-driver-btn:hover { background: #f1f5f9; }
+/* v2 event-debug(2026-07-15) · debug 菜单项(两行文案 · font-size 差 2px) */
+.debug-menu-item {
+  display: block;
+  width: 100%;
+  padding: 6px 10px;
+  text-align: left;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  font-family: inherit;
+}
+.debug-menu-item:hover:not(.debug-menu-item-disabled) {
+  background: #f0f0f0;
+}
+.debug-menu-item-disabled {
+  opacity: 0.5;
+  pointer-events: none;
+}
+.menu-item-title {
+  font-size: 13px;
+  color: #222;
+}
+.menu-item-hint {
+  font-size: 11px;  /* 差 2px */
+  color: #888;
+  margin-top: 2px;
+}
+.debug-menu-separator {
+  height: 1px;
+  background: #ddd;
+  margin: 4px 0;
 }
 </style>

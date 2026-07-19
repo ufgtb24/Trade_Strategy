@@ -3,7 +3,7 @@
 新 app 必须:
 1. 模块级常量 PATTERN_DAG
 2. callable analyze(df, params=None)
-3. callable eval_meta(params=None) -> {"end_role": str, "head_buffer_trading_days": int}
+3. callable eval_meta(params=None) -> {"end_node": str, "head_buffer_trading_days": int}
 
 任一缺失 / 报错 → 跳过 + log warning,/patterns 不返回。
 """
@@ -29,8 +29,8 @@ def _validate_eval_meta(mod, name: str) -> str | None:
         return f"eval_meta() raised: {type(e).__name__}: {e}"
     if not isinstance(meta, dict):
         return f"eval_meta() returned non-dict: {type(meta).__name__}"
-    if "end_role" not in meta or not isinstance(meta["end_role"], str):
-        return "eval_meta() missing or non-str 'end_role'"
+    if "end_node" not in meta or not isinstance(meta["end_node"], str):
+        return "eval_meta() missing or non-str 'end_node'"
     if ("head_buffer_trading_days" not in meta
             or not isinstance(meta["head_buffer_trading_days"], int)):
         return "eval_meta() missing or non-int 'head_buffer_trading_days'"

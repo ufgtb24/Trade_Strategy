@@ -1,7 +1,7 @@
 """dag 对象 → jsonable dict 投影层(纯函数,不读文件/不起服务)。
 
 消费 path2.dag 只读数据结构(AnalysisResult/PatternMatch/PredicateTrace/ClauseWitness/
-EdgeWitness/PatternTopology/RoleDiagnostics),投影成前端 JSON。path2 不引入 JSON 依赖。
+EdgeWitness/PatternTopology/NodeDiagnostics),投影成前端 JSON。path2 不引入 JSON 依赖。
 """
 from __future__ import annotations
 
@@ -34,22 +34,27 @@ def _jsonable(v):
 
 # ── event(全集,含未匹配;子类属性平铺,仅 tooltip 用) ──
 def _event_to_dict(e) -> dict:
+    """event → dict(全集,含未匹配;子类属性平铺,仅 tooltip 用)。
+    child_slots 声明的持有型子 event 引用统一由 child_refs 承载(schema-driven,
+    不硬编码字段名);slot 名对应字段在 fields 循环里跳过,避免 payload 冗余。"""
     d = {
         "class_id": type(e).class_id,
         "event_id": e.event_id,
         "start_idx": e.start_idx,
         "end_idx": e.end_idx,
     }
+    slots = e.child_slots()
+    skip_slots = set(slots.keys())   # BurstEvent -> {"members"}
     for f in dataclasses.fields(e):
         if f.name in ("event_id", "start_idx", "end_idx"):
             continue
-        val = getattr(e, f.name)
-        # composite event 的 members:扁平为 event_id 列表(供前端 matchedIds 沿 members 递归展开)
-        if (f.name == "members" and isinstance(val, tuple) and val
-                and hasattr(val[0], "event_id")):
-            d[f.name] = [m.event_id for m in val]
-        else:
-            d[f.name] = _jsonable(val)
+        if f.name in skip_slots:
+            continue   # 由 child_refs 承载,避免 payload 冗余
+        d[f.name] = _jsonable(getattr(e, f.name))
+    d["child_refs"] = {
+        name: [c.event_id for c in (slot if isinstance(slot, tuple) else (slot,))]
+        for name, slot in slots.items()
+    }
     return d
 
 
@@ -87,14 +92,14 @@ def _trace_to_dict(pt) -> dict:
 
 
 def _match_to_dict(m) -> dict:
-    def _role(v):
+    def _node(v):
         return v.event_id
 
     return {
         "event_id": m.event_id,
         "start_idx": m.start_idx,
         "end_idx": m.end_idx,
-        "role_index": {nid: _role(v) for nid, v in (m.role_index or {}).items()},
+        "node_index": {nid: _node(v) for nid, v in (m.node_index or {}).items()},
         "children": [e.event_id for e in m.children],
         "predicate_trace": _trace_to_dict(m.predicate_trace) if m.predicate_trace else None,
     }
@@ -131,9 +136,13 @@ def summarize(res) -> dict:
 
 
 # ── pattern 静态层(拓扑面板数据源,§7.1) ──
-# event_styles 兜底调色板:PATTERN_DAG.event_styles 默认空,按 topology 出现的 class_id 确定性补齐。
-_PALETTE = ["#f59e0b", "#2563eb", "#16a34a", "#dc2626", "#7c3aed", "#0891b2", "#ca8a04"]
-
+# event_styles 兜底调色板:PATTERN_DAG.event_styles 默认空,按 topology.nodes 里 class_id 首次
+# 出现顺序 setdefault(见 _event_styles),索引 i 就是"第 i 个新 class_id"。当前拓扑覆盖情况:
+#   [0] bo    (bottom_burst / bo_only 的首个 class_id;主图 price-anchored [ids] 方框)
+#   [1] burst (bottom_burst 的第二个 class_id;副图 interval)
+#   [2] tb    (bottom_burst 的第三个 class_id;副图 point)
+#   [3..6]    未占用,给未来新 class_id 兜底(顺序即分配序,i % len 循环)
+_PALETTE = ["#16f943", "#2563eb", "#D60000", "#dfa300", "#7c3aed", "#0891b2", "#ca8a04"]
 
 def _rules_from_where(where_clauses) -> list:
     """(clause_id, fn) 序列 → [{clause_id, op, threshold}]。
@@ -225,30 +234,43 @@ def serialize_pattern(spec) -> dict:
         nodes.append(node)
     # to_topology().edges 与 spec.edges 同序一一对应 → zip(避免多重边 key 冲突)
     edges = [
-        {"src": te.src, "dst": te.dst, "kind": te.kind, "rule": _edge_rule(de)}
+        {"src": te.src, "dst": te.dst, "kind": te.kind, "rule": _edge_rule(de),
+         "anchor_field": de.anchor_field}
         for te, de in zip(topo.edges, spec.edges)
     ]
+    # v4 契约 C:派生 debug_enabled_classes(has_debug_hooks=True 的 detector 的 class_id 去重,拓扑序)
+    debug_enabled_classes: list[str] = []
+    seen: set[str] = set()
+    for n in spec.nodes:
+        det_cls = type(n.detector)
+        if getattr(det_cls, "has_debug_hooks", False) and hasattr(n.detector, "event_cls"):
+            cid = n.detector.event_cls.class_id
+            if cid not in seen:
+                seen.add(cid)
+                debug_enabled_classes.append(cid)
+
     return {
         "pattern_id": spec.pattern_id,
         "topology": {"nodes": nodes, "edges": edges},
         "event_styles": _event_styles(spec, topo),
+        "debug_enabled_classes": debug_enabled_classes,
     }
 
 
-def serialize_per_pattern_result(res, end_role: str, label_horizon: int,
+def serialize_per_pattern_result(res, end_node: str, label_horizon: int,
                                   win, start_ts, end_ts) -> dict:
     """单股单 pattern 投影,服务多 pattern worker。
 
     args:
         res: AnalysisResult(已 analyze 完整 buf_win)
-        end_role: pattern 的买点 role(从 eval_meta 取)
+        end_node: pattern 的买点 node(从 eval_meta 取)
         label_horizon: 前瞻收益天数
         win: 已切好的 DataFrame(含 date 列 + OHLC)
         start_ts/end_ts: pd.Timestamp,严格窗左右边界(含)
 
     返回 {summary, analysis, max_forward_return}:
       - analysis.events: 全集照旧(含缓冲段;K 线灰色层数据源)
-      - analysis.matches: 仅保留 end_role event 起点 ∈ [start_ts, end_ts] 的 match,
+      - analysis.matches: 仅保留 end_node event 起点 ∈ [start_ts, end_ts] 的 match,
                           每条注入 forward_return
       - summary["matches"]: 窗内 match 数(覆写)
       - max_forward_return: max over filtered matches 中非 None 的 forward_return;
@@ -258,12 +280,12 @@ def serialize_per_pattern_result(res, end_role: str, label_horizon: int,
 
     ret_by_id: dict = {}
     for m in res.matches:
-        ev = m.role_index[end_role]
+        ev = m.node_index[end_node]
         buy_date = win["date"].iat[ev.start_idx]
         if not (start_ts <= buy_date <= end_ts):
             continue
         ret_by_id[m.event_id] = match_forward_returns(
-            m, end_role, win, [label_horizon])[label_horizon]
+            m, end_node, win, [label_horizon])[label_horizon]
     analysis = serialize_analysis(res)
     analysis["matches"] = [
         {**md, "forward_return": ret_by_id[md["event_id"]]}

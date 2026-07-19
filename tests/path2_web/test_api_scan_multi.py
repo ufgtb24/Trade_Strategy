@@ -35,7 +35,7 @@ def app(tmp_path):
 def test_post_scan_accepts_pattern_ids(app):
     """POST /scan 接受 pattern_ids 数组,返回 scan_id。"""
     r = app.post("/scan", json={
-        "pattern_ids": ["bo_only", "bottom_breakout_burst"],
+        "pattern_ids": ["bo_only", "bottom_burst"],
         "start_date": "2024-02-01",
         "end_date": "2024-06-30",
         "workers": 1,

@@ -39,7 +39,7 @@ def test_per_pattern_result_schema():
     meta = eval_meta()
     start_ts = pd.to_datetime(win["date"].iat[len(win) // 2])
     end_ts   = pd.to_datetime(win["date"].iat[-1])
-    out = serialize_per_pattern_result(res, end_role=meta["end_role"],
+    out = serialize_per_pattern_result(res, end_node=meta["end_node"],
                                        label_horizon=5, win=win,
                                        start_ts=start_ts, end_ts=end_ts)
     assert set(out.keys()) == {"summary", "analysis", "max_forward_return"}
@@ -61,7 +61,7 @@ def test_per_pattern_events_full_set_kept():
     # 极窄过滤窗:只允许 win 末尾 5 bar 的 match
     start_ts = pd.to_datetime(win["date"].iat[-5])
     end_ts   = pd.to_datetime(win["date"].iat[-1])
-    out = serialize_per_pattern_result(res, end_role=meta["end_role"],
+    out = serialize_per_pattern_result(res, end_node=meta["end_node"],
                                        label_horizon=5, win=win,
                                        start_ts=start_ts, end_ts=end_ts)
     # events 全集与原 res.events 一致(数量)
@@ -83,7 +83,7 @@ def test_max_forward_return_null_when_matches_empty():
     # 完全在 win 之外的过滤窗 → 0 match 入选
     start_ts = pd.to_datetime("1900-01-01")
     end_ts   = pd.to_datetime("1900-01-02")
-    out = serialize_per_pattern_result(res, end_role=meta["end_role"],
+    out = serialize_per_pattern_result(res, end_node=meta["end_node"],
                                        label_horizon=5, win=win,
                                        start_ts=start_ts, end_ts=end_ts)
     assert out["analysis"]["matches"] == []
@@ -102,7 +102,7 @@ def test_summary_matches_key_reflects_window():
     meta = eval_meta()
     start_ts = pd.to_datetime("1900-01-01")
     end_ts   = pd.to_datetime("1900-01-02")
-    out = serialize_per_pattern_result(res, end_role=meta["end_role"],
+    out = serialize_per_pattern_result(res, end_node=meta["end_node"],
                                        label_horizon=5, win=win,
                                        start_ts=start_ts, end_ts=end_ts)
     assert out["summary"]["matches"] == 0

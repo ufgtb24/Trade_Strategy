@@ -1,16 +1,9 @@
 /**
  * KlineChart.ts — 纯点击分流逻辑（无 Vue 依赖）
  *
- * 职责：接收 ECharts click 事件 payload，根据 seriesName 和 matches 分流，
- * 调用 view store 的 actions 驱动四件状态（selectedMatch / highlightedEvents /
- * candidateMatches / pendingDisambig）。
- *
- * 不变量：
- * - MatchDict.children 是扁平且去重的 event_id 列表；同一 event_id 不会在同一
- *   match.children 中出现多次。multi-match（ms.length > 1）来源仅是同一 event_id
- *   被多个不同 match.children 共享——不会因 Kleene 复用产生假阳。
- * - candidate 与 selected 互斥：进 candidate 分支前必须先清 selected + highlight。
- * - bracket click 和 marker ms≤1 两个分支必须先 clearCandidates 防残留。
+ * 职责：接收 ECharts click 事件 payload，根据 seriesName 分流到 view store 的三个
+ * 高层焦点 action（clearFocus / focusMatch / focusEvent）。归属判定（0/1/>1 match）
+ * 等不变量已下沉到 view.ts::focusEvent 内部，本文件不再直接消费 matches/events/edges。
  */
 
 import type { MatchDict } from '../types'
@@ -21,11 +14,47 @@ export type ChartClickPayload = {
   data?: { event_id?: string; match_id?: string }
 } | null
 
+/** marker 分支覆盖的四种 series(点/区间/价格点/卫星);Task 18 shift+click 判定复用同一清单
+ * (hoisted 到模块级,避免 handleChartClick 内部与 KlineChart.vue 各修一份漂移)。*/
+export const MARKER_SERIES = ['points', 'intervals', 'price-points', 'satellites']
+
+export type ShiftClickSource = 'main' | 'sub'
+
 /**
- * 处理 ECharts chart.on('click', p) 事件，分流到四个 view store 动作分支。
+ * 入口 D · shift+click 跨图累积(Task 18):2 击选定 (src,dst) → 触发 view.triggerPairQuery;
+ * 第 3 击清空重来(保留新点作为下一轮的 src)。状态放 view.shiftSelectedEvents——同
+ * selectedEventId/candidateMatchIds 既有模式,store 是 KlineChart↔DetailSidebar 唯一跨组件状态
+ * 载体(两者皆零 props/零 emit,见 ChartArea.vue 组合关系)。与 handleChartClick 同测试范式:
+ * 纯函数 + 真 Pinia store,不需要 mount .vue / echarts。
+ */
+export function handleShiftClick(
+  event_id: string,
+  class_id: string,
+  source: ShiftClickSource,
+  view: ReturnType<typeof useViewStore>,
+): void {
+  const cur = view.shiftSelectedEvents
+  if (cur.length < 2) {
+    const next = [...cur, { event_id, class_id, source }]
+    view.setShiftSelectedEvents(next)
+    if (next.length === 2) {
+      void view.triggerPairQuery(next[0].event_id, next[1].event_id)
+    }
+  } else {
+    view.setShiftSelectedEvents([{ event_id, class_id, source }])
+  }
+}
+
+/**
+ * 处理 ECharts chart.on('click', p) 事件,分流到 view store 三个高层 action。
  *
- * @param p       ECharts click payload（空白点击时为 null 或 seriesName 缺失）
- * @param matches 当前 effectiveAnalysis.matches
+ * 分流规则(spec §3.3):
+ *   空白 click       → view.clearFocus()
+ *   brackets click   → view.focusMatch(match_id)
+ *   MARKER_SERIES    → view.focusEvent(event_id) · 内部走归属判定 4 分支(0/1/>1 归属)
+ *
+ * @param p       ECharts click payload(空白点击时为 null 或 seriesName 缺失)
+ * @param matches 当前 effectiveAnalysis.matches(保签名兼容,不再直接消费 —— focusEvent 内部读)
  * @param view    useViewStore() 实例
  */
 export function handleChartClick(
@@ -33,60 +62,17 @@ export function handleChartClick(
   matches: MatchDict[],
   view: ReturnType<typeof useViewStore>,
 ): void {
-  // ── 空白 click → 清四样 ─────────────────────────────────────────────
   if (!p || !p.seriesName) {
-    view.clearCandidates()
-    view.clearHighlight()
-    view.selectMatch(null)
-    view.selectEvent(null)
+    view.clearFocus()
     return
   }
-
-  // ── brackets 分支 ────────────────────────────────────────────────────
-  // bracket click 收尾：无论 match_id 是否在候选集中，一律收尾并清候选（防残留）。
-  // 同时清 selectedEventId：焦点从「event marker」切到「bracket 本身」,
-  // 若不清则原被点 marker 的 focus 琥珀边缘会与新 bracket 的琥珀填充并存,
-  // 违反「同一时刻只一个 marker 处于当前被选中状态」的可见性契约。
   if (p.seriesName === 'brackets' && p.data?.match_id) {
-    const matchId = p.data.match_id
-    const match = matches.find((m) => m.event_id === matchId)
-    if (!match) return
-    view.setHighlightedEvents(match.children)
-    view.selectMatch(matchId)
-    view.selectEvent(null)
-    view.clearCandidates()
+    // focusMatch 里不校验存在(简化);消费方无 bracket 不会触发该分支。
+    view.focusMatch(p.data.match_id)
     return
   }
-
-  // ── marker 分支（points / intervals / price-points / satellites）─────
-  const MARKER_SERIES = ['points', 'intervals', 'price-points', 'satellites']
   if (MARKER_SERIES.includes(p.seriesName) && p.data?.event_id) {
-    const eventId = p.data.event_id
-    // 计算 event 归属的 match 集合
-    const ms = matches.filter((m) => m.children.includes(eventId))
-
-    if (ms.length === 0) {
-      // M fallback：不归属任何 match，直接选 event，清候选防残留
-      view.clearCandidates()
-      view.selectEvent(eventId)
-      return
-    }
-
-    if (ms.length === 1) {
-      // 唯一归属：高亮整组 + 选定 match + 选 event，清候选防残留
-      view.clearCandidates()
-      view.setHighlightedEvents(ms[0].children)
-      view.selectMatch(ms[0].event_id)
-      view.selectEvent(eventId)
-      return
-    }
-
-    // ms.length > 1：多归属 → 进 candidate 流（互斥：先清 selected + highlight）
-    view.selectMatch(null)
-    view.clearHighlight()
-    view.selectEvent(null)
-    view.setCandidateMatches(ms.map((m) => m.event_id))
-    view.setPendingDisambig(eventId)
+    view.focusEvent(p.data.event_id)
     return
   }
 }

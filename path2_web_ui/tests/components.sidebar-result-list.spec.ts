@@ -1,0 +1,398 @@
+import { describe, it, expect, beforeEach } from 'vitest'
+import { mount, flushPromises } from '@vue/test-utils'
+import { createPinia, setActivePinia } from 'pinia'
+import SidebarResultList from '../src/components/SidebarResultList.vue'
+import { useViewStore } from '../src/stores/view'
+import type { MultiScanResultFile, PatternStats } from '../src/types'
+
+const SAMPLE_STATS: PatternStats = {
+  count: 10, mean: 0.05, min: -0.02, q25: 0.01,
+  median: 0.05, q75: 0.08, max: 0.15, win_rate: 0.7,
+}
+
+function makeScanFile(pids: string[], withStats: boolean): MultiScanResultFile {
+  const per_pattern: Record<string, any> = {}
+  for (const pid of pids) {
+    per_pattern[pid] = {
+      pattern_spec: { pattern_id: pid, nodes: [], edges: [], event_styles: {} } as any,
+      end_node: 'tb',
+      ...(withStats ? { stats: SAMPLE_STATS } : {}),
+    }
+  }
+  return {
+    pattern_ids: pids,
+    per_pattern,
+    scan: {
+      scan_ts: '20260713T120000',
+      start_date: '2025-01-01', end_date: '2026-12-31', workers: 2,
+      scanned: 0, hits: 0, errors: 0, dataset_dir: '', params: 'default',
+      win_start: '2025-01-01', win_end: '2026-12-31', label_horizon: 5,
+    },
+    results: [],
+  }
+}
+
+describe('SidebarResultList · hover tooltip', () => {
+  beforeEach(() => { setActivePinia(createPinia()) })
+
+  it('shows PatternStatsTooltip on hdr-pattern hover when stats present', async () => {
+    const view = useViewStore()
+    view.loadScanFile(makeScanFile(['bo_only'], true))
+    const w = mount(SidebarResultList, { attachTo: document.body })
+    await flushPromises()
+    const th = w.find('.col-pattern[data-pattern-pid="bo_only"]')
+    expect(th.exists()).toBe(true)
+    await th.trigger('mouseenter')
+    await flushPromises()
+    expect(w.findComponent({ name: 'PatternStatsTooltip' }).exists()).toBe(true)
+    w.unmount()
+  })
+
+  it('does not mount tooltip when stats absent (old JSON)', async () => {
+    const view = useViewStore()
+    view.loadScanFile(makeScanFile(['bo_only'], false))
+    const w = mount(SidebarResultList, { attachTo: document.body })
+    await flushPromises()
+    const th = w.find('.col-pattern[data-pattern-pid="bo_only"]')
+    await th.trigger('mouseenter')
+    await flushPromises()
+    expect(w.findComponent({ name: 'PatternStatsTooltip' }).exists()).toBe(false)
+    w.unmount()
+  })
+
+  it('hides tooltip on mouseleave', async () => {
+    const view = useViewStore()
+    view.loadScanFile(makeScanFile(['bo_only'], true))
+    const w = mount(SidebarResultList, { attachTo: document.body })
+    await flushPromises()
+    const th = w.find('.col-pattern[data-pattern-pid="bo_only"]')
+    await th.trigger('mouseenter')
+    await flushPromises()
+    expect(w.findComponent({ name: 'PatternStatsTooltip' }).exists()).toBe(true)
+    await th.trigger('mouseleave')
+    await flushPromises()
+    expect(w.findComponent({ name: 'PatternStatsTooltip' }).exists()).toBe(false)
+    w.unmount()
+  })
+
+  it('multi-pattern hovers show tooltip for each pid independently', async () => {
+    const view = useViewStore()
+    view.loadScanFile(makeScanFile(['bo_only', 'bottom_burst'], true))
+    const w = mount(SidebarResultList, { attachTo: document.body })
+    await flushPromises()
+    const th1 = w.find('.col-pattern[data-pattern-pid="bo_only"]')
+    const th2 = w.find('.col-pattern[data-pattern-pid="bottom_burst"]')
+    expect(th1.exists() && th2.exists()).toBe(true)
+
+    await th1.trigger('mouseenter')
+    await flushPromises()
+    expect(w.findComponent({ name: 'PatternStatsTooltip' }).exists()).toBe(true)
+    await th1.trigger('mouseleave')
+
+    await th2.trigger('mouseenter')
+    await flushPromises()
+    expect(w.findComponent({ name: 'PatternStatsTooltip' }).exists()).toBe(true)
+    w.unmount()
+  })
+})
+
+describe('SidebarResultList · symbol search UI', () => {
+  beforeEach(() => { setActivePinia(createPinia()) })
+
+  function makeMultiFile(symbols: string[]): MultiScanResultFile {
+    return {
+      pattern_ids: ['bo_only'],
+      per_pattern: {
+        bo_only: {
+          pattern_spec: { pattern_id: 'bo_only', nodes: [], edges: [], event_styles: {} } as any,
+          end_node: 'tb',
+        },
+      },
+      scan: {
+        scan_ts: '20260714T120000', start_date: '2024-01-01', end_date: '2024-06-30',
+        workers: 1, scanned: symbols.length, hits: symbols.length, errors: 0,
+        dataset_dir: '/d', params: 'default',
+        win_start: '2024-01-01', win_end: '2024-06-30', label_horizon: 5,
+      },
+      results: symbols.map(s => ({
+        symbol: s,
+        per_pattern: {
+          bo_only: { summary: { matches: 1 }, analysis: { events: [], matches: [] }, max_forward_return: 0.1 },
+        },
+      })),
+    }
+  }
+
+  it('search bar hidden when scanFile is null', async () => {
+    const w = mount(SidebarResultList, { attachTo: document.body })
+    await flushPromises()
+    expect(w.find('[data-testid="symbol-search"]').exists()).toBe(false)
+    w.unmount()
+  })
+
+  it('search bar visible after loadScanFile', async () => {
+    const view = useViewStore()
+    view.loadScanFile(makeMultiFile(['AA', 'AAPL']))
+    const w = mount(SidebarResultList, { attachTo: document.body })
+    await flushPromises()
+    expect(w.find('[data-testid="symbol-search"]').exists()).toBe(true)
+    w.unmount()
+  })
+
+  it('typing in input updates view.symbolQuery + list narrows', async () => {
+    const view = useViewStore()
+    view.loadScanFile(makeMultiFile(['AA', 'AAPL', 'BAA']))
+    const w = mount(SidebarResultList, { attachTo: document.body })
+    await flushPromises()
+    const input = w.get('[data-testid="symbol-search"]').element as HTMLInputElement
+    input.value = 'aa'
+    input.dispatchEvent(new Event('input', { bubbles: true }))
+    await flushPromises()
+    expect(view.symbolQuery).toBe('aa')
+    expect(view.filteredSortedRows.map(r => r.symbol).sort()).toEqual(['AA', 'AAPL'])
+    w.unmount()
+  })
+
+  it('count reads filteredSortedRows.length / sortedRows.length', async () => {
+    const view = useViewStore()
+    view.loadScanFile(makeMultiFile(['AA', 'AAPL', 'BAA']))
+    const w = mount(SidebarResultList, { attachTo: document.body })
+    await flushPromises()
+    view.setSymbolQuery('aa')
+    await flushPromises()
+    const count = w.get('[data-testid="symbol-search-count"]').text()
+    expect(count).toBe('2 / 3')
+    w.unmount()
+  })
+
+  it('clear button appears only when query non-empty, click clears query', async () => {
+    const view = useViewStore()
+    view.loadScanFile(makeMultiFile(['AA', 'AAPL']))
+    const w = mount(SidebarResultList, { attachTo: document.body })
+    await flushPromises()
+    expect(w.find('[data-testid="symbol-search-clear"]').exists()).toBe(false)
+    view.setSymbolQuery('aa')
+    await flushPromises()
+    const clearBtn = w.get('[data-testid="symbol-search-clear"]')
+    await clearBtn.trigger('click')
+    expect(view.symbolQuery).toBe('')
+    w.unmount()
+  })
+
+  it('Esc with non-empty query: clears query (does not blur)', async () => {
+    const view = useViewStore()
+    view.loadScanFile(makeMultiFile(['AA', 'AAPL']))
+    const w = mount(SidebarResultList, { attachTo: document.body })
+    await flushPromises()
+    const input = w.get('[data-testid="symbol-search"]').element as HTMLInputElement
+    input.focus()
+    view.setSymbolQuery('aa')
+    await flushPromises()
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+    await flushPromises()
+    expect(view.symbolQuery).toBe('')
+    w.unmount()
+  })
+
+  it('Esc with empty query: blurs input', async () => {
+    const view = useViewStore()
+    view.loadScanFile(makeMultiFile(['AA']))
+    const w = mount(SidebarResultList, { attachTo: document.body })
+    await flushPromises()
+    const input = w.get('[data-testid="symbol-search"]').element as HTMLInputElement
+    input.focus()
+    expect(document.activeElement).toBe(input)
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+    await flushPromises()
+    expect(document.activeElement).not.toBe(input)
+    w.unmount()
+  })
+
+  it('ArrowDown while search input focused still cycles selected symbol', async () => {
+    const view = useViewStore()
+    view.loadScanFile(makeMultiFile(['AA', 'AAPL', 'BAA']))
+    view.selectSymbol('AA')
+    const w = mount(SidebarResultList, { attachTo: document.body })
+    await flushPromises()
+    const input = w.get('[data-testid="symbol-search"]').element as HTMLInputElement
+    input.focus()
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }))
+    await flushPromises()
+    expect(view.symbol).toBe('AAPL')
+    w.unmount()
+  })
+})
+
+describe('SidebarResultList · global char forwarding', () => {
+  beforeEach(() => { setActivePinia(createPinia()) })
+
+  function scanFile(symbols: string[]): MultiScanResultFile {
+    return {
+      pattern_ids: ['bo_only'],
+      per_pattern: {
+        bo_only: {
+          pattern_spec: { pattern_id: 'bo_only', nodes: [], edges: [], event_styles: {} } as any,
+          end_node: 'tb',
+        },
+      },
+      scan: {
+        scan_ts: '20260714T120000', start_date: '2024-01-01', end_date: '2024-06-30',
+        workers: 1, scanned: symbols.length, hits: symbols.length, errors: 0,
+        dataset_dir: '/d', params: 'default',
+        win_start: '2024-01-01', win_end: '2024-06-30', label_horizon: 5,
+      },
+      results: symbols.map(s => ({
+        symbol: s,
+        per_pattern: {
+          bo_only: { summary: { matches: 1 }, analysis: { events: [], matches: [] }, max_forward_return: 0.1 },
+        },
+      })),
+    }
+  }
+
+  function fireKey(key: string, opts: Partial<KeyboardEventInit> = {}) {
+    document.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, ...opts }))
+  }
+
+  it('typing "a" while body has focus: input gets focus + query becomes "a"', async () => {
+    const view = useViewStore()
+    view.loadScanFile(scanFile(['AA', 'AAPL']))
+    const w = mount(SidebarResultList, { attachTo: document.body })
+    await flushPromises()
+    ;(document.body as HTMLElement).focus?.()
+    fireKey('a')
+    await flushPromises()
+    const input = w.get('[data-testid="symbol-search"]').element as HTMLInputElement
+    expect(document.activeElement).toBe(input)
+    expect(view.symbolQuery).toBe('a')
+    w.unmount()
+  })
+
+  it('typing "1" is forwarded (digits accepted)', async () => {
+    const view = useViewStore()
+    view.loadScanFile(scanFile(['AA']))
+    const w = mount(SidebarResultList, { attachTo: document.body })
+    await flushPromises()
+    fireKey('1')
+    await flushPromises()
+    expect(view.symbolQuery).toBe('1')
+    w.unmount()
+  })
+
+  it('typing "." and "-" are forwarded', async () => {
+    const view = useViewStore()
+    view.loadScanFile(scanFile(['AA']))
+    // NOTE: two separate mounts, not two fireKey() calls on one mount.
+    // Reason: after the 1st char auto-focuses the search input, jsdom does not
+    // simulate native "insert character into focused input" for synthetic
+    // (untrusted) KeyboardEvents (verified empirically) — real browsers gate
+    // that default action on event.isTrusted too. So a 2nd fireKey() on the
+    // same mount would hit the (correct, tested separately below) "already
+    // focused → let browser handle it" bail and never actually land, which
+    // would test an artifact of jsdom rather than CHAR_RE coverage. Remounting
+    // resets activeElement to document.body, exercising the same
+    // not-yet-focused forwarding path for each char while still accumulating
+    // onto the same store's symbolQuery.
+    const w1 = mount(SidebarResultList, { attachTo: document.body })
+    await flushPromises()
+    fireKey('.')
+    await flushPromises()
+    w1.unmount()
+
+    const w2 = mount(SidebarResultList, { attachTo: document.body })
+    await flushPromises()
+    fireKey('-')
+    await flushPromises()
+    expect(view.symbolQuery).toBe('.-')
+    w2.unmount()
+  })
+
+  it('modifier keys (ctrl+a) are not forwarded', async () => {
+    const view = useViewStore()
+    view.loadScanFile(scanFile(['AA']))
+    const w = mount(SidebarResultList, { attachTo: document.body })
+    await flushPromises()
+    fireKey('a', { ctrlKey: true })
+    await flushPromises()
+    expect(view.symbolQuery).toBe('')
+    w.unmount()
+  })
+
+  it('non-alphanumeric key (space) is not forwarded', async () => {
+    const view = useViewStore()
+    view.loadScanFile(scanFile(['AA']))
+    const w = mount(SidebarResultList, { attachTo: document.body })
+    await flushPromises()
+    fireKey(' ')
+    await flushPromises()
+    expect(view.symbolQuery).toBe('')
+    w.unmount()
+  })
+
+  it('scanFile null: chars not forwarded', async () => {
+    const w = mount(SidebarResultList, { attachTo: document.body })
+    await flushPromises()
+    fireKey('a')
+    await flushPromises()
+    // 无 scanFile 时 search input 都不渲染,symbolQuery 保持 ''
+    const view = useViewStore()
+    expect(view.symbolQuery).toBe('')
+    w.unmount()
+  })
+
+  it('activeElement is an unrelated input outside listEl → not forwarded', async () => {
+    const view = useViewStore()
+    view.loadScanFile(scanFile(['AA']))
+    const outside = document.createElement('input')
+    document.body.appendChild(outside)
+    const w = mount(SidebarResultList, { attachTo: document.body })
+    await flushPromises()
+    outside.focus()
+    expect(document.activeElement).toBe(outside)
+    fireKey('a')
+    await flushPromises()
+    expect(view.symbolQuery).toBe('')
+    expect(document.activeElement).toBe(outside)
+    document.body.removeChild(outside)
+    w.unmount()
+  })
+
+  it('IME composing key not forwarded', async () => {
+    const view = useViewStore()
+    view.loadScanFile(scanFile(['AA']))
+    const w = mount(SidebarResultList, { attachTo: document.body })
+    await flushPromises()
+    document.dispatchEvent(new KeyboardEvent('keydown', {
+      key: 'a', bubbles: true, isComposing: true,
+    }))
+    await flushPromises()
+    expect(view.symbolQuery).toBe('')
+    w.unmount()
+  })
+
+  it('already focused in searchInputEl: handler returns, browser default input handles typing', async () => {
+    const view = useViewStore()
+    view.loadScanFile(scanFile(['AA']))
+    const w = mount(SidebarResultList, { attachTo: document.body })
+    await flushPromises()
+    const input = w.get('[data-testid="symbol-search"]').element as HTMLInputElement
+    input.focus()
+    // 焦点已在 input,handler 应 return 且 view.symbolQuery 不被手工追加
+    fireKey('x')
+    await flushPromises()
+    // 我们不模拟浏览器 default input 事件路由,只断言 handler 未手工追加
+    expect(view.symbolQuery).toBe('')
+    w.unmount()
+  })
+
+  it('Shift+B (brush hotkey) not forwarded to search', async () => {
+    const view = useViewStore()
+    view.loadScanFile(scanFile(['AA']))
+    const w = mount(SidebarResultList, { attachTo: document.body })
+    await flushPromises()
+    fireKey('B', { shiftKey: true })
+    await flushPromises()
+    expect(view.symbolQuery).toBe('')
+    w.unmount()
+  })
+})

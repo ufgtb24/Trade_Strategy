@@ -5,7 +5,7 @@ import { useViewStore } from '../src/stores/view'
 vi.mock('../src/api', () => ({
   getDiagnose: vi.fn(() => Promise.resolve(null)),
   getPreview: vi.fn(() => Promise.resolve({
-    analysis: { events: [], matches: [], role_index: {} },
+    analysis: { events: [], matches: [], node_index: {} },
     summary: { events: 0, matches: 0 },
     pattern_spec: {} as any, scan: {} as any,
   })),
@@ -16,7 +16,7 @@ vi.mock('../src/api', () => ({
 }))
 
 vi.mock('../src/stores/config', () => ({
-  useConfigStore: vi.fn(() => ({ config: null })),
+  useConfigStore: vi.fn(() => ({ config: null, saveLastPattern: vi.fn() })),
 }))
 
 describe('view store — Task 1 (M base)', () => {
@@ -28,28 +28,9 @@ describe('view store — Task 1 (M base)', () => {
       expect(view.highlightedEventIds.size).toBe(0)
     })
 
-    it('setHighlightedEvents replaces with new Set (triggers reactivity)', () => {
-      const view = useViewStore()
-      const before = view.highlightedEventIds
-      view.setHighlightedEvents(['a', 'b', 'c'])
-      expect(view.highlightedEventIds.size).toBe(3)
-      expect(view.highlightedEventIds.has('a')).toBe(true)
-      // ref 必须整体替换:before 与 after 不应是同一 Set 实例
-      expect(view.highlightedEventIds).not.toBe(before)
-    })
-
-    it('clearHighlight replaces with empty Set', () => {
-      const view = useViewStore()
-      view.setHighlightedEvents(['a', 'b'])
-      view.clearHighlight()
-      expect(view.highlightedEventIds.size).toBe(0)
-    })
-
-    it('setHighlightedEvents dedupes input (Set semantics)', () => {
-      const view = useViewStore()
-      view.setHighlightedEvents(['a', 'a', 'b'])
-      expect(view.highlightedEventIds.size).toBe(2)
-    })
+    // Task 3:highlightedEventIds 从 ref+setter 改为 computed(依赖 selectedMatch,协议驱动
+    // 沿 child_refs/anchor_field 展开)。setHighlightedEvents/clearHighlight 已不存在——
+    // 协议派生行为见 tests/components.kline-click.spec.ts 末尾专项测试。
   })
 
   describe('view store — selectedMatchId + selectMatch null (Task 1 extension)', () => {
@@ -62,20 +43,20 @@ describe('view store — Task 1 (M base)', () => {
 
     it('selectedMatchId derives from selected.value.matchId', () => {
       const view = useViewStore()
-      view.selectMatch('m_abc')
+      view.focusMatch('m_abc')
       expect(view.selectedMatchId).toBe('m_abc')
     })
 
-    it('selectedMatchId is null when a role is selected (kind=role)', () => {
+    it('selectedMatchId is null when a node is expanded (toggleExpandedNode)', () => {
       const view = useViewStore()
-      view.selectRole('node_x')
+      view.toggleExpandedNode('node_x')
       expect(view.selectedMatchId).toBeNull()
     })
 
-    it('selectMatch(null) clears selection', () => {
+    it('clearFocus() clears selection', () => {
       const view = useViewStore()
-      view.selectMatch('m_abc')
-      view.selectMatch(null)
+      view.focusMatch('m_abc')
+      view.clearFocus()
       expect(view.selectedMatchId).toBeNull()
       expect(view.selected).toBeNull()
     })
@@ -130,11 +111,10 @@ describe('view store — Task 7 (cross-context cleanup)', () => {
 
   it('selectSymbol clears candidate + highlight + selected', () => {
     const view = useViewStore()
-    view.setHighlightedEvents(['e1', 'e2'])
     view.setCandidateMatches(['m1'])
     view.setPendingDisambig('e1')
-    view.selectMatch('m1')
-    view.selectEvent('e1')
+    view.focusedMatchId = 'm1'   // 直写:避免 focusMatch 内部 clearCandidates() 提前清掉上面的 arrange
+    view.focusedEventId = 'e1'
     view.selectSymbol('NEW_TICKER')
     expect(view.candidateMatchIds.size).toBe(0)
     expect(view.highlightedEventIds.size).toBe(0)
@@ -145,11 +125,10 @@ describe('view store — Task 7 (cross-context cleanup)', () => {
 
   it('setActivePattern clears candidate + highlight + selected', () => {
     const view = useViewStore()
-    view.setHighlightedEvents(['e1'])
     view.setCandidateMatches(['m1'])
     view.setPendingDisambig('e1')
-    view.selectMatch('m1')
-    view.selectEvent('e1')
+    view.focusedMatchId = 'm1'   // 直写:避免 focusMatch 内部 clearCandidates() 提前清掉上面的 arrange
+    view.focusedEventId = 'e1'
     view.setActivePattern('p_other')
     expect(view.candidateMatchIds.size).toBe(0)
     expect(view.highlightedEventIds.size).toBe(0)
@@ -160,11 +139,10 @@ describe('view store — Task 7 (cross-context cleanup)', () => {
 
   it('clearScanFile clears candidate + highlight + selected', () => {
     const view = useViewStore()
-    view.setHighlightedEvents(['e1'])
     view.setCandidateMatches(['m1'])
     view.setPendingDisambig('e1')
-    view.selectMatch('m1')
-    view.selectEvent('e1')
+    view.focusedMatchId = 'm1'   // 直写:避免 focusMatch 内部 clearCandidates() 提前清掉上面的 arrange
+    view.focusedEventId = 'e1'
     view.clearScanFile()
     expect(view.candidateMatchIds.size).toBe(0)
     expect(view.highlightedEventIds.size).toBe(0)

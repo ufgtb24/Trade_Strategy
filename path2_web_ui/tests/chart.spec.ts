@@ -15,7 +15,7 @@ import {
 import type { BandRenderInput } from '../src/render/chart'
 import { computeSubGeometry, type BandGeom } from '../src/render/subGeometry'
 import {
-  deriveTagMap, isolatedNodeIds, eventTierOf, roleOfEventByBand, bandKeyOf, matchedIds,
+  deriveTagMap, isolatedNodeIds, eventTierOf, nodeOfEventByBand, bandKeyOf, matchedIds,
 } from '../src/render/visible'
 import type { Bar, EventDict, MatchDict, Topology, Level, Tier } from '../src/types'
 
@@ -31,7 +31,7 @@ describe('chart.ts — computeEventData / buildMainOption / buildSubOption', () 
   ] as any[]
   const matches = [
     { event_id: 'm@0-1', start_idx: 0, end_idx: 1,
-      role_index: { burst: 'burst_0_1', tb: 'tb_1' },
+      node_index: { burst: 'burst_0_1', tb: 'tb_1' },
       children: ['burst_0_1', 'tb_1'],
       forward_return: 0.05 } as any,
   ]
@@ -46,11 +46,11 @@ describe('chart.ts — computeEventData / buildMainOption / buildSubOption', () 
     isolatedNodeIds: new Set<string>(),
     tagList,
     level: 'matched' as const,
-    roleColors: { burst: '#2563eb', tb: '#16a34a' },
+    nodeColors: { burst: '#2563eb', tb: '#16a34a' },
     eventTier: () => 'matched' as const,
-    roleOfEventByBand: (e: any) => e.source_tag,
+    nodeOfEventByBand: (e: any) => e.source_tag,
     bandKeyOf: (e: any) => e.source_tag,
-    roleVisible: {},
+    nodeVisible: {},
     tagToNodes: { burst: ['burst'], tb: ['tb'] },
     selectedEventId: null,
     tooltipResolver: undefined,
@@ -58,7 +58,7 @@ describe('chart.ts — computeEventData / buildMainOption / buildSubOption', () 
     matchLabel: () => null,
     sliderShow: true,
     zoomOverride: null,
-    endRole: undefined,
+    endNode: undefined,
     selectedMatchId: null,
     candidateMatchIds: new Set<string>(),
     highlightedEventIds: new Set<string>(),
@@ -149,7 +149,7 @@ describe('chart.ts — restored coverage (Task 6 review fix)', () => {
   const matches: MatchDict[] = [
     {
       event_id: 'm1', start_idx: 1, end_idx: 16,
-      role_index: { down: 'down1', side: 'side1', burst: 'burst1', tb: 'tb16' },
+      node_index: { down: 'down1', side: 'side1', burst: 'burst1', tb: 'tb16' },
       children: ['down1', 'side1', 'burst1', 'tb16'],
       predicate_trace: { where_results: {}, edge_results: {} },
     } as any,
@@ -159,19 +159,19 @@ describe('chart.ts — restored coverage (Task 6 review fix)', () => {
     date: `2025-01-${String(i + 1).padStart(2, '0')}`,
     o: 10 + i, h: 11 + i, l: 9 + i, c: 10.5 + i, v: 1000 + i, rv: 0,
   }))
-  const roleColors = { down: '#d97706', side: '#fbbf24', burst: '#7c3aed', tb: '#16a34a' }
+  const nodeColors = { down: '#d97706', side: '#fbbf24', burst: '#7c3aed', tb: '#16a34a' }
 
   function makeInput(level: Level, overrides: Partial<BandRenderInput> = {}): BandRenderInput {
     const { tagToNodes, tagList } = deriveTagMap(topology.nodes)
     const isolated = isolatedNodeIds(topology)
-    const mIds = matchedIds(matches)
+    const mIds = matchedIds(matches, events, topology.edges)
     const qualifiedIds = new Set<string>()
     return {
-      topology, isolatedNodeIds: isolated, tagList, level, roleColors,
+      topology, isolatedNodeIds: isolated, tagList, level, nodeColors,
       eventTier: (e) => eventTierOf(e, mIds, qualifiedIds),
-      roleOfEventByBand: (e) => roleOfEventByBand(e, tagToNodes, tagList),
+      nodeOfEventByBand: (e) => nodeOfEventByBand(e, tagToNodes, tagList),
       bandKeyOf: (e) => bandKeyOf(e, tagList),
-      roleVisible: {},
+      nodeVisible: {},
       tagToNodes,
       selectedEventId: null,
       ...overrides,
@@ -264,25 +264,27 @@ describe('chart.ts — restored coverage (Task 6 review fix)', () => {
 
   // ── 3. highlight 三分支 + z-order (chart.ts:214-253, 354-363) ──
   describe('3. highlight three-branch + z-order', () => {
-    // 放大+阴影悬浮三态(spec 2026-07-02-marker-highlight-elevation):
-    // group=本色放大+投影(无描边);focus=+琥珀边;pending=白底垫层+本色闪烁层。
-    // 全部 silent:true(实心版盖住本体,交互须穿透到下层 marker 系列)。
-    it('makeRenderHighlightWithGeom: 三态 — group/focus 琥珀实心, focus 深灰蓝边, pending 白底+本色闪烁分层', () => {
+    // 放大+阴影悬浮三态(2026-07-08 改):group/focus 都保 node/tier 分色(itemStyle.color),
+    // 靠边框粗细区分——group=细深边(1.5)、focus=粗深边(2.5);琥珀不再代表选中。
+    // pending=白底垫层+本色闪烁层。全部 silent:true(实心版盖住本体,交互须穿透到下层)。
+    it('makeRenderHighlightWithGeom: 三态 — group/focus node 分色, group 细深边 / focus 粗深边, pending 白底+本色闪烁分层', () => {
       const bandGeom: BandGeom[] = [{ top: 20, h: 20, laneCount: 1 }]
       const fakeApi: any = { value: () => 0, coord: () => [100, 200], size: () => [10, 0] }
+      // pointData 新 shape(spec 2026-07-13):[start, start, lane, band, nBands];lane=0, band=0
       const mk = (kind: 'group' | 'focus' | 'pendingDisambig') =>
         makeRenderHighlightWithGeom(
-          [{ value: [0, 0, 0, 1], event_id: 'e1', itemStyle: { color: '#22c55e' }, kind }],
+          [{ value: [0, 0, 0, 0, 1], event_id: 'e1', itemStyle: { color: '#22c55e' }, kind }],
           bandGeom,
         )({ dataIndex: 0 }, fakeApi) as any
 
       const group = mk('group')
       expect(group.type).toBe('polygon')
-      // 放大几何不动:高 10(centerY 30 → +6/−4),半宽 = max(7, min(28, 10*0.35*1.4)) = 7
-      expect(group.shape.points).toEqual([[100, 36], [93, 26], [107, 26]])
-      // 琥珀词汇(spec 2026-07-03-group-amber-focus-edge):group = 琥珀实心,无边
-      expect(group.style.fill).toBe('#fbbf24')
-      expect(group.style.stroke).toBeUndefined()
+      // lane0 centerY = top(20) + BAND_TOP_PAD(4) + 0*(7+2) + 7/2 = 27.5;半宽 = max(7, min(28, 10*0.35*1.4)) = 7
+      expect(group.shape.points).toEqual([[100, 33.5], [93, 23.5], [107, 23.5]])
+      // group = node/tier 本色 + 细深边(1.5)
+      expect(group.style.fill).toBe('#22c55e')
+      expect(group.style.stroke).toBe('#1e293b')
+      expect(group.style.lineWidth).toBe(1.5)
       expect(group.style.shadowBlur).toBe(6)
       expect(group.style.shadowOffsetY).toBe(2)
       expect(group.silent).toBe(true)
@@ -290,8 +292,8 @@ describe('chart.ts — restored coverage (Task 6 review fix)', () => {
 
       const focus = mk('focus')
       expect(focus.type).toBe('polygon')
-      // focus = 琥珀实心 + 深灰蓝边(被点者标记)
-      expect(focus.style.fill).toBe('#fbbf24')
+      // focus = node/tier 本色 + 粗深边(2.5,被点者标记)
+      expect(focus.style.fill).toBe('#22c55e')
       expect(focus.style.stroke).toBe('#1e293b')
       expect(focus.style.lineWidth).toBe(2.5)
       expect(focus.style.shadowBlur).toBe(6)
@@ -318,7 +320,7 @@ describe('chart.ts — restored coverage (Task 6 review fix)', () => {
         .not.toBe(pending.children[1].keyframeAnimation)
     })
 
-    it('makeRenderHighlightWithGeom: interval 放大版 — 高 7→10 居中外扩,长度不变,focus 琥珀+深边', () => {
+    it('makeRenderHighlightWithGeom: interval 放大版 — 高 7→10 居中外扩,长度不变,focus node色+粗深边', () => {
       const bandGeom: BandGeom[] = [{ top: 20, h: 40, laneCount: 1 }]
       const fakeApi: any = {
         value: (i: number) => [10, 20][i] ?? 0,
@@ -333,35 +335,36 @@ describe('chart.ts — restored coverage (Task 6 review fix)', () => {
       // 自顶向下(spec 2026-07-03-bracket-band-unify):本体 laneY = 20+4+0*(7+2) = 24;
       // 放大版 y = 24−1.5, 高 10;x/width 不外扩(时间跨度语义)——几何全不动
       expect(shape.shape).toEqual({ x: 100, y: 22.5, width: 100, height: 10 })
-      // 琥珀词汇:fill 不再取本色 #3b82f6
-      expect(shape.style.fill).toBe('#fbbf24')
+      // fill 保 node 本色(2026-07-08 改),粗深边
+      expect(shape.style.fill).toBe('#3b82f6')
       expect(shape.style.stroke).toBe('#1e293b')
+      expect(shape.style.lineWidth).toBe(2.5)
       expect(shape.silent).toBe(true)
     })
 
     // 主图 bo 盒放大版:实心版会遮住本体文字 → 必须重画盒+文本(字号不变)。
-    // 琥珀词汇(spec 2026-07-03-group-amber-focus-edge):group/focus 盒底换琥珀、文字深灰蓝
-    // (tier 白字在琥珀底不可读),group 无边(原蓝描边取消)、focus 深灰蓝边;
-    // pending 白底+闪烁分层逐字不动(tier bg 闪、文字 tier fg)。
-    it('makeRenderPricePointHighlight: 放大盒+text 重画 — group 琥珀无边, focus 琥珀+深边, pending 白底+闪', () => {
+    // 2026-07-08 改:group/focus 保 node/tier 分色(itemStyle.color) + 细/粗深边、shadow;
+    // 文字统一深灰蓝(橙/灰底皆可读);pending 白底+闪烁分层用 color 而非 tier bg,文字统一深灰蓝。
+    it('makeRenderPricePointHighlight: 放大盒+text 重画 — group node色+细深边, focus node色+粗深边, pending 白底+闪', () => {
       const fakeApi: any = { value: () => 0, coord: () => [100, 200] }
       const mk = (kind: 'group' | 'focus' | 'pendingDisambig') =>
         makeRenderPricePointHighlight([
           { value: [0, 0], event_id: 'e1', anchorY: 1, text: '[1]', hasPks: false,
-            boTier: 'matched' as const, kind },
+            itemStyle: { color: '#f97316' }, kind },
         ])({ dataIndex: 0 }, fakeApi) as any
 
       const group = mk('group')
       expect(group.type).toBe('group')
       expect(group.silent).toBe(true)
-      // children[0] = 放大盒(pad 3 外扩几何不动):琥珀底、无描边、阴影
+      // children[0] = 放大盒:node 本色 + 细深边(1.5)+ shadow
       const gBox = group.children[0]
       expect(gBox.type).toBe('rect')
       expect(gBox.shape.r).toBe(7)          // BO_BOX_RADIUS(4) + pad(3)
-      expect(gBox.style.fill).toBe('#fbbf24')
-      expect(gBox.style.stroke).toBeUndefined()
+      expect(gBox.style.fill).toBe('#f97316')
+      expect(gBox.style.stroke).toBe('#1e293b')
+      expect(gBox.style.lineWidth).toBe(1.5)
       expect(gBox.style.shadowBlur).toBe(6)
-      // children[1] = text:文字保留、字号不变、深灰蓝(琥珀底可读)
+      // children[1] = text:文字保留、字号不变、深灰蓝(全 tier 统一)
       const gText = group.children[1]
       expect(gText.type).toBe('text')
       expect(gText.style.text).toBe('[1]')
@@ -369,7 +372,7 @@ describe('chart.ts — restored coverage (Task 6 review fix)', () => {
       expect(gText.style.fill).toBe('#1e293b')
 
       const focus = mk('focus')
-      expect(focus.children[0].style.fill).toBe('#fbbf24')
+      expect(focus.children[0].style.fill).toBe('#f97316')
       expect(focus.children[0].style.stroke).toBe('#1e293b')
       expect(focus.children[0].style.lineWidth).toBe(2.5)
       expect(focus.children[0].style.shadowBlur).toBe(6)
@@ -381,10 +384,10 @@ describe('chart.ts — restored coverage (Task 6 review fix)', () => {
       expect(pending.children[0].style.fill).toBe('#ffffff')       // 白底垫层(阴影+琥珀边)不动
       expect(pending.children[0].style.stroke).toBe('#fbbf24')
       expect(pending.children[0].style.shadowBlur).toBe(6)
-      expect(pending.children[1].style.fill).toBe('#BFBFBF')       // tier bg 层单独闪,不动
+      expect(pending.children[1].style.fill).toBe('#f97316')       // 闪烁本色改用 color 参数
       expect(pending.children[1].keyframeAnimation).toMatchObject({ duration: 1200, loop: true })
       expect(pending.children[2].type).toBe('text')                 // 文字最上层不闪
-      expect(pending.children[2].style.fill).toBe('#000000')        // pending 文字保 tier fg(matched=黑)
+      expect(pending.children[2].style.fill).toBe('#1e293b')        // 全 tier 统一深灰蓝
       expect(pending.children[2].keyframeAnimation).toBeUndefined()
     })
 
@@ -451,9 +454,9 @@ describe('chart.ts — restored coverage (Task 6 review fix)', () => {
     })
   })
 
-  // ── 4. endRole → bracketData.event_id (chart.ts:200-204, §7-4) ──
-  describe('4. endRole → bracketData.event_id', () => {
-    it('endRole 缺省时 bracketData 只带 match_id 不带 event_id(向后兼容)', () => {
+  // ── 4. endNode → bracketData.event_id (chart.ts:200-204, §7-4) ──
+  describe('4. endNode → bracketData.event_id', () => {
+    it('endNode 缺省时 bracketData 只带 match_id 不带 event_id(向后兼容)', () => {
       const input = makeInput('detected')
       const bundle = computeEventData(bars, events, matches, input)
       expect(bundle.bracketData.length).toBeGreaterThan(0)
@@ -463,27 +466,27 @@ describe('chart.ts — restored coverage (Task 6 review fix)', () => {
       }
     })
 
-    it("endRole='tb' 时 bracketData.event_id = role_index.tb", () => {
-      const input = makeInput('detected', { endRole: 'tb' })
+    it("endNode='tb' 时 bracketData.event_id = node_index.tb", () => {
+      const input = makeInput('detected', { endNode: 'tb' })
       const bundle = computeEventData(bars, events, matches, input)
       expect(bundle.bracketData[0].event_id).toBe('tb16')
     })
 
-    it('endRole 指向不存在的 role 时 event_id 安全降级为 undefined(不崩溃)', () => {
-      const input = makeInput('detected', { endRole: 'nonexistent' })
+    it('endNode 指向不存在的 node 时 event_id 安全降级为 undefined(不崩溃)', () => {
+      const input = makeInput('detected', { endNode: 'nonexistent' })
       expect(() => computeEventData(bars, events, matches, input)).not.toThrow()
       const bundle = computeEventData(bars, events, matches, input)
       expect(bundle.bracketData[0].event_id).toBeUndefined()
     })
 
-    it('role_index 值为 string[](kleene)时取首元素', () => {
+    it('node_index 值为 string[](kleene)时取首元素', () => {
       const kleeneMatches: MatchDict[] = [{
         event_id: 'mk', start_idx: 1, end_idx: 16,
-        role_index: { tb: ['tb16', 'tb18'] as any, down: 'down1', side: 'side1', burst: 'burst1' },
+        node_index: { tb: ['tb16', 'tb18'] as any, down: 'down1', side: 'side1', burst: 'burst1' },
         children: ['down1', 'side1', 'burst1', 'tb16', 'tb18'],
         predicate_trace: { where_results: {}, edge_results: {} },
       } as any]
-      const input = makeInput('detected', { endRole: 'tb' })
+      const input = makeInput('detected', { endNode: 'tb' })
       const bundle = computeEventData(bars, events, kleeneMatches, input)
       expect(bundle.bracketData[0].event_id).toBe('tb16')
     })
@@ -653,7 +656,7 @@ describe('buildSubOption — Task 4 graphic switch', () => {
   ] as any[]
   const matches = [
     { event_id: 'm@0-1', start_idx: 0, end_idx: 1,
-      role_index: { burst: 'burst_0_1', tb: 'tb_1' },
+      node_index: { burst: 'burst_0_1', tb: 'tb_1' },
       children: ['burst_0_1', 'tb_1'],
       forward_return: 0.05 } as any,
   ]
@@ -667,11 +670,11 @@ describe('buildSubOption — Task 4 graphic switch', () => {
     isolatedNodeIds: new Set<string>(),
     tagList,
     level: 'matched' as const,
-    roleColors: { burst: '#2563eb', tb: '#16a34a' },
+    nodeColors: { burst: '#2563eb', tb: '#16a34a' },
     eventTier: () => 'matched' as const,
-    roleOfEventByBand: (e: any) => e.source_tag,
+    nodeOfEventByBand: (e: any) => e.source_tag,
     bandKeyOf: (e: any) => e.source_tag,
-    roleVisible: {},
+    nodeVisible: {},
     tagToNodes: { burst: ['burst'], tb: ['tb'] },
     selectedEventId: null,
     tooltipResolver: undefined,
@@ -679,7 +682,7 @@ describe('buildSubOption — Task 4 graphic switch', () => {
     matchLabel: () => null,
     sliderShow: true,
     zoomOverride: null,
-    endRole: undefined,
+    endNode: undefined,
     selectedMatchId: null,
     candidateMatchIds: new Set<string>(),
     highlightedEventIds: new Set<string>(),
@@ -755,11 +758,11 @@ describe('副图空轨移除 — price tag 不参与分轨', () => {
     const { tagToNodes, tagList } = deriveTagMap(topology.nodes)   // ['trend0','bo','tb']
     return {
       topology, isolatedNodeIds: isolatedNodeIds(topology), tagList,
-      level: 'detected', roleColors: {},
+      level: 'detected', nodeColors: {},
       eventTier: () => 'detected' as Tier,
-      roleOfEventByBand: (e) => roleOfEventByBand(e, tagToNodes, tagList),
+      nodeOfEventByBand: (e) => nodeOfEventByBand(e, tagToNodes, tagList),
       bandKeyOf: (e) => bandKeyOf(e, tagList),
-      roleVisible: {}, tagToNodes, selectedEventId: null,
+      nodeVisible: {}, tagToNodes, selectedEventId: null,
     }
   }
 
@@ -769,8 +772,10 @@ describe('副图空轨移除 — price tag 不参与分轨', () => {
     expect(down1.value[3]).toBe(0)   // band
     expect(down1.value[4]).toBe(2)   // nBands:不含 bo
     const tb16 = bundle.pointData.find((d: any) => d.event_id === 'tb16')!
-    expect(tb16.value[2]).toBe(1)    // band:tagList 空间本应是 2
-    expect(tb16.value[3]).toBe(2)    // nBands
+    // pointData.value 新 shape (spec 2026-07-13):[start, start, lane, band, nBands]
+    expect(typeof tb16.value[2]).toBe('number')   // lane (>=0, 具体值取决于同 band 内 pack 顺序)
+    expect(tb16.value[3]).toBe(1)                  // band:tagList 空间本应是 2
+    expect(tb16.value[4]).toBe(2)                  // nBands
     // bo 事件仍走主图 pricePointData,不进副图
     expect(bundle.pricePointData.map((d: any) => d.event_id)).toContain('bo9')
     expect(bundle.pointData.map((d: any) => d.event_id)).not.toContain('bo9')
@@ -797,11 +802,11 @@ describe('副图空轨移除 — price tag 不参与分轨', () => {
     const { tagToNodes, tagList } = deriveTagMap(topoAllPrice.nodes)
     const input: BandRenderInput = {
       topology: topoAllPrice, isolatedNodeIds: isolatedNodeIds(topoAllPrice), tagList,
-      level: 'detected', roleColors: {},
+      level: 'detected', nodeColors: {},
       eventTier: () => 'detected' as Tier,
-      roleOfEventByBand: (e) => roleOfEventByBand(e, tagToNodes, tagList),
+      nodeOfEventByBand: (e) => nodeOfEventByBand(e, tagToNodes, tagList),
       bandKeyOf: (e) => bandKeyOf(e, tagList),
-      roleVisible: {}, tagToNodes, selectedEventId: null,
+      nodeVisible: {}, tagToNodes, selectedEventId: null,
     }
     const boEvents = [{ class_id: 'bo', event_id: 'bo9', source_tag: 'bo', start_idx: 9, end_idx: 9 }] as any[]
     const bundle = computeEventData(bars, boEvents, [], input)
@@ -825,26 +830,27 @@ describe('makeRenderBracket — 选中态放大+阴影', () => {
   const mk = (selected: string | null, candidates = new Set<string>(), focus = false) =>
     makeRenderBracket(items, selected, candidates, 1.0, focus)({ dataIndex: 0 }, fakeApi) as any
 
-  it('选中(成员态):高 7→10 居中外扩 + 阴影,琥珀实心无边;text 公式不变(中心恰不动)', () => {
+  it('选中(成员态):高 7→10 居中外扩 + 阴影,琥珀 + 细深边;text 公式不变(中心恰不动)', () => {
     const g = mk('m1')
     const rect = g.children[0]
     // lane0 top = BAND_TOP_PAD(4);放大 y=top−1.5, h=7+3=10
     expect(rect.shape.y).toBeCloseTo(rect0Top() - 1.5)
     expect(rect.shape.height).toBe(10)
-    // 琥珀词汇统一(spec 2026-07-03-group-amber-focus-edge):0.85 半透明并入不透明 AMBER_FILL
+    // 2026-07-08 改:琥珀底 + 细深边(1.5,in-group 语义)
     expect(rect.style.fill).toBe('#fbbf24')
-    expect(rect.style.stroke).toBeUndefined()
+    expect(rect.style.stroke).toBe('#1e293b')
+    expect(rect.style.lineWidth).toBe(1.5)
     expect(rect.style.shadowBlur).toBe(6)
     expect(rect.style.shadowOffsetY).toBe(2)
     // 序号 text y = 本体中心 = 放大后中心(top−1.5+5 = top+3.5)
     expect(g.children[1].style.y).toBeCloseTo(rect0Top() + 3.5)
   })
 
-  it('选中(focus 态,focusOnBracket=true):同成员几何 + 深灰蓝边(被点者标记)', () => {
+  it('选中(focus 态,focusOnBracket=true):同成员几何 + 粗深边(被点者标记)', () => {
     const gFocus = mk('m1', new Set(), true)
     const gMember = mk('m1')
     const rect = gFocus.children[0]
-    // 几何与成员态字节等同(只差描边)
+    // 几何与成员态字节等同(只差描边宽)
     expect(rect.shape).toEqual(gMember.children[0].shape)
     expect(rect.style.fill).toBe('#fbbf24')
     expect(rect.style.stroke).toBe('#1e293b')
@@ -865,10 +871,10 @@ describe('makeRenderBracket — 选中态放大+阴影', () => {
     expect(cand.children[0].style.shadowBlur).toBeUndefined()
   })
 
-  it('普通:几何与样式全不动(高 7,slate,无描边无阴影)', () => {
+  it('普通:高 7,琥珀底(2026-07-08 改),无描边无阴影', () => {
     const plain = mk(null)
     expect(plain.children[0].shape.height).toBe(7)
-    expect(plain.children[0].style.fill).toBe('#64748b')
+    expect(plain.children[0].style.fill).toBe('#fbbf24')
     expect(plain.children[0].style.stroke).toBeUndefined()
     expect(plain.children[0].style.shadowBlur).toBeUndefined()
   })
@@ -907,40 +913,54 @@ describe('chart.ts — renderer zoomFactor 传播(spec 2026-07-03)', () => {
     expect((renderIntervalWithGeom as any)({ dataIndex: 0 }, fakeApi0, bandGeom).shape.y).toBe(24)
   })
 
-  it('renderPointWithGeom(_, _, bandGeom, 2):三角 y 偏移 +4/-3 全按 factor,半宽 x 不变', () => {
+  it('renderPointWithGeom(_, _, bandGeom, 2):三角 y 偏移 +4/-3 全按 factor,半宽 x 不变;lane 决定 centerY', () => {
     const fakeApi: any = {
-      value: (i: number) => [10, 0][i] ?? 0,
+      value: (i: number) => [10, 10, 0, 0][i] ?? 0,   // [x, x, lane=0, band=0]
       coord: ([v]: [number, number]) => [v === 10 ? 100 : 0, 200],
       size: () => [10, 0],
       style: () => ({}),
     }
-    // band top=20 h=40 → centerY = 40。z=2 时 offsets +4*2 / -3*2
+    // band top=20 h=40 → lane0 centerY = 20 + BAND_TOP_PAD(4) + 0*(7*z+2*z) + 7*z/2
+    // z=2 → centerY = 20 + 4 + 0 + 7 = 31;offsets +4*2 / -3*2
     const shape = (renderPointWithGeom as any)({ dataIndex: 0 }, fakeApi, bandGeom, 2)
     expect(shape.type).toBe('polygon')
     const pts = shape.shape.points
-    // 第一顶点 y = centerY + 4*2 = 48;第二三顶点 y = centerY - 3*2 = 34
-    expect(pts[0][1]).toBe(48)
-    expect(pts[1][1]).toBe(34)
-    expect(pts[2][1]).toBe(34)
-    // 单参 backward-compat:
+    expect(pts[0][1]).toBe(31 + 8)   // 39
+    expect(pts[1][1]).toBe(31 - 6)   // 25
+    expect(pts[2][1]).toBe(31 - 6)   // 25
+    // 单参 backward-compat(z=1):centerY = 20 + 4 + 0 + 3.5 = 27.5
     const shape1 = (renderPointWithGeom as any)({ dataIndex: 0 }, fakeApi, bandGeom)
-    expect(shape1.shape.points[0][1]).toBe(44)  // 40 + 4
-    expect(shape1.shape.points[1][1]).toBe(37)  // 40 - 3
+    expect(shape1.shape.points[0][1]).toBe(27.5 + 4)   // 31.5
+    expect(shape1.shape.points[1][1]).toBe(27.5 - 3)   // 24.5
   })
 
-  it('makeRenderHighlightWithGeom(items, bandGeom, 2) point 分支:放大版高 +6/-4 按 factor', () => {
+  it('renderPointWithGeom lane=2:centerY 随 lane 递增 (BAND_MARKER_H + BAND_LANE_GAP)·z', () => {
+    const fakeApi: any = {
+      value: (i: number) => [10, 10, 2, 0][i] ?? 0,   // [x, x, lane=2, band=0]
+      coord: ([v]: [number, number]) => [v === 10 ? 100 : 0, 200],
+      size: () => [10, 0],
+      style: () => ({}),
+    }
+    // z=1:centerY = 20 + 4 + 2*(7+2) + 7/2 = 20+4+18+3.5 = 45.5
+    const shape = (renderPointWithGeom as any)({ dataIndex: 0 }, fakeApi, bandGeom)
+    expect(shape.shape.points[0][1]).toBe(45.5 + 4)   // 49.5
+    expect(shape.shape.points[1][1]).toBe(45.5 - 3)   // 42.5
+  })
+
+  it('makeRenderHighlightWithGeom(items, bandGeom, 2) point 分支:放大版高 +6/-4 按 factor;lane 决定 centerY', () => {
     const fakeApi: any = { value: () => 0, coord: () => [100, 200], size: () => [10, 0] }
-    // band top=20 h=20 → centerY=30;z=2 时 offsets +6*2 / -4*2
-    const items = [{ value: [0, 0, 0, 1], event_id: 'e1', itemStyle: { color: '#22c55e' }, kind: 'group' as const }]
+    // pointData 新 shape:[start, start, lane, band, nBands]
+    // band top=20 h=20 → lane0 centerY = 20 + 4 + 0*(7*z+2*z) + 7*z/2 = 24 + 3.5*z
+    // z=2 → centerY = 24 + 7 = 31;offsets +6*2 / -4*2
+    const items = [{ value: [0, 0, 0, 0, 1], event_id: 'e1', itemStyle: { color: '#22c55e' }, kind: 'group' as const }]
     const shape = makeRenderHighlightWithGeom(items, [{ top: 20, h: 20, laneCount: 1 }], 2)({ dataIndex: 0 }, fakeApi) as any
-    // 顶点 y = 30 + 6*2 = 42;下两顶点 y = 30 - 4*2 = 22
-    expect(shape.shape.points[0][1]).toBe(42)
-    expect(shape.shape.points[1][1]).toBe(22)
-    expect(shape.shape.points[2][1]).toBe(22)
-    // 单参 backward-compat:z=1 时 +6/-4
+    expect(shape.shape.points[0][1]).toBe(31 + 12)   // 43
+    expect(shape.shape.points[1][1]).toBe(31 - 8)    // 23
+    expect(shape.shape.points[2][1]).toBe(31 - 8)    // 23
+    // 单参 backward-compat(z=1):centerY = 24 + 3.5 = 27.5
     const shape1 = makeRenderHighlightWithGeom(items, [{ top: 20, h: 20, laneCount: 1 }])({ dataIndex: 0 }, fakeApi) as any
-    expect(shape1.shape.points[0][1]).toBe(36)
-    expect(shape1.shape.points[1][1]).toBe(26)
+    expect(shape1.shape.points[0][1]).toBe(27.5 + 6)   // 33.5
+    expect(shape1.shape.points[1][1]).toBe(27.5 - 4)   // 23.5
   })
 
   it('makeRenderHighlightWithGeom(items, bandGeom, 2) interval 分支:自顶向下 + HL_EXPAND 常量', () => {
@@ -976,22 +996,22 @@ describe('chart.ts — renderer zoomFactor 传播(spec 2026-07-03)', () => {
     ] as any[]
     const matches: MatchDict[] = [
       { event_id: 'm@0-1', start_idx: 0, end_idx: 1,
-        role_index: { burst: 'burst_0_1', tb: 'tb_1' },
+        node_index: { burst: 'burst_0_1', tb: 'tb_1' },
         children: ['burst_0_1', 'tb_1'],
         forward_return: 0.05 } as any,
     ]
     function makeInput(level: Level, overrides: Partial<BandRenderInput> = {}): BandRenderInput {
       const { tagToNodes, tagList } = deriveTagMap(topology.nodes)
       const isolated = isolatedNodeIds(topology)
-      const mIds = matchedIds(matches)
+      const mIds = matchedIds(matches, events, topology.edges)
       const qualifiedIds = new Set<string>()
       return {
         topology, isolatedNodeIds: isolated, tagList, level,
-        roleColors: { burst: '#2563eb', tb: '#16a34a' },
+        nodeColors: { burst: '#2563eb', tb: '#16a34a' },
         eventTier: (e) => eventTierOf(e, mIds, qualifiedIds),
-        roleOfEventByBand: (e) => roleOfEventByBand(e, tagToNodes, tagList),
+        nodeOfEventByBand: (e) => nodeOfEventByBand(e, tagToNodes, tagList),
         bandKeyOf: (e) => bandKeyOf(e, tagList),
-        roleVisible: {},
+        nodeVisible: {},
         tagToNodes,
         selectedEventId: null,
         ...overrides,
@@ -1075,22 +1095,22 @@ describe('buildSubOption — bracket focus 信号装配', () => {
   ] as any[]
   const matches: MatchDict[] = [
     { event_id: 'm@0-1', start_idx: 0, end_idx: 1,
-      role_index: { burst: 'burst_0_1', tb: 'tb_1' },
+      node_index: { burst: 'burst_0_1', tb: 'tb_1' },
       children: ['burst_0_1', 'tb_1'],
       forward_return: 0.05 } as any,
   ]
   function makeInput(overrides: Partial<BandRenderInput> = {}): BandRenderInput {
     const { tagToNodes, tagList } = deriveTagMap(topology.nodes)
     const isolated = isolatedNodeIds(topology)
-    const mIds = matchedIds(matches)
+    const mIds = matchedIds(matches, events, topology.edges)
     const qIds = new Set<string>()
     return {
       topology, isolatedNodeIds: isolated, tagList, level: 'detected' as Level,
-      roleColors: { burst: '#2563eb', tb: '#16a34a' },
+      nodeColors: { burst: '#2563eb', tb: '#16a34a' },
       eventTier: (e) => eventTierOf(e, mIds, qIds),
-      roleOfEventByBand: (e) => roleOfEventByBand(e, tagToNodes, tagList),
+      nodeOfEventByBand: (e) => nodeOfEventByBand(e, tagToNodes, tagList),
       bandKeyOf: (e) => bandKeyOf(e, tagList),
-      roleVisible: {},
+      nodeVisible: {},
       tagToNodes,
       selectedEventId: null,
       ...overrides,
@@ -1108,16 +1128,17 @@ describe('buildSubOption — bracket focus 信号装配', () => {
     return (s.renderItem({ dataIndex: 0 }, bracketFakeApi) as any).children[0]
   }
 
-  it('selectedMatchId 有 + selectedEventId 空(点了 bracket 本身)→ focus:琥珀+深边', () => {
+  it('selectedMatchId 有 + selectedEventId 空(点了 bracket 本身)→ focus:琥珀+粗深边', () => {
     const rect = bracketRect(makeInput({ selectedMatchId: 'm@0-1', selectedEventId: null }))
     expect(rect.style.fill).toBe('#fbbf24')
     expect(rect.style.stroke).toBe('#1e293b')
     expect(rect.style.lineWidth).toBe(2.5)
   })
 
-  it('selectedMatchId 有 + selectedEventId 有(点了组内 marker)→ 成员:琥珀无边', () => {
+  it('selectedMatchId 有 + selectedEventId 有(点了组内 marker)→ 成员:琥珀+细深边', () => {
     const rect = bracketRect(makeInput({ selectedMatchId: 'm@0-1', selectedEventId: 'burst_0_1' }))
     expect(rect.style.fill).toBe('#fbbf24')
-    expect(rect.style.stroke).toBeUndefined()
+    expect(rect.style.stroke).toBe('#1e293b')
+    expect(rect.style.lineWidth).toBe(1.5)
   })
 })

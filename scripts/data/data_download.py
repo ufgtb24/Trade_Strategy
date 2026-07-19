@@ -1,13 +1,34 @@
 import datetime
 import os.path
+import random
 import shutil
 import signal
 import sys
+import time
+import multiprocessing
 from multiprocessing import Process, Queue
 
 import akshare as ak
 import pandas as pd
 import requests
+import yfinance as yf
+from curl_cffi import requests as cffi_requests
+from yfinance.exceptions import YFRateLimitError
+
+# 每个 worker 进程独立持有一个 curl_cffi session（惰性初始化，
+# 避免 multiprocessing fork 时共享底层连接 fd 导致的竞态）。
+# 浏览器指纹让 Yahoo 把请求当成 Chrome 而非脚本，绕过 anti-bot 延迟，
+# 相较原生 requests 单请求快 ~1.7×。
+_CFFI_SESSION = None
+def _get_cffi_session():
+    global _CFFI_SESSION
+    if _CFFI_SESSION is None:
+        # 代理绕开不在代码层处理——试过 trust_env / proxies / curl_options
+        # NOPROXY / YfConfig monkey-patch 各种组合，PyCharm/多进程场景下都
+        # 不稳定。最终方案：跑之前用 shell 前缀清 env，例如
+        #   HTTPS_PROXY= HTTP_PROXY= uv run python scripts/data/data_download.py
+        _CFFI_SESSION = cffi_requests.Session(impersonate="chrome")
+    return _CFFI_SESSION
 
 
 def get_us_tickers_sec():
@@ -54,41 +75,65 @@ def get_us_tickers_fast():
         return tickers
 
 
-def _fetch_us_daily_qfq(tic):
-    """包装 akshare stock_us_daily，绕开上游 qfq 分支里的只读 bug。
+def _fetch_us_daily_qfq(tic, start_dt, end_dt):
+    """用 yfinance 拉美股日线，auto_adjust=True 做完整前复权。
 
-    akshare/stock/stock_us_sina.py:167 有一行:
-        new_range.index.values[0] = pd.to_datetime(str(data_df.index.date[0]))
-    当 qfq_factor_df.index[0] == 1900-01-01（即无公司行为的占位因子）时，
-    该行被触发，对 Index 底层 ndarray 做写入；某些 numpy/pandas 组合下
-    `.index.values` 是只读的，直接抛 ValueError: assignment destination is
-    read-only。AERO/AEHR/FB 这类无分红/拆股的 ticker 全部踩坑。
+    历史上曾用 akshare 新浪源 stock_us_daily(adjust="qfq")，但对部分 ticker
+    的 corporate action 复权是错的：DGNX 在 2025-09-09 有 1:8 合股，akshare
+    因子表已含 8×，但 qfq 分支未把该因子应用到合股日之前的历史价，导致
+    相邻日出现 6.79× 伪跳空；成交量也未做 ÷8 调整，跨 split 不可比。
 
-    Fix: 先用 adjust="qfq-factor" 嗅探因子表：
-      - 若只有一行且 date == 1900-01-01 → 无需复权，直接调 adjust=""
-        返回原始价格。qfq_factor=1、adjust=0 时 raw == qfq 恒等成立。
-      - 否则（真实有因子的 ticker）→ akshare qfq 分支里 len(new_range) > 1，
-        不会执行 line 167，安全调用 adjust="qfq"。
+    yfinance 对 DGNX 的三次 corporate action（2025-08-01 拆股 1/7、
+    2025-09-09 合股 8×、2026-04-28 拆股 1/8）全部正确合并到历史价，
+    端到端无跳空，且免费无 key。故切换。
+
+    返回 DataFrame，列 = [date, open, high, low, close, volume]，
+    与调用方（download_stock）历史契约兼容；tz 已剥离。
     """
-    factor_df = ak.stock_us_daily(symbol=tic, adjust="qfq-factor")
-    placeholder = (
-        len(factor_df) == 1
-        and pd.to_datetime(factor_df.iloc[0]["date"]) == pd.Timestamp("1900-01-01")
-    )
-    return ak.stock_us_daily(symbol=tic, adjust="" if placeholder else "qfq")
+    # Yahoo 免费源对同 IP 有限速（大约几十请求/分钟）。
+    # 撞 429 时指数退避（含抖动）重试；超上限就把它转成 KeyError，
+    # 让下游 download_stock 走静默跳过路径，不污染日志——次日 mtime
+    # 变化后会被自动重下补齐。
+    df = None
+    for attempt in range(6):
+        try:
+            df = yf.Ticker(tic, session=_get_cffi_session()).history(
+                start=start_dt.strftime("%Y-%m-%d"),
+                end=(end_dt + datetime.timedelta(days=1)).strftime("%Y-%m-%d"),
+                auto_adjust=True,
+                actions=False,
+                raise_errors=True,
+            )
+            break
+        except YFRateLimitError:
+            if attempt == 5:
+                raise KeyError("date")
+            backoff = (2 ** attempt) * 5 + random.uniform(0, 3)
+            time.sleep(backoff)
+    if df is None or df.empty:
+        # 复用调用方的静默吸收路径：退市/无数据 ticker 直接跳过
+        raise KeyError("date")
+    df.index = df.index.tz_localize(None)
+    df = df.reset_index().rename(columns={
+        "Date": "date",
+        "Open": "open", "High": "high", "Low": "low",
+        "Close": "close", "Volume": "volume",
+    })
+    # volume 保持 float，与旧 pkl 类型一致
+    df["volume"] = df["volume"].astype(float)
+    return df[["date", "open", "high", "low", "close", "volume"]]
 
 
-def download_stock(tic, path, days_from_now, file_format="pkl"):
+def download_stock(tic, path, days_from_now, file_format="pkl", rm_invalid=False):
     """全量下载股票数据，覆盖已存在文件。
 
-    akshare 的 stock_us_daily 无法指定时间参数，每次调用都返回全部历史。
-    前复权（adjust="qfq"）会回溯修改历史价格（分红/拆股调整），所以
-    每次都用最新的全量数据覆盖旧文件，避免价格历史失真。
+    yfinance 已支持 start/end 参数，但仍每次全量覆盖：auto_adjust=True 的
+    前复权会随新的 corporate action 回溯修改历史价，用最新一次拉到的窗口
+    重写文件才能避免历史失真。
 
-    同日内已下载过的文件（mtime == 今天）会被跳过：这支持"中断后
-    重跑"的场景——已完成的股票不会被再次下载，只有剩下的和 mtime
-    不是今天的才会触发真正的 akshare 调用。次日启动时所有文件
-    mtime 都变成昨天，会被重新下载，符合预期。
+    同日内已下载过的文件（mtime == 今天）会被跳过，支持"中断后重跑"的
+    场景——已完成的股票不再重复请求。次日启动时所有 pkl mtime 都变成
+    昨天，会被重新拉一遍，符合预期。
     """
     if file_format not in ["csv", "pkl"]:
         raise ValueError("file_format must be either 'csv' or 'pkl'")
@@ -102,20 +147,10 @@ def download_stock(tic, path, days_from_now, file_format="pkl"):
     start_date = datetime.datetime.now() - datetime.timedelta(days=days_from_now)
     end_date = datetime.datetime.now()
 
-    # 通过 _fetch_us_daily_qfq 绕开 akshare qfq 分支在占位因子 ticker 上的
-    # Index 写入 bug。拿到后再逐列 to_numpy().copy() 强制重建为可写数组，
-    # 防止任何 inplace/列赋值触发 "assignment destination is read-only"。
-    #
-    # akshare 对特殊证券（优先股/权证/退市/OTC/粉单/SPAC warrant 等）
-    # 返回格式不稳定，统一在这里静默吸收为"跳过该 ticker"：
-    #   - IndexError: 上游 result[0] 越界（原在 worker L146 过滤）
-    #   - KeyError 'date': 返回空/缺列 df，我们的 assign/iloc 取不到 date
-    #   - SyntaxError: akshare 内部 eval sina 响应失败（服务端返回乱码）
-    #   - KeyError(Timestamp): 返回 date 列混入离谱年份（如 2153-02-02）→
-    #     set_index 后 index 非单调 → .loc 切片抛 KeyError
-    # 这些都是上游数据异常，不是本地 bug，打印出来只会污染日志。
+    # 上游任何数据异常（退市 ticker 空 df / 网络抖动导致 raise_errors 未拦到的
+    # 结构异常 / 罕见的 date 列缺失）统一吸收为"跳过该 ticker"，不污染日志。
     try:
-        raw = _fetch_us_daily_qfq(tic)
+        raw = _fetch_us_daily_qfq(tic, start_date, end_date)
         df_new = pd.DataFrame(
             {col: raw[col].to_numpy().copy() for col in raw.columns}
         )
@@ -126,9 +161,18 @@ def download_stock(tic, path, days_from_now, file_format="pkl"):
             .loc[start_date:end_date]
         )
     except (IndexError, KeyError, SyntaxError):
+        # yfinance 拉不到（退市 / 404 / 罕见结构异常）→ rm_invalid=True 时
+        # 删旧 pkl，避免"过期残留静默混入"（否则 UI 会读到旧数据、扫描仍
+        # 命中已退市股，见 DTCK 案例）。
+        if rm_invalid and os.path.exists(path):
+            os.remove(path)
         return
 
     if len(df_new) < 12 * 21:
+        # 新数据不足 252 行（历史太短、上市不久）→ 同上，rm_invalid=True
+        # 时删旧 pkl 让数据集口径与"当前 yfinance 视角"一致。
+        if rm_invalid and os.path.exists(path):
+            os.remove(path)
         return
 
     df_new = df_new.ffill()  # Fill missing values forward
@@ -139,7 +183,12 @@ def download_stock(tic, path, days_from_now, file_format="pkl"):
     print(f"Download {tic}")
 
 
-def worker(task_queue, save_root, days_from_now, file_format):
+def worker(task_queue, save_root, days_from_now, file_format, rm_invalid=False):
+    # 子进程 stdout 在非 tty pipe 下（PyCharm run config / nohup / 重定向到
+    # 文件等）默认全缓冲，Download/Error 行会攒到 4KB 才 flush，前 30 秒
+    # 屏幕看起来像"啥都没干"，pkl 却已在悄悄落盘——排障成本很高。切成
+    # 行缓冲后任何一行立即可见。
+    sys.stdout.reconfigure(line_buffering=True)  # type: ignore[union-attr]
     # Sentinel 模式：每个 worker 会在队列中拿到一个 None 作为结束信号。
     # 不使用 `while not task_queue.empty()` 因为 empty() 在 multiprocessing.Queue
     # 中不可靠，会导致多个 worker 同时通过检查后竞争最后一个元素，失败者永久
@@ -152,7 +201,7 @@ def worker(task_queue, save_root, days_from_now, file_format):
             save_root, tic + (".csv" if file_format == "csv" else ".pkl")
         )
         try:
-            download_stock(tic, save_path, days_from_now, file_format)
+            download_stock(tic, save_path, days_from_now, file_format, rm_invalid=rm_invalid)
         except Exception as e:
             # download_stock 已吸收所有已知的 akshare 上游噪音；能走到这里
             # 的都是真正未预期的异常（磁盘满、权限错误等），保留打印便于排障。
@@ -166,6 +215,7 @@ def multi_download_stock(
     clear,
     num_workers=os.cpu_count(),
     file_format="pkl",
+    rm_invalid=False,
 ):
     if clear:
         # 删除 save_root 下的所有文件
@@ -189,10 +239,13 @@ def multi_download_stock(
         save_root=save_root,
         days_from_now=days_from_now,
         file_format=file_format,
+        rm_invalid=rm_invalid,
     )
 
-    # Create worker processes
-    processes = [Process(target=worker, kwargs=input_dict) for _ in range(num_workers)]
+    # daemon=True：主进程退出时 kernel 会自动 terminate 所有 worker。
+    # Ctrl-C 只按一次即可整组停——否则 workers 卡在 curl/libcurl 的 C 层
+    # 阻塞里不响应 Python-level SIGINT，用户体感就是"按 10 次才停下"。
+    processes = [Process(target=worker, kwargs=input_dict, daemon=True) for _ in range(num_workers)]
     for p in processes:
         p.start()
 
@@ -209,18 +262,33 @@ if __name__ == "__main__":
     # 以便 UI 等非主线程调用方可以安全复用它。
     def _cli_stop(signum, frame):
         print("Received signal, exiting...")
+        # 主进程主动 SIGKILL 所有 daemon workers，否则 workers 卡在 libcurl
+        # C 层不响应 Python 信号，主进程的 p.join() 要等每个 worker 慢慢
+        # curl timeout 才返回，Ctrl-C 后 shell 感觉像"按了没反应"。
+        for _p in multiprocessing.active_children():
+            _p.kill()
         sys.exit(0)
 
     signal.signal(signal.SIGINT, _cli_stop)
     signal.signal(signal.SIGTERM, _cli_stop)
 
+    # 代理绕开不在代码层处理——跑脚本前用 shell 前缀清 env,
+    # 例如：HTTPS_PROXY= HTTP_PROXY= uv run python scripts/data/data_download.py
+
+    # datasets/pkls 是所有 worktree 共享的数据落盘目录，
+    # 硬编码为主仓库绝对路径，确保任何 worktree 跑本脚本都写到同一位置。
+    DATASETS_ROOT = "/home/yu/PycharmProjects/Trade_Strategy/datasets"
+
+    # 下载行为开关（遵循 CLAUDE.md：入口脚本参数在起始位置声明）
+    clear = True        # True: 先 rmtree 目录再全下（危险，会丢历史）
+    rm_invalid = True    # True: yfinance 拉不到或数据不足 252 行时删旧 pkl，
+                         #      避免"过期残留静默混入"（例如退市股 DTCK）
+
     use_cache = True
-    if os.path.exists("datasets/stock_list.pkl") and use_cache:
+    stock_list_path = os.path.join(DATASETS_ROOT, "stock_list.pkl")
+    if os.path.exists(stock_list_path) and use_cache:
         print("load local stock list")
-        # load the file to get all_tickers
-        # with open('datasets/dbg_tickers.txt', 'r') as f:
-        #     all_tickers = f.read().splitlines()
-        all_tickers = pd.read_pickle("datasets/stock_list.pkl").tolist()
+        all_tickers = pd.read_pickle(stock_list_path).tolist()
         print(len(all_tickers))
 
     else:
@@ -231,11 +299,14 @@ if __name__ == "__main__":
     start_time = datetime.datetime.now()
     multi_download_stock(
         all_tickers,
-        save_root="datasets/pkls",  # cur_pkls   pkls
+        save_root=os.path.join(DATASETS_ROOT, "pkls_test"),
         days_from_now=365 * 5,
-        clear=False,
-        num_workers=os.cpu_count(),
-        # num_workers=1,
+        clear=clear,
+        rm_invalid=rm_invalid,
+        # curl_cffi 浏览器指纹 + workers=10 是实测拐点：
+        # workers=10 峰值 ~11/s（native）或 ~15-20/s（curl_cffi），
+        # workers=12 反降；累积到 IP 软阈值时退避机制兜底。
+        num_workers=10,
         file_format="pkl",  # Change to 'csv' or 'pkl'
     )
     # 统计并输出耗时，格式为几分几秒
@@ -243,7 +314,7 @@ if __name__ == "__main__":
     minutes, seconds = divmod(elapsed.total_seconds(), 60)
     print(f"Total time: {int(minutes)} min {int(seconds)} sec")
 
-    data_root = "datasets/pkls"
+    data_root = os.path.join(DATASETS_ROOT, "pkls")
     # preprocessed_root = 'datasets/process_pkls'
     # preprocessor = StockPreprocessor(data_root, preprocessed_root,skip_neg_value=True)
     #

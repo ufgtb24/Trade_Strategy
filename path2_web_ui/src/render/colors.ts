@@ -1,5 +1,5 @@
-// role 色确定性派生(spec §8.3):event_styles 是 class_id 粒度;
-// 同 class_id 多 role 用明度区分,按 topology.nodes 出现序生成;单 role 直接用原色。
+// node 色确定性派生(spec §8.3):event_styles 是 class_id 粒度;
+// 同 class_id 多 node 用明度区分,按 topology.nodes 出现序生成;单 node 直接用原色。
 import type { Topology, Tier } from '../types'
 
 const NEUTRAL = '#888888'
@@ -39,28 +39,28 @@ function hslToHex(h: number, s: number, l: number): string {
   return `#${to(r)}${to(g)}${to(b)}`
 }
 
-/** 三档配色:matched=role 本色(缺色兜底 NEUTRAL)/ qualified=深灰 / detected=浅灰。 */
-export function colorOf(tier: Tier, role: string | null, roleColors: Record<string, string>): string {
-  if (tier === 'matched') return (role && roleColors[role]) || NEUTRAL
+/** 三档配色:matched=node 本色(缺色兜底 NEUTRAL)/ qualified=深灰 / detected=浅灰。 */
+export function colorOf(tier: Tier, node: string | null, nodeColors: Record<string, string>): string {
+  if (tier === 'matched') return (node && nodeColors[node]) || NEUTRAL
   if (tier === 'qualified') return '#9ca3af'
   return '#d1d5db'
 }
 
 /** topology + event_styles → { node_id: hexColor }。 */
-export function deriveRoleColors(topology: Topology, eventStyles: Record<string, string>): Record<string, string> {
+export function deriveNodeColors(topology: Topology, eventStyles: Record<string, string>): Record<string, string> {
   const byType: Record<string, string[]> = {}
   for (const n of topology.nodes) (byType[n.class_id] ??= []).push(n.node_id)
   const out: Record<string, string> = {}
-  for (const [type, roles] of Object.entries(byType)) {
+  for (const [type, nodes] of Object.entries(byType)) {
     const base = eventStyles[type] ?? NEUTRAL
-    if (roles.length === 1) {
-      out[roles[0]] = base
+    if (nodes.length === 1) {
+      out[nodes[0]] = base
       continue
     }
     const [h, s, l] = hexToHsl(base)
-    // 多 role:明度在 base 附近确定性散开([l-0.18, l+0.18] 线性)
-    roles.forEach((rid, i) => {
-      const t = roles.length === 1 ? 0 : i / (roles.length - 1)   // 0..1
+    // 多 node:明度在 base 附近确定性散开([l-0.18, l+0.18] 线性)
+    nodes.forEach((rid, i) => {
+      const t = nodes.length === 1 ? 0 : i / (nodes.length - 1)   // 0..1
       const ll = Math.min(0.85, Math.max(0.25, l - 0.18 + t * 0.36))
       out[rid] = hslToHex(h, s, ll)
     })

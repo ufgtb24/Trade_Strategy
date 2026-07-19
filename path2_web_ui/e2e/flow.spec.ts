@@ -53,24 +53,24 @@ test('scan → load → 5-node topology → sidebar funnel visible', async ({ pa
   await ensureScanLoaded(page)
 
   // 拓扑控制器 5 节点(down / side / bo / burst / tb)
-  await expect(page.locator('[data-role-node]')).toHaveCount(5)
+  await expect(page.locator('[data-node-id]')).toHaveCount(5)
 
   // 每个节点都存在
   for (const nodeId of ['down', 'side', 'bo', 'burst', 'tb']) {
-    await expect(page.locator(`[data-role-node="${nodeId}"]`)).toBeVisible()
+    await expect(page.locator(`[data-node-id="${nodeId}"]`)).toBeVisible()
   }
 
   // level-control 出现
   await expect(page.locator('[data-testid="level-control"]')).toBeVisible()
 
-  // sidebar 漏斗总览:pattern roles(有边)渲染 ▸ 行;bo 渲染"原始检测"密度行
+  // sidebar 漏斗总览:pattern nodes(有边)渲染 ▸ 行;bo 渲染"原始检测"密度行
   // 等 diag 加载完成(sidebar 出现漏斗行)
   await expect(page.locator('.funnel-row').first()).toBeVisible({ timeout: 15_000 })
 
   // 共 5 行(对应 5 nodes)
   await expect(page.locator('.funnel-row')).toHaveCount(5)
 
-  // pattern roles(down/side/burst/tb,有边): 含 ▸
+  // pattern nodes(down/side/burst/tb,有边): 含 ▸
   for (const nodeId of ['down', 'side', 'burst', 'tb']) {
     // funnel-row 按 v-for nodes 顺序渲染,找含 ▸ 的行(funnel-arrow span)
   }
@@ -81,12 +81,12 @@ test('scan → load → 5-node topology → sidebar funnel visible', async ({ pa
   const badgeEl = page.locator('.badge').filter({ hasText: '原始检测' })
   await expect(badgeEl).toBeVisible()
 
-  // 关 bo role → 截图核对
-  await page.locator('[data-role-node="bo"]').click()
+  // 关 bo node → 截图核对
+  await page.locator('[data-node-id="bo"]').click()
   await page.screenshot({ path: 'e2e-bo-off.png' })
 
-  // 再开 bo role
-  await page.locator('[data-role-node="bo"]').click()
+  // 再开 bo node
+  await page.locator('[data-node-id="bo"]').click()
   await page.screenshot({ path: 'e2e-bo-on.png' })
 })
 
@@ -143,7 +143,7 @@ test('bidirectional highlight: sidebar candidate row click → selected class + 
   // 等 diag 加载好,漏斗行出现
   await expect(page.locator('.funnel-row').first()).toBeVisible({ timeout: 15_000 })
 
-  // 找第一个 pattern role(有漏斗箭头,可展开) — 点击展开
+  // 找第一个 pattern node(有漏斗箭头,可展开) — 点击展开
   // funnel-row:not isolated → 有 .funnel-arrow
   const clickableFunnelRow = page.locator('.funnel-row').filter({ has: page.locator('.funnel-arrow') }).first()
   await expect(clickableFunnelRow).toBeVisible()
@@ -157,7 +157,7 @@ test('bidirectional highlight: sidebar candidate row click → selected class + 
   await expect(firstAttrRow).toBeVisible()
 
   // 记录 event_id(通过 data-event-id 属性 OR 文字内容)
-  // 点击第一行 → 触发 view.selectEvent(row.event_id)
+  // 点击第一行 → 触发 view.focusEvent(row.event_id)
   await firstAttrRow.click()
 
   // 被点行应获得 attr-row--selected class
@@ -178,9 +178,9 @@ test('bidirectional highlight: sidebar candidate row click → selected class + 
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Test 4: 漏斗 + 候选表展开——4 pattern role 行 + 1 bo 密度行 + 展开后有 clause 列
+// Test 4: 漏斗 + 候选表展开——4 pattern node 行 + 1 bo 密度行 + 展开后有 clause 列
 // ─────────────────────────────────────────────────────────────────────────────
-test('funnel overview: 4 pattern-role rows + 1 bo badge row + expand shows clause table', async ({ page }) => {
+test('funnel overview: 4 pattern-node rows + 1 bo badge row + expand shows clause table', async ({ page }) => {
   await ensureScanLoaded(page)
 
   // 等 diag 加载好
@@ -189,9 +189,9 @@ test('funnel overview: 4 pattern-role rows + 1 bo badge row + expand shows claus
   // 5 个 funnel-row
   await expect(page.locator('.funnel-row')).toHaveCount(5)
 
-  // 4 个 pattern role 行(含 funnel-arrow ▸)— 即有边 node
-  const patternRoleRows = page.locator('.funnel-row').filter({ has: page.locator('.funnel-arrow') })
-  await expect(patternRoleRows).toHaveCount(4)
+  // 4 个 pattern node 行(含 funnel-arrow ▸)— 即有边 node
+  const patternNodeRows = page.locator('.funnel-row').filter({ has: page.locator('.funnel-arrow') })
+  await expect(patternNodeRows).toHaveCount(4)
 
   // 1 个 bo 密度行(含 .badge "原始检测")
   const boRow = page.locator('.funnel-row').filter({ has: page.locator('.badge') })
@@ -201,8 +201,8 @@ test('funnel overview: 4 pattern-role rows + 1 bo badge row + expand shows claus
   // 切到 Detected 档确保候选行非空
   await page.locator('[data-testid="level-control"]').getByRole('button', { name: 'Detected' }).click()
 
-  // 展开第一个 pattern role 行
-  const firstPatternRow = patternRoleRows.first()
+  // 展开第一个 pattern node 行
+  const firstPatternRow = patternNodeRows.first()
   await firstPatternRow.click()
 
   // 候选表容器出现

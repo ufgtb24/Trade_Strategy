@@ -46,7 +46,7 @@ describe('geometry', () => {
 })
 
 const evB = (id: string, st: string, s: number, e: number): EventDict =>
-  ({ class_id: st, event_id: id, start_idx: s, end_idx: e, source_tag: st })
+  ({ class_id: st, event_id: id, start_idx: s, end_idx: e, source_tag: st, child_refs: {} })
 
 describe('packByBand', () => {
   it('每 band 独立 packLanes,band 内重叠才分 lane', () => {
@@ -62,5 +62,33 @@ describe('packByBand', () => {
     const out = packByBand([evB('x','bo',0,0)], ['trend0','bo'], (e) => e.source_tag as string)
     expect(out.length).toBe(1)
     expect(out[0].band).toBe(1)                // bo 是 bandOrder[1]
+  })
+
+  it('同 band 内 spot (start=end) 与 span 同 start_idx 分到不同 lane', () => {
+    // 混合输入:spot start=end=3, span start=3 end=8, 同 band=trend0
+    // packLanes 的 strict < 语义应让二者一定分到不同 lane
+    const items = [
+      evB('spot', 'trend0', 3, 3),
+      evB('span', 'trend0', 3, 8),
+    ]
+    const out = packByBand(items, ['trend0'], (e) => e.source_tag as string)
+    const spot = out.find(o => o.event_id === 'spot')!
+    const span = out.find(o => o.event_id === 'span')!
+    expect(spot.band).toBe(0)
+    expect(span.band).toBe(0)
+    expect(spot.lane).not.toBe(span.lane)
+  })
+
+  it('同 band 内多 spot 同 start_idx 分到不同 lane', () => {
+    // 3 个 spot 同 bar (start=end=5), 同 band
+    // packLanes strict < → 三个 lane 号必两两不同
+    const items = [
+      evB('s1', 'trend0', 5, 5),
+      evB('s2', 'trend0', 5, 5),
+      evB('s3', 'trend0', 5, 5),
+    ]
+    const out = packByBand(items, ['trend0'], (e) => e.source_tag as string)
+    const lanes = out.map(o => o.lane).sort()
+    expect(lanes).toEqual([0, 1, 2])
   })
 })

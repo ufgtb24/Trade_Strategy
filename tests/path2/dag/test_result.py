@@ -19,16 +19,16 @@ def test_edge_witness_fields():
 
 
 def test_pattern_match_flatten_invariant_ok():
-    """role_index 值集合 == children 集合。"""
+    """node_index 值集合 == children 集合。"""
     a = ev(0, 0)
     b = ev(2, 4)
     m = PatternMatch(
         event_id="m1", start_idx=0, end_idx=4, pattern_id="p",
-        role_index={"down": a, "bo": b},
+        node_index={"down": a, "bo": b},
         children=(a, b),
         predicate_trace=PredicateTrace(where_results={}, edge_results={}),
     )
-    assert m.role_index["bo"] is b
+    assert m.node_index["bo"] is b
 
 
 def test_pattern_match_flatten_invariant_violation_raises():
@@ -37,7 +37,7 @@ def test_pattern_match_flatten_invariant_violation_raises():
     with pytest.raises(AssertionError):
         PatternMatch(
             event_id="m1", start_idx=0, end_idx=2, pattern_id="p",
-            role_index={"down": a, "bo": b},
+            node_index={"down": a, "bo": b},
             children=(a,),                               # 少了 b → 违反展平不变式
             predicate_trace=PredicateTrace(where_results={}, edge_results={}),
         )

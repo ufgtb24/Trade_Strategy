@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional
+from typing import ClassVar, Optional
 
 import pandas as pd
 
@@ -38,6 +38,7 @@ class DistributionDetector(BarwiseDetector):
 
     输出字段详见 Distribution。
     """
+    has_debug_hooks: ClassVar[bool] = False
 
     event_cls = Distribution
 

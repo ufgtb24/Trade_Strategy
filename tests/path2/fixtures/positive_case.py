@@ -5,7 +5,7 @@ bottom_breakout_burst match. The only reliably-hitting combo is the synthetic
 positive from tests/path2/apps/test_matches.py + relaxed params (lower thresholds).
 Reuse it here so reify/diagnose end-to-end tests have a real match to inspect.
 """
-from tests.path2.apps.test_matches import _synth_positive
+from tests.path2_apps.bottom_breakout_burst.test_matches import _synth_positive
 from path2_apps.bottom_breakout_burst.params import Params, BoParams, BurstParams
 
 

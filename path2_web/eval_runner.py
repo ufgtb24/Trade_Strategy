@@ -23,13 +23,16 @@ from typing import Optional, Sequence
 
 import pandas as pd
 
+from path2.dag.engine import analyze as _dag_analyze
+from path2.debug import set_current_symbol
 from path2.eval import match_forward_returns
 from path2_web.data import slice_window
+from path2_web.gate_collector import attach_and_collect, detach
 from path2_web.scan import TRADING_TO_CALENDAR_RATIO, _list_pkls
 
 
 def _eval_ticker(pkl_path: str, module_path: str, start: str, end: str,
-                 horizons: tuple, end_role: str, head_buffer_trading_days: int,
+                 horizons: tuple, end_node: str, head_buffer_trading_days: int,
                  param_overrides: Optional[dict]):
     """Worker:读 pkl → 双端缓冲切窗 → analyze → 窗内过滤 + 按买点去重 → 多 horizon 收益。
 
@@ -37,10 +40,11 @@ def _eval_ticker(pkl_path: str, module_path: str, start: str, end: str,
     params.yaml(SSoT)。param_overrides 是 **nested dict**(如 {"bo":{"min_relative_height":0.02},
     "burst":{"min_bos":2}}),worker 内逐 section 用 dataclasses.replace 局部 patch
     子 dataclass 后合并(跨进程 pickle 安全)。语义:override 在 yaml base 之上,
-    与 web /scan 结果可比。有效性 = 买点起点日期 ∈ [start, end];去重 = 按 end_role
+    与 web /scan 结果可比。有效性 = 买点起点日期 ∈ [start, end];去重 = 按 end_node
     event_id(评估对象是买点)。返回 (symbol, rows, err|None);单股异常捕获返回 err,绝不抛。
     """
     symbol = Path(pkl_path).stem
+    set_current_symbol(symbol)
     try:
         df = pd.read_pickle(pkl_path)
         mod = importlib.import_module(module_path)
@@ -61,17 +65,27 @@ def _eval_ticker(pkl_path: str, module_path: str, start: str, end: str,
         win = slice_window(df, buf_start, buf_end)
         if len(win) == 0:
             return (symbol, [], None)
-        res = mod.analyze(win, params)
+        # 同 scan.py::_scan_ticker_multi 的 worker 双落(Task 15):不直接调 mod.analyze,
+        # 自建 spec 换 on_gate collector 挂载窗口。此路径目前无 gate_failures 消费者
+        # (eval/regress/healthcheck 报表只读 res.matches),但两 worker 保持同一挂/收
+        # 模式,避免未来接入时再补一遍。
+        spec = mod.build_pattern(params)
+        collector = attach_and_collect(spec)
+        try:
+            res = _dag_analyze(spec, win, params)
+        finally:
+            detach(spec)
+        res = replace(res, gate_failures=collector.snapshot())
         rows, seen = [], set()
         for m in res.matches:
-            ev = m.role_index[end_role]
+            ev = m.node_index[end_node]
             buy_date = win["date"].iat[ev.start_idx]
             if not (start_ts <= buy_date <= end_ts):
                 continue
             if ev.event_id in seen:
                 continue
             seen.add(ev.event_id)
-            rets = match_forward_returns(m, end_role, win, list(horizons))
+            rets = match_forward_returns(m, end_node, win, list(horizons))
             rows.append({
                 "symbol": symbol,
                 "buy_date": str(buy_date)[:10],
@@ -82,25 +96,42 @@ def _eval_ticker(pkl_path: str, module_path: str, start: str, end: str,
         return (symbol, rows, None)
     except Exception as e:
         return (symbol, [], f"{type(e).__name__}: {e}")
+    finally:
+        set_current_symbol(None)
+
+
+def _summarize_flat(vals: list) -> dict:
+    """给定一组 float, 返回 count/mean/min/q25/median/q75/max/win_rate。
+    None 值调用者已过滤;空 vals -> count=0, 其余 None。"""
+    if not vals:
+        return {"count": 0, "mean": None, "min": None, "q25": None,
+                "median": None, "q75": None, "max": None, "win_rate": None}
+    s = pd.Series(vals)
+    q25, q75 = s.quantile([0.25, 0.75])
+    return {
+        "count": len(vals),
+        "mean": sum(vals) / len(vals),
+        "min": float(s.min()),
+        "q25": float(q25),
+        "median": float(s.median()),
+        "q75": float(q75),
+        "max": float(s.max()),
+        "win_rate": sum(v > 0 for v in vals) / len(vals),
+    }
 
 
 def _summarize(rows: list, horizons: Sequence[int]) -> dict:
-    """每 horizon 的 count/mean/median/win_rate(None 值剔除;空 → 各项 None)。"""
+    """每 horizon 的 count/mean/min/q25/median/q75/max/win_rate(None 值剔除;空 → 各项 None)。"""
     per = {}
     for n in horizons:
         vals = [r["returns"][str(n)] for r in rows
                 if r["returns"][str(n)] is not None]
-        per[str(n)] = {
-            "count": len(vals),
-            "mean": sum(vals) / len(vals) if vals else None,
-            "median": float(pd.Series(vals).median()) if vals else None,
-            "win_rate": sum(v > 0 for v in vals) / len(vals) if vals else None,
-        }
+        per[str(n)] = _summarize_flat(vals)
     return per
 
 
 def _eval_core(*, module_path: str, start, end, horizons: tuple,
-               end_role: str, head_buffer_trading_days: int,
+               end_node: str, head_buffer_trading_days: int,
                param_overrides: Optional[dict], data_dir: str, workers: int,
                ticker_regex: Optional[str], executor_factory=None,
                on_progress=lambda *a: None) -> dict:
@@ -112,7 +143,7 @@ def _eval_core(*, module_path: str, start, end, horizons: tuple,
     results, errors = [], 0
     with executor_factory(max(1, workers)) as ex:
         futs = [ex.submit(_eval_ticker, str(p), module_path, start, end,
-                          tuple(horizons), end_role, head_buffer_trading_days,
+                          tuple(horizons), end_node, head_buffer_trading_days,
                           param_overrides) for p in pkls]
         for i, fut in enumerate(as_completed(futs), 1):
             _symbol, rows, err = fut.result()
@@ -127,7 +158,7 @@ def _eval_core(*, module_path: str, start, end, horizons: tuple,
             "mode": "eval", "module_path": module_path,
             "pattern_id": mod.PATTERN_DAG.pattern_id,
             "start": str(start), "end": str(end), "horizons": list(horizons),
-            "end_role": end_role,
+            "end_node": end_node,
             "head_buffer_trading_days": head_buffer_trading_days,
             "param_overrides": param_overrides or {},
             "scanned": len(pkls), "errors": errors,
@@ -152,28 +183,28 @@ def _write_json(out: dict, out_path, pattern_id: str, mode: str) -> dict:
     return out
 
 
-def _resolve_meta(module_path: str, end_role, head_buffer_trading_days):
-    """end_role/head_buffer 缺省时从 app 的 eval_meta() 协议解析。
+def _resolve_meta(module_path: str, end_node, head_buffer_trading_days):
+    """end_node/head_buffer 缺省时从 app 的 eval_meta() 协议解析。
     把 mod.load_params() (yaml SSoT) 传给 eval_meta,让 head_buffer 反映本次扫描真用参数。"""
-    if end_role is not None and head_buffer_trading_days is not None:
-        return end_role, head_buffer_trading_days
+    if end_node is not None and head_buffer_trading_days is not None:
+        return end_node, head_buffer_trading_days
     mod = importlib.import_module(module_path)
     params = mod.load_params() if hasattr(mod, "load_params") else None
     meta = mod.eval_meta(params)
-    return (end_role or meta["end_role"],
+    return (end_node or meta["end_node"],
             head_buffer_trading_days or meta["head_buffer_trading_days"])
 
 
 def run_eval(*, module_path: str, start, end, horizons=(5, 10, 20),
-             end_role=None, head_buffer_trading_days=None, param_overrides=None,
+             end_node=None, head_buffer_trading_days=None, param_overrides=None,
              data_dir="datasets/pkls", workers=26, ticker_regex=None,
              out_path=None, executor_factory=None,
              on_progress=lambda *a: None) -> dict:
     """mode=eval:全宇宙命中 + 多 horizon forward_return 分布,落盘 JSON。判据 2(§8.5)。"""
-    end_role, head_buffer_trading_days = _resolve_meta(
-        module_path, end_role, head_buffer_trading_days)
+    end_node, head_buffer_trading_days = _resolve_meta(
+        module_path, end_node, head_buffer_trading_days)
     out = _eval_core(module_path=module_path, start=start, end=end,
-                     horizons=tuple(horizons), end_role=end_role,
+                     horizons=tuple(horizons), end_node=end_node,
                      head_buffer_trading_days=head_buffer_trading_days,
                      param_overrides=param_overrides, data_dir=data_dir,
                      workers=workers, ticker_regex=ticker_regex,
@@ -198,14 +229,14 @@ def run_regress(*, baseline_path: str, param_overrides=None,
                 on_progress=lambda *a: None) -> dict:
     """mode=regress:重扫当前代码并与改前 baseline 对拍(§8.8 修改回归关卡)。
 
-    窗口/horizons/end_role/head_buffer/module_path 全部沿用 baseline.meta(同口径保证);
+    窗口/horizons/end_node/head_buffer/module_path 全部沿用 baseline.meta(同口径保证);
     param_overrides 单独传(当前侧参数)。DIFF≠0 不一律算回归——added/removed 的分类
     (意图内 vs 意外)由调用方按修改意图 + 收益信号判读,本函数只出事实。
     """
     base = json.loads(Path(baseline_path).read_text())
     bm = base["meta"]
     cur = _eval_core(module_path=bm["module_path"], start=bm["start"], end=bm["end"],
-                     horizons=tuple(bm["horizons"]), end_role=bm["end_role"],
+                     horizons=tuple(bm["horizons"]), end_node=bm["end_node"],
                      head_buffer_trading_days=bm["head_buffer_trading_days"],
                      param_overrides=param_overrides, data_dir=data_dir,
                      workers=workers, ticker_regex=ticker_regex,
@@ -222,7 +253,7 @@ def run_regress(*, baseline_path: str, param_overrides=None,
 
 def run_healthcheck(*, module_path: str, start, end, target_ticker=None,
                     min_tickers=1, max_tickers=500, horizons=(5,),
-                    end_role=None, head_buffer_trading_days=None,
+                    end_node=None, head_buffer_trading_days=None,
                     param_overrides=None, data_dir="datasets/pkls", workers=26,
                     ticker_regex=None, out_path=None, executor_factory=None,
                     on_progress=lambda *a: None) -> dict:
@@ -232,10 +263,10 @@ def run_healthcheck(*, module_path: str, start, end, target_ticker=None,
     目标票(若给)真命中。errors 数随 meta 透出,调用方应一并核查(新 detector
     全宇宙抛异常会表现为 errors 飙高而非命中异常)。
     """
-    end_role, head_buffer_trading_days = _resolve_meta(
-        module_path, end_role, head_buffer_trading_days)
+    end_node, head_buffer_trading_days = _resolve_meta(
+        module_path, end_node, head_buffer_trading_days)
     cur = _eval_core(module_path=module_path, start=start, end=end,
-                     horizons=tuple(horizons), end_role=end_role,
+                     horizons=tuple(horizons), end_node=end_node,
                      head_buffer_trading_days=head_buffer_trading_days,
                      param_overrides=param_overrides, data_dir=data_dir,
                      workers=workers, ticker_regex=ticker_regex,

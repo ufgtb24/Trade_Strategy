@@ -50,7 +50,8 @@ def main() -> None:
               f"errors={m['errors']} elapsed={m['elapsed_s']}s")
         for n, s in out["per_horizon"].items():
             print(f"ret_{n}: count={s['count']} mean={s['mean']} "
-                  f"median={s['median']} win_rate={s['win_rate']}")
+                  f"min={s['min']} q25={s['q25']} median={s['median']} "
+                  f"q75={s['q75']} max={s['max']} win_rate={s['win_rate']}")
     elif MODE == "regress":
         out = run_regress(baseline_path=BASELINE_PATH,
                           param_overrides=PARAM_OVERRIDES, **common)

@@ -30,7 +30,7 @@
     </div>
     <!-- row1: 拓扑控制(可隐藏,wrapper .topology-row 让 CSS 精准跨列) -->
     <div v-if="showTopology" class="topology-row">
-      <TopologyControl @hover-role="onHoverRole" />
+      <TopologyControl @hover-node="onHoverNode" />
     </div>
     <!-- row2: K线 + 诊断侧栏(侧栏可隐藏) -->
     <KlineChart />
@@ -64,7 +64,7 @@ const PANEL_TOGGLES: { key: PanelKey; refKey: 'showTopology' | 'showSidebar' | '
   { key: 'slider',   refKey: 'showSlider',   label: 'Slider',   title: '显示/隐藏 K 线下方缩放滑块' },
 ]
 
-function onHoverRole(_nodeId: string | null) { /* 高亮交互留 KlineChart 内部增强 */ }
+function onHoverNode(_nodeId: string | null) { /* 高亮交互留 KlineChart 内部增强 */ }
 
 function onActivePatternChange(e: Event) {
   view.setActivePattern((e.target as HTMLSelectElement).value)

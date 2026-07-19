@@ -10,7 +10,7 @@ import type { Diagnostics } from '../src/types'
 vi.mock('../src/api', () => ({
   getDiagnose: vi.fn(() => Promise.resolve(DIAG)),
   getPreview: vi.fn(() => Promise.resolve({
-    analysis: { events: [], matches: [], role_index: {} },
+    analysis: { events: [], matches: [], node_index: {} },
     summary: { events: 0, matches: 0 },
     pattern_spec: {} as any, scan: {} as any,
   })),
@@ -25,21 +25,21 @@ vi.mock('../src/api', () => ({
 describe('view store', () => {
   beforeEach(() => setActivePinia(createPinia()))
 
-  it('loadResult sets analysis + resets toggles; role toggle reflected in roleVisible', () => {
+  it('loadResult sets analysis + resets toggles; node toggle reflected in nodeVisible', () => {
     const v = useViewStore()
     v.loadScanFile(SCAN_FILE)
     v.selectSymbol('AAPL')
     expect(v.currentAnalysis?.matches.length).toBe(1)
-    // 关 bo role → roleVisible 记录
-    v.toggleRole('bo')
-    expect(v.roleVisible.bo).toBe(false)
+    // 关 bo node → nodeVisible 记录
+    v.toggleNode('bo')
+    expect(v.nodeVisible.bo).toBe(false)
   })
 
-  it('roleColors derived from current pattern_spec', () => {
+  it('nodeColors derived from current pattern_spec', () => {
     const v = useViewStore()
     v.loadScanFile(SCAN_FILE)
-    expect(v.roleColors.bo).toBe('#2563eb')
-    expect(v.roleColors.down).not.toBe(v.roleColors.side)
+    expect(v.nodeColors.bo).toBe('#2563eb')
+    expect(v.nodeColors.down).not.toBe(v.nodeColors.side)
   })
 
   it('level 默认 matched,setLevel 改', () => {
@@ -48,10 +48,10 @@ describe('view store', () => {
     v.setLevel('detected'); expect(v.level).toBe('detected')
   })
 
-  it('selectEvent/hoverEvent set 单值 ref;同值幂等', () => {
+  it('focusedEventId(直写)/hoverEvent set 单值 ref;同值幂等', () => {
     const v = useViewStore()
-    v.selectEvent('burst_1_9'); expect(v.selectedEventId).toBe('burst_1_9')
-    v.selectEvent('burst_1_9'); expect(v.selectedEventId).toBe('burst_1_9')
+    v.focusedEventId = 'burst_1_9'; expect(v.selectedEventId).toBe('burst_1_9')
+    v.focusedEventId = 'burst_1_9'; expect(v.selectedEventId).toBe('burst_1_9')
     v.hoverEvent('bo_3_3'); expect(v.hoveredEventId).toBe('bo_3_3')
   })
 
@@ -71,7 +71,7 @@ describe('view store', () => {
     // 自定义 diag:给未匹配的 boX 造一行 clauses 全 satisfied 的 AttrRow → qualified。
     const customDiag: Diagnostics = {
       symbol: 'AAPL', pattern_id: 'bottom_breakout_burst',
-      roles: {
+      nodes: {
         bo: { attr: [{ event_id: 'boX', start_idx: 20, end_idx: 20,
                        clauses: { first_drought: { satisfied: true, measured: 70, op: '>=', threshold: 60 } } }],
               rel: [] },
@@ -101,7 +101,7 @@ describe('view store clearScanFile', () => {
     const v = useViewStore()
     v.loadScanFile(SCAN_FILE)
     v.selectSymbol('AAPL')
-    v.selectEvent('burst_1_9')
+    v.focusedEventId = 'burst_1_9'
     expect(v.scanFile).not.toBeNull()
     v.clearScanFile()
     expect(v.scanFile).toBeNull()

@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
 import { mount } from '@vue/test-utils'
 import SidebarResultList from '../../src/components/SidebarResultList.vue'
@@ -8,8 +8,8 @@ const emptyAnalysis = { events: [], matches: [] }
 const file = {
   pattern_ids: ['bo_only', 'bbb'],
   per_pattern: {
-    bo_only: { pattern_spec: { pattern_id: 'bo_only', topology: { nodes: [], edges: [] }, event_styles: {} }, end_role: 'bo' },
-    bbb:     { pattern_spec: { pattern_id: 'bbb',     topology: { nodes: [], edges: [] }, event_styles: {} }, end_role: 'tb' },
+    bo_only: { pattern_spec: { pattern_id: 'bo_only', topology: { nodes: [], edges: [] }, event_styles: {} }, end_node: 'bo' },
+    bbb:     { pattern_spec: { pattern_id: 'bbb',     topology: { nodes: [], edges: [] }, event_styles: {} }, end_node: 'tb' },
   },
   scan: { scan_ts: '20260627T120000', start_date: '2024-01-01', end_date: '2024-06-30',
           workers: 1, scanned: 2, hits: 2, errors: 0, dataset_dir: '/d', params: 'd',
@@ -196,7 +196,7 @@ describe('SidebarResultList — grouped header 两级结构', () => {
     })
   })
 
-  it('renders 2 sub-cell th (num+fr) per visible pattern with text "num" / "fr"', async () => {
+  it('renders 2 sub-cell th (num+r{N}) per visible pattern with text "num" / "r<label_horizon>"', async () => {
     const v = useViewStore()
     v.loadScanFile(file as any)
     const w = mount(SidebarResultList)
@@ -206,8 +206,9 @@ describe('SidebarResultList — grouped header 两级结构', () => {
     w.findAll('thead tr.hdr-field th.col-num').forEach(th => {
       expect(th.text()).toBe('num')
     })
+    const expectedFrText = `r${file.scan.label_horizon}`
     w.findAll('thead tr.hdr-field th.col-fr').forEach(th => {
-      expect(th.text()).toBe('fr')
+      expect(th.text()).toBe(expectedFrText)
     })
   })
 
@@ -250,5 +251,35 @@ describe('SidebarResultList — grouped header 两级结构', () => {
     const pid = numTh.attributes('data-col-pid')!
     await numTh.trigger('click')
     expect(v.sortByPid).toBe(`${pid}_num`)
+  })
+
+  // 两级 sticky 表头依赖 --hdr-row-h 精准等于第一行行高。硬编码 24px 与真实行高不符 →
+  // 第二级 sticky 停在 24px、第一行还在延伸,露出缝(数据行透过)。动态测量修此契约。
+  it('mount 后 --hdr-row-h 被写为实测 hdr-pattern 行高(动态测量,防两级 sticky 缝)', async () => {
+    vi.stubGlobal('ResizeObserver', class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    })
+    const origBCR = HTMLElement.prototype.getBoundingClientRect
+    HTMLElement.prototype.getBoundingClientRect = function () {
+      if (this instanceof HTMLTableRowElement && this.classList.contains('hdr-pattern')) {
+        return { height: 29, width: 100, top: 0, left: 0, bottom: 29, right: 100, x: 0, y: 0,
+                 toJSON: () => ({}) } as DOMRect
+      }
+      return origBCR.call(this)
+    }
+    try {
+      const v = useViewStore()
+      v.loadScanFile(file as any)
+      const w = mount(SidebarResultList)
+      await w.vm.$nextTick()
+      await w.vm.$nextTick()   // syncHdrRowH 在 onMounted 里用 nextTick 排队,拆两次跨帧
+      const list = w.find('.list').element as HTMLElement
+      expect(list.style.getPropertyValue('--hdr-row-h')).toBe('29px')
+    } finally {
+      HTMLElement.prototype.getBoundingClientRect = origBCR
+      vi.unstubAllGlobals()
+    }
   })
 })

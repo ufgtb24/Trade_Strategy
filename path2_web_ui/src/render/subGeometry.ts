@@ -23,7 +23,7 @@ export const BAND_LANE_GAP = 2       // lane 间隙(乘 z,gap 整体等比语义
 export const BAND_LANE_H = BAND_MARKER_H + BAND_LANE_GAP  // 9,lane stride(乘 z)
 export const BAND_TOP_PAD = 4
 export const BAND_BOT_PAD = 4
-export const BAND_MIN_H = 20         // 保 role 名 10px + 上下呼吸空间
+export const BAND_MIN_H = 20         // 保 node 名 10px + 上下呼吸空间
 export const SUB_CANVAS_MIN_H = 120  // 空数据兜底
 // 高亮放大公式(bracket 选中与 band interval 高亮共用;spec 2026-07-03-bracket-band-unify §3.1)
 export const HL_EXPAND_H = 3         // 高度增量(乘 z),比例恒 (7+3)/7

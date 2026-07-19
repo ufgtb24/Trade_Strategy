@@ -207,7 +207,7 @@ class StartContainmentEdge(DependencyEdge):
 @dataclass(frozen=True)
 class NegationEdge(DependencyEdge):
     """否定边:src 锚定窗口内【禁止】存在满足条件的 dst。
-    dst 不进 role_index/children(是约束,非结构成员)。取代旧 Neg detector 的 forbid。
+    dst 不进 node_index/children(是约束,非结构成员)。取代旧 Neg detector 的 forbid。
     satisfies 语义【反转】:返 True 表示该 e_dst 落入禁区(违禁),引擎用全称量词消费(Phase 2)。
     """
     min_gap: int = 0

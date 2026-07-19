@@ -1,15 +1,16 @@
 """并发扫描(多 pattern):每只股读 pkl 一次 → slice_window → 对每 pattern analyze → 聚合 → 落盘。
 
 铁律:所有 pattern 必须经 discovery eval_meta 闸,故扫描永远走 buffered 路径,
-end_role/head_buffer/label_horizon 三者永远非 None。删除旧非缓冲分支。
+end_node/head_buffer/label_horizon 三者永远非 None。删除旧非缓冲分支。
 
 结果文件 schema MultiScanResultFile(spec §3.1):
-  {pattern_ids, per_pattern: {pid: {pattern_spec, end_role}},
+  {pattern_ids, per_pattern: {pid: {pattern_spec, end_node, stats}},
    scan: {...win_*/label_horizon/scanned/hits/errors/...},
    results: [{symbol, per_pattern: {pid: {summary, analysis, max_forward_return}}}, ...]}
 """
 from __future__ import annotations
 
+import dataclasses
 import importlib
 import json
 import os
@@ -20,7 +21,10 @@ from pathlib import Path
 
 import pandas as pd
 
+from path2.dag.engine import analyze as _dag_analyze
+from path2.debug import set_current_symbol
 from path2_web.data import slice_window
+from path2_web.gate_collector import attach_and_collect, detach
 from path2_web.serialize import serialize_per_pattern_result
 
 TRADING_TO_CALENDAR_RATIO = 1.65   # 交易日 → 日历日(与 scripts/path2_eval_bottom_breakout_burst.py 同源)
@@ -31,7 +35,7 @@ class ScanCancelled(Exception):
 
 
 def _scan_ticker_multi(pkl_path, module_paths, start_date, end_date,
-                       buf_start, buf_end, end_roles, label_horizon):
+                       buf_start, buf_end, end_nodes, label_horizon):
     """单股多 pattern worker(模块级,ProcessPool pickle 安全)。
 
     返回 (symbol, per_pattern_dict | None, err | None):
@@ -41,6 +45,7 @@ def _scan_ticker_multi(pkl_path, module_paths, start_date, end_date,
     每股 read_pkl 一次,buf_win 切一次,然后逐 pattern import+analyze+投影。
     """
     symbol = Path(pkl_path).stem
+    set_current_symbol(symbol)
     try:
         df = pd.read_pickle(pkl_path)
         win = slice_window(df, buf_start, buf_end)
@@ -54,9 +59,20 @@ def _scan_ticker_multi(pkl_path, module_paths, start_date, end_date,
         for pid, mod_path in module_paths.items():
             mod = importlib.import_module(mod_path)
             _load = getattr(mod, "load_params", None)
-            res = mod.analyze(win, _load() if callable(_load) else None)
+            loaded = _load() if callable(_load) else None
+            params = loaded if loaded is not None else mod.Params.default()
+            # 不直接调 mod.analyze(win, params)——它内部自建 spec,拿不到 spec 就挂不了
+            # on_gate collector(必须在 analyze 跑之前挂)。这里复刻其内部逻辑
+            # (build_pattern(p) + engine.analyze(spec, df, p)),换来 attach/detach 窗口。
+            spec = mod.build_pattern(params)
+            collector = attach_and_collect(spec)
+            try:
+                res = _dag_analyze(spec, win, params)
+            finally:
+                detach(spec)
+            res = dataclasses.replace(res, gate_failures=collector.snapshot())
             out = serialize_per_pattern_result(
-                res, end_role=end_roles[pid], label_horizon=label_horizon,
+                res, end_node=end_nodes[pid], label_horizon=label_horizon,
                 win=win, start_ts=start_ts, end_ts=end_ts)
             per_pattern[pid] = out
             if out["summary"]["matches"] > 0:
@@ -67,6 +83,8 @@ def _scan_ticker_multi(pkl_path, module_paths, start_date, end_date,
         return (symbol, per_pattern, None)
     except Exception as e:           # noqa: BLE001
         return (symbol, None, f"{type(e).__name__}: {e}")
+    finally:
+        set_current_symbol(None)
 
 
 def _aggregate_multi(results_iter, total: int, pattern_ids: list,
@@ -97,7 +115,7 @@ def run_scan_multi(*, data_dir,
                    pattern_specs_json: dict,
                    module_paths: dict,
                    pattern_ids: list,
-                   end_roles: dict,
+                   end_nodes: dict,
                    head_buffer_trading_days: int,
                    label_horizon: int,
                    start_date, end_date, workers, ticker_regex, scan_ts,
@@ -125,7 +143,7 @@ def run_scan_multi(*, data_dir,
         try:
             futs = [ex.submit(_scan_ticker_multi, str(p), module_paths,
                               start_date, end_date, win_start, win_end,
-                              end_roles, label_horizon) for p in pkls]
+                              end_nodes, label_horizon) for p in pkls]
             for fut in as_completed(futs):
                 if cancel_event is not None and cancel_event.is_set():
                     # 强制终止 worker(SIGKILL + waitpid 死亡确认)
@@ -152,8 +170,19 @@ def run_scan_multi(*, data_dir,
     agg = _aggregate_multi(_iter(), total, pattern_ids, on_progress)
     partial = save_event is not None and save_event.is_set()
     per_pattern_meta = {pid: {"pattern_spec": pattern_specs_json[pid],
-                              "end_role": end_roles[pid]}
+                              "end_node": end_nodes[pid]}
                         for pid in pattern_ids}
+    # 每 pattern 全宇宙聚合 stats(按 match 计,过滤 None forward_return)
+    # 延迟导入避免与 eval_runner(反向依赖 scan 的 TRADING_TO_CALENDAR_RATIO/_list_pkls)循环导入
+    from path2_web.eval_runner import _summarize_flat
+    for pid in pattern_ids:
+        vals = [
+            m["forward_return"]
+            for r in agg["results"]
+            for m in r["per_pattern"].get(pid, {}).get("analysis", {}).get("matches", [])
+            if m.get("forward_return") is not None
+        ]
+        per_pattern_meta[pid]["stats"] = _summarize_flat(vals)
     result = {
         "pattern_ids": pattern_ids,
         "per_pattern": per_pattern_meta,

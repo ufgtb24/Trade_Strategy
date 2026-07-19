@@ -40,7 +40,7 @@ def _write_pkl(dir_path, symbol, df):
 
 
 def _positive_pkl(tmp_path, symbol="POS"):
-    from tests.path2.apps.test_matches import _synth_positive
+    from tests.path2_apps.bottom_breakout_burst.test_matches import _synth_positive
     return _write_pkl(tmp_path, symbol, _mk_dated(_synth_positive()))
 
 
@@ -48,7 +48,7 @@ def test_eval_ticker_positive_with_overrides(tmp_path):
     p = _positive_pkl(tmp_path)
     symbol, rows, err = eval_runner._eval_ticker(
         str(p), APP, WIDE["start"], WIDE["end"],
-        horizons=(2,), end_role="tb", head_buffer_trading_days=63,
+        horizons=(2,), end_node="tb", head_buffer_trading_days=63,
         param_overrides=RELAXED)
     assert symbol == "POS" and err is None
     assert len(rows) >= 1
@@ -60,11 +60,11 @@ def test_eval_ticker_positive_with_overrides(tmp_path):
 
 
 def test_eval_ticker_default_params_no_match(tmp_path):
-    from tests.path2.apps.test_matches import _synth_no_burst
+    from tests.path2_apps.bottom_breakout_burst.test_matches import _synth_no_burst
     p = _write_pkl(tmp_path, "NOPE", _mk_dated(_synth_no_burst()))
     symbol, rows, err = eval_runner._eval_ticker(
         str(p), APP, WIDE["start"], WIDE["end"],
-        horizons=(2,), end_role="tb", head_buffer_trading_days=63,
+        horizons=(2,), end_node="tb", head_buffer_trading_days=63,
         param_overrides=None)
     assert rows == [] and err is None
 
@@ -74,20 +74,20 @@ def test_eval_ticker_bad_pkl_returns_error(tmp_path):
     p.write_bytes(b"not a pickle")
     symbol, rows, err = eval_runner._eval_ticker(
         str(p), APP, WIDE["start"], WIDE["end"],
-        horizons=(2,), end_role="tb", head_buffer_trading_days=63,
+        horizons=(2,), end_node="tb", head_buffer_trading_days=63,
         param_overrides=None)
     assert symbol == "BAD" and rows == [] and err is not None
 
 
 def test_eval_core_aggregates_and_summarizes(tmp_path):
-    from tests.path2.apps.test_matches import _synth_no_burst
+    from tests.path2_apps.bottom_breakout_burst.test_matches import _synth_no_burst
     data_dir = tmp_path / "pkls"
     data_dir.mkdir()
     _positive_pkl(data_dir)
     _write_pkl(data_dir, "NOPE", _mk_dated(_synth_no_burst()))
     out = eval_runner._eval_core(
         module_path=APP, start=WIDE["start"], end=WIDE["end"], horizons=(2,),
-        end_role="tb", head_buffer_trading_days=63, param_overrides=RELAXED,
+        end_node="tb", head_buffer_trading_days=63, param_overrides=RELAXED,
         data_dir=str(data_dir), workers=2, ticker_regex=None,
         executor_factory=lambda w: ThreadPoolExecutor(max_workers=w))
     m = out["meta"]
@@ -113,8 +113,8 @@ def test_run_eval_writes_json_and_resolves_eval_meta(tmp_path):
     data_dir.mkdir()
     _positive_pkl(data_dir)
     out = _run_eval_to(tmp_path, data_dir, "eval.json")
-    # end_role/head_buffer 未显式传 → 从 app 的 eval_meta() 解析
-    assert out["meta"]["end_role"] == "tb"
+    # end_node/head_buffer 未显式传 → 从 app 的 eval_meta() 解析
+    assert out["meta"]["end_node"] == "tb"
     assert out["meta"]["head_buffer_trading_days"] >= 1
     assert out["meta"]["out_path"].endswith("eval.json")
     on_disk = json.loads(Path(out["meta"]["out_path"]).read_text())
@@ -165,7 +165,7 @@ def test_run_regress_detects_removed_on_param_change(tmp_path):
 
 
 def test_run_healthcheck_target_hit_and_magnitude(tmp_path):
-    from tests.path2.apps.test_matches import _synth_no_burst
+    from tests.path2_apps.bottom_breakout_burst.test_matches import _synth_no_burst
     data_dir = tmp_path / "pkls"
     data_dir.mkdir()
     _positive_pkl(data_dir)                                   # POS 命中
@@ -184,7 +184,7 @@ def test_run_healthcheck_target_hit_and_magnitude(tmp_path):
 
 
 def test_run_healthcheck_target_miss_and_zero_hits(tmp_path):
-    from tests.path2.apps.test_matches import _synth_no_burst
+    from tests.path2_apps.bottom_breakout_burst.test_matches import _synth_no_burst
     data_dir = tmp_path / "pkls"
     data_dir.mkdir()
     _write_pkl(data_dir, "NOPE", _mk_dated(_synth_no_burst()))
@@ -198,3 +198,54 @@ def test_run_healthcheck_target_miss_and_zero_hits(tmp_path):
     assert out["universe_hit_tickers"] == 0
     assert out["magnitude_ok"] is False               # 0 命中 = 不健康
     assert out["target_matches"] is False
+
+
+import pytest
+
+from path2_web.eval_runner import _summarize_flat
+
+
+def test_summarize_flat_empty():
+    r = _summarize_flat([])
+    assert r["count"] == 0
+    for k in ("mean", "min", "q25", "median", "q75", "max", "win_rate"):
+        assert r[k] is None, k
+
+
+def test_summarize_flat_all_negative():
+    r = _summarize_flat([-0.1, -0.05, -0.2])
+    assert r["count"] == 3
+    assert r["mean"] == pytest.approx((-0.1 - 0.05 - 0.2) / 3)
+    assert r["min"] == pytest.approx(-0.2)
+    assert r["max"] == pytest.approx(-0.05)
+    assert r["win_rate"] == 0.0
+
+
+def test_summarize_flat_all_positive():
+    r = _summarize_flat([0.05, 0.1, 0.15])
+    assert r["count"] == 3
+    assert r["mean"] == pytest.approx(0.1)
+    assert r["win_rate"] == 1.0
+
+
+def test_summarize_flat_mixed():
+    r = _summarize_flat([-0.1, 0.05, 0.1, 0.2, -0.05])
+    assert r["count"] == 5
+    assert r["min"] == pytest.approx(-0.1)
+    assert r["max"] == pytest.approx(0.2)
+    assert r["win_rate"] == pytest.approx(3 / 5)
+    assert r["median"] == pytest.approx(0.05)
+
+
+def test_summarize_flat_single_element_positive():
+    r = _summarize_flat([0.05])
+    assert r["count"] == 1
+    for k in ("mean", "min", "q25", "median", "q75", "max"):
+        assert r[k] == pytest.approx(0.05), k
+    assert r["win_rate"] == 1.0
+
+
+def test_summarize_flat_single_element_zero():
+    r = _summarize_flat([0.0])
+    assert r["count"] == 1
+    assert r["win_rate"] == 0.0  # v > 0 才算 win

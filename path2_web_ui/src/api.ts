@@ -1,6 +1,7 @@
 import type {
   SerializedPattern, MultiScanResultFile, Ohlc, Diagnostics, AppConfig,
-  ScanProgress, ScanDone, ScanHistoryEntry, Analysis, ScanMeta,
+  ScanProgress, ScanDone, ScanHistoryEntry, Analysis, ScanMeta, NodesScopeResponse,
+  TimeScopeResponse, PairScopeResponse,
 } from './types'
 
 const BASE = (import.meta as any).env?.VITE_API_BASE ?? 'http://localhost:8000'
@@ -35,6 +36,45 @@ export function cancelScan(scanId: string, save: boolean = false): Promise<{ok: 
 }
 export function getDiagnose(patternId: string, symbol: string, start: string, end: string): Promise<Diagnostics> {
   return getJson(`/diagnose?pattern_id=${patternId}&symbol=${encodeURIComponent(symbol)}&start=${start}&end=${end}`)
+}
+// 入口 B(拓扑面板降级):点 edge → scope=nodes,只拿这条 node 边的 miss_reasons 分布 +
+// example_failed_pairs 样例(≤5),不重取整包 per-node 诊断。legacy getDiagnose 不受影响。
+export function getNodesDiagnose(
+  patternId: string, symbol: string, start: string, end: string, srcNode: string, dstNode: string,
+): Promise<NodesScopeResponse> {
+  return getJson(
+    `/diagnose?pattern_id=${encodeURIComponent(patternId)}&symbol=${encodeURIComponent(symbol)}`
+    + `&start=${start}&end=${end}&scope=nodes`
+    + `&src_node=${encodeURIComponent(srcNode)}&dst_node=${encodeURIComponent(dstNode)}`)
+}
+// 入口 A(KlineChart 主图 brush 框选):scope=time,拿 [start_bar,end_bar] 框内(严格 ⊆)的
+// gate 失败样例(GateFailure)。eventClass 可选(按 class_id 二次过滤)。
+export function getTimeDiagnose(
+  patternId: string, symbol: string, start: string, end: string,
+  startBar: number, endBar: number, eventClass?: string,
+  signal?: AbortSignal,
+  anchorKind?: string,                  // ★ v3 · anchor_kind 门限透传
+): Promise<TimeScopeResponse> {
+  const url = `${BASE}/diagnose?pattern_id=${encodeURIComponent(patternId)}&symbol=${encodeURIComponent(symbol)}`
+    + `&start=${start}&end=${end}&scope=time`
+    + `&start_bar=${startBar}&end_bar=${endBar}`
+    + (eventClass ? `&event_class=${encodeURIComponent(eventClass)}` : '')
+    + (anchorKind ? `&anchor_kind=${encodeURIComponent(anchorKind)}` : '')   // ★ v3 · 空串也 skip · 与后端 handler `if anchor_kind:` 判据对齐
+  return fetch(url, { signal }).then(async r => {
+    if (!r.ok) throw new Error(`GET ${url} → ${r.status}: ${await r.text()}`)
+    return r.json() as Promise<TimeScopeResponse>
+  })
+}
+// 入口 D(KlineChart shift+click 跨图累积):scope=pair,两 marker 的 (src_event_id,dst_event_id)
+// 查两 node 间是否有直连 edge · 若有则 4 通道 subcheck 短路(auto swap 见 PairPayload.applied_swap)。
+export function getPairDiagnose(
+  patternId: string, symbol: string, start: string, end: string,
+  srcEventId: string, dstEventId: string,
+): Promise<PairScopeResponse> {
+  return getJson(
+    `/diagnose?pattern_id=${encodeURIComponent(patternId)}&symbol=${encodeURIComponent(symbol)}`
+    + `&start=${start}&end=${end}&scope=pair`
+    + `&src_event_id=${encodeURIComponent(srcEventId)}&dst_event_id=${encodeURIComponent(dstEventId)}`)
 }
 export function getConfig(): Promise<AppConfig> {
   return getJson('/config')

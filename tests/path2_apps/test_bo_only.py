@@ -22,9 +22,9 @@ def test_build_pattern_returns_consistent_spec():
 
 
 def test_eval_meta_protocol():
-    """eval_meta 协议:end_role=bo, head_buffer=max(vol_baseline_period, total_window)."""
+    """eval_meta 协议:end_node=bo, head_buffer=max(vol_baseline_period, total_window)."""
     meta = eval_meta()
-    assert meta["end_role"] == "bo"
+    assert meta["end_node"] == "bo"
     p = Params.default()
     assert meta["head_buffer_trading_days"] == max(p.bo.vol_baseline_period, p.bo.total_window)
 

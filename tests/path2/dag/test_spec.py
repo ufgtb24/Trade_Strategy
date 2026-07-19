@@ -67,7 +67,7 @@ def test_duplicate_node_id_rejected():
 
 def test_shared_detector_distinct_node_ids_allowed():
     """不同 node_id 共享同一个 detector 对象(down/side 共享 trend_det = 共享一套 events)合法:
-    唯一性校验只看 node_id,不波及 detector 复用 —— 否则会砸掉'多角色共享生产者'的能力。"""
+    唯一性校验只看 node_id,不波及 detector 复用 —— 否则会砸掉'多 node 共享生产者'的能力。"""
     det = _Det()                                          # 同一个 detector 对象
     nodes = (NodeSpec("down", det), NodeSpec("side", det))   # 不同 node_id 共享之
     edges = (TemporalEdge("down", "side"),)
