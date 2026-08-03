@@ -1,6 +1,12 @@
 # CLAUDE.md
 
 > **项目主线 = path2**（独立多级事件表达框架）。`BreakoutStrategy/` 是其前身突破选股流水线，仅供开发 path2 时参考，基本不用。
+haiyou
+## 简称约定
+聊天中常用以下简称，遇到时按全称理解：
+- bbb → `path2_apps/bottom_breakout_burst/`（path2 当前唯一的应用层走势 app）
+- cc -> claude code
+- bs -> BreakoutStrategy
 
 ## 上下文入口
 开始任务前，按需阅读：
@@ -34,7 +40,7 @@
 ### 共享基础设施
 - `configs/` — YAML 配置（`params/`、`scan_config.yaml`、`path2_web.yaml` 等）
 - `datasets/pkls/` — 美股历史数据（Pickle）
-- `scripts/` — 运行入口脚本（`path2_filter_<走势>.py` 全集扫描、`run_path2_web.py` 前后端启动；无 argparse）
+- `scripts/path2/` — path2 核心入口脚本（`run_path2_web.py` 前后端启动、`path2_diag_env.py` 诊断环境探测、`path2_eval_scan.py` 评估、`scan-top-miss.py` 漏检扫描；无 argparse）
 
 ## 开发环境
 - 包管理：`uv`（`uv add` / `uv run` / `uv sync`）
@@ -51,31 +57,39 @@
 - 入口脚本：不使用 argparse，参数声明在 `main()` 起始位置
 - 读文件省上下文：先 grep/glob 定位，再 Read 用 `offset`/`limit` 只读相关段；勿整文件读取、勿重读已在上下文的文件
 
-## Agent Team vs Subagent 
+## Agent Team
 
-这是两种完全不同的多代理模式，**不要混淆**：
-- **Agent team**：同一会话内用 `Agent` 工具 spawn 多名 teammate（每个起 `name`），他们之间通过 `SendMessage`（按 name 寻址）**互相发消息、共享中间结论、由 leader 协调**。适合需要反复讨论、交叉验证或分工协作的复杂分析。team 自动隐式形成，无需创建/命名/清理步骤；前置条件 `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1`（已在用户与项目 settings.json 启用）。
-- **多个独立 subagent**：用多次独立的 `Agent` 工具调用派发，**不让他们彼此 `SendMessage` 通信**。每个 subagent 在隔离上下文中执行、只把结果回报给主会话。适合可以完全拆分、无需交叉讨论的并行任务（例如三个互不相关的研究子问题）。**默认使用 `tom` agent**。
+**Agent team**：同一会话内用 `Agent` 工具 spawn 多名 teammate（每个起 `name`），他们之间通过 `SendMessage`（按 name 寻址）**互相发消息、共享中间结论、由 leader 协调**。适合需要反复讨论、交叉验证或分工协作的复杂分析。team 自动隐式形成，无需创建/命名/清理步骤；前置条件 `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1`（已在用户与项目 settings.json 启用）。
 
-当用户说"agent team"、"团队"、"teammates"时，**必须**让 teammate 之间用 `SendMessage` 协作。**绝不**只调几次 `Agent` 而不开通 teammate 间通信——那只是多个独立 subagent，不是 agent team。
+当用户说"agent team"、"团队"、"teammates"时，**必须**让 teammate 之间用 `SendMessage` 协作，不要只调几次 `Agent` 而不开通 teammate 间通信。
 
-**Agent team 默认不进行任何代码实现**，只专注于思考、分析和讨论，最终产出为文档。除非用户明确要求写代码，否则绝不动代码。
+**Agent team 是高运行成本任务。完成后**默认将最终研究结果沉淀为 markdown 文档并保存至 `docs/research/**`，避免昂贵的推理结果仅存在于对话上下文中丢失。
 
-两种模式都是高运行成本任务。完成后**默认将最终研究结果沉淀为 markdown 文档并保存至 `docs/research/`**，避免昂贵的推理结果仅存在于对话上下文中丢失。
 **所有研究结果相关的文档都放在 `docs/research/`，不要碰 `.claude/`**。
+
+**Agent team 默认不进行任何正式代码实现**，只专注于思考、分析和讨论，最终产出为文档。两种情况除外：1. 用户明确要求写代码 2.写一些用来测试验证的临时代码，不要污染正式代码，放在`docs/research/**/repro` 。
 
 **Agent team 文档归档约定**：每次启用 Agent team 都必须为本次任务在 `docs/research/<日期>_<任务内容>` 下新建专属文件夹、且最终结论报告必须命名 `final_report.md`（中间文档可选）；细则按需阅读 `.claude/rules/agent-team-doc-archival.md`。
 
 **Agent team 完成后主动汇报**：spawn team 时，在 lead（即我自己）的运行协议里写死——当所有 teammate idle 且 `final_report.md` 已落地时，**立刻主动汇报报告要点给用户，不要等用户问**。判定 = 全员 idle + `final_report.md` 存在；汇报内容 = 关键结论摘要 + 文件绝对路径。
 
+## 后台 agent
+
+> 后台 agent = Claude Code 的 background session：由 supervisor 托管、不绑终端的独立完整会话，经 agent view（`claude agents`）、`/bg`、`claude --bg` 或 `←` 创建。与 agent team、subagent 是不同机制。
+
+**后台 agent 交付约定**：**前提——仅当后台 agent 为本任务创建了独立 worktree 时才按此交付**；未创建 worktree（如纯研究/只读任务、或直接在当前 worktree 内工作）则不走此流程。适用时，完成任务后统一如此交付——① 在该 worktree 分支 `commit`；② `push` 该分支到 `origin`；③ 停下并只报告分支名，任务到此为止。**禁止开 PR**：不得用任何方式（`gh` / GitHub API / `curl` 等）创建 PR，合并一律由我手动完成。派后台 agent 时把本约定原样写进其 prompt（后台 agent 在隔离上下文运行、未必读得到本文件）。
+
 
 ## 使用 superpowers
 
 - **brainstorm 提问带倾向**：用 `AskUserQuestion` 提问时，尽量把你自己的倾向性方案作为选项之一，置于首位并在 label 末尾标 `(推荐)`，并在 description 说明推荐理由。
-- **永远附 tom 选项**：每个 brainstorm 问题都额外提供一个选项「调用 tom 进行分析」——选中则把该问题派给 `tom` agent 从第一性原理裁定，返回后复述结论再继续。
+- **永远附子代理选项**：每个 brainstorm 问题都额外提供一个选项「派子代理分析」——选中则把该问题派出去从第一性原理裁定，返回后复述结论再继续。两种子代理按问题性质选：
+  - **带上下文**（默认）：`Agent` 工具 `subagent_type: "fork"`，继承当前完整对话上下文，无需打包背景，适合深度依赖前面讨论的问题（等价于我手敲 `/subtask`；`/subtask` 是内置 CLI 命令，你自己调不了，只能走 `fork`）。
+  - **独立视角**：`subagent_type: "general-purpose"`，不继承上下文，由你把问题中立地打包进 prompt，适合需要不受你已有倾向影响的第三方裁定。
+  - 无论哪种，都在 prompt 里写死子代理是**纯分析角色**：从第一性原理出发，只出结论/论证/方案，不碰代码；`AskUserQuestion` 在子代理内不可用，不要让它问我。
 - **自动模式**：当我说「自动模式」时，brainstorm 期间遇到的任何疑问**不要中断问我**。
   - 如果在多个选项之间，有你倾向性很强的推荐，直接采用推荐选项。
-  - 如果在多个选项之间你也很不确定，那么派 `tom` 决定；tom 给方案后你自行 adopt / 让其 redo，仅在 circle 结束或硬阻塞（tom 也无法推进）时才回到我。tom 在 circle 中保存记忆。
+  - 如果在多个选项之间你也很不确定，那么派子代理决定（默认用带上下文的 `fork`）；子代理给方案后你自行 adopt / 让其 redo，仅在 circle 结束或硬阻塞（子代理也无法推进）时才回到我。
   - 未说「自动模式」则按常规逐问确认。
 - **subagent 模型选择**：按角色固定模型，不随任务复杂度浮动：
   - **Implementer**（实现）：一律 `sonnet`，禁用 `haiku`。

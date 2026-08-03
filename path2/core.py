@@ -4,7 +4,7 @@ import dataclasses
 import inspect
 import math
 from abc import ABC
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -35,11 +35,38 @@ class Event(ABC):
 
     子类契约:必须 @dataclass(frozen=True);若自定义 __post_init__,
     必须调用 super().__post_init__()。
+
+    confirm_idx: 事件被确认成立的 bar 索引（因果闸地基）。
+
+        语义:站在 confirm_idx 这根收盘时,只读 ≤ confirm_idx 的数据,
+        就足以确定本事件已经发生。confirm_idx 之后到 end_idx 的数据
+        是事件成立后才产生的(后续走势、验证窗口),不参与"判定成立"。
+        买点锚点字段的 bar 必须 ≥ confirm_idx,否则是前瞻偏差。
+
+        确定标准 —— 区分两个概念:
+          · 成立条件:detector 必须观察到什么才能说"事件发生了"。
+            confirm_idx 跟踪它。
+          · 观察窗口(end_idx):事件成立后跟踪后续表现的窗口。
+            与 confirm_idx 无必然关系。
+
+        自检:砍掉 end_idx(及之后所有 bar)还能不能判定事件成立?
+          能   → confirm_idx < end_idx(终点只是观察窗口)
+          不能 → confirm_idx = end_idx(终点是成立条件的一部分)
+
+        两类事件(由 confirm_idx 落在区间哪端区分;confirm 始终是因——
+        事件在确认那一刻才诞生,区别只是确认发生在哪端):
+          · 确认型(confirm_idx == start_idx):一确认就生,往后观察。
+            因果:因为是 confirm 点,所以才是 start 点。如 ThrowbackEvent。
+          · retrospective 型(confirm_idx == end_idx):区段走完才回看确认。
+            因果:因为是 confirm 点,所以才是 end 点。如 BurstEvent/TrendSegment/Platform。
+
+        必填(kw_only),每个子类显式声明。约束:start_idx ≤ confirm_idx ≤ end_idx。
     """
 
     event_id: str
     start_idx: int
     end_idx: int
+    confirm_idx: int = field(kw_only=True)
 
     class_id: ClassVar[str] = ""   # 子类必须覆盖为非空全局唯一值(spec §2.1)
     is_point: ClassVar[bool] = False   # 子类点事件覆写为 True(start_idx==end_idx 几何承诺)
@@ -67,6 +94,11 @@ class Event(ABC):
             raise TypeError("start_idx/end_idx 不能是 bool(bool ⊂ int,语义错误)")
         if self.start_idx < 0 or self.start_idx > self.end_idx:
             raise ValueError(f"非法区间 [{self.start_idx},{self.end_idx}]")
+        if not (self.start_idx <= self.confirm_idx <= self.end_idx):
+            raise ValueError(
+                f"confirm_idx={self.confirm_idx} 必须在 "
+                f"[start_idx={self.start_idx}, end_idx={self.end_idx}] 内"
+            )
         for f in dataclasses.fields(self):
             v = getattr(self, f.name)
             if isinstance(v, float) and math.isnan(v):

@@ -24,7 +24,7 @@ def test_detect_loops_all_bars_and_filters_none():
     class D(BarwiseDetector):
         def emit(self, df, i):
             if i in (1, 3):
-                return _Ev(event_id=f"e{i}", start_idx=i, end_idx=i)
+                return _Ev(event_id=f"e{i}", start_idx=i, end_idx=i, confirm_idx=i)
             return None
 
     df = pd.DataFrame({"volume": [10, 20, 30, 40, 50]})
@@ -37,7 +37,7 @@ def test_template_does_no_cross_event_checks():
     # 故意乱序 + 重复 id,detect 仍照单全收(不抛)
     class D(BarwiseDetector):
         def emit(self, df, i):
-            return _Ev(event_id="dup", start_idx=4 - i, end_idx=4 - i)
+            return _Ev(event_id="dup", start_idx=4 - i, end_idx=4 - i, confirm_idx=4 - i)
 
     df = pd.DataFrame({"volume": [1, 2, 3]})
     raw = list(D().detect(df))  # 绕过 run(),直检模板裸行为

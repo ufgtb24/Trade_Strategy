@@ -17,12 +17,10 @@ from __future__ import annotations
 
 from typing import Optional
 
-import pandas as pd
-
 from path2.dag.nodes import NodeSpec
 from path2.dag.edges import TemporalEdge, Child
 from path2.dag.spec import PatternSpec
-from path2.dag.engine import analyze as _analyze
+from path2.stdlib.app import make_app
 from path2.dag import where as W
 from path2.atoms.breakout import BODetector, BurstDetector
 from path2.atoms.throwback import ThrowbackDetector
@@ -66,17 +64,7 @@ def build_pattern(params: Params) -> PatternSpec:
     )
 
 
-PATTERN_DAG = build_pattern(Params.default())    # 模块级常量:to_topology / 未来发现入口(schema 与 params 无关)
-
-
-def analyze(df: pd.DataFrame, params: Optional[Params] = None):
-    """库引擎 analyze:工厂造 spec(闭合 params)+ 引擎匹配。返回 path2.dag.result.AnalysisResult。"""
-    p = params or Params.default()
-    return _analyze(build_pattern(p), df, p)
-
-
-def matches(df: pd.DataFrame, params: Optional[Params] = None) -> bool:
-    return len(analyze(df, params).matches) > 0
+analyze, matches, PATTERN_DAG = make_app(default_params=Params.default, build_pattern=build_pattern)
 
 
 def eval_meta(params: Optional[Params] = None) -> dict:

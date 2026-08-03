@@ -2,7 +2,7 @@
 
 协议层类型:
   edges  —— DependencyEdge 抽象基类 + 5 个多态子类(时序/包含/否定/交叠/同段)。
-  nodes  —— NodeSpec(node+detector+where) / MatchContext。
+  nodes  —— NodeSpec(node+detector+where)。
   where  —— W.* 节点谓词便利层(一元约束)。
   spec   —— PatternSpec(纯声明) + 校验 + to_topology。
   result —— PatternMatch / EdgeWitness / PredicateTrace / AnalysisResult(引擎产物)。
@@ -15,7 +15,7 @@ from path2.dag.edges import (
     DependencyEdge, TemporalEdge, ContainmentEdge, NegationEdge, OverlapEdge, EqualsEdge,
     StartContainmentEdge,
 )
-from path2.dag.nodes import NodeSpec, MatchContext, WherePredicate
+from path2.dag.nodes import NodeSpec, WherePredicate
 from path2.dag.spec import (
     PatternSpec, PatternTopology, TopoNode, TopoEdge,
 )
@@ -30,7 +30,7 @@ from path2.dag.diagnose import diagnose
 __all__ = [
     "DependencyEdge", "TemporalEdge", "ContainmentEdge", "NegationEdge", "OverlapEdge", "EqualsEdge",
     "StartContainmentEdge",
-    "NodeSpec", "MatchContext", "WherePredicate",
+    "NodeSpec", "WherePredicate",
     "PatternSpec", "PatternTopology", "TopoNode", "TopoEdge",
     "PatternMatch", "EdgeWitness", "PredicateTrace", "AnalysisResult",
     "ClauseWitness", "AttrRow", "RelRow", "NodeDiagnostic", "NodeDiagnostics",

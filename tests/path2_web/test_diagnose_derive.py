@@ -3,7 +3,6 @@
 单测层(直接调 derive_response,diag/spec 由调用方注入·decoupled)+ 一组 HTTP 层验证
 (经 TestClient 走真实 /diagnose endpoint,证明 legacy 路径字节等价 + scope=nodes 端到端可用)。
 """
-from dataclasses import replace
 from pathlib import Path
 
 import pandas as pd
@@ -11,7 +10,6 @@ import pytest
 from fastapi.testclient import TestClient
 
 from path2.dag import diagnose as _dag_diagnose
-from path2.dag.where import attr, mark_refs_other_node
 from path2_apps.bottom_breakout_burst.dag_spec import build_pattern
 from path2_web.app import create_app
 from path2_web.diagnose import derive_response, Query, Response, NodesPayload, PairFailure, Caveat
@@ -68,31 +66,6 @@ def test_scope_nodes_caveat_measured_not_kind_aware_absent_after_task13():
     r = derive_response(q, diag=diag, spec=spec)
     codes = [c.code for c in r.caveats]
     assert "measured_not_kind_aware" not in codes
-
-
-def test_scope_nodes_caveat_cross_node_pending_absent_by_default():
-    """真实 dag_spec 无跨节点 clause(bottom_burst app 未用 refs_other_node)· 不挂 cross_node_pending。"""
-    diag, spec = _dgnx_diag()
-    q = Query(symbol="DGNX", scope="nodes", src_node="burst", dst_node="tb")
-    r = derive_response(q, diag=diag, spec=spec)
-    codes = [c.code for c in r.caveats]
-    assert "cross_node_pending" not in codes
-
-
-def test_scope_nodes_caveat_cross_node_pending_present_when_spec_has_refs_other_node_clause():
-    """spec 里若有 clause 声明 refs_other_node(mark_refs_other_node 打上)·
-    静态检测应挂 cross_node_pending caveat(硬伤 C 双落 · 编译期端 + diagnose 层)。"""
-    diag, spec = _dgnx_diag()
-    marked_node = replace(
-        spec.nodes[0],
-        where=spec.nodes[0].where + (("_test_cross_node_marker", mark_refs_other_node(attr("start_idx", ">=", 0))),),
-    )
-    new_nodes = (marked_node,) + spec.nodes[1:]
-    marked_spec = replace(spec, nodes=new_nodes)
-    q = Query(symbol="DGNX", scope="nodes", src_node="burst", dst_node="tb")
-    r = derive_response(q, diag=diag, spec=marked_spec)
-    codes = [c.code for c in r.caveats]
-    assert "cross_node_pending" in codes
 
 
 def test_scope_nodes_consumes_anchor_ok_count_and_total_src():

@@ -14,7 +14,7 @@ function makeFile(): MultiScanResultFile {
     scan: {
       scan_ts: '20260627T120000', start_date: '2024-01-01', end_date: '2024-06-30',
       workers: 1, scanned: 1, hits: 1, errors: 0, dataset_dir: '/d', params: 'default',
-      win_start: '2023-09-01', win_end: '2024-07-15', label_horizon: 20,
+      win_start: '2023-09-01', win_end: '2024-07-15', label_horizon: 20, first_passage_k: 2,
     },
     results: [
       { symbol: 'AAA', per_pattern: {
@@ -81,7 +81,9 @@ describe('view store — multi pattern', () => {
       pattern_spec: { pattern_id: 'bo_only', topology: { nodes: [], edges: [] }, event_styles: {} },
       scan: {},
     }
-    ;(v as any).previewEnabled = true
+    // Task 9:previewEnabled 由 ref 改 computed(isExploring 别名),直接赋值静默 no-op;
+    // 改为直接注入 workingCopy 槽位(enabled=true)达到同等效果。
+    ;(v as any).workingCopy = { bo_only: { enabled: true, baseline: {}, currentDict: {} } }
     expect(v.effectiveAnalysis?.events.length).toBe(1)
     // 切到 bbb → preview pattern_id 不匹配 → 退回扫描结果
     v.setActivePattern('bbb')
@@ -129,9 +131,9 @@ describe('view store — visibility axes', () => {
     expect([...v.visiblePatterns]).toEqual(['bbb'])
   })
 
-  it('visibleFields default = {num, fr} (localStorage empty)', () => {
+  it('visibleFields default = {num, fr, fd} (localStorage empty)', () => {
     const v = useViewStore()
-    expect([...v.visibleFields].sort()).toEqual(['fr', 'num'])
+    expect([...v.visibleFields].sort()).toEqual(['fd', 'fr', 'num'])
   })
 
   it('visibleFields loads from localStorage', () => {
@@ -145,7 +147,8 @@ describe('view store — visibility axes', () => {
     const v = useViewStore()
     v.toggleField('fr')
     const raw = localStorage.getItem('path2_web_ui.visibleFields')
-    expect(JSON.parse(raw!)).toEqual(['num'])
+    // 默认 {num, fr, fd} 去掉 fr → [num, fd](顺序按 toggle 删除序)
+    expect(JSON.parse(raw!).sort()).toEqual(['fd', 'num'])
   })
 
   it('isColumnVisible AND-composes both axes', () => {
@@ -230,5 +233,50 @@ describe('view store — filteredSortedRows', () => {
     const v = useViewStore()
     // no loadScanFile call → scanFile is null
     expect(v.filteredSortedRows).toEqual([])
+  })
+})
+
+describe('view store — patternHitCounts', () => {
+  beforeEach(() => setActivePinia(createPinia()))
+
+  it('按 pattern 统计命中股票数(distinct symbol,非 match 次数)', () => {
+    const v = useViewStore()
+    // makeFile fixture: AAA(bo_only=2, bbb=1) · BBB(bo_only=1, bbb=0) · CCC(全 0)
+    // → bo_only 命中 AAA/BBB 两只;bbb 只命中 AAA 一只。注意 AAA 的 bo_only 有 2 个 match,
+    //   但只算 1 只股 —— 这正是「股票数 ≠ match 次数」的锁定点。
+    v.loadScanFile(makeFile())
+    expect(v.patternHitCounts).toEqual({ bo_only: 2, bbb: 1 })
+  })
+
+  it('零命中的 pattern 给出 0 而非缺键', () => {
+    const f = makeFile()
+    for (const r of f.results) r.per_pattern.bbb.summary.matches = 0
+    const v = useViewStore()
+    v.loadScanFile(f)
+    expect(v.patternHitCounts.bbb).toBe(0)
+  })
+
+  it('忽略 per_pattern 整个缺该 pid 键的股', () => {
+    const f = makeFile()
+    delete (f.results[0].per_pattern as any).bbb   // AAA 缺 bbb 键 → bbb 归零
+    const v = useViewStore()
+    v.loadScanFile(f)
+    expect(v.patternHitCounts).toEqual({ bo_only: 2, bbb: 0 })
+  })
+
+  it('不随 symbolQuery 变化(固定全量口径)', () => {
+    const v = useViewStore()
+    v.loadScanFile(makeFile())
+    const before = { ...v.patternHitCounts }
+    const nBefore = v.filteredSortedRows.length   // 全量可见下 = 2(CCC 全 0 被 matched 闸挡掉)
+    v.setSymbolQuery('AA')
+    // 先确认搜索真的收窄了行数(否则本用例是 vacuous 的)
+    expect(v.filteredSortedRows.length).toBeLessThan(nBefore)
+    expect(v.patternHitCounts).toEqual(before)
+  })
+
+  it('无扫描文件时为空对象', () => {
+    const v = useViewStore()
+    expect(v.patternHitCounts).toEqual({})
   })
 })

@@ -29,22 +29,22 @@ class _Burst(Event):
 
 
 def test_w_child_reads_single_child_attr():
-    b = _Burst(event_id="b", start_idx=1, end_idx=3,
-               members=(_Bo(event_id="x", start_idx=1, end_idx=1, drought=70),))
+    b = _Burst(event_id="b", start_idx=1, end_idx=3, confirm_idx=1,
+               members=(_Bo(event_id="x", start_idx=1, end_idx=1, confirm_idx=1, drought=70),))
     pred = W.child("first_bo", W.attr("drought", ">=", 60))
-    assert pred(b, None) is True
+    assert pred(b) is True
     pred_fail = W.child("first_bo", W.attr("drought", ">=", 80))
-    assert pred_fail(b, None) is False
+    assert pred_fail(b) is False
 
 
 def test_w_children_aggregates_child_group():
-    b = _Burst(event_id="b", start_idx=1, end_idx=3, members=(
-        _Bo(event_id="x", start_idx=1, end_idx=1, peaks=(1, 2)),
-        _Bo(event_id="y", start_idx=2, end_idx=2, peaks=(2, 3)),
+    b = _Burst(event_id="b", start_idx=1, end_idx=3, confirm_idx=1, members=(
+        _Bo(event_id="x", start_idx=1, end_idx=1, confirm_idx=1, peaks=(1, 2)),
+        _Bo(event_id="y", start_idx=2, end_idx=2, confirm_idx=2, peaks=(2, 3)),
     ))
     # 用 lambda 聚合:members 中所有 peaks 的并集大小 >= N
     def distinct_peaks_ge(n):
-        return lambda seq, ctx: len({p for ev in seq for p in ev.peaks}) >= n
+        return lambda seq: len({p for ev in seq for p in ev.peaks}) >= n
     pred = W.children("members", distinct_peaks_ge(3))
-    assert pred(b, None) is True
-    assert W.children("members", distinct_peaks_ge(4))(b, None) is False
+    assert pred(b) is True
+    assert W.children("members", distinct_peaks_ge(4))(b) is False

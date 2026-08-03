@@ -7,7 +7,7 @@ import { getDiagnose } from '../src/api'
 import { SCAN_FILE, DIAG } from './fixtures'
 import type { Diagnostics } from '../src/types'
 
-vi.mock('../src/api', () => ({
+vi.mock('../src/api', () => ({ saveWcMirror: async () => ({ ok: true } as any), clearWcMirror: async () => ({ ok: true } as any),
   getDiagnose: vi.fn(() => Promise.resolve(DIAG)),
   getPreview: vi.fn(() => Promise.resolve({
     analysis: { events: [], matches: [], node_index: {} },
@@ -170,7 +170,7 @@ describe('scan store ignores progress while cancelling', () => {
     vi.mocked(cancelScan).mockResolvedValueOnce({ ok: true })
     const s = useScanStore()
     await s.run({ pattern_ids: ['pat_p'], start_date: '2025-01-01', end_date: '2025-12-31',
-                  workers: 1, ticker_regex: null, label_horizon: 20 })
+                  workers: 1, ticker_regex: null, label_horizon: 20, first_passage_k: 2 })
     // 扫描中一条 progress event — 正常更新 store.progress
     onEvt!({ scanned: 10, total: 100, hits: 1, errors: 0 })
     expect(s.progress).toEqual({ scanned: 10, total: 100, hits: 1, errors: 0 })
@@ -198,16 +198,16 @@ describe('scan store auto-load on done', () => {
     })
     const s = useScanStore()
     await s.run({ pattern_ids: ['pat_x'], start_date: '2025-01-01', end_date: '2025-12-31',
-                  workers: 1, ticker_regex: null, label_horizon: 20 })
+                  workers: 1, ticker_regex: null, label_horizon: 20, first_passage_k: 2 })
     onEvt!(done)
     await flushPromises()
   }
 
-  it('done success → loadScan(scan_ts) called + view.scanFile injected', async () => {
+  it('done success → loadScan(name) called + view.scanFile injected', async () => {
     const { loadScan } = await import('../src/api')
     await dispatchDone({ type: 'done', hits: 1, errors: 0, total: 1,
-                         scan_ts: '20260618T100000' })
-    expect(loadScan).toHaveBeenCalledWith('20260618T100000')
+                         scan_ts: '20260618T100000', name: 'myexp' })
+    expect(loadScan).toHaveBeenCalledWith('myexp')
     expect(useViewStore().scanFile).not.toBeNull()
   })
 

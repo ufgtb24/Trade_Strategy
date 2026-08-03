@@ -1,8 +1,13 @@
-"""节点模型 —— NodeSpec(node+生产者+一元谓词)/ MatchContext。
+"""节点模型 —— NodeSpec(node+生产者+一元谓词)。
 
 where(一元,节点)vs satisfies(二元,边)的正交分工是整个设计的脊梁:
   where 读单实例自身属性(drought>=THR、regime=="sideways"、vol>=THR);
   satisfies 读一对实例间关系(gap、包含、否定)。
+
+where 谓词只吃 event 一个参数,无运行时上下文对象:
+  K 线回看归 detector(算好字段挂 event 上,见 path2/atoms/throwback.py);
+  参数阈值由 build_pattern(params) 闭包闭合;
+  跨节点约束归边的 satisfies。
 """
 from __future__ import annotations
 
@@ -11,8 +16,8 @@ from typing import Callable, Optional, Tuple
 
 from path2.core import Event
 
-# where 谓词签名:吃已绑候选(单 Event)+ 运行时上下文。
-WherePredicate = Callable[[Event, "MatchContext"], bool]
+# where 谓词签名:吃已绑候选(单 Event),纯一元。
+WherePredicate = Callable[[Event], bool]
 
 
 @dataclass(frozen=True)
@@ -33,11 +38,3 @@ class NodeSpec:
     where: Tuple[Tuple[str, WherePredicate], ...] = ()
     consumes_stream: Optional[str] = None
     render_grid: str = "time"
-
-
-@dataclass(frozen=True)
-class MatchContext:
-    """where 的求值环境。df 供 throwback 等回看 K 线;bound 供跨节点 where(当前 app 不用)。"""
-    df: object
-    params: object
-    bound: object = None

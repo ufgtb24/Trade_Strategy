@@ -12,17 +12,18 @@
         </div>
         <div v-else-if="!rows.length" class="state">No scan history.</div>
         <table v-else class="file-list" tabindex="0" ref="listEl">
-          <thead><tr><th>Time</th><th>Hits</th><th>Size</th></tr></thead>
+          <thead><tr><th>Name</th><th>Hits</th><th>Size</th></tr></thead>
           <tbody>
-            <tr v-for="(r, i) in rows" :key="r.scan_ts"
-                :class="{ active: selected.has(r.scan_ts), current: r.scan_ts === currentScanTs }"
+            <tr v-for="(r, i) in rows" :key="r.name"
+                :class="{ active: selected.has(r.name), current: r.name === currentName }"
                 @click.exact.prevent="selectSingle(i)"
                 @click.ctrl.prevent="toggle(i)"
                 @click.meta.prevent="toggle(i)"
                 @click.shift.prevent="extendTo(i)"
-                @dblclick="openOne(r.scan_ts)">
+                @dblclick="openOne(r.name)">
               <td>
-                {{ formatTs(r.scan_ts) }}
+                <span class="scan-name">{{ r.name }}</span>
+                <span class="scan-ts">{{ formatTs(r.scan_ts) }}</span>
                 <span v-if="r.partial" class="partial-badge">未完成</span>
                 <span v-for="pid in r.pattern_ids" :key="pid" class="chip">{{ pid }}</span>
               </td>
@@ -35,8 +36,20 @@
         <footer>
           <span class="hint">{{ selected.size }} selected · ↑↓ / Enter / Delete / Esc</span>
           <button @click="onCancel">Cancel</button>
+          <button data-testid="rename" :disabled="selected.size !== 1 || renaming" @click="startRename">Rename</button>
           <button :disabled="selected.size !== 1" @click="onOpen">Open</button>
         </footer>
+
+        <div v-if="renaming" class="confirm-backdrop">
+          <div class="confirm-card">
+            <p>重命名为:</p>
+            <input data-testid="rename-input" v-model="renameValue"
+                   @keydown.enter.stop="confirmRename"
+                   @keydown.esc.stop="renaming = false" />
+            <button @click="renaming = false">Cancel</button>
+            <button data-testid="rename-confirm" class="primary" @click="confirmRename">OK</button>
+          </div>
+        </div>
 
         <div v-if="confirming" class="confirm-backdrop">
           <div class="confirm-card">
@@ -68,7 +81,7 @@ const emit = defineEmits<{ (e: 'close'): void }>()
 
 const view = useViewStore()
 const scan = useScanStore()
-const { scanFile } = storeToRefs(view)
+const { currentScanName } = storeToRefs(view)
 
 const rows = ref<ScanHistoryEntry[]>([])
 const selected = ref(new Set<string>())
@@ -81,7 +94,7 @@ const confirmIncludesCurrent = ref(false)
 const cardEl = ref<HTMLElement | null>(null)
 const listEl = ref<HTMLElement | null>(null)
 
-const currentScanTs = computed(() => scanFile.value?.scan?.scan_ts ?? null)
+const currentName = computed(() => currentScanName.value)   // 当前打开扫描的 name(列表高亮)
 
 async function reload() {
   loading.value = true; error.value = null
@@ -100,40 +113,40 @@ onMounted(async () => {
 })
 
 function selectSingle(i: number) {
-  selected.value = new Set([rows.value[i].scan_ts])
+  selected.value = new Set([rows.value[i].name])
   anchor.value = i
 }
 function toggle(i: number) {
-  const ts = rows.value[i].scan_ts
+  const nm = rows.value[i].name
   const next = new Set(selected.value)
-  next.has(ts) ? next.delete(ts) : next.add(ts)
+  next.has(nm) ? next.delete(nm) : next.add(nm)
   selected.value = next
   anchor.value = i
 }
 function extendTo(i: number) {
   if (anchor.value < 0) return selectSingle(i)
   const [lo, hi] = anchor.value < i ? [anchor.value, i] : [i, anchor.value]
-  selected.value = new Set(rows.value.slice(lo, hi + 1).map(r => r.scan_ts))
+  selected.value = new Set(rows.value.slice(lo, hi + 1).map(r => r.name))
 }
 
 function onEnter() {
+  if (confirming.value) { performDelete(); return }  // 确认层:Delete 为默认动作,回车即删
   if (selected.value.size === 1) onOpen()
 }
 function onKeydown(e: KeyboardEvent) {
   if (e.key === 'Delete') onDeleteKey()
 }
 function onDeleteKey() {
-  // 注:confirmMessage 在按 Delete 那一刻 snapshot;confirm 层打开期间无法改选(键盘只在 .card 监听 esc/enter,无 selection 操作)。若未来加键盘可改选,需改 computed。
   if (!selected.value.size) return
   const sel = Array.from(selected.value)
   confirmMessage.value = sel.length === 1
-    ? `Delete ${formatTs(sel[0])}?`
+    ? `Delete ${sel[0]}?`
     : buildMultiMessage(sel)
-  confirmIncludesCurrent.value = currentScanTs.value !== null && sel.includes(currentScanTs.value)
+  confirmIncludesCurrent.value = currentName.value !== null && sel.includes(currentName.value)
   confirming.value = true
 }
 function buildMultiMessage(sel: string[]): string {
-  const head = sel.slice(0, 3).map(formatTs).map(s => `• ${s}`).join('\n')
+  const head = sel.slice(0, 3).map(s => `• ${s}`).join('\n')
   const tail = sel.length > 3 ? `\n…and ${sel.length - 3} more` : ''
   return `Delete ${sel.length} scan results?\n${head}${tail}`
 }
@@ -146,7 +159,7 @@ async function performDelete() {
   }
   await scan.refreshHistory()
   rows.value = [...scan.history]
-  if (currentScanTs.value !== null && targets.includes(currentScanTs.value)) {
+  if (currentName.value !== null && targets.includes(currentName.value)) {
     view.clearScanFile()
   }
   selected.value.clear()
@@ -160,10 +173,37 @@ async function onOpen() {
   await scan.open(ts)
   emit('close')
 }
-function openOne(ts: string) {
-  scan.open(ts).then(() => emit('close'))
+function openOne(name: string) {
+  scan.open(name).then(() => emit('close'))
 }
-function onCancel() { emit('close') }
+
+const renaming = ref(false)
+const renameValue = ref('')
+
+function startRename() {
+  if (selected.value.size !== 1) return
+  renameValue.value = Array.from(selected.value)[0]
+  renaming.value = true
+}
+
+async function confirmRename() {
+  const oldName = Array.from(selected.value)[0]
+  const newName = renameValue.value.trim()
+  renaming.value = false
+  if (!newName || newName === oldName) return
+  try {
+    await scan.rename(oldName, newName)
+    if (currentName.value === oldName) view.setCurrentScanName(newName)
+    selected.value = new Set([newName])
+    rows.value = [...scan.history]
+  } catch (e: any) {
+    error.value = `改名失败: ${e.message ?? e}`
+  }
+}
+function onCancel() {
+  if (confirming.value) { confirming.value = false; return }  // 确认层:Esc 等同 Keep,只收起确认
+  emit('close')
+}
 
 function formatTs(ts: string): string {
   const m = ts.match(/^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})$/)
@@ -225,6 +265,8 @@ footer { display: flex; align-items: center; gap: 10px; margin-top: 12px; }
 .confirm-card p { white-space: pre-line; margin: 0 0 12px; font-size: 12px; }
 .warn { color: #b91c1c; font-size: 11px; }
 button.btn-stop { background: #ef4444; color: #fff; }
+.scan-name { font-weight: 500; }
+.scan-ts { display: block; font-size: 10px; color: #94a3b8; }
 .chip { display: inline-block; padding: 1px 6px; background: #e5e7eb;
         border-radius: 8px; font-size: 10px; margin-right: 4px; }
 .partial-badge {

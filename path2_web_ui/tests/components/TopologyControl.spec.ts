@@ -127,3 +127,44 @@ describe('TopologyControl', () => {
     expect(wrapper.find('.nodes-popover').exists()).toBe(false)
   })
 })
+
+// ─── 组合子 where_rules → 节点悬停规则串(node 方框的 native title)────────────
+describe('TopologyControl — 组合子规则串', () => {
+  beforeEach(() => { setActivePinia(createPinia()); vi.useFakeTimers() })
+  afterEach(() => { vi.useRealTimers() })
+
+  /** 深拷贝共享 fixture 后给 bo 换成嵌套组合子 rule(不污染其他用例的 SCAN_FILE)。 */
+  function mountWithRule(rule: unknown) {
+    const scan = JSON.parse(JSON.stringify(SCAN_FILE))
+    const pid = scan.pattern_ids[0]
+    const nodes = scan.per_pattern[pid].pattern_spec.topology.nodes
+    nodes.find((n: any) => n.node_id === 'bo').where_rules = [rule]
+    const v = useViewStore()
+    v.loadScanFile(scan)
+    v.selectSymbol('AAPL')
+    return mount(TopologyControl)
+  }
+
+  it('or/and/not 递归成带括号的表达式串', () => {
+    const w = mountWithRule({
+      clause_id: 'pk_or_vol', kind: 'or',
+      children: [
+        { kind: 'attr', field: 'distinct_pk', op: '>=', threshold: 3 },
+        {
+          kind: 'and',
+          children: [
+            { kind: 'attr', field: 'max_bar_vol_ratio', op: '>=', threshold: 3 },
+            { kind: 'not', children: [{ kind: 'attr', field: 'first_drought', op: '>=', threshold: 999 }] },
+          ],
+        },
+      ],
+    })
+    expect(w.get('[data-node-id="bo"]').attributes('title'))
+      .toBe('pk_or_vol (distinct_pk >= 3 | (max_bar_vol_ratio >= 3 & !first_drought >= 999))')
+  })
+
+  it('叶子 rule 保持扁平旧格式(不加括号)', () => {
+    const w = mountWithRule({ clause_id: 'first_drought', kind: 'attr', field: 'first_drought', op: '>=', threshold: 60 })
+    expect(w.get('[data-node-id="bo"]').attributes('title')).toBe('first_drought >= 60')
+  })
+})

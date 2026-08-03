@@ -108,24 +108,25 @@ def test_api_delete_scan_404_when_missing(tmp_path):
     assert r.status_code == 404
 
 
-# ── path 校验测试 ──────────────────────────────────────────────
-def test_api_load_scan_422_invalid_ts_format(tmp_path):
+# ── name 白名单校验测试 ──────────────────────────────────────
+def test_api_load_scan_400_illegal_name(tmp_path):
     c = _client(tmp_path)
-    # 非时间戳格式 → regex 校验失败 → 422
-    r = c.get("/scans/not_a_valid_timestamp_at_all")
-    assert r.status_code == 422
+    # 非法字符(点)→ 白名单拒绝 → 400(路径穿越防护)
+    r = c.get("/scans/bad.name")
+    assert r.status_code == 400
 
 
-def test_api_load_scan_422_bad_ts(tmp_path):
+def test_api_load_scan_400_illegal_name_space(tmp_path):
     c = _client(tmp_path)
-    r = c.get("/scans/not_a_timestamp")
-    assert r.status_code == 422
+    # 非法字符(空格)→ 白名单拒绝 → 400
+    r = c.get("/scans/bad%20name")
+    assert r.status_code == 400
 
 
-def test_api_delete_scan_422_bad_ts(tmp_path):
+def test_api_delete_scan_400_illegal_name(tmp_path):
     c = _client(tmp_path)
-    r = c.delete("/scans/not_a_timestamp")
-    assert r.status_code == 422
+    r = c.delete("/scans/bad.name")
+    assert r.status_code == 400
 
 
 def test_api_post_scan_cancel_404_when_unknown(tmp_path):

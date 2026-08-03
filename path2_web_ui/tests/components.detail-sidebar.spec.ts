@@ -10,7 +10,7 @@ import type { MultiScanResultFile } from '../src/types'
 // diag 经 view.ts 内部 watch([symbol,scanFile,activePatternId,...],async...) 异步拉取,
 // 候选表渲染依赖它非空——mock getDiagnose + 各测试 loadScanFile 后 await flushPromises()
 // 让 diag 落地,候选表相关断言才有意义(承 tests/components/DetailSidebar.spec.ts 既有模式)。
-vi.mock('../src/api', () => ({
+vi.mock('../src/api', () => ({ saveWcMirror: async () => ({ ok: true } as any), clearWcMirror: async () => ({ ok: true } as any),
   getDiagnose: vi.fn(() => Promise.resolve({
     symbol: 'AAA', pattern_id: 'p1',
     nodes: {

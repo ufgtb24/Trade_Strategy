@@ -157,26 +157,3 @@ describe('S1 fix: chartSub tooltip 挂 body + 删 markerTooltip 系列级冗余'
     }
   })
 })
-
-describe('buildMainOption — symbolLabel title (K 线图内嵌 symbol,居中)', () => {
-  it('symbolLabel="AAPL" → title.text="AAPL",left="center",top=6', () => {
-    const input = baseInput({ symbolLabel: 'AAPL' })
-    const opt: any = buildMainOption(bars, mkBundle(input), input)
-    expect(opt.title).toBeDefined()
-    expect(opt.title.text).toBe('AAPL')
-    expect(opt.title.left).toBe('center')
-    expect(opt.title.top).toBe(6)
-  })
-
-  it('symbolLabel=null → return 对象不含 title key(隐藏)', () => {
-    const input = baseInput({ symbolLabel: null })
-    const opt: any = buildMainOption(bars, mkBundle(input), input)
-    expect('title' in opt).toBe(false)
-  })
-
-  it('symbolLabel="" 空字符串 → return 对象不含 title key(隐藏)', () => {
-    const input = baseInput({ symbolLabel: '' })
-    const opt: any = buildMainOption(bars, mkBundle(input), input)
-    expect('title' in opt).toBe(false)
-  })
-})

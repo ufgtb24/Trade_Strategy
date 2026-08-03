@@ -105,8 +105,12 @@
                 <td class="cell-id" :style="{ borderLeft: `${leftWidth(row)}px solid ${leftColor(row, node.node_id)}`, paddingLeft: `${15 - leftWidth(row)}px` }">seg@{{ row.start_idx }}-{{ row.end_idx }}</td>
                 <td v-for="cid in nodeClauseIds(node.node_id)" :key="cid" class="cell-clause">
                   <template v-if="row.clauses[cid]">
-                    <!-- 硬伤 C 前端 · 跨节点 clause 未复核/延后 → 用 ⚠ 替代判定值(数据来时才亮,Sprint 2 落) -->
-                    <PendingIcon v-if="clausePendingReason(row.clauses[cid])" :reason="clausePendingReason(row.clauses[cid])!" />
+                    <!-- 组合子 clause:单元格聚合 n/m(kind),完整逐分支明细挂 native title;
+                         全量树形展示在 K线 hover tooltip(主诊断面),此处保持表格紧凑 -->
+                    <span
+                      v-if="(row.clauses[cid].children?.length ?? 0) > 0"
+                      :title="combinatorDetail(row.clauses[cid])"
+                    >{{ combinatorSummary(row.clauses[cid]) }} {{ row.clauses[cid].satisfied ? '✓' : '✗' }}</span>
                     <template v-else>
                       {{ fmtValue(row.clauses[cid].measured) }}
                       <em v-if="row.clauses[cid].op"> ({{ row.clauses[cid].op }}{{ row.clauses[cid].threshold }})</em>
@@ -136,6 +140,14 @@
         <span v-if="m.forward_return !== undefined" class="match-ret"
               :class="m.forward_return !== null && m.forward_return >= 0 ? 'ret-pos' : 'ret-neg'">
           ret_{{ (effectiveScan ?? scanFile?.scan)?.label_horizon }}: {{ formatForwardReturn(m.forward_return) }}
+          <span v-if="view.isExploring" class="ret-live"
+                title="探索态现算值(Working Copy 口径),与左侧列表的 scan 冻结 ret 口径不同">†</span>
+        </span>
+        <span v-if="m.forward_drawdown !== undefined" class="match-dd"
+              :class="m.forward_drawdown !== null && m.forward_drawdown < 0 ? 'dd-neg' : 'dd-pos'">
+          d_{{ (effectiveScan ?? scanFile?.scan)?.label_horizon }}: {{ formatForwardReturn(m.forward_drawdown) }}
+          <span v-if="view.isExploring" class="ret-live"
+                title="探索态现算值(Working Copy 口径),与左侧列表的 scan 冻结 d 口径不同">†</span>
         </span>
       </div>
     </template>
@@ -145,6 +157,13 @@
       <h3 class="section-title">匹配 trace</h3>
       <div v-if="selectedMatch.forward_return !== undefined" class="ret-row">
         ret_{{ (effectiveScan ?? scanFile?.scan)?.label_horizon }}: <strong>{{ formatForwardReturn(selectedMatch.forward_return) }}</strong>
+        <span v-if="view.isExploring" class="ret-live"
+              title="探索态现算值(Working Copy 口径),与左侧列表的 scan 冻结 ret 口径不同">†</span>
+      </div>
+      <div v-if="selectedMatch.forward_drawdown !== undefined" class="ret-row">
+        d_{{ (effectiveScan ?? scanFile?.scan)?.label_horizon }}: <strong>{{ formatForwardReturn(selectedMatch.forward_drawdown) }}</strong>
+        <span v-if="view.isExploring" class="ret-live"
+              title="探索态现算值(Working Copy 口径),与左侧列表的 scan 冻结 d 口径不同">†</span>
       </div>
       <!-- node 行:可点击,高亮当前 selectedEventId -->
       <div
@@ -182,7 +201,6 @@ import { useViewStore } from '../stores/view'
 import { colorOf } from '../render/colors'
 import { formatForwardReturn } from '../render/visible'
 import RelBadge from '../shared/RelBadge.vue'
-import PendingIcon from '../shared/PendingIcon.vue'
 // fmt(val, kind) 按 EdgeWitness.measured.kind 加前缀(硬伤 E · Task 13 落地接线);fmtValue 硬伤 D 数组/scalar 递归格式化
 import { fmt, fmtValue } from '../shared/formatters'
 import FailedAttemptsCard from './FailedAttemptsCard.vue'
@@ -261,6 +279,31 @@ function nodeClauseIds(nodeId: string): string[] {
   return [...ids]
 }
 
+/** 组合子 witness 单元格摘要:如 "1/2(or)"。 */
+function combinatorSummary(w: ClauseWitness): string {
+  const kids = w.children ?? []
+  if (w.label === 'not') return '(not)'      // n/m 对 not 无意义(0 个子分支通过恰是 not 成立)
+  const pass = kids.filter((k) => k.satisfied).length
+  return `${pass}/${kids.length}(${w.label ?? '?'})`
+}
+
+/** 组合子 witness 悬停明细(native title):逐分支一行,层次用树线 ├ └ │ 显式画出
+ * (与 K 线 tooltip 同款记号)。组合子行不出 n/m —— 子分支恒全量展开,数字属冗余。 */
+function combinatorDetail(w: ClauseWitness, prefix = ''): string {
+  const kids = w.children ?? []
+  return kids.map((k, i) => {
+    const last = i === kids.length - 1
+    const mark = k.satisfied ? '✓' : '✗'
+    const head = `${prefix}${last ? '└ ' : '├ '}${k.label ?? '?'}`
+    const grand = k.children ?? []
+    if (grand.length > 0) {
+      return `${head} ${mark}\n` + combinatorDetail(k, prefix + (last ? '  ' : '│ '))
+    }
+    const opStr = k.op != null ? ` ${k.op} ${k.threshold}` : ''
+    return `${head}: ${fmtValue(k.measured)}${opStr} ${mark}`
+  }).join('\n')
+}
+
 /** 候选表行的 tier:先看 matchedIds,再看 qualifiedIds,否则 detected */
 function rowTier(row: AttrRow): 'matched' | 'qualified' | 'detected' {
   if (matchedIds.value.has(row.event_id)) return 'matched'
@@ -277,18 +320,6 @@ function leftColor(row: AttrRow, nodeId: string): string {
 function leftWidth(row: AttrRow): number {
   const t = rowTier(row)
   return t === 'matched' ? 12 : t === 'qualified' ? 6 : 3
-}
-
-/**
- * 硬伤 C 前端 · clause 是否跨节点未复核/延后判定 → PendingIcon 呈现的 reason。
- * ClauseWitness 当前类型无 refs_other_node/pending 字段(Sprint 2 Task 14 才落),
- * 用 any 做防御式探测,数据未到时恒 null(不渲染,不破坏现有展示)。
- */
-function clausePendingReason(clause: ClauseWitness): 'refs_other_node' | 'cross_node_pending' | null {
-  const c = clause as any
-  if (c.refs_other_node) return 'refs_other_node'
-  if (c.pending) return 'cross_node_pending'
-  return null
 }
 
 // ─── 匹配 trace 双向高亮 ─────────────────────────────────────────────────────
@@ -333,6 +364,7 @@ function selectMatchRow(matchId: string): void {
   view.focusMatch(matchId)
 }
 
+// ── 首次穿越方向 chip(Task 5) ─────────────────────────────────────────────
 // ─── Task 18 · 入口 A(brush 时段查询)+ 入口 D(shift+click pair 查询)query 卡片 ─────────
 // KlineChart 触发(brush/shift+click)→ view.triggerTimeQuery/triggerPairQuery → 落地
 // timeScopeResponse/pairScopeResponse + activeDetailCard,这里只负责渲染 + 关闭。
@@ -344,7 +376,7 @@ const pairPayloadValid = computed(() =>
 
 /** 硬伤级修补:dropped_matches(A2 post-filter 淘汰的残缺 match)已加到 path2/dag/result.py::
  * AnalysisResult,但 serialize.py 尚未序列化进前端 Analysis 契约——any-cast 防御式探测,同
- * clausePendingReason 既有模式,数据未到时恒空数组、不渲染。*/
+ * 数据未到时恒空数组、不渲染。*/
 const droppedMatches = computed<unknown[]>(() => (effectiveAnalysis.value as any)?.dropped_matches ?? [])
 
 function closeDetailCard() {
@@ -419,6 +451,13 @@ function undoSwap() {
 .match-ret { font-weight: 700; font-size: 12px; }
 .ret-pos { color: #16a34a; }
 .ret-neg { color: #dc2626; }
+/* forward_drawdown 显示(ret 的对偶):统一带符号百分比,负值(下行)用红,零/正值用绿;
+   颜色纪律遵循全项目色盲友好约定(饱和度而非色相区分,见 .match-ret)。 */
+.match-dd { font-weight: 700; font-size: 12px; }
+.dd-neg { color: #dc2626; }
+.dd-pos { color: #16a34a; }
+/* Task 13 · 探索态现算 ret 上标(与 scan 冻结口径区分) */
+.ret-live { color: #d97706; font-weight: 700; margin-left: 1px; }
 
 .ret-row { margin: 4px 0; color: #334155; }
 .match-trace { margin-top: 10px; border-top: 1px solid #e2e8f0; padding-top: 8px; }

@@ -79,6 +79,15 @@ def _eval_ticker(pkl_path: str, module_path: str, start: str, end: str,
         rows, seen = [], set()
         for m in res.matches:
             ev = m.node_index[end_node]
+            # 因果闸:买点取 start_idx,必须 >= 事件确认 bar(confirm_idx),否则前瞻。
+            # retrospective 跨度事件(burst/trend/platform)confirm_idx=end,若误用其
+            # start_idx 当买点会在此 raise(参见 final_report A.3 六倍分差教学例)。
+            if ev.start_idx < ev.confirm_idx:
+                raise ValueError(
+                    f"因果闸失效:end_node='{end_node}' 买点 start_idx={ev.start_idx} "
+                    f"< confirm_idx={ev.confirm_idx}({ev.__class__.__name__});"
+                    f"买点应锚在 confirm_idx 或之后"
+                )
             buy_date = win["date"].iat[ev.start_idx]
             if not (start_ts <= buy_date <= end_ts):
                 continue
@@ -175,7 +184,8 @@ def _write_json(out: dict, out_path, pattern_id: str, mode: str) -> dict:
     """落盘结果 JSON;out_path=None 时按时间戳落 outputs/path2_eval/。路径写回 meta.out_path。"""
     if out_path is None:
         ts = time.strftime("%Y%m%d-%H%M%S")
-        out_path = Path("outputs/path2_eval") / f"{pattern_id}_{mode}_{ts}.json"
+        repo = Path(__file__).resolve().parents[1]
+        out_path = repo / "outputs" / "path2_eval" / f"{pattern_id}_{mode}_{ts}.json"
     out_path = Path(out_path)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out["meta"]["out_path"] = str(out_path)

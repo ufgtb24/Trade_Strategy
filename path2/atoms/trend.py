@@ -13,7 +13,7 @@ from path2.calc.ma import calculate_ma
 
 @dataclass(frozen=True)
 class TrendSegment(Event):
-    """走势-无关的连续相同 regime 区段。
+    """走势-无关的连续相同 regime 区段。confirm_idx = end_idx:retrospective,regime 切换才确认完整区段。
 
     输出字段(where 可引用):
     - regime:   "down" / "sideways" / "up" 三态
@@ -118,6 +118,7 @@ class TrendSegmentDetector:
             event_id=span_id(self.source_tag or self.event_cls.class_id, start, end),
             start_idx=start,
             end_idx=end,
+            confirm_idx=end,   # retrospective:regime 切换才确认完整区段
             regime=regime,
             drawdown=drawdown,
         )

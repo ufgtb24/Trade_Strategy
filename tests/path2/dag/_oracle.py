@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import itertools
 from collections import Counter
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Dict, List, Tuple
 
 from path2.core import Event
@@ -17,6 +17,12 @@ class Ev(Event):
     """测试用具体 Event:在 event_id/start_idx/end_idx 外加 pos(流内下标)。"""
     class_id = "test_oracle_ev"
     pos: int = 0
+    confirm_idx: int = field(default=-1, kw_only=True)   # -1=未指定 → __post_init__ 填 start_idx
+
+    def __post_init__(self):
+        if self.confirm_idx < 0:
+            object.__setattr__(self, 'confirm_idx', self.start_idx)
+        super().__post_init__()
 
 
 @dataclass(frozen=True)
@@ -30,7 +36,13 @@ class WideEv(Event):
     """
     class_id = "test_oracle_wide"
     pos: int = 0
+    confirm_idx: int = field(default=-1, kw_only=True)   # -1=未指定 → __post_init__ 填 start_idx
     kids: Tuple[Ev, ...] = ()
+
+    def __post_init__(self):
+        if self.confirm_idx < 0:
+            object.__setattr__(self, 'confirm_idx', self.start_idx)
+        super().__post_init__()
 
     def child_slots(self):
         return {"kids": self.kids}

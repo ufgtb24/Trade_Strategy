@@ -25,7 +25,9 @@ function seedTb(store: ReturnType<typeof useViewStore>) {
   // 完整 seedStore 模式(参考 tests/stores.triggerEventDebug.spec.ts)· 补 previewEnabled/
   // pattern_spec/symbol/activePatternId/scanFile,让 _previewHits 命中、走 effectiveAnalysis
   // 主路径,而非 dispatchDebugMenu 的 store.preview.analysis.events fallback。
-  ;(store as any).previewEnabled = true
+  // 【Task 9 修正】previewEnabled 由 ref 改 computed(isExploring 别名),直接赋值静默 no-op;
+  // 改为直接注入 workingCopy 槽位(enabled=true),同 stores.triggerEventDebug.spec.ts 的修法。
+  ;(store as any).workingCopy = { bottom_burst: { enabled: true, baseline: {}, currentDict: {} } }
   ;(store as any).preview = {
     symbol: 'AAPL',
     pattern_spec: { pattern_id: 'bottom_burst' },

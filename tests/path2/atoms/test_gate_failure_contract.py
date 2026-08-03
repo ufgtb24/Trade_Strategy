@@ -60,9 +60,9 @@ def test_burst_gate_invariant_op_and_param_same_nullability():
     from path2.atoms.breakout import BOEvent as _BOEvent, BurstEvent  # 用真类型
     # 构 3 个 bo,gap=10>gap_max=5 → chain_break + 末簇 size=1<min_bos=2 → min_bos_insufficient
     bos = [
-        _BOEvent(event_id='bo0', start_idx=0, end_idx=0, drought=None, pk_count=1,
+        _BOEvent(event_id='bo0', start_idx=0, end_idx=0, confirm_idx=0, drought=None, pk_count=1,
                  broken_peak_ids=(), vol_ratio=None, peak_vol_max=0.0, referenced_points=()),
-        _BOEvent(event_id='bo1', start_idx=15, end_idx=15, drought=15, pk_count=1,
+        _BOEvent(event_id='bo1', start_idx=15, end_idx=15, confirm_idx=15, drought=15, pk_count=1,
                  broken_peak_ids=(), vol_ratio=None, peak_vol_max=0.0, referenced_points=()),
     ]
     df = pd.DataFrame({'volume': [1000.0] * 30})
@@ -97,7 +97,7 @@ def test_tb_gate_invariant_op_and_param_same_nullability():
     # anchor = high[bo_idx-1] = 101;bo 后 close[bo_idx+1] = 90 < anchor → phase1_break
     df.loc[bo_idx + 1, 'close'] = 90.0
     from path2.atoms.breakout import BOEvent as _BOEvent
-    bo = _BOEvent(event_id=f"bo_{bo_idx}", start_idx=bo_idx, end_idx=bo_idx,
+    bo = _BOEvent(event_id=f"bo_{bo_idx}", start_idx=bo_idx, end_idx=bo_idx, confirm_idx=bo_idx,
                   drought=None, pk_count=1, broken_peak_ids=(), vol_ratio=None,
                   peak_vol_max=0.0, referenced_points=())
     captured: list[GateFailure] = []

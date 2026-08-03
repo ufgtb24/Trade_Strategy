@@ -309,7 +309,7 @@ for m in result.matches:
 
 ```bash
 uv sync
-uv run python scripts/run_path2_web.py   # 可视化 UI（扫描 + K 线走势图 + 拓扑面板 + 诊断侧栏）
+uv run python scripts/path2/run_path2_web.py   # 可视化 UI（扫描 + K 线走势图 + 拓扑面板 + 诊断侧栏）
 ```
 
 这个脚本会同时拉起 FastAPI 后端（`127.0.0.1:8000`）和 Vite 前端（`127.0.0.1:5173`），界面在浏览器里打开。

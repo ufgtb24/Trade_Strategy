@@ -13,7 +13,7 @@ class Ev(Event):
 
 
 def ev(s, e):
-    return Ev(event_id=f"e_{s}_{e}", start_idx=s, end_idx=e)
+    return Ev(event_id=f"e_{s}_{e}", start_idx=s, end_idx=e, confirm_idx=s)
 
 
 # ── 基类契约 ──

@@ -1,6 +1,8 @@
 """create_app:组装 FastAPI 实例(registry + config + router + CORS)。"""
 from __future__ import annotations
 
+from pathlib import Path
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -8,6 +10,8 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from path2_web.api import build_router
 from path2_web.config import load_config, save_config, DEFAULT_PATH
 from path2_web.discovery import PatternRegistry
+
+_DEFAULT_OUTPUTS_ROOT = str(Path(__file__).resolve().parents[1] / "outputs" / "path2_web")  # 锚 repo root
 
 
 class _NoKeepAliveMiddleware(BaseHTTPMiddleware):
@@ -25,7 +29,7 @@ class _NoKeepAliveMiddleware(BaseHTTPMiddleware):
 
 
 def create_app(*, config_override=None, config_path=DEFAULT_PATH,
-               outputs_root="outputs/path2_web", use_thread_pool=False) -> FastAPI:
+               outputs_root=_DEFAULT_OUTPUTS_ROOT, use_thread_pool=False) -> FastAPI:
     registry = PatternRegistry()
     state = {"config": config_override if config_override is not None else load_config(config_path)}
 

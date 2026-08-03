@@ -1,4 +1,4 @@
-"""scripts/scan-top-miss.py 冒烟测试:subprocess 跑通 · 输出 markdown 榜结构正确。
+"""scripts/path2/scan-top-miss.py 冒烟测试:subprocess 跑通 · 输出 markdown 榜结构正确。
 
 用 tmp_path 造小合成 pkl fixture(非真实 datasets/pkls · --pkl-dir override 指向 tmp 目录),
 避免 subprocess 扫全宇宙拖慢测试(brief 原版直扫 datasets/pkls/ · 本文件按实施 guidance
@@ -36,7 +36,7 @@ def test_scan_top_miss_runs_without_error(tmp_path):
 
     out_file = tmp_path / "top_miss.md"
     result = subprocess.run(
-        [sys.executable, "scripts/scan-top-miss.py",
+        [sys.executable, "scripts/path2/scan-top-miss.py",
          "--start=2025-06-01", "--end=2025-07-01", "--min-pct=30", "--top-k=5",
          f"--pkl-dir={pkl_dir}", f"--out={out_file}"],
         capture_output=True, text=True, timeout=120, cwd=REPO_ROOT,

@@ -218,6 +218,17 @@ describe('buildBarTooltipFormatter', () => {
 import { buildMarkerTooltipFormatter } from '../src/render/chart'
 import type { TooltipPayload } from '../src/render/chart'
 
+/** 取 Clauses 段的可见文本行(剥标签 + &nbsp;→空格 + 去尾随空白)。
+ *  列宽随数据浮动,故断言用 \s+ 匹配列间距,只锁「树线 + 内容 + 判定符」。 */
+function clauseLines(html: string): string[] {
+  const i = html.indexOf('Clauses')
+  const j = html.indexOf('Attributes')
+  const seg = html.slice(i, j > i ? j : undefined)
+  return seg.split('<br/>').slice(1)
+    .map((l) => l.replace(/<[^>]+>/g, '').replace(/&nbsp;/g, ' ').replace(/\s+$/, ''))
+    .filter((l) => l.length > 0)
+}
+
 describe('buildMarkerTooltipFormatter', () => {
   const emptyPayload: TooltipPayload = {
     identity: { nodes: ['bo_burst'], dateStart: '2024-03-15', dateEnd: null, eventId: 'b1' },
@@ -238,7 +249,8 @@ describe('buildMarkerTooltipFormatter', () => {
   it('match 端点 + event 信息：顶行 + 三段拼接（不再互斥）', () => {
     const resolver = (_eid: string): TooltipPayload => ({
       identity: { nodes: ['bo_burst'], dateStart: '2024-03-15', dateEnd: null, eventId: 'b1' },
-      clauses: [{ cid: 'first_drought', node: 'bo_burst', measured: 0, op: '>=', threshold: 20, satisfied: false }],
+      clauses: [{ cid: 'first_drought', node: 'bo_burst', measured: 0, op: '>=', threshold: 20, satisfied: false,
+                  depth: 0, kind: null }],
       raw: { count: 2 },
     })
     const matchLabel = (id: string) => `MATCH:${id}`
@@ -250,20 +262,24 @@ describe('buildMarkerTooltipFormatter', () => {
     expect(html).toContain('<b>Attributes</b>')
   })
 
-  it('失败 clause 用 <b>...</b> 加粗', () => {
+  it('失败 clause 用红色标出(粗体已改为「顶层结构」信道,不再兼表失败)', () => {
     const resolver = (_eid: string): TooltipPayload => ({
       identity: { nodes: ['bo_burst'], dateStart: '2024-03-15', dateEnd: null, eventId: 'b1' },
       clauses: [
-        { cid: 'first_drought', node: 'bo_burst', measured: 0, op: '>=', threshold: 20, satisfied: false },
-        { cid: 'count', node: 'bo_burst', measured: 3, op: '>=', threshold: 2, satisfied: true },
+        { cid: 'first_drought', node: 'bo_burst', measured: 0, op: '>=', threshold: 20, satisfied: false,
+          depth: 0, kind: null },
+        { cid: 'count', node: 'bo_burst', measured: 3, op: '>=', threshold: 2, satisfied: true,
+          depth: 0, kind: null },
       ],
       raw: {},
     })
     const fmt = buildMarkerTooltipFormatter(resolver, undefined)
     const html = fmt({ data: { event_id: 'b1' } })
-    expect(html).toContain('<b>first_drought: 0 >= 20 ✗</b>')
-    expect(html).toContain('count: 3 >= 2 ✓')
-    expect(html).not.toContain('<b>count:')   // 满足行不加粗
+    const L = clauseLines(html)
+    expect(L[0]).toMatch(/^first_drought\s+0\s+>= 20\s+✗$/)
+    expect(L[1]).toMatch(/^count\s+3\s+>= 2\s+✓$/)
+    // 颜色信道只标失败行(两行都是顶层 clause,故都加粗 —— 粗体表结构不表状态)
+    expect((html.match(/color:#d33/g) ?? []).length).toBe(1)
   })
 
   it('浮点截到 4 位小数（measured 与 threshold 双向）', () => {
@@ -271,7 +287,8 @@ describe('buildMarkerTooltipFormatter', () => {
       identity: { nodes: [], dateStart: '2024-03-15', dateEnd: null, eventId: 'b1' },
       clauses: [
         { cid: 'vol_spike', node: 'bo_burst',
-          measured: 2.6378544926831706, op: '>=', threshold: 8, satisfied: false },
+          measured: 2.6378544926831706, op: '>=', threshold: 8, satisfied: false,
+          depth: 0, kind: null },
       ],
       raw: { max_bar_vol_ratio: 2.6378544926831706 },
     })
@@ -286,18 +303,20 @@ describe('buildMarkerTooltipFormatter', () => {
     const resolver = (_eid: string): TooltipPayload => ({
       identity: { nodes: ['bo_burst', 'tb_burst'], dateStart: '2024-03-15', dateEnd: null, eventId: 'b1' },
       clauses: [
-        { cid: 'first_drought', node: 'bo_burst', measured: 0, op: '>=', threshold: 20, satisfied: false },
-        { cid: 'first_drought', node: 'tb_burst', measured: 0, op: '>=', threshold: 0, satisfied: true },
-        { cid: 'count', node: 'bo_burst', measured: 3, op: '>=', threshold: 2, satisfied: true },
+        { cid: 'first_drought', node: 'bo_burst', measured: 0, op: '>=', threshold: 20, satisfied: false,
+          depth: 0, kind: null },
+        { cid: 'first_drought', node: 'tb_burst', measured: 0, op: '>=', threshold: 0, satisfied: true,
+          depth: 0, kind: null },
+        { cid: 'count', node: 'bo_burst', measured: 3, op: '>=', threshold: 2, satisfied: true,
+          depth: 0, kind: null },
       ],
       raw: {},
     })
     const fmt = buildMarkerTooltipFormatter(resolver, undefined)
-    const html = fmt({ data: { event_id: 'b1' } })
-    expect(html).toContain('first_drought: 0 >= 20 ✗ (in: bo_burst)')
-    expect(html).toContain('first_drought: 0 >= 0 ✓ (in: tb_burst)')
-    expect(html).toContain('count: 3 >= 2 ✓')
-    expect(html).not.toContain('count: 3 >= 2 ✓ (in:')   // 单 node 不加后缀
+    const L = clauseLines(fmt({ data: { event_id: 'b1' } }))
+    expect(L[0]).toMatch(/^first_drought\s+0\s+>= 20\s+✗ \(in: bo_burst\)$/)
+    expect(L[1]).toMatch(/^first_drought\s+0\s+>= 0\s+✓ \(in: tb_burst\)$/)
+    expect(L[2]).toMatch(/^count\s+3\s+>= 2\s+✓$/)          // 单 node 不加后缀
   })
 
   it('零 node 时 identity.node 行省略', () => {
@@ -355,5 +374,94 @@ describe('buildMarkerTooltipFormatter', () => {
     const fmt = buildMarkerTooltipFormatter(undefined, undefined)
     expect(fmt(null)).toBe('')
     expect(fmt({ data: undefined })).toBe('')
+  })
+})
+
+// ─── 组合子 clause 递归渲染(W.any / W.all / W.not_ 的 witness 树)──────────
+describe('buildMarkerTooltipFormatter — 组合子递归渲染', () => {
+  // 真实形态(ABAT burst_249_252 实测):
+  //   pk_or_vol(or) → [ distinct_pk(leaf), and → [ max_bar_vol_ratio(leaf), not → first_drought(leaf) ] ]
+  // 嵌套组合子无 clause_id,visible.flattenChildren 用 witness.label 兜底 → cid === kind。
+  // guide 由 visible.flattenChildren 按兄弟位置算好(末子 └、其余 ├,再往下补 │ / 空格)
+  const NESTED: TooltipPayload = {
+    identity: { nodes: ['burst'], dateStart: '2025-09-18', dateEnd: '2025-09-23', eventId: 'burst_249_252' },
+    clauses: [
+      { cid: 'first_drought', node: 'burst', measured: 45, op: '>=', threshold: 20, satisfied: true,
+        depth: 0, kind: null, guide: '' },
+      { cid: 'pk_or_vol', node: 'burst', measured: null, op: null, threshold: null, satisfied: true,
+        depth: 0, kind: 'or', guide: '' },
+      { cid: 'distinct_pk', node: 'burst', measured: 4, op: '>=', threshold: 3, satisfied: true,
+        depth: 1, kind: null, guide: '├ ' },
+      { cid: 'and', node: 'burst', measured: null, op: null, threshold: null, satisfied: true,
+        depth: 1, kind: 'and', guide: '└ ' },
+      { cid: 'max_bar_vol_ratio', node: 'burst', measured: 5, op: '>=', threshold: 3, satisfied: true,
+        depth: 2, kind: null, guide: '  ├ ' },
+      { cid: 'not', node: 'burst', measured: null, op: null, threshold: null, satisfied: true,
+        depth: 2, kind: 'not', guide: '  └ ' },
+      { cid: 'first_drought', node: 'burst', measured: 45, op: '>=', threshold: 999, satisfied: false,
+        depth: 3, kind: null, guide: '    └ ' },
+    ],
+    raw: {},
+  }
+  const render = () =>
+    buildMarkerTooltipFormatter(() => NESTED, undefined)({ data: { event_id: 'burst_249_252' } })
+
+  it('树线 ├ └ │ 显式画出层次,子树紧跟父行', () => {
+    const L = clauseLines(render())
+    expect(L[0]).toMatch(/^first_drought\s+45\s+>= 20\s+✓$/)
+    expect(L[1]).toMatch(/^pk_or_vol \(or\)\s+✓$/)
+    expect(L[2]).toMatch(/^├ distinct_pk\s+4\s+>= 3\s+✓$/)
+    expect(L[3]).toMatch(/^└ and\s+✓$/)
+    expect(L[4]).toMatch(/^ {2}├ max_bar_vol_ratio\s+5\s+>= 3\s+✓$/)
+    expect(L[5]).toMatch(/^ {2}└ not\s+✓$/)
+    expect(L[6]).toMatch(/^ {4}└ first_drought\s+45\s+>= 999\s+✗$/)
+    expect(L).toHaveLength(7)
+  })
+
+  it('嵌套组合子无 clause_id → 不把 kind 渲染两遍', () => {
+    const out = render()
+    expect(out).not.toContain('and (and)')
+    expect(out).not.toContain('not (not)')
+  })
+
+  it('组合子行不出 n/m 聚合(子分支恒全量展开,数字冗余)', () => {
+    const out = render()
+    expect(out).not.toContain('通过')
+    expect(out).not.toContain('2/2')
+    expect(out).not.toContain('0/1')
+  })
+
+  it('三列(名/实测/阈值)按最长项对齐,行首列宽一致', () => {
+    const L = clauseLines(render())
+    // 实测值列起点 = 最长 name 之后;取两条叶子行比对 ">=" 的列位置应相同
+    const col = (s: string) => s.indexOf('>=')
+    expect(col(L[0])).toBe(col(L[2]))
+    expect(col(L[2])).toBe(col(L[4]))
+  })
+
+  it('粗体=顶层结构、红色=未通过,两信道正交(修层级倒置)', () => {
+    const html = render()
+    const seg = html.slice(html.indexOf('Clauses'))
+    // 只有 2 条顶层 clause 加粗;深层行一律不加粗(此前失败叶子加粗会压过顶层父行)
+    expect((seg.match(/<b>/g) ?? []).length).toBe(2)
+    // 唯一失败行走颜色信道
+    expect((seg.match(/color:#d33/g) ?? []).length).toBe(1)
+  })
+
+  it('用等宽字体渲染 clause 块(比例字体会毁掉列对齐与树线)', () => {
+    expect(render()).toMatch(/font-family:[^"]*monospace/)
+  })
+
+  it('顶层 not clause 保留自身 clause_id(cid !== kind 时仍带 kind 后缀)', () => {
+    const payload: TooltipPayload = {
+      identity: { nodes: ['burst'], dateStart: '2025-09-18', dateEnd: null, eventId: 'e1' },
+      clauses: [
+        { cid: 'no_late_gap', node: 'burst', measured: null, op: null, threshold: null, satisfied: true,
+          depth: 0, kind: 'not', guide: '' },
+      ],
+      raw: {},
+    }
+    const out = buildMarkerTooltipFormatter(() => payload, undefined)({ data: { event_id: 'e1' } })
+    expect(clauseLines(out)[0]).toMatch(/^no_late_gap \(not\)\s+✓$/)
   })
 })

@@ -56,13 +56,13 @@ def _build_anchor_spec(n_src=4, anchor_src_field=None, seed=0):
         if anchor_src_field is None:
             # default 'event_id' 路径
             src_id = f"src_{i}_{seed}"
-            src = WideSrcEvent(event_id=src_id, start_idx=i, end_idx=10)
-            dst = DstEvent(event_id=f"dst_{i}_{seed}", start_idx=15, end_idx=15, anchor_to_src=src_id)
+            src = WideSrcEvent(event_id=src_id, start_idx=i, end_idx=10, confirm_idx=i)
+            dst = DstEvent(event_id=f"dst_{i}_{seed}", start_idx=15, end_idx=15, confirm_idx=15, anchor_to_src=src_id)
         else:
             # 显式 anchor_src_field='custom_key'
             ck = f"key_{i}_{seed}"
-            src = WideSrcEvent(event_id=f"src_{i}_{seed}", start_idx=i, end_idx=10, custom_key=ck)
-            dst = DstEvent(event_id=f"dst_{i}_{seed}", start_idx=15, end_idx=15, anchor_to_src=ck)
+            src = WideSrcEvent(event_id=f"src_{i}_{seed}", start_idx=i, end_idx=10, confirm_idx=i, custom_key=ck)
+            dst = DstEvent(event_id=f"dst_{i}_{seed}", start_idx=15, end_idx=15, confirm_idx=15, anchor_to_src=ck)
         src_events.append(src)
         dst_events.append(dst)
 

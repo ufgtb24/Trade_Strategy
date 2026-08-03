@@ -73,8 +73,8 @@ def _run_diagnose(nodes, edges, pattern_id):
 
 def _run_diagnose_with_gap_violation_fixture():
     """burst 窗口 [11,15] 内没有任何 tb 候选(tb_far 远在 50)——纯粹的"没伙伴",归 gap_out。"""
-    burst_a = _SrcEvent(event_id="burst_a", start_idx=0, end_idx=10)
-    tb_far = _DstEvent(event_id="tb_far", start_idx=50, end_idx=50)
+    burst_a = _SrcEvent(event_id="burst_a", start_idx=0, end_idx=10, confirm_idx=0)
+    tb_far = _DstEvent(event_id="tb_far", start_idx=50, end_idx=50, confirm_idx=50)
     nodes = (
         NodeSpec(node_id="burst", detector=_FakeDet([burst_a], _SrcEvent)),
         NodeSpec(node_id="tb", detector=_FakeDet([tb_far], _DstEvent)),
@@ -95,8 +95,8 @@ def test_miss_reasons_gap_out_counted():
 def _run_diagnose_with_many_failures_fixture():
     """10 个 src 候选,窗口内唯一的 tb 候选远在窗口外——全部 10 个都 miss(gap_out),
     example_failed_pairs 必须抽样封顶 5 条。"""
-    bursts = [_SrcEvent(event_id=f"burst_{i}", start_idx=i, end_idx=i + 1) for i in range(10)]
-    tb_far = _DstEvent(event_id="tb_far", start_idx=1000, end_idx=1000)
+    bursts = [_SrcEvent(event_id=f"burst_{i}", start_idx=i, end_idx=i + 1, confirm_idx=i) for i in range(10)]
+    tb_far = _DstEvent(event_id="tb_far", start_idx=1000, end_idx=1000, confirm_idx=1000)
     nodes = (
         NodeSpec(node_id="burst", detector=_FakeDet(bursts, _SrcEvent)),
         NodeSpec(node_id="tb", detector=_FakeDet([tb_far], _DstEvent)),
@@ -120,9 +120,9 @@ def test_miss_reasons_anchor_mismatch_and_strict_fail_classified():
     burst 窗口 [1,20] 内有两个 tb 候选——tb_early(先到但 anchor 对不上)、
     tb_correct(anchor 对得上,但因非窗口内最早候选而被 strict=True 的 next 语义挡下)。
     两者都在窗口内、都不能让 burst 通过,取"最深"的 strict_fail 作代表。"""
-    burst = _SrcEvent(event_id="burst_x", start_idx=0, end_idx=0)
-    tb_early = _DstEvent(event_id="tb_early", start_idx=2, end_idx=2, anchor_id="someone_else")
-    tb_correct = _DstEvent(event_id="tb_correct", start_idx=10, end_idx=10, anchor_id="burst_x")
+    burst = _SrcEvent(event_id="burst_x", start_idx=0, end_idx=0, confirm_idx=0)
+    tb_early = _DstEvent(event_id="tb_early", start_idx=2, end_idx=2, confirm_idx=2, anchor_id="someone_else")
+    tb_correct = _DstEvent(event_id="tb_correct", start_idx=10, end_idx=10, confirm_idx=10, anchor_id="burst_x")
     nodes = (
         NodeSpec(node_id="burst", detector=_FakeDet([burst], _SrcEvent)),
         NodeSpec(node_id="tb", detector=_FakeDet([tb_early, tb_correct], _DstEvent)),

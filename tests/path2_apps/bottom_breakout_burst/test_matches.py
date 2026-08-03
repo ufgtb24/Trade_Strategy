@@ -72,9 +72,11 @@ def _synth_positive():
     vols.append(10000.0)
 
     # phase 4: 回落 → 双根止跌 → 大涨(纯走势,low 全程守 anchor)
-    # ATR(14)@259≈1.46(bo 根 +12% 的大 TR 抬高 Wilder ATR);anchor=high[258]=79.3(精确,phase3 high=close+0.5)
+    # ATR(14)@258 实测≈0.70(anchor=high[258]=79.3,精确,phase3 high=close+0.5);
+    # big_rise_k(1.5)×ATR ≈ 1.05 → phase1 rise-before-confirm 阈值很低,
+    # 止跌两根的涨幅须压在此阈值下,confirm 之后的大涨根才把 rise 判据留给 phase 2 触发。
     anchor = prev_c + 0.5             # ≈ high[258]
-    # 3 根回落段(low 守 anchor;回落门 peak−low[trough] 中 peak 由 bo 根 high≈90 主导,实测回落≈9.7≈6.7×ATR,远超 1×ATR 门)
+    # 3 根回落段(low 守 anchor;回落门 peak−low[trough] 中 peak 由 bo 根 high≈90 主导,实测回落远超 1×ATR 门)
     for lo, c in [(anchor + 3.0, anchor + 3.5),   # 回落起
                   (anchor + 1.5, anchor + 2.0),   # 续跌
                   (anchor + 1.0, anchor + 1.6)]:   # trough 附近(low≈anchor+1)
@@ -83,15 +85,16 @@ def _synth_positive():
         highs.append(c + 0.5)
         lows.append(lo)
         vols.append(3000.0)
-    # 2 根不创新低 + 止跌证据(bullish+close_up → c>o 且 c>prev_c)
+    # 2 根不创新低 + 止跌证据(bullish+close_up → c>o 且 c>prev_c);涨幅刻意放小
+    # (high − base_min < big_rise_k×ATR≈1.05),避免 confirm 前触发 rise-before-confirm。
     base_trough = closes[-1]
-    for c in [base_trough + 0.8, base_trough + 1.6]:
-        opens.append(c - 0.6)         # 阳线(c>o → bullish + close_up)
+    for c in [base_trough + 0.1, base_trough + 0.2]:
+        opens.append(c - 0.3)         # 阳线(c>o → bullish + close_up)
         closes.append(c)
-        highs.append(c + 0.4)
+        highs.append(c + 0.15)
         lows.append(anchor + 1.2)     # 守 anchor 且 ≥ trough(不创新低)
         vols.append(3000.0)
-    # 大涨根:high − base_min ≥ big_rise_k(1.5)×ATR → 触发大涨,end 取前一根
+    # 大涨根:confirm 之后(phase 2)high − base_min ≥ big_rise_k(1.5)×ATR → 触发大涨,end 取前一根
     big_c = closes[-1] + 6.0
     opens.append(closes[-1])
     closes.append(big_c)

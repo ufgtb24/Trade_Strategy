@@ -7,7 +7,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-import yaml
+
+from path2_apps._params_base import ParamsBase
 
 DEFAULT_YAML_PATH = Path(__file__).parent / "params.yaml"
 
@@ -26,23 +27,10 @@ class BoParams:
 
 
 @dataclass(frozen=True)
-class Params:
-    """bo_only 全部 params:仅 bo section。"""
+class Params(ParamsBase):
+    """bo_only 全部 params:仅 bo section。
+    读写协议(default / from_yaml / to_dict / from_dict)继承自 ParamsBase。"""
     bo: BoParams = field(default_factory=BoParams)
-
-    @classmethod
-    def default(cls) -> "Params":
-        return cls()
-
-    @classmethod
-    def from_yaml(cls, path: Path) -> "Params":
-        raw = yaml.safe_load(path.read_text()) or {}
-        bo_section = raw.get("bo", {})
-        known = {f.name for f in BoParams.__dataclass_fields__.values()}
-        unknown = set(bo_section) - known
-        if unknown:
-            raise ValueError(f"bo_only params.yaml unknown bo keys: {sorted(unknown)}")
-        return cls(bo=BoParams(**bo_section))
 
     def bo_kwargs(self) -> dict:
         return {f.name: getattr(self.bo, f.name) for f in BoParams.__dataclass_fields__.values()}

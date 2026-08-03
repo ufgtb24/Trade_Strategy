@@ -1,6 +1,6 @@
 ---
 dimension: 按主题
-updated: 2026-06-17
+updated: 2026-07-24
 ---
 
 # Claude Code 笔记索引
@@ -33,3 +33,7 @@ MCP 服务器的配置、认证、调用与故障排查。
 ### ide-terminal
 IDE 插件、终端兼容性、渲染模式、scrollback、字体等显示层问题。
 
+
+### agent-view
+后台 session / agent view / supervisor / worktree 隔离与恢复——`claude agents`、`/bg`、`claude --bg`、`←` 创建的不绑终端后台会话的行为与排错。
+- [agent-view-worktree-recovery.md](agent-view-worktree-recovery.md) — 后台 session 的 worktree 被删/失效后的症状识别、/cd 修复、bgIsolation guard 与 skill 失效的绕过

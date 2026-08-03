@@ -13,7 +13,7 @@ class _E(Event):
 
 
 def _e(i, eid=None):
-    return _E(event_id=eid or f"e{i}", start_idx=i, end_idx=i)
+    return _E(event_id=eid or f"e{i}", start_idx=i, end_idx=i, confirm_idx=i)
 
 
 def test_forwards_multiple_source_args():

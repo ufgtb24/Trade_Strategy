@@ -18,20 +18,20 @@ function makeFile(): MultiScanResultFile {
     scan: {
       scan_ts: '20260627T120000', start_date: '2024-01-01', end_date: '2024-06-30',
       workers: 1, scanned: 3, hits: 3, errors: 0, dataset_dir: '/d', params: 'default',
-      win_start: '2023-09-01', win_end: '2024-07-15', label_horizon: 20,
+      win_start: '2023-09-01', win_end: '2024-07-15', label_horizon: 20, first_passage_k: 2,
     },
     results: [
       { symbol: 'AAA', per_pattern: {
-        bo_only: { summary: { matches: 2 }, analysis: emptyAnalysis, max_forward_return: 0.34 },
-        bbb:     { summary: { matches: 1 }, analysis: emptyAnalysis, max_forward_return: 0.10 },
+        bo_only: { summary: { matches: 2 }, analysis: emptyAnalysis, max_forward_return: 0.34, min_forward_drawdown: -0.12 },
+        bbb:     { summary: { matches: 1 }, analysis: emptyAnalysis, max_forward_return: 0.10, min_forward_drawdown: -0.05 },
       }},
       { symbol: 'BBB', per_pattern: {
-        bo_only: { summary: { matches: 1 }, analysis: emptyAnalysis, max_forward_return: 0.50 },
-        bbb:     { summary: { matches: 0 }, analysis: emptyAnalysis, max_forward_return: null },
+        bo_only: { summary: { matches: 1 }, analysis: emptyAnalysis, max_forward_return: 0.50, min_forward_drawdown: null },
+        bbb:     { summary: { matches: 0 }, analysis: emptyAnalysis, max_forward_return: null, min_forward_drawdown: null },
       }},
       { symbol: 'CCC', per_pattern: {
-        bo_only: { summary: { matches: 0 }, analysis: emptyAnalysis, max_forward_return: null },
-        bbb:     { summary: { matches: 1 }, analysis: emptyAnalysis, max_forward_return: 0.20 },
+        bo_only: { summary: { matches: 0 }, analysis: emptyAnalysis, max_forward_return: null, min_forward_drawdown: null },
+        bbb:     { summary: { matches: 1 }, analysis: emptyAnalysis, max_forward_return: 0.20, min_forward_drawdown: -0.18 },
       }},
     ],
   }
@@ -161,5 +161,37 @@ describe('unionRows / sortedRows', () => {
     const symbols = v.sortedRows.map(r => r.symbol)
     // 按 symbol 字典序 desc(sortedRows 默认 desc): CCC > BBB > AAA
     expect(symbols).toEqual(['CCC', 'BBB', 'AAA'])
+  })
+
+  // ── fd(forward_drawdown)列派生 + 排序 ──────────────────────────────
+  it('cell.fd reads min_forward_drawdown(与 fr 同格派生,null 透传)', () => {
+    const v = useViewStore()
+    v.loadScanFile(makeFile())
+    const aaa = v.unionRows.find(r => r.symbol === 'AAA')!
+    expect(aaa.cells[0].fd).toBeCloseTo(-0.12)   // bo_only min_forward_drawdown
+    expect(aaa.cells[1].fd).toBeCloseTo(-0.05)   // bbb min_forward_drawdown
+    const bbb = v.unionRows.find(r => r.symbol === 'BBB')!
+    expect(bbb.cells[0].fd).toBeNull()           // null 透传
+  })
+
+  it('sortedRows sorts by ${pid}_fd desc — 最差下行(最大负数)沉底,null 也沉底', () => {
+    const v = useViewStore()
+    v.loadScanFile(makeFile())
+    // AAA.bbb.fd=-0.05, BBB.bbb.fd=null, CCC.bbb.fd=-0.18
+    // desc:数值大者在前(-0.05 > -0.18),null 沉底
+    v.setSort('bbb_fd')
+    expect(v.sortByPid).toBe('bbb_fd')
+    expect(v.sortDesc).toBe(true)
+    expect(v.sortedRows.map(r => r.symbol)).toEqual(['AAA', 'CCC', 'BBB'])
+  })
+
+  it('clicking same fd column twice flips asc;null 仍沉底', () => {
+    const v = useViewStore()
+    v.loadScanFile(makeFile())
+    v.setSort('bbb_fd')
+    v.setSort('bbb_fd')
+    expect(v.sortDesc).toBe(false)
+    // asc:数值小者在前(-0.18 < -0.05),null 沉底
+    expect(v.sortedRows.map(r => r.symbol)).toEqual(['CCC', 'AAA', 'BBB'])
   })
 })

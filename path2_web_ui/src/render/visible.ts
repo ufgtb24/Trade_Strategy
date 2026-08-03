@@ -99,6 +99,33 @@ export function nodeOfEventByBand(e: EventDict, tagToNodes: Record<string, strin
   return nodesForTag && nodesForTag.length ? nodesForTag[0] : null
 }
 
+/** ClauseWitness → TooltipClauseRow(单行)。组合子行 kind=label,叶子 kind=null。 */
+function toClauseRow(cid: string, node: string, w: ClauseWitness,
+                     depth: number, guide = ''): TooltipClauseRow {
+  const kids = w.children ?? []
+  return {
+    cid, node,
+    measured: w.measured, op: w.op, threshold: w.threshold,
+    satisfied: w.satisfied,
+    depth,
+    kind: kids.length ? (w.label ?? null) : null,
+    guide,
+  }
+}
+
+/** 深度优先展开子树为线性行,同时算好【树线前缀】:
+ *  末子用 └、其余用 ├;再往下递归时,末子这一路补空格、非末子补 │ 以延续竖线。
+ *  子行 cid 用 witness.label(=字段名 / 组合子 kind)。 */
+function flattenChildren(w: ClauseWitness, node: string, depth: number,
+                         prefix: string, out: TooltipClauseRow[]): void {
+  const kids = w.children ?? []
+  kids.forEach((k, i) => {
+    const last = i === kids.length - 1
+    out.push(toClauseRow(k.label ?? '?', node, k, depth, prefix + (last ? '└ ' : '├ ')))
+    flattenChildren(k, node, depth + 1, prefix + (last ? '  ' : '│ '), out)
+  })
+}
+
 /** tooltip 数据组装（纯）：
  *  - identity：node 反查 diag.nodes（多 node 时各保留）；时间 = bars[idx].date，point 时 dateEnd=null；
  *              bars 越界 fallback 到 String(idx)
@@ -112,25 +139,26 @@ export function resolveTooltipData(
   bars: Bar[],
 ): TooltipPayload {
   // ── clauses 累积（不覆盖；多 node 同 cid 各保留）─────────────────────────
+  // 排序只作用于顶层(失败 ✗ 在前);子树紧跟父行、保持声明顺序(作者写 any 的
+  // 分支顺序本身带主次语义,不重排)。
   const clauses: TooltipClauseRow[] = []
   const nodes: string[] = []
   if (diag) {
+    const groups: { row: TooltipClauseRow; subtree: TooltipClauseRow[] }[] = []
     for (const [nodeId, node] of Object.entries(diag.nodes)) {
       const row = node.attr.find((r) => r.event_id === eventId)
       if (!row) continue
       nodes.push(nodeId)
       for (const [cid, w] of Object.entries(row.clauses)) {
         const witness = w as ClauseWitness
-        clauses.push({
-          cid, node: nodeId,
-          measured: witness.measured, op: witness.op, threshold: witness.threshold,
-          satisfied: witness.satisfied,
-        })
+        const subtree: TooltipClauseRow[] = []
+        flattenChildren(witness, nodeId, 1, '', subtree)
+        groups.push({ row: toClauseRow(cid, nodeId, witness, 0), subtree })
       }
     }
+    groups.sort((a, b) => Number(a.row.satisfied) - Number(b.row.satisfied))
+    for (const g of groups) clauses.push(g.row, ...g.subtree)
   }
-  // 排序：失败 ✗ (satisfied=false) 在前；同档稳定保序
-  clauses.sort((a, b) => Number(a.satisfied) - Number(b.satisfied))
 
   // ── identity 组装 ──────────────────────────────────────────────────────
   const ev = events.find((e) => e.event_id === eventId)

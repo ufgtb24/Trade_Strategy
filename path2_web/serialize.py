@@ -6,6 +6,7 @@ EdgeWitness/PatternTopology/NodeDiagnostics),投影成前端 JSON。path2 不引
 from __future__ import annotations
 
 import dataclasses
+import inspect
 import math
 
 from path2.dag.engine import assign_auto_source_tags
@@ -60,13 +61,20 @@ def _event_to_dict(e) -> dict:
 
 # ── per-match 判定(reify 富化产物) ──
 def _clause_to_dict(w) -> dict:
-    """ClauseWitness → dict(satisfied/measured/op/threshold)。"""
-    return {
+    """ClauseWitness → dict。组合子递归携带 children/label(仅非空时出现,叶子保持旧扁平形状)。"""
+    d = {
         "satisfied": bool(w.satisfied),
         "measured": _jsonable(w.measured),
         "op": w.op,
         "threshold": _jsonable(w.threshold),
     }
+    label = getattr(w, "label", None)
+    if label is not None:
+        d["label"] = label
+    kids = getattr(w, "children", ())
+    if kids:
+        d["children"] = [_clause_to_dict(c) for c in kids]
+    return d
 
 
 def _edge_witness_to_dict(ew) -> dict:
@@ -144,29 +152,31 @@ def summarize(res) -> dict:
 #   [3..6]    未占用,给未来新 class_id 兜底(顺序即分配序,i % len 循环)
 _PALETTE = ["#16f943", "#2563eb", "#D60000", "#dfa300", "#7c3aed", "#0891b2", "#ca8a04"]
 
+def _rule_from_meta(meta: dict) -> dict:
+    """meta 树 → rule 树。and/or/not 递归 children;child/children 保持扁平(§3.1);
+    attr 叶子在旧键(op/threshold)外补 kind/field。"""
+    kind = meta.get("kind")
+    if kind in ("and", "or", "not"):
+        return {"kind": kind,
+                "children": [_rule_from_meta(m) for m in meta.get("children", ()) if m]}
+    if kind in ("child", "children"):
+        inner = meta.get("inner") or {}
+        return {"kind": kind, "key": meta.get("key"), "field": inner.get("field"),
+                "op": inner.get("op"), "threshold": _jsonable(inner.get("threshold"))}
+    return {"kind": kind or "attr", "field": meta.get("field"),
+            "op": meta.get("op"), "threshold": _jsonable(meta.get("threshold"))}
+
+
 def _rules_from_where(where_clauses) -> list:
-    """(clause_id, fn) 序列 → [{clause_id, op, threshold}]。
-    fn 是 W.* 的 _Pred,带 .meta={'kind','field','op','threshold'};组合子 meta=None,跳过。
-    W.child/W.children 额外携带 kind/key + inner 的 field/op/threshold(扁平 rule,§3.1)。"""
+    """(clause_id, fn) 序列 → rule 树列表。fn 无 meta(裸 lambda)跳过。"""
     out = []
     for cid, fn in where_clauses:
         meta = getattr(fn, "meta", None)
         if not meta:
             continue
-        kind = meta.get("kind")
-        if kind in ("child", "children"):
-            inner = meta.get("inner") or {}
-            out.append({
-                "clause_id": cid,
-                "kind": kind,
-                "key": meta.get("key"),
-                "field": inner.get("field"),
-                "op": inner.get("op"),
-                "threshold": _jsonable(inner.get("threshold")),
-            })
-        else:
-            out.append({"clause_id": cid, "op": meta.get("op"),
-                        "threshold": _jsonable(meta.get("threshold"))})
+        rule = _rule_from_meta(meta)
+        rule["clause_id"] = cid
+        out.append(rule)
     return out
 
 
@@ -194,6 +204,17 @@ def _event_styles(spec, topo) -> dict:
     for i, t in enumerate(seen):
         styles.setdefault(t, _PALETTE[i % len(_PALETTE)])
     return styles
+
+
+def _materialize_keys_of(det) -> list[str]:
+    """detector 构造参数键(去 self)= 物化层 yaml 键。
+
+    依据 author 约定:进 detector __init__ 的参数 = 物化层(决定 event 是否生成),
+    留在 node.where 的 = where 层(决定是否升 match)。反射 __init__ 签名精确捕获此约定,
+    比 params.*_kwargs(手挑、可能漂移)更源头。
+    """
+    sig = inspect.signature(type(det).__init__)
+    return [name for name in sig.parameters if name != "self"]
 
 
 def _source_tag_of(det):
@@ -230,6 +251,7 @@ def serialize_pattern(spec) -> dict:
             "where_rules": _rules_from_where(n.where),
             "source_tag": _source_tag_of(n.detector),
             "render_grid": n.render_grid,   # ★ 新增:透传 NodeSpec.render_grid
+            "materialize_keys": _materialize_keys_of(n.detector),
         }
         nodes.append(node)
     # to_topology().edges 与 spec.edges 同序一一对应 → zip(避免多重边 key 冲突)
@@ -258,7 +280,10 @@ def serialize_pattern(spec) -> dict:
 
 
 def serialize_per_pattern_result(res, end_node: str, label_horizon: int,
-                                  win, start_ts, end_ts) -> dict:
+                                  win, start_ts, end_ts,
+                                  price_min=None, price_max=None, *,
+                                  first_passage_enabled: bool = True,
+                                  first_passage_k: float = 5.0) -> dict:
     """单股单 pattern 投影,服务多 pattern worker。
 
     args:
@@ -267,30 +292,68 @@ def serialize_per_pattern_result(res, end_node: str, label_horizon: int,
         label_horizon: 前瞻收益天数
         win: 已切好的 DataFrame(含 date 列 + OHLC)
         start_ts/end_ts: pd.Timestamp,严格窗左右边界(含)
+        price_min/price_max: match 级价格过滤区间(闭区间,None=不限)。锚 end_node
+            事件日收盘价——与窗口过滤、forward_return 共用同一个 ev.start_idx。
+        first_passage_enabled: 是否累加首次穿越四态计数到 match_fp_counts(默认 True)。
+            关闭时 match_fp_counts 为单组全 0 {up,down,both,none}(向后兼容;match 自身永不带 first_passage)。
+        first_passage_k: 首次穿越几何对称阈值参数 k(上行 P(1+kM)、下行 P/(1+kM)),
+            match_first_passage 内算 M;默认 5.0。
 
-    返回 {summary, analysis, max_forward_return}:
+    返回 {summary, analysis, max_forward_return, min_forward_drawdown, match_fp_counts}:
       - analysis.events: 全集照旧(含缓冲段;K 线灰色层数据源)
-      - analysis.matches: 仅保留 end_node event 起点 ∈ [start_ts, end_ts] 的 match,
-                          每条注入 forward_return
+      - analysis.matches: 仅保留 end_node event 起点 ∈ [start_ts, end_ts] 且
+                          close ∈ [price_min, price_max] 的 match,每条注入
+                          forward_return + forward_drawdown(mfr 下行镜像)
       - summary["matches"]: 窗内 match 数(覆写)
       - max_forward_return: max over filtered matches 中非 None 的 forward_return;
                             空 / 全 None → None
+      - min_forward_drawdown: min over filtered matches 中非 None 的 forward_drawdown
+                              (最差下行;与 max_forward_return 的 max 对仗);
+                              空 / 全 None → None
+      - match_fp_counts: per-pattern 首穿四态计数 单组 {up,down,both,none},
+                         遍历各 match span 全买点日累加(first_passage_enabled=False
+                         或无 match → 单组全 0);集合级 ratio 的分母=买点日数
     """
-    from path2.eval import match_forward_returns
+    from path2.eval import (match_forward_returns, match_forward_drawdowns,
+                            match_first_passage)
 
     ret_by_id: dict = {}
+    dd_by_id: dict = {}
+    match_fp_counts = {"up": 0, "down": 0, "both": 0, "none": 0}
     for m in res.matches:
         ev = m.node_index[end_node]
         buy_date = win["date"].iat[ev.start_idx]
         if not (start_ts <= buy_date <= end_ts):
             continue
+        # match 级价格过滤:锚 end_node 事件日收盘价(= dev「突破当日价格」的对应物)。
+        # 闭区间,照搬 dev BreakoutStrategy/analysis/scanner.py:262-263,不要改成开区间。
+        buy_close = win["close"].iat[ev.start_idx]
+        if price_min is not None and buy_close < price_min:
+            continue
+        if price_max is not None and buy_close > price_max:
+            continue
         ret_by_id[m.event_id] = match_forward_returns(
             m, end_node, win, [label_horizon])[label_horizon]
+        # mfr 下行镜像(min_low):同一买点窗、同一 horizon,与 forward_return 并列。
+        dd_by_id[m.event_id] = match_forward_drawdowns(
+            m, end_node, win, [label_horizon])[label_horizon]
+        # 首穿四态计数:span 全买点日(与 forward_return 同循环、同过滤口径),
+        # 累加进 per-pattern match_fp_counts(集合级 ratio 的分母=买点日数)。
+        # match_first_passage 内算 M、几何对称 k;返单组 {up,down,both,none}。
+        if first_passage_enabled:
+            m_counts = match_first_passage(
+                m, end_node, win, label_horizon, first_passage_k)
+            for s in ("up", "down", "both", "none"):
+                match_fp_counts[s] += m_counts[s]
     analysis = serialize_analysis(res)
-    analysis["matches"] = [
-        {**md, "forward_return": ret_by_id[md["event_id"]]}
-        for md in analysis["matches"] if md["event_id"] in ret_by_id
-    ]
+
+    def _with_labels(md):
+        return {**md,
+                "forward_return": ret_by_id[md["event_id"]],
+                "forward_drawdown": dd_by_id[md["event_id"]]}
+
+    analysis["matches"] = [_with_labels(md)
+                           for md in analysis["matches"] if md["event_id"] in ret_by_id]
     summary = summarize(res)
     summary["matches"] = len(analysis["matches"])
 
@@ -298,4 +361,10 @@ def serialize_per_pattern_result(res, end_node: str, label_horizon: int,
             if md["forward_return"] is not None]
     max_ret = max(rets) if rets else None
 
-    return {"summary": summary, "analysis": analysis, "max_forward_return": max_ret}
+    dds = [md["forward_drawdown"] for md in analysis["matches"]
+           if md["forward_drawdown"] is not None]
+    min_dd = min(dds) if dds else None
+
+    return {"summary": summary, "analysis": analysis,
+            "max_forward_return": max_ret, "min_forward_drawdown": min_dd,
+            "match_fp_counts": match_fp_counts}

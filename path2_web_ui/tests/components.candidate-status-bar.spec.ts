@@ -4,7 +4,7 @@ import { setActivePinia, createPinia } from 'pinia'
 import { useViewStore } from '../src/stores/view'
 import CandidateStatusBar from '../src/components/CandidateStatusBar.vue'
 
-vi.mock('../src/api', () => ({
+vi.mock('../src/api', () => ({ saveWcMirror: async () => ({ ok: true } as any), clearWcMirror: async () => ({ ok: true } as any),
   getDiagnose: vi.fn(() => Promise.resolve(null)),
   getPreview: vi.fn(() => Promise.resolve({
     analysis: { events: [], matches: [], node_index: {} },

@@ -8,7 +8,7 @@ const baseScan: ScanMeta = {
   workers: 1, scanned: 100, hits: 5, errors: 0,
   dataset_dir: '/data', params: 'default',
   win_start: '2023-08-01', win_end: '2024-07-15',
-  label_horizon: 20,
+  label_horizon: 20, first_passage_k: 2,
 }
 
 describe('windowOf', () => {

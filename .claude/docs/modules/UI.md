@@ -1,52 +1,34 @@
-# UI 共享包架构意图
+> 最后更新：2026-07-25
 
-> 最后更新：2026-05-28
+# UI 共享包
 
-## 定位
+## 定位与边界
 
-`BreakoutStrategy/UI/` 是 **dev/live 共享的纯渲染基础设施**（无状态原子组件）。
-当前消费方：`BreakoutStrategy.dev`、`BreakoutStrategy.live`。
+`BreakoutStrategy/UI/` 是 `dev/` 与 `live/` **共享的界面基础设施**：K 线画布与原子绘图组件
+（`charts/`）、三层范围（scan / compute / display）语义、坐标轴交互、以及 Tkinter/matplotlib
+共用的字体与颜色常量（`styles.py`）。
 
-**唯一红线**：
-- 进 UI/ 的必须是 **无状态原子组件**（纯绘图函数 / 几何工具）或 **无业务知识的适配函数**
-- 有状态应用胶水（holds Figure/Canvas/hover state）留应用层
+**准入红线**：进 `UI/` 的必须是**无状态原子件**（纯绘图函数、纯几何计算）或**无业务知识的适配函数**。
+持有 Figure / Canvas / hover 状态的应用胶水留在应用层。
 
-## 组成
-
-- `charts/` — K 线图渲染子包
-  - `canvas_manager.py`: 图表画布 + matplotlib + tkinter 整合（BO 业务渲染器，见历史包袱）
-  - `range_utils.py`: 三层范围（scan/compute/display）的 `ChartRangeSpec` 语义
-  - `axes_interaction.py`: 坐标轴缩放 / 拖动（无状态原子）
-  - `filter_range.py`: 基于数据范围的过滤规则
-  - `tooltip_anchor.py`: tooltip 锚点计算
-  - `components/`: 蜡烛、标记、分析面板等原子绘图组件
-- `styles.py` — Tkinter/matplotlib 共用字体、颜色常量、ttk 样式
-
-## 边界
-
-**允许放入 UI/ 的**：纯粹的界面原语，不依赖任何特定应用流程；无业务知识的适配函数。
-
-**不允许放入 UI/ 的**：
-- 策略参数加载（→ 顶层 `param_loader.py`）
-- dev 专属的编辑器 / 面板 / 对话框（→ `dev/`）
-- live 专属的盯盘面板 / pipeline（→ `live/`）
-- 走势-特异判定逻辑（→ `path2_apps/<走势>/`）
+**不该进 UI/ 的**：策略参数加载（→ 顶层 `param_loader.py`）、dev 专属编辑器与对话框（→ `dev/`）、
+live 专属盯盘面板与 pipeline（→ `live/`）、走势-特异判定（→ `path2_apps/`）。
 
 ## 依赖方向
 
-- `UI/` 可依赖：`analysis/`（仅为画图需要的类型）、`path2/`、`path2_apps/`、标准库、matplotlib / tkinter
-- `UI/` 不应依赖：`dev/`、`live/`、`mining/`、`news_sentiment/`——会造成循环或反向依赖
+`UI/` 只可依赖 `analysis/`（仅取绘图需要的类型）、`path2*`、标准库、matplotlib / tkinter。
 
-## 历史包袱（future work，本次不动）
+**`UI/` 不得依赖 `dev/`、`live/`、`mining/`、`news_sentiment/`**——共享件被应用层反向引用会立刻
+形成循环依赖，也会让另一个应用被迫拖上无关模块。**这条正是本包存在的理由**——共用绘图件必须住在两个
+应用之外，依赖才能是单向的；否则它就只能寄居在其中一个应用里，另一个反向引用。加新组件前先确认
+它不需要知道"谁在用它"。
 
-`UI/charts/canvas_manager.py` 和 `UI/charts/components/{markers, panels, score_tooltip}.py`
-实际是 BO 业务渲染器，被错放在 UI/（2026-04-17 重构时随手搬过来的）。
-- dev/live 中工作良好，本次不动
-- 长期重构方向：搬到 `BreakoutStrategy/UI_BO/` 或 `dev_live_shared/`
-- 触发条件：有第三个应用需要 K 线绘图，或 dev/live UI 大版本重构时顺手
+## 已知偏离红线之处
 
-## 历史
+`charts/canvas_manager.py` 与 `charts/components/` 下的多数组件，实际是**懂 BO 业务的渲染器**
+（认识 breakout、peak、评分分档，还会按需回头取 `analysis/` 的评分与因子计算、以及顶层策略参数），
+并非纯界面原语——它们落在 `UI/` 属于就近安置，不是设计意图。所以上面那条"只依赖绘图所需类型"
+在这几个文件上并不严格成立，读依赖图时别被红线误导。
 
-历史上 `charts/` 和 `styles.py` 曾埋在 `dev/`（当时叫 `UI/`）里，live
-开发时直接复用，产生 `live → dev` 的反向依赖。2026-04-17 重构把这些共享件
-抽到顶层 `BreakoutStrategy/UI/`，dev 和 live 都从 UI/ 引用，恢复单向依赖。
+在 dev/live 两个消费方下工作良好，不构成现实问题，因此不主动动它。但**新增组件不要照抄这个先例**——
+带业务知识的渲染器应留在应用层或单独的 BO 渲染包。

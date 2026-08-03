@@ -372,3 +372,88 @@ describe('resolveTooltipData', () => {
     expect(r.raw.drawdown).toBe(0.42)
   })
 })
+
+describe('resolveTooltipData 组合子扁平化', () => {
+  const witnessTree = {
+    satisfied: false, measured: null, op: null, threshold: null,
+    label: 'or',
+    children: [
+      { satisfied: false, measured: 3, op: '>=', threshold: 4, label: 'distinct_pk' },
+      { satisfied: false, measured: 5.2, op: '>=', threshold: 8, label: 'max_bar_vol_ratio' },
+    ],
+  }
+  const diag = {
+    symbol: 's', pattern_id: 'p', note: '',
+    nodes: {
+      burst: {
+        rel: [],
+        attr: [{
+          event_id: 'ev1', start_idx: 0, end_idx: 1,
+          clauses: {
+            pk_or_vol: witnessTree,
+            first_drought: { satisfied: true, measured: 24, op: '>=', threshold: 20 },
+          },
+        }],
+      },
+    },
+  } as unknown as Diagnostics
+
+  it('顶层排序失败在前,子树紧跟父行且保持声明顺序', () => {
+    const { clauses } = resolveTooltipData('ev1', diag, [], [])
+    expect(clauses.map(c => c.cid)).toEqual(['pk_or_vol', 'distinct_pk', 'max_bar_vol_ratio', 'first_drought'])
+    expect(clauses.map(c => c.depth)).toEqual([0, 1, 1, 0])
+  })
+
+  it('组合子行带 kind,叶子行 kind=null', () => {
+    const { clauses } = resolveTooltipData('ev1', diag, [], [])
+    expect(clauses[0].kind).toBe('or')
+    expect(clauses[1].kind).toBeNull()
+  })
+
+  it('树线前缀:末子用 └、其余用 ├,顶层为空', () => {
+    const { clauses } = resolveTooltipData('ev1', diag, [], [])
+    expect(clauses.map(c => c.guide)).toEqual(['', '├ ', '└ ', ''])
+  })
+
+  it('树线在更深层延续:非末子往下补 │,末子往下补空格', () => {
+    const deep = {
+      symbol: 's', pattern_id: 'p', note: '',
+      nodes: {
+        burst: {
+          rel: [],
+          attr: [{
+            event_id: 'ev1', start_idx: 0, end_idx: 1,
+            clauses: {
+              c: {
+                satisfied: true, measured: null, op: null, threshold: null, label: 'or',
+                children: [
+                  {
+                    satisfied: true, measured: null, op: null, threshold: null, label: 'and',
+                    children: [{ satisfied: true, measured: 1, op: '>=', threshold: 0, label: 'a' }],
+                  },
+                  {
+                    satisfied: true, measured: null, op: null, threshold: null, label: 'not',
+                    children: [{ satisfied: false, measured: 2, op: '>=', threshold: 9, label: 'b' }],
+                  },
+                ],
+              },
+            },
+          }],
+        },
+      },
+    } as unknown as Diagnostics
+    const { clauses } = resolveTooltipData('ev1', deep, [], [])
+    // and 是非末子 → 其子行前缀补 │;not 是末子 → 其子行前缀补空格
+    expect(clauses.map(c => c.guide)).toEqual(['', '├ ', '│ └ ', '└ ', '  └ '])
+  })
+
+  it('raw 去重覆盖子行字段(cid=label=字段名自动进去重集)', () => {
+    const events = [{
+      class_id: 'x', event_id: 'ev1', start_idx: 0, end_idx: 1, source_tag: 'x',
+      distinct_pk: 3, other_field: 1,
+    }] as unknown as EventDict[]
+    const { raw } = resolveTooltipData('ev1', diag, events, [])
+    expect(raw).not.toHaveProperty('distinct_pk')
+    expect(raw).toHaveProperty('other_field')
+  })
+})

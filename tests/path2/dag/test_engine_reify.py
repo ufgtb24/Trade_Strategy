@@ -2,7 +2,7 @@
 """reify:Solution -> PatternMatch(node_index/children/trace/EdgeWitness)。"""
 from tests.path2.dag._oracle import E, Ev, WideEv
 from path2.dag.edges import TemporalEdge, ContainmentEdge, Child
-from path2.dag.nodes import NodeSpec, MatchContext
+from path2.dag.nodes import NodeSpec
 from path2.dag.spec import PatternSpec
 from path2.dag.result import PatternMatch
 from path2.dag._solve import compile_plan, solve
@@ -20,8 +20,7 @@ def test_reify_node_index_and_children():
     streams = {"A": E("A", [(0, 0)]), "B": E("B", [(5, 8)])}
     plan = compile_plan(_spec(nodes, edges))
     sol = solve(plan, streams)[0]
-    ctx = MatchContext(df=None, params=None)
-    m = reify(sol, streams, plan, ctx)
+    m = reify(sol, streams, plan)
     assert isinstance(m, PatternMatch)
     assert m.node_index["A"].start_idx == 0
     assert m.node_index["B"].end_idx == 8
@@ -35,7 +34,7 @@ def test_reify_edge_witness_measured():
     streams = {"A": E("A", [(0, 2)]), "B": E("B", [(5, 8)])}
     plan = compile_plan(_spec(nodes, edges))
     sol = solve(plan, streams)[0]
-    m = reify(sol, streams, plan, MatchContext(df=None, params=None))
+    m = reify(sol, streams, plan)
     w = m.predicate_trace.edge_results[("A", "B")]
     assert w.satisfied is True
     # 硬伤 E · Task 13:measured 升级为 kind-aware(MeasuredKindAware),非裸 float
@@ -52,8 +51,8 @@ def test_reify_where_results_recorded():
     edges = [TemporalEdge("A", "B", min_gap=0, max_gap=100)]
     streams = {"A": E("A", [(0, 0)]), "B": E("B", [(5, 5)])}
     plan = compile_plan(_spec(nodes, edges))
-    sol = solve(plan, streams, MatchContext(df=None, params=None))[0]
-    m = reify(sol, streams, plan, MatchContext(df=None, params=None))
+    sol = solve(plan, streams)[0]
+    m = reify(sol, streams, plan)
     assert m.predicate_trace.where_results["A"]["nonneg"]
 
 
@@ -92,7 +91,7 @@ def test_reify_diagnose_child_aware_endpoint():
     # 前提：求解层已找到匹配（D4 已实现）
     assert len(sols) == 1, f"求解层应有 1 个匹配，得 {len(sols)} — D4 前提不满足"
 
-    m = reify(sols[0], streams, plan, MatchContext(df=None, params=None))
+    m = reify(sols[0], streams, plan)
     ew = m.predicate_trace.edge_results[("wrapper", "burst")]
 
     # (a) dst_instance 是 first_kid（child 投影），非父 burst
@@ -130,7 +129,7 @@ def test_reify_diagnose_child_aware_endpoint():
     plain_sols = solve(plain_plan, plain_streams)
     # plain_burst [10,20] ⊆ [0,100]: ContainmentEdge 以父整体就满足
     assert len(plain_sols) == 1
-    plain_m = reify(plain_sols[0], plain_streams, plain_plan, MatchContext(df=None, params=None))
+    plain_m = reify(plain_sols[0], plain_streams, plain_plan)
     plain_ew = plain_m.predicate_trace.edge_results[("wrapper", "burst")]
     # 无 selector → dst_instance 是 burst 父整体（不是 child）
     assert plain_ew.dst_instance is plain_burst, (

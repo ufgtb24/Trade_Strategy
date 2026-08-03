@@ -74,7 +74,7 @@ import { layoutTopology, type TopoLayout } from '../render/topology'
 import { windowOf } from '../render/visible'
 import { getNodesDiagnose } from '../api'
 import PairListCard from './PairListCard.vue'
-import type { TopoNode, NodesScopeResponse } from '../types'
+import type { TopoNode, NodesScopeResponse, WhereRule } from '../types'
 
 const emit = defineEmits<{ (e: 'hover-node', nodeId: string | null): void }>()
 const view = useViewStore()
@@ -84,8 +84,25 @@ const EMPTY: TopoLayout = { nodes: [], edges: [], width: 0, height: 0 }
 const layout = computed<TopoLayout>(() =>
   effectivePattern.value ? layoutTopology(effectivePattern.value.topology.nodes, effectivePattern.value.topology.edges) : EMPTY)
 
+/** rule 树 → 表达式串:or 用 |、and 用 &、not 用 !,叶子 "field op threshold"。 */
+function ruleExpr(r: WhereRule): string {
+  if (r.kind === 'or' || r.kind === 'and') {
+    const sep = r.kind === 'or' ? ' | ' : ' & '
+    return '(' + (r.children ?? []).map(ruleExpr).join(sep) + ')'
+  }
+  if (r.kind === 'not') {
+    const inner = (r.children ?? [])[0]
+    return '!' + (inner ? ruleExpr(inner) : '?')
+  }
+  const name = r.field ?? r.clause_id ?? '?'
+  return `${name} ${r.op} ${r.threshold}`
+}
+
 function ruleText(n: TopoNode): string {
-  const parts = n.where_rules.map((r) => `${r.clause_id} ${r.op} ${r.threshold}`)
+  const parts = n.where_rules.map((r) =>
+    (r.kind === 'or' || r.kind === 'and' || r.kind === 'not')
+      ? `${r.clause_id} ${ruleExpr(r)}`
+      : `${r.clause_id} ${r.op} ${r.threshold}`)
   return parts.length ? parts.join(' · ') : '(无类级阈值)'
 }
 

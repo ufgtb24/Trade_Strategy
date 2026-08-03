@@ -8,7 +8,7 @@ from path2.dag.gate_failure import MeasuredKindAware
 
 def make_bo_event(idx):
     from path2.atoms.breakout import BOEvent
-    return BOEvent(event_id=f"bo_{idx}", start_idx=idx, end_idx=idx,
+    return BOEvent(event_id=f"bo_{idx}", start_idx=idx, end_idx=idx, confirm_idx=idx,
                    drought=None, pk_count=1, broken_peak_ids=(), vol_ratio=None,
                    peak_vol_max=0.0, referenced_points=())
 
@@ -16,7 +16,7 @@ def make_bo_event(idx):
 def make_wide_event(start, end, idx=0):
     from path2.atoms.breakout import BOEvent
     # 复用 BOEvent 仅为拿现成 Event 子类;start != end 打破"点事件"假设,够用于纯几何 measured 计算
-    return BOEvent(event_id=f"w_{idx}", start_idx=start, end_idx=end,
+    return BOEvent(event_id=f"w_{idx}", start_idx=start, end_idx=end, confirm_idx=start,
                    drought=None, pk_count=1, broken_peak_ids=(), vol_ratio=None,
                    peak_vol_max=0.0, referenced_points=())
 

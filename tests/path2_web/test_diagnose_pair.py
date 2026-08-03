@@ -37,16 +37,16 @@ def _bbb_fixture():
     bo_1/bo_2 供 same_node 用;bo_a/bo_b 已内嵌在 burst_1.members,不必再单独出现在
     result.events(events 只需覆盖 _load_event_by_id 会查到的那些 id)。"""
     spec = build_pattern(Params.default())
-    bo_a = BOEvent(event_id="bo_a", start_idx=10, end_idx=10)
-    bo_b = BOEvent(event_id="bo_b", start_idx=15, end_idx=15)   # last_bo
-    burst_1 = BurstEvent(event_id="burst_1", start_idx=10, end_idx=15,
+    bo_a = BOEvent(event_id="bo_a", start_idx=10, end_idx=10, confirm_idx=10)
+    bo_b = BOEvent(event_id="bo_b", start_idx=15, end_idx=15, confirm_idx=15)   # last_bo
+    burst_1 = BurstEvent(event_id="burst_1", start_idx=10, end_idx=15, confirm_idx=10,
                          count=2, distinct_pk=2, max_bar_vol_ratio=3.0,
                          first_drought=20, members=(bo_a, bo_b))
-    tb_1 = ThrowbackEvent(event_id="tb_1", start_idx=17, end_idx=19, anchor_bo_id="bo_b")
-    tb_gap_out = ThrowbackEvent(event_id="tb_gap_out", start_idx=25, end_idx=27,
+    tb_1 = ThrowbackEvent(event_id="tb_1", start_idx=17, end_idx=19, confirm_idx=17, anchor_bo_id="bo_b")
+    tb_gap_out = ThrowbackEvent(event_id="tb_gap_out", start_idx=25, end_idx=27, confirm_idx=25,
                                 anchor_bo_id="bo_b")
-    bo_1 = BOEvent(event_id="bo_1", start_idx=1, end_idx=1)
-    bo_2 = BOEvent(event_id="bo_2", start_idx=5, end_idx=5)
+    bo_1 = BOEvent(event_id="bo_1", start_idx=1, end_idx=1, confirm_idx=1)
+    bo_2 = BOEvent(event_id="bo_2", start_idx=5, end_idx=5, confirm_idx=5)
     events = (bo_1, bo_2, bo_a, bo_b, burst_1, tb_1, tb_gap_out)
     result = AnalysisResult(events=events, matches=(), spec=spec)
     return spec, result
@@ -66,8 +66,8 @@ def _negation_fixture():
     )
     edges = (NegationEdge(src="neg_src", dst="neg_dst", min_gap=0, max_gap=10),)
     spec = PatternSpec(pattern_id="neg_test", nodes=nodes, edges=edges)
-    e_src = BOEvent(event_id="neg_src_1", start_idx=1, end_idx=1)
-    e_dst = Platform(event_id="neg_dst_1", start_idx=5, end_idx=8)
+    e_src = BOEvent(event_id="neg_src_1", start_idx=1, end_idx=1, confirm_idx=1)
+    e_dst = Platform(event_id="neg_dst_1", start_idx=5, end_idx=8, confirm_idx=5)
     result = AnalysisResult(events=(e_src, e_dst), matches=(), spec=spec)
     return spec, result
 

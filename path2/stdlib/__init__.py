@@ -5,5 +5,6 @@
 """
 from path2.stdlib._ids import span_id
 from path2.stdlib.templates import BarwiseDetector
+from path2.stdlib.app import make_app
 
-__all__ = ["BarwiseDetector", "span_id"]
+__all__ = ["BarwiseDetector", "span_id", "make_app"]

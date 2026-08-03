@@ -49,8 +49,7 @@ class SuperDetector:
         if len(bl) >= 1:
             yield SuperEvent(
                 event_id=span_id("super", bl[0].start_idx, bl[-1].end_idx),
-                start_idx=bl[0].start_idx,
-                end_idx=bl[-1].end_idx,
+                start_idx=bl[0].start_idx, end_idx=bl[-1].end_idx, confirm_idx=bl[0].start_idx,
                 members=tuple(bl),
             )
 
@@ -61,8 +60,7 @@ def _bo(i, drought=60, peaks=(1,), vol=3.0):
     """构造一个 BOEvent(参照 test_burst.py::_bo() 签名)。"""
     return BOEvent(
         event_id=f"bo:{i}:{i}",
-        start_idx=i,
-        end_idx=i,
+        start_idx=i, end_idx=i, confirm_idx=i,
         drought=drought,
         pk_count=len(peaks),
         broken_peak_ids=peaks,

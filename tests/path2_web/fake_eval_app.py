@@ -20,6 +20,7 @@ BUY_DATES = ("2024-12-20", "2025-01-10", "2025-03-05")
 def _match(ev):
     return PatternMatch(
         event_id=f"m_{ev.event_id}", start_idx=ev.start_idx, end_idx=ev.end_idx,
+        confirm_idx=ev.end_idx,
         pattern_id="fake_eval", node_index={"tb": ev}, children=(ev,),
         predicate_trace=PredicateTrace(where_results={}, edge_results={}),
     )
@@ -28,7 +29,8 @@ def _match(ev):
 def analyze(df, params=None):
     dates = [str(d)[:10] for d in df["date"]]
     evs = tuple(
-        FakeTb(event_id=f"tb_{d}", start_idx=dates.index(d), end_idx=dates.index(d))
+        FakeTb(event_id=f"tb_{d}", start_idx=dates.index(d), end_idx=dates.index(d),
+               confirm_idx=dates.index(d))
         for d in BUY_DATES if d in dates
     )
     return AnalysisResult(events=evs, matches=tuple(_match(e) for e in evs), spec=None)

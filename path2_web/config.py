@@ -16,6 +16,11 @@ DEFAULT_CONFIG = {
         "workers": 8,
         "ticker_regex": None,
         "label_horizon": 20,
+        "price_min": None,      # 扫描过滤:end_node 事件日收盘价下限(null=不限)
+        "price_max": None,      # 扫描过滤:end_node 事件日收盘价上限(null=不限)
+        "volume_min": None,     # 扫描过滤:扫描区间内日均成交量下限(null=不限)
+        "first_passage_k": 5.0,    # 首次穿越几何对称阈值倍数(上行 P(1+kM)、下行 P/(1+kM))
+        "first_passage_enabled": True,   # 首次穿越方向注入开关
     },
     "last_selected_pattern": "bottom_breakout_burst",
 }

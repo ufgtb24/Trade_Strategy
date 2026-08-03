@@ -14,7 +14,7 @@ from path2.calc.geometry import upper_shadow_ratio
 
 @dataclass(frozen=True)
 class Distribution(Event):
-    """高位放量阴线带长上影的单 bar 派发事件。start_idx == end_idx。
+    """高位放量阴线带长上影的单 bar 派发事件。start_idx == end_idx;confirm_idx = start_idx(点事件,该根即确认)。
 
     输出字段(where 可引用):
     - vol_ratio:          当根量比(volume[i] / SMA(volume, vol_baseline_period))
@@ -72,6 +72,7 @@ class DistributionDetector(BarwiseDetector):
             event_id=span_id(self.event_cls.class_id, i, i),
             start_idx=i,
             end_idx=i,
+            confirm_idx=i,   # 点事件:该根即确认
             vol_ratio=float(vr),
             upper_shadow_ratio=float(usr),
         )

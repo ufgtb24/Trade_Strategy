@@ -9,7 +9,7 @@ class Ev(Event):
     class_id = "test_result_ev"
 
 def ev(s, e):
-    return Ev(event_id=f"e_{s}_{e}", start_idx=s, end_idx=e)
+    return Ev(event_id=f"e_{s}_{e}", start_idx=s, end_idx=e, confirm_idx=s)
 
 
 def test_edge_witness_fields():
@@ -23,7 +23,7 @@ def test_pattern_match_flatten_invariant_ok():
     a = ev(0, 0)
     b = ev(2, 4)
     m = PatternMatch(
-        event_id="m1", start_idx=0, end_idx=4, pattern_id="p",
+        event_id="m1", start_idx=0, end_idx=4, confirm_idx=0, pattern_id="p",
         node_index={"down": a, "bo": b},
         children=(a, b),
         predicate_trace=PredicateTrace(where_results={}, edge_results={}),
@@ -36,7 +36,7 @@ def test_pattern_match_flatten_invariant_violation_raises():
     config.set_runtime_checks(True)
     with pytest.raises(AssertionError):
         PatternMatch(
-            event_id="m1", start_idx=0, end_idx=2, pattern_id="p",
+            event_id="m1", start_idx=0, end_idx=2, confirm_idx=0, pattern_id="p",
             node_index={"down": a, "bo": b},
             children=(a,),                               # 少了 b → 违反展平不变式
             predicate_trace=PredicateTrace(where_results={}, edge_results={}),

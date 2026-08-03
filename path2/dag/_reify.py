@@ -5,12 +5,11 @@ PredicateTrace 重算 where(实证) + 每正向边 EdgeWitness。measured 为 ki
 """
 from __future__ import annotations
 
-from dataclasses import replace
-
 from path2.dag.edges import (NegationEdge, TemporalEdge, ContainmentEdge, OverlapEdge,
                              EqualsEdge, StartContainmentEdge)
 from path2.dag.gate_failure import MeasuredKindAware
-from path2.dag.result import (PatternMatch, PredicateTrace, EdgeWitness, ClauseWitness)
+from path2.dag.result import (PatternMatch, PredicateTrace, EdgeWitness)
+from path2.dag.where import witness_of
 from path2.dag._solve import endpoint
 
 
@@ -40,29 +39,20 @@ def _make_measured(edge, u, v) -> MeasuredKindAware:
     return MeasuredKindAware(kind='unknown', value=None, label='?')
 
 
-def reify(sol, streams, plan, ctx) -> PatternMatch:
+def reify(sol, streams, plan) -> PatternMatch:
     assign = sol.assign
     children = sorted((c for b in assign.values() for c in _flat(b)),
                       key=lambda e: (e.start_idx, e.end_idx))
     start = min(c.start_idx for c in children)
     end = max(c.end_idx for c in children)
 
-    # where 实证:逐节点逐 clause 重算,产 ClauseWitness。
+    # where 实证:逐节点逐 clause 重算,产 ClauseWitness(组合子递归成树,全量求值)。
     where_results = {}
     for nid, binding in assign.items():
         node = plan.nodes.get(nid)
         if node is None:
             continue
-        ctx_v = replace(ctx, bound=assign) if ctx is not None else None
-        target = binding  # 单 Event
-        clauses = {}
-        for cid, fn in node.where:
-            sat = bool(fn(target, ctx_v))
-            meta = getattr(fn, "meta", None)
-            measured = fn.measure(target, ctx_v) if hasattr(fn, "measure") else None
-            clauses[cid] = ClauseWitness(satisfied=sat, measured=measured,
-                                         op=(meta or {}).get("op"),
-                                         threshold=(meta or {}).get("threshold"))
+        clauses = {cid: witness_of(fn, binding) for cid, fn in node.where}
         if clauses:
             where_results[nid] = clauses
 
@@ -83,6 +73,7 @@ def reify(sol, streams, plan, ctx) -> PatternMatch:
     return PatternMatch(
         event_id=f"{plan.pattern_id}@{start}-{end}",
         start_idx=start, end_idx=end,
+        confirm_idx=end,   # 聚合体:所有 constituent event 物化后整个 match 才确认
         pattern_id=plan.pattern_id,
         node_index=dict(assign),
         children=tuple(children),

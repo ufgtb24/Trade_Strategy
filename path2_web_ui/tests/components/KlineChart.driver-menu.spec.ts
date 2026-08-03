@@ -13,7 +13,7 @@ vi.stubGlobal('ResizeObserver', class {
   disconnect() {}
 })
 
-vi.mock('../../src/api', () => ({
+vi.mock('../../src/api', () => ({ saveWcMirror: async () => ({ ok: true } as any), clearWcMirror: async () => ({ ok: true } as any),
   getOhlc: vi.fn(() => Promise.resolve({ bars: [] })),
 }))
 

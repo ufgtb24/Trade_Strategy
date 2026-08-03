@@ -25,11 +25,15 @@ class EdgeWitness:
 @dataclass(frozen=True)
 class ClauseWitness:
     """单条 where clause 在一次匹配中的判定 + 实测对照(详版 trace 用)。
-    __bool__ == satisfied,使旧代码 `if where_results[nid][cid]` 行为不变(向后兼容)。"""
+    __bool__ == satisfied,使旧代码 `if where_results[nid][cid]` 行为不变(向后兼容)。
+    组合子(and/or/not)witness 额外携带 children(witness 全量求值,不短路——诊断口径),
+    label 供前端子行显示(叶子=字段名,组合子=kind)。"""
     satisfied: bool
     measured: object = None        # 实测值(W.*.measure 产出);组合子/无 measure 时 None
     op: object = None              # 比较算子(">=", "==", ...);组合子 None
     threshold: object = None       # 阈值;组合子 None
+    label: object = None           # 显示名:叶子=field,组合子=kind;顶层可 None(cid 即显示名)
+    children: tuple = ()           # 子 witness(组合子);叶子恒 ()
     def __bool__(self) -> bool:
         return bool(self.satisfied)
 

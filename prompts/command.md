@@ -1,3 +1,8 @@
+## 调试命令
+path2_web/main.py    ;DEBUG_MODE=1;USE_LOW_IMPACT_MONITORING=1  debug 
+cd path2_web_ui && VITE_API_BASE=http://localhost:8009 npm run dev -- --port 5179 --strictPort
+
+
 claude -r --dangerously-skip-permissions
 /model claude-opus-4-7
 ## 工作数双向同步法(A 和 B 统一到全局最新)
@@ -16,9 +21,6 @@ git fetch origin
 - 2. 将本地 master 分支强制重置为远程 origin/master 的状态
 git reset --hard origin/master
 
-## 调试命令
-path2_web/main.py    DEBUG_MODE=1  USE_LOW_IMPACT_MONITORING=1  debug 
-cd path2_web_ui && VITE_API_BASE=http://localhost:8009 npm run dev -- --port 5179 --strictPort
 
 ## 下载数据
 HTTPS_PROXY= HTTP_PROXY= uv run python scripts/data/data_download.py 

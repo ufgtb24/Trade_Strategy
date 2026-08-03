@@ -40,11 +40,11 @@ def test_default_burst_defaults():
 
 def test_default_tb_defaults():
     tb = Params.default().tb
-    assert tb.max_start_gap == 5
+    assert tb.max_start_gap == 7
     assert tb.max_window == 5
     assert tb.atr_window == 14
     assert tb.big_rise_k == 1.5
-    assert tb.pullback_min_atr == 1.0
+    assert tb.stop_confirm_bars == 2
     assert tb.anchor_measure == "high"
     assert tb.support_measure == "low"
 
@@ -72,7 +72,7 @@ def test_kwargs_slices_against_detector_signatures():
     assert burst['min_bos'] == 2 and burst['gap_max'] == 5
     tb = p.throwback_kwargs()
     assert set(tb) == {'max_start_gap', 'max_window', 'atr_window',
-                       'big_rise_k', 'pullback_min_atr',
+                       'big_rise_k', 'stop_confirm_bars',
                        'anchor_measure', 'support_measure'}
 
 
@@ -92,7 +92,7 @@ burst:
         assert p.burst.gap_max == 8              # yaml 覆盖
         assert p.burst.min_bos == 2              # yaml 未提及,用 default
         assert p.bo.total_window == 10           # 整 bo section 缺失,用 default
-        assert p.tb.max_start_gap == 5           # 整 tb section 缺失,用 default
+        assert p.tb.max_start_gap == 7           # 整 tb section 缺失,用 default
     finally:
         os.unlink(path)
 
@@ -142,3 +142,42 @@ def test_load_params_reads_default_yaml_path():
         "load_params() 读到的 bo.total_window 与 dataclass default 相同;"
         "yaml 应是 V3.3 B 方案严值与 dataclass 宽松默认不同,二者相等暗示 yaml 未真读"
     )
+
+
+def test_tb_params_default_stop_confirm_bars_and_max_start_gap():
+    from path2_apps.bottom_breakout_burst.params import TbParams
+    p = TbParams()
+    assert p.stop_confirm_bars == 2
+    assert p.max_start_gap == 7
+    assert not hasattr(p, "pullback_min_atr")
+
+
+def test_tb_params_throwback_kwargs_matches_detector_signature():
+    """throwback_kwargs 出的字典必须能一一喂给 ThrowbackDetector(**kw) 不炸。"""
+    from path2_apps.bottom_breakout_burst.params import Params
+    from path2.atoms.throwback import ThrowbackDetector
+    p = Params.default()
+    d = ThrowbackDetector(**p.throwback_kwargs())
+    assert d._kw['stop_confirm_bars'] == 2
+    assert d._kw['max_start_gap'] == 7
+
+
+def test_params_from_yaml_rejects_removed_pullback_min_atr(tmp_path):
+    """params.yaml 若残留 pullback_min_atr 应被未知字段校验抛出(fail-fast)。"""
+    import pytest
+    from path2_apps.bottom_breakout_burst.params import Params
+    yaml_path = tmp_path / "params.yaml"
+    yaml_path.write_text(
+        "tb:\n"
+        "  max_start_gap: 7\n"
+        "  max_window: 5\n"
+        "  atr_window: 14\n"
+        "  big_rise_k: 1.5\n"
+        "  stop_confirm_bars: 2\n"
+        "  pullback_min_atr: 1.0\n"
+        "  anchor_measure: high\n"
+        "  support_measure: low\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="pullback_min_atr"):
+        Params.from_yaml(str(yaml_path))

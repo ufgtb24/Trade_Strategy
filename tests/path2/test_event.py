@@ -15,7 +15,7 @@ class _Vol(Event):
 
 
 def test_valid_construction():
-    e = _Vol(event_id="v_1", start_idx=5, end_idx=5, ratio=2.3)
+    e = _Vol(event_id="v_1", start_idx=5, end_idx=5, confirm_idx=5, ratio=2.3)
     assert e.event_id == "v_1"
     assert e.start_idx == 5 and e.end_idx == 5
     assert e.ratio == 2.3
@@ -33,22 +33,22 @@ def test_non_frozen_subclass_raises():
 
 def test_start_gt_end_raises():
     with pytest.raises(ValueError):
-        _Vol(event_id="v", start_idx=9, end_idx=3)
+        _Vol(event_id="v", start_idx=9, end_idx=3, confirm_idx=9)
 
 
 def test_negative_start_raises():
     with pytest.raises(ValueError):
-        _Vol(event_id="v", start_idx=-1, end_idx=0)
+        _Vol(event_id="v", start_idx=-1, end_idx=0, confirm_idx=-1)
 
 
 def test_non_int_idx_raises():
     with pytest.raises(TypeError):
-        _Vol(event_id="v", start_idx=1.5, end_idx=2)
+        _Vol(event_id="v", start_idx=1.5, end_idx=2, confirm_idx=1.5)
 
 
 def test_nan_float_field_raises():
     with pytest.raises(ValueError):
-        _Vol(event_id="v", start_idx=0, end_idx=0, ratio=math.nan)
+        _Vol(event_id="v", start_idx=0, end_idx=0, confirm_idx=0, ratio=math.nan)
 
 
 def test_subclass_post_init_calling_super_still_enforces():
@@ -61,23 +61,23 @@ def test_subclass_post_init_calling_super_still_enforces():
             super().__post_init__()
 
     with pytest.raises(ValueError):
-        _Checked(event_id="c", start_idx=5, end_idx=1)
+        _Checked(event_id="c", start_idx=5, end_idx=1, confirm_idx=5)
 
 
 def test_checks_off_allows_invalid():
     config.set_runtime_checks(False)
-    e = _Vol(event_id="v", start_idx=9, end_idx=3, ratio=math.nan)
+    e = _Vol(event_id="v", start_idx=9, end_idx=3, confirm_idx=9, ratio=math.nan)
     assert e.start_idx == 9 and e.end_idx == 3   # 未抛错
 
 
 def test_bool_start_idx_rejected():
     with pytest.raises(TypeError):
-        _Vol(event_id="b", start_idx=True, end_idx=1)
+        _Vol(event_id="b", start_idx=True, end_idx=1, confirm_idx=True)
 
 
 def test_bool_end_idx_rejected():
     with pytest.raises(TypeError):
-        _Vol(event_id="b", start_idx=0, end_idx=False)
+        _Vol(event_id="b", start_idx=0, end_idx=False, confirm_idx=0)
 
 
 def test_leaf_event_child_api_defaults():
@@ -89,7 +89,7 @@ def test_leaf_event_child_api_defaults():
     class _Leaf(Event):
         class_id = "test_event_leaf_childapi"
 
-    e = _Leaf(event_id="x", start_idx=1, end_idx=2)
+    e = _Leaf(event_id="x", start_idx=1, end_idx=2, confirm_idx=1)
     assert e.child_slots() == {}
     assert e.descendant_leaves == ()
     import pytest
@@ -116,8 +116,8 @@ def test_descendant_leaves_recursion_and_termination():
         def child_slots(self):
             return {"kids": self.kids}
 
-    leaves = (_Leaf2(event_id="a", start_idx=1, end_idx=1),
-              _Leaf2(event_id="b", start_idx=2, end_idx=2))
-    mid = _Mid(event_id="m", start_idx=1, end_idx=2, kids=leaves)
+    leaves = (_Leaf2(event_id="a", start_idx=1, end_idx=1, confirm_idx=1),
+              _Leaf2(event_id="b", start_idx=2, end_idx=2, confirm_idx=2))
+    mid = _Mid(event_id="m", start_idx=1, end_idx=2, confirm_idx=1, kids=leaves)
     assert mid.descendant_leaves == leaves          # 精确 2 叶、有序、零重复
     assert all(l.child_slots() == {} for l in mid.descendant_leaves)

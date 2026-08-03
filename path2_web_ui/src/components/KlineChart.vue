@@ -22,14 +22,32 @@
       </div>
       <div ref="subInnerEl" class="sub-inner" :style="{ height: subCanvasH + 'px' }" @contextmenu="handleContextMenu" />
     </div>
+    <!-- 主图顶部居中标题:HTML 代码 + 一键复制按钮(取代原 canvas title)。
+         code 用 HTML,可直接选中复制;按钮紧跟代码右侧。容器 pointer-events:none,
+         仅文字/按钮可交互,不挡标题区 K 线拖拽。 -->
+    <div v-if="symbol" class="symbol-title-bar">
+      <span class="symbol-text" :data-symbol="symbol">{{ symbol }}</span>
+      <button type="button" class="copy-symbol-btn"
+              :title="`复制代码 ${symbol}`"
+              aria-label="复制股票代码"
+              @click.stop="copySymbol">
+        <svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true">
+          <rect x="5.2" y="5.2" width="8.6" height="8.6" rx="1.6" fill="none" stroke="currentColor" stroke-width="1.4"/>
+          <rect x="2.2" y="2.2" width="8.6" height="8.6" rx="1.6" fill="none" stroke="currentColor" stroke-width="1.4"/>
+        </svg>
+      </button>
+    </div>
     <div class="brush-toggle-wrap">
       <button type="button" class="brush-toggle-btn" :class="{ active: brushActive }"
-              title="框选主图时段 → 查询该窗口内 gate 失败样例(入口 A · 快捷键 Shift+B)"
+              title="框选主图时段 → 查询该窗口内 gate 失败样例(入口 A · 快捷键 Shift+,)"
               @click="toggleBrush">框选</button>
     </div>
     <CrosshairOverlay :x="overlayX" />
     <div v-if="contextMenuVisible" ref="driverMenuEl" class="driver-menu"
          :style="{ left: contextMenuPos.x + 'px', top: contextMenuPos.y + 'px' }">
+      <!-- 复制 event_id · marker 右键即显示(contextMenuEventId 非 null)、空白右键隐藏 -->
+      <button v-if="contextMenuEventId" type="button" class="copy-driver-btn"
+              @click.stop="copyEventId">复制 event_id</button>
       <!-- v2 event-debug(2026-07-15) · debug 菜单分支(marker + whitelist 命中) -->
       <template v-if="menuDispatch.menu === 'debug' && menuDispatch.anchors">
         <button v-for="a in menuDispatch.anchors" :key="a.key"
@@ -56,6 +74,7 @@ import { onMounted, onBeforeUnmount, ref, watch, computed, nextTick } from 'vue'
 import * as echarts from 'echarts'
 import { isBrushToggleKey } from './klineBrushKey'
 import { createBrushRequestHandler } from './klineBrushHandler'
+import { computeRightAnchoredZoom } from './klineCtrlZoom'
 import { storeToRefs } from 'pinia'
 import { useViewStore } from '../stores/view'
 import { dispatchDebugMenu, type MenuDispatch } from './KlineChart.debug-menu'
@@ -229,6 +248,22 @@ function copyDriverScript() {
   contextMenuVisible.value = false
 }
 
+// 复制右键落点 marker 的 event_id 到剪贴板 · marker 右键时 contextMenuEventId 已在手
+function copyEventId() {
+  const eid = contextMenuEventId.value
+  if (!eid) return
+  void navigator.clipboard.writeText(eid)
+    .then(() => view.showToast(`已复制 event_id: ${eid}`))
+  contextMenuVisible.value = false
+}
+
+// 一键复制当前股票代码到剪贴板 · 主图左上角图标按钮;复用 clipboard + toast 模式
+function copySymbol() {
+  if (!symbol.value) return
+  void navigator.clipboard.writeText(symbol.value)
+    .then(() => view.showToast(`已复制:${symbol.value}`))
+}
+
 // v2 event-debug(2026-07-15) · debug 菜单点击 → 触发 triggerEventDebug
 const menuDebugClassName = computed(() => {
   if (!contextMenuEventId.value) return ''
@@ -298,7 +333,12 @@ function strictWindowIdx(): { startIdx: number; endIdx: number } | null {
 function matchLabel(matchId: string): string | null {
   const m = effectiveAnalysis.value?.matches.find((mm) => mm.event_id === matchId)
   if (!m || m.forward_return === undefined) return null
-  return `ret_${(effectiveScan.value ?? scanFile.value?.scan)?.label_horizon}: ${formatForwardReturn(m.forward_return)}`
+  const horizon = (effectiveScan.value ?? scanFile.value?.scan)?.label_horizon
+  // forward_drawdown 与 forward_return 同层展示(T1 注入);老 scan file 无此字段时不追加。
+  const dd = m.forward_drawdown !== undefined
+    ? `<br/>d_${horizon}: ${formatForwardReturn(m.forward_drawdown)}`
+    : ''
+  return `ret_${horizon}: ${formatForwardReturn(m.forward_return)}${dd}`
 }
 
 // 副图 subGeometry 派生(由 bracket lane 数 + 各 band 内 lane 数决定)
@@ -369,6 +409,7 @@ function onBandZoomReset() {
 // 的 canvas-target 监听触发前拦截 —— 只在 e.shiftKey 时 preventDefault+stopPropagation
 // 并接管;非 shift 立即 return,不 preventDefault/不 stopPropagation,原生滚轮 x-zoom 路径不变。
 function subWheelCapture(e: WheelEvent) {
+  if (!e.shiftKey && e.ctrlKey) { ctrlWheelZoom(e); return }   // Ctrl → 右锚定 x 缩放
   if (!e.shiftKey) return          // 放行,交给 ECharts 走原生 x-zoom
   e.preventDefault()
   e.stopPropagation()               // 拦截,不让 ECharts 消费该 Shift+wheel
@@ -378,9 +419,24 @@ function subWheelCapture(e: WheelEvent) {
 
 // Shift+wheel over 主图 = 显式吞掉(spec §5.4;fork 结论),防浏览器页面滚动打扰视觉;不做 y-zoom
 function mainWheelCapture(e: WheelEvent) {
+  if (!e.shiftKey && e.ctrlKey) { ctrlWheelZoom(e); return }   // Ctrl → 右锚定 x 缩放
   if (!e.shiftKey) return
   e.preventDefault()
   e.stopPropagation()               // 同上,拦截 ECharts 消费
+}
+
+// Ctrl+wheel:右锚定 x 缩放(不动点=当前视图最右侧 K 线;不按 Ctrl 保持 ECharts 鼠标中心缩放)。
+// preventDefault 必须:浏览器默认 Ctrl+wheel = 页面缩放。主/副图容器上滚都单入口 dispatch 到
+// chartMain —— dispatchAction 同步触发其 datazoom 事件,既有 relayZoom 带动 chartSub、
+// volume/y 轴重算 handler 同帧生效。
+function ctrlWheelZoom(e: WheelEvent) {
+  e.preventDefault()
+  e.stopPropagation()
+  const cur = readZoomOverride()
+  if (!cur) return
+  const next = computeRightAnchoredZoom(cur.start, cur.end, e.deltaY, bars.value.length)
+  if (!next) return
+  chartMain?.dispatchAction({ type: 'dataZoom', start: next.start, end: next.end })
 }
 
 function buildRenderInput() {
@@ -409,7 +465,6 @@ function buildRenderInput() {
     pendingDisambigEventId: pendingDisambigEventId.value,
     shiftSelectedEventIds: shiftSelectedEventIds.value,
     matches: effectiveAnalysis.value?.matches ?? [],
-    symbolLabel: symbol.value,
   }
 }
 
@@ -449,10 +504,10 @@ function render(forceResetZoom = false) {
 
 function onKeyDown(e: KeyboardEvent) {
   const t = e.target as HTMLElement | null
-  // 输入框内不响应任何全局快捷键(承 Esc/Shift+B 共用同一守卫)。
+  // 输入框内不响应任何全局快捷键(承 Esc/Shift+, 共用同一守卫)。
   if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return
-  // Shift+B:切换框选光标态(与按钮 toggleBrush 同一路径 · 双向 toggle)。
-  // 让位字母 B 给 SidebarResultList 全局字符转发(输代码即定位股)。
+  // Shift+,:切换框选光标态(与按钮 toggleBrush 同一路径 · 双向 toggle)。
+  // Shift+,(key '<')不进搜索框:onGlobalCharKey 已整体屏蔽 shift(无需逐键让位)。
   if (isBrushToggleKey(e)) {
     toggleBrush()
     e.preventDefault()
@@ -818,6 +873,44 @@ watch(activeDetailCard, (v, prev) => {
   color: #334155;
   font-variant-numeric: tabular-nums;
 }
+/* 主图顶部居中标题:HTML code + 复制按钮(取代原 canvas title)· 相对 kline-wrap-v2,
+   left:50%+translateX 居中(= main-chart 中心),top:6 与原 canvas title 同高。
+   容器 pointer-events:none 穿透,仅文字/按钮可交互,不挡标题区 K 线拖拽。 */
+.symbol-title-bar {
+  position: absolute;
+  top: 6px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  z-index: 10;
+  pointer-events: none;
+}
+.symbol-text {
+  font-size: 14px;
+  font-weight: bold;
+  color: #333;
+  user-select: text;
+  -webkit-user-select: text;
+  pointer-events: auto;
+}
+.copy-symbol-btn {
+  pointer-events: auto;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #cbd5e1;
+  border-radius: 4px;
+  background: rgba(248, 250, 252, 0.9);
+  color: #334155;
+  cursor: pointer;
+}
+.copy-symbol-btn:hover { background: #e2e8f0; }
+.copy-symbol-btn:focus:not(:focus-visible) { outline: none; }
 .brush-toggle-wrap {
   position: absolute;
   top: 4px;

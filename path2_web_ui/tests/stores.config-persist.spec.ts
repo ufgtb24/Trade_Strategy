@@ -6,7 +6,7 @@ import { useViewStore } from '../src/stores/view'
 import { putConfig } from '../src/api'
 import type { MultiScanResultFile } from '../src/types'
 
-vi.mock('../src/api', () => ({
+vi.mock('../src/api', () => ({ saveWcMirror: async () => ({ ok: true } as any), clearWcMirror: async () => ({ ok: true } as any),
   getConfig: vi.fn(() => Promise.resolve({
     dataset_dir: '/d',
     scan: { start_date: '2024-01-01', end_date: '2024-06-30', workers: 1, ticker_regex: null },
@@ -28,7 +28,7 @@ function makeFile(): MultiScanResultFile {
     scan: {
       scan_ts: '20260703T120000', start_date: '2024-01-01', end_date: '2024-06-30',
       workers: 1, scanned: 1, hits: 1, errors: 0, dataset_dir: '/d', params: 'default',
-      win_start: '2023-09-01', win_end: '2024-07-15', label_horizon: 20,
+      win_start: '2023-09-01', win_end: '2024-07-15', label_horizon: 20, first_passage_k: 2,
     },
     results: [],
   }

@@ -6,7 +6,7 @@ from path2.atoms.breakout import BOEvent, BurstEvent, BurstDetector
 
 
 def _bo(i, drought=None, peaks=(), vol=None):
-    return BOEvent(event_id=f"bo:{i}:{i}", start_idx=i, end_idx=i,
+    return BOEvent(event_id=f"bo:{i}:{i}", start_idx=i, end_idx=i, confirm_idx=i,
                    drought=drought, pk_count=len(peaks),
                    broken_peak_ids=peaks, vol_ratio=vol, peak_vol_max=0.0)
 
@@ -26,7 +26,7 @@ def test_burst_event_child_api():
     members = (_bo(10, drought=60, peaks=(1, 2), vol=3.0),
                _bo(12, drought=5, peaks=(2, 3), vol=4.0),
                _bo(15, drought=3, peaks=(3,), vol=2.0))
-    b = BurstEvent(event_id="burst:10:15", start_idx=10, end_idx=15,
+    b = BurstEvent(event_id="burst:10:15", start_idx=10, end_idx=15, confirm_idx=10,
                    count=3, distinct_pk=3, max_bar_vol_ratio=4.0, first_drought=60,
                    members=members)
     assert b.class_id == "burst"
@@ -41,7 +41,7 @@ def test_burst_event_child_api():
 
 def test_burst_event_is_frozen():
     import dataclasses
-    b = BurstEvent(event_id="burst:1:1", start_idx=1, end_idx=1,
+    b = BurstEvent(event_id="burst:1:1", start_idx=1, end_idx=1, confirm_idx=1,
                    count=1, distinct_pk=0, max_bar_vol_ratio=0.0, first_drought=0,
                    members=(_bo(1),))
     with pytest.raises(dataclasses.FrozenInstanceError):

@@ -64,7 +64,7 @@ def test_code_location_skips_emit_tb_gate_helper():
         })
         # anchor = high[bo_idx-1] = 101;bo 后 close[bo_idx+1] = 90 < anchor → phase1_break
         df.loc[bo_idx + 1, 'close'] = 90.0
-        bo = BOEvent(event_id=f"bo_{bo_idx}", start_idx=bo_idx, end_idx=bo_idx,
+        bo = BOEvent(event_id=f"bo_{bo_idx}", start_idx=bo_idx, end_idx=bo_idx, confirm_idx=bo_idx,
                      drought=None, pk_count=1, broken_peak_ids=(), vol_ratio=None,
                      peak_vol_max=0.0, referenced_points=())
         captured: list[GateFailure] = []

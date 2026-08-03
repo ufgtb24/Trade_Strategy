@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test'
 import { baseURL } from './ports'
 
 // 前提:后端 + 前端 dev server 在线(playwright.config.ts 的 webServer 自动启动前端;
-//        后端须外部启动 uv run python scripts/run_path2_web.py)。
+//        后端须外部启动 uv run python scripts/path2/run_path2_web.py)。
 //
 // S1/S2/S3 反证 + 正证 e2e:
 //

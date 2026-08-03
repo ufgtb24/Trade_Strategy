@@ -51,7 +51,7 @@ export const SCAN_FILE: MultiScanResultFile = {
   scan: {
     scan_ts: '20260603T120000', start_date: '2025-01-01', end_date: '2025-12-31',
     workers: 8, scanned: 100, hits: 1, errors: 0, dataset_dir: '/x', params: 'default',
-    win_start: '2025-01-01', win_end: '2025-12-31', label_horizon: 20,
+    win_start: '2025-01-01', win_end: '2025-12-31', label_horizon: 20, first_passage_k: 2,
   },
   results: [
     { symbol: 'AAPL', per_pattern: {

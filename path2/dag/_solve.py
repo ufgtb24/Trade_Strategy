@@ -1,5 +1,5 @@
 # path2/dag/_solve.py
-"""匹配求解核心:约束图编译 + 唯一求解函数 solve(plan, streams, ctx)。
+"""匹配求解核心:约束图编译 + 唯一求解函数 solve(plan, streams)。
 
 语义:枚举所有满足 dag 约束的绑定(_dfs 回溯)+ where 候选预过滤【先于】C1 塌缩 +
 前沿割签名按边 signature_fields 自描述(在 _signature.py)。
@@ -15,7 +15,7 @@ strict_clear/negation 见各自 task;本文件随 task 增量长成。
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple
 
 from path2.dag.edges import DependencyEdge, EqualsEdge, NegationEdge, TemporalEdge
@@ -24,19 +24,6 @@ from path2.dag._graph import (pos_preds, neg_out, topo_order, wccs, sub_nodes_ed
 from path2.dag._signature import (frontier_cut_signature, collapse_equal_end_keep_keymin)
 
 INF = float("inf")
-
-
-class _TripWire:
-    """跨节点 where 防线(verdict §3.4 硬要求):候选预过滤阶段 ctx.bound 用哨兵替身。
-    一元 where 不读 bound 故无碍;若某 where 读兄弟绑定(跨节点)立即抛 RuntimeError,
-    绝不静默漏匹配。reify 阶段才传真实 bound(不剪枝,安全)。"""
-    def __getitem__(self, k):
-        raise RuntimeError("跨节点 where 未支持:读了 ctx.bound,需签名升维(verdict §3.4)")
-    def __getattr__(self, k):
-        raise RuntimeError("跨节点 where 未支持:读了 ctx.bound,需签名升维(verdict §3.4)")
-
-
-_TRIPWIRE = _TripWire()
 
 
 @dataclass
@@ -131,7 +118,7 @@ def endpoint(binding, edge: DependencyEdge, which: str = "src"):
     return binding
 
 
-# (where 过滤内联在 _dfs 的候选生成处,不单列函数;预过滤 ctx 用 _TRIPWIRE)
+# (where 过滤内联在 _dfs 的候选生成处,不单列函数)
 
 
 def strict_clear(edge, a, e_dst, streams) -> bool:
@@ -183,7 +170,7 @@ def _build_out_edges(plan: Plan) -> Dict[str, List[DependencyEdge]]:
 
 
 
-def _dfs(wp: WccPlan, k, assign, chosen_idx, streams, memo, out, c1_off, ctx,
+def _dfs(wp: WccPlan, k, assign, chosen_idx, streams, memo, out, c1_off,
          *, emitted_leaves: Dict[str, set],
          collapse, memo_mode):
     """回溯枚举:ptr 恒不推进(全后缀);到叶子 emit 后继续回溯。返回「本分支是否有完成」。
@@ -235,8 +222,7 @@ def _dfs(wp: WccPlan, k, assign, chosen_idx, streams, memo, out, c1_off, ctx,
     cands = [(lst[i], i) for i in range(len(lst)) if _in_all_windows_any(lst[i])]
     cands.sort(key=lambda ei: (ei[0].start_idx, ei[0].end_idx, ei[1]))
     if node is not None and node.where:
-        ctx_v = ctx if ctx is None else replace(ctx, bound=_TRIPWIRE)
-        cands = [(e, i) for e, i in cands if all(fn(e, ctx_v) for _, fn in node.where)]
+        cands = [(e, i) for e, i in cands if all(fn(e) for _, fn in node.where)]
     if collapse and v not in c1_off:                  # ANY 默认关 C1(开则漏)
         cands = collapse_equal_end_keep_keymin(cands, _CUR_OUT_EDGES.get(v))
 
@@ -266,7 +252,7 @@ def _dfs(wp: WccPlan, k, assign, chosen_idx, streams, memo, out, c1_off, ctx,
         if wp.neg.get(v) and not negation_clear(wp.neg[v], v, assign, streams):
             del assign[v]; del chosen_idx[v]
             continue
-        sub = _dfs(wp, k + 1, assign, chosen_idx, streams, memo, out, c1_off, ctx,
+        sub = _dfs(wp, k + 1, assign, chosen_idx, streams, memo, out, c1_off,
                    emitted_leaves=emitted_leaves,
                    collapse=collapse, memo_mode=memo_mode)
         any_completion = any_completion or sub
@@ -280,7 +266,7 @@ def _dfs(wp: WccPlan, k, assign, chosen_idx, streams, memo, out, c1_off, ctx,
     return any_completion
 
 
-def solve(plan: Plan, streams, ctx=None, *, collapse=False, memo_mode="charitable") -> List[Solution]:
+def solve(plan: Plan, streams, *, collapse=False, memo_mode="charitable") -> List[Solution]:
     """path2 DAG 唯一求解函数。
 
     语义:枚举所有满足 dag 约束的绑定(_dfs 回溯)+ 按 leaf event 跨 prefix 去重(B3 整改三)。
@@ -297,7 +283,7 @@ def solve(plan: Plan, streams, ctx=None, *, collapse=False, memo_mode="charitabl
     out: List[Solution] = []
     for wp in plan.wcc_plans:
         memo = {n: set() for n in wp.comp}
-        _dfs(wp, 0, {}, {}, streams, memo, out, plan.c1_off, ctx,
+        _dfs(wp, 0, {}, {}, streams, memo, out, plan.c1_off,
              emitted_leaves=emitted_leaves,
              collapse=collapse, memo_mode=memo_mode)
     return out

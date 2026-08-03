@@ -10,7 +10,7 @@ description: Use when 用户要为 path2_apps 新建一个走势 app,或修改�
 二者共享同一设计流,修改 = 现状非空 + 按 delta 选起点。
 
 本 skill 必须在主会话 inline 运行(逐层确认用 AskUserQuestion,它在 subagent /
-workflow 内不可用)。派 subagent(tom)只做"产出后回吐主会话"的纯分析,不问用户。
+workflow 内不可用)。派 subagent 只做"产出后回吐主会话"的纯分析,不问用户。
 
 ## When to Use / NOT
 - 用:新建 `path2_apps/<id>/` app;修改现有 app 的 PatternSpec 结构
@@ -33,7 +33,7 @@ path2/atoms/*.py),绝不引用任何文档内嵌快照(含本 skill 自己的文
 |---|---|---|
 | 创建 | 无现存对应 app | Step 1 → 三层 gate 从层①起 |
 | 结构修改 | app 已存在,delta 触及结构 | Step 0.5 现状盘点 → 按 delta 定起点层 |
-| 纯调参 | 只动阈值数值,不碰结构 | 不进设计流:直接用评估器迭代(design-heuristics §D),收敛后报用户 |
+| 纯调参 | 只动阈值数值,不碰结构 | 不进设计流:**转 `tune-pattern-strength` skill**(判据/防过拟合/防刷分的完整工作流;其执行层工具见 design-heuristics §D),收敛后报用户 |
 
 **路由方式**:给出带理由的路由推荐,用 AskUserQuestion 让用户确认/改道
 (例:"我判断这是结构修改,因为你要新增一个节点,将从层①进入;若只想调阈值请纠正")。
@@ -68,7 +68,7 @@ path2/atoms/*.py),绝不引用任何文档内嵌快照(含本 skill 自己的文
 
 ### 层① 拓扑(最重,可短路)
 走势 → 节点链 + 类型化边。判:**这个 DAG 与走势直觉吻合吗?**
-- 难裁 → 派 tom 深析(把走势描述+已确认结论打包进 prompt;tom 不问用户)
+- 难裁 → 派子代理深析(带上下文的 `fork` 免打包;用 `general-purpose` 则把走势描述+已确认结论打包进 prompt。子代理不问用户)
 - 不吻合/表达不出 → 短路:重选拓扑,或标记"需新建 detector"分叉(回用户确认)
 - 吻合 → 回讲拓扑,AskUserQuestion 确认 → 落盘 spec → 层②
 
@@ -133,15 +133,19 @@ AskUserQuestion 确认 → 落盘 spec。
   (热加载,无需重启 web);所有真用值写这里。**yaml 必须是 nested 4 section: bo/burst/tb/edges**
   (与子 dataclass 一一对应)。
 - **`params.py` = nested schema 层**:4 子 dataclass(`BoParams`/`BurstParams`/`TbParams`/
-  `EdgesParams`)各持有该 node 角色的 detector 构造参数 + where 阈值;`Params` 容器持有
-  4 子 dataclass 实例。切片函数 `bo_kwargs()`/`burst_kwargs()`/`throwback_kwargs()` 返回
-  detector 构造 dict(返回 dict 签名不变,内部从子 dataclass 取值)。`from_yaml` 递归校验
-  顶层 section + 每 section 字段两层未知 key,堵 yaml 拼错静默无效。**子 dataclass 字段 default
-  = yaml 缺失字段时的兜底 + CLI 脚本 / tests fixture 默认**,不是 web 真值。
-- **新建 app 必须同时落 `params.py`(4 子 dataclass + Params 容器 + from_yaml + load_params)
-  + `params.yaml`(4 section)**;`params.py` 经 `from .params import Params, load_params,
-  DEFAULT_YAML_PATH` 在包 init **和** `dag_spec.py` 都 re-export(web registry 注册 `.dag_spec`
-  路径,worker 拿到子模块,故 dag_spec 也需 re-export)。
+  `EdgesParams`)各持有该 node 角色的 detector 构造参数 + where 阈值;`class Params(ParamsBase)`
+  容器持有 4 子 dataclass 实例。切片函数 `bo_kwargs()`/`burst_kwargs()`/`throwback_kwargs()` 返回
+  detector 构造 dict(返回 dict 签名不变,内部从子 dataclass 取值)。**读写协议
+  `default`/`from_yaml`/`to_dict`/`from_dict` 由 `path2_apps._params_base.ParamsBase` 统一提供、
+  子类继承不重写**(`from_yaml` 递归校验顶层 section + 每 section 字段两层未知 key 堵 yaml 拼错;
+  `to_dict`/`from_dict` 供 scan snapshot 往返;靠 `get_type_hints` 从子 dataclass 字段内省 section 类)。
+  **子 dataclass 字段 default = yaml 缺失字段时的兜底 + CLI 脚本 / tests fixture 默认**,不是 web 真值。
+- **新建 app 必须同时落 `params.py`(4 子 dataclass + `class Params(ParamsBase)` 容器,**只**含
+  section 字段 + `*_kwargs` 切片函数 + load_params) + `params.yaml`(4 section)**;**读写协议一律
+  继承 `ParamsBase`,禁止逐 app 重写 from_yaml/to_dict/from_dict/default**(重写 = 重新引入拷贝漂移,
+  曾致某 app 缺 `to_dict` 而扫描时静默丢失 snapshot)。`params.py` 经 `from .params import Params,
+  load_params, DEFAULT_YAML_PATH` 在包 init **和** `dag_spec.py` 都 re-export(web registry 注册
+  `.dag_spec` 路径,worker 拿到子模块,故 dag_spec 也需 re-export)。
 - **共用字段归宿原则**:同一字段被 detector 与 edge 同时读时(如 `tb.max_start_gap` 既给
   ThrowbackDetector 又给 burst→tb edge),按"语义归宿 = 谁定义"放入该 detector 的 section
   (SSoT 单一定义),dag_spec 内 edge 显式引用同字段。**禁双写**(双写允许漂移即是 bug)。
@@ -160,8 +164,9 @@ AskUserQuestion 确认 → 落盘 spec。
 
 spec 已增量写就,补齐:落地文件清单 `path2_apps/<id>/{dag_spec,params,__init__}.py +
 params.yaml`(结构对照现存 app 现场读)。**params.py 必须建 4 子 dataclass(BoParams/
-BurstParams/TbParams/EdgesParams)+ Params 容器持有它们;params.yaml 必须 4 section
-(bo/burst/tb/edges)与之一一对应。** yaml 是 web SSoT、必须落,不能只写 params.py。
+BurstParams/TbParams/EdgesParams)+ `class Params(ParamsBase)` 容器持有它们(继承读写协议,
+本类只写 section 字段 + `*_kwargs`,不重写 from_yaml/to_dict/from_dict/default);params.yaml
+必须 4 section(bo/burst/tb/edges)与之一一对应。** yaml 是 web SSoT、必须落,不能只写 params.py。
 EdgesParams 若 app 内 edge 都用硬编码 / node-section 引用,留空 dataclass + yaml `edges: {}`
 作格式契约。然后 **invoke superpowers:writing-plans**(喂 spec 路径)
 → 按惯例 subagent-driven 执行。**本 skill 不自己实现。**
@@ -169,7 +174,7 @@ EdgesParams 若 app 内 edge 都用硬编码 / node-section 引用,留空 datacl
 ## Step 4 实现后验证(两段判据)
 
 - **判据 1(形态,用户在环,先行闸门)**:取几个代表性命中,让用户在 web UI
-  (`scripts/run_path2_web.py`)看 K 线确认"这确实是我要的走势"。形态错 → 结构问题,
+  (`scripts/path2/run_path2_web.py`)看 K 线确认"这确实是我要的走势"。形态错 → 结构问题,
   回层①(走重开纪律)。
 - **判据 2(统计,自动)**:
   - 创建路:`run_eval` → 命中数 + forward_return 分布
@@ -183,7 +188,7 @@ EdgesParams 若 app 内 edge 都用硬编码 / node-section 引用,留空 datacl
 - 拓扑没吻合就往下设计细节(违反短路)
 - 引用文档内嵌 pattern 快照而不现场读代码
 - 新建/修改公共 atom 不回用户确认;修改后不对全部受影响 app 做 regress 对拍
-- 在 tom/subagent 里问用户(AskUserQuestion 仅主会话可用)
+- 在 subagent 里问用户(AskUserQuestion 仅主会话可用)
 - 把纯调参拖进三层设计流;把结构问题塞给参数迭代空转
 - 静默改已确认的 gate 决定(重开必须显式+用户重盖章)
 - 在本 skill 里重造实现循环 / 无人值守多轮改结构

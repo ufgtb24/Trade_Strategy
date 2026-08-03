@@ -14,22 +14,6 @@
               data-testid="symbol-search-clear"
               @click="onClearSearch">×</button>
     </div>
-    <div class="preview-bar">
-      <label class="toggle">
-        <input type="checkbox" :checked="previewEnabled"
-               :disabled="!scanFile"
-               @change="onToggle($event)" />
-        <span>用 yaml 临时计算</span>
-        <button class="refresh" title="重算当前股(yaml 改过后用)"
-                :disabled="!canRefresh" @click="view.runPreview">↻</button>
-      </label>
-      <div v-if="previewLoading" class="status">计算中…</div>
-      <div v-if="previewError" class="error">
-        临时计算失败: {{ previewError }}
-        <a @click="onCloseError">×</a>
-      </div>
-    </div>
-
     <div v-if="!scanFile" class="hint">未加载扫描结果</div>
     <div v-else class="table-wrap" ref="tableWrapEl" @scroll.passive="recalc">
       <table class="multi" ref="tableEl">
@@ -51,6 +35,7 @@
                   @mouseenter="onPatternHover(pid, $event)"
                   @mouseleave="onPatternLeave">
                 {{ pid }}
+                <span class="hit-count" data-testid="pattern-hit-count">{{ patternHitCounts[pid] ?? 0 }}</span>
               </th>
             </template>
           </tr>
@@ -76,6 +61,16 @@
                   {{ sortDesc ? '▼' : '▲' }}
                 </span>
               </th>
+              <th v-if="visibleFields.has('fd')"
+                  :data-col-pid="pid" data-col-field="fd"
+                  class="col col-fd"
+                  @click="view.setSort(`${pid}_fd`)"
+                  @contextmenu.prevent="openFieldsMenu($event)">
+                d{{ scanFile?.scan.label_horizon }}
+                <span v-if="sortByPid === `${pid}_fd`" class="sort-ind">
+                  {{ sortDesc ? '▼' : '▲' }}
+                </span>
+              </th>
             </template>
           </tr>
         </thead>
@@ -83,8 +78,8 @@
           <tr v-if="topPad > 0" class="vpad" :style="{ height: topPad + 'px' }">
             <td colspan="99"></td>
           </tr>
-          <tr v-for="row in visibleRows" :key="row.symbol"
-              :class="{ active: row.symbol === symbol }">
+          <template v-for="row in visibleRows" :key="row.symbol">
+          <tr :class="{ active: row.symbol === symbol }">
             <td class="sym" :data-symbol="row.symbol"
                 @click="view.selectSymbol(row.symbol)">{{ row.symbol }}</td>
             <template v-for="cell in row.cells" :key="cell.pid">
@@ -102,8 +97,37 @@
                   @click="view.selectSymbol(row.symbol)">
                 {{ cell.fr == null ? '—' : fmt(cell.fr) }}
               </td>
+              <td v-if="view.isColumnVisible(cell.pid, 'fd')"
+                  :data-cell-pid="cell.pid" data-cell-field="fd"
+                  :data-symbol="row.symbol"
+                  :class="['col col-fd', { matched: cell.matched }]"
+                  @click="view.selectSymbol(row.symbol)">
+                {{ cell.fd == null ? '—' : fmt(cell.fd) }}
+              </td>
             </template>
           </tr>
+          <tr v-if="previewListRow && row.symbol === symbol"
+              class="preview-row" data-testid="preview-list-row">
+            <td class="sym preview-label">↳ 探索</td>
+            <template v-for="cell in previewListRow.cells" :key="cell.pid">
+              <td v-if="view.isColumnVisible(cell.pid, 'num')"
+                  :data-cell-pid="cell.pid" data-cell-field="num"
+                  class="col col-num">
+                <template v-if="cell.filled">{{ cell.num == null ? '—' : cell.num }}</template>
+              </td>
+              <td v-if="view.isColumnVisible(cell.pid, 'fr')"
+                  :data-cell-pid="cell.pid" data-cell-field="fr"
+                  class="col col-fr">
+                <template v-if="cell.filled">{{ cell.fr == null ? '—' : fmt(cell.fr) }}</template>
+              </td>
+              <td v-if="view.isColumnVisible(cell.pid, 'fd')"
+                  :data-cell-pid="cell.pid" data-cell-field="fd"
+                  class="col col-fd">
+                <template v-if="cell.filled">{{ cell.fd == null ? '—' : fmt(cell.fd) }}</template>
+              </td>
+            </template>
+          </tr>
+          </template>
           <tr v-if="botPad > 0" class="vpad" :style="{ height: botPad + 'px' }">
             <td colspan="99"></td>
           </tr>
@@ -126,10 +150,18 @@
                @change="view.toggleField('fr')" />
         r{{ scanFile?.scan.label_horizon }}
       </label>
+      <label>
+        <input type="checkbox" data-field="fd"
+               :checked="visibleFields.has('fd')"
+               @change="view.toggleField('fd')" />
+        d{{ scanFile?.scan.label_horizon }}
+      </label>
     </div>
 
     <PatternStatsTooltip v-if="hoveredStats"
                          :stats="hoveredStats"
+                         :stats-drawdown="hoveredStatsDrawdown ?? undefined"
+                         :first-passage-stats="hoveredFpStats ?? undefined"
                          class="hover-tooltip"
                          :style="{ left: tooltipX + 'px', top: tooltipY + 'px' }" />
   </div>
@@ -140,15 +172,11 @@ import { computed, onMounted, onBeforeUnmount, reactive, ref, watch, nextTick } 
 import { storeToRefs } from 'pinia'
 import { useViewStore, SYMBOL_SORT_KEY } from '../stores/view'
 import PatternStatsTooltip from './PatternStatsTooltip.vue'
-import { isBrushToggleKey } from './klineBrushKey'
 const view = useViewStore()
-const { scanFile, symbol, preview, previewEnabled, previewLoading, previewError,
+const { scanFile, symbol,
         patternIds, sortedRows, filteredSortedRows, sortByPid, sortDesc,
-        visiblePatterns, visibleFields, symbolQuery } = storeToRefs(view)
-
-const canRefresh = computed(() =>
-  previewEnabled.value && !!preview.value && !previewLoading.value
-  && preview.value?.symbol === symbol.value)
+        visiblePatterns, visibleFields, symbolQuery, previewListRow,
+        patternHitCounts } = storeToRefs(view)
 
 const searchInputEl = ref<HTMLInputElement | null>(null)
 function onSearchInput(e: Event) {
@@ -164,11 +192,6 @@ function fmt(v: number | null): string {
   const pct = (v * 100).toFixed(1)
   return v >= 0 ? `+${pct}%` : `${pct}%`
 }
-function onToggle(e: Event) {
-  void view.setPreviewEnabled((e.target as HTMLInputElement).checked)
-}
-function onCloseError() { view.clearPreview() }
-
 // ── hdr-pattern hover → stats tooltip ─────────────────────────────
 const hoveredPid = ref<string | null>(null)
 const tooltipX = ref(0)
@@ -177,6 +200,20 @@ const tooltipY = ref(0)
 const hoveredStats = computed(() => {
   if (!hoveredPid.value || !scanFile.value) return null
   return scanFile.value.per_pattern[hoveredPid.value]?.stats ?? null
+})
+
+// drawdown 分布与 forward_return stats 同 shape(T1 注入);老 scan file 无此字段 → null,
+// PatternStatsTooltip 收到 undefined 不渲染 drawdown 块。
+const hoveredStatsDrawdown = computed(() => {
+  if (!hoveredPid.value || !scanFile.value) return null
+  return scanFile.value.per_pattern[hoveredPid.value]?.stats_drawdown ?? null
+})
+
+// 首次穿越集合级统计(T3 注入);老 scan file 或 first_passage_enabled=False → null,
+// PatternStatsTooltip 收到 undefined 不渲染首次穿越块。
+const hoveredFpStats = computed(() => {
+  if (!hoveredPid.value || !scanFile.value) return null
+  return scanFile.value.per_pattern[hoveredPid.value]?.first_passage_stats ?? null
 })
 
 function onPatternHover(pid: string, evt: MouseEvent) {
@@ -204,7 +241,7 @@ function onPatternLeave() {
 const fieldsMenu = reactive({ open: false, x: 0, y: 0 })
 function openFieldsMenu(evt: MouseEvent) {
   const MENU_W = 100
-  const MENU_H = 64
+  const MENU_H = 90   // num/fr/fd 三项 + 上下 padding
   const x = Math.min(evt.clientX, window.innerWidth - MENU_W - 8)
   const y = Math.min(evt.clientY, window.innerHeight - MENU_H - 8)
   fieldsMenu.open = true
@@ -233,9 +270,8 @@ function onDocKey(e: KeyboardEvent) {
 const CHAR_RE = /^[a-zA-Z0-9.\-]$/
 
 function onGlobalCharKey(e: KeyboardEvent) {
-  if (isBrushToggleKey(e)) return   // Shift+B 保留给 KlineChart brush toggle,不进 search
   if (!scanFile.value) return
-  if (e.ctrlKey || e.metaKey || e.altKey) return
+  if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return
   if (e.isComposing) return
   const ae = document.activeElement as HTMLElement | null
   // 活动元素守卫:焦点在 body 或列表面板内才劫持;对话框 / 其他面板一律放行
@@ -366,16 +402,6 @@ watch([filteredSortedRows, scanFile], () => { void nextTick(recalc) })
 <style scoped>
 .list { overflow: hidden; height: 100%; display: flex; flex-direction: column; position: relative;
         --hdr-row-h: 24px; }
-.preview-bar { padding: 6px 10px; border-bottom: 1px solid #e5e7eb; background: #f8fafc; }
-.toggle { display: flex; align-items: center; gap: 6px; cursor: pointer; font-size: 12px; }
-.toggle input { cursor: pointer; }
-.refresh { margin-left: auto; padding: 1px 6px; font-size: 14px;
-           border: 1px solid #cbd5e1; background: #fff; cursor: pointer; }
-.refresh:disabled { opacity: 0.4; cursor: not-allowed; }
-.status { font-size: 11px; color: #64748b; margin-top: 4px; }
-.error { font-size: 11px; color: #ef4444; margin-top: 4px; }
-.error a { cursor: pointer; margin-left: 6px; }
-
 .hint { padding: 8px 12px; font-size: 12px; color: #64748b; }
 .table-wrap { flex: 1; overflow: auto; }
 table.multi { width: max-content; border-collapse: collapse; font-size: 12px; table-layout: fixed; }
@@ -397,9 +423,22 @@ table.multi thead tr.hdr-pattern th.col-pattern {
   white-space: nowrap;
   padding: 2px 4px;
 }
+/* 命中股票数:11px 灰色常规字重,与 pid(12px/600/深色)分层,
+   读起来是 pid 的附注而非名字的一部分。
+   display:block 让它落到 pid 正下方独占一行 —— 数字不再计入行内宽度,
+   列宽只由 pid 决定,这正是竖排要省的横向空间。
+   外层 th 的 white-space:nowrap 保持不动:它保证两行各自不再内部折行。 */
+table.multi thead tr.hdr-pattern th.col-pattern .hit-count {
+  display: block;
+  font-size: 11px;
+  color: #64748b;
+  font-weight: 400;
+  line-height: 1.1;
+}
 table.multi th.sym, table.multi td.sym { width: 60px; position: sticky; left: 0; z-index: 2; background: #fff; }
 table.multi th.col-num, table.multi td.col-num { width: 46px; text-align: right; }
 table.multi th.col-fr,  table.multi td.col-fr  { width: 64px; text-align: right; }
+table.multi th.col-fd,  table.multi td.col-fd  { width: 64px; text-align: right; }
 table.multi th.sym, table.multi th.col { cursor: pointer; user-select: none; word-break: break-all; overflow-wrap: anywhere; }
 table.multi th.sym:hover, table.multi th.col:hover { background: #f1f5f9; }
 table.multi .sort-ind { color: #2563eb; margin-left: 2px; }
@@ -411,6 +450,13 @@ table.multi td.col { cursor: pointer; background: #fafafa; }
 table.multi td.col.matched { background: #dcfce7; }
 table.multi tr.active td { background: #1d4ed8; color: #fff; }
 table.multi tr.active td.col.matched { background: #1d4ed8; }
+/* 探索态现算对照行:淡黄底,区别于绿 matched / 蓝 active */
+/* 探索态现算对照行:整行取 chip「探索 · Working Copy」的绿(ParamsChip .mode-explore:
+   #10b981 底 / 白字 / 600)。与冻结行的浅绿(#dcfce7,matched)靠饱和度+白字区分,
+   不靠色相 —— 色盲友好(浅黄 vs 浅绿会混,深绿满字白字不会)。border 呼应 chip 轮廓。 */
+table.multi tr.preview-row td { background: #10b981; color: #ffffff; font-weight: 600; cursor: default; }
+table.multi tr.preview-row td:first-child { border-left: 2px solid #047857; }
+table.multi tr.preview-row td.sym.preview-label { color: #ffffff; font-weight: 600; }
 
 .field-menu {
   position: fixed;

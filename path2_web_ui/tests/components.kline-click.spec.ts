@@ -5,7 +5,7 @@ import { useViewStore } from '../src/stores/view'
 import { SCAN_FILE } from './fixtures'
 import type { MatchDict, MultiScanResultFile } from '../src/types'
 
-vi.mock('../src/api', () => ({
+vi.mock('../src/api', () => ({ saveWcMirror: async () => ({ ok: true } as any), clearWcMirror: async () => ({ ok: true } as any),
   getDiagnose: vi.fn(() => Promise.resolve(null)),
   getPreview: vi.fn(() => Promise.resolve({
     analysis: { events: [], matches: [], node_index: {} },
@@ -224,8 +224,10 @@ describe('KlineChart shift+click accumulator (Task 18)', () => {
 
     handleShiftClick('tb16', 'tb', 'sub', view)
     expect(view.shiftSelectedEvents).toHaveLength(2)
+    // Task 9:getPairDiagnose 尾参新增 paramsOverride;SCAN_FILE 无 params_snapshot(legacy)→
+    // effectiveParamsOverride=null → ?? undefined → 显式 undefined 补位(exact-args 断言需要)
     expect(api.getPairDiagnose).toHaveBeenCalledWith(
-      'bottom_breakout_burst', 'AAPL', '2025-01-01', '2025-12-31', 'bo9', 'tb16')
+      'bottom_breakout_burst', 'AAPL', '2025-01-01', '2025-12-31', 'bo9', 'tb16', undefined)
 
     handleShiftClick('burst_1', 'burst', 'sub', view)
     expect(view.shiftSelectedEvents).toHaveLength(1)

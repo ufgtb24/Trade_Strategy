@@ -34,7 +34,7 @@ class Peak:
 
 @dataclass(frozen=True)
 class BOEvent(Event):
-    """单点突破事件。start_idx == end_idx == BO bar 索引。
+    """单点突破事件。start_idx == end_idx == BO bar 索引;confirm_idx = start_idx(点事件,该根即确认)。
 
     输出字段(where 可引用):
     - drought:           距上一根 BO 的 bar 数;序列首次 BO 为 None
@@ -72,6 +72,7 @@ class BOEvent(Event):
 class BurstEvent(Event):
     """一串 bo 聚合成的密度 burst。members 存完整 BOEvent 对象(非 id)。
     预算标量在 detect 期算一次,供 where W.attr 直读。
+    confirm_idx = end_idx:前缀物化,每个实例在其最后成员 bo(= end_idx)那根 emit 并确认。
 
     输出字段(where 可引用):
     - count:             簇内 bo 个数(= len(members))
@@ -194,6 +195,7 @@ class BurstDetector:
         return BurstEvent(
             event_id=span_id("burst", seg[0].start_idx, seg[-1].end_idx),
             start_idx=seg[0].start_idx, end_idx=seg[-1].end_idx,
+            confirm_idx=seg[-1].end_idx,   # 前缀物化:最后成员 bo 那根确认
             count=len(seg),
             distinct_pk=len(peaks),
             max_bar_vol_ratio=max_bar_vol_ratio,
@@ -351,6 +353,7 @@ class BODetector(BarwiseDetector):
             event_id=span_id(self.event_cls.class_id, i, i),
             start_idx=i,
             end_idx=i,
+            confirm_idx=i,   # 点事件:该根即确认
             drought=drought,
             pk_count=pk_count,
             broken_peak_ids=broken_peak_ids,

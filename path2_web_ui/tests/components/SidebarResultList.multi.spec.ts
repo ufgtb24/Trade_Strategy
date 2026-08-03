@@ -16,12 +16,12 @@ const file = {
           win_start: '2023-09-01', win_end: '2024-07-15', label_horizon: 20 },
   results: [
     { symbol: 'AAA', per_pattern: {
-      bo_only: { summary: { matches: 2 }, analysis: emptyAnalysis, max_forward_return: 0.34 },
-      bbb:     { summary: { matches: 1 }, analysis: emptyAnalysis, max_forward_return: 0.10 },
+      bo_only: { summary: { matches: 2 }, analysis: emptyAnalysis, max_forward_return: 0.34, min_forward_drawdown: -0.07 },
+      bbb:     { summary: { matches: 1 }, analysis: emptyAnalysis, max_forward_return: 0.10, min_forward_drawdown: -0.15 },
     }},
     { symbol: 'BBB', per_pattern: {
-      bo_only: { summary: { matches: 1 }, analysis: emptyAnalysis, max_forward_return: 0.50 },
-      bbb:     { summary: { matches: 0 }, analysis: emptyAnalysis, max_forward_return: null },
+      bo_only: { summary: { matches: 1 }, analysis: emptyAnalysis, max_forward_return: 0.50, min_forward_drawdown: null },
+      bbb:     { summary: { matches: 0 }, analysis: emptyAnalysis, max_forward_return: null, min_forward_drawdown: null },
     }},
   ],
 }
@@ -29,16 +29,16 @@ const file = {
 describe('SidebarResultList — pattern × field columns', () => {
   beforeEach(() => { setActivePinia(createPinia()); localStorage.clear() })
 
-  it('renders 2 columns per pattern (num + fr) with data-col-* attrs', () => {
+  it('renders 3 columns per pattern (num + fr + fd) with data-col-* attrs', () => {
     const v = useViewStore()
     v.loadScanFile(file as any)
     const w = mount(SidebarResultList)
     const ths = w.findAll('th[data-col-pid]')
     const keys = ths.map(th => `${th.attributes('data-col-pid')}_${th.attributes('data-col-field')}`)
-    expect(keys).toEqual(['bo_only_num', 'bo_only_fr', 'bbb_num', 'bbb_fr'])
+    expect(keys).toEqual(['bo_only_num', 'bo_only_fr', 'bo_only_fd', 'bbb_num', 'bbb_fr', 'bbb_fd'])
   })
 
-  it('cell num 显 0 when matches=0; cell fr 显 — when null', () => {
+  it('cell num 显 0 when matches=0; cell fr 显 — when null; cell fd 显 — when null', () => {
     const v = useViewStore()
     v.loadScanFile(file as any)
     const w = mount(SidebarResultList)
@@ -46,31 +46,39 @@ describe('SidebarResultList — pattern × field columns', () => {
     expect(bbbNum.text()).toBe('0')
     const bbbFr = w.find('td[data-cell-pid="bbb"][data-cell-field="fr"][data-symbol="BBB"]')
     expect(bbbFr.text()).toBe('—')
+    const bbbFd = w.find('td[data-cell-pid="bbb"][data-cell-field="fd"][data-symbol="BBB"]')
+    expect(bbbFd.text()).toBe('—')
   })
 
-  it('cell fr 格式化为 +5.2% / −1.3%', () => {
+  it('cell fr 格式化为 +34.0%; cell fd 格式化为 -7.0%(带符号百分比,复用同一 fmt)', () => {
     const v = useViewStore()
     v.loadScanFile(file as any)
     const w = mount(SidebarResultList)
     const aaaFr = w.find('td[data-cell-pid="bo_only"][data-cell-field="fr"][data-symbol="AAA"]')
     expect(aaaFr.text()).toBe('+34.0%')
+    const aaaFd = w.find('td[data-cell-pid="bo_only"][data-cell-field="fd"][data-symbol="AAA"]')
+    expect(aaaFd.text()).toBe('-7.0%')
   })
 
-  it('matched 类只在 num > 0 时加(num=0 无 matched;num>0 时 num 与 fr 双染)', () => {
+  it('matched 类只在 num > 0 时加(num=0 无 matched;num>0 时 num/fr/fd 三染)', () => {
     const v = useViewStore()
     v.loadScanFile(file as any)
     const w = mount(SidebarResultList)
     const bbbNumBBB = w.find('td[data-cell-pid="bbb"][data-cell-field="num"][data-symbol="BBB"]')
     const bbbFrBBB  = w.find('td[data-cell-pid="bbb"][data-cell-field="fr"][data-symbol="BBB"]')
+    const bbbFdBBB  = w.find('td[data-cell-pid="bbb"][data-cell-field="fd"][data-symbol="BBB"]')
     expect(bbbNumBBB.classes()).not.toContain('matched')
     expect(bbbFrBBB.classes()).not.toContain('matched')
+    expect(bbbFdBBB.classes()).not.toContain('matched')
     const aaaBoNum = w.find('td[data-cell-pid="bo_only"][data-cell-field="num"][data-symbol="AAA"]')
     const aaaBoFr  = w.find('td[data-cell-pid="bo_only"][data-cell-field="fr"][data-symbol="AAA"]')
+    const aaaBoFd  = w.find('td[data-cell-pid="bo_only"][data-cell-field="fd"][data-symbol="AAA"]')
     expect(aaaBoNum.classes()).toContain('matched')
     expect(aaaBoFr.classes()).toContain('matched')
+    expect(aaaBoFd.classes()).toContain('matched')
   })
 
-  it('togglePattern hides both num and fr columns of that pid', async () => {
+  it('togglePattern hides num/fr/fd 三列 of that pid', async () => {
     const v = useViewStore()
     v.loadScanFile(file as any)
     v.togglePattern('bbb')
@@ -81,14 +89,14 @@ describe('SidebarResultList — pattern × field columns', () => {
     expect(pids.has('bo_only')).toBe(true)
   })
 
-  it('toggleField hides all _num columns globally', async () => {
+  it('toggleField hides all _num columns globally(剩余 fr + fd)', async () => {
     const v = useViewStore()
     v.loadScanFile(file as any)
-    v.toggleField('num')                  // 现只剩 fr
+    v.toggleField('num')                  // 现剩 fr + fd
     const w = mount(SidebarResultList)
     const ths = w.findAll('th[data-col-pid]')
     for (const th of ths) {
-      expect(th.attributes('data-col-field')).toBe('fr')
+      expect(th.attributes('data-col-field')).not.toBe('num')
     }
   })
 
@@ -100,9 +108,9 @@ describe('SidebarResultList — pattern × field columns', () => {
     const symTh = w.find('th.sym')
     await symTh.trigger('contextmenu')
     expect(w.find('.field-menu').exists()).toBe(true)
-    // 菜单里两 checkbox
+    // 菜单里三个 checkbox(num/fr/fd 同权)
     const checks = w.findAll('.field-menu input[type="checkbox"]')
-    expect(checks.length).toBe(2)
+    expect(checks.length).toBe(3)
   })
 
   it('click checkbox in fields menu invokes toggleField', async () => {
@@ -196,13 +204,13 @@ describe('SidebarResultList — grouped header 两级结构', () => {
     })
   })
 
-  it('renders 2 sub-cell th (num+r{N}) per visible pattern with text "num" / "r<label_horizon>"', async () => {
+  it('renders 3 sub-cell th (num+r{N}+d{N}) per visible pattern with text "num" / "r<label_horizon>" / "d<label_horizon>"', async () => {
     const v = useViewStore()
     v.loadScanFile(file as any)
     const w = mount(SidebarResultList)
     await w.vm.$nextTick()
     const fieldTh = w.findAll('thead tr.hdr-field th.col')
-    expect(fieldTh.length).toBe(2 * v.visiblePatterns.size)
+    expect(fieldTh.length).toBe(3 * v.visiblePatterns.size)
     w.findAll('thead tr.hdr-field th.col-num').forEach(th => {
       expect(th.text()).toBe('num')
     })
@@ -210,6 +218,19 @@ describe('SidebarResultList — grouped header 两级结构', () => {
     w.findAll('thead tr.hdr-field th.col-fr').forEach(th => {
       expect(th.text()).toBe(expectedFrText)
     })
+    const expectedFdText = `d${file.scan.label_horizon}`
+    w.findAll('thead tr.hdr-field th.col-fd').forEach(th => {
+      expect(th.text()).toBe(expectedFdText)
+    })
+  })
+
+  it('fd 表头点击触发 setSort(${pid}_fd) · 与 num/fr 同款排序交互', async () => {
+    const v = useViewStore()
+    v.loadScanFile(file as any)
+    const w = mount(SidebarResultList)
+    const fdTh = w.find('thead tr.hdr-field th.col-fd[data-col-pid="bo_only"]')
+    await fdTh.trigger('click')
+    expect(v.sortByPid).toBe('bo_only_fd')
   })
 
   it('symbol th has rowspan=2 (corner cell)', async () => {

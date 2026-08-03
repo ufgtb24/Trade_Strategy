@@ -3,9 +3,9 @@
 用 ast 静态解析,不运行 detector,不依赖 fixture。
 
 契约:
-- throwback.py 里必有且只有 5 处 debug_break call(总数守恒)
+- throwback.py 里必有且只有 6 处 debug_break call(总数守恒)
 - 每处必须传 anchor_kind kwarg,且必须是 str literal(不允许变量 / f-string / 表达式)
-- 5 处 anchor_kind 字面量分布 Counter == {'gate':1, 'trough':1, 'end':2, 'entry':1}
+- 6 处 anchor_kind 字面量分布 Counter == {'gate':1, 'confirm':1, 'end':3, 'entry':1}
 
 不依赖精确 lineno · 抗 throwback.py 上下加行漂移。
 """
@@ -15,7 +15,7 @@ from collections import Counter
 
 
 THROWBACK_PATH = pathlib.Path(__file__).resolve().parents[3] / "path2" / "atoms" / "throwback.py"
-EXPECTED_ANCHOR_KIND_COUNTER = Counter({"gate": 1, "trough": 1, "end": 2, "entry": 1})
+EXPECTED_ANCHOR_KIND_COUNTER = Counter({"gate": 1, "confirm": 1, "end": 3, "entry": 1})
 
 
 def _collect_debug_break_calls():
@@ -26,10 +26,10 @@ def _collect_debug_break_calls():
             and getattr(n.func, "id", None) == "debug_break"]
 
 
-def test_throwback_has_exactly_five_debug_break_calls():
+def test_throwback_has_exactly_six_debug_break_calls():
     calls = _collect_debug_break_calls()
-    assert len(calls) == 5, (
-        f"expected 5 debug_break calls in throwback.py · got {len(calls)}"
+    assert len(calls) == 6, (
+        f"expected 6 debug_break calls in throwback.py · got {len(calls)}"
         f" at lines {[c.lineno for c in calls]}"
     )
 
@@ -64,11 +64,11 @@ def test_throwback_anchor_kind_distribution_matches_baseline():
     )
 
 
-EXPECTED_CLASS_ID_COUNTER = Counter({"tb": 5})   # 5 处 tb 埋点 · 全部 class_id='tb'
+EXPECTED_CLASS_ID_COUNTER = Counter({"tb": 6})   # 6 处 tb 埋点 · 全部 class_id='tb'
 EXPECTED_JOINT_COUNTER = Counter({
     ("gate",   "tb"): 1,
-    ("trough", "tb"): 1,
-    ("end",    "tb"): 2,
+    ("confirm", "tb"): 1,
+    ("end",    "tb"): 3,
     ("entry",  "tb"): 1,
 })
 

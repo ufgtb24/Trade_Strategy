@@ -1,5 +1,5 @@
-"""NodeSpec / MatchContext 构造与默认值。"""
-from path2.dag.nodes import NodeSpec, MatchContext
+"""NodeSpec 构造与默认值。"""
+from path2.dag.nodes import NodeSpec
 
 
 class _FakeDetector:
@@ -17,11 +17,7 @@ def test_nodespec_defaults():
 
 def test_nodespec_with_where_and_consumes():
     d = _FakeDetector()
-    w = ("c1", lambda e, ctx: True)
+    w = ("c1", lambda e: True)
     n = NodeSpec("tb", d, where=(w,), consumes_stream="bo")
     assert n.where == (w,)
     assert n.consumes_stream == "bo"
-
-def test_match_context_holds_df_params_bound():
-    ctx = MatchContext(df="DF", params="P", bound={"a": 1})
-    assert ctx.df == "DF" and ctx.params == "P" and ctx.bound == {"a": 1}

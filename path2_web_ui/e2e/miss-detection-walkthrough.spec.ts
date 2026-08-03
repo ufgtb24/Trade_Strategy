@@ -25,7 +25,7 @@ import { baseURL } from './ports'
 // (不绕过交互层、不直接调 store action)。
 //
 // 前提:后端 + 前端 dev server 在线(playwright.config.ts 的 webServer 自动启动前端;
-//       后端须外部启动 uv run python scripts/run_path2_web.py)。
+//       后端须外部启动 uv run python scripts/path2/run_path2_web.py)。
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..')
 
@@ -262,7 +262,7 @@ test('入口 D · 反向 shift+click(tb → burst)→ auto swap 提示 + 撤回�
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 入口 E · 命令行 workflow(scripts/scan-top-miss.py)→ markdown 榜含 DGNX
+// 入口 E · 命令行 workflow(scripts/path2/scan-top-miss.py)→ markdown 榜含 DGNX
 // 真实 6048 支全宇宙跑一次要 ~25 分钟(已手工验证过、DGNX 在 --start=2025-07-15
 // --end=2025-09-01 --min-pct=25 下排第 5,+713.8%),对 e2e 套件太慢。scan-top-miss.py
 // 自带 --pkl-dir override("供测试/临时子集扫描用",脚本 docstring 原文)——e2e 用它
@@ -280,7 +280,7 @@ test('入口 E · scan-top-miss workflow → markdown 榜含 DGNX', async () => 
   const outPath = join(outDir, 'top_miss.md')
 
   execFileSync('uv', [
-    'run', 'python', 'scripts/scan-top-miss.py',
+    'run', 'python', 'scripts/path2/scan-top-miss.py',
     '--start=2025-07-15', '--end=2025-09-01', '--min-pct=25', '--top-k=20',
     `--pkl-dir=${subsetDir}`, `--out=${outPath}`,
   ], { cwd: REPO_ROOT, timeout: 60_000 })

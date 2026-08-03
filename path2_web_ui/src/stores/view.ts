@@ -66,7 +66,7 @@ import { computed, ref, shallowRef, watch } from 'vue'
 import type {
   MultiScanResultFile, StockResult, PerPatternResult,
   MatchDict, EventDict, Tier, Diagnostics, Level, SerializedPattern, Analysis, ScanMeta,
-  TimeScopeResponse, PairScopeResponse,
+  TimeScopeResponse, PairScopeResponse, WorkingCopySlot,
 } from '../types'
 import { deriveNodeColors } from '../render/colors'
 import {
@@ -74,7 +74,7 @@ import {
   qualifiedIdsOf, matchedIds as matchedIdsOf,
   bandKeyOf, eventTierOf, windowOf, nodeOfEventByBand,
 } from '../render/visible'
-import { getDiagnose, getPreview, getTimeDiagnose, getPairDiagnose, type PreviewResp } from '../api'
+import { getDiagnose, getPreview, getTimeDiagnose, getPairDiagnose, saveWcMirror, clearWcMirror, type PreviewResp } from '../api'
 import { useConfigStore } from './config'
 
 // shift+click 累积器条目(入口 D · KlineChart.ts::handleShiftClick 消费/写入)。
@@ -85,25 +85,31 @@ export type Selected =
   | { kind: 'node'; nodeId: string }
   | null
 
-export type UnionCell = { pid: string; num: number | null; fr: number | null; matched: boolean }
+export type UnionCell = { pid: string; num: number | null; fr: number | null; fd: number | null; matched: boolean }
 export type UnionRow  = { symbol: string; cells: UnionCell[] }
+export type PreviewRowCell = { pid: string; num: number | null; fr: number | null; fd: number | null; filled: boolean }
+export type PreviewRow     = { symbol: string; cells: PreviewRowCell[] }
 
 // sortByPid 哨兵值:按 symbol 字典序排序(非 pid)。
 // '__symbol__' 双下划线前缀不会与用户 pattern_id 撞(pid 由 dag_spec 注册的人类可读字符串)。
 export const SYMBOL_SORT_KEY = '__symbol__'
 
 // 列可见性(field 轴)localStorage 持久化:key 与 value 格式见 view store 说明。
+// fd(forward_drawdown)与 fr(forward_return)同层同权;默认可见。
+// 老 LS 条目(无 fd)不会被自动补 fd —— 用户可右键字段菜单勾选;新设备/新 LS 默认含 fd。
 const LS_KEY_VISIBLE_FIELDS = 'path2_web_ui.visibleFields'
-function loadFieldsFromLS(): Set<'num' | 'fr'> {
+type FieldKey = 'num' | 'fr' | 'fd'
+const FIELD_KEYS: readonly FieldKey[] = ['num', 'fr', 'fd']
+function loadFieldsFromLS(): Set<FieldKey> {
   try {
     const raw = localStorage.getItem(LS_KEY_VISIBLE_FIELDS)
-    if (raw == null) return new Set(['num', 'fr'])
+    if (raw == null) return new Set<FieldKey>(FIELD_KEYS)
     const arr = JSON.parse(raw) as unknown
-    if (!Array.isArray(arr)) return new Set(['num', 'fr'])
-    return new Set(arr.filter(x => x === 'num' || x === 'fr') as ('num'|'fr')[])
-  } catch { return new Set(['num', 'fr']) }
+    if (!Array.isArray(arr)) return new Set<FieldKey>(FIELD_KEYS)
+    return new Set(arr.filter((x): x is FieldKey => (FIELD_KEYS as readonly string[]).includes(x)))
+  } catch { return new Set<FieldKey>(FIELD_KEYS) }
 }
-function saveFieldsToLS(s: Set<'num' | 'fr'>): void {
+function saveFieldsToLS(s: Set<FieldKey>): void {
   try { localStorage.setItem(LS_KEY_VISIBLE_FIELDS, JSON.stringify([...s])) }
   catch { /* silent */ }
 }
@@ -126,12 +132,13 @@ export const useViewStore = defineStore('view', () => {
   // shallowRef:scanFile 全程整体替换(loadScanFile/clearScanFile),无内部 mutate,
   // 避免对 4000+ stocks×{events,matches,clauses} 树建深 Proxy 拖慢首屏与排序
   const scanFile = shallowRef<MultiScanResultFile | null>(null)
+  const currentScanName = ref<string | null>(null)
   const symbol = ref<string | null>(null)
   const activePatternId = ref<string | null>(null)
   const sortByPid = ref<string | null>(null)
   const sortDesc = ref(true)
   const visiblePatterns = ref<Set<string>>(new Set())
-  const visibleFields = ref<Set<'num' | 'fr'>>(loadFieldsFromLS())
+  const visibleFields = ref<Set<FieldKey>>(loadFieldsFromLS())
   const symbolQuery = ref<string>('')
 
   const nodeVisible = ref<Record<string, boolean>>({})
@@ -172,7 +179,134 @@ export const useViewStore = defineStore('view', () => {
   const currentTimeEventClass = ref<string>('')
   const pairScopeResponse = ref<PairScopeResponse | null>(null)
 
-  const previewEnabled = ref(false)
+  // ── Working Copy(2026-07-20 params-consistency,spec=docs/research/2026-07-20_params-profiles-dev-modes)──
+  // 浏览态:全 UI 锚 scan file snapshot;探索态:锚 WC dict。localStorage 休眠恢复(不自动激活)。
+  const workingCopy = ref<Record<string, WorkingCopySlot | undefined>>({})
+  const dormantDrafts = ref<{ pid: string; savedAt: number }[]>([])
+
+  // Task 12 · 全局 toast(scan 完成自动清 WC 等一次性提示)· 3.5s 自清,连续调用互相取消延长展示。
+  const toastMsg = ref<string | null>(null)
+  let _toastTimer: ReturnType<typeof setTimeout> | null = null
+  function showToast(msg: string): void {
+    toastMsg.value = msg
+    if (_toastTimer) clearTimeout(_toastTimer)
+    _toastTimer = setTimeout(() => { toastMsg.value = null }, 3500)
+  }
+
+  function _wcKey(pid: string): string {
+    return `p2wc:${scanFile.value?.scan.scan_ts ?? ''}:${pid}`
+  }
+  function snapshotOf(pid: string): Record<string, any> | null {
+    return (scanFile.value?.per_pattern[pid] as any)?.params_snapshot ?? null
+  }
+  const isExploring = computed<boolean>(() => {
+    const pid = activePatternId.value
+    return !!(pid && workingCopy.value[pid]?.enabled)
+  })
+  // 三环节一致性核心:浏览态 diagnose/preview 锚 snapshot,探索态锚 WC;legacy(无 snapshot)=null → 后端 fallback 当前 yaml
+  const effectiveParamsOverride = computed<Record<string, any> | null>(() => {
+    const pid = activePatternId.value
+    if (!pid) return null
+    const wc = workingCopy.value[pid]
+    if (wc?.enabled) return wc.currentDict
+    return snapshotOf(pid)
+  })
+  // WC 镜像落盘(探索态诊断用):修改 WC 的操作调本函数,把当前 WC 镜像到 outputs/path2_web/wc.json。
+  // localStorage 行为不变;wc.json 供终端诊断探索态读 WC。fire-and-forget,失败 toast 不阻塞。
+  function mirrorWc(pid: string): void {
+    const wc = workingCopy.value[pid]
+    const sc = scanFile.value?.scan
+    if (!wc || !sc) return
+    void saveWcMirror(pid, sc.scan_ts, sc.win_start, sc.win_end, sc.start_date, sc.end_date, wc.currentDict, wc.enabled)
+      .catch(e => showToast(`WC 镜像落盘失败: ${e?.message ?? e}`))
+  }
+  function clearWc(pid: string): void {
+    void clearWcMirror(pid).catch(e => showToast(`WC 镜像清理失败: ${e?.message ?? e}`))
+  }
+  function forkWorkingCopy(pid: string): void {
+    const snap = snapshotOf(pid)
+    if (!snap || workingCopy.value[pid]) {
+      if (workingCopy.value[pid]) { workingCopy.value[pid]!.enabled = true; mirrorWc(pid) }
+      return
+    }
+    workingCopy.value = { ...workingCopy.value,
+      [pid]: { enabled: true, baseline: JSON.parse(JSON.stringify(snap)),
+               currentDict: JSON.parse(JSON.stringify(snap)) } }
+    mirrorWc(pid)
+  }
+  function ensureWorkingCopy(pid: string, baseline: Record<string, any>): void {
+    // Write Copy 入口:只保证 WC 存在(内容轴),不碰 enabled——视图轴唯一写者是 setWorkingCopyEnabled(chip)。
+    // baseline 由调用方给定(legacy scan 无 snapshot 时用当前 yaml 内容),不依赖 snapshotOf。
+    if (workingCopy.value[pid]) return
+    workingCopy.value = { ...workingCopy.value,
+      [pid]: { enabled: false, baseline: JSON.parse(JSON.stringify(baseline)),
+               currentDict: JSON.parse(JSON.stringify(baseline)) } }
+    mirrorWc(pid)
+  }
+  function setWorkingCopyEnabled(pid: string, v: boolean): void {
+    const wc = workingCopy.value[pid]
+    if (!wc) { if (v) forkWorkingCopy(pid); return }
+    wc.enabled = v
+    if (v) void runPreview()
+    else { preview.value = null; previewError.value = null }
+    mirrorWc(pid)
+  }
+  function updateWorkingCopy(pid: string, dict: Record<string, any>): void {
+    const wc = workingCopy.value[pid]
+    if (!wc) return
+    wc.currentDict = dict
+    localStorage.setItem(_wcKey(pid), JSON.stringify(
+      { dict, baseline: wc.baseline, savedAt: Date.now() }))
+    // F-C:localStorage 已被这次写入覆盖,该 pid 若曾是"休眠草稿"(上次会话遗留、未被本次覆写前的旧内容)
+    // 现已不成立——banner 不该再对已被覆盖的 pid 显示「恢复」。restoreDormant 走独立路径(不经本函数)
+    // 已自行剔除,这里补上 updateWorkingCopy 直接覆写的那条路径,两处各自剔除、互不冲突。
+    dormantDrafts.value = dormantDrafts.value.filter(d => d.pid !== pid)
+    if (wc.enabled) void runPreview()
+    mirrorWc(pid)
+  }
+  function resetWorkingCopy(pid: string): void {
+    const wc = workingCopy.value[pid]
+    if (!wc) return
+    updateWorkingCopy(pid, JSON.parse(JSON.stringify(wc.baseline)))
+  }
+  function discardWorkingCopy(pid: string): void {
+    localStorage.removeItem(_wcKey(pid))
+    clearWc(pid)
+    const { [pid]: _, ...rest } = workingCopy.value
+    workingCopy.value = rest
+    dormantDrafts.value = dormantDrafts.value.filter(d => d.pid !== pid)
+    preview.value = null
+  }
+  function restoreDormant(pid: string): void {
+    // 决策2:恢复=只装回内容轴(enabled=false,chip 灰);看不看由用户点 chip 决定,灰态无 preview。
+    const raw = localStorage.getItem(_wcKey(pid))
+    if (!raw) return
+    try {
+      const { dict, baseline } = JSON.parse(raw)
+      workingCopy.value = { ...workingCopy.value,
+        [pid]: { enabled: false, baseline, currentDict: dict } }
+      dormantDrafts.value = dormantDrafts.value.filter(d => d.pid !== pid)
+      mirrorWc(pid)
+    } catch { localStorage.removeItem(_wcKey(pid)) }
+  }
+  function wcDirty(pid: string): boolean {
+    const wc = workingCopy.value[pid]
+    return !!wc && JSON.stringify(wc.currentDict) !== JSON.stringify(wc.baseline)
+  }
+  function _scanDormantDrafts(): void {
+    dormantDrafts.value = []
+    const ts = scanFile.value?.scan.scan_ts
+    if (!ts) return
+    for (const pid of scanFile.value!.pattern_ids) {
+      const raw = localStorage.getItem(`p2wc:${ts}:${pid}`)
+      if (!raw) continue
+      try { dormantDrafts.value.push({ pid, savedAt: JSON.parse(raw).savedAt ?? 0 }) }
+      catch { /* 脏数据忽略 */ }
+    }
+  }
+
+  // previewEnabled 兼容层:保留原名(避免大范围改消费点),改为 isExploring 的 computed 别名。
+  const previewEnabled = computed(() => isExploring.value)
   const preview = shallowRef<{
     symbol: string
     analysis: PreviewResp['analysis']
@@ -215,6 +349,32 @@ export const useViewStore = defineStore('view', () => {
     return scanFile.value?.scan ?? null
   })
 
+  // 探索态列表对照行(dev ↳(UI) parity):从单股 preview 派生出与 unionRows 单行同构的对照行。
+  // 只填 active pattern(preview 只现算了它),其余 pattern 留 filled:false(渲染层显空白,非 —)。
+  const previewListRow = computed<PreviewRow | null>(() => {
+    if (!_previewHits.value || previewLoading.value) return null
+    const pv = preview.value!
+    const pid = activePatternId.value!
+    const ms = pv.analysis.matches
+    const num = ms.length
+    // fr 口径须与冻结行 unionRows 消费的 max_forward_return 一致(skip null,取 max);
+    // 此处客户端重算是那份后端语义的对手件,后端若改 max 定义,这里需同步。
+    // fd 是 fr 的对偶:skip null 取 min(最差下行);与后端 min_forward_drawdown 同口径。
+    let fr: number | null = null
+    let fd: number | null = null
+    for (const m of ms) {
+      const r = m.forward_return
+      if (r != null && (fr === null || r > fr)) fr = r
+      const d = m.forward_drawdown
+      if (d != null && (fd === null || d < fd)) fd = d
+    }
+    const cells: PreviewRowCell[] = patternIds.value.map(p =>
+      p === pid
+        ? { pid: p, num, fr, fd, filled: true }
+        : { pid: p, num: null, fr: null, fd: null, filled: false })
+    return { symbol: pv.symbol, cells }
+  })
+
   // 列表 union / sort
   const unionRows = computed<UnionRow[]>(() => {
     const f = scanFile.value
@@ -227,10 +387,27 @@ export const useViewStore = defineStore('view', () => {
           pid,
           num: pp ? (pp.summary?.matches ?? 0) : null,
           fr:  pp?.max_forward_return ?? null,
+          fd:  pp?.min_forward_drawdown ?? null,
           matched: (pp?.summary?.matches ?? 0) > 0,
         } as UnionCell
       }),
     }))
+  })
+
+  // 每 pattern 的命中股票数(distinct symbol,非 match 次数)。
+  // 源头是 unionRows —— 全量并集、未经 symbolQuery / visiblePatterns 过滤,
+  // 因此「固定全量、不随筛选联动」由结构保证,无需额外开关。
+  const patternHitCounts = computed<Record<string, number>>(() => {
+    const f = scanFile.value
+    if (!f) return {}
+    const counts: Record<string, number> = {}
+    for (const pid of f.pattern_ids) counts[pid] = 0   // 零命中也要有键,显示 0 而非空
+    for (const row of unionRows.value) {
+      for (const cell of row.cells) {
+        if (cell.matched) counts[cell.pid] += 1
+      }
+    }
+    return counts
   })
 
   const sortedRows = computed<UnionRow[]>(() => {
@@ -241,10 +418,10 @@ export const useViewStore = defineStore('view', () => {
     if (pid === SYMBOL_SORT_KEY) {
       return rows.slice().sort((a, b) => a.symbol.localeCompare(b.symbol) * dir)
     }
-    const m = pid.match(/^(.+)_(num|fr)$/)
+    const m = pid.match(/^(.+)_(num|fr|fd)$/)
     if (!m) return rows
     const targetPid = m[1]
-    const targetField = m[2] as 'num' | 'fr'
+    const targetField = m[2] as 'num' | 'fr' | 'fd'
     // 一次 O(N·P) 预聚 key,后续比较器零 lookup(干掉 O(N log N · P) 的 .find())
     const N = rows.length
     const keys = new Float64Array(N)
@@ -288,6 +465,7 @@ export const useViewStore = defineStore('view', () => {
   // ── actions ──────────────────────────────────────────────────────
   function loadScanFile(f: MultiScanResultFile) {
     scanFile.value = f
+    currentScanName.value = f?.scan?.name ?? f?.scan?.scan_ts ?? null
     nodeVisible.value = {}
     clearFocus()
     manualExpandedNodes.value = new Set()   // 切数据源清空展开集
@@ -295,7 +473,6 @@ export const useViewStore = defineStore('view', () => {
     sortByPid.value = null
     sortDesc.value = true
     symbol.value = f.results[0]?.symbol ?? null
-    previewEnabled.value = false
     preview.value = null
     previewError.value = null
     // active 默认值:优先 config.last_selected_pattern 若在 pattern_ids 中
@@ -308,9 +485,13 @@ export const useViewStore = defineStore('view', () => {
     clearDetailCard()
     symbolQuery.value = ''
     initVisiblePatterns(f.pattern_ids)
+    // Task 9 · Working Copy:切数据源清空(不跨 scan 复用) + 扫描本 scan 的休眠草稿(不自动激活)
+    workingCopy.value = {}
+    _scanDormantDrafts()
   }
   function clearScanFile() {
     scanFile.value = null
+    currentScanName.value = null
     symbol.value = null
     activePatternId.value = null
     sortByPid.value = null
@@ -318,7 +499,6 @@ export const useViewStore = defineStore('view', () => {
     clearFocus()
     manualExpandedNodes.value = new Set()   // 切数据源清空展开集
     hoveredEventId.value = null
-    previewEnabled.value = false
     preview.value = null
     previewError.value = null
     candidateMatchIds.value = new Set()
@@ -326,6 +506,12 @@ export const useViewStore = defineStore('view', () => {
     visiblePatterns.value = new Set()
     symbolQuery.value = ''
     clearDetailCard()
+    // Task 9 · Working Copy
+    workingCopy.value = {}
+    dormantDrafts.value = []
+  }
+  function setCurrentScanName(name: string | null) {
+    currentScanName.value = name
   }
   function selectSymbol(s: string) {
     // 锚-active 解耦:只切股、不动 activePatternId
@@ -376,21 +562,21 @@ export const useViewStore = defineStore('view', () => {
     for (const p of patternIds.value) if (!visiblePatterns.value.has(p)) s.add(p)
     visiblePatterns.value = s
   }
-  function toggleField(f: 'num' | 'fr') {
+  function toggleField(f: FieldKey) {
     const s = new Set(visibleFields.value)
     if (s.has(f)) s.delete(f); else s.add(f)
     visibleFields.value = s
     saveFieldsToLS(visibleFields.value)
   }
-  function isColumnVisible(pid: string, field: 'num' | 'fr'): boolean {
+  function isColumnVisible(pid: string, field: FieldKey): boolean {
     return visiblePatterns.value.has(pid) && visibleFields.value.has(field)
   }
   const effectiveSortKey = computed<string | null>(() => {
     const k = sortByPid.value
     if (k == null || k === SYMBOL_SORT_KEY) return k
-    const m = k.match(/^(.+)_(num|fr)$/)
+    const m = k.match(/^(.+)_(num|fr|fd)$/)
     if (!m) return SYMBOL_SORT_KEY
-    return isColumnVisible(m[1], m[2] as 'num' | 'fr') ? k : SYMBOL_SORT_KEY
+    return isColumnVisible(m[1], m[2] as FieldKey) ? k : SYMBOL_SORT_KEY
   })
   function toggleNode(nodeId: string) {
     nodeVisible.value = { ...nodeVisible.value, [nodeId]: nodeVisible.value[nodeId] === false }
@@ -512,7 +698,8 @@ export const useViewStore = defineStore('view', () => {
     try {
       timeScopeResponse.value = await getTimeDiagnose(
         activePatternId.value, symbol.value, w.start, w.end, startBar, endBar,
-        eventClass, undefined, 'gate')   // ★ v3 · 入口 A 硬编码 anchorKind='gate'
+        eventClass, undefined, 'gate',   // ★ v3 · 入口 A 硬编码 anchorKind='gate'
+        effectiveParamsOverride.value ?? undefined)   // Task 9 · 三环节一致性:探索态透传 WC
       activeDetailCard.value = 'time'
     } catch { timeScopeResponse.value = null }
   }
@@ -521,7 +708,8 @@ export const useViewStore = defineStore('view', () => {
     const w = windowOf((effectiveScan.value ?? scanFile.value.scan) as any)
     try {
       pairScopeResponse.value = await getPairDiagnose(
-        activePatternId.value, symbol.value, w.start, w.end, srcEventId, dstEventId)
+        activePatternId.value, symbol.value, w.start, w.end, srcEventId, dstEventId,
+        effectiveParamsOverride.value ?? undefined)   // Task 9 · 三环节一致性:探索态透传 WC
       activeDetailCard.value = 'pair'
     } catch { pairScopeResponse.value = null }
   }
@@ -555,6 +743,7 @@ export const useViewStore = defineStore('view', () => {
         activePatternId.value, symbol.value, w.start, w.end,
         anchor.bar, anchor.bar, event.class_id, controller.signal,
         anchor.key,                                       // ★ v3 · anchor.key 直接透传为 anchorKind
+        effectiveParamsOverride.value ?? undefined,        // Task 9 · 三环节一致性:探索态透传 WC
       )
     } catch (e: any) {
       // AbortError 是正常路径(用户切事件/取消),不清 debugTarget 让新请求覆盖
@@ -578,14 +767,15 @@ export const useViewStore = defineStore('view', () => {
     debugPending.value = false
     debugError.value = null
   }
+  // Task 9 · setPreviewEnabled 兼容层:委托给 setWorkingCopyEnabled(有 pid 守卫)。
   async function setPreviewEnabled(v: boolean): Promise<void> {
-    previewEnabled.value = v
-    if (v) await runPreview()
-    else { preview.value = null; previewError.value = null }
+    if (activePatternId.value) setWorkingCopyEnabled(activePatternId.value, v)
   }
 
   async function runPreview(): Promise<void> {
     if (!scanFile.value || !symbol.value || !activePatternId.value) return
+    // Task 9 · 探索态才跑 preview(浏览态锚 snapshot,无需临时计算)
+    if (!workingCopy.value[activePatternId.value!]?.enabled) return
     previewLoading.value = true
     previewError.value = null
     const reqSymbol = symbol.value
@@ -594,8 +784,10 @@ export const useViewStore = defineStore('view', () => {
     try {
       const baseScan = scanFile.value.scan
       const labelHorizon = baseScan.label_horizon ?? 20
+      // Task 9 · 恒传 WC(探索态才可能非 undefined;runPreview 已被上面守卫限定只在探索态执行)
+      const ov = workingCopy.value[reqPid]?.enabled ? workingCopy.value[reqPid]!.currentDict : undefined
       const resp = await getPreview(reqPid, reqSymbol,
-                                     baseScan.start_date, baseScan.end_date, labelHorizon)
+                                     baseScan.start_date, baseScan.end_date, labelHorizon, ov)
       if (symbol.value !== reqSymbol || activePatternId.value !== reqPid
           || previewEnabled.value !== reqEnabled) return
       preview.value = { symbol: reqSymbol, analysis: resp.analysis,
@@ -626,7 +818,8 @@ export const useViewStore = defineStore('view', () => {
     try {
       const eff = effectiveScan.value ?? scanFile.value.scan
       const w = windowOf(eff as any)
-      const d = await getDiagnose(reqPid, symbol.value, w.start, w.end)
+      const d = await getDiagnose(reqPid, symbol.value, w.start, w.end,
+                                   effectiveParamsOverride.value ?? undefined)   // Task 9 · 三环节一致性:探索态透传 WC
       if (symbol.value !== reqSymbol || activePatternId.value !== reqPid) return
       diag.value = d
     } catch { if (symbol.value === reqSymbol && activePatternId.value === reqPid) diag.value = null }
@@ -712,12 +905,18 @@ export const useViewStore = defineStore('view', () => {
     shiftSelectedEvents, activeDetailCard, timeScopeResponse, pairScopeResponse,
     shiftPairPending, shiftSelectedEventIds,
     previewEnabled, preview, previewLoading, previewError,
+    // Task 9 · Working Copy 探索态状态机(Task 10-13 消费)
+    workingCopy, dormantDrafts, snapshotOf, effectiveParamsOverride, isExploring,
+    forkWorkingCopy, ensureWorkingCopy, setWorkingCopyEnabled, updateWorkingCopy, resetWorkingCopy,
+    discardWorkingCopy, restoreDormant, wcDirty,
+    // Task 12 · 全局 toast
+    toastMsg, showToast,
     patternIds, currentPerStock, pattern, currentAnalysis,
     visiblePatterns, visibleFields, symbolQuery,
     effectivePattern, effectiveAnalysis, effectiveScan,
-    unionRows, sortedRows, filteredSortedRows,
+    unionRows, sortedRows, filteredSortedRows, previewListRow, patternHitCounts,
     nodeColors, selectedMatchId, selectedMatch, tagMap, isolated, matchedIds, qualifiedIds,
-    loadScanFile, clearScanFile, selectSymbol, setActivePattern, setSort,
+    loadScanFile, clearScanFile, setCurrentScanName, currentScanName, selectSymbol, setActivePattern, setSort,
     toggleNode, toggleExpandedNode,
     focusMatch, focusEvent, clearFocus,
     setLevel, hoverEvent,

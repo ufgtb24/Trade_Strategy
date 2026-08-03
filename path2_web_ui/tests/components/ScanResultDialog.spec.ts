@@ -4,12 +4,12 @@ import { setActivePinia, createPinia } from 'pinia'
 import ScanResultDialog from '../../src/components/ScanResultDialog.vue'
 import { useViewStore } from '../../src/stores/view'
 
-vi.mock('../../src/api', () => ({
+vi.mock('../../src/api', () => ({ saveWcMirror: async () => ({ ok: true } as any), clearWcMirror: async () => ({ ok: true } as any),
   listScans: vi.fn(() => Promise.resolve([
-    {scan_ts: '20260603T120000', hits: 5, total: 200, size: 8192, partial: false},
-    {scan_ts: '20260601T100000', hits: 0, total: 200, size: 4096, partial: false},
+    {name: '20260603T120000', scan_ts: '20260603T120000', hits: 5, total: 200, size: 8192, partial: false},
+    {name: '20260601T100000', scan_ts: '20260601T100000', hits: 0, total: 200, size: 4096, partial: false},
   ])),
-  loadScan: vi.fn(() => Promise.resolve({results: [], pattern_ids: [], scan: {scan_ts: '20260603T120000'}, pattern_spec: {topology: {nodes: []}}} as any)),
+  loadScan: vi.fn(() => Promise.resolve({results: [], pattern_ids: [], scan: {scan_ts: '20260603T120000', name: '20260603T120000'}, pattern_spec: {topology: {nodes: []}}} as any)),
   deleteScan: vi.fn(() => Promise.resolve({ok: true})),
 }))
 
@@ -59,11 +59,40 @@ describe('ScanResultDialog', () => {
     w.unmount()
   })
 
+  it('confirm 层内回车即删(Delete 为默认动作)', async () => {
+    const { deleteScan } = await import('../../src/api')
+    const w = mount(ScanResultDialog, { attachTo: document.body })
+    await flushPromises()
+    await w.findAll('.file-list tbody tr')[0].trigger('click')
+    await w.find('.card').trigger('keydown', { key: 'Delete' })   // 打开确认层
+    await flushPromises()
+    expect(w.find('.confirm-card').exists()).toBe(true)
+    await w.find('.card').trigger('keydown', { key: 'Enter' })    // 回车 → 直接删
+    await flushPromises()
+    expect(vi.mocked(deleteScan)).toHaveBeenCalledWith('20260603T120000')
+    expect(w.find('.confirm-card').exists()).toBe(false)          // 确认层收起
+    w.unmount()
+  })
+
+  it('confirm 层内 Esc 只收起确认(等同 Keep),不关整个对话框', async () => {
+    const w = mount(ScanResultDialog, { attachTo: document.body })
+    await flushPromises()
+    await w.findAll('.file-list tbody tr')[0].trigger('click')
+    await w.find('.card').trigger('keydown', { key: 'Delete' })
+    await flushPromises()
+    expect(w.find('.confirm-card').exists()).toBe(true)
+    await w.find('.card').trigger('keydown', { key: 'Escape' })
+    await flushPromises()
+    expect(w.find('.confirm-card').exists()).toBe(false)          // 确认层收起
+    expect(w.emitted('close')).toBeFalsy()                        // 对话框未关闭
+    w.unmount()
+  })
+
   it('显示「未完成」标当某行 partial=true', async () => {
     const { listScans } = await import('../../src/api')
     vi.mocked(listScans).mockResolvedValueOnce([
-      { scan_ts: '20260619T100000', hits: 3, total: 5, size: 200, partial: true },
-      { scan_ts: '20260619T100100', hits: 9, total: 9, size: 500, partial: false },
+      { name: '20260619T100000', scan_ts: '20260619T100000', hits: 3, total: 5, size: 200, partial: true },
+      { name: '20260619T100100', scan_ts: '20260619T100100', hits: 9, total: 9, size: 500, partial: false },
     ] as any)
     const w = mount(ScanResultDialog, { attachTo: document.body })
     await flushPromises()
@@ -75,7 +104,7 @@ describe('ScanResultDialog', () => {
 
   it('confirm with current loaded ts calls view.clearScanFile', async () => {
     const v = useViewStore()
-    v.loadScanFile({results: [], pattern_ids: [], scan: {scan_ts: '20260603T120000'}, pattern_spec: {topology: {nodes: []}}} as any)
+    v.loadScanFile({results: [], pattern_ids: [], scan: {scan_ts: '20260603T120000', name: '20260603T120000'}, pattern_spec: {topology: {nodes: []}}} as any)
     const w = mount(ScanResultDialog, { attachTo: document.body })
     await flushPromises()
     await w.findAll('.file-list tbody tr')[0].trigger('click')   // 选当前已加载

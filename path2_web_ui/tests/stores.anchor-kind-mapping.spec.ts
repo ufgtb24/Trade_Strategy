@@ -20,6 +20,9 @@
  * 已按 stores.triggerEventDebug.spec.ts 的既有修法对齐:previewEnabled=true +
  * pattern_spec.pattern_id 对齐 activePatternId + preview.scan 补 win_start/win_end。
  *
+ * 【Task 9 修正】previewEnabled 由 ref 改 computed(isExploring 别名),直接赋值静默 no-op;
+ * 改为直接注入 workingCopy 槽位(enabled=true),同 stores.triggerEventDebug.spec.ts 的修法。
+ *
  * 【类型修正 · 同上一处】brief 原版 `getTimeDiagnoseSpy: ReturnType<typeof vi.spyOn>` 塌缩成
  * `MockInstance<(...args: unknown[]) => unknown>`,与 `vi.spyOn(api, 'getTimeDiagnose')` 的具体
  * 返回类型不兼容(vue-tsc TS2322)。改用 `MockInstance<typeof api.getTimeDiagnose>`。
@@ -41,7 +44,7 @@ function seedStoreForDebug(store: ReturnType<typeof useViewStore>) {
   const boEvent = {
     event_id: 'ev_bo_1', class_id: 'bo', start_idx: 50, end_idx: 90,
   } as any
-  ;(store as any).previewEnabled = true
+  ;(store as any).workingCopy = { bottom_burst: { enabled: true, baseline: {}, currentDict: {} } }
   ;(store as any).preview = {
     symbol: 'AAA',
     pattern_spec: { pattern_id: 'bottom_burst' },

@@ -1,6 +1,6 @@
 # path2/dag/diagnose.py
 """per-node 诊断 pass(web UI 调试用)。坐标轴是 node 不是 event:
-event 级"失败归因"因 where=f(event,node,bound) 多值 + 求解短路 path-dependent 而 ill-defined,
+event 级"失败归因"因求解短路 path-dependent 而 ill-defined,
 故按 node 独立诊断——"哪些候选能当这个 node/卡在哪条 where"(属性) + "找不找得到关系伙伴"(关系)。
 解耦的单 node 局部健康检查,不保证全局可满足性。不碰 _solve 求解核心。
 """
@@ -9,32 +9,19 @@ from __future__ import annotations
 from path2.dag.edges import NegationEdge
 from path2.dag.engine import run_streams
 from path2.dag._graph import pos_preds
-from path2.dag.nodes import MatchContext
-from path2.dag.result import (ClauseWitness, AttrRow, RelRow, NodeDiagnostic, NodeDiagnostics)
+from path2.dag.result import (AttrRow, RelRow, NodeDiagnostic, NodeDiagnostics)
+from path2.dag.where import witness_of
 from path2.dag._solve import strict_clear
-from path2.dag._tripwire import _TRIPWIRE
 
 _MISS_GATE_RANK = {"gap_out": 0, "anchor_mismatch": 1, "strict_fail": 2}  # 由近及远(离成功最近排最高)
 
 
-def _witness(fn, target, ctx) -> ClauseWitness:
-    """对一条 where clause 产 ClauseWitness(与 _reify 同口径)。"""
-    sat = bool(fn(target, ctx))
-    meta = getattr(fn, "meta", None)
-    measured = fn.measure(target, ctx) if hasattr(fn, "measure") else None
-    return ClauseWitness(satisfied=sat, measured=measured,
-                         op=(meta or {}).get("op"),
-                         threshold=(meta or {}).get("threshold"))
-
-
-
-def _attr_rows(node, stream, ctx):
+def _attr_rows(node, stream):
     rows = []
     for e in stream:
-        target = e
         clauses = {}
         for cid, fn in node.where:
-            clauses[cid] = _witness(fn, target, ctx)
+            clauses[cid] = witness_of(fn, e)
         rows.append(AttrRow(event=e, clauses=clauses))
     return tuple(rows)
 
@@ -42,12 +29,10 @@ def _attr_rows(node, stream, ctx):
 def diagnose(spec, df, params=None) -> NodeDiagnostics:
     """对每个 NodeSpec 独立做属性诊断(+ 关系诊断,Task 7)。复用 run_streams 产流。"""
     streams = run_streams(spec, df, params)
-    ctx = MatchContext(df=df, params=params, bound=_TRIPWIRE)   # 硬伤 C 兜底:一元 where 安全(bound 不读);
-                                                                # 跨节点 clause 一旦读它,立即抛 CrossNodePendingError
     nodes = {}
     for node in spec.nodes:
         stream = streams.get(node.node_id, [])
-        attr = _attr_rows(node, stream, ctx)
+        attr = _attr_rows(node, stream)
         rel = _rel_rows(node, spec, streams)               # Task 7
         nodes[node.node_id] = NodeDiagnostic(node_id=node.node_id, attr=attr, rel=rel)
     return NodeDiagnostics(nodes=nodes)
@@ -62,11 +47,10 @@ def _endpoint(binding, node, selector=None):
     return binding
 
 
-def _passes_where(node, e, ctx) -> bool:
+def _passes_where(node, e) -> bool:
     """上游 event 自身是否过它那个 node 的(一元)where。"""
-    target = e
     for _, fn in node.where:
-        if not bool(fn(target, ctx)):
+        if not bool(fn(e)):
             return False
     return True
 
@@ -102,8 +86,6 @@ def _rel_rows(node, spec, streams):
     """本 node 作 dst:逐正向入边检查上游伙伴存在性 + 未通过的 src 候选按 miss_reasons 归因
     (Sprint 1 Task 3:gap_out / anchor_mismatch / strict_fail,由近及远取代表性失败 pair 抽样
     ≤5 条存 example_failed_pairs;negation 是全称量词、归 node 级入口 C,本函数恒不产出)。"""
-    ctx = MatchContext(df=None, params=None, bound=_TRIPWIRE)   # 硬伤 C 兜底:一元 where 不读 df/bound;
-                                                                 # 跨节点 clause 一旦读它,立即抛 CrossNodePendingError
     by_id = {n.node_id: n for n in spec.nodes}
     pred = pos_preds([n.node_id for n in spec.nodes], spec.edges)   # {dst:[(src,edge)]}
     stream_r = streams.get(node.node_id, [])
@@ -117,7 +99,7 @@ def _rel_rows(node, spec, streams):
         miss = {"gap_out": 0, "anchor_mismatch": 0, "strict_fail": 0, "negation_violated": 0}
         examples = []
         for e_u in u_stream:
-            if not _passes_where(u_node, e_u, ctx):
+            if not _passes_where(u_node, e_u):
                 continue
             # src 端：按 edge.src_selector 投影（无 selector → 返回整体）
             a = _endpoint(e_u, u_node, edge.src_selector)

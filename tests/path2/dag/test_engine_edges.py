@@ -9,12 +9,12 @@ from path2.dag._solve import compile_plan, solve
 
 def _pruned(edges, streams):
     plan = compile_plan(_spec(edges, streams))
-    return solve(plan, streams, ctx=None)
+    return solve(plan, streams)
 
 
 def _noprune(edges, streams):
     plan = compile_plan(_spec(edges, streams))
-    return solve(plan, streams, ctx=None, collapse=False, memo_mode="off")
+    return solve(plan, streams, collapse=False, memo_mode="off")
 
 
 def _spec(edges, streams):
@@ -188,8 +188,8 @@ def test_child_endpoint_extraction():
                 return self.first_bo
             raise KeyError(name)
 
-    bo = PointBo(event_id="bo0", start_idx=5, end_idx=5)
-    burst = PointBurst(event_id="burst0", start_idx=5, end_idx=5, first_bo=bo)
+    bo = PointBo(event_id="bo0", start_idx=5, end_idx=5, confirm_idx=5)
+    burst = PointBurst(event_id="burst0", start_idx=5, end_idx=5, confirm_idx=5, first_bo=bo)
 
     # CHILD EXTRACTION（dst 端 selector 非 None）：endpoint 提取出 first_bo，不是 burst 本身
     assert endpoint(burst, e, "dst") is bo,  "dst selector 路径：应提取 first_bo child"

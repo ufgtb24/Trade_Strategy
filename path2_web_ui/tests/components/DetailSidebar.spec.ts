@@ -38,7 +38,7 @@ const INLINE_SCAN: MultiScanResultFile = {
   scan: {
     scan_ts: '20260609T120000', start_date: '2025-01-01', end_date: '2025-12-31',
     workers: 8, scanned: 100, hits: 1, errors: 0, dataset_dir: '/x', params: 'default',
-    win_start: '2025-01-01', win_end: '2025-12-31', label_horizon: 20,
+    win_start: '2025-01-01', win_end: '2025-12-31', label_horizon: 20, first_passage_k: 2,
   },
   results: [
     {
@@ -294,7 +294,7 @@ describe('DetailSidebar (5-node: pattern nodes + stream-source)', () => {
     const baseResult = INLINE_SCAN.results[0].per_pattern.test_pattern
     const scanWithLabel = {
       ...INLINE_SCAN,
-      scan: { ...INLINE_SCAN.scan, label_horizon: 20 },
+      scan: { ...INLINE_SCAN.scan, label_horizon: 20, first_passage_k: 2 },
       results: [
         {
           symbol: 'TEST',
@@ -325,6 +325,42 @@ describe('DetailSidebar (5-node: pattern nodes + stream-source)', () => {
     expect(w.find('.match-ret').exists()).toBe(true)
     expect(w.find('.ret-pos').exists()).toBe(true)  // 0.05 >= 0 → 绿色
     expect(w.text()).toContain('ret_20')
+  })
+
+  // ── 断言 9b: 命中匹配列表 forward_drawdown 显示(与 forward_return 同行,带 d_N 前缀) ──
+  it('命中匹配列表渲染,有 forward_drawdown 时显示 d_N 行(带符号百分比)', async () => {
+    const baseResult = INLINE_SCAN.results[0].per_pattern.test_pattern
+    const scanWithDrawdown = {
+      ...INLINE_SCAN,
+      scan: { ...INLINE_SCAN.scan, label_horizon: 20, first_passage_k: 2 },
+      results: [
+        {
+          symbol: 'TEST',
+          per_pattern: {
+            test_pattern: {
+              ...baseResult,
+              analysis: {
+                ...baseResult.analysis,
+                matches: [
+                  { ...baseResult.analysis.matches[0], forward_return: 0.05, forward_drawdown: -0.08 },
+                ],
+              },
+            },
+          },
+        },
+      ],
+    }
+    const v = useViewStore()
+    vi.spyOn(api, 'getDiagnose').mockResolvedValue(INLINE_DIAG)
+    v.loadScanFile(scanWithDrawdown as any)
+    v.selectSymbol('TEST')
+    const w = mount(DetailSidebar)
+    await flushPromises()
+
+    // forward_drawdown 行可见(与 forward_return 同级 .match-dd)
+    expect(w.find('.match-dd').exists()).toBe(true)
+    expect(w.text()).toContain('d_20')
+    expect(w.text()).toContain('-8.0%')
   })
 
   // ── 断言 10: focusMatch 后 expandedNodeIds 清空(trace 可见) ─────────────
@@ -391,5 +427,102 @@ describe('DetailSidebar (5-node: pattern nodes + stream-source)', () => {
     expect(v.candidateMatchIds.size).toBe(0)
     // selectedEventId 不改动(保持 null)
     expect(v.selectedEventId).toBeNull()
+  })
+})
+
+// ─── 组合子 clause 单元格(W.any / W.all / W.not_ 的递归 witness)──────────
+// 候选表是 clause-per-column 密集网格,塞不下树 → 单元格只出 n/m(kind) 聚合,
+// 逐分支明细挂 native title;完整缩进树在 K 线 hover tooltip(见 chart-helpers.spec.ts)。
+describe('DetailSidebar — 组合子 clause 单元格', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia())
+    vi.clearAllMocks()
+  })
+
+  /** 2 层嵌套 witness:or → [distinct_pk, and → [max_bar_vol_ratio, not → first_drought]] */
+  const NESTED_CLAUSES = {
+    pk_or_vol: {
+      satisfied: true, measured: null, op: null, threshold: null, label: 'or',
+      children: [
+        { satisfied: true, measured: 4, op: '>=', threshold: 3, label: 'distinct_pk' },
+        {
+          satisfied: true, measured: null, op: null, threshold: null, label: 'and',
+          children: [
+            { satisfied: true, measured: 5, op: '>=', threshold: 3, label: 'max_bar_vol_ratio' },
+            {
+              satisfied: true, measured: null, op: null, threshold: null, label: 'not',
+              children: [
+                { satisfied: false, measured: 45, op: '>=', threshold: 999, label: 'first_drought' },
+              ],
+            },
+          ],
+        },
+      ],
+    },
+  }
+
+  /** 顶层直接是 not 的 clause(单子分支) */
+  const TOP_NOT_CLAUSES = {
+    no_late_gap: {
+      satisfied: true, measured: null, op: null, threshold: null, label: 'not',
+      children: [{ satisfied: false, measured: 45, op: '>=', threshold: 999, label: 'first_drought' }],
+    },
+  }
+
+  function diagWithCombinator(clauses: unknown): Diagnostics {
+    const d = JSON.parse(JSON.stringify(INLINE_DIAG)) as Diagnostics
+    ;(d.nodes.burst.attr[0] as any).clauses = JSON.parse(JSON.stringify(clauses))
+    return d
+  }
+
+  async function mountExpandedBurst(clauses: unknown = NESTED_CLAUSES) {
+    const v = useViewStore()
+    vi.spyOn(api, 'getDiagnose').mockResolvedValue(diagWithCombinator(clauses))
+    v.loadScanFile(INLINE_SCAN)
+    v.selectSymbol('TEST')
+    const w = mount(DetailSidebar)
+    await flushPromises()
+    const burstRow = w.findAll('.funnel-row').find(r => r.text().includes('burst'))
+    expect(burstRow).toBeTruthy()
+    await burstRow!.trigger('click')
+    return w
+  }
+
+  it('单元格出 n/m(kind) 聚合 + 整体判定,不展开成树', async () => {
+    const w = await mountExpandedBurst()
+    const cell = w.findAll('.cell-clause').find(c => c.text().includes('(or)'))
+    expect(cell).toBeTruthy()
+    expect(cell!.text()).toContain('2/2(or)')
+    expect(cell!.text()).toContain('✓')
+    // 树内容不进单元格正文(只在 title 里)
+    expect(cell!.text()).not.toContain('max_bar_vol_ratio')
+  })
+
+  it('title 用树线 ├ └ │ 逐层展开(与 K 线 tooltip 同款记号)', async () => {
+    const w = await mountExpandedBurst()
+    const title = w.find('.cell-clause [title]').attributes('title') ?? ''
+    expect(title.split('\n')).toEqual([
+      '├ distinct_pk: 4.000 >= 3 ✓',
+      '└ and ✓',
+      '  ├ max_bar_vol_ratio: 5.000 >= 3 ✓',
+      '  └ not ✓',
+      '    └ first_drought: 45.000 >= 999 ✗',
+    ])
+  })
+
+  it('title 里组合子行不出 n/m 聚合', async () => {
+    const w = await mountExpandedBurst()
+    const title = w.find('.cell-clause [title]').attributes('title') ?? ''
+    expect(title).not.toContain('2/2')
+    expect(title).not.toContain('0/1')
+  })
+
+  it('顶层 not clause 的单元格聚合也不出 n/m', async () => {
+    const w = await mountExpandedBurst(TOP_NOT_CLAUSES)
+    const cell = w.findAll('.cell-clause').find(c => c.text().includes('(not)'))
+    expect(cell).toBeTruthy()
+    expect(cell!.text()).toContain('(not)')
+    expect(cell!.text()).toContain('✓')
+    expect(cell!.text()).not.toContain('0/1')
   })
 })

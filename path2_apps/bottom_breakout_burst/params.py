@@ -15,7 +15,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field, asdict
 from pathlib import Path
-from typing import Type
+
+from path2_apps._params_base import ParamsBase
 
 DEFAULT_YAML_PATH = Path(__file__).parent / "params.yaml"
 
@@ -51,13 +52,20 @@ class BurstParams:
 
 @dataclass(frozen=True)
 class TbParams:
-    """ThrowbackDetector 构造参数。注意 max_start_gap 同时被 burst→tb edge 复用
-    (语义同步:detector 启动窗紧 vs edge gap 宽 = 矛盾,故单一定义于 tb)。"""
-    max_start_gap: int = 5    # tb.start − bo.end ≤ 此值(买点不离 bo 过远);edge 也用
+    """ThrowbackDetector 构造参数(2026-07 重写)。
+
+    max_start_gap 语义 = confirm_idx - bo.end_idx ≤ 此值(买点确认点不离 bo 过远);
+    同时被 burst→tb edge 复用(edge 语义同:burst.last_bo → tb.start=confirm)。
+    default 5→7 补偿 start 从 trough 后移到 confirm 造成的实际口径变严。
+
+    stop_confirm_bars = K bar trough-age 判据阈值(i-trough≥K 且 [trough,i] 含 stop signal
+    → confirm);K=2 保持与旧'两连不创新低'的确认强度对齐。
+    """
+    max_start_gap: int = 7    # confirm_idx − bo.end ≤ 此值;edge 也用
     max_window: int = 5       # tb.end − tb.start ≤ 此值(买点窗不持续过长)
     atr_window: int = 14      # ATR 回溯窗(取 bo−1 处值)
     big_rise_k: float = 1.5
-    pullback_min_atr: float = 1.0
+    stop_confirm_bars: int = 2   # K bar trough-age 确认阈值
     anchor_measure: str = "high"   # anchor 取值口径(calc.measure)
     support_measure: str = "low"   # 破位比较口径(calc.measure)
 
@@ -71,47 +79,14 @@ class EdgesParams:
 
 
 @dataclass(frozen=True)
-class Params:
-    """nested by node:bo/burst/tb/edges 四 section 各自一个子 dataclass。"""
+class Params(ParamsBase):
+    """nested by node:bo/burst/tb/edges 四 section 各自一个子 dataclass。
+    读写协议(default / from_yaml / to_dict / from_dict)继承自 ParamsBase;
+    本类只留 section 定义 + 各 detector 的 *_kwargs 映射(业务)。"""
     bo: BoParams = field(default_factory=BoParams)
     burst: BurstParams = field(default_factory=BurstParams)
     tb: TbParams = field(default_factory=TbParams)
     edges: EdgesParams = field(default_factory=EdgesParams)
-
-    @classmethod
-    def default(cls) -> "Params":
-        return cls()
-
-    @classmethod
-    def from_yaml(cls, path) -> "Params":
-        """从 yaml 加载;顶层 + 每个 section 都校验未知 key(嵌套堵 yaml 拼错静默无效陷阱)。
-        缺失 section / 缺失字段 → 用子 dataclass field default 兜底。"""
-        import yaml
-        with open(path) as f:
-            data = yaml.safe_load(f) or {}
-        # 顶层未知 section 校验
-        known_sections = {f.name for f in cls.__dataclass_fields__.values()}
-        unknown_top = set(data) - known_sections
-        if unknown_top:
-            raise ValueError(
-                f"params.yaml ({path}) 含未知顶层 section: {sorted(unknown_top)} "
-                f"(已知 section: {sorted(known_sections)})"
-            )
-        section_classes: dict[str, Type] = {
-            "bo": BoParams, "burst": BurstParams, "tb": TbParams, "edges": EdgesParams,
-        }
-        section_instances = {}
-        for sect_name, sect_cls in section_classes.items():
-            sect_data = data.get(sect_name) or {}
-            sect_fields = {f.name for f in sect_cls.__dataclass_fields__.values()}
-            unknown_fields = set(sect_data) - sect_fields
-            if unknown_fields:
-                raise ValueError(
-                    f"params.yaml ({path}) section '{sect_name}' 含未知字段: "
-                    f"{sorted(unknown_fields)} (可能拼错或字段已删;已知字段集见 {sect_cls.__name__})"
-                )
-            section_instances[sect_name] = sect_cls(**sect_data)
-        return cls(**section_instances)
 
     def bo_kwargs(self) -> dict:
         """BODetector 构造参数(字段一一对应签名)。"""

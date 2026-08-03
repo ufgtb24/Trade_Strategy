@@ -17,7 +17,7 @@ describe('api', () => {
   it('startScan POSTs body and returns scan_id', async () => {
     const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ scan_id: 'S1' }) })
     vi.stubGlobal('fetch', fetchMock)
-    const id = await api.startScan({ pattern_ids: ['p'], start_date: 'a', end_date: 'b', workers: 4, ticker_regex: null, label_horizon: 20 })
+    const id = await api.startScan({ pattern_ids: ['p'], start_date: 'a', end_date: 'b', workers: 4, ticker_regex: null, label_horizon: 20, first_passage_k: 2 })
     expect(id).toBe('S1')
     const [, opts] = fetchMock.mock.calls[0]
     expect(opts.method).toBe('POST')
@@ -27,6 +27,39 @@ describe('api', () => {
   it('throws on non-ok response', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 500, text: async () => 'boom' }))
     await expect(api.getPatterns()).rejects.toThrow(/500/)
+  })
+
+  it('startScan 非 ok + detail 是字符串 → 抛出该 detail', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: false, status: 400,
+      json: async () => ({ detail: 'params_files[bo_only]: 参数文件不存在: ghost.yaml' }),
+    }))
+    await expect(api.startScan({
+      pattern_ids: ['bo_only'], start_date: 'a', end_date: 'b',
+      workers: 4, ticker_regex: null, label_horizon: 20, first_passage_k: 2,
+    })).rejects.toThrow(/ghost\.yaml/)
+  })
+
+  it('startScan 非 ok + detail 非字符串(FastAPI 422 校验错误数组)→ 回退状态码文案,不产出 [object Object]', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: false, status: 422,
+      json: async () => ({ detail: [{ loc: ['body', 'workers'], msg: 'field required', type: 'missing' }] }),
+    }))
+    await expect(api.startScan({
+      pattern_ids: ['bo_only'], start_date: 'a', end_date: 'b',
+      workers: 4, ticker_regex: null, label_horizon: 20, first_passage_k: 2,
+    })).rejects.toThrow(/^POST \/scan → 422$/)
+  })
+
+  it('startScan 非 ok + 无 detail / 响应体非 JSON → 回退状态码文案', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: false, status: 500,
+      json: async () => { throw new Error('not json') },
+    }))
+    await expect(api.startScan({
+      pattern_ids: ['bo_only'], start_date: 'a', end_date: 'b',
+      workers: 4, ticker_regex: null, label_horizon: 20, first_passage_k: 2,
+    })).rejects.toThrow(/^POST \/scan → 500$/)
   })
 
   it('streamScan wires EventSource and parses events', async () => {

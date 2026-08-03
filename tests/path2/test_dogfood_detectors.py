@@ -39,7 +39,7 @@ def test_volspike_detector_skips_normal_volume():
 
 
 def _spike(i):
-    return VolSpike(event_id=f"vs_{i}", start_idx=i, end_idx=i, ratio=3.0)
+    return VolSpike(event_id=f"vs_{i}", start_idx=i, end_idx=i, confirm_idx=i, ratio=3.0)
 
 
 def test_volcluster_groups_three_within_window():

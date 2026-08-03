@@ -14,7 +14,7 @@ from path2.calc.atr import calculate_atr
 
 @dataclass(frozen=True)
 class Platform(Event):
-    """窄幅震荡平台段。
+    """窄幅震荡平台段。confirm_idx = end_idx:retrospective,价格走出平台才确认。
 
     输出字段(where 可引用):
     - atr_pct_mean: 区段内 ATR/close 均值(相对波动率,非绝对 ATR)
@@ -105,6 +105,7 @@ class PlatformDetector:
                 event_id=span_id(self.event_cls.class_id, start, end),
                 start_idx=start,
                 end_idx=end,
+                confirm_idx=end,   # retrospective:走出平台才确认
                 atr_pct_mean=atr_pct_mean,
                 range_pct=float(range_pct),
             )

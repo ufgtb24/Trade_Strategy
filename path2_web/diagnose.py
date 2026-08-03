@@ -454,25 +454,7 @@ def _collect_caveats(spec=None) -> List[Caveat]:
     if not _kind_aware_measured_available():
         caveats.append(Caveat(code="measured_not_kind_aware",
                               message="EdgeWitness.measured 未升级 kind-aware(硬伤 E)"))
-    # 硬伤 C · Sprint 2 Task 14 · spec 里若有 clause 声明 refs_other_node(跨节点)·
-    # 说明该 clause 依赖 sibling node bound 值,一旦触发运行期 _TRIPWIRE 就会抛
-    # CrossNodePendingError——静态先挂 caveat,前端提前诚实降级(不等真跑到才发现)。
-    if spec is not None and _has_refs_other_node_clause(spec):
-        caveats.append(Caveat(code="cross_node_pending",
-                              message="spec 含跨节点 clause(refs_other_node)· 相关 node/edge 数据可能因 "
-                                       "sibling 未 bound 而不可用(硬伤 C)"))
     return caveats
-
-
-def _has_refs_other_node_clause(spec) -> bool:
-    """静态扫 spec.nodes 的 where clause · 是否有任一 clause 声明 refs_other_node=True
-    (由 path2.dag.where.mark_refs_other_node 打上)。"""
-    for node in spec.nodes:
-        for _, fn in node.where:
-            meta = getattr(fn, "meta", None)
-            if meta and meta.get("refs_other_node"):
-                return True
-    return False
 
 
 def _kind_aware_measured_available() -> bool:

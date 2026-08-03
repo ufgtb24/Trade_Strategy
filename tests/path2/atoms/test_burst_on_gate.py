@@ -13,7 +13,7 @@ def _reset_current_symbol():
 
 
 def make_bo(idx: int) -> BOEvent:
-    return BOEvent(event_id=f"bo_{idx}", start_idx=idx, end_idx=idx,
+    return BOEvent(event_id=f"bo_{idx}", start_idx=idx, end_idx=idx, confirm_idx=idx,
                    drought=None, pk_count=1, broken_peak_ids=(),
                    vol_ratio=None, peak_vol_max=0.0, referenced_points=())
 

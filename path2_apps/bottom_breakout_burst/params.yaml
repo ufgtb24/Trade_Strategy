@@ -16,22 +16,31 @@ burst:
   gap_max: 8
   vol_baseline_period: 63
   # detector + 业务约束② 共用(BurstDetector(min_bos) + len(bo 串) ≥ min_bos)
-  min_bos: 1
+  # 2→1(2026-07-25 调参):放开单 bo 串,数量 +翻倍而 label 中位数几乎不降,
+  # 收缩后 score 从 0.0686 升到 0.0719(2025)/0.0541→0.0587(2024)
+  min_bos: 3
   # burst node 的 where 阈值(detector 不读,只在 NodeSpec.where 闭合)
   first_drought_min: 20
-  distinct_pk_min: 3
-  vol_spike_min: 3.0
+  # 3→4(2026-07-25 调参):提质旋钮,中位数 0.2043→0.2293,q25 0.0771→0.0793
+  distinct_pk_min: 4
+  vol_spike_min: 3
 
 tb:
   # 注意:max_start_gap 同时被 ThrowbackDetector 与 burst→tb edge 复用
   # (SSoT 单一定义,dag_spec 内 edge 显式引用 params.tb.max_start_gap)
-  max_start_gap: 5
+  # 语义:confirm_idx - bo.end_idx ≤ 此值(买点确认点不离 bo 过远)
+  max_start_gap: 7
   max_window: 5
   atr_window: 14
   big_rise_k: 1.5
-  pullback_min_atr: 1.0
+  # K bar trough-age 确认阈值:i-trough ≥ K 且 [trough,i] 内含 stop signal → confirm
+  # 2→0(2026-07-25 调参 · 主改动):K=2 要求回踩见底后再挺 2 根才确认,系统性滤掉
+  # 「回踩一根就止跌反弹」的强势股(等待期内被 phase1 rise-before-confirm 否决,
+  # 或根本等不到 K=2)。K=0 让确认落在首个含止跌信号的 bar(通常即 trough 当根),
+  # 2025 买点窗 41→423、label 中位数 0.116→0.229;K=1 只剩 59 窗,断崖在 0 与 1 之间。
+  stop_confirm_bars: 0
   anchor_measure: high
-  support_measure: close
+  support_measure: low
 
 # edges 段:当前所有 edge 字段或硬编码(min_gap=1/anchor_field/Child(...))或从 node
 # section 引用(max_gap = tb.max_start_gap),故本段当前为空。保留 section 占位以便未来

@@ -8,32 +8,60 @@ import path2.atoms.throwback as tb_mod
 
 
 def _bo(end_idx, vol_ratio=3.0):
-    return BOEvent(event_id=f"bo_{end_idx}", start_idx=end_idx, end_idx=end_idx, vol_ratio=vol_ratio)
+    return BOEvent(event_id=f"bo_{end_idx}", start_idx=end_idx, end_idx=end_idx, confirm_idx=end_idx, vol_ratio=vol_ratio)
 
 
 # ---- ThrowbackEvent 瘦身后字段 ----
 
 def test_event_fields_minimal():
-    ev = ThrowbackEvent(event_id="tb_21_24", start_idx=21, end_idx=24, anchor_bo_id="bo_20")
+    ev = ThrowbackEvent(event_id="tb_21_24", start_idx=21, end_idx=24, confirm_idx=21, anchor_bo_id="bo_20")
     assert ev.start_idx == 21 and ev.end_idx == 24
     assert ev.anchor_bo_id == "bo_20"
     assert ev.class_id == "tb"
+    assert ev.outcome == "rise"   # 默认值
+
+
+def test_event_has_outcome_default_rise():
+    ev = ThrowbackEvent(event_id="tb_21_24", start_idx=21, end_idx=24, confirm_idx=21,
+                        anchor_bo_id="bo_20")
+    assert ev.outcome == "rise"
+
+
+def test_event_outcome_frozen():
+    ev = ThrowbackEvent(event_id="tb_5_6", start_idx=5, end_idx=6, confirm_idx=5,
+                        anchor_bo_id="bo_4", outcome="break")
+    assert ev.outcome == "break"
+    with pytest.raises(Exception):   # FrozenInstanceError
+        ev.outcome = "rise"   # type: ignore
+
+
+def test_event_outcome_accepts_all_three():
+    for oc in ("rise", "break", "timeout"):
+        ev = ThrowbackEvent(event_id=f"tb_{oc}", start_idx=1, end_idx=2, confirm_idx=1,
+                            anchor_bo_id="bo_0", outcome=oc)
+        assert ev.outcome == oc
+
+
+def test_result_carries_outcome():
+    from path2.atoms.throwback import ThrowbackResult
+    r = ThrowbackResult(1, 2, "timeout")
+    assert r.start_idx == 1 and r.end_idx == 2 and r.outcome == "timeout"
 
 
 def test_event_no_trigger_or_strength_attrs():
-    ev = ThrowbackEvent(event_id="tb_5_5", start_idx=5, end_idx=5, anchor_bo_id="bo_4")
+    ev = ThrowbackEvent(event_id="tb_5_5", start_idx=5, end_idx=5, confirm_idx=5, anchor_bo_id="bo_4")
     assert not hasattr(ev, "trigger_idx")
     assert not hasattr(ev, "strength")
     assert not hasattr(ev, "confirmed")
 
 
 def test_event_start_eq_end_ok():
-    ev = ThrowbackEvent(event_id="tb_5_5", start_idx=5, end_idx=5, anchor_bo_id="bo_4")
+    ev = ThrowbackEvent(event_id="tb_5_5", start_idx=5, end_idx=5, confirm_idx=5, anchor_bo_id="bo_4")
     assert ev.start_idx == ev.end_idx == 5
 
 
 def test_event_frozen():
-    ev = ThrowbackEvent(event_id="tb_5_6", start_idx=5, end_idx=6, anchor_bo_id="bo_4")
+    ev = ThrowbackEvent(event_id="tb_5_6", start_idx=5, end_idx=6, confirm_idx=5, anchor_bo_id="bo_4")
     with pytest.raises(Exception):  # FrozenInstanceError
         ev.anchor_bo_id = "x"  # type: ignore
 
@@ -41,7 +69,7 @@ def test_event_frozen():
 # ---- ThrowbackDetector(monkeypatch evaluate_throwback 返回 Optional[ThrowbackResult])----
 
 def test_detector_only_emits_success(monkeypatch):
-    table = {10: ThrowbackResult(11, 13),   # 成功
+    table = {10: ThrowbackResult(11, 13, "rise"),   # 成功
              20: None,                       # 失败(破位/无回踩)→ 不产
              30: None}
     monkeypatch.setattr(tb_mod, "evaluate_throwback", lambda bo, df, **kw: table[bo.end_idx])
@@ -51,9 +79,23 @@ def test_detector_only_emits_success(monkeypatch):
     assert evs[0].start_idx == 11 and evs[0].end_idx == 13
 
 
+def test_detector_forwards_outcome_to_event(monkeypatch):
+    """ThrowbackResult.outcome 必须原样带入 ThrowbackEvent.outcome。"""
+    table = {10: ThrowbackResult(11, 13, "rise"),
+             20: ThrowbackResult(21, 23, "break"),
+             30: ThrowbackResult(31, 35, "timeout")}
+    monkeypatch.setattr(tb_mod, "evaluate_throwback", lambda bo, df, **kw: table[bo.end_idx])
+    evs = list(ThrowbackDetector().detect([_bo(10), _bo(20), _bo(30)], df=None))
+    assert len(evs) == 3
+    by_start = {e.start_idx: e for e in evs}
+    assert by_start[11].outcome == "rise"
+    assert by_start[21].outcome == "break"
+    assert by_start[31].outcome == "timeout"
+
+
 def test_detector_sorts_by_end_idx(monkeypatch):
-    table = {10: ThrowbackResult(20, 25),    # 远
-             12: ThrowbackResult(13, 14)}     # 近
+    table = {10: ThrowbackResult(20, 25, "rise"),    # 远
+             12: ThrowbackResult(13, 14, "rise")}     # 近
     monkeypatch.setattr(tb_mod, "evaluate_throwback", lambda bo, df, **kw: table[bo.end_idx])
     evs = list(ThrowbackDetector().detect([_bo(10), _bo(12)], df=None))
     assert [e.end_idx for e in evs] == [14, 25]
@@ -62,7 +104,7 @@ def test_detector_sorts_by_end_idx(monkeypatch):
 
 def test_detector_event_id_is_span_id(monkeypatch):
     monkeypatch.setattr(tb_mod, "evaluate_throwback",
-                        lambda bo, df, **kw: ThrowbackResult(21, 24))
+                        lambda bo, df, **kw: ThrowbackResult(21, 24, "rise"))
     ev = list(ThrowbackDetector().detect([_bo(20)], df=None))[0]
     assert ev.event_id == "tb_21_24"  # span_id("tb",21,24)
 
@@ -74,13 +116,25 @@ def test_detector_passes_new_kwargs(monkeypatch):
         return None
     monkeypatch.setattr(tb_mod, "evaluate_throwback", fake)
     list(ThrowbackDetector(max_start_gap=3, max_window=4, atr_window=10,
-                           big_rise_k=2.0, pullback_min_atr=0.5,
+                           big_rise_k=2.0, stop_confirm_bars=3,
                            anchor_measure="close", support_measure="close"
                            ).detect([_bo(5)], df=None))
     assert seen == dict(max_start_gap=3, max_window=4, atr_window=10,
-                        big_rise_k=2.0, pullback_min_atr=0.5,
+                        big_rise_k=2.0, stop_confirm_bars=3,
                         anchor_measure="close", support_measure="close",
-                        on_gate=None)   # Task 12:detect() 新增转发 self.on_gate(默认 None)
+                        on_gate=None)
+
+
+def test_detector_rejects_removed_pullback_min_atr():
+    """老字段 pullback_min_atr 已删,构造应抛 TypeError(fail-fast)。"""
+    with pytest.raises(TypeError, match="pullback_min_atr"):
+        ThrowbackDetector(pullback_min_atr=1.0)   # type: ignore
+
+
+def test_detector_default_max_start_gap_is_7():
+    d = ThrowbackDetector()
+    assert d._kw['max_start_gap'] == 7
+    assert d._kw['stop_confirm_bars'] == 2
 
 
 def test_detector_empty_and_all_filtered(monkeypatch):
@@ -111,7 +165,7 @@ class _FakeBO:
 
 
 def test_run_enforces_end_order(monkeypatch):
-    table = {10: ThrowbackResult(20, 25), 12: ThrowbackResult(13, 14)}
+    table = {10: ThrowbackResult(20, 25, "rise"), 12: ThrowbackResult(13, 14, "rise")}
     monkeypatch.setattr(tb_mod, "evaluate_throwback", lambda bo, df, **kw: table[bo.end_idx])
     evs = list(run(ThrowbackDetector(), [_bo(10), _bo(12)], None))
     assert [e.end_idx for e in evs] == [14, 25]
@@ -120,7 +174,7 @@ def test_run_enforces_end_order(monkeypatch):
 def test_dag_engine_bo_to_tb_match(monkeypatch):
     # tb.start = bo.end+1;gap = tb.start − bo.end = 1 ∈ [1,10]
     monkeypatch.setattr(tb_mod, "evaluate_throwback",
-                        lambda bo, df, **kw: ThrowbackResult(bo.end_idx + 1, bo.end_idx + 3))
+                        lambda bo, df, **kw: ThrowbackResult(bo.end_idx + 1, bo.end_idx + 3, "rise"))
     bo_node = NodeSpec("bo", detector=_FakeBO([_bo(20)]))
     tb_node = NodeSpec("tb", detector=ThrowbackDetector(), consumes_stream="bo")
     spec = PatternSpec(pattern_id="p3", nodes=(bo_node, tb_node),
@@ -138,7 +192,7 @@ def test_dag_engine_bo_to_tb_match(monkeypatch):
 def test_detector_dedupes_same_span(monkeypatch):
     # 两个不同 bo 收敛到同一 (start,end) 窗 → 同 event_id → 必须去重为 1 个事件
     monkeypatch.setattr(tb_mod, "evaluate_throwback",
-                        lambda bo, df, **kw: ThrowbackResult(133, 133))
+                        lambda bo, df, **kw: ThrowbackResult(133, 133, "rise"))
     evs = list(ThrowbackDetector().detect([_bo(131), _bo(132)], df=None))
     assert len(evs) == 1
     assert evs[0].event_id == "tb_133"
@@ -147,6 +201,6 @@ def test_detector_dedupes_same_span(monkeypatch):
 def test_detector_dedup_passes_run_invariant(monkeypatch):
     # 去重后过 run() 不再触发 event_id 单 run 内重复
     monkeypatch.setattr(tb_mod, "evaluate_throwback",
-                        lambda bo, df, **kw: ThrowbackResult(133, 133))
+                        lambda bo, df, **kw: ThrowbackResult(133, 133, "rise"))
     evs = list(run(ThrowbackDetector(), [_bo(131), _bo(132)], None))  # 不应抛 ValueError
     assert len(evs) == 1

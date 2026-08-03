@@ -36,7 +36,7 @@ class _DetA:
         self._idxs = idxs
     def detect(self, *source) -> Iterator[_EvA]:
         for i in self._idxs:
-            yield _EvA(event_id=f"a:{i}:{i}", start_idx=i, end_idx=i)
+            yield _EvA(event_id=f"a:{i}:{i}", start_idx=i, end_idx=i, confirm_idx=i)
 
 
 class _DetB:
@@ -46,7 +46,7 @@ class _DetB:
         self._idxs = idxs
     def detect(self, *source) -> Iterator[_EvB]:
         for i in self._idxs:
-            yield _EvB(event_id=f"b:{i}:{i}", start_idx=i, end_idx=i)
+            yield _EvB(event_id=f"b:{i}:{i}", start_idx=i, end_idx=i, confirm_idx=i)
 
 
 class _DetISO:
@@ -56,7 +56,7 @@ class _DetISO:
         self._idxs = idxs
     def detect(self, *source) -> Iterator[_EvISO]:
         for i in self._idxs:
-            yield _EvISO(event_id=f"e:{i}:{i}", start_idx=i, end_idx=i)
+            yield _EvISO(event_id=f"e:{i}:{i}", start_idx=i, end_idx=i, confirm_idx=i)
 
 
 def _spec_with_isolated():

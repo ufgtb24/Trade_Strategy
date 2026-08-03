@@ -4,7 +4,7 @@ import { setActivePinia, createPinia } from 'pinia'
 import SidebarScanPanel from '../../src/components/SidebarScanPanel.vue'
 import { useScanStore } from '../../src/stores/scan'
 
-vi.mock('../../src/api', () => ({
+vi.mock('../../src/api', () => ({ saveWcMirror: async () => ({ ok: true } as any), clearWcMirror: async () => ({ ok: true } as any),
   getPatterns: vi.fn(() => Promise.resolve([])),
   getConfig: vi.fn(() => Promise.resolve({ dataset_dir:'', scan:{start_date:'', end_date:'', workers:1, ticker_regex:null, label_horizon:20}, last_selected_pattern:'' })),
   putConfig: vi.fn(() => Promise.resolve()),

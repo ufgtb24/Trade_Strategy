@@ -146,7 +146,7 @@
 排查工具:评估器 healthcheck(数量级)+ 临时 probe 脚本(写在项目根,文件名带唯一标签,用完 rm)。
 
 ## §D 评估器用法(三 mode 何时用)
-工件:`scripts/path2_eval_scan.py`(手动跑,参数在 main 顶部)/
+工件:`scripts/path2/path2_eval_scan.py`(手动跑,参数在 main 顶部)/
 `path2_web.eval_runner`(程序化:run_eval / run_regress / run_healthcheck)。
 - **eval**:实现后验证判据 2(命中数 + forward_return 分布);纯调参路的内存迭代评估器
   (param_overrides 传 dict,不改任何源文件)。
@@ -212,5 +212,13 @@
 |---|---|---|
 | 节点实例字段 op 阈值 | `W.attr(name, op, thr)` | ⚠ **None 短路**:Optional 字段(BOEvent.drought / vol_ratio 等)为 None 时**比较恒 False**(非 SQL 三值,也不抛 TypeError);跨字段无值时悄悄拦截。来源 `where.py:22-28` |
 | 复合事件内部某子事件字段满足某 where | `W.child(key, inner)`,例 `W.child("last_bo", W.attr("drought", ">=", THR))` | outer event 必须实现 `child(name)`(BurstEvent 有);inner 可为任意现有 W.* |
-| 复合事件成员序列满足聚合谓词 | `W.children(key, agg)` + **自定义 lambda** | 原 `W.distinct/any/count` 已归档(2026-06,`docs/legacy/kleene/`);序列聚合判据请用自定义 lambda 或下移到 detector 层 |
-| 多个 where 取 AND | `W.all(f1, f2, ...)` | 组合子;无单一阈值 meta(measure 返 None) |
+| 复合事件成员序列满足聚合谓词 | `W.children(key, agg)` + **自定义 lambda** | 原 Kleene 期序列聚合工厂 `distinct/count`(及同名旧 `any`,与下方布尔 `W.any` 无关)已归档(2026-06,`docs/legacy/kleene/`);序列聚合请用自定义 lambda 或下移到 detector 层 |
+| 多条件全部成立(AND) | `W.all(a, b, ...)` | 组合子 |
+| 任一条件成立(OR) | `W.any(a, b, ...)` | 组合子;`all`/`any` 是内置归约的谓词版(关键字 `and`/`or` 不能当函数名),`# noqa: A001` 遮蔽内置 |
+| 条件取反(NOT) | `W.not_(pred)` | 组合子;尾下划线因 `not` 是保留关键字(`operator.not_` 同源);None 语义随内层(attr 对 None 判 False → 取反 True) |
+
+**组合子铁律**(建 dag 最易踩,现成样例见 `path2_apps/try_conplex_where`——组合子试验田):
+- **顶层 clause 恒 AND**:`node.where` 是 `(clause_id, 谓词)` 列表,列表项之间**只能 AND**。要 OR 就写进**单条 clause 内部**(`("pk_or_vol", W.any(A, B))`),**绝不**拆成两条平级 clause——那是 AND,且前端 qualified 判定会与引擎分歧(静默错)。`(A|B)&C` = 一条 `W.all(W.any(A,B), C)`,或两条 clause `[("ab", W.any(A,B)), ("c", C)]`。
+- **可任意层嵌套 + 递归 meta**:组合子携 `{kind, children}` 递归 meta(叶子 `W.attr` 才带 op/threshold),故拓扑面板规则串 / K 线 tooltip / 侧栏候选表都能逐层展开、显示每叶子的实测值。组合子节点 `.measure()` 返 None(无单一阈值,正常)。
+- **witness 全量求值不短路**:`or` 首支已真,第二支实测值照样算出来供调参对照("另一支差多少能命中")。
+- **裸 lambda 能用但 UI 弱**:`("c", lambda e: <bool>)` 引擎接受,但无 meta → 面板/tooltip 只显示 ✓/✗、无实测值。要诊断就用 `W.*`。

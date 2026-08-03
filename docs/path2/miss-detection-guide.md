@@ -249,7 +249,7 @@ burst_5  tb_11  gap_out
 命令行:
 
 ```bash
-python scripts/scan-top-miss.py \
+python scripts/path2/scan-top-miss.py \
     --start=2025-07-15 --end=2025-09-01 \
     --min-pct=30 --top-k=20 \
     --out=top_miss.md

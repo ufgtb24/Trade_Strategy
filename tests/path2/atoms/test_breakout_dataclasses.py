@@ -16,7 +16,7 @@ def test_peak_mutable_for_elevation():
 
 
 def test_bo_event_defaults():
-    e = BOEvent(event_id="bo_10", start_idx=10, end_idx=10)
+    e = BOEvent(event_id="bo_10", start_idx=10, end_idx=10, confirm_idx=10)
     assert e.drought is None
     assert e.pk_count == 0
     assert e.broken_peak_ids == ()
@@ -26,14 +26,14 @@ def test_bo_event_defaults():
 
 def test_bo_event_broken_peak_ids_is_tuple():
     # I4: 即便传 list 也应被强转为 tuple,防 in-place mutate
-    e = BOEvent(event_id="bo_10", start_idx=10, end_idx=10,
+    e = BOEvent(event_id="bo_10", start_idx=10, end_idx=10, confirm_idx=10,
                 broken_peak_ids=[1, 2, 3])
     assert isinstance(e.broken_peak_ids, tuple)
     assert e.broken_peak_ids == (1, 2, 3)
 
 
 def test_bo_event_frozen():
-    e = BOEvent(event_id="bo_10", start_idx=10, end_idx=10, pk_count=2)
+    e = BOEvent(event_id="bo_10", start_idx=10, end_idx=10, confirm_idx=10, pk_count=2)
     with pytest.raises(Exception):
         e.pk_count = 5
 
@@ -45,14 +45,14 @@ def test_bo_event_is_point_class_attr():
 
 def test_bo_event_referenced_points_default_empty_tuple():
     """新增字段 referenced_points 默认空元组。"""
-    e = BOEvent(event_id="bo_10", start_idx=10, end_idx=10)
+    e = BOEvent(event_id="bo_10", start_idx=10, end_idx=10, confirm_idx=10)
     assert e.referenced_points == ()
 
 
 def test_bo_event_referenced_points_accepts_tuple():
     """referenced_points 接受 (bar_idx, price, label) 三元组的元组。"""
     pts = ((5, 12.5, "pk0"), (7, 13.0, "pk1"))
-    e = BOEvent(event_id="bo_10", start_idx=10, end_idx=10,
+    e = BOEvent(event_id="bo_10", start_idx=10, end_idx=10, confirm_idx=10,
                 referenced_points=pts)
     assert e.referenced_points == pts
     assert isinstance(e.referenced_points, tuple)
@@ -60,7 +60,7 @@ def test_bo_event_referenced_points_accepts_tuple():
 
 def test_bo_event_referenced_points_is_tuple_from_list():
     """传 list 时强转 tuple (与 broken_peak_ids 同型, 防 in-place mutate)。"""
-    e = BOEvent(event_id="bo_10", start_idx=10, end_idx=10,
+    e = BOEvent(event_id="bo_10", start_idx=10, end_idx=10, confirm_idx=10,
                 referenced_points=[(5, 12.5, "pk0")])
     assert isinstance(e.referenced_points, tuple)
     assert e.referenced_points == ((5, 12.5, "pk0"),)

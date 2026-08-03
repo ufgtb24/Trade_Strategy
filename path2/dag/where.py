@@ -2,15 +2,15 @@
 
 方向性/区间算子被【类型化边】吸收(结构);容器/标量/存在算子被【节点 where】吸收(一元约束)。
 作者写声明时根本看不到旧的 Before/After/Overlaps/Pattern.all。
-每个 W.* 返回 WherePredicate: (event_or_seq, ctx) -> bool。
+每个 W.* 返回 WherePredicate: (event_or_seq) -> bool;组合子 all/any/not_ 可任意嵌套。
 """
 from __future__ import annotations
 
 import builtins
 import operator as _op
-from typing import Callable
 
 from path2.dag.nodes import WherePredicate
+from path2.dag.result import ClauseWitness
 
 _OPS = {">=": _op.ge, ">": _op.gt, "<=": _op.le, "<": _op.lt, "==": _op.eq, "!=": _op.ne}
 
@@ -29,59 +29,95 @@ def _cmp(op: str):
 
 
 class _Pred:
-    """where 谓词:callable (x, ctx)->bool,额外带 .meta(阈值规则) 与 .measure(x,ctx)(实测值)。
-    保持与裸 lambda 完全相同的调用接口,_solve/_reify 零感知。"""
-    __slots__ = ("_fn", "meta", "_measure")
+    """where 谓词:callable (x)->bool,额外带 .meta(阈值规则)/.measure(x)(实测值)/
+    .children(组合子的子谓词)/.witness(x)(递归 ClauseWitness)。
+    __call__ 保持短路(求解热路径每候选都调);witness 全量求值不短路(诊断要看
+    每个分支的实测值,哪怕 or 首支已真)。"""
+    __slots__ = ("_fn", "meta", "_measure", "children")
 
-    def __init__(self, fn, meta, measure):
+    def __init__(self, fn, meta, measure, children=()):
         self._fn = fn
         self.meta = meta
         self._measure = measure
+        self.children = tuple(children)
 
-    def __call__(self, x, ctx):
-        return self._fn(x, ctx)
+    def __call__(self, x):
+        return self._fn(x)
 
-    def measure(self, x, ctx):
-        return self._measure(x, ctx)
+    def measure(self, x):
+        return self._measure(x)
+
+    def witness(self, x) -> ClauseWitness:
+        kids = tuple(c.witness(x) for c in self.children)   # 先递归:全量求值
+        m = self.meta or {}
+        return ClauseWitness(
+            satisfied=bool(self._fn(x)),
+            measured=self._measure(x),
+            op=m.get("op"), threshold=m.get("threshold"),
+            label=m.get("field") or m.get("kind"),
+            children=kids,
+        )
 
 
 def attr(name: str, op: str, thr) -> WherePredicate:
     """= At:单实例 e.name op thr。"""
     cmp = _cmp(op)
-    return _Pred(lambda e, ctx: cmp(getattr(e, name), thr),
+    return _Pred(lambda e: cmp(getattr(e, name), thr),
                  {"kind": "attr", "field": name, "op": op, "threshold": thr},
-                 lambda e, ctx: getattr(e, name))
+                 lambda e: getattr(e, name))
+
+
+def _lift(f) -> "_Pred":
+    """裸 callable → 不透明叶子 _Pred(satisfied-only,无阈值细节)。已是 _Pred 原样返回。"""
+    if isinstance(f, _Pred):
+        return f
+    return _Pred(lambda x: bool(f(x)), {"kind": "opaque"}, lambda x: None)
 
 
 def all(*fns: WherePredicate) -> WherePredicate:  # noqa: A001
-    """= Pattern.all:AND 合取。组合子无单一阈值,meta=None,measure 返 None。"""
-    return _Pred(lambda x, ctx: builtins.all(f(x, ctx) for f in fns),
-                 None, lambda x, ctx: None)
+    """= Pattern.all:AND 合取。meta 递归携带子结构(kind='and')。"""
+    kids = tuple(_lift(f) for f in fns)
+    return _Pred(lambda x: builtins.all(f(x) for f in kids),
+                 {"kind": "and", "children": tuple(k.meta for k in kids)},
+                 lambda x: None,
+                 children=kids)
+
+
+def any(*fns: WherePredicate) -> WherePredicate:  # noqa: A001
+    """= OR 析取(内置 any 的谓词版,与 W.all 对称)。__call__ 短路;
+    witness 全量求值(每个分支实测值都算,供调参对照)。"""
+    kids = tuple(_lift(f) for f in fns)
+    return _Pred(lambda x: builtins.any(f(x) for f in kids),
+                 {"kind": "or", "children": tuple(k.meta for k in kids)},
+                 lambda x: None,
+                 children=kids)
+
+
+def not_(fn: WherePredicate) -> WherePredicate:
+    """逻辑取反。注意 None 语义随内层:attr 对 None 判 False,取反后变 True。"""
+    k = _lift(fn)
+    return _Pred(lambda x: not k(x),
+                 {"kind": "not", "children": (k.meta,)},
+                 lambda x: None,
+                 children=(k,))
+
+
+def witness_of(fn, target) -> ClauseWitness:
+    """任意 where clause fn → ClauseWitness。_Pred 走递归 witness();
+    裸 callable 降级 satisfied-only(无 measured/children)。"""
+    if hasattr(fn, "witness"):
+        return fn.witness(target)
+    return ClauseWitness(satisfied=bool(fn(target)))
 
 
 def child(key: str, inner: WherePredicate) -> WherePredicate:
     """单 child 委托:inner（任意现有一元谓词,如 W.attr）作用于 event.child(key)。
     outer event 类型：composite Event（实现了 child(name)）。"""
     return _Pred(
-        lambda e, ctx: inner(e.child(key), ctx),
+        lambda e: inner(e.child(key)),
         {"kind": "child", "key": key, "inner": getattr(inner, "meta", None)},
-        lambda e, ctx: inner.measure(e.child(key), ctx)
-                       if hasattr(inner, "measure") else None,
+        lambda e: inner.measure(e.child(key)) if hasattr(inner, "measure") else None,
     )
-
-
-def mark_refs_other_node(pred: WherePredicate) -> WherePredicate:
-    """标注一条 where clause「引用其他 node」(硬伤 C 双落 · 编译期端)。
-
-    不改变判定/measure 语义(纯包一层),只在 .meta 里追加 refs_other_node=True,
-    供 UI(PendingIcon)与 diagnose 层(cross_node_pending caveat)静态检测消费,
-    使前端能在跨节点 clause 尚未真正 bound 前就诚实降级,而不是等运行期 _TRIPWIRE
-    (path2.dag._tripwire)兜底抛错才知道。当前 app 未用(无跨节点 clause),为未来
-    spec 预留声明入口。"""
-    meta = getattr(pred, "meta", None)
-    new_meta = {**(meta or {}), "refs_other_node": True}
-    measure = pred.measure if hasattr(pred, "measure") else (lambda x, ctx: None)
-    return _Pred(lambda x, ctx: pred(x, ctx), new_meta, measure)
 
 
 def children(key: str, agg: WherePredicate) -> WherePredicate:
@@ -91,8 +127,7 @@ def children(key: str, agg: WherePredicate) -> WherePredicate:
     注:原有 W.distinct/W.any/W.count 已归档(2026-06,docs/legacy/kleene/),
     如需 children 聚合判据请用自定义 lambda 或在 detector 阶段实现。"""
     return _Pred(
-        lambda e, ctx: agg(e.children(key), ctx),
+        lambda e: agg(e.children(key)),
         {"kind": "children", "key": key, "inner": getattr(agg, "meta", None)},
-        lambda e, ctx: agg.measure(e.children(key), ctx)
-                       if hasattr(agg, "measure") else None,
+        lambda e: agg.measure(e.children(key)) if hasattr(agg, "measure") else None,
     )

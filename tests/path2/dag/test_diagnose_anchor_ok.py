@@ -66,11 +66,11 @@ class _FakeDet:
 
 
 def _run_diagnose_with_anchor_break_fixture():
-    burst_ok = _SrcEvent(event_id="burst_ok", start_idx=0, end_idx=10)
-    burst_break_anchor = _SrcEvent(event_id="burst_break_anchor", start_idx=0, end_idx=12)
+    burst_ok = _SrcEvent(event_id="burst_ok", start_idx=0, end_idx=10, confirm_idx=0)
+    burst_break_anchor = _SrcEvent(event_id="burst_break_anchor", start_idx=0, end_idx=12, confirm_idx=0)
 
-    tb_good = _DstEvent(event_id="tb_good", start_idx=11, end_idx=11, anchor_id="burst_ok")
-    tb_other = _DstEvent(event_id="tb_other", start_idx=14, end_idx=14, anchor_id="some_unrelated_bo")
+    tb_good = _DstEvent(event_id="tb_good", start_idx=11, end_idx=11, confirm_idx=11, anchor_id="burst_ok")
+    tb_other = _DstEvent(event_id="tb_other", start_idx=14, end_idx=14, confirm_idx=14, anchor_id="some_unrelated_bo")
 
     nodes = (
         NodeSpec(node_id="burst", detector=_FakeDet([burst_ok, burst_break_anchor], _SrcEvent)),

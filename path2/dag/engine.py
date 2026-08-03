@@ -8,14 +8,10 @@ detector 按真实入参调用:root(consumes_stream=None)只吃 df → detect(df
 消费者吃 (上游流, df) → detect(bos, df)。对照 path2/atoms:bo/trend/distribution/
 platform.detect(self, df);throwback/burst.detect(self, bos, df)。run(detector, *source)
 透传给 detect,故按 consumes_stream 决定传 1 个还是 2 个 source。
-
-跨节点 where 哨兵(verdict §3.4 诚实边界):候选预过滤假设 where 一元(不读 ctx.bound),
-_solve._TRIPWIRE 已在剪枝期拦截;reify 阶段才传真实 bound(不剪枝,安全)。
 """
 from __future__ import annotations
 
 from path2.runner import run
-from path2.dag.nodes import MatchContext
 from path2.dag.result import AnalysisResult, DroppedMatch
 from path2.dag._graph import detector_topo_order
 from path2.dag._solve import compile_plan, solve
@@ -73,11 +69,10 @@ def run_streams(spec, df, params=None):
 def analyze(spec, df, params=None) -> AnalysisResult:
     """DAG 走势包 analyze:抽出 streams → compile plan → solve → reify matches。
     返回 AnalysisResult(events / matches / spec / dropped_matches / gate_failures)。"""
-    ctx = MatchContext(df=df, params=params)
     streams = run_streams(spec, df, params)                 # 阶段1(抽出)
     plan = compile_plan(spec)                                # 阶段2
-    sols = solve(plan, streams, ctx)                          # 阶段3
-    matches_out = tuple(reify(s, streams, plan, ctx) for s in sols)  # 阶段4
+    sols = solve(plan, streams)                               # 阶段3
+    matches_out = tuple(reify(s, streams, plan) for s in sols)  # 阶段4
     # A2:丢弃「node_index 只含『孤立无边 AND 被消费』node」的残缺 match。
     # 原意:流源 node(被别 node 的 consumes_stream 引用)单独命中是"被回显"的噪声、
     # 非业务 pattern。判据加 consumes_stream 反向引用过滤,避免误伤「全孤立 pattern」

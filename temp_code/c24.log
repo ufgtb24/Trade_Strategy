@@ -1,0 +1,10 @@
+2024: tickers=7532 index_sample=1500
+  2000/7532 7s
+  4000/7532 17s
+  6000/7532 28s
+elapsed=37s rows=28557 idx_days=252
+             n      mh      cc
+cfg                           
+RAND      4224  0.0689  0.0000
+bo_only  23947  0.1158 -0.0278
+pk4        386  0.2051 -0.0899

@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test'
 import { baseURL } from './ports'
 
 // 前提:后端 + 前端 dev server 在线(playwright.config.ts 的 webServer 自动启动前端;
-//        后端须外部启动 uv run python scripts/run_path2_web.py)。
+//        后端须外部启动 uv run python scripts/path2/run_path2_web.py)。
 // 策略:用 window.__e2e.view.setCandidateMatches(realIds) 模拟进入 candidate 态,
 //       绕开"在真实 K 线上精确 click multi-match marker"的坐标依赖,专注验证
 //       banner 可见性 / Esc 清空 / 切股清空。

@@ -1,11 +1,15 @@
-backend_port: 8000
+backend_port: 8005
 backend_port_dbg: 8009
-frontend_port: 5170
+frontend_port: 5175
 dataset_dir: /home/yu/PycharmProjects/Trade_Strategy/datasets/pkls
 scan:
   start_date: '2025-01-01'
   end_date: '2026-01-01'
   workers: 26
   ticker_regex: null
-  label_horizon: 20
+  label_horizon: 40
+  first_passage_k: 5
+  price_min: 0.5
+  price_max: 30
+  volume_min: 10000
 last_selected_pattern: bottom_burst

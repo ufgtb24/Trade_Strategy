@@ -4,7 +4,7 @@
 path2_web/scan.py:run_scan_multi 同款结构),供 miss-detection-walkthrough.spec.ts
 的 test.beforeAll 通过既有"打开历史"UI 流程加载。
 
-为什么不能直接用 uv run python scripts/run_path2_web.py 起后再跑一次真实 /scan:
+为什么不能直接用 uv run python scripts/path2/run_path2_web.py 起后再跑一次真实 /scan:
 真实 /scan(path2_web/scan.py:_scan_ticker_multi)对每只股票有 any_match 闸——
 所有 pattern 全无 match 的股票整支被丢弃、不进 results(scan.py:80-81)。这个闸对
 生产扫描是对的(避免结果文件塞满零信号股),但恰恰挡住了本 e2e 要验证的核心场景:

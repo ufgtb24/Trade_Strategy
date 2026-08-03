@@ -15,7 +15,7 @@ if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))     # 子进程 import path2_apps/path2_web
 
 
-_OUTPUTS_ROOT = "outputs/path2_web"
+_OUTPUTS_ROOT = str(REPO / "outputs" / "path2_web")     # 锚到 repo root,避免受启动 CWD 影响
 
 
 def make_app():

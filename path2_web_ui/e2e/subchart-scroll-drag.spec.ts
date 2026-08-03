@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test'
 import { baseURL } from './ports'
 
 // 前提:后端 + 前端 dev server 在线(playwright.config.ts 的 webServer 自动启动前端;
-//        后端须外部启动 uv run python scripts/run_path2_web.py)。
+//        后端须外部启动 uv run python scripts/path2/run_path2_web.py)。
 // 固定 fixture:2026-06-30 17:52:56 扫描历史(outputs/path2_web/scans/20260630T175256.json)
 // 含 bottom_burst pattern 下 BTMWW(2 条 match,event_id 前缀 bottom_burst@),用于驱动
 // candidate/disambig 相关断言。

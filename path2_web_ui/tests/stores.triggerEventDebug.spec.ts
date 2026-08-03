@@ -26,7 +26,11 @@ function seedStore(store: ReturnType<typeof useViewStore>, tbEvent: any, boEvent
   // 与 ScanMeta 实际要求的扁平 win_start/win_end(windowOf() 消费)不符,会在 triggerEventDebug 内
   // windowOf() 处直接 throw。均为 brief 测试代码相对当前实际类型契约的 bug,非设计分歧;
   // 已核对 view.ts::_previewHits/currentAnalysis/currentPerStock 与 types.ts::ScanMeta 修正。
-  ;(store as any).previewEnabled = true
+  //
+  // 【Task 9 修正】previewEnabled 由 ref 改 computed(isExploring 别名),直接赋值静默 no-op。
+  // 改为直接注入 workingCopy 槽位(enabled=true)达到同等效果 —— isExploring 只看
+  // workingCopy.value[activePatternId]?.enabled,不需要真实 fork(此处无 params_snapshot)。
+  ;(store as any).workingCopy = { bottom_burst: { enabled: true, baseline: {}, currentDict: {} } }
   ;(store as any).preview = {
     symbol: 'AAPL',
     pattern_spec: { pattern_id: 'bottom_burst' },

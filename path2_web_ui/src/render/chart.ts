@@ -31,6 +31,10 @@ export interface TooltipClauseRow {
   op: string | null
   threshold: unknown
   satisfied: boolean
+  depth: number
+  kind: string | null
+  /** 树线前缀(├ └ │ + 空格),由 visible.flattenChildren 按兄弟位置算好;顶层为 ''。 */
+  guide?: string
 }
 
 export interface TooltipPayload {
@@ -83,8 +87,6 @@ export interface BandRenderInput {
   matches?: MatchDict[]  // buildSubOption 的 markerTooltip formatter 用（自 KlineChart.vue 透传）
   // ── 副图 band 竖直 zoom(spec 2026-07-03):由 KlineChart 传入,default 1.0 ──────
   zoomFactor?: number
-  // ── 主图 title 显示 symbol code(居中,空/null 时隐藏,ECharts 原生 title) ──────
-  symbolLabel?: string | null
 }
 
 // ─── Task 5: 共享 event 数据抽取(供 buildMainOption/buildSubOption 消费) ──────
@@ -293,7 +295,7 @@ export function buildMainOption(
   opts?: { getChartEl?: () => HTMLElement | null },
 ): unknown {
   const { strictWindow, sliderShow, zoomOverride,
-          tooltipResolver, matchLabel, candidateMatchIds, symbolLabel } = input
+          tooltipResolver, matchLabel, candidateMatchIds } = input
   const { dates, candle, pricePointData, satelliteData, highlightPriceData, veilPriceData } = bundle
 
   const N = bars.length
@@ -342,8 +344,6 @@ export function buildMainOption(
     : undefined
 
   return {
-    ...(symbolLabel ? { title: { text: symbolLabel, left: 'center', top: 6,
-                                  textStyle: { fontSize: 14, fontWeight: 'bold', color: '#333' } } } : {}),
     animation: false,
     tooltip,
     // axisPointer.link 删除:双实例 echarts.connect 接管
@@ -1465,18 +1465,39 @@ export function buildMarkerTooltipFormatter(
       lines.push(...idBody)
 
       // 段 2 Clauses（失败已置顶；多 node 同 cid 行末加 (in: <node>)）
+      //
+      // 层次靠【树线 ├ └ │】显式画出,不靠留白暗示;等宽字体让三列(名/实测/阈值)对齐。
+      // 两个正交信道:粗体=顶层 clause(结构),红色=未通过(状态)。此前二者都压在粗体上,
+      // 导致深层失败叶子比它的顶层父行还醒目、视觉层级倒置。
+      // 组合子行不出 n/m 聚合——子分支恒全量展开(不短路),数字数一眼就有,属冗余。
       if (clauses.length > 0) {
         const cidCounts: Record<string, number> = {}
-        for (const c of clauses) cidCounts[c.cid] = (cidCounts[c.cid] ?? 0) + 1
-        const clauseLines = clauses.map((c) => {
-          const opStr = c.op != null ? ` ${c.op} ${fmtNum(c.threshold)}` : ''
+        for (const c of clauses) if (c.depth === 0) cidCounts[c.cid] = (cidCounts[c.cid] ?? 0) + 1
+        // 组合子无 clause_id 时 visible.flattenChildren 用 witness.label 兜底 → cid === kind,
+        // 此时不把 kind 印两遍("and (and)");顶层 clause 有真名则保留 "cid (kind)"。
+        const cells = clauses.map((c) => ({
+          c,
+          name: (c.guide ?? '') + (c.kind == null ? c.cid
+                                   : c.cid === c.kind ? c.kind : `${c.cid} (${c.kind})`),
+          meas: c.kind == null ? fmtNum(c.measured) : '',
+          rule: c.kind == null && c.op != null ? `${c.op} ${fmtNum(c.threshold)}` : '',
+        }))
+        const wName = Math.max(...cells.map((x) => x.name.length))
+        const wMeas = Math.max(...cells.map((x) => x.meas.length))
+        const wRule = Math.max(...cells.map((x) => x.rule.length))
+        const pad = (s: string, w: number) => (s + ' '.repeat(Math.max(0, w - s.length) + 2))
+        const clauseLines = cells.map(({ c, name, meas, rule }) => {
           const mark = c.satisfied ? '✓' : '✗'
-          const inSuffix = cidCounts[c.cid] > 1 ? ` (in: ${c.node})` : ''
-          const body = `${c.cid}: ${fmtNum(c.measured)}${opStr} ${mark}${inSuffix}`
-          return c.satisfied ? body : `<b>${body}</b>`
+          const inSuffix = c.depth === 0 && cidCounts[c.cid] > 1 ? ` (in: ${c.node})` : ''
+          const body = (pad(name, wName) + pad(meas, wMeas) + pad(rule, wRule) + mark + inSuffix)
+            .replace(/ /g, '&nbsp;')
+          const colored = c.satisfied ? body : `<span style="color:#d33">${body}</span>`
+          return c.depth === 0 ? `<b>${colored}</b>` : colored
         })
         lines.push('<hr/><b>Clauses</b>')
-        lines.push(...clauseLines)
+        // 用 span 不用 div:div 是块级,会在 join 的 <br/> 之外再自带一次换行 → 段头后多一空行
+        lines.push(`<span style="font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">`
+                   + clauseLines.join('<br/>') + '</span>')
       }
 
       // 段 3 Attributes（raw 已去重）

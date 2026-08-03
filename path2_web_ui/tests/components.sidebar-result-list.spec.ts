@@ -26,7 +26,7 @@ function makeScanFile(pids: string[], withStats: boolean): MultiScanResultFile {
       scan_ts: '20260713T120000',
       start_date: '2025-01-01', end_date: '2026-12-31', workers: 2,
       scanned: 0, hits: 0, errors: 0, dataset_dir: '', params: 'default',
-      win_start: '2025-01-01', win_end: '2026-12-31', label_horizon: 5,
+      win_start: '2025-01-01', win_end: '2026-12-31', label_horizon: 5, first_passage_k: 2,
     },
     results: [],
   }
@@ -94,6 +94,41 @@ describe('SidebarResultList · hover tooltip', () => {
     expect(w.findComponent({ name: 'PatternStatsTooltip' }).exists()).toBe(true)
     w.unmount()
   })
+
+  // ── Task 5 · 首次穿越块 hover 接线 ────────────────────────────────────────
+  it('hover 的 pattern 有 first_passage_stats → tooltip 渲染首次穿越块', async () => {
+    const view = useViewStore()
+    const file = makeScanFile(['bo_only'], true)
+    ;(file.per_pattern['bo_only'] as any).first_passage_stats = {
+      up: 30, down: 10, both: 2, none: 3, n_match: 45, ratio: 0.75,
+      random_up: 23, random_down: 22, random_both: 0, random_none: 0, random_n: 45, random_ratio: 0.511, k: 2,
+    }
+    view.loadScanFile(file)
+    const w = mount(SidebarResultList, { attachTo: document.body })
+    await flushPromises()
+    const th = w.find('.col-pattern[data-pattern-pid="bo_only"]')
+    await th.trigger('mouseenter')
+    await flushPromises()
+    // 首次穿越块挂出(单组口径)· k 标注 + 命中集先涨比例可见
+    expect(w.find('.stats-first-passage').exists()).toBe(true)
+    const txt = w.find('.stats-first-passage').text()
+    expect(txt).toContain('k=2')
+    expect(txt).toContain('75%')     // ratio
+    expect(txt).toContain('51%')     // random_ratio
+    w.unmount()
+  })
+
+  it('hover 的 pattern 无 first_passage_stats → tooltip 不渲染首次穿越块(向后兼容)', async () => {
+    const view = useViewStore()
+    view.loadScanFile(makeScanFile(['bo_only'], true))   // 无 first_passage_stats
+    const w = mount(SidebarResultList, { attachTo: document.body })
+    await flushPromises()
+    const th = w.find('.col-pattern[data-pattern-pid="bo_only"]')
+    await th.trigger('mouseenter')
+    await flushPromises()
+    expect(w.find('.stats-first-passage').exists()).toBe(false)
+    w.unmount()
+  })
 })
 
 describe('SidebarResultList · symbol search UI', () => {
@@ -112,7 +147,7 @@ describe('SidebarResultList · symbol search UI', () => {
         scan_ts: '20260714T120000', start_date: '2024-01-01', end_date: '2024-06-30',
         workers: 1, scanned: symbols.length, hits: symbols.length, errors: 0,
         dataset_dir: '/d', params: 'default',
-        win_start: '2024-01-01', win_end: '2024-06-30', label_horizon: 5,
+        win_start: '2024-01-01', win_end: '2024-06-30', label_horizon: 5, first_passage_k: 2,
       },
       results: symbols.map(s => ({
         symbol: s,
@@ -239,7 +274,7 @@ describe('SidebarResultList · global char forwarding', () => {
         scan_ts: '20260714T120000', start_date: '2024-01-01', end_date: '2024-06-30',
         workers: 1, scanned: symbols.length, hits: symbols.length, errors: 0,
         dataset_dir: '/d', params: 'default',
-        win_start: '2024-01-01', win_end: '2024-06-30', label_horizon: 5,
+        win_start: '2024-01-01', win_end: '2024-06-30', label_horizon: 5, first_passage_k: 2,
       },
       results: symbols.map(s => ({
         symbol: s,
@@ -313,6 +348,28 @@ describe('SidebarResultList · global char forwarding', () => {
     const w = mount(SidebarResultList, { attachTo: document.body })
     await flushPromises()
     fireKey('a', { ctrlKey: true })
+    await flushPromises()
+    expect(view.symbolQuery).toBe('')
+    w.unmount()
+  })
+
+  it('Shift+P is not forwarded to search (shift modifier)', async () => {
+    const view = useViewStore()
+    view.loadScanFile(scanFile(['AA']))
+    const w = mount(SidebarResultList, { attachTo: document.body })
+    await flushPromises()
+    fireKey('P', { shiftKey: true })
+    await flushPromises()
+    expect(view.symbolQuery).toBe('')
+    w.unmount()
+  })
+
+  it('Shift+B is not forwarded to search (brush toggle 让出,回归保障)', async () => {
+    const view = useViewStore()
+    view.loadScanFile(scanFile(['AA']))
+    const w = mount(SidebarResultList, { attachTo: document.body })
+    await flushPromises()
+    fireKey('B', { shiftKey: true })
     await flushPromises()
     expect(view.symbolQuery).toBe('')
     w.unmount()
@@ -393,6 +450,72 @@ describe('SidebarResultList · global char forwarding', () => {
     fireKey('B', { shiftKey: true })
     await flushPromises()
     expect(view.symbolQuery).toBe('')
+    w.unmount()
+  })
+})
+
+describe('SidebarResultList · pattern 命中股票数', () => {
+  beforeEach(() => { setActivePinia(createPinia()) })
+
+  // makeScanFile 的 results 是空数组,这里补上两只股:
+  // AAA 两个 pattern 都命中 · BBB 只命中 bo_only → bo_only=2, bbb=1
+  function makeScanFileWithResults(): MultiScanResultFile {
+    const f = makeScanFile(['bo_only', 'bbb'], false)
+    f.results = [
+      { symbol: 'AAA', per_pattern: {
+        bo_only: { summary: { matches: 2 }, analysis: { events: [], matches: [] }, max_forward_return: 0.34 },
+        bbb:     { summary: { matches: 1 }, analysis: { events: [], matches: [] }, max_forward_return: 0.10 },
+      }},
+      { symbol: 'BBB', per_pattern: {
+        bo_only: { summary: { matches: 1 }, analysis: { events: [], matches: [] }, max_forward_return: 0.50 },
+        bbb:     { summary: { matches: 0 }, analysis: { events: [], matches: [] }, max_forward_return: null },
+      }},
+    ]
+    return f
+  }
+
+  it('第一级表头同时显示 pid 与命中股票数', async () => {
+    const view = useViewStore()
+    view.loadScanFile(makeScanFileWithResults())
+    const w = mount(SidebarResultList, { attachTo: document.body })
+    await flushPromises()
+
+    const thBo = w.find('.col-pattern[data-pattern-pid="bo_only"]')
+    expect(thBo.text()).toContain('bo_only')
+    expect(thBo.find('[data-testid="pattern-hit-count"]').text()).toBe('2')
+
+    const thBbb = w.find('.col-pattern[data-pattern-pid="bbb"]')
+    expect(thBbb.text()).toContain('bbb')
+    expect(thBbb.find('[data-testid="pattern-hit-count"]').text()).toBe('1')
+
+    w.unmount()
+  })
+
+  it('搜索过滤后表头计数不变', async () => {
+    const view = useViewStore()
+    view.loadScanFile(makeScanFileWithResults())
+    const w = mount(SidebarResultList, { attachTo: document.body })
+    await flushPromises()
+
+    view.setSymbolQuery('AA')          // 只剩 AAA 一行
+    await flushPromises()
+
+    expect(view.filteredSortedRows.length).toBe(1)   // 搜索确实生效
+    expect(w.find('.col-pattern[data-pattern-pid="bo_only"]')
+            .find('[data-testid="pattern-hit-count"]').text()).toBe('2')
+    w.unmount()
+  })
+
+  it('零命中的 pattern 显示 0', async () => {
+    const f = makeScanFileWithResults()
+    for (const r of f.results) (r.per_pattern as any).bbb.summary.matches = 0
+    const view = useViewStore()
+    view.loadScanFile(f)
+    const w = mount(SidebarResultList, { attachTo: document.body })
+    await flushPromises()
+
+    expect(w.find('.col-pattern[data-pattern-pid="bbb"]')
+            .find('[data-testid="pattern-hit-count"]').text()).toBe('0')
     w.unmount()
   })
 })

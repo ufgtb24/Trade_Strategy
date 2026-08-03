@@ -3,7 +3,7 @@ import { baseURL } from './ports'
 
 // 副图 band 竖直 zoom 交互 e2e (spec 2026-07-03-subchart-band-zoom):
 // 前置 = 后端在线 + 前端 dev server 在线 + BTMWW fixture 存在(playwright.config.ts
-// 的 webServer 自动启动前端;后端须外部启动 uv run python scripts/run_path2_web.py)。
+// 的 webServer 自动启动前端;后端须外部启动 uv run python scripts/path2/run_path2_web.py)。
 // 5 case:UI 按钮 zoom / Shift+wheel zoom / 主图区 Shift+wheel = noop /
 // 与 subHeightOffset 正交(隐含于 button/wheel 两 case 均在 override=null 下驱动) / 持久化。
 //

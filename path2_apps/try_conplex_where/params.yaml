@@ -1,0 +1,39 @@
+# Default params for bottom_breakout_burst pattern (V3.3 B 方案,nested by node)。
+# 调参在开发完成后单独进行,本文件先用合理默认值。改完下一次 web /scan 即热加载生效。
+
+bo:
+  total_window: 20
+  min_side_bars: 6
+  min_relative_height: 0.2
+  exceed_threshold: 0.003
+  peak_supersede_threshold: 0.01
+  vol_baseline_period: 63
+  peak_measure: high
+  breakout_measure: high
+
+burst:
+  # detector 构造(切串)
+  gap_max: 8
+  vol_baseline_period: 63
+  # detector + 业务约束② 共用(BurstDetector(min_bos) + len(bo 串) ≥ min_bos)
+  min_bos: 1
+  # burst node 的 where 阈值(detector 不读,只在 NodeSpec.where 闭合)
+  first_drought_min: 20
+  distinct_pk_min: 3
+  vol_spike_min: 3.0
+
+tb:
+  # 注意:max_start_gap 同时被 ThrowbackDetector 与 burst→tb edge 复用
+  # (SSoT 单一定义,dag_spec 内 edge 显式引用 params.tb.max_start_gap)
+  max_start_gap: 5
+  max_window: 5
+  atr_window: 14
+  big_rise_k: 1.5
+  stop_confirm_bars: 2
+  anchor_measure: high
+  support_measure: close
+
+# edges 段:当前所有 edge 字段或硬编码(min_gap=1/anchor_field/Child(...))或从 node
+# section 引用(max_gap = tb.max_start_gap),故本段当前为空。保留 section 占位以便未来
+# 扩展 edge-only 参数(如某新边的 max_lag)。
+edges: {}

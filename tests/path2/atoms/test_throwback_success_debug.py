@@ -2,7 +2,7 @@
 
 每处 debug_break 参数必须与即将 return / event 字段的 bar 值对齐(v2 契约 #4):
   - evaluate_throwback 入口 → bo_idx
-  - _find_start_idx return trough_idx 前 → trough_idx
+  - _find_confirm_idx return trough_idx 前 → trough_idx
   - _find_end_idx return i - 1 前 → i - 1(⚠ 不是 i)
   - _find_end_idx return end_scan 前 → end_scan
 """
@@ -32,7 +32,7 @@ def _make_df(n: int = 100, seed: int = 0) -> pd.DataFrame:
 
 def _fixture_bo(df: pd.DataFrame, idx: int) -> BOEvent:
     """构造一个 BO event 指向 df 里第 idx 根 bar 作 breakout。"""
-    return BOEvent(start_idx=idx, end_idx=idx, event_id=f"bo_test_{idx}")
+    return BOEvent(start_idx=idx, end_idx=idx, confirm_idx=idx, event_id=f"bo_test_{idx}")
 
 
 def test_evaluate_throwback_calls_debug_break_at_entry():
@@ -45,11 +45,11 @@ def test_evaluate_throwback_calls_debug_break_at_entry():
     assert 30 in calls, f"expected bo_idx=30 in debug_break calls, got {calls}"
 
 
-def test_find_start_idx_calls_debug_break_before_return_trough():
-    """arch2 v2 · L163 埋点:_find_start_idx return trough_idx 前(与 event.start_idx 对齐)
+def test_find_confirm_idx_calls_debug_break_before_return_trough():
+    """arch2 v2 · L163 埋点:_find_confirm_idx return trough_idx 前(与 event.start_idx 对齐)
 
     构造一段: bo 后 low 单调下降到 trough,然后 low 抬头(_has_stop_signal)+ 高深度回撤,
-    使 _find_start_idx 走成功路径 return trough_idx。
+    使 _find_confirm_idx 走成功路径 return trough_idx。
 
     ⚠ fixture 修正(非 brief 原样):anchor = measure_at(bo_idx-1, "high"),若 bo 紧跟在单调
     上涨的最高点之后(如原始 [0..30] 涨到 130 后 31 即 bo),anchor 本身就是全程最高价,
@@ -58,6 +58,10 @@ def test_find_start_idx_calls_debug_break_before_return_trough():
     Task 1 report)。修正为「bo 处跳空突破」形态:[0..30] 温和爬升到 108(锚点仅 108.5),
     31 跳空至 128(真正的突破动作),[32..40] 从跳空高点回落到 114(比锚点 108.5 高出充分
     余量,不破位),[41,42] 抬头确认止跌 → trough_idx=40,与原断言区间 [40,45] 保持一致。
+
+    ⚠ Task 6 同源修补:41 抬头(low 113.5→114.5)相对 running base_min 构成的反弹幅度会
+    先撞上新引入的 phase1_rise_before_confirm gate(默认 big_rise_k=1.5,提前 return None,
+    confirm 分支永远不可达),故传 big_rise_k=100.0 阻断该 gate,与本文件另两个 test 同款做法一致。
     """
     n = 100
     close = np.linspace(100, 108, 31).tolist()        # [0..30] 温和爬升至 108(锚点低)
@@ -74,8 +78,7 @@ def test_find_start_idx_calls_debug_break_before_return_trough():
     })
     bo = _fixture_bo(df, idx=31)
     with patch('path2.atoms.throwback.debug_break') as mock_break:
-        evaluate_throwback(bo, df, max_start_gap=15, max_window=15,
-                            pullback_min_atr=0.1)  # 放宽 gate 让 trough 通过
+        evaluate_throwback(bo, df, max_start_gap=15, max_window=15, big_rise_k=100.0)
     calls = [c.args[0] for c in mock_break.call_args_list]
     # trough_idx 应落在 [40, 45](实测 trough_idx=40)
     trough_candidates = [c for c in calls if 40 <= c <= 45]
@@ -88,7 +91,7 @@ def test_find_end_idx_calls_debug_break_with_i_minus_1_on_rise():
     ⚠ 参数必须 i - 1 不是 i(与 event.end_idx 对齐 · v2 契约 #4 R11)
     构造大涨形态: bo → trough → 从 trough 起某根 high - base_min >= big_rise_k * atr。
 
-    ⚠ fixture 修正(非 brief 原样,同 test_find_start_idx_calls_debug_break_before_return_trough
+    ⚠ fixture 修正(非 brief 原样,同 test_find_confirm_idx_calls_debug_break_before_return_trough
     的 anchor-破位 根因):改用「bo 处跳空突破」形态避免 trough 提前破位。
     另需注意:trough_idx(本例=36)必须落在断言区间 [40,50] 之外 —— 否则 debug_break(trough_idx)
     (L163,与本测试目标 L215 无关)会与本测试的范围断言重叠,导致 L215 即使未实现该测试也会
@@ -115,7 +118,7 @@ def test_find_end_idx_calls_debug_break_with_i_minus_1_on_rise():
     bo = _fixture_bo(df, idx=31)
     with patch('path2.atoms.throwback.debug_break') as mock_break:
         evaluate_throwback(bo, df, max_start_gap=15, max_window=15,
-                            pullback_min_atr=0.1, big_rise_k=1.5)
+                            big_rise_k=1.5)
     calls = [c.args[0] for c in mock_break.call_args_list]
     # end = i - 1;i=45 触发大涨,end 应为 44(实测:trough_idx=36 落在区间外,不干扰本断言)
     rise_end_candidates = [c for c in calls if 40 <= c <= 50]
@@ -152,7 +155,7 @@ def test_find_end_idx_calls_debug_break_with_end_scan_on_timeout():
     bo = _fixture_bo(df, idx=31)
     with patch('path2.atoms.throwback.debug_break') as mock_break:
         evaluate_throwback(bo, df, max_start_gap=15, max_window=15,
-                            pullback_min_atr=0.1, big_rise_k=100.0)  # 大 k 阻大涨
+                            big_rise_k=100.0)  # 大 k 阻大涨
     calls = [c.args[0] for c in mock_break.call_args_list]
     # end_scan = start_idx + max_window;trough=40,+15=55(实测)
     timeout_end_candidates = [c for c in calls if 55 <= c <= 65]

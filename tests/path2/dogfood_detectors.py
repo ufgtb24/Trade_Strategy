@@ -43,7 +43,7 @@ class VolSpikeDetector:
             ratio = float(vol[i] / mean)
             if ratio > self.THRESHOLD:
                 yield VolSpike(
-                    event_id=f"vs_{i}", start_idx=i, end_idx=i, ratio=ratio
+                    event_id=f"vs_{i}", start_idx=i, end_idx=i, confirm_idx=i, ratio=ratio
                 )
 
 
@@ -72,8 +72,7 @@ class VolClusterDetector:
                 end = window[-1].end_idx
                 yield VolCluster(
                     event_id=f"vc_{start}_{end}",
-                    start_idx=start,
-                    end_idx=end,
+                    start_idx=start, end_idx=end, confirm_idx=start,
                     count=len(window),
                     span_bars=end - start,
                 )

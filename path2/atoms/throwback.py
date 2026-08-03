@@ -1,15 +1,18 @@
-"""throwback 可买入区间事件(2026-06 重构)。
+"""throwback 可执行整理买窗事件(2026-07 重写)。
 
-tb event [start_idx, end_idx] = 回踩成功后的「可买入窗」:
-  - start_idx = 止跌点(回落段最低点),最早可买入位置;
-  - end_idx   = 大涨前一根(窗口在大动作前收) 或 timeout(start+max_window);
-  - 事件存在 ⟺ 回踩成功(破位则不产事件,下游零歧义)。
-区间语义 = 允许入场窗、偏好 start 端(非等价入场);纯走势,不含成交量判断。
+tb event [start_idx, end_idx] = 突破后可执行的整理买窗:
+  - start_idx = 止跌企稳确认点(不再回溯到 trough,即时性);
+  - end_idx   = 大涨前一根 / 破位前一根 / timeout(视 outcome 定);
+  - outcome ∈ ('rise', 'break', 'timeout')= 窗口关闭方式(见 ThrowbackEvent);
+  - 事件存在 ⟺ Phase 1 confirm 成功(confirm 前 anchor break / rise-before-confirm 不产)。
+可执行窗语义:窗内每一 bar 都是"当时已知买点仍开"的即时买入日,label pipeline
+逐日消费(path2/eval.py::match_forward_returns)。
 
-anchor = measure_at(bo-1, anchor_measure);必要条件 = [bo+1, end] 全程
-measure_at(i, support_measure) ≥ anchor(破位即不产)。ATR 取 bo-1(避开 bo 当根异常 TR)。
-预算:止跌点 ∈ [bo+1, bo+max_start_gap],买点窗宽 ≤ max_window。
-大涨价基 = high;base_min = [start, i-1] 的 running min low(不含当前根)。
+anchor = measure_at(bo-1, anchor_measure);Phase 1 全程 measure_at(i, support_measure)
+≥ anchor;ATR 取 bo-1(避开 bo 当根异常 TR)。
+预算:确认点 ∈ [bo+1, bo+max_start_gap],买点窗宽 confirm→end ≤ max_window。
+Phase 2 rise 判据:high[i] - base_min ≥ big_rise_k*atr,base_min = running min low
+over [trough, i-1](锚 trough,反映从整理底部起的反弹力度)。
 """
 from __future__ import annotations
 
@@ -32,11 +35,18 @@ from path2.stdlib import span_id
 # 止跌 K 线证据集(_positive_signals 子集):下影 / 阳线 / 收涨
 _STOP_SIGNALS = ('lower_shadow', 'bullish', 'close_up')
 
+# tb 事件结局值域:phase2 三条出路
+_TB_OUTCOMES = ("rise", "break", "timeout")
+
 
 class ThrowbackResult(NamedTuple):
-    """evaluate_throwback 成功返回值;失败返回 None(不产事件)。"""
+    """evaluate_throwback 成功返回值;失败返回 None(不产事件)。
+
+    outcome ∈ _TB_OUTCOMES:phase 2 的三种收窗方式。
+    """
     start_idx: int
     end_idx: int
+    outcome: str
 
 
 def _positive_signals(df: pd.DataFrame, i: int) -> List[str]:
@@ -119,30 +129,36 @@ def _emit_tb_gate(bo_idx: int, gate_idx: int, gate_name: str,
     ))
 
 
-def _find_start_idx(df: pd.DataFrame, bo_idx: int, anchor: float,
-                    max_start_gap: int, atr: float, pullback_min_atr: float,
+def _find_confirm_idx(df: pd.DataFrame, bo_idx: int, anchor: float,
+                    max_start_gap: int, atr: float,
+                    stop_confirm_bars: int, big_rise_k: float,
                     support_measure: str = "low",
                     on_gate: Optional[Callable[[GateFailure], None]] = None,
-                    atr_window: int = 14) -> Optional[int]:
-    """阶段一:定位止跌点(回落段最低点)。返回 trough_idx 或 None。
+                    atr_window: int = 14) -> Optional[tuple[int, int]]:
+    """Phase 1:定位止跌企稳确认点。返回 (confirm_idx, trough_idx) 或 None。
 
-    从 bo_idx+1 扫到 bo_idx+max_start_gap(买点不离 bo 过远):
-      - 任一根 measure_at(i, support_measure) < anchor → 破位 → None;
-      - 首个「连续两根不创新低」(low[i]≥low[i-1] ∧ low[i-1]≥low[i-2])
-        且 {i-1,i} 含止跌 K 线证据 → 止跌确认;
-      - 回落门:peak(max high over [bo_idx, trough]) − low[trough]
-        ≥ pullback_min_atr×atr,否则 None(没回踩、直接横住);
-      - 返回 trough = argmin(low) over [bo_idx+1, i]。
-    止跌/trough/回落门固定用 low/high(走势内禀);support_measure 只参数化破位比较。
+    扫 [bo+1, bo+max_start_gap];三条不产事件的短路:
+      - 任一根 measure_at(i, support_measure) < anchor → phase1_break → None;
+      - 任一根 high[i] - base_min ≥ big_rise_k*atr(base_min = running min low
+        over [bo+1, i-1])→ phase1_rise_before_confirm → None;
+      - 扫满未 confirm → phase1_no_confirm_timeout → None。
+    confirm 条件(K = stop_confirm_bars):i - trough_idx ≥ K,且 [trough_idx, i] 内
+      至少一根 K 线含 stop signal(_STOP_SIGNALS = 下影/阳线/收涨之一)。
+      trough_idx = argmin(low) over [bo+1, i](动态更新);当 i 刷新 trough 时
+      i-trough=0,天然不满足 K,当前根不 confirm。
+
+    注意:base_min 是 running min low over [bo+1, i-1](不含当前 i)——同根内
+    high-low 相消会失效 rise 检测;与 phase 2 内部同口径。
     """
     end = min(bo_idx + max_start_gap, len(df) - 1)
     trough_idx = bo_idx + 1
+    # inf 起手:首轮(i=bo+1)由循环末的 running-min 更新自动 seed 成 low[bo+1],与
+    # 直接初始化等价;但不在循环外读 low[bo+1]——bo 落在数据末根时该下标越界。
+    base_min = float('inf')
     for i in range(bo_idx + 1, end + 1):
+        # 1. anchor break
         measured_support = measure_at(df, i, support_measure)
         if measured_support < anchor:
-            # gate: phase1_break · 寻底扫描期间当前 bar 是否击穿 bo 前的收盘价 anchor (anchor = 突破那根 bar 的前一根收盘价)
-            # measured=anchor_delta(当前支撑价 - anchor, 负值即破位;支撑价由 support_measure 决定, 通常是 low)
-            # 判据: anchor_delta>=0 通过(仍位于 anchor 之上); <0 失败, 破位, throwback 撤销
             _emit_tb_gate(bo_idx, i, 'phase1_break',
                           MeasuredKindAware(kind='anchor_delta',
                                             value=measured_support - anchor,
@@ -150,77 +166,77 @@ def _find_start_idx(df: pd.DataFrame, bo_idx: int, anchor: float,
                           0.0, atr_window, on_gate,
                           op='>=', threshold_param=None)
             return None
+        # 2. maintain trough_idx (argmin over [bo+1, i])
         lo_i = float(df['low'].iat[i])
         if lo_i < float(df['low'].iat[trough_idx]):
             trough_idx = i
+        # 3. rise-before-confirm(仅当 i ≥ bo+2 时 base_min 已覆盖 [bo+1, i-1])
         if i >= bo_idx + 2:
-            lo_p = float(df['low'].iat[i - 1])
-            lo_pp = float(df['low'].iat[i - 2])
-            if (lo_i >= lo_p and lo_p >= lo_pp
-                    and (_has_stop_signal(df, i - 1) or _has_stop_signal(df, i))):
-                peak = float(df['high'].iloc[bo_idx: trough_idx + 1].max())
-                depth = peak - float(df['low'].iat[trough_idx])
-                if depth >= pullback_min_atr * atr:
-                    debug_break(trough_idx, anchor_kind='trough', class_id='tb')  # v2 · phase1 success(与 event.start_idx 对齐)
-                    return trough_idx
-                # gate: phase1_pullback_shortage · 已探得止跌形态, 但从 bo 高点到止跌位的下跌幅度是否够 ATR 倍数
-                # measured=pullback_atr(下跌深度 depth 除以 ATR; depth = bo 高点价 - 止跌价; ATR = atr_window 根真实波幅的平均)
-                # 判据: pullback_atr>=pullback_min_atr 通过; 否则失败, 回撤不足, 不构成有效 throwback
-                _emit_tb_gate(bo_idx, i, 'phase1_pullback_shortage',
-                              MeasuredKindAware(kind='pullback_atr',
-                                                value=depth / atr if atr > 0 else 0.0,
-                                                label='回落深度/ATR'),
-                              pullback_min_atr, atr_window, on_gate,
-                              op='>=', threshold_param='pullback_min_atr')
+            rise = float(df['high'].iat[i]) - base_min
+            if rise >= big_rise_k * atr:
+                _emit_tb_gate(bo_idx, i, 'phase1_rise_before_confirm',
+                              MeasuredKindAware(kind='rise_atr',
+                                                value=rise / atr if atr > 0 else 0.0,
+                                                label='大涨幅/ATR'),
+                              big_rise_k, atr_window, on_gate,
+                              op='>=', threshold_param='big_rise_k')
                 return None
-    # gate: phase1_no_trough_timeout · 寻底扫描窗内(共 max_start_gap 根)始终未确认止跌
-    # measured=count(扫描已扫满的窗宽 = max_start_gap 根)
-    # 判据: 窗内某根需同时满足连续两根不再创新低、止跌信号触发、下跌深度达 ATR 倍数三条; 扫满未满足则失败
-    _emit_tb_gate(bo_idx, end, 'phase1_no_trough_timeout',
+        # 4. confirm: K-bar trough-age + stop evidence in [trough, i]
+        if i - trough_idx >= stop_confirm_bars:
+            if any(_has_stop_signal(df, t) for t in range(trough_idx, i + 1)):
+                debug_break(i, anchor_kind='confirm', class_id='tb')   # v3 · confirm point
+                return i, trough_idx
+        # 5. running-min update for next iteration
+        if lo_i < base_min:
+            base_min = lo_i
+    _emit_tb_gate(bo_idx, end, 'phase1_no_confirm_timeout',
                   MeasuredKindAware(kind='count', value=max_start_gap,
-                                    label='max_start_gap 扫满'),
+                                    label='max_start_gap 扫满(无确认)'),
                   max_start_gap, atr_window, on_gate)
     return None
 
 
-def _find_end_idx(df: pd.DataFrame, start_idx: int, anchor: float,
-                  max_window: int, atr: float, big_rise_k: float,
+def _find_end_idx(df: pd.DataFrame, confirm_idx: int, trough_idx: int,
+                  anchor: float, max_window: int, atr: float, big_rise_k: float,
                   support_measure: str = "low",
                   on_gate: Optional[Callable[[GateFailure], None]] = None,
                   bo_idx: Optional[int] = None,
-                  atr_window: int = 14) -> Optional[int]:
-    """阶段二:定位 end(大涨前一根 / timeout)。返回 end_idx 或 None(破位)。
+                  atr_window: int = 14) -> tuple[int, str]:
+    """Phase 2:确认后找结局。返回 (end_idx, outcome ∈ _TB_OUTCOMES)——never None。
 
-    base_min = running min(low) over [start_idx, i-1](不含当前根 i)。
-    从 start_idx+1 扫到 start_idx+max_window(买点窗不持续过长):
-      - measure_at(i, support_measure) < anchor → 破位 → None;
-      - high[i] − base_min ≥ big_rise_k×atr → 大涨 → end = i−1;
-      - 扫满无大涨无破位 → timeout → end = min(start_idx+max_window, len-1)。
-    大涨价基固定 high(更早关窗=保守买点窗)。
+    扫 [confirm+1, confirm+max_window],三条出路:
+      - measure_at(i, support_measure) < anchor → (i-1, 'break'),emit phase2_break;
+      - high[i] - base_min ≥ big_rise_k*atr → (i-1, 'rise')(成功路径,不 emit gate);
+      - 扫满无 rise 无 break → (min(confirm+max_window, len-1), 'timeout')。
+    base_min = running min low over [trough_idx, i-1];初始 seed = min low over
+      [trough_idx, confirm_idx](因为 i=confirm+1 时 base 应含 confirm 那一根)。
+    rise 幅度以 trough 为参照(整理底部)而非 confirm——反映真实反弹力度。
     """
-    end_scan = min(start_idx + max_window, len(df) - 1)
-    base_min = float(df['low'].iat[start_idx])
-    for i in range(start_idx + 1, end_scan + 1):
+    end_scan = min(confirm_idx + max_window, len(df) - 1)
+    # seed base_min:覆盖 [trough_idx, confirm_idx](i=confirm+1 时需已含 confirm)
+    base_min = float(df['low'].iloc[trough_idx: confirm_idx + 1].min())
+    for i in range(confirm_idx + 1, end_scan + 1):
+        # 1. anchor break → 产事件 outcome='break',end=i-1
         measured_support = measure_at(df, i, support_measure)
         if measured_support < anchor:
-            # gate: phase2_break · 反弹推进扫描期间当前 bar 是否击穿 bo 前的收盘价 anchor
-            # measured=anchor_delta(当前支撑价 - anchor, 负值即破位;含义同 phase1_break)
-            # 判据: anchor_delta>=0 通过(仍位于 anchor 之上); <0 失败, 破位, throwback 撤销
             _emit_tb_gate(bo_idx, i, 'phase2_break',
                           MeasuredKindAware(kind='anchor_delta',
                                             value=measured_support - anchor,
                                             label='破位差'),
                           0.0, atr_window, on_gate,
                           op='>=', threshold_param=None)
-            return None
+            debug_break(i - 1, anchor_kind='end', class_id='tb')
+            return i - 1, "break"
+        # 2. rise → 产事件 outcome='rise',end=i-1
         if float(df['high'].iat[i]) - base_min >= big_rise_k * atr:
-            debug_break(i - 1, anchor_kind='end', class_id='tb')  # v2 · phase2 rise end(⚠ i-1 与 event.end_idx 对齐, 非 i)
-            return i - 1
+            debug_break(i - 1, anchor_kind='end', class_id='tb')
+            return i - 1, "rise"
+        # 3. update base_min for next iteration
         lo_i = float(df['low'].iat[i])
         if lo_i < base_min:
             base_min = lo_i
-    debug_break(end_scan, anchor_kind='end', class_id='tb')  # v2 · phase2 timeout end(与 event.end_idx 对齐)
-    return end_scan
+    debug_break(end_scan, anchor_kind='end', class_id='tb')
+    return end_scan, "timeout"
 
 
 def evaluate_throwback(
@@ -229,16 +245,19 @@ def evaluate_throwback(
     max_window: int = 5,
     atr_window: int = 14,
     big_rise_k: float = 1.5,
-    pullback_min_atr: float = 1.0,
+    stop_confirm_bars: int = 2,
     anchor_measure: str = "high",
     support_measure: str = "close",
     on_gate: Optional[Callable[[GateFailure], None]] = None,
 ) -> Optional[ThrowbackResult]:
-    """对单个 BO 判可买入区间。成功返回 ThrowbackResult(start,end),失败返回 None。
+    """对单个 BO 判可执行整理买窗。成功返回 ThrowbackResult(start,end,outcome),失败返回 None。
 
-    anchor = measure_at(bo-1, anchor_measure);必要条件 = [bo+1, end] 全程
-    measure_at(i, support_measure) ≥ anchor。ATR 取 bo-1(bo 当根异常波动会污染当根 ATR)。
-    start = 止跌点 ∈ [bo+1, bo+max_start_gap];end = 大涨前一根 / timeout(start+max_window)。纯走势。
+    anchor = measure_at(bo-1, anchor_measure);ATR 取 bo-1(bo 当根异常 TR 污染)。
+    Phase 1:确认点 = 首个 i∈[bo+1, bo+max_start_gap] 满足 i-trough≥stop_confirm_bars
+      且 [trough, i] 内含 stop signal;confirm 前 anchor break / rise ≥ big_rise_k×atr → None。
+    Phase 2:base_min 锚 trough,扫 [confirm+1, confirm+max_window],三 outcome:
+      'break' = anchor 破位收窗(end=i-1);'rise' = 大涨收窗(end=i-1);
+      'timeout' = 扫满收窗(end=min(confirm+max_window, len-1))。三种均产事件。
 
     on_gate:Stage 3 调试埋点(非 None 时,阶段一/二内部短路失败会吐 GateFailure);
     一次调用本函数 = 一次 attempt(X 松对齐,详见 `_emit_tb_gate`)。bo_idx<1/atr<=0 两处
@@ -252,51 +271,62 @@ def evaluate_throwback(
     if atr <= 0.0:
         return None
     anchor = measure_at(df, bo_idx - 1, anchor_measure)
-    start = _find_start_idx(df, bo_idx, anchor, max_start_gap, atr,
-                            pullback_min_atr, support_measure,
-                            on_gate=on_gate, atr_window=atr_window)
-    if start is None:
+    r = _find_confirm_idx(df, bo_idx, anchor, max_start_gap, atr,
+                        stop_confirm_bars, big_rise_k, support_measure,
+                        on_gate=on_gate, atr_window=atr_window)
+    if r is None:
         return None
-    end = _find_end_idx(df, start, anchor, max_window, atr,
-                        big_rise_k, support_measure,
-                        on_gate=on_gate, bo_idx=bo_idx, atr_window=atr_window)
-    if end is None:
-        return None
-    return ThrowbackResult(start, end)
+    confirm_idx, trough_idx = r
+    end_idx, outcome = _find_end_idx(df, confirm_idx, trough_idx, anchor,
+                                     max_window, atr, big_rise_k, support_measure,
+                                     on_gate=on_gate, bo_idx=bo_idx,
+                                     atr_window=atr_window)
+    return ThrowbackResult(confirm_idx, end_idx, outcome)
 
 
 @dataclass(frozen=True)
 class ThrowbackEvent(Event):
-    """可买入区间派生事件。start_idx=止跌点;end_idx=大涨前一根/timeout。
-    只在回踩成功时被 detector 产出(破位则不产)。
+    """突破后可执行整理买窗事件。start_idx=止跌企稳确认点;end_idx=大涨前一根 / 破位前一根 / timeout。
+    confirm_idx = start_idx:确认类,成立条件(止跌企稳)在 start_idx 满足,end_idx 只是大涨验证窗口。
+
+    outcome 是"窗口关闭的原因",三值 ∈ _TB_OUTCOMES:
+    - "rise":  确认后出现 big_rise → 涨前一根收窗(常见成功场景);
+    - "break": 确认后 anchor 被跌破 → 破位前一根收窗(真实失败样本);
+    - "timeout": 扫满 max_window 无 rise 无 break → 上界收窗(纠结型 / 弱信号)。
+    事件存在 ⟺ Phase 1 confirm 成功;confirm 前的 anchor break / rise-before-confirm 不产事件。
 
     输出字段(where 可引用):
     - anchor_bo_id: 触发本事件的那根 BO 的 event_id(追溯用);
                     多 BO 映射到同 span 时按 event_id 去重保留首个
+    - outcome:     "rise" / "break" / "timeout"(窗口关闭原因)
     """
     class_id = "tb"
     anchor_bo_id: str = ""
+    outcome: str = "rise"
 
 
 class ThrowbackDetector:
-    """派生 detector:消费 bo 流,逐 BO 调 evaluate_throwback,仅成功时产事件。
+    """派生 detector:消费 bo 流,逐 BO 调 evaluate_throwback,产事件(含失败结局)。
 
-    核心判据(详见 evaluate_throwback / _find_start_idx / _find_end_idx):
+    核心判据(详见 evaluate_throwback / _find_confirm_idx / _find_end_idx):
       anchor = measure_at(bo-1, anchor_measure);ATR 取 bo-1 处(避开 BO 当根异常 TR)。
-      阶段一(_find_start_idx,找止跌点):
-        扫 [bo+1, bo+max_start_gap];任一根 support_measure < anchor → 破位返回 None;
-        首个「连续两根不创新低」且 {i-1, i} 含止跌 K 线证据(下影/阳线/收涨之一)→ 止跌确认;
-        再验回落深度:peak_high(over [bo, trough]) - low[trough] ≥ pullback_min_atr × atr,
-        不满足 → None;成功返回 trough_idx。
-      阶段二(_find_end_idx,找大涨前一根 / timeout):
-        从 start+1 扫到 start+max_window;任一根 support_measure < anchor → 破位返回 None;
-        high[i] - running_min_low(over [start, i-1]) ≥ big_rise_k × atr → 大涨,end = i-1;
-        扫满无破位无大涨 → timeout,end = start + max_window。
+      Phase 1(_find_confirm_idx,找 confirm):扫 [bo+1, bo+max_start_gap];三条不产事件:
+        - support_measure < anchor → phase1_break;
+        - high[i] - base_min ≥ big_rise_k*atr(base_min 锚 bo+1) → phase1_rise_before_confirm;
+        - 扫满无 confirm → phase1_no_confirm_timeout。
+        confirm 条件:i-trough ≥ stop_confirm_bars 且 [trough,i] 内含 stop signal
+        (_STOP_SIGNALS = 下影/阳线/收涨之一)。
+      Phase 2(_find_end_idx,找 outcome):扫 [confirm+1, confirm+max_window],base_min
+        锚 trough,三 outcome:
+        - support_measure < anchor → outcome='break', end=i-1(事件仍产, phase2_break gate);
+        - high[i] - base_min ≥ big_rise_k*atr → outcome='rise', end=i-1;
+        - 扫满 → outcome='timeout', end=min(confirm+max_window, len-1)。
       anchor_measure 定锚价、support_measure 定破位比较,语义不同需同时检查。
 
     多源 L2+ detector(detect(self, bo_stream, df) 双参,走 run() 变参透传)。
     end_idx 升序排序(过 run() 升序不变式):trigger 随 bo 顺序可能乱序,收集后排序再 yield。
-    多个 bo 映射到同 span 时按 event_id 去重(buyable-window 身份 = span)。
+    多个 bo 映射到同 span 时按 event_id 去重(buyable-window 身份 = span);同 span 不同
+    outcome 属逻辑不可能(evaluate 对同 bo 决定性),不额外处理。
 
     输出字段详见 ThrowbackEvent。
     """
@@ -305,9 +335,9 @@ class ThrowbackDetector:
     event_cls = ThrowbackEvent
     on_gate = None   # Detector.on_gate protocol 静态声明,运行时不自动继承;默认 None = 生产路径无开销
 
-    def __init__(self, *, max_start_gap: int = 5, max_window: int = 5,
+    def __init__(self, *, max_start_gap: int = 7, max_window: int = 5,
                  atr_window: int = 14, big_rise_k: float = 1.5,
-                 pullback_min_atr: float = 1.0,
+                 stop_confirm_bars: int = 2,
                  anchor_measure: str = "high", support_measure: str = "low"):
         if anchor_measure not in VALID_MEASURES:
             raise ValueError(f"anchor_measure 必须在 {VALID_MEASURES},实际 {anchor_measure!r}")
@@ -315,7 +345,7 @@ class ThrowbackDetector:
             raise ValueError(f"support_measure 必须在 {VALID_MEASURES},实际 {support_measure!r}")
         self._kw = dict(max_start_gap=max_start_gap, max_window=max_window,
                         atr_window=atr_window, big_rise_k=big_rise_k,
-                        pullback_min_atr=pullback_min_atr,
+                        stop_confirm_bars=stop_confirm_bars,
                         anchor_measure=anchor_measure,
                         support_measure=support_measure)
 
@@ -328,7 +358,9 @@ class ThrowbackDetector:
                 events.append(ThrowbackEvent(
                     event_id=span_id(self.event_cls.class_id, start, r.end_idx),
                     start_idx=start, end_idx=r.end_idx,
-                    anchor_bo_id=bo.event_id))
+                    confirm_idx=start,   # 确认类:止跌企稳那根确认(start_idx 即确认点)
+                    anchor_bo_id=bo.event_id,
+                    outcome=r.outcome))
         events.sort(key=lambda e: (e.end_idx, e.start_idx))   # ★ run() 要 end 升序
         seen: set[str] = set()
         for e in events:

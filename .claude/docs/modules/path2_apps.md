@@ -1,55 +1,66 @@
 # path2_apps 应用层架构意图
 
-> 最后更新：2026-06-12
-> 覆盖：`path2_apps/<走势>/`（走势-特异应用层，与 `path2/` 顶层平级）。
-> 框架见 [path2.md](path2.md)。当前唯一应用：`bottom_breakout_burst`。
+> 最后更新：2026-07-29
+> 覆盖：`path2_apps/<走势>/`（走势-特异应用层，与 `path2/` 顶层平级）。框架见 [path2.md](path2.md)，后端见 [path2_web.md](path2_web.md)。
 
 ---
 
-## 定位
+## 定位与边界
 
-path2_apps 是**走势-特异层**：每个子包声明一个具体形态。与 path2/（走势-无关框架）顶层平级而非其子包——框架不该知道任何具体走势，走势包按需组合框架的 atoms + 类型化边 + where。带形状偏见的命名（`RoundedBottom` 等）只能落这里，不能进 `path2/atoms`。
+path2_apps 是**走势-特异层**：一个子包 = 一个具体形态。它与 `path2/`（走势-无关框架）平级、不是其子包——框架不该知道任何具体走势，走势包只按需组合框架的 atoms + 类型化边 + where。**带形状偏见的命名与阈值只能落在这里**，不能进 `path2/atoms`。
 
-新增走势 = 新建 `path2_apps/<id>/dag_spec.py` 并定义模块级 `PATTERN_DAG`，即被 path2_web 的 discovery 自动发现，无需改框架或后端。
+本层管：拓扑声明（哪些 node、哪些边、每个 node 的 where）+ 参数取值。
+本层不管：匹配求解（`path2.dag.engine`）、detector 实现（`path2.atoms`）、序列化与 UI 投影（`path2_web*`）。
 
----
+**零手搓编排**是硬要求：业务约束一律降为 NodeSpec / 类型化边 / where 声明，不在 app 里写簇构造、谓词循环或匹配编排。做不到就说明框架缺能力，该改框架而不是在 app 里绕。
 
-## 声明范式（dag_spec.py）
-
-`build_pattern(params: Params) -> PatternSpec` 是参数化声明工厂：给定 params 实例化 detector + 闭合 where 阈值，产纯声明的 nodes/edges。**零手搓成簇/谓词/编排**——所有业务约束降为 NodeSpec / 类型化边 / where 声明，匹配交库引擎 `path2.dag.engine.analyze`。
-
-对外 API（`__init__.py` 导出）：`build_pattern(params)`、`PATTERN_DAG`（默认参数的模块级常量，供 `to_topology` / discovery）、`analyze(df, params)`、`matches(df, params)`、`eval_meta(params)`、`Params`。
-
-**`eval_meta(params) -> {end_node, head_buffer_trading_days}`** 是 path2_web 的**可选协议**：声明买点 node（手声明，如 `"tb"`）与首部缓冲深度。head_buffer = 本 app 全部 rolling lookback 字段的 **max 推导**（参数改动自动传导，不手写常量；dead 参数如 `pred4_lookback_bars` 不计入）。app 不提供该协议 → web 整链回退严格窗、无 label。app 特异知识（node 名、lookback 值）只经此协议出境，web 端零硬编码。
+子包清单以 `path2_apps/` 目录为准，每个子包的角色写在自己 `dag_spec.py` 的模块 docstring 首段。其中既有生产形态，也有只为验证引擎判定 / UI 渲染的 sandbox 子包——**sandbox 不是真实形态，别拿它的拓扑或阈值当业务参考**。
 
 ---
 
-## bottom_breakout_burst：7 业务约束 → 5 节点 + 3 边
+## 接线协议（新增走势要做什么）
 
-pattern 链：**下跌(down) → 横盘(side) → 连续突破(burst) → 回踩(tb)**。7 个约束全部降为声明：
+新建 `path2_apps/<id>/dag_spec.py`，定义模块级 `PATTERN_DAG` 与 `eval_meta`，即被 path2_web 的 discovery 自动发现，**无需改框架或后端**。
 
-| 业务约束 | 归宿 |
-|---|---|
-| ④ 下跌段紧邻横盘段 | `TemporalEdge(down→side, gap[1,5])` + down.where（`regime==down` ∧ `drawdown>=阈值`） |
-| ① 突破首 bo 落横盘段内 | `ContainmentEdge(side, Child(burst,"first_bo"))` + side.where（`regime==sideways`） |
-| ② 突破串基数 ≥ MIN_BOS | `BurstDetector(min_bos)`（切段时弃不足 min_bos 的段） |
-| ③ 首 bo `drought` ≥ 阈值 | burst.where `W.attr("first_drought")`（读预算标量） |
-| ⑤ distinct 峰数 ≥ 阈值 | burst.where `W.attr("distinct_pk")` |
-| ⑥ 任一 bo 放量 | burst.where `W.attr("max_vol_ratio")` |
-| ⑦ 突破后回踩确认（锚首 bo） | `ThrowbackDetector`（consumes bo）+ `TemporalEdge(Child(burst,"first_bo")→tb, gap[1,span+N])` |
+- `build_pattern` 是参数化声明工厂：detector 实例化与 where 阈值都在这里闭合。`PATTERN_DAG` 是它在默认参数下的模块级常量，供 discovery / 拓扑投影。
+- **入口三件套（`analyze`/`matches`/`PATTERN_DAG`）由 stdlib 的 `make_app` 闭包工厂装配，不再手写**：app 只声明 `build_pattern` + `Params`，三件套由工厂一行解构产出（见 `path2/stdlib/app.py`），消除跨 app 样板。三者仍是模块级同名同签名，discovery / 调用方 / monkeypatch 无感消费；`eval_meta` 是 app 特异、留原地。
+- **`eval_meta` 是铁律不是可选**：discovery 有硬闸，不满足协议的包直接被拒（判定逻辑见 `path2_web/discovery.py`）。**不存在"app 不提供就回退"的路径**——别再为缺失情况写兜底分支。
+- app 特异知识（买点 node 名、缓冲深度）只经 `eval_meta` 出境，web 端零硬编码。
+- **head_buffer 必须由参数推导（取本 app 全部 rolling lookback 的 max），不能写死常量**：写死的常量不会随参数变化，改完阈值后缓冲不够会静默切错窗。
 
-五节点：`bo`（BODetector，**孤立流源**，无边、无 where）/ `down` / `side` / `burst`（BurstDetector，consumes bo，复合宽事件）/ `tb`（ThrowbackDetector，consumes bo）。三边链：**down→side（紧邻 gap[1,5]）→ side→burst 首 bo → burst 首 bo→tb**。
-
-关键设计：
-- **bo 是孤立流源 node**：只为产 bo 流给 burst（聚合）与 tb（回踩锚点）消费，自身无边——其单 node 残缺 match 由引擎**出口过滤**丢弃（见 path2.md）。
-- **「一串 bo」= 复合宽事件 burst**：`BurstDetector` 切极大段聚合成 `BurstEvent`（start=首 bo / end=尾 bo，携 members + 预算标量）。② = detector 的 `min_bos`；③⑤⑥ = burst 节点 where 直读预算标量（与单实例同式、零特例）。
-- **pattern 链 down→side→burst，down 不直连 burst**：下跌段经 side 衔接（④ = 下跌段**紧邻**横盘段，`gap[1,5]`——横盘紧接下跌；不再用 `pred4_lookback_bars`），符合 下跌→横盘→突破 的真实时序；旧 down→burst 直连越过横盘、语义错位。
-- **side 与 tb 均经 `Child("burst",...)` 连 burst 的内部端点**（标准 nested 表达）：① `ContainmentEdge(side, Child(burst,"first_bo"))`——引擎投影出 `burst.child("first_bo")`（点事件）再 satisfies；与旧 `StartContainmentEdge(side, burst)` match-preserving。⑦ `TemporalEdge(Child(burst,"first_bo"), tb, gap[1,span+N])`——回踩**锚 burst 首 bo 而非末 bo**（强突破带回踩的常是首 bo；末 bo 可能弱/在窗末无回踩，锚末 bo 会系统性漏匹配），`tb.start = 锚 bo.end+1`，`max_gap=burst_max_span+throwback_N` 覆盖"回踩落在 burst 内任一突破之后"。src_selector 出边健全性同 ContainmentEdge（C1 经 dst_selector 已对 burst 关闭）。
-- **down / side 各持独立 `TrendSegmentDetector` 实例**（down_det / side_det，非共享）——引擎 `assign_auto_source_tags` 自动编 trend0 / trend1，event_id 前缀不撞、可按 node 分轨。这激活了框架「同类多实例自动消歧」机制（web band-UI 的真实驱动场景）。
-- `root="burst"` 是退化字段，引擎不读，填合法 node_id 即可。
+具体节点 / 边 / 每条业务约束落到哪个声明，逐条写在各 app 的 `dag_spec.py` 模块 docstring 里——那是唯一权威，不在本文档复刻。
 
 ---
 
-## 参数 SSoT（params.py）
+## 关键决策与负知识
 
-`Params`（frozen dataclass）是该走势的**唯一参数源**：聚合 BO / Trend / Throwback / Burst 四组 detector 参数 + 顶层判定阈值（`MIN_BOS` / `THR_DROUGHT` / `THR_PK` / `THR_VOL` / `pred4_*`）。提供 `default()` / `from_yaml(path)`（只收 dataclass 字段）构造，+ 各 `*_kwargs()` 把分组参数展开成 detector 构造字典。`build_pattern` 在此处把 params 闭合进 detector 实例与 where 阈值。
+- **「一串同类事件」声明成单个宽事件 node，而不是重复节点或循环**：串级的计数 / 峰数 / 放量约束因此全部退化成读该事件上预先算好的聚合量的普通 node where，与单实例节点同式、引擎侧零特例。
+- **流源 node 与业务 node 是两种东西**：产 bo 流的 node 自身不连边，只为下游 detector（`consumes_stream`）提供输入。它单独命中不是业务 pattern，由引擎出口过滤掉（见 [path2.md](path2.md)）。过滤判据必须同时要求"孤立"和"被别的 node 消费"，否则会误杀那些**整体就是单孤立节点**的 pattern。
+- **跨 node 的身份约束要用 anchor 复核，不能只靠时间 gap**：burst 会为同一簇物化一族共享簇首、末端各异的前缀实例，光有 gap 区间约束不能保证被匹配到的回踩确实由这个 burst 的末 bo 触发。边上声明 anchor 字段做身份复核，才把"同一根 bo"钉死。
+- **同一份参数被 detector 和 edge 共用时，只写一处**：共用值归入对应 node 的参数 section，edge 显式引用该字段。两边各写各的会在调参时静默错位。
+- **burst 的 drought 阈值必须大于聚簇的 gap 上限**，否则该 where 结构性恒真（簇首必然是断点），等于这条约束被悄悄关掉。
+- **where 的顶层各 clause 之间恒为 AND**：要 OR 就写进单条 clause 内部，别拆成两条平级 clause——那是 AND，语义完全不同。组合子用法与可引用字段速查见 `path2_apps/try_conplex_where/dag_spec.py` 的模块 docstring。
+
+---
+
+## 参数：三件套分工
+
+- `params.yaml` 是 web 入口的 **SSoT**，热加载——改完下一次扫描即生效，不用重启。
+- `Params` 及其 section 子 dataclass 是 **schema 层**（字段名/类型），其默认值只作 yaml 缺字段时的兜底与脚本 / 测试 fixture 默认，**不是业务基准值**。
+- 读写形式协议（加载 / 序列化 / 重建）继承自 `path2_apps/_params_base.py`，是跨 app 的**单一来源**；app 侧只留业务内容——各 section 的参数定义 + 参数到 detector 构造签名的映射。理由是真实教训：形式代码曾按 app 复制粘贴、某个拷贝缺方法而在扫描时静默丢数据。新 app 一律继承，别再拷贝一份。基类刻意保持浅——只支持"顶层字段全是 section 子 dataclass"，出现非-section 顶层字段应在子类处理，而不是往基类塞钩子。
+
+---
+
+## 声明与消费流
+
+```mermaid
+flowchart LR
+    Y[params.yaml] --> P[Params]
+    P --> BP["build_pattern()"]
+    BP --> S[PatternSpec]
+    S --> E["path2.dag.engine.analyze"]
+    D[df] --> E
+    E --> R[AnalysisResult]
+    S -.PATTERN_DAG.-> DISC[path2_web discovery]
+    EM["eval_meta()"] --> DISC
+```

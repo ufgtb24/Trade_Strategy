@@ -1,3 +1,5 @@
+from dataclasses import dataclass
+
 from tests.path2.fixtures.positive_case import positive_case
 from path2_apps.bottom_breakout_burst import dag_spec
 from path2_web import serialize
@@ -200,3 +202,52 @@ def test_serialize_analysis_bo_events_have_referenced_points():
             assert isinstance(bar_idx, int)
             assert isinstance(price, float)
             assert isinstance(label, str) and label.startswith("pk")
+
+
+def test_clause_to_dict_recursive():
+    from dataclasses import dataclass
+    from path2.dag import where as W
+    from path2_web.serialize import _clause_to_dict
+
+    @dataclass(frozen=True)
+    class _E:
+        pk: int = 0
+        vol: float = 0.0
+
+    w = W.any(W.attr("pk", ">=", 4), W.attr("vol", ">=", 8.0)).witness(_E(pk=5))
+    d = _clause_to_dict(w)
+    assert d["satisfied"] is True and d["label"] == "or"
+    assert [c["label"] for c in d["children"]] == ["pk", "vol"]
+    assert [c["measured"] for c in d["children"]] == [5, 0.0]
+    assert "children" not in d["children"][0]          # 叶子不带空 children 键
+
+
+def test_clause_to_dict_flat_leaf_unchanged():
+    from dataclasses import dataclass
+    from path2.dag import where as W
+    from path2_web.serialize import _clause_to_dict
+
+    @dataclass(frozen=True)
+    class _E:
+        pk: int = 0
+
+    d = _clause_to_dict(W.attr("pk", ">=", 4).witness(_E(pk=3)))
+    assert d["satisfied"] is False and d["measured"] == 3
+    assert d["op"] == ">=" and d["threshold"] == 4
+    assert "children" not in d
+
+
+def test_rules_from_where_recursive():
+    from path2.dag import where as W
+    from path2_web.serialize import _rules_from_where
+    pred = W.any(W.attr("pk", ">=", 4), W.attr("vol", ">=", 8.0))
+    rules = _rules_from_where([("pk_or_vol", pred),
+                               ("first_drought", W.attr("first_drought", ">=", 20))])
+    assert rules[0]["clause_id"] == "pk_or_vol" and rules[0]["kind"] == "or"
+    kids = rules[0]["children"]
+    assert [k["field"] for k in kids] == ["pk", "vol"]
+    assert [k["op"] for k in kids] == [">=", ">="]
+    # 叶子顶层 rule:旧键保留 + 新增 kind/field
+    assert rules[1]["clause_id"] == "first_drought"
+    assert rules[1]["op"] == ">=" and rules[1]["threshold"] == 20
+    assert rules[1]["kind"] == "attr" and rules[1]["field"] == "first_drought"
