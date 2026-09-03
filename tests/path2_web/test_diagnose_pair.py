@@ -8,8 +8,8 @@ same_node/auto_swap 等 domain 判定根本无从谈起。故本文件按 Task 1
 把 brief 的 4 个具名测试改写为注入真实 spec + AnalysisResult(events=...) 后断言,保留 brief
 的测试名与断言意图不变。
 
-fixture 用真实 `bottom_breakout_burst` app 的 3-node 拓扑(bo 孤立 / burst→tb 单向边,
-anchor_field="anchor_bo_id" 锚定 burst.last_bo.event_id):
+fixture 用真实 `bottom_burst` app 的 3-node 拓扑(bo 孤立 / burst→tb 单向边,
+anchor_field="anchor_bo_id" 锚定 burst.last_bo 的 instance_id,值形如 "bo_b"):
   - bo vs burst(或 bo vs tb):无边 → no_edge_between_nodes
   - 两个 bo:same_node
   - burst→tb 是唯一正向边;反向点(tb 当 src、burst 当 dst)→ auto swap
@@ -19,41 +19,49 @@ derive_response 走 spec 结构判定,不跑引擎)。
 """
 from path2.atoms.breakout import BOEvent, BurstEvent
 from path2.atoms.platform import Platform
-from path2.atoms.throwback import ThrowbackEvent
+from path2.atoms.throwback_v4 import ThrowbackEventV4
 from path2.dag.edges import NegationEdge
 from path2.dag.nodes import NodeSpec
 from path2.dag.result import AnalysisResult
 from path2.dag.spec import PatternSpec
-from path2_apps.bottom_breakout_burst.dag_spec import build_pattern
-from path2_apps.bottom_breakout_burst.params import Params
+from path2_apps.bottom_burst.dag_spec import build_pattern
+from path2_apps.bottom_burst.params import Params
 from path2_web.diagnose import Query, derive_response
 
 
-# ─── bottom_breakout_burst fixture(真实 3-node 拓扑:bo 孤立 / burst→tb 单向边) ──────
+# ─── bottom_burst fixture(真实 3-node 拓扑:bo 孤立 / burst→tb 单向边) ──────
 
 def _bbb_fixture():
-    """burst_1(members=[bo_a, bo_b])→ tb_1 满足 edge(gap=2 ∈ [16,20]、anchor 锚 bo_b);
-    tb_gap_out 故意把 gap 撑到 25(> hi=20)只挂第 1 通道(feasible_window)失败,验证短路。
+    """burst_1(members=[bo_a, bo_b])→ tb_1 满足 edge(gap=2 ∈ [1,60]、anchor 锚 bo_b);
+    tb_gap_out 故意把 gap 撑到 61(> max_gap=60,edge 的 max_gap 与 tb.max_span 共用
+    SSoT)只挂第 1 通道(feasible_window)失败,验证短路。
     bo_1/bo_2 供 same_node 用;bo_a/bo_b 已内嵌在 burst_1.members,不必再单独出现在
-    result.events(events 只需覆盖 _load_event_by_id 会查到的那些 id)。"""
+    result.events(events 只需覆盖 _load_event_by_id 会查到的那些 instance_id)。
+
+    实例流契约:事件带 node_id/instance_id(物化标注的等价物,手工构造)。
+    tb.anchor_bo_id 语义 = 交错标注后取源 bo 的 instance_id,
+    bo_b → "bo_b"(见 path2/dag/edges.py::_anchor_ok)。"""
     spec = build_pattern(Params.default())
-    bo_a = BOEvent(event_id="bo_a", start_idx=10, end_idx=10, confirm_idx=10)
-    bo_b = BOEvent(event_id="bo_b", start_idx=15, end_idx=15, confirm_idx=15)   # last_bo
-    burst_1 = BurstEvent(event_id="burst_1", start_idx=10, end_idx=15, confirm_idx=10,
+    bo_a = BOEvent(start_idx=10, end_idx=10, confirm_idx=10, node_id="bo", instance_id="bo_a")
+    bo_b = BOEvent(start_idx=15, end_idx=15, confirm_idx=15, node_id="bo", instance_id="bo_b")   # last_bo
+    burst_1 = BurstEvent(start_idx=10, end_idx=15, confirm_idx=10,
                          count=2, distinct_pk=2, max_bar_vol_ratio=3.0,
-                         first_drought=20, members=(bo_a, bo_b))
-    tb_1 = ThrowbackEvent(event_id="tb_1", start_idx=17, end_idx=19, confirm_idx=17, anchor_bo_id="bo_b")
-    tb_gap_out = ThrowbackEvent(event_id="tb_gap_out", start_idx=25, end_idx=27, confirm_idx=25,
-                                anchor_bo_id="bo_b")
-    bo_1 = BOEvent(event_id="bo_1", start_idx=1, end_idx=1, confirm_idx=1)
-    bo_2 = BOEvent(event_id="bo_2", start_idx=5, end_idx=5, confirm_idx=5)
+                         first_drought=20, members=(bo_a, bo_b),
+                         node_id="burst", instance_id="burst_1")
+    tb_1 = ThrowbackEventV4(start_idx=17, end_idx=19, confirm_idx=17, anchor_bo_id="bo_b",
+                            node_id="tb", instance_id="tb_1")
+    tb_gap_out = ThrowbackEventV4(start_idx=76, end_idx=78, confirm_idx=76,
+                                  anchor_bo_id="bo_b",
+                                  node_id="tb", instance_id="tb_gap_out")
+    bo_1 = BOEvent(start_idx=1, end_idx=1, confirm_idx=1, node_id="bo", instance_id="bo_1")
+    bo_2 = BOEvent(start_idx=5, end_idx=5, confirm_idx=5, node_id="bo", instance_id="bo_2")
     events = (bo_1, bo_2, bo_a, bo_b, burst_1, tb_1, tb_gap_out)
     result = AnalysisResult(events=events, matches=(), spec=spec)
     return spec, result
 
 
 class _FakeDetector:
-    """只需 `.event_cls` 供 `_node_of_event` 反查 class_id;不跑真实 detect()。"""
+    """只需 `.event_cls` 供 `_node_of_event` 反查 node_id;不跑真实 detect()。"""
     def __init__(self, event_cls):
         self.event_cls = event_cls
 
@@ -66,8 +74,10 @@ def _negation_fixture():
     )
     edges = (NegationEdge(src="neg_src", dst="neg_dst", min_gap=0, max_gap=10),)
     spec = PatternSpec(pattern_id="neg_test", nodes=nodes, edges=edges)
-    e_src = BOEvent(event_id="neg_src_1", start_idx=1, end_idx=1, confirm_idx=1)
-    e_dst = Platform(event_id="neg_dst_1", start_idx=5, end_idx=8, confirm_idx=5)
+    e_src = BOEvent(start_idx=1, end_idx=1, confirm_idx=1,
+                    node_id="neg_src", instance_id="neg_src_1")
+    e_dst = Platform(start_idx=5, end_idx=8, confirm_idx=5,
+                     node_id="neg_dst", instance_id="neg_dst_1")
     result = AnalysisResult(events=(e_src, e_dst), matches=(), spec=spec)
     return spec, result
 
@@ -83,7 +93,7 @@ def test_same_node_invalid():
 
 
 def test_no_edge_between_nodes():
-    """bo(孤立 node)与 burst 之间在 bottom_breakout_burst 拓扑里无任何边(唯一边是
+    """bo(孤立 node)与 burst 之间在 bottom_burst 拓扑里无任何边(唯一边是
     burst→tb)。"""
     spec, result = _bbb_fixture()
     q = Query(symbol="DGNX", scope="pair", src_event_id="bo_1", dst_event_id="burst_1")
@@ -107,8 +117,9 @@ def test_auto_swap_when_reverse_edge_exists():
 
 
 def test_valid_pair_subchecks_short_circuit():
-    """burst_1 → tb_gap_out:gap=25-15=10 撑出 feasible_window([16,20])→ 通道①即 fail,
-    短路,后续 satisfies/anchor/strict 不再跑 → subchecks 只有 1 条、且是那 1 条 fail。"""
+    """burst_1 → tb_gap_out:gap=76-15=61 超出 feasible_window([1,60])(max_gap 与
+    tb.max_span 共用 SSoT)→ 通道①即 fail,短路,后续 satisfies/anchor/strict 不再跑
+    → subchecks 只有 1 条、且是那 1 条 fail。"""
     spec, result = _bbb_fixture()
     q = Query(symbol="DGNX", scope="pair", src_event_id="burst_1", dst_event_id="tb_gap_out")
     r = derive_response(q, spec=spec, result=result)
@@ -139,7 +150,7 @@ def test_only_negation_edge():
 
 
 def test_valid_pair_all_pass():
-    """burst_1 → tb_1:gap=2 ∈ [16,20]、anchor 锚 bo_b.event_id、非 strict 边 → 4 通道全过。"""
+    """burst_1 → tb_1:gap=2 ∈ [16,20]、anchor 锚 bo_b 的 anchor_bo_id、非 strict 边 → 4 通道全过。"""
     spec, result = _bbb_fixture()
     q = Query(symbol="DGNX", scope="pair", src_event_id="burst_1", dst_event_id="tb_1")
     r = derive_response(q, spec=spec, result=result)

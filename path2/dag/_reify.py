@@ -70,8 +70,9 @@ def reify(sol, streams, plan) -> PatternMatch:
             src_instance=a, dst_instance=b,
             measured=_make_measured(e, a, b))
 
+    node_bits = "|".join(f"{nid}:{e.instance_id}" for nid, e in sorted(assign.items()))
     return PatternMatch(
-        event_id=f"{plan.pattern_id}@{start}-{end}",
+        match_id=f"{plan.pattern_id}@{start}-{end}#{node_bits}",
         start_idx=start, end_idx=end,
         confirm_idx=end,   # 聚合体:所有 constituent event 物化后整个 match 才确认
         pattern_id=plan.pattern_id,

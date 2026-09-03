@@ -16,7 +16,6 @@ from path2 import Event
 @dataclass(frozen=True)
 class VolSpike(Event):
     """L1:某根 K 线相对前 20 日均量放量。"""
-    class_id = "test_vol_spike"
 
     ratio: float = 0.0
 
@@ -24,7 +23,6 @@ class VolSpike(Event):
 @dataclass(frozen=True)
 class VolCluster(Event):
     """L2:窗口内 >=3 个 VolSpike 聚成的簇。"""
-    class_id = "test_vol_cluster"
 
     count: int = 0
     span_bars: int = 0
@@ -43,7 +41,7 @@ class VolSpikeDetector:
             ratio = float(vol[i] / mean)
             if ratio > self.THRESHOLD:
                 yield VolSpike(
-                    event_id=f"vs_{i}", start_idx=i, end_idx=i, confirm_idx=i, ratio=ratio
+                    start_idx=i, end_idx=i, confirm_idx=i, ratio=ratio
                 )
 
 
@@ -71,7 +69,6 @@ class VolClusterDetector:
                 start = window[0].start_idx
                 end = window[-1].end_idx
                 yield VolCluster(
-                    event_id=f"vc_{start}_{end}",
                     start_idx=start, end_idx=end, confirm_idx=start,
                     count=len(window),
                     span_bars=end - start,

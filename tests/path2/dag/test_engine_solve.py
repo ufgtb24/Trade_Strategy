@@ -29,20 +29,29 @@ def test_SOLVE_C1_DROPS():
 
 def test_SOLVE_NAIVE_DROPS():
     # naive memo 把成功前沿也记 FAILED -> 漏兄弟源组合 => 证 charitable 必须
-    # ★ B3 整改三:B 是叶子 -> emitted_leaves 去重,两个 A 只 emit B 一次(solve ⊆ brute_all 但不等)
+    # B3 放宽:leaf 不再跨 match 独占 -> 两个 A 各配 B 一次,solve == brute_all
     edges = [TemporalEdge("A", "B", min_gap=0, max_gap=100)]
     streams = {"A": E("A", [(0, 5), (1, 5)]), "B": E("B", [(7, 9)])}
     pr = keyset(_solve(edges, streams))
     ba = keyset(brute_all(edges, streams))
-    assert all(pr[k] <= ba[k] for k in pr), "charitable: solve 不得含假阳"   # B3 去重符合整改三
+    assert pr == ba, "放宽后 solve 枚举所有合法绑定(无假阳无假阴)"
     assert keyset(_solve(edges, streams, memo_mode="naive")) != ba  # naive 仍漏
 
 
 def test_SOLVE_NOMEMO_complete():
-    # 关 memo 平凡完备(只是慢) —— ★ B3 整改三后此不变量仅对非共享-leaf 场景成立
-    # 此场景 B 是叶子且被两个 A 共享 -> emitted_leaves 去重使 solve ⊊ brute_all;无假阳即可
+    # 关 memo 平凡完备(只是慢) —— B3 放宽后对共享-leaf 场景也成立
     edges = [TemporalEdge("A", "B", min_gap=0, max_gap=100)]
     streams = {"A": E("A", [(0, 5), (1, 5)]), "B": E("B", [(7, 9)])}
     pr = keyset(_solve(edges, streams, memo_mode="off"))
     ba = keyset(brute_all(edges, streams))
-    assert all(pr[k] <= ba[k] for k in pr), "memo=off: solve 不得含假阳(B3 去重符合整改三)"
+    assert pr == ba, "memo=off: 枚举所有合法绑定"
+
+
+def test_leaf_shared_all_matches_visible():
+    """同一 leaf 被多个上游共享 -> 每个上游各产一个 match(不再独占)。"""
+    edges = [TemporalEdge("A", "B", min_gap=0, max_gap=100)]
+    streams = {"A": E("A", [(0, 5), (1, 5)]), "B": E("B", [(7, 9)])}
+    sols = _solve(edges, streams)
+    assert len(sols) == 2
+    assert {s.assign["A"].start_idx for s in sols} == {0, 1}
+    assert {s.assign["B"].event_id for s in sols} == {sols[0].assign["B"].event_id}

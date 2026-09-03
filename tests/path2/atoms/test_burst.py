@@ -2,13 +2,17 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from path2.atoms.breakout import BOEvent, BurstEvent, BurstDetector
+from path2.atoms.breakout import BOEvent, BurstEvent, BurstDetector, PeakEvent
 
 
-def _bo(i, drought=None, peaks=(), vol=None):
-    return BOEvent(event_id=f"bo:{i}:{i}", start_idx=i, end_idx=i, confirm_idx=i,
-                   drought=drought, pk_count=len(peaks),
-                   broken_peak_ids=peaks, vol_ratio=vol, peak_vol_max=0.0)
+def _bo(i, drought=None, peaks=(), vol=None, peak_age_max=0):
+    # pk_count/broken_peak_ids 已改 @property(派生自 broken_refs,契约 C5);
+    # 先构造 PeakEvent(pk_id=各 peaks 元素)再以 broken_refs 传入。
+    pk_events = tuple(PeakEvent(start_idx=i, end_idx=i, confirm_idx=i,
+                                pk_id=p, peak_idx=i, price=0.0) for p in peaks)
+    return BOEvent(start_idx=i, end_idx=i, confirm_idx=i,
+                   drought=drought, vol_ratio=vol, peak_vol_max=0.0,
+                   peak_age_max=peak_age_max, broken_refs=pk_events)
 
 
 def _make_df(n=200, volume=None):
@@ -26,10 +30,10 @@ def test_burst_event_child_api():
     members = (_bo(10, drought=60, peaks=(1, 2), vol=3.0),
                _bo(12, drought=5, peaks=(2, 3), vol=4.0),
                _bo(15, drought=3, peaks=(3,), vol=2.0))
-    b = BurstEvent(event_id="burst:10:15", start_idx=10, end_idx=15, confirm_idx=10,
+    b = BurstEvent(start_idx=10, end_idx=15, confirm_idx=10,
                    count=3, distinct_pk=3, max_bar_vol_ratio=4.0, first_drought=60,
                    members=members)
-    assert b.class_id == "burst"
+    assert type(b).__name__ == "BurstEvent"
     assert b.child_slots() == {"members": members}
     assert b.children("members") == members
     assert b.child("first_bo") is members[0]
@@ -41,7 +45,7 @@ def test_burst_event_child_api():
 
 def test_burst_event_is_frozen():
     import dataclasses
-    b = BurstEvent(event_id="burst:1:1", start_idx=1, end_idx=1, confirm_idx=1,
+    b = BurstEvent(start_idx=1, end_idx=1, confirm_idx=1,
                    count=1, distinct_pk=0, max_bar_vol_ratio=0.0, first_drought=0,
                    members=(_bo(1),))
     with pytest.raises(dataclasses.FrozenInstanceError):
@@ -70,7 +74,7 @@ def test_all_ends_prefix_family():
     assert all(b.members[0].start_idx == 0 for b in bursts)        # 共享簇首(first_bo 稳定)
     assert all(b.first_drought == 60 for b in bursts)              # 全族恒定
     assert [b.members[-1].start_idx for b in bursts] == [2, 3, 4]  # last_bo = 各自 end
-    assert len({b.event_id for b in bursts}) == 3                  # 嵌套(同 start 异 end)不撞 id
+    assert len({(b.start_idx, b.end_idx) for b in bursts}) == 3   # 嵌套(同 start 异 end)不撞身份
 
 
 def test_no_span_truncation_regression():
@@ -156,3 +160,12 @@ def test_max_bar_vol_ratio_uses_bar_window():
 
     # 两个参数设置结果不同
     assert b5.max_bar_vol_ratio != b10.max_bar_vol_ratio
+
+
+def test_burst_peak_age_max_is_max_of_members():
+    bos = [_bo(10, drought=60, peaks=(1,), vol=3.0, peak_age_max=6),
+           _bo(12, drought=5, peaks=(2,), vol=4.0, peak_age_max=11),
+           _bo(15, drought=3, peaks=(3,), vol=2.0, peak_age_max=3)]
+    bursts = _detect(bos, min_bos=3)
+    assert len(bursts) == 1
+    assert bursts[0].peak_age_max == 11   # max(6, 11, 3):存在性聚合

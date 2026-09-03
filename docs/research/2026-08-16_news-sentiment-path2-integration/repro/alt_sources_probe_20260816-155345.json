@@ -1,0 +1,318 @@
+{
+ "coverage": [
+  {
+   "symbol": "CATO",
+   "company": "Cato Corp",
+   "window": [
+    "2025-08-28",
+    "2025-09-04"
+   ],
+   "gnews_ticker": 48,
+   "gnews_name": 1,
+   "edgar_q": 0,
+   "edgar_entity": 100,
+   "edgar_entity_sample": [
+    "? - 8-K (2025-09-04)",
+    "? - 8-K (2025-09-04)"
+   ]
+  },
+  {
+   "symbol": "FOCL",
+   "company": "Edap Tms SA",
+   "window": [
+    "2025-08-29",
+    "2025-09-05"
+   ],
+   "gnews_ticker": 1,
+   "gnews_name": 0,
+   "edgar_q": 0,
+   "edgar_entity": 100,
+   "edgar_entity_sample": [
+    "? - 8-K (2025-09-05)",
+    "? - 8-K (2025-09-05)"
+   ]
+  },
+  {
+   "symbol": "HOWL",
+   "company": "Werewolf Therapeutics Inc",
+   "window": [
+    "2025-09-24",
+    "2025-10-01"
+   ],
+   "gnews_ticker": 41,
+   "gnews_name": 1,
+   "edgar_q": 0,
+   "edgar_entity": 100,
+   "edgar_entity_sample": [
+    "? - 8-K (2025-10-01)",
+    "? - 8-K (2025-10-01)"
+   ]
+  },
+  {
+   "symbol": "BGDE",
+   "company": "Big Digital Energy Inc",
+   "window": [
+    "2025-09-29",
+    "2025-10-06"
+   ],
+   "gnews_ticker": 0,
+   "gnews_name": 24,
+   "edgar_q": 0,
+   "edgar_entity": 100,
+   "edgar_entity_sample": [
+    "? - 8-K (2025-10-06)",
+    "? - 8-K (2025-10-06)"
+   ]
+  },
+  {
+   "symbol": "WWR",
+   "company": "Westwater Resources Inc",
+   "window": [
+    "2025-09-29",
+    "2025-10-06"
+   ],
+   "gnews_ticker": 3,
+   "gnews_name": 1,
+   "edgar_q": 0,
+   "edgar_entity": 100,
+   "edgar_entity_sample": [
+    "? - 8-K (2025-10-06)",
+    "? - 8-K (2025-10-06)"
+   ]
+  },
+  {
+   "symbol": "MTC",
+   "company": "MMTEC Inc",
+   "window": [
+    "2025-11-03",
+    "2025-11-10"
+   ],
+   "gnews_ticker": 23,
+   "gnews_name": 3,
+   "edgar_q": 0,
+   "edgar_entity": 100,
+   "edgar_entity_sample": [
+    "? - 8-K (2025-11-10)",
+    "? - 8-K (2025-11-10)"
+   ]
+  },
+  {
+   "symbol": "LRDC",
+   "company": "Laredo Oil Inc",
+   "window": [
+    "2025-11-05",
+    "2025-11-12"
+   ],
+   "gnews_ticker": 0,
+   "gnews_name": 0,
+   "edgar_q": 0,
+   "edgar_entity": 100,
+   "edgar_entity_sample": [
+    "? - 8-K (2025-11-12)",
+    "? - 8-K (2025-11-12)"
+   ]
+  },
+  {
+   "symbol": "COHN",
+   "company": "Cohen & Company Inc",
+   "window": [
+    "2025-11-07",
+    "2025-11-14"
+   ],
+   "gnews_ticker": 27,
+   "gnews_name": 4,
+   "edgar_q": 15,
+   "edgar_entity": 100,
+   "edgar_entity_sample": [
+    "? - 8-K (2025-11-14)",
+    "? - 8-K (2025-11-14)"
+   ]
+  },
+  {
+   "symbol": "FUST",
+   "company": "Fuse Group Holding Inc",
+   "window": [
+    "2025-11-11",
+    "2025-11-18"
+   ],
+   "gnews_ticker": 1,
+   "gnews_name": 0,
+   "edgar_q": 0,
+   "edgar_entity": 100,
+   "edgar_entity_sample": [
+    "? - 8-K (2025-11-18)",
+    "? - 8-K (2025-11-18)"
+   ]
+  },
+  {
+   "symbol": "COBA",
+   "company": "Chilean Cobalt Corp",
+   "window": [
+    "2025-11-25",
+    "2025-12-02"
+   ],
+   "gnews_ticker": 10,
+   "gnews_name": 0,
+   "edgar_q": 0,
+   "edgar_entity": 100,
+   "edgar_entity_sample": [
+    "? - 8-K (2025-12-02)",
+    "? - 8-K (2025-12-02)"
+   ]
+  },
+  {
+   "symbol": "CALC",
+   "company": "CalciMedica Inc",
+   "window": [
+    "2025-11-26",
+    "2025-12-03"
+   ],
+   "gnews_ticker": 43,
+   "gnews_name": 1,
+   "edgar_q": 0,
+   "edgar_entity": 100,
+   "edgar_entity_sample": [
+    "? - 8-K (2025-12-03)",
+    "? - 8-K (2025-12-03)"
+   ]
+  },
+  {
+   "symbol": "SRGZ",
+   "company": "Star Gold Corp",
+   "window": [
+    "2025-12-02",
+    "2025-12-09"
+   ],
+   "gnews_ticker": 0,
+   "gnews_name": 6,
+   "edgar_q": 0,
+   "edgar_entity": 100,
+   "edgar_entity_sample": [
+    "? - 8-K (2025-12-09)",
+    "? - 8-K (2025-12-09)"
+   ]
+  },
+  {
+   "symbol": "SPQS",
+   "company": "SportsQuest Inc",
+   "window": [
+    "2025-12-05",
+    "2025-12-12"
+   ],
+   "gnews_ticker": 0,
+   "gnews_name": 0,
+   "edgar_q": 0,
+   "edgar_entity": 100,
+   "edgar_entity_sample": [
+    "? - 8-K (2025-12-12)",
+    "? - 8-K (2025-12-12)"
+   ]
+  }
+ ],
+ "depth": [
+  {
+   "months_ago": 0,
+   "note": "最近一周",
+   "window": [
+    "2026-08-09",
+    "2026-08-16"
+   ],
+   "gnews_apple": 100,
+   "gnews_wwr": 46,
+   "edgar_aapl": 0,
+   "edgar_wwr": 0,
+   "av_aapl": 50
+  },
+  {
+   "months_ago": 3,
+   "note": "3个月前",
+   "window": [
+    "2026-05-11",
+    "2026-05-18"
+   ],
+   "gnews_apple": 100,
+   "gnews_wwr": 5,
+   "edgar_aapl": 0,
+   "edgar_wwr": 0,
+   "av_aapl": 50
+  },
+  {
+   "months_ago": 8,
+   "note": "8个月前",
+   "window": [
+    "2025-12-12",
+    "2025-12-19"
+   ],
+   "gnews_apple": 60,
+   "gnews_wwr": 0,
+   "edgar_aapl": 0,
+   "edgar_wwr": 0,
+   "av_aapl": 50
+  },
+  {
+   "months_ago": 12,
+   "note": "12个月前",
+   "window": [
+    "2025-08-14",
+    "2025-08-21"
+   ],
+   "gnews_apple": 67,
+   "gnews_wwr": 0,
+   "edgar_aapl": 0,
+   "edgar_wwr": 0,
+   "av_aapl": 29
+  },
+  {
+   "months_ago": 18,
+   "note": "18个月前",
+   "window": [
+    "2025-02-15",
+    "2025-02-22"
+   ],
+   "gnews_apple": 45,
+   "gnews_wwr": 0,
+   "edgar_aapl": 0,
+   "edgar_wwr": 0,
+   "av_aapl": 24
+  },
+  {
+   "months_ago": 24,
+   "note": "24个月前",
+   "window": [
+    "2024-08-19",
+    "2024-08-26"
+   ],
+   "gnews_apple": 40,
+   "gnews_wwr": 0,
+   "edgar_aapl": 2,
+   "edgar_wwr": 0,
+   "av_aapl": 12
+  },
+  {
+   "months_ago": 36,
+   "note": "36个月前",
+   "window": [
+    "2023-08-25",
+    "2023-09-01"
+   ],
+   "gnews_apple": 24,
+   "gnews_wwr": 0,
+   "edgar_aapl": 0,
+   "edgar_wwr": 0,
+   "av_aapl": 18
+  }
+ ],
+ "meta": {
+  "probe_date": "2026-08-16",
+  "targets": "13 Finnhub-uncovered microcaps, buy windows",
+  "ladder": [
+   0,
+   3,
+   8,
+   12,
+   18,
+   24,
+   36
+  ]
+ }
+}

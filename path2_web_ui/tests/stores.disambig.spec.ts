@@ -27,10 +27,6 @@ describe('view store — Task 1 (M base)', () => {
       const view = useViewStore()
       expect(view.highlightedEventIds.size).toBe(0)
     })
-
-    // Task 3:highlightedEventIds 从 ref+setter 改为 computed(依赖 selectedMatch,协议驱动
-    // 沿 child_refs/anchor_field 展开)。setHighlightedEvents/clearHighlight 已不存在——
-    // 协议派生行为见 tests/components.kline-click.spec.ts 末尾专项测试。
   })
 
   describe('view store — selectedMatchId + selectMatch null (Task 1 extension)', () => {
@@ -69,7 +65,7 @@ describe('view store — Task 2 (M\' candidate disambig)', () => {
   it('starts empty', () => {
     const view = useViewStore()
     expect(view.candidateMatchIds.size).toBe(0)
-    expect(view.pendingDisambigEventId).toBeNull()
+    expect(view.pendingDisambigInstanceId).toBeNull()
   })
 
   it('setCandidateMatches replaces Set', () => {
@@ -83,26 +79,26 @@ describe('view store — Task 2 (M\' candidate disambig)', () => {
 
   it('setPendingDisambig sets and clears', () => {
     const view = useViewStore()
-    view.setPendingDisambig('evt_x')
-    expect(view.pendingDisambigEventId).toBe('evt_x')
+    view.setPendingDisambig('inst_x#0')
+    expect(view.pendingDisambigInstanceId).toBe('inst_x#0')
     view.setPendingDisambig(null)
-    expect(view.pendingDisambigEventId).toBeNull()
+    expect(view.pendingDisambigInstanceId).toBeNull()
   })
 
   it('clearCandidates clears both', () => {
     const view = useViewStore()
     view.setCandidateMatches(['m1'])
-    view.setPendingDisambig('evt_x')
+    view.setPendingDisambig('inst_x#0')
     view.clearCandidates()
     expect(view.candidateMatchIds.size).toBe(0)
-    expect(view.pendingDisambigEventId).toBeNull()
+    expect(view.pendingDisambigInstanceId).toBeNull()
   })
 
   it('setCandidateMatches([]) clears pendingDisambig', () => {
     const view = useViewStore()
-    view.setPendingDisambig('evt_x')
+    view.setPendingDisambig('inst_x#0')
     view.setCandidateMatches([])
-    expect(view.pendingDisambigEventId).toBeNull()
+    expect(view.pendingDisambigInstanceId).toBeNull()
   })
 })
 
@@ -112,42 +108,45 @@ describe('view store — Task 7 (cross-context cleanup)', () => {
   it('selectSymbol clears candidate + highlight + selected', () => {
     const view = useViewStore()
     view.setCandidateMatches(['m1'])
-    view.setPendingDisambig('e1')
+    view.setPendingDisambig('inst_1#0')
     view.focusedMatchId = 'm1'   // 直写:避免 focusMatch 内部 clearCandidates() 提前清掉上面的 arrange
-    view.focusedEventId = 'e1'
+    view.focusedInstanceId = 'inst_1#0'
     view.selectSymbol('NEW_TICKER')
     expect(view.candidateMatchIds.size).toBe(0)
     expect(view.highlightedEventIds.size).toBe(0)
     expect(view.selectedMatchId).toBeNull()
-    expect(view.selectedEventId).toBeNull()
-    expect(view.pendingDisambigEventId).toBeNull()
+    expect(view.selectedInstanceId).toBeNull()
+    expect(view.focusedInstanceId).toBeNull()
+    expect(view.pendingDisambigInstanceId).toBeNull()
   })
 
   it('setActivePattern clears candidate + highlight + selected', () => {
     const view = useViewStore()
     view.setCandidateMatches(['m1'])
-    view.setPendingDisambig('e1')
+    view.setPendingDisambig('inst_1#0')
     view.focusedMatchId = 'm1'   // 直写:避免 focusMatch 内部 clearCandidates() 提前清掉上面的 arrange
-    view.focusedEventId = 'e1'
+    view.focusedInstanceId = 'inst_1#0'
     view.setActivePattern('p_other')
     expect(view.candidateMatchIds.size).toBe(0)
     expect(view.highlightedEventIds.size).toBe(0)
     expect(view.selectedMatchId).toBeNull()
-    expect(view.selectedEventId).toBeNull()
-    expect(view.pendingDisambigEventId).toBeNull()
+    expect(view.selectedInstanceId).toBeNull()
+    expect(view.focusedInstanceId).toBeNull()
+    expect(view.pendingDisambigInstanceId).toBeNull()
   })
 
   it('clearScanFile clears candidate + highlight + selected', () => {
     const view = useViewStore()
     view.setCandidateMatches(['m1'])
-    view.setPendingDisambig('e1')
+    view.setPendingDisambig('inst_1#0')
     view.focusedMatchId = 'm1'   // 直写:避免 focusMatch 内部 clearCandidates() 提前清掉上面的 arrange
-    view.focusedEventId = 'e1'
+    view.focusedInstanceId = 'inst_1#0'
     view.clearScanFile()
     expect(view.candidateMatchIds.size).toBe(0)
     expect(view.highlightedEventIds.size).toBe(0)
     expect(view.selectedMatchId).toBeNull()
-    expect(view.selectedEventId).toBeNull()
-    expect(view.pendingDisambigEventId).toBeNull()
+    expect(view.selectedInstanceId).toBeNull()
+    expect(view.focusedInstanceId).toBeNull()
+    expect(view.pendingDisambigInstanceId).toBeNull()
   })
 })

@@ -6,26 +6,32 @@ export interface WhereRule {
   children?: WhereRule[]
 }
 export interface TopoNode {
-  node_id: string; class_id: string
-  source_tag: string
+  node_id: string
+  solve?: boolean               // 求解参与标志(solve=False 只显示;前端 level 门控免疫判据,Task 6 serialize 契约)
   render_grid?: 'price' | 'time'
   materialize_keys?: string[]
   where_rules: WhereRule[]
+  produced_by?: string | null   // 子结构 node 的物化来源父 node_id(独立 node 缺省/None)
+  child_slot?: string | null    // 子结构 node 在父 children 中的 slot 名(独立 node 缺省/None)
+  parent_refs?: [string, string][]  // 被哪些父的 children 引用:[父 node_id, slot 名] 全量(独立 node 也收录)
 }
 export interface TopoEdge { src: string; dst: string; kind: string; rule: string; anchor_field?: string | null }
 export interface Topology { nodes: TopoNode[]; edges: TopoEdge[] }
 export interface SerializedPattern {
   pattern_id: string
   topology: Topology; event_styles: Record<string, string>
-  debug_enabled_classes: string[]        // ★ v4 契约 C · 挂了 debug_break 的 class_id 列表(拓扑序 · 去重)
+  // ★ v4 契约 C · 挂了 debug_break 的 node_id 列表(拓扑序 · 去重)
+  debug_enabled_nodes: string[]
 }
 
 export interface EventDict {
-  class_id: string; event_id: string; start_idx: number; end_idx: number
-  source_tag: string
-  child_refs: Record<string, string[]>
-  referenced_points?: Array<[number, number, string]>
-  [attr: string]: unknown
+  instance_id: string            // 唯一实例键 = span_id(node_id, start, end) + "#" + instance_idx(恒含 #idx)
+  node_id: string                // 物化来源 node(band 分组键)
+  instance_idx: number           // 桶 (node_id, start, end) 内按流序从 0 起的序号
+  start_idx: number; end_idx: number; confirm_idx?: number
+  child_refs?: Record<string, string[]>   // 全实例化引用:{slot: [instance_id]}
+  ref_ids?: Record<string, string[]>      // 引用型槽(ref_slots 协议):{slot: [instance_id]}
+  [attr: string]: unknown        // 其余属性平铺(旧身份字段体系已消灭,见 instance_id/node_id/instance_idx)
 }
 
 export interface ClauseWitness {
@@ -43,28 +49,36 @@ export interface PredicateTrace {
 export interface FirstPassageCounts { up: number; down: number; both: number; none: number }
 // per-pattern 集合级统计:ratio = up/(up+down),both/none 排除分母(后端已算好,前端只展示);null=分母为 0
 export interface FirstPassageStats extends FirstPassageCounts {
-  n_match: number
+  n_bars: number
   ratio: number | null
   random_up: number; random_down: number; random_both: number; random_none: number
   random_n: number
   random_ratio: number | null
   k: number                    // 几何对称单参数(波动率标准化阈值 = k × σ)
 }
+// per-pattern 首次穿越方向比例对(命中集 vs 随机基线);null = 分母为 0(全 both/none)
+export interface FirstPassageRatio {
+  ratio: number | null
+  random_ratio: number | null
+}
 
 export interface MatchDict {
-  event_id: string; start_idx: number; end_idx: number
-  node_index: Record<string, string>
-  children: string[]
-  predicate_trace: PredicateTrace | null
+  match_id: string               // 唯一 match 键(含 node_index 组合位)
+  start_idx: number; end_idx: number
+  node_index: Record<string, string>      // nid -> instance_id 字符串(全实例化引用)
+  children: string[]                       // instance_id 列表
+  predicate_trace?: PredicateTrace | null
   forward_return?: number | null
   // per-match forward_drawdown(T1 注入,与 forward_return 并列;null=窗口内未触底,undefined=老 scan file 无此字段)
   forward_drawdown?: number | null
+  // 按买点聚合锚:leaf 事件 instance_id(同 leaf 可被多 match 共享,多对一确认)
+  leaf?: string
 }
 export interface Analysis { events: EventDict[]; matches: MatchDict[] }
 
 // ── 多 pattern schema ───────────────────────────────────────────────
 export interface PerPatternResult {
-  summary: Record<string, number>            // {class_id: count} ∪ {matches: n}
+  summary: Record<string, number>            // {node_id: count} ∪ {matches: n}
   analysis: Analysis
   max_forward_return: number | null
   // per-symbol-per-pattern 最差下行(T1 注入,聚合用 min;null=无 match,undefined=老 scan file)
@@ -121,7 +135,8 @@ export interface Bar { date: string; o: number; h: number; l: number; c: number;
 export interface Ohlc { symbol: string; bars: Bar[] }
 
 export interface AttrRow {
-  event_id: string; start_idx: number; end_idx: number
+  instance_id: string; node_id: string
+  start_idx: number; end_idx: number
   clauses: Record<string, ClauseWitness>
 }
 export interface RelRow { src: string; kind: string; total_src: number; ok_count: number; ok_src_ids: string[] }
@@ -133,6 +148,7 @@ export interface Diagnostics {
 // ─── Sprint 1 Task 8:scope-based /diagnose 路由(§3.1)── scope=nodes 载荷 ──────
 export interface Caveat { code: string; message: string; affected_fields?: string[] }
 export interface PairFailure {
+  // ★ wire 字段名沿用后端旧名,值已是 instance_id(前端只读值,不当作身份键)
   src_event_id: string; dst_event_id: string
   subcheck_stage: string
   measured: Record<string, unknown> | null
@@ -151,7 +167,7 @@ export interface NodesScopeResponse { scope: 'nodes'; payload: NodesPayload; cav
 export interface GateFailure {
   failure_event_window: [number, number]
   start_idx: number; gate_idx: number
-  anchor_bar: number; class_id: string; gate_name: string
+  anchor_bar: number; node_id: string; gate_name: string   // node_id 值 = 物化来源 node(Task 1)
   measured: MeasuredKindAware
   threshold: unknown
   op: string | null
@@ -163,6 +179,10 @@ export interface GateFailure {
 export interface TimePayload {
   frame: [number, number]
   failed_attempts: GateFailure[]
+  /** 该 pattern 全部 node 的 node_id 全集(后端从 spec.nodes 提取,与 gate 过滤契约面一致)。
+   * 下拉选项锚:区间内无失败的 node 置灰可见。可选——旧后端/测试 fixture 缺失时前端
+   * 回退到 failed_attempts 实际提取(退化为"所见即所败")。 */
+  all_nodes?: string[]
 }
 export interface TimeScopeResponse { scope: 'time'; payload: TimePayload; caveats: Caveat[] }
 
@@ -202,6 +222,12 @@ export interface ScanHistoryEntry {
   total: number | null
   size: number
   partial: boolean
+  // history 列表聚合:每 pattern 的 match 数 + forward_return 中位数(无 match → null)
+  // + 首次穿越方向比例对(fp 必填——显式标注的 fixture 会挡漏字段;null=该 pattern 无 first_passage 数据)
+  // + 参数结构一致性(快照 vs 当前默认;false=当时代码与当前不同;null=无法判断:无快照或 pid 无 app)
+  per_pattern: Record<string, { hits: number; median: number | null;
+                                fp: FirstPassageRatio | null;
+                                params_consistent: boolean | null }>
 }
 
 export interface AppConfig {

@@ -1,0 +1,60 @@
+{
+ "v4_burst_pool_split": {
+  "v4_on_common_bursts": {
+   "n_days": 807,
+   "mfr40": 0.2055,
+   "ep40": -0.1609,
+   "mfd40": -0.3125,
+   "fp_ratio": 0.399
+  },
+  "v4_on_v4only_bursts": {
+   "n_days": 1363,
+   "mfr40": 0.1892,
+   "ep40": -0.1178,
+   "mfd40": -0.28,
+   "fp_ratio": 0.389
+  }
+ },
+ "v4_far_from_v1_X_dist": {
+  "far_e(<=20)": {
+   "n_days": 638,
+   "mfr40": 0.2214,
+   "ep40": -0.0702,
+   "mfd40": -0.2647,
+   "fp_ratio": 0.515
+  },
+  "far_l(>20)": {
+   "n_days": 1382,
+   "mfr40": 0.1804,
+   "ep40": -0.1598,
+   "mfd40": -0.3116,
+   "fp_ratio": 0.314
+  }
+ },
+ "phase_shift_v1_vs_v4": {
+  "no_v4_day": 56,
+  "same": 115,
+  "v4_later": 28,
+  "v4_earlier": 17
+ },
+ "first_buy_dist_from_burst_end": {
+  "v4_match_median": 7.0,
+  "v1_match_median": 2.0,
+  "v4_p25": 5,
+  "v4_p75": 10,
+  "v1_p25": 2,
+  "v1_p75": 5
+ },
+ "same_day_value_check": {
+  "n_pairs": 115,
+  "mismatch": 0
+ },
+ "far_seg_ord": {
+  "first": 446,
+  "later": 1574
+ },
+ "near_seg_ord": {
+  "first": 145,
+  "later": 5
+ }
+}

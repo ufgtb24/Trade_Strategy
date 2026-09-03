@@ -6,7 +6,7 @@
 
 ## 为何归档
 
-- B4 迁移后所有 `path2_apps/` 业务全部用 nested event(`BurstEvent.members` 内嵌完整 BOEvent)表达"段聚类",`path2_apps/bottom_breakout_burst/` 零现役 Kleene 业务消费者。
+- B4 迁移后所有 `path2_apps/` 业务全部用 nested event(`BurstEvent.members` 内嵌完整 BOEvent)表达"段聚类",`path2_apps/bottom_burst/` 零现役 Kleene 业务消费者。
 - tom 第一性原理裁定:Kleene 跟 nested event 在表达力上互不真子集——
   - **Kleene 强**:段长度/聚合判据可依赖外层已绑 role 字段(求解期可见 `assign`/`ctx.bound`)
   - **nested event 强**:同时共存的多个段(`all_ends` 前缀族)、任意非线性聚类规则

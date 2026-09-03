@@ -14,15 +14,29 @@ from path2.dag.edges import NegationEdge
 
 @dataclass(frozen=True)
 class Ev(Event):
-    """测试用具体 Event:在 event_id/start_idx/end_idx 外加 pos(流内下标)。"""
-    class_id = "test_oracle_ev"
-    pos: int = 0
-    confirm_idx: int = field(default=-1, kw_only=True)   # -1=未指定 → __post_init__ 填 start_idx
+    """测试用具体 Event:在 instance_id/start_idx/end_idx 外加 pos(流内下标)。
 
-    def __post_init__(self):
-        if self.confirm_idx < 0:
-            object.__setattr__(self, 'confirm_idx', self.start_idx)
-        super().__post_init__()
+    event_id 是测试【自有】身份字段(非生产 Event 契约字段,仅断言便利);
+    自定义 __init__ 保留旧位置签名 (event_id, start_idx, end_idx, pos) ——
+    既有测试的 Ev("id", s, e, pos=p) 调用零改动(Event 基类位置字段已改为
+    start_idx/end_idx,不能再靠 dataclass 生成签名)。"""
+    event_id: str = ""          # 测试自有身份字段(仅断言;物化标注后以 instance_id 为准)
+    pos: int = 0
+    confirm_idx: int = field(default=-1, kw_only=True)   # -1=未指定 → __init__ 填 start_idx
+
+    def __init__(self, event_id: str = "", start_idx: int = 0, end_idx: int = 0,
+                 pos: int = 0, *, node_id=None, instance_idx: int = 0,
+                 instance_id=None, confirm_idx: int = -1):
+        object.__setattr__(self, "event_id", event_id)
+        object.__setattr__(self, "pos", pos)
+        object.__setattr__(self, "node_id", node_id)
+        object.__setattr__(self, "instance_idx", instance_idx)
+        object.__setattr__(self, "instance_id", instance_id)
+        object.__setattr__(self, "start_idx", start_idx)
+        object.__setattr__(self, "end_idx", end_idx)
+        object.__setattr__(self, "confirm_idx",
+                           start_idx if confirm_idx < 0 else confirm_idx)
+        Event.__post_init__(self)
 
 
 @dataclass(frozen=True)
@@ -32,17 +46,27 @@ class WideEv(Event):
     kids 是 Ev 的元组,可通过 child("first_kid")/child("last_kid") 取首/尾,
     通过 children("kids") 取全组。本体区间故意比任一 kid 宽,
     使「用 child 投影」与「用父整体」在 satisfies 上产生不同结果。
-    字段顺序镜像 Ev：Event 基类字段(event_id/start_idx/end_idx)在前,pos 随后,kids 最后。
+    自定义 __init__ 保留旧位置签名(同 Ev,见其上注释)。
     """
-    class_id = "test_oracle_wide"
+    event_id: str = ""          # 测试自有身份字段(仅断言;物化标注后以 instance_id 为准)
     pos: int = 0
-    confirm_idx: int = field(default=-1, kw_only=True)   # -1=未指定 → __post_init__ 填 start_idx
+    confirm_idx: int = field(default=-1, kw_only=True)   # -1=未指定 → __init__ 填 start_idx
     kids: Tuple[Ev, ...] = ()
 
-    def __post_init__(self):
-        if self.confirm_idx < 0:
-            object.__setattr__(self, 'confirm_idx', self.start_idx)
-        super().__post_init__()
+    def __init__(self, event_id: str = "", start_idx: int = 0, end_idx: int = 0,
+                 pos: int = 0, *, node_id=None, instance_idx: int = 0,
+                 instance_id=None, confirm_idx: int = -1, kids: Tuple[Ev, ...] = ()):
+        object.__setattr__(self, "event_id", event_id)
+        object.__setattr__(self, "pos", pos)
+        object.__setattr__(self, "node_id", node_id)
+        object.__setattr__(self, "instance_idx", instance_idx)
+        object.__setattr__(self, "instance_id", instance_id)
+        object.__setattr__(self, "start_idx", start_idx)
+        object.__setattr__(self, "end_idx", end_idx)
+        object.__setattr__(self, "confirm_idx",
+                           start_idx if confirm_idx < 0 else confirm_idx)
+        object.__setattr__(self, "kids", kids)
+        Event.__post_init__(self)
 
     def child_slots(self):
         return {"kids": self.kids}
@@ -61,7 +85,7 @@ class WideEv(Event):
 
 
 def E(node_id: str, segs) -> List[Ev]:
-    """造一条流:segs=[(start,end),...],pos 按插入序。event_id=f'{node_id}{pos}'。"""
+    """造一条流:segs=[(start,end),...],pos 按插入序。测试身份字段 event_id=f'{node_id}{pos}'。"""
     return [Ev(f"{node_id}{p}", s, e, pos=p) for p, (s, e) in enumerate(segs)]
 
 

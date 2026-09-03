@@ -6,11 +6,13 @@ from path2_apps.bo_only import (
 )
 
 
-def test_pattern_dag_single_bo_node_no_edges():
-    """PATTERN_DAG 是单节点 bo + 零边。"""
+def test_pattern_dag_bo_and_pk_nodes_no_edges():
+    """PATTERN_DAG 是 bo + pk 两节点(共享同一 detector)+ 零边。"""
     spec = PATTERN_DAG
     assert spec.pattern_id == "bo_only"
-    assert [n.node_id for n in spec.nodes] == ["bo"]
+    assert [n.node_id for n in spec.nodes] == ["bo", "pk"]
+    assert spec.nodes[0].detector is spec.nodes[1].detector   # 兄弟机制:一次 detect 填满两流
+    assert spec.nodes[1].solve is False   # pk 孤立显示 node
     assert spec.edges == ()
 
 
@@ -18,7 +20,7 @@ def test_build_pattern_returns_consistent_spec():
     """build_pattern 与 PATTERN_DAG 同结构(模块级常量 = build_pattern(default))。"""
     spec = build_pattern(Params.default())
     assert spec.pattern_id == "bo_only"
-    assert [n.node_id for n in spec.nodes] == ["bo"]
+    assert [n.node_id for n in spec.nodes] == ["bo", "pk"]
 
 
 def test_eval_meta_protocol():

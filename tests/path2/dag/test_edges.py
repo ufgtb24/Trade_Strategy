@@ -9,11 +9,11 @@ from path2.dag.edges import (
 
 class Ev(Event):
     """测试用具体 Event(frozen dataclass 由 Event 提供)。"""
-    class_id = "test_edges_ev"
+    pass
 
 
 def ev(s, e):
-    return Ev(event_id=f"e_{s}_{e}", start_idx=s, end_idx=e, confirm_idx=s)
+    return Ev(start_idx=s, end_idx=e, confirm_idx=s)
 
 
 # ── 基类契约 ──

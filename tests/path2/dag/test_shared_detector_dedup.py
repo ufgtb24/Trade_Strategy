@@ -36,5 +36,5 @@ def test_shared_detector_runs_once():
 
 def test_res_events_deduped_unique_ids():
     res = analyze(_spec_shared(), _df())
-    ids = [e.event_id for e in res.events]
-    assert len(ids) == len(set(ids))             # 无重复 id(res.events 去重)
+    ids = [e.instance_id for e in res.events]
+    assert len(ids) == len(set(ids))             # 无重复 instance_id(res.events 去重)

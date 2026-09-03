@@ -1,0 +1,21 @@
+stocks=104 total CPU=35.9s  per-stock=345 ms  (6 维 4096 格全部覆盖)
+  load         0.8 ms/stock
+  prep         6.4 ms/stock
+  bo         273.5 ms/stock
+  burst       27.3 ms/stock
+  tb          30.0 ms/stock
+  label        0.5 ms/stock
+  cells        6.5 ms/stock
+  stocks            1.0 /stock
+  bo              163.9 /stock
+  bursts          655.8 /stock
+  anchors         214.0 /stock
+  tb_nonnull     1061.5 /stock
+  spans            32.6 /stock
+  buydays         126.4 /stock
+  long_rows      2667.5 /stock
+  cell_matches   5855.9 /stock
+  单股成本 p10/p50/p90/max = 287/337/403/515 ms
+  每格增量(谓词物化,4096 格) = 0.0016 ms/股/格;每格平均 match 数 = 1.43
+外推全宇宙 8325 股: 2874 CPU·s ≈ 6.0 min wall @8 workers
+grid_cost exit=0

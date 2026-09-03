@@ -1,0 +1,30 @@
+# Default params for bb_v3 pattern (V3 re-entry 多段 throwback)。
+# 内容 = bb_v1 params.yaml(tune 分支调参版)全复制,唯一差异:tb.max_start_gap=15
+# (re-entry 预算空间)。保持与 bb_v1 同口径,实证扫描才可比。
+bo:
+  total_window: 20
+  min_side_bars: 6
+  min_relative_height: 0.2
+  exceed_threshold: 0.003
+  peak_supersede_threshold: 0.01
+  vol_baseline_period: 63
+  peak_measure: high
+  breakout_measure: close
+burst:
+  gap_max: 8
+  vol_baseline_period: 63
+  min_bos: 1
+  first_drought_min: 40
+  distinct_pk_min: 3
+  vol_spike_min: 10
+  peak_age_min: 125
+tb:
+  max_start_gap: 15
+  max_window: 5
+  atr_window: 14
+  big_rise_k: 5
+  stop_confirm_bars: 1
+  judged_measure: close
+  reference_measure: close
+  scb_mode: no_new_low
+  anchor_mode: span_min   # anchor 口径:last_bo(bo 上一根)/min_bo(串内 bo 当根 min)/span_min(串内全 bar min,默认)

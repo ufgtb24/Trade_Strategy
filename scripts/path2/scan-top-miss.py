@@ -44,7 +44,7 @@ def main() -> None:
     top_k = 20
     out_path = 'scan_top_miss.md'
     pkl_dir = 'datasets/pkls/'
-    spec_module = 'path2_apps.bottom_breakout_burst.dag_spec'
+    spec_module = 'path2_apps.bottom_burst.dag_spec'
     # 简单 --key=value override(承 CLAUDE.md · 不用 argparse)
     for a in sys.argv[1:]:
         if a.startswith('--start='):

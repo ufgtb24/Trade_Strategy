@@ -1,0 +1,44 @@
+股票 1337(排除 filtered_symbols 259 只后 1078);对拍项 408
+短窗口股票筛出完成:71 只(0 < len(win) < 300),0.8s
+  plan 10/408 · 累计对拍 710 · mismatch 0 · 5s
+  plan 20/408 · 累计对拍 1420 · mismatch 0 · 9s
+  plan 30/408 · 累计对拍 2130 · mismatch 0 · 13s
+  plan 40/408 · 累计对拍 2840 · mismatch 0 · 16s
+  plan 50/408 · 累计对拍 3550 · mismatch 0 · 20s
+  plan 60/408 · 累计对拍 4260 · mismatch 0 · 24s
+  plan 70/408 · 累计对拍 4970 · mismatch 0 · 28s
+  plan 80/408 · 累计对拍 5680 · mismatch 0 · 32s
+  plan 90/408 · 累计对拍 6390 · mismatch 0 · 35s
+  plan 100/408 · 累计对拍 7100 · mismatch 0 · 39s
+  plan 110/408 · 累计对拍 7810 · mismatch 0 · 43s
+  plan 120/408 · 累计对拍 8520 · mismatch 0 · 46s
+  plan 130/408 · 累计对拍 9230 · mismatch 0 · 50s
+  plan 140/408 · 累计对拍 9940 · mismatch 0 · 54s
+  plan 150/408 · 累计对拍 10650 · mismatch 0 · 58s
+  plan 160/408 · 累计对拍 11360 · mismatch 0 · 62s
+  plan 170/408 · 累计对拍 12070 · mismatch 0 · 66s
+  plan 180/408 · 累计对拍 12780 · mismatch 0 · 69s
+  plan 190/408 · 累计对拍 13490 · mismatch 0 · 73s
+  plan 200/408 · 累计对拍 14200 · mismatch 0 · 77s
+  plan 210/408 · 累计对拍 14910 · mismatch 0 · 81s
+  plan 220/408 · 累计对拍 15620 · mismatch 0 · 85s
+  plan 230/408 · 累计对拍 16330 · mismatch 0 · 89s
+  plan 240/408 · 累计对拍 17040 · mismatch 0 · 93s
+  plan 250/408 · 累计对拍 17750 · mismatch 0 · 96s
+  plan 260/408 · 累计对拍 18460 · mismatch 0 · 100s
+  plan 270/408 · 累计对拍 19170 · mismatch 0 · 104s
+  plan 280/408 · 累计对拍 19880 · mismatch 0 · 107s
+  plan 290/408 · 累计对拍 20590 · mismatch 0 · 111s
+  plan 300/408 · 累计对拍 21300 · mismatch 0 · 115s
+  plan 310/408 · 累计对拍 22010 · mismatch 0 · 119s
+  plan 320/408 · 累计对拍 22720 · mismatch 0 · 122s
+  plan 330/408 · 累计对拍 23430 · mismatch 0 · 126s
+  plan 340/408 · 累计对拍 24140 · mismatch 0 · 130s
+  plan 350/408 · 累计对拍 24850 · mismatch 0 · 134s
+  plan 360/408 · 累计对拍 25560 · mismatch 0 · 138s
+  plan 370/408 · 累计对拍 26270 · mismatch 0 · 142s
+  plan 380/408 · 累计对拍 26980 · mismatch 0 · 146s
+  plan 390/408 · 累计对拍 27690 · mismatch 0 · 149s
+  plan 400/408 · 累计对拍 28400 · mismatch 0 · 153s
+  plan 408/408 · 累计对拍 28968 · mismatch 0 · 156s
+对拍 28968 股×格,mismatch=0,156s

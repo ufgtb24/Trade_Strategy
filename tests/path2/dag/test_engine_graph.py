@@ -57,8 +57,14 @@ def test_wccs_splits_disconnected():
 
 def test_detector_topo_order_respects_consumes_stream():
     # tb 消费 bo 流 -> bo 必须先跑
+    from tests.path2.dag._oracle import Ev
     from path2.dag.nodes import NodeSpec
-    bo = NodeSpec(node_id="bo", detector=object())
-    tb = NodeSpec(node_id="tb", detector=object(), consumes_stream="bo")
+
+    class _StubDetector:
+        """占位 detector:只声明 event_cls(topological 排序不调 detect)。"""
+        event_cls = Ev
+
+    bo = NodeSpec(node_id="bo", detector=_StubDetector())
+    tb = NodeSpec(node_id="tb", detector=_StubDetector(), consumes_stream="bo")
     order = detector_topo_order((tb, bo))      # 故意乱序输入
     assert order.index("bo") < order.index("tb")

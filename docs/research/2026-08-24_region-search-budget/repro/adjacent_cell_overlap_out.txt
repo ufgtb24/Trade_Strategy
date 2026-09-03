@@ -1,0 +1,13 @@
+tb-stop_confirm_bars-0 vs 1: |A|=10048 |B|=9692 inter=8491 jaccard=0.755 inter/min=0.876 syms A=2863 B=2837 shared_syms=2834
+tb-stop_confirm_bars-1 vs 2: |A|=9692 |B|=5330 inter=1031 jaccard=0.074 inter/min=0.193 syms A=2837 B=2257 shared_syms=2251
+tb-stop_confirm_bars-2 vs 3: |A|=5330 |B|=2674 inter=196 jaccard=0.025 inter/min=0.073 syms A=2257 B=1569 shared_syms=1565
+burst-gap_max-4 vs 8: |A|=4116 |B|=5330 inter=4116 jaccard=0.772 inter/min=1.000 syms A=1994 B=2257 shared_syms=1994
+burst-gap_max-8 vs 12: |A|=5330 |B|=6428 inter=5330 jaccard=0.829 inter/min=1.000 syms A=2257 B=2428 shared_syms=2257
+burst-gap_max-12 vs 20: |A|=6428 |B|=8137 inter=6428 jaccard=0.790 inter/min=1.000 syms A=2428 B=2649 shared_syms=2428
+tb-big_rise_k-3 vs 5: |A|=4071 |B|=5330 inter=3050 jaccard=0.480 inter/min=0.749 syms A=2006 B=2257 shared_syms=2006
+tb-big_rise_k-5 vs 8: |A|=5330 |B|=5823 inter=4232 jaccard=0.611 inter/min=0.794 syms A=2257 B=2325 shared_syms=2257
+bo-exceed_threshold-0.003 vs 0.01: |A|=5330 |B|=3999 inter=3807 jaccard=0.689 inter/min=0.952 syms A=2257 B=1927 shared_syms=1901
+bo-min_relative_height-0.15 vs 0.2: |A|=6996 |B|=5330 inter=5288 jaccard=0.751 inter/min=0.992 syms A=2671 B=2257 shared_syms=2250
+bo-min_relative_height-0.2 vs 0.3: |A|=5330 |B|=3113 inter=3069 jaccard=0.571 inter/min=0.986 syms A=2257 B=1573 shared_syms=1564
+burst-min_bos-1 vs 2: |A|=5330 |B|=4234 inter=4234 jaccard=0.794 inter/min=1.000 syms A=2257 B=2024 shared_syms=2024
+exit=0

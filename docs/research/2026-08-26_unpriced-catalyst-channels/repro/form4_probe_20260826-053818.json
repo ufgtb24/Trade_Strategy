@@ -1,0 +1,1179 @@
+{
+ "window_days": 90,
+ "codes": {
+  "P": 97,
+  "M": 30,
+  "A": 176,
+  "F": 34,
+  "S": 33,
+  "C": 8,
+  "D": 4,
+  "L": 504,
+  "J": 18,
+  "G": 3,
+  "X": 2
+ },
+ "rows": [
+  {
+   "symbol": "ALTO",
+   "buy_date": "2025-11-14",
+   "n_form4_90d": 0,
+   "codes": {},
+   "has_P": false,
+   "p_value_usd": 0.0,
+   "parse_fail": 0
+  },
+  {
+   "symbol": "ALTO",
+   "buy_date": "2025-11-17",
+   "n_form4_90d": 0,
+   "codes": {},
+   "has_P": false,
+   "p_value_usd": 0.0,
+   "parse_fail": 0
+  },
+  {
+   "symbol": "ALTO",
+   "buy_date": "2025-11-24",
+   "n_form4_90d": 0,
+   "codes": {},
+   "has_P": false,
+   "p_value_usd": 0.0,
+   "parse_fail": 0
+  },
+  {
+   "symbol": "ANIX",
+   "buy_date": "2025-10-13",
+   "n_form4_90d": 4,
+   "codes": {
+    "P": 4
+   },
+   "has_P": true,
+   "p_value_usd": 94950.0,
+   "parse_fail": 0
+  },
+  {
+   "symbol": "ANVS",
+   "buy_date": "2025-11-19",
+   "n_form4_90d": 5,
+   "codes": {
+    "P": 3,
+    "M": 2,
+    "A": 3
+   },
+   "has_P": true,
+   "p_value_usd": 2231650.55,
+   "parse_fail": 0
+  },
+  {
+   "symbol": "ANVS",
+   "buy_date": "2025-11-20",
+   "n_form4_90d": 5,
+   "codes": {
+    "P": 3,
+    "M": 2,
+    "A": 3
+   },
+   "has_P": true,
+   "p_value_usd": 2231650.55,
+   "parse_fail": 0
+  },
+  {
+   "symbol": "ANVS",
+   "buy_date": "2025-11-24",
+   "n_form4_90d": 6,
+   "codes": {
+    "P": 5,
+    "M": 2,
+    "A": 3
+   },
+   "has_P": true,
+   "p_value_usd": 2301550.55,
+   "parse_fail": 0
+  },
+  {
+   "symbol": "ANVS",
+   "buy_date": "2025-11-26",
+   "n_form4_90d": 7,
+   "codes": {
+    "P": 9,
+    "M": 2,
+    "A": 3
+   },
+   "has_P": true,
+   "p_value_usd": 2461436.6199999996,
+   "parse_fail": 0
+  },
+  {
+   "symbol": "APCX",
+   "buy_date": "2025-11-10",
+   "n_form4_90d": 0,
+   "codes": {},
+   "has_P": false,
+   "p_value_usd": 0.0,
+   "parse_fail": 0
+  },
+  {
+   "symbol": "APCX",
+   "buy_date": "2025-11-17",
+   "n_form4_90d": 0,
+   "codes": {},
+   "has_P": false,
+   "p_value_usd": 0.0,
+   "parse_fail": 0
+  },
+  {
+   "symbol": "APCX",
+   "buy_date": "2025-11-19",
+   "n_form4_90d": 0,
+   "codes": {},
+   "has_P": false,
+   "p_value_usd": 0.0,
+   "parse_fail": 0
+  },
+  {
+   "symbol": "AQMS",
+   "buy_date": "2025-09-30",
+   "n_form4_90d": 6,
+   "codes": {
+    "A": 4,
+    "F": 5
+   },
+   "has_P": false,
+   "p_value_usd": 0.0,
+   "parse_fail": 0
+  },
+  {
+   "symbol": "ARBE",
+   "buy_date": "2025-09-24",
+   "n_form4_90d": 0,
+   "codes": {},
+   "has_P": false,
+   "p_value_usd": 0.0,
+   "parse_fail": 0
+  },
+  {
+   "symbol": "ARBK",
+   "buy_date": "2025-10-14",
+   "n_form4_90d": 0,
+   "codes": {},
+   "has_P": false,
+   "p_value_usd": 0.0,
+   "parse_fail": 0
+  },
+  {
+   "symbol": "ASTI",
+   "buy_date": "2025-12-30",
+   "n_form4_90d": 2,
+   "codes": {
+    "S": 1,
+    "C": 2
+   },
+   "has_P": false,
+   "p_value_usd": 0.0,
+   "parse_fail": 0
+  },
+  {
+   "symbol": "AURFF",
+   "buy_date": "2025-09-29",
+   "n_form4_90d": 0,
+   "codes": {},
+   "has_P": false,
+   "p_value_usd": 0.0,
+   "parse_fail": 0
+  },
+  {
+   "symbol": "AVLNF",
+   "buy_date": "2025-10-16",
+   "n_form4_90d": 0,
+   "codes": {},
+   "has_P": false,
+   "p_value_usd": 0.0,
+   "parse_fail": 0
+  },
+  {
+   "symbol": "BEAT",
+   "buy_date": "2025-12-15",
+   "n_form4_90d": 10,
+   "codes": {},
+   "has_P": false,
+   "p_value_usd": 0.0,
+   "parse_fail": 10
+  },
+  {
+   "symbol": "BEAT",
+   "buy_date": "2025-12-17",
+   "n_form4_90d": 10,
+   "codes": {},
+   "has_P": false,
+   "p_value_usd": 0.0,
+   "parse_fail": 10
+  },
+  {
+   "symbol": "BESS",
+   "buy_date": "2025-10-17",
+   "n_form4_90d": 6,
+   "codes": {
+    "D": 3,
+    "A": 7
+   },
+   "has_P": false,
+   "p_value_usd": 0.0,
+   "parse_fail": 0
+  },
+  {
+   "symbol": "BGDE",
+   "buy_date": "2025-10-06",
+   "n_form4_90d": 3,
+   "codes": {
+    "M": 4,
+    "F": 1,
+    "A": 2
+   },
+   "has_P": false,
+   "p_value_usd": 0.0,
+   "parse_fail": 0
+  },
+  {
+   "symbol": "BKKT",
+   "buy_date": "2025-10-03",
+   "n_form4_90d": 6,
+   "codes": {
+    "F": 2,
+    "P": 3,
+    "S": 3
+   },
+   "has_P": true,
+   "p_value_usd": 1474404.0,
+   "parse_fail": 0
+  },
+  {
+   "symbol": "BKKT",
+   "buy_date": "2025-10-08",
+   "n_form4_90d": 6,
+   "codes": {
+    "F": 2,
+    "P": 3,
+    "S": 3
+   },
+   "has_P": true,
+   "p_value_usd": 1474404.0,
+   "parse_fail": 0
+  },
+  {
+   "symbol": "BOXL",
+   "buy_date": "2025-09-26",
+   "n_form4_90d": 2,
+   "codes": {
+    "S": 2
+   },
+   "has_P": false,
+   "p_value_usd": 0.0,
+   "parse_fail": 0
+  },
+  {
+   "symbol": "BRFH",
+   "buy_date": "2025-09-23",
+   "n_form4_90d": 4,
+   "codes": {
+    "A": 4
+   },
+   "has_P": false,
+   "p_value_usd": 0.0,
+   "parse_fail": 0
+  },
+  {
+   "symbol": "BURU",
+   "buy_date": "2025-10-10",
+   "n_form4_90d": 0,
+   "codes": {},
+   "has_P": false,
+   "p_value_usd": 0.0,
+   "parse_fail": 0
+  },
+  {
+   "symbol": "CALC",
+   "buy_date": "2025-12-03",
+   "n_form4_90d": 5,
+   "codes": {
+    "A": 1,
+    "P": 4
+   },
+   "has_P": true,
+   "p_value_usd": 39757.4984,
+   "parse_fail": 0
+  },
+  {
+   "symbol": "CALC",
+   "buy_date": "2025-12-04",
+   "n_form4_90d": 5,
+   "codes": {
+    "A": 1,
+    "P": 4
+   },
+   "has_P": true,
+   "p_value_usd": 39757.4984,
+   "parse_fail": 0
+  },
+  {
+   "symbol": "CBDL",
+   "buy_date": "2025-10-02",
+   "n_form4_90d": 0,
+   "codes": {},
+   "has_P": false,
+   "p_value_usd": 0.0,
+   "parse_fail": 0
+  },
+  {
+   "symbol": "CLIR",
+   "buy_date": "2025-09-24",
+   "n_form4_90d": 5,
+   "codes": {
+    "A": 5
+   },
+   "has_P": false,
+   "p_value_usd": 0.0,
+   "parse_fail": 0
+  },
+  {
+   "symbol": "CLPT",
+   "buy_date": "2025-09-30",
+   "n_form4_90d": 7,
+   "codes": {
+    "A": 7
+   },
+   "has_P": false,
+   "p_value_usd": 0.0,
+   "parse_fail": 0
+  },
+  {
+   "symbol": "CLYM",
+   "buy_date": "2025-12-18",
+   "n_form4_90d": 2,
+   "codes": {
+    "D": 1,
+    "P": 2,
+    "A": 2
+   },
+   "has_P": true,
+   "p_value_usd": 754737.14,
+   "parse_fail": 0
+  },
+  {
+   "symbol": "CNET",
+   "buy_date": "2025-09-19",
+   "n_form4_90d": 0,
+   "codes": {},
+   "has_P": false,
+   "p_value_usd": 0.0,
+   "parse_fail": 0
+  },
+  {
+   "symbol": "CNET",
+   "buy_date": "2025-09-24",
+   "n_form4_90d": 0,
+   "codes": {},
+   "has_P": false,
+   "p_value_usd": 0.0,
+   "parse_fail": 0
+  },
+  {
+   "symbol": "CNTB",
+   "buy_date": "2025-11-21",
+   "n_form4_90d": 0,
+   "codes": {},
+   "has_P": false,
+   "p_value_usd": 0.0,
+   "parse_fail": 0
+  },
+  {
+   "symbol": "COBA",
+   "buy_date": "2025-12-02",
+   "n_form4_90d": 0,
+   "codes": {},
+   "has_P": false,
+   "p_value_usd": 0.0,
+   "parse_fail": 0
+  },
+  {
+   "symbol": "COHN",
+   "buy_date": "2025-11-14",
+   "n_form4_90d": 0,
+   "codes": {},
+   "has_P": false,
+   "p_value_usd": 0.0,
+   "parse_fail": 0
+  },
+  {
+   "symbol": "COHN",
+   "buy_date": "2025-11-18",
+   "n_form4_90d": 0,
+   "codes": {},
+   "has_P": false,
+   "p_value_usd": 0.0,
+   "parse_fail": 0
+  },
+  {
+   "symbol": "COOT",
+   "buy_date": "2025-10-23",
+   "n_form4_90d": 0,
+   "codes": {},
+   "has_P": false,
+   "p_value_usd": 0.0,
+   "parse_fail": 0
+  },
+  {
+   "symbol": "CPIX",
+   "buy_date": "2025-12-22",
+   "n_form4_90d": 12,
+   "codes": {
+    "L": 252
+   },
+   "has_P": false,
+   "p_value_usd": 0.0,
+   "parse_fail": 0
+  },
+  {
+   "symbol": "CPIX",
+   "buy_date": "2025-12-22",
+   "n_form4_90d": 12,
+   "codes": {
+    "L": 252
+   },
+   "has_P": false,
+   "p_value_usd": 0.0,
+   "parse_fail": 0
+  },
+  {
+   "symbol": "CWBHF",
+   "buy_date": "2025-12-23",
+   "n_form4_90d": 1,
+   "codes": {
+    "M": 2,
+    "F": 1
+   },
+   "has_P": false,
+   "p_value_usd": 0.0,
+   "parse_fail": 0
+  },
+  {
+   "symbol": "DBI",
+   "buy_date": "2025-12-11",
+   "n_form4_90d": 19,
+   "codes": {
+    "A": 17,
+    "S": 2
+   },
+   "has_P": false,
+   "p_value_usd": 0.0,
+   "parse_fail": 0
+  },
+  {
+   "symbol": "DFLI",
+   "buy_date": "2025-10-07",
+   "n_form4_90d": 0,
+   "codes": {},
+   "has_P": false,
+   "p_value_usd": 0.0,
+   "parse_fail": 0
+  },
+  {
+   "symbol": "DRIO",
+   "buy_date": "2025-10-01",
+   "n_form4_90d": 10,
+   "codes": {
+    "A": 9,
+    "P": 1
+   },
+   "has_P": true,
+   "p_value_usd": 21200.0,
+   "parse_fail": 0
+  },
+  {
+   "symbol": "DRIO",
+   "buy_date": "2025-10-06",
+   "n_form4_90d": 10,
+   "codes": {
+    "A": 9,
+    "P": 1
+   },
+   "has_P": true,
+   "p_value_usd": 21200.0,
+   "parse_fail": 0
+  },
+  {
+   "symbol": "DVLT",
+   "buy_date": "2025-10-02",
+   "n_form4_90d": 9,
+   "codes": {
+    "J": 6,
+    "S": 4,
+    "A": 1
+   },
+   "has_P": false,
+   "p_value_usd": 0.0,
+   "parse_fail": 0
+  },
+  {
+   "symbol": "DVLT",
+   "buy_date": "2025-10-02",
+   "n_form4_90d": 9,
+   "codes": {
+    "J": 6,
+    "S": 4,
+    "A": 1
+   },
+   "has_P": false,
+   "p_value_usd": 0.0,
+   "parse_fail": 0
+  },
+  {
+   "symbol": "DVLT",
+   "buy_date": "2025-10-14",
+   "n_form4_90d": 8,
+   "codes": {
+    "J": 6,
+    "S": 4
+   },
+   "has_P": false,
+   "p_value_usd": 0.0,
+   "parse_fail": 0
+  },
+  {
+   "symbol": "DXST",
+   "buy_date": "2025-09-17",
+   "n_form4_90d": 0,
+   "codes": {},
+   "has_P": false,
+   "p_value_usd": 0.0,
+   "parse_fail": 0
+  },
+  {
+   "symbol": "ELBM",
+   "buy_date": "2025-10-17",
+   "n_form4_90d": 0,
+   "codes": {},
+   "has_P": false,
+   "p_value_usd": 0.0,
+   "parse_fail": 0
+  },
+  {
+   "symbol": "EPOW",
+   "buy_date": "2025-10-02",
+   "n_form4_90d": 0,
+   "codes": {},
+   "has_P": false,
+   "p_value_usd": 0.0,
+   "parse_fail": 0
+  },
+  {
+   "symbol": "FEAM",
+   "buy_date": "2025-10-14",
+   "n_form4_90d": 10,
+   "codes": {
+    "A": 5,
+    "M": 7,
+    "F": 2,
+    "P": 4
+   },
+   "has_P": true,
+   "p_value_usd": 710685.5,
+   "parse_fail": 0
+  },
+  {
+   "symbol": "FEAM",
+   "buy_date": "2025-10-20",
+   "n_form4_90d": 10,
+   "codes": {
+    "A": 5,
+    "M": 7,
+    "F": 2,
+    "P": 4
+   },
+   "has_P": true,
+   "p_value_usd": 710685.5,
+   "parse_fail": 0
+  },
+  {
+   "symbol": "FLUX",
+   "buy_date": "2025-09-26",
+   "n_form4_90d": 8,
+   "codes": {
+    "P": 10,
+    "A": 4
+   },
+   "has_P": false,
+   "p_value_usd": 0.0,
+   "parse_fail": 0
+  },
+  {
+   "symbol": "FUST",
+   "buy_date": "2025-11-18",
+   "n_form4_90d": 0,
+   "codes": {},
+   "has_P": false,
+   "p_value_usd": 0.0,
+   "parse_fail": 0
+  },
+  {
+   "symbol": "GLSI",
+   "buy_date": "2025-12-22",
+   "n_form4_90d": 5,
+   "codes": {
+    "P": 4,
+    "A": 1
+   },
+   "has_P": true,
+   "p_value_usd": 200900.0,
+   "parse_fail": 0
+  },
+  {
+   "symbol": "GLSI",
+   "buy_date": "2025-12-24",
+   "n_form4_90d": 5,
+   "codes": {
+    "P": 4,
+    "A": 1
+   },
+   "has_P": true,
+   "p_value_usd": 200900.0,
+   "parse_fail": 0
+  },
+  {
+   "symbol": "GLSI",
+   "buy_date": "2025-12-24",
+   "n_form4_90d": 5,
+   "codes": {
+    "P": 4,
+    "A": 1
+   },
+   "has_P": true,
+   "p_value_usd": 200900.0,
+   "parse_fail": 0
+  },
+  {
+   "symbol": "GUER",
+   "buy_date": "2025-11-21",
+   "n_form4_90d": 4,
+   "codes": {
+    "A": 6
+   },
+   "has_P": false,
+   "p_value_usd": 0.0,
+   "parse_fail": 0
+  },
+  {
+   "symbol": "GUER",
+   "buy_date": "2025-12-01",
+   "n_form4_90d": 4,
+   "codes": {
+    "A": 6
+   },
+   "has_P": false,
+   "p_value_usd": 0.0,
+   "parse_fail": 0
+  },
+  {
+   "symbol": "GWH",
+   "buy_date": "2025-10-17",
+   "n_form4_90d": 10,
+   "codes": {
+    "A": 8,
+    "F": 2
+   },
+   "has_P": false,
+   "p_value_usd": 0.0,
+   "parse_fail": 0
+  },
+  {
+   "symbol": "HAMRF",
+   "buy_date": "2025-10-08",
+   "n_form4_90d": 0,
+   "codes": {},
+   "has_P": false,
+   "p_value_usd": 0.0,
+   "parse_fail": 0
+  },
+  {
+   "symbol": "HOWL",
+   "buy_date": "2025-10-01",
+   "n_form4_90d": 0,
+   "codes": {},
+   "has_P": false,
+   "p_value_usd": 0.0,
+   "parse_fail": 0
+  },
+  {
+   "symbol": "HUIZ",
+   "buy_date": "2025-09-18",
+   "n_form4_90d": 0,
+   "codes": {},
+   "has_P": false,
+   "p_value_usd": 0.0,
+   "parse_fail": 0
+  },
+  {
+   "symbol": "KAYS",
+   "buy_date": "2025-09-19",
+   "n_form4_90d": 0,
+   "codes": {},
+   "has_P": false,
+   "p_value_usd": 0.0,
+   "parse_fail": 0
+  },
+  {
+   "symbol": "KAYS",
+   "buy_date": "2025-09-24",
+   "n_form4_90d": 0,
+   "codes": {},
+   "has_P": false,
+   "p_value_usd": 0.0,
+   "parse_fail": 0
+  },
+  {
+   "symbol": "KAYS",
+   "buy_date": "2025-09-24",
+   "n_form4_90d": 0,
+   "codes": {},
+   "has_P": false,
+   "p_value_usd": 0.0,
+   "parse_fail": 0
+  },
+  {
+   "symbol": "KIQSF",
+   "buy_date": "2025-09-18",
+   "n_form4_90d": 0,
+   "codes": {},
+   "has_P": false,
+   "p_value_usd": 0.0,
+   "parse_fail": 0
+  },
+  {
+   "symbol": "KITL",
+   "buy_date": "2025-10-14",
+   "n_form4_90d": 0,
+   "codes": {},
+   "has_P": false,
+   "p_value_usd": 0.0,
+   "parse_fail": 0
+  },
+  {
+   "symbol": "KTTA",
+   "buy_date": "2025-12-03",
+   "n_form4_90d": 11,
+   "codes": {
+    "P": 3,
+    "A": 8
+   },
+   "has_P": true,
+   "p_value_usd": 149999.25,
+   "parse_fail": 0
+  },
+  {
+   "symbol": "KTTA",
+   "buy_date": "2025-12-03",
+   "n_form4_90d": 11,
+   "codes": {
+    "P": 3,
+    "A": 8
+   },
+   "has_P": true,
+   "p_value_usd": 149999.25,
+   "parse_fail": 0
+  },
+  {
+   "symbol": "LPCN",
+   "buy_date": "2025-12-23",
+   "n_form4_90d": 2,
+   "codes": {
+    "A": 2
+   },
+   "has_P": false,
+   "p_value_usd": 0.0,
+   "parse_fail": 0
+  },
+  {
+   "symbol": "LPCN",
+   "buy_date": "2025-12-26",
+   "n_form4_90d": 2,
+   "codes": {
+    "A": 2
+   },
+   "has_P": false,
+   "p_value_usd": 0.0,
+   "parse_fail": 0
+  },
+  {
+   "symbol": "LRDC",
+   "buy_date": "2025-11-12",
+   "n_form4_90d": 0,
+   "codes": {},
+   "has_P": false,
+   "p_value_usd": 0.0,
+   "parse_fail": 0
+  },
+  {
+   "symbol": "LRDC",
+   "buy_date": "2025-11-14",
+   "n_form4_90d": 0,
+   "codes": {},
+   "has_P": false,
+   "p_value_usd": 0.0,
+   "parse_fail": 0
+  },
+  {
+   "symbol": "MAGE",
+   "buy_date": "2025-09-30",
+   "n_form4_90d": 0,
+   "codes": {},
+   "has_P": false,
+   "p_value_usd": 0.0,
+   "parse_fail": 0
+  },
+  {
+   "symbol": "MMA",
+   "buy_date": "2025-09-17",
+   "n_form4_90d": 0,
+   "codes": {},
+   "has_P": false,
+   "p_value_usd": 0.0,
+   "parse_fail": 0
+  },
+  {
+   "symbol": "MTC",
+   "buy_date": "2025-11-10",
+   "n_form4_90d": 0,
+   "codes": {},
+   "has_P": false,
+   "p_value_usd": 0.0,
+   "parse_fail": 0
+  },
+  {
+   "symbol": "MVNC",
+   "buy_date": "2025-10-28",
+   "n_form4_90d": 0,
+   "codes": {},
+   "has_P": false,
+   "p_value_usd": 0.0,
+   "parse_fail": 0
+  },
+  {
+   "symbol": "MVNC",
+   "buy_date": "2025-11-05",
+   "n_form4_90d": 0,
+   "codes": {},
+   "has_P": false,
+   "p_value_usd": 0.0,
+   "parse_fail": 0
+  },
+  {
+   "symbol": "MYSE",
+   "buy_date": "2025-10-08",
+   "n_form4_90d": 9,
+   "codes": {
+    "P": 13,
+    "A": 5
+   },
+   "has_P": true,
+   "p_value_usd": 37160.37,
+   "parse_fail": 0
+  },
+  {
+   "symbol": "NPRFF",
+   "buy_date": "2025-09-09",
+   "n_form4_90d": 0,
+   "codes": {},
+   "has_P": false,
+   "p_value_usd": 0.0,
+   "parse_fail": 0
+  },
+  {
+   "symbol": "NVNXF",
+   "buy_date": "2025-10-14",
+   "n_form4_90d": 0,
+   "codes": {},
+   "has_P": false,
+   "p_value_usd": 0.0,
+   "parse_fail": 0
+  },
+  {
+   "symbol": "NVX",
+   "buy_date": "2025-10-20",
+   "n_form4_90d": 0,
+   "codes": {},
+   "has_P": false,
+   "p_value_usd": 0.0,
+   "parse_fail": 0
+  },
+  {
+   "symbol": "OMER",
+   "buy_date": "2025-10-23",
+   "n_form4_90d": 1,
+   "codes": {
+    "G": 3
+   },
+   "has_P": false,
+   "p_value_usd": 0.0,
+   "parse_fail": 0
+  },
+  {
+   "symbol": "OMQS",
+   "buy_date": "2025-11-05",
+   "n_form4_90d": 0,
+   "codes": {},
+   "has_P": false,
+   "p_value_usd": 0.0,
+   "parse_fail": 0
+  },
+  {
+   "symbol": "OTLC",
+   "buy_date": "2025-09-22",
+   "n_form4_90d": 1,
+   "codes": {
+    "P": 3
+   },
+   "has_P": true,
+   "p_value_usd": 993.685,
+   "parse_fail": 0
+  },
+  {
+   "symbol": "OTLC",
+   "buy_date": "2025-09-30",
+   "n_form4_90d": 1,
+   "codes": {
+    "P": 3
+   },
+   "has_P": true,
+   "p_value_usd": 993.685,
+   "parse_fail": 0
+  },
+  {
+   "symbol": "PLAB",
+   "buy_date": "2025-12-15",
+   "n_form4_90d": 5,
+   "codes": {
+    "S": 4,
+    "F": 1
+   },
+   "has_P": false,
+   "p_value_usd": 0.0,
+   "parse_fail": 0
+  },
+  {
+   "symbol": "PTN",
+   "buy_date": "2025-11-20",
+   "n_form4_90d": 2,
+   "codes": {
+    "F": 8
+   },
+   "has_P": false,
+   "p_value_usd": 0.0,
+   "parse_fail": 0
+  },
+  {
+   "symbol": "PTN",
+   "buy_date": "2025-11-25",
+   "n_form4_90d": 2,
+   "codes": {
+    "F": 8
+   },
+   "has_P": false,
+   "p_value_usd": 0.0,
+   "parse_fail": 0
+  },
+  {
+   "symbol": "RENT",
+   "buy_date": "2025-12-18",
+   "n_form4_90d": 10,
+   "codes": {
+    "A": 7,
+    "C": 6,
+    "X": 2
+   },
+   "has_P": false,
+   "p_value_usd": 0.0,
+   "parse_fail": 0
+  },
+  {
+   "symbol": "RKDA",
+   "buy_date": "2025-10-17",
+   "n_form4_90d": 0,
+   "codes": {},
+   "has_P": false,
+   "p_value_usd": 0.0,
+   "parse_fail": 0
+  },
+  {
+   "symbol": "RSMXF",
+   "buy_date": "2025-09-18",
+   "n_form4_90d": 0,
+   "codes": {},
+   "has_P": false,
+   "p_value_usd": 0.0,
+   "parse_fail": 0
+  },
+  {
+   "symbol": "SBFM",
+   "buy_date": "2025-10-17",
+   "n_form4_90d": 0,
+   "codes": {},
+   "has_P": false,
+   "p_value_usd": 0.0,
+   "parse_fail": 0
+  },
+  {
+   "symbol": "SDST",
+   "buy_date": "2025-10-17",
+   "n_form4_90d": 3,
+   "codes": {
+    "S": 3,
+    "M": 2
+   },
+   "has_P": false,
+   "p_value_usd": 0.0,
+   "parse_fail": 0
+  },
+  {
+   "symbol": "SLDC",
+   "buy_date": "2025-10-30",
+   "n_form4_90d": 0,
+   "codes": {},
+   "has_P": false,
+   "p_value_usd": 0.0,
+   "parse_fail": 0
+  },
+  {
+   "symbol": "SLNH",
+   "buy_date": "2025-09-29",
+   "n_form4_90d": 11,
+   "codes": {
+    "A": 12
+   },
+   "has_P": false,
+   "p_value_usd": 0.0,
+   "parse_fail": 0
+  },
+  {
+   "symbol": "SLNHP",
+   "buy_date": "2025-09-19",
+   "n_form4_90d": 11,
+   "codes": {
+    "A": 12
+   },
+   "has_P": false,
+   "p_value_usd": 0.0,
+   "parse_fail": 0
+  },
+  {
+   "symbol": "SPQS",
+   "buy_date": "2025-12-12",
+   "n_form4_90d": 0,
+   "codes": {},
+   "has_P": false,
+   "p_value_usd": 0.0,
+   "parse_fail": 0
+  },
+  {
+   "symbol": "SPTY",
+   "buy_date": "2025-10-31",
+   "n_form4_90d": 0,
+   "codes": {},
+   "has_P": false,
+   "p_value_usd": 0.0,
+   "parse_fail": 0
+  },
+  {
+   "symbol": "SRGZ",
+   "buy_date": "2025-12-09",
+   "n_form4_90d": 0,
+   "codes": {},
+   "has_P": false,
+   "p_value_usd": 0.0,
+   "parse_fail": 0
+  },
+  {
+   "symbol": "SRGZ",
+   "buy_date": "2025-12-23",
+   "n_form4_90d": 0,
+   "codes": {},
+   "has_P": false,
+   "p_value_usd": 0.0,
+   "parse_fail": 0
+  },
+  {
+   "symbol": "SSM",
+   "buy_date": "2025-09-09",
+   "n_form4_90d": 0,
+   "codes": {},
+   "has_P": false,
+   "p_value_usd": 0.0,
+   "parse_fail": 0
+  },
+  {
+   "symbol": "SSP",
+   "buy_date": "2025-11-19",
+   "n_form4_90d": 0,
+   "codes": {},
+   "has_P": false,
+   "p_value_usd": 0.0,
+   "parse_fail": 0
+  },
+  {
+   "symbol": "TBLLF",
+   "buy_date": "2025-10-13",
+   "n_form4_90d": 0,
+   "codes": {},
+   "has_P": false,
+   "p_value_usd": 0.0,
+   "parse_fail": 0
+  },
+  {
+   "symbol": "VNCE",
+   "buy_date": "2025-09-17",
+   "n_form4_90d": 0,
+   "codes": {},
+   "has_P": false,
+   "p_value_usd": 0.0,
+   "parse_fail": 0
+  },
+  {
+   "symbol": "WWR",
+   "buy_date": "2025-10-06",
+   "n_form4_90d": 0,
+   "codes": {},
+   "has_P": false,
+   "p_value_usd": 0.0,
+   "parse_fail": 0
+  },
+  {
+   "symbol": "WWR",
+   "buy_date": "2025-10-08",
+   "n_form4_90d": 0,
+   "codes": {},
+   "has_P": false,
+   "p_value_usd": 0.0,
+   "parse_fail": 0
+  },
+  {
+   "symbol": "YCBD",
+   "buy_date": "2025-12-23",
+   "n_form4_90d": 2,
+   "codes": {
+    "S": 3,
+    "A": 1
+   },
+   "has_P": false,
+   "p_value_usd": 0.0,
+   "parse_fail": 0
+  },
+  {
+   "symbol": "ZEOX",
+   "buy_date": "2025-10-22",
+   "n_form4_90d": 0,
+   "codes": {},
+   "has_P": false,
+   "p_value_usd": 0.0,
+   "parse_fail": 0
+  }
+ ]
+}

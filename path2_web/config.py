@@ -22,7 +22,7 @@ DEFAULT_CONFIG = {
         "first_passage_k": 5.0,    # 首次穿越几何对称阈值倍数(上行 P(1+kM)、下行 P/(1+kM))
         "first_passage_enabled": True,   # 首次穿越方向注入开关
     },
-    "last_selected_pattern": "bottom_breakout_burst",
+    "last_selected_pattern": "bottom_burst",
 }
 
 DEFAULT_PATH = Path(__file__).resolve().parents[1] / "configs" / "path2_web.yaml"

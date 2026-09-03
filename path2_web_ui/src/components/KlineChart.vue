@@ -45,9 +45,9 @@
     <CrosshairOverlay :x="overlayX" />
     <div v-if="contextMenuVisible" ref="driverMenuEl" class="driver-menu"
          :style="{ left: contextMenuPos.x + 'px', top: contextMenuPos.y + 'px' }">
-      <!-- 复制 event_id · marker 右键即显示(contextMenuEventId 非 null)、空白右键隐藏 -->
-      <button v-if="contextMenuEventId" type="button" class="copy-driver-btn"
-              @click.stop="copyEventId">复制 event_id</button>
+      <!-- 复制 instance_id · marker 右键即显示(contextMenuInstanceId 非 null)、空白右键隐藏 -->
+      <button v-if="contextMenuInstanceId" type="button" class="copy-driver-btn"
+              @click.stop="copyInstanceId">复制 instance_id</button>
       <!-- v2 event-debug(2026-07-15) · debug 菜单分支(marker + whitelist 命中) -->
       <template v-if="menuDispatch.menu === 'debug' && menuDispatch.anchors">
         <button v-for="a in menuDispatch.anchors" :key="a.key"
@@ -97,9 +97,10 @@ import CrosshairOverlay from './CrosshairOverlay.vue'
 
 const view = useViewStore()
 const { symbol, effectiveAnalysis, nodeColors, nodeVisible, level, tagMap, isolated,
-        effectivePattern, effectiveScan, scanFile, selectedEventId, diag,
+        effectivePattern, effectiveScan, scanFile, focusedInstanceRef, diag,
         activePatternId, activeDetailCard, selectedMatchId, candidateMatchIds,
-        highlightedEventIds, pendingDisambigEventId, shiftSelectedEventIds } = storeToRefs(view)
+        highlightedEventIds, pendingDisambigInstanceId, shiftSelectedEventIds,
+        focusedInstanceId, selectedInstanceId, compositionGroupIds } = storeToRefs(view)
 const panels = usePanelsStore()
 const { showSlider, subHeightOffset } = storeToRefs(panels)
 
@@ -122,8 +123,9 @@ const BRUSH_OPTION = {
   xAxisIndex: 0,
   brushType: 'lineX' as const,
   brushMode: 'single' as const,
-  throttleType: 'debounce' as const,
-  throttleDelay: 300,
+  // 【修复 · brush 首次刷失效】原 debounce 300ms:拖动(约 100ms)结束时 brushSelect 还在
+  // debounce 中 → brushEnd 读 latestRange=null → 首次框选请求丢失。改回默认 fixRate 0
+  // (即时派发;请求只在 brushEnd 发一次,拖动中的高频 brushSelect 仅更新 latestRange,无副作用)。
   brushStyle: { borderWidth: 1, color: 'rgba(59,130,246,0.12)', borderColor: '#3b82f6' },
   outOfBrush: { colorAlpha: 1 },
   removeOnClick: false,
@@ -158,12 +160,12 @@ function clearBrushAreas() {
 // view.shiftSelectedEvents 累积器(KlineChart.ts::handleShiftClick)。返回 true = 已消费。
 function handleMaybeShiftClick(p: any, source: 'main' | 'sub'): boolean {
   const native = p?.event?.event as MouseEvent | undefined
-  if (!native?.shiftKey || !p?.seriesName || !MARKER_SERIES.includes(p.seriesName) || !p.data?.event_id) {
+  if (!native?.shiftKey || !p?.seriesName || !MARKER_SERIES.includes(p.seriesName) || !p.data?.instance_id) {
     return false
   }
-  const eventId = p.data.event_id as string
-  const classId = effectiveAnalysis.value?.events.find((e) => e.event_id === eventId)?.class_id ?? 'unknown'
-  handleShiftClick(eventId, classId, source, view)
+  const instanceId = p.data.instance_id as string
+  const nodeId = effectiveAnalysis.value?.events.find((e) => e.instance_id === instanceId)?.node_id ?? 'unknown'
+  handleShiftClick(instanceId, nodeId, source, view)
   return true
 }
 
@@ -178,7 +180,7 @@ const driverMenuEl = ref<HTMLElement | null>(null)
 
 // v2 event-debug(2026-07-15) · 右键菜单分流状态
 const menuDispatch = ref<MenuDispatch>({ menu: 'driver' })  // 默认 driver
-const contextMenuEventId = ref<string | null>(null)         // 右键落点 event id(null=空白)
+const contextMenuInstanceId = ref<string | null>(null)      // 右键落点 marker 的 instance_id(null=空白)
 
 // marker 命中 flag:chartMain.on('contextmenu')(见 onMounted)命中 marker 时置 true 并自行开菜单,
 // 随后原生事件冒泡到本 div 的 DOM handler(handleContextMenu)时消费该 flag 后直接跳过 ——
@@ -198,12 +200,12 @@ function handleContextMenu(ev: MouseEvent) {
   openContextMenuAt(null, ev.clientX, ev.clientY)
 }
 
-function openContextMenuAt(eventId: string | null, x: number, y: number) {
+function openContextMenuAt(instanceId: string | null, x: number, y: number) {
   // 屏蔽 ECharts marker tooltip · 右键触发时 hover 还在 marker 上会导致 tooltip 遮住菜单
   chartMain?.dispatchAction({ type: 'hideTip' })
   chartSub?.dispatchAction({ type: 'hideTip' })
-  contextMenuEventId.value = eventId
-  menuDispatch.value = dispatchDebugMenu({ eventId }, view)
+  contextMenuInstanceId.value = instanceId
+  menuDispatch.value = dispatchDebugMenu({ instanceId }, view)
   contextMenuVisible.value = true
   contextMenuPos.value = { x, y }
   // 位置越界翻转 —— nextTick 后菜单已渲染, 读实际 rect 判是否溢出 viewport, 溢出则改用左/上定位
@@ -248,12 +250,12 @@ function copyDriverScript() {
   contextMenuVisible.value = false
 }
 
-// 复制右键落点 marker 的 event_id 到剪贴板 · marker 右键时 contextMenuEventId 已在手
-function copyEventId() {
-  const eid = contextMenuEventId.value
-  if (!eid) return
-  void navigator.clipboard.writeText(eid)
-    .then(() => view.showToast(`已复制 event_id: ${eid}`))
+// 复制右键落点 marker 的 instance_id 到剪贴板 · marker 右键时 contextMenuInstanceId 已在手
+function copyInstanceId() {
+  const iid = contextMenuInstanceId.value
+  if (!iid) return
+  void navigator.clipboard.writeText(iid)
+    .then(() => view.showToast(`已复制 instance_id: ${iid}`))
   contextMenuVisible.value = false
 }
 
@@ -266,15 +268,15 @@ function copySymbol() {
 
 // v2 event-debug(2026-07-15) · debug 菜单点击 → 触发 triggerEventDebug
 const menuDebugClassName = computed(() => {
-  if (!contextMenuEventId.value) return ''
-  const ev = view.effectiveAnalysis?.events?.find(e => e.event_id === contextMenuEventId.value)
-  return ev?.class_id ?? ''
+  if (!contextMenuInstanceId.value) return ''
+  const ev = view.effectiveAnalysis?.events?.find(e => e.instance_id === contextMenuInstanceId.value)
+  return ev?.node_id ?? ''
 })
 
-function onDebugMenuClick(anchor: { key: 'entry' | 'trough' | 'end'; disabled?: boolean }) {
+function onDebugMenuClick(anchor: { key: 'entry' | 'start' | 'end' | 'confirm'; disabled?: boolean }) {
   if (anchor.disabled) return
-  if (!contextMenuEventId.value) return
-  void view.triggerEventDebug(contextMenuEventId.value, anchor.key)
+  if (!contextMenuInstanceId.value) return
+  void view.triggerEventDebug(contextMenuInstanceId.value, anchor.key)
   contextMenuVisible.value = false
 }
 
@@ -331,7 +333,7 @@ function strictWindowIdx(): { startIdx: number; endIdx: number } | null {
 }
 
 function matchLabel(matchId: string): string | null {
-  const m = effectiveAnalysis.value?.matches.find((mm) => mm.event_id === matchId)
+  const m = effectiveAnalysis.value?.matches.find((mm) => mm.match_id === matchId)
   if (!m || m.forward_return === undefined) return null
   const horizon = (effectiveScan.value ?? scanFile.value?.scan)?.label_horizon
   // forward_drawdown 与 forward_return 同层展示(T1 注入);老 scan file 无此字段时不追加。
@@ -449,11 +451,17 @@ function buildRenderInput() {
     nodeColors: nodeColors.value,
     eventTier: (e: any) => view.eventTier(e),
     nodeOfEventByBand: (e: any) => nodeOfEventByBand(e, tagMap.value.tagToNodes, tagList),
-    bandKeyOf: (e: any) => bandKeyOf(e, tagList),
+    bandKeyOf: (e: any) => bandKeyOf(e),
     nodeVisible: nodeVisible.value,
     tagToNodes: tagMap.value.tagToNodes,
-    selectedEventId: selectedEventId.value,
-    tooltipResolver: (id: string) => resolveTooltipData(id, diag.value, effectiveAnalysis.value?.events ?? [], bars.value),
+    // 当前聚焦实例(合并):selectedInstanceId(0 归属)与 focusedInstanceId(1 归属)互斥,
+    // 合并即「当前聚焦实例」,供 bracket 是否本身被点的判定(marker 分支必设)。
+    selectedInstanceId: focusedInstanceRef.value,
+    // 精确实例(1 归属直选时非空):chart 的 focus 条目按它精确到实例(点 #0 只亮 #0)。
+    focusedInstanceId: focusedInstanceId.value,
+    // 实例级签名:formatter 直接把 data.instance_id 传给 resolver,展示【所悬停实例】的判定。
+    tooltipResolver: (id: string) =>
+      resolveTooltipData(id, diag.value, effectiveAnalysis.value?.events ?? [], bars.value),
     strictWindow: strictWindowIdx(),
     matchLabel,
     sliderShow: showSlider.value,
@@ -461,8 +469,11 @@ function buildRenderInput() {
     endNode: scanFile.value?.per_pattern[activePatternId.value!]?.end_node ?? undefined,
     selectedMatchId: selectedMatchId.value,
     candidateMatchIds: candidateMatchIds.value,
-    highlightedEventIds: highlightedEventIds.value,
-    pendingDisambigEventId: pendingDisambigEventId.value,
+    // 组成型组「一选全选」:0 归属非 match 组的选中集并入 group 高亮
+    // (chart group 分支按 focusedInstanceRef 排除点击者 → 点击者 focus 框独家,
+    // 组员 group 框;match 组时本集为空,由 matchedIds 闭包独占)。
+    highlightedEventIds: new Set([...highlightedEventIds.value, ...compositionGroupIds.value]),
+    pendingDisambigInstanceId: pendingDisambigInstanceId.value,
     shiftSelectedEventIds: shiftSelectedEventIds.value,
     matches: effectiveAnalysis.value?.matches ?? [],
   }
@@ -584,10 +595,10 @@ onMounted(() => {
     const nativeEv = p.event?.event as MouseEvent | undefined
     if (!nativeEv) return
     nativeEv.preventDefault()
-    const eventId = (p.seriesName && MARKER_SERIES.includes(p.seriesName) && p.data?.event_id)
-      ? String(p.data.event_id) : null
-    if (!eventId) return
-    openContextMenuAt(eventId, nativeEv.clientX, nativeEv.clientY)
+    const instanceId = (p.seriesName && MARKER_SERIES.includes(p.seriesName) && p.data?.instance_id)
+      ? String(p.data.instance_id) : null
+    if (!instanceId) return
+    openContextMenuAt(instanceId, nativeEv.clientX, nativeEv.clientY)
     markerContextMenuHandled = true
   }
   chartMain.on('contextmenu', onContextMenuMarker)
@@ -613,7 +624,8 @@ onMounted(() => {
   //   brushselected 每次拖动触发 → 只更新缓存(不发 request)· brushEnd mouseup 触发一次 → 发 1 次 request。
   //   为何双事件:ECharts brushEnd payload 未文档化(不能可靠取 coordRange) · brushselected 每次拖动触发。
   const brushH = createBrushRequestHandler(
-    (s, e) => { void view.triggerTimeQuery(s, e, view.currentTimeEventClass || undefined) },
+    // 不传 node 过滤:过滤是前端显示层,请求恒全量(见 view.ts::triggerTimeQuery 注释)
+    (s, e) => { void view.triggerTimeQuery(s, e) },
     () => bars.value.length,
   )
   chartMain.on('brushselected', brushH.onBrushSelected)
@@ -790,9 +802,10 @@ onBeforeUnmount(() => {
 // ── Reactive watches ────────────────────────────────────────────────
 watch(symbol, () => void reloadBars().then(() => render(true)))
 watch([scanFile, effectiveScan], () => void reloadBars().then(() => render(false)))
-watch([effectiveAnalysis, nodeVisible, level, nodeColors, selectedEventId, diag, showSlider,
-       selectedMatchId, candidateMatchIds, highlightedEventIds, pendingDisambigEventId,
-       shiftSelectedEventIds, bandZoomFactor],
+watch([effectiveAnalysis, nodeVisible, level, nodeColors, focusedInstanceRef, diag, showSlider,
+       selectedMatchId, candidateMatchIds, highlightedEventIds, pendingDisambigInstanceId,
+       shiftSelectedEventIds, bandZoomFactor, focusedInstanceId, selectedInstanceId,
+       compositionGroupIds],
       () => render(false), { deep: true })
 
 // subHeightOffset / subCanvasH 变化 → chart.resize()(RO 会自动触发,这里手动兜底)

@@ -5,13 +5,13 @@ from path2.core import Detector, Event
 
 @dataclass(frozen=True)
 class _E(Event):
-    class_id = "test_detector_e"
+    pass
 
 
 def test_conforming_class_is_detector():
     class Good:
         def detect(self, source):
-            yield _E(event_id="e", start_idx=0, end_idx=0, confirm_idx=0)
+            yield _E(start_idx=0, end_idx=0, confirm_idx=0)
 
     assert isinstance(Good(), Detector)
 

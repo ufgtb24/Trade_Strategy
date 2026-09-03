@@ -33,7 +33,7 @@ sys.path.insert(0, str(REPO))
 import pandas as pd  # noqa: E402
 
 from path2.dag.engine import analyze as _dag_analyze  # noqa: E402
-from path2_apps.bottom_breakout_burst import dag_spec as bbb  # noqa: E402
+from path2_apps.bottom_burst import dag_spec as bbb  # noqa: E402
 from path2_web.gate_collector import attach_and_collect, detach  # noqa: E402
 from path2_web.scan import write_result_file_flat  # noqa: E402
 from path2_web.serialize import serialize_per_pattern_result, serialize_pattern  # noqa: E402

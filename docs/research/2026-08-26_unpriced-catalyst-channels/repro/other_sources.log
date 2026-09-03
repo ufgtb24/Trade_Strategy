@@ -1,0 +1,45 @@
+== 1. SEC 可达性（python requests SSLError → 用 curl 复核）==
+  sec_company_tickers      curl-> 000 0 5.001443
+  sec_company_tickers      py  -> EXC SSLError
+  data_sec_submissions     curl-> 000 0 5.000685
+  data_sec_submissions     py  -> EXC SSLError
+  efts_fulltext            curl-> 000 0 5.001806
+  efts_fulltext            py  -> EXC SSLError
+  edgar_logfile_page       curl-> 000 0 5.001849
+  edgar_logfile_page       py  -> EXC SSLError
+== 2. Wikipedia pageviews（小票是否有条目 + 日级量）==
+  CATO  name=Cato Corp                      wiki=['Cato Corporation'] pv7d=273
+  FOCL  name=Edap Tms SA                    wiki=[] pv7d=None
+  HOWL  name=Werewolf Therapeutics Inc      wiki=['Herbert M. Shelton'] pv7d=433
+  BGDE  name=Big Digital Energy Inc         wiki=['GE Vernova'] pv7d=5769
+  WWR   name=Westwater Resources Inc        wiki=['Westwater Resources'] pv7d=192
+  MTC   name=MMTEC Inc                      wiki=[] pv7d=None
+  LRDC  name=Laredo Oil Inc                 wiki=['Vital Energy'] pv7d=113
+  COHN  name=Cohen & Company Inc            wiki=['Rainberry, Inc.'] pv7d=520
+  FUST  name=Fuse Group Holding Inc         wiki=['Hilltop Holdings Inc.'] pv7d=169
+  COBA  name=Chilean Cobalt Corp            wiki=['Mining in Chile'] pv7d=327
+  CALC  name=CalciMedica Inc                wiki=['Patrick Hogan (biologist)'] pv7d=10
+  SRGZ  name=Star Gold Corp                 wiki=['GoldStar'] pv7d=970
+  SPQS  name=SportsQuest Inc                wiki=['David Quinn (actor)'] pv7d=42
+== 3. Arctic Shift（Reddit 全站历史存档）==
+  CATO  2025-08-28..2025-09-04 posts={'status': 400, 'n': None, 'body': '{"data":null,"error":"\'query\' query parameter requires one of: author, subreddit"}'} comments={'status': 400, 'n': None, 'body': '{"data":null,"error":"Unknown query parameter: \'query\'"}'}
+  FOCL  2025-08-29..2025-09-05 posts={'status': 400, 'n': None, 'body': '{"data":null,"error":"\'query\' query parameter requires one of: author, subreddit"}'} comments={'status': 400, 'n': None, 'body': '{"data":null,"error":"Unknown query parameter: \'query\'"}'}
+  HOWL  2025-09-24..2025-10-01 posts={'status': 400, 'n': None, 'body': '{"data":null,"error":"\'query\' query parameter requires one of: author, subreddit"}'} comments={'status': 400, 'n': None, 'body': '{"data":null,"error":"Unknown query parameter: \'query\'"}'}
+  BGDE  2025-09-29..2025-10-06 posts={'status': 400, 'n': None, 'body': '{"data":null,"error":"\'query\' query parameter requires one of: author, subreddit"}'} comments={'status': 400, 'n': None, 'body': '{"data":null,"error":"Unknown query parameter: \'query\'"}'}
+  WWR   2025-09-29..2025-10-06 posts={'status': 400, 'n': None, 'body': '{"data":null,"error":"\'query\' query parameter requires one of: author, subreddit"}'} comments={'status': 400, 'n': None, 'body': '{"data":null,"error":"Unknown query parameter: \'query\'"}'}
+  MTC   2025-11-03..2025-11-10 posts={'status': 400, 'n': None, 'body': '{"data":null,"error":"\'query\' query parameter requires one of: author, subreddit"}'} comments={'status': 400, 'n': None, 'body': '{"data":null,"error":"Unknown query parameter: \'query\'"}'}
+  深度 2012 探测: {'status': 200, 'n': 0}
+== 4. FINRA RegSHO 每日逐票做空成交量 ==
+  20250905: 200 rows=10782 命中小票 ['CALC', 'CATO', 'COHN', 'HOWL', 'MTC', 'WWR']
+  20251006: 200 rows=11081 命中小票 ['CALC', 'CATO', 'COHN', 'HOWL', 'MTC', 'WWR']
+  20200902: 200 rows=8407 命中小票 ['CATO', 'COHN', 'MTC', 'WWR']
+  20170103: 403 rows=1 命中小票 []
+  20130102: 403 rows=1 命中小票 []
+== 5. 第三方聚合（tradestie / apewisdom 历史能力）==
+  tradestie 09-05-2025: {'status': 200, 'n': 50, 'sample': '[{"ticker": "LULU", "sentiment": "Bearish", "sentiment_score": -0.796, "no_of_comments": 92}, {"ticker": "SPY", "sentiment": "Bullish", "sentiment_score": 0.015, "no_of_comments": 67}, {"ticker": "NVDA", "sentiment": "Bearish", "sentiment_score": 0.0'}
+  tradestie 10-06-2025: {'status': 200, 'n': 50, 'sample': '[{"ticker": "AMD", "sentiment": "Bearish", "sentiment_score": -0.085, "no_of_comments": 574}, {"ticker": "AI", "sentiment": "Bullish", "sentiment_score": 0.177, "no_of_comments": 325}, {"ticker": "ACHR", "sentiment": "Bearish", "sentiment_score": 0.0'}
+  tradestie 01-05-2021: {'status': 200, 'n': 0, 'sample': '[]'}
+  apewisdom filter/all-stocks/page/1: {'status': 200, 'keys': ['count', 'pages', 'current_page', 'results'], 'count': 875}
+  apewisdom filter/wallstreetbets: {'status': 200, 'keys': ['count', 'pages', 'current_page', 'results'], 'count': 666}
+
+-> /home/yu/PycharmProjects/Trade_Strategy-news/docs/research/2026-08-26_unpriced-catalyst-channels/repro/other_sources_20260826-053701.json

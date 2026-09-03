@@ -6,16 +6,18 @@
   run_healthcheck 新建/改动 detector 后的数量级体检 + 目标票命中确认
 
 与 scan.py::run_scan 的分工:run_scan 服务 web UI(全量序列化、单 horizon、按 match
-计数);本模块服务设计期评估(轻量 JSON、多 horizon、按买点去重,口径同
-scripts/path2_eval_bottom_breakout_burst.py)。module_path 一律指 app 包
-(如 "path2_apps.bottom_breakout_burst",经 __init__ 暴露 analyze/Params/eval_meta/
+计数);本模块服务设计期评估(轻量 JSON、多 horizon、每 match 一行,meta 双口径
+buy_windows/match_windows)。module_path 一律指 app 包
+(如 "path2_apps.bottom_burst",经 __init__ 暴露 analyze/Params/eval_meta/
 PATTERN_DAG),非 dag_spec 子模块。
 """
 from __future__ import annotations
 
+import hashlib
 import importlib
 import json
 import time
+from collections import Counter
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from dataclasses import replace
 from pathlib import Path
@@ -25,7 +27,7 @@ import pandas as pd
 
 from path2.dag.engine import analyze as _dag_analyze
 from path2.debug import set_current_symbol
-from path2.eval import match_forward_returns
+from path2.eval import _resolve_end_events, match_forward_returns
 from path2_web.data import slice_window
 from path2_web.gate_collector import attach_and_collect, detach
 from path2_web.scan import TRADING_TO_CALENDAR_RATIO, _list_pkls
@@ -34,14 +36,20 @@ from path2_web.scan import TRADING_TO_CALENDAR_RATIO, _list_pkls
 def _eval_ticker(pkl_path: str, module_path: str, start: str, end: str,
                  horizons: tuple, end_node: str, head_buffer_trading_days: int,
                  param_overrides: Optional[dict]):
-    """Worker:读 pkl → 双端缓冲切窗 → analyze → 窗内过滤 + 按买点去重 → 多 horizon 收益。
+    """Worker:读 pkl → 双端缓冲切窗 → analyze → 窗内过滤 → 每 match 一行收益。
 
     模块级函数(ProcessPool pickle 安全)。base = mod.load_params() 读 app 同目录
     params.yaml(SSoT)。param_overrides 是 **nested dict**(如 {"bo":{"min_relative_height":0.02},
     "burst":{"min_bos":2}}),worker 内逐 section 用 dataclasses.replace 局部 patch
     子 dataclass 后合并(跨进程 pickle 安全)。语义:override 在 yaml base 之上,
-    与 web /scan 结果可比。有效性 = 买点起点日期 ∈ [start, end];去重 = 按 end_node
-    event_id(评估对象是买点)。返回 (symbol, rows, err|None);单股异常捕获返回 err,绝不抛。
+    与 web /scan 结果可比。有效性 = 买点起点日期 ∈ [start, end];评估单元 = match
+    (每 match 一行,共享 leaf 的多个 match 各占一行,不再按买点去重)。
+    逐日消费(returns/n_buy_days/sample_dates/day_returns)按样本消费窗双边截取
+    (spec §10):start_ts/end_ts 在 win 内行号 (lo, hi),跨界段只取窗内部分。
+    rows 每行含 sample_dates(截窗样本日 str 列表)与 day_returns({date: {horizon:
+    日级收益}})——同日跨 match 同值(worker 逐 (symbol,t) 算一次),供聚合层
+    dedup_daily 日级去重(B2:重叠日 = 同一物理观测,重复计数 = 伪复制)。
+    返回 (symbol, rows, err|None);单股异常捕获返回 err,绝不抛。
     """
     symbol = Path(pkl_path).stem
     set_current_symbol(symbol)
@@ -76,37 +84,122 @@ def _eval_ticker(pkl_path: str, module_path: str, start: str, end: str,
         finally:
             detach(spec)
         res = replace(res, gate_failures=collector.snapshot())
-        rows, seen = [], set()
+        # 样本消费窗(spec §10 截取):start_ts/end_ts 在 win 内的行号(双边含端)。
+        # 机器照常跑满 win(含缓冲),逐日消费(forward_returns/n_buy_days)截到 [start, end]。
+        lo = int(win["date"].searchsorted(start_ts, "left"))
+        hi = int(win["date"].searchsorted(end_ts, "right")) - 1
+
+        # worker 内日级收益:逐 (symbol, t) 算一次(同日跨 match 同值,天然去重),
+        # 供聚合层 dedup_daily 展开;t+n 越界的 horizon 置 None(与 match_forward_returns
+        # 的越界跳过同语义,聚合层过滤)。
+        day_ret_cache: dict = {}
+
+        def _day_ret(t: int) -> dict:
+            if t not in day_ret_cache:
+                day_ret_cache[t] = {
+                    str(n): (float(win["high"].iloc[t + 1: t + n + 1].max())
+                             / float(win["close"].iat[t]) - 1.0
+                             if t + n < len(win) else None)
+                    for n in horizons}
+            return day_ret_cache[t]
+
+        rows: list = []
         for m in res.matches:
-            ev = m.node_index[end_node]
-            # 因果闸:买点取 start_idx,必须 >= 事件确认 bar(confirm_idx),否则前瞻。
+            events = _resolve_end_events(m, end_node)   # 路径协议:与 eval/serialize 同函数
+            # 因果闸:买点取各 event 的 start_idx,必须 >= 其确认 bar(confirm_idx),否则前瞻。
             # retrospective 跨度事件(burst/trend/platform)confirm_idx=end,若误用其
             # start_idx 当买点会在此 raise(参见 final_report A.3 六倍分差教学例)。
-            if ev.start_idx < ev.confirm_idx:
-                raise ValueError(
-                    f"因果闸失效:end_node='{end_node}' 买点 start_idx={ev.start_idx} "
-                    f"< confirm_idx={ev.confirm_idx}({ev.__class__.__name__});"
-                    f"买点应锚在 confirm_idx 或之后"
-                )
-            buy_date = win["date"].iat[ev.start_idx]
-            if not (start_ts <= buy_date <= end_ts):
+            # 路径下均为确认型段(start==confirm),正常不会 raise。
+            for ev in events:
+                if ev.start_idx < ev.confirm_idx:
+                    raise ValueError(
+                        f"因果闸失效:end_node='{end_node}' 买点 start_idx={ev.start_idx} "
+                        f"< confirm_idx={ev.confirm_idx}({ev.__class__.__name__});"
+                        f"买点应锚在 confirm_idx 或之后"
+                    )
+            # 买点日期过滤:任一段起点 ∈ [start, end](与 serialize 任一过滤同口径)
+            if not any(start_ts <= win["date"].iat[ev.start_idx] <= end_ts
+                       for ev in events):
                 continue
-            if ev.event_id in seen:
-                continue
-            seen.add(ev.event_id)
-            rets = match_forward_returns(m, end_node, win, list(horizons))
+            # leaf 锚容器(match 身份;与 serialize leaf_by_id 同口径,值=instance_id 字符串;
+            # buy_date 锚容器 start=首段 enter)
+            # ⚠ 不对称:keep 过滤=任一段在窗(上方 any),buy_date=容器 start(首段)——首段在窗前、
+            # 后段在窗内的 match 会保留且 buy_date < start_ts,裁定设计内边缘,勿"修复"
+            leaf_ev = m.node_index[end_node.split(".")[0]]
+            rets = match_forward_returns(m, end_node, win, list(horizons),
+                                         sample_window=(lo, hi))
+            # 截窗样本日(升序):跨 end_ts 的段只取窗内部分(spec §10;与 rets 同窗)
+            sample_days = sorted({t for ev in events
+                                  for t in ev.sample_bar_indices()
+                                  if lo <= t <= hi})
             rows.append({
                 "symbol": symbol,
-                "buy_date": str(buy_date)[:10],
-                "buy_end_date": str(win["date"].iat[ev.end_idx])[:10],
-                "n_buy_days": ev.end_idx - ev.start_idx + 1,
+                "buy_date": str(win["date"].iat[leaf_ev.start_idx])[:10],
+                "buy_end_date": str(win["date"].iat[leaf_ev.end_idx])[:10],
+                "n_buy_days": len(sample_days),   # 截窗后各段 span 并集
+                "leaf_event_id": leaf_ev.instance_id,
+                "upstream_key": _upstream_key(m, end_node, res.events),
                 "returns": {str(n): rets[n] for n in horizons},
+                "sample_dates": [str(win["date"].iat[t])[:10] for t in sample_days],
+                "day_returns": {str(win["date"].iat[t])[:10]: _day_ret(t)
+                                for t in sample_days},
             })
         return (symbol, rows, None)
     except Exception as e:
         return (symbol, [], f"{type(e).__name__}: {e}")
     finally:
         set_current_symbol(None)
+
+
+def _upstream_key(m, end_node: str, events=()) -> str:
+    """regress 子行锚:除 end_node 锚 node 外(路径声明取 'node_id' 段)node_index 各
+    (node_id, instance_id)按 node_id 排序拼接的 sha1 前 12 位。
+    ★ 键值现含 instance_id(实例身份):「单实例节点逐字不变」不变式已放弃——同节点
+    不同实例(如 tb_293#0/#1)得到不同 upstream_key,这是改读实例身份的固有结果、
+    行为正确(评估按实例锚),此处显式声明不再维持旧不变式。
+    实例流:直接读物化标注的 e.instance_id(内存对象直取,已含组内 #idx 后缀,
+    不再用 indexer 编号);events 参数保留仅为向后兼容(调用方照旧传 res.events),不再消费。"""
+    anchor = end_node.split(".")[0]
+    parts = []
+    for nid, e in sorted(m.node_index.items()):
+        if nid == anchor:
+            continue
+        parts.append(f"{nid}:{e.instance_id}")
+    return hashlib.sha1("|".join(parts).encode()).hexdigest()[:12]
+
+
+def _leaf_stats(rows: list) -> dict:
+    """买点级统计:buy_windows(按 (symbol, leaf_event_id) 去重,向后兼容语义——leaf_event_id
+    是 instance_id 字符串不含股票,跨股票同 instance_id 是不同物理买点,必须带 symbol)/
+    match_windows(评估单元=match)/shared_leaf_count(被 >=2 match 共享的买点数,同股票内)/share_ratio。"""
+    leaf_hits = Counter((r["symbol"], r["leaf_event_id"]) for r in rows)
+    buy_windows = len(leaf_hits)
+    shared = sum(1 for c in leaf_hits.values() if c >= 2)
+    return {"buy_windows": buy_windows, "match_windows": len(rows),
+            "shared_leaf_count": shared,
+            "share_ratio": (shared / buy_windows) if buy_windows else None}
+
+
+def _dedup_daily_stats(rows: list, horizons: Sequence[int]) -> dict:
+    """日级去重统计(tb v4 spec B2 裁决):展开全部 rows 的 day_returns,按 (symbol, date)
+    去重后逐 horizon 过 _summarize_flat——重叠日 forward return 是同一物理观测,重复
+    计数 = 伪复制;实盘触发 = 一股一天一动作,统计单元对齐交易单元。
+    consensus_days = 被多 match sample_dates 覆盖的 (symbol, date) 日数(显式字段)。
+    同 (symbol, date) 跨 match 的值理论同值(worker 逐 (symbol,t) 算一次),
+    setdefault 保留首见;旧 match 级 per_horizon 保留为诊断口径,本视图挂 meta.dedup_daily。"""
+    cover = Counter((r["symbol"], d) for r in rows
+                    for d in r.get("sample_dates", ()))
+    per = {}
+    for n in horizons:
+        key = str(n)
+        vals: dict = {}
+        for r in rows:
+            for d, rets in (r.get("day_returns") or {}).items():
+                v = rets.get(key)
+                if v is not None:
+                    vals.setdefault((r["symbol"], d), v)
+        per[key] = _summarize_flat(list(vals.values()))
+    return {**per, "consensus_days": sum(1 for c in cover.values() if c >= 2)}
 
 
 def _summarize_flat(vals: list) -> dict:
@@ -171,7 +264,8 @@ def _eval_core(*, module_path: str, start, end, horizons: tuple,
             "head_buffer_trading_days": head_buffer_trading_days,
             "param_overrides": param_overrides or {},
             "scanned": len(pkls), "errors": errors,
-            "buy_windows": len(results),
+            **_leaf_stats(results),
+            "dedup_daily": _dedup_daily_stats(results, horizons),
             "tickers_hit": len({r["symbol"] for r in results}),
             "elapsed_s": round(time.perf_counter() - t0, 1),
         },
@@ -223,14 +317,42 @@ def run_eval(*, module_path: str, start, end, horizons=(5, 10, 20),
 
 
 def _diff_results(base_results: list, cur_results: list):
-    """按 (symbol, buy_date) 对拍(语义锚,跨结构改动稳定;event_id 随结构可能变,不用)。
-    返回 (added, removed, unchanged_count);added 行来自 cur、removed 行来自 base(带改前收益)。"""
+    """按 (symbol, buy_date) 外层 + upstream_key 内层两级对拍(语义锚,跨结构改动稳定)。
+    内层子行 diff:cur 独有 = added(同 buy_date 新子行=预期多确认;新 buy_date=新买点,
+    由调用方按修改意图判读);base 独有 = removed(真消失)。旧 baseline 行无 upstream_key
+    时整组按 (symbol, buy_date) 单行语义对拍(组存在即 unchanged,cur 组内子行也不计
+    added),自动向后兼容。"""
     key = lambda r: (r["symbol"], r["buy_date"])
-    base_idx = {key(r): r for r in base_results}
-    cur_idx = {key(r): r for r in cur_results}
-    added = [cur_idx[k] for k in sorted(cur_idx.keys() - base_idx.keys())]
-    removed = [base_idx[k] for k in sorted(base_idx.keys() - cur_idx.keys())]
-    return added, removed, len(base_idx.keys() & cur_idx.keys())
+    subkey = lambda r: r.get("upstream_key", r["buy_date"])
+    base_idx: dict = {}
+    for r in base_results:
+        base_idx.setdefault(key(r), {})[subkey(r)] = r
+    cur_idx: dict = {}
+    for r in cur_results:
+        cur_idx.setdefault(key(r), {})[subkey(r)] = r
+    added, removed, unchanged = [], [], 0
+    for k, base_sub in base_idx.items():
+        cur_sub = cur_idx.get(k, {})
+        if not cur_sub:
+            removed.extend(base_sub.values())
+            continue
+        # 旧格式 baseline(无 upstream_key):整组单行语义——cur 组存在即 unchanged。
+        if any(r.get("upstream_key") is None for r in base_sub.values()):
+            unchanged += 1
+            continue
+        for sk, br in base_sub.items():
+            if sk in cur_sub:
+                unchanged += 1
+            else:
+                removed.append(br)
+    for k, cur_sub in cur_idx.items():
+        base_sub = base_idx.get(k, {})
+        if any(r.get("upstream_key") is None for r in base_sub.values()):
+            continue   # legacy 组已在上面按单行计 unchanged
+        for sk, cr in cur_sub.items():
+            if sk not in base_sub:
+                added.append(cr)
+    return added, removed, unchanged
 
 
 def run_regress(*, baseline_path: str, param_overrides=None,
@@ -240,8 +362,11 @@ def run_regress(*, baseline_path: str, param_overrides=None,
     """mode=regress:重扫当前代码并与改前 baseline 对拍(§8.8 修改回归关卡)。
 
     窗口/horizons/end_node/head_buffer/module_path 全部沿用 baseline.meta(同口径保证);
-    param_overrides 单独传(当前侧参数)。DIFF≠0 不一律算回归——added/removed 的分类
-    (意图内 vs 意外)由调用方按修改意图 + 收益信号判读,本函数只出事实。
+    param_overrides 单独传(当前侧参数)。对拍按 (symbol, buy_date) + upstream_key
+    两级锚:同 buy_date 的子行差异不再被覆盖吞掉——added 中「同 buy_date 新子行」=
+    预期多确认(共享 leaf 新增上游)、「新 buy_date」= 新买点;removed = 真消失。
+    DIFF≠0 不一律算回归——added/removed 的分类(意图内 vs 意外)由调用方按修改
+    意图 + 收益信号判读,本函数只出事实。
     """
     base = json.loads(Path(baseline_path).read_text())
     bm = base["meta"]

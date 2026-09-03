@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import dataclasses
-import inspect
 import math
 from abc import ABC
 from dataclasses import dataclass, field
@@ -24,9 +23,6 @@ if TYPE_CHECKING:
     # 仅供静态类型检查；见下方 Detector.on_gate 注释——不可在运行时真正 import,
     # 否则打破 core.py(地基层)不依赖 dag/(上层)的分层方向。
     from path2.dag.gate_failure import GateFailure
-
-
-_CLASS_ID_REGISTRY: dict[str, type] = {}
 
 
 @dataclass(frozen=True)
@@ -57,31 +53,43 @@ class Event(ABC):
         事件在确认那一刻才诞生,区别只是确认发生在哪端):
           · 确认型(confirm_idx == start_idx):一确认就生,往后观察。
             因果:因为是 confirm 点,所以才是 start 点。如 ThrowbackEvent。
-          · retrospective 型(confirm_idx == end_idx):区段走完才回看确认。
+          · 回顾型(confirm_idx == end_idx):区段走完才回看确认。
             因果:因为是 confirm 点,所以才是 end 点。如 BurstEvent/TrendSegment/Platform。
 
-        必填(kw_only),每个子类显式声明。约束:start_idx ≤ confirm_idx ≤ end_idx。
+        node_id / instance_idx / instance_id:物化标注(engine.annotate_stream)
+        注入。detector 构造阶段为 None/0/None;物化后恒非 None。instance_id =
+        `{node_id}_{start}[_{end}]}#{instance_idx}`——点事件(start==end)塌缩为
+        `{node_id}_{start}`、区间保留 `{node_id}_{start}_{end}`(塌缩规则内联于
+        engine.annotate_stream),桶 (node_id, start, end) 内流序从 0 起——
+        instance_id 契约唯一出处,禁止各处自行构造。
+        约束:start_idx ≤ confirm_idx ≤ end_idx。
+
+        ref_ids:引用槽(ref_slots())翻译结果,引擎 _translate_refs 物化后注入;
+        detector 阶段恒 `()`。形状 = 按槽名字典序排列的 `(槽名, (instance_id, ...))`
+        对(dict 换成 tuple 是为了保持 frozen 容器一律 tuple、可哈希)。用
+        `ref_ids_of(slot)` 按槽名取翻译结果(缺槽返回 `()`)。
+
+        debug 锚点档位(detector 埋 debug_break 时对齐;confirm 并入端点档)。
+        分两层,维度不同——事件层档位与 detector 层档位:
+          · 事件层(start / end,所有事件,confirm 落其一):start 与 end 是事件端点;
+            confirm 必落其一——确认型(confirm==start)的 start 档即确认点、回顾型
+            (confirm==end)的 end 档即确认点。点事件 start==end 单档。
+          · detector 层(entry,attempt 入口):由检测结构决定有无,不随事件类型——
+            仅当 attempt 入口独立于事件起点时出现:确认型 + 独立 attempt(如容器,
+            入口=bo 根)单独成档;回顾型 + 独立 attempt(入口=区段起点)entry 并入
+            start;次级产物/子结构段(无独立 attempt,如 tb_seg)无 entry。
+          · gate 是短路诊断档(on_gate emit),非事件端点,不进 per-event 锚点。
     """
 
-    event_id: str
+    node_id: Optional[str] = field(kw_only=True, default=None)   # 物化标注注入,detector 阶段 None
+    instance_idx: int = field(kw_only=True, default=0)           # 桶内流序,物化标注注入
+    instance_id: Optional[str] = field(kw_only=True, default=None)  # 组合键,物化标注注入
+    ref_ids: Tuple[Tuple[str, Tuple[str, ...]], ...] = field(kw_only=True, default=())  # ref_slots() 翻译结果,物化标注注入
     start_idx: int
     end_idx: int
     confirm_idx: int = field(kw_only=True)
 
-    class_id: ClassVar[str] = ""   # 子类必须覆盖为非空全局唯一值(spec §2.1)
     is_point: ClassVar[bool] = False   # 子类点事件覆写为 True(start_idx==end_idx 几何承诺)
-
-    def __init_subclass__(cls, **kwargs):
-        super().__init_subclass__(**kwargs)
-        if inspect.isabstract(cls):
-            return
-        cid = cls.__dict__.get("class_id")
-        if not cid:
-            raise TypeError(f"{cls.__name__} 必须声明非空 class_id")
-        prev = _CLASS_ID_REGISTRY.get(cid)
-        if prev is not None and prev is not cls:
-            raise ValueError(f"class_id 冲突: {cid!r} 已被 {prev.__name__} 占用")
-        _CLASS_ID_REGISTRY[cid] = cls
 
     def __post_init__(self) -> None:
         if not config.RUNTIME_CHECKS:
@@ -106,9 +114,25 @@ class Event(ABC):
                     f"字段 {f.name} 为 NaN — 违反'Row 落地=字段完成'"
                 )
 
+    def sample_bar_indices(self):
+        """eval 统计的样本 bar 索引(买点日)。默认=span 内每根;嵌套容器 override 展开 child。"""
+        return range(self.start_idx, self.end_idx + 1)
+
     def child_slots(self) -> Mapping[str, "Event | Tuple[Event, ...]"]:
         """构成本 event 的非冗余主 child 集（展平/遍历用，不含投影别名）。叶子返回 {}。"""
         return {}
+
+    def ref_slots(self) -> Mapping[str, "Event | Tuple[Event, ...]"]:
+        """引用槽位(翻译身份)。构成本事件引用的其他事件(跨流/同流)，
+        标注阶段统一翻译成 instance_id。默认空。"""
+        return {}
+
+    def ref_ids_of(self, slot: str) -> "Tuple[str, ...]":
+        """按槽名取 ref_ids 翻译结果(缺槽返回 `()`)。"""
+        for name, ids in self.ref_ids:
+            if name == slot:
+                return ids
+        return ()
 
     def child(self, name: str) -> "Event":
         """命名取单 child（含 first_*/last_* 投影别名）。用途：selector / edge 端点。"""
@@ -145,5 +169,20 @@ class Detector(Protocol):
     """
     if TYPE_CHECKING:
         on_gate: Optional[Callable[["GateFailure"], None]]
+        produces: ClassVar[Mapping[str, type]]   # ★ 多流声明;单流 detector 不写
 
     def detect(self, source: Any) -> Iterator[Event]: ...
+
+
+DEFAULT_STREAM = None   # 「该 detector 的唯一流」的流名
+
+
+def stream_schema(det) -> Mapping[Optional[str], type]:
+    """detector → {流名: event_cls}。单流 detector 归一化成 {None: det.event_cls}。"""
+    produces = getattr(det, "produces", None)
+    if produces:
+        return dict(produces)
+    cls = getattr(det, "event_cls", None)
+    if cls is None:
+        raise ValueError("detector 必须声明 event_cls(单流)或 produces(多流)")
+    return {DEFAULT_STREAM: cls}

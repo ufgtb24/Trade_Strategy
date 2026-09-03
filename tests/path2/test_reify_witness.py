@@ -13,7 +13,7 @@ def test_clause_witness_bool_compat():
 
 
 def test_reify_where_results_are_clause_witness():
-    from path2_apps.bottom_breakout_burst import analyze
+    from path2_apps.bottom_burst import analyze
     df, params = positive_case()
     res = analyze(df, params)
     assert len(res.matches) >= 1, "fixture 应至少命中 1 次"
@@ -29,7 +29,7 @@ def test_reify_where_results_are_clause_witness():
 
 def test_reify_includes_burst_where():
     """B4 迁移后：③⑤⑥ 条件移入 burst node where。"""
-    from path2_apps.bottom_breakout_burst import analyze
+    from path2_apps.bottom_burst import analyze
     df, params = positive_case()
     m = analyze(df, params).matches[0]
     burst_clauses = m.predicate_trace.where_results["burst"]

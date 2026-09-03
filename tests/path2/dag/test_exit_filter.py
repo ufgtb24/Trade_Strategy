@@ -15,48 +15,47 @@ from path2.dag.spec import PatternSpec, NodeSpec
 from path2.dag.edges import TemporalEdge
 
 
-# 每个 node 用独立 class_id，避免同 class_id 多实例触发 assign_auto_source_tags 校验。
 @dataclass(frozen=True)
 class _EvA(Event):
-    class_id = "test_exitfilter_a"
+    pass
 
 @dataclass(frozen=True)
 class _EvB(Event):
-    class_id = "test_exitfilter_b"
+    pass
 
 @dataclass(frozen=True)
 class _EvISO(Event):
-    class_id = "test_exitfilter_iso"
+    pass
 
 
 class _DetA:
     """合成 detector A：发指定 start_idx 的 _EvA。带 event_cls 供 to_topology。"""
-    event_cls = type("_EvACls", (), {"class_id": "test_exitfilter_a"})
+    event_cls = _EvA
     def __init__(self, idxs):
         self._idxs = idxs
     def detect(self, *source) -> Iterator[_EvA]:
         for i in self._idxs:
-            yield _EvA(event_id=f"a:{i}:{i}", start_idx=i, end_idx=i, confirm_idx=i)
+            yield _EvA(start_idx=i, end_idx=i, confirm_idx=i)
 
 
 class _DetB:
     """合成 detector B：发指定 start_idx 的 _EvB。"""
-    event_cls = type("_EvBCls", (), {"class_id": "test_exitfilter_b"})
+    event_cls = _EvB
     def __init__(self, idxs):
         self._idxs = idxs
     def detect(self, *source) -> Iterator[_EvB]:
         for i in self._idxs:
-            yield _EvB(event_id=f"b:{i}:{i}", start_idx=i, end_idx=i, confirm_idx=i)
+            yield _EvB(start_idx=i, end_idx=i, confirm_idx=i)
 
 
 class _DetISO:
     """合成 detector ISO：发指定 start_idx 的 _EvISO（孤立无边 node）。"""
-    event_cls = type("_EvISOCls", (), {"class_id": "test_exitfilter_iso"})
+    event_cls = _EvISO
     def __init__(self, idxs):
         self._idxs = idxs
     def detect(self, *source) -> Iterator[_EvISO]:
         for i in self._idxs:
-            yield _EvISO(event_id=f"e:{i}:{i}", start_idx=i, end_idx=i, confirm_idx=i)
+            yield _EvISO(start_idx=i, end_idx=i, confirm_idx=i)
 
 
 def _spec_with_isolated():
@@ -79,4 +78,5 @@ def test_isolated_node_degenerate_matches_filtered():
         assert set((m.node_index or {}).keys()) != {"ISO"}
     assert any(set((m.node_index or {}).keys()) == {"A", "B"} for m in res.matches)
     # res.events 仍含 ISO 的 event（孤立 node 露面 events, design §8.1 接受）
-    assert any(e.event_id.startswith("e:5") for e in res.events)
+    # instance_id(物化标注后):ISO 节点 span(i,i) 点事件 → "ISO_{i}#0"
+    assert any(e.instance_id.startswith("ISO_5") for e in res.events)

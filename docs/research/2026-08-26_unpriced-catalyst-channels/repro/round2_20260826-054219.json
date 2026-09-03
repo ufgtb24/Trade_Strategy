@@ -1,0 +1,133 @@
+{
+ "meta": {
+  "probed_at": "2026-08-26T05:39:57"
+ },
+ "sec": {
+  "www.sec.gov_dns": "184.28.70.69",
+  "www.sec.gov_curl45": "000 5.000808 | curl: (35) OpenSSL SSL_connect: SSL_ERROR_SYSCALL in connection to www.sec.gov:443",
+  "data.sec.gov_dns": "96.17.220.175",
+  "data.sec.gov_curl45": "000 5.002613 | curl: (35) OpenSSL SSL_connect: SSL_ERROR_SYSCALL in connection to data.sec.gov:443",
+  "efts.sec.gov_dns": "96.17.220.175",
+  "efts.sec.gov_curl45": "000 5.002008 | curl: (35) OpenSSL SSL_connect: SSL_ERROR_SYSCALL in connection to efts.sec.gov:443",
+  "finnhub": "401",
+  "alphavantage": "200"
+ },
+ "arctic": {
+  "posts_sub_query": {
+   "status": 422,
+   "n": null,
+   "body": "{\"data\":null,\"error\":\"Timeout. Maybe slow down a bit\"}"
+  },
+  "comments_body": {
+   "status": 422,
+   "n": null,
+   "body": "{\"data\":null,\"error\":\"Timeout. Maybe slow down a bit\"}"
+  },
+  "comments_q": {
+   "status": 400,
+   "n": null,
+   "body": "{\"data\":null,\"error\":\"Unknown query parameter: 'q'\"}"
+  },
+  "comments_selftext": {
+   "status": 400,
+   "n": null,
+   "body": "{\"data\":null,\"error\":\"Unknown query parameter: 'selftext'\"}"
+  },
+  "comments_search": {
+   "status": 400,
+   "n": null,
+   "body": "{\"data\":null,\"error\":\"Unknown query parameter: 'search'\"}"
+  },
+  "posts_global_query": {
+   "status": 400,
+   "body": "{\"data\":null,\"error\":\"'query' query parameter requires one of: author, subreddit\"}"
+  },
+  "depth_2015": {
+   "status": 200,
+   "n": 5
+  },
+  "depth_2018": {
+   "status": 200,
+   "n": 5
+  },
+  "depth_2021": {
+   "status": 200,
+   "n": 5
+  },
+  "depth_2024": {
+   "status": 200,
+   "n": 5
+  },
+  "depth_2026": {
+   "status": 200,
+   "n": 5
+  }
+ },
+ "finra": {
+  "cnms_20180102": {
+   "status": 403,
+   "rows": 1
+  },
+  "cnms_20190102": {
+   "status": 200,
+   "rows": 7863
+  },
+  "cnms_20191001": {
+   "status": 200,
+   "rows": 7907
+  },
+  "cnms_20200102": {
+   "err": "SSLError"
+  },
+  "cnms_20200601": {
+   "status": 200,
+   "rows": 8228
+  },
+  "FNSQshvol": {
+   "status": 200,
+   "n_sym": 10767,
+   "otc_smallcap_hits": []
+  },
+  "FNYXshvol": {
+   "status": 200,
+   "n_sym": 7194,
+   "otc_smallcap_hits": []
+  },
+  "FORFshvol": {
+   "status": 200,
+   "n_sym": 3125,
+   "otc_smallcap_hits": [
+    "COBA",
+    "LRDC",
+    "SPQS"
+   ]
+  },
+  "ORFshvol": {
+   "status": 403,
+   "n_sym": 0,
+   "otc_smallcap_hits": []
+  },
+  "FNRAshvol": {
+   "status": 200,
+   "n_sym": 0,
+   "otc_smallcap_hits": []
+  }
+ },
+ "wikidata": {
+  "status": 200,
+  "matched": [
+   {
+    "ticker": "MTC",
+    "label": "Mothercare"
+   },
+   {
+    "ticker": "CATO",
+    "label": "Cato Corporation"
+   },
+   {
+    "ticker": "MTC",
+    "label": "Muangthai Capital"
+   }
+  ]
+ }
+}

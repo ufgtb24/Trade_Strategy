@@ -6,16 +6,15 @@ from path2.dag import where as W
 
 
 class Ev(Event):
-    class_id = "test_where_ev"
+    pass
 
 
 def ev(s, e, **kw):
-    return Ev(event_id=f"e{s}", start_idx=s, end_idx=e, confirm_idx=s, **kw)
+    return Ev(start_idx=s, end_idx=e, confirm_idx=s, **kw)
 
 
 @dataclass(frozen=True)
 class EvVol(Event):
-    class_id = "test_where_ev_vol"
     vol_ratio: float = 0.0
 
 

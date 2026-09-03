@@ -10,7 +10,7 @@ describe('api', () => {
     const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => [PATTERN] })
     vi.stubGlobal('fetch', fetchMock)
     const out = await api.getPatterns()
-    expect(out[0].pattern_id).toBe('bottom_breakout_burst')
+    expect(out[0].pattern_id).toBe('bottom_burst')
     expect(fetchMock.mock.calls[0][0]).toContain('/patterns')
   })
 

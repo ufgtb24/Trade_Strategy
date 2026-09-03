@@ -1,0 +1,434 @@
+[
+ {
+  "symbol": "ALTO",
+  "buy_date": "2025-11-14",
+  "age_cal": 7,
+  "age_td": 5,
+  "bars_burst": 6,
+  "bars_burst_end": 2,
+  "exact": true
+ },
+ {
+  "symbol": "ALTO",
+  "buy_date": "2025-11-18",
+  "age_cal": 11,
+  "age_td": 8,
+  "bars_burst": 8,
+  "bars_burst_end": 3,
+  "exact": false
+ },
+ {
+  "symbol": "ALTO",
+  "buy_date": "2025-11-24",
+  "age_cal": 17,
+  "age_td": 12,
+  "bars_burst": 12,
+  "bars_burst_end": 3,
+  "exact": true
+ },
+ {
+  "symbol": "ANIX",
+  "buy_date": "2025-06-23",
+  "age_cal": 26,
+  "age_td": 18,
+  "bars_burst": 14,
+  "bars_burst_end": 4,
+  "exact": false
+ },
+ {
+  "symbol": "ANIX",
+  "buy_date": "2025-10-13",
+  "age_cal": 33,
+  "age_td": 23,
+  "bars_burst": 4,
+  "bars_burst_end": 3,
+  "exact": true
+ },
+ {
+  "symbol": "APCX",
+  "buy_date": "2025-11-19",
+  "age_cal": 6,
+  "age_td": 4,
+  "bars_burst": 11,
+  "bars_burst_end": 4,
+  "exact": true
+ },
+ {
+  "symbol": "APCX",
+  "buy_date": "2025-11-19",
+  "age_cal": 6,
+  "age_td": 4,
+  "bars_burst": 11,
+  "bars_burst_end": 3,
+  "exact": true
+ },
+ {
+  "symbol": "ASTI",
+  "buy_date": "2025-12-29",
+  "age_cal": 49,
+  "age_td": 34,
+  "bars_burst": 12,
+  "bars_burst_end": 3,
+  "exact": false
+ },
+ {
+  "symbol": "BEAT",
+  "buy_date": "2025-12-19",
+  "age_cal": 36,
+  "age_td": 25,
+  "bars_burst": 6,
+  "bars_burst_end": 4,
+  "exact": false
+ },
+ {
+  "symbol": "BKKT",
+  "buy_date": "2025-10-06",
+  "age_cal": 56,
+  "age_td": 39,
+  "bars_burst": 10,
+  "bars_burst_end": 3,
+  "exact": false
+ },
+ {
+  "symbol": "BKKT",
+  "buy_date": "2025-10-06",
+  "age_cal": 56,
+  "age_td": 39,
+  "bars_burst": 10,
+  "bars_burst_end": 2,
+  "exact": false
+ },
+ {
+  "symbol": "BOXL",
+  "buy_date": "2025-09-24",
+  "age_cal": 42,
+  "age_td": 29,
+  "bars_burst": 6,
+  "bars_burst_end": 2,
+  "exact": false
+ },
+ {
+  "symbol": "BRFH",
+  "buy_date": "2025-09-23",
+  "age_cal": 41,
+  "age_td": 28,
+  "bars_burst": 3,
+  "bars_burst_end": 2,
+  "exact": true
+ },
+ {
+  "symbol": "CLPT",
+  "buy_date": "2025-09-26",
+  "age_cal": 45,
+  "age_td": 31,
+  "bars_burst": 4,
+  "bars_burst_end": 2,
+  "exact": false
+ },
+ {
+  "symbol": "CLPT",
+  "buy_date": "2025-09-30",
+  "age_cal": 49,
+  "age_td": 34,
+  "bars_burst": 6,
+  "bars_burst_end": 2,
+  "exact": true
+ },
+ {
+  "symbol": "CLYM",
+  "buy_date": "2025-12-18",
+  "age_cal": 42,
+  "age_td": 29,
+  "bars_burst": 6,
+  "bars_burst_end": 2,
+  "exact": true
+ },
+ {
+  "symbol": "CNET",
+  "buy_date": "2025-09-19",
+  "age_cal": 36,
+  "age_td": 25,
+  "bars_burst": 5,
+  "bars_burst_end": 2,
+  "exact": true
+ },
+ {
+  "symbol": "CNET",
+  "buy_date": "2025-09-24",
+  "age_cal": 41,
+  "age_td": 28,
+  "bars_burst": 8,
+  "bars_burst_end": 2,
+  "exact": true
+ },
+ {
+  "symbol": "COOT",
+  "buy_date": "2025-10-23",
+  "age_cal": 146,
+  "age_td": 101,
+  "bars_burst": 11,
+  "bars_burst_end": 6,
+  "exact": true
+ },
+ {
+  "symbol": "DFLI",
+  "buy_date": "2025-10-07",
+  "age_cal": 54,
+  "age_td": 37,
+  "bars_burst": 8,
+  "bars_burst_end": 2,
+  "exact": true
+ },
+ {
+  "symbol": "DVLT",
+  "buy_date": "2025-10-14",
+  "age_cal": 56,
+  "age_td": 39,
+  "bars_burst": 15,
+  "bars_burst_end": 6,
+  "exact": true
+ },
+ {
+  "symbol": "FEAM",
+  "buy_date": "2025-10-17",
+  "age_cal": 18,
+  "age_td": 12,
+  "bars_burst": 8,
+  "bars_burst_end": 4,
+  "exact": false
+ },
+ {
+  "symbol": "FLUX",
+  "buy_date": "2025-09-26",
+  "age_cal": 9,
+  "age_td": 6,
+  "bars_burst": 9,
+  "bars_burst_end": 2,
+  "exact": true
+ },
+ {
+  "symbol": "FUST",
+  "buy_date": "2025-11-18",
+  "age_cal": 96,
+  "age_td": 66,
+  "bars_burst": 5,
+  "bars_burst_end": 2,
+  "exact": true
+ },
+ {
+  "symbol": "GUER",
+  "buy_date": "2025-11-21",
+  "age_cal": 9,
+  "age_td": 6,
+  "bars_burst": 5,
+  "bars_burst_end": 2,
+  "exact": true
+ },
+ {
+  "symbol": "GUER",
+  "buy_date": "2025-12-01",
+  "age_cal": 19,
+  "age_td": 13,
+  "bars_burst": 10,
+  "bars_burst_end": 3,
+  "exact": true
+ },
+ {
+  "symbol": "GWH",
+  "buy_date": "2025-10-17",
+  "age_cal": 64,
+  "age_td": 44,
+  "bars_burst": 9,
+  "bars_burst_end": 4,
+  "exact": true
+ },
+ {
+  "symbol": "HOWL",
+  "buy_date": "2025-10-03",
+  "age_cal": 50,
+  "age_td": 34,
+  "bars_burst": 17,
+  "bars_burst_end": 4,
+  "exact": false
+ },
+ {
+  "symbol": "KAYS",
+  "buy_date": "2025-09-22",
+  "age_cal": 26,
+  "age_td": 18,
+  "bars_burst": 3,
+  "bars_burst_end": 2,
+  "exact": false
+ },
+ {
+  "symbol": "KAYS",
+  "buy_date": "2025-09-24",
+  "age_cal": 28,
+  "age_td": 19,
+  "bars_burst": 5,
+  "bars_burst_end": 2,
+  "exact": true
+ },
+ {
+  "symbol": "KTTA",
+  "buy_date": "2025-12-02",
+  "age_cal": 19,
+  "age_td": 13,
+  "bars_burst": 3,
+  "bars_burst_end": 3,
+  "exact": false
+ },
+ {
+  "symbol": "KTTA",
+  "buy_date": "2025-12-02",
+  "age_cal": 19,
+  "age_td": 13,
+  "bars_burst": 3,
+  "bars_burst_end": 2,
+  "exact": false
+ },
+ {
+  "symbol": "LPCN",
+  "buy_date": "2025-12-23",
+  "age_cal": 47,
+  "age_td": 32,
+  "bars_burst": 4,
+  "bars_burst_end": 2,
+  "exact": true
+ },
+ {
+  "symbol": "LPCN",
+  "buy_date": "2025-12-26",
+  "age_cal": 50,
+  "age_td": 34,
+  "bars_burst": 6,
+  "bars_burst_end": 2,
+  "exact": true
+ },
+ {
+  "symbol": "LRDC",
+  "buy_date": "2025-11-12",
+  "age_cal": 23,
+  "age_td": 16,
+  "bars_burst": 5,
+  "bars_burst_end": 2,
+  "exact": true
+ },
+ {
+  "symbol": "LRDC",
+  "buy_date": "2025-11-14",
+  "age_cal": 25,
+  "age_td": 17,
+  "bars_burst": 7,
+  "bars_burst_end": 2,
+  "exact": true
+ },
+ {
+  "symbol": "OMER",
+  "buy_date": "2025-10-20",
+  "age_cal": 67,
+  "age_td": 46,
+  "bars_burst": 10,
+  "bars_burst_end": 3,
+  "exact": false
+ },
+ {
+  "symbol": "OMQS",
+  "buy_date": "2025-11-06",
+  "age_cal": 79,
+  "age_td": 55,
+  "bars_burst": 11,
+  "bars_burst_end": 3,
+  "exact": false
+ },
+ {
+  "symbol": "PLAB",
+  "buy_date": "2025-12-15",
+  "age_cal": 97,
+  "age_td": 67,
+  "bars_burst": 5,
+  "bars_burst_end": 3,
+  "exact": true
+ },
+ {
+  "symbol": "RKDA",
+  "buy_date": "2025-10-17",
+  "age_cal": 64,
+  "age_td": 44,
+  "bars_burst": 7,
+  "bars_burst_end": 2,
+  "exact": true
+ },
+ {
+  "symbol": "SLDC",
+  "buy_date": "2025-11-04",
+  "age_cal": 1016,
+  "age_td": 701,
+  "bars_burst": 19,
+  "bars_burst_end": 6,
+  "exact": false
+ },
+ {
+  "symbol": "SLNH",
+  "buy_date": "2025-10-01",
+  "age_cal": 48,
+  "age_td": 33,
+  "bars_burst": 15,
+  "bars_burst_end": 5,
+  "exact": false
+ },
+ {
+  "symbol": "SPQS",
+  "buy_date": "2025-12-12",
+  "age_cal": 770,
+  "age_td": 531,
+  "bars_burst": 3,
+  "bars_burst_end": 2,
+  "exact": true
+ },
+ {
+  "symbol": "SPTY",
+  "buy_date": "2025-10-31",
+  "age_cal": 73,
+  "age_td": 50,
+  "bars_burst": 13,
+  "bars_burst_end": 4,
+  "exact": true
+ },
+ {
+  "symbol": "SRGZ",
+  "buy_date": "2025-12-23",
+  "age_cal": 8,
+  "age_td": 6,
+  "bars_burst": 13,
+  "bars_burst_end": 4,
+  "exact": true
+ },
+ {
+  "symbol": "WWR",
+  "buy_date": "2025-10-06",
+  "age_cal": 54,
+  "age_td": 37,
+  "bars_burst": 8,
+  "bars_burst_end": 2,
+  "exact": true
+ },
+ {
+  "symbol": "WWR",
+  "buy_date": "2025-10-08",
+  "age_cal": 56,
+  "age_td": 39,
+  "bars_burst": 10,
+  "bars_burst_end": 2,
+  "exact": true
+ },
+ {
+  "symbol": "YCBD",
+  "buy_date": "2025-12-23",
+  "age_cal": 4,
+  "age_td": 3,
+  "bars_burst": 7,
+  "bars_burst_end": 4,
+  "exact": true
+ }
+]

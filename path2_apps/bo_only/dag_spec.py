@@ -20,10 +20,14 @@ from .params import Params, load_params, DEFAULT_YAML_PATH    # noqa: F401 re-ex
 
 def build_pattern(params: Params) -> PatternSpec:
     """单节点 bo dag。"""
+    det = BODetector(**params.bo_kwargs())
     nodes = (
         NodeSpec("bo",
-                 BODetector(**params.bo_kwargs()),
+                 det,
+                 produces_stream="bo",
                  render_grid="price"),
+        # pk 孤立显示 node:同一 detector 喂 bo+pk 两 node(兄弟机制一次 detect 填满两流)
+        NodeSpec("pk", det, produces_stream="pk", solve=False, render_grid="price"),
     )
     edges = ()
     return PatternSpec(

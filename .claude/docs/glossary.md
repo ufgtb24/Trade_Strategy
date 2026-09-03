@@ -93,11 +93,11 @@
 
 ## 6. 应用层（path2_apps/）
 
-> 何时读：动具体走势声明（当前唯一应用 bottom_breakout_burst）时。
+> 何时读：动具体走势声明（当前唯一应用 bottom_burst）时。
 
 | 术语 | 含义 |
 |------|------|
-| bo / breakout | 突破事件（class_id=`bo`）：滑窗 peak 识别 + 单点突破；在 bottom_breakout_burst 中是孤立流源 node，喂 burst（聚合）与 tb（回踩锚点） |
+| bo / breakout | 突破事件（class_id=`bo`）：滑窗 peak 识别 + 单点突破；在 bottom_burst 中是孤立流源 node，喂 burst（聚合）与 tb（回踩锚点） |
 | drought | bo 属性：距上次 BO 的 bar 间距（稀疏度），首 BO 为 None（语义"无前序"，非"未知"） |
 | burst | 连续突破串（class_id=`burst`）：`BurstDetector` 消费 bo 流、按"段首+span 内吸纳+极大段贪心"切串，每段聚合成复合宽事件 `BurstEvent`（携 members + 预算标量 count/distinct_pk/max_vol_ratio/first_drought） |
 | tb / throwback | 突破后可执行整理买窗(class_id=`tb`):Phase 1 confirm(K-bar trough-age + stop signal)+ Phase 2 outcome ∈ {rise, break, timeout};`ThrowbackDetector` 是事件壳(`consumes_stream='bo'`);**事件存在 ⟺ Phase 1 confirm 成功**(confirm 前 anchor break / rise-before-confirm 不产) |
@@ -112,7 +112,7 @@
 | 术语 | 含义 |
 |------|------|
 | 前瞻收益 / forward_return / mfr | match 买点后窗口的**最大上行幅度**（max forward return；scan 的 `forward_return` 字段即此）。含波动率（幅度里含风险）→ 量的是盈利潜力。与「首次穿越」正交：一个量幅度、一个量方向 |
-| 首次穿越 / first_passage | match 买点后窗口内价格**先触上行线还是下行线**的方向度量（剥离波动率）。几何对称阈值：上行 `P(1+kM)` / 下行 `P/(1+kM)`（对数距离相等 → 无方向波动 ratio 钉 0.5、偏离即真 drift，不是阈值偏置）；波动率尺度 `M = ATR/close 的 nanmedian`（中位数扛异动，内算与判定同 bar 口径、无前瞻）。`ratio = up/(up+down)`，分母**不含** none（未触任一线）/ both（同根双向）。单参数 k，scan 链路可调，默认值见 `path2/eval.py::DEFAULT_FP_K`。机制 why 详见 [modules/path2.md](modules/path2.md)「first_passage」节 |
+| 首次穿越 / first_passage / FP | 简称 **FP = first passage**，**勿与 false positive（假阳性）混淆**——「median 和 FP」指收益中位数与首次穿越方向指标，不是假阳性占比。match 买点后窗口内价格**先触上行线还是下行线**的方向度量（剥离波动率）。几何对称阈值：上行 `P(1+kM)` / 下行 `P/(1+kM)`（对数距离相等 → 无方向波动 ratio 钉 0.5、偏离即真 drift，不是阈值偏置）；波动率尺度 `M = ATR/close 的 nanmedian`（中位数扛异动，内算与判定同 bar 口径、无前瞻）。`ratio = up/(up+down)`，分母**不含** none（未触任一线）/ both（同根双向）。单参数 k，scan 链路可调，默认值见 `path2/eval.py::DEFAULT_FP_K`。机制 why 详见 [modules/path2.md](modules/path2.md)「first_passage」节 |
 
 ## 8. Web UI（path2_web/ · path2_web_ui/）
 

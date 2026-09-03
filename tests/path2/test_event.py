@@ -9,16 +9,22 @@ from path2.core import Event
 
 @dataclass(frozen=True)
 class _Vol(Event):
-    class_id = "test_event_vol"
     ratio: float = 0.0
     flag: bool = False
 
 
 def test_valid_construction():
-    e = _Vol(event_id="v_1", start_idx=5, end_idx=5, confirm_idx=5, ratio=2.3)
-    assert e.event_id == "v_1"
+    e = _Vol(start_idx=5, end_idx=5, confirm_idx=5, ratio=2.3)
     assert e.start_idx == 5 and e.end_idx == 5
     assert e.ratio == 2.3
+
+
+def test_instance_fields_defaults():
+    """新标识字段默认值:detector 构造阶段 node_id=None / instance_idx=0 / instance_id=None。"""
+    e = _Vol(start_idx=5, end_idx=5, confirm_idx=5)
+    assert e.node_id is None
+    assert e.instance_idx == 0
+    assert e.instance_id is None
 
 
 def test_non_frozen_subclass_raises():
@@ -27,57 +33,55 @@ def test_non_frozen_subclass_raises():
     with pytest.raises(TypeError, match="non-frozen"):
         @dataclass  # 缺 frozen=True —— 这正是本测试要验证的 Python 原生约束
         class _Bad(Event):
-            class_id = "test_event_bad_frozen"  # 先过 class_id guard,使 frozen 守卫成为抛错点
             x: int = 0
 
 
 def test_start_gt_end_raises():
     with pytest.raises(ValueError):
-        _Vol(event_id="v", start_idx=9, end_idx=3, confirm_idx=9)
+        _Vol(start_idx=9, end_idx=3, confirm_idx=9)
 
 
 def test_negative_start_raises():
     with pytest.raises(ValueError):
-        _Vol(event_id="v", start_idx=-1, end_idx=0, confirm_idx=-1)
+        _Vol(start_idx=-1, end_idx=0, confirm_idx=-1)
 
 
 def test_non_int_idx_raises():
     with pytest.raises(TypeError):
-        _Vol(event_id="v", start_idx=1.5, end_idx=2, confirm_idx=1.5)
+        _Vol(start_idx=1.5, end_idx=2, confirm_idx=1.5)
 
 
 def test_nan_float_field_raises():
     with pytest.raises(ValueError):
-        _Vol(event_id="v", start_idx=0, end_idx=0, confirm_idx=0, ratio=math.nan)
+        _Vol(start_idx=0, end_idx=0, confirm_idx=0, ratio=math.nan)
 
 
 def test_subclass_post_init_calling_super_still_enforces():
     @dataclass(frozen=True)
     class _Checked(Event):
-        class_id = "test_event_checked"
         ratio: float = 0.0
 
         def __post_init__(self):
             super().__post_init__()
 
     with pytest.raises(ValueError):
-        _Checked(event_id="c", start_idx=5, end_idx=1, confirm_idx=5)
+        _Checked(start_idx=5, end_idx=1, confirm_idx=5)
 
 
 def test_checks_off_allows_invalid():
     config.set_runtime_checks(False)
-    e = _Vol(event_id="v", start_idx=9, end_idx=3, confirm_idx=9, ratio=math.nan)
+    e = _Vol(start_idx=9, end_idx=3, confirm_idx=9, ratio=math.nan)
     assert e.start_idx == 9 and e.end_idx == 3   # 未抛错
 
 
 def test_bool_start_idx_rejected():
     with pytest.raises(TypeError):
-        _Vol(event_id="b", start_idx=True, end_idx=1, confirm_idx=True)
+        _Vol(start_idx=True, end_idx=1, confirm_idx=True)
 
 
 def test_bool_end_idx_rejected():
     with pytest.raises(TypeError):
-        _Vol(event_id="b", start_idx=0, end_idx=False, confirm_idx=0)
+        _Vol(start_idx=0, end_idx=False, confirm_idx=0)
 
 
 def test_leaf_event_child_api_defaults():
@@ -87,9 +91,9 @@ def test_leaf_event_child_api_defaults():
 
     @dataclass(frozen=True)
     class _Leaf(Event):
-        class_id = "test_event_leaf_childapi"
+        pass
 
-    e = _Leaf(event_id="x", start_idx=1, end_idx=2, confirm_idx=1)
+    e = _Leaf(start_idx=1, end_idx=2, confirm_idx=1)
     assert e.child_slots() == {}
     assert e.descendant_leaves == ()
     import pytest
@@ -107,17 +111,16 @@ def test_descendant_leaves_recursion_and_termination():
 
     @dataclass(frozen=True)
     class _Leaf2(Event):
-        class_id = "test_event_leaf2"
+        pass
 
     @dataclass(frozen=True)
     class _Mid(Event):
-        class_id = "test_event_mid"
         kids: Tuple[_Leaf2, ...] = ()
         def child_slots(self):
             return {"kids": self.kids}
 
-    leaves = (_Leaf2(event_id="a", start_idx=1, end_idx=1, confirm_idx=1),
-              _Leaf2(event_id="b", start_idx=2, end_idx=2, confirm_idx=2))
-    mid = _Mid(event_id="m", start_idx=1, end_idx=2, confirm_idx=1, kids=leaves)
+    leaves = (_Leaf2(start_idx=1, end_idx=1, confirm_idx=1),
+              _Leaf2(start_idx=2, end_idx=2, confirm_idx=2))
+    mid = _Mid(start_idx=1, end_idx=2, confirm_idx=1, kids=leaves)
     assert mid.descendant_leaves == leaves          # 精确 2 叶、有序、零重复
     assert all(l.child_slots() == {} for l in mid.descendant_leaves)

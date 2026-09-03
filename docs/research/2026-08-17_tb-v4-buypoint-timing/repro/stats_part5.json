@@ -1,0 +1,21 @@
+{
+ "n_vroot_with_label": 227,
+ "shallow15": {
+  "n": 116,
+  "ep_med": -0.0379,
+  "mfr_med": 0.3605,
+  "mfd_med": -0.2237,
+  "fp_up": 0.422,
+  "fp_down": 0.276,
+  "fp_none": 0.302
+ },
+ "deep15": {
+  "n": 111,
+  "ep_med": -0.2108,
+  "mfr_med": 0.3347,
+  "mfd_med": -0.3848,
+  "fp_up": 0.385,
+  "fp_down": 0.44,
+  "fp_none": 0.174
+ }
+}

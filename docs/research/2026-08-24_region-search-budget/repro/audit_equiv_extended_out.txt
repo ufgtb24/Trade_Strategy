@@ -1,0 +1,58 @@
+参照口径 tb: {'scb_mode': 'rising', 'judged_measure': 'low', 'reference_measure': 'close', 'anchor_mode': 'span_min'}
+stocks=81 regex=^M[A-C]
+E1 bo档=参照: 1296 (stock,g,m) 对拍 mismatch=0 [2.6s]
+E1 bo档={'min_relative_height': 0.3, 'exceed_threshold': 0.03}: 1296 (stock,g,m) 对拍 mismatch=0 [1.6s]
+E2 scb=rising     judged=low   ref=close anchor=span_min: distinct(last_bo,anchor)=738 组合=14760 非空=2888 mismatch=0 [1.1s]
+E2 scb=rising     judged=low   ref=close anchor=last_bo : distinct(last_bo,anchor)=738 组合=14760 非空=5934 mismatch=0 [0.9s]
+E2 scb=rising     judged=low   ref=close anchor=min_bo  : distinct(last_bo,anchor)=738 组合=14760 非空=2720 mismatch=0 [0.4s]
+E2 scb=rising     judged=low   ref=low   anchor=span_min: distinct(last_bo,anchor)=738 组合=14760 非空=7214 mismatch=0 [1.1s]
+E2 scb=rising     judged=low   ref=low   anchor=last_bo : distinct(last_bo,anchor)=738 组合=14760 非空=7831 mismatch=0 [1.2s]
+E2 scb=rising     judged=low   ref=low   anchor=min_bo  : distinct(last_bo,anchor)=738 组合=14760 非空=7157 mismatch=0 [1.1s]
+E2 scb=rising     judged=close ref=close anchor=span_min: distinct(last_bo,anchor)=738 组合=14760 非空=5121 mismatch=0 [0.8s]
+E2 scb=rising     judged=close ref=close anchor=last_bo : distinct(last_bo,anchor)=738 组合=14760 非空=6916 mismatch=0 [1.2s]
+E2 scb=rising     judged=close ref=close anchor=min_bo  : distinct(last_bo,anchor)=738 组合=14760 非空=5037 mismatch=0 [0.8s]
+E2 scb=rising     judged=close ref=low   anchor=span_min: distinct(last_bo,anchor)=738 组合=14760 非空=7006 mismatch=0 [1.3s]
+E2 scb=rising     judged=close ref=low   anchor=last_bo : distinct(last_bo,anchor)=738 组合=14760 非空=7466 mismatch=0 [1.4s]
+E2 scb=rising     judged=close ref=low   anchor=min_bo  : distinct(last_bo,anchor)=738 组合=14760 非空=6959 mismatch=0 [1.3s]
+E2 scb=rising     judged=high  ref=close anchor=span_min: distinct(last_bo,anchor)=738 组合=14760 非空=6040 mismatch=0 [1.1s]
+E2 scb=rising     judged=high  ref=close anchor=last_bo : distinct(last_bo,anchor)=738 组合=14760 非空=7358 mismatch=0 [1.4s]
+E2 scb=rising     judged=high  ref=close anchor=min_bo  : distinct(last_bo,anchor)=738 组合=14760 非空=5991 mismatch=0 [1.1s]
+E2 scb=rising     judged=high  ref=low   anchor=span_min: distinct(last_bo,anchor)=738 组合=14760 非空=7400 mismatch=0 [1.5s]
+E2 scb=rising     judged=high  ref=low   anchor=last_bo : distinct(last_bo,anchor)=738 组合=14760 非空=7743 mismatch=0 [1.6s]
+E2 scb=rising     judged=high  ref=low   anchor=min_bo  : distinct(last_bo,anchor)=738 组合=14760 非空=7386 mismatch=0 [1.5s]
+E2 scb=no_new_low judged=low   ref=close anchor=span_min: distinct(last_bo,anchor)=738 组合=14760 非空=2938 mismatch=0 [0.4s]
+E2 scb=no_new_low judged=low   ref=close anchor=last_bo : distinct(last_bo,anchor)=738 组合=14760 非空=6341 mismatch=0 [0.8s]
+E2 scb=no_new_low judged=low   ref=close anchor=min_bo  : distinct(last_bo,anchor)=738 组合=14760 非空=2727 mismatch=0 [0.4s]
+E2 scb=no_new_low judged=low   ref=low   anchor=span_min: distinct(last_bo,anchor)=738 组合=14760 非空=7618 mismatch=0 [1.1s]
+E2 scb=no_new_low judged=low   ref=low   anchor=last_bo : distinct(last_bo,anchor)=738 组合=14760 非空=8458 mismatch=0 [1.2s]
+E2 scb=no_new_low judged=low   ref=low   anchor=min_bo  : distinct(last_bo,anchor)=738 组合=14760 非空=7537 mismatch=0 [1.0s]
+E2 scb=no_new_low judged=close ref=close anchor=span_min: distinct(last_bo,anchor)=738 组合=14760 非空=5273 mismatch=0 [0.7s]
+E2 scb=no_new_low judged=close ref=close anchor=last_bo : distinct(last_bo,anchor)=738 组合=14760 非空=7875 mismatch=0 [1.1s]
+E2 scb=no_new_low judged=close ref=close anchor=min_bo  : distinct(last_bo,anchor)=738 组合=14760 非空=5115 mismatch=0 [0.7s]
+E2 scb=no_new_low judged=close ref=low   anchor=span_min: distinct(last_bo,anchor)=738 组合=14760 非空=8726 mismatch=0 [1.3s]
+E2 scb=no_new_low judged=close ref=low   anchor=last_bo : distinct(last_bo,anchor)=738 组合=14760 非空=9379 mismatch=0 [1.4s]
+E2 scb=no_new_low judged=close ref=low   anchor=min_bo  : distinct(last_bo,anchor)=738 组合=14760 非空=8651 mismatch=0 [1.3s]
+E2 scb=no_new_low judged=high  ref=close anchor=span_min: distinct(last_bo,anchor)=738 组合=14760 非空=7103 mismatch=0 [1.1s]
+E2 scb=no_new_low judged=high  ref=close anchor=last_bo : distinct(last_bo,anchor)=738 组合=14760 非空=9145 mismatch=0 [1.4s]
+E2 scb=no_new_low judged=high  ref=close anchor=min_bo  : distinct(last_bo,anchor)=738 组合=14760 非空=6996 mismatch=0 [1.1s]
+E2 scb=no_new_low judged=high  ref=low   anchor=span_min: distinct(last_bo,anchor)=738 组合=14760 非空=9502 mismatch=0 [1.5s]
+E2 scb=no_new_low judged=high  ref=low   anchor=last_bo : distinct(last_bo,anchor)=738 组合=14760 非空=9947 mismatch=0 [1.6s]
+E2 scb=no_new_low judged=high  ref=low   anchor=min_bo  : distinct(last_bo,anchor)=738 组合=14760 非空=9465 mismatch=0 [1.5s]
+   E4x no_new_low/close/close/span_min g=12 m=3 K=1 k=5.0: analyze=75 derived=75 OK
+   E4x no_new_low/close/close/span_min g=8 m=1 K=3 k=5.0: analyze=198 derived=198 OK
+   E4x no_new_low/close/close/span_min g=20 m=1 K=2 k=8.0: analyze=339 derived=339 OK
+   E4x no_new_low/close/close/span_min g=4 m=2 K=2 k=3.0: analyze=64 derived=64 OK
+   E4x no_new_low/close/close/span_min g=4 m=3 K=1 k=5.0: analyze=21 derived=21 OK
+   E4x no_new_low/close/close/span_min g=4 m=4 K=0 k=3.0: analyze=4 derived=4 OK
+   E4x no_new_low/close/close/span_min g=4 m=1 K=0 k=3.0: analyze=380 derived=380 OK
+   E4x no_new_low/close/close/span_min g=20 m=4 K=3 k=12.0: analyze=33 derived=33 OK
+E4x {'scb_mode': 'no_new_low', 'judged_measure': 'close', 'reference_measure': 'close', 'anchor_mode': 'span_min'}: 8 格 mismatch=0 [11s]
+   E4x no_new_low/close/low/last_bo g=12 m=4 K=2 k=12.0: analyze=24 derived=24 OK
+   E4x no_new_low/close/low/last_bo g=4 m=2 K=3 k=5.0: analyze=82 derived=82 OK
+   E4x no_new_low/close/low/last_bo g=8 m=3 K=3 k=5.0: analyze=26 derived=26 OK
+   E4x no_new_low/close/low/last_bo g=4 m=2 K=0 k=12.0: analyze=156 derived=156 OK
+   E4x no_new_low/close/low/last_bo g=4 m=3 K=3 k=3.0: analyze=9 derived=9 OK
+   E4x no_new_low/close/low/last_bo g=20 m=2 K=3 k=8.0: analyze=192 derived=192 OK
+   E4x no_new_low/close/low/last_bo g=4 m=1 K=0 k=3.0: analyze=634 derived=634 OK
+   E4x no_new_low/close/low/last_bo g=20 m=4 K=3 k=12.0: analyze=35 derived=35 OK
+E4x {'scb_mode': 'no_new_low', 'judged_measure': 'close', 'reference_measure': 'low', 'anchor_mode': 'last_bo'}: 8 格 mismatch=0 [11s]

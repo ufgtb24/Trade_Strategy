@@ -1,6 +1,6 @@
 import pandas as pd
 import pytest
-from path2.atoms.breakout import BODetector
+from path2.atoms.breakout import BODetector, BOEvent
 from path2.dag.gate_failure import GateFailure
 from path2.debug import set_current_symbol
 
@@ -66,7 +66,8 @@ def test_bo_gate_failure_event_window_is_point():
     for g in captured:
         assert g.failure_event_window[0] == g.failure_event_window[1], \
             f"BO 应为点事件 · 但 window = {g.failure_event_window}"
-        assert g.class_id == 'bo'
+        # 身份由 gate_collector per-node wrapper 注入;detector 直出为空
+        assert g.node_id == ''
         # evaluation_lookback 应指向 [i - total_window, i - 1]
         assert g.evaluation_lookback is not None
 
@@ -82,7 +83,6 @@ def test_peak_side_bars_insufficient_gate_emitted():
     side_bars_gates = [g for g in captured if g.gate_name == 'peak_side_bars_insufficient']
     assert len(side_bars_gates) > 0
     gf = side_bars_gates[0]
-    assert gf.class_id == 'bo'
     assert gf.failure_event_window[0] == gf.failure_event_window[1]
     assert gf.measured.kind == 'side_bars_offset'
     assert gf.threshold == 3
@@ -101,7 +101,6 @@ def test_peak_relative_height_insufficient_gate_emitted():
     height_gates = [g for g in captured if g.gate_name == 'peak_relative_height_insufficient']
     assert len(height_gates) == 1
     gf = height_gates[0]
-    assert gf.class_id == 'bo'
     assert gf.failure_event_window == (10, 10)
     assert gf.measured.kind == 'relative_height'
     assert gf.measured.value == pytest.approx((10.05 - 9.9) / 9.9)
@@ -121,7 +120,6 @@ def test_peak_already_active_gate_emitted():
     already_active_gates = [g for g in captured if g.gate_name == 'peak_already_active']
     assert len(already_active_gates) > 0
     gf = already_active_gates[0]
-    assert gf.class_id == 'bo'
     assert gf.failure_event_window[0] == gf.failure_event_window[1]
     assert gf.measured.kind == 'peak_idx'
     assert gf.measured.value == 5  # peak 建立于 idx5
@@ -178,3 +176,24 @@ def test_peak_no_local_max_window_min_low_op_is_gt():
     assert gf.op == '>', f'op={gf.op!r},期望 ">"'
     assert gf.threshold_param is None
     assert gf.threshold == 0
+
+
+def test_peak_gates_stream_is_pk_no_active_peak_broken_stream_is_bo():
+    """4c(契约 C6):峰类 gate(gate_name 以 peak_ 开头)归 pk 流;no_active_peak_broken 归 bo 流。"""
+    set_current_symbol("TEST")
+    captured: list[GateFailure] = []
+
+    det = BODetector(total_window=10, min_side_bars=3, min_relative_height=0.1)
+    det.on_gate = captured.append
+    list(det.detect(_make_df_no_peak()))
+
+    det2 = BODetector(total_window=10, min_side_bars=2, min_relative_height=0.01)
+    det2.on_gate = captured.append
+    list(det2.detect(_make_df_hidden_peak(n=13)))
+
+    peak_gates = [g for g in captured if g.gate_name.startswith('peak_')]
+    napb_gates = [g for g in captured if g.gate_name == 'no_active_peak_broken']
+    assert peak_gates, "应至少捕获一个 peak_* gate"
+    assert napb_gates, "应至少捕获一个 no_active_peak_broken gate"
+    assert all(g.stream == 'pk' for g in peak_gates)
+    assert all(g.stream == 'bo' for g in napb_gates)

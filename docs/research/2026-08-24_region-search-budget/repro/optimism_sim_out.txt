@@ -1,0 +1,22 @@
+stocks=6000 wide 年2折 B=200 seeds=15 功效线=100
+-- strong (1s)  均值±sd over 15 seeds
+   naive score_A(ĉ)        +0.0327 ± 0.0115
+   oos  score_A'(ĉ) 真值   +0.0205 ± 0.0178   → 实际选择偏置 naive−oos = +0.0122
+   bootstrap optimism      +0.0037 ± 0.0037
+   corrected naive−opt     +0.0290 ± 0.0137   剩余偏置 corrected−oos = +0.0085
+   split-half 交叉         -0.0008 ± 0.0194   剩余偏置 = -0.0214
+   校正 CI 覆盖 oos 的比例  0.73;选中格稳定性 P(ĉ_b∈N(ĉ)) 0.48;独立宇宙真最优 +0.0351;有效副本 199/200
+-- mostlybad (1s)  均值±sd over 15 seeds
+   naive score_A(ĉ)        -0.0022 ± 0.0109
+   oos  score_A'(ĉ) 真值   -0.0117 ± 0.0137   → 实际选择偏置 naive−oos = +0.0095
+   bootstrap optimism      +0.0020 ± 0.0051
+   corrected naive−opt     -0.0042 ± 0.0157   剩余偏置 corrected−oos = +0.0075
+   split-half 交叉         -0.0267 ± 0.0238   剩余偏置 = -0.0150
+   校正 CI 覆盖 oos 的比例  0.73;选中格稳定性 P(ĉ_b∈N(ĉ)) 0.65;独立宇宙真最优 -0.0008;有效副本 199/200
+-- null (1s)  均值±sd over 15 seeds
+   naive score_A(ĉ)        -0.0055 ± 0.0099
+   oos  score_A'(ĉ) 真值   -0.0309 ± 0.0169   → 实际选择偏置 naive−oos = +0.0254
+   bootstrap optimism      +0.0096 ± 0.0036
+   corrected naive−opt     -0.0150 ± 0.0127   剩余偏置 corrected−oos = +0.0159
+   split-half 交叉         -0.0409 ± 0.0199   剩余偏置 = -0.0100
+   校正 CI 覆盖 oos 的比例  0.73;选中格稳定性 P(ĉ_b∈N(ĉ)) 0.32;独立宇宙真最优 -0.0050;有效副本 199/200

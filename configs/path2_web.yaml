@@ -1,6 +1,6 @@
-backend_port: 8005
+backend_port: 8001
 backend_port_dbg: 8009
-frontend_port: 5175
+frontend_port: 5171
 dataset_dir: /home/yu/PycharmProjects/Trade_Strategy/datasets/pkls
 scan:
   start_date: '2025-01-01'
@@ -12,4 +12,4 @@ scan:
   price_min: 0.5
   price_max: 30
   volume_min: 10000
-last_selected_pattern: bottom_burst
+last_selected_pattern: bb_v1

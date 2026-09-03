@@ -9,11 +9,12 @@ from path2.runner import run
 
 @dataclass(frozen=True)
 class _E(Event):
-    class_id = "test_runner_e"
+    """测试自有身份区分字段:event_id 已消灭,用 tag 区分同几何多实例。"""
+    tag: str = ""
 
 
-def _e(i, eid=None):
-    return _E(event_id=eid or f"e{i}", start_idx=i, end_idx=i, confirm_idx=i)
+def _e(i, tag=""):
+    return _E(start_idx=i, end_idx=i, confirm_idx=i, tag=tag)
 
 
 def test_forwards_multiple_source_args():
@@ -44,7 +45,7 @@ def test_ascending_equal_ok_decreasing_raises():
     class Eq:
         def detect(self, _):
             yield _e(5, "a")
-            yield _e(5, "b")  # 等值允许
+            yield _e(5, "b")  # 等值允许(tag 不同 → 非全等)
 
     assert len(list(run(Eq(), None))) == 2
 
@@ -57,14 +58,22 @@ def test_ascending_equal_ok_decreasing_raises():
         list(run(Desc(), None))
 
 
-def test_duplicate_event_id_within_run_raises():
+def test_duplicate_tag_multi_instances_ok_identical_raises():
+    """实例流契约:同 tag 多实例(属性不同)合法;全属性全等对象抛(重复 evaluate bug 信号)。"""
     class Dup:
         def detect(self, _):
             yield _e(1, "same")
             yield _e(2, "same")
 
+    assert len(list(run(Dup(), None))) == 2
+
+    class Identical:
+        def detect(self, _):
+            yield _e(1, "same")
+            yield _e(1, "same")
+
     with pytest.raises(ValueError):
-        list(run(Dup(), None))
+        list(run(Identical(), None))
 
 
 def test_non_event_yield_raises():

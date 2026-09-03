@@ -8,7 +8,6 @@ import numpy as np
 import pandas as pd
 
 from path2 import Event
-from path2.stdlib import span_id
 from path2.calc.atr import calculate_atr
 
 
@@ -20,7 +19,6 @@ class Platform(Event):
     - atr_pct_mean: 区段内 ATR/close 均值(相对波动率,非绝对 ATR)
     - range_pct:    扩窗结束时的 (max_high - min_low) / min_low(区段最终振幅占比)
     """
-    class_id = "platform"
     atr_pct_mean: float = 0.0
     range_pct: float = 0.0
 
@@ -102,7 +100,6 @@ class PlatformDetector:
                          if not pd.isna(a) and c > 0]
             atr_pct_mean = float(np.mean(valid_atr)) if valid_atr else 0.0
             yield Platform(
-                event_id=span_id(self.event_cls.class_id, start, end),
                 start_idx=start,
                 end_idx=end,
                 confirm_idx=end,   # retrospective:走出平台才确认

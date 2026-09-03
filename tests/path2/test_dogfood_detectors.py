@@ -29,7 +29,6 @@ def test_volspike_detector_triggers_on_ratio_over_2():
     s = spikes[0]
     assert isinstance(s, VolSpike)
     assert s.start_idx == 20 and s.end_idx == 20
-    assert s.event_id == "vs_20"
     assert round(s.ratio, 3) == 3.0
 
 
@@ -39,7 +38,7 @@ def test_volspike_detector_skips_normal_volume():
 
 
 def _spike(i):
-    return VolSpike(event_id=f"vs_{i}", start_idx=i, end_idx=i, confirm_idx=i, ratio=3.0)
+    return VolSpike(start_idx=i, end_idx=i, confirm_idx=i, ratio=3.0)
 
 
 def test_volcluster_groups_three_within_window():
@@ -49,7 +48,6 @@ def test_volcluster_groups_three_within_window():
     c = clusters[0]
     assert isinstance(c, VolCluster)
     assert (c.start_idx, c.end_idx, c.count, c.span_bars) == (5, 12, 3, 7)
-    assert c.event_id == "vc_5_12"
 
 
 def test_volcluster_ignores_sparse_spikes():

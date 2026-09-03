@@ -63,10 +63,14 @@ const diff = ref<ParamsDiffResp | null>(null)
 const anchorFile = computed(() => diff.value?.anchor_file ?? 'params.yaml')
 watch([scanFile, activePatternId], async () => {
   diff.value = null
-  const ts = scanFile.value?.scan.scan_ts
+  // 传文件标识符 scan.name 而非时间戳:落盘名 = name or scan_ts(scan.py:392),name 来自
+  // 扫描对话框「名称(可选)」(api.py:684),未命名时后端也会把 scan_ts 写进 name(scan.py:376)。
+  // /params_diff 拿这个值直接 load 文件,传 scan_ts 对命名过的扫描必然 404。
+  // 无 name 的老 scan 不兼容(见 .claude/rules/scan-file-no-backcompat.md),重扫即可。
+  const ident = scanFile.value?.scan.name
   const pid = activePatternId.value
-  if (!ts || !pid) return
-  try { diff.value = await getParamsDiff(pid, ts) } catch (e) { console.warn('getParamsDiff failed', e); diff.value = null }
+  if (!ident || !pid) return
+  try { diff.value = await getParamsDiff(pid, ident) } catch (e) { console.warn('getParamsDiff failed', e); diff.value = null }
 }, { immediate: true })
 </script>
 

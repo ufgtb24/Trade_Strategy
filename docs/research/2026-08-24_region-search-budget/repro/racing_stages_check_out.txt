@@ -1,0 +1,21 @@
+D=3 seeds=20 δ=0.01 α=0.02
+-- strong (5s)
+   5阶段: cost 0.971  lost 0.083  agree 0.90  Σ(每阶段评估格数) 369
+   3阶段: cost 0.992  lost 0.000  agree 1.00  Σ(每阶段评估格数) 189
+   2阶段: cost 0.997  lost 0.020  agree 1.00  Σ(每阶段评估格数) 127
+-- plateau (7s)
+   5阶段: cost 0.977  lost 0.067  agree 0.90  Σ(每阶段评估格数) 371
+   3阶段: cost 0.996  lost 0.000  agree 1.00  Σ(每阶段评估格数) 190
+   2阶段: cost 0.994  lost 0.021  agree 0.95  Σ(每阶段评估格数) 126
+-- mostlybad (6s)
+   5阶段: cost 0.809  lost 0.020  agree 0.95  Σ(每阶段评估格数) 306
+   3阶段: cost 0.886  lost 0.021  agree 0.95  Σ(每阶段评估格数) 163
+   2阶段: cost 0.915  lost 0.000  agree 1.00  Σ(每阶段评估格数) 109
+-- collapse (6s)
+   5阶段: cost 0.681  lost 0.024  agree 1.00  Σ(每阶段评估格数) 261
+   3阶段: cost 0.820  lost 0.014  agree 1.00  Σ(每阶段评估格数) 150
+   2阶段: cost 0.800  lost 0.005  agree 0.95  Σ(每阶段评估格数) 95
+-- null (6s)
+   5阶段: cost 0.861  lost 0.023  agree 1.00  Σ(每阶段评估格数) 323
+   3阶段: cost 0.968  lost 0.016  agree 0.95  Σ(每阶段评估格数) 179
+   2阶段: cost 0.951  lost 0.017  agree 1.00  Σ(每阶段评估格数) 116

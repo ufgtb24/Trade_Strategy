@@ -23,11 +23,10 @@ BarwiseDetector(它绑定单 df 主循环);直接实现 `detect(*sources)` 即�
 由 `path2.run(detector, *source)` 的变参驱动。
 """
 
-# throwback 可买入区间事件(2026-06 重构)
+# throwback 嵌套容器版事件(2026-08 重构;V1 在 throwback_v1.py)
 from path2.atoms.throwback import (
-    ThrowbackResult,
-    evaluate_throwback,
     ThrowbackDetector,
     ThrowbackEvent,
+    ThrowbackSegment,
 )
 from path2.atoms.breakout import BOEvent, BurstEvent, BurstDetector

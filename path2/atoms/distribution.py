@@ -7,7 +7,7 @@ from typing import ClassVar, Optional
 import pandas as pd
 
 from path2 import Event
-from path2.stdlib import BarwiseDetector, span_id
+from path2.stdlib import BarwiseDetector
 from path2.calc.volume import calculate_vol_ratio
 from path2.calc.geometry import upper_shadow_ratio
 
@@ -20,7 +20,6 @@ class Distribution(Event):
     - vol_ratio:          当根量比(volume[i] / SMA(volume, vol_baseline_period))
     - upper_shadow_ratio: 上影占比(分母是整根 K 线区间 high - low,非实体)
     """
-    class_id = "dist"
     vol_ratio: float = 0.0
     upper_shadow_ratio: float = 0.0
 
@@ -69,7 +68,6 @@ class DistributionDetector(BarwiseDetector):
         if usr < self.upper_shadow_threshold:
             return None
         return Distribution(
-            event_id=span_id(self.event_cls.class_id, i, i),
             start_idx=i,
             end_idx=i,
             confirm_idx=i,   # 点事件:该根即确认

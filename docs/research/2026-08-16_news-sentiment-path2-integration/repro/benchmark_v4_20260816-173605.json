@@ -1,0 +1,270 @@
+{
+ "meta": {
+  "date": "2026-08-16",
+  "n": 40,
+  "gt_dist": {
+   "negative": 7,
+   "neutral": 11,
+   "positive": 22
+  },
+  "history": {
+   "DeepSeek-V3(deepseek-chat@2026-03)": 0.925
+  }
+ },
+ "models": [
+  {
+   "model": "deepseek-v4-flash",
+   "preds": [
+    "negative",
+    "neutral",
+    "negative",
+    "positive",
+    "positive",
+    "neutral",
+    "positive",
+    "positive",
+    "neutral",
+    "positive",
+    "positive",
+    "positive",
+    "negative",
+    "positive",
+    "positive",
+    "neutral",
+    "positive",
+    "neutral",
+    "neutral",
+    "positive",
+    "negative",
+    "neutral",
+    "negative",
+    "positive",
+    "negative",
+    "positive",
+    "neutral",
+    "positive",
+    "positive",
+    "neutral",
+    "positive",
+    "neutral",
+    "negative",
+    "neutral",
+    "neutral",
+    "neutral",
+    "positive",
+    "positive",
+    "positive",
+    "positive"
+   ],
+   "elapsed_s": 11.4,
+   "fail_count": 0,
+   "results": [
+    "SentimentResult(sentiment='negative', impact='low', impact_value=0.2, reasoning='智能家居显示器发布延迟对苹果整体业务影响有限，仅微调市场对新产品线的短期预期。')",
+    "SentimentResult(sentiment='neutral', impact='negligible', impact_value=0.05, reasoning='新闻涉及Angel Studios Inc (ANGX)的财报，与AAPL无直接关联，不影响市场对苹果的预期。')",
+    "SentimentResult(sentiment='negative', impact='medium', impact_value=0.5, reasoning='中国App Store佣金下调直接削减关键服务业务收入，虽是小幅费用调整，但在第二大市场显著影响预期利润率。')",
+    "SentimentResult(sentiment='positive', impact='low', impact_value=0.2, reasoning='报道暗示苹果智能眼镜供应链进展，但仅为间接且未确认，对苹果预期影响有限。')",
+    "SentimentResult(sentiment='positive', impact='medium', impact_value=0.5, reasoning='新闻称苹果是唯一将内存通胀转化为机会的公司，暗示其可能受益于成本优势或定价能力，但未提供具体细节，因此仅显著修正预期而非重塑前景。')",
+    "SentimentResult(sentiment='neutral', impact='negligible', impact_value=0.05, reasoning='新闻仅对比SoundHound和Amazon，未涉及Apple，因此对Apple股价无直接影响。')",
+    "SentimentResult(sentiment='positive', impact='medium', impact_value=0.5, reasoning='获得F1独家转播权并创纪录，可能提升Apple TV+订阅，但非核心业务，影响中等。')",
+    "SentimentResult(sentiment='positive', impact='low', impact_value=0.2, reasoning='零售渠道的营销活动可能小幅促进苹果在印度市场的销售，但不改变公司整体预期。')",
+    "SentimentResult(sentiment='neutral', impact='low', impact_value=0.2, reasoning='分析师小幅上调目标价但维持中性评级，仅微调市场预期，未改变公司整体前景。')",
+    "SentimentResult(sentiment='positive', impact='negligible', impact_value=0.05, reasoning='公司50周年纪念及行业领袖祝贺属于非实质性新闻，不改变市场对苹果的财务或经营预期。')",
+    "SentimentResult(sentiment='positive', impact='medium', impact_value=0.5, reasoning='首款可折叠iPhone的发布计划重塑了产品创新预期，但距离上市尚远且未官方确认，对当前股价影响有限。')",
+    "SentimentResult(sentiment='positive', impact='medium', impact_value=0.5, reasoning='推出低价MacBook有望扩大市场份额并提振销量，但属常规产品线扩展，不改变公司整体前景。')",
+    "SentimentResult(sentiment='negative', impact='medium', impact_value=0.5, reasoning='Siri和智能家居产品的延迟削弱了市场对Apple AI路线图短期进展的预期，但不及核心业务基础，影响处于中等水平。')",
+    "SentimentResult(sentiment='positive', impact='high', impact_value=0.8, reasoning='Apple推出低价新品并获高度评价，有望拓展新受众和显著提升销量，重塑中期前景。')",
+    "SentimentResult(sentiment='positive', impact='medium', impact_value=0.5, reasoning='新低价Macbook Neo有望扩大用户群，但销售影响尚待观察，属预期内的产品线扩展。')",
+    "SentimentResult(sentiment='neutral', impact='negligible', impact_value=0.05, reasoning='新闻主体是Medical Care Technologies的应用在苹果商店排名，对AAPL本身无实质影响。')",
+    "SentimentResult(sentiment='positive', impact='low', impact_value=0.2, reasoning='印度新激励措施可能微调苹果在印生产成本预期，但未改变整体业务前景。')",
+    "SentimentResult(sentiment='neutral', impact='negligible', impact_value=0.05, reasoning='新闻内容涉及宝马公司，与苹果公司（AAPL）无直接关联，不改变市场对苹果的预期。')",
+    "SentimentResult(sentiment='neutral', impact='negligible', impact_value=0.05, reasoning='第三方配件发布不直接影响苹果核心业务或财务预期，仅属生态链外围信息。')",
+    "SentimentResult(sentiment='positive', impact='low', impact_value=0.2, reasoning='折叠屏iPhone界面曝光，增强市场对苹果产品创新的预期，但短期内不影响财务表现。')",
+    "SentimentResult(sentiment='negative', impact='medium', impact_value=0.5, reasoning='分析师维持持有评级但指出iPhone在中国出货量大幅下降，关键市场预期被负面修正。')",
+    "SentimentResult(sentiment='neutral', impact='negligible', impact_value=0.05, reasoning='新闻仅介绍苹果员工规模，属于公司背景信息，不涉及业绩或战略变化，不改变市场预期。')",
+    "SentimentResult(sentiment='negative', impact='low', impact_value=0.2, reasoning='AI支出热潮掩盖经济疲软，可能影响消费者支出，但对苹果的具体业务影响有限。')",
+    "SentimentResult(sentiment='positive', impact='high', impact_value=0.8, reasoning='苹果大幅增加印度生产以规避关税，并拓展新市场，显著改变供应链布局和中期前景。')",
+    "SentimentResult(sentiment='negative', impact='low', impact_value=0.2, reasoning='德国协会反对苹果应用追踪透明度规则，可能带来监管压力，但实际财务影响有限，未改变核心业务预期。')",
+    "SentimentResult(sentiment='positive', impact='low', impact_value=0.2, reasoning='合作提升Apple Music曝光度，可能带来订阅增长，但影响有限，不改变苹果整体预期。')",
+    "SentimentResult(sentiment='neutral', impact='low', impact_value=0.2, reasoning='新闻主要涉及高通业务风险，但苹果已计划自研芯片，此消息对苹果预期影响有限，仅微调市场对苹果供应链自主化的预期。')",
+    "SentimentResult(sentiment='positive', impact='low', impact_value=0.2, reasoning='供应链向印度转移降低地缘风险，但属于渐进调整，不改短期业绩预期。')",
+    "SentimentResult(sentiment='positive', impact='high', impact_value=0.8, reasoning='苹果通过低价设备和医疗保健扩展，配合AI整合与生产多元化，重塑其产品生态和中期增长前景。')",
+    "SentimentResult(sentiment='neutral', impact='low', impact_value=0.2, reasoning='新闻提及创纪录iPhone营收和高满意度，但强调估值争议未解且股价近期下跌，未根本改变市场预期。')",
+    "SentimentResult(sentiment='positive', impact='medium', impact_value=0.5, reasoning='苹果增加印度产能以降低对中国供应链依赖，缓解地缘政治风险，增强供应链韧性，改善长期增长预期。')",
+    "SentimentResult(sentiment='neutral', impact='negligible', impact_value=0.05, reasoning='该新闻仅涉及第三方平台采用苹果API，未改变苹果自身业务预期。')",
+    "SentimentResult(sentiment='negative', impact='low', impact_value=0.2, reasoning='三星追平苹果销量反映竞争加剧，但苹果销量仍增长9%，仅微调市场预期。')",
+    "SentimentResult(sentiment='neutral', impact='negligible', impact_value=0.05, reasoning='仅为当日股票推荐讨论，未提供苹果具体评级或目标价变动信息，对市场预期无实质影响。')",
+    "SentimentResult(sentiment='neutral', impact='negligible', impact_value=0.05, reasoning='新闻为行业背景信息，未直接提及苹果，成本压力可能有限，不改变市场对苹果的预期。')",
+    "SentimentResult(sentiment='neutral', impact='negligible', impact_value=0.05, reasoning='单一供应商选择属日常供应链运营，不改变苹果整体市场预期。')",
+    "SentimentResult(sentiment='positive', impact='medium', impact_value=0.5, reasoning='推出低价AI设备扩大潜在用户群，可能提升市场份额和营收，但未改变公司整体长期前景。')",
+    "SentimentResult(sentiment='positive', impact='high', impact_value=0.8, reasoning='新MacBook Neo扩大产品线，威胁微软和谷歌的市场地位，显著改变苹果在PC和教育市场的竞争格局。')",
+    "SentimentResult(sentiment='positive', impact='medium', impact_value=0.5, reasoning='苹果发布AI驱动的Mac和MacBook Neo是产品线重要更新，但属于常规迭代，未改变长期格局，Google的威胁提示影响有限，整体略偏正面。')",
+    "SentimentResult(sentiment='positive', impact='low', impact_value=0.2, reasoning=\"New budget MacBook may slightly boost revenue (0.5%) and attract students, but does not fundamentally alter Apple's overall outlook.\")"
+   ],
+   "accuracy": 0.95,
+   "per_class": {
+    "positive": {
+     "precision": 1.0,
+     "recall": 0.91
+    },
+    "negative": {
+     "precision": 1.0,
+     "recall": 1.0
+    },
+    "neutral": {
+     "precision": 0.85,
+     "recall": 1.0
+    }
+   },
+   "disagreements": [
+    {
+     "i": 26,
+     "gt": "positive",
+     "pred": "neutral",
+     "title": "Qualcomm faces loss of Apple business, competitive pressures"
+    },
+    {
+     "i": 35,
+     "gt": "positive",
+     "pred": "neutral",
+     "title": "BIEL Crystal selected as exclusive supplier of cover glass f"
+    }
+   ]
+  },
+  {
+   "model": "deepseek-v4-pro",
+   "preds": [
+    "negative",
+    "neutral",
+    "negative",
+    "positive",
+    "positive",
+    "neutral",
+    "positive",
+    "positive",
+    "neutral",
+    "neutral",
+    "positive",
+    "positive",
+    "negative",
+    "positive",
+    "positive",
+    "neutral",
+    "positive",
+    "neutral",
+    "neutral",
+    "positive",
+    "negative",
+    "neutral",
+    "negative",
+    "positive",
+    "negative",
+    "positive",
+    "neutral",
+    "positive",
+    "positive",
+    "neutral",
+    "positive",
+    "neutral",
+    "neutral",
+    "neutral",
+    "negative",
+    "positive",
+    "positive",
+    "positive",
+    "neutral",
+    "positive"
+   ],
+   "elapsed_s": 27.6,
+   "fail_count": 0,
+   "results": [
+    "SentimentResult(sentiment='negative', impact='low', impact_value=0.2, reasoning='推迟智能家居显示器发布对核心iPhone和服务业务影响有限，仅微调产品线预期。')",
+    "SentimentResult(sentiment='neutral', impact='negligible', impact_value=0.05, reasoning='新闻内容涉及Angel Studios Inc (ANGX)的财报，与苹果公司(AAPL)无直接关联，不改变对AAPL的市场预期。')",
+    "SentimentResult(sentiment='negative', impact='medium', impact_value=0.5, reasoning='苹果在中国市场降低App Store佣金将直接压缩其服务业务利润率和收入，在第二大市场面临监管压力并可能波及其他地区，显著修正服务业务增长预期。')",
+    "SentimentResult(sentiment='positive', impact='low', impact_value=0.2, reasoning='报道暗示苹果智能眼镜供应链进展，可能微幅增强市场对苹果新硬件产品的预期，但缺乏官方确认且非核心业务。')",
+    "SentimentResult(sentiment='positive', impact='low', impact_value=0.2, reasoning='报道称苹果是唯一能将内存涨价转化为机遇的公司，可能增强其成本或竞争优势，但未提供具体财务影响幅度。')",
+    "SentimentResult(sentiment='neutral', impact='negligible', impact_value=0.05, reasoning='文章讨论的是亚马逊与SoundHound的竞争，未涉及苹果公司，对苹果股价无实质性影响。')",
+    "SentimentResult(sentiment='positive', impact='low', impact_value=0.2, reasoning=\"Strong F1 viewership on Apple TV+ could modestly boost services subscription growth, but it is a small part of Apple's overall business.\")",
+    "SentimentResult(sentiment='positive', impact='negligible', impact_value=0.05, reasoning='印度零售商推出苹果新品营销活动属于常规渠道推广，不改变市场对苹果的整体预期。')",
+    "SentimentResult(sentiment='neutral', impact='negligible', impact_value=0.05, reasoning='Rosenblatt小幅上调目标价但维持中性评级，基本不改变市场预期。')",
+    "SentimentResult(sentiment='neutral', impact='negligible', impact_value=0.05, reasoning='单纯的周年纪念祝贺与回顾性言论，不涉及任何财务、产品或战略变化，不改变市场预期。')",
+    "SentimentResult(sentiment='positive', impact='medium', impact_value=0.5, reasoning='苹果首款折叠屏iPhone及iOS分屏功能的消息若属实，将增强其在高端市场对抗三星的竞争力，但发布时间在2026年且折叠屏仍属小众，故为中等正面影响。')",
+    "SentimentResult(sentiment='positive', impact='low', impact_value=0.2, reasoning='推出低价MacBook有望扩大市场份额，但属于产品线常规扩展，对整体财务预期影响有限。')",
+    "SentimentResult(sentiment='negative', impact='medium', impact_value=0.5, reasoning=\"Delays in upgraded Siri and smart home display signal setbacks in Apple's AI roadmap, potentially weakening its competitive position and future product cycle expectations.\")",
+    "SentimentResult(sentiment='positive', impact='medium', impact_value=0.5, reasoning=\"The cheaper laptop with strong reviews could expand Apple's addressable market and boost Mac sales, moderately lifting growth expectations without reshaping the company's overall outlook.\")",
+    "SentimentResult(sentiment='positive', impact='low', impact_value=0.2, reasoning=\"Speculative report on a low-cost MacBook Neo could modestly boost Apple's PC segment growth expectations, but lack of confirmation limits impact.\")",
+    "SentimentResult(sentiment='neutral', impact='negligible', impact_value=0.05, reasoning='该新闻涉及第三方应用在苹果App Store的排名，与苹果公司自身业务和财务无直接关联。')",
+    "SentimentResult(sentiment='positive', impact='low', impact_value=0.2, reasoning=\"India's continued production incentives support Apple's existing supply chain diversification and cost management, marginally reinforcing current growth expectations without altering core business outlook.\")",
+    "SentimentResult(sentiment='neutral', impact='negligible', impact_value=0.05, reasoning='新闻涉及宝马而非苹果，与苹果股票无直接关联，不改变市场预期')",
+    "SentimentResult(sentiment='neutral', impact='negligible', impact_value=0.05, reasoning='第三方配件商Mophie推出苹果产品配件，仅反映生态需求，不改变苹果公司财务或战略预期。')",
+    "SentimentResult(sentiment='positive', impact='low', impact_value=0.2, reasoning='该报道提供了折叠iPhone界面细节，强化产品预期，但未改变近期财务前景或现有市场预期框架。')",
+    "SentimentResult(sentiment='negative', impact='low', impact_value=0.2, reasoning='UBS维持持有评级和280美元目标价不变，中国iPhone出货量下滑已在市场预期内，仅小幅强化负面情绪。')",
+    "SentimentResult(sentiment='neutral', impact='negligible', impact_value=0.05, reasoning=\"The article provides general background on Apple's employee growth and workforce, without new financial or strategic information that would change market expectations.\")",
+    "SentimentResult(sentiment='negative', impact='low', impact_value=0.2, reasoning='The macro analysis suggests underlying economic weakness that could dampen consumer spending on Apple products, but it is not company-specific and likely only a minor sentiment headwind.')",
+    "SentimentResult(sentiment='positive', impact='medium', impact_value=0.5, reasoning='苹果在印度iPhone产量大增以规避关税并降低中国依赖，显著改善供应链风险预期。')",
+    "SentimentResult(sentiment='negative', impact='low', impact_value=0.2, reasoning=\"German associations' rejection of Apple's App Tracking Transparency rules increases regulatory headwinds but has limited impact on its core business.\")",
+    "SentimentResult(sentiment='positive', impact='low', impact_value=0.2, reasoning='合作可能提升Apple Music的用户获取和参与度，但影响有限，不足以显著改变服务业务整体预期')",
+    "SentimentResult(sentiment='neutral', impact='negligible', impact_value=0.05, reasoning='该新闻主要关于高通面临失去苹果业务的压力，对苹果自身预期无实质性改变，仅反映苹果供应链策略的已知进展。')",
+    "SentimentResult(sentiment='positive', impact='medium', impact_value=0.5, reasoning='Supply chain diversification to India reduces geopolitical risk and cost concentration, improving long-term margin resilience and signaling strategic flexibility.')",
+    "SentimentResult(sentiment='positive', impact='medium', impact_value=0.5, reasoning=\"Lower-priced devices and healthcare expansion broaden Apple's addressable market, potentially accelerating user and services growth.\")",
+    "SentimentResult(sentiment='neutral', impact='negligible', impact_value=0.05, reasoning='文章仅讨论估值争论和已有业绩数据，未改变市场预期。')",
+    "SentimentResult(sentiment='positive', impact='low', impact_value=0.2, reasoning='印度产能提升至四分之一是供应链多元化战略的延续，降低对华依赖风险，但属于市场预期内的渐进改善，不改变核心增长逻辑。')",
+    "SentimentResult(sentiment='neutral', impact='negligible', impact_value=0.05, reasoning='第三方应用使用苹果API进行年龄验证，不影响苹果的财务或市场预期。')",
+    "SentimentResult(sentiment='neutral', impact='low', impact_value=0.2, reasoning=\"Samsung matching Apple's production numbers does not materially change Apple's growth expectations, as Apple's production still rose 9%.\")",
+    "SentimentResult(sentiment='neutral', impact='negligible', impact_value=0.05, reasoning='新闻仅为投资委员会讨论多个股票的常规节目，未提供关于苹果的具体新信息或预期变化。')",
+    "SentimentResult(sentiment='negative', impact='low', impact_value=0.2, reasoning=\"Memory chip supply tightening could raise Apple's component costs and pressure margins, but its strong supply chain negotiating power limits the impact.\")",
+    "SentimentResult(sentiment='positive', impact='low', impact_value=0.2, reasoning='新款iPhone 17e以相同起售价提供翻倍存储，可能小幅提振需求预期，但属于常规产品迭代，对整体财务影响有限。')",
+    "SentimentResult(sentiment='positive', impact='low', impact_value=0.2, reasoning='推出多款入门级AI设备有望拓展价格敏感市场并扩大生态，但初期对营收和利润的直接影响有限，市场预期仅小幅调整。')",
+    "SentimentResult(sentiment='positive', impact='medium', impact_value=0.5, reasoning=\"New low-cost MacBook Neo expands Apple's addressable market in education and PC segments, potentially boosting Mac revenue growth and competitive positioning.\")",
+    "SentimentResult(sentiment='neutral', impact='negligible', impact_value=0.05, reasoning='该新闻为周末科技与金融综述，涵盖苹果AI产品发布、Apple TV登陆Roku及iOS安全威胁，但均为常规更新或已知风险，未实质性改变市场对苹果的预期。')",
+    "SentimentResult(sentiment='positive', impact='low', impact_value=0.2, reasoning='The launch of the affordable MacBook Neo is expected to modestly boost revenue by about 0.5% and expand into the student market, but the overall financial impact remains small.')"
+   ],
+   "accuracy": 0.875,
+   "per_class": {
+    "positive": {
+     "precision": 1.0,
+     "recall": 0.86
+    },
+    "negative": {
+     "precision": 0.86,
+     "recall": 0.86
+    },
+    "neutral": {
+     "precision": 0.71,
+     "recall": 0.91
+    }
+   },
+   "disagreements": [
+    {
+     "i": 9,
+     "gt": "positive",
+     "pred": "neutral",
+     "title": "Elon Musk Congratulates Apple As Tim Cook Marks 50-Year Mile"
+    },
+    {
+     "i": 26,
+     "gt": "positive",
+     "pred": "neutral",
+     "title": "Qualcomm faces loss of Apple business, competitive pressures"
+    },
+    {
+     "i": 32,
+     "gt": "negative",
+     "pred": "neutral",
+     "title": "Samsung Caught Apple In Smartphone Sales"
+    },
+    {
+     "i": 34,
+     "gt": "neutral",
+     "pred": "negative",
+     "title": "AI Memory Chip Crunch Emerges as Tech Spending Targets $650 "
+    },
+    {
+     "i": 38,
+     "gt": "positive",
+     "pred": "neutral",
+     "title": "Apple's Ai-Powered Products, Google's Cybersecurity Threat A"
+    }
+   ]
+  }
+ ]
+}

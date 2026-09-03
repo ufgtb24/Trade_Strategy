@@ -3,7 +3,6 @@
 - DEBUG_MODE=1(main.py 已消费,启 debug 后端 8010):启用 debug_break()
 - DEBUG_BAR_RANGE="lo,hi"(handler 按 start_bar/end_bar 设):限定命中 bar 范围
 - DEBUG_ANCHOR_KIND="anchor_kind"(v3 · handler 按 anchor_kind query 设):限定命中锚点;未设或空串 = 全 anchor_kind fire
-- DEBUG_EVENT_CLASS="class_id"(v4 新增 · handler 按 event_class query 设):限定命中 detector class;未设或空串 = 全 class fire
 - DEBUG_BAR_RANGE 未设:debug_break() 不停(避免打开股票就吵)
 """
 import os
@@ -30,39 +29,32 @@ def _read_anchor_kind() -> Optional[str]:
     return r if r else None
 
 
-def _read_class_id() -> Optional[str]:
-    """读 DEBUG_EVENT_CLASS env · 未设或空串返 None(v3 兼容 fallback:不做 class_id 匹配)。"""
-    r = os.environ.get("DEBUG_EVENT_CLASS")
-    return r if r else None
-
-
-def debug_break(i: int, *, anchor_kind: str, class_id: str,
+def debug_break(i: int, *, anchor_kind: str,
                 stop_at_frame: Optional[Any] = None) -> None:
-    """在 detector 埋点处调用:四门合取通过时触发 pause。
+    """在 detector 埋点处调用:三门合取通过时触发 pause。
 
-    v4(2026-07-17)双 required keyword-only 参数:
-    - anchor_kind:5 元 enum(gate/trough/end/entry)· detector 内部锚点位置
-    - class_id  :detector event 的 class_id · 如 'tb'/'bo'/'burst'
-    - 缺任一 kwarg → Python 抛 TypeError(required · 无 default)
+    required keyword-only 参数:
+    - anchor_kind:5 元 enum(gate/trough/end/entry/confirm)· detector 内部锚点位置
+    - 缺该 kwarg → Python 抛 TypeError(required · 无 default)
 
     判据(短路顺序):
       _DEBUG_MODE ∧ bar in range
         ∧ (DEBUG_ANCHOR_KIND 未设 or 匹配 anchor_kind)
-        ∧ (DEBUG_EVENT_CLASS 未设 or 匹配 class_id)
 
     优先 pydevd.settrace(suspend=True)——PyCharm 显式 pause API · 每次都 fire;
     breakpoint() 在 pydevd 下同一源码位置只报告一次 · 二次触发会静默 fall through
     (实测 2026-07-16 sync+async 皆然)· 故仅在无 pydevd(非 PyCharm 启动)时兜底。
     _DEBUG_MODE=False 时函数第一行 return · pydevd 不 import · 生产零成本。
 
-    ⚠ pydevd stop_at_frame 首次 miss(2026-07-18 实测 · 已接受):每次进程重启后 ·
-    worker thread 上首次 `settrace(suspend=True, stop_at_frame=X)` 立即 return 不
-    suspend(pydevd 远程 debug command handler 首次装载时 caller frame X 已离开
-    · 第二次同 code site 才真 pause)。用户可感现象 = 每次 debug 首次 brush 不
-    pause · 从第二次起正常。保 caller frame pause 语义 + 首次不 miss + 用户零感知
-    三者不可兼得(warmup(suspend=False)只装本地 tracer 不装 command handler ·
-    实测无效;warmup(suspend=True)会真 pause 破坏零感知)· 选择接受首次 miss
-    以换代码零机制。
+    ⚠ pydevd stop_at_frame 首次 miss(2026-07-18 实测 · 2026-08-14 定性为环境性 ·
+    已接受):受影响环境下 · 每次进程重启后首次 `settrace(suspend=True, stop_at_frame=X)`
+    立即 return 不 suspend · 同 code site 的下一次调用才真 pause(用户可感 = 重启后首次
+    右键 debug/brush 不命中 · 第二次起正常);不受影响的项目窗口下首枪即 pause(无此
+    现象)。2026-08-14 双目录对照实证:同一分支代码 · 主目录项目窗口首次即命中 ·
+    worktree 项目窗口首枪必 miss——代码侧无可修根因(fire 序列/前端请求参数/api
+    handler 两环境逐条一致 · 解释器同为 3.12.12)· 差异在打开目录的 IDE/pydevd 版本
+    组合。代码侧对策均已实测否决:运行期紧邻补第二枪仍 miss;启动期牺牲首枪 warmup
+    在受影响环境自身也 miss。规避 = 在不受影响的项目窗口(主目录)下调试。
     """
     if not _DEBUG_MODE:
         return
@@ -73,9 +65,6 @@ def debug_break(i: int, *, anchor_kind: str, class_id: str,
         return
     required_ak = _read_anchor_kind()
     if required_ak is not None and required_ak != anchor_kind:
-        return
-    required_cid = _read_class_id()
-    if required_cid is not None and required_cid != class_id:
         return
     try:
         import pydevd

@@ -73,8 +73,8 @@ describe('KlineChart 右键 driver 复制菜单(Task 23 · V1 D0)', () => {
     // (build_pattern + attach_and_collect + engine.analyze + detach,非 brief 原始伪代码的
     // 不存在的 scan_one_symbol)。
     expect(script).toContain("set_current_symbol('AAPL')")
-    expect(script).toContain('from path2_apps.bottom_breakout_burst.dag_spec import build_pattern')
-    expect(script).toContain('from path2_apps.bottom_breakout_burst.params import Params')
+    expect(script).toContain('from path2_apps.bottom_burst.dag_spec import build_pattern')
+    expect(script).toContain('from path2_apps.bottom_burst.params import Params')
     expect(script).toContain('from path2_web.gate_collector import attach_and_collect, detach')
     expect(script).toContain('from path2.dag.engine import analyze')
     expect(script).toContain('breakpoint()')

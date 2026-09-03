@@ -1,68 +1,105 @@
-<!-- 参数编辑抽屉(dev 式):关联文件下拉(Load)+ 常驻可编辑 monaco + 对比 checkbox + 锚 radio(snapshot|关联文件)
-     + Write Copy/Reset/Save/Save As(enable 承载 dirty)+ 清除副本。
+<!-- 参数编辑抽屉:三源对称表 + 常驻可编辑 monaco。
+     三个内容源(snapshot / 关联文件 / Working Copy)地位平等,每源一行,列固定为
+     「源 | 载入(源→编辑区) | 写出(编辑区→源) | 基准(diff 对照方)」:
+       · 载入判据三源同构(paramsEditorState.computeButtonStates.canLoad),与基准选择无关——
+         装谁、对照谁彻底解耦:可「编辑区装文件、拿 snapshot 对照」,反向亦然。
+       · 写出:snapshot 是 scan 的只读记录,无写出;关联文件=Save/Save As;WC=Write Copy。
+       · 基准四选一 radio(off|三源),取代原「对比 checkbox + 锚 radio」两级控件;
+         选 WC 作基准时,刚 Write Copy 后两侧一致、diff 为空是正常的(不是 bug)。
      spec: docs/superpowers/specs/2026-07-22-params-editor-dev-parity-design.md
-         + docs/research/params-editor-followup-decisions.md(D1-D6/P1-P3,冲突以此为准)
-     三层状态:File(app 目录多 yaml,assocFile 关联)→ Editor(共享 textModel)→ Memory(WC.currentDict,Write Copy 产物)。
-     共享 model 让 diff 的 modified 侧=编辑缓冲本身:diff 可编辑/切视图零丢字/diff=编辑区实时 vs 当前锚。
-     锚模型(D6):比较/还原点只有 snapshot 与关联文件;WC 是纯运行时层,不作锚、无回溯入口。-->
+         + docs/research/params-editor-followup-decisions.md(D1-D6/P1-P3;其中 D6「WC 不作锚」
+           已被本次三源对称改造推翻——WC 现可作基准)
+     三层状态:File(app 目录多 yaml,assocFile 关联)→ Editor(共享 textModel)→ Memory(WC.currentDict)。
+     共享 model 让 diff 的 modified 侧=编辑缓冲本身:diff 可编辑/切视图零丢字/diff=编辑区实时 vs 当前基准。-->
 <template>
-  <div v-if="open" class="drawer" data-testid="wc-drawer">
-    <div class="hdr">
+  <div v-if="open" class="drawer" data-testid="wc-drawer"
+       :class="{ moving: dragging || resizing }"
+       :style="{ left: rect.x + 'px', top: rect.y + 'px', width: rect.w + 'px', height: rect.h + 'px' }">
+    <div class="hdr" data-testid="wc-drag-handle" @pointerdown="onDragPointerDown">
       <strong>{{ activePatternId }} 参数</strong>
-      <label class="assoc">关联:
-        <select :value="assocFile" data-testid="assoc-select" @change="onLoadSelect">
-          <option v-for="f in fileList" :key="f" :value="f">{{ f }}</option>
-        </select>
-      </label>
-      <button v-if="assocFile !== 'params.yaml'" class="del-btn" data-testid="delete-param"
-              :title="`删除关联文件 ${assocFile}`" @click="onDeleteParam">🗑</button>
-      <button :disabled="!btnStates.canLoadAssoc"
-              :title="btnStates.canLoadAssoc ? `把 ${assocFile} 载入编辑区` : '编辑区已与关联文件一致'"
-              data-testid="load-assoc" @click="onLoadAssoc">Load</button>
-      <button :disabled="!btnStates.canSave"
-              :title="btnStates.canSave ? `写入 ${assocFile}` : '与关联文件一致,无需保存'"
-              @click="onSave">Save</button>
-      <button :disabled="!btnStates.canSaveAs"
-              title="另存为 app 目录下新文件,关联切过去"
-              @click="onSaveAs">Save As</button>
       <button class="close" @click="$emit('close')">×</button>
     </div>
     <div class="coord-note">口径:label_horizon / 扫描窗恒锚 scan 设置,不随参数探索变。</div>
-    <div class="view-ctl">
-      <label class="diff-toggle" title="并排显示当前锚(左,只读)与编辑区(右,可编辑)">
-        <input type="checkbox" data-testid="diff-toggle" :checked="diffCompare" @change="onDiffToggle" />
-        对比
-      </label>
-      <template v-if="diffCompare">
-        <span class="anchor-sel">锚:
-          <label><input type="radio" value="snapshot" v-model="anchorKind"
-                        data-testid="anchor-snapshot" /> snapshot</label>
-          <label><input type="radio" value="assoc" v-model="anchorKind"
-                        data-testid="anchor-assoc" /> 关联文件</label>
+
+    <!-- 三源对称表:整表一个 grid(行 display:contents)才能让四列跨行对齐 -->
+    <div class="src-table">
+      <div class="src-row src-head">
+        <span>源</span><span>载入</span><span>写出</span>
+        <label class="c-anchor" title="不对比:回单编辑器">
+          <input type="radio" value="off" v-model="anchorKind" data-testid="anchor-off" />关
+        </label>
+      </div>
+
+      <div class="src-row">
+        <span class="c-src">snapshot</span>
+        <span>
+          <button :disabled="!btnStates.canLoad.snapshot"
+                  :title="btnStates.canLoad.snapshot ? '把 snapshot 载入编辑区' : '编辑区已与 snapshot 一致'"
+                  data-testid="load-snapshot" @click="loadFrom('snapshot')">Load</button>
         </span>
-        <button :disabled="!btnStates.canReset"
-                :title="btnStates.canReset ? `编辑区重置为 ${anchorLabel}` : `编辑区与 ${anchorLabel} 一致`"
-                @click="onReset">Reset</button>
-      </template>
+        <span class="c-none" title="snapshot 是 scan 的只读记录,不可写入">—</span>
+        <label class="c-anchor" :title="snapDict ? '以 snapshot 为对比基准' : 'snapshot 不可用'">
+          <input type="radio" value="snapshot" v-model="anchorKind" :disabled="!snapDict"
+                 data-testid="anchor-snapshot" />
+        </label>
+      </div>
+
+      <div class="src-row">
+        <span class="c-src">文件
+          <select :value="assocFile" data-testid="assoc-select" @change="onLoadSelect">
+            <option v-for="f in fileList" :key="f" :value="f">{{ f }}</option>
+          </select>
+          <button v-if="assocFile !== 'params.yaml'" class="del-btn" data-testid="delete-param"
+                  :title="`删除关联文件 ${assocFile}`" @click="onDeleteParam">🗑</button>
+        </span>
+        <span>
+          <button :disabled="!btnStates.canLoad.assoc"
+                  :title="btnStates.canLoad.assoc ? `把 ${assocFile} 载入编辑区` : '编辑区已与关联文件一致'"
+                  data-testid="load-assoc" @click="loadFrom('assoc')">Load</button>
+        </span>
+        <span>
+          <button :disabled="!btnStates.canSave"
+                  :title="btnStates.canSave ? `写入 ${assocFile}` : '与关联文件一致,无需保存'"
+                  @click="onSave">Save</button>
+          <button :disabled="!btnStates.canSaveAs"
+                  title="另存为 app 目录下新文件,关联切过去"
+                  @click="onSaveAs">Save As</button>
+        </span>
+        <label class="c-anchor" :title="assocDict ? '以关联文件为对比基准' : '关联文件未拉到'">
+          <input type="radio" value="assoc" v-model="anchorKind" :disabled="!assocDict"
+                 data-testid="anchor-assoc" />
+        </label>
+      </div>
+
+      <div class="src-row">
+        <span class="c-src">Working Copy
+          <button v-if="wcDict" class="del-btn" data-testid="clear-wc"
+                  title="删除工作副本(内存参数+localStorage 草稿),回浏览态;不碰编辑区"
+                  @click="onClearWc">🗑</button>
+        </span>
+        <span>
+          <button :disabled="!btnStates.canLoad.wc"
+                  :title="btnStates.canLoad.wc ? '把 Working Copy 载入编辑区(使其可见/可续编)'
+                          : (wcDict ? '编辑区已与 Working Copy 一致' : '尚无 Working Copy')"
+                  data-testid="load-wc" @click="loadFrom('wc')">Load</button>
+        </span>
+        <span>
+          <button :disabled="!btnStates.canWriteCopy"
+                  :title="btnStates.canWriteCopy ? '编辑区 → Working Copy(只写副本,不切换浏览/探索视图;探索态下立即重算)'
+                          : '编辑区与 Working Copy 一致,无需写入'"
+                  data-testid="write-copy" @click="onWriteCopy">Write Copy</button>
+        </span>
+        <label class="c-anchor"
+               :title="wcDict ? '以 Working Copy 为对比基准(刚 Write Copy 后两侧一致、diff 为空是正常的)'
+                       : '尚无 Working Copy'">
+          <input type="radio" value="wc" v-model="anchorKind" :disabled="!wcDict" data-testid="anchor-wc" />
+        </label>
+      </div>
     </div>
 
     <div ref="editorEl" class="editor"></div>
     <div v-if="parseError" class="err">{{ parseError }}</div>
     <div v-if="previewError" class="err">现算失败: {{ previewError }}</div>
-
-    <div class="btns">
-      <button :disabled="!btnStates.canWriteCopy"
-              :title="btnStates.canWriteCopy ? '编辑区 → Working Copy(只写副本,不切换浏览/探索视图;探索态下立即重算)' : '编辑区与 Working Copy 一致,无需写入'"
-              @click="onWriteCopy">Write Copy</button>
-      <template v-if="workingCopy[activePatternId ?? '']">
-        <button class="low-freq load-wc" :disabled="!btnStates.canLoadWc"
-                :title="btnStates.canLoadWc ? '编辑区还原为 Working Copy,使其可见/可续编/可与锚对比' : '编辑区已与 Working Copy 一致'"
-                @click="onLoadWc">Load Copy</button>
-        <button class="low-freq clear-wc"
-                title="删除工作副本(内存参数+localStorage 草稿),回浏览态;不碰编辑区"
-                @click="onClearWc">Clear Copy</button>
-      </template>
-    </div>
     <div v-if="confirmingDelete" class="confirm-backdrop" data-testid="delete-confirm">
       <div class="confirm-card">
         <p>删除参数文件 <strong>{{ assocFile }}</strong>?</p>
@@ -73,6 +110,8 @@
         </div>
       </div>
     </div>
+    <div class="resize-handle" data-testid="wc-resize-handle" title="拖拽调整面板大小"
+         @pointerdown="onResizePointerDown"></div>
   </div>
 </template>
 
@@ -82,13 +121,18 @@ import { storeToRefs } from 'pinia'
 import { useViewStore } from '../stores/view'
 import { listParamFiles, readParamFile, saveParamFile, deleteParamFile } from '../api'
 import { dictToYamlText, yamlTextToDict } from './workingCopyYaml'
-import { computeButtonStates, dictsEqual, normalizeSaveAsName, resolveAssocFile } from './paramsEditorState'
+import type { AnchorKind, SourceKind } from './paramsEditorState'
+import { computeButtonStates, dictsEqual, normalizeSaveAsName, resolveAnchorKind, resolveAssocFile } from './paramsEditorState'
 import { materializeKeysByNode, whereLineNumbers } from './workingCopyLayers'
+import { useFloatingPanel } from './useFloatingPanel'
 
 const props = defineProps<{ open: boolean }>()
 defineEmits<{ close: [] }>()
 const view = useViewStore()
 const { activePatternId, previewError, workingCopy } = storeToRefs(view)
+
+// 悬浮几何:面板不再是右侧贴边全高抽屉,而是可拖可缩的浮窗,位置/尺寸持久化(见 useFloatingPanel)
+const { rect, dragging, resizing, onDragPointerDown, onResizePointerDown } = useFloatingPanel()
 
 // ── File 层状态 ──
 const fileList = ref<string[]>([])
@@ -97,13 +141,12 @@ const assocDict = ref<Record<string, any> | null>(null)    // 关联文件内容
 // ── Editor 层状态 ──
 const editorDict = ref<Record<string, any> | null>(null)   // debounce parse 结果
 const parseError = ref<string | null>(null)
-const DIFF_LS_KEY = 'p2wc:drawer:diffMode'
-const diffCompare = ref(localStorage.getItem(DIFF_LS_KEY) === '1')
+const ANCHOR_LS_KEY = 'p2wc:drawer:anchorKind'   // 取代旧 'p2wc:drawer:diffMode';旧值 '1'/'0' 非法 → resolveAnchorKind 回退 off
 // 关联文件选择持久化(per pid;文件列表是 pattern app 目录内容,与 scan 无关 → key 不带 scan_ts)
 const ASSOC_LS_PREFIX = 'p2wc:assoc:'
 function _loadAssocFile(pid: string): string | null { return localStorage.getItem(ASSOC_LS_PREFIX + pid) }
 function _saveAssocFile(pid: string, name: string): void { localStorage.setItem(ASSOC_LS_PREFIX + pid, name) }
-const anchorKind = ref<'snapshot' | 'assoc'>('snapshot')   // 锚选择:不持久化,每次打开默认 snapshot
+const anchorKind = ref<AnchorKind>('off')   // 对比基准四选一(off|三源);持久化,装载时经 resolveAnchorKind 恢复
 
 const editorEl = ref<HTMLElement | null>(null)
 const viewEditor = shallowRef<any>(null)     // IStandaloneCodeEditor | IStandaloneDiffEditor
@@ -118,11 +161,6 @@ let loadGen = 0   // loadContext 代次守卫:每次调用自增,await 后比对
 // snapshot 恒存在(D3:legacy scan 已淘汰,chip 无 snapshot 不渲染、抽屉进不来)
 const snapDict = computed<Record<string, any> | null>(() =>
   activePatternId.value ? view.snapshotOf(activePatternId.value) : null)
-// 锚(D6/P2):diff original 侧与 Reset 目标;只管比较/还原,不管运算
-const anchorDict = computed<Record<string, any> | null>(() =>
-  anchorKind.value === 'snapshot' ? snapDict.value : assocDict.value)
-const anchorLabel = computed(() =>
-  anchorKind.value === 'snapshot' ? 'snapshot' : `关联文件(${assocFile.value})`)
 // 当前生效运算参数:探索态=WC.currentDict;浏览态恒=snapshot(与锚选择无关)
 const effectiveDict = computed<Record<string, any> | null>(() => {
   const pid = activePatternId.value
@@ -130,9 +168,24 @@ const effectiveDict = computed<Record<string, any> | null>(() => {
   const wc = workingCopy.value[pid]
   return wc?.enabled ? wc.currentDict : snapDict.value
 })
-// WC.currentDict(无 WC 为 null):「载入副本」的源与 enable 判据(D7:查看/续编入口,不作锚)
+// WC.currentDict(无 WC 为 null):三源之一——可载入、可作基准、可被 Write Copy 写入
 const wcDict = computed<Record<string, any> | null>(() =>
   workingCopy.value[activePatternId.value ?? '']?.currentDict ?? null)
+
+// ── 三源对称层:取 dict 的唯一入口,载入(loadFrom)与对比(anchorDict)共用同一份内容 ──
+function dictOf(kind: SourceKind): Record<string, any> | null {
+  return kind === 'snapshot' ? snapDict.value : kind === 'assoc' ? assocDict.value : wcDict.value
+}
+function sourceLabel(kind: SourceKind): string {
+  return kind === 'snapshot' ? 'snapshot'
+       : kind === 'assoc' ? `关联文件(${assocFile.value})` : 'Working Copy'
+}
+// 基准=diff 的 original 侧:只管比较,不参与任何按钮判据、不管运算(载入与对比彻底解耦)
+const anchorDict = computed<Record<string, any> | null>(() =>
+  anchorKind.value === 'off' ? null : dictOf(anchorKind.value))
+// 是否真的呈现 diff:选了基准 且 该源有内容。mountView 与 applyLayerDecorations 共用此判据,
+// 防「选了基准但源为空」时后者误走 diff 分支去调 getModifiedEditor()。
+const diffOn = computed(() => anchorKind.value !== 'off' && anchorDict.value !== null)
 // 各 node 的物化层 yaml 键(来自 pattern topology,结构属性、对所有参数文件一致)
 const mkByNode = computed<Record<string, string[]>>(() => {
   const p = view.effectivePattern
@@ -140,8 +193,8 @@ const mkByNode = computed<Record<string, string[]>>(() => {
 })
 const btnStates = computed(() => computeButtonStates({
   parseOk: !parseError.value && editorDict.value !== null,
-  editorDict: editorDict.value, assocDict: assocDict.value,
-  anchorDict: anchorDict.value, wcDict: wcDict.value,
+  editorDict: editorDict.value,
+  snapDict: snapDict.value, assocDict: assocDict.value, wcDict: wcDict.value,
 }))
 
 function _reparse(text: string) {
@@ -160,7 +213,8 @@ async function loadContext() {
   const pid = activePatternId.value
   if (!pid) return
   const gen = ++loadGen                                              // F4:代次守卫,防后发先至的旧请求覆盖新状态
-  anchorKind.value = 'snapshot'                                       // 每次装载重置锚选择(不持久化)
+  // 基准恢复:localStorage 记忆值;记忆为 wc 但该 pattern 当前无 WC → 回退 snapshot
+  anchorKind.value = resolveAnchorKind(localStorage.getItem(ANCHOR_LS_KEY), wcDict.value !== null)
   let newFileList: string[]
   let newAssocDict: Record<string, any> | null
   let newAssocFile = 'params.yaml'
@@ -208,7 +262,7 @@ function applyLayerDecorations() {
   if (!ed || !sharedModel.value || Object.keys(mkByNode.value).length === 0) {
     whereDecoMod = []; whereDecoOrig = []; return
   }
-  if (diffCompare.value) {
+  if (diffOn.value) {
     const mod = ed.getModifiedEditor()
     const orig = ed.getOriginalEditor()
     whereDecoMod = mod.deltaDecorations(whereDecoMod, _layerDecos(sharedModel.value.getValue()))
@@ -219,11 +273,11 @@ function applyLayerDecorations() {
   }
 }
 
-// ── 视图挂载:按 diffCompare 把共享 model 挂进单编辑器或 diff 的 modified 侧 ──
+// ── 视图挂载:按 diffOn 把共享 model 挂进单编辑器或 diff 的 modified 侧 ──
 function mountView() {
   if (!editorEl.value || !sharedModel.value || !monacoMod) return
   disposeView()
-  if (diffCompare.value && anchorDict.value) {
+  if (diffOn.value && anchorDict.value) {
     const de = monacoMod.editor.createDiffEditor(editorEl.value, {
       automaticLayout: true, minimap: { enabled: false }, fontSize: 12,
       originalEditable: false, renderSideBySide: true,
@@ -269,21 +323,18 @@ watch([() => props.open, activePatternId, () => view.scanFile?.scan.scan_ts ?? n
   loadedScanTs = scanTs ?? null
   void loadContext()
 }, { flush: 'post' })
-watch(diffCompare, v => {
-  localStorage.setItem(DIFF_LS_KEY, v ? '1' : '0')
+watch(anchorKind, k => {   // 换基准(含开/关对比):持久化 + 重挂视图(共享 model 不动,编辑不丢)
+  localStorage.setItem(ANCHOR_LS_KEY, k)
   if (props.open) mountView()
 })
-watch(anchorKind, () => {   // 换锚:diff 开着时重建 original 侧(共享 model 不动,编辑不丢)
-  if (props.open && diffCompare.value) mountView()
+watch(assocDict, () => {   // 基准=关联文件时,Load/Save/Save As 换了关联文件内容→重挂 diff 刷新 original 侧
+  if (props.open && anchorKind.value === 'assoc') mountView()
 })
-watch(assocDict, () => {   // 锚=关联文件时,Load/Save/Save As 换了关联文件内容→重挂 diff 刷新 original 侧
-  if (props.open && diffCompare.value && anchorKind.value === 'assoc') mountView()
+watch(wcDict, d => {       // WC 被删(Clear)时基准不能停在空源:回退 snapshot(该 watch 触发重挂)
+  if (d === null && anchorKind.value === 'wc') anchorKind.value = 'snapshot'
 })
 onBeforeUnmount(disposeAll)
 
-function onDiffToggle(e: Event) {
-  diffCompare.value = (e.target as HTMLInputElement).checked
-}
 // 切下拉:只换关联文件标识 + 内容(供 Save 目标 + 锚=关联文件时 diff original 侧刷新),不载入编辑区。
 // 载入编辑区走独立 Load 按钮(onLoadAssoc)。切下拉不碰 sharedModel → 无需 dirty confirm、不丢未存盘改动。
 function onLoadSelect(e: Event) {
@@ -303,15 +354,15 @@ function onLoadSelect(e: Event) {
     }
   })()
 }
-// 载入关联文件到编辑区(原 onLoadSelect 的载入部分,解耦后为独立 Load 按钮)。
-// dirty 时 confirm(覆盖性 + setValue 清 undo 栈,同 onReset/onLoadWc);载入后 flushParse 消除 debounce 窗。
-function onLoadAssoc() {
-  if (!assocDict.value) return
-  flushParse()   // F-A:dirty 判定现读现 parse
-  const dirty = editorDict.value && !dictsEqual(editorDict.value, assocDict.value)
-  if ((dirty || parseError.value)
-      && !confirm(`编辑区有未存盘改动,丢弃并载入 ${assocFile.value}?`)) return
-  sharedModel.value?.setValue(dictToYamlText(assocDict.value))
+// 三源载入的唯一实现(源→编辑区),取代原 onReset/onLoadAssoc/onLoadWc 三个同形函数。
+// 覆盖性且 monaco setValue 清 undo 栈(不可 Ctrl+Z),故必 confirm;按钮灰化已保证
+// 「编辑区==源」时点不到,所以这里恒确认一次并不冗余(与原三者的实际行为等价)。
+function loadFrom(kind: SourceKind) {
+  const src = dictOf(kind)
+  if (!src) return
+  flushParse()   // F-A:先吸收 pending debounce,确保覆盖判断基于最新文本
+  if (!confirm(`编辑区将被 ${sourceLabel(kind)} 覆盖(不可撤销),继续?`)) return
+  sharedModel.value?.setValue(dictToYamlText(src))
   flushParse()   // F-A:setValue 后立即同步 reparse,消除 250ms 内 editorDict 仍是旧 dict 的窗口
 }
 function onWriteCopy() {
@@ -324,20 +375,6 @@ function onWriteCopy() {
   // updateWorkingCopy 写入编辑区内容;enabled 由 chip 独占,探索态下 updateWorkingCopy 自动重算。
   view.ensureWorkingCopy(pid, snapDict.value)
   view.updateWorkingCopy(pid, JSON.parse(JSON.stringify(editorDict.value)))
-}
-function onReset() {
-  // D5:覆盖性操作且 monaco setValue 清 undo 栈(不可 Ctrl+Z),必 confirm;文案动态带锚名
-  if (!anchorDict.value) return
-  if (!confirm(`编辑区将被 ${anchorLabel.value} 覆盖(不可撤销),继续?`)) return
-  sharedModel.value?.setValue(dictToYamlText(anchorDict.value))
-  flushParse()   // F-A:setValue 后立即同步 reparse,消除"重置后立刻点 Save 写入重置前内容"的窗口
-}
-function onLoadWc() {
-  // D7:编辑区还原为 WC → WC 以编辑区形态可见,可续编、可与两锚对比;载入后 Write Copy 自动灰(编辑区==副本)
-  if (!wcDict.value) return
-  if (!confirm('编辑区将被 Working Copy 覆盖(不可撤销),继续?')) return
-  sharedModel.value?.setValue(dictToYamlText(wcDict.value))
-  flushParse()   // F-A:setValue 后立即同步 reparse,与 onReset 同一手法
 }
 async function onSave() {
   flushParse()   // F-A:提交前吸收 pending debounce
@@ -416,23 +453,30 @@ async function performDeleteParam() {
 </script>
 
 <style scoped>
-.drawer { position: fixed; top: 0; right: 0; width: 480px; height: 100vh; background: #fff;
-          border-left: 1px solid #e2e8f0; box-shadow: -4px 0 16px rgba(0,0,0,.08);
+/* 悬浮窗:left/top/width/height 由 useFloatingPanel 的 rect 驱动(内联 style)。
+   刻意不用 transform 平移——面板内嵌 monaco,祖先带 transform 会成为新包含块,
+   补全框/hover 浮层的定位会跑偏。 */
+.drawer { position: fixed; background: #fff; border: 1px solid #e2e8f0; border-radius: 6px;
+          box-shadow: 0 6px 24px rgba(0,0,0,.16);
           display: flex; flex-direction: column; z-index: 60; padding: 10px; }
-.hdr { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }   /* wrap 兜底:按钮多/文件名长时不截断 × */
-.hdr .close { margin-left: auto; }
-.assoc { font-size: 12px; color: #475569; display: inline-flex; align-items: center; gap: 4px; }
+.drawer.moving { user-select: none; }   /* 拖动/缩放中禁选,避免在面板内划出选区 */
+/* wrap 兜底:按钮多/文件名长时不截断 ×;整条标题栏即拖拽把手(其中的 button 由 handler 放行) */
+.hdr { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; cursor: move; }
+.hdr .close { margin-left: auto; cursor: pointer; }
 .coord-note { font-size: 11px; color: #94a3b8; margin: 4px 0; }
 :deep(.layer-where-gutter) { background: #d97706; width: 3px !important; margin-left: 4px; }
-.view-ctl { display: flex; align-items: center; gap: 12px; margin-bottom: 4px; }
-.diff-toggle { font-size: 12px; color: #475569; display: inline-flex; align-items: center;
-               gap: 4px; cursor: pointer; }
-.anchor-sel { font-size: 12px; color: #475569; display: inline-flex; align-items: center; gap: 6px; }
-.anchor-sel label { display: inline-flex; align-items: center; gap: 2px; cursor: pointer; }
+/* 三源对称表:整表单 grid + 行 display:contents,使四列跨行对齐 */
+.src-table { display: grid; grid-template-columns: minmax(0, 1fr) auto auto 28px;
+             align-items: center; gap: 4px 6px; margin: 6px 0; font-size: 12px; color: #475569; }
+.src-row { display: contents; }
+.src-row > span, .src-row > label { display: inline-flex; align-items: center; gap: 4px; min-width: 0; }
+.src-head > * { font-size: 11px; color: #94a3b8; padding-bottom: 3px; border-bottom: 1px solid #e2e8f0; }
+.c-src select { max-width: 118px; }
+.c-none { color: #cbd5e1; justify-content: center; }
+.c-anchor { justify-content: center; cursor: pointer; }
+.c-anchor input { cursor: pointer; }
 .editor { flex: 1; min-height: 0; border: 1px solid #e2e8f0; }
-.btns { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; align-items: center; }
 .drawer button:not(.close) { font-size: 12px; padding: 3px 8px; }   /* 抽屉内所有操作按钮(除关闭×)统一紧凑字号,不随位置变 */
-.low-freq { opacity: .75; }
 .err { color: #dc2626; font-size: 12px; margin-top: 4px; }
 .del-btn { font-size: 13px; padding: 2px 6px; cursor: pointer; border: 1px solid #dc2626;
            color: #dc2626; background: #fff; border-radius: 4px; line-height: 1; }
@@ -446,4 +490,11 @@ async function performDeleteParam() {
 .confirm-actions { display: flex; gap: 8px; justify-content: flex-end; }
 .confirm-actions button { font-size: 12px; padding: 4px 12px; cursor: pointer; }
 .confirm-actions .btn-stop { background: #dc2626; color: #fff; border: none; border-radius: 4px; }
+/* 右下角缩放把手:两道斜纹(色盲友好——靠形状不靠色相),压在 monaco 之上 */
+.resize-handle { position: absolute; right: 0; bottom: 0; width: 16px; height: 16px;
+                 cursor: nwse-resize; z-index: 80;
+                 background: linear-gradient(135deg, transparent 0 45%, #94a3b8 45% 55%, transparent 55% 70%,
+                                                     #94a3b8 70% 80%, transparent 80%); }
+.resize-handle:hover { background: linear-gradient(135deg, transparent 0 45%, #475569 45% 55%, transparent 55% 70%,
+                                                           #475569 70% 80%, transparent 80%); }
 </style>

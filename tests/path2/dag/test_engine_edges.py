@@ -2,9 +2,14 @@
 """verdict §7.1/§7.2/§7.5:Overlap golden + Equals INV-C/C1 + 纯 Temporal 零回归。
 差分:PRUNED == NOPRUNE(O1) 且 PRUNED 子集于 BRUTE(无假阳)。"""
 import pytest
-from tests.path2.dag._oracle import E, keyset, brute_all
+from tests.path2.dag._oracle import E, Ev, keyset, brute_all
 from path2.dag.edges import TemporalEdge, ContainmentEdge, OverlapEdge, EqualsEdge, StartContainmentEdge
 from path2.dag._solve import compile_plan, solve
+
+
+class _StubDetector:
+    """占位 detector:只声明 event_cls(引擎测试不真跑 detect,streams 直给 solve)。"""
+    event_cls = Ev
 
 
 def _pruned(edges, streams):
@@ -21,7 +26,7 @@ def _spec(edges, streams):
     """最小 spec stub:ONCE 节点,无 where/detector。compile_plan 只需 nodes/edges/eq_src。"""
     from path2.dag.nodes import NodeSpec
     ids = sorted({e.src for e in edges} | {e.dst for e in edges} | set(streams))
-    nodes = tuple(NodeSpec(node_id=n, detector=None) for n in ids)
+    nodes = tuple(NodeSpec(node_id=n, detector=_StubDetector()) for n in ids)
     from path2.dag.spec import PatternSpec
     return PatternSpec(pattern_id="t", nodes=nodes,
                        edges=tuple(edges))
@@ -43,8 +48,7 @@ def test_OV_C1():
            [(("A", 0, 10, 0), ("B", 2, 12, 0)), (("A", 0, 10, 0), ("B", 5, 12, 1))])
 
 def test_OV_CHAIN():
-    # ★ B3 整改三:C 是叶子,C0(idx=0)被两个 B 共享 -> emitted_leaves 去重保留首个 Solution
-    # B3 后 solve 只 emit 一个 Solution(C0 仅出现一次);Stage C 对拍
+    # B3 放宽:C 是叶子,C0(idx=0)被两个 B 共享 -> 两个 B 各配 C0 一次,全 match 可见
     edges = [OverlapEdge("A", "B"), OverlapEdge("B", "C")]
     streams = {"A": E("A", [(0, 20)]), "B": E("B", [(3, 25), (8, 25)]), "C": E("C", [(10, 30)])}
     pr = keyset(_pruned(edges, streams))
@@ -52,13 +56,10 @@ def test_OV_CHAIN():
     ba = keyset(brute_all(edges, streams))
     assert pr == no, f"OV-CHAIN: PRUNED!=NOPRUNE"
     assert all(pr[k] <= ba[k] for k in pr), "OV-CHAIN: 假阳"
-    # B3 去重:pr ⊆ ba 且 C0 至多出现一次
-    c_idxs = [s["C"].pos if hasattr(s, "__getitem__") else None for s in []]
     assert len(list(pr.elements())) >= 1, "OV-CHAIN: 至少保留一个 Solution"
 
 def test_OV_INTERIOR():
-    # ★ B3 整改三:B 是叶子,B0(idx=0)被两个 A 共享 -> emitted_leaves 去重保留首个
-    # B3 后 solve 只 emit 一个 Solution;Stage C 对拍
+    # B3 放宽:B 是叶子,B0(idx=0)被两个 A 共享 -> 两个 A 各配 B0 一次,全 match 可见
     edges = [TemporalEdge("X", "A", min_gap=0, max_gap=100), OverlapEdge("A", "B")]
     streams = {"X": E("X", [(0, 0)]), "A": E("A", [(2, 10), (4, 10)]), "B": E("B", [(6, 15)])}
     pr = keyset(_pruned(edges, streams))
@@ -176,11 +177,10 @@ def test_child_endpoint_extraction():
     # 3. 点事件等价：用带 child() 方法的 Burst 包装点 bo，endpoint 应取出 first_bo
     @dataclass(frozen=True)
     class PointBo(Event):
-        class_id = "test_d1_point_bo"
+        pass
 
     @dataclass(frozen=True)
     class PointBurst(Event):
-        class_id = "test_d1_burst"
         first_bo: "PointBo" = None
 
         def child(self, name):
@@ -188,8 +188,8 @@ def test_child_endpoint_extraction():
                 return self.first_bo
             raise KeyError(name)
 
-    bo = PointBo(event_id="bo0", start_idx=5, end_idx=5, confirm_idx=5)
-    burst = PointBurst(event_id="burst0", start_idx=5, end_idx=5, confirm_idx=5, first_bo=bo)
+    bo = PointBo(start_idx=5, end_idx=5, confirm_idx=5)
+    burst = PointBurst(start_idx=5, end_idx=5, confirm_idx=5, first_bo=bo)
 
     # CHILD EXTRACTION（dst 端 selector 非 None）：endpoint 提取出 first_bo，不是 burst 本身
     assert endpoint(burst, e, "dst") is bo,  "dst selector 路径：应提取 first_bo child"

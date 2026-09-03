@@ -6,11 +6,11 @@
  *
  * 分流规则(v2 D5):
  *   1. 生产 env(VITE_API_BASE 未设 或 = http://localhost:8000)→ 一律 driver(生产隔离 debug)
- *   2. debug env + eventId 在 DEBUG_ENABLED_CLASSES → menu=debug + anchors
- *   3. debug env + eventId 不在 whitelist(或 eventId=null)→ menu=driver 降级
+ *   2. debug env + instanceId 命中 node_id(DEBUG_ENABLED_NODES)→ menu=debug + anchors
+ *   3. debug env + instanceId 不命中(或 null)→ menu=driver 降级
  */
 import type { useViewStore } from '../stores/view'
-import { anchorsOf, DEBUG_ENABLED_CLASSES, type DebugAnchor } from '../stores/view'
+import { anchorsOf, DEBUG_ENABLED_NODES, type DebugAnchor } from '../stores/view'
 
 export type MenuDispatch = {
   menu: 'debug' | 'driver'
@@ -18,7 +18,7 @@ export type MenuDispatch = {
 }
 
 export type DispatchInput = {
-  eventId: string | null   // null = 空白 K 线右键
+  instanceId: string | null   // 右键落点 marker 的 instance_id;null = 空白 K 线右键
 }
 
 export function isDebugFrontend(): boolean {
@@ -40,18 +40,18 @@ export function dispatchDebugMenu(
   if (!isDebugCheck()) return { menu: 'driver' }
 
   // 空白 K 线右键
-  if (!input.eventId) return { menu: 'driver' }
+  if (!input.instanceId) return { menu: 'driver' }
 
-  // 查 event · whitelist 分流
+  // 查 event · whitelist 分流(实例化契约:instance_id / node_id)
   const events = (store as any).effectiveAnalysis?.events
     ?? (store as any).preview?.analysis?.events
     ?? []
-  const event = events.find((e: any) => e.event_id === input.eventId)
+  const event = events.find((e: any) => e.instance_id === input.instanceId)
   if (!event) return { menu: 'driver' }
-  if (!DEBUG_ENABLED_CLASSES.includes(event.class_id)) return { menu: 'driver' }
+  if (!DEBUG_ENABLED_NODES.includes(event.node_id)) return { menu: 'driver' }
 
-  // debug menu · 3 anchors(上一行 whitelist 检查已保证 event.class_id ∈ anchorsOf key,故直取)
-  const anchorFn = anchorsOf[event.class_id]
+  // debug menu · anchors(上一行 whitelist 检查已保证 event.node_id ∈ anchorsOf key,故直取)
+  const anchorFn = anchorsOf[event.node_id]
   const anchors = anchorFn(event, events)
   return { menu: 'debug', anchors }
 }

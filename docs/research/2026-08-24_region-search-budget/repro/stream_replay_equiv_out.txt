@@ -1,0 +1,6 @@
+E5 流重放: stocks=104 cells=24 股×格=2496 matches(analyze)=2709 mismatch=0
+  bo 缓存一次: 16.9 ms/股
+  每格增量(引擎重放 burst+tb+annotate+solve+reify): 0.72 ms/股/格
+  每格 serialize_per_pattern(含 label,M 每 match 重算): 3.84 ms/股/格
+  逐格 analyze(bo 重算,ATR 缓存,checks on,无 gate): 17.82 ms/股/格
+stream_replay exit=0

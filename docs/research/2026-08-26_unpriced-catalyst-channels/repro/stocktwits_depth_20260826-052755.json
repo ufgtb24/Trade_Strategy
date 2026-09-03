@@ -1,0 +1,438 @@
+{
+ "coverage": {
+  "CATO": {
+   "status": 200,
+   "ratelimit": {},
+   "n_first_page": 30,
+   "watchlist_count": 401,
+   "title": "Cato Corp. - Ordinary Shares - Class A",
+   "newest_age_days": 4.79,
+   "oldest_age_days": 368.82,
+   "msgs_per_day_est": 0.08,
+   "sentiment_fill": {
+    "none": 25,
+    "Bullish": 4,
+    "Bearish": 1
+   }
+  },
+  "FOCL": {
+   "status": 200,
+   "ratelimit": {},
+   "n_first_page": 30,
+   "watchlist_count": 1638,
+   "title": "FocalTherics - ADR",
+   "newest_age_days": 0.35,
+   "oldest_age_days": 14.54,
+   "msgs_per_day_est": 2.11,
+   "sentiment_fill": {
+    "Bullish": 7,
+    "none": 23
+   }
+  },
+  "HOWL": {
+   "status": 200,
+   "ratelimit": {},
+   "n_first_page": 30,
+   "watchlist_count": 1439,
+   "title": "Werewolf Therapeutics Inc",
+   "newest_age_days": 0.04,
+   "oldest_age_days": 1.7,
+   "msgs_per_day_est": 18.07,
+   "sentiment_fill": {
+    "Bullish": 16,
+    "none": 14
+   }
+  },
+  "BGDE": {
+   "status": 200,
+   "ratelimit": {},
+   "n_first_page": 30,
+   "watchlist_count": 3334,
+   "title": "Big Digital Energy, Inc.",
+   "newest_age_days": 0.21,
+   "oldest_age_days": 4.93,
+   "msgs_per_day_est": 6.36,
+   "sentiment_fill": {
+    "Bullish": 9,
+    "none": 21
+   }
+  },
+  "WWR": {
+   "status": 200,
+   "ratelimit": {},
+   "n_first_page": 30,
+   "watchlist_count": 29782,
+   "title": "Westwater Resources Inc",
+   "newest_age_days": 0.31,
+   "oldest_age_days": 5.12,
+   "msgs_per_day_est": 6.24,
+   "sentiment_fill": {
+    "Bullish": 26,
+    "none": 4
+   }
+  },
+  "MTC": {
+   "status": 200,
+   "ratelimit": {},
+   "n_first_page": 30,
+   "watchlist_count": 7932,
+   "title": "Mmtec Inc",
+   "newest_age_days": 17.71,
+   "oldest_age_days": 138.58,
+   "msgs_per_day_est": 0.25,
+   "sentiment_fill": {
+    "none": 20,
+    "Bearish": 1,
+    "Bullish": 9
+   }
+  },
+  "LRDC": {
+   "status": 200,
+   "ratelimit": {},
+   "n_first_page": 30,
+   "watchlist_count": 199,
+   "title": "Laredo Oil Inc",
+   "newest_age_days": 129.56,
+   "oldest_age_days": 452.82,
+   "msgs_per_day_est": 0.09,
+   "sentiment_fill": {
+    "none": 16,
+    "Bullish": 14
+   }
+  },
+  "COHN": {
+   "status": 200,
+   "ratelimit": {},
+   "n_first_page": 30,
+   "watchlist_count": 4133,
+   "title": "Cohen & Company Inc",
+   "newest_age_days": 19.43,
+   "oldest_age_days": 116.88,
+   "msgs_per_day_est": 0.31,
+   "sentiment_fill": {
+    "Bearish": 4,
+    "none": 10,
+    "Bullish": 16
+   }
+  },
+  "FUST": {
+   "status": 404,
+   "ratelimit": {},
+   "body": "{\"errors\": [{\"message\": \"Symbol not found\"}], \"response\": {\"status\": 404}}"
+  },
+  "COBA": {
+   "status": 200,
+   "ratelimit": {},
+   "n_first_page": 4,
+   "watchlist_count": 8,
+   "title": "Chilean Cobalt Corp",
+   "newest_age_days": 8.83,
+   "oldest_age_days": 669.46,
+   "msgs_per_day_est": 0.01,
+   "sentiment_fill": {
+    "Bullish": 1,
+    "none": 3
+   }
+  },
+  "CALC": {
+   "status": 200,
+   "ratelimit": {},
+   "n_first_page": 30,
+   "watchlist_count": 3561,
+   "title": "CalciMedica Inc",
+   "newest_age_days": 0.4,
+   "oldest_age_days": 3.63,
+   "msgs_per_day_est": 9.29,
+   "sentiment_fill": {
+    "none": 13,
+    "Bullish": 17
+   }
+  },
+  "SRGZ": {
+   "status": 404,
+   "ratelimit": {},
+   "body": "{\"errors\": [{\"message\": \"Symbol not found\"}], \"response\": {\"status\": 404}}"
+  },
+  "SPQS": {
+   "status": 200,
+   "ratelimit": {},
+   "n_first_page": 30,
+   "watchlist_count": 2278,
+   "title": "SportsQuest, Inc.",
+   "newest_age_days": 2.18,
+   "oldest_age_days": 193.88,
+   "msgs_per_day_est": 0.16,
+   "sentiment_fill": {
+    "none": 12,
+    "Bearish": 4,
+    "Bullish": 14
+   }
+  },
+  "AAPL": {
+   "status": 200,
+   "ratelimit": {},
+   "n_first_page": 30,
+   "watchlist_count": 990308,
+   "title": "Apple Inc",
+   "newest_age_days": 0.01,
+   "oldest_age_days": 0.46,
+   "msgs_per_day_est": 66.67,
+   "sentiment_fill": {
+    "none": 16,
+    "Bullish": 11,
+    "Bearish": 3
+   }
+  },
+  "GME": {
+   "status": 200,
+   "ratelimit": {},
+   "n_first_page": 30,
+   "watchlist_count": 307308,
+   "title": "GameStop Corp",
+   "newest_age_days": 0.08,
+   "oldest_age_days": 0.38,
+   "msgs_per_day_est": 100.0,
+   "sentiment_fill": {
+    "none": 8,
+    "Bullish": 20,
+    "Bearish": 2
+   }
+  }
+ },
+ "depth": {
+  "WWR": {
+   "pages": [
+    {
+     "page": 0,
+     "n": 30,
+     "oldest": "2026-08-21T06:27:42Z",
+     "oldest_age_days": 5.12
+    },
+    {
+     "page": 1,
+     "n": 30,
+     "oldest": "2026-08-13T21:13:08Z",
+     "oldest_age_days": 12.51
+    },
+    {
+     "page": 2,
+     "n": 30,
+     "oldest": "2026-08-12T14:58:39Z",
+     "oldest_age_days": 13.77
+    },
+    {
+     "page": 3,
+     "n": 30,
+     "oldest": "2026-08-11T13:55:13Z",
+     "oldest_age_days": 14.81
+    },
+    {
+     "page": 4,
+     "n": 30,
+     "oldest": "2026-08-10T17:29:20Z",
+     "oldest_age_days": 15.66
+    },
+    {
+     "page": 5,
+     "n": 30,
+     "oldest": "2026-08-10T13:58:26Z",
+     "oldest_age_days": 15.81
+    },
+    {
+     "page": 6,
+     "n": 30,
+     "oldest": "2026-08-10T07:55:50Z",
+     "oldest_age_days": 16.06
+    },
+    {
+     "page": 7,
+     "n": 30,
+     "oldest": "2026-08-10T00:23:51Z",
+     "oldest_age_days": 16.38
+    },
+    {
+     "page": 8,
+     "n": 30,
+     "oldest": "2026-08-08T19:54:46Z",
+     "oldest_age_days": 17.56
+    },
+    {
+     "page": 9,
+     "n": 30,
+     "oldest": "2026-08-08T00:04:00Z",
+     "oldest_age_days": 18.39
+    },
+    {
+     "page": 10,
+     "n": 30,
+     "oldest": "2026-08-07T21:51:36Z",
+     "oldest_age_days": 18.48
+    },
+    {
+     "page": 11,
+     "n": 30,
+     "oldest": "2026-08-07T21:04:38Z",
+     "oldest_age_days": 18.51
+    }
+   ],
+   "stopped": null
+  },
+  "CATO": {
+   "pages": [
+    {
+     "page": 0,
+     "n": 30,
+     "oldest": "2025-08-22T13:47:16Z",
+     "oldest_age_days": 368.82
+    },
+    {
+     "page": 1,
+     "n": 29,
+     "oldest": "2025-06-10T00:43:02Z",
+     "oldest_age_days": 442.36
+    },
+    {
+     "page": 2,
+     "n": 30,
+     "oldest": "2025-03-26T00:18:39Z",
+     "oldest_age_days": 518.38
+    },
+    {
+     "page": 3,
+     "n": 30,
+     "oldest": "2024-11-29T17:04:25Z",
+     "oldest_age_days": 634.68
+    },
+    {
+     "page": 4,
+     "n": 30,
+     "oldest": "2024-09-03T14:42:45Z",
+     "oldest_age_days": 721.78
+    },
+    {
+     "page": 5,
+     "n": 30,
+     "oldest": "2024-03-21T07:58:04Z",
+     "oldest_age_days": 888.06
+    },
+    {
+     "page": 6,
+     "n": 30,
+     "oldest": "2023-10-25T13:34:45Z",
+     "oldest_age_days": 1035.83
+    },
+    {
+     "page": 7,
+     "n": 30,
+     "oldest": "2023-07-31T19:54:54Z",
+     "oldest_age_days": 1121.56
+    },
+    {
+     "page": 8,
+     "n": 30,
+     "oldest": "2023-06-05T14:27:17Z",
+     "oldest_age_days": 1177.79
+    },
+    {
+     "page": 9,
+     "n": 30,
+     "oldest": "2023-05-03T20:09:06Z",
+     "oldest_age_days": 1210.55
+    },
+    {
+     "page": 10,
+     "n": 30,
+     "oldest": "2023-03-07T13:00:26Z",
+     "oldest_age_days": 1267.85
+    },
+    {
+     "page": 11,
+     "n": 30,
+     "oldest": "2023-01-19T15:26:59Z",
+     "oldest_age_days": 1314.75
+    }
+   ],
+   "stopped": null
+  },
+  "AAPL": {
+   "pages": [
+    {
+     "page": 0,
+     "n": 30,
+     "oldest": "2026-08-25T22:15:32Z",
+     "oldest_age_days": 0.47
+    },
+    {
+     "page": 1,
+     "n": 30,
+     "oldest": "2026-08-25T18:39:51Z",
+     "oldest_age_days": 0.62
+    },
+    {
+     "page": 2,
+     "n": 30,
+     "oldest": "2026-08-25T16:10:52Z",
+     "oldest_age_days": 0.72
+    },
+    {
+     "page": 3,
+     "n": 30,
+     "oldest": "2026-08-25T15:05:00Z",
+     "oldest_age_days": 0.77
+    },
+    {
+     "page": 4,
+     "n": 30,
+     "oldest": "2026-08-25T13:32:56Z",
+     "oldest_age_days": 0.83
+    },
+    {
+     "page": 5,
+     "n": 30,
+     "oldest": "2026-08-25T04:17:19Z",
+     "oldest_age_days": 1.22
+    },
+    {
+     "page": 6,
+     "n": 30,
+     "oldest": "2026-08-24T21:27:03Z",
+     "oldest_age_days": 1.5
+    },
+    {
+     "page": 7,
+     "n": 30,
+     "oldest": "2026-08-24T18:04:36Z",
+     "oldest_age_days": 1.64
+    },
+    {
+     "page": 8,
+     "n": 30,
+     "oldest": "2026-08-24T15:52:32Z",
+     "oldest_age_days": 1.73
+    },
+    {
+     "page": 9,
+     "n": 30,
+     "oldest": "2026-08-24T14:45:53Z",
+     "oldest_age_days": 1.78
+    },
+    {
+     "page": 10,
+     "n": 30,
+     "oldest": "2026-08-24T13:00:04Z",
+     "oldest_age_days": 1.85
+    },
+    {
+     "page": 11,
+     "n": 30,
+     "oldest": "2026-08-24T02:44:14Z",
+     "oldest_age_days": 2.28
+    }
+   ],
+   "stopped": null
+  }
+ },
+ "meta": {
+  "probed_at": "2026-08-26T05:24:14"
+ }
+}

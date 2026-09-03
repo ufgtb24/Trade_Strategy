@@ -59,7 +59,7 @@ def fire_recorder(monkeypatch):
 
     real = dc.debug_break
 
-    def wrapped(i: int, *, anchor_kind: str, class_id: str, **_kw) -> None:
+    def wrapped(i: int, *, anchor_kind: str, **_kw) -> None:
         # 复刻 real debug_break 的判据 · 只在 fire 分支 append
         if not dc._DEBUG_MODE:
             return
@@ -76,13 +76,14 @@ def fire_recorder(monkeypatch):
 
     monkeypatch.setattr(dc, "debug_break", wrapped)
     # detector 通过 `from path2.debug_ctx import debug_break` · patch 处也需
-    monkeypatch.setattr("path2.atoms.throwback.debug_break", wrapped)
+    # bb tb 已换代 V4(2026-08-16) · 埋点宿主从 throwback 换到 throwback_v4
+    monkeypatch.setattr("path2.atoms.throwback_v4.debug_break", wrapped)
     return hits
 
 
 def _url(anchor_kind: str | None = None, start_bar: int = 0, end_bar: int = 250):
     q = ("pattern_id=bottom_burst&symbol=TSLA&start=2025-01-01&end=2026-01-01"
-         f"&scope=time&start_bar={start_bar}&end_bar={end_bar}&event_class=tb")
+         f"&scope=time&start_bar={start_bar}&end_bar={end_bar}")
     if anchor_kind:
         q += f"&anchor_kind={anchor_kind}"
     return f"/diagnose?{q}"

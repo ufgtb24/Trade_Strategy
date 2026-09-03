@@ -1,7 +1,7 @@
-"""Params.to_dict / from_dict 往返与宽严校验(bottom_breakout_burst + bo_only)。"""
+"""Params.to_dict / from_dict 往返与宽严校验(bottom_burst + bo_only)。"""
 import pytest
 
-from path2_apps.bottom_breakout_burst.params import Params as BbbParams
+from path2_apps.bottom_burst.params import Params as BbbParams
 from path2_apps.bo_only.params import Params as BoOnlyParams
 
 

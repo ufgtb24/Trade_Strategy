@@ -1,0 +1,29 @@
+# bb_v3 调参版 SSoT(内容 = bb_v1 p2.yaml 全复制,唯一差异:tb.max_start_gap=15
+# ——V3 re-entry 预算空间;其余判据同 bb_v1 p2.yaml 口径,实证对比才可比)。
+bo:
+  total_window: 20
+  min_side_bars: 6
+  min_relative_height: 0.2
+  exceed_threshold: 0.003
+  peak_supersede_threshold: 0.01
+  vol_baseline_period: 63
+  peak_measure: high
+  breakout_measure: close
+burst:
+  gap_max: 8
+  vol_baseline_period: 63
+  min_bos: 1
+  first_drought_min: 40
+  distinct_pk_min: 3
+  vol_spike_min: 10
+  peak_age_min: 0
+tb:
+  max_start_gap: 30   # V3 新参数:多段 re-entry 全局预算 [bo+1, bo+max_start_gap](bb_v1 p2.yaml 为 7)
+  max_window: 20
+  atr_window: 14
+  big_rise_k: 5
+  stop_confirm_bars: 2
+  judged_measure: low
+  reference_measure: close
+  scb_mode: rising
+  anchor_mode: span_min   # anchor 口径:last_bo(bo 上一根)/min_bo(串内 bo 当根 min)/span_min(串内全 bar min,默认)

@@ -11,6 +11,7 @@ from path2.dag.engine import analyze, matches
 class FakeDetector:
     """合成 detector:忽略输入,吐预设事件流。detect(self, *source) 与真实 detector 的
     root(detect(df))/消费者(detect(bos,df)) 任意元数兼容。"""
+    event_cls = Ev
     def __init__(self, evs): self._evs = evs
     def detect(self, *source): return iter(self._evs)
 
@@ -52,12 +53,14 @@ def test_matches_bool():
 class _StrictRootDetector:
     """detect(self, df) —— 恰一个位置参,仿真实 bo/trend/distribution/platform。
     若 engine 把 df 传两次(root 误用 run(d, src, df)→detect(df,df)),这里会 TypeError。"""
+    event_cls = Ev
     def __init__(self, evs): self._evs = evs
     def detect(self, df): return iter(self._evs)
 
 
 class _StrictConsumerDetector:
     """detect(self, upstream, df) —— 两个位置参,仿真实 throwback/burst(消费上游流 + df)。"""
+    event_cls = Ev
     def __init__(self, evs): self._evs = evs
     def detect(self, upstream, df): return iter(self._evs)
 

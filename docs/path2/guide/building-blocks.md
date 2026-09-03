@@ -611,7 +611,7 @@ spec = PatternSpec(
 
 ### 进阶：几个你迟早会碰到的小机制
 
-下面三条平时不用操心，但读真实形态（比如线上的 `bottom_breakout_burst`）时会遇到，先有个印象。
+下面三条平时不用操心，但读真实形态（比如线上的 `bottom_burst`）时会遇到，先有个印象。
 
 **① 同一个 Detector 类挂多个节点，`event_id` 会不会撞？——不会，框架自动处理。**
 有时你想用**同一个 Detector 类**充当两个不同角色，比如 `TrendSegmentDetector` 既当"下跌段"又当"横盘段"，各给一个独立实例。问题是这两个实例产出的事件 `class_id` 都是 `"trend"`，`event_id` 前缀一撞就乱了。引擎在跑流之前会自动给它们编号（`trend0` / `trend1`）消歧，你什么都不用做。单实例、或两个节点共享同一个 detector 对象、或你已经手动给了名字的情况，它都不去动。（这个钩子叫 `source_tag`，默认 `None` 时就回退用 `class_id`。）
@@ -657,4 +657,4 @@ for match in result.matches:
 
 下一篇：**DAG 声明指南** —— 详细介绍 `PatternSpec` / `NodeSpec` / `KleeneSpec` / 各类型边（`TemporalEdge` / `ContainmentEdge` / `StartContainmentEdge` / `NegationEdge` / `OverlapEdge` / `EqualsEdge`）以及 `W.*` 谓词便利层。
 
-> 💡 **关于"一节点绑一整串"的两条路**：把"一串同类事件"表达成一个整体，框架同时支持两种写法。一种是 **Kleene**（一个节点直接绑一整串，用 `W.first` / `W.last` / `W.count` / `W.any` / `W.distinct` 在序列上做聚合判断）—— 它**完整保留、随时可用**。另一种是本篇讲的 **嵌套事件**（先用一个 detector 把串打包成 `BurstEvent`，聚合属性变成普通字段，节点本身退回成普通单实例节点）。两条路各有适用场景；当前的示例 app `bottom_breakout_burst` 选了更干净的嵌套事件这条路，但这**不代表 Kleene 被删除**——它只是没被这个 app 用到而已。
+> 💡 **关于"一节点绑一整串"的两条路**：把"一串同类事件"表达成一个整体，框架同时支持两种写法。一种是 **Kleene**（一个节点直接绑一整串，用 `W.first` / `W.last` / `W.count` / `W.any` / `W.distinct` 在序列上做聚合判断）—— 它**完整保留、随时可用**。另一种是本篇讲的 **嵌套事件**（先用一个 detector 把串打包成 `BurstEvent`，聚合属性变成普通字段，节点本身退回成普通单实例节点）。两条路各有适用场景；当前的示例 app `bottom_burst` 选了更干净的嵌套事件这条路，但这**不代表 Kleene 被删除**——它只是没被这个 app 用到而已。

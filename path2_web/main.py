@@ -32,6 +32,8 @@ def main() -> None:
     HOST = "127.0.0.1"
     # DEBUG_MODE=1: 调试模式(PyCharm Debug main.py 时用),后端起在 backend_port_dbg、
     # reload=False(reload=True 会 fork worker、pydevd trace 断在主进程,断点不命中)。
+    # 另:重启后首次 debug fire 断点不命中(第二次起正常)为环境性现象(IDE/pydevd
+    # 窗口组合,代码侧已实证无根因)——详见 path2/debug_ctx.py debug_break docstring ⚠ 节。
     # 未设: 日常模式,后端 backend_port + reload=True(改代码自动重启)。
     # 与 run_path2_web.py 起的主实例并存时:只在 PyCharm Debug config 里设 DEBUG_MODE=1,
     # 主实例走默认分支,两端口 8001/8002 互不冲突。

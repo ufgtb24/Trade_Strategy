@@ -1,0 +1,27 @@
+# Default params for bb_pk pattern (多流 bo+pk;内容=bb_v1 params.yaml 逐字复制,复用同参数)。
+bo:
+  total_window: 20
+  min_side_bars: 6
+  min_relative_height: 0.2
+  exceed_threshold: 0.003
+  peak_supersede_threshold: 0.01
+  vol_baseline_period: 63
+  peak_measure: high
+  breakout_measure: close
+  bear_drop: 0.05       # 唯一显式启用 bear 的 app(Ruling A):大阴线实体跌幅阈值
+  bear_min_rh: 0.20     # 大阴线 kind:相对高度阈值
+burst:
+  gap_max: 8
+  vol_baseline_period: 63
+  min_bos: 1
+  first_drought_min: 40
+  distinct_pk_min: 3
+  vol_spike_min: 3
+  peak_age_min: 60
+tb:
+  max_rise_k: 1.5         # 反弹/脱离阈值(median TR 倍数)
+  stop_confirm_bars: 1    # K 根不刷新入段
+  vol_window: 14          # median TR 滚动窗(即时取 i-1)
+  max_span: 20            # 全局预算 [bo+1, bo+max_span];edge max_gap 同值(SSoT)。占位值,验证闸后拍板
+  measure: close          # 全部数值比较口径;阴线臂恒 close/open
+  max_day_drop_pct: 0.2   # 资格型 where 阈值(2026-08-18 定案):回踩段单日跌幅≥此值→tb where 拦;null=不加该 where

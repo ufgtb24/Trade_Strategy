@@ -10,7 +10,7 @@ A' 修法(见 docs/research/2026-07-18_debug-double-pause-analysis/final_report.
 Spy 挂在 `path2_web.api` 模块的两个 import 别名上(handler 里通过别名调) · 计数后
 delegate 到真实实现(保 handler 后续 attach_and_collect / derive_response 路径可跑通)。
 
-Fixture 复用 test_diagnose_class_env.py 已验证的 peak→pullback→breakout 形态
+Fixture 复用 test_diagnose_anchor_kind_env.py 已验证的 peak→pullback→breakout 形态
 (BODetector 有 1 个 BO event · tb detector 会 evaluate · debug_break 会 fire)。
 """
 import json
@@ -25,15 +25,14 @@ from path2_web.app import create_app
 
 @pytest.fixture
 def client(tmp_path, monkeypatch):
-    """带真实数据的 test client(复用 test_diagnose_class_env.py 同构 fixture)。"""
+    """带真实数据的 test client(复用 test_diagnose_anchor_kind_env.py 同构 fixture)。"""
     monkeypatch.delenv("DEBUG_BAR_RANGE", raising=False)
     monkeypatch.delenv("DEBUG_ANCHOR_KIND", raising=False)
-    monkeypatch.delenv("DEBUG_EVENT_CLASS", raising=False)
 
     data = tmp_path / "data"
     data.mkdir()
     n = 300
-    # peak→pullback→breakout 形态(见 test_diagnose_class_env.py L32-49 注释)
+    # peak→pullback→breakout 形态(见 test_diagnose_anchor_kind_env.py::_make_ohlcv 注释)
     dates = pd.date_range("2024-01-01", periods=n)
     close = np.concatenate([
         np.full(200, 10.0),

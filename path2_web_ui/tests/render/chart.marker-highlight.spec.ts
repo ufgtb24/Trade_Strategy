@@ -13,29 +13,29 @@ function makeBars(n = 10): Bar[] {
 
 function makeInput(overrides: Partial<BandRenderInput> = {}): BandRenderInput {
   return {
-    topology: { nodes: [{ node_id: 'bo', source_tag: 'BO' }], edges: [] } as any,
-    tagList: ['BO'],
+    topology: { nodes: [{ node_id: 'bo', where_rules: [] }], edges: [] } as any,
+    tagList: ['bo'],
     level: 'detected',
-    nodeColors: { bo: { detected: '#111', qualified: '#222', matched: '#333' } } as any,
+    nodeColors: { bo: '#333' },
     eventTier: () => 'detected',
     nodeOfEventByBand: () => 'bo',
-    bandKeyOf: () => 'BO',
+    bandKeyOf: () => 'bo',
     nodeVisible: {},
-    tagToNodes: { BO: ['bo'] },
-    selectedEventId: null,
+    tagToNodes: { bo: ['bo'] },
+    selectedInstanceId: null,
     ...overrides,
   } as BandRenderInput
 }
 
 const eBo: EventDict = {
-  event_id: 'e_bo_1', event_type: 'BO', class_id: 'BO',
+  instance_id: 'e_bo_1#0', node_id: 'bo',
   start_idx: 3, end_idx: 3,
 } as any
 
 describe('computeEventData · shiftSelectedEventIds marker 高亮通道', () => {
   it('shiftSelectedEventIds undefined → 各 series itemStyle 不带 borderColor', () => {
     const bundle = computeEventData(makeBars(), [eBo], [], makeInput())
-    const all = [...bundle.pointData, ...bundle.intervalData, ...bundle.pricePointData, ...bundle.satelliteData]
+    const all = [...bundle.pointData, ...bundle.intervalData, ...bundle.pricePointData]
     for (const d of all) {
       expect(d.itemStyle?.borderColor).toBeUndefined()
     }
@@ -44,7 +44,7 @@ describe('computeEventData · shiftSelectedEventIds marker 高亮通道', () => 
   it('shiftSelectedEventIds 空集 → 同上,零副作用', () => {
     const bundle = computeEventData(makeBars(), [eBo], [],
       makeInput({ shiftSelectedEventIds: new Set() }))
-    const all = [...bundle.pointData, ...bundle.intervalData, ...bundle.pricePointData, ...bundle.satelliteData]
+    const all = [...bundle.pointData, ...bundle.intervalData, ...bundle.pricePointData]
     for (const d of all) {
       expect(d.itemStyle?.borderColor).toBeUndefined()
     }
@@ -63,21 +63,21 @@ describe('computeEventData · shiftSelectedEventIds marker 高亮通道', () => 
     expect(bundle.veilPriceData).toEqual([])
   })
 
-  it('shiftSelectedEventIds 含 e_bo_1 → veil* 里含 event_id + kind 正确', () => {
+  it('shiftSelectedEventIds 含 e_bo_1#0 → veil* 里含 instance_id + kind 正确', () => {
     const bundle = computeEventData(makeBars(), [eBo], [],
-      makeInput({ shiftSelectedEventIds: new Set(['e_bo_1']) }))
+      makeInput({ shiftSelectedEventIds: new Set(['e_bo_1#0']) }))
     const all = [...bundle.veilData, ...bundle.veilPriceData]
-    const hit = all.find(d => d.event_id === 'e_bo_1')
+    const hit = all.find(d => d.instance_id === 'e_bo_1#0')
     expect(hit).toBeDefined()
-    expect(['point', 'interval', 'pricePoint', 'satellite']).toContain(hit!.kind)
+    expect(['point', 'interval', 'pricePoint']).toContain(hit!.kind)
   })
 
   it('shiftSelectedEventIds 命中的 event 未命中的 event 不进 veil', () => {
-    const eOther: EventDict = { ...eBo, event_id: 'e_other', start_idx: 5, end_idx: 5 } as any
+    const eOther: EventDict = { ...eBo, instance_id: 'e_other#0', start_idx: 5, end_idx: 5 } as any
     const bundle = computeEventData(makeBars(), [eBo, eOther], [],
-      makeInput({ shiftSelectedEventIds: new Set(['e_bo_1']) }))
+      makeInput({ shiftSelectedEventIds: new Set(['e_bo_1#0']) }))
     const all = [...bundle.veilData, ...bundle.veilPriceData]
-    expect(all.find(d => d.event_id === 'e_other')).toBeUndefined()
+    expect(all.find(d => d.instance_id === 'e_other#0')).toBeUndefined()
   })
 
 })

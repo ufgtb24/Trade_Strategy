@@ -1,0 +1,3138 @@
+[
+ {
+  "symbol": "ALTO",
+  "buy_date": "2025-11-14",
+  "fr40": 0.5313544057400472,
+  "window": [
+   "2025-11-07",
+   "2025-11-14"
+  ],
+  "total_count": 2,
+  "fail_count": 0,
+  "sentiment_score": 0.3947,
+  "rho": 1.0,
+  "p/n/n": [
+   2,
+   0,
+   0
+  ],
+  "source_stats": {
+   "finnhub": 5,
+   "edgar": 1
+  },
+  "fr_recalc": 0.5588235912850996,
+  "fp": {
+   "4": "up",
+   "5": "up",
+   "6": "up"
+  }
+ },
+ {
+  "symbol": "ALTO",
+  "buy_date": "2025-11-17",
+  "fr40": 0.5180620960066484,
+  "window": [
+   "2025-11-10",
+   "2025-11-17"
+  ],
+  "total_count": 2,
+  "fail_count": 0,
+  "sentiment_score": 0.3947,
+  "rho": 1.0,
+  "p/n/n": [
+   2,
+   0,
+   0
+  ],
+  "source_stats": {
+   "finnhub": 4,
+   "edgar": 0
+  },
+  "fr_recalc": 0.597989975636976,
+  "fp": {
+   "4": "up",
+   "5": "up",
+   "6": "up"
+  }
+ },
+ {
+  "symbol": "ALTO",
+  "buy_date": "2025-11-24",
+  "fr40": 0.29555999652141146,
+  "window": [
+   "2025-11-17",
+   "2025-11-24"
+  ],
+  "total_count": 0,
+  "fail_count": 0,
+  "sentiment_score": 0.0,
+  "rho": 0.0,
+  "p/n/n": [
+   0,
+   0,
+   0
+  ],
+  "source_stats": {
+   "finnhub": 1,
+   "edgar": 0
+  },
+  "fr_recalc": 0.4790697328847071,
+  "fp": {
+   "4": "up",
+   "5": "up",
+   "6": "none"
+  }
+ },
+ {
+  "symbol": "ANIX",
+  "buy_date": "2025-10-13",
+  "fr40": 0.23283006796415895,
+  "window": [
+   "2025-10-06",
+   "2025-10-13"
+  ],
+  "total_count": 2,
+  "fail_count": 0,
+  "sentiment_score": 0.4261,
+  "rho": 1.0,
+  "p/n/n": [
+   2,
+   0,
+   0
+  ],
+  "source_stats": {
+   "finnhub": 3,
+   "edgar": 0
+  },
+  "fr_recalc": 0.2079646153068737,
+  "fp": {
+   "4": "none",
+   "5": "none",
+   "6": "none"
+  }
+ },
+ {
+  "symbol": "ANVS",
+  "buy_date": "2025-11-19",
+  "fr40": 0.6272188798164431,
+  "window": [
+   "2025-11-12",
+   "2025-11-19"
+  ],
+  "total_count": 3,
+  "fail_count": 0,
+  "sentiment_score": 0.4635,
+  "rho": 0.8169,
+  "p/n/n": [
+   2,
+   1,
+   0
+  ],
+  "source_stats": {
+   "finnhub": 9,
+   "edgar": 2
+  },
+  "fr_recalc": 0.6272188798164431,
+  "fp": {
+   "4": "up",
+   "5": "up",
+   "6": "up"
+  }
+ },
+ {
+  "symbol": "ANVS",
+  "buy_date": "2025-11-20",
+  "fr40": 0.40448543573305523,
+  "window": [
+   "2025-11-13",
+   "2025-11-20"
+  ],
+  "total_count": 2,
+  "fail_count": 0,
+  "sentiment_score": 0.3598,
+  "rho": 0.9407,
+  "p/n/n": [
+   1,
+   0,
+   1
+  ],
+  "source_stats": {
+   "finnhub": 7,
+   "edgar": 1
+  },
+  "fr_recalc": 0.4175257313858387,
+  "fp": {
+   "4": "up",
+   "5": "down",
+   "6": "none"
+  }
+ },
+ {
+  "symbol": "ANVS",
+  "buy_date": "2025-11-24",
+  "fr40": 0.24291101182499208,
+  "window": [
+   "2025-11-17",
+   "2025-11-24"
+  ],
+  "total_count": 2,
+  "fail_count": 0,
+  "sentiment_score": 0.3032,
+  "rho": 0.5556,
+  "p/n/n": [
+   1,
+   0,
+   1
+  ],
+  "source_stats": {
+   "finnhub": 8,
+   "edgar": 0
+  },
+  "fr_recalc": 0.3447432261145398,
+  "fp": {
+   "4": "down",
+   "5": "down",
+   "6": "none"
+  }
+ },
+ {
+  "symbol": "ANVS",
+  "buy_date": "2025-11-26",
+  "fr40": 0.05663466386519056,
+  "window": [
+   "2025-11-19",
+   "2025-11-26"
+  ],
+  "total_count": 1,
+  "fail_count": 0,
+  "sentiment_score": 0.0,
+  "rho": 0.0,
+  "p/n/n": [
+   0,
+   0,
+   1
+  ],
+  "source_stats": {
+   "finnhub": 1,
+   "edgar": 0
+  },
+  "fr_recalc": 0.11788616152684028,
+  "fp": {
+   "4": "down",
+   "5": "down",
+   "6": "down"
+  }
+ },
+ {
+  "symbol": "APCX",
+  "buy_date": "2025-11-10",
+  "fr40": 0.4608886205543452,
+  "window": [
+   "2025-11-03",
+   "2025-11-10"
+  ],
+  "total_count": 2,
+  "fail_count": 0,
+  "sentiment_score": 0.4104,
+  "rho": 1.0,
+  "p/n/n": [
+   2,
+   0,
+   0
+  ],
+  "source_stats": {
+   "finnhub": 3,
+   "edgar": 1
+  },
+  "fr_recalc": 0.47567566696791186,
+  "fp": {
+   "4": "none",
+   "5": "none",
+   "6": "none"
+  }
+ },
+ {
+  "symbol": "APCX",
+  "buy_date": "2025-11-17",
+  "fr40": 0.26407858015628,
+  "window": [
+   "2025-11-10",
+   "2025-11-17"
+  ],
+  "total_count": 1,
+  "fail_count": 0,
+  "sentiment_score": 0.0,
+  "rho": 0.0,
+  "p/n/n": [
+   0,
+   0,
+   1
+  ],
+  "source_stats": {
+   "finnhub": 0,
+   "edgar": 1
+  },
+  "fr_recalc": 0.029126186624347072,
+  "fp": {
+   "4": "down",
+   "5": "down",
+   "6": "down"
+  }
+ },
+ {
+  "symbol": "APCX",
+  "buy_date": "2025-11-19",
+  "fr40": 0.2999555526878892,
+  "window": [
+   "2025-11-12",
+   "2025-11-19"
+  ],
+  "total_count": 1,
+  "fail_count": 0,
+  "sentiment_score": 0.0,
+  "rho": 0.0,
+  "p/n/n": [
+   0,
+   0,
+   1
+  ],
+  "source_stats": {
+   "finnhub": 0,
+   "edgar": 1
+  },
+  "fr_recalc": 0.0,
+  "fp": {
+   "4": "down",
+   "5": "down",
+   "6": "down"
+  }
+ },
+ {
+  "symbol": "AQMS",
+  "buy_date": "2025-09-30",
+  "fr40": 4.939607399435234,
+  "window": [
+   "2025-09-23",
+   "2025-09-30"
+  ],
+  "total_count": 5,
+  "fail_count": 0,
+  "sentiment_score": 0.0728,
+  "rho": 0.2031,
+  "p/n/n": [
+   1,
+   0,
+   4
+  ],
+  "source_stats": {
+   "finnhub": 11,
+   "edgar": 0
+  },
+  "fr_recalc": 5.156250146683304,
+  "fp": {
+   "4": "up",
+   "5": "up",
+   "6": "up"
+  }
+ },
+ {
+  "symbol": "ARBE",
+  "buy_date": "2025-09-24",
+  "fr40": 0.6705998210220661,
+  "window": [
+   "2025-09-17",
+   "2025-09-24"
+  ],
+  "total_count": 3,
+  "fail_count": 0,
+  "sentiment_score": 0.3918,
+  "rho": 1.0,
+  "p/n/n": [
+   3,
+   0,
+   0
+  ],
+  "source_stats": {
+   "finnhub": 5,
+   "edgar": 0
+  },
+  "fr_recalc": 0.5483871463930441,
+  "fp": {
+   "4": "up",
+   "5": "up",
+   "6": "up"
+  }
+ },
+ {
+  "symbol": "ARBK",
+  "buy_date": "2025-10-14",
+  "fr40": 0.09447849118155116,
+  "window": [
+   "2025-10-07",
+   "2025-10-14"
+  ],
+  "total_count": 3,
+  "fail_count": 0,
+  "sentiment_score": -0.6132,
+  "rho": -0.7607,
+  "p/n/n": [
+   1,
+   2,
+   0
+  ],
+  "source_stats": {
+   "finnhub": 8,
+   "edgar": 0
+  },
+  "fr_recalc": 0.06557376859332043,
+  "fp": {
+   "4": "down",
+   "5": "down",
+   "6": "down"
+  }
+ },
+ {
+  "symbol": "ASTI",
+  "buy_date": "2025-12-30",
+  "fr40": 1.3419425149645232,
+  "window": [
+   "2025-12-23",
+   "2025-12-30"
+  ],
+  "total_count": 1,
+  "fail_count": 0,
+  "sentiment_score": 0.4733,
+  "rho": 1.0,
+  "p/n/n": [
+   1,
+   0,
+   0
+  ],
+  "source_stats": {
+   "finnhub": 7,
+   "edgar": 0
+  },
+  "fr_recalc": 1.193333307902018,
+  "fp": {
+   "4": "up",
+   "5": "none",
+   "6": "none"
+  }
+ },
+ {
+  "symbol": "AURFF",
+  "buy_date": "2025-09-29",
+  "fr40": 0.06064307626426454,
+  "window": [
+   "2025-09-22",
+   "2025-09-29"
+  ],
+  "total_count": 0,
+  "fail_count": 0,
+  "sentiment_score": 0.0,
+  "rho": 0.0,
+  "p/n/n": [
+   0,
+   0,
+   0
+  ],
+  "source_stats": {
+   "finnhub": 0,
+   "edgar": 0
+  },
+  "fr_recalc": -0.013714079519098088,
+  "fp": {
+   "4": "down",
+   "5": "down",
+   "6": "down"
+  }
+ },
+ {
+  "symbol": "AVLNF",
+  "buy_date": "2025-10-16",
+  "fr40": 0.09758662008665568,
+  "window": [
+   "2025-10-09",
+   "2025-10-16"
+  ],
+  "total_count": 3,
+  "fail_count": 0,
+  "sentiment_score": 0.5273,
+  "rho": 0.8392,
+  "p/n/n": [
+   2,
+   0,
+   1
+  ],
+  "source_stats": {
+   "finnhub": 4,
+   "edgar": 0
+  },
+  "fr_recalc": 0.120815121706914,
+  "fp": {
+   "4": "down",
+   "5": "down",
+   "6": "none"
+  }
+ },
+ {
+  "symbol": "BEAT",
+  "buy_date": "2025-12-15",
+  "fr40": 0.520912481348053,
+  "window": [
+   "2025-12-08",
+   "2025-12-15"
+  ],
+  "total_count": 3,
+  "fail_count": 0,
+  "sentiment_score": 0.59,
+  "rho": 1.0,
+  "p/n/n": [
+   3,
+   0,
+   0
+  ],
+  "source_stats": {
+   "finnhub": 18,
+   "edgar": 0
+  },
+  "fr_recalc": 0.520912481348053,
+  "fp": {
+   "4": "up",
+   "5": "down",
+   "6": "down"
+  }
+ },
+ {
+  "symbol": "BEAT",
+  "buy_date": "2025-12-17",
+  "fr40": 0.06585837146310254,
+  "window": [
+   "2025-12-10",
+   "2025-12-17"
+  ],
+  "total_count": 3,
+  "fail_count": 0,
+  "sentiment_score": 0.59,
+  "rho": 1.0,
+  "p/n/n": [
+   3,
+   0,
+   0
+  ],
+  "source_stats": {
+   "finnhub": 20,
+   "edgar": 0
+  },
+  "fr_recalc": 0.05537461888944617,
+  "fp": {
+   "4": "down",
+   "5": "down",
+   "6": "down"
+  }
+ },
+ {
+  "symbol": "BESS",
+  "buy_date": "2025-10-17",
+  "fr40": 0.9063904653332225,
+  "window": [
+   "2025-10-10",
+   "2025-10-17"
+  ],
+  "total_count": 0,
+  "fail_count": 0,
+  "sentiment_score": 0.0,
+  "rho": 0.0,
+  "p/n/n": [
+   0,
+   0,
+   0
+  ],
+  "source_stats": {
+   "finnhub": 0,
+   "edgar": 0
+  },
+  "fr_recalc": 0.9344632882818324,
+  "fp": {
+   "4": "down",
+   "5": "down",
+   "6": "up"
+  }
+ },
+ {
+  "symbol": "BGDE",
+  "buy_date": "2025-10-06",
+  "fr40": 1.1978021056708825,
+  "window": [
+   "2025-09-29",
+   "2025-10-06"
+  ],
+  "total_count": 0,
+  "fail_count": 0,
+  "sentiment_score": 0.0,
+  "rho": 0.0,
+  "p/n/n": [
+   0,
+   0,
+   0
+  ],
+  "source_stats": {
+   "finnhub": 0,
+   "edgar": 0
+  },
+  "fr_recalc": 1.1978021056708825,
+  "fp": {
+   "4": "up",
+   "5": "up",
+   "6": "up"
+  }
+ },
+ {
+  "symbol": "BKKT",
+  "buy_date": "2025-10-03",
+  "fr40": 0.23070928231906765,
+  "window": [
+   "2025-09-26",
+   "2025-10-03"
+  ],
+  "total_count": 5,
+  "fail_count": 0,
+  "sentiment_score": 0.7006,
+  "rho": 0.9232,
+  "p/n/n": [
+   2,
+   0,
+   3
+  ],
+  "source_stats": {
+   "finnhub": 12,
+   "edgar": 1
+  },
+  "fr_recalc": 0.16827632464603282,
+  "fp": {
+   "4": "down",
+   "5": "down",
+   "6": "down"
+  }
+ },
+ {
+  "symbol": "BKKT",
+  "buy_date": "2025-10-08",
+  "fr40": 0.23033291186743562,
+  "window": [
+   "2025-10-01",
+   "2025-10-08"
+  ],
+  "total_count": 6,
+  "fail_count": 0,
+  "sentiment_score": 0.6997,
+  "rho": 0.917,
+  "p/n/n": [
+   3,
+   0,
+   3
+  ],
+  "source_stats": {
+   "finnhub": 11,
+   "edgar": 2
+  },
+  "fr_recalc": 0.18649399468187422,
+  "fp": {
+   "4": "down",
+   "5": "down",
+   "6": "down"
+  }
+ },
+ {
+  "symbol": "BOXL",
+  "buy_date": "2025-09-26",
+  "fr40": 0.03065131206343219,
+  "window": [
+   "2025-09-19",
+   "2025-09-26"
+  ],
+  "total_count": 2,
+  "fail_count": 0,
+  "sentiment_score": -0.5038,
+  "rho": -0.9407,
+  "p/n/n": [
+   0,
+   1,
+   1
+  ],
+  "source_stats": {
+   "finnhub": 14,
+   "edgar": 2
+  },
+  "fr_recalc": 0.03065131206343219,
+  "fp": {
+   "4": "down",
+   "5": "down",
+   "6": "down"
+  }
+ },
+ {
+  "symbol": "BRFH",
+  "buy_date": "2025-09-23",
+  "fr40": 0.020356275003996283,
+  "window": [
+   "2025-09-16",
+   "2025-09-23"
+  ],
+  "total_count": 3,
+  "fail_count": 0,
+  "sentiment_score": 0.5915,
+  "rho": 1.0,
+  "p/n/n": [
+   3,
+   0,
+   0
+  ],
+  "source_stats": {
+   "finnhub": 12,
+   "edgar": 1
+  },
+  "fr_recalc": 0.020356275003996283,
+  "fp": {
+   "4": "down",
+   "5": "down",
+   "6": "none"
+  }
+ },
+ {
+  "symbol": "BURU",
+  "buy_date": "2025-10-10",
+  "fr40": 0.16156046987726827,
+  "window": [
+   "2025-10-03",
+   "2025-10-10"
+  ],
+  "total_count": 4,
+  "fail_count": 0,
+  "sentiment_score": 0.0603,
+  "rho": 0.0514,
+  "p/n/n": [
+   3,
+   1,
+   0
+  ],
+  "source_stats": {
+   "finnhub": 21,
+   "edgar": 1
+  },
+  "fr_recalc": 0.15578942549856079,
+  "fp": {
+   "4": "down",
+   "5": "down",
+   "6": "down"
+  }
+ },
+ {
+  "symbol": "CALC",
+  "buy_date": "2025-12-03",
+  "fr40": 0.5874911010686549,
+  "window": [
+   "2025-11-26",
+   "2025-12-03"
+  ],
+  "total_count": 0,
+  "fail_count": 0,
+  "sentiment_score": 0.0,
+  "rho": 0.0,
+  "p/n/n": [
+   0,
+   0,
+   0
+  ],
+  "source_stats": {
+   "finnhub": 0,
+   "edgar": 0
+  },
+  "fr_recalc": 0.5351811772753443,
+  "fp": {
+   "4": "up",
+   "5": "up",
+   "6": "up"
+  }
+ },
+ {
+  "symbol": "CALC",
+  "buy_date": "2025-12-04",
+  "fr40": 0.5930654644026334,
+  "window": [
+   "2025-11-27",
+   "2025-12-04"
+  ],
+  "total_count": 0,
+  "fail_count": 0,
+  "sentiment_score": 0.0,
+  "rho": 0.0,
+  "p/n/n": [
+   0,
+   0,
+   0
+  ],
+  "source_stats": {
+   "finnhub": 0,
+   "edgar": 0
+  },
+  "fr_recalc": 0.5754922404406935,
+  "fp": {
+   "4": "up",
+   "5": "up",
+   "6": "up"
+  }
+ },
+ {
+  "symbol": "CBDL",
+  "buy_date": "2025-10-02",
+  "fr40": 0.08888892481954436,
+  "window": [
+   "2025-09-25",
+   "2025-10-02"
+  ],
+  "total_count": 1,
+  "fail_count": 0,
+  "sentiment_score": 0.4733,
+  "rho": 1.0,
+  "p/n/n": [
+   1,
+   0,
+   0
+  ],
+  "source_stats": {
+   "finnhub": 1,
+   "edgar": 0
+  },
+  "fr_recalc": 0.0,
+  "fp": {
+   "4": "down",
+   "5": "down",
+   "6": "down"
+  }
+ },
+ {
+  "symbol": "CLIR",
+  "buy_date": "2025-09-24",
+  "fr40": 0.44381893224297064,
+  "window": [
+   "2025-09-17",
+   "2025-09-24"
+  ],
+  "total_count": 2,
+  "fail_count": 0,
+  "sentiment_score": 0.339,
+  "rho": 1.0,
+  "p/n/n": [
+   2,
+   0,
+   0
+  ],
+  "source_stats": {
+   "finnhub": 5,
+   "edgar": 0
+  },
+  "fr_recalc": 0.4736842039219229,
+  "fp": {
+   "4": "up",
+   "5": "up",
+   "6": "up"
+  }
+ },
+ {
+  "symbol": "CLPT",
+  "buy_date": "2025-09-30",
+  "fr40": 0.3408223588547375,
+  "window": [
+   "2025-09-23",
+   "2025-09-30"
+  ],
+  "total_count": 2,
+  "fail_count": 0,
+  "sentiment_score": 0.4557,
+  "rho": 1.0,
+  "p/n/n": [
+   2,
+   0,
+   0
+  ],
+  "source_stats": {
+   "finnhub": 6,
+   "edgar": 0
+  },
+  "fr_recalc": 0.3813675592836143,
+  "fp": {
+   "4": "up",
+   "5": "up",
+   "6": "up"
+  }
+ },
+ {
+  "symbol": "CLYM",
+  "buy_date": "2025-12-18",
+  "fr40": 0.37509724280935175,
+  "window": [
+   "2025-12-11",
+   "2025-12-18"
+  ],
+  "total_count": 2,
+  "fail_count": 0,
+  "sentiment_score": 0.2089,
+  "rho": 0.6,
+  "p/n/n": [
+   1,
+   1,
+   0
+  ],
+  "source_stats": {
+   "finnhub": 4,
+   "edgar": 1
+  },
+  "fr_recalc": 0.4200912391952296,
+  "fp": {
+   "4": "up",
+   "5": "up",
+   "6": "none"
+  }
+ },
+ {
+  "symbol": "CNET",
+  "buy_date": "2025-09-19",
+  "fr40": 0.18027210754083725,
+  "window": [
+   "2025-09-12",
+   "2025-09-19"
+  ],
+  "total_count": 2,
+  "fail_count": 0,
+  "sentiment_score": 0.0,
+  "rho": 0.0,
+  "p/n/n": [
+   0,
+   0,
+   2
+  ],
+  "source_stats": {
+   "finnhub": 3,
+   "edgar": 1
+  },
+  "fr_recalc": 0.24401914421415682,
+  "fp": {
+   "4": "none",
+   "5": "none",
+   "6": "none"
+  }
+ },
+ {
+  "symbol": "CNET",
+  "buy_date": "2025-09-24",
+  "fr40": 0.13483162837867504,
+  "window": [
+   "2025-09-17",
+   "2025-09-24"
+  ],
+  "total_count": 2,
+  "fail_count": 0,
+  "sentiment_score": 0.0,
+  "rho": 0.0,
+  "p/n/n": [
+   0,
+   0,
+   2
+  ],
+  "source_stats": {
+   "finnhub": 1,
+   "edgar": 1
+  },
+  "fr_recalc": 0.16591922977328433,
+  "fp": {
+   "4": "down",
+   "5": "none",
+   "6": "none"
+  }
+ },
+ {
+  "symbol": "CNTB",
+  "buy_date": "2025-11-21",
+  "fr40": 0.029416626748673735,
+  "window": [
+   "2025-11-14",
+   "2025-11-21"
+  ],
+  "total_count": 2,
+  "fail_count": 0,
+  "sentiment_score": 0.0,
+  "rho": 0.0,
+  "p/n/n": [
+   0,
+   0,
+   2
+  ],
+  "source_stats": {
+   "finnhub": 2,
+   "edgar": 0
+  },
+  "fr_recalc": 0.016447352942006832,
+  "fp": {
+   "4": "down",
+   "5": "down",
+   "6": "none"
+  }
+ },
+ {
+  "symbol": "COBA",
+  "buy_date": "2025-12-02",
+  "fr40": 7.267641244443222,
+  "window": [
+   "2025-11-25",
+   "2025-12-02"
+  ],
+  "total_count": 1,
+  "fail_count": 0,
+  "sentiment_score": -0.5087,
+  "rho": -1.0,
+  "p/n/n": [
+   0,
+   1,
+   0
+  ],
+  "source_stats": {
+   "finnhub": 0,
+   "edgar": 1
+  },
+  "fr_recalc": 7.267641244443222,
+  "fp": {
+   "4": "up",
+   "5": "up",
+   "6": "up"
+  }
+ },
+ {
+  "symbol": "COHN",
+  "buy_date": "2025-11-14",
+  "fr40": 1.2407024574542422,
+  "window": [
+   "2025-11-07",
+   "2025-11-14"
+  ],
+  "total_count": 0,
+  "fail_count": 0,
+  "sentiment_score": 0.0,
+  "rho": 0.0,
+  "p/n/n": [
+   0,
+   0,
+   0
+  ],
+  "source_stats": {
+   "finnhub": 0,
+   "edgar": 0
+  },
+  "fr_recalc": 1.3811239403691764,
+  "fp": {
+   "4": "up",
+   "5": "up",
+   "6": "up"
+  }
+ },
+ {
+  "symbol": "COHN",
+  "buy_date": "2025-11-18",
+  "fr40": 1.2666634232028977,
+  "window": [
+   "2025-11-11",
+   "2025-11-18"
+  ],
+  "total_count": 0,
+  "fail_count": 0,
+  "sentiment_score": 0.0,
+  "rho": 0.0,
+  "p/n/n": [
+   0,
+   0,
+   0
+  ],
+  "source_stats": {
+   "finnhub": 0,
+   "edgar": 0
+  },
+  "fr_recalc": 1.0857323935859902,
+  "fp": {
+   "4": "up",
+   "5": "up",
+   "6": "up"
+  }
+ },
+ {
+  "symbol": "COOT",
+  "buy_date": "2025-10-23",
+  "fr40": 0.10627687401319523,
+  "window": [
+   "2025-10-16",
+   "2025-10-23"
+  ],
+  "total_count": 2,
+  "fail_count": 0,
+  "sentiment_score": 0.4167,
+  "rho": 0.6,
+  "p/n/n": [
+   1,
+   1,
+   0
+  ],
+  "source_stats": {
+   "finnhub": 3,
+   "edgar": 0
+  },
+  "fr_recalc": 0.1271676451934678,
+  "fp": {
+   "4": "down",
+   "5": "down",
+   "6": "down"
+  }
+ },
+ {
+  "symbol": "CPIX",
+  "buy_date": "2025-12-22",
+  "fr40": 0.29448722692007584,
+  "window": [
+   "2025-12-15",
+   "2025-12-22"
+  ],
+  "total_count": 1,
+  "fail_count": 0,
+  "sentiment_score": 0.0,
+  "rho": 0.0,
+  "p/n/n": [
+   0,
+   0,
+   1
+  ],
+  "source_stats": {
+   "finnhub": 3,
+   "edgar": 0
+  },
+  "fr_recalc": 0.2367816626183008,
+  "fp": {
+   "4": "none",
+   "5": "none",
+   "6": "none"
+  }
+ },
+ {
+  "symbol": "CPIX",
+  "buy_date": "2025-12-22",
+  "fr40": 0.29448722692007584,
+  "window": [
+   "2025-12-15",
+   "2025-12-22"
+  ],
+  "total_count": 1,
+  "fail_count": 0,
+  "sentiment_score": 0.0,
+  "rho": 0.0,
+  "p/n/n": [
+   0,
+   0,
+   1
+  ],
+  "source_stats": {
+   "finnhub": 3,
+   "edgar": 0
+  },
+  "fr_recalc": 0.2367816626183008,
+  "fp": {
+   "4": "none",
+   "5": "none",
+   "6": "none"
+  }
+ },
+ {
+  "symbol": "CWBHF",
+  "buy_date": "2025-12-23",
+  "fr40": 2.4767024362168915,
+  "window": [
+   "2025-12-16",
+   "2025-12-23"
+  ],
+  "total_count": 1,
+  "fail_count": 0,
+  "sentiment_score": 0.4733,
+  "rho": 1.0,
+  "p/n/n": [
+   1,
+   0,
+   0
+  ],
+  "source_stats": {
+   "finnhub": 5,
+   "edgar": 0
+  },
+  "fr_recalc": 2.4767024362168915,
+  "fp": {
+   "4": "up",
+   "5": "up",
+   "6": "up"
+  }
+ },
+ {
+  "symbol": "DBI",
+  "buy_date": "2025-12-11",
+  "fr40": 0.07230397218273477,
+  "window": [
+   "2025-12-04",
+   "2025-12-11"
+  ],
+  "total_count": 6,
+  "fail_count": 0,
+  "sentiment_score": 0.4444,
+  "rho": 0.6695,
+  "p/n/n": [
+   4,
+   1,
+   1
+  ],
+  "source_stats": {
+   "finnhub": 22,
+   "edgar": 2
+  },
+  "fr_recalc": 0.07230397218273477,
+  "fp": {
+   "4": "down",
+   "5": "down",
+   "6": "none"
+  }
+ },
+ {
+  "symbol": "DFLI",
+  "buy_date": "2025-10-07",
+  "fr40": 0.9930216800721576,
+  "window": [
+   "2025-09-30",
+   "2025-10-07"
+  ],
+  "total_count": 4,
+  "fail_count": 0,
+  "sentiment_score": -0.4476,
+  "rho": -0.4156,
+  "p/n/n": [
+   2,
+   1,
+   1
+  ],
+  "source_stats": {
+   "finnhub": 22,
+   "edgar": 1
+  },
+  "fr_recalc": 0.812500074505808,
+  "fp": {
+   "4": "up",
+   "5": "up",
+   "6": "up"
+  }
+ },
+ {
+  "symbol": "DRIO",
+  "buy_date": "2025-10-01",
+  "fr40": 0.03230879033241111,
+  "window": [
+   "2025-09-24",
+   "2025-10-01"
+  ],
+  "total_count": 1,
+  "fail_count": 0,
+  "sentiment_score": 0.4733,
+  "rho": 1.0,
+  "p/n/n": [
+   1,
+   0,
+   0
+  ],
+  "source_stats": {
+   "finnhub": 7,
+   "edgar": 1
+  },
+  "fr_recalc": 0.03229562539560704,
+  "fp": {
+   "4": "down",
+   "5": "down",
+   "6": "down"
+  }
+ },
+ {
+  "symbol": "DRIO",
+  "buy_date": "2025-10-06",
+  "fr40": 0.059430719333674054,
+  "window": [
+   "2025-09-29",
+   "2025-10-06"
+  ],
+  "total_count": 1,
+  "fail_count": 0,
+  "sentiment_score": 0.1822,
+  "rho": 1.0,
+  "p/n/n": [
+   1,
+   0,
+   0
+  ],
+  "source_stats": {
+   "finnhub": 3,
+   "edgar": 0
+  },
+  "fr_recalc": 0.04680574306156715,
+  "fp": {
+   "4": "down",
+   "5": "down",
+   "6": "down"
+  }
+ },
+ {
+  "symbol": "DVLT",
+  "buy_date": "2025-10-02",
+  "fr40": 1.869719947510931,
+  "window": [
+   "2025-09-25",
+   "2025-10-02"
+  ],
+  "total_count": 4,
+  "fail_count": 0,
+  "sentiment_score": 0.5755,
+  "rho": 0.8545,
+  "p/n/n": [
+   2,
+   0,
+   2
+  ],
+  "source_stats": {
+   "finnhub": 15,
+   "edgar": 4
+  },
+  "fr_recalc": 1.6797385498696098,
+  "fp": {
+   "4": "up",
+   "5": "up",
+   "6": "up"
+  }
+ },
+ {
+  "symbol": "DVLT",
+  "buy_date": "2025-10-02",
+  "fr40": 1.869719947510931,
+  "window": [
+   "2025-09-25",
+   "2025-10-02"
+  ],
+  "total_count": 4,
+  "fail_count": 0,
+  "sentiment_score": 0.5755,
+  "rho": 0.8545,
+  "p/n/n": [
+   2,
+   0,
+   2
+  ],
+  "source_stats": {
+   "finnhub": 15,
+   "edgar": 4
+  },
+  "fr_recalc": 1.6797385498696098,
+  "fp": {
+   "4": "up",
+   "5": "up",
+   "6": "up"
+  }
+ },
+ {
+  "symbol": "DVLT",
+  "buy_date": "2025-10-14",
+  "fr40": 1.012398345871673,
+  "window": [
+   "2025-10-07",
+   "2025-10-14"
+  ],
+  "total_count": 1,
+  "fail_count": 0,
+  "sentiment_score": 0.3634,
+  "rho": 1.0,
+  "p/n/n": [
+   1,
+   0,
+   0
+  ],
+  "source_stats": {
+   "finnhub": 6,
+   "edgar": 1
+  },
+  "fr_recalc": 0.8721460262591385,
+  "fp": {
+   "4": "none",
+   "5": "none",
+   "6": "none"
+  }
+ },
+ {
+  "symbol": "DXST",
+  "buy_date": "2025-09-17",
+  "fr40": 0.21391623742148624,
+  "window": [
+   "2025-09-10",
+   "2025-09-17"
+  ],
+  "total_count": 1,
+  "fail_count": 0,
+  "sentiment_score": 0.0,
+  "rho": 0.0,
+  "p/n/n": [
+   0,
+   0,
+   1
+  ],
+  "source_stats": {
+   "finnhub": 3,
+   "edgar": 0
+  },
+  "fr_recalc": 0.1693290734824282,
+  "fp": {
+   "4": "down",
+   "5": "down",
+   "6": "down"
+  }
+ },
+ {
+  "symbol": "ELBM",
+  "buy_date": "2025-10-17",
+  "fr40": 0.062375164503902146,
+  "window": [
+   "2025-10-10",
+   "2025-10-17"
+  ],
+  "total_count": 4,
+  "fail_count": 0,
+  "sentiment_score": 0.5279,
+  "rho": 0.8428,
+  "p/n/n": [
+   2,
+   0,
+   2
+  ],
+  "source_stats": {
+   "finnhub": 12,
+   "edgar": 0
+  },
+  "fr_recalc": 0.1261261116131862,
+  "fp": {
+   "4": "down",
+   "5": "down",
+   "6": "down"
+  }
+ },
+ {
+  "symbol": "EPOW",
+  "buy_date": "2025-10-02",
+  "fr40": 0.09944776675013194,
+  "window": [
+   "2025-09-25",
+   "2025-10-02"
+  ],
+  "total_count": 3,
+  "fail_count": 0,
+  "sentiment_score": 0.5797,
+  "rho": 1.0,
+  "p/n/n": [
+   3,
+   0,
+   0
+  ],
+  "source_stats": {
+   "finnhub": 36,
+   "edgar": 0
+  },
+  "fr_recalc": 0.1212120911087664,
+  "fp": {
+   "4": "none",
+   "5": "none",
+   "6": "none"
+  }
+ },
+ {
+  "symbol": "FEAM",
+  "buy_date": "2025-10-14",
+  "fr40": 0.08006169931670208,
+  "window": [
+   "2025-10-07",
+   "2025-10-14"
+  ],
+  "total_count": 1,
+  "fail_count": 0,
+  "sentiment_score": 0.1822,
+  "rho": 1.0,
+  "p/n/n": [
+   1,
+   0,
+   0
+  ],
+  "source_stats": {
+   "finnhub": 1,
+   "edgar": 0
+  },
+  "fr_recalc": 0.06041225301393616,
+  "fp": {
+   "4": "down",
+   "5": "down",
+   "6": "down"
+  }
+ },
+ {
+  "symbol": "FEAM",
+  "buy_date": "2025-10-20",
+  "fr40": 0.0591178143134539,
+  "window": [
+   "2025-10-13",
+   "2025-10-20"
+  ],
+  "total_count": 3,
+  "fail_count": 0,
+  "sentiment_score": 0.2616,
+  "rho": 0.8042,
+  "p/n/n": [
+   2,
+   0,
+   1
+  ],
+  "source_stats": {
+   "finnhub": 3,
+   "edgar": 0
+  },
+  "fr_recalc": -0.004838666757111865,
+  "fp": {
+   "4": "down",
+   "5": "down",
+   "6": "none"
+  }
+ },
+ {
+  "symbol": "FLUX",
+  "buy_date": "2025-09-26",
+  "fr40": 0.9868421803881267,
+  "window": [
+   "2025-09-19",
+   "2025-09-26"
+  ],
+  "total_count": 2,
+  "fail_count": 0,
+  "sentiment_score": 0.1439,
+  "rho": 0.5,
+  "p/n/n": [
+   1,
+   0,
+   1
+  ],
+  "source_stats": {
+   "finnhub": 3,
+   "edgar": 1
+  },
+  "fr_recalc": 0.9868421803881267,
+  "fp": {
+   "4": "up",
+   "5": "up",
+   "6": "up"
+  }
+ },
+ {
+  "symbol": "FUST",
+  "buy_date": "2025-11-18",
+  "fr40": 0.3240740494687624,
+  "window": [
+   "2025-11-11",
+   "2025-11-18"
+  ],
+  "total_count": 0,
+  "fail_count": 0,
+  "sentiment_score": 0.0,
+  "rho": 0.0,
+  "p/n/n": [
+   0,
+   0,
+   0
+  ],
+  "source_stats": {
+   "finnhub": 0,
+   "edgar": 0
+  },
+  "fr_recalc": 0.3888888336994052,
+  "fp": {
+   "4": null,
+   "5": null,
+   "6": null
+  }
+ },
+ {
+  "symbol": "GLSI",
+  "buy_date": "2025-12-22",
+  "fr40": 1.4459328674758731,
+  "window": [
+   "2025-12-15",
+   "2025-12-22"
+  ],
+  "total_count": 2,
+  "fail_count": 0,
+  "sentiment_score": 0.3787,
+  "rho": 1.0,
+  "p/n/n": [
+   2,
+   0,
+   0
+  ],
+  "source_stats": {
+   "finnhub": 8,
+   "edgar": 1
+  },
+  "fr_recalc": 1.5514402587429426,
+  "fp": {
+   "4": "up",
+   "5": "up",
+   "6": "up"
+  }
+ },
+ {
+  "symbol": "GLSI",
+  "buy_date": "2025-12-24",
+  "fr40": 0.981406175953087,
+  "window": [
+   "2025-12-17",
+   "2025-12-24"
+  ],
+  "total_count": 2,
+  "fail_count": 0,
+  "sentiment_score": 0.176,
+  "rho": 0.8344,
+  "p/n/n": [
+   1,
+   0,
+   1
+  ],
+  "source_stats": {
+   "finnhub": 2,
+   "edgar": 1
+  },
+  "fr_recalc": 0.981406175953087,
+  "fp": {
+   "4": "up",
+   "5": "up",
+   "6": "up"
+  }
+ },
+ {
+  "symbol": "GLSI",
+  "buy_date": "2025-12-24",
+  "fr40": 0.981406175953087,
+  "window": [
+   "2025-12-17",
+   "2025-12-24"
+  ],
+  "total_count": 2,
+  "fail_count": 0,
+  "sentiment_score": 0.176,
+  "rho": 0.8344,
+  "p/n/n": [
+   1,
+   0,
+   1
+  ],
+  "source_stats": {
+   "finnhub": 2,
+   "edgar": 1
+  },
+  "fr_recalc": 0.981406175953087,
+  "fp": {
+   "4": "up",
+   "5": "up",
+   "6": "up"
+  }
+ },
+ {
+  "symbol": "GUER",
+  "buy_date": "2025-11-21",
+  "fr40": 3.1666667967561732,
+  "window": [
+   "2025-11-14",
+   "2025-11-21"
+  ],
+  "total_count": 0,
+  "fail_count": 0,
+  "sentiment_score": 0.0,
+  "rho": 0.0,
+  "p/n/n": [
+   0,
+   0,
+   0
+  ],
+  "source_stats": {
+   "finnhub": 0,
+   "edgar": 0
+  },
+  "fr_recalc": 3.1666667967561732,
+  "fp": {
+   "4": "up",
+   "5": "up",
+   "6": "up"
+  }
+ },
+ {
+  "symbol": "GUER",
+  "buy_date": "2025-12-01",
+  "fr40": 0.35082201297014715,
+  "window": [
+   "2025-11-24",
+   "2025-12-01"
+  ],
+  "total_count": 0,
+  "fail_count": 0,
+  "sentiment_score": 0.0,
+  "rho": 0.0,
+  "p/n/n": [
+   0,
+   0,
+   0
+  ],
+  "source_stats": {
+   "finnhub": 0,
+   "edgar": 0
+  },
+  "fr_recalc": 0.18623959982634752,
+  "fp": {
+   "4": "down",
+   "5": "down",
+   "6": "none"
+  }
+ },
+ {
+  "symbol": "GWH",
+  "buy_date": "2025-10-17",
+  "fr40": 0.19907020878303253,
+  "window": [
+   "2025-10-10",
+   "2025-10-17"
+  ],
+  "total_count": 5,
+  "fail_count": 0,
+  "sentiment_score": 0.3978,
+  "rho": 0.5458,
+  "p/n/n": [
+   3,
+   1,
+   1
+  ],
+  "source_stats": {
+   "finnhub": 22,
+   "edgar": 2
+  },
+  "fr_recalc": 0.0738636081417412,
+  "fp": {
+   "4": "down",
+   "5": "down",
+   "6": "down"
+  }
+ },
+ {
+  "symbol": "HAMRF",
+  "buy_date": "2025-10-08",
+  "fr40": 0.114416901609535,
+  "window": [
+   "2025-10-01",
+   "2025-10-08"
+  ],
+  "total_count": 0,
+  "fail_count": 0,
+  "sentiment_score": 0.0,
+  "rho": 0.0,
+  "p/n/n": [
+   0,
+   0,
+   0
+  ],
+  "source_stats": {
+   "finnhub": 0,
+   "edgar": 0
+  },
+  "fr_recalc": 0.11111108351636934,
+  "fp": {
+   "4": "none",
+   "5": "none",
+   "6": "none"
+  }
+ },
+ {
+  "symbol": "HOWL",
+  "buy_date": "2025-10-01",
+  "fr40": 0.07572396377056367,
+  "window": [
+   "2025-09-24",
+   "2025-10-01"
+  ],
+  "total_count": 0,
+  "fail_count": 0,
+  "sentiment_score": 0.0,
+  "rho": 0.0,
+  "p/n/n": [
+   0,
+   0,
+   0
+  ],
+  "source_stats": {
+   "finnhub": 1,
+   "edgar": 0
+  },
+  "fr_recalc": 0.10256412450927033,
+  "fp": {
+   "4": "down",
+   "5": "down",
+   "6": "down"
+  }
+ },
+ {
+  "symbol": "HUIZ",
+  "buy_date": "2025-09-18",
+  "fr40": 0.24511154610584662,
+  "window": [
+   "2025-09-11",
+   "2025-09-18"
+  ],
+  "total_count": 3,
+  "fail_count": 0,
+  "sentiment_score": 0.5451,
+  "rho": 1.0,
+  "p/n/n": [
+   3,
+   0,
+   0
+  ],
+  "source_stats": {
+   "finnhub": 13,
+   "edgar": 0
+  },
+  "fr_recalc": 0.2975077608588892,
+  "fp": {
+   "4": "up",
+   "5": "none",
+   "6": "none"
+  }
+ },
+ {
+  "symbol": "KAYS",
+  "buy_date": "2025-09-19",
+  "fr40": 0.2630200285077387,
+  "window": [
+   "2025-09-12",
+   "2025-09-19"
+  ],
+  "total_count": 0,
+  "fail_count": 0,
+  "sentiment_score": 0.0,
+  "rho": 0.0,
+  "p/n/n": [
+   0,
+   0,
+   0
+  ],
+  "source_stats": {
+   "finnhub": 0,
+   "edgar": 0
+  },
+  "fr_recalc": 0.4261905118806162,
+  "fp": {
+   "4": "none",
+   "5": "none",
+   "6": "none"
+  }
+ },
+ {
+  "symbol": "KAYS",
+  "buy_date": "2025-09-24",
+  "fr40": 0.23062651289175237,
+  "window": [
+   "2025-09-17",
+   "2025-09-24"
+  ],
+  "total_count": 2,
+  "fail_count": 0,
+  "sentiment_score": 0.3169,
+  "rho": 0.6116,
+  "p/n/n": [
+   1,
+   0,
+   1
+  ],
+  "source_stats": {
+   "finnhub": 1,
+   "edgar": 1
+  },
+  "fr_recalc": 0.36136365945427884,
+  "fp": {
+   "4": "none",
+   "5": "none",
+   "6": "none"
+  }
+ },
+ {
+  "symbol": "KAYS",
+  "buy_date": "2025-09-24",
+  "fr40": 0.23062651289175237,
+  "window": [
+   "2025-09-17",
+   "2025-09-24"
+  ],
+  "total_count": 2,
+  "fail_count": 0,
+  "sentiment_score": 0.3169,
+  "rho": 0.6116,
+  "p/n/n": [
+   1,
+   0,
+   1
+  ],
+  "source_stats": {
+   "finnhub": 1,
+   "edgar": 1
+  },
+  "fr_recalc": 0.36136365945427884,
+  "fp": {
+   "4": "none",
+   "5": "none",
+   "6": "none"
+  }
+ },
+ {
+  "symbol": "KIQSF",
+  "buy_date": "2025-09-18",
+  "fr40": 0.13333330021964307,
+  "window": [
+   "2025-09-11",
+   "2025-09-18"
+  ],
+  "total_count": 0,
+  "fail_count": 0,
+  "sentiment_score": 0.0,
+  "rho": 0.0,
+  "p/n/n": [
+   0,
+   0,
+   0
+  ],
+  "source_stats": {
+   "finnhub": 0,
+   "edgar": 0
+  },
+  "fr_recalc": 0.13333330021964307,
+  "fp": {
+   "4": "down",
+   "5": "none",
+   "6": "none"
+  }
+ },
+ {
+  "symbol": "KITL",
+  "buy_date": "2025-10-14",
+  "fr40": 0.24389102777344426,
+  "window": [
+   "2025-10-07",
+   "2025-10-14"
+  ],
+  "total_count": 0,
+  "fail_count": 0,
+  "sentiment_score": 0.0,
+  "rho": 0.0,
+  "p/n/n": [
+   0,
+   0,
+   0
+  ],
+  "source_stats": {
+   "finnhub": 0,
+   "edgar": 0
+  },
+  "fr_recalc": 0.13461542422414796,
+  "fp": {
+   "4": "down",
+   "5": "down",
+   "6": "none"
+  }
+ },
+ {
+  "symbol": "KTTA",
+  "buy_date": "2025-12-03",
+  "fr40": 0.1447593237097989,
+  "window": [
+   "2025-11-26",
+   "2025-12-03"
+  ],
+  "total_count": 4,
+  "fail_count": 0,
+  "sentiment_score": 0.5923,
+  "rho": 0.9727,
+  "p/n/n": [
+   3,
+   0,
+   1
+  ],
+  "source_stats": {
+   "finnhub": 23,
+   "edgar": 1
+  },
+  "fr_recalc": 0.1282052144182928,
+  "fp": {
+   "4": "none",
+   "5": "none",
+   "6": "none"
+  }
+ },
+ {
+  "symbol": "KTTA",
+  "buy_date": "2025-12-03",
+  "fr40": 0.1447593237097989,
+  "window": [
+   "2025-11-26",
+   "2025-12-03"
+  ],
+  "total_count": 4,
+  "fail_count": 0,
+  "sentiment_score": 0.5923,
+  "rho": 0.9727,
+  "p/n/n": [
+   3,
+   0,
+   1
+  ],
+  "source_stats": {
+   "finnhub": 23,
+   "edgar": 1
+  },
+  "fr_recalc": 0.1282052144182928,
+  "fp": {
+   "4": "none",
+   "5": "none",
+   "6": "none"
+  }
+ },
+ {
+  "symbol": "LPCN",
+  "buy_date": "2025-12-23",
+  "fr40": 1.5695709288034259,
+  "window": [
+   "2025-12-16",
+   "2025-12-23"
+  ],
+  "total_count": 3,
+  "fail_count": 0,
+  "sentiment_score": 0.5061,
+  "rho": 0.9645,
+  "p/n/n": [
+   2,
+   0,
+   1
+  ],
+  "source_stats": {
+   "finnhub": 3,
+   "edgar": 1
+  },
+  "fr_recalc": 1.6832970775054816,
+  "fp": {
+   "4": "up",
+   "5": "up",
+   "6": "up"
+  }
+ },
+ {
+  "symbol": "LPCN",
+  "buy_date": "2025-12-26",
+  "fr40": 1.3652007343109864,
+  "window": [
+   "2025-12-19",
+   "2025-12-26"
+  ],
+  "total_count": 1,
+  "fail_count": 0,
+  "sentiment_score": 0.3634,
+  "rho": 1.0,
+  "p/n/n": [
+   1,
+   0,
+   0
+  ],
+  "source_stats": {
+   "finnhub": 1,
+   "edgar": 0
+  },
+  "fr_recalc": 1.3652007343109864,
+  "fp": {
+   "4": "up",
+   "5": "up",
+   "6": "up"
+  }
+ },
+ {
+  "symbol": "LRDC",
+  "buy_date": "2025-11-12",
+  "fr40": 0.7865762506522875,
+  "window": [
+   "2025-11-05",
+   "2025-11-12"
+  ],
+  "total_count": 0,
+  "fail_count": 0,
+  "sentiment_score": 0.0,
+  "rho": 0.0,
+  "p/n/n": [
+   0,
+   0,
+   0
+  ],
+  "source_stats": {
+   "finnhub": 0,
+   "edgar": 0
+  },
+  "fr_recalc": 0.7692308662205793,
+  "fp": {
+   "4": "up",
+   "5": "up",
+   "6": "up"
+  }
+ },
+ {
+  "symbol": "LRDC",
+  "buy_date": "2025-11-14",
+  "fr40": 0.5445383683195826,
+  "window": [
+   "2025-11-07",
+   "2025-11-14"
+  ],
+  "total_count": 0,
+  "fail_count": 0,
+  "sentiment_score": 0.0,
+  "rho": 0.0,
+  "p/n/n": [
+   0,
+   0,
+   0
+  ],
+  "source_stats": {
+   "finnhub": 0,
+   "edgar": 0
+  },
+  "fr_recalc": 0.5333333002196432,
+  "fp": {
+   "4": "down",
+   "5": "up",
+   "6": "up"
+  }
+ },
+ {
+  "symbol": "MAGE",
+  "buy_date": "2025-09-30",
+  "fr40": 1.0719227574081325,
+  "window": [
+   "2025-09-23",
+   "2025-09-30"
+  ],
+  "total_count": 1,
+  "fail_count": 0,
+  "sentiment_score": 0.0,
+  "rho": 0.0,
+  "p/n/n": [
+   0,
+   0,
+   1
+  ],
+  "source_stats": {
+   "finnhub": 0,
+   "edgar": 1
+  },
+  "fr_recalc": 1.0,
+  "fp": {
+   "4": "down",
+   "5": "down",
+   "6": "down"
+  }
+ },
+ {
+  "symbol": "MMA",
+  "buy_date": "2025-09-17",
+  "fr40": 0.04173959000893901,
+  "window": [
+   "2025-09-10",
+   "2025-09-17"
+  ],
+  "total_count": 2,
+  "fail_count": 0,
+  "sentiment_score": 0.5451,
+  "rho": 1.0,
+  "p/n/n": [
+   2,
+   0,
+   0
+  ],
+  "source_stats": {
+   "finnhub": 6,
+   "edgar": 0
+  },
+  "fr_recalc": 0.010989000192372256,
+  "fp": {
+   "4": "none",
+   "5": "none",
+   "6": "none"
+  }
+ },
+ {
+  "symbol": "MTC",
+  "buy_date": "2025-11-10",
+  "fr40": 0.5443039082541119,
+  "window": [
+   "2025-11-03",
+   "2025-11-10"
+  ],
+  "total_count": 0,
+  "fail_count": 0,
+  "sentiment_score": 0.0,
+  "rho": 0.0,
+  "p/n/n": [
+   0,
+   0,
+   0
+  ],
+  "source_stats": {
+   "finnhub": 8,
+   "edgar": 0
+  },
+  "fr_recalc": 0.5443039082541119,
+  "fp": {
+   "4": "none",
+   "5": "none",
+   "6": "none"
+  }
+ },
+ {
+  "symbol": "MVNC",
+  "buy_date": "2025-10-28",
+  "fr40": 0.5799243107084038,
+  "window": [
+   "2025-10-21",
+   "2025-10-28"
+  ],
+  "total_count": 1,
+  "fail_count": 0,
+  "sentiment_score": 0.3634,
+  "rho": 1.0,
+  "p/n/n": [
+   1,
+   0,
+   0
+  ],
+  "source_stats": {
+   "finnhub": 1,
+   "edgar": 0
+  },
+  "fr_recalc": 0.43333341404795833,
+  "fp": {
+   "4": "none",
+   "5": "none",
+   "6": "none"
+  }
+ },
+ {
+  "symbol": "MVNC",
+  "buy_date": "2025-11-05",
+  "fr40": 0.1923115272121861,
+  "window": [
+   "2025-10-29",
+   "2025-11-05"
+  ],
+  "total_count": 1,
+  "fail_count": 0,
+  "sentiment_score": 0.1822,
+  "rho": 1.0,
+  "p/n/n": [
+   1,
+   0,
+   0
+  ],
+  "source_stats": {
+   "finnhub": 1,
+   "edgar": 0
+  },
+  "fr_recalc": 0.1197916515084223,
+  "fp": {
+   "4": "down",
+   "5": "down",
+   "6": "down"
+  }
+ },
+ {
+  "symbol": "MYSE",
+  "buy_date": "2025-10-08",
+  "fr40": 0.07679381866026391,
+  "window": [
+   "2025-10-01",
+   "2025-10-08"
+  ],
+  "total_count": 2,
+  "fail_count": 0,
+  "sentiment_score": 0.2733,
+  "rho": 1.0,
+  "p/n/n": [
+   2,
+   0,
+   0
+  ],
+  "source_stats": {
+   "finnhub": 2,
+   "edgar": 2
+  },
+  "fr_recalc": 0.024691334404499887,
+  "fp": {
+   "4": "down",
+   "5": "down",
+   "6": "down"
+  }
+ },
+ {
+  "symbol": "NPRFF",
+  "buy_date": "2025-09-09",
+  "fr40": 0.21581732230500406,
+  "window": [
+   "2025-09-02",
+   "2025-09-09"
+  ],
+  "total_count": 1,
+  "fail_count": 0,
+  "sentiment_score": 0.3634,
+  "rho": 1.0,
+  "p/n/n": [
+   1,
+   0,
+   0
+  ],
+  "source_stats": {
+   "finnhub": 1,
+   "edgar": 0
+  },
+  "fr_recalc": 0.07692312100935417,
+  "fp": {
+   "4": "down",
+   "5": "none",
+   "6": "none"
+  }
+ },
+ {
+  "symbol": "NVNXF",
+  "buy_date": "2025-10-14",
+  "fr40": 0.04616393071645277,
+  "window": [
+   "2025-10-07",
+   "2025-10-14"
+  ],
+  "total_count": 1,
+  "fail_count": 0,
+  "sentiment_score": 0.3634,
+  "rho": 1.0,
+  "p/n/n": [
+   1,
+   0,
+   0
+  ],
+  "source_stats": {
+   "finnhub": 2,
+   "edgar": 0
+  },
+  "fr_recalc": 0.004615417062884708,
+  "fp": {
+   "4": "down",
+   "5": "down",
+   "6": "down"
+  }
+ },
+ {
+  "symbol": "NVX",
+  "buy_date": "2025-10-20",
+  "fr40": 0.07097915273507559,
+  "window": [
+   "2025-10-13",
+   "2025-10-20"
+  ],
+  "total_count": 0,
+  "fail_count": 0,
+  "sentiment_score": 0.0,
+  "rho": 0.0,
+  "p/n/n": [
+   0,
+   0,
+   0
+  ],
+  "source_stats": {
+   "finnhub": 1,
+   "edgar": 0
+  },
+  "fr_recalc": -0.04444440205891931,
+  "fp": {
+   "4": "down",
+   "5": "down",
+   "6": "down"
+  }
+ },
+ {
+  "symbol": "OMER",
+  "buy_date": "2025-10-23",
+  "fr40": 0.9105178597726734,
+  "window": [
+   "2025-10-16",
+   "2025-10-23"
+  ],
+  "total_count": 6,
+  "fail_count": 0,
+  "sentiment_score": 0.6718,
+  "rho": 0.956,
+  "p/n/n": [
+   5,
+   0,
+   1
+  ],
+  "source_stats": {
+   "finnhub": 17,
+   "edgar": 0
+  },
+  "fr_recalc": 0.5307189401524495,
+  "fp": {
+   "4": "up",
+   "5": "up",
+   "6": "up"
+  }
+ },
+ {
+  "symbol": "OMQS",
+  "buy_date": "2025-11-05",
+  "fr40": 0.13752257758671013,
+  "window": [
+   "2025-10-29",
+   "2025-11-05"
+  ],
+  "total_count": 3,
+  "fail_count": 0,
+  "sentiment_score": 0.1562,
+  "rho": 0.5888,
+  "p/n/n": [
+   1,
+   0,
+   2
+  ],
+  "source_stats": {
+   "finnhub": 2,
+   "edgar": 1
+  },
+  "fr_recalc": 0.2697195803415249,
+  "fp": {
+   "4": "down",
+   "5": "none",
+   "6": "none"
+  }
+ },
+ {
+  "symbol": "OTLC",
+  "buy_date": "2025-09-22",
+  "fr40": 0.5386904673999316,
+  "window": [
+   "2025-09-15",
+   "2025-09-22"
+  ],
+  "total_count": 2,
+  "fail_count": 0,
+  "sentiment_score": 0.0,
+  "rho": 0.0,
+  "p/n/n": [
+   0,
+   0,
+   2
+  ],
+  "source_stats": {
+   "finnhub": 4,
+   "edgar": 0
+  },
+  "fr_recalc": 0.3750000232830648,
+  "fp": {
+   "4": null,
+   "5": null,
+   "6": null
+  }
+ },
+ {
+  "symbol": "OTLC",
+  "buy_date": "2025-09-30",
+  "fr40": 0.45357143645916087,
+  "window": [
+   "2025-09-23",
+   "2025-09-30"
+  ],
+  "total_count": 1,
+  "fail_count": 0,
+  "sentiment_score": 0.3634,
+  "rho": 1.0,
+  "p/n/n": [
+   1,
+   0,
+   0
+  ],
+  "source_stats": {
+   "finnhub": 1,
+   "edgar": 0
+  },
+  "fr_recalc": 0.3750000232830648,
+  "fp": {
+   "4": "none",
+   "5": "none",
+   "6": "none"
+  }
+ },
+ {
+  "symbol": "PLAB",
+  "buy_date": "2025-12-15",
+  "fr40": 0.15385133290294464,
+  "window": [
+   "2025-12-08",
+   "2025-12-15"
+  ],
+  "total_count": 6,
+  "fail_count": 0,
+  "sentiment_score": 0.5598,
+  "rho": 1.0,
+  "p/n/n": [
+   6,
+   0,
+   0
+  ],
+  "source_stats": {
+   "finnhub": 28,
+   "edgar": 1
+  },
+  "fr_recalc": 0.061224489795918435,
+  "fp": {
+   "4": "down",
+   "5": "none",
+   "6": "none"
+  }
+ },
+ {
+  "symbol": "PTN",
+  "buy_date": "2025-11-20",
+  "fr40": 1.1394065210263142,
+  "window": [
+   "2025-11-13",
+   "2025-11-20"
+  ],
+  "total_count": 1,
+  "fail_count": 0,
+  "sentiment_score": 0.3634,
+  "rho": 1.0,
+  "p/n/n": [
+   1,
+   0,
+   0
+  ],
+  "source_stats": {
+   "finnhub": 3,
+   "edgar": 1
+  },
+  "fr_recalc": 1.1394065210263142,
+  "fp": {
+   "4": "up",
+   "5": "up",
+   "6": "up"
+  }
+ },
+ {
+  "symbol": "PTN",
+  "buy_date": "2025-11-25",
+  "fr40": 0.6705404473870366,
+  "window": [
+   "2025-11-18",
+   "2025-11-25"
+  ],
+  "total_count": 0,
+  "fail_count": 0,
+  "sentiment_score": 0.0,
+  "rho": 0.0,
+  "p/n/n": [
+   0,
+   0,
+   0
+  ],
+  "source_stats": {
+   "finnhub": 2,
+   "edgar": 0
+  },
+  "fr_recalc": 0.6666666324847923,
+  "fp": {
+   "4": "up",
+   "5": "none",
+   "6": "none"
+  }
+ },
+ {
+  "symbol": "RENT",
+  "buy_date": "2025-12-18",
+  "fr40": 0.19746374289369154,
+  "window": [
+   "2025-12-11",
+   "2025-12-18"
+  ],
+  "total_count": 3,
+  "fail_count": 0,
+  "sentiment_score": 0.7099,
+  "rho": 1.0,
+  "p/n/n": [
+   3,
+   0,
+   0
+  ],
+  "source_stats": {
+   "finnhub": 17,
+   "edgar": 2
+  },
+  "fr_recalc": 0.15375859026511396,
+  "fp": {
+   "4": "down",
+   "5": "down",
+   "6": "down"
+  }
+ },
+ {
+  "symbol": "RKDA",
+  "buy_date": "2025-10-17",
+  "fr40": -0.03763722335208958,
+  "window": [
+   "2025-10-10",
+   "2025-10-17"
+  ],
+  "total_count": 0,
+  "fail_count": 0,
+  "sentiment_score": 0.0,
+  "rho": 0.0,
+  "p/n/n": [
+   0,
+   0,
+   0
+  ],
+  "source_stats": {
+   "finnhub": 11,
+   "edgar": 0
+  },
+  "fr_recalc": -0.045802906322469084,
+  "fp": {
+   "4": "down",
+   "5": "down",
+   "6": "down"
+  }
+ },
+ {
+  "symbol": "RSMXF",
+  "buy_date": "2025-09-18",
+  "fr40": 0.4268597990702084,
+  "window": [
+   "2025-09-11",
+   "2025-09-18"
+  ],
+  "total_count": 1,
+  "fail_count": 0,
+  "sentiment_score": 0.0,
+  "rho": 0.0,
+  "p/n/n": [
+   0,
+   0,
+   1
+  ],
+  "source_stats": {
+   "finnhub": 1,
+   "edgar": 0
+  },
+  "fr_recalc": 0.5464242046144288,
+  "fp": {
+   "4": "up",
+   "5": "up",
+   "6": "none"
+  }
+ },
+ {
+  "symbol": "SBFM",
+  "buy_date": "2025-10-17",
+  "fr40": 0.10556804047371234,
+  "window": [
+   "2025-10-10",
+   "2025-10-17"
+  ],
+  "total_count": 2,
+  "fail_count": 0,
+  "sentiment_score": 0.2733,
+  "rho": 1.0,
+  "p/n/n": [
+   2,
+   0,
+   0
+  ],
+  "source_stats": {
+   "finnhub": 9,
+   "edgar": 0
+  },
+  "fr_recalc": 0.019138738078044115,
+  "fp": {
+   "4": "down",
+   "5": "down",
+   "6": "down"
+  }
+ },
+ {
+  "symbol": "SDST",
+  "buy_date": "2025-10-17",
+  "fr40": 0.02278863321617297,
+  "window": [
+   "2025-10-10",
+   "2025-10-17"
+  ],
+  "total_count": 2,
+  "fail_count": 0,
+  "sentiment_score": 0.0,
+  "rho": 0.0,
+  "p/n/n": [
+   0,
+   0,
+   2
+  ],
+  "source_stats": {
+   "finnhub": 5,
+   "edgar": 0
+  },
+  "fr_recalc": 0.045197787295962355,
+  "fp": {
+   "4": "down",
+   "5": "down",
+   "6": "down"
+  }
+ },
+ {
+  "symbol": "SLDC",
+  "buy_date": "2025-10-30",
+  "fr40": 0.19999999999999996,
+  "window": [
+   "2025-10-23",
+   "2025-10-30"
+  ],
+  "total_count": 0,
+  "fail_count": 0,
+  "sentiment_score": 0.0,
+  "rho": 0.0,
+  "p/n/n": [
+   0,
+   0,
+   0
+  ],
+  "source_stats": {
+   "finnhub": 0,
+   "edgar": 0
+  },
+  "fr_recalc": 0.19999999999999996,
+  "fp": {
+   "4": "none",
+   "5": "none",
+   "6": "none"
+  }
+ },
+ {
+  "symbol": "SLNH",
+  "buy_date": "2025-09-29",
+  "fr40": 1.2503968276388877,
+  "window": [
+   "2025-09-22",
+   "2025-09-29"
+  ],
+  "total_count": 2,
+  "fail_count": 0,
+  "sentiment_score": -0.7631,
+  "rho": -1.0,
+  "p/n/n": [
+   0,
+   2,
+   0
+  ],
+  "source_stats": {
+   "finnhub": 11,
+   "edgar": 1
+  },
+  "fr_recalc": 1.0396825021386715,
+  "fp": {
+   "4": "up",
+   "5": "none",
+   "6": "none"
+  }
+ },
+ {
+  "symbol": "SLNHP",
+  "buy_date": "2025-09-19",
+  "fr40": 0.9379845534327471,
+  "window": [
+   "2025-09-12",
+   "2025-09-19"
+  ],
+  "total_count": 2,
+  "fail_count": 0,
+  "sentiment_score": 0.3258,
+  "rho": 0.409,
+  "p/n/n": [
+   1,
+   1,
+   0
+  ],
+  "source_stats": {
+   "finnhub": 8,
+   "edgar": 1
+  },
+  "fr_recalc": 0.9379845534327471,
+  "fp": {
+   "4": "up",
+   "5": "up",
+   "6": "up"
+  }
+ },
+ {
+  "symbol": "SPQS",
+  "buy_date": "2025-12-12",
+  "fr40": 0.16666661816028483,
+  "window": [
+   "2025-12-05",
+   "2025-12-12"
+  ],
+  "total_count": 0,
+  "fail_count": 0,
+  "sentiment_score": 0.0,
+  "rho": 0.0,
+  "p/n/n": [
+   0,
+   0,
+   0
+  ],
+  "source_stats": {
+   "finnhub": 0,
+   "edgar": 0
+  },
+  "fr_recalc": 0.0,
+  "fp": {
+   "4": "none",
+   "5": "none",
+   "6": "none"
+  }
+ },
+ {
+  "symbol": "SPTY",
+  "buy_date": "2025-10-31",
+  "fr40": 0.18113168136697946,
+  "window": [
+   "2025-10-24",
+   "2025-10-31"
+  ],
+  "total_count": 1,
+  "fail_count": 0,
+  "sentiment_score": 0.4733,
+  "rho": 1.0,
+  "p/n/n": [
+   1,
+   0,
+   0
+  ],
+  "source_stats": {
+   "finnhub": 1,
+   "edgar": 0
+  },
+  "fr_recalc": 0.34529150379241225,
+  "fp": {
+   "4": "down",
+   "5": "down",
+   "6": "down"
+  }
+ },
+ {
+  "symbol": "SRGZ",
+  "buy_date": "2025-12-09",
+  "fr40": 1.619343401153408,
+  "window": [
+   "2025-12-02",
+   "2025-12-09"
+  ],
+  "total_count": 0,
+  "fail_count": 0,
+  "sentiment_score": 0.0,
+  "rho": 0.0,
+  "p/n/n": [
+   0,
+   0,
+   0
+  ],
+  "source_stats": {
+   "finnhub": 0,
+   "edgar": 0
+  },
+  "fr_recalc": 1.607272714957718,
+  "fp": {
+   "4": "down",
+   "5": "down",
+   "6": "down"
+  }
+ },
+ {
+  "symbol": "SRGZ",
+  "buy_date": "2025-12-23",
+  "fr40": 1.2601290083401993,
+  "window": [
+   "2025-12-16",
+   "2025-12-23"
+  ],
+  "total_count": 1,
+  "fail_count": 0,
+  "sentiment_score": 0.3634,
+  "rho": 1.0,
+  "p/n/n": [
+   1,
+   0,
+   0
+  ],
+  "source_stats": {
+   "finnhub": 1,
+   "edgar": 1
+  },
+  "fr_recalc": 1.0662824714886452,
+  "fp": {
+   "4": "down",
+   "5": "down",
+   "6": "down"
+  }
+ },
+ {
+  "symbol": "SSM",
+  "buy_date": "2025-09-09",
+  "fr40": 0.16842308164393682,
+  "window": [
+   "2025-09-02",
+   "2025-09-09"
+  ],
+  "total_count": 3,
+  "fail_count": 0,
+  "sentiment_score": 0.0971,
+  "rho": 0.2841,
+  "p/n/n": [
+   1,
+   0,
+   2
+  ],
+  "source_stats": {
+   "finnhub": 8,
+   "edgar": 4
+  },
+  "fr_recalc": 0.14240171884342923,
+  "fp": {
+   "4": "down",
+   "5": "none",
+   "6": "none"
+  }
+ },
+ {
+  "symbol": "SSP",
+  "buy_date": "2025-11-19",
+  "fr40": 0.6141065963231983,
+  "window": [
+   "2025-11-12",
+   "2025-11-19"
+  ],
+  "total_count": 3,
+  "fail_count": 0,
+  "sentiment_score": 0.6429,
+  "rho": 0.9599,
+  "p/n/n": [
+   2,
+   0,
+   1
+  ],
+  "source_stats": {
+   "finnhub": 7,
+   "edgar": 0
+  },
+  "fr_recalc": 0.5621226483707848,
+  "fp": {
+   "4": "up",
+   "5": "up",
+   "6": "up"
+  }
+ },
+ {
+  "symbol": "TBLLF",
+  "buy_date": "2025-10-13",
+  "fr40": 0.06707317003917113,
+  "window": [
+   "2025-10-06",
+   "2025-10-13"
+  ],
+  "total_count": 0,
+  "fail_count": 0,
+  "sentiment_score": 0.0,
+  "rho": 0.0,
+  "p/n/n": [
+   0,
+   0,
+   0
+  ],
+  "source_stats": {
+   "finnhub": 0,
+   "edgar": 0
+  },
+  "fr_recalc": 0.06707317003917113,
+  "fp": {
+   "4": "down",
+   "5": "down",
+   "6": "down"
+  }
+ },
+ {
+  "symbol": "VNCE",
+  "buy_date": "2025-09-17",
+  "fr40": 0.4235294832627816,
+  "window": [
+   "2025-09-10",
+   "2025-09-17"
+  ],
+  "total_count": 6,
+  "fail_count": 0,
+  "sentiment_score": 0.206,
+  "rho": 0.2523,
+  "p/n/n": [
+   3,
+   1,
+   2
+  ],
+  "source_stats": {
+   "finnhub": 24,
+   "edgar": 2
+  },
+  "fr_recalc": 0.4235294832627816,
+  "fp": {
+   "4": "up",
+   "5": "up",
+   "6": "up"
+  }
+ },
+ {
+  "symbol": "WWR",
+  "buy_date": "2025-10-06",
+  "fr40": 1.553439557266165,
+  "window": [
+   "2025-09-29",
+   "2025-10-06"
+  ],
+  "total_count": 0,
+  "fail_count": 0,
+  "sentiment_score": 0.0,
+  "rho": 0.0,
+  "p/n/n": [
+   0,
+   0,
+   0
+  ],
+  "source_stats": {
+   "finnhub": 1,
+   "edgar": 0
+  },
+  "fr_recalc": 1.6408451502343513,
+  "fp": {
+   "4": "up",
+   "5": "up",
+   "6": "up"
+  }
+ },
+ {
+  "symbol": "WWR",
+  "buy_date": "2025-10-08",
+  "fr40": 1.4509804379889628,
+  "window": [
+   "2025-10-01",
+   "2025-10-08"
+  ],
+  "total_count": 0,
+  "fail_count": 0,
+  "sentiment_score": 0.0,
+  "rho": 0.0,
+  "p/n/n": [
+   0,
+   0,
+   0
+  ],
+  "source_stats": {
+   "finnhub": 1,
+   "edgar": 0
+  },
+  "fr_recalc": 1.4509804379889628,
+  "fp": {
+   "4": "up",
+   "5": "up",
+   "6": "up"
+  }
+ },
+ {
+  "symbol": "YCBD",
+  "buy_date": "2025-12-23",
+  "fr40": 0.07704215371579996,
+  "window": [
+   "2025-12-16",
+   "2025-12-23"
+  ],
+  "total_count": 10,
+  "fail_count": 0,
+  "sentiment_score": 0.5646,
+  "rho": 0.9165,
+  "p/n/n": [
+   6,
+   0,
+   4
+  ],
+  "source_stats": {
+   "finnhub": 32,
+   "edgar": 1
+  },
+  "fr_recalc": 0.0933735504311679,
+  "fp": {
+   "4": "down",
+   "5": "down",
+   "6": "down"
+  }
+ },
+ {
+  "symbol": "ZEOX",
+  "buy_date": "2025-10-22",
+  "fr40": 0.3100032116589714,
+  "window": [
+   "2025-10-15",
+   "2025-10-22"
+  ],
+  "total_count": 0,
+  "fail_count": 0,
+  "sentiment_score": 0.0,
+  "rho": 0.0,
+  "p/n/n": [
+   0,
+   0,
+   0
+  ],
+  "source_stats": {
+   "finnhub": 0,
+   "edgar": 0
+  },
+  "fr_recalc": 0.10000002384185791,
+  "fp": {
+   "4": "none",
+   "5": "none",
+   "6": "none"
+  }
+ }
+]

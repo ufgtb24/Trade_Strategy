@@ -1,0 +1,192 @@
+{
+ "structure": {
+  "v4": {
+   "symbols": 131,
+   "matches": 184,
+   "segs": 629,
+   "bars": 3027,
+   "segs_per_match": 3.4184782608695654,
+   "bars_per_match": 16.45108695652174
+  },
+  "v1": {
+   "symbols": 66,
+   "matches": 80,
+   "tb_events": 80,
+   "bars": 227,
+   "bars_per_match": 2.8375
+  },
+  "burst_per_symbol_v4": null,
+  "burst_per_symbol_v1": null
+ },
+ "symbols": {
+  "v4_only": [
+   "ACFN",
+   "AIIO",
+   "AIRJ",
+   "ALXO",
+   "ARBB",
+   "ASTI",
+   "BCHT",
+   "BKKT",
+   "BTBD",
+   "CLIR",
+   "CLLS",
+   "CNTB",
+   "COOT",
+   "COSM",
+   "CTOR",
+   "DBI",
+   "DFDV",
+   "DFLI",
+   "DOMO",
+   "DOUG",
+   "DRIO",
+   "ENRT",
+   "EPOW",
+   "FMST",
+   "FNUC",
+   "FRMM",
+   "GALT",
+   "GV",
+   "HCWC",
+   "HTCR",
+   "HTZ",
+   "HYPD",
+   "IMCC",
+   "ISTKF",
+   "JUSHF",
+   "KTTA",
+   "KZIA",
+   "LAC",
+   "LOCL",
+   "LSH",
+   "MARPS",
+   "MBAI",
+   "MBIO",
+   "MGIH",
+   "MMA",
+   "MTC",
+   "NKTR",
+   "NRRSF",
+   "NSFDF",
+   "NVX",
+   "NZAUF",
+   "OMER",
+   "OPEN",
+   "PALI",
+   "PSRHF",
+   "PTHS",
+   "SBFM",
+   "SDST",
+   "SLNHP",
+   "SNES",
+   "SNTG",
+   "TRIB",
+   "TRON",
+   "TUNGF",
+   "TURB",
+   "VERI",
+   "VIOT",
+   "VIVO",
+   "VNCE",
+   "WHWK",
+   "XFOR"
+  ],
+  "v1_only": [
+   "BRNS",
+   "GLSI",
+   "LPCN",
+   "PW",
+   "VOR",
+   "YCBD"
+  ],
+  "both": 60
+ },
+ "burst_match_keys": {
+  "v4": 184,
+  "v1": 80,
+  "common": 73,
+  "v4_only": 111,
+  "v1_only": 7,
+  "v1_only_detail": [
+   {
+    "symbol": "BRNS",
+    "burst": [
+     204,
+     207
+    ]
+   },
+   {
+    "symbol": "GLSI",
+    "burst": [
+     308,
+     313
+    ]
+   },
+   {
+    "symbol": "LPCN",
+    "burst": [
+     312,
+     314
+    ]
+   },
+   {
+    "symbol": "LPCN",
+    "burst": [
+     312,
+     316
+    ]
+   },
+   {
+    "symbol": "PW",
+    "burst": [
+     218,
+     222
+    ]
+   },
+   {
+    "symbol": "VOR",
+    "burst": [
+     188,
+     193
+    ]
+   },
+   {
+    "symbol": "YCBD",
+    "burst": [
+     309,
+     312
+    ]
+   }
+  ],
+  "v4_only_detail_n": 111
+ },
+ "burst_event_pool": {
+  "v4_events": 986,
+  "v1_events": 519,
+  "common": 480,
+  "v4_only": 506,
+  "v1_only": 39
+ },
+ "v1_burst_fate": {
+  "v1_bursts": 80,
+  "also_v4_tb_match": 73,
+  "v4_no_tb": 7
+ },
+ "v4_burst_fate": {
+  "v4_bursts": 184,
+  "v1_no_tb": 111
+ },
+ "v4_seg_dist_buckets": {
+  "<=20": 314,
+  "21-40": 197,
+  ">40": 118
+ },
+ "v4_seg_ord": {
+  "first": 184,
+  "later": 445
+ },
+ "v1_dist_buckets": {
+  "<=20": 80
+ }
+}

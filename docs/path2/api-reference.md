@@ -31,7 +31,7 @@ path2 是一个**独立的"走势表达"框架**。它要解决的问题很具�
 
 > 💡 **你现在应该理解了**：path2 的核心分工是"生产事件"（Detector）和"组合事件"（PatternSpec + 引擎）两件事。下面所有的类，都是围绕这两件事的细节展开。
 
-本文档按模块分节，覆盖所有公共符号。所有代码示例以 `path2_apps/bottom_breakout_burst`（一个真实走势包：底部连续突破）为参照。
+本文档按模块分节，覆盖所有公共符号。所有代码示例以 `path2_apps/bottom_burst`（一个真实走势包：底部连续突破）为参照。
 
 ---
 
@@ -166,7 +166,7 @@ for event in run(bo_det, df):
 
 **这一节是什么**：故事里的每个"角色"叫一个 **节点（Node）**。这一节讲怎么声明节点——用 `NodeSpec`。如果某个角色不是"一个事件"而是"一串连续的同类事件"（比如"重复出现 N 次的那种角色"），框架还提供一个可选的 `KleeneSpec`。
 
-> ℹ️ **关于 `KleeneSpec` 先说清一件事**：它是框架**仍然支持**的通用机制，但当前示例 app `bottom_breakout_burst` **已经不再用它**了——里面那个"密集突破串"改用了更干净的**嵌套事件** `BurstEvent`（§8）。如果你照着 `KleeneSpec` 去理解本 app，会对不上代码。下面会把这两条路讲清楚。
+> ℹ️ **关于 `KleeneSpec` 先说清一件事**：它是框架**仍然支持**的通用机制，但当前示例 app `bottom_burst` **已经不再用它**了——里面那个"密集突破串"改用了更干净的**嵌套事件** `BurstEvent`（§8）。如果你照着 `KleeneSpec` 去理解本 app，会对不上代码。下面会把这两条路讲清楚。
 
 ```python
 from path2.dag import NodeSpec, KleeneSpec, MatchContext
@@ -220,7 +220,7 @@ NodeSpec(
 ```
 
 > 💡 **小贴士（一身多角）**：同一种 detector 可以扮演剧本里不同的角色。比如声明 `down`（下跌段）和 `side`（横盘段）两个角色——它们都用 `TrendSegmentDetector`、靠不同的 `where`（`regime=="down"` vs `=="sideways"`）区分。
-> 在当前示例 app `bottom_breakout_burst` 里，`down` 和 `side` 用的是**两个各自独立的** `TrendSegmentDetector` 实例（不是同一个对象）。为什么要各持一份？这样引擎能自动给两边产出的事件打上不同的 `event_id` 前缀（`trend0` / `trend1`），避免它们的 id 撞车——这套"同类多实例自动消歧"机制叫 `source_tag`，详见 §8 `TrendSegmentDetector`。
+> 在当前示例 app `bottom_burst` 里，`down` 和 `side` 用的是**两个各自独立的** `TrendSegmentDetector` 实例（不是同一个对象）。为什么要各持一份？这样引擎能自动给两边产出的事件打上不同的 `event_id` 前缀（`trend0` / `trend1`），避免它们的 id 撞车——这套"同类多实例自动消歧"机制叫 `source_tag`，详见 §8 `TrendSegmentDetector`。
 
 ---
 
@@ -245,7 +245,7 @@ NodeSpec(
 
 配了 `KleeneSpec` 之后，引擎会从事件流里抓出一段**连续子序列**，把整段当成一个绑定单元，参与外层故事的匹配。相应地，这个角色在结果里的值就从"单个事件"升级为"一个事件元组"。
 
-> ✅ **框架仍支持** ❌ **当前示例 app 不用**：`KleeneSpec` 这套"求解期把一串同类事件绑成序列"的机制依然健在、可用，适合你在**自己的走势包里**表达"重复出现 N 次的角色"。但 `bottom_breakout_burst` 里那个"密集突破串"已经换了一条路——改用嵌套事件 `BurstEvent`（由 `BurstDetector` 在产事件阶段就把一串突破打包成一个宽事件，见 §8）。两条路的取舍：Kleene 把"成串"留到匹配期再算；嵌套事件把"成串"提前到产出期算好，整串变成一个能被引用、能被画图、能被单个 `where` 整体检查的实体。下面的字段说明和示例**仅用于说明 Kleene 用法**，本 app 不这么写。
+> ✅ **框架仍支持** ❌ **当前示例 app 不用**：`KleeneSpec` 这套"求解期把一串同类事件绑成序列"的机制依然健在、可用，适合你在**自己的走势包里**表达"重复出现 N 次的角色"。但 `bottom_burst` 里那个"密集突破串"已经换了一条路——改用嵌套事件 `BurstEvent`（由 `BurstDetector` 在产事件阶段就把一串突破打包成一个宽事件，见 §8）。两条路的取舍：Kleene 把"成串"留到匹配期再算；嵌套事件把"成串"提前到产出期算好，整串变成一个能被引用、能被画图、能被单个 `where` 整体检查的实体。下面的字段说明和示例**仅用于说明 Kleene 用法**，本 app 不这么写。
 
 ```python
 @dataclass(frozen=True)
@@ -553,7 +553,7 @@ from path2.dag.where import attr, first, last, count, any, distinct, reduce, all
 > - **成串角色（Kleene）** → 用 `first` / `last`（看首尾元素）、`count`（看串长）、`any`（存在一个满足）、`distinct`（去重计数）、`reduce`（自定义聚合）。
 > - **想把多条拼起来** → 用 `all`。
 
-> ℹ️ **当前示例 app 走的是哪条路**：`first` / `count` / `any` / `distinct` / `reduce` 这些"对一整串聚合"的谓词服务 **Kleene 路径**，框架仍支持。但 `bottom_breakout_burst` **没有 Kleene 节点**——它那个"密集突破串"的聚合属性（首根突破的回调间距 `first_drought`、打穿的不同峰数 `distinct_pk`、串内最大量比 `max_vol_ratio`）已经在 `BurstEvent` 产出阶段就算成了**普通字段**（见 §8）。所以 `burst` 节点的 `where` 直接用 `attr` 读这些字段即可，根本不用走序列聚合谓词。下面这些聚合谓词的示例**仅用于说明 Kleene 用法**。
+> ℹ️ **当前示例 app 走的是哪条路**：`first` / `count` / `any` / `distinct` / `reduce` 这些"对一整串聚合"的谓词服务 **Kleene 路径**，框架仍支持。但 `bottom_burst` **没有 Kleene 节点**——它那个"密集突破串"的聚合属性（首根突破的回调间距 `first_drought`、打穿的不同峰数 `distinct_pk`、串内最大量比 `max_vol_ratio`）已经在 `BurstEvent` 产出阶段就算成了**普通字段**（见 §8）。所以 `burst` 节点的 `where` 直接用 `attr` 读这些字段即可，根本不用走序列聚合谓词。下面这些聚合谓词的示例**仅用于说明 Kleene 用法**。
 
 > ⚠️ **共性细节**：所有比较函数遇到属性值为 `None` 时都**安全返回 `False`**（不会抛异常）。这对应像 `BOEvent.drought` / `vol_ratio` 这种可能没值的 Optional 字段。
 
@@ -738,7 +738,7 @@ class PatternSpec:
 
 ```python
 PatternSpec(
-    pattern_id="bottom_breakout_burst",
+    pattern_id="bottom_burst",
     display_name="底部反转突破爆发",
     # 五个角色：bo（孤立流源，不进任何边）/ down / side / burst（吃 bo 流）/ tb（吃 bo 流）
     nodes=(bo_node, down_node, side_node, burst_node, tb_node),
@@ -857,11 +857,11 @@ def analyze(spec: PatternSpec, df, params=None) -> AnalysisResult
 
 ```python
 from path2.dag import analyze
-from path2_apps.bottom_breakout_burst.dag_spec import build_pattern
-from path2_apps.bottom_breakout_burst.params import Params
+from path2_apps.bottom_burst.dag_spec import build_pattern
+from path2_apps.bottom_burst.params import Params
 
 params = Params.default()
-spec   = build_pattern(params)
+spec = build_pattern(params)
 result = analyze(spec, df, params)
 
 print(f"命中次数: {len(result.matches)}")
@@ -1612,7 +1612,7 @@ calculate_vol_ratio(volumes: pd.Series, baseline_period: int = 63) -> pd.Series
 
 ## 完整示例
 
-读到这里，前面的概念该串成一条线了。下面是 `bottom_breakout_burst` 走势包的核心声明结构——它用 **五个 `NodeSpec`（五个角色）+ 三条类型化边** 表达一个"底部反转后密集突破爆发"的故事。先把五个角色的分工讲清楚：
+读到这里，前面的概念该串成一条线了。下面是 `bottom_burst` 走势包的核心声明结构——它用 **五个 `NodeSpec`（五个角色）+ 三条类型化边** 表达一个"底部反转后密集突破爆发"的故事。先把五个角色的分工讲清楚：
 
 - `bo`（突破点）：一个**孤立流源**——它在图里没有任何边连接，不参与形态匹配，只当"密度流源层"：一来给 `burst` / `tb` 当输入流，二来可以独立把所有突破点画到 K 线上。因为没边，它那种"只含 `bo` 一个角色"的残缺命中会被引擎出口过滤掉，所以 `bo` 不会出现在任何完整命中里（见 §6）。
 - `down`（下跌段） / `side`（横盘段）：**各持一个独立的** `TrendSegmentDetector` 实例（不是同一个对象），靠不同的 `where` 扮演两个角色。各持独立实例是为了激活引擎的自动消歧，给两边事件打上 `trend0` / `trend1` 前缀（见 §8 `source_tag`）。
@@ -1666,7 +1666,7 @@ def build_pattern(params):
         TemporalEdge("burst", "tb", min_gap=1, max_gap=1),
     )
     return PatternSpec(
-        pattern_id="bottom_breakout_burst",
+        pattern_id="bottom_burst",
         display_name="底部反转突破爆发",
         nodes=nodes, edges=edges,
         root="burst",   # 退化字段，引擎不读，填合法 node_id 即可

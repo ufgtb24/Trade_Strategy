@@ -1,20 +1,20 @@
-// Task 1 · 派生 computed 一致性测试。直接写 focusedMatchId/focusedEventId/manualExpandedNodes
-// 底层 ref(而非经 focusMatch/focusEvent 等高层 action)构造前置状态,让"给定状态 → 派生是否正确"
-// 与 action 内部的归属判定逻辑解耦(后者见 stores.focus-actions.spec.ts);
-// 与 spec §3.2 六种交互对齐(见 docs/superpowers/specs/2026-07-09-sidebar-chart-focus-unification-design.md)。
+// Task 8 · 派生 computed 一致性测试。直接写 focusedMatchId/selectedInstanceId/
+// focusedInstanceId/manualExpandedNodes 底层 ref(而非经 focusMatch/focusEvent 等高层
+// action)构造前置状态,让"给定状态 → 派生是否正确"与 action 内部的归属判定逻辑解耦
+// (后者见 stores.focus-actions.spec.ts)。
 import { describe, it, expect, beforeEach } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
 import { useViewStore } from '../src/stores/view'
 import type { MultiScanResultFile, Analysis, SerializedPattern, TopoNode, TopoEdge, MatchDict, EventDict } from '../src/types'
 
-// 最小 fixture:1 pattern · 2 nodes(bo/ta)· 1 edge · 1 match · events 集合
+// 最小 fixture:1 pattern · 2 nodes(bo/ta)· 1 edge · 1 match · events 集合(实例化契约)
 function makeFixture(): MultiScanResultFile {
   const nodes: TopoNode[] = [
-    { node_id: 'bo', source_tag: 'bo', render_grid: 'price' } as any,
-    { node_id: 'ta', source_tag: 'ta', render_grid: 'time' } as any,
+    { node_id: 'bo', render_grid: 'price', where_rules: [] } as any,
+    { node_id: 'ta', render_grid: 'time', where_rules: [] } as any,
   ]
   const edges: TopoEdge[] = [
-    { src: 'bo', dst: 'ta', anchor_field: 'anchor_bo_id' } as any,
+    { src: 'bo', dst: 'ta', kind: 'TemporalEdge', rule: '', anchor_field: 'anchor_bo_id' } as any,
   ]
   const pattern: SerializedPattern = {
     pattern_id: 'p1',
@@ -22,15 +22,15 @@ function makeFixture(): MultiScanResultFile {
     event_styles: {},
   } as any
   const events: EventDict[] = [
-    { event_id: 'e_bo_1', class_id: 'BOEvent', source_tag: 'bo', start_idx: 10, end_idx: 10, child_refs: {} } as any,
-    { event_id: 'e_ta_1', class_id: 'TAEvent', source_tag: 'ta', start_idx: 12, end_idx: 15,
-      anchor_bo_id: 'e_bo_1', child_refs: {} } as any,
+    { instance_id: 'bo_10#0', node_id: 'bo', instance_idx: 0, start_idx: 10, end_idx: 10, child_refs: {} } as any,
+    { instance_id: 'ta_12_15#0', node_id: 'ta', instance_idx: 0, start_idx: 12, end_idx: 15,
+      anchor_bo_id: 'bo_10#0', child_refs: {} } as any,
   ]
   const m1: MatchDict = {
-    event_id: 'm1',
+    match_id: 'm1',
     start_idx: 10, end_idx: 15,
-    node_index: { ta: 'e_ta_1' } as any,
-    children: ['e_ta_1'],
+    node_index: { ta: 'ta_12_15#0' } as any,
+    children: ['bo_10#0', 'ta_12_15#0'],
   } as any
   const analysis: Analysis = {
     events, matches: [m1],
@@ -52,7 +52,8 @@ describe('view store · 派生 computed 一致性', () => {
     expect(view.selected).toBeNull()
     expect(view.selectedMatchId).toBeNull()
     expect(view.selectedMatch).toBeNull()
-    expect(view.selectedEventId).toBeNull()
+    expect(view.selectedInstanceId).toBeNull()
+    expect(view.focusedInstanceId).toBeNull()
     expect(view.highlightedEventIds.size).toBe(0)
     expect(view.showTrace).toBe(false)
     expect(view.markedMatchIds.size).toBe(0)
@@ -65,35 +66,39 @@ describe('view store · 派生 computed 一致性', () => {
     view.focusedMatchId = 'm1'
     expect(view.selected).toEqual({ kind: 'match', matchId: 'm1' })
     expect(view.selectedMatchId).toBe('m1')
-    expect(view.selectedMatch?.event_id).toBe('m1')
-    expect(view.selectedEventId).toBeNull()
+    expect(view.selectedMatch?.match_id).toBe('m1')
+    expect(view.selectedInstanceId).toBeNull()
+    expect(view.focusedInstanceId).toBeNull()
     expect(view.showTrace).toBe(true)
-    // highlightedEventIds 含 e_ta_1(match.children)+ e_bo_1(anchor_field 反查)
-    expect(view.highlightedEventIds.has('e_ta_1')).toBe(true)
-    expect(view.highlightedEventIds.has('e_bo_1')).toBe(true)
+    // highlightedEventIds 含 ta_12_15#0(node_index 引用);bo_10#0 经 anchor_field 反查,
+    // 但高亮用 expandAnchor=false(避免共享 leaf 反向污染),故 bo_10#0 不进高亮集
+    expect(view.highlightedEventIds.has('ta_12_15#0')).toBe(true)
+    expect(view.highlightedEventIds.has('bo_10#0')).toBe(false)
     expect(view.markedMatchIds.has('m1')).toBe(true)
   })
 
-  it('focusEvent("e_bo_1") 唯一归属:selectedEventId 派生 + showTrace=false + expandedNodeIds 含 bo', () => {
+  it('focusEvent("bo_10#0") 0 归属(anchor 不在 node_index):selectedInstanceId 派生 + match 不设 + expandedNodeIds 含 bo', () => {
     const view = useViewStore()
     view.loadScanFile(makeFixture())
-    view.focusEvent('e_bo_1')                  // e_bo_1 via anchor_field 归属 m1(唯一)
-    expect(view.selectedEventId).toBe('e_bo_1')
-    expect(view.selectedMatchId).toBe('m1')
+    // 归属判定只按 match.node_index 精确引用;bo_10#0 仅经 anchor_field 反查、不在
+    // node_index 中 → 0 归属 → 只聚焦实例(match 不设)
+    view.focusEvent('bo_10#0')
+    expect(view.selectedInstanceId).toBe('bo_10#0')
+    expect(view.selectedMatchId).toBeNull()
     expect(view.showTrace).toBe(false)
     expect(view.expandedNodeIds.has('bo')).toBe(true)  // add 焦点 node,不折叠其他
-    expect(view.markedEventIds.has('e_bo_1')).toBe(true)
+    expect(view.markedEventIds.has('bo_10#0')).toBe(true)
   })
 
-  it('focusEvent("e_ta_1") 唯一归属:同时驱动 match + event 焦点 + add {ta}', () => {
+  it('focusEvent("ta_12_15#0") 唯一归属:同时驱动 match + 实例焦点 + add {ta}', () => {
     const view = useViewStore()
     view.loadScanFile(makeFixture())
-    view.focusEvent('e_ta_1')
+    view.focusEvent('ta_12_15#0')
     expect(view.selectedMatchId).toBe('m1')
-    expect(view.selectedEventId).toBe('e_ta_1')
-    expect(view.showTrace).toBe(false)         // event 存在 → 不展 trace
+    expect(view.focusedInstanceId).toBe('ta_12_15#0')
+    expect(view.showTrace).toBe(false)         // 实例焦点存在 → 不展 trace
     expect(view.markedMatchIds.has('m1')).toBe(true)
-    expect(view.markedEventIds.has('e_ta_1')).toBe(true)
+    expect(view.markedEventIds.has('ta_12_15#0')).toBe(true)
     expect(view.expandedNodeIds.has('ta')).toBe(true)
   })
 
@@ -101,13 +106,14 @@ describe('view store · 派生 computed 一致性', () => {
     const view = useViewStore()
     view.loadScanFile(makeFixture())
     view.setCandidateMatches(['m1', 'm2'])
-    view.setPendingDisambig('e_ta_1')
+    view.setPendingDisambig('ta_12_15#0')
     expect(view.selectedMatchId).toBeNull()
-    expect(view.selectedEventId).toBeNull()
+    expect(view.selectedInstanceId).toBeNull()
+    expect(view.focusedInstanceId).toBeNull()
     expect(view.markedMatchIds.size).toBe(2)   // 信息层如实反映所有归属
     expect(view.markedMatchIds.has('m1')).toBe(true)
     expect(view.markedMatchIds.has('m2')).toBe(true)
-    expect(view.markedEventIds.has('e_ta_1')).toBe(true)
+    expect(view.markedEventIds.has('ta_12_15#0')).toBe(true)
     expect(view.expandedNodeIds.size).toBe(0)  // manual 未设 → 空集(pending 单独调不 push,
                                                 //   多归属场景经 focusEvent 会 push,见 focus-actions.spec.ts)
     expect(view.highlightedEventIds.size).toBe(0)  // 视觉层:多归属不亮 group
@@ -143,7 +149,7 @@ describe('view store · 派生 computed 一致性', () => {
     view.toggleExpandedNode('bo')             // manual = {bo}
     view.toggleExpandedNode('ta')             // manual = {bo, ta}
     expect(view.expandedNodeIds.size).toBe(2)
-    view.focusEvent('e_ta_1')                  // marker click auto → add(ta 已在,原样)
+    view.focusEvent('ta_12_15#0')             // marker click auto → add(ta 已在,原样)
     expect(view.expandedNodeIds.has('ta')).toBe(true)
     expect(view.expandedNodeIds.has('bo')).toBe(true)  // 不再被自动折叠
     expect(view.expandedNodeIds.size).toBe(2)
@@ -153,7 +159,7 @@ describe('view store · 派生 computed 一致性', () => {
     const view = useViewStore()
     view.loadScanFile(makeFixture())
     view.toggleExpandedNode('bo')             // manual = {bo}
-    view.focusEvent('e_ta_1')                  // ta 未展开 → add ta
+    view.focusEvent('ta_12_15#0')             // ta 未展开 → add ta
     expect(view.expandedNodeIds.has('ta')).toBe(true)
     expect(view.expandedNodeIds.has('bo')).toBe(true)  // bo 保留
     expect(view.expandedNodeIds.size).toBe(2)
@@ -166,7 +172,8 @@ describe('view store · 派生 computed 一致性', () => {
     view.toggleExpandedNode('bo')             // manualExpandedNodes = {bo}
     view.clearFocus()
     expect(view.selectedMatchId).toBeNull()
-    expect(view.selectedEventId).toBeNull()
+    expect(view.selectedInstanceId).toBeNull()
+    expect(view.focusedInstanceId).toBeNull()
     expect(view.showTrace).toBe(false)
     expect(view.expandedNodeIds.has('bo')).toBe(true)    // manual 保留
     expect(view.expandedNodeIds.size).toBe(1)
@@ -176,11 +183,11 @@ describe('view store · 派生 computed 一致性', () => {
     const view = useViewStore()
     view.loadScanFile(makeFixture())
     expect(view.shiftPairPending).toBe(false)           // length=0
-    view.setShiftSelectedEvents([{ event_id: 'e_bo_1', class_id: 'BO', source: 'main' }])
+    view.setShiftSelectedEvents([{ instance_id: 'bo_10#0', node_id: 'BO', source: 'main' }])
     expect(view.shiftPairPending).toBe(true)            // length=1
     view.setShiftSelectedEvents([
-      { event_id: 'e_bo_1', class_id: 'BO', source: 'main' },
-      { event_id: 'e_ta_1', class_id: 'TA', source: 'main' },
+      { instance_id: 'bo_10#0', node_id: 'BO', source: 'main' },
+      { instance_id: 'ta_12_15#0', node_id: 'TA', source: 'main' },
     ])
     expect(view.shiftPairPending).toBe(false)           // length=2
   })
@@ -189,25 +196,25 @@ describe('view store · 派生 computed 一致性', () => {
     const view = useViewStore()
     view.loadScanFile(makeFixture())
     expect(view.shiftSelectedEventIds.size).toBe(0)
-    view.setShiftSelectedEvents([{ event_id: 'e_bo_1', class_id: 'BO', source: 'main' }])
-    expect(view.shiftSelectedEventIds.has('e_bo_1')).toBe(true)
+    view.setShiftSelectedEvents([{ instance_id: 'bo_10#0', node_id: 'BO', source: 'main' }])
+    expect(view.shiftSelectedEventIds.has('bo_10#0')).toBe(true)
     expect(view.shiftSelectedEventIds.size).toBe(1)
     view.setShiftSelectedEvents([
-      { event_id: 'e_bo_1', class_id: 'BO', source: 'main' },
-      { event_id: 'e_ta_1', class_id: 'TA', source: 'main' },
+      { instance_id: 'bo_10#0', node_id: 'BO', source: 'main' },
+      { instance_id: 'ta_12_15#0', node_id: 'TA', source: 'main' },
     ])
-    expect(view.shiftSelectedEventIds.has('e_bo_1')).toBe(true)
-    expect(view.shiftSelectedEventIds.has('e_ta_1')).toBe(true)
+    expect(view.shiftSelectedEventIds.has('bo_10#0')).toBe(true)
+    expect(view.shiftSelectedEventIds.has('ta_12_15#0')).toBe(true)
     expect(view.shiftSelectedEventIds.size).toBe(2)
   })
 
   it('clearShiftSelection: 仅清 shiftSelectedEvents,不动 focus/candidate', () => {
     const view = useViewStore()
     view.loadScanFile(makeFixture())
-    view.setShiftSelectedEvents([{ event_id: 'e_bo_1', class_id: 'BO', source: 'main' }])
-    view.focusedEventId = 'e_ta_1'
+    view.setShiftSelectedEvents([{ instance_id: 'bo_10#0', node_id: 'BO', source: 'main' }])
+    view.focusedInstanceId = 'ta_12_15#0'
     view.clearShiftSelection()
     expect(view.shiftSelectedEvents.length).toBe(0)
-    expect(view.focusedEventId).toBe('e_ta_1')          // focus 未被清
+    expect(view.focusedInstanceId).toBe('ta_12_15#0')   // focus 未被清
   })
 })

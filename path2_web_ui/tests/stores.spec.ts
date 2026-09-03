@@ -48,21 +48,21 @@ describe('view store', () => {
     v.setLevel('detected'); expect(v.level).toBe('detected')
   })
 
-  it('focusedEventId(直写)/hoverEvent set 单值 ref;同值幂等', () => {
+  it('focusedInstanceId(直写)/hoverEvent set 单值 ref;同值幂等', () => {
     const v = useViewStore()
-    v.focusedEventId = 'burst_1_9'; expect(v.selectedEventId).toBe('burst_1_9')
-    v.focusedEventId = 'burst_1_9'; expect(v.selectedEventId).toBe('burst_1_9')
-    v.hoverEvent('bo_3_3'); expect(v.hoveredEventId).toBe('bo_3_3')
+    v.focusedInstanceId = 'burst_1_9#0'; expect(v.focusedInstanceRef).toBe('burst_1_9#0')
+    v.focusedInstanceId = 'burst_1_9#0'; expect(v.focusedInstanceRef).toBe('burst_1_9#0')
+    v.hoverEvent('bo_3_3#0'); expect(v.hoveredEventId).toBe('bo_3_3#0')
   })
 
   it('computed matchedIds/eventTier 反映 analysis', () => {
     const v = useViewStore()
     v.loadScanFile(SCAN_FILE); v.selectSymbol('AAPL')
-    expect(v.matchedIds.has('bo9')).toBe(true)
-    expect(v.matchedIds.has('boX')).toBe(false)
-    // boX 未匹配 → detected(无 diag qualified 覆盖它);bo9 匹配 → matched
-    const boX = v.currentAnalysis!.events.find(e => e.event_id === 'boX')!
-    const bo9 = v.currentAnalysis!.events.find(e => e.event_id === 'bo9')!
+    expect(v.matchedIds.has('bo_9#0')).toBe(true)
+    expect(v.matchedIds.has('bo_20#0')).toBe(false)
+    // bo_20#0 未匹配 → detected(无 diag qualified 覆盖它);bo_9#0 匹配 → matched
+    const boX = v.currentAnalysis!.events.find(e => e.instance_id === 'bo_20#0')!
+    const bo9 = v.currentAnalysis!.events.find(e => e.instance_id === 'bo_9#0')!
     expect(v.eventTier(boX)).toBe('detected')
     expect(v.eventTier(bo9)).toBe('matched')
   })
@@ -70,9 +70,9 @@ describe('view store', () => {
   it('diag 预取接线 + qualified 档:未匹配 event 全-satisfied → qualified', async () => {
     // 自定义 diag:给未匹配的 boX 造一行 clauses 全 satisfied 的 AttrRow → qualified。
     const customDiag: Diagnostics = {
-      symbol: 'AAPL', pattern_id: 'bottom_breakout_burst',
+      symbol: 'AAPL', pattern_id: 'bottom_burst',
       nodes: {
-        bo: { attr: [{ event_id: 'boX', start_idx: 20, end_idx: 20,
+        bo: { attr: [{ instance_id: 'bo_20#0', node_id: 'bo', start_idx: 20, end_idx: 20,
                        clauses: { first_drought: { satisfied: true, measured: 70, op: '>=', threshold: 60 } } }],
               rel: [] },
       },
@@ -86,10 +86,11 @@ describe('view store', () => {
 
     // ① 预取接线真的填充了 store
     expect(v.diag).toEqual(customDiag)
-    // ② boX 进 qualifiedIds 且不在 matchedIds → qualified(中间档)
-    expect(v.qualifiedIds.has('boX')).toBe(true)
-    expect(v.matchedIds.has('boX')).toBe(false)
-    const boX = v.currentAnalysis!.events.find(e => e.event_id === 'boX')!
+    // ② bo_20#0 进 qualifiedIds 且不在 matchedIds → qualified(中间档)
+    // 实例流契约:qualifiedIds 元素 = instance_id(attr 行 instance_id 'bo_20#0')
+    expect(v.qualifiedIds.has('bo_20#0')).toBe(true)
+    expect(v.matchedIds.has('bo_20#0')).toBe(false)
+    const boX = v.currentAnalysis!.events.find(e => e.instance_id === 'bo_20#0')!
     expect(v.eventTier(boX)).toBe('qualified')
   })
 })
@@ -97,16 +98,18 @@ describe('view store', () => {
 describe('view store clearScanFile', () => {
   beforeEach(() => setActivePinia(createPinia()))
 
-  it('clearScanFile resets scanFile/symbol/selected/event ids', () => {
+  it('clearScanFile resets scanFile/symbol/selected/instance ids', () => {
     const v = useViewStore()
     v.loadScanFile(SCAN_FILE)
     v.selectSymbol('AAPL')
-    v.focusedEventId = 'burst_1_9'
+    v.focusedInstanceId = 'burst_1_9#0'
     expect(v.scanFile).not.toBeNull()
     v.clearScanFile()
     expect(v.scanFile).toBeNull()
     expect(v.symbol).toBeNull()
-    expect(v.selectedEventId).toBeNull()
+    expect(v.selectedInstanceId).toBeNull()
+    expect(v.focusedInstanceId).toBeNull()
+    expect(v.focusedInstanceRef).toBeNull()
   })
 })
 

@@ -12,8 +12,8 @@ function makeFile(): MultiScanResultFile {
   return {
     pattern_ids: ['bo_only', 'bbb'],
     per_pattern: {
-      bo_only: { pattern_spec: { pattern_id: 'bo_only', topology: { nodes: [], edges: [] }, event_styles: {}, debug_enabled_classes: [] }, end_node: 'bo' },
-      bbb:     { pattern_spec: { pattern_id: 'bbb',     topology: { nodes: [], edges: [] }, event_styles: {}, debug_enabled_classes: [] }, end_node: 'tb' },
+      bo_only: { pattern_spec: { pattern_id: 'bo_only', topology: { nodes: [], edges: [] }, event_styles: {}, debug_enabled_nodes: [] }, end_node: 'bo' },
+      bbb:     { pattern_spec: { pattern_id: 'bbb',     topology: { nodes: [], edges: [] }, event_styles: {}, debug_enabled_nodes: [] }, end_node: 'tb' },
     },
     scan: {
       scan_ts: '20260627T120000', start_date: '2024-01-01', end_date: '2024-06-30',

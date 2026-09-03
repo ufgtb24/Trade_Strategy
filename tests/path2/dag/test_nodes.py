@@ -1,8 +1,11 @@
 """NodeSpec 构造与默认值。"""
+from tests.path2.dag._oracle import Ev
 from path2.dag.nodes import NodeSpec
 
 
 class _FakeDetector:
+    event_cls = Ev
+
     def detect(self, source, df=None):
         return iter(())
 

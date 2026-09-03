@@ -17,7 +17,7 @@ import pytest
 from path2.dag.engine import analyze as dag_analyze
 from path2.dag.gate_failure import GateFailure, MeasuredKindAware
 from path2.dag.result import AnalysisResult
-from path2_apps.bottom_breakout_burst.dag_spec import build_pattern
+from path2_apps.bottom_burst.dag_spec import build_pattern
 from path2_web.diagnose import (
     Caveat,
     Query,
@@ -50,12 +50,12 @@ def test_strict_subset_filter():
     collector = GateCollector()
     m = MeasuredKindAware(kind='gap', value=13, label='gap')
     collector.add(GateFailure(failure_event_window=(105, 118), start_idx=105, gate_idx=118,
-                              anchor_bar=118, class_id='tb', gate_name='phase2_break',
+                              anchor_bar=118, gate_name='phase2_break',
                               measured=m, threshold=10, op=None, threshold_param=None,
                               evaluation_lookback=None, symbol='DGNX'))
     # (105, 118) ⊆ [100, 150] · 保留
     collector.add(GateFailure(failure_event_window=(60, 65), start_idx=60, gate_idx=65,
-                              anchor_bar=65, class_id='burst', gate_name='chain_break',
+                              anchor_bar=65, gate_name='chain_break',
                               measured=m, threshold=10, op=None, threshold_param=None,
                               evaluation_lookback=None, symbol='DGNX'))
     # (60, 65) 完全在框外 · 丢弃
@@ -67,25 +67,26 @@ def test_strict_subset_filter():
     assert len(collector.snapshot()) == 2
 
 
-def test_event_class_filter():
-    """event_class 过滤只留匹配 class_id 的 attempt(真实 result 注入,非 vacuous)。"""
+def test_node_filter():
+    """node 过滤只留匹配 node_id 的 attempt(真实 result 注入,非 vacuous;
+    node_id 模拟 gate_collector wrapper 注入后的值)。"""
     m = MeasuredKindAware(kind='gap', value=13, label='gap')
     gfs = (
         GateFailure(failure_event_window=(10, 20), start_idx=10, gate_idx=20, anchor_bar=20,
-                   class_id='burst', gate_name='chain_break', measured=m, threshold=10,
+                   node_id='burst', gate_name='chain_break', measured=m, threshold=10,
                    op=None, threshold_param=None,
                    evaluation_lookback=None, symbol='DGNX'),
         GateFailure(failure_event_window=(30, 40), start_idx=30, gate_idx=40, anchor_bar=40,
-                   class_id='tb', gate_name='phase2_break', measured=m, threshold=10,
+                   node_id='tb', gate_name='phase2_break', measured=m, threshold=10,
                    op=None, threshold_param=None,
                    evaluation_lookback=None, symbol='DGNX'),
     )
     result = _fake_result(gfs)
-    q = Query(symbol='DGNX', scope='time', start_bar=0, end_bar=200, event_class='burst')
+    q = Query(symbol='DGNX', scope='time', start_bar=0, end_bar=200, node='burst')
     r = derive_response(q, result=result)
     assert len(r.payload.failed_attempts) == 1
     for gf in r.payload.failed_attempts:
-        assert gf.class_id == 'burst'
+        assert gf.node_id == 'burst'
 
 
 # ─── 补充:result 未注入的诚实降级 · GateCollector/attach/detach 单测 · 真实端到端捕获 ──
@@ -111,10 +112,24 @@ def test_result_with_empty_gate_failures_no_caveat():
     assert 'no_analysis_result' not in codes
 
 
+def test_all_nodes_from_spec():
+    """all_nodes = 该 pattern 全部 node_id 全集(含子结构 node,与 GateFailure.node_id 的
+    wrapper 注入值同源)。前端下拉选项锚:让"存在但本区间无失败"的 node 可见(置灰)
+    而非消失。spec 未注入时退化为空列表(derive_response(q) 的现有调用方不受影响)。"""
+    df, params = positive_case()
+    spec = build_pattern(params)
+    q = Query(symbol='DGNX', scope='time', start_bar=0, end_bar=200)
+    r = derive_response(q, spec=spec, result=_fake_result(()))
+    assert r.payload.all_nodes == ['bo', 'burst', 'pk', 'tb', 'tb_seg']
+    # spec 未注入(如 no_analysis_result 分支)→ 空列表,不抛
+    r2 = derive_response(q)
+    assert r2.payload.all_nodes == []
+
+
 def test_gate_collector_add_snapshot_clear():
     m = MeasuredKindAware(kind='count', value=1, label='bo数')
     gf = GateFailure(failure_event_window=(1, 2), start_idx=1, gate_idx=2, anchor_bar=2,
-                     class_id='burst', gate_name='min_bos_insufficient', measured=m,
+                     node_id='burst', gate_name='min_bos_insufficient', measured=m,
                      threshold=2, op=None, threshold_param=None,
                      evaluation_lookback=None, symbol='X')
     c = GateCollector()
@@ -127,16 +142,21 @@ def test_gate_collector_add_snapshot_clear():
 
 
 def test_attach_and_collect_and_detach_walk_spec_nodes():
-    """attach_and_collect 把每个 node.detector.on_gate 接到同一 collector.add;detach 后
-    全部复位 None(worker 每 symbol/pattern 跑完必须清干净,防同进程串扰下一轮)。"""
+    """attach_and_collect 给每个 node.detector.on_gate 挂 per-node wrapper(不再共用
+    collector.add,wrapper 负责注入 node_id);detach 后全部复位 None(worker 每
+    symbol/pattern 跑完必须清干净,防同进程串扰下一轮)。"""
     _, params = positive_case()
     spec = build_pattern(params)
     collector = attach_and_collect(spec)
-    # 绑定方法每次取都是新对象(obj.method is obj.method 恒 False),用 == 比较
-    # __self__/__func__ 而非 is。
-    assert all(node.detector.on_gate == collector.add for node in spec.nodes)
+    # 子结构 node(tb_seg,detector=None)无 on_gate 可挂,跳过。同一 detector 的多 node
+    # (bo/pk 共享)共享同一个 wrapper——互不相同的不变式按「不同 detector」计;
+    # 行为级注入断言见 test_gate_collector_node_id.py。
+    hooked = [n for n in spec.nodes if n.detector is not None]
+    wrappers = [node.detector.on_gate for node in hooked]
+    assert all(w is not None for w in wrappers)
+    assert len({id(node.detector) for node in hooked}) == len({id(w) for w in wrappers})
     detach(spec)
-    assert all(node.detector.on_gate is None for node in spec.nodes)
+    assert all(node.detector.on_gate is None for node in hooked)
 
 
 def test_attach_before_analyze_captures_real_gate_failures():
@@ -159,6 +179,8 @@ def test_attach_before_analyze_captures_real_gate_failures():
         detach(spec)
     gate_failures = collector.snapshot()
     assert len(gate_failures) >= 1
-    assert any(gf.class_id == 'burst' and gf.gate_name == 'min_bos_insufficient'
+    # wrapper 注入:gf.node_id = 所属 node_id(burst node 的 min_bos_insufficient)
+    assert any(gf.node_id == 'burst' and gf.gate_name == 'min_bos_insufficient'
               for gf in gate_failures)
-    assert all(node.detector.on_gate is None for node in spec.nodes)
+    hooked = [n for n in spec.nodes if n.detector is not None]
+    assert all(node.detector.on_gate is None for node in hooked)

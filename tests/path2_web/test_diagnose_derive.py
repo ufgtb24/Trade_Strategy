@@ -10,7 +10,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from path2.dag import diagnose as _dag_diagnose
-from path2_apps.bottom_breakout_burst.dag_spec import build_pattern
+from path2_apps.bottom_burst.dag_spec import build_pattern
 from path2_web.app import create_app
 from path2_web.diagnose import derive_response, Query, Response, NodesPayload, PairFailure, Caveat
 from tests.path2.fixtures.positive_case import positive_case
@@ -134,7 +134,7 @@ def test_diagnose_legacy_path_unchanged_without_scope(tmp_path):
     assert r.status_code == 200
     body = r.json()
     assert set(body) == {"nodes", "note", "symbol", "pattern_id"}
-    assert set(body["nodes"]) == {"bo", "burst", "tb"}
+    assert set(body["nodes"]) == {"bo", "burst", "pk", "tb", "tb_seg"}
 
 
 def test_diagnose_scope_nodes_via_http(tmp_path):

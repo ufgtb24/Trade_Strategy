@@ -22,7 +22,8 @@ from path2_web.serialize import _clause_to_dict
 
 def _attr_row(row) -> dict:
     return {
-        "event_id": row.event.event_id,
+        "instance_id": row.event.instance_id,
+        "node_id": row.event.node_id,
         "start_idx": row.event.start_idx,
         "end_idx": row.event.end_idx,
         "clauses": {cid: _clause_to_dict(w) for cid, w in row.clauses.items()},
@@ -35,17 +36,22 @@ def _rel_row(row) -> dict:
         "kind": row.kind,
         "total_src": row.total_src,
         "ok_count": len(row.ok_src),
-        "ok_src_ids": [e.event_id for e in row.ok_src],
+        "ok_src_ids": [e.instance_id for e in row.ok_src],
     }
 
 
 def serialize_diagnostics(diag) -> dict:
-    """NodeDiagnostics → {nodes:{node_id:{attr,rel}}, note}。"""
+    """NodeDiagnostics → {nodes:{node_id:{attr,rel,produced_by}}, note}。
+
+    实例流:attr 行直接读引擎物化标注的 instance_id/node_id(run_streams 内
+    annotate_stream 注入),serialize 层不再编号——analyze 与 diagnose 共用
+    run_streams(同 spec/df/params 下流完全一致),标注自动同源。"""
     return {
         "nodes": {
             nid: {
                 "attr": [_attr_row(r) for r in rd.attr],
                 "rel": [_rel_row(r) for r in rd.rel],
+                "produced_by": rd.produced_by,   # 子结构 node 物化来源(独立 node 为 None)
             }
             for nid, rd in diag.nodes.items()
         },
@@ -71,7 +77,7 @@ class Query:
     scope: Literal["time", "nodes", "pair"]
     start_bar: Optional[int] = None
     end_bar: Optional[int] = None
-    event_class: Optional[str] = None
+    node: Optional[str] = None   # scope=time · 按 node_id 过滤 gate failure
     src_node: Optional[str] = None
     dst_node: Optional[str] = None
     event_id: Optional[str] = None
@@ -167,9 +173,13 @@ def _derive_nodes_response(query: Query, diag, spec) -> Response:
 @dataclass
 class TimePayload:
     """scope=time 载荷:用户框选窗口([start_bar, end_bar])内(严格 ⊆)的 gate 失败样例
-    (Task 9-12 三 atom on_gate 吐出、worker 挂 collector 收进 result.gate_failures,Task 15)。"""
+    (Task 9-12 三 atom on_gate 吐出、worker 挂 collector 收进 result.gate_failures,Task 15)。
+    all_nodes:该 pattern 全部 node_id 全集——前端下拉选项锚,让"存在但本区间无失败"
+    的 node 可见(置灰)而非消失。过滤契约面是 gf.node_id(gate_collector wrapper 注入),
+    故 all_nodes 取 spec node_id 与之对齐。"""
     frame: Tuple[int, int]
     failed_attempts: List[GateFailure]
+    all_nodes: List[str] = field(default_factory=list)
 
 
 def _in_frame_strict(fw: Tuple[int, int], frame: Tuple[int, int]) -> bool:
@@ -181,30 +191,34 @@ def _in_frame_strict(fw: Tuple[int, int], frame: Tuple[int, int]) -> bool:
 
 def _derive_time_response(query: Query, *, result=None, spec=None) -> Response:
     """scope=time:消费 result.gate_failures(Task 15 起由 worker/端点挂 collector 收集),
-    按 [query.start_bar, query.end_bar] 框严格过滤 + event_class 可选过滤。result 未注入
+    按 [query.start_bar, query.end_bar] 框严格过滤 + node 可选过滤。result 未注入
     (如端点层尚未 recompute+attach,Task 15 范围内不改 api.py)→ 空 payload +
     说明性 caveat,而非报错。"""
     frame = (query.start_bar if query.start_bar is not None else 0,
              query.end_bar if query.end_bar is not None else 0)
+    # node 全集:该 pattern 全部 node(含子结构 node)——取 spec node_id(与 GateFailure.node_id
+    # 的注入值同源);前端下拉据此显示"存在但本区间无失败"的选项(置灰)。
+    spec_nodes = spec.nodes if spec is not None else ()
+    all_nodes = sorted({n.node_id for n in spec_nodes})
     gate_failures = getattr(result, "gate_failures", None) if result is not None else None
     if gate_failures is None:
         return Response(
             scope="time",
-            payload=TimePayload(frame=frame, failed_attempts=[]),
+            payload=TimePayload(frame=frame, failed_attempts=[], all_nodes=all_nodes),
             caveats=[Caveat(code="no_analysis_result",
                             message="未提供挂 collector 的 AnalysisResult · scope=time 需 endpoint 层 "
                                      "recompute + attach gate_failures(Task 15 范围外,留待接线)")],
         )
 
-    def _class_ok(gf: GateFailure) -> bool:
-        return query.event_class is None or gf.class_id == query.event_class
+    def _node_ok(gf: GateFailure) -> bool:
+        return query.node is None or gf.node_id == query.node
 
     filtered = [gf for gf in gate_failures
-                if _in_frame_strict(gf.failure_event_window, frame) and _class_ok(gf)]
+                if _in_frame_strict(gf.failure_event_window, frame) and _node_ok(gf)]
     caveats = _collect_caveats(spec)
     return Response(
         scope="time",
-        payload=TimePayload(frame=frame, failed_attempts=filtered),
+        payload=TimePayload(frame=frame, failed_attempts=filtered, all_nodes=all_nodes),
         caveats=caveats,
     )
 
@@ -301,21 +315,17 @@ class PairPayload:
 
 
 def _load_event_by_id(result, event_id: Optional[str]):
-    """从 result.events(去重平铺流)按 event_id 找单个 Event;找不到 / result 未注入 → None。"""
+    """从 result.events(去重平铺流)按 instance_id 找单个 Event;找不到 / result 未注入 → None。
+    参数名保留 event_id(前端 query 字段名),值/查找用 instance_id。"""
     if result is None or event_id is None:
         return None
-    return next((e for e in result.events if e.event_id == event_id), None)
+    return next((e for e in result.events if e.instance_id == event_id), None)
 
 
 def _node_of_event(spec, event) -> Optional[str]:
-    """event 所属 node(node_id):event 无 node_id 字段,通过 event.class_id 反查
-    spec.nodes 里 detector.event_cls.class_id 匹配的 node(见 core.py Event.class_id ClassVar
-    全局唯一注册)。找不到(spec/result 不一致的防御性场景)→ None。"""
-    for node in spec.nodes:
-        event_cls = getattr(node.detector, "event_cls", None)
-        if event_cls is not None and event.class_id == event_cls.class_id:
-            return node.node_id
-    return None
+    """event 所属 node(node_id):直接读物化标注的 event.node_id(run_streams 内
+    annotate_stream 注入)。找不到(spec/result 不一致的防御性场景)→ None。"""
+    return event.node_id
 
 
 def _find_edge(spec, src_node: str, dst_node: str, *, exclude_negation: bool = True):
@@ -363,12 +373,12 @@ def _invalid_pair_response(query: Query, invalid_reason: str) -> Response:
 
 
 def _pair_response_with(query, edge, u, v, subchecks, applied_swap, spec) -> Response:
-    """valid=True 分支的 Response 组装。src/dst_event_id 取生效方向的 u.event_id/v.event_id
+    """valid=True 分支的 Response 组装。src/dst_event_id 取生效方向的 u.instance_id/v.instance_id
     (auto swap 时已是交换后的顺序);original_*_click 恒是用户真实点击顺序。"""
     return Response(
         scope="pair",
         payload=PairPayload(
-            src_event_id=u.event_id, dst_event_id=v.event_id,
+            src_event_id=u.instance_id, dst_event_id=v.instance_id,
             applied_swap=applied_swap,
             original_first_click=query.src_event_id,
             original_second_click=query.dst_event_id,
@@ -385,11 +395,11 @@ def _check_pair_and_respond(query, edge, u, v, *, applied_swap, spec, result) ->
     """合法 pair(edge 已定方向)· 4 subcheck 短路 · 组装 Response。
 
     端点投影(承 path2/dag/diagnose.py::_rel_rows 真实引擎口径,非 brief 字面 pseudocode):
-    edge 可能带 Child selector(如 bottom_breakout_burst 的 burst→tb 边,
+    edge 可能带 Child selector(如 bottom_burst 的 burst→tb 边,
     src_selector='last_bo')——feasible_window/satisfies/anchor 必须吃*投影后*的端点
-    (a=endpoint(u,'src'),b=endpoint(v,'dst')),否则 anchor 复核会拿 burst 自身 event_id
-    去比对 tb.anchor_bo_id(恒错,anchor_bo_id 语义是"末 bo 的 event_id"而非"burst 的
-    event_id")。strict 通道例外:引擎真实调用是 strict_clear(edge, a, e_r, streams)——
+    (a=endpoint(u,'src'),b=endpoint(v,'dst')),否则 anchor 复核会拿 burst 自身身份
+    去比对 tb.anchor_bo_id(恒错,anchor_bo_id 语义是"触发 bo 的 span 身份"而非"burst 的
+    身份")。strict 通道例外:引擎真实调用是 strict_clear(edge, a, e_r, streams)——
     e_r 是 dst 流里的*原始整体*事件(next 语义比较的是候选在 dst 流中的位置,不是投影后的
     子对象),故这里传原始 v 而非投影 b,与 _rel_rows 逐字一致。"""
     a = _solve_endpoint(u, edge, which="src")

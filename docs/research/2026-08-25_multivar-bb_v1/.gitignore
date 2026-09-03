@@ -1,0 +1,13 @@
+smoke/
+longtable/
+# 全宇宙反转扫描的断点续跑元数据(一次性产物,同 longtable/ 精神——不做版本化,
+# 重扫即得新数据;done 集 = parquet 分片 ∪ 这两个 csv,累计口径靠 run_stats.jsonl)
+filtered_symbols.csv
+random_baseline.csv
+run_stats.jsonl
+# region_find 全量 cells.csv(442,368 行,76.5MB,超 50MB 上限)——按 brief Step6 约定
+# 只提交 cells_top200.csv(head -201 cells.csv),完整版本地可重新 region_find_full.py 复现
+cells.csv
+# 敏感性重跑子目录里的 ledger.md 副本(仅供 _check_head_buffer 核验用,内容与根目录
+# ledger.md 完全相同,不是独立产物,不重复提交)
+sensitivity_mc300/ledger.md

@@ -13,11 +13,16 @@ ONCE 节点 × 4 边类型(Temporal/Containment/Overlap/Equals)
 """
 import random
 
-from tests.path2.dag._oracle import E, keyset
+from tests.path2.dag._oracle import E, Ev, keyset
 from path2.dag.edges import TemporalEdge, ContainmentEdge, OverlapEdge, EqualsEdge
 from path2.dag._solve import compile_plan, solve
 from path2.dag.nodes import NodeSpec
 from path2.dag.spec import PatternSpec
+
+
+class _StubDetector:
+    """占位 detector:只声明 event_cls(引擎测试不真跑 detect,streams 直给 solve)。"""
+    event_cls = Ev
 
 
 def _rand_segs(n, smax, rng):
@@ -77,7 +82,7 @@ def test_alias_safe_once_nodes():
         else:
             edges = [kind("X", "Z"), kind("Y", "Z")]
 
-        nodes = tuple(NodeSpec(node_id=n, detector=None) for n in ["X", "Y", "Z"])
+        nodes = tuple(NodeSpec(node_id=n, detector=_StubDetector()) for n in ["X", "Y", "Z"])
         spec = PatternSpec(
             pattern_id="t",
             nodes=nodes, edges=tuple(edges),

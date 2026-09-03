@@ -26,7 +26,11 @@ from typing import List, Optional, Set, Tuple
 
 def frontier_cut_signature(assign, pred, order, k) -> tuple:
     """k = 当前待绑节点在拓扑序的位置。order[k:] 为未赋值集。
-    对每条「src 已绑、dst 未绑」的正向跨割边,按其 signature_fields() 取 src 的标量元组。"""
+    对每条「src 已绑、dst 未绑」的正向跨割边,按其 signature_fields() 取 src 的标量元组。
+
+    实例流:同身份多实例在 chosen_idx/签名上不加维——现状下游约束只读上游
+    端点+身份(不读视角属性),charitable 健全;未来若新增依赖上游视角属性的
+    边类型,须将实例标识纳入签名。"""
     unassigned = set(order[k:])
     sig: Set[Tuple] = set()
     for w in unassigned:

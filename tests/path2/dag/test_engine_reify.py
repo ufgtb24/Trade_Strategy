@@ -9,13 +9,18 @@ from path2.dag._solve import compile_plan, solve
 from path2.dag._reify import reify
 
 
+class _StubDetector:
+    """占位 detector:只声明 event_cls(引擎测试不真跑 detect,streams 直给 solve)。"""
+    event_cls = Ev
+
+
 def _spec(nodes, edges):
     return PatternSpec(pattern_id="p", nodes=tuple(nodes),
                        edges=tuple(edges))
 
 
 def test_reify_node_index_and_children():
-    nodes = [NodeSpec("A", detector=None), NodeSpec("B", detector=None)]
+    nodes = [NodeSpec("A", detector=_StubDetector()), NodeSpec("B", detector=_StubDetector())]
     edges = [TemporalEdge("A", "B", min_gap=0, max_gap=100)]
     streams = {"A": E("A", [(0, 0)]), "B": E("B", [(5, 8)])}
     plan = compile_plan(_spec(nodes, edges))
@@ -29,7 +34,7 @@ def test_reify_node_index_and_children():
 
 
 def test_reify_edge_witness_measured():
-    nodes = [NodeSpec("A", detector=None), NodeSpec("B", detector=None)]
+    nodes = [NodeSpec("A", detector=_StubDetector()), NodeSpec("B", detector=_StubDetector())]
     edges = [TemporalEdge("A", "B", min_gap=0, max_gap=100)]
     streams = {"A": E("A", [(0, 2)]), "B": E("B", [(5, 8)])}
     plan = compile_plan(_spec(nodes, edges))
@@ -45,9 +50,9 @@ def test_reify_edge_witness_measured():
 
 def test_reify_where_results_recorded():
     from path2.dag.where import attr as W_attr
-    nodes = [NodeSpec("A", detector=None,
+    nodes = [NodeSpec("A", detector=_StubDetector(),
                       where=(("nonneg", W_attr("start_idx", ">=", 0)),)),
-             NodeSpec("B", detector=None)]
+             NodeSpec("B", detector=_StubDetector())]
     edges = [TemporalEdge("A", "B", min_gap=0, max_gap=100)]
     streams = {"A": E("A", [(0, 0)]), "B": E("B", [(5, 5)])}
     plan = compile_plan(_spec(nodes, edges))
@@ -82,7 +87,7 @@ def test_reify_diagnose_child_aware_endpoint():
     # 边：wrapper 包含 burst 的 first_kid（dst child projection）
     edge = ContainmentEdge("wrapper", Child("burst", "first_kid"))
 
-    nodes = [NodeSpec("wrapper", detector=None), NodeSpec("burst", detector=None)]
+    nodes = [NodeSpec("wrapper", detector=_StubDetector()), NodeSpec("burst", detector=_StubDetector())]
     spec = _spec(nodes, [edge])
     streams = {"wrapper": [wrapper], "burst": [burst]}
 
@@ -107,7 +112,7 @@ def test_reify_diagnose_child_aware_endpoint():
     assert ew.src_instance is wrapper
 
     # (c) diagnose rel：wrapper 能通过 child 投影边找到 burst → ok_src 非空
-    # 直接调 _rel_rows（绕过 run_streams / detector=None），只验证展示层 endpoint 逻辑
+    # 直接调 _rel_rows（绕过 run_streams / detector=_StubDetector()），只验证展示层 endpoint 逻辑
     from path2.dag.diagnose import _rel_rows
     burst_node = next(n for n in spec.nodes if n.node_id == "burst")
     rel_rows_list = _rel_rows(burst_node, spec, streams)
@@ -136,3 +141,20 @@ def test_reify_diagnose_child_aware_endpoint():
         "无 selector 时 reify dst_instance 应为父整体（字节等价），"
         f"得 {plain_ew.dst_instance!r}"
     )
+
+
+def test_reify_match_id_unique_content():
+    """同 span 不同内容(上游不同)的 match 的 match_id 必须不同(结构化编码)。"""
+    from path2.dag._solve import Solution
+    nodes = [NodeSpec("A", detector=_StubDetector()), NodeSpec("B", detector=_StubDetector())]
+    edges = [TemporalEdge("A", "B", min_gap=0, max_gap=100)]
+    plan = compile_plan(_spec(nodes, edges))
+    # 手动置 instance_id(模拟物化标注;同 span 同 node 多实例 #idx 区分)
+    a1 = Ev("a_1", 0, 5, instance_id="A_0_5#0")
+    a2 = Ev("a_2", 0, 5, instance_id="A_0_5#1")
+    b = Ev("b_1", 7, 9, instance_id="B_7_9#0")
+    m1 = reify(Solution(assign={"A": a1, "B": b}, chosen_idx={}), streams={}, plan=plan)
+    m2 = reify(Solution(assign={"A": a2, "B": b}, chosen_idx={}), streams={}, plan=plan)
+    assert m1.match_id != m2.match_id
+    assert m1.match_id.startswith("p@0-9#")
+    assert "A:A_0_5#0" in m1.match_id and "B:B_7_9#0" in m1.match_id   # 自描述:成员可见

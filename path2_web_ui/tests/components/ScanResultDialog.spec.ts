@@ -16,13 +16,15 @@ vi.mock('../../src/api', () => ({ saveWcMirror: async () => ({ ok: true } as any
 describe('ScanResultDialog', () => {
   beforeEach(() => setActivePinia(createPinia()))
 
-  it('renders rows with formatted ts/hits/size', async () => {
+  it('renders rows with empty hits/median placeholders when no per_pattern', async () => {
     const w = mount(ScanResultDialog, { attachTo: document.body })
     await flushPromises()
     const rows = w.findAll('.file-list tbody tr')
     expect(rows.length).toBe(2)
     expect(rows[0].text()).toContain('2026-06-03 12:00:00')
-    expect(rows[0].text()).toContain('5 / 200')
+    expect(w.find('thead').text()).toContain('Median')   // 新列头
+    expect(w.find('thead').text()).toContain('FP')       // FP 列头
+    expect(rows[0].text().split('—').length - 1).toBe(3) // 无 per_pattern → Hits/Median/FP 三格均为 —
     expect(rows[0].text()).toContain('8.0 KB')
     w.unmount()
   })
@@ -115,5 +117,32 @@ describe('ScanResultDialog', () => {
     await flushPromises()
     expect(v.scanFile).toBeNull()
     w.unmount()
+  })
+
+  it('Copy Name 按钮在 selection size != 1 时 disabled', async () => {
+    const w = mount(ScanResultDialog, { attachTo: document.body })
+    await flushPromises()
+    const copyBtn = w.find('[data-testid="copy-name"]')
+    expect(copyBtn.attributes('disabled')).toBeDefined()       // 无选择
+    await w.findAll('.file-list tbody tr')[0].trigger('click')
+    expect(copyBtn.attributes('disabled')).toBeUndefined()     // 单选
+    await w.findAll('.file-list tbody tr')[1].trigger('click', { ctrlKey: true })
+    expect(copyBtn.attributes('disabled')).toBeDefined()       // 多选
+    w.unmount()
+  })
+
+  it('Copy Name 单选时复制 <stem>.json 到剪贴板', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    const desc = Object.getOwnPropertyDescriptor(navigator, 'clipboard')
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true })
+    const w = mount(ScanResultDialog, { attachTo: document.body })
+    await flushPromises()
+    await w.findAll('.file-list tbody tr')[0].trigger('click')   // 单选第一行
+    await w.find('[data-testid="copy-name"]').trigger('click')
+    await flushPromises()
+    expect(writeText).toHaveBeenCalledWith('20260603T120000.json')
+    w.unmount()
+    if (desc) Object.defineProperty(navigator, 'clipboard', desc)
+    else delete (navigator as any).clipboard
   })
 })

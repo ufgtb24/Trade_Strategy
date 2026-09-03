@@ -13,7 +13,6 @@ def test_gate_failure_dataclass():
         start_idx=90,
         gate_idx=105,
         anchor_bar=105,
-        class_id='burst',
         gate_name='chain_break',
         measured=m,
         threshold=10,
@@ -29,7 +28,7 @@ def test_gate_failure_is_frozen():
     import dataclasses
     m = MeasuredKindAware(kind='gap', value=13, label='gap')
     gf = GateFailure(failure_event_window=(0, 0), start_idx=0, gate_idx=0,
-                     anchor_bar=0, class_id='bo', gate_name='x', measured=m,
+                     anchor_bar=0, gate_name='x', measured=m,
                      threshold=0, op=None, threshold_param=None,
                      evaluation_lookback=None, symbol='x')
     import pytest

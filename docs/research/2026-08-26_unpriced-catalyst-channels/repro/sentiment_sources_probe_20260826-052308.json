@@ -1,0 +1,389 @@
+{
+ "probed_at": "20260826-052308",
+ "results": [
+  {
+   "name": "stocktwits_public_stream",
+   "url": "https://api.stocktwits.com/api/2/streams/symbol/AAPL.json",
+   "note": "曾经的公开只读端点（无 key）",
+   "status": 200,
+   "elapsed_s": 3.2,
+   "ctype": "application/json; charset=utf-8",
+   "ratelimit_headers": {},
+   "bytes": 144203,
+   "json_top": [
+    "symbol",
+    "cursor",
+    "regions",
+    "filters",
+    "messages",
+    "response"
+   ],
+   "sample": "{\"symbol\": {\"id\": 686, \"symbol\": \"AAPL\", \"symbol_mic\": \"AAPL.XNAS\", \"symbol_display\": \"AAPL\", \"exchange\": \"NASDAQ\", \"region\": \"US\", \"logo_url\": \"https://logos.stocktwits-cdn.com/AAPL.png\", \"title\": \"Apple Inc\", \"aliases\": [], \"deeplink\": \"symbol/AAPL\", \"external_id\": null, \"is_following\": false, \"watchlist_count\": 990308, \"has_pricing\": true, \"instrument_class\": \"Stock\", \"live_event\": false, \"trade_status\": \"FRACTIONAL\"}, \"cursor\": {\"more\": true, \"since\": 662862968, \"max\": 662844073}, \"regions\": [], \"filters\": [], \"messages\": [{\"id\": 662862968, \"body\": \"$AAPL non existent volume\", \"tokenized_b"
+  },
+  {
+   "name": "stocktwits_smallcap_stream",
+   "url": "https://api.stocktwits.com/api/2/streams/symbol/SRGZ.json",
+   "note": "小票覆盖抽测",
+   "status": 404,
+   "elapsed_s": 2.43,
+   "ctype": "application/json; charset=utf-8",
+   "ratelimit_headers": {},
+   "bytes": 69,
+   "json_top": [
+    "errors",
+    "response"
+   ],
+   "sample": "{\"errors\": [{\"message\": \"Symbol not found\"}], \"response\": {\"status\": 404}}"
+  },
+  {
+   "name": "stocktwits_trending",
+   "url": "https://api.stocktwits.com/api/2/trending/symbols.json",
+   "note": "热榜端点",
+   "status": 200,
+   "elapsed_s": 2.39,
+   "ctype": "application/json; charset=utf-8",
+   "ratelimit_headers": {},
+   "bytes": 72655,
+   "json_top": [
+    "symbols",
+    "response"
+   ],
+   "sample": "{\"symbols\": [{\"id\": 32538, \"symbol\": \"CRML\", \"symbol_mic\": \"CRML.XNAS\", \"symbol_display\": \"CRML\", \"exchange\": \"NASDAQ\", \"region\": \"US\", \"logo_url\": \"https://logos.stocktwits-cdn.com/CRML.png\", \"title\": \"Critical Metals Corp.\", \"aliases\": [], \"deeplink\": \"symbol/CRML\", \"external_id\": null, \"is_following\": false, \"watchlist_count\": 14228, \"has_pricing\": true, \"instrument_class\": \"Stock\", \"live_event\": false, \"sector\": \"Finance\", \"industry\": \"FinancialConglomerates\", \"trending\": true, \"trending_score\": 10.365, \"trends\": {\"all\": 1, \"region\": 1, \"exchange\": 1, \"class_all\": 1, \"class_equity\": 1, \"su"
+  },
+  {
+   "name": "reddit_unauth_search",
+   "url": "https://www.reddit.com/r/wallstreetbets/search.json",
+   "note": "未鉴权 .json 端点现行政策",
+   "status": 403,
+   "elapsed_s": 2.45,
+   "ctype": "text/html",
+   "ratelimit_headers": {
+    "Retry-After": "0"
+   },
+   "bytes": 189908,
+   "sample": "<body class=theme-beta><div><style>.theme-light,:root{--rem360:22.5rem;--rem320:20rem;--rem192:12rem;--rem144:9rem;--rem128:8rem;--rem96:6rem;--rem90:5.625rem;--rem88:5.5rem;--rem64:4rem;--rem56:3.5rem;--rem48:3rem;--rem40:2.5rem;--rem36:2.25rem;--rem32:2rem;--rem28:1.75rem;--rem26:1.625rem;--rem24:1.5rem;--rem22:1.375rem;--rem20:1.25rem;--rem18:1.125rem;--rem16:1rem;--rem15:0.9375rem;--rem14:0.875rem;--rem12:0.75rem;--rem10:0.625rem;--rem8:0.5rem;--rem6:0.375rem;--rem4:0.25rem;--rem2:0.125rem;--rem1:0.0625rem;--spacer-4xs:0.125rem;--spacer-2xs:0.25rem;--spacer-xs:0.5rem;--spacer-sm:0.75rem;--"
+  },
+  {
+   "name": "reddit_unauth_listing",
+   "url": "https://www.reddit.com/r/pennystocks/new.json",
+   "note": "未鉴权 listing",
+   "status": 403,
+   "elapsed_s": 2.46,
+   "ctype": "text/html",
+   "ratelimit_headers": {
+    "Retry-After": "0"
+   },
+   "bytes": 189908,
+   "sample": "<body class=theme-beta><div><style>.theme-light,:root{--rem360:22.5rem;--rem320:20rem;--rem192:12rem;--rem144:9rem;--rem128:8rem;--rem96:6rem;--rem90:5.625rem;--rem88:5.5rem;--rem64:4rem;--rem56:3.5rem;--rem48:3rem;--rem40:2.5rem;--rem36:2.25rem;--rem32:2rem;--rem28:1.75rem;--rem26:1.625rem;--rem24:1.5rem;--rem22:1.375rem;--rem20:1.25rem;--rem18:1.125rem;--rem16:1rem;--rem15:0.9375rem;--rem14:0.875rem;--rem12:0.75rem;--rem10:0.625rem;--rem8:0.5rem;--rem6:0.375rem;--rem4:0.25rem;--rem2:0.125rem;--rem1:0.0625rem;--spacer-4xs:0.125rem;--spacer-2xs:0.25rem;--spacer-xs:0.5rem;--spacer-sm:0.75rem;--"
+  },
+  {
+   "name": "pushshift_legacy",
+   "url": "https://api.pushshift.io/reddit/search/submission/",
+   "note": "旧 Pushshift 公共 API（预期已关）",
+   "status": 403,
+   "elapsed_s": 4.76,
+   "ctype": "application/json",
+   "ratelimit_headers": {},
+   "bytes": 30,
+   "json_top": [
+    "detail"
+   ],
+   "sample": "{\"detail\": \"Not authenticated\"}"
+  },
+  {
+   "name": "arctic_shift_posts",
+   "url": "https://arctic-shift.photon-reddit.com/api/posts/search",
+   "note": "Pushshift 后继存档（社区维护）",
+   "status": 200,
+   "elapsed_s": 3.07,
+   "ctype": "application/json; charset=utf-8",
+   "ratelimit_headers": {
+    "X-RateLimit-Reset": "40",
+    "X-RateLimit-Reset-At": "1787736180000"
+   },
+   "bytes": 14808,
+   "json_top": [
+    "data"
+   ],
+   "sample": "{\"data\": [{\"all_awardings\": [], \"allow_live_comments\": false, \"approved_at_utc\": null, \"approved_by\": null, \"archived\": false, \"author\": \"Significant-Fact4476\", \"author_flair_background_color\": null, \"author_flair_css_class\": null, \"author_flair_richtext\": [], \"author_flair_template_id\": null, \"author_flair_text\": null, \"author_flair_text_color\": null, \"author_flair_type\": \"text\", \"author_fullname\": \"t2_27pdmq8z1h\", \"author_is_blocked\": false, \"author_patreon_flair\": false, \"author_premium\": false, \"awarders\": [], \"banned_at_utc\": null, \"banned_by\": null, \"can_gild\": false, \"can_mod_post\": fal"
+  },
+  {
+   "name": "arctic_shift_hist",
+   "url": "https://arctic-shift.photon-reddit.com/api/posts/search",
+   "note": "存档历史回溯能力",
+   "status": 200,
+   "elapsed_s": 2.39,
+   "ctype": "application/json; charset=utf-8",
+   "ratelimit_headers": {
+    "X-RateLimit-Reset": "38",
+    "X-RateLimit-Reset-At": "1787736180000"
+   },
+   "bytes": 38107,
+   "json_top": [
+    "data"
+   ],
+   "sample": "{\"data\": [{\"_meta\": {\"retrieved_2nd_on\": 1757418725}, \"all_awardings\": [], \"allow_live_comments\": false, \"approved_at_utc\": null, \"approved_by\": null, \"archived\": false, \"author\": \"Downtown_Hedgehog_44\", \"author_flair_background_color\": null, \"author_flair_css_class\": null, \"author_flair_richtext\": [], \"author_flair_template_id\": null, \"author_flair_text\": null, \"author_flair_text_color\": null, \"author_flair_type\": \"text\", \"author_fullname\": \"t2_e06w6ge3\", \"author_is_blocked\": false, \"author_patreon_flair\": false, \"author_premium\": false, \"awarders\": [], \"banned_at_utc\": null, \"banned_by\": nul"
+  },
+  {
+   "name": "tradestie_wsb_hist",
+   "url": "https://tradestie.com/api/v1/apps/reddit",
+   "note": "第三方 WSB 每日 mention 榜（历史）",
+   "status": 400,
+   "elapsed_s": 1.83,
+   "ctype": "application/json",
+   "ratelimit_headers": {},
+   "bytes": 67,
+   "json_top": [
+    "error"
+   ],
+   "sample": "{\"error\": \"Invalid date format. Use MM-DD-YYYY (e.g., 11-02-2025)\"}"
+  },
+  {
+   "name": "apewisdom_all",
+   "url": "https://apewisdom.io/api/v1.0/filter/all-stocks",
+   "note": "第三方 Reddit mention 聚合（快照）",
+   "status": 200,
+   "elapsed_s": 2.16,
+   "ctype": "application/json",
+   "ratelimit_headers": {},
+   "bytes": 12266,
+   "json_top": [
+    "count",
+    "pages",
+    "current_page",
+    "results"
+   ],
+   "sample": "{\"count\": 875, \"pages\": 9, \"current_page\": 1, \"results\": [{\"rank\": 1, \"ticker\": \"NVDA\", \"name\": \"NVIDIA\", \"mentions\": 426, \"upvotes\": 1061, \"rank_24h_ago\": 1, \"mentions_24h_ago\": 371}, {\"rank\": 2, \"ticker\": \"SPY\", \"name\": \"SPDR S&amp;P 500 ETF Trust\", \"mentions\": 174, \"upvotes\": 497, \"rank_24h_ago\": 2, \"mentions_24h_ago\": 223}, {\"rank\": 3, \"ticker\": \"DKS\", \"name\": \"Dick's Sporting Goods\", \"mentions\": 113, \"upvotes\": 441, \"rank_24h_ago\": 96, \"mentions_24h_ago\": 4}, {\"rank\": 4, \"ticker\": \"SNDK\", \"name\": \"Sandisk\", \"mentions\": 101, \"upvotes\": 939, \"rank_24h_ago\": 4, \"mentions_24h_ago\": 95}, {\"ran"
+  },
+  {
+   "name": "x_api_recent_search",
+   "url": "https://api.twitter.com/2/tweets/search/recent",
+   "note": "无 bearer token 时的行为",
+   "status": 401,
+   "elapsed_s": 1.81,
+   "ctype": "application/problem+json",
+   "ratelimit_headers": {},
+   "bytes": 99,
+   "json_top": [
+    "title",
+    "type",
+    "status",
+    "detail"
+   ],
+   "sample": "{\"title\": \"Unauthorized\", \"type\": \"about:blank\", \"status\": 401, \"detail\": \"Unauthorized\"}"
+  },
+  {
+   "name": "gtrends_explore",
+   "url": "https://trends.google.com/trends/api/explore",
+   "note": "非官方 explore 入口（pytrends 走这条）",
+   "status": 429,
+   "elapsed_s": 1.98,
+   "ctype": "text/html; charset=utf-8",
+   "ratelimit_headers": {},
+   "bytes": 1697,
+   "sample": "<html lang=\"en\" dir=ltr><meta charset=utf-8><meta name=viewport content=\"initial-scale=1, minimum-scale=1, width=device-width\"><title>Error 429 (Too Many Requests)!!1</title><style nonce=\"rjR7Eh3ls6pMV7U06zPZHQ\">*{margin:0;padding:0}html,code{font:15px/22px arial,sans-serif}html{background:#fff;color:#222;padding:15px}body{color:#222;text-align:unset;margin:7% auto 0;max-width:390px;min-height:180px;padding:30px 0 15px;}* > body{background:url(//www.google.com/images/errors/robot.png) 100% 5px no-repeat;padding-right:205px}p{margin:11px 0 22px;overflow:hidden}pre{white-space:pre-wrap;}ins{colo"
+  },
+  {
+   "name": "gtrends_dailytrends",
+   "url": "https://trends.google.com/trends/api/dailytrends",
+   "note": "每日热搜端点",
+   "status": 404,
+   "elapsed_s": 2.1,
+   "ctype": "text/html; charset=UTF-8",
+   "ratelimit_headers": {},
+   "bytes": 134,
+   "sample": "<!doctype html><meta charset=\"utf-8\"><meta name=viewport content=\"width=device-width, initial-scale=1\"><title>404</title>404 Not Found"
+  },
+  {
+   "name": "wiki_pageviews_bigcap",
+   "url": "https://wikimedia.org/api/rest_v1/metrics/pageviews/per-article/en.wikipedia/all-access/user/Apple_Inc./daily/20250101/20250115",
+   "note": "官方 REST，日级浏览量",
+   "status": 200,
+   "elapsed_s": 1.85,
+   "ctype": "application/json; charset=utf-8",
+   "ratelimit_headers": {},
+   "bytes": 2225,
+   "json_top": [
+    "items"
+   ],
+   "sample": "{\"items\": [{\"project\": \"en.wikipedia\", \"article\": \"Apple_Inc.\", \"granularity\": \"daily\", \"timestamp\": \"2025010100\", \"access\": \"all-access\", \"agent\": \"user\", \"views\": 7341}, {\"project\": \"en.wikipedia\", \"article\": \"Apple_Inc.\", \"granularity\": \"daily\", \"timestamp\": \"2025010200\", \"access\": \"all-access\", \"agent\": \"user\", \"views\": 8177}, {\"project\": \"en.wikipedia\", \"article\": \"Apple_Inc.\", \"granularity\": \"daily\", \"timestamp\": \"2025010300\", \"access\": \"all-access\", \"agent\": \"user\", \"views\": 8798}, {\"project\": \"en.wikipedia\", \"article\": \"Apple_Inc.\", \"granularity\": \"daily\", \"timestamp\": \"2025010400\", \"a"
+  },
+  {
+   "name": "wiki_pageviews_deep",
+   "url": "https://wikimedia.org/api/rest_v1/metrics/pageviews/per-article/en.wikipedia/all-access/user/Apple_Inc./daily/20150701/20150710",
+   "note": "历史起点探测（2015-07）",
+   "status": 200,
+   "elapsed_s": 1.73,
+   "ctype": "application/json; charset=utf-8",
+   "ratelimit_headers": {},
+   "bytes": 1490,
+   "json_top": [
+    "items"
+   ],
+   "sample": "{\"items\": [{\"project\": \"en.wikipedia\", \"article\": \"Apple_Inc.\", \"granularity\": \"daily\", \"timestamp\": \"2015070100\", \"access\": \"all-access\", \"agent\": \"user\", \"views\": 11551}, {\"project\": \"en.wikipedia\", \"article\": \"Apple_Inc.\", \"granularity\": \"daily\", \"timestamp\": \"2015070200\", \"access\": \"all-access\", \"agent\": \"user\", \"views\": 12192}, {\"project\": \"en.wikipedia\", \"article\": \"Apple_Inc.\", \"granularity\": \"daily\", \"timestamp\": \"2015070300\", \"access\": \"all-access\", \"agent\": \"user\", \"views\": 10946}, {\"project\": \"en.wikipedia\", \"article\": \"Apple_Inc.\", \"granularity\": \"daily\", \"timestamp\": \"2015070400\","
+  },
+  {
+   "name": "xueqiu_timeline",
+   "url": "https://xueqiu.com/statuses/stock_timeline.json",
+   "note": "雪球（需 cookie？）",
+   "status": 200,
+   "elapsed_s": 0.25,
+   "ctype": "text/html",
+   "ratelimit_headers": {},
+   "bytes": 110310,
+   "sample": "<textarea id=\"renderData\" style=\"display:none\">{\"_waf_bd8ce2ce37\":\"IZdzWlSeWa0RR2NN4A9/Tk4khP7NDNTA7fjraJoEaH0=\"}</textarea><!doctype html><html><head><meta charset=\"utf-8\"><meta name=\"aliyun_waf_aa\" content=\"371ac51ab53fc53eb6bf9aa462a72e9f\"><meta name=\"aliyun_waf_oo\" content=\"var _0x2576duCiQ','MOvsy\"><meta name=\"aliyun_waf_00\" content=\"ad6697ce0fc1d400c5e218ab4dd3f917\"><script>function getRenderData(){var dataTag = document.getElementById('renderData');var renderData = dataTag.innerHTML;return renderData};var renderData = JSON.parse(getRenderData());window._waf_bd8ce2ce37 = renderData._waf_"
+  },
+  {
+   "name": "eastmoney_guba_us",
+   "url": "https://guba.eastmoney.com/list,USAAPL.html",
+   "note": "东财美股股吧",
+   "status": 200,
+   "elapsed_s": 0.24,
+   "ctype": "text/html; charset=utf-8",
+   "ratelimit_headers": {},
+   "bytes": 158657,
+   "sample": "<!DOCTYPE html><html lang=\"en\"><meta charSet=\"UTF-8\"/><head><meta name=\"env\" content=\"zp, render at 2026-08-26 17:22:36\"/><meta http-equiv=\"X-UA-Compatible\" content=\"IE=edge,chrome=1\"/><meta name=\"renderer\" content=\"webkit\"/><meta charSet=\"UTF-8\"/><link rel=\"icon\" href=\"//gbfek.dfcfw.com/project/guba2022/img/favicon.ico\"/><title>苹果(AAPL)股吧_苹果怎么样_分析讨论社区—东方财富网</title><meta name=\"keywords\" content=\"苹果股吧,AAPL股吧,苹果怎么样,苹果分析\"/><meta name=\"description\" content=\"苹果(AAPL)股吧，股民朋友可以在这里畅所欲言，分析讨论股票名的最新动态。东方财富股吧，专业的股票论坛社区。\"/><meta name=\"mobile-agent\" content=\"\"/><meta name=\"referrer\" content=\"always\"/><link "
+  },
+  {
+   "name": "yahoo_conversations",
+   "url": "https://finance.yahoo.com/quote/AAPL/community",
+   "note": "Yahoo conversations 页面",
+   "status": 200,
+   "elapsed_s": 2.72,
+   "ctype": "text/html; charset=utf-8",
+   "ratelimit_headers": {},
+   "bytes": 1049452,
+   "sample": "<!doctype html>\n<html lang=\"en-US\" theme=\"auto\" data-color-theme-enabled=\"true\" data-color-scheme=\"auto\" class=\"desktop neo-green dock-upscale\">\n    <head>\n        <meta charset=\"utf-8\" />\n        <meta name=\"oath:guce:consent-host\" content=\"guce.yahoo.com\" />\n        <link rel=\"preconnect\" href=\"//s.yimg.com\" crossorigin=\"anonymous\"><link rel=\"preconnect\" href=\"//geo.yahoo.com\"/><link rel=\"preconnect\" href=\"//query1.finance.yahoo.com\"/><link rel=\"preconnect\" href=\"//consent.cmp.oath.com\"/><link rel=\"preconnect\" href=\"//cdn.jsdelivr.net\"/><link rel=\"preload\" href=\"/__rapidworker-1.2.js\" as=\"wo"
+  },
+  {
+   "name": "seekingalpha_api",
+   "url": "https://seekingalpha.com/api/v3/symbols/AAPL/news",
+   "note": "SA 内部 API（预期 Cloudflare）",
+   "status": 403,
+   "elapsed_s": 2.96,
+   "ctype": "application/json",
+   "ratelimit_headers": {},
+   "bytes": 413,
+   "json_top": [
+    "firstPartyEnabled",
+    "hostUrl",
+    "blockScript",
+    "altBlockScript",
+    "appId",
+    "vid",
+    "uuid",
+    "jsClientSrc"
+   ],
+   "sample": "{\"firstPartyEnabled\": true, \"hostUrl\": \"/xgCxM9By/xhr\", \"blockScript\": \"/xgCxM9By/captcha/PXxgCxM9By/captcha.js?a=captcha&m=0&u=b08db04a-a12f-11f1-974e-52d6a1252af4&v=\", \"altBlockScript\": \"https://captcha.px-cloud.net/PXxgCxM9By/captcha.js?a=captcha&m=0&u=b08db04a-a12f-11f1-974e-52d6a1252af4&v=\", \"appId\": \"PXxgCxM9By\", \"vid\": \"\", \"uuid\": \"b08db04a-a12f-11f1-974e-52d6a1252af4\", \"jsClientSrc\": \"/xgCxM9By/init.js\"}"
+  },
+  {
+   "name": "investorshub_board",
+   "url": "https://investorshub.advfn.com/Sagebrush-Gold-Ltd-SRGZ/",
+   "note": "iHub 小票板块页",
+   "status": 403,
+   "elapsed_s": 1.76,
+   "ctype": "text/html; charset=UTF-8",
+   "ratelimit_headers": {},
+   "bytes": 5612,
+   "sample": "<!DOCTYPE html><html lang=\"en-US\"><head><title>Just a moment...</title><meta http-equiv=\"Content-Type\" content=\"text/html; charset=UTF-8\"><meta http-equiv=\"X-UA-Compatible\" content=\"IE=Edge\"><meta name=\"robots\" content=\"noindex,nofollow\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><meta http-equiv=\"content-security-policy\" content=\"default-src &#39;none&#39;; script-src &#39;nonce-eLhNs432WLKCXAN2Qf3T4y&#39; &#39;unsafe-eval&#39; https://challenges.cloudflare.com; script-src-attr &#39;none&#39;; style-src &#39;unsafe-inline&#39;; img-src &#39;self&#39; https://challenges"
+  },
+  {
+   "name": "finra_regsho_daily",
+   "url": "https://cdn.finra.org/equity/regsho/daily/CNMSshvol20250905.txt",
+   "note": "FINRA 每日做空成交量（全市场逐票）",
+   "status": 200,
+   "elapsed_s": 2.37,
+   "ctype": "text/plain",
+   "ratelimit_headers": {},
+   "bytes": 360058,
+   "sample": "Date|Symbol|ShortVolume|ShortExemptVolume|TotalVolume|Market\r\n20250905|A|399545|1|502214|B,Q,N\r\n20250905|AA|984134|5950|2378667|B,Q,N\r\n20250905|AAA|103|0|1732|Q\r\n20250905|AAAA|1358|0|1362|Q\r\n20250905|AAAU|325728|0|761283|B,Q,N\r\n20250905|AACB|1|0|3|Q\r\n20250905|AACG|13991|0|37097|Q\r\n20250905|AACIW|67|0|70|Q\r\n20250905|AACT|60766|3000|176017|Q\r\n20250905|AACT/WS|1037|0|11054|Q\r\n20250905|AADR|1704|0|2417|Q\r\n20250905|AAL|28506198|54115|68319481|B,Q,N\r\n20250905|AALG|604|0|4995|Q\r\n20250905|AAM|600|0|661|Q\r\n20250905|AAME|2671|0|9269|Q,N\r\n20250905|AAMI|108923|10547|438898|B,Q,N\r\n20250905|AAOI|705058|1735"
+  },
+  {
+   "name": "finra_regsho_old",
+   "url": "https://cdn.finra.org/equity/regsho/daily/CNMSshvol20200902.txt",
+   "note": "历史深度探测（5 年前）",
+   "status": 200,
+   "elapsed_s": 2.14,
+   "ctype": "text/plain",
+   "ratelimit_headers": {},
+   "bytes": 286505,
+   "sample": "Date|Symbol|ShortVolume|ShortExemptVolume|TotalVolume|Market\r\n20200902|A|121098|0|294726|B,Q,N\r\n20200902|AA|870812|4030|2072213|B,Q,N\r\n20200902|AAAU|142564|0|230789|B,Q,N\r\n20200902|AACG|1429|250|10612|Q,N\r\n20200902|AACQU|2291|0|5724|Q,N\r\n20200902|AADR|353|0|1881|Q\r\n20200902|AAL|8508675|70058|28058291|B,Q,N\r\n20200902|AAMC|3051|0|5750|Q,N\r\n20200902|AAME|52|0|1264|Q,N\r\n20200902|AAN|56905|0|97782|B,Q,N\r\n20200902|AAOI|279048|550|473575|B,Q,N\r\n20200902|AAON|32882|41|43510|B,Q,N\r\n20200902|AAP|82354|4|175624|B,Q,N\r\n20200902|AAPL|33311826|802201|97787222|B,Q,N\r\n20200902|AAT|3445|0|24798|Q,N\r\n20200902|A"
+  },
+  {
+   "name": "cboe_options_chain",
+   "url": "https://cdn.cboe.com/api/global/delayed_quotes/options/AAPL.json",
+   "note": "CBOE 期权链（含 volume/OI，快照）",
+   "status": 200,
+   "elapsed_s": 2.72,
+   "ctype": "application/json",
+   "ratelimit_headers": {},
+   "bytes": 1511502,
+   "json_top": [
+    "timestamp",
+    "data",
+    "symbol"
+   ],
+   "sample": "{\"timestamp\": \"2026-08-26 09:03:07\", \"data\": {\"options\": [{\"option\": \"AAPL260826C00205000\", \"bid\": 103.8, \"bid_size\": 49.0, \"ask\": 106.4, \"ask_size\": 31.0, \"iv\": 3.4305, \"open_interest\": 16.0, \"volume\": 18.0, \"delta\": 1.0, \"gamma\": 0.0, \"vega\": 0.0, \"theta\": 0.0, \"rho\": 0.0056, \"theo\": 104.9265, \"change\": -2.03, \"open\": 106.92, \"high\": 106.92, \"low\": 104.32, \"tick\": \"down\", \"last_trade_price\": 104.32, \"last_trade_time\": \"2026-08-25T14:18:00\", \"percent_change\": -1.90879, \"prev_day_close\": 103.875}, {\"option\": \"AAPL260826P00205000\", \"bid\": 0.0, \"bid_size\": 0.0, \"ask\": 0.01, \"ask_size\": 996.0, \"i"
+  },
+  {
+   "name": "finnhub_social_sentiment",
+   "url": "https://finnhub.io/api/v1/stock/social-sentiment",
+   "note": "Finnhub Reddit+Twitter mention 计数（免费档？）",
+   "status": 403,
+   "elapsed_s": 2.1,
+   "ctype": "application/json; charset=utf-8",
+   "ratelimit_headers": {},
+   "bytes": 51,
+   "json_top": [
+    "error"
+   ],
+   "sample": "{\"error\": \"You don't have access to this resource.\"}"
+  },
+  {
+   "name": "finnhub_insider",
+   "url": "https://finnhub.io/api/v1/stock/insider-transactions",
+   "note": "对照：另一个可能收费的端点",
+   "status": 200,
+   "elapsed_s": 2.21,
+   "ctype": "application/json; charset=utf-8",
+   "ratelimit_headers": {
+    "X-Ratelimit-Limit": "60",
+    "X-Ratelimit-Remaining": "59",
+    "X-Ratelimit-Reset": "1787736235"
+   },
+   "bytes": 29025,
+   "json_top": [
+    "data",
+    "symbol"
+   ],
+   "sample": "{\"data\": [{\"name\": \"Newstead Jennifer\", \"share\": 40107, \"change\": -1439, \"filingDate\": \"2026-08-13\", \"transactionDate\": \"2026-08-11\", \"transactionCode\": \"S\", \"transactionPrice\": 307.75, \"id\": \"0001140361-26-032884\", \"symbol\": \"AAPL\", \"source\": \"sec\", \"isDerivative\": false, \"currency\": \"\"}, {\"name\": \"LEVINSON ARTHUR D\", \"share\": 3699576, \"change\": -65000, \"filingDate\": \"2026-05-29\", \"transactionDate\": \"2026-05-27\", \"transactionCode\": \"G\", \"transactionPrice\": 0, \"id\": \"0001140361-26-023363\", \"symbol\": \"AAPL\", \"source\": \"sec\", \"isDerivative\": false, \"currency\": \"\"}, {\"name\": \"LEVINSON ARTHUR D\", "
+  },
+  {
+   "name": "stooq_daily_smallcap",
+   "url": "https://stooq.com/q/d/l/",
+   "note": "免费日线（量能来源备用，小票覆盖）",
+   "status": 200,
+   "elapsed_s": 2.52,
+   "ctype": "text/html; charset=utf-8",
+   "ratelimit_headers": {},
+   "bytes": 796,
+   "sample": "<!DOCTYPE html><html><head><meta charset=\"utf-8\"><meta name=\"robots\" content=\"noindex,nofollow\"></head><body><noscript>This site requires JavaScript to verify your browser. Please enable JavaScript and reload.</noscript><script nonce=\"IjhC_kOzc6TVzkNV9P5DYA\">\n(async()=>{const c=\"AAAAAGqOsHLOgnAmNOhtx1D4lLjc3igzMC6CAm75DmADvQQCDFfcAUHb8eY\",d=4,t=\"0\".repeat(d),e=new TextEncoder;let n=0;while(1){const h=await crypto.subtle.digest(\"SHA-256\",e.encode(c+n)),x=Array.from(new Uint8Array(h)).map(b=>b.toString(16).padStart(2,\"0\")).join(\"\");if(x.startsWith(t))break;n++}const r=await fetch(\"/__verify\",{me"
+  },
+  {
+   "name": "edgar_efts_hits",
+   "url": "https://efts.sec.gov/LATEST/search-index",
+   "note": "全文检索命中量（机构侧关注度代理）",
+   "status": null,
+   "elapsed_s": 5.0,
+   "error": "SSLError: HTTPSConnectionPool(host='efts.sec.gov', port=443): Max retries exceeded with url: /LATEST/search-index?q=%22Sagebrush+Gold%22&dateRange=custom&startdt=2025-09-01&enddt=2025-12-31 (Caused by SSLError(SSLEOFError(8, '[SSL: UNEXPECTED_EOF_WHILE_READING] EOF occurred in violation of protocol (_ssl.c:1010)')))"
+  },
+  {
+   "name": "edgar_logfile_index",
+   "url": "https://www.sec.gov/files/edgar-log-file-data-set.html",
+   "note": "EDGAR 访问日志数据集现状",
+   "status": null,
+   "elapsed_s": 5.0,
+   "error": "SSLError: HTTPSConnectionPool(host='www.sec.gov', port=443): Max retries exceeded with url: /files/edgar-log-file-data-set.html (Caused by SSLError(SSLEOFError(8, '[SSL: UNEXPECTED_EOF_WHILE_READING] EOF occurred in violation of protocol (_ssl.c:1010)')))"
+  }
+ ]
+}

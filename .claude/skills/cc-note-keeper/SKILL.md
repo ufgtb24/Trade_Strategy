@@ -1,20 +1,35 @@
 ---
 name: cc-note-keeper
-description: Use when the user wants to record Claude Code knowledge or experience (config tricks, fixes, UI tweaks, settings.json/CLAUDE.md tips, hooks, plugins, etc.) into /home/yu/PycharmProjects/Trade_Strategy/docs/cc_notes, or wants to reorganize the note categories there.
+description: Use when the user wants to record Claude Code knowledge or experience (config tricks, fixes, UI tweaks, settings.json/CLAUDE.md tips, hooks, plugins, etc.) into the repo's docs/cc_notes, or wants to reorganize the note categories there.
 ---
 
 # Claude Code 笔记管家（本项目版）
 
-帮用户把关于 Claude Code 的知识沉淀到 `/home/yu/PycharmProjects/Trade_Strategy/docs/cc_notes` 的 markdown 笔记中。维护一个根索引（INDEX.md），按一个清晰的分类维度组织所有笔记，并在每次写入时给出**一步式**的位置推荐。
+帮用户把关于 Claude Code 的知识沉淀到 **`<repo-root>/docs/cc_notes`** 的 markdown 笔记中（`<repo-root>` = `git rev-parse --show-toplevel`，**当前 worktree 的根，不是主 checkout**）。维护一个根索引（INDEX.md），按一个清晰的分类维度组织所有笔记，并在每次写入时给出**一步式**的位置推荐。
 
 笔记目的：**帮用户高效解决问题**，不是学习知识。可粘贴的自动化流程/操作步骤是最有价值的内容——用户大多数时候只想"无脑做完"。原理一笔带过、一语中的，仅作为出问题排查时的定向查阅，平时不展开。
 
 > 笔记内容本身是跨项目通用的 Claude Code 配置经验，与 trading 业务无关；落在本项目的 `docs/cc_notes` 是为了纳入版本控制和坚果云同步。
 
+## 路径纪律（红线）
+
+**一切读写都用当前 worktree 的 repo root，绝不硬编码绝对路径。** 定位方式：
+
+```bash
+CC_NOTES="$(git rev-parse --show-toplevel)/docs/cc_notes"
+```
+
+理由：本 skill 可能在任意 worktree 里被调用。写死主 checkout 的绝对路径 =
+**把文件写进别的 worktree 的工作区**（跨 worktree 污染），且提交会落到那个分支上、
+不在你以为的分支里。`docs/cc_notes/` 在各分支通常都存在，无需跨目录。
+
+⚠ 后台 session 对主 checkout 的写入本有 bgIsolation 拦截，但**那道闸只管 Edit/Write 工具**——
+用 Bash 的 `cat > file` / 重定向会绕过它、静默写入成功。别指望它兜底。
+
 ## 仓库结构
 
 ```
-/home/yu/PycharmProjects/Trade_Strategy/docs/cc_notes/
+<repo-root>/docs/cc_notes/
 ├── INDEX.md              ← 根索引，记录分类维度和文件映射
 ├── <topic-a>.md          ← 笔记，frontmatter 含 scope 描述
 ├── <topic-a>-setup.sh    ← 可选：脚本太大不便嵌入正文时拆出（默认不拆，见下）

@@ -10,7 +10,9 @@ negation_violated 是全称量词、归 node 级入口 C 诊断,_rel_rows 本身
 
 fixture 沿用 Task 1(test_diagnose_anchor_ok.py)precedent:合成 2-node PatternSpec +
 _FakeDet 直接吐已构造好的 canned 事件序列,不依赖 bo/burst/tb 真实市场数据。
-"""
+
+Ruling H:anchor 身份 = src.instance_id(交错标注后 detect 期即非 None),
+example_failed_pairs 亦存 instance_id。"""
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -43,14 +45,12 @@ def test_miss_reasons_default_has_four_keys():
 
 @dataclass(frozen=True)
 class _SrcEvent(Event):
-    """合成 src 事件(充当 burst node);anchor 身份用自身 event_id(anchor_src_field=None 默认路径)。"""
-    class_id = "miss_reasons_src"
+    """合成 src 事件(充当 burst node)。"""
 
 
 @dataclass(frozen=True)
 class _DstEvent(Event):
-    """合成 dst 事件(充当 tb node);anchor_id 显式声明其真实伙伴。"""
-    class_id = "miss_reasons_dst"
+    """合成 dst 事件(充当 tb node);anchor_id 显式声明其真实伙伴(instance_id 语义)。"""
     anchor_id: str = ""
 
 
@@ -73,8 +73,8 @@ def _run_diagnose(nodes, edges, pattern_id):
 
 def _run_diagnose_with_gap_violation_fixture():
     """burst 窗口 [11,15] 内没有任何 tb 候选(tb_far 远在 50)——纯粹的"没伙伴",归 gap_out。"""
-    burst_a = _SrcEvent(event_id="burst_a", start_idx=0, end_idx=10, confirm_idx=0)
-    tb_far = _DstEvent(event_id="tb_far", start_idx=50, end_idx=50, confirm_idx=50)
+    burst_a = _SrcEvent(start_idx=0, end_idx=10, confirm_idx=0)
+    tb_far = _DstEvent(start_idx=50, end_idx=50, confirm_idx=50)
     nodes = (
         NodeSpec(node_id="burst", detector=_FakeDet([burst_a], _SrcEvent)),
         NodeSpec(node_id="tb", detector=_FakeDet([tb_far], _DstEvent)),
@@ -89,14 +89,15 @@ def test_miss_reasons_gap_out_counted():
     r = next(row for row in rel_rows if row.src == "burst")
     assert r.miss_reasons["gap_out"] >= 1
     assert r.miss_reasons == {"gap_out": 1, "anchor_mismatch": 0, "strict_fail": 0, "negation_violated": 0}
-    assert r.example_failed_pairs == (("burst_a", "tb_far", "gap_out"),)
+    # instance_id(物化标注后):burst_a → "burst_0_10#0";tb_far → "tb_50#0"
+    assert r.example_failed_pairs == (("burst_0_10#0", "tb_50#0", "gap_out"),)
 
 
 def _run_diagnose_with_many_failures_fixture():
     """10 个 src 候选,窗口内唯一的 tb 候选远在窗口外——全部 10 个都 miss(gap_out),
     example_failed_pairs 必须抽样封顶 5 条。"""
-    bursts = [_SrcEvent(event_id=f"burst_{i}", start_idx=i, end_idx=i + 1, confirm_idx=i) for i in range(10)]
-    tb_far = _DstEvent(event_id="tb_far", start_idx=1000, end_idx=1000, confirm_idx=1000)
+    bursts = [_SrcEvent(start_idx=i, end_idx=i + 1, confirm_idx=i) for i in range(10)]
+    tb_far = _DstEvent(start_idx=1000, end_idx=1000, confirm_idx=1000)
     nodes = (
         NodeSpec(node_id="burst", detector=_FakeDet(bursts, _SrcEvent)),
         NodeSpec(node_id="tb", detector=_FakeDet([tb_far], _DstEvent)),
@@ -120,9 +121,10 @@ def test_miss_reasons_anchor_mismatch_and_strict_fail_classified():
     burst 窗口 [1,20] 内有两个 tb 候选——tb_early(先到但 anchor 对不上)、
     tb_correct(anchor 对得上,但因非窗口内最早候选而被 strict=True 的 next 语义挡下)。
     两者都在窗口内、都不能让 burst 通过,取"最深"的 strict_fail 作代表。"""
-    burst = _SrcEvent(event_id="burst_x", start_idx=0, end_idx=0, confirm_idx=0)
-    tb_early = _DstEvent(event_id="tb_early", start_idx=2, end_idx=2, confirm_idx=2, anchor_id="someone_else")
-    tb_correct = _DstEvent(event_id="tb_correct", start_idx=10, end_idx=10, confirm_idx=10, anchor_id="burst_x")
+    burst = _SrcEvent(start_idx=0, end_idx=0, confirm_idx=0)
+    # src 经标注后 instance_id = "burst_0#0"
+    tb_early = _DstEvent(start_idx=2, end_idx=2, confirm_idx=2, anchor_id="someone_else")
+    tb_correct = _DstEvent(start_idx=10, end_idx=10, confirm_idx=10, anchor_id="burst_0#0")
     nodes = (
         NodeSpec(node_id="burst", detector=_FakeDet([burst], _SrcEvent)),
         NodeSpec(node_id="tb", detector=_FakeDet([tb_early, tb_correct], _DstEvent)),
@@ -135,4 +137,5 @@ def test_miss_reasons_anchor_mismatch_and_strict_fail_classified():
     assert r.total_src == 1
     assert r.anchor_ok_count == 0
     assert r.miss_reasons == {"gap_out": 0, "anchor_mismatch": 0, "strict_fail": 1, "negation_violated": 0}
-    assert r.example_failed_pairs == (("burst_x", "tb_correct", "strict_fail"),)
+    # burst → "burst_0#0";tb_correct → "tb_10#0"(instance_id 物化标注后)
+    assert r.example_failed_pairs == (("burst_0#0", "tb_10#0", "strict_fail"),)

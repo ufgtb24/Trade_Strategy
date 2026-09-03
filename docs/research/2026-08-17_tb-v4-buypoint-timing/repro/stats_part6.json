@@ -1,0 +1,299 @@
+{
+ "F_triple": {
+  "pool": {
+   "n": 837,
+   "ep_med": -0.0506,
+   "ep_q10": -0.4534,
+   "mfr_med": 0.2423,
+   "mfr_q10": 0.033,
+   "mfd_med": -0.2186,
+   "mfd_q10": -0.5494,
+   "fp_up": 0.341,
+   "fp_down": 0.28,
+   "fp_none": 0.377
+  },
+  "new_only": {
+   "n": 202,
+   "ep_med": -0.0551,
+   "ep_q10": -0.4724,
+   "mfr_med": 0.2515,
+   "mfr_q10": 0.017,
+   "mfd_med": -0.2182,
+   "mfd_q10": -0.5742,
+   "fp_up": 0.332,
+   "fp_down": 0.282,
+   "fp_none": 0.381
+  },
+  "head_pool": {
+   "n": 1060,
+   "ep_med": -0.0692,
+   "ep_q10": -0.4749,
+   "mfr_med": 0.2355,
+   "mfr_q10": 0.0361,
+   "mfd_med": -0.2342,
+   "mfd_q10": -0.5477,
+   "fp_up": 0.324,
+   "fp_down": 0.315,
+   "fp_none": 0.359
+  },
+  "note": "new_only=F 版买点中现行版没有的(段内反弹根)"
+ },
+ "B_triple": {
+  "B_0.1": {
+   "new_only": {
+    "n": 36,
+    "ep_med": 0.0671,
+    "ep_q10": -0.407,
+    "mfr_med": 0.5249,
+    "mfr_q10": 0.1253,
+    "mfd_med": -0.1962,
+    "mfd_q10": -0.6082,
+    "fp_up": 0.556,
+    "fp_down": 0.222,
+    "fp_none": 0.222
+   },
+   "g2_dist_before": null,
+   "g2_strong": {
+    "n": 36,
+    "ep_med": 0.0671,
+    "ep_q10": -0.407,
+    "mfr_med": 0.5249,
+    "mfr_q10": 0.1253,
+    "mfd_med": -0.1962,
+    "mfd_q10": -0.6082,
+    "fp_up": 0.556,
+    "fp_down": 0.222,
+    "fp_none": 0.222
+   },
+   "n_dist": 0,
+   "n_strong": 36
+  },
+  "B_0.2": {
+   "new_only": {
+    "n": 55,
+    "ep_med": -0.0226,
+    "ep_q10": -0.5062,
+    "mfr_med": 0.4466,
+    "mfr_q10": 0.1203,
+    "mfd_med": -0.2067,
+    "mfd_q10": -0.6439,
+    "fp_up": 0.473,
+    "fp_down": 0.291,
+    "fp_none": 0.236
+   },
+   "g2_dist_before": {
+    "n": 2,
+    "ep_med": -0.1384,
+    "ep_q10": -0.1623,
+    "mfr_med": 0.448,
+    "mfr_q10": 0.3576,
+    "mfd_med": -0.2881,
+    "mfd_q10": -0.306,
+    "fp_up": 0.0,
+    "fp_down": 0.5,
+    "fp_none": 0.5
+   },
+   "g2_strong": {
+    "n": 53,
+    "ep_med": -0.0197,
+    "ep_q10": -0.5074,
+    "mfr_med": 0.4466,
+    "mfr_q10": 0.118,
+    "mfd_med": -0.2009,
+    "mfd_q10": -0.649,
+    "fp_up": 0.491,
+    "fp_down": 0.283,
+    "fp_none": 0.226
+   },
+   "n_dist": 2,
+   "n_strong": 53
+  },
+  "B_0.3": {
+   "new_only": {
+    "n": 71,
+    "ep_med": -0.0149,
+    "ep_q10": -0.5024,
+    "mfr_med": 0.3825,
+    "mfr_q10": 0.1018,
+    "mfd_med": -0.2009,
+    "mfd_q10": -0.6284,
+    "fp_up": 0.451,
+    "fp_down": 0.296,
+    "fp_none": 0.254
+   },
+   "g2_dist_before": {
+    "n": 2,
+    "ep_med": -0.1384,
+    "ep_q10": -0.1623,
+    "mfr_med": 0.448,
+    "mfr_q10": 0.3576,
+    "mfd_med": -0.2881,
+    "mfd_q10": -0.306,
+    "fp_up": 0.0,
+    "fp_down": 0.5,
+    "fp_none": 0.5
+   },
+   "g2_strong": {
+    "n": 69,
+    "ep_med": 0.0072,
+    "ep_q10": -0.5037,
+    "mfr_med": 0.3825,
+    "mfr_q10": 0.0921,
+    "mfd_med": -0.1999,
+    "mfd_q10": -0.6336,
+    "fp_up": 0.464,
+    "fp_down": 0.29,
+    "fp_none": 0.246
+   },
+   "n_dist": 2,
+   "n_strong": 69
+  },
+  "Bv_1.5": {
+   "new_only": {
+    "n": 71,
+    "ep_med": -0.0226,
+    "ep_q10": -0.5024,
+    "mfr_med": 0.3566,
+    "mfr_q10": 0.0486,
+    "mfd_med": -0.2067,
+    "mfd_q10": -0.6248,
+    "fp_up": 0.394,
+    "fp_down": 0.296,
+    "fp_none": 0.31
+   },
+   "g2_dist_before": null,
+   "g2_strong": {
+    "n": 71,
+    "ep_med": -0.0226,
+    "ep_q10": -0.5024,
+    "mfr_med": 0.3566,
+    "mfr_q10": 0.0486,
+    "mfd_med": -0.2067,
+    "mfd_q10": -0.6248,
+    "fp_up": 0.394,
+    "fp_down": 0.296,
+    "fp_none": 0.31
+   },
+   "n_dist": 0,
+   "n_strong": 71
+  }
+ },
+ "P4_dual": {
+  "n": 1060,
+  "spearman_offv_mfd": 0.0865,
+  "spearman_offv_ep": 0.0926,
+  "spearman_offg_mfd": 0.0345,
+  "spearman_offg_ep": 0.0582,
+  "offg_buckets": {
+   "lt0.1": {
+    "n": 520,
+    "ep_med": -0.0769,
+    "ep_q10": -0.4775,
+    "mfr_med": 0.2249,
+    "mfr_q10": 0.0421,
+    "mfd_med": -0.2414,
+    "mfd_q10": -0.5564,
+    "fp_up": 0.324,
+    "fp_down": 0.337,
+    "fp_none": 0.335
+   },
+   "0.1-0.2": {
+    "n": 220,
+    "ep_med": -0.0445,
+    "ep_q10": -0.4785,
+    "mfr_med": 0.2173,
+    "mfr_q10": 0.021,
+    "mfd_med": -0.2443,
+    "mfd_q10": -0.531,
+    "fp_up": 0.291,
+    "fp_down": 0.314,
+    "fp_none": 0.395
+   },
+   "ge0.2": {
+    "n": 320,
+    "ep_med": -0.0469,
+    "ep_q10": -0.4449,
+    "mfr_med": 0.2756,
+    "mfr_q10": 0.0308,
+    "mfd_med": -0.2224,
+    "mfd_q10": -0.5238,
+    "fp_up": 0.347,
+    "fp_down": 0.281,
+    "fp_none": 0.372
+   }
+  },
+  "offv_buckets": {
+   "lt0.5": {
+    "n": 659,
+    "ep_med": -0.0829,
+    "ep_q10": -0.4879,
+    "mfr_med": 0.2246,
+    "mfr_q10": 0.0398,
+    "mfd_med": -0.2511,
+    "mfd_q10": -0.5654,
+    "fp_up": 0.301,
+    "fp_down": 0.33,
+    "fp_none": 0.366
+   },
+   "ge0.5": {
+    "n": 401,
+    "ep_med": -0.0122,
+    "ep_q10": -0.4221,
+    "mfr_med": 0.2617,
+    "mfr_q10": 0.0274,
+    "mfd_med": -0.2022,
+    "mfd_q10": -0.5005,
+    "fp_up": 0.362,
+    "fp_down": 0.292,
+    "fp_none": 0.347
+   }
+  },
+  "robust_by_gainq": {
+   "Q1": {
+    "n": 267,
+    "gain_bo_med": 0.28,
+    "offg_med": 0.1948,
+    "spearman_offg_mfd": -0.0478,
+    "spearman_offv_mfd": 0.0121
+   },
+   "Q2": {
+    "n": 264,
+    "gain_bo_med": 0.747,
+    "offg_med": 0.1207,
+    "spearman_offg_mfd": -0.0563,
+    "spearman_offv_mfd": 0.0552
+   },
+   "Q3": {
+    "n": 266,
+    "gain_bo_med": 1.92,
+    "offg_med": 0.0888,
+    "spearman_offg_mfd": 0.1622,
+    "spearman_offv_mfd": 0.1931
+   },
+   "Q4": {
+    "n": 263,
+    "gain_bo_med": 5.88,
+    "offg_med": 0.0522,
+    "spearman_offg_mfd": 0.0301,
+    "spearman_offv_mfd": 0.0965
+   }
+  },
+  "note": "off_g=(close_enter-trough)/gain_bo, gain_bo=burst前夜close→bo根close(ABOS=0.44 口径)"
+ },
+ "P6": {
+  "n_machines": 457,
+  "n_with_both_v_e": 154,
+  "firstV_before_firstE_n": 77,
+  "firstV_after_firstE_n": 77,
+  "delta_pct": {
+   "10": 2.0,
+   "25": 2.0,
+   "50": 4.0,
+   "75": 5.0,
+   "90": 7.0
+  },
+  "delta_med": 4.0,
+  "zero_seg_machines": 15,
+  "zero_seg_with_v": 0
+ }
+}

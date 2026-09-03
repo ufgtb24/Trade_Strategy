@@ -17,11 +17,11 @@ const INLINE_SCAN: MultiScanResultFile = {
         pattern_id: 'test_pattern',
         topology: {
           nodes: [
-            { node_id: 'down',  class_id: 'trend', source_tag: 'trend0', where_rules: [{ clause_id: 'drawdown', op: '>=', threshold: 0.30 }] },
-            { node_id: 'side',  class_id: 'trend', source_tag: 'trend1', where_rules: [] },
-            { node_id: 'bo',    class_id: 'bo',    source_tag: 'bo',     where_rules: [] },
-            { node_id: 'burst', class_id: 'burst', source_tag: 'burst',  where_rules: [{ clause_id: 'vol', op: '>=', threshold: 2.0 }] },
-            { node_id: 'tb',    class_id: 'tb',    source_tag: 'tb',     where_rules: [] },
+            { node_id: 'down',  where_rules: [{ clause_id: 'drawdown', op: '>=', threshold: 0.30 }] },
+            { node_id: 'side',  where_rules: [] },
+            { node_id: 'bo',    where_rules: [] },
+            { node_id: 'burst', where_rules: [{ clause_id: 'vol', op: '>=', threshold: 2.0 }] },
+            { node_id: 'tb',    where_rules: [] },
           ],
           edges: [
             { src: 'down',  dst: 'burst', kind: 'TemporalEdge',    rule: 'before' },
@@ -29,8 +29,8 @@ const INLINE_SCAN: MultiScanResultFile = {
             { src: 'burst', dst: 'tb',    kind: 'TemporalEdge',    rule: 'gap=1' },
           ],
         },
-        event_styles: { trend: '#f59e0b', bo: '#2563eb', burst: '#7c3aed', tb: '#16a34a' },
-        debug_enabled_classes: ['tb'],
+        event_styles: { down: '#f59e0b', side: '#f59e0b', bo: '#2563eb', burst: '#7c3aed', tb: '#16a34a' },
+        debug_enabled_nodes: ['tb'],
       },
       end_node: 'tb',
     },
@@ -45,38 +45,38 @@ const INLINE_SCAN: MultiScanResultFile = {
       symbol: 'TEST',
       per_pattern: {
         test_pattern: {
-          summary: { trend: 4, bo: 3, burst: 2, tb: 1, matches: 1 },
+          summary: { down: 2, side: 2, bo: 3, burst: 1, tb: 1, matches: 1 },
           analysis: {
             events: [
-              // trend0 band: down 事件 2 个 (down1 匹配, down2 仅 qualified)
-              { class_id: 'trend', event_id: 'down1',  source_tag: 'trend0', start_idx: 1,  end_idx: 6,  drawdown: 0.42, child_refs: {} },
-              { class_id: 'trend', event_id: 'down2',  source_tag: 'trend0', start_idx: 10, end_idx: 15, drawdown: 0.20, child_refs: {} },
-              // trend1 band: side 事件 2 个 (side1 匹配, side2 detected only)
-              { class_id: 'trend', event_id: 'side1',  source_tag: 'trend1', start_idx: 4,  end_idx: 12, child_refs: {} },
-              { class_id: 'trend', event_id: 'side2',  source_tag: 'trend1', start_idx: 20, end_idx: 28, child_refs: {} },
+              // down band: 事件 2 个 (down1#0 匹配, down2#0 仅 qualified)
+              { node_id: 'down', instance_id: 'down1#0', instance_idx: 0, start_idx: 1,  end_idx: 6,  drawdown: 0.42, child_refs: {} },
+              { node_id: 'down', instance_id: 'down2#0', instance_idx: 0, start_idx: 10, end_idx: 15, drawdown: 0.20, child_refs: {} },
+              // side band: 事件 2 个 (side1#0 匹配, side2#0 detected only)
+              { node_id: 'side', instance_id: 'side1#0', instance_idx: 0, start_idx: 4,  end_idx: 12, child_refs: {} },
+              { node_id: 'side', instance_id: 'side2#0', instance_idx: 0, start_idx: 20, end_idx: 28, child_refs: {} },
               // bo band: 3 点事件 (无边 → 流源)
-              { class_id: 'bo', event_id: 'bo9',  source_tag: 'bo', start_idx: 9,  end_idx: 9, child_refs: {} },
-              { class_id: 'bo', event_id: 'bo11', source_tag: 'bo', start_idx: 11, end_idx: 11, child_refs: {} },
-              { class_id: 'bo', event_id: 'bo20', source_tag: 'bo', start_idx: 20, end_idx: 20, child_refs: {} },
+              { node_id: 'bo', instance_id: 'bo9#0',  instance_idx: 0, start_idx: 9,  end_idx: 9, child_refs: {} },
+              { node_id: 'bo', instance_id: 'bo11#0', instance_idx: 0, start_idx: 11, end_idx: 11, child_refs: {} },
+              { node_id: 'bo', instance_id: 'bo20#0', instance_idx: 0, start_idx: 20, end_idx: 20, child_refs: {} },
               // burst band: 1 匹配
-              { class_id: 'burst', event_id: 'burst1', source_tag: 'burst', start_idx: 13, end_idx: 13, vol: 3.1,
-                child_refs: { members: ['bo9', 'bo11'] } },
+              { node_id: 'burst', instance_id: 'burst1#0', instance_idx: 0, start_idx: 13, end_idx: 13, vol: 3.1,
+                child_refs: { members: ['bo9#0', 'bo11#0'] } },
               // tb band: 1 匹配
-              { class_id: 'tb', event_id: 'tb14', source_tag: 'tb', start_idx: 14, end_idx: 14, child_refs: {} },
+              { node_id: 'tb', instance_id: 'tb14#0', instance_idx: 0, start_idx: 14, end_idx: 14, child_refs: {} },
             ],
             matches: [
               {
-                event_id: 'm1', start_idx: 1, end_idx: 14,
-                node_index: { down: 'down1', side: 'side1', burst: 'burst1', tb: 'tb14' },
-                children: ['down1', 'side1', 'burst1', 'tb14', 'bo9', 'bo11'],
+                match_id: 'm1', start_idx: 1, end_idx: 14,
+                node_index: { down: 'down1#0', side: 'side1#0', burst: 'burst1#0', tb: 'tb14#0' },
+                children: ['down1#0', 'side1#0', 'burst1#0', 'tb14#0', 'bo9#0', 'bo11#0'],
                 predicate_trace: {
                   where_results: {
                     down:  { drawdown: { satisfied: true,  measured: 0.42, op: '>=', threshold: 0.30 } },
                     burst: { vol:      { satisfied: true,  measured: 3.1,  op: '>=', threshold: 2.0  } },
                   },
                   edge_results: {
-                    'down→burst':  { satisfied: true, measured: { kind: 'gap', value: 7, label: 'gap' },  src: 'down1',  dst: 'burst1' },
-                    'burst→tb':    { satisfied: true, measured: { kind: 'gap', value: 1, label: 'gap' },  src: 'burst1', dst: 'tb14' },
+                    'down→burst':  { satisfied: true, measured: { kind: 'gap', value: 7, label: 'gap' },  src: 'down1#0',  dst: 'burst1#0' },
+                    'burst→tb':    { satisfied: true, measured: { kind: 'gap', value: 1, label: 'gap' },  src: 'burst1#0', dst: 'tb14#0' },
                   },
                 },
               },
@@ -89,36 +89,36 @@ const INLINE_SCAN: MultiScanResultFile = {
   ],
 }
 
-// inline diag: down 有 2 行(down1 满足=qualified, down2 未满足);burst 有 1 行
+// inline diag: down 有 2 行(down1#0 满足=qualified, down2#0 未满足);burst 有 1 行
 const INLINE_DIAG: Diagnostics = {
   symbol: 'TEST',
   pattern_id: 'test_pattern',
   nodes: {
     down: {
       attr: [
-        { event_id: 'down1', start_idx: 1,  end_idx: 6,
+        { instance_id: 'down1#0', node_id: 'down', start_idx: 1,  end_idx: 6,
           clauses: { drawdown: { satisfied: true,  measured: 0.42, op: '>=', threshold: 0.30 } } },
-        { event_id: 'down2', start_idx: 10, end_idx: 15,
+        { instance_id: 'down2#0', node_id: 'down', start_idx: 10, end_idx: 15,
           clauses: { drawdown: { satisfied: false, measured: 0.20, op: '>=', threshold: 0.30 } } },
       ],
       rel: [],
     },
     side: {
       attr: [
-        { event_id: 'side1', start_idx: 4, end_idx: 12, clauses: {} },
+        { instance_id: 'side1#0', node_id: 'side', start_idx: 4, end_idx: 12, clauses: {} },
       ],
       rel: [],
     },
     burst: {
       attr: [
-        { event_id: 'burst1', start_idx: 13, end_idx: 13,
+        { instance_id: 'burst1#0', node_id: 'burst', start_idx: 13, end_idx: 13,
           clauses: { vol: { satisfied: true, measured: 3.1, op: '>=', threshold: 2.0 } } },
       ],
       rel: [],
     },
     tb: {
       attr: [
-        { event_id: 'tb14', start_idx: 14, end_idx: 14, clauses: {} },
+        { instance_id: 'tb14#0', node_id: 'tb', start_idx: 14, end_idx: 14, clauses: {} },
       ],
       rel: [],
     },
@@ -196,8 +196,8 @@ describe('DetailSidebar (5-node: pattern nodes + stream-source)', () => {
     expect(text).toContain('0.42')
   })
 
-  // ── 断言 4: 双向高亮 — 点候选表行 → selectEvent ─────────────────────────
-  it('点候选表行 → selectedEventId 更新', async () => {
+  // ── 断言 4: 双向高亮 — 点候选表行 → focusEvent ─────────────────────────
+  it('点候选表行 → focusedInstanceId 更新', async () => {
     const v = setupStore()
     const w = mount(DetailSidebar)
     await flushPromises()
@@ -213,13 +213,14 @@ describe('DetailSidebar (5-node: pattern nodes + stream-source)', () => {
     expect(down1Row).toBeTruthy()
     await down1Row!.trigger('click')
 
-    expect(v.selectedEventId).toBe('down1')
+    // focusEvent('down1#0') 唯一归属 m1 → focusedMatchId='m1' + focusedInstanceId='down1#0'
+    expect(v.focusedInstanceId).toBe('down1#0')
   })
 
-  // ── 断言 5: 双向高亮 — selectedEventId 反映到高亮 class ─────────────────
-  it('设 selectedEventId 后对应行有 attr-row--selected class', async () => {
+  // ── 断言 5: 双向高亮 — focusedInstanceId 反映到高亮 class ─────────────────
+  it('设 focusedInstanceId 后对应行有 attr-row--selected class', async () => {
     const v = setupStore()
-    v.focusedEventId = 'down1'   // 直写:纯测 markedEventIds 呈现,避开 focusEvent 归属判定副作用
+    v.focusedInstanceId = 'down1#0'   // 直写:纯测 markedEventIds 呈现,避开 focusEvent 归属判定副作用
     const w = mount(DetailSidebar)
     await flushPromises()
 
@@ -252,12 +253,12 @@ describe('DetailSidebar (5-node: pattern nodes + stream-source)', () => {
   })
 
   // ── 断言 7: 计数正确性 ───────────────────────────────────────────────────
-  it('matched 计数正确:down matched=1 / burst matched=1', async () => {
+  it('matched 计数正确:down matched=1 / burst matched=1(实例流复合键集合下不恒 miss)', async () => {
     const v = setupStore()
     const w = mount(DetailSidebar)
     await flushPromises()
 
-    // matchedIds = children of m1 = ['down1','side1','burst1','tb14','bo9','bo11']
+    // matchedIds(复合键集)= children of m1 的实例键 = ['down1#0','side1#0','burst1#0','tb14#0','bo9#0','bo11#0']
     // trend0 band events = ['down1','down2']  → matched in trend0 = 1 (down1)
     // burst band events  = ['burst1']         → matched in burst  = 1
 
@@ -266,15 +267,37 @@ describe('DetailSidebar (5-node: pattern nodes + stream-source)', () => {
     const funnelRows = w.findAll('.funnel-row')
     const downRow = funnelRows.find(r => r.text().includes('down'))!
     const downText = downRow.text()
-    // 确认包含 2 ▸ ... ▸ 1  (detected=2, matched=1)
+    // 精确序列断言:matched 段不被 qualified 段的数字掩盖(评审 C1 盲区:
+    // 旧断言 nums.toContain(1) 在 matched=0 时仍通过)
     const nums = downText.match(/\d+/g)?.map(Number) ?? []
-    expect(nums).toContain(2)   // detected=2
-    expect(nums).toContain(1)   // matched=1
+    expect(nums).toEqual([2, 1, 1])   // detected=2(down1+down2) · qualified=1(down1) · matched=1(down1)
 
-    // burst 行: detected=1, matched=1
+    // burst 行: detected=1 · qualified=1(burst1 满足 vol) · matched=1
     const burstRow = funnelRows.find(r => r.text().includes('burst'))!
     const burstNums = burstRow.text().match(/\d+/g)?.map(Number) ?? []
-    expect(burstNums).toContain(1)  // both detected and matched = 1
+    expect(burstNums).toEqual([1, 1, 1])
+  })
+
+  // ── 断言 7b: 候选表行 tier(rowTier)实例流下不降级 ────────────────────────
+  it('候选表 down1 行 tier=matched:色条宽度 12px(matched 档,非 qualified 6px 降级)', async () => {
+    setupStore()
+    const w = mount(DetailSidebar)
+    await flushPromises()
+
+    // 展开 down 候选表
+    const funnelRows = w.findAll('.funnel-row')
+    const downRow = funnelRows.find(r => r.text().includes('down'))
+    await downRow!.trigger('click')
+
+    // down1 是 m1 的 children(matched 实例),行色条宽度应取 matched 档 12px
+    const attrRows = w.findAll('.attr-row')
+    const down1Row = attrRows.find(r => r.text().includes('1-6'))   // down1: seg@1-6
+    expect(down1Row).toBeTruthy()
+    const cell = down1Row!.find('.cell-id')
+    const borderLeft = cell!.attributes('style') ?? ''
+    // 浏览器序列化为 kebab-case(border-left);12px = matched 档(matched 最宽,评审建议的
+    // 色盲/低对比宽度信道),qualified 档为 6px
+    expect(borderLeft).toContain('border-left: 12px solid')
   })
 
   // ── 断言 8: bo 密度计数 = 3 ──────────────────────────────────────────────
@@ -388,7 +411,7 @@ describe('DetailSidebar (5-node: pattern nodes + stream-source)', () => {
     const v = setupStore()
     // 注入 M' 候选状态
     v.setCandidateMatches(['m1'])
-    v.setPendingDisambig('down1')
+    v.setPendingDisambig('down1#0')
     const w = mount(DetailSidebar)
     await flushPromises()
 
@@ -404,9 +427,9 @@ describe('DetailSidebar (5-node: pattern nodes + stream-source)', () => {
 
     // M' 候选状态已清
     expect(v.candidateMatchIds.size).toBe(0)
-    expect(v.pendingDisambigEventId).toBeNull()
-    // selectEvent 已设
-    expect(v.selectedEventId).toBe('down1')
+    expect(v.pendingDisambigInstanceId).toBeNull()
+    // selectEvent 已设:down1#0 唯一归属 m1 → focusedInstanceId
+    expect(v.focusedInstanceId).toBe('down1#0')
   })
 
   // ── 断言 11: 点命中匹配行 → selectMatch + setHighlightedEvents(children) + clearCandidates ──
@@ -421,12 +444,12 @@ describe('DetailSidebar (5-node: pattern nodes + stream-source)', () => {
 
     expect(v.selected?.kind).toBe('match')
     expect((v.selected as any)?.matchId).toBe('m1')
-    // 组高亮:children of m1 = ['down1', 'side1', ...]
-    expect([...v.highlightedEventIds]).toEqual(expect.arrayContaining(['down1', 'side1']))
+    // 组高亮:children of m1 = instance_id 列表
+    expect([...v.highlightedEventIds]).toEqual(expect.arrayContaining(['down1#0', 'side1#0']))
     // 候选清空:clearCandidates → candidateMatchIds = empty Set
     expect(v.candidateMatchIds.size).toBe(0)
-    // selectedEventId 不改动(保持 null)
-    expect(v.selectedEventId).toBeNull()
+    // 实例焦点不改动(保持 null)
+    expect(v.focusedInstanceId).toBeNull()
   })
 })
 

@@ -100,7 +100,7 @@ describe('SidebarResultList · hover tooltip', () => {
     const view = useViewStore()
     const file = makeScanFile(['bo_only'], true)
     ;(file.per_pattern['bo_only'] as any).first_passage_stats = {
-      up: 30, down: 10, both: 2, none: 3, n_match: 45, ratio: 0.75,
+      up: 30, down: 10, both: 2, none: 3, n_bars: 45, ratio: 0.75,
       random_up: 23, random_down: 22, random_both: 0, random_none: 0, random_n: 45, random_ratio: 0.511, k: 2,
     }
     view.loadScanFile(file)

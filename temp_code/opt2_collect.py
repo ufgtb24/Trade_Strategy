@@ -30,7 +30,7 @@ from path2.dag._solve import compile_plan, solve  # noqa: E402
 from path2.dag._reify import reify  # noqa: E402
 from path2.atoms.breakout import BODetector, BurstDetector  # noqa: E402
 from path2.atoms.throwback import ThrowbackDetector  # noqa: E402
-from path2_apps.bottom_breakout_burst import load_params  # noqa: E402
+from path2_apps.bottom_burst import load_params  # noqa: E402
 from path2_web.data import slice_window  # noqa: E402
 
 YEAR = int(sys.argv[1]) if len(sys.argv) > 1 else 2025

@@ -19,7 +19,7 @@ async function openScanDialogAndSelectAll(page: any) {
 async function ensureAtLeastOneScan(page: any) {
   await gotoApp(page)
   // 若历史已有记录则跳过扫描;否则触发一次等完成
-  const existing = await fetch(`${API_BASE}/scans/bottom_breakout_burst`).then(r => r.json()).catch(() => [])
+  const existing = await fetch(`${API_BASE}/scans/bottom_burst`).then(r => r.json()).catch(() => [])
   if (Array.isArray(existing) && existing.length > 0) return
   await openScanDialogAndSelectAll(page)
   await page.getByRole('button', { name: /开始扫描/ }).click()
@@ -50,7 +50,7 @@ test('3. multi-select 2 rows + Delete → confirm → 行消失', async ({ page 
   // 跑两次扫描确保有 2 条历史
   await ensureAtLeastOneScan(page)
   // 确保至少 2 条:若历史已 ≥2 跳过第二次扫描
-  const existing2 = await fetch(`${API_BASE}/scans/bottom_breakout_burst`).then(r => r.json()).catch(() => [])
+  const existing2 = await fetch(`${API_BASE}/scans/bottom_burst`).then(r => r.json()).catch(() => [])
   if (!Array.isArray(existing2) || existing2.length < 2) {
     await openScanDialogAndSelectAll(page)
     await page.getByRole('button', { name: /开始扫描/ }).click()

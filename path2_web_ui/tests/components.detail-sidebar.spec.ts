@@ -14,10 +14,10 @@ vi.mock('../src/api', () => ({ saveWcMirror: async () => ({ ok: true } as any), 
   getDiagnose: vi.fn(() => Promise.resolve({
     symbol: 'AAA', pattern_id: 'p1',
     nodes: {
-      bo: { attr: [{ event_id: 'e_bo_1', start_idx: 10, end_idx: 10, clauses: {} }], rel: [] },
+      bo: { attr: [{ instance_id: 'e_bo_1#0', node_id: 'bo', start_idx: 10, end_idx: 10, clauses: {} }], rel: [] },
       ta: { attr: [
-        { event_id: 'e_ta_1', start_idx: 12, end_idx: 15, clauses: {} },
-        { event_id: 'e_ta_2', start_idx: 20, end_idx: 22, clauses: {} },
+        { instance_id: 'e_ta_1#0', node_id: 'ta', start_idx: 12, end_idx: 15, clauses: {} },
+        { instance_id: 'e_ta_2#0', node_id: 'ta', start_idx: 20, end_idx: 22, clauses: {} },
       ], rel: [] },
     },
     note: 'Task 4 fixture',
@@ -48,8 +48,8 @@ function makeFixture(): MultiScanResultFile {
       pattern_id: 'p1',
       topology: {
         nodes: [
-          { node_id: 'bo', source_tag: 'bo', render_grid: 'price' },
-          { node_id: 'ta', source_tag: 'ta', render_grid: 'time' },
+          { node_id: 'bo', render_grid: 'price' },
+          { node_id: 'ta', render_grid: 'time' },
         ],
         edges: [{ src: 'bo', dst: 'ta', anchor_field: 'anchor_bo_id' }],
       },
@@ -57,15 +57,15 @@ function makeFixture(): MultiScanResultFile {
     } as any } as any },
     results: [{ symbol: 'AAA', per_pattern: { p1: { analysis: {
       events: [
-        { event_id: 'e_bo_1', class_id: 'BOEvent', source_tag: 'bo', start_idx: 10, end_idx: 10, child_refs: {} },
-        { event_id: 'e_ta_1', class_id: 'TAEvent', source_tag: 'ta', start_idx: 12, end_idx: 15,
-          anchor_bo_id: 'e_bo_1', child_refs: {} },
-        { event_id: 'e_ta_2', class_id: 'TAEvent', source_tag: 'ta', start_idx: 20, end_idx: 22,
-          anchor_bo_id: 'e_bo_1', child_refs: {} },
+        { node_id: 'bo', instance_id: 'e_bo_1#0', instance_idx: 0, start_idx: 10, end_idx: 10, child_refs: {} },
+        { node_id: 'ta', instance_id: 'e_ta_1#0', instance_idx: 0, start_idx: 12, end_idx: 15,
+          anchor_bo_id: 'e_bo_1#0', child_refs: {} },
+        { node_id: 'ta', instance_id: 'e_ta_2#0', instance_idx: 0, start_idx: 20, end_idx: 22,
+          anchor_bo_id: 'e_bo_1#0', child_refs: {} },
       ],
       matches: [
-        { event_id: 'm1', start_idx: 10, end_idx: 15, node_index: { ta: 'e_ta_1' }, children: ['e_ta_1'] },
-        { event_id: 'm2', start_idx: 12, end_idx: 22, node_index: { ta: 'e_ta_2' }, children: ['e_ta_2'] },
+        { match_id: 'm1', start_idx: 10, end_idx: 15, node_index: { ta: 'e_ta_1#0' }, children: ['e_ta_1#0'] },
+        { match_id: 'm2', start_idx: 12, end_idx: 22, node_index: { ta: 'e_ta_2#0' }, children: ['e_ta_2#0'] },
       ],
     } as any, summary: { matches: 2 } } as any } } as any],
     scan: { win_start: '2020-01-01', win_end: '2020-12-31', label_horizon: 20 } as any,
@@ -88,7 +88,7 @@ describe('DetailSidebar · Task 4 视图分化', () => {
     const view = useViewStore()
     view.loadScanFile(makeFixture())
     await flushPromises()                         // diag 落地
-    view.focusEvent('e_ta_1')                    // 唯一归属 m1;expandedNodeIds={ta}
+    view.focusEvent('e_ta_1#0')                  // 唯一归属 m1;expandedNodeIds={ta}
     const wrapper = mount(DetailSidebar)
     expect(wrapper.find('.match-trace').exists()).toBe(false)
     // 候选表存在
@@ -101,31 +101,22 @@ describe('DetailSidebar · Task 4 视图分化', () => {
 
   it('多归属 pending:候选表在 pending event 所在 node 下方展开 · 命中匹配多行同亮', async () => {
     const view = useViewStore()
-    view.loadScanFile(makeFixture())
+    // Task 5 契约变更:多归属 = 同一实例被 2+ match 的 node_index 引用(真共享,
+    // 删除 anchor_field 反查展开);构造 e_ta_1#0 被 m1/m2 同时引用
+    const fixture = makeFixture() as any
+    fixture.results[0].per_pattern.p1.analysis.matches = [
+      { match_id: 'm1', start_idx: 10, end_idx: 15, node_index: { ta: 'e_ta_1#0' }, children: ['e_ta_1#0'] },
+      { match_id: 'm2', start_idx: 12, end_idx: 22, node_index: { ta: 'e_ta_1#0' }, children: ['e_ta_1#0'] },
+    ]
+    view.loadScanFile(fixture)
     await flushPromises()                         // diag 落地
-    view.focusEvent('e_bo_1')                    // anchor_field 反查 m1+m2 → 多归属
+    view.focusEvent('e_ta_1#0')                  // 单实例被两 match 共享 → 多归属
     const wrapper = mount(DetailSidebar)
     expect(wrapper.find('.match-trace').exists()).toBe(false)
-    expect(wrapper.find('.candidate-table-wrap').exists()).toBe(true)     // pending 兜底展开 bo
+    expect(wrapper.find('.candidate-table-wrap').exists()).toBe(true)     // pending 兜底展开 ta
     const rows = wrapper.findAll('.match-row')
     const selectedRows = rows.filter(r => r.classes().includes('match-row--selected'))
     expect(selectedRows.length).toBe(2)          // 信息层如实反映
-  })
-
-  it('sidebar 候选表 event 行 click:等价 marker click 走 focusEvent', async () => {
-    const view = useViewStore()
-    view.loadScanFile(makeFixture())
-    await flushPromises()                         // diag 落地
-    view.toggleExpandedNode('ta')                   // 手动展开 ta 候选表
-    const wrapper = mount(DetailSidebar)
-    const rows = wrapper.findAll('.attr-row')
-    if (rows.length === 0) {
-      // diag 尚未 seed —— 这条测试需要 diag,或跳过
-      return
-    }
-    await rows[0].trigger('click')
-    // focusEvent 已调用 · focusedEventId 非空
-    expect(view.focusedEventId).toBeTruthy()
   })
 
   it('sidebar 命中匹配行 click:等价 bracket click 走 focusMatch → showTrace=true', async () => {
@@ -135,7 +126,7 @@ describe('DetailSidebar · Task 4 视图分化', () => {
     const matchRows = wrapper.findAll('.match-row')
     await matchRows[0].trigger('click')
     expect(view.focusedMatchId).toBe('m1')
-    expect(view.focusedEventId).toBeNull()
+    expect(view.focusedInstanceId).toBeNull()
     expect(view.showTrace).toBe(true)
   })
 

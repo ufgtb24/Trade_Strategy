@@ -26,15 +26,43 @@ def _attr_rows(node, stream):
     return tuple(rows)
 
 
+def _child_stream(spec, streams, node):
+    """子结构 node 的"流":父容器流逐事件挖 child_slots 中该槽 child,平铺保序。
+
+    子结构 node 无 detector、无独立流(streams[node_id] 恒空),其 attr 判定的
+    数据源 = 父容器物化的槽内事件(与 serialize_analysis 挖 child 同源)。槽名由
+    children 声明逆映射定位(node_id → (父 node_id, 槽));未声明/槽不存在 → 空。"""
+    for n in spec.nodes:
+        for slot, child_id in (n.children or {}).items():
+            if child_id != node.node_id:
+                continue
+            out = []
+            for e in streams.get(n.node_id, []):
+                v = e.child_slots().get(slot)
+                if v is None:
+                    continue
+                out.extend(v if isinstance(v, tuple) else (v,))
+            return out
+    return []
+
+
 def diagnose(spec, df, params=None) -> NodeDiagnostics:
     """对每个 NodeSpec 独立做属性诊断(+ 关系诊断,Task 7)。复用 run_streams 产流。"""
     streams = run_streams(spec, df, params)
     nodes = {}
     for node in spec.nodes:
-        stream = streams.get(node.node_id, [])
+        if node.produced_by is None:
+            stream = streams.get(node.node_id, [])
+        else:
+            # 子结构 node:attr 行数据源 = 父容器槽内事件(段级 where 判定载体;
+            # 无 where 时行 vacuous 真 → 段 tier 升 qualified 深灰,与容器同档)
+            stream = _child_stream(spec, streams, node)
         attr = _attr_rows(node, stream)
         rel = _rel_rows(node, spec, streams)               # Task 7
-        nodes[node.node_id] = NodeDiagnostic(node_id=node.node_id, attr=attr, rel=rel)
+        # produced_by 透传供前端显示「由父容器 {produced_by} 物化」提示;
+        # 子结构 rel 恒空(无边指向子结构 node,其流槽位为空)
+        nodes[node.node_id] = NodeDiagnostic(
+            node_id=node.node_id, attr=attr, rel=rel, produced_by=node.produced_by)
     return NodeDiagnostics(nodes=nodes)
 
 
@@ -121,7 +149,7 @@ def _rel_rows(node, spec, streams):
             reason, rep_v = _worst_gate(edge, a, lo, hi, stream_r, node, streams)
             miss[reason] += 1
             if rep_v is not None and len(examples) < 5:
-                examples.append((e_u.event_id, rep_v.event_id, reason))
+                examples.append((e_u.instance_id, rep_v.instance_id, reason))
         rows.append(RelRow(src=u, kind=type(edge).__name__,
                            total_src=len(u_stream), ok_src=tuple(ok_src),
                            anchor_ok_count=len(ok_src),

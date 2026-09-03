@@ -39,3 +39,23 @@ export function fmtValue(val: any): string {
     }
     return String(val)
 }
+
+/**
+ * 百分比带正负号(如 +13.0% / -5.0%),null → —。
+ * 与 PatternStatsTooltip 的 median 展示共用,提取于此避免格式漂移。
+ */
+export function fmtVal(v: number | null): string {
+    if (v == null) return '—'
+    const pct = (v * 100).toFixed(1)
+    return v >= 0 ? `+${pct}%` : `${pct}%`
+}
+
+/**
+ * 首次穿越 ratio(0-1 比例):1 位小数百分比(近 50% 时保留区分度),不带正负号;null → —。
+ * null = 分母为 0(up+down=0,全是 both/none;或随机基线为 0)。
+ * 与 PatternStatsTooltip 的首次穿越块共用,提取于此避免格式漂移。
+ */
+export function fmtRatio(v: number | null): string {
+    if (v == null) return '—'
+    return `${(v * 100).toFixed(1)}%`
+}

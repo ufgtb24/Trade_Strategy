@@ -7,14 +7,12 @@ from path2.dag import where as W
 
 @dataclass(frozen=True)
 class _Bo(Event):
-    class_id = "test_childcomb_bo"
     drought: int = 0
     peaks: Tuple[int, ...] = ()
 
 
 @dataclass(frozen=True)
 class _Burst(Event):
-    class_id = "test_childcomb_burst"
     members: Tuple[_Bo, ...] = ()
     def child_slots(self):
         return {"members": self.members}
@@ -29,8 +27,8 @@ class _Burst(Event):
 
 
 def test_w_child_reads_single_child_attr():
-    b = _Burst(event_id="b", start_idx=1, end_idx=3, confirm_idx=1,
-               members=(_Bo(event_id="x", start_idx=1, end_idx=1, confirm_idx=1, drought=70),))
+    b = _Burst(start_idx=1, end_idx=3, confirm_idx=1,
+               members=(_Bo(start_idx=1, end_idx=1, confirm_idx=1, drought=70),))
     pred = W.child("first_bo", W.attr("drought", ">=", 60))
     assert pred(b) is True
     pred_fail = W.child("first_bo", W.attr("drought", ">=", 80))
@@ -38,9 +36,9 @@ def test_w_child_reads_single_child_attr():
 
 
 def test_w_children_aggregates_child_group():
-    b = _Burst(event_id="b", start_idx=1, end_idx=3, confirm_idx=1, members=(
-        _Bo(event_id="x", start_idx=1, end_idx=1, confirm_idx=1, peaks=(1, 2)),
-        _Bo(event_id="y", start_idx=2, end_idx=2, confirm_idx=2, peaks=(2, 3)),
+    b = _Burst(start_idx=1, end_idx=3, confirm_idx=1, members=(
+        _Bo(start_idx=1, end_idx=1, confirm_idx=1, peaks=(1, 2)),
+        _Bo(start_idx=2, end_idx=2, confirm_idx=2, peaks=(2, 3)),
     ))
     # 用 lambda 聚合:members 中所有 peaks 的并集大小 >= N
     def distinct_peaks_ge(n):

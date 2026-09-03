@@ -3,7 +3,7 @@ import { mount, flushPromises } from '@vue/test-utils'
 import { setActivePinia, createPinia } from 'pinia'
 import TopologyControl from '../../src/components/TopologyControl.vue'
 import { useViewStore } from '../../src/stores/view'
-import { SCAN_FILE } from '../fixtures'
+import { SCAN_FILE, PATTERN_WITH_SUB } from '../fixtures'
 
 describe('TopologyControl', () => {
   beforeEach(() => { setActivePinia(createPinia()); vi.useFakeTimers() })
@@ -166,5 +166,30 @@ describe('TopologyControl — 组合子规则串', () => {
   it('叶子 rule 保持扁平旧格式(不加括号)', () => {
     const w = mountWithRule({ clause_id: 'first_drought', kind: 'attr', field: 'first_drought', op: '>=', threshold: 60 })
     expect(w.get('[data-node-id="bo"]').attributes('title')).toBe('first_drought >= 60')
+  })
+
+  // ---- 父子关系(tb_seg → tb 虚线边,2026-08-07 新增) ----
+
+  it('renders sub-structure node with sub class and a parent edge carrying the slot name', () => {
+    const v = useViewStore()
+    v.loadScanFile({ ...SCAN_FILE, per_pattern: {
+      bottom_burst: { pattern_spec: PATTERN_WITH_SUB, end_node: 'tb' },
+    } })
+    v.selectSymbol('AAPL')
+    const w = mount(TopologyControl)
+    // 子结构节点带 sub class(虚线边框)
+    const seg = w.get('[data-node-id="tb_seg"]')
+    expect(seg.classes()).toContain('sub')
+    // 父子虚线边 2 条:tb_seg→tb(segments,挂靠垂直) + bo→burst(members,bo 是业务边端点 → 回退水平)
+    expect(w.findAll('.parent-edge').length).toBe(2)
+    // 槽名 label 渲染
+    expect(w.text()).toContain('segments')
+    expect(w.text()).toContain('members')
+    // 挂靠位置:tb_seg 在 tb 正下方(同列);bo 回退仍在水平流(burst 后列)
+    const leftOf = (id: string) => parseFloat(w.get(`[data-node-id="${id}"]`).attributes('style')!.match(/left: ([\d.]+)px/)![1])
+    const topOf = (id: string) => parseFloat(w.get(`[data-node-id="${id}"]`).attributes('style')!.match(/top: ([\d.]+)px/)![1])
+    expect(leftOf('tb_seg')).toBe(leftOf('tb'))
+    expect(topOf('tb_seg')).toBeGreaterThan(topOf('tb'))
+    expect(leftOf('bo')).toBeGreaterThan(leftOf('burst'))
   })
 })

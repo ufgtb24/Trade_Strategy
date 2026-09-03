@@ -13,7 +13,7 @@ function seedDebugState(store: ReturnType<typeof useViewStore>) {
   ;(store as any).activeDetailCard = 'debug'
   ;(store as any).debugPending = true
   ;(store as any).debugTarget = {
-    eventId: 'tb_1', bar: 218, className: 'tb', anchor: 'entry',
+    instanceId: 'tb_1', bar: 218, node_id: 'tb', anchor: 'entry',
   }
 }
 
@@ -57,7 +57,7 @@ describe('DetailSidebar · debug 卡片', () => {
     seedDebugState(store)
     const wrapper = mount(DetailSidebar)
     const text = wrapper.text()
-    expect(text).toContain('tb')       // className
+    expect(text).toContain('tb')       // node_id
     expect(text).toContain('entry')     // anchor
     expect(text).toContain('218')       // bar
   })

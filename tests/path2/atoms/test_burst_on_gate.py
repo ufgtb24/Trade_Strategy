@@ -1,6 +1,6 @@
 import pandas as pd
 import pytest
-from path2.atoms.breakout import BurstDetector, BOEvent
+from path2.atoms.breakout import BurstDetector, BOEvent, BurstEvent
 from path2.dag.gate_failure import GateFailure
 from path2.debug import set_current_symbol
 
@@ -13,9 +13,11 @@ def _reset_current_symbol():
 
 
 def make_bo(idx: int) -> BOEvent:
-    return BOEvent(event_id=f"bo_{idx}", start_idx=idx, end_idx=idx, confirm_idx=idx,
-                   drought=None, pk_count=1, broken_peak_ids=(),
-                   vol_ratio=None, peak_vol_max=0.0, referenced_points=())
+    # pk_count/broken_peak_ids 已改 @property(派生自 broken_refs,契约 C5);
+    # 本 fixture 不需要突破峰,broken_refs 留空即可(原 pk_count=1/broken_peak_ids=()
+    # 本就互不一致,从未被断言)。
+    return BOEvent(start_idx=idx, end_idx=idx, confirm_idx=idx,
+                   drought=None, vol_ratio=None, peak_vol_max=0.0)
 
 
 def test_chain_break_emits_gate_failure():
@@ -31,7 +33,6 @@ def test_chain_break_emits_gate_failure():
     chain_breaks = [g for g in captured if g.gate_name == 'chain_break']
     assert len(chain_breaks) == 1
     gf = chain_breaks[0]
-    assert gf.class_id == 'burst'
     assert gf.gate_idx == 105  # trigger bar = seq[k].start_idx
     assert gf.failure_event_window == (90, 105) or gf.failure_event_window == (90, 90)
     assert gf.symbol == 'TEST'
@@ -55,7 +56,6 @@ def test_min_bos_insufficient_at_stream_end():
     min_bos_gates = [g for g in captured if g.gate_name == 'min_bos_insufficient']
     assert len(min_bos_gates) == 1
     gf = min_bos_gates[0]
-    assert gf.class_id == 'burst'
     assert gf.failure_event_window == (90, 92)
     assert gf.threshold == 5
     # min_bos_insufficient case

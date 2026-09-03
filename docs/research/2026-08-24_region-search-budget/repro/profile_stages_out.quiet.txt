@@ -1,0 +1,48 @@
+stocks=108 processed=91 wall=12.4s  per-stock=115ms (gates=True runtime_checks=True)
+sum of stages (现状路径,不含对照项) = 11.0s
+  json_bytes                            0.5 MB total, 12 KB/hit-stock
+  det:tb                               7.13s     66.0 ms/stock  n=91
+  det:bo                               2.33s     21.6 ms/stock  n=91
+  label:first_passage                  1.05s      9.7 ms/stock  n=177
+  det:tb_fixed                         0.73s      6.8 ms/stock  n=91
+  serialize_per_pattern(total)         0.60s      5.6 ms/stock  n=91
+  random_fp                            0.25s      2.3 ms/stock  n=40
+  det:burst                            0.08s      0.7 ms/stock  n=91
+  load                                 0.08s      0.7 ms/stock  n=108
+  label:fr+dd                          0.02s      0.2 ms/stock  n=177
+  solve                                0.01s      0.1 ms/stock  n=91
+  serialize_analysis                   0.01s      0.1 ms/stock  n=91
+  json_dumps                           0.00s      0.0 ms/stock  n=40
+                    mean     50%     max
+n_bars        778.098901   828.0   828.0
+n_bo            9.945055    10.0    31.0
+n_burst         9.945055    10.0    31.0
+n_tb            1.945055     1.0    11.0
+n_match_all     1.945055     1.0    11.0
+n_match_win     1.087912     0.0     8.0
+n_gate       1552.813187  1654.0  1667.0
+sum: {'n_bo': 905, 'n_burst': 905, 'n_tb': 177, 'n_match_all': 177, 'n_match_win': 99, 'n_gate': 141306}
+stocks=108 processed=91 wall=11.4s  per-stock=106ms (gates=False runtime_checks=True)
+sum of stages (现状路径,不含对照项) = 10.0s
+  json_bytes                            0.5 MB total, 12 KB/hit-stock
+  det:tb                               7.01s     64.9 ms/stock  n=91
+  det:bo                               1.50s     13.9 ms/stock  n=91
+  label:first_passage                  1.06s      9.8 ms/stock  n=177
+  det:tb_fixed                         0.72s      6.7 ms/stock  n=91
+  serialize_per_pattern(total)         0.60s      5.6 ms/stock  n=91
+  random_fp                            0.25s      2.3 ms/stock  n=40
+  load                                 0.08s      0.7 ms/stock  n=108
+  det:burst                            0.07s      0.6 ms/stock  n=91
+  label:fr+dd                          0.02s      0.2 ms/stock  n=177
+  solve                                0.01s      0.1 ms/stock  n=91
+  serialize_analysis                   0.01s      0.1 ms/stock  n=91
+  json_dumps                           0.00s      0.0 ms/stock  n=40
+                   mean    50%    max
+n_bars       778.098901  828.0  828.0
+n_bo           9.945055   10.0   31.0
+n_burst        9.945055   10.0   31.0
+n_tb           1.945055    1.0   11.0
+n_match_all    1.945055    1.0   11.0
+n_match_win    1.087912    0.0    8.0
+n_gate         0.000000    0.0    0.0
+sum: {'n_bo': 905, 'n_burst': 905, 'n_tb': 177, 'n_match_all': 177, 'n_match_win': 99, 'n_gate': 0}

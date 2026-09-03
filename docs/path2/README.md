@@ -185,7 +185,7 @@ down_det = TrendSegmentDetector(ma_period=20)
 side_det = TrendSegmentDetector(ma_period=20)
 
 spec = PatternSpec(
-    pattern_id="bottom_breakout_burst",
+    pattern_id="bottom_burst",
     display_name="底部反转突破爆发",
     nodes=(
         # 节点 "bo"：单点突破事件。它是一个"孤立 role"——图里没有任何边连它，
@@ -253,7 +253,7 @@ for m in result.matches:
 
 这套机制的价值：让 bo 可以舒舒服服地当一层**独立的密度流源**（既喂下游、又能单独渲染），同时一点也不污染真正的形态匹配。
 
-逐条把这 7 个约束翻译成上面这张 DAG 的完整推导，见 [example-bottom-breakout-burst.md](example-bottom-breakout-burst.md)。
+逐条把这 7 个约束翻译成上面这张 DAG 的完整推导，见 [example-bottom-burst.md](example-bottom-burst.md)。
 
 ---
 
@@ -300,7 +300,7 @@ for m in result.matches:
 | [guide/edges.md](guide/edges.md) | 关系边指南：6 种 `DependencyEdge` 的结构职责与语义判定详解 |
 | [guide/matching-and-results.md](guide/matching-and-results.md) | 匹配与结果：`analyze()` 与 `AnalysisResult` / `PatternMatch` / `role_index` / `predicate_trace` / `to_topology()` 契约 |
 | [guide/authoring-patterns.md](guide/authoring-patterns.md) | 编写模式：把一组文字约束系统性地落成 DAG 声明的方法 |
-| [example-bottom-breakout-burst.md](example-bottom-breakout-burst.md) | 完整 worked example：以 `bottom_breakout_burst` 为蓝本，走通 7 约束到 DAG 声明 |
+| [example-bottom-burst.md](example-bottom-burst.md) | 完整 worked example：以 `bottom_burst` 为蓝本，走通 7 约束到 DAG 声明 |
 | [api-reference.md](api-reference.md) | API 速查表：各类型、字段、默认值一览（写代码时随手查） |
 
 ---

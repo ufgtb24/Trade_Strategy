@@ -10,7 +10,7 @@ describe('scan store · rename + open(name)', () => {
     const renameSpy = vi.spyOn(api, 'renameScan').mockResolvedValue({ name: '新名字' })
     const listSpy = vi.spyOn(api, 'listScans').mockResolvedValue([
       { name: '新名字', scan_ts: '20260729T100000', pattern_ids: ['bo_only'],
-        hits: 1, total: 10, size: 100, partial: false },
+        hits: 1, total: 10, size: 100, partial: false, per_pattern: {} },
     ])
     const s = useScanStore()
     await s.rename('old', '新名字')

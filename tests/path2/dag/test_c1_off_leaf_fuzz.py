@@ -19,6 +19,7 @@ from tests.path2.dag._oracle import Ev
 
 class _FakeDet:
     """合成 detector,只为 PatternSpec 校验通过(compile_plan/solve 不调 detect)。"""
+    event_cls = Ev
     def __init__(self, evs):
         self._evs = evs
     def detect(self, *source):

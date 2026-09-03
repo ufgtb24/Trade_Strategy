@@ -10,7 +10,7 @@ from path2_web.app import create_app
 
 
 def _mk_pkl(data_dir: Path, symbol: str):
-    from tests.path2_apps.bottom_breakout_burst.test_matches import _synth_no_burst
+    from tests.path2_apps.bottom_burst.test_matches import _synth_no_burst
     df = _synth_no_burst()
     df.index = pd.date_range("2025-01-01", periods=len(df), freq="D", name="date")
     df.to_pickle(data_dir / f"{symbol}.pkl")
@@ -70,7 +70,7 @@ def test_preview_uses_buffered_window_when_eval_meta_present(tmp_path):
     scan = body["scan"]
     assert scan["win_start"] < "2025-06-01"
     assert scan["win_end"] > "2025-06-30"
-    assert scan["end_node"] == "tb"
+    assert scan["end_node"] == "tb.segments"   # Task 6:end_node 路径声明(买点 = segments 槽企稳段)
     assert scan["label_horizon"] == 20
 
 
@@ -78,8 +78,8 @@ def test_preview_falls_back_when_eval_meta_missing(tmp_path, monkeypatch):
     """mock 掉 eval_meta(在 client 建好后) → require_eval_meta raises ValueError → 500。
     铁律下 discovery 已闸过滤,此路径属防御性;测试仅验证 500 返回、不报其他错。
     注:必须先建 client(让 discovery 正常跑通),再 delattr,否则 discovery 把 pattern 排除 → 404。"""
-    import path2_apps.bottom_breakout_burst.dag_spec as bbb_dag
-    c = _client(tmp_path)   # 先建 client,discovery 已正常注册 bottom_breakout_burst
+    import path2_apps.bottom_burst.dag_spec as bbb_dag
+    c = _client(tmp_path)   # 先建 client,discovery 已正常注册 bottom_burst
     monkeypatch.delattr(bbb_dag, "eval_meta", raising=False)
     r = c.get("/preview", params={"pattern_id": "bottom_burst",
                                    "symbol": "AAA", "start": "2025-06-01",
@@ -131,7 +131,7 @@ def test_preview_yaml_value_error_returns_500(tmp_path, monkeypatch):
     """yaml load 抛 ValueError(如未知字段)→ 500 detail 含错误描述。
     注:必须先建 client(让 discovery 正常跑通),再 patch load_params,
     否则 discovery 调用 load_params 抛 → pattern 排除 → 404。"""
-    import path2_apps.bottom_breakout_burst.dag_spec as bbb_dag
+    import path2_apps.bottom_burst.dag_spec as bbb_dag
     c = _client(tmp_path)   # 先建 client,discovery 已正常注册
     def _raise():
         raise ValueError("params.yaml ... 含未知字段: ['bo_typooo']")
@@ -146,7 +146,7 @@ def test_preview_yaml_value_error_returns_500(tmp_path, monkeypatch):
 def test_preview_analyze_exception_returns_500(tmp_path, monkeypatch):
     """mod.analyze 抛任意异常 → 500 detail 含 type:msg。
     mod 是 dag_spec 模块;须 patch dag_spec.analyze(非 bbb 包 __init__ 的 analyze)。"""
-    import path2_apps.bottom_breakout_burst.dag_spec as bbb_dag
+    import path2_apps.bottom_burst.dag_spec as bbb_dag
     c = _client(tmp_path)   # 先建 client,discovery 已正常注册
     def _raise(win, params=None):
         raise RuntimeError("simulated downstream failure")
@@ -161,8 +161,8 @@ def test_preview_analyze_exception_returns_500(tmp_path, monkeypatch):
 
 def test_preview_pattern_spec_reflects_current_yaml(tmp_path, monkeypatch):
     """monkeypatch load_params 返回改后值 → 响应 pattern_spec 反映新阈值。"""
-    import path2_apps.bottom_breakout_burst as bbb
-    import path2_apps.bottom_breakout_burst.dag_spec as bbb_dag
+    import path2_apps.bottom_burst as bbb
+    import path2_apps.bottom_burst.dag_spec as bbb_dag
     base = bbb.Params.default()
     # 把 burst.first_drought_min 临时改为 999(显著值,方便在 spec 里找到)
     from dataclasses import replace
@@ -176,7 +176,7 @@ def test_preview_pattern_spec_reflects_current_yaml(tmp_path, monkeypatch):
                                       "end": "2025-12-31", "label_horizon": 20}).json()
     # spec 内某个 node 的 where_rule 阈值含 999(具体路径:burst 节点 first_drought 子句)
     nodes = body["pattern_spec"]["topology"]["nodes"]
-    burst_node = next((n for n in nodes if n.get("class_id") == "burst" or "burst" in n.get("node_id", "")), None)
+    burst_node = next((n for n in nodes if "burst" in n.get("node_id", "")), None)
     assert burst_node is not None, "找不到 burst 节点"
     drought_rule = next((r for r in burst_node["where_rules"]
                          if r["clause_id"] == "first_drought"), None)

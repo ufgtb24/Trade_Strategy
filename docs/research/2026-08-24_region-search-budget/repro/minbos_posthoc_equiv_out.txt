@@ -1,0 +1,7 @@
+snapshot diff 1 vs 2: [('burst', 'min_bos')]
+snapshot diff 1 vs 3: [('burst', 'min_bos')]
+snapshot diff 1 vs 4: [('burst', 'min_bos')]
+k=2: filtered(min_bos=1)=4400  direct(min_bos=2)=4400  onlyA=0 onlyB=0  instance_id sets equal=False
+k=3: filtered(min_bos=1)=1632  direct(min_bos=3)=1632  onlyA=0 onlyB=0  instance_id sets equal=False
+k=4: filtered(min_bos=1)=558  direct(min_bos=4)=558  onlyA=0 onlyB=0  instance_id sets equal=False
+exit=0

@@ -239,7 +239,7 @@ describe('buildMarkerTooltipFormatter', () => {
   it('非 match 端点 + 非空 payload 渲染身份段 + 段头 Identity', () => {
     const resolver = (_eid: string): TooltipPayload => emptyPayload
     const fmt = buildMarkerTooltipFormatter(resolver, undefined)
-    const html = fmt({ data: { event_id: 'b1' } })
+    const html = fmt({ data: { instance_id: 'b1#0' } })
     expect(html).toContain('<b>Identity</b>')
     expect(html).toContain('node: bo_burst')
     expect(html).toContain('time: 2024-03-15')
@@ -255,7 +255,7 @@ describe('buildMarkerTooltipFormatter', () => {
     })
     const matchLabel = (id: string) => `MATCH:${id}`
     const fmt = buildMarkerTooltipFormatter(resolver, matchLabel)
-    const html = fmt({ data: { event_id: 'b1', match_id: 'm1' } })
+    const html = fmt({ data: { instance_id: 'b1#0', match_id: 'm1' } })
     expect(html).toContain('Match: MATCH:m1')
     expect(html).toContain('<b>Identity</b>')
     expect(html).toContain('<b>Clauses</b>')
@@ -274,7 +274,7 @@ describe('buildMarkerTooltipFormatter', () => {
       raw: {},
     })
     const fmt = buildMarkerTooltipFormatter(resolver, undefined)
-    const html = fmt({ data: { event_id: 'b1' } })
+    const html = fmt({ data: { instance_id: 'b1#0' } })
     const L = clauseLines(html)
     expect(L[0]).toMatch(/^first_drought\s+0\s+>= 20\s+✗$/)
     expect(L[1]).toMatch(/^count\s+3\s+>= 2\s+✓$/)
@@ -293,7 +293,7 @@ describe('buildMarkerTooltipFormatter', () => {
       raw: { max_bar_vol_ratio: 2.6378544926831706 },
     })
     const fmt = buildMarkerTooltipFormatter(resolver, undefined)
-    const html = fmt({ data: { event_id: 'b1' } })
+    const html = fmt({ data: { instance_id: 'b1#0' } })
     expect(html).toContain('2.6379')   // measured 截位
     expect(html).not.toContain('2.6378544926831706')   // 原始精度不应出现
     expect(html).toContain('max_bar_vol_ratio: 2.6379')   // raw 段也截位
@@ -313,7 +313,7 @@ describe('buildMarkerTooltipFormatter', () => {
       raw: {},
     })
     const fmt = buildMarkerTooltipFormatter(resolver, undefined)
-    const L = clauseLines(fmt({ data: { event_id: 'b1' } }))
+    const L = clauseLines(fmt({ data: { instance_id: 'b1#0' } }))
     expect(L[0]).toMatch(/^first_drought\s+0\s+>= 20\s+✗ \(in: bo_burst\)$/)
     expect(L[1]).toMatch(/^first_drought\s+0\s+>= 0\s+✓ \(in: tb_burst\)$/)
     expect(L[2]).toMatch(/^count\s+3\s+>= 2\s+✓$/)          // 单 node 不加后缀
@@ -326,7 +326,7 @@ describe('buildMarkerTooltipFormatter', () => {
       raw: {},
     })
     const fmt = buildMarkerTooltipFormatter(resolver, undefined)
-    const html = fmt({ data: { event_id: 'b1' } })
+    const html = fmt({ data: { instance_id: 'b1#0' } })
     expect(html).not.toContain('node:')
     expect(html).toContain('time: 2024-03-15')
     expect(html).toContain('id:   b1')
@@ -341,23 +341,23 @@ describe('buildMarkerTooltipFormatter', () => {
       identity: { nodes: [], dateStart: '2024-03-15', dateEnd: '2024-03-30', eventId: 'b1' },
       clauses: [], raw: {},
     })
-    expect(buildMarkerTooltipFormatter(resolverPoint, undefined)({ data: { event_id: 'b1' } }))
+    expect(buildMarkerTooltipFormatter(resolverPoint, undefined)({ data: { instance_id: 'b1#0' } }))
       .toContain('time: 2024-03-15')
-    expect(buildMarkerTooltipFormatter(resolverPoint, undefined)({ data: { event_id: 'b1' } }))
+    expect(buildMarkerTooltipFormatter(resolverPoint, undefined)({ data: { instance_id: 'b1#0' } }))
       .not.toContain('→')
-    expect(buildMarkerTooltipFormatter(resolverRange, undefined)({ data: { event_id: 'b1' } }))
+    expect(buildMarkerTooltipFormatter(resolverRange, undefined)({ data: { instance_id: 'b1#0' } }))
       .toContain('time: 2024-03-15 → 2024-03-30')
   })
 
   it('clauses 段为空时段头 Clauses 不渲染', () => {
     const fmt = buildMarkerTooltipFormatter((_eid) => emptyPayload, undefined)
-    const html = fmt({ data: { event_id: 'b1' } })
+    const html = fmt({ data: { instance_id: 'b1#0' } })
     expect(html).not.toContain('<b>Clauses</b>')
   })
 
   it('raw 段为空时段头 Attributes 不渲染', () => {
     const fmt = buildMarkerTooltipFormatter((_eid) => emptyPayload, undefined)
-    const html = fmt({ data: { event_id: 'b1' } })
+    const html = fmt({ data: { instance_id: 'b1#0' } })
     expect(html).not.toContain('<b>Attributes</b>')
   })
 
@@ -365,7 +365,7 @@ describe('buildMarkerTooltipFormatter', () => {
     const resolver = (_eid: string): TooltipPayload => emptyPayload
     const matchLabel = (_id: string) => null
     const fmt = buildMarkerTooltipFormatter(resolver, matchLabel)
-    const html = fmt({ data: { event_id: 'b1', match_id: 'm1' } })
+    const html = fmt({ data: { instance_id: 'b1#0', match_id: 'm1' } })
     expect(html).not.toContain('Match:')
     expect(html).toContain('<b>Identity</b>')   // 但 event 三段仍渲染
   })
@@ -404,7 +404,7 @@ describe('buildMarkerTooltipFormatter — 组合子递归渲染', () => {
     raw: {},
   }
   const render = () =>
-    buildMarkerTooltipFormatter(() => NESTED, undefined)({ data: { event_id: 'burst_249_252' } })
+    buildMarkerTooltipFormatter(() => NESTED, undefined)({ data: { instance_id: 'burst_249_252#0' } })
 
   it('树线 ├ └ │ 显式画出层次,子树紧跟父行', () => {
     const L = clauseLines(render())
@@ -461,7 +461,7 @@ describe('buildMarkerTooltipFormatter — 组合子递归渲染', () => {
       ],
       raw: {},
     }
-    const out = buildMarkerTooltipFormatter(() => payload, undefined)({ data: { event_id: 'e1' } })
+    const out = buildMarkerTooltipFormatter(() => payload, undefined)({ data: { instance_id: 'e1#0' } })
     expect(clauseLines(out)[0]).toMatch(/^no_late_gap \(not\)\s+✓$/)
   })
 })

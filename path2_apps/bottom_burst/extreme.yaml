@@ -1,0 +1,24 @@
+bo:
+  total_window: 20
+  min_side_bars: 6
+  min_relative_height: 0.2
+  exceed_threshold: 0.003
+  peak_supersede_threshold: 0.01
+  vol_baseline_period: 63
+  peak_measure: high
+  breakout_measure: high
+burst:
+  gap_max: 8
+  vol_baseline_period: 63
+  min_bos: 1
+  first_drought_min: 40
+  distinct_pk_min: 3
+  vol_spike_min: 20
+tb:
+  # V4 三态状态机参数(2026-08-16 换代,与 params.yaml tb 段同 schema)
+  max_rise_k: 1.5
+  stop_confirm_bars: 1
+  vol_window: 14
+  anchor_mode: span_min
+  max_span: 60
+  measure: close

@@ -13,29 +13,30 @@ from path2.core import Event
 from path2.dag.result import PatternMatch, AnalysisResult
 from path2_web import eval_runner
 
-APP = "path2_apps.bottom_breakout_burst"
+APP = "path2_apps.bottom_burst"
 
 
 @dataclass(frozen=True)
 class _RetroEvent(Event):
     """retrospective 事件:成立在 end(confirm_idx=end > start_idx)。"""
-    class_id = "_test_causal_gate_retro"
 
 
 def _gate_violation_res():
     """违规 match:end_node event start_idx=5 < confirm_idx=10(用 start 当买点是前瞻)。"""
-    retro = _RetroEvent(event_id="r1", start_idx=5, end_idx=10, confirm_idx=10)
+    retro = _RetroEvent(start_idx=5, end_idx=10, confirm_idx=10,
+                        node_id="end", instance_id="r1")
     m = PatternMatch(
-        event_id="m1", start_idx=5, end_idx=10, confirm_idx=10,
+        match_id="m1", start_idx=5, end_idx=10, confirm_idx=10,
         pattern_id="fake", node_index={"end": retro}, children=(retro,))
     return AnalysisResult(events=(retro,), matches=(m,), spec=None)
 
 
 def _gate_ok_res():
     """合法 match:end_node event start_idx==confirm_idx(确认类,如 tb)。"""
-    ev = _RetroEvent(event_id="ok1", start_idx=7, end_idx=10, confirm_idx=7)
+    ev = _RetroEvent(start_idx=7, end_idx=10, confirm_idx=7,
+                     node_id="end", instance_id="ok1")
     m = PatternMatch(
-        event_id="mok", start_idx=7, end_idx=10, confirm_idx=7,
+        match_id="mok", start_idx=7, end_idx=10, confirm_idx=7,
         pattern_id="fake", node_index={"end": ev}, children=(ev,))
     return AnalysisResult(events=(ev,), matches=(m,), spec=None)
 

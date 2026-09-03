@@ -1,0 +1,79 @@
+{
+ "P3_vroot_vol15": {
+  "shallow15": {
+   "n": 70,
+   "ep_med": -0.0246,
+   "mfr_med": -0.2402,
+   "mfd_med": -0.688,
+   "fp_up": 0.271,
+   "fp_down": 0.714
+  },
+  "deep15": {
+   "n": 68,
+   "ep_med": -0.1393,
+   "mfr_med": 0.0468,
+   "mfd_med": -0.6006,
+   "fp_up": 0.426,
+   "fp_down": 0.544
+  }
+ },
+ "P2_dualwin": {
+  "lt02_H1": {
+   "n": 77,
+   "ep_med": 0.0416,
+   "mfr_med": 0.2423,
+   "mfd_med": -0.1722,
+   "fp_up": 0.39,
+   "fp_down": 0.156
+  },
+  "lt02_H2": {
+   "n": 252,
+   "ep_med": -0.0363,
+   "mfr_med": 0.234,
+   "mfd_med": -0.1891,
+   "fp_up": 0.369,
+   "fp_down": 0.242
+  },
+  "mid_H1": {
+   "n": 83,
+   "ep_med": 0.0764,
+   "mfr_med": 0.2861,
+   "mfd_med": -0.1367,
+   "fp_up": 0.482,
+   "fp_down": 0.193
+  },
+  "mid_H2": {
+   "n": 384,
+   "ep_med": -0.0418,
+   "mfr_med": 0.212,
+   "mfd_med": -0.2198,
+   "fp_up": 0.294,
+   "fp_down": 0.266
+  },
+  "ge05_H1": {
+   "n": 148,
+   "ep_med": -0.0173,
+   "mfr_med": 0.3323,
+   "mfd_med": -0.194,
+   "fp_up": 0.385,
+   "fp_down": 0.203
+  },
+  "ge05_H2": {
+   "n": 817,
+   "ep_med": -0.1312,
+   "mfr_med": 0.2253,
+   "mfd_med": -0.285,
+   "fp_up": 0.277,
+   "fp_down": 0.366
+  }
+ },
+ "B_lost_theta0.1": {
+  "n": 22
+ },
+ "B_lost_theta0.2": {
+  "n": 35
+ },
+ "B_lost_theta0.3": {
+  "n": 38
+ }
+}

@@ -1,0 +1,697 @@
+{
+ "meta": {
+  "probed_at": "2026-08-26T05:32:44"
+ },
+ "sec": {
+  "sec_company_tickers": "000 0 5.001443",
+  "sec_company_tickers_py": "EXC SSLError",
+  "data_sec_submissions": "000 0 5.000685",
+  "data_sec_submissions_py": "EXC SSLError",
+  "efts_fulltext": "000 0 5.001806",
+  "efts_fulltext_py": "EXC SSLError",
+  "edgar_logfile_page": "000 0 5.001849",
+  "edgar_logfile_page_py": "EXC SSLError"
+ },
+ "wikipedia": {
+  "CATO": {
+   "buy": "2025-09-04",
+   "company": "Cato Corp",
+   "wiki_hits": [
+    "Cato Corporation",
+    "Rupert Murdoch",
+    "United States v. Microsoft Corp."
+   ],
+   "pv_status": 200,
+   "pv_series": [
+    [
+     "20250828",
+     36
+    ],
+    [
+     "20250829",
+     29
+    ],
+    [
+     "20250830",
+     19
+    ],
+    [
+     "20250831",
+     21
+    ],
+    [
+     "20250901",
+     35
+    ],
+    [
+     "20250902",
+     48
+    ],
+    [
+     "20250903",
+     41
+    ],
+    [
+     "20250904",
+     44
+    ]
+   ],
+   "pv_total_7d": 273
+  },
+  "FOCL": {
+   "buy": "2025-09-05",
+   "company": "Edap Tms SA",
+   "wiki_hits": []
+  },
+  "HOWL": {
+   "buy": "2025-10-01",
+   "company": "Werewolf Therapeutics Inc",
+   "wiki_hits": [
+    "Herbert M. Shelton",
+    "Harry Potter and the Half-Blood Prince (film)",
+    "List of University of Pennsylvania people"
+   ],
+   "pv_status": 200,
+   "pv_series": [
+    [
+     "20250924",
+     51
+    ],
+    [
+     "20250925",
+     57
+    ],
+    [
+     "20250926",
+     52
+    ],
+    [
+     "20250927",
+     36
+    ],
+    [
+     "20250928",
+     40
+    ],
+    [
+     "20250929",
+     67
+    ],
+    [
+     "20250930",
+     73
+    ],
+    [
+     "20251001",
+     57
+    ]
+   ],
+   "pv_total_7d": 433
+  },
+  "BGDE": {
+   "buy": "2025-10-06",
+   "company": "Big Digital Energy Inc",
+   "wiki_hits": [
+    "GE Vernova",
+    "NRG Energy",
+    "F5, Inc."
+   ],
+   "pv_status": 200,
+   "pv_series": [
+    [
+     "20250929",
+     739
+    ],
+    [
+     "20250930",
+     852
+    ],
+    [
+     "20251001",
+     813
+    ],
+    [
+     "20251002",
+     790
+    ],
+    [
+     "20251003",
+     747
+    ],
+    [
+     "20251004",
+     495
+    ],
+    [
+     "20251005",
+     512
+    ],
+    [
+     "20251006",
+     821
+    ]
+   ],
+   "pv_total_7d": 5769
+  },
+  "WWR": {
+   "buy": "2025-10-06",
+   "company": "Westwater Resources Inc",
+   "wiki_hits": [
+    "Westwater Resources",
+    "Uranium mining",
+    "Anh Duong"
+   ],
+   "pv_status": 200,
+   "pv_series": [
+    [
+     "20250929",
+     9
+    ],
+    [
+     "20250930",
+     17
+    ],
+    [
+     "20251001",
+     19
+    ],
+    [
+     "20251002",
+     37
+    ],
+    [
+     "20251003",
+     23
+    ],
+    [
+     "20251004",
+     20
+    ],
+    [
+     "20251005",
+     17
+    ],
+    [
+     "20251006",
+     50
+    ]
+   ],
+   "pv_total_7d": 192
+  },
+  "MTC": {
+   "buy": "2025-11-10",
+   "company": "MMTEC Inc",
+   "wiki_hits": []
+  },
+  "LRDC": {
+   "buy": "2025-11-12",
+   "company": "Laredo Oil Inc",
+   "wiki_hits": [
+    "Vital Energy",
+    "HKS, Inc.",
+    "Laredo, Texas"
+   ],
+   "pv_status": 200,
+   "pv_series": [
+    [
+     "20251105",
+     9
+    ],
+    [
+     "20251106",
+     20
+    ],
+    [
+     "20251107",
+     22
+    ],
+    [
+     "20251108",
+     18
+    ],
+    [
+     "20251109",
+     7
+    ],
+    [
+     "20251110",
+     11
+    ],
+    [
+     "20251111",
+     14
+    ],
+    [
+     "20251112",
+     12
+    ]
+   ],
+   "pv_total_7d": 113
+  },
+  "COHN": {
+   "buy": "2025-11-14",
+   "company": "Cohen & Company Inc",
+   "wiki_hits": [
+    "Rainberry, Inc.",
+    "Navan, Inc.",
+    "Peter A. Cohen"
+   ],
+   "pv_status": 200,
+   "pv_series": [
+    [
+     "20251107",
+     77
+    ],
+    [
+     "20251108",
+     89
+    ],
+    [
+     "20251109",
+     54
+    ],
+    [
+     "20251110",
+     67
+    ],
+    [
+     "20251111",
+     60
+    ],
+    [
+     "20251112",
+     43
+    ],
+    [
+     "20251113",
+     59
+    ],
+    [
+     "20251114",
+     71
+    ]
+   ],
+   "pv_total_7d": 520
+  },
+  "FUST": {
+   "buy": "2025-11-18",
+   "company": "Fuse Group Holding Inc",
+   "wiki_hits": [
+    "Hilltop Holdings Inc.",
+    "Timex Group USA",
+    "AMC Global Media"
+   ],
+   "pv_status": 200,
+   "pv_series": [
+    [
+     "20251111",
+     18
+    ],
+    [
+     "20251112",
+     23
+    ],
+    [
+     "20251113",
+     25
+    ],
+    [
+     "20251114",
+     16
+    ],
+    [
+     "20251115",
+     17
+    ],
+    [
+     "20251116",
+     12
+    ],
+    [
+     "20251117",
+     37
+    ],
+    [
+     "20251118",
+     21
+    ]
+   ],
+   "pv_total_7d": 169
+  },
+  "COBA": {
+   "buy": "2025-12-02",
+   "company": "Chilean Cobalt Corp",
+   "wiki_hits": [
+    "Mining in Chile",
+    "Rare-earth resources in Chile",
+    "Tianqi Lithium"
+   ],
+   "pv_status": 200,
+   "pv_series": [
+    [
+     "20251125",
+     66
+    ],
+    [
+     "20251126",
+     71
+    ],
+    [
+     "20251127",
+     30
+    ],
+    [
+     "20251128",
+     25
+    ],
+    [
+     "20251129",
+     29
+    ],
+    [
+     "20251130",
+     25
+    ],
+    [
+     "20251201",
+     44
+    ],
+    [
+     "20251202",
+     37
+    ]
+   ],
+   "pv_total_7d": 327
+  },
+  "CALC": {
+   "buy": "2025-12-03",
+   "company": "CalciMedica Inc",
+   "wiki_hits": [
+    "Patrick Hogan (biologist)",
+    "List of Harvard Medical School alumni"
+   ],
+   "pv_status": 200,
+   "pv_series": [
+    [
+     "20251126",
+     0
+    ],
+    [
+     "20251127",
+     1
+    ],
+    [
+     "20251128",
+     0
+    ],
+    [
+     "20251129",
+     0
+    ],
+    [
+     "20251130",
+     4
+    ],
+    [
+     "20251201",
+     2
+    ],
+    [
+     "20251202",
+     0
+    ],
+    [
+     "20251203",
+     3
+    ]
+   ],
+   "pv_total_7d": 10
+  },
+  "SRGZ": {
+   "buy": "2025-12-09",
+   "company": "Star Gold Corp",
+   "wiki_hits": [
+    "GoldStar",
+    "Barrick Mining",
+    "Iamgold"
+   ],
+   "pv_status": 200,
+   "pv_series": [
+    [
+     "20251202",
+     130
+    ],
+    [
+     "20251203",
+     108
+    ],
+    [
+     "20251204",
+     111
+    ],
+    [
+     "20251205",
+     123
+    ],
+    [
+     "20251206",
+     113
+    ],
+    [
+     "20251207",
+     133
+    ],
+    [
+     "20251208",
+     123
+    ],
+    [
+     "20251209",
+     129
+    ]
+   ],
+   "pv_total_7d": 970
+  },
+  "SPQS": {
+   "buy": "2025-12-12",
+   "company": "SportsQuest Inc",
+   "wiki_hits": [
+    "David Quinn (actor)",
+    "MediaQuest Holdings",
+    "List of self-booting IBM PC compatible games"
+   ],
+   "pv_status": 200,
+   "pv_series": [
+    [
+     "20251205",
+     7
+    ],
+    [
+     "20251206",
+     7
+    ],
+    [
+     "20251207",
+     3
+    ],
+    [
+     "20251208",
+     3
+    ],
+    [
+     "20251209",
+     8
+    ],
+    [
+     "20251210",
+     4
+    ],
+    [
+     "20251211",
+     7
+    ],
+    [
+     "20251212",
+     3
+    ]
+   ],
+   "pv_total_7d": 42
+  }
+ },
+ "arctic_shift": {
+  "CATO": {
+   "posts": {
+    "status": 400,
+    "n": null,
+    "body": "{\"data\":null,\"error\":\"'query' query parameter requires one of: author, subreddit\"}"
+   },
+   "comments": {
+    "status": 400,
+    "n": null,
+    "body": "{\"data\":null,\"error\":\"Unknown query parameter: 'query'\"}"
+   }
+  },
+  "FOCL": {
+   "posts": {
+    "status": 400,
+    "n": null,
+    "body": "{\"data\":null,\"error\":\"'query' query parameter requires one of: author, subreddit\"}"
+   },
+   "comments": {
+    "status": 400,
+    "n": null,
+    "body": "{\"data\":null,\"error\":\"Unknown query parameter: 'query'\"}"
+   }
+  },
+  "HOWL": {
+   "posts": {
+    "status": 400,
+    "n": null,
+    "body": "{\"data\":null,\"error\":\"'query' query parameter requires one of: author, subreddit\"}"
+   },
+   "comments": {
+    "status": 400,
+    "n": null,
+    "body": "{\"data\":null,\"error\":\"Unknown query parameter: 'query'\"}"
+   }
+  },
+  "BGDE": {
+   "posts": {
+    "status": 400,
+    "n": null,
+    "body": "{\"data\":null,\"error\":\"'query' query parameter requires one of: author, subreddit\"}"
+   },
+   "comments": {
+    "status": 400,
+    "n": null,
+    "body": "{\"data\":null,\"error\":\"Unknown query parameter: 'query'\"}"
+   }
+  },
+  "WWR": {
+   "posts": {
+    "status": 400,
+    "n": null,
+    "body": "{\"data\":null,\"error\":\"'query' query parameter requires one of: author, subreddit\"}"
+   },
+   "comments": {
+    "status": 400,
+    "n": null,
+    "body": "{\"data\":null,\"error\":\"Unknown query parameter: 'query'\"}"
+   }
+  },
+  "MTC": {
+   "posts": {
+    "status": 400,
+    "n": null,
+    "body": "{\"data\":null,\"error\":\"'query' query parameter requires one of: author, subreddit\"}"
+   },
+   "comments": {
+    "status": 400,
+    "n": null,
+    "body": "{\"data\":null,\"error\":\"Unknown query parameter: 'query'\"}"
+   }
+  },
+  "_depth_2012": {
+   "status": 200,
+   "n": 0
+  }
+ },
+ "finra_regsho": {
+  "20250905": {
+   "status": 200,
+   "n_rows": 10782,
+   "n_symbols": 10781,
+   "smallcap_hits": [
+    "CALC",
+    "CATO",
+    "COHN",
+    "HOWL",
+    "MTC",
+    "WWR"
+   ],
+   "header": "Date|Symbol|ShortVolume|ShortExemptVolume|TotalVolume|Market",
+   "sample_row": "20250905|A|399545|1|502214|B,Q,N"
+  },
+  "20251006": {
+   "status": 200,
+   "n_rows": 11081,
+   "n_symbols": 11080,
+   "smallcap_hits": [
+    "CALC",
+    "CATO",
+    "COHN",
+    "HOWL",
+    "MTC",
+    "WWR"
+   ],
+   "header": "Date|Symbol|ShortVolume|ShortExemptVolume|TotalVolume|Market",
+   "sample_row": "20251006|A|290323|6083|557177|B,Q,N"
+  },
+  "20200902": {
+   "status": 200,
+   "n_rows": 8407,
+   "n_symbols": 8406,
+   "smallcap_hits": [
+    "CATO",
+    "COHN",
+    "MTC",
+    "WWR"
+   ],
+   "header": "Date|Symbol|ShortVolume|ShortExemptVolume|TotalVolume|Market",
+   "sample_row": "20200902|A|121098|0|294726|B,Q,N"
+  },
+  "20170103": {
+   "status": 403,
+   "n_rows": 1,
+   "n_symbols": 0,
+   "smallcap_hits": [],
+   "header": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>",
+   "sample_row": "<Error><Code>AccessDenied</Code><Message>Access Denied</Message></Error>"
+  },
+  "20130102": {
+   "status": 403,
+   "n_rows": 1,
+   "n_symbols": 0,
+   "smallcap_hits": [],
+   "header": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>",
+   "sample_row": "<Error><Code>AccessDenied</Code><Message>Access Denied</Message></Error>"
+  }
+ },
+ "third_party": {
+  "tradestie_09-05-2025": {
+   "status": 200,
+   "n": 50,
+   "sample": "[{\"ticker\": \"LULU\", \"sentiment\": \"Bearish\", \"sentiment_score\": -0.796, \"no_of_comments\": 92}, {\"ticker\": \"SPY\", \"sentiment\": \"Bullish\", \"sentiment_score\": 0.015, \"no_of_comments\": 67}, {\"ticker\": \"NVDA\", \"sentiment\": \"Bearish\", \"sentiment_score\": 0.0"
+  },
+  "tradestie_10-06-2025": {
+   "status": 200,
+   "n": 50,
+   "sample": "[{\"ticker\": \"AMD\", \"sentiment\": \"Bearish\", \"sentiment_score\": -0.085, \"no_of_comments\": 574}, {\"ticker\": \"AI\", \"sentiment\": \"Bullish\", \"sentiment_score\": 0.177, \"no_of_comments\": 325}, {\"ticker\": \"ACHR\", \"sentiment\": \"Bearish\", \"sentiment_score\": 0.0"
+  },
+  "tradestie_01-05-2021": {
+   "status": 200,
+   "n": 0,
+   "sample": "[]"
+  },
+  "apewisdom_filter/all-stocks/page/1": {
+   "status": 200,
+   "keys": [
+    "count",
+    "pages",
+    "current_page",
+    "results"
+   ],
+   "count": 875
+  },
+  "apewisdom_filter/wallstreetbets": {
+   "status": 200,
+   "keys": [
+    "count",
+    "pages",
+    "current_page",
+    "results"
+   ],
+   "count": 666
+  }
+ }
+}

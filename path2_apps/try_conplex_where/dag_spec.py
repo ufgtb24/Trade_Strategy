@@ -1,7 +1,7 @@
 # path2_apps/try_conplex_where/dag_spec.py
 """try_complex_where — 嵌套复杂 where 的试验田(sandbox)。
 
-拓扑照抄 bottom_breakout_burst(bo / burst / tb + 1 条边),**唯一用途是让你随便改
+拓扑照抄 bottom_burst(bo / burst / tb + 1 条边),**唯一用途是让你随便改
 burst 节点的 where**,看引擎怎么判、UI 怎么显示。改坏了也不影响主 app。
 
 ═══ 怎么用 ═══
@@ -46,8 +46,8 @@ where 是 (clause_id, 谓词) 的元组,**顶层各 clause 之间恒为 AND**。
     vol_ratio     Optional[float]  突破当根量比
     peak_vol_max  float            峰处最大量
   tb (ThrowbackEvent):
-    anchor_bo_id  str
-  以上 event 都还有基类字段:start_idx / end_idx / event_id / class_id
+    anchor_bo_id  str  本实例来源 bo 的 instance_id(标量;同窗口多 bo 直出多实例)
+  以上 event 都还有基类字段:start_idx / end_idx / confirm_idx / node_id / instance_id
 """
 from __future__ import annotations
 
@@ -59,18 +59,22 @@ from path2.dag.spec import PatternSpec
 from path2.stdlib.app import make_app
 from path2.dag import where as W
 from path2.atoms.breakout import BODetector, BurstDetector
-from path2.atoms.throwback import ThrowbackDetector
+from path2.atoms.throwback_v1 import ThrowbackDetectorV1
 
 from .params import Params, load_params, DEFAULT_YAML_PATH    # noqa: F401 re-export 供 web worker
 
 
 def build_pattern(params: Params) -> PatternSpec:
     """参数化声明工厂。**要改 where 就改这里**(burst 节点)。"""
+    det = BODetector(**params.bo_kwargs())
     nodes = (
         # bo:孤立 node(无边),兼作 burst / tb 的流源
         NodeSpec("bo",
-                 BODetector(**params.bo_kwargs()),
+                 det,
+                 produces_stream="bo",
                  render_grid="price"),
+        # pk 孤立显示 node:同一 detector 喂 bo+pk 两 node(兄弟机制一次 detect 填满两流)
+        NodeSpec("pk", det, produces_stream="pk", solve=False, render_grid="price"),
 
         NodeSpec("burst",
                  BurstDetector(**params.burst_kwargs()),
@@ -122,17 +126,18 @@ def build_pattern(params: Params) -> PatternSpec:
                      #            and e.first_drought >= 10),
                  ),
                  # ═════════════════════════════════════════════════
-                 consumes_stream="bo"),
+                 consumes_stream="bo",
+                 children={"members": "bo"}),
 
         NodeSpec("tb",
-                 ThrowbackDetector(**params.throwback_kwargs()),
+                 ThrowbackDetectorV1(**params.throwback_kwargs()),
                  consumes_stream="bo"),
     )
     edges = (
         # 末 bo → tb 回踩,anchor_field 保证 tb 锚定的就是这个 bo
         TemporalEdge(
             Child("burst", "last_bo"), "tb",
-            min_gap=1, max_gap=params.tb.max_start_gap,
+            min_gap=1, max_gap=params.tb.max_span,
             anchor_field="anchor_bo_id",
         ),
     )
@@ -155,7 +160,7 @@ def eval_meta(params: Optional[Params] = None) -> dict:
         "head_buffer_trading_days": max(
             p.bo.vol_baseline_period,
             p.burst.vol_baseline_period,
-            p.tb.atr_window,
+            p.tb.vol_window,
             p.bo.total_window,
         ),
     }

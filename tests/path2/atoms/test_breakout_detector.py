@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from path2 import run
+from path2.runner import run_bundle
 from path2.atoms.breakout import BODetector, BOEvent
 from path2.calc.measure import measure_series
 
@@ -20,7 +20,7 @@ def make_df(closes, highs=None, lows=None, opens=None, vols=None):
 
 def test_no_bo_on_flat():
     df = make_df([10.0] * 30)
-    bos = list(run(BODetector(peak_measure="body_top", breakout_measure="body_top"), df))
+    bos = list(run_bundle(BODetector(peak_measure="body_top", breakout_measure="body_top"), df)["bo"])
     assert bos == []
 
 
@@ -28,8 +28,8 @@ def test_simple_bo():
     # 制造一个 peak 在中间,然后突破
     closes = [10.0] * 5 + [12.0] + [10.0] * 5 + [13.0]  # peak at idx 5, BO at idx 11
     df = make_df(closes)
-    bos = list(run(BODetector(total_window=10, min_side_bars=2, min_relative_height=0.05, exceed_threshold=0.005,
-                              peak_measure="body_top", breakout_measure="body_top"), df))
+    bos = list(run_bundle(BODetector(total_window=10, min_side_bars=2, min_relative_height=0.05, exceed_threshold=0.005,
+                              peak_measure="body_top", breakout_measure="body_top"), df)["bo"])
     # 至少一个 BO 在末位
     assert len(bos) >= 1
     assert bos[-1].start_idx == 11
@@ -39,20 +39,20 @@ def test_simple_bo():
 def test_drought_calculation():
     closes = [10.0] * 5 + [12.0] + [10.0] * 5 + [13.0] + [10.5] * 5 + [14.0]
     df = make_df(closes)
-    bos = list(run(BODetector(total_window=10, min_side_bars=2, min_relative_height=0.05, exceed_threshold=0.005,
-                              peak_measure="body_top", breakout_measure="body_top"), df))
+    bos = list(run_bundle(BODetector(total_window=10, min_side_bars=2, min_relative_height=0.05, exceed_threshold=0.005,
+                              peak_measure="body_top", breakout_measure="body_top"), df)["bo"])
     if len(bos) >= 2:
         assert bos[0].drought is None  # 首次
         assert bos[1].drought is not None and bos[1].drought > 0
 
 
-def test_event_id_unique():
+def test_bo_identity_unique():
     closes = [10.0] * 5 + [12.0] + [10.0] * 5 + [13.0]
     df = make_df(closes)
-    bos = list(run(BODetector(total_window=10, min_side_bars=2, min_relative_height=0.05,
-                              peak_measure="body_top", breakout_measure="body_top"), df))
-    ids = [e.event_id for e in bos]
-    assert len(ids) == len(set(ids))
+    bos = list(run_bundle(BODetector(total_window=10, min_side_bars=2, min_relative_height=0.05,
+                              peak_measure="body_top", breakout_measure="body_top"), df)["bo"])
+    spans = [(e.start_idx, e.end_idx) for e in bos]
+    assert len(spans) == len(set(spans))   # 点事件身份 = span;检测阶段无 instance_id
 
 
 def test_supersede_removes_old_peak():
@@ -72,11 +72,11 @@ def test_supersede_removes_old_peak():
               + [10.0] * 5             # idx 12-16: 回落,如 peak1 仍在 active 会再次被突破
               + [12.2])                # idx 17: 若 supersede 失效则又突破 peak1
     df = make_df(closes)
-    bos = list(run(BODetector(
+    bos = list(run_bundle(BODetector(
         total_window=10, min_side_bars=2, min_relative_height=0.05,
         exceed_threshold=0.005, peak_supersede_threshold=0.03,
         peak_measure="body_top", breakout_measure="body_top",
-    ), df))
+    ), df)["bo"])
     # 末 bar (idx 17) 不应再因 peak1 被突破 — peak1 已 supersede。
     # (若 idx 17 之间窗内形成了新 peak 才会有 BO,但本 fixture 无此条件。)
     last_bo_indices = [b.start_idx for b in bos]
@@ -142,8 +142,8 @@ def test_breakout_peak_measure_high_vs_body_top():
                           min_relative_height=0.001,
                           exceed_threshold=0.005,
                           peak_measure="high", breakout_measure="body_top")
-    bos_body = list(det_body.detect(df))
-    bos_high = list(det_high.detect(df))
+    bos_body = list(run_bundle(det_body, df)["bo"])
+    bos_high = list(run_bundle(det_high, df)["bo"])
 
     # body_top peak 较低 → 触发 BO;high peak 含长上影 → 同一 bar 不触发
     assert len(bos_body) >= 1, f"body_top 模式应触发 BO,实际 {len(bos_body)}"
@@ -193,8 +193,8 @@ def test_breakout_measure_close_filters_strict():
                            min_relative_height=0.001,
                            exceed_threshold=0.005,
                            peak_measure="body_top", breakout_measure="close")
-    bos_body = list(det_body.detect(df))
-    bos_close = list(det_close.detect(df))
+    bos_body = list(run_bundle(det_body, df)["bo"])
+    bos_close = list(run_bundle(det_close, df)["bo"])
 
     # body_top 模式应至少触发一个 BO,close 模式应严格更少
     assert len(bos_body) >= 1, f"body_top 模式应触发 BO,实际 {len(bos_body)}"
@@ -204,22 +204,21 @@ def test_breakout_measure_close_filters_strict():
     )
 
 
-def test_emit_populates_referenced_points_with_pk_meta():
-    """BODetector.emit 应把每个被突破的 Peak 序列化为 (index, price, f'pk{pk_id}') 入 referenced_points。"""
+def test_emit_populates_broken_refs_with_pk_meta():
+    """BODetector 突破时把每个被突破的 PeakEvent 收进 broken_refs(取代 referenced_points)。"""
     # 同 test_simple_bo 的构造: peak at idx 5, BO at idx 11
     closes = [10.0] * 5 + [12.0] + [10.0] * 5 + [13.0]
     df = make_df(closes)
-    bos = list(run(BODetector(total_window=10, min_side_bars=2,
+    bos = list(run_bundle(BODetector(total_window=10, min_side_bars=2,
                               min_relative_height=0.05, exceed_threshold=0.005,
-                              peak_measure="body_top", breakout_measure="body_top"), df))
+                              peak_measure="body_top", breakout_measure="body_top"), df)["bo"])
     assert len(bos) >= 1
     bo = bos[-1]
-    assert len(bo.referenced_points) == bo.pk_count   # 与 pk_count 等长
-    assert len(bo.referenced_points) == len(bo.broken_peak_ids)
-    for (bar_idx, price, label), pk_id in zip(bo.referenced_points, bo.broken_peak_ids):
-        assert isinstance(bar_idx, int) and bar_idx >= 0
-        assert isinstance(price, float) and price > 0
-        assert label == f"pk{pk_id}"   # label 格式锁定
+    assert len(bo.broken_refs) == bo.pk_count   # 与 pk_count 等长
+    assert len(bo.broken_refs) == len(bo.broken_peak_ids)
+    for ref, pk_id in zip(bo.broken_refs, bo.broken_peak_ids):
+        assert ref.pk_id == pk_id   # 引用与 broken_peak_ids 的 pk_id 对应
+        assert ref.start_idx == ref.end_idx == ref.confirm_idx   # 点几何
 
 
 # ─── dev breakout_detector.py 对齐:elevation + peak-peak supersede(2026-06-22)──
@@ -242,9 +241,9 @@ def test_elevation_prevents_repeated_breakout_of_same_peak():
     opens[14] = closes[14] = 13.10; highs[14] = 13.20; lows[14] = 13.00  # BO2 仍小幅
     df = pd.DataFrame({'open': opens, 'high': highs, 'low': lows, 'close': closes,
                        'volume': [1e6] * n})
-    bos = list(BODetector(total_window=10, min_side_bars=2, min_relative_height=0.05,
+    bos = list(run_bundle(BODetector(total_window=10, min_side_bars=2, min_relative_height=0.05,
                           exceed_threshold=0.005, peak_supersede_threshold=0.03,
-                          peak_measure='body_top', breakout_measure='body_top').detect(df))
+                          peak_measure='body_top', breakout_measure='body_top'), df)["bo"])
     bos_14 = [b for b in bos if b.start_idx == 14]
     # GREEN 期望:idx 14 不再触发 BO(13.10 不超过 elevated 13.07 的 exceed 阈值)。
     # peak1 在 idx 12-14 期间可能被 detect 为新 peak(idx 11 进窗口),
@@ -279,9 +278,9 @@ def test_peak_peak_supersede_prevents_oneshot_cleanup_of_old_peaks():
     opens[31] = 9.5; closes[31] = 16.0; highs[31] = 16.1; lows[31] = 9.4
     df = pd.DataFrame({'open': opens, 'high': highs, 'low': lows, 'close': closes,
                        'volume': [1e6] * n})
-    bos = list(BODetector(total_window=10, min_side_bars=2, min_relative_height=0.05,
+    bos = list(run_bundle(BODetector(total_window=10, min_side_bars=2, min_relative_height=0.05,
                           exceed_threshold=0.005, peak_supersede_threshold=0.03,
-                          peak_measure='body_top', breakout_measure='close').detect(df))
+                          peak_measure='body_top', breakout_measure='close'), df)["bo"])
     bo_31 = next((b for b in bos if b.start_idx == 31), None)
     assert bo_31 is not None, "idx 31 大涨 close=16 应触发 BO"
     assert len(bo_31.broken_peak_ids) == 1, (
@@ -289,3 +288,27 @@ def test_peak_peak_supersede_prevents_oneshot_cleanup_of_old_peaks():
         f"出现时被淘汰(15>10*1.03=10.3),idx 31 BO 只剩 peak2 可破;"
         f"实际 broken_peak_ids={bo_31.broken_peak_ids}(>1 = supersede 失效,老低位 peak 残留)"
     )
+
+
+def test_peak_age_max_single_peak():
+    """单峰突破:peak_age_max = bo 距峰形成位置的 bar 数。"""
+    closes = [10.0] * 5 + [12.0] + [10.0] * 5 + [13.0]  # peak 在 idx5,BO 在 idx11
+    df = make_df(closes)
+    bos = list(run_bundle(BODetector(total_window=10, min_side_bars=2, min_relative_height=0.05,
+                              exceed_threshold=0.005, peak_measure="body_top",
+                              breakout_measure="body_top"), df)["bo"])
+    assert bos[-1].start_idx == 11
+    assert bos[-1].peak_age_max == 11 - 5
+
+
+def test_peak_age_max_multi_peak_takes_max():
+    """一根 bar 同时突破陈旧峰与新鲜峰:取最大的时间距离。"""
+    # 峰A=20@idx5(陈旧),峰B=13@idx11(新鲜);idx16=21 同时突破两峰
+    closes = [10.0] * 5 + [20.0] + [11.0] * 5 + [13.0] + [11.0] * 4 + [21.0]
+    df = make_df(closes)
+    bos = list(run_bundle(BODetector(total_window=10, min_side_bars=2, min_relative_height=0.05,
+                              exceed_threshold=0.005, peak_measure="body_top",
+                              breakout_measure="body_top"), df)["bo"])
+    assert len(bos) == 1
+    assert bos[0].start_idx == 16
+    assert bos[0].peak_age_max == 16 - 5   # 陈旧峰,非 16-11

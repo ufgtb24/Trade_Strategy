@@ -47,8 +47,9 @@ class PredicateTrace:
 
 @dataclass(frozen=True)
 class PatternMatch(Event):
-    """一次完整命中。继承 Event(event_id/start_idx/end_idx)。"""
-    class_id = "match"
+    """一次完整命中。继承 Event(start_idx/end_idx/confirm_idx)。match_id 为
+    match 唯一键(instance_id 契约:bits 段用各 node 实例键)。"""
+    match_id: str = ""
     pattern_id: str = ""
     node_index: Optional[Mapping[str, Event]] = None   # node_id → 单 Event
     children: Tuple[Event, ...] = ()                         # 全绑实例扁平(start_idx 升序)
@@ -65,33 +66,28 @@ class PatternMatch(Event):
 
 
 @dataclass(frozen=True)
-class DroppedMatch:
-    """A2 post-filter 淘汰的残缺 match 快照(node_index 只含『孤立无边 AND 被消费』node)。
-    供 UI 诚实提示"这些 marker 属于被消费的 node · 当前 pattern 未触发",而非静默消失。"""
-    match_id: str                  # 淘汰前 PatternMatch.event_id
-    node_events: Dict[str, str]    # node_id → event_id
-    drop_reason: str               # 目前唯一取值 'isolated_consumed'
-
-
-@dataclass(frozen=True)
 class AnalysisResult:
     """走势包 analyze() 的返回值。events=所有节点流去重平铺(共享流只计一遍);matches=命中;spec=声明(供面板)。
-    dropped_matches=A2 post-filter 淘汰的残缺 match 快照(供 UI 提示,默认空 → 既有调用方零改动)。
     gate_failures=Sprint 2 入口 A(scope=time):worker 挂 collector 跑 analyze 时,三 atom
     (BurstDetector/BODetector/ThrowbackDetector,Task 10-12)on_gate 吐出的短路失败记录快照
     (engine.analyze() 本身不产出,由调用方 dataclasses.replace 附加,默认空 → 既有调用方零改动)。"""
     events: Tuple[Event, ...]
     matches: Tuple[PatternMatch, ...]
     spec: object = None
-    dropped_matches: Tuple[DroppedMatch, ...] = ()
     gate_failures: Tuple[GateFailure, ...] = ()
 
     def __post_init__(self) -> None:
         if not config.RUNTIME_CHECKS:
             return
-        ids = [e.event_id for e in self.events]
-        assert len(ids) == len(set(ids)), \
-            f"res.events event_id 重复: {len(ids) - len(set(ids))} 个(违反全局唯一不变量)"
+        # instance_id 契约:物化标注后 instance_id 唯一;重复 = 标注 bug 或
+        # detector 重复 evaluate 的信号。同一 instance_id 内允许多实例
+        # (per-source 视角,属性按来源区分、可以不同),仅禁止「同 instance_id
+        # 完全重复对象」(同 instance_id 全属性全等 = 重复 evaluate bug)。
+        # res.events 单视图 = 实例明细,只服务诊断/展示(统计读 match 不读 events)。
+        for i, a in enumerate(self.events):
+            for b in self.events[i + 1:]:
+                assert not (a.instance_id == b.instance_id and a == b), \
+                    f"res.events 同 instance_id 完全重复对象: {a.instance_id}(全属性全等=重复 evaluate bug)"
 
 
 @dataclass(frozen=True)
@@ -117,7 +113,7 @@ class RelRow:
     miss_reasons: Dict[str, int] = field(default_factory=lambda: {
         "gap_out": 0, "anchor_mismatch": 0, "strict_fail": 0, "negation_violated": 0,
     })
-    example_failed_pairs: Tuple[Tuple[str, str, str], ...] = ()  # 抽样 ≤5 条 (src_event_id, dst_event_id, primary_fail_channel)
+    example_failed_pairs: Tuple[Tuple[str, str, str], ...] = ()  # 抽样 ≤5 条 (src_instance_id, dst_instance_id, primary_fail_channel)
 
 
 @dataclass(frozen=True)
@@ -125,6 +121,7 @@ class NodeDiagnostic:
     node_id: str
     attr: Tuple[AttrRow, ...]
     rel: Tuple[RelRow, ...]
+    produced_by: Optional[str] = None   # 子结构 node 的物化来源父 node_id(独立 node 为 None)
 
 
 @dataclass(frozen=True)

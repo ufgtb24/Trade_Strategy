@@ -43,18 +43,19 @@ class DependencyEdge(ABC):
     __post_init__ 把 Child 归一化:src/dst 始终为 str(供 spec 校验 + WCC 图构建),
     src_selector/dst_selector 为 None 或 key 字符串(供 endpoint() 提取子事件)。
 
-    anchor 字段(整改四 B4):dst 端 anchor_field 等于 src 端 anchor_src_field 的复核约束。
-    anchor_src_field=None 默认 'event_id';详见 spec §3.5 / docs/legacy/kleene/ 历史。
+    anchor 字段(整改四 B4):dst 端 anchor_field 等于 src 端身份的复核约束。
+    身份 = src_ep.instance_id(交错标注后 detect 期即非 None;anchor_src_field
+    已退役,不再消费)。
     """
     src: str                                   # 归一化后始终为 str（node_id）
     dst: str                                   # 归一化后始终为 str（node_id）
     # compare/hash=False: selector 不参与边身份；图结构只看 src/dst（两条仅 selector 不同的边视为同一图边）
     src_selector: Optional[str] = field(default=None, compare=False, hash=False)
     dst_selector: Optional[str] = field(default=None, compare=False, hash=False)
-    # ★ 整改四:anchor 字段(C2 default-event_id 设计,详见 spec §3.5)
+    # ★ 整改四:anchor 字段(src 端身份 = instance_id,anchor_src_field 退役)
     # compare=False, hash=False 跟 src_selector/dst_selector 一致(不参与边身份)
     anchor_field: Optional[str] = field(default=None, compare=False, hash=False)
-    anchor_src_field: Optional[str] = field(default=None, compare=False, hash=False)
+    anchor_src_field: Optional[str] = field(default=None, compare=False, hash=False)  # 已退役:不再消费(app 从不显式设,保留字段兼容构造)
 
     def __post_init__(self) -> None:
         """归一化 src/dst：Child → (node_str, key)；str → (str, None)。
@@ -89,12 +90,18 @@ class DependencyEdge(ABC):
         return ()
 
     def _anchor_ok(self, src_ep: Event, e_dst: Event) -> bool:
-        """整改四 anchor 复核:dst 端 anchor_field 等于 src 端 anchor_src_field(default 'event_id')。
-        anchor_field=None 时恒 True(字节等价旧行为)。详见 spec §3.5。"""
+        """anchor 复核:dst 端 anchor_field 等于 src 端身份(src_ep.instance_id)。
+        anchor 语义 =「dst 的锚点事件就是 src」;交错标注使 src_ep 经 endpoint() 投影到
+        child(last_bo 等)后其 instance_id 在 detect 期即就位、solve 期恒非 None。
+        集合字段(tuple/list/set/frozenset)按包含语义;标量按相等。
+        anchor_field=None 时恒 True。anchor_src_field 已退役、不再读取。"""
         if self.anchor_field is None:
             return True
-        src_attr = self.anchor_src_field or "event_id"
-        return getattr(e_dst, self.anchor_field) == getattr(src_ep, src_attr)
+        src_v = src_ep.instance_id
+        dst_v = getattr(e_dst, self.anchor_field)
+        if isinstance(dst_v, (tuple, list, set, frozenset)):
+            return src_v in dst_v
+        return dst_v == src_v
 
 
 @dataclass(frozen=True)

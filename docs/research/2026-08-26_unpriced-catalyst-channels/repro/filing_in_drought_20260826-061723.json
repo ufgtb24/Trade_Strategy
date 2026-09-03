@@ -1,0 +1,490 @@
+{
+ "counts": {
+  "旱期内": 37,
+  "burst 期内": 7,
+  "回踩期内": 1,
+  "旱期之前": 3
+ },
+ "rows": [
+  {
+   "symbol": "ALTO",
+   "buy_date": "2025-11-14",
+   "filed": "2025-11-07",
+   "drought_start": "2025-06-10",
+   "burst_start": "2025-11-06",
+   "burst_end": "2025-11-12",
+   "seg": "burst 期内",
+   "first_drought": 104
+  },
+  {
+   "symbol": "ALTO",
+   "buy_date": "2025-11-18",
+   "filed": "2025-11-07",
+   "drought_start": "2025-06-10",
+   "burst_start": "2025-11-06",
+   "burst_end": "2025-11-13",
+   "seg": "burst 期内",
+   "first_drought": 104
+  },
+  {
+   "symbol": "ALTO",
+   "buy_date": "2025-11-24",
+   "filed": "2025-11-07",
+   "drought_start": "2025-06-10",
+   "burst_start": "2025-11-06",
+   "burst_end": "2025-11-19",
+   "seg": "burst 期内",
+   "first_drought": 104
+  },
+  {
+   "symbol": "ANIX",
+   "buy_date": "2025-06-23",
+   "filed": "2025-05-28",
+   "drought_start": "2025-02-06",
+   "burst_start": "2025-06-02",
+   "burst_end": "2025-06-16",
+   "seg": "旱期内",
+   "first_drought": 79
+  },
+  {
+   "symbol": "ANIX",
+   "buy_date": "2025-10-13",
+   "filed": "2025-09-10",
+   "drought_start": "2025-06-16",
+   "burst_start": "2025-10-07",
+   "burst_end": "2025-10-08",
+   "seg": "旱期内",
+   "first_drought": 78
+  },
+  {
+   "symbol": "APCX",
+   "buy_date": "2025-11-19",
+   "filed": "2025-11-13",
+   "drought_start": "2025-07-25",
+   "burst_start": "2025-11-04",
+   "burst_end": "2025-11-13",
+   "seg": "burst 期内",
+   "first_drought": 71
+  },
+  {
+   "symbol": "APCX",
+   "buy_date": "2025-11-19",
+   "filed": "2025-11-13",
+   "drought_start": "2025-07-25",
+   "burst_start": "2025-11-04",
+   "burst_end": "2025-11-14",
+   "seg": "burst 期内",
+   "first_drought": 71
+  },
+  {
+   "symbol": "ASTI",
+   "buy_date": "2025-12-29",
+   "filed": "2025-11-10",
+   "drought_start": "2025-10-06",
+   "burst_start": "2025-12-10",
+   "burst_end": "2025-12-23",
+   "seg": "旱期内",
+   "first_drought": 46
+  },
+  {
+   "symbol": "BEAT",
+   "buy_date": "2025-12-19",
+   "filed": "2025-11-13",
+   "drought_start": "2025-10-03",
+   "burst_start": "2025-12-11",
+   "burst_end": "2025-12-15",
+   "seg": "旱期内",
+   "first_drought": 48
+  },
+  {
+   "symbol": "BKKT",
+   "buy_date": "2025-10-06",
+   "filed": "2025-08-11",
+   "drought_start": "2025-07-02",
+   "burst_start": "2025-09-22",
+   "burst_end": "2025-10-01",
+   "seg": "旱期内",
+   "first_drought": 56
+  },
+  {
+   "symbol": "BKKT",
+   "buy_date": "2025-10-06",
+   "filed": "2025-08-11",
+   "drought_start": "2025-07-02",
+   "burst_start": "2025-09-22",
+   "burst_end": "2025-10-02",
+   "seg": "旱期内",
+   "first_drought": 56
+  },
+  {
+   "symbol": "BOXL",
+   "buy_date": "2025-09-24",
+   "filed": "2025-08-13",
+   "drought_start": "2025-07-14",
+   "burst_start": "2025-09-16",
+   "burst_end": "2025-09-22",
+   "seg": "旱期内",
+   "first_drought": 45
+  },
+  {
+   "symbol": "BRFH",
+   "buy_date": "2025-09-23",
+   "filed": "2025-08-13",
+   "drought_start": "2025-06-27",
+   "burst_start": "2025-09-18",
+   "burst_end": "2025-09-19",
+   "seg": "旱期内",
+   "first_drought": 57
+  },
+  {
+   "symbol": "CLPT",
+   "buy_date": "2025-09-26",
+   "filed": "2025-08-12",
+   "drought_start": "2025-04-24",
+   "burst_start": "2025-09-22",
+   "burst_end": "2025-09-24",
+   "seg": "旱期内",
+   "first_drought": 103
+  },
+  {
+   "symbol": "CLPT",
+   "buy_date": "2025-09-30",
+   "filed": "2025-08-12",
+   "drought_start": "2025-04-24",
+   "burst_start": "2025-09-22",
+   "burst_end": "2025-09-26",
+   "seg": "旱期内",
+   "first_drought": 103
+  },
+  {
+   "symbol": "CLYM",
+   "buy_date": "2025-12-18",
+   "filed": "2025-11-06",
+   "drought_start": "2025-08-25",
+   "burst_start": "2025-12-10",
+   "burst_end": "2025-12-16",
+   "seg": "旱期内",
+   "first_drought": 75
+  },
+  {
+   "symbol": "CNET",
+   "buy_date": "2025-09-19",
+   "filed": "2025-08-14",
+   "drought_start": "2024-12-26",
+   "burst_start": "2025-09-12",
+   "burst_end": "2025-09-17",
+   "seg": "旱期内",
+   "first_drought": 177
+  },
+  {
+   "symbol": "CNET",
+   "buy_date": "2025-09-24",
+   "filed": "2025-08-14",
+   "drought_start": "2024-12-26",
+   "burst_start": "2025-09-12",
+   "burst_end": "2025-09-22",
+   "seg": "旱期内",
+   "first_drought": 177
+  },
+  {
+   "symbol": "COOT",
+   "buy_date": "2025-10-23",
+   "filed": "2025-05-30",
+   "drought_start": "2025-02-13",
+   "burst_start": "2025-10-08",
+   "burst_end": "2025-10-15",
+   "seg": "旱期内",
+   "first_drought": 163
+  },
+  {
+   "symbol": "DFLI",
+   "buy_date": "2025-10-07",
+   "filed": "2025-08-14",
+   "drought_start": "2025-07-22",
+   "burst_start": "2025-09-25",
+   "burst_end": "2025-10-03",
+   "seg": "旱期内",
+   "first_drought": 46
+  },
+  {
+   "symbol": "DVLT",
+   "buy_date": "2025-10-14",
+   "filed": "2025-08-19",
+   "drought_start": "2025-05-19",
+   "burst_start": "2025-09-23",
+   "burst_end": "2025-10-06",
+   "seg": "旱期内",
+   "first_drought": 87
+  },
+  {
+   "symbol": "FEAM",
+   "buy_date": "2025-10-17",
+   "filed": "2025-09-29",
+   "drought_start": "2025-08-11",
+   "burst_start": "2025-10-07",
+   "burst_end": "2025-10-13",
+   "seg": "旱期内",
+   "first_drought": 40
+  },
+  {
+   "symbol": "FLUX",
+   "buy_date": "2025-09-26",
+   "filed": "2025-09-17",
+   "drought_start": "2025-07-07",
+   "burst_start": "2025-09-15",
+   "burst_end": "2025-09-24",
+   "seg": "burst 期内",
+   "first_drought": 49
+  },
+  {
+   "symbol": "FUST",
+   "buy_date": "2025-11-18",
+   "filed": "2025-08-14",
+   "drought_start": "2025-01-15",
+   "burst_start": "2025-11-11",
+   "burst_end": "2025-11-14",
+   "seg": "旱期内",
+   "first_drought": 207
+  },
+  {
+   "symbol": "GUER",
+   "buy_date": "2025-11-21",
+   "filed": "2025-11-12",
+   "drought_start": "2025-09-19",
+   "burst_start": "2025-11-14",
+   "burst_end": "2025-11-19",
+   "seg": "旱期内",
+   "first_drought": 40
+  },
+  {
+   "symbol": "GUER",
+   "buy_date": "2025-12-01",
+   "filed": "2025-11-12",
+   "drought_start": "2025-09-19",
+   "burst_start": "2025-11-14",
+   "burst_end": "2025-11-25",
+   "seg": "旱期内",
+   "first_drought": 40
+  },
+  {
+   "symbol": "GWH",
+   "buy_date": "2025-10-17",
+   "filed": "2025-08-14",
+   "drought_start": "2025-07-22",
+   "burst_start": "2025-10-06",
+   "burst_end": "2025-10-13",
+   "seg": "旱期内",
+   "first_drought": 53
+  },
+  {
+   "symbol": "HOWL",
+   "buy_date": "2025-10-03",
+   "filed": "2025-08-14",
+   "drought_start": "2025-06-03",
+   "burst_start": "2025-09-10",
+   "burst_end": "2025-09-29",
+   "seg": "旱期内",
+   "first_drought": 68
+  },
+  {
+   "symbol": "KAYS",
+   "buy_date": "2025-09-22",
+   "filed": "2025-08-27",
+   "drought_start": "2025-06-06",
+   "burst_start": "2025-09-17",
+   "burst_end": "2025-09-18",
+   "seg": "旱期内",
+   "first_drought": 70
+  },
+  {
+   "symbol": "KAYS",
+   "buy_date": "2025-09-24",
+   "filed": "2025-08-27",
+   "drought_start": "2025-06-06",
+   "burst_start": "2025-09-17",
+   "burst_end": "2025-09-22",
+   "seg": "旱期内",
+   "first_drought": 70
+  },
+  {
+   "symbol": "KTTA",
+   "buy_date": "2025-12-02",
+   "filed": "2025-11-13",
+   "drought_start": "2025-08-28",
+   "burst_start": "2025-11-26",
+   "burst_end": "2025-11-26",
+   "seg": "旱期内",
+   "first_drought": 63
+  },
+  {
+   "symbol": "KTTA",
+   "buy_date": "2025-12-02",
+   "filed": "2025-11-13",
+   "drought_start": "2025-08-28",
+   "burst_start": "2025-11-26",
+   "burst_end": "2025-11-28",
+   "seg": "旱期内",
+   "first_drought": 63
+  },
+  {
+   "symbol": "LPCN",
+   "buy_date": "2025-12-23",
+   "filed": "2025-11-06",
+   "drought_start": "2025-05-16",
+   "burst_start": "2025-12-17",
+   "burst_end": "2025-12-19",
+   "seg": "旱期内",
+   "first_drought": 148
+  },
+  {
+   "symbol": "LPCN",
+   "buy_date": "2025-12-26",
+   "filed": "2025-11-06",
+   "drought_start": "2025-05-16",
+   "burst_start": "2025-12-17",
+   "burst_end": "2025-12-23",
+   "seg": "旱期内",
+   "first_drought": 148
+  },
+  {
+   "symbol": "LRDC",
+   "buy_date": "2025-11-12",
+   "filed": "2025-10-20",
+   "drought_start": "2025-08-15",
+   "burst_start": "2025-11-05",
+   "burst_end": "2025-11-10",
+   "seg": "旱期内",
+   "first_drought": 57
+  },
+  {
+   "symbol": "LRDC",
+   "buy_date": "2025-11-14",
+   "filed": "2025-10-20",
+   "drought_start": "2025-08-15",
+   "burst_start": "2025-11-05",
+   "burst_end": "2025-11-12",
+   "seg": "旱期内",
+   "first_drought": 57
+  },
+  {
+   "symbol": "OMER",
+   "buy_date": "2025-10-20",
+   "filed": "2025-08-14",
+   "drought_start": "2025-07-28",
+   "burst_start": "2025-10-06",
+   "burst_end": "2025-10-15",
+   "seg": "旱期内",
+   "first_drought": 49
+  },
+  {
+   "symbol": "OMQS",
+   "buy_date": "2025-11-06",
+   "filed": "2025-08-19",
+   "drought_start": "2025-07-15",
+   "burst_start": "2025-10-22",
+   "burst_end": "2025-11-03",
+   "seg": "旱期内",
+   "first_drought": 70
+  },
+  {
+   "symbol": "PLAB",
+   "buy_date": "2025-12-15",
+   "filed": "2025-09-09",
+   "drought_start": "2025-09-22",
+   "burst_start": "2025-12-08",
+   "burst_end": "2025-12-10",
+   "seg": "旱期之前",
+   "first_drought": 54
+  },
+  {
+   "symbol": "RKDA",
+   "buy_date": "2025-10-17",
+   "filed": "2025-08-14",
+   "drought_start": "2025-06-06",
+   "burst_start": "2025-10-08",
+   "burst_end": "2025-10-15",
+   "seg": "旱期内",
+   "first_drought": 85
+  },
+  {
+   "symbol": "SLDC",
+   "buy_date": "2025-11-04",
+   "filed": "2023-01-23",
+   "drought_start": "2025-07-08",
+   "burst_start": "2025-10-08",
+   "burst_end": "2025-10-27",
+   "seg": "旱期之前",
+   "first_drought": 65
+  },
+  {
+   "symbol": "SLNH",
+   "buy_date": "2025-10-01",
+   "filed": "2025-08-14",
+   "drought_start": "2025-07-11",
+   "burst_start": "2025-09-10",
+   "burst_end": "2025-09-24",
+   "seg": "旱期内",
+   "first_drought": 42
+  },
+  {
+   "symbol": "SPQS",
+   "buy_date": "2025-12-12",
+   "filed": "2023-11-03",
+   "drought_start": "2025-09-10",
+   "burst_start": "2025-12-09",
+   "burst_end": "2025-12-10",
+   "seg": "旱期之前",
+   "first_drought": 63
+  },
+  {
+   "symbol": "SPTY",
+   "buy_date": "2025-10-31",
+   "filed": "2025-08-19",
+   "drought_start": "2025-05-13",
+   "burst_start": "2025-10-14",
+   "burst_end": "2025-10-27",
+   "seg": "旱期内",
+   "first_drought": 106
+  },
+  {
+   "symbol": "SRGZ",
+   "buy_date": "2025-12-23",
+   "filed": "2025-12-15",
+   "drought_start": "2025-04-16",
+   "burst_start": "2025-12-04",
+   "burst_end": "2025-12-17",
+   "seg": "burst 期内",
+   "first_drought": 160
+  },
+  {
+   "symbol": "WWR",
+   "buy_date": "2025-10-06",
+   "filed": "2025-08-13",
+   "drought_start": "2025-07-17",
+   "burst_start": "2025-09-24",
+   "burst_end": "2025-10-02",
+   "seg": "旱期内",
+   "first_drought": 48
+  },
+  {
+   "symbol": "WWR",
+   "buy_date": "2025-10-08",
+   "filed": "2025-08-13",
+   "drought_start": "2025-07-17",
+   "burst_start": "2025-09-24",
+   "burst_end": "2025-10-06",
+   "seg": "旱期内",
+   "first_drought": 48
+  },
+  {
+   "symbol": "YCBD",
+   "buy_date": "2025-12-23",
+   "filed": "2025-12-19",
+   "drought_start": "2025-09-29",
+   "burst_start": "2025-12-12",
+   "burst_end": "2025-12-17",
+   "seg": "回踩期内",
+   "first_drought": 53
+  }
+ ]
+}

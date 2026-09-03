@@ -1,0 +1,46 @@
+[
+ {
+  "symbol": "MAJI",
+  "buy_date": "2025-03-18",
+  "window": [
+   "2025-03-11",
+   "2025-03-18"
+  ],
+  "source_stats": {
+   "finnhub": 0
+  },
+  "n_items": 0,
+  "pos/neg/neu/fail": [
+   0,
+   0,
+   0,
+   0
+  ],
+  "total_count": 0,
+  "sentiment_score": 0.0,
+  "rho": 0.0,
+  "elapsed_s": 10.3
+ },
+ {
+  "symbol": "RAYA",
+  "buy_date": "2025-04-17",
+  "window": [
+   "2025-04-10",
+   "2025-04-17"
+  ],
+  "source_stats": {
+   "finnhub": 0
+  },
+  "n_items": 0,
+  "pos/neg/neu/fail": [
+   0,
+   0,
+   0,
+   0
+  ],
+  "total_count": 0,
+  "sentiment_score": 0.0,
+  "rho": 0.0,
+  "elapsed_s": 3.2
+ }
+]

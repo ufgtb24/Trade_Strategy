@@ -8,17 +8,19 @@ from path2.dag.gate_failure import MeasuredKindAware
 
 def make_bo_event(idx):
     from path2.atoms.breakout import BOEvent
-    return BOEvent(event_id=f"bo_{idx}", start_idx=idx, end_idx=idx, confirm_idx=idx,
-                   drought=None, pk_count=1, broken_peak_ids=(), vol_ratio=None,
-                   peak_vol_max=0.0, referenced_points=())
+    # pk_count/broken_peak_ids 已改 @property(派生自 broken_refs,契约 C5);
+    # 本 fixture 不需要突破峰,broken_refs 留空即可。
+    return BOEvent(start_idx=idx, end_idx=idx, confirm_idx=idx,
+                   drought=None, vol_ratio=None,
+                   peak_vol_max=0.0)
 
 
 def make_wide_event(start, end, idx=0):
     from path2.atoms.breakout import BOEvent
     # 复用 BOEvent 仅为拿现成 Event 子类;start != end 打破"点事件"假设,够用于纯几何 measured 计算
-    return BOEvent(event_id=f"w_{idx}", start_idx=start, end_idx=end, confirm_idx=start,
-                   drought=None, pk_count=1, broken_peak_ids=(), vol_ratio=None,
-                   peak_vol_max=0.0, referenced_points=())
+    return BOEvent(start_idx=start, end_idx=end, confirm_idx=start,
+                   drought=None, vol_ratio=None,
+                   peak_vol_max=0.0)
 
 
 def test_temporal_edge_kind_gap():

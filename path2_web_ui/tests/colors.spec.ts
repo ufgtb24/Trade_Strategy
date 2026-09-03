@@ -3,12 +3,12 @@ import { deriveNodeColors, colorOf } from '../src/render/colors'
 import { PATTERN } from './fixtures'
 
 describe('deriveNodeColors', () => {
-  it('single-node class_id uses base color', () => {
+  it('single-node node_id uses base color', () => {
     const c = deriveNodeColors(PATTERN.topology, PATTERN.event_styles)
     expect(c.bo).toBe('#2563eb')        // bo 仅 bo 一个 node → 原色
     expect(c.tb).toBe('#16a34a')        // tb 仅 tb
   })
-  it('same class_id multi-node get distinct lightness variants', () => {
+  it('multi-node_id band get distinct lightness variants', () => {
     const c = deriveNodeColors(PATTERN.topology, PATTERN.event_styles)
     // down/side 同 trend → 两个不同色(都非空、互异)
     expect(c.down).toBeTruthy()
@@ -22,7 +22,7 @@ describe('deriveNodeColors', () => {
   })
   it('missing event_style falls back to neutral', () => {
     const c = deriveNodeColors(
-      { nodes: [{ node_id: 'x', class_id: 'unknown', source_tag: 'unknown', where_rules: [] }], edges: [] },
+      { nodes: [{ node_id: 'x', where_rules: [] }], edges: [] },
       {})
     expect(c.x).toMatch(/^#/)
   })
@@ -40,3 +40,4 @@ describe('colorOf tier', () => {
     expect(colorOf('matched', null, {})).toBe('#888888')
   })
 })
+

@@ -1,13 +1,17 @@
 import { describe, it, expect } from 'vitest'
-import { layoutTopology } from '../src/render/topology'
+import { layoutTopology, SUB_GAP } from '../src/render/topology'
 import type { TopoLayout } from '../src/render/topology'
 import type { TopoNode, TopoEdge } from '../src/types'
 
-function node(node_id: string): TopoNode {
-  return { node_id, class_id: 't', source_tag: node_id, where_rules: [] }
+function node(node_id: string, produced_by?: string, child_slot?: string,
+              parent_refs?: [string, string][]): TopoNode {
+  return { node_id, where_rules: [],
+           produced_by: produced_by ?? null, child_slot: child_slot ?? null,
+           // 兼容:给了 produced_by 则自动转 parent_refs(子结构 node 必被父 children 引用)
+           parent_refs: parent_refs ?? (produced_by ? [[produced_by, child_slot ?? '']] : []) }
 }
 
-// bottom_breakout_burst 的 4 节点 DAG:down/side → bo → tb
+// bottom_burst 的 4 节点 DAG:down/side → bo → tb
 const NODES: TopoNode[] = [
   node('down'),
   node('side'),
@@ -21,6 +25,8 @@ const EDGES: TopoEdge[] = [
 ]
 const xOf = (nodes: { node: TopoNode; x: number }[], id: string) =>
   nodes.find((b) => b.node.node_id === id)!.x
+const yOf = (nodes: { node: TopoNode; y: number }[], id: string) =>
+  nodes.find((b) => b.node.node_id === id)!.y
 
 describe('layoutTopology', () => {
   it('layers left→right: down/side same column, bo middle, tb rightmost', () => {
@@ -73,7 +79,7 @@ describe('layoutTopology', () => {
 
 describe('layoutTopology — type-agnostic generalization', () => {
   const node = (id: string): TopoNode =>
-    ({ node_id: id, class_id: 't', source_tag: id, where_rules: [] })
+    ({ node_id: id, where_rules: [] })
   const edge = (src: string, dst: string): TopoEdge =>
     ({ src, dst, kind: 'TemporalEdge', rule: '' })
   const colX = (nodes: { node: TopoNode; x: number }[], id: string) =>
@@ -115,7 +121,7 @@ describe('layoutTopology — type-agnostic generalization', () => {
 
 describe('layoutTopology — adaptive column gap fits edge labels', () => {
   const n = (id: string): TopoNode =>
-    ({ node_id: id, class_id: 't', source_tag: id, where_rules: [] })
+    ({ node_id: id, where_rules: [] })
   const ed = (src: string, dst: string, rule: string): TopoEdge =>
     ({ src, dst, kind: 'TemporalEdge', rule })
   // src 右缘 → dst 左缘的横向距离 = 这条边可用来放标签的长度
@@ -176,5 +182,89 @@ describe('layoutTopology — adaptive column gap fits edge labels', () => {
     const cjk = layoutTopology([n('a'), n('b')], [ed('a', 'b', '一二三四五六七八九十甲乙')])  // 12 CJK
     const ascii = layoutTopology([n('a'), n('b')], [ed('a', 'b', 'abcdefghijkl')])             // 12 ASCII
     expect(gapBetween(cjk, 'a', 'b')).toBeGreaterThan(gapBetween(ascii, 'a', 'b'))  // CJK 12px > ASCII 7px/字
+  })
+
+  it('anchors a sub-structure node below its parent (same column)', () => {
+    const L = layoutTopology(
+      [node('bo'), node('tb'), node('tb_seg', 'tb', 'segments')],
+      [ed('bo', 'tb', 'gap=1')],
+    )
+    expect(xOf(L.nodes, 'tb_seg')).toBe(xOf(L.nodes, 'tb'))       // 子结构挂父正下方(同列)
+    expect(yOf(L.nodes, 'tb_seg')).toBeGreaterThan(yOf(L.nodes, 'tb'))
+    expect(yOf(L.nodes, 'tb_seg')).toBe(yOf(L.nodes, 'tb') + 30 + SUB_GAP)  // NODE_H(30) + SUB_GAP
+    expect(xOf(L.nodes, 'tb')).toBeGreaterThan(xOf(L.nodes, 'bo'))      // 业务边分层不受影响
+  })
+
+  it('emits a vertical parent edge from child top up to parent bottom, carrying the slot name', () => {
+    const L = layoutTopology(
+      [node('tb'), node('tb_seg', 'tb', 'segments')],
+      [],
+    )
+    expect(L.parentEdges).toHaveLength(1)
+    const pe = L.parentEdges[0]
+    expect(pe.child.node_id).toBe('tb_seg')
+    expect(pe.parent_id).toBe('tb')
+    expect(pe.slot).toBe('segments')
+    const c = L.nodes.find((b) => b.node.node_id === 'tb_seg')!
+    const p = L.nodes.find((b) => b.node.node_id === 'tb')!
+    expect(c.x).toBe(p.x)                                             // 同列挂靠
+    expect(c.y).toBeGreaterThan(p.y)                                  // 子在父下方
+    expect(pe.d.startsWith(`M ${c.x + c.w / 2},${c.y}`)).toBe(true)   // 起点 = 子顶缘中点
+    expect(pe.d.endsWith(`${c.x + c.w / 2},${p.y + p.h}`)).toBe(true) // 终点 = 同 x 的父底缘(垂直直线,箭头扎进父底)
+    expect(pe.d.includes('L ')).toBe(true)                            // 垂直直线(非曲线)
+    expect(pe.label.x).toBe(c.x + c.w / 2 + 8)                        // 槽名 label 放虚线右侧
+    expect(pe.label.y).toBe((c.y + p.y + p.h) / 2)                    // 垂直居中于虚线
+  })
+
+  it('emits no parent edge for ordinary nodes', () => {
+    const L = layoutTopology([node('a'), node('b')], [ed('a', 'b', 'x')])
+    expect(L.parentEdges).toEqual([])
+  })
+
+  it('anchors a standalone node referenced by a container below it (bo → burst)', () => {
+    // 情况一:burst children={"members": "bo"}——bo 是独立 node 但被容器引用;无业务边 → 挂靠
+    const L = layoutTopology(
+      [node('burst'), node('bo', undefined, undefined, [['burst', 'members']]), node('tb')],
+      [ed('burst', 'tb', 'gap=1')],
+    )
+    const pe = L.parentEdges.find((p) => p.child.node_id === 'bo')
+    expect(pe?.parent_id).toBe('burst')
+    expect(pe?.slot).toBe('members')
+    expect(xOf(L.nodes, 'bo')).toBe(xOf(L.nodes, 'burst'))      // 独立 node 也挂父正下方
+    expect(yOf(L.nodes, 'bo')).toBeGreaterThan(yOf(L.nodes, 'burst'))
+    const c = L.nodes.find((b) => b.node.node_id === 'bo')!
+    const p = L.nodes.find((b) => b.node.node_id === 'burst')!
+    expect(pe!.d.startsWith(`M ${c.x + c.w / 2},${c.y}`)).toBe(true)
+    expect(pe!.d.endsWith(`${c.x + c.w / 2},${p.y + p.h}`)).toBe(true)  // 垂直直线(同一 x)
+  })
+
+  it('keeps a referenced business-edge endpoint in the flow with a horizontal parent edge (fallback)', () => {
+    // 回退:bo 是业务边端点(down→bo、bo→tb)→ 不挂靠,留水平流(父后列),虚线水平画法
+    const L = layoutTopology(
+      [node('burst'), node('bo', undefined, undefined, [['burst', 'members']]),
+       node('down'), node('tb')],
+      [ed('down', 'bo', 'x'), ed('bo', 'tb', 'gap=1')],
+    )
+    const pe = L.parentEdges.find((p) => p.child.node_id === 'bo')
+    expect(pe?.parent_id).toBe('burst')
+    expect(xOf(L.nodes, 'bo')).toBeGreaterThan(xOf(L.nodes, 'burst'))  // 仍在水平流、父后列
+    const c = L.nodes.find((b) => b.node.node_id === 'bo')!
+    const p = L.nodes.find((b) => b.node.node_id === 'burst')!
+    expect(pe!.d.startsWith(`M ${c.x},${c.y + c.h / 2}`)).toBe(true)     // 水平画法:子左缘中点
+    expect(pe!.d.endsWith(`${p.x + p.w},${p.y + p.h / 2}`)).toBe(true)   // 父右缘中点
+  })
+
+  it('demotes an anchor whose parent is not the last node of its layer (fallback guard)', () => {
+    // 防御:a 同层非末位 → x 降级回水平流(a 后列),虚线水平画法
+    const L = layoutTopology(
+      [node('a'), node('c'), node('b'), node('x', undefined, undefined, [['a', 's']])],
+      [ed('a', 'b', 'x'), ed('c', 'b', 'x')],
+    )
+    expect(xOf(L.nodes, 'x')).toBeGreaterThan(xOf(L.nodes, 'a'))     // 降级:在 a 后列而非 a 正下方
+    const pe = L.parentEdges.find((p) => p.child.node_id === 'x')
+    const c = L.nodes.find((b) => b.node.node_id === 'x')!
+    const p = L.nodes.find((b) => b.node.node_id === 'a')!
+    expect(pe!.d.startsWith(`M ${c.x},${c.y + c.h / 2}`)).toBe(true)
+    expect(pe!.d.endsWith(`${p.x + p.w},${p.y + p.h / 2}`)).toBe(true)
   })
 })

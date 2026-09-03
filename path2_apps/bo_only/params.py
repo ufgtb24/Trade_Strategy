@@ -1,12 +1,13 @@
 """Default Params for bo_only pattern。
 
 单 BODetector 节点 pattern 的参数 schema:仅含 bo section + load_params()。
-与 bottom_breakout_burst.params 同形式,独立 yaml 文件。
+与 bottom_burst.params 同形式,独立 yaml 文件。
 """
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Optional
 
 from path2_apps._params_base import ParamsBase
 
@@ -15,12 +16,14 @@ DEFAULT_YAML_PATH = Path(__file__).parent / "params.yaml"
 
 @dataclass(frozen=True)
 class BoParams:
-    """BODetector 构造参数(与 bottom_breakout_burst.params.BoParams 同 schema)。"""
+    """BODetector 构造参数(与 bottom_burst.params.BoParams 同 schema)。"""
     total_window: int = 10
     min_side_bars: int = 2
     min_relative_height: float = 0.05
     exceed_threshold: float = 0.005
     peak_supersede_threshold: float = 0.03
+    bear_drop: Optional[float] = None   # 大阴线 kind:实体跌幅阈值;None=禁用(默认 OFF,仅显式 ON 的 app 启用)
+    bear_min_rh: float = 0.20   # 大阴线 kind:相对高度阈值
     vol_baseline_period: int = 63
     peak_measure: str = "high"
     breakout_measure: str = "high"

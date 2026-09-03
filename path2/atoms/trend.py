@@ -7,7 +7,6 @@ from typing import ClassVar, Iterator, Literal
 import pandas as pd
 
 from path2 import Event
-from path2.stdlib import span_id
 from path2.calc.ma import calculate_ma
 
 
@@ -18,9 +17,8 @@ class TrendSegment(Event):
     输出字段(where 可引用):
     - regime:   "down" / "sideways" / "up" 三态
     - drawdown: (seg_high - seg_low) / seg_high,区段内价格振幅占比
-                (非「相对前高」的绝对跌幅;服务 bottom_breakout_burst 谓词 ④)
+                (非「相对前高」的绝对跌幅;服务 bottom_burst 谓词 ④)
     """
-    class_id = "trend"
     regime: Literal["down", "sideways", "up"] = "sideways"
     drawdown: float = 0.0
 
@@ -38,10 +36,6 @@ class TrendSegmentDetector:
 
     简化版(取消 slope 计算):per-bar 相对变化直接判态,不算回归斜率。
 
-    - source_tag: per-instance 的 event_id 前缀,默认 None → 回退 class_id "trend"。
-      用于区分同一 detector 类的多个实例(如 coarse/precise 两套参数)。
-      本轮仅本 detector 需要(唯一被多 node 复用者);其余 detector 按需再加,勿默认铺开。
-
     输出字段详见 TrendSegment。
     """
     has_debug_hooks: ClassVar[bool] = False
@@ -51,12 +45,10 @@ class TrendSegmentDetector:
     def __init__(self,
                  ma_period: int = 20,
                  sideways_eps: float = 0.0005,
-                 hysteresis_bars: int = 3,
-                 source_tag: str | None = None):
+                 hysteresis_bars: int = 3):
         self.ma_period = ma_period
         self.sideways_eps = sideways_eps
         self.hysteresis_bars = hysteresis_bars
-        self.source_tag = source_tag
 
     def detect(self, df: pd.DataFrame) -> Iterator[TrendSegment]:
         n = len(df)
@@ -115,7 +107,6 @@ class TrendSegmentDetector:
         seg_low = float(df['low'].iloc[start: end + 1].min())
         drawdown = (seg_high - seg_low) / seg_high if seg_high > 0 else 0.0
         return TrendSegment(
-            event_id=span_id(self.source_tag or self.event_cls.class_id, start, end),
             start_idx=start,
             end_idx=end,
             confirm_idx=end,   # retrospective:regime 切换才确认完整区段

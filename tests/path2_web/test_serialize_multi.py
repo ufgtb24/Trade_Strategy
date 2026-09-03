@@ -4,8 +4,8 @@ import pandas as pd
 import pytest
 
 from path2_web.serialize import serialize_per_pattern_result
-from path2_apps.bottom_breakout_burst import build_pattern, Params, eval_meta
-from path2_apps.bottom_breakout_burst.dag_spec import analyze as dag_analyze
+from path2_apps.bottom_burst import build_pattern, Params, eval_meta
+from path2_apps.bottom_burst.dag_spec import analyze as dag_analyze
 from path2.dag.engine import analyze as engine_analyze
 from tests.path2.fixtures.positive_case import positive_case
 
@@ -68,8 +68,15 @@ def test_per_pattern_events_full_set_kept():
     out = serialize_per_pattern_result(res, end_node=meta["end_node"],
                                        label_horizon=5, win=win,
                                        start_ts=start_ts, end_ts=end_ts)
-    # events 全集与原 res.events 一致(数量)
-    assert len(out["analysis"]["events"]) == len(res.events)
+    # events 全集 = res.events + 容器挖出的 child(F14:serialize_analysis 主动挖)。
+    # 实例流:去重键 = 对象身份 id(c)——已在 res.events 的对象(如
+    # burst.members)不追加;同 instance_id 多实例的 child(同 span 的 tb_seg)各自保留
+    res_ids = {id(e) for e in res.events}
+    n_child = sum(1 for e in res.events
+                  for slot in e.child_slots().values()
+                  for m in (slot if isinstance(slot, tuple) else (slot,))
+                  if id(m) not in res_ids)
+    assert len(out["analysis"]["events"]) == len(res.events) + n_child
     # matches 是 res.matches 子集
     assert len(out["analysis"]["matches"]) <= len(res.matches)
 
@@ -131,7 +138,10 @@ def _synth_win_with_date():
 def test_forward_drawdown_injected_and_min_aggregated():
     """每条 match 注入 forward_drawdown(与 forward_return 并列);
     min_forward_drawdown = min(非 None)(与 max_forward_return 的 max 对仗)。
-    单 match → min = 该 match 的 forward_drawdown,且与 mfr 一同算出。"""
+
+    方案 C 后 ThrowbackDetector.detect 可一 bo 产多段 tb → 多 match;故
+    min_forward_drawdown 取 *所有 match* 的 forward_drawdown 之 min(而非 matches[0])。
+    """
     win, res, _ = _synth_win_with_date()
     meta = eval_meta()
     start_ts = win["date"].iat[0]
@@ -148,10 +158,10 @@ def test_forward_drawdown_injected_and_min_aggregated():
     # 结构不变量:同买点窗 max(high) ≥ min(low) ⟹ forward_return ≥ forward_drawdown
     # (drawdown 可正可负:正=无下行波动、负=有回撤;符号取决于走势,不强制)
     assert md["forward_return"] >= md["forward_drawdown"]
-    # 单 match:min_forward_drawdown == 该 match 的 forward_drawdown
-    assert out["min_forward_drawdown"] == md["forward_drawdown"]
-    # max_forward_return 同时仍正确(未被 drawdown 改动影响)
-    assert out["max_forward_return"] == md["forward_return"]
+    # 多 match 语义:min over 所有 match 的 forward_drawdown(方案 C:一 bo 多 tb)
+    assert out["min_forward_drawdown"] == min(m["forward_drawdown"] for m in matches)
+    # max_forward_return 同时仍正确(max over 所有 match 的 forward_return,与 drawdown 对仗)
+    assert out["max_forward_return"] == max(m["forward_return"] for m in matches)
 
 
 def test_min_forward_drawdown_is_min_across_matches():
@@ -178,7 +188,7 @@ def test_min_forward_drawdown_is_min_across_matches():
 
 
 def test_first_passage_disabled_omits_key():
-    """enabled=False → MatchDict 不含 first_passage 键(向后兼容)。"""
+    """enabled=False → MatchDict 的 first_passage 键恒为 None(Task 4:字段常在,值受开关控制)。"""
     win, res, _ = _synth_win_with_date()
     meta = eval_meta()
     out = serialize_per_pattern_result(
@@ -187,7 +197,7 @@ def test_first_passage_disabled_omits_key():
         first_passage_enabled=False)
     assert out["analysis"]["matches"], "窗内应有 match"
     for m in out["analysis"]["matches"]:
-        assert "first_passage" not in m
+        assert m["first_passage"] is None
 
 
 def test_match_fp_counts_single_group():
@@ -202,10 +212,14 @@ def test_match_fp_counts_single_group():
     assert matches, "窗内应有 match"
     complete = [m for m in matches if m["forward_return"] is not None]
     assert complete, "应至少 1 条窗口完整的 match"
-    # match 自身不再注入 first_passage 字段
-    for m in complete:
-        assert "first_passage" not in m
     # match_fp_counts 单组四态、至少计了 1 个买点日
     fp = out["match_fp_counts"]
     assert set(fp) == {"up", "down", "both", "none"}
     assert sum(fp.values()) > 0
+    # Task 4:非 None 的逐 match first_passage 四态求和 == match_fp_counts
+    tot = {"up": 0, "down": 0, "both": 0, "none": 0}
+    for m in matches:
+        if m["first_passage"] is not None:
+            for k in tot:
+                tot[k] += m["first_passage"][k]
+    assert tot == fp

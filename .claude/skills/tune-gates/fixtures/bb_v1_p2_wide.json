@@ -1,0 +1,30 @@
+{
+ "bo": {
+  "breakout_measure": "close",
+  "exceed_threshold": 0.003,
+  "min_relative_height": 0.2,
+  "min_side_bars": 6,
+  "peak_measure": "high",
+  "peak_supersede_threshold": 0.01,
+  "total_window": 20,
+  "vol_baseline_period": 63
+ },
+ "burst": {
+  "distinct_pk_min": 1,
+  "first_drought_min": 0,
+  "gap_max": 8,
+  "min_bos": 1,
+  "peak_age_min": 0,
+  "vol_baseline_period": 63,
+  "vol_spike_min": 0
+ },
+ "edges": {},
+ "tb": {
+  "max_day_drop_pct": null,
+  "max_rise_k": 1.5,
+  "max_span": 20,
+  "measure": "close",
+  "stop_confirm_bars": 1,
+  "vol_window": 14
+ }
+}

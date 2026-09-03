@@ -6,7 +6,7 @@ from path2_web.discovery import _discover, PatternRegistry
 
 
 def test_real_apps_pass_gate():
-    """真实 path2_apps 下的 bottom_breakout_burst 与 bo_only 都过闸。"""
+    """真实 path2_apps 下的 bottom_burst 与 bo_only 都过闸。"""
     modules, errors = _discover("path2_apps")
     assert "bottom_burst" in modules
     assert "bo_only" in modules
@@ -27,8 +27,10 @@ def test_fake_app_missing_eval_meta_is_filtered(tmp_path, monkeypatch, caplog):
         "from path2.dag.nodes import NodeSpec\n"
         "from path2.dag.spec import PatternSpec\n"
         "from path2.atoms.breakout import BODetector\n"
+        "det = BODetector()\n"
         "PATTERN_DAG = PatternSpec(pattern_id='no_meta',\n"
-        "                         nodes=(NodeSpec('bo', BODetector()),), edges=())\n"
+        "                         nodes=(NodeSpec('bo', det, produces_stream='bo'),\n"
+        "                                NodeSpec('pk', det, produces_stream='pk', solve=False, render_grid='price'),), edges=())\n"
         "def analyze(df, params=None): return None\n"
         "# 故意不定义 eval_meta\n"
     )
@@ -53,8 +55,10 @@ def test_fake_app_eval_meta_missing_end_node(tmp_path, monkeypatch, caplog):
         "from path2.dag.nodes import NodeSpec\n"
         "from path2.dag.spec import PatternSpec\n"
         "from path2.atoms.breakout import BODetector\n"
+        "det = BODetector()\n"
         "PATTERN_DAG = PatternSpec(pattern_id='bad_meta',\n"
-        "                         nodes=(NodeSpec('bo', BODetector()),), edges=())\n"
+        "                         nodes=(NodeSpec('bo', det, produces_stream='bo'),\n"
+        "                                NodeSpec('pk', det, produces_stream='pk', solve=False, render_grid='price'),), edges=())\n"
         "def analyze(df, params=None): return None\n"
         "def eval_meta(params=None): return {'head_buffer_trading_days': 60}   # 缺 end_node\n"
     )
@@ -77,8 +81,10 @@ def test_fake_app_eval_meta_missing_head_buffer(tmp_path, monkeypatch, caplog):
         "from path2.dag.nodes import NodeSpec\n"
         "from path2.dag.spec import PatternSpec\n"
         "from path2.atoms.breakout import BODetector\n"
+        "det = BODetector()\n"
         "PATTERN_DAG = PatternSpec(pattern_id='bad_meta2',\n"
-        "                         nodes=(NodeSpec('bo', BODetector()),), edges=())\n"
+        "                         nodes=(NodeSpec('bo', det, produces_stream='bo'),\n"
+        "                                NodeSpec('pk', det, produces_stream='pk', solve=False, render_grid='price'),), edges=())\n"
         "def analyze(df, params=None): return None\n"
         "def eval_meta(params=None): return {'end_node': 'bo'}   # 缺 head_buffer\n"
     )
@@ -101,8 +107,10 @@ def test_fake_app_eval_meta_raises(tmp_path, monkeypatch, caplog):
         "from path2.dag.nodes import NodeSpec\n"
         "from path2.dag.spec import PatternSpec\n"
         "from path2.atoms.breakout import BODetector\n"
+        "det = BODetector()\n"
         "PATTERN_DAG = PatternSpec(pattern_id='throw_meta',\n"
-        "                         nodes=(NodeSpec('bo', BODetector()),), edges=())\n"
+        "                         nodes=(NodeSpec('bo', det, produces_stream='bo'),\n"
+        "                                NodeSpec('pk', det, produces_stream='pk', solve=False, render_grid='price'),), edges=())\n"
         "def analyze(df, params=None): return None\n"
         "def eval_meta(params=None): raise RuntimeError('boom')\n"
     )

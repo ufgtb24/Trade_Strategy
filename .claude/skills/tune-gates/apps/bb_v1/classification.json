@@ -1,0 +1,124 @@
+{
+ "app": "bb_v1",
+ "app_module": "path2_apps.bb_v1.dag_spec",
+ "base_yaml": "params.yaml",
+ "kinds": {
+  "bo.min_relative_height": "D",
+  "burst.gap_max": "D",
+  "burst.first_drought_min": "W",
+  "tb.max_day_drop_pct": "W"
+ },
+ "detector_nodes": {
+  "bo.min_relative_height": [
+   "bo"
+  ],
+  "burst.gap_max": [
+   "burst"
+  ],
+  "burst.first_drought_min": [],
+  "tb.max_day_drop_pct": []
+ },
+ "filter_fields": {},
+ "where_fields": {
+  "burst.first_drought_min": [
+   "burst",
+   "first_drought",
+   ">="
+  ],
+  "tb.max_day_drop_pct": [
+   "tb",
+   "max_day_drop",
+   "<"
+  ]
+ },
+ "scan_grid": {
+  "bo.min_relative_height": [
+   0.1,
+   0.2,
+   0.3
+  ],
+  "burst.gap_max": [
+   4,
+   8,
+   12
+  ]
+ },
+ "where_levels": {
+  "burst.first_drought_min": [
+   0,
+   20,
+   40
+  ],
+  "tb.max_day_drop_pct": [
+   null,
+   0.2
+  ]
+ },
+ "wide_overrides": {
+  "burst": {
+   "distinct_pk_min": 1,
+   "first_drought_min": 0,
+   "peak_age_min": 0,
+   "vol_spike_min": 0
+  },
+  "tb": {
+   "max_day_drop_pct": null
+  }
+ },
+ "ref_point": {
+  "bo.min_relative_height": 0.2,
+  "burst.gap_max": 8
+ },
+ "end_node": "tb",
+ "bound_nodes": [
+  "burst",
+  "tb"
+ ],
+ "detection_combos": 9,
+ "ref_params": {
+  "bo": {
+   "total_window": 20,
+   "min_side_bars": 6,
+   "min_relative_height": 0.2,
+   "exceed_threshold": 0.003,
+   "peak_supersede_threshold": 0.01,
+   "vol_baseline_period": 63,
+   "peak_measure": "high",
+   "breakout_measure": "close"
+  },
+  "burst": {
+   "gap_max": 8,
+   "vol_baseline_period": 63,
+   "min_bos": 1,
+   "first_drought_min": 0,
+   "distinct_pk_min": 1,
+   "vol_spike_min": 0,
+   "peak_age_min": 0
+  },
+  "tb": {
+   "max_rise_k": 1.5,
+   "stop_confirm_bars": 1,
+   "vol_window": 14,
+   "max_span": 20,
+   "measure": "close",
+   "max_day_drop_pct": null
+  },
+  "edges": {}
+ },
+ "fingerprints": {
+  "source": {
+   "hash": "cbaa9c15a882051d4bd06a3eb4f898afb3835d522e0d014f9d3a095a0c252c54",
+   "files": [
+    "path2/atoms/breakout.py",
+    "path2/atoms/throwback_v1.py",
+    "path2_apps/bb_v1/__init__.py",
+    "path2_apps/bb_v1/dag_spec.py",
+    "path2_apps/bb_v1/params.py"
+   ]
+  },
+  "base": "951b612d5517146320a8c3a247820dea5e3b38efd975143cb988f1d1c282d0b1",
+  "study": "6a355c1950314f5a482d2fe4994a1ba61ebf64c7947efc43c44e11a0a05c3783"
+ },
+ "generated_at": "2026-08-31T05:20:55",
+ "git_head": "cba747f"
+}

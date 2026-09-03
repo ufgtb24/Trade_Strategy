@@ -9,18 +9,19 @@
 
 fixture 说明(相对 plan 原文两处调整,理由见 task-3-report.md):
 1. pattern_id 用 `bottom_burst`(非 `bo_only`)—— `bo_only` 只有孤立 BODetector 节点,
-   拓扑里没有 ThrowbackDetector,`path2.atoms.throwback.debug_break` 永远不会被调用;
-   `bottom_burst` 是仓库里唯一挂了 tb(ThrowbackDetector,consumes_stream="bo")节点的
-   注册 pattern。
+   拓扑里没有 ThrowbackDetectorV4,`path2.atoms.throwback_v4.debug_break` 永远不会被
+   调用;`bottom_burst` 是仓库里唯一挂了 tb(ThrowbackDetectorV4,consumes_stream="burst")
+   节点的注册 pattern。
 2. OHLCV 用真实构造的突破序列(非全平),且 `date` 显式 set_index 成 DatetimeIndex——
    `path2_web/data.py::slice_window` 要求 `df.index` 是具名 'date' 的 DatetimeIndex
    (`df.loc[str(start):str(end)]`);若 'date' 只是普通列(RangeIndex),`.loc` 字符串切片
    静默返回空窗口(0 行),detector 无 bar 可扫,debug_break 永远不触发。全平价格数据下
-   BODetector 也不会有真实突破(peak 存在但从不被击穿),因此改用一段"平台+单峰+突破"序列,
-   在 `bottom_burst` 生产参数(total_window=20/min_side_bars=6/min_relative_height=0.2/
-   exceed_threshold=0.003)下必然在 idx=21 产生一个 BOEvent,从而使
-   evaluate_throwback() 内 `debug_break(bo_idx, anchor_kind='entry')`(无条件调用,不受
-   on_gate 是否挂钩影响)至少触发一次。
+   BODetector 也不会有真实突破(peak 存在但从不被击穿),因此改用一段"平台+单峰+
+   连续小幅突破"序列,在 `bottom_burst` 生产参数(total_window=20/min_side_bars=6/
+   min_relative_height=0.2/exceed_threshold=0.003/peak_supersede_threshold=0.01)下
+   必然产生 3 个连续 BOEvent(21-23)并物化 1 个 BurstEvent,从而使
+   ThrowbackDetectorV4.detect 内 `debug_break(bo_idx, anchor_kind='entry')`(每 burst
+   无条件调用,不受 on_gate 是否挂钩影响)至少触发一次。
 """
 import json
 import os
@@ -34,15 +35,18 @@ from path2_web.app import create_app
 
 
 def _make_ohlcv(n: int = 200) -> pd.DataFrame:
-    """构造一段在 bottom_burst 生产 BO 参数下必产生 1 个 BOEvent 的序列。
+    """构造一段在 bottom_burst 生产 BO/Burst 参数下必产生 1 个 BurstEvent 的序列。
 
-    结构:10 根平盘 + 1 根峰值(idx10,high=12.1)+ 10 根平盘 + 1 根突破
-    (idx21,high=13.1)+ 尾部平盘补满 n 根。峰值相对高度 (12.1-9.9)/9.9≈0.222
-    ≥ min_relative_height(0.2);突破价 13.1 > peak.price*(1+exceed_threshold)
-    = 12.1*1.003≈12.136,越过阈值触发 BOEvent(已用 probe 脚本独立验证:
-    num BOs==1,start_idx=end_idx=21)。
+    结构:10 根平盘 + 1 根峰值(idx10,high=12.1)+ 10 根平盘 + 4 根连续小幅突破
+    (idx21-24,每根 high 递增 +0.05 ≈ 0.41%,落在 (exceed_threshold 0.3%,
+    peak_supersede_threshold 1%) 区间 → peak 保留且 elevation 抬升,每根各产
+    1 个 BOEvent)+ 尾部平盘补满 n 根。3 个连续 BO(gap=1 ≤ gap_max=8)满足
+    min_bos=3 → BurstDetector 物化 1 个 BurstEvent(21-23)(已用 probe 脚本独立
+    验证:num BOs==3 @21/22/23,num bursts==1 span(21,23)),从而使 V4 detect 的
+    entry 埋点至少触发一次。
     """
-    closes = [10.0] * 10 + [12.0] + [10.0] * 10 + [13.0] + [10.0] * (n - 22)
+    run = [12.05, 12.10, 12.15, 12.20]
+    closes = [10.0] * 10 + [12.0] + [10.0] * 10 + run + [10.0] * (n - 21 - len(run))
     highs = [c + 0.1 for c in closes]
     lows = [c - 0.1 for c in closes]
     opens = list(closes)
@@ -91,12 +95,13 @@ def test_anchor_kind_query_writes_debug_anchor_kind_env_during_request(client, m
     import path2.debug_ctx as dc
 
     real = dc.debug_break
-    def spy(i, *, anchor_kind, class_id, **_kw):
+    def spy(i, *, anchor_kind, **_kw):
         captured.append(os.environ.get("DEBUG_ANCHOR_KIND"))
         # 不 fire · 避免 breakpoint 挂
     monkeypatch.setattr(dc, "debug_break", spy)
     # detector 通过 `from path2.debug_ctx import debug_break` 引用 · 也需 patch
-    monkeypatch.setattr("path2.atoms.throwback.debug_break", spy)
+    # bb tb 已换代 V4(2026-08-16) · 埋点宿主从 throwback 换到 throwback_v4
+    monkeypatch.setattr("path2.atoms.throwback_v4.debug_break", spy)
 
     r = client.get(_diagnose_url(anchor_kind="gate"))
     assert r.status_code == 200
@@ -109,10 +114,10 @@ def test_no_anchor_kind_query_does_not_write_debug_anchor_kind_env(client, monke
     captured: list[str | None] = []
     import path2.debug_ctx as dc
 
-    def spy(i, *, anchor_kind, class_id, **_kw):
+    def spy(i, *, anchor_kind, **_kw):
         captured.append(os.environ.get("DEBUG_ANCHOR_KIND"))
     monkeypatch.setattr(dc, "debug_break", spy)
-    monkeypatch.setattr("path2.atoms.throwback.debug_break", spy)
+    monkeypatch.setattr("path2.atoms.throwback_v4.debug_break", spy)
 
     r = client.get(_diagnose_url(anchor_kind=None))
     assert r.status_code == 200
@@ -127,10 +132,10 @@ def test_empty_anchor_kind_query_does_not_write_debug_anchor_kind_env(client, mo
     captured: list[str | None] = []
     import path2.debug_ctx as dc
 
-    def spy(i, *, anchor_kind, class_id, **_kw):
+    def spy(i, *, anchor_kind, **_kw):
         captured.append(os.environ.get("DEBUG_ANCHOR_KIND"))
     monkeypatch.setattr(dc, "debug_break", spy)
-    monkeypatch.setattr("path2.atoms.throwback.debug_break", spy)
+    monkeypatch.setattr("path2.atoms.throwback_v4.debug_break", spy)
 
     r = client.get(_diagnose_url(anchor_kind=""))
     assert r.status_code == 200

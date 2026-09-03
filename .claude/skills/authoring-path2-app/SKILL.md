@@ -19,7 +19,7 @@ workflow 内不可用)。派 subagent 只做"产出后回吐主会话"的纯分�
 ## REQUIRED BACKGROUND(开工先读)
 1. `.claude/docs/glossary.md` 的「用语纪律」节
 2. `.claude/docs/modules/path2.md`(dag 引擎)+ `path2_apps.md`(app 三件物/参数 SSoT)
-3. 本目录 `design-heuristics.md`(设计决策手册:detector 失效边界/选型决策树/反模式/评估器)
+3. 本目录 `design-heuristics.md`(设计决策手册:选型决策树/反模式/评估器;detector 失效边界速查见 authoring-path2-detector skill 的 reference §1)
 
 **红线**:凡具体参数值/边结构/gap 数字,一律现场读代码(dag_spec.py / params.py /
 path2/atoms/*.py),绝不引用任何文档内嵌快照(含本 skill 自己的文档)。
@@ -34,6 +34,7 @@ path2/atoms/*.py),绝不引用任何文档内嵌快照(含本 skill 自己的文
 | 创建 | 无现存对应 app | Step 1 → 三层 gate 从层①起 |
 | 结构修改 | app 已存在,delta 触及结构 | Step 0.5 现状盘点 → 按 delta 定起点层 |
 | 纯调参 | 只动阈值数值,不碰结构 | 不进设计流:**转 `tune-pattern-strength` skill**(判据/防过拟合/防刷分的完整工作流;其执行层工具见 design-heuristics §D),收敛后报用户 |
+| 纯 detector/事件任务 | 不改 app 结构,只动 path2/atoms 或事件类 | 不进本流程:路由 `authoring-path2-detector` skill |
 
 **路由方式**:给出带理由的路由推荐,用 AskUserQuestion 让用户确认/改道
 (例:"我判断这是结构修改,因为你要新增一个节点,将从层①进入;若只想调阈值请纠正")。
@@ -77,51 +78,72 @@ path2/atoms/*.py),绝不引用任何文档内嵌快照(含本 skill 自己的文
 (如 bo)选 `'price'`,且 event_cls 必须 `is_point=True`——`PatternSpec._validate_render_grid`
 会在编译期拒 span event × price grid 组合。span event(burst/trend/tb 等)一律 `'time'`。
 该字段是渲染层声明、与匹配/求解语义正交,但要求在 dag_spec 声明阶段就定下。
-现场参考 `path2_apps/bottom_breakout_burst/dag_spec.py` 的 bo node 写法。
+现场参考 `path2_apps/bottom_burst/dag_spec.py` 的 bo node 写法。
+
+**容器/子结构 node 声明纪律(层①收尾时一并定)**:若拓扑含复合容器(如 tb 含
+segments 槽),父 NodeSpec 加 `children={"segments": "tb_seg"}`(slot 名 → 子
+node_id),子结构 node 另起一行 `NodeSpec("tb_seg", event_cls=ThrowbackSegment)`
+——写 node_id + **显式 event_cls**(produced_by 归一化回填,别手写;
+where/consumes_stream/render_grid 是死字段会编译期报错)。两种情况:引用已有
+独立 node(如 burst `children={"members": "bo"}`)或引用子结构 node。eval_meta
+的 end_node 容器场景写路径 `"tb.segments"`(父 node_id + 父内 slot 名,非子 node
+全局名)。细则见
+design-heuristics §E.4。
+
+**多流 node 声明纪律(层①收尾时一并定)**:多流 detector(声明 `produces`)一条流
+对应一个 node,`produces_stream="流名"` 声明取哪条流——**一 node 一流**;同一
+detector 对象可被多个 node 各取一条流引用(NodeSpec.__post_init__ 按
+produces_stream 反射 event_cls,写错流名 / 漏写编译期报错)。单流 detector 不写
+produces_stream(默认 None = 唯一流);子结构 node(无 detector)的 produces_stream
+必须 None(否则报错)。示例:
+
+```python
+NodeSpec("range", det, produces_stream="range"),              # 取 'range' 流
+NodeSpec("note", det, produces_stream="note", solve=False),   # 取 'note' 流,只显示
+```
+
+**多流的省只有一层**:同一 detect 调用只跑一次(省的是"再调一次 detect"的计算),
+不是省"要不要建 node"。detector 声明的每条流都必须有 node 认领,缺一条 →
+`PatternSpec` 构造期报错(契约 C3);不想在面板上看某条流,仍要建 node,只是
+`solve=False` + 前端隐藏该 band,不是省掉这个 node。
+
+**`solve=False`(只显示不参与匹配)**:node 是否参与求解由 bound_ids 判据(edge
+端点并集 ∩ detector 非空 ∩ `nodes[nid].solve`)决定。零边 pattern(`edges=()`,
+如 bo_only)`all_solve=True` 让每个 node 自成 WCC 都产 match——**这时加一个孤立
+显示 node 必须 `solve=False`**,否则该 node 也产 match,而 `serialize` 对每个
+match 取 `node_index[end_node]` 时,非 end_node 的 match 会 **KeyError**。
+`solve=False` 把它从求解集排除:事件照常物化进 `res.events` 渲染,只是不参与匹配、
+不出现在任何 match 的 node_index。判据:只显示不参与匹配的 node 一律 solve=False;
+参与匹配的 node 保持默认 solve=True。
+
+**多流 node 的 on_gate 归属**:归属原则——gf 归**本该诞生的那个事件所在的流**,
+不是归 detector 本身或触发判据的上游流(如 `BODetector._detect_peak_in_window` 内
+峰登记的四类 gate 归 `pk` 流;`_check_breakout` 的 `no_active_peak_broken` 虽在同一
+detector 内触发,归属的是"没能长成 bo"这个失败,故归 `bo` 流)。产 gate 的多流
+detector emit GateFailure 时填 `stream=流名`(单流恒 None);gate_collector 按
+(detector, produces_stream) 建路由表,收到 gf 按 `gf.stream` 路由注入 node_id 再进
+collector。detector 声明的流未被任何 node 绑定 → `PatternSpec` 构造期报错(契约
+C3);gate_collector 的同类检查保留作兜底(伪 spec / 测试路径)。同一条流被 ≥2 node
+绑定也报错——产 gate 的多流 detector 须一流一 node。单流路径(gf.stream 恒 None +
+produces_stream 恒 None)与旧 per-node wrapper 逐字等价、零行为变化。
 
 **id 即显示名(收尾纪律)**:path2 已删除 PatternSpec.display_name 与
 NodeSpec.label / TopoNode.label — 前端直接显示 pattern_id / node_id。
 - pattern_id / node_id 起名时即按"用户面板上要看到的英文标签"来定:
-  英文、短、可读(`burst` / `tb` / `bo` / `bottom_breakout_burst`),
+  英文、短、可读(`burst` / `tb` / `bo` / `bottom_burst`),
   不要写中文、不要写形如 `n1` / `role_a` 的占位 id。
 - 防御性禁用:勿写 `display_name=...` / `label=...` kwarg —
   dataclass 会直接报 unknown keyword(编译期拦)。
 
 ### 层② detector(失效边界反思)
 每个节点选哪个 atom/detector?**强制:现场读该 detector 的判据函数**
-(throwback 的 _find_*、trend 的切段…;design-heuristics §A 告诉你去读哪里、问什么),
+(throwback 的 _find_*、trend 的切段…;authoring-path2-detector skill 的 reference §1
+告诉你去读哪里、问什么),
 核对"目标子结构真能被检出?什么情况下静默不产?"
 - 现有够 → 确认语义对位 → AskUserQuestion 确认 → 落盘 → 层③
-- 接近但差一点(缺输出字段/判据需扩展)→ **修改现有 detector**:
-  1. 先裁性质:语义对所有走势成立的普适增强 → 可改公共 atom,**影响所有引用它的
-     app,必须 AskUserQuestion 停下确认**;走势特异偏见 → 不改公共库,转 app 包内
-     自定义(走下方新建分支)
-  2. 改前:grep 找出引用该 detector 的**全部** app,逐个存改前基线(`run_eval` 落盘)
-  3. 改完 → `run_healthcheck`(同新建)+ **对每个受影响 app 跑
-     `run_regress(baseline_path=...)` 对拍**——纯增补字段也要跑:"不改变现有行为"
-     是假设,零 DIFF 才是证据;非零 = 意外行为变化,按 Step 4 判据 2 判读
-  4. 改了输出字段/语义 → 层③ where 引用复查(含其他 app 的 dag_spec)
-  5. **改输出字段 / 核心判据 → docstring 同步更新**(否则 docstring 与代码漂移,
-     反噬"机制/字段归 docstring、失效边界归 skill"的分层信任)。与"yaml 与子 dataclass
-     必须同步"同构:配套文档与代码同 PR 落地、不留 debt。
-  6. **字段重命名/新增**:`params.py` 子 dataclass(BoParams/BurstParams/TbParams)字段必须与
-     `params.yaml` 对应 section 的 key 一一对应——yaml 顶层未知 section 或 section 内未知
-     字段都会被 `from_yaml` ValueError 拒掉(护栏堵静默无效);yaml 改名时子 dataclass 字段
-     必须同改,反之亦然。**跨 section 移动字段**(如 burst 字段挪到 tb)也要同步两处。
-- 不够 → **DFS 下钻新建 detector**:
-  1. 放哪(design-heuristics §B.3):入 `path2/atoms/`(公共库,影响所有 app)
-     → **必须 AskUserQuestion 停下确认**;带形状偏见 → app 包内自定义
-  2. **docstring 落地要求**:新 detector 的 docstring 必须覆盖
-     ① 核心判据(算法机制)② 输出字段(Event dataclass 字段含义,也可放 Event 类 docstring)
-     ③ 一句话定位(供 `design-heuristics.md` §A 引用)。
-     **docstring 草稿在 spec 中产出,作为交付物之一移交 superpowers 实现**——
-     不能假定 superpowers 会主动写,合同必须写明。
-     失效边界 + 常见误配仍归 `design-heuristics.md` §A(选型期决策依据,非使用期参考),
-     `design-heuristics.md` §A 同步新增一条 5-8 行的 detector 速查项。
-  3. 写完 → 全宇宙体检:`run_healthcheck(module_path=..., target_ticker=<目标票>)`
-     (数量级 ok + 目标命中 + errors 不飙高)
-  4. → 回层①复核拓扑一致性,再继续
-  (也可短路回①换拓扑绕开新建)
+- 需要新建 / 修改 detector(增补字段 / 改判据 / 改语义)→ **转场
+  `authoring-path2-detector` skill**(判据设计 / 公共库 gate / regress 义务 /
+  on_gate 接线都在那边,选型仍在本层)。产出后回本层继续。
 
 ### 层③ 参数初值
 各 detector 参数 + 顶层阈值:只定合理初值 + 说明可调旋钮(精调留实现后)。

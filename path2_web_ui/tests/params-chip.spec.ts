@@ -10,7 +10,8 @@ const scanFileWith = (snapshot: any) => ({
   pattern_ids: ['bbb'],
   per_pattern: { bbb: { pattern_spec: { pattern_id: 'bbb', topology: { nodes: [], edges: [] }, event_styles: {} },
                         end_node: 'tb', ...(snapshot ? { params_snapshot: snapshot } : {}) } },
-  scan: { scan_ts: '20260720T000000', start_date: '2025-01-01', end_date: '2025-06-01', label_horizon: 20 },
+  // name = 文件标识符,后端恒写(未命名扫描 name = scan_ts,scan.py:376)
+  scan: { scan_ts: '20260720T000000', name: '20260720T000000', start_date: '2025-01-01', end_date: '2025-06-01', label_horizon: 20 },
   results: [{ symbol: 'A', per_pattern: {} }],
 })
 
@@ -124,6 +125,33 @@ describe('ParamsChip(两态)', () => {
     v.forkWorkingCopy('bbb')
     await w.vm.$nextTick()
     expect(w.get('[data-testid="chip-label"]').classes()).toContain('actionable')
+  })
+
+  // 后端 /params_diff 拿这个值当文件名去 load(scan.py:392 落盘名 = name or scan_ts,
+  // api.py:684 name 来自扫描对话框「名称(可选)」)。命名过的扫描文件名 ≠ scan_ts,
+  // 传 scan_ts 必然 404「scan not found」——标识符只能取 scan.name。
+  it('params_diff 请求带 scan.name(命名扫描的文件标识符),不是 scan_ts', async () => {
+    const spy = vi.fn((_url: string, ..._rest: any[]) => Promise.resolve(
+      { ok: true, json: () => Promise.resolve({ has_snapshot: true, match: true, diffs: [] }) } as any))
+    vi.stubGlobal('fetch', spy)
+    const f = scanFileWith({ bo: { total_window: 10 } }) as any
+    f.scan.name = 'tb深度28-38'                      // 用户填了名称 → 文件名 = 它
+    useViewStore().loadScanFile(f)
+    mount(ParamsChip)
+    await vi.waitFor(() => expect(spy).toHaveBeenCalled())
+    const url = String(spy.mock.calls[0]![0])
+    expect(url).toContain(`scan_ts=${encodeURIComponent('tb深度28-38')}`)
+    expect(url).not.toContain('20260720T000000')
+  })
+
+  it('未命名扫描:name 即时间戳,请求照样走 name(与命名扫描同一条路径)', async () => {
+    const spy = vi.fn((_url: string, ..._rest: any[]) => Promise.resolve(
+      { ok: true, json: () => Promise.resolve({ has_snapshot: true, match: true, diffs: [] }) } as any))
+    vi.stubGlobal('fetch', spy)
+    useViewStore().loadScanFile(scanFileWith({ bo: { total_window: 10 } }) as any)
+    mount(ParamsChip)
+    await vi.waitFor(() => expect(spy).toHaveBeenCalled())
+    expect(String(spy.mock.calls[0]![0])).toContain('scan_ts=20260720T000000')
   })
 
   it('锚文件被删:anchor_missing 灰?dot 出现 + title 含文件名,mismatch dot 不出现', async () => {

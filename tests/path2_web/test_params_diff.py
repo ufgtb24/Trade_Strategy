@@ -17,7 +17,7 @@ def diff_client_factory(tmp_path, monkeypatch):
 
     load_params 打桩为 Params.default:bo_only/params.yaml 磁盘当前值会随生产调参漂移,
     若不隔离,"snapshot 与当前 yaml 一致" 这类断言会因磁盘漂移而失真(同
-    conftest.py::_stub_load_params_to_default 对 bottom_breakout_burst 的既有约定;
+    conftest.py::_stub_load_params_to_default 对 bottom_burst 的既有约定;
     registry 注册的是 .dag_spec 子模块而非包 init,两处 re-export 都要 stub)。
     """
     import path2_apps.bo_only as _bo

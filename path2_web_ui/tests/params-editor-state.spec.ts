@@ -1,8 +1,11 @@
-// 按钮 enable 矩阵纯函数(解耦 spec §3.1):Write Copy=无 WC 可点(空转创建)/有 WC 且编辑区≠副本;
-// Reset=偏离锚或 parse 失败(逃生门);Save=异于关联文件;SaveAs=parse OK;
-// Load Assoc=异于关联文件(或 parse 失败逃生)——切下拉不载入编辑区,载入走独立 Load 按钮。monaco 无关,纯 dict 判定。
+// 按钮 enable 矩阵纯函数(三源对称版):snapshot / 关联文件 / Working Copy 三源共用同一条载入判据
+//   canLoad[kind] = 源存在 && (parse 失败逃生 || 编辑区 ≠ 源)
+// 写出侧(Write Copy / Save / Save As)各源判据不同,原样保留;snapshot 无写出(scan 只读记录)。
+// 基准(对比锚)不再参与任何按钮判据——载入与对比彻底解耦。monaco 无关,纯 dict 判定。
 import { describe, it, expect } from 'vitest'
-import { dictsEqual, computeButtonStates, normalizeSaveAsName, resolveAssocFile } from '../src/components/paramsEditorState'
+import {
+  dictsEqual, computeButtonStates, normalizeSaveAsName, resolveAssocFile, resolveAnchorKind,
+} from '../src/components/paramsEditorState'
 
 const A = { bo: { total_window: 10, m: 'high' } }
 const B = { bo: { total_window: 42, m: 'high' } }
@@ -22,48 +25,81 @@ describe('dictsEqual', () => {
 })
 
 describe('computeButtonStates', () => {
-  const base = { parseOk: true, editorDict: A, assocDict: A, anchorDict: A, wcDict: null }
-  it('全一致(无 WC):Write Copy(空转创建,决策3)与 SaveAs 可点', () => {
-    expect(computeButtonStates(base)).toEqual(
-      { canWriteCopy: true, canReset: false, canSave: false, canSaveAs: true, canLoadWc: false, canLoadAssoc: false })
+  const base = { parseOk: true, editorDict: A, snapDict: A, assocDict: A, wcDict: null }
+  it('全一致(无 WC):三源载入全灰;Write Copy(空转创建,决策3)与 SaveAs 可点', () => {
+    expect(computeButtonStates(base)).toEqual({
+      canLoad: { snapshot: false, assoc: false, wc: false },
+      canWriteCopy: true, canSave: false, canSaveAs: true,
+    })
   })
-  it('编辑区偏离全部锚(无 WC):WriteCopy/Reset/Save 均亮', () => {
-    expect(computeButtonStates({ ...base, editorDict: B })).toEqual(
-      { canWriteCopy: true, canReset: true, canSave: true, canSaveAs: true, canLoadWc: false, canLoadAssoc: true })
+  it('编辑区偏离全部源(无 WC):snapshot/关联文件载入亮,WC 灰(不存在);WriteCopy/Save 亮', () => {
+    expect(computeButtonStates({ ...base, editorDict: B })).toEqual({
+      canLoad: { snapshot: true, assoc: true, wc: false },
+      canWriteCopy: true, canSave: true, canSaveAs: true,
+    })
   })
-  it('parse 失败:Write Copy 灰;Reset 可点(逃生门),有 WC 时载入副本同理', () => {
-    expect(computeButtonStates({ ...base, parseOk: false, editorDict: null })).toEqual(
-      { canWriteCopy: false, canReset: true, canSave: false, canSaveAs: false, canLoadWc: false, canLoadAssoc: true })
-    expect(computeButtonStates({ ...base, parseOk: false, editorDict: null, wcDict: B }).canLoadWc).toBe(true)
+  it('parse 失败:写出侧全灰;已存在的源载入全亮(逃生门)', () => {
+    expect(computeButtonStates({ ...base, parseOk: false, editorDict: null, wcDict: B })).toEqual({
+      canLoad: { snapshot: true, assoc: true, wc: true },
+      canWriteCopy: false, canSave: false, canSaveAs: false,
+    })
+  })
+  it('三源载入判据同构:编辑区≠源才亮 / ==源灰 / 源缺失灰 / parse 失败逃生亮', () => {
+    const cases = [['snapshot', 'snapDict'], ['assoc', 'assocDict'], ['wc', 'wcDict']] as const
+    for (const [kind, field] of cases) {
+      const withSrc = { ...base, [field]: A }
+      expect(computeButtonStates({ ...withSrc, editorDict: A }).canLoad[kind]).toBe(false)
+      expect(computeButtonStates({ ...withSrc, editorDict: B }).canLoad[kind]).toBe(true)
+      expect(computeButtonStates({ ...base, [field]: null }).canLoad[kind]).toBe(false)
+      expect(computeButtonStates({ ...withSrc, parseOk: false, editorDict: null }).canLoad[kind]).toBe(true)
+    }
   })
   it('canWriteCopy 三分支:无 WC 可点/编辑区==副本 灰/编辑区≠副本 亮', () => {
     expect(computeButtonStates(base).canWriteCopy).toBe(true)                       // 无 WC(空转创建)
     expect(computeButtonStates({ ...base, wcDict: A }).canWriteCopy).toBe(false)    // ==副本,无写入意义
     expect(computeButtonStates({ ...base, wcDict: B }).canWriteCopy).toBe(true)     // ≠副本
   })
-  it('编辑区==副本但异于关联文件:Write Copy 灰,Save 亮', () => {
-    expect(computeButtonStates({ ...base, wcDict: A, assocDict: B }).canWriteCopy).toBe(false)
-    expect(computeButtonStates({ ...base, wcDict: A, assocDict: B }).canSave).toBe(true)
+  it('编辑区==副本但异于关联文件:Write Copy 灰,Save 亮,载入关联文件亮', () => {
+    const s = computeButtonStates({ ...base, wcDict: A, assocDict: B })
+    expect(s.canWriteCopy).toBe(false)
+    expect(s.canSave).toBe(true)
+    expect(s.canLoad.assoc).toBe(true)
+    expect(s.canLoad.wc).toBe(false)
   })
   it('assocDict 未拉到(null):Save 灰', () => {
     expect(computeButtonStates({ ...base, assocDict: null }).canSave).toBe(false)
   })
-  it('anchorDict null(异常防御):Reset 灰(parse OK 时)', () => {
-    expect(computeButtonStates({ ...base, anchorDict: null }).canReset).toBe(false)
+  it('snapDict null(异常防御):snapshot 载入灰,不影响其它两源', () => {
+    const s = computeButtonStates({ ...base, snapDict: null, editorDict: B, wcDict: A })
+    expect(s.canLoad.snapshot).toBe(false)
+    expect(s.canLoad.assoc).toBe(true)
+    expect(s.canLoad.wc).toBe(true)
   })
-  it('载入副本(D7):编辑区≠WC 才亮;载入后编辑区==WC → WriteCopy/载入均灰', () => {
-    expect(computeButtonStates({ ...base, wcDict: B }).canLoadWc).toBe(true)     // 编辑区 A ≠ WC B
-    expect(computeButtonStates({ ...base, wcDict: A }).canLoadWc).toBe(false)    // 已一致,无需载入
+  it('载入 WC 后(编辑区==WC):WriteCopy 与 WC 载入均灰,snapshot 载入仍亮', () => {
     const after = computeButtonStates({ ...base, editorDict: B, wcDict: B })
     expect(after.canWriteCopy).toBe(false)
-    expect(after.canLoadWc).toBe(false)
-    expect(after.canReset).toBe(true)    // 编辑区(=WC) ≠ 锚 A,可回锚/可对比
+    expect(after.canLoad.wc).toBe(false)
+    expect(after.canLoad.snapshot).toBe(true)   // 编辑区(=WC) ≠ snapshot,可回 snapshot/可对比
   })
-  it('载入关联文件:编辑区≠关联文件 亮;==关联文件/assocDict null 灰;parse 失败逃生亮', () => {
-    expect(computeButtonStates({ ...base, editorDict: B }).canLoadAssoc).toBe(true)    // 编辑区 B ≠ 关联 A
-    expect(computeButtonStates(base).canLoadAssoc).toBe(false)                         // 编辑区==关联文件
-    expect(computeButtonStates({ ...base, assocDict: null }).canLoadAssoc).toBe(false) // 关联文件未拉到
-    expect(computeButtonStates({ ...base, parseOk: false, editorDict: null }).canLoadAssoc).toBe(true) // parse 失败逃生
+})
+
+describe('resolveAnchorKind', () => {
+  it('无记忆(null) → off(默认不对比,沿用原 diff 开关默认关)', () => {
+    expect(resolveAnchorKind(null, true)).toBe('off')
+  })
+  it('合法值原样恢复', () => {
+    expect(resolveAnchorKind('off', false)).toBe('off')
+    expect(resolveAnchorKind('snapshot', false)).toBe('snapshot')
+    expect(resolveAnchorKind('assoc', false)).toBe('assoc')
+    expect(resolveAnchorKind('wc', true)).toBe('wc')
+  })
+  it('记忆为 wc 但当前无 WC → 回退 snapshot(不静默留在挂不上的基准)', () => {
+    expect(resolveAnchorKind('wc', false)).toBe('snapshot')
+  })
+  it('非法值(手改 localStorage / 旧版本残留) → off', () => {
+    expect(resolveAnchorKind('1', true)).toBe('off')
+    expect(resolveAnchorKind('anchor', true)).toBe('off')
+    expect(resolveAnchorKind('', true)).toBe('off')
   })
 })
 

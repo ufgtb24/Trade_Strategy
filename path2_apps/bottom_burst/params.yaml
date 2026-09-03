@@ -1,0 +1,53 @@
+# Default params for bottom_burst pattern (V3.3 B 方案,nested by node)。
+# 调参在开发完成后单独进行,本文件先用合理默认值。改完下一次 web /scan 即热加载生效。
+
+bo:
+  total_window: 20
+  min_side_bars: 6
+  min_relative_height: 0.2
+  exceed_threshold: 0.003
+  peak_supersede_threshold: 0.01
+  vol_baseline_period: 63
+  peak_measure: high
+  breakout_measure: close
+
+burst:
+  # detector 构造(切串)
+  gap_max: 8
+  vol_baseline_period: 63
+  # detector + 业务约束② 共用(BurstDetector(min_bos) + len(bo 串) ≥ min_bos)
+  # 2→1(2026-07-25 调参):放开单 bo 串,数量 +翻倍而 label 中位数几乎不降,
+  # 收缩后 score 从 0.0686 升到 0.0719(2025)/0.0541→0.0587(2024)
+  min_bos: 1
+  # burst node 的 where 阈值(detector 不读,只在 NodeSpec.where 闭合)
+  first_drought_min: 40
+  # 3→4(2026-07-25 调参):提质旋钮,中位数 0.2043→0.2293,q25 0.0771→0.0793
+  distinct_pk_min: 3
+  vol_spike_min: 10
+
+tb:
+  # V4 三态价格行为状态机(2026-08-16 换代,spec §8 参数表;
+  # 六参数与 ThrowbackDetectorV4.__init__ 一一对应)
+  # 反弹/脱离阈值,vol(i) 倍数;DOWN→UP 与 STABLE→UP 两臂共用。
+  # vol/冻结ATR 中位比值 1.24,k=1.5 等效约 1.86× 冻结ATR,量级同阶,保持初值留调参空间
+  max_rise_k: 1.5
+  # 不刷新根数 K。裁决 K=1:段/机 3.0 vs K=2 的 2.29,0 段率 10% vs 12%,与 t1 交集
+  # 86 vs 59;方向与 t1 调参史 K 2→0 救召回一致(spec §8)
+  stop_confirm_bars: 1
+  # median TR 滚动窗(即时取 i-1);非 Wilder ATR,参数名随之改避免名实不符
+  vol_window: 14
+  # global_bottom 取法:'last_bo'/'min_bo'/'span_min'
+  anchor_mode: span_min
+  # 注意:max_span 同时被 ThrowbackDetectorV4 与 burst→tb edge 复用
+  # (SSoT 单一定义,dag_spec 内 edge 显式引用 params.tb.max_span;
+  # edge 语义 = 首段 enter 与 bo 的 gap 上限,与状态机扫描预算同源)。
+  # 全局预算(burst 末起):40/60/90 三档段数 311→363→387、budget 机器 32→20→9,
+  # 60 是拐点(再大机器先破线死用不到,再小砍 ratchet 链长命机器)(spec §8)
+  max_span: 60
+  # 单一口径(全部比较同口径)
+  measure: close
+
+# edges 段:当前所有 edge 字段或硬编码(min_gap=1/anchor_field/Child(...))或从 node
+# section 引用(max_gap = tb.max_span),故本段当前为空。保留 section 占位以便未来
+# 扩展 edge-only 参数(如某新边的 max_lag)。
+edges: {}

@@ -1,0 +1,24 @@
+stocks=104
+E1 gap_max×min_bos: 1664 (stock,g,m) 对拍, mismatch=0  [2.5s]
+E2 stop_confirm_bars×big_rise_k: bursts=991 distinct(last_bo,anchor)=991 19820 组合对拍, 非空=3979, mismatch=0  [1.6s]
+E3 min_relative_height: 相邻档(松→严)严档 BO 总数=2931, 不在松档里=28 (1.0%); 共同 BO=2903, drought 漂移=429 (14.8%)  [7.2s]
+E3 exceed_threshold: 相邻档(松→严)严档 BO 总数=2600, 不在松档里=287 (11.0%); 共同 BO=2313, drought 漂移=360 (15.6%)  [14.2s]
+   E4 cell g=12 m=2 K=4 k=5.0: analyze matches=47 tb_events=47 derived=47 OK
+   E4 cell g=12 m=3 K=3 k=12.0: analyze matches=51 tb_events=51 derived=51 OK
+   E4 cell g=4 m=2 K=0 k=3.0: analyze matches=161 tb_events=161 derived=161 OK
+   E4 cell g=8 m=3 K=3 k=3.0: analyze matches=15 tb_events=15 derived=15 OK
+   E4 cell g=20 m=2 K=0 k=5.0: analyze matches=373 tb_events=373 derived=373 OK
+   E4 cell g=20 m=1 K=2 k=3.0: analyze matches=218 tb_events=218 derived=218 OK
+   E4 cell g=12 m=3 K=1 k=12.0: analyze matches=122 tb_events=122 derived=122 OK
+   E4 cell g=8 m=4 K=3 k=12.0: analyze matches=15 tb_events=15 derived=15 OK
+   E4 cell g=20 m=1 K=1 k=3.0: analyze matches=415 tb_events=415 derived=415 OK
+   E4 cell g=12 m=2 K=0 k=12.0: analyze matches=296 tb_events=296 derived=296 OK
+   E4 cell g=20 m=3 K=4 k=8.0: analyze matches=31 tb_events=31 derived=31 OK
+   E4 cell g=8 m=2 K=2 k=12.0: analyze matches=166 tb_events=166 derived=166 OK
+   E4 cell g=20 m=1 K=4 k=8.0: analyze matches=83 tb_events=83 derived=83 OK
+   E4 cell g=4 m=4 K=2 k=12.0: analyze matches=11 tb_events=11 derived=11 OK
+   E4 cell g=8 m=4 K=1 k=3.0: analyze matches=34 tb_events=34 derived=34 OK
+   E4 cell g=4 m=3 K=2 k=3.0: analyze matches=18 tb_events=18 derived=18 OK
+E4 端到端: 16 格, mismatch=0; 反转循环导出全部 320 格耗时 0.3s vs 逐格 analyze 16 格耗时 29.7s(ATR 已缓存)
+E4b[yaml where={'first_drought_min': 40, 'distinct_pk_min': 3, 'vol_spike_min': 10, 'peak_age_min': 125} day_drop=0.2] 6 维: 80 格(64 随机 + 16 个 4 维角点), mismatch=0, analyze match 数 min/median/max = 0/2/19, tb 事件(未过 where 的 burst 也产)合计 10899 vs match 合计 350  [188s]
+E4b[dataclass-default where={'first_drought_min': 20, 'distinct_pk_min': 4, 'vol_spike_min': 8, 'peak_age_min': 125} day_drop=0.2] 6 维: 80 格(64 随机 + 16 个 4 维角点), mismatch=0, analyze match 数 min/median/max = 0/3/23, tb 事件(未过 where 的 burst 也产)合计 10899 vs match 合计 415  [378s]

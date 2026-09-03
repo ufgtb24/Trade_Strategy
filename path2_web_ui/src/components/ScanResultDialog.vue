@@ -12,7 +12,7 @@
         </div>
         <div v-else-if="!rows.length" class="state">No scan history.</div>
         <table v-else class="file-list" tabindex="0" ref="listEl">
-          <thead><tr><th>Name</th><th>Hits</th><th>Size</th></tr></thead>
+          <thead><tr><th>Name</th><th>Hits</th><th>Median</th><th>FP</th><th>Size</th></tr></thead>
           <tbody>
             <tr v-for="(r, i) in rows" :key="r.name"
                 :class="{ active: selected.has(r.name), current: r.name === currentName }"
@@ -25,9 +25,36 @@
                 <span class="scan-name">{{ r.name }}</span>
                 <span class="scan-ts">{{ formatTs(r.scan_ts) }}</span>
                 <span v-if="r.partial" class="partial-badge">未完成</span>
-                <span v-for="pid in r.pattern_ids" :key="pid" class="chip">{{ pid }}</span>
+                <span v-for="pid in r.pattern_ids" :key="pid" class="chip"
+                      :class="{ 'chip--stale': r.per_pattern[pid]?.params_consistent === false }"
+                      :title="r.per_pattern[pid]?.params_consistent === false
+                              ? '参数结构不一致(当时代码与当前不同)' : undefined">{{ pid }}</span>
               </td>
-              <td>{{ r.hits === null ? '—' : `${r.hits} / ${r.total}` }}</td>
+              <td>
+                <span v-if="!hasPerPattern(r)" class="na">—</span>
+                <template v-else>
+                  <span v-for="pid in r.pattern_ids" :key="pid" class="hits-item">
+                    <span class="chip hits-chip">{{ pid }}</span>
+                    <span class="hits-num">{{ r.per_pattern[pid]?.hits ?? 0 }}</span>
+                  </span>
+                </template>
+              </td>
+              <td>
+                <span v-if="!hasPerPattern(r)" class="na">—</span>
+                <template v-else>
+                  <span v-for="pid in r.pattern_ids" :key="pid" class="median-val">
+                    {{ fmtVal(r.per_pattern[pid]?.median ?? null) }}
+                  </span>
+                </template>
+              </td>
+              <td>
+                <span v-if="!hasPerPattern(r)" class="na">—</span>
+                <template v-else>
+                  <span v-for="pid in r.pattern_ids" :key="pid" class="fp-val">
+                    {{ fmtFp(r.per_pattern[pid]?.fp ?? null) }}
+                  </span>
+                </template>
+              </td>
               <td>{{ formatSize(r.size) }}</td>
             </tr>
           </tbody>
@@ -37,6 +64,7 @@
           <span class="hint">{{ selected.size }} selected · ↑↓ / Enter / Delete / Esc</span>
           <button @click="onCancel">Cancel</button>
           <button data-testid="rename" :disabled="selected.size !== 1 || renaming" @click="startRename">Rename</button>
+          <button data-testid="copy-name" :disabled="selected.size !== 1" @click="copyName">Copy Name</button>
           <button :disabled="selected.size !== 1" @click="onOpen">Open</button>
         </footer>
 
@@ -75,7 +103,8 @@ import { ref, computed, onMounted, nextTick } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useScanStore } from '../stores/scan'
 import { useViewStore } from '../stores/view'
-import type { ScanHistoryEntry } from '../types'
+import type { ScanHistoryEntry, FirstPassageRatio } from '../types'
+import { fmtVal, fmtRatio } from '../shared/formatters'
 
 const emit = defineEmits<{ (e: 'close'): void }>()
 
@@ -177,6 +206,14 @@ function openOne(name: string) {
   scan.open(name).then(() => emit('close'))
 }
 
+// 复制选中(单个)扫描文件的完整磁盘文件名 <stem>.json 到剪贴板
+function copyName() {
+  if (selected.value.size !== 1) return
+  const name = Array.from(selected.value)[0]
+  void navigator.clipboard.writeText(`${name}.json`)
+    .then(() => view.showToast(`已复制:${name}.json`))
+}
+
 const renaming = ref(false)
 const renameValue = ref('')
 
@@ -215,6 +252,14 @@ function formatSize(bytes: number): string {
   if (bytes < 1024 ** 3) return `${(bytes / 1024 / 1024).toFixed(1)} MB`
   return `${(bytes / 1024 ** 3).toFixed(2)} GB`
 }
+function hasPerPattern(r: ScanHistoryEntry): boolean {
+  return r.per_pattern != null && Object.keys(r.per_pattern).length > 0
+}
+// FP 格:fp 缺失(后端归一,含 n_bars==0)→ 整格 —;否则 "方向 / 随机" 两侧各自 fmtRatio(null=分母 0 → —)
+function fmtFp(fp: FirstPassageRatio | null): string {
+  if (fp == null) return '—'
+  return `${fmtRatio(fp.ratio)} / ${fmtRatio(fp.random_ratio)}`
+}
 </script>
 
 <style scoped>
@@ -228,7 +273,7 @@ function formatSize(bytes: number): string {
   background: #fff;
   border-radius: 8px;
   padding: 16px;
-  min-width: 480px;
+  min-width: 560px;
   max-width: 80vw;
   max-height: 70vh;
   display: flex; flex-direction: column;
@@ -279,4 +324,11 @@ button.btn-stop { background: #ef4444; color: #fff; }
   border-radius: 3px;
   vertical-align: middle;
 }
+.hits-item { display: inline-block; margin-right: 10px; white-space: nowrap; }
+.hits-chip { margin-right: 4px; }   /* pid chip:复用现有 .chip 灰色背景;数字 hits-num 无背景 */
+.hits-num { color: inherit; }
+.median-val { display: inline-block; margin-right: 10px; }
+.fp-val { display: inline-block; margin-right: 10px; white-space: nowrap; }
+.na { color: #94a3b8; }
+.chip--stale { background: #ef4444; color: #fff; }
 </style>

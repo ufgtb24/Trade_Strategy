@@ -489,7 +489,7 @@ uv run python quickstart.py
 
 引擎据此给 detector 排好先后顺序：根 detector 先跑、拿 `df`；消费者后跑、拿到上游那条事件流。这样 detector 就接成了一条数据流水线，避免重复扫描。
 
-最典型的例子在内置 app `bottom_breakout_burst` 里：`burst`（把密集突破聚合成一串）和 `tb`（评估回踩）两个节点都写了 `consumes_stream="bo"`——它们都吃 `bo` 节点产出的突破事件流。
+最典型的例子在内置 app `bottom_burst` 里：`burst`（把密集突破聚合成一串）和 `tb`（评估回踩）两个节点都写了 `consumes_stream="bo"`——它们都吃 `bo` 节点产出的突破事件流。
 
 ### 9.2 边类型
 
@@ -565,7 +565,7 @@ path2 给出的答案是 **嵌套事件**（也叫复合 Event）：**一个事�
 
 ### 是什么——BurstEvent
 
-内置 app `bottom_breakout_burst` 就用这招把"一串突破"做成一个一等公民事件 `BurstEvent`（burst = 爆发）：
+内置 app `bottom_burst` 就用这招把"一串突破"做成一个一等公民事件 `BurstEvent`（burst = 爆发）：
 
 - 它有自己的 `start_idx`（= 串里**第一个** bo 的起点）和 `end_idx`（= 串里**最后一个** bo 的终点），所以它就是一个普普通通的"宽事件"，跟"下跌段""横盘段"地位一样，可以被边引用、被画在图上。
 - 它内部用一个 `members` 字段装着组成它的那些 `BOEvent`（装的是**完整的事件对象**，不是 id）。
@@ -589,7 +589,7 @@ path2 给出的答案是 **嵌套事件**（也叫复合 Event）：**一个事�
 - `e.child_slots()`——遍历用的主子事件集合。
 - `e.descendant_leaves`——一路递归展平到最底层、没有子事件的原子事件。
 
-> 入门你只要记住一句话就够：**"一串密集突破"现在是一个叫 `BurstEvent` 的宽事件，它内部装着那些 bo，整串的属性（峰数、放量、长度）当成它自己的字段用 `W.attr` 读。** 想看真实写法，去读 `path2_apps/bottom_breakout_burst/dag_spec.py` 的 `build_pattern`。
+> 入门你只要记住一句话就够：**"一串密集突破"现在是一个叫 `BurstEvent` 的宽事件，它内部装着那些 bo，整串的属性（峰数、放量、长度）当成它自己的字段用 `W.attr` 读。** 想看真实写法，去读 `path2_apps/bottom_burst/dag_spec.py` 的 `build_pattern`。
 
 ### 一个小补充：孤立 role 与"残缺命中"的过滤
 
@@ -603,7 +603,7 @@ path2 给出的答案是 **嵌套事件**（也叫复合 Event）：**一个事�
 
 当你想做更复杂的模式时：
 
-- **把"一串"事件打包成一个事件（嵌套事件）**——比如"连续多个突破组成一簇爆发"：这是当前内置 app 的真实做法，去看 `path2_apps/bottom_breakout_burst/dag_spec.py` 里的 `build_pattern` 函数（上文 #10 已详解）。一串 bo 在那里是一个 `BurstEvent`，由 `BurstDetector` 消费 `bo` 流切串聚合而成。
+- **把"一串"事件打包成一个事件（嵌套事件）**——比如"连续多个突破组成一簇爆发"：这是当前内置 app 的真实做法，去看 `path2_apps/bottom_burst/dag_spec.py` 里的 `build_pattern` 函数（上文 #10 已详解）。一串 bo 在那里是一个 `BurstEvent`，由 `BurstDetector` 消费 `bo` 流切串聚合而成。
 - **让一个 detector 消费另一个节点的事件流（`consumes_stream`）**——同上文件里，`burst`（切串聚合）和 `tb`（评回踩）都写了 `consumes_stream="bo"`，靠它把 detector 接成数据流水线（上文 #9.1.1）。
 - **绑"一串"事件（Kleene，框架的另一条路）**——除了嵌套事件，框架**还**支持用 Kleene 让"一个节点"直接绑"一整串"同类事件（配合 9.3 表里的 `first` / `last` / `count` / `any` / `distinct` 这些序列聚合谓词，以及 `KleeneSpec`）。它仍是框架的正式特性、随时可用；只是当前内置 app 选择了上面那条更干净的"嵌套事件"路、没有用它。如果你想试 Kleene，给某个 NodeSpec 传一个 `kleene=KleeneSpec(...)` 即可。
 - **只想要布尔判断**——`from path2.dag import matches`，`matches(spec, df)` 直接告诉你"有没有命中"。

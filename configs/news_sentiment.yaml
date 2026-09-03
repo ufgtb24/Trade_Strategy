@@ -1,4 +1,5 @@
-proxy: "http://127.0.0.1:7890"
+# 2026-08-16 置空: 本机 7890 已停; 实测 finnhub/sec.gov/alphavantage/deepseek 均直连可达
+proxy: ""
 
 collectors:
   finnhub:
@@ -9,7 +10,7 @@ collectors:
     enable: false
     timeout: 10
   edgar:
-    enable: false
+    enable: true
     user_agent: "TradeStrategy research@example.com"
 
 # API keys 存放在 configs/api_keys.yaml（已加入 .gitignore）
@@ -41,10 +42,13 @@ filter:
 analyzer:
   backend: "deepseek"          # "glm" | "deepseek" | "finbert_roberta"
   # model 与 backend 对应:
-  #   deepseek -> "deepseek-chat"
+  #   deepseek -> "deepseek-v4-flash" | "deepseek-v4-pro"
+  #     (2026-08-16 起 deepseek-v3 已下线; deepseek-chat 官方别名→v4-flash,
+  #      显式锁定 v4-flash 保证缓存键 (fingerprint,backend,model) 可复现,
+  #      基准: v4-flash 95.0% / v4-pro 87.5% / V3 历史 92.5% @40条GT)
   #   glm      -> "glm-4.7-flash"
   #   finbert_roberta -> 忽略此字段（使用固定的 HuggingFace 模型）
-  model: "deepseek-chat"
+  model: "deepseek-v4-flash"
   temperature: 0.1
   max_concurrency: 20
 

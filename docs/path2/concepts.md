@@ -405,7 +405,7 @@ class BurstEvent(Event):
 
 ## Kleene 节点
 
-> 这一节讲的是**框架另有的一条路**：用一个会重复的「Kleene 节点」来表达「一串同类事件」。它和上一节的嵌套事件解决的是同一类问题，但走的是不同机制。**注意：当前唯一的示例 app `bottom_breakout_burst` 已经不用 Kleene 了**——它改用了上一节的嵌套事件 `BurstEvent`。Kleene 作为框架特性仍然完整保留、随时可用，下面的讲解（及其中的 bo 串例子）仅作 Kleene 机制示意。
+> 这一节讲的是**框架另有的一条路**：用一个会重复的「Kleene 节点」来表达「一串同类事件」。它和上一节的嵌套事件解决的是同一类问题，但走的是不同机制。**注意：当前唯一的示例 app `bottom_burst` 已经不用 Kleene 了**——它改用了上一节的嵌套事件 `BurstEvent`。Kleene 作为框架特性仍然完整保留、随时可用，下面的讲解（及其中的 bo 串例子）仅作 Kleene 机制示意。
 
 **Kleene 节点**的思路是：一个节点绑**一整串连续的同类事件**，整段作为单个绑定单元参与外层 DAG 匹配。
 
@@ -738,7 +738,7 @@ for edge in topo.edges:
 
 > 这一节是「集大成」的真实例子：把前面所有概念在一个项目里实际跑的走势包上看一遍。建议在理解了前面各节后再来读，会很顺。
 
-下面是项目里真实的走势包声明（`path2_apps/bottom_breakout_burst/dag_spec.py`），它有**五个节点**，展示七个业务约束是怎么被分配到各层里的——哪些进 where、哪些进边、哪些进 detector：
+下面是项目里真实的走势包声明（`path2_apps/bottom_burst/dag_spec.py`），它有**五个节点**，展示七个业务约束是怎么被分配到各层里的——哪些进 where、哪些进边、哪些进 detector：
 
 ```python
 def build_pattern(params: Params) -> PatternSpec:
@@ -781,7 +781,7 @@ def build_pattern(params: Params) -> PatternSpec:
         TemporalEdge("burst", "tb", min_gap=1, max_gap=1),                             # ⑦ 末 bo 后回踩
     )
     return PatternSpec(
-        pattern_id="bottom_breakout_burst",
+        pattern_id="bottom_burst",
         display_name="底部反转突破爆发",
         nodes=nodes, edges=edges, root="burst",   # root 退化字段，引擎不读，填合法 node_id 即可
     )

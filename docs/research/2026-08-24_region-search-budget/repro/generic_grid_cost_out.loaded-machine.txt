@@ -1,0 +1,36 @@
+MODE=T1+ stocks=104 合计 1158 ms/股 (p10/p50/p90/max 639/1078/1824/2872)
+  load        0.8 ms/股
+  prep        6.5 ms/股
+  bo        277.7 ms/股
+  burst      47.3 ms/股
+  tb        495.0 ms/股
+  spec       87.3 ms/股
+  solve     238.8 ms/股
+  label       4.4 ms/股
+  stocks          1.0 /股
+  bo_runs        16.0 /股
+  burst_runs     64.0 /股
+  tb_runs      1024.0 /股
+  solves       4096.0 /股
+  matches      5855.9 /股
+  spans          32.6 /股
+  每 tb 检测 0.483 ms/股/次;每格 solve+reify 0.058 ms/股/格;每格 build_pattern 0.021 ms
+  外推 6720 股: 7780 CPU·s ≈ 16.2 min @8 workers
+MODE=T1 stocks=104 合计 1759 ms/股 (p10/p50/p90/max 731/1700/3197/5389)
+  load        0.8 ms/股
+  prep        6.5 ms/股
+  bo        278.5 ms/股
+  burst     102.7 ms/股
+  tb       1027.5 ms/股
+  spec       91.6 ms/股
+  solve     246.6 ms/股
+  label       4.5 ms/股
+  stocks          1.0 /股
+  bo_runs        16.0 /股
+  burst_runs    256.0 /股
+  tb_runs      4096.0 /股
+  solves       4096.0 /股
+  matches      5855.9 /股
+  spans          32.6 /股
+  每 tb 检测 0.251 ms/股/次;每格 solve+reify 0.060 ms/股/格;每格 build_pattern 0.022 ms
+  外推 6720 股: 11818 CPU·s ≈ 24.6 min @8 workers

@@ -5,6 +5,7 @@
 - v1 兼容 fallback(DEBUG_ANCHOR_KIND 未设或空串 → 全 anchor_kind fire)
 - v3 anchor_kind 门限(DEBUG_ANCHOR_KIND 设 → 只匹配 anchor_kind fire · 其他 skip)
 - required kwarg(缺 anchor_kind → TypeError)
+- 三门形态无 class 维度(DEBUG_ANCHOR_KIND + bar 命中即 fire · spec 2026-08-14 §2.3)
 
 用 monkeypatch stub pydevd.settrace 为计数器 · 避免真 pause。
 """
@@ -51,19 +52,19 @@ def test_debug_mode_unset_early_return(monkeypatch):
     sys.modules.pop("path2.debug_ctx", None)
     import path2.debug_ctx as m
     # 无 pydevd stub · 若真 fire 会挂 stdin;此测试确认 _DEBUG_MODE=False 时不走 fire 路径
-    m.debug_break(150, anchor_kind="gate", class_id="tb")   # 不该 fire · 无异常即 pass
+    m.debug_break(150, anchor_kind="gate")   # 不该 fire · 无异常即 pass
 
 
 def test_no_range_no_fire(fresh_debug_ctx, fire_counter):
     """DEBUG_MODE=1 · 但 DEBUG_BAR_RANGE 未设 → 不 fire。"""
-    fresh_debug_ctx.debug_break(150, anchor_kind="gate", class_id="tb")
+    fresh_debug_ctx.debug_break(150, anchor_kind="gate")
     assert fire_counter == []
 
 
 def test_bar_out_of_range_no_fire(fresh_debug_ctx, fire_counter, monkeypatch):
     """bar 落 range 外 → 不 fire。"""
     monkeypatch.setenv("DEBUG_BAR_RANGE", "100,200")
-    fresh_debug_ctx.debug_break(50, anchor_kind="gate", class_id="tb")
+    fresh_debug_ctx.debug_break(50, anchor_kind="gate")
     assert fire_counter == []
 
 
@@ -71,10 +72,10 @@ def test_v1_compat_no_anchor_kind_env_fires_any_anchor_kind(fresh_debug_ctx, fir
     """DEBUG_ANCHOR_KIND 未设 → v1 兼容 · 任意 anchor_kind fire。"""
     monkeypatch.setenv("DEBUG_BAR_RANGE", "100,200")
     # DEBUG_ANCHOR_KIND 未设(fresh_debug_ctx fixture 已 delenv)
-    fresh_debug_ctx.debug_break(150, anchor_kind="gate", class_id="tb")
-    fresh_debug_ctx.debug_break(150, anchor_kind="entry", class_id="tb")
-    fresh_debug_ctx.debug_break(150, anchor_kind="trough", class_id="tb")
-    fresh_debug_ctx.debug_break(150, anchor_kind="end", class_id="tb")
+    fresh_debug_ctx.debug_break(150, anchor_kind="gate")
+    fresh_debug_ctx.debug_break(150, anchor_kind="entry")
+    fresh_debug_ctx.debug_break(150, anchor_kind="trough")
+    fresh_debug_ctx.debug_break(150, anchor_kind="end")
     assert len(fire_counter) == 4
 
 
@@ -82,8 +83,8 @@ def test_v1_compat_empty_anchor_kind_env_fires_any_anchor_kind(fresh_debug_ctx, 
     """DEBUG_ANCHOR_KIND='' 空串 → v1 兼容 fallback · 任意 anchor_kind fire。"""
     monkeypatch.setenv("DEBUG_BAR_RANGE", "100,200")
     monkeypatch.setenv("DEBUG_ANCHOR_KIND", "")
-    fresh_debug_ctx.debug_break(150, anchor_kind="gate", class_id="tb")
-    fresh_debug_ctx.debug_break(150, anchor_kind="entry", class_id="tb")
+    fresh_debug_ctx.debug_break(150, anchor_kind="gate")
+    fresh_debug_ctx.debug_break(150, anchor_kind="entry")
     assert len(fire_counter) == 2
 
 
@@ -91,10 +92,10 @@ def test_anchor_kind_env_gate_only_gate_fires(fresh_debug_ctx, fire_counter, mon
     """DEBUG_ANCHOR_KIND='gate' → 只 anchor_kind='gate' fire · 其他 skip。"""
     monkeypatch.setenv("DEBUG_BAR_RANGE", "100,200")
     monkeypatch.setenv("DEBUG_ANCHOR_KIND", "gate")
-    fresh_debug_ctx.debug_break(150, anchor_kind="gate", class_id="tb")   # fire
-    fresh_debug_ctx.debug_break(150, anchor_kind="entry", class_id="tb")  # skip
-    fresh_debug_ctx.debug_break(150, anchor_kind="trough", class_id="tb") # skip
-    fresh_debug_ctx.debug_break(150, anchor_kind="end", class_id="tb")    # skip
+    fresh_debug_ctx.debug_break(150, anchor_kind="gate")   # fire
+    fresh_debug_ctx.debug_break(150, anchor_kind="entry")  # skip
+    fresh_debug_ctx.debug_break(150, anchor_kind="trough") # skip
+    fresh_debug_ctx.debug_break(150, anchor_kind="end")    # skip
     assert len(fire_counter) == 1
 
 
@@ -102,8 +103,8 @@ def test_anchor_kind_env_end_matches_end_anchor_kind(fresh_debug_ctx, fire_count
     """DEBUG_ANCHOR_KIND='end' → 只 anchor_kind='end' fire。"""
     monkeypatch.setenv("DEBUG_BAR_RANGE", "100,200")
     monkeypatch.setenv("DEBUG_ANCHOR_KIND", "end")
-    fresh_debug_ctx.debug_break(150, anchor_kind="end", class_id="tb")
-    fresh_debug_ctx.debug_break(150, anchor_kind="gate", class_id="tb")
+    fresh_debug_ctx.debug_break(150, anchor_kind="end")
+    fresh_debug_ctx.debug_break(150, anchor_kind="gate")
     assert len(fire_counter) == 1
 
 
@@ -142,84 +143,33 @@ def test_read_range_malformed_returns_none(fresh_debug_ctx, monkeypatch, raw):
 def test_bar_at_lo_boundary_fires(fresh_debug_ctx, fire_counter, monkeypatch):
     """bar == lo(闭区间下界)→ fire · 验证比较是 <= 而非 <。"""
     monkeypatch.setenv("DEBUG_BAR_RANGE", "100,200")
-    fresh_debug_ctx.debug_break(100, anchor_kind="gate", class_id="tb")
+    fresh_debug_ctx.debug_break(100, anchor_kind="gate")
     assert len(fire_counter) == 1
 
 
 def test_bar_at_hi_boundary_fires(fresh_debug_ctx, fire_counter, monkeypatch):
     """bar == hi(闭区间上界)→ fire · 验证比较是 <= 而非 <。"""
     monkeypatch.setenv("DEBUG_BAR_RANGE", "100,200")
-    fresh_debug_ctx.debug_break(200, anchor_kind="gate", class_id="tb")
+    fresh_debug_ctx.debug_break(200, anchor_kind="gate")
     assert len(fire_counter) == 1
 
 
-# ── v4 class 门测试(mirror v3 anchor_kind 测试)──
+# ── 三门形态正例(class 维度已删 · spec 2026-08-14 §2.3)──
 
 
-def test_v1_compat_no_class_env_fires_any_class(fresh_debug_ctx, fire_counter, monkeypatch):
-    """DEBUG_EVENT_CLASS 未设 → v3 兼容 · 任意 class_id fire。"""
-    monkeypatch.setenv("DEBUG_BAR_RANGE", "100,200")
-    fresh_debug_ctx.debug_break(150, anchor_kind="gate", class_id="tb")
-    fresh_debug_ctx.debug_break(150, anchor_kind="gate", class_id="bo")
-    fresh_debug_ctx.debug_break(150, anchor_kind="gate", class_id="burst")
-    assert len(fire_counter) == 3
-
-
-def test_v1_compat_empty_class_env_fires_any_class(fresh_debug_ctx, fire_counter, monkeypatch):
-    """DEBUG_EVENT_CLASS='' 空串 → v3 兼容 fallback · 任意 class_id fire。"""
-    monkeypatch.setenv("DEBUG_BAR_RANGE", "100,200")
-    monkeypatch.setenv("DEBUG_EVENT_CLASS", "")
-    fresh_debug_ctx.debug_break(150, anchor_kind="gate", class_id="tb")
-    fresh_debug_ctx.debug_break(150, anchor_kind="gate", class_id="bo")
-    assert len(fire_counter) == 2
-
-
-def test_class_env_tb_only_tb_fires(fresh_debug_ctx, fire_counter, monkeypatch):
-    """DEBUG_EVENT_CLASS='tb' → 只 class_id='tb' fire · 其他 skip。"""
-    monkeypatch.setenv("DEBUG_BAR_RANGE", "100,200")
-    monkeypatch.setenv("DEBUG_EVENT_CLASS", "tb")
-    fresh_debug_ctx.debug_break(150, anchor_kind="gate", class_id="tb")    # fire
-    fresh_debug_ctx.debug_break(150, anchor_kind="gate", class_id="bo")    # skip
-    fresh_debug_ctx.debug_break(150, anchor_kind="gate", class_id="burst") # skip
-    assert len(fire_counter) == 1
-
-
-def test_class_env_bo_only_bo_fires(fresh_debug_ctx, fire_counter, monkeypatch):
-    """DEBUG_EVENT_CLASS='bo' → 只 class_id='bo' fire。"""
-    monkeypatch.setenv("DEBUG_BAR_RANGE", "100,200")
-    monkeypatch.setenv("DEBUG_EVENT_CLASS", "bo")
-    fresh_debug_ctx.debug_break(150, anchor_kind="gate", class_id="bo")
-    fresh_debug_ctx.debug_break(150, anchor_kind="gate", class_id="tb")
-    assert len(fire_counter) == 1
-
-
-def test_class_id_kwarg_required_typeerror(fresh_debug_ctx):
-    """debug_break(i, anchor_kind='gate') 缺 class_id kwarg → TypeError。"""
-    with pytest.raises(TypeError, match="class_id"):
-        fresh_debug_ctx.debug_break(150, anchor_kind="gate")   # type: ignore[call-arg]
-
-
-def test_class_id_positional_forbidden_typeerror(fresh_debug_ctx):
-    """debug_break(i, 'gate', 'tb') 位置传 class_id → TypeError(keyword-only)。"""
-    with pytest.raises(TypeError):
-        fresh_debug_ctx.debug_break(150, "gate", "tb")   # type: ignore[misc]
-
-
-def test_anchor_kind_and_class_id_both_gate(fresh_debug_ctx, fire_counter, monkeypatch):
-    """DEBUG_ANCHOR_KIND='gate' && DEBUG_EVENT_CLASS='tb' → 合取:只 (gate, tb) fire。"""
+def test_no_class_gate_anchor_and_bar_sufficient(fresh_debug_ctx, fire_counter, monkeypatch):
+    """三门形态:DEBUG_ANCHOR_KIND + bar 命中即 fire,无任何 class 维度(spec 2026-08-14 §2.3)。"""
     monkeypatch.setenv("DEBUG_BAR_RANGE", "100,200")
     monkeypatch.setenv("DEBUG_ANCHOR_KIND", "gate")
-    monkeypatch.setenv("DEBUG_EVENT_CLASS", "tb")
-    fresh_debug_ctx.debug_break(150, anchor_kind="gate",   class_id="tb")    # fire (both match)
-    fresh_debug_ctx.debug_break(150, anchor_kind="gate",   class_id="bo")    # skip (class mismatch)
-    fresh_debug_ctx.debug_break(150, anchor_kind="trough", class_id="tb")    # skip (anchor mismatch)
-    fresh_debug_ctx.debug_break(150, anchor_kind="trough", class_id="bo")    # skip (both mismatch)
+    fresh_debug_ctx.debug_break(150, anchor_kind="gate")
+    assert len(fire_counter) == 1
+    fresh_debug_ctx.debug_break(150, anchor_kind="end")   # anchor_kind 不匹配 · 不 fire
     assert len(fire_counter) == 1
 
 
-def test_class_env_out_of_range_no_fire(fresh_debug_ctx, fire_counter, monkeypatch):
-    """DEBUG_EVENT_CLASS 匹配但 bar out of range → 不 fire(range 优先短路)。"""
+def test_debug_break_rejects_class_id_kwarg(fresh_debug_ctx, fire_counter, monkeypatch):
+    """签名已删 class_id · 传 class_id kwarg → TypeError(防旧埋点悄悄回流)。"""
     monkeypatch.setenv("DEBUG_BAR_RANGE", "100,200")
-    monkeypatch.setenv("DEBUG_EVENT_CLASS", "tb")
-    fresh_debug_ctx.debug_break(50, anchor_kind="gate", class_id="tb")
+    with pytest.raises(TypeError, match="class_id"):
+        fresh_debug_ctx.debug_break(150, anchor_kind="gate", class_id="tb")   # type: ignore[call-arg]
     assert fire_counter == []

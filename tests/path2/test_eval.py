@@ -1,26 +1,33 @@
 """path2/eval.py:match 买点 N 日前瞻收益(match_forward_returns)/
 前瞻跌幅(match_forward_drawdowns,mfr 的下行镜像)。"""
+from dataclasses import dataclass
+
 import pandas as pd
 import pytest
 
 from path2.core import Event
 from path2.dag.result import PatternMatch, PredicateTrace
-from path2.eval import match_forward_returns, match_forward_drawdowns
+from path2.eval import (
+    _resolve_end_events,
+    match_first_passage,
+    match_forward_returns,
+    match_forward_drawdowns,
+)
 
 
 class Ev(Event):
-    class_id = "test_eval_ev"
+    pass
 
 
 def _ev(s, e):
-    return Ev(event_id=f"e_{s}_{e}", start_idx=s, end_idx=e, confirm_idx=s)
+    return Ev(start_idx=s, end_idx=e, confirm_idx=s)
 
 
 def _match(binding, node="tb"):
     """手造单 node 的 PatternMatch(children 与 node_index 展平一致,过不变式)。"""
     members = binding if isinstance(binding, tuple) else (binding,)
     return PatternMatch(
-        event_id="m", start_idx=members[0].start_idx, end_idx=members[-1].end_idx, confirm_idx=members[0].start_idx,
+        start_idx=members[0].start_idx, end_idx=members[-1].end_idx, confirm_idx=members[0].start_idx,
         pattern_id="p", node_index={node: binding}, children=members,
         predicate_trace=PredicateTrace(where_results={}, edge_results={}),
     )
@@ -182,3 +189,188 @@ def test_drawdown_missing_node_raises():
     m = _match(_ev(0, 1))
     with pytest.raises(KeyError):
         match_forward_drawdowns(m, "nope", DD5, [1])
+
+
+def test_sample_bar_indices_default():
+    from path2.core import Event
+
+    class _E(Event):
+        pass
+
+    e = _E(start_idx=10, end_idx=12, confirm_idx=10)
+    assert list(e.sample_bar_indices()) == [10, 11, 12]
+
+
+# ---------------------------------------------------------------------------
+# end_node 路径解析(_resolve_end_events)+ 三函数路径口径(统一标准协议)。
+# ---------------------------------------------------------------------------
+
+@dataclass(frozen=True)
+class Seg(Event):
+    pass
+
+
+@dataclass(frozen=True)
+class Container(Event):
+    segs: tuple = ()
+
+    def child_slots(self):
+        return {"segments": self.segs}
+
+
+def _path_match():
+    """手造 tb 容器 match:容器内嵌 2 个 seg child(0-0 与 2-3,段间有间隙 1)。"""
+    segs = (Seg(start_idx=0, end_idx=0, confirm_idx=0),
+            Seg(start_idx=2, end_idx=3, confirm_idx=2))
+    cont = Container(start_idx=0, end_idx=3, confirm_idx=0, segs=segs)
+    return PatternMatch(start_idx=0, end_idx=3, confirm_idx=0,
+                        node_index={"tb": cont}, children=(cont,))
+
+
+def test_resolve_plain_node_id():
+    m = _path_match()
+    assert _resolve_end_events(m, "tb") == (m.node_index["tb"],)
+
+
+def test_resolve_path_child_slot():
+    # 路径第二段 = 父内 slot 名(家庭身份),非 class_id(全局身份)
+    m = _path_match()
+    events = _resolve_end_events(m, "tb.segments")
+    assert [e.start_idx for e in events] == [0, 2]
+
+
+def test_resolve_path_missing_slot_raises():
+    m = _path_match()
+    with pytest.raises(KeyError, match="slot"):
+        _resolve_end_events(m, "tb.nope")
+
+
+def test_resolve_multi_level_path_raises():
+    m = _path_match()
+    with pytest.raises(ValueError, match="最多一级"):
+        _resolve_end_events(m, "a.b.c")
+
+
+def test_resolve_missing_parent_raises():
+    m = _path_match()
+    with pytest.raises(KeyError):
+        _resolve_end_events(m, "nope")
+
+
+def test_match_forward_returns_path_samples_all_child_bars():
+    m = _path_match()
+    win = pd.DataFrame({  # 3 根样本 bar(0 和 2/3,间隙 1 不计), high/close 足够
+        "high": [1.0, 1.0, 1.0, 1.0, 2.0, 2.0],
+        "close": [1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
+    })
+    rets = match_forward_returns(m, "tb.segments", win, [1])
+    # 样本 bar 0/2/3 的 max(high[t+1])/close[t]-1 = 0/0/1 → mean 1/3。
+    # 三态区分:gap 包含采样(0/0/0/1)得 0.25、空解析得 None,均不等于 1/3。
+    assert rets[1] == pytest.approx(1.0 / 3.0)
+
+
+# ---------------------------------------------------------------------------
+# sample_window 双边样本消费窗截取(t4 配套,spec §10):逐买点日 t 仅当
+# lo <= t <= hi 参与;None = 全量(向后兼容)。核心断言语义 = 「带窗的两段容器」
+# 与「手工物理截成仅窗内段的容器(全量)」结果逐值相等。
+# ---------------------------------------------------------------------------
+
+def _two_seg_match(s1, e1, s2, e2):
+    """手造 tb 容器 match:容器内嵌 2 个 seg child(span [s1,e1] 与 [s2,e2])。"""
+    segs = (Seg(start_idx=s1, end_idx=e1, confirm_idx=s1),
+            Seg(start_idx=s2, end_idx=e2, confirm_idx=s2))
+    cont = Container(start_idx=s1, end_idx=e2, confirm_idx=s1, segs=segs)
+    return PatternMatch(start_idx=s1, end_idx=e2, confirm_idx=s1,
+                        node_index={"tb": cont}, children=(cont,))
+
+
+def _one_seg_match(s, e):
+    """手造 tb 容器 match:仅 1 个 seg child(span [s,e])——物理截段对照组。"""
+    segs = (Seg(start_idx=s, end_idx=e, confirm_idx=s),)
+    cont = Container(start_idx=s, end_idx=e, confirm_idx=s, segs=segs)
+    return PatternMatch(start_idx=s, end_idx=e, confirm_idx=s,
+                        node_index={"tb": cont}, children=(cont,))
+
+
+class TestSampleWindow:
+    def test_forward_returns_clipped(self):
+        """两段 span [10,12] 与 [20,22];sample_window=(0,15) → 只有第一段 3 天参与,
+        与手工构造的仅 [10,12] 段容器(全量)结果逐值相等。high 台阶:11..15=106..114
+        (段1)、21..25=116..124(段2),其余基线 101 → 两段值域不同,窗外日混入必改变均值。
+        仅段1: N=1 mean=0.08、N=5 mean=0.14;两段全量 N=1 mean=0.13(≠ 截窗值)。
+        end_node 用 'tb.segments'(child span 并集)——'tb' 会解析到容器整 span
+        (含段间间隙逐日),非 tb_seg 段级样本口径。"""
+        n = 30
+        high = [101.0] * n
+        for i, h in zip(range(11, 16), (106, 108, 110, 112, 114)):
+            high[i] = float(h)
+        for i, h in zip(range(21, 26), (116, 118, 120, 122, 124)):
+            high[i] = float(h)
+        df = pd.DataFrame({"close": [100.0] * n, "high": high, "low": [99.0] * n})
+        two, one = _two_seg_match(10, 12, 20, 22), _one_seg_match(10, 12)
+        clipped = match_forward_returns(two, "tb.segments", df, [1, 5], sample_window=(0, 15))
+        assert clipped == match_forward_returns(one, "tb.segments", df, [1, 5])
+        assert clipped[1] == pytest.approx(0.08)
+        assert clipped[5] == pytest.approx(0.14)
+        # 无窗 ≠ 截窗:窗外段2 的 3 天确实在全量里参与过
+        assert match_forward_returns(two, "tb.segments", df, [1, 5]) != clipped
+
+    def test_first_passage_clipped(self):
+        """两段 span [25,27] 与 [35,37](均 ≥20,M 样本足;[10,12] 会让 M 全 NaN、
+        四态全零而平凡化);sample_window=(0,30) → 四态只数窗内日。M≈0.01(k=5 →
+        up 线 105 / dn 线≈95.24):段1 翌日 high=110 → up×3;段2 翌日 low=90 →
+        down×3——两段状态不同,窗外日混入必改变计数。end_node 用 'tb.segments'
+        (child span 并集,与 forward_returns 用例同口径)。"""
+        n = 45
+        high, low = [100.5] * n, [99.5] * n
+        for i in (26, 27, 28):
+            high[i] = 110.0
+        for i in (36, 37, 38):
+            low[i] = 90.0
+        df = pd.DataFrame({"close": [100.0] * n, "high": high, "low": low})
+        two, one = _two_seg_match(25, 27, 35, 37), _one_seg_match(25, 27)
+        clipped = match_first_passage(two, "tb.segments", df, 1, sample_window=(0, 30))
+        assert clipped == match_first_passage(one, "tb.segments", df, 1)
+        assert clipped == {"up": 3, "down": 0, "both": 0, "none": 0}
+        # 无窗版本含窗外段2 的 3 个 down
+        assert match_first_passage(two, "tb.segments", df, 1) == \
+            {"up": 3, "down": 3, "both": 0, "none": 0}
+
+    def test_forward_drawdowns_clipped(self):
+        """两段 span [10,12] 与 [20,22];sample_window=(0,15) → 只有第一段 3 天参与,
+        与手工构造的仅 [10,12] 段容器(全量)结果逐值相等。low 台阶:11..15=94..86
+        (段1)、21..25=84..76(段2,更深),其余基线 99 → 两段值域不同,窗外日混入必
+        改变均值。仅段1: N=1 mean=-0.08、N=5 mean=-0.14;两段全量 N=1 mean=-0.13
+        (≠ 截窗值)。end_node 用 'tb.segments'(child span 并集,与 returns 用例同口径)。
+        (Task 7 裁定 a 补参:ret 截 / dd 全量的口径分裂会打破「ret ≥ dd」不变量。)"""
+        n = 30
+        low = [99.0] * n
+        for i, l in zip(range(11, 16), (94, 92, 90, 88, 86)):
+            low[i] = float(l)
+        for i, l in zip(range(21, 26), (84, 82, 80, 78, 76)):
+            low[i] = float(l)
+        df = pd.DataFrame({"close": [100.0] * n, "high": [101.0] * n, "low": low})
+        two, one = _two_seg_match(10, 12, 20, 22), _one_seg_match(10, 12)
+        clipped = match_forward_drawdowns(two, "tb.segments", df, [1, 5],
+                                          sample_window=(0, 15))
+        assert clipped == match_forward_drawdowns(one, "tb.segments", df, [1, 5])
+        assert clipped[1] == pytest.approx(-0.08)
+        assert clipped[5] == pytest.approx(-0.14)
+        # 无窗 ≠ 截窗:窗外段2 的 3 天确实在全量里参与过
+        assert match_forward_drawdowns(two, "tb.segments", df, [1, 5]) != clipped
+
+    def test_none_keeps_behavior(self):
+        """sample_window=None 结果与不加参数完全一致(三函数各验一遍,回归护栏)。"""
+        n = 30
+        df = pd.DataFrame({
+            "close": [100.0] * n,
+            "high": [101.0 + i * 0.1 for i in range(n)],
+            "low": [99.0] * n,
+        })
+        m = _two_seg_match(10, 12, 20, 22)
+        assert match_forward_returns(m, "tb.segments", df, [1, 5], sample_window=None) == \
+            match_forward_returns(m, "tb.segments", df, [1, 5])
+        assert match_forward_drawdowns(m, "tb.segments", df, [1, 5], sample_window=None) == \
+            match_forward_drawdowns(m, "tb.segments", df, [1, 5])
+        assert match_first_passage(m, "tb.segments", df, 1, sample_window=None) == \
+            match_first_passage(m, "tb.segments", df, 1)

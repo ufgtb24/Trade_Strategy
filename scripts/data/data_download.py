@@ -1,6 +1,5 @@
 import datetime
 import os.path
-import random
 import shutil
 import signal
 import sys
@@ -13,7 +12,7 @@ import pandas as pd
 import requests
 import yfinance as yf
 from curl_cffi import requests as cffi_requests
-from yfinance.exceptions import YFRateLimitError
+from yfinance.exceptions import YFRateLimitError, YFPricesMissingError, YFTzMissingError
 
 # 每个 worker 进程独立持有一个 curl_cffi session（惰性初始化，
 # 避免 multiprocessing fork 时共享底层连接 fd 导致的竞态）。
@@ -75,7 +74,7 @@ def get_us_tickers_fast():
         return tickers
 
 
-def _fetch_us_daily_qfq(tic, start_dt, end_dt):
+def _fetch_us_daily_qfq(tic, start_dt, end_dt, rate_gate=None):
     """用 yfinance 拉美股日线，auto_adjust=True 做完整前复权。
 
     历史上曾用 akshare 新浪源 stock_us_daily(adjust="qfq")，但对部分 ticker
@@ -87,15 +86,28 @@ def _fetch_us_daily_qfq(tic, start_dt, end_dt):
     2025-09-09 合股 8×、2026-04-28 拆股 1/8）全部正确合并到历史价，
     端到端无跳空，且免费无 key。故切换。
 
+    rate_gate: multiprocessing.Value('d') 共享的「限速截止时间戳」。
+    429 是整个 IP 的全局状态而非单 ticker 错误——任一 worker 撞 429 后
+    把截止时间写进 gate，所有 worker 在发请求前对齐冷却（实测 Yahoo
+    限速窗口 ~1-2 分钟）。此前各 worker 独立短退避（5/10/20s）重试，
+    反而持续刷新滑动限速窗口，表现为「目录被 clear 清空后零下载零提示」。
+
     返回 DataFrame，列 = [date, open, high, low, close, volume]，
     与调用方（download_stock）历史契约兼容；tz 已剥离。
     """
     # Yahoo 免费源对同 IP 有限速（大约几十请求/分钟）。
-    # 撞 429 时指数退避（含抖动）重试；超上限就把它转成 KeyError，
-    # 让下游 download_stock 走静默跳过路径，不污染日志——次日 mtime
-    # 变化后会被自动重下补齐。
+    # 撞 429 时全员冷却后重试（90s 起步指数增长，cap 300s，上限 4 次，
+    # 总最坏 ~14.5 分钟；实测限速窗口 1-2 分钟，常态一两次冷却即恢复）；
+    # 超上限就把它转成 KeyError，让下游 download_stock 走静默跳过路径，
+    # 不污染日志——次日 mtime 变化后会被自动重下补齐。
     df = None
-    for attempt in range(6):
+    for attempt in range(4):
+        # 全局限速门：冷却期内所有 worker 对齐等待，不再各自戳 Yahoo
+        if rate_gate is not None:
+            with rate_gate.get_lock():
+                wait = rate_gate.value - time.time()
+            if wait > 0:
+                time.sleep(wait)
         try:
             df = yf.Ticker(tic, session=_get_cffi_session()).history(
                 start=start_dt.strftime("%Y-%m-%d"),
@@ -106,10 +118,20 @@ def _fetch_us_daily_qfq(tic, start_dt, end_dt):
             )
             break
         except YFRateLimitError:
-            if attempt == 5:
+            if attempt == 3:
                 raise KeyError("date")
-            backoff = (2 ** attempt) * 5 + random.uniform(0, 3)
-            time.sleep(backoff)
+            backoff = min(90 * (2 ** attempt), 300)
+            if rate_gate is not None:
+                # 只在「非限速 → 限速」的状态转换时打印，避免 10 worker
+                # × 每 ticker 刷屏；竞态下多打几行无害
+                with rate_gate.get_lock():
+                    prev = rate_gate.value
+                    rate_gate.value = max(prev, time.time() + backoff)
+                if prev <= time.time():
+                    print(f"Yahoo rate limit hit, all workers cooling down {backoff}s (attempt {attempt + 1}/4)")
+            else:
+                # 无共享 gate（独立调用/单测）时退化为本地退避
+                time.sleep(backoff)
     if df is None or df.empty:
         # 复用调用方的静默吸收路径：退市/无数据 ticker 直接跳过
         raise KeyError("date")
@@ -124,7 +146,7 @@ def _fetch_us_daily_qfq(tic, start_dt, end_dt):
     return df[["date", "open", "high", "low", "close", "volume"]]
 
 
-def download_stock(tic, path, days_from_now, file_format="pkl", rm_invalid=False):
+def download_stock(tic, path, days_from_now, file_format="pkl", rm_invalid=False, rate_gate=None):
     """全量下载股票数据，覆盖已存在文件。
 
     yfinance 已支持 start/end 参数，但仍每次全量覆盖：auto_adjust=True 的
@@ -150,7 +172,7 @@ def download_stock(tic, path, days_from_now, file_format="pkl", rm_invalid=False
     # 上游任何数据异常（退市 ticker 空 df / 网络抖动导致 raise_errors 未拦到的
     # 结构异常 / 罕见的 date 列缺失）统一吸收为"跳过该 ticker"，不污染日志。
     try:
-        raw = _fetch_us_daily_qfq(tic, start_date, end_date)
+        raw = _fetch_us_daily_qfq(tic, start_date, end_date, rate_gate=rate_gate)
         df_new = pd.DataFrame(
             {col: raw[col].to_numpy().copy() for col in raw.columns}
         )
@@ -160,7 +182,10 @@ def download_stock(tic, path, days_from_now, file_format="pkl", rm_invalid=False
             .set_index("date")
             .loc[start_date:end_date]
         )
-    except (IndexError, KeyError, SyntaxError):
+    except (IndexError, KeyError, SyntaxError, YFPricesMissingError, YFTzMissingError):
+        # YFPricesMissingError / YFTzMissingError：yfinance>=1.2 对退市/无数据
+        # ticker 抛的专用异常（旧版走 KeyError 路径），归入同一静默吸收，
+        # 避免全量跑时几千行 "possibly delisted" Error 刷屏。
         # yfinance 拉不到（退市 / 404 / 罕见结构异常）→ rm_invalid=True 时
         # 删旧 pkl，避免"过期残留静默混入"（否则 UI 会读到旧数据、扫描仍
         # 命中已退市股，见 DTCK 案例）。
@@ -183,7 +208,7 @@ def download_stock(tic, path, days_from_now, file_format="pkl", rm_invalid=False
     print(f"Download {tic}")
 
 
-def worker(task_queue, save_root, days_from_now, file_format, rm_invalid=False):
+def worker(task_queue, save_root, days_from_now, file_format, rm_invalid=False, rate_gate=None):
     # 子进程 stdout 在非 tty pipe 下（PyCharm run config / nohup / 重定向到
     # 文件等）默认全缓冲，Download/Error 行会攒到 4KB 才 flush，前 30 秒
     # 屏幕看起来像"啥都没干"，pkl 却已在悄悄落盘——排障成本很高。切成
@@ -201,7 +226,7 @@ def worker(task_queue, save_root, days_from_now, file_format, rm_invalid=False):
             save_root, tic + (".csv" if file_format == "csv" else ".pkl")
         )
         try:
-            download_stock(tic, save_path, days_from_now, file_format, rm_invalid=rm_invalid)
+            download_stock(tic, save_path, days_from_now, file_format, rm_invalid=rm_invalid, rate_gate=rate_gate)
         except Exception as e:
             # download_stock 已吸收所有已知的 akshare 上游噪音；能走到这里
             # 的都是真正未预期的异常（磁盘满、权限错误等），保留打印便于排障。
@@ -233,6 +258,10 @@ def multi_download_stock(
     for _ in range(num_workers):
         q.put(None)
 
+    # 跨进程共享的「限速截止时间戳」：任一 worker 撞 429 时写入，全体
+    # worker 在 _fetch 里对齐冷却（见 _fetch_us_daily_qfq docstring）
+    rate_gate = multiprocessing.Value("d", 0.0)
+
     # Prepare input parameters for worker processes
     input_dict = dict(
         task_queue=q,
@@ -240,6 +269,7 @@ def multi_download_stock(
         days_from_now=days_from_now,
         file_format=file_format,
         rm_invalid=rm_invalid,
+        rate_gate=rate_gate,
     )
 
     # daemon=True：主进程退出时 kernel 会自动 terminate 所有 worker。

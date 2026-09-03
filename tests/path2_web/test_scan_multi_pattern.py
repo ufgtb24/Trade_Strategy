@@ -10,7 +10,7 @@ import pytest
 from path2_web.scan import run_scan_multi, list_scans_flat, load_scan_flat, delete_scan_flat
 from path2_web.serialize import serialize_pattern
 from path2_web.eval_runner import _summarize_flat
-from path2_apps.bottom_breakout_burst import build_pattern as build_bbb, Params as PBbb
+from path2_apps.bottom_burst import build_pattern as build_bbb, Params as PBbb
 from path2_apps.bo_only import build_pattern as build_bo, Params as PBo
 
 
@@ -42,7 +42,7 @@ def test_multi_scan_falls_into_flat_dir(tmp_path, tiny_pkls):
         "bottom_burst": serialize_pattern(build_bbb(PBbb.default())),
     }
     module_paths = {"bo_only": "path2_apps.bo_only",
-                    "bottom_burst": "path2_apps.bottom_breakout_burst"}
+                    "bottom_burst": "path2_apps.bottom_burst"}
     end_nodes = {"bo_only": "bo", "bottom_burst": "tb"}
     run_scan_multi(
         data_dir=tiny_pkls,
@@ -69,7 +69,7 @@ def test_multi_scan_each_per_pattern_has_full_keys(tmp_path, tiny_pkls):
         "bottom_burst": serialize_pattern(build_bbb(PBbb.default())),
     }
     module_paths = {"bo_only": "path2_apps.bo_only",
-                    "bottom_burst": "path2_apps.bottom_breakout_burst"}
+                    "bottom_burst": "path2_apps.bottom_burst"}
     end_nodes = {"bo_only": "bo", "bottom_burst": "tb"}
     result = run_scan_multi(
         data_dir=tiny_pkls,
@@ -158,7 +158,7 @@ def test_multi_scan_buf_start_takes_max_head_buffer(tmp_path, tiny_pkls):
         "bottom_burst": serialize_pattern(build_bbb(PBbb.default())),
     }
     module_paths = {"bo_only": "path2_apps.bo_only",
-                    "bottom_burst": "path2_apps.bottom_breakout_burst"}
+                    "bottom_burst": "path2_apps.bottom_burst"}
     end_nodes = {"bo_only": "bo", "bottom_burst": "tb"}
     saved = run_scan_multi(
         data_dir=tiny_pkls,
@@ -180,7 +180,7 @@ def test_multi_scan_per_pattern_has_stats(tmp_path, tiny_pkls):
     saved = run_scan_multi(
         data_dir=str(tiny_pkls),
         pattern_specs_json={"bbb": serialize_pattern(build_bbb(PBbb.default()))},
-        module_paths={"bbb": "path2_apps.bottom_breakout_burst"},
+        module_paths={"bbb": "path2_apps.bottom_burst"},
         pattern_ids=["bbb"],
         end_nodes={"bbb": "tb"},
         head_buffer_trading_days=63,
@@ -199,7 +199,11 @@ def test_multi_scan_per_pattern_has_stats(tmp_path, tiny_pkls):
         if m.get("forward_return") is not None
     ]
     expected = _summarize_flat(vals)
-    assert saved["per_pattern"]["bbb"]["stats"] == expected
+    st = saved["per_pattern"]["bbb"]["stats"]
+    # stats 现含双口径扩展键(leaf_count/shared_leaf_stats);原 _summarize_flat 键逐一相等
+    for k in expected:
+        assert st[k] == expected[k]
+    assert "leaf_count" in st and "shared_leaf_stats" in st
 
 
 def test_multi_scan_per_pattern_has_stats_drawdown(tmp_path, tiny_pkls):
@@ -208,7 +212,7 @@ def test_multi_scan_per_pattern_has_stats_drawdown(tmp_path, tiny_pkls):
     saved = run_scan_multi(
         data_dir=str(tiny_pkls),
         pattern_specs_json={"bbb": serialize_pattern(build_bbb(PBbb.default()))},
-        module_paths={"bbb": "path2_apps.bottom_breakout_burst"},
+        module_paths={"bbb": "path2_apps.bottom_burst"},
         pattern_ids=["bbb"],
         end_nodes={"bbb": "tb"},
         head_buffer_trading_days=63,
@@ -229,8 +233,9 @@ def test_multi_scan_per_pattern_has_stats_drawdown(tmp_path, tiny_pkls):
     ]
     expected = _summarize_flat(dd_vals)
     assert pp["stats_drawdown"] == expected
-    # 同 PatternStats shape(键集与 stats 一致)
-    assert set(pp["stats_drawdown"]) == set(pp["stats"])
+    # 同 PatternStats shape:stats 的扩展键(leaf_count/shared_leaf_stats)不在 drawdown 侧
+    assert set(pp["stats_drawdown"]) == set(expected)
+    assert set(expected) <= set(pp["stats"])
 
 
 def test_multi_scan_stats_survives_json_roundtrip(tmp_path, tiny_pkls):
@@ -238,7 +243,7 @@ def test_multi_scan_stats_survives_json_roundtrip(tmp_path, tiny_pkls):
     saved = run_scan_multi(
         data_dir=str(tiny_pkls),
         pattern_specs_json={"bbb": serialize_pattern(build_bbb(PBbb.default()))},
-        module_paths={"bbb": "path2_apps.bottom_breakout_burst"},
+        module_paths={"bbb": "path2_apps.bottom_burst"},
         pattern_ids=["bbb"],
         end_nodes={"bbb": "tb"},
         head_buffer_trading_days=63,
@@ -263,7 +268,7 @@ def test_multi_scan_stats_all_pids_present(tmp_path, tiny_pkls):
             "bo": serialize_pattern(build_bo(PBo.default())),
         },
         module_paths={
-            "bbb": "path2_apps.bottom_breakout_burst",
+            "bbb": "path2_apps.bottom_burst",
             "bo": "path2_apps.bo_only",
         },
         pattern_ids=["bbb", "bo"],
@@ -289,7 +294,7 @@ from path2_web.scan import _aggregate_first_passage, _aggregate_multi
 
 def test_fp_stats_single_group_ratio():
     """_aggregate 返回 {pid: stats}(单组,含 k);ratio=up/(up+down)。
-    match_fp_counts: up=3,down=1,both=2,none=0 → n_match=6,ratio=0.75。"""
+    match_fp_counts: up=3,down=1,both=2,none=0 → n_bars=6,ratio=0.75。"""
     fake = [{
         "symbol": "AAA",
         "random_first_passage": {
@@ -303,7 +308,7 @@ def test_fp_stats_single_group_ratio():
     stats = _aggregate_first_passage(fake, ["bbb"], first_passage_k=2.0)
     s = stats["bbb"]
     assert s["up"] == 3 and s["down"] == 1 and s["both"] == 2 and s["none"] == 0
-    assert s["n_match"] == 6
+    assert s["n_bars"] == 6
     assert s["ratio"] == 0.75
     # random 同口径、独立
     assert s["random_up"] == 2 and s["random_down"] == 1
@@ -330,7 +335,7 @@ def test_fp_stats_ratio_none_when_up_down_zero():
     assert s["ratio"] is None
     assert s["random_up"] == 0 and s["random_down"] == 0
     assert s["random_ratio"] is None
-    assert s["n_match"] == 2
+    assert s["n_bars"] == 2
 
 
 def test_fp_stats_global_random_aggregated_across_tickers():
@@ -352,7 +357,7 @@ def test_fp_stats_global_random_aggregated_across_tickers():
 
 
 def test_fp_stats_keys_complete_single_group():
-    """单组 stats 键集 = {up,down,both,none,n_match,ratio,
+    """单组 stats 键集 = {up,down,both,none,n_bars,ratio,
     random_up,random_down,random_both,random_none,random_n,random_ratio,k}。"""
     fake = [{
         "symbol": "AAA",
@@ -363,7 +368,7 @@ def test_fp_stats_keys_complete_single_group():
         }}},
     }]
     s = _aggregate_first_passage(fake, ["bbb"], first_passage_k=2.0)["bbb"]
-    assert set(s) == {"up", "down", "both", "none", "n_match", "ratio",
+    assert set(s) == {"up", "down", "both", "none", "n_bars", "ratio",
                       "random_up", "random_down", "random_both", "random_none",
                       "random_n", "random_ratio", "k"}
 
@@ -390,7 +395,7 @@ def test_run_scan_writes_first_passage_stats_key(tmp_path, tiny_pkls):
     saved = run_scan_multi(
         data_dir=tiny_pkls,
         pattern_specs_json={"bbb": serialize_pattern(build_bbb(PBbb.default()))},
-        module_paths={"bbb": "path2_apps.bottom_breakout_burst"},
+        module_paths={"bbb": "path2_apps.bottom_burst"},
         pattern_ids=["bbb"], end_nodes={"bbb": "tb"},
         head_buffer_trading_days=63, label_horizon=5,
         start_date="2025-01-01", end_date="2026-12-31",
@@ -406,7 +411,7 @@ def test_run_scan_disabled_omits_first_passage_stats(tmp_path, tiny_pkls):
     saved = run_scan_multi(
         data_dir=tiny_pkls,
         pattern_specs_json={"bbb": serialize_pattern(build_bbb(PBbb.default()))},
-        module_paths={"bbb": "path2_apps.bottom_breakout_burst"},
+        module_paths={"bbb": "path2_apps.bottom_burst"},
         pattern_ids=["bbb"], end_nodes={"bbb": "tb"},
         head_buffer_trading_days=63, label_horizon=5,
         start_date="2025-01-01", end_date="2026-12-31",
@@ -436,3 +441,97 @@ def test_fp_stats_survive_json_roundtrip():
     reloaded = _json.loads(_json.dumps(blob))
     assert reloaded == blob
     assert reloaded["per_pattern"]["bbb"]["first_passage_stats"]["ratio"] == 0.5
+
+
+def test_scan_stats_leaf_and_shared_fields(tmp_path, tiny_pkls):
+    """scan 聚合:stats 带 leaf_count(双口径);shared_leaf_stats 描述多确认规模。
+    0 命中场景也须有完整键结构(值全零),键结构与口径关系是关键断言。"""
+    saved = run_scan_multi(
+        data_dir=str(tiny_pkls),
+        pattern_specs_json={"bbb": serialize_pattern(build_bbb(PBbb.default()))},
+        module_paths={"bbb": "path2_apps.bottom_burst"},
+        pattern_ids=["bbb"],
+        end_nodes={"bbb": "tb"},
+        head_buffer_trading_days=63,
+        label_horizon=5,
+        start_date="2025-01-01", end_date="2026-12-31",
+        workers=2, ticker_regex=None,
+        scan_ts="20260713T120500",
+        outputs_root=str(tmp_path / "out"),
+        executor_factory=lambda w: ThreadPoolExecutor(max_workers=w),
+    )
+    st = saved["per_pattern"]["bbb"]["stats"]
+    # 双口径:leaf_count = 买点数(count 是 match 数),恒 <= match 数
+    assert isinstance(st["leaf_count"], int) and st["leaf_count"] >= 0
+    assert st["leaf_count"] <= st["count"]
+    sls = st["shared_leaf_stats"]
+    assert set(sls) == {"n_shared_leaves", "n_exclusive_leaves", "share_ratio",
+                        "per_leaf_match_count_distribution",
+                        "shared_win_rate", "exclusive_win_rate"}
+    assert sls["n_shared_leaves"] + sls["n_exclusive_leaves"] == st["leaf_count"]
+    if st["leaf_count"] == 0:
+        assert sls["share_ratio"] is None and sls["shared_win_rate"] is None
+
+
+def test_scan_stats_leaf_count_on_hits(tmp_path):
+    """命中场景:leaf_count = 按 leaf 去重的买点数,口径非空有 teeth。"""
+    from dataclasses import replace
+    from tests.path2_apps.bottom_burst.test_matches import _synth_positive
+    data = tmp_path / "data"
+    data.mkdir()
+    df = _synth_positive()
+    # slice_window 前提:df.index 是 DatetimeIndex(index.name=="date"),reset_index 后成 date 列
+    df.index = pd.date_range("2024-01-01", periods=len(df), name="date")
+    df.to_pickle(data / "POS.pkl")
+    pb = PBbb.default()
+    p = replace(pb,
+                bo=replace(pb.bo, min_relative_height=0.02,
+                           peak_measure="body_top", breakout_measure="body_top"),
+                burst=replace(pb.burst, min_bos=2, first_drought_min=20,
+                              distinct_pk_min=2, vol_spike_min=3.0))
+    saved = run_scan_multi(
+        data_dir=str(data),
+        pattern_specs_json={"bbb": serialize_pattern(build_bbb(p))},
+        module_paths={"bbb": "path2_apps.bottom_burst"},
+        pattern_ids=["bbb"],
+        end_nodes={"bbb": "tb"},
+        head_buffer_trading_days=63,
+        label_horizon=5,
+        start_date="2024-01-01", end_date="2024-12-31",
+        workers=2, ticker_regex=None,
+        scan_ts="20260713T120600",
+        outputs_root=str(tmp_path / "out"),
+        executor_factory=lambda w: ThreadPoolExecutor(max_workers=w),
+        pattern_params_dicts={"bbb": p.to_dict()},
+    )
+    st = saved["per_pattern"]["bbb"]["stats"]
+    ms = [m for r in saved["results"]
+          for m in r["per_pattern"].get("bbb", {}).get("analysis", {}).get("matches", [])]
+    assert st["count"] >= 1
+    leafs = {m["leaf"] for m in ms if m.get("leaf")}
+    assert st["leaf_count"] == len(leafs) >= 1
+    assert st["leaf_count"] <= st["count"]
+    sls = st["shared_leaf_stats"]
+    assert sls["n_shared_leaves"] + sls["n_exclusive_leaves"] == st["leaf_count"]
+
+
+def test_win_rate_of_separates_by_symbol():
+    """跨股票同 span leaf 不算共享(reuse leaf 须同股票内)。
+
+    两股票各有 tb_10_15 各 1 match(同 instance_id、不同物理买点):按 (symbol, leaf)
+    聚合应是两个独占 leaf、无共享。修复前按 leaf 跨股票聚合会把这两 match
+    当成共享同一 leaf → shared_win_rate 误算;修复后 shared 无候选 → None。
+    """
+    from collections import Counter
+    from path2_web.scan import _win_rate_of
+
+    def _hit(sym, ret):
+        return {"symbol": sym, "per_pattern": {"bbb": {"analysis": {
+            "matches": [{"leaf": "tb_10_15", "forward_return": ret}]}}}}
+
+    results = [_hit("AAA", 0.05), _hit("BBB", -0.03)]
+    leaf_cnt = Counter((r["symbol"], m["leaf"])
+                       for r in results
+                       for m in r["per_pattern"]["bbb"]["analysis"]["matches"])
+    assert _win_rate_of(results, "bbb", leaf_cnt, shared=True) is None    # 跨股票不共享 → 无候选
+    assert _win_rate_of(results, "bbb", leaf_cnt, shared=False) == 0.5    # 两独占,一胜一败

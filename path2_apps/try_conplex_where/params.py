@@ -1,4 +1,4 @@
-"""Default Params for bottom_breakout_burst pattern (nested by node)。
+"""Default Params for bottom_burst pattern (nested by node)。
 
 三件套分工:
 - `params.yaml`:web 入口(scan/api/eval_runner)的 SSoT,改完下一次 /scan 即生效(热加载)。
@@ -7,7 +7,7 @@
 - `Params.from_yaml`/`load_params`:web 入口统一加载入口,逐 section 校验未知 key。
 
 设计:每个 NodeSpec node(bo/burst/tb)拥有自己的子 dataclass + yaml section,
-内含 detector 构造参数 + where 阈值。共用字段(tb.max_start_gap 同时被 ThrowbackDetector
+内含 detector 构造参数 + where 阈值。共用字段(tb.max_span 同时被 ThrowbackDetectorV1
 和 burst→tb edge 复用)归入 tb section、edge 显式引用(SSoT)。edges 子 dataclass 留空
 作格式契约/未来扩展占位。
 """
@@ -15,6 +15,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field, asdict
 from pathlib import Path
+from typing import Optional
 
 from path2_apps._params_base import ParamsBase
 
@@ -29,6 +30,8 @@ class BoParams:
     min_relative_height: float = 0.05
     exceed_threshold: float = 0.005
     peak_supersede_threshold: float = 0.03
+    bear_drop: Optional[float] = None   # 大阴线 kind:实体跌幅阈值;None=禁用(默认 OFF,仅显式 ON 的 app 启用)
+    bear_min_rh: float = 0.20   # 大阴线 kind:相对高度阈值
     vol_baseline_period: int = 63
     peak_measure: str = "high"
     breakout_measure: str = "high"
@@ -52,21 +55,24 @@ class BurstParams:
 
 @dataclass(frozen=True)
 class TbParams:
-    """ThrowbackDetector 构造参数。注意 max_start_gap 同时被 burst→tb edge 复用
-    (语义同步:detector 启动窗紧 vs edge gap 宽 = 矛盾,故单一定义于 tb)。"""
-    max_start_gap: int = 5    # tb.start − bo.end ≤ 此值(买点不离 bo 过远);edge 也用
-    max_window: int = 5       # tb.end − tb.start ≤ 此值(买点窗不持续过长)
-    atr_window: int = 14      # ATR 回溯窗(取 bo−1 处值)
-    big_rise_k: float = 1.5
-    stop_confirm_bars: int = 2   # K bar trough-age 确认阈值
-    anchor_measure: str = "high"   # anchor 取值口径(calc.measure)
-    support_measure: str = "low"   # 破位比较口径(calc.measure)
+    """ThrowbackDetectorV1 构造参数(首段即停)+ where 阈值。
+
+    资格型门槛不进 detector:max_day_drop_pct 只作 tb where(W.attr("max_day_drop", "<", thr)),
+    throwback_kwargs() 不含它。max_span 同时是 burst→tb edge 的 max_gap(SSoT)。
+    默认值同 bb_v1(2026-08-25 首段状态机重写)。
+    """
+    max_rise_k: float = 1.5          # 反弹/脱离阈值(median TR 倍数),DOWN→UP 与 STABLE rise 共用
+    stop_confirm_bars: int = 1       # K 根不刷新入段(enter = 第 K 根不刷新根)
+    vol_window: int = 14             # median TR 滚动窗(即时取 i-1)
+    max_span: int = 20               # 全局预算 [bo+1, bo+max_span];edge max_gap 同值
+    measure: str = "close"           # 全部数值比较口径(calc.measure);阴线臂恒 close/open
+    max_day_drop_pct: Optional[float] = 0.20  # 资格型 where 阈值:回踩段单日跌幅 ≥ 此值 → where 拦;None=不加该 where
 
 
 @dataclass(frozen=True)
 class EdgesParams:
     """edge-内禀参数容器。当前为空:所有 edge 字段或硬编码(min_gap=1/anchor_field/
-    Child(...))或从 node section 引用(max_gap = tb.max_start_gap)。保留作格式契约
+    Child(...))或从 node section 引用(max_gap = tb.max_span)。保留作格式契约
     + 未来 edge-only 参数扩展占位。"""
     pass
 
@@ -95,8 +101,10 @@ class Params(ParamsBase):
         }
 
     def throwback_kwargs(self) -> dict:
-        """ThrowbackDetector 构造参数(字段一一对应签名)。"""
-        return asdict(self.tb)
+        """ThrowbackDetectorV1 构造参数(5 键);max_day_drop_pct 是 where 阈值,不传 detector。"""
+        d = asdict(self.tb)
+        d.pop('max_day_drop_pct')
+        return d
 
 
 def load_params() -> Params:

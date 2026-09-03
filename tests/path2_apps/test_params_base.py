@@ -11,7 +11,7 @@ import importlib
 
 import pytest
 
-APPS = ["bottom_breakout_burst", "bo_only", "try_conplex_where"]
+APPS = ["bottom_burst", "bo_only", "try_conplex_where", "bb_v1", "bb_v3"]
 
 
 def _params_cls(app):

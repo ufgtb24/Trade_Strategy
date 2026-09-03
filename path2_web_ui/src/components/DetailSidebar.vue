@@ -11,8 +11,8 @@
       </div>
       <FailedAttemptsCard
         :payload="timeScopeResponse.payload"
-        :event-class="view.currentTimeEventClass"
-        @update:event-class="onTimeEventClassChange"
+        :node="view.currentDiagnoseNode"
+        @update:node="onDiagnoseNodeChange"
       />
     </div>
     <div v-else-if="activeDetailCard === 'pair' && pairScopeResponse" class="detail-query-card">
@@ -33,7 +33,7 @@
     <div v-else-if="activeDetailCard === 'debug' && debugTarget" class="detail-query-card detail-debug-card">
       <button type="button" class="close-query-btn" title="关闭" @click="closeDetailCard">×</button>
       <div class="debug-header">
-        Debugging <b>{{ debugTarget.className }}</b>
+        Debugging <b>{{ debugTarget.node_id }}</b>
         <b>{{ debugTarget.anchor }}</b>
         at bar <b>{{ debugTarget.bar }}</b>
       </div>
@@ -97,10 +97,10 @@
             <tbody>
               <tr
                 v-for="row in nodeAttr(node.node_id)"
-                :key="row.event_id"
+                :key="row.instance_id"
                 class="attr-row"
-                :class="{ 'attr-row--selected': markedEventIds.has(row.event_id) }"
-                @click="selectCandidateRow(row.event_id)"
+                :class="{ 'attr-row--selected': markedEventIds.has(row.instance_id) }"
+                @click="selectCandidateRow(row.instance_id)"
               >
                 <td class="cell-id" :style="{ borderLeft: `${leftWidth(row)}px solid ${leftColor(row, node.node_id)}`, paddingLeft: `${15 - leftWidth(row)}px` }">seg@{{ row.start_idx }}-{{ row.end_idx }}</td>
                 <td v-for="cid in nodeClauseIds(node.node_id)" :key="cid" class="cell-clause">
@@ -131,10 +131,10 @@
     <template v-if="effectivePattern && effectiveAnalysis && effectiveAnalysis.matches.length">
       <h3 class="section-title">命中匹配</h3>
       <div
-        v-for="(m, mi) in effectiveAnalysis.matches" :key="m.event_id"
+        v-for="(m, mi) in effectiveAnalysis.matches" :key="m.match_id"
         class="match-row"
-        :class="{ 'match-row--selected': markedMatchIds.has(m.event_id) }"
-        @click="selectMatchRow(m.event_id)"
+        :class="{ 'match-row--selected': markedMatchIds.has(m.match_id) }"
+        @click="selectMatchRow(m.match_id)"
       >
         <span class="match-span">{{ '①②③④⑤⑥⑦⑧⑨'[mi] ?? (mi + 1) }} {{ m.start_idx }}–{{ m.end_idx }}</span>
         <span v-if="m.forward_return !== undefined" class="match-ret"
@@ -165,7 +165,7 @@
         <span v-if="view.isExploring" class="ret-live"
               title="探索态现算值(Working Copy 口径),与左侧列表的 scan 冻结 d 口径不同">†</span>
       </div>
-      <!-- node 行:可点击,高亮当前 selectedEventId -->
+      <!-- node 行:可点击,高亮当前聚焦实例 focusedInstanceRef -->
       <div
         v-for="(nid, nodeKey) in selectedMatch.node_index" :key="nodeKey"
         class="node-row trace-node-row"
@@ -175,7 +175,7 @@
         <strong>{{ nodeKey }}</strong>
         <!-- 硬伤 A · node.rel "K/N ✓" 徽标(数据存在才亮,来自 diag.nodes[node].rel) -->
         <RelBadge v-if="nodeRel(nodeKey)" :ok="nodeRel(nodeKey)!.ok" :total="nodeRel(nodeKey)!.total" size="sm" />
-        <span class="event-ref">{{ Array.isArray(nid) ? nid.join(', ') : nid }}</span>
+        <span class="event-ref">{{ nid }}</span>
         <template v-if="selectedMatch.predicate_trace?.where_results[nodeKey]">
           <span v-for="(w, cid) in selectedMatch.predicate_trace.where_results[nodeKey]" :key="cid" class="clause">
             {{ cid }}={{ fmtValue(w.measured) }}
@@ -210,7 +210,7 @@ import type { TopoNode, AttrRow, ClauseWitness, PairPayload } from '../types'
 const view = useViewStore()
 const {
   selectedMatch, effectivePattern, effectiveAnalysis,
-  diag, isolated, matchedIds, qualifiedIds, nodeColors, selectedEventId, scanFile, effectiveScan,
+  diag, isolated, matchedIds, matchedEventIds, qualifiedIds, nodeColors, focusedInstanceRef, scanFile, effectiveScan,
   activeDetailCard, timeScopeResponse, pairScopeResponse,
   debugPending, debugTarget, debugError,
   showTrace, expandedNodeIds, markedMatchIds, markedEventIds,   // Task 4 新增(集合版)
@@ -239,10 +239,11 @@ watch([showTrace, focusedMatchId], ([show]) => {
 
 // ─── 计数派生(单一真相源,从 store computed 读) ────────────────────────────────
 
-/** 某 node 所对应 band 的所有 events */
+/** 某 node 所对应 band 的所有 events。band 键 = node_id;段等子事件由引擎
+ * children 声明命名表直标子结构 node_id(如 tb_seg),天然独立泳道。 */
 function bandEvents(node: TopoNode) {
   const events = effectiveAnalysis.value?.events ?? []
-  return events.filter(e => view.bandKey(e) === node.source_tag)
+  return events.filter(e => e.node_id === node.node_id)
 }
 
 function detectedCount(node: TopoNode): number {
@@ -250,13 +251,14 @@ function detectedCount(node: TopoNode): number {
 }
 
 function tracedCount(node: TopoNode): number {
-  return bandEvents(node).filter(e =>
-    qualifiedIds.value.has(e.event_id) || matchedIds.value.has(e.event_id)
-  ).length
+  // 实例流:matchedIds 集合元素为复合键,单键 has 恒 miss;改用 eventTier(实例级正确,
+  // 与 KlineChart.vue marker 上色同一判定)。traced = qualified ∪ matched = 非 detected。
+  return bandEvents(node).filter(e => view.eventTier(e) !== 'detected').length
 }
 
 function matchedCountForNode(node: TopoNode): number {
-  return bandEvents(node).filter(e => matchedIds.value.has(e.event_id)).length
+  // 实例流:同上,matched 档判定走 eventTier(实例级)
+  return bandEvents(node).filter(e => view.eventTier(e) === 'matched').length
 }
 
 // ─── 着色 ─────────────────────────────────────────────────────────────────────
@@ -304,10 +306,11 @@ function combinatorDetail(w: ClauseWitness, prefix = ''): string {
   }).join('\n')
 }
 
-/** 候选表行的 tier:先看 matchedIds,再看 qualifiedIds,否则 detected */
+/** 候选表行的 tier:先看 matched 实例集,再看 qualifiedIds,否则 detected。
+ *  实例流:AttrRow.instance_id 直接查集(matchedEventIds/qualifiedIds 集合元素即 instance_id)。 */
 function rowTier(row: AttrRow): 'matched' | 'qualified' | 'detected' {
-  if (matchedIds.value.has(row.event_id)) return 'matched'
-  if (qualifiedIds.value.has(row.event_id)) return 'qualified'
+  if (matchedEventIds.value.has(row.instance_id)) return 'matched'
+  if (qualifiedIds.value.has(row.instance_id)) return 'qualified'
   return 'detected'
 }
 /** 候选表首列左侧色块色 · 走 colorOf 与副图 marker + 漏斗数字三处共用同一 API
@@ -337,26 +340,19 @@ function nodeRel(nodeKey: string | number): { ok: number; total: number } | null
   }
 }
 
-/** match node_index 值可能是 string 或 string[](kleene);取第一个 event_id */
-function nodeEventId(val: string | string[]): string | null {
-  if (Array.isArray(val)) return val[0] ?? null
-  return val
+/** match node_index 值为 instance_id 字符串(node 名 → 实例键),直接参与聚焦判定 */
+function isNodeSelected(instanceId: string): boolean {
+  return !!instanceId && instanceId === focusedInstanceRef.value
 }
 
-function isNodeSelected(val: string | string[]): boolean {
-  const id = nodeEventId(val)
-  return id !== null && id === selectedEventId.value
-}
-
-/** 点击 trace node 行 → focusEvent(spec §3.3 统一 action) */
-function selectNodeEvent(val: string | string[]) {
-  const id = nodeEventId(val)
-  if (id) view.focusEvent(id)
+/** 点击 trace node 行 → focusEvent(spec §3.3 统一 action,实例级入口) */
+function selectNodeEvent(instanceId: string) {
+  if (instanceId) view.focusEvent(instanceId)
 }
 
 /** 点击候选表行 → focusEvent(等价图上 marker click,spec §3.3) */
-function selectCandidateRow(eventId: string) {
-  view.focusEvent(eventId)
+function selectCandidateRow(instanceId: string) {
+  view.focusEvent(instanceId)
 }
 
 /** 点击命中匹配列表行 → focusMatch(等价图上 bracket click,spec §3.3) */
@@ -380,7 +376,7 @@ const pairPayloadValid = computed(() =>
 const droppedMatches = computed<unknown[]>(() => (effectiveAnalysis.value as any)?.dropped_matches ?? [])
 
 function closeDetailCard() {
-  view.clearDetailCard()   // clearDetailCard 内部已重置 currentTimeEventClass
+  view.clearDetailCard()   // clearDetailCard 内部已重置 currentDiagnoseNode
 }
 
 // v2 event-debug(2026-07-15) · cancel debug fetch(不 unblock IDE 断点)
@@ -388,18 +384,16 @@ function onCancelDebug() {
   view.cancelDebug()
 }
 
-/** 入口 A · event_class 下拉 filter。'' = 全部 · 其余按 class_id 二次过滤重新查询。
- * frame 从当前 timeScopeResponse.payload.frame 取,不重叠框选;triggerTimeQuery 覆写 timeScopeResponse。
- * 过滤态提升到 view store(currentTimeEventClass),KlineChart brush handler 也能读并透传。*/
-function onTimeEventClassChange(v: string) {
-  view.currentTimeEventClass = v
-  const frame = timeScopeResponse.value?.payload.frame
-  if (!frame) return
-  view.triggerTimeQuery(frame[0], frame[1], v || undefined)
+/** 入口 A · node 下拉 filter。'' = 全部 · 其余**本地过滤显示**(FailedAttemptsCard
+ * 按 node 过滤),不重新请求——后端 node 严格过滤会返回子集,payload 坍缩 →
+ * failedNodes 坍缩 → 下拉其他 node 全置灰不可选(2026-08-10 实测)。payload 恒全量。
+ * 过滤态提升到 view store(currentDiagnoseNode),供 FailedAttemptsCard 消费。*/
+function onDiagnoseNodeChange(v: string) {
+  view.currentDiagnoseNode = v
 }
 /** 卡片切离 'time'(关闭/切走 pair/candidate)→ 复位下拉,防陈旧值。
  * brush 从 'time' → 'time' 无变化、不触发此 watch,是**正确**行为:此时应沿用当前过滤,由 KlineChart 透传。*/
-watch(activeDetailCard, (v) => { if (v !== 'time') view.currentTimeEventClass = '' })
+watch(activeDetailCard, (v) => { if (v !== 'time') view.currentDiagnoseNode = '' })
 /** PairDetailCard 撤回:无 force-no-swap 查询参数(backend 按 edge 存在性确定性判定方向,
  * 非记忆用户点击史)· "撤回" 语义上只能是撤销本次查询展示,而非重新以原始顺序强制查询。*/
 function undoSwap() {

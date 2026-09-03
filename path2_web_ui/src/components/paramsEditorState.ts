@@ -1,6 +1,7 @@
 // 参数编辑 / 扫描配置的纯函数层(monaco 无关,可测)。
 // spec: docs/superpowers/specs/2026-07-22-params-editor-dev-parity-design.md §6
 //      + docs/superpowers/specs/2026-07-23-write-copy-chip-decouple-design.md §3.1(Write Copy 解耦)
+// 三源对称:snapshot/关联文件/Working Copy 各自拥有独立的载入与作基准能力,互不依赖。
 
 export function dictsEqual(a: unknown, b: unknown): boolean {
   if (a === b) return true
@@ -15,34 +16,46 @@ export function dictsEqual(a: unknown, b: unknown): boolean {
   return ka.every(k => dictsEqual((a as any)[k], (b as any)[k]))
 }
 
+// 编辑区的三个内容源(对称):snapshot(scan 的只读记录)/ assoc(关联参数文件)/ wc(Working Copy 内存副本)
+export type SourceKind = 'snapshot' | 'assoc' | 'wc'
+// 对比基准:三源之一,或 off(不对比,单编辑器)。取代原「diff 开关 checkbox + 锚 radio 二选一」的两级控件。
+export type AnchorKind = 'off' | SourceKind
+
 export interface ButtonStateInput {
   parseOk: boolean
   editorDict: Record<string, any> | null    // parse 失败为 null
+  snapDict: Record<string, any> | null      // snapshot 内容(异常防御允许 null)
   assocDict: Record<string, any> | null     // 当前关联文件内容(未拉到为 null)
-  anchorDict: Record<string, any> | null    // Reset/diff 锚:锚 radio 二选一(snapshot|关联文件)的当前值
-  wcDict: Record<string, any> | null        // WC.currentDict(无 WC 为 null;Write Copy 与「载入副本」判据)
+  wcDict: Record<string, any> | null        // WC.currentDict(无 WC 为 null)
 }
 export interface ButtonStates {
-  canWriteCopy: boolean; canReset: boolean; canSave: boolean; canSaveAs: boolean; canLoadWc: boolean; canLoadAssoc: boolean
+  canLoad: Record<SourceKind, boolean>                           // 载入(源→编辑区):三源判据同构
+  canWriteCopy: boolean; canSave: boolean; canSaveAs: boolean    // 写出(编辑区→源);snapshot 无写出
 }
 
 export function computeButtonStates(s: ButtonStateInput): ButtonStates {
   const ed = s.parseOk ? s.editorDict : null
+  // 三源同构判据:源存在 且 (parse 失败逃生 || 编辑区 ≠ 源)。
+  // 基准(AnchorKind)不参与任何按钮判据——载入与对比彻底解耦:装谁、对照谁互不牵制。
+  const loadable = (src: Record<string, any> | null) => src !== null && (!ed || !dictsEqual(ed, src))
   return {
+    canLoad: { snapshot: loadable(s.snapDict), assoc: loadable(s.assocDict), wc: loadable(s.wcDict) },
     // Write Copy=内容轴唯一入口(解耦 spec §3.1):无 WC → parseOk 即可点(空转创建,决策3);
     // 有 WC → 编辑区≠副本才有写入意义。永不碰 enabled(视图轴归 chip)。
     canWriteCopy: !!ed && (s.wcDict === null || !dictsEqual(ed, s.wcDict)),
-    // Reset:偏离锚 或 parse 失败(改坏 yaml 的逃生门必须可点)
-    canReset: !s.parseOk || (!!ed && !!s.anchorDict && !dictsEqual(ed, s.anchorDict)),
     // Save:异于关联文件才有存盘意义(取代「● 未存盘」标)
     canSave: !!ed && s.assocDict !== null && !dictsEqual(ed, s.assocDict),
     canSaveAs: s.parseOk,
-    // 载入副本(D7):WC 存在且编辑区≠WC(或 parse 失败逃生);把 WC 装进编辑区使之可见/可续编
-    canLoadWc: s.wcDict !== null && (!s.parseOk || !ed || !dictsEqual(ed, s.wcDict)),
-    // 载入关联文件:关联文件已拉到且编辑区≠其内容(或 parse 失败逃生)才亮。
-    // 切下拉只换 assocFile/assocDict(标识+内容,供 diff 锚=关联文件刷新),不载入编辑区;载入走独立 Load 按钮
-    canLoadAssoc: s.assocDict !== null && (!s.parseOk || !ed || !dictsEqual(ed, s.assocDict)),
   }
+}
+
+const _ANCHOR_KINDS: readonly string[] = ['off', 'snapshot', 'assoc', 'wc']
+
+// 对比基准的持久化恢复:非法值(手改 localStorage / 旧 diffMode 键残留的 '1'/'0')→ off(默认不对比);
+// 记忆为 wc 但当前无 WC → 回退 snapshot,不静默停在一个挂不上的基准。
+export function resolveAnchorKind(persisted: string | null, hasWc: boolean): AnchorKind {
+  if (!persisted || !_ANCHOR_KINDS.includes(persisted)) return 'off'
+  return persisted === 'wc' && !hasWc ? 'snapshot' : persisted as AnchorKind
 }
 
 const _NAME_RE = /^[A-Za-z0-9_\-]+\.yaml$/

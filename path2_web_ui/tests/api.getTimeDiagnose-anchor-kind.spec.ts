@@ -25,35 +25,35 @@ describe('getTimeDiagnose anchorKind query 拼接', () => {
 
   it('传 anchorKind="gate" · URL 含 &anchor_kind=gate', async () => {
     await getTimeDiagnose('bo_only', 'AAA', '2024-01-01', '2024-07-01',
-                          50, 80, undefined, undefined, 'gate')
+                          50, 80, undefined, 'gate')
     const url = fetchSpy.mock.calls[0][0] as string
     expect(url).toContain('&anchor_kind=gate')
   })
 
-  it('传 anchorKind="trough" · URL 含 &anchor_kind=trough', async () => {
+  it('传 anchorKind="confirm" · URL 含 &anchor_kind=confirm', async () => {
     await getTimeDiagnose('bo_only', 'AAA', '2024-01-01', '2024-07-01',
-                          50, 80, undefined, undefined, 'trough')
+                          50, 80, undefined, 'confirm')
     const url = fetchSpy.mock.calls[0][0] as string
-    expect(url).toContain('&anchor_kind=trough')
+    expect(url).toContain('&anchor_kind=confirm')
   })
 
   it('不传 anchorKind(undefined)· URL 不含 anchor_kind', async () => {
     await getTimeDiagnose('bo_only', 'AAA', '2024-01-01', '2024-07-01',
-                          50, 80, undefined, undefined)
+                          50, 80, undefined)
     const url = fetchSpy.mock.calls[0][0] as string
     expect(url).not.toContain('anchor_kind=')
   })
 
   it('传空串 anchorKind="" · URL 不含 anchor_kind', async () => {
     await getTimeDiagnose('bo_only', 'AAA', '2024-01-01', '2024-07-01',
-                          50, 80, undefined, undefined, '')
+                          50, 80, undefined, '')
     const url = fetchSpy.mock.calls[0][0] as string
     expect(url).not.toContain('anchor_kind=')
   })
 
   it('特殊字符 anchorKind encodeURIComponent 正确(防守 · 目前 anchorKind 词汇纯字母)', async () => {
     await getTimeDiagnose('bo_only', 'AAA', '2024-01-01', '2024-07-01',
-                          50, 80, undefined, undefined, 'gate&x=y')
+                          50, 80, undefined, 'gate&x=y')
     const url = fetchSpy.mock.calls[0][0] as string
     expect(url).toContain('&anchor_kind=gate%26x%3Dy')
   })

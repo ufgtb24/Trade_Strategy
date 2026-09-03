@@ -1,6 +1,6 @@
 // 视图状态:scanFile / symbol / activePatternId / node 显隐 / 选中对象;
 // 派生 unionRows/sortedRows/pattern/currentAnalysis/effective 三件套。
-import { defineStore } from 'pinia'
+import { defineStore, acceptHMRUpdate } from 'pinia'
 
 // ─────────────────────────────────────────────────────────────────
 // v2 event-debug-multi-anchor(2026-07-15) · anchorsOf 表 + findBoBar helper
@@ -13,7 +13,7 @@ import { defineStore } from 'pinia'
 // ─────────────────────────────────────────────────────────────────
 
 export type DebugAnchor = {
-  key: 'entry' | 'trough' | 'end'
+  key: 'entry' | 'start' | 'end' | 'confirm'
   bar: number
   label: string
   hint: string
@@ -21,46 +21,149 @@ export type DebugAnchor = {
   disabledReason?: string
 }
 
-export function findBoBar(anchor_bo_id: string, events: readonly any[]): number | null {
-  if (!anchor_bo_id) return null
-  const bo = events.find(x => x.event_id === anchor_bo_id)
-  return bo?.end_idx ?? null
+export function findBoBar(anchorBoIds: string | readonly string[], events: readonly any[]): number | null {
+  const anchor: string = Array.isArray(anchorBoIds) ? anchorBoIds[0] ?? '' : anchorBoIds
+  if (!anchor) return null
+  // anchor_bo_id 恒为 instance_id 形态(后端交错标注后 detect 期写入),纯精确匹配
+  const exact = events.find(x => x.instance_id === anchor)
+  return exact?.end_idx ?? null
+}
+
+// ── tb node_id 塌缩细分:容器 / 子段 / V1 三档 ──────────────────────────
+// 引擎 children 声明命名表(方案 A,2026-08-17)已把声明过的段直标子结构 node_id
+// (bottom_burst→'tb_seg',anchorsOf 直挂键 start/end;bb_v3→'tb_seg_v3' 走 V3 锚
+// confirm/end,不走此细分)。
+// 此细分仅服务 node_id 仍为 'tb' 的事件——未声明 children 的 app 的段 + 全部容器/V1:
+//   1. 容器:child_refs 非空(尤其 segments 槽)→ v4 容器,entry/start/end 三锚
+//      (start/end 复用后端状态机埋点,端点由子段承担;前端菜单复用不产生后端双埋)
+//   2. 子段:child_refs 空,但 instance_id 出现在某容器 child_refs 里 → v2/v3 段 confirm/end 锚
+//   3. V1 叶子:child_refs 空 + 未被任何容器引用 → entry/confirm/end 锚
+export type TbAnchorProfile = 'tb_v1' | 'tb_container' | 'tb_segment'
+
+export function tbAnchorProfile(e: any, events: readonly any[]): TbAnchorProfile {
+  const refs = e.child_refs as Record<string, readonly string[]> | undefined
+  if (refs && Object.keys(refs).length > 0) return 'tb_container'
+  const isChild = events.some((x: any) => {
+    const r = x.child_refs as Record<string, readonly string[]> | undefined
+    if (!r) return false
+    return Object.values(r).some(ids => ids.includes(e.instance_id))
+  })
+  return isChild ? 'tb_segment' : 'tb_v1'
+}
+
+function tbContainerAnchors(e: any, events: readonly any[]): DebugAnchor[] {
+  const boBar = findBoBar(e.anchor_bo_id, events)
+  return [
+    {
+      key: 'entry',
+      bar: boBar ?? e.start_idx,   // fallback 避免 null 传导; disabled 阻塞点击
+      label: 'entry',
+      hint: '停在容器 attempt 入口(每 burst 一次)· 看本 burst 机器锚点(bo/global_bottom)起点',
+      disabled: boBar == null,
+      disabledReason: boBar == null
+        ? `未找到 anchor bo event (id=${String(e.anchor_bo_id ?? '')}), 可改用 tb_seg 段调试`
+        : undefined,
+    },
+    {
+      key: 'start',
+      bar: e.start_idx,
+      label: 'start',
+      hint: '容器起点(首段 enter)· 复用状态机 start 埋点(段诞生当根)',
+    },
+    {
+      key: 'end',
+      bar: e.end_idx,
+      label: 'end',
+      hint: '容器终点(末段 exit)· 复用状态机 end 埋点(段收口当根)',
+    },
+  ]
+}
+
+// v2/v3 段锚点(confirm/end):后端 v2/v3 仍埋 confirm/end,词汇未演进,保留
+function tbSegmentAnchorsV3(e: any): DebugAnchor[] {
+  return [
+    {
+      key: 'confirm',
+      bar: e.start_idx,
+      label: 'confirm',
+      hint: '停在段开处(企稳确认根)· 看企稳条件 / local_trough / troughs(SCB / stop signal / base_min)',
+    },
+    {
+      key: 'end',
+      bar: e.end_idx,
+      label: 'end',
+      hint: '停在段出口 · 看 rise/break/timeout/distribute/oversold(weak)哪条触发',
+    },
+  ]
+}
+
+// v4 段锚点(start/end):tb_seg 确认型事件按锚点档位体系(v4 后端状态机埋点)
+function tbSegmentAnchorsV4(e: any): DebugAnchor[] {
+  return [
+    {
+      key: 'start',
+      bar: e.start_idx,
+      label: 'start',
+      hint: '停在段开处(子段确认型 start 档 = 段诞生当根,attempt 归容器)· 看 state/trough/cnt/gbot',
+    },
+    {
+      key: 'end',
+      bar: e.end_idx,
+      label: 'end',
+      hint: '停在段出口 · 看 rise/weak/break/timeout 哪条收段',
+    },
+  ]
+}
+
+function tbV1Anchors(e: any, events: readonly any[]): DebugAnchor[] {
+  const boBar = findBoBar(e.anchor_bo_id, events)
+  return [
+    {
+      key: 'entry',
+      bar: boBar ?? e.start_idx,
+      label: 'entry',
+      hint: '停在本 burst 状态机入口(每 burst 一次)· 看 global_bottom(span 内 measure 最小)与 vol 起点',
+      disabled: boBar == null,
+      disabledReason: boBar == null
+        ? `未找到 anchor bo event (id=${String(e.anchor_bo_id ?? '')})`
+        : undefined,
+    },
+    {
+      key: 'confirm',
+      bar: e.start_idx,
+      label: 'confirm',
+      hint: '停在入段根(第 K 根不刷新)· 看 state / trough / cnt / peak',
+    },
+    {
+      key: 'end',
+      bar: e.end_idx,
+      label: 'end',
+      hint: '停在段收口根 · 看 rise / weak / break / timeout 哪条收口',
+    },
+  ]
 }
 
 export const anchorsOf: Record<string, (e: any, events: readonly any[]) => DebugAnchor[]> = {
+  // 子结构段(children 声明命名表直标 node_id,方案 A):v4 段 start/end 两锚,
+  // 断点实际落在物化者(tb 的 ThrowbackDetectorV4)状态机埋点,menu 键按段自身 node_id。
+  tb_seg: e => tbSegmentAnchorsV4(e),
+  tb_seg_v3: e => tbSegmentAnchorsV3(e),
+  // tb node:容器/段/V1 三档按前端可判信号细分(见 tbAnchorProfile;
+  // 未声明 children 的 app 段仍落此键)
   tb: (e, events) => {
-    const boBar = findBoBar(e.anchor_bo_id ?? '', events)
-    return [
-      {
-        key: 'entry',
-        bar: boBar ?? e.start_idx,   // fallback 避免 null 传导; disabled 阻塞点击
-        label: 'entry',
-        hint: '停在 evaluate_throwback 入口 · 看 anchor / atr 起点(F10 可下潜到子函数)',
-        disabled: boBar == null,
-        disabledReason: boBar == null
-          ? `未找到 anchor bo event (id=${e.anchor_bo_id ?? ''}), 契约可能漂移; 可从 trough/end 断点`
-          : undefined,
-      },
-      {
-        key: 'trough',
-        bar: e.start_idx,
-        label: 'trough',
-        hint: '停在 _find_start_idx return 前 · 已算好 trough_idx, 可看 depth / base_min',
-      },
-      {
-        key: 'end',
-        bar: e.end_idx,
-        label: 'end',
-        hint: '停在 _find_end_idx return 前 · 大涨 / timeout 两分支(pydevd 源码行区分)',
-      },
-    ]
+    const p = tbAnchorProfile(e, events)
+    if (p === 'tb_segment') return tbSegmentAnchorsV3(e)
+    if (p === 'tb_v1') return tbV1Anchors(e, events)
+    return tbContainerAnchors(e, events)
   },
-  _default: () => [],  // D7 · 不给未埋点 class 生成菜单项(防"菜单显示但 breakpoint 不 hit"的无声失败)
+  _default: () => [],  // D7 · 不给未埋点 node 生成菜单项(防"菜单显示但 breakpoint 不 hit"的无声失败)
 }
 
-// D8 · DEBUG_ENABLED_CLASSES 与 anchorsOf 硬耦合(单一 source of truth):
+// D8 · DEBUG_ENABLED_NODES 与 anchorsOf 硬耦合(单一 source of truth):
 // 后端埋新 detector 时,前端只改 anchorsOf,whitelist 自动同步。
-export const DEBUG_ENABLED_CLASSES = Object.keys(anchorsOf).filter(k => k !== '_default')
+// 实例化后白名单按 node_id 匹配;子结构 node(tb_seg 等)自身无 detector,
+// 埋点在其 produced_by detector(段锚断点即容器 detector 的埋点)。
+export const DEBUG_ENABLED_NODES = Object.keys(anchorsOf).filter(k => k !== '_default')
 
 import { computed, ref, shallowRef, watch } from 'vue'
 import type {
@@ -78,7 +181,8 @@ import { getDiagnose, getPreview, getTimeDiagnose, getPairDiagnose, saveWcMirror
 import { useConfigStore } from './config'
 
 // shift+click 累积器条目(入口 D · KlineChart.ts::handleShiftClick 消费/写入)。
-export type ShiftSelectedEvent = { event_id: string; class_id: string; source: 'main' | 'sub' }
+// 实例化契约:instance_id/node_id(取代旧的复合身份字段)。
+export type ShiftSelectedEvent = { instance_id: string; node_id: string; source: 'main' | 'sub' }
 
 export type Selected =
   | { kind: 'match'; matchId: string }
@@ -142,13 +246,15 @@ export const useViewStore = defineStore('view', () => {
   const symbolQuery = ref<string>('')
 
   const nodeVisible = ref<Record<string, boolean>>({})
-  // 焦点意图两条正交轴(spec §3.1):
-  //   focusedMatchId 非空 & focusedEventId 空 → bracket-focus,展 trace
-  //   focusedEventId 非空 → event-focus,不展 trace(可能同时有 focusedMatchId=唯一归属 m)
-  //   两者都空 & candidateMatchIds 非空 → 多归属 pending 态
+  // 焦点意图(实例级单入口,spec §3.1):focusedMatchId 非空 & 无实例焦点 → bracket-focus,
+  // 展 trace;selectedInstanceId/focusedInstanceId 任一非空 → 实例-focus,不展 trace(可能
+  // 同时有 focusedMatchId=唯一归属 m);两者都空 & candidateMatchIds 非空 → 多归属 pending。
+  //   0 归属(只聚焦实例) → selectedInstanceId 非空
+  //   1 归属(直选 match)  → focusedMatchId + focusedInstanceId 非空
   const focusedMatchId = ref<string | null>(null)
-  const focusedEventId = ref<string | null>(null)
-  // sidebar 漏斗手动 toggle 兜底:仅在 focusedEventId/pendingDisambigEventId 都空时生效
+  const selectedInstanceId = ref<string | null>(null)
+  const focusedInstanceId = ref<string | null>(null)
+  // sidebar 漏斗手动 toggle 兜底:仅在无实例焦点/pending 时生效
   // sidebar 漏斗手动展开集合(多 node 可同时展开)。语义分层:
   //   手动入口(sidebar 漏斗行 / TopologyControl dblclick)= toggleExpandedNode (add/remove,不折叠其他)
   //   自动入口(focusEvent · marker/candidate/trace node click)= add 焦点 node(不折叠其他)
@@ -157,12 +263,12 @@ export const useViewStore = defineStore('view', () => {
   const manualExpandedNodes = ref<Set<string>>(new Set())
   const level = ref<Level>(loadLevelFromLS())
   const candidateMatchIds = ref<ReadonlySet<string>>(new Set())
-  const pendingDisambigEventId = ref<string | null>(null)
+  const pendingDisambigInstanceId = ref<string | null>(null)
   const hoveredEventId = ref<string | null>(null)
   const diag = ref<Diagnostics | null>(null)
 
   // ── 入口 A/D(Task 18):KlineChart brush(scope=time)+ shift+click 跨图(scope=pair) ──
-  // shiftSelectedEvents 是唯一跨组件状态载体(同 selectedEventId/candidateMatchIds 既有模式;
+  // shiftSelectedEvents 是唯一跨组件状态载体(同 focusedInstanceRef/candidateMatchIds 既有模式;
   // KlineChart 本身零 props/零 emit,靠 store 与 DetailSidebar 通信),故放这里而非组件内 ref。
   const shiftSelectedEvents = ref<ShiftSelectedEvent[]>([])
   const activeDetailCard = ref<'time' | 'pair' | 'debug' | null>(null)
@@ -170,13 +276,13 @@ export const useViewStore = defineStore('view', () => {
   // v2 event-debug(2026-07-15) · marker 右键触发的精准断点 pending 状态。
   // 单槽位覆盖模型(与 activeDetailCard 单值互斥模式一致): 新 debug 请求 abort 旧 controller。
   const debugPending = ref(false)
-  const debugTarget = ref<{ eventId: string; bar: number; className: string; anchor: string } | null>(null)
+  const debugTarget = ref<{ instanceId: string; bar: number; node_id: string; anchor: string } | null>(null)
   // fetch 失败(network/500)态 · 与 debugPending=false 组合区分"断点已释放"(成功)vs"请求失败"
   const debugError = ref<string | null>(null)
   let debugAbortRef: AbortController | null = null
   const timeScopeResponse = ref<TimeScopeResponse | null>(null)
   // 入口 A · FailedAttemptsCard 下拉过滤态 · '' = 全部;提升到 store 让 KlineChart brush handler 可透传给 triggerTimeQuery
-  const currentTimeEventClass = ref<string>('')
+  const currentDiagnoseNode = ref<string>('')
   const pairScopeResponse = ref<PairScopeResponse | null>(null)
 
   // ── Working Copy(2026-07-20 params-consistency,spec=docs/research/2026-07-20_params-profiles-dev-modes)──
@@ -481,7 +587,7 @@ export const useViewStore = defineStore('view', () => {
     activePatternId.value = (last && f.pattern_ids.includes(last))
       ? last : (f.pattern_ids[0] ?? null)
     candidateMatchIds.value = new Set()
-    pendingDisambigEventId.value = null
+    pendingDisambigInstanceId.value = null
     clearDetailCard()
     symbolQuery.value = ''
     initVisiblePatterns(f.pattern_ids)
@@ -502,7 +608,7 @@ export const useViewStore = defineStore('view', () => {
     preview.value = null
     previewError.value = null
     candidateMatchIds.value = new Set()
-    pendingDisambigEventId.value = null
+    pendingDisambigInstanceId.value = null
     visiblePatterns.value = new Set()
     symbolQuery.value = ''
     clearDetailCard()
@@ -522,7 +628,7 @@ export const useViewStore = defineStore('view', () => {
     preview.value = null
     previewError.value = null
     candidateMatchIds.value = new Set()
-    pendingDisambigEventId.value = null
+    pendingDisambigInstanceId.value = null
     clearDetailCard()
     if (previewEnabled.value) void runPreview()
   }
@@ -532,7 +638,7 @@ export const useViewStore = defineStore('view', () => {
     clearFocus()
     manualExpandedNodes.value = new Set()   // 切数据源清空展开集
     candidateMatchIds.value = new Set()
-    pendingDisambigEventId.value = null
+    pendingDisambigInstanceId.value = null
     clearDetailCard()
     if (previewEnabled.value) void runPreview()
     symbolQuery.value = ''
@@ -590,22 +696,27 @@ export const useViewStore = defineStore('view', () => {
     manualExpandedNodes.value = s
   }
 
-  // ── Task 2 高层 action(spec §3.3)· 消费点将在 Task 3/4 迁移到这三个 ─────────────
+  // ── Task 2 高层 action(spec §3.3)· 消费点已统一到单入口 focusEvent/focusMatch ──
   function focusMatch(matchId: string): void {
     focusedMatchId.value = matchId
-    focusedEventId.value = null
+    selectedInstanceId.value = null
+    focusedInstanceId.value = null
     manualExpandedNodes.value = new Set()  // collapse all · trace 独占视野
     clearCandidates()
   }
 
-  function focusEvent(eventId: string): void {
+  // 单入口实例级焦点(spec §5):focusEvent(instanceId)。所有调用点(marker 点击、
+  // 侧栏实例行、候选表行)都持有 instance_id;身份级入口已消灭。
+  // 归属 = match.node_index 值(instance_id 字符串)精确引用计数 0/1/≥2:
+  //   0 → 只聚焦实例(selectedInstanceId=instanceId,不设 match)
+  //   1 → 直选(focusedMatchId + focusedInstanceId=instanceId)
+  //   ≥2 → 多归属 pending(candidateMatchIds + pendingDisambigInstanceId=instanceId)
+  function focusEvent(instanceId: string): void {
     const matches = effectiveAnalysis.value?.matches ?? []
     const events  = effectiveAnalysis.value?.events  ?? []
-    const edges   = effectivePattern.value?.topology.edges ?? []
-    const ms = matches.filter(m => matchedIdsOf([m], events, edges).has(eventId))
 
     // 焦点意图:add 焦点所在 node 到展开集(不折叠其他 node);node 无解则不动集合。
-    const ev = events.find(e => e.event_id === eventId)
+    const ev = events.find(e => e.instance_id === instanceId)
     if (ev) {
       const node = nodeOfEventByBand(ev, tagMap.value.tagToNodes, tagMap.value.tagList)
       if (node && !manualExpandedNodes.value.has(node)) {
@@ -615,34 +726,57 @@ export const useViewStore = defineStore('view', () => {
       }
     }
 
+    // 子结构爬升(2026-08-16):bo/tb_seg 等子事件不在 match.node_index(成员 = 各
+    // node 绑定实例;子结构经容器 child_refs 挂靠),直接解析恒 0 归属 → 点段/点 bo
+    // 只亮单点。补一层「子→父」:经 events 的 child_refs 建逆索引,用父容器
+    // instance_id 再解析归属。多父(前缀族共享 bo)汇总后照走 0/1/≥2 三分支
+    // (≥2 弹候选消歧);邻居段高亮由 highlightedEventIds 的 matchedIds
+    // child_refs 闭包内建(选中容器 → 其全部 segments 进高亮集)。
+    let ms = matches.filter(m => Object.values(m.node_index).includes(instanceId))
+    if (ms.length === 0) {
+      const parents = new Set<string>()
+      for (const e of events) {
+        for (const ids of Object.values(e.child_refs ?? {})) {
+          if (Array.isArray(ids) && ids.includes(instanceId)) parents.add(e.instance_id)
+        }
+      }
+      if (parents.size > 0) {
+        ms = matches.filter(m => Object.values(m.node_index).some(id => parents.has(id)))
+      }
+    }
+
     if (ms.length === 0) {
       focusedMatchId.value = null
-      focusedEventId.value = eventId
+      selectedInstanceId.value = instanceId
+      focusedInstanceId.value = null
       clearCandidates()
     } else if (ms.length === 1) {
-      focusedMatchId.value = ms[0].event_id
-      focusedEventId.value = eventId
+      focusedMatchId.value = ms[0].match_id
+      selectedInstanceId.value = null
+      focusedInstanceId.value = instanceId
       clearCandidates()
     } else {
       // 多归属:信息层(markedMatchIds=candidates)+ 视觉层(不亮 group,等 disambig)
       focusedMatchId.value = null
-      focusedEventId.value = null
-      setCandidateMatches(ms.map(m => m.event_id))
-      setPendingDisambig(eventId)
+      selectedInstanceId.value = null
+      focusedInstanceId.value = null
+      setCandidateMatches(ms.map(m => m.match_id))
+      pendingDisambigInstanceId.value = instanceId
     }
-    autoFollowLevel(eventId)
+    autoFollowLevel(instanceId)
   }
 
   function clearFocus(): void {
     focusedMatchId.value = null
-    focusedEventId.value = null
+    selectedInstanceId.value = null
+    focusedInstanceId.value = null
     clearCandidates()
     clearShiftSelection()
   }
 
   // spec §3.5:单向放松门控;只降不升;仅 focusEvent 调用
-  function autoFollowLevel(eventId: string): void {
-    const ev = effectiveAnalysis.value?.events.find(e => e.event_id === eventId)
+  function autoFollowLevel(instanceId: string): void {
+    const ev = effectiveAnalysis.value?.events.find(e => e.instance_id === instanceId)
     if (!ev) return
     const evTier = eventTier(ev)
     const RANK: Record<Level, number> = { matched: 2, qualified: 1, detected: 0 }
@@ -653,14 +787,14 @@ export const useViewStore = defineStore('view', () => {
   function hoverEvent(id: string | null) { hoveredEventId.value = id }
   function setCandidateMatches(ids: string[]) {
     candidateMatchIds.value = new Set(ids)
-    if (ids.length === 0) pendingDisambigEventId.value = null
+    if (ids.length === 0) pendingDisambigInstanceId.value = null
   }
   function clearCandidates() {
     candidateMatchIds.value = new Set()
-    pendingDisambigEventId.value = null
+    pendingDisambigInstanceId.value = null
   }
-  function setPendingDisambig(eid: string | null) {
-    pendingDisambigEventId.value = eid
+  function setPendingDisambig(iid: string | null) {
+    pendingDisambigInstanceId.value = iid
   }
 
   // ── 入口 A(brush)+ 入口 D(shift+click)query actions(Task 18) ──────────────
@@ -672,7 +806,7 @@ export const useViewStore = defineStore('view', () => {
   }
   const shiftPairPending = computed<boolean>(() => shiftSelectedEvents.value.length === 1)
   const shiftSelectedEventIds = computed<ReadonlySet<string>>(
-    () => new Set(shiftSelectedEvents.value.map(e => e.event_id))
+    () => new Set(shiftSelectedEvents.value.map(e => e.instance_id))
   )
   /** 清掉当前展示的 time/pair/candidate 查询卡片(DetailSidebar 关闭按钮 · undo-swap · 切股/切
    * pattern 防陈旧残留)。loadScanFile/clearScanFile/selectSymbol/setActivePattern 4 处 reset
@@ -682,7 +816,7 @@ export const useViewStore = defineStore('view', () => {
     timeScopeResponse.value = null
     pairScopeResponse.value = null
     shiftSelectedEvents.value = []
-    currentTimeEventClass.value = ''
+    currentDiagnoseNode.value = ''
     // v2 D9 · 同步清 debug state · abort 挂起的 debug fetch
     if (debugAbortRef) {
       debugAbortRef.abort()
@@ -692,23 +826,25 @@ export const useViewStore = defineStore('view', () => {
     debugPending.value = false
     debugError.value = null
   }
-  async function triggerTimeQuery(startBar: number, endBar: number, eventClass?: string): Promise<void> {
+  // 入口 A 请求恒不带 node 过滤(过滤是纯前端显示层,重新请求会让后端
+  // node 过滤返回子集 → failedNodes 坍缩 → 下拉其他 node 置灰)。
+  async function triggerTimeQuery(startBar: number, endBar: number): Promise<void> {
     if (!symbol.value || !activePatternId.value || !scanFile.value) return
     const w = windowOf((effectiveScan.value ?? scanFile.value.scan) as any)
     try {
       timeScopeResponse.value = await getTimeDiagnose(
         activePatternId.value, symbol.value, w.start, w.end, startBar, endBar,
-        eventClass, undefined, 'gate',   // ★ v3 · 入口 A 硬编码 anchorKind='gate'
+        undefined, 'gate',   // ★ v3 · 入口 A 硬编码 anchorKind='gate'
         effectiveParamsOverride.value ?? undefined)   // Task 9 · 三环节一致性:探索态透传 WC
       activeDetailCard.value = 'time'
     } catch { timeScopeResponse.value = null }
   }
-  async function triggerPairQuery(srcEventId: string, dstEventId: string): Promise<void> {
+  async function triggerPairQuery(srcInstanceId: string, dstInstanceId: string): Promise<void> {
     if (!symbol.value || !activePatternId.value || !scanFile.value) return
     const w = windowOf((effectiveScan.value ?? scanFile.value.scan) as any)
     try {
       pairScopeResponse.value = await getPairDiagnose(
-        activePatternId.value, symbol.value, w.start, w.end, srcEventId, dstEventId,
+        activePatternId.value, symbol.value, w.start, w.end, srcInstanceId, dstInstanceId,
         effectiveParamsOverride.value ?? undefined)   // Task 9 · 三环节一致性:探索态透传 WC
       activeDetailCard.value = 'pair'
     } catch { pairScopeResponse.value = null }
@@ -717,13 +853,14 @@ export const useViewStore = defineStore('view', () => {
   // v2 event-debug(2026-07-15) · marker 右键 → 精准断点触发
   // spec: docs/research/2026-07-15_event-debug-dual-emit-multi-anchor/final_report.md
   async function triggerEventDebug(
-    eventId: string, anchorKey: 'entry' | 'trough' | 'end'
+    instanceId: string, anchorKey: 'entry' | 'start' | 'end' | 'confirm'
   ): Promise<void> {
     if (!symbol.value || !activePatternId.value || !scanFile.value) return
     const events = effectiveAnalysis.value?.events ?? []
-    const event = events.find(e => e.event_id === eventId)
+    // 实例化契约:参数承载 instance_id;anchorsOf 键按 node_id 反查(debug_enabled 亦按 node)
+    const event = events.find(e => e.instance_id === instanceId)
     if (!event) return
-    const anchorFn = anchorsOf[event.class_id] ?? anchorsOf._default
+    const anchorFn = anchorsOf[event.node_id] ?? anchorsOf._default
     const anchors = anchorFn(event, events)
     const anchor = anchors.find(a => a.key === anchorKey)
     if (!anchor || anchor.disabled) return
@@ -733,7 +870,7 @@ export const useViewStore = defineStore('view', () => {
     debugAbortRef = controller
     debugError.value = null   // 清上一次错误 · 防混叠
     debugTarget.value = {
-      eventId, bar: anchor.bar, className: event.class_id, anchor: anchor.key,
+      instanceId, bar: anchor.bar, node_id: event.node_id, anchor: anchor.key,
     }
     debugPending.value = true
     activeDetailCard.value = 'debug'
@@ -741,7 +878,7 @@ export const useViewStore = defineStore('view', () => {
     try {
       await getTimeDiagnose(
         activePatternId.value, symbol.value, w.start, w.end,
-        anchor.bar, anchor.bar, event.class_id, controller.signal,
+        anchor.bar, anchor.bar, controller.signal,
         anchor.key,                                       // ★ v3 · anchor.key 直接透传为 anchorKind
         effectiveParamsOverride.value ?? undefined,        // Task 9 · 三环节一致性:探索态透传 WC
       )
@@ -825,17 +962,19 @@ export const useViewStore = defineStore('view', () => {
     } catch { if (symbol.value === reqSymbol && activePatternId.value === reqPid) diag.value = null }
   }, { immediate: true })
 
-  // spec §3.1 派生:导出符号保持,内部从 focusedMatchId/focusedEventId 派生。
+  // spec §3.1 派生:导出符号保持,内部从 focusedMatchId + 实例焦点(selected/focusedInstanceId)派生。
   // selected 从 ref → computed(渲染层零改动 · storeToRefs 拿到的仍是 reactive)。
   const selected = computed<Selected>(() =>
     focusedMatchId.value ? { kind: 'match' as const, matchId: focusedMatchId.value } : null)
 
   const selectedMatchId = computed<string | null>(() => focusedMatchId.value)
-  const selectedEventId = computed<string | null>(() => focusedEventId.value)
+  // 当前聚焦实例(instance_id)的合并引用:selectedInstanceId(0 归属·只聚焦)与
+  // focusedInstanceId(1 归属·直选)互斥,合并即「当前聚焦实例」。取代旧的事件级焦点派生。
+  const focusedInstanceRef = computed<string | null>(() => selectedInstanceId.value ?? focusedInstanceId.value)
 
   const selectedMatch = computed<MatchDict | null>(() => {
     if (!focusedMatchId.value || !effectiveAnalysis.value) return null
-    return effectiveAnalysis.value.matches.find(m => m.event_id === focusedMatchId.value) ?? null
+    return effectiveAnalysis.value.matches.find(m => m.match_id === focusedMatchId.value) ?? null
   })
 
   // 视觉层(spec §3.1 分层):focusedMatchId 存在 → 亮 group 展开集;多归属 pending 时不亮
@@ -847,12 +986,51 @@ export const useViewStore = defineStore('view', () => {
       [m],
       effectiveAnalysis.value?.events ?? [],
       effectivePattern.value?.topology.edges ?? [],
+      { expandAnchor: false },
     )
   })
 
-  // 匹配 trace 展开的唯一判据(spec §3.1)
+  // 匹配 trace 展开的唯一判据(spec §3.1):有 match 且无实例焦点(任一实例 ref 为空)才展 trace
   const showTrace = computed<boolean>(() =>
-    focusedMatchId.value !== null && focusedEventId.value === null)
+    focusedMatchId.value !== null && selectedInstanceId.value === null && focusedInstanceId.value === null)
+
+  // 组成型组「一选全选」(2026-08-17):0 归属(非 match)时,点组成型容器或其任一段 →
+  // 整组(容器+全部段)进视觉选中集,与 match 组高亮同款 group 边框(点击者仍由 focus
+  // 条目独家表达,chart group 分支按 focusedInstanceRef 排除)。1/≥2 归属时
+  // selectedInstanceId=null → 空集,由 match 的 matchedIds 闭包覆盖——本机制只
+  // 服务「无 match 的灰色组」。组成型判别 = topology.nodes[].produced_by 非空
+  // (bo→burst 是引用型,公共资源,不在此列)。
+  const compositionGroupIds = computed<ReadonlySet<string>>(() => {
+    const iid = selectedInstanceId.value
+    if (!iid) return new Set()
+    const topoNodes = effectivePattern.value?.topology.nodes ?? []
+    const structural = topoNodes.filter(n => n.produced_by != null)
+    if (structural.length === 0) return new Set()
+    const structuralNodes = new Set(structural.map(n => n.node_id))
+    const events = effectiveAnalysis.value?.events ?? []
+    const ev = events.find(e => e.instance_id === iid)
+    if (!ev) return new Set()
+    // 组代表容器:点段 → 经 child_refs 逆索引爬到容器(组成段专属单容器);
+    // 点容器 → 须持有组成型子槽(某 structural node 的 parent_refs 引用它),
+    // 否则(孤立 bo/burst 等引用型/无关 node)空集,维持单点聚焦不变。
+    let container = ev
+    if (structuralNodes.has(ev.node_id)) {
+      const parent = events.find(e =>
+        Object.values(e.child_refs ?? {}).some(ids =>
+          Array.isArray(ids) && ids.includes(iid)))
+      if (!parent) return new Set([iid])   // 孤段(组成型不应出现,防御回落单点)
+      container = parent
+    } else {
+      const hasCompSlot = structural.some(n =>
+        (n.parent_refs ?? []).some(([p]) => p === ev.node_id))
+      if (!hasCompSlot) return new Set()
+    }
+    const out = new Set<string>([container.instance_id])
+    for (const ids of Object.values(container.child_refs ?? {})) {
+      if (Array.isArray(ids)) for (const id of ids) out.add(id)
+    }
+    return out
+  })
 
   // 漏斗展开集合:单 source = manualExpandedNodes。手动/自动分层写入:
   //   toggleExpandedNode (sidebar 漏斗行 / topology dblclick) = add/remove(不折叠其他)
@@ -871,12 +1049,13 @@ export const useViewStore = defineStore('view', () => {
   })
 
   // sidebar 候选表"选中"样式判据(spec §3.1 信息层):
-  //   focus event → {focusedEventId}
-  //   多归属 pending → {pendingDisambigEventId}
+  //   实例 focus → {selectedInstanceId ?? focusedInstanceId}
+  //   多归属 pending → {pendingDisambigInstanceId}
   //   都空 → 空集
   const markedEventIds = computed<ReadonlySet<string>>(() => {
-    if (focusedEventId.value) return new Set([focusedEventId.value])
-    if (pendingDisambigEventId.value) return new Set([pendingDisambigEventId.value])
+    const iid = selectedInstanceId.value ?? focusedInstanceId.value
+    if (iid) return new Set([iid])
+    if (pendingDisambigInstanceId.value) return new Set([pendingDisambigInstanceId.value])
     return new Set()
   })
 
@@ -891,17 +1070,22 @@ export const useViewStore = defineStore('view', () => {
     effectiveAnalysis.value?.matches ?? [], effectiveAnalysis.value?.events ?? [],
     effectivePattern.value?.topology.edges ?? []))
 
+  // 实例化契约下 matchedEventIds ≡ matchedIds(集合元素即 instance_id;身份级判定已消灭,
+  // 消费方如 diag AttrRow 按 row.instance_id 判档)。保留导出名避免 Task 10 消费点空引用。
+  const matchedEventIds = computed<Set<string>>(() => new Set(matchedIds.value))
+
   const qualifiedIds = computed<Set<string>>(() => qualifiedIdsOf(diag.value))
 
-  function bandKey(e: EventDict): string { return bandKeyOf(e, tagMap.value.tagList) }
+  function bandKey(e: EventDict): string { return bandKeyOf(e) }
   function eventTier(e: EventDict): Tier { return eventTierOf(e, matchedIds.value, qualifiedIds.value) }
 
   return {
     scanFile, symbol, activePatternId, sortByPid, sortDesc,
     nodeVisible, selected,
-    focusedMatchId, focusedEventId, manualExpandedNodes,     // 内部 ref(export 便于 whitebox 单元测)
-    level, selectedEventId, highlightedEventIds, candidateMatchIds, pendingDisambigEventId, hoveredEventId, diag,
+    focusedMatchId, selectedInstanceId, focusedInstanceId, manualExpandedNodes,  // 内部 ref(export 便于 whitebox 单元测)
+    level, focusedInstanceRef, highlightedEventIds, candidateMatchIds, pendingDisambigInstanceId, hoveredEventId, diag,
     showTrace, expandedNodeIds, markedMatchIds, markedEventIds, // 派生 computed export
+    compositionGroupIds,   // 组成型组「一选全选」(0 归属非 match 组)
     shiftSelectedEvents, activeDetailCard, timeScopeResponse, pairScopeResponse,
     shiftPairPending, shiftSelectedEventIds,
     previewEnabled, preview, previewLoading, previewError,
@@ -915,7 +1099,7 @@ export const useViewStore = defineStore('view', () => {
     visiblePatterns, visibleFields, symbolQuery,
     effectivePattern, effectiveAnalysis, effectiveScan,
     unionRows, sortedRows, filteredSortedRows, previewListRow, patternHitCounts,
-    nodeColors, selectedMatchId, selectedMatch, tagMap, isolated, matchedIds, qualifiedIds,
+    nodeColors, selectedMatchId, selectedMatch, tagMap, isolated, matchedIds, matchedEventIds, qualifiedIds,
     loadScanFile, clearScanFile, setCurrentScanName, currentScanName, selectSymbol, setActivePattern, setSort,
     toggleNode, toggleExpandedNode,
     focusMatch, focusEvent, clearFocus,
@@ -924,7 +1108,7 @@ export const useViewStore = defineStore('view', () => {
     setShiftSelectedEvents, clearShiftSelection, clearDetailCard, triggerTimeQuery, triggerPairQuery,
     // v2 event-debug(2026-07-15)
     debugPending, debugTarget, debugError, triggerEventDebug, cancelDebug,
-    currentTimeEventClass,
+    currentDiagnoseNode,
     setPreviewEnabled, runPreview, clearPreview,
     initVisiblePatterns, togglePattern, setPatternsAllOn, setPatternsAllOff, invertPatterns,
     setSymbolQuery, clearSymbolQuery,
@@ -932,3 +1116,11 @@ export const useViewStore = defineStore('view', () => {
     bandKey, eventTier,
   }
 })
+
+// HMR 热替换 store 实例(pinia 官方样板):不配时 Vue SFC 的 accept 边界会吞掉
+// 整页 reload,store 实例留存旧模块闭包——改本文件后出现「模块级 import(如
+// anchorsOf)是新、store action 是旧」的半更新(2026-08-17 实证:新锚点菜单项
+// 点击毫无反应,find(key) 落在旧表静默 return)。
+if (import.meta.hot) {
+  import.meta.hot.accept(acceptHMRUpdate(useViewStore, import.meta.hot))
+}

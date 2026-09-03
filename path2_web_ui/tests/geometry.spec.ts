@@ -5,11 +5,11 @@ import type { EventDict } from '../src/types'
 describe('geometry', () => {
   it('splitGeometry separates points and intervals', () => {
     const { points, intervals } = splitGeometry([
-      { event_id: 'p', start_idx: 5, end_idx: 5, class_id: 't' },
-      { event_id: 'i', start_idx: 2, end_idx: 8, class_id: 't' },
+      { instance_id: 'p#0', node_id: 't', instance_idx: 0, start_idx: 5, end_idx: 5 },
+      { instance_id: 'i#0', node_id: 't', instance_idx: 0, start_idx: 2, end_idx: 8 },
     ] as any)
-    expect(points.map(p => p.event_id)).toEqual(['p'])
-    expect(intervals.map(i => i.event_id)).toEqual(['i'])
+    expect(points.map(p => p.instance_id)).toEqual(['p#0'])
+    expect(intervals.map(i => i.instance_id)).toEqual(['i#0'])
   })
 
   it('packLanes assigns non-overlapping intervals to lane 0, overlaps stack', () => {
@@ -26,13 +26,13 @@ describe('geometry', () => {
 
   it('packBrackets packs match spans by lane', () => {
     const b = packBrackets([
-      { event_id: 'm1', start_idx: 0, end_idx: 10 },
-      { event_id: 'm2', start_idx: 3, end_idx: 7 },   // 重叠 → lane 1
+      { match_id: 'm1', start_idx: 0, end_idx: 10 },
+      { match_id: 'm2', start_idx: 3, end_idx: 7 },   // 重叠 → lane 1
     ] as any)
-    expect(b.find(x => x.event_id === 'm1')!.lane).toBe(0)
-    expect(b.find(x => x.event_id === 'm2')!.lane).toBe(1)
+    expect(b.find(x => x.match_id === 'm1')!.lane).toBe(0)
+    expect(b.find(x => x.match_id === 'm2')!.lane).toBe(1)
     // 带序号(1-based)
-    expect(b.find(x => x.event_id === 'm1')!.ordinal).toBe(1)
+    expect(b.find(x => x.match_id === 'm1')!.ordinal).toBe(1)
   })
 
   it('packLanes: inclusive spans sharing a bar take different lanes', () => {
@@ -46,20 +46,20 @@ describe('geometry', () => {
 })
 
 const evB = (id: string, st: string, s: number, e: number): EventDict =>
-  ({ class_id: st, event_id: id, start_idx: s, end_idx: e, source_tag: st, child_refs: {} })
+  ({ instance_id: id + '#0', node_id: st, instance_idx: 0, start_idx: s, end_idx: e, child_refs: {} })
 
 describe('packByBand', () => {
   it('每 band 独立 packLanes,band 内重叠才分 lane', () => {
     const items = [evB('a','trend0',0,5), evB('b','trend0',2,7), evB('c','trend1',0,5)]
-    const out = packByBand(items, ['trend0','trend1'], (e) => e.source_tag as string)
-    const a = out.find(o => o.event_id === 'a')!, b = out.find(o => o.event_id === 'b')!, c = out.find(o => o.event_id === 'c')!
+    const out = packByBand(items, ['trend0','trend1'], (e) => e.node_id)
+    const a = out.find(o => o.instance_id === 'a#0')!, b = out.find(o => o.instance_id === 'b#0')!, c = out.find(o => o.instance_id === 'c#0')!
     expect(a.band).toBe(0); expect(c.band).toBe(1)
     expect(a.nBands).toBe(2)
     expect(a.lane).not.toBe(b.lane)            // 同 band 重叠 → 不同 lane
     expect(c.lane).toBe(0)                     // 另一 band lane 重置
   })
   it('空 band 不产出;band 序即 bandOrder 序', () => {
-    const out = packByBand([evB('x','bo',0,0)], ['trend0','bo'], (e) => e.source_tag as string)
+    const out = packByBand([evB('x','bo',0,0)], ['trend0','bo'], (e) => e.node_id)
     expect(out.length).toBe(1)
     expect(out[0].band).toBe(1)                // bo 是 bandOrder[1]
   })
@@ -71,9 +71,9 @@ describe('packByBand', () => {
       evB('spot', 'trend0', 3, 3),
       evB('span', 'trend0', 3, 8),
     ]
-    const out = packByBand(items, ['trend0'], (e) => e.source_tag as string)
-    const spot = out.find(o => o.event_id === 'spot')!
-    const span = out.find(o => o.event_id === 'span')!
+    const out = packByBand(items, ['trend0'], (e) => e.node_id)
+    const spot = out.find(o => o.instance_id === 'spot#0')!
+    const span = out.find(o => o.instance_id === 'span#0')!
     expect(spot.band).toBe(0)
     expect(span.band).toBe(0)
     expect(spot.lane).not.toBe(span.lane)
@@ -87,7 +87,7 @@ describe('packByBand', () => {
       evB('s2', 'trend0', 5, 5),
       evB('s3', 'trend0', 5, 5),
     ]
-    const out = packByBand(items, ['trend0'], (e) => e.source_tag as string)
+    const out = packByBand(items, ['trend0'], (e) => e.node_id)
     const lanes = out.map(o => o.lane).sort()
     expect(lanes).toEqual([0, 1, 2])
   })

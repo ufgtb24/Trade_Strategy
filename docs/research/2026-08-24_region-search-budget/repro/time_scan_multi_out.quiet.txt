@@ -1,0 +1,2 @@
+regex=^A workers=8 scanned=768 hits=227 errors=0 n_match=585 FP=0.536697247706422 wall=11.6s  per-stock-wall=15ms  cpu-equiv=120ms/stock
+regex=^A workers=24 scanned=768 hits=227 errors=0 n_match=585 FP=0.536697247706422 wall=7.6s  per-stock-wall=10ms  cpu-equiv=237ms/stock

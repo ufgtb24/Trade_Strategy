@@ -1,4 +1,4 @@
-# Default params for bottom_breakout_burst pattern (V3.3 B 方案,nested by node)。
+# Default params for bottom_burst pattern (V3.3 B 方案,nested by node)。
 # 调参在开发完成后单独进行,本文件先用合理默认值。改完下一次 web /scan 即热加载生效。
 
 bo:
@@ -23,17 +23,16 @@ burst:
   vol_spike_min: 3.0
 
 tb:
-  # 注意:max_start_gap 同时被 ThrowbackDetector 与 burst→tb edge 复用
-  # (SSoT 单一定义,dag_spec 内 edge 显式引用 params.tb.max_start_gap)
-  max_start_gap: 5
-  max_window: 5
-  atr_window: 14
-  big_rise_k: 1.5
-  stop_confirm_bars: 2
-  anchor_measure: high
-  support_measure: close
+  # 注意:max_span 同时被 ThrowbackDetectorV1 与 burst→tb edge 复用
+  # (SSoT 单一定义,dag_spec 内 edge 显式引用 params.tb.max_span)
+  max_rise_k: 1.5         # 反弹/脱离阈值(median TR 倍数)
+  stop_confirm_bars: 1    # K 根不刷新入段
+  vol_window: 14          # median TR 滚动窗(即时取 i-1)
+  max_span: 20            # 全局预算 [bo+1, bo+max_span];edge max_gap 同值(SSoT)。占位值,验证闸后拍板
+  measure: close          # 全部数值比较口径;阴线臂恒 close/open
+  max_day_drop_pct: 0.20  # 资格型 where 阈值(2026-08-18 定案):回踩段单日跌幅≥此值→tb where 拦;null=不加该 where
 
 # edges 段:当前所有 edge 字段或硬编码(min_gap=1/anchor_field/Child(...))或从 node
-# section 引用(max_gap = tb.max_start_gap),故本段当前为空。保留 section 占位以便未来
+# section 引用(max_gap = tb.max_span),故本段当前为空。保留 section 占位以便未来
 # 扩展 edge-only 参数(如某新边的 max_lag)。
 edges: {}

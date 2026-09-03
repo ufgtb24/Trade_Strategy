@@ -1,0 +1,23 @@
+补跑股票池:71 只(0 < len(win) < 300,判据放宽到与生产一致的 len(win)==0 才跳过);对拍项 408
+  plan 20/408 · 累计对拍 1420 · mismatch 0 · 7s
+  plan 40/408 · 累计对拍 2840 · mismatch 0 · 14s
+  plan 60/408 · 累计对拍 4260 · mismatch 0 · 21s
+  plan 80/408 · 累计对拍 5680 · mismatch 0 · 30s
+  plan 100/408 · 累计对拍 7100 · mismatch 0 · 37s
+  plan 120/408 · 累计对拍 8520 · mismatch 0 · 44s
+  plan 140/408 · 累计对拍 9940 · mismatch 0 · 52s
+  plan 160/408 · 累计对拍 11360 · mismatch 0 · 59s
+  plan 180/408 · 累计对拍 12780 · mismatch 0 · 66s
+  plan 200/408 · 累计对拍 14200 · mismatch 0 · 74s
+  plan 220/408 · 累计对拍 15620 · mismatch 0 · 81s
+  plan 240/408 · 累计对拍 17040 · mismatch 0 · 88s
+  plan 260/408 · 累计对拍 18460 · mismatch 0 · 95s
+  plan 280/408 · 累计对拍 19880 · mismatch 0 · 102s
+  plan 300/408 · 累计对拍 21300 · mismatch 0 · 109s
+  plan 320/408 · 累计对拍 22720 · mismatch 0 · 117s
+  plan 340/408 · 累计对拍 24140 · mismatch 0 · 124s
+  plan 360/408 · 累计对拍 25560 · mismatch 0 · 131s
+  plan 380/408 · 累计对拍 26980 · mismatch 0 · 139s
+  plan 400/408 · 累计对拍 28400 · mismatch 0 · 146s
+  plan 408/408 · 累计对拍 28968 · mismatch 0 · 149s
+补跑对拍 28968 股×格,mismatch=0,149s

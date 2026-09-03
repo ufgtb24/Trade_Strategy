@@ -11,16 +11,16 @@ const MK = {
 describe('materializeKeysByNode', () => {
   it('topology.nodes → { node_id: materialize_keys }', () => {
     const topology = { nodes: [
-      { node_id: 'bo', class_id: 'bo', source_tag: 'bo', where_rules: [], materialize_keys: ['total_window'] },
-      { node_id: 'burst', class_id: 'burst', source_tag: 'burst', where_rules: [], materialize_keys: ['gap_max'] },
+      { node_id: 'bo', where_rules: [], materialize_keys: ['total_window'] },
+      { node_id: 'burst', where_rules: [], materialize_keys: ['gap_max'] },
     ], edges: [] }
-    expect(materializeKeysByNode(topology as any)).toEqual({ bo: ['total_window'], burst: ['gap_max'] })
+    expect(materializeKeysByNode(topology)).toEqual({ bo: ['total_window'], burst: ['gap_max'] })
   })
   it('materialize_keys 缺失 → 空数组(防御旧数据)', () => {
     const topology = { nodes: [
-      { node_id: 'bo', class_id: 'bo', source_tag: 'bo', where_rules: [] },
+      { node_id: 'bo', where_rules: [] },
     ], edges: [] }
-    expect(materializeKeysByNode(topology as any)).toEqual({ bo: [] })
+    expect(materializeKeysByNode(topology)).toEqual({ bo: [] })
   })
 })
 

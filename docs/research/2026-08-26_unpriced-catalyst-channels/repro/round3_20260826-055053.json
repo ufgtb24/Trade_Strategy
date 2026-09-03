@@ -1,0 +1,211 @@
+{
+ "meta": {
+  "probed_at": "2026-08-26T05:49:20"
+ },
+ "survivorship": {
+  "dead": {
+   "BBBYQ": {
+    "status": 404,
+    "body": "{\"errors\": [{\"message\": \"Symbol not found\"}], \"response\": {\"status\": 404}}"
+   },
+   "SIVBQ": {
+    "status": 200,
+    "title": "SVB Financial Group",
+    "exch": "OTC",
+    "watchlist": 3670,
+    "newest": "2026-08-11T21:32:26Z"
+   },
+   "FRCB": {
+    "status": 200,
+    "title": "First Republic Bank",
+    "exch": "OTC",
+    "watchlist": 8986,
+    "newest": "2026-08-11T14:04:16Z"
+   },
+   "WEWKQ": {
+    "status": 200,
+    "title": "WeWork Inc - Ordinary Shares - Class A",
+    "exch": "OTC",
+    "watchlist": 3951,
+    "newest": "2026-05-07T21:26:45Z"
+   },
+   "SPRT": {
+    "status": 404,
+    "body": "{\"errors\": [{\"message\": \"Symbol not found\"}], \"response\": {\"status\": 404}}"
+   },
+   "HTZGQ": {
+    "status": 200,
+    "title": "Hertz Global Holdings, Inc.",
+    "exch": "OTC",
+    "watchlist": 23389,
+    "newest": "2026-08-11T15:06:33Z"
+   },
+   "ATERQ": {
+    "status": 404,
+    "body": "{\"errors\": [{\"message\": \"Symbol not found\"}], \"response\": {\"status\": 404}}"
+   },
+   "TUEM": {
+    "status": 404,
+    "body": "{\"errors\": [{\"message\": \"Symbol not found\"}], \"response\": {\"status\": 404}}"
+   },
+   "MULN": {
+    "status": 404,
+    "body": "{\"errors\": [{\"message\": \"Symbol not found\"}], \"response\": {\"status\": 404}}"
+   },
+   "AMTD": {
+    "status": 200,
+    "title": "AMTD IDEA Group - ADR",
+    "exch": "NYSE",
+    "watchlist": 9073,
+    "newest": "2026-08-20T20:53:03Z"
+   }
+  },
+  "unknown404": {
+   "FUST": {
+    "status": 404,
+    "body": "{\"errors\": [{\"message\": \"Symbol not found\"}], \"response\": {\"status\": 404}}"
+   },
+   "SRGZ": {
+    "status": 404,
+    "body": "{\"errors\": [{\"message\": \"Symbol not found\"}], \"response\": {\"status\": 404}}"
+   }
+  }
+ },
+ "dead_history": {
+  "SIVBQ": {
+   "window": [
+    "2023-03-01",
+    "2023-03-31"
+   ],
+   "n": 0,
+   "pages": 6,
+   "trace_head": [
+    {
+     "page": 1,
+     "top": "2023-06-01T17:14:14Z",
+     "bot": "2023-05-18T13:56:06Z"
+    },
+    {
+     "page": 2,
+     "top": "2023-05-18T13:44:34Z",
+     "bot": "2023-05-14T04:24:30Z"
+    }
+   ]
+  }
+ },
+ "zero_recheck": {
+  "FOCL": {
+   "narrow": {
+    "win": [
+     "2025-08-29",
+     "2025-09-05"
+    ],
+    "n": 0,
+    "pages": 0,
+    "trace_head": [
+     {
+      "empty_at": 627623415
+     }
+    ]
+   },
+   "wide": {
+    "win": [
+     "2025-07-22",
+     "2025-10-20"
+    ],
+    "n": 0,
+    "pages": 0,
+    "sent": {},
+    "trace_head": [
+     {
+      "empty_at": 632590233
+     }
+    ]
+   }
+  },
+  "BGDE": {
+   "narrow": {
+    "win": [
+     "2025-09-29",
+     "2025-10-06"
+    ],
+    "n": 0,
+    "pages": 0,
+    "trace_head": [
+     {
+      "empty_at": 631113030
+     }
+    ]
+   },
+   "wide": {
+    "win": [
+     "2025-08-22",
+     "2025-11-20"
+    ],
+    "n": 0,
+    "pages": 0,
+    "sent": {},
+    "trace_head": [
+     {
+      "empty_at": 635861180
+     }
+    ]
+   }
+  },
+  "COBA": {
+   "narrow": {
+    "win": [
+     "2025-11-25",
+     "2025-12-02"
+    ],
+    "n": 0,
+    "pages": 1,
+    "trace_head": [
+     {
+      "page": 1,
+      "top": "2024-11-25T13:14:41Z",
+      "bot": "2024-10-25T22:29:22Z"
+     }
+    ]
+   },
+   "wide": {
+    "win": [
+     "2025-10-18",
+     "2026-01-16"
+    ],
+    "n": 1,
+    "pages": 1,
+    "sent": {
+     "none": 1
+    },
+    "trace_head": [
+     {
+      "page": 1,
+      "top": "2026-01-08T21:20:09Z",
+      "bot": "2024-10-25T22:29:22Z"
+     }
+    ]
+   }
+  }
+ },
+ "calib_check": {
+  "WWR": {
+   "n": 88,
+   "ref_bisect": 106,
+   "pages": 3,
+   "calls": 3
+  },
+  "HOWL": {
+   "n": 22,
+   "ref_bisect": 24,
+   "pages": 1,
+   "calls": 1
+  },
+  "CATO": {
+   "n": 0,
+   "ref_bisect": 1,
+   "pages": 1,
+   "calls": 1
+  }
+ }
+}

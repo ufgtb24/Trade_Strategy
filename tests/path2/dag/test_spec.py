@@ -8,7 +8,7 @@ from path2.dag.spec import (
 
 
 class _FakeEventCls:
-    class_id = "t"
+    pass
 
 
 class _Det:
@@ -88,8 +88,9 @@ def test_to_topology_zero_derivation():
     s = _ok_spec()
     topo = s.to_topology()
     assert isinstance(topo, PatternTopology)
-    assert TopoNode("down", "t") in topo.nodes
-    assert TopoNode("bo", "t") in topo.nodes
+    # TopoNode 只投影 node_id(node 身份全部以 node_id 为准,无类型维度)
+    assert TopoNode("down") in topo.nodes
+    assert TopoNode("bo") in topo.nodes
     assert TopoEdge("down", "bo", "TemporalEdge") in topo.edges  # 子类名即 kind
 
 def test_eq_src_nodes():
@@ -107,12 +108,11 @@ def test_eq_src_nodes_empty_when_no_equals():
 
 class _PointEventCls:
     """假 point 几何事件类"""
-    class_id = "fakept"
     is_point = True
 
 class _SpanEventCls:
     """假 span 几何事件类 (默认 is_point=False)"""
-    class_id = "fakespan"
+    pass
 
 class _PointDet:
     event_cls = _PointEventCls

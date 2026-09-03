@@ -1,0 +1,82 @@
+stocks=6000 lam=0.92 folds=4 L=4 phis=[0.1, 0.2, 0.35, 0.55, 0.8, 1.0] B=300 seeds=20
+== racing 配置对比(每格:cost=预算比例 / agree=argmax 与 oracle 一致率 / lost=oracle δ-区域被误淘汰比例 / surv=幸存格比例)==
+-- strong D=3 cells=64 | oracle max score +0.0470 | oracle δ=0.01 区域格数 5.7 / 可评估 64.0 | 配对/独立方差比 0.122 | 16s
+   racing best          δ=0.01 α=0.02: cost 0.971  agree 0.90  lost 0.083  surv 0.88  futile 0.00
+   racing best          δ=0.02 α=0.05: cost 0.985  agree 0.95  lost 0.027  surv 0.89  futile 0.00
+   racing best_futility δ=0.01 α=0.02: cost 0.975  agree 1.00  lost 0.042  surv 0.85  futile 0.00
+   proxy20 δ6=0.03: cost 0.632  agree 0.65  lost 0.487
+   flat-dim@0.10: 各维判平坦率 [0.05, 0.05, 0.85]
+   flat-dim@0.20: 各维判平坦率 [0.2, 0.2, 1.0]
+   flat-dim@0.35: 各维判平坦率 [0.05, 0.0, 1.0]
+-- plateau D=3 cells=64 | oracle max score +0.0143 | oracle δ=0.01 区域格数 11.8 / 可评估 64.0 | 配对/独立方差比 0.115 | 17s
+   racing best          δ=0.01 α=0.02: cost 0.977  agree 0.90  lost 0.067  surv 0.89  futile 0.00
+   racing best          δ=0.02 α=0.05: cost 0.968  agree 0.90  lost 0.087  surv 0.88  futile 0.00
+   racing best_futility δ=0.01 α=0.02: cost 0.943  agree 0.90  lost 0.094  surv 0.87  futile 0.05
+   proxy20 δ6=0.03: cost 0.709  agree 0.50  lost 0.445
+   flat-dim@0.10: 各维判平坦率 [0.25, 0.3, 0.8]
+   flat-dim@0.20: 各维判平坦率 [0.5, 0.6, 1.0]
+   flat-dim@0.35: 各维判平坦率 [0.5, 0.45, 1.0]
+-- mostlybad D=3 cells=64 | oracle max score +0.0002 | oracle δ=0.01 区域格数 4.7 / 可评估 64.0 | 配对/独立方差比 0.109 | 17s
+   racing best          δ=0.01 α=0.02: cost 0.809  agree 0.95  lost 0.020  surv 0.46  futile 0.00
+   racing best          δ=0.02 α=0.05: cost 0.814  agree 0.95  lost 0.063  surv 0.48  futile 0.00
+   racing best_futility δ=0.01 α=0.02: cost 0.642  agree 0.75  lost 0.250  surv 0.33  futile 0.25
+   proxy20 δ6=0.03: cost 0.600  agree 0.85  lost 0.200
+   flat-dim@0.10: 各维判平坦率 [0.2, 0.05, 0.75]
+   flat-dim@0.20: 各维判平坦率 [0.25, 0.15, 0.95]
+   flat-dim@0.35: 各维判平坦率 [0.55, 0.05, 1.0]
+-- collapse D=3 cells=64 | oracle max score -0.0118 | oracle δ=0.01 区域格数 7.1 / 可评估 64.0 | 配对/独立方差比 0.109 | 13s
+   racing best          δ=0.01 α=0.02: cost 0.681  agree 1.00  lost 0.024  surv 0.33  futile 0.00
+   racing best          δ=0.02 α=0.05: cost 0.699  agree 1.00  lost 0.113  surv 0.35  futile 0.00
+   racing best_futility δ=0.01 α=0.02: cost 0.208  agree 0.40  lost 1.000  surv 0.00  futile 1.00
+   proxy20 δ6=0.03: cost 0.544  agree 0.80  lost 0.295
+   flat-dim@0.10: 各维判平坦率 [0.1, 0.05, 0.8]
+   flat-dim@0.20: 各维判平坦率 [0.25, 0.4, 1.0]
+   flat-dim@0.35: 各维判平坦率 [0.15, 0.75, 1.0]
+-- null D=3 cells=64 | oracle max score -0.0071 | oracle δ=0.01 区域格数 11.2 / 可评估 64.0 | 配对/独立方差比 0.109 | 15s
+   racing best          δ=0.01 α=0.02: cost 0.861  agree 1.00  lost 0.023  surv 0.60  futile 0.00
+   racing best          δ=0.02 α=0.05: cost 0.898  agree 0.95  lost 0.098  surv 0.69  futile 0.00
+   racing best_futility δ=0.01 α=0.02: cost 0.481  agree 0.60  lost 0.662  surv 0.32  futile 0.65
+   proxy20 δ6=0.03: cost 0.701  agree 0.70  lost 0.344
+   flat-dim@0.10: 各维判平坦率 [0.45, 0.05, 0.8]
+   flat-dim@0.20: 各维判平坦率 [0.9, 0.65, 1.0]
+   flat-dim@0.35: 各维判平坦率 [0.95, 0.9, 1.0]
+-- strong D=4 cells=256 | oracle max score +0.0467 | oracle δ=0.01 区域格数 6.5 / 可评估 248.7 | 配对/独立方差比 0.115 | 35s
+   racing best          δ=0.01 α=0.02: cost 0.942  agree 1.00  lost 0.046  surv 0.74  futile 0.00
+   racing best          δ=0.02 α=0.05: cost 0.900  agree 0.80  lost 0.198  surv 0.66  futile 0.00
+   racing best_futility δ=0.01 α=0.02: cost 0.871  agree 0.90  lost 0.085  surv 0.67  futile 0.05
+   proxy20 δ6=0.03: cost 0.492  agree 0.25  lost 0.630
+   flat-dim@0.10: 各维判平坦率 [0.0, 0.1, 0.7, 0.4]
+   flat-dim@0.20: 各维判平坦率 [0.1, 0.15, 0.95, 0.7]
+   flat-dim@0.35: 各维判平坦率 [0.0, 0.05, 1.0, 0.85]
+-- plateau D=4 cells=256 | oracle max score +0.0137 | oracle δ=0.01 区域格数 17.1 / 可评估 248.7 | 配对/独立方差比 0.111 | 31s
+   racing best          δ=0.01 α=0.02: cost 0.915  agree 1.00  lost 0.057  surv 0.73  futile 0.00
+   racing best          δ=0.02 α=0.05: cost 0.846  agree 0.85  lost 0.255  surv 0.61  futile 0.00
+   racing best_futility δ=0.01 α=0.02: cost 0.808  agree 0.75  lost 0.225  surv 0.61  futile 0.10
+   proxy20 δ6=0.03: cost 0.518  agree 0.40  lost 0.619
+   flat-dim@0.10: 各维判平坦率 [0.15, 0.0, 0.75, 0.25]
+   flat-dim@0.20: 各维判平坦率 [0.5, 0.45, 1.0, 0.7]
+   flat-dim@0.35: 各维判平坦率 [0.4, 0.4, 1.0, 0.85]
+-- mostlybad D=4 cells=256 | oracle max score +0.0037 | oracle δ=0.01 区域格数 10.1 / 可评估 248.7 | 配对/独立方差比 0.111 | 29s
+   racing best          δ=0.01 α=0.02: cost 0.700  agree 1.00  lost 0.033  surv 0.33  futile 0.00
+   racing best          δ=0.02 α=0.05: cost 0.637  agree 0.95  lost 0.103  surv 0.30  futile 0.00
+   racing best_futility δ=0.01 α=0.02: cost 0.552  agree 0.70  lost 0.275  surv 0.25  futile 0.25
+   proxy20 δ6=0.03: cost 0.398  agree 0.55  lost 0.506
+   flat-dim@0.10: 各维判平坦率 [0.2, 0.0, 0.7, 0.25]
+   flat-dim@0.20: 各维判平坦率 [0.35, 0.1, 1.0, 0.7]
+   flat-dim@0.35: 各维判平坦率 [0.25, 0.05, 0.95, 0.9]
+-- collapse D=4 cells=256 | oracle max score -0.0108 | oracle δ=0.01 区域格数 12.9 / 可评估 248.7 | 配对/独立方差比 0.111 | 28s
+   racing best          δ=0.01 α=0.02: cost 0.595  agree 0.95  lost 0.072  surv 0.25  futile 0.00
+   racing best          δ=0.02 α=0.05: cost 0.520  agree 0.90  lost 0.264  surv 0.21  futile 0.00
+   racing best_futility δ=0.01 α=0.02: cost 0.370  agree 0.55  lost 0.660  surv 0.13  futile 0.65
+   proxy20 δ6=0.03: cost 0.409  agree 0.75  lost 0.454
+   flat-dim@0.10: 各维判平坦率 [0.3, 0.1, 0.5, 0.35]
+   flat-dim@0.20: 各维判平坦率 [0.3, 0.65, 0.9, 0.8]
+   flat-dim@0.35: 各维判平坦率 [0.05, 0.55, 0.9, 0.9]
+-- null D=4 cells=256 | oracle max score -0.0070 | oracle δ=0.01 区域格数 22.1 / 可评估 248.7 | 配对/独立方差比 0.111 | 30s
+   racing best          δ=0.01 α=0.02: cost 0.766  agree 0.85  lost 0.148  surv 0.43  futile 0.00
+   racing best          δ=0.02 α=0.05: cost 0.662  agree 0.90  lost 0.303  surv 0.38  futile 0.00
+   racing best_futility δ=0.01 α=0.02: cost 0.581  agree 0.70  lost 0.453  surv 0.31  futile 0.40
+   proxy20 δ6=0.03: cost 0.460  agree 0.75  lost 0.540
+   flat-dim@0.10: 各维判平坦率 [0.55, 0.05, 0.65, 0.25]
+   flat-dim@0.20: 各维判平坦率 [0.85, 0.65, 1.0, 0.6]
+   flat-dim@0.35: 各维判平坦率 [0.7, 0.6, 1.0, 0.9]

@@ -24,8 +24,8 @@ const SCAN_FILE_WC = {
   ...SCAN_FILE,
   per_pattern: {
     ...SCAN_FILE.per_pattern,
-    bottom_breakout_burst: {
-      ...SCAN_FILE.per_pattern.bottom_breakout_burst,
+    bottom_burst: {
+      ...SCAN_FILE.per_pattern.bottom_burst,
       params_snapshot: { bo: { total_window: 10 } },
     },
   },
@@ -33,7 +33,7 @@ const SCAN_FILE_WC = {
 
 const PREVIEW_ANALYSIS = {
   ...ANALYSIS,
-  matches: [{ ...ANALYSIS.matches[0], event_id: 'preview_match_1' }],
+  matches: [{ ...ANALYSIS.matches[0], match_id: 'preview_match_1' }],
 }
 const PREVIEW_RESP = {
   analysis: PREVIEW_ANALYSIS,
@@ -52,13 +52,13 @@ describe('view.preview computed', () => {
   it('effectiveAnalysis falls back to scanFile when previewEnabled=false', () => {
     const v = useViewStore()
     v.loadScanFile(SCAN_FILE_WC); v.selectSymbol('AAPL')
-    expect(v.effectiveAnalysis?.matches[0].event_id).toBe('m1')
+    expect(v.effectiveAnalysis?.matches[0].match_id).toBe('m1')
   })
 
   it('effectiveAnalysis falls back when preview.symbol mismatches symbol', async () => {
     const v = useViewStore()
     v.loadScanFile(SCAN_FILE_WC); v.selectSymbol('AAPL')
-    v.forkWorkingCopy('bottom_breakout_burst')            // Task 9:进探索态才能启用 preview
+    v.forkWorkingCopy('bottom_burst')            // Task 9:进探索态才能启用 preview
     await v.setPreviewEnabled(true)
     await flushPromises()
     // 切到别股(scanFile.results 没有 BBB,但内存仍可设)
@@ -69,16 +69,16 @@ describe('view.preview computed', () => {
   it('effectiveAnalysis uses preview when three conditions met', async () => {
     const v = useViewStore()
     v.loadScanFile(SCAN_FILE_WC); v.selectSymbol('AAPL')
-    v.forkWorkingCopy('bottom_breakout_burst')
+    v.forkWorkingCopy('bottom_burst')
     await v.setPreviewEnabled(true)
     await flushPromises()
-    expect(v.effectiveAnalysis?.matches[0].event_id).toBe('preview_match_1')
+    expect(v.effectiveAnalysis?.matches[0].match_id).toBe('preview_match_1')
   })
 
   it('effectivePattern uses preview pattern_spec when active', async () => {
     const v = useViewStore()
     v.loadScanFile(SCAN_FILE_WC); v.selectSymbol('AAPL')
-    v.forkWorkingCopy('bottom_breakout_burst')
+    v.forkWorkingCopy('bottom_burst')
     await v.setPreviewEnabled(true); await flushPromises()
     expect(v.effectivePattern).toBe(PREVIEW_RESP.pattern_spec)
   })
@@ -86,7 +86,7 @@ describe('view.preview computed', () => {
   it('effectiveScan uses preview scan when active', async () => {
     const v = useViewStore()
     v.loadScanFile(SCAN_FILE_WC); v.selectSymbol('AAPL')
-    v.forkWorkingCopy('bottom_breakout_burst')
+    v.forkWorkingCopy('bottom_burst')
     await v.setPreviewEnabled(true); await flushPromises()
     expect(v.effectiveScan?.win_start).toBe('2025-01-01')
   })
@@ -99,7 +99,7 @@ describe('view.preview actions', () => {
     // Task 9:首次 setWorkingCopyEnabled(无既有 WC 槽位)只 fork、不 fetch(baseline===snapshot
     // 时视图与浏览态一致,无需重算);先显式 fork,让随后的 setPreviewEnabled(true) 命中"WC 已存在"
     // 分支从而真正触发 runPreview —— 与生产 UI 流程一致(先"编辑参数"进入探索态,再用 checkbox A/B)。
-    v.forkWorkingCopy('bottom_breakout_burst')
+    v.forkWorkingCopy('bottom_burst')
     await v.setPreviewEnabled(true); await flushPromises()
     expect(vi.mocked(getPreview)).toHaveBeenCalledOnce()
   })
@@ -107,7 +107,7 @@ describe('view.preview actions', () => {
   it('setPreviewEnabled(false) clears preview state', async () => {
     const v = useViewStore()
     v.loadScanFile(SCAN_FILE_WC); v.selectSymbol('AAPL')
-    v.forkWorkingCopy('bottom_breakout_burst')
+    v.forkWorkingCopy('bottom_burst')
     await v.setPreviewEnabled(true); await flushPromises()
     expect(v.preview).not.toBeNull()
     await v.setPreviewEnabled(false)
@@ -119,7 +119,7 @@ describe('view.preview actions', () => {
   it('selectSymbol clears preview and refetches when enabled', async () => {
     const v = useViewStore()
     v.loadScanFile(SCAN_FILE_WC); v.selectSymbol('AAPL')
-    v.forkWorkingCopy('bottom_breakout_burst')
+    v.forkWorkingCopy('bottom_burst')
     await v.setPreviewEnabled(true); await flushPromises()
     vi.mocked(getPreview).mockClear()
     v.selectSymbol('BBB')
@@ -140,7 +140,7 @@ describe('view.preview actions', () => {
   it('clearScanFile resets all preview state', async () => {
     const v = useViewStore()
     v.loadScanFile(SCAN_FILE_WC); v.selectSymbol('AAPL')
-    v.forkWorkingCopy('bottom_breakout_burst')
+    v.forkWorkingCopy('bottom_burst')
     await v.setPreviewEnabled(true); await flushPromises()
     v.clearScanFile()
     expect(v.preview).toBeNull()
@@ -157,7 +157,7 @@ describe('view.preview actions', () => {
     }))
     const v = useViewStore()
     v.loadScanFile(SCAN_FILE_WC); v.selectSymbol('AAPL')
-    v.forkWorkingCopy('bottom_breakout_burst')
+    v.forkWorkingCopy('bottom_burst')
     void v.setPreviewEnabled(true)                       // 启动 AAPL fetch,未 resolve
     v.selectSymbol('BBB')                                // 切走 → 触发 BBB fetch
     aaplResolver(PREVIEW_RESP)                           // 旧 AAPL 响应回来
@@ -172,7 +172,7 @@ describe('view.preview actions', () => {
     vi.mocked(getPreview).mockImplementation(() => new Promise(r => { resolver = r }))
     const v = useViewStore()
     v.loadScanFile(SCAN_FILE_WC); v.selectSymbol('AAPL')
-    v.forkWorkingCopy('bottom_breakout_burst')
+    v.forkWorkingCopy('bottom_burst')
     void v.setPreviewEnabled(true)
     await v.setPreviewEnabled(false)                     // 取消勾选
     resolver(PREVIEW_RESP)
@@ -184,7 +184,7 @@ describe('view.preview actions', () => {
     vi.mocked(getPreview).mockRejectedValueOnce(new Error('500: boom'))
     const v = useViewStore()
     v.loadScanFile(SCAN_FILE_WC); v.selectSymbol('AAPL')
-    v.forkWorkingCopy('bottom_breakout_burst')
+    v.forkWorkingCopy('bottom_burst')
     await v.setPreviewEnabled(true); await flushPromises()
     expect(v.preview).toBeNull()
     expect(v.previewError).toContain('boom')
@@ -193,7 +193,7 @@ describe('view.preview actions', () => {
   it('runPreview can be called again to refresh (no cache)', async () => {
     const v = useViewStore()
     v.loadScanFile(SCAN_FILE_WC); v.selectSymbol('AAPL')
-    v.forkWorkingCopy('bottom_breakout_burst')
+    v.forkWorkingCopy('bottom_burst')
     await v.setPreviewEnabled(true); await flushPromises()
     vi.mocked(getPreview).mockClear()
     await v.runPreview(); await flushPromises()
@@ -205,7 +205,7 @@ describe('view.preview actions', () => {
     // equal to scanFile.scan.start_date/end_date, never the buffered win_start/win_end
     const v = useViewStore()
     v.loadScanFile(SCAN_FILE_WC); v.selectSymbol('AAPL')
-    v.forkWorkingCopy('bottom_breakout_burst')
+    v.forkWorkingCopy('bottom_burst')
     await v.setPreviewEnabled(true); await flushPromises()
     // first call
     const firstCall = vi.mocked(getPreview).mock.calls[0]
@@ -231,7 +231,7 @@ describe('view.preview actions', () => {
     }))
     const v = useViewStore()
     v.loadScanFile(SCAN_FILE_WC); v.selectSymbol('AAPL')
-    v.forkWorkingCopy('bottom_breakout_burst')
+    v.forkWorkingCopy('bottom_burst')
     void v.setPreviewEnabled(true)                       // 第一次 fetch
     v.selectSymbol('BBB')                                // 触发第二次 fetch(同 enabled)
     firstResolver(PREVIEW_RESP)                          // 旧响应先回

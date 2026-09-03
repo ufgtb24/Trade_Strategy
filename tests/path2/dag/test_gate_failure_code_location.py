@@ -1,6 +1,6 @@
 """code_location 手二契约:__post_init__ 用 sys._getframe 抓 caller、
 跳过 gate_failure.py 自身 + CPython 3.12 dataclass 生成的 <string>/__init__ 帧
-+ throwback.py 的 _emit_tb_gate helper 帧。"""
++ throwback 系模块的 _emit_tb_gate* helper 帧(v1 精确名;v3/v4 前缀匹配)。"""
 from path2.dag.gate_failure import GateFailure, MeasuredKindAware
 
 
@@ -9,7 +9,7 @@ def _make_gf(**overrides):
     base = dict(
         failure_event_window=(0, 0),
         start_idx=0, gate_idx=0, anchor_bar=0,
-        class_id='bo', gate_name='test',
+        gate_name='test',
         measured=MeasuredKindAware(kind='count', value=0, label=''),
         threshold=None, op=None, threshold_param=None,
         evaluation_lookback=None, symbol='TEST',
@@ -40,43 +40,52 @@ def test_code_location_skips_dataclass_init_string_frame():
 
 
 def test_code_location_skips_emit_tb_gate_helper():
-    """走 throwback._emit_tb_gate 路径时,code_location 应指回调用者所在文件
-    (throwback.py 内的 evaluate_throwback),而非 helper 自身.
-
-    fixture 复用 test_gate_failure_contract.py::
-    test_tb_gate_invariant_op_and_param_same_nullability 的构造(bo_idx=15,
-    确保 Wilder ATR 首个有效值(idx=atr_window-1=13)已就绪、不会因 atr==0.0
-    短路提前 return None),保证 phase1_break 真实触发、captured 非空。
-    """
-    from path2.atoms.throwback import evaluate_throwback
-    from path2.atoms.breakout import BOEvent
+    """走 throwback_v1._emit_tb_gate 路径时,code_location 应指回调用者所在文件
+    (throwback_v1.py 内的 run_first_segment),而非 helper 自身."""
+    from path2.atoms.throwback_v1 import ThrowbackDetectorV1
+    from path2.atoms.breakout import BOEvent, BurstEvent
     from path2.debug import set_current_symbol
     import pandas as pd
 
     set_current_symbol("TEST")
     try:
-        n = 30
-        bo_idx = 15
-        df = pd.DataFrame({
-            'open': [100.0] * n, 'close': [100.0] * n,
-            'high': [101.0] * n, 'low': [99.5] * n,
-            'volume': [1000.0] * n,
-        })
-        # anchor = high[bo_idx-1] = 101;bo 后 close[bo_idx+1] = 90 < anchor → phase1_break
-        df.loc[bo_idx + 1, 'close'] = 90.0
-        bo = BOEvent(event_id=f"bo_{bo_idx}", start_idx=bo_idx, end_idx=bo_idx, confirm_idx=bo_idx,
-                     drought=None, pk_count=1, broken_peak_ids=(), vol_ratio=None,
-                     peak_vol_max=0.0, referenced_points=())
+        rows = [(100.0, 101.0, 99.0, 100.0, 1000.0)] * 10
+        rows[9] = (100.0, 104.0, 100.0, 103.0, 5000.0)
+        rows += [(103.0, 103.5, 100.0, 100.5, 1000.0)]      # 入段前破 span_min → break_no_stable
+        df = pd.DataFrame(rows, columns=['open', 'high', 'low', 'close', 'volume'])
+        bo = BOEvent(start_idx=9, end_idx=9, confirm_idx=9, instance_id="bo_9#0")
+        burst = BurstEvent(start_idx=9, end_idx=9, confirm_idx=9, members=(bo,))
+        det = ThrowbackDetectorV1(vol_window=3)
         captured: list[GateFailure] = []
-        evaluate_throwback(bo, df, on_gate=captured.append)
+        det.on_gate = captured.append
+        list(det.detect([burst], df))
 
         assert len(captured) >= 1, 'tb fixture 未触发任何 gate → 测试 vacuous'
         for gf in captured:
-            # 帧跳过后应落到 throwback.py 内(evaluate_throwback),而非 _emit_tb_gate helper 自身
-            assert 'throwback.py' in gf.code_location, \
-                f'{gf.gate_name}: code_location={gf.code_location!r},expected throwback.py'
+            assert 'throwback_v1.py' in gf.code_location, \
+                f'{gf.gate_name}: code_location={gf.code_location!r},expected throwback_v1.py'
     finally:
         set_current_symbol(None)
+
+
+def test_code_location_skips_emit_tb_gate_v4_helper():
+    """直调 throwback_v4._emit_tb_gate_v4 时,helper 帧同样被跳过(前缀匹配),
+    code_location 指回本测试文件——精确名单 '_emit_tb_gate' 不含 v3/v4 时,
+    v4 的 gate code_location 会全部错误地指向 helper 自身。"""
+    from path2.atoms.throwback_v4 import _emit_tb_gate_v4
+
+    captured: list[GateFailure] = []
+    _emit_tb_gate_v4(
+        bo_idx=3, gate_idx=5, gate_name='budget_no_stable',
+        measured=MeasuredKindAware(kind='count', value=60, label='max_span 扫满'),
+        threshold=60, vol_window=14, on_gate=captured.append)
+
+    assert len(captured) == 1, 'fixture 未触发 gate → 测试 vacuous'
+    gf = captured[0]
+    assert 'throwback_v4.py' not in gf.code_location, \
+        f'code_location={gf.code_location!r} 指向 helper 自身,应跳过 v4 helper 帧'
+    assert 'test_gate_failure_code_location.py' in gf.code_location, \
+        f'code_location={gf.code_location!r} 应指回本测试文件(真 caller)'
 
 
 def test_code_location_explicit_wins():

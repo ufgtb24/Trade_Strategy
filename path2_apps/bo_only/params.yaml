@@ -1,5 +1,5 @@
 # bo_only pattern 参数 — 复用 BODetector 默认值。
-# 与 bottom_breakout_burst 的 bo section 同义(可独立改),非引用。
+# 与 bottom_burst 的 bo section 同义(可独立改),非引用。
 
 bo:
   total_window: 20

@@ -17,9 +17,9 @@ REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
 
 from path2.atoms.breakout import BurstDetector
-import path2_apps.bottom_breakout_burst.dag_spec as dag_spec_mod
-from path2_apps.bottom_breakout_burst.dag_spec import analyze
-from path2_apps.bottom_breakout_burst.params import Params
+import path2_apps.bottom_burst.dag_spec as dag_spec_mod
+from path2_apps.bottom_burst.dag_spec import analyze
+from path2_apps.bottom_burst.params import Params
 from path2_web.data import slice_window
 
 OLD_MAX_SPAN = 20      # 旧 span 口径(退役的 burst_max_span 默认)
@@ -91,7 +91,7 @@ def _check(pkl_path: Path, params: Params, start: str, end: str):
         if len(win) == 0:
             return (ticker, False, 0, None)
         res = analyze(win, params)
-        n_burst = sum(1 for e in res.events if e.class_id == "burst")
+        n_burst = sum(1 for e in res.events if e.node_id == "burst")
         return (ticker, len(res.matches) > 0, n_burst, None)
     except Exception as e:
         return (ticker, False, 0, f"{type(e).__name__}: {e}")

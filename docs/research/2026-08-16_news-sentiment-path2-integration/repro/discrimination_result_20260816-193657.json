@@ -1,0 +1,118 @@
+{
+ "meta": {
+  "n": 112,
+  "source": "full_metrics_20260816-193657.json",
+  "n_boot": 10000,
+  "prereg": "preregistration.md",
+  "date": "2026-08-16"
+ },
+ "groups": [
+  {
+   "group": "G_neg",
+   "n": 5,
+   "pct": 4.5,
+   "fr_median": 0.8125,
+   "fr_q25_q75": [
+    0.0656,
+    1.0397
+   ],
+   "fpr_k6": 0.5,
+   "fp6_up_down_none": [
+    2,
+    2,
+    1
+   ]
+  },
+  {
+   "group": "G_mid",
+   "n": 17,
+   "pct": 15.2,
+   "fr_median": 0.1693,
+   "fr_q25_q75": [
+    0.1179,
+    0.375
+   ],
+   "fpr_k6": 0.2222,
+   "fp6_up_down_none": [
+    2,
+    7,
+    7
+   ]
+  },
+  {
+   "group": "G_pos",
+   "n": 61,
+   "pct": 54.5,
+   "fr_median": 0.3453,
+   "fr_q25_q75": [
+    0.0934,
+    0.5621
+   ],
+   "fpr_k6": 0.5,
+   "fp6_up_down_none": [
+    19,
+    19,
+    23
+   ]
+  },
+  {
+   "group": "G_nocov",
+   "n": 29,
+   "pct": 25.9,
+   "fr_median": 0.4791,
+   "fr_q25_q75": [
+    0.1111,
+    0.9345
+   ],
+   "fpr_k6": 0.6471,
+   "fp6_up_down_none": [
+    11,
+    6,
+    11
+   ]
+  }
+ ],
+ "tests": {
+  "fr_median_rest_minus_neg": {
+   "point": -0.4678,
+   "ci95": [
+    -6.9701,
+    0.352
+   ]
+  },
+  "fpr_k6_rest_minus_neg": {
+   "point": 0.0,
+   "ci95": [
+    0.0,
+    0.0
+   ]
+  },
+  "confound_nocov_vs_cov_fr": {
+   "point": -0.2094,
+   "ci95": [
+    -0.4198,
+    0.1814
+   ]
+  },
+  "h2_pos_vs_mid_fr": {
+   "point": 0.176,
+   "ci95": [
+    -0.1053,
+    0.2677
+   ]
+  },
+  "fpr_k4_rest_minus_neg": -0.1529,
+  "fpr_k5_rest_minus_neg": -0.0526,
+  "neg_rate": 0.0446,
+  "impact_ceiling": {
+   "fr_median_all_change_upper": -0.0209,
+   "fpr_all_change_upper": 0.0
+  }
+ },
+ "verdict": {
+  "decision": "不接入",
+  "c1_ci_excludes_zero": false,
+  "c2_fpr_direction": false,
+  "c3_neg_rate": false
+ }
+}

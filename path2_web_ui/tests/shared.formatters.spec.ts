@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { fmt, fmtValue } from '../src/shared/formatters'
+import { fmt, fmtValue, fmtVal, fmtRatio } from '../src/shared/formatters'
 
 describe('fmt · kind-aware', () => {
     it('gap kind 加 gap= 前缀', () => {
@@ -34,5 +34,29 @@ describe('fmtValue · 数组分支(硬伤 D)', () => {
     })
     it('字符串原样', () => {
         expect(fmtValue('abc')).toBe('abc')
+    })
+})
+
+describe('fmtVal · 百分比带正负号', () => {
+    it('正数带 + 前缀 1 位小数', () => {
+        expect(fmtVal(0.13)).toBe('+13.0%')
+    })
+    it('负数带 - 前缀', () => {
+        expect(fmtVal(-0.05)).toBe('-5.0%')
+    })
+    it('null 显示 —', () => {
+        expect(fmtVal(null)).toBe('—')
+    })
+})
+
+describe('fmtRatio · 首次穿越比例(不带正负号)', () => {
+    it('0.526 → 52.6%(近 50% 保留区分度)', () => {
+        expect(fmtRatio(0.526)).toBe('52.6%')
+    })
+    it('0 → 0.0%', () => {
+        expect(fmtRatio(0)).toBe('0.0%')
+    })
+    it('null(分母为 0)显示 —', () => {
+        expect(fmtRatio(null)).toBe('—')
     })
 })

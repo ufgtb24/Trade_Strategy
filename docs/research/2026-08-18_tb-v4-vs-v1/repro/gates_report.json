@@ -1,0 +1,196 @@
+{
+ "A_v1only_on_v4": [
+  {
+   "symbol": "BRNS",
+   "burst": [
+    204,
+    204
+   ],
+   "was_v1_match": false,
+   "n_segs": 0,
+   "machine_outcome": "break"
+  },
+  {
+   "symbol": "BRNS",
+   "burst": [
+    204,
+    207
+   ],
+   "was_v1_match": true,
+   "n_segs": 0,
+   "machine_outcome": "break"
+  },
+  {
+   "symbol": "GLSI",
+   "burst": [
+    308,
+    313
+   ],
+   "was_v1_match": true,
+   "n_segs": 2,
+   "machine_outcome": "break"
+  },
+  {
+   "symbol": "GLSI",
+   "burst": [
+    308,
+    314
+   ],
+   "was_v1_match": false,
+   "n_segs": 2,
+   "machine_outcome": "break"
+  },
+  {
+   "symbol": "GLSI",
+   "burst": [
+    308,
+    315
+   ],
+   "was_v1_match": false,
+   "n_segs": 2,
+   "machine_outcome": "break"
+  },
+  {
+   "symbol": "GLSI",
+   "burst": [
+    308,
+    316
+   ],
+   "was_v1_match": false,
+   "n_segs": 2,
+   "machine_outcome": "break"
+  },
+  {
+   "symbol": "GLSI",
+   "burst": [
+    308,
+    317
+   ],
+   "was_v1_match": false,
+   "n_segs": 2,
+   "machine_outcome": "break"
+  },
+  {
+   "symbol": "LPCN",
+   "burst": [
+    312,
+    314
+   ],
+   "was_v1_match": true,
+   "n_segs": 4,
+   "machine_outcome": "budget"
+  },
+  {
+   "symbol": "LPCN",
+   "burst": [
+    312,
+    316
+   ],
+   "was_v1_match": true,
+   "n_segs": 4,
+   "machine_outcome": "budget"
+  },
+  {
+   "symbol": "LPCN",
+   "burst": [
+    312,
+    318
+   ],
+   "was_v1_match": false,
+   "n_segs": 4,
+   "machine_outcome": "budget"
+  },
+  {
+   "symbol": "LPCN",
+   "burst": [
+    312,
+    319
+   ],
+   "was_v1_match": false,
+   "n_segs": 4,
+   "machine_outcome": "budget"
+  },
+  {
+   "symbol": "PW",
+   "burst": [
+    218,
+    222
+   ],
+   "was_v1_match": true,
+   "n_segs": 0,
+   "machine_outcome": "break"
+  },
+  {
+   "symbol": "PW",
+   "burst": [
+    218,
+    225
+   ],
+   "was_v1_match": false,
+   "n_segs": 0,
+   "machine_outcome": "break"
+  },
+  {
+   "symbol": "VOR",
+   "burst": [
+    188,
+    192
+   ],
+   "was_v1_match": false,
+   "n_segs": 6,
+   "machine_outcome": "budget"
+  },
+  {
+   "symbol": "VOR",
+   "burst": [
+    188,
+    193
+   ],
+   "was_v1_match": true,
+   "n_segs": 6,
+   "machine_outcome": "budget"
+  },
+  {
+   "symbol": "VOR",
+   "burst": [
+    188,
+    196
+   ],
+   "was_v1_match": false,
+   "n_segs": 6,
+   "machine_outcome": "budget"
+  },
+  {
+   "symbol": "YCBD",
+   "burst": [
+    256,
+    256
+   ],
+   "was_v1_match": false,
+   "n_segs": 0,
+   "machine_outcome": "break"
+  },
+  {
+   "symbol": "YCBD",
+   "burst": [
+    309,
+    312
+   ],
+   "was_v1_match": true,
+   "n_segs": 0,
+   "machine_outcome": "break"
+  }
+ ],
+ "B_v4only_on_v1": {
+  "gate:phase1_rise_before_confirm": 54,
+  "gate:phase1_break": 30,
+  "gate:phase1_no_confirm_timeout": 25,
+  "event:weak": 1,
+  "event:rise": 1
+ },
+ "C_common_on_v1": {
+  "event:break": 2,
+  "event:weak": 42,
+  "event:rise": 29
+ }
+}

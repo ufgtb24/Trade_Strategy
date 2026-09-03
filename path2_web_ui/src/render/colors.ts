@@ -1,10 +1,10 @@
-// node 色确定性派生(spec §8.3):event_styles 是 class_id 粒度;
-// 同 class_id 多 node 用明度区分,按 topology.nodes 出现序生成;单 node 直接用原色。
+// node 色确定性派生(spec §8.3):event_styles 是 node_id 粒度;
+// 同 node_id 多 node 用明度区分,按 topology.nodes 出现序生成;单 node 直接用原色。
 import type { Topology, Tier } from '../types'
 
 const NEUTRAL = '#888888'
 
-function hexToHsl(hex: string): [number, number, number] {
+export function hexToHsl(hex: string): [number, number, number] {
   const m = hex.replace('#', '')
   const r = parseInt(m.slice(0, 2), 16) / 255
   const g = parseInt(m.slice(2, 4), 16) / 255
@@ -46,21 +46,25 @@ export function colorOf(tier: Tier, node: string | null, nodeColors: Record<stri
   return '#d1d5db'
 }
 
-/** topology + event_styles → { node_id: hexColor }。 */
+/** topology + event_styles → { node_id: hexColor }。
+ *  实例化契约:样式键 = node_id(Task 5 静态层按 node_id setdefault)。分组键由 node_id;
+ *  同色(共享同一 event_styles 值)的多 node 用明度区分,单 node 直接用原色。 */
 export function deriveNodeColors(topology: Topology, eventStyles: Record<string, string>): Record<string, string> {
-  const byType: Record<string, string[]> = {}
-  for (const n of topology.nodes) (byType[n.class_id] ??= []).push(n.node_id)
+  const byColor: Record<string, string[]> = {}
+  for (const n of topology.nodes) {
+    const base = eventStyles[n.node_id] ?? NEUTRAL
+    ;(byColor[base] ??= []).push(n.node_id)
+  }
   const out: Record<string, string> = {}
-  for (const [type, nodes] of Object.entries(byType)) {
-    const base = eventStyles[type] ?? NEUTRAL
+  for (const [base, nodes] of Object.entries(byColor)) {
     if (nodes.length === 1) {
       out[nodes[0]] = base
       continue
     }
     const [h, s, l] = hexToHsl(base)
-    // 多 node:明度在 base 附近确定性散开([l-0.18, l+0.18] 线性)
+    // 多 node 同色:明度在 base 附近确定性散开([l-0.18, l+0.18] 线性)
     nodes.forEach((rid, i) => {
-      const t = nodes.length === 1 ? 0 : i / (nodes.length - 1)   // 0..1
+      const t = i / (nodes.length - 1)   // 0..1
       const ll = Math.min(0.85, Math.max(0.25, l - 0.18 + t * 0.36))
       out[rid] = hslToHex(h, s, ll)
     })

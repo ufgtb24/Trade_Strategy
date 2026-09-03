@@ -1,12 +1,12 @@
-"""整改三 fuzz:reachable-leaves 跨 prefix 去重 + 不丢点(TDD red,B3.2 实施后 pass)。
+"""整改三 fuzz(放宽后):共享 leaf 全 match 可见,不丢点。
 
 构造场景:两个不同 prefix event(src_a, src_b)处于同一 src 节点的流,都能绑同一个
-leaf event(leaf_0)。当前 solve() 枚举两个 Solution:
+leaf event(leaf_0)。solve() 枚举两个 Solution:
   {src: a_0, leaf: leaf_0} 和 {src: a_1, leaf: leaf_0}
 → leaf_0 被 emit 两次(prefix 各一次)。
 
-启用 reachable-leaves 后,同一 leaf event 只被 emit 一次(去重),但其中一条
-(src_*, leaf) Solution 必须出现(不丢点)。
+放宽后同一 leaf event 可被多个上游共享、出现在多个 Solution 中(不再独占),
+两条 Solution 必须全部出现(不丢点)。
 
 复用 tests/path2/dag/_oracle.py 的 Ev + FakeDet 模式。
 """
@@ -21,6 +21,7 @@ from tests.path2.dag._oracle import Ev
 
 class _FakeDet:
     """合成 detector,只为 PatternSpec 校验通过。"""
+    event_cls = Ev
     def __init__(self, evs):
         self._evs = evs
     def detect(self, *source):
@@ -46,19 +47,13 @@ def _spec_two_src_shared_leaf():
 
 
 def test_reachable_leaves_dedup_shared_leaf():
-    """共享 leaf 只被 emit 一次(reachable-leaves always-on)。
-
-    当前行为(B3.2 前):leaf_0 被 emit 两次(src=a_0 和 src=a_1 各一次)→ 测试 FAIL。
-    B3.2 实施 emitted_leaves 后:leaf_0 至多 emit 一次,测试 PASS。
-    """
+    """放宽后:共享 leaf 全 match 可见(每个上游各产一个,不再独占)。"""
     spec, src_a, src_b, leaf_x = _spec_two_src_shared_leaf()
     plan = compile_plan(spec)
     streams = {"src": [src_a, src_b], "leaf": [leaf_x]}
     solutions = solve(plan, streams)
 
-    # 期望:leaf_0 至多 emit 一次
-    leaf_ids = [sol.assign["leaf"].event_id for sol in solutions]
-    assert leaf_ids.count("leaf_0") <= 1, \
-        f"reachable-leaves dedup failed: leaf_0 emitted {leaf_ids.count('leaf_0')} times"
-    # 但至少 emit 一次(不丢点)
-    assert "leaf_0" in leaf_ids, "leaf_0 should be emitted at least once (no dropping)"
+    # 期望:leaf_0 被 emit 两次(src=a_0 与 src=a_1 各配一次),不丢点
+    assert len(solutions) == 2
+    assert {s.assign["src"].event_id for s in solutions} == {"a_0", "a_1"}
+    assert {s.assign["leaf"].event_id for s in solutions} == {"leaf_0"}

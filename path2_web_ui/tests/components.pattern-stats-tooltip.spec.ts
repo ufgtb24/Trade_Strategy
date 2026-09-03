@@ -102,8 +102,8 @@ describe('PatternStatsTooltip', () => {
     expect(w.find('.stats-first-passage').exists()).toBe(false)
   })
 
-  it('firstPassageStats.n_match=0 → 不渲染首次穿越块(防空标题)', () => {
-    const fps = { up: 0, down: 0, both: 0, none: 0, n_match: 0, ratio: null,
+  it('firstPassageStats.n_bars=0 → 不渲染首次穿越块(防空标题)', () => {
+    const fps = { up: 0, down: 0, both: 0, none: 0, n_bars: 0, ratio: null,
                   random_up: 0, random_down: 0, random_both: 0, random_none: 0, random_n: 0, random_ratio: null, k: 2 }
     const w = mount(PatternStatsTooltip, {
       props: { stats: BASE_STATS, firstPassageStats: fps },
@@ -112,7 +112,7 @@ describe('PatternStatsTooltip', () => {
   })
 
   it('有 firstPassageStats(单组)→ 单行展示 ratio / random_ratio / k', () => {
-    const fps = { up: 30, down: 10, both: 2, none: 3, n_match: 45, ratio: 0.75,
+    const fps = { up: 30, down: 10, both: 2, none: 3, n_bars: 45, ratio: 0.75,
                   random_up: 23, random_down: 22, random_both: 0, random_none: 0, random_n: 45, random_ratio: 0.511, k: 2 }
     const w = mount(PatternStatsTooltip, {
       props: { stats: BASE_STATS, firstPassageStats: fps },
@@ -135,7 +135,7 @@ describe('PatternStatsTooltip', () => {
   })
 
   it('firstPassageStats ratio=null(分母为 0)→ 单行 ratio 显示 — 占位', () => {
-    const fps = { up: 0, down: 0, both: 0, none: 5, n_match: 5, ratio: null,
+    const fps = { up: 0, down: 0, both: 0, none: 5, n_bars: 5, ratio: null,
                   random_up: 2, random_down: 2, random_both: 0, random_none: 1, random_n: 5, random_ratio: 0.5, k: 2 }
     const w = mount(PatternStatsTooltip, {
       props: { stats: BASE_STATS, firstPassageStats: fps },

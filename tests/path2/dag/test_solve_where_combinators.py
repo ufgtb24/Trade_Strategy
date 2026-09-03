@@ -13,7 +13,6 @@ from path2.dag.spec import PatternSpec
 
 @dataclass(frozen=True)
 class _SoloEvent(Event):
-    class_id = "combo_e2e_solo"
     pk: int = 0
     vol: float = 0.0
 
@@ -37,14 +36,15 @@ def _spec(evs):
 
 
 def test_or_clause_filters_candidates():
-    hit = _SoloEvent(event_id="hit", start_idx=0, end_idx=1, confirm_idx=0, pk=5, vol=0.0)
-    miss = _SoloEvent(event_id="miss", start_idx=2, end_idx=3, confirm_idx=2, pk=1, vol=1.0)
+    hit = _SoloEvent(start_idx=0, end_idx=1, confirm_idx=0, pk=5, vol=0.0)
+    miss = _SoloEvent(start_idx=2, end_idx=3, confirm_idx=2, pk=1, vol=1.0)
     res = analyze(_spec([hit, miss]), pd.DataFrame())
-    assert [m.node_index["solo"].event_id for m in res.matches] == ["hit"]
+    # node_index 里是物化标注后的事件:instance_id = span_id("solo", span)#idx
+    assert [m.node_index["solo"].instance_id for m in res.matches] == ["solo_0_1#0"]
 
 
 def test_reify_trace_carries_witness_tree():
-    hit = _SoloEvent(event_id="hit", start_idx=0, end_idx=1, confirm_idx=0, pk=5, vol=0.0)
+    hit = _SoloEvent(start_idx=0, end_idx=1, confirm_idx=0, pk=5, vol=0.0)
     res = analyze(_spec([hit]), pd.DataFrame())
     w = res.matches[0].predicate_trace.where_results["solo"]["pk_or_vol"]
     assert w.satisfied is True and w.label == "or"
@@ -52,7 +52,7 @@ def test_reify_trace_carries_witness_tree():
 
 
 def test_diagnose_attr_rows_carry_witness_tree():
-    miss = _SoloEvent(event_id="m", start_idx=0, end_idx=1, confirm_idx=0, pk=1, vol=1.0)
+    miss = _SoloEvent(start_idx=0, end_idx=1, confirm_idx=0, pk=1, vol=1.0)
     d = diagnose(_spec([miss]), pd.DataFrame())
     w = d.nodes["solo"].attr[0].clauses["pk_or_vol"]
     assert w.satisfied is False

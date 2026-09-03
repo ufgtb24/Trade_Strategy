@@ -26,18 +26,18 @@ describe('chart.ts — computeEventData / buildMainOption / buildSubOption', () 
     { date: '2025-01-02', o: 12, c: 11, h: 12.5, l: 10, v: 800, rv: 0 },
   ]
   const events = [
-    { class_id: 'burst', event_id: 'burst_0_1', start_idx: 0, end_idx: 1, source_tag: 'burst' },
-    { class_id: 'tb',    event_id: 'tb_1',      start_idx: 1, end_idx: 1, source_tag: 'tb' },
+    { instance_id: 'burst_0_1#0', node_id: 'burst', start_idx: 0, end_idx: 1 },
+    { instance_id: 'tb_1#0', node_id: 'tb', start_idx: 1, end_idx: 1 },
   ] as any[]
   const matches = [
-    { event_id: 'm@0-1', start_idx: 0, end_idx: 1,
-      node_index: { burst: 'burst_0_1', tb: 'tb_1' },
-      children: ['burst_0_1', 'tb_1'],
+    { match_id: 'm@0-1', start_idx: 0, end_idx: 1,
+      node_index: { burst: 'burst_0_1#0', tb: 'tb_1#0' },
+      children: ['burst_0_1#0', 'tb_1#0'],
       forward_return: 0.05 } as any,
   ]
   const topology = { nodes: [
-    { node_id: 'burst', source_tag: 'burst' },
-    { node_id: 'tb',    source_tag: 'tb' },
+    { node_id: 'burst' },
+    { node_id: 'tb' },
   ] } as any
   const tagList = ['burst', 'tb']
 
@@ -48,11 +48,11 @@ describe('chart.ts — computeEventData / buildMainOption / buildSubOption', () 
     level: 'matched' as const,
     nodeColors: { burst: '#2563eb', tb: '#16a34a' },
     eventTier: () => 'matched' as const,
-    nodeOfEventByBand: (e: any) => e.source_tag,
-    bandKeyOf: (e: any) => e.source_tag,
+    nodeOfEventByBand: (e: any) => e.node_id,
+    bandKeyOf: (e: any) => e.node_id,
     nodeVisible: {},
     tagToNodes: { burst: ['burst'], tb: ['tb'] },
-    selectedEventId: null,
+    selectedInstanceId: null,
     tooltipResolver: undefined,
     strictWindow: null,
     matchLabel: () => null,
@@ -62,14 +62,14 @@ describe('chart.ts — computeEventData / buildMainOption / buildSubOption', () 
     selectedMatchId: null,
     candidateMatchIds: new Set<string>(),
     highlightedEventIds: new Set<string>(),
-    pendingDisambigEventId: null,
+    pendingDisambigInstanceId: null,
   }
 
-  it('computeEventData bundles points/intervals/brackets/priceAnchored/satellites', () => {
+  it('computeEventData bundles points/intervals/brackets/priceAnchored(satellites 已删)', () => {
     const bundle = computeEventData(bars, events, matches, baseParams)
     // burst_0_1 是 interval(start≠end),tb_1 是 point(start==end)
-    expect(bundle.intervalData.some(d => d.event_id === 'burst_0_1')).toBe(true)
-    expect(bundle.pointData.some(d => d.event_id === 'tb_1')).toBe(true)
+    expect(bundle.intervalData.some(d => d.instance_id === 'burst_0_1#0')).toBe(true)
+    expect(bundle.pointData.some(d => d.instance_id === 'tb_1#0')).toBe(true)
     expect(bundle.bracketData.length).toBe(1)
     expect(bundle.bracketData[0].match_id).toBe('m@0-1')
   })
@@ -84,9 +84,9 @@ describe('chart.ts — computeEventData / buildMainOption / buildSubOption', () 
     expect(seriesNames).not.toContain('brackets')
     expect(seriesNames).not.toContain('points')
     expect(seriesNames).not.toContain('intervals')
-    // price-anchored 主 marker 保留在主图
+    // price-anchored 主 marker 保留在主图;卫星 pk 通道已删(Task 7)
     expect(seriesNames).toContain('price-points')
-    expect(seriesNames).toContain('satellites')
+    expect(seriesNames).not.toContain('satellites')
     expect(seriesNames).toContain('highlight-price')
     // 主图只有 grid[0]
     expect(opt.grid.length).toBe(1)
@@ -119,11 +119,11 @@ describe('chart.ts — computeEventData / buildMainOption / buildSubOption', () 
 describe('chart.ts — restored coverage (Task 6 review fix)', () => {
   const topology: Topology = {
     nodes: [
-      { node_id: 'down',  class_id: 'trend', source_tag: 'trend0', where_rules: [] },
-      { node_id: 'side',  class_id: 'trend', source_tag: 'trend1', where_rules: [] },
-      { node_id: 'bo',    class_id: 'bo',    source_tag: 'bo', render_grid: 'price', where_rules: [] },
-      { node_id: 'burst', class_id: 'burst', source_tag: 'burst',  where_rules: [] },
-      { node_id: 'tb',    class_id: 'tb',    source_tag: 'tb',     where_rules: [] },
+      { node_id: 'down',  where_rules: [] },
+      { node_id: 'side',  where_rules: [] },
+      { node_id: 'bo',    render_grid: 'price', where_rules: [] },
+      { node_id: 'burst', where_rules: [] },
+      { node_id: 'tb',    where_rules: [] },
     ],
     edges: [
       { src: 'down',  dst: 'burst', kind: 'TemporalEdge',    rule: 'before' },
@@ -134,23 +134,26 @@ describe('chart.ts — restored coverage (Task 6 review fix)', () => {
   }
 
   const events: EventDict[] = [
-    { class_id: 'trend', event_id: 'down1',  source_tag: 'trend0', start_idx: 1,  end_idx: 6  },
-    { class_id: 'trend', event_id: 'side1',  source_tag: 'trend1', start_idx: 4,  end_idx: 12 },
-    { class_id: 'burst', event_id: 'burst1', source_tag: 'burst',  start_idx: 10, end_idx: 15 },
-    { class_id: 'bo', event_id: 'bo9',  source_tag: 'bo', start_idx: 9,  end_idx: 9,
-      referenced_points: [[5, 12.5, 'pk0'], [7, 13.0, 'pk1']],
-      broken_peak_ids: [0, 1] } as any,
-    { class_id: 'bo', event_id: 'bo11', source_tag: 'bo', start_idx: 11, end_idx: 11 },
-    { class_id: 'tb', event_id: 'tb16', source_tag: 'tb', start_idx: 16, end_idx: 16 },
+    { instance_id: 'down1#0',  node_id: 'down',  start_idx: 1,  end_idx: 6  },
+    { instance_id: 'side1#0',  node_id: 'side',  start_idx: 4,  end_idx: 12 },
+    { instance_id: 'burst1#0', node_id: 'burst', start_idx: 10, end_idx: 15 },
+    { instance_id: 'bo9#0', node_id: 'bo', start_idx: 9,  end_idx: 9,
+      ref_ids: { broken: ['pk0#0', 'pk1#0'] } } as any,
+    { instance_id: 'bo11#0', node_id: 'bo', start_idx: 11, end_idx: 11 },
+    { instance_id: 'tb16#0', node_id: 'tb', start_idx: 16, end_idx: 16 },
     // detected-only:未 matched、未 qualified
-    { class_id: 'bo', event_id: 'boX',  source_tag: 'bo', start_idx: 20, end_idx: 20 },
+    { instance_id: 'boX#0', node_id: 'bo', start_idx: 20, end_idx: 20 },
+    // pk 三态合成/text 派生的引用目标:不在 topology 里(band 不可见,不进任何 output 通道),
+    // 只为给 bo9 的 ref_ids.broken 提供 pk_id 反查源(契约 C4/C5,合成发生在 filtered 之前)。
+    { instance_id: 'pk0#0', node_id: 'pk_ghost', start_idx: 0, end_idx: 0, peak_idx: 0, pk_id: 0 } as any,
+    { instance_id: 'pk1#0', node_id: 'pk_ghost', start_idx: 0, end_idx: 0, peak_idx: 0, pk_id: 1 } as any,
   ] as any[]
 
   const matches: MatchDict[] = [
     {
-      event_id: 'm1', start_idx: 1, end_idx: 16,
-      node_index: { down: 'down1', side: 'side1', burst: 'burst1', tb: 'tb16' },
-      children: ['down1', 'side1', 'burst1', 'tb16'],
+      match_id: 'm1', start_idx: 1, end_idx: 16,
+      node_index: { down: 'down1#0', side: 'side1#0', burst: 'burst1#0', tb: 'tb16#0' },
+      children: ['down1#0', 'side1#0', 'burst1#0', 'tb16#0'],
       predicate_trace: { where_results: {}, edge_results: {} },
     } as any,
   ]
@@ -170,10 +173,10 @@ describe('chart.ts — restored coverage (Task 6 review fix)', () => {
       topology, isolatedNodeIds: isolated, tagList, level, nodeColors,
       eventTier: (e) => eventTierOf(e, mIds, qualifiedIds),
       nodeOfEventByBand: (e) => nodeOfEventByBand(e, tagToNodes, tagList),
-      bandKeyOf: (e) => bandKeyOf(e, tagList),
+      bandKeyOf: (e) => bandKeyOf(e),
       nodeVisible: {},
       tagToNodes,
-      selectedEventId: null,
+      selectedInstanceId: null,
       ...overrides,
     }
   }
@@ -182,83 +185,68 @@ describe('chart.ts — restored coverage (Task 6 review fix)', () => {
   describe('1. level gating — RANK + boX exclusion at matched level', () => {
     it('RANK: level=qualified admits matched+qualified tiers, excludes detected-only', () => {
       const stub: EventDict[] = [
-        { class_id: 'x', event_id: 'eDetected',  source_tag: 'tb', start_idx: 1, end_idx: 1 },
-        { class_id: 'x', event_id: 'eQualified', source_tag: 'tb', start_idx: 2, end_idx: 2 },
-        { class_id: 'x', event_id: 'eMatched',   source_tag: 'tb', start_idx: 3, end_idx: 3 },
+        { instance_id: 'eDetected#0',  node_id: 'tb', start_idx: 1, end_idx: 1 },
+        { instance_id: 'eQualified#0', node_id: 'tb', start_idx: 2, end_idx: 2 },
+        { instance_id: 'eMatched#0',   node_id: 'tb', start_idx: 3, end_idx: 3 },
       ] as any[]
       const tierOf = (e: EventDict): Tier =>
-        e.event_id === 'eMatched' ? 'matched' : e.event_id === 'eQualified' ? 'qualified' : 'detected'
+        e.instance_id === 'eMatched#0' ? 'matched' : e.instance_id === 'eQualified#0' ? 'qualified' : 'detected'
       const input = makeInput('qualified', { eventTier: tierOf })
       const bundle = computeEventData(bars, stub, [], input)
-      const ids = bundle.pointData.map((d) => d.event_id)
-      expect(ids).toContain('eMatched')
-      expect(ids).toContain('eQualified')
-      expect(ids).not.toContain('eDetected')
+      const ids = bundle.pointData.map((d) => d.instance_id)
+      expect(ids).toContain('eMatched#0')
+      expect(ids).toContain('eQualified#0')
+      expect(ids).not.toContain('eDetected#0')
     })
 
     it('level=matched: boX (detected-only bo event) excluded from pricePointData; matched events remain', () => {
       const input = makeInput('matched')
       const bundle = computeEventData(bars, events, matches, input)
-      expect(bundle.pricePointData.map((d) => d.event_id)).not.toContain('boX')
-      expect(bundle.intervalData.map((d) => d.event_id))
-        .toEqual(expect.arrayContaining(['down1', 'side1', 'burst1']))
-      expect(bundle.pointData.map((d) => d.event_id)).toContain('tb16')
+      expect(bundle.pricePointData.map((d) => d.instance_id)).not.toContain('boX#0')
+      expect(bundle.intervalData.map((d) => d.instance_id))
+        .toEqual(expect.arrayContaining(['down1#0', 'side1#0', 'burst1#0']))
+      expect(bundle.pointData.map((d) => d.instance_id)).toContain('tb16#0')
     })
 
     it('level=detected: boX (and all other tiers) included in pricePointData', () => {
       const input = makeInput('detected')
       const bundle = computeEventData(bars, events, matches, input)
-      expect(bundle.pricePointData.map((d) => d.event_id)).toEqual(
-        expect.arrayContaining(['bo9', 'bo11', 'boX']),
+      expect(bundle.pricePointData.map((d) => d.instance_id)).toEqual(
+        expect.arrayContaining(['bo9#0', 'bo11#0', 'boX#0']),
       )
     })
   })
 
-  // ── 2. render_grid routing + satellites/broken_peak_ids/hasPks (chart.ts:114-115,122-131,140-192) ──
-  describe('2. render_grid routing + satellites/broken_peak_ids/hasPks', () => {
+  // ── 2. render_grid routing + bo 盒文本(ref_ids.broken→pk_id 派生,卫星 pk 通道 hasPks 已删,Task 7) ──
+  describe('2. render_grid routing + bo 盒文本(ref_ids.broken 派生,hasPks 已删)', () => {
     it('bo events (render_grid=price) 不进入 grid2 pointData;时间锚定 tb16 仍走 pointData', () => {
       const input = makeInput('detected')
       const bundle = computeEventData(bars, events, matches, input)
-      const boInPointData = bundle.pointData.filter((d) => ['bo9', 'bo11', 'boX'].includes(d.event_id))
+      const boInPointData = bundle.pointData.filter((d) => ['bo9#0', 'bo11#0', 'boX#0'].includes(d.instance_id))
       expect(boInPointData.length).toBe(0)
-      expect(bundle.pointData.some((d) => d.event_id === 'tb16')).toBe(true)
+      expect(bundle.pointData.some((d) => d.instance_id === 'tb16#0')).toBe(true)
     })
 
-    it('pricePointData 含全部 3 个 bo 事件(value[0]=start_idx);text 取自 broken_peak_ids([0,1] / "[]" 兜底)', () => {
+    it('pricePointData 含全部 3 个 bo 事件(value[0]=start_idx);text 取自 ref_ids.broken 查 pk_id([0,1] / "[]" 兜底)', () => {
       const input = makeInput('detected')
       const bundle = computeEventData(bars, events, matches, input)
-      expect(bundle.pricePointData.map((d) => d.event_id).sort()).toEqual(['bo11', 'bo9', 'boX'])
-      const bo9 = bundle.pricePointData.find((d) => d.event_id === 'bo9')!
-      const bo11 = bundle.pricePointData.find((d) => d.event_id === 'bo11')!
+      expect(bundle.pricePointData.map((d) => d.instance_id).sort()).toEqual(['bo11#0', 'bo9#0', 'boX#0'])
+      const bo9 = bundle.pricePointData.find((d) => d.instance_id === 'bo9#0')!
+      const bo11 = bundle.pricePointData.find((d) => d.instance_id === 'bo11#0')!
       expect(bo9.value[0]).toBe(9)
       expect(bo9.anchorY).toBe(bars[9].h)
       expect(bo9.text).toBe('[0,1]')
       expect(bo11.text).toBe('[]')
     })
 
-    it('satelliteData 承载 referenced_points(value=[barIdx,price], anchorY=bars[barIdx].h, pkId)', () => {
+    it('satelliteData 通道已删(Task 7):pricePointData 不携带 hasPks 字段', () => {
       const input = makeInput('detected')
       const bundle = computeEventData(bars, events, matches, input)
-      expect(bundle.satelliteData.length).toBeGreaterThanOrEqual(2)
-      const pk0 = bundle.satelliteData.find((d) => d.label === 'pk0')!
-      expect(pk0.value).toEqual([5, 12.5])
-      expect(pk0.anchorY).toBe(bars[5].h)
-      expect(pk0.pkId).toBe('0')
-    })
-
-    it('hasPks: bo9(referenced barIdx 5/7 ≠ start_idx=9)=false;注入 bo5_at5(与 pk0 barIdx=5 重合)=true', () => {
-      const input = makeInput('detected')
-      const bundle = computeEventData(bars, events, matches, input)
-      const bo9 = bundle.pricePointData.find((d) => d.event_id === 'bo9')!
-      expect(bo9.hasPks).toBe(false)
-
-      const injected = [
-        ...events,
-        { class_id: 'bo', event_id: 'bo5_at5', source_tag: 'bo', start_idx: 5, end_idx: 5, referenced_points: [] },
-      ] as any[]
-      const bundle2 = computeEventData(bars, injected, matches, input)
-      const bo5 = bundle2.pricePointData.find((d) => d.event_id === 'bo5_at5')!
-      expect(bo5.hasPks).toBe(true)
+      // 卫星 pk 通道整体移除 → bundle 不再有 satelliteData 键
+      expect((bundle as any).satelliteData).toBeUndefined()
+      for (const d of bundle.pricePointData) {
+        expect((d as any).hasPks).toBeUndefined()
+      }
     })
   })
 
@@ -273,7 +261,7 @@ describe('chart.ts — restored coverage (Task 6 review fix)', () => {
       // pointData 新 shape(spec 2026-07-13):[start, start, lane, band, nBands];lane=0, band=0
       const mk = (kind: 'group' | 'focus' | 'pendingDisambig') =>
         makeRenderHighlightWithGeom(
-          [{ value: [0, 0, 0, 0, 1], event_id: 'e1', itemStyle: { color: '#22c55e' }, kind }],
+          [{ value: [0, 0, 0, 0, 1], instance_id: 'e1', itemStyle: { color: '#22c55e' }, kind }],
           bandGeom,
         )({ dataIndex: 0 }, fakeApi) as any
 
@@ -328,7 +316,7 @@ describe('chart.ts — restored coverage (Task 6 review fix)', () => {
         size: () => [10, 0],
       }
       const shape = makeRenderHighlightWithGeom(
-        [{ value: [10, 20, 0, 0, 1], event_id: 'e1', itemStyle: { color: '#3b82f6' }, kind: 'focus' }],
+        [{ value: [10, 20, 0, 0, 1], instance_id: 'e1', itemStyle: { color: '#3b82f6' }, kind: 'focus' }],
         bandGeom,
       )({ dataIndex: 0 }, fakeApi) as any
       expect(shape.type).toBe('rect')
@@ -349,7 +337,7 @@ describe('chart.ts — restored coverage (Task 6 review fix)', () => {
       const fakeApi: any = { value: () => 0, coord: () => [100, 200] }
       const mk = (kind: 'group' | 'focus' | 'pendingDisambig') =>
         makeRenderPricePointHighlight([
-          { value: [0, 0], event_id: 'e1', anchorY: 1, text: '[1]', hasPks: false,
+          { value: [0, 0], instance_id: 'e1', anchorY: 1, text: '[1]',
             itemStyle: { color: '#f97316' }, kind },
         ])({ dataIndex: 0 }, fakeApi) as any
 
@@ -393,49 +381,69 @@ describe('chart.ts — restored coverage (Task 6 review fix)', () => {
 
     it('push order: highlightData 先 group 再 pendingDisambig 再 focus(chart.ts:219-253 三分支顺序)', () => {
       const stub: EventDict[] = [
-        { class_id: 'x', event_id: 'eGroup',   source_tag: 'tb', start_idx: 1, end_idx: 1 },
-        { class_id: 'x', event_id: 'ePending', source_tag: 'tb', start_idx: 2, end_idx: 2 },
-        { class_id: 'x', event_id: 'eFocus',   source_tag: 'tb', start_idx: 3, end_idx: 3 },
+        { instance_id: 'eGroup#0',   node_id: 'tb', start_idx: 1, end_idx: 1 },
+        { instance_id: 'ePending#0', node_id: 'tb', start_idx: 2, end_idx: 2 },
+        { instance_id: 'eFocus#0',   node_id: 'tb', start_idx: 3, end_idx: 3 },
       ] as any[]
       const input = makeInput('detected', {
-        highlightedEventIds: new Set(['eGroup']),
-        pendingDisambigEventId: 'ePending',
-        selectedEventId: 'eFocus',
+        // 实例流:highlightedEventIds 集合元素为 instance_id 字符串(marker 的 instance_id 匹配)
+        highlightedEventIds: new Set(['eGroup#0']),
+        pendingDisambigInstanceId: 'ePending#0',
+        // 1 归属:合并 ref(selectedInstanceId)= focusedInstanceId;focus 响应当前聚焦实例
+        selectedInstanceId: 'eFocus#0',
+        focusedInstanceId: 'eFocus#0',
       })
       const bundle = computeEventData(bars, stub, [], input)
       expect(bundle.highlightData.map((d: any) => d.kind)).toEqual(['group', 'pendingDisambig', 'focus'])
-      expect(bundle.highlightData.map((d: any) => d.event_id)).toEqual(['eGroup', 'ePending', 'eFocus'])
+      expect(bundle.highlightData.map((d: any) => d.instance_id)).toEqual(['eGroup#0', 'ePending#0', 'eFocus#0'])
     })
 
     // 被点 marker 同属 highlight 集合(点击链路必然如此):若同时出 group + focus
     // 两层同坐标实心放大版,阴影叠加会让被点者投影明显深于组员。
-    // 故 group 条目跳过 selectedEventId,被点 marker 由 focus 条目独家表达。
-    it('selectedEventId ∈ highlightedEventIds 时只出 focus 条目,不出 group 条目', () => {
+    // 故 group 条目跳过焦点实例,被点 marker 由 focus 条目独家表达。
+    it('焦点实例 ∈ highlightedEventIds 时只出 focus 条目,不出 group 条目', () => {
       const stub: EventDict[] = [
-        { class_id: 'x', event_id: 'eSel',   source_tag: 'tb', start_idx: 1, end_idx: 1 },
-        { class_id: 'x', event_id: 'eOther', source_tag: 'tb', start_idx: 2, end_idx: 2 },
+        { instance_id: 'eSel#0',   node_id: 'tb', start_idx: 1, end_idx: 1 },
+        { instance_id: 'eOther#0', node_id: 'tb', start_idx: 2, end_idx: 2 },
       ] as any[]
       const input = makeInput('detected', {
-        highlightedEventIds: new Set(['eSel', 'eOther']),
-        selectedEventId: 'eSel',
+        // 实例流:instance_id 集合;1 归属合并 ref(selectedInstanceId)= focusedInstanceId;
+        // group 排除仍按 focusedInstanceId 精确(同值)
+        highlightedEventIds: new Set(['eSel#0', 'eOther#0']),
+        selectedInstanceId: 'eSel#0',
+        focusedInstanceId: 'eSel#0',
       })
       const bundle = computeEventData(bars, stub, [], input)
-      const ofSel = bundle.highlightData.filter((d: any) => d.event_id === 'eSel')
+      const ofSel = bundle.highlightData.filter((d: any) => d.instance_id === 'eSel#0')
       expect(ofSel.map((d: any) => d.kind)).toEqual(['focus'])
-      const ofOther = bundle.highlightData.filter((d: any) => d.event_id === 'eOther')
+      const ofOther = bundle.highlightData.filter((d: any) => d.instance_id === 'eOther#0')
       expect(ofOther.map((d: any) => d.kind)).toEqual(['group'])
     })
 
-    it('buildMainOption: highlight-price z(21) > satellites z(13) > price-points z(12)', () => {
+    // 0 归属(detected/qualified marker click,不在任何 match)也须画 focus 黑框:
+    // focusEvent 走 0 归属分支设 selectedInstanceId、focusedInstanceId=null;chart 的
+    // selectedInstanceId 参数=合并 ref(=该实例),focus 分支须响应它,否则点击不出黑框。
+    it('0 归属(selectedInstanceId 非空 / focusedInstanceId null)marker 也画 focus 黑框', () => {
+      const stub: EventDict[] = [
+        { instance_id: 'eSel#0', node_id: 'tb', start_idx: 1, end_idx: 1 },
+      ] as any[]
+      const input = makeInput('detected', {
+        selectedInstanceId: 'eSel#0',
+        focusedInstanceId: null,
+      })
+      const bundle = computeEventData(bars, stub, [], input)
+      expect(bundle.highlightData.filter((d: any) => d.instance_id === 'eSel#0').map((d: any) => d.kind)).toEqual(['focus'])
+    })
+
+    it('buildMainOption: highlight-price z(21) > price-points z(12);satellites 系列已删(Task 7)', () => {
       const input = makeInput('detected')
       const bundle = computeEventData(bars, events, matches, input)
       const opt = buildMainOption(bars, bundle, input) as any
       const S = (name: string) => opt.series.find((s: any) => s.name === name)
       expect(S('highlight-price').z).toBe(21)
-      expect(S('satellites').z).toBe(13)
       expect(S('price-points').z).toBe(12)
-      expect(S('highlight-price').z).toBeGreaterThan(S('satellites').z)
-      expect(S('satellites').z).toBeGreaterThan(S('price-points').z)
+      expect(S('satellites')).toBeUndefined()
+      expect(S('highlight-price').z).toBeGreaterThan(S('price-points').z)
     })
 
     // keyframeAnimation 受 series 级 isAnimationEnabled() 闸控(实测):
@@ -454,41 +462,41 @@ describe('chart.ts — restored coverage (Task 6 review fix)', () => {
     })
   })
 
-  // ── 4. endNode → bracketData.event_id (chart.ts:200-204, §7-4) ──
-  describe('4. endNode → bracketData.event_id', () => {
-    it('endNode 缺省时 bracketData 只带 match_id 不带 event_id(向后兼容)', () => {
+  // ── 4. endNode → bracketData.instance_id (chart.ts:200-204, §7-4) ──
+  describe('4. endNode → bracketData.instance_id', () => {
+    it('endNode 缺省时 bracketData 只带 match_id 不带 instance_id(向后兼容)', () => {
       const input = makeInput('detected')
       const bundle = computeEventData(bars, events, matches, input)
       expect(bundle.bracketData.length).toBeGreaterThan(0)
       for (const d of bundle.bracketData) {
         expect(d.match_id).toBe('m1')
-        expect(d.event_id).toBeUndefined()
+        expect(d.instance_id).toBeUndefined()
       }
     })
 
-    it("endNode='tb' 时 bracketData.event_id = node_index.tb", () => {
+    it("endNode='tb' 时 bracketData.instance_id = node_index.tb(instance_id 字符串直用)", () => {
       const input = makeInput('detected', { endNode: 'tb' })
       const bundle = computeEventData(bars, events, matches, input)
-      expect(bundle.bracketData[0].event_id).toBe('tb16')
+      expect(bundle.bracketData[0].instance_id).toBe('tb16#0')
     })
 
-    it('endNode 指向不存在的 node 时 event_id 安全降级为 undefined(不崩溃)', () => {
+    it('endNode 指向不存在的 node 时 instance_id 安全降级为 undefined(不崩溃)', () => {
       const input = makeInput('detected', { endNode: 'nonexistent' })
       expect(() => computeEventData(bars, events, matches, input)).not.toThrow()
       const bundle = computeEventData(bars, events, matches, input)
-      expect(bundle.bracketData[0].event_id).toBeUndefined()
+      expect(bundle.bracketData[0].instance_id).toBeUndefined()
     })
 
-    it('node_index 值为 string[](kleene)时取首元素', () => {
-      const kleeneMatches: MatchDict[] = [{
-        event_id: 'mk', start_idx: 1, end_idx: 16,
-        node_index: { tb: ['tb16', 'tb18'] as any, down: 'down1', side: 'side1', burst: 'burst1' },
-        children: ['down1', 'side1', 'burst1', 'tb16', 'tb18'],
+    it('node_index 值已是 instance_id 字符串时直用(实例流契约)', () => {
+      const refMatches: MatchDict[] = [{
+        match_id: 'mk', start_idx: 1, end_idx: 16,
+        node_index: { tb: 'tb16#0', down: 'down1#0', side: 'side1#0', burst: 'burst1#0' },
+        children: ['down1#0', 'side1#0', 'burst1#0', 'tb16#0', 'tb18#0'],
         predicate_trace: { where_results: {}, edge_results: {} },
-      } as any]
+      }]
       const input = makeInput('detected', { endNode: 'tb' })
-      const bundle = computeEventData(bars, events, kleeneMatches, input)
-      expect(bundle.bracketData[0].event_id).toBe('tb16')
+      const bundle = computeEventData(bars, events, refMatches, input)
+      expect(bundle.bracketData[0].instance_id).toBe('tb16#0')
     })
   })
 })
@@ -651,18 +659,18 @@ describe('buildSubOption — Task 4 graphic switch', () => {
     { date: '2025-01-02', o: 12, c: 11, h: 12.5, l: 10, v: 800, rv: 0 },
   ]
   const events = [
-    { class_id: 'burst', event_id: 'burst_0_1', start_idx: 0, end_idx: 1, source_tag: 'burst' },
-    { class_id: 'tb',    event_id: 'tb_1',      start_idx: 1, end_idx: 1, source_tag: 'tb' },
+    { instance_id: 'burst_0_1#0', node_id: 'burst', start_idx: 0, end_idx: 1 },
+    { instance_id: 'tb_1#0', node_id: 'tb', start_idx: 1, end_idx: 1 },
   ] as any[]
   const matches = [
-    { event_id: 'm@0-1', start_idx: 0, end_idx: 1,
-      node_index: { burst: 'burst_0_1', tb: 'tb_1' },
-      children: ['burst_0_1', 'tb_1'],
+    { match_id: 'm@0-1', start_idx: 0, end_idx: 1,
+      node_index: { burst: 'burst_0_1#0', tb: 'tb_1#0' },
+      children: ['burst_0_1#0', 'tb_1#0'],
       forward_return: 0.05 } as any,
   ]
   const topology = { nodes: [
-    { node_id: 'burst', source_tag: 'burst' },
-    { node_id: 'tb',    source_tag: 'tb' },
+    { node_id: 'burst' },
+    { node_id: 'tb' },
   ] } as any
   const tagList = ['burst', 'tb']
   const baseParams = {
@@ -672,11 +680,11 @@ describe('buildSubOption — Task 4 graphic switch', () => {
     level: 'matched' as const,
     nodeColors: { burst: '#2563eb', tb: '#16a34a' },
     eventTier: () => 'matched' as const,
-    nodeOfEventByBand: (e: any) => e.source_tag,
-    bandKeyOf: (e: any) => e.source_tag,
+    nodeOfEventByBand: (e: any) => e.node_id,
+    bandKeyOf: (e: any) => e.node_id,
     nodeVisible: {},
     tagToNodes: { burst: ['burst'], tb: ['tb'] },
-    selectedEventId: null,
+    selectedInstanceId: null,
     tooltipResolver: undefined,
     strictWindow: null,
     matchLabel: () => null,
@@ -686,7 +694,7 @@ describe('buildSubOption — Task 4 graphic switch', () => {
     selectedMatchId: null,
     candidateMatchIds: new Set<string>(),
     highlightedEventIds: new Set<string>(),
-    pendingDisambigEventId: null,
+    pendingDisambigInstanceId: null,
   }
   const chartSubWidth = 800
 
@@ -738,16 +746,16 @@ describe('buildSubOption — Task 4 graphic switch', () => {
 describe('副图空轨移除 — price tag 不参与分轨', () => {
   const topology: Topology = {
     nodes: [
-      { node_id: 'down', class_id: 'trend', source_tag: 'trend0', where_rules: [] },
-      { node_id: 'bo',   class_id: 'bo',    source_tag: 'bo', render_grid: 'price', where_rules: [] },
-      { node_id: 'tb',   class_id: 'tb',    source_tag: 'tb', where_rules: [] },
+      { node_id: 'down', where_rules: [] },
+      { node_id: 'bo',   render_grid: 'price', where_rules: [] },
+      { node_id: 'tb',   where_rules: [] },
     ],
     edges: [],
   }
   const events: EventDict[] = [
-    { class_id: 'trend', event_id: 'down1', source_tag: 'trend0', start_idx: 1, end_idx: 6 },
-    { class_id: 'bo',    event_id: 'bo9',   source_tag: 'bo',     start_idx: 9, end_idx: 9 },
-    { class_id: 'tb',    event_id: 'tb16',  source_tag: 'tb',     start_idx: 16, end_idx: 16 },
+    { instance_id: 'down1#0', node_id: 'down', start_idx: 1, end_idx: 6 },
+    { instance_id: 'bo9#0',   node_id: 'bo',   start_idx: 9, end_idx: 9 },
+    { instance_id: 'tb16#0',  node_id: 'tb',   start_idx: 16, end_idx: 16 },
   ] as any[]
   const bars: Bar[] = Array.from({ length: 20 }, (_, i) => ({
     date: `2025-02-${String(i + 1).padStart(2, '0')}`,
@@ -755,30 +763,30 @@ describe('副图空轨移除 — price tag 不参与分轨', () => {
   }))
 
   function makeInput(): BandRenderInput {
-    const { tagToNodes, tagList } = deriveTagMap(topology.nodes)   // ['trend0','bo','tb']
+    const { tagToNodes, tagList } = deriveTagMap(topology.nodes)   // ['down','bo','tb']
     return {
       topology, isolatedNodeIds: isolatedNodeIds(topology), tagList,
       level: 'detected', nodeColors: {},
       eventTier: () => 'detected' as Tier,
       nodeOfEventByBand: (e) => nodeOfEventByBand(e, tagToNodes, tagList),
-      bandKeyOf: (e) => bandKeyOf(e, tagList),
-      nodeVisible: {}, tagToNodes, selectedEventId: null,
+      bandKeyOf: (e) => bandKeyOf(e),
+      nodeVisible: {}, tagToNodes, selectedInstanceId: null,
     }
   }
 
-  it('computeEventData: band 索引按剔除 bo 后的列表编码(trend0=0, tb=1, nBands=2)', () => {
+  it('computeEventData: band 索引按剔除 bo 后的列表编码(down=0, tb=1, nBands=2)', () => {
     const bundle = computeEventData(bars, events, [], makeInput())
-    const down1 = bundle.intervalData.find((d: any) => d.event_id === 'down1')!
+    const down1 = bundle.intervalData.find((d: any) => d.instance_id === 'down1#0')!
     expect(down1.value[3]).toBe(0)   // band
     expect(down1.value[4]).toBe(2)   // nBands:不含 bo
-    const tb16 = bundle.pointData.find((d: any) => d.event_id === 'tb16')!
+    const tb16 = bundle.pointData.find((d: any) => d.instance_id === 'tb16#0')!
     // pointData.value 新 shape (spec 2026-07-13):[start, start, lane, band, nBands]
     expect(typeof tb16.value[2]).toBe('number')   // lane (>=0, 具体值取决于同 band 内 pack 顺序)
     expect(tb16.value[3]).toBe(1)                  // band:tagList 空间本应是 2
     expect(tb16.value[4]).toBe(2)                  // nBands
     // bo 事件仍走主图 pricePointData,不进副图
-    expect(bundle.pricePointData.map((d: any) => d.event_id)).toContain('bo9')
-    expect(bundle.pointData.map((d: any) => d.event_id)).not.toContain('bo9')
+    expect(bundle.pricePointData.map((d: any) => d.instance_id)).toContain('bo9#0')
+    expect(bundle.pointData.map((d: any) => d.instance_id)).not.toContain('bo9#0')
   })
 
   it('buildSubOption: graphic bandLabels 只含非-price tag(无 bo 空轨标签)', () => {
@@ -789,14 +797,14 @@ describe('副图空轨移除 — price tag 不参与分轨', () => {
     const labelTexts = opt.graphic
       .filter((e: any) => e.type === 'text')
       .map((e: any) => e.style?.text)
-    expect(labelTexts).toContain('trend0')
+    expect(labelTexts).toContain('down')
     expect(labelTexts).toContain('tb')
     expect(labelTexts).not.toContain('bo')
   })
 
   it('全 price 拓扑(bo_only 场景):副图零 band、零 bandLabel', () => {
     const topoAllPrice: Topology = {
-      nodes: [{ node_id: 'bo', class_id: 'bo', source_tag: 'bo', render_grid: 'price', where_rules: [] }],
+      nodes: [{ node_id: 'bo', render_grid: 'price', where_rules: [] }],
       edges: [],
     }
     const { tagToNodes, tagList } = deriveTagMap(topoAllPrice.nodes)
@@ -805,14 +813,14 @@ describe('副图空轨移除 — price tag 不参与分轨', () => {
       level: 'detected', nodeColors: {},
       eventTier: () => 'detected' as Tier,
       nodeOfEventByBand: (e) => nodeOfEventByBand(e, tagToNodes, tagList),
-      bandKeyOf: (e) => bandKeyOf(e, tagList),
-      nodeVisible: {}, tagToNodes, selectedEventId: null,
+      bandKeyOf: (e) => bandKeyOf(e),
+      nodeVisible: {}, tagToNodes, selectedInstanceId: null,
     }
-    const boEvents = [{ class_id: 'bo', event_id: 'bo9', source_tag: 'bo', start_idx: 9, end_idx: 9 }] as any[]
+    const boEvents = [{ instance_id: 'bo9#0', node_id: 'bo', start_idx: 9, end_idx: 9 }] as any[]
     const bundle = computeEventData(bars, boEvents, [], input)
     expect(bundle.pointData.length).toBe(0)
     expect(bundle.intervalData.length).toBe(0)
-    expect(bundle.pricePointData.map((d: any) => d.event_id)).toEqual(['bo9'])
+    expect(bundle.pricePointData.map((d: any) => d.instance_id)).toEqual(['bo9#0'])
     const subGeom = computeSubGeometry({ bracketLaneCount: 0, bandLaneCounts: [] })
     const opt = buildSubOption(bars, bundle, subGeom, input, 800) as any
     const labelTexts = opt.graphic.filter((e: any) => e.type === 'text').map((e: any) => e.style?.text)
@@ -952,7 +960,7 @@ describe('chart.ts — renderer zoomFactor 传播(spec 2026-07-03)', () => {
     // pointData 新 shape:[start, start, lane, band, nBands]
     // band top=20 h=20 → lane0 centerY = 20 + 4 + 0*(7*z+2*z) + 7*z/2 = 24 + 3.5*z
     // z=2 → centerY = 24 + 7 = 31;offsets +6*2 / -4*2
-    const items = [{ value: [0, 0, 0, 0, 1], event_id: 'e1', itemStyle: { color: '#22c55e' }, kind: 'group' as const }]
+    const items = [{ value: [0, 0, 0, 0, 1], instance_id: 'e1', itemStyle: { color: '#22c55e' }, kind: 'group' as const }]
     const shape = makeRenderHighlightWithGeom(items, [{ top: 20, h: 20, laneCount: 1 }], 2)({ dataIndex: 0 }, fakeApi) as any
     expect(shape.shape.points[0][1]).toBe(31 + 12)   // 43
     expect(shape.shape.points[1][1]).toBe(31 - 8)    // 23
@@ -971,7 +979,7 @@ describe('chart.ts — renderer zoomFactor 传播(spec 2026-07-03)', () => {
       size: () => [10, 0],
     }
     // z=2:laneH=14, rawY=20+4+0=24, y=24−1.5*2=21, height=14+3*2=20
-    const items = [{ value: [10, 20, 0, 0, 1], event_id: 'e1', itemStyle: { color: '#3b82f6' }, kind: 'focus' as const }]
+    const items = [{ value: [10, 20, 0, 0, 1], instance_id: 'e1', itemStyle: { color: '#3b82f6' }, kind: 'focus' as const }]
     const shape = makeRenderHighlightWithGeom(items, bg, 2)({ dataIndex: 0 }, fakeApi) as any
     expect(shape.type).toBe('rect')
     expect(shape.shape.y).toBe(21)
@@ -983,21 +991,21 @@ describe('chart.ts — renderer zoomFactor 传播(spec 2026-07-03)', () => {
     // 块级作用域、不可跨块复用;此处按「chart.ts — restored coverage」块(tests/chart.spec.ts:117-177)
     // 同款 fixture 形状自包含内联,保持语义等价(topology/events/matches/makeInput(level, overrides))。
     const topology: Topology = { nodes: [
-      { node_id: 'burst', class_id: 'burst', source_tag: 'burst', where_rules: [] },
-      { node_id: 'tb',    class_id: 'tb',    source_tag: 'tb',    where_rules: [] },
+      { node_id: 'burst', where_rules: [] },
+      { node_id: 'tb',    where_rules: [] },
     ], edges: [] } as any
     const bars: Bar[] = [
       { date: '2025-01-01', o: 10, c: 12, h: 13, l: 9, v: 1000, rv: 0 },
       { date: '2025-01-02', o: 12, c: 11, h: 12.5, l: 10, v: 800, rv: 0 },
     ]
     const events: EventDict[] = [
-      { class_id: 'burst', event_id: 'burst_0_1', start_idx: 0, end_idx: 1, source_tag: 'burst' },
-      { class_id: 'tb',    event_id: 'tb_1',      start_idx: 1, end_idx: 1, source_tag: 'tb' },
+      { instance_id: 'burst_0_1#0', node_id: 'burst', start_idx: 0, end_idx: 1 },
+      { instance_id: 'tb_1#0', node_id: 'tb', start_idx: 1, end_idx: 1 },
     ] as any[]
     const matches: MatchDict[] = [
-      { event_id: 'm@0-1', start_idx: 0, end_idx: 1,
-        node_index: { burst: 'burst_0_1', tb: 'tb_1' },
-        children: ['burst_0_1', 'tb_1'],
+      { match_id: 'm@0-1', start_idx: 0, end_idx: 1,
+        node_index: { burst: 'burst_0_1#0', tb: 'tb_1#0' },
+        children: ['burst_0_1#0', 'tb_1#0'],
         forward_return: 0.05 } as any,
     ]
     function makeInput(level: Level, overrides: Partial<BandRenderInput> = {}): BandRenderInput {
@@ -1010,10 +1018,10 @@ describe('chart.ts — renderer zoomFactor 传播(spec 2026-07-03)', () => {
         nodeColors: { burst: '#2563eb', tb: '#16a34a' },
         eventTier: (e) => eventTierOf(e, mIds, qualifiedIds),
         nodeOfEventByBand: (e) => nodeOfEventByBand(e, tagToNodes, tagList),
-        bandKeyOf: (e) => bandKeyOf(e, tagList),
+        bandKeyOf: (e) => bandKeyOf(e),
         nodeVisible: {},
         tagToNodes,
-        selectedEventId: null,
+        selectedInstanceId: null,
         ...overrides,
       }
     }
@@ -1082,21 +1090,21 @@ describe('makeRenderBracket — zoomFactor 传播', () => {
 // ---------- bracket focus 装配(spec 2026-07-03-group-amber-focus-edge) ----------
 describe('buildSubOption — bracket focus 信号装配', () => {
   const topology: Topology = { nodes: [
-    { node_id: 'burst', class_id: 'burst', source_tag: 'burst', where_rules: [] },
-    { node_id: 'tb',    class_id: 'tb',    source_tag: 'tb',    where_rules: [] },
+    { node_id: 'burst', where_rules: [] },
+    { node_id: 'tb',    where_rules: [] },
   ], edges: [] } as any
   const bars: Bar[] = [
     { date: '2025-01-01', o: 10, c: 12, h: 13, l: 9, v: 1000, rv: 0 },
     { date: '2025-01-02', o: 12, c: 11, h: 12.5, l: 10, v: 800, rv: 0 },
   ]
   const events: EventDict[] = [
-    { class_id: 'burst', event_id: 'burst_0_1', start_idx: 0, end_idx: 1, source_tag: 'burst' },
-    { class_id: 'tb',    event_id: 'tb_1',      start_idx: 1, end_idx: 1, source_tag: 'tb' },
+    { instance_id: 'burst_0_1#0', node_id: 'burst', start_idx: 0, end_idx: 1 },
+    { instance_id: 'tb_1#0', node_id: 'tb', start_idx: 1, end_idx: 1 },
   ] as any[]
   const matches: MatchDict[] = [
-    { event_id: 'm@0-1', start_idx: 0, end_idx: 1,
-      node_index: { burst: 'burst_0_1', tb: 'tb_1' },
-      children: ['burst_0_1', 'tb_1'],
+    { match_id: 'm@0-1', start_idx: 0, end_idx: 1,
+      node_index: { burst: 'burst_0_1#0', tb: 'tb_1#0' },
+      children: ['burst_0_1#0', 'tb_1#0'],
       forward_return: 0.05 } as any,
   ]
   function makeInput(overrides: Partial<BandRenderInput> = {}): BandRenderInput {
@@ -1109,10 +1117,10 @@ describe('buildSubOption — bracket focus 信号装配', () => {
       nodeColors: { burst: '#2563eb', tb: '#16a34a' },
       eventTier: (e) => eventTierOf(e, mIds, qIds),
       nodeOfEventByBand: (e) => nodeOfEventByBand(e, tagToNodes, tagList),
-      bandKeyOf: (e) => bandKeyOf(e, tagList),
+      bandKeyOf: (e) => bandKeyOf(e),
       nodeVisible: {},
       tagToNodes,
-      selectedEventId: null,
+      selectedInstanceId: null,
       ...overrides,
     }
   }
@@ -1128,17 +1136,96 @@ describe('buildSubOption — bracket focus 信号装配', () => {
     return (s.renderItem({ dataIndex: 0 }, bracketFakeApi) as any).children[0]
   }
 
-  it('selectedMatchId 有 + selectedEventId 空(点了 bracket 本身)→ focus:琥珀+粗深边', () => {
-    const rect = bracketRect(makeInput({ selectedMatchId: 'm@0-1', selectedEventId: null }))
+  it('selectedMatchId 有 + selectedInstanceId 空(点了 bracket 本身)→ focus:琥珀+粗深边', () => {
+    const rect = bracketRect(makeInput({ selectedMatchId: 'm@0-1', selectedInstanceId: null }))
     expect(rect.style.fill).toBe('#fbbf24')
     expect(rect.style.stroke).toBe('#1e293b')
     expect(rect.style.lineWidth).toBe(2.5)
   })
 
-  it('selectedMatchId 有 + selectedEventId 有(点了组内 marker)→ 成员:琥珀+细深边', () => {
-    const rect = bracketRect(makeInput({ selectedMatchId: 'm@0-1', selectedEventId: 'burst_0_1' }))
+  it('selectedMatchId 有 + selectedInstanceId 有(点了组内 marker)→ 成员:琥珀+细深边', () => {
+    const rect = bracketRect(makeInput({ selectedMatchId: 'm@0-1', selectedInstanceId: 'burst_0_1#0' }))
     expect(rect.style.fill).toBe('#fbbf24')
     expect(rect.style.stroke).toBe('#1e293b')
     expect(rect.style.lineWidth).toBe(1.5)
+  })
+})
+
+// ── 子结构事件 band 路由(tb 段 → tb_seg 泳道;容器留 tb 泳道) ──────────────────
+describe('computeEventData — 子结构段经引擎命名表 node_id 直落结构 node 泳道', () => {
+  const cbBars = [
+    { date: '2025-01-01', o: 10, c: 12, h: 13, l: 9, v: 1000, rv: 0 },
+    { date: '2025-01-02', o: 12, c: 11, h: 12.5, l: 10, v: 800, rv: 0 },
+  ]
+  // 容器 tb_0_1 与两个段(方案 A:children 声明命名表把段直标 node_id='tb_seg')
+  const cbEvents = [
+    { instance_id: 'tb_0_1#0', node_id: 'tb', start_idx: 0, end_idx: 1,
+      child_refs: { segments: ['tb_seg_0_0#0', 'tb_seg_1_1#0'] } },
+    { instance_id: 'tb_seg_0_0#0', node_id: 'tb_seg', start_idx: 0, end_idx: 0, child_refs: {} },
+    { instance_id: 'tb_seg_1_1#0', node_id: 'tb_seg', start_idx: 1, end_idx: 1, child_refs: {} },
+  ] as any[]
+  const cbTopology = { nodes: [
+    { node_id: 'tb' },
+    { node_id: 'tb_seg', parent_refs: [['tb', 'segments']] },
+  ], edges: [] } as any
+  const cbParams = {
+    topology: cbTopology,
+    isolatedNodeIds: new Set<string>(),
+    tagList: ['tb', 'tb_seg'],
+    level: 'matched' as const,
+    nodeColors: { tb: '#D60000', tb_seg: '#16a34a' },
+    eventTier: () => 'matched' as const,
+    nodeOfEventByBand: (e: any) => e.node_id,
+    bandKeyOf: (e: any) => e.node_id,                  // 段自带 node_id='tb_seg',直连即分轨
+    nodeVisible: {},
+    tagToNodes: { tb: ['tb'], tb_seg: ['tb_seg'] },
+    selectedInstanceId: null,
+    tooltipResolver: undefined,
+    strictWindow: null,
+    matchLabel: () => null,
+    sliderShow: true,
+    zoomOverride: null,
+    endNode: undefined,
+    selectedMatchId: null,
+    candidateMatchIds: new Set<string>(),
+    highlightedEventIds: new Set<string>(),
+    pendingDisambigInstanceId: null,
+  }
+
+  it('段事件落 tb_seg 泳道(band=1)且用 tb_seg 的色;容器留 tb 泳道(band=0)用 tb 色', () => {
+    const bundle = computeEventData(cbBars, cbEvents, [], cbParams as any)
+    // subTags = ['tb','tb_seg'](render_grid 缺省 'time,均进副图)
+    const seg0 = bundle.intervalData.find((d: any) => d.instance_id === 'tb_seg_0_0#0')
+    const seg1 = bundle.intervalData.find((d: any) => d.instance_id === 'tb_seg_1_1#0')
+    // 单 bar 段(start==end)走 pointData
+    const segRec = seg0 ?? bundle.pointData.find((d: any) => d.instance_id === 'tb_seg_0_0#0')
+    const segRec2 = seg1 ?? bundle.pointData.find((d: any) => d.instance_id === 'tb_seg_1_1#0')
+    expect(segRec).toBeDefined()
+    expect(segRec2).toBeDefined()
+    expect(segRec.value[3]).toBe(1)                     // tb_seg 泳道序
+    expect(segRec.itemStyle.color).toBe('#16a34a')      // tb_seg 的色,非 tb 红
+    const cont = bundle.intervalData.find((d: any) => d.instance_id === 'tb_0_1#0')
+    expect(cont).toBeDefined()
+    expect(cont.value[3]).toBe(0)                       // 容器留 tb 泳道
+    expect(cont.itemStyle.color).toBe('#D60000')
+  })
+
+  it('未声明 app 的段(node_id=tb,旧形态)→ 拓扑仅 tb → 全落 tb 泳道同色', () => {
+    const legacyEvents = [
+      { instance_id: 'tb_0_1#0', node_id: 'tb', start_idx: 0, end_idx: 1,
+        child_refs: { segments: ['tb_0_0#0'] } },
+      { instance_id: 'tb_0_0#0', node_id: 'tb', start_idx: 0, end_idx: 0, child_refs: {} },
+    ] as any[]
+    const noSegTopology = { nodes: [{ node_id: 'tb' }], edges: [] } as any
+    const bundle = computeEventData(cbBars, legacyEvents, [],
+      { ...cbParams, topology: noSegTopology, tagList: ['tb'],
+        tagToNodes: { tb: ['tb'] } } as any)
+    const cont = bundle.intervalData.find((d: any) => d.instance_id === 'tb_0_1#0')
+    expect(cont.value[3]).toBe(0)
+    // 段与容器同泳道同色(node_id 分组,无子结构 node 可落)
+    const segRec = bundle.pointData.find((d: any) => d.instance_id === 'tb_0_0#0')
+      ?? bundle.intervalData.find((d: any) => d.instance_id === 'tb_0_0#0')
+    expect(segRec.value[3]).toBe(0)
+    expect(segRec.itemStyle.color).toBe('#D60000')
   })
 })

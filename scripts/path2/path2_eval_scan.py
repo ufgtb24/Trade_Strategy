@@ -8,7 +8,7 @@
 参数全部在 main() 起始声明(无 argparse,CLAUDE.md 入口规范)。
 skill/subagent 程序化调用直接走库函数,不必改本文件:
   uv run python -c "from path2_web.eval_runner import run_eval; import json; \
-out = run_eval(module_path='path2_apps.bottom_breakout_burst', \
+out = run_eval(module_path='path2_apps.bottom_burst', \
 start='2024-01-01', end='2025-01-01'); \
 print(json.dumps({'meta': out['meta'], 'per_horizon': out['per_horizon']}, ensure_ascii=False))"
 """
@@ -30,7 +30,7 @@ from path2_web.eval_runner import run_eval, run_healthcheck, run_regress
 def main() -> None:
     # ===== 参数(在此处直接改) =====
     MODE: str = "eval"                        # eval | regress | healthcheck
-    MODULE_PATH: str = "path2_apps.bottom_breakout_burst"   # app 包路径(非 dag_spec 子模块)
+    MODULE_PATH: str = "path2_apps.bottom_burst"   # app 包路径(非 dag_spec 子模块)
     START_DATE: str = "2024-01-01"
     END_DATE: str = "2025-01-01"
     HORIZONS: tuple[int, ...] = (5, 10, 20)

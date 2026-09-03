@@ -1,0 +1,541 @@
+[
+ {
+  "symbol": "ANIX",
+  "buy_date": "2025-10-13",
+  "runway": 0.5148071625344353,
+  "rnd_intensity": 5.023809523809524,
+  "has_rev": true
+ },
+ {
+  "symbol": "ANVS",
+  "buy_date": "2025-11-19",
+  "runway": 1.887404551877206,
+  "rnd_intensity": Infinity,
+  "has_rev": true
+ },
+ {
+  "symbol": "ANVS",
+  "buy_date": "2025-11-20",
+  "runway": 1.887404551877206,
+  "rnd_intensity": Infinity,
+  "has_rev": true
+ },
+ {
+  "symbol": "ANVS",
+  "buy_date": "2025-11-24",
+  "runway": 1.887404551877206,
+  "rnd_intensity": Infinity,
+  "has_rev": true
+ },
+ {
+  "symbol": "ANVS",
+  "buy_date": "2025-11-26",
+  "runway": 1.887404551877206,
+  "rnd_intensity": Infinity,
+  "has_rev": true
+ },
+ {
+  "symbol": "APCX",
+  "buy_date": "2025-11-10",
+  "runway": 0.8622987229317046,
+  "rnd_intensity": 3.127147766323024,
+  "has_rev": true
+ },
+ {
+  "symbol": "APCX",
+  "buy_date": "2025-11-17",
+  "runway": 0.8622987229317046,
+  "rnd_intensity": 1.4317180616740088,
+  "has_rev": true
+ },
+ {
+  "symbol": "APCX",
+  "buy_date": "2025-11-19",
+  "runway": 0.8622987229317046,
+  "rnd_intensity": 1.4317180616740088,
+  "has_rev": true
+ },
+ {
+  "symbol": "AQMS",
+  "buy_date": "2025-09-30",
+  "runway": 0.7021431166000727,
+  "rnd_intensity": Infinity,
+  "has_rev": true
+ },
+ {
+  "symbol": "ARBE",
+  "buy_date": "2025-09-24",
+  "runway": 0.5608016304347826,
+  "rnd_intensity": 29.985401459854014,
+  "has_rev": true
+ },
+ {
+  "symbol": "ASTI",
+  "buy_date": "2025-12-30",
+  "runway": 1.350953207357277,
+  "rnd_intensity": 21.737083610634347,
+  "has_rev": true
+ },
+ {
+  "symbol": "BEAT",
+  "buy_date": "2025-12-15",
+  "runway": 0.41456332365423276,
+  "rnd_intensity": null,
+  "has_rev": false
+ },
+ {
+  "symbol": "BEAT",
+  "buy_date": "2025-12-17",
+  "runway": 0.41456332365423276,
+  "rnd_intensity": null,
+  "has_rev": false
+ },
+ {
+  "symbol": "BESS",
+  "buy_date": "2025-10-17",
+  "runway": 0.14983292617864263,
+  "rnd_intensity": 0.0,
+  "has_rev": true
+ },
+ {
+  "symbol": "BGDE",
+  "buy_date": "2025-10-06",
+  "runway": 6.347427922058838,
+  "rnd_intensity": 0.017213357207935,
+  "has_rev": true
+ },
+ {
+  "symbol": "BKKT",
+  "buy_date": "2025-10-03",
+  "runway": 0.42942901432647784,
+  "rnd_intensity": null,
+  "has_rev": true
+ },
+ {
+  "symbol": "BKKT",
+  "buy_date": "2025-10-08",
+  "runway": 0.42942901432647784,
+  "rnd_intensity": null,
+  "has_rev": true
+ },
+ {
+  "symbol": "BOXL",
+  "buy_date": "2025-09-26",
+  "runway": 3.917610710607621,
+  "rnd_intensity": 0.036561649163749516,
+  "has_rev": true
+ },
+ {
+  "symbol": "BRFH",
+  "buy_date": "2025-09-23",
+  "runway": 2.3063241106719365,
+  "rnd_intensity": 0.019076923076923078,
+  "has_rev": true
+ },
+ {
+  "symbol": "BURU",
+  "buy_date": "2025-10-10",
+  "runway": 0.05762551146596728,
+  "rnd_intensity": Infinity,
+  "has_rev": true
+ },
+ {
+  "symbol": "CALC",
+  "buy_date": "2025-12-03",
+  "runway": 1.121361213612136,
+  "rnd_intensity": null,
+  "has_rev": false
+ },
+ {
+  "symbol": "CALC",
+  "buy_date": "2025-12-04",
+  "runway": 1.121361213612136,
+  "rnd_intensity": null,
+  "has_rev": false
+ },
+ {
+  "symbol": "CLIR",
+  "buy_date": "2025-09-24",
+  "runway": 11.106210621062106,
+  "rnd_intensity": 1.8571428571428572,
+  "has_rev": true
+ },
+ {
+  "symbol": "CLPT",
+  "buy_date": "2025-09-30",
+  "runway": 6.730557355800389,
+  "rnd_intensity": 0.41551817688551274,
+  "has_rev": true
+ },
+ {
+  "symbol": "CLYM",
+  "buy_date": "2025-12-18",
+  "runway": 1.6718284307373332,
+  "rnd_intensity": null,
+  "has_rev": false
+ },
+ {
+  "symbol": "CNET",
+  "buy_date": "2025-09-19",
+  "runway": 1.733739837398374,
+  "rnd_intensity": 0.0,
+  "has_rev": true
+ },
+ {
+  "symbol": "CNET",
+  "buy_date": "2025-09-24",
+  "runway": 1.733739837398374,
+  "rnd_intensity": 0.0,
+  "has_rev": true
+ },
+ {
+  "symbol": "CNTB",
+  "buy_date": "2025-11-21",
+  "runway": 3.8000803293503362,
+  "rnd_intensity": 694.375,
+  "has_rev": true
+ },
+ {
+  "symbol": "COBA",
+  "buy_date": "2025-12-02",
+  "runway": 0.6974275590754403,
+  "rnd_intensity": null,
+  "has_rev": true
+ },
+ {
+  "symbol": "CPIX",
+  "buy_date": "2025-12-22",
+  "runway": null,
+  "rnd_intensity": 0.15114716410113307,
+  "has_rev": true
+ },
+ {
+  "symbol": "CPIX",
+  "buy_date": "2025-12-22",
+  "runway": null,
+  "rnd_intensity": 0.15114716410113307,
+  "has_rev": true
+ },
+ {
+  "symbol": "CWBHF",
+  "buy_date": "2025-12-23",
+  "runway": 3.5440751445086707,
+  "rnd_intensity": null,
+  "has_rev": true
+ },
+ {
+  "symbol": "DFLI",
+  "buy_date": "2025-10-07",
+  "runway": 0.6058523608955886,
+  "rnd_intensity": 0.04258985721319547,
+  "has_rev": true
+ },
+ {
+  "symbol": "DRIO",
+  "buy_date": "2025-10-01",
+  "runway": 3.289974524202008,
+  "rnd_intensity": 0.6930527100018625,
+  "has_rev": true
+ },
+ {
+  "symbol": "DRIO",
+  "buy_date": "2025-10-06",
+  "runway": 3.289974524202008,
+  "rnd_intensity": 0.6930527100018625,
+  "has_rev": true
+ },
+ {
+  "symbol": "DVLT",
+  "buy_date": "2025-10-02",
+  "runway": 0.1098937583001328,
+  "rnd_intensity": 2.4345821325648416,
+  "has_rev": true
+ },
+ {
+  "symbol": "DVLT",
+  "buy_date": "2025-10-02",
+  "runway": 0.1098937583001328,
+  "rnd_intensity": 2.4345821325648416,
+  "has_rev": true
+ },
+ {
+  "symbol": "DVLT",
+  "buy_date": "2025-10-14",
+  "runway": 0.1098937583001328,
+  "rnd_intensity": 2.4345821325648416,
+  "has_rev": true
+ },
+ {
+  "symbol": "EPOW",
+  "buy_date": "2025-10-02",
+  "runway": null,
+  "rnd_intensity": null,
+  "has_rev": false
+ },
+ {
+  "symbol": "FLUX",
+  "buy_date": "2025-09-26",
+  "runway": null,
+  "rnd_intensity": 0.06851033329351332,
+  "has_rev": true
+ },
+ {
+  "symbol": "FUST",
+  "buy_date": "2025-11-18",
+  "runway": 0.17450764729076307,
+  "rnd_intensity": null,
+  "has_rev": true
+ },
+ {
+  "symbol": "GLSI",
+  "buy_date": "2025-12-22",
+  "runway": 2.0752649017091733,
+  "rnd_intensity": null,
+  "has_rev": false
+ },
+ {
+  "symbol": "GLSI",
+  "buy_date": "2025-12-24",
+  "runway": 2.0752649017091733,
+  "rnd_intensity": null,
+  "has_rev": false
+ },
+ {
+  "symbol": "GLSI",
+  "buy_date": "2025-12-24",
+  "runway": 2.0752649017091733,
+  "rnd_intensity": null,
+  "has_rev": false
+ },
+ {
+  "symbol": "GUER",
+  "buy_date": "2025-11-21",
+  "runway": 0.0019569748323934348,
+  "rnd_intensity": 0.31330055293075565,
+  "has_rev": true
+ },
+ {
+  "symbol": "GUER",
+  "buy_date": "2025-12-01",
+  "runway": 0.0019569748323934348,
+  "rnd_intensity": 0.31330055293075565,
+  "has_rev": true
+ },
+ {
+  "symbol": "GWH",
+  "buy_date": "2025-10-17",
+  "runway": 0.043699967101655884,
+  "rnd_intensity": 0.6039016115351993,
+  "has_rev": true
+ },
+ {
+  "symbol": "HOWL",
+  "buy_date": "2025-10-01",
+  "runway": 4.095207937513194,
+  "rnd_intensity": null,
+  "has_rev": false
+ },
+ {
+  "symbol": "HUIZ",
+  "buy_date": "2025-09-18",
+  "runway": null,
+  "rnd_intensity": null,
+  "has_rev": false
+ },
+ {
+  "symbol": "KAYS",
+  "buy_date": "2025-09-19",
+  "runway": 0.4085382461568632,
+  "rnd_intensity": null,
+  "has_rev": true
+ },
+ {
+  "symbol": "KAYS",
+  "buy_date": "2025-09-24",
+  "runway": 0.4085382461568632,
+  "rnd_intensity": null,
+  "has_rev": true
+ },
+ {
+  "symbol": "KAYS",
+  "buy_date": "2025-09-24",
+  "runway": 0.4085382461568632,
+  "rnd_intensity": null,
+  "has_rev": true
+ },
+ {
+  "symbol": "KITL",
+  "buy_date": "2025-10-14",
+  "runway": 0.014660898839798006,
+  "rnd_intensity": null,
+  "has_rev": true
+ },
+ {
+  "symbol": "KTTA",
+  "buy_date": "2025-12-03",
+  "runway": 1.3492411209399178,
+  "rnd_intensity": 6.211085596135549,
+  "has_rev": true
+ },
+ {
+  "symbol": "KTTA",
+  "buy_date": "2025-12-03",
+  "runway": 1.3492411209399178,
+  "rnd_intensity": 6.211085596135549,
+  "has_rev": true
+ },
+ {
+  "symbol": "LPCN",
+  "buy_date": "2025-12-23",
+  "runway": 1.9809704878540486,
+  "rnd_intensity": 49.24126204764502,
+  "has_rev": true
+ },
+ {
+  "symbol": "LPCN",
+  "buy_date": "2025-12-26",
+  "runway": 1.9809704878540486,
+  "rnd_intensity": 49.24126204764502,
+  "has_rev": true
+ },
+ {
+  "symbol": "LRDC",
+  "buy_date": "2025-11-12",
+  "runway": 0.2695298763907635,
+  "rnd_intensity": null,
+  "has_rev": true
+ },
+ {
+  "symbol": "LRDC",
+  "buy_date": "2025-11-14",
+  "runway": 0.2695298763907635,
+  "rnd_intensity": null,
+  "has_rev": true
+ },
+ {
+  "symbol": "MTC",
+  "buy_date": "2025-11-10",
+  "runway": null,
+  "rnd_intensity": null,
+  "has_rev": false
+ },
+ {
+  "symbol": "MYSE",
+  "buy_date": "2025-10-08",
+  "runway": 0.2902313878933164,
+  "rnd_intensity": 64.1025641025641,
+  "has_rev": true
+ },
+ {
+  "symbol": "OMER",
+  "buy_date": "2025-10-23",
+  "runway": 0.0531235177589911,
+  "rnd_intensity": 0.7335355285961872,
+  "has_rev": true
+ },
+ {
+  "symbol": "RKDA",
+  "buy_date": "2025-10-17",
+  "runway": 0.8664987405541562,
+  "rnd_intensity": 0.006185567010309278,
+  "has_rev": true
+ },
+ {
+  "symbol": "SBFM",
+  "buy_date": "2025-10-17",
+  "runway": 11.51189641943361,
+  "rnd_intensity": 0.020853050350522782,
+  "has_rev": true
+ },
+ {
+  "symbol": "SDST",
+  "buy_date": "2025-10-17",
+  "runway": 0.9066366813706378,
+  "rnd_intensity": null,
+  "has_rev": false
+ },
+ {
+  "symbol": "SLDC",
+  "buy_date": "2025-10-30",
+  "runway": null,
+  "rnd_intensity": null,
+  "has_rev": true
+ },
+ {
+  "symbol": "SLNH",
+  "buy_date": "2025-09-29",
+  "runway": 25.98870056497175,
+  "rnd_intensity": 0.06560571614160442,
+  "has_rev": true
+ },
+ {
+  "symbol": "SLNHP",
+  "buy_date": "2025-09-19",
+  "runway": 25.98870056497175,
+  "rnd_intensity": 0.06560571614160442,
+  "has_rev": true
+ },
+ {
+  "symbol": "SPTY",
+  "buy_date": "2025-10-31",
+  "runway": null,
+  "rnd_intensity": null,
+  "has_rev": true
+ },
+ {
+  "symbol": "SRGZ",
+  "buy_date": "2025-12-09",
+  "runway": 0.1944262236956406,
+  "rnd_intensity": null,
+  "has_rev": false
+ },
+ {
+  "symbol": "SRGZ",
+  "buy_date": "2025-12-23",
+  "runway": 0.8152534259932278,
+  "rnd_intensity": null,
+  "has_rev": false
+ },
+ {
+  "symbol": "SSM",
+  "buy_date": "2025-09-09",
+  "runway": 0.15629322268326418,
+  "rnd_intensity": 21.0,
+  "has_rev": true
+ },
+ {
+  "symbol": "SSP",
+  "buy_date": "2025-11-19",
+  "runway": 16.52009670595346,
+  "rnd_intensity": null,
+  "has_rev": true
+ },
+ {
+  "symbol": "WWR",
+  "buy_date": "2025-10-06",
+  "runway": 2.902164502164502,
+  "rnd_intensity": Infinity,
+  "has_rev": true
+ },
+ {
+  "symbol": "WWR",
+  "buy_date": "2025-10-08",
+  "runway": 2.902164502164502,
+  "rnd_intensity": Infinity,
+  "has_rev": true
+ },
+ {
+  "symbol": "YCBD",
+  "buy_date": "2025-12-23",
+  "runway": 21.35664903664526,
+  "rnd_intensity": null,
+  "has_rev": true
+ },
+ {
+  "symbol": "ZEOX",
+  "buy_date": "2025-10-22",
+  "runway": null,
+  "rnd_intensity": 0.05742725880551302,
+  "has_rev": true
+ }
+]

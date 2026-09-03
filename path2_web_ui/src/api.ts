@@ -68,10 +68,10 @@ export function getNodesDiagnose(
     + ovQuery(paramsOverride))
 }
 // 入口 A(KlineChart 主图 brush 框选):scope=time,拿 [start_bar,end_bar] 框内(严格 ⊆)的
-// gate 失败样例(GateFailure)。eventClass 可选(按 class_id 二次过滤)。
+// gate 失败样例(GateFailure)。
 export function getTimeDiagnose(
   patternId: string, symbol: string, start: string, end: string,
-  startBar: number, endBar: number, eventClass?: string,
+  startBar: number, endBar: number,
   signal?: AbortSignal,
   anchorKind?: string,                  // ★ v3 · anchor_kind 门限透传
   paramsOverride?: Record<string, any>, // ★ Task 8 · Working Copy 参数覆盖透传
@@ -79,7 +79,6 @@ export function getTimeDiagnose(
   const url = `${BASE}/diagnose?pattern_id=${encodeURIComponent(patternId)}&symbol=${encodeURIComponent(symbol)}`
     + `&start=${start}&end=${end}&scope=time`
     + `&start_bar=${startBar}&end_bar=${endBar}`
-    + (eventClass ? `&event_class=${encodeURIComponent(eventClass)}` : '')
     + (anchorKind ? `&anchor_kind=${encodeURIComponent(anchorKind)}` : '')   // ★ v3 · 空串也 skip · 与后端 handler `if anchor_kind:` 判据对齐
     + ovQuery(paramsOverride)
   return fetch(url, { signal }).then(async r => {
@@ -87,17 +86,18 @@ export function getTimeDiagnose(
     return r.json() as Promise<TimeScopeResponse>
   })
 }
-// 入口 D(KlineChart shift+click 跨图累积):scope=pair,两 marker 的 (src_event_id,dst_event_id)
+// 入口 D(KlineChart shift+click 跨图累积):scope=pair,两 marker 的 instance_id
 // 查两 node 间是否有直连 edge · 若有则 4 通道 subcheck 短路(auto swap 见 PairPayload.applied_swap)。
+// ★ wire 契约:后端 query 参数名沿用旧名(值已是 instance_id),TS 参数名按语义改为 instanceId。
 export function getPairDiagnose(
   patternId: string, symbol: string, start: string, end: string,
-  srcEventId: string, dstEventId: string,
+  srcInstanceId: string, dstInstanceId: string,
   paramsOverride?: Record<string, any>,          // ★ Task 8 · Working Copy 参数覆盖透传
 ): Promise<PairScopeResponse> {
   return getJson(
     `/diagnose?pattern_id=${encodeURIComponent(patternId)}&symbol=${encodeURIComponent(symbol)}`
     + `&start=${start}&end=${end}&scope=pair`
-    + `&src_event_id=${encodeURIComponent(srcEventId)}&dst_event_id=${encodeURIComponent(dstEventId)}`
+    + `&src_event_id=${encodeURIComponent(srcInstanceId)}&dst_event_id=${encodeURIComponent(dstInstanceId)}`
     + ovQuery(paramsOverride))
 }
 export function getConfig(): Promise<AppConfig> {

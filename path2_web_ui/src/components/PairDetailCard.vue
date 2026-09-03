@@ -11,7 +11,7 @@ const invalidLabels: Record<string, string> = {
   same_node: '两个 event 属于同一 node · node 内无 edge · 无法查 pair',
   no_edge_between_nodes: '两 node 在 dag_spec 中无直连 edge · pair 无从查起',
   only_negation_edge: '两 node 间只有 NegationEdge(全称禁止约束,非可导航依赖边)· 请用入口 C(候选级)看违禁信号',
-  event_not_found: '找不到该 event · 请检查 event_id',
+  event_not_found: '找不到该 event · 请检查 instance_id',
 }
 </script>
 

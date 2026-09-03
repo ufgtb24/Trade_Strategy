@@ -7,7 +7,7 @@ brief 原文 `import path2_apps.bo_only as app_mod` 后 `patch.object(app_mod, "
 handler 里 `mod = registry.get(pattern_id)` 拿到的正是这个子模块对象——包属性与子模块属性是两份独立绑定
 (`bo_only/__init__.py` 用 `from .dag_spec import ...` 做的是名字复制,非 live link)。若 patch 打在包上,
 handler 调用 `mod.eval_meta`/`mod.analyze`/`mod.build_pattern` 时走的仍是未被 patch 的子模块原函数,spy 不会
-被触发,`captured` 断言会 KeyError。tests/path2_web/conftest.py 里 bottom_breakout_burst 的 autouse fixture
+被触发,`captured` 断言会 KeyError。tests/path2_web/conftest.py 里 bottom_burst 的 autouse fixture
 同样注释了这一点("包 init 与 dag_spec 子模块都 export load_params……两处都要 stub")。故本文件统一
 `import path2_apps.bo_only.dag_spec as app_mod`,与 registry 实际返回对象一致。
 

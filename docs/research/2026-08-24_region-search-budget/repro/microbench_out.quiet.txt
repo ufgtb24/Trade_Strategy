@@ -1,0 +1,10 @@
+stocks=21 bars~810
+  atr_pandas                      7.99 ms/stock
+  atr_numpy                       0.17 ms/stock
+  M_rolling_nanmedian             6.16 ms/stock
+  M_rolling_median_cython         0.73 ms/stock
+  bo(gates=False)                17.00 ms/stock
+  bo(gates=True)                 26.76 ms/stock
+  burst                           0.77 ms/stock
+  tb_loop(atr cached)             0.75 ms/stock
+  bursts/stock = 11.4

@@ -33,17 +33,16 @@ from path2.eval import (  # noqa: F401 —— 后续批次扩展导入
 # ---- 测试用 Event / PatternMatch 桩(与 test_eval.py 同口径) -------------------
 
 class Ev(Event):
-    class_id = "test_fp_ev"
+    pass
 
 
 def _ev(s, e):
-    return Ev(event_id=f"e_{s}_{e}", start_idx=s, end_idx=e, confirm_idx=s)
+    return Ev(start_idx=s, end_idx=e, confirm_idx=s)
 
 
 def _match(binding, node="tb"):
     members = binding if isinstance(binding, tuple) else (binding,)
     return PatternMatch(
-        event_id="m",
         start_idx=members[0].start_idx,
         end_idx=members[-1].end_idx,
         confirm_idx=members[0].start_idx,

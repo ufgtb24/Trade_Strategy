@@ -3,7 +3,7 @@
  *
  * 契约:
  * - triggerEventDebug(id, 'entry') → getTimeDiagnose 调用参数 anchorKind='entry'
- * - triggerEventDebug(id, 'trough') → anchorKind='trough'
+ * - triggerEventDebug(id, 'confirm') → anchorKind='confirm'
  * - triggerEventDebug(id, 'end') → anchorKind='end'
  * - 入口 A(brush · triggerTimeQuery 路径)→ getTimeDiagnose 调用 anchorKind='gate'
  *
@@ -36,13 +36,13 @@ import * as api from '../src/api'
 function seedStoreForDebug(store: ReturnType<typeof useViewStore>) {
   store.symbol = 'AAA'
   store.activePatternId = 'bottom_burst'
-  // 塞一个 tb event 供 anchorsOf 查
+  // 塞一个 tb event 供 anchorsOf 查(实例化契约:instance_id/node_id)
   const tbEvent = {
-    event_id: 'ev_tb_1', class_id: 'tb', start_idx: 100, end_idx: 105,
-    anchor_bo_id: 'ev_bo_1',
+    instance_id: 'ev_tb_1#0', node_id: 'tb', start_idx: 100, end_idx: 105,
+    anchor_bo_id: 'ev_bo_1#0', child_refs: {},   // 交错标注后 detect 期即写 instance_id
   } as any
   const boEvent = {
-    event_id: 'ev_bo_1', class_id: 'bo', start_idx: 50, end_idx: 90,
+    instance_id: 'ev_bo_1#0', node_id: 'bo', start_idx: 50, end_idx: 90,
   } as any
   ;(store as any).workingCopy = { bottom_burst: { enabled: true, baseline: {}, currentDict: {} } }
   ;(store as any).preview = {
@@ -74,26 +74,26 @@ describe('triggerEventDebug 供 anchorKind', () => {
   it('anchor.key="entry" → getTimeDiagnose anchorKind="entry"', async () => {
     const store = useViewStore()
     seedStoreForDebug(store)
-    await store.triggerEventDebug('ev_tb_1', 'entry')
-    // getTimeDiagnose 签名末位是 anchorKind(第 9 位 · 0-indexed 是 8)
+    await store.triggerEventDebug('ev_tb_1#0', 'entry')
+    // getTimeDiagnose 签名末位是 anchorKind(第 8 位 · 0-indexed 是 7)
     const args = getTimeDiagnoseSpy.mock.calls[0]
-    expect(args[8]).toBe('entry')
+    expect(args[7]).toBe('entry')
   })
 
-  it('anchor.key="trough" → getTimeDiagnose anchorKind="trough"', async () => {
+  it('anchor.key="confirm" → getTimeDiagnose anchorKind="confirm"', async () => {
     const store = useViewStore()
     seedStoreForDebug(store)
-    await store.triggerEventDebug('ev_tb_1', 'trough')
+    await store.triggerEventDebug('ev_tb_1#0', 'confirm')
     const args = getTimeDiagnoseSpy.mock.calls[0]
-    expect(args[8]).toBe('trough')
+    expect(args[7]).toBe('confirm')
   })
 
   it('anchor.key="end" → getTimeDiagnose anchorKind="end"', async () => {
     const store = useViewStore()
     seedStoreForDebug(store)
-    await store.triggerEventDebug('ev_tb_1', 'end')
+    await store.triggerEventDebug('ev_tb_1#0', 'end')
     const args = getTimeDiagnoseSpy.mock.calls[0]
-    expect(args[8]).toBe('end')
+    expect(args[7]).toBe('end')
   })
 })
 
@@ -109,14 +109,15 @@ describe('入口 A(brush)供 anchorKind="gate"', () => {
   })
 
   it('brush 触发的 diag 调用 · getTimeDiagnose 参数 anchorKind="gate"', async () => {
-    // 入口 A 的实际触发点是 store 已导出的 named action triggerTimeQuery(startBar, endBar,
-    // eventClass?)(view.ts:509,由 KlineChart.vue brush handler 与 DetailSidebar 下拉共同调用)。
+    // 入口 A 的实际触发点是 store 已导出的 named action triggerTimeQuery(startBar, endBar)
+    // (view.ts,由 KlineChart.vue brush handler 调用;2026-08-10 起恒不带 node 过滤——
+    // 过滤是前端显示层,请求全量,见 triggerTimeQuery 注释)。
     // 读代码确认它并非内联匿名函数 —— brief Step 4.10 的「抽 named action」refactor 不适用,
     // 直接调用既有 action 即可精确复现 brush 触发的真实调用路径。
     const store = useViewStore()
     seedStoreForDebug(store)
     await store.triggerTimeQuery(50, 80)
     const args = getTimeDiagnoseSpy.mock.calls[0]
-    expect(args[8]).toBe('gate')
+    expect(args[7]).toBe('gate')
   })
 })

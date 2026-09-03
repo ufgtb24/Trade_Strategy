@@ -14,13 +14,22 @@
           v-for="(e, i) in layout.edges" :key="i" class="edge-line" :d="e.d"
           fill="none" stroke="#94a3b8" stroke-width="1.6" marker-end="url(#topo-arrow)"
         />
+        <!-- 父子虚线边:子结构 node → 物化来源父(方向 child → parent,箭头指向父) -->
+        <path
+          v-for="(p, i) in layout.parentEdges" :key="'p' + i" class="parent-edge" :d="p.d"
+          fill="none" stroke="#cbd5e1" stroke-width="1.2" stroke-dasharray="4 3"
+          marker-end="url(#topo-arrow)"
+        />
       </svg>
 
       <!-- 节点:绝对定位,完整保留现有 button 的全部绑定 -->
       <button
         v-for="box in layout.nodes" :key="box.node.node_id"
         :data-node-id="box.node.node_id"
-        class="node" :class="{ off: nodeVisible[box.node.node_id] === false }"
+        class="node" :class="{
+          off: nodeVisible[box.node.node_id] === false,
+          sub: !!box.node.produced_by,
+        }"
         :style="{
           left: box.x + 'px', top: box.y + 'px', width: box.w + 'px',
           background: nodeColors[box.node.node_id] ?? '#888',
@@ -44,6 +53,14 @@
       >
         <span class="kind">{{ e.edge.kind.replace('Edge', '') }}</span>
         <span class="rule">{{ e.edge.rule }}</span>
+      </div>
+
+      <!-- 父子边槽名 label:纯展示(无入口 B 业务),不拦点击 -->
+      <div
+        v-for="(p, i) in layout.parentEdges" :key="'pl' + i" class="pelabel"
+        :style="{ left: p.label.x + 'px', top: p.label.y + 'px' }"
+      >
+        {{ p.slot }}
       </div>
     </div>
     <div class="hint">点节点=显隐切换 · 双击=诊断 · 点边标签=miss_reasons 明细 · 悬停看类级阈值</div>
@@ -80,7 +97,7 @@ const emit = defineEmits<{ (e: 'hover-node', nodeId: string | null): void }>()
 const view = useViewStore()
 const { effectivePattern, nodeColors, nodeVisible, symbol, activePatternId, effectiveScan } = storeToRefs(view)
 
-const EMPTY: TopoLayout = { nodes: [], edges: [], width: 0, height: 0 }
+const EMPTY: TopoLayout = { nodes: [], edges: [], parentEdges: [], width: 0, height: 0 }
 const layout = computed<TopoLayout>(() =>
   effectivePattern.value ? layoutTopology(effectivePattern.value.topology.nodes, effectivePattern.value.topology.edges) : EMPTY)
 
@@ -181,6 +198,7 @@ function closeNodes() {
   color: #fff; border: 2px solid; cursor: pointer; font-size: 13px; white-space: nowrap;
 }
 .node.off { opacity: 0.32; }
+.node.sub { border-style: dashed; }   /* 子结构 node:虚线边框呼应父子虚线边 */
 .elabel {
   position: absolute; z-index: 2; transform: translate(-50%, -50%);
   background: rgba(255, 255, 255, 0.92); padding: 1px 5px; border-radius: 5px;
@@ -189,6 +207,12 @@ function closeNodes() {
 }
 .elabel .kind { display: block; color: #64748b; font-size: 9px; letter-spacing: 0.2px; }
 .elabel .rule { color: #0f172a; }
+.pelabel {
+  position: absolute; z-index: 2; transform: translate(0, -50%);   /* 左对齐:label.x 即文字左缘 */
+  background: rgba(255, 255, 255, 0.92); padding: 0 4px; border-radius: 4px;
+  font-size: 10px; line-height: 1.3; color: #94a3b8; white-space: nowrap;
+  pointer-events: none;
+}
 .hint { margin-top: 4px; font-size: 10px; color: #94a3b8; }
 
 .nodes-popover {

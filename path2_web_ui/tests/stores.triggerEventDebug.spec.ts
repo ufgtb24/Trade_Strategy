@@ -51,14 +51,14 @@ function seedStore(store: ReturnType<typeof useViewStore>, tbEvent: any, boEvent
 }
 
 describe('triggerEventDebug', () => {
-  it('调 getTimeDiagnose · anchor=trough → bar=event.start_idx', async () => {
+  it('调 getTimeDiagnose · anchor=confirm → bar=event.start_idx', async () => {
     const store = useViewStore()
-    const tb = { event_id: 'tb_1', class_id: 'tb', start_idx: 42, end_idx: 55, anchor_bo_id: 'bo_1' }
-    const bo = { event_id: 'bo_1', class_id: 'bo', start_idx: 30, end_idx: 30 }
+    const tb = { instance_id: 'tb_1#0', node_id: 'tb', child_refs: {}, start_idx: 42, end_idx: 55, anchor_bo_id: 'bo_1#0' }
+    const bo = { instance_id: 'bo_1#0', node_id: 'bo', start_idx: 30, end_idx: 30 }
     seedStore(store, tb, bo)
 
     const spy = vi.spyOn(api, 'getTimeDiagnose').mockResolvedValue({} as any)
-    await store.triggerEventDebug('tb_1', 'trough')
+    await store.triggerEventDebug('tb_1#0', 'confirm')
     expect(spy).toHaveBeenCalledOnce()
     const [_pid, _sym, _s, _e, startBar, endBar] = spy.mock.calls[0]
     expect(startBar).toBe(42)
@@ -67,12 +67,12 @@ describe('triggerEventDebug', () => {
 
   it('anchor=entry → bar=findBoBar(anchor_bo_id) = bo.end_idx', async () => {
     const store = useViewStore()
-    const tb = { event_id: 'tb_1', class_id: 'tb', start_idx: 42, end_idx: 55, anchor_bo_id: 'bo_1' }
-    const bo = { event_id: 'bo_1', class_id: 'bo', start_idx: 30, end_idx: 33 }
+    const tb = { instance_id: 'tb_1#0', node_id: 'tb', child_refs: {}, start_idx: 42, end_idx: 55, anchor_bo_id: 'bo_1#0' }
+    const bo = { instance_id: 'bo_1#0', node_id: 'bo', start_idx: 30, end_idx: 33 }
     seedStore(store, tb, bo)
 
     const spy = vi.spyOn(api, 'getTimeDiagnose').mockResolvedValue({} as any)
-    await store.triggerEventDebug('tb_1', 'entry')
+    await store.triggerEventDebug('tb_1#0', 'entry')
     const [, , , , startBar, endBar] = spy.mock.calls[0]
     expect(startBar).toBe(33)
     expect(endBar).toBe(33)
@@ -80,12 +80,12 @@ describe('triggerEventDebug', () => {
 
   it('anchor=end → bar=event.end_idx', async () => {
     const store = useViewStore()
-    const tb = { event_id: 'tb_1', class_id: 'tb', start_idx: 42, end_idx: 55, anchor_bo_id: 'bo_1' }
-    const bo = { event_id: 'bo_1', class_id: 'bo', start_idx: 30, end_idx: 30 }
+    const tb = { instance_id: 'tb_1#0', node_id: 'tb', child_refs: {}, start_idx: 42, end_idx: 55, anchor_bo_id: 'bo_1#0' }
+    const bo = { instance_id: 'bo_1#0', node_id: 'bo', start_idx: 30, end_idx: 30 }
     seedStore(store, tb, bo)
 
     const spy = vi.spyOn(api, 'getTimeDiagnose').mockResolvedValue({} as any)
-    await store.triggerEventDebug('tb_1', 'end')
+    await store.triggerEventDebug('tb_1#0', 'end')
     const [, , , , startBar, endBar] = spy.mock.calls[0]
     expect(startBar).toBe(55)
     expect(endBar).toBe(55)
@@ -93,32 +93,32 @@ describe('triggerEventDebug', () => {
 
   it('单槽位 abort · 新请求 abort 旧 controller', async () => {
     const store = useViewStore()
-    const tb = { event_id: 'tb_1', class_id: 'tb', start_idx: 42, end_idx: 55, anchor_bo_id: 'bo_1' }
-    const bo = { event_id: 'bo_1', class_id: 'bo', start_idx: 30, end_idx: 30 }
+    const tb = { instance_id: 'tb_1#0', node_id: 'tb', child_refs: {}, start_idx: 42, end_idx: 55, anchor_bo_id: 'bo_1#0' }
+    const bo = { instance_id: 'bo_1#0', node_id: 'bo', start_idx: 30, end_idx: 30 }
     seedStore(store, tb, bo)
 
     // 第一次调用 hang 住(never resolve),第二次 abort 它
     let firstAbortSignal: AbortSignal | null = null
     vi.spyOn(api, 'getTimeDiagnose').mockImplementation((...args: any[]) => {
-      firstAbortSignal = args[7] as AbortSignal
+      firstAbortSignal = args[6] as AbortSignal
       return new Promise(() => {})  // hang
     })
 
-    void store.triggerEventDebug('tb_1', 'entry')
+    void store.triggerEventDebug('tb_1#0', 'entry')
     await new Promise(r => setTimeout(r, 10))  // yield
     expect(firstAbortSignal).not.toBeNull()
 
     // 第二次调用应 abort 第一个
     vi.mocked(api.getTimeDiagnose).mockResolvedValue({} as any)
-    void store.triggerEventDebug('tb_1', 'trough')
+    void store.triggerEventDebug('tb_1#0', 'confirm')
     await new Promise(r => setTimeout(r, 10))
     expect(firstAbortSignal!.aborted).toBe(true)
   })
 
-  it('debugTarget 设为 { eventId, bar, className, anchor }', async () => {
+  it('debugTarget 设为 { instanceId, bar, node_id, anchor }', async () => {
     const store = useViewStore()
-    const tb = { event_id: 'tb_1', class_id: 'tb', start_idx: 42, end_idx: 55, anchor_bo_id: 'bo_1' }
-    const bo = { event_id: 'bo_1', class_id: 'bo', start_idx: 30, end_idx: 30 }
+    const tb = { instance_id: 'tb_1#0', node_id: 'tb', child_refs: {}, start_idx: 42, end_idx: 55, anchor_bo_id: 'bo_1#0' }
+    const bo = { instance_id: 'bo_1#0', node_id: 'bo', start_idx: 30, end_idx: 30 }
     seedStore(store, tb, bo)
 
     let resolveFn: any
@@ -126,10 +126,10 @@ describe('triggerEventDebug', () => {
       new Promise(r => { resolveFn = r })
     )
 
-    void store.triggerEventDebug('tb_1', 'trough')
+    void store.triggerEventDebug('tb_1#0', 'confirm')
     await new Promise(r => setTimeout(r, 10))
     expect(store.debugTarget).toEqual({
-      eventId: 'tb_1', bar: 42, className: 'tb', anchor: 'trough',
+      instanceId: 'tb_1#0', bar: 42, node_id: 'tb', anchor: 'confirm',
     })
     expect(store.debugPending).toBe(true)
     expect(store.activeDetailCard).toBe('debug')
@@ -143,21 +143,21 @@ describe('triggerEventDebug', () => {
 describe('clearDetailCard 扩展清 debug state', () => {
   it('clearDetailCard 后 debugTarget/debugPending null', async () => {
     const store = useViewStore()
-    const tb = { event_id: 'tb_1', class_id: 'tb', start_idx: 42, end_idx: 55, anchor_bo_id: 'bo_1' }
-    const bo = { event_id: 'bo_1', class_id: 'bo', start_idx: 30, end_idx: 30 }
+    const tb = { instance_id: 'tb_1#0', node_id: 'tb', child_refs: {}, start_idx: 42, end_idx: 55, anchor_bo_id: 'bo_1#0' }
+    const bo = { instance_id: 'bo_1#0', node_id: 'bo', start_idx: 30, end_idx: 30 }
     seedStore(store, tb, bo)
 
     let controller: AbortController | null = null
     vi.spyOn(api, 'getTimeDiagnose').mockImplementation((...args: any[]) => {
       controller = new AbortController()
       // 用参数中的 signal 关联
-      const sig = args[7] as AbortSignal
+      const sig = args[6] as AbortSignal
       return new Promise((_r, reject) => {
         sig.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')))
       })
     })
 
-    void store.triggerEventDebug('tb_1', 'entry')
+    void store.triggerEventDebug('tb_1#0', 'entry')
     await new Promise(r => setTimeout(r, 10))
     expect(store.debugTarget).not.toBeNull()
 
@@ -171,17 +171,17 @@ describe('clearDetailCard 扩展清 debug state', () => {
 describe('cancelDebug', () => {
   it('cancelDebug abort 旧 controller · pending 变 false', async () => {
     const store = useViewStore()
-    const tb = { event_id: 'tb_1', class_id: 'tb', start_idx: 42, end_idx: 55, anchor_bo_id: 'bo_1' }
-    const bo = { event_id: 'bo_1', class_id: 'bo', start_idx: 30, end_idx: 30 }
+    const tb = { instance_id: 'tb_1#0', node_id: 'tb', child_refs: {}, start_idx: 42, end_idx: 55, anchor_bo_id: 'bo_1#0' }
+    const bo = { instance_id: 'bo_1#0', node_id: 'bo', start_idx: 30, end_idx: 30 }
     seedStore(store, tb, bo)
 
     let sig: AbortSignal | null = null
     vi.spyOn(api, 'getTimeDiagnose').mockImplementation((...args: any[]) => {
-      sig = args[7] as AbortSignal
+      sig = args[6] as AbortSignal
       return new Promise(() => {})
     })
 
-    void store.triggerEventDebug('tb_1', 'trough')
+    void store.triggerEventDebug('tb_1#0', 'confirm')
     await new Promise(r => setTimeout(r, 10))
     store.cancelDebug()
     expect(sig!.aborted).toBe(true)

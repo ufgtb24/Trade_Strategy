@@ -91,3 +91,38 @@ def test_sideways_eps_filter():
     segments = list(run(TrendSegmentDetector(sideways_eps=0.0005), df))
     # 微小斜率不应触发 up
     assert all(s.regime == 'sideways' for s in segments)
+
+
+def test_trend_detector_rejects_source_tag():
+    """trend detector 不再接受 source_tag 参数(source_tag 体系已随 event_id/class_id 消灭)。"""
+    with pytest.raises(TypeError):
+        TrendSegmentDetector(source_tag="x")   # type: ignore
+
+
+def test_trend_events_unannotated_at_detect():
+    """detect 产出的事件未被物化标注:node_id/instance_id 为 None(物化后才注入)。"""
+    closes = [10.0] * 60
+    df = make_df(closes)
+    segments = list(run(TrendSegmentDetector(), df))
+    assert segments
+    for e in segments:
+        assert e.node_id is None
+        assert e.instance_id is None
+        assert not hasattr(e, "event_id")
+        assert not hasattr(e, "class_id")
+
+
+def test_detector_declares_event_cls():
+    """spec §1a 不变式:detector 声明事件类型——单流用 event_cls,多流(声明 produces)
+    按 stream_schema 反射(类型以 Python 类表达,C3 children 核对用 isinstance)。
+    BODetector 是多流 detector(产 bo+pk 两流),不再声明 event_cls(契约 C5 相关清理,
+    schema 以 produces 为准)。"""
+    from path2.atoms.breakout import BODetector, BOEvent, PeakEvent
+    from path2.atoms.platform import Platform, PlatformDetector
+    from path2.atoms.distribution import Distribution, DistributionDetector
+    from path2.atoms.throwback_v1 import ThrowbackEventV1, ThrowbackDetectorV1
+    assert TrendSegmentDetector.event_cls is TrendSegment
+    assert BODetector.produces == {"bo": BOEvent, "pk": PeakEvent}
+    assert ThrowbackDetectorV1.event_cls is ThrowbackEventV1
+    assert PlatformDetector.event_cls is Platform
+    assert DistributionDetector.event_cls is Distribution

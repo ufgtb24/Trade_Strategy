@@ -1,46 +1,9 @@
 """GateFailure · attempt 短路失败时 detector 吐给 on_gate hook 的记录。
 
 承 spec §2.4.1 · failure_event_window 语义 = attempt 判据评估的实测轨迹。
-
-=== on_gate 编写指南(给新写 L1 Detector 的作者)===
-
-新加 Detector 需要在每个 attempt 短路点 emit 一条 GateFailure · 供入口 A
-时段查询展示。按顺序把这四条抓紧,其他都能从参考实现看出来。
-
-1. attempt 边界:一次 emit = 一次 attempt · 按 detector 的自然扫描单位划分
-   - 点事件(逐 bar 扫描):一个 bar = 一次 attempt(如 BODetector 每个 i)
-   - 簇事件(变长片段):一个簇 = 一次 attempt(如 BurstDetector 每个 cluster
-     的 chain_break + 尾部收束合计两类失败点)
-   - 触发式事件(外部条件触发一次判据评估):一次触发 = 一次 attempt
-     (如 ThrowbackDetector 每个 evaluate_throwback 调用 · phase1/phase2
-     共用同一 attempt · 因此共用同一 failure_event_window)
-   参考实现:
-   - path2/atoms/breakout.py::BODetector       · 点事件逐 bar 短路
-   - path2/atoms/breakout.py::BurstDetector    · 簇事件双失败点
-   - path2/atoms/throwback.py::_emit_gate      · 触发式 helper
-
-2. failure_event_window:attempt 从起点到 gate 触发的实测轨迹 · 不是"若成功
-   会覆盖的窗口"、不是"detector 内部 lookback"
-   - 点事件(is_point=True):(i, i) · start == end 恒成立
-   - 跨度事件:(attempt_start, gate_idx) · 若成功此 window 就是 event 的
-     [start_idx, end_idx];失败时 gate_idx 记录判据触发所在 bar
-   入口 A 的严格 ⊆ 判据完全靠这个字段计算 · 语义偏差会直接错分 attempt。
-
-3. evaluation_lookback:判据依赖的历史窗 · 前端 tooltip 显示 · 不参与 ⊆
-   - 判据只看当前 bar / attempt 内部数据 → None
-   - 判据看 rolling ATR / lookback 极值等历史窗 → (start, end)
-   例:BODetector 用 self._eval_lookback(i) · ThrowbackDetector 用
-   (bo_idx - atr_window, bo_idx)。
-
-4. measured.kind:自由字符串标签 · 前端 formatters.ts 按 kind 分派格式化
-   - 复用上方枚举里已列出的 kind → 前端已有专属前缀
-   - 自造新 kind → formatters.ts 走 default 分支落 String(value) · 不报错
-     但没前缀;需要前缀就顺手加一个 case
-
-on_gate 挂载:Detector 类里声明 `on_gate = None` 类属性(生产路径无开销);
-诊断层挂 collector 时在实例上覆盖 instance.on_gate = collector.emit。见
-core.py::Detector Protocol 关于 TYPE_CHECKING 守卫的说明。
 """
+# on_gate 编写指南(四条: attempt 边界 / failure_event_window / evaluation_lookback /
+# measured.kind)已迁入 .claude/skills/authoring-path2-detector/reference.md §4。
 import os
 import sys
 from dataclasses import dataclass
@@ -57,7 +20,7 @@ class MeasuredKindAware:
     截至 2026-07-08 生产实际传出的 kind:
     - Detector 侧(GateFailure.measured):
         · 'gap'                   BODetector · atr 距离过近判据
-        · 'count'                 BODetector bo数 / TB max_start_gap
+        · 'count'                 BODetector bo数 / TB 预算扫满无段(v4 budget_no_stable)
         · 'anchor_delta'          TB phase1/phase2_break · 破位偏移
         · 'pullback_atr'          TB 阶段一 · 回落深度/atr
         · 'breakout_price'        BODetector · 突破价
@@ -88,7 +51,7 @@ class GateFailure:
     - failure_event_window: (start_idx, gate_idx) 实测轨迹;点事件 = (i, i)
     - start_idx: attempt 判据评估的起点
     - gate_idx: gate 触发所在 bar(= failure event end 兜底)
-    - anchor_bar: class_id 语义锚
+    - anchor_bar: 语义锚(bar 位置)
     - op / threshold_param: spec 2026-07-13 · 通过条件比较符 + params.yaml 短名。
       契约不变式(spec 2026-07-12 放松版):threshold_param is not None ==> op is not None。
       sentinel-numeric 场景允许 op 非 None + threshold_param None。
@@ -99,7 +62,6 @@ class GateFailure:
     start_idx: int
     gate_idx: int
     anchor_bar: int
-    class_id: str
     gate_name: str
     measured: MeasuredKindAware
     threshold: Any
@@ -107,7 +69,9 @@ class GateFailure:
     threshold_param: Optional[str]
     evaluation_lookback: Optional[tuple[int, int]]
     symbol: str
-    # 追加字段, 带默认值 → 既有 kwargs 构造点全兼容(生产 10 处 + 测试 7 处零改)
+    # 追加字段, 带默认值 → 既有 kwargs 构造点全兼容(先例:code_location)
+    node_id: str = ''   # 所属 node_id(gate_collector per-node wrapper 注入;detector 构造阶段为空)
+    stream: Optional[str] = None   # 所属命名流(gate_collector 路由用;单流恒 None)
     code_location: str = ''
 
     def __post_init__(self):
@@ -117,7 +81,7 @@ class GateFailure:
         1. 跳过 gate_failure.py 内部帧(本 __post_init__)
         2. 跳过 dataclass 自动生成的 __init__ 帧(CPython 3.12 里 filename='<string>'
            或 funcname='__init__' 兜底)
-        3. 跳过 throwback.py 内的 _emit_tb_gate helper 帧
+        3. 跳过 throwback 系模块的 _emit_tb_gate* helper 帧(v1/v3/v4,前缀匹配)
         4. 落到首个"真 caller"帧, 写入 '{basename}:{lineno}'
 
         显式传入非空 code_location 时直接跳过, 便于测试固定值.
@@ -136,7 +100,7 @@ class GateFailure:
                 if filename == '<string>' or funcname == '__init__':
                     frame = frame.f_back
                     continue
-                if funcname == '_emit_tb_gate':
+                if funcname.startswith('_emit_tb_gate'):
                     frame = frame.f_back
                     continue
                 object.__setattr__(

@@ -4,12 +4,14 @@
 语义:枚举所有满足 dag 约束的绑定(_dfs 回溯)+ where 候选预过滤【先于】C1 塌缩 +
 前沿割签名按边 signature_fields 自描述(在 _signature.py)。
 
-c1_off 关 C1 节点 5 源(详见 compile_plan 内注释):
+c1_off 关 C1 节点 6 源(前 5 源见 compile_plan 内注释;第 6 源在 solve 入口):
   (1) EqualsEdge.src 节点(verdict §6.2);
   (2) 带 dst_selector 入边的 dst 节点(D4);
   (3) 带 src_selector 的 NegationEdge.src 节点(D-final);
   (4) 出边为空的叶子节点(B2 加);
-  (5) anchor_field 非空边的 src 节点(B4 加)。
+  (5) anchor_field 非空边的 src 节点(B4 加);
+  (6) 流内多实例的节点(实例流 Task 3)——依赖流内容而非 spec 结构,
+      compile_plan 算不了,由 solve 入口静态并入。
 
 strict_clear/negation 见各自 task;本文件随 task 增量长成。
 """
@@ -32,7 +34,7 @@ class Plan:
     nodes: Dict[str, NodeSpec]                         # node_id -> NodeSpec
     edges: Tuple[DependencyEdge, ...]
     c1_off: frozenset                                  # 须关 C1 的节点(c1_off 5 源总表,详见 compile_plan 内注释)
-    leaves: frozenset                                  # 出边为空的叶子节点(B2 加;同时供 B3 reachable-leaves 复用)
+    leaves: frozenset                                  # 出边为空的叶子节点(B2 加;供 c1_off 第 4 源)
     wcc_plans: List["WccPlan"]
     pattern_id: str = "pattern"
 
@@ -75,6 +77,8 @@ def compile_plan(spec) -> Plan:
     #       局部丢点;同 end 桶内多 leaf 候选不能被 C1 塌缩;
     #   (5) anchor_field 非空边的 src 节点 —— 整改四新增:anchor 边 signature_fields 空被
     #       _build_out_edges 过滤,C1 学不到"src 端身份在 satisfies 里参与"。机理同 NegationEdge.src_selector 关 C1。
+    #   (6) 流内多实例的节点 —— 实例流 Task 3 新增:依赖流内容而非 spec 结构,
+    #       compile_plan 算不了,由 solve 入口静态并入(见 solve)。
     #   当前零 Child selector 业务消费者,关 C1 的剪枝损失不可观测;未来宽 child 业务 spec 再按
     #   D3 monotone_dir 思路细化(同 D3 延后决策)。
     eq_src = spec.eq_src_nodes()
@@ -90,7 +94,16 @@ def compile_plan(spec) -> Plan:
 
     neg_all = neg_out(edges)
     neg_dst = {e.dst for e in edges if isinstance(e, NegationEdge)}
-    bound_ids = [nid for nid in nodes if nid not in neg_dst]
+    # K2 三要素判据(2026-08-06 拍板):求解 = edge 连通分量(端点并集) ∩ 非 neg_dst ∩ detector 非空。
+    # 含边 pattern 的孤立未消费 node 平凡解不产(P1:孤立即不属 pattern,独立信号用独立 pattern 表达);
+    # 零边例外:整个 pattern 无任何 edge 时全求解(bo_only 全孤立形态,平凡 match 是唯一业务命中)。
+    edge_endpoints = {ep for e in edges for ep in (e.src, e.dst)}   # 全部边含 NegationEdge
+    all_solve = not edges                                            # 例外:整个 pattern 无任何 edge 时全求解(bo_only)
+    bound_ids = [nid for nid in nodes
+                 if (all_solve or nid in edge_endpoints)             # 求解=edge 连通分量(端点并集)
+                 and nid not in neg_dst                              # 否定 dst 恒不绑(现状不变)
+                 and nodes[nid].detector is not None                 # 结构性守卫:子结构 node 无候选池
+                 and nodes[nid].solve]                               # ★ solve=False:只显示不参与匹配
     wcc_plans: List[WccPlan] = []
     for comp in wccs(bound_ids, edges):      # 只对可绑节点求 WCC(否定 dst 是约束,不绑定)
         s, sub = sub_nodes_edges(comp, edges)
@@ -171,16 +184,11 @@ def _build_out_edges(plan: Plan) -> Dict[str, List[DependencyEdge]]:
 
 
 def _dfs(wp: WccPlan, k, assign, chosen_idx, streams, memo, out, c1_off,
-         *, emitted_leaves: Dict[str, set],
-         collapse, memo_mode):
+         *, collapse, memo_mode):
     """回溯枚举:ptr 恒不推进(全后缀);到叶子 emit 后继续回溯。返回「本分支是否有完成」。
     memo_mode: 'off' | 'naive'(逐字记,BUGGY) | 'charitable'(仅整棵子树零完成才记)。"""
     if k == len(wp.order):
         out.append(Solution(assign=dict(assign), chosen_idx=dict(chosen_idx)))
-        # ★ 整改三:emit 后更新 emitted_leaves(本次 assign 内所有 leaf 节点的 stream_idx 入集)
-        for lab in assign:
-            if lab in emitted_leaves:
-                emitted_leaves[lab].add(chosen_idx[lab])
         return True
     v = wp.order[k]
 
@@ -226,14 +234,6 @@ def _dfs(wp: WccPlan, k, assign, chosen_idx, streams, memo, out, c1_off,
     if collapse and v not in c1_off:                  # ANY 默认关 C1(开则漏)
         cands = collapse_equal_end_keep_keymin(cands, _CUR_OUT_EDGES.get(v))
 
-    # ★ 整改三 leaf 早退:已 emit 的 leaf 不再重复
-    if v in emitted_leaves:   # v in plan.leaves(emitted_leaves keys = plan.leaves)
-        cands = [(e, i) for e, i in cands if i not in emitted_leaves[v]]
-        if not cands:
-            if memo_mode != "off":
-                memo[v].add(sig)
-            return False
-
     any_completion = False
     for e_dst, i in cands:
         ok = True
@@ -253,7 +253,6 @@ def _dfs(wp: WccPlan, k, assign, chosen_idx, streams, memo, out, c1_off,
             del assign[v]; del chosen_idx[v]
             continue
         sub = _dfs(wp, k + 1, assign, chosen_idx, streams, memo, out, c1_off,
-                   emitted_leaves=emitted_leaves,
                    collapse=collapse, memo_mode=memo_mode)
         any_completion = any_completion or sub
         del assign[v]; del chosen_idx[v]
@@ -269,21 +268,27 @@ def _dfs(wp: WccPlan, k, assign, chosen_idx, streams, memo, out, c1_off,
 def solve(plan: Plan, streams, *, collapse=False, memo_mode="charitable") -> List[Solution]:
     """path2 DAG 唯一求解函数。
 
-    语义:枚举所有满足 dag 约束的绑定(_dfs 回溯)+ 按 leaf event 跨 prefix 去重(B3 整改三)。
+    语义:枚举所有满足 dag 约束的绑定(_dfs 回溯),同一 leaf event 可被多个上游共享、
+    出现在多个 Solution 中。
     collapse=True / memo_mode='naive'|'off' 仅供 necessity 差分测试;
     production 默认 collapse=False, memo_mode='charitable'。
 
-    Plan 来自 compile_plan;c1_off 5 源总表见模块 docstring。
-    emitted_leaves:跨 WCC 共享(不同 WCC 的 leaf node_id 不重叠,共享安全)。"""
+    Plan 来自 compile_plan;c1_off 6 源总表见模块 docstring。"""
     global _CUR_NODES, _CUR_OUT_EDGES
     _CUR_NODES = plan.nodes
     _CUR_OUT_EDGES = _build_out_edges(plan)
-    # ★ 整改三:emitted_leaves 跨 WCC 共享
-    emitted_leaves: Dict[str, set] = {leaf: set() for leaf in plan.leaves}
+    # 实例流(c1_off 第 6 源):流内多实例的节点须关 C1——C1 按事件身份去重
+    # (同 end 桶留 argmin)会丢多实例视角。流已全量物化(instance_idx 已标注),
+    # solve 入口一次性静态算,并入不可变集合;生产 collapse=False 下无行为差异,
+    # necessity 差分(collapse=True)下保持健全。
+    dup_nodes = frozenset(
+        nid for nid, s in streams.items()
+        if any(e.instance_idx > 0 for e in s)
+    )
+    c1_off = plan.c1_off | dup_nodes
     out: List[Solution] = []
     for wp in plan.wcc_plans:
         memo = {n: set() for n in wp.comp}
-        _dfs(wp, 0, {}, {}, streams, memo, out, plan.c1_off,
-             emitted_leaves=emitted_leaves,
+        _dfs(wp, 0, {}, {}, streams, memo, out, c1_off,
              collapse=collapse, memo_mode=memo_mode)
     return out

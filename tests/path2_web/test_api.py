@@ -2,13 +2,14 @@ import json
 from pathlib import Path
 
 import pandas as pd
+import pytest
 from fastapi.testclient import TestClient
 
 from path2_web.app import create_app
 
 
 def _mk_dated_no_burst(tmp_path, symbol):
-    from tests.path2_apps.bottom_breakout_burst.test_matches import _synth_no_burst
+    from tests.path2_apps.bottom_burst.test_matches import _synth_no_burst
     df = _synth_no_burst()
     df.index = pd.date_range("2025-01-01", periods=len(df), freq="D", name="date")
     df.to_pickle(Path(tmp_path) / f"{symbol}.pkl")
@@ -109,11 +110,21 @@ def test_api_delete_scan_404_when_missing(tmp_path):
 
 
 # ── name 白名单校验测试 ──────────────────────────────────────
-def test_api_load_scan_400_illegal_name(tmp_path):
+def test_api_load_scan_400_leading_dot_name(tmp_path):
     c = _client(tmp_path)
-    # 非法字符(点)→ 白名单拒绝 → 400(路径穿越防护)
-    r = c.get("/scans/bad.name")
+    # 首字符为点(隐藏文件)→ 白名单拒绝 → 400(路径穿越防护)
+    r = c.get("/scans/.hidden")
     assert r.status_code == 400
+
+
+def test_validate_scan_name_rejects_traversal():
+    """函数级:`..`/`.`/含分隔符的名字一律拒(HTTP 层会被 client 规范化,测不到)。"""
+    from fastapi import HTTPException
+    from path2_web.api import _validate_scan_name
+    for bad in ["..", ".", "../evil", "a/b", "a\\b", "", "  "]:
+        with pytest.raises(HTTPException) as e:
+            _validate_scan_name(bad)
+        assert e.value.status_code == 400
 
 
 def test_api_load_scan_400_illegal_name_space(tmp_path):
@@ -123,10 +134,51 @@ def test_api_load_scan_400_illegal_name_space(tmp_path):
     assert r.status_code == 400
 
 
-def test_api_delete_scan_400_illegal_name(tmp_path):
+def test_api_delete_scan_400_leading_dot_name(tmp_path):
     c = _client(tmp_path)
-    r = c.delete("/scans/bad.name")
+    r = c.delete("/scans/.hidden")
     assert r.status_code == 400
+
+
+# ── 名字含小数点(参数扫描脚本产物,如 tune-bo-exceed_threshold-0.01-buf250)──
+def _write_scan_file(tmp_path, name):
+    out = tmp_path / "outputs" / "scans"
+    out.mkdir(parents=True, exist_ok=True)
+    (out / f"{name}.json").write_text(json.dumps(
+        {"pattern_ids": ["bo_only"], "scan": {"scan_ts": "20260820T100000", "name": name,
+                                              "hits": 0, "scanned": 0},
+         "per_pattern": {}, "results": []}))
+    return out / f"{name}.json"
+
+
+_DOTTED = "tune-bo-exceed_threshold-0.01-buf250"
+
+
+def test_api_delete_scan_with_dotted_name(tmp_path):
+    """小数点是合法名字符:脚本写盘的调参 scan 必须能从 UI 删掉。"""
+    c = _client(tmp_path)
+    path = _write_scan_file(tmp_path, _DOTTED)
+    r = c.delete(f"/scans/{_DOTTED}")
+    assert r.status_code == 200, r.text
+    assert not path.exists()
+
+
+def test_api_load_scan_with_dotted_name(tmp_path):
+    c = _client(tmp_path)
+    _write_scan_file(tmp_path, _DOTTED)
+    r = c.get(f"/scans/{_DOTTED}")
+    assert r.status_code == 200, r.text
+    assert r.json()["scan"]["name"] == _DOTTED
+
+
+def test_api_rename_scan_with_dotted_name(tmp_path):
+    c = _client(tmp_path)
+    _write_scan_file(tmp_path, _DOTTED)
+    r = c.post(f"/scans/{_DOTTED}/rename", json={"name": "tune-bo-exceed_threshold-0.02-buf250"})
+    assert r.status_code == 200, r.text
+    out = tmp_path / "outputs" / "scans"
+    assert not (out / f"{_DOTTED}.json").exists()
+    assert (out / "tune-bo-exceed_threshold-0.02-buf250.json").exists()
 
 
 def test_api_post_scan_cancel_404_when_unknown(tmp_path):

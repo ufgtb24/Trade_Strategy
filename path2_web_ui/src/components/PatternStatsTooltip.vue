@@ -24,8 +24,8 @@
     </div>
     <!-- 首次穿越块(T3 注入 · T5 展示 · T8 单组化):pattern 整体方向判据 —— 命中集先涨比例 vs 随机日基线。
          ratio / random_ratio 后端已算好(up/(up+down),both/none 排除分母),前端只展示、不再算 lift。
-         单组(几何对称单 k);n_match=0 不渲染(防空标题)。老 scan file 或 first_passage_enabled=False → undefined → 不渲染。 -->
-    <div v-if="firstPassageStats && (firstPassageStats.n_match ?? 0) > 0" class="stats-first-passage">
+         单组(几何对称单 k);n_bars=0 不渲染(防空标题)。老 scan file 或 first_passage_enabled=False → undefined → 不渲染。 -->
+    <div v-if="firstPassageStats && (firstPassageStats.n_bars ?? 0) > 0" class="stats-first-passage">
       <div class="block-title">首次穿越 <span class="fp-k">k={{ firstPassageStats.k }}</span></div>
       <div class="fp-row fp-row--head">
         <span class="fp-label"></span>
@@ -51,6 +51,7 @@
 
 <script setup lang="ts">
 import type { PatternStats, FirstPassageStats } from '../types'
+import { fmtVal, fmtRatio } from '../shared/formatters'
 
 defineProps<{
   stats: PatternStats
@@ -58,28 +59,16 @@ defineProps<{
   firstPassageStats?: FirstPassageStats
 }>()
 
-function fmtVal(v: number | null): string {
-  if (v == null) return '—'
-  const pct = (v * 100).toFixed(1)
-  return v >= 0 ? `+${pct}%` : `${pct}%`
-}
-
 function fmtWinRate(v: number | null): string {
   if (v == null) return '—'
   return `${(v * 100).toFixed(0)}%`
 }
 
-// 首次穿越 ratio(0-1 比例):1 位小数百分比(近 50% 时保留区分度);null = 分母为 0(up+down=0,全是 both/none)→ — 占位
-function fmtRatio(v: number | null): string {
-  if (v == null) return '—'
-  return `${(v * 100).toFixed(1)}%`
-}
-
-// 有效比例(非 none)= 触到任一阈值的买点占比 (up+down+both)/n_match;与 ratio(方向)正交 ——
+// 有效比例(非 none)= 触到任一阈值的买点占比 (up+down+both)/n_bars;与 ratio(方向)正交 ——
 // ratio 看先涨先跌、有效看路径活跃度(多大比例的买点在 horizon 内动到了 kM 阈值)。
 function fpEff(fp: FirstPassageStats): number | null {
-  if (!fp.n_match) return null
-  return (fp.up + fp.down + fp.both) / fp.n_match
+  if (!fp.n_bars) return null
+  return (fp.up + fp.down + fp.both) / fp.n_bars
 }
 function fpEffRand(fp: FirstPassageStats): number | null {
   if (!fp.random_n) return null

@@ -217,13 +217,13 @@ async function locateEventPixel(page: Page, eventId: string): Promise<PixelPos> 
     if (!mainCanvas || !subCanvas) return null
 
     // price-points(主图,render_grid='price',如 bo):src/render/chart.ts::makeRenderPricePoint
-    // BO_STACK_PT=48(有 pk)/ BO_STACK_PT_NO_PKS=15(无 pk),锚点上方像素堆叠偏移。
+    // BO_STACK_PT=15(hasPks 卫星让位偏移已随 Task 7 删除,统一用 15),锚点上方像素堆叠偏移。
     const pp = main.getOption().series.find((s: any) => s.name === 'price-points')
     const ppItem = pp?.data?.find((d: any) => d.event_id === eid)
     if (ppItem) {
       const rect = mainCanvas.getBoundingClientRect()
       const [cx, anchorPx] = main.convertToPixel({ xAxisIndex: 0, yAxisIndex: 0 }, [ppItem.value[0], ppItem.anchorY])
-      const stackOffset = ppItem.hasPks ? 48 : 15
+      const stackOffset = 15
       return { clientX: rect.left + cx, clientY: rect.top + anchorPx - stackOffset }
     }
 

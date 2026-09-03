@@ -14,9 +14,12 @@ from path2.atoms.breakout import BOEvent
 
 
 def _bo(idx):
-    return BOEvent(event_id=f"bo_{idx}", start_idx=idx, end_idx=idx, confirm_idx=idx,
-                   drought=None, pk_count=1, broken_peak_ids=(), vol_ratio=None,
-                   peak_vol_max=0.0, referenced_points=())
+    # pk_count/broken_peak_ids 已改 @property(派生自 broken_refs,契约 C5);
+    # 本 fixture 不需要突破峰,broken_refs 留空即可。
+    return BOEvent(start_idx=idx, end_idx=idx, confirm_idx=idx,
+                   node_id="bo", instance_id=f"bo_{idx}",
+                   drought=None, vol_ratio=None,
+                   peak_vol_max=0.0)
 
 
 def test_check_feasible_window_pass():

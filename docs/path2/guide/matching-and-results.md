@@ -81,7 +81,7 @@ hit    = matches(spec, df, params=None)   # -> bool，只问"有没有命中过"
 from path2.dag.spec import PatternSpec
 
 spec = PatternSpec(
-    pattern_id="bottom_breakout_burst", # 走势的唯一标识（英文 id）
+    pattern_id="bottom_burst", # 走势的唯一标识（英文 id）
     display_name="底部反转突破爆发",       # 给人看的名字（面板展示）
     nodes=(...),                         # 演员表：Tuple[NodeSpec, ...]
     edges=(...),                         # 剧情约束：Tuple[DependencyEdge, ...]
@@ -247,7 +247,7 @@ burst_node = NodeSpec(
 > 💡 "Kleene"这个词来自正则里的 `*`（零或多个），你可以理解成"这个角色匹配一串，而不是一个"。
 
 > ⚠️ **嵌套事件 vs Kleene，怎么选？** 二者都能表达"一串"，但出发点不同：
-> - **嵌套事件**（§3.2）把"一串"在 **detect 期**就聚合成一个真正的对象（如 `BurstEvent`），整串有自己的身份、能被画、聚合属性是普通字段。当前示例 app `bottom_breakout_burst` 表达"一串突破"用的就是它，**不再用 Kleene**。
+> - **嵌套事件**（§3.2）把"一串"在 **detect 期**就聚合成一个真正的对象（如 `BurstEvent`），整串有自己的身份、能被画、聚合属性是普通字段。当前示例 app `bottom_burst` 表达"一串突破"用的就是它，**不再用 Kleene**。
 > - **Kleene** 不造新对象，而是在 **求解期**把散点流绑成序列，整串的属性靠 `aggregate_where` 现场聚合。适合"你确实想让一个角色绑一串散点、又不想专门为它写一个聚合 detector"的场合。
 >
 > 简单说：想让"一串"成为图上的一等公民、能被引用 → 用嵌套事件；只是临时把一串散点绑一起判个数量/聚合 → Kleene 更轻。**Kleene 仍是框架完整支持的机制**，只是当前唯一的 app 选了嵌套这条更干净的路。
@@ -455,9 +455,9 @@ node = NodeSpec(
 
 ---
 
-## 6. 一个完整的真实例子：bottom_breakout_burst
+## 6. 一个完整的真实例子：bottom_burst
 
-前面都是零碎的语法片段，这里给你一份**与代码一致的完整范例**——这就是当前示例 app `bottom_breakout_burst`（"底部反转突破爆发"）的真实写法，把前面学的节点、嵌套事件、6 种边、where 全用上了。
+前面都是零碎的语法片段，这里给你一份**与代码一致的完整范例**——这就是当前示例 app `bottom_burst`（"底部反转突破爆发"）的真实写法，把前面学的节点、嵌套事件、6 种边、where 全用上了。
 
 它要表达的走势是：**先有一段大幅下跌，转入横盘，然后从横盘里冒出一串密集突破（爆发），最后突破后回踩确认。**
 
@@ -560,7 +560,7 @@ for e in seq:
 
 > ⚠️ 常见坑：读 `role_index` 的值前，先用 `isinstance(binding, tuple)` 判断是普通节点还是 Kleene 节点，否则你可能对一个 tuple 调用 `.start_idx`。
 >
-> 注意：当前示例 app `bottom_breakout_burst` 全是单实例（ONCE）节点，`role_index` 的值都是**单个 `Event`**——包括 `burst`，它虽然内部装着一串 bo，但它本身是一个 `BurstEvent` 对象，不是 tuple。上面的 tuple 分支只在你**真的用了 Kleene 节点**时才会出现。
+> 注意：当前示例 app `bottom_burst` 全是单实例（ONCE）节点，`role_index` 的值都是**单个 `Event`**——包括 `burst`，它虽然内部装着一串 bo，但它本身是一个 `BurstEvent` 对象，不是 tuple。上面的 tuple 分支只在你**真的用了 Kleene 节点**时才会出现。
 
 ### children：所有绑定实例的扁平视图
 

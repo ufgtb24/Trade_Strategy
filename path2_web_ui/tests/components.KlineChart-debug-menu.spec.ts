@@ -2,7 +2,7 @@
  * Task 3 · KlineChart marker 右键 3 项 debug 菜单 + whitelist 分流 + 生产 v-if 隔离
  *
  * 由于 ECharts 实例在 jsdom 里难以真跑,本 test focus 在 store 层的分流函数上:
- * 组件 export 一个 pure function `dispatchDebugMenu({ eventId }, store, isDebugCheck?)`,
+ * 组件 export 一个 pure function `dispatchDebugMenu({ instanceId }, store, isDebugCheck?)`,
  * 返回 { menu: 'debug' | 'driver', anchors?: DebugAnchor[] } 让菜单模板消费。
  *
  * 【相对 brief 原版修正 · env 分流测试机制】brief 原版直接改写
@@ -34,8 +34,15 @@ function seedTb(store: ReturnType<typeof useViewStore>) {
     scan: { win_start: '2025-01-01', win_end: '2025-12-31' },
     analysis: {
       events: [
-        { event_id: 'bo_1', class_id: 'bo', start_idx: 30, end_idx: 33 },
-        { event_id: 'tb_1', class_id: 'tb', start_idx: 42, end_idx: 55, anchor_bo_id: 'bo_1' },
+        { instance_id: 'bo_1#0', node_id: 'bo', start_idx: 30, end_idx: 33 },
+        // 真实 node_id 契约:tb 容器/子段/V1 共用 node_id 'tb',靠 child_refs 区分——
+        // tb_1#0(V2 容器)持有 segments 引用;tb_seg_1#0(子段)被其引用;tb_v1_1#0(V1 叶子)无人引用。
+        { instance_id: 'tb_1#0', node_id: 'tb', start_idx: 42, end_idx: 55, anchor_bo_id: 'bo_1#0',
+          child_refs: { segments: ['tb_seg_1#0'] } },
+        { instance_id: 'tb_seg_1#0', node_id: 'tb', start_idx: 44, end_idx: 50, anchor_bo_id: 'bo_1#0',
+          child_refs: {} },
+        { instance_id: 'tb_v1_1#0', node_id: 'tb', start_idx: 42, end_idx: 55, anchor_bo_id: 'bo_1#0',
+          child_refs: {} },
       ],
       matches: [], summary: {}, gate_failures: [],
     },
@@ -52,10 +59,26 @@ const DEBUG = () => true
 const PROD = () => false
 
 describe('dispatchDebugMenu · whitelist 分流', () => {
-  it('marker + tb → menu=debug · 3 anchors', () => {
+  it('marker + tb(v4 容器)→ menu=debug · 3 anchors(entry/start/end)', () => {
     const store = useViewStore()
     seedTb(store)
-    const r = dispatchDebugMenu({ eventId: 'tb_1' }, store, DEBUG)
+    const r = dispatchDebugMenu({ instanceId: 'tb_1#0' }, store, DEBUG)
+    expect(r.menu).toBe('debug')
+    expect(r.anchors).toHaveLength(3)
+  })
+
+  it('marker + tb_seg(V2 段)→ menu=debug · 2 anchors(confirm/end)', () => {
+    const store = useViewStore()
+    seedTb(store)
+    const r = dispatchDebugMenu({ instanceId: 'tb_seg_1#0' }, store, DEBUG)
+    expect(r.menu).toBe('debug')
+    expect(r.anchors).toHaveLength(2)
+  })
+
+  it('marker + tb_v1(V1)→ menu=debug · 3 anchors(entry/confirm/end)', () => {
+    const store = useViewStore()
+    seedTb(store)
+    const r = dispatchDebugMenu({ instanceId: 'tb_v1_1#0' }, store, DEBUG)
     expect(r.menu).toBe('debug')
     expect(r.anchors).toHaveLength(3)
   })
@@ -63,29 +86,29 @@ describe('dispatchDebugMenu · whitelist 分流', () => {
   it('marker + bo(不在 whitelist)→ menu=driver 降级', () => {
     const store = useViewStore()
     seedTb(store)
-    const r = dispatchDebugMenu({ eventId: 'bo_1' }, store, DEBUG)
+    const r = dispatchDebugMenu({ instanceId: 'bo_1#0' }, store, DEBUG)
     expect(r.menu).toBe('driver')
     expect(r.anchors).toBeUndefined()
   })
 
-  it('空白 K 线(无 eventId)→ menu=driver', () => {
+  it('空白 K 线(无 instanceId)→ menu=driver', () => {
     const store = useViewStore()
     seedTb(store)
-    const r = dispatchDebugMenu({ eventId: null }, store, DEBUG)
+    const r = dispatchDebugMenu({ instanceId: null }, store, DEBUG)
     expect(r.menu).toBe('driver')
   })
 
   it('生产 env(isDebugFrontend=false)→ menu=driver(隔离 debug)', () => {
     const store = useViewStore()
     seedTb(store)
-    const r = dispatchDebugMenu({ eventId: 'tb_1' }, store, PROD)
+    const r = dispatchDebugMenu({ instanceId: 'tb_1#0' }, store, PROD)
     expect(r.menu).toBe('driver')  // 生产不出 debug 菜单
   })
 
   it('debug env(isDebugFrontend=true)→ menu=debug', () => {
     const store = useViewStore()
     seedTb(store)
-    const r = dispatchDebugMenu({ eventId: 'tb_1' }, store, DEBUG)
+    const r = dispatchDebugMenu({ instanceId: 'tb_1#0' }, store, DEBUG)
     expect(r.menu).toBe('debug')
   })
 })

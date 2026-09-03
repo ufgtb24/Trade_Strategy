@@ -225,7 +225,7 @@ side_det = TrendSegmentDetector(**p.trend_kwargs())   # 两个独立实例
 
 path2 有两种表达「一串」的办法：
 
-- **嵌套事件（推荐，本节讲）**——把「这一串」打包成**一个一等公民的宽事件**，让它像普通节点一样参与匹配。当前示例 app `bottom_breakout_burst` 走的就是这条路。
+- **嵌套事件（推荐，本节讲）**——把「这一串」打包成**一个一等公民的宽事件**，让它像普通节点一样参与匹配。当前示例 app `bottom_burst` 走的就是这条路。
 - **Kleene（仍是框架特性，下一节讲）**——让一个节点直接绑「一整串散点事件」，在求解期把序列拼出来。
 
 > 💡 **怎么选？** 如果这一串能自然聚合成一个「有头有尾、有整体属性」的东西（比如「一段突破爆发」），优先用**嵌套事件**——它能被画在图上、被一条 `where` 整体检查、被边当作普通宽事件引用，最干净。只有当你确实想保留「松散的一串散点、连整体实体都不想造」时，才用 Kleene。
@@ -288,7 +288,7 @@ BurstDetector(
 
 ## 4. `KleeneSpec`：另一条路——让节点直接绑「一串散点」
 
-> ⚠️ **先读这里。** 当前示例 app `bottom_breakout_burst` 已经**改用上一节的嵌套事件**（`BurstEvent`）表达突破串，**不再用 Kleene**。但 Kleene **仍然是框架的完整特性、随时可用**——`KleeneSpec`、引擎的序列绑定、后面附录里那些 `W.first/last/count/any/distinct/reduce` 谓词全都健在。本节作为 **reference** 保留：如果你的「一串」不方便聚合成一个一等事件、就是想让一个节点直接绑一串散点，那就用 Kleene。**「某个 app 不用它」绝不等于「框架删了它」。**
+> ⚠️ **先读这里。** 当前示例 app `bottom_burst` 已经**改用上一节的嵌套事件**（`BurstEvent`）表达突破串，**不再用 Kleene**。但 Kleene **仍然是框架的完整特性、随时可用**——`KleeneSpec`、引擎的序列绑定、后面附录里那些 `W.first/last/count/any/distinct/reduce` 谓词全都健在。本节作为 **reference** 保留：如果你的「一串」不方便聚合成一个一等事件、就是想让一个节点直接绑一串散点，那就用 Kleene。**「某个 app 不用它」绝不等于「框架删了它」。**
 
 ### 什么场景需要它？
 
@@ -690,7 +690,7 @@ where=(
 
 ## 8. 完整声明示例：把上面所有零件拼起来
 
-下面是一个真实走势 `bottom_breakout_burst`（底部反转突破爆发）的完整声明。它把 7 条业务约束全部写成了纯声明，用的就是上一章的**嵌套事件**路径。你现在应该能逐行读懂它了——注释里标了每行对应第几条约束：
+下面是一个真实走势 `bottom_burst`（底部反转突破爆发）的完整声明。它把 7 条业务约束全部写成了纯声明，用的就是上一章的**嵌套事件**路径。你现在应该能逐行读懂它了——注释里标了每行对应第几条约束：
 
 ```python
 from path2.dag.nodes import NodeSpec
@@ -758,7 +758,7 @@ def build_pattern(params):
         TemporalEdge("burst", "tb", min_gap=1, max_gap=1),
     )
     return PatternSpec(
-        pattern_id="bottom_breakout_burst",
+        pattern_id="bottom_burst",
         display_name="底部反转突破爆发",
         nodes=nodes,
         edges=edges,

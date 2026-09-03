@@ -52,7 +52,9 @@ class WcClearRequest(BaseModel):
 
 _PARAM_FILE_RE = re.compile(r"^[A-Za-z0-9_\-]+\.yaml$")
 
-_SCAN_NAME_RE = re.compile(r"^[\w\-]+$", re.UNICODE)   # \w 含中文; 天然排除 . / \ 空格(防穿越)
+# \w 含中文; 允许小数点(调参脚本产物如 tune-bo-exceed_threshold-0.01-buf250),
+# 但禁首点 → 排除 . / .. / 隐藏文件; \w 天然排除 / \ 空格(防穿越)
+_SCAN_NAME_RE = re.compile(r"^(?!\.)[\w\-.]+$", re.UNICODE)
 
 
 def _validate_scan_name(name: str) -> None:
@@ -242,7 +244,7 @@ def build_router(*, registry, config_path, get_config, set_config,
             if isinstance(pattern_spec, dict) and "event_styles" in pattern_spec:
                 fresh = serialize_pattern(spec)
                 pattern_spec["event_styles"] = fresh["event_styles"]
-                pattern_spec["debug_enabled_classes"] = fresh["debug_enabled_classes"]  # v4 backfill:老 scan 文件补齐 non-optional 字段
+                pattern_spec["debug_enabled_nodes"] = fresh["debug_enabled_nodes"]  # v4 backfill:老 scan 文件补齐 non-optional 字段
         return data
 
     @router.delete("/scans/{name}")
@@ -273,7 +275,7 @@ def build_router(*, registry, config_path, get_config, set_config,
     def get_diagnose(pattern_id: str, symbol: str, start: str, end: str,
                      scope: Optional[str] = None,
                      src_node: Optional[str] = None, dst_node: Optional[str] = None,
-                     event_class: Optional[str] = None, event_id: Optional[str] = None,
+                     node: Optional[str] = None, event_id: Optional[str] = None,
                      src_event_id: Optional[str] = None, dst_event_id: Optional[str] = None,
                      edge_id: Optional[str] = None,
                      start_bar: Optional[int] = None, end_bar: Optional[int] = None,
@@ -289,8 +291,6 @@ def build_router(*, registry, config_path, get_config, set_config,
             os.environ["DEBUG_BAR_RANGE"] = f"{start_bar},{end_bar}"
         if anchor_kind:                             # ★ v3 · 空串也视同未传
             os.environ["DEBUG_ANCHOR_KIND"] = anchor_kind
-        if event_class:                             # ★ v4 · 空串也视同未传
-            os.environ["DEBUG_EVENT_CLASS"] = event_class
         try:
             mod = registry.get(pattern_id)
             if mod is None:
@@ -318,7 +318,7 @@ def build_router(*, registry, config_path, get_config, set_config,
             # scope=nodes 只需 diag · scope=time/pair 只需 result(+ gate_failures) · 三 scope 数据依赖完全正交
             # (derive_response 三 branch 逐字核实无 hidden cross-dep)· 只跑该 scope 需要的那 pass 消双 pause。
             query = Query(symbol=symbol, scope=scope, src_node=src_node, dst_node=dst_node,
-                         event_class=event_class, event_id=event_id,
+                         node=node, event_id=event_id,
                          src_event_id=src_event_id, dst_event_id=dst_event_id,
                          edge_id=edge_id, start_bar=start_bar, end_bar=end_bar)
             diag = None
@@ -339,11 +339,9 @@ def build_router(*, registry, config_path, get_config, set_config,
                 raise HTTPException(400, str(e)) from e
         # ⚠ env is process-wide; concurrent /diagnose calls race — v2 finally-pop 让并发下互相清 env,
         # undefined under concurrency, single-user debug tool.
-        # v4(2026-07-17 class-gate)契约扩展:第四 env DEBUG_EVENT_CLASS 同 finally 无条件 pop。
         finally:
             os.environ.pop("DEBUG_BAR_RANGE", None)
             os.environ.pop("DEBUG_ANCHOR_KIND", None)   # ★ v3 · 无条件 pop 兜底
-            os.environ.pop("DEBUG_EVENT_CLASS", None)   # ★ v4 · 无条件 pop 兜底(跨 request 隔离)
 
     @router.get("/preview")
     def get_preview(pattern_id: str, symbol: str, start: str, end: str,
@@ -375,14 +373,17 @@ def build_router(*, registry, config_path, get_config, set_config,
             buf_start = str((start_ts - pd.Timedelta(days=round(head_buf * scan_mod.TRADING_TO_CALENDAR_RATIO))).date())
             buf_end   = str((end_ts   + pd.Timedelta(days=round(label_horizon * scan_mod.TRADING_TO_CALENDAR_RATIO))).date())
 
-            # 复刻 worker 单 pattern 调用
+            # 复刻 worker 单 pattern 调用(含样本消费窗截取,口径与 scan worker 一致)
             df = pd.read_pickle(pkl)
             win = slice_window(df, buf_start, buf_end)
             res = mod.analyze(win, p)
             from path2_web.serialize import serialize_per_pattern_result
+            lo = int(win["date"].searchsorted(start_ts, "left"))
+            hi = int(win["date"].searchsorted(end_ts, "right")) - 1
             out = serialize_per_pattern_result(
                 res, end_node=end_node, label_horizon=label_horizon,
-                win=win, start_ts=start_ts, end_ts=end_ts)
+                win=win, start_ts=start_ts, end_ts=end_ts,
+                sample_window=(lo, hi))
             pattern_spec = serialize_pattern(mod.build_pattern(p if p is not None else mod.load_params()))
             scan_meta = {
                 "start_date": start, "end_date": end,

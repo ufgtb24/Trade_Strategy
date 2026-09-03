@@ -1,0 +1,48 @@
+长表 7831477 行 / 3985 股
+
+=== 1. 全网格(应复现已提交的 naive=0.0705 / opt=0.1263 / sh=-0.1319) ===
+  [full] cells=442368 naive=0.0705 opt=0.1263±0.0062 sh=-0.1319  (139s)
+
+=== 2. 逐条塌缩一根轴(= 该维这轮没搜)——配对同 seed ===
+  [drop_combo:bo.min_relative_height] cells=110592 naive=0.0086 opt=0.1008±0.0045 sh=-0.1127  (25s)
+  [drop_combo:bo.exceed_threshold] cells=110592 naive=0.0424 opt=0.1119±0.0054 sh=-0.2139  (28s)
+  [drop_combo:burst.gap_max] cells=110592 naive=0.0266 opt=0.1265±0.0050 sh=-0.1199  (25s)
+  [drop_combo:tb.stop_confirm_bars] cells=110592 naive=0.0200 opt=0.1326±0.0058 sh=-0.1965  (24s)
+  [drop_combo:tb.big_rise_k] cells=110592 naive=0.0705 opt=0.1024±0.0053 sh=-0.1522  (26s)
+  [drop_pred:burst.count] cells=110592 naive=0.0209 opt=0.1144±0.0060 sh=-0.2044  (77s)
+  [drop_pred:tb.day_drop] cells=221184 naive=0.0705 opt=0.1186±0.0055 sh=-0.1319  (98s)
+  [drop_pred:burst.first_drought] cells=147456 naive=0.0299 opt=0.1014±0.0049 sh=-0.0690  (82s)
+  [drop_pred:burst.distinct_pk] cells=147456 naive=0.0424 opt=0.1162±0.0062 sh=-0.1859  (83s)
+  [drop_pred:burst.max_bar_vol_ratio] cells=147456 naive=0.0705 opt=0.0886±0.0036 sh=-0.1319  (83s)
+  [drop_pred:burst.peak_age_max] cells=221184 naive=0.0168 opt=0.1379±0.0055 sh=-0.0757  (95s)
+
+=== 3. 大幅缩小候选集(同时塌缩多根轴) ===
+  [collapse_first_2_combo] cells=27648 naive=0.0196 opt=0.0818±0.0044 sh=-0.2849  (6s)
+  [collapse_first_4_combo] cells=1728 naive=-0.0184 opt=0.0909±0.0048 sh=-0.1381  (1s)
+  [collapse_first_6_combo] cells=432 naive=-0.0350 opt=0.0885±0.0054 sh=-0.1269  (1s)
+
+=== 4. split-half 的 seed 间散布(噪声地板) ===
+  seed= 0 split_half=-0.1319
+  seed= 1 split_half=-0.2379
+  seed= 2 split_half=-0.0346
+  seed= 3 split_half=-0.2776
+  seed= 4 split_half=-0.2456
+  seed= 5 split_half=-0.1092
+  seed= 6 split_half=-0.1088
+  seed= 7 split_half=-0.2317
+  seed= 8 split_half=-0.1812
+  seed= 9 split_half=-0.1388
+  seed=10 split_half=-0.0878
+  seed=11 split_half=-0.1509
+  seed=12 split_half=-0.2300
+  seed=13 split_half=-0.1339
+  seed=14 split_half=nan
+  seed=15 split_half=nan
+  seed=16 split_half=-0.3083
+  seed=17 split_half=-0.1068
+  seed=18 split_half=-0.0748
+  seed=19 split_half=-0.1957
+
+split_half over 18 seeds: mean=-0.1659 sd=0.0762 min=-0.3083 max=-0.0346 range=0.2737
+
+写入 /home/yu/PycharmProjects/Trade_Strategy/.claude/worktrees/tune-tools/docs/research/2026-08-29_tune-gates-mechanism-design/repro/optimism_vs_gridsize.json

@@ -1,6 +1,6 @@
 """try_complex_where — 嵌套复杂 where 的试验田(sandbox)。
 
-拓扑照抄 bottom_breakout_burst(bo / burst / tb + 1 条边),但 pattern_id 独立为
+拓扑照抄 bottom_burst(bo / burst / tb + 1 条边),但 pattern_id 独立为
 "try_complex_where",与主 app 并存互不干扰。**唯一用途是随便改 burst 的 where**,
 验证 W.any / W.all / W.not_ / W.child / W.children 的嵌套组合怎么判、UI 怎么显示。
 

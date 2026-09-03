@@ -1,10 +1,15 @@
 # tests/path2/dag/test_engine_negation.py
 """NegationEdge:src 锚定窗口内禁止满足条件的 dst;dst 不进匹配。"""
-from tests.path2.dag._oracle import E, keyset, brute_all
+from tests.path2.dag._oracle import E, Ev, keyset, brute_all
 from path2.dag.edges import TemporalEdge, NegationEdge
 from path2.dag.nodes import NodeSpec
 from path2.dag.spec import PatternSpec
 from path2.dag._solve import compile_plan, solve
+
+
+class _StubDetector:
+    """占位 detector:只声明 event_cls(引擎测试不真跑 detect,streams 直给 solve)。"""
+    event_cls = Ev
 
 
 def _nspec(nodes, edges):
@@ -13,7 +18,7 @@ def _nspec(nodes, edges):
 
 
 def _nodes(ids):
-    return [NodeSpec(node_id=n, detector=None) for n in ids]
+    return [NodeSpec(node_id=n, detector=_StubDetector()) for n in ids]
 
 
 def test_negation_blocks_when_forbidden_present():

@@ -17,7 +17,6 @@ from dataclasses import dataclass
 from typing import Iterator, Tuple
 
 from path2.core import Event
-from path2.stdlib import span_id
 from path2.atoms.breakout import BurstEvent, BurstDetector, BOEvent
 from path2.dag.engine import analyze
 from path2.dag.spec import PatternSpec, NodeSpec
@@ -28,7 +27,6 @@ from path2.dag.spec import PatternSpec, NodeSpec
 @dataclass(frozen=True)
 class SuperEvent(Event):
     """三层中最高层:聚合一组 BurstEvent。"""
-    class_id = "test_multilayer_super"
     members: Tuple[BurstEvent, ...] = ()
 
     def child_slots(self):
@@ -48,7 +46,6 @@ class SuperDetector:
         bl = sorted(bursts, key=lambda e: (e.start_idx, e.end_idx))
         if len(bl) >= 1:
             yield SuperEvent(
-                event_id=span_id("super", bl[0].start_idx, bl[-1].end_idx),
                 start_idx=bl[0].start_idx, end_idx=bl[-1].end_idx, confirm_idx=bl[0].start_idx,
                 members=tuple(bl),
             )
@@ -56,14 +53,15 @@ class SuperDetector:
 
 # ── 合成 bo detector（root；合成 BOEvent 避免依赖真实 K 线）────────────────────
 
-def _bo(i, drought=60, peaks=(1,), vol=3.0):
-    """构造一个 BOEvent(参照 test_burst.py::_bo() 签名)。"""
+def _bo(i, drought=60, vol=3.0):
+    """构造一个 BOEvent(参照 test_burst.py::_bo() 签名)。本文件的 bo 是合成 root 事件
+    (_SyntheticBoDetector 直接 yield,不经 BODetector 的 pk 流标注);若给 broken_refs
+    填充未标注的 PeakEvent 对象,会被 engine._translate_refs 拒绝(instance_id 为
+    None,契约:ref_slots 引用的对象必须来自已绑定流)。本文件从未断言 distinct_pk /
+    pk_count / broken_peak_ids,故不再构造 broken_refs,保持默认空元组。"""
     return BOEvent(
-        event_id=f"bo:{i}:{i}",
         start_idx=i, end_idx=i, confirm_idx=i,
         drought=drought,
-        pk_count=len(peaks),
-        broken_peak_ids=peaks,
         vol_ratio=vol,
         peak_vol_max=0.0,
     )
@@ -71,7 +69,7 @@ def _bo(i, drought=60, peaks=(1,), vol=3.0):
 
 class _SyntheticBoDetector:
     """合成 bo detector:detect(df) 直接 yield 预置 BOEvent(不依赖真实 K 线)。"""
-    event_cls = BOEvent  # class_id == "bo"
+    event_cls = BOEvent
 
     def __init__(self, bos):
         self._bos = bos
@@ -89,9 +87,9 @@ def _build_spec():
     edges=() 合法;所有节点为孤立 node(匹配全被 A2 过滤,但 res.events 仍完整)。
     """
     bos = [
-        _bo(0, drought=60, peaks=(1,), vol=3.0),
-        _bo(2, drought=5, peaks=(2,), vol=4.0),
-        _bo(5, drought=3, peaks=(3,), vol=2.0),
+        _bo(0, drought=60, vol=3.0),
+        _bo(2, drought=5, vol=4.0),
+        _bo(5, drought=3, vol=2.0),
     ]
     bo_node = NodeSpec("bo", _SyntheticBoDetector(bos))
     burst_node = NodeSpec("burst", BurstDetector(gap_max=5, min_bos=3),
@@ -122,19 +120,19 @@ def test_multilayer_chain_and_double_identity():
     # (a) engine 不抛异常(topo 编排 bo→burst→super 通)
     res = analyze(spec, df)
 
-    # --- (b) event_id 唯一 ---
-    event_ids = [e.event_id for e in res.events]
-    assert len(event_ids) == len(set(event_ids)), (
-        f"res.events event_id 重复: {len(event_ids) - len(set(event_ids))} 个"
+    # --- (b) instance_id 唯一 ---
+    inst_ids = [e.instance_id for e in res.events]
+    assert len(inst_ids) == len(set(inst_ids)), (
+        f"res.events instance_id 重复: {len(inst_ids) - len(set(inst_ids))} 个"
     )
 
     # 三层 events 都应在顶层 (bo ×3 + burst ×1 + super ×1 = 5)
-    assert len(event_ids) == 5, (
-        f"期望 5 个顶层 events(3 bo + 1 burst + 1 super),实际 {len(event_ids)}: {event_ids}"
+    assert len(inst_ids) == 5, (
+        f"期望 5 个顶层 events(3 bo + 1 burst + 1 super),实际 {len(inst_ids)}: {inst_ids}"
     )
 
     # BurstEvent 在 res.events 出现恰好一次(双身份核心:同一对象也在 super.members)
-    burst_ids_in_top = [e.event_id for e in res.events if isinstance(e, BurstEvent)]
+    burst_ids_in_top = [e.instance_id for e in res.events if isinstance(e, BurstEvent)]
     assert len(burst_ids_in_top) == 1, (
         f"期望 burst 在顶层出现 1 次,实际 {len(burst_ids_in_top)}"
     )

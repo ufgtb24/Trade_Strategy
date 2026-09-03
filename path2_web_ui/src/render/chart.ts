@@ -1,9 +1,10 @@
-// ECharts option 构造(纯函数,spec §8.3 方案 B)。类型无关:只依赖 start_idx/end_idx/source_tag + 色。
+// ECharts option 构造(纯函数,spec §8.3 方案 B)。类型无关:只依赖 start_idx/end_idx/instance_id + 色。
 import type { Bar, EventDict, MatchDict, Level, Tier, Topology } from '../types'
 import { colorOf } from './colors'
 import { packByBand, packBrackets } from './geometry'
-import { isBandVisible, renderGridOf, subBandTagList } from './visible'
+import { isBandVisible, renderGridOf, splitIntervalAtScanEnd, subBandTagList } from './visible'
 import { ctrlState } from './ctrlState'
+import { derivePeakStates, peakIdIndex } from './peakState'
 import {
   BAND_TOP_PAD,
   BAND_BOT_PAD,
@@ -62,8 +63,13 @@ export interface BandRenderInput {
   // tagToNodes: bandKey → nodeId[],用于 nodeVisible 联查 ──────────────────────
   tagToNodes?: Record<string, string[]>
   // ── D2 可选扩展 ─────────────────────────────────────────────────────────────
-  selectedEventId?: string | null
-  tooltipResolver?: (eventId: string) => TooltipPayload
+  // 当前聚焦实例 instance_id(selectedInstanceId ?? focusedInstanceId 合并);用于
+  // bracket 是否本身被点的判定(marker 分支必设, bracket 分支为 null)。
+  selectedInstanceId?: string | null
+  // ── Task 5 实例绑定:焦点实例(实例级)── marker 点击的精确实例(1 归属直选时非空)。
+  // group 条目精确排除被点那一个实例(同身份兄弟实例不误伤)。
+  focusedInstanceId?: string | null
+  tooltipResolver?: (instanceId: string) => TooltipPayload
   // ── 缓冲窗/label 扩展(均可选,旧调用零改动) ──────────────────────────────────
   strictWindow?: { startIdx: number; endIdx: number } | null   // 严格窗边界(bar 索引);缺省不画
   matchLabel?: (matchId: string) => string | null              // match 归属带 tooltip 行;null 不显示
@@ -73,15 +79,15 @@ export interface BandRenderInput {
   //    render 时从 chart.getOption().dataZoom[0] 读出再回传,实现"非换股触发
   //    re-render 时不重置 zoom")。缺省/null = 走 strictWindow 默认,旧调用零回归。
   zoomOverride?: { start: number; end: number } | null
-  // §7-4 整治：bracket marker 同时承载 match_id + 端点 event_id,让 buildMarkerTooltipFormatter
-  // 的 event 三段分支也能触发。endNode 来自 eval_meta(铁律必有);缺省=不注入 event_id(向后兼容)
+  // §7-4 整治：bracket marker 同时承载 match_id + 端点 instance_id,让 buildMarkerTooltipFormatter
+  // 的 event 三段分支也能触发。endNode 来自 eval_meta(铁律必有);缺省=不注入 instance_id(向后兼容)
   endNode?: string
   // ── M #3 / M' #19: bracket 三态 fill ────────────────────────────────────────
   selectedMatchId?: string | null
   candidateMatchIds?: ReadonlySet<string>
   // ── Task 5: highlight 三分支(group / focus / pendingDisambig) ───────────────
   highlightedEventIds?: ReadonlySet<string>
-  pendingDisambigEventId?: string | null
+  pendingDisambigInstanceId?: string | null
   // ── spec 2026-07-10: 入口 D shift+click 已选中 marker 描边高亮 ────────────
   shiftSelectedEventIds?: ReadonlySet<string>
   matches?: MatchDict[]  // buildSubOption 的 markerTooltip formatter 用（自 KlineChart.vue 透传）
@@ -95,13 +101,12 @@ export interface EventBundle {
   pointData: any[]
   intervalData: any[]
   pricePointData: any[]
-  satelliteData: any[]
   bracketData: any[]
   highlightData: any[]
   highlightPriceData: any[]
   // ── spec 2026-07-11: shift+click 累积器命中 marker 的白蒙+黑线 overlay 数据 ──
   veilData: any[]         // 副图 point + interval
-  veilPriceData: any[]    // 主图 pricePoint + satellite
+  veilPriceData: any[]    // 主图 pricePoint
   candle: number[][]
   volume: number[]
   dates: string[]
@@ -112,76 +117,93 @@ export function computeEventData(
   input: BandRenderInput,
 ): EventBundle {
   const { topology, tagList, level, nodeColors, eventTier, nodeOfEventByBand, bandKeyOf,
-          nodeVisible, tagToNodes, selectedEventId, endNode,
+          nodeVisible, tagToNodes, selectedInstanceId, endNode, strictWindow,
           highlightedEventIds: _highlightedEventIds,
-          pendingDisambigEventId: _pendingDisambigEventId,
-          shiftSelectedEventIds: _shiftSelectedEventIds } = input
+          pendingDisambigInstanceId: _pendingDisambigInstanceId,
+          shiftSelectedEventIds: _shiftSelectedEventIds,
+          focusedInstanceId: _focusedInstanceId } = input
   const highlightedEventIds = _highlightedEventIds ?? new Set<string>()
-  const pendingDisambigEventId = _pendingDisambigEventId ?? null
+  const pendingDisambigInstanceId = _pendingDisambigInstanceId ?? null
   const shiftSelectedEventIds = _shiftSelectedEventIds ?? new Set<string>()
+  const focusedInstanceId = _focusedInstanceId ?? null
   // 副图分轨只含 time 轴 tag;render_grid='price' 的 tag(bo)不占轨道
   const subTags = subBandTagList(tagList, topology)
+
+  // 段事件 node_id 由引擎 children 声明命名表直标子结构 node(tb_seg),
+  // bandKeyOf(e)=e.node_id 天然分轨,无需前端路由。
+  // tagToNodes 缺该键(旧调用/测试未传)时回落入参 nodeOfEventByBand。
+  const nodeOf = (e: EventDict): string | null =>
+    tagToNodes?.[bandKeyOf(e)]?.[0] ?? nodeOfEventByBand(e)
 
   const dates = bars.map((b) => b.date)
   const candle = bars.map((b) => [b.o, b.c, b.l, b.h])
   const volume = bars.map((b) => b.v)
 
+  // pk 三态合成 + pk_id 反查(契约 C4/C5):必须按本股全部 events 算,在 level/nodeVisible
+  // 过滤(下方 filtered)之前——被过滤掉的 bo 依然要能"突破"一个仍然可见的 pk。
+  // 语义(槽名 broken/superseded、字段 peak_idx/pk_id)全封装在 peakState.ts,这里只调用。
+  const pkStates = derivePeakStates(events)
+  const pkIds = peakIdIndex(events)
+
   // ── level 门控 + nodeVisible band 筛选 ──
+  // solve=False 的 node(如 pk 显示 node)不参与求解、恒为 detected tier;若按 RANK 过滤,
+  // level=matched 时会被整段滤掉 → 免疫 level 门控(类型无关,solve 标志,Task 6 serialize 契约)。
   const RANK: Record<Level, number> = { matched: 2, qualified: 1, detected: 0 }
+  const solveFreeNodes = new Set((topology?.nodes ?? []).filter(n => n.solve === false).map(n => n.node_id))
   const filtered = events.filter((e) =>
-    RANK[eventTier(e)] >= RANK[level] && isBandVisible(bandKeyOf(e), nodeVisible, tagToNodes)
+    (solveFreeNodes.has(nodeOf(e) ?? '') || RANK[eventTier(e)] >= RANK[level]) &&
+    isBandVisible(bandKeyOf(e), nodeVisible, tagToNodes)
   )
   const priceAnchored = filtered.filter((e) => renderGridOf(e, topology, bandKeyOf) === 'price')
   const timeAnchored = filtered.filter((e) => renderGridOf(e, topology, bandKeyOf) !== 'price')
 
-  const eColor = (e: EventDict): string =>
-    colorOf(eventTier(e), nodeOfEventByBand(e), nodeColors)
+  // 事件色:一律 tier 色(类型无关)。pk 三态不走颜色——renderer 按 state 把 ▽ 画成
+  // 实心/空心/浅灰虚线(pkTriStyle,spec 2026-08-31 §3.5.4),itemStyle.color 对 pk 不消费。
+  const eColor = (e: EventDict): string => colorOf(eventTier(e), nodeOf(e), nodeColors)
+  // 样本消费窗右端(tb v4 状态机 spec §10):events 全量下发,机器在尾缓冲区的轨迹
+  // 有意可见;副图 band interval 越过 scanEnd(strictWindow.endIdx,= scan.end_date
+  // 的 bar 索引)时拆两段——窗内段维持三档 level 色,窗后段降为 detected 灰
+  // (「检测到但非样本」,与 detected/traced 灰色语义同族)。strictWindow 缺省不拆,
+  // 与主图 buildShadingMarkArea shading 同门控。
+  const scanEndIdx = strictWindow?.endIdx ?? null
 
-  // pkBarIndices
-  const pkBarIndices = new Set<number>()
-  for (const e of priceAnchored) {
-    const rp = e.referenced_points
-    if (Array.isArray(rp)) {
-      for (const [barIdx] of rp as Array<[number, number, string]>) {
-        pkBarIndices.add(barIdx)
-      }
-    }
-  }
+  // pk 标签:只显示 id 数字,不带前缀、不带态名(spec 2026-08-31 §3.5.4)。pk_id 由 convex/bear
+  // 共用同一计数器、全局唯一,无需消歧;三态与 kind 全由 ▽ 形状编码,标签不再承担区分。
+  const pkLabelOf = (e: EventDict): string =>
+    typeof e.pk_id === 'number' ? String(e.pk_id) : ''
 
   const pricePointData = priceAnchored.map((e) => {
-    const bar = bars[e.start_idx]
+    // 渲染锚点:pk 事件用 peak_idx(峰 bar 精确局部高点,serialize 平铺带出),价格查
+    // bars[peak_idx].h(不读演化后的 price);start_idx 仍是事件几何锚(登记 bar)。
+    // pk 判别子 = 带 peak_idx(number,契约 C4);bo 等其他 price-anchored 事件无 peak_idx,
+    // 走 start_idx(原生锚,非"回退")。
+    const isPk = typeof e.peak_idx === 'number'
+    const renderIdx = (isPk ? e.peak_idx : e.start_idx) as number
+    const bar = bars[renderIdx]
     const y = bar ? bar.h * 1.005 : 0
     const anchorY = bar ? bar.h : 0
-    const ids = Array.isArray(e.broken_peak_ids) ? (e.broken_peak_ids as number[]) : []
-    const text = '[' + ids.join(',') + ']'
-    const hasPks = pkBarIndices.has(e.start_idx)
+    // bo 盒文本:ref_ids.broken 列出的被突破 pk instance_id → 查 pkIds 得 pk_id 数字
+    // (契约 C5,取代已删的 broken_peak_ids 字段)。查不到(引用的 pk 不在本次 events 里)的
+    // id 静默丢弃,不留 undefined 占位。
+    const brokenIds = (e.ref_ids?.broken ?? []) as string[]
+    const text = isPk
+      ? pkLabelOf(e)
+      : '[' + brokenIds.map((id) => pkIds.get(id)).filter((n): n is number => n != null).join(',') + ']'
     return {
-      value: [e.start_idx, y],
-      event_id: e.event_id,
+      value: [renderIdx, y],
+      instance_id: e.instance_id,
       tier: eventTier(e),
       itemStyle: { color: eColor(e) },
-      anchorY, text, hasPks,
+      anchorY, text,
+      // pk marker 渲染元数据(renderer 按 state 存在性分派三角形/盒)。state 由
+      // pkStates(derivePeakStates,契约 C4)合成,不再读事件自带字段。
+      // 字段名用 pkKind 而非 kind:highlight 条目 `{ ...d, kind: HlKind }` 会覆盖同名 kind,
+      // 存在 kind 里的 bear/convex 到高亮层就丢了(bear 短横线消失)。
+      state: isPk ? pkStates.get(e.instance_id) ?? 'alive' : undefined,
+      pkKind: typeof e.kind === 'string' ? e.kind : undefined,
+      pkId: typeof e.pk_id === 'number' ? e.pk_id : undefined,
     }
   })
-
-  const satelliteData: any[] = []
-  for (const e of priceAnchored) {
-    const rp = e.referenced_points
-    if (!rp || !Array.isArray(rp)) continue
-    for (const [barIdx, price, label] of rp as Array<[number, number, string]>) {
-      const m = typeof label === 'string' ? /^pk(\d+)$/.exec(label) : null
-      const pkId = m ? m[1] : (label ?? '')
-      const anchorBar = bars[barIdx]
-      satelliteData.push({
-        value: [barIdx, price],
-        event_id: e.event_id,
-        label,
-        itemStyle: { color: eColor(e) },
-        anchorY: anchorBar ? anchorBar.h : price,
-        pkId,
-      })
-    }
-  }
 
   // 合并 spot + span 一并送 packByBand,同 band 内共享同一次 packLanes 分 lane
   // (spec 2026-07-13:spot 从 band 中心固定位置改为参与 lane packing,消除视觉重叠 bug)
@@ -192,24 +214,37 @@ export function computeEventData(
     const isPoint = e.start_idx === e.end_idx
     const record = {
       value: [e.start_idx, e.end_idx, e.lane, e.band, e.nBands],
-      event_id: e.event_id,
+      instance_id: e.instance_id,
       tier: eventTier(e),
       itemStyle: { color: eColor(e) },
     }
-    if (isPoint) pointData.push(record)
-    else intervalData.push(record)
+    if (isPoint) { pointData.push(record); continue }
+    if (scanEndIdx === null) { intervalData.push(record); continue }
+    // 拆段记录共享 instance_id/lane/band/tooltip;仅 value 跨度与色不同
+    // (窗内段 level 色 / 窗后段 detected 灰)
+    for (const part of splitIntervalAtScanEnd({ start: e.start_idx, end: e.end_idx }, scanEndIdx)) {
+      intervalData.push({
+        value: [part.start, part.end, e.lane, e.band, e.nBands],
+        instance_id: e.instance_id,
+        tier: eventTier(e),
+        itemStyle: {
+          color: part.afterWindow
+            ? colorOf('detected', nodeOf(e), nodeColors)
+            : eColor(e),
+        },
+      })
+    }
   }
 
   const brackets = packBrackets(matches)
   const bracketData = brackets.map((m) => {
-    const data: { value: number[]; match_id: string; event_id?: string } = {
+    const data: { value: number[]; match_id: string; instance_id?: string } = {
       value: [m.start_idx, m.end_idx, m.lane, m.ordinal],
-      match_id: m.event_id,
+      match_id: m.match_id,
     }
     if (endNode) {
       const v = m.node_index?.[endNode]
-      const eid = Array.isArray(v) ? v[0] : v
-      if (eid) data.event_id = eid
+      if (v) data.instance_id = v
     }
     return data
   })
@@ -219,40 +254,53 @@ export function computeEventData(
   const highlightData: any[] = []
   const highlightPriceData: any[] = []
 
-  // group 条目跳过 selectedEventId:被点 marker 由 focus 条目独家表达
+  // group 条目跳过焦点实例:被点 marker 由 focus 条目独家表达
   // (放大实心版双条目 = 同坐标双阴影,被点者投影会明显深于组员)。
+  // 实例流:matchedIds 集合元素为 instance_id 字符串,组内判定按 marker 的 instance_id
+  // 匹配;focusedInstanceId 是实例级,精确排除被点的那一个实例——同身份兄弟实例不误伤
+  // (group 照常亮)。
   if (highlightedEventIds.size > 0) {
-    const inGroup = (id: string) => highlightedEventIds.has(id) && id !== selectedEventId
+    const inGroup = (d: { instance_id: string }) =>
+      highlightedEventIds.has(d.instance_id) && d.instance_id !== focusedInstanceId
     for (const d of pointData) {
-      if (inGroup(d.event_id)) highlightData.push({ ...d, kind: 'group' as HlKind })
+      if (inGroup(d)) highlightData.push({ ...d, kind: 'group' as HlKind })
     }
     for (const d of intervalData) {
-      if (inGroup(d.event_id)) highlightData.push({ ...d, kind: 'group' as HlKind })
+      if (inGroup(d)) highlightData.push({ ...d, kind: 'group' as HlKind })
     }
     for (const d of pricePointData) {
-      if (inGroup(d.event_id)) highlightPriceData.push({ ...d, kind: 'group' as HlKind })
+      if (inGroup(d)) highlightPriceData.push({ ...d, kind: 'group' as HlKind })
     }
   }
-  if (pendingDisambigEventId) {
-    const pd = pointData.find((d) => d.event_id === pendingDisambigEventId)
+  if (pendingDisambigInstanceId) {
+    const pd = pointData.find((d) => d.instance_id === pendingDisambigInstanceId)
     if (pd) highlightData.push({ ...pd, kind: 'pendingDisambig' as HlKind })
     else {
-      const pi = intervalData.find((d) => d.event_id === pendingDisambigEventId)
-      if (pi) highlightData.push({ ...pi, kind: 'pendingDisambig' as HlKind })
-      else {
-        const pp = pricePointData.find((d) => d.event_id === pendingDisambigEventId)
+      // interval 可能被 splitIntervalAtScanEnd 拆成窗内/窗后两段(filter 全收,
+      // 与 group 分支同口径);未拆数据 filter 恰返回单条,行为不变
+      const pis = intervalData.filter((d) => d.instance_id === pendingDisambigInstanceId)
+      if (pis.length > 0) {
+        for (const pi of pis) highlightData.push({ ...pi, kind: 'pendingDisambig' as HlKind })
+      } else {
+        const pp = pricePointData.find((d) => d.instance_id === pendingDisambigInstanceId)
         if (pp) highlightPriceData.push({ ...pp, kind: 'pendingDisambig' as HlKind })
       }
     }
   }
-  if (selectedEventId) {
-    const selPoint = pointData.find((d) => d.event_id === selectedEventId)
+  // focus 条目按当前聚焦实例 find —— selectedInstanceId 是合并 ref(= store
+  // selectedInstanceId ?? focusedInstanceId),覆盖 0 归属(detected/qualified marker click)
+  // 与 1 归属(直选 match);点 #0 只亮 #0,#1 不同时亮。0 归属也由此出黑框。
+  if (selectedInstanceId) {
+    const selPoint = pointData.find((d) => d.instance_id === selectedInstanceId)
     if (selPoint) highlightData.push({ ...selPoint, kind: 'focus' as HlKind })
     else {
-      const selInterval = intervalData.find((d) => d.event_id === selectedEventId)
-      if (selInterval) highlightData.push({ ...selInterval, kind: 'focus' as HlKind })
-      else {
-        const selPricePoint = pricePointData.find((d) => d.event_id === selectedEventId)
+      // interval 可能被 splitIntervalAtScanEnd 拆成窗内/窗后两段(filter 全收);
+      // 未拆数据 filter 恰返回单条,行为不变
+      const selIntervals = intervalData.filter((d) => d.instance_id === selectedInstanceId)
+      if (selIntervals.length > 0) {
+        for (const d of selIntervals) highlightData.push({ ...d, kind: 'focus' as HlKind })
+      } else {
+        const selPricePoint = pricePointData.find((d) => d.instance_id === selectedInstanceId)
         if (selPricePoint) highlightPriceData.push({ ...selPricePoint, kind: 'focus' as HlKind })
       }
     }
@@ -263,25 +311,21 @@ export function computeEventData(
   const veilPriceData: any[] = []
   if (shiftSelectedEventIds.size > 0) {
     for (const d of pointData) {
-      if (shiftSelectedEventIds.has(d.event_id))
+      if (shiftSelectedEventIds.has(d.instance_id))
         veilData.push({ ...d, kind: 'point' })
     }
     for (const d of intervalData) {
-      if (shiftSelectedEventIds.has(d.event_id))
+      if (shiftSelectedEventIds.has(d.instance_id))
         veilData.push({ ...d, kind: 'interval' })
     }
     for (const d of pricePointData) {
-      if (shiftSelectedEventIds.has(d.event_id))
+      if (shiftSelectedEventIds.has(d.instance_id))
         veilPriceData.push({ ...d, kind: 'pricePoint' })
-    }
-    for (const d of satelliteData) {
-      if (shiftSelectedEventIds.has(d.event_id))
-        veilPriceData.push({ ...d, kind: 'satellite' })
     }
   }
 
   return {
-    pointData, intervalData, pricePointData, satelliteData,
+    pointData, intervalData, pricePointData,
     bracketData, highlightData, highlightPriceData,
     veilData, veilPriceData,
     candle, volume, dates,
@@ -296,7 +340,7 @@ export function buildMainOption(
 ): unknown {
   const { strictWindow, sliderShow, zoomOverride,
           tooltipResolver, matchLabel, candidateMatchIds } = input
-  const { dates, candle, pricePointData, satelliteData, highlightPriceData, veilPriceData } = bundle
+  const { dates, candle, pricePointData, highlightPriceData, veilPriceData } = bundle
 
   const N = bars.length
   const sw = strictWindow ?? null
@@ -394,9 +438,6 @@ export function buildMainOption(
       { type: 'custom', name: 'price-points', xAxisIndex: 0, yAxisIndex: 0,
         data: pricePointData, renderItem: makeRenderPricePoint(pricePointData),
         encode: { x: 0, y: 1 }, z: 12, clip: false, tooltip: markerTooltip },
-      { type: 'custom', name: 'satellites', xAxisIndex: 0, yAxisIndex: 0,
-        data: satelliteData, renderItem: makeRenderSatellite(satelliteData),
-        encode: { x: 0, y: 1 }, z: 13, clip: false, tooltip: markerTooltip },
       // animation:true 同副图 highlight 系列:series 级显式开关放行 keyframeAnimation(pending 闪烁)
       { type: 'custom', name: 'highlight-price', xAxisIndex: 0, yAxisIndex: 0,
         data: highlightPriceData, animation: true,
@@ -580,12 +621,12 @@ export function buildSubOption(
         data: pointData,
         renderItem: (p: any, api: any) => renderPointWithGeom(p, api, subGeom.bandGeom, z),
         encode: { x: 0 }, z: 10, tooltip: markerTooltip },
-      // brackets (z:11)。focus 信号:selectedMatchId 存在且无 selectedEventId ⟺ bracket
-      // 本身是被点者(KlineChart.ts bracket 分支 selectEvent(null);marker 分支必设 eventId)
+      // brackets (z:11)。focus 信号:selectedMatchId 存在且无实例焦点 ⟺ bracket
+      // 本身是被点者(KlineChart.ts bracket 分支走 focusMatch 不设实例;marker 分支必设)
       { type: 'custom', name: 'brackets', xAxisIndex: 0, yAxisIndex: 0,
         data: bracketData,
         renderItem: makeRenderBracket(bracketData, selectedMatchId ?? null, candidateMatchIds ?? new Set(), z,
-          (selectedMatchId ?? null) !== null && (input.selectedEventId ?? null) === null),
+          (selectedMatchId ?? null) !== null && (input.selectedInstanceId ?? null) === null),
         encode: { x: [0, 1] }, z: 11, tooltip: markerTooltip,
         emphasis: { disabled: true } },
       // highlight (z:20)。animation:true 为 series 级显式开关:keyframeAnimation(pending 闪烁)
@@ -687,24 +728,64 @@ function buildHlShape(
 }
 
 // 主图 price-anchored bo 盒放大版(grid0 价格轴)。实心放大版遮住本体文字 →
-// 重画盒+文本(字号不变)。stackOffset 与 renderPricePoint 同步按 hasPks 切换。
+// 重画盒+文本(字号不变)。stackOffset 与 renderPricePoint 同步(BO_STACK_PT)。
 // 2026-07-08 改:同 buildHlShape,group/focus 保 tier 分色(matched=橙/灰) + 细/粗深边;
 // 文字色全 tier 统一 HL_FOCUS_EDGE(灰底可读,橙底可读);pending 白底+闪烁分层不动。
 // ⚠ closure factory:ECharts customSeries 不在 params 中传 data item,必须按 dataIndex 反查。
 export function makeRenderPricePointHighlight(
-  data: Array<{ value: number[]; event_id: string; anchorY: number; text: string; hasPks: boolean;
+  data: Array<{ value: number[]; instance_id: string; anchorY: number; text: string;
                  itemStyle: { color: string };
-                 kind: 'group' | 'focus' | 'pendingDisambig' }>,
+                 kind: 'group' | 'focus' | 'pendingDisambig';
+                 state?: string; pkKind?: string }>,
 ) {
   return function renderPricePointHighlight(params: any, api: any) {
     const item = data[params.dataIndex] ?? null
     const hlKind = item?.kind ?? 'focus'
     const anchorY = item?.anchorY ?? api.value(1)
     const text = item?.text ?? ''
-    const hasPks = item?.hasPks ?? false
     const color = item?.itemStyle?.color ?? '#888888'
     const [cx, anchorPx] = api.coord([api.value(0), anchorY])
-    const stackOffset = hasPks ? BO_STACK_PT : BO_STACK_PT_NO_PKS
+
+    // pk 事件(state 存在)→ 放大 ▽(×1.4)+ id 标签 + bear 短横线,与 makeRenderPricePoint 同一分派。
+    // 三态形状编码(pkTriStyle:实心/空心/浅灰虚线)在高亮层原样保留,选中只加粗描边 + shadow
+    // (group 细边 / focus 粗边,与 bo 盒同一词汇)。空心态放大版给白底:盖住下层本体 ▽,
+    // 免得两层轮廓套叠成「双三角」(实心态本就不透)。
+    if (item?.state) {
+      const triCy = anchorPx - TRIANGLE_STACK_PT
+      const tw = PK_TRIANGLE_HALF_WIDTH * 1.4
+      const th = PK_TRIANGLE_HEIGHT * 1.4
+      const idCy = anchorPx - PEAK_ID_STACK_PT
+      const tri = pkTriStyle(item.state)
+      const hlFill = tri.fill === 'none' ? '#ffffff' : tri.fill
+      const hlWidth = hlKind === 'group' ? HL_GROUP_STROKE_WIDTH : HL_FOCUS_STROKE_WIDTH
+      const triShape = {
+        points: [[cx - tw, triCy - th / 2], [cx + tw, triCy - th / 2], [cx, triCy + th / 2]],
+      }
+      const textEl = {
+        type: 'text',
+        style: { text, x: cx, y: idCy, fill: tri.stroke, fontSize: MARKER_FONT_SIZE,
+                 fontWeight: 'bold', align: 'center', verticalAlign: 'middle' },
+      }
+      const children: any[] = hlKind === 'pendingDisambig'
+        ? [
+            { type: 'polygon', shape: triShape,
+              style: { fill: '#ffffff', stroke: HL_STROKE, lineWidth: HL_FOCUS_STROKE_WIDTH, ...HL_SHADOW } },
+            { type: 'polygon', shape: triShape,
+              style: { ...tri, fill: hlFill, lineWidth: HL_FOCUS_STROKE_WIDTH },
+              keyframeAnimation: pendingBlinkAnimation() },
+            textEl,
+          ]
+        : [
+            { type: 'polygon', shape: triShape,
+              style: { ...tri, fill: hlFill, lineWidth: hlWidth, ...HL_SHADOW } },
+            textEl,
+          ]
+      if (item.pkKind === 'bear') children.push(pkBearLine(cx, triCy + th / 2, tw, tri.stroke, hlWidth))
+      return { type: 'group', silent: true, z2: 21, children }
+    }
+
+    // bo 事件:圆角矩形盒 + [broken_peak_ids] 文本(原逻辑不变)
+    const stackOffset = BO_STACK_PT
     const cy = anchorPx - stackOffset
     const { w, h } = boBoxDims(text)
     const pad = 3
@@ -791,7 +872,7 @@ export function renderPointWithGeom(
 // makeRenderHighlightWithGeom:point/interval 分支都从 bandGeom 派生。
 // 画放大实心版(非描边框):group/focus 单图形,pending 白底+闪烁双层,见 buildHlShape。
 export function makeRenderHighlightWithGeom(
-  items: Array<{ value: number[]; event_id: string; itemStyle?: { color?: string };
+  items: Array<{ value: number[]; instance_id: string; itemStyle?: { color?: string };
                  kind: 'group' | 'focus' | 'pendingDisambig' }>,
   bandGeom: BandGeom[],
   zoomFactor: number = 1.0,   // 副图 band 竖直 zoom(spec 2026-07-03)
@@ -848,7 +929,7 @@ export function makeRenderHighlightWithGeom(
 // 复用与 renderPointWithGeom / renderIntervalWithGeom 同一 shape 派生逻辑。
 // silent:true → hover/click 穿透到本体 marker;z2:22 高于 highlight overlay(21)。
 export function makeRenderShiftVeil(
-  items: Array<{ value: number[]; event_id: string; kind: 'point' | 'interval' }>,
+  items: Array<{ value: number[]; instance_id: string; kind: 'point' | 'interval' }>,
   bandGeom: BandGeom[],
   zoomFactor: number = 1.0,
 ) {
@@ -919,62 +1000,59 @@ export function makeRenderShiftVeil(
   }
 }
 
-// ── spec 2026-07-11: shift-veil 主图 renderer(pricePoint + satellite,fill 白蒙 + 黑横线) ──
+// ── spec 2026-07-11: shift-veil 主图 renderer(pricePoint,fill 白蒙 + 黑横线) ──
+// 卫星 pk 通道已删(Task 7),veil 只覆盖 pricePoint;pk 事件(state 存在)走三角形白蒙,
+// bo 事件走圆角矩形白蒙——与 makeRenderPricePoint 的形状分派一致。
 export function makeRenderShiftVeilPrice(
-  items: Array<{ value: number[]; event_id: string; kind: 'pricePoint' | 'satellite';
-                 anchorY?: number; text?: string; hasPks?: boolean }>,
+  items: Array<{ value: number[]; instance_id: string; kind: 'pricePoint';
+                 anchorY?: number; text?: string; state?: string }>,
 ) {
   return function renderShiftVeilPrice(params: any, api: any) {
     const item = items[params.dataIndex] ?? null
     if (!item) return { type: 'group', children: [] }
+    const anchorY = item.anchorY ?? api.value(1)
+    const [cx, anchorPx] = api.coord([api.value(0), anchorY])
 
-    if (item.kind === 'pricePoint') {
-      // 参 makeRenderPricePoint:圆角矩形背景,box 中心 = anchorPx - stackOffset
-      const anchorY = item.anchorY ?? api.value(1)
-      const text = item.text ?? ''
-      const hasPks = item.hasPks ?? false
-      const [cx, anchorPx] = api.coord([api.value(0), anchorY])
-      const stackOffset = hasPks ? BO_STACK_PT : BO_STACK_PT_NO_PKS
-      const cy = anchorPx - stackOffset
-      const { w, h } = boBoxDims(text)
-      const lineLen = w * 0.7
+    // pk 事件:白蒙 ▽ 倒三角(顶点在下,两上角在上)+ 黑横线
+    if (item.state) {
+      const triCy = anchorPx - TRIANGLE_STACK_PT
+      const tw = PK_TRIANGLE_HALF_WIDTH
+      const th = PK_TRIANGLE_HEIGHT
+      const triPoints = [
+        [cx - tw, triCy - th / 2],
+        [cx + tw, triCy - th / 2],
+        [cx,      triCy + th / 2],
+      ]
+      const lineLen = 2 * tw * 0.7
       return {
         type: 'group',
         silent: true,
         z2: 22,
         children: [
-          { type: 'rect',
-            shape: { x: cx - w / 2, y: cy - h / 2, width: w, height: h, r: BO_BOX_RADIUS },
+          { type: 'polygon', shape: { points: triPoints },
             style: { fill: 'rgba(255,255,255,0.45)', stroke: 'none' } },
           { type: 'line',
-            shape: { x1: cx - lineLen / 2, y1: cy, x2: cx + lineLen / 2, y2: cy },
+            shape: { x1: cx - lineLen / 2, y1: triCy, x2: cx + lineLen / 2, y2: triCy },
             style: { stroke: '#000000', lineWidth: HL_FOCUS_STROKE_WIDTH } },
         ],
       }
     }
 
-    // satellite 分支:参 makeRenderSatellite,倒三角(顶点在下,两上角在上)
-    // 三角形 fill='none' 原本空心;白蒙给 fill 半透明白,让原轮廓仍在、内部变白
-    const anchorY = item.anchorY ?? api.value(1)
-    const [cx, anchorPx] = api.coord([api.value(0), anchorY])
-    const triCy = anchorPx - TRIANGLE_STACK_PT
-    const tw = PK_TRIANGLE_HALF_WIDTH
-    const th = PK_TRIANGLE_HEIGHT
-    const triPoints = [
-      [cx - tw, triCy - th / 2],
-      [cx + tw, triCy - th / 2],
-      [cx,      triCy + th / 2],
-    ]
-    const lineLen = 2 * tw * 0.7
+    // bo 事件:参 makeRenderPricePoint,圆角矩形背景,box 中心 = anchorPx - stackOffset
+    const text = item.text ?? ''
+    const cy = anchorPx - BO_STACK_PT
+    const { w, h } = boBoxDims(text)
+    const lineLen = w * 0.7
     return {
       type: 'group',
       silent: true,
       z2: 22,
       children: [
-        { type: 'polygon', shape: { points: triPoints },
+        { type: 'rect',
+          shape: { x: cx - w / 2, y: cy - h / 2, width: w, height: h, r: BO_BOX_RADIUS },
           style: { fill: 'rgba(255,255,255,0.45)', stroke: 'none' } },
         { type: 'line',
-          shape: { x1: cx - lineLen / 2, y1: triCy, x2: cx + lineLen / 2, y2: triCy },
+          shape: { x1: cx - lineLen / 2, y1: cy, x2: cx + lineLen / 2, y2: cy },
           style: { stroke: '#000000', lineWidth: HL_FOCUS_STROKE_WIDTH } },
       ],
     }
@@ -1039,20 +1117,37 @@ export function makeRenderBracket(
 const MARKER_FONT_SIZE = 16            // dev fontsize=20pt;web px=16 ≈ 0.6× 视觉对齐
 const PK_TRIANGLE_HALF_WIDTH = 8       // ▽ 半宽,对应 dev s=400 (≈20pt 边长) 0.6× 缩放
 const PK_TRIANGLE_HEIGHT = 12
-const PEAK_MARKER_COLOR = '#000000'    // CHART_COLORS["peak_marker"]
-const PEAK_TEXT_COLOR = '#000000'      // CHART_COLORS["peak_text_id"]
+// pk ▽ 三态编码(spec 2026-08-31 §3.5.4;色盲纪律:一切区分不靠色相):
+//   alive  = 实心 ▽(阻力仍压在头顶,信息价值最高)
+//   broken = 空心 ▽(黑边无填充,即旧卫星 marker 外观)
+//   eaten  = 浅灰虚线 ▽(靠明度 + 线型弱化)
+// kind=bear 另在 ▽ 下方加短横线(pkBearLine)与 convex 区分;标签只显示 id 数字。
+const PEAK_MARKER_COLOR = '#000000'       // dev UI CHART_COLORS["peak_marker"]
+const PEAK_MARKER_COLOR_DIM = '#9ca3af'   // eaten 态浅灰
+const PK_BEAR_LINE_GAP = 3                // bear 短横线与 ▽ 底顶点的间隙 px
+export type PkTriStyle = { fill: string; stroke: string; lineWidth: number; lineDash?: number[] }
+export function pkTriStyle(state: string): PkTriStyle {
+  switch (state) {
+    case 'alive': return { fill: PEAK_MARKER_COLOR, stroke: PEAK_MARKER_COLOR, lineWidth: 1.2 }
+    case 'eaten': return { fill: 'none', stroke: PEAK_MARKER_COLOR_DIM, lineWidth: 1.0, lineDash: [2.5, 2] }
+    default:      return { fill: 'none', stroke: PEAK_MARKER_COLOR, lineWidth: 1.2 }   // broken(未知态同此兜底)
+  }
+}
+// bear 短横线:▽ 底顶点下方 PK_BEAR_LINE_GAP px,宽与 ▽ 同(半宽 tw),颜色随三态描边。
+function pkBearLine(cx: number, bottomY: number, tw: number, stroke: string, lineWidth: number) {
+  const y = bottomY + PK_BEAR_LINE_GAP
+  return { type: 'line', shape: { x1: cx - tw, y1: y, x2: cx + tw, y2: y }, style: { stroke, lineWidth } }
+}
 const BO_BOX_RADIUS = 4
 const BO_BOX_PAD_X = 5
 const BO_BOX_PAD_Y = 3
 // 堆叠 px 偏移(锚 K 线 high 之上,自下而上):▽ → ID → [ids]
-// dev UI styles.py:80-86 用 pt(triangle=20/peak_id=35/bo_label=65 有 PK,bo_label=15 无 PK)
-// web 端按字号 16 等比缩:三角中心 13、ID 中心 28、BO 中心 48(有 PK)/15(无 PK)
+// dev UI styles.py:80-86 用 pt(triangle=20/peak_id=35/bo_label=15 无 PK)
+// web 端按字号 16 等比缩:三角中心 13、ID 中心 28、BO 中心 15(卫星 pk 通道已删,
+// bo 盒不再需要为 PK 三角让位,统一贴 bar.h 上方)
 const TRIANGLE_STACK_PT = 13           // ▽ 中心 y = anchor - 13
 const PEAK_ID_STACK_PT = 28            // ID 中心 y = anchor - 28
-const BO_STACK_PT = 48                 // [ids] 中心 y = anchor - 48(hasPks=true 时)
-// hasPks=false:同 bar 无 PK,BO 单独贴近 K 线 high(dev styles.py:80 bo_label=15pt 缩放对应)。
-// 这是 HEAD 相对 94e21934 的胜出语义点 — 按是否同 bar 有 PK 动态切换偏移。
-const BO_STACK_PT_NO_PKS = 15
+const BO_STACK_PT = 15                 // [ids] 中心 y = anchor - 15(dev styles.py:80 bo_label=15pt 缩放对应)
 
 // 文本框尺寸(浏览器无 measureText 时按字宽近似,bold 字体 char_w ≈ 0.62×fontSize)
 function boBoxDims(text: string): { w: number; h: number } {
@@ -1064,26 +1159,64 @@ function boBoxDims(text: string): { w: number; h: number } {
   }
 }
 
-// price-anchored bo 主 marker: 圆角矩形蓝框 + [broken_peak_ids] 文本(dev UI 复刻)。
-// 锚 bar.h(anchorY 由 computeEventData 注入),box 中心 = anchorPx - stackOffset。
-// stackOffset 按 hasPks 切换(保留自 HEAD 的胜出语义):
-//   hasPks=true  → BO_STACK_PT=50(同 bar 有 PK 三角,堆叠在 PK ID 之上)
-//   hasPks=false → BO_STACK_PT_NO_PKS=15(无 PK,BO 单独贴近 bar.h,对齐 dev 15pt)
+// price-anchored 主 marker(bo 盒 / pk 三角,按 item.state 存在性分派)。
+// 锚 bar.h(anchorY 由 computeEventData 注入)。
+// - bo:圆角矩形盒 + [broken_peak_ids] 文本(dev UI 复刻),box 中心 = anchorPx - BO_STACK_PT
+// - pk:▽ 按三态编码形状(pkTriStyle:alive 实心 / broken 空心 / eaten 浅灰虚线)+ 标签
+//        (只有 id 数字)在 ▽ 上方,kind=bear 的 ▽ 下方加一条短横线(spec 2026-08-31 §3.5.4)。
+//        itemStyle.color 对 pk 不消费——三态与 kind 全走形状,不靠色相(色盲纪律)。
 // ⚠ closure factory:ECharts customSeries 不在 params 中传 data item,必须按 dataIndex 反查。
 //   过去用 (params.data as any).text 实测=undefined → text 为空字符串 → ZRText 被创建但无文字渲染。
 function makeRenderPricePoint(
-  data: Array<{ value: number[]; event_id: string; anchorY: number; text: string;
-                 tier: Tier; hasPks: boolean; itemStyle: { color: string } }>,
+  data: Array<{ value: number[]; instance_id: string; anchorY: number; text: string;
+                 tier: Tier; itemStyle: { color: string };
+                 state?: string; pkKind?: string; pkId?: number }>,
 ) {
   return function renderPricePoint(params: any, api: any) {
     const item = data[params.dataIndex] ?? null
     const anchorY = item?.anchorY ?? api.value(1)
     const text = item?.text ?? ''
-    const hasPks = item?.hasPks ?? false
     const color = item?.itemStyle?.color ?? '#888888'
     const [cx, anchorPx] = api.coord([api.value(0), anchorY])
-    const stackOffset = hasPks ? BO_STACK_PT : BO_STACK_PT_NO_PKS
-    const cy = anchorPx - stackOffset
+
+    // ── pk 事件:三态形状 ▽ + id 标签(▽ 上方)+ bear 短横线(▽ 下方) ──
+    if (item?.state) {
+      const triCy = anchorPx - TRIANGLE_STACK_PT
+      const tw = PK_TRIANGLE_HALF_WIDTH
+      const th = PK_TRIANGLE_HEIGHT
+      const idCy = anchorPx - PEAK_ID_STACK_PT
+      const tri = pkTriStyle(item.state)
+      const children: any[] = [
+        {
+          type: 'polygon',
+          shape: {
+            points: [
+              [cx - tw, triCy - th / 2],   // 左上
+              [cx + tw, triCy - th / 2],   // 右上
+              [cx,      triCy + th / 2],   // 下顶点
+            ],
+          },
+          style: tri,
+        },
+        // 标签:只显示 id 数字,颜色随三态描边(eaten 同步淡化)
+        {
+          type: 'text',
+          style: {
+            text, x: cx, y: idCy,
+            fill: tri.stroke,
+            fontSize: MARKER_FONT_SIZE,
+            fontWeight: 'bold',
+            align: 'center',
+            verticalAlign: 'middle',
+          },
+        },
+      ]
+      if (item.pkKind === 'bear') children.push(pkBearLine(cx, triCy + th / 2, tw, tri.stroke, 1.6))
+      return { type: 'group', children }
+    }
+
+    // ── bo 事件:圆角矩形盒 + [broken_peak_ids] 文本 ──
+    const cy = anchorPx - BO_STACK_PT
     const { w, h } = boBoxDims(text)
     return {
       type: 'group',
@@ -1105,62 +1238,6 @@ function makeRenderPricePoint(
             x: cx,
             y: cy,
             fill: HL_FOCUS_EDGE,
-            fontSize: MARKER_FONT_SIZE,
-            fontWeight: 'bold',
-            align: 'center',
-            verticalAlign: 'middle',
-          },
-        },
-      ],
-    }
-  }
-}
-
-// 卫星 marker: 每个 referenced_point 渲染 = 空心 ▽ + ID 数字。
-// anchorY=bars[bar_idx].h(computeEventData 注入)。锚 K 线 high,堆叠次序自下而上 ▽ → ID。
-// ⚠ closure factory:ECharts customSeries 不在 params 中传 data item,必须按 dataIndex 反查。
-function makeRenderSatellite(
-  data: Array<{ value: number[]; event_id: string; label: string; itemStyle: object;
-                 anchorY: number; pkId: string }>,
-) {
-  return function renderSatellite(params: any, api: any) {
-    const item = data[params.dataIndex] ?? null
-    const anchorY = item?.anchorY ?? api.value(1)
-    const pkId = item?.pkId ?? ''
-    const [cx, anchorPx] = api.coord([api.value(0), anchorY])
-    // ▽ 中心
-    const triCy = anchorPx - TRIANGLE_STACK_PT
-    const tw = PK_TRIANGLE_HALF_WIDTH
-    const th = PK_TRIANGLE_HEIGHT
-    // ID 文本中心(▽ 上方)
-    const idCy = anchorPx - PEAK_ID_STACK_PT
-    return {
-      type: 'group',
-      children: [
-        // 1. 空心 ▽ 倒三角(顶点在下,两上角在上)— 黑边、无填充
-        {
-          type: 'polygon',
-          shape: {
-            points: [
-              [cx - tw, triCy - th / 2],   // 左上
-              [cx + tw, triCy - th / 2],   // 右上
-              [cx,      triCy + th / 2],   // 下顶点
-            ],
-          },
-          style: {
-            fill: 'none',
-            stroke: PEAK_MARKER_COLOR,
-            lineWidth: 1.2,
-          },
-        },
-        // 2. ID 数字(▽ 正上方,黑色粗体居中,无背景框)
-        {
-          type: 'text',
-          style: {
-            text: pkId,
-            x: cx,
-            y: idCy,
-            fill: PEAK_TEXT_COLOR,
             fontSize: MARKER_FONT_SIZE,
             fontWeight: 'bold',
             align: 'center',
@@ -1411,11 +1488,11 @@ export function buildBarTooltipFormatter(bars: Bar[]) {
  * spec 见 docs/superpowers/specs/2026-06-29-marker-tooltip-cleanup-design.md
  */
 export function buildMarkerTooltipFormatter(
-  tooltipResolver: ((eventId: string) => TooltipPayload) | undefined,
+  tooltipResolver: ((instanceId: string) => TooltipPayload) | undefined,
   matchLabel: ((matchId: string) => string | null) | undefined,
   ctx: { matches: MatchDict[]; candidateMatchIds: ReadonlySet<string> } = { matches: [], candidateMatchIds: new Set() },
 ) {
-  return (params: { data?: { event_id?: string; match_id?: string; [key: string]: unknown } } | null): string => {
+  return (params: { data?: { instance_id?: string; match_id?: string; [key: string]: unknown } } | null): string => {
     const data = params?.data
     if (!data) return ''
     const lines: string[] = []
@@ -1433,25 +1510,31 @@ export function buildMarkerTooltipFormatter(
         if (ml) lines.push(`Match: ${ml}`)
       }
       // 组成段 (M #15)
-      const match = ctx.matches.find((m) => m.event_id === matchId)
+      const match = ctx.matches.find((m) => m.match_id === matchId)
       if (match) {
         lines.push(`组成 (${match.children.length} events):`)
-        for (const [nodeKey, rawVal] of Object.entries(match.node_index)) {
-          const val: string | string[] = rawVal as unknown as string | string[]
-          if (Array.isArray(val)) {
-            const first = val[0] ?? '?'
-            lines.push(`  ${nodeKey}: ${first} (×${val.length} kleene)`)
-          } else {
-            lines.push(`  ${nodeKey}: ${val}`)
-          }
+        for (const [nodeKey, instanceId] of Object.entries(match.node_index)) {
+          lines.push(`  ${nodeKey}: ${instanceId}`)
         }
       }
     }
 
+    // ── 多确认段:该买点(实例)被几个 match 共享 ────────────────────────────
+    // 实例化契约:marker 的 data.instance_id 即买点锚 leaf(instance_id);共享计数按
+    // match.leaf(实例级,serialize 注入)匹配,同 leaf 被 >=2 match 共享时输出确认行。
+    const instanceId = data.instance_id as string | undefined
+    if (instanceId && ctx.matches.length > 0) {
+      const sharedBy = ctx.matches.filter(
+        (m) => m.leaf === instanceId || m.children.includes(instanceId),
+      ).length
+      if (sharedBy >= 2) {
+        lines.push(`确认: ${sharedBy} 个 match 共享此买点`)
+      }
+    }
+
     // ── event 三段 ──────────────────────────────────────────────────────
-    const eventId = data.event_id as string | undefined
-    if (eventId && tooltipResolver) {
-      const { identity, clauses, raw } = tooltipResolver(eventId)
+    if (instanceId && tooltipResolver) {
+      const { identity, clauses, raw } = tooltipResolver(instanceId)
 
       // 段 1 Identity
       const idBody: string[] = []
@@ -1509,11 +1592,11 @@ export function buildMarkerTooltipFormatter(
     }
 
     // ── marker 归属节 (M #16, 仅非 bracket marker: 无 match_id) ──────────
-    if (!matchId && eventId && ctx.matches.length > 0) {
+    if (!matchId && instanceId && ctx.matches.length > 0) {
       // 按 start_idx 排序,与 packBrackets(geometry.ts:47-49)的 ordinal 语义一致;
       // 同时从 sortedByStart 过滤,保证 ordinals 以升序列出
       const sortedByStart = [...ctx.matches].sort((a, b) => a.start_idx - b.start_idx)
-      const ownedBy = sortedByStart.filter((m) => m.children.includes(eventId))
+      const ownedBy = sortedByStart.filter((m) => m.children.includes(instanceId))
       if (ownedBy.length > 0) {
         const ORDINAL_CHARS = '①②③④⑤⑥⑦⑧⑨'
         const ords = ownedBy.map((m) => {

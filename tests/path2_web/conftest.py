@@ -7,8 +7,8 @@ yaml SSoT 热加载语义不变(由 tests/path2/apps/test_params.py::test_load_p
 """
 import pytest
 
-import path2_apps.bottom_breakout_burst as _bbb
-import path2_apps.bottom_breakout_burst.dag_spec as _bbb_dag
+import path2_apps.bottom_burst as _bbb
+import path2_apps.bottom_burst.dag_spec as _bbb_dag
 
 
 @pytest.fixture(autouse=True)

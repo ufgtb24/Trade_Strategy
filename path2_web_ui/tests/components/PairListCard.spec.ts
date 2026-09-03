@@ -38,12 +38,12 @@ describe('PairListCard', () => {
     expect(rows[0].text()).toContain('gap_out')
   })
 
-  it('emits pair-deep-dive with src/dst event ids on row click', async () => {
+  it('emits pair-deep-dive with src/dst instance ids on row click', async () => {
     const wrapper = mount(PairListCard, { props: { payload: PAYLOAD } })
     await wrapper.findAll('tbody tr')[0].trigger('click')
     const emitted = wrapper.emitted('pair-deep-dive')
     expect(emitted).toBeTruthy()
-    expect(emitted![0][0]).toEqual({ src_event_id: 'burst1', dst_event_id: 'tb1' })
+    expect(emitted![0][0]).toEqual({ srcInstanceId: 'burst1', dstInstanceId: 'tb1' })
   })
 
   it('shows hint instead of table when example_failed_pairs is empty', () => {

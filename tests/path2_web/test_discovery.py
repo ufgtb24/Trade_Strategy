@@ -8,7 +8,7 @@ def test_discovers_bottom_burst():
     assert hasattr(mod, "PATTERN_DAG")
     assert hasattr(mod, "analyze")
     # module_path 供子进程 import
-    assert reg.module_path("bottom_burst") == "path2_apps.bottom_breakout_burst.dag_spec"
+    assert reg.module_path("bottom_burst") == "path2_apps.bottom_burst.dag_spec"
 
 
 def test_unknown_pattern_returns_none():

@@ -5,7 +5,7 @@ import type { NodesPayload, PairFailure } from '../types'
 const props = defineProps<{ payload: NodesPayload }>()
 
 const emit = defineEmits<{
-  (e: 'pair-deep-dive', payload: { src_event_id: string; dst_event_id: string }): void
+  (e: 'pair-deep-dive', payload: { srcInstanceId: string; dstInstanceId: string }): void
 }>()
 
 const totalFailed = computed(() => props.payload.total_pair - props.payload.ok_pair)
@@ -16,7 +16,7 @@ function missCount(reason: string): number {
 }
 
 function handleRowClick(row: PairFailure): void {
-  emit('pair-deep-dive', { src_event_id: row.src_event_id, dst_event_id: row.dst_event_id })
+  emit('pair-deep-dive', { srcInstanceId: row.src_event_id, dstInstanceId: row.dst_event_id })
 }
 </script>
 

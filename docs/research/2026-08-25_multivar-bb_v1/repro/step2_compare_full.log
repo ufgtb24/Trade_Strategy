@@ -1,0 +1,44 @@
+股票 1337(排除 filtered_symbols 259 只后 1078);对拍项 408
+窗口预读完成:1007/1078 股有效,1.1s
+  plan 10/408 · 累计对拍 10070 · mismatch 0 · 297s
+  plan 20/408 · 累计对拍 20140 · mismatch 0 · 547s
+  plan 30/408 · 累计对拍 30210 · mismatch 0 · 778s
+  plan 40/408 · 累计对拍 40280 · mismatch 0 · 989s
+  plan 50/408 · 累计对拍 50350 · mismatch 0 · 1190s
+  plan 60/408 · 累计对拍 60420 · mismatch 0 · 1390s
+  plan 70/408 · 累计对拍 70490 · mismatch 0 · 1646s
+  plan 80/408 · 累计对拍 80560 · mismatch 0 · 1901s
+  plan 90/408 · 累计对拍 90630 · mismatch 0 · 2165s
+  plan 100/408 · 累计对拍 100700 · mismatch 0 · 2382s
+  plan 110/408 · 累计对拍 110770 · mismatch 0 · 2585s
+  plan 120/408 · 累计对拍 120840 · mismatch 0 · 2783s
+  plan 130/408 · 累计对拍 130910 · mismatch 0 · 2993s
+  plan 140/408 · 累计对拍 140980 · mismatch 0 · 3269s
+  plan 150/408 · 累计对拍 151050 · mismatch 0 · 3521s
+  plan 160/408 · 累计对拍 161120 · mismatch 0 · 3757s
+  plan 170/408 · 累计对拍 171190 · mismatch 0 · 3975s
+  plan 180/408 · 累计对拍 181260 · mismatch 0 · 4175s
+  plan 190/408 · 累计对拍 191330 · mismatch 0 · 4368s
+  plan 200/408 · 累计对拍 201400 · mismatch 0 · 4658s
+  plan 210/408 · 累计对拍 211470 · mismatch 0 · 4917s
+  plan 220/408 · 累计对拍 221540 · mismatch 0 · 5201s
+  plan 230/408 · 累计对拍 231610 · mismatch 0 · 5433s
+  plan 240/408 · 累计对拍 241680 · mismatch 0 · 5650s
+  plan 250/408 · 累计对拍 251750 · mismatch 0 · 5857s
+  plan 260/408 · 累计对拍 261820 · mismatch 0 · 6052s
+  plan 270/408 · 累计对拍 271890 · mismatch 0 · 6288s
+  plan 280/408 · 累计对拍 281960 · mismatch 0 · 6521s
+  plan 290/408 · 累计对拍 292030 · mismatch 0 · 6727s
+  plan 300/408 · 累计对拍 302100 · mismatch 0 · 6940s
+  plan 310/408 · 累计对拍 312170 · mismatch 0 · 7179s
+  plan 320/408 · 累计对拍 322240 · mismatch 0 · 7411s
+  plan 330/408 · 累计对拍 332310 · mismatch 0 · 7699s
+  plan 340/408 · 累计对拍 342380 · mismatch 0 · 7948s
+  plan 350/408 · 累计对拍 352450 · mismatch 0 · 8173s
+  plan 360/408 · 累计对拍 362520 · mismatch 0 · 8369s
+  plan 370/408 · 累计对拍 372590 · mismatch 0 · 8580s
+  plan 380/408 · 累计对拍 382660 · mismatch 0 · 8777s
+  plan 390/408 · 累计对拍 392730 · mismatch 0 · 8966s
+  plan 400/408 · 累计对拍 402800 · mismatch 0 · 9154s
+  plan 408/408 · 累计对拍 410856 · mismatch 0 · 9304s
+对拍 410856 股×格,mismatch=0,9304s
