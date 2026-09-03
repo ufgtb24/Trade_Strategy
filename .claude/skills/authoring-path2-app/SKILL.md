@@ -6,7 +6,7 @@ description: Use when 用户要为 path2_apps 新建一个走势 app,或修改�
 # Authoring a path2 App
 
 自顶向下设计 path2 app(① dag_spec 拓扑 → ② detector → ③ 参数),**每层与用户确认**,
-设计定稿后移交 superpowers 实现,实现后用评估器验证。同时服务**创建与修改**:
+设计定稿后移交 `/implement`(用户手敲)实现,实现后用评估器验证。同时服务**创建与修改**:
 二者共享同一设计流,修改 = 现状非空 + 按 delta 选起点。
 
 本 skill 必须在主会话 inline 运行(逐层确认用 AskUserQuestion,它在 subagent /
@@ -17,9 +17,9 @@ workflow 内不可用)。派 subagent 只做"产出后回吐主会话"的纯分�
 - 不用:改 path2/ 框架、改 path2_web;纯调参(只动阈值数值)→ 入口分诊后短路
 
 ## REQUIRED BACKGROUND(开工先读)
-1. `.claude/docs/glossary.md` 的「用语纪律」节
-2. `.claude/docs/modules/path2.md`(dag 引擎)+ `path2_apps.md`(app 三件物/参数 SSoT)
-3. 本目录 `design-heuristics.md`(设计决策手册:选型决策树/反模式/评估器;detector 失效边界速查见 authoring-path2-detector skill 的 reference §1)
+1. 本目录 `reference.md`(声明层契约与负知识:NodeSpec 声明契约 / 接线协议铁律 / K2 求解判据 / app 层负知识)
+2. 本目录 `design-heuristics.md`(设计决策手册:选型决策树/反模式/评估器;detector 失效边界速查见 authoring-path2-detector skill 的 reference §1)
+3. `path2/CONTEXT.md`(术语:where/edge/node/match/复合事件 等词的确切含义)——**grep 查词,别整读**
 
 **红线**:凡具体参数值/边结构/gap 数字,一律现场读代码(dag_spec.py / params.py /
 path2/atoms/*.py),绝不引用任何文档内嵌快照(含本 skill 自己的文档)。
@@ -64,7 +64,7 @@ path2/atoms/*.py),绝不引用任何文档内嵌快照(含本 skill 自己的文
 
 ## Step 2 三层 GATE(主干 BFS,逐层定稿逐层确认)
 
-**状态落盘**:从 gate 1 起增量写 `docs/superpowers/specs/YYYY-MM-DD-<id>-design.md`
+**状态落盘**:从 gate 1 起增量写 `.scratch/<id>/spec.md`(与 issue tracker 约定一致,见 `docs/agents/issue-tracker.md`)
 ——每过一层写入该层结论 + 被否方案及理由。层内讨论留上下文,只有过 gate 才写。
 
 ### 层① 拓扑(最重,可短路)
@@ -190,8 +190,8 @@ BurstParams/TbParams/EdgesParams)+ `class Params(ParamsBase)` 容器持有它们
 本类只写 section 字段 + `*_kwargs`,不重写 from_yaml/to_dict/from_dict/default);params.yaml
 必须 4 section(bo/burst/tb/edges)与之一一对应。** yaml 是 web SSoT、必须落,不能只写 params.py。
 EdgesParams 若 app 内 edge 都用硬编码 / node-section 引用,留空 dataclass + yaml `edges: {}`
-作格式契约。然后 **invoke superpowers:writing-plans**(喂 spec 路径)
-→ 按惯例 subagent-driven 执行。**本 skill 不自己实现。**
+作格式契约。然后把 spec 路径交回用户,由用户手敲 `/implement <spec 路径>`(该 skill 禁止模型自调)。
+**本 skill 不自己实现。**
 
 ## Step 4 实现后验证(两段判据)
 

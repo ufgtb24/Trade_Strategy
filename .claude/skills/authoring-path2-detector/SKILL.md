@@ -6,9 +6,9 @@ description: Use when 用户要创建或修改 event 类 / detector(path2/atoms 
 # Authoring a path2 Detector / Event
 
 创建或修改 event 类 / detector 的完整工作流,自顶向下:分诊(Step 0)→ 判据设计
-确认(Step 1)→ spec 落盘(Step 2)→ 移交 superpowers 实现(Step 3)→ 验证闸
+确认(Step 1)→ spec 落盘(Step 2)→ 移交 `/implement`(Step 3)→ 验证闸
 (Step 4)→ on_gate 接线(Step 5)。每一步与用户确认;本 skill 只做设计与编排、
-**不自己写代码**——实现一律移交 subagent-driven(TDD)。
+**不自己写代码**——实现一律移交用户手敲的 `/implement`。
 
 ## When to Use / NOT
 - **用**:
@@ -27,7 +27,8 @@ description: Use when 用户要创建或修改 event 类 / detector(path2/atoms 
    参考)/ §2 事件类规范(Step 1 confirm_idx 两问)/ §3 嵌套容器实现(Step 1-2 容器
    设计)/ §4 on_gate 接线(Step 5 四条核对)/ §5 docstring 合同 + 公共库纪律
    (Step 2 合同三要素 / Step 4 regress 义务)/ §6 诊断契约同步(Step 6 义务)
-2. `.claude/docs/modules/path2.md` 的 NodeSpec 契约节与事件类相关负知识(why 层)
+2. 本目录 reference.md §7(引擎侧契约与负知识:身份双轴 / children vs ref_slots / 事件端点 vs 检测过程 / 多流 produces / 负知识清单)
+3. `path2/CONTEXT.md`(术语:event/detector/confirm_idx/复合事件 等词的确切含义)——**grep 查词,别整读**
 
 **红线**:凡具体参数值 / 判据阈值 / 字段名,一律现场读代码(`path2/atoms/*.py` /
 `path2/core.py`),绝不引用任何文档内嵌快照;reference.md 各节只负责告诉你去读
@@ -193,7 +194,7 @@ res = analyze(spec, df)
 
 ## Step 2 spec 落盘
 
-把确认过的设计写成 spec(放 `docs/superpowers/specs/`),四要素缺一不可:
+把确认过的设计写成 spec(放 `.scratch/<id>/spec.md`,与 issue tracker 约定一致),四要素缺一不可:
 
 1. **判据**:核心判据算法机制(产出判定逻辑、参数)
 2. **字段表 + 参数归位表**:Step 1 确认的完整字段表,以及每个门槛的归位(资格型
@@ -212,9 +213,8 @@ key 与子结构 node 一行 NodeSpec)。
 
 ## Step 3 移交实现
 
-- invoke `superpowers:writing-plans` 把 spec 写成实施计划(自包含)
-- 计划执行用 subagent-driven(TDD):每个 task 在 fresh subagent 里实现 + 测试,
-  主会话只收薄摘要——设计确认必须在主会话完成,不在 subagent 里与用户交互
+- 把 spec 路径交回用户,由用户手敲 `/implement <spec 路径>`(该 skill 禁止模型自调)
+- 设计确认必须在主会话完成,不在 subagent 里与用户交互
 
 ## Step 4 验证闸
 

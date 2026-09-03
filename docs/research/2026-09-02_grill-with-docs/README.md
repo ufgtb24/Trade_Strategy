@@ -34,3 +34,7 @@
   - Plan Mode vs grill-me vs Superpowers 实测：https://blog.alexrusin.com/claude-code-planning-tools-plan-mode-vs-grill-me-vs-superpowers/
   - grill-with-docs 实战（Express 博客 API 加 tag）：https://blog.alexrusin.com/grill-with-docs-skill/
   - 其他：https://zenn.dev/kanagen/articles/claude-code-skills-superpowers-vs-mattpocock 、https://ryanuo.cc/en/posts/grill-me-vs-superpowers
+
+## 执行状态（2026-09-02）
+
+02 的第 0-2 步与 03 §7 的阶段 0、4、5 已执行：插件装好、superpowers 已卸载、`docs/agents/` 三文件与 `CLAUDE.md`「Agent skills」块已落地。02 §2.4 的「让路」句已不需要（superpowers 不在了）。03 §5 的四条纪律迁移与 §6 的改写节**决定不做**：原「使用 superpowers」节整体删除、不写自定义 mattpocock 规则、`.claude/rules/plan-execution.md` 一并删除，用后查漏补缺；worktree 对 skill 保持透明，不加路径规则。下一步从 02 第 5 步（冷启动 `CONTEXT.md`）开始。

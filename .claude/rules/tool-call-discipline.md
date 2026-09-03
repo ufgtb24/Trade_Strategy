@@ -1,6 +1,6 @@
 # 工具调用纪律（防把调用写成字面文本）
 
-**适用范围**：所有要调工具的回合，与场景无关——主会话、subagent-driven / executing-plans、agent team 的 leader 与 teammate。派发 subagent / teammate 时，把文末「可粘贴片段」原样写进其 prompt。
+**适用范围**：所有要调工具的回合，与场景无关——主会话、`/implement` 派发的 subagent、agent team 的 leader 与 teammate。派发 subagent / teammate 时，把文末「可粘贴片段」原样写进其 prompt。
 
 **故障模式**：工具调用偶尔被生成成正文里的字面 XML 文本（正文出现 `<invoke` 等字样）而非真正触发。运行时只认真正的调用块、不认长得像它的文字，于是该回合什么都没执行；若就此停笔，无人值守流程原地卡死。
 

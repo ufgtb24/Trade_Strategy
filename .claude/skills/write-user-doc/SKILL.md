@@ -9,7 +9,7 @@ description: Generate user-facing documents under docs/ — research reports (do
 
 ## 与 AI 上下文的边界
 
-本 skill **绝不**写入 `.claude/docs/`。如果用户请求的是"维护 AI 上下文"/"刷新系统概览"/"提炼模块意图"，应使用 `update-ai-context` skill。
+本 skill **绝不**写入根目录的 `CLAUDE.md` 或任何 `CONTEXT.md`。如果用户请求的是"维护 AI 上下文"/"刷新代码地图"/"提炼模块意图"，应使用 `update-ai-context` skill；如果是"术语该怎么定义"，应使用 `/grill-with-docs`。
 
 不确定时询问用户："这份文档是要作为 AI 的长期上下文（会持续维护），还是一次性的用户文档（用完可删）？"
 

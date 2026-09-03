@@ -12,38 +12,56 @@
 
 ## 简称约定
 聊天中常用以下简称，遇到时按全称理解：
-- bb → `path2_apps/bottom_burst/`（path2 当前唯一的应用层走势 app）
+- bb → `path2_apps/bottom_burst/`（path2 应用层的主线走势 app）
 - cc -> claude code
 - bs -> BreakoutStrategy
 
 ## 上下文入口
-开始任务前，按需阅读：
-- 系统概览（项目定位 / 数据流 / 已实现模块）→ `.claude/docs/system_outline.md`
-- 某个已实现的模块的架构意图总结 → `.claude/docs/modules/<模块名>.md`
-- 术语表（用语纪律 + path2 分层术语 + BreakoutStrategy）→ `.claude/docs/glossary.md`：**非必读**；当与用户沟通中出现某个项目上下文相关的术语、需确认其确切含义时，再查阅相应节（含「用语纪律」节）
 
-注：
-**`.claude/docs/` 只存放 system_outline.md、已实现模块架构意图 和 glossary.md（术语表），作为持久化上下文，任何其他内容都不应该放在这里。glossary.md 仅在用户明确指定时追加/修改，update-ai-context 不维护它。**
-**`.claude/docs/` 下的文档只反映当前代码状态，不包含开发历史相关信息、不包含未实现的设计。**
-**`.claude/docs/` 如果当前代码状态与 `.claude/docs/` 冲突时，以代码为准。永远不要根据 `.claude/docs/` 修改代码。**
+全仓只有两份 AI 上下文文档，各管一件事：
 
-需要更新这些文档时，运行 `update-ai-context` skill。
+- **某个词在本项目里到底指什么** → 根目录 `CONTEXT-MAP.md`，它指向 `path2/CONTEXT.md`（框架与走势词汇）和 `path2_web/CONTEXT.md`（界面词汇）。**查词用 `grep -n '词' path2/CONTEXT.md` 定位后只读那一段，别整读。** 由 `/grill-with-docs` 维护。
+- **代码在哪、各层为什么这么分** → 本文件下面的「代码地图」节，它是唯一的系统概览。由 `update-ai-context` skill 维护。
+
+（`.claude/docs/` 已整体删除：术语归 `CONTEXT.md`，模块架构意图并入本文件代码地图，机制细节归代码 docstring。）
+
 需要生成面向人类阅读的研究报告 / 代码解释 / 临时计划时，运行 `write-user-doc` skill。
+
+注：**文档只反映当前代码状态，不写开发历史、不写未实现的设计。当代码与文档冲突时一律以代码为准，永远不要根据文档修改代码。**
 
 ## 代码地图
 
-> **本 codebase 的主线功能是 path2**——独立的多级事件表达框架。`BreakoutStrategy/` 是其前身突破选股流水线，仅作开发 path2 时的参考、基本不用；其代码地图见 `.claude/breakout_strategy_map.md`（按需加载）。
+> **主线是 path2**——独立的多级事件表达框架：把「股票走势」建模为多级不可变事件 + DAG 约束求解。
+> 主链路：`参数 + K 线 → build_pattern → analyze（跑 detector 产流 → 求解约束图 → 物化 match）→ AnalysisResult → web 投影与渲染`
+> `BreakoutStrategy/` 是它的前身突破选股流水线，日常不动；代码地图见 `.claude/breakout_strategy_map.md`（按需加载）。
 
-### path2（主线）
-- `path2/` — 独立事件表达框架（dag 引擎 + 走势-无关 atoms + calc + stdlib）
-  - `core.py` / `runner.py` / `config.py` — 协议地基（Event(ABC,frozen) / Detector(Protocol) / class_id 注册表 / run()）
-  - `dag/` — go-forward 唯一引擎（nodes/edges/where/spec/result/engine/diagnose；DAG 声明 + 约束求解 + 匹配物化 + per-role 诊断）
-  - `atoms/` — 走势-无关 L1 Detector（BO/Trend/Platform/Distribution/Throwback）
-  - `calc/` — 纯数值函数（无 Event/Detector） · `stdlib/` — span_id + BarwiseDetector 便利层
-- `path2_apps/<走势>/` — 走势-特异应用层，与 path2/ 顶层平级（唯一应用 `bottom_burst/`，`dag_spec.py` 为核心）
-- `path2_web/` — FastAPI 后端（发现 / 扫描 / 序列化 / 诊断，纯投影层） · `path2_web_ui/` — Vue3 前端（类型无关渲染器：K 线 + 拓扑面板 + 诊断侧栏）
+### path2/ — 走势-无关的框架
 
-> path2 各层架构意图见 `.claude/docs/modules/path2.md` · `path2_apps.md` · `path2_web.md`。
+一条分层红线贯穿全包：**框架不认识任何具体走势**，走势语义只出现在 `path2_apps/` 的声明里。
+
+- `core.py` / `runner.py` / `config.py` — 协议地基：`Event`（ABC + frozen dataclass，容器字段一律 tuple）、`Detector`（Protocol）、`run()`。
+  - 不变式：事件身份是 `node_id` + `instance_id` 双轴，由引擎物化时统一注入，detector 阶段恒为 None；任何地方都不得自行拼 `instance_id`。
+- `dag/` — 唯一引擎：`nodes`（NodeSpec）/ `edges`（六类边）/ `where`（一元谓词与组合子）/ `spec`（声明容器 + 构造期校验）/ `_solve`（求解）/ `_reify`（物化）/ `result` / `diagnose`。
+  - 分工红线：一元条件走 node 的 where，二元关系走边的 satisfies，两者正交、不得混写；跨节点约束绝不写进 where。
+  - 不变式（INV-C）：求解期剪枝只能基于边 `feasible_window` 依赖的单调结构字段；`satisfies` 里读的非单调 / 身份属性一旦进剪枝就会漏匹配。**改 C1 / `c1_off` / INV-C 相关代码前必须先跑 fuzz**（历史上两次真漏匹配都是 fuzz 才抓到的）。
+- `atoms/` — 走势-无关的 L1 detector：突破（一趟同时产 bo 与 pk 两条流）、走势区段、平台、派发、回踩（多代实现共存）。
+  - 不变式：K 线回看只能发生在 detector 内部——算好的字段挂到 event 上供 where 直读，where 拿不到 df。
+- `calc/` — 纯数值函数（ATR / 均线 / 量比 / 几何 / 稳定性等），不碰 Event 与 Detector。
+- `stdlib/` — 便利层：`BarwiseDetector`（逐 bar 扫描模板）+ `make_app`（app 入口三件套装配）。
+- `eval.py` — 度量：前瞻收益 / 前瞻回撤（幅度）+ 首次穿越（方向）+ 随机日基线。
+  - 不变式：幅度与方向两个指标正交互补，任何「好 / 坏」判断必须带基线对照。
+
+### path2_apps/<走势>/ — 走势-特异的声明层
+
+一个子包 = 一个 pattern 的完整声明（`dag_spec.py` 拓扑与 where + `params.py` / `params.yaml` 参数），与 `path2/` 顶层平级。不实现 detector、不做求解。现役 app：`bottom_burst`（主线）、`bb_v1`（另一代回踩实现）、`bo_only`（参照系）；其余子包是历史版本或实验残留。
+
+- 不变式（铁律）：每个 app 必须导出 `eval_meta()`，声明买点 node 与首部缓冲交易日数；缺了它，web 的 pattern 发现会直接跳过这个 app。
+
+### path2_web/ + path2_web_ui/ — 调试可视化
+
+FastAPI 后端（pattern 发现 / 扫描 / 序列化 / 诊断）+ Vue3 前端（K 线主图 + 事件副图 + 拓扑面板 + 诊断侧栏）。
+
+- 边界红线：后端是**纯投影层**，只把 path2 的只读数据结构转成 JSON，不含走势语义、不做二次判定；前端是**类型无关渲染器**，按 node 分轨、按 where 分列，不为任何具体事件类型写分支。
 
 ### 共享基础设施
 - `configs/` — YAML 配置（`params/`、`scan_config.yaml`、`path2_web.yaml` 等）
@@ -60,7 +78,7 @@
 ## 编码规范
 - 语言：界面中文（与项目现有 UI 一致），注释/文档中文
 - Docstrings：`__init__.py` 含模块概述；类/函数说明用途、参数、算法逻辑
-- 术语与用语纪律 → `.claude/docs/glossary.md`
+- 术语：输出里提到领域概念时，用 `CONTEXT.md` 里定下的那个词，别漂到它 `_Avoid_` 掉的同义词（尤其 where 别叫「定语」、FP 别读成 false positive、身份别用已退役的 `event_id` / `class_id` / `source_tag`）
 - 入口脚本：不使用 argparse，参数声明在 `main()` 起始位置。**仅适用于人类手动运行的脚本**（如 `scripts/` 下的入口）——目的是免去每次手敲参数；skill 内由 cc 自己调起运行的脚本不受此限，该用 argparse 传参就用
 - 读文件省上下文：先 grep/glob 定位，再 Read 用 `offset`/`limit` 只读相关段；勿整文件读取、勿重读已在上下文的文件
 - 评估纪律：策略评估核心指标 = median(forward_return) + FP 首次穿越率（win_rate 废弃：基率复读无增量）；任何「好/坏」判断必须带基线对照（随机日基线 / 池子基线率），孤立数字不下结论。完整五条（口径自检 / 用途匹配 / 小样本计数）见 `.claude/skills/eval-discipline/SKILL.md`（评估/删除模拟/阈值拍板时主动调该 skill）
@@ -105,22 +123,16 @@
 
 用户要求往 CLAUDE.md 增改内容时，先按三问给出常驻/按需的建议再动手：**读者是谁**（后台 session 只读 CLAUDE.md、没人替它调 skill）、**场景开始的信号是什么**（文件路径→rules `paths:`／用户口径词→skill／事件→hook／都没有→常驻）、**到位时机来不来得及**（rules 只在 Read 时注入）。只有**长且少用**的内容值得迁；省 token≈0（有 cache），真收益是到位时机与按 agent 数倍乘。判据与实测边界见 `docs/cc_notes/claude-md-dynamic-loading.md`。
 
-## 使用 superpowers
+## Agent skills
 
-- **brainstorm 提问带倾向**：用 `AskUserQuestion` 提问时，尽量把你自己的倾向性方案作为选项之一，置于首位并在 label 末尾标 `(推荐)`，并在 description 说明推荐理由。
-- **永远附子代理选项**：每个 brainstorm 问题都额外提供一个选项「派子代理分析」——选中则把该问题派出去从第一性原理裁定，返回后复述结论再继续。两种子代理按问题性质选：
-  - **带上下文**（默认）：`Agent` 工具 `subagent_type: "fork"`，继承当前完整对话上下文，无需打包背景，适合深度依赖前面讨论的问题（等价于我手敲 `/subtask`；`/subtask` 是内置 CLI 命令，你自己调不了，只能走 `fork`）。
-  - **独立视角**：`subagent_type: "general-purpose"`，不继承上下文，由你把问题中立地打包进 prompt，适合需要不受你已有倾向影响的第三方裁定。
-  - 无论哪种，都在 prompt 里写死子代理是**纯分析角色**：从第一性原理出发，只出结论/论证/方案，不碰代码；`AskUserQuestion` 在子代理内不可用，不要让它问我。
-- **自动模式**：当我说「自动模式」时，brainstorm 期间遇到的任何疑问**不要中断问我**。
-  - 如果在多个选项之间，有你倾向性很强的推荐，直接采用推荐选项。
-  - 如果在多个选项之间你也很不确定，那么派子代理决定（默认用带上下文的 `fork`）；子代理给方案后你自行 adopt / 让其 redo，仅在 circle 结束或硬阻塞（子代理也无法推进）时才回到我。
-  - 未说「自动模式」则按常规逐问确认。
-- **subagent 模型选择**：按角色固定模型，不随任务复杂度浮动：
-  - **Implementer**（实现）：一律 `sonnet`，禁用 `haiku`。
-  - **Reviewer**（Spec / Code Quality / Final）：一律 `opus`。
-- **计划自包含**：用 `superpowers:writing-plans` skill 产出的计划必须自包含——不依赖当前对话上下文即可被一个全新 session 直接实施。`superpowers:writing-plans` 结束后给出可供在新 session 中粘贴的执行命令即可，不要自行执行。注意，必须将需要粘贴的内容放在代码块中给出，让我能够将需要粘贴的内容和其他文本区分开。
-- **计划路径规范**：plan 里涉及**项目内**的文件/目录一律用**相对 repo root** 的路径（如 `path2/dag/_solve.py`、`docs/research/xxx/final_report.md`），禁止硬编码 `/home/yu/PycharmProjects/Trade_Strategy-*/...` 这类绝对路径。原因：plan 可能在别的 worktree 里被实施，绝对路径会指向源 worktree 造成跨 worktree 污染。为消歧义，plan 顶部 spec 里显式写一句「本 plan 中所有项目内路径均相对 repo root」。**例外**（保持绝对）：与 worktree 无关的系统路径，如 `~/.claude/...`、`/tmp/claude-*/scratchpad`、外部工具、系统级配置——这些绝对路径反而更清晰。
-- **executing-plans** 默认在新 session 中使用 subagent-driven 执行 `superpowers:executing-plans`。
-- **Plan 尽量不拆分**：默认将 spec 内容写为一份完整 plan、单 session 跑完；只有「前段实施结果大分叉迫使后段重写」才拆段，具体判据 `.claude/rules/plan-execution.md`
+### Issue tracker
 
+本仓库的 issue 与 spec 以本地 markdown 跟踪，放在 `.scratch/<feature-slug>/`（进 git）。See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+使用默认五个标签（`needs-triage` / `needs-info` / `ready-for-agent` / `ready-for-human` / `wontfix`），标签字符串与角色名相同。See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+multi-context：根目录 `CONTEXT-MAP.md` → `path2/CONTEXT.md` + `path2_web/CONTEXT.md`；`docs/adr/` 由 `/grill-with-docs` 懒创建，尚不存在时静默跳过。See `docs/agents/domain.md`.

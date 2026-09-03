@@ -63,6 +63,8 @@ def compile_plan(spec) -> Plan:
     positive_edge_srcs = frozenset(e.src for e in edges if not isinstance(e, NegationEdge))
     leaves = frozenset(n.node_id for n in spec.nodes if n.node_id not in positive_edge_srcs)
 
+    # ★ 纪律:改本节 C1 / c1_off / INV-C 剪枝口径前,必须先跑多候选 fuzz —— 真漏匹配 bug
+    #   曾两次逃过平凡场景的单测试(下面 (2)/(3) 两源就是这么被抓出来的),只有独立 fuzz 抓得到。
     # C1 须关节点(c1_off 5 源总表):
     #   (1) EqualsEdge.src —— window 把 start 钉死、非单调(verdict §6.2);
     #   (2) 带 dst_selector 入边的 dst —— C1 退化按父 end_idx 塌缩,但该入边 satisfies 看的是
