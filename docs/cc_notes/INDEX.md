@@ -1,6 +1,6 @@
 ---
 dimension: 按主题
-updated: 2026-08-27
+updated: 2026-09-04
 ---
 
 # Claude Code 笔记索引
@@ -28,7 +28,8 @@ Claude Code chat history 跨机持久化基础设施——`~/.claude/projects/` 
 ### hooks-skills-plugins
 三种扩展机制：hooks（自动化触发）/ skills（按需加载的能力包）/ plugins（成套打包）。
 - [vision-nonvision-models.md](vision-nonvision-models.md) — 非原生识图模型（deepseek 等）靠 vision.js 代看图片的接线与触发场景（2026-08-23 起停用，原文备查）
-- [claude-md-dynamic-loading.md](claude-md-dynamic-loading.md) — CLAUDE.md/rules 常驻内容何时迁成按需加载（rules paths / skill / hook）：三问判据、三种最小写法、Read-only 触发等实测边界
+- [claude-md-dynamic-loading.md](claude-md-dynamic-loading.md) — CLAUDE.md/rules 常驻内容何时迁成按需加载（rules paths / skill / hook）：三问判据、三种最小写法、Read-only 触发等实测边界；含常驻指令漏召回的失败模式与「paths: 被 Bash 读法绕过」冲突
+- [mattpocock-glossary-triggers.md](mattpocock-glossary-triggers.md) — mattpocock grill-with-docs / domain-modeling 对 CONTEXT.md 的读写触发全表（内置 vs 需 CLAUDE.md 自定义）：写表全内置、读表在「对话」格空缺；R1 因果循环且只抓同词异义（词表在场也不纠正异词同义）、读取挂在探索阶段的偏斜、五臂 claude -p 对照实验（含可复现脚本）
 
 ### mcp
 MCP 服务器的配置、认证、调用与故障排查。
