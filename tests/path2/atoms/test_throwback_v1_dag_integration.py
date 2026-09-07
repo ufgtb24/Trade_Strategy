@@ -97,7 +97,8 @@ class TestDagIntegration:
         df = _make_df(rows)
 
         bo_node = NodeSpec("bo", detector=_FakeBO([_bo(9), _bo(16)]))
-        burst_node = NodeSpec("burst", detector=_FakeBurst([burst1, burst2]), consumes_stream="bo")
+        burst_node = NodeSpec("burst", detector=_FakeBurst([burst1, burst2]),
+                              consumes_stream="bo", children={"members": "bo"})
         tb_node = NodeSpec(
             "tb", detector=ThrowbackDetectorV1(vol_window=3),
             where=(("day_drop", W.attr("max_day_drop", "<", 0.20)),),

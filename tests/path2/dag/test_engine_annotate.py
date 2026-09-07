@@ -3,10 +3,12 @@
 instance_id 契约(唯一出处 = engine.annotate_stream,run_streams 逐流交错标注):
   instance_id = span_id(node_id, start, end) + "#" + str(instance_idx),
 桶 (node_id, start, end) 内按流序从 0 起;嵌套 child 按 children 声明槽位映射命名
-(声明即启用,如 tb.segments → tb_seg),无声明时递归继承容器事件的 node_id。
+(声明即启用,如 tb.segments → tb_seg),槽名不在声明表里直接 ValueError(不再兜底继承)。
 """
 from dataclasses import dataclass
 from typing import Tuple
+
+import pytest
 
 from path2.core import Event
 from path2.dag.engine import annotate_stream
@@ -51,16 +53,16 @@ def test_annotate_stream_interval_span():
     assert e.instance_id == "burst_282_289#0"
 
 
-def test_annotate_stream_nested_child_inherits_node():
-    """无 children 声明(兜底):嵌套 child(不在流中)继承容器事件的 node_id,同桶计数。"""
+def test_annotate_stream_undeclared_slot_raises():
+    """无 children 声明:标注期直接 ValueError(不再兜底继承容器 node_id)。
+    这一步不受 RUNTIME_CHECKS 门控,生产路径同样硬失败。"""
     child = _Ev(start_idx=1, end_idx=3, confirm_idx=3)
     parent = _ContainerEv(start_idx=0, end_idx=5, confirm_idx=5, members=(child,))
-    annotate_stream({}, "tb", [parent])
-    assert child.node_id == "tb"
-    assert child.instance_id == "tb_1_3#0"
-    # 容器自身同样被标注
+    with pytest.raises(ValueError, match="未在 children 声明中"):
+        annotate_stream({}, "tb", [parent])
+    # 容器自身已先于 child 标注完(第一遍循环),child 未获身份
     assert parent.node_id == "tb"
-    assert parent.instance_id == "tb_0_5#0"
+    assert child.node_id is None
 
 
 def test_annotate_stream_nested_child_named_by_declaration():
@@ -76,7 +78,8 @@ def test_annotate_stream_nested_child_named_by_declaration():
 
 
 def test_annotate_stream_declaration_partial_slot_coverage():
-    """声明只覆盖部分槽:映射槽用声明名,未覆盖槽继承容器 nid(兜底,不炸)。"""
+    """同一槽的多个成员按槽整体取声明名,逐成员各自入 (子node_id, span) 桶编号。
+    (未覆盖槽现已硬失败,见 test_annotate_stream_undeclared_slot_raises。)"""
     seg = _Ev(start_idx=1, end_idx=3, confirm_idx=3)
     other = _Ev(start_idx=2, end_idx=4, confirm_idx=4)
     parent = _ContainerEv(start_idx=0, end_idx=5, confirm_idx=5,

@@ -65,7 +65,8 @@ def test_c1_declared_missing_from_instance_raises():
         analyze(spec, df=object())
 
 
-def test_c2_undeclared_instance_slot_raises():
+def test_undeclared_instance_slot_raises_at_annotate():
+    """正常路径:实例有未声明槽 → 标注期 ValueError(早于出口 C2)。"""
     @dataclass(frozen=True)
     class ExtraBox(Event):
         def child_slots(self):
@@ -80,8 +81,35 @@ def test_c2_undeclared_instance_slot_raises():
     spec = PatternSpec(pattern_id="t", nodes=(
         NodeSpec("box", ExtraDetector(), children={"members": "inner"}),
         NodeSpec("inner", event_cls=Inner)), edges=())
-    with pytest.raises(RuntimeError, match="未声明"):
+    with pytest.raises(ValueError, match="未在 children 声明中"):
         analyze(spec, df=object())
+
+
+def test_c2_undeclared_instance_slot_raises_on_preset():
+    """preset 路径:预置流跳过检测与标注,出口 C2 是唯一防线 → RuntimeError。"""
+    from path2.dag.engine import run_streams
+
+    @dataclass(frozen=True)
+    class ExtraBox(Event):
+        def child_slots(self):
+            return {"members": (), "extra": ()}
+
+    class ExtraDetector:
+        event_cls = ExtraBox
+
+        def detect(self, df):
+            yield ExtraBox(start_idx=0, end_idx=1, confirm_idx=1)
+
+    spec = PatternSpec(pattern_id="t", nodes=(
+        NodeSpec("box", ExtraDetector(), children={"members": "inner"}),
+        NodeSpec("inner", event_cls=Inner)), edges=())
+    # 预置一个已带身份的容器实例(模拟上一次 run_streams 的返回值)
+    preset_box = ExtraBox(start_idx=0, end_idx=1, confirm_idx=1)
+    object.__setattr__(preset_box, "node_id", "box")
+    object.__setattr__(preset_box, "instance_idx", 0)
+    object.__setattr__(preset_box, "instance_id", "box_0_1#0")
+    with pytest.raises(RuntimeError, match="未声明"):
+        run_streams(spec, df=object(), preset={"box": [preset_box]})
 
 
 def test_c3_slot_element_type_mismatch_raises():

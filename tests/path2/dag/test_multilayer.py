@@ -93,9 +93,9 @@ def _build_spec():
     ]
     bo_node = NodeSpec("bo", _SyntheticBoDetector(bos))
     burst_node = NodeSpec("burst", BurstDetector(gap_max=5, min_bos=3),
-                          consumes_stream="bo")
+                          consumes_stream="bo", children={"members": "bo"})
     super_node = NodeSpec("super", SuperDetector(),
-                          consumes_stream="burst")
+                          consumes_stream="burst", children={"members": "burst"})
     return PatternSpec(
         pattern_id="test_multilayer",
         nodes=(bo_node, burst_node, super_node),
