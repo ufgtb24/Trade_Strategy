@@ -178,9 +178,9 @@ describe('solve=False node 免疫 level 门控 + pk marker 三态色/peak_idx', 
   const pkEvents: EventDict[] = [
     // peak_idx=1 ≠ start_idx=0:位置应由 peak_idx 决定
     { instance_id: 'pk_2#0', node_id: 'pk', start_idx: 0, end_idx: 0,
-      peak_idx: 1, kind: 'convex', pk_id: 7 } as any,
+      peak_idx: 1, pk_id: 7 } as any,
     { instance_id: 'pk_0#0', node_id: 'pk', start_idx: 0, end_idx: 0,
-      peak_idx: 0, kind: 'bear', pk_id: 8 } as any,
+      peak_idx: 0, pk_id: 8 } as any,
     // bo 引用事件:突破 pk_2#0 → 三态合成 broken(契约 C4);bo 盒文本派生自 ref_ids.broken
     // 查 pk_id(契约 C5)。不带 broken_peak_ids(已删字段)。
     { instance_id: 'bo_1#0', node_id: 'bo', start_idx: 2, end_idx: 2,
@@ -224,7 +224,6 @@ describe('solve=False node 免疫 level 门控 + pk marker 三态色/peak_idx', 
     // pk_2#0 自身不带 state 字段——broken 是被 pkEvents 里 bo_1#0 的
     // ref_ids.broken=['pk_2#0'] 合成出来的(契约 C4),不是读回事件自带字段
     expect(d.state).toBe('broken')
-    expect(d.pkKind).toBe('convex')
   })
 
   it('bo(price-anchored,无 peak_idx)锚点走 start_idx 原生锚(chart.ts:181 的 : e.start_idx 分支)', () => {
@@ -290,9 +289,9 @@ describe('solve=False node 免疫 level 门控 + pk marker 三态色/peak_idx', 
   }
   // 按目标态构造 [pk 事件, ...合成所需的引用事件]:alive 不需要引用;broken 靠一条
   // ref_ids.broken 命中的 bo;eaten 靠另一 pk 的 ref_ids.superseded 命中(elevation 抬升语义)。
-  const mkPkGroup = (state: 'alive' | 'broken' | 'eaten', kind = 'convex', pk_id = 3): EventDict[] => {
+  const mkPkGroup = (state: 'alive' | 'broken' | 'eaten', pk_id = 3): EventDict[] => {
     const pk: EventDict = { instance_id: `pk_${state}_${pk_id}#0`, node_id: 'pk',
-      start_idx: 1, end_idx: 1, peak_idx: 1, kind, pk_id } as any
+      start_idx: 1, end_idx: 1, peak_idx: 1, pk_id } as any
     if (state === 'alive') return [pk]
     if (state === 'broken') {
       const bo: EventDict = { instance_id: `bo_${state}_${pk_id}#0`, node_id: 'bo',
@@ -300,7 +299,7 @@ describe('solve=False node 免疫 level 门控 + pk marker 三态色/peak_idx', 
       return [pk, bo]
     }
     const supersedePk: EventDict = { instance_id: `pk_${state}_sup_${pk_id}#0`, node_id: 'pk',
-      start_idx: 2, end_idx: 2, peak_idx: 2, kind: 'convex', pk_id: pk_id + 1000,
+      start_idx: 2, end_idx: 2, peak_idx: 2, pk_id: pk_id + 1000,
       ref_ids: { superseded: [pk.instance_id] } } as any
     return [pk, supersedePk]
   }
@@ -326,10 +325,10 @@ describe('solve=False node 免疫 level 门控 + pk marker 三态色/peak_idx', 
     expect(pkTriStyle('nope')).toMatchObject({ fill: 'none', stroke: '#000000' })
   })
 
-  it('pk 标签只显示 id 数字(无前缀无态名),颜色随三态描边;convex 无短横线', () => {
+  it('pk 标签只显示 id 数字(无前缀无态名),颜色随三态描边', () => {
     for (const state of ['alive', 'broken', 'eaten'] as const) {
-      const g = renderPk(mkPkGroup(state, 'convex', 42))
-      expect(g.children).toHaveLength(2)                   // ▽ + 标签,无 bear 线
+      const g = renderPk(mkPkGroup(state, 42))
+      expect(g.children).toHaveLength(2)                   // ▽ + 标签
       const label = g.children[1]
       expect(label.type).toBe('text')
       expect(label.style.text).toBe('42')
@@ -385,30 +384,12 @@ describe('solve=False node 免疫 level 门控 + pk marker 三态色/peak_idx', 
     expect(names).not.toContain('satellites')
   })
 
-  it('pk kind=bear marker: ▽ 下方短横线(与 convex 区分,spec §5.2)', () => {
-    const bundle = computeEventData(pkBars, pkEvents, [], pkInput('matched'))
-    const opt: any = buildMainOption(pkBars, bundle, pkInput('matched'))
-    const pp = opt.series.find((s: any) => s.name === 'price-points')
-    const i = pp.data.findIndex((d: any) => d.instance_id === 'pk_0#0')   // kind='bear'
-    expect(i).toBeGreaterThanOrEqual(0)
+  it('pk 高亮层保留三态形状编码:空心态白底盖本体、eaten 仍虚线、alive 仍实心', () => {
     const fakeApi: any = { value: () => 0, coord: () => [100, 200] }
-    const shape = pp.renderItem({ dataIndex: i }, fakeApi) as any
-    expect(shape.type).toBe('group')
-    // children[0]=▽ polygon,children[1]=标签 text,children[2]=bear 短横线(▽ 底顶点下方 3px)
-    expect(shape.children[2].type).toBe('line')
-    const bottomY = shape.children[0].shape.points[2][1]   // ▽ 底顶点 y
-    expect(shape.children[2].shape.y1).toBe(bottomY + 3)
-    expect(shape.children[2].shape.y2).toBe(bottomY + 3)
-    expect(shape.children[2].shape.x2 - shape.children[2].shape.x1).toBe(2 * 8)   // 2*PK_TRIANGLE_HALF_WIDTH
-    expect(shape.children[2].style.stroke).toBe(shape.children[0].style.stroke)   // 颜色随三态描边
-  })
-
-  it('pk 高亮层保留三态形状编码:空心态白底盖本体、eaten 仍虚线、alive 仍实心;bear 短横线随高亮放大', () => {
-    const fakeApi: any = { value: () => 0, coord: () => [100, 200] }
-    const mk = (state: string, kind: 'group' | 'focus' | 'pendingDisambig', pkKind = 'convex') =>
+    const mk = (state: string, kind: 'group' | 'focus' | 'pendingDisambig') =>
       makeRenderPricePointHighlight([
         { value: [0, 0], instance_id: 'e1', anchorY: 1, text: '3',
-          itemStyle: { color: '#d1d5db' }, kind, state, pkKind },
+          itemStyle: { color: '#d1d5db' }, kind, state },
       ])({ dataIndex: 0 }, fakeApi) as any
 
     const brokenFocus = mk('broken', 'focus')
@@ -426,12 +407,6 @@ describe('solve=False node 免疫 level 门控 + pk marker 三态色/peak_idx', 
 
     const aliveFocus = mk('alive', 'focus')
     expect(aliveFocus.children[0].style.fill).toBe('#000000')         // 实心不变
-
-    const bearFocus = mk('alive', 'focus', 'bear')
-    expect(bearFocus.children).toHaveLength(3)
-    expect(bearFocus.children[2].type).toBe('line')
-    const bottomY = bearFocus.children[0].shape.points[2][1]
-    expect(bearFocus.children[2].shape.y1).toBe(bottomY + 3)
 
     const pending = mk('broken', 'pendingDisambig')
     expect(pending.children).toHaveLength(3)

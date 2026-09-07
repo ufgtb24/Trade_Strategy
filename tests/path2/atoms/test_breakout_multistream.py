@@ -10,7 +10,7 @@ from path2.runner import run_bundle
 def _df():
     # 确定性序列:峰@idx5(high≈12.1) → 回落 → 突破@idx11(high≈13.1) → 再回落。
     # 注:单调上升序列不会触发峰登记(窗口 argmax 恒在右端,尾侧 side_bars gate 恒失败),
-    # 故必须非单调才能同时覆盖峰登记与突破。大阴线场景由 Task 3 单独构造。
+    # 故必须非单调才能同时覆盖峰登记与突破。
     closes = [10.0] * 5 + [12.0] + [10.0] * 5 + [13.0] + [10.0] * 3
     open_ = list(closes)
     close = list(closes)
@@ -26,7 +26,6 @@ def test_multistream_bo_and_pk_separated():
     out = run_bundle(det, _df())
     assert set(out) == {"bo", "pk"}          # 两流
     assert all(e.start_idx == e.end_idx == e.confirm_idx for e in out["pk"])   # 点几何
-    assert all(e.kind in ("convex", "bear") for e in out["pk"])
 
 
 def test_multistream_bo_semantics_unchanged():

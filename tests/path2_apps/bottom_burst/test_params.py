@@ -62,7 +62,6 @@ def test_kwargs_slices_against_detector_signatures():
     bo = p.bo_kwargs()
     assert set(bo) == {'total_window', 'min_side_bars', 'min_relative_height',
                        'exceed_threshold', 'peak_supersede_threshold',
-                       'bear_drop', 'bear_min_rh',
                        'vol_baseline_period', 'peak_measure', 'breakout_measure'}
     assert bo['total_window'] == 10
     burst = p.burst_kwargs()

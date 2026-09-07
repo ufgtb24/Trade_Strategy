@@ -7,7 +7,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional
 
 from path2_apps._params_base import ParamsBase
 
@@ -22,8 +21,6 @@ class BoParams:
     min_relative_height: float = 0.05
     exceed_threshold: float = 0.005
     peak_supersede_threshold: float = 0.03
-    bear_drop: Optional[float] = None   # 大阴线 kind:实体跌幅阈值;None=禁用(默认 OFF,仅显式 ON 的 app 启用)
-    bear_min_rh: float = 0.20   # 大阴线 kind:相对高度阈值
     vol_baseline_period: int = 63
     peak_measure: str = "high"
     breakout_measure: str = "high"

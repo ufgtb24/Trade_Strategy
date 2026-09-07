@@ -25,7 +25,7 @@ def test_bottom_burst_materialize_keys_values():
     nodes = _nodes_map(serialize_pattern(spec))
     assert set(nodes["bo"]["materialize_keys"]) == {
         "total_window", "min_side_bars", "min_relative_height", "exceed_threshold",
-        "peak_supersede_threshold", "bear_drop", "bear_min_rh",
+        "peak_supersede_threshold",
         "vol_baseline_period", "peak_measure", "breakout_measure",
     }
     # burst 仅 3 个构造参数;first_drought_min/distinct_pk_min/vol_spike_min 刻意不进 __init__

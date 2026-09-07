@@ -181,8 +181,8 @@ export function computeEventData(
   // 与主图 buildShadingMarkArea shading 同门控。
   const scanEndIdx = strictWindow?.endIdx ?? null
 
-  // pk 标签:只显示 id 数字,不带前缀、不带态名(spec 2026-08-31 §3.5.4)。pk_id 由 convex/bear
-  // 共用同一计数器、全局唯一,无需消歧;三态与 kind 全由 ▽ 形状编码,标签不再承担区分。
+  // pk 标签:只显示 id 数字,不带前缀、不带态名(spec 2026-08-31 §3.5.4)。pk_id 全局唯一,
+  // 无需消歧;三态由 ▽ 形状编码,标签不再承担区分。
   const pkLabelOf = (e: EventDict): string =>
     typeof e.pk_id === 'number' ? String(e.pk_id) : ''
 
@@ -219,10 +219,7 @@ export function computeEventData(
       anchorY, text,
       // pk marker 渲染元数据(renderer 按 state 存在性分派三角形/盒)。state 由
       // pkStates(derivePeakStates,契约 C4)合成,不再读事件自带字段。
-      // 字段名用 pkKind 而非 kind:highlight 条目 `{ ...d, kind: HlKind }` 会覆盖同名 kind,
-      // 存在 kind 里的 bear/convex 到高亮层就丢了(bear 短横线消失)。
       state: isPk ? pkStates.get(e.instance_id) ?? 'alive' : undefined,
-      pkKind: typeof e.kind === 'string' ? e.kind : undefined,
       pkId: typeof e.pk_id === 'number' ? e.pk_id : undefined,
       // 同锚避让量:三个 pricePoint renderer(本体 / 高亮 / shift-veil)统一消费,
       // highlight 与 veil 条目由 { ...d } 复制携带,无需各自重算。
@@ -761,7 +758,7 @@ export function makeRenderPricePointHighlight(
   data: Array<{ value: number[]; instance_id: string; anchorY: number; text: string;
                  itemStyle: { color: string };
                  kind: 'group' | 'focus' | 'pendingDisambig';
-                 state?: string; pkKind?: string; pkLift?: number }>,
+                 state?: string; pkLift?: number }>,
 ) {
   return function renderPricePointHighlight(params: any, api: any) {
     const item = data[params.dataIndex] ?? null
@@ -771,7 +768,7 @@ export function makeRenderPricePointHighlight(
     const color = item?.itemStyle?.color ?? '#888888'
     const [cx, anchorPx] = api.coord([api.value(0), anchorY])
 
-    // pk 事件(state 存在)→ 放大 ▽(×1.4)+ id 标签 + bear 短横线,与 makeRenderPricePoint 同一分派。
+    // pk 事件(state 存在)→ 放大 ▽(×1.4)+ id 标签,与 makeRenderPricePoint 同一分派。
     // 三态形状编码(pkTriStyle:实心/空心/浅灰虚线)在高亮层原样保留,选中只加粗描边 + shadow
     // (group 细边 / focus 粗边,与 bo 盒同一词汇)。空心态放大版给白底:盖住下层本体 ▽,
     // 免得两层轮廓套叠成「双三角」(实心态本就不透)。
@@ -806,7 +803,6 @@ export function makeRenderPricePointHighlight(
               style: { ...tri, fill: hlFill, lineWidth: hlWidth, ...HL_SHADOW } },
             textEl,
           ]
-      if (item.pkKind === 'bear') children.push(pkBearLine(cx, triCy + th / 2, tw, tri.stroke, hlWidth))
       return { type: 'group', silent: true, z2: 21, children }
     }
 
@@ -1147,10 +1143,9 @@ const PK_TRIANGLE_HEIGHT = 12
 //   alive  = 实心 ▽(阻力仍压在头顶,信息价值最高)
 //   broken = 空心 ▽(黑边无填充,即旧卫星 marker 外观)
 //   eaten  = 浅灰虚线 ▽(靠明度 + 线型弱化)
-// kind=bear 另在 ▽ 下方加短横线(pkBearLine)与 convex 区分;标签只显示 id 数字。
+// 标签只显示 id 数字。
 const PEAK_MARKER_COLOR = '#000000'       // dev UI CHART_COLORS["peak_marker"]
 const PEAK_MARKER_COLOR_DIM = '#9ca3af'   // eaten 态浅灰
-const PK_BEAR_LINE_GAP = 3                // bear 短横线与 ▽ 底顶点的间隙 px
 export type PkTriStyle = { fill: string; stroke: string; lineWidth: number; lineDash?: number[] }
 export function pkTriStyle(state: string): PkTriStyle {
   switch (state) {
@@ -1158,11 +1153,6 @@ export function pkTriStyle(state: string): PkTriStyle {
     case 'eaten': return { fill: 'none', stroke: PEAK_MARKER_COLOR_DIM, lineWidth: 1.0, lineDash: [2.5, 2] }
     default:      return { fill: 'none', stroke: PEAK_MARKER_COLOR, lineWidth: 1.2 }   // broken(未知态同此兜底)
   }
-}
-// bear 短横线:▽ 底顶点下方 PK_BEAR_LINE_GAP px,宽与 ▽ 同(半宽 tw),颜色随三态描边。
-function pkBearLine(cx: number, bottomY: number, tw: number, stroke: string, lineWidth: number) {
-  const y = bottomY + PK_BEAR_LINE_GAP
-  return { type: 'line', shape: { x1: cx - tw, y1: y, x2: cx + tw, y2: y }, style: { stroke, lineWidth } }
 }
 const BO_BOX_RADIUS = 4
 const BO_BOX_PAD_X = 5
@@ -1175,9 +1165,8 @@ const TRIANGLE_STACK_PT = 13           // ▽ 中心 y = anchor - 13
 const PEAK_ID_STACK_PT = 28            // ID 中心 y = anchor - 28
 const BO_STACK_PT = 15                 // [ids] 中心 y = anchor - 15(dev styles.py:80 bo_label=15pt 缩放对应)
 // 同锚避让:一根 K 线既是 pk 又是 bo 时(▽ 中心 anchor-13、bo 盒中心 anchor-15,必然叠住),
-// pk 整组(▽ + id 标签 + bear 短横线)再上移这么多 px,整体抬到 bo 盒顶之上。
-// 取值按最坏情况定:两者同时高亮(▽ 放大 1.4× → 底顶点 8.4px、bo 盒四周多 3px → 盒顶 29px)
-// 且 kind=bear 时,短横线距 anchor 13-28+8.4+3 → 29.6px,仍在放大盒顶之上不相碰。
+// pk 整组(▽ + id 标签)再上移这么多 px,整体抬到 bo 盒顶之上。
+// 取值按最坏情况定:两者同时高亮(▽ 放大 1.4× → 底顶点 8.4px、bo 盒四周多 3px → 盒顶 29px)。
 const PK_LIFT_OVER_BO = 28
 
 // 文本框尺寸(浏览器无 measureText 时按字宽近似,bold 字体 char_w ≈ 0.62×fontSize)
@@ -1194,14 +1183,14 @@ function boBoxDims(text: string): { w: number; h: number } {
 // 锚 bar.h(anchorY 由 computeEventData 注入)。
 // - bo:圆角矩形盒 + [broken_peak_ids] 文本(dev UI 复刻),box 中心 = anchorPx - BO_STACK_PT
 // - pk:▽ 按三态编码形状(pkTriStyle:alive 实心 / broken 空心 / eaten 浅灰虚线)+ 标签
-//        (只有 id 数字)在 ▽ 上方,kind=bear 的 ▽ 下方加一条短横线(spec 2026-08-31 §3.5.4)。
-//        itemStyle.color 对 pk 不消费——三态与 kind 全走形状,不靠色相(色盲纪律)。
+//        (只有 id 数字)在 ▽ 上方(spec 2026-08-31 §3.5.4)。
+//        itemStyle.color 对 pk 不消费——三态全走形状,不靠色相(色盲纪律)。
 // ⚠ closure factory:ECharts customSeries 不在 params 中传 data item,必须按 dataIndex 反查。
 //   过去用 (params.data as any).text 实测=undefined → text 为空字符串 → ZRText 被创建但无文字渲染。
 function makeRenderPricePoint(
   data: Array<{ value: number[]; instance_id: string; anchorY: number; text: string;
                  tier: Tier; itemStyle: { color: string };
-                 state?: string; pkKind?: string; pkId?: number; pkLift?: number }>,
+                 state?: string; pkId?: number; pkLift?: number }>,
 ) {
   return function renderPricePoint(params: any, api: any) {
     const item = data[params.dataIndex] ?? null
@@ -1210,7 +1199,7 @@ function makeRenderPricePoint(
     const color = item?.itemStyle?.color ?? '#888888'
     const [cx, anchorPx] = api.coord([api.value(0), anchorY])
 
-    // ── pk 事件:三态形状 ▽ + id 标签(▽ 上方)+ bear 短横线(▽ 下方) ──
+    // ── pk 事件:三态形状 ▽ + id 标签(▽ 上方) ──
     if (item?.state) {
       const lift = item.pkLift ?? 0        // 同锚 bo 时整组上移,避让盒体
       const triCy = anchorPx - TRIANGLE_STACK_PT - lift
@@ -1243,7 +1232,6 @@ function makeRenderPricePoint(
           },
         },
       ]
-      if (item.pkKind === 'bear') children.push(pkBearLine(cx, triCy + th / 2, tw, tri.stroke, 1.6))
       return { type: 'group', children }
     }
 

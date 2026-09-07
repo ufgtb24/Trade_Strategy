@@ -60,13 +60,13 @@ def test_file_keys_reordered_to_schema(files_client, tmp_path):
     diff,键序不同会渲染成一串「移动」型假差异(值相同也全红全绿)。值与键集合必须
     原样不动——归一只重排,不校验、不补默认。"""
     (tmp_path / "app" / "shuffled.yaml").write_text(
-        "bo:\n  breakout_measure: close\n  bear_drop: 0.05\n  total_window: 10\n")
+        "bo:\n  breakout_measure: close\n  min_side_bars: 3\n  total_window: 10\n")
     r = files_client.get("/params/file",
                          params={"pattern_id": "bo_only", "name": "shuffled.yaml"})
     assert r.status_code == 200
     got = r.json()["params"]
-    assert list(got["bo"]) == ["total_window", "bear_drop", "breakout_measure"]
-    assert got == {"bo": {"total_window": 10, "bear_drop": 0.05,
+    assert list(got["bo"]) == ["total_window", "min_side_bars", "breakout_measure"]
+    assert got == {"bo": {"total_window": 10, "min_side_bars": 3,
                           "breakout_measure": "close"}}
 
 

@@ -135,7 +135,7 @@
 - **派生量做 `@property`，不做平行字段**：能从 `ref_slots` 引用直接算出的量
   （id 列表、计数，如 `BOEvent.broken_peak_ids` / `pk_count`）一律 `@property`，
   别在构造函数额外收一份同源 kwarg——避免两份数据不同步
-- **无值用 `Optional`，不用占位值**：字段确实没有值（如 bear 峰不产 `volume_peak`）
+- **无值用 `Optional`，不用占位值**：字段确实没有值（如序列第一根 bo 没有前序，`drought` 无值）
   时用 `Optional[...] = None`，不要用 `0.0` 之类占位值掩盖“没有”和“是 0”的区别
 
 ### confirm_idx 决策引导

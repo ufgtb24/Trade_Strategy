@@ -14,13 +14,13 @@ def test_topology_nodes_carry_solve():
     assert by_id["burst"]["solve"] is True
 
 
-def test_peak_event_kind_serialized():
-    # 事件行由 _event_to_dict schema-driven 全量平铺,kind 应自动带出;state 字段已删除
+def test_peak_event_fields_serialized():
+    # 事件行由 _event_to_dict schema-driven 全量平铺,普通字段应自动带出;state 字段已删除
     # (定稿状态改由消费侧从 ref_ids 合成,见 C4);superseded_refs 走 ref_slots 协议,
     # 恒不进 payload。
     d = PeakEvent(start_idx=0, end_idx=0, confirm_idx=0, pk_id=1,
-                  kind="bear", peak_idx=0, price=5.0)
+                  peak_idx=0, price=5.0, relative_height=0.3)
     from path2_web.serialize import _event_to_dict
     row = _event_to_dict(d)
-    assert row["kind"] == "bear"
+    assert row["pk_id"] == 1 and row["price"] == 5.0 and row["relative_height"] == 0.3
     assert "superseded_refs" not in row

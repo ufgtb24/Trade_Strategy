@@ -1,7 +1,5 @@
 {
  "bo": {
-  "bear_drop": null,
-  "bear_min_rh": 0.2,
   "breakout_measure": "close",
   "exceed_threshold": 0.003,
   "min_relative_height": 0.2,
