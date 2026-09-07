@@ -56,8 +56,9 @@
    ① **容器加 `child()` 投影** → 边写 `Child("tb", "first_seg")`。`Child` 不引入新
       变量,`__post_init__` 把它归一化成 `dst="tb", dst_selector="first_seg"`,WCC 图
       看到的仍是纯 `tb`,搜索空间不变。样板:`BurstEvent.child("first_bo"/"last_bo")`
-      (`path2/atoms/breakout.py`)。代价在剪枝——带 selector / anchor_field 的边会关掉
-      对应端点的 C1(见 `_solve.py` 的 c1_off 五源表)。
+      (`path2/atoms/breakout.py`)。代价在剪枝——`dst_selector` 与 `anchor_field` 非空边
+      会关掉对应端点的 C1;但不是所有 selector 都关:**普通边的 `src_selector` 不关 C1**,
+      只有 NegationEdge 带 `src_selector` 才关(见 `_solve.py` 的 c1_off 总表)。
    ② **升格成独立流**(detector 改 `produces` 多流,子事件自成一 node)——只有当子事件
       需要**自己被枚举、被候选筛选**时才值得。代价:求解空间乘上子事件数量;detector
       要为每条流各自维护 end_idx 升序(`run_bundle` 逐流跑 `_check_stream`);子事件

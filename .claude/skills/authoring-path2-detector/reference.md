@@ -450,5 +450,9 @@ event 类型退回 Python 类型系统（`isinstance` 判别），**不进任何
   子事件常常是逐父事件生成的、跨父交错，直接 yield 会在第二条流上撞升序校验。
 - **容器 event 的 node 必须声明 `children`**：重写了 `child_slots()` 就是容器，`PatternSpec`
   构造期校验（`_validate_children_declared`）+ 标注期硬失败（`_annotate_children`，不受
-  `RUNTIME_CHECKS` 门控）双重拦截。声明的槽名 → 子结构 node_id，子事件据此获得自己的身份
-  与渲染轨道；漏声明不再静默继承容器 node_id。
+  `RUNTIME_CHECKS` 门控）双重拦截——这是正常路径（走 `annotate_stream`）。**预置流**跳过
+  检测与标注，没有这道 ungated 拦截，只剩出口 `_check_children_declarations` 的 C2（受
+  `RUNTIME_CHECKS` 门控）。声明的槽名 → 子结构 node_id，子事件据此获得自己的身份与渲染
+  轨道；漏声明不再静默继承容器 node_id。**`child_slots()` 必须无条件返回声明的槽名**（成员
+  为空也给空 tuple）——别学 `ref_slots()`「空则返回 `{}`」的写法（如 `path2/atoms/breakout.py`
+  的两处 `ref_slots`），否则容器为空的实例会在出口撞上 C1「声明 children 未物化」。
