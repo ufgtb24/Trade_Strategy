@@ -31,7 +31,9 @@ def annotate_stream(counts: dict, nid: str, events, children_of: dict | None = N
     tb_seg)。槽名不在声明表里直接 ValueError——不再兜底继承容器 nid;这一步
     不受 RUNTIME_CHECKS 门控,生产路径同样硬失败。构造期另有
     PatternSpec._validate_children_declared 拦住「容器 node 一个槽都没声明」。
-    声明漂移由 _check_children_declarations(C1/C3) 抓。已标注跳过保证"槽引用
+    声明漂移由出口的 _check_children_declarations 抓——本路径剩给它的是 C1(声明未
+    物化)与 C3(类型不符);C2(实例有未声明槽)已被上面的 ValueError 抢先,只有预置流
+    (跳过检测与标注)才落到出口的 C2。已标注跳过保证"槽引用
     独立 node 实例"(burst.members→bo,独立流先物化先标注)不被重标。"""
     cmap_all = children_of or {}
 
