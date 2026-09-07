@@ -54,7 +54,10 @@ def annotate_stream(counts: dict, nid: str, events, children_of: dict | None = N
     def _annotate_children(e, nid: str) -> None:   # 递归补标嵌套 child
         cmap = cmap_all.get(nid, {})
         for slot_name, slot in e.child_slots().items():
-            child_nid = cmap.get(slot_name, nid)
+            if slot_name not in cmap:
+                raise ValueError(
+                    f"node {nid!r}: child 槽 {slot_name!r} 未在 children 声明中")
+            child_nid = cmap[slot_name]
             members = slot if isinstance(slot, tuple) else (slot,)
             for c in members:
                 if c.node_id is not None:
@@ -105,7 +108,7 @@ def _check_children_declarations(spec, streams) -> None:
     by_id = {n.node_id: n for n in spec.nodes}
     for nid, events in streams.items():
         node = by_id[nid]
-        if not node.children or node.detector is None:
+        if node.detector is None:
             continue
         declared = set(node.children)
         for e in events:
