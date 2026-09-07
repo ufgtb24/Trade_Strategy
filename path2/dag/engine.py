@@ -74,12 +74,20 @@ def annotate_stream(counts: dict, nid: str, events, children_of: dict | None = N
 def _translate_refs(streams) -> None:
     """统一翻译阶段:所有流标注完后,把各事件的 ref_slots() 对象引用翻译成 instance_id,
     写入 Event.ref_ids(按槽名字典序排列的 (槽名,(instance_id,...)) 对)。引用事件
-    池外对象(instance_id 仍为 None)视为 detect bug,报错。"""
-    for events in streams.values():
-        for e in events:
-            slots = e.ref_slots()
-            if not slots:
-                continue
+    池外对象(instance_id 仍为 None)视为 detect bug,报错。
+
+    递归下钻 child_slots——与标注(_annotate_children)对称:子结构事件(如 tb 的
+    企稳段)不出现在 streams 里,只活在容器的槽内,不下钻就会让它的引用槽静默失效
+    (ref_ids 恒空,与「引用池外对象」的响亮报错待遇相反)。同一对象既在流里又在
+    容器槽里(burst.members→bo 形态)只翻译一次,由 seen 去重;翻译本身幂等。"""
+    seen: set = set()
+
+    def _translate(e) -> None:
+        if id(e) in seen:
+            return
+        seen.add(id(e))
+        slots = e.ref_slots()
+        if slots:
             pairs = []
             for slot_name, refs in slots.items():
                 refs = (refs,) if isinstance(refs, Event) else refs   # 归一化单-Event 槽位(与 annotate_stream 一致)
@@ -93,6 +101,14 @@ def _translate_refs(streams) -> None:
                     ids.append(ref.instance_id)
                 pairs.append((slot_name, tuple(ids)))
             object.__setattr__(e, "ref_ids", tuple(sorted(pairs)))
+        for slot in e.child_slots().values():
+            members = slot if isinstance(slot, tuple) else (slot,)
+            for c in members:
+                _translate(c)
+
+    for events in streams.values():
+        for e in events:
+            _translate(e)
 
 
 def _check_children_declarations(spec, streams) -> None:
