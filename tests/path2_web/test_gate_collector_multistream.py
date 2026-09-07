@@ -77,12 +77,12 @@ def test_unbound_stream_attach_raises():
 
 
 def test_bo_pk_shared_detector_peak_gates_route_to_pk_node():
-    """4c(契约 C6):真 BODetector + bb_pk 拓扑(bo/pk 共享同一 detector)——峰类 gate
+    """4c(契约 C6):真 BODetector + bb_v1 拓扑(bo/pk 共享同一 detector)——峰类 gate
     (stream="pk")经 attach_and_collect 路由到 pk node,no_active_peak_broken 归 bo node。
     fixture 复用 test_bo_on_gate.py 的单调下跌 df(无 peak)。"""
     import pandas as pd
-    from path2_apps.bb_pk.dag_spec import build_pattern
-    from path2_apps.bb_pk.params import Params
+    from path2_apps.bb_v1.dag_spec import build_pattern
+    from path2_apps.bb_v1.params import Params
 
     n = 50
     df = pd.DataFrame({

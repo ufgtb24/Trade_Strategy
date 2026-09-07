@@ -172,6 +172,14 @@ export function computeEventData(
   const pkLabelOf = (e: EventDict): string =>
     typeof e.pk_id === 'number' ? String(e.pk_id) : ''
 
+  // 与 bo 共锚的 bar 索引集合:pk 判别子 = 带 peak_idx(契约 C4),其余 price-anchored
+  // 事件(bo 等)锚 start_idx。落在同一根 K 线上的 pk 需上移让开 bo 盒(PK_LIFT_OVER_BO)。
+  const boAnchorIdx = new Set(
+    priceAnchored
+      .filter((e) => typeof e.peak_idx !== 'number')
+      .map((e) => e.start_idx as number),
+  )
+
   const pricePointData = priceAnchored.map((e) => {
     // 渲染锚点:pk 事件用 peak_idx(峰 bar 精确局部高点,serialize 平铺带出),价格查
     // bars[peak_idx].h(不读演化后的 price);start_idx 仍是事件几何锚(登记 bar)。
@@ -202,6 +210,9 @@ export function computeEventData(
       state: isPk ? pkStates.get(e.instance_id) ?? 'alive' : undefined,
       pkKind: typeof e.kind === 'string' ? e.kind : undefined,
       pkId: typeof e.pk_id === 'number' ? e.pk_id : undefined,
+      // 同锚避让量:三个 pricePoint renderer(本体 / 高亮 / shift-veil)统一消费,
+      // highlight 与 veil 条目由 { ...d } 复制携带,无需各自重算。
+      pkLift: isPk && boAnchorIdx.has(renderIdx) ? PK_LIFT_OVER_BO : 0,
     }
   })
 
@@ -736,7 +747,7 @@ export function makeRenderPricePointHighlight(
   data: Array<{ value: number[]; instance_id: string; anchorY: number; text: string;
                  itemStyle: { color: string };
                  kind: 'group' | 'focus' | 'pendingDisambig';
-                 state?: string; pkKind?: string }>,
+                 state?: string; pkKind?: string; pkLift?: number }>,
 ) {
   return function renderPricePointHighlight(params: any, api: any) {
     const item = data[params.dataIndex] ?? null
@@ -751,10 +762,11 @@ export function makeRenderPricePointHighlight(
     // (group 细边 / focus 粗边,与 bo 盒同一词汇)。空心态放大版给白底:盖住下层本体 ▽,
     // 免得两层轮廓套叠成「双三角」(实心态本就不透)。
     if (item?.state) {
-      const triCy = anchorPx - TRIANGLE_STACK_PT
+      const lift = item.pkLift ?? 0        // 与本体 renderer 同步的同锚避让量
+      const triCy = anchorPx - TRIANGLE_STACK_PT - lift
       const tw = PK_TRIANGLE_HALF_WIDTH * 1.4
       const th = PK_TRIANGLE_HEIGHT * 1.4
-      const idCy = anchorPx - PEAK_ID_STACK_PT
+      const idCy = anchorPx - PEAK_ID_STACK_PT - lift
       const tri = pkTriStyle(item.state)
       const hlFill = tri.fill === 'none' ? '#ffffff' : tri.fill
       const hlWidth = hlKind === 'group' ? HL_GROUP_STROKE_WIDTH : HL_FOCUS_STROKE_WIDTH
@@ -1005,7 +1017,7 @@ export function makeRenderShiftVeil(
 // bo 事件走圆角矩形白蒙——与 makeRenderPricePoint 的形状分派一致。
 export function makeRenderShiftVeilPrice(
   items: Array<{ value: number[]; instance_id: string; kind: 'pricePoint';
-                 anchorY?: number; text?: string; state?: string }>,
+                 anchorY?: number; text?: string; state?: string; pkLift?: number }>,
 ) {
   return function renderShiftVeilPrice(params: any, api: any) {
     const item = items[params.dataIndex] ?? null
@@ -1015,7 +1027,7 @@ export function makeRenderShiftVeilPrice(
 
     // pk 事件:白蒙 ▽ 倒三角(顶点在下,两上角在上)+ 黑横线
     if (item.state) {
-      const triCy = anchorPx - TRIANGLE_STACK_PT
+      const triCy = anchorPx - TRIANGLE_STACK_PT - (item.pkLift ?? 0)
       const tw = PK_TRIANGLE_HALF_WIDTH
       const th = PK_TRIANGLE_HEIGHT
       const triPoints = [
@@ -1148,6 +1160,11 @@ const BO_BOX_PAD_Y = 3
 const TRIANGLE_STACK_PT = 13           // ▽ 中心 y = anchor - 13
 const PEAK_ID_STACK_PT = 28            // ID 中心 y = anchor - 28
 const BO_STACK_PT = 15                 // [ids] 中心 y = anchor - 15(dev styles.py:80 bo_label=15pt 缩放对应)
+// 同锚避让:一根 K 线既是 pk 又是 bo 时(▽ 中心 anchor-13、bo 盒中心 anchor-15,必然叠住),
+// pk 整组(▽ + id 标签 + bear 短横线)再上移这么多 px,整体抬到 bo 盒顶之上。
+// 取值按最坏情况定:两者同时高亮(▽ 放大 1.4× → 底顶点 8.4px、bo 盒四周多 3px → 盒顶 29px)
+// 且 kind=bear 时,短横线距 anchor 13-28+8.4+3 → 29.6px,仍在放大盒顶之上不相碰。
+const PK_LIFT_OVER_BO = 28
 
 // 文本框尺寸(浏览器无 measureText 时按字宽近似,bold 字体 char_w ≈ 0.62×fontSize)
 function boBoxDims(text: string): { w: number; h: number } {
@@ -1170,7 +1187,7 @@ function boBoxDims(text: string): { w: number; h: number } {
 function makeRenderPricePoint(
   data: Array<{ value: number[]; instance_id: string; anchorY: number; text: string;
                  tier: Tier; itemStyle: { color: string };
-                 state?: string; pkKind?: string; pkId?: number }>,
+                 state?: string; pkKind?: string; pkId?: number; pkLift?: number }>,
 ) {
   return function renderPricePoint(params: any, api: any) {
     const item = data[params.dataIndex] ?? null
@@ -1181,10 +1198,11 @@ function makeRenderPricePoint(
 
     // ── pk 事件:三态形状 ▽ + id 标签(▽ 上方)+ bear 短横线(▽ 下方) ──
     if (item?.state) {
-      const triCy = anchorPx - TRIANGLE_STACK_PT
+      const lift = item.pkLift ?? 0        // 同锚 bo 时整组上移,避让盒体
+      const triCy = anchorPx - TRIANGLE_STACK_PT - lift
       const tw = PK_TRIANGLE_HALF_WIDTH
       const th = PK_TRIANGLE_HEIGHT
-      const idCy = anchorPx - PEAK_ID_STACK_PT
+      const idCy = anchorPx - PEAK_ID_STACK_PT - lift
       const tri = pkTriStyle(item.state)
       const children: any[] = [
         {

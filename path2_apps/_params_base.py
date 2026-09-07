@@ -36,6 +36,18 @@ class ParamsBase:
         return {f.name: hints[f.name] for f in fields(cls)}
 
     @classmethod
+    def key_order(cls) -> dict:
+        """{section 名: [字段名...]}——参数键的声明序,与 `to_dict()` 的键序逐字一致。
+
+        存在的理由是显示侧:web 参数编辑区把 dict 转成 yaml 文本逐行 diff,两侧键序不同
+        会渲染成一串「移动」型假差异(值完全相同也全红全绿)。snapshot / Working Copy 的
+        键序天然是本顺序(都经 `to_dict()`),而手写 params.yaml 的键序是自由的,需要按本
+        顺序归一后再显示。参数的真实来源仍是 dataclass 声明,本方法只把它读出来。
+        """
+        return {name: [f.name for f in fields(sect_cls)]
+                for name, sect_cls in cls._sections().items()}
+
+    @classmethod
     def default(cls):
         """全默认实例(各 section 用其 dataclass field default)。"""
         return cls()

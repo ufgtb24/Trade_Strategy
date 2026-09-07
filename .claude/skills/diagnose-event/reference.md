@@ -16,8 +16,8 @@
 
 1. **必须切窗,切勿跑整个 pkl**。detector 的 `start_idx` == 切窗后行号;整个 pkl 索引跟 scan 对不上。实战教训:跑整个 DVLT.pkl 得出"tb_257_258 不存在"的错判,被用户纠正。切窗必须用 scan 的 `win_start/win_end`。
 2. **web 跑在 worktree**。scan 文件在 worktree 的 `outputs/path2_web/scans/`(非主 repo)。先 `find` 定位 `<scan_ts>.json` 在哪个 repo。
-3. **params 用 scan 的 `params_snapshot`**,不是本地文件——p2.yaml/params.yaml 可能被调过参,跟你记忆的不同(实战:记忆里 distinct_pk=4,实际 p2.yaml 已是 3;bb_v3 的 snapshot 与 params.yaml 数值也不同)。诊断前先 `print(scan['per_pattern'][pid]['params_snapshot'])` 对齐;全部参数取自已锚定的 scan 时,声明可与结论同出(用户可纠正)。
-4. **先核验 pattern_id**。scan 是多 pattern 的(per_pattern 字典),目标 pattern = 用户说的那个(scan 约定:bo_only 是参照系,真诊断目标是它的同组 pattern)。事件 node_id 与 pattern 的 node 对应(如 bb_v3 → 容器 `tb` / 子段 `tb_seg_v3`:子段由 children 声明命名表直标结构 node_id,未声明 app 的子段才继承容器 'tb')。
+3. **params 用 scan 的 `params_snapshot`**,不是本地文件——p2.yaml/params.yaml 可能被调过参,跟你记忆的不同(实战:记忆里 distinct_pk=4,实际 p2.yaml 已是 3;app 的 snapshot 与 params.yaml 数值也可能不同)。诊断前先 `print(scan['per_pattern'][pid]['params_snapshot'])` 对齐;全部参数取自已锚定的 scan 时,声明可与结论同出(用户可纠正)。
+4. **先核验 pattern_id**。scan 是多 pattern 的(per_pattern 字典),目标 pattern = 用户说的那个(scan 约定:bo_only 是参照系,真诊断目标是它的同组 pattern)。事件 node_id 与 pattern 的 node 对应(如 bottom_burst → 容器 `tb` / 子段 `tb_seg`:子段由 children 声明命名表直标结构 node_id,未声明 app 的子段才继承容器 'tb')。
 5. **`run_streams` ≠ `analyze`**。前者拿原始流(不过 where/match);后者拿 matches。诊断"为什么没 match"优先读 scan 的 `analysis.matches`(跟 UI 一致)。
 6. **探索态读 wc.json**:若 `outputs/path2_web/wc.json` 存在(Write Copy 镜像,前端修改 WC 时落盘)且 `pid` 匹配 + `enabled=true` → 用其 `wc`(currentDict)替代 scan snapshot(wc 是探索态真理);窗口用 wc.json 的 win_start/win_end。`enabled=false`(休眠态)忽略、回退 scan。wc.json schema: `{pid, scan_ts, win_start, win_end, wc(currentDict), enabled, written_at}`。
 
@@ -42,7 +42,7 @@
 }
 ```
 
-- **events**:所有 node 的 event 平铺,按 `node_id`(`bo`/`burst`/`tb`/`tb_seg`...)区分;声明 children 的 app 子段直标结构 node_id(bottom_burst→'tb_seg'、bb_v3→'tb_seg_v3'),未声明的子段才与容器共用。关键字段:`instance_id`、`start_idx`、`end_idx`、`anchor_bo_id(s)`(tb 系)、`outcome`(企稳退出原因)、`first_drought`/`distinct_pk`/`max_bar_vol_ratio`(burst)。**一个 bo 可产 0..N 个 tb 事件(企稳反复)**,每个 tb 是一段独立企稳区间,不与 bo 1:1。
+- **events**:所有 node 的 event 平铺,按 `node_id`(`bo`/`burst`/`tb`/`tb_seg`...)区分;声明 children 的 app 子段直标结构 node_id(bottom_burst→'tb_seg'),未声明的子段才与容器共用。关键字段:`instance_id`、`start_idx`、`end_idx`、`anchor_bo_id(s)`(tb 系)、`outcome`(企稳退出原因)、`first_drought`/`distinct_pk`/`max_bar_vol_ratio`(burst)。**一个 bo 可产 0..N 个 tb 事件(企稳反复)**,每个 tb 是一段独立企稳区间,不与 bo 1:1。
 - **matches**:命中,含 `node_index:{node: instance_id}` + `predicate_trace.where_results`(各 where clause 的 satisfied/measured/threshold)。
 - **burst 的 last_bo**:`burst.end_idx == last_bo.end_idx`(bo 是点事件 start==end)。`tb.anchor_bo_id` 恒为 instance_id 形态(`bo_<idx>#<instance_idx>`,点事件塌缩只消 end、`#idx` 恒在),提取 idx 时先按 '#' 剥后缀(见骨架 A),再用 `burst.end_idx == idx` 找能配的 burst。
 
@@ -51,7 +51,6 @@
 "为什么"的深水区(状态机判据顺序 / gate 名表 / anchor 口径 / 骨架 B 变体 / 典型失效模式)按 detector 分文件,由 **authoring-path2-detector** 在创建/修改 detector 时同步维护,诊断时按 scan 的 pattern 对号:
 
 - `detectors/throwback.md` — 方案 C(bottom_burst,`path2/atoms/throwback.py`):enumerate_stabilization_segments、anchor_break_terminate/no_stabilization、骨架 B 变体、where 判定示例
-- `detectors/throwback_v3.md` — V3 re-entry 多段(`path2/atoms/throwback_v3.py`,bb_v3):enumerate_segments_v3、gate 名表(phase1_* / phase2_*)、anchor_mode 三口径、max_start_gap/max_window 分工、单段化失效模式
 - `detectors/throwback_v1.md` — V1 首段即停状态机(`path2/atoms/throwback_v1.py`,bb_v1):run_first_segment、三 gate(break_no_stable / budget_no_stable / break_truncate)、rise/weak/timeout 不 emit、day_drop 走 where
 
 没有契约文件的 detector:先读它的模块 docstring + 源码(代码是 SSoT),顺手按模板建契约文件(或告知 authoring 补)。
@@ -74,7 +73,7 @@ run_streams(spec, df, params) -> {node_id: [events]}   # 原始流,不过 where/
 
 ## 诊断脚本骨架(改参数即用)
 
-> 环境参数(worktree/scan/pattern/params/窗口)由 skill 自带的 `path2_diag_env.py`(本 skill 目录,`${CLAUDE_SKILL_DIR}`)探测 + 声明(见 SKILL.md 步骤 1-2;bb_v3 等新 app 若探测脚本崩,绕过:直接读 scan 拿 4 参数)。下面骨架假设环境已确认。
+> 环境参数(worktree/scan/pattern/params/窗口)由 skill 自带的 `path2_diag_env.py`(本 skill 目录,`${CLAUDE_SKILL_DIR}`)探测 + 声明(见 SKILL.md 步骤 1-2;新 app 若探测脚本崩,绕过:直接读 scan 拿 4 参数)。下面骨架假设环境已确认。
 
 ### 骨架 A:某 tb 为什么没 match(读 scan)
 
@@ -82,7 +81,7 @@ run_streams(spec, df, params) -> {node_id: [events]}   # 原始流,不过 where/
 import json
 d = json.load(open(SCAN_PATH))
 r = [x for x in d['results'] if x['symbol'] == SYM][0]
-pid = 用户的目标 pattern id(如 'bottom_burst' / 'bb_v3')
+pid = 用户的目标 pattern id(如 'bottom_burst' / 'bb_v1')
 an = r['per_pattern'][pid]['analysis']
 events, matches = an['events'], an['matches']
 
@@ -106,7 +105,7 @@ for b in cand:
 
 通用步骤:切窗对齐 scan → 取该 pattern 的 params_snapshot → 按 **detector 契约文件**的变体调枚举函数。三段式:
 
-1. **跑枚举**:契约文件的骨架 B 变体(throwback.md / throwback_v3.md),输出 [(enter, exit, outcome), ...] 与 scan 的 events 对拍(逐字段一致 = 重算可信)
+1. **跑枚举**:契约文件的骨架 B 变体(throwback_v4.md / throwback_v1.md),输出 [(enter, exit, outcome), ...] 与 scan 的 events 对拍(逐字段一致 = 重算可信)
 2. **挂 on_gate collector**:gate 名表见契约文件——`phase1_*`/`anchor_break_terminate` = 整 bo 终止点,`phase2_weak` = 段级退出点(注意:有的退段不 emit gate,看 outcome)
 3. **逐根 dump**:契约变体里的 dump 循环,看 trough 为何不停 / 企稳为何不进入 / 退段后为何不再开段
 
@@ -120,7 +119,7 @@ for b in cand:
 - **tb 没 match(anchor 类)**:tb 的 `anchor_bo_id` 在 detect 时钉死=触发它的那根 bo(不可换);只有 `last_bo==anchor` 的 burst 能配,而每根 bo 唯一对应一个 burst 作 last_bo。该 burst 被 where 过滤 → tb 无主。别的 burst `last_bo` 不同,anchor 对不上,从来不是候选(DVLT tb_257_258 / tb_1056_1057)。
 - **burst 被 where 过滤**:`distinct_pk < min` 最常见(短前缀 pk 少);`first_drought`/`vol` 一般满足。`distinct_pk` 随前缀长度递增,所以**越靠后的 last_bo 的 burst 越容易达标**。
 - **孤立 bo 无 burst**:bo 前后 gap > gap_max 断链,或簇 < min_bos,bo 不进任何 burst;锚它的 tb 无主。看 scan 的 `dropped_matches`(`drop_reason='isolated_consumed'`)。
-- **单段化(多段 detector)**:rise 退段后段外继续暴涨 → rise-before-confirm 整 bo 终止,后续预算截断;本质是主升浪无回踩、无新 trough,自然无 re-entry(ZEPP 的 tb 单段化,详见 throwback_v3.md)。
+- **单段化(多段 detector)**:rise 退段后段外继续暴涨 → rise-before-confirm 整 bo 终止,后续预算截断;本质是主升浪无回踩、无新 trough,自然无 re-entry(ZEPP 的 tb 单段化,详见 throwback_v4.md)。
 
 ## 救召回的方向(若策略允许)
 

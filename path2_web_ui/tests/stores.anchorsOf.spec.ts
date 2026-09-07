@@ -2,17 +2,17 @@
  * Task 2 · anchorsOf 表 + findBoBar helper + DEBUG_ENABLED_NODES 单元测试
  *
  * 实例化契约(实例化重构后修正):
- * - 所有 tb 变体(node_id 恒为 'tb' 的容器/段/V1 + 子结构段键 tb_seg/tb_seg_v3)按
+ * - 所有 tb 变体(node_id 恒为 'tb' 的容器/段/V1 + 子结构段键 tb_seg)按
  *   锚点档位体系(2026-08-17)对齐:
  *   - tb_container(v4 容器,child_refs 非空)→ 3 项(entry/start/end);start/end 复用
  *     后端状态机埋点(端点由子段承担,前端菜单复用不产生后端双埋)
  *   - tb_seg(v4 子结构段,anchorsOf 直挂键)→ 2 项(start/end)
- *   - tb_seg_v3(v3 子结构段)→ 2 项(confirm/end);tb_segment(tb 键细分,历史段)同
+ *   - tb_segment(tb 键细分,历史段)→ 2 项(confirm/end)
  *   - tb_v1(V1 叶子)→ 3 项(entry/confirm/end),entry bar = findBoBar
  * - _default → [](防 "菜单显示但后端未埋 debug_break" 无声失败 · v2 D7)
  * - DEBUG_ENABLED_NODES 与 anchorsOf 硬耦合,单一 source of truth(v2 D8);
- *   实例化后值 = ['tb_seg','tb_seg_v3','tb'](子结构段键 + 容器/V1 键,方案 A)
- * - anchor_kind 词汇 = entry/start/end/confirm(v4 start 取代 confirm;V1/V3 仍 confirm)
+ *   实例化后值 = ['tb_seg','tb'](子结构段键 + 容器/V1 键,方案 A)
+ * - anchor_kind 词汇 = entry/start/end/confirm(v4 start 取代 confirm;V1/历史段仍 confirm)
  *
  * 【交错标注重构 · anchor_bo_id 真实语义】后端交错标注后 anchor_bo_id 在 detect 期即写入
  *  instance_id 形态('bo_30#0' / 'bo_30_33#0'),恒为 instance_id;findBoBar 单路径精确匹配。
@@ -196,7 +196,7 @@ describe('findBoBar', () => {
 describe('DEBUG_ENABLED_NODES', () => {
   it('实例化后白名单 = 埋点 node_id 集:含 tb(node_id 恒一),不再含旧 class_id 键', () => {
     expect(DEBUG_ENABLED_NODES).toContain('tb')
-    expect(DEBUG_ENABLED_NODES).toEqual(['tb_seg', 'tb_seg_v3', 'tb'])
+    expect(DEBUG_ENABLED_NODES).toEqual(['tb_seg', 'tb'])
   })
 
   it('不含 _default(v2 D8 硬耦合过滤)', () => {

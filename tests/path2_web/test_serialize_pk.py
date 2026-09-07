@@ -1,7 +1,7 @@
 """serialize:topology node 带 solve 标志;PeakEvent 事件带 kind。"""
 from path2.atoms.breakout import PeakEvent
-from path2_apps.bb_pk.dag_spec import build_pattern
-from path2_apps.bb_pk.params import Params
+from path2_apps.bb_v1.dag_spec import build_pattern
+from path2_apps.bb_v1.params import Params
 from path2_web.serialize import serialize_pattern
 
 

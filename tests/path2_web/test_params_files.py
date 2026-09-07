@@ -53,6 +53,53 @@ def test_file_reads_raw_dict(files_client):
     assert r.json()["params"] == {"bo": {"total_window": 40}}
 
 
+def test_file_keys_reordered_to_schema(files_client, tmp_path):
+    """手写 yaml 的键序归一到 dataclass 声明序。
+
+    编辑区拿 snapshot / Working Copy(键序恒来自 to_dict())与本端点的内容做逐行
+    diff,键序不同会渲染成一串「移动」型假差异(值相同也全红全绿)。值与键集合必须
+    原样不动——归一只重排,不校验、不补默认。"""
+    (tmp_path / "app" / "shuffled.yaml").write_text(
+        "bo:\n  breakout_measure: close\n  bear_drop: 0.05\n  total_window: 10\n")
+    r = files_client.get("/params/file",
+                         params={"pattern_id": "bo_only", "name": "shuffled.yaml"})
+    assert r.status_code == 200
+    got = r.json()["params"]
+    assert list(got["bo"]) == ["total_window", "bear_drop", "breakout_measure"]
+    assert got == {"bo": {"total_window": 10, "bear_drop": 0.05,
+                          "breakout_measure": "close"}}
+
+
+def test_order_like_schema_two_levels_and_unknown_keys():
+    """顶层 section 与 section 内字段两层都归一;声明里没有的键不丢,按原相对顺序
+    追加在各自末尾(端点允许装载任意 yaml,归一不得越权当校验用)。"""
+    from path2_apps.bottom_burst.params import Params
+    from path2_web.api import _order_like_schema
+    raw = {"tb": {"vol_window": 14, "max_rise_k": 1.5}, "zzz": 1,
+           "bo": {"ghost": 0, "min_side_bars": 6, "total_window": 20}}
+    out = _order_like_schema(raw, Params)
+    assert list(out) == ["bo", "tb", "zzz"]
+    assert list(out["bo"]) == ["total_window", "min_side_bars", "ghost"]
+    assert list(out["tb"]) == ["max_rise_k", "vol_window"]
+    assert out == raw
+
+
+def test_order_like_schema_without_params_passthrough():
+    """Params 缺失(app 未定义)→ 原样返回,不为归一而 crash。"""
+    from path2_web.api import _order_like_schema
+    d = {"b": 1, "a": 2}
+    assert _order_like_schema(d, None) == d
+
+
+def test_key_order_matches_to_dict():
+    """归一的落点必须逐字等于 snapshot 的键序,否则两侧仍对不齐——这是
+    key_order 存在的全部意义。"""
+    from path2_apps.bottom_burst.params import Params
+    order, snap = Params.key_order(), Params.default().to_dict()
+    assert list(order) == list(snap)
+    assert all(order[sec] == list(snap[sec]) for sec in snap)
+
+
 def test_file_missing_404(files_client):
     r = files_client.get("/params/file",
                          params={"pattern_id": "bo_only", "name": "ghost.yaml"})

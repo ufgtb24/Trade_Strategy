@@ -31,12 +31,11 @@ export function findBoBar(anchorBoIds: string | readonly string[], events: reado
 
 // ── tb node_id 塌缩细分:容器 / 子段 / V1 三档 ──────────────────────────
 // 引擎 children 声明命名表(方案 A,2026-08-17)已把声明过的段直标子结构 node_id
-// (bottom_burst→'tb_seg',anchorsOf 直挂键 start/end;bb_v3→'tb_seg_v3' 走 V3 锚
-// confirm/end,不走此细分)。
+// (bottom_burst→'tb_seg',anchorsOf 直挂键 start/end,不走此细分)。
 // 此细分仅服务 node_id 仍为 'tb' 的事件——未声明 children 的 app 的段 + 全部容器/V1:
 //   1. 容器:child_refs 非空(尤其 segments 槽)→ v4 容器,entry/start/end 三锚
 //      (start/end 复用后端状态机埋点,端点由子段承担;前端菜单复用不产生后端双埋)
-//   2. 子段:child_refs 空,但 instance_id 出现在某容器 child_refs 里 → v2/v3 段 confirm/end 锚
+//   2. 子段:child_refs 空,但 instance_id 出现在某容器 child_refs 里 → 历史段 confirm/end 锚
 //   3. V1 叶子:child_refs 空 + 未被任何容器引用 → entry/confirm/end 锚
 export type TbAnchorProfile = 'tb_v1' | 'tb_container' | 'tb_segment'
 
@@ -79,8 +78,8 @@ function tbContainerAnchors(e: any, events: readonly any[]): DebugAnchor[] {
   ]
 }
 
-// v2/v3 段锚点(confirm/end):后端 v2/v3 仍埋 confirm/end,词汇未演进,保留
-function tbSegmentAnchorsV3(e: any): DebugAnchor[] {
+// 历史段锚点(confirm/end):未声明 children 的 app 的段仍埋 confirm/end,词汇未演进,保留
+function tbSegmentAnchorsHistoric(e: any): DebugAnchor[] {
   return [
     {
       key: 'confirm',
@@ -147,12 +146,11 @@ export const anchorsOf: Record<string, (e: any, events: readonly any[]) => Debug
   // 子结构段(children 声明命名表直标 node_id,方案 A):v4 段 start/end 两锚,
   // 断点实际落在物化者(tb 的 ThrowbackDetectorV4)状态机埋点,menu 键按段自身 node_id。
   tb_seg: e => tbSegmentAnchorsV4(e),
-  tb_seg_v3: e => tbSegmentAnchorsV3(e),
   // tb node:容器/段/V1 三档按前端可判信号细分(见 tbAnchorProfile;
   // 未声明 children 的 app 段仍落此键)
   tb: (e, events) => {
     const p = tbAnchorProfile(e, events)
-    if (p === 'tb_segment') return tbSegmentAnchorsV3(e)
+    if (p === 'tb_segment') return tbSegmentAnchorsHistoric(e)
     if (p === 'tb_v1') return tbV1Anchors(e, events)
     return tbContainerAnchors(e, events)
   },

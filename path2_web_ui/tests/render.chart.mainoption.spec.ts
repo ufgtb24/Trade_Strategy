@@ -337,6 +337,47 @@ describe('solve=False node 免疫 level 门控 + pk marker 三态色/peak_idx', 
     }
   })
 
+  // ── 同锚避让:一根 K 线既是 pk 又是 bo 时,▽ 组整体抬到 bo 盒之上 ──
+  describe('pk 与 bo 共锚同一根 K 线 → pk 组上移避让', () => {
+    const boSameBar: EventDict = { instance_id: 'bo_same#0', node_id: 'bo',
+      start_idx: 2, end_idx: 2, ref_ids: { broken: [] } } as any
+    const pkSameBar: EventDict = { instance_id: 'pk_same#0', node_id: 'pk',
+      start_idx: 2, end_idx: 2, peak_idx: 2, kind: 'convex', pk_id: 9 } as any
+    const pkOtherBar: EventDict = { instance_id: 'pk_other#0', node_id: 'pk',
+      start_idx: 1, end_idx: 1, peak_idx: 1, kind: 'convex', pk_id: 10 } as any
+
+    // fakeApi 的 coord 恒返回同一像素点 → pk/bo 的 anchorPx 一致,y 可直接比大小
+    const fakeApi: any = { value: () => 0, coord: () => [100, 200] }
+    const renderAll = (evs: EventDict[]) => {
+      const bundle = computeEventData(pkBars, evs, [], pkInput('detected'))
+      const opt: any = buildMainOption(pkBars, bundle, pkInput('detected'))
+      const pp = opt.series.find((s: any) => s.name === 'price-points')
+      const shapeOf = (id: string) => {
+        const i = pp.data.findIndex((d: any) => d.instance_id === id)
+        expect(i).toBeGreaterThanOrEqual(0)
+        return pp.renderItem({ dataIndex: i }, fakeApi) as any
+      }
+      return { bundle, shapeOf }
+    }
+
+    it('共锚 pk 带 pkLift,bo 与不共锚的 pk 都为 0', () => {
+      const { bundle } = renderAll([pkSameBar, pkOtherBar, boSameBar])
+      const liftOf = (id: string) =>
+        (bundle.pricePointData.find((d: any) => d.instance_id === id) as any).pkLift
+      expect(liftOf('pk_same#0')).toBe(28)
+      expect(liftOf('pk_other#0')).toBe(0)
+      expect(liftOf('bo_same#0')).toBe(0)
+    })
+
+    it('共锚时 ▽ 底顶点严格高于 bo 盒顶;不共锚的 pk 保持原位(会与盒相交)', () => {
+      const { shapeOf } = renderAll([pkSameBar, pkOtherBar, boSameBar])
+      const boTop = shapeOf('bo_same#0').children[0].shape.y          // bo 盒顶 y
+      const triBottom = (id: string) => shapeOf(id).children[0].shape.points[2][1]
+      expect(triBottom('pk_same#0')).toBeLessThan(boTop)              // 让开了
+      expect(triBottom('pk_other#0')).toBeGreaterThan(boTop)          // 未避让时确会压住(断言有牙齿)
+    })
+  })
+
   it('buildMainOption 不再有 satellites 系列(卫星 pk 通道删除)', () => {
     const bundle = computeEventData(pkBars, pkEvents, [], pkInput('matched'))
     const opt: any = buildMainOption(pkBars, bundle, pkInput('matched'))

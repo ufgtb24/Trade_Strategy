@@ -331,7 +331,7 @@ gf 的 detector 共享同一流仍合法（雷永不动，零误杀）。
 
 > 定位:diagnose-event 的"语义深水区"——状态机判据顺序 / gate 名表 / anchor 口径 /
 > 骨架 B 变体 / 典型失效模式——由本 skill 在**创建/修改 detector 时**同步维护,诊断时
-> 无需逆向工程。文件:`diagnose-event/detectors/<模块名>.md`(如 `throwback_v3.md`),
+> 无需逆向工程。文件:`diagnose-event/detectors/<模块名>.md`(如 `throwback_v4.md`),
 > 正文按 node_id 组织(如"tb node 的 gate")。
 > 代码是 SSoT:契约与代码冲突时以代码为准,发现契约 stale 顺手更新。
 
@@ -339,13 +339,13 @@ gf 的 detector 共享同一流仍合法（雷永不动，零误杀）。
 gate 以实际代码为准,不是 spec 草案)。轻量修改(不动签名/gate/判据)→ 核对既有
 契约文件是否仍准确,不准确才更新。
 
-**契约文件内容清单**(模板见 `diagnose-event/detectors/throwback_v3.md`,首个完整样例):
+**契约文件内容清单**(模板见 `diagnose-event/detectors/throwback_v4.md`,完整样例):
 1. **事件结构**:node_id 归属 / 容器与子段 / child_slots / span 与 confirm 语义 / outcome 值域
 2. **API 签名**:枚举函数 + detector 构造(逐字段,含默认值与语义注释)
 3. **参数语义**:每个参数的口径与分工(如 max_start_gap=全局预算 vs max_window=单段上限)
 4. **状态机判据顺序**:逐判据列出检查顺序(排查"为什么"的骨架)
 5. **gate 名表**:每个 attempt 短路点的 gate_name + 触发条件 + 终止性质(整 bo / 段级);
-   **不 emit gate 的退段也要标注**(如 tb v3 段内 rise/timeout 只有 debug_break 无 gate)
+   **不 emit gate 的退段也要标注**(如 tb v4 段内 rise/timeout 只有 debug_break 无 gate)
 6. **典型失效模式**:实战沉淀的"为什么没生成/只有一段"类机制
 7. **骨架 B 变体**:局部重算模板(枚举调用 + on_gate collector + 逐根 dump)
 

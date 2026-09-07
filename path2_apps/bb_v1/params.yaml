@@ -23,3 +23,8 @@ tb:
   max_span: 20            # 全局预算 [bo+1, bo+max_span];edge max_gap 同值(SSoT)。占位值,验证闸后拍板
   measure: close          # 全部数值比较口径;阴线臂恒 close/open
   max_day_drop_pct: 0.2   # 资格型 where 阈值(2026-08-18 定案):回踩段单日跌幅≥此值→tb where 拦;null=不加该 where
+
+# edges 段:当前所有 edge 字段或硬编码(min_gap=1/anchor_field/Child(...))或从 node
+# section 引用(max_gap = tb.max_span),故本段当前为空。保留 section 占位以便未来
+# 扩展 edge-only 参数(如某新边的 max_lag)。
+edges: {}
