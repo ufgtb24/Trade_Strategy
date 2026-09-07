@@ -29,7 +29,7 @@ describe('buildMarkerTooltipFormatter multi-confirm', () => {
 describe('buildMarkerTooltipFormatter 实例级传递 (Task 9)', () => {
   const payloadOf = (instanceId: string) => ({
     identity: { nodes: [], dateStart: 'd', dateEnd: null, eventId: instanceId },
-    clauses: [], raw: {},
+    clauses: [], raw: {}, refs: [],
   })
 
   it('data.instance_id 原样传给 tooltipResolver(无 event_key 解析)', () => {

@@ -38,6 +38,19 @@ export interface TooltipClauseRow {
   guide?: string
 }
 
+/** tooltip 引用关系行:ref_slots 协议的通用投影,**不认识任何具体槽名**。
+ *  slot 原样取自 ref_ids 的键(superseded / broken / ...),渲染层只按 dir 分「引用 / 被引」
+ *  两组,不为任何事件类型写分支(契约 C7 类型无关红线)。
+ *  dir='out':本事件的 ref_ids 引用了对方;dir='in':对方的 ref_ids 引用了本事件。 */
+export interface TooltipRefRow {
+  slot: string
+  dir: 'out' | 'in'
+  instanceId: string             // 对方实例(恒有;下面三项在对方不在本次 events 里时为空)
+  nodeId: string | null          // 对方所属 node(通用身份轴)
+  label: string | null           // 对方的图上短标识,由 refLabel 注入(如 pk 编号);无则 null
+  date: string | null            // 对方锚定日期(bars[start_idx].date;越界回落索引字符串)
+}
+
 export interface TooltipPayload {
   identity: {
     nodes: string[]
@@ -47,6 +60,7 @@ export interface TooltipPayload {
   }
   clauses: TooltipClauseRow[]
   raw: Record<string, unknown>
+  refs: TooltipRefRow[]
 }
 
 export interface BandRenderInput {
@@ -1552,7 +1566,7 @@ export function buildMarkerTooltipFormatter(
 
     // ── event 三段 ──────────────────────────────────────────────────────
     if (instanceId && tooltipResolver) {
-      const { identity, clauses, raw } = tooltipResolver(instanceId)
+      const { identity, clauses, raw, refs } = tooltipResolver(instanceId)
 
       // 段 1 Identity
       const idBody: string[] = []
@@ -1606,6 +1620,25 @@ export function buildMarkerTooltipFormatter(
       if (rawEntries.length > 0) {
         lines.push('<hr/><b>Attributes</b>')
         for (const [k, v] of rawEntries) lines.push(`${k}: ${fmtNum(v)}`)
+      }
+
+      // 段 4 Refs（ref_slots 协议的通用投影：本事件引用了谁 / 谁引用了本事件）
+      //
+      // 类型无关：槽名原样印出(superseded / broken / ...)，渲染层不解释其含义，
+      // 只按 dir 分「引用 / 被引」两组。任何走 ref_slots 协议的事件白拿本段。
+      // 对方标识优先用「node + 图上短标识」(如 `pk 3`，短标识由 refLabel 注入)；
+      // 对方不在本次 events 里(被窗口截断等)时回落原始 instance_id，信息不丢。
+      const refRows = refs ?? []
+      if (refRows.length > 0) {
+        lines.push('<hr/><b>Refs</b>')
+        for (const dir of ['out', 'in'] as const) {
+          const dirWord = dir === 'out' ? '引用' : '被引'
+          for (const r of refRows.filter((x) => x.dir === dir)) {
+            const who = r.nodeId == null ? r.instanceId
+                                         : r.nodeId + (r.label == null ? '' : ` ${r.label}`)
+            lines.push(`${dirWord} ${r.slot}: ${who}` + (r.date == null ? '' : ` · ${r.date}`))
+          }
+        }
       }
     }
 

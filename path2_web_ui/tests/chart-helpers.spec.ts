@@ -233,7 +233,7 @@ describe('buildMarkerTooltipFormatter', () => {
   const emptyPayload: TooltipPayload = {
     identity: { nodes: ['bo_burst'], dateStart: '2024-03-15', dateEnd: null, eventId: 'b1' },
     clauses: [],
-    raw: {},
+    raw: {}, refs: [],
   }
 
   it('非 match 端点 + 非空 payload 渲染身份段 + 段头 Identity', () => {
@@ -251,7 +251,7 @@ describe('buildMarkerTooltipFormatter', () => {
       identity: { nodes: ['bo_burst'], dateStart: '2024-03-15', dateEnd: null, eventId: 'b1' },
       clauses: [{ cid: 'first_drought', node: 'bo_burst', measured: 0, op: '>=', threshold: 20, satisfied: false,
                   depth: 0, kind: null }],
-      raw: { count: 2 },
+      raw: { count: 2 }, refs: [],
     })
     const matchLabel = (id: string) => `MATCH:${id}`
     const fmt = buildMarkerTooltipFormatter(resolver, matchLabel)
@@ -271,7 +271,7 @@ describe('buildMarkerTooltipFormatter', () => {
         { cid: 'count', node: 'bo_burst', measured: 3, op: '>=', threshold: 2, satisfied: true,
           depth: 0, kind: null },
       ],
-      raw: {},
+      raw: {}, refs: [],
     })
     const fmt = buildMarkerTooltipFormatter(resolver, undefined)
     const html = fmt({ data: { instance_id: 'b1#0' } })
@@ -290,7 +290,7 @@ describe('buildMarkerTooltipFormatter', () => {
           measured: 2.6378544926831706, op: '>=', threshold: 8, satisfied: false,
           depth: 0, kind: null },
       ],
-      raw: { max_bar_vol_ratio: 2.6378544926831706 },
+      raw: { max_bar_vol_ratio: 2.6378544926831706 }, refs: [],
     })
     const fmt = buildMarkerTooltipFormatter(resolver, undefined)
     const html = fmt({ data: { instance_id: 'b1#0' } })
@@ -310,7 +310,7 @@ describe('buildMarkerTooltipFormatter', () => {
         { cid: 'count', node: 'bo_burst', measured: 3, op: '>=', threshold: 2, satisfied: true,
           depth: 0, kind: null },
       ],
-      raw: {},
+      raw: {}, refs: [],
     })
     const fmt = buildMarkerTooltipFormatter(resolver, undefined)
     const L = clauseLines(fmt({ data: { instance_id: 'b1#0' } }))
@@ -323,7 +323,7 @@ describe('buildMarkerTooltipFormatter', () => {
     const resolver = (_eid: string): TooltipPayload => ({
       identity: { nodes: [], dateStart: '2024-03-15', dateEnd: null, eventId: 'b1' },
       clauses: [],
-      raw: {},
+      raw: {}, refs: [],
     })
     const fmt = buildMarkerTooltipFormatter(resolver, undefined)
     const html = fmt({ data: { instance_id: 'b1#0' } })
@@ -335,11 +335,11 @@ describe('buildMarkerTooltipFormatter', () => {
   it('point 事件 time 单日期；区间事件 time 带箭头', () => {
     const resolverPoint = (_eid: string): TooltipPayload => ({
       identity: { nodes: [], dateStart: '2024-03-15', dateEnd: null, eventId: 'b1' },
-      clauses: [], raw: {},
+      clauses: [], raw: {}, refs: [],
     })
     const resolverRange = (_eid: string): TooltipPayload => ({
       identity: { nodes: [], dateStart: '2024-03-15', dateEnd: '2024-03-30', eventId: 'b1' },
-      clauses: [], raw: {},
+      clauses: [], raw: {}, refs: [],
     })
     expect(buildMarkerTooltipFormatter(resolverPoint, undefined)({ data: { instance_id: 'b1#0' } }))
       .toContain('time: 2024-03-15')
@@ -401,7 +401,7 @@ describe('buildMarkerTooltipFormatter — 组合子递归渲染', () => {
       { cid: 'first_drought', node: 'burst', measured: 45, op: '>=', threshold: 999, satisfied: false,
         depth: 3, kind: null, guide: '    └ ' },
     ],
-    raw: {},
+    raw: {}, refs: [],
   }
   const render = () =>
     buildMarkerTooltipFormatter(() => NESTED, undefined)({ data: { instance_id: 'burst_249_252#0' } })
@@ -459,9 +459,54 @@ describe('buildMarkerTooltipFormatter — 组合子递归渲染', () => {
         { cid: 'no_late_gap', node: 'burst', measured: null, op: null, threshold: null, satisfied: true,
           depth: 0, kind: 'not', guide: '' },
       ],
-      raw: {},
+      raw: {}, refs: [],
     }
     const out = buildMarkerTooltipFormatter(() => payload, undefined)({ data: { instance_id: 'e1#0' } })
     expect(clauseLines(out)[0]).toMatch(/^no_late_gap \(not\)\s+✓$/)
+  })
+})
+
+// ─── Refs 段(ref_slots 通用投影的渲染) ──────────────────────────────────────
+describe('buildMarkerTooltipFormatter · Refs 段', () => {
+  const payloadWith = (refs: TooltipPayload['refs']): TooltipPayload => ({
+    identity: { nodes: ['pk'], dateStart: '2024-03-15', dateEnd: null, eventId: 'pk:5#0' },
+    clauses: [], raw: {}, refs,
+  })
+  const render = (refs: TooltipPayload['refs']) =>
+    buildMarkerTooltipFormatter(() => payloadWith(refs), undefined)({ data: { instance_id: 'pk:5#0' } })
+
+  it('正向行印「引用 <槽名>: <node> <短标识> · <日期>」', () => {
+    const html = render([
+      { slot: 'superseded', dir: 'out', instanceId: 'pk:3#0', nodeId: 'pk', label: '3', date: '2024-03-10' },
+    ])
+    expect(html).toContain('<b>Refs</b>')
+    expect(html).toContain('引用 superseded: pk 3 · 2024-03-10')
+  })
+
+  it('反向行印「被引 ...」,与正向靠方向词区分', () => {
+    const html = render([
+      { slot: 'broken', dir: 'in', instanceId: 'bo:9#0', nodeId: 'bo', label: null, date: '2024-03-20' },
+    ])
+    expect(html).toContain('被引 broken: bo · 2024-03-20')
+  })
+
+  it('正向组恒排在反向组前(与入参顺序无关)', () => {
+    const html = render([
+      { slot: 'broken', dir: 'in', instanceId: 'bo:9#0', nodeId: 'bo', label: null, date: '2024-03-20' },
+      { slot: 'superseded', dir: 'out', instanceId: 'pk:3#0', nodeId: 'pk', label: '3', date: '2024-03-10' },
+    ])
+    expect(html.indexOf('引用 superseded')).toBeLessThan(html.indexOf('被引 broken'))
+  })
+
+  it('对方不在 events 里(nodeId/date 为 null)时回落原始 instance_id、不印日期', () => {
+    const html = render([
+      { slot: 'superseded', dir: 'out', instanceId: 'pk:9#0', nodeId: null, label: null, date: null },
+    ])
+    expect(html).toContain('引用 superseded: pk:9#0')
+    expect(html).not.toContain('·')
+  })
+
+  it('无引用关系时整段不出现(不留空段头)', () => {
+    expect(render([])).not.toContain('Refs')
   })
 })

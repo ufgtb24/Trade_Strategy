@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { matchedIds, resolveTooltipData } from '../src/render/visible'
+import { matchedIds, resolveTooltipData, buildRefRows } from '../src/render/visible'
 import {
   bandKeyOf, deriveTagMap, isolatedNodeIds, isQualifiedRow,
   qualifiedIdsOf, eventTierOf, nodeOfEventByBand, isBandVisible,
@@ -332,9 +332,9 @@ describe('resolveTooltipData', () => {
     },
   }
 
-  it('返回结构含 identity / clauses / raw 三键', () => {
+  it('返回结构含 identity / clauses / raw / refs 四键', () => {
     const r = resolveTooltipData('d1#0', diag, events, bars)
-    expect(Object.keys(r).sort()).toEqual(['clauses', 'identity', 'raw'])
+    expect(Object.keys(r).sort()).toEqual(['clauses', 'identity', 'raw', 'refs'])
   })
 
   it('identity.nodes 单 node 时返回单元素数组', () => {
@@ -531,5 +531,79 @@ describe('resolveTooltipData 组合子扁平化', () => {
     const { raw } = resolveTooltipData('ev1#0', diag, events, [])
     expect(raw).not.toHaveProperty('distinct_pk')
     expect(raw).toHaveProperty('other_field')
+  })
+})
+
+
+// ─── 引用关系双向展开(ref_slots 通用投影) ────────────────────────────────────
+// 语义取自 pk 的吞并/突破关系,但被测函数本身不认识任何槽名——用一个自造槽名
+// (foo)钉住这一点:任何走 ref_slots 协议的事件都白拿本段。
+describe('buildRefRows', () => {
+  const bars: Bar[] = ['2024-03-01', '2024-03-02', '2024-03-03', '2024-03-04'].map((date) => (
+    { date, o: 10, h: 11, l: 9, c: 10, v: 1000, rv: 1 } as Bar
+  ))
+  // pk1 被 pk2 取代(superseded)且被 bo1 突破(broken);pk2 另外取代了一个不在 events 里的 pk9
+  const events = [
+    { instance_id: 'pk:0#0', node_id: 'pk', instance_idx: 0, start_idx: 0, end_idx: 0, pk_id: 1 },
+    { instance_id: 'pk:1#0', node_id: 'pk', instance_idx: 0, start_idx: 1, end_idx: 1, pk_id: 2,
+      ref_ids: { superseded: ['pk:0#0', 'pk:9#0'] } },
+    { instance_id: 'bo:2#0', node_id: 'bo', instance_idx: 0, start_idx: 2, end_idx: 2,
+      ref_ids: { broken: ['pk:0#0'] } },
+  ] as unknown as EventDict[]
+  const pkLabel = (id: string) => {
+    const e = events.find((x) => x.instance_id === id)
+    return typeof e?.pk_id === 'number' ? String(e.pk_id) : null
+  }
+
+  it('正向:吞掉者列出被它取代的实例(dir=out,槽名原样)', () => {
+    const rows = buildRefRows('pk:1#0', events, bars, pkLabel)
+    const out = rows.filter((r) => r.dir === 'out')
+    expect(out.map((r) => [r.slot, r.instanceId])).toEqual([
+      ['superseded', 'pk:0#0'], ['superseded', 'pk:9#0'],
+    ])
+  })
+
+  it('反向:被吞者列出吞掉它的实例(dir=in)', () => {
+    const rows = buildRefRows('pk:0#0', events, bars, pkLabel)
+    const inRow = rows.find((r) => r.dir === 'in' && r.slot === 'superseded')
+    expect(inRow?.instanceId).toBe('pk:1#0')
+    expect(inRow?.nodeId).toBe('pk')
+    expect(inRow?.label).toBe('2')            // 图上短标识 = pk 编号(注入)
+    expect(inRow?.date).toBe('2024-03-02')    // 对方 start_idx=1
+  })
+
+  it('同一实例被多个槽引用时各槽都出行(三态优先级只管 ▽ 形状,不压缩本段)', () => {
+    const rows = buildRefRows('pk:0#0', events, bars, pkLabel)
+    expect(rows.filter((r) => r.dir === 'in').map((r) => r.slot).sort())
+      .toEqual(['broken', 'superseded'])
+  })
+
+  it('对方不在 events 里时只留 instanceId,其余为 null(不编造日期)', () => {
+    const row = buildRefRows('pk:1#0', events, bars, pkLabel)
+      .find((r) => r.instanceId === 'pk:9#0')
+    expect(row).toMatchObject({ nodeId: null, label: null, date: null })
+  })
+
+  it('不传 refLabel 时 label 恒为 null(短标识是注入项,非本函数职责)', () => {
+    const rows = buildRefRows('pk:0#0', events, bars)
+    expect(rows.every((r) => r.label === null)).toBe(true)
+  })
+
+  it('类型无关:自造槽名同样双向展开', () => {
+    const custom = [
+      { instance_id: 'a#0', node_id: 'x', instance_idx: 0, start_idx: 0, end_idx: 0 },
+      { instance_id: 'b#0', node_id: 'y', instance_idx: 0, start_idx: 1, end_idx: 1,
+        ref_ids: { foo: ['a#0'] } },
+    ] as unknown as EventDict[]
+    expect(buildRefRows('a#0', custom, bars)).toEqual([
+      { slot: 'foo', dir: 'in', instanceId: 'b#0', nodeId: 'y', label: null, date: '2024-03-02' },
+    ])
+    expect(buildRefRows('b#0', custom, bars)[0]).toMatchObject({ slot: 'foo', dir: 'out', instanceId: 'a#0' })
+  })
+
+  it('没有被任何事件引用的实例:反向为空、正向照出', () => {
+    const rows = buildRefRows('bo:2#0', events, bars, pkLabel)   // bo 突破了 pk1,但没人引用 bo
+    expect(rows.filter((r) => r.dir === 'in')).toEqual([])
+    expect(rows.map((r) => r.dir)).toEqual(['out'])
   })
 })
