@@ -703,3 +703,12 @@ Expected: 无未提交改动。plan 起点时工作区只有 `path2/dag/engine.p
 
 - **`tb_seg` 升格成独立流**：本轮确认了技术可行（`ThrowbackDetectorV4` 改 `produces` 多流，`bo`/`burst` 是现成先例，"首现获胜"保证标注不打架），但没有需求驱动。触发信号是「想写一条边把某个段跟别的 node 关联起来」，届时先试 `Child("tb", ...)` 投影这条更轻的路（见 design-heuristics §B.6）。
 - **`ThrowbackEventV4` 没有 `child()` 投影**：现在 `Child("tb", key)` 会撞 `Event.child` 默认的 `raise KeyError`。等真有边要写时再加。
+
+### 实施期新增的留账（2026-09-07 执行本 plan 时发现，均不在本轮范围）
+
+- **预置流 + 部分声明 + `RUNTIME_CHECKS` 关闭 = 一格无防线**（终审探针实测）。三道防线各守一条路径：构造期 `_validate_children_declared` 只判「一个槽都没声明」，不查槽名完整性；标注期硬失败 ungated 但预置流不经过它；出口 C1/C2/C3 受 `RUNTIME_CHECKS` 门控。三者交集处漏出这一格。现实中未暴露——唯一的生产 preset 使用者 tune-gates 四个入口都显式 `config.set_runtime_checks(True)`。要堵得把「部分声明」检查提到 ungated，是设计决策，本轮不做。
+- **出口 C2 不递归**：`_check_children_declarations` 只看流内顶层事件，所以「嵌套容器的部分声明」在预置流路径上即使 checks 开着也不查，只有构造期能兜住它的「零声明」形态。
+- **`bo` 与 `tb` 现在同为绿系且不会被自动拉开**：`pk` 插入调色板后 `tb` 拿到 `#14b24e`，与 `bo` 的 `#16f943` 都是绿；而 `deriveNodeColors` 只对**完全同值**的 hex 做明度散开，两个近似但不相等的绿不会被介入。非本轮引入（是 pk 加入时的连带位移），且不改前端是本轮的范围外约定。
+- **`docs/research/**/repro/` 下十余处直接调 `annotate_stream` 的脚本现在必须自备正确的 `children_of`**：容器流传空表会硬失败。`stream_replay_equiv.py` 那份是对的（传了 `children_of`），可作样板；`generic_grid_cost.py` 那份已因别的原因（`spec.nodes[2]` 在 pk 加入后已是 burst 而非 tb）先行过期，属冻结的研究产物，不必修。
+- **`_translate_refs` 递归的回归护栏缺口**：现有测试只覆盖「容器→子事件带引用槽」一层；**孙层**（子事件自己再有 `child_slots`）与**共享子事件被两个容器持有**这两种形状没有测试钉住，而它们正是 `seen` 去重真正起作用的场景。终审已用探针实测两种形状行为均正确（孙层拿到 `gc_3#0` 与正确的 `ref_ids`；共享子事件 `mid is mid2` 且只翻译一次），所以这是护栏缺口而非潜伏 bug。若要补，一个 `share=False/True` 的参数化测试可同时覆盖两种形状。
+- **几处已知但判为可留账的小账**：`test_annotate_stream_declaration_partial_slot_coverage` 的测试名已与它测的东西脱节（硬失败后「部分覆盖」这条合法路径不存在了）；`test_children_checks.py` 里手工拼的 `instance_id` 字面量 `"box_0_1#0"` 复制了引擎的身份格式知识（当前不假绿，`_check_preset` 将来加格式校验时会成为沉默过期点）；`engine.py` 的 `seen: set = set()` 可标注为 `set[int]`（键是 `id(e)`）；`refs = (refs,) if isinstance(refs, Event) else refs` 行尾注释「与 annotate_stream 一致」措辞不准（那里判 `Event`，`annotate_stream` 归一化 child 槽判 `tuple`）。
