@@ -218,12 +218,13 @@ def summarize(res) -> dict:
 # ── pattern 静态层(拓扑面板数据源,§7.1) ──
 # event_styles 兜底调色板:PATTERN_DAG.event_styles 默认空,按 topology.nodes 里 node_id
 # 首次出现顺序 setdefault(见 _event_styles),索引 i 就是"第 i 个新 node_id"。当前拓扑覆盖
-# (apps 均无显式 event_styles 声明,全走兜底;bottom_burst 首现序 bo/burst/tb/tb_seg):
-#   [0] bo     (bottom_burst / bo_only 的首个 node_id;主图 price-anchored [ids] 方框)
-#   [1] burst  (bottom_burst 的第二个 node_id;副图 interval)
-#   [2] tb     容器红(用户手调值;tb_seg 用饱和绿——与 bo 兜底绿同色会触发
-#   [3] tb_seg deriveNodeColors 明度散开,段被分到过浅的亮端)
-#   [4..6]     未占用,给未来新 node_id 兜底(顺序即分配序,i % len 循环)
+# (apps 均无显式 event_styles 声明,全走兜底;bottom_burst 首现序 bo/pk/burst/tb/tb_seg):
+#   [0] bo     (主图 price-anchored [ids] 方框)
+#   [1] pk     (bottom_burst 的第二个 node_id;多流 bo detector 的 pk 流)
+#   [2] burst  (副图 interval)
+#   [3] tb     容器
+#   [4] tb_seg 企稳段:与 bo 兜底绿(#16f943)拉开——同色会触发 deriveNodeColors 明度散开
+#   [5..6]     未占用,给未来新 node_id 兜底(顺序即分配序,i % len 循环)
 _PALETTE = ["#16f943", "#2563eb", "#FF1500", "#14b24e", "#7c3aed", "#0891b2", "#ca8a04"]
 
 def _rule_from_meta(meta: dict) -> dict:

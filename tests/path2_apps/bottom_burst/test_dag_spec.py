@@ -242,7 +242,7 @@ class TestTbV4Wiring:
 
 class TestEventStyles:
     """event_styles 无显式声明,全走 serialize `_event_styles` 兜底调色板
-    (首现序槽位 [2]tb/[3]tb_seg 与撤下的显式声明值同步)。tb_seg 用区别于
+    (首现序槽位 [3]tb/[4]tb_seg 与撤下的显式声明值同步)。tb_seg 用区别于
     bo 兜底绿(#16f943)的饱和绿——同色会触发 deriveNodeColors 明度散开。"""
 
     def test_palette_assigns_by_node_order(self):

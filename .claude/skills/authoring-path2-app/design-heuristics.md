@@ -49,6 +49,21 @@
    「复合宽事件 detector + 内部 members」表达,绕开节点展开的组合爆炸;
    现场读 bottom_burst 的 burst 节点写法作样板。
    核实:dag_spec.py 顶部有 burst 节点与 ContainmentEdge+Child 写法(已核实)。
+6. **子结构 node 想参与约束时的选择阶梯**:复合事件的 child(如 tb 的企稳段)默认
+   只用于诊断与展示——它没有自己的事件流,也就没有候选池,`bound_ids` 的
+   「detector 非空」那项会把它挡在求解外(`path2/dag/_solve.py`,注释原话「子结构
+   node 无候选池」)。想让它进约束,按代价从小到大试:
+   ① **容器加 `child()` 投影** → 边写 `Child("tb", "first_seg")`。`Child` 不引入新
+      变量,`__post_init__` 把它归一化成 `dst="tb", dst_selector="first_seg"`,WCC 图
+      看到的仍是纯 `tb`,搜索空间不变。样板:`BurstEvent.child("first_bo"/"last_bo")`
+      (`path2/atoms/breakout.py`)。代价在剪枝——带 selector / anchor_field 的边会关掉
+      对应端点的 C1(见 `_solve.py` 的 c1_off 五源表)。
+   ② **升格成独立流**(detector 改 `produces` 多流,子事件自成一 node)——只有当子事件
+      需要**自己被枚举、被候选筛选**时才值得。代价:求解空间乘上子事件数量;detector
+      要为每条流各自维护 end_idx 升序(`run_bundle` 逐流跑 `_check_stream`);子事件
+      从「容器的内部结构」变成一等事件,诊断 / web / eval 都按独立事件对待。
+   判据不是「技术上能不能」,而是「它是否需要独立于容器被约束筛选」。`bo` 需要(突破
+   本身是完整事件,burst 只是它的一层聚类),企稳段目前不需要(对外接口全由容器代言)。
 
 ## §C 反模式(0 命中排查序)
 设计/修改后 0 命中,按序排查(每步都是现场跑/读,不猜):

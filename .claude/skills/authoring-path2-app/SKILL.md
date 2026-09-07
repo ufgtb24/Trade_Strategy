@@ -116,6 +116,11 @@ match 取 `node_index[end_node]` 时,非 end_node 的 match 会 **KeyError**。
 不出现在任何 match 的 node_index。判据:只显示不参与匹配的 node 一律 solve=False;
 参与匹配的 node 保持默认 solve=True。
 
+**三种「不参与求解」别混**:①**结构性出局**——子结构 node 无 detector 即无候选池
+(`bound_ids` 的 `detector is not None` 那项);②**声明性出局**——有流有池但
+`solve=False` 主动弃权(如 `pk`);③**拓扑性出局**——有池但在含边 pattern 里没连任何
+边(K2 第一条,孤立即不属 pattern)。成因不同,排查方向也不同。
+
 **多流 node 的 on_gate 归属**:归属原则——gf 归**本该诞生的那个事件所在的流**,
 不是归 detector 本身或触发判据的上游流(如 `BODetector._detect_peak_in_window` 内
 峰登记的四类 gate 归 `pk` 流;`_check_breakout` 的 `no_active_peak_broken` 虽在同一

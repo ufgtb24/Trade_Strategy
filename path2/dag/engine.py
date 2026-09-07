@@ -27,11 +27,12 @@ def annotate_stream(counts: dict, nid: str, events, children_of: dict | None = N
     detect 期即可读上游 instance_id)。
 
     children_of({node_id: {slot名: 子node_id}},spec 的 children 声明)= 未标注
-    child 的命名表:按容器槽名查映射,有声明 → 用声明的子结构 node_id(如
-    tb.segments → tb_seg);无声明/槽未覆盖 → 继承容器流 nid 兜底(旧 app 行为
-    不变,声明即启用)。声明漂移由 _check_children_declarations(C1/C3) 抓,
-    不会静默错名。已标注跳过保证"槽引用独立 node 实例"(burst.members→bo,
-    独立流先物化先标注)不被重标。"""
+    child 的命名表:按容器槽名查映射,标成声明的子结构 node_id(如 tb.segments →
+    tb_seg)。槽名不在声明表里直接 ValueError——不再兜底继承容器 nid;这一步
+    不受 RUNTIME_CHECKS 门控,生产路径同样硬失败。构造期另有
+    PatternSpec._validate_children_declared 拦住「容器 node 一个槽都没声明」。
+    声明漂移由 _check_children_declarations(C1/C3) 抓。已标注跳过保证"槽引用
+    独立 node 实例"(burst.members→bo,独立流先物化先标注)不被重标。"""
     cmap_all = children_of or {}
 
     def _annotate(e, nid: str) -> None:
@@ -67,7 +68,7 @@ def annotate_stream(counts: dict, nid: str, events, children_of: dict | None = N
 
     for e in events:           # 第一遍:流内事件
         _annotate(e, nid)
-    for e in events:           # 第二遍:嵌套 child(按 children 声明命名,兜底继承)
+    for e in events:           # 第二遍:嵌套 child(按 children 声明命名,槽名缺声明直接报错)
         _annotate_children(e, nid)
 
 

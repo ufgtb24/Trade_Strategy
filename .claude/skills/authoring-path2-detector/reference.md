@@ -445,3 +445,10 @@ event 类型退回 Python 类型系统（`isinstance` 判别），**不进任何
   `engine.py`，漂移检测）是同名不同机制。
 - **atoms 入库门槛**：至少两条不相关走势会用，或表达单一通用物理事件。**带形状偏见的命名一律
   拒入**（`RoundedBottom` 之类退到 `path2_apps/`）。detector 内部状态不得跨 `detect()` 调用。
+- **多流下 `end_idx` 升序是逐流校验的**：`run_bundle` 对 `produces` 声明的每条流各跑一次
+  `_check_stream`。把一个原本按容器排序的单流 detector 多流化时，每条流都要自己排好——
+  子事件常常是逐父事件生成的、跨父交错，直接 yield 会在第二条流上撞升序校验。
+- **容器 event 的 node 必须声明 `children`**：重写了 `child_slots()` 就是容器，`PatternSpec`
+  构造期校验（`_validate_children_declared`）+ 标注期硬失败（`_annotate_children`，不受
+  `RUNTIME_CHECKS` 门控）双重拦截。声明的槽名 → 子结构 node_id，子事件据此获得自己的身份
+  与渲染轨道；漏声明不再静默继承容器 node_id。
