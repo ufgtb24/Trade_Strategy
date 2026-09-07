@@ -19,14 +19,12 @@ from typing import Optional
 import pandas as pd
 
 from path2.calc.atr import FP_ATR_WINDOW, rolling_atr_pct_nanmedian
-from path2.dag._graph import detector_topo_order
 from path2.dag._reify import reify
 from path2.dag._solve import compile_plan, solve
 from path2.dag.edges import NegationEdge
-from path2.dag.engine import annotate_stream
+from path2.dag.engine import run_streams
 from path2.eval import (_resolve_end_events, match_first_passage, match_forward_drawdowns,
                         match_forward_returns)
-from path2.runner import run
 
 Dim = tuple[str, str]  # (section, field)
 STATES = ("up", "down", "both", "none")
@@ -142,6 +140,13 @@ def classify(mod, base_dict: dict, scan_grid: dict, where_levels: dict) -> Class
                 decl = getattr(type(dets[nid]), "filter_params", {}) or {}
                 if dim[1] in decl:
                     fp = (nid,) + tuple(decl[dim[1]])
+            # 为什么上游造流参数(bo.*)不能走 F 维:不是「暂时没人声明 filter_params」,
+            # 而是 F 契约在这类参数上机制性不成立。F 契约要求「该参数只控制发不发射、
+            # 不改变事件字段」,于是工具能以最松档构造一次、事后按字段谓词切。实测 26 股:
+            # 2 股连「松档 ⊇ 紧档」这个包含关系都不成立;18 股在两档共同 span 上事件字段
+            # 就不同(drought / peak_age_max / peak_vol_max——恰好是 where 闸读的那几个)。
+            # 且 bo / pk 是只显示 node、不进 node_index,长表的行里根本取不到它们的字段。
+            # 后果不是「答案错」,是该维退回真扫维、检测组合数成倍膨胀(该网格 ×4)。
             if fp is not None and len(pr.detector_nodes) == 1 and not pr.edges_changed:
                 # 底座/网格一致性提醒(复审 M-4):这条闸查的是 base_dict 的原始底座值,而
                 # scan_one_stock 实际构造用的是 base ∘ wide_overrides ∘ filter_min——后者
@@ -263,22 +268,11 @@ def scan_one_stock(symbol: str, win: pd.DataFrame, start_ts, end_ts, cfg: ScanCo
                   for d in cfg.scan_grid if cls.kinds[d] == "F"}
     base = apply_overrides(cfg.base_dict, cfg.wide_overrides, filter_min)
     spec0 = mod.build_pattern(mod.Params.from_dict(base, strict=True))
-    # 复审 I-2:run_streams 的物化键是 (id(node.detector), consumes_stream)——多个 node 共享
-    # 同一 detector 实例时它们的流指向同一份物化,而本函数的缓存键只按 nid 区分,会让共享
-    # detector 的两个 node 各跑一份独立事件列表、instance_id 与生产不同,靠 anchor_field
-    # 成边的拓扑可能整体失配。这不是假想拓扑(dag_spec 出现过 down/side 共享 trend_det),
-    # 拒绝而非静默给出不同答案。
-    det_nodes = [n for n in spec0.nodes if n.detector is not None]
-    if len({id(n.detector) for n in det_nodes}) != len(det_nodes):
-        raise ValueError("本工具不支持多 node 共享 detector 实例(run_streams 会折叠物化、反转循环不会),"
-                         "请拆成独立实例或改走逐格 scan")
     # I-4:F 维(filter_params)与 W 维在 region 侧走同一条谓词轴,守卫必须覆盖两类的并集
     # (如 tb.max_day_drop_pct 现被 classify() 判成 W 维——守卫若只覆盖 F 维就会漏掉它;
     # 覆盖两类并集才不会因某个字段被判成另一类而漏检)。
     check_predicate_axes(spec0, {**cls.where_fields, **cls.filter_fields})
     infl = influence_dims(spec0, cls, cfg.scan_grid)
-    order = [nid for nid in detector_topo_order(spec0.nodes)]
-    children_of = {n.node_id: dict(n.children) for n in spec0.nodes if n.children}
     leaf = cfg.end_node.split(".")[0]
     H, K = cfg.label_horizon, cfg.fp_k
 
@@ -299,21 +293,20 @@ def scan_one_stock(symbol: str, win: pd.DataFrame, start_ts, end_ts, cfg: ScanCo
     for combo in detection_combos(cfg.scan_grid, cls):
         p = mod.Params.from_dict(apply_overrides(base, {}, combo), strict=True)
         spec = mod.build_pattern(p)
-        by_id = {n.node_id: n for n in spec.nodes}
-        streams, counts = {}, {}
-        for nid in order:
-            node = by_id[nid]
-            if node.detector is None:
-                continue
-            key = (nid, tuple(combo[d] for d in infl[nid]))
-            if key not in stream_cache:
-                if node.consumes_stream is None:
-                    evs = list(run(node.detector, win))
-                else:
-                    evs = list(run(node.detector, streams[node.consumes_stream], win))
-                annotate_stream(counts, nid, evs, children_of)     # 已标注的上游流会被跳过
-                stream_cache[key] = evs
-            streams[nid] = stream_cache[key]
+        # 产流交给引擎(path2/dag/engine.py 的 run_streams),工具只管缓存:把已经算好的
+        # 流当预置流递进去,引擎跳过这些 node、其余照常产。这样工具的产流行为定义上
+        # 等于引擎——多流 detector 一趟产多条流、交错标注、引用槽翻译、children 校验
+        # 全部自动继承,不再有第二份实现会漂。
+        # 缓存键是语义键 (node_id, 该 node 的影响维取值);引擎内部那个含 id(detector)
+        # 的物化键只在单次调用内有效,跨参数组合必然失配,绝不能拿来当缓存键。
+        det_nids = [n.node_id for n in spec.nodes if n.detector is not None]
+        keys = {nid: (nid, tuple(combo[d] for d in infl[nid])) for nid in det_nids}
+        streams = run_streams(spec, win, preset={
+            nid: stream_cache[k] for nid, k in keys.items() if k in stream_cache})
+        # 不变式:写回必须整份,不得挑。漏写任何一条都会在下个组合里造成半截预置——
+        # 同一趟 detect 只预置一部分,那一趟会白跑一遍;若该趟内有跨兄弟引用还会直接抛。
+        for nid, k in keys.items():
+            stream_cache.setdefault(k, streams[nid])
         plan = compile_plan(spec)
         combo_cols = {col_of(d): v for d, v in combo.items()}
         # serialize.py:381-389 同款去重(修复轮 1 · Minor 1):同一个 end_node 事件物理实例

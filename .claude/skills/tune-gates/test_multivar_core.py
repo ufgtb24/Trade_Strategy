@@ -37,7 +37,8 @@ def test_probe_where_dim():
 
 def test_probe_detector_dims():
     assert probe_dim(mod, BASE, ("burst", "gap_max"), 12).detector_nodes == ("burst",)
-    assert probe_dim(mod, BASE, ("bo", "exceed_threshold"), 0.01).detector_nodes == ("bo",)
+    assert probe_dim(mod, BASE, ("bo", "exceed_threshold"), 0.01).detector_nodes == ("bo", "pk")
+    # bo 与 pk 共享同一个 BODetector 实例(一趟同时产两条流),故该维同时改变两个 node
     # max_start_gap(旧字段,已删)→ max_span:两者承载同一性质——tb 方案 C 里 max_span
     # 既是 ThrowbackDetectorV1 的构造参数,又是 burst→tb edge 的 max_gap(SSoT,dag_spec.py
     # 边声明处注释"共用同一 SSoT (tb.max_span)"),故同时驱动 detector_nodes 与 edges_changed。

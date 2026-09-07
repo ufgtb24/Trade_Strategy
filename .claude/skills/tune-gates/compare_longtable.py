@@ -45,6 +45,37 @@ from path2_web.serialize import serialize_per_pattern_result  # noqa: E402
 _CFG: dict = {}
 
 
+def _first_detect_group(spec0) -> set:
+    """拓扑序里第一趟 detect 调用产出的全部 node 名。
+
+    一个 detector 可以一趟同时产多条流(如突破检测一趟产 bo 与 pk),它们同属
+    一次 detect 调用、由同一批参数驱动,因此在 (a) 组里必须被当成一个整体。
+    分组键与引擎的物化键同款:(id(detector), consumes_stream)——id() 在单份
+    spec 存活期间是合法的判别式(此处 spec0 全程被强引用)。
+    """
+    from path2.dag._graph import detector_topo_order
+    by_id = {n.node_id: n for n in spec0.nodes}
+    first = next(nid for nid in detector_topo_order(spec0.nodes) if by_id[nid].detector is not None)
+    fn = by_id[first]
+    key = (id(fn.detector), fn.consumes_stream)
+    return {n.node_id for n in spec0.nodes
+            if n.detector is not None and (id(n.detector), n.consumes_stream) == key}
+
+
+def _fixed_dims(dims, cl, ref_point, group, dotted) -> dict:
+    """(a) 组要钉在参照格上的真扫维:凡「只影响首趟 detect 那组 node」的 D 维。
+
+    判据用 ⊆ 而不是 == [first]:多流 detector 下同一个维会同时影响组里每个 node,
+    写死等于首个 node 会让 fixed 落空、(a) 组退化成全网格(bb_v1 实测 3 → 9 格),
+    方向虽保守但对拍成本 3×,而对拍是整条流水线的瓶颈步。
+    detector_nodes 为空的维排除在外——空集 ⊆ 任何集合,不排除会把 where 维也钉住。
+    """
+    return {d: ref_point[dotted(d)] for d in dims
+            if cl["kinds"][dotted(d)] == "D"
+            and cl["detector_nodes"][dotted(d)]
+            and set(cl["detector_nodes"][dotted(d)]) <= group}
+
+
 def _init(cfg: dict) -> None:
     """worker 初始化：每个进程建一次全部 plan 项的 (Params, spec)。
 
@@ -136,12 +167,10 @@ def run(app: str, cfg, longtable_dir: str) -> None:
 
     config.set_runtime_checks(True)
     base_yaml = mod.Params.from_yaml(S.app_dir(mod) / study.BASE_YAML).to_dict()
-    # ---- 组 plan:(a) 固定上游首节点维于参照格、其余维全网格 (b) 随机格 + 全部角点 (c) 收紧 where ----
-    from path2.dag._graph import detector_topo_order
+    # ---- 组 plan:(a) 固定首趟 detect 那组 node 的 D 维于参照格、其余维全网格 (b) 随机格 + 全部角点 (c) 收紧 where ----
     spec0 = mod.build_pattern(mod.Params.from_dict(S.base_snapshot(mod, study), strict=True))
-    first = list(detector_topo_order(spec0.nodes))[0]
     dims = list(study.SCAN_GRID)
-    fixed = {d: study.REF_POINT[S.dotted(d)] for d in dims if cl["detector_nodes"][S.dotted(d)] == [first] and cl["kinds"][S.dotted(d)] == "D"}
+    fixed = _fixed_dims(dims, cl, study.REF_POINT, _first_detect_group(spec0), S.dotted)
     free = [d for d in dims if d not in fixed]
     rng = random.Random(SEED)
     cells_a = [{**fixed, **dict(zip(free, v))} for v in itertools.product(*(study.SCAN_GRID[d] for d in free))]

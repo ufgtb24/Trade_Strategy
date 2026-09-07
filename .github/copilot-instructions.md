@@ -66,5 +66,5 @@ This project implements a **Breakout Stock Selection Strategy** for US markets. 
 - **Error Handling**: Fail fast in configuration loading; log errors gracefully in the scanning loop to avoid stopping the entire batch.
 
 ## 5. Documentation & Context
-- **Status & Requirements**: See `.claude/docs/system_outline.md` for project status, architectural goals, and definitions. For module-specific detail, read `.claude/docs/modules/<模块名>.md`.
-- **Quick Start**: `CLAUDE.md` contains a map of the codebase and useful commands.
+- **Vocabulary**: `CONTEXT-MAP.md` at the repo root points to `path2/CONTEXT.md` and `path2_web/CONTEXT.md` — what each domain term means. Grep for the term, don't read the whole file.
+- **Quick Start**: `CLAUDE.md` contains the code map (per-layer boundaries and invariants) and useful commands.

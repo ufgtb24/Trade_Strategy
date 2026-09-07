@@ -59,6 +59,7 @@ bb_v1 实例的真实分类（`classify()` 实测）：
 
 **上次对拍作用域**：2026-08-26；网格 = 本文件 §1 的 SCAN_GRID(6 维,不含 max_day_drop_pct)× where 集合 {wide, FINAL, B}；1078 股 × 408 项；mismatch=0；对应 commit 见研究目录 final_report.md §④。
 **2026-08-27 迁移后**：新版 compare_longtable 以 7 维 grid(含 max_day_drop_pct)在 ^AA 子集 19 股 × 728 项 mismatch=0(Task 7 gate)。
+**2026-09-06 引擎加预置流后**：`test_multivar_equiv.py::test_reversed_loop_equals_per_cell_analyze`(`^A[A-C]` 子集,12 格{8 随机+4 角点}× where 集合 {wide, tight})实测 104 股 × 2496 次比较,mismatch=0,非空占比 15.9%；该测试此前一直撞「多 node 共享 detector 实例」禁令 fail-fast、从未真正跑过,禁令删除后本轮是它首次真跑通过。
 
 ## 5. 识别实测
 

@@ -103,7 +103,8 @@ def test_classification_matches_hand_transcribed_values(cl):
     assert cl["end_node"] == "tb" and cl["bound_nodes"] == ["burst", "tb"]
     assert cl["detection_combos"] == 1024
     assert cl["ref_params"] == BASE
-    assert cl["detector_nodes"]["bo.min_relative_height"] == ["bo"]
+    assert cl["detector_nodes"]["bo.min_relative_height"] == ["bo", "pk"]
+    # bo 与 pk 共享同一个 BODetector 实例(一趟同时产两条流),故该维同时改变两个 node
 
 
 def test_derived_axes_order_and_content(cl):

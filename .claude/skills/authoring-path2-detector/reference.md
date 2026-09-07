@@ -376,3 +376,72 @@ docstring 草稿在 spec 中产出、作为交付物之一移交 superpowers 实
   「不改变现有行为」是假设，零 DIFF 才是证据；纯增补字段也要跑
 - 改了输出字段 / 语义 → where 引用复查（app 侧 dag_spec）
 - 带走势特异的形状偏见 → **不进公共库**，app 包内自定义（app 直接 import）
+
+---
+
+## §7 引擎侧契约与负知识（写 detector 前必须知道的引擎行为）
+
+### 身份双轴：node_id（声明层）+ instance_id（物化层）
+
+旧身份体系（`class_id` / `source_tag` / `event_id` / `span_id`）已整体消灭。现行只有两轴，
+event 类型退回 Python 类型系统（`isinstance` 判别），**不进任何字符串契约**——序列化、
+过滤、分组、显示、debug 门都不按「类型」分：
+
+- **node_id**（拓扑主键，作者命名）：一身多角就多起一个。子事件按父的 `children` 声明命名表取名
+  （声明了槽位映射的段直标子结构 node_id，未声明的 child 继承父容器 node_id 兜底）。
+- **instance_id**（实例唯一性）：引擎逐流标注注入，形如 `{node_id}_{start}[_{end}]#{idx}`，
+  点事件塌缩、桶内流序从 0 起。**契约唯一出处 = `core.py::Event` docstring + `engine.annotate_stream`，
+  禁止各处自行构造。**
+
+**detector 阶段身份字段恒为 None/0/None** —— node 归属是引擎层概念，detector 作者读不到、
+也不该读（走势-无关边界）。这个空窗正是 `GateFailure.node_id` 需要 web 侧 collector 注入的原因。
+
+> 负知识：**detector / where 里别读身份字段做逻辑**。serialize 与前端也别自行拼 instance_id 字符串。
+
+### children（结构持有）vs ref_slots（关系引用）：两条正交声明
+
+- `children` / `child_slots()` 驱动物化命名与 diagnose 展开。
+- `ref_slots()` 只声明「这个事件语义上指向哪些别的事件」，不影响命名、不影响求解。
+  全部流标注完后引擎跑统一翻译，把引用对象换成 `instance_id` 写进 frozen 字段 `Event.ref_ids`；
+  引用了池外对象（无 instance_id）在这一步报错。
+
+这条协议消灭了「事件字段自带派生状态」：一个引用关系的终态（比如某个峰最终是否被吃掉）依赖
+「后续有没有别的事件引用它」，这类跨事件知识只有全部翻译完才拿得到，装进单事件字段要么滞后、
+要么被迫二次回填。**事件只留原始事实（「我吃掉了谁」），终态判定由消费侧按 ref_ids 关系合成**，
+事件保持「detect 期一次写定、不再回填」的不变式（活跃峰的 `price` / `original_price` 在 detect
+内原地演化是现存唯一例外）。
+
+### 事件端点 vs 检测过程：start/end 是事件协议，entry/attempt/gate 是检测过程
+
+`start`/`end` 所有事件必有，confirm 落其一（确认型 start=confirm、回顾型 end=confirm）。
+`attempt`/`entry`/`gate` 挂靠 detector、不随事件类型：attempt 粒度由扫描单位决定（逐 bar /
+逐簇 / 逐机器），entry 仅当 attempt 入口独立于事件起点时才单独成档。**「一个 detector 产多种
+事件、一个 attempt」因此自洽**——次级产物（子结构段）无独立 attempt、只有事件层 start/end。
+
+### 多流 detector：produces 声明
+
+一个 detector 可在同一次 `detect()` 里产出多条语义不同的流——典型场景是几条流的内部状态天然
+耦合，硬拆成两个 detector 会被迫在两处重复维护同一份可变状态（如 `BODetector` 逐 bar 既登记峰
+又判突破，突破判定要读同一份活跃峰池）。写法：用 `produces: ClassVar[Mapping[str, type]]`
+（流名 → event_cls）取代单流的 `event_cls`，`detect()` 内 `yield (流名, event)`。声明的每条流
+都必须有 node 认领，否则 `PatternSpec` 构造期报错。
+
+### 负知识清单
+
+- **frozen 容器字段一律用 tuple**：list 可以 in-place mutate，会从内部突破 frozen 语义。
+- **「Row 落地 = 字段完成」**：单事件不变式（区间合法、禁 NaN）在构造点校验；跨事件不变式
+  （end_idx 升序、instance_id 单 run 唯一）只在驱动入口 `run()` 校验。两者别混放。
+- **`Detector` 协议里 `on_gate` 的声明必须留在 `TYPE_CHECKING` 守卫内**：`runtime_checkable` 的
+  isinstance 结构检查会把 Protocol 中任何已声明属性（哪怕带默认值）都纳入必须项，正常声明会让
+  所有未显式带 `on_gate` 的现有 detector 突然判定为不合规。
+- **on_gate 默认 None、生产路径零开销**，只有诊断层挂 collector 时才在实例上覆盖。
+- **产 gate failure 的一条流不可被多 node 绑定**（判据是**流**不是 detector，别扩大）：同一条流被
+  ≥2 node 绑定时 gf 的 node 归属无真值。**同一 detector 的不同流各绑一个 node 完全合法、且是标准
+  多流用法**（`BODetector` 的 bo/pk 就是）。不产 gf 的同流共享零影响。
+- **共享 detector 合法但只物化一次**：`run_streams` 按 `(id(detector), consumes_stream)` 去重，
+  共享的多个 node 指向同一个事件 list，instance_id 按拓扑序首个消费 node 命名。
+- **两个 C1 别混**：求解剪枝的 C1（等-end 塌缩，`_solve.py`，漏匹配风险源，**改它必须先跑
+  多候选 fuzz** —— 真漏匹配 bug 曾两次逃过平凡场景的单测试）与运行期校验的 C1（声明⊆实例，
+  `engine.py`，漂移检测）是同名不同机制。
+- **atoms 入库门槛**：至少两条不相关走势会用，或表达单一通用物理事件。**带形状偏见的命名一律
+  拒入**（`RoundedBottom` 之类退到 `path2_apps/`）。detector 内部状态不得跨 `detect()` 调用。

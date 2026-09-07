@@ -13,6 +13,104 @@ import requests
 import yfinance as yf
 from curl_cffi import requests as cffi_requests
 from yfinance.exceptions import YFRateLimitError, YFPricesMissingError, YFTzMissingError
+from curl_cffi.requests.exceptions import RequestException as _CurlRequestException
+
+# Yahoo 拒绝我们时不一定回 429:实测(2026-09-06,单 IP 连下约 600 只后)它改成
+# 直接把连接吊死,curl 报 (28) Operation timed out / 0 bytes received。这类异常
+# 的类型名不全在 yfinance 的瞬时错误表里,耗尽它自己那层短重试后原样抛出,
+# 于是绕过下面整套全局冷却,每只股票 10~30 秒失败一次、不重试——一轮下来会把
+# 剩余几千只全部烧成永久跳过。故把传输层错误与 429 归到同一条冷却路径。
+_THROTTLE_ERRORS = (YFRateLimitError, _CurlRequestException)
+
+
+class _ThrottleExhausted(Exception):
+    """限速重试耗尽：4 次退避后仍 429/timeout，当前出口节点已被 Yahoo 限速。
+
+    区别于退市(404)/历史不足等正常跳过——用于触发节点轮换的失败计数切换。
+    """
+
+# 直连主 IP 绕行出口(2026-09-06 实测): 直连主 IP 连下约 600 只后会被 Yahoo
+# 惩罚(429 / curl-28 吊连接, 实测持续 1.5h+ 未消)。串行低并发可避免触发,
+# 但被罚期间得换出口。置 CLASH_PROXY 走 clash 代理出口绕开; 主 IP 恢复后置
+# None 切回直连。显式 proxies 而非读 env——PyCharm 启动不带代理 env, 裸
+# Session 会直连被罚的主 IP。
+CLASH_PROXY = "http://127.0.0.1:7897"
+
+# 节点轮换(2026-09-06): 直连主 IP 被 Yahoo 惩罚期间, 用多个 HK 机场节点轮换
+# 分摊单 IP 限速——12 个 HK 节点实测各自独立出口 IP, 4 worker 并发零惩罚,
+# 单节点 ~5.7/s。下载完成后复原到 ORIGINAL_NODE(用户当前 isp 配置)。
+CLASH_SOCK = "/tmp/verge/verge-mihomo.sock"
+CLASH_CFG = "/home/yu/.local/share/io.github.clash-verge-rev.clash-verge-rev/clash-verge.yaml"
+CLASH_GROUP = "🔰 节点选择"
+ORIGINAL_NODE = "HTTP isp.decodo.com:10001"
+# 真实出口节点的协议类型(排除 Selector/URLTest/Fallback/LoadBalance 等分组)
+_REAL_PROXY_TYPES = ("Socks5", "Vmess", "Trojan", "HTTP", "Tuic", "Hysteria2",
+                     "Shadowsocks", "Socks", "SSR", "WireGuard")
+ROTATE_EVERY = 400  # 每个节点下约 400 只后切下一个(低于 585 触发线, 留安全边际)
+
+def _clash_secret():
+    try:
+        with open(CLASH_CFG) as f:
+            for line in f:
+                s = line.strip()
+                if s.startswith("secret:"):
+                    return s.split(":", 1)[1].strip().strip('"').strip("'")
+    except Exception:
+        pass
+    return ""
+
+def _switch_clash_node(name):
+    """切「🔰 节点选择」到指定节点(经 clash unix socket API)。"""
+    import subprocess, urllib.parse
+    cmd = ["curl", "-s", "--unix-socket", CLASH_SOCK,
+           "-H", "Authorization: Bearer " + _clash_secret(),
+           "-X", "PUT", "-H", "Content-Type: application/json",
+           "--data", '{"name":"%s"}' % name,
+           "http://localhost/proxies/%s" % urllib.parse.quote(CLASH_GROUP)]
+    subprocess.check_output(cmd, timeout=15)
+    time.sleep(1.0)
+
+
+def _probe_yahoo():
+    """健康探针: 拉一只已知好股(MSFT)测当前出口节点对 Yahoo 是否通。
+
+    节点轮换是盲切, 若切到坏节点(线路断了/被 Yahoo 针对)会让整段 rotate_every
+    只股票陷进 4 次退避重试后静默跳过——浪费大量时间且丢数据。切节点后先探
+    一次, 不通则主进程顺延到下一个节点, 坏节点只浪费一次探针(≤10s)而非整段。
+    """
+    from curl_cffi import requests as _cffi
+    s = _cffi.Session(impersonate="chrome")
+    if CLASH_PROXY:
+        s.proxies = {"http": CLASH_PROXY, "https": CLASH_PROXY}
+    try:
+        r = s.get("https://query1.finance.yahoo.com/v8/finance/chart/MSFT",
+                  params={"range": "5d", "interval": "1d"}, timeout=10)
+        return r.status_code == 200
+    except Exception:
+        return False
+
+
+def _get_hk_nodes():
+    """动态读 clash 里所有 HK 真实出口节点(排除分组), 替代写死的 HK_NODES。
+
+    机场订阅更新节点(改名/删改)后无需手动维护列表; 每次下载启动时从 clash
+    API(GET /proxies)现读, 只取 name 以 "HK" 开头且 type 是真实协议的节点。
+    读不到则抛 RuntimeError——clash 没开/API 变了时直接报错, 不静默降级。
+    """
+    import subprocess, json
+    cmd = ["curl", "-s", "--unix-socket", CLASH_SOCK,
+           "-H", "Authorization: Bearer " + _clash_secret(),
+           "http://localhost/proxies"]
+    out = subprocess.check_output(cmd, timeout=15).decode("utf-8", "replace")
+    data = json.loads(out)
+    proxies = data["proxies"]
+    hk = sorted(
+        name for name, p in proxies.items()
+        if name.startswith("HK") and p.get("type") in _REAL_PROXY_TYPES
+    )
+    if not hk:
+        raise RuntimeError("clash 里没有 HK 真实节点, 无法轮换下载")
+    return hk
 
 # 每个 worker 进程独立持有一个 curl_cffi session（惰性初始化，
 # 避免 multiprocessing fork 时共享底层连接 fd 导致的竞态）。
@@ -22,11 +120,11 @@ _CFFI_SESSION = None
 def _get_cffi_session():
     global _CFFI_SESSION
     if _CFFI_SESSION is None:
-        # 代理绕开不在代码层处理——试过 trust_env / proxies / curl_options
-        # NOPROXY / YfConfig monkey-patch 各种组合，PyCharm/多进程场景下都
-        # 不稳定。最终方案：跑之前用 shell 前缀清 env，例如
-        #   HTTPS_PROXY= HTTP_PROXY= uv run python scripts/data/data_download.py
         _CFFI_SESSION = cffi_requests.Session(impersonate="chrome")
+        # 早期「代码层设代理在 PyCharm/多进程下不稳定」是「高并发 + 代理」
+        # 组合的问题; 改单 worker 串行后显式走代理已实测稳定(700 只零惩罚)。
+        if CLASH_PROXY:
+            _CFFI_SESSION.proxies = {"http": CLASH_PROXY, "https": CLASH_PROXY}
     return _CFFI_SESSION
 
 
@@ -117,9 +215,9 @@ def _fetch_us_daily_qfq(tic, start_dt, end_dt, rate_gate=None):
                 raise_errors=True,
             )
             break
-        except YFRateLimitError:
+        except _THROTTLE_ERRORS:
             if attempt == 3:
-                raise KeyError("date")
+                raise _ThrottleExhausted()
             backoff = min(90 * (2 ** attempt), 300)
             if rate_gate is not None:
                 # 只在「非限速 → 限速」的状态转换时打印，避免 10 worker
@@ -164,7 +262,7 @@ def download_stock(tic, path, days_from_now, file_format="pkl", rm_invalid=False
     if os.path.exists(path):
         mtime_date = datetime.date.fromtimestamp(os.path.getmtime(path))
         if mtime_date == datetime.date.today():
-            return
+            return "skip"
 
     start_date = datetime.datetime.now() - datetime.timedelta(days=days_from_now)
     end_date = datetime.datetime.now()
@@ -182,6 +280,10 @@ def download_stock(tic, path, days_from_now, file_format="pkl", rm_invalid=False
             .set_index("date")
             .loc[start_date:end_date]
         )
+    except _ThrottleExhausted:
+        # 限速重试耗尽：当前出口节点被 Yahoo 限速。标记 throttle 供节点轮换
+        # 失败计数切换用（区别于下面退市/无数据的正常跳过）。
+        return "throttle"
     except (IndexError, KeyError, SyntaxError, YFPricesMissingError, YFTzMissingError):
         # YFPricesMissingError / YFTzMissingError：yfinance>=1.2 对退市/无数据
         # ticker 抛的专用异常（旧版走 KeyError 路径），归入同一静默吸收，
@@ -191,14 +293,14 @@ def download_stock(tic, path, days_from_now, file_format="pkl", rm_invalid=False
         # 命中已退市股，见 DTCK 案例）。
         if rm_invalid and os.path.exists(path):
             os.remove(path)
-        return
+        return "skip"
 
     if len(df_new) < 12 * 21:
         # 新数据不足 252 行（历史太短、上市不久）→ 同上，rm_invalid=True
         # 时删旧 pkl 让数据集口径与"当前 yfinance 视角"一致。
         if rm_invalid and os.path.exists(path):
             os.remove(path)
-        return
+        return "skip"
 
     df_new = df_new.ffill()  # Fill missing values forward
     if file_format == "csv":
@@ -206,9 +308,10 @@ def download_stock(tic, path, days_from_now, file_format="pkl", rm_invalid=False
     else:
         df_new.to_pickle(path)
     print(f"Download {tic}")
+    return "downloaded"
 
 
-def worker(task_queue, save_root, days_from_now, file_format, rm_invalid=False, rate_gate=None):
+def worker(task_queue, save_root, days_from_now, file_format, rm_invalid=False, rate_gate=None, counter=None, fail_counter=None):
     # 子进程 stdout 在非 tty pipe 下（PyCharm run config / nohup / 重定向到
     # 文件等）默认全缓冲，Download/Error 行会攒到 4KB 才 flush，前 30 秒
     # 屏幕看起来像"啥都没干"，pkl 却已在悄悄落盘——排障成本很高。切成
@@ -225,12 +328,25 @@ def worker(task_queue, save_root, days_from_now, file_format, rm_invalid=False, 
         save_path = os.path.join(
             save_root, tic + (".csv" if file_format == "csv" else ".pkl")
         )
+        result = None
         try:
-            download_stock(tic, save_path, days_from_now, file_format, rm_invalid=rm_invalid, rate_gate=rate_gate)
+            result = download_stock(tic, save_path, days_from_now, file_format, rm_invalid=rm_invalid, rate_gate=rate_gate)
         except Exception as e:
             # download_stock 已吸收所有已知的 akshare 上游噪音；能走到这里
             # 的都是真正未预期的异常（磁盘满、权限错误等），保留打印便于排障。
             print(f"Error: {tic} {e}")
+        finally:
+            # 节点轮换用：每处理一只(含跳过/失败)计数一次, 主进程据此切节点
+            if counter is not None:
+                with counter.get_lock():
+                    counter.value += 1
+        # 失败计数切换：throttle 累加, downloaded 重置, skip 不变
+        if fail_counter is not None:
+            with fail_counter.get_lock():
+                if result == "throttle":
+                    fail_counter.value += 1
+                elif result == "downloaded":
+                    fail_counter.value = 0
 
 
 def multi_download_stock(
@@ -241,13 +357,17 @@ def multi_download_stock(
     num_workers=os.cpu_count(),
     file_format="pkl",
     rm_invalid=False,
+    node_rotation=None,
+    rotate_every=0,
 ):
-    if clear:
-        # 删除 save_root 下的所有文件
-        if os.path.exists(save_root):
-            shutil.rmtree(save_root)
-            os.mkdir(save_root)
-            print("Clear all files in", save_root)
+    if clear and os.path.exists(save_root):
+        shutil.rmtree(save_root)
+        print("Clear all files in", save_root)
+    # 目录必须无条件建:原先 mkdir 只写在「clear 且目录已存在」这一支里,于是
+    # 首次运行(重装机器后整个 datasets/ 都不存在)时没人建目录,worker 每只股票
+    # 抛 FileNotFoundError 被 worker 的兜底 except 吞成一行 Error,表现为整轮
+    # 零落盘——与限速的表现难以区分。
+    os.makedirs(save_root, exist_ok=True)
 
     # Create a queue to manage tasks
     q = Queue()
@@ -261,6 +381,8 @@ def multi_download_stock(
     # 跨进程共享的「限速截止时间戳」：任一 worker 撞 429 时写入，全体
     # worker 在 _fetch 里对齐冷却（见 _fetch_us_daily_qfq docstring）
     rate_gate = multiprocessing.Value("d", 0.0)
+    counter = multiprocessing.Value("i", 0) if node_rotation else None
+    fail_counter = multiprocessing.Value("i", 0) if node_rotation else None
 
     # Prepare input parameters for worker processes
     input_dict = dict(
@@ -270,6 +392,8 @@ def multi_download_stock(
         file_format=file_format,
         rm_invalid=rm_invalid,
         rate_gate=rate_gate,
+        counter=counter,
+        fail_counter=fail_counter,
     )
 
     # daemon=True：主进程退出时 kernel 会自动 terminate 所有 worker。
@@ -279,9 +403,45 @@ def multi_download_stock(
     for p in processes:
         p.start()
 
-    # Wait for all worker processes to complete
-    for p in processes:
-        p.join()
+    # Wait for all worker processes to complete；node_rotation 时轮询并每
+    # rotate_every 只切下一个出口节点(切节点对 worker 透明, worker 走 7897
+    # 代理, 由 clash 层完成路由切换)。
+    if node_rotation and rotate_every:
+        node_idx = -1
+        fail_threshold = 3  # 连续 3 次 throttle 视为该节点已被限速, 立即切
+        while any(p.is_alive() for p in processes):
+            for p in processes:
+                p.join(timeout=0.5)
+            with counter.get_lock():
+                done = counter.value
+            with fail_counter.get_lock():
+                fails = fail_counter.value
+            # 失败计数切换: 某节点下载中途被 Yahoo 限速(连续 throttle), 立即切下一个
+            if fails >= fail_threshold:
+                node_idx = (node_idx + 1) % len(node_rotation)
+                print(f"节点限速(连续{fails}次失败), 切换 -> {node_rotation[node_idx]}")
+                _switch_clash_node(node_rotation[node_idx])
+                with fail_counter.get_lock():
+                    fail_counter.value = 0
+                continue
+            # 循环轮换: 每 rotate_every 只切下一个节点, 到末尾回到队首。
+            # 每节点单轮最多 rotate_every 只, 之后休息 (len-1)*rotate_every 只的时间,
+            # 避免单 IP 累计超阈值触发 Yahoo 惩罚。
+            target = (done // rotate_every) % len(node_rotation)
+            if target != node_idx:
+                node_idx = target
+                # 健康探针 + 顺延: 切到坏节点则顺延到下一个, 最多试一轮
+                for _ in range(len(node_rotation)):
+                    cand = node_rotation[node_idx]
+                    _switch_clash_node(cand)
+                    if _probe_yahoo():
+                        print(f"切换节点 -> {cand}")
+                        break
+                    print(f"节点 {cand} 不健康, 顺延下一个")
+                    node_idx = (node_idx + 1) % len(node_rotation)
+    else:
+        for p in processes:
+            p.join()
 
 
 if __name__ == "__main__":
@@ -302,15 +462,17 @@ if __name__ == "__main__":
     signal.signal(signal.SIGINT, _cli_stop)
     signal.signal(signal.SIGTERM, _cli_stop)
 
-    # 代理绕开不在代码层处理——跑脚本前用 shell 前缀清 env,
-    # 例如：HTTPS_PROXY= HTTP_PROXY= uv run python scripts/data/data_download.py
+    # 走不走代理由顶部 CLASH_PROXY 常量控制：现值 = 走 clash 出口绕开直连惩罚;
+    # 直连主 IP 恢复后置 None 即切回直连。无需再 shell 清 env。
 
     # datasets/pkls 是所有 worktree 共享的数据落盘目录，
     # 硬编码为主仓库绝对路径，确保任何 worktree 跑本脚本都写到同一位置。
     DATASETS_ROOT = "/home/yu/PycharmProjects/Trade_Strategy/datasets"
 
     # 下载行为开关（遵循 CLAUDE.md：入口脚本参数在起始位置声明）
-    clear = True        # True: 先 rmtree 目录再全下（危险，会丢历史）
+    clear = False       # True: 先 rmtree 目录再全下（危险，会丢历史）。
+                        # pkls 已有 585 只(09:00 下的 A/B 段), False 靠
+                        # mtime==today 跳过已下文件、只补缺口, 避免一跑又清空。
     rm_invalid = True    # True: yfinance 拉不到或数据不足 252 行时删旧 pkl，
                          #      避免"过期残留静默混入"（例如退市股 DTCK）
 
@@ -327,18 +489,25 @@ if __name__ == "__main__":
 
     # Start downloading stock data for all tickers
     start_time = datetime.datetime.now()
-    multi_download_stock(
-        all_tickers,
-        save_root=os.path.join(DATASETS_ROOT, "pkls_test"),
-        days_from_now=365 * 5,
-        clear=clear,
-        rm_invalid=rm_invalid,
-        # curl_cffi 浏览器指纹 + workers=10 是实测拐点：
-        # workers=10 峰值 ~11/s（native）或 ~15-20/s（curl_cffi），
-        # workers=12 反降；累积到 IP 软阈值时退避机制兜底。
-        num_workers=10,
-        file_format="pkl",  # Change to 'csv' or 'pkl'
-    )
+    try:
+        multi_download_stock(
+            all_tickers,
+            save_root=os.path.join(DATASETS_ROOT, "pkls"),
+            days_from_now=365 * 5,
+            clear=clear,
+            rm_invalid=rm_invalid,
+            # worker=10 + 12 HK 节点轮换(2026-09-06): 每 400 只常规切节点 +
+            # 连续 3 次 throttle 失败计数切换兜底(节点中途被限速立即切) + 健康探针。
+            # 12 节点各自独立出口 IP 分摊单 IP 限速, 下载完复原到 isp。
+            num_workers=10,
+            file_format="pkl",  # Change to 'csv' or 'pkl'
+            node_rotation=_get_hk_nodes(),
+            rotate_every=ROTATE_EVERY,
+        )
+    finally:
+        # 无论成功/失败/中断, 复原用户当前的 isp 节点配置
+        _switch_clash_node(ORIGINAL_NODE)
+        print(f"已复原节点 -> {ORIGINAL_NODE}")
     # 统计并输出耗时，格式为几分几秒
     elapsed = datetime.datetime.now() - start_time
     minutes, seconds = divmod(elapsed.total_seconds(), 60)

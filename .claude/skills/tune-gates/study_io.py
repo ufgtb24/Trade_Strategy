@@ -125,7 +125,7 @@ def build_classification(app: str, study, mod, study_path: Path) -> dict:
     """跑 classify + 全部静态守卫 + 推导,返回 classification.json 的 dict(含源码/底座/study 三指纹)。
 
     守卫在这里响亮失败,不等到扫描:E 维不许进 SCAN_GRID / REF_POINT 恰好覆盖 D 维 /
-    TIGHT_WHERES 键在网格内 / 共享 detector 实例 / negation dst 谓词轴。"""
+    TIGHT_WHERES 键在网格内 / negation dst 谓词轴。"""
     base = base_snapshot(mod, study)
     cls = classify(mod, base, study.SCAN_GRID, study.WHERE_LEVELS)
     _reject_e_dims(study.SCAN_GRID, cls.kinds)
@@ -141,9 +141,6 @@ def build_classification(app: str, study, mod, study_path: Path) -> dict:
     filter_min = {d: loosest_level(study.SCAN_GRID[d], cls.filter_fields[d][2])
                   for d in study.SCAN_GRID if cls.kinds[d] == "F"}
     spec0 = mod.build_pattern(mod.Params.from_dict(apply_overrides(base, {}, filter_min), strict=True))
-    det_nodes = [n for n in spec0.nodes if n.detector is not None]
-    if len({id(n.detector) for n in det_nodes}) != len(det_nodes):
-        raise ValueError("多 node 共享 detector 实例:反转循环不支持,请拆成独立实例")
     check_predicate_axes(spec0, {**cls.where_fields, **cls.filter_fields})
     p0 = mod.Params.from_dict(base, strict=True)
     end_node = mod.eval_meta(params=p0)["end_node"]

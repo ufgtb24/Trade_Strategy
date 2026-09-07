@@ -132,7 +132,35 @@ def _check_children_declarations(spec, streams) -> None:
                             f"实际 {type(c).__name__}; children 引用疑似错 node(C3)")
 
 
-def run_streams(spec, df, params=None):
+def _check_preset(spec, preset) -> None:
+    """预置流入口校验。**不受 RUNTIME_CHECKS 门控**——键越界在 checks 关闭时不抛,
+    幽灵流会静默留在 streams 里污染 res.events;「响亮」必须是设计契约而不是开关顺带。
+
+    刻意不查「事件的 node_id == 它挂的那个键」:两个 node 认领同一条产出流时,引擎
+    的折叠行为让第二个 node 的流里坐着第一个 node 名的事件(实测 {'n1': ['n1'],
+    'n2': ['n1']}),那是合法的,写死相等会误报。
+    """
+    if not preset:
+        return
+    det_ids = {n.node_id for n in spec.nodes if n.detector is not None}
+    unknown = sorted(set(preset) - det_ids)
+    if unknown:
+        raise ValueError(
+            f"preset 含本 spec 没有的 detector node {unknown};"
+            f"本 spec 的 detector node = {sorted(det_ids)}")
+    for nid, events in preset.items():
+        for e in events:
+            if e.instance_id is None or e.node_id is None:
+                raise ValueError(
+                    f"preset[{nid!r}] 含未标注事件 {type(e).__name__} @bar {e.start_idx};"
+                    "preset 只能是 run_streams 某次返回值里的流——引擎跳过标注,不会替它补身份")
+            if e.node_id not in det_ids:
+                raise ValueError(
+                    f"preset[{nid!r}] 的事件 node_id={e.node_id!r} 不在本 spec 的 detector "
+                    f"node 集 {sorted(det_ids)} 内;preset 疑似来自另一份 spec")
+
+
+def run_streams(spec, df, params=None, *, preset=None):
     """阶段1:detector 依赖排序 + 跑流。返回 {node_id: [Event]}。
     analyze 与 diagnose(path2/dag/diagnose.py)共用,避免重复 detect。
 
@@ -141,11 +169,28 @@ def run_streams(spec, df, params=None):
     counts 跨迭代持久(键含 nid,跨 node 不串扰)。
 
     去重:同一 detector 对象在同一 consumes_stream 上只物化一次(key=(id(detector),consumes_stream))。
-    多个 node_id 共享同一 detector 时,它们的 streams[nid] 指向同一个 list 对象。"""
+    多个 node_id 共享同一 detector 时,它们的 streams[nid] 指向同一个 list 对象。
+
+    preset(预置流):{node_id: [Event]},调用方把上一次算出来的事件流交回来复用。
+    键出现在 preset 里的 node 整条跳过检测与身份注入,原样进入返回值;其余 node
+    照常检测,下游 detector 消费到的就是这份预置的流。出口的 _translate_refs 与
+    children 校验对预置流照常执行(前者幂等,但会用 object.__setattr__ 就地改写
+    preset 里事件对象的 ref_ids——preset 不是只读输入)。三条前置条件:
+
+      正确性:preset 只能是 run_streams 某次返回值里的流。引擎跳过了标注,不会
+        替它补身份;入口校验只能挡住形状不合法与跨 spec 串味两类。
+      整组性:同一趟 detect 产出的多条流必须整组预置。只预置其中一部分时,那一趟
+        照样会重跑一遍(省 0 趟 detect);更糟的是,若这一趟里新检测出来的流引用了
+        被预置的兄弟流,翻译引用槽会因引用对象未标注而抛错(实测:range/note 同趟,
+        只预置 range → ValueError)。故半截预置要么白跑、要么响亮失败,不会静默错。
+      一致性:调用方自负 preset 与本次 params 同源。任何校验都抓不住这一条(实测
+        喂错参数跑出来的流不抛任何错、下游静默算错),这项义务无法转移给引擎。
+    """
     by_id = {n.node_id: n for n in spec.nodes}
     # children 声明 → 未标注 child 的命名表(见 annotate_stream docstring)
     children_of = {n.node_id: dict(n.children) for n in spec.nodes if n.children}
-    streams = {}
+    _check_preset(spec, preset)
+    streams = dict(preset or {})
     materialized = {}
     counts: dict = {}   # 标注桶计数器,跨流持久
     siblings: dict = {}   # (id(det), consumes) -> [NodeSpec] 按声明序

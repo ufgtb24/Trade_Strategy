@@ -156,7 +156,7 @@ def setup(app: str, *, apps_dir: Path | None = None) -> dict:
 
     跑 classify + 全部静态守卫 + 推导 + 三指纹。守卫在这里响亮失败,不等到扫描:
     E 维不许进 SCAN_GRID / REF_POINT 恰好覆盖 D 维 / TIGHT_WHERES 键在网格内 /
-    共享 detector 实例 / negation dst 谓词轴。
+    negation dst 谓词轴。
     """
     import app_setup  # noqa: F401 —— 仅为触发其模块级 sys.path 设置
     from path2 import config
@@ -291,7 +291,7 @@ def install(app: str, *, app_module: str, base_yaml: str = "params.yaml",
     扫描结果,见渲染出的 study.py 头部说明)。
 
     **写盘是原子的**:`setup()` 内部还有好几道 `render_study`/顶部 `classify()` 都不查的
-    静态守卫(TIGHT_WHERES 键须在网格内 / E 维不许进 SCAN_GRID / 共享 detector 实例 /
+    静态守卫(TIGHT_WHERES 键须在网格内 / E 维不许进 SCAN_GRID /
     negation dst 谓词轴),任何一道在这里失败,study.py 都已经落盘、旧文件已被覆盖——
     对已接入且有扫描结果的 app,这是真损失(旧指纹对不上、新分类表又生不出来)。故本函数
     写盘前先把原文件字节读进内存(不存在则记 None),`setup()` 失败时原样写回(不存在则

@@ -1,7 +1,7 @@
 # path2 App 设计决策手册(design-heuristics)
 
 > 给 authoring-path2-app skill 在三层 gate 设计时查阅。定位是「设计时该问什么」,
-> 不是引擎原理(原理读 .claude/docs/modules/path2.md / path2_apps.md)。
+> 不是引擎原理(原理读本目录 reference.md + authoring-path2-detector skill 的 reference.md §7)。
 
 ## §0 红线(先读)
 - 本手册凡涉及**具体参数值/边结构/gap 数字**,一律以「现场 grep 代码」为准,手册不写死
