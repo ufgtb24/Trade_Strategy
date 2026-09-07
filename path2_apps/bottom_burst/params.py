@@ -41,6 +41,8 @@ class BurstParams:
 
     隐含约束:first_drought_min 必须 > gap_max,否则 first_drought where 退化恒真
     (chain 簇首必是断点,drought > gap_max 结构性必然)。默认 20 > 5 健康。
+    唯一例外:簇首恰是扫描窗口内第一根 bo 时,first_drought 取的是沉寂下界
+    (BOEvent.drought_floor),可以小于 gap_max——那不是闸恒真,是首部缓冲不够。
     """
     gap_max: int = 5
     vol_baseline_period: int = 63

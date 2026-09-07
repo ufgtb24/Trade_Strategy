@@ -41,8 +41,8 @@
   1. bo 流为空或 bo 总数 < `min_bos`：整条序列无任何前缀满足长度门，不产（来源 `breakout.py::BurstDetector.detect`）；
   2. 相邻 bo 间距全 > `gap_max`：每个 bo 各自成孤立簇、簇长永远为 1，不满足 `min_bos ≥ 2` 则不产（来源同上）；
   3. `vol_ratio` 热身不完整：上游 BOEvent 的 `vol_ratio` 为 None 时 `max_vol_ratio` 聚合为 0，`max_vol_ratio` where 门静默不满足（来源 `breakout.py::_make_burst`）；
-  4. `first_drought` 为 0：簇首 bo 是序列第一次突破（无前驱 bo，`drought=None`），导致 `first_drought=0`，超过门槛的 `where W.attr("first_drought")` 静默拦截（来源同上）。
-- **常见误配**：把 `gap_max` 理解为「窗口跨度」——实际只看相邻两个 bo 间距，跨度可以任意长；`first_drought` 门依赖 bo 序列连续存在，序列太短时 drought 缺失。
+  4. `first_drought` 过小：`first_drought` 取簇首 bo 的 `drought_floor`（本趟扫描可确证的沉寂下界）。簇首是扫描窗口内第一根 bo 时下界 = `start_idx - total_window`，若它就贴在热身期结束处则下界接近 0，超过门槛的 `where W.attr("first_drought")` 静默拦截（来源同上）。想救这类样本靠加长 `head_buffer`，不是调闸。
+- **常见误配**：把 `gap_max` 理解为「窗口跨度」——实际只看相邻两个 bo 间距，跨度可以任意长；把窗口首根 bo 的 `first_drought` 当精确值读——它是下界（真实沉寂只会更长），`>=` 闸判过必是真过、判不过可能是缓冲不够。
 
 ---
 

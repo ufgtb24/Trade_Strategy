@@ -5,13 +5,17 @@ import pytest
 from path2.atoms.breakout import BOEvent, BurstEvent, BurstDetector, PeakEvent
 
 
-def _bo(i, drought=None, peaks=(), vol=None, peak_age_max=0):
+def _bo(i, drought=None, peaks=(), vol=None, peak_age_max=0, drought_floor=None):
     # pk_count/broken_peak_ids 已改 @property(派生自 broken_refs,契约 C5);
     # 先构造 PeakEvent(pk_id=各 peaks 元素)再以 broken_refs 传入。
+    # drought_floor 默认跟随 drought(与 BODetector 产出侧一致:有前序时两者相等);
+    # 显式传值用于模拟窗口首根 bo(drought=None 但沉寂下界非 0)。
     pk_events = tuple(PeakEvent(start_idx=i, end_idx=i, confirm_idx=i,
                                 pk_id=p, peak_idx=i, price=0.0) for p in peaks)
     return BOEvent(start_idx=i, end_idx=i, confirm_idx=i,
                    drought=drought, vol_ratio=vol, peak_vol_max=0.0,
+                   drought_floor=drought_floor if drought_floor is not None
+                                 else (drought if drought is not None else 0),
                    peak_age_max=peak_age_max, broken_refs=pk_events)
 
 

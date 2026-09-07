@@ -47,6 +47,11 @@ class BOEvent(Event):
 
     输出字段(where 可引用):
     - drought:           距上一根 BO 的 bar 数;序列首次 BO 为 None
+    - drought_floor:     本趟扫描可确证的沉寂下界。有前序时 = drought;序列首次 BO 时
+                         = max(0, start_idx - total_window)——热身期内无 active peak、
+                         结构性产不出 BO,那段不算「观测到没有 BO」。扫描窗口左截断下
+                         drought 缺失,但「至少沉寂这么久」是硬事实;下游 >= 阈值的闸读它,
+                         下界过闸则真值必过,只会保守漏、不会误纳。
     - pk_count:          当前 bar 一次性突破的 peak 个数(派生自 broken_refs,@property)
     - broken_peak_ids:   被突破的 peak id 元组(追溯用;派生自 broken_refs,@property)
     - vol_ratio:         当根量比;序列前 vol_baseline_period 根热身期为 None
@@ -58,6 +63,7 @@ class BOEvent(Event):
     """
     is_point = True   # 点几何承诺,供 PatternSpec._validate_render_grid 反射
     drought: Optional[int] = None
+    drought_floor: int = 0
     vol_ratio: Optional[float] = None
     peak_vol_max: float = 0.0
     peak_age_max: int = 0   # 距峰时间距离:该 bo 突破的各 peak 中最大的 bo_idx - peak.peak_idx(阴跌反弹近峰小,跨越长期结构远)
@@ -87,7 +93,9 @@ class BurstEvent(Event):
     - max_bar_vol_ratio: burst [start_idx, end_idx] 区间内任一 bar 的 vol_ratio 最大值,
                          由 BurstDetector.detect() 一次性预算整列后传入 _make_burst,
                          非 BO bar 也参与取 max
-    - first_drought:     簇首 bo 的 drought(序列首次 bo 落首位时为 0)
+    - first_drought:     簇首 bo 的 drought_floor(可确证的沉寂下界)。簇首恰是本趟扫描
+                         首根 bo 时不再兜底成 0——那是语义翻面(最稀疏被记成最密集),
+                         会让长期沉寂后的首次突破被 first_drought >= 阈值的闸反向淘汰
     - peak_age_max:      簇内各 bo peak_age_max 的最大值(max 聚合=存在性:任一根 bo 突破陈旧峰即满足)
     - members:           内嵌完整 BOEvent 序列,支持 Child("first_bo"/"last_bo") 端点选择器
                          与 children("members") 全员选择器
@@ -217,7 +225,7 @@ class BurstDetector:
             count=len(seg),
             distinct_pk=len(peaks),
             max_bar_vol_ratio=max_bar_vol_ratio,
-            first_drought=seg[0].drought if seg[0].drought is not None else 0,
+            first_drought=seg[0].drought_floor,
             peak_age_max=max(m.peak_age_max for m in seg),
             members=tuple(seg),
         )
@@ -375,6 +383,9 @@ class BODetector:
 
         # 3. 算字段
         drought = None if self._last_bo_idx is None else (i - self._last_bo_idx)
+        # 首根 bo 无前序(drought=None),但 [total_window, i-1] 这段确实扫过且无 bo;
+        # 严格下界是 i-total_window+1,取整段 i-total_window 更保守(宁可漏不可误纳)。
+        drought_floor = drought if drought is not None else max(0, i - self.total_window)
         vol_ratio = self._vol_ratio_series.iloc[i] if self._vol_ratio_series is not None else None
         if vol_ratio is not None and pd.isna(vol_ratio):
             vol_ratio = None
@@ -390,6 +401,7 @@ class BODetector:
             end_idx=i,
             confirm_idx=i,   # 点事件:该根即确认
             drought=drought,
+            drought_floor=drought_floor,
             vol_ratio=vol_ratio,   # 因子移植的遗留，暂时无用，只是反映因子功能在 path2 中依旧保留
             peak_vol_max=peak_vol_max,    # 因子移植的遗留，暂时无用
             peak_age_max=peak_age_max,
