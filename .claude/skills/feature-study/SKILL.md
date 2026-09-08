@@ -126,3 +126,5 @@ verdicts = run_battery("dataset.csv", features=[连续口径列], binaries=[0/1�
 2026-08-20 关3 扩双维去簇(股内簇+时间桶;簇代表去 label 化,tail_enrichment 的 per-symbol 最佳为排行榜语义保留)——同期跨股事件聚集是 symbol 单维去簇的盲区。
 
 2026-08-27 接入 `docs/feature_candidates.md`(研究副产品登记簿):第 1 步先读、第 6 步回写关闭。动机=两轮外部通道研究各自在对照/控制侧顺手发现 feature(ATR%/pos/vol_spike_min 方向反)但只散落在各自 final_report,而 2026-07 tb-geometry-label 报告已整份丢失;登记簿由 CLAUDE.md 推送式捕获、本 skill 拉取式消费。
+
+2026-09-08 数据构建层从耦合 bb 系走势改造为任意声明了 adapter 的 app 均可用:`extract_skeleton.py` 改名 `extract.py`(纯 rename)后从"复制模板改"重构为"可 import 的库",pattern-特异部分(tb/bo/burst 节点名、bo→tb 几何算式、已知信号列)搬进 `apps/<app>/adapter.py`(bb_v1 首例,`apps/_template/` 供换 app 时复制起手,骨架本身不再认任何具体走势的节点名);控制集改为「骨架通用波动率地板 `c0_atr_pct` + `adapter.KNOWN_SIGNALS`」两段拼接,解决新 pattern 冷启动时关 2 因空控制集整体降级的问题。顺带修掉一个 bug:骨架原先声明了 `END_NODE` 常量,但 label 重算那处仍写死字面量,改 `END_NODE` 不生效、end_node 非该值的 pattern 会静默用错买点锚;现 end_node 统一从 app 的 `eval_meta()` 取。同日以 bb_v1 + FC-001(买点日 ATR%)为首轮实证跑通完整六步归档流程(`docs/research/2026-09-08_feature-study-fc001-atr-pct/`)——本 skill 自 2026-08-20 建立以来第一次真实走完全流程;三口径(median-TR 窗20/Wilder RMA 窗20/median-TR 窗10)判定均为「代理」(与骨架控制列 `c0_atr_pct` 同源、A/B 两轮均被已知信号吸收),按第 6 步归档规矩不追加 `KNOWN_SIGNALS`。
