@@ -20,7 +20,7 @@ feature-study(学习端)          tune-gates(执行端)
 - **多特征批量功能(FDR/控制变量/去簇)只在本端**——tune-gates 执行端一次面对一个特征,不设批量校正;跨期验证属 holdout 预注册,不在本 skill。
 
 本目录自带两个工具,**用它们,不要重写统计代码**:
-- `extract_skeleton.py` — 数据构建骨架(重放对齐 + 去重 + 标准控制列 + 自检门)
+- `extract.py` — 数据构建库(重放对齐 + 去重 + 通用控制列 + 自检门),import 使用;走势特异部分声明在 `apps/<app>/adapter.py`
 - `run_battery.py` — 统计电池(关1 FDR / 分箱形状 / 关2 控制秩回归 / 关3 去簇 / 尾部富集 / 三关判定)
 
 ## 流程（六步）
@@ -30,21 +30,54 @@ feature-study(学习端)          tune-gates(执行端)
 - 先写**方向假设**(有利/不利)再动数据,避免事后编故事;
 - 每概念 **≥3 种口径**(相对价格 / ATR 归一 / 比例式 / 原始量…):口径间强弱排序本身是机制证据(回撤深度案例:相对价格 > ATR 倍数 > 回吐比例,直接暴露波动率成分);防「定义选择的运气被当成发现」;
 - **比值口径必须同时提取分子、分母原始量各一列**——比值出信号时必须能归因到哪一端(缩量回踩案例:信号全在分母 bo 放量,分子裸量 p=0.29);
-- 每口径声明「tb.start(买入窗开启)时点已知」;更晚信息 → 列名加 `posthoc_` 前缀,报告单列;
+- 每口径声明「买点(entry_idx)时点已知」;更晚信息 → 列名加 `posthoc_` 前缀,报告单列;
 - 声明条件宇宙:样本 = pattern 已成立的 match(幸存者条件化会杀死无条件为真的直觉)。
 
 ### 2. 数据构建
-复制 `extract_skeleton.py` 到研究目录,**只填 `compute_features`** 与顶部任务参数(换 pattern 同步换 import)。骨架自带:
-- 去重键 (symbol, tb_instance, anchor_bo);
-- 标准控制列 `m1_burst_runup` / `m2_depth_rel`(关2 用,删了关2 就瞎了;2026-07 tb 几何×label 研究定的已知信号。**更新来源=登记簿已关闭段判定「有信号」的条目**,不另立渠道);
-- **自检门(硬闸,不过即 raise)**:match 集逐股对齐(重放 vs scan,防参数/引擎/数据漂移) + label 官方 API 重算逐 match <1e-12。禁止注释掉检查。
+
+**接入新 pattern**(换一个 app 时做一次):复制 `apps/_template/adapter.py` 到 `apps/<你的 app>/adapter.py`,填四样:
+- `APP_MODULE` — 提供 `Params` / `build_pattern` / `eval_meta` 的模块路径(骨架据此动态 import;`end_node` 由骨架自己从 `eval_meta()` 取,不用填);
+- `PARAM_OVERRIDES` — 覆盖 scan 快照参数,按 yaml section 分组;起手留空。**它是某一次 scan 快照的属性,不是这个 app 的属性**:`Params.from_dict` 对快照里缺失的键会注入当前代码默认值,scan 早于某参数引入时该参数会被静默启用、重放 match 集必失配 —— **换 scan 必须重核这个常量**;
+- `DEDUP_COLS` — 哪几列构成一条观测的身份,交给骨架事后去重;
+- `KNOWN_SIGNALS` — 已知信号列名,起手留空,随登记簿「已关闭」段逐步长起来(见第 6 步)。
+
+再实现 `observe(m, evs, win, cols) -> dict | None`:从一条 match 里取出本 app 特异的观测列(node 名、几何算式、`KNOWN_SIGNALS` 各列),返回 `None` 表示这条不进样本。
+
+**每轮研究**只写二十行脚本:
+```python
+import sys; sys.path.insert(0, "<repo>/.claude/skills/feature-study")
+from extract import build_dataset, load_adapter
+
+adapter = load_adapter("<app>")
+
+def compute_features(win, row):
+    ...   # 这一轮要验的特征口径,唯一需要创造性的部分
+
+build_dataset(adapter, scan=SCAN, out_csv=OUT_CSV, compute_features=compute_features)
+```
+
+骨架自带(对所有 app 通用):
+- **两道自检门(硬闸,不过即 raise,禁止注释掉检查)**:match 集逐股对齐(重放 vs scan,防参数/引擎/数据漂移) + label 官方 API 重算逐 match <1e-12;
+- **去重**:按 `adapter.DEDUP_COLS` 声明的列事后去重(前提:这几列必须函数决定 end_node 事件与 `observe()` 的全部返回值);
+- **五个通用列**:`symbol` / `entry_idx`(买点在窗内的 bar 序号) / `entry_date` / `c0_atr_pct` / `label`。
+
+**控制列 = 两段拼接**:
+```python
+controls = ["c0_atr_pct"] + adapter.KNOWN_SIGNALS
+```
+- `c0_atr_pct` — 骨架自算的**通用波动率地板**(买点前一根的 ATR/close,窗口固定 14),任何 pattern 冷启动就有非空控制集。存在的理由:控制列只能来自登记簿「已关闭」段判定「有信号」的条目,新 pattern 首轮该段必为空 → `controls=[]` → 关2 整体跳过、全部判定降级,而首轮恰恰是建立认知的时候(依据登记簿 FC-009「forward_return 的优势全是波动率读数」——波动率是跨 pattern 最普遍的混杂源);
+- `adapter.KNOWN_SIGNALS` — 该 app 当前的已知信号,物理声明在各自的 `apps/<app>/adapter.py` 里。
+
+⚠ **被验特征不得与 `c0_atr_pct` 同源**:要验波动率本身(或它的近亲)时,必须把这个地板从控制集里移出去,并在报告里声明——否则关2 一定把它判成「代理」,那是控制列自我吸收的产物,不是发现。
+
+⚠ **`c0_atr_pct` 为 NaN 的行会静默缩小关2 的有效 n**:骨架会打印 NaN 计数,**报告必须声明这个数**(秩回归会丢掉控制列为 NaN 的行,n 变小但没有任何警告)。
 
 ### 3. 统计电池
 ```python
 import sys; sys.path.insert(0, "<repo>/.claude/skills/feature-study")
 from run_battery import run_battery
 verdicts = run_battery("dataset.csv", features=[连续口径列], binaries=[0/1列],
-                       controls=["m1_burst_runup", "m2_depth_rel"],
+                       controls=["c0_atr_pct"] + adapter.KNOWN_SIGNALS,
                        time_bucket_days=10)  # 从 scan 的 label_horizon 取整到 5 的倍数
 ```
 
@@ -67,7 +100,7 @@ verdicts = run_battery("dataset.csv", features=[连续口径列], binaries=[0/1�
 2. **回写 `docs/feature_candidates.md`**:本次验证过的每个特征,在「已关闭」段追加一行
    `FC-xxx · 名称 · 口径 · 判定(有信号/代理/反转/不稳/无信号) · 验证样本 · → final_report 路径`。
    原来没有 FC 条目的特征先在待验证段登记、再关闭。**不改原条目、不删行**(文件设了 merge=union,改旧行会在合并时静默双份);
-   判定「有信号」的同时把它加进本 skill 的标准控制列清单(第 2 步)。报告是可删的,登记簿是持久的——报告路径失效后那一行仍须自足。
+   判定「有信号」的同时把它加进 `apps/<app>/adapter.py` 的 `KNOWN_SIGNALS` 并在 `observe()` 里实现它的计算。报告是可删的,登记簿是持久的——报告路径失效后那一行仍须自足。
 
 ## 常见坑（全部为本仓库实证案例）
 

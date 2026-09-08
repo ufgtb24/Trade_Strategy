@@ -151,7 +151,7 @@ tune.find(app)      # 前提同上:compared and compare_mismatch == 0
   - **事后可切**（纯 where 字段 / 只影响「产不产事件」不改几何，如纯 where 字段与 filter_params 声明的闸）：宽进放到机制下限（where 放结构下界、毒药闸置 None），让完整取值空间进池；
   - **必须真扫**（参与切串/物化或改变几何，如切串间距、最小串长、确认根数、几何阈值）：宽进保持机制值，审计走逐档真扫。
 
-  一次全扫 + **特征随行存档**（每个 match 带全部候选特征值，含全部事后可切参数的原始量 + **FP 四态计数列 up/down/both/none**——plateau 的 fp 列素材，切档时按档聚合 up/(up+down+both)；extract_skeleton 骨架默认没有，须手动加，口径对齐 `match_first_passage`）。**底座等价先行**：重放底座必须先证与参照 scan 等价——fr 逐 match <1e-12、FP 四态逐股一致、口径逐字段对齐（label_horizon / first_passage_k / sample_window）；底座不等价，后续模拟数字全部无效。
+  一次全扫 + **特征随行存档**（每个 match 带全部候选特征值，含全部事后可切参数的原始量 + **FP 四态计数列 up/down/both/none**——plateau 的 fp 列素材，切档时按档聚合 up/(up+down+both)；extract.py 骨架默认没有，须手动加，口径对齐 `match_first_passage`）。**底座等价先行**：重放底座必须先证与参照 scan 等价——fr 逐 match <1e-12、FP 四态逐股一致、口径逐字段对齐（label_horizon / first_passage_k / sample_window）；底座不等价，后续模拟数字全部无效。
 - **单特征质检**（排序用途）：候选清单应来自学习端（feature-study 三关判定的候选信号）；未经审定的候选在本轮宽进表上**逐特征**算 AUC（`scipy.stats.mannwhitneyu`，AUC = U/(n·m)，方向假设先写死、AUC 与 p 并报），≈0.5 出局——**出局 ≠ 证伪**（可能只是样本不足），深度疑问转 feature-study 立项。**用途匹配**：AUC 是排序用途的度量（选特征/选口径），决策用途（硬闸）看路径 A 平台图实测——两种用途的结论不可互相推断：排序能力略优的口径完全可能在硬阈值下更差，因为归一轴会把不同波动 regime 的样本拉到不可比的位置，这种失真排序统计看不出来、硬闸模拟才暴露（2026-08 毒药闸研究实证：TR 归一口径 AUC 0.728 略优于绝对 pct 的 0.723，但硬闸 FP 只 +1.7pt vs pct 的 +5.6pt，严格更差）。执行端不做多特征批量校正（FDR/控制变量/去簇全属学习端电池，操作卡 `feature-study/reference-fdr.md`）；执行端自身的多重性形态是「先后尝试」，归台账管。
 
 **能事后切档 → 路径 A；必须真扫（改了就得重新检测）→ 路径 B；两类都有 → 先按 B 把真扫维定下来，再用 A 对可事后切的闸补切档位。**
