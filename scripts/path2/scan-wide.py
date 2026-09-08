@@ -2,7 +2,7 @@
 
 对指定 pattern 用「筛子层(事后可切参数)放机制下限、生成侧(必须真扫参数)保持」的
 宽进参数,在给定训练窗上全宇宙扫描,产出带全量 match + label 的 scan 文件,作为
-逐闸事后切档的宽底座(后续用 feature-study/extract_skeleton 从本 scan 提取 dataset.csv)。
+逐闸事后切档的宽底座(后续用 feature-study/extract 从本 scan 提取 dataset.csv)。
 
 宽进 override 的语义见 tune-gates SKILL.md 第 2 步:
   - 事后可切参数(纯 where 字段 / 只影响「产不产事件」不改几何)放机制下限,

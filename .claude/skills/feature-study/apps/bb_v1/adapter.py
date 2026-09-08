@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """feature-study · bb_v1 app adapter。
 
-把骨架 extract_skeleton.py 里原本硬编码的 pattern-特异部分(tb/bo/burst 节点名、
+把骨架 extract.py 里原本硬编码的 pattern-特异部分(tb/bo/burst 节点名、
 bo→tb 几何算式、已知信号列)搬到这一个文件;骨架本身只认 observe() 的返回值 +
 四个常量,不认任何具体走势的节点名。
 

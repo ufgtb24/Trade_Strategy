@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """feature-study · app adapter 模板。复制为 apps/<你的 app>/adapter.py 后填四个常量与 observe()。
 
-骨架(extract_skeleton.py)按文件路径加载这份声明(importlib.util.spec_from_file_location,
+骨架(extract.py)按文件路径加载这份声明(importlib.util.spec_from_file_location,
 不走 sys.path、不建 __init__.py——tune-gates/apps/ 下可能存在同名 app 目录,走
 sys.path 会撞命名空间包)。骨架本身走势-无关,一切 pattern 特异的东西(节点名、
 几何算式、已知信号列)都封在这一个文件里。
