@@ -13,18 +13,18 @@
     关3 去簇存活(双维,两检各自过):
         3a 股内:每 symbol 留数据原序首条(不按 label 挑)后重算,p<0.05 且同号
             → 防「特征效应其实是少数个股反复观测刷出」(股票轴泛化检查)
-        3b 时间:每时间桶(tb_start//time_bucket_days)留首条后重算,同款判据
+        3b 时间:每时间桶(entry_idx//time_bucket_days)留首条后重算,同款判据
             → 防「同期跨股共同事件(如某周小盘集体反弹)是同一随机源的
                重复下注」(时间轴泛化检查;桶宽从 scan 的 label_horizon 取整,
                ≥horizon 才保证 forward window 重叠的 match 归同簇)
-        time_bucket_days=None 或 CSV 缺 tb_start 列 → 3b 跳过,verdict 标注降级
+        time_bucket_days=None 或 CSV 缺 entry_idx 列 → 3b 跳过,verdict 标注降级
         死因可区分:3a 死=个股驱动 / 3b 死=事件驱动
         (3b 在 3a 集合之上再做时间压缩 = 先股内后时间的双维压缩集合,兼任最保守读数)
     三关全过 = 有信号;过1而关2 |t|<2 = 代理(被控制集吸收);关1不过 = 无信号。
     controls 为空时关2 跳过,结论必须标注"无已知信号可控,判定降级"。
 
 CSV 约定:必含 symbol、label 列;features/binaries/controls 为其列名子集;
-        做时间维去簇另需 tb_start 列(同一 scan 窗内 bar 序号,跨股可比)。
+        做时间维去簇另需 entry_idx 列(同一 scan 窗内 bar 序号,跨股可比)。
 读 CSV 一律 keep_default_na=False(存在名为 NA 的 ticker)。
 """
 from __future__ import annotations
@@ -106,7 +106,7 @@ def _decluster(d: pd.DataFrame, label: str, pick: str = "best") -> pd.DataFrame:
 
 
 def _decluster_time(d: pd.DataFrame, label: str, bucket_days: int,
-                    time_col: str = "tb_start") -> pd.DataFrame:
+                    time_col: str = "entry_idx") -> pd.DataFrame:
     """同时间桶只留数据原序首条(同期跨股共同事件的去簇)。
 
     桶键 = time_col // bucket_days。time_col 是同一 scan 切窗内的 bar 序号,
@@ -229,9 +229,9 @@ def run_battery(csv_path, features: list[str], label: str = "label",
 
     # 关3:双维去簇(股内簇 + 时间簇,两检各自过;代表选择与 label 无关)
     sym_first = _decluster(d, label, pick="first")
-    run_time = time_bucket_days is not None and "tb_start" in d.columns
-    if time_bucket_days is not None and "tb_start" not in d.columns:
-        print("⚠ 已传 time_bucket_days 但 CSV 缺 tb_start 列:关3 时间维跳过,判定降级")
+    run_time = time_bucket_days is not None and "entry_idx" in d.columns
+    if time_bucket_days is not None and "entry_idx" not in d.columns:
+        print("⚠ 已传 time_bucket_days 但 CSV 缺 entry_idx 列:关3 时间维跳过,判定降级")
     if time_bucket_days is None:
         print("⚠ 未传 time_bucket_days:关3 时间维跳过(桶宽应从 scan 的 label_horizon 取整),判定降级")
     time_first = _decluster_time(sym_first if run_time else d, label,
@@ -269,7 +269,7 @@ def run_battery(csv_path, features: list[str], label: str = "label",
         else:
             ds_time, dp_time, gate3_time = np.nan, None, None
         gate3 = gate3_sym if gate3_time is None else (gate3_sym and gate3_time)
-        time_note = "" if gate3_time is not None else ";时间维未检(缺 tb_start 列或未传 time_bucket_days),关3 降级"
+        time_note = "" if gate3_time is not None else ";时间维未检(缺 entry_idx 列或未传 time_bucket_days),关3 降级"
         if not gate1:
             verdict = "无信号"
         elif controls and abs(t_ctrl[m]) >= 2 and not sign_ok:

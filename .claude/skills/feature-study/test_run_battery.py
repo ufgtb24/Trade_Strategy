@@ -118,7 +118,7 @@ def test_gate3a_symbol_cluster_kills(capsys):
         rows += [(f"M{i}", i * 17 + j * 3, xx, ll) for j, (xx, ll) in enumerate(zip(x, lab))]
     for i in range(40):  # 40 只正常股各 1 条,无关联,同期挤桶
         rows.append((f"S{i}", 100 + (i % 6) * 5, rng.normal(0, 1), rng.normal(0, 1)))
-    d = pd.DataFrame(rows, columns=["symbol", "tb_start", "x_m", "label"])
+    d = pd.DataFrame(rows, columns=["symbol", "entry_idx", "x_m", "label"])
     v = run_battery(_csv(d, "symclus"), features=["x_m"], binaries=[],
                     controls=[], time_bucket_days=5)["x_m"]
     assert v["gate1"] and v["gate3_sym"] is False
@@ -135,7 +135,7 @@ def test_gate3b_time_cluster_kills(capsys):
     x1 = rng.normal(3, 0.3, n1); lab1 = rng.normal(3, 0.5, n1)
     tb1 = np.full(n1, 400)            # 全在桶 80
     d = pd.DataFrame({"symbol": [f"S{i}" for i in range(n0 + n1)],
-                      "tb_start": np.concatenate([tb0, tb1]),
+                      "entry_idx": np.concatenate([tb0, tb1]),
                       "x_ev": np.concatenate([x0, x1]),
                       "label": np.concatenate([lab0, lab1])})
     v = run_battery(_csv(d, "timeclus"), features=["x_ev"], binaries=[],
@@ -151,7 +151,7 @@ def test_gate3_both_pass(capsys):
     n = 60
     x = rng.normal(0, 1, n)
     d = pd.DataFrame({"symbol": [f"S{i}" for i in range(n)],
-                      "tb_start": np.arange(n) * 5,
+                      "entry_idx": np.arange(n) * 5,
                       "x_ok": x, "label": x + 0.5 * rng.normal(0, 1, n)})
     v = run_battery(_csv(d, "bothpass"), features=["x_ok"], binaries=[],
                     controls=[], time_bucket_days=5)["x_ok"]
@@ -170,7 +170,7 @@ def test_gate3b_opposite_sign_death(capsys):
     for k in range(20):
         rows.append((f"A{k}", k * 5, k, -(40 + k)))      # 桶首条:反号
         rows.append((f"B{k}", k * 5, 50 + k, 50 + k))     # 桶次条:同号
-    d = pd.DataFrame(rows, columns=["symbol", "tb_start", "x_rev", "label"])
+    d = pd.DataFrame(rows, columns=["symbol", "entry_idx", "x_rev", "label"])
     v = run_battery(_csv(d, "revsign"), features=["x_rev"], binaries=[],
                     controls=[], time_bucket_days=5)["x_rev"]
     assert v["gate1"] and v["gate3_sym"] is True
@@ -179,7 +179,7 @@ def test_gate3b_opposite_sign_death(capsys):
 
 
 def test_time_dim_missing_degrades(capsys):
-    """缺 tb_start 列或未传 time_bucket_days → 3b 跳过,verdict 标注降级。"""
+    """缺 entry_idx 列或未传 time_bucket_days → 3b 跳过,verdict 标注降级。"""
     rng = np.random.default_rng(3)
     n = 60
     x = rng.normal(0, 1, n)
@@ -194,4 +194,4 @@ def test_time_dim_missing_degrades(capsys):
         assert v["gate3_time"] is None and v["declust_time_p"] is None
         assert v["gate3"] == v["gate3_sym"] is True
         assert "时间维未检" in v["verdict"]
-    assert "tb_start" in capsys.readouterr().out  # 警告打印提到缺列原因
+    assert "entry_idx" in capsys.readouterr().out  # 警告打印提到缺列原因
