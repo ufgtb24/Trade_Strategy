@@ -43,9 +43,15 @@ feature-study(学习端)          tune-gates(执行端)
 
 再实现 `observe(m, evs, win, cols) -> dict | None`:从一条 match 里取出本 app 特异的观测列(node 名、几何算式、`KNOWN_SIGNALS` 各列),返回 `None` 表示这条不进样本。
 
-**每轮研究**只写二十行脚本:
+**每轮研究**只写二十行脚本(路径从 `__file__` 派生仓库根目录,不硬编码绝对路径——
+研究脚本落在 `docs/research/<日期>_slug/`,与 `parents[3]` 层数同构,换 worktree
+不会误读别处的 skill 代码):
 ```python
-import sys; sys.path.insert(0, "<repo>/.claude/skills/feature-study")
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[3]   # docs/research/<日期>_slug/脚本.py → repo root
+sys.path.insert(0, str(ROOT / ".claude" / "skills" / "feature-study"))
 from extract import build_dataset, load_adapter
 
 adapter = load_adapter("<app>")

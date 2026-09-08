@@ -38,7 +38,9 @@ def observe(m, evs, win, cols) -> dict | None:
 
     参数:
       m: 一条 match(res.matches 的元素)。
-      evs: {instance_id: event} 全事件字典。
+      evs: {instance_id: event}——detector 直接产出的事件,**不含容器 child**(如
+        bottom_burst 的 "tb.segments" 展开出的每个 segment,其 instance_id 不在
+        这里;要取 child 用 m.node_index[父 node].child_slots())。
       win: 切好的 OHLCV DataFrame。
       cols: 骨架每股预算一次的 types.SimpleNamespace,字段 = high/low/close/open/
         volume/atr/n——前五个是整列 ndarray(win[...].to_numpy(float)),atr 是

@@ -148,7 +148,7 @@ def build_dataset(adapter, *, scan, out_csv, compute_features,
             continue
         scan_ids[rr["symbol"]] = {m["match_id"] for m in pp["analysis"]["matches"]}
 
-    rows, n_lab_fail, n_lab_checked, mset_fail = [], 0, 0, []
+    rows, n_lab_fail, n_lab_compared, n_lab_skipped, mset_fail = [], 0, 0, 0, []
     for sym, ids in scan_ids.items():
         win = slice_window(pd.read_pickle(data_dir / f"{sym}.pkl"), ws, we)
         res = dag_analyze(build_pattern(params), win, params)
@@ -188,12 +188,14 @@ def build_dataset(adapter, *, scan, out_csv, compute_features,
         # 自检 2:覆盖全部通过窗/价格过滤的 kept match(不止最终留下的行),放在
         # observe() 之前——先证 label 可信,再谈要不要采信这条观测。
         for m, events in kept:
-            n_lab_checked += 1
             lab = match_forward_returns(m, end_node, win, [horizon],
                                         sample_window=(lo, hi))[horizon]
             ref = scan_lab.get(m.match_id)
             if lab is None and ref is None:
-                continue   # 无 label(scan 窗末端 horizon 不可见),非失配——跳过不统计
+                n_lab_skipped += 1
+                continue   # 无 label(scan 窗末端 horizon 不可见),非失配——跳过不统计,
+                          # 也不计入下面 <1e-12 的比对分母(与 n_lab_compared 分开数)
+            n_lab_compared += 1
             if lab is None or ref is None or abs(lab - ref) >= 1e-12:
                 n_lab_fail += 1
                 continue
@@ -205,11 +207,24 @@ def build_dataset(adapter, *, scan, out_csv, compute_features,
                 raise ValueError(
                     f"adapter.observe() 返回值覆盖了骨架通用列: {clash}——"
                     "列的归属是本次改造的核心不变式,不许 app 层覆盖骨架列")
-            # 买点在窗内的 bar 序号:必须 min(ev.start_idx for ev in events)、不能写
-            # 字面下标——某些 app 的 end_node 是「父 node.槽名」点号路径,
-            # _resolve_end_events 解析出一组 child events,裸下标会 KeyError;对
-            # end_node 无点号、events 只有一个元素的 app,min(...) 逐值等价于原实现。
-            entry_idx = min(ev.start_idx for ev in events)
+            # 买点在窗内的 bar 序号:必须与 label 的买点日集合同源——
+            # match_forward_returns(path2/eval.py)取买点日走的是
+            # `for ev in events for t in ev.sample_bar_indices() if lo<=t<=hi`,
+            # entry_idx 须复用同一遍历 + 同一窗过滤,不能写 min(ev.start_idx for ev
+            # in events):多段 app 的 end_node 是「父 node.槽名」点号路径(如
+            # bottom_burst 的 "tb.segments"),窗过滤(见上)只要求任一段起点 ∈ 窗,
+            # 首部缓冲允许更早的段存在——实测 CGTX:min(ev.start_idx)=67 而 lo=72,
+            # 那一段一次都没被 label 采样过,取它当买点日会让 c0_atr_pct 算在窗外。
+            # 集合必非空:上面的窗过滤已保证至少一个 ev 满足 lo<=ev.start_idx<=hi
+            # (searchsorted 语义),而 ev.start_idx 本身就在 ev.sample_bar_indices()
+            # 里,min() 拿不到空序列。对 end_node 无点号、events 只有一个元素的 app
+            # (如 bb_v1 的 "tb"),这与原来的 min(ev.start_idx) 逐值等价。
+            entry_idx = min(t for ev in events for t in ev.sample_bar_indices()
+                            if lo <= t <= hi)
+            # entry_date 与 path2_web/serialize.py 的 leaf_ev 报日期口径不同:
+            # serialize 取的是**容器起点**,这里取的是**采样窗内最早的买点日**——对
+            # end_node 无点号的 app 二者相等,对点号路径 app(如 bottom_burst)未必。
+            # 真要与 scan JSON 的行对齐,应该用 match_id 做 join,不要用 entry_date。
             entry_date = str(pd.to_datetime(win["date"].iat[entry_idx]).date())
             # 通用波动率地板:买点前一根的 atr/close(前一根保证时点安全,决策时刻
             # 已知)。entry_idx<1、分母<=0、或任一端非有限 → NaN,不丢行。
@@ -246,11 +261,19 @@ def build_dataset(adapter, *, scan, out_csv, compute_features,
                          "(adapter.observe() 或骨架未产出这些列)")
     # 流式 seen 集合去重降级为事后 drop_duplicates;语义等价的前提是 DEDUP_COLS
     # 函数决定 end_node 事件与 observe() 的全部返回值(adapter 文件里写死为注释)。
+    # 两版在这个前提外仍有一处分叉,写出来免得后来人重推:旧版 seen.add(key) 发生在
+    # 三道 guard 与 label 门**之前**,是「首条 match 赢,哪怕它自己被丢弃」;新版是
+    # 「首条**存活**match 赢」。只要上述前提成立(DEDUP_COLS 决定 end_node 事件与
+    # observe() 的全部返回值,含 None),两版收敛为等价——但这依赖前提成立,不是
+    # 天然如此。
     df = df.drop_duplicates(list(adapter.DEDUP_COLS), keep="first")
     df.to_csv(out_csv, index=False)
 
     n_nan_c0 = int(df["c0_atr_pct"].isna().sum())
-    print(f"自检门通过(match 集逐股对齐,label 重算 {n_lab_checked} 例全数 <1e-12)")
+    # 拆成两个数,不再合并成一个「重算 N 例」——旧版那个数混了「真正参与 <1e-12
+    # 比对」与「lab/ref 皆 None、跳过未比对」两类,读者得靠额外一段括号解释才看懂。
+    print(f"自检门通过(match 集逐股对齐,label 重算:比对 {n_lab_compared} 例全数 "
+         f"<1e-12、无 label 跳过 {n_lab_skipped} 例)")
     print(f"rows={len(df)} symbols={df['symbol'].nunique()} -> {out_csv}")
     print(f"c0_atr_pct NaN 计数={n_nan_c0}")
     return df

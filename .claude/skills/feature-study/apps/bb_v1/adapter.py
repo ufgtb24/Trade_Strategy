@@ -39,7 +39,10 @@ def observe(m, evs, win, cols) -> dict | None:
 
     参数:
       m: 一条 match(res.matches 的元素)。
-      evs: {instance_id: event} 全事件字典。
+      evs: {instance_id: event}——detector 直接产出的事件,**不含容器 child**(如
+        bottom_burst 的 "tb.segments" 展开出的每个 segment,其 instance_id 不在
+        这里;要取 child 用 m.node_index[父 node].child_slots())。bb_v1 本身的
+        tb/burst/bo 都不是容器,故这条对本文件无实际影响,只是模板同款说明。
       win: 切好的 OHLCV DataFrame(本 app 未直接用到,tb_date 已改由骨架的
         entry_date 注入)。
       cols: 骨架每股预算一次的 types.SimpleNamespace,字段 = high/low/close/open/

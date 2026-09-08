@@ -36,15 +36,27 @@ FC-001 登记的原始口径与骨架自动注入的通用波动率控制列 `c0
 
 ## 自检门（判据 1）
 
-骨架打印原文：
+骨架打印原文（fix 轮用当前代码重跑复核，`build_dataset` 三行 + A/B 两轮电池完整
+stdout 已归档进 `battery_output.txt` 开头；重跑前后 `dataset.csv` 字节级一致、
+A/B 两轮电池数字逐值不变，证实骨架这一处改动对 bb_v1 零漂移）：
 
 ```
-自检门通过(match 集逐股对齐,label 重算 458 例全数 <1e-12)
+自检门通过(match 集逐股对齐,label 重算:比对 458 例全数 <1e-12、无 label 跳过 0 例)
 rows=458 symbols=317 -> dataset.csv
 c0_atr_pct NaN 计数=0
 ```
 
-match 集失配 **0 股**、label 失配 **0 例**，label 重算覆盖 **458 条 match**（`n_lab_checked` 计数发生在 `observe()`/去重之前，覆盖的是全部通过窗/价格过滤的 kept match，不是去重后行数；本例去重前后行数恰好相等，因为 `DEDUP_COLS=(symbol, tb_id, bo_id)` 声明的键在这批数据上没有重复取值——**这只是说没有两条 match 共享同一个 `(tb_id, bo_id)`，不代表这 458 行是 458 个独立观测**，同一天可以合法产生多个 tb/bo 实例，见局限「458 行 ≠ 458 个独立买点」一条）。
+match 集失配 **0 股**、label 失配 **0 例**，label 重算比对 **458 条 match**
+（`n_lab_compared`；无 label 跳过 **0 例** `n_lab_skipped`，即本轮全部通过窗/价格
+过滤的 kept match 都进了 <1e-12 比对，没有 scan 窗末端 horizon 不可见的样本——
+两个数分开数是 fix 轮改进,旧版合并成一个数会把「真正比对」和「无 label 跳过」
+混在一起）。比对覆盖的是全部通过过滤的 kept match，不是去重后行数；本例去重前后
+行数恰好相等，因为 `DEDUP_COLS=(symbol, tb_id, bo_id)` 声明的键在这批数据上没有
+重复取值——**这只是说没有两条 match 共享同一个 `(tb_id, bo_id)`，不代表这 458 行
+是 458 个独立观测**，同一天可以合法产生多个 tb/bo 实例，见局限「458 行 ≠ 458 个
+独立买点」一条。**这同时说明「流式 seen 去重 → 事后 drop_duplicates 换序等价」
+这条改动，本轮 458 行里一次都没有被真实行使**——键本就唯一，去重前后行集合恒等，
+两种去重策略在这批数据上给出完全相同的结果，谈不上验证「先赢的是谁」。
 
 ## 两轮电池：为什么要跑两次
 
@@ -147,4 +159,4 @@ match 集失配 **0 股**、label 失配 **0 例**，label 重算覆盖 **458 �
 - `final_report.md`（本文件）
 - `dataset.csv`（458 行 / 317 股，骨架产出）
 - `build.py`（本轮研究脚本，含 `compute_features` 三口径实现）
-- `battery_output.txt`（A/B 两轮电池完整 stdout，fix 轮补，支撑关 1/关 2/关 3 各节引用的数字）
+- `battery_output.txt`（`build_dataset` 自检门三行 + A/B 两轮电池完整 stdout，fix 轮补齐 build_dataset 部分，支撑判据 1 与关 1/关 2/关 3 各节引用的数字）
