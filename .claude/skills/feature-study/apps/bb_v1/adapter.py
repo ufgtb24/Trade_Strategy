@@ -20,7 +20,7 @@ APP_MODULE = "path2_apps.bb_v1.dag_spec"
 
 # ⚠ 这是「某一次 scan 快照」的属性,不是「bb_v1 这个 app」的属性:Params.from_dict
 # 对快照里缺失的键会注入「当前代码默认值」,scan 早于某参数引入时该参数会被静默
-# 启用,重放 match 集必失配。当前配套的 scan(outputs/path2_web/scans/20260907T051628.json)
+# 启用,重放 match 集必失配。当前配套的 scan(outputs/path2_web/scans/20260908T113225.json)
 # 的 params_snapshot 里 tb.max_day_drop_pct = 0.2 确实存在,所以这里必须是空 dict——
 # 换 scan 必须重核这个常量(骨架那边会提供一个可选入参临时覆盖它)。
 PARAM_OVERRIDES = {}
