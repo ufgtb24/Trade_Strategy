@@ -139,4 +139,4 @@
 
 （空。关闭格式：`FC-xxx · 名称 · 口径 · 判定（有信号/代理/反转/不稳/无信号）· 验证样本 · → 验证报告路径`）
 
-- FC-001 · 买点日 ATR%(20) · `rolling_atr_pct_nanmedian(high, low, close, 20)` 买点当日（另跑 Wilder RMA 窗20、median 窗10 两个对照口径，三者同判）· **代理**（被控制集吸收；A 轮 controls 含 `c0_atr_pct` 与 B 轮移出后均判代理，B 轮 `\|t\|` 0.72~1.82 全未过 2，主要被已知信号 `m2_depth_rel` 吸收）· bb_v1 458 条 match / 317 股，2025 全年严格窗（`outputs/path2_web/scans/20260908T113225.json`，与发现样本 2025-09..12 112 行不同）· → `docs/research/2026-09-08_feature-study-fc001-atr-pct/final_report.md`
+- FC-001 · 买点日 ATR%(20) · `rolling_atr_pct_nanmedian(high, low, close, 20)` 买点当日（另跑 Wilder RMA 窗20、median 窗10 两个对照口径，三者同判）· **代理**（被控制集吸收；A 轮 controls 含 `c0_atr_pct` 与 B 轮移出后均判代理，B 轮 `\|t\|` 0.72~1.82 全未过 2，主要被已知信号 `m2_depth_rel` 吸收；⚠ `v_wilder20` 对去重口径敏感——按买点日去重后 n=374、t=+2.02 过 2，但关3b 不过，去重口径下判定应为「不稳」而非「代理」，另两个口径判定不变）· bb_v1 458 条 match / 317 股（按 `(symbol,entry_date)` 去重后 374 个独立买点，75 个买点各贡献 2~4 行），2025 全年严格窗（`outputs/path2_web/scans/20260908T113225.json`，与发现样本 2025-09..12 112 行不同）· → `docs/research/2026-09-08_feature-study-fc001-atr-pct/final_report.md`

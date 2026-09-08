@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """FC-001「买点日 ATR%(20)」换样本验证——feature-study 第一次完整六步跑通(验收 task 6)。
 
-三种口径(强弱排序即机制证据):
+三种口径(fix 轮改判:关2 下 A/B 两轮 t 值排序不一致,不作为口径强弱的机制证据):
   v_median20 — 登记簿原口径,rolling_atr_pct_nanmedian(20),买点当日
   v_wilder20 — 换平滑方式,calculate_atr(Wilder RMA, 20)/close,买点当日
   v_median10 — 换窗口长度,rolling_atr_pct_nanmedian(10),买点当日
@@ -14,8 +14,15 @@ docstring 的时点安全声明一致,故三列均不加 posthoc_ 前缀。
 ATR/close,Wilder 窗14)与 FC-001 三个口径同源(都是波动率地板的变体)。
   A 轮 controls=["c0_atr_pct"]+KNOWN_SIGNALS — 验默认路径能跑通、关2 不降级
   B 轮 controls=KNOWN_SIGNALS               — FC-001 的真实判定(移出地板)
+
+路径全部从 __file__ 派生仓库根目录,不硬编码绝对路径——本脚本要能在任意 worktree
+下、以研究目录为 cwd 跑通,不误读别的 worktree 的 skill 代码与 scan 文件。
 """
-import sys; sys.path.insert(0, "/home/yu/PycharmProjects/Trade_Strategy/.claude/skills/feature-study")
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[3]   # .../docs/research/<本目录>/build.py → repo root
+sys.path.insert(0, str(ROOT / ".claude" / "skills" / "feature-study"))
 import numpy as np
 import pandas as pd
 from extract import build_dataset, load_adapter
@@ -23,7 +30,7 @@ from run_battery import run_battery
 from path2.calc.atr import calculate_atr, rolling_atr_pct_nanmedian
 
 adapter = load_adapter("bb_v1")
-SCAN = "/home/yu/PycharmProjects/Trade_Strategy/outputs/path2_web/scans/20260908T113225.json"
+SCAN = str(ROOT / "outputs" / "path2_web" / "scans" / "20260908T113225.json")
 # bb_v1 / 8325 只扫描 / 317 只命中 / 458 条 match / label_horizon=40 / 2025 全年严格窗
 
 FEATURES = ["v_median20", "v_wilder20", "v_median10"]
