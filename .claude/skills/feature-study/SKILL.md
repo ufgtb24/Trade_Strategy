@@ -87,13 +87,13 @@ verdicts = run_battery("dataset.csv", features=[连续口径列], binaries=[0/1�
                        time_bucket_days=10)  # 从 scan 的 label_horizon 取整到 5 的倍数
 ```
 
-桶宽 ≥ label_horizon 才保证 forward window 重叠的 match 归同簇(两笔 match 的 label 随机源共享 ⟺ 窗口重叠)。
+桶宽 ≥ label_horizon 才保证 forward window 重叠的 match 归同簇(两笔 match 的 label 随机源共享 ⟺ 窗口重叠)。`time_bucket_days` 以**交易日**计,电池按 `entry_date` 的**日历天**切桶(换算 ×365/252),所以桶数 ≈ 样本日期跨度 / 桶宽——**少于 20 个桶时关 3b 直接按未检处理、判定降级**(那个量级下检验无功效,p 值两个方向都不可解释)。这是选底座 scan 时就要算的账:桶宽锚死在 label_horizon 上,想让关 3b 真正有话说,样本的日期跨度至少要 20 × label_horizon 个交易日;够不到就坦白关 3 降级、别硬凑。
 
 ### 4. 判定（电池自动输出,禁止另立标准）
 三关 = FDR q<0.05 → 控制后 |t|≥2 且同号 → 双维去簇(股内簇/时间桶)各自 p<0.05 且同号。
 关 3 死因可区分:个股驱动(少数股票反复观测刷出)/事件驱动(同期跨股共同行情=同一随机源的重复下注);3b 各留首条兼任最保守读数(双维压缩集合,做正式门)。
-五类判定:**有信号 / 代理(被控制集吸收) / 反转(suppression,残余反向) / 不稳(去簇死) / 无信号**。
-分箱形状(单调/饱和/甜点位置)必须写进结论——相关系数只给方向不给形状。
+五类判定:**有信号 / 代理(被控制集吸收) / 反转(suppression,残余反向) / 不稳(去簇死) / 无信号**。判定后面可能跟一句「时间维未检…关3 降级」——那表示关 3b 没跑或没功效,该判定只经过了股内一维去簇,写结论时必须原样带上。
+分箱形状(单调/饱和/甜点位置)必须写进结论——相关系数只给方向不给形状。形状由电池按 `med_lab` 判(与本仓 median 核心指标一致);若 `mean_lab` 读出不同的形状,电池会在注记里附一句提醒分布有偏,**以 med 为准**。
 
 ### 5. 结论纪律
 - 局限逐条声明:label 口径上偏不可当收益预期、单窗 in-sample、观测非独立(双维去簇已检:股内防个股复读、时间桶防事件复读)、口径族已 FDR、相关≠可交易;
@@ -134,3 +134,5 @@ verdicts = run_battery("dataset.csv", features=[连续口径列], binaries=[0/1�
 2026-08-27 接入 `docs/feature_candidates.md`(研究副产品登记簿):第 1 步先读、第 6 步回写关闭。动机=两轮外部通道研究各自在对照/控制侧顺手发现 feature(ATR%/pos/vol_spike_min 方向反)但只散落在各自 final_report,而 2026-07 tb-geometry-label 报告已整份丢失;登记簿由 CLAUDE.md 推送式捕获、本 skill 拉取式消费。
 
 2026-09-08 数据构建层从耦合 bb 系走势改造为任意声明了 adapter 的 app 均可用:`extract_skeleton.py` 改名 `extract.py`(纯 rename)后从"复制模板改"重构为"可 import 的库",pattern-特异部分(tb/bo/burst 节点名、bo→tb 几何算式、已知信号列)搬进 `apps/<app>/adapter.py`(bb_v1 首例,`apps/_template/` 供换 app 时复制起手,骨架本身不再认任何具体走势的节点名);控制集改为「骨架通用波动率地板 `c0_atr_pct` + `adapter.KNOWN_SIGNALS`」两段拼接,解决新 pattern 冷启动时关 2 因空控制集整体降级的问题。顺带修掉一个 bug:骨架原先声明了 `END_NODE` 常量,但 label 重算那处仍写死字面量,改 `END_NODE` 不生效、end_node 非该值的 pattern 会静默用错买点锚;现 end_node 统一从 app 的 `eval_meta()` 取。同日以 bb_v1 + FC-001(买点日 ATR%)为首轮实证跑通完整六步归档流程(`docs/research/2026-09-08_feature-study-fc001-atr-pct/`)——本 skill 自 2026-08-20 建立以来第一次真实走完全流程;三口径(median-TR 窗20/Wilder RMA 窗20/median-TR 窗10)判定均为「代理」(与骨架控制列 `c0_atr_pct` 同源、A/B 两轮均被已知信号吸收),按第 6 步归档规矩不追加 `KNOWN_SIGNALS`。
+
+2026-09-12 电池修掉两处方法学缺口:① 分箱形状注记原按 `mean_lab` 判,与本仓「median 是核心指标」的评估纪律打架(FC-001 首轮就因此把「单调升」抄进了自己引用的中位数序列、被复审用它自己的数字推翻),改判 `med_lab` 并在两者形状不一致时附注;② 关 3b 原按 `entry_idx // 桶宽` 切桶,而各股切窗起点不同导致同一 idx 对应不同日期、桶的日期区间互相重叠,破坏「同期跨股 = 同一随机源」这个去簇语义,改按 `entry_date` 的日历天切桶;连带新增最小桶数 20 的功效闸,低于此值关 3b 按未检处理、判定降级,不再打印可被误引的 p 值。FC-001 那轮的 8 个桶因此作废,登记簿已追加更正行。

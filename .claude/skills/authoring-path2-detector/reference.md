@@ -364,7 +364,7 @@ gate 以实际代码为准,不是 spec 草案)。轻量修改(不动签名/gate/
 2. 输出字段（Event dataclass 字段含义，也可放 Event 类 docstring）
 3. 一句话定位（供 reference §1 速查引用）
 
-docstring 草稿在 spec 中产出、作为交付物之一移交 superpowers 实现——不能假定
+docstring 草稿在 spec 中产出、作为交付物之一交给实施计划——不能假定
 实现者会主动写，合同必须写明。失效边界 + 常见误配写进 reference §1 速查条目
 （选型期决策依据，非使用期参考）。
 

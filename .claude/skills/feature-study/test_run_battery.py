@@ -11,7 +11,7 @@ import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).parent))
 
-from run_battery import _bh_fdr, _decluster, run_battery  # noqa: E402
+from run_battery import _bh_fdr, _decluster, _shape_note, run_battery  # noqa: E402
 
 
 def _df(seed: int = 7, n: int = 600) -> pd.DataFrame:
@@ -105,6 +105,15 @@ def _csv(d: pd.DataFrame, name: str) -> str:
     return str(p)
 
 
+D0 = pd.Timestamp("2025-01-02")
+
+
+def _dates(offsets):
+    """日历天偏移 → ISO 日期串。电池按 entry_date 的日历天切桶,
+    桶宽 = round(time_bucket_days * 365/252);本文件一律传 5 → 7 天/桶。"""
+    return [str((D0 + pd.Timedelta(days=int(o))).date()) for o in offsets]
+
+
 def test_gate3a_symbol_cluster_kills(capsys):
     """股簇杀:相关由 3 只妖股各 15 条重复观测刷出 → 股内去簇(留首条)后死。
 
@@ -115,10 +124,11 @@ def test_gate3a_symbol_cluster_kills(capsys):
     rows = []
     for i in range(3):  # 3 只妖股 × 15 条,股内 x/label 双高
         x = rng.normal(2, 0.4, 15); lab = rng.normal(2, 0.5, 15)
-        rows += [(f"M{i}", i * 17 + j * 3, xx, ll) for j, (xx, ll) in enumerate(zip(x, lab))]
+        rows += [(f"M{i}", i * 200 + j * 10, xx, ll) for j, (xx, ll) in enumerate(zip(x, lab))]
     for i in range(40):  # 40 只正常股各 1 条,无关联,同期挤桶
-        rows.append((f"S{i}", 100 + (i % 6) * 5, rng.normal(0, 1), rng.normal(0, 1)))
-    d = pd.DataFrame(rows, columns=["symbol", "entry_idx", "x_m", "label"])
+        rows.append((f"S{i}", 2000 + (i % 6) * 7, rng.normal(0, 1), rng.normal(0, 1)))
+    d = pd.DataFrame(rows, columns=["symbol", "_off", "x_m", "label"])
+    d["entry_date"] = _dates(d.pop("_off"))
     v = run_battery(_csv(d, "symclus"), features=["x_m"], binaries=[],
                     controls=[], time_bucket_days=5)["x_m"]
     assert v["gate1"] and v["gate3_sym"] is False
@@ -130,12 +140,12 @@ def test_gate3b_time_cluster_kills(capsys):
     rng = np.random.default_rng(13)
     n0 = 40  # 分散桶,每股一条,无关联
     x0 = rng.normal(0, 1, n0); lab0 = rng.normal(0, 1, n0)
-    tb0 = np.arange(n0) * 5           # 桶 0..39,每桶一条
-    n1 = 20   # 事件簇:同一桶,x/label 双高
+    tb0 = np.arange(n0) * 10          # 每条间隔 10 天 > 7 天桶宽 → 各占一桶
+    n1 = 20   # 事件簇:同一天,x/label 双高
     x1 = rng.normal(3, 0.3, n1); lab1 = rng.normal(3, 0.5, n1)
-    tb1 = np.full(n1, 400)            # 全在桶 80
+    tb1 = np.full(n1, 5000)           # 全在同一天 → 同一桶
     d = pd.DataFrame({"symbol": [f"S{i}" for i in range(n0 + n1)],
-                      "entry_idx": np.concatenate([tb0, tb1]),
+                      "entry_date": _dates(np.concatenate([tb0, tb1])),
                       "x_ev": np.concatenate([x0, x1]),
                       "label": np.concatenate([lab0, lab1])})
     v = run_battery(_csv(d, "timeclus"), features=["x_ev"], binaries=[],
@@ -151,7 +161,7 @@ def test_gate3_both_pass(capsys):
     n = 60
     x = rng.normal(0, 1, n)
     d = pd.DataFrame({"symbol": [f"S{i}" for i in range(n)],
-                      "entry_idx": np.arange(n) * 5,
+                      "entry_date": _dates(np.arange(n) * 10),
                       "x_ok": x, "label": x + 0.5 * rng.normal(0, 1, n)})
     v = run_battery(_csv(d, "bothpass"), features=["x_ok"], binaries=[],
                     controls=[], time_bucket_days=5)["x_ok"]
@@ -162,15 +172,17 @@ def test_gate3_both_pass(capsys):
 def test_gate3b_opposite_sign_death(capsys):
     """3b 反号死亡:时间去簇后 stat 显著但与原始反号 → 死因文案落「事件驱动」。
 
-    20 桶各 2 股:首条 x 低/label 更低(段内反号)、次条 x 高/label 高(撑正相关);
-    原始 rho=+0.75,3b 只留各桶首条 → 20 条完美反号 rho=-1 → gate3_time 走
+    25 桶各 2 股:首条 x 低/label 更低(段内反号)、次条 x 高/label 高(撑正相关);
+    3b 只留各桶首条 → 25 条完美反号 rho=-1 → gate3_time 走
     「p<0.05 但 sign 反」路径(np 布尔),文案必须命中「事件驱动」细分分支。
+    桶数取 25 而非 20,避开 MIN_TIME_BUCKETS 的临界值。
     """
     rows = []
-    for k in range(20):
-        rows.append((f"A{k}", k * 5, k, -(40 + k)))      # 桶首条:反号
-        rows.append((f"B{k}", k * 5, 50 + k, 50 + k))     # 桶次条:同号
-    d = pd.DataFrame(rows, columns=["symbol", "entry_idx", "x_rev", "label"])
+    for k in range(25):
+        rows.append((f"A{k}", k * 7, k, -(40 + k)))       # 桶首条:反号
+        rows.append((f"B{k}", k * 7, 50 + k, 50 + k))      # 桶次条:同号
+    d = pd.DataFrame(rows, columns=["symbol", "_off", "x_rev", "label"])
+    d["entry_date"] = _dates(d.pop("_off"))
     v = run_battery(_csv(d, "revsign"), features=["x_rev"], binaries=[],
                     controls=[], time_bucket_days=5)["x_rev"]
     assert v["gate1"] and v["gate3_sym"] is True
@@ -179,7 +191,7 @@ def test_gate3b_opposite_sign_death(capsys):
 
 
 def test_time_dim_missing_degrades(capsys):
-    """缺 entry_idx 列或未传 time_bucket_days → 3b 跳过,verdict 标注降级。"""
+    """缺 entry_date 列或未传 time_bucket_days → 3b 跳过,verdict 标注降级。"""
     rng = np.random.default_rng(3)
     n = 60
     x = rng.normal(0, 1, n)
@@ -194,4 +206,50 @@ def test_time_dim_missing_degrades(capsys):
         assert v["gate3_time"] is None and v["declust_time_p"] is None
         assert v["gate3"] == v["gate3_sym"] is True
         assert "时间维未检" in v["verdict"]
-    assert "entry_idx" in capsys.readouterr().out  # 警告打印提到缺列原因
+    assert "entry_date" in capsys.readouterr().out  # 警告打印提到缺列原因
+
+
+def test_few_time_buckets_degrades(capsys):
+    """桶数 < MIN_TIME_BUCKETS → 关3b 按未检处理、判定降级(不当证据)。
+
+    关3b 在个位数桶上功效不足、p 值两方向都不可解释(2026-09-08 实测:全年窗 +
+    桶宽 40 交易日只切出 8 个桶)。此处 60 条挤 10 个桶,应触发降级而非给出判定。
+    """
+    rng = np.random.default_rng(7)
+    n = 60
+    x = rng.normal(0, 1, n)
+    d = pd.DataFrame({"symbol": [f"S{i}" for i in range(n)],
+                      "entry_date": _dates((np.arange(n) % 10) * 7),   # 仅 10 个桶
+                      "x_ok": x, "label": x + 0.5 * rng.normal(0, 1, n)})
+    v = run_battery(_csv(d, "fewbuckets"), features=["x_ok"], binaries=[],
+                    controls=[], time_bucket_days=5)["x_ok"]
+    out = capsys.readouterr().out
+    assert "功效不足" in out and "10 个" in out
+    assert v["gate3_time"] is None and v["declust_time_p"] is None
+    assert "时间维未检" in v["verdict"]
+    assert v["gate3"] == v["gate3_sym"]
+
+
+def test_shape_note_judges_median_not_mean():
+    """形状注记主判 med_lab;与 mean_lab 打架时必须说出来。
+
+    数值取自 2026-09-08 那轮实测(v_median20):mean 单调升,med 却有两处下行、
+    尾箱回落、甜点在第4箱。当时注记按均值判,研究报告把这个标签抄到自己引用的
+    中位数序列上、写成「med_lab 单调升」,被复审用它自己贴的数字推翻。
+    形状是交给执行端定硬闸时最要紧的信息——尾箱回落与单调升导出完全不同的闸形。
+    """
+    qt = pd.DataFrame({
+        "mean_lab": [0.217, 0.284, 0.484, 0.581, 0.796],   # 单调升
+        "med_lab":  [0.164, 0.159, 0.275, 0.352, 0.336],   # 非单调,峰在第4箱后回落
+    })
+    note = _shape_note(qt)
+    assert note.startswith("非单调"), note
+    assert "峰在第4箱后回落" in note, note
+    assert "mean_lab 读作单调升" in note, note
+
+
+def test_shape_note_silent_when_mean_and_median_agree():
+    """两者形状一致时不追加提示(默认输出保持简洁)。"""
+    qt = pd.DataFrame({"mean_lab": [1.0, 2.0, 3.0, 4.0, 5.0],
+                       "med_lab": [1.0, 2.0, 3.0, 4.0, 5.0]})
+    assert _shape_note(qt) == "单调升"

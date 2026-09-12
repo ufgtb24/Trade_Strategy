@@ -1,6 +1,6 @@
 ---
 dimension: 按主题
-updated: 2026-09-04
+updated: 2026-09-08
 ---
 
 # Claude Code 笔记索引
@@ -30,6 +30,7 @@ Claude Code chat history 跨机持久化基础设施——`~/.claude/projects/` 
 - [vision-nonvision-models.md](vision-nonvision-models.md) — 非原生识图模型（deepseek 等）靠 vision.js 代看图片的接线与触发场景（2026-08-23 起停用，原文备查）
 - [claude-md-dynamic-loading.md](claude-md-dynamic-loading.md) — CLAUDE.md/rules 常驻内容何时迁成按需加载（rules paths / skill / hook）：三问判据、三种最小写法、Read-only 触发等实测边界；含常驻指令漏召回的失败模式与「paths: 被 Bash 读法绕过」冲突
 - [mattpocock-glossary-triggers.md](mattpocock-glossary-triggers.md) — mattpocock grill-with-docs / domain-modeling 对 CONTEXT.md 的读写触发全表（内置 vs 需 CLAUDE.md 自定义）：写表全内置、读表在「对话」格空缺；R1 因果循环且只抓同词异义（词表在场也不纠正异词同义）、读取挂在探索阶段的偏斜、五臂 claude -p 对照实验（含可复现脚本）
+- [superpowers-workflow-conventions.md](superpowers-workflow-conventions.md) — superpowers 工作流约定的原文备份（2026-09-08 从 CLAUDE.md 迁出、已不生效）：task 切分粒度与 `task-brief` 标题格式、测试三档成本分级与验收关卡断言、四种证据形状（RED 必须红在断言上）、reviewer 选档三条可观察性质、终审 base 取本轮真实起点；顶部标注了哪些条款与工具无关、换 plan mode 后仍成立
 
 ### mcp
 MCP 服务器的配置、认证、调用与故障排查。

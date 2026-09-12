@@ -135,22 +135,17 @@ FastAPI 后端（pattern 发现 / 扫描 / 序列化 / 诊断）+ Vue3 前端（
 
 用户要求往 CLAUDE.md 增改内容时，先按三问给出常驻/按需的建议再动手：**读者是谁**（后台 session 只读 CLAUDE.md、没人替它调 skill）、**场景开始的信号是什么**（文件路径→rules `paths:`／用户口径词→skill／事件→hook／都没有→常驻）、**到位时机来不来得及**（rules 只在 Read 时注入）。只有**长且少用**的内容值得迁；省 token≈0（有 cache），真收益是到位时机与按 agent 数倍乘。判据与实测边界见 `docs/cc_notes/claude-md-dynamic-loading.md`。
 
-## 使用 superpowers
+## plan mode：计划必须自包含
 
-- **brainstorm 提问带倾向**：用 `AskUserQuestion` 提问时，尽量把你自己的倾向性方案作为选项之一，置于首位并在 label 末尾标 `(推荐)`，并在 description 说明推荐理由。
-- **task 尽量少、颗粒度尽量大**：每个 task 边界 = 两次 subagent 往返（implementer + reviewer，后者不可跳过），实测最小 5 分钟、与 task 难度无关——task 数是实施总时长的主因。**默认合并，只在有具名理由时才切**，理由只有四种：① **reviewer 可能对相邻两半给出不同结论**（与 `writing-plans` 的 Task Right-Sizing 同源：能一半驳回、一半放行的地方才是边界）；② **两半风险档不同**——合了就得整体升 `opus`（见下条 Reviewer 选档）；③ **后半要等前半的实测结果才写得出来**；④ **单个 task 大到会爆 subagent 的 context**。setup / 脚手架 / 配置 / 文档跟进一律折进它服务的那个 task，不单独成 task。**别拿「implementer 做不做得动」当切分理由**——模型能力涨的是实现侧，边界的价值在验证侧。注意 `writing-plans` 里的「Bite-Sized」说的是 **step**（每步一个动作、2-5 分钟），不是 task，别拿它当切 task 的依据。**合并的前提是具名风险跟着搬**——在 dispatch 里逐文件写「这里要定点核实什么」，review 质量来自这份清单，不来自 task 切得细。（实测：某轮 6 个 task 全部首轮 review clean、fix 轮 = 0，其中四个 diff 不到 20 行改动，该切 3 个。）
-- **测试只跑必要的那一次**：plan 里每个 task 的 Run **只写覆盖本 task 改动的测试**，不写全量；全量只允许出现在两处——起点基线、末尾验收关卡。按成本分三档：**秒级定向测试**每个 task 随便跑；**分钟级套件**只在起点基线与末尾关卡各一次；**依赖外部数据的集成测试**只在末尾，且**验收关卡必须断言它的规模数字**（`n_stock=104 n_cmp=2496` 这类），不能只看 `passed`——缺数据时它静默 skip，`-q` 输出里跟通过几乎一样，验证悄悄没做而结果仍是绿的。派 implementer 时把这条写进 dispatch（「只跑覆盖你改动的测试，全量与验收关卡由控制端在末尾统一跑」），否则它们会出于好意自发跑全套「交叉验证」。**验收关卡的记录必须跑在代码最后一次改动之后**（终审 fix wave 也算改动）——提前跑只能当中途信息，不能当交付证据。**起点基线必须把每条验收关卡的命令都实测一遍并记数**：漏测哪条，那条的 Expected 就会写错（实测：某轮 plan 只测了 skill 子套件、没测 `tests/` 全量，于是关卡写成「0 failed」，而起点本就有 7 个既存失败，执行时只能另开 worktree 补跑基线才敢判「0 新增」）。
-- **plan 末尾不归任何 task 的节，标题必须写成 `## Task <N+1>: xxx（控制端执行，不派 implementer）`**：`task-brief` 的切分**只认** `^#+\s+Task\s+<数字>` 这一种标题（读脚本坐实），别的标题一律拦不住——最后一个 task 的 brief 会一路吞到文件末尾，把验收关卡、留账、附录全当成它自己的需求。实测后果：某轮 Task 6 自身 76 行、brief 却有 141 行，implementer 照单把 7 道验收关卡整套跑了一遍。
-- **每个 task 点名证据形式，别默认 TDD**：plan 为每个 task 写清「这一轮凭什么算做对了」，形式随 task 形状变——**新增或改变行为** → TDD，且 **RED 必须红在断言上**（`ImportError` / `TypeError: unexpected keyword` 那种红只证明代码还不存在，不证明断言有牙齿：一个 `assert True` 的测试同样能这样红、这样绿）；**删代码 / 删闸** → 前后红点差分（如「8 errors + 3 failed 归零」），没有新行为可钉；**更新陈旧期望、重冻 fixture** → **人工来源核对**，红是自动的、绿是必然的，两者都不是证据（实测：自产自销的 fixture 重冻必然变绿，真证据是新增字段逐字等于参数声明的默认值）；**纯文档 / 注释** → 跑一遍覆盖测试确认没写坏即可。**这不是省时间的条款**——RED 一步实测是秒级（0.46s），它防的是「造出一份不会失败的测试」和「拿必然的绿当证据」。
-- **subagent 模型选择**：
-  - **Implementer**（实现）：一律 `sonnet`，禁用 `haiku`。固定，不随任务复杂度浮动。
-  - **per-task Reviewer**：按三条**可观察**的性质选档，**不固定**、**与 diff 大小无关**——① **错了是静默的**（结果少了、空了，但不抛异常，测试也未必红）；② **正确性依赖改动之外的性质**（要同时按住几条互相牵制的不变式才判得了对错，不论它们在同一函数里还是跨文件）；③ **副作用越出改动边界**（原地改写调用者传进来的对象、写全局状态）。命中任一条用 `opus`；都不命中用 `sonnet`（机械 diff、纯接线、常量替换、摊平的逐条核对），fix 轮的定向复审也用 `sonnet`——**`sonnet` 是下限，任何角色都不降到它以下**。**逐条对着改动本身判，别用「这块在哪个模块 / 算不算核心 / 算不算复杂」代替**——按模块名单判会漏且漏了不自知；判据里含需要先分类的词，分类错了这条规则就等于不存在。**大而浅的 diff 不该升档**：失败模式是注意力被摊薄、不是推理深度不够，该补具名风险清单或拆开，升档买不到东西——「值得仔细 review」不等于「该上 opus」。
-  - **档位在 plan 里给建议、执行时可覆盖**：上面三条全是 task 的固有属性、写 plan 时就定得下来，所以 plan 为每个 task 标一个建议档（写在该 task 的 Files/Interfaces 附近）。**控制端拿到实际 diff 后有最终决定权**——implementer 可能做出计划外的东西（改动被带进剪枝路径、副作用比设计时更宽、顺手动了相邻不变式），这时按实际 diff 重判并在台账记一句理由。plan 的建议档是省一次判断，不是绑住执行。
-  - **Final holistic reviewer**（whole-branch 那一次）：一律 `opus`，不降档。
-- **终审与 fix wave 的成本控制**：终审 + fix wave + 复审是全轮最大的单块（实测约 25 分钟，比任何单个 task 都贵），且不随 task 数缩减。三条：① **终审的 base 取本轮工作的真实起点**（plan 落地前的那个提交），不取 `git merge-base`——后者会把此前与本轮无关的提交一并扫进来，既拖时间又稀释注意力；② **终审报告只展开需要动作的条目**，查过但判定无需动作的一行带过进「已核查、无动作」清单，不写论证（报告长到要分两条消息传时，那部分成本全是写作）；③ **fix wave 的 diff 若不含可执行代码**（纯注释 / docstring / markdown），由控制端逐条直接核验，**不派复审 subagent**——复审的两项职责里，「fix 有没有引入新问题」对这种 diff 是空转，「逐条 verdict」是读一眼就能判的精度断言；diff 里只要有一行可执行代码就照常派。（实测：连续两轮终审都是 0 个合并阻断项、产出全是文档精度项；照此三条约省 8-10 分钟。）
-- **计划自包含**：用 `superpowers:writing-plans` skill 产出的计划必须自包含——不依赖当前对话上下文即可被一个全新 session 直接实施。`superpowers:writing-plans` 结束后给出可供在新 session 中粘贴的执行命令即可，不要自行执行。注意，必须将需要粘贴的内容放在代码块中给出，让我能够将需要粘贴的内容和其他文本区分开。
-- **计划路径规范**：plan 里涉及**项目内**的文件/目录一律用**相对 repo root** 的路径（如 `path2/dag/_solve.py`、`docs/research/xxx/final_report.md`），禁止硬编码 `/home/yu/PycharmProjects/Trade_Strategy-*/...` 这类绝对路径。原因：plan 可能在别的 worktree 里被实施，绝对路径会指向源 worktree 造成跨 worktree 污染。为消歧义，plan 顶部 spec 里显式写一句「本 plan 中所有项目内路径均相对 repo root」。**例外**（保持绝对）：与 worktree 无关的系统路径，如 `~/.claude/...`、`/tmp/claude-*/scratchpad`、外部工具、系统级配置——这些绝对路径反而更清晰。
-- **执行方式**：plan 写完后**不在当前 session 执行**——换新 session，用 `superpowers:subagent-driven-development`（每 task 一个 fresh subagent + 两阶段 review）。注意 `subagent-driven-development` 与 `superpowers:executing-plans` 是互斥的两个执行 skill，二选一，不存在「用前者执行后者」。
+plan mode 产出的计划落在 `~/.claude/plans/<slug>.md`，**必须自包含**——一个没有本次对话上下文的全新 session 光读这个文件就能实施完。
+
+这不是洁癖：批准时若选了清空上下文，规划期的对话整段丢弃，计划正文就是实施阶段唯一的输入；即使保留上下文，长实施途中 auto-compact 也会把规划过程压成摘要，只有计划文件不会被压。计划还可能在别的 worktree、别的机器上被打开实施。
+
+三条可自查的硬要求：
+
+- **不出现指代对话的词**——「刚才说的」「上面那个方案」「按我们讨论的」一律就地展开成正文。
+- **需求、约束、已排除的方案连同理由都写进正文**，不靠「用户在对话里说过」。别写「去看某某文件就知道了」，要么把关键事实抄进来，要么给出能 grep 的定位。
+- **项目内路径一律相对 repo root**（如 `path2/dag/_solve.py`），禁止硬编码 `/home/yu/PycharmProjects/Trade_Strategy-*/...`——绝对路径会指向源 worktree 造成跨 worktree 污染。计划顶部显式写一句「本 plan 中所有项目内路径均相对 repo root」。**例外**：与 worktree 无关的系统路径（`~/.claude/...`、`/tmp/claude-*/scratchpad`、外部工具、系统级配置）保持绝对反而更清晰。
 
 ## Agent skills
 

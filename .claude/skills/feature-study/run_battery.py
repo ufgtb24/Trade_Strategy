@@ -13,18 +13,19 @@
     关3 去簇存活(双维,两检各自过):
         3a 股内:每 symbol 留数据原序首条(不按 label 挑)后重算,p<0.05 且同号
             → 防「特征效应其实是少数个股反复观测刷出」(股票轴泛化检查)
-        3b 时间:每时间桶(entry_idx//time_bucket_days)留首条后重算,同款判据
+        3b 时间:每时间桶(按 entry_date 的日历天切,桶宽由 time_bucket_days 换算)留首条后重算,同款判据
             → 防「同期跨股共同事件(如某周小盘集体反弹)是同一随机源的
                重复下注」(时间轴泛化检查;桶宽从 scan 的 label_horizon 取整,
                ≥horizon 才保证 forward window 重叠的 match 归同簇)
-        time_bucket_days=None 或 CSV 缺 entry_idx 列 → 3b 跳过,verdict 标注降级
+        time_bucket_days=None / CSV 缺 entry_date 列 / 桶数 < MIN_TIME_BUCKETS
+        → 3b 跳过,verdict 标注降级
         死因可区分:3a 死=个股驱动 / 3b 死=事件驱动
         (3b 在 3a 集合之上再做时间压缩 = 先股内后时间的双维压缩集合,兼任最保守读数)
     三关全过 = 有信号;过1而关2 |t|<2 = 代理(被控制集吸收);关1不过 = 无信号。
     controls 为空时关2 跳过,结论必须标注"无已知信号可控,判定降级"。
 
 CSV 约定:必含 symbol、label 列;features/binaries/controls 为其列名子集;
-        做时间维去簇另需 entry_idx 列(同一 scan 窗内 bar 序号,跨股可比)。
+        做时间维去簇另需 entry_date 列(买点日期,跨股可比;不再用 bar 序号,见 _decluster_time)。
 读 CSV 一律 keep_default_na=False(存在名为 NA 的 ticker)。
 """
 from __future__ import annotations
@@ -32,6 +33,12 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 from scipy import stats
+
+# 交易日 → 日历天(与 path2_web.scan.TRADING_TO_CALENDAR_RATIO 同值;本模块是纯统计
+# 电池、刻意不 import 项目代码,故就地定义)
+TRADING_TO_CALENDAR = 365 / 252
+# 关3b 的最小桶数:低于此值时相关检验功效不足,p 值两个方向都不可解释,按未检处理
+MIN_TIME_BUCKETS = 20
 
 
 # ── 基础件 ──
@@ -74,21 +81,37 @@ def quantile_table(d: pd.DataFrame, m: str, label: str, k: int = 5) -> pd.DataFr
     )
 
 
-def _shape_note(qt: pd.DataFrame) -> str:
-    """分箱形状注记:单调性 + 饱和/回落。"""
-    means = qt["mean_lab"].to_numpy()
-    if len(means) < 3:
-        return "箱数不足"
-    rho = stats.spearmanr(np.arange(len(means)), means)[0]
+def _shape_of(vals: np.ndarray) -> str:
+    """单值序列的形状:单调性 + 饱和/回落。"""
+    rho = stats.spearmanr(np.arange(len(vals)), vals)[0]
     mono = "单调升" if rho > 0.9 else ("单调降" if rho < -0.9 else "非单调")
-    peak = int(np.argmax(means))
+    peak = int(np.argmax(vals))
     sat = ""
-    if mono == "非单调" and 0 < peak < len(means) - 1:
+    if mono == "非单调" and 0 < peak < len(vals) - 1:
         sat = f",峰在第{peak + 1}箱后回落"
-    elif mono == "单调升" and peak == len(means) - 1 and len(means) >= 4 \
-            and means[-1] - means[-2] < 0.25 * max(means[-2] - means[0], 1e-12):
+    elif mono == "单调升" and peak == len(vals) - 1 and len(vals) >= 4 \
+            and vals[-1] - vals[-2] < 0.25 * max(vals[-2] - vals[0], 1e-12):
         sat = ",尾箱增益趋缓"
     return mono + sat
+
+
+def _shape_note(qt: pd.DataFrame) -> str:
+    """分箱形状注记:单调性 + 饱和/回落。
+
+    **主判 med_lab**——本仓评估纪律以 median(forward_return) 为核心指标,
+    形状又是交给执行端定硬闸时最要紧的信息(尾箱回落 vs 单调升导出完全不同的闸形)。
+    mean_lab 判出不同形状时追加提示:两者打架本身是信息(分布右偏、尾部在拉均值)。
+    2026-09-08 那轮该注记按均值判,报告直接抄到自己引用的中位数序列上,
+    被复审用它自己贴的数字推翻——故此处主判改为中位数。
+    """
+    med = qt["med_lab"].to_numpy()
+    if len(med) < 3:
+        return "箱数不足"
+    note = _shape_of(med)
+    alt = _shape_of(qt["mean_lab"].to_numpy())
+    if alt.split(",")[0] != note.split(",")[0]:
+        note += f"(mean_lab 读作{alt.split(',')[0]}——分布有偏,以 med 为准)"
+    return note
 
 
 def _decluster(d: pd.DataFrame, label: str, pick: str = "best") -> pd.DataFrame:
@@ -106,15 +129,26 @@ def _decluster(d: pd.DataFrame, label: str, pick: str = "best") -> pd.DataFrame:
 
 
 def _decluster_time(d: pd.DataFrame, label: str, bucket_days: int,
-                    time_col: str = "entry_idx") -> pd.DataFrame:
+                    time_col: str = "entry_date") -> pd.DataFrame:
     """同时间桶只留数据原序首条(同期跨股共同事件的去簇)。
 
-    桶键 = time_col // bucket_days。time_col 是同一 scan 切窗内的 bar 序号,
-    各股日期轴一致,跨股直接可比。簇代表不按 label 挑选(理由同 pick="first")。
+    桶键 = (entry_date - 最早 entry_date) 的日历天数 // 桶宽换算成的日历天。
+    簇代表不按 label 挑选(理由同 pick="first")。
     桶宽机制:两笔 match 的 forward window 重叠 ⟺ label 随机源共享,故桶宽
-    下界 = label_horizon 的交易日数,调用方从 scan 取整后传入。
+    下界 = label_horizon 的交易日数,调用方从 scan 取整后传入;此处按
+    TRADING_TO_CALENDAR 换算成日历天再切。
+
+    **为什么不按 bar 序号切**(2026-09-08 实测):各股 win 虽同一切窗,历史较短的
+    票窗口起点不同,同一个 bar 序号可对应不同日期——那轮 5 个序号值各对应两个
+    日期,导致桶 3~6 的日期区间互相重叠(桶3=2025-03-14..09-23 与桶4=05-12..08-15
+    交叠),直接破坏「同期跨股共同行情 = 同一随机源」这个语义。
+    也不按样本内日期的 dense rank 切:那依赖样本密度,稀疏期会把相隔很久的两笔
+    挤进同一桶,破坏得更狠。日历天切桶的区间严格等宽、不重叠。
     """
-    return (d.assign(_bucket=d[time_col] // bucket_days)
+    dates = pd.to_datetime(d[time_col])
+    span = max(1, round(bucket_days * TRADING_TO_CALENDAR))
+    bucket = (dates - dates.min()).dt.days // span
+    return (d.assign(_bucket=bucket)
              .groupby("_bucket", sort=False).head(1)
              .drop(columns="_bucket"))
 
@@ -229,13 +263,18 @@ def run_battery(csv_path, features: list[str], label: str = "label",
 
     # 关3:双维去簇(股内簇 + 时间簇,两检各自过;代表选择与 label 无关)
     sym_first = _decluster(d, label, pick="first")
-    run_time = time_bucket_days is not None and "entry_idx" in d.columns
-    if time_bucket_days is not None and "entry_idx" not in d.columns:
-        print("⚠ 已传 time_bucket_days 但 CSV 缺 entry_idx 列:关3 时间维跳过,判定降级")
+    run_time = time_bucket_days is not None and "entry_date" in d.columns
+    if time_bucket_days is not None and "entry_date" not in d.columns:
+        print("⚠ 已传 time_bucket_days 但 CSV 缺 entry_date 列:关3 时间维跳过,判定降级")
     if time_bucket_days is None:
         print("⚠ 未传 time_bucket_days:关3 时间维跳过(桶宽应从 scan 的 label_horizon 取整),判定降级")
     time_first = _decluster_time(sym_first if run_time else d, label,
                                  time_bucket_days) if run_time else None
+    if time_first is not None and len(time_first) < MIN_TIME_BUCKETS:
+        print(f"⚠ 时间桶仅 {len(time_first)} 个(<{MIN_TIME_BUCKETS}):关3b 功效不足,"
+              f"p 值两个方向都不可解释——按未检处理、判定降级,"
+              f"不得作为证据(支持或反对均不可)")
+        time_first = None
     print(f"\n== 关3a 股内去簇(每 symbol 首条,n={len(sym_first)}) ==")
     declust_sym = {m: _retest(sym_first, m, label, raw[m]["kind"])
                    for m in features + binaries}
@@ -269,7 +308,7 @@ def run_battery(csv_path, features: list[str], label: str = "label",
         else:
             ds_time, dp_time, gate3_time = np.nan, None, None
         gate3 = gate3_sym if gate3_time is None else (gate3_sym and gate3_time)
-        time_note = "" if gate3_time is not None else ";时间维未检(缺 entry_idx 列或未传 time_bucket_days),关3 降级"
+        time_note = "" if gate3_time is not None else ";时间维未检(缺 entry_date 列/未传 time_bucket_days/桶数不足),关3 降级"
         if not gate1:
             verdict = "无信号"
         elif controls and abs(t_ctrl[m]) >= 2 and not sign_ok:
@@ -296,11 +335,3 @@ def run_battery(csv_path, features: list[str], label: str = "label",
         print(f"{m:24s} → {verdict}")
     return verdicts
 
-
-if __name__ == "__main__":
-    # 示例参数(实际使用改这里或直接 import run_battery 调用)
-    CSV = "dataset.csv"
-    FEATURES = ["m_ratio_a", "m_ratio_b"]
-    BINARIES = []
-    CONTROLS = ["m1_burst_runup", "m2_depth_rel"]
-    run_battery(CSV, FEATURES, binaries=BINARIES, controls=CONTROLS)

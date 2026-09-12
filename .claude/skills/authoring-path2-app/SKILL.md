@@ -6,7 +6,7 @@ description: Use when 用户要为 path2_apps 新建一个走势 app,或修改�
 # Authoring a path2 App
 
 自顶向下设计 path2 app(① dag_spec 拓扑 → ② detector → ③ 参数),**每层与用户确认**,
-设计定稿后移交 superpowers 实现链(用户启动)实现,实现后用评估器验证。同时服务**创建与修改**:
+设计定稿后交给 plan mode 出实施计划,实现后用评估器验证。同时服务**创建与修改**:
 二者共享同一设计流,修改 = 现状非空 + 按 delta 选起点。
 
 本 skill 必须在主会话 inline 运行(逐层确认用 AskUserQuestion,它在 subagent /
@@ -64,7 +64,7 @@ path2/atoms/*.py),绝不引用任何文档内嵌快照(含本 skill 自己的文
 
 ## Step 2 三层 GATE(主干 BFS,逐层定稿逐层确认)
 
-**状态落盘**:从 gate 1 起增量写 `docs/superpowers/specs/YYYY-MM-DD-<id>-design.md`(与 superpowers 实现链的 spec 位置一致)
+**状态落盘**:从 gate 1 起增量写 `docs/superpowers/specs/YYYY-MM-DD-<id>-design.md`(本项目 spec 的固定位置)
 ——每过一层写入该层结论 + 被否方案及理由。层内讨论留上下文,只有过 gate 才写。
 
 ### 层① 拓扑(最重,可短路)
@@ -187,7 +187,7 @@ AskUserQuestion 确认 → 落盘 spec。
 - 代价:**重开点以下层全部重走,以上不动**。
 - 旧决定移入 spec 的「被否方案+理由」,不删除。
 
-## Step 3 产出 spec + 移交实现
+## Step 3 产出 spec + 交给 plan mode
 
 spec 已增量写就,补齐:落地文件清单 `path2_apps/<id>/{dag_spec,params,__init__}.py +
 params.yaml`(结构对照现存 app 现场读)。**params.py 必须建 4 子 dataclass(BoParams/
@@ -195,8 +195,9 @@ BurstParams/TbParams/EdgesParams)+ `class Params(ParamsBase)` 容器持有它们
 本类只写 section 字段 + `*_kwargs`,不重写 from_yaml/to_dict/from_dict/default);params.yaml
 必须 4 section(bo/burst/tb/edges)与之一一对应。** yaml 是 web SSoT、必须落,不能只写 params.py。
 EdgesParams 若 app 内 edge 都用硬编码 / node-section 引用,留空 dataclass + yaml `edges: {}`
-作格式契约。然后把 spec 路径交回用户,由用户启动 superpowers 实现链
-(`writing-plans` 出 plan → `subagent-driven-development` 执行)。**本 skill 不自己实现。**
+作格式契约。然后交给 plan mode:调 `EnterPlanMode`,对着这份 spec 写实施计划(计划须自包含,
+见 CLAUDE.md「plan mode:计划必须自包含」)。**本 skill 不自己实现**——实现在用户
+批准计划之后才开始。
 
 ## Step 4 实现后验证(两段判据)
 
