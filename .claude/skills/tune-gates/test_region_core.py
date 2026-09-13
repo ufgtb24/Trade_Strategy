@@ -8,8 +8,9 @@ import pandas as pd
 import pytest
 
 sys.path.insert(0, str(Path(__file__).parent))
-from region_core import (cell_coords, fp_count, neighbor_min, pred_level_index, prepare,  # noqa: E402
-                         rank_cells, score, tensor, tolerance)
+from region_core import (analyze_tensor, cell_coords, cell_index, cell_metrics, fp_count,  # noqa: E402
+                         load_cells_npz, neighbor_min, pred_level_index, prepare, prepare_shards,
+                         rank_cells, save_cells_npz, score, tensor, tolerance)
 
 COMBO = {"g": [4, 8, 12], "K": [0, 1, 2]}
 PREDS = [("count", ">=", [1, 2, 3]), ("fd", ">=", [0, 20])]
@@ -348,3 +349,81 @@ def test_split_half_multi_all_nan_is_safe():
     r = split_half_multi(prep, (1, 1, 0, 0), 10_000_000, list(range(4)), [0, 1, 2])  # 功效线高到全不可评估
     assert r["n_valid"] == 0
     assert np.isnan(r["mean"])
+
+
+# ---- 分片路径与格张量产物(2026-09-12 新增;此前 prepare_shards 零覆盖) ----
+
+def _write_shards(df, tmp_path, n_shards=3):
+    """把合成长表切成若干 parquet 分片(模拟扫描端落盘),返回分片路径列表。"""
+    paths = []
+    bounds = np.linspace(0, len(df), n_shards + 1).astype(int)   # 不用 np.array_split:它对
+    for i in range(n_shards):                                    # DataFrame 走已废弃的 swapaxes
+        q = tmp_path / f"part-{i:04d}.parquet"
+        df.iloc[bounds[i]:bounds[i + 1]].to_parquet(q, index=False)
+        paths.append(q)
+    return paths
+
+
+def test_prepare_shards_equals_whole_table(tmp_path):
+    """分片逐片 prepare 再拼接,必须与「整表一次 prepare」逐元素相同——这是分片读省内存的前提。"""
+    df = _synth(seed=3, n_sym=40)
+    shards = _write_shards(df, tmp_path)
+    whole = prepare(df, COMBO, PREDS, "fold", FOLDS)
+    shard = prepare_shards(shards, COMBO, PREDS, "fold", FOLDS)
+    for name in ("flat", "states", "sym_codes", "row_keep"):
+        a, b = getattr(whole, name), getattr(shard, name)
+        assert a.shape == b.shape and np.array_equal(a, b), name
+    assert whole.n_sym == shard.n_sym and whole.shape == shard.shape
+    # 下游聚合也必须一致(含 bootstrap 走的带权路径);分片侧 dtype 被压过,比的是值不是类型
+    w = np.full(whole.n_sym, 2)
+    assert np.array_equal(tensor(whole), tensor(shard))
+    assert np.array_equal(tensor(whole, weights=w), tensor(shard, weights=w))
+
+
+def test_prepare_shards_shrinks_dtypes_and_rejects_empty(tmp_path):
+    """分片路径会把三个常驻数组压到够用为止(它们是全程唯一的大件);没有分片直接报错。"""
+    shards = _write_shards(_synth(seed=4, n_sym=20), tmp_path)
+    prep = prepare_shards(shards, COMBO, PREDS, "fold", FOLDS)
+    assert prep.flat.dtype == np.int32 and prep.states.dtype == np.int8 and prep.sym_codes.dtype == np.int16
+    with pytest.raises(ValueError, match="没有任何分片"):
+        prepare_shards([], COMBO, PREDS, "fold", FOLDS)
+
+
+def test_cells_npz_roundtrip_and_cell_query(tmp_path):
+    """npz 往返无损 + 按档位值查单格的值与直接索引张量一致(这是 tune.cell 的底座)。
+
+    `np.load` 不传 allow_pickle 也要能读回来——folds 刻意用定长 unicode 存就是为了这个。
+    """
+    prep = prepare(_synth(seed=5, n_sym=60), COMBO, PREDS, "fold", FOLDS)
+    ref_index = (1, 1, 0, 0)
+    R = analyze_tensor(prep, ref_index, 1, list(range(4)))
+    shape = R["s_nb"].shape
+    q = tmp_path / "cells.npz"
+    save_cells_npz(q, R, shape, FOLDS, "deadbeef")
+    cells = load_cells_npz(q)
+    for k in ("fp", "count", "s", "evaluable", "delta", "s_nb", "n_eval_nb", "order"):
+        assert np.array_equal(cells[k], np.asarray(R[k])), k
+    assert tuple(int(x) for x in cells["shape"]) == shape
+    assert [str(x) for x in cells["folds"]] == FOLDS and str(cells["study_fingerprint"]) == "deadbeef"
+
+    levels = {"g": 8, "K": 1, "count": 1, "fd": 0}
+    idx = cell_index(COMBO, PREDS, levels)
+    assert idx == (1, 1, 0, 0)
+    m = cell_metrics(cells, idx, FOLDS)
+    assert m["flat"] == int(np.ravel_multi_index(idx, shape))
+    assert m["s"] == pytest.approx(float(R["s"][idx])) and m["s_nb"] == pytest.approx(float(R["s_nb"][idx]))
+    for f, fold in enumerate(FOLDS):
+        assert m[f"count_{fold}"] == int(R["count"][idx + (f,)])
+        assert m[f"fp_{fold}"] == pytest.approx(float(R["fp"][idx + (f,)]))
+    # cell_index 是 cell_coords 的逆
+    assert cell_index(COMBO, PREDS, cell_coords(prep, m["flat"])) == idx
+
+
+def test_cell_index_rejects_missing_and_unknown_axes():
+    """缺一轴就不是一个格——静默当 0 档会悄悄查错格子,所以必须响亮拒绝。"""
+    with pytest.raises(ValueError, match="缺轴"):
+        cell_index(COMBO, PREDS, {"g": 8, "K": 1, "count": 1})
+    with pytest.raises(ValueError, match="不认识的键"):
+        cell_index(COMBO, PREDS, {"g": 8, "K": 1, "count": 1, "fd": 0, "zzz": 9})
+    with pytest.raises(ValueError, match="不在档位表"):
+        cell_index(COMBO, PREDS, {"g": 7, "K": 1, "count": 1, "fd": 0})

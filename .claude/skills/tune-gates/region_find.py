@@ -22,12 +22,17 @@ REPO = Path(subprocess.check_output(["git", "rev-parse", "--show-toplevel"], tex
 # 写法更稳固(与 multivar_scan.py 同款写法)。
 sys.path.insert(0, str(REPO)); sys.path.insert(0, str(REPO / ".claude/skills/tune-gates"))
 from region_core import (VERDICT_CANDIDATE, VERDICT_CORRECTED_NEGATIVE, analyze_tensor,  # noqa: E402
-                         bootstrap, cell_coords, fp_count, order_rows_by_rank, prepare,
-                         split_half_multi, tensor, tolerance, verdict)
+                         bootstrap, cell_coords, fp_count, prepare_shards,
+                         save_cells_npz, split_half_multi, tensor, tolerance, verdict)
 
 
-def _load(lt_dir: Path) -> pd.DataFrame:
-    return pd.concat([pd.read_parquet(p) for p in sorted(lt_dir.glob("part-*.parquet"))], ignore_index=True)
+def _fold6_levels(shards) -> list:
+    """半年 fold 的档位表。只读 fold_6M 这一列扫一遍分片,不把整表拉进内存
+    (原写法是 `sorted(df["fold_6M"].unique())`,依赖那个已经不存在的整表 df)。"""
+    seen = set()
+    for sp in shards:
+        seen |= set(pd.read_parquet(sp, columns=["fold_6M"])["fold_6M"].unique())
+    return sorted(seen)
 
 
 def run(app: str, cfg, longtable_dir: str, out_dir: str | None = None) -> None:
@@ -62,8 +67,8 @@ def run(app: str, cfg, longtable_dir: str, out_dir: str | None = None) -> None:
     COMBO_LEVELS, preds = S.derived_axes(cl)
     REF_POINT, FLAG_RULES = study.REF_POINT, study.FLAG_RULES
     out = REPO / OUT_DIR if OUT_DIR else lt.parent
-    df = _load(lt)
-    prep = prepare(df, COMBO_LEVELS, preds, FOLD_COL, FOLDS)
+    shards = sorted(lt.glob("part-*.parquet"))
+    prep = prepare_shards(shards, COMBO_LEVELS, preds, FOLD_COL, FOLDS)
     axes = list(range(prep.n_combo_axes + prep.n_pred_axes)) if NEIGHBOR_AXES == "all" else NEIGHBOR_AXES
     ref_index = tuple(COMBO_LEVELS[c].index(REF_POINT[c]) for c in COMBO_LEVELS) + (0,) * prep.n_pred_axes
     R = analyze_tensor(prep, ref_index, MIN_COUNT_PER_FOLD, axes)
@@ -89,10 +94,18 @@ def run(app: str, cfg, longtable_dir: str, out_dir: str | None = None) -> None:
                         f"本次未观测到选择偏差(或被蒙特卡洛噪声掩盖),corrected = {corrected:.4f} "
                         f"**不构成保守上界**,只是同一公式算出的另一个数字,不要按'上界'解读")
 
-    # cells.csv(每格一行)
+    # 全量格级结果落 cells.npz(张量,压缩);cells.csv 只写排名前 CSV_TOP 格的明细摘要。
+    # 原先这里对**全网格** `range(n_cells)` 每格建一个 dict(本轮 265 万个,约 3~4GB)再写出
+    # 490MB CSV,而 cells 这个 DataFrame 之后只被用了两处、都只要前 TOP_N 行;全量 CSV 在
+    # skill 内没有任何读取点。理由与按坐标查格的方式见 region_core.save_cells_npz。
+    save_cells_npz(out / "cells.npz", R, shape, FOLDS, cl["fingerprints"]["study"])
+    CSV_TOP = max(TOP_N, 5000)
     rows = []
     fp, cnt, delta = R["fp"], R["count"], R["delta"]
-    for flat in range(n_cells):
+    # 直接按 rank_cells 的 order 取前 N(而非自行按 s_nb 数值 sort_values)——order 有硬前置键
+    # (0 可评估邻居的孤立尖峰排到有邻居支撑的格之后),数值排序推不出这条键,详见
+    # order_rows_by_rank 文档。表格首行 == ĉ 由此保证,folds_6M 的 TOP_N 也共享同一口径。
+    for flat in (int(x) for x in R["order"][:CSV_TOP]):
         idx = np.unravel_index(flat, shape); c = cell_coords(prep, flat)
         row = dict(flat=flat, **c, evaluable=bool(R["evaluable"][idx]), s=R["s"][idx], s_nb=R["s_nb"][idx],
                    n_eval_nb=int(R["n_eval_nb"][idx]), boot_top=bs["top_freq"].get(flat, 0))
@@ -100,14 +113,11 @@ def run(app: str, cfg, longtable_dir: str, out_dir: str | None = None) -> None:
             row[f"count_{fold}"] = int(cnt[idx + (f,)]); row[f"fp_{fold}"] = fp[idx + (f,)]; row[f"delta_{fold}"] = delta[idx + (f,)]
         row["flags"] = ";".join(x for x in (r(c) for r in FLAG_RULES) if x)
         rows.append(row)
-    # 必须按 rank_cells 的 order 排(而非自行按 s_nb 数值 sort_values)——order 有硬前置键
-    # (0 可评估邻居的孤立尖峰排到有邻居支撑的格之后),数值排序推不出这条键,详见
-    # order_rows_by_rank 文档。表格首行 == ĉ 由此保证,folds_6M 的 TOP_N 也共享同一口径。
-    cells = pd.DataFrame(order_rows_by_rank(rows, R["order"]))
+    cells = pd.DataFrame(rows)
     cells.to_csv(out / "cells.csv", index=False)
 
     # 半年诊断视图
-    prep6 = prepare(df, COMBO_LEVELS, preds, "fold_6M", sorted(df["fold_6M"].unique()))
+    prep6 = prepare_shards(shards, COMBO_LEVELS, preds, "fold_6M", _fold6_levels(shards))
     fp6, cnt6 = fp_count(tensor(prep6))
     r6 = []
     for flat in cells["flat"].head(TOP_N):
@@ -178,7 +188,7 @@ def run(app: str, cfg, longtable_dir: str, out_dir: str | None = None) -> None:
     lines = [f"# region_find 报告", "",
              f"- app {APP};study 指纹 {cl['fingerprints']['study'][:12]}",
              f"- 长表 {LONGTABLE_DIR};HEAD_BUFFER={HEAD_BUFFER};fold={FOLDS};功效线 {MIN_COUNT_PER_FOLD}/fold;邻域轴 {NEIGHBOR_AXES}",
-             f"- 保留行 {keep_n}/{len(df)} = {keep_ratio:.4f}(丢弃行 = combo/pred 列不在档位表 / 谓词列 NaN / fold 不在 FOLDS 里,详见 prepare() 文档)",
+             f"- 保留行 {keep_n}/{len(prep.row_keep)} = {keep_ratio:.4f}(丢弃行 = combo/pred 列不在档位表 / 谓词列 NaN / fold 不在 FOLDS 里,详见 prepare() 文档)",
              f"- 联合空间 {shape} = {n_cells} 格;可评估 {n_eval};不可评估 {n_cells - n_eval};邻域分为负 {n_neg}",
              f"- 参照格 {ref_c}:" + ";".join(f"{fold} count {int(cnt[ref_index + (f,)])} FP {fp[ref_index + (f,)]:.4f}" for f, fold in enumerate(FOLDS)),
              "", verdict_title, verdict_lead,
@@ -194,7 +204,9 @@ def run(app: str, cfg, longtable_dir: str, out_dir: str | None = None) -> None:
              "", "## 可评估面", *[f"- {x}" for x in ev_axes], "", f"## 前 {TOP_N} 格", "",
              cells.head(TOP_N).to_markdown(index=False, floatfmt=".4f"), "",
              "## 读数纪律", "- 三口径并报,不折中;唯一无偏数字是同 HEAD_BUFFER 的 2026 外推窗(本工具不做)。",
-             "- 不可评估 ≠ 坏:计数不足的格只报计数;不降功效线硬凑。", "- 半年诊断视图见 folds_6M.csv;标记列 flags 见 cells.csv。",
+             "- 不可评估 ≠ 坏:计数不足的格只报计数;不降功效线硬凑。",
+             f"- 半年诊断视图见 folds_6M.csv;标记列 flags 见 cells.csv(只含排名前 {CSV_TOP} 格)。"
+             f"全量 {n_cells} 格在 cells.npz(张量),按档位值查单格用 tune.cell(...)。",
              ("- 只要网格里存在**任意一条**长度 ≤2 的轴,排序第 4 平局键(离边界距离)就在**整个网格**"
               f"恒为 0(跨轴取 min,一条短轴即可把全网格压平),不能当排序依据;本次这样的轴:"
               f"{short_axes if short_axes else '无'}。"),

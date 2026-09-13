@@ -217,7 +217,8 @@ def test_check_run_matches_classification(cl):
 
 
 def _write_regenerable_fixture(tmp_path, *, app_module: str, base_yaml: str,
-                                study_app_module: str, source_files: list = None) -> tuple:
+                                study_app_module: str, source_files: list = None,
+                                run_base_fingerprint: str = None) -> tuple:
     """给 check_regenerable 的单测搭一套自洽假树:apps/demo/{study.py,classification.json} +
     longtable/run_meta.json,study 指纹与 run_meta 记录一致(study/classification 两条链都过)。
     `app_module`(classification 里的,只影响链 4 的底座路径拼接)与
@@ -237,7 +238,10 @@ def _write_regenerable_fixture(tmp_path, *, app_module: str, base_yaml: str,
                            "source": {"hash": "irrelevant", "files": source_files or []}}}
     (app_dir / "classification.json").write_text(json.dumps(cl), encoding="utf-8")
     lt = tmp_path / "longtable"; lt.mkdir()
-    (lt / "run_meta.json").write_text(json.dumps({"app": "demo", "study_fingerprint": study_fp}), encoding="utf-8")
+    meta = {"app": "demo", "study_fingerprint": study_fp}
+    if run_base_fingerprint is not None:          # 不传 = 模拟 2026-09-12 之前产出的长表(链 6 判不了)
+        meta["base_fingerprint"] = run_base_fingerprint
+    (lt / "run_meta.json").write_text(json.dumps(meta), encoding="utf-8")
     return apps_dir, lt
 
 
@@ -321,11 +325,20 @@ def test_run_meta_carries_source_and_base_fingerprints(tmp_path):
     assert got["base_fingerprint"] == "ccc"
 
 
-def test_source_fingerprint_not_in_run_caliber():
-    """source/base 指纹不参与口径校验:它们变了是'不可再生',不是'混窗'。"""
+def test_source_and_base_fingerprints_are_run_caliber():
+    """源码指纹与底座指纹**都**参与口径校验。
+
+    2026-09-12 推翻了此前的判断(原文:"source/base 指纹不参与口径校验:它们变了是'不可再生',
+    不是'混窗'")。推翻理由:那个判断只覆盖了「扫完之后才变」——那确实只是不可再生。但还有
+    「扫的中途变」:一份长表跨多轮续跑扫完全宇宙,中途改了 detector 或底座,已扫的股票用旧配置、
+    后扫的用新配置,最终按格聚合出来的计数混了两种东西。这与混窗同类(一份长表内部不自洽),
+    且 `check_regenerable` 只看得见最后一轮的指纹,会把它报成可再生——假阳,落在删除侧。
+    两道闸分工:`write_run_meta` 从源头拦"中途变",`check_regenerable` 事后判"扫完之后变"。
+    """
     import study_io as S
-    assert "source_fingerprint" not in S.RUN_CALIBER
-    assert "base_fingerprint" not in S.RUN_CALIBER
+    assert "source_fingerprint" in S.RUN_CALIBER
+    assert "base_fingerprint" in S.RUN_CALIBER
+    assert set(S.LATE_CALIBER) == {"source_fingerprint", "base_fingerprint"}   # 缺键时放过的那两个
 
 
 def test_append_exposure_is_append_only(tmp_path):
@@ -345,3 +358,81 @@ def test_append_exposure_requires_existing_app_dir(tmp_path):
     import study_io as S
     with pytest.raises(SystemExit):
         S.append_exposure("nope", {"ts": "t"}, apps_dir=tmp_path)
+
+
+# ---- 链 6:长表自己的底座溯源(2026-09-12 新增,补 setup 之后 regenerable 假阳的缝隙) ----
+
+_FIX = dict(app_module="nonexistent_module_for_test_xyz.dag_spec", base_yaml="p2_missing.yaml",
+            study_app_module="nonexistent_module_for_test_xyz.dag_spec")
+
+
+def test_check_regenerable_detects_longtable_base_drift(tmp_path):
+    """长表记录的底座指纹 != classification 现在记录的 → 点名报出来。
+
+    这条链补的缝隙:链 1~5 全是「当前代码 vs classification」,所以 `tune.setup()` 一重建
+    分类表(底座指纹换成当前 yaml 的),链 5 恒通过、`regenerable` 假阳——而长表仍是旧底座
+    扫的。实例见 apps/bb_v1/notes.md §11.1 坑 3。
+    """
+    apps_dir, lt = _write_regenerable_fixture(tmp_path, run_base_fingerprint="OLDBASE0123456789", **_FIX)
+    ok, reasons = S.check_regenerable(lt, apps_dir=apps_dir)
+    assert ok is False
+    hits = [r for r in reasons if "另一份底座下扫的" in r]
+    assert len(hits) == 1 and "OLDBASE0123456789"[:16] in hits[0]
+
+
+def test_check_regenerable_base_fingerprint_match_does_not_report_drift(tmp_path):
+    """反向:长表记录的底座指纹与 classification 一致时,链 6 **不该**报。
+
+    没有这条反向断言,链 6 写成"恒报"也能让上面那个测试绿——那样每一份长表都会被判不可
+    再生,而该函数的语义轴是"假阳(该 False 却 True)危险",恒报 False 虽不危险却会让
+    整条判据失去区分力。
+    """
+    apps_dir, lt = _write_regenerable_fixture(tmp_path, run_base_fingerprint="irrelevant", **_FIX)
+    ok, reasons = S.check_regenerable(lt, apps_dir=apps_dir)
+    assert not any("另一份底座下扫的" in r for r in reasons)
+    assert not any("base_fingerprint 缺失" in r for r in reasons)
+
+
+def test_check_regenerable_missing_base_fingerprint_is_unknown_not_regenerable(tmp_path):
+    """2026-09-12 之前产出的长表没有 base_fingerprint 字段 → 判不了,并入不可再生(保守侧)。"""
+    apps_dir, lt = _write_regenerable_fixture(tmp_path, **_FIX)
+    ok, reasons = S.check_regenerable(lt, apps_dir=apps_dir)
+    assert ok is False
+    assert any("base_fingerprint 缺失" in r for r in reasons)
+
+
+# ---- base_fingerprint 进 RUN_CALIBER:一份长表全程必须同一个底座(2026-09-12) ----
+
+_META = {"app": "x", "start_date": "2024-01-01", "end_date": "2026-01-01", "head_buffer": 250,
+         "label_horizon": 40, "first_passage_k": 5.0, "price_min": 0.5, "price_max": 30.0,
+         "volume_min": 10000.0, "study_fingerprint": "abc", "git_head": "0", "written_at": "t"}
+
+
+def test_run_meta_rejects_base_drift_on_resume(tmp_path):
+    """底座变了就不许往同一份长表里续写。
+
+    为什么这是硬要求:一份长表跨多轮扫完全宇宙,最终被当成「同一套检测配置下的候选集合」
+    按格聚合。中途底座变过的话,不同股票的行来自不同配置,按格聚合出来的计数不是同一个东西。
+    """
+    S.write_run_meta(tmp_path, {**_META, "base_fingerprint": "BASE_A"})
+    S.write_run_meta(tmp_path, {**_META, "base_fingerprint": "BASE_A", "written_at": "t2"})  # 同底座可续
+    with pytest.raises(SystemExit, match="base_fingerprint"):
+        S.write_run_meta(tmp_path, {**_META, "base_fingerprint": "BASE_B"})
+
+
+def test_run_meta_legacy_without_base_fingerprint_still_resumable(tmp_path):
+    """2026-09-12 之前产出的 run_meta 没有这个键 → 不拦(拦它没有依据,还会让扫到一半的
+    window 续不动),放过并把新字段写进去,下一轮就有依据了。
+
+    另一道防线不受影响:`check_regenerable` 链 6 对缺字段的长表照样报「判不了」。
+    """
+    legacy = {k: v for k, v in _META.items()}          # 刻意不含这两个后加的指纹
+    S.write_run_meta(tmp_path, legacy)
+    assert "base_fingerprint" not in S.load_run_meta(tmp_path)
+    S.write_run_meta(tmp_path, {**legacy, "base_fingerprint": "BASE_A",
+                                "source_fingerprint": "SRC_A"})            # 放过
+    assert S.load_run_meta(tmp_path)["base_fingerprint"] == "BASE_A"       # 且已补上
+    with pytest.raises(SystemExit, match="base_fingerprint"):              # 补上之后就开始拦
+        S.write_run_meta(tmp_path, {**legacy, "base_fingerprint": "BASE_B", "source_fingerprint": "SRC_A"})
+    with pytest.raises(SystemExit, match="source_fingerprint"):            # detector 中途改了同样拦
+        S.write_run_meta(tmp_path, {**legacy, "base_fingerprint": "BASE_A", "source_fingerprint": "SRC_B"})

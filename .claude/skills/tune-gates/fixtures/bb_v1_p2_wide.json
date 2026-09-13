@@ -1,7 +1,7 @@
 {
  "bo": {
   "breakout_measure": "close",
-  "exceed_threshold": 0.003,
+  "exceed_threshold": 0.0075,
   "min_relative_height": 0.2,
   "min_side_bars": 6,
   "peak_measure": "high",

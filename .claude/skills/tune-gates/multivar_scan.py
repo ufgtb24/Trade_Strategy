@@ -9,11 +9,13 @@ run 级口径写进 longtable/run_meta.json,compare_longtable / region_find 读�
 from __future__ import annotations
 
 import json, subprocess, sys, time, traceback
-from concurrent.futures import ProcessPoolExecutor, as_completed
+from concurrent.futures import FIRST_COMPLETED, ProcessPoolExecutor, wait
+from itertools import islice
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
+import pyarrow.parquet as pq
 
 REPO = Path(subprocess.check_output(["git", "rev-parse", "--show-toplevel"], text=True).strip())
 # 显式 REPO 相对路径,不用 Path(__file__).parent——REPO 由 git 顶层推,不依赖进程 cwd,
@@ -27,6 +29,36 @@ from multivar_core import (ScanConfig, apply_overrides, classify, col_of, detect
 def _fold_cols(buy_date: pd.Series) -> tuple:
     d = pd.to_datetime(buy_date)
     return d.dt.year.astype(str), d.dt.year.astype(str) + "H" + np.where(d.dt.month <= 6, "1", "2")
+
+
+def _shrink_dtypes(df: pd.DataFrame) -> pd.DataFrame:
+    """落盘前把列类型压到够用为止(原地改 df 并返回它)。长表每行 396B 里有 230B 是四个字符串
+    列,整数列又一律 int64——压完约 85B/行。这是所有"读长表"开销的共同放大器:验证端按行读
+    明细、断点续跑扫 symbol 列、识别端读谓词列,都按这个系数付钱。
+
+    **浮点列一律不动**,这条是红线不是保守:
+    - 真扫维(combo)里的浮点列参与**精确相等**匹配(`region_core.prepare` 用
+      `pd.Categorical(df[c], categories=档位表)`,档位值是 classification.json 里的 float64)。
+      收成 float32 后 `.codes` 全 −1 → 全行被丢 → 直接抛"0 行保留"。
+    - `fr` 被 `compare_longtable._worker` 以 `round(float(...), 12)` 与引擎侧 float64 逐字比较,
+      收窄必然打破 `mismatch=0` 红线。
+    - 过滤型/where 维的浮点列走不等式(`v < 档位值`),float32 的表示误差会让恰好等于档位值的
+      行翻到另一档,还可能触发"紧档必须是松档子集"的数据侧校验。
+    - `dd`(前瞻回撤)当前只写不读,但它与首次穿越率正交互补,保留原样不是为了省内存。
+
+    整数列用 `downcast="integer"` 统一收窄——整数没有表示误差,精确相等与不等式都不受影响
+    (`burst.gap_max` 这类档位值、bar 索引、四态计数都在 int8/int16/int32 值域内)。
+    """
+    for c in ("symbol", "fold_Y", "fold_6M"):
+        if c in df.columns:
+            df[c] = df[c].astype("category")
+    if "buy_date" in df.columns:
+        df["buy_date"] = pd.to_datetime(df["buy_date"])   # 注意:_fold_cols 必须在本函数之前调用
+    for c in df.columns:
+        if c in ("fr", "dd") or not str(df[c].dtype).startswith("int"):
+            continue
+        df[c] = pd.to_numeric(df[c], downcast="integer")
+    return df
 
 
 def _worker(pkl_path, cfg: ScanConfig, buf_start, buf_end, start_date, end_date, volume_min):
@@ -160,35 +192,49 @@ def run(app: str, cfg, out_dir: str) -> None:
     buf = []
     n_done = n_det = n_skip = n_hit = n_rows = n_err = 0; per_ms = []
     with ProcessPoolExecutor(max_workers=WORKERS) as ex:
-        futs = {ex.submit(_worker, str(p), cfg, buf_start, buf_end, START_DATE, END_DATE, VOLUME_MIN): p for p in pkls}
-        for fut in as_completed(futs):
-            symbol, rows, rfp, err, t_ms = fut.result(); n_done += 1
-            if err:
-                n_err += 1; print("ERR", symbol, err)          # 不计入 done,下次自动重试
-            elif rows is None:
-                n_skip += 1; filtered.append(symbol)            # 空窗口/价格量能未达标,已处理但无行
-            else:
-                n_det += 1
-                if t_ms is not None:
-                    per_ms.append(t_ms)
-                if rows:
-                    n_hit += 1; n_rows += len(rows); buf.extend(rows)
-                rb_rows.append({"symbol": symbol, "n_sampled": rfp["n_sampled"], **rfp["counts"]})
-            if n_done % SHARD_STOCKS == 0 or n_done == len(pkls):
-                if buf:
-                    df = pd.DataFrame(buf, columns=columns[:-2]); df["fold_Y"], df["fold_6M"] = _fold_cols(df["buy_date"])
-                    df.to_parquet(lt / f"part-{n_shard:04d}.parquet", index=False); n_shard += 1; buf = []
-                # 只在非空时写(修复轮 1 Minor 5a):空 DataFrame.to_csv 写出的文件下一轮
-                # read_csv 会抛 EmptyDataError,整个目录从此开不起来、必须手删文件才能续跑。
-                if rb_rows:
-                    pd.DataFrame(rb_rows).to_csv(rb_path, index=False)
-                if filtered:
-                    pd.DataFrame({"symbol": filtered}).to_csv(filtered_path, index=False)
-            if n_done % 200 == 0:
-                print(f"  {n_done}/{len(pkls)} 股 · {n_rows} 行 · {time.time() - t0:.0f}s")
+        # 有界提交,不一次性 submit 全宇宙:Future 会一直持有 worker 返回的 rows,而外层
+        # 容器(旧写法的 futs 字典)对每个 Future 都是强引用,as_completed 消费过也不释放——
+        # 等于把「每股扫出来的所有行」全留在主进程内存里直到本轮结束。2026-09-07 实测:
+        # 4096 格网格下每股 8641 行,扫到第 2580 股时主进程 anon-rss 23.4GB,被 OOM killer
+        # 杀掉(整机 31GB,连桌面一起卡死)。滑动窗口只保留在途的那几股,峰值内存与已扫股数
+        # 解耦、只随 SHARD_STOCKS 走。
+        it = iter(pkls)
+        pending = {ex.submit(_worker, str(p), cfg, buf_start, buf_end, START_DATE, END_DATE, VOLUME_MIN)
+                   for p in islice(it, WORKERS * 2)}
+        while pending:
+            fresh, pending = wait(pending, return_when=FIRST_COMPLETED)
+            pending |= {ex.submit(_worker, str(p), cfg, buf_start, buf_end, START_DATE, END_DATE, VOLUME_MIN)
+                        for p in islice(it, len(fresh))}
+            for fut in fresh:
+                symbol, rows, rfp, err, t_ms = fut.result(); n_done += 1
+                if err:
+                    n_err += 1; print("ERR", symbol, err)          # 不计入 done,下次自动重试
+                elif rows is None:
+                    n_skip += 1; filtered.append(symbol)            # 空窗口/价格量能未达标,已处理但无行
+                else:
+                    n_det += 1
+                    if t_ms is not None:
+                        per_ms.append(t_ms)
+                    if rows:
+                        n_hit += 1; n_rows += len(rows); buf.extend(rows)
+                    rb_rows.append({"symbol": symbol, "n_sampled": rfp["n_sampled"], **rfp["counts"]})
+                if n_done % SHARD_STOCKS == 0 or n_done == len(pkls):
+                    if buf:
+                        df = pd.DataFrame(buf, columns=columns[:-2]); df["fold_Y"], df["fold_6M"] = _fold_cols(df["buy_date"])
+                        _shrink_dtypes(df).to_parquet(lt / f"part-{n_shard:04d}.parquet", index=False)
+                        n_shard += 1; buf = []
+                    # 只在非空时写(修复轮 1 Minor 5a):空 DataFrame.to_csv 写出的文件下一轮
+                    # read_csv 会抛 EmptyDataError,整个目录从此开不起来、必须手删文件才能续跑。
+                    if rb_rows:
+                        pd.DataFrame(rb_rows).to_csv(rb_path, index=False)
+                    if filtered:
+                        pd.DataFrame({"symbol": filtered}).to_csv(filtered_path, index=False)
+                if n_done % 200 == 0:
+                    print(f"  {n_done}/{len(pkls)} 股 · {n_rows} 行 · {time.time() - t0:.0f}s")
+            fresh = None   # 处理完立刻断开对这批 Future 的引用,rows 随 buf 落盘一起释放
     if buf:
         df = pd.DataFrame(buf, columns=columns[:-2]); df["fold_Y"], df["fold_6M"] = _fold_cols(df["buy_date"])
-        df.to_parquet(lt / f"part-{n_shard:04d}.parquet", index=False)
+        _shrink_dtypes(df).to_parquet(lt / f"part-{n_shard:04d}.parquet", index=False)
     if rb_rows:
         pd.DataFrame(rb_rows).to_csv(rb_path, index=False)
     if filtered:
@@ -249,13 +295,23 @@ def run(app: str, cfg, out_dir: str) -> None:
     cum_avg_combo_ms = float(cum_per_ms_arr.sum() / (cum_det * n_combo)) if cum_det and n_combo else float("nan")
     n_universe = n_done0 + len(pkls)   # done0∪pkls = 本轮启动时的全宇宙(TICKER_REGEX 命中数),裁定用此算总股数
 
-    # 台账 + fold 计数分布(真扫格粒度、宽进 where;累计行天然来自重读全部分片,本就是累计口径)
+    # 台账 + fold 计数分布(真扫格粒度、宽进 where)。两个数字各用最省的路子拿,**不再把全部分片
+    # concat 成一张表**:那份整表的消费者从来只有这两行,而它要按全部 26 列付内存——2026-09-07
+    # 实测 3522 万行 ≈ 14GB(坑见 reference.md §6 坑 11),扫完正要写台账时再吃一次峰值。
     parts = sorted(lt.glob("part-*.parquet"))
-    full = (pd.concat([pd.read_parquet(p) for p in parts], ignore_index=True) if parts
-            else pd.DataFrame(columns=columns[:-2] + ["fold_Y", "fold_6M"]))  # 空目录守卫(修复轮 1 Minor 5b)
     combo_cols = [col_of(d) for d in study.SCAN_GRID if cls.kinds[d] != "F"]
-    cnt = full.groupby(combo_cols + ["fold_Y"]).size() if len(full) else pd.Series([], dtype=int)
-    cnt_line = (f"min {cnt.min()} / p50 {cnt.median():.0f} / max {cnt.max()}" if len(cnt) else "(暂无数据)")
+    # 累计行数:只读 parquet 文件元数据,一个数据块都不读。**不用 sum(run_stats 的 n_rows)**——
+    # 那条路实测不成立:被 OOM killer 杀掉的轮次写了分片却没活到写 run_stats,其行数贡献永久丢失
+    # (该目录实测 sum(n_rows)=13,464,987 vs 盘上 35,223,590)。元数据口径是「盘上有什么就数什么」,
+    # 不依赖进程是否活到最后。
+    n_rows_all = sum(pq.ParquetFile(p).metadata.num_rows for p in parts)
+    # 格 × fold 分布:逐片只读需要的那几列、逐片 groupby 再累加。峰值只剩一片的这几列;
+    # 累加结果的行数 = 真扫格数 × fold 数(bb_v1 为 4096×2),与长表行数无关。
+    cnt = pd.Series([], dtype=int)
+    for _p in parts:
+        c = pd.read_parquet(_p, columns=combo_cols + ["fold_Y"]).groupby(combo_cols + ["fold_Y"]).size()
+        cnt = c if not len(cnt) else cnt.add(c, fill_value=0)
+    cnt_line = (f"min {cnt.min():.0f} / p50 {cnt.median():.0f} / max {cnt.max():.0f}" if len(cnt) else "(暂无数据)")
     lines = [f"# multivar_scan 台账 · {APP}", "",
              f"- 窗:{START_DATE}..{END_DATE};HEAD_BUFFER={HEAD_BUFFER};LABEL_HORIZON={LABEL_HORIZON};FIRST_PASSAGE_K={FIRST_PASSAGE_K}",
              f"- 过滤:price [{PRICE_MIN},{PRICE_MAX}],volume_min {VOLUME_MIN};底座 {study.BASE_YAML}(base 指纹 {cl['fingerprints']['base'][:12]});宽进 {study.WIDE_OVERRIDES}",
@@ -264,7 +320,7 @@ def run(app: str, cfg, out_dir: str) -> None:
              f"- 分类:{ {col_of(d): k for d, k in cls.kinds.items()} }", f"- where 轴:{ {col_of(d): v for d, v in cls.where_fields.items()} }",
              f"- 检测组合数(detection_combos 实算,F 维不进组合):{n_combo}",
              f"- 断点续跑:本轮启动时 done 集共 {n_done0} 股 = 已有 parquet 分片 symbol({n_done0_parquet}) ∪ random_baseline.csv symbol({n_done0_rb}) ∪ filtered_symbols.csv symbol({n_done0_filtered});err 不计入 done、下次自动重试;总股数(TICKER_REGEX 命中全宇宙) {n_universe}",
-             f"- 股数(本轮):待扫 {len(pkls)} / 进 detector {n_det} / 过滤 {n_skip} / 有 match {n_hit} / 异常 {n_err};累计行(重读全部分片) {len(full)}",
+             f"- 股数(本轮):待扫 {len(pkls)} / 进 detector {n_det} / 过滤 {n_skip} / 有 match {n_hit} / 异常 {n_err};累计行(盘上分片元数据) {n_rows_all}",
              f"- 股数(累计跨 {n_runs} 轮 run_stats.jsonl):进 detector {cum_det} / 过滤 {cum_skip} / 有 match {cum_hit} / 异常事件 {cum_err} 次(同一 symbol 每轮重试各计一次,不去重)",
              f"- 耗时(本轮):wall {wall:.0f}s @ {WORKERS} workers;worker 侧 scan_one_stock 累计 {per_ms_arr.sum() / 1000:.1f}s(≈总计算量,单线程 detector/solve 无 I/O 等待,CPU·s 量级);本进程(编排调度)cpu {time.process_time() - cpu0:.1f}s",
              f"- 耗时(累计跨 {n_runs} 轮):wall {cum_wall:.0f}s;worker 侧累计 {cum_worker_ms / 1000:.1f}s;本进程 cpu 累计 {cum_cpu:.1f}s",

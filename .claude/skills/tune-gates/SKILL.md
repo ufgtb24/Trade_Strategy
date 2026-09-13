@@ -18,7 +18,7 @@ sys.path.insert(0, ".claude/skills/tune-gates")
 import tune
 ```
 
-九个函数：
+十个函数：
 
 - `tune.status(app, window="main")` → 现场探测这个 app 当前进行到哪一步，**不写任何文件**。返回字段：`app`/`window`/`out_dir`/`installed`（study.py 是否存在）/`classification_stale`（分类表是否已过期）/`source_stale`/`base_stale`（分类表记录的 detector 源码指纹 / 底座 yaml 指纹，是否与当前重算的不一致；`None` = 判不了，落在保守侧，理由见 `fingerprint_check_error`（**该键只在判不了时才存在**，用 `.get()` 读））/`scanned_shards`/`scanned_symbols`（**目前恒为 0，判断扫描进度用 `scanned_shards`，别用它**）/`compared`/`compare_mismatch`/`found`/`exposure_rounds`（这批数据已经被识别过几轮）/`regenerable`/`regenerable_reasons`（已有扫描结果，当前代码能不能重新产出同样的结果）。「一句话就知道该干什么」的技术基础，见下面「七、路径 B」的入口协议。
 - `tune.propose_grid(app_module)` → 读 pattern 代码，提一套带推荐档位与实测维度分类（改了必须重扫 / 可以事后调整）的网格方案。**返回的是机械建议不是判断**——须翻译成人话列给用户增删改，不能自己拍板。个别参数可能测不出该归哪类（`kind=None` 且 `reason` 非空，比如与另一个参数存在构造上的冲突）；这类参数的原因要原样带给用户，不能悄悄丢弃或强行分组。
@@ -26,11 +26,15 @@ import tune
 - `tune.setup(app)` → 单独重建分类表（网格没变、只是声明或源码变了时用）。
 - `tune.scan(app, window="main", **overrides)` → 扫描出候选长表（下面「三」译成「扫描结果」），**这是最贵的一步**（全宇宙几十分钟到几小时），支持断点续跑。`overrides` 直接改口径（比如先 `ticker_regex="^A[A-C]"` 小范围试跑）；改了带 ★ 的口径字段必须换一个新的 `window`（见下文）。
 - `tune.compare(app, window="main")` → 一致性验证（原称「对拍」）。**红线判据要写成 `compared and compare_mismatch == 0`，不能只看 `compared`**——`compared` 只代表验证日志文件存在，不代表验证真的跑完了（半路崩溃也会留下这个文件，此时 `compare_mismatch` 是 `None`）。
-- `tune.find(app, window="main")` → 在扫描结果上识别稳健区。**这条红线由函数自己核**：一致性验证没过（`compared and compare_mismatch == 0` 不成立）就响亮拒绝、不做任何事；只有已用别的证据独立确认过一致性时才传 `force=True` 跳过，平时不传。
+- `tune.find(app, window="main")` → 在扫描结果上识别稳健区。产出 `cells.npz`（全量格张量，**识别端的全量产物**）+ `cells.csv`（只含排名前 5000 格的明细摘要）+ `region_report.md`。**这条红线由函数自己核**：一致性验证没过（`compared and compare_mismatch == 0` 不成立）就响亮拒绝、不做任何事；只有已用别的证据独立确认过一致性时才传 `force=True` 跳过，平时不传。
+- `tune.cell(app, window="main", **levels)` → 按档位值查**单个格**的全部指标（读 `cells.npz`）。
+  `levels` 的键同 `region_core.cell_coords()` 的输出：真扫维用参数名（`burst.gap_max`），过滤型/where 维用
+  长表列名（`burst.peak_age_max`，**不是** `burst.peak_age_min`）；每一轴都要给，缺轴响亮报错。
+  做单闸切片、查生产参数落在哪个格、组合回放对照，都走这里——不要去 `cells.csv` 里捞（它只有前 5000 格）。
 - `tune.retire(app, confirm=False, delete_notes=False, delete_exposure=False)` → app 退役清理。`confirm=False` 时只返回清单、一个文件都不删；复盘笔记与运行审计日志默认保留，要删须显式打开对应开关。
 - `tune.plateau_report(csv, out_dir, rel_tol=0.05, min_match=100)` → 路径 A 专用：把事后切好档位的宽表喂进去，出逐闸平台判定。
 
-**Settings 的 ★ 字段**（`start_date` / `end_date` / `head_buffer` / `label_horizon` / `first_passage_k` / `price_min` / `price_max` / `volume_min`，共 8 个）：这些字段决定「这批扫描结果测的是什么」，改了必须换 `window`（开一份新的输出目录），同一 `window` 下口径只能有一个来源——第一次扫描把实际用的值写进内部记录，之后 `compare`/`find` 都从那里读，不重复传、不会有两个来源。
+**Settings 的 ★ 字段**（`start_date` / `end_date` / `head_buffer` / `label_horizon` / `first_passage_k` / `price_min` / `price_max` / `volume_min`，共 8 个）：这些字段决定「这批扫描结果测的是什么」，改了必须换 `window`（开一份新的输出目录），同一 `window` 下口径只能有一个来源——**此外还有两样东西不在 Settings 里、但同样必须换 `window`：底座参数（`params.yaml` ⊕ `WIDE_OVERRIDES`）与 detector 源码。**一份扫描结果要跨多轮续跑才扫完全宇宙，最终被当成「同一套检测配置下的候选集合」按格聚合；中途改了这两样，已扫的股票用旧配置、后扫的用新配置，聚合出来的计数就混了两种东西。工具会在续写时拒绝并点名是哪一样变了（2026-09-12 起）——第一次扫描把实际用的值写进内部记录，之后 `compare`/`find` 都从那里读，不重复传、不会有两个来源。
 
 典型序列——**新接入 / 换网格**：
 
@@ -264,7 +268,8 @@ tune.install(app, ...)                        # 落地网格 + 生成分类表
 tune.setup(app)                               # 仅网格不变、只需重建分类表时单独调用
 tune.scan(app, window="main", **overrides)    # 出扫描结果(长表分片 + 运行口径记录)+ ledger.md
 tune.compare(app, window="main")              # 一致性验证(按股并行);红线 mismatch=0,读识别结果前必须先绿
-tune.find(app, window="main")                 # 读扫描结果,出 cells.csv/region_report.md(联合空间稳健区)
+tune.find(app, window="main")                 # 读扫描结果,出 cells.npz(全量格张量)/cells.csv(前 5000 格)/region_report.md
+tune.cell(app, window="main", **levels)       # 按档位值查单个格(读 cells.npz);单闸切片与组合回放都走这里
 ```
 
 跑完整链路后确认 skill 自身测试仍绿：

@@ -251,6 +251,35 @@ def find(app: str, *, window: str = "main", cfg: Settings | None = None,
     return status(app, window)
 
 
+def cell(app: str, *, window: str = "main", **levels) -> dict:
+    """按档位值查单个格的全部指标——读 `tune.find()` 产出的 `cells.npz`(全量格张量)。
+
+    `cells.csv` 只含排名前若干格,要看任意一个格(如生产参数所在的格、做单闸切片对照)走这里。
+    `levels` 的键与 `region_core.cell_coords()` 的输出一致:真扫维用参数名(如
+    `{"burst.gap_max": 8}`),过滤型/where 维用长表列名(如 `{"burst.peak_age_max": 60}`,
+    **不是** `burst.peak_age_min`)。每一轴都要给,值要精确等于该轴档位表里的元素(`None` 可以)。
+
+    为什么不是从 CSV 查:全量 CSV 已不再产出(本轮 265 万格 490MB、建表要 3~4GB 内存),
+    而且张量按坐标直接索引,比读半个 G 文本再逐列浮点匹配快几个数量级。
+    """
+    import region_core as RC
+    npz = out_dir_of(app, window) / "cells.npz"
+    if not npz.exists():
+        raise SystemExit(f"{npz} 不存在——先跑 tune.find({app!r}, window={window!r})")
+    cl = S.load_classification(app)
+    combo, preds = S.derived_axes(cl)
+    cells = RC.load_cells_npz(npz)
+    fp_npz = str(cells["study_fingerprint"])
+    fp_now = cl["fingerprints"]["study"]
+    if fp_npz and fp_npz != fp_now:
+        raise SystemExit(
+            f"{npz} 是另一份 study 声明下算出来的(npz {fp_npz[:12]} vs 当前 {fp_now[:12]})——"
+            "网格变过,格坐标的含义已经不同,拒绝按当前档位表去查这份旧张量。重跑 tune.find()。"
+        )
+    idx = RC.cell_index(combo, preds, levels)
+    return RC.cell_metrics(cells, idx, [str(x) for x in cells["folds"]])
+
+
 def plateau_report(csv: str, out_dir: str, *, rel_tol: float = 0.05, min_match: int = 100) -> dict:
     """单参数路径:事后切档位的宽表 → 逐闸平台图与判定。"""
     import plateau

@@ -28,7 +28,8 @@ import random
 import subprocess
 import sys
 import time
-from concurrent.futures import ProcessPoolExecutor, as_completed
+from concurrent.futures import FIRST_COMPLETED, ProcessPoolExecutor, wait
+from itertools import islice
 from pathlib import Path
 
 import pandas as pd
@@ -147,6 +148,8 @@ def run(app: str, cfg, longtable_dir: str) -> None:
     SEED, N_RANDOM_CELLS, N_TIGHT_CELLS = cfg.cmp_seed, cfg.cmp_n_random_cells, cfg.cmp_n_tight_cells
     MIN_WIN_BARS = cfg.min_win_bars
     WORKERS = cfg.workers
+    DATA_DIR = cfg.data_dir            # 与扫描端同一个来源;写死 "datasets/pkls" 会让
+                                       # worktree(该目录为空,数据在主目录)里一只股都找不到
     OUT_LOG = None        # None → <LONGTABLE_DIR 父目录>/compare_longtable.log
 
     print(f"[compare_longtable] app={APP} → {LONGTABLE_DIR} (抽样 {TICKER_REGEX}, WORKERS={WORKERS})")
@@ -190,18 +193,31 @@ def run(app: str, cfg, longtable_dir: str) -> None:
     be = str((e + pd.Timedelta(days=round(H * TRADING_TO_CALENDAR_RATIO))).date())
     filtered_csv = lt.parent / "filtered_symbols.csv"
     filtered = set(pd.read_csv(filtered_csv, keep_default_na=False)["symbol"]) if filtered_csv.exists() else set()
-    syms_all = list(_list_pkls(str(REPO / "datasets/pkls"), TICKER_REGEX))
+    syms_all = list(_list_pkls(str(REPO / DATA_DIR), TICKER_REGEX))   # REPO / 绝对路径 = 该绝对路径,与扫描端同款写法
     syms = [p for p in syms_all if p.stem not in filtered]
     log(f"app {APP} · 股票 {len(syms_all)}(排除 filtered_symbols {len(syms_all) - len(syms)} 只后 {len(syms)});"
         f"对拍项 {len(plan)}(a {len(cells_a)} / b {len(cells_b)} / c {N_TIGHT_CELLS}×{len(tight_names)});{WORKERS} workers")
 
     t0 = time.time()
-    df = pd.concat([pd.read_parquet(p) for p in sorted(lt.glob("part-*.parquet"))], ignore_index=True)
-    sub = df[df["symbol"].isin({p.stem for p in syms})]
-    groups = dict(list(sub.groupby("symbol", sort=False)))
-    empty = sub.iloc[0:0]
-    tasks = [(p.stem, str(p), groups.get(p.stem, empty)) for p in syms]
-    log(f"长表读入 {len(sub)} 行 / {len(groups)} 只有行的股票,{time.time() - t0:.1f}s")
+    # 只把参与比较的那批股票、且只把 _worker 真正会碰的那些列读进来。两处都是去掉不必要的
+    # 物化,不是限流:① 整表读入要按全部 26 列付内存(2026-09-07 实测 396B/行,那天 OOM 卡死
+    # 桌面就是这个量级),而这里从来只用 cmp_ticker_regex 命中的约八分之一;② `buy_date` /
+    # `dd` / `fold_Y` / `fold_6M` 这四列读进来从头到尾没被用过,而其中三个是字符串列、
+    # 恰是最贵的部分。列清单从 cl 推(不写死),少算一列就会在 _worker 里裸 KeyError。
+    key_nodes = tuple(cl["bound_nodes"])
+    used_cols = (["symbol"]
+                 + [c for c in cl["scan_grid"] if cl["kinds"][c] != "F"]          # combo 轴(pred_mask 用)
+                 + [node_col(n, f) for (n, f, _) in cl["filter_fields"].values()]  # F 维谓词列
+                 + [node_col(n, f) for (n, f, _) in cl["where_fields"].values()]   # W 维谓词列
+                 + [node_col(n, x) for n in key_nodes for x in ("start", "end")]   # 逐行比对的 span
+                 + ["fr", "fp_up", "fp_down", "fp_both", "fp_none"])
+    used_cols = list(dict.fromkeys(used_cols))
+    keep_syms = {p.stem for p in syms}
+    sub = pd.concat([d[d["symbol"].isin(keep_syms)]
+                     for d in (pd.read_parquet(sp, columns=used_cols)
+                               for sp in sorted(lt.glob("part-*.parquet")))],
+                    ignore_index=True)
+    log(f"长表读入 {len(sub)} 行 × {len(used_cols)} 列(全表 26 列),{time.time() - t0:.1f}s")
 
     cfg = dict(app_module=study.APP_MODULE, base_yaml=base_yaml, wide=study.WIDE_OVERRIDES, wheres=wheres, plan=plan,
                cl=cl, bs=bs, be=be, s=s, e=e, H=H, K=K, PRICE_MIN=meta["price_min"], PRICE_MAX=meta["price_max"],
@@ -209,17 +225,35 @@ def run(app: str, cfg, longtable_dir: str) -> None:
 
     n_cmp = n_mism = n_skip = n_done = 0
     with ProcessPoolExecutor(max_workers=WORKERS, initializer=_init, initargs=(cfg,)) as ex:
-        futs = [ex.submit(_worker, t) for t in tasks]
-        for fu in as_completed(futs):
-            stem, c, mism, skipped = fu.result()
-            n_done += 1
-            n_skip += int(skipped)
-            n_cmp += c
-            for row in mism:
-                n_mism += 1
-                log(f"MISMATCH {row[0]} {row[1]} {row[3]} ref={row[4]} got={row[5]} cell={row[2]}")
-            if n_done % 50 == 0 or n_done == len(tasks):
-                log(f"  股 {n_done}/{len(tasks)}(跳过空窗 {n_skip}) · 累计对拍 {n_cmp} · mismatch {n_mism} · {time.time() - t0:.0f}s")
+        # 有界投递 + 边分组边切片:原写法先 `dict(list(sub.groupby("symbol")))` 把命中数据整份
+        # 复制一遍、再把全部任务一次性 submit。两者都不必要——每只股票的切片只在它那一个任务
+        # 里用一次,投出去之后主进程不该再持有。滑动窗口同扫描端(reference.md §6 坑 11)。
+        groups = sub.groupby("symbol", sort=False)
+        empty = sub.iloc[0:0]
+        it = iter(syms)
 
-    log(f"对拍 {n_cmp} 股×格({len(tasks) - n_skip} 只有效股 × {len(plan)} 项),mismatch={n_mism},{time.time() - t0:.0f}s")
+        def _submit(pk):
+            try:
+                g = groups.get_group(pk.stem)
+            except KeyError:
+                g = empty
+            return ex.submit(_worker, (pk.stem, str(pk), g))
+
+        pending = {_submit(pk) for pk in islice(it, WORKERS * 2)}
+        while pending:
+            fresh, pending = wait(pending, return_when=FIRST_COMPLETED)
+            pending |= {_submit(pk) for pk in islice(it, len(fresh))}
+            for fu in fresh:
+                stem, c, mism, skipped = fu.result()
+                n_done += 1
+                n_skip += int(skipped)
+                n_cmp += c
+                for row in mism:
+                    n_mism += 1
+                    log(f"MISMATCH {row[0]} {row[1]} {row[3]} ref={row[4]} got={row[5]} cell={row[2]}")
+                if n_done % 50 == 0 or n_done == len(syms):
+                    log(f"  股 {n_done}/{len(syms)}(跳过空窗 {n_skip}) · 累计对拍 {n_cmp} · mismatch {n_mism} · {time.time() - t0:.0f}s")
+            fresh = None   # 处理完立刻断开对这批 Future 的引用,切片随之可回收
+
+    log(f"对拍 {n_cmp} 股×格({len(syms) - n_skip} 只有效股 × {len(plan)} 项),mismatch={n_mism},{time.time() - t0:.0f}s")
     log_f.close()

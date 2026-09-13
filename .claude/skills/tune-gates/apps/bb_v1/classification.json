@@ -3,26 +3,75 @@
  "app_module": "path2_apps.bb_v1.dag_spec",
  "base_yaml": "params.yaml",
  "kinds": {
+  "bo.exceed_threshold": "D",
   "bo.min_relative_height": "D",
   "burst.gap_max": "D",
+  "burst.min_bos": "F",
+  "tb.max_rise_k": "D",
+  "tb.max_span": "D",
+  "tb.stop_confirm_bars": "D",
+  "burst.distinct_pk_min": "W",
   "burst.first_drought_min": "W",
+  "burst.peak_age_min": "W",
+  "burst.vol_spike_min": "W",
   "tb.max_day_drop_pct": "W"
  },
  "detector_nodes": {
+  "bo.exceed_threshold": [
+   "bo",
+   "pk"
+  ],
   "bo.min_relative_height": [
-   "bo"
+   "bo",
+   "pk"
   ],
   "burst.gap_max": [
    "burst"
   ],
+  "burst.min_bos": [
+   "burst"
+  ],
+  "tb.max_rise_k": [
+   "tb"
+  ],
+  "tb.max_span": [
+   "tb"
+  ],
+  "tb.stop_confirm_bars": [
+   "tb"
+  ],
+  "burst.distinct_pk_min": [],
   "burst.first_drought_min": [],
+  "burst.peak_age_min": [],
+  "burst.vol_spike_min": [],
   "tb.max_day_drop_pct": []
  },
- "filter_fields": {},
+ "filter_fields": {
+  "burst.min_bos": [
+   "burst",
+   "count",
+   ">="
+  ]
+ },
  "where_fields": {
+  "burst.distinct_pk_min": [
+   "burst",
+   "distinct_pk",
+   ">="
+  ],
   "burst.first_drought_min": [
    "burst",
    "first_drought",
+   ">="
+  ],
+  "burst.peak_age_min": [
+   "burst",
+   "peak_age_max",
+   ">="
+  ],
+  "burst.vol_spike_min": [
+   "burst",
+   "max_bar_vol_ratio",
    ">="
   ],
   "tb.max_day_drop_pct": [
@@ -32,22 +81,69 @@
   ]
  },
  "scan_grid": {
+  "bo.exceed_threshold": [
+   0.0015,
+   0.003,
+   0.0045,
+   0.0075
+  ],
   "bo.min_relative_height": [
    0.1,
    0.2,
-   0.3
+   0.3,
+   0.5
   ],
   "burst.gap_max": [
    4,
    8,
-   12
+   12,
+   20
+  ],
+  "burst.min_bos": [
+   1,
+   2,
+   3,
+   4
+  ],
+  "tb.max_rise_k": [
+   0.75,
+   1.5,
+   2.25,
+   3.75
+  ],
+  "tb.max_span": [
+   10,
+   20,
+   30,
+   50
+  ],
+  "tb.stop_confirm_bars": [
+   1,
+   2,
+   3,
+   4
   ]
  },
  "where_levels": {
+  "burst.distinct_pk_min": [
+   1,
+   3,
+   5
+  ],
   "burst.first_drought_min": [
    0,
-   20,
-   40
+   40,
+   80
+  ],
+  "burst.peak_age_min": [
+   0,
+   60,
+   120
+  ],
+  "burst.vol_spike_min": [
+   0,
+   3,
+   6
   ],
   "tb.max_day_drop_pct": [
    null,
@@ -66,21 +162,25 @@
   }
  },
  "ref_point": {
+  "bo.exceed_threshold": 0.003,
   "bo.min_relative_height": 0.2,
-  "burst.gap_max": 8
+  "burst.gap_max": 8,
+  "tb.max_rise_k": 1.5,
+  "tb.max_span": 20,
+  "tb.stop_confirm_bars": 1
  },
  "end_node": "tb",
  "bound_nodes": [
   "burst",
   "tb"
  ],
- "detection_combos": 9,
+ "detection_combos": 4096,
  "ref_params": {
   "bo": {
    "total_window": 20,
    "min_side_bars": 6,
    "min_relative_height": 0.2,
-   "exceed_threshold": 0.003,
+   "exceed_threshold": 0.0075,
    "peak_supersede_threshold": 0.01,
    "vol_baseline_period": 63,
    "peak_measure": "high",
@@ -107,7 +207,7 @@
  },
  "fingerprints": {
   "source": {
-   "hash": "cbaa9c15a882051d4bd06a3eb4f898afb3835d522e0d014f9d3a095a0c252c54",
+   "hash": "bcf399a71bdf2032a6f75e7180a3dcf721acef9b085009df96032fbedd0ea9af",
    "files": [
     "path2/atoms/breakout.py",
     "path2/atoms/throwback_v1.py",
@@ -116,9 +216,9 @@
     "path2_apps/bb_v1/params.py"
    ]
   },
-  "base": "951b612d5517146320a8c3a247820dea5e3b38efd975143cb988f1d1c282d0b1",
-  "study": "6a355c1950314f5a482d2fe4994a1ba61ebf64c7947efc43c44e11a0a05c3783"
+  "base": "c2c4939954a8890feede62c9aef235abee344e29db2519e5a791dc01e5dcf323",
+  "study": "78b281adc185197d0abc54fef644665733b3b0a5efbe9fef00f787d526a1e401"
  },
- "generated_at": "2026-08-31T05:20:55",
- "git_head": "cba747f"
+ "generated_at": "2026-09-12T12:21:42",
+ "git_head": "ed9a9a8f"
 }

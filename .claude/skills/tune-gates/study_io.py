@@ -286,16 +286,42 @@ def check_study_matches(cl: dict, study_path: Path) -> None:
         raise SystemExit(f"study.py 已改,与 classification.json 不一致:先重跑 tune.setup({cl['app']!r})")
 
 
+# 2026-09-12:source_fingerprint / base_fingerprint 加入本清单,推翻了此前「指纹变了是
+# '不可再生'、不是'混窗'」的判断——那个判断只覆盖了「扫完之后才变」这一种情形。详见
+# write_run_meta 的文档与 test_source_and_base_fingerprints_are_run_caliber。
 RUN_CALIBER = ("app", "start_date", "end_date", "head_buffer", "label_horizon", "first_passage_k",
-               "price_min", "price_max", "volume_min", "study_fingerprint")
+               "price_min", "price_max", "volume_min", "study_fingerprint",
+               "source_fingerprint", "base_fingerprint")
+# 上面两个指纹是后加的,历史 run_meta 里没有;缺键时不拦(理由见 write_run_meta 文档)。
+LATE_CALIBER = ("source_fingerprint", "base_fingerprint")
 
 
 def write_run_meta(longtable_dir: Path, meta: dict) -> None:
-    """run 级口径单源。已存在且任一口径字段不同 → 拒绝(续跑必须同口径,否则长表混窗)。"""
+    """run 级口径单源。已存在且任一口径字段不同 → 拒绝(续跑必须同口径,否则长表混窗)。
+
+    **`source_fingerprint` / `base_fingerprint` 也是口径字段**(2026-09-12 加,推翻了此前
+    「指纹变了是'不可再生'、不是'混窗'」的判断)。被推翻的理由:那个判断只覆盖了「扫完之后
+    才变」这一种情形——那确实只是不可再生。但还有「扫的中途变」:一份长表跨多轮续跑扫完
+    全宇宙,最终被当成「同一套检测配置下的候选集合」按格聚合;中途改了 detector 或底座,
+    已扫的股票用旧配置、后扫的用新配置,按格聚合出来的计数就混了两种东西。这与混窗同类
+    (都是一份长表内部不自洽),而且 `check_regenerable` 只看得见**最后一轮**的指纹,会把这种
+    长表报成可再生(假阳,落在删除侧)。两道闸分工明确:本函数从源头拦「中途变」,
+    `check_regenerable` 链 4/6 事后判「扫完之后变」。
+
+    也考虑过「只拦真正影响长表的那些底座字段」(被 SCAN_GRID 档位覆盖的字段改了其实对长表内容
+    零影响,实测过),否决理由:那是拿「静默产生混配置的坏数据」去换「省一次重扫」——前者结论
+    错误且难发现,后者代价明确可见;要区分哪些字段无害还得把网格信息传进这里逐字段比,判断
+    一旦有漏洞(某字段既在网格里又另有隐藏影响)就会放过真正的坏数据。拦全部,简单且在安全侧。
+
+    **历史长表(这两个键产生之前的 `run_meta`)不拦**:它们是在没有这条规则的时代扫的,拦它们
+    没有依据,还会让扫到一半的 window 续不动。放过并把新字段写进去,下一轮就有依据了;同时
+    `check_regenerable` 对缺字段的长表照样报「判不了」,那道防线不受影响。
+    """
     p = Path(longtable_dir) / "run_meta.json"; p.parent.mkdir(parents=True, exist_ok=True)
     if p.exists():
         old = json.loads(p.read_text())
         bad = [k for k in RUN_CALIBER if old.get(k) != meta.get(k)]
+        bad = [k for k in bad if not (k in LATE_CALIBER and k not in old)]
         if bad:
             raise SystemExit(f"{p} 已存在且口径不同: {bad}(旧 {[old.get(k) for k in bad]} / 新 {[meta.get(k) for k in bad]});"
                              "换口径请换 OUT_DIR,不要在同一长表上混窗续跑")
@@ -316,7 +342,7 @@ def check_run_matches_classification(meta: dict, cl: dict) -> None:
 
 
 def check_regenerable(longtable_dir: Path, apps_dir: Path = APPS_DIR) -> tuple[bool, list[str]]:
-    """判断一份长表能否用**当前代码**重新生成。五条链依次核,不短路(除两处必要早退外),
+    """判断一份长表能否用**当前代码**重新生成。六条链依次核,不短路(除两处必要早退外),
     一次报全部原因。
 
     **返回值的真实语义**:`True` = "未发现不可再生的证据",**不是**"一定可再生"。`False` 有
@@ -339,6 +365,11 @@ def check_regenerable(longtable_dir: Path, apps_dir: Path = APPS_DIR) -> tuple[b
         文件清单,不是重新 glob 当前目录,新文件不在清单里就不参与重算。
       - spec 拓扑变化让 classification 记录的文件清单本身过期(structural drift):这是
         source 指纹机制的固有边界,同样落在删除侧,不是"只让东西留下来"那一侧。
+      - 同一份长表跨多轮续跑、其间底座变过:`run_meta.base_fingerprint` 每轮被覆盖成最新一轮的
+        值,本链只能看见最后一轮用的底座。**这个口子从 2026-09-12 起由 `write_run_meta` 堵住**
+        (`base_fingerprint` 已进 `RUN_CALIBER`,底座一变就拒绝往同一长表里续写),所以残留范围
+        只剩"那之前产出、且当时真的混过底座"的历史长表——对它们链 6 会报「判不了」(缺字段),
+        不会误报可再生。
 
     `run_meta.json` 或 `classification.json` 内容损坏(不是合法 JSON)时,本函数会**抛异常而
     不是返回 False**;链 5 里 `import_app` 若在 import 期抛出 `BaseException`(而非
@@ -358,6 +389,9 @@ def check_regenerable(longtable_dir: Path, apps_dir: Path = APPS_DIR) -> tuple[b
          `base_snapshot`,第 4 条只查存在性抓不住"内容被改但文件还在"的情形):任何失败
          (import 失败 / yaml 读不了 / Params 报错 / 字段缺失)一律计入 reason、判不可再生,
          绝不静默放过
+      6. **长表记录的底座指纹**(`run_meta.base_fingerprint`)是否仍等于 classification 现在记录的
+         (链 1~5 全是「当前代码 vs classification」,唯独这条核对「长表当初用的底座」;
+         缺这条时 `tune.setup()` 一重建分类表就会让假阳复现,详见该链处的注释)
 
     返回:
         (regenerable: bool, reasons: list[str])
@@ -429,5 +463,26 @@ def check_regenerable(longtable_dir: Path, apps_dir: Path = APPS_DIR) -> tuple[b
                            "当前代码算出的底座跟长表生成时不同,产不出同一份数据")
     except Exception as e:
         reasons.append(f"重算底座快照失败({type(e).__name__}: {e}):无法确认底座内容未变,保守判不可再生")
+
+    # 链 6(长表自己的底座溯源):链 5 比的是「当前代码 vs classification 记录」,它管不到
+    # 「这份长表当初是用哪个底座扫出来的」。run_meta 从一开始就记着 base_fingerprint,但在
+    # 2026-09-12 之前没有任何一条链读它——后果是 `tune.setup()` 一重建 classification
+    # (底座指纹换成当前 yaml 的),链 5 立刻通过,而长表仍是旧底座扫的,`regenerable` 假阳。
+    # 实测撞到过:扫完 → 改 params.yaml 定案 → setup → status 报 regenerable=true,而那份
+    # 长表确实再生不出来(实例见 apps/bb_v1/notes.md §11.1 坑 3)。假阳落在**删除**一侧
+    # (见本函数开头的语义轴),所以这条链必须有。
+    # 与 RUN_CALIBER 的分工:`write_run_meta` 把 base_fingerprint 也当口径字段,从源头保证
+    # 「一份长表全程同一个底座」(混底座的长表按格聚合出来的计数不是同一个东西);本链管的是
+    # 另一件事——长表已经扫完之后,底座又变了(典型是改 params.yaml 再 setup),那份长表仍然
+    # 自洽、只是当前声明再生不出它。两道闸缺一不可。
+    meta_base = meta.get("base_fingerprint")
+    cl_base = cl.get("fingerprints", {}).get("base")
+    if meta_base is None:
+        reasons.append("run_meta.json 未记录底座指纹(base_fingerprint 缺失,2026-09-12 之前产出的长表):"
+                       "无法核对这份长表当初用的底座(判不了 ≠ 可再生)")
+    elif cl_base is not None and meta_base != cl_base:
+        reasons.append(f"长表记录的底座指纹({meta_base[:16]}…)与 classification 现在记录的"
+                       f"({cl_base[:16]}…)不同:这份长表是在另一份底座下扫的——常见于扫完之后改了 "
+                       "params.yaml 再跑 tune.setup(),当前声明产不出同一份数据")
 
     return (not reasons), reasons

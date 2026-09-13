@@ -123,7 +123,8 @@ class Prepared:
     row_keep: np.ndarray
 
 
-def prepare(df: pd.DataFrame, combo_levels: dict, pred_specs: list, fold_col: str, folds: list) -> Prepared:
+def prepare(df: pd.DataFrame, combo_levels: dict, pred_specs: list, fold_col: str, folds: list,
+            sym_categories=None, allow_empty: bool = False) -> Prepared:
     """把长表离散化为格张量坐标,一次性算出每行该落进哪个格。
 
     参数:
@@ -135,6 +136,13 @@ def prepare(df: pd.DataFrame, combo_levels: dict, pred_specs: list, fold_col: st
         pred_specs: [(列名, op, levels), ...],过滤型/where 维,逐条交给 `pred_level_index`。
         fold_col: fold 列名。
         folds: fold 档位列表(顺序即 fold 轴下标顺序)。
+        sym_categories: symbol 的码空间(None = 就地按保留行的唯一值排序编码)。只有
+            `prepare_shards()` 会传它——分片处理时各片必须落在同一个码空间里,否则
+            同一只股票在不同片会拿到不同码位、bootstrap 的按股重采样就散了。传了它
+            以后 n_sym 是码空间长度(可能含未被任何保留行用到的幽灵码位),压实成
+            "保留行里第 i 小的 symbol → 码 i" 由 `prepare_shards()` 统一做。
+        allow_empty: 允许 0 行保留(只有分片处理会传 True——单个分片全被丢弃是正常的,
+            "一行不剩"这条错误由 `prepare_shards()` 在全部分片上统一判)。
 
     返回:
         Prepared(字段含义见其类文档)。
@@ -151,7 +159,7 @@ def prepare(df: pd.DataFrame, combo_levels: dict, pred_specs: list, fold_col: st
     keep = fi >= 0
     for x in ci + pi:
         keep &= x >= 0
-    if not np.any(keep):
+    if not np.any(keep) and not allow_empty:
         raise ValueError(
             "prepare(): 0 行保留——combo/pred 列名或量纲与 combo_levels/pred_specs 档位不匹配、"
             "fold 列的值不在 folds 里、或谓词列全为 NaN 都会导致这个结果,请检查输入长表与档位定义。"
@@ -164,7 +172,9 @@ def prepare(df: pd.DataFrame, combo_levels: dict, pred_specs: list, fold_col: st
     # uniform) 在这份码空间上抽样,幽灵码位占的份额会给"总有效簇数"额外加一层随机性
     # (相当于把 multinomial 的支持集撑大却不产生任何计数),CI 会偏宽。这里先切片再编码,
     # 保证 n_sym 恰等于保留行里的去重 symbol 数。
-    sym = pd.Categorical(df["symbol"][keep]).codes.astype(np.int64)
+    sym = pd.Categorical(df["symbol"][keep],
+                         **({} if sym_categories is None else {"categories": sym_categories})
+                         ).codes.astype(np.int64)
     if len(sym) and (sym < 0).any():
         raise ValueError(
             f"prepare(): df['symbol'] 在保留行中有 {(sym < 0).sum()} 行为 NaN(pd.Categorical 编码为 -1)。"
@@ -176,6 +186,67 @@ def prepare(df: pd.DataFrame, combo_levels: dict, pred_specs: list, fold_col: st
                     n_sym=int(sym.max()) + 1 if len(sym) else 0, shape=tuple(axes) + (4,),
                     n_combo_axes=len(combo_levels), n_pred_axes=len(pred_specs), fold_axis=len(axes) - 1,
                     combo_levels=combo_levels, pred_specs=pred_specs, folds=folds, row_keep=keep)
+
+
+def prepare_shards(shards, combo_levels: dict, pred_specs: list, fold_col: str, folds: list) -> Prepared:
+    """逐片读 parquet 分片 → prepare → 拼接,结果与"先 concat 全部分片再 prepare 一次"逐元素相同。
+
+    参数:
+        shards: parquet 分片路径序列(顺序即拼接顺序)。
+        其余参数同 `prepare()`。
+
+    为什么要分片:`prepare()` 之后,下游只用 flat / states / sym_codes 这三个数组——26 列明细
+    再没人回头查。整表读入却要按**全部列**付内存(2026-09-07 实测 396B/行),而这三个数组只要
+    48B/行。7000 万行的量级上就是 28GB vs 3.4GB 的差别:前者在 31GB 的机器上会连桌面一起卡死
+    (那天的 OOM 就是这么来的),后者绰绰有余。分片读让峰值只剩"一片 + 结果数组"。
+
+    symbol 码空间:先扫一遍各片的 symbol 列建全局表(只读一列,便宜),各片用同一码空间编码,
+    最后把实际用到的码位压实。压实后的语义与 `prepare()` 单表路径完全一致——两者都是
+    "保留行里第 i 小的 symbol → 码 i"(`pd.Categorical` 无 categories 时按排序后的唯一值编码,
+    `np.unique` 同样有序,故 `searchsorted` 重映射后逐元素相等)。不压实则会留下幽灵码位,
+    `bootstrap()` 的 `rng.multinomial(n_sym, uniform)` 会把它们纳入重采样支持集、让 CI 偏宽。
+    """
+    shards = list(shards)
+    cols = list(combo_levels) + [c for c, _, _ in pred_specs] + [fold_col, "symbol"] + STATES
+    cols = list(dict.fromkeys(cols))            # 去重且保序(fold_col 可能与某个轴同名)
+    seen = set()
+    for sp in shards:
+        seen |= set(pd.read_parquet(sp, columns=["symbol"])["symbol"].unique())
+    all_syms = np.array(sorted(seen), dtype=object)
+
+    n_cells_total = int(np.prod([len(lv) for lv in combo_levels.values()]
+                                + [len(lv) for _, _, lv in pred_specs] + [len(folds)]))
+    flat_dt = np.int32 if n_cells_total < 2 ** 31 else np.int64
+    sym_dt = np.int16 if len(all_syms) < 2 ** 15 else np.int32
+    flats, states_l, syms_l, keeps = [], [], [], []
+    for sp in shards:
+        df = pd.read_parquet(sp, columns=cols)
+        pr = prepare(df, combo_levels, pred_specs, fold_col, folds,
+                     sym_categories=all_syms, allow_empty=True)
+        # 逐片就把 dtype 压到够用为止再攒:这三个数组是全程唯一的常驻大件,int64 存下来
+        # 152B/行(7000 万行 ≈ 10.7GB,还要在 concatenate 时翻一倍),压完 11B/行。取值范围
+        # 都是硬边界:flat < 格数、states 是四态 one-hot(0/1)、sym_codes < 股票数。
+        flats.append(pr.flat.astype(flat_dt)); states_l.append(pr.states.astype(np.int8))
+        syms_l.append(pr.sym_codes.astype(sym_dt)); keeps.append(pr.row_keep)
+        del df, pr
+    if not shards:
+        raise ValueError("prepare_shards(): 没有任何分片")
+    flat = np.concatenate(flats); del flats
+    states = np.concatenate(states_l); del states_l
+    sym_raw = np.concatenate(syms_l); del syms_l
+    row_keep = np.concatenate(keeps); del keeps
+    if not len(flat):
+        raise ValueError(
+            "prepare_shards(): 全部分片合计 0 行保留——combo/pred 列名或量纲与 combo_levels/"
+            "pred_specs 档位不匹配、fold 列的值不在 folds 里、或谓词列全为 NaN 都会导致这个结果。"
+        )
+    used = np.unique(sym_raw)
+    sym = np.searchsorted(used, sym_raw).astype(sym_dt)
+    axes = [len(lv) for lv in combo_levels.values()] + [len(lv) for _, _, lv in pred_specs] + [len(folds)]
+    return Prepared(flat=flat, states=states, sym_codes=sym, n_sym=len(used),
+                    shape=tuple(axes) + (4,), n_combo_axes=len(combo_levels),
+                    n_pred_axes=len(pred_specs), fold_axis=len(axes) - 1,
+                    combo_levels=combo_levels, pred_specs=pred_specs, folds=folds, row_keep=row_keep)
 
 
 def tensor(prep: Prepared, weights=None) -> np.ndarray:
@@ -364,6 +435,70 @@ def tolerance(s_nb, center: tuple) -> dict:
             else:
                 break
         out[ax] = (down, up)
+    return out
+
+
+def save_cells_npz(path, R: dict, shape: tuple, folds, study_fingerprint: str = "") -> None:
+    """把全量格级结果存成压缩 npz —— **这是识别端的全量产物,`cells.csv` 只是它的前 N 行摘要。**
+
+    为什么不再写全量 CSV:`analyze_tensor` 的七个数组就是全部信息(本轮 265 万格约 230MB),
+    而把它摊平成每格一行的 CSV 要先建 265 万个 Python dict(约 3~4GB)再写出 490MB 文本。
+    代价之外还更难用:按坐标查一个格,张量是直接索引,CSV 得先读完半个 G 再逐列浮点匹配
+    (2026-09-07 那轮做 40 次单闸切片正是这么凑的)。查询走 `cell_index` + `cell_metrics`。
+
+    轴名与各轴档位**刻意不存**:它们已经是 `classification.json` 的内容,由
+    `study_io.derived_axes()` 单源重建,存第二份只会引入不一致。**fold 档位反过来必须存**——
+    它是 run 级口径(`Settings.folds`)、不在 classification 里,不存就只能靠读取端传对,
+    那等于把口径正确性外包给调用方。`study_fingerprint` 供读取端核对同源性。
+    定长 unicode 存 folds 是为了让 `np.load` 不需要 `allow_pickle`。
+    """
+    np.savez_compressed(
+        path, fp=R["fp"], count=R["count"], s=R["s"], evaluable=R["evaluable"], delta=R["delta"],
+        s_nb=R["s_nb"], n_eval_nb=R["n_eval_nb"], order=np.asarray(R["order"]),
+        shape=np.asarray(shape, dtype=np.int64), folds=np.array(list(folds), dtype="U32"),
+        study_fingerprint=np.array(study_fingerprint),
+    )
+
+
+def load_cells_npz(path) -> dict:
+    """读 `save_cells_npz` 的产物。返回 {键: 数组},键同 `analyze_tensor` 的返回加 shape /
+    study_fingerprint。不含轴信息——轴由 `study_io.derived_axes(classification)` 重建。"""
+    with np.load(path) as z:
+        return {k: z[k] for k in z.files}
+
+
+def cell_index(combo_levels: dict, pred_specs: list, levels: dict) -> tuple:
+    """档位值 → 格坐标(combo+pred 空间,不含 fold)。`cell_coords` 的逆。
+
+    参数:
+        combo_levels / pred_specs: `study_io.derived_axes()` 的两个返回值。
+        levels: {轴名: 档位值},键与 `cell_coords()` 的输出键一致(combo 轴用参数名、
+            pred 轴用长表列名);值必须**精确等于**该轴档位表里的某个元素(None 也可以)。
+            缺任何一轴直接报错——少给一轴就不是一个格,静默当 0 档会悄悄查错格子。
+    """
+    axes = [(c, lv) for c, lv in combo_levels.items()] + [(c, lv) for c, _op, lv in pred_specs]
+    missing = [c for c, _ in axes if c not in levels]
+    extra = [c for c in levels if c not in {c for c, _ in axes}]
+    if missing or extra:
+        raise ValueError(f"cell_index(): 缺轴 {missing};不认识的键 {extra}(轴名以 cell_coords 的键为准)")
+    idx = []
+    for c, lv in axes:
+        if levels[c] not in lv:
+            raise ValueError(f"cell_index(): 轴 {c} 的值 {levels[c]!r} 不在档位表 {lv} 里")
+        idx.append(lv.index(levels[c]))
+    return tuple(idx)
+
+
+def cell_metrics(cells: dict, idx: tuple, folds) -> dict:
+    """读某个格的全部指标。`cells` = `load_cells_npz()` 的返回,`idx` = `cell_index()` 的返回。"""
+    shape = tuple(int(x) for x in cells["shape"])
+    out = dict(flat=int(np.ravel_multi_index(idx, shape)),
+               evaluable=bool(cells["evaluable"][idx]), s=float(cells["s"][idx]),
+               s_nb=float(cells["s_nb"][idx]), n_eval_nb=int(cells["n_eval_nb"][idx]))
+    for f, fold in enumerate(folds):
+        out[f"count_{fold}"] = int(cells["count"][idx + (f,)])
+        out[f"fp_{fold}"] = float(cells["fp"][idx + (f,)])
+        out[f"delta_{fold}"] = float(cells["delta"][idx + (f,)])
     return out
 
 
