@@ -101,7 +101,7 @@ FastAPI 后端（pattern 发现 / 扫描 / 序列化 / 诊断）+ Vue3 前端（
 
 ## 研究副产品登记
 
-研究中顺手发现的、不属于本轮主假设但也过了及格线的东西（变量 / 方向反了的闸 / 错的基线）必须登记到 `docs/feature_candidates.md`。完整规则在 `.claude/rules/feature-candidates-capture.md`，触碰 `docs/research/**` 时自动加载。
+研究中顺手发现的、不属于本轮主假设但也过了及格线的东西（变量 / 方向反了的闸 / 错的基线）必须登记到 `docs/feature_candidates.md`。**做研究时开工前先读** `.claude/rules/feature-candidates-capture.md`（及格线怎么定、每条必带哪些字段）。
 
 ## 后台 agent
 
@@ -135,11 +135,9 @@ FastAPI 后端（pattern 发现 / 扫描 / 序列化 / 诊断）+ Vue3 前端（
 
 用户要求往 CLAUDE.md 增改内容时，先按三问给出常驻/按需的建议再动手：**读者是谁**（后台 session 只读 CLAUDE.md、没人替它调 skill）、**场景开始的信号是什么**（文件路径→rules `paths:`／用户口径词→skill／事件→hook／都没有→常驻）、**到位时机来不来得及**（rules 只在 Read 时注入）。只有**长且少用**的内容值得迁；省 token≈0（有 cache），真收益是到位时机与按 agent 数倍乘。判据与实测边界见 `docs/cc_notes/claude-md-dynamic-loading.md`。
 
-## plan mode：计划必须自包含
+## 计划必须自包含
 
-plan mode 产出的计划落在 `~/.claude/plans/<slug>.md`，**必须自包含**——一个没有本次对话上下文的全新 session 光读这个文件就能实施完。
-
-这不是洁癖：批准时若选了清空上下文，规划期的对话整段丢弃，计划正文就是实施阶段唯一的输入；即使保留上下文，长实施途中 auto-compact 也会把规划过程压成摘要，只有计划文件不会被压。计划还可能在别的 worktree、别的机器上被打开实施。
+计划文件**必须自包含**——一个没有本次对话上下文的全新 session 光读这个文件就能实施完。
 
 三条可自查的硬要求：
 

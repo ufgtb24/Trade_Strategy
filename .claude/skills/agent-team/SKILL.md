@@ -17,6 +17,8 @@ description: Use when 用户说「agent team」「团队」「teammates」「启
 
 **Agent team 启动前先持久化原问题**：spawn agent team 正式分析/研究之前，先将用户的原始问题逐字记录为文档（存入本次任务专属文件夹 `docs/research/<日期>_<任务内容>/`，如 `原始问题.md`），作为全流程的基准锚点，防止研究过程漂离用户意图。
 
+**研究型 teammate 的 prompt 里写明副产品登记**：spawn 时把这句原样写进它的 prompt——「开工前先读 `.claude/rules/feature-candidates-capture.md`，研究中顺手发现、也过了及格线的副产品按它登记到 `docs/feature_candidates.md`」。
+
 **Agent team 文档归档约定**（细则见下节）：每次启用 Agent team 都必须为本次任务在 `docs/research/<日期>_<任务内容>` 下新建专属文件夹、且最终结论报告必须命名 `final_report.md`（中间文档可选）。
 
 **Agent team 完成后主动汇报**：spawn team 时，在 lead（即我自己）的运行协议里写死——当所有 teammate idle 且 `final_report.md` 已落地时，**立刻主动汇报报告要点给用户，不要等用户问**。判定 = 全员 idle + `final_report.md` 存在；汇报内容 = 关键结论摘要 + 文件绝对路径。
@@ -34,3 +36,5 @@ description: Use when 用户说「agent team」「团队」「teammates」「启
 ## 沿革
 
 2026-08-27 从 CLAUDE.md「Agent Team」节 + `.claude/rules/agent-team-doc-archival.md` 原样迁出为按需加载的 skill（触发=用户说 agent team/团队/teammates），CLAUDE.md 只留一行指针。内容逐字未改。
+
+2026-09-13 加「研究型 teammate 的 prompt 里写明副产品登记」。
