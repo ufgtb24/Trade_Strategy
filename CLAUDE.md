@@ -152,6 +152,14 @@ FastAPI 后端（pattern 发现 / 扫描 / 序列化 / 诊断）+ Vue3 前端（
 
 ## Agent skills
 
+### Issue tracker
+
+Local Markdown：issue 与 spec 以 markdown 文件存放在 `.scratch/<feature>/` 下。See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+默认五个分诊标签（needs-triage / needs-info / ready-for-agent / ready-for-human / wontfix），标签名即角色名。See `docs/agents/triage-labels.md`.
+
 ### Domain docs
 
 multi-context：根目录 `CONTEXT-MAP.md` → `path2/CONTEXT.md` + `path2_web/CONTEXT.md`；`docs/adr/` 由 `/grill-with-docs` 懒创建，尚不存在时静默跳过。See `docs/agents/domain.md`.
