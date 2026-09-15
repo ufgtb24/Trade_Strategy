@@ -100,4 +100,8 @@ def test_params_yaml_has_peak_age_min():
     import yaml
     from path2_apps.bb_v1.params import DEFAULT_YAML_PATH
     raw = yaml.safe_load(open(DEFAULT_YAML_PATH))
-    assert raw["burst"]["peak_age_min"] == 125
+    # 只断言"字段在 yaml 里"(docstring 的原意),不钉死取值:阈值归调参管,
+    # 会随每轮 tune-gates 变(2026-09-08 已由 60 改为 0 = 停用该 where)。原先钉的
+    # 125 早在本次改动之前就与 yaml 里的 60 对不上,是没跟着参数走的陈旧期望。
+    assert "peak_age_min" in raw["burst"]
+    assert isinstance(raw["burst"]["peak_age_min"], int) and raw["burst"]["peak_age_min"] >= 0

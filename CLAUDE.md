@@ -101,7 +101,7 @@ FastAPI 后端（pattern 发现 / 扫描 / 序列化 / 诊断）+ Vue3 前端（
 
 ## 研究副产品登记
 
-研究中顺手发现的、不属于本轮主假设但也过了及格线的东西（变量 / 方向反了的闸 / 错的基线）必须登记到 `docs/feature_candidates.md`。完整规则在 `.claude/rules/feature-candidates-capture.md`，触碰 `docs/research/**` 时自动加载。
+研究中顺手发现的、不属于本轮主假设但也过了及格线的东西（变量 / 方向反了的闸 / 错的基线）必须登记到 `docs/feature_candidates.md`。**做研究时开工前先读** `.claude/rules/feature-candidates-capture.md`（及格线怎么定、每条必带哪些字段）。
 
 ## 后台 agent
 
@@ -133,23 +133,22 @@ FastAPI 后端（pattern 发现 / 扫描 / 序列化 / 诊断）+ Vue3 前端（
 
 ## 修改 CLAUDE.md 时的动态化建议
 
-用户要求往 CLAUDE.md 增改内容时，先按三问给出常驻/按需的建议再动手：**读者是谁**（后台 session 只读 CLAUDE.md、没人替它调 skill）、**场景开始的信号是什么**（文件路径→rules `paths:`／用户口径词→skill／事件→hook／都没有→常驻）、**到位时机来不来得及**（rules 只在 Read 时注入）。只有**长且少用**的内容值得迁；省 token≈0（有 cache），真收益是到位时机与按 agent 数倍乘。判据与实测边界见 `docs/cc_notes/claude-md-dynamic-loading.md`。
+用户要求往 CLAUDE.md 增改内容时，先按三问给出常驻/按需的建议再动手：**读者是谁**（后台 session 只读 CLAUDE.md、没人替它调 skill）、**场景开始的信号是什么**（文件路径→rules `paths:`／用户口径词→skill／事件→hook／都没有→常驻）、**到位时机来不来得及**（rules 只在 Read 时注入）。只有**长且少用**的内容值得迁；省 token≈0（有 cache），真收益是到位时机与按 agent 数倍乘。判据与实测边界见 `~/.claude/skills/env-note-keeper/notes/claude-md-dynamic-loading.md`。
 
-## 使用 superpowers
+## 计划必须自包含
 
-- **brainstorm 提问带倾向**：用 `AskUserQuestion` 提问时，尽量把你自己的倾向性方案作为选项之一，置于首位并在 label 末尾标 `(推荐)`，并在 description 说明推荐理由。
-- **task 合并 dispatch**：每个 task 边界 = 两次 subagent 往返（implementer + reviewer，后者不可跳过），实测最小 5 分钟、与 task 难度无关——task 数是实施总时长的主因。两类都要合：① **同形状**的小改动（同一种一行修改、常量替换、跨文件同款字段添加、一组同模式的组件接线），依据 `subagent-driven-development` 的「Batch small same-shape work」；② **形状不同但同区域、同风险档**的收尾工作（改判据 / 改断言 / 重冻 fixture / 写文档，只要都不碰核心行为）。判据不是「implementer 做不做得动」，是「reviewer 还验不验得了」。**合并的前提是具名风险跟着搬**——在 dispatch 里逐文件写「这里要定点核实什么」，review 质量来自这份清单，不来自 task 切得细。（实测：某轮 6 个 task 全部首轮 review clean、fix 轮 = 0，其中四个 diff 不到 20 行改动，该切 3 个。）
-- **测试只跑必要的那一次**：plan 里每个 task 的 Run **只写覆盖本 task 改动的测试**，不写全量；全量只允许出现在两处——起点基线、末尾验收关卡。按成本分三档：**秒级定向测试**每个 task 随便跑；**分钟级套件**只在起点基线与末尾关卡各一次；**依赖外部数据的集成测试**只在末尾，且**验收关卡必须断言它的规模数字**（`n_stock=104 n_cmp=2496` 这类），不能只看 `passed`——缺数据时它静默 skip，`-q` 输出里跟通过几乎一样，验证悄悄没做而结果仍是绿的。派 implementer 时把这条写进 dispatch（「只跑覆盖你改动的测试，全量与验收关卡由控制端在末尾统一跑」），否则它们会出于好意自发跑全套「交叉验证」。**验收关卡的记录必须跑在代码最后一次改动之后**（终审 fix wave 也算改动）——提前跑只能当中途信息，不能当交付证据。**起点基线必须把每条验收关卡的命令都实测一遍并记数**：漏测哪条，那条的 Expected 就会写错（实测：某轮 plan 只测了 skill 子套件、没测 `tests/` 全量，于是关卡写成「0 failed」，而起点本就有 7 个既存失败，执行时只能另开 worktree 补跑基线才敢判「0 新增」）。
-- **plan 末尾不归任何 task 的节，标题必须写成 `## Task <N+1>: xxx（控制端执行，不派 implementer）`**：`task-brief` 的切分**只认** `^#+\s+Task\s+<数字>` 这一种标题（读脚本坐实），别的标题一律拦不住——最后一个 task 的 brief 会一路吞到文件末尾，把验收关卡、留账、附录全当成它自己的需求。实测后果：某轮 Task 6 自身 76 行、brief 却有 141 行，implementer 照单把 7 道验收关卡整套跑了一遍。
-- **每个 task 点名证据形式，别默认 TDD**：plan 为每个 task 写清「这一轮凭什么算做对了」，形式随 task 形状变——**新增或改变行为** → TDD，且 **RED 必须红在断言上**（`ImportError` / `TypeError: unexpected keyword` 那种红只证明代码还不存在，不证明断言有牙齿：一个 `assert True` 的测试同样能这样红、这样绿）；**删代码 / 删闸** → 前后红点差分（如「8 errors + 3 failed 归零」），没有新行为可钉；**更新陈旧期望、重冻 fixture** → **人工来源核对**，红是自动的、绿是必然的，两者都不是证据（实测：自产自销的 fixture 重冻必然变绿，真证据是新增字段逐字等于参数声明的默认值）；**纯文档 / 注释** → 跑一遍覆盖测试确认没写坏即可。**这不是省时间的条款**——RED 一步实测是秒级（0.46s），它防的是「造出一份不会失败的测试」和「拿必然的绿当证据」。
-- **subagent 模型选择**：
-  - **Implementer**（实现）：一律 `sonnet`，禁用 `haiku`。固定，不随任务复杂度浮动。
-  - **per-task Reviewer**：按**深度 / 风险密度**选档，**不固定**，**与 diff 大小无关**——机械 diff、纯接线、常量替换用 `sonnet`；fix 轮的定向复审用 `sonnet` 或更低；碰求解 / 剪枝 / 物化、或跨文件的不变式协调才用 `opus`。**大而浅的 diff 不该升档**：它的失败模式是注意力被摊薄、不是推理深度不够，该补具名风险清单或拆开，升档买不到东西。
-  - **Final holistic reviewer**（whole-branch 那一次）：一律 `opus`，不降档。
-- **计划自包含**：用 `superpowers:writing-plans` skill 产出的计划必须自包含——不依赖当前对话上下文即可被一个全新 session 直接实施。`superpowers:writing-plans` 结束后给出可供在新 session 中粘贴的执行命令即可，不要自行执行。注意，必须将需要粘贴的内容放在代码块中给出，让我能够将需要粘贴的内容和其他文本区分开。
-- **计划路径规范**：plan 里涉及**项目内**的文件/目录一律用**相对 repo root** 的路径（如 `path2/dag/_solve.py`、`docs/research/xxx/final_report.md`），禁止硬编码 `/home/yu/PycharmProjects/Trade_Strategy-*/...` 这类绝对路径。原因：plan 可能在别的 worktree 里被实施，绝对路径会指向源 worktree 造成跨 worktree 污染。为消歧义，plan 顶部 spec 里显式写一句「本 plan 中所有项目内路径均相对 repo root」。**例外**（保持绝对）：与 worktree 无关的系统路径，如 `~/.claude/...`、`/tmp/claude-*/scratchpad`、外部工具、系统级配置——这些绝对路径反而更清晰。
-- **执行方式**：plan 写完后**不在当前 session 执行**——换新 session，用 `superpowers:subagent-driven-development`（每 task 一个 fresh subagent + 两阶段 review）。注意 `subagent-driven-development` 与 `superpowers:executing-plans` 是互斥的两个执行 skill，二选一，不存在「用前者执行后者」。
-- **Plan 尽量不拆分**：默认将 spec 内容写为一份完整 plan、单 session 跑完；只有「前段实施结果大分叉迫使后段重写」才拆段，具体判据 `.claude/rules/plan-execution.md`
+计划文件**必须自包含**——一个没有本次对话上下文的全新 session 光读这个文件就能实施完。
+
+三条可自查的硬要求：
+
+- **不出现指代对话的词**——「刚才说的」「上面那个方案」「按我们讨论的」一律就地展开成正文。
+- **需求、约束、已排除的方案连同理由都写进正文**，不靠「用户在对话里说过」。别写「去看某某文件就知道了」，要么把关键事实抄进来，要么给出能 grep 的定位。
+- **项目内路径一律相对 repo root**（如 `path2/dag/_solve.py`），禁止硬编码 `/home/yu/PycharmProjects/Trade_Strategy-*/...`——绝对路径会指向源 worktree 造成跨 worktree 污染。计划顶部显式写一句「本 plan 中所有项目内路径均相对 repo root」。**例外**：与 worktree 无关的系统路径（`~/.claude/...`、`/tmp/claude-*/scratchpad`、外部工具、系统级配置）保持绝对反而更清晰。
+
+**研究成果：plan 可以用，实施产出不能沾。** `docs/research/` 是临时目录：实施完成前一直保留，实施完成后随时可能被删。所以两边待遇不同：
+
+- **plan 里可以直接引用研究成果**，按「文件名 + 章节标题」指向即可——这就算上面第二条说的「能 grep 的定位」，不必把内容抄进正文。
+- **实施产出只承载结论本身，与研究目录彻底脱钩**：按 plan 写出的代码、测试、注释 / docstring、skill 与文档，一律不 import、执行、读取或引用 `docs/research/`，也不写研究内部的实验编号和出处标注。算法照 plan 写明的公式从头实现，golden 数字直接写进测试，需要对照研究数据的一次性核对脚本放 scratchpad、不入库。收尾自查：在改动文件里 grep `docs/research`，结果必须为空。
 
 ## Agent skills
 

@@ -6,9 +6,8 @@ from path2.atoms.breakout import PeakEvent
 
 def test_peak_event_point_geometry():
     e = PeakEvent(start_idx=10, end_idx=10, confirm_idx=10, pk_id=3,
-                  kind="convex", peak_idx=6, price=10.0)
+                  peak_idx=6, price=10.0)
     assert e.is_point
-    assert e.kind == "convex"
     assert e.peak_idx == 6 < e.start_idx == 10   # 峰 bar ≠ 登记 bar
     assert e.ref_slots() == {}         # 无 supersede 时空
 
@@ -17,14 +16,14 @@ def test_peak_event_rejects_state_kwarg():
     """state 字段已删除:定稿三态(alive/broken/eaten)改由消费侧从 ref_ids 合成(C4)。"""
     with pytest.raises(TypeError):
         PeakEvent(start_idx=10, end_idx=10, confirm_idx=10, pk_id=3,
-                  kind="convex", peak_idx=6, price=10.0, state="alive")
+                  peak_idx=6, price=10.0, state="alive")
 
 
 def test_peak_event_ref_slots_nonempty():
     other = PeakEvent(start_idx=2, end_idx=2, confirm_idx=2, pk_id=1,
-                      kind="convex", peak_idx=1, price=5.0)
+                      peak_idx=1, price=5.0)
     e = PeakEvent(start_idx=10, end_idx=10, confirm_idx=10, pk_id=3,
-                  kind="convex", peak_idx=6, price=10.0,
+                  peak_idx=6, price=10.0,
                   superseded_refs=(other,))
     assert e.ref_slots() == {"superseded": (other,)}
 
@@ -47,10 +46,10 @@ def test_peak_event_ref_slots_translated_by_engine():
         produces = {"pk": PeakEvent}
         def detect(self, df):
             inner = PeakEvent(start_idx=3, end_idx=3, confirm_idx=3, pk_id=1,
-                              kind="convex", peak_idx=2, price=4.0)
+                              peak_idx=2, price=4.0)
             yield ("pk", inner)
             yield ("pk", PeakEvent(start_idx=9, end_idx=9, confirm_idx=9,
-                                   pk_id=2, kind="convex", peak_idx=7,
+                                   pk_id=2, peak_idx=7,
                                    price=8.0, superseded_refs=(inner,)))
 
     spec = PatternSpec("p", edges=(), nodes=[

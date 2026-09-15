@@ -218,12 +218,13 @@ def summarize(res) -> dict:
 # ── pattern 静态层(拓扑面板数据源,§7.1) ──
 # event_styles 兜底调色板:PATTERN_DAG.event_styles 默认空,按 topology.nodes 里 node_id
 # 首次出现顺序 setdefault(见 _event_styles),索引 i 就是"第 i 个新 node_id"。当前拓扑覆盖
-# (apps 均无显式 event_styles 声明,全走兜底;bottom_burst 首现序 bo/burst/tb/tb_seg):
-#   [0] bo     (bottom_burst / bo_only 的首个 node_id;主图 price-anchored [ids] 方框)
-#   [1] burst  (bottom_burst 的第二个 node_id;副图 interval)
-#   [2] tb     容器红(用户手调值;tb_seg 用饱和绿——与 bo 兜底绿同色会触发
-#   [3] tb_seg deriveNodeColors 明度散开,段被分到过浅的亮端)
-#   [4..6]     未占用,给未来新 node_id 兜底(顺序即分配序,i % len 循环)
+# (apps 均无显式 event_styles 声明,全走兜底;bottom_burst 首现序 bo/pk/burst/tb/tb_seg):
+#   [0] bo     (主图 price-anchored [ids] 方框)
+#   [1] pk     (bottom_burst 的第二个 node_id;多流 bo detector 的 pk 流)
+#   [2] burst  (副图 interval)
+#   [3] tb     容器
+#   [4] tb_seg 企稳段:与 bo 兜底绿(#16f943)拉开——同色会触发 deriveNodeColors 明度散开
+#   [5..6]     未占用,给未来新 node_id 兜底(顺序即分配序,i % len 循环)
 _PALETTE = ["#16f943", "#2563eb", "#FF1500", "#14b24e", "#7c3aed", "#0891b2", "#ca8a04"]
 
 def _rule_from_meta(meta: dict) -> dict:
@@ -377,10 +378,12 @@ def serialize_per_pattern_result(res, end_node: str, label_horizon: int,
                           **任一**收盘价 ∈ [price_min, price_max] 的 match(任一过滤,
                           统一标准协议;路径=各 child span bar 并集),每条注入
                           forward_return + forward_drawdown(mfr 下行镜像)+ buy_date
-                          (end_node 事件起始日,YYYY-MM-DD)+ first_passage(该 match
-                          leaf 首次出现时的四态 dict,同 leaf 的后续 match 为 None,
-                          first_passage_enabled=False 时恒 None;逐 match 非 None
-                          四态求和 = match_fp_counts)
+                          (end_node 事件起始日,YYYY-MM-DD)+ leaf(end_node 事件
+                          instance_id)+ buy_span(end_node 解析出的各事件
+                          [[start_idx, end_idx], ...],即买点 span)+ first_passage
+                          (该 match 买点 span 首次出现时的四态 dict,同 span 的后续
+                          match 为 None,first_passage_enabled=False 时恒 None;逐
+                          match 非 None 四态求和 = match_fp_counts)
       - summary["matches"]: 窗内 match 数(覆写)
       - max_forward_return: max over filtered matches 中非 None 的 forward_return;
                             空 / 全 None → None
@@ -388,7 +391,7 @@ def serialize_per_pattern_result(res, end_node: str, label_horizon: int,
                               (最差下行;与 max_forward_return 的 max 对仗);
                               空 / 全 None → None
       - match_fp_counts: per-pattern 首穿四态计数 单组 {up,down,both,none},
-                         遍历各 match span 全买点日累加(first_passage_enabled=False
+                         按买点 span 去重后遍历全买点日累加(first_passage_enabled=False
                          或无 match → 单组全 0);集合级 ratio 的分母=买点日数
     """
     from path2.eval import (match_forward_returns, match_forward_drawdowns,
@@ -397,9 +400,10 @@ def serialize_per_pattern_result(res, end_node: str, label_horizon: int,
     ret_by_id: dict = {}
     dd_by_id: dict = {}
     leaf_by_id: dict = {}
+    span_by_id: dict = {}
     fp_by_id: dict = {}
     date_by_id: dict = {}
-    seen_fp_leaves: set = set()
+    seen_fp_spans: set = set()
     match_fp_counts = {"up": 0, "down": 0, "both": 0, "none": 0}
     for m in res.matches:
         events = _resolve_end_events(m, end_node)          # 统一解析(与 eval 同函数)
@@ -417,6 +421,10 @@ def serialize_per_pattern_result(res, end_node: str, label_horizon: int,
         # 无需 indexer 再编号)。
         leaf_ev = m.node_index[end_node.split(".")[0]]
         leaf_by_id[m.match_id] = leaf_ev.instance_id
+        # 买点 span:引擎按 (node, span) 给实例编 #idx,同一 span 可以物化出多个实例
+        # (不同上游各锚出同一段,instance_id 不同),所以买点身份按 span 认、不按实例认。
+        buy_span = tuple((ev.start_idx, ev.end_idx) for ev in events)
+        span_by_id[m.match_id] = [[int(s), int(e)] for s, e in buy_span]
         date_by_id[m.match_id] = str(pd.to_datetime(win["date"].iat[leaf_ev.start_idx]).date())
         ret_by_id[m.match_id] = match_forward_returns(
             m, end_node, win, [label_horizon],
@@ -427,14 +435,14 @@ def serialize_per_pattern_result(res, end_node: str, label_horizon: int,
             m, end_node, win, [label_horizon],
             sample_window=sample_window)[label_horizon]
         # 首穿四态计数:span 全买点日(与 forward_return 同循环、同过滤口径)。
-        # 共享 leaf 的多 match 只累加一次(买点日是物理属性,与上游 match 数无关),
-        # 保持「ratio 分母=买点日数」契约(scan.py:169-170 与随机基线同口径)。
-        # 实例流:去重键 = leaf_ev.instance_id(含 #idx,同事件不同实例天然可区分)。
+        # 同一买点 span 的多 match 只累加一次(买点日是物理属性,与上游 match 数、
+        # 实例数都无关),保持「ratio 分母=买点日数」契约(与随机基线同口径)。
+        # 去重键 = buy_span:同 span 的不同实例是同一个买点,按 instance_id 去重会重复计数。
         # match_first_passage 内算 M、几何对称 k;返单组 {up,down,both,none}。
         fp_by_id[m.match_id] = None
         if first_passage_enabled:
-            if leaf_ev.instance_id not in seen_fp_leaves:
-                seen_fp_leaves.add(leaf_ev.instance_id)
+            if buy_span not in seen_fp_spans:
+                seen_fp_spans.add(buy_span)
                 m_counts = match_first_passage(
                     m, end_node, win, label_horizon, first_passage_k,
                     sample_window=sample_window)
@@ -448,6 +456,7 @@ def serialize_per_pattern_result(res, end_node: str, label_horizon: int,
                 "forward_return": ret_by_id[md["match_id"]],
                 "forward_drawdown": dd_by_id[md["match_id"]],
                 "leaf": leaf_by_id[md["match_id"]],   # instance_id 字符串
+                "buy_span": span_by_id[md["match_id"]],   # [[start_idx, end_idx], ...]
                 "buy_date": date_by_id[md["match_id"]],
                 "first_passage": fp_by_id[md["match_id"]]}
 

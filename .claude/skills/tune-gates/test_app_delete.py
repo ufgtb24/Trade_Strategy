@@ -11,33 +11,46 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import app_setup  # noqa: E402
 
 
-def _mk_app(apps: Path, name: str, with_notes=True, with_exposure=True):
+def _mk_app(apps: Path, name: str, with_notes=True, windows=("main",)):
     d = apps / name; d.mkdir(parents=True)
-    (d / "study.py").write_text("APP_MODULE='x'\n", encoding="utf-8")
-    (d / "run.py").write_text("DATA_DIR='x'\n", encoding="utf-8")
-    (d / "classification.json").write_text("{}", encoding="utf-8")
+    for w in windows:
+        wd = d / "windows" / w; wd.mkdir(parents=True)
+        (wd / "study.py").write_text("APP_MODULE='x'\n", encoding="utf-8")
+        (wd / "classification.json").write_text("{}", encoding="utf-8")
     if with_notes:
         (d / "notes.md").write_text("# notes\n", encoding="utf-8")
-    if with_exposure:
-        (d / "exposure.jsonl").write_text('{"ts":"t"}\n', encoding="utf-8")
     return d
 
 
-def test_notes_and_exposure_default_to_keep(tmp_path):
-    """默认保留:它们记的是'对这批数据做过什么',意义不随 app 消失。"""
-    apps = tmp_path / "apps"; _mk_app(apps, "demo")
-    plan = app_setup.plan_delete("demo", apps, tmp_path, delete_notes=False, delete_exposure=False)
-    must = {Path(x["path"]).name for x in plan["must"]}
+def test_notes_default_to_keep(tmp_path):
+    """默认保留:notes.md 是跨轮沉淀,意义不随 app 消失。"""
+    apps = tmp_path / "apps"; d = _mk_app(apps, "demo")
+    plan = app_setup.plan_delete("demo", apps, tmp_path, delete_notes=False)
+    must = {x["path"] for x in plan["must"]}
     keep = {Path(x["path"]).name for x in plan["keep"]}
-    assert must == {"study.py", "run.py", "classification.json"}
-    assert {"notes.md", "exposure.jsonl"} <= keep
+    assert must == {str(d / "windows" / "main" / "study.py"), str(d / "windows" / "main" / "classification.json")}
+    assert keep == {"notes.md"}
 
 
 def test_opt_in_moves_notes_to_confirm(tmp_path):
     apps = tmp_path / "apps"; _mk_app(apps, "demo")
-    plan = app_setup.plan_delete("demo", apps, tmp_path, delete_notes=True, delete_exposure=True)
-    confirm = {Path(x["path"]).name for x in plan["confirm"]}
-    assert {"notes.md", "exposure.jsonl"} <= confirm
+    plan = app_setup.plan_delete("demo", apps, tmp_path, delete_notes=True)
+    assert {Path(x["path"]).name for x in plan["confirm"]} == {"notes.md"}
+
+
+def test_must_covers_every_window_and_pycache_level(tmp_path):
+    """每个窗口的声明与各级字节码缓存都进 must;窗口目录里别的文件不碰。"""
+    apps = tmp_path / "apps"; d = _mk_app(apps, "demo", windows=("main", "screen1"))
+    for p in (d / "__pycache__", d / "windows" / "__pycache__", d / "windows" / "screen1" / "__pycache__"):
+        p.mkdir()
+    (d / "windows" / "main" / "extra.txt").write_text("x", encoding="utf-8")
+    plan = app_setup.plan_delete("demo", apps, tmp_path)
+    must = {x["path"] for x in plan["must"]}
+    for w in ("main", "screen1"):
+        assert {str(d / "windows" / w / "study.py"), str(d / "windows" / w / "classification.json")} <= must
+    assert {str(d / "__pycache__"), str(d / "windows" / "__pycache__"),
+            str(d / "windows" / "screen1" / "__pycache__")} <= must
+    assert not any("extra.txt" in p for p in must)
 
 
 def test_substring_neighbour_app_is_never_touched(tmp_path):
@@ -51,7 +64,7 @@ def test_substring_neighbour_app_is_never_touched(tmp_path):
     _mk_app(apps, "bb_v1"); _mk_app(apps, "bb_v10"); _mk_app(apps, "bb_v1_test")
     for neighbour in ("bb_v10", "bb_v1_test"):
         (tmp_path / "outputs" / "tune_gates" / neighbour / "main" / "longtable").mkdir(parents=True)
-    plan = app_setup.plan_delete("bb_v1", apps, tmp_path, delete_notes=True, delete_exposure=True)
+    plan = app_setup.plan_delete("bb_v1", apps, tmp_path, delete_notes=True)
     touched = [x["path"] for grp in plan.values() for x in grp]
     assert not any("bb_v10" in p or "bb_v1_test" in p for p in touched)
 
@@ -60,7 +73,7 @@ def test_unregenerable_longtable_is_blocked_not_deletable(tmp_path):
     """不可再生的重产物进 blocked 组,不进可删组。
 
     删除单元是整个 run 目录(sub),不是 sub/longtable——见 plan_delete 里的说明:同级的
-    resume 状态文件(random_baseline.csv / filtered_symbols.csv)与 longtable/ 是同一份
+    resume 状态文件(filtered_symbols.csv / empty_symbols.csv / 提交清单)与 longtable/ 是同一份
     扫描产物不可分割,只删 longtable/ 会让"删了要重跑"这句话落空。可再生性判定仍然对
     含 run_meta.json 的那一层(这里是 sub/longtable)做,但 plan 里报告的路径是 sub。
     """
@@ -69,7 +82,7 @@ def test_unregenerable_longtable_is_blocked_not_deletable(tmp_path):
     lt = sub / "longtable"
     lt.mkdir(parents=True)
     (lt / "run_meta.json").write_text(json.dumps({"app": "demo", "study_fingerprint": "zzz"}), encoding="utf-8")
-    plan = app_setup.plan_delete("demo", apps, tmp_path, delete_notes=False, delete_exposure=False)
+    plan = app_setup.plan_delete("demo", apps, tmp_path, delete_notes=False)
     # 精确路径比对,不用子串——pytest 的 tmp_path 本身按测试函数名截断生成,子串判断会被
     # "test_unregenerable_longtable_..." 这个目录名误伤(它本身就含 "longtable" 四个字)
     assert str(sub) in {x["path"] for x in plan["blocked"]}
@@ -173,3 +186,14 @@ def test_execute_delete_dry_run_never_touches_disk(tmp_path):
     plan = {"must": [{"path": str(target), "why": "x"}], "confirm": [], "keep": [], "blocked": []}
     app_setup._execute_delete(plan, app_dir, confirm=False)  # 不应抛异常
     assert target.exists()
+
+
+def test_execute_delete_prunes_empty_window_dirs_but_keeps_notes(tmp_path):
+    """删完窗口声明后,空的 windows/<window>/ 一并清掉;app 目录里还留着 notes.md 就不删 app 目录。"""
+    _git_repo(tmp_path)
+    apps = tmp_path / "apps"; d = _mk_app(apps, "demo")
+    _git_commit_all(tmp_path)
+    plan = app_setup.plan_delete("demo", apps, tmp_path)
+    app_setup._execute_delete(plan, d, confirm=True)
+    assert not (d / "windows").exists()
+    assert (d / "notes.md").exists()

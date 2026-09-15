@@ -88,6 +88,7 @@ import {
 } from '../render/subGeometry'
 import { ctrlState } from '../render/ctrlState'
 import { bandKeyOf, nodeOfEventByBand, resolveTooltipData, windowOf, formatForwardReturn, subBandTagList } from '../render/visible'
+import { peakIdIndex } from '../render/peakState'
 import type { Bar } from '../types'
 import { handleChartClick, handleShiftClick, MARKER_SERIES } from './KlineChart'
 import CandidateStatusBar from './CandidateStatusBar.vue'
@@ -103,6 +104,14 @@ const { symbol, effectiveAnalysis, nodeColors, nodeVisible, level, tagMap, isola
         focusedInstanceId, selectedInstanceId, compositionGroupIds } = storeToRefs(view)
 const panels = usePanelsStore()
 const { showSlider, subHeightOffset } = storeToRefs(panels)
+
+// tooltip Refs 段的短标识注入:被引用的实例在图上叫什么。pk 语义(pk_id 字段)封装在
+// peakState.ts(契约 C7 唯一落点),此处只调纯函数;非 pk 事件返回 null,渲染层只印 node_id。
+const pkIdByInstance = computed(() => peakIdIndex(effectiveAnalysis.value?.events ?? []))
+const refLabelOf = (id: string): string | null => {
+  const n = pkIdByInstance.value.get(id)
+  return n == null ? null : String(n)
+}
 
 const wrapEl = ref<HTMLElement | null>(null)
 const mainEl = ref<HTMLElement | null>(null)
@@ -461,7 +470,8 @@ function buildRenderInput() {
     focusedInstanceId: focusedInstanceId.value,
     // 实例级签名:formatter 直接把 data.instance_id 传给 resolver,展示【所悬停实例】的判定。
     tooltipResolver: (id: string) =>
-      resolveTooltipData(id, diag.value, effectiveAnalysis.value?.events ?? [], bars.value),
+      resolveTooltipData(id, diag.value, effectiveAnalysis.value?.events ?? [], bars.value,
+                         refLabelOf),
     strictWindow: strictWindowIdx(),
     matchLabel,
     sliderShow: showSlider.value,

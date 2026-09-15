@@ -1,0 +1,31 @@
+   where year  group  segments   up  directed
+prod_old 2024      C       465  453       753
+prod_old 2024 D_gone        19   13        53
+prod_old 2024   D_wh        14    8        28
+prod_old 2024  A_new         9    3         9
+prod_old 2024   A_wh        17    9        14
+prod_old 2025      C       480  568      1029
+prod_old 2025 D_gone        22    6        61
+prod_old 2025   D_wh        19   16        38
+prod_old 2025  A_new         5   12        12
+prod_old 2025   A_wh         7    2         6
+prod_new 2024      C       511  496       824
+prod_new 2024 D_gone        22   15        58
+prod_new 2024   D_wh        14    8        28
+prod_new 2024  A_new        11    3         9
+prod_new 2024   A_wh        17    9        14
+prod_new 2025      C       546  662      1177
+prod_new 2025 D_gone        25    6        64
+prod_new 2025   D_wh        19   18        40
+prod_new 2025  A_new         5   12        12
+prod_new 2025   A_wh         9    2         8
+    wide 2024      C      3449 3187      6448
+    wide 2024 D_gone       474  450       908
+    wide 2024   D_wh         0    0         0
+    wide 2024  A_new        85   69       159
+    wide 2024   A_wh         0    0         0
+    wide 2025      C      4291 4575      8422
+    wide 2025 D_gone       587  712      1248
+    wide 2025   D_wh         0    0         0
+    wide 2025  A_new       107  161       201
+    wide 2025   A_wh         0    0         0

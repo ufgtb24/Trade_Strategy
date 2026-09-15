@@ -9,14 +9,17 @@ calc/atr.py 供 rolling_atr_pct_nanmedian(波动率尺度 M;calc 约定纯数值
   - match_forward_drawdowns  : min(low [t+1..t+N])/close[t]-1(下行镜像,补上述盲区)
 
 首次穿越方向(分类量、买点单点;MFE/MAE 丢顺序,这一类把顺序补回来):
+  - spans_first_passage      : 一组买点日区间 (start, end) 上的四态计数(不依赖 match 的底层入口)
   - match_first_passage      : 买点后窗口内先触上行线 P(1+kM)还是下行线 P/(1+kM)
+                               (end_node 事件的买点日压成区间后交给 spans_first_passage)
   - random_day_first_passage : 全宇宙随机日基线计数(无条件基准,对照 pattern 命中)
+  - daily_first_passage      : 区间内全部合格日逐日一行(不抽样,逐日基线的原料;向量化)
   几何对称单参数 k(M=ATR/close 滚动 nanmedian,内算);seed 由 ticker md5 派生、跨进程可复现。
 """
 from __future__ import annotations
 
 import hashlib
-from typing import Optional, Sequence, Tuple
+from typing import Iterable, Optional, Sequence, Tuple
 
 import numpy as np
 import pandas as pd
@@ -190,6 +193,65 @@ def match_forward_drawdowns(
     return out
 
 
+def _index_runs(indices) -> list[tuple[int, int]]:
+    """把买点日下标序列按原顺序压成连续段 [(start, end), ...](双端含)。
+
+    后一个下标恰为前一个 +1 才并入当前段;重复、倒序、跳号都另起一段——各段展开后
+    与原序列逐项相同(含重复次数与顺序),对覆写了 sample_bar_indices 的容器同样无损。
+    """
+    runs: list[tuple[int, int]] = []
+    for t in indices:
+        if runs and t == runs[-1][1] + 1:
+            runs[-1] = (runs[-1][0], t)
+        else:
+            runs.append((t, t))
+    return runs
+
+
+def spans_first_passage(
+    df: pd.DataFrame,
+    spans: Iterable[Tuple[int, int]],
+    horizon: int,
+    k: float = DEFAULT_FP_K,
+    sample_window: Optional[tuple[int, int]] = None,
+    M: Optional["np.ndarray"] = None,
+) -> dict[str, int]:
+    """一组买点日区间上的首次穿越四态计数 {up, down, both, none}——不依赖 match 的底层入口。
+
+    spans: 可迭代的 (start_idx, end_idx),双端含,均为 df 的 0-based 行位置;逐段展开
+    range(start, end+1) 逐日判定。重复的段重复计数——去重是调用方的事(例如同一回踩被
+    多个 match 共享时,先按回踩去重再传入)。
+
+    其余口径与 match_first_passage 完全相同:
+      - sample_window (lo, hi) 双端含:买点日 t 仅当 lo <= t <= hi 参与计数;只截买点日
+        集合、不截前瞻窗;None = 全量。
+      - M 缺省时按 rolling_atr_pct_nanmedian(high, low, close, FP_ATR_WINDOW) 内算;外传时
+        len(M) 须等于 len(df),否则抛 ValueError(首穿下标是 df 行位置索引,错位会静默算错)。
+      - 逐日交给 _first_passage_at:t+horizon 越界或 M[t] 非有限 / <=0 的买点日跳过,不计数。
+    """
+    from path2.calc.atr import FP_ATR_WINDOW, rolling_atr_pct_nanmedian
+
+    if M is None:
+        M = rolling_atr_pct_nanmedian(df["high"], df["low"], df["close"], FP_ATR_WINDOW).values
+    if len(M) != len(df):
+        raise ValueError(
+            f"M 长度 {len(M)} 与 df 长度 {len(df)} 不一致:M 必须按同一个 df 算"
+            f"(首穿下标是 df 行位置索引,M 与 df 错位会导致越界判定基准与 M 取值静默错位)")
+    hi = df["high"].values
+    lo = df["low"].values
+    cl = df["close"].values
+    counts = {"up": 0, "down": 0, "both": 0, "none": 0}
+    for start, end in spans:
+        for t in range(start, end + 1):
+            if sample_window is not None and not (sample_window[0] <= t <= sample_window[1]):
+                continue
+            state = _first_passage_at(hi, lo, cl, M, t, horizon, k)
+            if state is None:
+                continue
+            counts[state] += 1
+    return counts
+
+
 def match_first_passage(
     match: PatternMatch,
     end_node: str,
@@ -215,32 +277,17 @@ def match_first_passage(
     必须按同一个 df 算(len(M) 须等于 len(df)——首穿下标是 df 行位置索引),否则
     抛 ValueError(防跨窗错位喂入导致越界判定基准与 M 索引不一致、静默算错)。
 
+    实现:各 event 的 sample_bar_indices() 按原顺序压成连续段(_index_runs)后交给
+    spans_first_passage——展开后买点日序列逐项不变,故对覆写了 sample_bar_indices 的
+    容器同样逐位等价。
+
     集合级 ratio 的分母 = 买点日数(up+down+both+none),与 match_forward_returns 的
     span 全买点日口径对齐。end_node 缺失 → KeyError;路径最多一级,child slot
     无匹配 → KeyError(解析协议见 _resolve_end_events)。
     """
-    from path2.calc.atr import FP_ATR_WINDOW, rolling_atr_pct_nanmedian
-
     events = _resolve_end_events(match, end_node)   # 缺失 → KeyError(语义自然)
-    if M is None:
-        M = rolling_atr_pct_nanmedian(df["high"], df["low"], df["close"], FP_ATR_WINDOW).values
-    if len(M) != len(df):
-        raise ValueError(
-            f"M 长度 {len(M)} 与 df 长度 {len(df)} 不一致:M 必须按同一个 df 算"
-            f"(首穿下标是 df 行位置索引,M 与 df 错位会导致越界判定基准与 M 取值静默错位)")
-    hi = df["high"].values
-    lo = df["low"].values
-    cl = df["close"].values
-    counts = {"up": 0, "down": 0, "both": 0, "none": 0}
-    for ev in events:
-        for t in ev.sample_bar_indices():
-            if sample_window is not None and not (sample_window[0] <= t <= sample_window[1]):
-                continue
-            state = _first_passage_at(hi, lo, cl, M, t, horizon, k)
-            if state is None:
-                continue
-            counts[state] += 1
-    return counts
+    spans = [run for ev in events for run in _index_runs(ev.sample_bar_indices())]
+    return spans_first_passage(df, spans, horizon, k, sample_window, M)
 
 
 def random_day_first_passage(
@@ -303,3 +350,76 @@ def random_day_first_passage(
             continue
         counts[state] += 1
     return {"n_sampled": int(len(sample)), "counts": counts}
+
+
+def daily_first_passage(
+    df: pd.DataFrame,
+    start_ts: "pd.Timestamp",
+    end_ts: "pd.Timestamp",
+    horizon: int,
+    k: float = DEFAULT_FP_K,
+    M: Optional["np.ndarray"] = None,
+) -> pd.DataFrame:
+    """区间内每个合格交易日的首次穿越方向,一日一行(逐日基线的原料)。
+
+    与 random_day_first_passage 同一把尺子(几何对称单 k + 波动率尺度 M),但不抽样:
+    区间内全部合格日都判定,按日聚合、分层由调用方做;价格过滤、股票级过滤也归调用方。
+
+    合格日 i = start_ts <= date[i] <= end_ts(双端含)且 i+horizon < len(df)(前瞻窗完整)
+    且 M[i] 有限且 > 0——恰好是 _first_passage_at 不返回 None 的那些日子。
+
+    返回列(顺序固定):idx(int64,df 行位置)、date(datetime64)、close(float64)、
+    M(float64)、up / down / both / none(int8,四态 one-hot,每行恰有一个 1)。
+    无合格日 → 同列同 dtype 的空表。
+
+    算法(向量化,每股一次矩阵运算;逐日判定与 _first_passage_at 逐位一致):
+      1. 合格日下标 idx;上行线 close[i]*(1+k*M[i])、下行线 close[i]/(1+k*M[i]),
+         与 _first_passage_at 同一算式、同一运算顺序;
+      2. 前瞻窗 [i+1 .. i+horizon] 的 high / low 取成 (合格日数 × horizon) 矩阵,分别与
+         上行线 / 下行线比较(high >= 上行线、low <= 下行线,跳空越线算触);
+      3. 每行末尾补一列恒真的哨兵后取 argmax = 首个触线位置(未触 = horizon);
+      4. 上下同为哨兵 → none;位置相等 → both;上行在先 → up;下行在先 → down。
+
+    M: 外传的波动率尺度(每股算一次复用,省去重复计算);None 时内算。必须按同一个 df 算
+    (len(M) 须等于 len(df)),否则抛 ValueError。df 需有 date/high/low/close 列。
+    """
+    from path2.calc.atr import FP_ATR_WINDOW, rolling_atr_pct_nanmedian
+
+    if M is None:
+        M = rolling_atr_pct_nanmedian(df["high"], df["low"], df["close"], FP_ATR_WINDOW).values
+    if len(M) != len(df):
+        raise ValueError(
+            f"M 长度 {len(M)} 与 df 长度 {len(df)} 不一致:M 必须按同一个 df 算"
+            f"(合格日/首穿下标是 df 行位置索引,M 与 df 错位会导致静默算错)")
+    M = np.asarray(M)
+    hi = df["high"].values
+    lo = df["low"].values
+    cl = df["close"].values
+    dates = pd.to_datetime(df["date"])
+    n_bars = len(df)
+
+    cand = np.nonzero(((dates >= start_ts) & (dates <= end_ts)).to_numpy())[0]
+    cand = cand[cand + horizon < n_bars]
+    m_c = M[cand]
+    idx = cand[np.isfinite(m_c) & (m_c > 0)]
+
+    mt = M[idx]
+    c0 = cl[idx]
+    up_line = c0 * (1 + k * mt)
+    dn_line = c0 / (1 + k * mt)
+    fwd = idx[:, None] + np.arange(1, horizon + 1)[None, :]   # 前瞻窗行位置矩阵
+    sentinel = np.ones((len(idx), 1), dtype=bool)
+    iu = np.concatenate([hi[fwd] >= up_line[:, None], sentinel], axis=1).argmax(axis=1)
+    idn = np.concatenate([lo[fwd] <= dn_line[:, None], sentinel], axis=1).argmax(axis=1)
+    none = (iu == horizon) & (idn == horizon)
+    both = (iu == idn) & ~none
+    return pd.DataFrame({
+        "idx": idx.astype(np.int64),
+        "date": dates.to_numpy()[idx],
+        "close": c0.astype(np.float64),
+        "M": mt.astype(np.float64),
+        "up": (iu < idn).astype(np.int8),
+        "down": (iu > idn).astype(np.int8),
+        "both": both.astype(np.int8),
+        "none": none.astype(np.int8),
+    })

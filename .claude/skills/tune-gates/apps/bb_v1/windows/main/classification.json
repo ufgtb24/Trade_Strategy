@@ -1,0 +1,590 @@
+{
+ "app": "bb_v1",
+ "window": "main",
+ "design": "grid",
+ "ref_point_scope": "D",
+ "app_module": "path2_apps.bb_v1.dag_spec",
+ "base_yaml": "params.yaml",
+ "kinds": {
+  "bo.exceed_threshold": "D",
+  "bo.min_relative_height": "D",
+  "burst.gap_max": "D",
+  "burst.min_bos": "F",
+  "tb.max_rise_k": "D",
+  "tb.max_span": "D",
+  "tb.stop_confirm_bars": "D",
+  "burst.distinct_pk_min": "W",
+  "burst.first_drought_min": "W",
+  "burst.peak_age_min": "W",
+  "burst.vol_spike_min": "W",
+  "tb.max_day_drop_pct": "W"
+ },
+ "detector_nodes": {
+  "bo.exceed_threshold": [
+   "bo",
+   "pk"
+  ],
+  "bo.min_relative_height": [
+   "bo",
+   "pk"
+  ],
+  "burst.gap_max": [
+   "burst"
+  ],
+  "burst.min_bos": [
+   "burst"
+  ],
+  "tb.max_rise_k": [
+   "tb"
+  ],
+  "tb.max_span": [
+   "tb"
+  ],
+  "tb.stop_confirm_bars": [
+   "tb"
+  ],
+  "burst.distinct_pk_min": [],
+  "burst.first_drought_min": [],
+  "burst.peak_age_min": [],
+  "burst.vol_spike_min": [],
+  "tb.max_day_drop_pct": []
+ },
+ "filter_fields": {
+  "burst.min_bos": [
+   "burst",
+   "count",
+   ">="
+  ]
+ },
+ "where_fields": {
+  "burst.distinct_pk_min": [
+   "burst",
+   "distinct_pk",
+   ">="
+  ],
+  "burst.first_drought_min": [
+   "burst",
+   "first_drought",
+   ">="
+  ],
+  "burst.peak_age_min": [
+   "burst",
+   "peak_age_max",
+   ">="
+  ],
+  "burst.vol_spike_min": [
+   "burst",
+   "max_bar_vol_ratio",
+   ">="
+  ],
+  "tb.max_day_drop_pct": [
+   "tb",
+   "max_day_drop",
+   "<"
+  ]
+ },
+ "scan_grid": {
+  "bo.exceed_threshold": [
+   0.0015,
+   0.003,
+   0.0045,
+   0.0075
+  ],
+  "bo.min_relative_height": [
+   0.1,
+   0.2,
+   0.3,
+   0.5
+  ],
+  "burst.gap_max": [
+   4,
+   8,
+   12,
+   20
+  ],
+  "burst.min_bos": [
+   1,
+   2,
+   3,
+   4
+  ],
+  "tb.max_rise_k": [
+   0.75,
+   1.5,
+   2.25,
+   3.75
+  ],
+  "tb.max_span": [
+   10,
+   20,
+   30,
+   50
+  ],
+  "tb.stop_confirm_bars": [
+   1,
+   2,
+   3,
+   4
+  ]
+ },
+ "where_levels": {
+  "burst.distinct_pk_min": [
+   1,
+   3,
+   5
+  ],
+  "burst.first_drought_min": [
+   0,
+   40,
+   80
+  ],
+  "burst.peak_age_min": [
+   0,
+   60,
+   120
+  ],
+  "burst.vol_spike_min": [
+   0,
+   3,
+   6
+  ],
+  "tb.max_day_drop_pct": [
+   null,
+   0.2
+  ]
+ },
+ "wide_overrides": {
+  "burst": {
+   "distinct_pk_min": 1,
+   "first_drought_min": 0,
+   "peak_age_min": 0,
+   "vol_spike_min": 0
+  },
+  "tb": {
+   "max_day_drop_pct": null
+  }
+ },
+ "ref_point": {
+  "bo.exceed_threshold": 0.003,
+  "bo.min_relative_height": 0.2,
+  "burst.gap_max": 8,
+  "tb.max_rise_k": 1.5,
+  "tb.max_span": 20,
+  "tb.stop_confirm_bars": 1
+ },
+ "end_node": "tb",
+ "bound_nodes": [
+  "burst",
+  "tb"
+ ],
+ "detection_combos": 4096,
+ "levels_probe": {
+  "bo.exceed_threshold": [
+   {
+    "value": 0.0015,
+    "legal": true,
+    "error": null,
+    "state_key": "f545fa534bcbbf31580524587d80fb059646a4742d1986afd1b1071bc59f6066",
+    "end_node": "tb",
+    "head_buffer": 63
+   },
+   {
+    "value": 0.003,
+    "legal": true,
+    "error": null,
+    "state_key": "c27bceeefaad83b72993332b376114d1fe500087b295c0e3fc96a34ea7ef7230",
+    "end_node": "tb",
+    "head_buffer": 63
+   },
+   {
+    "value": 0.0045,
+    "legal": true,
+    "error": null,
+    "state_key": "75bd64538ba1a01caebfd49fcdbe2550375fe12697d55a6e8270ceefba8d84de",
+    "end_node": "tb",
+    "head_buffer": 63
+   },
+   {
+    "value": 0.0075,
+    "legal": true,
+    "error": null,
+    "state_key": "5d7baa8c9ebbccbc0ce28126e14623d2f7e458b97a98d8848fdfa2dc372dad39",
+    "end_node": "tb",
+    "head_buffer": 63
+   }
+  ],
+  "bo.min_relative_height": [
+   {
+    "value": 0.1,
+    "legal": true,
+    "error": null,
+    "state_key": "6e1e679856904b841ef37d56dca275a6f0c5207c43872a241b99480a68478d25",
+    "end_node": "tb",
+    "head_buffer": 63
+   },
+   {
+    "value": 0.2,
+    "legal": true,
+    "error": null,
+    "state_key": "5d7baa8c9ebbccbc0ce28126e14623d2f7e458b97a98d8848fdfa2dc372dad39",
+    "end_node": "tb",
+    "head_buffer": 63
+   },
+   {
+    "value": 0.3,
+    "legal": true,
+    "error": null,
+    "state_key": "e5f6158d835efaeb933fefd11cc8c4410382d4e432f2ceaaed73ba3b7253f72c",
+    "end_node": "tb",
+    "head_buffer": 63
+   },
+   {
+    "value": 0.5,
+    "legal": true,
+    "error": null,
+    "state_key": "c4fb582684b68c4687d7ed1bfb3e2648993b233f9dba8da2569b6a473b7f3ea9",
+    "end_node": "tb",
+    "head_buffer": 63
+   }
+  ],
+  "burst.gap_max": [
+   {
+    "value": 4,
+    "legal": true,
+    "error": null,
+    "state_key": "a6fd52601a507515f502003c97b4adf9637c96e218d5f1c7122214fdb2eddb27",
+    "end_node": "tb",
+    "head_buffer": 63
+   },
+   {
+    "value": 8,
+    "legal": true,
+    "error": null,
+    "state_key": "5d7baa8c9ebbccbc0ce28126e14623d2f7e458b97a98d8848fdfa2dc372dad39",
+    "end_node": "tb",
+    "head_buffer": 63
+   },
+   {
+    "value": 12,
+    "legal": true,
+    "error": null,
+    "state_key": "b7901cb6931d7a1d78f45b3fd8981fdbeaef6285f70c6d1d74bcd64727b45cdc",
+    "end_node": "tb",
+    "head_buffer": 63
+   },
+   {
+    "value": 20,
+    "legal": true,
+    "error": null,
+    "state_key": "55b99f4d72b246396381be4e68f664b6460f2d2718833381186d6b0e6296f88e",
+    "end_node": "tb",
+    "head_buffer": 63
+   }
+  ],
+  "burst.min_bos": [
+   {
+    "value": 1,
+    "legal": true,
+    "error": null,
+    "state_key": "5d7baa8c9ebbccbc0ce28126e14623d2f7e458b97a98d8848fdfa2dc372dad39",
+    "end_node": "tb",
+    "head_buffer": 63
+   },
+   {
+    "value": 2,
+    "legal": true,
+    "error": null,
+    "state_key": "e0d60c472f4136c333b3513fda0b88b5120a037065dc600a05616e09c903a1c8",
+    "end_node": "tb",
+    "head_buffer": 63
+   },
+   {
+    "value": 3,
+    "legal": true,
+    "error": null,
+    "state_key": "21469a9a58701387b48a369c175cc1e055e7b252ca665027e3b1d060fcfd5615",
+    "end_node": "tb",
+    "head_buffer": 63
+   },
+   {
+    "value": 4,
+    "legal": true,
+    "error": null,
+    "state_key": "38ae7dfebdb5f21401895823d83a0f54e47b41e9c5f9fc4ae90847ed8913c15c",
+    "end_node": "tb",
+    "head_buffer": 63
+   }
+  ],
+  "tb.max_rise_k": [
+   {
+    "value": 0.75,
+    "legal": true,
+    "error": null,
+    "state_key": "a475bf800dbc4a50f89885b8351ca6ad8f89ccce372966a8fe3d5bf3ea786840",
+    "end_node": "tb",
+    "head_buffer": 63
+   },
+   {
+    "value": 1.5,
+    "legal": true,
+    "error": null,
+    "state_key": "5d7baa8c9ebbccbc0ce28126e14623d2f7e458b97a98d8848fdfa2dc372dad39",
+    "end_node": "tb",
+    "head_buffer": 63
+   },
+   {
+    "value": 2.25,
+    "legal": true,
+    "error": null,
+    "state_key": "19dce32eb98f8415cfb785ceaeb557300dfc3177804d76072111e85dbe0487f7",
+    "end_node": "tb",
+    "head_buffer": 63
+   },
+   {
+    "value": 3.75,
+    "legal": true,
+    "error": null,
+    "state_key": "9dab6975b55163ccb26057d8e4c65e8d171c6931f1c184c25fb04d882ce9fdc7",
+    "end_node": "tb",
+    "head_buffer": 63
+   }
+  ],
+  "tb.max_span": [
+   {
+    "value": 10,
+    "legal": true,
+    "error": null,
+    "state_key": "266e946711068ecd7239e8fe2dc3ecd00c4715d26f023d00068764cfa6c25997",
+    "end_node": "tb",
+    "head_buffer": 63
+   },
+   {
+    "value": 20,
+    "legal": true,
+    "error": null,
+    "state_key": "5d7baa8c9ebbccbc0ce28126e14623d2f7e458b97a98d8848fdfa2dc372dad39",
+    "end_node": "tb",
+    "head_buffer": 63
+   },
+   {
+    "value": 30,
+    "legal": true,
+    "error": null,
+    "state_key": "9313a1cd977fbf35e896ba4716b7e85487d5fc3cca0457a91292fb418650dbb8",
+    "end_node": "tb",
+    "head_buffer": 63
+   },
+   {
+    "value": 50,
+    "legal": true,
+    "error": null,
+    "state_key": "49120dae9dfc89976bb1bc9d039ef1a3b740a127e60329b4e9a55861ee426177",
+    "end_node": "tb",
+    "head_buffer": 63
+   }
+  ],
+  "tb.stop_confirm_bars": [
+   {
+    "value": 1,
+    "legal": true,
+    "error": null,
+    "state_key": "5d7baa8c9ebbccbc0ce28126e14623d2f7e458b97a98d8848fdfa2dc372dad39",
+    "end_node": "tb",
+    "head_buffer": 63
+   },
+   {
+    "value": 2,
+    "legal": true,
+    "error": null,
+    "state_key": "038c5e17bc93b9f9797e64073161837a0498b9aa28b080f79274b675b07a5ef4",
+    "end_node": "tb",
+    "head_buffer": 63
+   },
+   {
+    "value": 3,
+    "legal": true,
+    "error": null,
+    "state_key": "7eebdd47a23db038d336aad6caf04c70ea0885741e87c252cef2399b948bedae",
+    "end_node": "tb",
+    "head_buffer": 63
+   },
+   {
+    "value": 4,
+    "legal": true,
+    "error": null,
+    "state_key": "5fa3d46e54402913605e7a052697280cde10ef4dbcfa38d683867beb61a0e91c",
+    "end_node": "tb",
+    "head_buffer": 63
+   }
+  ],
+  "burst.distinct_pk_min": [
+   {
+    "value": 1,
+    "legal": true,
+    "error": null,
+    "state_key": "5d7baa8c9ebbccbc0ce28126e14623d2f7e458b97a98d8848fdfa2dc372dad39",
+    "end_node": "tb",
+    "head_buffer": 63
+   },
+   {
+    "value": 3,
+    "legal": true,
+    "error": null,
+    "state_key": "9d34a18a7af890532b62c308685c795d92f5c85010ac750ec940822019ac63bc",
+    "end_node": "tb",
+    "head_buffer": 63
+   },
+   {
+    "value": 5,
+    "legal": true,
+    "error": null,
+    "state_key": "871c13ee1fd7ce10ca676d5c618cca824da05f5c67f58939a10535ec74bcab33",
+    "end_node": "tb",
+    "head_buffer": 63
+   }
+  ],
+  "burst.first_drought_min": [
+   {
+    "value": 0,
+    "legal": true,
+    "error": null,
+    "state_key": "5d7baa8c9ebbccbc0ce28126e14623d2f7e458b97a98d8848fdfa2dc372dad39",
+    "end_node": "tb",
+    "head_buffer": 63
+   },
+   {
+    "value": 40,
+    "legal": true,
+    "error": null,
+    "state_key": "f05409375dc6efba13ef4abf0937bc0d810010abf38c326e76f45dd0aa529aa3",
+    "end_node": "tb",
+    "head_buffer": 63
+   },
+   {
+    "value": 80,
+    "legal": true,
+    "error": null,
+    "state_key": "0690a9c95539f353484f8540d04809c25b740c32dc56a917ca26a2d34394fb64",
+    "end_node": "tb",
+    "head_buffer": 63
+   }
+  ],
+  "burst.peak_age_min": [
+   {
+    "value": 0,
+    "legal": true,
+    "error": null,
+    "state_key": "5d7baa8c9ebbccbc0ce28126e14623d2f7e458b97a98d8848fdfa2dc372dad39",
+    "end_node": "tb",
+    "head_buffer": 63
+   },
+   {
+    "value": 60,
+    "legal": true,
+    "error": null,
+    "state_key": "d9c13545d3e9515fcc910338f53ac83bc7280850d3ad2ac6a9793931c28f561f",
+    "end_node": "tb",
+    "head_buffer": 63
+   },
+   {
+    "value": 120,
+    "legal": true,
+    "error": null,
+    "state_key": "3481c17017247bea07cdb8e0f63fb59134a81ac7ee81e043dfd92ca300d5f2ed",
+    "end_node": "tb",
+    "head_buffer": 63
+   }
+  ],
+  "burst.vol_spike_min": [
+   {
+    "value": 0,
+    "legal": true,
+    "error": null,
+    "state_key": "5d7baa8c9ebbccbc0ce28126e14623d2f7e458b97a98d8848fdfa2dc372dad39",
+    "end_node": "tb",
+    "head_buffer": 63
+   },
+   {
+    "value": 3,
+    "legal": true,
+    "error": null,
+    "state_key": "8801a8a46186dfe29615082d5eece0baa0e7a487a9fcd80bb404a74ca1d40e52",
+    "end_node": "tb",
+    "head_buffer": 63
+   },
+   {
+    "value": 6,
+    "legal": true,
+    "error": null,
+    "state_key": "a4dfbb872d0d7ab4723a960e8baa152bcae36ac46beb38f97ea243105400093d",
+    "end_node": "tb",
+    "head_buffer": 63
+   }
+  ],
+  "tb.max_day_drop_pct": [
+   {
+    "value": null,
+    "legal": true,
+    "error": null,
+    "state_key": "5d7baa8c9ebbccbc0ce28126e14623d2f7e458b97a98d8848fdfa2dc372dad39",
+    "end_node": "tb",
+    "head_buffer": 63
+   },
+   {
+    "value": 0.2,
+    "legal": true,
+    "error": null,
+    "state_key": "32e08a4cab873988b8e450e8a1bf24995be399f5f77e3becc8352d0954813684",
+    "end_node": "tb",
+    "head_buffer": 63
+   }
+  ]
+ },
+ "ref_params": {
+  "bo": {
+   "total_window": 20,
+   "min_side_bars": 6,
+   "min_relative_height": 0.2,
+   "exceed_threshold": 0.0075,
+   "peak_supersede_threshold": 0.01,
+   "vol_baseline_period": 63,
+   "peak_measure": "high",
+   "breakout_measure": "close"
+  },
+  "burst": {
+   "gap_max": 8,
+   "vol_baseline_period": 63,
+   "min_bos": 1,
+   "first_drought_min": 0,
+   "distinct_pk_min": 1,
+   "vol_spike_min": 0,
+   "peak_age_min": 0
+  },
+  "tb": {
+   "max_rise_k": 1.5,
+   "stop_confirm_bars": 1,
+   "vol_window": 14,
+   "max_span": 20,
+   "measure": "close",
+   "max_day_drop_pct": null
+  },
+  "edges": {}
+ },
+ "fingerprints": {
+  "source": {
+   "hash": "bcf399a71bdf2032a6f75e7180a3dcf721acef9b085009df96032fbedd0ea9af",
+   "files": [
+    "path2/atoms/breakout.py",
+    "path2/atoms/throwback_v1.py",
+    "path2_apps/bb_v1/__init__.py",
+    "path2_apps/bb_v1/dag_spec.py",
+    "path2_apps/bb_v1/params.py"
+   ]
+  },
+  "base": "c2c4939954a8890feede62c9aef235abee344e29db2519e5a791dc01e5dcf323",
+  "study": "78b281adc185197d0abc54fef644665733b3b0a5efbe9fef00f787d526a1e401",
+  "ruler": "850557a5000ddb9add047ae470af7f49ab36499ced1ea35860bcbc392ef9a2ff"
+ },
+ "generated_at": "2026-09-13T11:49:28",
+ "git_head": "1b429245"
+}

@@ -40,6 +40,26 @@ def calculate_atr(highs: pd.Series, lows: pd.Series, closes: pd.Series,
     return pd.Series(out, index=closes.index, dtype=float)
 
 
+def prev_bar_atr_pct(highs: pd.Series, lows: pd.Series, closes: pd.Series,
+                     period: int = 14) -> np.ndarray:
+    """前一根的 ATR 占收盘价比例:out[t] = calculate_atr(...)[t-1] / close[t-1]。
+
+    买点日 t 的通用波动率地板,只用 t-1 收盘时已知的量(决策时刻无前瞻)。feature-study
+    的抽取与调参扫描共用这一个算式,两边的波动率地板列才逐位一致。
+
+    out[0] 恒为 NaN(没有前一根);分母 close[t-1] <= 0 或非有限、分子 ATR[t-1] 非有限
+    (含 Wilder 热身期)→ NaN。返回与 closes 同长的 float64 数组。
+    """
+    atr = calculate_atr(highs, lows, closes, period).to_numpy(dtype=float)
+    c = closes.to_numpy(dtype=float)
+    out = np.full(len(c), np.nan)
+    numer = atr[:-1]
+    denom = c[:-1]
+    ok = (denom > 0) & np.isfinite(denom) & np.isfinite(numer)
+    out[1:][ok] = numer[ok] / denom[ok]
+    return out
+
+
 def rolling_atr_pct_nanmedian(highs: pd.Series, lows: pd.Series, closes: pd.Series,
                               period: int = 20) -> pd.Series:
     """TR/close 的滚动 nanmedian —— 首次穿越的波动率尺度 M。

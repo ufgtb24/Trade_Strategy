@@ -6,9 +6,9 @@ description: Use when 用户要创建或修改 event 类 / detector(path2/atoms 
 # Authoring a path2 Detector / Event
 
 创建或修改 event 类 / detector 的完整工作流,自顶向下:分诊(Step 0)→ 判据设计
-确认(Step 1)→ spec 落盘(Step 2)→ 移交 superpowers 实现链(Step 3)→ 验证闸
+确认(Step 1)→ spec 落盘(Step 2)→ 交给 plan mode(Step 3)→ 验证闸
 (Step 4)→ on_gate 接线(Step 5)。每一步与用户确认;本 skill 只做设计与编排、
-**不自己写代码**——实现一律移交用户启动的 superpowers 实现链。
+**不自己写代码**——实现由 plan mode 出计划、用户批准后进行。
 
 ## When to Use / NOT
 - **用**:
@@ -194,7 +194,7 @@ res = analyze(spec, df)
 
 ## Step 2 spec 落盘
 
-把确认过的设计写成 spec(放 `docs/superpowers/specs/YYYY-MM-DD-<id>-design.md`,与 superpowers 实现链的 spec 位置一致),四要素缺一不可:
+把确认过的设计写成 spec(放 `docs/superpowers/specs/YYYY-MM-DD-<id>-design.md`,本项目 spec 的固定位置),四要素缺一不可:
 
 1. **判据**:核心判据算法机制(产出判定逻辑、参数)
 2. **字段表 + 参数归位表**:Step 1 确认的完整字段表,以及每个门槛的归位(资格型
@@ -211,10 +211,10 @@ res = analyze(spec, df)
 容器场景补两项:child_slots 结构设计 + children 声明(父 NodeSpec 的 children
 key 与子结构 node 一行 NodeSpec)。
 
-## Step 3 移交实现
+## Step 3 交给 plan mode
 
-- 把 spec 路径交回用户,由用户启动 superpowers 实现链(`writing-plans` 出 plan →
-  `subagent-driven-development` 执行)
+- 调 `EnterPlanMode`,对着这份 spec 写实施计划;计划须自包含(见 CLAUDE.md
+  「plan mode:计划必须自包含」)——实现在用户批准计划之后才开始
 - 设计确认必须在主会话完成,不在 subagent 里与用户交互
 
 ## Step 4 验证闸

@@ -63,6 +63,37 @@ def _validate_scan_name(name: str) -> None:
         raise HTTPException(400, f"非法扫描名称: {name!r}(仅允许字母/数字/下划线/连字符/中文)")
 
 
+def _order_like_schema(data: dict, params_cls) -> dict:
+    """把手写 params.yaml 解析出的 dict 按 `Params.key_order()` 重排(顶层 section +
+    每个 section 内字段两层)。
+
+    只动顺序:不校验、不补默认、不丢弃——声明里没有的键按原相对顺序追加在各自末尾,
+    因而不破坏 /params/file「允许装载任意 yaml」的语义。Params 缺失或不认识
+    key_order(非 ParamsBase 后代)→ 原样返回。
+
+    落盘不受影响:/params/save 仍走 ruamel round-trip 保注释保键序,文件里人工维护的
+    顺序与注释归属不动,归一只发生在读出来给编辑区显示这一路。
+    """
+    key_order = getattr(params_cls, "key_order", None)
+    if not callable(key_order):
+        return data
+    try:
+        order = key_order()
+    except Exception:
+        return data
+
+    def _reorder(d: dict, keys) -> dict:
+        known = [k for k in keys if k in d]
+        return {k: d[k] for k in known + [k for k in d if k not in known]}
+
+    out = _reorder(data, list(order))
+    for name, field_names in order.items():
+        sect = out.get(name)
+        if isinstance(sect, dict):
+            out[name] = _reorder(sect, field_names)
+    return out
+
+
 class ScanRequest(BaseModel):
     pattern_ids: list[str] = Field(..., min_length=1)
     start_date: str
@@ -434,7 +465,11 @@ def build_router(*, registry, config_path, get_config, set_config,
     def get_params_file(pattern_id: str, name: str):
         """读单个参数文件为原始 dict(safe_load,不经 Params 校验——编辑区允许装载
         任意 yaml,严格校验发生在 Apply(前端)与 /params/save、/scan(后端)。手写坏
-        的 yaml 语法是这个端点的预期输入,解析失败包成 400(而非裸 500)。"""
+        的 yaml 语法是这个端点的预期输入,解析失败包成 400(而非裸 500)。
+
+        键序按 `Params.key_order()` 归一(值与键集合原样不动,见 _order_like_schema):
+        编辑区的三个内容源里只有本端点带着文件的手写键序,不归一就会和另两源(恒为
+        dataclass 声明序)diff 出「移动」型假差异。"""
         mod = registry.get(pattern_id)
         if mod is None:
             raise HTTPException(404, f"unknown pattern: {pattern_id}")
@@ -448,7 +483,7 @@ def build_router(*, registry, config_path, get_config, set_config,
             raise HTTPException(400, f"{name} 解析失败: {e}") from e
         if not isinstance(data, dict):
             raise HTTPException(400, f"{name} 根必须是映射")
-        return {"params": data}
+        return {"params": _order_like_schema(data, getattr(mod, "Params", None))}
 
     @router.get("/params_diff")
     def get_params_diff(pattern_id: str, scan_ts: str):

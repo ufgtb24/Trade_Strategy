@@ -32,5 +32,3 @@ TIGHT_WHERES = {"FINAL": {("burst", "first_drought_min"): 20, ("burst", "distinc
                           ("burst", "peak_age_min"): 0, ("tb", "max_day_drop_pct"): 0.2},
                 "B":     {("burst", "first_drought_min"): 20, ("burst", "distinct_pk_min"): 3, ("burst", "vol_spike_min"): 10,
                           ("burst", "peak_age_min"): 0, ("tb", "max_day_drop_pct"): 0.2}}
-
-FLAG_RULES = [lambda c: "first_drought 闸恒真" if c["burst.gap_max"] >= c["burst.first_drought"] > 0 else None]

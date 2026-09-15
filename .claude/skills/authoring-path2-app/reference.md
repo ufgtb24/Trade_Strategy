@@ -102,8 +102,3 @@ discovery 自动发现，**无需改框架或后端**。
   等于这条约束被悄悄关掉。
 - **node_id / pattern_id 同时被前端当显示名用**：没有独立的显示标签字段，起名要直接按「面板上
   希望看到的短标签」来定，改名等于改 UI 文案。node_id 还是拓扑主键、必须唯一。
-- **跨 app 比事件计数前先对齐 bear 开关**：`bear_drop` 是 app 级选择（在各自 `params.yaml` 里），
-  并非所有 app 都一样。bear 峰不需侧翼确认、门槛远低于 convex，开与不开会让 bo / burst / tb /
-  match 计数整体翻倍级变化。两份扫描结果的事件数对不上时，**先查两边扫描文件的
-  `per_pattern[pid].params_snapshot.bo.bear_drop` 再怀疑代码**——`null` 或字段整个缺失（老 scan）
-  都表示关着，只有正数才是开。

@@ -14,7 +14,7 @@ description: Use when 用户想把领域方法论概念（统计概念/评估口
 | 体系 | 内容 | 入口 |
 |---|---|---|
 | **本 skill**（domain_notes） | 方法论概念：统计概念、评估指标与口径、归一化方法、数学工具 | `docs/domain_notes/` |
-| cc_notes | Claude Code 配置/操作经验 | `docs/cc_notes/`（cc-note-keeper skill） |
+| env_notes | 开发与系统环境配置经验（含 Claude Code） | `~/.claude/skills/env-note-keeper/notes/`（用户级 env-note-keeper skill） |
 | 评估纪律（已内联） | 评估的**试验纪律**（怎么做评估：对照、口径自检、小样本计数） | tune-gates / feature-study 各步骤内联（原独立 skill eval-discipline 已于 2026-08-20 解散） |
 | `CLAUDE.md` 代码地图 / 各 `CONTEXT.md` | 当前代码状态的结构性描述与术语（AI 上下文） | update-ai-context skill / `/grill-with-docs` |
 
@@ -168,7 +168,7 @@ category: <INDEX.md 中所属的分类名>
 | 用户说「重新整理」 | 走场景 4（维度调整）：只动 frontmatter `category` 和 INDEX.md，不动概念正文 |
 | 用户主动要求拆分某个主题文件 | 按颗粒度约定中的拆分流程执行（场景 2 同款确认式：新建+迁移+scope 重写+更新 INDEX，经用户确认） |
 | 用户问「X 是啥」 | **不触发本 skill**（保护探索性），直接解释 |
-| 用户要记形态观察/CC 操作 | 不收，改指 cc_notes 或研究文档体系 |
+| 用户要记形态观察/环境配置 | 不收，改指 env_notes（env-note-keeper）或研究文档体系 |
 
 ## 常见错误
 

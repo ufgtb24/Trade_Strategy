@@ -1,6 +1,6 @@
 // 可见集辅助函数(band/tier/tag/tooltip)。level 门控由 chart 层消费,此处仅提供纯函数原语。
 import type { EventDict, MatchDict, TopoNode, TopoEdge, Topology, AttrRow, Diagnostics, Tier, ClauseWitness, ScanMeta, Bar } from '../types'
-import type { TooltipPayload, TooltipClauseRow } from './chart'
+import type { TooltipPayload, TooltipClauseRow, TooltipRefRow } from './chart'
 
 /** 所有匹配内实例 instance_id 的并集(schema-driven 协议驱动)。
  *  展开规则:
@@ -156,11 +156,54 @@ function flattenChildren(w: ClauseWitness, node: string, depth: number,
   })
 }
 
+/** 引用关系双向展开（纯 · 类型无关）：给定实例，收集
+ *  - 正向(dir='out')：本事件 ref_ids 各槽里引用的实例；
+ *  - 反向(dir='in')：全事件中 ref_ids 任一槽包含本实例的那些事件。
+ *  槽名原样透传，本函数**不认识**任何具体槽名(superseded / broken 都只是字符串)——
+ *  bo/pk 语义在渲染层的唯一落点是 peakState.ts(契约 C7)，此处不得引入。
+ *  对方不在 events 里（被窗口截断 / 未下发）时 nodeId/label/date 全为 null，
+ *  只留 instanceId，由渲染层回落原始 id。
+ *  refLabel：对方的图上短标识注入点（如 pk 编号，调用方用 peakIdIndex 提供）；
+ *  不传或返回 null 时 label 为 null。 */
+export function buildRefRows(
+  instanceId: string,
+  events: EventDict[],
+  bars: Bar[],
+  refLabel?: (id: string) => string | null,
+): TooltipRefRow[] {
+  const byId = new Map(events.map((e) => [e.instance_id, e]))
+  const rows: TooltipRefRow[] = []
+  const rowOf = (slot: string, dir: 'out' | 'in', other: string): TooltipRefRow => {
+    const ev = byId.get(other)
+    const idx = ev?.start_idx as number | undefined
+    return {
+      slot, dir, instanceId: other,
+      nodeId: (ev?.node_id as string | undefined) ?? null,
+      label: (ev && refLabel?.(other)) ?? null,
+      date: ev == null || idx == null ? null : (bars[idx]?.date ?? String(idx)),
+    }
+  }
+  // 正向：本事件引用了谁
+  for (const [slot, ids] of Object.entries(byId.get(instanceId)?.ref_ids ?? {})) {
+    for (const other of ids) rows.push(rowOf(slot, 'out', other))
+  }
+  // 反向：谁引用了本事件（自引用不计，避免同一条边出现两行）
+  for (const e of events) {
+    if (e.instance_id === instanceId) continue
+    for (const [slot, ids] of Object.entries(e.ref_ids ?? {})) {
+      if (ids.includes(instanceId)) rows.push(rowOf(slot, 'in', e.instance_id))
+    }
+  }
+  return rows
+}
+
 /** tooltip 数据组装（纯）：
  *  - identity：node 反查 diag.nodes（多 node 时各保留）；时间 = bars[idx].date，point 时 dateEnd=null；
  *              bars 越界 fallback 到 String(idx)
  *  - clauses：跨 node 累积为 ClauseRow[]，按 satisfied 排序（失败 ✗ 在前）
  *  - raw：event dict 平铺，去掉 SKIP 集 + clauses 已引用 cid
+ *  - refs：ref_slots 协议双向展开（见 buildRefRows）。ref_ids 原始值是一串 instance_id、
+ *          摊进 raw 不可读，故留在 SKIP 集里、由本段单独承载
  *  实例化:attr 行与 identity 均按 instance_id 取【该实例】的判定/属性(悬停哪个实例
  *  展示哪个)。identity.eventId 字段名沿袭 chart 侧 TooltipPayload 契约,值=instanceId。
  *  spec 见 docs/superpowers/specs/2026-06-29-marker-tooltip-cleanup-design.md */
@@ -169,6 +212,7 @@ export function resolveTooltipData(
   diag: Diagnostics | null,
   events: EventDict[],
   bars: Bar[],
+  refLabel?: (id: string) => string | null,
 ): TooltipPayload {
   // ── clauses 累积（不覆盖；多 node 同 cid 各保留）─────────────────────────
   // 排序只作用于顶层(失败 ✗ 在前);子树紧跟父行、保持声明顺序(作者写 any 的
@@ -216,6 +260,7 @@ export function resolveTooltipData(
     identity: { nodes, dateStart, dateEnd, eventId: instanceId },
     clauses,
     raw,
+    refs: buildRefRows(instanceId, events, bars, refLabel),
   }
 }
 

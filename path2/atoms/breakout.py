@@ -16,7 +16,7 @@ from path2.debug import current_symbol
 
 @dataclass(frozen=True)
 class PeakEvent(Event):
-    """峰事件(凸点峰/大阴线高点)。点几何:start=confirm=end=登记 bar(因果诚实,
+    """峰事件。点几何:start=confirm=end=登记 bar(因果诚实,
     峰存在在登记时确定)。峰 bar(窗口 argmax 精确位置)由 peak_idx 承载,≠ start_idx。
 
     双角色:detect 期间兼作内部活跃峰——elevation 演化 price、supersede 锚
@@ -29,13 +29,12 @@ class PeakEvent(Event):
     superseded_refs → 引擎翻译落 Event.ref_ids 的 superseded 槽。峰位
     (peak_idx/price)是普通字段,不走引用协议。"""
     is_point = True   # 点几何承诺,供 PatternSpec._validate_render_grid 反射
-    pk_id: int = 0                  # 峰唯一标识(convex/bear 共用计数器)
-    kind: str = "convex"            # 'convex' | 'bear'
+    pk_id: int = 0                  # 峰唯一标识(登记顺序递增)
     peak_idx: int = 0               # 峰 bar(窗口 argmax 精确位置;≠ 登记 bar start_idx)
     price: float = 0.0              # 峰价(初始=登记价);detect 内 elevation 演化
     original_price: Optional[float] = None   # supersede 锚;首次抬升记录
     relative_height: float = 0.0
-    volume_peak: Optional[float] = None   # 峰位量比(vol_ratio);bear 路径不传,恒 None
+    volume_peak: Optional[float] = None   # 峰位量比(vol_ratio);无量数据时 0.0
     superseded_refs: Tuple[Event, ...] = ()   # 吃掉者记录被它 supersede 的旧峰
 
     def ref_slots(self):
@@ -48,10 +47,15 @@ class BOEvent(Event):
 
     输出字段(where 可引用):
     - drought:           距上一根 BO 的 bar 数;序列首次 BO 为 None
+    - drought_floor:     本趟扫描可确证的沉寂下界。有前序时 = drought;序列首次 BO 时
+                         = max(0, start_idx - total_window)——热身期内无 active peak、
+                         结构性产不出 BO,那段不算「观测到没有 BO」。扫描窗口左截断下
+                         drought 缺失,但「至少沉寂这么久」是硬事实;下游 >= 阈值的闸读它,
+                         下界过闸则真值必过,只会保守漏、不会误纳。
     - pk_count:          当前 bar 一次性突破的 peak 个数(派生自 broken_refs,@property)
     - broken_peak_ids:   被突破的 peak id 元组(追溯用;派生自 broken_refs,@property)
     - vol_ratio:         当根量比;序列前 vol_baseline_period 根热身期为 None
-    - peak_vol_max:      被突破各 peak 中最大的非 None volume_peak;全 None(如全为 bear 峰)→ 0.0
+    - peak_vol_max:      被突破各 peak 中最大的非 None volume_peak;无被突破峰 → 0.0
     - peak_age_max:      被突破各 peak 中最大的 bo_idx - peak.peak_idx(阴跌反弹近峰小,跨越长期结构远)
     - broken_refs:       被突破的 PeakEvent 对象元组(ref_slots 翻译落 Event.ref_ids 的
                          broken 槽);渲染引用走 ref_slots 协议,取代裸三元组
@@ -59,6 +63,7 @@ class BOEvent(Event):
     """
     is_point = True   # 点几何承诺,供 PatternSpec._validate_render_grid 反射
     drought: Optional[int] = None
+    drought_floor: int = 0
     vol_ratio: Optional[float] = None
     peak_vol_max: float = 0.0
     peak_age_max: int = 0   # 距峰时间距离:该 bo 突破的各 peak 中最大的 bo_idx - peak.peak_idx(阴跌反弹近峰小,跨越长期结构远)
@@ -88,7 +93,9 @@ class BurstEvent(Event):
     - max_bar_vol_ratio: burst [start_idx, end_idx] 区间内任一 bar 的 vol_ratio 最大值,
                          由 BurstDetector.detect() 一次性预算整列后传入 _make_burst,
                          非 BO bar 也参与取 max
-    - first_drought:     簇首 bo 的 drought(序列首次 bo 落首位时为 0)
+    - first_drought:     簇首 bo 的 drought_floor(可确证的沉寂下界)。簇首恰是本趟扫描
+                         首根 bo 时不再兜底成 0——那是语义翻面(最稀疏被记成最密集),
+                         会让长期沉寂后的首次突破被 first_drought >= 阈值的闸反向淘汰
     - peak_age_max:      簇内各 bo peak_age_max 的最大值(max 聚合=存在性:任一根 bo 突破陈旧峰即满足)
     - members:           内嵌完整 BOEvent 序列,支持 Child("first_bo"/"last_bo") 端点选择器
                          与 children("members") 全员选择器
@@ -218,7 +225,7 @@ class BurstDetector:
             count=len(seg),
             distinct_pk=len(peaks),
             max_bar_vol_ratio=max_bar_vol_ratio,
-            first_drought=seg[0].drought if seg[0].drought is not None else 0,
+            first_drought=seg[0].drought_floor,
             peak_age_max=max(m.peak_age_max for m in seg),
             members=tuple(seg),
         )
@@ -263,8 +270,6 @@ class BODetector:
                  min_relative_height: float = 0.2,
                  exceed_threshold: float = 0.003,
                  peak_supersede_threshold: float = 0.01,
-                 bear_drop: Optional[float] = None,   # None=禁用 bear 检测(默认 OFF,Ruling A)
-                 bear_min_rh: float = 0.20,
                  vol_baseline_period: int = 63,
                  peak_measure: str = "high",
                  breakout_measure: str = "high"):
@@ -281,8 +286,6 @@ class BODetector:
         self.min_relative_height = min_relative_height
         self.exceed_threshold = exceed_threshold
         self.peak_supersede_threshold = peak_supersede_threshold
-        self.bear_drop = bear_drop
-        self.bear_min_rh = bear_min_rh
         self.vol_baseline_period = vol_baseline_period
         self.peak_measure = peak_measure
         self.breakout_measure = breakout_measure
@@ -380,6 +383,9 @@ class BODetector:
 
         # 3. 算字段
         drought = None if self._last_bo_idx is None else (i - self._last_bo_idx)
+        # 首根 bo 无前序(drought=None),但 [total_window, i-1] 这段确实扫过且无 bo;
+        # 严格下界是 i-total_window+1,取整段 i-total_window 更保守(宁可漏不可误纳)。
+        drought_floor = drought if drought is not None else max(0, i - self.total_window)
         vol_ratio = self._vol_ratio_series.iloc[i] if self._vol_ratio_series is not None else None
         if vol_ratio is not None and pd.isna(vol_ratio):
             vol_ratio = None
@@ -395,6 +401,7 @@ class BODetector:
             end_idx=i,
             confirm_idx=i,   # 点事件:该根即确认
             drought=drought,
+            drought_floor=drought_floor,
             vol_ratio=vol_ratio,   # 因子移植的遗留，暂时无用，只是反映因子功能在 path2 中依旧保留
             peak_vol_max=peak_vol_max,    # 因子移植的遗留，暂时无用
             peak_age_max=peak_age_max,
@@ -402,7 +409,7 @@ class BODetector:
         )
 
     def _register_peak(self, peak: PeakEvent, out: List[PeakEvent]) -> None:
-        """登记新峰(convex/bear 共用):分配 pk_id + supersede 杀旧峰 + 入活跃池 + 收集出流。
+        """登记新峰:分配 pk_id + supersede 杀旧峰 + 入活跃池 + 收集出流。
 
         supersede 规则与凸点峰登记一致:新峰价相对旧峰 current(elevated) price
         涨幅 ≥ peak_supersede_threshold 时旧峰被淘汰,否则保留。被杀旧峰记入新峰
@@ -427,8 +434,7 @@ class BODetector:
     def _detect_peak_in_window(self, df: pd.DataFrame, current_idx: int) -> Tuple[PeakEvent, ...]:
         """在 [current_idx - total_window, current_idx - 1] 窗口内检测新 peak(收集式)。
 
-        返回本 bar 新登记的 convex 峰元组(可能空)。gate 失败只跳过 convex 登记、
-        不提前 return——为后续 bear 检测(current_idx-1 大阴线)留位置(见 Task 3)。
+        返回本 bar 新登记的峰元组(可能空)。gate 失败只跳过登记、不抛错。
 
         peak 判据(4 条):
           1. 在窗口的最高 max(open, close)(实体上界)
@@ -570,14 +576,13 @@ class BODetector:
                             else:
                                 volume_peak = 0.0
 
-                            # peak-peak supersede 抽到 _register_peak(convex/bear 共用,
-                            # 单一真源):新 peak 显著高于(>peak_supersede_threshold) 旧 peak 时,
+                            # peak-peak supersede 抽到 _register_peak(单一真源):
+                            # 新 peak 显著高于(>peak_supersede_threshold) 旧 peak 时,
                             # 旧 peak 被淘汰,防止低位老 peak 长期残留、被后续大涨"一锅端"成
                             # 几十个 broken_peak_ids。对比锚定旧 peak 的当前(elevated) price
                             # ——dev 同实现。
                             peak = PeakEvent(
                                 start_idx=current_idx, end_idx=current_idx, confirm_idx=current_idx,
-                                kind="convex",
                                 peak_idx=peak_global_idx,   # 峰 bar(窗口 argmax);登记 bar = current_idx
                                 price=max_measure,
                                 original_price=None,        # 首次抬升前为 None(与旧 Peak 语义一致)
@@ -586,27 +591,4 @@ class BODetector:
                             )
                             self._register_peak(peak, out)
 
-        # ── bear 检测(convex 之后,写死顺序) ──
-        # 看 bar i-1(与凸点窗口口径一致:只看当根之前已确认的 bar)。大阴线显著性
-        # 来自当根形态,无需侧翼、不受窗口热身期限制。bear_drop=None 时整个 bear
-        # 检测禁用(默认 OFF,Ruling A:仅显式 ON 的 app 启用)。
-        # 同 bar 冲突时序(Ruling B,已接受,删死检查):bear 在 current_idx=prev+1
-        # 先到(大阴线当根即可登记,不受侧翼限制);convex 需 current_idx>=prev+
-        # min_side_bars+1 后到(峰需尾侧 min_side_bars 确认)→ 同时满足 argmax+
-        # 大阴线的 bar 在 convex 后到时已被 already_active(peak_idx==prev)抑制,
-        # 标为 bear(bear-wins)。
-        if self.bear_drop is not None and current_idx >= 1:
-            prev = current_idx - 1
-            o = df["open"].iat[prev]; c = df["close"].iat[prev]
-            drop = (o - c) / o if o else 0.0
-            if drop >= self.bear_drop:
-                window_low = min(df["low"].iloc[max(0, current_idx - self.total_window): current_idx])
-                rel_h = (df["high"].iat[prev] - window_low) / window_low if window_low > 0 else 0.0
-                if rel_h >= self.bear_min_rh:
-                    bear = PeakEvent(
-                        start_idx=current_idx, end_idx=current_idx, confirm_idx=current_idx,
-                        kind="bear", peak_idx=prev,
-                        price=df["high"].iat[prev],
-                        relative_height=rel_h)
-                    self._register_peak(bear, out)
         return tuple(out)

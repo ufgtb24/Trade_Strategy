@@ -21,17 +21,32 @@ STUDY = FIX / "study_bb_v1.py"
 BASE = json.loads((FIX / "bb_v1_p2_wide.json").read_text())
 
 
-def test_load_study_exports_all_eight():
+def test_load_study_exports_all_declarations():
     st = S.load_study(STUDY)
-    for name in ("APP_MODULE", "BASE_YAML", "WIDE_OVERRIDES", "SCAN_GRID", "WHERE_LEVELS", "REF_POINT", "TIGHT_WHERES", "FLAG_RULES"):
+    assert S.STUDY_NAMES == ("APP_MODULE", "BASE_YAML", "WIDE_OVERRIDES", "SCAN_GRID", "WHERE_LEVELS",
+                             "REF_POINT", "TIGHT_WHERES")
+    for name in S.STUDY_NAMES:
         assert hasattr(st, name), name
 
 
 def test_load_study_missing_name_raises(tmp_path):
     p = tmp_path / "study.py"
-    p.write_text(STUDY.read_text().replace("FLAG_RULES = [", "FLAG_RULES_X = ["))
-    with pytest.raises(ValueError, match="FLAG_RULES"):
+    p.write_text(STUDY.read_text().replace("TIGHT_WHERES = {", "TIGHT_WHERES_X = {"))
+    with pytest.raises(ValueError, match="TIGHT_WHERES"):
         S.load_study(p)
+
+
+def test_load_study_ignores_extra_names(tmp_path):
+    """多余的名字(如已退役的旧声明)不影响加载;DESIGN 可选。"""
+    p = tmp_path / "study.py"
+    p.write_text(STUDY.read_text() + "\nRETIRED_DECLARATION = []\nSOMETHING_ELSE = 1\n")
+    st = S.load_study(p)
+    assert st.SOMETHING_ELSE == 1 and not hasattr(st, "DESIGN")
+
+
+def test_window_paths():
+    assert S.window_dir("a", "w", apps_dir=Path("/x")) == Path("/x/a/windows/w")
+    assert S.study_path("a", "w", apps_dir=Path("/x")) == Path("/x/a/windows/w/study.py")
 
 
 def test_dotted_roundtrip():
@@ -80,7 +95,7 @@ import pandas as pd  # noqa: E402  (文件顶部已有 import 区,放到那里)
 @pytest.fixture(scope="module")
 def cl():
     st = S.load_study(STUDY); mod = S.import_app(st)
-    return S.build_classification("bb_v1_fixture", st, mod, STUDY)
+    return S.build_classification("bb_v1_fixture", "main", st, mod, STUDY)
 
 
 def test_classification_matches_hand_transcribed_values(cl):
@@ -101,6 +116,7 @@ def test_classification_matches_hand_transcribed_values(cl):
                                   "burst.peak_age_min": ["burst", "peak_age_max", ">="],
                                   "tb.max_day_drop_pct": ["tb", "max_day_drop", "<"]}
     assert cl["end_node"] == "tb" and cl["bound_nodes"] == ["burst", "tb"]
+    assert (cl["window"], cl["design"], cl["ref_point_scope"]) == ("main", "grid", "D")
     assert cl["detection_combos"] == 1024
     assert cl["ref_params"] == BASE
     assert cl["detector_nodes"]["bo.min_relative_height"] == ["bo", "pk"]
@@ -128,23 +144,75 @@ def test_pred_mask_is_op_aware(cl):
     assert m2.tolist() == [True, True, False]       # None → 不加谓词
 
 
-def test_ref_point_must_cover_exactly_D_dims(tmp_path):
+def test_ref_point_must_cover_D_dims_or_all_axes(tmp_path):
     st = S.load_study(STUDY); mod = S.import_app(st)
     bad = tmp_path / "study.py"
     bad.write_text(STUDY.read_text().replace('"tb.max_rise_k": 1.5', '"tb.max_rise_k_x": 1.5'))
     with pytest.raises(ValueError, match="REF_POINT"):
-        S.build_classification("x", S.load_study(bad), mod, bad)
+        S.build_classification("x", "main", S.load_study(bad), mod, bad)
+
+
+def _scope_study(ref_point):
+    import types
+    return types.SimpleNamespace(SCAN_GRID={("a", "d"): [1, 2, 3], ("a", "f"): [1, 2]},
+                                 WHERE_LEVELS={("b", "w"): [None, 0.2]}, REF_POINT=ref_point)
+
+
+_SCOPE_KINDS = {("a", "d"): "D", ("a", "f"): "F", ("b", "w"): "W"}
+
+
+def test_ref_point_scope_d_all_and_rejections():
+    """覆盖范围:恰为 D 维 → "D";恰为全部轴 → "all";其余拒绝;取值不在档位里拒绝。"""
+    assert S._ref_point_scope(_scope_study({"a.d": 2}), _SCOPE_KINDS) == "D"
+    assert S._ref_point_scope(_scope_study({"a.d": 2, "a.f": 1, "b.w": None}), _SCOPE_KINDS) == "all"
+    with pytest.raises(ValueError, match="恰好覆盖"):
+        S._ref_point_scope(_scope_study({"a.d": 2, "a.f": 1}), _SCOPE_KINDS)
+    with pytest.raises(ValueError, match="不在档位表里"):
+        S._ref_point_scope(_scope_study({"a.d": 2, "a.f": 1, "b.w": 0.3}), _SCOPE_KINDS)
+
+
+def test_build_classification_rejects_unknown_design(tmp_path):
+    st = S.load_study(STUDY); mod = S.import_app(st)
+    p = tmp_path / "study.py"; p.write_text(STUDY.read_text() + "\nDESIGN = 'random'\n")
+    with pytest.raises(ValueError, match="DESIGN"):
+        S.build_classification("x", "main", S.load_study(p), mod, p)
+
+
+def test_build_classification_rejects_illegal_level_with_error_text(tmp_path):
+    """网格里有一档构造不出 pattern → 生成分类表时就拒绝,消息点名那一档并带异常原文。"""
+    st = S.load_study(STUDY); mod = S.import_app(st)
+    text = (STUDY.read_text()
+            .replace('SCAN_GRID = {', 'SCAN_GRID = {("bo", "total_window"): [20, 30, 10],\n             ', 1)
+            .replace('REF_POINT = {', 'REF_POINT = {"bo.total_window": 20, ', 1))
+    p = tmp_path / "study.py"; p.write_text(text)
+    with pytest.raises(ValueError, match=r"bo\.total_window = 10\("):
+        S.build_classification("x", "main", S.load_study(p), mod, p)
+
+
+def test_levels_probe_covers_every_axis(cl):
+    """逐档合法性覆盖 SCAN_GRID 与 WHERE_LEVELS 全部轴、逐档一条;D 维不同档的等价键互不相同。"""
+    assert set(cl["levels_probe"]) == set(cl["scan_grid"]) | set(cl["where_levels"])
+    all_levels = {**cl["scan_grid"], **cl["where_levels"]}
+    for key, rows in cl["levels_probe"].items():
+        assert [r["value"] for r in rows] == all_levels[key] and all(r["legal"] for r in rows)
+        assert all(r["end_node"] == "tb" and r["head_buffer"] > 0 for r in rows)
+    keys = [r["state_key"] for r in cl["levels_probe"]["burst.gap_max"]]
+    assert len(set(keys)) == len(keys)
 
 
 def test_write_and_load_classification(cl, tmp_path):
-    p = S.write_classification("appx", cl, apps_dir=tmp_path)
-    assert p == tmp_path / "appx" / "classification.json"
-    assert S.load_classification("appx", apps_dir=tmp_path) == cl
+    p = S.write_classification("appx", "w1", cl, apps_dir=tmp_path)
+    assert p == tmp_path / "appx" / "windows" / "w1" / "classification.json"
+    assert S.load_classification("appx", "w1", apps_dir=tmp_path) == cl
+    with pytest.raises(SystemExit, match="window='w2'"):
+        S.load_classification("appx", "w2", apps_dir=tmp_path)
 
 
 def test_fingerprints_present_and_source_lists_app_and_detector_files(cl):
+    import ledger
     fp = cl["fingerprints"]
-    assert set(fp) == {"source", "base", "study"} and len(fp["source"]["hash"]) == 64
+    assert set(fp) == {"source", "base", "study", "ruler"} and len(fp["source"]["hash"]) == 64
+    assert fp["ruler"] == ledger.ruler_fingerprint()
     files = fp["source"]["files"]
     assert any(f.endswith("path2_apps/bb_v1/dag_spec.py") for f in files)
     assert any(f.endswith("path2/atoms/throwback_v1.py") for f in files)
@@ -217,18 +285,20 @@ def test_check_run_matches_classification(cl):
 
 
 def _write_regenerable_fixture(tmp_path, *, app_module: str, base_yaml: str,
-                                study_app_module: str, source_files: list = None) -> tuple:
-    """给 check_regenerable 的单测搭一套自洽假树:apps/demo/{study.py,classification.json} +
-    longtable/run_meta.json,study 指纹与 run_meta 记录一致(study/classification 两条链都过)。
+                                study_app_module: str, source_files: list = None,
+                                run_base_fingerprint: str = None, window: str = "main") -> tuple:
+    """给 check_regenerable 的单测搭一套自洽假树:apps/demo/windows/<window>/{study.py,classification.json} +
+    outputs/main/longtable/run_meta.json,study 指纹与 run_meta 记录一致(study/classification 两条链都过)。
+    长表固定放在名为 main 的目录下,check_regenerable 按长表父目录名找声明;`window` 控制声明放在哪个窗口。
     `app_module`(classification 里的,只影响链 4 的底座路径拼接)与
     `study_app_module`(study.py 的 APP_MODULE,只影响链 5 的 import_app)刻意分开传,
     好让两条链的通过/失败能分别控制。返回 (apps_dir, longtable_dir)。"""
     import study_io as S
-    apps_dir = tmp_path / "apps"; app_dir = apps_dir / "demo"; app_dir.mkdir(parents=True)
+    apps_dir = tmp_path / "apps"; app_dir = S.window_dir("demo", window, apps_dir); app_dir.mkdir(parents=True)
     study_text = (
         f"APP_MODULE = {study_app_module!r}\nBASE_YAML = {base_yaml!r}\n"
         "WIDE_OVERRIDES = {}\nSCAN_GRID = {}\nWHERE_LEVELS = {}\n"
-        "REF_POINT = {}\nTIGHT_WHERES = {}\nFLAG_RULES = []\n"
+        "REF_POINT = {}\nTIGHT_WHERES = {}\n"
     )
     study_p = app_dir / "study.py"; study_p.write_text(study_text, encoding="utf-8")
     study_fp = S.file_sha256(study_p)
@@ -236,8 +306,11 @@ def _write_regenerable_fixture(tmp_path, *, app_module: str, base_yaml: str,
           "fingerprints": {"study": study_fp, "base": "irrelevant",
                            "source": {"hash": "irrelevant", "files": source_files or []}}}
     (app_dir / "classification.json").write_text(json.dumps(cl), encoding="utf-8")
-    lt = tmp_path / "longtable"; lt.mkdir()
-    (lt / "run_meta.json").write_text(json.dumps({"app": "demo", "study_fingerprint": study_fp}), encoding="utf-8")
+    lt = tmp_path / "outputs" / "main" / "longtable"; lt.mkdir(parents=True)
+    meta = {"app": "demo", "study_fingerprint": study_fp}
+    if run_base_fingerprint is not None:          # 不传 = run_meta 缺底座指纹(链 6 判不了)
+        meta["base_fingerprint"] = run_base_fingerprint
+    (lt / "run_meta.json").write_text(json.dumps(meta), encoding="utf-8")
     return apps_dir, lt
 
 
@@ -286,9 +359,9 @@ def test_check_regenerable_missing_classification_still_reports_study_mismatch(t
     不符这条独立证据也不会被吞掉。"""
     import json
     import study_io as S
-    apps_dir = tmp_path / "apps"; app_dir = apps_dir / "demo"; app_dir.mkdir(parents=True)
+    apps_dir = tmp_path / "apps"; app_dir = S.window_dir("demo", "main", apps_dir); app_dir.mkdir(parents=True)
     (app_dir / "study.py").write_text("X = 1\n", encoding="utf-8")   # 内容随意,故意不匹配指纹
-    lt = tmp_path / "longtable"; lt.mkdir()
+    lt = tmp_path / "main" / "longtable"; lt.mkdir(parents=True)
     (lt / "run_meta.json").write_text(json.dumps({"app": "demo", "study_fingerprint": "does-not-match"}),
                                       encoding="utf-8")
 
@@ -321,27 +394,122 @@ def test_run_meta_carries_source_and_base_fingerprints(tmp_path):
     assert got["base_fingerprint"] == "ccc"
 
 
-def test_source_fingerprint_not_in_run_caliber():
-    """source/base 指纹不参与口径校验:它们变了是'不可再生',不是'混窗'。"""
+def test_source_and_base_fingerprints_are_run_caliber():
+    """源码指纹与底座指纹**都**参与口径校验。
+
+    2026-09-12 推翻了此前的判断(原文:"source/base 指纹不参与口径校验:它们变了是'不可再生',
+    不是'混窗'")。推翻理由:那个判断只覆盖了「扫完之后才变」——那确实只是不可再生。但还有
+    「扫的中途变」:一份长表跨多轮续跑扫完全宇宙,中途改了 detector 或底座,已扫的股票用旧配置、
+    后扫的用新配置,最终按格聚合出来的计数混了两种东西。这与混窗同类(一份长表内部不自洽),
+    且 `check_regenerable` 只看得见最后一轮的指纹,会把它报成可再生——假阳,落在删除侧。
+    两道闸分工:`write_run_meta` 从源头拦"中途变",`check_regenerable` 事后判"扫完之后变"。
+    """
     import study_io as S
-    assert "source_fingerprint" not in S.RUN_CALIBER
-    assert "base_fingerprint" not in S.RUN_CALIBER
+    assert "source_fingerprint" in S.RUN_CALIBER
+    assert "base_fingerprint" in S.RUN_CALIBER
+    assert "ruler_fingerprint" in S.RUN_CALIBER
 
 
-def test_append_exposure_is_append_only(tmp_path):
-    """两次写入产生两行,先写的不被覆盖。"""
-    import json
-    import study_io as S
-    (tmp_path / "demo").mkdir()
-    S.append_exposure("demo", {"ts": "t1", "c_hat": {"a": 1}}, apps_dir=tmp_path)
-    p = S.append_exposure("demo", {"ts": "t2", "c_hat": {"a": 2}}, apps_dir=tmp_path)
-    lines = p.read_text(encoding="utf-8").strip().split("\n")
-    assert len(lines) == 2
-    assert json.loads(lines[0])["ts"] == "t1"
-    assert json.loads(lines[1])["ts"] == "t2"
+def test_design_combos_grid_uses_param_keys_and_skips_f_dims(cl):
+    combos = S.design_combos(cl)
+    assert len(combos) == cl["detection_combos"] == 1024
+    assert list(combos[0]) == ["bo.min_relative_height", "bo.exceed_threshold", "burst.gap_max",
+                               "tb.stop_confirm_bars", "tb.max_rise_k"]
 
 
-def test_append_exposure_requires_existing_app_dir(tmp_path):
-    import study_io as S
-    with pytest.raises(SystemExit):
-        S.append_exposure("nope", {"ts": "t"}, apps_dir=tmp_path)
+def test_design_combos_screen_from_classification():
+    cl_s = {"kinds": {"a.x": "D", "a.y": "D", "b.z": "F"},
+            "scan_grid": {"a.x": [1, 2, 3], "b.z": [0, 1], "a.y": [5, 6]},
+            "design": "screen", "ref_point": {"a.x": 2, "a.y": 5, "b.z": 0}}
+    combos = S.design_combos(cl_s)
+    assert combos[0] == {"a.x": 2, "a.y": 5}
+    assert len(combos) == 1 + (2 + 1) + 2 * 1
+    assert all(set(c) == {"a.x", "a.y"} for c in combos)
+
+
+def test_segment_cols():
+    cl_t = {"end_node": "tb"}
+    assert S.segment_cols(cl_t, ["seg_id", "tb.start", "tb.end"]) == ["seg_id"]
+    assert S.segment_cols(cl_t, ["symbol", "tb.start", "tb.end"]) == ["tb.start", "tb.end"]
+    with pytest.raises(ValueError, match="认不出"):
+        S.segment_cols(cl_t, ["symbol", "tb.start"])
+    with pytest.raises(ValueError, match="认不出"):
+        S.segment_cols({"end_node": "tb.seg"}, ["tb.seg.start", "tb.seg.end"])
+
+
+# ---- 链 6:长表自己的底座溯源(2026-09-12 新增,补 setup 之后 regenerable 假阳的缝隙) ----
+
+_FIX = dict(app_module="nonexistent_module_for_test_xyz.dag_spec", base_yaml="p2_missing.yaml",
+            study_app_module="nonexistent_module_for_test_xyz.dag_spec")
+
+
+def test_check_regenerable_detects_longtable_base_drift(tmp_path):
+    """长表记录的底座指纹 != classification 现在记录的 → 点名报出来。
+
+    这条链补的缝隙:链 1~5 全是「当前代码 vs classification」,所以 `tune.setup()` 一重建
+    分类表(底座指纹换成当前 yaml 的),链 5 恒通过、`regenerable` 假阳——而长表仍是旧底座
+    扫的。实例见 apps/bb_v1/notes.md §11.1 坑 3。
+    """
+    apps_dir, lt = _write_regenerable_fixture(tmp_path, run_base_fingerprint="OLDBASE0123456789", **_FIX)
+    ok, reasons = S.check_regenerable(lt, apps_dir=apps_dir)
+    assert ok is False
+    hits = [r for r in reasons if "另一份底座下扫的" in r]
+    assert len(hits) == 1 and "OLDBASE0123456789"[:16] in hits[0]
+
+
+def test_check_regenerable_base_fingerprint_match_does_not_report_drift(tmp_path):
+    """反向:长表记录的底座指纹与 classification 一致时,链 6 **不该**报。
+
+    没有这条反向断言,链 6 写成"恒报"也能让上面那个测试绿——那样每一份长表都会被判不可
+    再生,而该函数的语义轴是"假阳(该 False 却 True)危险",恒报 False 虽不危险却会让
+    整条判据失去区分力。
+    """
+    apps_dir, lt = _write_regenerable_fixture(tmp_path, run_base_fingerprint="irrelevant", **_FIX)
+    ok, reasons = S.check_regenerable(lt, apps_dir=apps_dir)
+    assert not any("另一份底座下扫的" in r for r in reasons)
+    assert not any("base_fingerprint 缺失" in r for r in reasons)
+
+
+def test_check_regenerable_finds_declaration_by_longtable_window(tmp_path):
+    """声明按长表目录的父目录名找:长表在 main 下、声明只在另一个窗口 → 当作声明已删。"""
+    apps_dir, lt = _write_regenerable_fixture(tmp_path, run_base_fingerprint="irrelevant", window="screen1", **_FIX)
+    ok, reasons = S.check_regenerable(lt, apps_dir=apps_dir)
+    assert ok is False
+    assert any("声明已删" in r for r in reasons)
+
+
+def test_check_regenerable_missing_base_fingerprint_is_unknown_not_regenerable(tmp_path):
+    """run_meta 缺 base_fingerprint(不是 multivar_scan 产出——它每轮都写)→ 判不了,并入不可再生(保守侧)。"""
+    apps_dir, lt = _write_regenerable_fixture(tmp_path, **_FIX)
+    ok, reasons = S.check_regenerable(lt, apps_dir=apps_dir)
+    assert ok is False
+    assert any("base_fingerprint 缺失" in r for r in reasons)
+
+
+# ---- base_fingerprint 进 RUN_CALIBER:一份长表全程必须同一个底座(2026-09-12) ----
+
+_META = {"app": "x", "start_date": "2024-01-01", "end_date": "2026-01-01", "head_buffer": 250,
+         "label_horizon": 40, "first_passage_k": 5.0, "price_min": 0.5, "price_max": 30.0,
+         "volume_min": 10000.0, "study_fingerprint": "abc", "git_head": "0", "written_at": "t"}
+
+
+def test_run_meta_rejects_fingerprint_drift_on_resume(tmp_path):
+    """底座或 detector 源码变了就不许往同一份长表里续写。
+
+    为什么这是硬要求:一份长表跨多轮扫完全宇宙,最终被当成「同一套检测配置下的候选集合」
+    按格聚合。中途配置变过的话,不同股票的行来自不同配置,按格聚合出来的计数不是同一个东西。
+    """
+    fp = {"base_fingerprint": "BASE_A", "source_fingerprint": "SRC_A"}
+    S.write_run_meta(tmp_path, {**_META, **fp})
+    S.write_run_meta(tmp_path, {**_META, **fp, "written_at": "t2"})           # 同配置可续
+    with pytest.raises(SystemExit, match="base_fingerprint"):
+        S.write_run_meta(tmp_path, {**_META, **fp, "base_fingerprint": "BASE_B"})
+    with pytest.raises(SystemExit, match="source_fingerprint"):
+        S.write_run_meta(tmp_path, {**_META, **fp, "source_fingerprint": "SRC_B"})
+
+
+def test_run_meta_missing_fingerprint_is_caliber_mismatch(tmp_path):
+    """已有 run_meta 缺指纹键时同样拦:缺键说明不知道已扫的那批行用的什么配置,没有理由放过。"""
+    S.write_run_meta(tmp_path, _META)
+    with pytest.raises(SystemExit, match="base_fingerprint"):
+        S.write_run_meta(tmp_path, {**_META, "base_fingerprint": "BASE_A", "source_fingerprint": "SRC_A"})

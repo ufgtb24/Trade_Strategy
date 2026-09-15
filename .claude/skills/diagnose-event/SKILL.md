@@ -36,7 +36,7 @@ print(format_declaration(env))
 - "tb 为什么没 match" → 骨架 A(读 scan analysis.events/matches,tb.anchor_bo_id→burst.last_bo→where 判定)
 - "tb 企稳段为什么进不了 / 退出早 / 没生成 / 只有一段" → 骨架 B(切窗 df + 按
   detector 契约枚举——契约文件在 `detectors/` 目录,按 scan 的 pattern 对号:
-  如 throwback.md(方案 C) / throwback_v3.md(V3 多段);无契约文件先读模块
+  如 throwback_v4.md(V4 多段) / throwback_v1.md(V1 首段即停);无契约文件先读模块
   docstring + 源码)
 - "event 完全没生成" → 骨架 C(切窗 + detector.detect)
 

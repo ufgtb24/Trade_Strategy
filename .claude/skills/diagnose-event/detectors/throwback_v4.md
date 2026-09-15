@@ -1,9 +1,9 @@
-# node 语义契约 · tb(bb_v1 · throwback_v4 三态价格行为状态机)
+# node 语义契约 · tb(bottom_burst · throwback_v4 三态价格行为状态机)
 
 > 本文由 **authoring-path2-detector** 在创建/修改本 detector 时同步维护——诊断"为什么"的语义依据,与代码必须一致;不一致时以代码为准(代码是 SSoT)。
 > 首次沉淀:2026-08-16 tb v4 落地(subagent-driven 实施,spec `docs/superpowers/specs/2026-08-16-tb-v4-state-machine-design.md` 定稿)。
 
-模块:`path2/atoms/throwback_v4.py` · 消费者:bb_v1 的 `tb` node(node id `tb`、子结构 node `tb_seg`、`eval_meta.end_node = 'tb.segments'`)
+模块:`path2/atoms/throwback_v4.py` · 消费者:bottom_burst 的 `tb` node(node id `tb`、子结构 node `tb_seg`、`eval_meta.end_node = 'tb.segments'`)
 
 一句话定位:post-burst 回踩跟踪状态机——DOWN 找底、STABLE 产企稳买点段、UP 等下一轮回踩;修复 rise-before-confirm 召回杀手(rise 不再终止机器)且 re-entry 为原生属性。
 

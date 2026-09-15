@@ -474,7 +474,7 @@ def test_scan_stats_leaf_and_shared_fields(tmp_path, tiny_pkls):
 
 
 def test_scan_stats_leaf_count_on_hits(tmp_path):
-    """命中场景:leaf_count = 按 leaf 去重的买点数,口径非空有 teeth。"""
+    """命中场景:leaf_count = 按买点 span 去重的买点数,口径非空有 teeth。"""
     from dataclasses import replace
     from tests.path2_apps.bottom_burst.test_matches import _synth_positive
     data = tmp_path / "data"
@@ -508,29 +508,29 @@ def test_scan_stats_leaf_count_on_hits(tmp_path):
     ms = [m for r in saved["results"]
           for m in r["per_pattern"].get("bbb", {}).get("analysis", {}).get("matches", [])]
     assert st["count"] >= 1
-    leafs = {m["leaf"] for m in ms if m.get("leaf")}
-    assert st["leaf_count"] == len(leafs) >= 1
+    spans = {tuple(map(tuple, m["buy_span"])) for m in ms}   # 单股票,span 即买点键
+    assert st["leaf_count"] == len(spans) >= 1
     assert st["leaf_count"] <= st["count"]
     sls = st["shared_leaf_stats"]
     assert sls["n_shared_leaves"] + sls["n_exclusive_leaves"] == st["leaf_count"]
 
 
 def test_win_rate_of_separates_by_symbol():
-    """跨股票同 span leaf 不算共享(reuse leaf 须同股票内)。
+    """跨股票同 span 不算共享(共享买点须同股票内)。
 
-    两股票各有 tb_10_15 各 1 match(同 instance_id、不同物理买点):按 (symbol, leaf)
-    聚合应是两个独占 leaf、无共享。修复前按 leaf 跨股票聚合会把这两 match
-    当成共享同一 leaf → shared_win_rate 误算;修复后 shared 无候选 → None。
+    两股票各有 span [10, 15] 各 1 match(同 span、不同物理买点):按 (symbol, buy_span)
+    聚合应是两个独占买点、无共享。若跨股票按 span 聚合会把这两 match
+    当成共享同一买点 → shared_win_rate 误算;按股票分开后 shared 无候选 → None。
     """
     from collections import Counter
-    from path2_web.scan import _win_rate_of
+    from path2_web.scan import _buy_point_key, _win_rate_of
 
     def _hit(sym, ret):
         return {"symbol": sym, "per_pattern": {"bbb": {"analysis": {
-            "matches": [{"leaf": "tb_10_15", "forward_return": ret}]}}}}
+            "matches": [{"leaf": "tb_10_15#0", "buy_span": [[10, 15]], "forward_return": ret}]}}}}
 
     results = [_hit("AAA", 0.05), _hit("BBB", -0.03)]
-    leaf_cnt = Counter((r["symbol"], m["leaf"])
+    leaf_cnt = Counter(_buy_point_key(r["symbol"], m)
                        for r in results
                        for m in r["per_pattern"]["bbb"]["analysis"]["matches"])
     assert _win_rate_of(results, "bbb", leaf_cnt, shared=True) is None    # 跨股票不共享 → 无候选

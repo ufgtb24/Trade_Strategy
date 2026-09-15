@@ -41,8 +41,8 @@
   1. bo 流为空或 bo 总数 < `min_bos`：整条序列无任何前缀满足长度门，不产（来源 `breakout.py::BurstDetector.detect`）；
   2. 相邻 bo 间距全 > `gap_max`：每个 bo 各自成孤立簇、簇长永远为 1，不满足 `min_bos ≥ 2` 则不产（来源同上）；
   3. `vol_ratio` 热身不完整：上游 BOEvent 的 `vol_ratio` 为 None 时 `max_vol_ratio` 聚合为 0，`max_vol_ratio` where 门静默不满足（来源 `breakout.py::_make_burst`）；
-  4. `first_drought` 为 0：簇首 bo 是序列第一次突破（无前驱 bo，`drought=None`），导致 `first_drought=0`，超过门槛的 `where W.attr("first_drought")` 静默拦截（来源同上）。
-- **常见误配**：把 `gap_max` 理解为「窗口跨度」——实际只看相邻两个 bo 间距，跨度可以任意长；`first_drought` 门依赖 bo 序列连续存在，序列太短时 drought 缺失。
+  4. `first_drought` 过小：`first_drought` 取簇首 bo 的 `drought_floor`（本趟扫描可确证的沉寂下界）。簇首是扫描窗口内第一根 bo 时下界 = `start_idx - total_window`，若它就贴在热身期结束处则下界接近 0，超过门槛的 `where W.attr("first_drought")` 静默拦截（来源同上）。想救这类样本靠加长 `head_buffer`，不是调闸。
+- **常见误配**：把 `gap_max` 理解为「窗口跨度」——实际只看相邻两个 bo 间距，跨度可以任意长；把窗口首根 bo 的 `first_drought` 当精确值读——它是下界（真实沉寂只会更长），`>=` 闸判过必是真过、判不过可能是缓冲不够。
 
 ---
 
@@ -135,7 +135,7 @@
 - **派生量做 `@property`，不做平行字段**：能从 `ref_slots` 引用直接算出的量
   （id 列表、计数，如 `BOEvent.broken_peak_ids` / `pk_count`）一律 `@property`，
   别在构造函数额外收一份同源 kwarg——避免两份数据不同步
-- **无值用 `Optional`，不用占位值**：字段确实没有值（如 bear 峰不产 `volume_peak`）
+- **无值用 `Optional`，不用占位值**：字段确实没有值（如序列第一根 bo 没有前序，`drought` 无值）
   时用 `Optional[...] = None`，不要用 `0.0` 之类占位值掩盖“没有”和“是 0”的区别
 
 ### confirm_idx 决策引导
@@ -331,7 +331,7 @@ gf 的 detector 共享同一流仍合法（雷永不动，零误杀）。
 
 > 定位:diagnose-event 的"语义深水区"——状态机判据顺序 / gate 名表 / anchor 口径 /
 > 骨架 B 变体 / 典型失效模式——由本 skill 在**创建/修改 detector 时**同步维护,诊断时
-> 无需逆向工程。文件:`diagnose-event/detectors/<模块名>.md`(如 `throwback_v3.md`),
+> 无需逆向工程。文件:`diagnose-event/detectors/<模块名>.md`(如 `throwback_v4.md`),
 > 正文按 node_id 组织(如"tb node 的 gate")。
 > 代码是 SSoT:契约与代码冲突时以代码为准,发现契约 stale 顺手更新。
 
@@ -339,13 +339,13 @@ gf 的 detector 共享同一流仍合法（雷永不动，零误杀）。
 gate 以实际代码为准,不是 spec 草案)。轻量修改(不动签名/gate/判据)→ 核对既有
 契约文件是否仍准确,不准确才更新。
 
-**契约文件内容清单**(模板见 `diagnose-event/detectors/throwback_v3.md`,首个完整样例):
+**契约文件内容清单**(模板见 `diagnose-event/detectors/throwback_v4.md`,完整样例):
 1. **事件结构**:node_id 归属 / 容器与子段 / child_slots / span 与 confirm 语义 / outcome 值域
 2. **API 签名**:枚举函数 + detector 构造(逐字段,含默认值与语义注释)
 3. **参数语义**:每个参数的口径与分工(如 max_start_gap=全局预算 vs max_window=单段上限)
 4. **状态机判据顺序**:逐判据列出检查顺序(排查"为什么"的骨架)
 5. **gate 名表**:每个 attempt 短路点的 gate_name + 触发条件 + 终止性质(整 bo / 段级);
-   **不 emit gate 的退段也要标注**(如 tb v3 段内 rise/timeout 只有 debug_break 无 gate)
+   **不 emit gate 的退段也要标注**(如 tb v4 段内 rise/timeout 只有 debug_break 无 gate)
 6. **典型失效模式**:实战沉淀的"为什么没生成/只有一段"类机制
 7. **骨架 B 变体**:局部重算模板(枚举调用 + on_gate collector + 逐根 dump)
 
@@ -364,7 +364,7 @@ gate 以实际代码为准,不是 spec 草案)。轻量修改(不动签名/gate/
 2. 输出字段（Event dataclass 字段含义，也可放 Event 类 docstring）
 3. 一句话定位（供 reference §1 速查引用）
 
-docstring 草稿在 spec 中产出、作为交付物之一移交 superpowers 实现——不能假定
+docstring 草稿在 spec 中产出、作为交付物之一交给实施计划——不能假定
 实现者会主动写，合同必须写明。失效边界 + 常见误配写进 reference §1 速查条目
 （选型期决策依据，非使用期参考）。
 
@@ -445,3 +445,14 @@ event 类型退回 Python 类型系统（`isinstance` 判别），**不进任何
   `engine.py`，漂移检测）是同名不同机制。
 - **atoms 入库门槛**：至少两条不相关走势会用，或表达单一通用物理事件。**带形状偏见的命名一律
   拒入**（`RoundedBottom` 之类退到 `path2_apps/`）。detector 内部状态不得跨 `detect()` 调用。
+- **多流下 `end_idx` 升序是逐流校验的**：`run_bundle` 对 `produces` 声明的每条流各跑一次
+  `_check_stream`。把一个原本按容器排序的单流 detector 多流化时，每条流都要自己排好——
+  子事件常常是逐父事件生成的、跨父交错，直接 yield 会在第二条流上撞升序校验。
+- **容器 event 的 node 必须声明 `children`**：重写了 `child_slots()` 就是容器，`PatternSpec`
+  构造期校验（`_validate_children_declared`）+ 标注期硬失败（`_annotate_children`，不受
+  `RUNTIME_CHECKS` 门控）双重拦截——这是正常路径（走 `annotate_stream`）。**预置流**跳过
+  检测与标注，没有这道 ungated 拦截，只剩出口 `_check_children_declarations` 的 C2（受
+  `RUNTIME_CHECKS` 门控）。声明的槽名 → 子结构 node_id，子事件据此获得自己的身份与渲染
+  轨道；漏声明不再静默继承容器 node_id。**`child_slots()` 必须无条件返回声明的槽名**（成员
+  为空也给空 tuple）——别学 `ref_slots()`「空则返回 `{}`」的写法（如 `path2/atoms/breakout.py`
+  的两处 `ref_slots`），否则容器为空的实例会在出口撞上 C1「声明 children 未物化」。

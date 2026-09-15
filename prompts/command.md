@@ -2,8 +2,9 @@
 path2_web/main.py    ;DEBUG_MODE=1;USE_LOW_IMPACT_MONITORING=1  debug 
 cd path2_web_ui && VITE_API_BASE=http://localhost:8009 npm run dev -- --port 5179 --strictPort
 
+## cc 和 codex repo skills 同步(user skills 已经同步过)
+ln -sr .claude/skills .agents/skills 
 
-claude -r --dangerously-skip-permissions
 /model claude-opus-4-7
 ## 工作数双向同步法(A 和 B 统一到全局最新)
   # B 上：压缩 + rebase

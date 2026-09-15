@@ -1,2 +1,3 @@
 docs/feature_candidates.md merge=union
 docs/feature_candidates_archive.md merge=union
+docs/sample_usage/*.jsonl merge=union

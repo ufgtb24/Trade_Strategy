@@ -65,12 +65,16 @@ def _ref_keys(spec, p, win, lo, hi, s, e):
     out = serialize_per_pattern_result(res, end_node="tb", label_horizon=H, win=win, start_ts=s, end_ts=e,
                                        price_min=0.5, price_max=30.0, first_passage_k=K, sample_window=(lo, hi))
     keep = {m["match_id"] for m in out["analysis"]["matches"]}
+    # serialize 只给同一买点事件(buy_span)的第一条 match 填四态;长表每行都带满额四态——回填后逐行比
+    fp_of_span = {}
+    for md in out["analysis"]["matches"]:
+        fp_of_span.setdefault(tuple(map(tuple, md["buy_span"])), md["first_passage"])
     keys = []
     for m in res.matches:
         if m.match_id not in keep:
             continue
         md = next(x for x in out["analysis"]["matches"] if x["match_id"] == m.match_id)
-        fp = md["first_passage"] or {"up": 0, "down": 0, "both": 0, "none": 0}
+        fp = fp_of_span[tuple(map(tuple, md["buy_span"]))] or {"up": 0, "down": 0, "both": 0, "none": 0}
         spans = tuple((nid, ev.start_idx, ev.end_idx) for nid, ev in sorted(m.node_index.items()))
         keys.append((spans, None if md["forward_return"] is None else round(md["forward_return"], 12),
                      fp["up"], fp["down"], fp["both"], fp["none"]))
@@ -86,7 +90,7 @@ def _pred(x, v, op):
 
 
 def _rows_keys(rows, cell, where, cls):
-    keys, tot = [], {"up": 0, "down": 0, "both": 0, "none": 0}
+    keys, tot, seen_seg = [], {"up": 0, "down": 0, "both": 0, "none": 0}, set()
     for r in rows:
         ok = all(r[col_of(d)] == v for d, v in cell.items() if cls.kinds[d] != "F")
         for d, v in cell.items():
@@ -101,8 +105,11 @@ def _rows_keys(rows, cell, where, cls):
         nodes = sorted({c.rsplit(".", 1)[0] for c in r if c.endswith(".start")})
         spans = tuple((n, r[node_col(n, "start")], r[node_col(n, "end")]) for n in nodes)
         keys.append((spans, None if r["fr"] is None else round(r["fr"], 12), r["fp_up"], r["fp_down"], r["fp_both"], r["fp_none"]))
-        for s_ in tot:
-            tot[s_] += r[f"fp_{s_}"]
+        seg = (r[node_col("tb", "start")], r[node_col("tb", "end")])   # 买点事件键:同一段买点只计一次
+        if seg not in seen_seg:
+            seen_seg.add(seg)
+            for s_ in tot:
+                tot[s_] += r[f"fp_{s_}"]
     return sorted(keys), tot
 
 
@@ -124,7 +131,7 @@ def test_reversed_loop_equals_per_cell_analyze():
             continue
         n_stock += 1
         lo = int(win["date"].searchsorted(s, "left")); hi = int(win["date"].searchsorted(e, "right")) - 1
-        rows = scan_one_stock(pk.stem, win, s, e, cfg, mod=mod)
+        rows, _segs = scan_one_stock(pk.stem, win, s, e, cfg, mod=mod)
         for cell in _cells():
             for where in _where_sets():
                 d = apply_overrides(BASE, WIDE, {**cell, **where})
@@ -173,7 +180,7 @@ def test_row_columns_matches_scan_one_stock_row_keys():
         win = slice_window(pd.read_pickle(pk), bs, be)
         if len(win) < 300:
             continue
-        rows = scan_one_stock(pk.stem, win, s, e, cfg, mod=mod)
+        rows, _segs = scan_one_stock(pk.stem, win, s, e, cfg, mod=mod)
         if rows:
             assert cols == set(rows[0].keys())
             return

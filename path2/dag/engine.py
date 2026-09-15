@@ -27,11 +27,14 @@ def annotate_stream(counts: dict, nid: str, events, children_of: dict | None = N
     detect 期即可读上游 instance_id)。
 
     children_of({node_id: {slot名: 子node_id}},spec 的 children 声明)= 未标注
-    child 的命名表:按容器槽名查映射,有声明 → 用声明的子结构 node_id(如
-    tb.segments → tb_seg);无声明/槽未覆盖 → 继承容器流 nid 兜底(旧 app 行为
-    不变,声明即启用)。声明漂移由 _check_children_declarations(C1/C3) 抓,
-    不会静默错名。已标注跳过保证"槽引用独立 node 实例"(burst.members→bo,
-    独立流先物化先标注)不被重标。"""
+    child 的命名表:按容器槽名查映射,标成声明的子结构 node_id(如 tb.segments →
+    tb_seg)。槽名不在声明表里直接 ValueError——不再兜底继承容器 nid;这一步
+    不受 RUNTIME_CHECKS 门控,生产路径同样硬失败。构造期另有
+    PatternSpec._validate_children_declared 拦住「容器 node 一个槽都没声明」。
+    声明漂移由出口的 _check_children_declarations 抓——本路径剩给它的是 C1(声明未
+    物化)与 C3(类型不符);C2(实例有未声明槽)已被上面的 ValueError 抢先,只有预置流
+    (跳过检测与标注)才落到出口的 C2(该出口受 RUNTIME_CHECKS 门控)。已标注跳过保证"槽引用
+    独立 node 实例"(burst.members→bo,独立流先物化先标注)不被重标。"""
     cmap_all = children_of or {}
 
     def _annotate(e, nid: str) -> None:
@@ -54,7 +57,10 @@ def annotate_stream(counts: dict, nid: str, events, children_of: dict | None = N
     def _annotate_children(e, nid: str) -> None:   # 递归补标嵌套 child
         cmap = cmap_all.get(nid, {})
         for slot_name, slot in e.child_slots().items():
-            child_nid = cmap.get(slot_name, nid)
+            if slot_name not in cmap:
+                raise ValueError(
+                    f"node {nid!r}: child 槽 {slot_name!r} 未在 children 声明中")
+            child_nid = cmap[slot_name]
             members = slot if isinstance(slot, tuple) else (slot,)
             for c in members:
                 if c.node_id is not None:
@@ -64,19 +70,27 @@ def annotate_stream(counts: dict, nid: str, events, children_of: dict | None = N
 
     for e in events:           # 第一遍:流内事件
         _annotate(e, nid)
-    for e in events:           # 第二遍:嵌套 child(按 children 声明命名,兜底继承)
+    for e in events:           # 第二遍:嵌套 child(按 children 声明命名,槽名缺声明直接报错)
         _annotate_children(e, nid)
 
 
 def _translate_refs(streams) -> None:
     """统一翻译阶段:所有流标注完后,把各事件的 ref_slots() 对象引用翻译成 instance_id,
     写入 Event.ref_ids(按槽名字典序排列的 (槽名,(instance_id,...)) 对)。引用事件
-    池外对象(instance_id 仍为 None)视为 detect bug,报错。"""
-    for events in streams.values():
-        for e in events:
-            slots = e.ref_slots()
-            if not slots:
-                continue
+    池外对象(instance_id 仍为 None)视为 detect bug,报错。
+
+    递归下钻 child_slots——与标注(_annotate_children)对称:子结构事件(如 tb 的
+    企稳段)不出现在 streams 里,只活在容器的槽内,不下钻就会让它的引用槽静默失效
+    (ref_ids 恒空,与「引用池外对象」的响亮报错待遇相反)。同一对象既在流里又在
+    容器槽里(burst.members→bo 形态)只翻译一次,由 seen 去重;翻译本身幂等。"""
+    seen: set = set()
+
+    def _translate(e) -> None:
+        if id(e) in seen:
+            return
+        seen.add(id(e))
+        slots = e.ref_slots()
+        if slots:
             pairs = []
             for slot_name, refs in slots.items():
                 refs = (refs,) if isinstance(refs, Event) else refs   # 归一化单-Event 槽位(与 annotate_stream 一致)
@@ -90,6 +104,14 @@ def _translate_refs(streams) -> None:
                     ids.append(ref.instance_id)
                 pairs.append((slot_name, tuple(ids)))
             object.__setattr__(e, "ref_ids", tuple(sorted(pairs)))
+        for slot in e.child_slots().values():
+            members = slot if isinstance(slot, tuple) else (slot,)
+            for c in members:
+                _translate(c)
+
+    for events in streams.values():
+        for e in events:
+            _translate(e)
 
 
 def _check_children_declarations(spec, streams) -> None:
@@ -105,7 +127,7 @@ def _check_children_declarations(spec, streams) -> None:
     by_id = {n.node_id: n for n in spec.nodes}
     for nid, events in streams.items():
         node = by_id[nid]
-        if not node.children or node.detector is None:
+        if node.detector is None:
             continue
         declared = set(node.children)
         for e in events:

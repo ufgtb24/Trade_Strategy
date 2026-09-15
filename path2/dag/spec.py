@@ -55,6 +55,7 @@ class PatternSpec:
         self._validate_render_grid()   # ★ 新增:render_grid='price' 需 event_cls.is_point=True
         self._validate_no_self_feed()   # ★ 新增:禁止 consumes_stream 指向共享同一 detector 的 node
         self._validate_streams_bound()  # ★ 新增(契约 C3):多流 detector 的每条流都必须被 node 认领
+        self._validate_children_declared()  # ★ 容器 event 必须声明 children
 
     # ── 校验 ──
     def _normalize_produced_by(self) -> None:
@@ -122,6 +123,18 @@ class PatternSpec:
             if n.render_grid != "time":
                 raise ValueError(
                     f"子结构 NodeSpec({n.node_id!r}): render_grid 是死字段(默认 'time')")
+
+    def _validate_children_declared(self) -> None:
+        """容器 event(重写 child_slots)的 node 必须声明 children。"""
+        from path2.core import Event
+        for n in self.nodes:
+            cls = n.event_cls
+            if cls is None or getattr(cls, "child_slots", Event.child_slots) is Event.child_slots:
+                continue
+            if not n.children:
+                raise ValueError(
+                    f"NodeSpec({n.node_id!r}): event_cls {cls.__name__} 是容器"
+                    f"(重写 child_slots),必须声明 children")
 
     def _validate_dag(self) -> None:
         ids = self._node_ids()

@@ -124,12 +124,12 @@ def test_bo_detector_pk_stream_unbound_raises_at_construction():
     assert "pk" in str(exc_info.value)
 
 
-_APP_NAMES = ["bb_pk", "bb_v0", "bb_v1", "bb_v3", "bo_only", "bottom_burst", "try_conplex_where"]
+_APP_NAMES = ["bb_v1", "bo_only", "bottom_burst", "try_conplex_where"]
 
 
 @pytest.mark.parametrize("app_name", _APP_NAMES)
 def test_app_build_pattern_constructible(app_name):
-    """7 个 app 的 build_pattern(Params.default()) 全部可构造(不被新校验误杀)。"""
+    """4 个 app 的 build_pattern(Params.default()) 全部可构造(不被新校验误杀)。"""
     dag_spec = importlib.import_module(f"path2_apps.{app_name}.dag_spec")
     params_mod = importlib.import_module(f"path2_apps.{app_name}.params")
     spec = dag_spec.build_pattern(params_mod.Params.default())

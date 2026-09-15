@@ -53,8 +53,8 @@ def test_render_is_order_invariant_across_key_permutations():
     assert a == b
 
 
-def test_rendered_study_loads_with_all_eight_declarations(tmp_path):
-    """渲染出来的必须是 load_study 能吃的合法声明(8 项齐全)。"""
+def test_rendered_study_loads_with_all_declarations(tmp_path):
+    """渲染出来的必须是 load_study 能吃的合法声明(必需项齐全 + DESIGN),且不带已退役的声明。"""
     p = tmp_path / "study.py"
     p.write_text(_render(), encoding="utf-8")
     st = S.load_study(p)
@@ -63,6 +63,16 @@ def test_rendered_study_loads_with_all_eight_declarations(tmp_path):
     assert st.SCAN_GRID == GRID
     assert st.WHERE_LEVELS == WHERE
     assert st.REF_POINT == REF
+    assert st.DESIGN == "grid"
+    assert "FLAG" not in _render()
+
+
+def test_render_writes_design(tmp_path):
+    text = grid_propose.render_study(
+        app_module="path2_apps.demo.dag_spec", base_yaml="params.yaml", wide_overrides={},
+        scan_grid=GRID, where_levels=WHERE, ref_point=REF, tight_wheres={}, design="screen")
+    p = tmp_path / "study.py"; p.write_text(text, encoding="utf-8")
+    assert S.load_study(p).DESIGN == "screen"
 
 
 def test_render_does_not_embed_timestamp():
@@ -104,7 +114,7 @@ def test_levels_for_of_one_is_pinned():
 
 
 def test_ref_point_is_derived_from_production_values():
-    """★ 参照格自动推导:取生产参数在网格上的落点,只含 D 维。
+    """★ 工作点自动推导(scope="D" 旧口径):取正式参数在网格上的落点,只含 D 维。
 
     手写 REF_POINT 曾导致真实事故——生产值已从 2 改成 1,手写的还停在 2,
     被误当成「需要用户拍板的语义决定」。自动推导后这类问题不会再出现。
@@ -115,7 +125,7 @@ def test_ref_point_is_derived_from_production_values():
     grid = {("bo", "min_relative_height"): [0.1, 0.2, 0.3],
             ("burst", "gap_max"): [4, 8, 12],
             ("burst", "min_bos"): [1, 2, 3]}
-    ref = grid_propose.ref_point_from_base(base, grid, kinds)
+    ref = grid_propose.ref_point_from_base(base, grid, kinds, scope="D")
     assert ref == {"bo.min_relative_height": 0.2, "burst.gap_max": 8}   # F 维不进
     for dotted, v in ref.items():
         sec, field = dotted.split(".")
@@ -128,6 +138,19 @@ def test_ref_point_rejects_production_value_off_grid():
     base = {"bo": {"x": 0.25}}
     with pytest.raises(SystemExit):
         grid_propose.ref_point_from_base(base, {("bo", "x"): [0.1, 0.2, 0.3]}, {("bo", "x"): "D"})
+
+
+def test_ref_point_scope_all_covers_every_axis_with_formal_values():
+    """scope="all"(新窗口):SCAN_GRID 与 WHERE_LEVELS 全部轴都取正式值,含 F 维与 where 阈值。"""
+    import pytest
+    base = {"bo": {"min_relative_height": 0.2}, "burst": {"min_bos": 1, "first_drought_min": 40}}
+    kinds = {("bo", "min_relative_height"): "D", ("burst", "min_bos"): "F"}
+    grid = {("bo", "min_relative_height"): [0.1, 0.2], ("burst", "min_bos"): [1, 2]}
+    where = {("burst", "first_drought_min"): [0, 40]}
+    assert grid_propose.ref_point_from_base(base, grid, kinds, where) == {
+        "bo.min_relative_height": 0.2, "burst.min_bos": 1, "burst.first_drought_min": 40}
+    with pytest.raises(SystemExit, match="burst.first_drought_min"):
+        grid_propose.ref_point_from_base(base, grid, kinds, {("burst", "first_drought_min"): [0, 20]})
 
 
 def test_propose_on_real_app_does_not_crash_and_finds_both_d_and_w_dims():
@@ -152,3 +175,35 @@ def test_propose_on_real_app_does_not_crash_and_finds_both_d_and_w_dims():
     for p in result["params"]:
         if p["kind"] is None:
             assert p["reason"], f"{p['section']}.{p['field']} kind=None 但 reason 为空"
+    # 逐档合法性:有候选档位的参数逐档一条;默认值那一档(就是底座本身)一定构造得出来
+    for p in result["params"]:
+        if p["levels"] is None:
+            assert p["levels_probe"] is None
+            continue
+        assert [r["value"] for r in p["levels_probe"]] == p["levels"]
+        assert next(r for r in p["levels_probe"] if r["value"] == p["default"])["legal"]
+
+
+# ---------------------------------------------------------------- 单维分类(定范围 / 准入 / 定案共用)
+def _syn_fixture():
+    import importlib.util
+    name = "tune_gates_fixture_syn_gate_app"
+    if name not in sys.modules:
+        spec = importlib.util.spec_from_file_location(name, Path(__file__).resolve().parent / "fixtures/syn_gate_app.py")
+        m = importlib.util.module_from_spec(spec)
+        sys.modules[name] = m
+        spec.loader.exec_module(m)
+    return sys.modules[name]
+
+
+def test_classify_one_finds_filter_dim_even_when_base_is_not_loosest(tmp_path):
+    """过滤型维的底座自检要求底座值恰为最松档;底座值在档位中间时,单维分类仍要认出它是过滤型。"""
+    fx = _syn_fixture()
+    mod = fx.make_app(tmp_path, "syn_classify_one_app")
+    base = mod.Params.from_yaml(tmp_path / "params.yaml").to_dict()
+    base["a"]["min_n"] = 2
+    assert grid_propose.classify_one(mod, base, ("a", "min_n"), [1, 2, 3]) == ("F", ("a", "n", ">="), None)
+    assert grid_propose.classify_one(mod, base, ("b", "gate"), [0, 5]) == ("W", ("b", "gv", ">="), None)
+    assert grid_propose.classify_one(mod, base, ("b", "span"), [5, 10])[0] == "D"
+    kind, fields, reason = grid_propose.classify_one(mod, base, ("a", "width"), [4])
+    assert kind is None and fields is None and reason

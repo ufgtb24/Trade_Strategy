@@ -15,7 +15,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field, asdict
 from pathlib import Path
-from typing import Optional
 
 from path2_apps._params_base import ParamsBase
 
@@ -30,8 +29,6 @@ class BoParams:
     min_relative_height: float = 0.05
     exceed_threshold: float = 0.005
     peak_supersede_threshold: float = 0.03
-    bear_drop: Optional[float] = None   # 大阴线 kind:实体跌幅阈值;None=禁用(默认 OFF,仅显式 ON 的 app 启用)
-    bear_min_rh: float = 0.20   # 大阴线 kind:相对高度阈值
     vol_baseline_period: int = 63
     peak_measure: str = "high"
     breakout_measure: str = "high"
@@ -44,6 +41,8 @@ class BurstParams:
 
     隐含约束:first_drought_min 必须 > gap_max,否则 first_drought where 退化恒真
     (chain 簇首必是断点,drought > gap_max 结构性必然)。默认 20 > 5 健康。
+    唯一例外:簇首恰是扫描窗口内第一根 bo 时,first_drought 取的是沉寂下界
+    (BOEvent.drought_floor),可以小于 gap_max——那不是闸恒真,是首部缓冲不够。
     """
     gap_max: int = 5
     vol_baseline_period: int = 63

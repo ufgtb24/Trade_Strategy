@@ -19,6 +19,7 @@ import json
 import os
 import re
 import signal
+from collections import Counter
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
 
@@ -166,17 +167,47 @@ def _aggregate_multi(results_iter, total: int, pattern_ids: list,
     return {"results": results, "scanned": scanned, "hits": hits, "errors": errors}
 
 
+def _buy_point_key(symbol: str, m: dict) -> tuple:
+    """match 的买点键 = (symbol, buy_span 元组)。
+
+    买点身份按 span 认:同一 span 的不同实例(instance_id #0/#1…)是同一个买点。
+    buy_span 不含股票,跨股票同 span 是不同物理买点,所以键里带 symbol。"""
+    return (symbol, tuple(map(tuple, m["buy_span"])))
+
+
 def _win_rate_of(results: list, pid: str, leaf_cnt: Counter, *, shared: bool) -> Optional[float]:
-    """共享(shared=True)/独占(shared=False)leaf 的 match 的 forward_return>0 比例。
-    leaf_cnt 键 = (symbol, leaf):leaf 是 instance_id 字符串不含股票,
-    跨股票同 leaf 是不同物理买点,reuse leaf 必须「同股票内多 match 共享」才成立。"""
+    """共享(shared=True)/独占(shared=False)买点的 match 的 forward_return>0 比例。
+    leaf_cnt 键 = _buy_point_key;共享 = 同股票内同一买点 span 被 >=2 个 match 命中。"""
     rets = [m["forward_return"]
             for r in results
             for m in r["per_pattern"].get(pid, {}).get("analysis", {}).get("matches", [])
             if m.get("forward_return") is not None
-            and m.get("leaf") is not None
-            and (leaf_cnt[(r["symbol"], m["leaf"])] >= 2) == shared]
+            and m.get("buy_span")
+            and (leaf_cnt[_buy_point_key(r["symbol"], m)] >= 2) == shared]
     return (sum(r > 0 for r in rets) / len(rets)) if rets else None
+
+
+def _buy_point_stats(results: list, pid: str) -> dict:
+    """买点级双口径统计:{leaf_count, shared_leaf_stats}。
+
+    leaf_count = 不同买点 span 数(按 _buy_point_key 去重;stats["count"] 是 match 数=评估单元);
+    shared_leaf_stats 描述「多确认」规模与增信对照(研究支撑,非决策闸)。"""
+    leaf_cnt = Counter(_buy_point_key(r["symbol"], m)
+                       for r in results
+                       for m in r["per_pattern"].get(pid, {}).get("analysis", {}).get("matches", [])
+                       if m.get("buy_span"))
+    n_shared = sum(1 for c in leaf_cnt.values() if c >= 2)
+    return {
+        "leaf_count": len(leaf_cnt),
+        "shared_leaf_stats": {
+            "n_shared_leaves": n_shared,
+            "n_exclusive_leaves": len(leaf_cnt) - n_shared,
+            "share_ratio": (n_shared / len(leaf_cnt)) if leaf_cnt else None,
+            "per_leaf_match_count_distribution": sorted(Counter(leaf_cnt.values()).items()),
+            "shared_win_rate": _win_rate_of(results, pid, leaf_cnt, shared=True),
+            "exclusive_win_rate": _win_rate_of(results, pid, leaf_cnt, shared=False),
+        },
+    }
 
 
 def _aggregate_first_passage(results: list, pattern_ids: list,
@@ -325,10 +356,9 @@ def run_scan_multi(*, data_dir,
             entry["params_provenance"] = params_provenance.get(pid, "yaml")
         per_pattern_meta[pid] = entry
     # 每 pattern 全宇宙聚合 stats / stats_drawdown(按 match 计,过滤 None)
-    #   stats         → forward_return(mfr,只看涨,count=match 数;leaf_count=买点数双口径)
+    #   stats         → forward_return(mfr,只看涨,count=match 数;leaf_count=买点 span 数双口径)
     #   stats_drawdown → forward_drawdown(min_low,mfr 下行镜像,与 stats 并列、同 shape)
     # 延迟导入避免与 eval_runner(反向依赖 scan 的 TRADING_TO_CALENDAR_RATIO/_list_pkls)循环导入
-    from collections import Counter
     from path2_web.eval_runner import _summarize_flat
     for pid in pattern_ids:
         matches = [
@@ -339,25 +369,7 @@ def run_scan_multi(*, data_dir,
         vals = [m["forward_return"] for m in matches
                 if m.get("forward_return") is not None]
         stats = _summarize_flat(vals)
-        # 双口径:leaf_count = 买点数(stats["count"] 是 match 数=评估单元);
-        # shared_leaf_stats 描述「多确认」规模与增信对照(研究支撑,非决策闸)。
-        # leaf 是 instance_id 字符串不含股票——跨股票同 instance_id 是不同物理买点,
-        # 必须按 (symbol, leaf) 聚合,reuse leaf 语义才是「同股票内多 match 共享」。
-        leaf_cnt = Counter((r["symbol"], m["leaf"])
-                           for r in agg["results"]
-                           for m in r["per_pattern"].get(pid, {}).get("analysis", {}).get("matches", [])
-                           if m.get("leaf"))
-        stats["leaf_count"] = len(leaf_cnt)
-        n_shared = sum(1 for c in leaf_cnt.values() if c >= 2)
-        n_exclusive = len(leaf_cnt) - n_shared
-        stats["shared_leaf_stats"] = {
-            "n_shared_leaves": n_shared,
-            "n_exclusive_leaves": n_exclusive,
-            "share_ratio": (n_shared / len(leaf_cnt)) if leaf_cnt else None,
-            "per_leaf_match_count_distribution": sorted(Counter(leaf_cnt.values()).items()),
-            "shared_win_rate": _win_rate_of(agg["results"], pid, leaf_cnt, shared=True),
-            "exclusive_win_rate": _win_rate_of(agg["results"], pid, leaf_cnt, shared=False),
-        }
+        stats.update(_buy_point_stats(agg["results"], pid))
         per_pattern_meta[pid]["stats"] = stats
         dd_vals = [m["forward_drawdown"] for m in matches
                    if m.get("forward_drawdown") is not None]

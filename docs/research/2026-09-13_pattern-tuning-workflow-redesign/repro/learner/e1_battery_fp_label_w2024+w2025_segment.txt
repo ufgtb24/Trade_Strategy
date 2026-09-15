@@ -1,0 +1,81 @@
+n=5300  symbols=2416
+label: mean=0.516 med=1.000 p10=0.000 p90=1.000
+
+== 关1 原始关联(Spearman / MW + BH-FDR) ==
+distinct_pk              spearman=+0.012 p=0.39 q_fdr=0.710 pearson_w=+0.012 n=5300
+first_drought            spearman=+0.009 p=0.52 q_fdr=0.710 pearson_w=+0.010 n=5300
+vol_spike                spearman=-0.005 p=0.71 q_fdr=0.710 pearson_w=-0.017 n=5300
+peak_age                 spearman=+0.006 p=0.69 q_fdr=0.710 pearson_w=+0.012 n=5300
+burst_count              spearman=+0.012 p=0.36 q_fdr=0.710 pearson_w=+0.012 n=5300
+
+== 分箱: distinct_pk(非单调(mean_lab 读作单调升——分布有偏,以 med 为准)) ==
+      n  lo  hi  mean_lab  med_lab  win10  win30
+q                                               
+0  3931   1   2     0.512    1.000  0.522  0.518
+1   790   3   3     0.522    1.000  0.533  0.530
+2   579   4  10     0.528    1.000  0.537  0.535
+
+== 分箱: first_drought(非单调) ==
+      n   lo   hi  mean_lab  med_lab  win10  win30
+q                                                 
+0  1061    3   20     0.519    1.000  0.531  0.526
+1  1085   21   39     0.514    1.000  0.521  0.518
+2  1050   40   64     0.504    0.667  0.510  0.510
+3  1062   65  109     0.489    0.155  0.501  0.496
+4  1042  110  298     0.553    1.000  0.564  0.560
+
+== 分箱: vol_spike(非单调) ==
+      n    lo        hi  mean_lab  med_lab  win10  win30
+q                                                       
+0  1060 0.000     1.132     0.520    1.000  0.529  0.527
+1  1060 1.134     1.807     0.506    0.646  0.518  0.514
+2  1060 1.807     2.836     0.532    1.000  0.542  0.537
+3  1060 2.837     5.396     0.532    1.000  0.540  0.537
+4  1060 5.396 18686.303     0.489    0.000  0.497  0.494
+
+== 分箱: peak_age(非单调,峰在第2箱后回落) ==
+      n   lo   hi  mean_lab  med_lab  win10  win30
+q                                                 
+0  1070    7   19     0.495    0.500  0.507  0.504
+1  1099   20   36     0.551    1.000  0.557  0.554
+2  1024   37   60     0.501    0.631  0.510  0.507
+3  1058   61  104     0.510    0.793  0.523  0.517
+4  1049  105  306     0.519    1.000  0.528  0.526
+
+== 分箱: burst_count(箱数不足) ==
+      n  lo  hi  mean_lab  med_lab  win10  win30
+q                                               
+0  4291   1   2     0.514    1.000  0.523  0.520
+1  1009   3   7     0.522    1.000  0.533  0.530
+
+== Spearman 矩阵(混杂结构) ==
+               distinct_pk  first_drought  vol_spike  peak_age  burst_count  atr_pct  label
+distinct_pk          1.000          0.053      0.422     0.689        0.678    0.289  0.012
+first_drought        0.053          1.000      0.006     0.083        0.104   -0.154  0.009
+vol_spike            0.422          0.006      1.000     0.343        0.248    0.339 -0.005
+peak_age             0.689          0.083      0.343     1.000        0.523   -0.020  0.006
+burst_count          0.678          0.104      0.248     0.523        1.000    0.103  0.012
+atr_pct              0.289         -0.154      0.339    -0.020        0.103    1.000 -0.017
+label                0.012          0.009     -0.005     0.006        0.012   -0.017  1.000
+
+== 关2 秩回归(特征 + controls) ==
+distinct_pk              distinct_pk: t=+1.27  atr_pct: t=-1.53
+first_drought            first_drought: t=+0.46  atr_pct: t=-1.13
+vol_spike                vol_spike: t=+0.04  atr_pct: t=-1.16
+peak_age                 peak_age: t=+0.38  atr_pct: t=-1.21
+burst_count              burst_count: t=+1.04  atr_pct: t=-1.32
+⚠ 时间桶仅 13 个(<20):关3b 功效不足,p 值两个方向都不可解释——按未检处理、判定降级,不得作为证据(支持或反对均不可)
+
+== 关3a 股内去簇(每 symbol 首条,n=2416) ==
+distinct_pk              stat=+0.005 p=0.79
+first_drought            stat=+0.022 p=0.28
+vol_spike                stat=+0.012 p=0.56
+peak_age                 stat=+0.015 p=0.47
+burst_count              stat=+0.002 p=0.93
+
+== 三关判定 ==
+distinct_pk              → 无信号
+first_drought            → 无信号
+vol_spike                → 无信号
+peak_age                 → 无信号
+burst_count              → 无信号

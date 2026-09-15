@@ -490,6 +490,45 @@ def test_serialize_match_multi_instance_leaf():
     assert leafs == {"src_5_10#0", "src_5_10#1"}
 
 
+def test_fp_counts_dedup_same_span_instances():
+    """end_node 事件是不同实例但 span 相同:同一个买点,首穿四态只计一次、leaf_count 计 1。
+
+    引擎按 (node, span) 编 #idx,dst 两实例物化成 dst_25_27#0 / #1;两 match 的 leaf
+    各指一个实例,buy_span 相同。首穿去重与 scan 聚合都按 span 认买点。"""
+    import json
+    from path2.dag.engine import analyze
+    from path2.dag.spec import PatternSpec
+    from path2.dag.nodes import NodeSpec
+    from path2.dag.edges import TemporalEdge
+    from path2_web.scan import _buy_point_stats
+    spec = PatternSpec(pattern_id="dup_span", nodes=(
+        NodeSpec(node_id="src", detector=_FakeDet([Ev("s0", 0, 5)])),
+        # 买点窗置于 df 后段:rolling(20) 的 M 样本充足(前 19 根为 NaN)
+        NodeSpec(node_id="dst", detector=_FakeDet(
+            [Ev("d0", 25, 27, pos=0), Ev("d0", 25, 27, pos=1)])),
+    ), edges=(TemporalEdge("src", "dst", min_gap=0, max_gap=100),))
+    res = analyze(spec, None)
+    win = _make_price_df(30)
+    out = serialize.serialize_per_pattern_result(
+        res, end_node="dst", label_horizon=2,
+        win=win, start_ts=win["date"].iat[0], end_ts=win["date"].iat[-1],
+        first_passage_enabled=True, first_passage_k=5.0)
+    ms = out["analysis"]["matches"]
+    assert len(ms) == 2
+    assert {md["leaf"] for md in ms} == {"dst_25_27#0", "dst_25_27#1"}
+    assert all(md["buy_span"] == [[25, 27]] for md in ms)
+    # 首穿四态只计一次:3 个买点日,第二条 match 的 first_passage 为 None
+    assert out["match_fp_counts"] == {"up": 0, "down": 0, "both": 0, "none": 3}
+    assert [md["first_passage"] is not None for md in ms] == [True, False]
+    assert ms[0]["first_passage"] == {"up": 0, "down": 0, "both": 0, "none": 3}
+    # scan 聚合(经 JSON 往返,buy_span 为 list):同一买点 span → leaf_count 1、被 2 match 共享
+    results = json.loads(json.dumps([{"symbol": "AAA", "per_pattern": {"dup_span": out}}]))
+    st = _buy_point_stats(results, "dup_span")
+    assert st["leaf_count"] == 1
+    assert st["shared_leaf_stats"]["n_shared_leaves"] == 1
+    assert st["shared_leaf_stats"]["per_leaf_match_count_distribution"] == [(2, 1)]
+
+
 def test_serialize_match_node_index_instanced():
     """match node_index 每节点值 = instance_id 字符串,与事件行 instance_id 同源。"""
     res = _analyze_dup_stream()   # 同 node_id(s0)双实例 + 两 match,node_index 引用它们

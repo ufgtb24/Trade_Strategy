@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""多维稳健区 v2 · app 接入端:apps/<APP>/study.py → apps/<APP>/classification.json。
+"""多维稳健区 v2 · app 接入端:研究声明 apps/<APP>/windows/<window>/ 的退役清理。
 
 本模块只提供 app 接入端的**模块级函数**,不再有 main()/MODE——调用面统一在 tune.py:
   tune.setup(app)   生成 classification.json(原 MODE="build")
@@ -16,8 +16,7 @@ sys.path.insert(0, str(REPO)); sys.path.insert(0, str(REPO / ".claude/skills/tun
 import study_io as S  # noqa: E402
 
 
-def plan_delete(app: str, apps_dir, repo, delete_notes: bool = False,
-                delete_exposure: bool = False) -> dict:
+def plan_delete(app: str, apps_dir, repo, delete_notes: bool = False) -> dict:
     """构造删除清单。**只走精确路径,绝不按 app 名 glob。**
 
     为什么不 glob:实测按名字模糊匹配会误伤 6 项、同时漏 3 项——真实存在的
@@ -26,16 +25,18 @@ def plan_delete(app: str, apps_dir, repo, delete_notes: bool = False,
     命中 161 个文件,绝大多数是包名与历史文档。
 
     分组(误删=数据永久丢失、误留=多几个文件,代价不对称,所以默认偏保留):
-      must    —— study.py / run.py / classification.json / __pycache__:纯配置与派生物,进 git 可找回
-      confirm —— notes.md / exposure.jsonl(仅在显式开关打开时进这里):跨轮沉淀,默认保留
+      must    —— 各窗口的 study.py / classification.json 与各级 __pycache__:纯配置与派生物,进 git 可找回
+      confirm —— notes.md(仅在显式开关打开时进这里):跨轮沉淀,默认保留
       keep    —— 默认保留的那些,列出来让人看见放弃了什么
       blocked —— 不可再生的重产物:只报不删
+    样本使用账本(docs/sample_usage/<app>.jsonl)不在 app 目录里,也不进任何分组:它记的是哪段行情的
+    标签被看过几次,app 退役后底层数据仍是同一批,永不删。
 
     **已知后果(有意的保守侧行为,不是 bug)**:重产物要不要落 confirm 走的是
     `check_regenerable`(见其链 5),而链 5 需要 `import_app` 成功。app 本身已经坏掉时
     (底座 yaml 缺失、拓扑改崩等)import 会失败,`_regenerable` 把这类异常也判成不可再生,
     于是该 app 名下**全部**重产物都落进 blocked——"app 坏了也要能清理"这句话因此只兑现
-    了一半:配置(study.py/run.py/classification.json,must 组不依赖 import_app)能清,
+    了一半:配置(各窗口 study.py/classification.json,must 组不依赖 import_app)能清,
     但真正占磁盘的重产物一份都清不掉。要清重产物,得先让 app 能正常 import(或接受
     blocked 里报的原因、手动确认后再删)。
 
@@ -48,33 +49,30 @@ def plan_delete(app: str, apps_dir, repo, delete_notes: bool = False,
     if not app_dir.is_dir():
         raise SystemExit(f"{app_dir} 不存在:没有这个 app 可退役")
 
-    for name, why in (("study.py", "app 的搜索空间声明,app 退役即无意义;进 git 可 git checkout 找回"),
-                      ("run.py", "run 级常量,app 退役即无意义;进 git 可 git checkout 找回"),
-                      ("classification.json", "study.py 的派生物;进 git 可找回"),
-                      ("__pycache__", "字节码缓存")):
-        p = app_dir / name
+    windows = app_dir / "windows"
+    for w in (sorted(p for p in windows.iterdir() if p.is_dir()) if windows.is_dir() else []):
+        for name, why in (("study.py", f"窗口 {w.name} 的研究声明,app 退役即无意义;进 git 可 git checkout 找回"),
+                          ("classification.json", "study.py 的派生物;进 git 可找回"),
+                          ("__pycache__", "字节码缓存")):
+            p = w / name
+            if p.exists():
+                must.append({"path": str(p), "why": why})
+    for p in (windows / "__pycache__", app_dir / "__pycache__"):
         if p.exists():
-            must.append({"path": str(p), "why": why})
+            must.append({"path": str(p), "why": "字节码缓存"})
 
-    for name, flag, why in (
-            ("notes.md", delete_notes,
-             "跨轮实测沉淀(踩过的坑/校准记录),意义不随 app 消失;通用区仍有多处'案例见'指向它"),
-            ("exposure.jsonl", delete_exposure,
-             "识别端运行审计日志,记的是对这批数据看过几次;同名 app 重建后底层数据仍是同一批")):
-        p = app_dir / name
-        if not p.exists():
-            continue
-        entry = {"path": str(p), "why": why}
-        if name == "exposure.jsonl":
-            entry["why"] += f"(当前 {sum(1 for _ in p.open(encoding='utf-8'))} 条记录,删除后不可恢复)"
-        (confirm if flag else keep).append(entry)
+    notes = app_dir / "notes.md"
+    if notes.exists():
+        entry = {"path": str(notes),
+                 "why": "跨轮实测沉淀(踩过的坑/校准记录),意义不随 app 消失;通用区仍有多处'案例见'指向它"}
+        (confirm if delete_notes else keep).append(entry)
 
     out_root = repo / "outputs" / "tune_gates" / app
     if out_root.is_dir():
         for sub in sorted(p for p in out_root.iterdir() if p.is_dir()):
-            # 删除单元是整个 sub(一次 run 的产物目录),不是只 longtable/:同级的
-            # random_baseline.csv / filtered_symbols.csv 是 multivar_scan 断点续跑 done 集
-            # 的一部分(见 multivar_scan.py 的 done 集三来源),只删 longtable/ 会让重跑时
+            # 删除单元是整个 sub(一次 run 的产物目录),不是只 longtable/:同级的 baseline/、
+            # filtered_symbols.csv、empty_symbols.csv 与提交清单都是 multivar_scan 断点续跑 done 集
+            # 的来源(见 multivar_scan.py 模块文档),只删 longtable/ 会让重跑时
             # 这批股票仍被判"已完成"、产出空长表——"删了要重跑"这句话本身就要求删除单元
             # 与"重跑"的 resume 状态是一致的一整份。可再生性判定仍然对含 run_meta.json 的
             # 那一层做(longtable/ 存在则查它,否则查 sub 本身),但删除目标固定是 sub。
@@ -114,7 +112,7 @@ def _worktree_dirty(app_dir: Path) -> str:
     它属于哪个仓库,查的就是真正要删的那批文件,不受调用者 cwd 影响。
 
     -uall 必须显式给:这道闸就是靠未跟踪文件的 `??` 兜底的(新建未 commit 的 app、
-    exposure.jsonl 这类文件全是未跟踪状态),而 `status.showUntrackedFiles=no` 这个
+    新开的窗口声明这类文件全是未跟踪状态),而 `status.showUntrackedFiles=no` 这个
     git config(用户级/全局/系统级都可能被设上)会让默认的 status --porcelain 对着一整
     目录的未跟踪内容空输出+rc=0,和"干净"完全分不出来——实测过:不加 -uall 时该 config
     下确实是空输出;加了 -uall 后同一目录正确报出 `??`。这不是可选优化,删掉这个 flag
@@ -162,6 +160,11 @@ def _execute_delete(plan: dict, app_dir: Path, confirm: bool) -> None:
         for pth in remaining:
             print(f"  {pth}")
         raise
-    left = list(app_dir.iterdir()) if app_dir.is_dir() else []
-    if not left:
-        app_dir.rmdir(); print(f"已删除空目录 {app_dir}")
+    # 研究声明按窗口放在子目录里,删完文件会留下空的 windows/<window>/:自底向上清掉空目录。
+    # 只动 app_dir 之内,非空目录一律不碰
+    if app_dir.is_dir():
+        for d in sorted((p for p in app_dir.rglob("*") if p.is_dir()), key=lambda p: len(p.parts), reverse=True):
+            if not any(d.iterdir()):
+                d.rmdir()
+        if not any(app_dir.iterdir()):
+            app_dir.rmdir(); print(f"已删除空目录 {app_dir}")

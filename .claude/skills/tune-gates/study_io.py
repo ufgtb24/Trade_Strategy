@@ -3,9 +3,12 @@
 
 本模块是唯一知道下列路径与 schema 的地方,Claude 侧的唯一调用面是 tune.py
 (内部由 app_setup / multivar_scan / compare_longtable / region_find 转发调用):
-  apps/<app>/study.py             人写的 8 项声明(换 app 唯一要改的地方)
-  apps/<app>/classification.json  app_setup 生成:分类 + 推导字段 + 双指纹(人不改)
-  <longtable_dir>/run_meta.json   multivar_scan 写:run 级口径单源(compare/region 读)
+  apps/<app>/windows/<window>/study.py             人写的 7 项声明 + 可选 DESIGN(研究声明)
+  apps/<app>/windows/<window>/classification.json  tune.setup 生成:分类 + 推导字段 + 指纹(人不改)
+  outputs/tune_gates/<app>/<window>/longtable/run_meta.json
+                                                   multivar_scan 写:run 级口径单源(compare/region 读)
+研究声明按窗口放:同一个 app 的筛选与联合两份声明必须共存,各自的指纹互不作废;
+window 同时也是输出目录名,长表目录的父目录名就是它的 window。app 级只留 notes.md。
 本文件永远在 skill 目录内;入口脚本原地运行(不复制),经模块级 sys.path.insert 找到它。
 不含算法——classify/推导用的全是 multivar_core 的既有函数。
 """
@@ -30,7 +33,8 @@ sys.path.insert(0, str(REPO)); sys.path.insert(0, str(SKILL_DIR))
 from multivar_core import apply_overrides, col_of  # noqa: E402
 
 STUDY_NAMES = ("APP_MODULE", "BASE_YAML", "WIDE_OVERRIDES", "SCAN_GRID", "WHERE_LEVELS",
-               "REF_POINT", "TIGHT_WHERES", "FLAG_RULES")
+               "REF_POINT", "TIGHT_WHERES")
+DESIGNS = ("grid", "screen")   # 可选声明 DESIGN 的取值,缺省 "grid"
 
 
 def require(value, name: str) -> None:
@@ -49,38 +53,28 @@ def undotted(s: str) -> tuple:
     return (sec, field)
 
 
+def window_dir(app: str, window: str, apps_dir: Path = APPS_DIR) -> Path:
+    """某 app 某窗口的研究声明目录。"""
+    return Path(apps_dir) / app / "windows" / window
+
+
+def study_path(app: str, window: str, apps_dir: Path = APPS_DIR) -> Path:
+    return window_dir(app, window, apps_dir) / "study.py"
+
+
 def load_study(path: Path):
-    """从文件路径加载 study 模块(不经 sys.path,避免多个 app 的 study.py 同名互相遮蔽)。"""
+    """从文件路径加载 study 模块(不经 sys.path,避免多个窗口的 study.py 同名互相遮蔽)。
+
+    只要求 STUDY_NAMES 齐全,多余的名字一律忽略;DESIGN 可选,缺省按 "grid" 处理
+    (由 build_classification 读取并校验)。"""
     path = Path(path)
-    spec = importlib.util.spec_from_file_location(f"tune_gates_study_{path.parent.name}", path)
+    spec = importlib.util.spec_from_file_location(
+        f"tune_gates_study_{path.parent.parent.parent.name}_{path.parent.name}", path)
     mod = importlib.util.module_from_spec(spec); spec.loader.exec_module(mod)
     missing = [n for n in STUDY_NAMES if not hasattr(mod, n)]
     if missing:
         raise ValueError(f"{path} 缺少声明: {missing}")
     return mod
-
-
-def append_exposure(app: str, record: dict, apps_dir: Path = APPS_DIR) -> Path:
-    """把一次识别运行追加进 apps/<app>/exposure.jsonl(只追加,不覆盖)。
-
-    这是**识别端的运行审计日志**,不是 resume 状态:丢了它算出来的数字一个都不变,
-    变的只是人解读三口径时手上有没有"这批数据已经看过几次"的背景。
-
-    为什么落 apps/<app>/ 而不是 outputs/:outputs 在 gitignore 里跨轮不持久;
-    且 RUN_CALIBER 含 study_fingerprint,改 study.py 就强制换 OUT_DIR、历史会碎成多份,
-    而改网格恰恰是最该被记住的那次跨轮动作。
-
-    record 里约定留一个 "note" 键(默认空串):ledger.md 是 multivar_scan.py 每次运行
-    无条件全量覆写的机器产物,人写进去的裁定下一轮就被无声抹掉;这里只追加、跨轮持久,
-    是唯一能承载"指纹不一致但我裁定复用"这类跨轮记录的地方。
-    """
-    d = Path(apps_dir) / app
-    if not d.is_dir():
-        raise SystemExit(f"{d} 不存在:app 未接入,无处记录运行历史")
-    p = d / "exposure.jsonl"
-    with p.open("a", encoding="utf-8") as f:
-        f.write(json.dumps(record, ensure_ascii=False, default=str) + "\n")
-    return p
 
 
 def import_app(study):
@@ -97,7 +91,8 @@ def base_snapshot(mod, study) -> dict:
     return apply_overrides(base, study.WIDE_OVERRIDES, {})
 
 
-from multivar_core import (check_predicate_axes, classify, detection_combos, loosest_level, node_col)  # noqa: E402
+from multivar_core import (Classification, check_predicate_axes, classify, detection_combos,  # noqa: E402
+                           loosest_level, node_col, probe_levels)
 from path2.dag._solve import compile_plan  # noqa: E402
 
 
@@ -121,17 +116,51 @@ def _reject_e_dims(scan_grid: dict, kinds: dict) -> None:
                          "region 侧不会把它当轴,格会静默把不同 E 值混进同一格")
 
 
-def build_classification(app: str, study, mod, study_path: Path) -> dict:
-    """跑 classify + 全部静态守卫 + 推导,返回 classification.json 的 dict(含源码/底座/study 三指纹)。
+def _ref_point_scope(study, kinds: dict) -> str:
+    """REF_POINT 覆盖范围:键集恰为 D 维 → "D"(旧窗口,只能查格与核对可再生性);恰为全部轴
+    (D ∪ F ∪ W)→ "all"(工作点);其余 → ValueError。值必须精确落在该轴档位上。"""
+    levels = {dotted(d): lv for d, lv in [*study.SCAN_GRID.items(), *study.WHERE_LEVELS.items()]}
+    d_dims = {dotted(d) for d in study.SCAN_GRID if kinds[d] == "D"}
+    keys = set(study.REF_POINT)
+    if keys == set(levels):
+        scope = "all"
+    elif keys == d_dims:
+        scope = "D"
+    else:
+        raise ValueError(f"REF_POINT 必须恰好覆盖全部轴(工作点)或恰好覆盖全部 D 维: "
+                         f"全部轴 {sorted(levels)},D 维 {sorted(d_dims)},实际 {sorted(keys)}")
+    off = {k: v for k, v in study.REF_POINT.items() if v not in levels[k]}
+    if off:
+        raise ValueError(f"REF_POINT 的取值不在档位表里: {off}——工作点必须精确落在网格上")
+    return scope
 
-    守卫在这里响亮失败,不等到扫描:E 维不许进 SCAN_GRID / REF_POINT 恰好覆盖 D 维 /
-    TIGHT_WHERES 键在网格内 / negation dst 谓词轴。"""
+
+def _levels_probe(mod, base: dict, study) -> dict:
+    """SCAN_GRID 与 WHERE_LEVELS 全部轴逐档合法性;任一档非法 → ValueError(人话 + 异常原文)。"""
+    out, bad = {}, []
+    for d, lv in [*study.SCAN_GRID.items(), *study.WHERE_LEVELS.items()]:
+        out[dotted(d)] = probe_levels(mod, base, d, lv)
+        bad += [f"{dotted(d)} = {r['value']!r}({r['error']})" for r in out[dotted(d)] if not r["legal"]]
+    if bad:
+        raise ValueError("下面这些档位用这个 pattern 构造不出来(参数校验或搭建 pattern 时报错),"
+                         "请把它们从档位表里去掉或改成合法值: " + ";".join(bad))
+    return out
+
+
+def build_classification(app: str, window: str, study, mod, study_path: Path) -> dict:
+    """跑 classify + 全部静态守卫 + 推导,返回 classification.json 的 dict(含源码/底座/study/尺子四指纹)。
+
+    守卫在这里响亮失败,不等到扫描:E 维不许进 SCAN_GRID / DESIGN 取值 / REF_POINT 覆盖范围与取值 /
+    逐档合法性 / TIGHT_WHERES 键在网格内 / negation dst 谓词轴。"""
+    import ledger
+    design = getattr(study, "DESIGN", "grid")
+    if design not in DESIGNS:
+        raise ValueError(f"DESIGN 只能是 {DESIGNS} 之一,实际 {design!r}")
     base = base_snapshot(mod, study)
     cls = classify(mod, base, study.SCAN_GRID, study.WHERE_LEVELS)
     _reject_e_dims(study.SCAN_GRID, cls.kinds)
-    d_dims = {dotted(d) for d in study.SCAN_GRID if cls.kinds[d] == "D"}
-    if set(study.REF_POINT) != d_dims:
-        raise ValueError(f"REF_POINT 必须恰好覆盖全部 D 维: 期望 {sorted(d_dims)},实际 {sorted(study.REF_POINT)}")
+    scope = _ref_point_scope(study, cls.kinds)
+    levels_probe = _levels_probe(mod, base, study)
     grid_dims = set(study.SCAN_GRID) | set(study.WHERE_LEVELS)
     for name, w in study.TIGHT_WHERES.items():
         extra = set(w) - grid_dims
@@ -146,9 +175,11 @@ def build_classification(app: str, study, mod, study_path: Path) -> dict:
     end_node = mod.eval_meta(params=p0)["end_node"]
     bound = sorted({nid for w in compile_plan(spec0).wcc_plans for nid in w.comp})
     fps = {"source": source_fingerprint(source_files(mod, spec0)),
-           "base": canonical_hash(base), "study": file_sha256(study_path)}
+           "base": canonical_hash(base), "study": file_sha256(study_path),
+           "ruler": ledger.ruler_fingerprint()}
     return {
-        "app": app, "app_module": study.APP_MODULE, "base_yaml": study.BASE_YAML,
+        "app": app, "window": window, "design": design, "ref_point_scope": scope,
+        "app_module": study.APP_MODULE, "base_yaml": study.BASE_YAML,
         "kinds": {dotted(d): k for d, k in cls.kinds.items()},
         "detector_nodes": {dotted(d): list(v) for d, v in cls.detector_nodes.items()},
         "filter_fields": {dotted(d): list(v) for d, v in cls.filter_fields.items()},
@@ -157,23 +188,49 @@ def build_classification(app: str, study, mod, study_path: Path) -> dict:
         "where_levels": {dotted(d): list(v) for d, v in study.WHERE_LEVELS.items()},
         "wide_overrides": study.WIDE_OVERRIDES, "ref_point": dict(study.REF_POINT),
         "end_node": end_node, "bound_nodes": bound,
-        "detection_combos": len(detection_combos(study.SCAN_GRID, cls)),
+        "detection_combos": len(detection_combos(study.SCAN_GRID, cls, design, study.REF_POINT)),
+        "levels_probe": levels_probe,
         "ref_params": base, "fingerprints": fps,
         "generated_at": datetime.now().isoformat(timespec="seconds"), "git_head": _git_head(),
     }
 
 
-def write_classification(app: str, data: dict, apps_dir: Path = APPS_DIR) -> Path:
-    p = Path(apps_dir) / app / "classification.json"; p.parent.mkdir(parents=True, exist_ok=True)
+def write_classification(app: str, window: str, data: dict, apps_dir: Path = APPS_DIR) -> Path:
+    p = window_dir(app, window, apps_dir) / "classification.json"; p.parent.mkdir(parents=True, exist_ok=True)
     p.write_text(json.dumps(data, ensure_ascii=False, indent=1, default=str) + "\n")
     return p
 
 
-def load_classification(app: str, apps_dir: Path = APPS_DIR) -> dict:
-    p = Path(apps_dir) / app / "classification.json"
+def load_classification(app: str, window: str, apps_dir: Path = APPS_DIR) -> dict:
+    p = window_dir(app, window, apps_dir) / "classification.json"
     if not p.exists():
-        raise SystemExit(f"{p} 不存在:先跑 tune.setup({app!r})")
+        raise SystemExit(f"{p} 不存在:先跑 tune.setup({app!r}, window={window!r})")
     return json.loads(p.read_text())
+
+
+def design_combos(cl: dict) -> list[dict]:
+    """研究设计展开出的检测组合:键 = 参数键(section.field)、值 = 档值;只含非 F 维。
+
+    grid = 笛卡尔积;screen = 工作点 + 单翻转 + 两两翻转。与扫描端 scan_one_stock 同一个展开函数
+    (multivar_core.detection_combos),长表里有哪些检测组合、抽样核对就只从哪些里取。"""
+    grid = {undotted(k): lv for k, lv in cl["scan_grid"].items()}
+    kinds = Classification({undotted(k): v for k, v in cl["kinds"].items()}, {}, {}, {})
+    return [{dotted(d): v for d, v in c.items()}
+            for c in detection_combos(grid, kinds, cl["design"], cl["ref_point"])]
+
+
+def segment_cols(cl: dict, columns) -> list[str]:
+    """买点事件键的列:长表有 seg_id 用它;否则买点 node 是单个事件(无点号)且其 start/end 两列
+    都在长表里 → 用这两列;都不满足 → ValueError(认不出同一段买点,不能按买点事件计数)。"""
+    cols = set(columns)
+    if "seg_id" in cols:
+        return ["seg_id"]
+    end = cl["end_node"]
+    pair = [node_col(end, "start"), node_col(end, "end")]
+    if "." not in end and set(pair) <= cols:
+        return pair
+    raise ValueError(f"长表里既没有 seg_id,也没有买点 node {end!r} 的 start/end 两列:"
+                     "认不出哪些行是同一段买点,不能按买点事件计数")
 
 
 def derived_axes(cl: dict) -> tuple:
@@ -283,15 +340,37 @@ def check_report(app: str, study, mod, cl: dict, study_path: Path) -> str:
 
 def check_study_matches(cl: dict, study_path: Path) -> None:
     if file_sha256(study_path) != cl["fingerprints"]["study"]:
-        raise SystemExit(f"study.py 已改,与 classification.json 不一致:先重跑 tune.setup({cl['app']!r})")
+        raise SystemExit(f"study.py 已改,与 classification.json 不一致:"
+                         f"先重跑 tune.setup({cl['app']!r}, window={cl['window']!r})")
 
 
+# 2026-09-12:source_fingerprint / base_fingerprint 加入本清单,推翻了此前「指纹变了是
+# '不可再生'、不是'混窗'」的判断——那个判断只覆盖了「扫完之后才变」这一种情形。详见
+# write_run_meta 的文档与 test_source_and_base_fingerprints_are_run_caliber。
+# ruler_fingerprint(标签 / 基线 / 分层定义代码)同理:中途换了尺子,前后扫的行不是同一把尺子量的。
+# label_mode:行内带标签与只记买点事件的两种长表列集不同,不能混在一份长表里。
 RUN_CALIBER = ("app", "start_date", "end_date", "head_buffer", "label_horizon", "first_passage_k",
-               "price_min", "price_max", "volume_min", "study_fingerprint")
+               "price_min", "price_max", "volume_min", "study_fingerprint",
+               "source_fingerprint", "base_fingerprint", "ruler_fingerprint", "label_mode")
 
 
 def write_run_meta(longtable_dir: Path, meta: dict) -> None:
-    """run 级口径单源。已存在且任一口径字段不同 → 拒绝(续跑必须同口径,否则长表混窗)。"""
+    """run 级口径单源。已存在且任一口径字段不同 → 拒绝(续跑必须同口径,否则长表混窗)。
+
+    **`source_fingerprint` / `base_fingerprint` 也是口径字段**(2026-09-12 加,推翻了此前
+    「指纹变了是'不可再生'、不是'混窗'」的判断)。被推翻的理由:那个判断只覆盖了「扫完之后
+    才变」这一种情形——那确实只是不可再生。但还有「扫的中途变」:一份长表跨多轮续跑扫完
+    全宇宙,最终被当成「同一套检测配置下的候选集合」按格聚合;中途改了 detector 或底座,
+    已扫的股票用旧配置、后扫的用新配置,按格聚合出来的计数就混了两种东西。这与混窗同类
+    (都是一份长表内部不自洽),而且 `check_regenerable` 只看得见**最后一轮**的指纹,会把这种
+    长表报成可再生(假阳,落在删除侧)。两道闸分工明确:本函数从源头拦「中途变」,
+    `check_regenerable` 链 4/6 事后判「扫完之后变」。
+
+    也考虑过「只拦真正影响长表的那些底座字段」(被 SCAN_GRID 档位覆盖的字段改了其实对长表内容
+    零影响,实测过),否决理由:那是拿「静默产生混配置的坏数据」去换「省一次重扫」——前者结论
+    错误且难发现,后者代价明确可见;要区分哪些字段无害还得把网格信息传进这里逐字段比,判断
+    一旦有漏洞(某字段既在网格里又另有隐藏影响)就会放过真正的坏数据。拦全部,简单且在安全侧。
+    """
     p = Path(longtable_dir) / "run_meta.json"; p.parent.mkdir(parents=True, exist_ok=True)
     if p.exists():
         old = json.loads(p.read_text())
@@ -305,7 +384,7 @@ def write_run_meta(longtable_dir: Path, meta: dict) -> None:
 def load_run_meta(longtable_dir: Path) -> dict:
     p = Path(longtable_dir) / "run_meta.json"
     if not p.exists():
-        raise SystemExit(f"{p}: run_meta.json 不存在——该长表不是 multivar_scan 新版产出,或路径填错")
+        raise SystemExit(f"{p}: run_meta.json 不存在——该长表不是 multivar_scan 产出,或路径填错")
     return json.loads(p.read_text())
 
 
@@ -316,7 +395,7 @@ def check_run_matches_classification(meta: dict, cl: dict) -> None:
 
 
 def check_regenerable(longtable_dir: Path, apps_dir: Path = APPS_DIR) -> tuple[bool, list[str]]:
-    """判断一份长表能否用**当前代码**重新生成。五条链依次核,不短路(除两处必要早退外),
+    """判断一份长表能否用**当前代码**重新生成。六条链依次核,不短路(除两处必要早退外),
     一次报全部原因。
 
     **返回值的真实语义**:`True` = "未发现不可再生的证据",**不是**"一定可再生"。`False` 有
@@ -345,11 +424,14 @@ def check_regenerable(longtable_dir: Path, apps_dir: Path = APPS_DIR) -> tuple[b
     `Exception`,例如模块顶层 `sys.exit()`)同样会穿透本函数的 `except Exception` 直接向上抛。
     三种情形都是**异常 ≠ 判定可删**,调用方必须自己接住(Task 9 的 `_regenerable` 已经这么做)。
 
+    window 取长表目录的父目录名(outputs/tune_gates/<app>/<window>/longtable),声明按
+    apps/<app>/windows/<window>/ 找。
+
     五条链:
       1. run_meta.json 存在吗(不存在 = 归属不明,只报不删)
       2. study 指纹是否仍与当前 study.py 一致(**不依赖** classification,故排在
          classification 存在性检查之前,避免被那条早退连带吞掉)
-      3. 该 app 的 classification.json 还在吗(不在 = 无法核对以下两条链,必要早退)
+      3. 该窗口的 classification.json 还在吗(不在 = 无法核对以下两条链,必要早退)
       4. BASE_YAML 指向的底座文件是否存在;source 指纹按 classification 记录的**文件清单**
          重算是否仍一致(不需要 import app——source_fingerprint 只是按序读那些文件的字节);
          classification 缺 base_yaml/app_module 声明,或缺源码文件清单,都视为"无法核对"、
@@ -358,6 +440,9 @@ def check_regenerable(longtable_dir: Path, apps_dir: Path = APPS_DIR) -> tuple[b
          `base_snapshot`,第 4 条只查存在性抓不住"内容被改但文件还在"的情形):任何失败
          (import 失败 / yaml 读不了 / Params 报错 / 字段缺失)一律计入 reason、判不可再生,
          绝不静默放过
+      6. **长表记录的底座指纹**(`run_meta.base_fingerprint`)是否仍等于 classification 现在记录的
+         (链 1~5 全是「当前代码 vs classification」,唯独这条核对「长表当初用的底座」;
+         缺这条时 `tune.setup()` 一重建分类表就会让假阳复现,详见该链处的注释)
 
     返回:
         (regenerable: bool, reasons: list[str])
@@ -366,7 +451,7 @@ def check_regenerable(longtable_dir: Path, apps_dir: Path = APPS_DIR) -> tuple[b
     lt = Path(longtable_dir)
     meta_p = lt / "run_meta.json"
     if not meta_p.exists():
-        reasons.append(f"{meta_p} 不存在:该长表归属不明(不是 multivar_scan 新版产出),只报不删")
+        reasons.append(f"{meta_p} 不存在:该长表归属不明(不是 multivar_scan 产出),只报不删")
         return False, reasons
     meta = json.loads(meta_p.read_text(encoding="utf-8"))
     app = meta.get("app")
@@ -376,15 +461,16 @@ def check_regenerable(longtable_dir: Path, apps_dir: Path = APPS_DIR) -> tuple[b
 
     # 链 2(study 指纹):不依赖 classification.json,提到「classification 是否还在」的
     # 早退之前先做,避免链 2 被链 3 的早退连带吞掉(评审 Minor 1)。
-    study_p = Path(apps_dir) / app / "study.py"
+    wdir = window_dir(app, lt.parent.name, apps_dir)
+    study_p = wdir / "study.py"
     if not study_p.exists():
         reasons.append(f"{study_p} 不存在:声明已删,无法再生")
     elif file_sha256(study_p) != meta.get("study_fingerprint"):
         reasons.append("study.py 已改(指纹与长表记录不符):当前声明产不出这份长表")
 
-    cl_p = Path(apps_dir) / app / "classification.json"
+    cl_p = wdir / "classification.json"
     if not cl_p.exists():
-        reasons.append(f"{cl_p} 不存在:app 已退役或未接入,无法核对再生条件")
+        reasons.append(f"{cl_p} 不存在:app 已退役或该窗口未接入,无法核对再生条件")
         return False, reasons
     cl = json.loads(cl_p.read_text(encoding="utf-8"))
 
@@ -429,5 +515,26 @@ def check_regenerable(longtable_dir: Path, apps_dir: Path = APPS_DIR) -> tuple[b
                            "当前代码算出的底座跟长表生成时不同,产不出同一份数据")
     except Exception as e:
         reasons.append(f"重算底座快照失败({type(e).__name__}: {e}):无法确认底座内容未变,保守判不可再生")
+
+    # 链 6(长表自己的底座溯源):链 5 比的是「当前代码 vs classification 记录」,它管不到
+    # 「这份长表当初是用哪个底座扫出来的」。run_meta 从一开始就记着 base_fingerprint,但在
+    # 2026-09-12 之前没有任何一条链读它——后果是 `tune.setup()` 一重建 classification
+    # (底座指纹换成当前 yaml 的),链 5 立刻通过,而长表仍是旧底座扫的,`regenerable` 假阳。
+    # 实测撞到过:扫完 → 改 params.yaml 定案 → setup → status 报 regenerable=true,而那份
+    # 长表确实再生不出来(实例见 apps/bb_v1/notes.md §11.1 坑 3)。假阳落在**删除**一侧
+    # (见本函数开头的语义轴),所以这条链必须有。
+    # 与 RUN_CALIBER 的分工:`write_run_meta` 把 base_fingerprint 也当口径字段,从源头保证
+    # 「一份长表全程同一个底座」(混底座的长表按格聚合出来的计数不是同一个东西);本链管的是
+    # 另一件事——长表已经扫完之后,底座又变了(典型是改 params.yaml 再 setup),那份长表仍然
+    # 自洽、只是当前声明再生不出它。两道闸缺一不可。
+    meta_base = meta.get("base_fingerprint")
+    cl_base = cl.get("fingerprints", {}).get("base")
+    if meta_base is None:
+        reasons.append("run_meta.json 未记录底座指纹(base_fingerprint 缺失;multivar_scan 每轮都写它,"
+                       "缺了说明不是它产出的):无法核对这份长表当初用的底座(判不了 ≠ 可再生)")
+    elif cl_base is not None and meta_base != cl_base:
+        reasons.append(f"长表记录的底座指纹({meta_base[:16]}…)与 classification 现在记录的"
+                       f"({cl_base[:16]}…)不同:这份长表是在另一份底座下扫的——常见于扫完之后改了 "
+                       "params.yaml 再跑 tune.setup(),当前声明产不出同一份数据")
 
     return (not reasons), reasons
