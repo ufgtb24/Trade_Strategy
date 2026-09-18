@@ -16,3 +16,7 @@ node_modules/
 
 # Visual brainstorming companion artifacts
 .superpowers/
+
+# 蒙特卡洛模拟的逐次原始结果与中间汇总（脚本可重生成，勿入库）
+docs/research/**/repro/results/rows_*.parquet
+docs/research/**/repro/results/summary_*.csv
