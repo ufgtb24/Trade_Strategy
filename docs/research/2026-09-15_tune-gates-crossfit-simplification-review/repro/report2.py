@@ -30,6 +30,8 @@ def band(r):
         return "全平"
     if r.surface == "theta0opt":
         return "工作点即最优"
+    if r.surface in ("relax", "relaxp"):     # v6 新曲面单列，不并进旧报告的小 / 大效应
+        return ("放松更好" if r.surface == "relax" else "松侧平台") + ("·小" if r.A <= 2 else "·大")
     return "小效应" if r.A <= 2 else "大效应"
 
 

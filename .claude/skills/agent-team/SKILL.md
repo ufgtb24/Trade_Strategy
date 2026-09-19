@@ -21,7 +21,11 @@ description: Use when 用户说「agent team」「团队」「teammates」「启
 
 **Agent team 文档归档约定**（细则见下节）：每次启用 Agent team 都必须为本次任务在 `docs/research/<日期>_<任务内容>` 下新建专属文件夹、且最终结论报告必须命名 `final_report.md`（中间文档可选）。
 
-**Agent team 完成后主动汇报**：spawn team 时，在 lead（即我自己）的运行协议里写死——当所有 teammate idle 且 `final_report.md` 已落地时，**立刻主动汇报报告要点给用户，不要等用户问**。判定 = 全员 idle + `final_report.md` 存在；汇报内容 = 关键结论摘要 + 文件绝对路径。
+**Agent team 完成后配白话版、再主动汇报**：spawn team 时，在 lead（即我自己）的运行协议里写死——当所有 teammate idle 且 `final_report.md` 已落地时，**先调 `write-user-doc` skill 生成 `final_report_白话版.md`（与报告同目录），再立刻主动汇报，不要等用户问**。判定 = 全员 idle + `final_report.md` 存在。
+
+- **为什么必须配**：`final_report.md` 要保住全部限定条件、误差口径与规范术语，因为它是下一轮 AI 的输入；用户读它心智负担过重，每次都得另外要一份解释。两个读者的需求冲突，只能靠两份文档解决，不做折中版。
+- **汇报内容** = 三五句关键结论 + 两个路径，**白话版在前**。
+- 报告在汇报之后又改了结论的，提醒用户白话版要不要跟着重跑。
 
 ## 文档归档细则
 

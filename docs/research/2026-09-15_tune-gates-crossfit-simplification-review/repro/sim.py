@@ -95,6 +95,13 @@ def surface(name, A):
         h = np.minimum(AT["z1"], z1_at2) + np.where((bu <= 2) | (bu >= 11), -0.2, 0.0)
     elif name == "peak":
         h = ((b1 == 4) & (b2 == 3) & (bu >= 10)).astype(float)
+    elif name == "relax":
+        # 「放松更好」：mono 的镜像，where1、where2 越松越好；最好格在最松角 (0,0,·)，买点 1.67×工作点
+        h = -(AT["z1"] + AT["z2"])
+    elif name == "relaxp":
+        # 「放松更好」的敏感性版本：只有 where1 最松一档新纳入的买点更好，其余原子全平；
+        # where1 = 0 的 20 格同为最大值（松侧平台），比工作点紧的薄格真增益恒为 0（纯噪声干扰项）
+        h = (b1 == 0).astype(float)
     elif name == "theta0opt":
         h = (np.array([-1, .6, 0, -.6, -1.2])[b1] + np.array([-1, .5, -.3, -.8])[b2]
              - ((bu - 6) / 6.0) ** 2)
@@ -609,6 +616,29 @@ def one_rep(args):
             w = bool(gate and okt)
             add(nmg, c_nv if w else REF_FLAT, emt if w else 0.0, smt if w else np.nan, extra=float(gate))
             add(nmg + "_mue", c_nv if w else REF_FLAT, mue if w else 0.0, extra=tau2)
+
+        # v6：选候选与开窗前门是否用同一把尺子。四臂写入门统一用全式：两段合并（每段方差 + τ̂²）单侧 95% 下界 > 0
+        # 且往后段点估计 ≥ −δ。rd = 全部候选格的 ρ·d̄（与 eb_paired(center="zero") 同式）。
+        # R0 = d̄ 取最大、无前门；R1 = d̄ 取最大 + 选中格 ρ·d̄ > δ；R2 = ρ·d̄ 取最大 + 该值 > δ；
+        # R3 = 在 ρ·d̄ > δ 的格里取 d̄ 最大（无此类格则维持工作点）。「_c」行 = 候选格本身（不过写入门），extra = 是否开窗。
+        rho_v = sM_ / (sM_ + tau2 / T + s2P[:, idx].mean(0) / T) if sM_ > 0 else np.zeros(idx.size)
+        rd = np.full(C, -np.inf)
+        rd[idx] = rho_v * d_t[:, idx].mean(0)
+        c_r2 = int(rd.argmax())
+        elig = rd > dlt
+        c_r3 = int(np.where(elig, d_pool, -np.inf).argmax()) if elig.any() else REF_FLAT
+        for nmr, c, opened in (("R0", c_nv, c_nv != REF_FLAT), ("R1", c_nv, rd[c_nv] > dlt),
+                               ("R2", c_r2, rd[c_r2] > dlt), ("R3", c_r3, c_r3 != REF_FLAT)):
+            if c != REF_FLAT:
+                wp, wq = 1 / (se_pre[c] ** 2 + tau2), 1 / (se_conf[c] ** 2 + tau2)
+                emw = (wp * d_pre[c] + wq * d_conf[c]) / (wp + wq)
+                smw = 1 / np.sqrt(wp + wq)
+                okw = emw - 1.645 * smw > 0 and d_conf[c] >= -dlt
+            else:
+                okw, emw, smw = False, 0.0, np.nan
+            w = bool(opened and okw)
+            add(nmr, c if w else REF_FLAT, emw if w else 0.0, smw if w else np.nan, extra=float(opened))
+            add(nmr + "_c", c, float(rd[c]) if c != REF_FLAT else 0.0, extra=float(opened))
     return scen["sid"], rep, rows
 
 
@@ -619,6 +649,10 @@ def scenarios(T=2):
         for surf, amps in (("flat", [0]), ("mono", [1, 2, 4, 8]), ("plateau", [1, 2, 4, 8]),
                            ("peak", [1, 2, 4, 8]), ("theta0opt", [1, 2, 4, 8])):
             for A in amps:
+                out.append(dict(sid=sid, noise=noise, surface=surf, A=A, T=T)); sid += 1
+    for surf in ("relax", "relaxp"):                     # v6 新增曲面：sid 接在后面，原 51 个场景的随机种子不变
+        for noise in ("N0", "N1", "N2"):
+            for A in (1, 2, 4, 8):
                 out.append(dict(sid=sid, noise=noise, surface=surf, A=A, T=T)); sid += 1
     return out
 
