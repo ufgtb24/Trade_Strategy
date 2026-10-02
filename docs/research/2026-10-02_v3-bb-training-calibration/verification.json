@@ -1,0 +1,46 @@
+{
+  "verified_at_utc": "2026-10-02T14:58:48.060125+00:00",
+  "pytest": {
+    "command": ".venv/bin/python -m pytest -q .claude/skills/tune-gates-v3/tests",
+    "passed": 119,
+    "failed": 0,
+    "warnings": 8,
+    "warning_kind": "Optuna 4.7.0 constraints_func experimental interface",
+    "duration_seconds": 95.31
+  },
+  "skill_validator": "passed",
+  "cli_help": "passed",
+  "local_markdown_links": "passed",
+  "formal_research_dependencies": false,
+  "temporary_experiment_scripts_remaining": false,
+  "tracked_engine_apps_dependencies_unchanged": true,
+  "bb_parameters_unchanged": true,
+  "market_study": {
+    "stocks": 256,
+    "frozen_parameter_candidates": 33,
+    "stage_candidate_evaluations": 132,
+    "scope": "2024-2025 method development only",
+    "fixed_candidate_library_not_adaptive_optuna_comparison": true,
+    "shrinkage_enabled": false
+  },
+  "independent_acceptance": {
+    "slow_window_random_cases": 80,
+    "maximum_absolute_difference": 5.551115123125783e-17,
+    "real_daily_optuna_synthetic_flow": "provisional then rollback",
+    "stale_file_reproduction": "rejected before labels after fix"
+  },
+  "source_sha256": {
+    ".claude/skills/tune-gates-v3/SKILL.md": "6e6498cca3f27af40090e4864dabd30d60dd5d8346a177e679d08290ae41fcbf",
+    ".claude/skills/tune-gates-v3/references/configuration.md": "58e86eb6e6995d1380e84aed0c2e85b3eaefc42b1bbf75cc85c3a438fa90b311",
+    ".claude/skills/tune-gates-v3/references/method.md": "3f1affeb36db50f389ad5db6461d40dfaad4345921ec1233b8612ab4ff10f03f",
+    ".claude/skills/tune-gates-v3/references/runbook.md": "6eabcd8e16979cc366d57d06f59f233509d02325425f4bb5af0aca9877325387",
+    ".claude/skills/tune-gates-v3/scripts/daily.py": "5465101f620efe8cfba626d9337b9dc08df90799667ab198ee60ff73fb7507c6",
+    ".claude/skills/tune-gates-v3/scripts/governance.py": "575b17b755d248acb62becf633a9c6435ce01158f96f9b8e373c6f91e873b0a8",
+    ".claude/skills/tune-gates-v3/scripts/run.py": "ff5e2cf177b992c7a07737c8e648b02bc34a9ba3847376a0d5dd82edf376b60d",
+    ".claude/skills/tune-gates-v3/scripts/scoring.py": "3b509e29aba5eb001387f2c4238d3961a60b45debf0521b82dc45262544f8ada",
+    ".claude/skills/tune-gates-v3/tests/test_daily.py": "bfa40dd16248f58d1bdc53b0edcd1dc9017f9a9b904164e062570c8b125a10a8",
+    ".claude/skills/tune-gates-v3/tests/test_governance.py": "8f59a74ca3a9a2390e4c07c5e68a40cfe0a2ad42a108d8960fff59a9cf4b132f",
+    ".claude/skills/tune-gates-v3/tests/test_run.py": "d6ddd5fdd4a3b5059b56e3dad18801700f4999ee6ccbf3ec1733b74b0f726c88",
+    ".claude/skills/tune-gates-v3/tests/test_scoring.py": "a265b38f44fb07a2c60fa743a9588f2336869acb95274fedb64e74642c1c6aa0"
+  }
+}

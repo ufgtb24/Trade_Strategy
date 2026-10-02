@@ -1,0 +1,1794 @@
+{
+  "symbols": [
+    {
+      "symbol": "LEA",
+      "n_rows": 502,
+      "hash": "055e6b70de6a9b1af8a73c726e09f8994f612416d199db3c60fa5cee599eb303"
+    },
+    {
+      "symbol": "KMDA",
+      "n_rows": 502,
+      "hash": "5a4108a3cbcc05919711832b28f292dcda5da2bcd65385cffab7226fa0e8f409"
+    },
+    {
+      "symbol": "MBAI",
+      "n_rows": 502,
+      "hash": "48d48e1e0a67daf2f27ada3e32cbb3338779ec3a3ad2d4f9ebde264e14b3e2dc"
+    },
+    {
+      "symbol": "ESTC",
+      "n_rows": 502,
+      "hash": "e8439be1031300b9e8014264e8d210fb17be045f54c2cdd8fdb74cd068278804"
+    },
+    {
+      "symbol": "GDOT",
+      "n_rows": 502,
+      "hash": "86083553affbf5b740d8a9a8ff53dd16dd590715798801b702c937694e2b92c4"
+    },
+    {
+      "symbol": "RCEL",
+      "n_rows": 502,
+      "hash": "c8f3fdefb668c6381356e7e80f7b084453b2f8384ded0cf5f3797f2eaed72203"
+    },
+    {
+      "symbol": "EOG",
+      "n_rows": 502,
+      "hash": "6bea7150a0f7dd27decc22b2a31ac0a00f0e31bdc1681266e2d014960ba3e0af"
+    },
+    {
+      "symbol": "DJT",
+      "n_rows": 502,
+      "hash": "5751167fdf06763de60fff4e60bbf01f386477848bcfbac7d63e5fcbce5febaa"
+    },
+    {
+      "symbol": "MDIA",
+      "n_rows": 502,
+      "hash": "7cc4af2ace163649890a436fae7965ca8f4df12a767b187d9d32896e1809e0fb"
+    },
+    {
+      "symbol": "MSA",
+      "n_rows": 502,
+      "hash": "4df6b9cc85c5d82c8e8e0af0a9bcfe21a92a94ff472970be7d6e9a9be739b138"
+    },
+    {
+      "symbol": "ARMK",
+      "n_rows": 502,
+      "hash": "e9b2c763110e238ef1ee2fa0303b2e9e25ba674d390bbd83026046b74f23c456"
+    },
+    {
+      "symbol": "SEVN",
+      "n_rows": 502,
+      "hash": "64014f21ae779a70da1cf03a47a04321f21f51a4af7bacc9516f6b8a33dd1abe"
+    },
+    {
+      "symbol": "ARGX",
+      "n_rows": 502,
+      "hash": "79b250db8a99404e9ca52b2163fe76c1dee8be95345a3b6af35a1a1d4cab247b"
+    },
+    {
+      "symbol": "SUN",
+      "n_rows": 502,
+      "hash": "854daeed65ac3449ab82caa3312f6228ef87b963400f38f1ee0d2f0d64890682"
+    },
+    {
+      "symbol": "KYMR",
+      "n_rows": 502,
+      "hash": "546ebdf29f0a7b1d26d0acbc071752c9314b299643f8b695702b691575ecae18"
+    },
+    {
+      "symbol": "OPHC",
+      "n_rows": 502,
+      "hash": "7f55e8d697cef90d6350bc4b25e4335d5e1ef54b55117999976684b39fcc76df"
+    },
+    {
+      "symbol": "REED",
+      "n_rows": 502,
+      "hash": "6fe7140cf84892002b0f9b832c6e0588de77bfd29e5231f2a70a86e43cf0ecf2"
+    },
+    {
+      "symbol": "CNA",
+      "n_rows": 502,
+      "hash": "d1ba398d0e4aac9580b361ba5db53826c61a1aef0076437c4c54b97c53ea60f6"
+    },
+    {
+      "symbol": "SANG",
+      "n_rows": 502,
+      "hash": "84bd0e71b8e8635e2ba1c5f4e397fa35608c38b2c83cf0495de91bdeab0968f4"
+    },
+    {
+      "symbol": "YJ",
+      "n_rows": 502,
+      "hash": "0e6f5f9b2b390114295fec8533357212ec15cccbe904a2e8d508e1d1a6a29d44"
+    },
+    {
+      "symbol": "KEN",
+      "n_rows": 502,
+      "hash": "8f16d5bb7a21fae2a4e2b5b8f76f90ed354d5d50fff90254c750fd3546075373"
+    },
+    {
+      "symbol": "MBUU",
+      "n_rows": 502,
+      "hash": "e752423907c7df32d88367bed8e9e8d9c1fb915f72f4f3445527cd5c101b578a"
+    },
+    {
+      "symbol": "AKTX",
+      "n_rows": 502,
+      "hash": "ae3a3ebae83834dd3c64ffe0fe2faf2defc29a7a6513ca4917cd30548c2764f5"
+    },
+    {
+      "symbol": "TXNM",
+      "n_rows": 502,
+      "hash": "4b1548e43b142a5dfccad0b5589e227a7dac517e312aeb2f7427fe658114a9dd"
+    },
+    {
+      "symbol": "OTLY",
+      "n_rows": 502,
+      "hash": "d513e43211178737c9cdda3bebeee780696c2920e61caa259528af0b290ad09d"
+    },
+    {
+      "symbol": "RMCO",
+      "n_rows": 502,
+      "hash": "cf0b053d76bfb12d76c2f82739c09ef8db6b1a30558cbef5e17c95e7eeefeaf9"
+    },
+    {
+      "symbol": "AFG",
+      "n_rows": 502,
+      "hash": "4af8b7cec0cf9707bb879046655a5775c3e64472a8bf27082aa27e6c86de1c0c"
+    },
+    {
+      "symbol": "SIMO",
+      "n_rows": 502,
+      "hash": "534729bbd8199dee524a8d75d78e6b751d9c444185fb35cd5bd6ae3a1d0cef28"
+    },
+    {
+      "symbol": "SIFY",
+      "n_rows": 502,
+      "hash": "ad34ed6fea01848fe653d4f100b54a953ed531d6cd415a1e25bf998825e533ce"
+    },
+    {
+      "symbol": "IR",
+      "n_rows": 502,
+      "hash": "88bce4d7821d71ec2b76028a6c2c365ef2466c0d740df6f2dfd9dfb0cfa0e85c"
+    },
+    {
+      "symbol": "CHW",
+      "n_rows": 502,
+      "hash": "d46033afdf9951a54563cd50b2b57237dfc69212b36d4fbf46767d224a02f0f7"
+    },
+    {
+      "symbol": "CNSY",
+      "n_rows": 502,
+      "hash": "d446324ee7621af47fb3bc9c6fdafb317cbb8f1c08c3c1e23453f4d9e3cd51a9"
+    },
+    {
+      "symbol": "XNET",
+      "n_rows": 502,
+      "hash": "427171230dcacf7a744394be0dada251d1026d3c95f4a627f060eb9bc5504020"
+    },
+    {
+      "symbol": "MNTS",
+      "n_rows": 502,
+      "hash": "f40657a863b75b4bf3916d74b2de8daf35a128ce50ba992cc1139def98a976ab"
+    },
+    {
+      "symbol": "OXM",
+      "n_rows": 502,
+      "hash": "87cd82b6dc5b486d4ef0d84f359b5d78036ed391bec3c72f35dd38f02da7e064"
+    },
+    {
+      "symbol": "PSIX",
+      "n_rows": 502,
+      "hash": "0b8e8e70d97181d669aad7e2d30ba84392d30fb5973b6ccb529b5122fd6353c2"
+    },
+    {
+      "symbol": "YOU",
+      "n_rows": 502,
+      "hash": "904a814372fe08c8d053a40a03e06d6682504ab17d67f040ea1cd24274be1e3b"
+    },
+    {
+      "symbol": "EGY",
+      "n_rows": 502,
+      "hash": "36117661228edf583b4622448adcd647ea8de192341a416a2ea6184026bbdfe0"
+    },
+    {
+      "symbol": "LOCO",
+      "n_rows": 502,
+      "hash": "396f72418cbdfb24ee97581c2e856325b4782b73ac091dac1d2eacad05ab7bc7"
+    },
+    {
+      "symbol": "CABO",
+      "n_rows": 502,
+      "hash": "ade747e2bcfc8766d3afd7abe2c784e39cca9ade3a8cbfee776db167f05c5d6b"
+    },
+    {
+      "symbol": "CL",
+      "n_rows": 502,
+      "hash": "044e5d5176b7323e961f904242a7591f725a59f55c93adca1cf23f8f1908dafa"
+    },
+    {
+      "symbol": "ASMB",
+      "n_rows": 502,
+      "hash": "10371485a1d7735e09762d7e5a5c5cbba04ab2c5efdd9f04258b005eba791c02"
+    },
+    {
+      "symbol": "AZTA",
+      "n_rows": 502,
+      "hash": "5f345c4a826bc3ad659b912f07487f556bdc0239ae78faf29d2c9785f4201010"
+    },
+    {
+      "symbol": "DSGR",
+      "n_rows": 502,
+      "hash": "c8c3a114f6d8316f846a0a63cd8da4d6cbdfc7c48533a6a4706e8b5658f28881"
+    },
+    {
+      "symbol": "LAC",
+      "n_rows": 502,
+      "hash": "3c7483df842de1fb42466a802281262f80fe06b098a7e50899a9446974f06502"
+    },
+    {
+      "symbol": "VERX",
+      "n_rows": 502,
+      "hash": "98fe04f54e07dc6cf5c27e0b695be9430df932203b6de11e07b5661f6bc0be5a"
+    },
+    {
+      "symbol": "HPK",
+      "n_rows": 502,
+      "hash": "6356407beae7e59254033b8e04d28e3696301af46a1d57dc756ddbd15c557770"
+    },
+    {
+      "symbol": "PROK",
+      "n_rows": 502,
+      "hash": "cd9b9a9fca48f91f0f4bd7611fd982fb8b53067e6a6259b20a90620ecfcd6926"
+    },
+    {
+      "symbol": "ETR",
+      "n_rows": 502,
+      "hash": "85c23c3ebc775a59db9b3118d3d301dffbc943dae678a759f06f31a955c99ebd"
+    },
+    {
+      "symbol": "SWKS",
+      "n_rows": 502,
+      "hash": "c0f51ac8c0f055311fe3e9a1b0ec846249efb210b32f2510b597f570dc71a5c2"
+    },
+    {
+      "symbol": "OBK",
+      "n_rows": 502,
+      "hash": "e040aca650db516a63d0ac5e114f31a189fd470811568f648979f216532e2cb1"
+    },
+    {
+      "symbol": "LBTYA",
+      "n_rows": 502,
+      "hash": "1fa4768b77a889c3f75188eff7164a5f5b73038b6ae2f7f4d8e466b54f128953"
+    },
+    {
+      "symbol": "AOSL",
+      "n_rows": 502,
+      "hash": "713294bd849f6bcddbd94647827684469778c2a7d539c5264ac84584aa6313e4"
+    },
+    {
+      "symbol": "INV",
+      "n_rows": 502,
+      "hash": "d89fee18a392c66bb201f86112d53f7ca3467698059cac14b712cfc29f6abdc0"
+    },
+    {
+      "symbol": "CEPU",
+      "n_rows": 502,
+      "hash": "ba9c05b8c3ed0067c5d550ed3c7ff201b3a08f6c6b841f2963bc70362e2b7260"
+    },
+    {
+      "symbol": "MOV",
+      "n_rows": 502,
+      "hash": "1654b8ca453311d297d0d7bb8b9f005aec1a491038731f30e9f9b574927b866d"
+    },
+    {
+      "symbol": "MXCT",
+      "n_rows": 502,
+      "hash": "8b77b83f0417ed9c6b8e435559f6734dfad31df03d8f9ff4a716315be2daa8a2"
+    },
+    {
+      "symbol": "DXC",
+      "n_rows": 502,
+      "hash": "d2970fb5739518bdd98674a65ce067a98961622114ee0132355e26a4964a9dd9"
+    },
+    {
+      "symbol": "CVR",
+      "n_rows": 502,
+      "hash": "be5468fcf5f911122c5b39e4c517872c5a91e6f02326b0668e98a9de67cbdc6d"
+    },
+    {
+      "symbol": "ARCT",
+      "n_rows": 502,
+      "hash": "47d5481dd5d2083cdf775caeb7057cf51558aaadbf02d5cbf2f63684c3c2658b"
+    },
+    {
+      "symbol": "NUAI",
+      "n_rows": 502,
+      "hash": "d4791687f217e7065937955de1283783905eb533306a708aebf5644485584908"
+    },
+    {
+      "symbol": "GNTA",
+      "n_rows": 502,
+      "hash": "16e6f6e913549f87fbfdae64dacdd8e6c9d0a0cc052124b7913c23302baa8a02"
+    },
+    {
+      "symbol": "PRSO",
+      "n_rows": 502,
+      "hash": "bc093b7ed12c487ad3b5ea140a783a6cf41a7f230baf48b9ce6fa172c0ef32bb"
+    },
+    {
+      "symbol": "HRTG",
+      "n_rows": 502,
+      "hash": "823b90d7183613fa372606197461d0f57007e7c3adae38977cf29a22b430c30c"
+    },
+    {
+      "symbol": "REPX",
+      "n_rows": 502,
+      "hash": "0575bda2b63827e9cbf442790cd5499a901a6a88ceae5ede76d222304cb100fc"
+    },
+    {
+      "symbol": "NVTS",
+      "n_rows": 502,
+      "hash": "6aaa03eba5dc790e8fbebf5c7a523bd45f185c749f59e4986b8a57a2b4ad04c0"
+    },
+    {
+      "symbol": "BPOP",
+      "n_rows": 502,
+      "hash": "2ca87c8d080e91c59c00b219f66862cbe1d2de7ec9edeb47b389461cf0186c1b"
+    },
+    {
+      "symbol": "NICE",
+      "n_rows": 502,
+      "hash": "67f1868570e6fce30a76a786d758c42a86bd3d08ca6d40796239f980bc7d5d63"
+    },
+    {
+      "symbol": "TBPH",
+      "n_rows": 502,
+      "hash": "b624461c0433e8a6be4f4a3365dede15cb4324df0c081dd1cca1f01abe7c9a3e"
+    },
+    {
+      "symbol": "RIVN",
+      "n_rows": 502,
+      "hash": "1527d8e7bd163ee9cfb636b03c969dee40be2546ed9f6ce2cc4523c28bb7bb48"
+    },
+    {
+      "symbol": "NECB",
+      "n_rows": 502,
+      "hash": "76b2f7d0513aa79b265e321966b3b3cacc075d6b03fd12ce15a75eb3344cb0b3"
+    },
+    {
+      "symbol": "DLNG",
+      "n_rows": 502,
+      "hash": "a382ccdfeabd8994f1b7ff40102fdbc678489fbfa73b9c87ec60e6bd5e7c1d78"
+    },
+    {
+      "symbol": "IOT",
+      "n_rows": 502,
+      "hash": "cb284f75c498d557e63cd0162aa611cf4959acdf0ec0c2447bc7fe1f6604464c"
+    },
+    {
+      "symbol": "MNSB",
+      "n_rows": 502,
+      "hash": "ffd2e54a0d54b472c1389ffa52c9b95b5e3e93be68f0b0b28c03c0e7a1c7e9c8"
+    },
+    {
+      "symbol": "BNC",
+      "n_rows": 502,
+      "hash": "8ace6e80dbcbc3e4c75b3890ae7d2599932ec66e7edf6ac35642420f37ab2159"
+    },
+    {
+      "symbol": "IAF",
+      "n_rows": 502,
+      "hash": "ca7b0fec5bcfc218f9e0113c1aad9c71916200e059c304b157ab81fb6c3da207"
+    },
+    {
+      "symbol": "SPOK",
+      "n_rows": 502,
+      "hash": "eee23b73cfed0050dc6eced957dff5f3380c6701cc5da1f58f47984bf4e45cad"
+    },
+    {
+      "symbol": "COSM",
+      "n_rows": 502,
+      "hash": "498da9513ebceedbdeaf360f61c4060b9ca3b7e4e44ec1f80d3eb2d047d1f75f"
+    },
+    {
+      "symbol": "WF",
+      "n_rows": 502,
+      "hash": "ead372eb6325b5007353d83111ca165d65c82c43d332c9ffea919ad96fad8fe2"
+    },
+    {
+      "symbol": "FTAIM",
+      "n_rows": 502,
+      "hash": "9f6ed9054cfa979d6a551113136d4242d848e4546ac7e51a4c236e40f7f9e5c0"
+    },
+    {
+      "symbol": "ARQT",
+      "n_rows": 502,
+      "hash": "4523557429437d57fc1cd470ae6f1b4722775052f66403e71e95ea27745e8b93"
+    },
+    {
+      "symbol": "JJSF",
+      "n_rows": 502,
+      "hash": "c039907b1709f584cfbfd666fed70c09e05b4437cfc52473a22a49ebb8e708c9"
+    },
+    {
+      "symbol": "RNG",
+      "n_rows": 502,
+      "hash": "1a032699f2c5d03222f645376573911a508d65a5704d52a40ab7fffa57329f6d"
+    },
+    {
+      "symbol": "PRKS",
+      "n_rows": 502,
+      "hash": "e9434d2ad87de194bbe18c7f3c1a628b837942cc045e1f4abdcc250c4ef94ff9"
+    },
+    {
+      "symbol": "OPXS",
+      "n_rows": 502,
+      "hash": "0d76c3d5d3d19dfbfb5cc50f39c4f325f0d1ac60c990f89b039bf7fbb75f4206"
+    },
+    {
+      "symbol": "VTGN",
+      "n_rows": 502,
+      "hash": "72b138363ff3a5336d5d96d2d15501fe9558ee43f20d3a83556c00e7b1d1b9ad"
+    },
+    {
+      "symbol": "OR",
+      "n_rows": 502,
+      "hash": "036d44a6a58ac8fa9c1bc547579c8c8cdbc61d430760f1c75e68024d906d6a09"
+    },
+    {
+      "symbol": "NUV",
+      "n_rows": 502,
+      "hash": "59fd6f8ca9ad3a425a535a0b28b66c3a783220f6d0bbf7675fa192a5040cc25f"
+    },
+    {
+      "symbol": "ADAML",
+      "n_rows": 502,
+      "hash": "7bec8340e77c7a880f374e7beef6d7b3cfbe0101ea6dcd30ec5533ef5439afc3"
+    },
+    {
+      "symbol": "RBC",
+      "n_rows": 502,
+      "hash": "31d0873a7b986ecebe583a0f65a83cd56a597614d7fc18a788954cc5f5903edf"
+    },
+    {
+      "symbol": "LPLA",
+      "n_rows": 502,
+      "hash": "107ddba1b2afc76e4d110120930ea4c6f96ea5d3ffa5967af01280f42b17b497"
+    },
+    {
+      "symbol": "CLDI",
+      "n_rows": 502,
+      "hash": "a0953090256ceba87ba6e2178c09e194ed5f709830de049ebef1b29ed95f962b"
+    },
+    {
+      "symbol": "RDCM",
+      "n_rows": 502,
+      "hash": "12a9b01a37239ee11d72ce88fd0ffb58185d3015c58e89c92c2523a5ccee9426"
+    },
+    {
+      "symbol": "RPAY",
+      "n_rows": 502,
+      "hash": "1438b6f3e6d0e01779066fe4db284e32864361bed5d0e17de343fcc33f99090d"
+    },
+    {
+      "symbol": "INTU",
+      "n_rows": 502,
+      "hash": "3980cc03d07dd29d8dfd2909ff9a0913ff9e7c9196ecce5a21a2a33ef5459909"
+    },
+    {
+      "symbol": "SQFT",
+      "n_rows": 502,
+      "hash": "bb0e24aa63dca6ac28805bc8469f920e50dffb619ec3b22c8497f1b70f34bb5a"
+    },
+    {
+      "symbol": "KRUS",
+      "n_rows": 502,
+      "hash": "bbe75023b6edb388f4cadb469f9da30913ce796b5f34451c154d9e7b51b90116"
+    },
+    {
+      "symbol": "VC",
+      "n_rows": 502,
+      "hash": "aad668663006f939d063cfeca74b59a0d5697ec7d9d0c44c28fd730973f5338f"
+    },
+    {
+      "symbol": "CLLS",
+      "n_rows": 502,
+      "hash": "4a98d8fac49c2255eb3ce25df7a9e0656fa088a85c68d882519958e3efa166b3"
+    },
+    {
+      "symbol": "B",
+      "n_rows": 502,
+      "hash": "9ed601c7253cf926c13a773df718bf20a458bb44f57c99b95d1d0eacf15d3e33"
+    },
+    {
+      "symbol": "SND",
+      "n_rows": 502,
+      "hash": "18ea96b035aafbb3add0e263ba8ddfc9786bb476a6cbb015a867fc6f32208d40"
+    },
+    {
+      "symbol": "ATRO",
+      "n_rows": 502,
+      "hash": "bacefc556a18a62f4a6ce32bcd6bd5fee84850e78ae3ef2738fdf84101f19972"
+    },
+    {
+      "symbol": "CRNC",
+      "n_rows": 502,
+      "hash": "c614c13ff043cc0121a4db0e0d5b50ddd46513f4916e202397c5639413639933"
+    },
+    {
+      "symbol": "DXR",
+      "n_rows": 502,
+      "hash": "3ad66ac0a72507017497470835d16f9907a4934949b941e21884e9e66c2444bc"
+    },
+    {
+      "symbol": "XPOF",
+      "n_rows": 502,
+      "hash": "9c9b6fe9407139235ef91408df3882668970555aae1fb054f17b2c33817a575d"
+    },
+    {
+      "symbol": "ANL",
+      "n_rows": 502,
+      "hash": "d288521c4e122008fa3c25a06bf401bfa274c93e9a503d85ea0a0da023d2128b"
+    },
+    {
+      "symbol": "NAMSW",
+      "n_rows": 502,
+      "hash": "5168adebb51bfc92a28657d40656239427f73facc7fc74c1c74addf4079b7bf4"
+    },
+    {
+      "symbol": "AWI",
+      "n_rows": 502,
+      "hash": "4540618a1254dfbe0412c7420b0e6244983cc0de7ae5fe75511e20913c33a12d"
+    },
+    {
+      "symbol": "CPA",
+      "n_rows": 502,
+      "hash": "4aeff1a5a4a7b9a0efc688d993e992765978af7c5c09a571736ed378e12aa700"
+    },
+    {
+      "symbol": "XRN",
+      "n_rows": 502,
+      "hash": "efae5bcdda7a02851c12a3e37cc9f0608d9a2599868631eeaf53ec94815c882f"
+    },
+    {
+      "symbol": "PWCM",
+      "n_rows": 502,
+      "hash": "3cbe3fdfb72c9daf5bc91496d74039a98261e072a1fec728f370e5462efd407b"
+    },
+    {
+      "symbol": "GCBC",
+      "n_rows": 502,
+      "hash": "d9b3aee818adfb52ce715a0befeca711a7213584bda6c573c2b1af509861fc58"
+    },
+    {
+      "symbol": "LRN",
+      "n_rows": 502,
+      "hash": "0419ee7397f8fdcf2910d6f6563c677120669c73ba2bbbf6776504a42ef6cfee"
+    },
+    {
+      "symbol": "RMBI",
+      "n_rows": 502,
+      "hash": "d35658b4dc613fdd1a574e6431e04464dce1bbfc2adf6609a97de04c03a40eba"
+    },
+    {
+      "symbol": "HBM",
+      "n_rows": 502,
+      "hash": "fe8e486cc31cc8844ec10e3bea070bd1cf6126a2a8c9c7eafce6edcc7cb79281"
+    },
+    {
+      "symbol": "QRVO",
+      "n_rows": 502,
+      "hash": "7b32a09ce9003ef9464045f7785ec9134c9f8cfadeba523c9467937b89c732fd"
+    },
+    {
+      "symbol": "MRNA",
+      "n_rows": 502,
+      "hash": "8035ab10a86c9d53427e056a3072a2c343b9b250aa63e3ab4c15297a70a30f0c"
+    },
+    {
+      "symbol": "WPM",
+      "n_rows": 502,
+      "hash": "edf2d7244238d17d01415489a01d53ba55a147bde295cd95f3bd3311960a4be9"
+    },
+    {
+      "symbol": "PEPG",
+      "n_rows": 502,
+      "hash": "0c43c2d46932fac6f2be57ee812b2aa6e308391b298b346a1ed5a9336bae33ad"
+    },
+    {
+      "symbol": "DSX",
+      "n_rows": 502,
+      "hash": "c4c960b7bf5f07a6b486554866fd518ced96d91ecb77ce8b112459d378b85653"
+    },
+    {
+      "symbol": "CHSN",
+      "n_rows": 502,
+      "hash": "bc35b470777c40ec3180875f3df55647c6601f5eaae98662bc1782310d6ae17f"
+    },
+    {
+      "symbol": "LEE",
+      "n_rows": 502,
+      "hash": "fd86983b6f25cb4d5a62c155dae5db6801cd5bf6ba07187ddc1b79a4824ae91d"
+    },
+    {
+      "symbol": "NSTS",
+      "n_rows": 502,
+      "hash": "7811ada2df50ec571900834ac9faa6eabd89403242e56f307d4d5898069bdcc0"
+    },
+    {
+      "symbol": "TCOM",
+      "n_rows": 502,
+      "hash": "9cff9328786be6c0a83dd8ddfed629fea93f01d23ca66c387938b432a1ea8189"
+    },
+    {
+      "symbol": "LPCN",
+      "n_rows": 502,
+      "hash": "75d5bd0a0cbdf8407fa78d36760e258f46ac6cc318a05c531353976139c6206f"
+    },
+    {
+      "symbol": "LX",
+      "n_rows": 502,
+      "hash": "cd908bb2d8ba8e4b29561776cb4b10b1cafa89c7bfb3b0e10884d636e962f84f"
+    },
+    {
+      "symbol": "RGLD",
+      "n_rows": 502,
+      "hash": "2127d270c9ecfd5defd1ddf4a9d71baf83aa0f1fc28359840142d3a11c841a2d"
+    },
+    {
+      "symbol": "BNED",
+      "n_rows": 502,
+      "hash": "92fa851cd7a66c393f7ce78436dfb1049f41dca097788fd65dc837b918c39fd8"
+    },
+    {
+      "symbol": "TPG",
+      "n_rows": 502,
+      "hash": "20bb37d5981f529468f86e8517e0a07feaaf33a8c45d12753713e0c58839ae48"
+    },
+    {
+      "symbol": "MD",
+      "n_rows": 502,
+      "hash": "c0a9ebd5ec89818dfdf567dfbcb4fb4c26c4bcb1f9aa580e65653c3a81ef06d1"
+    },
+    {
+      "symbol": "BLDR",
+      "n_rows": 502,
+      "hash": "732ddf3f2c7622f5d502d2c8393cbd4f2300cb7315c43864f0160ef531d6fcce"
+    },
+    {
+      "symbol": "SRTA",
+      "n_rows": 502,
+      "hash": "fff852b022512522fadcc9d994a9f46e6fa129d153d2c068555f8a22dcec52e7"
+    },
+    {
+      "symbol": "RDVT",
+      "n_rows": 502,
+      "hash": "b0d6fb958b5cb22278655377d83eba3f2004cb31326983ba971aa265a9ff2ba2"
+    },
+    {
+      "symbol": "SUNE",
+      "n_rows": 502,
+      "hash": "91688b93ddabebe8d63cb6133a70c555f807b1582fa511447c7507cfaaee9b32"
+    },
+    {
+      "symbol": "ANIP",
+      "n_rows": 502,
+      "hash": "143de885ed6253385f5f96b560508936c8828d17a16a566f3d241a2d770573f6"
+    },
+    {
+      "symbol": "ALLO",
+      "n_rows": 502,
+      "hash": "d2383009f005e1eb51365006391676221271d7c66a30bfce5b54038071e634ef"
+    },
+    {
+      "symbol": "PFXNZ",
+      "n_rows": 502,
+      "hash": "2795b7b38208a78122d4f0701e61969ba54b14b486eecab5a56a0d7c54e2f93f"
+    },
+    {
+      "symbol": "SOS",
+      "n_rows": 502,
+      "hash": "01f7b3ca0cc4140caca3ae534bb2b90ae31caa00c0182e6ea2aea7e4dca57949"
+    },
+    {
+      "symbol": "FITB",
+      "n_rows": 502,
+      "hash": "f9249d806784cbfddea33b19da7b257966ecced12f620598ac600adeb6999156"
+    },
+    {
+      "symbol": "BLNK",
+      "n_rows": 502,
+      "hash": "105a98653d52cec69c8a016db35340229dff079ff986f4fa667a185153431290"
+    },
+    {
+      "symbol": "FRT",
+      "n_rows": 502,
+      "hash": "843cac1fdd64ac149c68ba336acb17edbd40032eeb60c59362a5722683695b75"
+    },
+    {
+      "symbol": "BANR",
+      "n_rows": 502,
+      "hash": "c4fd703b6296c2d52ae748b46f9327216fc9448313b2013bbbf7e60c61ed6882"
+    },
+    {
+      "symbol": "PGC",
+      "n_rows": 502,
+      "hash": "5d4bfaa86d89b5e67c5b9fad879efa3515f3a827f7c1adf3689c18cb0a2f4a65"
+    },
+    {
+      "symbol": "CSGP",
+      "n_rows": 502,
+      "hash": "4efadd0b8a774156d6a204a3bfc771bef1222d1ad75e71e3648d3c49267c6bd0"
+    },
+    {
+      "symbol": "HRB",
+      "n_rows": 502,
+      "hash": "58f54f4dff137bcfd3e69f6ba24204e468185b0b0f599b3874c1e4052c04d728"
+    },
+    {
+      "symbol": "ETSY",
+      "n_rows": 502,
+      "hash": "65b4eac2e4bd3d50761b6fcd7cbe8d88eddd8de4824f43f1300408f7812b46a3"
+    },
+    {
+      "symbol": "MDRR",
+      "n_rows": 502,
+      "hash": "6ab0c3e6506d82bf7138526b3958f85c972865fbfb47b5c2ae765c8a9985ffa7"
+    },
+    {
+      "symbol": "SNOA",
+      "n_rows": 502,
+      "hash": "c0f1369974d9efdf04f312e6988572f00c7077a2943035f327258a121865bffa"
+    },
+    {
+      "symbol": "TDG",
+      "n_rows": 502,
+      "hash": "c590f1939c6bba4627db83e8792c1d9369b028498f1cc3da040fa3932b0dd977"
+    },
+    {
+      "symbol": "MWA",
+      "n_rows": 502,
+      "hash": "90981b8a2a7f36e8dfc44bf9f4e17bce1bd0ce63faba48ea57d2ab5d4e081b3b"
+    },
+    {
+      "symbol": "LVLU",
+      "n_rows": 502,
+      "hash": "3c9f5aa64eacbd78e2bd5431580ec2569f8ef8d291939fa7396d6f33876312c1"
+    },
+    {
+      "symbol": "BCDA",
+      "n_rows": 502,
+      "hash": "b0fcad90b65181a317e7eeb16255f96a508c29d5a3b4edc59aa4aef4e80a63c0"
+    },
+    {
+      "symbol": "BTCT",
+      "n_rows": 502,
+      "hash": "702a3b8a00ea4bacf8868065b18a225351c5ba376d923db6617cfe0d5f6c430d"
+    },
+    {
+      "symbol": "SCCF",
+      "n_rows": 502,
+      "hash": "8a967a146c367abd85ccb8b6e119ac006edf58ec35fce78eea7a089c28bb91f5"
+    },
+    {
+      "symbol": "ROAD",
+      "n_rows": 502,
+      "hash": "8d957345396bbde85864f068e82d6dc30f020830ffea03d846d142a6f0cfd942"
+    },
+    {
+      "symbol": "BATRA",
+      "n_rows": 502,
+      "hash": "ee708bbd8271b64df1ad88e82c7067b44a8a4a85e932376cfbdbb33b1d25128e"
+    },
+    {
+      "symbol": "PK",
+      "n_rows": 502,
+      "hash": "3a222c97a0414b3fffeca66c11338421beda18d7aea7b69da2dac7e70e2e5c80"
+    },
+    {
+      "symbol": "DAO",
+      "n_rows": 502,
+      "hash": "6c16ee74e5e5f5957088ee5831e4ec682884ed262f45d422bcee1a91154fe44a"
+    },
+    {
+      "symbol": "OVBC",
+      "n_rows": 502,
+      "hash": "4c12ae1b78a3ec32964adc87bdb2f3aff4ed9e6e0449eb015a754addceabe23f"
+    },
+    {
+      "symbol": "CRDO",
+      "n_rows": 502,
+      "hash": "1194135f39224fc3472c373985eee2293f72c39b968547b092e1badbbb1f751c"
+    },
+    {
+      "symbol": "UHS",
+      "n_rows": 502,
+      "hash": "38a5a94f8bd6b0128dd0d6880d412b1fe658c25099e8c701226a1acc54bd293a"
+    },
+    {
+      "symbol": "CNMD",
+      "n_rows": 502,
+      "hash": "b92d2a20a3187df15fb902b4317cdcd70e52660480b0ae05393cda0434dd2e61"
+    },
+    {
+      "symbol": "LIN",
+      "n_rows": 502,
+      "hash": "b7501907a9a939f28187d21eb71cebb482fa713a7cf7a51597416254323e6a9f"
+    },
+    {
+      "symbol": "ANGI",
+      "n_rows": 502,
+      "hash": "32269a83161abe7cf7b7a3c3cb9445b2083352d6a745f873d0b01b39033048c4"
+    },
+    {
+      "symbol": "PKG",
+      "n_rows": 502,
+      "hash": "18c7fb7ab17a3db1e004755ef75ea91e52ca0a96c9a8b837cafbf9d1f6c47065"
+    },
+    {
+      "symbol": "XBIO",
+      "n_rows": 502,
+      "hash": "0b5c9c1eb855eae03c40bd0caa3b61818b36a7d0d9f6a0ddbc138b1b9df83937"
+    },
+    {
+      "symbol": "AHCO",
+      "n_rows": 502,
+      "hash": "e5b2c91cca9cff4395a796c51b1baf39b9ee44d8a7ff0865d476b45cc974699d"
+    },
+    {
+      "symbol": "APRE",
+      "n_rows": 502,
+      "hash": "1fdb6145f563a047fcb3831a035fa727e08eb3d6d80d5b6bfb725720d8419571"
+    },
+    {
+      "symbol": "HTCR",
+      "n_rows": 502,
+      "hash": "8b3f6841d75d91034dd1b0535651d0e69af3b1edeb47103051e390191a83b9f0"
+    },
+    {
+      "symbol": "WKC",
+      "n_rows": 502,
+      "hash": "ec57c796e7bc5639dc1fac18c3322ea545a73bd720b0e6b2818e0add588de293"
+    },
+    {
+      "symbol": "WEAV",
+      "n_rows": 502,
+      "hash": "293866f694936e8c5507ab98d2f3ecfd870dee7e442d4a1fcb08f06875b5d29b"
+    },
+    {
+      "symbol": "KULR",
+      "n_rows": 502,
+      "hash": "d051b62772d8f86017edcfafe9ea66aaa331113341951995622e68b147d226d5"
+    },
+    {
+      "symbol": "CISO",
+      "n_rows": 502,
+      "hash": "642827d18af25a50777b4ef4d38e5063c392aa1726d4a28eb0fbee70887299fc"
+    },
+    {
+      "symbol": "MSCI",
+      "n_rows": 502,
+      "hash": "f3f4946a2156982eaa4fdc39e492514762af8643b4df6799fc8bf31c1d835fec"
+    },
+    {
+      "symbol": "XBIT",
+      "n_rows": 502,
+      "hash": "5369fc8d2ce1764dc431a17edcce0a45bb1760c146901312064b664455a9123f"
+    },
+    {
+      "symbol": "MNSO",
+      "n_rows": 502,
+      "hash": "ee5e64d4e936a45d51d5e38a2f2794db9c68b1dac8be68a74fe996667871c808"
+    },
+    {
+      "symbol": "XLO",
+      "n_rows": 502,
+      "hash": "d39ef5b4a811c5872ba9015e8200394bbf31716f5884fe5076bc83e25a4a7709"
+    },
+    {
+      "symbol": "QNRX",
+      "n_rows": 502,
+      "hash": "56ab2ec3b541d045d0b0bd62519faba62ca4969ca06267af3895a4565042995c"
+    },
+    {
+      "symbol": "IAUX",
+      "n_rows": 502,
+      "hash": "4a231abbf535f217f14f90f57f1c83ddfed90fb1c72596104d6b8bb6a2b01f32"
+    },
+    {
+      "symbol": "TDW",
+      "n_rows": 502,
+      "hash": "b1f2601bfa2161c71a7337e825f31eafbb5674e0506cddfef2ff2e4e30559e3b"
+    },
+    {
+      "symbol": "DERM",
+      "n_rows": 502,
+      "hash": "66effb04441784e6ba3f32e29d1777c7a4d2faf211c8b5f7bb18d87c90fee97c"
+    },
+    {
+      "symbol": "LEO",
+      "n_rows": 502,
+      "hash": "5e4edfe942756a6fd95297d113d8d93e04056a179fa64335ed88d995bea118af"
+    },
+    {
+      "symbol": "BNL",
+      "n_rows": 502,
+      "hash": "97189553fccf8a0316f9cbe64bc1fb995a5d5057405b19a7aa2e17918d284e61"
+    },
+    {
+      "symbol": "MOBX",
+      "n_rows": 502,
+      "hash": "e5c814dfd24004bee5fb0068744e4353dedd97d471752c74e7273a80804ad04e"
+    },
+    {
+      "symbol": "RKTO",
+      "n_rows": 502,
+      "hash": "2f995ef4d9c299ae85f233ba519138b997215237536177a1ed109d0d3652ba5b"
+    },
+    {
+      "symbol": "ZH",
+      "n_rows": 502,
+      "hash": "00d94435e633ee0ec4c89fd7222b5768e3da6e7b5f09d6df6d56fda631dc8a86"
+    },
+    {
+      "symbol": "ALGS",
+      "n_rows": 502,
+      "hash": "a0632aa232ab097833e32d93316d70ec68ac4b84de98c961d432ce4c0b00b93b"
+    },
+    {
+      "symbol": "TMC",
+      "n_rows": 502,
+      "hash": "786f366f6b30e17615309f5c298f38a34478819ae84e581de281f8062bd073ca"
+    },
+    {
+      "symbol": "CISS",
+      "n_rows": 502,
+      "hash": "0170463704504164ccd3511dca64aa7ed67419e8ab8b009183b2b842d8b0ad9a"
+    },
+    {
+      "symbol": "MNTK",
+      "n_rows": 502,
+      "hash": "bbc5eb4478189c86a4c64bdb0d0f74d5e24f677c44d06efaa0e4ec0c63768d78"
+    },
+    {
+      "symbol": "ATMU",
+      "n_rows": 502,
+      "hash": "fd6f7c0aa6c5f8c7dd5f23181059ca930133a00db157e577e655a08c9d83863f"
+    },
+    {
+      "symbol": "SPWH",
+      "n_rows": 502,
+      "hash": "fb2cfa06cf9a1f75f6eb3f603ba581a1c998e3ac76928f5c4c718ad5ac2bdf56"
+    },
+    {
+      "symbol": "SATL",
+      "n_rows": 502,
+      "hash": "ac60c080af1cb62b30a6fb762f6b7612b527dc70f55d5ca154cea23fd9109f3f"
+    },
+    {
+      "symbol": "INSW",
+      "n_rows": 502,
+      "hash": "bb8acf54ffaa85975614b856b354c86423fe6061a1b78fb70c42557e8e328f59"
+    },
+    {
+      "symbol": "VNT",
+      "n_rows": 502,
+      "hash": "b52b92a0ef045ad2c17d345bd6b61c7642cf468676513bdd69a587eacbc25a71"
+    },
+    {
+      "symbol": "CSTE",
+      "n_rows": 502,
+      "hash": "105443784744813a66803d2dd3ff5fc0611d3bfd409b7754960ddbf25c63db01"
+    },
+    {
+      "symbol": "BHF",
+      "n_rows": 502,
+      "hash": "f2c39e5bb87928409c0232413d543f8725748df5bb0e4efcb38d72f4a579a7e0"
+    },
+    {
+      "symbol": "SCSC",
+      "n_rows": 502,
+      "hash": "534a721045aba1fdc4bdf97f2358b808a5444842c5505cedcef58d41af74008e"
+    },
+    {
+      "symbol": "NTRBW",
+      "n_rows": 502,
+      "hash": "1e53b7cb0d8f7a21e7a685cd6a0af56a1185a1840a9943c1c03f6a334f88e675"
+    },
+    {
+      "symbol": "PEG",
+      "n_rows": 502,
+      "hash": "f404803a8add45c9c1d516d4597905b4ee1ef6241f3ae7a46dcaebf52d7c6088"
+    },
+    {
+      "symbol": "FTRE",
+      "n_rows": 502,
+      "hash": "86edd6466e44b5cf1d24823d89cebe406903676de1e786e8eb3ec3470a8b2b03"
+    },
+    {
+      "symbol": "ODFL",
+      "n_rows": 502,
+      "hash": "53cfe4b41bba6532e39031b04d839e6f33457cfc41435f5b2e1dc6b847942db2"
+    },
+    {
+      "symbol": "BBAI",
+      "n_rows": 502,
+      "hash": "7ff25ac3fc2d12cc3a9e39370d364daec15a2d5ee80b947783336fb8045d61b2"
+    },
+    {
+      "symbol": "ADUS",
+      "n_rows": 502,
+      "hash": "527c5e7db1e53b80bd33cd8dcfc58d62a58bf5b7725796fa6d286009b02a95ea"
+    },
+    {
+      "symbol": "IQ",
+      "n_rows": 502,
+      "hash": "efe4c4195b30091787ace7eefcb921581624bbc532e6784a912bdc7d7dd60375"
+    },
+    {
+      "symbol": "UCAR",
+      "n_rows": 502,
+      "hash": "bd7a241031912675ee67d8ecbad6e18d7cdcd1bca6b268551969b8ff62516168"
+    },
+    {
+      "symbol": "TLSI",
+      "n_rows": 502,
+      "hash": "931b76e126771d9df7dbb6da060e05be820ca5eaa7f10d31bb5f82c8f5a5440e"
+    },
+    {
+      "symbol": "SGHC",
+      "n_rows": 502,
+      "hash": "9c1a39e06f4899cdd053629a03f57b96c98426d9c67003dcf33ed73dac73cbbe"
+    },
+    {
+      "symbol": "ASTL",
+      "n_rows": 502,
+      "hash": "3d3d6a537593f2e148e20462f32466fb2cebc3504d5171154170cd50fcbc638d"
+    },
+    {
+      "symbol": "CVS",
+      "n_rows": 502,
+      "hash": "1bc2d811a54b5bc05e36d03efb74e7e2c0ec62a3514b0e8951b9a926f0ac13a8"
+    },
+    {
+      "symbol": "CSWC",
+      "n_rows": 502,
+      "hash": "d1cc02fe58c5323c7104a46e5abe828cc4445719ab6ea253e34488605b994602"
+    },
+    {
+      "symbol": "MLTX",
+      "n_rows": 502,
+      "hash": "4f4de3c89acf7cfe0cbcd31b51b3977838ebc9f0e9fb408ee25a41e46fe3a9d5"
+    },
+    {
+      "symbol": "URG",
+      "n_rows": 502,
+      "hash": "56c3daf0ad1d037884c99f2e54ca5dc9adfe40bdd43219f28582e41cad6b3fb2"
+    },
+    {
+      "symbol": "ZION",
+      "n_rows": 502,
+      "hash": "127a42fdb9df0128a5cc8c8be0aabca1037b8c923318579ac97182f84f46c294"
+    },
+    {
+      "symbol": "COCP",
+      "n_rows": 502,
+      "hash": "107536aba7f166825083aac59621dbe6ab31c46248f4f6b9d60088d161da624e"
+    },
+    {
+      "symbol": "KEP",
+      "n_rows": 502,
+      "hash": "26de7b47d3e964056201a2841882e8afa59e6e24825c4ab9ceba72548a5a7a3e"
+    },
+    {
+      "symbol": "SCM",
+      "n_rows": 502,
+      "hash": "548dcf768b2a41b82548d5acb65686f47bb16481ad55eacc246ec06cc5dc0730"
+    },
+    {
+      "symbol": "FHTX",
+      "n_rows": 502,
+      "hash": "6ce689fc7a45a7e9923da6a68931686db8247516b121380a7b0d3366aeb1091c"
+    },
+    {
+      "symbol": "LFVN",
+      "n_rows": 502,
+      "hash": "6469faa48e59a9063ab169b2adae7d15e7826fe4afcfd343477b71e637e9ebc9"
+    },
+    {
+      "symbol": "VRRM",
+      "n_rows": 502,
+      "hash": "3832b44f3e06b4a60ef355b4f004c8a08969bdadf5be692008b767de48f9f86d"
+    },
+    {
+      "symbol": "SITM",
+      "n_rows": 502,
+      "hash": "f60a565d25fe50bcbc9805a9fd3d95fa50d62d3d512d54c1eff16d49dc84c509"
+    },
+    {
+      "symbol": "WB",
+      "n_rows": 502,
+      "hash": "32be9cb2f4f760189d3afd0ac3f6118edc1e31419463f0655cf09a5af8a38176"
+    },
+    {
+      "symbol": "GAM",
+      "n_rows": 502,
+      "hash": "0709002c444464b62c95491b45728840ef123a9da502dc6bd3060cad6a0297a6"
+    },
+    {
+      "symbol": "RH",
+      "n_rows": 502,
+      "hash": "3acf23b84e4cb3c6a47b28221f372a0dcce8c4e92067bda83c9acc50f415b06e"
+    },
+    {
+      "symbol": "PSQH",
+      "n_rows": 502,
+      "hash": "aebf397d1e01649e643345e8f24483a15a321a67a5a660a72573e08002cf18da"
+    },
+    {
+      "symbol": "OMAB",
+      "n_rows": 502,
+      "hash": "d2f75c78514f42a74f264b22acb77bb87e8edae6e75376b437f91832c11d4a5f"
+    },
+    {
+      "symbol": "NERV",
+      "n_rows": 502,
+      "hash": "59d67f74f1793d00a15a01e353585bfe3f9639c9173669382ac9f30645639700"
+    },
+    {
+      "symbol": "CSTM",
+      "n_rows": 502,
+      "hash": "2f78df9f2c2381000446c1cfbbc1f37fd8578889706da3ac6edfdd2ec61abdcd"
+    },
+    {
+      "symbol": "RXO",
+      "n_rows": 502,
+      "hash": "c8b338abfdfe49b5f442f66c0f9eb8be12b5d314a345bd47c3e630444d83ed24"
+    },
+    {
+      "symbol": "AIXC",
+      "n_rows": 502,
+      "hash": "0eabd98e00f38def983de63323bf99a4ac7d33da73014f4f479753a3963d9161"
+    },
+    {
+      "symbol": "WHLR",
+      "n_rows": 502,
+      "hash": "9963b25534f43e61f988e5e851911c79076126f0e9767015161600606e0664c0"
+    },
+    {
+      "symbol": "BALL",
+      "n_rows": 502,
+      "hash": "e17de38db4e024120f59d74d0f002867d37072a01a86ba8524956c3eaf9260db"
+    },
+    {
+      "symbol": "STAA",
+      "n_rows": 502,
+      "hash": "6af6537d059cb1ebaf3a643049b8af719ab387819f7b7516aae2203e7ef3c301"
+    },
+    {
+      "symbol": "LCFY",
+      "n_rows": 502,
+      "hash": "4b0c2a98155788187c7d87dfed49f4551514726d2ab65475d2ec0748dfadede0"
+    },
+    {
+      "symbol": "GCTK",
+      "n_rows": 502,
+      "hash": "52935a3842491ea16b1c592ae750ff8d2d07a4cea342c75c4eb4aadb3a6ac82e"
+    },
+    {
+      "symbol": "CFG",
+      "n_rows": 502,
+      "hash": "017af57447e1fd30e3b980256172a745ed5065e35c1dece8ddcda188eab29c58"
+    },
+    {
+      "symbol": "JOF",
+      "n_rows": 502,
+      "hash": "10df9a1a559ccc6967e94973ef95d5966fe8512461587261c75f8d922f51feee"
+    },
+    {
+      "symbol": "RDWR",
+      "n_rows": 502,
+      "hash": "a97a4d808ee9ddca14d870855294bf0e7895f226783f58377ac7e1973d6d8cbc"
+    },
+    {
+      "symbol": "MSGM",
+      "n_rows": 502,
+      "hash": "6c9a4090849398aee4e2f3212c3e2e101cf713cfc73cb2a9b1a7487ab82cfe6b"
+    },
+    {
+      "symbol": "STOK",
+      "n_rows": 502,
+      "hash": "fef43fa24a4e16e4d6c42b8a9bc44c1a4dea6c5004e0485b7ea5978884b0a9a0"
+    },
+    {
+      "symbol": "ENB",
+      "n_rows": 502,
+      "hash": "167e1efc700a58b4fc2cb3963374c7965ca8822774b85de409223c298877715e"
+    },
+    {
+      "symbol": "WGO",
+      "n_rows": 502,
+      "hash": "8f1995635382b92aa123472371d68320caf6b75f675afbc15635ef6d90eacd92"
+    },
+    {
+      "symbol": "CBRL",
+      "n_rows": 502,
+      "hash": "880364ea774a656a847a5ddc94d654454d1b8ebb58c0b193e339724339e3e586"
+    },
+    {
+      "symbol": "FNWD",
+      "n_rows": 502,
+      "hash": "7366d60789b2ed46bcd962861a37e6380f839d8b36e9517dc09e8501b56b320b"
+    },
+    {
+      "symbol": "AZ",
+      "n_rows": 502,
+      "hash": "98def0de72b5e348b870bc3b5797cbbbbc91cb62ad67ab09945bd32a49978070"
+    },
+    {
+      "symbol": "MLR",
+      "n_rows": 502,
+      "hash": "2dae8f45e819e5310146711b238ff9101f688e2ca035c295cafac868b56457b3"
+    },
+    {
+      "symbol": "GLAS",
+      "n_rows": 502,
+      "hash": "46cef1f9521ff6db544a331185ad24d25f7263c74fda413c26c8875c9c332c08"
+    },
+    {
+      "symbol": "TWLO",
+      "n_rows": 502,
+      "hash": "479aff4755deebbdef38809c8383b689b8177615ab4e952f1eb78ffa3e31c783"
+    },
+    {
+      "symbol": "MLSS",
+      "n_rows": 502,
+      "hash": "7140934c89e767cdb60a25c8e4fd7904842a0a8a816e8a8738cd16cce5227e94"
+    },
+    {
+      "symbol": "DHCNI",
+      "n_rows": 502,
+      "hash": "77c12f203e680a606928f7e7d50c9112e2ccb2e76df94f02f7eb80ea582b089e"
+    },
+    {
+      "symbol": "ERNA",
+      "n_rows": 502,
+      "hash": "cbd813429a05d6762a92389502b14a9b307a80f0f253f5ac8193307d2bf0c6db"
+    },
+    {
+      "symbol": "DLX",
+      "n_rows": 502,
+      "hash": "62fca199e7fe15f115a0f3ad2f1124cbf53f6bca99b5ff29cf10fd32943fec10"
+    },
+    {
+      "symbol": "WLKP",
+      "n_rows": 502,
+      "hash": "e4b012d5227d444130bf1d70e8fb1725676a5ec8383fa9328ca7dc4974707dc8"
+    },
+    {
+      "symbol": "PAM",
+      "n_rows": 502,
+      "hash": "4a35f288bb6de8f2f428a48182dbc84de08605f00f85d30c9d7dd320e98a5988"
+    },
+    {
+      "symbol": "CATY",
+      "n_rows": 502,
+      "hash": "190c5fa975664e4cef5b0a686cd56bb9dd0edce99c6d45e535f31e0185f6aee4"
+    },
+    {
+      "symbol": "BRW",
+      "n_rows": 502,
+      "hash": "e08db8a27d11b22fdbe8823990f734f62873a0575db7e71ab2ab43a2c7ae8aed"
+    }
+  ],
+  "reject_counts": {
+    "missing_trading_dates": 40,
+    "invalid_ohlc_bounds": 12
+  },
+  "examined": 308,
+  "calendar": [
+    "2024-01-02",
+    "2024-01-03",
+    "2024-01-04",
+    "2024-01-05",
+    "2024-01-08",
+    "2024-01-09",
+    "2024-01-10",
+    "2024-01-11",
+    "2024-01-12",
+    "2024-01-16",
+    "2024-01-17",
+    "2024-01-18",
+    "2024-01-19",
+    "2024-01-22",
+    "2024-01-23",
+    "2024-01-24",
+    "2024-01-25",
+    "2024-01-26",
+    "2024-01-29",
+    "2024-01-30",
+    "2024-01-31",
+    "2024-02-01",
+    "2024-02-02",
+    "2024-02-05",
+    "2024-02-06",
+    "2024-02-07",
+    "2024-02-08",
+    "2024-02-09",
+    "2024-02-12",
+    "2024-02-13",
+    "2024-02-14",
+    "2024-02-15",
+    "2024-02-16",
+    "2024-02-20",
+    "2024-02-21",
+    "2024-02-22",
+    "2024-02-23",
+    "2024-02-26",
+    "2024-02-27",
+    "2024-02-28",
+    "2024-02-29",
+    "2024-03-01",
+    "2024-03-04",
+    "2024-03-05",
+    "2024-03-06",
+    "2024-03-07",
+    "2024-03-08",
+    "2024-03-11",
+    "2024-03-12",
+    "2024-03-13",
+    "2024-03-14",
+    "2024-03-15",
+    "2024-03-18",
+    "2024-03-19",
+    "2024-03-20",
+    "2024-03-21",
+    "2024-03-22",
+    "2024-03-25",
+    "2024-03-26",
+    "2024-03-27",
+    "2024-03-28",
+    "2024-04-01",
+    "2024-04-02",
+    "2024-04-03",
+    "2024-04-04",
+    "2024-04-05",
+    "2024-04-08",
+    "2024-04-09",
+    "2024-04-10",
+    "2024-04-11",
+    "2024-04-12",
+    "2024-04-15",
+    "2024-04-16",
+    "2024-04-17",
+    "2024-04-18",
+    "2024-04-19",
+    "2024-04-22",
+    "2024-04-23",
+    "2024-04-24",
+    "2024-04-25",
+    "2024-04-26",
+    "2024-04-29",
+    "2024-04-30",
+    "2024-05-01",
+    "2024-05-02",
+    "2024-05-03",
+    "2024-05-06",
+    "2024-05-07",
+    "2024-05-08",
+    "2024-05-09",
+    "2024-05-10",
+    "2024-05-13",
+    "2024-05-14",
+    "2024-05-15",
+    "2024-05-16",
+    "2024-05-17",
+    "2024-05-20",
+    "2024-05-21",
+    "2024-05-22",
+    "2024-05-23",
+    "2024-05-24",
+    "2024-05-28",
+    "2024-05-29",
+    "2024-05-30",
+    "2024-05-31",
+    "2024-06-03",
+    "2024-06-04",
+    "2024-06-05",
+    "2024-06-06",
+    "2024-06-07",
+    "2024-06-10",
+    "2024-06-11",
+    "2024-06-12",
+    "2024-06-13",
+    "2024-06-14",
+    "2024-06-17",
+    "2024-06-18",
+    "2024-06-20",
+    "2024-06-21",
+    "2024-06-24",
+    "2024-06-25",
+    "2024-06-26",
+    "2024-06-27",
+    "2024-06-28",
+    "2024-07-01",
+    "2024-07-02",
+    "2024-07-03",
+    "2024-07-05",
+    "2024-07-08",
+    "2024-07-09",
+    "2024-07-10",
+    "2024-07-11",
+    "2024-07-12",
+    "2024-07-15",
+    "2024-07-16",
+    "2024-07-17",
+    "2024-07-18",
+    "2024-07-19",
+    "2024-07-22",
+    "2024-07-23",
+    "2024-07-24",
+    "2024-07-25",
+    "2024-07-26",
+    "2024-07-29",
+    "2024-07-30",
+    "2024-07-31",
+    "2024-08-01",
+    "2024-08-02",
+    "2024-08-05",
+    "2024-08-06",
+    "2024-08-07",
+    "2024-08-08",
+    "2024-08-09",
+    "2024-08-12",
+    "2024-08-13",
+    "2024-08-14",
+    "2024-08-15",
+    "2024-08-16",
+    "2024-08-19",
+    "2024-08-20",
+    "2024-08-21",
+    "2024-08-22",
+    "2024-08-23",
+    "2024-08-26",
+    "2024-08-27",
+    "2024-08-28",
+    "2024-08-29",
+    "2024-08-30",
+    "2024-09-03",
+    "2024-09-04",
+    "2024-09-05",
+    "2024-09-06",
+    "2024-09-09",
+    "2024-09-10",
+    "2024-09-11",
+    "2024-09-12",
+    "2024-09-13",
+    "2024-09-16",
+    "2024-09-17",
+    "2024-09-18",
+    "2024-09-19",
+    "2024-09-20",
+    "2024-09-23",
+    "2024-09-24",
+    "2024-09-25",
+    "2024-09-26",
+    "2024-09-27",
+    "2024-09-30",
+    "2024-10-01",
+    "2024-10-02",
+    "2024-10-03",
+    "2024-10-04",
+    "2024-10-07",
+    "2024-10-08",
+    "2024-10-09",
+    "2024-10-10",
+    "2024-10-11",
+    "2024-10-14",
+    "2024-10-15",
+    "2024-10-16",
+    "2024-10-17",
+    "2024-10-18",
+    "2024-10-21",
+    "2024-10-22",
+    "2024-10-23",
+    "2024-10-24",
+    "2024-10-25",
+    "2024-10-28",
+    "2024-10-29",
+    "2024-10-30",
+    "2024-10-31",
+    "2024-11-01",
+    "2024-11-04",
+    "2024-11-05",
+    "2024-11-06",
+    "2024-11-07",
+    "2024-11-08",
+    "2024-11-11",
+    "2024-11-12",
+    "2024-11-13",
+    "2024-11-14",
+    "2024-11-15",
+    "2024-11-18",
+    "2024-11-19",
+    "2024-11-20",
+    "2024-11-21",
+    "2024-11-22",
+    "2024-11-25",
+    "2024-11-26",
+    "2024-11-27",
+    "2024-11-29",
+    "2024-12-02",
+    "2024-12-03",
+    "2024-12-04",
+    "2024-12-05",
+    "2024-12-06",
+    "2024-12-09",
+    "2024-12-10",
+    "2024-12-11",
+    "2024-12-12",
+    "2024-12-13",
+    "2024-12-16",
+    "2024-12-17",
+    "2024-12-18",
+    "2024-12-19",
+    "2024-12-20",
+    "2024-12-23",
+    "2024-12-24",
+    "2024-12-26",
+    "2024-12-27",
+    "2024-12-30",
+    "2024-12-31",
+    "2025-01-02",
+    "2025-01-03",
+    "2025-01-06",
+    "2025-01-07",
+    "2025-01-08",
+    "2025-01-10",
+    "2025-01-13",
+    "2025-01-14",
+    "2025-01-15",
+    "2025-01-16",
+    "2025-01-17",
+    "2025-01-21",
+    "2025-01-22",
+    "2025-01-23",
+    "2025-01-24",
+    "2025-01-27",
+    "2025-01-28",
+    "2025-01-29",
+    "2025-01-30",
+    "2025-01-31",
+    "2025-02-03",
+    "2025-02-04",
+    "2025-02-05",
+    "2025-02-06",
+    "2025-02-07",
+    "2025-02-10",
+    "2025-02-11",
+    "2025-02-12",
+    "2025-02-13",
+    "2025-02-14",
+    "2025-02-18",
+    "2025-02-19",
+    "2025-02-20",
+    "2025-02-21",
+    "2025-02-24",
+    "2025-02-25",
+    "2025-02-26",
+    "2025-02-27",
+    "2025-02-28",
+    "2025-03-03",
+    "2025-03-04",
+    "2025-03-05",
+    "2025-03-06",
+    "2025-03-07",
+    "2025-03-10",
+    "2025-03-11",
+    "2025-03-12",
+    "2025-03-13",
+    "2025-03-14",
+    "2025-03-17",
+    "2025-03-18",
+    "2025-03-19",
+    "2025-03-20",
+    "2025-03-21",
+    "2025-03-24",
+    "2025-03-25",
+    "2025-03-26",
+    "2025-03-27",
+    "2025-03-28",
+    "2025-03-31",
+    "2025-04-01",
+    "2025-04-02",
+    "2025-04-03",
+    "2025-04-04",
+    "2025-04-07",
+    "2025-04-08",
+    "2025-04-09",
+    "2025-04-10",
+    "2025-04-11",
+    "2025-04-14",
+    "2025-04-15",
+    "2025-04-16",
+    "2025-04-17",
+    "2025-04-21",
+    "2025-04-22",
+    "2025-04-23",
+    "2025-04-24",
+    "2025-04-25",
+    "2025-04-28",
+    "2025-04-29",
+    "2025-04-30",
+    "2025-05-01",
+    "2025-05-02",
+    "2025-05-05",
+    "2025-05-06",
+    "2025-05-07",
+    "2025-05-08",
+    "2025-05-09",
+    "2025-05-12",
+    "2025-05-13",
+    "2025-05-14",
+    "2025-05-15",
+    "2025-05-16",
+    "2025-05-19",
+    "2025-05-20",
+    "2025-05-21",
+    "2025-05-22",
+    "2025-05-23",
+    "2025-05-27",
+    "2025-05-28",
+    "2025-05-29",
+    "2025-05-30",
+    "2025-06-02",
+    "2025-06-03",
+    "2025-06-04",
+    "2025-06-05",
+    "2025-06-06",
+    "2025-06-09",
+    "2025-06-10",
+    "2025-06-11",
+    "2025-06-12",
+    "2025-06-13",
+    "2025-06-16",
+    "2025-06-17",
+    "2025-06-18",
+    "2025-06-20",
+    "2025-06-23",
+    "2025-06-24",
+    "2025-06-25",
+    "2025-06-26",
+    "2025-06-27",
+    "2025-06-30",
+    "2025-07-01",
+    "2025-07-02",
+    "2025-07-03",
+    "2025-07-07",
+    "2025-07-08",
+    "2025-07-09",
+    "2025-07-10",
+    "2025-07-11",
+    "2025-07-14",
+    "2025-07-15",
+    "2025-07-16",
+    "2025-07-17",
+    "2025-07-18",
+    "2025-07-21",
+    "2025-07-22",
+    "2025-07-23",
+    "2025-07-24",
+    "2025-07-25",
+    "2025-07-28",
+    "2025-07-29",
+    "2025-07-30",
+    "2025-07-31",
+    "2025-08-01",
+    "2025-08-04",
+    "2025-08-05",
+    "2025-08-06",
+    "2025-08-07",
+    "2025-08-08",
+    "2025-08-11",
+    "2025-08-12",
+    "2025-08-13",
+    "2025-08-14",
+    "2025-08-15",
+    "2025-08-18",
+    "2025-08-19",
+    "2025-08-20",
+    "2025-08-21",
+    "2025-08-22",
+    "2025-08-25",
+    "2025-08-26",
+    "2025-08-27",
+    "2025-08-28",
+    "2025-08-29",
+    "2025-09-02",
+    "2025-09-03",
+    "2025-09-04",
+    "2025-09-05",
+    "2025-09-08",
+    "2025-09-09",
+    "2025-09-10",
+    "2025-09-11",
+    "2025-09-12",
+    "2025-09-15",
+    "2025-09-16",
+    "2025-09-17",
+    "2025-09-18",
+    "2025-09-19",
+    "2025-09-22",
+    "2025-09-23",
+    "2025-09-24",
+    "2025-09-25",
+    "2025-09-26",
+    "2025-09-29",
+    "2025-09-30",
+    "2025-10-01",
+    "2025-10-02",
+    "2025-10-03",
+    "2025-10-06",
+    "2025-10-07",
+    "2025-10-08",
+    "2025-10-09",
+    "2025-10-10",
+    "2025-10-13",
+    "2025-10-14",
+    "2025-10-15",
+    "2025-10-16",
+    "2025-10-17",
+    "2025-10-20",
+    "2025-10-21",
+    "2025-10-22",
+    "2025-10-23",
+    "2025-10-24",
+    "2025-10-27",
+    "2025-10-28",
+    "2025-10-29",
+    "2025-10-30",
+    "2025-10-31",
+    "2025-11-03",
+    "2025-11-04",
+    "2025-11-05",
+    "2025-11-06",
+    "2025-11-07",
+    "2025-11-10",
+    "2025-11-11",
+    "2025-11-12",
+    "2025-11-13",
+    "2025-11-14",
+    "2025-11-17",
+    "2025-11-18",
+    "2025-11-19",
+    "2025-11-20",
+    "2025-11-21",
+    "2025-11-24",
+    "2025-11-25",
+    "2025-11-26",
+    "2025-11-28",
+    "2025-12-01",
+    "2025-12-02",
+    "2025-12-03",
+    "2025-12-04",
+    "2025-12-05",
+    "2025-12-08",
+    "2025-12-09",
+    "2025-12-10",
+    "2025-12-11",
+    "2025-12-12",
+    "2025-12-15",
+    "2025-12-16",
+    "2025-12-17",
+    "2025-12-18",
+    "2025-12-19",
+    "2025-12-22",
+    "2025-12-23",
+    "2025-12-24",
+    "2025-12-26",
+    "2025-12-29",
+    "2025-12-30",
+    "2025-12-31"
+  ],
+  "elapsed_seconds": 4.713963804999366
+}

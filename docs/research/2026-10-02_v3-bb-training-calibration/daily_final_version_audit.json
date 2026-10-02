@@ -1,0 +1,35 @@
+{
+  "source_hash": "67705dd587130111fdd5f2bb61547a7577474c0f2d39447902a55abf12f09911",
+  "history_start": "2024-01-01",
+  "stages": [
+    {
+      "stage": "fold1_search",
+      "baseline_rows": 32650,
+      "base_candidate_rows": 255,
+      "baseline_labels_exact_match": true,
+      "base_buy_days_exact_match": true
+    },
+    {
+      "stage": "fold1_check",
+      "baseline_rows": 20960,
+      "base_candidate_rows": 30,
+      "baseline_labels_exact_match": true,
+      "base_buy_days_exact_match": true
+    },
+    {
+      "stage": "fold2_search",
+      "baseline_rows": 53380,
+      "base_candidate_rows": 356,
+      "baseline_labels_exact_match": true,
+      "base_buy_days_exact_match": true
+    },
+    {
+      "stage": "fold2_check",
+      "baseline_rows": 22259,
+      "base_candidate_rows": 180,
+      "baseline_labels_exact_match": true,
+      "base_buy_days_exact_match": true
+    }
+  ],
+  "scope": "all baseline labels and base candidate buy-days in all four stages; other candidates covered by unchanged detector code and scoring recheck"
+}

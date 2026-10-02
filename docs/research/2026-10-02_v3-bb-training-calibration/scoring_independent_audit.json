@@ -1,0 +1,77 @@
+{
+  "method": "逐日期分组直接均值、逐窗口直接筛表；未调用scoring.py",
+  "checked": [
+    {
+      "stage": "fold1_search",
+      "candidate": "base",
+      "count": 255,
+      "Z": 0.007319572245898652,
+      "B": -0.009133487163119224,
+      "delta": 0.016453059409017874,
+      "matched": true
+    },
+    {
+      "stage": "fold1_search",
+      "candidate": "bo.exceed_threshold_1",
+      "count": 162,
+      "Z": 0.32526187726557093,
+      "B": -0.025087107894748804,
+      "delta": 0.35034898516031976,
+      "matched": true
+    },
+    {
+      "stage": "fold1_check",
+      "candidate": "base",
+      "count": 30,
+      "Z": -0.4019277536661079,
+      "B": -0.13068914263179465,
+      "delta": -0.27123861103431324,
+      "matched": true
+    },
+    {
+      "stage": "fold1_check",
+      "candidate": "bo.exceed_threshold_1",
+      "count": 30,
+      "Z": -0.4019277536661079,
+      "B": -0.13068914263179465,
+      "delta": -0.27123861103431324,
+      "matched": true
+    },
+    {
+      "stage": "fold2_search",
+      "candidate": "base",
+      "count": 356,
+      "Z": -0.2028355690732539,
+      "B": -0.16762508805942106,
+      "delta": -0.03521048101383284,
+      "matched": true
+    },
+    {
+      "stage": "fold2_search",
+      "candidate": "bo.exceed_threshold_1",
+      "count": 263,
+      "Z": -0.02607821464379958,
+      "B": -0.17705210525002296,
+      "delta": 0.15097389060622338,
+      "matched": true
+    },
+    {
+      "stage": "fold2_check",
+      "candidate": "base",
+      "count": 180,
+      "Z": -0.002711941627627698,
+      "B": -0.0034840011136812194,
+      "delta": 0.0007720594860535215,
+      "matched": true
+    },
+    {
+      "stage": "fold2_check",
+      "candidate": "bo.exceed_threshold_1",
+      "count": 180,
+      "Z": -0.002711941627627698,
+      "B": -0.0034840011136812194,
+      "delta": 0.0007720594860535215,
+      "matched": true
+    }
+  ]
+}

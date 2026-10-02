@@ -1,0 +1,7 @@
+{
+  "python": "3.12.12 (main, Feb 12 2026, 00:42:14) [Clang 21.1.4 ]",
+  "numpy": "2.2.6",
+  "final_experiment_script_sha256": "21feb03c54606c5da65c784cbaf7f61b902256434385bb1832ea481518a66880",
+  "ranking_correction_script_sha256": "4415a973ae7fed7ad1303558581086bd1e19d539a680fa55064461e53f8252b8",
+  "note": "Temporary executable scripts removed after report, formulas and raw CSV remain. The full final script regenerates calibration and corrected ranking; actual final run calibration and corrected ranking were separate."
+}

@@ -1,0 +1,9 @@
+{
+  "python": "3.12.12",
+  "numpy": "2.2.6",
+  "pandas": "2.3.3",
+  "scipy": "1.17.0",
+  "optuna": "4.7.0",
+  "exchange-calendars": "4.13.2",
+  "pyarrow": "25.0.1"
+}

@@ -1,0 +1,21 @@
+{
+  "reviewers_confirmed": [
+    "compute_passage",
+    "compute_rolling",
+    "compute_baselines"
+  ],
+  "source_hashes_unchanged": {
+    "path2/eval.py": true,
+    "path2/calc/atr.py": true,
+    ".claude/skills/tune-gates-v3/scripts/daily.py": true,
+    ".claude/skills/tune-gates-v3/scripts/scoring.py": true,
+    ".claude/skills/tune-gates-v3/scripts/run.py": true,
+    "path2_apps/bo_only/dag_spec.py": true,
+    "path2_apps/bo_only/params.py": true,
+    "pyproject.toml": true,
+    "uv.lock": true
+  },
+  "local_markdown_links_missing": [],
+  "remaining_temporary_experiment_scripts": [],
+  "scope": "Source hash comparison covers the nine recorded production/dependency files. No market-data experiment was performed."
+}

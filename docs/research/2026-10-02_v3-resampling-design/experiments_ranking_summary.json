@@ -1,0 +1,434 @@
+[
+  {
+    "scenario": "iid_density",
+    "log_effect": 0,
+    "true_median_dense": 10.0,
+    "true_median_sparse_or_recent": 10.0,
+    "method": "raw",
+    "sparse_or_recent_win_fraction": 0.52,
+    "tie_fraction": 0.005
+  },
+  {
+    "scenario": "iid_density",
+    "log_effect": 0,
+    "true_median_dense": 10.0,
+    "true_median_sparse_or_recent": 10.0,
+    "method": "row",
+    "sparse_or_recent_win_fraction": 0.2925,
+    "tie_fraction": 0.0025
+  },
+  {
+    "scenario": "iid_density",
+    "log_effect": 0,
+    "true_median_dense": 10.0,
+    "true_median_sparse_or_recent": 10.0,
+    "method": "date",
+    "sparse_or_recent_win_fraction": 0.31,
+    "tie_fraction": 0.0025
+  },
+  {
+    "scenario": "iid_density",
+    "log_effect": 0,
+    "true_median_dense": 10.0,
+    "true_median_sparse_or_recent": 10.0,
+    "method": "block20",
+    "sparse_or_recent_win_fraction": 0.295,
+    "tie_fraction": 0.0025
+  },
+  {
+    "scenario": "iid_density",
+    "log_effect": 0,
+    "true_median_dense": 10.0,
+    "true_median_sparse_or_recent": 10.0,
+    "method": "phase20",
+    "sparse_or_recent_win_fraction": 0.3125,
+    "tie_fraction": 0.0025
+  },
+  {
+    "scenario": "iid_density",
+    "log_effect": 0,
+    "true_median_dense": 10.0,
+    "true_median_sparse_or_recent": 10.0,
+    "method": "moving20",
+    "sparse_or_recent_win_fraction": 0.3225,
+    "tie_fraction": 0.005
+  },
+  {
+    "scenario": "iid_density",
+    "log_effect": 0,
+    "true_median_dense": 10.0,
+    "true_median_sparse_or_recent": 10.0,
+    "method": "stock_x_block20",
+    "sparse_or_recent_win_fraction": 0.2325,
+    "tie_fraction": 0.0
+  },
+  {
+    "scenario": "iid_density",
+    "log_effect": 0,
+    "true_median_dense": 10.0,
+    "true_median_sparse_or_recent": 10.0,
+    "method": "subset80",
+    "sparse_or_recent_win_fraction": 0.385,
+    "tie_fraction": 0.0
+  },
+  {
+    "scenario": "iid_density",
+    "log_effect": 0.08,
+    "true_median_dense": 10.201686941898435,
+    "true_median_sparse_or_recent": 10.832870676749586,
+    "method": "raw",
+    "sparse_or_recent_win_fraction": 0.9475,
+    "tie_fraction": 0.0
+  },
+  {
+    "scenario": "iid_density",
+    "log_effect": 0.08,
+    "true_median_dense": 10.201686941898435,
+    "true_median_sparse_or_recent": 10.832870676749586,
+    "method": "row",
+    "sparse_or_recent_win_fraction": 0.88,
+    "tie_fraction": 0.0
+  },
+  {
+    "scenario": "iid_density",
+    "log_effect": 0.08,
+    "true_median_dense": 10.201686941898435,
+    "true_median_sparse_or_recent": 10.832870676749586,
+    "method": "date",
+    "sparse_or_recent_win_fraction": 0.8725,
+    "tie_fraction": 0.005
+  },
+  {
+    "scenario": "iid_density",
+    "log_effect": 0.08,
+    "true_median_dense": 10.201686941898435,
+    "true_median_sparse_or_recent": 10.832870676749586,
+    "method": "block20",
+    "sparse_or_recent_win_fraction": 0.865,
+    "tie_fraction": 0.0
+  },
+  {
+    "scenario": "iid_density",
+    "log_effect": 0.08,
+    "true_median_dense": 10.201686941898435,
+    "true_median_sparse_or_recent": 10.832870676749586,
+    "method": "phase20",
+    "sparse_or_recent_win_fraction": 0.87,
+    "tie_fraction": 0.0025
+  },
+  {
+    "scenario": "iid_density",
+    "log_effect": 0.08,
+    "true_median_dense": 10.201686941898435,
+    "true_median_sparse_or_recent": 10.832870676749586,
+    "method": "moving20",
+    "sparse_or_recent_win_fraction": 0.8575,
+    "tie_fraction": 0.0025
+  },
+  {
+    "scenario": "iid_density",
+    "log_effect": 0.08,
+    "true_median_dense": 10.201686941898435,
+    "true_median_sparse_or_recent": 10.832870676749586,
+    "method": "stock_x_block20",
+    "sparse_or_recent_win_fraction": 0.825,
+    "tie_fraction": 0.005
+  },
+  {
+    "scenario": "iid_density",
+    "log_effect": 0.08,
+    "true_median_dense": 10.201686941898435,
+    "true_median_sparse_or_recent": 10.832870676749586,
+    "method": "subset80",
+    "sparse_or_recent_win_fraction": 0.9175,
+    "tie_fraction": 0.0025
+  },
+  {
+    "scenario": "overlap_density",
+    "log_effect": 0,
+    "true_median_dense": 10.0,
+    "true_median_sparse_or_recent": 10.0,
+    "method": "raw",
+    "sparse_or_recent_win_fraction": 0.51,
+    "tie_fraction": 0.0125
+  },
+  {
+    "scenario": "overlap_density",
+    "log_effect": 0,
+    "true_median_dense": 10.0,
+    "true_median_sparse_or_recent": 10.0,
+    "method": "row",
+    "sparse_or_recent_win_fraction": 0.2425,
+    "tie_fraction": 0.0025
+  },
+  {
+    "scenario": "overlap_density",
+    "log_effect": 0,
+    "true_median_dense": 10.0,
+    "true_median_sparse_or_recent": 10.0,
+    "method": "date",
+    "sparse_or_recent_win_fraction": 0.125,
+    "tie_fraction": 0.0
+  },
+  {
+    "scenario": "overlap_density",
+    "log_effect": 0,
+    "true_median_dense": 10.0,
+    "true_median_sparse_or_recent": 10.0,
+    "method": "block20",
+    "sparse_or_recent_win_fraction": 0.455,
+    "tie_fraction": 0.0025
+  },
+  {
+    "scenario": "overlap_density",
+    "log_effect": 0,
+    "true_median_dense": 10.0,
+    "true_median_sparse_or_recent": 10.0,
+    "method": "phase20",
+    "sparse_or_recent_win_fraction": 0.455,
+    "tie_fraction": 0.0025
+  },
+  {
+    "scenario": "overlap_density",
+    "log_effect": 0,
+    "true_median_dense": 10.0,
+    "true_median_sparse_or_recent": 10.0,
+    "method": "moving20",
+    "sparse_or_recent_win_fraction": 0.46,
+    "tie_fraction": 0.0025
+  },
+  {
+    "scenario": "overlap_density",
+    "log_effect": 0,
+    "true_median_dense": 10.0,
+    "true_median_sparse_or_recent": 10.0,
+    "method": "stock_x_block20",
+    "sparse_or_recent_win_fraction": 0.42,
+    "tie_fraction": 0.005
+  },
+  {
+    "scenario": "overlap_density",
+    "log_effect": 0,
+    "true_median_dense": 10.0,
+    "true_median_sparse_or_recent": 10.0,
+    "method": "subset80",
+    "sparse_or_recent_win_fraction": 0.2725,
+    "tie_fraction": 0.0
+  },
+  {
+    "scenario": "overlap_density",
+    "log_effect": 0.08,
+    "true_median_dense": 10.201450550378262,
+    "true_median_sparse_or_recent": 10.832870676749586,
+    "method": "raw",
+    "sparse_or_recent_win_fraction": 1.0,
+    "tie_fraction": 0.0
+  },
+  {
+    "scenario": "overlap_density",
+    "log_effect": 0.08,
+    "true_median_dense": 10.201450550378262,
+    "true_median_sparse_or_recent": 10.832870676749586,
+    "method": "row",
+    "sparse_or_recent_win_fraction": 0.9875,
+    "tie_fraction": 0.0
+  },
+  {
+    "scenario": "overlap_density",
+    "log_effect": 0.08,
+    "true_median_dense": 10.201450550378262,
+    "true_median_sparse_or_recent": 10.832870676749586,
+    "method": "date",
+    "sparse_or_recent_win_fraction": 0.955,
+    "tie_fraction": 0.0
+  },
+  {
+    "scenario": "overlap_density",
+    "log_effect": 0.08,
+    "true_median_dense": 10.201450550378262,
+    "true_median_sparse_or_recent": 10.832870676749586,
+    "method": "block20",
+    "sparse_or_recent_win_fraction": 0.9975,
+    "tie_fraction": 0.0025
+  },
+  {
+    "scenario": "overlap_density",
+    "log_effect": 0.08,
+    "true_median_dense": 10.201450550378262,
+    "true_median_sparse_or_recent": 10.832870676749586,
+    "method": "phase20",
+    "sparse_or_recent_win_fraction": 1.0,
+    "tie_fraction": 0.0
+  },
+  {
+    "scenario": "overlap_density",
+    "log_effect": 0.08,
+    "true_median_dense": 10.201450550378262,
+    "true_median_sparse_or_recent": 10.832870676749586,
+    "method": "moving20",
+    "sparse_or_recent_win_fraction": 0.995,
+    "tie_fraction": 0.0
+  },
+  {
+    "scenario": "overlap_density",
+    "log_effect": 0.08,
+    "true_median_dense": 10.201450550378262,
+    "true_median_sparse_or_recent": 10.832870676749586,
+    "method": "stock_x_block20",
+    "sparse_or_recent_win_fraction": 1.0,
+    "tie_fraction": 0.0
+  },
+  {
+    "scenario": "overlap_density",
+    "log_effect": 0.08,
+    "true_median_dense": 10.201450550378262,
+    "true_median_sparse_or_recent": 10.832870676749586,
+    "method": "subset80",
+    "sparse_or_recent_win_fraction": 0.9925,
+    "tie_fraction": 0.0
+  },
+  {
+    "scenario": "overlap_recent",
+    "log_effect": 0,
+    "true_median_dense": 10.0,
+    "true_median_sparse_or_recent": 10.0,
+    "method": "raw",
+    "sparse_or_recent_win_fraction": 0.4925,
+    "tie_fraction": 0.0025
+  },
+  {
+    "scenario": "overlap_recent",
+    "log_effect": 0,
+    "true_median_dense": 10.0,
+    "true_median_sparse_or_recent": 10.0,
+    "method": "row",
+    "sparse_or_recent_win_fraction": 0.47,
+    "tie_fraction": 0.0025
+  },
+  {
+    "scenario": "overlap_recent",
+    "log_effect": 0,
+    "true_median_dense": 10.0,
+    "true_median_sparse_or_recent": 10.0,
+    "method": "date",
+    "sparse_or_recent_win_fraction": 0.445,
+    "tie_fraction": 0.0
+  },
+  {
+    "scenario": "overlap_recent",
+    "log_effect": 0,
+    "true_median_dense": 10.0,
+    "true_median_sparse_or_recent": 10.0,
+    "method": "block20",
+    "sparse_or_recent_win_fraction": 0.3625,
+    "tie_fraction": 0.0
+  },
+  {
+    "scenario": "overlap_recent",
+    "log_effect": 0,
+    "true_median_dense": 10.0,
+    "true_median_sparse_or_recent": 10.0,
+    "method": "phase20",
+    "sparse_or_recent_win_fraction": 0.3925,
+    "tie_fraction": 0.0
+  },
+  {
+    "scenario": "overlap_recent",
+    "log_effect": 0,
+    "true_median_dense": 10.0,
+    "true_median_sparse_or_recent": 10.0,
+    "method": "moving20",
+    "sparse_or_recent_win_fraction": 0.3725,
+    "tie_fraction": 0.0025
+  },
+  {
+    "scenario": "overlap_recent",
+    "log_effect": 0,
+    "true_median_dense": 10.0,
+    "true_median_sparse_or_recent": 10.0,
+    "method": "stock_x_block20",
+    "sparse_or_recent_win_fraction": 0.3575,
+    "tie_fraction": 0.0
+  },
+  {
+    "scenario": "overlap_recent",
+    "log_effect": 0,
+    "true_median_dense": 10.0,
+    "true_median_sparse_or_recent": 10.0,
+    "method": "subset80",
+    "sparse_or_recent_win_fraction": 0.4675,
+    "tie_fraction": 0.0025
+  },
+  {
+    "scenario": "overlap_recent",
+    "log_effect": 0.08,
+    "true_median_dense": 10.201450550378262,
+    "true_median_sparse_or_recent": 10.832870676749586,
+    "method": "raw",
+    "sparse_or_recent_win_fraction": 0.6225,
+    "tie_fraction": 0.0
+  },
+  {
+    "scenario": "overlap_recent",
+    "log_effect": 0.08,
+    "true_median_dense": 10.201450550378262,
+    "true_median_sparse_or_recent": 10.832870676749586,
+    "method": "row",
+    "sparse_or_recent_win_fraction": 0.61,
+    "tie_fraction": 0.0
+  },
+  {
+    "scenario": "overlap_recent",
+    "log_effect": 0.08,
+    "true_median_dense": 10.201450550378262,
+    "true_median_sparse_or_recent": 10.832870676749586,
+    "method": "date",
+    "sparse_or_recent_win_fraction": 0.5875,
+    "tie_fraction": 0.0
+  },
+  {
+    "scenario": "overlap_recent",
+    "log_effect": 0.08,
+    "true_median_dense": 10.201450550378262,
+    "true_median_sparse_or_recent": 10.832870676749586,
+    "method": "block20",
+    "sparse_or_recent_win_fraction": 0.49,
+    "tie_fraction": 0.005
+  },
+  {
+    "scenario": "overlap_recent",
+    "log_effect": 0.08,
+    "true_median_dense": 10.201450550378262,
+    "true_median_sparse_or_recent": 10.832870676749586,
+    "method": "phase20",
+    "sparse_or_recent_win_fraction": 0.52,
+    "tie_fraction": 0.0
+  },
+  {
+    "scenario": "overlap_recent",
+    "log_effect": 0.08,
+    "true_median_dense": 10.201450550378262,
+    "true_median_sparse_or_recent": 10.832870676749586,
+    "method": "moving20",
+    "sparse_or_recent_win_fraction": 0.4975,
+    "tie_fraction": 0.0
+  },
+  {
+    "scenario": "overlap_recent",
+    "log_effect": 0.08,
+    "true_median_dense": 10.201450550378262,
+    "true_median_sparse_or_recent": 10.832870676749586,
+    "method": "stock_x_block20",
+    "sparse_or_recent_win_fraction": 0.4925,
+    "tie_fraction": 0.0025
+  },
+  {
+    "scenario": "overlap_recent",
+    "log_effect": 0.08,
+    "true_median_dense": 10.201450550378262,
+    "true_median_sparse_or_recent": 10.832870676749586,
+    "method": "subset80",
+    "sparse_or_recent_win_fraction": 0.6125,
+    "tie_fraction": 0.0
+  }
+]

@@ -1,0 +1,278 @@
+{
+  "seed": 20261002,
+  "python": "3.12.12 (main, Feb 12 2026, 00:42:14) [Clang 21.1.4 ]",
+  "numpy": "2.2.6",
+  "pandas": "2.3.3",
+  "platform": "Linux-7.0.0-31-generic-x86_64-with-glibc2.39",
+  "threads": {
+    "OMP_NUM_THREADS": "1",
+    "OPENBLAS_NUM_THREADS": "1",
+    "MKL_NUM_THREADS": "1",
+    "NUMEXPR_NUM_THREADS": "1",
+    "NUMBA_NUM_THREADS": "1"
+  },
+  "benchmarks": {
+    "deque_first_compile_small": {
+      "seconds": [
+        0.24597021299996413
+      ]
+    },
+    "input_generation_5000": {
+      "seconds": [
+        0.0705777810071595
+      ],
+      "median_seconds": 0.0705777810071595
+    },
+    "M_original_100stocks": {
+      "seconds": [
+        0.44764607900287956,
+        0.44527978100813925
+      ],
+      "median_seconds": 0.4464629300055094
+    },
+    "M_builtin_same_pandas_TR_5000": {
+      "seconds": [
+        2.7580065799993463,
+        2.752843670998118
+      ],
+      "median_seconds": 2.755425125498732
+    },
+    "M_numpy_TR_builtin_perstock_5000": {
+      "seconds": [
+        0.8481306309986394,
+        0.8485734310088446
+      ],
+      "median_seconds": 0.848352031003742
+    },
+    "M_numpy_TR_builtin_batch_5000": {
+      "seconds": [
+        0.6537630679958966,
+        0.6532898009900237
+      ],
+      "median_seconds": 0.6535264344929601
+    },
+    "max_pandas_perstock_5000_H20": {
+      "seconds": [
+        0.2219870570115745,
+        0.23393598099937662
+      ],
+      "median_seconds": 0.22796151900547557
+    },
+    "max_sliding_perstock_5000_H20": {
+      "seconds": [
+        0.11461453700030688,
+        0.11502701399149373
+      ],
+      "median_seconds": 0.1148207754959003
+    },
+    "max_deque_compiled_5000_H20": {
+      "seconds": [
+        0.02949047500442248,
+        0.03325312600645702,
+        0.02932847000192851
+      ],
+      "median_seconds": 0.02949047500442248
+    },
+    "max_pandas_perstock_5000_H60": {
+      "seconds": [
+        0.22082402599335182,
+        0.2230190199916251
+      ],
+      "median_seconds": 0.22192152299248846
+    },
+    "max_sliding_perstock_5000_H60": {
+      "seconds": [
+        0.13905915500072297,
+        0.14030167998862453
+      ],
+      "median_seconds": 0.13968041749467375
+    },
+    "max_deque_compiled_5000_H60": {
+      "seconds": [
+        0.02960517599422019,
+        0.0331832800002303,
+        0.029432096998789348
+      ],
+      "median_seconds": 0.02960517599422019
+    },
+    "max_pandas_perstock_5000_H120": {
+      "seconds": [
+        0.21910249000939075,
+        0.22090288400067948
+      ],
+      "median_seconds": 0.2200026870050351
+    },
+    "max_sliding_perstock_5000_H120": {
+      "seconds": [
+        0.1370475009898655,
+        0.1406917990098009
+      ],
+      "median_seconds": 0.1388696499998332
+    },
+    "max_deque_compiled_5000_H120": {
+      "seconds": [
+        0.029168987995944917,
+        0.03479547498864122,
+        0.029330528996069916
+      ],
+      "median_seconds": 0.029330528996069916
+    },
+    "DataFrame_inputs_5000": {
+      "seconds": [
+        0.32741149100183975
+      ],
+      "median_seconds": 0.32741149100183975
+    },
+    "existing_high_low_passage_plus_daily_frames_5000_external_M": {
+      "seconds": [
+        3.01585716700356
+      ],
+      "median_seconds": 3.01585716700356
+    },
+    "old_slice_and_format_wrapper_100": {
+      "seconds": [
+        1.6094796859979397,
+        1.6124146490037674
+      ],
+      "median_seconds": 1.6109471675008535
+    },
+    "new_rolling_and_column_wrapper_5000": {
+      "seconds": [
+        2.7852714939945145,
+        1.9199293740093708
+      ],
+      "median_seconds": 2.3526004340019426
+    },
+    "new_wrapper_reuse_date_strings_5000": {
+      "seconds": [
+        0.9847140760102775,
+        0.9904373569879681
+      ],
+      "median_seconds": 0.9875757164991228
+    },
+    "integrated_original_prepare_100": {
+      "seconds": [
+        2.473014411996701,
+        2.408732303985744
+      ],
+      "median_seconds": 2.4408733579912223
+    },
+    "integrated_optimized_compatible_prepare_5000": {
+      "seconds": [
+        16.389472596012638,
+        16.423413351993077
+      ],
+      "median_seconds": 16.406442974002857
+    }
+  },
+  "correctness": {
+    "scalar_formula_checks": [
+      {
+        "W": 1,
+        "H": 1,
+        "stocks": 3,
+        "exact": true
+      },
+      {
+        "W": 1,
+        "H": 20,
+        "stocks": 3,
+        "exact": true
+      },
+      {
+        "W": 1,
+        "H": 60,
+        "stocks": 3,
+        "exact": true
+      },
+      {
+        "W": 2,
+        "H": 1,
+        "stocks": 3,
+        "exact": true
+      },
+      {
+        "W": 2,
+        "H": 20,
+        "stocks": 3,
+        "exact": true
+      },
+      {
+        "W": 2,
+        "H": 60,
+        "stocks": 3,
+        "exact": true
+      },
+      {
+        "W": 19,
+        "H": 1,
+        "stocks": 3,
+        "exact": true
+      },
+      {
+        "W": 19,
+        "H": 20,
+        "stocks": 3,
+        "exact": true
+      },
+      {
+        "W": 19,
+        "H": 60,
+        "stocks": 3,
+        "exact": true
+      },
+      {
+        "W": 20,
+        "H": 1,
+        "stocks": 3,
+        "exact": true
+      },
+      {
+        "W": 20,
+        "H": 20,
+        "stocks": 3,
+        "exact": true
+      },
+      {
+        "W": 20,
+        "H": 60,
+        "stocks": 3,
+        "exact": true
+      }
+    ],
+    "deque_exact": true,
+    "full_5000_M_new_methods_exact": true,
+    "original_M_first100_exact": true,
+    "full_5000_max_H20_exact": true,
+    "full_5000_max_H60_exact": true,
+    "full_5000_max_H120_exact": true,
+    "wrapper_first100_exact_all_columns": true,
+    "cached_date_wrapper_first100_exact": true,
+    "integrated_original100_optimized5000_first100_all_columns_frames_hashes_exact": true
+  },
+  "shape": {
+    "stocks": 5000,
+    "output_days": 504,
+    "horizon": 60,
+    "M_window": 20,
+    "input_days": 583,
+    "output_rows": 2520000
+  },
+  "memory": {
+    "old_schema_dataframe_2520000_rows_deep_bytes": 335160132,
+    "numeric_2float64_4int8_perrow_bytes": 50400000,
+    "symbol_id_int32_plus_date_id_int32_extra_bytes": 20160000
+  },
+  "limits": [
+    "All data synthetic and complete. No real data, detection, file IO, full Optuna, candidate scores, or validation used.",
+    "Old M and row wrapper timed only 100 stocks: full-scale estimates must be marked extrapolation.",
+    "The passage timing uses existing high/low semantics and is not close-passage benchmark.",
+    "H120 future-max compares all valid rows available in input T583, fewer than D504; H60 is the target 504-output-day workload.",
+    "Warm/JIT distinctions explicit. pandas methods two repeats; deque three repeats. No groupby benchmark here.",
+    "Dates fully aligned for synthetic pool; sharing date strings must use actual unique trading dates when irregular.",
+    "Integrated optimized preparation retains input normalization, perfect-price checks, frame copies, existing high/low passage, per-stock compatible DataFrames and data-version hashes; uses optimized rolling M and future maximum. Labels computed over clean data; this prototype is not a bad-data handling implementation.",
+    "Integrated new uses existing high/low definition, so its seconds cannot be called actual new close pipeline. It is an exact computational optimization reference for old semantics.",
+    "Integrated original prepare only 100 stocks, not 5000; any old5000 projection explicitly extrapolated.",
+    "Integrated source_frames generated outside measured preparation; no pickle IO, detector, Optuna, final score, or validation."
+  ]
+}

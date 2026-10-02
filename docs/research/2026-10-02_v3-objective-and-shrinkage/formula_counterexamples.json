@@ -1,0 +1,218 @@
+{
+  "count_direction": [
+    {
+      "median": 0.2,
+      "count": 30,
+      "baseline": 0.1,
+      "n0": 200,
+      "adjusted": 0.11304347826086958
+    },
+    {
+      "median": 0.2,
+      "count": 200,
+      "baseline": 0.1,
+      "n0": 200,
+      "adjusted": 0.15000000000000002
+    },
+    {
+      "median": 0.2,
+      "count": 2000,
+      "baseline": 0.1,
+      "n0": 200,
+      "adjusted": 0.19090909090909092
+    },
+    {
+      "median": 0.04,
+      "count": 30,
+      "baseline": 0.1,
+      "n0": 200,
+      "adjusted": 0.09217391304347827
+    },
+    {
+      "median": 0.04,
+      "count": 200,
+      "baseline": 0.1,
+      "n0": 200,
+      "adjusted": 0.07
+    },
+    {
+      "median": 0.04,
+      "count": 2000,
+      "baseline": 0.1,
+      "n0": 200,
+      "adjusted": 0.045454545454545456
+    }
+  ],
+  "raw_topk_before_adjustment": {
+    "groups": [
+      {
+        "name": "A",
+        "count": 30,
+        "median": 0.3,
+        "adjusted": 0.12608695652173912
+      },
+      {
+        "name": "B",
+        "count": 1000,
+        "median": 0.2,
+        "adjusted": 0.18333333333333335
+      }
+    ],
+    "actual_score": 0.12608695652173912,
+    "actual_n_templates": 2,
+    "actual_top_detail": {
+      "median": 0.3,
+      "count": 30,
+      "adjusted": 0.12608695652173912
+    },
+    "all_adjusted_max": 0.18333333333333335
+  },
+  "duplicated_information": [
+    {
+      "copies_of_same_rows": 1,
+      "row_count": 30,
+      "score": 0.11304347826086956
+    },
+    {
+      "copies_of_same_rows": 10,
+      "row_count": 300,
+      "score": 0.16
+    },
+    {
+      "copies_of_same_rows": 100,
+      "row_count": 3000,
+      "score": 0.19375
+    }
+  ],
+  "same_space_different_market": [
+    {
+      "candidate": "strong_market",
+      "space": 0.1,
+      "ordinary": 0.08,
+      "raw_edge": 0.020000000000000004,
+      "shrunk_absolute": 0.09,
+      "shrunk_edge": 0.010000000000000002
+    },
+    {
+      "candidate": "weak_market",
+      "space": 0.1,
+      "ordinary": 0.02,
+      "raw_edge": 0.08,
+      "shrunk_absolute": 0.06,
+      "shrunk_edge": 0.04
+    }
+  ],
+  "absolute_vs_edge": [
+    {
+      "candidate": "A",
+      "space": 0.05,
+      "ordinary": 0.0,
+      "edge": 0.05
+    },
+    {
+      "candidate": "B",
+      "space": 0.12,
+      "ordinary": 0.1,
+      "edge": 0.02
+    }
+  ],
+  "double_benchmark_sum": [
+    {
+      "candidate": "A",
+      "space": 0.2,
+      "ordinary": 0.19,
+      "bo": 0.18,
+      "space_plus_two_edges": 0.23000000000000004
+    },
+    {
+      "candidate": "B",
+      "space": 0.15,
+      "ordinary": 0.05,
+      "bo": 0.06,
+      "space_plus_two_edges": 0.33999999999999997
+    }
+  ],
+  "outer_median_vs_average": [
+    {
+      "candidate": "A",
+      "window_values": [
+        0.1,
+        0.1,
+        0.1,
+        0.1,
+        0.1,
+        0.1,
+        0.1,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "median": 0.1,
+      "mean": 0.05833333333333334
+    },
+    {
+      "candidate": "B",
+      "window_values": [
+        0.06,
+        0.06,
+        0.06,
+        0.06,
+        0.06,
+        0.06,
+        0.06,
+        0.06,
+        0.06,
+        0.06,
+        0.06,
+        0.06
+      ],
+      "median": 0.06,
+      "mean": 0.06000000000000002
+    }
+  ],
+  "median_vs_capital_path": [
+    {
+      "candidate": "A",
+      "period_net_returns": [
+        0.03,
+        0.03,
+        0.03,
+        0.03,
+        0.03,
+        0.03,
+        0.03,
+        -0.2,
+        -0.2,
+        -0.2,
+        -0.2,
+        -0.2
+      ],
+      "median": 0.03,
+      "mean": -0.06583333333333334,
+      "compounded_return": -0.5969949317775785
+    },
+    {
+      "candidate": "B",
+      "period_net_returns": [
+        0.02,
+        0.02,
+        0.02,
+        0.02,
+        0.02,
+        0.02,
+        0.02,
+        0.02,
+        0.02,
+        0.02,
+        0.02,
+        0.02
+      ],
+      "median": 0.02,
+      "mean": 0.019999999999999997,
+      "compounded_return": 0.2682417945625455
+    }
+  ],
+  "scope": "Deterministic synthetic counterexamples; not market data, not a validation of v3 or Optuna performance. Labels are fixed decimal fractions. Capital-path example is hypothetical net period returns, not the project forward-space label."
+}

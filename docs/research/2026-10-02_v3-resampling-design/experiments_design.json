@@ -1,0 +1,45 @@
+{
+  "seed": 20261002,
+  "independent_histories": 240,
+  "resamples_per_history": 399,
+  "dates": 240,
+  "stocks": 8,
+  "methods": [
+    "row",
+    "date",
+    "block20",
+    "block40",
+    "phase20",
+    "moving20",
+    "stock_x_block20",
+    "subset80"
+  ],
+  "scenarios": [
+    "iid_rows",
+    "same_day_common",
+    "overlap20",
+    "three_states80",
+    "fixed_stock_effects"
+  ],
+  "ranking_histories": 400,
+  "ranking_resamples": 399,
+  "ranking_revision": "Shared y[mask] is multiplied by exp(effect), then both dense A and subset B are recomputed on this single stock-date label table. Dense population target is median of 0.75*N(0,sigma^2)+0.25*N(effect,sigma^2), exponentiated times ten. Sparse target is 10*exp(effect).",
+  "predeclared_comparisons": [
+    "resample log-median SD / independent-history log-median SD",
+    "fraction of q20 <= population median, descriptive only",
+    "ranking equal-target vs genuinely-better sparse/short candidate"
+  ],
+  "labels": "positive y=10*exp(z); population median 10 except deliberately shifted candidate",
+  "scenario_z": {
+    "iid_rows": "N(0,1) independently by stock/date",
+    "same_day_common": "market_t + 0.3*e_st, both independent standard normal",
+    "overlap20": "sum(market[t:t+20])/sqrt(20) + 0.3*e_st",
+    "three_states80": "state[floor(t/80)] + 0.3*e_st, three independent standard normal states",
+    "fixed_stock_effects": "eight fixed equally spaced offsets [-1.5,1.5] + 0.3*e_st; stocks fixed across histories"
+  },
+  "discreteness": "Gaussian inputs; empirical finite sample medians and bootstrap quantiles remain discrete. Exact inverse empirical CDF q20; even weighted medians average two center values. No minimum-direction filters in mechanism tests.",
+  "missing_resamples": "Empty candidate resamples receive -1e100 before q20, same intent as current scoring; calibration panels always nonempty.",
+  "phase20": "Each repeat draws phase uniformly 0..19; partition (t+phase)//20, keep both short edge blocks, sample K blocks K times. Expected weight of every date is one, total row count can vary.",
+  "moving20": "Draw 12 independent non-circular starts uniformly 0..220. Edge dates appear less often than interior dates; this is not a pure phase-only contrast.",
+  "scope": "synthetic only; no market data; one fixed candidate per calibration history; rank comparisons are fixed pairs, not a parameter search"
+}

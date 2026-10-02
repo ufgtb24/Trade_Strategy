@@ -1,0 +1,1332 @@
+{
+  "scope": "development-only; no final validation or bb parameter write",
+  "data_start": "2024-01-01",
+  "data_end": "2025-12-31",
+  "eligible_start": "2024-07-01",
+  "pool_size": 256,
+  "pool_rule": "sha256(v3-bb-calibration-20261002|symbol), ascending; accept only structurally complete valid OHLCV throughout 2024..2025, no outcome criterion",
+  "horizon": 40,
+  "k": 5,
+  "window_days": 21,
+  "half_life_days": 252,
+  "recent_days": 126,
+  "seed": 2026100211,
+  "bandwidth_primary": 80,
+  "bandwidth_sensitivity": [
+    40,
+    80
+  ],
+  "tau_primary": 0.1,
+  "tau_sensitivity": [
+    0.05,
+    0.1,
+    0.2
+  ],
+  "min_buy_days": 30,
+  "min_reference_fraction": 0.5,
+  "min_recent_buy_days": 1,
+  "min_recent_reference_fraction": 0.5,
+  "min_direction_score": 0,
+  "min_matched_difference": 0,
+  "folds": [
+    {
+      "id": "fold1",
+      "search_start": "2024-07-01",
+      "search_end": "2024-12-31",
+      "search_label_end": "2025-03-03",
+      "check_start": "2025-03-04",
+      "check_end": "2025-06-30",
+      "check_label_end": "2025-08-26"
+    },
+    {
+      "id": "fold2",
+      "search_start": "2024-07-01",
+      "search_end": "2025-04-30",
+      "search_label_end": "2025-06-30",
+      "check_start": "2025-07-01",
+      "check_end": "2025-10-31",
+      "check_label_end": "2025-12-31"
+    }
+  ],
+  "candidates": [
+    {
+      "id": "base",
+      "changes": {},
+      "params": {
+        "bo": {
+          "total_window": 20,
+          "min_side_bars": 6,
+          "min_relative_height": 0.2,
+          "exceed_threshold": 0.003,
+          "peak_supersede_threshold": 0.01,
+          "vol_baseline_period": 63,
+          "peak_measure": "high",
+          "breakout_measure": "close"
+        },
+        "burst": {
+          "gap_max": 8,
+          "vol_baseline_period": 63,
+          "min_bos": 1,
+          "first_drought_min": 40,
+          "distinct_pk_min": 3,
+          "vol_spike_min": 10
+        },
+        "tb": {
+          "max_rise_k": 1.5,
+          "stop_confirm_bars": 1,
+          "vol_window": 14,
+          "anchor_mode": "span_min",
+          "max_span": 60,
+          "measure": "close"
+        },
+        "edges": {}
+      }
+    },
+    {
+      "id": "bo.exceed_threshold_0",
+      "changes": {
+        "bo": {
+          "exceed_threshold": 0.0015
+        }
+      },
+      "params": {
+        "bo": {
+          "total_window": 20,
+          "min_side_bars": 6,
+          "min_relative_height": 0.2,
+          "exceed_threshold": 0.0015,
+          "peak_supersede_threshold": 0.01,
+          "vol_baseline_period": 63,
+          "peak_measure": "high",
+          "breakout_measure": "close"
+        },
+        "burst": {
+          "gap_max": 8,
+          "vol_baseline_period": 63,
+          "min_bos": 1,
+          "first_drought_min": 40,
+          "distinct_pk_min": 3,
+          "vol_spike_min": 10
+        },
+        "tb": {
+          "max_rise_k": 1.5,
+          "stop_confirm_bars": 1,
+          "vol_window": 14,
+          "anchor_mode": "span_min",
+          "max_span": 60,
+          "measure": "close"
+        },
+        "edges": {}
+      }
+    },
+    {
+      "id": "bo.exceed_threshold_1",
+      "changes": {
+        "bo": {
+          "exceed_threshold": 0.006
+        }
+      },
+      "params": {
+        "bo": {
+          "total_window": 20,
+          "min_side_bars": 6,
+          "min_relative_height": 0.2,
+          "exceed_threshold": 0.006,
+          "peak_supersede_threshold": 0.01,
+          "vol_baseline_period": 63,
+          "peak_measure": "high",
+          "breakout_measure": "close"
+        },
+        "burst": {
+          "gap_max": 8,
+          "vol_baseline_period": 63,
+          "min_bos": 1,
+          "first_drought_min": 40,
+          "distinct_pk_min": 3,
+          "vol_spike_min": 10
+        },
+        "tb": {
+          "max_rise_k": 1.5,
+          "stop_confirm_bars": 1,
+          "vol_window": 14,
+          "anchor_mode": "span_min",
+          "max_span": 60,
+          "measure": "close"
+        },
+        "edges": {}
+      }
+    },
+    {
+      "id": "bo.min_relative_height_0",
+      "changes": {
+        "bo": {
+          "min_relative_height": 0.1
+        }
+      },
+      "params": {
+        "bo": {
+          "total_window": 20,
+          "min_side_bars": 6,
+          "min_relative_height": 0.1,
+          "exceed_threshold": 0.003,
+          "peak_supersede_threshold": 0.01,
+          "vol_baseline_period": 63,
+          "peak_measure": "high",
+          "breakout_measure": "close"
+        },
+        "burst": {
+          "gap_max": 8,
+          "vol_baseline_period": 63,
+          "min_bos": 1,
+          "first_drought_min": 40,
+          "distinct_pk_min": 3,
+          "vol_spike_min": 10
+        },
+        "tb": {
+          "max_rise_k": 1.5,
+          "stop_confirm_bars": 1,
+          "vol_window": 14,
+          "anchor_mode": "span_min",
+          "max_span": 60,
+          "measure": "close"
+        },
+        "edges": {}
+      }
+    },
+    {
+      "id": "bo.min_relative_height_1",
+      "changes": {
+        "bo": {
+          "min_relative_height": 0.3
+        }
+      },
+      "params": {
+        "bo": {
+          "total_window": 20,
+          "min_side_bars": 6,
+          "min_relative_height": 0.3,
+          "exceed_threshold": 0.003,
+          "peak_supersede_threshold": 0.01,
+          "vol_baseline_period": 63,
+          "peak_measure": "high",
+          "breakout_measure": "close"
+        },
+        "burst": {
+          "gap_max": 8,
+          "vol_baseline_period": 63,
+          "min_bos": 1,
+          "first_drought_min": 40,
+          "distinct_pk_min": 3,
+          "vol_spike_min": 10
+        },
+        "tb": {
+          "max_rise_k": 1.5,
+          "stop_confirm_bars": 1,
+          "vol_window": 14,
+          "anchor_mode": "span_min",
+          "max_span": 60,
+          "measure": "close"
+        },
+        "edges": {}
+      }
+    },
+    {
+      "id": "burst.vol_spike_min_0",
+      "changes": {
+        "burst": {
+          "vol_spike_min": 5.0
+        }
+      },
+      "params": {
+        "bo": {
+          "total_window": 20,
+          "min_side_bars": 6,
+          "min_relative_height": 0.2,
+          "exceed_threshold": 0.003,
+          "peak_supersede_threshold": 0.01,
+          "vol_baseline_period": 63,
+          "peak_measure": "high",
+          "breakout_measure": "close"
+        },
+        "burst": {
+          "gap_max": 8,
+          "vol_baseline_period": 63,
+          "min_bos": 1,
+          "first_drought_min": 40,
+          "distinct_pk_min": 3,
+          "vol_spike_min": 5.0
+        },
+        "tb": {
+          "max_rise_k": 1.5,
+          "stop_confirm_bars": 1,
+          "vol_window": 14,
+          "anchor_mode": "span_min",
+          "max_span": 60,
+          "measure": "close"
+        },
+        "edges": {}
+      }
+    },
+    {
+      "id": "burst.vol_spike_min_1",
+      "changes": {
+        "burst": {
+          "vol_spike_min": 15.0
+        }
+      },
+      "params": {
+        "bo": {
+          "total_window": 20,
+          "min_side_bars": 6,
+          "min_relative_height": 0.2,
+          "exceed_threshold": 0.003,
+          "peak_supersede_threshold": 0.01,
+          "vol_baseline_period": 63,
+          "peak_measure": "high",
+          "breakout_measure": "close"
+        },
+        "burst": {
+          "gap_max": 8,
+          "vol_baseline_period": 63,
+          "min_bos": 1,
+          "first_drought_min": 40,
+          "distinct_pk_min": 3,
+          "vol_spike_min": 15.0
+        },
+        "tb": {
+          "max_rise_k": 1.5,
+          "stop_confirm_bars": 1,
+          "vol_window": 14,
+          "anchor_mode": "span_min",
+          "max_span": 60,
+          "measure": "close"
+        },
+        "edges": {}
+      }
+    },
+    {
+      "id": "burst.first_drought_min_0",
+      "changes": {
+        "burst": {
+          "first_drought_min": 20
+        }
+      },
+      "params": {
+        "bo": {
+          "total_window": 20,
+          "min_side_bars": 6,
+          "min_relative_height": 0.2,
+          "exceed_threshold": 0.003,
+          "peak_supersede_threshold": 0.01,
+          "vol_baseline_period": 63,
+          "peak_measure": "high",
+          "breakout_measure": "close"
+        },
+        "burst": {
+          "gap_max": 8,
+          "vol_baseline_period": 63,
+          "min_bos": 1,
+          "first_drought_min": 20,
+          "distinct_pk_min": 3,
+          "vol_spike_min": 10
+        },
+        "tb": {
+          "max_rise_k": 1.5,
+          "stop_confirm_bars": 1,
+          "vol_window": 14,
+          "anchor_mode": "span_min",
+          "max_span": 60,
+          "measure": "close"
+        },
+        "edges": {}
+      }
+    },
+    {
+      "id": "burst.first_drought_min_1",
+      "changes": {
+        "burst": {
+          "first_drought_min": 60
+        }
+      },
+      "params": {
+        "bo": {
+          "total_window": 20,
+          "min_side_bars": 6,
+          "min_relative_height": 0.2,
+          "exceed_threshold": 0.003,
+          "peak_supersede_threshold": 0.01,
+          "vol_baseline_period": 63,
+          "peak_measure": "high",
+          "breakout_measure": "close"
+        },
+        "burst": {
+          "gap_max": 8,
+          "vol_baseline_period": 63,
+          "min_bos": 1,
+          "first_drought_min": 60,
+          "distinct_pk_min": 3,
+          "vol_spike_min": 10
+        },
+        "tb": {
+          "max_rise_k": 1.5,
+          "stop_confirm_bars": 1,
+          "vol_window": 14,
+          "anchor_mode": "span_min",
+          "max_span": 60,
+          "measure": "close"
+        },
+        "edges": {}
+      }
+    },
+    {
+      "id": "burst.distinct_pk_min_0",
+      "changes": {
+        "burst": {
+          "distinct_pk_min": 2
+        }
+      },
+      "params": {
+        "bo": {
+          "total_window": 20,
+          "min_side_bars": 6,
+          "min_relative_height": 0.2,
+          "exceed_threshold": 0.003,
+          "peak_supersede_threshold": 0.01,
+          "vol_baseline_period": 63,
+          "peak_measure": "high",
+          "breakout_measure": "close"
+        },
+        "burst": {
+          "gap_max": 8,
+          "vol_baseline_period": 63,
+          "min_bos": 1,
+          "first_drought_min": 40,
+          "distinct_pk_min": 2,
+          "vol_spike_min": 10
+        },
+        "tb": {
+          "max_rise_k": 1.5,
+          "stop_confirm_bars": 1,
+          "vol_window": 14,
+          "anchor_mode": "span_min",
+          "max_span": 60,
+          "measure": "close"
+        },
+        "edges": {}
+      }
+    },
+    {
+      "id": "burst.distinct_pk_min_1",
+      "changes": {
+        "burst": {
+          "distinct_pk_min": 4
+        }
+      },
+      "params": {
+        "bo": {
+          "total_window": 20,
+          "min_side_bars": 6,
+          "min_relative_height": 0.2,
+          "exceed_threshold": 0.003,
+          "peak_supersede_threshold": 0.01,
+          "vol_baseline_period": 63,
+          "peak_measure": "high",
+          "breakout_measure": "close"
+        },
+        "burst": {
+          "gap_max": 8,
+          "vol_baseline_period": 63,
+          "min_bos": 1,
+          "first_drought_min": 40,
+          "distinct_pk_min": 4,
+          "vol_spike_min": 10
+        },
+        "tb": {
+          "max_rise_k": 1.5,
+          "stop_confirm_bars": 1,
+          "vol_window": 14,
+          "anchor_mode": "span_min",
+          "max_span": 60,
+          "measure": "close"
+        },
+        "edges": {}
+      }
+    },
+    {
+      "id": "burst.gap_max_0",
+      "changes": {
+        "burst": {
+          "gap_max": 4
+        }
+      },
+      "params": {
+        "bo": {
+          "total_window": 20,
+          "min_side_bars": 6,
+          "min_relative_height": 0.2,
+          "exceed_threshold": 0.003,
+          "peak_supersede_threshold": 0.01,
+          "vol_baseline_period": 63,
+          "peak_measure": "high",
+          "breakout_measure": "close"
+        },
+        "burst": {
+          "gap_max": 4,
+          "vol_baseline_period": 63,
+          "min_bos": 1,
+          "first_drought_min": 40,
+          "distinct_pk_min": 3,
+          "vol_spike_min": 10
+        },
+        "tb": {
+          "max_rise_k": 1.5,
+          "stop_confirm_bars": 1,
+          "vol_window": 14,
+          "anchor_mode": "span_min",
+          "max_span": 60,
+          "measure": "close"
+        },
+        "edges": {}
+      }
+    },
+    {
+      "id": "burst.gap_max_1",
+      "changes": {
+        "burst": {
+          "gap_max": 12
+        }
+      },
+      "params": {
+        "bo": {
+          "total_window": 20,
+          "min_side_bars": 6,
+          "min_relative_height": 0.2,
+          "exceed_threshold": 0.003,
+          "peak_supersede_threshold": 0.01,
+          "vol_baseline_period": 63,
+          "peak_measure": "high",
+          "breakout_measure": "close"
+        },
+        "burst": {
+          "gap_max": 12,
+          "vol_baseline_period": 63,
+          "min_bos": 1,
+          "first_drought_min": 40,
+          "distinct_pk_min": 3,
+          "vol_spike_min": 10
+        },
+        "tb": {
+          "max_rise_k": 1.5,
+          "stop_confirm_bars": 1,
+          "vol_window": 14,
+          "anchor_mode": "span_min",
+          "max_span": 60,
+          "measure": "close"
+        },
+        "edges": {}
+      }
+    },
+    {
+      "id": "tb.max_rise_k_0",
+      "changes": {
+        "tb": {
+          "max_rise_k": 1.0
+        }
+      },
+      "params": {
+        "bo": {
+          "total_window": 20,
+          "min_side_bars": 6,
+          "min_relative_height": 0.2,
+          "exceed_threshold": 0.003,
+          "peak_supersede_threshold": 0.01,
+          "vol_baseline_period": 63,
+          "peak_measure": "high",
+          "breakout_measure": "close"
+        },
+        "burst": {
+          "gap_max": 8,
+          "vol_baseline_period": 63,
+          "min_bos": 1,
+          "first_drought_min": 40,
+          "distinct_pk_min": 3,
+          "vol_spike_min": 10
+        },
+        "tb": {
+          "max_rise_k": 1.0,
+          "stop_confirm_bars": 1,
+          "vol_window": 14,
+          "anchor_mode": "span_min",
+          "max_span": 60,
+          "measure": "close"
+        },
+        "edges": {}
+      }
+    },
+    {
+      "id": "tb.max_rise_k_1",
+      "changes": {
+        "tb": {
+          "max_rise_k": 2.0
+        }
+      },
+      "params": {
+        "bo": {
+          "total_window": 20,
+          "min_side_bars": 6,
+          "min_relative_height": 0.2,
+          "exceed_threshold": 0.003,
+          "peak_supersede_threshold": 0.01,
+          "vol_baseline_period": 63,
+          "peak_measure": "high",
+          "breakout_measure": "close"
+        },
+        "burst": {
+          "gap_max": 8,
+          "vol_baseline_period": 63,
+          "min_bos": 1,
+          "first_drought_min": 40,
+          "distinct_pk_min": 3,
+          "vol_spike_min": 10
+        },
+        "tb": {
+          "max_rise_k": 2.0,
+          "stop_confirm_bars": 1,
+          "vol_window": 14,
+          "anchor_mode": "span_min",
+          "max_span": 60,
+          "measure": "close"
+        },
+        "edges": {}
+      }
+    },
+    {
+      "id": "tb.max_span_0",
+      "changes": {
+        "tb": {
+          "max_span": 40
+        }
+      },
+      "params": {
+        "bo": {
+          "total_window": 20,
+          "min_side_bars": 6,
+          "min_relative_height": 0.2,
+          "exceed_threshold": 0.003,
+          "peak_supersede_threshold": 0.01,
+          "vol_baseline_period": 63,
+          "peak_measure": "high",
+          "breakout_measure": "close"
+        },
+        "burst": {
+          "gap_max": 8,
+          "vol_baseline_period": 63,
+          "min_bos": 1,
+          "first_drought_min": 40,
+          "distinct_pk_min": 3,
+          "vol_spike_min": 10
+        },
+        "tb": {
+          "max_rise_k": 1.5,
+          "stop_confirm_bars": 1,
+          "vol_window": 14,
+          "anchor_mode": "span_min",
+          "max_span": 40,
+          "measure": "close"
+        },
+        "edges": {}
+      }
+    },
+    {
+      "id": "tb.max_span_1",
+      "changes": {
+        "tb": {
+          "max_span": 90
+        }
+      },
+      "params": {
+        "bo": {
+          "total_window": 20,
+          "min_side_bars": 6,
+          "min_relative_height": 0.2,
+          "exceed_threshold": 0.003,
+          "peak_supersede_threshold": 0.01,
+          "vol_baseline_period": 63,
+          "peak_measure": "high",
+          "breakout_measure": "close"
+        },
+        "burst": {
+          "gap_max": 8,
+          "vol_baseline_period": 63,
+          "min_bos": 1,
+          "first_drought_min": 40,
+          "distinct_pk_min": 3,
+          "vol_spike_min": 10
+        },
+        "tb": {
+          "max_rise_k": 1.5,
+          "stop_confirm_bars": 1,
+          "vol_window": 14,
+          "anchor_mode": "span_min",
+          "max_span": 90,
+          "measure": "close"
+        },
+        "edges": {}
+      }
+    },
+    {
+      "id": "tb.stop_confirm_bars_0",
+      "changes": {
+        "tb": {
+          "stop_confirm_bars": 2
+        }
+      },
+      "params": {
+        "bo": {
+          "total_window": 20,
+          "min_side_bars": 6,
+          "min_relative_height": 0.2,
+          "exceed_threshold": 0.003,
+          "peak_supersede_threshold": 0.01,
+          "vol_baseline_period": 63,
+          "peak_measure": "high",
+          "breakout_measure": "close"
+        },
+        "burst": {
+          "gap_max": 8,
+          "vol_baseline_period": 63,
+          "min_bos": 1,
+          "first_drought_min": 40,
+          "distinct_pk_min": 3,
+          "vol_spike_min": 10
+        },
+        "tb": {
+          "max_rise_k": 1.5,
+          "stop_confirm_bars": 2,
+          "vol_window": 14,
+          "anchor_mode": "span_min",
+          "max_span": 60,
+          "measure": "close"
+        },
+        "edges": {}
+      }
+    },
+    {
+      "id": "tb.stop_confirm_bars_1",
+      "changes": {
+        "tb": {
+          "stop_confirm_bars": 3
+        }
+      },
+      "params": {
+        "bo": {
+          "total_window": 20,
+          "min_side_bars": 6,
+          "min_relative_height": 0.2,
+          "exceed_threshold": 0.003,
+          "peak_supersede_threshold": 0.01,
+          "vol_baseline_period": 63,
+          "peak_measure": "high",
+          "breakout_measure": "close"
+        },
+        "burst": {
+          "gap_max": 8,
+          "vol_baseline_period": 63,
+          "min_bos": 1,
+          "first_drought_min": 40,
+          "distinct_pk_min": 3,
+          "vol_spike_min": 10
+        },
+        "tb": {
+          "max_rise_k": 1.5,
+          "stop_confirm_bars": 3,
+          "vol_window": 14,
+          "anchor_mode": "span_min",
+          "max_span": 60,
+          "measure": "close"
+        },
+        "edges": {}
+      }
+    },
+    {
+      "id": "burst.min_bos_0",
+      "changes": {
+        "burst": {
+          "min_bos": 2
+        }
+      },
+      "params": {
+        "bo": {
+          "total_window": 20,
+          "min_side_bars": 6,
+          "min_relative_height": 0.2,
+          "exceed_threshold": 0.003,
+          "peak_supersede_threshold": 0.01,
+          "vol_baseline_period": 63,
+          "peak_measure": "high",
+          "breakout_measure": "close"
+        },
+        "burst": {
+          "gap_max": 8,
+          "vol_baseline_period": 63,
+          "min_bos": 2,
+          "first_drought_min": 40,
+          "distinct_pk_min": 3,
+          "vol_spike_min": 10
+        },
+        "tb": {
+          "max_rise_k": 1.5,
+          "stop_confirm_bars": 1,
+          "vol_window": 14,
+          "anchor_mode": "span_min",
+          "max_span": 60,
+          "measure": "close"
+        },
+        "edges": {}
+      }
+    },
+    {
+      "id": "burst.min_bos_1",
+      "changes": {
+        "burst": {
+          "min_bos": 3
+        }
+      },
+      "params": {
+        "bo": {
+          "total_window": 20,
+          "min_side_bars": 6,
+          "min_relative_height": 0.2,
+          "exceed_threshold": 0.003,
+          "peak_supersede_threshold": 0.01,
+          "vol_baseline_period": 63,
+          "peak_measure": "high",
+          "breakout_measure": "close"
+        },
+        "burst": {
+          "gap_max": 8,
+          "vol_baseline_period": 63,
+          "min_bos": 3,
+          "first_drought_min": 40,
+          "distinct_pk_min": 3,
+          "vol_spike_min": 10
+        },
+        "tb": {
+          "max_rise_k": 1.5,
+          "stop_confirm_bars": 1,
+          "vol_window": 14,
+          "anchor_mode": "span_min",
+          "max_span": 60,
+          "measure": "close"
+        },
+        "edges": {}
+      }
+    },
+    {
+      "id": "joint_00",
+      "changes": {
+        "burst": {
+          "distinct_pk_min": 4,
+          "min_bos": 2
+        },
+        "bo": {
+          "exceed_threshold": 0.006
+        }
+      },
+      "params": {
+        "bo": {
+          "total_window": 20,
+          "min_side_bars": 6,
+          "min_relative_height": 0.2,
+          "exceed_threshold": 0.006,
+          "peak_supersede_threshold": 0.01,
+          "vol_baseline_period": 63,
+          "peak_measure": "high",
+          "breakout_measure": "close"
+        },
+        "burst": {
+          "gap_max": 8,
+          "vol_baseline_period": 63,
+          "min_bos": 2,
+          "first_drought_min": 40,
+          "distinct_pk_min": 4,
+          "vol_spike_min": 10
+        },
+        "tb": {
+          "max_rise_k": 1.5,
+          "stop_confirm_bars": 1,
+          "vol_window": 14,
+          "anchor_mode": "span_min",
+          "max_span": 60,
+          "measure": "close"
+        },
+        "edges": {}
+      }
+    },
+    {
+      "id": "joint_01",
+      "changes": {
+        "burst": {
+          "min_bos": 2,
+          "distinct_pk_min": 2
+        },
+        "tb": {
+          "stop_confirm_bars": 2
+        }
+      },
+      "params": {
+        "bo": {
+          "total_window": 20,
+          "min_side_bars": 6,
+          "min_relative_height": 0.2,
+          "exceed_threshold": 0.003,
+          "peak_supersede_threshold": 0.01,
+          "vol_baseline_period": 63,
+          "peak_measure": "high",
+          "breakout_measure": "close"
+        },
+        "burst": {
+          "gap_max": 8,
+          "vol_baseline_period": 63,
+          "min_bos": 2,
+          "first_drought_min": 40,
+          "distinct_pk_min": 2,
+          "vol_spike_min": 10
+        },
+        "tb": {
+          "max_rise_k": 1.5,
+          "stop_confirm_bars": 2,
+          "vol_window": 14,
+          "anchor_mode": "span_min",
+          "max_span": 60,
+          "measure": "close"
+        },
+        "edges": {}
+      }
+    },
+    {
+      "id": "joint_02",
+      "changes": {
+        "burst": {
+          "distinct_pk_min": 2,
+          "vol_spike_min": 15.0
+        },
+        "bo": {
+          "min_relative_height": 0.3
+        }
+      },
+      "params": {
+        "bo": {
+          "total_window": 20,
+          "min_side_bars": 6,
+          "min_relative_height": 0.3,
+          "exceed_threshold": 0.003,
+          "peak_supersede_threshold": 0.01,
+          "vol_baseline_period": 63,
+          "peak_measure": "high",
+          "breakout_measure": "close"
+        },
+        "burst": {
+          "gap_max": 8,
+          "vol_baseline_period": 63,
+          "min_bos": 1,
+          "first_drought_min": 40,
+          "distinct_pk_min": 2,
+          "vol_spike_min": 15.0
+        },
+        "tb": {
+          "max_rise_k": 1.5,
+          "stop_confirm_bars": 1,
+          "vol_window": 14,
+          "anchor_mode": "span_min",
+          "max_span": 60,
+          "measure": "close"
+        },
+        "edges": {}
+      }
+    },
+    {
+      "id": "joint_03",
+      "changes": {
+        "burst": {
+          "gap_max": 12,
+          "distinct_pk_min": 4
+        },
+        "tb": {
+          "max_rise_k": 1.0
+        }
+      },
+      "params": {
+        "bo": {
+          "total_window": 20,
+          "min_side_bars": 6,
+          "min_relative_height": 0.2,
+          "exceed_threshold": 0.003,
+          "peak_supersede_threshold": 0.01,
+          "vol_baseline_period": 63,
+          "peak_measure": "high",
+          "breakout_measure": "close"
+        },
+        "burst": {
+          "gap_max": 12,
+          "vol_baseline_period": 63,
+          "min_bos": 1,
+          "first_drought_min": 40,
+          "distinct_pk_min": 4,
+          "vol_spike_min": 10
+        },
+        "tb": {
+          "max_rise_k": 1.0,
+          "stop_confirm_bars": 1,
+          "vol_window": 14,
+          "anchor_mode": "span_min",
+          "max_span": 60,
+          "measure": "close"
+        },
+        "edges": {}
+      }
+    },
+    {
+      "id": "joint_04",
+      "changes": {
+        "burst": {
+          "min_bos": 2
+        },
+        "tb": {
+          "max_rise_k": 1.0
+        },
+        "bo": {
+          "exceed_threshold": 0.0015
+        }
+      },
+      "params": {
+        "bo": {
+          "total_window": 20,
+          "min_side_bars": 6,
+          "min_relative_height": 0.2,
+          "exceed_threshold": 0.0015,
+          "peak_supersede_threshold": 0.01,
+          "vol_baseline_period": 63,
+          "peak_measure": "high",
+          "breakout_measure": "close"
+        },
+        "burst": {
+          "gap_max": 8,
+          "vol_baseline_period": 63,
+          "min_bos": 2,
+          "first_drought_min": 40,
+          "distinct_pk_min": 3,
+          "vol_spike_min": 10
+        },
+        "tb": {
+          "max_rise_k": 1.0,
+          "stop_confirm_bars": 1,
+          "vol_window": 14,
+          "anchor_mode": "span_min",
+          "max_span": 60,
+          "measure": "close"
+        },
+        "edges": {}
+      }
+    },
+    {
+      "id": "joint_05",
+      "changes": {
+        "burst": {
+          "first_drought_min": 60,
+          "min_bos": 3
+        },
+        "bo": {
+          "exceed_threshold": 0.006
+        }
+      },
+      "params": {
+        "bo": {
+          "total_window": 20,
+          "min_side_bars": 6,
+          "min_relative_height": 0.2,
+          "exceed_threshold": 0.006,
+          "peak_supersede_threshold": 0.01,
+          "vol_baseline_period": 63,
+          "peak_measure": "high",
+          "breakout_measure": "close"
+        },
+        "burst": {
+          "gap_max": 8,
+          "vol_baseline_period": 63,
+          "min_bos": 3,
+          "first_drought_min": 60,
+          "distinct_pk_min": 3,
+          "vol_spike_min": 10
+        },
+        "tb": {
+          "max_rise_k": 1.5,
+          "stop_confirm_bars": 1,
+          "vol_window": 14,
+          "anchor_mode": "span_min",
+          "max_span": 60,
+          "measure": "close"
+        },
+        "edges": {}
+      }
+    },
+    {
+      "id": "joint_06",
+      "changes": {
+        "tb": {
+          "max_span": 40,
+          "stop_confirm_bars": 2
+        },
+        "bo": {
+          "min_relative_height": 0.1
+        }
+      },
+      "params": {
+        "bo": {
+          "total_window": 20,
+          "min_side_bars": 6,
+          "min_relative_height": 0.1,
+          "exceed_threshold": 0.003,
+          "peak_supersede_threshold": 0.01,
+          "vol_baseline_period": 63,
+          "peak_measure": "high",
+          "breakout_measure": "close"
+        },
+        "burst": {
+          "gap_max": 8,
+          "vol_baseline_period": 63,
+          "min_bos": 1,
+          "first_drought_min": 40,
+          "distinct_pk_min": 3,
+          "vol_spike_min": 10
+        },
+        "tb": {
+          "max_rise_k": 1.5,
+          "stop_confirm_bars": 2,
+          "vol_window": 14,
+          "anchor_mode": "span_min",
+          "max_span": 40,
+          "measure": "close"
+        },
+        "edges": {}
+      }
+    },
+    {
+      "id": "joint_07",
+      "changes": {
+        "bo": {
+          "exceed_threshold": 0.0015
+        },
+        "tb": {
+          "max_span": 40,
+          "max_rise_k": 1.0
+        }
+      },
+      "params": {
+        "bo": {
+          "total_window": 20,
+          "min_side_bars": 6,
+          "min_relative_height": 0.2,
+          "exceed_threshold": 0.0015,
+          "peak_supersede_threshold": 0.01,
+          "vol_baseline_period": 63,
+          "peak_measure": "high",
+          "breakout_measure": "close"
+        },
+        "burst": {
+          "gap_max": 8,
+          "vol_baseline_period": 63,
+          "min_bos": 1,
+          "first_drought_min": 40,
+          "distinct_pk_min": 3,
+          "vol_spike_min": 10
+        },
+        "tb": {
+          "max_rise_k": 1.0,
+          "stop_confirm_bars": 1,
+          "vol_window": 14,
+          "anchor_mode": "span_min",
+          "max_span": 40,
+          "measure": "close"
+        },
+        "edges": {}
+      }
+    },
+    {
+      "id": "joint_08",
+      "changes": {
+        "tb": {
+          "max_rise_k": 1.0
+        },
+        "burst": {
+          "vol_spike_min": 5.0,
+          "gap_max": 12
+        }
+      },
+      "params": {
+        "bo": {
+          "total_window": 20,
+          "min_side_bars": 6,
+          "min_relative_height": 0.2,
+          "exceed_threshold": 0.003,
+          "peak_supersede_threshold": 0.01,
+          "vol_baseline_period": 63,
+          "peak_measure": "high",
+          "breakout_measure": "close"
+        },
+        "burst": {
+          "gap_max": 12,
+          "vol_baseline_period": 63,
+          "min_bos": 1,
+          "first_drought_min": 40,
+          "distinct_pk_min": 3,
+          "vol_spike_min": 5.0
+        },
+        "tb": {
+          "max_rise_k": 1.0,
+          "stop_confirm_bars": 1,
+          "vol_window": 14,
+          "anchor_mode": "span_min",
+          "max_span": 60,
+          "measure": "close"
+        },
+        "edges": {}
+      }
+    },
+    {
+      "id": "joint_09",
+      "changes": {
+        "bo": {
+          "min_relative_height": 0.1
+        },
+        "burst": {
+          "vol_spike_min": 15.0
+        },
+        "tb": {
+          "stop_confirm_bars": 2
+        }
+      },
+      "params": {
+        "bo": {
+          "total_window": 20,
+          "min_side_bars": 6,
+          "min_relative_height": 0.1,
+          "exceed_threshold": 0.003,
+          "peak_supersede_threshold": 0.01,
+          "vol_baseline_period": 63,
+          "peak_measure": "high",
+          "breakout_measure": "close"
+        },
+        "burst": {
+          "gap_max": 8,
+          "vol_baseline_period": 63,
+          "min_bos": 1,
+          "first_drought_min": 40,
+          "distinct_pk_min": 3,
+          "vol_spike_min": 15.0
+        },
+        "tb": {
+          "max_rise_k": 1.5,
+          "stop_confirm_bars": 2,
+          "vol_window": 14,
+          "anchor_mode": "span_min",
+          "max_span": 60,
+          "measure": "close"
+        },
+        "edges": {}
+      }
+    },
+    {
+      "id": "joint_10",
+      "changes": {
+        "burst": {
+          "first_drought_min": 20,
+          "min_bos": 3,
+          "vol_spike_min": 5.0
+        }
+      },
+      "params": {
+        "bo": {
+          "total_window": 20,
+          "min_side_bars": 6,
+          "min_relative_height": 0.2,
+          "exceed_threshold": 0.003,
+          "peak_supersede_threshold": 0.01,
+          "vol_baseline_period": 63,
+          "peak_measure": "high",
+          "breakout_measure": "close"
+        },
+        "burst": {
+          "gap_max": 8,
+          "vol_baseline_period": 63,
+          "min_bos": 3,
+          "first_drought_min": 20,
+          "distinct_pk_min": 3,
+          "vol_spike_min": 5.0
+        },
+        "tb": {
+          "max_rise_k": 1.5,
+          "stop_confirm_bars": 1,
+          "vol_window": 14,
+          "anchor_mode": "span_min",
+          "max_span": 60,
+          "measure": "close"
+        },
+        "edges": {}
+      }
+    },
+    {
+      "id": "joint_11",
+      "changes": {
+        "burst": {
+          "gap_max": 12,
+          "distinct_pk_min": 4
+        },
+        "bo": {
+          "min_relative_height": 0.3
+        }
+      },
+      "params": {
+        "bo": {
+          "total_window": 20,
+          "min_side_bars": 6,
+          "min_relative_height": 0.3,
+          "exceed_threshold": 0.003,
+          "peak_supersede_threshold": 0.01,
+          "vol_baseline_period": 63,
+          "peak_measure": "high",
+          "breakout_measure": "close"
+        },
+        "burst": {
+          "gap_max": 12,
+          "vol_baseline_period": 63,
+          "min_bos": 1,
+          "first_drought_min": 40,
+          "distinct_pk_min": 4,
+          "vol_spike_min": 10
+        },
+        "tb": {
+          "max_rise_k": 1.5,
+          "stop_confirm_bars": 1,
+          "vol_window": 14,
+          "anchor_mode": "span_min",
+          "max_span": 60,
+          "measure": "close"
+        },
+        "edges": {}
+      }
+    }
+  ],
+  "fixed_bo_params": {
+    "bo": {
+      "total_window": 20,
+      "min_side_bars": 6,
+      "min_relative_height": 0.2,
+      "exceed_threshold": 0.003,
+      "peak_supersede_threshold": 0.01,
+      "vol_baseline_period": 63,
+      "peak_measure": "high",
+      "breakout_measure": "close"
+    }
+  }
+}

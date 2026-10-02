@@ -1,0 +1,9 @@
+{
+  "checked_candidates": 132,
+  "maximum_absolute_score_difference": 1.6653345369377348e-16,
+  "all_feasibility_and_counts_identical": true,
+  "change": "只对条件权重作共同尺度平移，防止旧稀疏窗口的权重全下溢；数学目标不变",
+  "current_scoring_sha256": "3b509e29aba5eb001387f2c4238d3961a60b45debf0521b82dc45262544f8ada",
+  "maximum_absolute_constraint_difference": 1.6653345369377348e-16,
+  "all_constraint_names_identical": true
+}

@@ -1,0 +1,20 @@
+{
+  "fixed_pool_stocks": 3,
+  "candidate_A_stock_labels": [
+    12,
+    12,
+    2
+  ],
+  "candidate_B_stock_labels": [
+    9,
+    9,
+    9
+  ],
+  "fixed_pool_median_A": 12,
+  "fixed_pool_median_B": 9,
+  "stock_draw_outcomes": 27,
+  "A_score_2_probability": 0.25925925925925924,
+  "A_q20": 2.0,
+  "B_q20": 9,
+  "date_coverage": "Across 12 full 20-day blocks, candidate A selects all three stocks on odd days, with labels [12,12,2]; B selects all three stocks on even days, with labels [9,9,9]. Every stock-date has one label. Dates/block multiplicities do not alter within-stock candidate-constant labels. Meets stock/time count coverage; direction filters not modeled."
+}

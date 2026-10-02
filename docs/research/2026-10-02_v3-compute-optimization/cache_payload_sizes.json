@@ -1,0 +1,32 @@
+{
+  "scope": "Analytical payload sizes, not measured process RSS; excludes prices, Python containers, metadata, history buffers and workspaces. Stock/date uint16 only illustrative for this bounded synthetic shape.",
+  "stocks": 5000,
+  "buy_dates": 504,
+  "rows": 2520000,
+  "payloads": {
+    "state_uint8_dense": {
+      "bytes": 2520000,
+      "MiB": 2.40325927734375
+    },
+    "state_and_two_float64_dense": {
+      "bytes": 42840000,
+      "MiB": 40.85540771484375
+    },
+    "sparse_with_uint16_stock_and_date": {
+      "bytes": 52920000,
+      "MiB": 50.46844482421875
+    },
+    "daily_five_groups_three_counts_int64": {
+      "bytes": 60480,
+      "MiB": 0.05767822265625
+    },
+    "candidate_full_row_ids_uint32": {
+      "bytes": 10080000,
+      "MiB": 9.613037109375
+    },
+    "bo_mask_bool": {
+      "bytes": 2520000,
+      "MiB": 2.40325927734375
+    }
+  }
+}

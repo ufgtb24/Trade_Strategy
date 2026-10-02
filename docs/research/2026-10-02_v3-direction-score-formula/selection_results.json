@@ -1,0 +1,379 @@
+{
+  "seed": 2026100204,
+  "repeats": 5000,
+  "scope": "Gaussian synthetic estimator-selection mechanism; known error variance, no market data, no Optuna; no claim that lambda is calibrated for this project.",
+  "cases": [
+    {
+      "true_tau": 0.08,
+      "candidates": 20,
+      "formulas": {
+        "raw": {
+          "mean_winner_truth": 0.06894885406411984,
+          "se_mean_winner_truth": 0.0011033724429563886,
+          "mean_reported_score": 0.28127878168055576,
+          "mean_reported_minus_truth": 0.2123299276164359,
+          "high_error_selected_fraction": 0.8852,
+          "mean_regret_to_best_true": 0.08047910402896939,
+          "same_winner_as_raw_fraction": 1.0
+        },
+        "common_half": {
+          "mean_winner_truth": 0.06894885406411984,
+          "se_mean_winner_truth": 0.0011033724429563886,
+          "mean_reported_score": 0.14063939084027788,
+          "mean_reported_minus_truth": 0.07169053677615804,
+          "high_error_selected_fraction": 0.8852,
+          "mean_regret_to_best_true": 0.08047910402896939,
+          "same_winner_as_raw_fraction": 1.0
+        },
+        "known_tau": {
+          "mean_winner_truth": 0.11333418091634882,
+          "se_mean_winner_truth": 0.0008023009296573821,
+          "mean_reported_score": 0.11254368305646599,
+          "mean_reported_minus_truth": -0.0007904978598828257,
+          "high_error_selected_fraction": 0.1106,
+          "mean_regret_to_best_true": 0.03609377717674041,
+          "same_winner_as_raw_fraction": 0.2254
+        },
+        "half_tau": {
+          "mean_winner_truth": 0.1113161009977332,
+          "se_mean_winner_truth": 0.0007787049510753064,
+          "mean_reported_score": 0.06895980130389887,
+          "mean_reported_minus_truth": -0.042356299693834316,
+          "high_error_selected_fraction": 0.0148,
+          "mean_regret_to_best_true": 0.038111857095356035,
+          "same_winner_as_raw_fraction": 0.1296
+        },
+        "double_tau": {
+          "mean_winner_truth": 0.09772783854985813,
+          "se_mean_winner_truth": 0.0010435513739947948,
+          "mean_reported_score": 0.1623962797072015,
+          "mean_reported_minus_truth": 0.06466844115734338,
+          "high_error_selected_fraction": 0.5422,
+          "mean_regret_to_best_true": 0.05170011954323109,
+          "same_winner_as_raw_fraction": 0.657
+        },
+        "assumed_tau_008": {
+          "mean_winner_truth": 0.11333418091634882,
+          "se_mean_winner_truth": 0.0008023009296573821,
+          "mean_reported_score": 0.11254368305646599,
+          "mean_reported_minus_truth": -0.0007904978598828257,
+          "high_error_selected_fraction": 0.1106,
+          "mean_regret_to_best_true": 0.03609377717674041,
+          "same_winner_as_raw_fraction": 0.2254
+        }
+      },
+      "known_minus_raw_truth_gain_mean": 0.044385326852228985,
+      "known_minus_raw_truth_gain_mc_se": 0.0011269637751500218
+    },
+    {
+      "true_tau": 0.08,
+      "candidates": 100,
+      "formulas": {
+        "raw": {
+          "mean_winner_truth": 0.08420490195965821,
+          "se_mean_winner_truth": 0.0010493522497357962,
+          "mean_reported_score": 0.4016435173281547,
+          "mean_reported_minus_truth": 0.31743861536849644,
+          "high_error_selected_fraction": 0.9902,
+          "mean_regret_to_best_true": 0.11602439359125646,
+          "same_winner_as_raw_fraction": 1.0
+        },
+        "common_half": {
+          "mean_winner_truth": 0.08420490195965821,
+          "se_mean_winner_truth": 0.0010493522497357962,
+          "mean_reported_score": 0.20082175866407734,
+          "mean_reported_minus_truth": 0.11661685670441911,
+          "high_error_selected_fraction": 0.9902,
+          "mean_regret_to_best_true": 0.11602439359125646,
+          "same_winner_as_raw_fraction": 1.0
+        },
+        "known_tau": {
+          "mean_winner_truth": 0.1615111683635415,
+          "se_mean_winner_truth": 0.0006959302329048284,
+          "mean_reported_score": 0.16153129532767202,
+          "mean_reported_minus_truth": 2.0126964130517068e-05,
+          "high_error_selected_fraction": 0.0106,
+          "mean_regret_to_best_true": 0.03871812718737317,
+          "same_winner_as_raw_fraction": 0.0204
+        },
+        "half_tau": {
+          "mean_winner_truth": 0.16130486229403718,
+          "se_mean_winner_truth": 0.0006940927994683489,
+          "mean_reported_score": 0.10086040455793067,
+          "mean_reported_minus_truth": -0.06044445773610651,
+          "high_error_selected_fraction": 0.0,
+          "mean_regret_to_best_true": 0.03892443325687749,
+          "same_winner_as_raw_fraction": 0.0098
+        },
+        "double_tau": {
+          "mean_winner_truth": 0.1300300444488565,
+          "se_mean_winner_truth": 0.0010911407128293869,
+          "mean_reported_score": 0.21798590052553538,
+          "mean_reported_minus_truth": 0.08795585607667886,
+          "high_error_selected_fraction": 0.5726,
+          "mean_regret_to_best_true": 0.07019925110205819,
+          "same_winner_as_raw_fraction": 0.5824
+        },
+        "assumed_tau_008": {
+          "mean_winner_truth": 0.1615111683635415,
+          "se_mean_winner_truth": 0.0006959302329048284,
+          "mean_reported_score": 0.16153129532767202,
+          "mean_reported_minus_truth": 2.0126964130517068e-05,
+          "high_error_selected_fraction": 0.0106,
+          "mean_regret_to_best_true": 0.03871812718737317,
+          "same_winner_as_raw_fraction": 0.0204
+        }
+      },
+      "known_minus_raw_truth_gain_mean": 0.0773062664038833,
+      "known_minus_raw_truth_gain_mc_se": 0.0012278787943470757
+    },
+    {
+      "true_tau": 0.08,
+      "candidates": 500,
+      "formulas": {
+        "raw": {
+          "mean_winner_truth": 0.10136373103726093,
+          "se_mean_winner_truth": 0.0010517113219783998,
+          "mean_reported_score": 0.5048394600395759,
+          "mean_reported_minus_truth": 0.40347572900231493,
+          "high_error_selected_fraction": 1.0,
+          "mean_regret_to_best_true": 0.14138416729953257,
+          "same_winner_as_raw_fraction": 1.0
+        },
+        "common_half": {
+          "mean_winner_truth": 0.10136373103726093,
+          "se_mean_winner_truth": 0.0010517113219783998,
+          "mean_reported_score": 0.25241973001978796,
+          "mean_reported_minus_truth": 0.151055998982527,
+          "high_error_selected_fraction": 1.0,
+          "mean_regret_to_best_true": 0.14138416729953257,
+          "same_winner_as_raw_fraction": 1.0
+        },
+        "known_tau": {
+          "mean_winner_truth": 0.20086414125695604,
+          "se_mean_winner_truth": 0.0006503490331122286,
+          "mean_reported_score": 0.2018044336566702,
+          "mean_reported_minus_truth": 0.0009402923997141668,
+          "high_error_selected_fraction": 0.0002,
+          "mean_regret_to_best_true": 0.04188375707983747,
+          "same_winner_as_raw_fraction": 0.0002
+        },
+        "half_tau": {
+          "mean_winner_truth": 0.20087570713229885,
+          "se_mean_winner_truth": 0.0006500171983114274,
+          "mean_reported_score": 0.12612679616028002,
+          "mean_reported_minus_truth": -0.07474891097201879,
+          "high_error_selected_fraction": 0.0,
+          "mean_regret_to_best_true": 0.041872191204494674,
+          "same_winner_as_raw_fraction": 0.0
+        },
+        "double_tau": {
+          "mean_winner_truth": 0.1505381727216115,
+          "se_mean_winner_truth": 0.0012067031701564058,
+          "mean_reported_score": 0.26480657129291296,
+          "mean_reported_minus_truth": 0.11426839857130149,
+          "high_error_selected_fraction": 0.6222,
+          "mean_regret_to_best_true": 0.092209725615182,
+          "same_winner_as_raw_fraction": 0.6222
+        },
+        "assumed_tau_008": {
+          "mean_winner_truth": 0.20086414125695604,
+          "se_mean_winner_truth": 0.0006503490331122286,
+          "mean_reported_score": 0.2018044336566702,
+          "mean_reported_minus_truth": 0.0009402923997141668,
+          "high_error_selected_fraction": 0.0002,
+          "mean_regret_to_best_true": 0.04188375707983747,
+          "same_winner_as_raw_fraction": 0.0002
+        }
+      },
+      "known_minus_raw_truth_gain_mean": 0.0995004102196951,
+      "known_minus_raw_truth_gain_mc_se": 0.0012215991171466902
+    },
+    {
+      "true_tau": 0.0,
+      "candidates": 20,
+      "formulas": {
+        "raw": {
+          "mean_winner_truth": 0.0,
+          "se_mean_winner_truth": 0.0,
+          "mean_reported_score": 0.2470285239559511,
+          "mean_reported_minus_truth": 0.2470285239559511,
+          "high_error_selected_fraction": 0.9808,
+          "mean_regret_to_best_true": 0.0,
+          "same_winner_as_raw_fraction": 1.0
+        },
+        "common_half": {
+          "mean_winner_truth": 0.0,
+          "se_mean_winner_truth": 0.0,
+          "mean_reported_score": 0.12351426197797555,
+          "mean_reported_minus_truth": 0.12351426197797555,
+          "high_error_selected_fraction": 0.9808,
+          "mean_regret_to_best_true": 0.0,
+          "same_winner_as_raw_fraction": 1.0
+        },
+        "known_tau": {
+          "mean_winner_truth": 0.0,
+          "se_mean_winner_truth": 0.0,
+          "mean_reported_score": 0.0,
+          "mean_reported_minus_truth": 0.0,
+          "high_error_selected_fraction": 0.489,
+          "mean_regret_to_best_true": 0.0,
+          "same_winner_as_raw_fraction": 0.0516
+        },
+        "half_tau": {
+          "mean_winner_truth": 0.0,
+          "se_mean_winner_truth": 0.0,
+          "mean_reported_score": 0.0,
+          "mean_reported_minus_truth": 0.0,
+          "high_error_selected_fraction": 0.489,
+          "mean_regret_to_best_true": 0.0,
+          "same_winner_as_raw_fraction": 0.0516
+        },
+        "double_tau": {
+          "mean_winner_truth": 0.0,
+          "se_mean_winner_truth": 0.0,
+          "mean_reported_score": 0.0,
+          "mean_reported_minus_truth": 0.0,
+          "high_error_selected_fraction": 0.489,
+          "mean_regret_to_best_true": 0.0,
+          "same_winner_as_raw_fraction": 0.0516
+        },
+        "assumed_tau_008": {
+          "mean_winner_truth": 0.0,
+          "se_mean_winner_truth": 0.0,
+          "mean_reported_score": 0.05974957586730877,
+          "mean_reported_minus_truth": 0.05974957586730877,
+          "high_error_selected_fraction": 0.5104,
+          "mean_regret_to_best_true": 0.0,
+          "same_winner_as_raw_fraction": 0.5296
+        }
+      },
+      "known_minus_raw_truth_gain_mean": 0.0,
+      "known_minus_raw_truth_gain_mc_se": 0.0
+    },
+    {
+      "true_tau": 0.0,
+      "candidates": 100,
+      "formulas": {
+        "raw": {
+          "mean_winner_truth": 0.0,
+          "se_mean_winner_truth": 0.0,
+          "mean_reported_score": 0.3592520816268025,
+          "mean_reported_minus_truth": 0.3592520816268025,
+          "high_error_selected_fraction": 1.0,
+          "mean_regret_to_best_true": 0.0,
+          "same_winner_as_raw_fraction": 1.0
+        },
+        "common_half": {
+          "mean_winner_truth": 0.0,
+          "se_mean_winner_truth": 0.0,
+          "mean_reported_score": 0.17962604081340125,
+          "mean_reported_minus_truth": 0.17962604081340125,
+          "high_error_selected_fraction": 1.0,
+          "mean_regret_to_best_true": 0.0,
+          "same_winner_as_raw_fraction": 1.0
+        },
+        "known_tau": {
+          "mean_winner_truth": 0.0,
+          "se_mean_winner_truth": 0.0,
+          "mean_reported_score": 0.0,
+          "mean_reported_minus_truth": 0.0,
+          "high_error_selected_fraction": 0.4798,
+          "mean_regret_to_best_true": 0.0,
+          "same_winner_as_raw_fraction": 0.0076
+        },
+        "half_tau": {
+          "mean_winner_truth": 0.0,
+          "se_mean_winner_truth": 0.0,
+          "mean_reported_score": 0.0,
+          "mean_reported_minus_truth": 0.0,
+          "high_error_selected_fraction": 0.4798,
+          "mean_regret_to_best_true": 0.0,
+          "same_winner_as_raw_fraction": 0.0076
+        },
+        "double_tau": {
+          "mean_winner_truth": 0.0,
+          "se_mean_winner_truth": 0.0,
+          "mean_reported_score": 0.0,
+          "mean_reported_minus_truth": 0.0,
+          "high_error_selected_fraction": 0.4798,
+          "mean_regret_to_best_true": 0.0,
+          "same_winner_as_raw_fraction": 0.0076
+        },
+        "assumed_tau_008": {
+          "mean_winner_truth": 0.0,
+          "se_mean_winner_truth": 0.0,
+          "mean_reported_score": 0.08012786693911657,
+          "mean_reported_minus_truth": 0.08012786693911657,
+          "high_error_selected_fraction": 0.5018,
+          "mean_regret_to_best_true": 0.0,
+          "same_winner_as_raw_fraction": 0.5018
+        }
+      },
+      "known_minus_raw_truth_gain_mean": 0.0,
+      "known_minus_raw_truth_gain_mc_se": 0.0
+    },
+    {
+      "true_tau": 0.0,
+      "candidates": 500,
+      "formulas": {
+        "raw": {
+          "mean_winner_truth": 0.0,
+          "se_mean_winner_truth": 0.0,
+          "mean_reported_score": 0.45013044090193527,
+          "mean_reported_minus_truth": 0.45013044090193527,
+          "high_error_selected_fraction": 1.0,
+          "mean_regret_to_best_true": 0.0,
+          "same_winner_as_raw_fraction": 1.0
+        },
+        "common_half": {
+          "mean_winner_truth": 0.0,
+          "se_mean_winner_truth": 0.0,
+          "mean_reported_score": 0.22506522045096763,
+          "mean_reported_minus_truth": 0.22506522045096763,
+          "high_error_selected_fraction": 1.0,
+          "mean_regret_to_best_true": 0.0,
+          "same_winner_as_raw_fraction": 1.0
+        },
+        "known_tau": {
+          "mean_winner_truth": 0.0,
+          "se_mean_winner_truth": 0.0,
+          "mean_reported_score": 0.0,
+          "mean_reported_minus_truth": 0.0,
+          "high_error_selected_fraction": 0.5064,
+          "mean_regret_to_best_true": 0.0,
+          "same_winner_as_raw_fraction": 0.0026
+        },
+        "half_tau": {
+          "mean_winner_truth": 0.0,
+          "se_mean_winner_truth": 0.0,
+          "mean_reported_score": 0.0,
+          "mean_reported_minus_truth": 0.0,
+          "high_error_selected_fraction": 0.5064,
+          "mean_regret_to_best_true": 0.0,
+          "same_winner_as_raw_fraction": 0.0026
+        },
+        "double_tau": {
+          "mean_winner_truth": 0.0,
+          "se_mean_winner_truth": 0.0,
+          "mean_reported_score": 0.0,
+          "mean_reported_minus_truth": 0.0,
+          "high_error_selected_fraction": 0.5064,
+          "mean_regret_to_best_true": 0.0,
+          "same_winner_as_raw_fraction": 0.0026
+        },
+        "assumed_tau_008": {
+          "mean_winner_truth": 0.0,
+          "se_mean_winner_truth": 0.0,
+          "mean_reported_score": 0.09703013468484428,
+          "mean_reported_minus_truth": 0.09703013468484428,
+          "high_error_selected_fraction": 0.5048,
+          "mean_regret_to_best_true": 0.0,
+          "same_winner_as_raw_fraction": 0.5048
+        }
+      },
+      "known_minus_raw_truth_gain_mean": 0.0,
+      "known_minus_raw_truth_gain_mc_se": 0.0
+    }
+  ]
+}

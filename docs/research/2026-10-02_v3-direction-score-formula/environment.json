@@ -1,0 +1,21 @@
+{
+  "scope": "Synthetic formula study, no market data or formal code changes",
+  "python": "3.12.12",
+  "packages": {
+    "numpy": "2.2.6",
+    "scipy": "1.17.0",
+    "pandas": "2.3.3",
+    "optuna": "4.7.0"
+  },
+  "source_sha256": {
+    "path2/eval.py": "9e4e20bc82c8fa8d6a30a6638ff1d887098b516e310bfeb069090489bc635d29",
+    "path2/calc/atr.py": "0150e8944e2f1f0cb0f9b01171c4f7bad3ccf9a2f19fe9532d6adbcb40d1f735",
+    ".claude/skills/tune-gates-v3/scripts/daily.py": "89df25b539b18de7ee6761e71c651dadaa80d503a5b05e6a1ffc7c183450fb24",
+    ".claude/skills/tune-gates-v3/scripts/scoring.py": "ee1c557a4a22fcf4664149f1c83adc5fe4c7e2b3edd74c8d60689f26df00db48",
+    ".claude/skills/tune-gates-v3/scripts/run.py": "b49f409ba54766193a1d3883b988f3667043accb83583ffe00db4912e748664d",
+    "BreakoutStrategy/mining/threshold_optimizer.py": "d0004bf375dee81a6b0435e9cd22558a057853fc474955cb58a5f85521a64950",
+    "docs/explain/tune-gates_v3方向优先与收盘穿越_通俗解释.md": "8aa2447da59690fd39ae23500c67dff425db67ea902664b426c250385a627771",
+    "pyproject.toml": "35f877cc060a755a67bde99dc024da0e73d7bff5d336040c2692118e12d86a77",
+    "uv.lock": "f3261fa8e975cb05f81efe0dd6756b9a5a4324000d5723032cb8f3e8578dc723"
+  }
+}

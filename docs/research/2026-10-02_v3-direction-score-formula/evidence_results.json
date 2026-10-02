@@ -1,0 +1,392 @@
+{
+  "kind": "synthetic mechanism and counterexample checks; no market data; oracle variances are NOT estimated v3 variance",
+  "seed": 20261002,
+  "numpy": "2.2.6",
+  "invariance": {
+    "setup": {
+      "days": 84,
+      "stocks": 12,
+      "horizon": 20,
+      "window_width": 21,
+      "n_windows": 200,
+      "seed": 20261002,
+      "kappa_demo": 4,
+      "tau2_demo": 0.04
+    },
+    "base": {
+      "state": "observed",
+      "raw": 0.01401976216899687,
+      "baseline": 0.05738074070217194,
+      "delta": -0.04336097853317507,
+      "R_stock": 11.593388976551273,
+      "R_time": 3.732165671362224,
+      "R_min": 3.732165671362224,
+      "lambda_A": 0.48268051022045744,
+      "adjusted_A": 0.036451241460120694,
+      "paired_iid_variance_unit": 0.0035777841794408863,
+      "wrong_independent_iid_variance_unit": 0.006551390628647553
+    },
+    "duplicate_records_20x": {
+      "max_weight_difference": 0.0,
+      "score_difference": 0.0
+    },
+    "duplicate_whole_window_schedule_2x": {
+      "max_weight_difference": 1.3877787807814457e-17,
+      "score_difference": -7.632783294297951e-17
+    },
+    "empty": {
+      "state": "empty",
+      "raw": null,
+      "baseline": null,
+      "adjusted_A": null
+    },
+    "all_none_pool": {
+      "state": "observed",
+      "raw": 0.0,
+      "baseline": 0.0,
+      "delta": 0.0,
+      "R_stock": 11.593388976551273,
+      "R_time": 3.732165671362224,
+      "R_min": 3.732165671362224,
+      "lambda_A": 0.48268051022045744,
+      "adjusted_A": 0.0,
+      "paired_iid_variance_unit": 0.0035777841794408863,
+      "wrong_independent_iid_variance_unit": 0.006551390628647553
+    },
+    "all_none_candidate_positive_background": {
+      "state": "observed",
+      "raw": 0.0,
+      "baseline": 0.7027724431586422,
+      "delta": -0.7027724431586422,
+      "R_stock": 11.593388976551273,
+      "R_time": 3.732165671362224,
+      "R_min": 3.732165671362224,
+      "lambda_A": 0.48268051022045744,
+      "adjusted_A": 0.3635578817259513,
+      "paired_iid_variance_unit": 0.0035777841794408863,
+      "wrong_independent_iid_variance_unit": 0.006551390628647553
+    },
+    "candidate_equals_entire_pool": {
+      "state": "observed",
+      "raw": 0.047072972739263474,
+      "baseline": 0.04707297273926349,
+      "delta": -1.3877787807814457e-17,
+      "R_stock": 11.999999999999993,
+      "R_time": 3.7370289960642196,
+      "R_min": 3.7370289960642196,
+      "lambda_A": 0.48300568576972164,
+      "adjusted_A": 0.04707297273926348,
+      "paired_iid_variance_unit": 1.591545882616451e-35,
+      "wrong_independent_iid_variance_unit": 0.0023380175348435605
+    }
+  },
+  "single_stock_independent_time": [
+    {
+      "independent_dates": 20,
+      "true_mean": 0.2,
+      "oracle_variance": 0.048,
+      "R_stock": 1,
+      "lambda_A": 0.2,
+      "lambda_B_oracle": 0.4545454545454546,
+      "A_at_observed_mean_point2": 0.04000000000000001,
+      "B_at_observed_mean_point2": 0.09090909090909093
+    },
+    {
+      "independent_dates": 200,
+      "true_mean": 0.2,
+      "oracle_variance": 0.0048,
+      "R_stock": 1,
+      "lambda_A": 0.2,
+      "lambda_B_oracle": 0.8928571428571429,
+      "A_at_observed_mean_point2": 0.04000000000000001,
+      "B_at_observed_mean_point2": 0.1785714285714286
+    },
+    {
+      "independent_dates": 2000,
+      "true_mean": 0.2,
+      "oracle_variance": 0.00047999999999999996,
+      "R_stock": 1,
+      "lambda_A": 0.2,
+      "lambda_B_oracle": 0.9881422924901185,
+      "A_at_observed_mean_point2": 0.04000000000000001,
+      "B_at_observed_mean_point2": 0.1976284584980237
+    }
+  ],
+  "same_day_independent_stock_signal": [
+    {
+      "candidate_stocks": 20,
+      "ordinary_pool_stocks": 40,
+      "R_time": 1,
+      "paired_delta_variance": 0.0245,
+      "lambda_A": 0.2,
+      "lambda_B_oracle": 0.6201550387596899,
+      "observed_Z": 0.2,
+      "observed_B": 0.1,
+      "A_score": 0.12000000000000001,
+      "B_score": 0.162015503875969
+    },
+    {
+      "candidate_stocks": 200,
+      "ordinary_pool_stocks": 400,
+      "R_time": 1,
+      "paired_delta_variance": 0.00245,
+      "lambda_A": 0.2,
+      "lambda_B_oracle": 0.9422850412249706,
+      "observed_Z": 0.2,
+      "observed_B": 0.1,
+      "A_score": 0.12000000000000001,
+      "B_score": 0.19422850412249706
+    },
+    {
+      "candidate_stocks": 2000,
+      "ordinary_pool_stocks": 4000,
+      "R_time": 1,
+      "paired_delta_variance": 0.000245,
+      "lambda_A": 0.2,
+      "lambda_B_oracle": 0.993912287240651,
+      "observed_Z": 0.2,
+      "observed_B": 0.1,
+      "A_score": 0.12000000000000001,
+      "B_score": 0.19939122872406512
+    }
+  ],
+  "sparse_all_success": {
+    "observed_labels": [
+      1
+    ],
+    "empirical_bootstrap_variance": 0.0,
+    "naive_lambda_B": 1.0,
+    "oracle_variance_if_direction_p_half": 1.0,
+    "oracle_lambda_B_if_direction_p_half": 0.038461538461538464,
+    "interpretation": "zero empirical dispersion is not a proof of zero uncertainty"
+  },
+  "common_persistent_market_sector_shock": [
+    {
+      "rho": 0.0,
+      "days": 252,
+      "candidate_stocks": 500,
+      "pool_stocks": 1000,
+      "oracle_variance": 0.003968253968253968,
+      "monte_carlo_variance_5000_histories": 0.003927425858061509,
+      "wrong_iid_row_variance": 7.936507936507936e-06,
+      "oracle_to_wrong_ratio": 500.0,
+      "lambda_B_oracle": 0.9097472924187726
+    },
+    {
+      "rho": 0.5,
+      "days": 252,
+      "candidate_stocks": 500,
+      "pool_stocks": 1000,
+      "oracle_variance": 0.011841773746535651,
+      "monte_carlo_variance_5000_histories": 0.011850524340191798,
+      "wrong_iid_row_variance": 7.936507936507936e-06,
+      "oracle_to_wrong_ratio": 1492.063492063492,
+      "lambda_B_oracle": 0.7715785381026439
+    },
+    {
+      "rho": 0.95,
+      "days": 252,
+      "candidate_stocks": 500,
+      "pool_stocks": 1000,
+      "oracle_variance": 0.1427941838302955,
+      "monte_carlo_variance_5000_histories": 0.14269265862242744,
+      "wrong_iid_row_variance": 7.936507936507936e-06,
+      "oracle_to_wrong_ratio": 17992.067162617233,
+      "lambda_B_oracle": 0.21882534313638582
+    }
+  ],
+  "negative_advantage_more_evidence": [
+    {
+      "Z": -0.2,
+      "B": 0.2,
+      "variance": 0.25,
+      "lambda": 0.13793103448275865,
+      "adjusted": 0.14482758620689656
+    },
+    {
+      "Z": -0.2,
+      "B": 0.2,
+      "variance": 0.04,
+      "lambda": 0.5,
+      "adjusted": 0.0
+    },
+    {
+      "Z": -0.2,
+      "B": 0.2,
+      "variance": 0.01,
+      "lambda": 0.7999999999999999,
+      "adjusted": -0.12
+    }
+  ],
+  "post_peer_review_fixed_pool_window_dependence_prototype": {
+    "seed": 2026100201,
+    "days": 252,
+    "width": 21,
+    "all_starts": 232,
+    "half_life": 252,
+    "n_independent_histories": 2000,
+    "formula": "psi_s=a_s*(delta_s-Delta); V=sum psi^2+2 sum_l(1-l/(b+1))*sum_s psi_s*psi_(s+l)",
+    "purpose": "check computational prototype and expose finite-history bias; not to select a universal bandwidth",
+    "results": [
+      {
+        "rho": 0.0,
+        "oracle_variance_of_weighted_window_mean": 0.004304976775967524,
+        "empirical_variance_2000_histories": 0.004239016149632069,
+        "working_variances_by_calendar_start_lag": {
+          "0": {
+            "mean_working_variance": 0.00019316638729289953,
+            "mean_to_oracle_ratio": 0.0448704830119522,
+            "zero_variance_histories": 0
+          },
+          "40": {
+            "mean_working_variance": 0.0028478301105210823,
+            "mean_to_oracle_ratio": 0.661520435236505,
+            "zero_variance_histories": 0
+          },
+          "80": {
+            "mean_working_variance": 0.0025502422570910705,
+            "mean_to_oracle_ratio": 0.5923939639646291,
+            "zero_variance_histories": 0
+          }
+        }
+      },
+      {
+        "rho": 0.5,
+        "oracle_variance_of_weighted_window_mean": 0.012903489277953498,
+        "empirical_variance_2000_histories": 0.013763389115821175,
+        "working_variances_by_calendar_start_lag": {
+          "0": {
+            "mean_working_variance": 0.0005379641751853271,
+            "mean_to_oracle_ratio": 0.041691372279006426,
+            "zero_variance_histories": 0
+          },
+          "40": {
+            "mean_working_variance": 0.008384104477715365,
+            "mean_to_oracle_ratio": 0.6497548296521769,
+            "zero_variance_histories": 0
+          },
+          "80": {
+            "mean_working_variance": 0.007612056867766609,
+            "mean_to_oracle_ratio": 0.5899223616027902,
+            "zero_variance_histories": 0
+          }
+        }
+      },
+      {
+        "rho": 0.95,
+        "oracle_variance_of_weighted_window_mean": 0.1564340709284434,
+        "empirical_variance_2000_histories": 0.1549783087359394,
+        "working_variances_by_calendar_start_lag": {
+          "0": {
+            "mean_working_variance": 0.0024845163249725146,
+            "mean_to_oracle_ratio": 0.015882194398105197,
+            "zero_variance_histories": 3
+          },
+          "40": {
+            "mean_working_variance": 0.062346827270352845,
+            "mean_to_oracle_ratio": 0.3985501809185273,
+            "zero_variance_histories": 3
+          },
+          "80": {
+            "mean_working_variance": 0.06786757134712727,
+            "mean_to_oracle_ratio": 0.4338413680877198,
+            "zero_variance_histories": 3
+          }
+        }
+      }
+    ]
+  },
+  "post_peer_review_fixed_pool_two_year_prototype": {
+    "seed": 2026100202,
+    "days": 504,
+    "width": 21,
+    "all_starts": 484,
+    "half_life": 252,
+    "n_independent_histories": 2000,
+    "formula": "psi_s=a_s*(delta_s-Delta); V=sum psi^2+2 sum_l(1-l/(b+1))*sum_s psi_s*psi_(s+l)",
+    "purpose": "two-year-size replication, not to choose a universal bandwidth",
+    "results": [
+      {
+        "rho": 0.0,
+        "oracle_variance_of_weighted_window_mean": 0.0023110668958320328,
+        "empirical_variance_2000_histories": 0.0023580790222599303,
+        "working_variances_by_calendar_start_lag": {
+          "0": {
+            "mean_working_variance": 0.00010618058230075184,
+            "mean_to_oracle_ratio": 0.04594440017822357,
+            "zero_variance_histories": 0
+          },
+          "40": {
+            "mean_working_variance": 0.0016579624224145801,
+            "mean_to_oracle_ratio": 0.7174013116646192,
+            "zero_variance_histories": 0
+          },
+          "80": {
+            "mean_working_variance": 0.0016268440819387244,
+            "mean_to_oracle_ratio": 0.7039363875068732,
+            "zero_variance_histories": 0
+          },
+          "140": {
+            "mean_working_variance": 0.0014416824614830511,
+            "mean_to_oracle_ratio": 0.6238168458399449,
+            "zero_variance_histories": 0
+          }
+        }
+      },
+      {
+        "rho": 0.5,
+        "oracle_variance_of_weighted_window_mean": 0.00692930617241453,
+        "empirical_variance_2000_histories": 0.006741341975095849,
+        "working_variances_by_calendar_start_lag": {
+          "0": {
+            "mean_working_variance": 0.0002944177754357509,
+            "mean_to_oracle_ratio": 0.04248878143208969,
+            "zero_variance_histories": 0
+          },
+          "40": {
+            "mean_working_variance": 0.0049044791865160385,
+            "mean_to_oracle_ratio": 0.707787917647614,
+            "zero_variance_histories": 0
+          },
+          "80": {
+            "mean_working_variance": 0.004843366824431322,
+            "mean_to_oracle_ratio": 0.6989685119864809,
+            "zero_variance_histories": 0
+          },
+          "140": {
+            "mean_working_variance": 0.004255947749612351,
+            "mean_to_oracle_ratio": 0.6141953672873077,
+            "zero_variance_histories": 0
+          }
+        }
+      },
+      {
+        "rho": 0.95,
+        "oracle_variance_of_weighted_window_mean": 0.0862862886800539,
+        "empirical_variance_2000_histories": 0.09121794130921457,
+        "working_variances_by_calendar_start_lag": {
+          "0": {
+            "mean_working_variance": 0.0014544406324293168,
+            "mean_to_oracle_ratio": 0.01685598783628676,
+            "zero_variance_histories": 0
+          },
+          "40": {
+            "mean_working_variance": 0.03942003221250258,
+            "mean_to_oracle_ratio": 0.4568516367492694,
+            "zero_variance_histories": 0
+          },
+          "80": {
+            "mean_working_variance": 0.04736060720706038,
+            "mean_to_oracle_ratio": 0.5488775555369129,
+            "zero_variance_histories": 0
+          },
+          "140": {
+            "mean_working_variance": 0.045347693992397665,
+            "mean_to_oracle_ratio": 0.5255492464225121,
+            "zero_variance_histories": 0
+          }
+        }
+      }
+    ]
+  }
+}

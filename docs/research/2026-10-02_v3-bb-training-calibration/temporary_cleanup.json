@@ -1,0 +1,13 @@
+{
+  "removed": [
+    "/tmp/v3_calibration_freeze.py",
+    "/tmp/v3_calibration_select.py",
+    "/tmp/v3_calibration_benchmark.py",
+    "/tmp/v3_calibration_run.py",
+    "/tmp/v3_calibration_plot.py",
+    "/tmp/v3_calibration_final_daily.py",
+    "/tmp/v3_bb_calibration_frames.pkl",
+    "/tmp/v3_calibration_mpl"
+  ],
+  "retained": "only research protocol, metadata, daily label outputs, statistics, images, reports; no temporary experiment .py or raw price snapshot"
+}
