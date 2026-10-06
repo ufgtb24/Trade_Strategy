@@ -8,6 +8,7 @@ import multiprocessing
 from multiprocessing import Process, Queue
 
 import akshare as ak
+import numpy as np
 import pandas as pd
 import requests
 import yfinance as yf
@@ -38,36 +39,56 @@ CLASH_PROXY = "http://127.0.0.1:7897"
 
 # 节点轮换(2026-09-06): 直连主 IP 被 Yahoo 惩罚期间, 用多个 HK 机场节点轮换
 # 分摊单 IP 限速——12 个 HK 节点实测各自独立出口 IP, 4 worker 并发零惩罚,
-# 单节点 ~5.7/s。下载完成后复原到 ORIGINAL_NODE(用户当前 isp 配置)。
-CLASH_SOCK = "/tmp/verge/verge-mihomo.sock"
+# 单节点 ~5.7/s。下载完成后复原到开跑前用户选的节点(启动时现读, 不写死)。
 CLASH_CFG = "/home/yu/.local/share/io.github.clash-verge-rev.clash-verge-rev/clash-verge.yaml"
 CLASH_GROUP = "🔰 节点选择"
-ORIGINAL_NODE = "HTTP isp.decodo.com:10001"
 # 真实出口节点的协议类型(排除 Selector/URLTest/Fallback/LoadBalance 等分组)
 _REAL_PROXY_TYPES = ("Socks5", "Vmess", "Trojan", "HTTP", "Tuic", "Hysteria2",
                      "Shadowsocks", "Socks", "SSR", "WireGuard")
 ROTATE_EVERY = 400  # 每个节点下约 400 只后切下一个(低于 585 触发线, 留安全边际)
 
-def _clash_secret():
+def _clash_cfg(key):
+    """读 clash 运行配置里的顶层标量项(secret / external-controller-unix 等)。"""
     try:
         with open(CLASH_CFG) as f:
             for line in f:
-                s = line.strip()
-                if s.startswith("secret:"):
-                    return s.split(":", 1)[1].strip().strip('"').strip("'")
+                if line.startswith(key + ":"):
+                    return line.split(":", 1)[1].strip().strip('"').strip("'")
     except Exception:
         pass
     return ""
 
+
+def _clash_api(path, method="GET", data=None):
+    """经 clash 控制接口(unix socket)发请求, 返回响应文本。
+
+    socket 路径每次从配置的 external-controller-unix 现读: Clash Verge 升级会
+    挪它的位置(2026-10 实测从 /tmp/verge/ 挪到了数据目录下), 写死的旧路径会让
+    curl 连不上(exit 7)。
+    """
+    import subprocess
+    sock = _clash_cfg("external-controller-unix")
+    if not sock:
+        raise RuntimeError(f"{CLASH_CFG} 里没有 external-controller-unix, 找不到 clash 控制接口")
+    cmd = ["curl", "-s", "--unix-socket", sock,
+           "-H", "Authorization: Bearer " + _clash_cfg("secret"), "-X", method]
+    if data is not None:
+        cmd += ["-H", "Content-Type: application/json", "--data", data]
+    cmd.append("http://localhost" + path)
+    return subprocess.check_output(cmd, timeout=15).decode("utf-8", "replace")
+
+
+def _current_clash_node():
+    """读「🔰 节点选择」当前选中的节点, 供下载结束后原样复原。"""
+    import json, urllib.parse
+    return json.loads(_clash_api("/proxies/" + urllib.parse.quote(CLASH_GROUP)))["now"]
+
+
 def _switch_clash_node(name):
     """切「🔰 节点选择」到指定节点(经 clash unix socket API)。"""
-    import subprocess, urllib.parse
-    cmd = ["curl", "-s", "--unix-socket", CLASH_SOCK,
-           "-H", "Authorization: Bearer " + _clash_secret(),
-           "-X", "PUT", "-H", "Content-Type: application/json",
-           "--data", '{"name":"%s"}' % name,
-           "http://localhost/proxies/%s" % urllib.parse.quote(CLASH_GROUP)]
-    subprocess.check_output(cmd, timeout=15)
+    import urllib.parse
+    _clash_api("/proxies/" + urllib.parse.quote(CLASH_GROUP),
+               method="PUT", data='{"name":"%s"}' % name)
     time.sleep(1.0)
 
 
@@ -97,13 +118,8 @@ def _get_hk_nodes():
     API(GET /proxies)现读, 只取 name 以 "HK" 开头且 type 是真实协议的节点。
     读不到则抛 RuntimeError——clash 没开/API 变了时直接报错, 不静默降级。
     """
-    import subprocess, json
-    cmd = ["curl", "-s", "--unix-socket", CLASH_SOCK,
-           "-H", "Authorization: Bearer " + _clash_secret(),
-           "http://localhost/proxies"]
-    out = subprocess.check_output(cmd, timeout=15).decode("utf-8", "replace")
-    data = json.loads(out)
-    proxies = data["proxies"]
+    import json
+    proxies = json.loads(_clash_api("/proxies"))["proxies"]
     hk = sorted(
         name for name, p in proxies.items()
         if name.startswith("HK") and p.get("type") in _REAL_PROXY_TYPES
@@ -116,10 +132,21 @@ def _get_hk_nodes():
 # 避免 multiprocessing fork 时共享底层连接 fd 导致的竞态）。
 # 浏览器指纹让 Yahoo 把请求当成 Chrome 而非脚本，绕过 anti-bot 延迟，
 # 相较原生 requests 单请求快 ~1.7×。
+#
+# gen = 出口节点代号, 主进程每切一次节点 +1。gen 变了就重建 session: 切节点
+# 只影响新建的连接, 复用中的 keep-alive 连接仍走旧节点(2026-10-06 实测), 不重建
+# 等于没切。
 _CFFI_SESSION = None
-def _get_cffi_session():
-    global _CFFI_SESSION
-    if _CFFI_SESSION is None:
+_CFFI_GEN = None
+def _get_cffi_session(gen=0):
+    global _CFFI_SESSION, _CFFI_GEN
+    if _CFFI_SESSION is None or gen != _CFFI_GEN:
+        if _CFFI_SESSION is not None:
+            try:
+                _CFFI_SESSION.close()
+            except Exception:
+                pass
+        _CFFI_GEN = gen
         _CFFI_SESSION = cffi_requests.Session(impersonate="chrome")
         # 早期「代码层设代理在 PyCharm/多进程下不稳定」是「高并发 + 代理」
         # 组合的问题; 改单 worker 串行后显式走代理已实测稳定(700 只零惩罚)。
@@ -172,8 +199,15 @@ def get_us_tickers_fast():
         return tickers
 
 
-def _fetch_us_daily_qfq(tic, start_dt, end_dt, rate_gate=None):
-    """用 yfinance 拉美股日线，auto_adjust=True 做完整前复权。
+def _fetch_us_daily_qfq(tic, start_dt, end_dt, rate_gate=None, node_ctl=None):
+    """用 yfinance 拉美股日线，自己做完整前复权（拆合股 + 分红）。
+
+    不用 yfinance 的 auto_adjust（= 直接用 Yahoo 的 Adj Close）：Yahoo 对一批
+    反向拆股的股票既没把合股套到历史价上、分红系数又是拿没套合股的价格配
+    按合股折算过的分红算的，复权价出现几十倍假跳空、成片负价或差几个数量级
+    （2026-10-06 实测 NFE / DHY / IGR / GMEX 等）。故取只按拆股调整的价格与
+    拆合股、分红记录，先 _fix_unapplied_splits 补合股，再 _adjust_dividends
+    自己算分红复权。
 
     历史上曾用 akshare 新浪源 stock_us_daily(adjust="qfq")，但对部分 ticker
     的 corporate action 复权是错的：DGNX 在 2025-09-09 有 1:8 合股，akshare
@@ -190,34 +224,51 @@ def _fetch_us_daily_qfq(tic, start_dt, end_dt, rate_gate=None):
     限速窗口 ~1-2 分钟）。此前各 worker 独立短退避（5/10/20s）重试，
     反而持续刷新滑动限速窗口，表现为「目录被 clear 清空后零下载零提示」。
 
+    node_ctl: 节点轮换模式下的共享状态 {"gen": 当前节点代号, "req": 换节点请求}。
+    给了它就不走上面的原地冷却: 限速 = 当前节点被拦, 写换节点请求、等主进程
+    换完, 用新连接立即重试。原地冷却 90/180s 再在同一节点上重试(最坏 ~14.5
+    分钟)纯属浪费——实测被拦节点要两轮冷却才恢复, 而健康节点 16~25 只/秒。
+
     返回 DataFrame，列 = [date, open, high, low, close, volume]，
     与调用方（download_stock）历史契约兼容；tz 已剥离。
     """
     # Yahoo 免费源对同 IP 有限速（大约几十请求/分钟）。
     # 撞 429 时全员冷却后重试（90s 起步指数增长，cap 300s，上限 4 次，
     # 总最坏 ~14.5 分钟；实测限速窗口 1-2 分钟，常态一两次冷却即恢复）；
-    # 超上限就把它转成 KeyError，让下游 download_stock 走静默跳过路径，
-    # 不污染日志——次日 mtime 变化后会被自动重下补齐。
+    # 超上限就抛 _ThrottleExhausted，download_stock 记为 throttle（不删旧文件），
+    # 当天重跑即补齐（已下完的按 mtime 跳过）。
     df = None
-    for attempt in range(4):
+    # 轮换模式每次重试都换了节点, 多给几次; 连续 6 个节点都拦才算耗尽
+    attempts = 4 if node_ctl is None else 6
+    for attempt in range(attempts):
         # 全局限速门：冷却期内所有 worker 对齐等待，不再各自戳 Yahoo
         if rate_gate is not None:
             with rate_gate.get_lock():
                 wait = rate_gate.value - time.time()
             if wait > 0:
                 time.sleep(wait)
+        gen = node_ctl["gen"].value if node_ctl is not None else 0
         try:
-            df = yf.Ticker(tic, session=_get_cffi_session()).history(
+            df = yf.Ticker(tic, session=_get_cffi_session(gen)).history(
                 start=start_dt.strftime("%Y-%m-%d"),
                 end=(end_dt + datetime.timedelta(days=1)).strftime("%Y-%m-%d"),
-                auto_adjust=True,
-                actions=False,
+                auto_adjust=False,  # 复权自己做, 见 docstring
+                actions=True,  # 要拆合股与分红记录
                 raise_errors=True,
             )
             break
         except _THROTTLE_ERRORS:
-            if attempt == 3:
+            if attempt == attempts - 1:
                 raise _ThrottleExhausted()
+            if node_ctl is not None:
+                # 请主进程换掉第 gen 号节点(多个 worker 同时撞上只会换一次);
+                # 若期间节点已换过(本次失败的是旧连接), 等待立即结束、直接重试
+                with node_ctl["req"].get_lock():
+                    node_ctl["req"].value = max(node_ctl["req"].value, gen + 1)
+                deadline = time.time() + 60
+                while node_ctl["gen"].value <= gen and time.time() < deadline:
+                    time.sleep(0.5)
+                continue
             backoff = min(90 * (2 ** attempt), 300)
             if rate_gate is not None:
                 # 只在「非限速 → 限速」的状态转换时打印，避免 10 worker
@@ -233,6 +284,11 @@ def _fetch_us_daily_qfq(tic, start_dt, end_dt, rate_gate=None):
     if df is None or df.empty:
         # 复用调用方的静默吸收路径：退市/无数据 ticker 直接跳过
         raise KeyError("date")
+    df = _adjust_dividends(_fix_unapplied_splits(df))
+    # 只有事件、没有行情的行(如今天除息、还没开盘)丢掉——yfinance 在 actions=False
+    # 时会自己丢, 开了 actions 就不丢了, 留着会被下游 ffill 补成一根假 K 线
+    data_cols = ["Open", "High", "Low", "Close", "Volume"]
+    df = df[~(df[data_cols].isna() | (df[data_cols] == 0)).all(axis=1)]
     df.index = df.index.tz_localize(None)
     df = df.reset_index().rename(columns={
         "Date": "date",
@@ -244,11 +300,111 @@ def _fetch_us_daily_qfq(tic, start_dt, end_dt, rate_gate=None):
     return df[["date", "open", "high", "low", "close", "volume"]]
 
 
-def download_stock(tic, path, days_from_now, file_format="pkl", rm_invalid=False, rate_gate=None):
+_OHLC = ["Open", "High", "Low", "Close"]
+
+
+def _fix_unapplied_splits(df):
+    """补上 Yahoo 登记了、却没套到历史价上的拆合股。
+
+    实测(2026-10-06): Yahoo 对不少合股(1:3 ~ 1:50 的反向拆股居多)只登记事件、
+    不回调历史价, 出现几倍到几十倍的假跳空, 一个月后仍未修正; 登记日与实际跳变
+    日还常错开几天到一两周(DLXY 早 8 个交易日)。yfinance 自带的 repair=True
+    修不好这类情况(试 7 只只修好 1 只)。
+
+    判据(三道都过才判为没套上):
+    1. 登记日前后 10 个交易日里有一天的跳变, 幅度与「没套上时该有的 1/r」相差
+       1.5 倍以内;
+    2. 跳变前 5 根与后 5 根的收盘中位数之差离 1/r 比离「不变」更近——挡登记日
+       一根没调整、成交量 0 的假 K 线次日跳回(如 DFSC): 那一跳幅度也吻合, 但前后
+       水平不变, 历史本已调好, 不能再乘一遍;
+    3. 跳变日前后各一天都没有大波动(单日不超过合股比例的一半)——没套上的合股是
+       一步到位的台阶; WHLR 2024 年连涨两天 4 倍、2.5 倍, 其中一天碰巧接近 1 合 3,
+       相邻一天本身就在暴涨, 不是台阶。
+    判为没套上后, 把跳变日之前没套上的那段(整段历史或一座孤岛, 见
+    _unadjusted_island_start)的 OHLC ×(1/r)、成交量 ×r。比例不到 2.5 倍的拆合股
+    与正常波动分不开(实测 1.5、2 倍的会把普通涨跌认成合股, 修坏 LINK / WIMI 等),
+    不处理。r = Yahoo 的 Stock Splits 值(新股数/旧股数, 1 合 50 即 0.02)。
+    """
+    if "Stock Splits" not in df.columns:
+        return df
+    splits = df["Stock Splits"]
+    splits = splits[splits > 0]
+    if splits.empty:
+        return df
+    df = df.copy()
+    df["Volume"] = df["Volume"].astype(float)
+    for dt, r in splits.items():
+        expected = np.log(1.0 / r)
+        if abs(expected) < np.log(2.5):
+            continue
+        close = df["Close"].ffill().to_numpy()
+        with np.errstate(divide="ignore", invalid="ignore"):
+            rets = np.log(close[1:] / close[:-1])  # rets[i-1] = 第 i 根的对数涨跌
+        pos = df.index.searchsorted(dt)
+        cands = [i for i in range(max(pos - 10, 1), min(pos + 11, len(df)))
+                 if abs(rets[i - 1] - expected) < np.log(1.5)]
+        for i in sorted(cands, key=lambda i: abs(rets[i - 1] - expected)):
+            before, after = close[max(i - 5, 0):i], close[i:i + 5]
+            before, after = before[before > 0], after[after > 0]
+            if len(before) == 0 or len(after) == 0:
+                continue
+            shift = np.log(np.median(after) / np.median(before))
+            calm = all(abs(rets[k]) < abs(expected) / 2
+                       for k in (i - 2, i) if 0 <= k < len(rets))  # 前后各一天
+            if abs(shift - expected) < abs(shift) and calm:
+                start = _unadjusted_island_start(close, rets, i, expected)
+                rows = (df.index >= df.index[start]) & (df.index < df.index[i])
+                df.loc[rows, _OHLC] *= 1.0 / r
+                df.loc[rows, "Volume"] *= r
+                break
+    return df
+
+
+def _unadjusted_island_start(close, rets, i, expected):
+    """没套上的是整段历史还是一小段: 返回需要补调那段的起点位置。
+
+    WHLR 型: Yahoo 把合股套到了大部分历史上, 只漏了合股前最后几根, 这几根比
+    前后都低(高)一个合股比例, 像一座孤岛。跳回日前 20 根内若有一次反向、幅度同样
+    吻合的跳变, 且孤岛水平比它之前确实差一个合股比例, 就只补这一段——整段都乘会
+    把本已调好的几年历史弄坏。否则从头补(NFE 型, 整段历史都没套上)。
+    """
+    for j in range(i - 1, max(i - 20, 1) - 1, -1):
+        if abs(rets[j - 1] + expected) < np.log(1.5):
+            island, prior = close[j:i], close[max(j - 5, 0):j]
+            island, prior = island[island > 0], prior[prior > 0]
+            if len(island) and len(prior):
+                back = np.log(np.median(island) / np.median(prior))
+                if abs(back + expected) < abs(back):
+                    return j
+            break
+    return 0
+
+
+def _adjust_dividends(df):
+    """按分红做前复权: 每个除息日之前的价格乘 (1 - 分红 / 除息前一日收盘)。
+
+    与 Yahoo 的 Adj Close 同一个公式, 区别只在用的是补完合股后的价格, 与按合股
+    折算过的分红口径一致(Yahoo 拿没套合股的价格算, 系数被放大甚至为负)。分红
+    不小于前一日收盘的记录(如 GMEX 453.6、CBIO 143, 股价只有几元到十几元)不可能
+    是真实现金分红, 视为坏数据跳过。成交量不随分红调整(与 Yahoo 一致)。
+    """
+    if "Dividends" not in df.columns:
+        return df
+    df = df.copy()
+    prev = df["Close"].ffill().shift(1)
+    div = df["Dividends"].fillna(0)
+    ok = (div > 0) & (prev > 0) & (div < prev)
+    f = (1 - div / prev).where(ok, 1.0)
+    later = f[::-1].cumprod()[::-1].shift(-1, fill_value=1.0)  # 该日之后各次系数之积
+    df[_OHLC] = df[_OHLC].mul(later, axis=0)
+    return df
+
+
+def download_stock(tic, path, days_from_now, file_format="pkl", rm_invalid=False, rate_gate=None, node_ctl=None):
     """全量下载股票数据，覆盖已存在文件。
 
-    yfinance 已支持 start/end 参数，但仍每次全量覆盖：auto_adjust=True 的
-    前复权会随新的 corporate action 回溯修改历史价，用最新一次拉到的窗口
+    yfinance 已支持 start/end 参数，但仍每次全量覆盖：前复权
+    会随新的拆合股、分红回溯修改历史价，用最新一次拉到的窗口
     重写文件才能避免历史失真。
 
     同日内已下载过的文件（mtime == 今天）会被跳过，支持"中断后重跑"的
@@ -270,7 +426,7 @@ def download_stock(tic, path, days_from_now, file_format="pkl", rm_invalid=False
     # 上游任何数据异常（退市 ticker 空 df / 网络抖动导致 raise_errors 未拦到的
     # 结构异常 / 罕见的 date 列缺失）统一吸收为"跳过该 ticker"，不污染日志。
     try:
-        raw = _fetch_us_daily_qfq(tic, start_date, end_date, rate_gate=rate_gate)
+        raw = _fetch_us_daily_qfq(tic, start_date, end_date, rate_gate=rate_gate, node_ctl=node_ctl)
         df_new = pd.DataFrame(
             {col: raw[col].to_numpy().copy() for col in raw.columns}
         )
@@ -281,8 +437,8 @@ def download_stock(tic, path, days_from_now, file_format="pkl", rm_invalid=False
             .loc[start_date:end_date]
         )
     except _ThrottleExhausted:
-        # 限速重试耗尽：当前出口节点被 Yahoo 限速。标记 throttle 供节点轮换
-        # 失败计数切换用（区别于下面退市/无数据的正常跳过）。
+        # 限速重试耗尽：标记 throttle（区别于下面退市/无数据的正常跳过，
+        # 不删旧文件），收尾时计数提示重跑补齐。
         return "throttle"
     except (IndexError, KeyError, SyntaxError, YFPricesMissingError, YFTzMissingError):
         # YFPricesMissingError / YFTzMissingError：yfinance>=1.2 对退市/无数据
@@ -311,7 +467,7 @@ def download_stock(tic, path, days_from_now, file_format="pkl", rm_invalid=False
     return "downloaded"
 
 
-def worker(task_queue, save_root, days_from_now, file_format, rm_invalid=False, rate_gate=None, counter=None, fail_counter=None):
+def worker(task_queue, save_root, days_from_now, file_format, rm_invalid=False, rate_gate=None, counter=None, node_ctl=None, throttle_count=None):
     # 子进程 stdout 在非 tty pipe 下（PyCharm run config / nohup / 重定向到
     # 文件等）默认全缓冲，Download/Error 行会攒到 4KB 才 flush，前 30 秒
     # 屏幕看起来像"啥都没干"，pkl 却已在悄悄落盘——排障成本很高。切成
@@ -330,7 +486,7 @@ def worker(task_queue, save_root, days_from_now, file_format, rm_invalid=False, 
         )
         result = None
         try:
-            result = download_stock(tic, save_path, days_from_now, file_format, rm_invalid=rm_invalid, rate_gate=rate_gate)
+            result = download_stock(tic, save_path, days_from_now, file_format, rm_invalid=rm_invalid, rate_gate=rate_gate, node_ctl=node_ctl)
         except Exception as e:
             # download_stock 已吸收所有已知的 akshare 上游噪音；能走到这里
             # 的都是真正未预期的异常（磁盘满、权限错误等），保留打印便于排障。
@@ -340,13 +496,10 @@ def worker(task_queue, save_root, days_from_now, file_format, rm_invalid=False, 
             if counter is not None:
                 with counter.get_lock():
                     counter.value += 1
-        # 失败计数切换：throttle 累加, downloaded 重置, skip 不变
-        if fail_counter is not None:
-            with fail_counter.get_lock():
-                if result == "throttle":
-                    fail_counter.value += 1
-                elif result == "downloaded":
-                    fail_counter.value = 0
+        # 限速耗尽没下成的只数, 收尾时提示重跑补齐
+        if result == "throttle" and throttle_count is not None:
+            with throttle_count.get_lock():
+                throttle_count.value += 1
 
 
 def multi_download_stock(
@@ -379,10 +532,36 @@ def multi_download_stock(
         q.put(None)
 
     # 跨进程共享的「限速截止时间戳」：任一 worker 撞 429 时写入，全体
-    # worker 在 _fetch 里对齐冷却（见 _fetch_us_daily_qfq docstring）
+    # worker 在 _fetch 里对齐冷却（见 _fetch_us_daily_qfq docstring）。
+    # 节点轮换模式不走冷却, 改由 node_ctl 立即换节点。
     rate_gate = multiprocessing.Value("d", 0.0)
-    counter = multiprocessing.Value("i", 0) if node_rotation else None
-    fail_counter = multiprocessing.Value("i", 0) if node_rotation else None
+    rotating = bool(node_rotation and rotate_every)
+    counter = multiprocessing.Value("i", 0) if rotating else None
+    node_ctl = ({"gen": multiprocessing.Value("i", 0), "req": multiprocessing.Value("i", 0)}
+                if rotating else None)
+    throttle_count = multiprocessing.Value("i", 0)
+
+    node_idx = -1
+
+    def _next_healthy_node():
+        """切到下一个对 Yahoo 通的节点(健康探针 + 顺延, 最多试一轮)。
+
+        探针只拉一只, 通过不代表扛得住成批下载(实测有节点探针通、一批就被拦),
+        那种情况交给 worker 的限速上报再换。
+        """
+        nonlocal node_idx
+        for _ in range(len(node_rotation)):
+            node_idx = (node_idx + 1) % len(node_rotation)
+            cand = node_rotation[node_idx]
+            _switch_clash_node(cand)
+            if _probe_yahoo():
+                return cand
+            print(f"节点 {cand} 不健康, 顺延下一个")
+        return cand  # 一轮都不健康: 停在最后一个, 由 worker 的限速上报继续推着换
+
+    # 先切到第一个健康节点再起 worker, 免得开头一批请求走用户原来的节点
+    if rotating:
+        print(f"切换节点 -> {_next_healthy_node()}")
 
     # Prepare input parameters for worker processes
     input_dict = dict(
@@ -393,7 +572,8 @@ def multi_download_stock(
         rm_invalid=rm_invalid,
         rate_gate=rate_gate,
         counter=counter,
-        fail_counter=fail_counter,
+        node_ctl=node_ctl,
+        throttle_count=throttle_count,
     )
 
     # daemon=True：主进程退出时 kernel 会自动 terminate 所有 worker。
@@ -403,46 +583,28 @@ def multi_download_stock(
     for p in processes:
         p.start()
 
-    # Wait for all worker processes to complete；node_rotation 时轮询并每
-    # rotate_every 只切下一个出口节点(切节点对 worker 透明, worker 走 7897
-    # 代理, 由 clash 层完成路由切换)。
-    if node_rotation and rotate_every:
-        node_idx = -1
-        fail_threshold = 3  # 连续 3 次 throttle 视为该节点已被限速, 立即切
+    # 节点轮换: 两种情况换下一个节点——① worker 上报限速, 立即换;
+    # ② 当前节点已下满 rotate_every 只, 预防性轮换(单 IP 累计量不超触发线)。
+    # 换完 gen+1, worker 据此丢掉走旧节点的连接(见 _get_cffi_session)。
+    if rotating:
+        last_switch_done = 0
         while any(p.is_alive() for p in processes):
-            for p in processes:
-                p.join(timeout=0.5)
-            with counter.get_lock():
-                done = counter.value
-            with fail_counter.get_lock():
-                fails = fail_counter.value
-            # 失败计数切换: 某节点下载中途被 Yahoo 限速(连续 throttle), 立即切下一个
-            if fails >= fail_threshold:
-                node_idx = (node_idx + 1) % len(node_rotation)
-                print(f"节点限速(连续{fails}次失败), 切换 -> {node_rotation[node_idx]}")
-                _switch_clash_node(node_rotation[node_idx])
-                with fail_counter.get_lock():
-                    fail_counter.value = 0
+            time.sleep(0.5)
+            done = counter.value
+            throttled = node_ctl["req"].value > node_ctl["gen"].value
+            if not throttled and done - last_switch_done < rotate_every:
                 continue
-            # 循环轮换: 每 rotate_every 只切下一个节点, 到末尾回到队首。
-            # 每节点单轮最多 rotate_every 只, 之后休息 (len-1)*rotate_every 只的时间,
-            # 避免单 IP 累计超阈值触发 Yahoo 惩罚。
-            target = (done // rotate_every) % len(node_rotation)
-            if target != node_idx:
-                node_idx = target
-                # 健康探针 + 顺延: 切到坏节点则顺延到下一个, 最多试一轮
-                for _ in range(len(node_rotation)):
-                    cand = node_rotation[node_idx]
-                    _switch_clash_node(cand)
-                    if _probe_yahoo():
-                        print(f"切换节点 -> {cand}")
-                        break
-                    print(f"节点 {cand} 不健康, 顺延下一个")
-                    node_idx = (node_idx + 1) % len(node_rotation)
-    else:
-        for p in processes:
-            p.join()
+            node = _next_healthy_node()
+            with node_ctl["gen"].get_lock():
+                node_ctl["gen"].value += 1
+            last_switch_done = done
+            print(f"切换节点 -> {node}（{'限速' if throttled else f'已处理 {rotate_every} 只'}）")
+    for p in processes:
+        p.join()
 
+    if throttle_count.value:
+        print(f"{throttle_count.value} 只因限速没下成, 当天重跑本脚本即可补齐(已下完的会跳过)")
+    return throttle_count.value
 
 if __name__ == "__main__":
     # CLI 场景下注册 signal handler：Ctrl-C / SIGTERM 时优雅退出。
@@ -487,6 +649,12 @@ if __name__ == "__main__":
         print("load online stock list")
         all_tickers = get_us_tickers_fast()
 
+    # 切节点前先记下用户当前的选择与 HK 节点列表; 这两步失败时还没切过任何
+    # 节点, 直接报错退出, 不需要复原。
+    original_node = _current_clash_node()
+    hk_nodes = _get_hk_nodes()
+    print(f"当前节点: {original_node}, 可轮换 HK 节点 {len(hk_nodes)} 个")
+
     # Start downloading stock data for all tickers
     start_time = datetime.datetime.now()
     try:
@@ -496,25 +664,19 @@ if __name__ == "__main__":
             days_from_now=365 * 5,
             clear=clear,
             rm_invalid=rm_invalid,
-            # worker=10 + 12 HK 节点轮换(2026-09-06): 每 400 只常规切节点 +
-            # 连续 3 次 throttle 失败计数切换兜底(节点中途被限速立即切) + 健康探针。
-            # 12 节点各自独立出口 IP 分摊单 IP 限速, 下载完复原到 isp。
+            # worker=10 + 12 HK 节点轮换: 每 400 只预防性切节点 + 任一 worker
+            # 被限速立即切 + 健康探针(2026-10-06 改为立即切, 不再原地冷却)。
+            # 12 节点各自独立出口 IP 分摊单 IP 限速, 下载完复原到开跑前的节点。
             num_workers=10,
             file_format="pkl",  # Change to 'csv' or 'pkl'
-            node_rotation=_get_hk_nodes(),
+            node_rotation=hk_nodes,
             rotate_every=ROTATE_EVERY,
         )
     finally:
-        # 无论成功/失败/中断, 复原用户当前的 isp 节点配置
-        _switch_clash_node(ORIGINAL_NODE)
-        print(f"已复原节点 -> {ORIGINAL_NODE}")
+        # 无论成功/失败/中断, 复原用户开跑前的节点选择
+        _switch_clash_node(original_node)
+        print(f"已复原节点 -> {original_node}")
     # 统计并输出耗时，格式为几分几秒
     elapsed = datetime.datetime.now() - start_time
     minutes, seconds = divmod(elapsed.total_seconds(), 60)
     print(f"Total time: {int(minutes)} min {int(seconds)} sec")
-
-    data_root = os.path.join(DATASETS_ROOT, "pkls")
-    # preprocessed_root = 'datasets/process_pkls'
-    # preprocessor = StockPreprocessor(data_root, preprocessed_root,skip_neg_value=True)
-    #
-    # processed_files = preprocessor.preprocess_all()
