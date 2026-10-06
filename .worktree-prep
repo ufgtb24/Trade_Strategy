@@ -1,0 +1,8 @@
+# worktree 准备清单：worktree 只检出受 git 管理的文件，这里补齐被忽略、运行又需要的东西。
+# 共用数据的注意事项与运行环境见 CLAUDE.md「在 git worktree 里开发」。
+
+# 行情数据：所有 worktree 共用主目录这一份
+link datasets
+
+# 运行环境不共用：主目录 .venv 里的本项目是指向主目录的可编辑安装
+run echo "提醒：在 worktree 根目录运行 uv sync，建这个 worktree 自己的 .venv；不要用主目录的 .venv。"
