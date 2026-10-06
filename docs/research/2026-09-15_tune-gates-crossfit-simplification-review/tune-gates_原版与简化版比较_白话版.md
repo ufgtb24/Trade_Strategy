@@ -15,7 +15,7 @@
 
 | 词 | 意思 | 出处 |
 |---|---|---|
-| 买点 | 一次命中里真正用于计算后续表现的位置 | [path2/CONTEXT.md:155](/home/yu/PycharmProjects/Trade_Strategy/path2/CONTEXT.md:155) |
+| 买点 | 一次命中里真正用于计算后续表现的位置 | [path2/CONTEXT.md:159](/home/yu/PycharmProjects/Trade_Strategy/path2/CONTEXT.md:159) |
 | 首次穿越率 | 买点之后先碰到上方目标线的比例；用于比较方向是否有优势 | [path2/CONTEXT.md:148](/home/yu/PycharmProjects/Trade_Strategy/path2/CONTEXT.md:148) |
 | 随机日基线 | 随机买入的对照表现；这里匹配同一天、同样波动水平 | [path2/CONTEXT.md:152](/home/yu/PycharmProjects/Trade_Strategy/path2/CONTEXT.md:152) |
 | 现在这套参数 | 本轮改动之前、拿来比较的原参数 | tune-gates 的人话译法 |

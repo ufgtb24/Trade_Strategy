@@ -15,7 +15,7 @@
 | 词 | 在本文里的意思 | 出处 |
 |---|---|---|
 | pattern | 一个走势形态的完整声明，是本轮要调的对象 | [path2/CONTEXT.md:96](/home/yu/PycharmProjects/Trade_Strategy/path2/CONTEXT.md:96) |
-| 买点 | 一次命中里真正用来计算后续表现的位置；调参时同一段买点不重复计数 | [path2/CONTEXT.md:155](/home/yu/PycharmProjects/Trade_Strategy/path2/CONTEXT.md:155)，去重规则来自 tune-gates |
+| 买点 | 一次命中里真正用来计算后续表现的位置；调参时同一段买点不重复计数 | [path2/CONTEXT.md:159](/home/yu/PycharmProjects/Trade_Strategy/path2/CONTEXT.md:159)，去重规则来自 tune-gates |
 | 闸 | 决定某个候选能不能通过的一道判据；本文讨论它该不该保留、该放多紧 | [path2/CONTEXT.md:91](/home/yu/PycharmProjects/Trade_Strategy/path2/CONTEXT.md:91) |
 | 首次穿越率 | 买点之后，先碰到上方目标线的比例；具体哪些情况进入分母，见下文 | [path2/CONTEXT.md:148](/home/yu/PycharmProjects/Trade_Strategy/path2/CONTEXT.md:148) |
 | 随机日基线 | 用随机买入日作对照；本流程匹配同一天、同样波动水平 | [path2/CONTEXT.md:152](/home/yu/PycharmProjects/Trade_Strategy/path2/CONTEXT.md:152) |

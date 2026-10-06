@@ -1,0 +1,101 @@
+{
+ "fold1": {
+  "ref_Z": 0.0073195722458986485,
+  "ref_Delta": 0.016453059409017874,
+  "n_feasible_better": 5,
+  "selected": [
+   0.3253,
+   0.3503,
+   "bo.exceed_threshold_1"
+  ],
+  "all": [
+   [
+    0.3253,
+    0.3503,
+    "bo.exceed_threshold_1"
+   ],
+   [
+    0.0511,
+    0.0622,
+    "bo.min_relative_height_0"
+   ],
+   [
+    0.0409,
+    0.044,
+    "joint_06"
+   ],
+   [
+    0.0182,
+    0.0254,
+    "tb.max_span_0"
+   ],
+   [
+    0.0079,
+    0.017,
+    "tb.max_span_1"
+   ]
+  ]
+ },
+ "fold2": {
+  "ref_Z": -0.20283556907325387,
+  "ref_Delta": -0.03521048101383287,
+  "n_feasible_better": 10,
+  "selected": [
+   -0.0261,
+   0.151,
+   "bo.exceed_threshold_1"
+  ],
+  "all": [
+   [
+    -0.0261,
+    0.151,
+    "bo.exceed_threshold_1"
+   ],
+   [
+    -0.1026,
+    0.0476,
+    "tb.max_span_1"
+   ],
+   [
+    -0.1203,
+    0.0934,
+    "joint_05"
+   ],
+   [
+    -0.1308,
+    0.0838,
+    "burst.distinct_pk_min_1"
+   ],
+   [
+    -0.1402,
+    0.017,
+    "tb.max_span_0"
+   ],
+   [
+    -0.1433,
+    0.0258,
+    "joint_06"
+   ],
+   [
+    -0.1456,
+    0.0081,
+    "joint_07"
+   ],
+   [
+    -0.1778,
+    0.036,
+    "joint_03"
+   ],
+   [
+    -0.1828,
+    -0.0132,
+    "bo.min_relative_height_0"
+   ],
+   [
+    -0.1942,
+    -0.0247,
+    "burst.vol_spike_min_0"
+   ]
+  ]
+ }
+}

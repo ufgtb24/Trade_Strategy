@@ -1,0 +1,102 @@
+{
+ "fold1": {
+  "current": {
+   "n_feasible_better_than_ref": 6,
+   "selected": "bo.exceed_threshold_1",
+   "search_Z": 0.3252618772655711,
+   "search_Z_ref": 0.0073195722458986485,
+   "check_Z": -0.4019277536661079,
+   "check_Z_ref": -0.4019277536661079,
+   "check_N": 30,
+   "check_N_ref": 30,
+   "check_stocks": 3
+  },
+  "no_Z>0": {
+   "n_feasible_better_than_ref": 6,
+   "selected": "bo.exceed_threshold_1",
+   "search_Z": 0.3252618772655711,
+   "search_Z_ref": 0.0073195722458986485,
+   "check_Z": -0.4019277536661079,
+   "check_Z_ref": -0.4019277536661079,
+   "check_N": 30,
+   "check_N_ref": 30,
+   "check_stocks": 3
+  },
+  "no_Delta>=0": {
+   "n_feasible_better_than_ref": 6,
+   "selected": "bo.exceed_threshold_1",
+   "search_Z": 0.3252618772655711,
+   "search_Z_ref": 0.0073195722458986485,
+   "check_Z": -0.4019277536661079,
+   "check_Z_ref": -0.4019277536661079,
+   "check_N": 30,
+   "check_N_ref": 30,
+   "check_stocks": 3
+  },
+  "no_both": {
+   "n_feasible_better_than_ref": 6,
+   "selected": "bo.exceed_threshold_1",
+   "search_Z": 0.3252618772655711,
+   "search_Z_ref": 0.0073195722458986485,
+   "check_Z": -0.4019277536661079,
+   "check_Z_ref": -0.4019277536661079,
+   "check_N": 30,
+   "check_N_ref": 30,
+   "check_stocks": 3
+  },
+  "supply_only_relative": {
+   "n_feasible_better_than_ref": 6,
+   "selected": "bo.exceed_threshold_1",
+   "search_Z": 0.3252618772655711,
+   "search_Z_ref": 0.0073195722458986485,
+   "check_Z": -0.4019277536661079,
+   "check_Z_ref": -0.4019277536661079,
+   "check_N": 30,
+   "check_N_ref": 30,
+   "check_stocks": 3
+  }
+ },
+ "fold2": {
+  "current": {
+   "n_feasible_better_than_ref": 0,
+   "selected": "base"
+  },
+  "no_Z>0": {
+   "n_feasible_better_than_ref": 8,
+   "selected": "bo.exceed_threshold_1",
+   "search_Z": -0.026078214643799603,
+   "search_Z_ref": -0.20283556907325387,
+   "check_Z": -0.0027119416276277005,
+   "check_Z_ref": -0.0027119416276277005,
+   "check_N": 180,
+   "check_N_ref": 180,
+   "check_stocks": 9
+  },
+  "no_Delta>=0": {
+   "n_feasible_better_than_ref": 0,
+   "selected": "base"
+  },
+  "no_both": {
+   "n_feasible_better_than_ref": 10,
+   "selected": "bo.exceed_threshold_1",
+   "search_Z": -0.026078214643799603,
+   "search_Z_ref": -0.20283556907325387,
+   "check_Z": -0.0027119416276277005,
+   "check_Z_ref": -0.0027119416276277005,
+   "check_N": 180,
+   "check_N_ref": 180,
+   "check_stocks": 9
+  },
+  "supply_only_relative": {
+   "n_feasible_better_than_ref": 10,
+   "selected": "bo.exceed_threshold_1",
+   "search_Z": -0.026078214643799603,
+   "search_Z_ref": -0.20283556907325387,
+   "check_Z": -0.0027119416276277005,
+   "check_Z_ref": -0.0027119416276277005,
+   "check_N": 180,
+   "check_N_ref": 180,
+   "check_stocks": 9
+  }
+ }
+}

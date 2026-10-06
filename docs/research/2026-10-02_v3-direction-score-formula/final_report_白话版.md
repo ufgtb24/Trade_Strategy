@@ -10,7 +10,7 @@
 
 | 词 | 一句话意思 | 出处 |
 |---|---|---|
-| 买点 | pattern 选中的买入日；同一股票同一天只计一次 | [path2/CONTEXT.md:155](../../../path2/CONTEXT.md:155) |
+| 买点 | pattern 选中的买入日；同一股票同一天只计一次 | [path2/CONTEXT.md:159](../../../path2/CONTEXT.md:159) |
 | 首次穿越 | 买入后先碰上线还是下线，本轮继续按收盘价讨论 | [path2/CONTEXT.md:148](../../../path2/CONTEXT.md:148) |
 | bo | 已有的突破定义，固定其参数作为简单方法的对照 | [path2/CONTEXT.md:11](../../../path2/CONTEXT.md:11) |
 
