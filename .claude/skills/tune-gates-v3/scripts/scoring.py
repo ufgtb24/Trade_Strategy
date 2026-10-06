@@ -1,11 +1,16 @@
 """按唯一股票日的方向结果评分，并汇总全部连续交易日窗口。
 
 每个非空窗口内先上记 +1、先下记 -1、未触线记 0，按买点日等权
-平均；窗口之间只按近期权重平均，不按买点密度再次加权。普通对照
-先按同日期、同波动档预汇总，每个候选仅查询自己买点的档位均值。
+平均；窗口之间只按近期权重平均，不按买点密度再次加权。同日普通
+买入对照先按同日期、同波动档预汇总，每个候选仅查询自己买点的档
+位均值；它只剩选股，不含择时。
 
-默认供给及方向要求是可审计的工程初值，尚非市场校准结论。本模块
-不提供未经校准的置信区间，不将重叠窗口或股票数当作独立证据。
+排名分是候选方向成绩比同日普通买入对照多出的部分，默认只给正的
+领先按证据打折。绝对方向成绩与随机日基线（全池同口径窗口成绩，
+含择时）只报告、不排名。机会只设相对原参数的下限。
+
+默认机会下限与折扣尺度是可审计的工程初值，尚非市场校准结论。本模
+块不提供未经校准的置信区间，不将重叠窗口或股票数当作独立证据。
 """
 from __future__ import annotations
 
@@ -18,26 +23,23 @@ import pandas as pd
 
 STATES = ("up", "down", "both", "none")
 SCORE_FLOOR = -1e100
-SCORE_MODE = "direction_window_mean"
-SHRINKAGE_SCORE_MODE = "direction_window_shrinkage_experimental"
-DEFAULT_SHRINKAGE = {"enabled": False, "tau": 0.1, "bandwidth": 80}
+SCORE_MODE = "matched_difference"
+SHRINKAGE_SCORE_MODE = "matched_difference_shrunk"
+DEFAULT_SHRINKAGE = {"enabled": True, "tau": 0.1, "bandwidth": 80}
 DEFAULT_POLICY = {
-    "min_buy_days": 30,
     "min_reference_fraction": 0.5,
-    "min_recent_buy_days": 1,
     "min_recent_reference_fraction": 0.5,
-    "min_direction_score": 0.0,
-    "baseline_tolerance": 0.0,
     "min_median_upside": None,
     "min_median_drawdown": None,
 }
+REMOVED_POLICY_KEYS = {"min_buy_days", "min_recent_buy_days", "min_direction_score", "baseline_tolerance"}
 
 
 def normalize_shrinkage(settings: Mapping | None = None) -> dict:
-    """冻结整轮实验性折扣；默认关闭，参数不能由单个 trial 自行挑选。
+    """冻结整轮统计折扣；默认开启，参数不能由单个 trial 自行挑选。
 
     tau 是预先选定的差异尺度，bandwidth 是相邻窗口起点的相关项跨度。
-    这些工程初值没有市场校准含义，开关不改变统计确认状态。
+    这些工程初值没有市场校准含义。
     """
     if settings is not None and not isinstance(settings, Mapping):
         raise ValueError("shrinkage 必须为映射")
@@ -61,24 +63,27 @@ def normalize_shrinkage(settings: Mapping | None = None) -> dict:
 
 def _adjust_score(raw: float | None, baseline: float | None,
                   windows: dict, settings: dict) -> tuple[float | None, dict]:
-    """按配对窗口差的工作误差刻度计算 B+lambda*(Z-B)。
+    """排名分：领先 Δ=Z-B，开启折扣时取 min(Δ, λΔ)，只给正的领先打折。
 
-    空窗口的影响项直接为0，保留真实日历间隔。Bartlett相关项计算是
-    误差原型，不是校准过的置信区间。常量差、单一窗口或数值不可辨别的
-    零误差不解释成确定：统一取lambda=0回到B，不偷偷切回原始Z排名。
+    λ 由配对窗口差的工作误差刻度算出，证据越薄 λ 越小。领先为负时照原
+    值计分：若也乘 λ，证据薄、劣势大的候选会被拉近 0，反超为负的现役。
+    误差不可识别（常量差、单一窗口或零误差）时 λ=0，正领先记 0、负领先
+    照原值，因此不会胜过一切为负的现役。空窗口的影响项为 0，保留真实日
+    历间隔。Bartlett 相关项计算是误差原型，不是校准过的置信区间。
     """
     info = {**settings, "experimental": settings["enabled"], "calibrated": False,
             "variance": None, "factor": None, "used_lags": 0, "status": "disabled"}
-    if not settings["enabled"]:
-        return raw, info
     if raw is None:
         info["status"] = "no_opportunities"
         return None, info
     delta = raw - baseline
     if abs(delta) <= 1e-12:
-        # 无观察差异时回拉不改变成绩；不宣称真实优势已知恰为0。
-        info.update(factor=0.0, status="zero_observed_difference")
-        return baseline, info
+        # 全池恒等配比的浮点舍入不构成观测领先或劣势。
+        if settings["enabled"]:
+            info.update(factor=0.0, status="zero_observed_difference")
+        return 0.0, info
+    if not settings["enabled"]:
+        return delta, info
     active = windows["active"]
     contrasts = windows["score"][active] - windows["matched_score"][active]
     psi = np.zeros(len(active), dtype=float)
@@ -96,21 +101,24 @@ def _adjust_score(raw: float | None, baseline: float | None,
     info.update(variance=variance, used_lags=used_lags)
     if len(contrasts) < 2 or np.ptp(contrasts) <= 1e-12 or variance <= tolerance:
         info.update(factor=0.0, status="unidentified_variance_full_shrinkage")
-        return baseline, info
+        return min(delta, 0.0), info
     prior_variance = settings["tau"] ** 2
     factor = prior_variance / (prior_variance + variance)
     info.update(factor=factor, status="experimental_uncalibrated")
-    return baseline + factor * delta, info
+    return min(delta, factor * delta), info
 
 
 def normalize_policy(policy: Mapping | None = None) -> dict:
-    """补齐规则；原始方向分须严格高于下限，其余下限允许相等。
+    """补齐规则；机会只设相对原参数的下限，允许相等。
 
-    机会供给只设下限，不加入主分。空间及回撤只有显式给出数值才
-    成为要求；回撤使用带符号收益（例如 -0.2），越高表示跌幅越小。
+    机会供给不加入排名分。空间及回撤只有显式给出数值才成为要求；回撤
+    使用带符号收益（例如 -0.2），越高表示跌幅越小。
     """
     if policy is not None and not isinstance(policy, Mapping):
         raise ValueError("policy 必须为映射")
+    removed = set(policy or {}) & REMOVED_POLICY_KEYS
+    if removed:
+        raise ValueError(f"评分规则 {sorted(removed)} 已删除：机会只用相对原参数的下限；方向不设绝对下限")
     extras = set(policy or {}) - set(DEFAULT_POLICY)
     if extras:
         raise ValueError(f"未识别的评分规则: {sorted(extras)}")
@@ -120,18 +128,9 @@ def normalize_policy(policy: Mapping | None = None) -> dict:
             continue
         if isinstance(value, bool) or not isinstance(value, Real) or not np.isfinite(value):
             raise ValueError(f"{key} 必须为有限数")
-        if key in ("min_buy_days", "min_recent_buy_days"):
-            if not isinstance(value, Integral) or value < 1:
-                raise ValueError(f"{key} 必须为正整数")
-            out[key] = int(value)
-        elif key in ("min_reference_fraction", "min_recent_reference_fraction", "baseline_tolerance"):
-            if not 0 <= value <= 1:
-                raise ValueError(f"{key} 必须在 0 与 1 之间")
-            out[key] = float(value)
-        else:
-            if key == "min_direction_score" and not -1 <= value < 1:
-                raise ValueError("min_direction_score 必须在 [-1, 1) 内")
-            out[key] = float(value)
+        if key in ("min_reference_fraction", "min_recent_reference_fraction") and not 0 <= value <= 1:
+            raise ValueError(f"{key} 必须在 0 与 1 之间")
+        out[key] = float(value)
     return out
 
 
@@ -191,7 +190,10 @@ def summary(rows: pd.DataFrame) -> dict:
 
 
 class WindowPlan:
-    """冻结一次普通池快照和窗口日历，后续候选只查询所选股票日。
+    """冻结一次股票池快照和窗口日历，后续候选只查询所选股票日。
+
+    构造时顺带算一次全池同口径窗口成绩，作为随机日基线（含择时）；之后
+    候选只与它相减，不重扫池子。
 
     baseline 的唯一股票日期及标签在构造时复制并冻结。之后同一来源
     对象仅作为句柄，不重新扫描；要更改股票池或标签必须新建计划。
@@ -238,13 +240,18 @@ class WindowPlan:
                 members = positions[bins == bin_id]
                 self._group_values[members] = self._values[members].mean(axis=0)
         self._matched_direction = self._group_values[:, 0] - self._group_values[:, 1]
+        # 整只股票重抽在冻结时的股票集合上进行。
+        codes, self._stocks = pd.factorize(frozen["symbol"], sort=True)
+        self._stock_codes = codes.astype(np.int64)
         self._baseline_summary = _summary_checked(frozen)
         self.starts = np.arange(len(self.dates) - self.window_days + 1)
         self.ends = self.starts + self.window_days - 1
         ages = len(self.dates) - 1 - self.ends
         self._time_weights = np.exp2(-ages / self.half_life_days)
+        pool = self._windows_checked(frozen, np.arange(len(frozen)))
+        self.random_day_score = float(pool["weights"][pool["active"]] @ pool["score"][pool["active"]])
         for array in (self._values, self._direction, self._group_values, self._matched_direction,
-                      self._date_indices, self.starts, self.ends, self._time_weights):
+                      self._date_indices, self._stock_codes, self.starts, self.ends, self._time_weights):
             array.flags.writeable = False
 
     def _indices_checked(self, rows: pd.DataFrame) -> np.ndarray:
@@ -270,12 +277,15 @@ class WindowPlan:
         self._indices_checked(checked)
         self._accepted_baselines.append(baseline)
 
-    def _windows_checked(self, rows: pd.DataFrame, indices: np.ndarray) -> dict:
+    def _windows_checked(self, rows: pd.DataFrame, indices: np.ndarray,
+                         weights: np.ndarray | None = None) -> dict:
+        """weights 是每个股票日的重复次数，缺省全 1；整只重抽时传入抽中次数。"""
         n_dates = len(self.dates)
         date_ids = self._date_indices[indices]
-        daily_count = np.bincount(date_ids, minlength=n_dates)
-        daily_direction = np.bincount(date_ids, weights=self._direction[indices], minlength=n_dates)
-        daily_matched = np.bincount(date_ids, weights=self._matched_direction[indices], minlength=n_dates)
+        w = np.ones(len(indices)) if weights is None else np.asarray(weights, dtype=float)
+        daily_count = np.bincount(date_ids, weights=w, minlength=n_dates)
+        daily_direction = np.bincount(date_ids, weights=w * self._direction[indices], minlength=n_dates)
+        daily_matched = np.bincount(date_ids, weights=w * self._matched_direction[indices], minlength=n_dates)
 
         def rolling(values):
             prefix = np.concatenate(([0], np.cumsum(values)))
@@ -305,7 +315,8 @@ class WindowPlan:
         return self._windows_checked(checked, self._indices_checked(checked))
 
     def summarize(self, rows: pd.DataFrame) -> dict:
-        """返回原始Z、同配比B、差值、所选模式主分及覆盖，不施加约束。"""
+        """返回方向成绩 Z、同日普通买入对照 B、领先 Z-B、排名分、对随机日
+        基线的差及覆盖，不施加约束。"""
         checked = _rows(rows)
         indices = self._indices_checked(checked)
         candidate = _summary_checked(checked)
@@ -343,6 +354,8 @@ class WindowPlan:
             "raw_direction_score": score, "pooled_direction_score": candidate["direction_score"],
             "matched_direction_score": matched_score,
             "direction_difference": score - matched_score if score is not None else None,
+            "random_day_score": self.random_day_score,
+            "random_day_difference": score - self.random_day_score if score is not None else None,
             "raw_median_upside": candidate["median_upside"],
             "coverage": coverage,
             "window": {
@@ -358,6 +371,32 @@ class WindowPlan:
             "evidence_status": "uncalibrated_no_independent_sample_claim",
         }
 
+    def stock_bootstrap(self, rows: pd.DataFrame, resamples: int = 200, seed: int = 0) -> dict:
+        """整只股票有放回重抽，估计方向成绩 Z 与领先 Δ 的偶然波动（未校准）。
+
+        每次在冻结时的股票集合上抽同样多只股票，抽中几次就把该股全部买点
+        日计几次。抽空（候选股票全未抽中）的次数单列；非空不足两次时标准差
+        为 None。
+        """
+        if isinstance(resamples, bool) or not isinstance(resamples, Integral) or resamples < 1:
+            raise ValueError("resamples 必须为正整数")
+        checked = _rows(rows)
+        indices = self._indices_checked(checked)
+        codes = self._stock_codes[indices]
+        rng = np.random.default_rng(seed)
+        draws = rng.multinomial(len(self._stocks), np.full(len(self._stocks), 1 / len(self._stocks)),
+                                size=int(resamples))
+        z, delta = [], []
+        for draw in draws:
+            windows = self._windows_checked(checked, indices, draw[codes])
+            active, weights = windows["active"], windows["weights"]
+            if active.any():
+                z.append(float(weights[active] @ windows["score"][active]))
+                delta.append(z[-1] - float(weights[active] @ windows["matched_score"][active]))
+        sd = lambda values: float(np.std(values, ddof=1)) if len(values) >= 2 else None
+        return {"resamples": int(resamples), "seed": seed, "stocks": len(self._stocks),
+                "z_sd": sd(z), "delta_sd": sd(delta), "empty_fraction": 1 - len(z) / int(resamples)}
+
 
 def summarize(rows: pd.DataFrame, plan: WindowPlan) -> dict:
     """供开发检查使用的无约束候选汇总，与正式评分共用同一计算。"""
@@ -365,23 +404,13 @@ def summarize(rows: pd.DataFrame, plan: WindowPlan) -> dict:
 
 
 def _hard_constraints(candidate: dict, reference: dict, policy: dict) -> tuple[list[str], list[float]]:
-    names = ["buy_days_floor", "reference_opportunity_floor", "recent_buy_days_floor",
-             "recent_reference_opportunity_floor", "positive_direction_floor", "matched_baseline_floor"]
+    names = ["reference_opportunity_floor", "recent_reference_opportunity_floor"]
     recent_count = candidate["coverage"]["recent_buy_days"]
     reference_recent = reference["coverage"]["recent_buy_days"]
-    score = candidate["raw_direction_score"]
-    difference = candidate["direction_difference"]
     values = [
-        (policy["min_buy_days"] - candidate["count"]) / policy["min_buy_days"],
         (policy["min_reference_fraction"] * reference["count"] - candidate["count"]) / max(1, reference["count"]),
-        (policy["min_recent_buy_days"] - recent_count) / policy["min_recent_buy_days"],
         (policy["min_recent_reference_fraction"] * reference_recent - recent_count) / max(1, reference_recent),
-        1.0 if score is None else float(np.nextafter(policy["min_direction_score"], np.inf) - score),
-        1.0 if difference is None else float(-policy["baseline_tolerance"] - difference),
     ]
-    # 全池恒等配比的浮点舍入不构成观测劣势；只消除机器精度误差。
-    if difference is not None and 0 < values[-1] <= 1e-12:
-        values[-1] = 0.0
     for metric, key in (("median_upside", "min_median_upside"), ("median_drawdown", "min_median_drawdown")):
         if policy[key] is not None:
             names.append(key)
@@ -391,7 +420,7 @@ def _hard_constraints(candidate: dict, reference: dict, policy: dict) -> tuple[l
 
 def assess(rows: pd.DataFrame, reference: pd.DataFrame, baseline: pd.DataFrame,
            plan: WindowPlan, policy: Mapping | None = None) -> dict:
-    """按整轮冻结的基础/折扣主分排名，硬要求仍检查原始观察值。"""
+    """按整轮冻结的排名分排名；机会与可选空间/回撤要求检查原始观察值。"""
     rules = normalize_policy(policy)
     plan.assert_baseline(baseline)
     candidate, old = plan.summarize(rows), plan.summarize(reference)
@@ -408,10 +437,9 @@ def assess(rows: pd.DataFrame, reference: pd.DataFrame, baseline: pd.DataFrame,
 
 def comparison(candidate: pd.DataFrame, reference: pd.DataFrame, baseline: pd.DataFrame,
                plan: WindowPlan, policy: Mapping | None = None) -> dict:
-    """最终比较仍使用搜索的方向主分及同一约束，默认只提供观测差异。
+    """最后检查与复核沿用搜索的排名分及同一约束，只提供观测差异。
 
-    证据算法尚未校准，窗口覆盖不能证明改善显著。因此不生成伪区间，
-    evidence_sufficient 固定为 False；采用层可据用户政策决定暂用。
+    证据算法尚未校准，窗口覆盖不能证明改善显著，因此不生成区间。
     """
     evaluated = assess(candidate, reference, baseline, plan, policy)
     new, old = evaluated["statistics"], plan.summarize(reference)
@@ -427,13 +455,14 @@ def comparison(candidate: pd.DataFrame, reference: pd.DataFrame, baseline: pd.Da
         "reference_matched_direction_score": old["matched_direction_score"],
         "new_direction_difference": new["direction_difference"],
         "reference_direction_difference": old["direction_difference"],
+        "random_day_score": new["random_day_score"],
+        "new_random_day_difference": new["random_day_difference"],
+        "reference_random_day_difference": old["random_day_difference"],
         "shrinkage": {"candidate": new["shrinkage"], "reference": old["shrinkage"]},
         "upside_difference": new_upside - old_upside if new_upside is not None and old_upside is not None else None,
         "hard_constraints_passed": evaluated["feasible"],
         "constraint_names": evaluated["constraint_names"], "constraints": evaluated["constraints"],
-        "improvement_lower": None, "improvement_upper": None,
-        "lower_unbounded": True, "upper_unbounded": True,
-        "evidence_sufficient": False, "evidence_status": new["evidence_status"],
+        "evidence_status": new["evidence_status"],
         "summaries": new["summaries"], "baseline_matching": plan.baseline_matching,
         "coverage": {"candidate": new["coverage"], "reference": old["coverage"]},
         "window": {"candidate": new["window"], "reference": old["window"]},

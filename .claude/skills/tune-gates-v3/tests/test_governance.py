@@ -203,41 +203,34 @@ def test_concurrent_final_claim_has_one_winner(tmp_path):
 
 
 def metrics(**changes):
-    return {"hard_constraints_passed": True, "score_difference": 0.02,
-            "improvement_lower": -0.01, "evidence_sufficient": False, **changes}
+    return {"hard_constraints_passed": True, "score_difference": 0.02, **changes}
 
 
-def test_provisional_is_not_confirmed_and_review_inconclusive_rolls_back():
-    decision = adoption(metrics(), {"allow_provisional": True})
+def test_final_and_review_share_one_rule():
+    decision = adoption(metrics())
     assert decision["status"] == "provisional"
     assert decision["provisional"]
-    review = adoption(metrics(), {}, stage="review", previous_status=decision)
-    assert review["status"] == "rollback"
+    review = adoption(metrics(), stage="review", previous_status=decision)
+    assert review["status"] == "retained"
     assert not review["provisional"]
-
-
-def test_confirm_requires_positive_lower_and_enough_evidence():
-    assert adoption(metrics(improvement_lower=0.001, evidence_sufficient=True), {})["status"] == "confirmed"
-    assert adoption(metrics(improvement_lower=0.001), {})["status"] == "provisional"
-    assert adoption(metrics(improvement_lower=None), {})["status"] == "provisional"
-    assert adoption(metrics(), {"allow_provisional": False})["status"] == "reject"
+    assert adoption(metrics(score_difference=0), stage="review", previous_status=decision)["status"] == "rollback"
 
 
 @pytest.mark.parametrize("change", [{"hard_constraints_passed": False}, {"score_difference": 0}, {"score_difference": -0.01}])
 def test_no_improvement_or_constraint_failure_rejects_and_rolls_back(change):
-    assert adoption(metrics(**change), {})["status"] == "reject"
-    assert adoption(metrics(**change), {}, stage="review", previous_status="provisional")["status"] == "rollback"
+    assert adoption(metrics(**change))["status"] == "reject"
+    assert adoption(metrics(**change), stage="review", previous_status="provisional")["status"] == "rollback"
 
 
-def test_review_cannot_repeat_after_confirmation_and_rules_are_explicit():
+def test_review_only_for_provisional_and_inputs_are_explicit():
     with pytest.raises(ValueError, match="暂用"):
-        adoption(metrics(), {}, stage="review", previous_status="confirmed")
-    with pytest.raises(ValueError, match="只支持"):
-        adoption(metrics(), {"review_inconclusive": "extend_once"})
+        adoption(metrics(), stage="review", previous_status="retained")
     with pytest.raises(ValueError):
-        adoption(metrics(score_difference=float("nan")), {})
+        adoption(metrics(score_difference=float("nan")))
     with pytest.raises(ValueError):
-        adoption(metrics(hard_constraints_passed=1), {})
+        adoption(metrics(hard_constraints_passed=1))
+    with pytest.raises(ValueError):
+        adoption(metrics(), stage="other")
 
 
 def test_review_follows_final_and_is_also_single_use(tmp_path):
@@ -347,26 +340,11 @@ def test_abandon_refuses_unknown_run_or_changed_config(tmp_path):
 
 @pytest.mark.parametrize("hard_passed", [True, False])
 def test_unavailable_upside_is_reported_as_reject_not_calculation_failure(hard_passed):
-    missing = metrics(hard_constraints_passed=hard_passed, score_difference=None, improvement_lower=None)
-    assert adoption(missing, {})["status"] == "reject"
-    assert adoption(missing, {}, stage="review", previous_status="provisional")["status"] == "rollback"
+    missing = metrics(hard_constraints_passed=hard_passed, score_difference=None)
+    assert adoption(missing)["status"] == "reject"
+    assert adoption(missing, stage="review", previous_status="provisional")["status"] == "rollback"
     with pytest.raises(ValueError):
-        adoption(metrics(hard_constraints_passed=False, score_difference=float("nan")), {})
-
-
-def test_positive_observed_improvement_does_not_override_clear_harm_evidence():
-    harmful = metrics(score_difference=0.01, improvement_lower=-0.03,
-                      improvement_upper=-0.001, evidence_sufficient=True)
-    assert adoption(harmful, {})["status"] == "reject"
-    assert adoption(harmful, {}, stage="review", previous_status="provisional")["status"] == "rollback"
-    assert adoption(metrics(improvement_upper=0), {})["status"] == "provisional"
-    assert adoption(metrics(improvement_upper=None), {})["status"] == "provisional"
-
-
-@pytest.mark.parametrize("upper", [float("nan"), float("inf"), True, "0.1"])
-def test_improvement_upper_requires_finite_number_or_none(upper):
-    with pytest.raises(ValueError, match="improvement_upper"):
-        adoption(metrics(improvement_upper=upper), {})
+        adoption(metrics(hard_constraints_passed=False, score_difference=float("nan")))
 
 
 def test_development_exposure_blocks_later_final_without_fake_reservations(tmp_path):

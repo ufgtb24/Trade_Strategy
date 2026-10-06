@@ -29,8 +29,7 @@ def grid(n_dates=40, n_stocks=10, up_stocks=6):
 
 
 def policy(**changes):
-    return {"min_buy_days": 1, "min_reference_fraction": 0,
-            "min_recent_buy_days": 1, "min_recent_reference_fraction": 0, **changes}
+    return {"min_reference_fraction": 0, "min_recent_reference_fraction": 0, **changes}
 
 
 def test_three_state_direction_denominator_differs_from_conditional_ratio():
@@ -75,8 +74,10 @@ def test_all_none_is_zero_but_no_opportunities_undefined():
     assert assess(frame.iloc[:0], frame, frame, plan, policy())["score"] == SCORE_FLOOR
     none_assessment = assess(frame, frame, frame, plan, policy())
     assert none_assessment["score"] == 0
-    assert not none_assessment["feasible"]
-    assert dict(zip(none_assessment["constraint_names"], none_assessment["constraints"]))["positive_direction_floor"] > 0
+    # 方向不设绝对下限：全未触线只是成绩为 0，不因此判不合格。
+    assert none_assessment["feasible"]
+    assert none_assessment["constraint_names"] == ["reference_opportunity_floor",
+                                                   "recent_reference_opportunity_floor"]
 
 
 def test_window_inner_stock_days_outer_time_not_density():
@@ -136,8 +137,8 @@ def test_empty_windows_preserve_calendar_and_are_not_zero_trades():
     assert result["window"]["recent_window_score"] is None
     assert result["coverage"]["active_window_fraction"] == pytest.approx(1 / 30)
     assert result["coverage"]["recent_buy_days"] == 0
-    assessed = assess(selected, selected, frame, plan, policy())
-    assert not assessed["feasible"]  # 近期供给下限明确失败，不能只看条件分 1。
+    assessed = assess(selected, frame, frame, plan, policy(min_recent_reference_fraction=0.5))
+    assert not assessed["feasible"]  # 近期供给相对原参数的下限明确失败，不能只看条件分 1。
 
 
 def test_same_date_same_volatility_bins_do_not_split_ties():
@@ -185,29 +186,29 @@ def test_matched_baseline_constraint_uses_window_score_not_pooled_ratio():
     selected = frame[frame.symbol.isin(["S0", "S1", "S2", "S8", "S9"])]
     plan = WindowPlan(frame, 20)
     result = assess(selected, selected, frame, plan, policy())
-    constraints = dict(zip(result["constraint_names"], result["constraints"]))
     assert result["statistics"]["raw_direction_score"] == pytest.approx(0.2)
     assert result["statistics"]["matched_direction_score"] == pytest.approx(0.6)
-    assert constraints["positive_direction_floor"] < 0
-    assert constraints["matched_baseline_floor"] == pytest.approx(0.4)
-    assert not result["feasible"]
+    # 不如同日普通买入对照只体现在排名分为负，不另设下限。
+    assert result["feasible"]
+    assert result["score"] == pytest.approx(-0.4)
 
 
 def test_opportunity_thresholds_do_not_add_score_reward():
     frame = grid(n_dates=30)
     less = frame[frame.symbol == "S0"]
     more = frame[frame.symbol.isin(["S0", "S1", "S2"])]
-    plan = WindowPlan(frame, 20)
+    plan = WindowPlan(frame, 20, shrinkage={"enabled": False})
     a = assess(less, less, frame, plan, policy())
     b = assess(more, less, frame, plan, policy())
-    assert a["score"] == b["score"] == pytest.approx(1)
+    # 同日普通买入对照的方向为 0.6-0.4；多出的买点不加分。
+    assert a["score"] == pytest.approx(0.8) and b["score"] == pytest.approx(a["score"])
     assert a["feasible"] and b["feasible"]
     too_few = assess(less, more, frame, plan, policy(min_reference_fraction=0.5))
     assert not too_few["feasible"]
     too_few_recent = assess(less, more, frame, plan, policy(min_recent_reference_fraction=0.5))
     assert not too_few_recent["feasible"]
-    absolute_floor = assess(less, less, frame, plan, policy(min_buy_days=31))
-    assert not absolute_floor["feasible"]
+    with pytest.raises(ValueError, match="已删除"):
+        assess(less, less, frame, plan, policy(min_buy_days=31))
 
 
 def test_space_and_drawdown_only_explicit_constraints():
@@ -233,11 +234,8 @@ def test_final_comparison_uses_same_score_constraints_not_space_rank():
     assert result["hard_constraints_passed"] == a["feasible"]
     assert result["constraints"] == a["constraints"]
     assert result["new_score"] == a["score"]
-    assert result["improvement_lower"] is result["improvement_upper"] is None
-    assert not result["evidence_sufficient"]
     identical = comparison(new, new, frame, plan, policy())
     assert identical["score_difference"] == 0
-    assert not identical["evidence_sufficient"]  # 重叠窗口很多也不是改善证据。
 
 
 def test_reordered_baseline_and_candidates_leave_results_unchanged():
@@ -278,10 +276,14 @@ def test_invalid_data_plan_and_policy_rejected():
     plan = WindowPlan(frame, 20)
     with pytest.raises(ValueError, match="基线全集"):
         summarize(rows(["up"], start="2026-01-01"), plan)
-    for invalid in ({"old_resamples": 20}, {"min_buy_days": 0}, {"min_recent_buy_days": 1.2},
-                    {"min_direction_score": np.nan}, {"min_direction_score": 1}, {"baseline_tolerance": -0.1}):
+    for invalid in ({"old_resamples": 20}, {"min_reference_fraction": 1.2},
+                    {"min_recent_reference_fraction": -0.1}, {"min_reference_fraction": np.nan},
+                    {"min_median_upside": np.inf}):
         with pytest.raises(ValueError):
             normalize_policy(invalid)
+    for removed in scoring.REMOVED_POLICY_KEYS:
+        with pytest.raises(ValueError, match="已删除"):
+            normalize_policy({removed: 0})
     for kwargs in ({"window_days": 31}, {"half_life_days": 0}, {"recent_days": 0}, {"window_days": 1.5}):
         with pytest.raises(ValueError):
             WindowPlan(frame, 20, **kwargs)
@@ -297,3 +299,50 @@ def test_numeric_strings_are_normalized():
     assert summary(frame)["direction_score"] == 0
     assert summary(frame)["direction"] == 0.5
     assert summarize(frame, WindowPlan(frame, 20))["raw_direction_score"] == pytest.approx(0)
+
+
+def test_random_day_difference_is_pool_relative_and_never_rescans_pool(monkeypatch):
+    frame = grid(n_dates=40)
+    plan = WindowPlan(frame, 20)
+    assert plan.random_day_score == pytest.approx(0.2)
+    assert summarize(frame, plan)["random_day_difference"] == pytest.approx(0, abs=1e-12)
+    real_rows = scoring._rows
+    def forbid_whole_pool(value):
+        assert len(value) < len(frame), "随机日基线在建计划时算好，候选不得再扫池子"
+        return real_rows(value)
+    monkeypatch.setattr(scoring, "_rows", forbid_whole_pool)
+    result = summarize(frame[frame.symbol == "S0"], plan)
+    assert result["random_day_score"] == pytest.approx(0.2)
+    assert result["random_day_difference"] == pytest.approx(0.8)
+    # 全为下的股票：对随机日基线的差含择时与选股，这里只有选股差。
+    assert summarize(frame[frame.symbol == "S9"], plan)["random_day_difference"] == pytest.approx(-1.2)
+
+
+def test_unit_weights_match_unweighted_windows():
+    frame = grid(n_dates=33, n_stocks=5, up_stocks=3)
+    selected = scoring._rows(frame.iloc[::3])
+    plan = WindowPlan(frame, 20, window_days=7, half_life_days=9)
+    indices = plan._indices_checked(selected)
+    plain = plan._windows_checked(selected, indices)
+    weighted = plan._windows_checked(selected, indices, np.ones(len(indices)))
+    assert plain.keys() == weighted.keys()
+    for key in plain:
+        np.testing.assert_array_equal(plain[key], weighted[key])
+
+
+def test_stock_bootstrap_is_reproducible_and_json_safe():
+    import json
+    frame = grid(n_dates=25, n_stocks=20, up_stocks=12)
+    plan = WindowPlan(frame, 20)
+    mixed = frame[frame.symbol.isin(["S0", "S3", "S15", "S19"])]
+    first = plan.stock_bootstrap(mixed, resamples=30, seed=4)
+    assert first == plan.stock_bootstrap(mixed, resamples=30, seed=4)
+    assert first["stocks"] == 20 and first["resamples"] == 30
+    assert first["z_sd"] > 0
+    # 只有一只股票时多数重抽里它要么没被抽中、要么成绩不变；非空不足两次时标准差为 None。
+    single = plan.stock_bootstrap(frame[frame.symbol == "S0"], resamples=2, seed=1)
+    assert single["empty_fraction"] > 0
+    assert single["z_sd"] is None and single["delta_sd"] is None
+    json.dumps(single, allow_nan=False)
+    with pytest.raises(ValueError):
+        plan.stock_bootstrap(mixed, resamples=0)

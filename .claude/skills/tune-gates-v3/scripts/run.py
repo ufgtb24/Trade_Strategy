@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import argparse
+from bisect import bisect_left
 import copy
 import hashlib
 import importlib
@@ -14,6 +15,7 @@ import math
 import os
 from pathlib import Path
 import re
+import subprocess
 import sys
 from datetime import date, datetime
 from zoneinfo import ZoneInfo
@@ -27,9 +29,12 @@ if str(ROOT) not in sys.path:
 import optuna
 import pandas as pd
 
-from daily import DailyEvaluator
+from daily import DailyEvaluator, FP_ATR_WINDOW
 from governance import UsageLedger, adoption, canonical_hash, SCORE_EPSILON
 from scoring import WindowPlan, assess, comparison, normalize_policy, normalize_shrinkage, summary
+
+SYMBOL_NAME = r'[A-Za-z0-9^][A-Za-z0-9.^_-]*'
+HISTORY_MARGIN_DAYS = 5  # 回看起点在最宽首部缓冲之外再多留的交易日（待验证）。
 
 
 def write_json(path: Path, payload: dict) -> None:
@@ -68,6 +73,25 @@ def source_hash(root: Path = ROOT) -> str:
     return digest.hexdigest()
 
 
+def git_state(root: Path = ROOT) -> dict | None:
+    """记下冻结时的提交，以及检测与评价代码相对它是否干净；git 不可用时为 None。"""
+    scripts = Path(__file__).resolve().parent
+    try:
+        head = subprocess.run(['git', '-C', str(root), 'rev-parse', 'HEAD'], capture_output=True,
+                              text=True, check=True).stdout.strip()
+        status = subprocess.run(['git', '-C', str(root), 'status', '--porcelain', '-z',
+                                 '--untracked-files=all', '--', 'path2', 'path2_apps', str(scripts)],
+                                capture_output=True, text=True, check=True).stdout
+    except (OSError, subprocess.CalledProcessError):
+        return None
+    dirty = sorted(item for item in status.split('\0') if item.endswith('.py'))
+    return {'commit': head, 'clean': not dirty}
+
+
+def ledger_dir(root: Path = ROOT) -> Path:
+    return Path(os.environ.get('TUNE_LEDGER_DIR', str(root / 'docs/sample_usage'))).resolve()
+
+
 def get_value(params: dict, dotted: str):
     result = params
     for part in dotted.split('.'):
@@ -104,12 +128,41 @@ def _positive_int(value, name: str) -> int:
     return value
 
 
+def _head_buffer(module, params: dict) -> int:
+    value = module.eval_meta(params=module.Params.from_dict(params, strict=True)).get(
+        'head_buffer_trading_days', 0)
+    if type(value) is not int or value < 0:
+        raise ValueError('首部回看交易日数必须是非负整数')
+    return value
+
+
+def max_head_buffer(cfg: dict, module, control) -> int:
+    """搜索范围内可能用到的最长回看：波动尺度窗口、两份对照、各维单独取到边界。
+
+    每个维度单独取下界、上界或每个类别，其余维度保持原参数；只问 eval_meta，
+    不构建 pattern。
+    """
+    values = [FP_ATR_WINDOW, _head_buffer(control, cfg['bo_params']),
+              _head_buffer(module, cfg['baseline_params'])]
+    for key, spec in cfg['space'].items():
+        if spec['type'] == 'categorical':
+            options = spec['choices']
+        else:
+            cast = float if spec['type'] == 'float' else int
+            options = [cast(spec['low']), cast(spec['high'])]
+        for value in options:
+            values.append(_head_buffer(module, with_values(cfg['baseline_params'], {key: value})))
+    return max(values)
+
+
 def normalize_config(raw: dict, root: Path = ROOT) -> dict:
     """在看成绩前固定全部选择；使用纯交易日历核对前瞻间隔。"""
     cfg = copy.deepcopy(raw)
     allowed = {'app', 'symbols', 'data_dir', 'train', 'windows', 'final', 'review',
                'calendar', 'evaluation', 'space', 'relations', 'search', 'policy',
-               'adoption', 'baseline_params', 'causality_note', 'parameter_notes', 'bo_params', 'shrinkage'}
+               'baseline_params', 'causality_note', 'parameter_notes', 'bo_params', 'shrinkage'}
+    if 'adoption' in cfg:
+        raise ValueError('本版采用规则固定，不再接受 adoption 配置')
     if set(cfg) - allowed:
         raise ValueError(f'未知配置字段：{sorted(set(cfg) - allowed)}')
     if not re.fullmatch(r'[a-z][a-z0-9_]*', cfg['app']):
@@ -133,20 +186,26 @@ def normalize_config(raw: dict, root: Path = ROOT) -> dict:
     control_params = control.Params.from_dict(cfg['bo_params'], strict=True)
     control.build_pattern(control_params)
     cfg['bo_params'] = control_params.to_dict()
-    symbols = cfg['symbols']
-    if (not symbols or len(symbols) != len(set(symbols)) or
-            any(not isinstance(s, str) or not re.fullmatch(r'[A-Za-z0-9^][A-Za-z0-9.^_-]*', s)
-                for s in symbols)):
-        raise ValueError('symbols 必须是无重复的股票名列表，不能包含路径')
-    cfg['symbols'] = sorted(symbols)
     cfg['data_dir'] = str(Path(cfg.get('data_dir',
         '/home/yu/PycharmProjects/Trade_Strategy/datasets/pkls')).expanduser().resolve())
+    symbols = cfg.get('symbols', 'all')
+    if symbols == 'all':
+        # 省略即全部股票：数据目录下名字合法的 .pkl/.pickle 文件，展开后写回并进入配置摘要。
+        folder = Path(cfg['data_dir'])
+        symbols = sorted({path.stem for suffix in ('*.pkl', '*.pickle') for path in folder.glob(suffix)
+                          if path.is_file() and re.fullmatch(SYMBOL_NAME, path.stem)})
+        if not symbols:
+            raise ValueError(f'数据目录 {folder} 下没有可用的股票文件')
+    elif (not isinstance(symbols, list) or not symbols or len(symbols) != len(set(symbols)) or
+            any(not isinstance(s, str) or not re.fullmatch(SYMBOL_NAME, s) for s in symbols)):
+        raise ValueError('symbols 必须省略、为 "all"，或是无重复的股票名列表，不能包含路径')
+    cfg['symbols'] = sorted(symbols)
     if not cfg.get('causality_note', '').strip():
         raise ValueError('须先核对买点当天能否知道全部成立条件，填写 causality_note')
     ev = cfg.setdefault('evaluation', {})
     if set(ev) - {'horizon', 'k'}:
         raise ValueError('evaluation 只允许 horizon/k')
-    ev.setdefault('horizon', 20)
+    ev.setdefault('horizon', 40)
     ev.setdefault('k', 5.0)
     _positive_int(ev['horizon'], 'horizon')
     if type(ev['k']) not in (int, float) or not math.isfinite(ev['k']) or ev['k'] <= 0:
@@ -213,22 +272,13 @@ def normalize_config(raw: dict, root: Path = ROOT) -> dict:
         _positive_int(windows[key], key)
     cfg['policy'] = normalize_policy(cfg.get('policy', {}))
     cfg['shrinkage'] = normalize_shrinkage(cfg.get('shrinkage'))
-    cfg.setdefault('adoption', {'allow_provisional': True, 'review_inconclusive': 'rollback'})
-    if cfg['adoption'] != {'allow_provisional': True, 'review_inconclusive': 'rollback'}:
-        raise ValueError('本版采用规则固定为允许暂用；预定复核仍不足则恢复原参数')
     for key in ['train', 'final', 'review']:
         window = cfg[key]
         if set(window) - {'history_start', 'start', 'end', 'label_end'} or not {'start', 'end', 'label_end'} <= set(window):
             raise ValueError(f'{key} 必须指定 start/end/label_end，可显式指定 history_start')
-        window.setdefault('history_start', window['start'])
         for value in window.values():
-            if date.fromisoformat(value).isoformat() != value:
+            if not isinstance(value, str) or date.fromisoformat(value).isoformat() != value:
                 raise ValueError('日期须为 YYYY-MM-DD')
-        if not window['history_start'] <= window['start'] <= window['end'] < window['label_end']:
-            raise ValueError(f'{key} 日期顺序不正确')
-    if not (cfg['train']['label_end'] < cfg['final']['history_start'] and
-            cfg['final']['label_end'] < cfg['review']['history_start']):
-        raise ValueError('训练、最后验证、复核的全部回看及前瞻数据不能重叠')
     if 'calendar' not in cfg:
         import pandas_market_calendars as mcal
         # 纯日期安排，不从行情推断哪天的结果值得留下。
@@ -240,6 +290,25 @@ def normalize_config(raw: dict, root: Path = ROOT) -> dict:
         raise ValueError('calendar 必须有序且无重复')
     for d in calendar:
         date.fromisoformat(d)
+    # 回看起点须覆盖搜索范围内最长的首部缓冲，再留一点余量。
+    need = max_head_buffer(cfg, mod, control) + HISTORY_MARGIN_DAYS
+    for key in ['train', 'final', 'review']:
+        window = cfg[key]
+        position = bisect_left(calendar, window['start'])
+        if 'history_start' not in window:
+            if position < need:
+                raise ValueError(f'{key} 的交易日历不足以往前推 {need} 个交易日作回看')
+            window['history_start'] = calendar[position - need]
+        elif position - bisect_left(calendar, window['history_start']) < need:
+            raise ValueError(f'{key} 的 history_start 距 start 不足 {need} 个交易日；'
+                             f'省略它即自动取 start 往前 {need} 个交易日')
+        if not window['history_start'] <= window['start'] <= window['end'] < window['label_end']:
+            raise ValueError(f'{key} 日期顺序不正确')
+    if not (cfg['train']['label_end'] < cfg['final']['history_start'] and
+            cfg['final']['label_end'] < cfg['review']['history_start']):
+        raise ValueError('训练、最后验证、复核的全部回看及前瞻数据不能重叠：'
+                         f"最后验证回看起点 {cfg['final']['history_start']}，"
+                         f"复核回看起点 {cfg['review']['history_start']}")
     for stage in ['train', 'final', 'review']:
         w = cfg[stage]
         if sum(w['start'] <= d <= w['end'] for d in calendar) < windows['window_days']:
@@ -250,7 +319,7 @@ def normalize_config(raw: dict, root: Path = ROOT) -> dict:
 
 
 def ledger_for(cfg: dict, root: Path = ROOT) -> UsageLedger:
-    directory = Path(os.environ.get('TUNE_LEDGER_DIR', str(root / 'docs/sample_usage')))
+    directory = ledger_dir(root)
     return UsageLedger(directory / f"{cfg['app']}.v3.jsonl",
                        legacy_path=directory / f"{cfg['app']}.jsonl", calendar=cfg['calendar'])
 
@@ -297,7 +366,8 @@ def run_search(config_path: Path, run_dir: Path, root: Path = ROOT) -> dict:
     code = source_hash(root)
     usage = ledger_for(cfg, root)
     usage.reserve(cfg['app'], run_id, [dict(stage=s, **usage_window(cfg, s)) for s in ['final', 'review']], cfg_hash)
-    frozen = {'config': cfg, 'config_hash': cfg_hash, 'run_id': run_id, 'source_hash': code}
+    frozen = {'config': cfg, 'config_hash': cfg_hash, 'run_id': run_id, 'source_hash': code,
+              'git': git_state(root)}
     write_json(run_dir / 'config.json', seal(frozen))
     usage.claim(cfg['app'], run_id, 'training', **usage_window(cfg, 'train'), config_hash=cfg_hash)
     ev = evaluator(cfg, 'train', code)
@@ -313,9 +383,11 @@ def run_search(config_path: Path, run_dir: Path, root: Path = ROOT) -> dict:
         usage.abandon(cfg['app'], run_id, cfg_hash)
         return payload
     plan = make_plan(cfg, baseline)
+    noise = plan.stock_bootstrap(ref, seed=cfg['search']['seed'])
+    write_json(run_dir / 'noise.json', noise)
     bo = ev.evaluate_control('path2_apps.bo_only', cfg['bo_params'])
-    bo_assess = assess(bo, bo, baseline, plan, cfg['policy'])
-    write_json(run_dir / 'bo.json', bo_assess)
+    bo_summary = plan.summarize(bo)
+    write_json(run_dir / 'bo.json', bo_summary)
     bo.to_csv(run_dir / 'bo-days.csv', index=False)
     ref_assess = assess(ref, ref, baseline, plan, cfg['policy'])
     write_json(run_dir / 'reference.json', ref_assess)
@@ -353,8 +425,8 @@ def run_search(config_path: Path, run_dir: Path, root: Path = ROOT) -> dict:
                'candidate_params': chosen['params'], 'baseline_params': cfg['baseline_params'],
                'trial': chosen['trial'], 'trials_completed': len(study.trials),
                'assessment': chosen['assessment'], 'training_comparison': train_compare,
-               'score_version': 'close-direction-window-v2', 'score_mode': plan.score_mode,
-               'bo_control': bo_assess,
+               'score_version': 'matched-difference-window-v3', 'score_mode': plan.score_mode,
+               'bo_control': bo_summary, 'noise': noise,
                'all_training_counts': {'reference': ref_all.attrs, 'candidate': selected_all.attrs},
                'ready_for_final': worth,
                'reason': '固定一个候选，最后验证仅判断是否采用' if worth else '维持原参数，不打开最后验证数据'}
@@ -384,7 +456,15 @@ def run_check(run_dir: Path, stage: str, root: Path = ROOT) -> dict:
             raise ValueError('结果对应另一份候选')
         return result
     if source_hash(root) != frozen['source_hash']:
-        raise ValueError('检测或评价代码已变化，不能沿用冻结结果')
+        git = frozen.get('git')
+        if git and git['clean']:
+            command = 'validate' if stage == 'final' else 'review'
+            raise ValueError(
+                f"检测或评价代码已变化，不能沿用冻结结果。冻结时的提交是 {git['commit']}："
+                f"在该提交的 worktree 里运行 {command}，并设 TUNE_LEDGER_DIR={ledger_dir(root)}、"
+                f"--run-dir {run_dir.resolve()}（worktree 里 uv run 会建自己的环境）")
+        raise ValueError('检测或评价代码已变化，不能沿用冻结结果；冻结时检测代码有未提交的改动'
+                         '或没有 git 记录，没有可回退的确切提交')
     previous = None
     if stage == 'review':
         previous = read_sealed(run_dir / 'final.json')['decision']
@@ -394,14 +474,14 @@ def run_check(run_dir: Path, stage: str, root: Path = ROOT) -> dict:
     if today <= cfg[stage]['label_end']:
         raise ValueError('尚未到预定复核/验证时点；等待完整数据，不提前反复查看')
     usage = ledger_for(cfg, root)
-    usage.claim(cfg['app'], frozen['run_id'], stage, **usage_window(cfg, stage), config_hash=frozen['config_hash'])
     ev = evaluator(cfg, stage, frozen['source_hash'])
+    # 只看文件末日判断行情是否到齐；未到齐就不登记，之后可重试。
+    ev.check_ready()
+    usage.claim(cfg['app'], frozen['run_id'], stage, **usage_window(cfg, stage), config_hash=frozen['config_hash'])
     ref = ev.evaluate(manifest['baseline_params'])
     candidate = ev.evaluate(manifest['candidate_params'])
     if ev.baseline.empty:
         metrics = {'hard_constraints_passed': False, 'score_difference': None,
-                   'improvement_lower': None, 'improvement_upper': None,
-                   'evidence_sufficient': False,
                    'summaries': {'candidate': summary(candidate), 'reference': summary(ref),
                                  'baseline': summary(ev.baseline)},
                    'reason': '整个预定范围没有可评估日，不能作表现比较'}
@@ -410,9 +490,9 @@ def run_check(run_dir: Path, stage: str, root: Path = ROOT) -> dict:
         plan = make_plan(cfg, baseline)
         metrics = comparison(candidate, ref, baseline, plan, cfg['policy'])
         bo = ev.evaluate_control('path2_apps.bo_only', cfg['bo_params'])
-        metrics['bo_control'] = assess(bo, bo, baseline, plan, cfg['policy'])
+        metrics['bo_control'] = plan.summarize(bo)
         bo.to_csv(run_dir / f'{stage}-bo-days.csv', index=False)
-    decision = adoption(metrics, cfg['adoption'], stage=stage, previous_status=previous)
+    decision = adoption(metrics, stage=stage, previous_status=previous)
     result = {'manifest_hash': canonical_hash(manifest), 'stage': stage,
               'window': cfg[stage], 'metrics': metrics, 'decision': decision,
               'counts': {'reference': ref.attrs, 'candidate': candidate.attrs},

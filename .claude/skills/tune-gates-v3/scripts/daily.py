@@ -21,6 +21,8 @@ from path2.eval import _resolve_end_events
 
 
 COLUMNS = ["symbol", "date", "upside", "up", "down", "both", "none", "M", "drawdown"]
+# 行情到齐的整体比例下限（待验证）：退市或下载失败的股票不会再更新，不能逐只强求。
+READY_FRACTION = 0.9
 
 
 def overlay_params(baseline: dict, changes: dict) -> dict:
@@ -131,8 +133,11 @@ class DailyEvaluator:
     检测时进一步裁至 end；样本日期只取闭区间 [start, end]。history_start
     非空时，在计算 M 或检测前另裁掉此前历史；None 表示调用方已授权输入的
     全部较早历史，或 loader 已按许可裁切。不能只登记买点日期却暗中使用预留历史。
-    required_price_end 非空时要求每股数据至少更新至该日；由调用方按冻结交易
-    日历给出，不以系统日期已过代替实际数据齐备。None 不施加此末端要求。
+    required_price_end 非空时检查行情整体是否已更新至该日：只看本阶段开始时
+    还在更新的股票（未裁切末日不早于 start），其中末日到达该日的比例须不低于
+    READY_FRACTION。未到齐的股票照常保留，有完整后续的买点仍计入，名单记入
+    结果 attrs 的 stale_symbols。该日由调用方按冻结交易日历给出，不以系统日期
+    已过代替实际数据齐备。None 不施加此末端要求。
 
     实例首次使用时读取固定数据快照；文件随后变化不会悄悄混入本轮评价，
     要使用新数据须创建新实例。调用方负责在读取前授予该范围的访问许可。
@@ -178,6 +183,9 @@ class DailyEvaluator:
         self._versions: dict[str, str] = {}
         self._cache: dict[str, pd.DataFrame] = {}
         self._baseline: pd.DataFrame | None = None
+        self._trimmed: dict[str, pd.DataFrame] = {}
+        self._last: dict[str, pd.Timestamp | None] = {}
+        self.stale: list[str] | None = None
 
     def _load(self, symbol: str) -> pd.DataFrame:
         """按项目实际 .pkl 命名读入，也接受单独存在的 .pickle 文件。"""
@@ -187,38 +195,62 @@ class DailyEvaluator:
                 return pd.read_pickle(path)
         raise FileNotFoundError(f"没有找到股票数据：{symbol}.pkl 或 {symbol}.pickle")
 
+    def _read(self, symbol: str) -> pd.DataFrame:
+        """读入一只股票并裁到许可范围；记下未裁切的末日供到齐检查。"""
+        raw = self._loader(symbol)
+        if not isinstance(raw, pd.DataFrame):
+            raise TypeError("数据加载器必须返回 DataFrame")
+        dates = pd.DatetimeIndex(pd.to_datetime(raw["date"] if "date" in raw else raw.index))
+        if dates.tz is not None:
+            dates = dates.tz_localize(None)
+        dates = dates.normalize()
+        self._last[symbol] = dates.max() if len(dates) else None
+        keep = dates <= self.label_end
+        if self.history_start is not None:
+            keep &= dates >= self.history_start
+        frame = raw.loc[keep].copy(deep=True).reset_index(drop=True)
+        frame["date"] = dates[keep]
+        if not frame["date"].is_monotonic_increasing or frame["date"].duplicated().any():
+            raise ValueError(f"{symbol} 的交易日必须递增且不重复")
+        required = {"high", "low", "close"}
+        if not required.issubset(frame):
+            raise ValueError(f"{symbol} 缺少价格列：{sorted(required - set(frame))}")
+        for column in required:
+            frame[column] = pd.to_numeric(frame[column], errors="raise")
+        return frame
+
+    def check_ready(self) -> dict:
+        """在登记与标签计算之前检查行情整体是否已更新到 required_price_end。
+
+        分母是未裁切末日不早于 start 的股票（本阶段开始时还在更新）；其中末日
+        早于 required_price_end 的记为未到齐。到齐比例低于 READY_FRACTION 或
+        分母为 0 时报错。每个文件每个评价器只读一次，读到的帧留给后续评价。
+        """
+        if self.required_price_end is None:
+            return {}
+        for symbol in self.symbols:
+            if symbol not in self._last:
+                self._trimmed[symbol] = self._read(symbol)
+        live = [s for s in self.symbols if self._last[s] is not None and self._last[s] >= self.start]
+        stale = [s for s in live if self._last[s] < self.required_price_end]
+        ready = len(live) - len(stale)
+        expected = self.required_price_end.strftime("%Y-%m-%d")
+        if not live or ready / len(live) < READY_FRACTION:
+            raise ValueError(f"行情整体尚未更新：到齐 {ready} / 应到 {len(live)}，要求至少到 {expected}")
+        # 通过后才记下名单，失败的检查再次调用仍会失败。
+        self.stale = stale
+        return {"required_price_end": expected, "ready": ready, "expected": len(live),
+                "stale_symbols": list(stale)}
+
     def _prepare(self) -> None:
-        """先裁数据，再生成股票固定的标签和检测输入；每股最多算一次标签。"""
+        """先查行情到齐，再生成股票固定的标签和检测输入；每股最多算一次标签。"""
         if self._baseline is not None:
             return
+        self.check_ready()
         for symbol in self.symbols:
             if symbol in self._frames:
                 continue
-            raw = self._loader(symbol)
-            if not isinstance(raw, pd.DataFrame):
-                raise TypeError("数据加载器必须返回 DataFrame")
-            dates = pd.DatetimeIndex(pd.to_datetime(raw["date"] if "date" in raw else raw.index))
-            if dates.tz is not None:
-                dates = dates.tz_localize(None)
-            dates = dates.normalize()
-            keep = dates <= self.label_end
-            if self.history_start is not None:
-                keep &= dates >= self.history_start
-            frame = raw.loc[keep].copy(deep=True).reset_index(drop=True)
-            frame["date"] = dates[keep]
-            if not frame["date"].is_monotonic_increasing or frame["date"].duplicated().any():
-                raise ValueError(f"{symbol} 的交易日必须递增且不重复")
-            required = {"high", "low", "close"}
-            if not required.issubset(frame):
-                raise ValueError(f"{symbol} 缺少价格列：{sorted(required - set(frame))}")
-            for column in required:
-                frame[column] = pd.to_numeric(frame[column], errors="raise")
-            if self.required_price_end is not None:
-                latest = frame["date"].iat[-1] if len(frame) else None
-                if latest is None or latest < self.required_price_end:
-                    actual = latest.strftime("%Y-%m-%d") if latest is not None else "无数据"
-                    expected = self.required_price_end.strftime("%Y-%m-%d")
-                    raise ValueError(f"{symbol} 行情尚未到齐：最新日 {actual}，要求至少到 {expected}")
+            frame = self._trimmed.pop(symbol) if symbol in self._trimmed else self._read(symbol)
             labels = _daily_close_labels(frame, symbol, self.start, self.end,
                                          self.horizon, self.k)
             self._labels[symbol] = labels
@@ -232,6 +264,7 @@ class DailyEvaluator:
                                                   if self.history_start is not None else None)
         self._baseline.attrs["required_price_end"] = (self.required_price_end.strftime("%Y-%m-%d")
                                                        if self.required_price_end is not None else None)
+        self._baseline.attrs["stale_symbols"] = list(self.stale or [])
 
     @property
     def baseline(self) -> pd.DataFrame:
@@ -309,6 +342,7 @@ class DailyEvaluator:
                             causality="event-confirm-only", data_versions=deepcopy(self._versions),
                             history_start=self._baseline.attrs["history_start"],
                             required_price_end=self._baseline.attrs["required_price_end"],
+                            stale_symbols=list(self._baseline.attrs["stale_symbols"]),
                             head_buffer_trading_days=head_buffer,
                             warmup_excluded_count=warmup_excluded_count)
         self._cache[key] = result.copy(deep=True)

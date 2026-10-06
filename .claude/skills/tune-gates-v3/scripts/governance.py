@@ -112,7 +112,8 @@ class UsageLedger:
     """小型追加账本，确保最终检查只读一次且与已消耗区间分开。
 
     ``reserve`` 在搜索前一次性固定 final 与 review 两个区间。``claim`` 必须在
-    加载、缓存读取或标签计算之前执行；它成功返回后即视为已经消耗。中断不能重试
+    标签计算与检测之前执行；登记前只允许读文件末日检查行情是否到齐。它成功
+    返回后即视为已经消耗。中断不能重试
     final/review。训练可以重复，但不能进入任何尚未消费的预留区间。abandon 关闭
     本轮并释放未消费预留，不删除暴露记录，不允许重新开启同一轮。
     """
@@ -345,53 +346,37 @@ class UsageLedger:
             self._append(stream, [record])
 
 
-def adoption(metrics: dict, policy: dict, stage: str = "final",
+def adoption(metrics: dict, stage: str = "final",
              previous_status: dict | str | None = None) -> dict:
-    """按冻结规则判定采用状态，不读取或修改正式参数。
+    """按固定规则判定采用状态，不读取或修改正式参数。
 
-    metrics 必须给 hard_constraints_passed/evidence_sufficient（bool），以及
-    score_difference/improvement_lower（有限数值；不可计算时允许 None），可附
-    improvement_upper（同样允许 None）；其小于零时视为明确变差，不能暂用。
-    policy 使用 allow_provisional（默认 True）和 review_inconclusive='rollback'。
-    一次预定复核到期仍不足即撤回；需要更长观察必须另行实现预定多期方案。
+    metrics 必须给 hard_constraints_passed（bool）与 score_difference（有限数值；
+    不可计算时为 None）。最后检查与复核用同一条规则：要求都满足且排名分高过
+    原参数时，最后检查给 provisional（暂用）、复核给 retained（继续使用）；
+    否则最后检查给 reject（不采用）、复核给 rollback（撤回）。复核只适用于
+    当前暂用的参数。
     """
     if stage not in {"final", "review"}:
         raise ValueError("adoption 只接受 final/review")
-    if policy.get("review_inconclusive", "rollback") != "rollback":
-        raise ValueError("当前实现只支持预定复核仍不足时 rollback")
-    provisional_allowed = policy.get("allow_provisional", True)
-    if not isinstance(provisional_allowed, bool):
-        raise ValueError("allow_provisional 必须是 bool")
-    for key in ("hard_constraints_passed", "evidence_sufficient"):
-        if not isinstance(metrics.get(key), bool):
-            raise ValueError(f"{key} 必须明确为 bool")
-    values = {}
-    for key in ("score_difference", "improvement_lower", "improvement_upper"):
-        value = metrics.get(key)
-        if value is None:
-            values[key] = None
-            continue
-        if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
-            raise ValueError(f"{key} 必须是有限数值")
-        values[key] = value
+    if not isinstance(metrics.get("hard_constraints_passed"), bool):
+        raise ValueError("hard_constraints_passed 必须明确为 bool")
+    difference = metrics.get("score_difference")
+    if difference is not None and (isinstance(difference, bool) or not isinstance(difference, (int, float))
+                                   or not math.isfinite(difference)):
+        raise ValueError("score_difference 必须是有限数值")
     if stage == "review":
         prior = previous_status.get("status") if isinstance(previous_status, dict) else previous_status
         if prior != "provisional":
             raise ValueError("预定复核仅适用于当前暂用的参数")
     rejection = "rollback" if stage == "review" else "reject"
     if not metrics["hard_constraints_passed"]:
-        status, reason = rejection, "未满足预先固定的方向、机会或显式空间/风险要求"
-    elif values["score_difference"] is None:
-        status, reason = rejection, "缺少可比较的买入日结果，不能认定方向评分有所改善"
-    elif values["score_difference"] <= SCORE_EPSILON:
-        status, reason = rejection, "同口径方向评分没有改善"
-    elif values["improvement_upper"] is not None and values["improvement_upper"] < 0:
-        status, reason = rejection, "按预定检查方法，新参数变差的证据已经明确"
-    elif (metrics["evidence_sufficient"] and values["improvement_lower"] is not None
-          and values["improvement_lower"] > 0):
-        status, reason = "confirmed", "改善证据达到预先固定的标准，且下限约束均通过"
-    elif stage == "final" and provisional_allowed:
-        status, reason = "provisional", "看起来改善，但尚未达到确认标准；按预定日期复核"
+        status, reason = rejection, "未满足预先固定的机会或显式空间/回撤要求"
+    elif difference is None:
+        status, reason = rejection, "缺少可比较的买入日结果，不能认定排名分有所改善"
+    elif difference <= SCORE_EPSILON:
+        status, reason = rejection, "排名分没有高过原参数"
+    elif stage == "final":
+        status, reason = "provisional", "排名分高过原参数且要求都满足；暂用，按预定日期复核"
     else:
-        status, reason = rejection, "到达预定检查时点，证据仍不足以确认改善"
+        status, reason = "retained", "复核期排名分仍高过原参数且要求都满足；继续使用"
     return {"status": status, "reason": reason, "provisional": status == "provisional"}

@@ -40,13 +40,14 @@ def setup(tmp_path, monkeypatch):
             return self.d
 
     initial = {'gate': {'cutoff': 0.0, 'untouched': 73}}
-    app = SimpleNamespace(Params=Params, load_params=lambda: Params(initial), build_pattern=lambda p: p)
+    app = SimpleNamespace(Params=Params, load_params=lambda: Params(initial), build_pattern=lambda p: p,
+                          eval_meta=lambda params: {'end_node': 'buy', 'head_buffer_trading_days': 0})
     monkeypatch.setitem(sys.modules, 'path2_apps.synthetic_v3', app)
     monkeypatch.setenv('TUNE_LEDGER_DIR', str(tmp_path / 'usage'))
     days = pd.bdate_range('2018-01-01', '2022-01-01')
     cfg = {'app': 'synthetic_v3', 'symbols': [f'S{i}' for i in range(8)],
            'data_dir': str(tmp_path / 'never-open'),
-           'train': {'start': '2019-01-01', 'end': '2019-10-01', 'label_end': '2019-10-10'},
+           'train': {'start': '2019-01-01', 'end': '2019-08-01', 'label_end': '2019-08-09'},
            'final': {'start': '2020-01-01', 'end': '2020-05-01', 'label_end': '2020-05-10'},
            'review': {'start': '2021-01-01', 'end': '2021-05-01', 'label_end': '2021-05-10'},
            'calendar': [d.date().isoformat() for d in days],
@@ -54,7 +55,9 @@ def setup(tmp_path, monkeypatch):
            'space': {'gate.cutoff': {'type': 'float', 'low': 0.0, 'high': 0.9}},
            'parameter_notes': {'gate.cutoff': '合成测试：提高数值只保留标记较高的买点'},
            'causality_note': '测试装置直接提供已知逐日结果，不声称是真实走势的时序证明',
-           'search': {'trials': 8, 'seed': 9}}
+           'search': {'trials': 8, 'seed': 9},
+           # 合成数据每个窗口的领先恒定，误差不可识别；这里关掉折扣只测流程。
+           'shrinkage': {'enabled': False}}
     calls = []
 
     class Evaluator:
@@ -67,6 +70,9 @@ def setup(tmp_path, monkeypatch):
                 dict(symbol=s, date=d.date().isoformat(), upside=(.02 if i < 4 else .12),
                      up=int(i >= 4), down=int(i < 4), both=0, none=0, M=.01, drawdown=-.03)
                 for d in dates for i, s in enumerate(config['symbols'])])
+
+        def check_ready(self):
+            return {}
 
         def evaluate(self, params):
             assert params['gate']['untouched'] == 73
@@ -95,7 +101,6 @@ def test_real_optuna_search_freezes_then_one_validation(setup):
     assert calls == ['train']  # 搜索没有实例化最后验证数据。
     assert result['training_comparison']['score_difference'] == pytest.approx(1.0)
     final = run.run_check(out, 'final')
-    # 当前没有经过校准的确认规则，不能把高方向分冒充改善已确认。
     assert final['decision']['status'] == 'provisional'
     assert final['live_params_written'] is False
     assert app.load_params().to_dict()['gate']['cutoff'] == 0.0
@@ -103,7 +108,8 @@ def test_real_optuna_search_freezes_then_one_validation(setup):
     assert run.run_check(out, 'final') == final
     assert calls == ['train', 'final']  # 再调用只读保存结果。
     review = run.run_check(out, 'review')
-    assert review['decision']['status'] == 'rollback'
+    # 复核沿用最后检查的同一条规则：仍领先则继续使用。
+    assert review['decision']['status'] == 'retained'
     assert calls == ['train', 'final', 'review']
     assert run.run_check(out, 'review') == review
     records = [json.loads(line) for line in (out.parent / 'usage/synthetic_v3.v3.jsonl').read_text().splitlines()]
@@ -145,7 +151,7 @@ def test_guard_refuses_used_final_before_evaluator(setup):
 
 
 @pytest.mark.parametrize('mutation', [
-    lambda c: c['policy'].update(min_buy_days=float('nan')),
+    lambda c: c['policy'].update(min_reference_fraction=float('nan')),
     lambda c: c['train'].update(label_end=c['final']['start']),
     lambda c: c.update(causality_note=''),
     lambda c: c.update(baseline_params={'gate': {'cutoff': 0.0}}),
@@ -198,20 +204,20 @@ def test_empty_training_releases_reserved_data(setup, monkeypatch):
 
 def test_history_input_is_part_of_exposure_and_frozen_config(setup):
     cfg, path, out, calls, _ = setup
-    cfg['train']['history_start'] = '2018-10-01'
+    cfg['train']['history_start'] = '2018-09-03'
     path.write_text(json.dumps(cfg))
     run.run_search(path, out)
     records = [json.loads(line) for line in (out.parent / 'usage/synthetic_v3.v3.jsonl').read_text().splitlines()]
     training = next(r for r in records if r['kind'] == 'claim')
-    assert training['start'] == '2018-10-01'
+    assert training['start'] == '2018-09-03'
     frozen = run.read_sealed(out / 'config.json')['config']
     assert frozen['train']['start'] == '2019-01-01'
-    assert frozen['train']['history_start'] == '2018-10-01'
+    assert frozen['train']['history_start'] == '2018-09-03'
 
 
 def test_final_history_must_not_reuse_training_suffix(setup):
     cfg, path, out, calls, _ = setup
-    cfg['final']['history_start'] = '2019-10-10'
+    cfg['final']['history_start'] = '2019-08-09'
     path.write_text(json.dumps(cfg))
     with pytest.raises(ValueError, match='回看及前瞻'):
         run.run_search(path, out)
@@ -253,10 +259,10 @@ def test_enabled_shrinkage_is_frozen_across_optuna_validation_and_review(setup, 
     path.write_text(json.dumps(cfg))
     result = run.run_search(path, out)
     assert result['ready_for_final']
-    assert result['score_mode'] == 'direction_window_shrinkage_experimental'
+    assert result['score_mode'] == 'matched_difference_shrunk'
     stats = result['assessment']['statistics']
     assert 0 < stats['shrinkage']['factor'] < 1
-    assert stats['score'] < stats['raw_direction_score']
+    assert stats['score'] == pytest.approx(stats['shrinkage']['factor'] * stats['direction_difference'])
     frozen = run.read_sealed(out / 'config.json')['config']
     assert frozen['shrinkage'] == cfg['shrinkage']
     # 改外部输入不影响已冻结轮次；最终评价不能静默切回基础分。
@@ -269,5 +275,111 @@ def test_enabled_shrinkage_is_frozen_across_optuna_validation_and_review(setup, 
     assert run.run_check(out, 'final') == final
     review = run.run_check(out, 'review')
     assert review['metrics']['score_mode'] == result['score_mode']
-    assert review['decision']['status'] == 'rollback'
+    assert review['decision']['status'] == 'retained'
     assert calls == ['train', 'final', 'review']
+
+
+def test_omitted_or_all_symbols_list_every_stock_file_into_config_hash(setup, tmp_path):
+    cfg, *_ = setup
+    folder = tmp_path / 'prices'
+    folder.mkdir()
+    for name in ['A.pkl', 'B.pickle', 'A.pickle', 'BRK.B.pkl', 'bad name.pkl', 'notes.txt']:
+        (folder / name).write_bytes(b'')
+    cfg['data_dir'] = str(folder)
+    explicit = run.normalize_config({**cfg, 'symbols': ['A']})
+    del cfg['symbols']
+    omitted = run.normalize_config(cfg)
+    everything = run.normalize_config({**cfg, 'symbols': 'all'})
+    assert omitted['symbols'] == everything['symbols'] == ['A', 'B', 'BRK.B']
+    assert run.canonical_hash(omitted) == run.canonical_hash(everything) != run.canonical_hash(explicit)
+    (folder / 'C.pkl').write_bytes(b'')
+    assert run.canonical_hash(run.normalize_config(cfg)) != run.canonical_hash(omitted)
+    with pytest.raises(ValueError, match='没有可用'):
+        run.normalize_config({**cfg, 'data_dir': str(tmp_path / 'empty-dir')})
+
+
+def test_horizon_defaults_to_forty_trading_days(setup):
+    cfg, *_ = setup
+    del cfg['evaluation']['horizon']
+    cfg['train'].update(end='2019-06-01', label_end='2019-08-09')
+    cfg['final'].update(end='2020-05-01', label_end='2020-07-10')
+    cfg['review'].update(end='2021-05-01', label_end='2021-07-10')
+    assert run.normalize_config(cfg)['evaluation']['horizon'] == 40
+
+
+def test_auto_history_start_covers_widest_buffer_in_search_space(setup):
+    cfg, _, _, _, app = setup
+    app.eval_meta = lambda params: {'end_node': 'buy',
+                                    'head_buffer_trading_days': int(params.d['gate']['cutoff'] * 80)}
+    normalized = run.normalize_config(cfg)
+    control = run.importlib.import_module('path2_apps.bo_only')
+    widest = max(run.FP_ATR_WINDOW, run._head_buffer(control, normalized['bo_params']), int(.9 * 80))
+    need = widest + run.HISTORY_MARGIN_DAYS
+    calendar = normalized['calendar']
+    for stage in ['train', 'final', 'review']:
+        position = calendar.index(normalized[stage]['start'])
+        assert normalized[stage]['history_start'] == calendar[position - need]
+    cfg['train']['history_start'] = calendar[calendar.index(cfg['train']['start']) - need + 1]
+    with pytest.raises(ValueError, match=f'不足 {need} 个交易日'):
+        run.normalize_config(cfg)
+
+
+@pytest.mark.parametrize('mutation, message', [
+    (lambda c: c['train'].update(history_start='2018-12-03'), '不足'),
+    (lambda c: c.update(adoption={'allow_provisional': True, 'review_inconclusive': 'rollback'}), '不再接受'),
+    (lambda c: c.update(policy={'min_buy_days': 30}), '已删除'),
+])
+def test_removed_or_short_settings_refused_before_any_evaluation(setup, mutation, message):
+    cfg, path, out, calls, _ = setup
+    mutation(cfg)
+    path.write_text(json.dumps(cfg))
+    with pytest.raises(ValueError, match=message):
+        run.run_search(path, out)
+    assert not calls
+
+
+def test_noise_written_and_matches_manifest(setup):
+    _, path, out, _, _ = setup
+    result = run.run_search(path, out)
+    noise = json.loads((out / 'noise.json').read_text())
+    assert noise == result['noise'] == run.read_sealed(out / 'manifest.json')['noise']
+    assert noise['resamples'] == 200 and noise['seed'] == 9 and noise['stocks'] == 8
+    assert 'git' in run.read_sealed(out / 'config.json')
+    assert 'random_day_score' in json.loads((out / 'bo.json').read_text())
+
+
+@pytest.mark.parametrize('clean', [True, False])
+def test_changed_code_reports_frozen_commit_only_when_clean(setup, monkeypatch, clean):
+    _, path, out, calls, _ = setup
+    monkeypatch.setattr(run, 'git_state', lambda root=None: {'commit': 'abc123def', 'clean': clean})
+    run.run_search(path, out)
+    monkeypatch.setattr(run, 'source_hash', lambda root=None: 'changed')
+    expected = 'abc123def.*worktree.*TUNE_LEDGER_DIR' if clean else '没有可回退的确切提交'
+    with pytest.raises(ValueError, match=expected):
+        run.run_check(out, 'final')
+    assert calls == ['train']
+
+
+def test_git_state_outside_repository_is_none(tmp_path):
+    assert run.git_state(tmp_path) is None
+
+
+def test_stale_prices_at_check_leave_no_claim_and_can_retry(setup, monkeypatch):
+    _, path, out, calls, _ = setup
+    run.run_search(path, out)
+    original = run.evaluator
+
+    def not_ready(config, stage, source):
+        ev = original(config, stage, source)
+        def refuse():
+            raise ValueError('行情整体尚未更新：到齐 1 / 应到 8，要求至少到 2020-05-08')
+        ev.check_ready = refuse
+        return ev
+
+    monkeypatch.setattr(run, 'evaluator', not_ready)
+    with pytest.raises(ValueError, match='行情整体尚未更新'):
+        run.run_check(out, 'final')
+    records = [json.loads(line) for line in (out.parent / 'usage/synthetic_v3.v3.jsonl').read_text().splitlines()]
+    assert not any(r['kind'] == 'claim' and r['stage'] == 'final' for r in records)
+    monkeypatch.setattr(run, 'evaluator', original)
+    assert run.run_check(out, 'final')['decision']['status'] == 'provisional'

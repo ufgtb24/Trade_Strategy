@@ -1,9 +1,11 @@
 ---
-status: accepted
+status: superseded
 implementation: implemented
 ---
 
 # v3 优先改善上涨空间，方向表现作为约束
+
+已被 [0006](0006-tune-v3-direction-primary-close-crossing.md) 取代：主要成绩改为方向表现（收盘价判首次穿越），前瞻收益只报告；排名口径见 [0007](0007-tune-v3-ranking-shrunk-matched-lead.md)。下文保留为历史记录。
 
 2026-10-01 在设计访谈中确定：v3 以典型买点的前瞻收益改善为主要优化目标，并约束首次穿越的方向表现不能明显变差。前瞻收益沿用 `path2/CONTEXT.md`「前瞻收益 / mfr」定义，量的是固定观察期内的最大上涨空间，不解释为实际卖出收益。评价同时使用统一的随机日基线与原参数作为对照，不以孤立的上涨幅度下改善结论。
 

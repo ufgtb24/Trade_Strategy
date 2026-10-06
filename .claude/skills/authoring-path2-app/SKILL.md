@@ -33,7 +33,7 @@ path2/atoms/*.py),绝不引用任何文档内嵌快照(含本 skill 自己的文
 |---|---|---|
 | 创建 | 无现存对应 app | Step 1 → 三层 gate 从层①起 |
 | 结构修改 | app 已存在,delta 触及结构 | Step 0.5 现状盘点 → 按 delta 定起点层 |
-| 纯调参 | 只动阈值数值,不碰结构 | 不进设计流:**转 `tune-gates` skill**,收敛后报用户 |
+| 纯调参 | 只动阈值数值,不碰结构 | 不进设计流:**转 `tune-gates-v3` skill**,收敛后报用户 |
 | 纯 detector/事件任务 | 不改 app 结构,只动 path2/atoms 或事件类 | 不进本流程:路由 `authoring-path2-detector` skill |
 
 **路由方式**:给出带理由的路由推荐,用 AskUserQuestion 让用户确认/改道

@@ -194,10 +194,14 @@ def test_stale_price_tail_refused_before_labels_or_detection(monkeypatch):
     monkeypatch.setattr(daily, "_daily_close_labels", lambda *a, **k: pytest.fail("缺末端不能计算标签"))
     ev = evaluator(module, data, required_price_end=str(data.index[-1].date()),
                    loader=lambda _: data.iloc[:-5].copy())
-    actual, required = str(data.index[-6].date()), str(data.index[-1].date())
-    with pytest.raises(ValueError, match=f"S 行情尚未到齐：最新日 {actual}，要求至少到 {required}"):
+    required = str(data.index[-1].date())
+    with pytest.raises(ValueError, match=f"行情整体尚未更新：到齐 0 / 应到 1，要求至少到 {required}"):
         ev.evaluate({})
     assert not module.calls
+    assert ev.stale is None
+    # 失败的检查不留下通过状态，再调用仍然失败。
+    with pytest.raises(ValueError, match="行情整体尚未更新"):
+        ev.check_ready()
 
 
 def test_weekend_label_cutoff_accepts_required_last_trading_day():
@@ -220,13 +224,66 @@ def test_required_price_tail_cannot_exceed_authorized_label_cutoff():
                   loader=lambda _: pytest.fail("非法末端要求不能加载数据"))
 
 
-def test_each_symbol_must_reach_required_price_tail():
+def test_one_stale_symbol_in_ten_is_kept_and_listed():
+    data = prices(48)
+    module = app([Signal(20, 20, confirm_idx=20)])
+    symbols = [f"S{i}" for i in range(10)]
+    ev = evaluator(module, data, symbols=symbols, required_price_end=str(data.index[-1].date()),
+                   loader=lambda symbol: data.iloc[:-1] if symbol == "S9" else data)
+    ready = ev.check_ready()
+    assert ready["ready"] == 9 and ready["expected"] == 10
+    assert ready["stale_symbols"] == ["S9"]
+    result = ev.evaluate({})
+    # 过期股票照常保留，有完整后续的买点仍计入。
+    assert "S9" in set(result["symbol"])
+    assert len(result) == 10
+    assert result.attrs["stale_symbols"] == ["S9"]
+    assert ev.baseline.attrs["stale_symbols"] == ["S9"]
+
+
+def test_two_stale_symbols_in_ten_fail_overall_check():
     data = prices(48)
     module = app([])
-    ev = evaluator(module, data, symbols=["A", "B"], required_price_end=str(data.index[-1].date()),
-                   loader=lambda symbol: data if symbol == "A" else data.iloc[:-1])
-    with pytest.raises(ValueError, match="B 行情尚未到齐"):
+    symbols = [f"S{i}" for i in range(10)]
+    ev = evaluator(module, data, symbols=symbols, required_price_end=str(data.index[-1].date()),
+                   loader=lambda symbol: data.iloc[:-1] if symbol in ("S8", "S9") else data)
+    with pytest.raises(ValueError, match="到齐 8 / 应到 10"):
         ev.baseline
+
+
+def test_symbols_gone_before_stage_start_are_not_counted():
+    data = prices(48)
+    module = app([])
+    symbols = [f"S{i}" for i in range(10)]
+    # S9 在本阶段开始前就停止更新，不进分母。
+    ev = evaluator(module, data, symbols=symbols, required_price_end=str(data.index[-1].date()),
+                   loader=lambda symbol: data.iloc[:10] if symbol == "S9" else data)
+    assert ev.check_ready()["expected"] == 9
+    assert ev.check_ready()["stale_symbols"] == []
+
+
+def test_check_ready_reads_each_file_once_and_halt_on_last_day_counts_as_ready():
+    data = prices(48)
+    module = app([Signal(20, 20, confirm_idx=20)])
+    counts = {}
+
+    def load(symbol):
+        counts[symbol] = counts.get(symbol, 0) + 1
+        # B 在要求的末日当天停牌，但之后还有数据。
+        return data.drop(data.index[-3]) if symbol == "B" else data.copy()
+
+    ev = evaluator(module, data, symbols=["A", "B"], label_end=str(data.index[-3].date()),
+                   end=str(data.index[-6].date()), required_price_end=str(data.index[-3].date()), loader=load)
+    assert ev.check_ready()["stale_symbols"] == []
+    ev.evaluate({})
+    ev.check_ready()
+    assert counts == {"A": 1, "B": 1}
+
+
+def test_no_required_tail_skips_check():
+    data = prices()
+    ev = evaluator(app([]), data, loader=lambda _: pytest.fail("不要求末日时检查不读文件"))
+    assert ev.check_ready() == {}
 
 
 def test_labels_cached_once_exact_float_detection_cache_and_copy_safety(monkeypatch):

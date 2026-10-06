@@ -1,4 +1,4 @@
-"""统计折扣开关：公式、冻结配置、退化证据与统一采用口径。"""
+"""统计折扣：只给正的领先打折的公式、冻结配置、退化证据与统一采用口径。"""
 from pathlib import Path
 import sys
 
@@ -25,17 +25,19 @@ def plan(frame, **settings):
 
 
 def rules():
-    return dict(min_buy_days=1, min_reference_fraction=0,
-                min_recent_buy_days=1, min_recent_reference_fraction=0)
+    return dict(min_reference_fraction=0, min_recent_reference_fraction=0)
 
 
-def test_disabled_switch_preserves_exact_base_score():
+def test_disabled_switch_scores_plain_matched_difference_and_default_is_shrunk():
     frame = pool([1, 0, -1, 1, 1, -1, 0, 1])
     candidate = frame.loc[frame.symbol == 'A']
     default = scoring.WindowPlan(frame, 2, window_days=1, half_life_days=5).summarize(candidate)
     disabled = plan(frame, enabled=False, tau=.3, bandwidth=2).summarize(candidate)
-    assert default['score'] == disabled['score'] == default['raw_direction_score']
-    assert disabled['score_mode'] == scoring.SCORE_MODE
+    assert default['score_mode'] == scoring.SHRINKAGE_SCORE_MODE == 'matched_difference_shrunk'
+    assert default['shrinkage']['enabled'] is True
+    assert disabled['score'] == disabled['direction_difference']
+    assert disabled['score'] == pytest.approx(default['raw_direction_score'] - default['matched_direction_score'])
+    assert disabled['score_mode'] == scoring.SCORE_MODE == 'matched_difference'
     assert disabled['shrinkage']['status'] == 'disabled'
     assert disabled['shrinkage']['variance'] is None
 
@@ -62,9 +64,9 @@ def test_enabled_formula_matches_independent_pairwise_matrix_with_calendar_gaps(
     assert actual['matched_direction_score'] == pytest.approx(b)
     assert actual['shrinkage']['variance'] == pytest.approx(variance)
     assert actual['shrinkage']['factor'] == pytest.approx(factor)
-    assert actual['score'] == pytest.approx(b + factor * delta)
-    assert b < actual['score'] < z
-    assert actual['score_mode'] == 'direction_window_shrinkage_experimental'
+    assert actual['score'] == pytest.approx(factor * delta)
+    assert 0 < actual['score'] < delta
+    assert actual['score_mode'] == 'matched_difference_shrunk'
     assert actual['shrinkage']['status'] == 'experimental_uncalibrated'
 
 
@@ -74,9 +76,11 @@ def test_zero_empirical_variance_is_not_treated_as_certain_or_raw_fallback():
     result = plan(frame, enabled=True).summarize(candidate)
     assert result['raw_direction_score'] == pytest.approx(1)
     assert result['shrinkage']['factor'] == 0
-    assert result['score'] == pytest.approx(result['matched_direction_score'])
+    # 领先为正但误差估不出：正的部分全部折掉，记 0。
+    assert result['direction_difference'] > 0
+    assert result['score'] == 0.0
     assert result['shrinkage']['status'] == 'unidentified_variance_full_shrinkage'
-    assert result['score_mode'] == 'direction_window_shrinkage_experimental'
+    assert result['score_mode'] == 'matched_difference_shrunk'
 
 
 def test_zero_contrast_empty_candidate_and_immutable_settings():
@@ -85,7 +89,7 @@ def test_zero_contrast_empty_candidate_and_immutable_settings():
     configured = scoring.WindowPlan(frame, 2, window_days=1, shrinkage=settings)
     settings['enabled'] = False
     same = configured.summarize(frame)
-    assert same['score'] == pytest.approx(same['raw_direction_score'])
+    assert same['score'] == 0.0
     assert same['shrinkage']['enabled'] is True
     assert same['shrinkage']['status'] == 'zero_observed_difference'
     empty = configured.summarize(frame.iloc[:0])
@@ -109,9 +113,7 @@ def test_constraints_use_raw_observations_but_comparison_uses_selected_objective
     assert compared['new_direction_difference'] == b['statistics']['direction_difference']
     assert compared['score_difference'] == pytest.approx(b['score'] - adjusted.summarize(frame)['score'])
     assert compared['shrinkage']['candidate']['enabled'] is True
-    assert compared['evidence_sufficient'] is False
-    assert compared['improvement_lower'] is None
-    assert compared['new_score'] != pytest.approx(compared['new_direction_score'])
+    assert compared['new_score'] != pytest.approx(compared['new_direction_difference'])
 
 
 @pytest.mark.parametrize('invalid', [True, {'enabled': 1}, {'enabled': 'false'},
@@ -134,7 +136,7 @@ def test_candidate_specific_adjustment_can_change_ranking():
                     M=.01, up=int(value == 1), down=int(value == -1), none=int(value == 0), both=0))
     frame = pd.DataFrame(records)
     a, b = (frame.loc[frame.symbol.str.startswith(group)] for group in 'AB')
-    base = scoring.WindowPlan(frame, 1, window_days=1, half_life_days=1e20)
+    base = scoring.WindowPlan(frame, 1, window_days=1, half_life_days=1e20, shrinkage=dict(enabled=False))
     adjusted = scoring.WindowPlan(frame, 1, window_days=1, half_life_days=1e20,
                                   shrinkage=dict(enabled=True, tau=.1, bandwidth=0))
     assert base.summarize(a)['score'] == pytest.approx(.5)
@@ -143,3 +145,24 @@ def test_candidate_specific_adjustment_can_change_ranking():
     assert adjusted.summarize(a)['score'] == pytest.approx(.5 * .01 / (.01 + .125))
     assert adjusted.summarize(b)['score'] == pytest.approx(.4 * .01 / (.01 + .00005))
     assert adjusted.summarize(a)['score'] < adjusted.summarize(b)['score']
+
+
+def test_negative_lead_with_unidentified_error_cannot_beat_negative_reference():
+    # A 每天先下、B 每天先上，同日普通买入对照恒为 0。
+    records = []
+    for number, day in enumerate(pd.bdate_range('2024-01-01', periods=30)):
+        for symbol, y in [('A', -1), ('B', 1)]:
+            records.append(dict(symbol=symbol, date=day, upside=.2, drawdown=-.1, M=.01,
+                                up=int(y == 1), down=int(y == -1), none=0, both=0))
+    frame = pd.DataFrame(records)
+    shrunk = plan(frame, enabled=True, tau=.1, bandwidth=2)
+    candidate = frame.loc[frame.symbol == 'A']
+    dates = sorted(frame.date.unique())
+    # 现役：A 全部日期 + B 的一半日期，领先为负且逐窗变化，误差可识别。
+    reference = frame.loc[(frame.symbol == 'A') | frame.date.isin(dates[::2])]
+    new, old = shrunk.summarize(candidate), shrunk.summarize(reference)
+    assert new['shrinkage']['status'] == 'unidentified_variance_full_shrinkage'
+    assert new['score'] == pytest.approx(new['direction_difference']) == pytest.approx(-1)
+    assert old['direction_difference'] < 0
+    assert old['score'] == pytest.approx(old['direction_difference'])
+    assert new['score'] < old['score']
