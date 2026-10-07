@@ -1,4 +1,4 @@
-"""configs/path2_web.yaml 读写。缺文件/缺项回落默认(浅层 + scan 子树 merge)。"""
+"""configs/path2_web.yaml 读写。缺文件/缺项回落默认(浅层 + scan / workflow 子树 merge)。"""
 from __future__ import annotations
 
 from pathlib import Path
@@ -23,15 +23,24 @@ DEFAULT_CONFIG = {
         "first_passage_enabled": True,   # 首次穿越方向注入开关
     },
     "last_selected_pattern": "bottom_burst",
+    # 看图工作流模式(path2_web/workflow.py):清单 / 标注的根目录与服务端截断依据
+    "workflow": {
+        "root": "outputs/chart_workflow",   # 相对 repo root
+        "train_end": "2025-12-31",          # 待验证;图、清单、标注都不得越过这一天
+    },
 }
 
 DEFAULT_PATH = Path(__file__).resolve().parents[1] / "configs" / "path2_web.yaml"
 
 
+_SUBTREES = ("scan", "workflow")
+
+
 def _merge(default: dict, override: dict) -> dict:
-    """两层 merge:顶层键 + scan 子树。override 缺项补 default。"""
-    out = {**default, **{k: v for k, v in override.items() if k != "scan"}}
-    out["scan"] = {**default["scan"], **(override.get("scan") or {})}
+    """两层 merge:顶层键 + scan / workflow 子树。override 缺项补 default。"""
+    out = {**default, **{k: v for k, v in override.items() if k not in _SUBTREES}}
+    for sub in _SUBTREES:
+        out[sub] = {**default[sub], **(override.get(sub) or {})}
     return out
 
 

@@ -25,6 +25,7 @@ from path2_web.data import slice_window, serialize_ohlc
 from path2_web.diagnose import diagnose_symbol, derive_response, Query
 from path2_web.gate_collector import attach_and_collect, detach
 from path2_web.serialize import serialize_pattern
+from path2_web.workflow import build_workflow_router
 
 
 class ParamsSaveRequest(BaseModel):
@@ -220,6 +221,9 @@ def build_router(*, registry, config_path, get_config, set_config,
                      else (lambda w: ProcessPoolExecutor(max_workers=w)))
 
     _TS_PATTERN = r"^\d{8}T\d{6}$"
+
+    # 看图工作流模式(/workflow/*):读清单、截断后的 K 线、收标注批次
+    router.include_router(build_workflow_router(get_config=get_config))
 
     @router.get("/patterns")
     def get_patterns():
