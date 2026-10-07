@@ -21,6 +21,7 @@
               <option value="">未标</option>
               <option value="positive">正例</option>
               <option value="negative">反例</option>
+              <option value="data_error">数据有误</option>
             </select>
             <div v-if="missingFields(a).length" class="miss">缺{{ missingFields(a).join('、') }}</div>
           </td>

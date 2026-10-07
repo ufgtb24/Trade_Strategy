@@ -28,11 +28,18 @@ function newId(): string {
   })
 }
 
+/** TradingView 图表链接:有交易所前缀用「交易所:代码」,没有就只用代码。只拼链接,不抓数据。 */
+export function tradingViewUrl(symbol: string, exchange?: string | null): string {
+  const sym = encodeURIComponent(symbol)
+  const s = exchange ? `${encodeURIComponent(exchange)}:${sym}` : sym
+  return `https://www.tradingview.com/chart/?symbol=${s}`
+}
+
 /** 一条草稿缺什么(空数组 = 可以发送)。 */
 export function missingFields(a: Annotation): string[] {
   const out: string[] = []
   if (!a.range_start || !a.range_end) out.push('起止')
-  if (!a.label) out.push('正例/反例')
+  if (!a.label) out.push('标签')
   return out
 }
 

@@ -1,4 +1,4 @@
-"""看图工作流路由:列表与读取、名字校验、K 线截断、清单截断兜底、标注校验与写入、batch_id 冲突。"""
+"""看图工作流路由:列表与读取、名字校验、K 线截断、清单截断兜底、标注校验与写入(含「数据有误」标签)、batch_id 冲突。"""
 import json
 from datetime import datetime
 from pathlib import Path
@@ -170,3 +170,12 @@ def test_empty_batch_rejected(tmp_path):
     c, _ = _client(tmp_path)
     assert c.post("/workflow/annotations",
                   json={"list_id": "r002", "annotations": []}).status_code == 400
+
+
+def test_data_error_label_accepted(tmp_path):
+    c, root = _client(tmp_path)
+    r = c.post("/workflow/annotations", json={"list_id": "r002", "annotations": [
+        _ann(label="data_error", buy_date=None, note="TradingView 上这几天价格不一样")]})
+    assert r.status_code == 200, r.text
+    saved = json.loads(Path(r.json()["path"]).read_text())
+    assert saved["annotations"][0]["label"] == "data_error"

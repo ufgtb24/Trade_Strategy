@@ -18,8 +18,8 @@ import pandas as pd
 
 from chart_workflow.config import REPO_ROOT, load_config
 from chart_workflow.control import Control, summarize
+from chart_workflow.dataerrors import load_pool
 from chart_workflow.listfile import deep_link, make_item, new_list, write_list
-from chart_workflow.panel import build_panel
 from chart_workflow.rules import (hits_from_app, hits_from_rule, join_panel, rule_fingerprint)
 
 
@@ -41,15 +41,17 @@ def _rule_label(rule: str | None, app: str | None, params: str | None) -> str:
 
 
 def build_list(panel: pd.DataFrame, hits: pd.DataFrame, cfg: dict, list_id: str, blind: bool,
-               rule_label: str, title: str | None = None) -> dict:
-    """hits:(symbol, date) 命中。和面板连接后只留池内、有有效标签的股票日。"""
+               rule_label: str, title: str | None = None, errata_info: dict | None = None) -> dict:
+    """hits:(symbol, date) 命中。和面板连接后只留池内、有有效标签的股票日。
+    panel 应已按数据错误登记排除过(load_pool),同日对照与统计都在它上面算。"""
     ccfg = cfg["contrast"]
     seed = int(ccfg["seed"])
     joined = join_panel(hits, panel).sort_values(["date", "symbol"]).reset_index(drop=True)
     kind = "contrast_blind" if blind else "contrast"
     doc = new_list(list_id, kind, title or (("盲看：" if blind else "对照：") + rule_label), cfg,
                    {"rule": rule_label, "n_raw_hits": int(len(hits)),
-                    "n_pool_hits": int(len(joined))})
+                    "n_pool_hits": int(len(joined)),
+                    **({"data_errors": errata_info} if errata_info is not None else {})})
     if blind:
         pick = _sample(joined, int(ccfg["n_blind"]), seed).sort_values(["date", "symbol"])
         doc["items"] = [make_item(r, cfg, blind=True) for _, r in pick.iterrows()]
@@ -99,14 +101,15 @@ def main(argv=None) -> None:
     if args.params and not args.app:
         ap.error("--params 只能和 --app 一起用")
     cfg = load_config()
-    panel = build_panel(cfg, refresh=args.refresh_panel)
+    panel, errata = load_pool(cfg, refresh=args.refresh_panel)
     symbols = sorted(panel["symbol"].unique())
     if args.rule:
         hits = hits_from_rule(args.rule, symbols, cfg)
     else:
         hits = hits_from_app(args.app, args.params, symbols, cfg)
     label = _rule_label(args.rule, args.app, args.params)
-    doc = build_list(panel, hits, cfg, args.list_id, args.blind, label, args.title)
+    doc = build_list(panel, hits, cfg, args.list_id, args.blind, label, args.title,
+                     errata_info=errata)
     path = write_list(doc, cfg)
     print(f"写入 {path}")
     print(f"原始命中 {doc['params']['n_raw_hits']},池内有效 {doc['params']['n_pool_hits']}")

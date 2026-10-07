@@ -145,6 +145,20 @@ def load_names(cfg: dict, refresh: bool = False) -> dict[str, str]:
     return {r["symbol"]: r["name"] for r in rows}
 
 
+# 筛选器下载件的交易所 → TradingView 的交易所前缀
+TV_EXCHANGE = {"nasdaq": "NASDAQ", "nyse": "NYSE", "amex": "AMEX"}
+
+
+def load_exchanges(cfg: dict) -> dict[str, str]:
+    """只读缓存(不触发下载):{symbol: TradingView 交易所前缀}。缓存不在或缺这一列 → 空表。"""
+    path = _cache_path(cfg)
+    if not path.exists():
+        return {}
+    with path.open(newline="") as f:
+        return {r["symbol"]: TV_EXCHANGE[r["exchange"]] for r in csv.DictReader(f)
+                if r.get("symbol") and r.get("exchange") in TV_EXCHANGE}
+
+
 def classify_universe(cfg: dict, symbols, refresh: bool = False) -> dict[str, str]:
     """对给定代码集合逐个分类,返回 {symbol: class}。"""
     names = load_names(cfg, refresh=refresh)

@@ -6,7 +6,12 @@
       <template v-if="!blind">
         <span v-if="item.metrics.rel != null" class="metric">相对涨幅 {{ fmtNum(item.metrics.rel) }}</span>
         <span v-if="item.metrics.rise != null" class="metric">涨幅 {{ fmtPct(item.metrics.rise) }}</span>
+        <span v-if="item.metrics.max_jump != null" class="metric"
+              title="从决策日往前一段到观察窗结束,单日收盘相对前一天的最大变化倍数(跌按倒数算),仅供核对数据时参考">
+          最大单日跳变 ×{{ fmtNum(item.metrics.max_jump) }}</span>
         <span v-for="t in item.tags" :key="t" class="tag">{{ t }}</span>
+        <a class="tv" :href="tvUrl" target="_blank" rel="noopener noreferrer"
+           data-testid="tv-link">在 TradingView 打开</a>
       </template>
     </div>
     <div class="tools">
@@ -20,6 +25,9 @@
       <label class="radio"><input type="radio" :name="`lbl-${uid}`" value="negative"
              :checked="annotation?.label === 'negative'" data-testid="label-negative"
              @change="setLabel('negative')">反例</label>
+      <label class="radio"><input type="radio" :name="`lbl-${uid}`" value="data_error"
+             :checked="annotation?.label === 'data_error'" data-testid="label-data-error"
+             @change="setLabel('data_error')">数据有误</label>
       <input class="note" type="text" placeholder="备注" maxlength="500" data-testid="note"
              :value="annotation?.note ?? ''" @input="onNote">
       <button type="button" class="tool" data-testid="tool-clear" :disabled="!annotation"
@@ -50,7 +58,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import * as echarts from 'echarts'
 import type { Annotation, AnnotationLabel, Bar, WorkflowItem } from '../types'
 import { getWorkflowOhlc } from '../api'
-import { useWorkflowStore } from '../stores/workflow'
+import { tradingViewUrl, useWorkflowStore } from '../stores/workflow'
 import { createBrushRequestHandler } from './klineBrushHandler'
 
 const props = withDefaults(defineProps<{
@@ -64,6 +72,8 @@ const props = withDefaults(defineProps<{
 
 const store = useWorkflowStore()
 const blind = computed(() => props.blind ?? store.isBlind)
+// 盲看清单不给链接:TradingView 会露出决策日之后的走势
+const tvUrl = computed(() => tradingViewUrl(props.item.symbol, props.item.exchange))
 const uid = Math.random().toString(36).slice(2, 9)
 const el = ref<HTMLDivElement | null>(null)
 const bars = ref<Bar[]>([])
@@ -86,8 +96,11 @@ const BRUSH_OPTION = {
 function fmtNum(x: number | null | undefined) { return x == null ? '—' : x.toFixed(2) }
 function fmtPct(x: number | null | undefined) { return x == null ? '—' : `${(x * 100).toFixed(1)}%` }
 function labelText(l: AnnotationLabel | null | undefined) {
-  return l === 'positive' ? '正例' : l === 'negative' ? '反例' : '未标正反'
+  return l === 'positive' ? '正例' : l === 'negative' ? '反例'
+    : l === 'data_error' ? '数据有误' : '未选标签'
 }
+/** 正例实线、反例虚线、数据有误点线(不靠色相区分) */
+const BORDER_TYPE: Record<string, string> = { positive: 'solid', negative: 'dashed', data_error: 'dotted' }
 
 const brushH = createBrushRequestHandler((s, e) => {
   const b = bars.value
@@ -160,11 +173,10 @@ function buildOption() {
   const a = props.annotation
   const areas: any[] = []
   if (a?.range_start && a?.range_end) {
-    const negative = a.label === 'negative'
     areas.push([
       { xAxis: a.range_start, name: labelText(a.label),
         itemStyle: { color: 'rgba(15,23,42,0.07)', borderColor: INK, borderWidth: 1.5,
-                     borderType: negative ? 'dashed' : 'solid' },
+                     borderType: BORDER_TYPE[a.label ?? ''] ?? 'solid' },
         label: { show: true, position: 'insideTop', color: INK, fontWeight: 'bold' } },
       { xAxis: a.range_end },
     ])
@@ -264,6 +276,7 @@ onBeforeUnmount(() => {
 .sym { font-weight: 700; font-size: 14px; }
 .when, .metric { color: #334155; }
 .tag { border: 1px solid #94a3b8; border-radius: 3px; padding: 0 4px; font-size: 11px; color: #334155; }
+.tv { font-size: 12px; color: #0f172a; text-decoration: underline; margin-left: auto; }
 .tools { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; margin: 3px 0; font-size: 12px; }
 .tool { font-size: 12px; padding: 1px 6px; border: 1px solid #94a3b8; background: #fff; border-radius: 3px;
         cursor: pointer; }

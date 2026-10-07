@@ -8,8 +8,11 @@
   5. 毕业         清单 summary 里的毕业判定通过
 
 模块分工:config(默认值)/ securities(证券分类)/ labels(标签口径)/ features(分组特征)/
-panel(池内股票日面板)/ control(同日对照与毕业判定)/ rules(取命中)/ listfile(清单文件)/
-bigmoves、contrast、ledger(三个命令)。
+panel(池内股票日面板)/ dataerrors(数据错误登记与排除)/ control(同日对照与毕业判定)/
+rules(取命中)/ listfile(清单文件)/ bigmoves、contrast、ledger(三个命令)。
+
+数据出错不按股票特征判定,靠用户在 TradingView 人工核对后标「数据有误」:生成任何清单、
+计算任何统计之前,先把这些标注汇总成 outputs/chart_workflow/data_errors.json,并排除受影响的股票日。
 
 红线:只碰训练段(默认 2024-01-01..2025-12-31,见 config)。每只股票读进来先截到训练段末日;
 标签要求 t+H 存在,于是买点之后的观察日也不会越过训练段末日;清单写入前再校验一遍

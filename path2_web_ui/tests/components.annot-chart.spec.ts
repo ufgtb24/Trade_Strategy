@@ -1,4 +1,5 @@
-/** AnnotChart:模拟 brush 事件后草稿里有起止,模拟点击后有买点,盲看清单不渲染上下线。
+/** AnnotChart:模拟 brush 事件后草稿里有起止,模拟点击后有买点,盲看清单不渲染上下线;
+ *  TradingView 链接(新标签页、盲看不给)、「数据有误」标签。
  *  jsdom 没有 canvas,mock 掉 echarts.init,改为捕获事件处理函数与 setOption 入参。 */
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
@@ -40,7 +41,7 @@ const ITEM: WorkflowItem = {
   view_start: '2025-03-10', view_end: '2025-03-17',
   marks: { decision: '2025-03-12', entry: '2025-03-13', up_line: 14, down_line: 8,
            peak_date: '2025-03-14' },
-  metrics: { rel: 3.4, rise: 0.85, M: 0.06 }, tags: ['跳空'],
+  metrics: { rel: 3.4, rise: 0.85, M: 0.06, max_jump: 1.8 }, tags: ['跳空'], exchange: 'NASDAQ',
 }
 
 function mkList(kind: WorkflowList['kind'], item: WorkflowItem): WorkflowList {
@@ -121,5 +122,29 @@ describe('AnnotChart', () => {
     expect(lastOption.series[0].markPoint.data).toHaveLength(0)
     expect(w.text()).not.toContain('涨幅')
     expect(w.text()).not.toContain('跳空')
+    expect(w.find('[data-testid="tv-link"]').exists()).toBe(false)   // TradingView 会露出之后的走势
+  })
+
+  it('TradingView 链接在新标签页打开;没有交易所时只用代码', async () => {
+    const { w } = await mountChart('bigmoves')
+    const a = w.find('[data-testid="tv-link"]')
+    expect(a.attributes('href')).toBe('https://www.tradingview.com/chart/?symbol=NASDAQ:AAA')
+    expect(a.attributes('target')).toBe('_blank')
+    expect(a.attributes('rel')).toContain('noopener')
+    expect(w.text()).toContain('最大单日跳变')
+    await w.setProps({ item: { ...ITEM, exchange: null } })
+    expect(w.find('[data-testid="tv-link"]').attributes('href'))
+      .toBe('https://www.tradingview.com/chart/?symbol=AAA')
+  })
+
+  it('「数据有误」标签:写进草稿,范围用点线框并写明', async () => {
+    const { w, store } = await mountChart('bigmoves')
+    await w.find('[data-testid="label-data-error"]').setValue(true)
+    expect(store.drafts.get(ITEM.item_id)!.label).toBe('data_error')
+    store.upsertAnnotation(ITEM.item_id, { range_start: '2025-03-11', range_end: '2025-03-13' })
+    await w.setProps({ annotation: store.drafts.get(ITEM.item_id)! })
+    const area = lastOption.series[0].markArea.data[0]
+    expect(area[0].name).toBe('数据有误')
+    expect(area[0].itemStyle.borderType).toBe('dotted')
   })
 })

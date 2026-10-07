@@ -1,4 +1,4 @@
-"""股票池各条件各一个反例(含 M 下限);训练段之后的行一律不出现;单日跳变倍数的窗口。"""
+"""股票池各条件各一个反例(含 M 下限);训练段之后的行一律不出现;数据窗口与单日跳变倍数。"""
 import numpy as np
 import pandas as pd
 
@@ -97,9 +97,21 @@ def test_max_jump_window(cw_env):
     df.iloc[j:, :4] *= 6.0                               # 第 j 天收盘相对前一天 ×6
     df.iloc[j:, 4] /= 6.0
     out = stock_panel(df, "J", cfg, True).set_index("bar_idx")
-    H, look = cfg["H"], cfg["bigmoves"]["anomaly"]["lookback_bars"]
+    H, look = cfg["H"], cfg["data_errors"]["lookback_bars"]
     inside = [i for i in out.index if j - H <= i <= j + look]
     outside = [i for i in out.index if i < j - H or i > j + look]
     assert inside and outside
     assert (out.loc[inside, "max_jump"] > 5).all()      # [t−20, t+H] 盖住了跳变日
     assert (out.loc[outside, "max_jump"] < 2).all()
+
+
+def test_data_window_columns(cw_env):
+    cfg, _ = cw_env
+    df = make_stock(seed=5)
+    out = stock_panel(df, "W", cfg, True)
+    dates = df.index[df.index <= pd.Timestamp(cfg["train_end"])]
+    look, H = cfg["data_errors"]["lookback_bars"], cfg["H"]
+    for _, r in out.sample(20, random_state=0).iterrows():
+        i = int(r["bar_idx"])
+        assert r["win_start"] == dates[i - look]
+        assert r["win_end"] == dates[i + H]

@@ -4,7 +4,8 @@
         --source annotation:20261008T101500 --change "加了条件:…" --list-id r003-contrast-quietbase-v2
     uv run python -m chart_workflow.ledger show
 
-add 自动从清单里读 summary 的「全部」行(盲看清单没有 summary,记 null),轮次号自动加 1。
+add 自动从清单里读 summary 的「全部」行(盲看清单没有 summary,记 null)和生成清单时生效的
+数据错误登记条数(n_data_errors,清单里没记就是 null),轮次号自动加 1。
 show 打印 Markdown 表,末尾给累计尝试次数(大涨段轮不算尝试)。
 """
 from __future__ import annotations
@@ -58,7 +59,9 @@ def add_round(cfg: dict, *, kind: str, rule_id: str, version: str, source: str, 
         "ts": datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
         "kind": kind, "rule_id": rule_id, "version": version, "source": source,
         "change": change, "list_id": list_id,
-        "summary_all": summary_all, "graduated": graduated, "note": note,
+        "summary_all": summary_all, "graduated": graduated,
+        "n_data_errors": (doc.get("params") or {}).get("data_errors", {}).get("n_entries"),
+        "note": note,
     }
     p = ledger_path(cfg)
     p.parent.mkdir(parents=True, exist_ok=True)
@@ -75,8 +78,8 @@ def _f(x, signed=True):
 
 def render(rows: list[dict]) -> str:
     head = ("| 轮次 | 时间 | 类型 | 规则 | 版本 | 来源 | 改了什么 | 清单 | 命中数 | 方向领先 "
-            "| 方向偶然波动 | 幅度领先 | 幅度偶然波动 | 是否毕业 |")
-    sep = "|" + "---|" * 14
+            "| 方向偶然波动 | 幅度领先 | 幅度偶然波动 | 是否毕业 | 数据错误登记 |")
+    sep = "|" + "---|" * 15
     lines = [head, sep]
     for r in rows:
         s = r.get("summary_all") or {}
@@ -86,7 +89,8 @@ def render(rows: list[dict]) -> str:
             f"| {r['round']} | {r['ts']} | {r['kind']} | {r['rule_id']} | {r['version']} "
             f"| {r['source']} | {change} | {r['list_id']} | {s.get('n_hits', '—')} "
             f"| {_f(s.get('dir_lead'))} | {_f(s.get('dir_noise'), False)} "
-            f"| {_f(s.get('mag_lead'))} | {_f(s.get('mag_noise'), False)} | {grad} |")
+            f"| {_f(s.get('mag_lead'))} | {_f(s.get('mag_noise'), False)} | {grad} "
+            f"| {'—' if r.get('n_data_errors') is None else r['n_data_errors']} |")
     attempts = sum(1 for r in rows if r["kind"] != "bigmoves")
     lines.append("")
     lines.append(f"累计尝试次数：{attempts}（共 {len(rows)} 轮，大涨段轮不计入）")

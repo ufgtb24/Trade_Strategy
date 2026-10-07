@@ -24,6 +24,7 @@ import pandas as pd
 from chart_workflow.config import root_dir
 from chart_workflow.features import tags_of
 from chart_workflow.panel import trading_dates
+from chart_workflow.securities import load_exchanges
 
 SCHEMA = "chart_workflow.list/1"
 KINDS = ("bigmoves", "contrast", "contrast_blind")
@@ -63,6 +64,17 @@ def clean_json(obj):
     return obj
 
 
+_EXCHANGES: dict[str, dict] = {}
+
+
+def exchange_of(cfg: dict, symbol: str) -> str | None:
+    """TradingView 交易所前缀(NASDAQ / NYSE / AMEX),证券名单缓存里没有就是 None。"""
+    key = str(root_dir(cfg))
+    if key not in _EXCHANGES:
+        _EXCHANGES[key] = load_exchanges(cfg)
+    return _EXCHANGES[key].get(symbol)
+
+
 def make_item(row, cfg: dict, blind: bool = False) -> dict:
     """面板里的一行 → 清单里的一条。图窗:决策日往前 view.before_bars 个交易日,
     到 min(t+H, train_end);盲看截到 t + view.blind_after_bars 为止。"""
@@ -77,6 +89,7 @@ def make_item(row, cfg: dict, blind: bool = False) -> dict:
     item = {
         "item_id": f"{sym}@{_d(t)}",
         "symbol": sym,
+        "exchange": exchange_of(cfg, sym),      # 网页拼 TradingView 链接用
         "t": _d(t),
         "entry_date": _d(row["entry_date"]),
         "view_start": _d(view_start),

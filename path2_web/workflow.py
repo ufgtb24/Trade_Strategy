@@ -32,7 +32,7 @@ _LIST_ID_RE = re.compile(r"^(?!\.)(?!.*\.\.)[A-Za-z0-9_\-.]+$")
 _SYMBOL_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9.\-]{0,14}$")
 _BATCH_RE = re.compile(r"^\d{8}T\d{6}(-\d+)?$")
 _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
-_LABELS = ("positive", "negative")
+_LABELS = ("positive", "negative", "data_error")   # 正例 / 反例 / 数据有误
 NOTE_MAX = 500
 BUY_AFTER_MAX = 5          # 买点最多落在形态结束后几个交易日内(待验证)
 
@@ -169,7 +169,7 @@ def build_workflow_router(*, get_config) -> APIRouter:
         if ann.range_start > ann.range_end:
             errs.append(f"{tag}: 起点晚于终点")
         if ann.label not in _LABELS:
-            errs.append(f"{tag}: label 必须是 positive / negative")
+            errs.append(f"{tag}: label 必须是 positive / negative / data_error")
         if len(ann.note or "") > NOTE_MAX:
             errs.append(f"{tag}: 备注超过 {NOTE_MAX} 字")
         if ann.buy_date:

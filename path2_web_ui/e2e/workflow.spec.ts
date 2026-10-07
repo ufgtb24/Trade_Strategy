@@ -17,7 +17,8 @@ const ITEM_B = 'MSFT@2025-07-01'
 
 function fixture() {
   const item = (id: string, sym: string, t: string, entry: string, vs: string, ve: string) => ({
-    item_id: id, symbol: sym, t, entry_date: entry, view_start: vs, view_end: ve,
+    item_id: id, symbol: sym, exchange: sym === 'AAPL' ? 'NASDAQ' : null,
+    t, entry_date: entry, view_start: vs, view_end: ve,
     marks: { decision: t, entry, up_line: 260, down_line: 180, peak_date: ve },
     metrics: { rel: 2.1, rise: 0.3, M: 0.02, dir: 1, mag: 0.3, dd: -0.05 },
     tags: ['不跳空'],
@@ -87,6 +88,13 @@ test('看图工作流:框选、点买点、标正例、写备注 → 抽屉里�
   await expect(page.locator('.annot-chart')).toHaveCount(2, { timeout: 20_000 })
   const cell = page.locator(`.annot-chart[data-item-id="${ITEM_A}"]`)
   await expect(cell.locator('canvas').first()).toBeVisible({ timeout: 20_000 })
+
+  // TradingView 链接:新标签页;有交易所时带前缀,没有时只用代码
+  await expect(cell.getByTestId('tv-link')).toHaveAttribute(
+    'href', 'https://www.tradingview.com/chart/?symbol=NASDAQ:AAPL')
+  await expect(cell.getByTestId('tv-link')).toHaveAttribute('target', '_blank')
+  await expect(page.locator(`.annot-chart[data-item-id="${ITEM_B}"]`).getByTestId('tv-link'))
+    .toHaveAttribute('href', 'https://www.tradingview.com/chart/?symbol=MSFT')
 
   await annotateFirst(page, cell, 'e2e 备注一')
   await expect(page.getByTestId('wf-drawer')).toHaveText('已标注 (1)')

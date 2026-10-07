@@ -284,6 +284,8 @@ export interface WorkflowSummary {
 export interface WorkflowItem {
   item_id: string; symbol: string; t: string; entry_date: string
   view_start: string; view_end: string
+  /** TradingView 交易所前缀(NASDAQ / NYSE / AMEX);证券名单里没有就是 null */
+  exchange?: string | null
   /** 盲看清单只有 decision / entry */
   marks: { decision?: string; entry?: string; up_line?: number; down_line?: number; peak_date?: string }
   /** 盲看清单只有 M */
@@ -302,7 +304,8 @@ export interface WorkflowList {
   items: WorkflowItem[]
 }
 
-export type AnnotationLabel = 'positive' | 'negative'
+/** 正例 / 反例 / 数据有误(TradingView 人工核对后发现行情数据错,汇总进数据错误登记) */
+export type AnnotationLabel = 'positive' | 'negative' | 'data_error'
 
 /** 一条标注草稿(每个 item 最多一条)。range / label 齐了才能发送。 */
 export interface Annotation {

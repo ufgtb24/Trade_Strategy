@@ -1,4 +1,4 @@
-/** 看图工作流 store:草稿的增删改、发送的请求体、发送后清空、没标完不发送。 */
+/** 看图工作流 store:草稿的增删改、发送的请求体、发送后清空、没标完不发送、TradingView 链接。 */
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
 import type { WorkflowList } from '../src/types'
@@ -10,7 +10,7 @@ vi.mock('../src/api', () => ({
   sendAnnotations: (...args: any[]) => sendAnnotations(...args),
 }))
 
-import { useWorkflowStore, PAGE_SIZE } from '../src/stores/workflow'
+import { useWorkflowStore, PAGE_SIZE, tradingViewUrl } from '../src/stores/workflow'
 import { loadWorkflowList } from '../src/api'
 
 function mkList(n = 8, kind: WorkflowList['kind'] = 'bigmoves'): WorkflowList {
@@ -126,5 +126,23 @@ describe('workflow store', () => {
     expect(s.page).toBe(1)
     expect(s.zoomItemId).toBe(doc.items[7].item_id)
     expect(s.highlightItemId).toBe(doc.items[7].item_id)
+  })
+
+  it('数据有误标签照常发送', async () => {
+    const s = useWorkflowStore()
+    s.current = mkList()
+    const id = s.current.items[0].item_id
+    s.upsertAnnotation(id, { range_start: '2025-01-06', range_end: '2025-01-08',
+                             label: 'data_error', note: 'TradingView 上不一样' })
+    sendAnnotations.mockResolvedValue({ batch_id: 'b', path: '/p', n: 1 })
+    expect(await s.send()).toBe(true)
+    expect(sendAnnotations.mock.calls[0][1][0]).toMatchObject({ label: 'data_error',
+                                                                note: 'TradingView 上不一样' })
+  })
+
+  it('TradingView 链接:有交易所用「交易所:代码」,没有只用代码', () => {
+    expect(tradingViewUrl('AAPL', 'NASDAQ')).toBe('https://www.tradingview.com/chart/?symbol=NASDAQ:AAPL')
+    expect(tradingViewUrl('BRK-B', null)).toBe('https://www.tradingview.com/chart/?symbol=BRK-B')
+    expect(tradingViewUrl('XYZ')).toBe('https://www.tradingview.com/chart/?symbol=XYZ')
   })
 })
