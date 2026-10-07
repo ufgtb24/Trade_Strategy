@@ -175,7 +175,7 @@ def test_empty_batch_rejected(tmp_path):
 def test_data_error_label_accepted(tmp_path):
     c, root = _client(tmp_path)
     r = c.post("/workflow/annotations", json={"list_id": "r002", "annotations": [
-        _ann(label="data_error", buy_date=None, note="TradingView 上这几天价格不一样")]})
+        _ann(label="data_error", buy_date=None, note="和 Nasdaq 对不上")]})
     assert r.status_code == 200, r.text
     saved = json.loads(Path(r.json()["path"]).read_text())
     assert saved["annotations"][0]["label"] == "data_error"

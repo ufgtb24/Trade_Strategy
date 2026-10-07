@@ -7,6 +7,8 @@
 按日期排(seed 固定)。
 盲看模式:不写 summary,也不写任何和结果有关的字段;只有「命中样例」一组,随机抽
 n_blind 个;图窗截到决策日之后 view.blind_after_bars 个交易日为止。
+两种模式写清单前都对每段做跨源比对(见 xcheck.py,--no-xcheck 跳过);盲看清单只记条数,
+逐段结果不写进清单。
 """
 from __future__ import annotations
 
@@ -21,6 +23,7 @@ from chart_workflow.control import Control, summarize
 from chart_workflow.dataerrors import load_pool
 from chart_workflow.listfile import deep_link, make_item, new_list, write_list
 from chart_workflow.rules import (hits_from_app, hits_from_rule, join_panel, rule_fingerprint)
+from chart_workflow.xcheck import run_xcheck
 
 
 def _sample(df: pd.DataFrame, n: int, seed: int) -> pd.DataFrame:
@@ -96,6 +99,7 @@ def main(argv=None) -> None:
     ap.add_argument("--params", help="app 方式的参数 yaml")
     ap.add_argument("--blind", action="store_true", help="盲看模式:不露任何结果")
     ap.add_argument("--title", default=None)
+    ap.add_argument("--no-xcheck", action="store_true", help="不做跨源比对(离线时用)")
     ap.add_argument("--refresh-panel", action="store_true")
     args = ap.parse_args(argv)
     if args.params and not args.app:
@@ -110,6 +114,8 @@ def main(argv=None) -> None:
     label = _rule_label(args.rule, args.app, args.params)
     doc = build_list(panel, hits, cfg, args.list_id, args.blind, label, args.title,
                      errata_info=errata)
+    if cfg["xcheck"]["enabled"] and not args.no_xcheck:
+        run_xcheck(doc, cfg)
     path = write_list(doc, cfg)
     print(f"写入 {path}")
     print(f"原始命中 {doc['params']['n_raw_hits']},池内有效 {doc['params']['n_pool_hits']}")

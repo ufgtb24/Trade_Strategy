@@ -1,5 +1,5 @@
 /** AnnotChart:模拟 brush 事件后草稿里有起止,模拟点击后有买点,盲看清单不渲染上下线;
- *  TradingView 链接(新标签页、盲看不给)、「数据有误」标签。
+ *  跨源比对不一致的提示(盲看不显示)、「数据有误」标签。
  *  jsdom 没有 canvas,mock 掉 echarts.init,改为捕获事件处理函数与 setOption 入参。 */
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
@@ -42,6 +42,8 @@ const ITEM: WorkflowItem = {
   marks: { decision: '2025-03-12', entry: '2025-03-13', up_line: 14, down_line: 8,
            peak_date: '2025-03-14' },
   metrics: { rel: 3.4, rise: 0.85, M: 0.06, max_jump: 1.8 }, tags: ['跳空'], exchange: 'NASDAQ',
+  xcheck: { status: 'mismatch', n_compared: 5, n_missing: 0,
+            mismatch_days: [{ date: '2025-03-13', r_ours: 4.029, r_nasdaq: -0.3714 }] },
 }
 
 function mkList(kind: WorkflowList['kind'], item: WorkflowItem): WorkflowList {
@@ -122,19 +124,21 @@ describe('AnnotChart', () => {
     expect(lastOption.series[0].markPoint.data).toHaveLength(0)
     expect(w.text()).not.toContain('涨幅')
     expect(w.text()).not.toContain('跳空')
-    expect(w.find('[data-testid="tv-link"]').exists()).toBe(false)   // TradingView 会露出之后的走势
+    expect(w.find('[data-testid="xcheck-warn"]').exists()).toBe(false)   // 盲看不显示比对结果
   })
 
-  it('TradingView 链接在新标签页打开;没有交易所时只用代码', async () => {
+  it('跨源比对不一致:图头列出那几天和两边的涨跌幅;一致或取不到时不显示', async () => {
     const { w } = await mountChart('bigmoves')
-    const a = w.find('[data-testid="tv-link"]')
-    expect(a.attributes('href')).toBe('https://www.tradingview.com/chart/?symbol=NASDAQ:AAA')
-    expect(a.attributes('target')).toBe('_blank')
-    expect(a.attributes('rel')).toContain('noopener')
+    const warn = w.find('[data-testid="xcheck-warn"]')
+    expect(warn.text()).toContain('两份数据不一致')
+    expect(warn.text()).toContain('2025-03-13（我们 +402.9%，Nasdaq -37.1%）')
     expect(w.text()).toContain('最大单日跳变')
-    await w.setProps({ item: { ...ITEM, exchange: null } })
-    expect(w.find('[data-testid="tv-link"]').attributes('href'))
-      .toBe('https://www.tradingview.com/chart/?symbol=AAA')
+    for (const status of ['ok', 'unavailable'] as const) {
+      await w.setProps({ item: { ...ITEM, xcheck: { ...ITEM.xcheck!, status, mismatch_days: [] } } })
+      expect(w.find('[data-testid="xcheck-warn"]').exists()).toBe(false)
+    }
+    await w.setProps({ item: { ...ITEM, xcheck: undefined } })
+    expect(w.find('[data-testid="xcheck-warn"]').exists()).toBe(false)
   })
 
   it('「数据有误」标签:写进草稿,范围用点线框并写明', async () => {

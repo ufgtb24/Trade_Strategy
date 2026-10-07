@@ -7,7 +7,7 @@
 
 写入前校验(任一不过就拒绝写):list_id 合法;所有日期不晚于 train_end;
 每个 view_end ≤ train_end;item_id 唯一;分组引用的 item 都存在;
-盲看清单不含任何和结果有关的字段。
+盲看清单不含任何和结果有关的字段(包括逐段的跨源比对结果)。
 """
 from __future__ import annotations
 
@@ -68,7 +68,7 @@ _EXCHANGES: dict[str, dict] = {}
 
 
 def exchange_of(cfg: dict, symbol: str) -> str | None:
-    """TradingView 交易所前缀(NASDAQ / NYSE / AMEX),证券名单缓存里没有就是 None。"""
+    """交易所(NASDAQ / NYSE / AMEX),证券名单缓存里没有就是 None。"""
     key = str(root_dir(cfg))
     if key not in _EXCHANGES:
         _EXCHANGES[key] = load_exchanges(cfg)
@@ -89,7 +89,7 @@ def make_item(row, cfg: dict, blind: bool = False) -> dict:
     item = {
         "item_id": f"{sym}@{_d(t)}",
         "symbol": sym,
-        "exchange": exchange_of(cfg, sym),      # 网页拼 TradingView 链接用
+        "exchange": exchange_of(cfg, sym),      # 只作信息保留,网页目前不用
         "t": _d(t),
         "entry_date": _d(row["entry_date"]),
         "view_start": _d(view_start),
@@ -176,6 +176,8 @@ def validate(doc: dict) -> None:
             if extra_m or extra_x:
                 errs.append(f"盲看清单含结果字段: {it.get('item_id')} "
                             f"{sorted(extra_m | extra_x)}")
+            if "xcheck" in it:
+                errs.append(f"盲看清单不得含跨源比对结果: {it.get('item_id')}")
     if kind == "bigmoves" and "summary" in doc:
         errs.append("大涨段清单不得含 summary")
     if errs:

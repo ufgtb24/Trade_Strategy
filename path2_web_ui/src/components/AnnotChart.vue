@@ -10,10 +10,11 @@
               title="从决策日往前一段到观察窗结束,单日收盘相对前一天的最大变化倍数(跌按倒数算),仅供核对数据时参考">
           最大单日跳变 ×{{ fmtNum(item.metrics.max_jump) }}</span>
         <span v-for="t in item.tags" :key="t" class="tag">{{ t }}</span>
-        <a class="tv" :href="tvUrl" target="_blank" rel="noopener noreferrer"
-           data-testid="tv-link">在 TradingView 打开</a>
       </template>
     </div>
+    <div v-if="xcheckText" class="xcheck-warn" data-testid="xcheck-warn"
+         title="生成清单时拿 Nasdaq 日线逐日比涨跌幅,单日倍数之比超出阈值就列在这里;确认有误请标「数据有误」">
+      {{ xcheckText }}</div>
     <div class="tools">
       <button type="button" class="tool" :aria-pressed="mode === 'brush'" data-testid="tool-brush"
               @click="setMode('brush')">框选起止</button>
@@ -58,7 +59,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import * as echarts from 'echarts'
 import type { Annotation, AnnotationLabel, Bar, WorkflowItem } from '../types'
 import { getWorkflowOhlc } from '../api'
-import { tradingViewUrl, useWorkflowStore } from '../stores/workflow'
+import { useWorkflowStore } from '../stores/workflow'
 import { createBrushRequestHandler } from './klineBrushHandler'
 
 const props = withDefaults(defineProps<{
@@ -72,8 +73,16 @@ const props = withDefaults(defineProps<{
 
 const store = useWorkflowStore()
 const blind = computed(() => props.blind ?? store.isBlind)
-// 盲看清单不给链接:TradingView 会露出决策日之后的走势
-const tvUrl = computed(() => tradingViewUrl(props.item.symbol, props.item.exchange))
+// 跨源比对不一致的段在图头列出那几天;盲看清单不显示(也不该带这份结果)
+const xcheckText = computed(() => {
+  const x = props.item.xcheck
+  if (blind.value || !x || x.status !== 'mismatch') return ''
+  const sgn = (r: number) => `${r >= 0 ? '+' : ''}${(r * 100).toFixed(1)}%`
+  const days = x.mismatch_days.slice(0, 5)
+    .map(d => `${d.date}（我们 ${sgn(d.r_ours)}，Nasdaq ${sgn(d.r_nasdaq)}）`).join('；')
+  const more = x.mismatch_days.length > 5 ? `；等共 ${x.mismatch_days.length} 天` : ''
+  return `两份数据不一致：${days}${more}`
+})
 const uid = Math.random().toString(36).slice(2, 9)
 const el = ref<HTMLDivElement | null>(null)
 const bars = ref<Bar[]>([])
@@ -276,7 +285,8 @@ onBeforeUnmount(() => {
 .sym { font-weight: 700; font-size: 14px; }
 .when, .metric { color: #334155; }
 .tag { border: 1px solid #94a3b8; border-radius: 3px; padding: 0 4px; font-size: 11px; color: #334155; }
-.tv { font-size: 12px; color: #0f172a; text-decoration: underline; margin-left: auto; }
+.xcheck-warn { font-size: 12px; font-weight: 700; color: #0f172a; border-left: 3px solid #0f172a;
+               padding-left: 4px; margin: 2px 0; }
 .tools { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; margin: 3px 0; font-size: 12px; }
 .tool { font-size: 12px; padding: 1px 6px; border: 1px solid #94a3b8; background: #fff; border-radius: 3px;
         cursor: pointer; }

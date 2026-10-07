@@ -5,7 +5,8 @@
     uv run python -m chart_workflow.ledger show
 
 add 自动从清单里读 summary 的「全部」行(盲看清单没有 summary,记 null)和生成清单时生效的
-数据错误登记条数(n_data_errors,清单里没记就是 null),轮次号自动加 1。
+数据错误登记条数(n_data_errors)与跨源比对「一致 / 不一致 / 取不到」各多少段(xcheck),
+清单里没记就是 null;轮次号自动加 1。
 show 打印 Markdown 表,末尾给累计尝试次数(大涨段轮不算尝试)。
 """
 from __future__ import annotations
@@ -35,6 +36,13 @@ def read_ledger(cfg: dict) -> list[dict]:
     return [json.loads(line) for line in p.read_text().splitlines() if line.strip()]
 
 
+def _xcheck_counts(doc: dict) -> dict | None:
+    x = (doc.get("params") or {}).get("xcheck")
+    if not x:
+        return None
+    return {"ok": x.get("ok"), "mismatch": x.get("mismatch"), "unavailable": x.get("unavailable")}
+
+
 def add_round(cfg: dict, *, kind: str, rule_id: str, version: str, source: str, change: str,
               list_id: str, note: str = "") -> dict:
     if kind not in KINDS:
@@ -61,6 +69,7 @@ def add_round(cfg: dict, *, kind: str, rule_id: str, version: str, source: str, 
         "change": change, "list_id": list_id,
         "summary_all": summary_all, "graduated": graduated,
         "n_data_errors": (doc.get("params") or {}).get("data_errors", {}).get("n_entries"),
+        "xcheck": _xcheck_counts(doc),
         "note": note,
     }
     p = ledger_path(cfg)
@@ -76,10 +85,15 @@ def _f(x, signed=True):
     return f"{x:+.3f}" if signed else f"{x:.3f}"
 
 
+def _xc(x) -> str:
+    return "—" if not x else f"{x['ok']}/{x['mismatch']}/{x['unavailable']}"
+
+
 def render(rows: list[dict]) -> str:
     head = ("| 轮次 | 时间 | 类型 | 规则 | 版本 | 来源 | 改了什么 | 清单 | 命中数 | 方向领先 "
-            "| 方向偶然波动 | 幅度领先 | 幅度偶然波动 | 是否毕业 | 数据错误登记 |")
-    sep = "|" + "---|" * 15
+            "| 方向偶然波动 | 幅度领先 | 幅度偶然波动 | 是否毕业 | 数据错误登记 "
+            "| 跨源比对(一致/不一致/取不到) |")
+    sep = "|" + "---|" * 16
     lines = [head, sep]
     for r in rows:
         s = r.get("summary_all") or {}
@@ -90,7 +104,8 @@ def render(rows: list[dict]) -> str:
             f"| {r['source']} | {change} | {r['list_id']} | {s.get('n_hits', '—')} "
             f"| {_f(s.get('dir_lead'))} | {_f(s.get('dir_noise'), False)} "
             f"| {_f(s.get('mag_lead'))} | {_f(s.get('mag_noise'), False)} | {grad} "
-            f"| {'—' if r.get('n_data_errors') is None else r['n_data_errors']} |")
+            f"| {'—' if r.get('n_data_errors') is None else r['n_data_errors']} "
+            f"| {_xc(r.get('xcheck'))} |")
     attempts = sum(1 for r in rows if r["kind"] != "bigmoves")
     lines.append("")
     lines.append(f"累计尝试次数：{attempts}（共 {len(rows)} 轮，大涨段轮不计入）")

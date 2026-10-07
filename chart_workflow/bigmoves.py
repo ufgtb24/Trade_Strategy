@@ -12,6 +12,7 @@
   6. 分组:按涨前状态分四组,另加不分组的「全部」;跳空与量倍数写进 tags
 
 面板先按数据错误登记排除过(见 dataerrors.py);每段带的「最大单日跳变」只作显示,不参与任何判定。
+写清单前对每段做跨源比对(见 xcheck.py,--no-xcheck 跳过),只标出不一致,不排除任何段。
 """
 from __future__ import annotations
 
@@ -24,6 +25,7 @@ from chart_workflow.config import load_config
 from chart_workflow.dataerrors import load_pool
 from chart_workflow.features import PRE_STATES
 from chart_workflow.listfile import deep_link, make_item, new_list, write_list
+from chart_workflow.xcheck import run_xcheck
 
 GROUP_KEYS = {"深跌": "deep_drop", "已在涨": "rising", "横盘": "flat", "其他": "other"}
 
@@ -79,12 +81,15 @@ def main(argv=None) -> None:
     ap.add_argument("--list-id", required=True)
     ap.add_argument("--top", type=int, default=None, help="总量,默认取 config bigmoves.top")
     ap.add_argument("--title", default=None)
+    ap.add_argument("--no-xcheck", action="store_true", help="不做跨源比对(离线时用)")
     ap.add_argument("--refresh-panel", action="store_true", help="忽略面板缓存重算")
     args = ap.parse_args(argv)
     cfg = load_config()
     top = args.top if args.top is not None else int(cfg["bigmoves"]["top"])
     panel, errata = load_pool(cfg, refresh=args.refresh_panel)
     doc = build_list(panel, cfg, args.list_id, top, args.title, errata_info=errata)
+    if cfg["xcheck"]["enabled"] and not args.no_xcheck:
+        run_xcheck(doc, cfg)
     path = write_list(doc, cfg)
     print(f"写入 {path}")
     for g in doc["groups"]:

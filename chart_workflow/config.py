@@ -47,10 +47,18 @@ DEFAULTS: dict = {
         "per_week_max": 5,          # 同一 ISO 周最多保留几段
         "top": 300,
     },
-    "data_errors": {     # 数据错误登记(用户在 TradingView 人工核对后标「数据有误」)
+    "data_errors": {     # 数据错误登记(用户核对后标「数据有误」,跨源比对只给提示)
         # 决策日 t 的数据窗口 = [t 往前 lookback_bars 个交易日, t+H];窗口和某条登记的框选范围
         # 有重叠就排除这个股票日(待验证)。清单上显示的「最大单日跳变」也按这个窗口算。
         "lookback_bars": 20,
+    },
+    "xcheck": {          # 跨源比对:生成清单时拿 Nasdaq 日线逐日比涨跌幅(见 xcheck.py)
+        "enabled": True,
+        "tolerance": 1.5,               # 单日涨跌倍数之比超出 [1/此值, 此值] 记为不一致(待验证)
+        "min_interval_s": 1.0,          # 两次真实请求最少间隔秒数(每秒不超过 1 次)
+        "timeout_s": 20.0,
+        "max_consecutive_failures": 5,  # 连续失败这么多次后本轮不再请求
+        "fetch_pad_days": 60,           # 每只股票请求 [train_start − 此天数, train_end]
     },
     "view": {
         "before_bars": 120,         # 图窗从决策日往前多少交易日
