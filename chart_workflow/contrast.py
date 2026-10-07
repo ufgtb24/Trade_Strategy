@@ -79,10 +79,10 @@ def build_list(panel: pd.DataFrame, hits: pd.DataFrame, cfg: dict, list_id: str,
     return doc
 
 
-def _fmt(x, pct=False):
+def _fmt(x, signed=True):
     if x is None:
         return "—"
-    return f"{x * 100:.1f}%" if pct else f"{x:+.3f}"
+    return f"{x:+.3f}" if signed else f"{x:.3f}"
 
 
 def main(argv=None) -> None:
@@ -116,7 +116,8 @@ def main(argv=None) -> None:
         print("范围   命中  股票  方向领先  偶然波动  幅度领先  偶然波动")
         for r in doc["summary"]["rows"]:
             print(f"{r['scope']:<5} {r['n_hits']:>5} {r['n_stocks']:>5}  {_fmt(r['dir_lead'])}"
-                  f"    {_fmt(r['dir_noise'])}    {_fmt(r['mag_lead'])}    {_fmt(r['mag_noise'])}")
+                  f"    {_fmt(r['dir_noise'], False)}     {_fmt(r['mag_lead'])}"
+                  f"    {_fmt(r['mag_noise'], False)}")
         g = doc["summary"]["graduation"]
         print("毕业判定:", "通过" if g["passed"] else "未通过", g["checks"])
     print("打开:", deep_link(args.list_id))

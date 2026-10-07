@@ -67,8 +67,10 @@ def add_round(cfg: dict, *, kind: str, rule_id: str, version: str, source: str, 
     return entry
 
 
-def _f(x):
-    return "—" if x is None else f"{x:+.3f}"
+def _f(x, signed=True):
+    if x is None:
+        return "—"
+    return f"{x:+.3f}" if signed else f"{x:.3f}"
 
 
 def render(rows: list[dict]) -> str:
@@ -83,11 +85,11 @@ def render(rows: list[dict]) -> str:
         lines.append(
             f"| {r['round']} | {r['ts']} | {r['kind']} | {r['rule_id']} | {r['version']} "
             f"| {r['source']} | {change} | {r['list_id']} | {s.get('n_hits', '—')} "
-            f"| {_f(s.get('dir_lead'))} | {_f(s.get('dir_noise'))} | {_f(s.get('mag_lead'))} "
-            f"| {_f(s.get('mag_noise'))} | {grad} |")
+            f"| {_f(s.get('dir_lead'))} | {_f(s.get('dir_noise'), False)} "
+            f"| {_f(s.get('mag_lead'))} | {_f(s.get('mag_noise'), False)} | {grad} |")
     attempts = sum(1 for r in rows if r["kind"] != "bigmoves")
     lines.append("")
-    lines.append(f"累计尝试次数:{attempts}(共 {len(rows)} 轮,大涨段轮不计入)")
+    lines.append(f"累计尝试次数：{attempts}（共 {len(rows)} 轮，大涨段轮不计入）")
     return "\n".join(lines)
 
 

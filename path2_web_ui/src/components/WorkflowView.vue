@@ -135,7 +135,10 @@ onMounted(async () => {
   const item = q.get('item')
   const target = wf || store.current?.list_id || store.lists[0]?.list_id
   if (!target) return
-  if (store.current?.list_id === target && !item) return      // 从调试视图切回来,保留原状态
+  if (store.current?.list_id === target && !item) {          // 从调试视图切回来,保留原状态
+    syncUrl(target)
+    return
+  }
   // 深链打开后 URL 保留 item 参数,刷新页面仍能回到这一条
   if (await store.openList(target, { itemId: item }) && !item) syncUrl(target)
 })

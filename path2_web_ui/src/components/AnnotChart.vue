@@ -118,7 +118,8 @@ function onZrClick(e: any) {
   if (mode.value !== 'buy' || !chart || !bars.value.length) return
   const px = [e.offsetX, e.offsetY]
   if (!chart.containPixel({ gridIndex: 0 }, px) && !chart.containPixel({ gridIndex: 1 }, px)) return
-  const p = chart.convertFromPixel({ xAxisIndex: 0 } as any, px) as any
+  // 两个 grid 左右边距相同,横坐标换算统一借主图 grid(按 xAxisIndex 换算拿不到值)
+  const p = chart.convertFromPixel({ gridIndex: 0 }, px) as any
   const x = Array.isArray(p) ? p[0] : p
   if (x == null || Number.isNaN(Number(x))) return
   const idx = Math.min(bars.value.length - 1, Math.max(0, Math.round(Number(x))))
@@ -177,8 +178,8 @@ function buildOption() {
   return {
     animation: false,
     grid: [
-      { left: 48, right: 14, top: 10, bottom: '30%' },
-      { left: 48, right: 14, top: '74%', bottom: 22 },
+      { left: 48, right: 28, top: 10, bottom: '30%' },
+      { left: 48, right: 28, top: '74%', bottom: 22 },
     ],
     xAxis: [
       { type: 'category', data: dates, gridIndex: 0, boundaryGap: true,
@@ -272,7 +273,7 @@ onBeforeUnmount(() => {
 .note { flex: 1 1 100px; min-width: 80px; font-size: 12px; padding: 1px 4px; }
 .ann-line { font-size: 11px; color: #334155; }
 .err { color: #b91c1c; font-size: 12px; }
-.chart { width: 100%; height: 250px; }
+.chart { width: 100%; height: max(220px, calc(50vh - 160px)); }
 .chart.armed { cursor: crosshair; }
 .large .chart { height: 72vh; }
 </style>
