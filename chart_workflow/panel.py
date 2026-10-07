@@ -7,10 +7,14 @@
   分组特征 = features.feature_frame(只用 t 及以前)
 一个股票日 (symbol, t) 进面板要同时满足:t ∈ [train_start, train_end];是普通股
 (证券分类 ∈ pool.common_classes);close[t] ≤ price_max;dv_t ∈ [dv_min, dv_max];
-M_t 有限且为正;open[t+1] > 0;标签有效。
+M_t 有限且 ≥ m_min(剔除平时几乎不动的股票);open[t+1] > 0;标签有效。
+
+另存一列数据核对量 max_jump:从 t − lookback_bars 到 t+H 这些天里,单日收盘 / 前日收盘
+的最大倍数(跌按倒数算,恒 ≥ 1)。它读到了决策日之后(仍在训练段内)的价格,只用来把
+疑似数据出错的大涨段挑出来待核对,不是分组特征,不得用于选股规则。
 
 面板缓存到 <root>/cache/panel_<参数指纹>.parquet。指纹覆盖:训练段、k、H、M 回看、
-池子与特征参数、池内普通股名单、行情文件(名称 / 大小 / 修改时间)与本模块版本,
+池子与特征参数、跳变回看天数、池内普通股名单、行情文件(名称 / 大小 / 修改时间)与本模块版本,
 任一变化都会重算。
 """
 from __future__ import annotations
@@ -30,12 +34,12 @@ from chart_workflow.labels import label_frame
 from chart_workflow.securities import classify_universe, local_symbols
 from path2.calc.atr import rolling_atr_pct_nanmedian
 
-PANEL_VERSION = 1
+PANEL_VERSION = 2
 
 PANEL_COLUMNS = [
     "symbol", "date", "bar_idx", "entry_date", "close", "M", "dv",
     "P", "U", "D", "dir", "mag", "dd", "rise", "rel", "peak_date", "stop_date",
-    "dd250", "r60", "width40", "gap", "vol_mult", "pre_state", "vol_tag",
+    "dd250", "r60", "width40", "gap", "vol_mult", "pre_state", "vol_tag", "max_jump",
 ]
 
 
@@ -61,13 +65,18 @@ def stock_panel(df: pd.DataFrame, symbol: str, cfg: dict, common: bool) -> pd.Da
     lab = label_frame(df, M, cfg["k"], cfg["H"])
     feat = feature_frame(df, M, cfg["features"])
     next_open = df["open"].shift(-1)
+    # 单日跳变倍数:|ln(close_i / close_{i-1})| 在 [t − lookback, t+H] 上的最大值,再取 exp
+    look = int(cfg["bigmoves"]["anomaly"]["lookback_bars"])
+    with np.errstate(divide="ignore", invalid="ignore"):
+        jump = np.abs(np.log(df["close"] / df["close"].shift(1)))
+    max_jump = np.exp(jump.rolling(cfg["H"] + look + 1, min_periods=1).max().shift(-cfg["H"]))
 
     with np.errstate(invalid="ignore"):
         in_pool = (
             (df.index >= pd.Timestamp(cfg["train_start"]))
             & (df["close"] <= pool["price_max"]).values
             & (dv >= pool["dv_min"]).values & (dv <= pool["dv_max"]).values
-            & np.isfinite(M.values) & (M.values > 0)
+            & np.isfinite(M.values) & (M.values > 0) & (M.values >= pool["m_min"])
             & (next_open > 0).values
             & lab["valid"].values
         )
@@ -86,6 +95,7 @@ def stock_panel(df: pd.DataFrame, symbol: str, cfg: dict, common: bool) -> pd.Da
         out[c] = lab[c].values
     for c in ("dd250", "r60", "width40", "gap", "vol_mult", "pre_state", "vol_tag"):
         out[c] = feat[c].values
+    out["max_jump"] = max_jump.values
     out = out[in_pool].reset_index(drop=True)
     out["dir"] = out["dir"].astype(int)
     return out[PANEL_COLUMNS]
@@ -111,6 +121,7 @@ def _fingerprint(cfg: dict, syms: list[str], classes: dict[str, str]) -> str:
         "v": PANEL_VERSION,
         "cfg": {k: cfg[k] for k in ("train_start", "train_end", "k", "H", "m_period",
                                     "pool", "features")},
+        "jump_lookback": cfg["bigmoves"]["anomaly"]["lookback_bars"],
         "common": common,
         "files": files,
     }

@@ -1,4 +1,4 @@
-"""股票池四个条件各一个反例;训练段之后的行一律不出现。"""
+"""股票池各条件各一个反例(含 M 下限);训练段之后的行一律不出现;单日跳变倍数的窗口。"""
 import numpy as np
 import pandas as pd
 
@@ -77,3 +77,29 @@ def test_post_train_data_changes_nothing(cw_env):
     df2.loc[after, "volume"] *= 10
     b = stock_panel(df2, "X", cfg, True)
     pd.testing.assert_frame_equal(a, b)
+
+
+def test_quiet_stock_below_m_floor_excluded(cw_env):
+    cfg, _ = cw_env
+    quiet = make_stock(seed=1, sigma=0.002)              # 每天只动千分之几 → M < 0.01
+    assert len(stock_panel(quiet, "QUIET", cfg, True)) == 0
+    base = stock_panel(make_stock(seed=1), "OK", cfg, True)
+    assert len(base) > 0 and (base["M"] >= cfg["pool"]["m_min"]).all()
+    # 下限是配置项:调到 0 后安静的票回到池子
+    loose = {**cfg, "pool": {**cfg["pool"], "m_min": 0.0}}
+    assert len(stock_panel(quiet, "QUIET", loose, True)) > 0
+
+
+def test_max_jump_window(cw_env):
+    cfg, _ = cw_env
+    df = make_stock(seed=4, sigma=0.01)
+    j = df.index.get_loc(pd.Timestamp("2024-09-03"))
+    df.iloc[j:, :4] *= 6.0                               # 第 j 天收盘相对前一天 ×6
+    df.iloc[j:, 4] /= 6.0
+    out = stock_panel(df, "J", cfg, True).set_index("bar_idx")
+    H, look = cfg["H"], cfg["bigmoves"]["anomaly"]["lookback_bars"]
+    inside = [i for i in out.index if j - H <= i <= j + look]
+    outside = [i for i in out.index if i < j - H or i > j + look]
+    assert inside and outside
+    assert (out.loc[inside, "max_jump"] > 5).all()      # [t−20, t+H] 盖住了跳变日
+    assert (out.loc[outside, "max_jump"] < 2).all()

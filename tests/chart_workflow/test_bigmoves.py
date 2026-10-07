@@ -1,4 +1,5 @@
-"""大涨段:同一段行情只取一次、每周限量、分组特征只用 t 及以前(改 t 之后数据结果不变)。"""
+"""大涨段:同一段行情只取一次、每周限量、分组特征只用 t 及以前(改 t 之后数据结果不变)、
+疑似数据出错的段进「待核对」组且不参加排序。"""
 import numpy as np
 import pandas as pd
 
@@ -36,14 +37,44 @@ def test_cap_per_week():
     assert sorted(out["rel"].tolist()) == [0.5, 3, 4, 5, 6, 7]
 
 
+def _cands(rel, rise=None, jump=None, symbols=None, bar_idx=None):
+    n = len(rel)
+    return pd.DataFrame({
+        "symbol": symbols or [f"S{i}" for i in range(n)],
+        "date": pd.bdate_range("2024-01-01", periods=n),
+        "bar_idx": bar_idx or [0] * n,
+        "rel": rel,
+        "rise": rise or [1.0] * n,
+        "max_jump": jump or [1.2] * n,
+    })
+
+
 def test_select_threshold_and_top():
-    d = pd.bdate_range("2024-01-01", periods=10)
-    panel = pd.DataFrame({"symbol": [f"S{i}" for i in range(10)], "date": d,
-                          "bar_idx": 0, "rel": [0.5, 1.9, 2.0, 2.5, 3, 4, 5, 6, 7, np.nan]})
-    sel = select_bigmoves(panel, {**DEFAULTS["bigmoves"]}, top=3)
+    panel = _cands([0.5, 1.9, 2.0, 2.5, 3, 4, 5, 6, 7, np.nan])
+    sel, review = select_bigmoves(panel, {**DEFAULTS["bigmoves"]}, top=3)
     assert sel["rel"].tolist() == [7, 6, 5]
-    sel = select_bigmoves(panel, {**DEFAULTS["bigmoves"]}, top=100)
+    assert len(review) == 0
+    sel, _ = select_bigmoves(panel, {**DEFAULTS["bigmoves"]}, top=100)
     assert sel["rel"].min() >= 2.0 and len(sel) == 7
+
+
+def test_anomalies_go_to_review_and_skip_ranking():
+    # rel 最大的两段:一段涨幅超 10 倍(rise 9.5),一段窗口里有单日 ÷6(max_jump 记为 6)
+    panel = _cands(rel=[9.0, 8.0, 7.0, 6.0, 5.0, 4.0],
+                   rise=[9.5, 3.0, 2.0, 2.0, 9.0, 1.5],      # rise 恰好 9 不算(要 > 9)
+                   jump=[1.5, 6.0, 1.2, 5.0, 1.1, 1.3])      # 恰好 5 倍不算(要 > 5)
+    sel, review = select_bigmoves(panel, {**DEFAULTS["bigmoves"]}, top=3)
+    assert review["symbol"].tolist() == ["S0", "S1"]         # 按涨幅原值降序
+    assert sel["symbol"].tolist() == ["S2", "S3", "S4"]      # 前 3 名的名额不被待核对占用
+
+
+def test_same_move_counted_once_across_review_and_main():
+    # 同一只股票:rel 最大那天疑似出错 → 进待核对,并压掉 10 根以内的正常候选
+    panel = _cands(rel=[9.0, 8.0, 3.0], rise=[12.0, 5.0, 2.0], symbols=["A", "A", "A"],
+                   bar_idx=[100, 110, 150])
+    sel, review = select_bigmoves(panel, {**DEFAULTS["bigmoves"]}, top=10)
+    assert review["bar_idx"].tolist() == [100]
+    assert sel["bar_idx"].tolist() == [150]
 
 
 def test_features_only_use_past():
@@ -69,12 +100,37 @@ def test_build_list_groups_and_windows(cw_env):
     doc = build_list(panel, {**cfg, "bigmoves": {**cfg["bigmoves"], "rel_min": 1.0}},
                      "t-big", top=50)
     keys = [g["key"] for g in doc["groups"]]
-    assert keys == ["all", "deep_drop", "rising", "flat", "other"]
+    assert keys == ["all", "deep_drop", "rising", "flat", "other", "review"]
     all_ids = doc["groups"][0]["item_ids"]
-    assert len(all_ids) == len(doc["items"]) > 0
-    assert sum(len(g["item_ids"]) for g in doc["groups"][1:]) == len(all_ids)
+    review_ids = doc["groups"][-1]["item_ids"]
+    assert len(all_ids) + len(review_ids) == len(doc["items"]) and len(all_ids) > 0
+    assert sum(len(g["item_ids"]) for g in doc["groups"][1:-1]) == len(all_ids)
     for it in doc["items"]:
         assert it["view_end"] <= cfg["train_end"]
         assert it["view_start"] < it["t"] < it["view_end"]
         assert {"decision", "entry", "up_line", "down_line", "peak_date"} <= set(it["marks"])
         assert it["tags"][0] in ("跳空", "不跳空")
+
+
+def test_build_list_review_group(cw_env):
+    """一只股票在训练段中途价格被错乘 6 倍(单日跳变)→ 它的大涨段进「待核对」,不进其他分组。"""
+    cfg, pkl_dir = cw_env
+    bad = make_stock(seed=50, sigma=0.03)
+    jump_day = pd.Timestamp("2024-09-03")
+    bad.loc[bad.index >= jump_day, ["open", "high", "low", "close"]] *= 6.0
+    bad.loc[bad.index >= jump_day, "volume"] /= 6.0          # 成交额仍在池子范围内
+    bad.to_pickle(pkl_dir / "BAD.pkl")
+    for i in range(3):
+        make_stock(seed=60 + i, sigma=0.04).to_pickle(pkl_dir / f"G{i}.pkl")
+    panel = build_panel(cfg, verbose=False)
+    doc = build_list(panel, cfg, "t-review", top=50)
+    groups = {g["key"]: g["item_ids"] for g in doc["groups"]}
+    review = groups["review"]
+    assert review and all(i.startswith("BAD@") for i in review)
+    others = {i for k, ids in groups.items() if k != "review" for i in ids}
+    assert not (set(review) & others)
+    by_id = {it["item_id"]: it for it in doc["items"]}
+    for i in review:
+        assert any(t.startswith("疑似：") for t in by_id[i]["tags"])
+        assert by_id[i]["metrics"]["max_jump"] > 5 or by_id[i]["metrics"]["rise"] > 9
+    assert doc["params"]["pool"]["m_min"] == cfg["pool"]["m_min"]

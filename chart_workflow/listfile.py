@@ -93,7 +93,8 @@ def make_item(row, cfg: dict, blind: bool = False) -> dict:
     item["metrics"] = {"rel": _num(row["rel"], 4), "rise": _num(row["rise"], 4),
                        "M": _num(row["M"]), "dir": int(row["dir"]), "mag": _num(row["mag"], 4),
                        "dd": _num(row["dd"], 4), "dd250": _num(row["dd250"], 4),
-                       "r60": _num(row["r60"], 4), "vol_mult": _num(row["vol_mult"], 3)}
+                       "r60": _num(row["r60"], 4), "vol_mult": _num(row["vol_mult"], 3),
+                       "max_jump": _num(row.get("max_jump"), 3)}
     return item
 
 
@@ -102,7 +103,7 @@ def new_list(list_id: str, kind: str, title: str, cfg: dict, params_extra: dict 
     pool = cfg["pool"]
     params = {"k": cfg["k"], "H": cfg["H"],
               "pool": {"price_max": pool["price_max"], "dv_min": pool["dv_min"],
-                       "dv_max": pool["dv_max"]}}
+                       "dv_max": pool["dv_max"], "m_min": pool["m_min"]}}
     params.update(params_extra or {})
     return {
         "schema": SCHEMA, "list_id": list_id, "kind": kind, "title": title,
