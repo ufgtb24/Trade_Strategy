@@ -259,3 +259,58 @@ export function isPoint(e: { start_idx: number; end_idx: number }): boolean {
 
 export type Level = 'matched' | 'qualified' | 'detected'
 export type Tier = Level
+
+// ─── 看图工作流模式(/workflow/*):清单由命令行工具 chart_workflow 生成,标注批次由后端写盘 ───
+export type WorkflowListKind = 'bigmoves' | 'contrast' | 'contrast_blind'
+
+export interface WorkflowListMeta {
+  list_id: string; kind: WorkflowListKind; title: string; created_at: string; n_items: number
+}
+
+export interface WorkflowSummaryRow {
+  scope: string; n_hits: number; n_stocks: number; n_weeks: number
+  hit_dir_mean: number | null; ctrl_dir_mean: number | null
+  dir_lead: number | null; dir_noise: number | null
+  hit_mag_median: number | null; ctrl_mag_median: number | null
+  mag_lead: number | null; mag_noise: number | null
+}
+
+export interface WorkflowSummary {
+  rows: WorkflowSummaryRow[]
+  concentration: { max_week_share: number | null; max_stock_share: number | null }
+  graduation: { passed: boolean; checks: Record<string, boolean> }
+}
+
+export interface WorkflowItem {
+  item_id: string; symbol: string; t: string; entry_date: string
+  view_start: string; view_end: string
+  /** 盲看清单只有 decision / entry */
+  marks: { decision?: string; entry?: string; up_line?: number; down_line?: number; peak_date?: string }
+  /** 盲看清单只有 M */
+  metrics: Record<string, number | null>
+  tags: string[]
+}
+
+export interface WorkflowGroup { key: string; title: string; item_ids: string[] }
+
+export interface WorkflowList {
+  schema: string; list_id: string; kind: WorkflowListKind; title: string; created_at: string
+  train_start: string; train_end: string
+  params: Record<string, any>
+  summary?: WorkflowSummary
+  groups: WorkflowGroup[]
+  items: WorkflowItem[]
+}
+
+export type AnnotationLabel = 'positive' | 'negative'
+
+/** 一条标注草稿(每个 item 最多一条)。range / label 齐了才能发送。 */
+export interface Annotation {
+  ann_id: string; item_id: string; symbol: string
+  range_start: string | null; range_end: string | null; buy_date: string | null
+  label: AnnotationLabel | null; note: string; updated_at: string
+}
+
+export interface AnnotationBatchResult { batch_id: string; path: string; n: number }
+
+export interface AnnotationBatchMeta { batch_id: string; list_id: string; n: number; created_at: string }
