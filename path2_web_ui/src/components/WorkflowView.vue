@@ -20,10 +20,13 @@
         <option v-for="t in store.allTags" :key="t" :value="t">{{ t }}</option>
       </select>
       <div v-if="store.current" class="pager">
-        <button type="button" :disabled="store.page <= 0" @click="store.setPage(store.page - 1)">上一页</button>
-        <span>第 {{ store.page + 1 }} / {{ store.pageCount }} 页（共 {{ store.filteredItems.length }} 条）</span>
+        <button type="button" :disabled="store.page <= 0" @click="goPage(store.page - 1)">上一页</button>
+        <span>第 <input class="page-input" type="number" min="1" :max="store.pageCount" :value="store.page + 1"
+                       data-testid="wf-page-input" title="输入页码回车跳转；PgUp / PgDn 翻页"
+                       @keydown.enter="($event.target as HTMLInputElement).blur()" @change="onPageInput">
+          / {{ store.pageCount }} 页（共 {{ store.filteredItems.length }} 条）</span>
         <button type="button" :disabled="store.page >= store.pageCount - 1"
-                @click="store.setPage(store.page + 1)">下一页</button>
+                @click="goPage(store.page + 1)">下一页</button>
       </div>
       <button type="button" class="drawer-toggle" data-testid="wf-drawer" :aria-pressed="drawerOpen"
               @click="drawerOpen = !drawerOpen">已标注 ({{ store.draftCount }})</button>
@@ -63,7 +66,7 @@
     </section>
 
     <div class="body">
-      <main class="grid" data-testid="wf-grid">
+      <main ref="gridEl" class="grid" data-testid="wf-grid">
         <AnnotChart v-for="it in store.pageItems" :key="it.item_id" :item="it"
                     :annotation="store.drafts.get(it.item_id) ?? null"
                     :highlighted="store.highlightItemId === it.item_id" />
@@ -74,7 +77,7 @@
     <div v-if="store.zoomItem" class="backdrop" data-testid="wf-zoom" @click.self="store.setZoom(null)">
       <div class="modal">
         <div class="modal-head">
-          <span>放大查看</span>
+          <span>放大查看 <span class="hint-inline">滚轮横向缩放（以鼠标处为中心），按住拖动平移（框选时除外），双击图退出放大</span></span>
           <button type="button" data-testid="wf-zoom-close" @click="store.setZoom(null)">关闭</button>
         </div>
         <AnnotChart :item="store.zoomItem" :annotation="store.drafts.get(store.zoomItem.item_id) ?? null"
@@ -89,7 +92,10 @@
  *
  * 入口:App.vue 见到 URL 带 wf 参数时渲染本视图。深链 ?wf=<list_id>&item=<item_id> 打开清单、
  * 翻到含这一条的页、高亮并放大;?wf= 为空时打开最新的一份清单。打开清单后 URL 同步成 ?wf=<list_id>。
- * 草稿非空时离开页面要确认(beforeunload)。 */
+ * 草稿非空时离开页面要确认(beforeunload)。
+ *
+ * 翻页:上一页 / 下一页按钮、页码框输入后回车、键盘 PgUp / PgDn。焦点在文字输入框里或放大框开着时
+ * 不接管 PgUp / PgDn。翻页后网格滚回顶部。 */
 import { onBeforeUnmount, onMounted, ref } from 'vue'
 import AnnotChart from './AnnotChart.vue'
 import AnnotReviewPanel from './AnnotReviewPanel.vue'
@@ -98,6 +104,7 @@ import { useWorkflowStore } from '../stores/workflow'
 const emit = defineEmits<{ exit: [] }>()
 const store = useWorkflowStore()
 const drawerOpen = ref(false)
+const gridEl = ref<HTMLElement | null>(null)
 
 const KIND_TEXT: Record<string, string> = {
   bigmoves: '大涨段', contrast: '对照', contrast_blind: '盲看',
@@ -123,12 +130,41 @@ async function onPickList(listId: string) {
   if (await store.openList(listId)) syncUrl(listId)
 }
 
+function goPage(p: number) {
+  store.setPage(p)
+  if (gridEl.value) gridEl.value.scrollTop = 0
+}
+
+function onPageInput(e: Event) {
+  const input = e.target as HTMLInputElement
+  const n = Number.parseInt(input.value, 10)
+  if (Number.isFinite(n)) goPage(n - 1)
+  input.value = String(store.page + 1)        // 越界或不是数字时回显实际页码
+}
+
+/** 会吃掉 PgUp / PgDn 的文字输入框(备注、页码);单选框、按钮、下拉框上照样翻页。 */
+function isTextEntry(t: EventTarget | null) {
+  const el = t as HTMLElement | null
+  if (!el) return false
+  if (el.isContentEditable || el.tagName === 'TEXTAREA') return true
+  return el.tagName === 'INPUT'
+    && !['radio', 'checkbox', 'button', 'submit', 'reset'].includes((el as HTMLInputElement).type)
+}
+
+function onKey(e: KeyboardEvent) {
+  if (e.key !== 'PageDown' && e.key !== 'PageUp') return
+  if (!store.current || store.zoomItem || isTextEntry(e.target)) return
+  e.preventDefault()
+  goPage(store.page + (e.key === 'PageDown' ? 1 : -1))
+}
+
 function guard(e: BeforeUnloadEvent) {
   if (store.draftCount > 0) { e.preventDefault(); e.returnValue = '' }
 }
 
 onMounted(async () => {
   window.addEventListener('beforeunload', guard)
+  window.addEventListener('keydown', onKey)
   await store.loadLists()
   const q = new URLSearchParams(location.search)
   const wf = q.get('wf') ?? ''
@@ -142,7 +178,10 @@ onMounted(async () => {
   // 深链打开后 URL 保留 item 参数,刷新页面仍能回到这一条
   if (await store.openList(target, { itemId: item }) && !item) syncUrl(target)
 })
-onBeforeUnmount(() => window.removeEventListener('beforeunload', guard))
+onBeforeUnmount(() => {
+  window.removeEventListener('beforeunload', guard)
+  window.removeEventListener('keydown', onKey)
+})
 </script>
 
 <style scoped>
@@ -154,6 +193,7 @@ onBeforeUnmount(() => window.removeEventListener('beforeunload', guard))
 .tabs button { border: 1px solid #94a3b8; background: #fff; padding: 2px 8px; cursor: pointer; }
 .tabs button[aria-selected="true"] { background: #0f172a; color: #fff; border-color: #0f172a; font-weight: 700; }
 .pager { display: flex; gap: 6px; align-items: center; }
+.page-input { width: 4.5em; font-size: 13px; text-align: center; }
 .drawer-toggle[aria-pressed="true"] { background: #0f172a; color: #fff; }
 .err { color: #b91c1c; padding: 6px 8px; }
 .hint { color: #475569; padding: 6px 8px; }
@@ -172,4 +212,5 @@ onBeforeUnmount(() => window.removeEventListener('beforeunload', guard))
 .modal { background: #fff; width: 92vw; max-height: 96vh; overflow: auto; border-radius: 6px; padding: 8px; }
 .modal-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;
               font-weight: 700; }
+.hint-inline { font-weight: 400; font-size: 12px; color: #475569; margin-left: 8px; }
 </style>
