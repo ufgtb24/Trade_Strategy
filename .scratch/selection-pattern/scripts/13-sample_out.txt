@@ -1,0 +1,6 @@
+池子 dv2M_px20_cap100M_userexcl：2024-01-02 至 2026-10-05 曾在池的股票 2508 只
+2024-01-02 在池 888 只，抽样：AORT, DERM, SHLS, SKIN, SUZ, TAC, TRIN, VITL
+2025-06-02 在池 998 只，抽样：ABCL, BKKT, DX, JKS, SNDL, STIM, TTI, XNCR
+2026-09-01 在池 1050 只，抽样：BBNX, HDSN, LION, PALI, SID, SVC, TIGR, UEC
+普查样本：从曾在池股票里随机 150 只
+正确池子 dv2M_px20_cap100M（剔封闭式基金与 SPAC 壳）曾在池 2371 只；普查样本中落在其中的 144 只

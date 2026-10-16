@@ -95,6 +95,10 @@ An effort's map, tickets and research all live under one directory:
   purpose can't be stated in terms of the product goal lies beyond the
   destination and belongs under **Out of scope**. Anything without a direct
   causal link to the product goal must not become a hard requirement.
+- Every hard requirement an answer sets carries, next to it, one sentence on what
+  it guards against (the failure or cost it prevents). The spec and the
+  implementation tickets carry that reason with the requirement, so later work can
+  tell whether a new case is one the requirement was meant to cover.
 - The **direction** is settled with the user right after claiming, before the
   question is worked: from the purpose and what is known, the session proposes
   in a sentence or two which way to lean when details compete, and the user
@@ -136,14 +140,9 @@ ticket's own `Status`, which stays `claimed` until then.
 **An unconfirmed answer is not a conclusion.** Resolving a ticket ends by
 writing `## Answer` and stopping there, with the answer in front of the user.
 Once they approve it, **that single approval covers every change that follows
-from it**. Make them all, without asking again.
-
-The reason is propagation, not caution. A line in `Decisions so far` makes a
-conclusion globally true for every later session. The worst version is
-rewriting another ticket's `## Question` in light of your own unconfirmed
-answer: it deletes the premise that ticket was written to examine, invisibly to
-whoever picks it up next. One round of review is cheap; unpicking a conclusion
-from five files is not.
+from it**. Make them all, without asking again. Once the spec is published,
+leave resolved tickets as they are; the spec carries the rule in force, and a
+later change gets its own decision ticket or user question.
 
 Claiming is the exception: set `Status: claimed` and the `Claimed:` line
 before any other work. It touches only the ticket you are about to resolve.
@@ -167,6 +166,10 @@ with the user (see **Ticket framing**).
   and acceptance requirements when creating implementation tickets. Do not
   lose items at handoffs.
 - During implementation, record validation evidence against the item. Failure
-  or insufficient evidence must not count as a pass. Changes to the original
-  decision and propagation to shared documents remain subject to sign-off.
+  or insufficient evidence must not count as a pass. Changes to a decision
+  remain subject to sign-off.
+- An answer that proposes implementation tickets drafts them with their
+  prerequisites, then settles how each will be reviewed by
+  [review-planning.md](review-planning.md) before the answer is presented, so the
+  one approval covers the reviews too.
 

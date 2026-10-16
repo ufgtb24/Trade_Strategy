@@ -1,0 +1,7 @@
+Nasdaq 财报日历 2024-02-14：全表 146 行，字段 ['eps', 'surprise', 'time', 'symbol', 'name', 'marketCap', 'fiscalQuarterEnding', 'epsForecast', 'noOfEsts']；其中目标池 29 只，有分析师预期的 26 只，时段分布 {'time-not-supplied': 29}
+Nasdaq 财报日历 2026-08-12：全表 233 行，字段 ['eps', 'surprise', 'time', 'symbol', 'name', 'marketCap', 'fiscalQuarterEnding', 'epsForecast', 'noOfEsts']；其中目标池 40 只，有分析师预期的 31 只，时段分布 {'time-not-supplied': 40}
+SEC 交割失败 cnsfails202401a：44988 行，字段 ['SETTLEMENT DATE', 'CUSIP', 'SYMBOL', 'QUANTITY (FAILS)', 'DESCRIPTION', 'PRICE']，结算日 20240102～Trailer total quantity of shares 932349891
+  20240102：当天 5116 只证券有交割失败；目标池 833 只中出现 316 只
+  20240110：当天 4934 只证券有交割失败；目标池 840 只中出现 284 只
+StockTwits SHLS 首页：30 条，时间 2026-09-02T05:56:16Z ～ 2026-10-05T10:17:48Z，带用户自标看多/看空的 10 条；游标 {'more': True, 'since': 665740289, 'max': 663406184}
+CBOE VIX 日线：9288 行，01/02/1990 ～ 10/06/2026

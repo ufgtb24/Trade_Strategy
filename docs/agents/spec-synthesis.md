@@ -30,8 +30,7 @@ Start with traversal and indexing, rather than repeated keyword searches or
 comparing every whole ticket against every other ticket. Compare clauses within
 relevant topic groups; then check cross-topic constraints and consumer interfaces.
 Targeted searches are useful for resolving a specific ambiguity, but cannot
-replace reading the source set. This reduces redundant work; it is not a claim
-that semantic overlap detection always has linear complexity.
+replace reading the source set.
 
 ## Resolve overlap at clause level
 
@@ -110,6 +109,13 @@ Before finishing, verify:
   choice has been promoted to a universal requirement.
 - Source links and spec destinations resolve; reused records are not duplicated.
 - Readiness reflects unresolved decisions and validation prerequisites accurately.
+- Each hard constraint keeps the reason its source decision gives for it.
 
 If a source changes during synthesis, revisit its affected topic groups and
 dependent clauses before finalizing; do not overwrite concurrent source edits.
+
+After publication, stop regenerating the spec from its sources. Rewrite a
+revised clause in place as the rule in force, linking its approving record;
+keep tuned values, schedules and deployed state out of the spec. Leave work
+already handed to tickets and contracts with closed owners unamended; change the
+carrying ticket or add a contract with a new ID.

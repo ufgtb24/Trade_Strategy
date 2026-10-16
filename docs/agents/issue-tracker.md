@@ -20,7 +20,10 @@ current branch. There is no GitHub Issues usage; do not reach for `gh`.
 
 Wayfinder decision tickets and implementation tickets use separate directories.
 The decision effort's `.scratch/<effort>/spec.md` remains the sole authoritative
-specification; implementation tickets reference it rather than copy it.
+specification; tickets link its clauses rather than copy them, so each rule has
+one live text. Never edit closed tickets, resolved questions or synthesis
+records; they show what held then. Rewrite current documents in place when false,
+without "read X as Y" layers, so they show what holds now.
 
 ## When a skill says "publish to the issue tracker"
 
@@ -53,7 +56,8 @@ Before splitting, publishing, migrating, executing or accepting implementation
 tickets, read and follow [Implementation ticket rules](implementation-tickets.md).
 They define detailed layout, numbering, publication and execution, including
 Purpose and inherited Direction. This applies to Matt Pocock to-tickets/implement,
-adapted variants and equivalent manual workflows.
+adapted variants and equivalent manual workflows. Before proposing tickets, also
+read and follow [Review planning rules](review-planning.md).
 
 ## Spec synthesis
 

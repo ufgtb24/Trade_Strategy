@@ -4,7 +4,7 @@ frontend_port: 5171
 dataset_dir: /home/yu/PycharmProjects/Trade_Strategy/datasets/pkls
 scan:
   start_date: '2025-01-01'
-  end_date: '2026-01-01'
+  end_date: '2026-06-01'
   workers: 26
   ticker_regex: null
   label_horizon: 40
