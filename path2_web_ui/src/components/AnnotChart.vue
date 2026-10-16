@@ -111,6 +111,11 @@ const BRUSH_OPTION = {
 
 function fmtNum(x: number | null | undefined) { return x == null ? '—' : x.toFixed(2) }
 function fmtPct(x: number | null | undefined) { return x == null ? '—' : `${(x * 100).toFixed(1)}%` }
+function fmtPrice(x: number) { return x >= 100 ? x.toFixed(1) : x >= 1 ? x.toFixed(2) : x.toPrecision(3) }
+function fmtVol(x: number | null | undefined) {
+  if (x == null) return '—'
+  return x >= 1e8 ? `${(x / 1e8).toFixed(2)}亿` : x >= 1e4 ? `${(x / 1e4).toFixed(1)}万` : String(Math.round(x))
+}
 function labelText(l: AnnotationLabel | null | undefined) {
   return l === 'positive' ? '正例' : l === 'negative' ? '反例'
     : l === 'data_error' ? '数据有误' : '未选标签'
@@ -244,7 +249,22 @@ function buildOption(zoom: ZoomWindow | null) {
       { gridIndex: 1, splitNumber: 2, axisLabel: { show: false }, splitLine: { show: false } },
     ],
     axisPointer: { link: [{ xAxisIndex: 'all' }] },
-    tooltip: { trigger: 'axis', axisPointer: { type: 'cross' }, confine: true },
+    // 紧凑提示:两行小字,贴在光标对侧的上角,不挡光标附近的 K 线
+    tooltip: {
+      trigger: 'axis', axisPointer: { type: 'cross' }, confine: true,
+      padding: [3, 6], textStyle: { fontSize: 11, lineHeight: 15 },
+      position: (pt: number[], _p: any, _d: any, _r: any, size: any) =>
+        pt[0] < size.viewSize[0] / 2 ? { top: 4, right: 32 } : { top: 4, left: 52 },
+      formatter: (ps: any) => {
+        const i = Array.isArray(ps) ? ps[0]?.dataIndex : ps?.dataIndex
+        const x = i != null ? b[i] : undefined
+        if (!x) return ''
+        const prev = i > 0 ? b[i - 1].c : null
+        const chg = prev ? ` ${x.c >= prev ? '+' : ''}${((x.c / prev - 1) * 100).toFixed(1)}%` : ''
+        return `${x.date}　收 ${fmtPrice(x.c)}${chg}　量 ${fmtVol(x.v)}<br/>`
+          + `开 ${fmtPrice(x.o)}　高 ${fmtPrice(x.h)}　低 ${fmtPrice(x.l)}`
+      },
+    },
     brush: BRUSH_OPTION,
     toolbox: { show: false },
     dataZoom: [{ type: 'inside', xAxisIndex: [0, 1], start: zoom?.start ?? 0, end: zoom?.end ?? 100,
