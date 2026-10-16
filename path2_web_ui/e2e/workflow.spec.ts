@@ -139,3 +139,168 @@ test('看图工作流:框选、点买点、标正例、写备注 → 抽屉里�
   expect(a.buy_date >= a.range_start && a.buy_date <= a.range_end).toBe(true)
   expect(a.ann_id).toMatch(/[0-9a-f-]{36}/)
 })
+
+/** 从格子的标注摘要里读起止与买点。 */
+async function readSummary(cell: Locator) {
+  const t = await cell.getByTestId('ann-summary').innerText()
+  const m = t.match(/起止 (\S+) → (\S+) · 买点 (\S+)/)
+  if (!m) throw new Error(`摘要格式不对:${t}`)
+  return { start: m[1], end: m[2], buy: m[3] }
+}
+const dayDiff = (a: string, b: string) => Math.abs(Date.parse(a) - Date.parse(b)) / 86_400_000
+const daySpan = (r: { start: string, end: string }) => dayDiff(r.start, r.end)
+
+test('看图工作流:小图双击放大;放大图滚轮以鼠标处为中心横向缩放;放大图双击退出', async ({ page }) => {
+  await page.goto(`/?wf=${LIST_ID}`)
+  const cell = page.locator(`.annot-chart[data-item-id="${ITEM_B}"]`)
+  await expect(cell.locator('canvas').first()).toBeVisible({ timeout: 20_000 })
+
+  // 开着「点买点」双击小图:打开放大,双击带出的点击不留买点
+  await cell.getByTestId('tool-buy').click()
+  await cell.locator('.chart').dblclick({ position: { x: 200, y: 60 } })
+  const zoom = page.getByTestId('wf-zoom')
+  await expect(zoom).toBeVisible()
+  await expect(cell.getByTestId('ann-summary')).toHaveCount(0)
+
+  const big = zoom.locator('.annot-chart')
+  await expect(big.locator('canvas').first()).toBeVisible({ timeout: 20_000 })
+  await page.waitForTimeout(300)
+
+  // 缩放前:横向拉满框一段、在 60% 处点买点
+  await brush(page, big, 0.08, 0.97)
+  await clickBuy(page, big, 0.6)
+  const before = await readSummary(big)
+
+  // 鼠标停在 60% 处滚轮放大
+  const b = await chartBox(big)
+  await page.mouse.move(b.x + b.width * 0.6, b.y + b.height * 0.3)
+  for (let i = 0; i < 6; i++) { await page.mouse.wheel(0, -120); await page.waitForTimeout(80) }
+
+  // 缩放后:同样拉满框一段,跨度明显变窄;同一位置再点买点,仍是同一根 K 线(不动点在鼠标处)
+  await brush(page, big, 0.08, 0.97)
+  await clickBuy(page, big, 0.6)
+  const after = await readSummary(big)
+  expect(daySpan(after)).toBeLessThan(daySpan(before) * 0.7)
+  expect(dayDiff(after.buy, before.buy)).toBeLessThanOrEqual(4)
+  expect(after.start <= before.buy && before.buy <= after.end).toBe(true)
+  // 只在已取回的 K 线里缩放:不越出图窗
+  expect(after.start >= '2025-04-01' && after.end <= '2025-08-27').toBe(true)
+
+  // 开着「点买点」在放大图别处双击:退出放大,买点不变
+  await big.locator('.chart').dblclick({ position: { x: b.width * 0.3, y: b.height * 0.3 } })
+  await expect(zoom).toHaveCount(0)
+  expect((await readSummary(cell)).buy).toBe(after.buy)
+})
+
+/** 横向框满整个可见区:从主图左边缘内侧拖到图右缘外(超出部分被夹到主图边上)。 */
+async function brushAll(page: Page, cell: Locator) {
+  const b = await chartBox(cell)
+  await brush(page, cell, 54 / b.width, 1 - 2 / b.width)
+}
+
+test('看图工作流:小图也能滚轮缩放;放大图从小图当时的范围开始', async ({ page }) => {
+  await page.goto(`/?wf=${LIST_ID}`)
+  const cell = page.getByTestId('wf-grid').locator(`.annot-chart[data-item-id="${ITEM_A}"]`)
+  await expect(cell.locator('canvas').first()).toBeVisible({ timeout: 20_000 })
+  await page.waitForTimeout(300)
+
+  await brushAll(page, cell)
+  await clickBuy(page, cell, 0.6)
+  const before = await readSummary(cell)
+
+  const b = await chartBox(cell)
+  await page.mouse.move(b.x + b.width * 0.6, b.y + b.height * 0.3)
+  for (let i = 0; i < 6; i++) { await page.mouse.wheel(0, -120); await page.waitForTimeout(80) }
+
+  await brushAll(page, cell)
+  await clickBuy(page, cell, 0.6)
+  const after = await readSummary(cell)
+  expect(daySpan(after)).toBeLessThan(daySpan(before) * 0.7)
+  expect(dayDiff(after.buy, before.buy)).toBeLessThanOrEqual(4)
+  expect(after.start <= before.buy && before.buy <= after.end).toBe(true)
+
+  // 双击放大:放大图横向拉满框一段,范围和小图缩放后的一致
+  await cell.locator('.chart').dblclick({ position: { x: b.width * 0.5, y: b.height * 0.3 } })
+  const zoom = page.getByTestId('wf-zoom')
+  await expect(zoom).toBeVisible()
+  expect((await readSummary(cell)).buy).toBe(after.buy)
+  const big = zoom.locator('.annot-chart')
+  await expect(big.locator('canvas').first()).toBeVisible({ timeout: 20_000 })
+  await page.waitForTimeout(300)
+  await brushAll(page, big)
+  const inBig = await readSummary(big)
+  expect(dayDiff(inBig.start, after.start)).toBeLessThanOrEqual(4)
+  expect(dayDiff(inBig.end, after.end)).toBeLessThanOrEqual(4)
+
+  // 开着框选双击退出:不改起止
+  const bb = await chartBox(big)
+  await big.locator('.chart').dblclick({ position: { x: bb.width * 0.5, y: bb.height * 0.3 } })
+  await expect(zoom).toHaveCount(0)
+  const back = await readSummary(cell)
+  expect([back.start, back.end]).toEqual([inBig.start, inBig.end])
+})
+
+const PAGES_ID = 'e2e-workflow-pages'
+const PAGES_PATH = resolve(WF_ROOT, 'lists', `${PAGES_ID}.json`)
+
+/** 13 条 → 3 页(每页 6 条)。 */
+function pagesFixture() {
+  const days = ['2025-06-02', '2025-06-03', '2025-06-04', '2025-06-05', '2025-06-06', '2025-06-09',
+                '2025-06-10', '2025-06-11', '2025-06-12', '2025-06-13', '2025-06-16', '2025-06-17',
+                '2025-06-18']
+  const items = days.map(t => ({
+    item_id: `AAPL@${t}`, symbol: 'AAPL', exchange: 'NASDAQ', t, entry_date: t,
+    view_start: '2025-03-03', view_end: '2025-07-30',
+    marks: { decision: t, entry: t }, metrics: { M: 0.02 }, tags: [],
+  }))
+  return {
+    schema: 'chart_workflow.list/1', list_id: PAGES_ID, kind: 'bigmoves', title: 'e2e 翻页清单',
+    created_at: '2000-01-01T00:00:00', train_start: '2024-01-01', train_end: '2025-12-31', params: {},
+    groups: [{ key: 'all', title: '全部（13）', item_ids: items.map(x => x.item_id) }], items,
+  }
+}
+
+test('看图工作流:页码框跳转、PgUp / PgDn 翻页', async ({ page }) => {
+  writeFileSync(PAGES_PATH, JSON.stringify(pagesFixture(), null, 1))
+  try {
+    await page.goto(`/?wf=${PAGES_ID}`)
+    const input = page.getByTestId('wf-page-input')
+    const first = page.locator('.annot-chart').first()
+    await expect(input).toHaveValue('1', { timeout: 20_000 })
+    await expect(page.locator('.pager')).toContainText('/ 3 页')
+    await expect(first).toHaveAttribute('data-item-id', 'AAPL@2025-06-02')
+
+    await page.keyboard.press('PageDown')
+    await expect(input).toHaveValue('2')
+    await expect(first).toHaveAttribute('data-item-id', 'AAPL@2025-06-10')
+
+    // 点过单选框后焦点在它上面,PgDn 照样翻页
+    await first.getByTestId('label-positive').check()
+    await page.keyboard.press('PageDown')
+    await expect(input).toHaveValue('3')
+    await expect(page.locator('.annot-chart')).toHaveCount(1)
+    await page.keyboard.press('PageDown')
+    await expect(input).toHaveValue('3')
+    await page.keyboard.press('PageUp')
+    await expect(input).toHaveValue('2')
+
+    // 在备注里按 PgDn 不翻页
+    await first.getByTestId('note').click()
+    await page.keyboard.press('PageDown')
+    await expect(input).toHaveValue('2')
+
+    // 页码框:回车跳转;超出页数跳到最后一页
+    await input.fill('1')
+    await input.press('Enter')
+    await expect(input).toHaveValue('1')
+    await expect(first).toHaveAttribute('data-item-id', 'AAPL@2025-06-02')
+    await input.fill('9')
+    await input.press('Enter')
+    await expect(input).toHaveValue('3')
+    // 回车后焦点离开页码框,PgUp 直接可用
+    await page.keyboard.press('PageUp')
+    await expect(input).toHaveValue('2')
+  } finally {
+    rmSync(PAGES_PATH, { force: true })
+  }
+})

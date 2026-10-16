@@ -33,8 +33,8 @@
              :value="annotation?.note ?? ''" @input="onNote">
       <button type="button" class="tool" data-testid="tool-clear" :disabled="!annotation"
               @click="store.deleteAnnotation(item.item_id)">清除</button>
-      <button v-if="!large" type="button" class="tool" data-testid="tool-zoom"
-              @click="store.setZoom(item.item_id)">放大</button>
+      <button v-if="!large" type="button" class="tool" data-testid="tool-zoom" title="也可以双击图放大"
+              @click="openZoom">放大</button>
     </div>
     <div v-if="annotation" class="ann-line" data-testid="ann-summary">
       <b>{{ labelText(annotation.label) }}</b>
@@ -54,12 +54,16 @@
  * 标签与线型(实线 / 虚线)区分,不靠色相。
  *
  * 两个互斥的工具开关:「框选起止」用 ECharts lineX brush + createBrushRequestHandler 把
- * (startIdx, endIdx) 换成日期写进草稿;「点买点」在图上点一下,把那根 K 线的日期写成买点。 */
+ * (startIdx, endIdx) 换成日期写进草稿;「点买点」在图上点一下,把那根 K 线的日期写成买点。
+ *
+ * 小图双击打开放大模态框,放大图里双击关掉它;放大图从小图当时的缩放窗口开始。
+ * 小图和放大图都挂 inside dataZoom:滚轮横向缩放(ECharts 以鼠标处为不动点),按住拖动平移
+ * (框选开着时拖动是框选);只在已取回的 K 线里缩放,不会多取数据。 */
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import * as echarts from 'echarts'
 import type { Annotation, AnnotationLabel, Bar, WorkflowItem } from '../types'
 import { getWorkflowOhlc } from '../api'
-import { useWorkflowStore } from '../stores/workflow'
+import { useWorkflowStore, type ZoomWindow } from '../stores/workflow'
 import { createBrushRequestHandler } from './klineBrushHandler'
 
 const props = withDefaults(defineProps<{
@@ -90,6 +94,9 @@ const error = ref<string | null>(null)
 const mode = ref<'none' | 'brush' | 'buy'>('none')
 let chart: echarts.ECharts | null = null
 let ro: ResizeObserver | null = null
+/** 双击前浏览器先发两次 click;点买点模式下第一次 click 已写了买点。记下那次 click 之前的草稿,
+ *  双击时还原,双击只管放大 / 退出放大。undefined = 没有可还原的。 */
+let beforeClick: Annotation | null | undefined
 
 const INK = '#0f172a'
 const BRUSH_OPTION = {
@@ -137,7 +144,11 @@ function onNote(e: Event) {
 }
 
 function onZrClick(e: any) {
-  if (mode.value !== 'buy' || !chart || !bars.value.length) return
+  if (mode.value !== 'buy') return
+  if ((e.event?.detail ?? 1) >= 2) return      // 双击的第二次 click
+  const cur = store.drafts.get(props.item.item_id)
+  beforeClick = cur ? { ...cur } : null
+  if (!chart || !bars.value.length) return
   const px = [e.offsetX, e.offsetY]
   if (!chart.containPixel({ gridIndex: 0 }, px) && !chart.containPixel({ gridIndex: 1 }, px)) return
   // 两个 grid 左右边距相同,横坐标换算统一借主图 grid(按 xAxisIndex 换算拿不到值)
@@ -148,7 +159,27 @@ function onZrClick(e: any) {
   store.upsertAnnotation(props.item.item_id, { buy_date: bars.value[idx].date })
 }
 
-function buildOption() {
+function onZrDblClick() {
+  if (mode.value === 'buy' && beforeClick !== undefined) {
+    if (beforeClick) store.upsertAnnotation(props.item.item_id, beforeClick)
+    else store.deleteAnnotation(props.item.item_id)
+  }
+  beforeClick = undefined
+  if (props.large) store.setZoom(null)
+  else openZoom()
+}
+
+function currentZoom(): ZoomWindow | null {
+  const dz = (chart?.getOption() as any)?.dataZoom?.[0]
+  return dz?.start != null && dz?.end != null ? { start: dz.start, end: dz.end } : null
+}
+
+function openZoom() {
+  store.setZoom(props.item.item_id, currentZoom())
+}
+
+/** zoom:横向缩放窗口(百分比);null = 全段。 */
+function buildOption(zoom: ZoomWindow | null) {
   const b = bars.value
   const dates = b.map(x => x.date)
   const has = new Set(dates)
@@ -216,6 +247,8 @@ function buildOption() {
     tooltip: { trigger: 'axis', axisPointer: { type: 'cross' }, confine: true },
     brush: BRUSH_OPTION,
     toolbox: { show: false },
+    dataZoom: [{ type: 'inside', xAxisIndex: [0, 1], start: zoom?.start ?? 0, end: zoom?.end ?? 100,
+                 zoomOnMouseWheel: true, moveOnMouseMove: true, moveOnMouseWheel: false, minValueSpan: 10 }],
     series: [
       {
         type: 'candlestick', name: 'K线', xAxisIndex: 0, yAxisIndex: 0, barWidth: '70%',
@@ -234,9 +267,11 @@ function buildOption() {
   }
 }
 
-function render() {
+/** keepZoom:改标注触发的重画保留当前缩放窗口;重取数据时小图回到全段,放大图从小图当时的窗口开始。 */
+function render(keepZoom = true) {
   if (!chart || !bars.value.length) return
-  chart.setOption(buildOption() as any, { notMerge: true })
+  const zoom = keepZoom ? currentZoom() : props.large ? store.zoomWindow : null
+  chart.setOption(buildOption(zoom) as any, { notMerge: true })
   if (mode.value === 'brush') {
     chart.dispatchAction({ type: 'takeGlobalCursor', key: 'brush',
                            brushOption: { brushType: 'lineX', brushMode: 'single' } })
@@ -251,7 +286,7 @@ async function load() {
   } catch (e: any) {
     error.value = String(e?.message ?? e)
   }
-  render()
+  render(false)
 }
 
 onMounted(() => {
@@ -260,6 +295,7 @@ onMounted(() => {
   chart.on('brushselected', brushH.onBrushSelected)
   chart.on('brushEnd', brushH.onBrushEnd)
   chart.getZr().on('click', onZrClick)
+  chart.getZr().on('dblclick', onZrDblClick)
   if (typeof ResizeObserver !== 'undefined') {
     ro = new ResizeObserver(() => chart?.resize())
     ro.observe(el.value)
@@ -268,7 +304,7 @@ onMounted(() => {
 })
 
 watch(() => props.item.item_id, () => { mode.value = 'none'; void load() })
-watch(() => [props.annotation, blind.value], render, { deep: true })
+watch(() => [props.annotation, blind.value], () => render(), { deep: true })
 
 onBeforeUnmount(() => {
   ro?.disconnect()

@@ -12,6 +12,9 @@ import { listWorkflowLists, loadWorkflowList, sendAnnotations } from '../api'
 
 export const PAGE_SIZE = 6
 
+/** 横向缩放窗口:dataZoom 的 start / end 百分比(0-100)。 */
+export interface ZoomWindow { start: number, end: number }
+
 /** 本地时间 YYYY-MM-DDTHH:MM:SS(与后端写盘口径一致)。 */
 export function nowLocal(d: Date = new Date()): string {
   const p = (n: number) => String(n).padStart(2, '0')
@@ -49,6 +52,8 @@ export const useWorkflowStore = defineStore('workflow', () => {
   const sendError = ref<string | null>(null)
   const lastSent = ref<AnnotationBatchResult | null>(null)
   const zoomItemId = ref<string | null>(null)
+  /** 放大图打开时的横向缩放窗口(dataZoom 百分比),取自小图当时的窗口;null = 全段。 */
+  const zoomWindow = ref<ZoomWindow | null>(null)
   const highlightItemId = ref<string | null>(null)
 
   const isBlind = computed(() => current.value?.kind === 'contrast_blind')
@@ -103,7 +108,7 @@ export const useWorkflowStore = defineStore('workflow', () => {
     groupKey.value = current.value.groups[0]?.key ?? ''
     tagFilter.value = ''
     page.value = 0
-    zoomItemId.value = null
+    setZoom(null)
     highlightItemId.value = null
     sendError.value = null
     if (opts.itemId) gotoItem(opts.itemId, { zoom: true })
@@ -142,7 +147,7 @@ export const useWorkflowStore = defineStore('workflow', () => {
     }
     page.value = Math.floor(idx / PAGE_SIZE)
     highlightItemId.value = itemId
-    if (opts.zoom) zoomItemId.value = itemId
+    if (opts.zoom) setZoom(itemId)
   }
 
   function upsertAnnotation(itemId: string, patch: Partial<Annotation>) {
@@ -191,14 +196,16 @@ export const useWorkflowStore = defineStore('workflow', () => {
     }
   }
 
-  function setZoom(itemId: string | null) {
+  /** 打开(itemId)或关闭(null)放大框;win 是小图当时的缩放窗口,放大图从它开始。 */
+  function setZoom(itemId: string | null, win: ZoomWindow | null = null) {
     zoomItemId.value = itemId
+    zoomWindow.value = itemId ? win : null
     if (itemId) highlightItemId.value = itemId
   }
 
   return {
     lists, current, loadError, groupKey, tagFilter, page, drafts, draftListId,
-    sending, sendError, lastSent, zoomItemId, highlightItemId,
+    sending, sendError, lastSent, zoomItemId, zoomWindow, highlightItemId,
     isBlind, itemsById, currentGroup, groupItems, allTags, filteredItems, pageCount, pageItems,
     draftList, draftCount, incomplete, zoomItem,
     loadLists, openList, setGroup, setTagFilter, setPage, gotoItem,
