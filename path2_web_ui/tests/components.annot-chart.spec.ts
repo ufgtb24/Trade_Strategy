@@ -1,5 +1,5 @@
 /** AnnotChart:模拟 brush 事件后草稿里有起止,模拟点击后有买点,盲看清单不渲染上下线;
- *  跨源比对不一致的提示(盲看不显示)、「数据有误」标签。
+ *  跨源比对不一致的提示(盲看不显示)、「数据有误」标签;小图双击放大、放大图的滚轮缩放。
  *  jsdom 没有 canvas,mock 掉 echarts.init,改为捕获事件处理函数与 setOption 入参。 */
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
@@ -18,9 +18,11 @@ vi.mock('../src/api', () => ({
 let handlers: Record<string, (p?: any) => void> = {}
 let zrHandlers: Record<string, (p?: any) => void> = {}
 let lastOption: any = null
+let currentZoom: { start: number, end: number } | null = null   // 模拟用户滚轮缩放后的窗口
 function makeFakeChart() {
   return {
     setOption: vi.fn((o: any) => { lastOption = o }),
+    getOption: () => ({ ...lastOption, dataZoom: currentZoom ? [currentZoom] : lastOption?.dataZoom }),
     on: vi.fn((ev: string, fn: any) => { handlers[ev] = fn }),
     off: vi.fn(),
     getZr: () => ({ on: (ev: string, fn: any) => { zrHandlers[ev] = fn }, off: vi.fn() }),
@@ -53,10 +55,10 @@ function mkList(kind: WorkflowList['kind'], item: WorkflowItem): WorkflowList {
            items: [item] }
 }
 
-async function mountChart(kind: WorkflowList['kind'], item = ITEM) {
+async function mountChart(kind: WorkflowList['kind'], item = ITEM, large = false) {
   const store = useWorkflowStore()
   store.current = mkList(kind, item)
-  const w = mount(AnnotChart, { props: { item } })
+  const w = mount(AnnotChart, { props: { item, large } })
   await flushPromises()
   return { w, store }
 }
@@ -67,6 +69,7 @@ describe('AnnotChart', () => {
     handlers = {}
     zrHandlers = {}
     lastOption = null
+    currentZoom = null
   })
 
   it('brush 事件 → 草稿里有起止日期', async () => {
@@ -150,5 +153,82 @@ describe('AnnotChart', () => {
     const area = lastOption.series[0].markArea.data[0]
     expect(area[0].name).toBe('数据有误')
     expect(area[0].itemStyle.borderType).toBe('dotted')
+  })
+
+  it('小图双击 → 放大这一条;放大图里双击 → 退出放大', async () => {
+    const { store } = await mountChart('bigmoves')
+    zrHandlers.dblclick()
+    expect(store.zoomItemId).toBe(ITEM.item_id)
+    await mountChart('bigmoves', ITEM, true)
+    zrHandlers.dblclick()
+    expect(store.zoomItemId).toBeNull()
+  })
+
+  it('放大图开着点买点时双击退出:双击带出的那次点击不改买点', async () => {
+    const { w, store } = await mountChart('bigmoves', ITEM, true)
+    store.setZoom(ITEM.item_id)
+    store.upsertAnnotation(ITEM.item_id, { buy_date: '2025-03-11' })
+    await w.find('[data-testid="tool-buy"]').trigger('click')
+    zrHandlers.click({ offsetX: 100, offsetY: 50, event: { detail: 1 } })
+    zrHandlers.click({ offsetX: 100, offsetY: 50, event: { detail: 2 } })
+    zrHandlers.dblclick()
+    expect(store.zoomItemId).toBeNull()
+    expect(store.drafts.get(ITEM.item_id)!.buy_date).toBe('2025-03-11')
+  })
+
+  it('点买点模式下双击:只放大,双击带出的那次点击不留买点;原有买点保持不变', async () => {
+    const { w, store } = await mountChart('bigmoves')
+    await w.find('[data-testid="tool-buy"]').trigger('click')
+    zrHandlers.click({ offsetX: 100, offsetY: 50, event: { detail: 1 } })
+    zrHandlers.click({ offsetX: 100, offsetY: 50, event: { detail: 2 } })
+    zrHandlers.dblclick()
+    expect(store.drafts.has(ITEM.item_id)).toBe(false)
+    expect(store.zoomItemId).toBe(ITEM.item_id)
+
+    store.upsertAnnotation(ITEM.item_id, { buy_date: '2025-03-11', label: 'positive' })
+    zrHandlers.click({ offsetX: 100, offsetY: 50, event: { detail: 1 } })
+    expect(store.drafts.get(ITEM.item_id)!.buy_date).toBe('2025-03-13')
+    zrHandlers.click({ offsetX: 100, offsetY: 50, event: { detail: 2 } })
+    zrHandlers.dblclick()
+    expect(store.drafts.get(ITEM.item_id)!.buy_date).toBe('2025-03-11')
+    expect(store.drafts.get(ITEM.item_id)!.label).toBe('positive')
+  })
+
+  it('小图和放大图都挂滚轮缩放,同时管 K 线和成交量两根横轴,初始为全段', async () => {
+    for (const large of [false, true]) {
+      await mountChart('bigmoves', ITEM, large)
+      const dz = lastOption.dataZoom[0]
+      expect(dz.type).toBe('inside')
+      expect(dz.xAxisIndex).toEqual([0, 1])
+      expect(dz.zoomOnMouseWheel).toBe(true)
+      expect([dz.start, dz.end]).toEqual([0, 100])
+    }
+  })
+
+  it('小图缩放过再放大(双击或按钮),放大图从小图当时的窗口开始;关掉后窗口清空', async () => {
+    const { w, store } = await mountChart('bigmoves')
+    currentZoom = { start: 30, end: 70 }
+    zrHandlers.dblclick()
+    expect(store.zoomWindow).toEqual({ start: 30, end: 70 })
+    store.setZoom(null)
+    expect(store.zoomWindow).toBeNull()
+    currentZoom = { start: 10, end: 50 }
+    await w.find('[data-testid="tool-zoom"]').trigger('click')
+    expect(store.zoomItemId).toBe(ITEM.item_id)
+    expect(store.zoomWindow).toEqual({ start: 10, end: 50 })
+    currentZoom = null
+    await mountChart('bigmoves', ITEM, true)
+    expect([lastOption.dataZoom[0].start, lastOption.dataZoom[0].end]).toEqual([10, 50])
+  })
+
+  it('缩放后改标注,重画保留缩放窗口;换一条回到全段', async () => {
+    const { w, store } = await mountChart('bigmoves')
+    currentZoom = { start: 20, end: 60 }
+    store.upsertAnnotation(ITEM.item_id, { range_start: '2025-03-11', range_end: '2025-03-13' })
+    await w.setProps({ annotation: store.drafts.get(ITEM.item_id)! })
+    expect([lastOption.dataZoom[0].start, lastOption.dataZoom[0].end]).toEqual([20, 60])
+    await w.setProps({ item: { ...ITEM, item_id: 'AAA@2025-03-13' } })
+    await flushPromises()
+    expect([lastOption.dataZoom[0].start, lastOption.dataZoom[0].end]).toEqual([0, 100])
   })
 })

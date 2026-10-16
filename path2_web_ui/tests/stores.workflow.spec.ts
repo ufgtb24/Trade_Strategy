@@ -117,14 +117,16 @@ describe('workflow store', () => {
     expect(s.highlightItemId).toBe(s.current.items[6].item_id)
   })
 
-  it('openList 深链:翻到含该条的页、高亮并放大', async () => {
+  it('openList 深链:翻到含该条的页、高亮并放大(从全段开始)', async () => {
     const s = useWorkflowStore()
     const doc = mkList(8)
     ;(loadWorkflowList as any).mockResolvedValue(doc)
+    s.setZoom(doc.items[0].item_id, { start: 20, end: 60 })      // 上一次放大留下的窗口不能带过来
     await s.openList('r001', { itemId: doc.items[7].item_id })
     expect(s.groupKey).toBe('all')
     expect(s.page).toBe(1)
     expect(s.zoomItemId).toBe(doc.items[7].item_id)
+    expect(s.zoomWindow).toBeNull()
     expect(s.highlightItemId).toBe(doc.items[7].item_id)
   })
 
