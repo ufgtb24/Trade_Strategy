@@ -53,10 +53,12 @@ tracker.
   flagged ticket a recommended role and a one-sentence reason, and let the user
   confirm the roles in the same review round; this is part of that review, not a
   separate approval step.
-- Whoever proposes implementation tickets, in a breakdown or in a decision answer,
-  drafts the tickets and their `Blocked by` prerequisites first, then reads and
-  follows [review-planning.md](review-planning.md) to settle how each ticket's
-  result will be reviewed, before presenting them; the reviews are presented in
+- Whoever adds implementation tickets or `Blocked by` prerequisites, by any route
+  (a breakdown, a decision answer, a follow-up to a closed ticket, a question's
+  resolution, a scope adjustment), drafts the tickets and their prerequisites
+  first, then reads and follows [review-planning.md](review-planning.md) to settle
+  where the user reviews results, including its upstream check for older results
+  that gain a new consumer, before presenting them; the reviews are presented in
   the same review round. The acceptance criteria then carry the review; executors
   do not decide it.
 - Published tickets default to `ready-for-agent` unless the user chose
@@ -135,15 +137,15 @@ evidence contradicts the spec, keep the evidence and pause affected work. Do not
 rewrite the spec, other tickets or failure statistics merely to pass. Shared code
 needs no extra approval.
 
-Decisions serve the ticket's Purpose, not the other way round. Whenever a
-decision or spec clause rules out a simpler fix, say so in your report. When a
-fix would work around it or cost more than revising it, when its reason does not
-cover the case, or when a problem survives two fix rounds, list the decisions
-your fixes have respected, name the likely culprit, and raise a question that
-quotes it with its reason and recommends keeping or revising it, with wording;
-never keep compensating silently. Replace approaches adopted only during
-implementation yourself and say so. Never break or rewrite a decision on your
-own; the user decides.
+Decisions serve the ticket's Purpose, not the other way round. Either keep a
+decision silently or raise it; there is no keeping it and reporting it. Keep it
+while respecting it costs little. When a fix would work around it or cost more
+than revising it, when its reason does not cover the case, or when a problem
+survives two fix rounds, list the decisions your fixes have respected, name the
+likely culprit, and raise a question that quotes it with its reason and
+recommends keeping or revising it, with wording; never keep compensating
+silently past that point. Replace approaches adopted only during implementation
+yourself. Never break or rewrite a decision on your own; the user decides.
 
 ## Triage status and execution progress
 
@@ -271,7 +273,11 @@ agent-grabbable set.
 
 A decision only the user can make (a spec gap, a rule that would make later tickets
 impossible, a decision whose cost now outweighs its purpose, a long job to approve,
-an undeclared dependency) gets one question file.
+an undeclared dependency, a build-on step about to use a result whose user-only
+part was never reviewed) gets one question file. That last case is the fallback
+for build-on points that review planning missed or that appear during execution:
+a prerequisite's `未安排人审：` part, or a default or measure an executor set and
+marked to be validated (待验证), counts as never reviewed.
 It is the single durable place for what is being decided, the routes, their costs
 and the recommendation. The board lists unresolved questions first; a session that asks
 the user reads the same file.
@@ -300,6 +306,11 @@ the user reads the same file.
   and Comments for the lifecycle.
 - **The user decides direction, not parameters.** Explain in prose first, numbers
   after; propose defaults marked as to be validated instead of asking for values.
+- **Approving a long job is not a review.** Approval commits the machine's time,
+  which the user also plans other work around; a human review gate confirms a
+  result. They are never one question: a passed gate does not approve a launch,
+  and an approved launch does not stand for a review. The dispatcher tooling may
+  let the user pre-authorize launches for a time window; gates still stop.
 - **Blocking stays in ticket files.** Set each affected not-started ticket to
   `needs-info` and append a Comment linking the question. When the question resolves,
   restore the ready role and append a release Comment naming it. The board
@@ -320,18 +331,30 @@ the user reads the same file.
 
 ## Claim, complete, fail and hand off
 
-1. Read the ticket, applicable spec clauses and actual prerequisite artifacts.
-   Verify eligibility and record the claim before implementation, then implement
-   in the ticket's worktree (see Execution in linked worktrees).
+1. Read the ticket, applicable spec clauses and actual prerequisite artifacts, plus
+   each prerequisite ticket's `未安排人审：` lines and the values its completion
+   record marks to be validated (待验证). Verify eligibility and record the claim
+   before implementation, then implement in the ticket's worktree (see Execution
+   in linked worktrees).
 2. Execute acceptance checks, retaining inputs, versions and reproducible evidence.
-   Perform the applicable tests, code review and commit requirements. All of these
-   remain in-progress; there is no separate awaiting-acceptance stage.
+   Perform the applicable tests and commit requirements, then an independent code
+   review: run the code-review skill on the ticket branch against its base, so two
+   separate sub-agents check the diff against the documented coding standards (with
+   the skill's smell baseline) and against the ticket and its spec clauses, without
+   seeing how the work was done. Fix standards violations and spec findings and
+   rerun the tests; a smell may be declined with a reason in the completion record.
+   Do not review again after the fixes. Keep the review reports under
+   `evidence/<NN>/`. A human review gate at the end of the ticket comes after these
+   fixes and any regeneration they require (review-planning.md, Where and when the
+   review sits). All of these remain in-progress; there is no separate
+   awaiting-acceptance stage.
 3. Write the completion explanation with observed behavior, commands/results,
-   artifact or commit references, limitations and validation-item outcomes. Do not
-   present unexecuted checks as passed.
+   artifact or commit references, limitations and validation-item outcomes; for a
+   human review gate, the reviewed version (commit or artifact hash) and whether the
+   result changed materially afterwards. Do not present unexecuted checks as passed.
 4. Set `Progress: done` only after this ticket's requirements are satisfied. Do not
-   invent a universal human sign-off, but honor explicit human review/calibration
-   gates in the spec or ticket.
+   invent a universal human sign-off, but honor human review gates
+   (`人审闸（停在 X 之前）：`) and explicit calibration gates in the spec or ticket.
 5. A contributing ticket records which ticket closes the full validation contract;
    passing a local part is not passing the whole. A closure ticket lacking required
    evidence is not complete merely because it produced a report.
@@ -441,14 +464,17 @@ with its reason, or the user directs it for that ticket.
    worktree silently deletes its ignored files, so commit whatever is kept or
    cited, even if ignored.
 4. **Merge the base branch in**, resolve conflicts and rerun the suite.
-5. **Leave the worktree, keeping it.** In the checkout holding the base branch (the
+5. **Review**: run the independent code review and apply its fixes (Claim,
+   complete, fail and hand off, step 2). If the ticket ends with a human review
+   gate, stop for it now, on the fixed version.
+6. **Leave the worktree, keeping it.** In the checkout holding the base branch (the
    tracker checkout for the tracker branch) merge back with `--no-ff`, never squash
    or rebase: evidence pins commit ids and the completion record cites the merge
    commit. If the merged tree differs from the tested one
    (`git diff --quiet <tested> HEAD` fails), rerun the suite.
-6. **Record completion**, and only then set `Progress: done`, so successors are
+7. **Record completion**, and only then set `Progress: done`, so successors are
    not released before their prerequisite code is reachable.
-7. **Remove the worktree** from the tracker checkout: links as links, any ignore
+8. **Remove the worktree** from the tracker checkout: links as links, any ignore
    entry added for it, then `git branch -d`.
 
 Worktrees isolate code only: interfaces, data reached through links and compute stay

@@ -56,8 +56,8 @@ Before splitting, publishing, migrating, executing or accepting implementation
 tickets, read and follow [Implementation ticket rules](implementation-tickets.md).
 They define detailed layout, numbering, publication and execution, including
 Purpose and inherited Direction. This applies to Matt Pocock to-tickets/implement,
-adapted variants and equivalent manual workflows. Before proposing tickets, also
-read and follow [Review planning rules](review-planning.md).
+adapted variants and equivalent manual workflows. Before proposing tickets or
+adding prerequisites, also read and follow [Review planning rules](review-planning.md).
 
 ## Spec synthesis
 
