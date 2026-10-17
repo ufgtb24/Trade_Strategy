@@ -2,18 +2,27 @@
  *
  * 标注草稿只放内存(Map<item_id, Annotation>,每个 item 最多一条),不写 localStorage:
  * 未发送就丢,只靠 WorkflowView 的离开提醒兜底。草稿属于产生它的那份清单(draftListId),
- * 切到别的清单时要先确认丢弃。 */
+ * 切到别的清单时要先确认丢弃。
+ *
+ * 一张图可以点多个买点:普通点击 setBuyPoint 只留这一个(主买点),Shift + 点击 toggleBuyPoint
+ * 没有就加、有就去掉;去掉主买点时剩下的里最早加入的那个变成主买点。
+ *
+ * 大涨段清单点第一个买点之前不露结果(AnnotChart):每张图的初始右边界(决策日之后随机
+ * 3~15 根,initialRight)每次打开清单随机一次,小图和放大图共用;没有买点时把窗口右端拖过它,
+ * 这张图就记进 peeked,之后草稿的 peeked_before_buy = true。对数 / 线性坐标开关也在这里
+ * (默认对数,本次页面会话内有效,不写浏览器存储)。 */
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 import type {
-  Annotation, AnnotationBatchResult, WorkflowItem, WorkflowList, WorkflowListMeta,
+  Annotation, AnnotationBatchResult, AnnotationLabel, BuyPoint, WorkflowItem, WorkflowList,
+  WorkflowListKind, WorkflowListMeta,
 } from '../types'
 import { listWorkflowLists, loadWorkflowList, sendAnnotations } from '../api'
 
 export const PAGE_SIZE = 6
 
-/** 横向缩放窗口:dataZoom 的 start / end 百分比(0-100)。 */
-export interface ZoomWindow { start: number, end: number }
+/** 横向缩放窗口:dataZoom 的 start / end 百分比(0-100);或按 K 线序号的 startValue / endValue。 */
+export interface ZoomWindow { start?: number, end?: number, startValue?: number, endValue?: number }
 
 /** 本地时间 YYYY-MM-DDTHH:MM:SS(与后端写盘口径一致)。 */
 export function nowLocal(d: Date = new Date()): string {
@@ -31,12 +40,36 @@ function newId(): string {
   })
 }
 
-/** 一条草稿缺什么(空数组 = 可以发送)。 */
+/** 初始右边界:决策日之后随机几根(待验证)。 */
+export const INITIAL_RIGHT_MIN = 3
+export const INITIAL_RIGHT_MAX = 15
+export function randomRight(rand: () => number = Math.random): number {
+  return INITIAL_RIGHT_MIN + Math.floor(rand() * (INITIAL_RIGHT_MAX - INITIAL_RIGHT_MIN + 1))
+}
+
+/** 一条草稿缺什么(空数组 = 可以发送):标签必填;「数据有误」要起止;正例要至少一个买点。 */
 export function missingFields(a: Annotation): string[] {
   const out: string[] = []
-  if (!a.range_start || !a.range_end) out.push('起止')
   if (!a.label) out.push('标签')
+  if (a.label === 'data_error' && (!a.range_start || !a.range_end)) out.push('起止')
+  if (a.label === 'positive' && !(a.buy_points?.length)) out.push('买点')
   return out
+}
+
+/** 判定的显示文字随清单种类变(存的值不变):大涨段里反例叫「像但不买」;
+ *  盲看里正 / 反例叫「是我的意思 / 不是我的意思」;普通对照照旧。 */
+export function labelText(l: AnnotationLabel | null | undefined, kind?: WorkflowListKind | null): string {
+  if (l === 'data_error') return '数据有误'
+  if (!l) return '未选标签'
+  if (kind === 'contrast_blind') return l === 'positive' ? '是我的意思' : '不是我的意思'
+  if (kind === 'bigmoves') return l === 'positive' ? '正例' : '像但不买'
+  return l === 'positive' ? '正例' : '反例'
+}
+
+/** 主买点在前,其余按加入顺序。 */
+export function orderedBuyPoints(bps: BuyPoint[] | null | undefined): BuyPoint[] {
+  const list = bps ?? []
+  return [...list.filter(b => b.primary), ...list.filter(b => !b.primary)]
 }
 
 export const useWorkflowStore = defineStore('workflow', () => {
@@ -55,8 +88,15 @@ export const useWorkflowStore = defineStore('workflow', () => {
   /** 放大图打开时的横向缩放窗口(dataZoom 百分比),取自小图当时的窗口;null = 全段。 */
   const zoomWindow = ref<ZoomWindow | null>(null)
   const highlightItemId = ref<string | null>(null)
+  /** 每张图点买点前的初始右边界:决策日之后第几根(打开清单时随机一次,小图和放大图共用) */
+  const initialRight = ref(new Map<string, number>())
+  /** 点买点前把窗口往右展开过初始右边界的图 */
+  const peeked = ref(new Set<string>())
+  /** 主图纵轴用对数坐标(默认);只在本次页面会话内有效 */
+  const logScale = ref(true)
 
   const isBlind = computed(() => current.value?.kind === 'contrast_blind')
+  const listKind = computed<WorkflowListKind | null>(() => current.value?.kind ?? null)
   const itemsById = computed(() => new Map<string, WorkflowItem>(
     (current.value?.items ?? []).map(it => [it.item_id, it])))
   const currentGroup = computed(() =>
@@ -108,6 +148,8 @@ export const useWorkflowStore = defineStore('workflow', () => {
     groupKey.value = current.value.groups[0]?.key ?? ''
     tagFilter.value = ''
     page.value = 0
+    initialRight.value = new Map(current.value.items.map(it => [it.item_id, randomRight()]))
+    peeked.value = new Set()
     setZoom(null)
     highlightItemId.value = null
     sendError.value = null
@@ -155,12 +197,54 @@ export const useWorkflowStore = defineStore('workflow', () => {
     if (!item || !current.value) return
     const prev = drafts.value.get(itemId) ?? {
       ann_id: newId(), item_id: itemId, symbol: item.symbol,
-      range_start: null, range_end: null, buy_date: null, label: null, note: '', updated_at: '',
+      range_start: null, range_end: null, buy_points: [], label: null, note: '',
+      peeked_before_buy: false, updated_at: '',
     }
     drafts.value.set(itemId, { ...prev, ...patch, item_id: itemId, symbol: item.symbol,
+                               peeked_before_buy: prev.peeked_before_buy || peeked.value.has(itemId),
                                updated_at: nowLocal() })
     draftListId.value = current.value.list_id
     lastSent.value = null
+  }
+
+  /** 普通点击:只留这一个买点(主买点)。 */
+  function setBuyPoint(itemId: string, date: string) {
+    upsertAnnotation(itemId, { buy_points: [{ date, primary: true }] })
+  }
+
+  /** Shift + 点击:没有就加、有就去掉;去掉主买点时剩下的里最早加入的变成主买点。 */
+  function toggleBuyPoint(itemId: string, date: string) {
+    const cur = drafts.value.get(itemId)?.buy_points ?? []
+    let next: BuyPoint[]
+    if (cur.some(b => b.date === date)) {
+      next = cur.filter(b => b.date !== date).map(b => ({ ...b }))
+      if (next.length && !next.some(b => b.primary)) next[0].primary = true
+    } else {
+      next = [...cur.map(b => ({ ...b })), { date, primary: cur.length === 0 }]
+    }
+    upsertAnnotation(itemId, { buy_points: next })
+  }
+
+  /** 点买点前往右展开看过后续:记下来;已有草稿的立刻写 peeked_before_buy。 */
+  function markPeeked(itemId: string) {
+    if (peeked.value.has(itemId)) return
+    peeked.value.add(itemId)
+    const d = drafts.value.get(itemId)
+    if (d) drafts.value.set(itemId, { ...d, peeked_before_buy: true })
+  }
+
+  /** 这张图的初始右边界(决策日之后第几根);还没有就随机一个记下(直接设 current 的场合)。 */
+  function initialRightOf(itemId: string): number {
+    let k = initialRight.value.get(itemId)
+    if (k == null) {
+      k = randomRight()
+      initialRight.value.set(itemId, k)
+    }
+    return k
+  }
+
+  function toggleLogScale() {
+    logScale.value = !logScale.value
   }
 
   function deleteAnnotation(itemId: string) {
@@ -206,9 +290,11 @@ export const useWorkflowStore = defineStore('workflow', () => {
   return {
     lists, current, loadError, groupKey, tagFilter, page, drafts, draftListId,
     sending, sendError, lastSent, zoomItemId, zoomWindow, highlightItemId,
-    isBlind, itemsById, currentGroup, groupItems, allTags, filteredItems, pageCount, pageItems,
-    draftList, draftCount, incomplete, zoomItem,
+    initialRight, peeked, logScale,
+    isBlind, listKind, itemsById, currentGroup, groupItems, allTags, filteredItems, pageCount,
+    pageItems, draftList, draftCount, incomplete, zoomItem,
     loadLists, openList, setGroup, setTagFilter, setPage, gotoItem,
-    upsertAnnotation, deleteAnnotation, clearDrafts, send, setZoom,
+    upsertAnnotation, setBuyPoint, toggleBuyPoint, markPeeked, initialRightOf, toggleLogScale,
+    deleteAnnotation, clearDrafts, send, setZoom,
   }
 })

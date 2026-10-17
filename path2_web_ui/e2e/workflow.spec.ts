@@ -3,15 +3,22 @@ import { mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync, existsSync
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-// 前提:后端已在 configs/path2_web.yaml 的 backend_port 上运行(workflow.root 用默认
-// outputs/chart_workflow)。本测试先往 lists/ 写一份 2 条的固定清单,跑完删掉它和自己发出的批次文件。
-// 跑法:cd path2_web_ui && npx playwright test e2e/workflow.spec.ts --workers=1
+// 前提:后端已在 configs/path2_web.yaml 的 backend_port 上运行,而且必须用临时状态根启动——
+//   python -m chart_workflow.state init /tmp/<临时目录>
+//   CHART_WORKFLOW_STATE_ROOT=/tmp/<临时目录> uv run python scripts/path2/run_path2_web.py
+// 绝不能让端到端测试写进主目录的状态根:那里的文件进 git,测试批次会混进真实账本。
+// 本测试从同一个环境变量取批次目录,没设就直接失败。K 线读截断副本,先运行过
+// python -m chart_workflow.snapshot。清单写到本 worktree 的 outputs/chart_workflow/lists/
+// (workflow.root 用默认),跑完删掉它们和自己发出的批次文件。
+// 跑法:CHART_WORKFLOW_STATE_ROOT=/tmp/<临时目录> npx playwright test e2e/workflow.spec.ts --workers=1
 
 const here = dirname(fileURLToPath(import.meta.url))
 const WF_ROOT = resolve(here, '../../outputs/chart_workflow')
 const LIST_ID = 'e2e-workflow-fixture'
 const LIST_PATH = resolve(WF_ROOT, 'lists', `${LIST_ID}.json`)
-const ANN_DIR = resolve(WF_ROOT, 'annotations')
+const STATE_ROOT = process.env.CHART_WORKFLOW_STATE_ROOT
+if (!STATE_ROOT) throw new Error('必须设 CHART_WORKFLOW_STATE_ROOT(与后端同一个临时状态根),不回落到 outputs/chart_workflow')
+const ANN_DIR = resolve(STATE_ROOT, 'annotations')
 const ITEM_A = 'AAPL@2025-06-02'
 const ITEM_B = 'MSFT@2025-07-01'
 
@@ -125,7 +132,9 @@ test('看图工作流:框选、点买点、标正例、写备注 → 抽屉里�
   created.push(...fresh)
   expect(fresh).toHaveLength(1)
   const saved = JSON.parse(readFileSync(resolve(ANN_DIR, fresh[0]), 'utf8'))
-  expect(saved.schema).toBe('chart_workflow.annotations/1')
+  expect(saved.schema).toBe('chart_workflow.annotations/2')
+  expect(saved.list_kind).toBe('bigmoves')
+  expect(saved.outcome_visible).toBe(true)
   expect(saved.list_id).toBe(LIST_ID)
   expect(saved.train_end).toBe('2025-12-31')
   expect(saved.annotations).toHaveLength(1)
@@ -136,7 +145,10 @@ test('看图工作流:框选、点买点、标正例、写备注 → 抽屉里�
   expect(a.note).toBe('e2e 备注三')
   expect(a.range_start <= a.range_end).toBe(true)
   expect(a.range_start >= '2025-03-03' && a.range_end <= '2025-07-30').toBe(true)
-  expect(a.buy_date >= a.range_start && a.buy_date <= a.range_end).toBe(true)
+  expect(a.buy_points).toHaveLength(1)
+  expect(a.buy_points[0].primary).toBe(true)
+  expect(a.buy_points[0].date >= a.range_start && a.buy_points[0].date <= a.range_end).toBe(true)
+  expect(a.buy_date).toBeUndefined()
   expect(a.ann_id).toMatch(/[0-9a-f-]{36}/)
 })
 
@@ -145,7 +157,7 @@ async function readSummary(cell: Locator) {
   const t = await cell.getByTestId('ann-summary').innerText()
   const m = t.match(/起止 (\S+) → (\S+) · 买点 (\S+)/)
   if (!m) throw new Error(`摘要格式不对:${t}`)
-  return { start: m[1], end: m[2], buy: m[3] }
+  return { start: m[1], end: m[2], buy: m[3].replace('★', '').split('、')[0] }
 }
 const dayDiff = (a: string, b: string) => Math.abs(Date.parse(a) - Date.parse(b)) / 86_400_000
 const daySpan = (r: { start: string, end: string }) => dayDiff(r.start, r.end)
@@ -302,5 +314,64 @@ test('看图工作流:页码框跳转、PgUp / PgDn 翻页', async ({ page }) =>
     await expect(input).toHaveValue('2')
   } finally {
     rmSync(PAGES_PATH, { force: true })
+  }
+})
+
+
+const V2_ID = 'e2e-workflow-v2'
+const V2_PATH = resolve(WF_ROOT, 'lists', `${V2_ID}.json`)
+
+test('看图工作流:点买点前图头不露结果;Shift 多买点;正例不框也能发送;批次是 v2 且批次头有清单种类', async ({ page }) => {
+  const doc = fixture()
+  doc.list_id = V2_ID
+  doc.title = 'e2e v2 清单'
+  writeFileSync(V2_PATH, JSON.stringify(doc, null, 1))
+  try {
+    const before = new Set(listBatches())
+    await page.goto(`/?wf=${V2_ID}`)
+    const cell = page.locator(`.annot-chart[data-item-id="${ITEM_B}"]`)
+    await expect(cell.locator('canvas').first()).toBeVisible({ timeout: 20_000 })
+    await page.waitForTimeout(300)
+    // 大涨段清单还没有买点:图头不显示决策日、相对涨幅、涨幅;判定文字是「像但不买」
+    await expect(cell.locator('.head')).not.toContainText('涨幅')
+    await expect(cell.locator('.head')).not.toContainText('决策日')
+    await expect(cell.getByTestId('outcome-hidden')).toBeVisible()
+    await expect(cell.locator('.radio', { has: page.getByTestId('label-negative') })).toContainText('像但不买')
+    await expect(cell.getByTestId('tool-log')).toHaveAttribute('aria-pressed', 'true')
+
+    // 点一个买点 → 图头照常显示;再 Shift 点一个 → 两个买点(主买点带 ★)
+    await clickBuy(page, cell, 0.5)
+    await expect(cell.locator('.head')).toContainText('相对涨幅')
+    const b = await chartBox(cell)
+    await page.keyboard.down('Shift')
+    await page.mouse.click(b.x + b.width * 0.75, b.y + b.height * 0.3)
+    await page.keyboard.up('Shift')
+    await expect(cell.getByTestId('ann-summary')).toContainText('★')
+    await expect(cell.getByTestId('ann-summary')).toContainText('、')
+    await expect(cell.getByTestId('ann-summary')).toContainText('起止 未框')
+    await cell.getByTestId('label-positive').check()
+
+    await page.getByTestId('wf-drawer').click()
+    const panel = page.getByTestId('review-panel')
+    await expect(panel.locator(`tr[data-item-id="${ITEM_B}"] [data-testid="row-buys"] div`)).toHaveCount(2)
+    await panel.getByTestId('send').click()
+    await expect(panel.getByTestId('send-ok')).toContainText('已发送：批次', { timeout: 10_000 })
+
+    const fresh = listBatches().filter(f => !before.has(f))
+    created.push(...fresh)
+    expect(fresh).toHaveLength(1)
+    const saved = JSON.parse(readFileSync(resolve(ANN_DIR, fresh[0]), 'utf8'))
+    expect(saved.schema).toBe('chart_workflow.annotations/2')
+    expect(saved.list_kind).toBe('bigmoves')
+    expect(saved.outcome_visible).toBe(true)
+    const a = saved.annotations[0]
+    expect(a.item_id).toBe(ITEM_B)
+    expect(a.range_start).toBeNull()
+    expect(a.buy_points).toHaveLength(2)
+    expect(a.buy_points.filter((x: any) => x.primary)).toHaveLength(1)
+    expect(a.buy_points[0].primary).toBe(true)
+    expect(a.buy_points.every((x: any) => x.date >= '2025-04-01' && x.date <= '2025-08-27')).toBe(true)
+  } finally {
+    rmSync(V2_PATH, { force: true })
   }
 })

@@ -34,7 +34,7 @@ def _bars(start, end, lo=10, hi=12):
                          "volume": 1e6}, index=dates)
 
 
-def _client(tmp_path, snapshot=True):
+def _client(tmp_path, snapshot=True, lists=("r002", "r002-bigmoves")):
     pkls = tmp_path / "pkls"
     pkls.mkdir()
     _bars("2025-10-01", "2026-02-27").to_pickle(pkls / "AAA.pkl")
@@ -52,6 +52,8 @@ def _client(tmp_path, snapshot=True):
     }
     app = create_app(config_override=cfg, outputs_root=str(tmp_path / "outputs"),
                      use_thread_pool=True)
+    for lid in lists:                             # 发送标注时后端要读清单文件填批次头
+        _write_list(root, lid, "2026-10-01T08:00:00")
     return TestClient(app), root
 
 
@@ -95,7 +97,7 @@ def test_workflow_defaults_match_chart_workflow():
 
 
 def test_lists_and_read(tmp_path):
-    c, root = _client(tmp_path)
+    c, root = _client(tmp_path, lists=())
     _write_list(root, "r001-old", "2026-10-01T09:00:00")
     _write_list(root, "r002-new", "2026-10-02T09:00:00")
     r = c.get("/workflow/lists")
@@ -165,19 +167,22 @@ def test_annotation_written(tmp_path, monkeypatch, state_dir):
     c, root = _client(tmp_path)
     monkeypatch.setattr(wf, "_now", lambda: datetime(2026, 10, 8, 10, 15, 0))
     anns = [_ann(), _ann(ann_id="u2", buy_date="2025-11-10", label="negative", note=""),
-            _ann(ann_id="u3", buy_date=None)]       # 第 2 条:形态结束后第 5 个交易日,允许
+            _ann(ann_id="u3", buy_date=None, label="negative")]   # 第 2 条:形态结束后第 5 个交易日,允许
     r = c.post("/workflow/annotations", json={"list_id": "r002-bigmoves", "annotations": anns})
     assert r.status_code == 200, r.text
     out = r.json()
     assert out["batch_id"] == "20261008T101500" and out["n"] == 3
     saved = json.loads(Path(out["path"]).read_text())
     assert Path(out["path"]) == state_dir / "annotations" / "20261008T101500.json"
-    assert saved["schema"] == "chart_workflow.annotations/1"
+    assert saved["schema"] == "chart_workflow.annotations/2"
     assert saved["list_id"] == "r002-bigmoves" and saved["train_end"] == TRAIN_END
+    assert saved["list_kind"] == "bigmoves" and saved["outcome_visible"] is True
     assert saved["created_at"] == "2026-10-08T10:15:00"
-    assert saved["annotations"][0] == anns[0]
+    a0 = {k: v for k, v in anns[0].items() if k != "buy_date"}
+    assert saved["annotations"][0] == {**a0, "buy_points": [{"date": "2025-11-03", "primary": True}],
+                                       "peeked_before_buy": False}
     assert saved["annotations"][1]["label"] == "negative"
-    assert saved["annotations"][2]["buy_date"] is None
+    assert saved["annotations"][2]["buy_points"] == [] and "buy_date" not in saved["annotations"][2]
     lst = c.get("/workflow/annotations").json()
     assert lst == [{"batch_id": "20261008T101500", "list_id": "r002-bigmoves", "n": 3,
                     "created_at": "2026-10-08T10:15:00"}]
@@ -234,7 +239,7 @@ def test_ohlc_reads_snapshot_only(tmp_path):
 
 
 def test_view_floor(tmp_path):
-    c, root = _client(tmp_path)
+    c, root = _client(tmp_path, lists=())
     r = c.get("/workflow/ohlc", params={"symbol": "BBB", "start": "2024-06-01", "end": "2025-03-31"})
     assert r.status_code == 200
     bars = r.json()["bars"]
@@ -270,3 +275,62 @@ def test_open_list_records_view(tmp_path, state_dir):
     assert c.get("/workflow/lists/b001").status_code == 200          # 盲看清单:看不到结果
     last = json.loads((state_dir / "views.jsonl").read_text().splitlines()[-1])
     assert last["list_kind"] == "contrast_blind" and last["outcome_visible"] is False
+
+
+# ── 标注 v2:多买点、框选可空、批次头由后端按清单填 ───────────────────────────
+
+def _v2(**over):
+    a = {"ann_id": "w1", "item_id": "AAA@2025-11-03", "symbol": "AAA", "label": "positive",
+         "buy_points": [{"date": "2025-11-05"}, {"date": "2025-11-03"}], "note": "",
+         "peeked_before_buy": True}
+    a.update(over)
+    return a
+
+
+def test_v2_multi_buy_points_and_primary(tmp_path, state_dir):
+    c, root = _client(tmp_path)
+    r = c.post("/workflow/annotations", json={"list_id": "r002", "annotations": [_v2()]})
+    assert r.status_code == 200, r.text
+    a = json.loads(Path(r.json()["path"]).read_text())["annotations"][0]
+    # 都没标主买点 → 日期最早的设为主买点;不框也能发
+    assert a["buy_points"] == [{"date": "2025-11-05", "primary": False},
+                               {"date": "2025-11-03", "primary": True}]
+    assert a["range_start"] is None and a["range_end"] is None and a["peeked_before_buy"] is True
+    r = c.post("/workflow/annotations", json={"list_id": "r002", "annotations": [_v2(
+        buy_points=[{"date": "2025-11-05", "primary": True}, {"date": "2025-11-03"}])]})
+    a = json.loads(Path(r.json()["path"]).read_text())["annotations"][0]
+    assert [b["primary"] for b in a["buy_points"]] == [True, False]
+
+
+@pytest.mark.parametrize("over,needle", [
+    ({"buy_points": []}, "正例至少要一个买点"),
+    ({"label": "data_error", "buy_points": []}, "要框选起止"),
+    ({"buy_points": [{"date": "2025-11-03"}, {"date": "2025-11-03"}]}, "买点重复"),
+    ({"buy_points": [{"date": "2025-11-03", "primary": True},
+                     {"date": "2025-11-04", "primary": True}]}, "主买点至多一个"),
+    ({"buy_points": [{"date": d.strftime("%Y-%m-%d")} for d in
+                     pd.bdate_range("2025-11-03", periods=11)]}, "买点最多 10 个"),
+    ({"range_start": "2025-10-15"}, "成对"),
+    ({"buy_points": [{"date": "2026-01-05"}]}, "晚于训练段末日"),
+    ({"range_start": "2025-10-15", "range_end": "2025-10-20"}, "形态结束后"),
+])
+def test_v2_validation(tmp_path, state_dir, over, needle):
+    c, _ = _client(tmp_path)
+    r = c.post("/workflow/annotations", json={"list_id": "r002", "annotations": [_v2(**over)]})
+    assert r.status_code == 400 and needle in r.text, r.text
+    assert not (state_dir / "annotations").exists()
+
+
+def test_v2_header_from_list_kind_not_frontend(tmp_path):
+    c, root = _client(tmp_path)
+    _write_list(root, "b001", "2026-10-01T09:00:00", kind="contrast_blind",
+                marks={"decision": "2025-11-03", "entry": "2025-11-04"}, metrics={"M": 0.02})
+    r = c.post("/workflow/annotations", json={
+        "list_id": "b001", "list_kind": "bigmoves", "outcome_visible": True,      # 前端的假值不采用
+        "annotations": [_v2(list_kind="bigmoves", outcome_visible=True)]})
+    assert r.status_code == 200, r.text
+    saved = json.loads(Path(r.json()["path"]).read_text())
+    assert saved["list_kind"] == "contrast_blind" and saved["outcome_visible"] is False
+    assert "list_kind" not in saved["annotations"][0]
+    r = c.post("/workflow/annotations", json={"list_id": "nope", "annotations": [_v2()]})
+    assert r.status_code == 400 and "读不到清单" in r.text

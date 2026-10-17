@@ -1,4 +1,5 @@
-/** 看图工作流 store:草稿的增删改、发送的请求体、发送后清空、没标完不发送。 */
+/** 看图工作流 store:草稿的增删改、发送的请求体、发送后清空、没标完不发送(新的必填规则)、
+ *  多买点的主买点规则、初始右边界与「点买点前看过后续」、判定文字。 */
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
 import type { WorkflowList } from '../src/types'
@@ -10,7 +11,7 @@ vi.mock('../src/api', () => ({
   sendAnnotations: (...args: any[]) => sendAnnotations(...args),
 }))
 
-import { useWorkflowStore, PAGE_SIZE } from '../src/stores/workflow'
+import { useWorkflowStore, PAGE_SIZE, missingFields, labelText, randomRight } from '../src/stores/workflow'
 import { loadWorkflowList } from '../src/api'
 
 function mkList(n = 8, kind: WorkflowList['kind'] = 'bigmoves'): WorkflowList {
@@ -66,7 +67,8 @@ describe('workflow store', () => {
     s.current = mkList()
     const [i0, i1] = s.current.items
     s.upsertAnnotation(i0.item_id, { range_start: '2025-01-06', range_end: '2025-03-10',
-                                     buy_date: '2025-03-10', label: 'positive', note: 'a' })
+                                     buy_points: [{ date: '2025-03-10', primary: true }],
+                                     label: 'positive', note: 'a' })
     s.upsertAnnotation(i1.item_id, { range_start: '2025-02-03', range_end: '2025-03-11',
                                      label: 'negative' })
     sendAnnotations.mockResolvedValue({ batch_id: '20261008T101500', path: '/x/y.json', n: 2 })
@@ -77,25 +79,26 @@ describe('workflow store', () => {
     expect(listId).toBe('r001')
     expect(anns).toHaveLength(2)
     expect(anns[0]).toMatchObject({ item_id: i0.item_id, symbol: 'S0', range_start: '2025-01-06',
-                                    range_end: '2025-03-10', buy_date: '2025-03-10',
-                                    label: 'positive', note: 'a' })
+                                    range_end: '2025-03-10',
+                                    buy_points: [{ date: '2025-03-10', primary: true }],
+                                    label: 'positive', note: 'a', peeked_before_buy: false })
     expect(Object.keys(anns[0]).sort()).toEqual(
-      ['ann_id', 'buy_date', 'item_id', 'label', 'note', 'range_end', 'range_start', 'symbol',
-       'updated_at'])
-    expect(anns[1]).toMatchObject({ item_id: i1.item_id, buy_date: null, label: 'negative' })
+      ['ann_id', 'buy_points', 'item_id', 'label', 'note', 'peeked_before_buy', 'range_end',
+       'range_start', 'symbol', 'updated_at'])
+    expect(anns[1]).toMatchObject({ item_id: i1.item_id, buy_points: [], label: 'negative' })
     expect(s.draftCount).toBe(0)
     expect(s.lastSent).toEqual({ batch_id: '20261008T101500', path: '/x/y.json', n: 2 })
   })
 
-  it('没标完(缺起止或正反例)不发送;发送失败保留草稿', async () => {
+  it('没标完(缺判定)不发送;发送失败保留草稿', async () => {
     const s = useWorkflowStore()
     s.current = mkList()
     const id = s.current.items[0].item_id
-    s.upsertAnnotation(id, { buy_date: '2025-03-10' })
+    s.setBuyPoint(id, '2025-03-10')
     expect(await s.send()).toBe(false)
     expect(sendAnnotations).not.toHaveBeenCalled()
-    expect(s.sendError).toContain('起止')
-    s.upsertAnnotation(id, { range_start: '2025-01-06', range_end: '2025-03-10', label: 'negative' })
+    expect(s.sendError).toContain('标签')
+    s.upsertAnnotation(id, { label: 'negative' })                   // 不框也能发
     sendAnnotations.mockRejectedValue(new Error('发送失败(400):bad'))
     expect(await s.send()).toBe(false)
     expect(s.draftCount).toBe(1)
@@ -142,4 +145,78 @@ describe('workflow store', () => {
                                                                 note: '和 Nasdaq 对不上' })
   })
 
+})
+
+
+describe('workflow store · 阶段 0 补丁', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia())
+    sendAnnotations.mockReset()
+  })
+
+  it('missingFields:判定必填;数据有误要起止;正例要至少一个买点;其余不要求框选', () => {
+    const base = { ann_id: 'x', item_id: 'i', symbol: 'S', range_start: null, range_end: null,
+                   buy_points: [], label: null, note: '', peeked_before_buy: false, updated_at: '' }
+    expect(missingFields(base as any)).toEqual(['标签'])
+    expect(missingFields({ ...base, label: 'positive' } as any)).toEqual(['买点'])
+    expect(missingFields({ ...base, label: 'positive',
+                           buy_points: [{ date: '2025-03-10', primary: true }] } as any)).toEqual([])
+    expect(missingFields({ ...base, label: 'negative' } as any)).toEqual([])
+    expect(missingFields({ ...base, label: 'data_error' } as any)).toEqual(['起止'])
+    expect(missingFields({ ...base, label: 'data_error', range_start: '2025-01-02',
+                           range_end: '2025-01-03' } as any)).toEqual([])
+  })
+
+  it('setBuyPoint 只留一个主买点;toggleBuyPoint 加 / 去,去掉主买点时最早加入的接任', () => {
+    const s = useWorkflowStore()
+    s.current = mkList()
+    const id = s.current.items[0].item_id
+    s.toggleBuyPoint(id, '2025-03-05')
+    s.toggleBuyPoint(id, '2025-03-03')
+    s.toggleBuyPoint(id, '2025-03-07')
+    expect(s.drafts.get(id)!.buy_points).toEqual([
+      { date: '2025-03-05', primary: true }, { date: '2025-03-03', primary: false },
+      { date: '2025-03-07', primary: false }])
+    s.toggleBuyPoint(id, '2025-03-05')
+    expect(s.drafts.get(id)!.buy_points).toEqual([
+      { date: '2025-03-03', primary: true }, { date: '2025-03-07', primary: false }])
+    s.setBuyPoint(id, '2025-03-10')
+    expect(s.drafts.get(id)!.buy_points).toEqual([{ date: '2025-03-10', primary: true }])
+    s.toggleBuyPoint(id, '2025-03-10')
+    expect(s.drafts.get(id)!.buy_points).toEqual([])
+  })
+
+  it('打开清单时每张图随机一个初始右边界(3~15);看过后续记进草稿', async () => {
+    const s = useWorkflowStore()
+    const doc = mkList(8)
+    ;(loadWorkflowList as any).mockResolvedValue(doc)
+    await s.openList('r001')
+    for (const it of doc.items) {
+      const k = s.initialRight.get(it.item_id)!
+      expect(k >= 3 && k <= 15).toBe(true)
+    }
+    expect(randomRight(() => 0)).toBe(3)
+    expect(randomRight(() => 0.9999)).toBe(15)
+    const [a, b] = doc.items
+    s.upsertAnnotation(a.item_id, { label: 'negative' })
+    s.markPeeked(a.item_id)
+    expect(s.drafts.get(a.item_id)!.peeked_before_buy).toBe(true)
+    s.markPeeked(b.item_id)
+    s.upsertAnnotation(b.item_id, { label: 'negative' })
+    expect(s.drafts.get(b.item_id)!.peeked_before_buy).toBe(true)
+    s.upsertAnnotation(b.item_id, { note: 'x' })
+    expect(s.drafts.get(b.item_id)!.peeked_before_buy).toBe(true)
+    expect(s.logScale).toBe(true)
+    s.toggleLogScale()
+    expect(s.logScale).toBe(false)
+  })
+
+  it('判定文字随清单种类变,存的值不变', () => {
+    expect(labelText('negative', 'bigmoves')).toBe('像但不买')
+    expect(labelText('positive', 'bigmoves')).toBe('正例')
+    expect(labelText('positive', 'contrast_blind')).toBe('是我的意思')
+    expect(labelText('negative', 'contrast_blind')).toBe('不是我的意思')
+    expect(labelText('negative', 'contrast')).toBe('反例')
+    expect(labelText('data_error', 'bigmoves')).toBe('数据有误')
+  })
 })

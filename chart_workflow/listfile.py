@@ -1,6 +1,7 @@
 """清单文件(<root>/lists/<list_id>.json)的组装、校验与写入。
 
-格式 schema = "chart_workflow.list/1",三种 kind:
+格式 schema = "chart_workflow.list/1",三种 kind(每条都带证券类别 sec_class / sec_source /
+sec_label / sec_known,名录里查不到的 sec_label 为「未知（名录里查不到）」):
   bigmoves        大涨段清单,无 summary
   contrast        对照清单,有 summary
   contrast_blind  盲看清单,无 summary;marks 只有 decision / entry,metrics 只有 M
@@ -24,7 +25,7 @@ import pandas as pd
 from chart_workflow.config import root_dir
 from chart_workflow.features import tags_of
 from chart_workflow.panel import trading_dates
-from chart_workflow.securities import load_exchanges
+from chart_workflow.securities import CLASS_LABELS, classify_with_source, load_cached_names, load_exchanges
 
 SCHEMA = "chart_workflow.list/1"
 KINDS = ("bigmoves", "contrast", "contrast_blind")
@@ -75,6 +76,21 @@ def exchange_of(cfg: dict, symbol: str) -> str | None:
     return _EXCHANGES[key].get(symbol)
 
 
+_NAMES: dict[str, dict] = {}
+
+
+def security_fields(cfg: dict, symbol: str) -> dict:
+    """证券类别四个字段(只读证券名录缓存,不联网):名录里查不到的标「未知（名录里查不到）」。"""
+    key = str(root_dir(cfg))
+    if key not in _NAMES:
+        _NAMES[key] = load_cached_names(cfg)
+    cls, src = classify_with_source(symbol, _NAMES[key].get(symbol))
+    known = src != "code_rule"
+    return {"sec_class": cls, "sec_source": src,
+            "sec_label": CLASS_LABELS.get(cls, cls) if known else "未知（名录里查不到）",
+            "sec_known": known}
+
+
 def make_item(row, cfg: dict, blind: bool = False) -> dict:
     """面板里的一行 → 清单里的一条。图窗:决策日往前 view.before_bars 个交易日,
     起点截到看图下界 view_floor(之后第一个交易日;view_floor 为空时不截),
@@ -99,6 +115,7 @@ def make_item(row, cfg: dict, blind: bool = False) -> dict:
         "view_start": _d(view_start),
         "view_end": _d(view_end),
         "tags": tags_of(bool(row["gap"]), str(row["vol_tag"] or "")),
+        **security_fields(cfg, sym),            # 不含结果,盲看清单也写
     }
     if blind:
         item["marks"] = {"decision": _d(t), "entry": _d(row["entry_date"])}

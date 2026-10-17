@@ -231,11 +231,22 @@ export async function clearWcMirror(pid: string): Promise<{ ok: true }> {
 }
 
 // ─── 看图工作流模式 ───────────────────────────────────────────────────────────
+/** 出错时把后端正文里的中文说明(detail)取出来,403 / 503 直接显示给用户。 */
+async function getWorkflowJson<T>(path: string): Promise<T> {
+  const r = await fetch(`${BASE}${path}`)
+  if (!r.ok) {
+    const text = await r.text()
+    let msg = text
+    try { msg = JSON.parse(text)?.detail ?? text } catch { /* 正文不是 JSON 就原样显示 */ }
+    throw new Error(`${r.status}:${msg}`)
+  }
+  return r.json() as Promise<T>
+}
 export function listWorkflowLists(): Promise<WorkflowListMeta[]> {
-  return getJson('/workflow/lists')
+  return getWorkflowJson('/workflow/lists')
 }
 export function loadWorkflowList(listId: string): Promise<WorkflowList> {
-  return getJson(`/workflow/lists/${encodeURIComponent(listId)}`)
+  return getWorkflowJson(`/workflow/lists/${encodeURIComponent(listId)}`)
 }
 /** 后端先把 end 截到训练段末日,再按 /ohlc 同口径切片序列化。 */
 export function getWorkflowOhlc(symbol: string, start: string, end: string): Promise<Ohlc> {

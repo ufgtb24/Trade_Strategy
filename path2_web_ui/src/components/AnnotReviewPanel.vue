@@ -4,7 +4,7 @@
     <div v-if="!store.draftCount && !store.lastSent" class="empty">还没有标注。</div>
     <table v-if="store.draftCount" class="rows">
       <thead>
-        <tr><th>代码</th><th>起止</th><th>买点</th><th>正反</th><th>备注</th><th /></tr>
+        <tr><th>代码</th><th>起止</th><th>买点</th><th>判定</th><th>备注</th><th /></tr>
       </thead>
       <tbody>
         <tr v-for="a in store.draftList" :key="a.item_id" :data-item-id="a.item_id"
@@ -14,14 +14,19 @@
               {{ a.symbol }}</button>
           </td>
           <td class="mono">{{ a.range_start ?? '—' }}<br>{{ a.range_end ?? '—' }}</td>
-          <td class="mono">{{ a.buy_date ?? '—' }}</td>
+          <td class="mono" data-testid="row-buys">
+            <template v-if="a.buy_points.length">
+              <div v-for="b in orderedBuyPoints(a.buy_points)" :key="b.date">{{ b.primary ? '★' : '' }}{{ b.date }}</div>
+            </template>
+            <template v-else>—</template>
+          </td>
           <td>
             <select :value="a.label ?? ''" data-testid="row-label"
                     @change="store.upsertAnnotation(a.item_id, { label: (($event.target as HTMLSelectElement).value || null) as any })">
               <option value="">未标</option>
-              <option value="positive">正例</option>
-              <option value="negative">反例</option>
-              <option value="data_error">数据有误</option>
+              <option value="positive">{{ labelText('positive', store.listKind) }}</option>
+              <option value="negative">{{ labelText('negative', store.listKind) }}</option>
+              <option value="data_error">{{ labelText('data_error', store.listKind) }}</option>
             </select>
             <div v-if="missingFields(a).length" class="miss">缺{{ missingFields(a).join('、') }}</div>
           </td>
@@ -57,9 +62,10 @@
 </template>
 
 <script setup lang="ts">
-/** 已标注抽屉:列出本批全部草稿,就地改正反例与备注、删除、跳到所在页;发送 / 清空(二次确认)。 */
+/** 已标注抽屉:列出本批全部草稿(买点一列列出全部买点,主买点前加 ★),就地改判定与备注、删除、
+ *  跳到所在页;发送 / 清空(二次确认)。判定文字随清单种类变,与图上同一套。 */
 import { ref } from 'vue'
-import { missingFields, useWorkflowStore } from '../stores/workflow'
+import { labelText, missingFields, orderedBuyPoints, useWorkflowStore } from '../stores/workflow'
 
 const store = useWorkflowStore()
 const confirmClear = ref(false)

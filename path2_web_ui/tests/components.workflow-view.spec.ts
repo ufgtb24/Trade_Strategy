@@ -27,6 +27,7 @@ vi.mock('../src/api', () => ({
 
 import WorkflowView from '../src/components/WorkflowView.vue'
 import { useWorkflowStore } from '../src/stores/workflow'
+import { listWorkflowLists, loadWorkflowList } from '../src/api'
 
 let w: VueWrapper
 async function mountView() {
@@ -92,5 +93,25 @@ describe('WorkflowView 翻页', () => {
     store.setZoom(store.pageItems[0].item_id)
     key('PageDown')
     expect(store.page).toBe(2)
+  })
+})
+
+
+describe('WorkflowView 记账类文件不可用 / 打不开清单', () => {
+  beforeEach(() => { setActivePinia(createPinia()) })
+  afterEach(() => { w?.unmount(); document.body.innerHTML = '' })
+
+  it('清单目录带 blocked:在下拉上方显示后端给的消息;打开清单得到 503 时显示后端正文', async () => {
+    const msg = '状态根 /x 下没有标记文件 STATE_ROOT.md:主目录当前分支没有记账文件,可能切到了别的分支。'
+    ;(listWorkflowLists as any).mockResolvedValueOnce([
+      { list_id: 'r001', kind: 'bigmoves', title: 't', n_items: 20, created_at: '2026-10-08T10:00:00',
+        blocked: 'state_root_missing', blocked_message: msg }])
+    ;(loadWorkflowList as any).mockRejectedValueOnce(new Error(`503:${msg}`))
+    await mountView()
+    const blocked = w.find('[data-testid="wf-blocked"]')
+    expect(blocked.text()).toContain('可能切到了别的分支')
+    const html = w.html()
+    expect(html.indexOf('wf-blocked')).toBeLessThan(html.indexOf('data-testid="wf-list"'))
+    expect(w.find('[data-testid="wf-load-error"]').text()).toContain('503')
   })
 })

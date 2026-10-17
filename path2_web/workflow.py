@@ -2,7 +2,9 @@
 
 纯投影层:只做「校验参数 → 调函数 → 序列化」,不含任何走势语义。
 清单由命令行工具 chart_workflow 生成(<root>/lists/<list_id>.json,root 取 config 的 workflow 子树);
-标注批次写到 chart_workflow 的状态根(<状态根>/annotations/<batch_id>.json,见 chart_workflow/state.py),
+标注批次写到 chart_workflow 的状态根(<状态根>/annotations/<batch_id>.json,见 chart_workflow/state.py,
+格式 chart_workflow.annotations/2:每条标注多个买点 buy_points,框选起止除「数据有误」外可空;批次头的
+list_kind / outcome_visible 由这里读清单文件的 kind 填,不信前端),
 打开清单时经 chart_workflow.views.record 记一条「看过」。K 线经 chart_workflow.loader 只读截断副本
 (workflow.dataset_dir),不是副本就 503。
 
@@ -46,19 +48,38 @@ _BATCH_RE = re.compile(r"^\d{8}T\d{6}(-\d+)?$")
 _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 _LABELS = ("positive", "negative", "data_error")   # 正例 / 反例 / 数据有误
 NOTE_MAX = 500
-BUY_AFTER_MAX = 5          # 买点最多落在形态结束后几个交易日内(待验证)
+BUY_AFTER_MAX = 5          # 框选了起止时,买点最多落在形态结束后几个交易日内(待验证)
+BUY_POINTS_MAX = 10        # 一张图最多几个买点(待验证)
+BATCH_SCHEMA = "chart_workflow.annotations/2"
+
+
+class BuyPointIn(BaseModel):
+    date: str
+    primary: bool = False
 
 
 class AnnotationIn(BaseModel):
     ann_id: Optional[str] = None
     item_id: str
     symbol: str
-    range_start: str
-    range_end: str
-    buy_date: Optional[str] = None
+    range_start: Optional[str] = None
+    range_end: Optional[str] = None
+    buy_points: list[BuyPointIn] = []
+    buy_date: Optional[str] = None          # v1 兼容:有它且 buy_points 为空 → 转成一个主买点
     label: str
     note: str = ""
+    peeked_before_buy: bool = False
     updated_at: Optional[str] = None
+
+
+def _buy_points(ann: AnnotationIn) -> list[dict]:
+    """买点规范化:v1 的 buy_date 转成一个主买点;都没标主买点时,日期最早的设为主买点。"""
+    bps = [{"date": b.date, "primary": b.primary} for b in ann.buy_points]
+    if not bps and ann.buy_date:
+        bps = [{"date": ann.buy_date, "primary": True}]
+    if bps and not any(b["primary"] for b in bps):
+        min(bps, key=lambda b: b["date"])["primary"] = True
+    return bps
 
 
 class AnnotationBatchIn(BaseModel):
@@ -221,11 +242,33 @@ def build_workflow_router(*, get_config) -> APIRouter:
         errs = []
         tag = ann.item_id
         train_end = _train_end(cfg)
+        floor = _view_floor(cfg)
         if not _SYMBOL_RE.fullmatch(ann.symbol or ""):
             return [f"{tag}: 非法代码 {ann.symbol!r}"]
-        floor = _view_floor(cfg)
-        for name in ("range_start", "range_end") + (("buy_date",) if ann.buy_date else ()):
-            v = getattr(ann, name)
+        if ann.label not in _LABELS:
+            errs.append(f"{tag}: label 必须是 positive / negative / data_error")
+        if len(ann.note or "") > NOTE_MAX:
+            errs.append(f"{tag}: 备注超过 {NOTE_MAX} 字")
+        bps = _buy_points(ann)
+        has_range = ann.range_start is not None or ann.range_end is not None
+        if ann.label == "data_error" and not (ann.range_start and ann.range_end):
+            errs.append(f"{tag}: 标「数据有误」要框选起止")
+        elif has_range and not (ann.range_start and ann.range_end):
+            errs.append(f"{tag}: 框选起止要成对")
+        if ann.label == "positive" and not bps:
+            errs.append(f"{tag}: 正例至少要一个买点")
+        if len(bps) > BUY_POINTS_MAX:
+            errs.append(f"{tag}: 买点最多 {BUY_POINTS_MAX} 个")
+        dates = [b["date"] for b in bps]
+        if len(set(dates)) != len(dates):
+            errs.append(f"{tag}: 买点重复")
+        if sum(b["primary"] for b in bps) > 1:
+            errs.append(f"{tag}: 主买点至多一个")
+        named = [("range_start", ann.range_start), ("range_end", ann.range_end)] if has_range else []
+        named += [("买点", d) for d in dates]
+        for name, v in named:
+            if v is None:
+                continue
             if not _is_date(v):
                 errs.append(f"{tag}: {name} 不是日期 {v!r}")
             elif v > train_end:
@@ -234,16 +277,14 @@ def build_workflow_router(*, get_config) -> APIRouter:
                 errs.append(f"{tag}: {name}={v} 早于本轮看图下界 {floor}")
         if errs:
             return errs
+        if not (ann.range_start and ann.range_end):
+            return errs
         if ann.range_start > ann.range_end:
-            errs.append(f"{tag}: 起点晚于终点")
-        if ann.label not in _LABELS:
-            errs.append(f"{tag}: label 必须是 positive / negative / data_error")
-        if len(ann.note or "") > NOTE_MAX:
-            errs.append(f"{tag}: 备注超过 {NOTE_MAX} 字")
-        if ann.buy_date:
-            if ann.buy_date < ann.range_start:
-                errs.append(f"{tag}: 买点早于形态起点")
-            elif ann.buy_date > ann.range_end:
+            return [f"{tag}: 起点晚于终点"]
+        for d in dates:          # 框选了起止:每个买点须在框内或框后 BUY_AFTER_MAX 个交易日内
+            if d < ann.range_start:
+                errs.append(f"{tag}: 买点 {d} 早于形态起点")
+            elif d > ann.range_end:
                 if ann.symbol not in dates_cache:
                     try:
                         df = _bars(cfg, ann.symbol, train_end)
@@ -252,11 +293,10 @@ def build_workflow_router(*, get_config) -> APIRouter:
                             raise
                         return errs + [f"{tag}: 找不到 {ann.symbol} 的行情"]
                     dates_cache[ann.symbol] = slice_window(df, "1900-01-01", train_end)["date"]
-                d = dates_cache[ann.symbol]
-                n_after = int(((d > pd.Timestamp(ann.range_end))
-                               & (d <= pd.Timestamp(ann.buy_date))).sum())
+                ds = dates_cache[ann.symbol]
+                n_after = int(((ds > pd.Timestamp(ann.range_end)) & (ds <= pd.Timestamp(d))).sum())
                 if n_after > BUY_AFTER_MAX:
-                    errs.append(f"{tag}: 买点在形态结束后 {n_after} 个交易日,"
+                    errs.append(f"{tag}: 买点 {d} 在形态结束后 {n_after} 个交易日,"
                                 f"最多 {BUY_AFTER_MAX} 个")
         return errs
 
@@ -267,6 +307,10 @@ def build_workflow_router(*, get_config) -> APIRouter:
         root = _state_root()
         if not req.annotations:
             raise HTTPException(400, "没有可发送的标注")
+        lst = _read_json(_root(cfg) / "lists" / f"{req.list_id}.json")
+        if not isinstance(lst, dict):
+            raise HTTPException(400, f"读不到清单 {req.list_id},批次头的清单种类无从填写")
+        list_kind = lst.get("kind")
         errs: list[str] = []
         cache: dict = {}
         for a in req.annotations:
@@ -283,15 +327,18 @@ def build_workflow_router(*, get_config) -> APIRouter:
             batch_id = f"{base}-{k}"
         anns = []
         for a in req.annotations:
-            d = a.model_dump()
+            d = a.model_dump(exclude={"buy_date", "buy_points"})
+            d["buy_points"] = _buy_points(a)
             d["ann_id"] = d.get("ann_id") or str(uuid.uuid4())
             d["updated_at"] = d.get("updated_at") or now.strftime("%Y-%m-%dT%H:%M:%S")
             anns.append(d)
         doc = {
-            "schema": "chart_workflow.annotations/1",
+            "schema": BATCH_SCHEMA,
             "batch_id": batch_id,
             "created_at": now.strftime("%Y-%m-%dT%H:%M:%S"),
             "list_id": req.list_id,
+            "list_kind": list_kind,
+            "outcome_visible": list_kind != "contrast_blind",
             "train_end": _train_end(cfg),
             "annotations": anns,
         }

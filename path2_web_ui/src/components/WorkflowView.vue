@@ -1,5 +1,6 @@
 <template>
   <div class="wf">
+    <div v-if="blockedMessage" class="err blocked" data-testid="wf-blocked">{{ blockedMessage }}</div>
     <header class="top">
       <button type="button" data-testid="wf-exit" @click="emit('exit')">返回调试视图</button>
       <select class="list-select" data-testid="wf-list" :value="store.current?.list_id ?? ''"
@@ -32,7 +33,7 @@
               @click="drawerOpen = !drawerOpen">已标注 ({{ store.draftCount }})</button>
     </header>
 
-    <div v-if="store.loadError" class="err">{{ store.loadError }}</div>
+    <div v-if="store.loadError" class="err" data-testid="wf-load-error">{{ store.loadError }}</div>
     <div v-if="!store.lists.length && !store.loadError" class="hint">
       还没有清单。清单由会话用命令行工具生成，放在 outputs/chart_workflow/lists/ 下。
     </div>
@@ -96,7 +97,7 @@
  *
  * 翻页:上一页 / 下一页按钮、页码框输入后回车、键盘 PgUp / PgDn。焦点在文字输入框里或放大框开着时
  * 不接管 PgUp / PgDn。翻页后网格滚回顶部。 */
-import { onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import AnnotChart from './AnnotChart.vue'
 import AnnotReviewPanel from './AnnotReviewPanel.vue'
 import { useWorkflowStore } from '../stores/workflow'
@@ -105,6 +106,9 @@ const emit = defineEmits<{ exit: [] }>()
 const store = useWorkflowStore()
 const drawerOpen = ref(false)
 const gridEl = ref<HTMLElement | null>(null)
+/** 后端拿不到记账类文件的家时,清单目录每项都带 blocked 与说明;打开清单、发标注都会被拒 */
+const blockedMessage = computed(() => store.lists.find(l => l.blocked)?.blocked_message
+  ?? (store.lists.some(l => l.blocked) ? '记账类文件的家不可用，暂时不能打开清单、发送标注' : ''))
 
 const KIND_TEXT: Record<string, string> = {
   bigmoves: '大涨段', contrast: '对照', contrast_blind: '盲看',
@@ -196,6 +200,7 @@ onBeforeUnmount(() => {
 .page-input { width: 4.5em; font-size: 13px; text-align: center; }
 .drawer-toggle[aria-pressed="true"] { background: #0f172a; color: #fff; }
 .err { color: #b91c1c; padding: 6px 8px; }
+.err.blocked { font-weight: 700; border-left: 4px solid #0f172a; color: #0f172a; }
 .hint { color: #475569; padding: 6px 8px; }
 .summary { padding: 4px 8px; border-bottom: 1px solid #cbd5e1; font-size: 12px; overflow-x: auto; }
 .summary table { border-collapse: collapse; }

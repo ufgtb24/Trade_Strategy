@@ -37,6 +37,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from chart_workflow.annotations import iter_batches
 from chart_workflow.config import root_dir
 from chart_workflow.panel import build_panel
 from chart_workflow.state import state_root
@@ -52,21 +53,15 @@ def registry_path(cfg: dict) -> Path:
 
 def build_registry(cfg: dict) -> dict:
     """读全部标注批次,汇总「数据有误」标注(同股同范围合并)。不写文件。"""
-    ann_dir = state_root() / "annotations"
     entries: dict[tuple, dict] = {}
     skipped: list[str] = []
     n_batches = 0
-    for p in sorted(ann_dir.glob("*.json")) if ann_dir.exists() else []:
-        try:
-            doc = json.loads(p.read_text())
-            anns = doc["annotations"]
-            if not isinstance(anns, list):
-                raise ValueError("annotations 不是列表")
-        except (OSError, ValueError, KeyError, TypeError):
+    for p, doc, _ in iter_batches(state_root() / "annotations"):
+        if doc is None:
             skipped.append(p.name)
             continue
         n_batches += 1
-        for a in anns:
+        for a in doc["annotations"]:
             if not isinstance(a, dict) or a.get("label") != DATA_ERROR_LABEL:
                 continue
             sym, s, e = a.get("symbol"), a.get("range_start"), a.get("range_end")

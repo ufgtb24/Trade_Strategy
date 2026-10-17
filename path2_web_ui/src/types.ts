@@ -265,6 +265,10 @@ export type WorkflowListKind = 'bigmoves' | 'contrast' | 'contrast_blind'
 
 export interface WorkflowListMeta {
   list_id: string; kind: WorkflowListKind; title: string; created_at: string; n_items: number
+  /** 后端拿不到记账类文件的家(状态根)时为 'state_root_missing':这时打不开清单、发不了标注 */
+  blocked?: string
+  /** blocked 时后端给的中文说明 */
+  blocked_message?: string
 }
 
 export interface WorkflowSummaryRow {
@@ -288,6 +292,10 @@ export interface WorkflowItem {
   exchange?: string | null
   /** 跨源比对(与 Nasdaq 日线逐日比涨跌幅);盲看清单没有 */
   xcheck?: WorkflowXcheck
+  /** 证券类别(如「普通股」「未知（名录里查不到）」);旧清单没有这个字段 */
+  sec_label?: string
+  /** false = 证券名录里查不到,类别是按代码规则推断的 */
+  sec_known?: boolean
   /** 盲看清单只有 decision / entry */
   marks: { decision?: string; entry?: string; up_line?: number; down_line?: number; peak_date?: string }
   /** 盲看清单只有 M */
@@ -316,11 +324,18 @@ export interface WorkflowList {
 /** 正例 / 反例 / 数据有误(用户确认行情数据有错,汇总进数据错误登记) */
 export type AnnotationLabel = 'positive' | 'negative' | 'data_error'
 
-/** 一条标注草稿(每个 item 最多一条)。range / label 齐了才能发送。 */
+/** 一个买点;每张图至多一个主买点(primary)。 */
+export interface BuyPoint { date: string; primary: boolean }
+
+/** 一条标注草稿(每个 item 最多一条)。标签必填;「数据有误」要框选起止;正例至少一个买点。 */
 export interface Annotation {
   ann_id: string; item_id: string; symbol: string
-  range_start: string | null; range_end: string | null; buy_date: string | null
-  label: AnnotationLabel | null; note: string; updated_at: string
+  range_start: string | null; range_end: string | null
+  buy_points: BuyPoint[]
+  label: AnnotationLabel | null; note: string
+  /** 点第一个买点之前,把图往右展开看过决策日之后的走势 */
+  peeked_before_buy: boolean
+  updated_at: string
 }
 
 export interface AnnotationBatchResult { batch_id: string; path: string; n: number }

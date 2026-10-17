@@ -131,3 +131,24 @@ def test_items_carry_exchange_from_securities_cache(cw_env):
     ex = {it["symbol"]: it["exchange"] for it in doc["items"]}
     assert ex.get("EXA") == "NYSE"
     assert ex.get("EXB") is None                        # 名单里没有 → 网页只用代码
+
+
+def test_registry_reads_v1_and_v2(cw_env):
+    """数据错误登记对 v1 和 v2 批次都能汇总(v2:买点列表、框选可空,数据有误仍必有起止)。"""
+    cfg, _ = cw_env
+    _batch(cfg, "20261008T101500", [_ann("AAA", "2025-03-03", "2025-03-07", ann_id="v1")])
+    d = state_root() / "annotations"
+    (d / "20261017T090000.json").write_text(json.dumps({
+        "schema": "chart_workflow.annotations/2", "batch_id": "20261017T090000", "list_id": "r9",
+        "list_kind": "bigmoves", "outcome_visible": True, "train_end": "2025-12-31",
+        "annotations": [
+            {"ann_id": "v2", "item_id": "BBB@2025-06-02", "symbol": "BBB", "range_start": "2025-06-02",
+             "range_end": "2025-06-04", "buy_points": [], "label": "data_error", "note": "复权",
+             "peeked_before_buy": False, "updated_at": "2026-10-17T09:00:00"},
+            {"ann_id": "v2p", "item_id": "CCC@2025-06-02", "symbol": "CCC", "range_start": None,
+             "range_end": None, "buy_points": [{"date": "2025-06-02", "primary": True}],
+             "label": "positive", "note": "", "peeked_before_buy": False}]}, ensure_ascii=False))
+    reg = build_registry(cfg)
+    assert reg["n_batches"] == 2 and reg["skipped_files"] == []
+    assert [(e["symbol"], e["sources"][0]["ann_id"]) for e in reg["entries"]] == [("AAA", "v1"),
+                                                                                  ("BBB", "v2")]
