@@ -473,8 +473,14 @@ def build_workflow_router(*, get_config) -> APIRouter:
                 rows = views.read_views()
             except StateRootMissing as e:
                 raise HTTPException(503, str(e)) from None
+            def dates_of(sym):
+                try:
+                    return _bars(cfg, sym, _train_end(cfg)).index
+                except HTTPException:
+                    return None
+
             for d in anns:
-                trail = views.outcome_trail(items[d["item_id"]], req.list_id, rows)
+                trail = views.outcome_trail(items[d["item_id"]], req.list_id, rows, dates_of)
                 d["peeked_before_buy"] = bool(d["peeked_before_buy"] or trail["peeked"])
                 d["outcome_seen_elsewhere"] = trail["seen_elsewhere"]
                 rv = trail["first_reveal"]

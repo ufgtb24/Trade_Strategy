@@ -26,7 +26,7 @@ elements.py);摆过没选的、被拒的都只进日志、不进卡。写入流�
 规则(validate,任一不过就拒绝写入并列出全部问题):origin 必填;推荐来的(adopted / edited)要写
 suggested_by;改过的推荐要带 suggested_value(用户自己写的也可以带,记下当时摆着的推荐);
 触发引用触发候选(term 不是 custom)时永远算推荐——推荐来的只能是 detector 或 own_library,
-用户自己写的(手写触发 custom 也一样)必须带非空 said_first_match。
+用户自己写的(手写触发 custom 也一样)必须带非空 said_first_match;卡上要素项的角色记成用户定的,同样要带。
 形态卡上要素那一项的来源记录记的是「角色是谁定的」(把这条要素以这个角色放进这个形态);
 要素本身是谁提的记在要素库里。
 从你以前的形态卡复用(own_library)时,会话只填 from_card:旧卡编号 shape_id、版本 version、编号 ref
@@ -118,9 +118,9 @@ class ShapeValidationError(ValueError):
 
 # ── 来源记录与卡的校验 ───────────────────────────────────────────────────────
 
-def validate(rec, path: str, term: str | None = None, wrapped: bool = True) -> list[str]:
+def validate(rec, path: str, term: str | None = None, wrapped: bool = True, role: bool = False) -> list[str]:
     """一条来源记录的问题清单。wrapped:要求带 value(要素项 / 触发的来源字段直接摊在条目上,不带 value)。
-    term:这个值引用的触发候选编号(custom 或 None 表示不引用)。"""
+    term:这个值引用的触发候选编号(custom 或 None 表示不引用)。role:这是卡上要素项的来源(角色是谁定的)。"""
     if not isinstance(rec, dict):
         return [f"{path}: 不是对象"]
     errs = []
@@ -138,6 +138,8 @@ def validate(rec, path: str, term: str | None = None, wrapped: bool = True) -> l
         errs.append(f"{path}: 改过的推荐要带 suggested_value(推荐原值)")
     if term == "custom" and origin == "user_written" and not str(rec.get("said_first_match") or "").strip():
         errs.append(f"{path}: 自己写的触发记成用户说的,要带 said_first_match(用户原话)")
+    if role and origin == "user_written" and not str(rec.get("said_first_match") or "").strip():
+        errs.append(f"{path}: 角色记成用户定的,要带 said_first_match(用户原话)")
     refs_table = term is not None and term != "custom"
     if refs_table:
         if origin == "user_written" and not str(rec.get("said_first_match") or "").strip():
@@ -296,7 +298,7 @@ def validate_card(card, path: str, els: dict) -> list[str]:
             used[eid] = iid
         if ing.get("role") not in ROLES:
             errs.append(f"{p}: role 只能是 {'/'.join(ROLES)}")
-        errs += validate(ing, p, None, wrapped=False)
+        errs += validate(ing, p, None, wrapped=False, role=True)
     trigs = card.get("triggers", [])
     if not isinstance(trigs, list):
         return errs + [f"{path}.triggers: 必须是列表"]
@@ -630,9 +632,12 @@ def _as_decision_op(op: dict) -> dict:
     return raw
 
 
+ELEMENT_VERSION_SINCE = "2026-10-17T10:30:53"     # 卡开始记要素版本号的那次提交;更早写的卡没有这个字段
+
+
 def _old_format_tolerant(redone: dict, logged: dict) -> dict:
     """旧日志里的卡还没记要素版本号(那时判定一律按最新版本):日志里没有这个字段的,重算结果也去掉再比。
-    只容忍「没有」,记了而且和重算的不同照样算对不上。"""
+    只容忍「没有」,记了而且和重算的不同照样算对不上;只给旧条目用(见 revalidate)。"""
     v, lv = redone.get("value"), logged.get("value")
     if redone.get("act") not in ("create_shape", "revise_shape") or not isinstance(lv, dict):
         return redone
@@ -647,9 +652,12 @@ def _old_format_tolerant(redone: dict, logged: dict) -> dict:
 
 def revalidate(ops: list[dict], anns: dict) -> list[str]:
     """把日志里每条要素与形态卡的操作按顺序重新走一遍决定文件的校验(当时的状态 = 它前面的日志重算出来的),
-    不合格、或校验后补全的结果和日志里记的不一样,都列出来。直接写进日志、绕开决定文件的操作就在这里现形。"""
+    不合格、或校验后补全的结果和日志里记的不一样,都列出来。直接写进日志、绕开决定文件的操作就在这里现形。
+    「卡没记要素版本号」只对旧条目放宽:日志开头连续一段、时间早于 ELEMENT_VERSION_SINCE 的条目(那时的代码
+    还不记版本号);在它之后的条目,或排在任何新条目后面的「旧」时间,一律按现在的格式比。"""
     st = _State([])
     problems = []
+    n_old = next((k for k, op in enumerate(ops) if str(op.get("ts") or "") >= ELEMENT_VERSION_SINCE), len(ops))
     for k, op in enumerate(ops):
         act = op.get("act")
         if act in oplog.SHAPE_ACTS or act in oplog.ELEMENT_ACTS:
@@ -658,7 +666,8 @@ def revalidate(ops: list[dict], anns: dict) -> list[str]:
             out, errs = _prepare_ops([_as_decision_op(op)], {}, trial, anns, where)
             if errs:
                 problems += errs
-            elif _old_format_tolerant({**out[0], "ts": op.get("ts"), "op_id": op.get("op_id")}, op) != op:
+            elif (_old_format_tolerant if k < n_old else lambda r, _: r)(
+                    {**out[0], "ts": op.get("ts"), "op_id": op.get("op_id")}, op) != op:
                 problems.append(f"{where(0)}: 重新校验补全后和日志里记的不一样(日志被改过,或没经决定文件写入)")
         try:
             E.step(st.els, op)
@@ -681,10 +690,26 @@ def touched_elements(ops: list[dict]) -> list[str]:
     return sorted(out)
 
 
+def checked_ops() -> list[dict]:
+    """读全部操作日志,先把每条要素与卡的操作重走一遍决定文件的校验(revalidate);不合格 → ShapeValidationError,
+    列出是哪几条。正常写入之前、账本取数之前都先过这一道。"""
+    ops = oplog.read_all()
+    bad = revalidate(ops, _ann_index())
+    if bad:
+        raise ShapeValidationError(["操作日志里已有不合格的条目(手写进日志或改过工具补的字段),先处理:"] + bad)
+    return ops
+
+
+def checked_state() -> tuple[list[dict], dict, dict]:
+    """(全部日志, 卡, 要素):日志先过 checked_ops,卡与要素从日志重算,不读磁盘上的卡与要素文件。"""
+    ops = checked_ops()
+    return ops, replay(ops), E.replay(ops)
+
+
 def apply(decision: dict) -> tuple[list[dict], list[str]]:
-    """校验 → 追加日志 → 从全部日志重算受影响的要素与卡 → 写文件。
+    """校验(先重走全部日志,再校验这个决定文件)→ 追加日志 → 从全部日志重算受影响的要素与卡 → 写文件。
     返回 (追加的条目, 受影响的 shape_id);受影响的要素编号见 touched_elements(追加的条目)。"""
-    existing = oplog.read_all()
+    existing = checked_ops()
     ops, _ = prepare(decision, existing, _ann_index())
     written = oplog.append(ops, oplog.VIA_DECISION)
     all_ops = oplog.read_all()

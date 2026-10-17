@@ -215,25 +215,46 @@ def summarize(res, min_start: int | None = None) -> dict:
     return counts
 
 
+FROM_SUFFIX = "_from_idx"      # <字段>_from_idx:那个派生值往回看到的最早一根 bar(不算事件锚点)
+
+
 def event_anchor(e: dict) -> int:
     """事件行的锚点:它声明的最早一根 bar——start_idx 与其余以 _idx 结尾的整数字段(confirm_idx、峰事件的
-    peak_idx 等;instance_idx 是流序不是 bar)里最小的那个。按字段命名约定取,不认具体事件类型。"""
-    xs = [v for k, v in e.items() if k.endswith("_idx") and k != "instance_idx"
+    peak_idx 等;instance_idx 是流序不是 bar,<字段>_from_idx 是派生值的回看起点)里最小的那个。
+    按字段命名约定取,不认具体事件类型。"""
+    xs = [v for k, v in e.items() if k.endswith("_idx") and k != "instance_idx" and not k.endswith(FROM_SUFFIX)
           and isinstance(v, int) and not isinstance(v, bool)]
     return min(xs) if xs else -1
 
 
+def _drop_ids(v, gone: set):
+    """字段值里指向被删事件的编号:单个编号置空,编号列表去掉它们;别的值原样。"""
+    if isinstance(v, str):
+        return None if v in gone else v
+    if isinstance(v, (list, tuple)) and any(isinstance(x, str) and x in gone for x in v):
+        return [x for x in v if not (isinstance(x, str) and x in gone)]
+    return v
+
+
 def redact_before(analysis: dict, floor_idx: int) -> dict:
     """看图下界护栏(调试视图只露本轮看图范围,见 path2_web/guard.py):删掉锚点(event_anchor)早于
-    floor_idx 那根的事件;留下的事件与 match 里指向被删事件(或事件表里没有的)的引用一并删掉;
-    match 的 where / 边判定只留涉及的事件都还在的条目;match 起点截到 floor_idx。
-    纯函数,返回新 dict,幂等。留下的事件自己的字段原样保留(量比、距离这类派生值可能用到了更早的行情)。"""
+    floor_idx 那根的事件;留下的事件与 match 里指向被删事件(或事件表里没有的)的引用一并删掉,事件字段里
+    指向被删事件的编号置空;留下的事件里,回看起点(<字段>_from_idx)早于 floor_idx 的派生值连同回看起点置空;
+    match 的 where / 边判定只留涉及的事件都还在的条目;match 起点截到 floor_idx。纯函数,返回新 dict,幂等。
+    其余派生值(量比、距离这类)原样保留,可能用到了更早的行情,但不是下界前的价格本身。"""
     events = [dict(e) for e in analysis.get("events") or [] if event_anchor(e) >= floor_idx]
     keep = {e["instance_id"] for e in events}
+    gone = {e.get("instance_id") for e in analysis.get("events") or []} - keep - {None}
     for e in events:
         for key in ("child_refs", "ref_ids"):
             if isinstance(e.get(key), dict):
                 e[key] = {k: [i for i in v if i in keep] for k, v in e[key].items()}
+        for k, v in list(e.items()):
+            if k.endswith(FROM_SUFFIX) and isinstance(v, int) and not isinstance(v, bool) and v < floor_idx:
+                e[k[:-len(FROM_SUFFIX)]] = None
+                e[k] = None
+            elif k not in ("instance_id", "child_refs", "ref_ids") and gone:
+                e[k] = _drop_ids(v, gone)
     matches = []
     for m in analysis.get("matches") or []:
         m = dict(m)

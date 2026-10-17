@@ -100,6 +100,10 @@ DEFAULTS: dict = {
         "causal_samples": 5,        # 因果自检:每只命中股抽几个命中日
         "seed": 0,
     },
+    "shape_check": {     # 规则来自形态卡时的核对(rulecheck.py,全部待验证)
+        "min_samples": 3,           # 至少要几个能核对的样本
+        "max_disagree_share": 0.0,  # 样本股逐日比,规则和卡不一致的天数最多占卡能判定天数的多少
+    },
     "facts": {           # 事实表(facts.py,全部待验证)
         "default_lookback_bars": 90,    # 没框选起止时,窗口取买点前这么多根
         "swing_side": 10,               # 大尺度峰:左右各至少这么多根更低

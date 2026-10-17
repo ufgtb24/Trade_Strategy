@@ -24,8 +24,9 @@ n_blind 个;图窗截到决策日之后 view.blind_after_bars 个交易日为止
 path2_apps/<app>/ 有没有未提交改动(代码版本与 chart_workflow/、path2/ 的改动另见账本 provenance)。
 账本 kind:--blind → blind,source = mining → mined,其余 rule。
 来源写形态卡(shape:<shape_id>@v<版本>)时,开工前先核对规则和卡(rulecheck.py):规则文件或 app 模块要声明
-IMPLEMENTS(实现了卡上哪些要素、各是什么角色),和卡那一版一致;卡的样本上规则信号和卡上要素的判定一致。
-任一不过就停,什么都不生成;通过后把声明与核对结果记进账本(rule_implements)。
+IMPLEMENTS(实现了卡上哪些要素、各是什么角色),和卡那一版一致;卡的样本上、样本股看图范围内逐日,规则信号
+都和「卡说成立」一致。任一不过就停,什么都不生成(连面板都不算)。记账时账本拿同一条规则自己再核对一遍,
+把声明与核对结果记进账本(rule_implements)。
 """
 from __future__ import annotations
 
@@ -221,9 +222,8 @@ def main(argv=None) -> None:
         root = state_root()
         check_source(args.source)
         check_new_list_id(cfg, args.list_id)
-        implements = (check_rule_against_shape(args.source, cfg, rule=args.rule, app=args.app,
-                                               params=args.params)
-                      if args.source.startswith("shape:") else None)
+        if args.source.startswith("shape:"):
+            check_rule_against_shape(args.source, cfg, rule=args.rule, app=args.app, params=args.params)
     except (StateRootMissing, ValueError, FileNotFoundError) as e:
         print(f"错误:{e}", file=sys.stderr)
         sys.exit(2)
@@ -239,7 +239,8 @@ def main(argv=None) -> None:
     ctx = {"kind": kind,
            "rule_id": args.rule_id or (Path(args.rule).stem if args.rule else f"app:{args.app}"),
            "version": args.version or _default_version(args.rule, args.params),
-           "source": args.source, "change": args.change, "note": args.note, "implements": implements, **arch}
+           "source": args.source, "change": args.change, "note": args.note,
+           "rule": args.rule, "app": args.app, "app_params": args.params, **arch}
     try:                      # 普通模式:成绩算完当场记账(summarize 里)
         doc = build_list(panel, hits, cfg, args.list_id, args.blind, label, args.title,
                          errata_info=errata, ledger=ctx,
@@ -256,7 +257,7 @@ def main(argv=None) -> None:
     if args.blind:
         try:
             entry = add_round(cfg, **{k: ctx[k] for k in ("kind", "rule_id", "version", "source",
-                                                          "change", "note", "implements")},
+                                                          "change", "note", "rule", "app", "app_params")},
                               list_id=args.list_id, auto=True, years=doc["params"]["inner_years"],
                               **arch)
         except BaseException as e:

@@ -1,18 +1,26 @@
-"""规则来自形态卡时的核对:规则声明的要素与角色要和卡那一版一致,规则在卡的样本上的信号要和卡上要素的
-判定一致。对照页(contrast)在来源写 shape:<shape_id>@v<版本> 时开工前调用,不一致就拒绝;通过后把
-规则声明的要素记进账本(rule_implements)。
+"""规则来自形态卡时的核对:规则声明的要素与角色要和卡那一版一致;卡的样本上、以及样本股看图范围内的每一天,
+规则信号都要和「卡说成立」一致。对照页(contrast)在来源写 shape:<shape_id>@v<版本> 时开工前调用,账本记账时
+再由账本自己调一次(不收调用方传来的核对结果);任一不过就拒绝,通过后把声明与核对结果记进账本(rule_implements)。
 
 声明:规则文件(--rule)或 app 模块(--app,即 path2_web 发现机制给出的那个模块)在模块顶层写
     IMPLEMENTS = {"E001": "must", "E002": "must_not", "E004": "bonus"}
 即「这条规则实现了哪些要素、各是什么角色」(角色同形态卡:must / bonus / must_not)。要素编号可以写卡上
 引用的编号,也可以写它合并后并入的编号(按合并后解析到的那条比)。
 
-一致性核对(只在卡的样本图上做,不扫全市场):卡那一版及以前加进来的样本,在样本的买点那天按标注的框选
-起点(没框选就用默认回看)算一次事实表,卡上必须有 / 有它就不买的要素按卡上记下的版本判定——全部必须有
-都是「是」、全部有它就不买都是「否」就是「卡说成立」,否则「卡说不成立」;加分项不参与。规则在同一天的
-信号要和它相同。有要素无法判定(待写代码、回看不够长)或那天读不到行情的样本跳过并列出原因;一个能核对的
-样本都没有也拒绝(核对不了就不认这个来源)。规则信号:规则文件方式把行情截到买点当天再算 signal(df),
-取最后一天;app 方式跑这只股票,看买点那天在不在命中里。
+「卡说成立」(一天、一只股票的事实表上):卡上必须有的要素全是「是」、有它就不买的全是「否」(按卡上记下的
+要素版本判;加分项不参与);卡上有触发时,还要当天出现卡上的某个触发(T1~T8 由事实表判;只剩手写触发时
+判定不了)。有要素无法判定(待写代码、回看不够长)或触发判定不了 → 这一天卡判定不了,不比。
+
+两道核对(只比规则和卡是否一致,不碰任何前瞻收益):
+  样本:卡那一版及以前加进来的样本,在样本的买点那天按标注的框选起点算事实表,规则信号要和「卡说成立」相同。
+        判定不了或读不到行情的样本跳过并列出原因;能核对的样本少于 shape_check.min_samples(默认 3,待验证)
+        就拒绝,报错里给两条出路:先给卡加样本,或者这条规则不声明来自形态卡。
+  逐日(反例):每只能核对的样本股,在看图范围内(不早于看图下界、不晚于训练段末日)逐日按默认回看算事实表,
+        卡能判定的每一天,规则信号都要和「卡说成立」一致;不一致的天数占卡能判定天数的比例超过
+        shape_check.max_disagree_share(默认 0,即必须全部一致,待验证)就拒绝,列出不一致的天。
+        永远成立、或明显比卡宽的规则在卡说不成立的日子上就过不了。
+规则信号:规则文件方式在这只股票截到训练段末日的行情上算一次 signal(df),逐日读;app 方式跑这只股票,
+看那天在不在命中里。卡与要素从操作日志重算(先重走全部日志的校验),不读磁盘上的卡与要素文件。
 """
 from __future__ import annotations
 
@@ -24,10 +32,16 @@ from chart_workflow.ledger import SHAPE_SOURCE_RE
 
 ROLES = ("must", "bonus", "must_not")
 ROLE_TEXT = {"must": "必须有", "bonus": "加分", "must_not": "有它就不买"}
+DEFAULTS = {"min_samples": 3, "max_disagree_share": 0.0}     # 与 config 的 shape_check 同值,都待验证
+SHOW_DAYS = 10
 
 
 class RuleShapeMismatch(ValueError):
     """规则和它声明来自的形态卡对不上。"""
+
+
+def _settings(cfg: dict) -> dict:
+    return {**DEFAULTS, **(cfg.get("shape_check") or {})}
 
 
 def declared_implements(rule: str | None = None, app: str | None = None) -> dict:
@@ -52,18 +66,6 @@ def declared_implements(rule: str | None = None, app: str | None = None) -> dict
         raise RuleShapeMismatch(f"{where} 的 IMPLEMENTS 格式不对(角色只能是 {' / '.join(ROLES)}):"
                                 + "、".join(bad))
     return dict(decl)
-
-
-def _card_version(source: str) -> tuple[dict, dict, int]:
-    from chart_workflow.shapes import load_card
-
-    m = SHAPE_SOURCE_RE.fullmatch(source)
-    card = load_card(m.group(1))
-    n = int(m.group(2))
-    ver = next((v for v in card["versions"] if v["version"] == n), None)
-    if ver is None:
-        raise FileNotFoundError(f"形态卡 {m.group(1)} 没有版本 v{n}")
-    return card, ver, n
 
 
 def check_declaration(decl: dict, ver: dict, els: dict, shape: str) -> list[dict]:
@@ -93,48 +95,73 @@ def check_declaration(decl: dict, ver: dict, els: dict, shape: str) -> list[dict
     return [{"element": k, "element_resolved": E.resolve(els, k), "role": role} for k, role in sorted(decl.items())]
 
 
-def _card_says(ings: list[dict], els: dict, facts: dict) -> tuple[bool | None, str]:
+def card_says(card: dict, els: dict, facts: dict) -> tuple[bool | None, str]:
+    """一天的事实表上「卡说成立」吗(见模块说明):(True / False / None = 判定不了, 判定不了的理由)。"""
     from chart_workflow import elements as E
 
     ok = True
-    for ing in ings:
+    for ing in card.get("ingredients", []):
         if ing.get("role") == "bonus" or not ing.get("element"):
             continue
         v, why = E.evaluate_element(els, ing["element"], facts, ing.get("element_version"))
         if v == "unknown":
             return None, f"{E.label(els, ing['element'])} 无法判定({why})"
         ok = ok and (v == "yes" if ing["role"] == "must" else v == "no")
-    return ok, ""
+    terms = [t.get("term") for t in card.get("triggers", [])]
+    if not ok or not terms:
+        return ok, ""
+    today = {t.get("tid") for t in facts.get("triggers") or []}
+    if any(t in today for t in terms if t != "custom"):
+        return True, ""
+    if "custom" in terms:
+        return None, "卡上表里的触发当天都没出现,手写触发判定不了"
+    return False, ""
 
 
-def _rule_signal(cfg: dict, symbol: str, day: str, rule: str | None, app: str | None,
-                 params: str | None, cache: dict) -> bool:
-    import pandas as pd
+class _Signals:
+    """规则在一只股票上的信号:规则文件方式逐股算一次 signal(df),app 方式逐股跑一次 app。"""
 
+    def __init__(self, cfg: dict, rule: str | None, app: str | None, params: str | None):
+        self.cfg, self.rule, self.app, self.params = cfg, rule, app, params
+        self._fn = None
+        self._cache: dict[str, dict[str, bool] | set] = {}
+
+    def on(self, symbol: str, df) -> dict[str, bool]:
+        """{日期: 这天成立吗};df 是截到训练段末日的行情(规则文件方式用)。"""
+        import pandas as pd
+
+        from chart_workflow.rules import _app_worker, _signal_bool, app_module_path, load_rule
+
+        if symbol not in self._cache:
+            if self.rule:
+                self._fn = self._fn or load_rule(self.rule)
+                sig = _signal_bool(self._fn, df)
+                self._cache[symbol] = {d.strftime("%Y-%m-%d"): bool(x) for d, x in zip(df.index, sig)}
+            else:
+                py = str(Path(self.params).resolve()) if self.params else None
+                _, days, _ = _app_worker((app_module_path(self.app), py, symbol, self.cfg))
+                hit = {pd.Timestamp(d).strftime("%Y-%m-%d") for d in days}
+                self._cache[symbol] = {d.strftime("%Y-%m-%d"): d.strftime("%Y-%m-%d") in hit for d in df.index}
+        return self._cache[symbol]
+
+
+def _bars(cfg: dict, symbol: str, cache: dict):
     from chart_workflow.loader import read_bars
-    from chart_workflow.rules import _app_worker, _signal_bool, app_module_path, load_rule
 
-    if rule:
-        df = read_bars(cfg, symbol, until=day)
-        if len(df) == 0 or df.index[-1] != pd.Timestamp(day):
-            raise ValueError(f"{day} 不是 {symbol} 的交易日")
-        return bool(_signal_bool(load_rule(rule), df)[-1])
     if symbol not in cache:
-        py = str(Path(params).resolve()) if params else None
-        _, days, _ = _app_worker((app_module_path(app), py, symbol, cfg))
-        cache[symbol] = {pd.Timestamp(d).strftime("%Y-%m-%d") for d in days}
-    return day in cache[symbol]
+        cache[symbol] = read_bars(cfg, symbol)
+    return cache[symbol]
 
 
-def check_samples(cfg: dict, card: dict, ver: dict, n: int, els: dict, anns: dict, *,
-                  rule: str | None, app: str | None, params: str | None) -> dict:
-    """卡的样本图上,规则信号和卡上要素的判定是否一致。返回 {"checked": 个数, "skipped": [原因]};
-    有不一致的、或一个能核对的都没有 → RuleShapeMismatch。"""
+def check_samples(cfg: dict, card: dict, ver: dict, n: int, els: dict, anns: dict, sig: _Signals,
+                  bars: dict) -> dict:
+    """卡的样本图上,规则信号和「卡说成立」是否一致。返回 {"checked", "skipped": [原因], "symbols": [能核对的股票]};
+    有不一致的、或能核对的少于最少个数 → RuleShapeMismatch。"""
     from chart_workflow.facts import facts_for
 
-    ings = ver["card"].get("ingredients", [])
     shape = f"{card['shape_id']}@v{n}"
-    bad, skipped, checked, cache = [], [], 0, {}
+    need = int(_settings(cfg)["min_samples"])
+    bad, skipped, checked, symbols = [], [], 0, set()
     for case in card.get("cases") or []:
         if case.get("version", 0) > n:
             continue
@@ -146,35 +173,94 @@ def check_samples(cfg: dict, card: dict, ver: dict, n: int, els: dict, anns: dic
             continue
         try:
             facts = facts_for(cfg, a["symbol"], day, a.get("range_start"))
-            says, why = _card_says(ings, els, facts)
+            says, why = card_says(ver["card"], els, facts)
             if says is None:
                 skipped.append(f"{tag}:{why}")
                 continue
-            sig = _rule_signal(cfg, a["symbol"], day, rule, app, params, cache)
+            got = sig.on(a["symbol"], _bars(cfg, a["symbol"], bars)).get(day)
+            if got is None:
+                raise ValueError(f"{day} 不是 {a['symbol']} 的交易日")
         except (ValueError, FileNotFoundError) as e:
             skipped.append(f"{tag}:{e}")
             continue
         checked += 1
-        if sig != says:
-            bad.append(f"{tag}:卡上要素判定{'成立' if says else '不成立'},规则信号{'成立' if sig else '不成立'}")
+        symbols.add(a["symbol"])
+        if got != says:
+            bad.append(f"{tag}:卡说{'成立' if says else '不成立'},规则信号{'成立' if got else '不成立'}")
     if bad:
-        raise RuleShapeMismatch(f"规则在形态卡 {shape} 的样本上和卡上要素的判定不一致:" + ";".join(bad))
-    if checked == 0:
-        raise RuleShapeMismatch(f"形态卡 {shape} 没有能核对的样本,核对不了规则和卡是否一致"
-                                + (":" + ";".join(skipped) if skipped else "(卡上没有样本)"))
-    return {"checked": checked, "skipped": skipped}
+        raise RuleShapeMismatch(f"规则在形态卡 {shape} 的样本上和卡说的不一致:" + ";".join(bad))
+    if checked < need:
+        why = (";跳过的:" + ";".join(skipped)) if skipped else ""
+        raise RuleShapeMismatch(
+            f"形态卡 {shape} 能核对的样本只有 {checked} 个,至少要 {need} 个(待验证),核对不了规则和卡是否一致{why}。"
+            f"两条出路:先给卡加样本(add_case),或者这条规则不声明来自形态卡(来源写 user-text / mining 等)")
+    return {"checked": checked, "skipped": skipped, "symbols": sorted(symbols)}
+
+
+def check_days(cfg: dict, card: dict, ver: dict, n: int, els: dict, symbols: list[str], sig: _Signals,
+               bars: dict) -> dict:
+    """反例核对:每只样本股在看图范围内逐日比规则信号和「卡说成立」。返回 {"days", "unknown", "disagree": 个数,
+    "examples": [前几个不一致的天]};不一致的比例超过容差、或卡一天都判定不了 → RuleShapeMismatch。"""
+    import pandas as pd
+
+    from chart_workflow.facts import compute_facts
+
+    shape = f"{card['shape_id']}@v{n}"
+    lo, hi = pd.Timestamp(cfg.get("view_floor") or cfg["train_start"]), pd.Timestamp(cfg["train_end"])
+    days, unknown, bad = 0, 0, []
+    for sym in symbols:
+        df = _bars(cfg, sym, bars)
+        got = sig.on(sym, df)
+        for d in df.index[(df.index >= lo) & (df.index <= hi)]:
+            day = d.strftime("%Y-%m-%d")
+            try:
+                facts = compute_facts(df, day, None, fcfg=cfg["facts"], features_cfg=cfg["features"],
+                                      m_period=cfg["m_period"])
+            except ValueError:
+                unknown += 1
+                continue
+            says, _ = card_says(ver["card"], els, facts)
+            if says is None:
+                unknown += 1
+                continue
+            days += 1
+            if got.get(day) != says:
+                bad.append((sym, day, says, got.get(day)))
+    if days == 0:
+        raise RuleShapeMismatch(f"形态卡 {shape} 在样本股的看图范围内一天都判定不了,核对不了规则和卡是否一致")
+    share = len(bad) / days
+    tol = float(_settings(cfg)["max_disagree_share"])
+    examples = [f"{s} {d}:卡说{'成立' if c else '不成立'},规则{'成立' if r else '不成立'}" for s, d, c, r in bad]
+    if share > tol:
+        raise RuleShapeMismatch(
+            f"规则和形态卡 {shape} 在样本股看图范围内逐日比:卡能判定的 {days} 天里有 {len(bad)} 天不一致"
+            f"(容差 {tol:.0%},待验证):" + ";".join(examples[:SHOW_DAYS])
+            + (f";…共 {len(bad)} 天" if len(bad) > SHOW_DAYS else ""))
+    return {"days": days, "unknown": unknown, "disagree": len(bad), "examples": examples[:SHOW_DAYS]}
 
 
 def check_rule_against_shape(source: str, cfg: dict, *, rule: str | None = None, app: str | None = None,
                              params: str | None = None) -> dict:
-    """来源是形态卡时的全部核对。返回要记进账本的 {"source", "declared": [...], "samples_checked",
-    "samples_skipped"};任何一项不过 → RuleShapeMismatch(卡或版本不存在 → FileNotFoundError)。"""
-    from chart_workflow import elements as E
-    from chart_workflow.shapes import _ann_index
+    """来源是形态卡时的全部核对。返回要记进账本的 {"source", "declared", "samples_checked", "samples_skipped",
+    "days_checked", "days_unknown", "days_disagree", "disagree_examples"};任何一项不过 → RuleShapeMismatch
+    (日志校验不过 → ShapeValidationError;卡或版本不存在 → FileNotFoundError)。"""
+    from chart_workflow.shapes import _ann_index, checked_state
 
-    card, ver, n = _card_version(source)
-    els = E.load_all()
+    if not (rule or app):
+        raise RuleShapeMismatch("来源写的是形态卡,要给出规则(规则文件或 app)才能核对")
+    m = SHAPE_SOURCE_RE.fullmatch(source)
+    _, cards, els = checked_state()
+    card = cards.get(m.group(1))
+    if card is None:
+        raise FileNotFoundError(f"形态卡不存在: {m.group(1)}")
+    n = int(m.group(2))
+    ver = next((v for v in card["versions"] if v["version"] == n), None)
+    if ver is None:
+        raise FileNotFoundError(f"形态卡 {m.group(1)} 没有版本 v{n}")
     declared = check_declaration(declared_implements(rule, app), ver, els, f"{card['shape_id']}@v{n}")
-    res = check_samples(cfg, card, ver, n, els, _ann_index(), rule=rule, app=app, params=params)
+    sig, bars = _Signals(cfg, rule, app, params), {}
+    res = check_samples(cfg, card, ver, n, els, _ann_index(), sig, bars)
+    daily = check_days(cfg, card, ver, n, els, res["symbols"], sig, bars)
     return {"source": source, "declared": declared, "samples_checked": res["checked"],
-            "samples_skipped": res["skipped"]}
+            "samples_skipped": res["skipped"], "days_checked": daily["days"], "days_unknown": daily["unknown"],
+            "days_disagree": daily["disagree"], "disagree_examples": daily["examples"]}

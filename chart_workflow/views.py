@@ -31,12 +31,16 @@ record() 是写 <状态根>/views.jsonl 的唯一入口(后端打开清单、收
 
 大涨段标注收进来时,后端用 outcome_trail 从全部看过记录查这一条决策日之后的走势,在这张图第一次露出结果
 之前是否已经在别处露出过(同代码、图窗盖住决策日之后那段、看得到结果),分两级记:
-  careful   仔细看过:单张图的放大、标注、露出结果、往右拖看后续,调试视图看那只股票的图,聊天贴图,补记
-  in_list   只在清单里出现过:只是打开过含它的清单(看图工作流或调试视图打开整份清单)
-看图工作流里大涨段的图没露出结果前只露到决策日后 PRE_REVEAL_RIGHT_MAX 根;同一份大涨段清单里的同股条目
-按生成规则看不到彼此的决策日,只会从左端露出一点别条的后续(左端残留),不计;这一条自己(同一个条目,
-在哪份大涨段清单里都一样)露出结果前那一小段是设计上就给看的,也不计;这一条自己往右拖看后续另记
-peeked_before_buy,不算「别处」。以哪一级为准由流程骨架定,这里只如实记。
+  careful   仔细看过:单张图——放大、标注、露出结果、往右拖看后续,调试视图看那只股票的图,聊天贴图,
+            逐张补记(show_chart)
+  in_list   只在清单里出现过:只是打开过含它的整份清单(open_list,不论在看图工作流、调试视图、聊天还是补记)
+看图工作流里大涨段的图没露出结果前只露到决策日后 PRE_REVEAL_RIGHT_MAX 根(按这只股票在副本里的真实
+交易日数;读不到行情时退回决策日后 PRE_REVEAL_FALLBACK_BDAYS 个工作日)。同一份大涨段清单里的记录不计:
+这一条自己的单张图事件是这次标注本身(往右拖看后续另记 peeked_before_buy),同股别条按生成规则看不到
+彼此的决策日,只会从左端露出一点别条的后续(左端残留)。别的清单里这一条自己的单张图事件照常算(例如在
+对照页放大看过同一条 → 仔细看过),只有大涨段清单露出结果前那一小段是设计上就给看的,不计。
+补记(backfill 或 surface = manual)记的是旧界面下的历史接触,当时结果全程可见:不按露出前截断,也不因为
+是同一条或同一份清单跳过。以哪一级为准由流程骨架定,这里只如实记。
 
 会话在聊天里贴图(surface = chat)时,图窗(以及记整份清单时清单里每条的图窗)不得早于本轮看图下界
 view_floor、不得晚于训练段末日:越界就拒绝,提醒会话这张图本不该贴。确实要记(例如用户主动贴了旧图),
@@ -71,8 +75,9 @@ from chart_workflow.state import StateRootMissing, state_root
 SURFACES = ("web", "debug", "chat", "manual")
 EVENTS = ("open_list", "show_chart", "zoom_chart", "annotate_chart", "reveal", "peek_chart")
 CHART_EVENTS = ("zoom_chart", "annotate_chart", "reveal", "peek_chart")     # 看图工作流里的单张图事件
-CAREFUL_EVENTS = ("show_chart",) + CHART_EVENTS              # 仔细看过:单张图(另加聊天贴图、补记)
+CAREFUL_EVENTS = ("show_chart",) + CHART_EVENTS              # 仔细看过:单张图(不论哪个界面);整份清单只算 in_list
 PRE_REVEAL_RIGHT_MAX = 15        # 大涨段露出结果前一张图最多露到决策日后几根(与前端 INITIAL_RIGHT_MAX 同值)
+PRE_REVEAL_FALLBACK_BDAYS = 20   # 读不到这只股票的交易日时,露出前估计退回决策日后几个工作日
 SNAPSHOT_SCHEMA = "chart_workflow.viewed_list/1"
 ITEM_FIELDS = ("item_id", "symbol", "t", "view_start", "view_end")
 LIST_FIELDS = ("kind", "title", "created_at", "train_end")
@@ -225,23 +230,34 @@ def _t_of(item_id) -> str | None:
     return m.group(1) if m else None
 
 
-def _pre_reveal_end(t: str, end: str) -> str:
-    """大涨段露出结果前一张图最多露到哪天:决策日后 PRE_REVEAL_RIGHT_MAX 个工作日(节假日只会让真实那根更早)。"""
+def _pre_reveal_end(t: str, end: str, dates: list[str] | None = None) -> str:
+    """大涨段露出结果前一张图最多露到哪天:这只股票决策日后第 PRE_REVEAL_RIGHT_MAX 个交易日(dates:副本里这只
+    股票的交易日,升序);没给或决策日后不够这么多根 → 决策日后 PRE_REVEAL_FALLBACK_BDAYS 个工作日。不超过图窗终点。"""
     import pandas as pd
 
-    return min(str(end), (pd.Timestamp(t) + pd.offsets.BDay(PRE_REVEAL_RIGHT_MAX)).strftime("%Y-%m-%d"))
+    after = [d for d in dates or () if d > str(t)]
+    if len(after) >= PRE_REVEAL_RIGHT_MAX:
+        last = after[PRE_REVEAL_RIGHT_MAX - 1]
+    else:
+        last = (pd.Timestamp(t) + pd.offsets.BDay(PRE_REVEAL_FALLBACK_BDAYS)).strftime("%Y-%m-%d")
+    return min(str(end), last)
 
 
-def _exposed(r: dict, reveals: dict, snap) -> list[tuple]:
-    """一行看过记录露出了哪些 (条目, 代码, 起点, 终点)。大涨段清单里那时还没露出结果的图只露到决策日后几根;
-    露出结果、往右拖看后续的那张图按整个图窗。"""
-    big = r.get("list_kind") == "bigmoves"
+def _is_backfill(r: dict) -> bool:
+    """补记的历史接触(旧界面下结果全程可见)。"""
+    return bool(r.get("backfill")) or r.get("surface") == "manual"
+
+
+def _exposed(r: dict, reveals: dict, snap, pre_end) -> list[tuple]:
+    """一行看过记录露出了哪些 (条目, 代码, 起点, 终点, 是否按露出前截过)。大涨段清单里那时还没露出结果的图
+    只露到 pre_end(t, end);露出结果、往右拖看后续的那张图按整个图窗;补记不截。"""
+    big = r.get("list_kind") == "bigmoves" and not _is_backfill(r)
 
     def cut(item_id, sym, start, end, t):
         rv = reveals.get(item_id)
         if big and t and not (rv and str(rv.get("ts")) <= str(r.get("ts"))):
-            return item_id, sym, start, _pre_reveal_end(t, end)
-        return item_id, sym, start, end
+            return item_id, sym, start, pre_end(t, end), True
+        return item_id, sym, start, end, False
 
     out = []
     if r.get("snapshot"):
@@ -250,20 +266,21 @@ def _exposed(r: dict, reveals: dict, snap) -> list[tuple]:
                            it.get("t")))
     for c in r.get("charts") or []:
         if r.get("event") in ("reveal", "peek_chart"):
-            out.append((r.get("item_id"), c["symbol"], c["start"], c["end"]))
+            out.append((r.get("item_id"), c["symbol"], c["start"], c["end"], False))
         else:
             out.append(cut(r.get("item_id"), c["symbol"], c["start"], c["end"], _t_of(r.get("item_id"))))
     return out
 
 
-def outcome_trail(item: dict, list_id: str, rows: list[dict] | None = None) -> dict:
+def outcome_trail(item: dict, list_id: str, rows: list[dict] | None = None, dates_of=None) -> dict:
     """大涨段清单里一条(item:清单里的这一条,要 item_id / symbol / t / view_end)的露出痕迹:
     {"first_reveal": 最早那次 reveal 行 | None,
      "peeked": 第一次露出结果前(没露出过 = 到现在)有没有往右拖看过后续(任何清单里的这一条),
      "seen_elsewhere": {"level": "careful | in_list" | None, "before": 截止时刻 | None,
                         "careful": [出处], "in_list": [出处]}}
     出处 = {"ts", "surface", "event", "list_id", "item_id"}。截止时刻 = 这张图第一次露出结果的时刻(同一秒的
-    也算在前,保守);没露出过就是到现在。见模块说明。"""
+    也算在前,保守);没露出过就是到现在。dates_of(symbol) → 副本里这只股票的交易日(读不到返回 None),
+    用来算大涨段露出前露到哪天;不给就按工作日退回。见模块说明。"""
     rows = read_views() if rows is None else rows
     reveals = first_reveals(rows)
     item_id, sym, t, end = item["item_id"], item["symbol"], str(item["t"]), str(item["view_end"])
@@ -271,6 +288,11 @@ def outcome_trail(item: dict, list_id: str, rows: list[dict] | None = None) -> d
     before = str(rv["ts"]) if rv else None
     root = state_root()
     cache: dict[str, dict] = {}
+    idx = dates_of(sym) if dates_of is not None else None
+    dates = sorted(d.strftime("%Y-%m-%d") for d in idx) if idx is not None else None
+
+    def pre_end(t_, end_):             # 只有这只股票的条目会和 sym 比,别的股票截到哪不影响结果
+        return _pre_reveal_end(t_, end_, dates)
 
     def snap(rel):
         if rel not in cache:
@@ -284,17 +306,17 @@ def outcome_trail(item: dict, list_id: str, rows: list[dict] | None = None) -> d
     for r in rows:
         if before is not None and str(r.get("ts")) > before:
             continue
-        if r.get("item_id") == item_id:            # 这一条自己的单张图事件
-            peeked = peeked or r.get("event") == "peek_chart"
+        mine = r.get("item_id") == item_id
+        peeked = peeked or (mine and r.get("event") == "peek_chart")
+        if r.get("list_id") == list_id and not _is_backfill(r):     # 同一份清单:标注本身与左端残留
             continue
-        if not r.get("outcome_visible") or r.get("list_id") == list_id:     # 盲看;同一份清单只有左端残留
+        if not r.get("outcome_visible"):                              # 盲看
             continue
-        big = r.get("list_kind") == "bigmoves"
-        if not any(s == sym and str(a) <= end and str(b) > t and not (big and iid == item_id)
-                   for iid, s, a, b in _exposed(r, reveals, snap)):
+        if not any(s == sym and str(a) <= end and str(b) > t and not (was_cut and iid == item_id)
+                   for iid, s, a, b, was_cut in _exposed(r, reveals, snap, pre_end)):
             continue
         ref = {k: r.get(k) for k in ("ts", "surface", "event", "list_id", "item_id")}
-        if r.get("surface") in ("chat", "manual") or r.get("event") in CAREFUL_EVENTS:
+        if r.get("event") in CAREFUL_EVENTS:
             careful.append(ref)
         else:
             in_list.append(ref)

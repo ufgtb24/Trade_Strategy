@@ -18,7 +18,8 @@ F01～F15 每一行都能直接立要素,不用写代码:
     不给 N 就是整个看图窗口)/ events_at_least(至少 k 个)。
   · 定义 = {"row", "value", "cond", "variant", "user_params", "default_params"},建要素时当场校验:
     行、值、条件类型不存在,类型不匹配,口径不对,参数缺 / 多 / 类型不对,一律拒绝(不拖到判定时答
-    「无法判定」)。恒成立、不可能成立的定义也拒绝:按值声明的上下界判;根数的上界是看图窗口最长多少根;
+    「无法判定」)。恒成立、不可能成立的定义也拒绝:按值声明的上下界判;根数的上界是规则逐日判要素时
+    事实表窗口的根数(不框选:买点前 default_lookback_bars 根加买点);
     量比、涨幅、比值数学上没有边界,声明的是合理范围(待验证),阈值落在范围外按「近乎恒成立 / 近乎不可能」
     拒绝;百分比写成整数(30% 写成 30)出界时报错里提示单位。
   · 现有事实行都算不出的角度才记「待写代码」(definition 为 null,needs 写缺什么)。
@@ -27,7 +28,8 @@ F01～F15 每一行都能直接立要素,不用写代码:
 不算身份),或者两处参数合在一起相同——同一个参数不论写在 user_params 还是 default_params 都按同一条算。
 同一个意思只许一种写法,换个条件类型写出来的同义定义当场拒绝并指出该怎么写:
   · events_at_least 的 k 至少 2(k = 1 就是 events_any);
-  · between 的一端碰到值的上下界就是 at_least / at_most;个数的阈值必须是整数;
+  · between 的一端碰到(或越过)值的上下界就是 at_least / at_most:不拒绝,规范化成那一种再查重
+    (两端都碰到就是恒成立,拒绝);个数的阈值必须是整数;
   · 各值声明里的 same_as:跨行或跨类型的同义写法(如「按收盘连续越过 1 个峰」= F01 越过个数至少 1、
     「最近 1 根里有放量段」= F07 当天量比、「涨前状态是深跌」= dd250 至多深跌线),拒绝并指到规范写法;
   · 「算不出时判否」的值(F04、F06 的 vs_latest_run)的阈值盖住了值能取到的整个范围(at_least 不高于下界、
@@ -126,8 +128,9 @@ def _features_cfg() -> dict:
 # kind:count(整数)/ number / bool / category / events。title:人话名,"{variant}" 换成口径。
 # path:在这一行事实值(row["value"])里的取法,"." 分层,"{variant}" 换成口径。
 # variants:有口径的值写口径列表,没有的不写(定义里 variant 就是 null)。
-# lo / hi:值的下界 / 上界,用来拒绝恒成立、不可能、以及一端碰到边界的 between(那是 at_least / at_most)。
-#          ("cfg", 键) 从 config 的 facts 子树取;("win", 偏移) = 看图窗口最长多少根 + 偏移(见 max_window_bars)。
+# lo / hi:值的下界 / 上界,用来拒绝恒成立、不可能;一端碰到(或越过)边界的 between 只剩另一端,按 at_least /
+#          at_most 规范化(再和已有要素查重)。
+#          ("cfg", 键) 从 config 的 facts 子树取;("win", 偏移) = 事实表窗口多少根 + 偏移(见 max_window_bars)。
 #          soft = True:数学上没有边界(量比、涨幅、比值),这里是合理范围(待验证)——阈值落在范围外按
 #          「近乎恒成立 / 近乎不可能」拒绝;百分比写成了整数(30% 写成 30)时会出界,报错里提示单位。
 # none:值是 null 时怎么判;不写 = unknown(回看不够长);("no", 理由) = 说的那个东西不存在,判否。
@@ -288,13 +291,10 @@ def check_values() -> list[str]:
 # ── 判定(纯函数,只读事实表的值) ────────────────────────────────────────────
 
 def max_window_bars() -> int:
-    """看图窗口最长多少根:没框选时取买点前 default_lookback_bars 根(含买点共这么多加一根),框选时起点不早于
-    看图下界、买点不晚于训练段末日,最长是这两天之间的交易日数(按工作日算,待验证)。"""
-    import pandas as pd
-
-    cfg = load_config()
-    span = len(pd.bdate_range(str(cfg.get("view_floor") or cfg["train_start"]), str(cfg["train_end"])))
-    return max(int(cfg["facts"]["default_lookback_bars"]) + 1, span)
+    """事实表窗口多少根:规则逐日判要素时不框选,窗口取买点前 default_lookback_bars 根,含买点共这么多加一根。
+    根数类的值(离买点多少根、最近 N 根)按它定上界——超过它的阈值在规则里等于整个窗口。卡的样本按用户框的
+    起点算,框得比这长时样本上能取到更大的根数,这里不放宽(待验证)。"""
+    return int(_facts_cfg()["default_lookback_bars"]) + 1
 
 
 def _bound(spec: dict, key: str):
@@ -495,17 +495,17 @@ def _semantic_errors(fid: str, vname: str, spec: dict, cond: str, p: dict, varia
         lo, hi = p["lo"], p["hi"]
         if lo > hi or (kind == "number" and lo == hi):
             errs.append(f"{at}: 下限要小于上限" + ("(个数可以相等,表示正好几个)" if kind == "count" else ""))
-        elif lo_b is not None and lo <= lo_b:
-            errs.append(f"{at}: 下限 {lo} 碰到了{name}的下界 {lo_b},等于至多 {hi}:写成 at_most")
-        elif hi_b is not None and hi >= hi_b:
-            errs.append(f"{at}: 上限 {hi} 碰到了{name}的上界 {hi_b}{_unit_hint(spec, hi)},等于至少 {lo}:写成 at_least")
+        elif hi_b is not None and hi > hi_b and _unit_hint(spec, hi):
+            errs.append(f"{at}: 上限 {hi} 越过了{name}的上界 {hi_b}{_unit_hint(spec, hi)}")
+        elif lo_b is not None and lo <= lo_b and hi_b is not None and hi >= hi_b:
+            errs += trivial(f"在 {lo} 到 {hi} 之间")
     elif cond == "is_one_of" and len(p["values"]) == len(spec["choices"]):
         errs.append(f"{at}: 选了全部类别,恒成立,不能当条件")
     elif cond.startswith("events_") and p.get("bars") is not None:
         if not spec["events"].get("bars_before"):
             errs.append(f"{at}: {fid} 的{name}没有离买点根数,不能限定最近 N 根")
         elif p["bars"] >= max_window_bars():
-            errs.append(f"{at}: 最近 {p['bars']} 根不比看图窗口短(窗口最长 {max_window_bars()} 根),"
+            errs.append(f"{at}: 最近 {p['bars']} 根不比事实表窗口短(规则逐日判时不框选,窗口共 {max_window_bars()} 根),"
                         f"等于整个窗口:不写 bars")
     if not errs and spec.get("same_as"):
         hint = spec["same_as"](cond, p, variant)
@@ -514,9 +514,26 @@ def _semantic_errors(fid: str, vname: str, spec: dict, cond: str, p: dict, varia
     return errs
 
 
+def _one_sided(spec: dict, up: dict, dp: dict) -> tuple[str, dict, dict]:
+    """between 只有一端碰到(或越过)值的边界(soft 的值是合理范围)时只剩另一端:上限碰到上界 → at_least 下限,
+    下限碰到下界 → at_most 上限;参数留在原来那一处(用户说的还是用户说的)。两端都碰到、都没碰到、上下限
+    颠倒、上限越过上界且像把百分数写成了数 → 原样返回 between,由 _semantic_errors 判。"""
+    p = {**dp, **up}
+    lo, hi = p["lo"], p["hi"]
+    lo_b, hi_b = _bound(spec, "lo"), _bound(spec, "hi")
+    hit_lo = lo_b is not None and lo <= lo_b
+    hit_hi = hi_b is not None and hi >= hi_b
+    if lo > hi or (spec["kind"] == "number" and lo == hi) or hit_lo == hit_hi or (hi > hi_b and _unit_hint(spec, hi)):
+        return "between", up, dp
+    keep, cond = ("lo", "at_least") if hit_hi else ("hi", "at_most")
+    move = lambda d: {"x": d[keep]} if keep in d else {}
+    return cond, move(up), move(dp)
+
+
 def normalize_definition(d, path: str = "definition") -> tuple[dict | None, list[str]]:
-    """校验并规范化一个定义:行、值、条件类型、口径、参数都对得上声明;参数转成规范类型;
-    拒绝恒成立、不可能、同义换写的定义。返回 (规范化的定义, 问题清单)。"""
+    """校验并规范化一个定义:行、值、条件类型、口径、参数都对得上声明;参数转成规范类型;一端碰到边界的
+    between 按 at_least / at_most 规范化(见 _one_sided);拒绝恒成立、不可能、同义换写的定义。
+    返回 (规范化的定义, 问题清单)。"""
     if not isinstance(d, dict):
         return None, [f"{path}: 必须是对象(现有事实算不出就写 null 并给 needs)"]
     errs = []
@@ -568,6 +585,8 @@ def normalize_definition(d, path: str = "definition") -> tuple[dict | None, list
                 errs += e
     if errs:
         return None, errs
+    if cond == "between":
+        cond, out_u, out_d = _one_sided(spec, out_u, out_d)
     errs = _semantic_errors(fid, vname, spec, cond, {**out_d, **out_u}, variant, path)
     if errs:
         return None, errs

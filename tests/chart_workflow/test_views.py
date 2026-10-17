@@ -173,3 +173,14 @@ def test_debug_surface_accepted(state_dir):
     views.record(surface="debug", event="show_chart", outcome_visible=True,
                  charts=[{"symbol": "A", "start": "2025-01-02", "end": "2025-06-30"}])
     assert views.read_views()[0]["surface"] == "debug"
+
+
+def test_pre_reveal_end_real_trading_days_then_fallback():
+    """露出前估计:按给的交易日取决策日后第 15 根;没给、或决策日后不够 15 根 → 决策日后 20 个工作日;
+    不超过图窗终点。"""
+    days = [d.strftime("%Y-%m-%d") for d in pd.bdate_range("2025-10-01", "2025-12-31")
+            if d.strftime("%Y-%m-%d") not in ("2025-10-20", "2025-10-21")]
+    assert views._pre_reveal_end("2025-10-13", "2025-12-30", days) == "2025-11-05"
+    assert views._pre_reveal_end("2025-10-13", "2025-10-30", days) == "2025-10-30"
+    assert views._pre_reveal_end("2025-10-13", "2025-12-30") == "2025-11-10"
+    assert views._pre_reveal_end("2025-12-15", "2026-03-30", days) == "2026-01-12"     # 只剩 12 根

@@ -348,7 +348,7 @@ def test_other_branch_with_newer_ledger_stops(tmp_path, monkeypatch, no_snapshot
     _git(main, "checkout", "-q", "master")
     with pytest.raises(state.StateRootDiverged) as ei:
         state.state_root(start=main)
-    assert state.DIVERGED_TEXT in str(ei.value) and "pc(1 个提交)" in str(ei.value)
+    assert state.DIVERGED_TEXT in str(ei.value) and "pc(1 个提交;ledger.jsonl 有当前分支没有的行)" in str(ei.value)
     assert isinstance(ei.value, state.StateRootMissing)
     with pytest.raises(state.StateRootDiverged):
         state.check_root(start=main)
@@ -383,3 +383,104 @@ def test_other_branch_touching_only_code_or_marker_is_fine(tmp_path, monkeypatch
     _commit_all(main, "改代码与标记说明")
     _git(main, "checkout", "-q", "master")
     assert state.state_root(start=main) == root.resolve()
+
+
+def test_merged_into_other_branch_by_merge_commit_is_fine(tmp_path, monkeypatch, no_snapshot_lock):
+    """用合并提交(非快进)把当前分支合进别的分支:那个分支上有改过记账目录的合并提交,但账当前分支全有;
+    当前分支再记一次账(追加行、要素文件随操作日志改写)照样不拦。那个分支之后再记新账才拦。"""
+    main, root = _repo_with_state(tmp_path, monkeypatch)
+    for d in ("annotations", "elements", "oplog"):
+        (root / d).mkdir()
+    (root / "annotations" / "b1.json").write_text('{"batch_id": "b1"}\n')
+    (root / "elements" / "E001.json").write_text('{"v": 1}\n')
+    (root / "oplog" / "ops.jsonl").write_text('{"op": 1}\n')
+    _commit_all(main, "标注与要素")
+    _git(main, "checkout", "-q", "-b", "pc")
+    (main / "code.py").write_text("x = 2\n")
+    _commit_all(main, "pc 改代码")
+    _git(main, "checkout", "-q", "master")
+    with (root / "ledger.jsonl").open("a") as f:
+        f.write('{"r": 2}\n')
+    _commit_all(main, "本机记账")
+    _git(main, "checkout", "-q", "pc")
+    _git(main, "merge", "-q", "--no-ff", "--no-edit", "master")       # 合并提交:改过记账目录,不是 master 的祖先
+    _git(main, "checkout", "-q", "master")
+    assert state.state_root(start=main) == root.resolve()
+    with (root / "ledger.jsonl").open("a") as f:                       # 当前分支再记一次账
+        f.write('{"r": 3}\n')
+    with (root / "oplog" / "ops.jsonl").open("a") as f:
+        f.write('{"op": 2}\n')
+    (root / "elements" / "E001.json").write_text('{"v": 2}\n')
+    state.advance(root)
+    assert state.state_root(start=main) == root.resolve()
+    _commit_all(main, "本机再记账")
+    foreign = subprocess.run(["git", "rev-list", "--count", "pc", "--not", "master", "--", "outputs"], cwd=main,
+                             capture_output=True, text=True).stdout.strip()
+    assert foreign == "1"                                              # 那个合并提交按提交算是「别的分支上的账」
+    assert state.state_root(start=main) == root.resolve()              # 按内容比:当前分支全有,不拦
+    _git(main, "checkout", "-q", "pc")                                 # 那个分支之后又记了新账
+    (root / "annotations" / "b2.json").write_text('{"batch_id": "b2"}\n')
+    with (root / "views.jsonl").open("a") as f:
+        f.write('{"v": "pc"}\n')
+    _commit_all(main, "pc 记账")
+    _git(main, "checkout", "-q", "master")
+    with pytest.raises(state.StateRootDiverged) as ei:
+        state.state_root(start=main)
+    msg = str(ei.value)
+    assert "pc(2 个提交;" in msg and "annotations/b2.json 当前分支没有" in msg and "views.jsonl 当前分支没有" in msg
+
+
+@pytest.mark.parametrize("change,needle", [
+    (lambda r: (r / "annotations" / "b1.json").write_text('{"batch_id": "b1", "x": 1}\n'),
+     "annotations/b1.json 和当前分支的不一样"),
+    (lambda r: (r / "ledger.jsonl").write_text('{"r": "pc"}\n{"r": 1}\n'), "ledger.jsonl 有当前分支没有的行"),
+    (lambda r: (r / "elements" / "E009.json").write_text("{}\n"), "elements/E009.json 当前分支没有"),
+])
+def test_other_branch_content_differs_stops(tmp_path, monkeypatch, no_snapshot_lock, change, needle):
+    """那个分支上:写一次就不改的文件内容不同、只追加的文件不是当前这份的开头一段、多了一个要素文件 → 拦。"""
+    main, root = _repo_with_state(tmp_path, monkeypatch)
+    for d in ("annotations", "elements"):
+        (root / d).mkdir()
+    (root / "annotations" / "b1.json").write_text('{"batch_id": "b1"}\n')
+    _commit_all(main, "标注")
+    _git(main, "checkout", "-q", "-b", "pc")
+    change(root)
+    _commit_all(main, "pc 改账")
+    _git(main, "checkout", "-q", "master")
+    with pytest.raises(state.StateRootDiverged, match=needle):
+        state.state_root(start=main)
+
+
+@pytest.mark.parametrize("theirs", [
+    lambda a, b, c: {"current": c, "history": [{"reason": "pc 换", "old": a, "new": c}]},   # 换副本记录分叉
+    lambda a, b, c: {"current": c, "history": []},                                          # 直接登记了别的副本
+])
+def test_snapshot_lock_on_other_branch_compared_by_history(tmp_path, monkeypatch, no_snapshot_lock, theirs):
+    """副本登记:那个分支上登记的是当前分支后来换掉的那一份 → 不拦;那个分支上换了当前分支没有的副本 → 拦。"""
+    main, root = _repo_with_state(tmp_path, monkeypatch)
+    lock = root / "snapshot_lock.json"
+    a, b, c = ({"sha": x} for x in "abc")
+    lock.write_text(json.dumps({"current": a, "history": []}))
+    _commit_all(main, "登记副本")
+    _git(main, "checkout", "-q", "-b", "pc")
+    (main / "code.py").write_text("x = 2\n")
+    _commit_all(main, "pc 改代码")
+    _git(main, "checkout", "-q", "master")
+    with (root / "ledger.jsonl").open("a") as f:
+        f.write('{"r": 2}\n')
+    _commit_all(main, "本机记账")
+    _git(main, "checkout", "-q", "pc")
+    _git(main, "merge", "-q", "--no-ff", "--no-edit", "master")       # pc 上登记的是 a
+    _git(main, "checkout", "-q", "master")
+    lock.write_text(json.dumps({"current": b, "history": [{"reason": "换", "old": a, "new": b}]}))
+    _commit_all(main, "本机换副本")
+    foreign = subprocess.run(["git", "rev-list", "--count", "pc", "--not", "master", "--", "outputs"], cwd=main,
+                             capture_output=True, text=True).stdout.strip()
+    assert foreign == "1"
+    assert state.state_root(start=main) == root.resolve()
+    _git(main, "checkout", "-q", "pc")
+    lock.write_text(json.dumps(theirs(a, b, c)))
+    _commit_all(main, "pc 换了别的副本")
+    _git(main, "checkout", "-q", "master")
+    with pytest.raises(state.StateRootDiverged, match="pc.*snapshot_lock.json 登记的副本"):
+        state.state_root(start=main)

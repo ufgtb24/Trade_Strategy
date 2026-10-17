@@ -6,6 +6,7 @@
 失败尝试(也不带下界之前的原始价格);诊断的分析窗起点、按 bar 诊断的框选都不早于下界;预览与打开扫描记看过;
 后端的看图下界早于看图工作流配置的就拒绝启动。"""
 import json
+from types import SimpleNamespace as NS
 
 import numpy as np
 import pandas as pd
@@ -148,10 +149,10 @@ def test_diagnose_reads_snapshot_to_train_end(tmp_path, monkeypatch):
     c, _ = _client(tmp_path)
     seen = {}
 
-    def fake(spec, win, _p, **kw):
+    def fake(spec, win, _p):
         seen["win"] = win
-        return {}
-    monkeypatch.setattr(api_mod, "diagnose_symbol", fake)
+        return NS(nodes={}, note="")
+    monkeypatch.setattr(api_mod, "_dag_diagnose", fake)
     r = c.get("/diagnose", params={"pattern_id": "bo_only", "symbol": "AAA",
                                    "start": "2024-06-03", "end": "2026-02-27"})
     assert r.status_code == 200
@@ -294,7 +295,7 @@ def test_earlier_train_end_in_config_is_respected(tmp_path, monkeypatch, _cw_sta
     assert bars[-1]["date"] == te
     assert _views(_cw_state_root)[-1]["charts"][0]["end"] == te
     seen = {}
-    monkeypatch.setattr(api_mod, "diagnose_symbol", lambda spec, win, _p, **kw: seen.update(win=win) or {})
+    monkeypatch.setattr(api_mod, "_dag_diagnose", lambda spec, win, _p: seen.update(win=win) or NS(nodes={}, note=""))
     c.get("/diagnose", params={"pattern_id": "bo_only", "symbol": "AAA",
                                "start": "2025-06-02", "end": "2025-12-31"})
     assert str(seen["win"]["date"].max().date()) == te
@@ -372,6 +373,77 @@ def test_preview_hides_events_before_floor_and_records_view(tmp_path, _cw_state_
     assert row["charts"] == [{"symbol": "AAA", "start": "2025-01-02", "end": body["scan"]["win_end"]}]
 
 
+def test_guarded_but_unredacted_scan_redacted_on_open(tmp_path, _cw_state_root):
+    """带护栏标记、副本指纹对得上,但文件里留着下界之前的事件(以及指向它的引用):打开时照样删掉。"""
+    c, snap = _client(tmp_path, make=_wave)
+    _run_scan(c, start_date="2025-01-02", end_date="2025-06-30", note="w2")
+    path = tmp_path / "outputs" / "scans" / "w2.json"
+    blob = json.loads(path.read_text())
+    out = blob["results"][0]["per_pattern"]["bo_only"]
+    fl = out["view_floor_idx"]
+    evs = out["analysis"]["events"]
+    hidden = {**evs[0], "instance_id": "pk_hidden#0", "node_id": "pk", "start_idx": fl - 3, "end_idx": fl - 3,
+              "child_refs": {}, "ref_ids": {}}
+    evs[0] = {**evs[0], "ref_ids": {**evs[0]["ref_ids"], "broken": ["pk_hidden#0"]}}
+    evs.append(hidden)
+    path.write_text(json.dumps(blob))
+    r = c.get("/scans/w2")
+    assert r.status_code == 200
+    got = r.json()["results"][0]["per_pattern"]["bo_only"]["analysis"]["events"]
+    assert "pk_hidden#0" not in {e["instance_id"] for e in got}
+    assert got[0]["ref_ids"]["broken"] == []
+
+
+def _wave_v(period, phase, drift):
+    def make(start, end, base):
+        dates = pd.bdate_range(start, end, name="date")
+        i = np.arange(len(dates)) + phase
+        close = base * (1 + 0.12 * np.sin(2 * np.pi * i / period)) * (1 + drift * i)
+        vol = 1e6 * (1 + 2.5 * (np.sin(2 * np.pi * i / period) > 0.9))
+        return pd.DataFrame({"open": close * 0.995, "high": close * 1.01, "low": close * 0.99, "close": close,
+                             "volume": vol}, index=dates)
+    return make
+
+
+def _derived(e):
+    """一个事件行里浮点字段两两能凑出的数:x、x÷(1+y)、x×(1+y)、x÷y、x×y、x±y。"""
+    xs = [v for k, v in e.items() if isinstance(v, float) and np.isfinite(v)]
+    out = list(xs)
+    for a in xs:
+        for b in xs:
+            out += [a * (1 + b), a * b, a + b, a - b]
+            if b != -1:
+                out.append(a / (1 + b))
+            if b:
+                out.append(a / b)
+    return out
+
+
+def test_preview_derived_values_do_not_reconstruct_pre_floor_prices(tmp_path, _cw_state_root):
+    """几只合成股做预览:留下的事件里,任何浮点字段两两凑出的数都不和下界之前的 K 线价格精确对上;
+    峰的回看窗起点早于下界时相对高度置空(确有这种峰,不是空测)。"""
+    nulled = 0
+    for k, (period, phase, drift) in enumerate([(23, 0, 0.003), (17, 5, 0.002), (31, 11, 0.004),
+                                                (19, 3, -0.001), (27, 8, 0.001), (13, 2, 0.0025)]):
+        (tmp_path / f"s{k}").mkdir()
+        c, snap = _client(tmp_path / f"s{k}", make=_wave_v(period, phase, drift))
+        r = c.get("/preview", params={"pattern_id": "bo_only", "symbol": "AAA", "start": "2025-01-02",
+                                      "end": "2025-06-30", "label_horizon": 5})
+        assert r.status_code == 200, r.text
+        df = pd.read_pickle(snap / "AAA.pkl")
+        pre = df[(df.index >= r.json()["scan"]["win_start"]) & (df.index < FLOOR)]
+        prices = pre[["open", "high", "low", "close"]].to_numpy().ravel()
+        for e in r.json()["analysis"]["events"]:
+            vals = np.array(_derived(e))
+            if len(vals):
+                hit = np.isclose(vals[:, None], prices[None, :], rtol=1e-9, atol=0).any(axis=1)
+                assert not hit.any(), (e["instance_id"], vals[hit][:3])
+            if e["node_id"] == "pk" and e.get("relative_height") is None:
+                assert e["relative_height_from_idx"] is None
+                nulled += 1
+    assert nulled > 0
+
+
 def test_scan_hides_events_before_floor_on_disk_and_open(tmp_path, _cw_state_root):
     """扫描:落盘的文件里就没有下界之前的事件(每只股票每个 pattern 记下界那根的位置);打开时按整份清单记看过。"""
     c, snap = _client(tmp_path, make=_wave)
@@ -421,6 +493,16 @@ def test_diagnose_hides_rows_before_floor(tmp_path):
     nodes = r.json()["nodes"]
     rows = [row for nd in nodes.values() for row in nd["attr"]]
     assert rows and all(row["start_idx"] >= fl for row in rows)
+    from path2.dag.engine import analyze
+    from path2_web.serialize import event_anchor
+    import path2_apps.bo_only as bo
+    df = pd.read_pickle(snap / "AAA.pkl")
+    p = bo.load_params()
+    evs = analyze(bo.build_pattern(p), df[(df.index >= ws) & (df.index <= "2025-06-30")].reset_index(), p).events
+    anchor = {e.instance_id: event_anchor(vars(e)) for e in evs}
+    straddle = {i for i, a in anchor.items() if a < fl <= next(e.start_idx for e in evs if e.instance_id == i)}
+    assert straddle                                       # 登记在下界之后、峰在下界之前的事件确实有
+    assert all(anchor[row["instance_id"]] >= fl for row in rows)      # 按锚点删,和分析结果同一条规则
     ids = {row["instance_id"] for row in rows}
     assert all(set(rel["ok_src_ids"]) <= ids for nd in nodes.values() for rel in nd["rel"])
     r = _diag(c, start="2023-07-03", scope="time", start_bar=0, end_bar=fl + 80)
@@ -475,7 +557,7 @@ def test_redact_diagnostics_and_time_scope_unit():
                      "bo": {"attr": [{"instance_id": "bo_12#0", "start_idx": 12}],
                             "rel": [{"src": "pk", "kind": "X", "total_src": 2, "ok_count": 2,
                                      "ok_src_ids": ["pk_3#0", "pk_11#0"]}], "produced_by": None}}}
-    d = guard.redact_diagnostics(out, 10)
+    d = guard.redact_diagnostics(out, 10, {})
     assert [r["instance_id"] for r in d["nodes"]["pk"]["attr"]] == ["pk_11#0"]
     assert d["nodes"]["bo"]["rel"][0]["ok_src_ids"] == ["pk_11#0"] and d["nodes"]["bo"]["rel"][0]["total_src"] == 2
     gf = lambda w, s, a: {"failure_event_window": [w, w + 1], "start_idx": s, "anchor_bar": a, "gate_name": "g"}
@@ -517,3 +599,50 @@ def test_backend_refuses_view_floor_earlier_than_chart_workflow(tmp_path, monkey
     (tmp_path / "ok").mkdir()
     c, _ = _client(tmp_path / "ok", view_floor=FLOOR)            # 相同:照常启动
     assert c.get("/patterns").status_code == 200
+
+
+def test_diagnostics_use_same_anchor_rule_as_analysis():
+    """legacy 诊断与 scope=nodes 的失败样例按事件锚点删(和分析结果同一条规则):峰登记在下界之后、峰本身在
+    下界之前的那行要删;pair 点到这种事件也 400。"""
+    from path2.atoms.breakout import PeakEvent
+    from path2_web import guard
+    from path2_web.diagnose import NodesPayload, PairFailure, Response
+    pk = lambda iid, reg, peak: PeakEvent(start_idx=reg, end_idx=reg, confirm_idx=reg, peak_idx=peak,
+                                          instance_id=iid, node_id="pk")
+    evs = [pk("pk_12#0", 12, 8), pk("pk_14#0", 14, 11)]
+    diag = NS(nodes={"pk": NS(attr=[NS(event=e) for e in evs])})
+    out = {"nodes": {"pk": {"attr": [{"instance_id": e.instance_id, "start_idx": e.start_idx} for e in evs],
+                            "rel": [], "produced_by": None}}}
+    d = guard.redact_diagnostics(out, 10, guard.diag_anchors(diag))
+    assert [r["instance_id"] for r in d["nodes"]["pk"]["attr"]] == ["pk_14#0"]
+    resp = Response(scope="nodes", payload=NodesPayload(
+        edge_id="pk_to_pk", total_pair=2, ok_pair=0, miss_reasons={"gap": 2},
+        example_failed_pairs=[PairFailure("pk_12#0", "pk_14#0", "gap"), PairFailure("pk_14#0", "pk_14#0", "gap")]))
+    pairs = guard.redact_scoped(resp, 10, diag=diag)["payload"]["example_failed_pairs"]
+    assert [(p["src_event_id"], p["dst_event_id"]) for p in pairs] == [("pk_14#0", "pk_14#0")]
+    import fastapi
+    with pytest.raises(fastapi.HTTPException):
+        guard.redact_scoped(Response(scope="pair", payload={"src_event_id": "pk_12#0"}), 10,
+                            result=NS(events=evs))
+
+
+def test_redact_before_clears_ids_of_removed_events_and_lookback_values():
+    """留下的事件字段里指向被删事件的编号置空(编号列表去掉它们);回看起点早于下界的派生值连同回看起点置空,
+    回看起点不早于下界的照留;回看起点不算锚点。"""
+    from path2_web.serialize import event_anchor, redact_before
+    ev = lambda iid, s, **kw: {"instance_id": iid, "node_id": iid.split("_")[0], "start_idx": s, "end_idx": s,
+                               "child_refs": {}, "ref_ids": {}, **kw}
+    a = {"events": [ev("bo_3#0", 3), ev("bo_12#0", 12),
+                    ev("tb_15#0", 15, anchor_bo_id="bo_3#0", srcs=["bo_3#0", "bo_12#0"], note="bo_12#0"),
+                    ev("pk_13#0", 13, relative_height=0.4, relative_height_from_idx=7),
+                    ev("pk_16#0", 16, relative_height=0.2, relative_height_from_idx=11)],
+         "matches": []}
+    assert event_anchor(a["events"][3]) == 13
+    out = redact_before(a, 10)
+    by = {e["instance_id"]: e for e in out["events"]}
+    assert set(by) == {"bo_12#0", "tb_15#0", "pk_13#0", "pk_16#0"}
+    assert by["tb_15#0"]["anchor_bo_id"] is None and by["tb_15#0"]["srcs"] == ["bo_12#0"]
+    assert by["tb_15#0"]["note"] == "bo_12#0"
+    assert (by["pk_13#0"]["relative_height"], by["pk_13#0"]["relative_height_from_idx"]) == (None, None)
+    assert (by["pk_16#0"]["relative_height"], by["pk_16#0"]["relative_height_from_idx"]) == (0.2, 11)
+    assert redact_before(out, 10) == out

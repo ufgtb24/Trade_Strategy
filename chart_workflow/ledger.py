@@ -36,9 +36,9 @@ root_* 是沿 own_library 的 root 递归到底后的来源(不是 own_library �
 angle_by = user:要素读的事实行是用户提的角度(facts.ROWS 的 source 指向的「提出角度」日志条目真在、且排在
 那一版定义建立之前),angle_ops 是那条日志——这种要素不算系统推荐;null:那一版待写代码,还没读任何事实行。
 账本里不预先合并成几类,怎么划、各算谁的留给流程骨架。卡、版本或卡上引用的要素不存在就报错。
-来源写形态卡的行还必须带 rule_implements(规则声明它实现了卡上哪些要素与角色、在卡的几个样本上核对过,
-见 rulecheck.py;对照页核对通过后传进来),没有就拒绝记——手动 add 拿不到核对结果,所以形态卡来源只能经
-对照页命令记账。
+来源写形态卡的行,账本记账时自己把规则和卡核对一遍(rulecheck.check_rule_against_shape:声明一致、样本一致、
+样本股逐日一致),不收调用方传来的核对结果;通过后把结果记进 rule_implements,不过就拒绝记。核对要用规则本身
+(规则文件或 app),手动 add 不带规则,所以形态卡来源只能经对照页命令记账。
 新字段一律可选,旧行照常读。
 自动记账的行另有:rule_sha(规则文件或参数文件的 sha256)、rule_archive(存档位置,相对状态根)、
 app_commit / app_dirty(app 方式:当时的 git 提交、app 目录有没有未提交改动)、years(这次统计与
@@ -200,20 +200,20 @@ def _ingredient_condition(it: dict, els: dict, ops: list[dict]) -> dict:
 
 
 def shape_conditions(source: str) -> list[dict]:
-    """source = shape:<id>@v<n> → 那个版本每个要素项与触发的来源。
+    """source = shape:<id>@v<n> → 那个版本每个要素项与触发的来源。先重走全部操作日志的校验(不合格 →
+    ShapeValidationError,是 ValueError),卡与要素从日志重算,不读磁盘上的卡与要素文件。
     卡、版本或引用的要素不存在 → FileNotFoundError。"""
-    from chart_workflow import oplog
-    from chart_workflow.elements import load_all
-    from chart_workflow.shapes import load_card
+    from chart_workflow.shapes import checked_state
 
     m = SHAPE_SOURCE_RE.fullmatch(source)
-    card = load_card(m.group(1))
+    ops, cards, els = checked_state()
+    card = cards.get(m.group(1))
+    if card is None:
+        raise FileNotFoundError(f"形态卡不存在: {m.group(1)}")
     n = int(m.group(2))
     ver = next((v for v in card["versions"] if v["version"] == n), None)
     if ver is None:
         raise FileNotFoundError(f"形态卡 {m.group(1)} 没有版本 v{n}")
-    els = load_all()
-    ops = oplog.read_all()
     out = [_ingredient_condition(it, els, ops) for it in ver["card"].get("ingredients", [])]
     for it in ver["card"].get("triggers", []):
         root = _resolve_root(it)
@@ -274,25 +274,28 @@ def _append(root: Path, entry: dict) -> dict:
     return {**entry, "round": rnd}
 
 
-def _check_implements(source: str, implements: dict | None) -> None:
+def _shape_check(cfg: dict, source: str, rule: str | None, app: str | None, app_params: str | None) -> dict | None:
+    """来源是形态卡时,账本自己核对规则和卡(见模块说明);不是形态卡 → None。没给规则 / 核对不过 → ValueError。"""
     if not SHAPE_SOURCE_RE.fullmatch(source):
-        return
-    if not isinstance(implements, dict) or implements.get("source") != source or not implements.get("declared"):
-        raise ValueError(f"来源写的是形态卡 {source}:要先核对规则和卡一致(规则声明 IMPLEMENTS,"
-                         f"对照页命令会核对并记账),手动记账不收形态卡来源")
+        return None
+    if not (rule or app):
+        raise ValueError(f"来源写的是形态卡 {source}:记账时要给出规则(规则文件或 app),账本自己核对规则和卡一致;"
+                         f"手动记账不收形态卡来源")
+    from chart_workflow import rulecheck             # 函数内导入:rulecheck 依赖本模块
+    return rulecheck.check_rule_against_shape(source, cfg, rule=rule, app=app, params=app_params)
 
 
 def add_round(cfg: dict, *, kind: str, rule_id: str, version: str, source: str, change: str,
               list_id: str, note: str = "", auto: bool = False, rule_sha: str | None = None,
               rule_archive: str | None = None, app_commit: str | None = None,
               app_dirty: bool | None = None, years: list[str] | None = None,
-              implements: dict | None = None) -> dict:
+              rule: str | None = None, app: str | None = None, app_params: str | None = None) -> dict:
     """追加一行(清单已写好:大涨段、盲看、手动记账)。auto:命令自动记账;手动记账时清单已有自动行就拒绝。
-    implements:来源是形态卡时必填,rulecheck.check_rule_against_shape 的结果。"""
+    rule / app / app_params:这一轮用的规则文件、或 app 与它的参数 yaml(来源是形态卡时必填,账本拿它自己核对)。"""
     if kind not in KINDS:
         raise ValueError(f"kind 必须是 {KINDS} 之一: {kind!r}")
     check_source(source)
-    _check_implements(source, implements)
+    implements = _shape_check(cfg, source, rule, app, app_params)
     lp = list_path(cfg, list_id)
     if not lp.exists():
         raise FileNotFoundError(f"清单不存在: {lp}")
@@ -317,7 +320,7 @@ def record_round(cfg: dict, ctx: dict, *, summary: dict, years: list[str],
     """算成绩的那一刻记账(由 control.summarize 调用,清单还没写盘)。
     ctx:记账上下文 {kind, rule_id, version, source, change, list_id, note?, params?(清单 params,
     取数据错误登记与跨源比对条数), rule_sha?, rule_archive?, app_commit?, app_dirty?,
-    implements?(来源是形态卡时必填,见 add_round)}。
+    rule? / app? / app_params?(这一轮用的规则;来源是形态卡时必填,账本拿它自己核对,见 add_round)}。
     缺字段、清单名已存在(文件在或账本里有)→ ValueError。"""
     if not isinstance(ctx, dict):
         raise ValueError("记账上下文必须是 dict")
@@ -325,14 +328,14 @@ def record_round(cfg: dict, ctx: dict, *, summary: dict, years: list[str],
     if missing:
         raise ValueError(f"记账上下文缺 {missing}")
     check_new_list_id(cfg, ctx["list_id"])
-    _check_implements(ctx["source"], ctx.get("implements"))
+    implements = _shape_check(cfg, ctx["source"], ctx.get("rule"), ctx.get("app"), ctx.get("app_params"))
     root = state_root()
     entry = _entry(cfg, root, kind=ctx["kind"], rule_id=ctx["rule_id"], version=ctx["version"],
                    source=ctx["source"], change=ctx["change"], list_id=ctx["list_id"],
                    note=ctx.get("note") or "", params=ctx.get("params"))
     entry["summary_all"], entry["graduated"] = _summary_all(summary)
-    if ctx.get("implements") is not None:
-        entry["rule_implements"] = ctx["implements"]
+    if implements is not None:
+        entry["rule_implements"] = implements
     entry.update({"auto": True, "rule_sha": ctx.get("rule_sha"), "rule_archive": ctx.get("rule_archive"),
                   "app_commit": ctx.get("app_commit"), "app_dirty": ctx.get("app_dirty"),
                   "years": [str(y) for y in years]})

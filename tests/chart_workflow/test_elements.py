@@ -397,13 +397,10 @@ def test_within_n_needs_declared_bars_before(monkeypatch):
 
 @pytest.mark.parametrize("d,needle", [
     (D("F05", "runs", "events_at_least", user={"k": 1}), "至少 1 个就是 events_any"),
-    (D("F01", "n_cleared", "between", user={"lo": 0, "hi": 2}), "等于至多 2:写成 at_most"),
-    (D("F12", "up_ratio", "between", user={"lo": 0.5, "hi": 1}), "等于至少 0.5:写成 at_least"),
     (D("F03", "chain", "at_least", "close", user={"x": 1}), "写成 F01 的 n_cleared at_least 1"),
     (D("F03", "chain", "at_least", "high", user={"x": 1}), "写成 F02 的 n_cleared at_least 1"),
     (D("F03", "chain", "at_most", "close", user={"x": 0}), "写成 F01 的 n_cleared at_most 0"),
     (D("F04", "bars", "at_least", "close", user={"x": 1}), "只是在问「按收盘至少越过一个峰"),
-    (D("F04", "bars", "between", "close", user={"lo": 1, "hi": 30}), "写成 at_most"),
     (D("F06", "vs_latest_run", "at_least", user={"x": 0}), "只是在问「窗口里有放量段"),
     (D("F05", "runs", "events_any", user={"bars": 1}), "写成 F07 的 vr at_least / at_most"),
     (D("F05", "runs", "events_none", default={"bars": 1}), "写成 F07 的 vr"),
@@ -419,6 +416,8 @@ def test_synonym_forms_rejected_with_canonical_hint(d, needle):
     # 「只是在问有没有」:按值实际能取到的范围判,不只在正好碰到边界时才拒
     (D("F04", "bars", "at_most", "close", user={"x": 9999}), "只是在问「按收盘至少越过一个峰"),
     (D("F04", "bars", "at_most", "close", user={"x": 260}), "只是在问「按收盘至少越过一个峰"),
+    (D("F04", "bars", "at_most", "close", user={"x": 200}), "只是在问「按收盘至少越过一个峰"),   # 窗口只有 91 根
+    (D("F04", "bars", "at_most", "close", user={"x": 90}), "只是在问「按收盘至少越过一个峰"),
     (D("F06", "vs_latest_run", "at_least", user={"x": 0.000000001}), "只是在问「窗口里有放量段"),
     (D("F06", "vs_latest_run", "at_most", user={"x": 1000000000}), "只是在问「窗口里有放量段"),
     # 量比、涨幅、比值:合理范围外按近乎恒成立 / 近乎不可能拒绝
@@ -429,8 +428,11 @@ def test_synonym_forms_rejected_with_canonical_hint(d, needle):
     (D("F12", "rise", "at_least", user={"x": 30}), "30% 要写成 0.3"),
     (D("F10", "gap", "at_least", user={"x": 8}), "8% 要写成 0.08"),
     (D("F12", "rise", "between", user={"lo": 0.1, "hi": 30}), "30% 要写成 0.3"),
-    # 最近 N 根不比看图窗口短
-    (D("F05", "runs", "events_any", user={"bars": 261}), "不比看图窗口短"),
+    # 最近 N 根不比事实表窗口短(规则逐日判时窗口共 91 根)
+    (D("F05", "runs", "events_any", user={"bars": 91}), "不比事实表窗口短"),
+    # between 两端都碰到边界:恒成立
+    (D("F07", "vr", "between", user={"lo": 0.01, "hi": 150}), "近乎恒成立"),
+    (D("F04", "bars", "between", "close", user={"lo": 1, "hi": 90}), "只是在问「按收盘至少越过一个峰"),
 ])
 def test_bounds_reject_trivial_thresholds(d, needle):
     out, errs = E.normalize_definition(d)
@@ -442,7 +444,8 @@ def test_bounds_keep_reasonable_thresholds():
               D("F06", "vs_latest_run", "at_most", user={"x": 0.5}),
               D("F07", "vr", "at_least", user={"x": 50}),
               D("F12", "rise", "at_least", user={"x": 0.3}),
-              D("F05", "runs", "events_any", user={"bars": 260})):
+              D("F04", "bars", "at_most", "close", user={"x": 89}),
+              D("F05", "runs", "events_any", user={"bars": 90})):
         out, errs = E.normalize_definition(d)
         assert errs == [] and out is not None, (d, errs)
     out, errs = E.normalize_definition(D("F07", "vr", "at_least", user={"x": 0.01}))
@@ -617,7 +620,7 @@ def test_merge_only_same_definitions(state_dir):
            {"act": "create_shape", "value": {
                "name": {"value": "站上前高", "origin": "user_written"}, "change": "新建", "from_ann": ["a1"],
                "card": {"ingredients": [{"ing_id": "i1", "element": "$t", "role": "must",
-                                         "origin": "user_written"}], "triggers": []}}})
+                                         "origin": "user_written", "said_first_match": "用户说的"}], "triggers": []}}})
     merge = {"act": "merge_element", "target": {"element_id": "E002"}, "actor": "user",
              "value": {"into": "E001", "reason": "用户确认是同一个意思"}}
     with pytest.raises(shapes.ShapeValidationError, match="还是待写代码:合并要带它写成计算的定义"):
@@ -645,7 +648,7 @@ def test_merge_only_same_definitions(state_dir):
     with pytest.raises(shapes.ShapeValidationError, match="已合并到 E001"):  # 新版本不能再引用旧编号
         _apply({"act": "revise_shape", "target": {"shape_id": "s001"}, "value": {
             "change": "x", "card": {"ingredients": [{"ing_id": "i1", "element": "E002", "role": "must",
-                                                     "origin": "user_written"}], "triggers": []}}})
+                                                     "origin": "user_written", "said_first_match": "用户说的"}], "triggers": []}}})
     for op, needle in (({"act": "merge_element", "target": {"element_id": "E001"}, "value": {"into": "E002"}},
                         "已合并到 E001"),
                        ({"act": "merge_element", "target": {"element_id": "E001"}, "value": {"into": "E001"}},
@@ -805,3 +808,26 @@ def test_user_proposed_row_labeled_and_op_checked(state_dir, monkeypatch, capsys
     assert E.angle({"definition": None}, ops) == (None, [])
     facts.main(["--check-row", "近期派发", "--reads", "distribution"])
     assert "同名：F13" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("d,want", [
+    (D("F07", "vr", "between", user={"lo": 3, "hi": 150}), ("at_least", {"x": 3.0}, {})),
+    (D("F07", "vr", "between", user={"lo": 3}, default={"hi": 100}), ("at_least", {"x": 3.0}, {})),
+    (D("F12", "up_ratio", "between", user={"lo": 0.5, "hi": 1}), ("at_least", {"x": 0.5}, {})),
+    (D("F01", "n_cleared", "between", user={"lo": 0, "hi": 2}), ("at_most", {"x": 2}, {})),
+    (D("F01", "n_cleared", "between", user={"lo": 0, "hi": 0}), ("at_most", {"x": 0}, {})),
+    (D("F04", "bars", "between", "close", user={"lo": 1, "hi": 30}), ("at_most", {"x": 30}, {})),
+    (D("F07", "vr", "between", default={"lo": 0.01, "hi": 2}), ("at_most", {}, {"x": 2.0})),
+])
+def test_between_touching_one_bound_becomes_one_sided(d, want):
+    """between 只有一端碰到(或越过)值的边界(量比这类是合理范围):只剩另一端,按 at_least / at_most 处理,
+    参数留在原来那一处。"""
+    out, errs = E.normalize_definition(d)
+    assert errs == [] and (out["cond"], out["user_params"], out["default_params"]) == want
+
+
+def test_one_sided_between_dedups_against_existing_at_least():
+    """「量比在 3 到 150 之间」按「量比至少 3」处理,和已有的那条查重:是同一条,不另立一条。"""
+    els = {"E001": {"eid": "E001", "status": "active", "versions": [{"version": 1, "definition": _norm(D("F07", "vr", "at_least", user={"x": 3}))}]}}
+    out, errs = E.normalize_definition(D("F07", "vr", "between", user={"lo": 3, "hi": 150}))
+    assert errs == [] and E.find_same(els, out) == "E001"

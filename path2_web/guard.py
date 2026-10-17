@@ -13,9 +13,10 @@ train_end 先和 chart_workflow.loader.HARD_END 取小,配置写成 2026 年也�
 - 单股预览(/preview)与扫描(/scan):起止截到看图范围内;扫描结果的 scan 段带
   view_guard = {view_floor, train_end, snapshot_sha}(这份扫描读的是截断副本、起点不早于这个下界、
   副本按内容的指纹是多少)。
-- 事件与诊断也只露下界及以后:预览、扫描(落盘时和打开时)、诊断在返回之前删掉锚点(起点那根)早于看图
-  下界的事件、诊断行和失败尝试,留下的事件与 match 里指向它们的引用一并删掉(serialize.redact_before);
-  内部照常用长预热计算。诊断的分析窗起点不早于「下界往前推这个 app 声明的预热天数」;按 bar 诊断的
+- 事件与诊断也只露下界及以后:预览、扫描(落盘时和打开时)、诊断在返回之前删掉锚点(事件声明的最早一根
+  bar,serialize.event_anchor;分析结果和诊断用同一条规则)早于看图下界的事件、诊断行和失败尝试,留下的
+  事件与 match 里指向它们的引用、事件字段里指向它们的编号一并删掉或置空;留下的事件里回看起点早于下界的
+  派生值(<字段>_from_idx,例如峰的相对高度)置空(serialize.redact_before);内部照常用长预热计算。诊断的分析窗起点不早于「下界往前推这个 app 声明的预热天数」;按 bar 诊断的
   框选起点不早于下界那根(截到它),框选终点早于它就 400;成对诊断点到下界之前的事件也 400。
   诊断里的计数(总数、通过数、各失败原因的个数)是整段分析窗的统计,原样保留,只删行和样例。
 - 打开扫描结果(/scans/{name}):带 view_guard、范围不比现在宽、副本指纹和现在的副本一致的照常给;没有
@@ -40,7 +41,7 @@ from chart_workflow.loader import NotASnapshot, check_snapshot
 from chart_workflow.snaplock import fingerprint
 from chart_workflow.state import StateRootMissing
 from path2_web.data import serialize_ohlc, slice_window
-from path2_web.serialize import redact_before
+from path2_web.serialize import event_anchor, redact_before
 from path2_web.workflow import _bars, _data_dir, _is_date, _train_end, _view_floor
 
 TRADING_TO_CALENDAR_RATIO = 1.65   # 与 path2_web/scan.py 同值:交易日 → 日历日
@@ -231,21 +232,25 @@ def clamp_bars(start_bar, end_bar, floor_idx: int):
     return start_bar, end_bar
 
 
-def _starts_from_diag(diag) -> dict:
-    """NodeDiagnostics 里出现过的事件:instance_id → start_idx。"""
-    out = {}
-    for rd in getattr(diag, "nodes", {}).values():
-        for row in rd.attr:
-            out[row.event.instance_id] = row.event.start_idx
-    return out
+def event_anchors(events) -> dict:
+    """事件对象 → {instance_id: 锚点};锚点规则与分析结果的删减相同(serialize.event_anchor:事件声明的最早一根
+    bar,按字段命名约定取)。"""
+    return {e.instance_id: event_anchor(vars(e)) for e in events}
 
 
-def redact_diagnostics(out: dict, floor_idx: int) -> dict:
-    """legacy 诊断(serialize_diagnostics 的结果):删掉锚点早于下界的 attr 行;rel 行的通过事件列表只留
-    还在的事件。计数原样保留(整段分析窗的统计)。就地改并返回。"""
+def diag_anchors(diag) -> dict:
+    """NodeDiagnostics 里出现过的事件的锚点:instance_id → 锚点。"""
+    return event_anchors(row.event for rd in getattr(diag, "nodes", {}).values() for row in rd.attr)
+
+
+def redact_diagnostics(out: dict, floor_idx: int, anchors: dict) -> dict:
+    """legacy 诊断(serialize_diagnostics 的结果):删掉锚点(anchors,见 diag_anchors;查不到按 attr 行的
+    start_idx)早于下界的 attr 行;rel 行的通过事件列表只留还在的事件。计数原样保留(整段分析窗的统计)。
+    就地改并返回。"""
     keep = set()
     for nd in (out.get("nodes") or {}).values():
-        nd["attr"] = [r for r in nd.get("attr") or [] if r.get("start_idx", -1) >= floor_idx]
+        nd["attr"] = [r for r in nd.get("attr") or []
+                      if anchors.get(r.get("instance_id"), r.get("start_idx", -1)) >= floor_idx]
         keep |= {r["instance_id"] for r in nd["attr"]}
     for nd in (out.get("nodes") or {}).values():
         for r in nd.get("rel") or []:
@@ -255,13 +260,13 @@ def redact_diagnostics(out: dict, floor_idx: int) -> dict:
 
 def redact_scoped(resp, floor_idx: int, *, diag=None, result=None) -> dict:
     """按 scope 的诊断回应(derive_response 的结果):转成 JSON 形状后删掉下界之前的东西——
-    nodes:失败样例里任一端事件早于下界(或查不到)就删;time:失败尝试的轨迹起点、判据起点、语义锚
-    任一早于下界就删;pair:点到的事件早于下界 → 400。"""
+    nodes:失败样例里任一端事件的锚点早于下界(或查不到)就删;time:失败尝试的轨迹起点、判据起点、语义锚
+    任一早于下界就删;pair:点到的事件锚点早于下界 → 400。锚点规则同分析结果(event_anchors)。"""
     d = jsonable_encoder(resp)
     payload = d.get("payload") or {}
     if d.get("scope") == "nodes":
-        starts = _starts_from_diag(diag)
-        ok = lambda i: starts.get(i, -1) >= floor_idx
+        anchors = diag_anchors(diag)
+        ok = lambda i: anchors.get(i, -1) >= floor_idx
         for key in ("example_failed_pairs", "per_pair"):
             if isinstance(payload.get(key), list):
                 payload[key] = [p for p in payload[key] if ok(p.get("src_event_id")) and ok(p.get("dst_event_id"))]
@@ -271,9 +276,9 @@ def redact_scoped(resp, floor_idx: int, *, diag=None, result=None) -> dict:
             if min((g.get("failure_event_window") or [floor_idx])[0], g.get("start_idx", floor_idx),
                    g.get("anchor_bar", floor_idx)) >= floor_idx]
     elif d.get("scope") == "pair":
-        starts = {e.instance_id: e.start_idx for e in getattr(result, "events", None) or []}
+        anchors = event_anchors(getattr(result, "events", None) or [])
         for key in ("src_event_id", "dst_event_id"):
             iid = payload.get(key)
-            if iid is not None and starts.get(iid, floor_idx) < floor_idx:
+            if iid is not None and anchors.get(iid, floor_idx) < floor_idx:
                 raise HTTPException(400, "点到的事件早于本轮看图下界,不给诊断")
     return d

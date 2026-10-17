@@ -359,8 +359,10 @@ def build_router(*, registry, config_path, get_config, set_config,
                 os.environ["DEBUG_ANCHOR_KIND"] = anchor_kind
             if scope is None:
                 # legacy 路径:无 scope 参数 → 前端旧 api.ts::getDiagnose 不用改。
+                diag = _dag_diagnose(spec, win, None)
                 return guard.redact_diagnostics(
-                    diagnose_symbol(spec, win, None, symbol=symbol, pattern_id=pattern_id), floor_idx)
+                    diagnose_symbol(spec, win, None, symbol=symbol, pattern_id=pattern_id, diag=diag), floor_idx,
+                    guard.diag_anchors(diag))
             # A' 按 scope 分派(见 docs/research/2026-07-18_debug-double-pause-analysis/final_report.md §3.1):
             # scope=nodes 只需 diag · scope=time/pair 只需 result(+ gate_failures) · 三 scope 数据依赖完全正交
             # (derive_response 三 branch 逐字核实无 hidden cross-dep)· 只跑该 scope 需要的那 pass 消双 pause。

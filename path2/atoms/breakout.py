@@ -34,6 +34,7 @@ class PeakEvent(Event):
     price: float = 0.0              # 峰价(初始=登记价);detect 内 elevation 演化
     original_price: Optional[float] = None   # supersede 锚;首次抬升记录
     relative_height: float = 0.0
+    relative_height_from_idx: Optional[int] = None   # 相对高度回看窗的起点 bar(分母取 [这根, 登记 bar) 的最低价)
     volume_peak: Optional[float] = None   # 峰位量比(vol_ratio);无量数据时 0.0
     superseded_refs: Tuple[Event, ...] = ()   # 吃掉者记录被它 supersede 的旧峰
 
@@ -587,6 +588,7 @@ class BODetector:
                                 price=max_measure,
                                 original_price=None,        # 首次抬升前为 None(与旧 Peak 语义一致)
                                 relative_height=relative_height,
+                                relative_height_from_idx=window_start,
                                 volume_peak=volume_peak,
                             )
                             self._register_peak(peak, out)

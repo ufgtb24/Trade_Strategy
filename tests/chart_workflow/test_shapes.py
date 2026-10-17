@@ -58,7 +58,7 @@ CARD = {
         {"ing_id": "i1", "element": "$pk1", "role": "must", "origin": "user_written",
          "said_first_match": "连续突破了两个峰值"},
         {"ing_id": "i2", "element": "$dist", "role": "must_not", **DET},
-        {"ing_id": "i3", "element": "$flat", "role": "bonus", "origin": "user_written"},
+        {"ing_id": "i3", "element": "$flat", "role": "bonus", "origin": "user_written", "said_first_match": "用户说的"},
     ],
     "triggers": [{"trig_id": "t1", "term": "T5", **DET},
                  {"trig_id": "t2", "term": "custom", "text": "放量阳线过前高", "origin": "user_written",
@@ -124,6 +124,7 @@ def _state(state_dir):
     (lambda c: c["triggers"][1].pop("text"), "text"),
     (lambda c: c["triggers"][0].update(origin="user_written"), "said_first_match"),
     (lambda c: c["triggers"][1].pop("said_first_match"), "said_first_match"),   # 手写触发记成用户说的
+    (lambda c: c["ingredients"][2].pop("said_first_match"), "角色记成用户定的,要带 said_first_match"),
 ])
 def test_origin_rules_reject(state_dir, mutate, needle):
     _batch(state_dir, "b1", [_ann("a1")])
@@ -162,7 +163,7 @@ def test_valid_decision_written_and_rendered(state_dir):
 def test_same_element_different_roles_in_two_shapes(state_dir):
     _base(state_dir)
     card2 = {"ingredients": [{"ing_id": "j1", "element": "E002", "role": "bonus",
-                              "origin": "user_written"}], "triggers": []}
+                              "origin": "user_written", "said_first_match": "用户说的"}], "triggers": []}
     shapes.apply(_decision(_create(card2, name="派发后再起")))
     roles = {sid: shapes.load_card(sid)["versions"][0]["card"]["ingredients"]
              for sid in ("s001", "s002")}
@@ -258,10 +259,12 @@ def test_v1_batch_counts_as_outcome_visible(state_dir):
     assert v["after_seeing_outcome"] is True and v["list_kind"] is None
 
 
-def _impl(source):
-    """测试里直接记账用的核对结果(真实流程由对照页的规则核对给出,见 test_rulecheck.py)。"""
-    return {"source": source, "declared": [{"element": "E001", "element_resolved": "E001", "role": "must"}],
-            "samples_checked": 1, "samples_skipped": []}
+@pytest.fixture(autouse=True)
+def _stub_rule_check(monkeypatch):
+    """本文件只测账本按要素记来源:账本自己跑的规则核对换成桩(真的核对见 test_rulecheck.py)。"""
+    from chart_workflow import rulecheck
+    monkeypatch.setattr(rulecheck, "check_rule_against_shape",
+                        lambda source, cfg, **kw: {"source": source, "declared": [], "stub": True})
 
 
 def _reuse(ing_id, element, ref, shape_id="s001", version=1, **extra):
@@ -288,7 +291,7 @@ def test_ledger_conditions_by_element(state_dir, cw_env):
     lists = root_dir(cfg) / "lists"
     lists.mkdir(parents=True)
     (lists / "r5-contrast.json").write_text(json.dumps({"list_id": "r5-contrast", "kind": "contrast"}))
-    e = add_round(cfg, kind="rule", rule_id="s001", version="v1", source="shape:s001@v1", implements=_impl("shape:s001@v1"),
+    e = add_round(cfg, kind="rule", rule_id="s001", version="v1", source="shape:s001@v1", rule="stub.py",
                   change="首版", list_id="r5-contrast")
     conds = {c["cond_id"]: c for c in e["conditions"]}
     assert set(conds) == {"i1", "i2", "i3", "t1", "t2"}
@@ -305,25 +308,25 @@ def test_ledger_conditions_by_element(state_dir, cw_env):
     assert "要素 你说的 2 / 你提的角度 0 / 事实表 1 / 会话 0；角色你定的 2/3；触发 你说的 1 / 事实表 1" \
         in render_ledger(read_ledger())
     (lists / "r6-contrast.json").write_text(json.dumps({"list_id": "r6-contrast", "kind": "contrast"}))
-    e = add_round(cfg, kind="rule", rule_id="s003", version="v1", source="shape:s003@v1", implements=_impl("shape:s003@v1"),
+    e = add_round(cfg, kind="rule", rule_id="s003", version="v1", source="shape:s003@v1", rule="stub.py",
                   change="复用", list_id="r6-contrast")
     c = e["conditions"][0]
     assert c["suggested_by"] == "own_library" and c["element"] == "E002"
     assert (c["root_origin"], c["root_suggested_by"]) == ("suggested_adopted", "detector")
     # 要素是事实表推荐的、角色是用户定的:两件事分开记
     shapes.apply(_decision(_create({"ingredients": [{"ing_id": "m1", "element": "E002", "role": "bonus",
-                                                     "origin": "user_written"}], "triggers": []},
+                                                     "origin": "user_written", "said_first_match": "用户说的"}], "triggers": []},
                                    name="派发也算加分")))
     (lists / "r7-contrast.json").write_text(json.dumps({"list_id": "r7-contrast", "kind": "contrast"}))
-    m1 = add_round(cfg, kind="rule", rule_id="s004", version="v1", source="shape:s004@v1", implements=_impl("shape:s004@v1"),
+    m1 = add_round(cfg, kind="rule", rule_id="s004", version="v1", source="shape:s004@v1", rule="stub.py",
                    change="角色用户定", list_id="r7-contrast")["conditions"][0]
     assert (m1["element_origin"], m1["element_suggested_by"]) == ("suggested_adopted", "detector")
     assert (m1["origin"], m1["root_origin"]) == ("user_written", "user_written")
     with pytest.raises(FileNotFoundError):
-        add_round(cfg, kind="rule", rule_id="s001", version="v2", source="shape:s001@v2", implements=_impl("shape:s001@v2"),
+        add_round(cfg, kind="rule", rule_id="s001", version="v2", source="shape:s001@v2", rule="stub.py",
                   change="x", list_id="r5-contrast")
     with pytest.raises(FileNotFoundError):
-        add_round(cfg, kind="rule", rule_id="s009", version="v1", source="shape:s009@v1", implements=_impl("shape:s009@v1"),
+        add_round(cfg, kind="rule", rule_id="s009", version="v1", source="shape:s009@v1", rule="stub.py",
                   change="x", list_id="r5-contrast")
 
 
@@ -340,7 +343,7 @@ def test_ledger_marks_user_proposed_angle(state_dir, cw_env, monkeypatch):
     lists = root_dir(cfg) / "lists"
     lists.mkdir(parents=True)
     (lists / "r5-contrast.json").write_text(json.dumps({"list_id": "r5-contrast", "kind": "contrast"}))
-    e = add_round(cfg, kind="rule", rule_id="s001", version="v1", source="shape:s001@v1", implements=_impl("shape:s001@v1"),
+    e = add_round(cfg, kind="rule", rule_id="s001", version="v1", source="shape:s001@v1", rule="stub.py",
                   change="首版", list_id="r5-contrast")
     i2 = next(c for c in e["conditions"] if c["cond_id"] == "i2")
     assert i2["element_suggested_by"] == "detector"
@@ -366,7 +369,7 @@ def test_user_angle_needs_earlier_propose_entry(state_dir, cw_env, monkeypatch, 
     lists = root_dir(cfg) / "lists"
     lists.mkdir(parents=True)
     (lists / "r5-contrast.json").write_text(json.dumps({"list_id": "r5-contrast", "kind": "contrast"}))
-    e = add_round(cfg, kind="rule", rule_id="s001", version="v1", source="shape:s001@v1", implements=_impl("shape:s001@v1"),
+    e = add_round(cfg, kind="rule", rule_id="s001", version="v1", source="shape:s001@v1", rule="stub.py",
                   change="首版", list_id="r5-contrast")
     i2 = next(c for c in e["conditions"] if c["cond_id"] == "i2")
     assert (i2["angle_by"], i2["angle_ops"]) == ("preset", [])
@@ -404,7 +407,7 @@ def test_own_library_reuse_follows_element_merge(state_dir):
     shapes.apply(_decision(_create({"ingredients": [_reuse("j1", "E005", "i3")], "triggers": []},
                                    name="复用")))
     j1 = shapes.load_card("s002")["versions"][0]["card"]["ingredients"][0]
-    assert j1["root"] == {"origin": "user_written"}
+    assert j1["root"] == {"origin": "user_written", "said_first_match": "用户说的"}
 
 
 def test_own_library_reuse_needs_same_kind(state_dir):
@@ -436,7 +439,7 @@ def test_ledger_unchanged_by_merge(state_dir):
     assert (i3["fact_rows"], i3["angle_by"], i3["definition_origin"]) == ([], None, None)
     # 新建的卡版本引用 E003:记的是写成计算的那一版,定义是谁定的跟着记(会话定的)
     shapes.apply(_decision(_create({"ingredients": [{"ing_id": "j1", "element": "E005", "role": "must",
-                                                     "origin": "user_written"}], "triggers": []}, name="平台")))
+                                                     "origin": "user_written", "said_first_match": "用户说的"}], "triggers": []}, name="平台")))
     j1 = ledger.shape_conditions("shape:s002@v1")[0]
     assert (j1["element_origin"], j1["element_suggested_by"], j1["fact_rows"]) == \
         ("suggested_adopted", "detector", ["F11"])
@@ -450,7 +453,7 @@ def test_ledger_records_who_wrote_pending_definition(state_dir):
                             "value": {"definition": FLAT, "change": "写成计算", "origin": "suggested_adopted",
                                       "suggested_by": "session"}}))
     shapes.apply(_decision(_create({"ingredients": [{"ing_id": "j1", "element": "E003", "role": "must",
-                                                     "origin": "user_written"}], "triggers": []}, name="平台")))
+                                                     "origin": "user_written", "said_first_match": "用户说的"}], "triggers": []}, name="平台")))
     j1 = ledger.shape_conditions("shape:s002@v1")[0]
     assert (j1["element_origin"], j1["element_version"], j1["fact_rows"]) == ("user_written", 2, ["F11"])
     assert (j1["definition_origin"], j1["definition_suggested_by"]) == ("suggested_adopted", "session")
@@ -464,7 +467,8 @@ VOLD = {"row": "F07", "value": "vr", "cond": "at_least", "default_params": {"x":
 def test_card_version_keeps_element_version(state_dir):
     """要素修订后,旧卡那一版仍按当时的要素版本判定、打印、记账;卡的新版本记新的版本号。"""
     _batch(state_dir, "b1", [_ann("a1")])
-    vol_ing = {"ingredients": [{"ing_id": "v1", "element": "$vol", "role": "must", "origin": "user_written"}],
+    vol_ing = {"ingredients": [{"ing_id": "v1", "element": "$vol", "role": "must", "origin": "user_written",
+                                "said_first_match": "用户说的"}],
                "triggers": []}
     shapes.apply(_decision(el_op("vol", "放量", VOLD, user=False), _create(vol_ing, name="放量")))
     shapes.apply(_decision({"act": "revise_element", "target": {"element_id": "E001"},
@@ -550,19 +554,72 @@ def test_tampered_tool_filled_fields_caught(state_dir):
     assert any("和日志里记的不一样" in m for m in shapes.rebuild(verify=True))
 
 
-def test_old_cards_without_element_version_still_revalidate(state_dir):
-    """旧日志里的卡没记要素版本号(那时一律按最新版本):照常重新校验通过、照常打印。"""
-    _base(state_dir)
-    f = sorted((state_dir / "oplog").glob("*.jsonl"))[-1]
-    rows = [json.loads(x) for x in f.read_text().splitlines()]
+def _strip_versions(rows):
     for r in rows:
         if r["act"] == "create_shape":
             for ing in r["value"]["card"]["ingredients"]:
                 ing.pop("element_version")
+
+
+def _rewrite_log(state_dir, rows):
+    f = sorted((state_dir / "oplog").glob("*.jsonl"))[-1]
     f.write_text("".join(json.dumps(r, ensure_ascii=False) + "\n" for r in rows))
-    state.reset_watermark(state_dir, "测试:改成旧格式")
+    state.reset_watermark(state_dir, "测试:改写日志")
+
+
+def test_old_cards_without_element_version_still_revalidate(state_dir):
+    """开卡记要素版本号那次提交之前写的卡没有这个字段:日志开头那一段旧条目照常重新校验通过、照常打印。"""
+    _base(state_dir)
+    f = sorted((state_dir / "oplog").glob("*.jsonl"))[-1]
+    rows = [json.loads(x) for x in f.read_text().splitlines()]
+    _strip_versions(rows)
+    for k, r in enumerate(rows):
+        r["ts"] = f"2026-10-01T00:00:{k:02d}"
+    _rewrite_log(state_dir, rows)
     assert shapes.rebuild(verify=False) == []
     assert "按收盘至少越过一个峰" in shapes.render(shapes.load_card("s001"))
+
+
+@pytest.mark.parametrize("when", ["new", "old_after_new"])
+def test_missing_element_version_only_forgiven_for_old_entries(state_dir, when):
+    """新写的卡不记要素版本号算对不上;把时间改早、却排在新条目后面的,也不算旧条目。"""
+    _base(state_dir)
+    f = sorted((state_dir / "oplog").glob("*.jsonl"))[-1]
+    rows = [json.loads(x) for x in f.read_text().splitlines()]
+    _strip_versions(rows)
+    if when == "old_after_new":
+        for r in rows:
+            if r["act"] == "create_shape":
+                r["ts"] = "2026-10-01T00:00:00"
+    _rewrite_log(state_dir, rows)
+    with pytest.raises(shapes.ShapeValidationError, match="和日志里记的不一样"):
+        shapes.rebuild(verify=False)
+
+
+def test_bad_log_blocks_normal_write_and_ledger(state_dir):
+    """日志里混进了绕开决定文件的条目:之后正常写入一律拒绝(不能借一次正常写入把它重算落盘),账本也不取数。"""
+    _base(state_dir)
+    full = {k: None for k in oplog.FIELDS}
+    bad_el = {**full, **copy.deepcopy(ELEMS[0]), "actor": "session", "surface": "chat",
+              "ctx": {"list_id": "r1"}, "ts": "2026-10-17T23:00:00", "op_id": "20261017T230000-aaaaaaaa"}
+    bad_el["target"] = {"element_id": "E009"}
+    bad_el["value"]["definition"] = {"row": "F13", "value": "events", "cond": "events_any", "user_params": {"bars": 30}}
+    bad_el["value"].pop("said_first_match")
+    _raw_append(state_dir, bad_el)
+    with pytest.raises(shapes.ShapeValidationError, match="已有不合格的条目"):
+        shapes.apply(_decision({"act": "alias_element", "target": {"element_id": "E009"}, "value": {"text": "x"}}))
+    assert not (state_dir / "elements" / "E009.json").exists()
+    with pytest.raises(ValueError, match="已有不合格的条目"):
+        ledger.shape_conditions("shape:s001@v1")
+
+
+def test_ledger_reads_log_not_disk(state_dir):
+    """账本按日志重算的卡与要素取数:手改磁盘上的卡文件不影响账本。"""
+    _base(state_dir)
+    before = ledger.shape_conditions("shape:s001@v1")
+    p = state_dir / "shapes" / "s001.json"
+    p.write_text(p.read_text().replace('"suggested_adopted"', '"user_written"'))
+    assert ledger.shape_conditions("shape:s001@v1") == before
 
 
 def test_pending_summary_and_possible_duplicates(state_dir, capsys):

@@ -35,8 +35,16 @@ sha256 + 行数」,见过的每一行的指纹另存在旁边的 watermark.seen/
 (见过记录在 .watermark.seen/)。
 
 别的分支上有更新的账:水位只认本机工具见过的行,另一台机器的账经 git 到了本机、本机工具还没运行过就切到
-旧分支,水位查不出来。所以给出状态根之前还查本地分支与远端跟踪分支:有改过记账目录(标记文件除外)、
-又不是当前分支祖先的提交 → StateRootDiverged(「别的分支上有更新的账」,并列出是哪些分支、几个提交)。
+旧分支,水位查不出来。所以给出状态根之前还查本地分支与远端跟踪分支:先找有改过记账目录(标记文件除外)、
+又不是当前分支祖先的提交的分支;再按内容比这个分支上记账目录里的文件和当前分支(状态根磁盘上的文件):
+  只追加的文件(账本、看过记录、操作日志、水位重置记录):那个分支上的内容是当前分支这份的开头一段;
+  要素库 elements/、形态卡 shapes/:由操作日志重算,只要求当前分支也有这个文件(内容跟着操作日志走,
+      操作日志已按上一条比过);
+  副本登记 snapshot_lock.json:那个分支上的换副本记录是当前分支这份的开头一段,登记的副本是当前分支
+      现在的、或者当前分支后来换掉的那一份;
+  其余文件:当前分支都有,并且一字不差。
+都满足就是「那个分支上的账当前分支全有」(例如把当前分支用合并提交合进了那个分支),不拦;有当前分支
+没有的账才 → StateRootDiverged(「别的分支上有更新的账」,列出分支、提交数和差在哪几个文件)。
 当前分支领先别的分支是正常的,不拦。分支指向没变时沿用上次的结果,不再跑 git。
 状态根不在 git 仓库里(环境变量指的临时目录)时不查。
 
@@ -133,8 +141,8 @@ class StateRootRegressed(StateRootMissing):
 
 
 class StateRootDiverged(StateRootMissing):
-    """本地分支或远端跟踪分支上有改过记账目录、又不在当前分支里的提交(另一台机器记的账经 git 到了本机、
-    还没合进来)。接着写两边的账就分叉了,所以停下。"""
+    """本地分支或远端跟踪分支上有当前分支没有的账(另一台机器记的账经 git 到了本机、还没合进来),
+    按内容比(见模块说明)。接着写两边的账就分叉了,所以停下。"""
 
 
 @lru_cache(maxsize=16)
@@ -425,10 +433,80 @@ def _git_out(top: str, *args) -> str | None:
     return r.stdout if r.returncode == 0 else None
 
 
+_DERIVED_DIRS = ("elements", "shapes")           # 由操作日志重算的目录:只要求文件在
+_LOCK_FILE = "snapshot_lock.json"
+
+
+def _blob_id(data: bytes) -> str:
+    """git 给这段内容的对象编号(与 git hash-object 相同)。"""
+    return hashlib.sha1(b"blob %d\0" % len(data) + data).hexdigest()
+
+
+def _cat_blob(top: str, oid: str) -> bytes | None:
+    try:
+        r = subprocess.run(["git", "cat-file", "blob", oid], cwd=top, capture_output=True, timeout=30)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return r.stdout if r.returncode == 0 else None
+
+
+def _lock_contained(theirs: bytes, mine: bytes) -> bool:
+    """那个分支上的副本登记当前分支都有:换副本记录是当前这份的开头一段,登记的副本是现在的或后来换掉的。"""
+    try:
+        t, m = json.loads(theirs), json.loads(mine)
+        th, mh = list(t.get("history") or []), list(m.get("history") or [])
+    except (ValueError, AttributeError, TypeError):
+        return False
+    if mh[:len(th)] != th:
+        return False
+    if len(mh) == len(th):
+        return t.get("current") == m.get("current")
+    return mh[len(th)].get("old") == t.get("current")
+
+
+def _new_on_ref(top: str, ref: str, rel: str, root: Path) -> list[str]:
+    """那个分支上记账目录里当前分支没有的账,按文件列原因(见模块说明「别的分支上有更新的账」)。"""
+    listing = _git_out(top, "ls-tree", "-r", "-z", "--full-tree", ref, "--", rel)
+    if listing is None:
+        return [f"读不到 {ref} 上的记账目录"]
+    line_rels = set(_LINE_FILES)
+    out = []
+    for item in listing.split("\0"):
+        if not item:
+            continue
+        meta, path = item.split("\t", 1)
+        oid = meta.split()[2]
+        sub = os.path.relpath(path, rel).replace(os.sep, "/")
+        if sub == MARKER:
+            continue
+        here = root / sub
+        if not here.is_file():
+            out.append(f"{sub} 当前分支没有")
+            continue
+        top_dir = sub.split("/", 1)[0]
+        if top_dir in _DERIVED_DIRS:
+            continue
+        mine = here.read_bytes()
+        if _blob_id(mine) == oid:
+            continue
+        if sub in line_rels or (top_dir in _LINE_DIRS and sub.endswith(".jsonl")):
+            theirs = _cat_blob(top, oid)
+            if theirs is None or not mine.startswith(theirs):
+                out.append(f"{sub} 有当前分支没有的行")
+        elif sub == _LOCK_FILE:
+            theirs = _cat_blob(top, oid)
+            if theirs is None or not _lock_contained(theirs, mine):
+                out.append(f"{sub} 登记的副本或换副本记录当前分支没有")
+        else:
+            out.append(f"{sub} 和当前分支的不一样")
+    return out
+
+
 def foreign_ledger_refs(root: Path) -> list[str]:
-    """本地分支或远端跟踪分支上,改过记账目录(标记文件除外)、又不是当前分支祖先的提交,按分支列:
-    ["origin/wayfinder(3 个提交)", …]。root 不在 git 仓库里(环境变量指的临时状态根)→ 空表。
-    当前分支领先别的分支是正常的(只看别的分支有、当前分支没有的提交)。"""
+    """本地分支或远端跟踪分支上有当前分支没有的账,按分支列:["origin/wayfinder(3 个提交;ledger.jsonl
+    有当前分支没有的行)", …]。先找改过记账目录(标记文件除外)、又不是当前分支祖先的提交;有这类提交的分支
+    再按内容比(见模块说明),那个分支上的账当前分支全有就不算。root 不在 git 仓库里(环境变量指的临时
+    状态根)→ 空表。当前分支领先别的分支是正常的。"""
     root = Path(root).resolve()
     repo = _repo_of(str(root))
     if repo is None:
@@ -449,8 +527,12 @@ def foreign_ledger_refs(root: Path) -> list[str]:
             if ref.endswith("/HEAD"):
                 continue
             n = _git_out(top, "rev-list", "--count", ref, "--not", "HEAD", *paths)
-            if n and int(n.strip()) > 0:
-                out.append(f"{ref}({int(n.strip())} 个提交)")
+            if not (n and int(n.strip()) > 0):
+                continue
+            new = _new_on_ref(top, ref, rel, root)
+            if new:
+                more = f" 等 {len(new)} 处" if len(new) > 3 else ""
+                out.append(f"{ref}({int(n.strip())} 个提交;{'、'.join(new[:3])}{more})")
     if len(_DIVERGE_CACHE) > 64:
         _DIVERGE_CACHE.clear()
     _DIVERGE_CACHE[key] = out
@@ -461,7 +543,7 @@ def _check_diverged(root: Path) -> None:
     refs = foreign_ledger_refs(root)
     if refs:
         raise StateRootDiverged(
-            f"{DIVERGED_TEXT}:{'、'.join(refs)} 上有改过记账目录 {root} 的提交,当前分支里没有"
+            f"{DIVERGED_TEXT}:{'、'.join(refs)} 上有记账目录 {root} 里当前分支没有的账"
             f"(多半是另一台机器记了账,或别的分支上记过账)。先把它们合进当前分支、再用;"
             f"不要的分支删掉。不合就接着写,两边的账会分叉")
 

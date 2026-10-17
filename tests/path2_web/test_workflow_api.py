@@ -713,3 +713,55 @@ def test_same_list_neighbours_left_end_not_counted(tmp_path, state_dir):
     assert c.post("/workflow/views", json={"list_id": "r002-bigmoves", "item_id": b["item_id"],
                                            "event": "zoom"}).status_code == 200
     assert _elsewhere(c)["level"] is None
+
+
+def test_same_item_zoomed_in_contrast_list_counts_careful(tmp_path, state_dir):
+    """先在对照页放大看过同一条 AAA@2025-11-03(结果看得到),再在大涨段清单里标注它:记成「仔细看过」。
+    只有同一份清单里这一条自己的单张图事件才是标注本身、不算别处。"""
+    c, root = _client(tmp_path)
+    _write_list(root, "c009", "2026-10-02T09:00:00", kind="contrast")      # 同一条
+    assert c.get("/workflow/lists/c009").status_code == 200
+    assert c.post("/workflow/views", json={"list_id": "c009", "item_id": "AAA@2025-11-03",
+                                           "event": "zoom"}).status_code == 200
+    assert c.post("/workflow/views", json={"list_id": "r002-bigmoves", "item_id": "AAA@2025-11-03",
+                                           "event": "zoom"}).status_code == 200
+    seen = _elsewhere(c)
+    assert seen["level"] == "careful"
+    assert [(x["list_id"], x["event"]) for x in seen["careful"]] == [("c009", "zoom_chart")]
+
+
+@pytest.mark.parametrize("lid,item,backfill", [
+    ("r001-bigmoves", {}, True),                                             # 同一条
+    ("r001-bigmoves", {"item_id": "AAA@2025-10-13", "t": "2025-10-13"}, True),   # 同股不同日:露出前估计只到 11-03
+    ("r001-bigmoves", {"item_id": "AAA@2025-10-13", "t": "2025-10-13"}, False),  # 只写了补记界面,没标 backfill
+    ("r002-bigmoves", {}, True),                                             # 补记的就是这份清单(旧界面下看过)
+])
+def test_old_bigmoves_list_backfilled_whole_counts_in_list(tmp_path, state_dir, lid, item, backfill):
+    """旧界面生成的大涨段清单(当时结果全程可见)按整份补记:不按露出前截断、也不因为是同一条或同一份清单
+    跳过,之后在新清单里标注同一条记成「只在清单里出现过」。"""
+    from chart_workflow import views
+    c, root = _client(tmp_path)
+    _write_list(root, lid, "2026-09-01T09:00:00", **item)
+    doc = json.loads((root / "lists" / f"{lid}.json").read_text())
+    views.record(surface="manual", event="open_list", outcome_visible=True, ts="2026-09-02T10:00:00",
+                 backfill=backfill, note="补记:旧界面下看过整份清单", list_id=lid,
+                 list_kind="bigmoves", list_doc=doc)
+    seen = _elsewhere(c)
+    assert seen["level"] == "in_list" and [x["list_id"] for x in seen["in_list"]] == [lid]
+    assert seen["careful"] == []
+
+
+@pytest.mark.parametrize("gap,level", [(True, "in_list"), (False, None)])
+def test_pre_reveal_end_counts_real_trading_days(tmp_path, state_dir, gap, level):
+    """另一份大涨段清单里 AAA@2025-10-13 露出结果前露到它之后第 15 个交易日(按副本里 AAA 的真实交易日)。
+    副本缺 10-20、10-21 两天时第 15 根是 11-05,盖住本条决策日 11-03 之后 → 算;不缺时第 15 根是 11-03,
+    盖不到 → 不算(按 15 个工作日算两种都只到 11-03;按 20 个工作日退回两种都到 11-10)。"""
+    c, root = _client(tmp_path)
+    if gap:
+        pkls = tmp_path / "pkls"
+        df = pd.read_pickle(pkls / "AAA.pkl")
+        df.drop(pd.to_datetime(["2025-10-20", "2025-10-21"])).to_pickle(pkls / "AAA.pkl")
+        write_snapshot_manifest(pkls)
+    _write_list(root, "r003-bigmoves", "2026-10-02T09:00:00", item_id="AAA@2025-10-13", t="2025-10-13")
+    assert c.get("/workflow/lists/r003-bigmoves").status_code == 200
+    assert _elsewhere(c)["level"] == level
