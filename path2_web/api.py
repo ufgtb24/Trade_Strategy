@@ -252,6 +252,9 @@ def build_router(*, registry, config_path, get_config, set_config,
 
     @router.put("/config")
     def write_config(cfg: dict):
+        # 看图工作流那一段只读:不经这里改(看图下界、训练段末日、数据目录是护栏的一部分),
+        # 一律沿用当前生效的值;落盘时也不写它(见 config.save_config)
+        cfg = {**cfg, "workflow": get_config().get("workflow")}
         set_config(cfg)
         return {"ok": True}
 

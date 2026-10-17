@@ -1,4 +1,5 @@
 /** WorkflowView 翻页:页码框输入跳转(越界夹到首末页、非数字回显当前页)、PgUp / PgDn 翻页;
+ *  状态根不可用 / 来自环境变量时的提示;
  *  焦点在文字输入框里或放大框开着时不接管 PgUp / PgDn。图格与抽屉用桩替掉。 */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { mount, flushPromises, type VueWrapper } from '@vue/test-utils'
@@ -22,12 +23,15 @@ vi.mock('../src/api', () => ({
   listWorkflowLists: vi.fn(async () => [{ list_id: 'r001', kind: 'bigmoves', title: 't', n_items: 20,
                                           created_at: '2026-10-08T10:00:00' }]),
   loadWorkflowList: vi.fn(async () => mkList(20)),           // 20 条 → 4 页
+  getWorkflowState: vi.fn(async () => ({ path: '/repo/outputs/chart_workflow', from_env: false,
+                                         env_var: 'CHART_WORKFLOW_STATE_ROOT', ok: true,
+                                         message: null })),
   sendAnnotations: vi.fn(),
 }))
 
 import WorkflowView from '../src/components/WorkflowView.vue'
 import { useWorkflowStore } from '../src/stores/workflow'
-import { listWorkflowLists, loadWorkflowList } from '../src/api'
+import { getWorkflowState, listWorkflowLists, loadWorkflowList } from '../src/api'
 
 let w: VueWrapper
 async function mountView() {
@@ -113,6 +117,23 @@ describe('WorkflowView 记账类文件不可用 / 打不开清单', () => {
     const html = w.html()
     expect(html.indexOf('wf-blocked')).toBeLessThan(html.indexOf('data-testid="wf-list"'))
     expect(w.find('[data-testid="wf-load-error"]').text()).toContain('503')
+  })
+
+  it('状态根来自环境变量:顶上显示文字提示(写明是临时状态根与路径);来自主目录时不显示', async () => {
+    await mountView()
+    expect(w.find('[data-testid="wf-state-env"]').exists()).toBe(false)
+    w.unmount()
+    setActivePinia(createPinia())
+    ;(getWorkflowState as any).mockResolvedValueOnce({
+      path: '/tmp/e2e-state', from_env: true, env_var: 'CHART_WORKFLOW_STATE_ROOT', ok: true,
+      message: null })
+    await mountView()
+    const env = w.find('[data-testid="wf-state-env"]')
+    expect(env.exists()).toBe(true)
+    expect(env.text()).toContain('临时状态根')
+    expect(env.text()).toContain('CHART_WORKFLOW_STATE_ROOT')
+    expect(env.text()).toContain('/tmp/e2e-state')
+    expect(env.text()).toContain('不进正式账本')
   })
 })
 

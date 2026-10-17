@@ -20,6 +20,10 @@ def test_base_stock_is_in_pool_and_never_after_train_end(cw_env):
     assert panel["date"].min() >= pd.Timestamp(cfg["train_start"])
     for col in ("date", "entry_date", "peak_date"):
         assert panel[col].max() <= end
+    # 缓存目录里写明:含 2024 年的后续涨跌,研究不得直接读
+    from chart_workflow.config import root_dir
+    readme = (root_dir(cfg) / "cache" / "README.txt").read_text()
+    assert "含 2024 年的后续涨跌，研究不得直接读" in readme
     # 最后一个决策日之后恰好还有 H 个交易日在训练段内
     dates = make_stock(seed=1).index
     dates = dates[dates <= end]

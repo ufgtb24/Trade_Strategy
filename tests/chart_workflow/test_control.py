@@ -32,7 +32,7 @@ def test_weighted_median_basics():
 def test_hits_equal_everything_gives_zero_lead():
     panel = _random_panel()
     ctl = Control(panel, CCFG)
-    r = ctl.evaluate(np.arange(len(panel)), CCFG, with_noise=False)
+    r = ctl._evaluate(np.arange(len(panel)), CCFG, with_noise=False)
     assert abs(r["dir_lead"]) < 1e-12
     assert abs(r["mag_lead"]) < 1e-12
     assert r["ctrl_mag_median"] == pytest.approx(np.median(panel["mag"]))
@@ -51,7 +51,7 @@ def test_two_band_weighted_control():
 
     ctl = Control(panel, CCFG)
     hits = np.array([0, 15, 25])              # 两个落低档(dir +1、−1),一个落高档(dir +1)
-    r = ctl.evaluate(hits, CCFG, with_noise=False)
+    r = ctl._evaluate(hits, CCFG, with_noise=False)
     # 对照方向均值 = (B_low + B_low + B_high) / 3 = (0 + 0 + 1) / 3
     assert r["ctrl_dir_mean"] == pytest.approx(1 / 3)
     assert r["hit_dir_mean"] == pytest.approx(1 / 3)
@@ -74,28 +74,80 @@ def test_noise_reproducible_with_fixed_seed():
     panel = _random_panel()
     ctl = Control(panel, CCFG)
     rows = np.flatnonzero(panel["symbol"].isin([f"S{i:03d}" for i in range(0, 60, 3)]).values)
-    a = ctl.evaluate(rows, CCFG)
-    b = ctl.evaluate(rows, CCFG)
+    a = ctl._evaluate(rows, CCFG)
+    b = ctl._evaluate(rows, CCFG)
     assert a["dir_noise"] == b["dir_noise"] and a["mag_noise"] == b["mag_noise"]
     assert a["dir_noise"] > 0
-    c = ctl.evaluate(rows, {**CCFG, "seed": 123})
+    c = ctl._evaluate(rows, {**CCFG, "seed": 123})
     assert c["dir_noise"] != a["dir_noise"]
     # 命中数 < 300 用 1.3 的放大系数;改成 1.0 后正好缩小 1.3 倍
-    raw = ctl.evaluate(rows, {**CCFG, "inflate_small": 1.0, "inflate_large": 1.0})
+    raw = ctl._evaluate(rows, {**CCFG, "inflate_small": 1.0, "inflate_large": 1.0})
     if len(rows) < CCFG["noise_large_n"]:
         assert a["dir_noise"] == pytest.approx(raw["dir_noise"] * 1.3)
     else:
         assert a["dir_noise"] == pytest.approx(raw["dir_noise"] * 1.2)
 
 
-def test_summarize_rows_years_and_graduation():
-    panel = _random_panel()
-    cfg = {**DEFAULTS, "control": CCFG}
+CTX = {"kind": "rule", "rule_id": "r", "version": "v1", "source": "user-text", "change": "测试"}
+
+
+def _two_year_panel():
+    panel = _random_panel(n_days=40)
+    panel["date"] = panel["date"] + pd.Timedelta(days=320)      # 2024-11 起,跨进 2025
+    return panel
+
+
+def test_summarize_rows_years_and_graduation(cw_env):
+    from chart_workflow.ledger import read_ledger
+    cfg, _ = cw_env
+    cfg = {**cfg, "control": CCFG}
+    panel = _two_year_panel()
     ctl = Control(panel, CCFG)
     rows = np.arange(0, len(panel), 7)
-    s = summarize(ctl, rows, cfg)
-    assert [r["scope"] for r in s["rows"]] == ["全部", "2024", "2025"]
-    assert s["rows"][2]["n_hits"] == 0                    # 合成面板只有 2024 年
-    assert s["graduation"]["passed"] is False
-    assert s["graduation"]["checks"]["each_year"] is False
+    s = summarize(ctl, rows, cfg, ledger={**CTX, "list_id": "t-sum"})
+    # 默认只给内圈年份:逐年行只有 2025,「全部」也只含 2025 年的命中
+    assert [r["scope"] for r in s["rows"]] == ["全部", "2025"]
+    n25 = int((panel["date"].values[rows] >= np.datetime64("2025-01-01")).sum())
+    assert 0 < n25 < len(rows)
+    assert s["rows"][0]["n_hits"] == s["rows"][1]["n_hits"] == n25
+    assert s["years"] == ["2025"]
     assert set(s["concentration"]) == {"max_week_share", "max_stock_share"}
+    assert "each_year" in s["graduation"]["checks"]
+    # 算完当场记账:账本多一行,years 记的是内圈
+    led = read_ledger()
+    assert len(led) == 1 and led[0]["list_id"] == "t-sum" and led[0]["years"] == ["2025"]
+    assert led[0]["entry_id"] == s["ledger_entry_id"] and led[0]["auto"] is True
+    assert led[0]["summary_all"]["n_hits"] == n25
+
+
+def test_summarize_refuses_without_ledger(cw_env):
+    from chart_workflow.ledger import read_ledger
+    cfg, _ = cw_env
+    ctl = Control(_two_year_panel(), CCFG)
+    with pytest.raises(TypeError):
+        summarize(ctl, np.arange(10), cfg)                       # 不给记账上下文:不算
+    with pytest.raises(ValueError, match="必须记账"):
+        summarize(ctl, np.arange(10), cfg, ledger=None)
+    with pytest.raises(ValueError, match="缺"):
+        summarize(ctl, np.arange(10), cfg, ledger={"kind": "rule"})
+    assert read_ledger() == []
+
+
+def test_summarize_other_years_need_reason_and_are_logged(cw_env, capsys):
+    from chart_workflow.ledger import read_ledger, render
+    cfg, _ = cw_env
+    cfg = {**cfg, "control": CCFG}
+    panel = _two_year_panel()
+    ctl = Control(panel, CCFG)
+    rows = np.arange(0, len(panel), 7)
+    with pytest.raises(ValueError, match="other_years_reason"):
+        summarize(ctl, rows, cfg, ledger={**CTX, "list_id": "t-y0"}, years=["2024", "2025"])
+    assert read_ledger() == []
+    s = summarize(ctl, rows, cfg, ledger={**CTX, "list_id": "t-y1"}, years=["2024", "2025"],
+                  other_years_reason="核对 2024 年的口径")
+    assert [r["scope"] for r in s["rows"]] == ["全部", "2024", "2025"]
+    assert s["rows"][0]["n_hits"] == len(rows)
+    r = read_ledger()[-1]
+    assert r["years"] == ["2024", "2025"] and r["other_years_reason"] == "核对 2024 年的口径"
+    assert "内圈以外的年份 ['2024']" in capsys.readouterr().err
+    assert "(含内圈外年份)" in render(read_ledger())

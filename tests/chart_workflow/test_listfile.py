@@ -34,6 +34,10 @@ def test_valid_doc_written(cw_env):
     cfg, _ = cw_env
     path = write_list(_doc(cfg), cfg)
     assert json.loads(path.read_text())["list_id"] == "t-list"
+    before = path.read_bytes()
+    with pytest.raises(FileExistsError, match="已存在"):            # 同名不覆盖
+        write_list({**_doc(cfg), "title": "另一份"}, cfg)
+    assert path.read_bytes() == before
 
 
 @pytest.mark.parametrize("over", [
@@ -99,7 +103,8 @@ def test_contrast_list_has_summary_and_groups(cw_env, tmp_path):
     rule.write_text(RULE)
     panel = build_panel(cfg, verbose=False)
     hits = hits_from_rule(rule, sorted(panel["symbol"].unique()), cfg)
-    doc = build_contrast(panel, hits, cfg, "t-contrast", False, "r.py@x")
+    doc = build_contrast(panel, hits, cfg, "t-contrast", False, "r.py@x", ledger={
+        "kind": "rule", "rule_id": "r", "version": "x", "source": "user-text", "change": "测试"})
     write_list(doc, cfg)
     assert [r["scope"] for r in doc["summary"]["rows"]] == ["全部", "2025"]     # 内圈只给 2025
     assert [g["key"] for g in doc["groups"]] == ["win", "lose", "all"]

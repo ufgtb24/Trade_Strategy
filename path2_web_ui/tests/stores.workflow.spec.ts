@@ -1,5 +1,6 @@
 /** 看图工作流 store:草稿的增删改、发送的请求体、发送后清空、没标完不发送(新的必填规则)、
- *  多买点的主买点规则、初始右边界与「点买点前看过后续」、判定文字。 */
+ *  多买点的主买点规则、初始右边界与「点买点前看过后续」、改点痕迹(第一次露出结果时的买点、
+ *  看过结果后改过,清除后也留着)、状态根信息、判定文字。 */
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
 import type { WorkflowList } from '../src/types'
@@ -8,6 +9,9 @@ const sendAnnotations = vi.fn()
 vi.mock('../src/api', () => ({
   listWorkflowLists: vi.fn(async () => []),
   loadWorkflowList: vi.fn(),
+  getWorkflowState: vi.fn(async () => ({ path: '/tmp/st', from_env: true,
+                                         env_var: 'CHART_WORKFLOW_STATE_ROOT', ok: true,
+                                         message: null })),
   sendAnnotations: (...args: any[]) => sendAnnotations(...args),
 }))
 
@@ -81,10 +85,13 @@ describe('workflow store', () => {
     expect(anns[0]).toMatchObject({ item_id: i0.item_id, symbol: 'S0', range_start: '2025-01-06',
                                     range_end: '2025-03-10',
                                     buy_points: [{ date: '2025-03-10', primary: true }],
-                                    label: 'positive', note: 'a', peeked_before_buy: false })
+                                    label: 'positive', note: 'a', peeked_before_buy: false,
+                                    first_buy_points: [{ date: '2025-03-10', primary: true }],
+                                    changed_after_reveal: false })
     expect(Object.keys(anns[0]).sort()).toEqual(
-      ['ann_id', 'buy_points', 'item_id', 'label', 'note', 'peeked_before_buy', 'range_end',
-       'range_start', 'symbol', 'updated_at'])
+      ['ann_id', 'buy_points', 'changed_after_reveal', 'first_buy_points', 'item_id', 'label',
+       'note', 'peeked_before_buy', 'range_end', 'range_start', 'symbol', 'updated_at'])
+    expect(anns[1]).toMatchObject({ first_buy_points: null, changed_after_reveal: false })
     expect(anns[1]).toMatchObject({ item_id: i1.item_id, buy_points: [], label: 'negative' })
     expect(s.draftCount).toBe(0)
     expect(s.lastSent).toEqual({ batch_id: '20261008T101500', path: '/x/y.json', n: 2 })
@@ -218,5 +225,98 @@ describe('workflow store · 阶段 0 补丁', () => {
     expect(labelText('negative', 'contrast_blind')).toBe('不是我的意思')
     expect(labelText('negative', 'contrast')).toBe('反例')
     expect(labelText('data_error', 'bigmoves')).toBe('数据有误')
+  })
+})
+
+
+describe('workflow store · 改点痕迹', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia())
+    sendAnnotations.mockReset()
+  })
+
+  it('先随手点一个买点看到结果,再普通点击改到别处:记下第一次的买点,标「看过结果后改过」', () => {
+    const s = useWorkflowStore()
+    s.current = mkList()
+    const id = s.current.items[0].item_id
+    s.upsertAnnotation(id, { label: 'positive' })                 // 只选判定:结果还没露
+    expect(s.drafts.get(id)).toMatchObject({ first_buy_points: null, changed_after_reveal: false })
+    s.setBuyPoint(id, '2025-03-14')                              // 结果此刻露出
+    expect(s.drafts.get(id)).toMatchObject({
+      first_buy_points: [{ date: '2025-03-14', primary: true }], changed_after_reveal: false })
+    s.upsertAnnotation(id, { note: '备注' })                      // 改别的不算
+    expect(s.drafts.get(id)!.changed_after_reveal).toBe(false)
+    s.setBuyPoint(id, '2025-03-10')
+    expect(s.drafts.get(id)).toMatchObject({
+      buy_points: [{ date: '2025-03-10', primary: true }],
+      first_buy_points: [{ date: '2025-03-14', primary: true }], changed_after_reveal: true })
+  })
+
+  it('先点买点看到结果,再「清除」重点:痕迹留着,还记成点买点前看过后续', () => {
+    const s = useWorkflowStore()
+    s.current = mkList()
+    const id = s.current.items[0].item_id
+    s.setBuyPoint(id, '2025-03-14')
+    s.deleteAnnotation(id)
+    expect(s.drafts.has(id)).toBe(false)
+    s.setBuyPoint(id, '2025-03-10')
+    expect(s.drafts.get(id)).toMatchObject({
+      buy_points: [{ date: '2025-03-10', primary: true }],
+      first_buy_points: [{ date: '2025-03-14', primary: true }],
+      changed_after_reveal: true, peeked_before_buy: true })
+  })
+
+  it('Shift 加点、去点都算改过;去掉全部买点也记看过后续', () => {
+    const s = useWorkflowStore()
+    s.current = mkList()
+    const [a, b] = s.current.items.map(it => it.item_id)
+    s.toggleBuyPoint(a, '2025-03-14')
+    s.toggleBuyPoint(a, '2025-03-17')                            // 加一个
+    expect(s.drafts.get(a)!.changed_after_reveal).toBe(true)
+    expect(s.drafts.get(a)!.first_buy_points).toEqual([{ date: '2025-03-14', primary: true }])
+    s.toggleBuyPoint(b, '2025-03-14')
+    s.toggleBuyPoint(b, '2025-03-14')                            // 去掉唯一的买点
+    expect(s.drafts.get(b)).toMatchObject({ buy_points: [], changed_after_reveal: true,
+                                            peeked_before_buy: true })
+  })
+
+  it('重新打开同一份清单、切走再切回,痕迹都还在;不同清单的同名条目各记各的', async () => {
+    const s = useWorkflowStore()
+    const doc = mkList()
+    ;(loadWorkflowList as any).mockResolvedValue(doc)
+    await s.openList('r001')
+    const id = doc.items[0].item_id
+    s.setBuyPoint(id, '2025-03-14')
+    s.deleteAnnotation(id)
+    s.markPeeked(doc.items[1].item_id)
+    await s.openList('r001')                                     // 没有草稿,不用确认
+    s.setBuyPoint(id, '2025-03-10')
+    expect(s.drafts.get(id)!.changed_after_reveal).toBe(true)
+    expect(s.isPeeked(doc.items[1].item_id)).toBe(true)
+    s.clearDrafts()
+    const other = { ...mkList(), list_id: 'r009' }
+    ;(loadWorkflowList as any).mockResolvedValue(other)
+    await s.openList('r009')
+    s.setBuyPoint(id, '2025-03-10')
+    expect(s.drafts.get(id)).toMatchObject({ changed_after_reveal: false, peeked_before_buy: false })
+  })
+
+  it('只在大涨段清单记痕迹:对照清单一开始就看得到结果', () => {
+    const s = useWorkflowStore()
+    s.current = mkList(8, 'contrast')
+    const id = s.current.items[0].item_id
+    s.setBuyPoint(id, '2025-03-14')
+    s.setBuyPoint(id, '2025-03-10')
+    expect(s.drafts.get(id)).toMatchObject({ first_buy_points: null, changed_after_reveal: false })
+  })
+
+  it('loadLists 顺带取状态根信息;取不到时为 null', async () => {
+    const s = useWorkflowStore()
+    await s.loadLists()
+    expect(s.stateInfo).toMatchObject({ path: '/tmp/st', from_env: true })
+    const api = await import('../src/api')
+    ;(api.getWorkflowState as any).mockRejectedValueOnce(new Error('503'))
+    await s.loadLists()
+    expect(s.stateInfo).toBeNull()
   })
 })

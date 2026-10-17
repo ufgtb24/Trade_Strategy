@@ -28,6 +28,7 @@
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 import sys
@@ -123,7 +124,8 @@ def load_pool(cfg: dict, refresh: bool = False, verbose: bool = True
               ) -> tuple[pd.DataFrame, dict]:
     """清单与统计的统一入口:重建并写出数据错误登记 → 取池内面板 → 排除受影响的股票日。
 
-    返回 (面板, 登记摘要 {n_entries, n_excluded_rows, built_at, registry})。
+    返回 (面板, 登记摘要 {n_entries, n_excluded_rows, built_at, registry, sha})。
+    sha:登记内容的指纹(回看根数、H 与全部登记条目,不含生成时间),记进清单与账本,供原样重跑时核对。
     """
     reg = build_registry(cfg)
     path = write_registry(reg, cfg)
@@ -134,6 +136,9 @@ def load_pool(cfg: dict, refresh: bool = False, verbose: bool = True
         if reg["skipped_files"]:
             print(f"[data_errors] 警告:跳过读不了的标注 {reg['skipped_files'][:10]}",
                   file=sys.stderr)
+    raw = json.dumps({k: reg[k] for k in ("lookback_bars", "H", "entries")}, sort_keys=True,
+                     ensure_ascii=False, default=str)
     info = {"n_entries": reg["n_entries"], "n_excluded_rows": n_ex,
-            "built_at": reg["built_at"], "registry": path.name}
+            "built_at": reg["built_at"], "registry": path.name,
+            "sha": hashlib.sha256(raw.encode()).hexdigest()[:16]}
     return panel, info

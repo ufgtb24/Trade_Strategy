@@ -19,6 +19,10 @@ M_t 有限且 ≥ m_min(剔除平时几乎不动的股票);open[t+1] > 0;标签�
 面板缓存到 <root>/cache/panel_<参数指纹>.parquet。指纹覆盖:训练段、k、H、M 回看、
 池子与特征参数、数据窗口回看天数、池内普通股名单、行情文件(名称 / 大小 / 修改时间)与本模块版本,
 任一变化都会重算。
+
+红线:缓存里存着训练段每个股票日(含 2024 年)的后续涨跌(dir / mag / U / D / 最高点),
+研究不得直接读它——2024 年留作没看过的那年,成绩只经 control.summarize(默认只给内圈年份、会记账)拿。
+写缓存时在同一目录写一份 README.txt 说明这一点。
 """
 from __future__ import annotations
 
@@ -44,6 +48,13 @@ PANEL_COLUMNS = [
     "dd250", "r60", "width40", "gap", "vol_mult", "pre_state", "vol_tag",
     "win_start", "win_end", "max_jump",
 ]
+
+CACHE_README = """这个目录是看图工作流的可重算缓存(chart_workflow/panel.py 生成)。
+
+panel_*.parquet 含 2024 年的后续涨跌，研究不得直接读。
+里面存着训练段每个股票日的后续涨跌(含 2024 年,那一年留作没看过的那年)。要看成绩,只经
+chart_workflow.control.summarize:它默认只给内圈年份,算完自动记账。
+"""
 
 
 def read_stock(cfg: dict, symbol: str) -> pd.DataFrame:
@@ -159,6 +170,7 @@ def build_panel(cfg: dict, refresh: bool = False, symbols=None, verbose: bool = 
     panel = panel.sort_values(["date", "symbol"]).reset_index(drop=True)
     cache.parent.mkdir(parents=True, exist_ok=True)
     panel.to_parquet(cache, index=False)
+    (cache.parent / "README.txt").write_text(CACHE_README)
     if verbose:
         print(f"[panel] {len(panel)} 个池内股票日,{panel['symbol'].nunique()} 只股票 → {cache}")
     return panel

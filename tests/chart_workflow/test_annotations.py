@@ -22,6 +22,8 @@ def test_v1_read_as_v2(tmp_path):
     assert b["annotations"][0]["buy_points"] == [{"date": "2025-03-14", "primary": True}]
     assert b["annotations"][1]["buy_points"] == []
     assert all(a["peeked_before_buy"] is False and "buy_date" not in a for a in b["annotations"])
+    assert all(a["first_buy_points"] is None and a["changed_after_reveal"] is False
+               for a in b["annotations"])
 
 
 def test_v2_and_bad(tmp_path):
@@ -38,4 +40,23 @@ def test_v2_and_bad(tmp_path):
         read_batch(p)
     p.write_text("{坏")
     with pytest.raises(ValueError):
+        read_batch(p)
+
+
+def test_v2_reveal_trail(tmp_path):
+    """大涨段的改点痕迹:有就原样读,没有(早期 v2)就是 null / false;格式坏的报错。"""
+    p = tmp_path / "y.json"
+    ann = {"ann_id": "a", "symbol": "A", "label": "positive",
+           "buy_points": [{"date": "2025-03-14", "primary": True}],
+           "first_buy_points": [{"date": "2025-03-20", "primary": True}], "changed_after_reveal": True}
+    p.write_text(json.dumps({"schema": "chart_workflow.annotations/2", "list_kind": "bigmoves",
+                             "outcome_visible": True, "annotations": [ann, {**ann, "ann_id": "b",
+                             "first_buy_points": None, "changed_after_reveal": False}]}))
+    a, b = read_batch(p)["annotations"]
+    assert a["first_buy_points"] == [{"date": "2025-03-20", "primary": True}]
+    assert a["changed_after_reveal"] is True
+    assert b["first_buy_points"] is None and b["changed_after_reveal"] is False
+    p.write_text(json.dumps({"schema": "chart_workflow.annotations/2", "annotations": [
+        {**ann, "first_buy_points": "2025-03-20"}]}))
+    with pytest.raises(ValueError, match="first_buy_points"):
         read_batch(p)

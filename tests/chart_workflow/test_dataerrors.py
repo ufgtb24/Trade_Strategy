@@ -11,7 +11,7 @@ from chart_workflow.config import root_dir
 from chart_workflow.contrast import build_list as build_contrast
 from chart_workflow.dataerrors import (apply_registry, build_registry, excluded_mask, load_pool,
                                        registry_path)
-from chart_workflow.ledger import add_round
+from chart_workflow.ledger import read_ledger
 from chart_workflow.listfile import write_list
 from chart_workflow.panel import build_panel
 from chart_workflow.state import state_root
@@ -109,13 +109,14 @@ def test_pool_excludes_registered_ranges_everywhere(cw_env, tmp_path):
 
     # 对照清单:命中落在被排除的股票日上也会被丢掉,同日对照里也没有它们
     hits = gone[["symbol", "date"]].head(5)
-    doc = build_contrast(panel, hits, cfg, "t-c", False, "r", errata_info=info)
+    doc = build_contrast(panel, hits, cfg, "t-c", False, "r", errata_info=info, ledger={
+        "kind": "rule", "rule_id": "r", "version": "x", "source": "user-text", "change": "测试"})
     assert doc["params"]["n_pool_hits"] == 0
     assert doc["summary"]["rows"][0]["n_hits"] == 0
     write_list(doc, cfg)
-    entry = add_round(cfg, kind="rule", rule_id="r", version="v1", source="user-text",
-                      change="x", list_id="t-c")
-    assert entry["n_data_errors"] == 1
+    entry = read_ledger()[-1]                     # 算成绩时当场记的那一行
+    assert entry["list_id"] == "t-c" and entry["n_data_errors"] == 1
+    assert entry["provenance"]["data_errors_sha"] == info["sha"]
 
 
 def test_items_carry_exchange_from_securities_cache(cw_env):

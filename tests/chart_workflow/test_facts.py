@@ -217,6 +217,18 @@ def test_cli_batch_and_adhoc_snapshots(cw_env, state_dir, capsys, monkeypatch):
     assert "metrics" not in text and '"marks"' not in text
 
 
+def test_cli_rejects_path_like_symbol(cw_env, tmp_path, capsys, monkeypatch):
+    """代码名带 ../ 读不到副本目录以外的文件(否则 --symbol ../<别的目录>/AAA 能读到全量目录)。"""
+    cfg, pkl_dir = cw_env
+    other = tmp_path / "pkls_full"
+    other.mkdir()
+    make_stock(end="2026-03-31", seed=4).to_pickle(other / "AAA.pkl")
+    monkeypatch.setattr(facts, "load_config", lambda: cfg)
+    with pytest.raises(SystemExit) as ei:
+        facts.main(["--symbol", "../pkls_full/AAA", "--buy-date", "2025-08-01"])
+    assert ei.value.code == 2 and "非法代码" in capsys.readouterr().err
+
+
 # ── 智能层导入检查 ─────────────────────────────────────────────────────────
 
 SMART = ("facts", "shapes", "oplog", "views", "state", "loader", "annotations")
@@ -235,11 +247,42 @@ def _imports(tree) -> set[str]:
     return out
 
 
+def _cw_deps(name: str) -> set[str]:
+    """chart_workflow.<name> 直接用到的 chart_workflow 模块(含函数体里的延迟导入)。"""
+    tree = ast.parse((REPO_ROOT / "chart_workflow" / f"{name}.py").read_text())
+    out = set()
+    for full in _imports(tree):
+        parts = full.split(".")
+        if parts[0] != "chart_workflow" or len(parts) < 2:
+            continue
+        if (REPO_ROOT / "chart_workflow" / f"{parts[1]}.py").exists():
+            out.add(parts[1])
+    return out
+
+
+def _closure(name: str) -> dict[str, list[str]]:
+    """传递导入闭包:{模块: 从 name 到它的导入链}。"""
+    chains = {name: [name]}
+    todo = [name]
+    while todo:
+        cur = todo.pop()
+        for dep in sorted(_cw_deps(cur)):
+            if dep not in chains:
+                chains[dep] = chains[cur] + [dep]
+                todo.append(dep)
+    return chains
+
+
 def test_smart_layer_imports_and_no_outcome_fields():
     for name in SMART:
         tree = ast.parse((REPO_ROOT / "chart_workflow" / f"{name}.py").read_text())
         bad = _imports(tree) & FORBIDDEN
         assert not bad, f"{name}.py import 了 {bad}"
+        # 间接导入也不行:沿 chart_workflow 内部的导入链(含函数里的延迟导入)一路查下去
+        chains = _closure(name)
+        bad = {f"chart_workflow.{m}" for m in chains} & FORBIDDEN
+        assert not bad, f"{name}.py 间接 import 了 {bad}:" + "; ".join(
+            " → ".join(chains[b.split(".")[1]]) for b in sorted(bad))
         if name in ("facts", "shapes", "oplog"):
             lits = {n.value for n in ast.walk(tree) if isinstance(n, ast.Constant) and isinstance(n.value, str)}
             assert not ({"marks", "metrics"} & lits), f"{name}.py 出现了清单结果字段名"

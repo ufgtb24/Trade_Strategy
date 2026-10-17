@@ -1,4 +1,5 @@
-"""看过记录:唯一写入口 record 的行格式与快照、补记必须带时间与来源、看过集合汇总、命令行入口;
+"""看过记录:唯一写入口 record 的行格式与快照、补记必须带时间与来源、看过集合汇总、命令行入口、
+聊天里贴的图越过看图下界或训练段末日要显式开关并写原因;
 大涨段只取看图下界之后留足涨前形态的决策日,图窗不早于下界。"""
 import json
 
@@ -81,6 +82,36 @@ def test_cli_backfill_needs_ts_and_note(state_dir):
     assert row["backfill"] is True and row["ts"] == "2026-10-16T09:50:52"
     assert row["charts"] == [{"symbol": "DJT", "start": "2023-07-21", "end": "2024-03-11"}]
     assert row["list_id"] == "r001-bigmoves" and row["surface"] == "manual"
+
+
+@pytest.mark.parametrize("win", [("2024-06-03", "2024-09-30"),      # 早于看图下界
+                                 ("2024-12-02", "2025-02-03"),      # 起点越过下界
+                                 ("2025-11-03", "2026-01-30")])     # 晚于训练段末日
+def test_chat_window_outside_needs_switch_and_reason(state_dir, capsys, win):
+    chart = {"symbol": "A", "start": win[0], "end": win[1]}
+    with pytest.raises(ValueError, match="越界"):
+        views.record(surface="chat", event="show_chart", outcome_visible=True, charts=[chart])
+    with pytest.raises(ValueError, match="越界"):                    # 只开开关、不写原因也不行
+        views.record(surface="chat", event="show_chart", outcome_visible=True, charts=[chart],
+                     allow_outside=True, outside_reason=" ")
+    assert not (state_dir / "views.jsonl").exists()
+    base = ["record", "--surface", "chat", "--symbol", "A", "--start", win[0], "--end", win[1],
+            "--outcome-visible", "yes"]
+    with pytest.raises(SystemExit):
+        views.main(base)
+    assert "--allow-outside" in capsys.readouterr().err
+    views.main(base + ["--allow-outside", "--reason", "用户主动贴了旧图"])
+    row = views.read_views()[0]
+    assert row["outside_reason"] == "用户主动贴了旧图" and row["charts"] == [chart]
+    # 记整份清单也查清单里每条的图窗
+    old = {**DOC, "items": [{**DOC["items"][0], "view_start": win[0], "view_end": win[1]}]}
+    with pytest.raises(ValueError, match="越界"):
+        views.record(surface="chat", event="open_list", outcome_visible=True, list_id="r1",
+                     list_doc=old)
+    # 补记(manual)不受此限:历史接触本来就早
+    views.record(surface="manual", event="show_chart", outcome_visible=True, charts=[chart],
+                 ts="2026-10-16T09:50:52", note="补记", backfill=True)
+    assert "outside_reason" not in views.read_views()[-1]
 
 
 def test_missing_state_root_refuses(tmp_path, monkeypatch):

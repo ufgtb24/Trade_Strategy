@@ -263,6 +263,11 @@ export type Tier = Level
 // ─── 看图工作流模式(/workflow/*):清单由命令行工具 chart_workflow 生成,标注批次由后端写盘 ───
 export type WorkflowListKind = 'bigmoves' | 'contrast' | 'contrast_blind'
 
+/** 后端状态根:在哪、是不是来自环境变量(临时目录,记录不进正式账本)、能不能用 */
+export interface WorkflowStateInfo {
+  path: string | null; from_env: boolean; env_var: string; ok: boolean; message: string | null
+}
+
 export interface WorkflowListMeta {
   list_id: string; kind: WorkflowListKind; title: string; created_at: string; n_items: number
   /** 后端拿不到记账类文件的家(状态根)时为 'state_root_missing':这时打不开清单、发不了标注 */
@@ -335,6 +340,10 @@ export interface Annotation {
   label: AnnotationLabel | null; note: string
   /** 点第一个买点之前,把图往右展开看过决策日之后的走势 */
   peeked_before_buy: boolean
+  /** 大涨段清单:第一次露出结果(买点从无到有)时的买点;没露出过为 null */
+  first_buy_points: BuyPoint[] | null
+  /** 大涨段清单:露出结果之后买点改过或清除过(「看过结果后改过」) */
+  changed_after_reveal: boolean
   updated_at: string
 }
 

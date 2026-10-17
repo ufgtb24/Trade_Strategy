@@ -1,6 +1,7 @@
 """对照页与大涨段自动记账:每生成一次追加一行账本(auto)、规则按内容指纹存档且不重复写、
 追加账本失败就不留清单、拿不到状态根什么都不生成、手动 add 对已自动记账的清单拒绝;
-内圈年份:命中只留 2025,summary 逐年行只有 2025,params 记过滤前后命中数。"""
+清单名用过就拒绝(不覆盖旧清单);脚本里直接调 build_list 也记账;每行带 provenance;
+内圈年份:命中只留 2025,summary 逐年行只有 2025,params 记过滤前后命中数;盲看抽样同股不互相露底。"""
 import json
 
 import pandas as pd
@@ -13,6 +14,8 @@ from chart_workflow.ledger import add_round, read_ledger, render
 from chart_workflow.panel import build_panel
 from chart_workflow.state import StateRootMissing
 from tests.chart_workflow.conftest import make_stock
+
+CTX = {"kind": "rule", "rule_id": "r", "version": "x", "source": "user-text", "change": "测试"}
 
 RULE = '''
 def signal(df):
@@ -70,15 +73,77 @@ def test_contrast_auto_ledger_and_archive(env, state_dir):
 
 def test_ledger_failure_leaves_no_list(env, state_dir, monkeypatch):
     cfg, rule = env
+    import chart_workflow.ledger as ledger_mod
 
     def boom(*a, **k):
         raise StateRootMissing("状态根 … 下没有标记文件 STATE_ROOT.md:可能切到了别的分支")
-    monkeypatch.setattr(contrast, "add_round", boom)
+    # 普通模式:成绩算完当场记账,记不进去就不算、不写清单
+    monkeypatch.setattr(ledger_mod, "record_round", boom)
     with pytest.raises(SystemExit):
         contrast.main(["--list-id", "t-fail", "--rule", str(rule), "--source", "user-text",
                        "--change", "x", "--no-xcheck"])
-    assert "t-fail.json" not in _lists(cfg)
+    # 盲看模式:写好清单再记账,记不进去就删掉清单
+    monkeypatch.setattr(contrast, "add_round", boom)
+    with pytest.raises(SystemExit):
+        contrast.main(["--list-id", "t-failb", "--rule", str(rule), "--source", "user-text",
+                       "--change", "x", "--blind", "--no-xcheck"])
+    assert "t-fail.json" not in _lists(cfg) and "t-failb.json" not in _lists(cfg)
     assert read_ledger() == []
+
+
+def test_duplicate_list_id_refused(env, state_dir):
+    cfg, rule = env
+    contrast.main(["--list-id", "t-dup", "--rule", str(rule), "--source", "user-text",
+                   "--change", "首版", "--no-xcheck"])
+    before = (root_dir(cfg) / "lists" / "t-dup.json").read_bytes()
+    for extra in ([], ["--blind"]):
+        with pytest.raises(SystemExit):
+            contrast.main(["--list-id", "t-dup", "--rule", str(rule), "--source", "user-text",
+                           "--change", "再来", "--no-xcheck", *extra])
+    with pytest.raises(SystemExit):
+        bigmoves.main(["--list-id", "t-dup", "--no-xcheck"])
+    assert (root_dir(cfg) / "lists" / "t-dup.json").read_bytes() == before   # 旧清单没被覆盖
+    assert len(read_ledger()) == 1
+    # 清单文件被删了,账本里有过这个名字也不许再用
+    (root_dir(cfg) / "lists" / "t-dup.json").unlink()
+    with pytest.raises(SystemExit):
+        contrast.main(["--list-id", "t-dup", "--rule", str(rule), "--source", "user-text",
+                       "--change", "再来", "--no-xcheck"])
+    assert len(read_ledger()) == 1
+
+
+def test_scripted_scoring_still_recorded(env):
+    """会话在脚本里直接调 build_list:不给记账上下文就拒绝算;给了就当场记一行。"""
+    cfg, rule = env
+    panel = build_panel(cfg, verbose=False)
+    hits = contrast.hits_from_rule(rule, sorted(panel["symbol"].unique()), cfg)
+    with pytest.raises(ValueError, match="记账"):
+        build_contrast(panel, hits, cfg, "t-s0", False, "r.py@x")
+    assert read_ledger() == []
+    doc = build_contrast(panel, hits, cfg, "t-s1", False, "r.py@x", ledger=CTX)
+    rows = read_ledger()
+    assert len(rows) == 1 and rows[0]["list_id"] == "t-s1"
+    assert rows[0]["entry_id"] == doc["summary"]["ledger_entry_id"]
+
+
+def test_ledger_rows_carry_provenance(env, state_dir):
+    cfg, rule = env
+    contrast.main(["--list-id", "t-p1", "--rule", str(rule), "--source", "user-text",
+                   "--change", "首版", "--no-xcheck"])
+    bigmoves.main(["--list-id", "t-p2", "--no-xcheck"])
+    for r in read_ledger():
+        pv = r["provenance"]
+        assert len(pv["commit"]) == 40
+        assert set(pv["dirty"]) == {"chart_workflow", "path2"}
+        assert all(isinstance(v, bool) for v in pv["dirty"].values())
+        archived = json.loads((state_dir / pv["config_archive"]).read_text())
+        assert archived["train_end"] == cfg["train_end"]
+        assert pv["config_archive"] == f"config_archive/{pv['config_sha']}.json"
+        assert len(pv["data_errors_sha"]) == 16
+        assert pv["snapshot"]["cutoff"] == "2025-12-31" and len(pv["snapshot"]["sha"]) == 16
+        assert pv["snapshot"]["created_at"] == "2026-10-17T00:00:00"
+    # 配置相同 → 存档只有一份
+    assert len(list((state_dir / "config_archive").iterdir())) == 1
 
 
 def test_missing_state_root_generates_nothing(env, tmp_path, monkeypatch):
@@ -120,7 +185,7 @@ def test_inner_years_only_2025(env):
     hits = contrast.hits_from_rule(rule, sorted(panel["symbol"].unique()), cfg)
     years = set(pd.to_datetime(hits["date"]).dt.year)
     assert {2024, 2025} <= years                              # 合成数据两年都有命中
-    doc = build_contrast(panel, hits, cfg, "t-in", False, "r.py@x")
+    doc = build_contrast(panel, hits, cfg, "t-in", False, "r.py@x", ledger=CTX)
     assert [r["scope"] for r in doc["summary"]["rows"]] == ["全部", "2025"]
     assert all(it["t"].startswith("2025") for it in doc["items"])
     p = doc["params"]
@@ -131,6 +196,24 @@ def test_inner_years_only_2025(env):
     assert list(doc["summary"]["graduation"]["checks"])       # 毕业判定照常给出
     blind = build_contrast(panel, hits, cfg, "t-inb", True, "r.py@x")
     assert blind["items"] and all(it["t"].startswith("2025") for it in blind["items"])
+
+
+def test_blind_sample_never_reveals_same_stock(env):
+    """盲看抽样:同股两条,谁的决策日都不落在另一条的图窗里;抽样顺序只来自种子(与结果无关)。"""
+    from chart_workflow.listfile import view_window
+    cfg, rule = env
+    cfg = {**cfg, "contrast": {**cfg["contrast"], "n_blind": 1000}}
+    panel = build_panel(cfg, verbose=False)
+    hits = contrast.hits_from_rule(rule, sorted(panel["symbol"].unique()), cfg)
+    doc = build_contrast(panel, hits, cfg, "t-bl", True, "r.py@x")
+    items = doc["items"]
+    assert len({it["symbol"] for it in items}) < len(items)       # 同股多条确实出现
+    for a in items:
+        s, e = view_window(cfg, a["symbol"], a["t"], blind=True)
+        assert a["view_start"] == str(s.date()) and a["view_end"] == str(e.date())
+        for b in items:
+            if a is not b and a["symbol"] == b["symbol"]:
+                assert not (a["view_start"] <= b["t"] <= a["view_end"])
 
 
 def test_app_archive_records_commit_and_params(state_dir, tmp_path):

@@ -68,11 +68,14 @@
  * 大涨段清单点第一个买点之前不露结果:不画决策日、买入日、上下线、最高点,图头不显示决策日、
  * 涨幅、最大单日跳变、标签和跨源比对不一致的提示;初始横向窗口从图窗起点到决策日后随机 3~15 根(store.initialRightOf),
  * 用户把窗口右端拖过它就记成「点买点前看过后续」(store.markPeeked)。有了买点后照常显示,窗口不动。
+ * 露出结果之后再改买点或「清除」,store 记成「看过结果后改过」(见 stores/workflow.ts 的改点痕迹)。
  *
  * 两个互斥的工具开关:「框选起止」用 ECharts lineX brush + createBrushRequestHandler 把
  * (startIdx, endIdx) 换成日期写进草稿;「点买点」在图上点一下,把那根 K 线设成唯一的(主)买点,
  * 按住 Shift 点再加一个,Shift 点已有的买点取消它。
  *
+ * 点买点模式下单击要等 CLICK_DELAY_MS:这段时间里没有双击才设买点。双击只管放大 / 退出放大,
+ * 不会先设一个买点、把结果闪出来再还原。
  * 小图双击打开放大模态框,放大图里双击关掉它;放大图从小图当时的缩放窗口开始。
  * 小图和放大图都挂 inside dataZoom:滚轮横向缩放(ECharts 以鼠标处为不动点),按住拖动平移
  * (框选开着时拖动是框选);只在已取回的 K 线里缩放,不会多取数据。 */
@@ -80,7 +83,9 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import * as echarts from 'echarts'
 import type { Annotation, AnnotationLabel, Bar, WorkflowItem } from '../types'
 import { getWorkflowOhlc } from '../api'
-import { labelText, orderedBuyPoints, useWorkflowStore, type ZoomWindow } from '../stores/workflow'
+import {
+  CLICK_DELAY_MS, labelText, orderedBuyPoints, useWorkflowStore, type ZoomWindow,
+} from '../stores/workflow'
 import { createBrushRequestHandler } from './klineBrushHandler'
 
 const props = withDefaults(defineProps<{
@@ -116,9 +121,15 @@ const error = ref<string | null>(null)
 const mode = ref<'none' | 'brush' | 'buy'>('none')
 let chart: echarts.ECharts | null = null
 let ro: ResizeObserver | null = null
-/** 双击前浏览器先发两次 click;点买点模式下第一次 click 已写了买点。记下那次 click 之前的草稿,
- *  双击时还原,双击只管放大 / 退出放大。undefined = 没有可还原的。 */
-let beforeClick: Annotation | null | undefined
+/** 等着生效的那次单击(双击前浏览器先发两次 click;等 CLICK_DELAY_MS 没有双击才设买点) */
+let clickTimer: ReturnType<typeof setTimeout> | null = null
+
+function cancelPendingClick() {
+  if (clickTimer != null) {
+    clearTimeout(clickTimer)
+    clickTimer = null
+  }
+}
 
 const INK = '#0f172a'
 const VOL_UP = '#cbd5e1'      // 涨:浅灰
@@ -174,9 +185,10 @@ function onNote(e: Event) {
 
 function onZrClick(e: any) {
   if (mode.value !== 'buy') return
-  if ((e.event?.detail ?? 1) >= 2) return      // 双击的第二次 click
-  const cur = store.drafts.get(props.item.item_id)
-  beforeClick = cur ? { ...cur, buy_points: cur.buy_points.map(b => ({ ...b })) } : null
+  if ((e.event?.detail ?? 1) >= 2) {           // 双击的第二次 click:前一次也不算
+    cancelPendingClick()
+    return
+  }
   if (!chart || !bars.value.length) return
   const px = [e.offsetX, e.offsetY]
   if (!chart.containPixel({ gridIndex: 0 }, px) && !chart.containPixel({ gridIndex: 1 }, px)) return
@@ -186,8 +198,13 @@ function onZrClick(e: any) {
   if (x == null || Number.isNaN(Number(x))) return
   const idx = Math.min(bars.value.length - 1, Math.max(0, Math.round(Number(x))))
   const date = bars.value[idx].date
-  if (e.event?.shiftKey) store.toggleBuyPoint(props.item.item_id, date)
-  else store.setBuyPoint(props.item.item_id, date)
+  const shift = !!e.event?.shiftKey
+  cancelPendingClick()
+  clickTimer = setTimeout(() => {
+    clickTimer = null
+    if (shift) store.toggleBuyPoint(props.item.item_id, date)
+    else store.setBuyPoint(props.item.item_id, date)
+  }, CLICK_DELAY_MS)
 }
 
 /** 决策日在已取回 K 线里的序号(没有正好那天就取之后第一根)。 */
@@ -213,11 +230,7 @@ function onDataZoom() {
 }
 
 function onZrDblClick() {
-  if (mode.value === 'buy' && beforeClick !== undefined) {
-    if (beforeClick) store.upsertAnnotation(props.item.item_id, beforeClick)
-    else store.deleteAnnotation(props.item.item_id)
-  }
-  beforeClick = undefined
+  cancelPendingClick()                         // 双击带出的单击不设买点
   if (props.large) store.setZoom(null)
   else openZoom()
 }
@@ -399,6 +412,7 @@ watch(() => [props.annotation, blind.value, hideOutcome.value, store.logScale], 
       { deep: true })
 
 onBeforeUnmount(() => {
+  cancelPendingClick()
   ro?.disconnect()
   chart?.dispose()
   chart = null

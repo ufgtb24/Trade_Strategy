@@ -1,9 +1,10 @@
 /** AnnotChart:模拟 brush 事件后草稿里有起止,模拟点击后有买点(Shift 多买点、主买点规则),
  *  盲看清单不渲染上下线;大涨段清单点买点前不露结果、初始右边界、往右看过后续的记录;
  *  跨源比对不一致的提示(盲看不显示)、「数据有误」标签、判定文字随清单种类变;空心 / 实心 K 线、
- *  对数开关、证券类别;小图双击放大、放大图的滚轮缩放。
+ *  对数开关、证券类别;小图双击放大、放大图的滚轮缩放;点买点模式下单击等一下才生效,
+ *  双击不先设买点(不闪结果、不留改点痕迹)。
  *  jsdom 没有 canvas,mock 掉 echarts.init,改为捕获事件处理函数与 setOption 入参。 */
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import { setActivePinia, createPinia } from 'pinia'
 import type { Bar, WorkflowItem, WorkflowList } from '../src/types'
@@ -40,7 +41,13 @@ vi.mock('echarts', () => ({ init: vi.fn(() => makeFakeChart()) }))
 
 import * as echarts from 'echarts'
 import AnnotChart from '../src/components/AnnotChart.vue'
-import { useWorkflowStore } from '../src/stores/workflow'
+import { CLICK_DELAY_MS, useWorkflowStore } from '../src/stores/workflow'
+
+/** 点一下并等过单击延迟(点买点模式下单击要等 CLICK_DELAY_MS 没有双击才生效) */
+function clickAndWait(p: any) {
+  zrHandlers.click(p)
+  vi.advanceTimersByTime(CLICK_DELAY_MS)
+}
 
 const ITEM: WorkflowItem = {
   item_id: 'AAA@2025-03-12', symbol: 'AAA', t: '2025-03-12', entry_date: '2025-03-13',
@@ -76,6 +83,7 @@ describe('AnnotChart', () => {
     currentZoom = null
     OHLC = BARS
   })
+  afterEach(() => { vi.useRealTimers() })
 
   it('brush 事件 → 草稿里有起止日期', async () => {
     const { w, store } = await mountChart('bigmoves')
@@ -89,10 +97,13 @@ describe('AnnotChart', () => {
 
   it('点买点模式下点击 → 草稿里有买点;未开启时点击无效', async () => {
     const { w, store } = await mountChart('bigmoves')
-    zrHandlers.click({ offsetX: 100, offsetY: 50 })
+    vi.useFakeTimers()
+    clickAndWait({ offsetX: 100, offsetY: 50 })
     expect(store.drafts.get(ITEM.item_id)).toBeUndefined()
     await w.find('[data-testid="tool-buy"]').trigger('click')
     zrHandlers.click({ offsetX: 100, offsetY: 50 })
+    expect(store.drafts.get(ITEM.item_id)).toBeUndefined()           // 单击要等一下
+    vi.advanceTimersByTime(CLICK_DELAY_MS)
     expect(store.drafts.get(ITEM.item_id)!.buy_points)
       .toEqual([{ date: '2025-03-13', primary: true }])                   // round(3.2) = 3
   })
@@ -100,10 +111,11 @@ describe('AnnotChart', () => {
   it('Shift + 点再加一个买点,Shift 点已有的取消;主买点实心「★买点」,其他空心「买点2」', async () => {
     const { w, store } = await mountChart('bigmoves')
     await w.find('[data-testid="tool-buy"]').trigger('click')
-    zrHandlers.click({ offsetX: 100, offsetY: 50 })                          // 2025-03-13 主买点
+    vi.useFakeTimers()
+    clickAndWait({ offsetX: 100, offsetY: 50 })                              // 2025-03-13 主买点
     const fake = (echarts as any).init.mock.results.at(-1).value
     fake.convertFromPixel.mockReturnValueOnce([1, 12])
-    zrHandlers.click({ offsetX: 40, offsetY: 50, event: { shiftKey: true } })   // 加 2025-03-11
+    clickAndWait({ offsetX: 40, offsetY: 50, event: { shiftKey: true } })       // 加 2025-03-11
     expect(store.drafts.get(ITEM.item_id)!.buy_points).toEqual([
       { date: '2025-03-13', primary: true }, { date: '2025-03-11', primary: false }])
     await w.setProps({ annotation: store.drafts.get(ITEM.item_id)! })
@@ -114,9 +126,9 @@ describe('AnnotChart', () => {
     expect(second.itemStyle.color).toBe('#ffffff')
     expect(second.itemStyle.borderColor).toBe('#0f172a')
     expect(w.find('[data-testid="ann-summary"]').text()).toContain('★2025-03-13、2025-03-11')
-    zrHandlers.click({ offsetX: 100, offsetY: 50, event: { shiftKey: true } })  // Shift 点主买点 → 取消
+    clickAndWait({ offsetX: 100, offsetY: 50, event: { shiftKey: true } })      // Shift 点主买点 → 取消
     expect(store.drafts.get(ITEM.item_id)!.buy_points).toEqual([{ date: '2025-03-11', primary: true }])
-    zrHandlers.click({ offsetX: 100, offsetY: 50 })                          // 普通点击:只留这一个
+    clickAndWait({ offsetX: 100, offsetY: 50 })                              // 普通点击:只留这一个
     expect(store.drafts.get(ITEM.item_id)!.buy_points).toEqual([{ date: '2025-03-13', primary: true }])
   })
 
@@ -183,12 +195,12 @@ describe('AnnotChart', () => {
     expect(dz.endValue).toBe(20 + k)
     currentZoom = { startValue: 0, endValue: 20 + k } as any        // 没越过:不记
     handlers.datazoom()
-    expect(store.peeked.has(item.item_id)).toBe(false)
+    expect(store.isPeeked(item.item_id)).toBe(false)
     store.upsertAnnotation(item.item_id, { label: 'negative' })
     expect(store.drafts.get(item.item_id)!.peeked_before_buy).toBe(false)
     currentZoom = { start: 0, end: 100 }                           // 拖到最右:看过后续
     handlers.datazoom()
-    expect(store.peeked.has(item.item_id)).toBe(true)
+    expect(store.isPeeked(item.item_id)).toBe(true)
     expect(store.drafts.get(item.item_id)!.peeked_before_buy).toBe(true)
     // 放大图沿用同一个初始右边界
     store.setZoom(null)
@@ -303,30 +315,59 @@ describe('AnnotChart', () => {
     store.setZoom(ITEM.item_id)
     store.setBuyPoint(ITEM.item_id, '2025-03-11')
     await w.find('[data-testid="tool-buy"]').trigger('click')
+    vi.useFakeTimers()
     zrHandlers.click({ offsetX: 100, offsetY: 50, event: { detail: 1 } })
     zrHandlers.click({ offsetX: 100, offsetY: 50, event: { detail: 2 } })
     zrHandlers.dblclick()
+    vi.advanceTimersByTime(CLICK_DELAY_MS * 4)
     expect(store.zoomItemId).toBeNull()
     expect(store.drafts.get(ITEM.item_id)!.buy_points).toEqual([{ date: '2025-03-11', primary: true }])
+    expect(store.drafts.get(ITEM.item_id)!.changed_after_reveal).toBe(false)   // 没改过,不留痕迹
   })
 
-  it('点买点模式下双击:只放大,双击带出的那次点击不留买点;原有买点保持不变', async () => {
+  it('点买点模式下双击:只放大,不先设买点、不闪结果、不留改点痕迹;原有买点保持不变', async () => {
     const { w, store } = await mountChart('bigmoves')
     await w.find('[data-testid="tool-buy"]').trigger('click')
+    vi.useFakeTimers()
     zrHandlers.click({ offsetX: 100, offsetY: 50, event: { detail: 1 } })
+    await w.vm.$nextTick()
+    // 第一下单击还没生效:草稿里没有买点,图头仍藏着结果(不会闪一下)
+    expect(store.drafts.has(ITEM.item_id)).toBe(false)
+    expect(w.find('[data-testid="outcome-hidden"]').exists()).toBe(true)
     zrHandlers.click({ offsetX: 100, offsetY: 50, event: { detail: 2 } })
     zrHandlers.dblclick()
+    vi.advanceTimersByTime(CLICK_DELAY_MS * 4)
     expect(store.drafts.has(ITEM.item_id)).toBe(false)
     expect(store.zoomItemId).toBe(ITEM.item_id)
+    expect(store.revealed.size).toBe(0)                           // 结果从没露出过
 
     store.upsertAnnotation(ITEM.item_id, { buy_points: [{ date: '2025-03-11', primary: true }],
                                            label: 'positive' })
     zrHandlers.click({ offsetX: 100, offsetY: 50, event: { detail: 1 } })
-    expect(store.drafts.get(ITEM.item_id)!.buy_points[0].date).toBe('2025-03-13')
     zrHandlers.click({ offsetX: 100, offsetY: 50, event: { detail: 2 } })
     zrHandlers.dblclick()
+    vi.advanceTimersByTime(CLICK_DELAY_MS * 4)
     expect(store.drafts.get(ITEM.item_id)!.buy_points).toEqual([{ date: '2025-03-11', primary: true }])
     expect(store.drafts.get(ITEM.item_id)!.label).toBe('positive')
+    expect(store.drafts.get(ITEM.item_id)!.changed_after_reveal).toBe(false)
+  })
+
+  it('看到结果后点「清除」再重点:草稿带着第一次的买点和「看过结果后改过」', async () => {
+    const { w, store } = await mountChart('bigmoves')
+    await w.find('[data-testid="tool-buy"]').trigger('click')
+    vi.useFakeTimers()
+    clickAndWait({ offsetX: 100, offsetY: 50 })                              // 2025-03-13:结果露出
+    await w.setProps({ annotation: store.drafts.get(ITEM.item_id)! })
+    expect(w.text()).toContain('决策日 2025-03-12')
+    await w.find('[data-testid="tool-clear"]').trigger('click')
+    await w.setProps({ annotation: null })
+    const fake = (echarts as any).init.mock.results.at(-1).value
+    fake.convertFromPixel.mockReturnValueOnce([2, 12])
+    clickAndWait({ offsetX: 70, offsetY: 50 })                               // 改点到决策日
+    expect(store.drafts.get(ITEM.item_id)).toMatchObject({
+      buy_points: [{ date: '2025-03-12', primary: true }],
+      first_buy_points: [{ date: '2025-03-13', primary: true }],
+      changed_after_reveal: true, peeked_before_buy: true })
   })
 
   it('小图和放大图都挂滚轮缩放,同时管 K 线和成交量两根横轴,初始为全段(大涨段以外)', async () => {

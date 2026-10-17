@@ -1,5 +1,6 @@
-"""看图工作流路由:列表与读取、名字校验、K 线截断(训练段末日 / 看图下界 / 只读截断副本)、清单截断兜底、
-标注校验与写入(含「数据有误」标签)、batch_id 冲突、状态根缺失时 503、打开清单记看过、两处配置不漂。"""
+"""看图工作流路由:列表与读取、名字校验、K 线截断(训练段末日 / 看图下界 / 只读截断副本 / 硬上限)、
+K 线只给打开过的清单图窗、清单截断兜底、标注校验与写入(含「数据有误」标签、改点痕迹)、batch_id 冲突、
+状态根缺失或水位核对不过时 503、状态根报告接口、打开清单记看过、两处配置不漂、PUT /config 改不了 workflow。"""
 import json
 from datetime import datetime
 from pathlib import Path
@@ -34,7 +35,7 @@ def _bars(start, end, lo=10, hi=12):
                          "volume": 1e6}, index=dates)
 
 
-def _client(tmp_path, snapshot=True, lists=("r002", "r002-bigmoves")):
+def _client(tmp_path, snapshot=True, lists=("r002", "r002-bigmoves"), train_end=TRAIN_END):
     pkls = tmp_path / "pkls"
     pkls.mkdir()
     _bars("2025-10-01", "2026-02-27").to_pickle(pkls / "AAA.pkl")
@@ -48,7 +49,7 @@ def _client(tmp_path, snapshot=True, lists=("r002", "r002-bigmoves")):
         "scan": {"start_date": "2025-01-01", "end_date": "2025-12-31", "workers": 1,
                  "ticker_regex": None},
         "last_selected_pattern": "bottom_burst",
-        "workflow": {"root": str(root), "train_end": TRAIN_END, "dataset_dir": str(pkls)},
+        "workflow": {"root": str(root), "train_end": train_end, "dataset_dir": str(pkls)},
     }
     app = create_app(config_override=cfg, outputs_root=str(tmp_path / "outputs"),
                      use_thread_pool=True)
@@ -121,16 +122,89 @@ def test_bad_list_names_rejected(tmp_path, bad):
 
 
 def test_ohlc_clipped_at_train_end(tmp_path):
-    c, _ = _client(tmp_path)
+    c, root = _client(tmp_path)
+    _write_list(root, "wide", "2026-10-01T09:00:00", view_end="2026-01-20")   # 读时截到训练段末日
+    _write_list(root, "zzz", "2026-10-01T09:00:00", item_id="ZZZ@2025-11-03", symbol="ZZZ")
+    assert c.get("/workflow/lists/wide").status_code == 200
+    assert c.get("/workflow/lists/zzz").status_code == 200
     r = c.get("/workflow/ohlc", params={"symbol": "AAA", "start": "2025-12-01", "end": "2026-02-20"})
     assert r.status_code == 200
     bars = r.json()["bars"]
     assert bars and bars[-1]["date"] == "2025-12-31"
     assert all(b["date"] <= TRAIN_END for b in bars)
     assert c.get("/workflow/ohlc", params={"symbol": "ZZZ", "start": "2025-12-01",
-                                           "end": "2025-12-31"}).status_code == 404
-    assert c.get("/workflow/ohlc", params={"symbol": "../AAA", "start": "2025-12-01",
-                                           "end": "2025-12-31"}).status_code == 400
+                                           "end": "2025-12-30"}).status_code == 404
+    for bad in ("../AAA", "A..A", "AAA/../BBB", "..", "AAA%2F..%2FBBB"):
+        assert c.get("/workflow/ohlc", params={"symbol": bad, "start": "2025-12-01",
+                                               "end": "2025-12-31"}).status_code == 400, bad
+
+
+def test_ohlc_only_for_opened_windows(tmp_path, state_dir):
+    """只取 K 线、不打开清单(不记看过)就拿不到;打开后只给清单里的图窗。"""
+    c, root = _client(tmp_path)           # r002:AAA 图窗 2025-10-01 → 2025-12-30
+    q = {"symbol": "AAA", "start": "2025-10-01", "end": "2025-12-30"}
+    r = c.get("/workflow/ohlc", params=q)
+    assert r.status_code == 403 and "先在看图工作流里打开清单" in r.json()["detail"]
+    assert not (state_dir / "views.jsonl").exists()
+    assert c.get("/workflow/lists/r002").status_code == 200
+    assert c.get("/workflow/ohlc", params=q).status_code == 200
+    assert c.get("/workflow/ohlc", params={**q, "start": "2025-11-01"}).status_code == 200   # 图窗内一段
+    assert c.get("/workflow/ohlc", params={**q, "end": "2025-12-31"}).status_code == 403     # 超出图窗终点
+    assert c.get("/workflow/ohlc", params={**q, "symbol": "BBB"}).status_code == 403         # 别的股票
+
+
+def test_backend_train_end_2026_is_hard_capped(tmp_path, state_dir):
+    """后端配置的训练段末日写成 2026 年:清单、K 线、标注都不越过 2025-12-31(loader.HARD_END)。"""
+    c, root = _client(tmp_path, train_end="2026-06-30")
+    _write_list(root, "late", "2026-10-01T09:00:00", view_end="2026-02-20",
+                marks={"decision": "2025-11-03", "entry": "2025-11-04", "up_line": 12.0,
+                       "down_line": 9.0, "peak_date": "2026-01-10"})
+    it = c.get("/workflow/lists/late").json()["items"][0]
+    assert it["view_end"] == "2025-12-31" and "peak_date" not in it["marks"]
+    r = c.get("/workflow/ohlc", params={"symbol": "AAA", "start": "2025-10-01", "end": "2026-02-27"})
+    assert r.status_code == 200
+    bars = r.json()["bars"]
+    assert bars and bars[-1]["date"] == "2025-12-31"
+    r = c.post("/workflow/annotations", json={"list_id": "late", "annotations": [
+        _v2(buy_points=[{"date": "2026-01-05"}])]})
+    assert r.status_code == 400 and "晚于训练段末日 2025-12-31" in r.text
+
+
+def test_state_endpoint_reports_root_and_source(tmp_path, state_dir, monkeypatch):
+    c, _ = _client(tmp_path)
+    body = c.get("/workflow/state").json()
+    assert body == {"path": str(state_dir), "from_env": True, "env_var": state.ENV_VAR,
+                    "ok": True, "message": None}
+    gone = tmp_path / "no_marker"
+    monkeypatch.setenv(state.ENV_VAR, str(gone))
+    body = c.get("/workflow/state").json()
+    assert body["path"] == str(gone.resolve()) and body["ok"] is False
+    assert "可能切到了别的分支" in body["message"]
+    assert not gone.exists()                                       # 只读,不建任何东西
+
+
+def test_regressed_state_root_blocks_open(tmp_path, state_dir):
+    """水位核对不过(账本比上次看到的少)时,打开清单 503,不给图。"""
+    c, root = _client(tmp_path)
+    assert c.get("/workflow/lists/r002").status_code == 200          # 记下一行看过,水位跟上
+    (state_dir / "views.jsonl").write_text("")                       # 像切到了旧分支
+    r = c.get("/workflow/lists/r002")
+    assert r.status_code == 503 and state.REGRESSED_TEXT in r.json()["detail"]
+    assert c.get("/workflow/state").json()["ok"] is False
+
+
+def test_put_config_cannot_change_workflow(tmp_path):
+    c, root = _client(tmp_path, lists=())
+    _write_list(root, "early", "2026-10-03T09:00:00", view_start="2024-12-20")
+    cfg = c.get("/config").json()
+    before = cfg["workflow"]
+    bad = {**cfg, "workflow": {**before, "view_floor": "2024-01-01", "train_end": "2026-06-30"},
+           "last_selected_pattern": "bo_only"}
+    assert c.put("/config", json=bad).status_code == 200
+    after = c.get("/config").json()
+    assert after["workflow"] == before and after["last_selected_pattern"] == "bo_only"
+    assert c.get("/workflow/lists").json() == []                   # 早于下界的清单照样不列
+    assert c.get("/workflow/lists/early").status_code == 403
 
 
 def test_list_read_clips_view_and_marks(tmp_path):
@@ -180,7 +254,8 @@ def test_annotation_written(tmp_path, monkeypatch, state_dir):
     assert saved["created_at"] == "2026-10-08T10:15:00"
     a0 = {k: v for k, v in anns[0].items() if k != "buy_date"}
     assert saved["annotations"][0] == {**a0, "buy_points": [{"date": "2025-11-03", "primary": True}],
-                                       "peeked_before_buy": False}
+                                       "peeked_before_buy": False, "first_buy_points": None,
+                                       "changed_after_reveal": False}
     assert saved["annotations"][1]["label"] == "negative"
     assert saved["annotations"][2]["buy_points"] == [] and "buy_date" not in saved["annotations"][2]
     lst = c.get("/workflow/annotations").json()
@@ -234,19 +309,23 @@ def test_state_root_missing_blocks_open_and_send(tmp_path, monkeypatch):
 
 def test_ohlc_reads_snapshot_only(tmp_path):
     c, _ = _client(tmp_path, snapshot=False)
-    r = c.get("/workflow/ohlc", params={"symbol": "AAA", "start": "2025-12-01", "end": "2025-12-31"})
+    assert c.get("/workflow/lists/r002").status_code == 200
+    r = c.get("/workflow/ohlc", params={"symbol": "AAA", "start": "2025-12-01", "end": "2025-12-30"})
     assert r.status_code == 503 and "python -m chart_workflow.snapshot" in r.json()["detail"]
 
 
 def test_view_floor(tmp_path):
     c, root = _client(tmp_path, lists=())
+    _write_list(root, "bbb", "2026-10-01T09:00:00", item_id="BBB@2025-02-03", symbol="BBB",
+                view_start="2025-01-01", view_end="2025-03-31")
+    assert c.get("/workflow/lists/bbb").status_code == 200
     r = c.get("/workflow/ohlc", params={"symbol": "BBB", "start": "2024-06-01", "end": "2025-03-31"})
     assert r.status_code == 200
     bars = r.json()["bars"]
     assert bars[0]["date"] >= "2025-01-01" and bars[0]["date"] <= "2025-01-03"
     _write_list(root, "early", "2026-10-03T09:00:00", view_start="2024-12-20")
     _write_list(root, "ok", "2026-10-02T09:00:00", view_start="2025-01-02")
-    assert [x["list_id"] for x in c.get("/workflow/lists").json()] == ["ok"]
+    assert [x["list_id"] for x in c.get("/workflow/lists").json()] == ["ok", "bbb"]
     r = c.get("/workflow/lists/early")
     assert r.status_code == 403 and "早于本轮看图下界 2025-01-01" in r.json()["detail"]
     r = c.post("/workflow/annotations", json={"list_id": "ok", "annotations": [
@@ -334,3 +413,34 @@ def test_v2_header_from_list_kind_not_frontend(tmp_path):
     assert "list_kind" not in saved["annotations"][0]
     r = c.post("/workflow/annotations", json={"list_id": "nope", "annotations": [_v2()]})
     assert r.status_code == 400 and "读不到清单" in r.text
+
+
+# ── 改点痕迹:第一次露出结果时的买点、露出后改过 ───────────────────────────────
+
+def test_reveal_trail_saved_and_typed(tmp_path, state_dir):
+    c, _ = _client(tmp_path)
+    r = c.post("/workflow/annotations", json={"list_id": "r002-bigmoves", "annotations": [_v2(
+        buy_points=[{"date": "2025-11-03", "primary": True}],
+        first_buy_points=[{"date": "2025-11-05", "primary": True}], changed_after_reveal=True)]})
+    assert r.status_code == 200, r.text
+    a = json.loads(Path(r.json()["path"]).read_text())["annotations"][0]
+    assert a["first_buy_points"] == [{"date": "2025-11-05", "primary": True}]
+    assert a["changed_after_reveal"] is True
+    for bad in ({"changed_after_reveal": "yes"}, {"changed_after_reveal": 1},
+                {"peeked_before_buy": "true"}, {"first_buy_points": "2025-11-05"},
+                {"first_buy_points": [{"date": "2025-11-05", "primary": "y"}]}):
+        r = c.post("/workflow/annotations", json={"list_id": "r002", "annotations": [_v2(**bad)]})
+        assert r.status_code == 422, bad
+
+
+@pytest.mark.parametrize("first,needle", [
+    ([{"date": "2026-01-05", "primary": True}], "晚于训练段末日"),
+    ([{"date": "2024-12-02", "primary": True}], "早于本轮看图下界"),
+    ([{"date": "2025-11-03", "primary": True}, {"date": "2025-11-04", "primary": True}], "主买点至多一个"),
+    ([{"date": "2025-11-03"}, {"date": "2025-11-03"}], "重复"),
+])
+def test_reveal_trail_validated(tmp_path, state_dir, first, needle):
+    c, _ = _client(tmp_path)
+    r = c.post("/workflow/annotations", json={"list_id": "r002", "annotations": [
+        _v2(first_buy_points=first)]})
+    assert r.status_code == 400 and needle in r.text, r.text

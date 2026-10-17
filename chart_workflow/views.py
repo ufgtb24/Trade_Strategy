@@ -12,7 +12,13 @@ record() 是写 <状态根>/views.jsonl 的唯一入口(后端打开清单时调
  "list_sha12": "<清单内容 sha256 前 12 位>" | null,
  "snapshot": "viewed_lists/<list_id>@<sha12>.json" | null,
  "charts": [{"symbol": "DJT", "start": "2023-07-21", "end": "2024-03-11"}],   # show_chart 用
- "note": "", "backfill": false}
+ "note": "", "backfill": false,
+ "outside_reason": "…"}                   # 只有聊天里记了下界以外的图窗时才有
+
+会话在聊天里贴图(surface = chat)时,图窗(以及记整份清单时清单里每条的图窗)不得早于本轮看图下界
+view_floor、不得晚于训练段末日:越界就拒绝,提醒会话这张图本不该贴。确实要记(例如用户主动贴了旧图),
+显式加 --allow-outside 并用 --reason 写明原因,原因记进这一行。补记(manual)不受此限:历史接触本来就早。
+写完调 state.advance,把新行记进水位。
 
 打开清单时整份清单都算看过(保守口径):viewed_lists/<list_id>@<sha12>.json 不存在就写一份,
 只存每条的 item_id / symbol / t / view_start / view_end 和清单的 kind / title / created_at /
@@ -35,6 +41,7 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
+from chart_workflow import state as _state
 from chart_workflow.config import load_config, root_dir
 from chart_workflow.state import StateRootMissing, state_root
 
@@ -86,10 +93,23 @@ def _check_charts(charts) -> list[dict]:
     return out
 
 
+def _outside(windows: list[tuple[str, str, str]], floor: str | None, train_end: str) -> list[str]:
+    """越过看图下界或训练段末日的图窗,一条一句。"""
+    out = []
+    for sym, s, e in windows:
+        if floor and str(s) < floor:
+            out.append(f"{sym} {s}→{e} 早于本轮看图下界 {floor}")
+        elif str(e) > train_end:
+            out.append(f"{sym} {s}→{e} 晚于训练段末日 {train_end}")
+    return out
+
+
 def record(*, surface: str, event: str, outcome_visible: bool, list_id: str | None = None,
            list_kind: str | None = None, list_doc: dict | None = None, charts=None,
-           note: str = "", ts: str | None = None, backfill: bool = False) -> dict:
-    """追加一行看过记录,返回这一行。参数不合法 → ValueError;拿不到状态根 → StateRootMissing。"""
+           note: str = "", ts: str | None = None, backfill: bool = False,
+           allow_outside: bool = False, outside_reason: str = "") -> dict:
+    """追加一行看过记录,返回这一行。参数不合法 → ValueError;拿不到状态根 → StateRootMissing。
+    surface = chat 时图窗越过看图下界或训练段末日 → ValueError,除非 allow_outside 且写了 outside_reason。"""
     if surface not in SURFACES:
         raise ValueError(f"surface 必须是 {SURFACES} 之一: {surface!r}")
     if event not in EVENTS:
@@ -107,6 +127,19 @@ def record(*, surface: str, event: str, outcome_visible: bool, list_id: str | No
         raise ValueError("show_chart 必须给图窗(symbol / start / end)")
     if event == "open_list" and not list_id:
         raise ValueError("open_list 必须给 list_id")
+    reason = str(outside_reason or "").strip()
+    if surface == "chat":
+        cfg = load_config()
+        wins = [(c["symbol"], c["start"], c["end"]) for c in charts]
+        wins += [(it.get("symbol"), it.get("view_start"), it.get("view_end"))
+                 for it in (list_doc or {}).get("items") or [] if isinstance(it, dict)]
+        bad = _outside(wins, cfg.get("view_floor"), str(cfg["train_end"]))
+        if bad and not (allow_outside and reason):
+            raise ValueError("聊天里贴的图越界:" + ";".join(bad[:5]) +
+                             "。这张图本不该贴;确实要记(例如用户主动贴了旧图),加 --allow-outside 并用 "
+                             "--reason 写明原因")
+        if not bad:
+            reason = ""
     root = state_root()
     sha, snap = None, None
     if list_doc is not None:
@@ -115,8 +148,11 @@ def record(*, surface: str, event: str, outcome_visible: bool, list_id: str | No
            "event": event, "list_id": list_id, "list_kind": list_kind,
            "outcome_visible": outcome_visible, "list_sha12": sha, "snapshot": snap,
            "charts": charts, "note": note, "backfill": bool(backfill)}
+    if surface == "chat" and reason:
+        row["outside_reason"] = reason
     with (root / "views.jsonl").open("a") as f:
         f.write(json.dumps(row, ensure_ascii=False) + "\n")
+    _state.advance(root)
     return row
 
 
@@ -177,6 +213,8 @@ def _render(rows: list[dict], symbol: str | None) -> str:
         tags = [r["surface"], "看得到结果" if r["outcome_visible"] else "看不到结果"]
         if r.get("backfill"):
             tags.append("补记")
+        if r.get("outside_reason"):
+            tags.append(f"越界照记:{r['outside_reason']}")
         note = f" · {r['note']}" if r.get("note") else ""
         lines.append(f"{r['ts']}  {what}  [{' / '.join(tags)}]{note}")
     return "\n".join(lines) if lines else "(没有记录)"
@@ -195,6 +233,9 @@ def main(argv=None) -> None:
     a.add_argument("--note", default="")
     a.add_argument("--ts")
     a.add_argument("--backfill", action="store_true")
+    a.add_argument("--allow-outside", action="store_true",
+                   help="聊天里贴的图越过看图下界或训练段末日也照记(必须同时用 --reason 写原因)")
+    a.add_argument("--reason", default="", help="--allow-outside 的原因")
     s = sub.add_parser("show")
     s.add_argument("--symbol")
     args = ap.parse_args(argv)
@@ -222,7 +263,8 @@ def main(argv=None) -> None:
                 list_doc = doc if event == "open_list" else None
         row = record(surface=args.surface, event=event, outcome_visible=args.outcome_visible,
                      list_id=args.list_id, list_kind=list_kind, list_doc=list_doc, charts=charts,
-                     note=args.note, ts=args.ts, backfill=args.backfill)
+                     note=args.note, ts=args.ts, backfill=args.backfill,
+                     allow_outside=args.allow_outside, outside_reason=args.reason)
     except (ValueError, StateRootMissing) as e:
         print(f"错误:{e}", file=sys.stderr)
         sys.exit(2)

@@ -10,16 +10,19 @@
 普通模式:summary(「全部」+ 内圈每年 + 扎堆度 + 毕业判定);分组「赢」= dir=+1 中
 随机抽 n_win 个,「输」= dir=−1 中随机抽 n_lose 个,「全部命中」= 随机抽至多 max_all 个后
 按日期排(seed 固定)。
-盲看模式:不写 summary,也不写任何和结果有关的字段;只有「命中样例」一组,随机抽
+盲看模式:不写 summary,也不写任何和结果有关的字段;只有「命中样例」一组:命中按固定种子打乱后
+逐条贪心取,同股两条谁的决策日都不得落在另一条的图窗里(listfile.drop_window_overlaps),取满
 n_blind 个;图窗截到决策日之后 view.blind_after_bars 个交易日为止。
-两种模式写清单前都对每段做跨源比对(见 xcheck.py,--no-xcheck 跳过);盲看清单只记条数,
-逐段结果不写进清单。
+两种模式都对每段做跨源比对(见 xcheck.py,--no-xcheck 跳过;普通模式在算成绩之前做,条数随成绩
+一起记账);盲看清单只记条数,逐段结果不写进清单。
 
-自动记账(不靠手敲):开始先找状态根(拿不到就停,什么都不生成)→ 取命中、生成清单 → 存档规则
-→ 写清单 → 追加账本;追加失败就删掉刚写的清单再报错,保证不存在没记账的对照页。存档:规则文件
-复制到 <状态根>/rule_archive/<sha256 前 16 位>__<文件名>(内容相同不重复写);app 方式存档参数文件
-(给了 --params 时),另记 git HEAD 与 path2_apps/<app>/ 有没有未提交改动。账本 kind:--blind → blind,
-source = mining → mined,其余 rule。
+自动记账(不靠手敲):开始先找状态根、查来源格式、查清单名没用过(任一不过就停,什么都不生成)→
+取命中 → 存档规则 → 生成清单。普通模式的成绩由 control.summarize 算,算完当场记账(build_list 不给
+记账上下文就拒绝算),之后才写清单;盲看清单不算成绩,写好清单再追加账本,追加失败就删掉刚写的清单
+再报错。两种模式都保证不存在没记账的对照页。存档:规则文件复制到 <状态根>/rule_archive/<sha256 前
+16 位>__<文件名>(内容相同不重复写);app 方式存档参数文件(给了 --params 时),另记 git HEAD 与
+path2_apps/<app>/ 有没有未提交改动(代码版本与 chart_workflow/、path2/ 的改动另见账本 provenance)。
+账本 kind:--blind → blind,source = mining → mined,其余 rule。
 """
 from __future__ import annotations
 
@@ -37,11 +40,12 @@ import pandas as pd
 from chart_workflow.config import REPO_ROOT, load_config
 from chart_workflow.control import Control, summarize
 from chart_workflow.dataerrors import load_pool
-from chart_workflow.ledger import add_round, check_source
-from chart_workflow.listfile import deep_link, make_item, new_list, write_list
+from chart_workflow.ledger import add_round, check_new_list_id, check_source, read_ledger
+from chart_workflow.listfile import (ListValidationError, deep_link, drop_window_overlaps, make_item,
+                                     new_list, write_list)
 from chart_workflow.rules import (app_module_path, hits_from_app, hits_from_rule, join_panel,
                                   rule_fingerprint)
-from chart_workflow.state import StateRootMissing, state_root
+from chart_workflow.state import StateRootMissing, advance, state_root
 from chart_workflow.xcheck import run_xcheck
 
 
@@ -70,10 +74,23 @@ def inner_hits(hits: pd.DataFrame, years: list[str]) -> pd.DataFrame:
     return hits[y.isin(years).values].reset_index(drop=True)
 
 
+def blind_sample(joined: pd.DataFrame, cfg: dict) -> pd.DataFrame:
+    """盲看抽样:按固定种子打乱后逐条贪心(同股不互相露底),取前 n_blind 个,按日期排。
+    不按任何结果排序——顺序只来自种子。"""
+    ccfg = cfg["contrast"]
+    shuffled = joined.sample(frac=1.0, random_state=int(ccfg["seed"]))
+    kept = drop_window_overlaps(shuffled, cfg, blind=True)
+    return kept.head(int(ccfg["n_blind"])).sort_values(["date", "symbol"])
+
+
 def build_list(panel: pd.DataFrame, hits: pd.DataFrame, cfg: dict, list_id: str, blind: bool,
-               rule_label: str, title: str | None = None, errata_info: dict | None = None) -> dict:
+               rule_label: str, title: str | None = None, errata_info: dict | None = None, *,
+               ledger: dict | None = None, xcheck: bool = False) -> dict:
     """hits:(symbol, date) 命中。先按决策日年份过滤到内圈年份,再和面板连接,只留池内、
-    有有效标签的股票日。panel 应已按数据错误登记排除过(load_pool),同日对照在整张面板上算。"""
+    有有效标签的股票日。panel 应已按数据错误登记排除过(load_pool),同日对照在整张面板上算。
+    xcheck:生成后对每段做跨源比对(普通模式在算成绩之前做)。
+    ledger:记账上下文(见 ledger.record_round,list_id 与 params 由这里填);普通模式必填——
+    成绩由 control.summarize 算,算完当场记账,不给就拒绝(ValueError)。盲看模式不算成绩,忽略它。"""
     ccfg = cfg["contrast"]
     seed = int(ccfg["seed"])
     years = [str(y) for y in ccfg["inner_years"]]
@@ -85,15 +102,16 @@ def build_list(panel: pd.DataFrame, hits: pd.DataFrame, cfg: dict, list_id: str,
                     "n_hits_inner_years": int(len(hits_in)), "n_pool_hits": int(len(joined)),
                     **({"data_errors": errata_info} if errata_info is not None else {})})
     if blind:
-        pick = _sample(joined, int(ccfg["n_blind"]), seed).sort_values(["date", "symbol"])
+        pick = blind_sample(joined, cfg)
         doc["items"] = [make_item(r, cfg, blind=True) for _, r in pick.iterrows()]
         doc["groups"] = [{"key": "sample", "title": f"命中样例（随机 {len(pick)}）",
                           "item_ids": [it["item_id"] for it in doc["items"]]}]
+        if xcheck:
+            run_xcheck(doc, cfg)
         return doc
 
-    control = Control(panel, cfg["control"])
-    rows = control.rows_of(joined)
-    doc["summary"] = summarize(control, rows, cfg, years=years)
+    if not isinstance(ledger, dict):
+        raise ValueError("对照清单要算成绩,必须给记账上下文 ledger(见 ledger.record_round)")
     win = _sample(joined[joined["dir"] == 1], int(ccfg["n_win"]), seed).sort_values("date")
     lose = _sample(joined[joined["dir"] == -1], int(ccfg["n_lose"]), seed).sort_values("date")
     allh = _sample(joined, int(ccfg["max_all"]), seed).sort_values(["date", "symbol"])
@@ -110,6 +128,12 @@ def build_list(panel: pd.DataFrame, hits: pd.DataFrame, cfg: dict, list_id: str,
         groups.append({"key": key, "title": title_, "item_ids": ids})
     doc["items"] = list(items.values())
     doc["groups"] = groups
+    if xcheck:
+        run_xcheck(doc, cfg)
+    control = Control(panel, cfg["control"])
+    rows = control.rows_of(joined)
+    doc["summary"] = summarize(control, rows, cfg, years=years,
+                               ledger={**ledger, "list_id": list_id, "params": doc["params"]})
     return doc
 
 
@@ -131,6 +155,7 @@ def archive_file(src: Path, root: Path) -> tuple[str, str]:
         tmp = dst.with_name(dst.name + ".tmp")
         shutil.copyfile(src, tmp)
         tmp.replace(dst)
+        advance(root)                         # 新存档记进水位
     return sha, rel
 
 
@@ -188,9 +213,10 @@ def main(argv=None) -> None:
     if args.params and not args.app:
         ap.error("--params 只能和 --app 一起用")
     cfg = load_config()
-    try:                      # 拿不到状态根就停,什么都不生成;来源不对也先停
+    try:                      # 拿不到状态根就停,什么都不生成;来源不对、清单名用过也先停
         root = state_root()
         check_source(args.source)
+        check_new_list_id(cfg, args.list_id)
     except (StateRootMissing, ValueError, FileNotFoundError) as e:
         print(f"错误:{e}", file=sys.stderr)
         sys.exit(2)
@@ -201,26 +227,42 @@ def main(argv=None) -> None:
     else:
         hits = hits_from_app(args.app, args.params, symbols, cfg)
     label = _rule_label(args.rule, args.app, args.params)
-    doc = build_list(panel, hits, cfg, args.list_id, args.blind, label, args.title,
-                     errata_info=errata)
-    if cfg["xcheck"]["enabled"] and not args.no_xcheck:
-        run_xcheck(doc, cfg)
     arch = archive_rule(root, args.rule, args.app, args.params)
-    path = write_list(doc, cfg)
     kind = "blind" if args.blind else ("mined" if args.source == "mining" else "rule")
+    ctx = {"kind": kind,
+           "rule_id": args.rule_id or (Path(args.rule).stem if args.rule else f"app:{args.app}"),
+           "version": args.version or _default_version(args.rule, args.params),
+           "source": args.source, "change": args.change, "note": args.note, **arch}
+    try:                      # 普通模式:成绩算完当场记账(summarize 里)
+        doc = build_list(panel, hits, cfg, args.list_id, args.blind, label, args.title,
+                         errata_info=errata, ledger=ctx,
+                         xcheck=bool(cfg["xcheck"]["enabled"] and not args.no_xcheck))
+    except (ValueError, FileNotFoundError, StateRootMissing, OSError) as e:
+        print(f"错误:{e}", file=sys.stderr)
+        sys.exit(2)
     try:
-        entry = add_round(cfg, kind=kind,
-                          rule_id=args.rule_id or (Path(args.rule).stem if args.rule else f"app:{args.app}"),
-                          version=args.version or _default_version(args.rule, args.params),
-                          source=args.source, change=args.change, list_id=args.list_id,
-                          note=args.note, auto=True, years=doc["params"]["inner_years"], **arch)
-    except BaseException as e:
-        path.unlink(missing_ok=True)          # 不留没记账的对照页
-        if isinstance(e, (ValueError, FileNotFoundError, StateRootMissing, OSError)):
-            print(f"错误:账本追加失败,已删掉刚写的清单 {path.name}:{e}", file=sys.stderr)
-            sys.exit(2)
-        raise
-    print(f"写入 {path}(账本第 {entry['round']} 轮,规则存档 {arch['rule_archive'] or '—'})")
+        path = write_list(doc, cfg)
+    except (ListValidationError, FileExistsError, OSError) as e:
+        done = "" if args.blind else "成绩已算、这一轮已记账(算过成绩就算一次尝试),"
+        print(f"错误:{done}清单没写成:{e}", file=sys.stderr)
+        sys.exit(2)
+    if args.blind:
+        try:
+            entry = add_round(cfg, **{k: ctx[k] for k in ("kind", "rule_id", "version", "source",
+                                                          "change", "note")},
+                              list_id=args.list_id, auto=True, years=doc["params"]["inner_years"],
+                              **arch)
+        except BaseException as e:
+            path.unlink(missing_ok=True)          # 不留没记账的对照页
+            if isinstance(e, (ValueError, FileNotFoundError, StateRootMissing, OSError)):
+                print(f"错误:账本追加失败,已删掉刚写的清单 {path.name}:{e}", file=sys.stderr)
+                sys.exit(2)
+            raise
+        rnd = entry["round"]
+    else:
+        eid = doc["summary"]["ledger_entry_id"]
+        rnd = next((r["round"] for r in read_ledger() if r.get("entry_id") == eid), None)
+    print(f"写入 {path}(账本第 {rnd} 轮,规则存档 {arch['rule_archive'] or '—'})")
     print(f"原始命中 {doc['params']['n_raw_hits']},内圈年份 {doc['params']['inner_years']} "
           f"{doc['params']['n_hits_inner_years']},池内有效 {doc['params']['n_pool_hits']}")
     for g in doc["groups"]:

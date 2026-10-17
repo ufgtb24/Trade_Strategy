@@ -50,7 +50,7 @@ from chart_workflow.annotations import read_batch
 from chart_workflow.config import DEFAULTS, load_config
 from chart_workflow.features import feature_frame
 from chart_workflow.loader import read_bars
-from chart_workflow.state import StateRootMissing, state_root
+from chart_workflow.state import StateRootMissing, advance, state_root
 from path2.atoms.breakout import BODetector
 from path2.atoms.distribution import DistributionDetector
 from path2.atoms.platform import PlatformDetector
@@ -751,6 +751,7 @@ def write_snapshot(batch_id: str, results: list[dict], stem: str | None = None) 
     tmp = path.with_suffix(".json.tmp")
     tmp.write_text(json.dumps(doc, ensure_ascii=False, indent=1))
     tmp.replace(path)
+    advance(d.parent)                    # 新文件记进水位
     return path
 
 

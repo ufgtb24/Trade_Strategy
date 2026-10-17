@@ -1,6 +1,10 @@
 <template>
   <div class="wf">
     <div v-if="blockedMessage" class="err blocked" data-testid="wf-blocked">{{ blockedMessage }}</div>
+    <div v-if="store.stateInfo?.from_env" class="state-env" role="status" data-testid="wf-state-env">
+      <b>【临时状态根】</b>记账类文件写到环境变量 {{ store.stateInfo.env_var }} 指的
+      {{ store.stateInfo.path }}，看过记录和标注不进正式账本。正式使用请不带这个环境变量重启后端。
+    </div>
     <header class="top">
       <button type="button" data-testid="wf-exit" @click="emit('exit')">返回调试视图</button>
       <select class="list-select" data-testid="wf-list" :value="store.current?.list_id ?? ''"
@@ -95,6 +99,9 @@
  * 入口:App.vue 见到 URL 带 wf 参数时渲染本视图。深链 ?wf=<list_id>&item=<item_id> 打开清单、
  * 翻到含这一条的页、高亮并放大;?wf= 为空时打开最新的一份清单。打开清单后 URL 同步成 ?wf=<list_id>。
  * 草稿非空时离开页面要确认(beforeunload)。
+ *
+ * 后端的状态根来自环境变量(测试、冒烟用的临时目录)时,顶上显示一条文字提示(不靠颜色区分),
+ * 免得正式使用时记录悄悄写进临时目录。
  *
  * 大涨段清单不给标签筛选:标签描述的是决策日当天(跳空、量倍数),按它筛等于提示决策日在哪,
  * 与图头点买点前不显示标签同一个理由(见 AnnotChart)。
@@ -205,6 +212,8 @@ onBeforeUnmount(() => {
 .drawer-toggle[aria-pressed="true"] { background: #0f172a; color: #fff; }
 .err { color: #b91c1c; padding: 6px 8px; }
 .err.blocked { font-weight: 700; border-left: 4px solid #0f172a; color: #0f172a; }
+.state-env { padding: 6px 8px; border: 2px dashed #0f172a; color: #0f172a; background: #fff;
+             font-size: 13px; }
 .hint { color: #475569; padding: 6px 8px; }
 .summary { padding: 4px 8px; border-bottom: 1px solid #cbd5e1; font-size: 12px; overflow-x: auto; }
 .summary table { border-collapse: collapse; }

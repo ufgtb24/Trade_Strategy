@@ -3,13 +3,15 @@
 纯投影层:只做「校验参数 → 调函数 → 序列化」,不含任何走势语义。
 清单由命令行工具 chart_workflow 生成(<root>/lists/<list_id>.json,root 取 config 的 workflow 子树);
 标注批次写到 chart_workflow 的状态根(<状态根>/annotations/<batch_id>.json,见 chart_workflow/state.py,
-格式 chart_workflow.annotations/2:每条标注多个买点 buy_points,框选起止除「数据有误」外可空;批次头的
-list_kind / outcome_visible 由这里读清单文件的 kind 填,不信前端),
+格式 chart_workflow.annotations/2:每条标注多个买点 buy_points,框选起止除「数据有误」外可空;
+大涨段清单的改点痕迹 first_buy_points(第一次露出结果时的买点)与 changed_after_reveal(露出结果后
+买点改过或清除过);批次头的 list_kind / outcome_visible 由这里读清单文件的 kind 填,不信前端),
 打开清单时经 chart_workflow.views.record 记一条「看过」。K 线经 chart_workflow.loader 只读截断副本
 (workflow.dataset_dir),不是副本就 503。
 
-红线:训练段末日 train_end 之后的数据不出服务端——
-  /workflow/ohlc       end 先截到 train_end
+红线:训练段末日 train_end 之后的数据不出服务端(train_end 先和 loader.HARD_END 取小,配置写成
+2026 年也不越过 2025-12-31)——
+  /workflow/ohlc       end 先截到 train_end;只给本进程打开过的清单里的图窗(先打开清单才会记「看过」)
   /workflow/lists/{id} 读清单时兜底:view_end 截到 train_end,晚于它的日期标记一律删掉
   POST annotations     所有日期必须不晚于 train_end
 本轮看图下界 view_floor(workflow 子树,默认 2025-01-01,待验证)之前的不给看——
@@ -17,12 +19,14 @@ list_kind / outcome_visible 由这里读清单文件的 kind 填,不信前端),
   /workflow/lists/{id} 这种清单 403
   /workflow/ohlc       start 先截到下界
   POST annotations     框选起止、买点都不得早于下界
-拿不到状态根(StateRootMissing)时记不了「看过」:打开清单、发送标注一律 503,不给图;
-/workflow/lists 照常列名字,但每项带 blocked = "state_root_missing" 与消息。
+拿不到状态根(StateRootMissing,含水位核对不过的 StateRootRegressed)时记不了「看过」:打开清单、
+发送标注一律 503,不给图;/workflow/lists 照常列名字,但每项带 blocked = "state_root_missing" 与消息。
+/workflow/state 只读地报告状态根在哪、是不是来自环境变量(端到端测试开跑前核对,界面据此显示提示条)。
 """
 from __future__ import annotations
 
 import json
+import os
 import re
 import uuid
 from datetime import datetime
@@ -31,10 +35,11 @@ from typing import Optional
 
 import pandas as pd
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, StrictBool
 
+from chart_workflow import state as cw_state
 from chart_workflow import views
-from chart_workflow.loader import NotASnapshot, load_bars
+from chart_workflow.loader import HARD_END, NotASnapshot, check_symbol, load_bars
 from chart_workflow.state import StateRootMissing, state_root
 from path2_web.config import DEFAULT_CONFIG
 from path2_web.data import serialize_ohlc, slice_window
@@ -43,7 +48,6 @@ _REPO_ROOT = Path(__file__).resolve().parents[1]
 
 # 与 chart_workflow/listfile.py 的 LIST_ID_RE 同口径:字母数字 _ - .,不以点开头、不含 ..
 _LIST_ID_RE = re.compile(r"^(?!\.)(?!.*\.\.)[A-Za-z0-9_\-.]+$")
-_SYMBOL_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9.\-]{0,14}$")
 _BATCH_RE = re.compile(r"^\d{8}T\d{6}(-\d+)?$")
 _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 _LABELS = ("positive", "negative", "data_error")   # 正例 / 反例 / 数据有误
@@ -55,7 +59,7 @@ BATCH_SCHEMA = "chart_workflow.annotations/2"
 
 class BuyPointIn(BaseModel):
     date: str
-    primary: bool = False
+    primary: StrictBool = False
 
 
 class AnnotationIn(BaseModel):
@@ -68,7 +72,10 @@ class AnnotationIn(BaseModel):
     buy_date: Optional[str] = None          # v1 兼容:有它且 buy_points 为空 → 转成一个主买点
     label: str
     note: str = ""
-    peeked_before_buy: bool = False
+    peeked_before_buy: StrictBool = False
+    # 大涨段清单的改点痕迹:第一次露出结果时的买点(null = 没露出过),露出后买点改过或清除过
+    first_buy_points: Optional[list[BuyPointIn]] = None
+    changed_after_reveal: StrictBool = False
     updated_at: Optional[str] = None
 
 
@@ -102,7 +109,8 @@ def _root(cfg: dict) -> Path:
 
 
 def _train_end(cfg: dict) -> str:
-    return str(_wf_cfg(cfg)["train_end"])
+    """训练段末日:配置值和 HARD_END 取小(配置写成 2026 年也不越过硬上限)。"""
+    return min(str(_wf_cfg(cfg)["train_end"]), HARD_END)
 
 
 def _view_floor(cfg: dict) -> str:
@@ -129,6 +137,8 @@ def _bars(cfg: dict, symbol: str, end: str) -> pd.DataFrame:
         raise HTTPException(503, str(e)) from None
     except FileNotFoundError:
         raise HTTPException(404, f"pkl not found: {symbol}") from None
+    except ValueError as e:                  # 代码名不合格(loader.check_symbol)
+        raise HTTPException(400, str(e)) from None
 
 
 def _before_floor(doc: dict, floor: str) -> bool:
@@ -143,8 +153,10 @@ def _check_list_id(list_id: str) -> None:
 
 
 def _check_symbol(symbol: str) -> None:
-    if not symbol or not _SYMBOL_RE.fullmatch(symbol):
-        raise HTTPException(400, f"非法代码: {symbol!r}")
+    try:
+        check_symbol(symbol)
+    except ValueError:
+        raise HTTPException(400, f"非法代码: {symbol!r}") from None
 
 
 def _is_date(s) -> bool:
@@ -169,14 +181,46 @@ def clip_list(doc: dict, train_end: str) -> dict:
     return doc
 
 
+def _validate_bps(bps: list[dict], tag: str, name: str) -> list[str]:
+    errs = []
+    if len(bps) > BUY_POINTS_MAX:
+        errs.append(f"{tag}: {name}最多 {BUY_POINTS_MAX} 个")
+    dates = [b["date"] for b in bps]
+    if len(set(dates)) != len(dates):
+        errs.append(f"{tag}: {name}重复")
+    if sum(b["primary"] for b in bps) > 1:
+        errs.append(f"{tag}: {name}里主买点至多一个")
+    return errs
+
+
 def build_workflow_router(*, get_config) -> APIRouter:
     router = APIRouter(prefix="/workflow")
+    # 本进程打开过的清单里的图窗:symbol → [(起点, 终点)](已截到看图下界与训练段末日)。
+    # /workflow/ohlc 只给落在其中某个图窗里的请求,绕开「打开清单」(不记看过)就取不到 K 线。
+    opened: dict[str, set[tuple[str, str]]] = {}
 
     def _read_json(path: Path) -> dict | None:
         try:
             return json.loads(path.read_text())
         except (OSError, ValueError):
             return None
+
+    @router.get("/state")
+    def wf_state():
+        """状态根在哪、是不是来自环境变量、能不能用(只读,不建任何东西)。"""
+        from_env = bool(os.environ.get(cw_state.ENV_VAR))
+        try:
+            path = str(cw_state.locate())
+        except StateRootMissing as e:
+            return {"path": None, "from_env": from_env, "env_var": cw_state.ENV_VAR,
+                    "ok": False, "message": str(e)}
+        try:
+            state_root()
+            ok, msg = True, None
+        except StateRootMissing as e:
+            ok, msg = False, str(e)
+        return {"path": path, "from_env": from_env, "env_var": cw_state.ENV_VAR,
+                "ok": ok, "message": msg}
 
     @router.get("/lists")
     def wf_lists():
@@ -225,7 +269,12 @@ def build_workflow_router(*, get_config) -> APIRouter:
             raise HTTPException(503, str(e)) from None
         except OSError as e:
             raise HTTPException(503, f"看过记录写不进去:{e}") from None
-        return clip_list(doc, _train_end(cfg))
+        doc = clip_list(doc, _train_end(cfg))
+        for it in doc.get("items") or []:
+            sym, vs, ve = it.get("symbol"), it.get("view_start"), it.get("view_end")
+            if isinstance(sym, str) and _is_date(vs) and _is_date(ve):
+                opened.setdefault(sym, set()).add((max(vs, floor), ve))
+        return doc
 
     @router.get("/ohlc")
     def wf_ohlc(symbol: str, start: str, end: str):
@@ -235,6 +284,9 @@ def build_workflow_router(*, get_config) -> APIRouter:
         cfg = get_config()
         start = max(start, _view_floor(cfg))
         end = min(end, _train_end(cfg))
+        if not any(a <= start and end <= b for a, b in opened.get(symbol, ())):
+            raise HTTPException(403, "这段 K 线不在本次打开过的清单图窗里;先在看图工作流里打开清单"
+                                     "(打开时会记一条看过)")
         win = slice_window(_bars(cfg, symbol, end), start, end)
         return serialize_ohlc(symbol, win)
 
@@ -243,7 +295,9 @@ def build_workflow_router(*, get_config) -> APIRouter:
         tag = ann.item_id
         train_end = _train_end(cfg)
         floor = _view_floor(cfg)
-        if not _SYMBOL_RE.fullmatch(ann.symbol or ""):
+        try:
+            check_symbol(ann.symbol)
+        except ValueError:
             return [f"{tag}: 非法代码 {ann.symbol!r}"]
         if ann.label not in _LABELS:
             errs.append(f"{tag}: label 必须是 positive / negative / data_error")
@@ -257,15 +311,13 @@ def build_workflow_router(*, get_config) -> APIRouter:
             errs.append(f"{tag}: 框选起止要成对")
         if ann.label == "positive" and not bps:
             errs.append(f"{tag}: 正例至少要一个买点")
-        if len(bps) > BUY_POINTS_MAX:
-            errs.append(f"{tag}: 买点最多 {BUY_POINTS_MAX} 个")
+        errs += _validate_bps(bps, tag, "买点")
         dates = [b["date"] for b in bps]
-        if len(set(dates)) != len(dates):
-            errs.append(f"{tag}: 买点重复")
-        if sum(b["primary"] for b in bps) > 1:
-            errs.append(f"{tag}: 主买点至多一个")
+        first = [{"date": b.date, "primary": b.primary} for b in ann.first_buy_points or []]
+        errs += _validate_bps(first, tag, "第一次露出结果时的买点")
         named = [("range_start", ann.range_start), ("range_end", ann.range_end)] if has_range else []
         named += [("买点", d) for d in dates]
+        named += [("第一次露出结果时的买点", b["date"]) for b in first]
         for name, v in named:
             if v is None:
                 continue
@@ -327,8 +379,10 @@ def build_workflow_router(*, get_config) -> APIRouter:
             batch_id = f"{base}-{k}"
         anns = []
         for a in req.annotations:
-            d = a.model_dump(exclude={"buy_date", "buy_points"})
+            d = a.model_dump(exclude={"buy_date", "buy_points", "first_buy_points"})
             d["buy_points"] = _buy_points(a)
+            d["first_buy_points"] = (None if a.first_buy_points is None else
+                                     [{"date": b.date, "primary": b.primary} for b in a.first_buy_points])
             d["ann_id"] = d.get("ann_id") or str(uuid.uuid4())
             d["updated_at"] = d.get("updated_at") or now.strftime("%Y-%m-%dT%H:%M:%S")
             anns.append(d)
@@ -343,7 +397,10 @@ def build_workflow_router(*, get_config) -> APIRouter:
             "annotations": anns,
         }
         path = out_dir / f"{batch_id}.json"
-        path.write_text(json.dumps(doc, ensure_ascii=False, indent=1))
+        tmp = path.with_name(path.name + ".tmp")
+        tmp.write_text(json.dumps(doc, ensure_ascii=False, indent=1))
+        tmp.replace(path)
+        cw_state.advance(root)
         return {"batch_id": batch_id, "path": str(path), "n": len(anns)}
 
     @router.get("/annotations")

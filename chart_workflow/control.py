@@ -12,12 +12,20 @@
             mag 值,每个值权重 1/格内个数(每个命中合计贡献权重 1),合在一起取加权中位数
 偶然波动:命中按 symbol 分组,有放回抽满原 symbol 数,对照不动,重复 n_boot 次(seed 固定),
   取领先的标准差(ddof=1)× 放大系数(命中数 ≥ noise_large_n 用 inflate_large,否则 inflate_small)。
-分年:按决策日 t 的年份分别算(默认训练段全部年份,对照页只给内圈年份),另加「全部」一行。
+分年:按决策日 t 的年份分别算,另加「全部」一行。
 扎堆度(「全部」命中):单 ISO 周命中占比最大值、单只股票命中占比最大值、不同股票数 / 周数。
+
+成绩只经 summarize 拿,而 summarize 是最底层的闸:
+  · 年份默认只给内圈(config contrast.inner_years,默认 2025):命中先按决策日年份过滤到这些年,
+    「全部」一行也只含它们;要算内圈以外的年份必须显式传 years 并写 other_years_reason,
+    用到的年份和原因记进账本行,并在标准错误打印一行。
+  · 算完立刻经 ledger.record_round 记账;不给记账上下文 ledger 就拒绝算。
+单组统计 Control._evaluate / _noise 是内部函数,不对外。
 """
 from __future__ import annotations
 
 import math
+import sys
 
 import numpy as np
 import pandas as pd
@@ -106,8 +114,8 @@ class Control:
         w = h[cs] / self.count[cs]
         return weighted_median(vs, w, presorted=True)
 
-    def evaluate(self, rows: np.ndarray, ccfg: dict, with_noise: bool = True) -> dict:
-        """一组命中(面板行号,已去重)的一行统计。"""
+    def _evaluate(self, rows: np.ndarray, ccfg: dict, with_noise: bool = True) -> dict:
+        """一组命中(面板行号,已去重)的一行统计。内部函数:对外只经 summarize(会记账)。"""
         n = len(rows)
         base = {"n_hits": int(n), "n_stocks": 0, "n_weeks": 0,
                 "hit_dir_mean": None, "ctrl_dir_mean": None, "dir_lead": None, "dir_noise": None,
@@ -135,11 +143,11 @@ class Control:
             "hit_mag_median": hit_mag, "ctrl_mag_median": ctrl_mag, "mag_lead": hit_mag - ctrl_mag,
         })
         if with_noise:
-            d_noise, m_noise = self.noise(rows, ccfg, subset)
+            d_noise, m_noise = self._noise(rows, ccfg, subset)
             base["dir_noise"], base["mag_noise"] = d_noise, m_noise
         return base
 
-    def noise(self, rows: np.ndarray, ccfg: dict, subset) -> tuple[float, float]:
+    def _noise(self, rows: np.ndarray, ccfg: dict, subset) -> tuple[float, float]:
         """按股票整只重抽的偶然波动(已乘放大系数)。"""
         p = self.panel
         sym = p["symbol"].values[rows]
@@ -192,30 +200,54 @@ def graduation(rows_by_scope: dict, conc: dict, years: list[str], gcfg: dict) ->
     return {"passed": all(checks.values()), "checks": checks}
 
 
-def train_years(cfg: dict) -> list[str]:
-    y0 = pd.Timestamp(cfg["train_start"]).year
-    y1 = pd.Timestamp(cfg["train_end"]).year
-    return [str(y) for y in range(y0, y1 + 1)]
+def inner_years(cfg: dict) -> list[str]:
+    return [str(y) for y in cfg["contrast"]["inner_years"]]
 
 
-def summarize(control: Control, rows: np.ndarray, cfg: dict, years: list[str] | None = None) -> dict:
-    """清单 summary:「全部」+ 每个年份各一行,扎堆度,毕业判定。
-    years:逐年行与「逐年都为正」只看这些年;默认训练段全部年份(对照页传内圈年份)。"""
+def summarize(control: Control, rows: np.ndarray, cfg: dict, *, ledger: dict,
+              years: list[str] | None = None, other_years_reason: str | None = None) -> dict:
+    """清单 summary:「全部」+ 每个年份各一行,扎堆度,毕业判定;算完立刻记账。
+
+    years:默认内圈年份。命中先过滤到这些年份,「全部」也只含它们。含内圈以外的年份时必须写
+    other_years_reason(否则 ValueError),年份和原因记进账本,并打印一行。
+    ledger:记账上下文(字段见 ledger.record_round;list_id 必须是还没生成过的清单名)。
+    缺了 → ValueError,不算。返回的 summary 带 years 与这一轮账本行的 ledger_entry_id。"""
+    if not isinstance(ledger, dict):
+        raise ValueError("算成绩必须记账:传 ledger(记账上下文,见 ledger.record_round)")
+    inner = inner_years(cfg)
+    years = [str(y) for y in years] if years is not None else inner
+    outside = sorted(set(years) - set(inner))
+    reason = str(other_years_reason or "").strip()
+    if outside and not reason:
+        raise ValueError(f"要算内圈({inner})以外的年份 {outside},必须用 other_years_reason 写明原因"
+                         f"(会记进账本)")
     ccfg = cfg["control"]
-    years = [str(y) for y in years] if years is not None else train_years(cfg)
     p = control.panel
+    rows = np.asarray(rows, dtype=np.int64)
+    hit_years = pd.DatetimeIndex(p["date"].values[rows]).year.astype(str) if len(rows) else []
+    rows = rows[np.isin(np.asarray(hit_years), years)] if len(rows) else rows
+    hit_years = pd.DatetimeIndex(p["date"].values[rows]).year.astype(str) if len(rows) else []
     out_rows = []
     by_scope: dict = {}
-    hit_years = pd.DatetimeIndex(p["date"].values[rows]).year.astype(str) if len(rows) else []
     for scope in [ALL_SCOPE] + years:
         r = rows if scope == ALL_SCOPE else rows[np.asarray(hit_years) == scope]
-        row = {"scope": scope, **control.evaluate(r, ccfg)}
+        row = {"scope": scope, **control._evaluate(r, ccfg)}
         out_rows.append(row)
         by_scope[scope] = row
     conc = concentration(p, rows)
-    return {
+    summary = {
         "rows": out_rows,
         "concentration": {"max_week_share": conc["max_week_share"],
                           "max_stock_share": conc["max_stock_share"]},
         "graduation": graduation(by_scope, conc, years, cfg["graduation"]),
+        "years": years,
     }
+    from chart_workflow.ledger import record_round      # 函数内导入:ledger 也导入本模块
+
+    entry = record_round(cfg, ledger, summary=summary, years=years,
+                         other_years_reason=reason if outside else None)
+    if outside:
+        print(f"[对照统计] 本次用了内圈以外的年份 {outside}(原因:{reason}),"
+              f"已记入账本第 {entry['round']} 轮", file=sys.stderr)
+    summary["ledger_entry_id"] = entry["entry_id"]
+    return summary

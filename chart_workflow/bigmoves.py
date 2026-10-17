@@ -8,8 +8,10 @@
      --view-floor 可覆盖配置(传 none 关掉,仅供测试)
   1. 候选:面板里每个股票日都是候选,指标是相对涨幅 rel 与涨幅原值 rise
   2. 最低门槛:rel ≥ rel_min
-  3. 同一段行情只取一次:每只股票按 rel 从大到小贪心取,取中一个就压掉它前后
-     suppress_bars 个交易日内的其他候选
+  3. 同一段行情只取一次、同股不互相露底:每只股票按 rel 从大到小贪心取,一个候选只有在
+     与已取中的同股各段相隔超过 suppress_bars 个交易日、而且双方的决策日都不落在对方的完整图窗里
+     (起点截到看图下界之后、到图窗终点,见 listfile.drop_window_overlaps)时才取——否则打开一张图,
+     点买点之前就能看到另一段的决策日和后续走势
   4. 每周限量:同一 ISO 周最多保留 per_week_max 段(取 rel 最大的)
   5. 总量:全局按 rel 降序取前 top 段
   6. 分组:按涨前状态分四组,另加不分组的「全部」;跳空与量倍数写进 tags
@@ -17,7 +19,7 @@
 面板先按数据错误登记排除过(见 dataerrors.py);每段带的「最大单日跳变」只作显示,不参与任何判定。
 写清单前对每段做跨源比对(见 xcheck.py,--no-xcheck 跳过),只标出不一致,不排除任何段。
 生成后自动追加一行账本(kind = source = bigmoves,不算尝试;change 取 --change,默认「生成大涨段清单」)。
-开始先找状态根,拿不到就停;追加账本失败就删掉刚写的清单再报错。
+开始先找状态根、查清单名没用过(同名重新生成会覆盖旧清单),任一不过就停;追加账本失败就删掉刚写的清单再报错。
 """
 from __future__ import annotations
 
@@ -32,8 +34,8 @@ import pandas as pd
 from chart_workflow.config import load_config
 from chart_workflow.dataerrors import load_pool
 from chart_workflow.features import PRE_STATES
-from chart_workflow.ledger import add_round
-from chart_workflow.listfile import deep_link, make_item, new_list, write_list
+from chart_workflow.ledger import add_round, check_new_list_id
+from chart_workflow.listfile import deep_link, drop_window_overlaps, make_item, new_list, write_list
 from chart_workflow.loader import trading_dates
 from chart_workflow.state import StateRootMissing, state_root
 from chart_workflow.xcheck import run_xcheck
@@ -41,17 +43,11 @@ from chart_workflow.xcheck import run_xcheck
 GROUP_KEYS = {"深跌": "deep_drop", "已在涨": "rising", "横盘": "flat", "其他": "other"}
 
 
-def suppress_same_move(cands: pd.DataFrame, bars: int) -> pd.DataFrame:
-    """每只股票按 rel 降序贪心:取中一个后,压掉 |bar_idx 差| ≤ bars 的其他候选。"""
-    keep = []
-    for _, g in cands.groupby("symbol", sort=False):
-        g = g.sort_values(["rel", "date"], ascending=[False, True])
-        taken: list[int] = []
-        for idx, b in zip(g.index, g["bar_idx"].values):
-            if all(abs(int(b) - t) > bars for t in taken):
-                taken.append(int(b))
-                keep.append(idx)
-    return cands.loc[keep]
+def suppress_same_move(cands: pd.DataFrame, cfg: dict) -> pd.DataFrame:
+    """每只股票按 rel 降序贪心:与已取中的同股各段相隔超过 suppress_bars 个交易日、且双方决策日
+    都不落在对方图窗里才取(listfile.drop_window_overlaps)。"""
+    ordered = cands.sort_values(["symbol", "rel", "date"], ascending=[True, False, True])
+    return drop_window_overlaps(ordered, cfg, min_gap_bars=int(cfg["bigmoves"]["suppress_bars"]))
 
 
 def cap_per_week(df: pd.DataFrame, per_week: int) -> pd.DataFrame:
@@ -78,9 +74,10 @@ def after_view_floor(panel: pd.DataFrame, cfg: dict) -> pd.DataFrame:
     return panel[keep]
 
 
-def select_bigmoves(panel: pd.DataFrame, bcfg: dict, top: int) -> pd.DataFrame:
+def select_bigmoves(panel: pd.DataFrame, cfg: dict, top: int) -> pd.DataFrame:
+    bcfg = cfg["bigmoves"]
     cands = panel[np.isfinite(panel["rel"]) & (panel["rel"] >= bcfg["rel_min"])]
-    picked = suppress_same_move(cands, int(bcfg["suppress_bars"]))
+    picked = suppress_same_move(cands, cfg)
     picked = cap_per_week(picked, int(bcfg["per_week_max"]))
     return (picked.sort_values(["rel", "date", "symbol"], ascending=[False, True, True])
             .head(top).reset_index(drop=True))
@@ -88,7 +85,7 @@ def select_bigmoves(panel: pd.DataFrame, bcfg: dict, top: int) -> pd.DataFrame:
 
 def build_list(panel: pd.DataFrame, cfg: dict, list_id: str, top: int, title: str | None = None,
                errata_info: dict | None = None) -> dict:
-    sel = select_bigmoves(after_view_floor(panel, cfg), cfg["bigmoves"], top)
+    sel = select_bigmoves(after_view_floor(panel, cfg), cfg, top)
     extra = {"bigmoves": {**cfg["bigmoves"], "top": top}}
     if errata_info is not None:
         extra["data_errors"] = errata_info
@@ -120,7 +117,8 @@ def main(argv=None) -> None:
         cfg["view_floor"] = None if args.view_floor.lower() == "none" else args.view_floor
     try:
         state_root()                          # 拿不到状态根就停,什么都不生成
-    except StateRootMissing as e:
+        check_new_list_id(cfg, args.list_id)  # 清单名用过也停
+    except (StateRootMissing, ValueError) as e:
         print(f"错误:{e}", file=sys.stderr)
         sys.exit(2)
     top = args.top if args.top is not None else int(cfg["bigmoves"]["top"])

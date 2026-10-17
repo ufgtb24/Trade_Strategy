@@ -8,7 +8,12 @@ sec_label / sec_known,名录里查不到的 sec_label 为「未知（名录里�
 
 写入前校验(任一不过就拒绝写):list_id 合法;所有日期不晚于 train_end;
 每个 view_end ≤ train_end;item_id 唯一;分组引用的 item 都存在;
-盲看清单不含任何和结果有关的字段(包括逐段的跨源比对结果)。
+盲看清单不含任何和结果有关的字段(包括逐段的跨源比对结果)。同名清单已存在就拒绝写
+(FileExistsError):重新生成会覆盖旧清单,账本里的那一轮就对不上了。
+
+图窗(view_window)是 make_item 与「同股不互相露底」(drop_window_overlaps)共用的唯一口径:
+同一只股票的两条,谁的决策日都不得落在另一条的完整图窗里(起点截到看图下界之后、到图窗终点),
+否则打开一张图就露出另一条的决策日和后续走势。
 """
 from __future__ import annotations
 
@@ -91,13 +96,11 @@ def security_fields(cfg: dict, symbol: str) -> dict:
             "sec_known": known}
 
 
-def make_item(row, cfg: dict, blind: bool = False) -> dict:
-    """面板里的一行 → 清单里的一条。图窗:决策日往前 view.before_bars 个交易日,
-    起点截到看图下界 view_floor(之后第一个交易日;view_floor 为空时不截),
-    到 min(t+H, train_end);盲看截到 t + view.blind_after_bars 为止。"""
-    sym = row["symbol"]
-    t = pd.Timestamp(row["date"])
-    dates = trading_dates(cfg, sym)
+def view_window(cfg: dict, symbol: str, t, blind: bool = False) -> tuple[pd.Timestamp, pd.Timestamp]:
+    """一条的图窗 (起点, 终点):决策日往前 view.before_bars 个交易日,起点截到看图下界 view_floor
+    (之后第一个交易日;view_floor 为空时不截),到 min(t+H, train_end);盲看截到 t + view.blind_after_bars。"""
+    t = pd.Timestamp(t)
+    dates = trading_dates(cfg, symbol)
     i = int(dates.searchsorted(t))
     before = cfg["view"]["before_bars"]
     after = cfg["view"]["blind_after_bars"] if blind else cfg["H"]
@@ -106,6 +109,48 @@ def make_item(row, cfg: dict, blind: bool = False) -> dict:
     if floor:
         view_start = max(view_start, dates[min(int(dates.searchsorted(pd.Timestamp(floor))), i)])
     view_end = min(dates[min(len(dates) - 1, i + after)], pd.Timestamp(cfg["train_end"]))
+    return view_start, view_end
+
+
+def drop_window_overlaps(df: pd.DataFrame, cfg: dict, blind: bool = False,
+                         min_gap_bars: int = 0) -> pd.DataFrame:
+    """同股不互相露底:按 df 的行序逐条贪心,一条只有在 ① 它的决策日不落在已取中的同股任一条的
+    图窗里、② 已取中的同股任一条的决策日不落在它的图窗里、③ 与已取中的同股各条相隔超过
+    min_gap_bars 个交易日时才取。df 要有 symbol / date 列;返回取中的行(保持原行序)。
+    图窗与交易日序号只在同股已有取中的条目时才算(只出现一次的股票不读行情)。"""
+    keep = []
+    taken: dict[str, list[pd.Timestamp]] = {}
+    cache: dict[tuple[str, pd.Timestamp], tuple[pd.Timestamp, pd.Timestamp, int]] = {}
+
+    def geo(sym: str, t: pd.Timestamp) -> tuple[pd.Timestamp, pd.Timestamp, int]:
+        if (sym, t) not in cache:
+            s, e = view_window(cfg, sym, t, blind=blind)
+            cache[(sym, t)] = (s, e, int(trading_dates(cfg, sym).searchsorted(t)))
+        return cache[(sym, t)]
+
+    for idx, sym, d in zip(df.index, df["symbol"].values, df["date"].values):
+        t = pd.Timestamp(d)
+        mine = taken.setdefault(sym, [])
+        if mine:
+            s, e, i = geo(sym, t)
+            ok = True
+            for t2 in mine:
+                s2, e2, i2 = geo(sym, t2)
+                if s2 <= t <= e2 or s <= t2 <= e or abs(i - i2) <= min_gap_bars:
+                    ok = False
+                    break
+            if not ok:
+                continue
+        mine.append(t)
+        keep.append(idx)
+    return df.loc[keep]
+
+
+def make_item(row, cfg: dict, blind: bool = False) -> dict:
+    """面板里的一行 → 清单里的一条。图窗见 view_window。"""
+    sym = row["symbol"]
+    t = pd.Timestamp(row["date"])
+    view_start, view_end = view_window(cfg, sym, t, blind=blind)
     item = {
         "item_id": f"{sym}@{_d(t)}",
         "symbol": sym,
@@ -206,12 +251,15 @@ def validate(doc: dict) -> None:
 
 
 def write_list(doc: dict, cfg: dict) -> Path:
-    """校验后写入 <root>/lists/<list_id>.json(先写临时文件再改名)。"""
+    """校验后写入 <root>/lists/<list_id>.json(先写临时文件再改名)。同名清单已存在 → FileExistsError。"""
     doc = clean_json(doc)
     validate(doc)
     out_dir = root_dir(cfg) / "lists"
     out_dir.mkdir(parents=True, exist_ok=True)
     path = out_dir / f"{doc['list_id']}.json"
+    if path.exists():
+        raise FileExistsError(f"清单 {doc['list_id']} 已存在:同名重新生成会覆盖旧清单、账本对不上,"
+                              f"换一个清单名")
     tmp = path.with_suffix(".json.tmp")
     tmp.write_text(json.dumps(doc, ensure_ascii=False, indent=1))
     tmp.replace(path)

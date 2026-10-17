@@ -1,5 +1,6 @@
 """形态卡与操作日志:来源记录校验(用户来源和系统推荐分得开)、日志与卡一致(rebuild --verify)、
 决定文件原子性、after_seeing_outcome 由批次头推出、账本记下每个条件的来源(own_library 递归到 root)、
+复用旧卡只给 from_card、root 由工具从旧卡里抄(会话自带的 root 拒绝)、
 人话打印与待处理汇总。"""
 import copy
 import json
@@ -85,7 +86,12 @@ def _state(state_dir):
                                                                  suggested_by="detector")
      or c["ingredients"][0]["choices"]["measure"].pop("suggested_value"), "suggested_value"),
     (lambda c: c["ingredients"][0].pop("said_first_match"), "said_first_match"),
-    (lambda c: c["triggers"][0].update(suggested_by="own_library"), "root"),
+    (lambda c: c["triggers"][0].update(suggested_by="own_library"), "from_card"),
+    (lambda c: c["triggers"][0].update(suggested_by="own_library",
+                                       from_card={"shape_id": "s001", "version": 1, "ref": "t1"},
+                                       root={"origin": "user_written"}), "不要自带 root"),
+    (lambda c: c["triggers"][0].update(from_card={"shape_id": "s001", "version": 1, "ref": "t1"}),
+     "只有 suggested_by = own_library"),
     (lambda c: c["triggers"][0].update(suggested_by="llm"), "detector 或 own_library"),
     (lambda c: c["ingredients"][1].update(role="maybe"), "role"),
     (lambda c: c["ingredients"][2].pop("text"), "text"),
@@ -175,33 +181,68 @@ def test_v1_batch_counts_as_outcome_visible(state_dir):
     assert v["after_seeing_outcome"] is True and v["list_kind"] is None
 
 
+def _reuse(ing_id, term, ref, shape_id="s001", version=1, **extra):
+    return {"ing_id": ing_id, "term": term, "role": "bonus", "origin": "suggested_adopted",
+            "suggested_by": "own_library",
+            "from_card": {"shape_id": shape_id, "version": version, "ref": ref}, **extra}
+
+
 def test_ledger_conditions_follow_own_library_root(state_dir, cw_env):
     cfg, _ = cw_env
     _batch(state_dir, "b1", [_ann("a1")])
-    card = copy.deepcopy(CARD)
-    card["ingredients"].append({"ing_id": "i4", "term": "F05", "role": "bonus",
-                                "origin": "suggested_adopted", "suggested_by": "own_library",
-                                "root": {"origin": "suggested_adopted", "suggested_by": "detector"}})
-    shapes.apply(_decision(_create(card)))
+    shapes.apply(_decision(_create()))                          # s001:i1 用户说的 F01,i2 事实表推荐 F13
+    card2 = {"ingredients": [_reuse("j1", "F13", "i2"), _reuse("j2", "F01", "i1")], "triggers": []}
+    shapes.apply(_decision(_create(card2, name="复用")))         # s002 从 s001 复用两条
+    s2 = shapes.load_card("s002")["versions"][0]["card"]["ingredients"]
+    # root 由工具从旧卡抄:j1 → 事实表推荐,j2 → 用户自己说的(带当初的原话)
+    assert s2[0]["root"] == {"origin": "suggested_adopted", "suggested_by": "detector"}
+    assert s2[1]["root"] == {"origin": "user_written", "said_first_match": "连续突破了两个峰值"}
+    card3 = {"ingredients": [_reuse("k1", "F13", "j1", shape_id="s002")], "triggers": []}
+    shapes.apply(_decision(_create(card3, name="再复用")))        # 复用的复用:root 一直到底
+    assert shapes.load_card("s003")["versions"][0]["card"]["ingredients"][0]["root"] == \
+        {"origin": "suggested_adopted", "suggested_by": "detector"}
+
     lists = root_dir(cfg) / "lists"
     lists.mkdir(parents=True)
     (lists / "r5-contrast.json").write_text(json.dumps({"list_id": "r5-contrast", "kind": "contrast"}))
     e = add_round(cfg, kind="rule", rule_id="s001", version="v1", source="shape:s001@v1",
                   change="首版", list_id="r5-contrast")
     conds = {c["cond_id"]: c for c in e["conditions"]}
-    assert set(conds) == {"i1", "i2", "i3", "i4", "t1", "t2"}
+    assert set(conds) == {"i1", "i2", "i3", "t1", "t2"}
     assert conds["i1"]["origin"] == "user_written" and conds["i1"]["has_said_first_match"]
-    assert conds["i4"]["suggested_by"] == "own_library"
-    assert (conds["i4"]["root_origin"], conds["i4"]["root_suggested_by"]) == ("suggested_adopted", "detector")
     assert conds["t1"]["kind"] == "trigger" and conds["t1"]["root_suggested_by"] == "detector"
     assert read_ledger()[-1]["conditions"] == e["conditions"]
-    assert "你说的 3 / 事实表 3 / 会话 0" in render_ledger(read_ledger())
+    assert "你说的 3 / 事实表 2 / 会话 0" in render_ledger(read_ledger())
+    (lists / "r6-contrast.json").write_text(json.dumps({"list_id": "r6-contrast", "kind": "contrast"}))
+    e = add_round(cfg, kind="rule", rule_id="s003", version="v1", source="shape:s003@v1",
+                  change="复用", list_id="r6-contrast")
+    c = e["conditions"][0]
+    assert c["suggested_by"] == "own_library"
+    assert (c["root_origin"], c["root_suggested_by"]) == ("suggested_adopted", "detector")
     with pytest.raises(FileNotFoundError):
         add_round(cfg, kind="rule", rule_id="s001", version="v2", source="shape:s001@v2",
                   change="x", list_id="r5-contrast")
     with pytest.raises(FileNotFoundError):
         add_round(cfg, kind="rule", rule_id="s009", version="v1", source="shape:s009@v1",
                   change="x", list_id="r5-contrast")
+
+
+@pytest.mark.parametrize("ing,needle", [
+    (_reuse("j1", "F05", "i2"), "旧卡那一条引用的是 F13"),       # 引用编号对不上
+    (_reuse("j1", "F13", "i9"), "没有 'i9'"),
+    (_reuse("j1", "F13", "i2", version=7), "没有版本 v7"),
+    (_reuse("j1", "F13", "i2", shape_id="s042"), "旧卡 s042 不存在"),
+    # 洗白路径:会话自己填 root 说「用户自己写的」→ 拒绝
+    (_reuse("j1", "F13", "i2", root={"origin": "user_written"}), "不要自带 root"),
+])
+def test_own_library_reuse_checked_against_old_card(state_dir, ing, needle):
+    _batch(state_dir, "b1", [_ann("a1")])
+    shapes.apply(_decision(_create()))
+    before = _state(state_dir)
+    with pytest.raises(shapes.ShapeValidationError) as ei:
+        shapes.apply(_decision(_create({"ingredients": [ing], "triggers": []}, name="复用")))
+    assert needle in str(ei.value)
+    assert _state(state_dir) == before
 
 
 def test_pending_summary(state_dir, capsys):

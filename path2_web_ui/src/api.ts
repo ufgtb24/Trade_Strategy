@@ -3,6 +3,7 @@ import type {
   ScanProgress, ScanDone, ScanHistoryEntry, Analysis, ScanMeta, NodesScopeResponse,
   TimeScopeResponse, PairScopeResponse, ParamsDiffResp,
   WorkflowListMeta, WorkflowList, Annotation, AnnotationBatchResult, AnnotationBatchMeta,
+  WorkflowStateInfo,
 } from './types'
 // Task 10 · ParamsChip(及 Task 11 抽屉)按 `from '../api'` 消费 diff 响应类型,故随 getParamsDiff 一并重导出。
 export type { ParamsDiffResp }
@@ -241,6 +242,10 @@ async function getWorkflowJson<T>(path: string): Promise<T> {
     throw new Error(`${r.status}:${msg}`)
   }
   return r.json() as Promise<T>
+}
+/** 状态根在哪、是不是来自环境变量(只读)。 */
+export function getWorkflowState(): Promise<WorkflowStateInfo> {
+  return getWorkflowJson('/workflow/state')
 }
 export function listWorkflowLists(): Promise<WorkflowListMeta[]> {
   return getWorkflowJson('/workflow/lists')

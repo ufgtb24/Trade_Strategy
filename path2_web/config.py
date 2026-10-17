@@ -1,4 +1,7 @@
-"""configs/path2_web.yaml 读写。缺文件/缺项回落默认(浅层 + scan / workflow 子树 merge)。"""
+"""configs/path2_web.yaml 读写。缺文件/缺项回落默认(浅层 + scan / workflow 子树 merge)。
+
+workflow 子树(看图工作流的护栏参数)只读:PUT /config 不改它(api.write_config),save_config 也不写它。
+"""
 from __future__ import annotations
 
 from pathlib import Path
@@ -57,6 +60,13 @@ def load_config(path=DEFAULT_PATH) -> dict:
 
 
 def save_config(cfg: dict, path=DEFAULT_PATH) -> None:
+    """写回 yaml。看图工作流那一段(workflow)不从内存写:文件里原来有就原样保留,没有就不写——
+    否则前端每次保存都会把代码默认值固定进受 git 跟踪的配置文件,之后改代码默认值就被它盖住。"""
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(yaml.safe_dump(cfg, allow_unicode=True, sort_keys=False))
+    out = {k: v for k, v in cfg.items() if k != "workflow"}
+    if path.exists():
+        disk = yaml.safe_load(path.read_text()) or {}
+        if isinstance(disk, dict) and "workflow" in disk:
+            out["workflow"] = disk["workflow"]
+    path.write_text(yaml.safe_dump(out, allow_unicode=True, sort_keys=False))

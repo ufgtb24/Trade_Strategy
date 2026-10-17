@@ -14,12 +14,17 @@ create_shape / revise_shape / add_case / rename_shape / merge_shape / set_status
 {"value": ..., "origin": "user_written | suggested_adopted | suggested_edited",
  "suggested_by": "own_library | detector | llm | general_knowledge | session",
  "suggested_value": ..., "said_first_match": "用户先说的一句里对得上的原话",
- "root": {<own_library 复用时,那条值当初入库时的来源记录>}}
+ "from_card": {"shape_id": "s001", "version": 2, "ref": "i1"},   # own_library 复用时会话只填这个
+ "root": {<own_library 复用时,那条值当初入库时的来源记录,由工具从旧卡里抄>}}
 规则(validate,任一不过就拒绝写入并列出全部问题):origin 必填;推荐来的(adopted / edited)要写
 suggested_by;改过的推荐要带 suggested_value(用户自己写的也可以带,记下当时摆着的推荐);
 引用事实表行 / 触发候选 / 失效模板(term 不是 custom)的值永远算推荐——推荐来的只能是
-detector 或 own_library,用户自己写的必须带非空 said_first_match;own_library 必须带 root,
-算条件构成时递归到 root,防止采纳过的系统推荐经用户的卡转一手被洗成用户来源。
+detector 或 own_library,用户自己写的必须带非空 said_first_match。
+从你以前的形态卡复用(own_library)时,会话只填 from_card:旧卡编号 shape_id、版本 version、要素编号
+ref(要素 ing_id、触发 trig_id、口径选择 "<ing_id>.choices.<名>"、story、exit_pref);不接受会话自带的
+root。工具去旧卡那个版本里找到那一条,把它当初的来源(它本身也是复用的,就取它的 root,一直到底)
+抄成 root;引用编号(term)和旧卡那一条对不上、卡 / 版本 / 要素不存在,都拒绝。算条件构成时递归到
+root,防止采纳过的系统推荐经用户的卡转一手被洗成用户来源。
 包一层的粒度:每个要素(及 choices 里每一项)、每个触发、每个分歧答案、形态名字、story、exit_pref、
 每个样本的买点与形态认领。
 
@@ -74,7 +79,8 @@ ORIGINS = ("user_written", "suggested_adopted", "suggested_edited")
 SUGGESTED_BY = ("own_library", "detector", "llm", "general_knowledge", "session")
 ROLES = ("must", "bonus", "must_not")
 STATUSES = ("draft", "confirmed", "in_trial", "judged", "merged")
-ORIGIN_FIELDS = ("origin", "suggested_by", "suggested_value", "said_first_match", "root")
+ORIGIN_FIELDS = ("origin", "suggested_by", "suggested_value", "said_first_match", "from_card", "root")
+ROOT_FIELDS = ("origin", "suggested_by", "suggested_value", "said_first_match")
 SHAPE_ID_RE = re.compile(r"^s(\d{3,})$")
 NEW_REF = "$new"
 CARD_TERMS = tuple(ROWS) + tuple(TRIGGERS) + tuple(INVALIDATIONS) + ("custom",)
@@ -94,8 +100,7 @@ class ShapeValidationError(ValueError):
 
 # ── 来源记录与卡的校验 ───────────────────────────────────────────────────────
 
-def validate(rec, path: str, term: str | None = None, wrapped: bool = True,
-             is_root: bool = False) -> list[str]:
+def validate(rec, path: str, term: str | None = None, wrapped: bool = True) -> list[str]:
     """一条来源记录的问题清单。wrapped:要求带 value(要素 / 触发的来源字段直接摊在条目上,不带 value)。
     term:这个值引用的事实表行 / 触发 / 失效模板编号(custom 或 None 表示不引用)。"""
     if not isinstance(rec, dict):
@@ -114,18 +119,98 @@ def validate(rec, path: str, term: str | None = None, wrapped: bool = True,
     if origin == "suggested_edited" and "suggested_value" not in rec:
         errs.append(f"{path}: 改过的推荐要带 suggested_value(推荐原值)")
     refs_table = term is not None and term != "custom"
-    if refs_table and not is_root:
+    if refs_table:
         if origin == "user_written" and not str(rec.get("said_first_match") or "").strip():
             errs.append(f"{path}: 引用 {term} 却记成用户自己写的,要带 said_first_match(用户先说的原话)")
         if origin in ("suggested_adopted", "suggested_edited") and by not in ("detector", "own_library",
                                                                               None):
             errs.append(f"{path}: {term} 来自事实表,推荐来源只能是 detector 或 own_library")
+    if "root" in rec:
+        errs.append(f"{path}: 不要自带 root;复用旧卡只给 from_card(旧卡编号、版本、要素编号),"
+                    f"当初的来源由工具从旧卡里抄")
+    fc = rec.get("from_card")
     if by == "own_library":
-        root = rec.get("root")
-        if not isinstance(root, dict):
-            errs.append(f"{path}: 从你以前的形态卡复用的值要带 root(当初入库时的来源记录)")
-        else:
-            errs += validate(root, f"{path}.root", term, wrapped=False, is_root=True)
+        if not (isinstance(fc, dict) and isinstance(fc.get("shape_id"), str)
+                and isinstance(fc.get("version"), int) and not isinstance(fc.get("version"), bool)
+                and isinstance(fc.get("ref"), str) and fc["ref"]):
+            errs.append(f"{path}: 从你以前的形态卡复用的值要带 from_card "
+                        f"{{shape_id, version(整数), ref(要素编号)}}")
+    elif fc is not None:
+        errs.append(f"{path}: 只有 suggested_by = own_library 的值才带 from_card")
+    return errs
+
+
+def _element(card: dict, ref: str) -> tuple[dict | None, str | None]:
+    """卡的某个版本里 ref 指的那一条及它引用的编号(term;口径选择、story、exit_pref 没有 term)。"""
+    for ing in card.get("ingredients", []):
+        if ing.get("ing_id") == ref:
+            return ing, ing.get("term")
+        for name, ch in (ing.get("choices") or {}).items():
+            if ref == f"{ing.get('ing_id')}.choices.{name}":
+                return ch, None
+    for t in card.get("triggers", []):
+        if t.get("trig_id") == ref:
+            return t, t.get("term")
+    if ref in ("story", "exit_pref") and isinstance(card.get(ref), dict):
+        return card[ref], None
+    return None, None
+
+
+def _bottom(el: dict) -> dict:
+    """一条值当初的来源:它本身是复用的就取它的 root(已到底),否则取它自己的来源字段。"""
+    if el.get("suggested_by") == "own_library" and isinstance(el.get("root"), dict):
+        return copy.deepcopy(el["root"])
+    return {k: copy.deepcopy(el[k]) for k in ROOT_FIELDS if k in el}
+
+
+def _origin_records(act: str, v: dict):
+    """一条形态操作 value 里所有来源记录:(记录, 引用编号, 路径)。"""
+    if act in ("create_shape", "rename_shape") and isinstance(v.get("name"), dict):
+        yield v["name"], None, "name"
+    card = v.get("card") if act in ("create_shape", "revise_shape") else None
+    if isinstance(card, dict):
+        for k, ing in enumerate(card.get("ingredients", [])):
+            yield ing, ing.get("term"), f"card.ingredients[{k}]"
+            for name, ch in (ing.get("choices") or {}).items():
+                yield ch, None, f"card.ingredients[{k}].choices.{name}"
+        for k, t in enumerate(card.get("triggers", [])):
+            yield t, t.get("term"), f"card.triggers[{k}]"
+        for key in ("story", "exit_pref"):
+            if isinstance(card.get(key), dict):
+                yield card[key], None, f"card.{key}"
+    if act == "add_case":
+        for key in ("buy_date", "shape_claim"):
+            if isinstance(v.get(key), dict):
+                yield v[key], None, key
+        for k, da in enumerate(v.get("divergence_answers") or []):
+            if isinstance(da.get("choice"), dict):
+                yield da["choice"], None, f"divergence_answers[{k}].choice"
+
+
+def resolve_own_library(act: str, v: dict, cards: dict, path: str) -> list[str]:
+    """把 value 里每条 own_library 复用的 root 从旧卡里抄过来(就地改)。返回问题清单。"""
+    errs = []
+    for rec, term, sub in _origin_records(act, v):
+        if rec.get("suggested_by") != "own_library":
+            continue
+        fc = rec["from_card"]
+        where = f"{path}.{sub}"
+        card = cards.get(fc["shape_id"])
+        if card is None:
+            errs.append(f"{where}: 旧卡 {fc['shape_id']} 不存在")
+            continue
+        ver = next((x for x in card["versions"] if x["version"] == fc["version"]), None)
+        if ver is None:
+            errs.append(f"{where}: 旧卡 {fc['shape_id']} 没有版本 v{fc['version']}")
+            continue
+        el, old_term = _element(ver["card"], fc["ref"])
+        if el is None:
+            errs.append(f"{where}: 旧卡 {fc['shape_id']} v{fc['version']} 里没有 {fc['ref']!r}")
+            continue
+        if term is not None and old_term != term:
+            errs.append(f"{where}: 引用 {term},旧卡那一条引用的是 {old_term},不是同一个东西")
+            continue
+        rec["root"] = _bottom(el)
     return errs
 
 
@@ -369,6 +454,10 @@ def prepare(decision: dict, existing_ops: list[dict], anns: dict) -> tuple[list[
             ids.add(sid)
             last_new = sid
         e = _validate_value(act, v, path)
+        if e:
+            errs += e
+            continue
+        e = resolve_own_library(act, v, cards, path)
         if e:
             errs += e
             continue

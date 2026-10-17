@@ -1,7 +1,8 @@
 """状态根:看图工作流记账类文件唯一的家。
 
 记账类文件(原始标注 annotations/、看过记录 views.jsonl 与 viewed_lists/、事实表快照 facts/、
-形态卡 shapes/、操作日志 oplog/、账本 ledger.jsonl、规则存档 rule_archive/)只存一份,放在
+形态卡 shapes/、操作日志 oplog/、账本 ledger.jsonl、规则存档 rule_archive/、配置存档 config_archive/、
+水位重置记录 watermark_resets.jsonl)只存一份,放在
 **主目录**(git 仓库的 main worktree)的 outputs/chart_workflow/ 下,受 git 跟踪;在任何
 worktree 里运行工具,都经 state_root() 自动定位到主目录这一份。工具只写文件、不自己 commit。
 
@@ -14,17 +15,35 @@ worktree 里运行工具,都经 state_root() 自动定位到主目录这一份�
 
 红线:状态根里必须有受 git 跟踪的标记文件 STATE_ROOT.md,找不到就抛 StateRootMissing 停下,
 绝不悄悄新建空账——主目录切到没有这些文件的分支时,账本和看过记录会被拆成两份。
-新开一本账只能显式运行 init。
+新开一本账只能显式运行 init,而且 init 不接受主目录(及任何 worktree)的默认位置:
+默认位置的标记文件随记账文件一起受 git 跟踪,只能经 git 到达。
+
+水位(防「标记在、账本却是旧的」):标记文件跟代码一起提交,合了代码、没合账本(或账本较旧)
+的分支照样有标记。所以另在 git 公共目录里记一份水位
+(<git 公共目录>/chart_workflow/watermark.json,不随分支走、所有 worktree 共用):
+只追加的文件(账本、看过记录、操作日志、水位重置记录)记见过的每一行的指纹,
+只增不改的目录(原始标注、看过的清单快照、事实表快照、规则存档、配置存档)记见过的文件名。
+每次 state_root() 先核对「见过的行和文件都还在」(只看在不在、不看顺序,按行合并后行序变了也不误报),
+少了就抛 StateRootRegressed(「账本比上次看到的少，可能切到了旧分支」)停下;核对通过后把当前内容记进水位。
+写入方写完再调 advance(root),把刚写的内容也记进去。
+有意改写记账文件(例如迁移旧账、重编轮次)之后,用 reset-watermark 显式重置,必须写原因,
+重置记录追加到状态根的 watermark_resets.jsonl(受 git 跟踪)。
+环境变量指定的临时状态根不在 git 分支切换的范围里,水位就放在它自己目录下的 .watermark.json。
 
     uv run python -m chart_workflow.state show
     uv run python -m chart_workflow.state init <目录>
+    uv run python -m chart_workflow.state reset-watermark --reason "<原因>"
 """
 from __future__ import annotations
 
 import argparse
+import hashlib
+import json
 import os
 import subprocess
 import sys
+import threading
+from datetime import datetime
 from functools import lru_cache
 from pathlib import Path
 
@@ -51,6 +70,8 @@ path2_web 的看图工作流后端)自动定位主目录(git 仓库的 main work
 - `oplog/`:操作日志(形态卡的唯一真相)
 - `ledger.jsonl`:账本
 - `rule_archive/`:对照页用过的规则文件存档
+- `config_archive/`:每轮记账时生效配置的全文存档(按指纹)
+- `watermark_resets.jsonl`:水位重置记录(谁、为什么改写过记账文件)
 
 不进 git 的(可重算的产物,随各自 worktree 的 `outputs/chart_workflow/`):清单 `lists/`、
 缓存 `cache/`、数据错误登记 `data_errors.json`。
@@ -66,11 +87,27 @@ _KINDS = (
     ("操作日志条目", "oplog", "jsonl_lines"),
     ("账本行", "ledger.jsonl", "lines"),
     ("规则存档", "rule_archive", "files"),
+    ("配置存档", "config_archive", "files"),
+    ("水位重置记录", "watermark_resets.jsonl", "lines"),
 )
+
+WATERMARK_SCHEMA = "chart_workflow.watermark/1"
+RESETS_FILE = "watermark_resets.jsonl"
+REGRESSED_TEXT = "账本比上次看到的少，可能切到了旧分支"
+# 只追加的文件:按行记指纹
+_LINE_FILES = ("ledger.jsonl", "views.jsonl", RESETS_FILE)
+_LINE_DIRS = ("oplog",)                       # 目录下的 *.jsonl
+# 只增不改的目录:按文件名记(递归,相对目录的路径)
+_FILE_DIRS = ("annotations", "viewed_lists", "facts", "rule_archive", "config_archive")
 
 
 class StateRootMissing(RuntimeError):
     """拿不到状态根(标记文件不在、git 不可用等)。消息是给用户看的中文。"""
+
+
+class StateRootRegressed(StateRootMissing):
+    """标记在,但记账文件比水位里见过的少(多半是主目录切到了旧分支)。
+    是 StateRootMissing 的子类:所有「拿不到状态根就停」的地方照样停下。"""
 
 
 @lru_cache(maxsize=16)
@@ -102,21 +139,186 @@ def locate(start: Path = REPO_ROOT) -> Path:
 
 def missing_message(path: Path) -> str:
     return (f"状态根 {path} 下没有标记文件 {MARKER}:主目录当前分支没有记账文件,"
-            f"可能切到了别的分支。切回有记账文件的分支再用;确实要在别处新开一本账,"
-            f"运行 python -m chart_workflow.state init <目录>")
+            f"可能切到了别的分支。切回有记账文件的分支再用(标记文件随记账文件一起受 git 跟踪,"
+            f"默认位置不能用 init 新建)。测试或临时用途:把环境变量 {ENV_VAR} 指到别的目录,"
+            f"再运行 python -m chart_workflow.state init <那个目录>")
+
+
+def watermark_path(root: Path, start: Path = REPO_ROOT) -> Path:
+    """root 的水位文件。root 是环境变量指定的临时状态根 → root/.watermark.json;
+    否则 → <git 公共目录>/chart_workflow/watermark.json(不随分支走、所有 worktree 共用)。"""
+    env = os.environ.get(ENV_VAR)
+    if env and Path(env).resolve() == Path(root).resolve():
+        return Path(root) / ".watermark.json"
+    return Path(_git_common_dir(str(Path(start).resolve()))) / "chart_workflow" / "watermark.json"
+
+
+_HASH_CACHE: dict[tuple[str, int, int], list[str]] = {}
+_WM_LOCK = threading.Lock()
+
+
+def _line_hashes(p: Path) -> list[str]:
+    """文件里每个完整行(以换行结尾)的指纹,去重排序。正在追加、还没写完换行的末行不算,
+    免得把半行记进水位、之后又当成「少了一行」误报。按 (路径, 大小, 修改时间) 缓存。"""
+    st = p.stat()
+    key = (str(p), st.st_size, st.st_mtime_ns)
+    if key not in _HASH_CACHE:
+        if len(_HASH_CACHE) > 256:
+            _HASH_CACHE.clear()
+        data = p.read_bytes()
+        hs = set()
+        for line in data.split(b"\n")[:-1]:          # 最后一段没有换行结尾,不算
+            line = line.rstrip(b"\r")
+            if line.strip():
+                hs.add(hashlib.sha1(line).hexdigest()[:16])
+        _HASH_CACHE[key] = sorted(hs)
+    return _HASH_CACHE[key]
+
+
+def _current(root: Path) -> dict:
+    """状态根当前内容的水位形式:{"lines": {相对路径: [行指纹…]}, "files": {目录: [文件名…]}}。"""
+    lines: dict[str, list[str]] = {}
+    for rel in _LINE_FILES:
+        if (root / rel).is_file():
+            lines[rel] = _line_hashes(root / rel)
+    for d in _LINE_DIRS:
+        if (root / d).is_dir():
+            for f in sorted((root / d).glob("*.jsonl")):
+                lines[f"{d}/{f.name}"] = _line_hashes(f)
+    files: dict[str, list[str]] = {}
+    for d in _FILE_DIRS:
+        if (root / d).is_dir():
+            files[d] = sorted(str(f.relative_to(root / d)) for f in (root / d).rglob("*")
+                              if f.is_file() and not f.name.endswith(".tmp"))
+    return {"lines": lines, "files": files}
+
+
+def _missing(wm: dict, cur: dict) -> list[str]:
+    """水位里见过、现在不在的东西,一条一句中文。空表 = 见过的都还在。"""
+    out = []
+    for rel, hs in sorted(wm.get("lines", {}).items()):
+        have = set(cur["lines"].get(rel, ()))
+        lost = sum(1 for h in hs if h not in have)
+        if lost:
+            out.append(f"{rel} 少了 {lost} 行(上次见过 {len(hs)} 行,现在 {len(have)} 行)")
+    for d, names in sorted(wm.get("files", {}).items()):
+        have = set(cur["files"].get(d, ()))
+        lost = [n for n in names if n not in have]
+        if lost:
+            out.append(f"{d}/ 少了 {len(lost)} 个文件(例如 {lost[0]})")
+    return out
+
+
+def _summary(wm: dict) -> dict:
+    return {"lines": {k: len(v) for k, v in sorted(wm.get("lines", {}).items())},
+            "files": {k: len(v) for k, v in sorted(wm.get("files", {}).items())}}
+
+
+def _read_wm(wm_file: Path) -> dict:
+    try:
+        wm = json.loads(wm_file.read_text())
+    except FileNotFoundError:
+        return {}
+    except (OSError, ValueError) as e:
+        raise StateRootMissing(f"水位文件 {wm_file} 读不了({e});核对无从谈起,先停下。"
+                               f"确认无误后可运行 reset-watermark 重建") from None
+    if not isinstance(wm, dict) or wm.get("schema") != WATERMARK_SCHEMA:
+        raise StateRootMissing(f"水位文件 {wm_file} 格式不对;确认无误后可运行 reset-watermark 重建")
+    return wm
+
+
+def _write_wm(wm_file: Path, root: Path, cur: dict) -> None:
+    wm_file.parent.mkdir(parents=True, exist_ok=True)
+    doc = {"schema": WATERMARK_SCHEMA, "state_root": str(root),
+           "updated_at": datetime.now().isoformat(timespec="seconds"), **cur}
+    tmp = wm_file.with_name(f"{wm_file.name}.{os.getpid()}.{threading.get_ident()}.tmp")
+    tmp.write_text(json.dumps(doc, ensure_ascii=False))
+    os.replace(tmp, wm_file)
+
+
+def _sync(root: Path, wm_file: Path) -> None:
+    """核对水位:见过的行和文件都还在 → 把当前内容记进水位;少了 → StateRootRegressed。"""
+    with _WM_LOCK:
+        wm = _read_wm(wm_file)
+        cur = _current(root)
+        miss = _missing(wm, cur) if wm else []
+        if miss:
+            raise StateRootRegressed(
+                f"{REGRESSED_TEXT}:状态根 {root} 里" + ";".join(miss) +
+                f"。先切回最新的分支再用。确实是有意改写(例如迁移旧账、重编轮次),运行 "
+                f"python -m chart_workflow.state reset-watermark --reason \"<原因>\" 重置水位"
+                f"(水位文件 {wm_file})")
+        if not wm or {k: wm.get(k) for k in ("lines", "files")} != cur:
+            _write_wm(wm_file, root, cur)
 
 
 def state_root(start: Path = REPO_ROOT) -> Path:
-    """记账类文件的唯一的家。目录里没有标记文件 → StateRootMissing(绝不新建)。"""
+    """记账类文件的唯一的家。目录里没有标记文件 → StateRootMissing(绝不新建);
+    记账文件比水位里见过的少 → StateRootRegressed。核对通过时顺手把当前内容记进水位。"""
     path = locate(start)
     if not (path / MARKER).is_file():
         raise StateRootMissing(missing_message(path))
+    _sync(path, watermark_path(path, start))
     return path
 
 
+def advance(root: Path) -> None:
+    """写入方写完记账文件后调用:核对并把刚写的内容记进水位(下次切到旧分支就能发现少了它)。"""
+    _sync(Path(root), watermark_path(root))
+
+
+def reset_watermark(root: Path, reason: str, start: Path = REPO_ROOT) -> dict:
+    """显式重置水位为当前内容。reason 必填;重置记录(时间、原因、少了什么、前后条数)
+    追加到 root/watermark_resets.jsonl,返回这条记录。只在有意改写记账文件之后用。"""
+    reason = (reason or "").strip()
+    if not reason:
+        raise ValueError("重置水位必须写明原因(--reason)")
+    root = Path(root)
+    if not (root / MARKER).is_file():
+        raise StateRootMissing(missing_message(root))
+    wm_file = watermark_path(root, start)
+    with _WM_LOCK:
+        try:
+            wm = _read_wm(wm_file)
+        except StateRootMissing:
+            wm = {}
+        cur = _current(root)
+        rec = {"ts": datetime.now().isoformat(timespec="seconds"), "reason": reason,
+               "watermark": str(wm_file), "missing": _missing(wm, cur) if wm else [],
+               "before": _summary(wm), "after": _summary(cur)}
+        with (root / RESETS_FILE).open("a") as f:
+            f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+        _write_wm(wm_file, root, _current(root))
+    return rec
+
+
+def _default_root_of(path: Path) -> list[Path]:
+    """path 所在仓库里不能 init 的位置:主目录与当前 worktree 的 outputs/chart_workflow。
+    path 不在 git 仓库里 → 空表。"""
+    probe = path
+    while not probe.exists() and probe != probe.parent:
+        probe = probe.parent
+    try:
+        r = subprocess.run(["git", "rev-parse", "--path-format=absolute", "--show-toplevel",
+                            "--git-common-dir"], cwd=probe, capture_output=True, text=True, timeout=10)
+    except (OSError, subprocess.SubprocessError):
+        return []
+    if r.returncode != 0:
+        return []
+    top, common = r.stdout.strip().splitlines()[:2]
+    return [Path(top).resolve() / "outputs" / "chart_workflow",
+            Path(common).resolve().parent / "outputs" / "chart_workflow"]
+
+
 def init(path: Path) -> Path:
-    """显式新开一本账:建目录并写标记文件(已有标记就不动)。只有这里会建标记。"""
+    """显式新开一本账:建目录并写标记文件(已有标记就不动)。只有这里会建标记。
+    拒绝主目录(及任何 worktree)的默认位置 → ValueError:那里的标记只能随记账文件经 git 到达,
+    在旧分支上照提示 init 会在那段时间里开出一本空账。"""
     path = Path(path).resolve()
+    if path in _default_root_of(path):
+        raise ValueError(f"{path} 是默认状态根位置,不能用 init 新建:那里的标记文件随记账文件"
+                         f"一起受 git 跟踪,切回有记账文件的分支即可。测试或临时用途请 init 别的目录,"
+                         f"并用环境变量 {ENV_VAR} 指向它")
     path.mkdir(parents=True, exist_ok=True)
     marker = path / MARKER
     if not marker.exists():
@@ -139,12 +341,18 @@ def _count(p: Path, how: str) -> int:
 def main(argv=None) -> None:
     ap = argparse.ArgumentParser(description="状态根(记账类文件唯一的家)")
     sub = ap.add_subparsers(dest="cmd", required=True)
-    sub.add_parser("show", help="打印状态根路径、标记在不在、各类文件条数")
-    a = sub.add_parser("init", help="在指定目录新开一本账(写标记文件)")
+    sub.add_parser("show", help="打印状态根路径、标记在不在、水位核对结果、各类文件条数")
+    a = sub.add_parser("init", help="在指定目录新开一本账(写标记文件;不接受默认位置)")
     a.add_argument("path")
+    r = sub.add_parser("reset-watermark", help="有意改写记账文件后重置水位(必须写原因,留记录)")
+    r.add_argument("--reason", required=True, help="为什么改写了记账文件(例如「迁移旧账」)")
     args = ap.parse_args(argv)
     if args.cmd == "init":
-        p = init(Path(args.path))
+        try:
+            p = init(Path(args.path))
+        except ValueError as e:
+            print(f"错误:{e}", file=sys.stderr)
+            sys.exit(2)
         print(f"已建状态根 {p}(标记 {MARKER})")
         return
     try:
@@ -152,12 +360,29 @@ def main(argv=None) -> None:
     except StateRootMissing as e:
         print(f"错误:{e}", file=sys.stderr)
         sys.exit(2)
+    if args.cmd == "reset-watermark":
+        try:
+            rec = reset_watermark(path, args.reason)
+        except (ValueError, StateRootMissing) as e:
+            print(f"错误:{e}", file=sys.stderr)
+            sys.exit(2)
+        print(f"已重置水位({rec['watermark']}),原因:{rec['reason']}")
+        for m in rec["missing"]:
+            print(f"  重置前少了:{m}")
+        print(f"重置记录已追加到 {path / RESETS_FILE}")
+        return
     src = f"环境变量 {ENV_VAR}" if os.environ.get(ENV_VAR) else "主目录"
     has = (path / MARKER).is_file()
     print(f"状态根:{path}(来自{src})")
     print(f"标记文件 {MARKER}:{'在' if has else '不在'}")
     if not has:
         print(missing_message(path), file=sys.stderr)
+        sys.exit(2)
+    try:
+        _sync(path, watermark_path(path))
+        print(f"水位核对:通过({watermark_path(path)})")
+    except StateRootMissing as e:
+        print(f"水位核对:不通过。{e}", file=sys.stderr)
         sys.exit(2)
     for name, rel, how in _KINDS:
         print(f"  {name:<10} {_count(path / rel, how):>6}  ({rel})")

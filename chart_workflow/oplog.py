@@ -18,7 +18,7 @@ import uuid
 from datetime import datetime
 from pathlib import Path
 
-from chart_workflow.state import state_root
+from chart_workflow.state import advance, state_root
 
 ACTORS = ("user", "session")
 SHAPE_ACTS = ("create_shape", "revise_shape", "add_case", "rename_shape", "merge_shape", "set_status")
@@ -73,6 +73,7 @@ def append(entries: list[dict]) -> list[dict]:
     for month, lines in sorted(by_month.items()):
         with (d / f"{month}.jsonl").open("a") as f:
             f.write("".join(line + "\n" for line in lines))
+    advance(d.parent)                    # 新行记进水位
     return out
 
 
