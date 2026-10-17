@@ -24,6 +24,8 @@ F01～F15 每一行都能直接立要素,不用写代码:
     「近乎恒成立 / 近乎不可能」拒绝;between 只有一端落在合理范围外时原样保留两端,打印要素时给提示
     (definition_hints);百分比写成整数(30% 写成 30)出界时报错里提示单位。
     这些都是现在(第 2 版)的校验规则;重走旧日志条目时按那条自己的版本(shapes 模块说明)。
+    这一段都是写入时的质量把关,其中边界、根数上界、合理范围取决于当时的配置:重走日志里已有的条目时
+    (quality_as_notices)不合格只记成提示、不当错误,between 也不按现在的硬边界改写(会改写时同样只提示)。
   · 现有事实行都算不出的角度才记「待写代码」(definition 为 null,needs 写缺什么)。
 
 身份看定义,不看字面(same_meaning):读的行、值、条件类型、口径相同,并且 user_params 相同(系统默认值
@@ -90,6 +92,8 @@ detector(事实表)/ session / llm / general_knowledge(要素按编号复用,不
 from __future__ import annotations
 
 import argparse
+import contextlib
+import contextvars
 import copy
 import json
 import math
@@ -120,6 +124,21 @@ VARIANTS = ("close", "high")
 @lru_cache(maxsize=1)
 def _facts_cfg() -> dict:
     return load_config()["facts"]
+
+
+_QUALITY = contextvars.ContextVar("chart_workflow_quality_sink", default=None)
+
+
+@contextlib.contextmanager
+def quality_as_notices(sink: list):
+    """重走日志里已有的条目时用(shapes.revalidate):定义的质量把关(恒成立 / 不可能 / 根数上界 / 合理范围 /
+    同义换写,边界取决于当时的配置)不合格时把问题记进 sink、不当错误;between 不按现在的硬边界改写,会改写时
+    同样记一条进 sink。"""
+    token = _QUALITY.set(sink)
+    try:
+        yield
+    finally:
+        _QUALITY.reset(token)
 
 
 @lru_cache(maxsize=1)
@@ -560,8 +579,8 @@ def _one_sided(spec: dict, up: dict, dp: dict) -> tuple[str, dict, dict]:
 
 def normalize_definition(d, path: str = "definition") -> tuple[dict | None, list[str]]:
     """校验并规范化一个定义:行、值、条件类型、口径、参数都对得上声明;参数转成规范类型;一端碰到边界的
-    between 按 at_least / at_most 规范化(见 _one_sided);拒绝恒成立、不可能、同义换写的定义。
-    返回 (规范化的定义, 问题清单)。"""
+    between 按 at_least / at_most 规范化(见 _one_sided);拒绝恒成立、不可能、同义换写的定义(重走日志里已有的
+    条目时这几项只记提示,见 quality_as_notices)。返回 (规范化的定义, 问题清单)。"""
     if not isinstance(d, dict):
         return None, [f"{path}: 必须是对象(现有事实算不出就写 null 并给 needs)"]
     errs = []
@@ -613,11 +632,18 @@ def normalize_definition(d, path: str = "definition") -> tuple[dict | None, list
                 errs += e
     if errs:
         return None, errs
+    sink = _QUALITY.get()
     if cond == "between" and oplog.rules_now() >= 2:
-        cond, out_u, out_d = _one_sided(spec, out_u, out_d)
+        if sink is None:
+            cond, out_u, out_d = _one_sided(spec, out_u, out_d)
+        elif _one_sided(spec, out_u, out_d)[0] != "between":
+            sink.append(f"{path}: between 有一端碰到了{_vtitle(spec, variant)}本来就取不到的边界,"
+                        f"等于 {_one_sided(spec, out_u, out_d)[0]}")
     errs = _semantic_errors(fid, vname, spec, cond, {**out_d, **out_u}, variant, path)
-    if errs:
+    if errs and sink is None:
         return None, errs
+    if errs:
+        sink.extend(errs)
     return {"row": fid, "value": vname, "cond": cond, "variant": variant,
             "user_params": out_u, "default_params": out_d}, []
 

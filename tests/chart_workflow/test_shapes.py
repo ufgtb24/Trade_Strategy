@@ -570,8 +570,13 @@ def _rewrite_log(state_dir, rows):
     state.reset_watermark(state_dir, "测试:改写日志")
 
 
+def _declare_legacy(state_dir):
+    """临时状态根声明含有旧工具写的条目(没有校验版本号的按第 1 版重走)。"""
+    (state_dir / oplog.LEGACY_FILE).write_text(json.dumps({"unversioned_as": 1, "reason": "测试:模拟旧工具写的日志"}))
+
+
 def test_old_cards_without_element_version_still_revalidate(state_dir):
-    """第 1 版(没有校验版本号的旧条目)的卡可以没记要素版本号:照常重新校验通过、照常打印。"""
+    """第 1 版(声明过的、没有校验版本号的旧条目)的卡可以没记要素版本号:照常重新校验通过、照常打印。"""
     _base(state_dir)
     f = sorted((state_dir / "oplog").glob("*.jsonl"))[-1]
     rows = [json.loads(x) for x in f.read_text().splitlines()]
@@ -579,17 +584,20 @@ def test_old_cards_without_element_version_still_revalidate(state_dir):
     for r in rows:
         r.pop("rules_version")
     _rewrite_log(state_dir, rows)
+    _declare_legacy(state_dir)
     assert shapes.rebuild(verify=False) == []
     assert "按收盘至少越过一个峰" in shapes.render(shapes.load_card("s001"))
 
 
 @pytest.mark.parametrize("when,needle", [
     ("v2", "和日志里记的不一样"),                                  # 第 2 版的卡不记要素版本号
-    ("unversioned_after_v2", "校验版本号是第 1 版,比前面的条目"),  # 去掉版本号冒充旧条目
+    ("unversioned_after_v2", "校验版本号是第 1 版,比前面的条目"),  # 声明过旧版条目,去掉版本号冒充旧条目
+    ("unversioned_undeclared", "没有校验版本号.*当作被改过"),
     ("newer", "校验版本号 9 不认识"),
 ])
 def test_missing_element_version_only_forgiven_for_old_entries(state_dir, when, needle):
-    """只有第 1 版的条目可以不记要素版本号;排在第 2 版条目后面却没有版本号的不算旧条目;版本号比工具新的不认。"""
+    """只有第 1 版的条目可以不记要素版本号;排在第 2 版条目后面却没有版本号的不算旧条目;状态根没声明含旧版
+    条目时,没有版本号一律当作被改过;版本号比工具新的不认。"""
     _base(state_dir)
     f = sorted((state_dir / "oplog").glob("*.jsonl"))[-1]
     rows = [json.loads(x) for x in f.read_text().splitlines()]
@@ -600,8 +608,13 @@ def test_missing_element_version_only_forgiven_for_old_entries(state_dir, when, 
             if when == "newer":
                 r["rules_version"] = 9
     _rewrite_log(state_dir, rows)
+    if when == "unversioned_after_v2":
+        _declare_legacy(state_dir)
     with pytest.raises(shapes.ShapeValidationError, match=needle):
         shapes.rebuild(verify=False)
+    with pytest.raises(shapes.ShapeValidationError, match=needle):       # 正常写入前的重走一样拦
+        shapes.apply(_decision(el_op("v", "放量", {"row": "F07", "value": "vr", "cond": "at_least",
+                                                    "default_params": {"x": 3.0}}, user=False)))
 
 
 def _v1_log(state_dir, *ops):
@@ -614,6 +627,7 @@ def _v1_log(state_dir, *ops):
     for r in rows:
         r.pop("rules_version")
     _rewrite_log(state_dir, rows)
+    _declare_legacy(state_dir)
     return rows
 
 
@@ -634,10 +648,11 @@ def test_entries_legal_when_written_do_not_lock_tools(state_dir, capsys):
     _v1_log(state_dir, *OLD_OK)
     assert shapes.rebuild(verify=True) == []
     err = capsys.readouterr().err
-    assert err.count("写入时按第 1 版规则合法,现在的规则不再允许") == 3
-    assert "不比事实表窗口短" in err and "按现在的规则补全出来的样子不同" in err and "said_first_match" in err
+    assert err.count("写入时合格,现在不再合格(只提示,不影响使用)") == 3
+    assert "按现在的第 2 版规则,最近 150 根不比事实表窗口短" in err
+    assert "按现在的第 2 版规则补全出来的样子不同" in err and "said_first_match" in err
     shapes.apply(_decision(el_op("pk1", "按收盘至少越过一个峰", PK1)))
-    assert "操作日志里有 3 条是按旧版校验规则写的" in capsys.readouterr().err
+    assert "操作日志里有 3 条写入时合格、现在不再合格" in capsys.readouterr().err
     conds = ledger.shape_conditions("shape:s001@v1")
     assert [(c.get("element"), c["origin"], c["has_said_first_match"]) for c in conds] == \
         [("E001", "user_written", False), (None, "suggested_adopted", False)]
@@ -646,15 +661,76 @@ def test_entries_legal_when_written_do_not_lock_tools(state_dir, capsys):
 
 @pytest.mark.parametrize("tamper", [
     lambda rows: rows[0]["value"].pop("said_first_match"),                  # 手改掉了用户原话
-    lambda rows: rows[1]["value"]["definition"]["user_params"].update(lo=1, hi=30),   # 第 1 版要求写成 at_most
+    lambda rows: rows[2]["value"]["card"]["ingredients"][0].update(origin="suggested_adopted"),   # 出处改了却没写谁推荐的
 ])
 def test_old_entry_tampered_against_its_own_version_blocks(state_dir, tamper):
-    """旧条目连自己那一版的规则都不合格:说成可能被改过,拦。"""
+    """旧条目的完整性(出处、原话)连自己那一版的规则都不合格:说成可能被改过,拦。"""
     rows = _v1_log(state_dir, *OLD_OK)
     tamper(rows)
     _rewrite_log(state_dir, rows)
     with pytest.raises(shapes.ShapeValidationError, match="连写入时的第 1 版规则都不合格,可能被改过"):
         shapes.apply(_decision(el_op("pk1", "按收盘至少越过一个峰", PK1)))
+
+
+def test_old_entry_failing_quality_check_of_its_own_version_only_notices(state_dir, capsys):
+    """旧条目的定义按它自己那一版的质量把关不合格(第 1 版要求一端碰到下界的 between 写成 at_most):质量把关
+    取决于当时的配置,只提示、不拦。"""
+    rows = _v1_log(state_dir, *OLD_OK)
+    rows[1]["value"]["definition"]["user_params"].update(lo=1, hi=30)
+    _rewrite_log(state_dir, rows)
+    assert shapes.rebuild(verify=False) == []
+    note = [x for x in capsys.readouterr().err.splitlines() if x.startswith("提示:日志第 2 条")]
+    assert len(note) == 1 and "按现在的配置,下限 1 碰到了" in note[0]
+    shapes.apply(_decision(el_op("pk1", "按收盘至少越过一个峰", PK1)))
+
+
+
+
+@pytest.mark.parametrize("name,definition,needle", [
+    ("最近 85 根里有派发", {**DIST, "user_params": {"bars": 85}}, "最近 85 根不比事实表窗口短"),
+    ("最早越过的峰离买点 10 到 80 根", {"row": "F04", "value": "bars", "cond": "between", "variant": "close",
+                                      "user_params": {"lo": 10, "hi": 80}}, "等于 at_least"),
+])
+def test_config_change_does_not_lock_tools(state_dir, monkeypatch, capsys, name, definition, needle):
+    """默认回看 90 根时写入的条目,把默认回看改成 60 根之后:写入新条目照常进行,只对旧条目给一条提示;
+    同样的定义新写进来,照现在的配置把关。"""
+    shapes.apply(_decision(el_op("old", name, definition)))
+    facts_cfg = {**elements._facts_cfg(), "default_lookback_bars": 60}
+    monkeypatch.setattr(elements, "_facts_cfg", lambda: facts_cfg)
+    shapes.apply(_decision(el_op("pk1", "按收盘至少越过一个峰", PK1)))
+    assert "操作日志里有 1 条写入时合格、现在不再合格" in capsys.readouterr().err
+    assert shapes.rebuild(verify=True) == []
+    notes = [x for x in capsys.readouterr().err.splitlines() if x.startswith("提示:")]
+    assert len(notes) == 1 and notes[0].startswith("提示:日志第 1 条(create_element,")
+    assert "按现在的配置," in notes[0] and needle in notes[0]
+    assert ledger.render(read_ledger()) is not None
+    if "bars" in definition["user_params"]:
+        with pytest.raises(shapes.ShapeValidationError, match=needle):
+            shapes.apply(_decision(el_op("again", "最近 85 根里有派发(再写一次)", definition)))
+
+
+def test_legacy_declaration_only_in_state_root(state_dir):
+    """新建的状态根不带旧版条目声明;声明文件格式不对时说清楚怎么写。"""
+    assert not (state_dir / oplog.LEGACY_FILE).exists() and oplog.unversioned_as(state_dir) is None
+    _declare_legacy(state_dir)
+    assert oplog.unversioned_as(state_dir) == 1
+    for bad in ({"unversioned_as": 1}, {"unversioned_as": True, "reason": "x"}, {"unversioned_as": 2, "reason": "x"}):
+        (state_dir / oplog.LEGACY_FILE).write_text(json.dumps(bad))
+        with pytest.raises(ValueError, match="格式不对"):
+            oplog.unversioned_as(state_dir)
+
+
+def test_rebuild_verify_lists_element_id_conflict(state_dir):
+    """日志里同一个要素编号建了两次(手写进日志):重算核对把它列进问题清单、不抛错;重算覆盖照样拒绝。"""
+    _base(state_dir)
+    f = sorted((state_dir / "oplog").glob("*.jsonl"))[-1]
+    first = json.loads(f.read_text().splitlines()[0])
+    _raw_append(state_dir, {**first, "op_id": "20261017T000000-cccccccc", "ts": "2026-10-17T23:59:00"})
+    problems = shapes.rebuild(verify=True)
+    assert any("要素 E001 已存在" in m for m in problems)
+    assert any(m.startswith("日志重算不下去(") for m in problems)
+    with pytest.raises(shapes.ShapeValidationError):
+        shapes.rebuild(verify=False)
 
 
 def test_decision_file_cannot_carry_rules_version(state_dir):

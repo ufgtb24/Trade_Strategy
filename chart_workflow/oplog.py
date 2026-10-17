@@ -14,8 +14,11 @@ read_all() 按月份文件顺序读回。文件:<状态根>/oplog/<YYYY-MM>.json
 会进要素库——这两类只能经决定文件(shapes.apply)写入,直接调 append 写它们会被拒;重算(shapes rebuild)
 时还会把它们逐条重新走一遍决定文件的校验(shapes.revalidate)。
 rules_version:写入时的校验版本号,由 append 补(写进来的值不作数)。校验规则收紧时 RULES_VERSION 加一,
-重走校验时每条按它自己的版本号用当时的规则(rules_at),当时合法、现在不再允许的只提示不拦;没有这个字段的
-旧条目算第 1 版。各版的差别见 shapes 模块说明。propose_fact:用户提了一个现有事实行没有的角度(value {"said": 原话}),只进日志——
+重走校验时每条按它自己的版本号用当时的规则(rules_at),当时合法、现在不再允许的只提示不拦。现在的工具写的
+每一条都带版本号,真实的账里没有第 1 版条目:要素与卡的条目没有这个字段,默认当作被改过、拦下;只有状态根里
+放了声明文件 legacy_rules.json({"unversioned_as": 1, "reason": "为什么这本账有旧工具写的条目"})时,才按
+第 1 版重走(unversioned_as)。新建的状态根不放这个文件。各版的差别见 shapes 模块说明。
+propose_fact:用户提了一个现有事实行没有的角度(value {"said": 原话}),只进日志——
 照它写成的事实行在 facts.ROWS 里把出处指向这一条(op_id)。
 """
 from __future__ import annotations
@@ -38,12 +41,30 @@ FIELDS = ("ts", "op_id", "rules_version", "actor", "surface", "act", "target", "
 TOOL_FIELDS = ("ts", "op_id", "rules_version")      # 工具补的字段,决定文件里不许自带
 VIA_DECISION = object()          # shapes.apply 校验完决定文件后传给 append 的凭据
 RULES_VERSION = 2                # 现在的校验版本号;各版差别见 shapes 模块说明
+LEGACY_FILE = "legacy_rules.json"   # 状态根里的声明:这本账含有旧工具写的、没有校验版本号的条目
 _RULES = contextvars.ContextVar("chart_workflow_rules_version", default=RULES_VERSION)
 
 
 def rules_now() -> int:
     """当前生效的校验版本号:平时是 RULES_VERSION,重走旧条目时是那条自己的版本号(见 rules_at)。"""
     return _RULES.get()
+
+
+def unversioned_as(root: Path | None = None) -> int | None:
+    """没有校验版本号的要素与卡条目按第几版重走:状态根(默认 state_root())放了声明文件 LEGACY_FILE → 1;
+    没放 → None(一律当作被改过,见 shapes.revalidate)。文件在、格式不对 → ValueError。"""
+    p = (root or state_root()) / LEGACY_FILE
+    if not p.exists():
+        return None
+    try:
+        doc = json.loads(p.read_text())
+    except (OSError, ValueError) as e:
+        raise ValueError(f"旧版条目声明 {p} 读不了({e})") from None
+    ok = isinstance(doc, dict) and type(doc.get("unversioned_as")) is int and doc["unversioned_as"] == 1 \
+        and str(doc.get("reason") or "").strip()
+    if not ok:
+        raise ValueError(f'旧版条目声明 {p} 格式不对:要写 {{"unversioned_as": 1, "reason": "为什么这本账有旧工具写的条目"}}')
+    return 1
 
 
 @contextlib.contextmanager

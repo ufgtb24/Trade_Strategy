@@ -102,8 +102,11 @@ DEFAULTS: dict = {
     },
     "shape_check": {     # 规则来自形态卡时的核对(rulecheck.py,全部待验证)
         "min_samples": 3,           # 至少要几个能核对的样本
-        "max_disagree_share": 0.0,  # 样本股逐日比,规则和卡不一致的天数最多占卡能判定天数的多少
-        "min_negative_days": 20,    # 样本股逐日比,卡判「不成立」的天至少要几天(反例不够看不出规则是否比卡宽)
+        "min_positive_samples": 2,  # 能核对的样本里,买点当天卡成立的至少要几个
+        "pool_stocks": 40,          # 逐日核对在样本股之外,从训练副本的股票池里随机抽几只(种子由卡的编号和版本定)
+        "max_disagree_share": 0.0,  # 逐日比,规则和卡不一致的天数最多占卡能判定天数的多少
+        "min_negative_days": 20,    # 逐日比,卡判「不成立」的天至少要几天(反例不够看不出规则是否比卡宽)
+        "min_positive_days": 10,    # 逐日比,卡判「成立」的天至少要几天(太少看不出规则是否比卡窄)
     },
     "facts": {           # 事实表(facts.py,全部待验证)
         "default_lookback_bars": 90,    # 没框选起止时,窗口取买点前这么多根

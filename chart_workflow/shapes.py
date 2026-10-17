@@ -12,11 +12,16 @@ elements.py);摆过没选的、被拒的都只进日志、不进卡。写入流�
 前都先把日志里每条要素与卡的操作按顺序重新走一遍决定文件的校验(revalidate)。
 
 校验规则分版本:每条日志写入时记下当时的校验版本号(rules_version,工具补),重走时按它自己的版本用当时的
-规则——规则收紧不追溯旧条目。两种结果分开报:
-  · 连它自己那一版的规则都不合格、或者校验补全后和日志里记的不一样(工具补的字段对不上)、或者版本号比前面的
-    条目旧 / 不认识 → 日志可能被改过(手写进日志、改过工具补的字段),拦:写入和账本取数都停,重算不覆盖磁盘;
-  · 在它那一版合法、按现在的规则不再允许 → 只提示(rebuild --verify 逐条列出,其余入口提示一句),不拦。
-各版的差别(没有版本号的旧条目算第 1 版):
+规则——规则收紧不追溯旧条目。重走时的检查分两类,分开报:
+  · 完整性(拦):出处、原话、工具补的字段这类连它自己那一版的规则都不合格,校验补全后和日志里记的不一样,
+    版本号比前面的条目旧 / 不认识,或者没有版本号 → 日志可能被改过(手写进日志、改过工具补的字段):写入和
+    账本取数都停,重算不覆盖磁盘(rebuild --verify 列进问题清单,日志重算不下去时也只列问题、不抛错)。
+    没有版本号的条目只在状态根声明过含有旧版条目时才按第 1 版重走(oplog.unversioned_as)。
+  · 质量把关(只提示):定义的阈值范围、根数上界、合理范围这类取决于当时的配置,按现在的配置不再合格的只提示
+    (elements.quality_as_notices);在它那一版合法、按现在的规则不再允许的同样只提示。改了配置(例如默认
+    回看根数)不会把旧条目连同整套工具锁死。提示在 rebuild --verify 逐条列出(每条日志至多一条),其余入口
+    提示一句。
+各版的差别:
   第 1 版:卡上要素项可以没记要素版本号(那时判定一律按最新版本);卡上角色记成用户定的不必带原话;
           根数的上界按整个看图范围(看图下界到训练段末日的工作日数,与默认回看取大);
           between 一端碰到值的上下界就拒绝(要求写成 at_least / at_most)。
@@ -91,6 +96,7 @@ create_element 带 target.as 时,后面用 "$<as>" 指它建的要素(卡上的 
 from __future__ import annotations
 
 import argparse
+import contextlib
 import copy
 import json
 import re
@@ -660,10 +666,12 @@ def _old_format_tolerant(redone: dict, logged: dict) -> dict:
     return redone
 
 
-def _redo(op: dict, st: "_State", anns: dict, version: int, where) -> tuple[list[str], bool]:
-    """按第 version 版的规则把这一条重新走一遍决定文件的校验(在 st 的副本上):(问题, 补全结果和日志里一样吗)。"""
+def _redo(op: dict, st: "_State", anns: dict, version: int, where, quality: list | None = None) -> tuple[list[str], bool]:
+    """按第 version 版的规则把这一条重新走一遍决定文件的校验(在 st 的副本上):(问题, 补全结果和日志里一样吗)。
+    quality 是列表时,定义的质量把关(取决于配置)不合格只记进它、不算问题(elements.quality_as_notices)。"""
     trial = copy.deepcopy(st)
-    with oplog.rules_at(version):
+    lenient = E.quality_as_notices(quality) if quality is not None else contextlib.nullcontext()
+    with oplog.rules_at(version), lenient:
         out, errs = _prepare_ops([_as_decision_op(op)], {}, trial, anns, where)
     if errs:
         return errs, False
@@ -675,36 +683,37 @@ def _redo(op: dict, st: "_State", anns: dict, version: int, where) -> tuple[list
     return [], redone == op
 
 
-def revalidate(ops: list[dict], anns: dict) -> tuple[list[str], list[str]]:
+def revalidate(ops: list[dict], anns: dict, unversioned_as: int | None = None) -> tuple[list[str], list[str]]:
     """把日志里每条要素与形态卡的操作按顺序重新走一遍决定文件的校验(当时的状态 = 它前面的日志重算出来的),
-    每条按它自己的校验版本号(没有算第 1 版)用当时的规则。返回 (问题, 提示):
-    问题 = 连自己那一版都不合格、补全结果和日志里记的不一样、版本号不认识或比前面的条目旧(可能被改过,拦);
-    提示 = 在自己那一版合法、按现在的规则不再允许(只提示)。直接写进日志、绕开决定文件的操作在这里现形。"""
+    每条按它自己的校验版本号用当时的规则。检查分两类(见模块说明):
+    问题(完整性,拦)= 出处、原话、工具补的字段这类连自己那一版都不合格,补全结果和日志里记的不一样,版本号
+        不认识、比前面的条目旧,或者没有版本号(unversioned_as 为 None 时;状态根声明过含旧版条目时传 1,
+        没有版本号的按第 1 版重走,见 oplog.unversioned_as);
+    提示(只提示)= 定义的质量把关(阈值范围、根数上界、合理范围,取决于当时的配置)按现在的配置不再合格,
+        或者在自己那一版合法、按现在的规则不再允许。每条日志至多一条提示。
+    直接写进日志、绕开决定文件的操作在这里现形。返回 (问题, 提示)。"""
     st = _State([])
     problems, notices = [], []
     newest = 1
     for k, op in enumerate(ops):
         act = op.get("act")
         v = op.get("rules_version")
-        v = 1 if v is None else v
         where = lambda _, k=k, op=op: f"日志第 {k + 1} 条({op.get('act')},{op.get('op_id')})"
         if act in oplog.SHAPE_ACTS or act in oplog.ELEMENT_ACTS:
-            if not isinstance(v, int) or isinstance(v, bool) or not 1 <= v <= oplog.RULES_VERSION:
-                problems.append(f"{where(0)}: 校验版本号 {v!r} 不认识(现在的工具是第 {oplog.RULES_VERSION} 版),"
-                                f"可能被改过,或者是更新的工具写的")
-            elif v < newest:
-                problems.append(f"{where(0)}: 校验版本号是第 {v} 版,比前面的条目(第 {newest} 版)旧,可能被改过")
+            if v is None and unversioned_as is None:
+                problems.append(f"{where(0)}: 没有校验版本号(现在的工具写的每一条都带),当作被改过;这本账确实有"
+                                f"旧工具写的条目时,在状态根放 {oplog.LEGACY_FILE} 声明(见 oplog 模块说明)")
             else:
-                errs, same = _redo(op, st, anns, v, where)
-                if errs:
-                    problems += [f"{m}(这条连写入时的第 {v} 版规则都不合格,可能被改过)" for m in errs]
-                elif not same:
-                    problems.append(f"{where(0)}: 重新校验补全后和日志里记的不一样(日志被改过,或没经决定文件写入)")
-                elif v < oplog.RULES_VERSION:
-                    errs, same = _redo(op, st, anns, oplog.RULES_VERSION, where)
-                    if errs or not same:
-                        why = ";".join(m.split(": ", 1)[-1] for m in errs) or "按现在的规则补全出来的样子不同"
-                        notices.append(f"{where(0)}: 写入时按第 {v} 版规则合法,现在的规则不再允许(只提示,不影响使用):{why}")
+                v = unversioned_as if v is None else v
+                if not isinstance(v, int) or isinstance(v, bool) or not 1 <= v <= oplog.RULES_VERSION:
+                    problems.append(f"{where(0)}: 校验版本号 {v!r} 不认识(现在的工具是第 {oplog.RULES_VERSION} 版),"
+                                    f"可能被改过,或者是更新的工具写的")
+                elif v < newest:
+                    problems.append(f"{where(0)}: 校验版本号是第 {v} 版,比前面的条目(第 {newest} 版)旧,可能被改过")
+                else:
+                    bad, note = _recheck(op, st, anns, v, where)
+                    problems += bad
+                    notices += [note] if note else []
         if isinstance(v, int) and not isinstance(v, bool):
             newest = max(newest, v)
         try:
@@ -716,6 +725,25 @@ def revalidate(ops: list[dict], anns: dict) -> tuple[list[str], list[str]]:
         if sid:
             st.ids.add(sid)
     return problems, notices
+
+
+def _recheck(op: dict, st: "_State", anns: dict, v: int, where) -> tuple[list[str], str | None]:
+    """一条要素或卡的操作按第 v 版规则重走:(问题, 提示 | None)。质量把关按现在的配置重判,不合格只进提示;
+    v 比现在的版本旧时再按现在的规则走一遍,不合格也只进提示。"""
+    quality = []
+    errs, same = _redo(op, st, anns, v, where, quality)
+    if errs:
+        return [f"{m}(这条连写入时的第 {v} 版规则都不合格,可能被改过)" for m in errs], None
+    if not same:
+        return [f"{where(0)}: 重新校验补全后和日志里记的不一样(日志被改过,或没经决定文件写入)"], None
+    why = [f"按现在的配置,{m.split(': ', 1)[-1]}" for m in quality]
+    if v < oplog.RULES_VERSION:
+        errs, same = _redo(op, st, anns, oplog.RULES_VERSION, where)
+        now = f"按现在的第 {oplog.RULES_VERSION} 版规则"
+        why += [f"{now},{m.split(': ', 1)[-1]}" for m in errs] or ([] if same else [f"{now}补全出来的样子不同"])
+    if not why:
+        return [], None
+    return [], f"{where(0)}: 写入时合格,现在不再合格(只提示,不影响使用):" + ";".join(dict.fromkeys(why))
 
 
 def touched_elements(ops: list[dict]) -> list[str]:
@@ -733,12 +761,12 @@ def checked_ops() -> list[dict]:
     ShapeValidationError,列出是哪几条;只有提示(旧版合法、现在不再允许)时在标准错误提示一句、照常返回。
     正常写入之前、账本取数之前都先过这一道。"""
     ops = oplog.read_all()
-    bad, notices = revalidate(ops, _ann_index())
+    bad, notices = revalidate(ops, _ann_index(), oplog.unversioned_as())
     if bad:
         raise ShapeValidationError(["操作日志里有可能被改过的条目(手写进日志、改过工具补的字段),先处理:"] + bad)
     if notices:
-        print(f"提示:操作日志里有 {len(notices)} 条是按旧版校验规则写的,当时合法、现在的规则不再允许"
-              f"(只提示,不影响使用;逐条看:python -m chart_workflow.shapes rebuild --verify)", file=sys.stderr)
+        print(f"提示:操作日志里有 {len(notices)} 条写入时合格、现在不再合格(配置改了或校验规则收紧了;"
+              f"只提示,不影响使用;逐条看:python -m chart_workflow.shapes rebuild --verify)", file=sys.stderr)
     return ops
 
 
@@ -767,14 +795,20 @@ def rebuild(verify: bool) -> list[str]:
     """从日志从头重算全部要素与卡。先把每条要素与卡的操作重新走一遍决定文件的校验(revalidate):
     verify 时把有问题的列进返回的问题清单;不 verify 时有问题就 ShapeValidationError,不覆盖磁盘。
     只是提示的(旧版合法、现在不再允许)逐条打到标准错误,不进问题清单。
-    verify:与磁盘逐字比对,返回不一致清单;否则用重算结果覆盖磁盘。"""
-    bad, notices = revalidate(oplog.read_all(), _ann_index())
+    verify:与磁盘逐字比对,返回不一致清单;否则用重算结果覆盖磁盘。verify 时日志重算不下去(编号冲突等,
+    revalidate 已列成问题)也只进问题清单,不抛错。"""
+    bad, notices = revalidate(oplog.read_all(), _ann_index(), oplog.unversioned_as())
     if bad and not verify:
         raise ShapeValidationError(bad)
     for m in notices:
         print(f"提示:{m}", file=sys.stderr)
-    problems = bad + E.rebuild(verify)
-    cards = replay(oplog.read_all())
+    try:
+        problems = bad + E.rebuild(verify)
+        cards = replay(oplog.read_all())
+    except ValueError as ex:
+        if not verify:
+            raise
+        return bad + [f"日志重算不下去({ex}),要素与形态卡没和磁盘比对"]
     d = shapes_dir()
     on_disk = {p.stem for p in d.glob("*.json")} if d.exists() else set()
     for sid, card in sorted(cards.items()):

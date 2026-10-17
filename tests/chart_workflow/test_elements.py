@@ -825,6 +825,18 @@ def test_between_touching_one_hard_bound_becomes_one_sided(d, want):
     assert errs == [] and (out["cond"], out["user_params"], out["default_params"]) == want
 
 
+def test_between_touching_bound_under_rules_v1_and_when_rewalking():
+    """同一个 between(下限碰到下界):第 1 版规则拒绝并要求换写法;重走日志里已有的条目时不改写,只记一条提示。"""
+    d = D("F04", "bars", "between", "close", user={"lo": 1, "hi": 30})
+    with oplog.rules_at(1):
+        out, errs = E.normalize_definition(d)
+    assert out is None and "写成 at_most" in errs[0]
+    sink = []
+    with E.quality_as_notices(sink):
+        out, errs = E.normalize_definition(d)
+    assert errs == [] and out["cond"] == "between" and len(sink) == 1 and "等于 at_most" in sink[0]
+
+
 @pytest.mark.parametrize("d,hint", [
     (D("F07", "vr", "between", user={"lo": 3, "hi": 150}), "上限 150 倍,在合理范围(到 100 倍,待验证)之外"),
     (D("F07", "vr", "between", default={"lo": 0.01, "hi": 2}), "下限 0.01 倍,在合理范围(从 0.05 倍 起"),

@@ -1,12 +1,15 @@
-"""规则来自形态卡时的核对:规则要声明实现了卡上哪些要素与角色,和卡那一版一致;卡的样本上、样本股看图范围内
-逐日,规则信号都要和「卡说成立」一致(永远成立、比卡宽的规则过不了);三处都按固定回看判卡,按用户框的窗口
-判得不同的样本单独列出、不拿来核对;卡上有手写触发就拒;能核对的样本或卡判「不成立」的天不够就拒;账本记账时
-自己重跑核对,核对用的规则要和清单实际用的规则指纹相同;对照页开工前就核对,不过什么都不生成。
+"""规则来自形态卡时的核对:规则要声明实现了卡上哪些要素与角色,和卡那一版一致;卡的样本上、样本股(被排除的
+样本所在的股票也算)与随机抽的股票看图范围内逐日,规则信号都要和「卡说成立」一致(永远成立、比卡宽、比卡窄、
+永远不成立的规则都过不了);三处都按固定回看判卡,按用户框的窗口判得不同的样本单独列出、不拿来核对;卡上有
+手写触发就拒;能核对的样本、其中卡成立的样本、卡判「不成立」或「成立」的天不够就拒;随机抽股可复现,逐日材料
+在同一次运行里缓存、可并行;账本记账时自己重跑核对,核对用的规则要和清单实际用的规则指纹相同;对照页开工前
+就核对,不过什么都不生成。
 
 合成 QMMM(chart_workflow 事实表的金标数据)上,卡 = 按收盘至少越过一个峰(必须有)+ 最近 20 根里有派发
 (有它就不买)+ 触发「当天缩量」(T7)。看图下界放到 2025-06-15,逐日核对只跑 6/16~7/14 这一段(21 天):
 卡在 7/4、7/7、7/9、7/10、7/11、7/14 成立,7/3、7/8(越过了峰但没缩量)和六月各天不成立(共 15 天;
-本文件把「卡判不成立至少几天」设成 10,默认的 20 另有测试)。
+本文件把「卡判不成立至少几天」设成 10、「卡判成立至少几天」设成 5,默认的 20、10 另有测试)。股票池里只有
+样本股时随机抽股抽不到别的股票。
 框选:从 6/20 或 6/30 起的短框里一个峰都没越过(按框判卡不成立,按固定回看成立);从 2024-09-02 起的长框里,
 7/10、7/11 按收盘越过了 2 个峰(按固定回看只越过 1 个)。"""
 import json
@@ -50,6 +53,7 @@ def signal(df):
         pk, dist = E.evaluate(PK, f)[0] == "yes", E.evaluate(DIST, f)[0] == "no"
         trig = {t["tid"] for t in f["triggers"]}
         dry = "T7" in trig
+        c = float(df.loc[d, "close"])
         out[d] = WHEN
     return out
 '''
@@ -62,11 +66,12 @@ def _rule_text(when="pk and dist and dry", implements='{"E001": "must", "E002": 
 
 
 def _batch(state_dir, cases=SAMPLES):
-    """cases:(ann_id, 买点[, 框选起点]),框选起点缺省 BOX。"""
+    """cases:(ann_id, 买点[, 框选起点[, 代码]]),框选起点缺省 BOX(写 None 是不框),代码缺省 QMM。"""
     d = state_dir / "annotations"
     d.mkdir(parents=True, exist_ok=True)
-    anns = [{"ann_id": c[0], "item_id": f"QMM@{c[1]}", "symbol": "QMM", "range_start": (c[2:] or (BOX,))[0],
-             "range_end": None, "label": "positive", "note": "", "buy_points": [{"date": c[1], "primary": True}]}
+    anns = [{"ann_id": c[0], "item_id": f"{(c[3:] or ('QMM',))[0]}@{c[1]}", "symbol": (c[3:] or ("QMM",))[0],
+             "range_start": (c[2:] or (BOX,))[0], "range_end": None, "label": "positive", "note": "",
+             "buy_points": [{"date": c[1], "primary": True}]}
             for c in cases]
     (d / "b1.json").write_text(json.dumps({
         "schema": "chart_workflow.annotations/2", "batch_id": "b1", "list_id": "r1", "train_end": "2025-12-31",
@@ -100,7 +105,7 @@ def env(cw_env, state_dir, tmp_path, monkeypatch):
     cfg, pkl_dir = cw_env
     cfg["view_floor"] = FLOOR
     cfg["rules"]["causal_samples"] = 1
-    cfg["shape_check"] = {**cfg["shape_check"], "min_negative_days": 10}
+    cfg["shape_check"] = {**cfg["shape_check"], "min_negative_days": 10, "min_positive_days": 5}
     qmmm_synthetic().to_pickle(pkl_dir / "QMM.pkl")
     _batch(state_dir)
     monkeypatch.setattr(contrast, "load_config", lambda: cfg)
@@ -307,6 +312,7 @@ def test_samples_judged_with_fixed_lookback_and_box_mismatch_listed(env, state_d
     """样本按固定回看判卡(和规则、逐日核对同一个口径):照卡忠实写的规则,样本框得比固定回看长或短都通过;
     按框判和按固定回看判不同的样本单独列出,不算进能核对的个数。"""
     cfg, _, tmp = env
+    cfg["shape_check"]["min_positive_days"] = 3
     _batch(state_dir, cases)
     _card(cases, pk=pk, triggers=("T7",) if "dry" in when else ("T7", "T3"))
     res = rulecheck.check_rule_against_shape("shape:s001@v1", cfg, rule=_rule(tmp, _rule_text(when, pk=pk)))
@@ -340,6 +346,9 @@ def test_card_with_handwritten_trigger_refused(env, when):
     msg = str(ei.value)
     assert "t2「放量站上年线」 是手写触发,没有能算的定义" in msg
     assert "在事实表加一行" in msg and "换成表里的触发" in msg
+    assert "这个触发要改写成卡上的要素" in msg                     # 加事实行的代价:意思从「任一个」变成「都要」
+    assert "「几个触发里出现任一个就算」变成「这一项也必须满足」" in msg
+    assert "要在触发表里加一项,这需要改代码" in msg
 
 
 def test_too_few_negative_days_refused(env):
@@ -353,12 +362,13 @@ def test_too_few_negative_days_refused(env):
 
 
 def test_no_decidable_day_refused(env, state_dir):
-    """一天都判定不了(最少样本数配成 0、样本都被跳过,样本股一只都没有):按反例不够拒绝。"""
+    """一天都判定不了(最少样本数配成 0、样本都被跳过,看图范围里样本股一天行情都没有):按反例不够拒绝。"""
     cfg, _, tmp = env
     cases = (("a1", "2025-07-05"), ("a2", "2025-06-02"))
     _batch(state_dir, cases)
     _card(cases)
-    cfg["shape_check"]["min_samples"] = 0
+    cfg["view_floor"] = "2025-07-20"
+    cfg["shape_check"].update(min_samples=0, min_positive_samples=0)
     with pytest.raises(rulecheck.RuleShapeMismatch, match=r"卡判「不成立」的只有 0 天\(卡能判定 0 天\)"):
         rulecheck.check_rule_against_shape("shape:s001@v1", cfg, rule=_rule(tmp, _rule_text()))
 
@@ -377,3 +387,170 @@ def test_ledger_check_rule_bound_to_list_rule(env):
         add_round(cfg, **common, rule=good)
     _list(cfg, "r8", good)
     assert add_round(cfg, **common, rule=good)["rule_implements"]["days_negative"] == 15
+
+
+def _declining():
+    """一路下跌、从不越过峰的合成股(日期同 QMMM):卡在它身上每天都不成立。"""
+    import numpy as np
+
+    df = qmmm_synthetic().copy()
+    close = np.linspace(2.0, 1.0, len(df))
+    df["close"], df["open"] = close, np.r_[close[0], close[:-1]]
+    df["high"], df["low"] = np.maximum(df["open"], df["close"]) * 1.01, np.minimum(df["open"], df["close"]) * 0.99
+    return df
+
+
+def _scaled(k=0.8):
+    """QMMM 价格整体乘 k(成交量不变):卡成立的日子和 QMMM 相同,收盘都低于 1.5。"""
+    df = qmmm_synthetic().copy()
+    df[["open", "high", "low", "close"]] *= k
+    return df
+
+
+# 一个样本框得比固定回看短(按框没越过峰、按固定回看越过了,被排除),剩下三个都在一路下跌的股票上
+FRAMED_AND_DECLINING = (("q1", "2025-07-14", "2025-05-29"), ("d1", "2025-06-20", None, "DEC"),
+                        ("d2", "2025-06-27", None, "DEC"), ("d3", "2025-07-02", None, "DEC"))
+
+
+@pytest.mark.parametrize("when,needle", [
+    ("pk and dist", "QMM 2025-07-08:卡说不成立"),            # 宽规则(不管触发)
+    ("False", "QMM 2025-07-14:卡说成立"),                     # 永远不成立
+])
+def test_excluded_sample_stock_still_checked_day_by_day(env, state_dir, when, needle):
+    """被排除的样本所在的股票照常参加逐日核对:QMM 的样本因框选被排除、剩下的样本都在 DEC 上时,宽规则和
+    永远不成立的规则都在 QMM 的日子上露馅。随机抽股、卡成立的样本与天数下限都关掉,只看这一条。"""
+    cfg, pkl_dir, tmp = env
+    _declining().to_pickle(pkl_dir / "DEC.pkl")
+    cfg["shape_check"].update(pool_stocks=0, min_positive_samples=0, min_positive_days=0)
+    _batch(state_dir, FRAMED_AND_DECLINING)
+    _card(FRAMED_AND_DECLINING)
+    with pytest.raises(rulecheck.RuleShapeMismatch) as ei:
+        rulecheck.check_rule_against_shape("shape:s001@v1", cfg, rule=_rule(tmp, _rule_text(when)))
+    assert "逐日比" in str(ei.value) and needle in str(ei.value)
+    res = rulecheck.check_rule_against_shape("shape:s001@v1", cfg, rule=_rule(tmp, _rule_text(), "good.py"))
+    assert res["sample_stocks"] == ["DEC", "QMM"] and len(res["samples_unexpressible"]) == 1
+    assert res["days_checked"] == 42 and res["days_positive"] == 6
+
+
+def test_too_few_positive_samples_refused(env, state_dir):
+    """能核对的样本里买点当天卡成立的不够(默认至少 2 个,待验证):样本都在 DEC 上时,永远不成立的规则过得了
+    样本核对,在这一步拒绝。"""
+    cfg, pkl_dir, tmp = env
+    assert DEFAULTS["shape_check"]["min_positive_samples"] == rulecheck.DEFAULTS["min_positive_samples"] == 2
+    _declining().to_pickle(pkl_dir / "DEC.pkl")
+    cases = FRAMED_AND_DECLINING[1:]
+    _batch(state_dir, cases)
+    _card(cases)
+    with pytest.raises(rulecheck.RuleShapeMismatch) as ei:
+        rulecheck.check_rule_against_shape("shape:s001@v1", cfg, rule=_rule(tmp, _rule_text("False")))
+    assert "能核对的 3 个样本里,买点当天卡成立的只有 0 个,至少要 2 个(待验证)" in str(ei.value)
+
+
+def test_too_few_positive_days_refused(env):
+    """卡判「成立」的天不够(默认至少 10 天,待验证):看不出规则是不是比卡窄,拒绝并说明原因。"""
+    cfg, _, tmp = env
+    assert DEFAULTS["shape_check"]["min_positive_days"] == rulecheck.DEFAULTS["min_positive_days"] == 10
+    _card()
+    cfg["shape_check"]["min_positive_days"] = DEFAULTS["shape_check"]["min_positive_days"]
+    with pytest.raises(rulecheck.RuleShapeMismatch) as ei:
+        rulecheck.check_rule_against_shape("shape:s001@v1", cfg, rule=_rule(tmp, _rule_text()))
+    assert "卡判「成立」的只有 6 天(卡能判定 21 天),至少要 10 天(待验证)" in str(ei.value)
+    assert "比卡窄" in str(ei.value)
+
+
+def test_narrower_rule_caught_on_pool_stocks(env):
+    """比卡窄的规则(照卡,再加收盘高于 1.5):样本股上卡成立的那几天收盘都高于 1.5,只看样本股会放过;
+    随机抽到的 QMH(QMMM 价格乘 0.8)上卡成立的日子收盘都低于 1.5,露馅。照卡忠实写的规则在随机股上照样通过,
+    两次核对抽到同一批。"""
+    cfg, pkl_dir, tmp = env
+    assert DEFAULTS["shape_check"]["pool_stocks"] == rulecheck.DEFAULTS["pool_stocks"] == 40
+    _scaled().to_pickle(pkl_dir / "QMH.pkl")
+    _card()
+    narrow = _rule(tmp, _rule_text("pk and dist and dry and c > 1.5"), "narrow.py")
+    with pytest.raises(rulecheck.RuleShapeMismatch) as ei:
+        rulecheck.check_rule_against_shape("shape:s001@v1", cfg, rule=narrow)
+    msg = str(ei.value)
+    assert "样本股和随机抽的 1 只股票" in msg and "QMH 2025-07-14:卡说成立,规则不成立" in msg
+    first = rulecheck.check_rule_against_shape("shape:s001@v1", cfg, rule=_rule(tmp, _rule_text()))
+    again = rulecheck.check_rule_against_shape("shape:s001@v1", cfg, rule=_rule(tmp, _rule_text(), "same.py"))
+    assert first["pool_stocks"] == again["pool_stocks"] == ["QMH"] and first["sample_stocks"] == ["QMM"]
+    assert (first["days_checked"], first["days_positive"], first["days_disagree"]) == (42, 12, 0)
+    cfg["shape_check"]["pool_stocks"] = 0                     # 对照:不抽随机股,窄规则就过了
+    assert rulecheck.check_rule_against_shape("shape:s001@v1", cfg, rule=narrow)["days_checked"] == 21
+
+
+def test_pool_pick_reproducible_and_only_stocks_with_days_in_view(cw_env):
+    """随机抽股:种子只由卡的编号和版本定(同一版每次抽到同一批,和排除名单的顺序无关);样本股不抽;看图范围里
+    一天行情都没有的股票不抽;抽够数就停。"""
+    cfg, pkl_dir = cw_env
+    cfg["view_floor"] = FLOOR
+    for i in range(12):
+        make_stock(seed=i, end="2025-12-31").to_pickle(pkl_dir / f"S{i:02d}.pkl")
+    make_stock(seed=99, end="2025-03-31").to_pickle(pkl_dir / "OLD.pkl")          # 看图下界之前就没了
+    cfg["shape_check"] = {**cfg["shape_check"], "pool_stocks": 5}
+    a = rulecheck.pool_stocks(cfg, "s001", 1, ["S00", "S01"])
+    assert a == rulecheck.pool_stocks(cfg, "s001", 1, ["S01", "S00"]) and len(a) == 5
+    assert not {"S00", "S01", "OLD"} & set(a)
+    assert rulecheck.pool_stocks(cfg, "s001", 2, ["S00", "S01"]) != a
+    assert rulecheck.pool_stocks(cfg, "s002", 1, ["S00", "S01"]) != a
+    cfg["shape_check"]["pool_stocks"] = 100
+    assert rulecheck.pool_stocks(cfg, "s001", 1, ["S00"]) == [f"S{i:02d}" for i in range(1, 12)]
+    cfg["shape_check"]["pool_stocks"] = 0
+    assert rulecheck.pool_stocks(cfg, "s001", 1, []) == []
+
+
+def test_daily_materials_cached_within_run_and_keyed_by_inputs(env, monkeypatch):
+    """同一次运行里第二次核对不重算逐日卡说和规则文件信号;数据文件、规则文件或配置变了就重算。"""
+    import os
+
+    cfg, pkl_dir, tmp = env
+    monkeypatch.setattr(rulecheck, "_CACHE", {})
+    calls = {"says": 0, "signal": 0}
+    real_v, real_s = rulecheck._verdicts, rulecheck._signal
+    monkeypatch.setattr(rulecheck, "_verdicts", lambda *a: calls.__setitem__("says", calls["says"] + 1) or real_v(*a))
+    monkeypatch.setattr(rulecheck, "_signal", lambda *a: calls.__setitem__("signal", calls["signal"] + 1) or real_s(*a))
+    _card()
+    rule = _rule(tmp, _rule_text())
+
+    def run():
+        calls.update(says=0, signal=0)
+        rulecheck.check_rule_against_shape("shape:s001@v1", cfg, rule=rule)
+        return dict(calls)
+
+    assert run() == {"says": 1, "signal": 1}
+    assert run() == {"says": 0, "signal": 0}
+    st = os.stat(pkl_dir / "QMM.pkl")
+    os.utime(pkl_dir / "QMM.pkl", ns=(st.st_atime_ns, st.st_mtime_ns + 10**9))      # 数据文件变了
+    assert run() == {"says": 1, "signal": 1}
+    with open(rule, "a") as f:                                                        # 规则文件变了
+        f.write("\n# 改了一行注释\n")
+    assert run() == {"says": 0, "signal": 1}
+    cfg["facts"] = {**cfg["facts"], "recent_dist_bars": cfg["facts"]["recent_dist_bars"]}
+    cfg["m_period"] = cfg["m_period"] + 0                                            # 配置没变:照样命中
+    assert run() == {"says": 0, "signal": 0}
+    cfg["shape_check"]["pool_stocks"] = 39                                            # 配置变了
+    assert run() == {"says": 1, "signal": 1}
+
+
+def test_parallel_daily_check_matches_serial(env, monkeypatch):
+    """逐日核对按股票并行(workers > 1)时逐日判卡真在子进程里跑,结果和单进程相同。"""
+    import os
+
+    cfg, pkl_dir, tmp = env
+    monkeypatch.setattr(rulecheck, "_CACHE", {})
+    _scaled().to_pickle(pkl_dir / "QMH.pkl")
+    _card()
+    rule = _rule(tmp, _rule_text())
+    serial = rulecheck.check_rule_against_shape("shape:s001@v1", cfg, rule=rule)
+    pids, real = tmp / "pids.txt", rulecheck._verdicts
+
+    def spy(*a):                                   # 子进程是 fork 出来的,带着这个替换
+        with open(pids, "a") as f:
+            f.write(f"{os.getpid()}\n")
+        return real(*a)
+
+    monkeypatch.setattr(rulecheck, "_verdicts", spy)
+    cfg["workers"] = 2
+    assert rulecheck.check_rule_against_shape("shape:s001@v1", cfg, rule=rule) == serial
+    seen = set(pids.read_text().split())
+    assert len(seen) >= 1 and str(os.getpid()) not in seen
