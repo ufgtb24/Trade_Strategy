@@ -187,7 +187,7 @@ def _ingredient_condition(it: dict, els: dict) -> dict:
     return {**out, "element": eid, "element_resolved": rid, "element_version": el["current_version"],
             "element_origin": el.get("origin"), "element_suggested_by": el.get("suggested_by"),
             "element_has_said": bool(str(el.get("said_first_match") or "").strip()),
-            "fact_rows": list(d["reads"]) if d else [], "angle_by": who, "angle_ops": ops}
+            "fact_rows": [d["row"]] if d else [], "angle_by": who, "angle_ops": ops}
 
 
 def shape_conditions(source: str) -> list[dict]:

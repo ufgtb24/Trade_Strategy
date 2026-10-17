@@ -9,8 +9,10 @@
                   (事实只给数值和描述、不带判断;每一行标出处:预设的,或用户提的角度)
   4. 定要素、写形态卡  python -m chart_workflow.shapes apply <决定.json>     每个值记来源
                   要素 = 在事实行上定出来的是 / 否条件,有自己的编号(E001…),可被几个形态共用;
-                  形态卡引用要素编号,角色写在卡上。python -m chart_workflow.elements find / eval
-                  建之前查重、对卡时逐条判是 / 否 / 无法判定
+                  形态卡引用要素编号,角色写在卡上。F01～F15 每行都声明了能判定的值,用通用条件
+                  (至少 / 至多 / 之间、是 / 否、属于哪几类、最近 N 根里有 / 没有 / 至少 k 个)直接立要素,
+                  不用写代码。python -m chart_workflow.elements conds / find / eval
+                  列能判定的值、建之前查重、对卡时逐条判是 / 否 / 无法判定
   5. 对照着看     python -m chart_workflow.contrast --list-id <id> (--rule <py> | --app <pid>)
                       --source <来源> --change "<改了什么>" [--blind]     (自动记账、存档规则)
   6. 收紧或放弃   改规则再跑;python -m chart_workflow.ledger show 看账本

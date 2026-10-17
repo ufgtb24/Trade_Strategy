@@ -46,9 +46,9 @@ def el_op(as_, name, definition, *, user=True, needs=None):
     return {"act": "create_element", "target": {"as": as_}, "value": v}
 
 
-PK1 = {"cond": "peaks_cleared", "variant": "close", "user_params": {"n": 1}}
-PK1_HIGH = {"cond": "peaks_cleared", "variant": "high", "user_params": {"n": 1}}
-DIST = {"cond": "distribution_within", "variant": None, "user_params": {"bars": 20}}
+PK1 = {"row": "F01", "value": "n_cleared", "cond": "at_least", "user_params": {"x": 1}}
+PK1_HIGH = {"row": "F02", "value": "n_cleared", "cond": "at_least", "user_params": {"x": 1}}
+DIST = {"row": "F13", "value": "events", "cond": "events_any", "user_params": {"bars": 20}}
 ELEMS = [el_op("pk1", "按收盘至少越过一个峰", PK1),
          el_op("dist", "最近 20 根里有派发", DIST, user=False),
          el_op("flat", "突破前一个月横着走", None, needs="现有事实没有「横着走了多久」")]
@@ -150,7 +150,7 @@ def test_valid_decision_written_and_rendered(state_dir):
     for eid in ("E001", "E002", "E003", "E004"):
         assert (state_dir / "elements" / f"{eid}.json").exists()
     text = shapes.render(card)
-    assert "E001「按收盘至少越过一个峰」：按收盘越过前面的峰至少 1 个（角色：你自己说的）" in text
+    assert "E001「按收盘至少越过一个峰」：按收盘越过的峰个数至少 1（角色：你自己说的）" in text
     assert "E003「突破前一个月横着走」（待写代码）" in text
     assert "采纳了事实表的推荐" in text and "改过的会话推荐（原为 二峰收盘突破）" in text
     assert "【有它就不买】" in text and "E002「最近 20 根里有派发」" in text
@@ -241,7 +241,8 @@ def test_decision_is_atomic(state_dir):
     with pytest.raises(shapes.ShapeValidationError):
         shapes.apply(_decision(_case("s009")))                          # 卡不存在
     with pytest.raises(shapes.ShapeValidationError):                    # 好的建要素 + 坏的卡:都不写
-        shapes.apply(_decision(el_op("v3", "买点当天放量", {"cond": "volume_today_at_least"}),
+        shapes.apply(_decision(el_op("v3", "买点当天放量", {"row": "F07", "value": "vr", "cond": "at_least",
+                                                              "default_params": {"x": 3.0}}),
                                _create({"ingredients": [{"ing_id": "i1", "element": "$v3", "role": "must"}],
                                         "triggers": []})))
     assert _state(state_dir) == before

@@ -3,15 +3,41 @@
 事实与要素分开:事实(facts.py)只是计算方法加每张图的结果,只给数值和描述、不带判断,没有角色、
 不进形态卡;要素是在事实上定出来的是 / 否条件(如「按收盘至少越过一个峰」「最近 20 根里有派发」)。
 形态卡引用要素编号,角色(必须有 / 加分 / 有它就不买)写在卡上,同一条要素在不同形态里可以是不同角色。
-读同一行事实、条件不同,就是不同的要素(「按收盘至少越过一个峰」与「按收盘连续越过两个峰」)。
 
     uv run python -m chart_workflow.elements show [<element_id>]
-    uv run python -m chart_workflow.elements conds                    # 代码里能算的条件类型
-    uv run python -m chart_workflow.elements find --cond C [--variant V] [--param k=v ...]
+    uv run python -m chart_workflow.elements conds                    # 每行事实能判定的值与通用条件类型
+    uv run python -m chart_workflow.elements find --row F05 --value runs --cond events_any [--variant V] [--param k=v ...]
     uv run python -m chart_workflow.elements eval --facts <事实表快照> [--element E001 ...] [--shape s001]
 
-条件类型(CONDITIONS,写在代码里):每种写明读哪一行事实(按口径分,如按收盘读 F01、按最高价读 F02)、
-参数与系统默认值(待验证)、判定函数。现有条件类型算不出的,要素先记「待写代码」。
+F01～F15 每一行都能直接立要素,不用写代码:
+  · 每行事实声明自己有哪些可判定的值(VALUES):名字、类型(个数 / 数 / 是非 / 类别 / 事件列表)、
+    在事实值里的取法、有没有口径(按收盘 / 按最高价)、值的上下界、算不出(null)时怎么判、
+    事件带不带日期和离买点根数。
+  · 少量通用条件类型(CONDS)覆盖这些值:个数与数 → at_least / at_most / between;
+    是非 → is_true / is_false;类别 → is_one_of;事件列表 → events_any / events_none(最近 N 根里有 / 没有,
+    不给 N 就是整个看图窗口)/ events_at_least(至少 k 个)。
+  · 定义 = {"row", "value", "cond", "variant", "user_params", "default_params"},建要素时当场校验:
+    行、值、条件类型不存在,类型不匹配,口径不对,参数缺 / 多 / 类型不对,一律拒绝(不拖到判定时答
+    「无法判定」)。恒成立、不可能成立的定义也拒绝。
+  · 现有事实行都算不出的角度才记「待写代码」(definition 为 null,needs 写缺什么)。
+
+身份看定义,不看字面:身份 = 读的行 + 值 + 条件类型 + 口径 + user_params(系统默认值不算身份)。
+同一个意思只许一种写法,换个条件类型写出来的同义定义当场拒绝并指出该怎么写:
+  · events_at_least 的 k 至少 2(k = 1 就是 events_any);
+  · between 的一端碰到值的上下界就是 at_least / at_most;个数的阈值必须是整数;
+  · 各值声明里的 same_as:跨行或跨类型的同义写法(如「按收盘连续越过 1 个峰」= F01 越过个数至少 1、
+    「最近 1 根里有放量段」= F07 当天量比、「涨前状态是深跌」= dd250 至多深跌线),拒绝并指到规范写法;
+  · 「算不出时判否」的值(F04、F06 的 vs_latest_run)在下界上的 at_least 只是在问那个东西在不在,拒绝。
+  互为反面的写法(「最近 20 根里有派发」与「…没有派发」、at_least 2 与 at_most 1)是两条要素:
+  意思相反,配上相反的角色才等价,那是卡上的事。
+  其余去重规则:
+  · 新建的定义和已有要素相同(在用的;已合并的指到它并入的那条)→ 拒绝新建并报那个编号,
+    会话把这次的说法用 alias_element 挂上去。
+  · 在用要素的身份不变:revise_element 只能改系统默认值,定义变了就是另一条要素,新建。
+  · 待写代码的要素写成计算(revise_element 给 definition)时,定义和已有要素相同 → 拒绝,
+    提示用 merge_element 并过去(会话先问用户;工具只给合并操作和查重提示)。
+  · merge_element 是显式操作:被并的标 merged 与 merged_into,名字和别名挂到并入的那条,
+    引用旧编号的卡照常解析到新编号(resolve)。什么都不删。
 
 要素文件 <状态根>/elements/<element_id>.json(chart_workflow.element/1),是操作日志的物化结果
 (replay 是纯函数),版本只追加:
@@ -20,21 +46,12 @@
  "aliases": [{"text", "ts", "op_id", "actor", "from"(合并过来的才有)}],
  "status": "active | pending_code | merged", "merged_into": null, "current_version": 1,
  "versions": [{"version", "ts", "op_id", "change", "needs",
-               "definition": {"reads": ["F01"], "cond": "peaks_cleared", "variant": "close",
-                              "user_params": {"n": 1}, "default_params": {}} | null}]}
-status 由当前状态推出:合并过 → merged;当前版本有 definition → active(在用);没有 → pending_code
-(待写代码:用户的原话,现有事实与条件类型算不出,needs 写缺什么)。
+               "definition": {"row": "F01", "value": "n_cleared", "cond": "at_least", "variant": null,
+                              "user_params": {"x": 1}, "default_params": {}} | null}]}
+status 由当前状态推出:合并过 → merged;当前版本有 definition → active(在用);没有 → pending_code。
 参数分两类:user_params 是用户说出来或选定的(「两个峰」里的 2),default_params 是系统取的默认值
-(待验证);每个参数只在其中一处,两处都没给的由工具按条件类型的默认值补进 default_params。
-
-身份看定义,不看字面:定义 = 读哪几行事实 + 条件类型 + 口径 + user_params(系统默认值不算身份)。
-  · 新建的定义和已有要素相同(在用的;已合并的指到它并入的那条)→ 拒绝新建并报那个编号,
-    会话把这次的说法用 alias_element 挂上去。字面不同、定义相同的由此归并;定义不同的是两条。
-  · 在用要素的身份不变:revise_element 只能改系统默认值,定义变了就是另一条要素,新建。
-  · 待写代码的要素写成计算(revise_element 给 definition)时,定义和已有要素相同 → 拒绝,
-    提示用 merge_element 并过去(会话先问用户;工具只给合并操作和查重提示)。
-  · merge_element 是显式操作:被并的标 merged 与 merged_into,名字和别名挂到并入的那条,
-    引用旧编号的卡照常解析到新编号(resolve)。什么都不删。
+(待验证);每个参数只在其中一处。没有隐藏默认值:条件类型要的参数必须写在两处之一
+(events_* 的 bars 可省,省了就是整个看图窗口);is_one_of 选哪几类是这条要素的意思本身,只能是 user_params。
 
 四类要素操作(写在决定文件里,与形态卡操作一起由 shapes.apply 校验后写进日志、要素和卡):
   create_element  target {"element_id"(可省,自动分配), "as"(可省;同一决定文件里后面用 "$<as>" 指它)}
@@ -48,7 +65,9 @@ detector(事实表)/ session / llm / general_knowledge(要素按编号复用,不
 要素读的事实行若是用户提的角度(facts.ROWS 的 source),账本记成「你提的角度」,不算系统推荐。
 
 判定(evaluate,纯函数):读一张图的事实表(facts.compute_facts 的输出),答 yes / no / unknown 和一句
-理由。只读事实表,事实表只用买点及以前的 K 线,所以判定也读不到买点之后。
+理由。只读事实表,事实表只用买点及以前的 K 线,所以判定也读不到买点之后。值是 null 时按值的声明:
+默认 unknown(回看不够长);说的那个东西不存在的(没有越过的峰、窗口里没有放量段)判 no;
+判定依赖的输入算不出的(needs)判 unknown。旧快照里缺字段 → unknown,提示重算事实表。
 
 红线:不 import 标签口径(labels)、对照(control)、面板(panel)、清单(listfile),不读清单文件。
 """
@@ -57,12 +76,16 @@ from __future__ import annotations
 import argparse
 import copy
 import json
+import math
 import re
 import sys
+from functools import lru_cache
 from pathlib import Path
 
 from chart_workflow import oplog
-from chart_workflow.facts import ROWS, VARIANT_TEXT
+from chart_workflow.config import load_config
+from chart_workflow.facts import REGIME_TEXT, ROWS, VARIANT_TEXT
+from chart_workflow.features import PRE_STATES
 from chart_workflow.state import StateRootMissing, advance, state_root
 
 SCHEMA = "chart_workflow.element/1"
@@ -70,87 +93,286 @@ ELEMENT_ID_RE = re.compile(r"^E(\d{3,})$")
 LOCAL_RE = re.compile(r"^[A-Za-z0-9_]+$")
 ORIGINS = ("user_written", "suggested_adopted", "suggested_edited")
 SUGGESTED_BY = ("detector", "session", "llm", "general_knowledge")
-DEF_FIELDS = ("reads", "cond", "variant", "user_params", "default_params")
+DEF_FIELDS = ("row", "value", "cond", "variant", "user_params", "default_params")
 STATUS_TEXT = {"active": "在用", "pending_code": "待写代码", "merged": "已合并"}
 VERDICT_TEXT = {"yes": "是", "no": "否", "unknown": "无法判定"}
 BY_TEXT = {"detector": "事实表", "session": "会话", "llm": "大模型", "general_knowledge": "通用常识"}
+KIND_TEXT = {"count": "个数", "number": "数", "bool": "是非", "category": "类别", "events": "事件列表"}
+VARIANTS = ("close", "high")
 
 
-# ── 条件类型与判定(纯函数,只读事实表的值) ───────────────────────────────────
-
-def _value(rows: dict, fid: str) -> dict:
-    v = rows[fid].get("value")
-    return v if isinstance(v, dict) else {}
+@lru_cache(maxsize=1)
+def _facts_cfg() -> dict:
+    return load_config()["facts"]
 
 
-def _peaks_cleared(rows, variant, p):
-    fid = CONDITIONS["peaks_cleared"]["variants"][variant][0]
-    n = _value(rows, fid).get("n_cleared")
-    if not isinstance(n, int) or isinstance(n, bool):
-        return None, f"{fid} 里没有越过峰的个数"
-    return n >= p["n"], f"{fid} {VARIANT_TEXT[variant]}越过了 {n} 个峰"
+@lru_cache(maxsize=1)
+def _features_cfg() -> dict:
+    return load_config()["features"]
 
 
-def _burst_chain(rows, variant, p):
-    chain = (_value(rows, "F03").get(variant) or {}).get("chain")
-    if not isinstance(chain, int) or isinstance(chain, bool):
-        return None, "F03 里没有最长一串连续突破的峰数(旧快照,重算事实表)"
-    return chain >= p["n"], f"F03 {VARIANT_TEXT[variant]}最长一串连着越过 {chain} 个峰"
+# ── 每行事实声明的可判定值 ─────────────────────────────────────────────────
+# kind:count(整数)/ number / bool / category / events。title:人话名,"{variant}" 换成口径。
+# path:在这一行事实值(row["value"])里的取法,"." 分层,"{variant}" 换成口径。
+# variants:有口径的值写口径列表,没有的不写(定义里 variant 就是 null)。
+# lo / hi:值的下界 / 上界(写 ("cfg", 键) 的从 config 的 facts 子树取),用来拒绝恒成立、不可能、
+#          以及一端碰到边界的 between(那是 at_least / at_most)。
+# none:值是 null 时怎么判;不写 = unknown(回看不够长);("no", 理由) = 说的那个东西不存在,判否。
+# exists:none 判否的值,在下界上的 at_least 等于问哪一条(拒绝时提示)。
+# needs:这些取法(可含 "*" 表示列表里每一项)有一个是 null 就答 unknown(判定所依赖的输入算不出)。
+# choices:类别的全部取值。events:{"date": 事件日期字段, "bars_before": 带不带离买点根数};
+# where:事件过滤(声明的一部分,不是参数)。unit:显示用,pct 按百分比、times 按倍数。
+# same_as:函数 (cond, params, variant) → 提示 | None,这样写等于另一条定义时拒绝并指到规范写法。
+
+def _chain_same(cond, p, variant):
+    row = "F01" if variant == "close" else "F02"
+    if cond == "at_least" and p["x"] == 1:
+        return f"连续越过至少 1 个峰就是越过至少 1 个峰:写成 {row} 的 n_cleared at_least 1"
+    if cond == "at_most" and p["x"] == 0:
+        return f"连续越过的峰数至多 0 就是一个峰都没越过:写成 {row} 的 n_cleared at_most 0"
+    return None
 
 
-def _distribution_within(rows, variant, p):
-    evs = _value(rows, "F13").get("events")
-    if not isinstance(evs, list):
-        return None, "F13 里没有派发列表"
-    near = [e for e in evs if isinstance(e, dict) and isinstance(e.get("bars_before"), int)
-            and e["bars_before"] < p["bars"]]
-    if near:
-        return True, f"F13 最近 {p['bars']} 根里有派发（" + "、".join(str(e.get("date")) for e in near) + "）"
-    return False, f"F13 最近 {p['bars']} 根里没有派发（窗口里共 {len(evs)} 根）"
+def _runs_same(cond, p, variant):
+    if p.get("bars") == 1:
+        return ("最近 1 根里有没有放量段就是买点当天量比够不够放量线:写成 F07 的 vr at_least / at_most"
+                f"(放量线 {_facts_cfg()['vol_run_min']:g} 是系统默认,用户没说倍数就放 default_params)")
+    return None
 
 
-def _volume_today(rows, variant, p):
-    vr = _value(rows, "F07").get("vr")
-    if not isinstance(vr, (int, float)) or isinstance(vr, bool):
-        return None, "F07 量比算不出(历史不够长)"
-    return vr >= p["ratio"], f"F07 买点当天量比 {vr:g}"
+def _pre_state_same(cond, p, variant):
+    deep = _features_cfg()["deep_drop_dd250"]
+    vals = set(p["values"])
+    if vals == {"深跌"}:
+        return (f"「深跌」只看离 250 日最高这一项:写成 F08 的 dd250 at_most(深跌线 {deep:g} 是系统默认,"
+                "用户没说幅度就放 default_params)")
+    if vals == set(PRE_STATES) - {"深跌"}:
+        return (f"「不是深跌」只看离 250 日最高这一项:写成 F08 的 dd250 at_least(深跌线 {deep:g} 是系统默认,"
+                "用户没说幅度就放 default_params)")
+    return None
 
 
-# 条件类型:text 用口径(variant)与参数填空;variants:口径 → 读哪几行(没有口径的写 None);
-# params:参数名 → (类型, 系统默认值(待验证), 人话名)。
-CONDITIONS = {
-    "peaks_cleared": {
-        "text": "{variant}越过前面的峰至少 {n} 个", "note": "",
-        "variants": {"close": ("F01",), "high": ("F02",)},
-        "params": {"n": (int, 1, "峰的个数")}, "fn": _peaks_cleared},
-    "burst_chain": {
-        "text": "{variant}连续越过至少 {n} 个峰",
-        "note": "相邻两次首次越过相隔不超过事实表的连续突破间隔(facts.burst_gap_bars)才算连着",
-        "variants": {"close": ("F03",), "high": ("F03",)},
-        "params": {"n": (int, 2, "连着越过的峰数")}, "fn": _burst_chain},
-    "distribution_within": {
-        "text": "最近 {bars} 根里有派发", "note": "派发的标准见事实表 F13",
-        "variants": {None: ("F13",)},
-        "params": {"bars": (int, 20, "往前看几根(含买点当天)")}, "fn": _distribution_within},
-    "volume_today_at_least": {
-        "text": "买点当天量比至少 {ratio} 倍", "note": "量比的算法见事实表 F07",
-        "variants": {None: ("F07",)},
-        "params": {"ratio": (float, 3.0, "量比倍数")}, "fn": _volume_today},
+_EVENTS = {"bars_before": True}
+_MAXP = ("cfg", "max_peaks")
+
+VALUES: dict[str, dict[str, dict]] = {
+    "F01": {
+        "n_peaks": {"kind": "count", "title": "按收盘找到的峰个数", "path": "n_peaks", "lo": 0, "hi": _MAXP},
+        "n_cleared": {"kind": "count", "title": "按收盘越过的峰个数", "path": "n_cleared", "lo": 0, "hi": _MAXP},
+    },
+    "F02": {
+        "n_peaks": {"kind": "count", "title": "按最高价找到的峰个数", "path": "n_peaks", "lo": 0, "hi": _MAXP},
+        "n_cleared": {"kind": "count", "title": "按最高价越过的峰个数", "path": "n_cleared", "lo": 0, "hi": _MAXP},
+    },
+    "F03": {
+        "chain": {"kind": "count", "title": "{variant}最长一串连续越过的峰数", "path": "{variant}.chain",
+                  "variants": VARIANTS, "lo": 0, "hi": _MAXP, "same_as": _chain_same},
+    },
+    "F04": {
+        "bars": {"kind": "count", "title": "{variant}最早越过的那个峰离买点的根数", "path": "{variant}.bars",
+                 "variants": VARIANTS, "lo": 1, "none": ("no", "没有越过的峰"),
+                 "exists": "{variant}至少越过一个峰(F01 / F02 的 n_cleared at_least 1)"},
+    },
+    "F05": {
+        "runs": {"kind": "events", "title": "放量段", "path": "all_runs",
+                 "events": {"date": "start", **_EVENTS}, "same_as": _runs_same},
+    },
+    "F06": {
+        "dry": {"kind": "bool", "title": "买点前几天（含当天）量比都低于 1", "path": "dry", "needs": ("days.*.vr",)},
+        "vs_latest_run": {"kind": "number", "title": "买点前几天均量 ÷ 最近一段放量段均量",
+                          "path": "vs_latest_run", "lo": 0, "unit": "times",
+                          "none": ("no", "窗口里没有放量段可比"),
+                          "exists": "窗口里有放量段(F05 的 runs events_any)"},
+    },
+    "F07": {
+        "vr": {"kind": "number", "title": "买点当天量比", "path": "vr", "lo": 0, "unit": "times"},
+    },
+    "F08": {
+        "pre_state": {"kind": "category", "title": "涨前状态", "path": "pre_state", "choices": PRE_STATES,
+                      "same_as": _pre_state_same},
+        "dd250": {"kind": "number", "title": "收盘离 250 日最高的幅度", "path": "dd250", "lo": -1, "hi": 0, "unit": "pct"},
+        "r60": {"kind": "number", "title": "60 日涨幅", "path": "r60", "lo": -1, "unit": "pct"},
+        "width40": {"kind": "number", "title": "40 日振幅占收盘", "path": "width40", "lo": 0, "unit": "pct"},
+        "M": {"kind": "number", "title": "日常波动幅度 M", "path": "M", "lo": 0, "unit": "pct"},
+    },
+    "F09": {
+        f"{reg}_segments": {"kind": "events", "title": f"{REGIME_TEXT[reg]}段", "path": "segments",
+                            "where": {"regime": reg}, "events": {"date": "start", **_EVENTS}}
+        for reg in ("up", "down", "sideways")
+    },
+    "F10": {
+        "gap": {"kind": "number", "title": "当天开盘相对前一天收盘", "path": "gap", "lo": -1, "unit": "pct"},
+        "gap_m_flag": {"kind": "bool", "title": "开盘跳空够 gap_m 倍 M", "path": "gap_m_flag", "needs": ("M",)},
+    },
+    "F11": {
+        "segments": {"kind": "events", "title": "平台段", "path": "segments", "events": {"date": "start", **_EVENTS}},
+    },
+    "F12": {
+        "rise": {"kind": "number", "title": "买点前一段的涨幅", "path": "rise", "lo": -1, "unit": "pct"},
+        "up_ratio": {"kind": "number", "title": "买点前一段的收阳比例", "path": "up_ratio", "lo": 0, "hi": 1,
+                     "unit": "pct"},
+        "max_dd": {"kind": "number", "title": "买点前一段的收盘最大回撤", "path": "max_dd", "lo": 0, "hi": 1,
+                   "unit": "pct"},
+        "r2": {"kind": "number", "title": "买点前一段的对数价格直线拟合 R²", "path": "r2", "lo": 0, "hi": 1},
+    },
+    "F13": {
+        "events": {"kind": "events", "title": "派发", "path": "events", "events": {"date": "date", **_EVENTS}},
+    },
+    "F14": {
+        "segments": {"kind": "events", "title": "回踩企稳段", "path": "segments",
+                     "events": {"date": "start", **_EVENTS}},
+    },
+    "F15": {
+        "events": {"kind": "events", "title": "{variant}回踩被越过的峰后收回", "path": "{variant}",
+                   "variants": VARIANTS, "events": {"date": "low_date", **_EVENTS}},
+    },
 }
+
+# 通用条件类型:kinds 能用在哪类值上;need 必填参数;opt 可省参数;text 人话模板。
+CONDS = {
+    "at_least": {"kinds": ("count", "number"), "need": ("x",), "opt": (), "text": "{v}至少 {x}"},
+    "at_most": {"kinds": ("count", "number"), "need": ("x",), "opt": (), "text": "{v}至多 {x}"},
+    "between": {"kinds": ("count", "number"), "need": ("lo", "hi"), "opt": (), "text": "{v}在 {lo} 到 {hi} 之间"},
+    "is_true": {"kinds": ("bool",), "need": (), "opt": (), "text": "{v}：是"},
+    "is_false": {"kinds": ("bool",), "need": (), "opt": (), "text": "{v}：否"},
+    "is_one_of": {"kinds": ("category",), "need": ("values",), "opt": (), "text": "{v}是{values}"},
+    "events_any": {"kinds": ("events",), "need": (), "opt": ("bars",), "text": "{span}有{v}"},
+    "events_none": {"kinds": ("events",), "need": (), "opt": ("bars",), "text": "{span}没有{v}"},
+    "events_at_least": {"kinds": ("events",), "need": ("k",), "opt": ("bars",), "text": "{span}至少有 {k} 个{v}"},
+}
+PARAM_TEXT = {"x": "阈值", "lo": "下限", "hi": "上限", "values": "取哪几类", "k": "至少几个",
+              "bars": "往前看几根，含买点当天"}
+USER_ONLY = ("values",)
+
+
+def check_values() -> list[str]:
+    """VALUES 与 CONDS 的自检:每行事实都有可判定的值,声明字段齐全且自洽。"""
+    errs = [f"{fid}: 没有声明可判定的值" for fid in ROWS if not VALUES.get(fid)]
+    errs += [f"{fid}: 不是事实行" for fid in VALUES if fid not in ROWS]
+    for fid, vals in VALUES.items():
+        for name, s in vals.items():
+            at = f"{fid}.{name}"
+            if s["kind"] not in KIND_TEXT:
+                errs.append(f"{at}: kind 不认识")
+            if ("{variant}" in s["path"]) != bool(s.get("variants")):
+                errs.append(f"{at}: path 里有没有口径要和 variants 一致")
+            if (s["kind"] == "events") != ("events" in s):
+                errs.append(f"{at}: 只有事件列表带 events")
+            if (s["kind"] == "category") != ("choices" in s):
+                errs.append(f"{at}: 只有类别带 choices")
+            if bool(s.get("none")) != bool(s.get("exists")):
+                errs.append(f"{at}: 算不出判否的值要写 exists")
+    return errs
+
+
+# ── 判定(纯函数,只读事实表的值) ────────────────────────────────────────────
+
+def _bound(spec: dict, key: str):
+    b = spec.get(key)
+    return _facts_cfg()[b[1]] if isinstance(b, tuple) else b
+
+
+def _vtitle(spec: dict, variant) -> str:
+    return spec["title"].replace("{variant}", VARIANT_TEXT.get(variant, ""))
+
+
+def _walk(root, path: str, variant):
+    """按取法走事实值:(找到没有, 值)。路上碰到 null → (True, None);键不存在 → (False, None)。"""
+    cur = root
+    for key in path.replace("{variant}", str(variant)).split("."):
+        if cur is None:
+            return True, None
+        if not isinstance(cur, dict) or key not in cur:
+            return False, None
+        cur = cur[key]
+    return True, cur
+
+
+def _collect(cur, keys: list[str]) -> list:
+    """needs 取法下的全部叶子;"*" 展开列表;缺键或 null 记 None。"""
+    if not keys:
+        return [cur]
+    k, rest = keys[0], keys[1:]
+    if k == "*":
+        return [x for item in cur for x in _collect(item, rest)] if isinstance(cur, list) else [None]
+    if not isinstance(cur, dict) or cur.get(k) is None:
+        return [None]
+    return _collect(cur[k], rest)
+
+
+def _num(x) -> bool:
+    return isinstance(x, (int, float)) and not isinstance(x, bool) and math.isfinite(x)
+
+
+def fmt_value(spec: dict, x) -> str:
+    if spec.get("unit") == "pct":
+        return f"{x * 100:+g}%" if spec["kind"] == "number" and (spec.get("lo") or 0) < 0 else f"{x * 100:g}%"
+    if spec.get("unit") == "times":
+        return f"{x:g} 倍"
+    return f"{x:g}" if isinstance(x, float) else str(x)
+
+
+def _span(p: dict) -> str:
+    return f"最近 {p['bars']} 根里" if p.get("bars") is not None else "窗口里"
+
+
+def _judge(fid: str, spec: dict, variant, cond: str, p: dict, x) -> tuple[str, str]:
+    name, kind = _vtitle(spec, variant), spec["kind"]
+    bad = ("unknown", f"{fid} 的{name}类型不对（{x!r}），重算事实表")
+    if kind in ("count", "number"):
+        if not _num(x) or (kind == "count" and not isinstance(x, int)):
+            return bad
+        ok = {"at_least": lambda: x >= p["x"], "at_most": lambda: x <= p["x"],
+              "between": lambda: p["lo"] <= x <= p["hi"]}[cond]()
+        return ("yes" if ok else "no"), f"{fid} {name} {fmt_value(spec, x)}"
+    if kind == "bool":
+        if not isinstance(x, bool):
+            return bad
+        return ("yes" if x == (cond == "is_true") else "no"), f"{fid} {name}：{'是' if x else '否'}"
+    if kind == "category":
+        if x not in spec["choices"]:
+            return bad
+        return ("yes" if x in p["values"] else "no"), f"{fid} {name}：{x}"
+    if not isinstance(x, list) or not all(isinstance(e, dict) for e in x):
+        return bad
+    items = [e for e in x if all(e.get(k) == v for k, v in spec.get("where", {}).items())]
+    bars = p.get("bars")
+    if bars is not None and not all(isinstance(e.get("bars_before"), int) for e in items):
+        return "unknown", f"{fid} 的{name}没有离买点根数（旧快照），重算事实表"
+    near = [e for e in items if bars is None or e["bars_before"] < bars]
+    n = len(near)
+    ok = {"events_any": n >= 1, "events_none": n == 0, "events_at_least": n >= p.get("k", 1)}[cond]
+    why = f"{fid} {_span(p)}有 {n} 个{name}"
+    if near:
+        why += "（" + "、".join(str(e.get(spec["events"]["date"])) for e in near) + "）"
+    if bars is not None:
+        why += f"；窗口里共 {len(items)} 个"
+    return ("yes" if ok else "no"), why
 
 
 def evaluate(definition: dict, facts: dict) -> tuple[str, str]:
     """一个定义在一张图的事实表上的判定:("yes" | "no" | "unknown", 理由)。纯函数。"""
-    spec = CONDITIONS.get(definition.get("cond"))
-    if spec is None:
-        return "unknown", f"代码里没有条件类型 {definition.get('cond')!r}"
+    fid, vname, variant = definition.get("row"), definition.get("value"), definition.get("variant")
+    spec = VALUES.get(fid, {}).get(vname)
+    if spec is None or definition.get("cond") not in CONDS:
+        return "unknown", f"代码里没有 {fid} 的 {vname} 或条件类型 {definition.get('cond')!r}"
     rows = {r["fid"]: r for r in facts.get("rows") or [] if isinstance(r, dict)}
-    miss = [f for f in definition["reads"] if f not in rows]
-    if miss:
-        return "unknown", f"事实表里没有 {'、'.join(miss)}"
+    if fid not in rows:
+        return "unknown", f"事实表里没有 {fid}"
+    root, name = rows[fid].get("value"), _vtitle(spec, variant)
+    found, x = _walk(root, spec["path"], variant)
+    if not found:
+        return "unknown", f"{fid} 里没有{name}（旧快照），重算事实表"
+    for need in spec.get("needs", ()):
+        if None in _collect(root, need.split(".")):
+            return "unknown", f"{fid} 的{name}算不出（它要用的 {need} 回看不够长）"
+    if x is None:
+        none = spec.get("none")
+        if none:
+            return none[0], f"{fid} {none[1]}"
+        return "unknown", f"{fid} 的{name}算不出（回看不够长）"
     params = {**definition.get("default_params", {}), **definition.get("user_params", {})}
-    ok, why = spec["fn"](rows, definition.get("variant"), params)
-    return ("unknown" if ok is None else "yes" if ok else "no"), why
+    return _judge(fid, spec, variant, definition["cond"], params, x)
 
 
 def evaluate_element(els: dict, eid: str, facts: dict) -> tuple[str, str]:
@@ -164,77 +386,160 @@ def evaluate_element(els: dict, eid: str, facts: dict) -> tuple[str, str]:
 
 # ── 定义:规范化、身份、人话 ─────────────────────────────────────────────────
 
-def _coerce(typ, x, path: str) -> tuple[object, list[str]]:
-    if isinstance(x, bool) or not isinstance(x, (int, float)):
-        return None, [f"{path}: 必须是数"]
-    if typ is int:
-        if not isinstance(x, int):
-            return None, [f"{path}: 必须是整数"]
-        return x, ([] if x >= 1 else [f"{path}: 至少是 1"])
-    return float(x), ([] if x > 0 else [f"{path}: 必须大于 0"])
+def _coerce_param(name: str, kind: str, spec: dict, x, at: str) -> tuple[object, list[str]]:
+    """一个参数转成规范类型:个数的阈值、k、bars 是整数;数的阈值是浮点;values 按 choices 顺序排。"""
+    if name == "values":
+        if not isinstance(x, list) or not x or not all(isinstance(v, str) for v in x):
+            return None, [f"{at}: 必须是非空的类别列表"]
+        bad = [v for v in x if v not in spec["choices"]]
+        if bad:
+            return None, [f"{at}: 没有这些类别 {bad}(有 {'、'.join(spec['choices'])})"]
+        if len(set(x)) != len(x):
+            return None, [f"{at}: 类别重复"]
+        return [c for c in spec["choices"] if c in x], []
+    if not _num(x):
+        return None, [f"{at}: 必须是数"]
+    if name in ("k", "bars") or kind == "count":
+        if float(x) != int(x):
+            return None, [f"{at}: 必须是整数"]
+        x = int(x)
+        if name == "bars" and x < 1:
+            return None, [f"{at}: 至少是 1"]
+        if name == "k" and x < 2:
+            return None, [f"{at}: 至少是 2(至少 1 个就是 events_any,写成 events_any)"]
+        return x, []
+    return float(x), []
+
+
+def _semantic_errors(fid: str, vname: str, spec: dict, cond: str, p: dict, variant, at: str) -> list[str]:
+    """恒成立 / 不可能 / 换种写法就是另一条定义的,拒绝。"""
+    name, kind = _vtitle(spec, variant), spec["kind"]
+    lo_b, hi_b = _bound(spec, "lo"), _bound(spec, "hi")
+    exists = spec.get("exists", "").replace("{variant}", VARIANT_TEXT.get(variant, ""))
+
+    def trivial(what):
+        if exists:
+            return [f"{at}: {name}{what}在有值时总成立,没有值时判否,所以它只是在问「{exists}」,直接用那一条"]
+        return [f"{at}: {name}{what}恒成立({name}在 {lo_b if lo_b is not None else '-∞'} 到 "
+                f"{hi_b if hi_b is not None else '+∞'} 之间),不能当条件"]
+
+    errs: list[str] = []
+    if cond == "at_least":
+        if lo_b is not None and p["x"] <= lo_b:
+            errs += trivial(f"至少 {p['x']}")
+        elif hi_b is not None and p["x"] > hi_b:
+            errs.append(f"{at}: {name}不会超过 {hi_b},至少 {p['x']} 不可能成立")
+    elif cond == "at_most":
+        if hi_b is not None and p["x"] >= hi_b:
+            errs += trivial(f"至多 {p['x']}")
+        elif lo_b is not None and p["x"] < lo_b:
+            errs.append(f"{at}: {name}不会低于 {lo_b},至多 {p['x']} 不可能成立")
+    elif cond == "between":
+        lo, hi = p["lo"], p["hi"]
+        if lo > hi or (kind == "number" and lo == hi):
+            errs.append(f"{at}: 下限要小于上限" + ("(个数可以相等,表示正好几个)" if kind == "count" else ""))
+        elif lo_b is not None and lo <= lo_b:
+            errs.append(f"{at}: 下限 {lo} 碰到了{name}的下界 {lo_b},等于至多 {hi}:写成 at_most")
+        elif hi_b is not None and hi >= hi_b:
+            errs.append(f"{at}: 上限 {hi} 碰到了{name}的上界 {hi_b},等于至少 {lo}:写成 at_least")
+    elif cond == "is_one_of" and len(p["values"]) == len(spec["choices"]):
+        errs.append(f"{at}: 选了全部类别,恒成立,不能当条件")
+    elif cond.startswith("events_") and p.get("bars") is not None and not spec["events"].get("bars_before"):
+        errs.append(f"{at}: {fid} 的{name}没有离买点根数,不能限定最近 N 根")
+    if not errs and spec.get("same_as"):
+        hint = spec["same_as"](cond, p, variant)
+        if hint:
+            errs.append(f"{at}: 同一个意思只许一种写法——{hint}")
+    return errs
 
 
 def normalize_definition(d, path: str = "definition") -> tuple[dict | None, list[str]]:
-    """校验并补全一个定义:reads 由条件类型和口径推出(给了就要对得上),没给的参数按默认值补进
-    default_params,数值转成规范类型。返回 (规范化的定义, 问题清单)。"""
+    """校验并规范化一个定义:行、值、条件类型、口径、参数都对得上声明;参数转成规范类型;
+    拒绝恒成立、不可能、同义换写的定义。返回 (规范化的定义, 问题清单)。"""
     if not isinstance(d, dict):
         return None, [f"{path}: 必须是对象(现有事实算不出就写 null 并给 needs)"]
     errs = []
     extra = set(d) - set(DEF_FIELDS)
     if extra:
         errs.append(f"{path}: 未知字段 {sorted(extra)}")
-    spec = CONDITIONS.get(d.get("cond"))
+    fid, vname, cond = d.get("row"), d.get("value"), d.get("cond")
+    if fid not in VALUES:
+        return None, errs + [f"{path}: row 不认识 {fid!r}(现有 {'、'.join(VALUES)});现有事实行都算不出的角度,"
+                             f"先记待写代码(definition 写 null,needs 写缺什么)"]
+    spec = VALUES[fid].get(vname)
     if spec is None:
-        return None, errs + [f"{path}: cond 不认识 {d.get('cond')!r}(现有:{'、'.join(CONDITIONS)});"
-                             f"现有条件类型算不出就先记待写代码(definition 写 null,needs 写缺什么)"]
+        have = "、".join(f"{k}({KIND_TEXT[s['kind']]})" for k, s in VALUES[fid].items())
+        return None, errs + [f"{path}: {fid} 没有可判定的值 {vname!r}(有 {have})"]
+    ctype = CONDS.get(cond)
+    if ctype is None:
+        return None, errs + [f"{path}: cond 不认识 {cond!r}(现有 {'、'.join(CONDS)})"]
+    kind = spec["kind"]
+    if kind not in ctype["kinds"]:
+        ok = "、".join(c for c, t in CONDS.items() if kind in t["kinds"])
+        return None, errs + [f"{path}: {fid} 的 {vname} 是{KIND_TEXT[kind]},不能用 {cond}(能用 {ok})"]
     variant = d.get("variant")
-    if variant not in spec["variants"]:
-        errs.append(f"{path}: 口径 variant 只能是 {'/'.join(map(str, spec['variants']))}(现为 {variant!r})")
-        return None, errs
+    if spec.get("variants"):
+        if variant not in spec["variants"]:
+            return None, errs + [f"{path}: 口径 variant 只能是 {'/'.join(spec['variants'])}(现为 {variant!r})"]
+    elif variant is not None:
+        return None, errs + [f"{path}: {fid} 的 {vname} 不分口径,variant 写 null(现为 {variant!r})"]
     up, dp = d.get("user_params") or {}, d.get("default_params") or {}
     if not isinstance(up, dict) or not isinstance(dp, dict):
         return None, errs + [f"{path}: user_params / default_params 必须是对象"]
+    allowed = ctype["need"] + ctype["opt"]
     both = set(up) & set(dp)
     if both:
         errs.append(f"{path}: 参数 {sorted(both)} 只能在 user_params 或 default_params 其中一处")
-    unknown = (set(up) | set(dp)) - set(spec["params"])
+    unknown = (set(up) | set(dp)) - set(allowed)
     if unknown:
-        errs.append(f"{path}: {d['cond']} 没有参数 {sorted(unknown)}(有 {'、'.join(spec['params'])})")
-    out_u, out_d = {}, {}
-    for name, (typ, default, _) in spec["params"].items():
-        if name in up:
-            val, e = _coerce(typ, up[name], f"{path}.user_params.{name}")
-            out_u[name] = val
-        else:
-            val, e = _coerce(typ, dp.get(name, default), f"{path}.default_params.{name}")
-            out_d[name] = val
-        errs += e
-    reads = list(spec["variants"][variant])
-    if "reads" in d and list(d["reads"] or []) != reads:
-        errs.append(f"{path}: reads 应为 {reads}(由条件类型和口径定)")
+        errs.append(f"{path}: {cond} 没有参数 {sorted(unknown)}(有 {'、'.join(allowed) or '无'})")
+    missing = [n for n in ctype["need"] if n not in up and n not in dp]
+    if missing:
+        errs.append(f"{path}: {cond} 缺参数 {missing}(用户说了的放 user_params,系统取的放 default_params)")
+    errs += [f"{path}: {n} 是这条要素的意思本身,只能放 user_params" for n in USER_ONLY if n in dp]
     if errs:
         return None, errs
-    return {"reads": reads, "cond": d["cond"], "variant": variant,
+    out_u, out_d = {}, {}
+    for src, out, where in ((up, out_u, "user_params"), (dp, out_d, "default_params")):
+        for n in allowed:
+            if n in src:
+                out[n], e = _coerce_param(n, kind, spec, src[n], f"{path}.{where}.{n}")
+                errs += e
+    if errs:
+        return None, errs
+    errs = _semantic_errors(fid, vname, spec, cond, {**out_d, **out_u}, variant, path)
+    if errs:
+        return None, errs
+    return {"row": fid, "value": vname, "cond": cond, "variant": variant,
             "user_params": out_u, "default_params": out_d}, []
 
 
 def identity(definition: dict) -> str:
-    """要素的身份:读哪几行 + 条件类型 + 口径 + 用户说出来或选定的参数(系统默认值不算)。"""
-    return json.dumps([sorted(definition["reads"]), definition["cond"], definition["variant"],
+    """要素的身份:读的行 + 值 + 条件类型 + 口径 + 用户说出来或选定的参数(系统默认值不算)。"""
+    return json.dumps([definition["row"], definition["value"], definition["cond"], definition["variant"],
                        definition["user_params"]], sort_keys=True, ensure_ascii=False)
 
 
 def definition_text(definition: dict) -> str:
-    spec = CONDITIONS[definition["cond"]]
-    params = {**definition["default_params"], **definition["user_params"]}
-    shown = {k: (f"{v:g}" if isinstance(v, float) else v) for k, v in params.items()}
-    return spec["text"].format(variant=VARIANT_TEXT.get(definition["variant"], ""), **shown)
+    spec = VALUES[definition["row"]][definition["value"]]
+    p = {**definition["default_params"], **definition["user_params"]}
+    shown = {k: fmt_value(spec, v) for k, v in p.items() if k in ("x", "lo", "hi")}
+    if "values" in p:
+        shown["values"] = p["values"][0] if len(p["values"]) == 1 else " / ".join(p["values"]) + " 之一"
+    if "k" in p:
+        shown["k"] = p["k"]
+    return CONDS[definition["cond"]]["text"].format(v=_vtitle(spec, definition["variant"]), span=_span(p), **shown)
 
 
 def params_text(definition: dict) -> str:
-    labels = {k: lab for k, (_, _, lab) in CONDITIONS[definition["cond"]]["params"].items()}
-    fmt = lambda d: "、".join(f"{labels.get(k, k)} {v:g}" if isinstance(v, float) else f"{labels.get(k, k)} {v}"
-                              for k, v in sorted(d.items()))
+    spec = VALUES[definition["row"]][definition["value"]]
+
+    def show(k, v):
+        if k in ("x", "lo", "hi"):
+            return fmt_value(spec, v)
+        return " / ".join(v) if isinstance(v, list) else str(v)
+
+    fmt = lambda d: "、".join(f"{PARAM_TEXT.get(k, k)} {show(k, v)}" for k, v in sorted(d.items()))
     parts = []
     if definition["user_params"]:
         parts.append("你定的：" + fmt(definition["user_params"]))
@@ -264,12 +569,13 @@ def find_same(els: dict, definition: dict, exclude: str | None = None) -> str | 
 
 
 def similar(els: dict, definition: dict) -> list[str]:
-    """条件类型与口径相同、参数不同的在用要素(查重提示)。"""
+    """读同一行同一个值(口径也相同)、条件类型或参数不同的在用要素(查重提示)。"""
     out = []
     for eid, el in sorted(els.items()):
         d = el["versions"][-1].get("definition")
-        if el["status"] == "active" and d is not None and d["cond"] == definition["cond"] \
-                and d["variant"] == definition["variant"] and identity(d) != identity(definition):
+        if el["status"] == "active" and d is not None and (d["row"], d["value"], d["variant"]) == \
+                (definition["row"], definition["value"], definition["variant"]) \
+                and identity(d) != identity(definition):
             out.append(f"{eid}「{el['name'].get('value')}」（{definition_text(d)}）")
     return out
 
@@ -283,6 +589,7 @@ def _status(el: dict) -> str:
 def next_id(ids) -> str:
     nums = [int(m.group(1)) for i in ids if isinstance(i, str) and (m := ELEMENT_ID_RE.fullmatch(i))]
     return f"E{(max(nums) + 1) if nums else 1:03d}"
+
 
 
 # ── 操作的校验与重算 ────────────────────────────────────────────────────────
@@ -524,6 +831,8 @@ def rebuild(verify: bool) -> list[str]:
     return problems
 
 
+
+
 # ── 人话打印 ───────────────────────────────────────────────────────────────
 
 def origin_text(rec: dict) -> str:
@@ -537,12 +846,11 @@ def origin_text(rec: dict) -> str:
 
 
 def angle(definition: dict | None) -> tuple[str | None, list[str]]:
-    """要素读的事实行是谁提的角度:("user" | "preset" | None(待写代码), 用户提那几行的操作日志条目)。"""
+    """要素读的事实行是谁提的角度:("user" | "preset" | None(待写代码), 用户提那一行的操作日志条目)。"""
     if definition is None:
         return None, []
-    ops = [ROWS[f]["source"].get("op_id") for f in definition["reads"]
-           if f in ROWS and ROWS[f]["source"].get("kind") == "user"]
-    return ("user" if ops else "preset"), ops
+    src = ROWS.get(definition["row"], {}).get("source", {})
+    return ("user", [src.get("op_id")]) if src.get("kind") == "user" else ("preset", [])
 
 
 def label(els: dict, eid: str) -> str:
@@ -569,9 +877,8 @@ def render(el: dict) -> str:
     if d is None:
         lines.append(f"  待写代码：{ver.get('needs')}")
     else:
-        who, ops = angle(d)
-        rows = "、".join(f"{f}「{ROWS[f]['title']}」" for f in d["reads"])
-        lines.append(f"  条件：{definition_text(d)}（读 {rows}"
+        who, _ = angle(d)
+        lines.append(f"  条件：{definition_text(d)}（读 {d['row']}「{ROWS[d['row']]['title']}」的 {d['value']}"
                      + ("，你提的角度" if who == "user" else "") + f"）；{params_text(d)}")
     if el["aliases"]:
         lines.append("  别的说法：" + "、".join(
@@ -579,13 +886,35 @@ def render(el: dict) -> str:
     return "\n".join(lines)
 
 
+def _value_line(name: str, spec: dict) -> str:
+    kind = spec["kind"]
+    bits = [f"{name}：{spec['title'].replace('{variant}', '')}（{KIND_TEXT[kind]}"]
+    if spec.get("variants"):
+        bits.append("，口径 " + " / ".join(f"{v}={VARIANT_TEXT[v]}" for v in spec["variants"]))
+    lo, hi = _bound(spec, "lo"), _bound(spec, "hi")
+    if lo is not None or hi is not None:
+        bits.append(f"，范围 {'' if lo is None else lo}～{'' if hi is None else hi}")
+    if kind == "category":
+        bits.append("，取值 " + " / ".join(spec["choices"]))
+    if kind == "events":
+        bits.append(f"，带日期（{spec['events']['date']}）" + ("、离买点根数" if spec["events"].get("bars_before") else ""))
+    if spec.get("none"):
+        bits.append(f"，{spec['none'][1]}时判否")
+    if spec.get("unit") == "pct":
+        bits.append("，写成小数（0.3 = 30%）")
+    return "".join(bits) + "）"
+
+
 def render_conds() -> str:
-    lines = []
-    for cond, spec in CONDITIONS.items():
-        reads = "；".join(f"{VARIANT_TEXT.get(v, '不分口径')}读 {'、'.join(rs)}" for v, rs in spec["variants"].items())
-        params = "、".join(f"{k}（{lab}，默认 {dv:g}，待验证）" for k, (_, dv, lab) in spec["params"].items())
-        lines.append(f"{cond}：{spec['text']}  {reads}  参数 {params}"
-                     + (f"  注：{spec['note']}" if spec["note"] else ""))
+    lines = ["通用条件类型："]
+    for cond, t in CONDS.items():
+        params = "、".join([f"{n}（{PARAM_TEXT[n]}）" for n in t["need"]]
+                          + [f"{n}（{PARAM_TEXT[n]}，可省，省了就是整个看图窗口）" for n in t["opt"]])
+        lines.append(f"  {cond}：用于{' / '.join(KIND_TEXT[k] for k in t['kinds'])}；参数 {params or '无'}")
+    lines.append("每行事实能判定的值（参数都要写明：用户说的放 user_params，系统取的放 default_params，待验证）：")
+    for fid, vals in VALUES.items():
+        lines.append(f"  {fid}「{ROWS[fid]['title']}」")
+        lines += [f"    {_value_line(name, spec)}" for name, spec in vals.items()]
     return "\n".join(lines)
 
 
@@ -623,16 +952,27 @@ def render_eval(snapshot: dict, els: dict, eids: list[str] | None = None, card: 
     return "\n".join(lines)
 
 
+def _parse_param(kv: str) -> tuple[str, object]:
+    k, _, val = kv.partition("=")
+    k, val = k.strip(), val.strip()
+    if k == "values":
+        return k, [v.strip() for v in val.split(",") if v.strip()]
+    return k, int(val) if re.fullmatch(r"-?\d+", val) else float(val)
+
+
 def main(argv=None) -> None:
     ap = argparse.ArgumentParser(description="要素库")
     sub = ap.add_subparsers(dest="cmd", required=True)
     s = sub.add_parser("show", help="看要素(默认全部)")
     s.add_argument("element_id", nargs="?")
-    sub.add_parser("conds", help="代码里能算的条件类型")
+    sub.add_parser("conds", help="每行事实能判定的值与通用条件类型")
     fd = sub.add_parser("find", help="按定义查有没有已有要素(建要素之前查重)")
+    fd.add_argument("--row", required=True)
+    fd.add_argument("--value", required=True)
     fd.add_argument("--cond", required=True)
     fd.add_argument("--variant")
-    fd.add_argument("--param", action="append", default=[], help="用户说出来或选定的参数 k=v,可多个")
+    fd.add_argument("--param", action="append", default=[],
+                    help="用户说出来或选定的参数 k=v,可多个;values 用逗号分隔")
     ev = sub.add_parser("eval", help="在事实表快照上判定要素(对卡时用)")
     ev.add_argument("--facts", required=True, help="事实表快照(facts 命令写的,可写相对状态根的路径)")
     ev.add_argument("--element", action="append", default=[])
@@ -650,17 +990,15 @@ def main(argv=None) -> None:
         elif args.cmd == "conds":
             print(render_conds())
         elif args.cmd == "find":
-            up = {}
-            for kv in args.param:
-                k, _, val = kv.partition("=")
-                up[k.strip()] = int(val) if re.fullmatch(r"-?\d+", val.strip()) else float(val)
-            defn, errs = normalize_definition({"cond": args.cond, "variant": args.variant, "user_params": up})
+            up = dict(_parse_param(kv) for kv in args.param)
+            defn, errs = normalize_definition({"row": args.row, "value": args.value, "cond": args.cond,
+                                               "variant": args.variant, "user_params": up})
             if errs:
                 raise ValueError("; ".join(errs))
             same = find_same(els, defn)
             print(f"已有：{label(els, same)}" if same else f"没有定义相同的要素（{definition_text(defn)}）")
             for h in similar(els, defn):
-                print(f"相近（条件类型和口径相同、参数不同）：{h}")
+                print(f"相近（读同一个值，条件类型或参数不同）：{h}")
         else:
             card = None
             if args.shape:

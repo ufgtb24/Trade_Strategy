@@ -9,6 +9,9 @@
 事实只是计算方法(ROWS 里的一行)加每张图的结果(下面的 rows),只给数值和描述、不带判断,
 没有角色、不进形态卡;是 / 否条件是要素(elements.py),在这些行上定出来。每一行标出处(source):
 预设的,或者用户提的角度(哪天提的、原话、那次提的操作日志条目)。
+每行 value 里哪些量能拿来立要素,由 elements.VALUES 声明;value 里的事件列表(F05 all_runs、F09、F11、
+F13、F14、F15)列全窗口里的全部(描述和图上标记可能只列几段),每个事件带 bars_before
+(买点 − 事件最后一根,0 = 买点当天)。
 
 输出(compute_facts 的返回值,键顺序固定,数值统一保留 4 位小数):
 {"schema": "chart_workflow.facts/1", "facts_code": "<本文件源码 sha256 前 12 位>",
@@ -289,10 +292,9 @@ def _oldest_row(ctx: _Ctx, peaks_by: dict) -> dict:
 
 # ── 成交量 ─────────────────────────────────────────────────────────────────
 
-def _vol_runs(ctx: _Ctx) -> list[dict]:
+def _vol_run_spans(ctx: _Ctx) -> list[dict]:
     """窗口里量比 ≥ vol_run_min 的日子连成段:两段之间隔着的不达标根数 ≤ vol_run_gap 就合并;
-    按段内最大量比取前 max_vol_runs 段,再按日期排;离买点最近的一段标 latest。
-    平均量比按段的起止之间全部根数算(含合并进来的间隔日)。"""
+    全部段按日期排。平均量比按段的起止之间全部根数算(含合并进来的间隔日)。"""
     vr = ctx.vr
     days = [i for i in range(ctx.rs, ctx.ib + 1) if math.isfinite(vr[i]) and vr[i] >= ctx.p["vol_run_min"]]
     runs: list[list[int]] = []
@@ -306,6 +308,12 @@ def _vol_runs(ctx: _Ctx) -> list[dict]:
         seg = vr[a:b + 1]
         info.append({"a": a, "b": b, "max": float(np.nanmax(seg)), "mean": float(np.nanmean(seg)),
                      "vol_mean": float(np.mean(ctx.v[a:b + 1]))})
+    return info
+
+
+def _vol_runs(ctx: _Ctx) -> list[dict]:
+    """列在描述里的放量段:按段内最大量比取前 max_vol_runs 段,再按日期排;其中离买点最近的标 latest。"""
+    info = _vol_run_spans(ctx)
     top = sorted(sorted(info, key=lambda r: (-r["max"], r["a"]))[:int(ctx.p["max_vol_runs"])],
                  key=lambda r: r["a"])
     for r in top:
@@ -318,9 +326,13 @@ def _vol_rule(ctx: _Ctx) -> str:
 
 
 def _vol_runs_row(ctx: _Ctx, runs: list[dict]) -> dict:
+    """runs:描述里列的几段(按最大量比取前几段);all_runs:窗口里全部放量段,带离买点根数
+    (买点 − 段的最后一根),供要素判「最近 N 根里有没有」。"""
     value = {"rule": _vol_rule(ctx),
              "runs": [{"start": ctx.d[r["a"]], "end": ctx.d[r["b"]], "max_vr": _r(r["max"]),
-                       "mean_vr": _r(r["mean"]), "latest": r["latest"]} for r in runs]}
+                       "mean_vr": _r(r["mean"]), "latest": r["latest"]} for r in runs],
+             "all_runs": [{"start": ctx.d[r["a"]], "end": ctx.d[r["b"]], "max_vr": _r(r["max"]),
+                           "bars_before": ctx.ib - r["b"]} for r in _vol_run_spans(ctx)]}
     dates = [ctx.d[r["a"]] for r in runs] + [ctx.d[r["b"]] for r in runs]
     if not runs:
         text = f"没有（量比 = {_vol_rule(ctx)}，窗口里没有 ≥ {ctx.p['vol_run_min']:g} 倍的日子）"
@@ -377,23 +389,29 @@ def _pre_state_row(ctx: _Ctx, M: np.ndarray) -> dict:
     return _row("F08", text, value, [ctx.d[ctx.ib]])
 
 
-def _segments_overlapping(ctx: _Ctx, events, last_n: int):
-    evs = [e for e in events if e.end_idx >= ctx.rs]
-    return evs[-last_n:]
+def _segments_overlapping(ctx: _Ctx, events) -> list:
+    """和窗口有重叠的全部区段(按时间排)。"""
+    return [e for e in events if e.end_idx >= ctx.rs]
+
+
+def _more_text(n_all: int, n_shown: int) -> str:
+    return f"（窗口里共 {n_all} 段，只列最近 {n_shown} 段）" if n_all > n_shown else ""
 
 
 def _trend_row(ctx: _Ctx) -> dict:
-    segs = _segments_overlapping(ctx, run(TrendSegmentDetector(), ctx.bars), 6)
+    """描述和图上标记只列最近 6 段;value 里是和窗口重叠的全部区段,带离买点根数(买点 − 段的最后一根)。"""
+    evs = _segments_overlapping(ctx, run(TrendSegmentDetector(), ctx.bars))
+    segs = evs[-6:]
     items = [{"start": ctx.d[e.start_idx], "end": ctx.d[e.end_idx], "regime": e.regime,
-              "unfinished": e.end_idx == ctx.ib} for e in segs]
+              "unfinished": e.end_idx == ctx.ib, "bars_before": ctx.ib - e.end_idx} for e in evs]
     unfinished = any(x["unfinished"] for x in items)
     if not items:
         text = "没有（K 线太短，分不出走势区段）"
     else:
-        text = "；".join(
+        text = _more_text(len(evs), len(segs)) + "；".join(
             f"{ctx.md(e.start_idx)}–{ctx.md(e.end_idx)} {REGIME_TEXT.get(e.regime, e.regime)}"
             + (f"（{UNFINISHED_TEXT}）" if e.end_idx == ctx.ib else "") for e in segs)
-    dates = [x["start"] for x in items] + [x["end"] for x in items]
+    dates = [ctx.d[e.start_idx] for e in segs] + [ctx.d[e.end_idx] for e in segs]
     return _row("F09", text, {"segments": items}, dates,
                 unfinished=unfinished)
 
@@ -415,16 +433,18 @@ def _gap_row(ctx: _Ctx, M: np.ndarray) -> dict:
 
 
 def _platform_row(ctx: _Ctx) -> dict:
-    segs = _segments_overlapping(ctx, run(PlatformDetector(), ctx.bars), 4)
+    """描述和图上标记只列最近 4 段;value 里是和窗口重叠的全部平台段,带离买点根数。"""
+    evs = _segments_overlapping(ctx, run(PlatformDetector(), ctx.bars))
+    segs = evs[-4:]
     items = [{"start": ctx.d[e.start_idx], "end": ctx.d[e.end_idx], "range_pct": _r(e.range_pct),
-              "unfinished": e.end_idx == ctx.ib} for e in segs]
+              "unfinished": e.end_idx == ctx.ib, "bars_before": ctx.ib - e.end_idx} for e in evs]
     if not items:
         text = "没有"
     else:
-        text = "；".join(
+        text = _more_text(len(evs), len(segs)) + "；".join(
             f"{ctx.md(e.start_idx)}–{ctx.md(e.end_idx)} 振幅 {_pct(e.range_pct).lstrip('+')}"
             + (f"（{UNFINISHED_TEXT}）" if e.end_idx == ctx.ib else "") for e in segs)
-    dates = [x["start"] for x in items] + [x["end"] for x in items]
+    dates = [ctx.d[e.start_idx] for e in segs] + [ctx.d[e.end_idx] for e in segs]
     return _row("F11", text, {"segments": items}, dates,
                 unfinished=any(x["unfinished"] for x in items))
 
@@ -495,7 +515,8 @@ def _tb_row(ctx: _Ctx) -> tuple[dict, list[dict]]:
                              # 段在买点那天被数据末尾强制收成「满窗」:当时还没走完
                              "unfinished": s.end_idx == ctx.ib and s.outcome == "timeout"})
     value = {"segments": [{"bo": ctx.d[s["bo"]], "start": ctx.d[s["a"]], "end": ctx.d[s["b"]],
-                           "exit": s["exit"], "unfinished": s["unfinished"]} for s in segs]}
+                           "exit": s["exit"], "unfinished": s["unfinished"], "bars_before": ctx.ib - s["b"]}
+                          for s in segs]}
     if not segs:
         text = "没有"
     else:
@@ -530,7 +551,7 @@ def _retest_row(ctx: _Ctx, peaks_by: dict) -> dict:
         hits = _retest(ctx, peaks_by[var])
         value[var] = [{"peak_date": ctx.d[x["peak"]], "price": _r(x["price"]),
                        "first_clear": ctx.d[x["fc"]], "low_date": ctx.d[x["low_idx"]],
-                       "low": _r(x["low"])} for x in hits]
+                       "low": _r(x["low"]), "bars_before": ctx.ib - x["low_idx"]} for x in hits]
         for x in hits:
             dates += [ctx.d[x["peak"]], ctx.d[x["low_idx"]]]
         if hits:
