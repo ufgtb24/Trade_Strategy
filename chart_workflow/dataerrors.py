@@ -1,8 +1,8 @@
 """数据错误登记:用户核对后(跨源比对会在图头提示两份数据不一致的日子),把行情有误的段标成「数据有误」,
 这里把它们汇总成登记,并从股票池面板里排除受影响的股票日。
 
-工具在生成任何清单、计算任何统计之前都走 `load_pool()`:先重读 <root>/annotations/
-下全部标注批次,把 label = "data_error" 的标注汇总写成 <root>/data_errors.json,
+工具在生成任何清单、计算任何统计之前都走 `load_pool()`:先重读 <状态根>/annotations/
+下全部标注批次(v1 / v2 都认,见 annotations.read_batch;状态根见 state.py),把 label = "data_error" 的标注汇总写成 <root>/data_errors.json,
 再从池内面板里排除受影响的股票日。大涨段、对照清单、同日对照与各项统计用的都是排除后的面板。
 
 排除规则(待验证):对每条登记(股票 S,框选范围 [a, b]),S 的决策日 t 的数据窗口
@@ -39,6 +39,7 @@ import pandas as pd
 
 from chart_workflow.config import root_dir
 from chart_workflow.panel import build_panel
+from chart_workflow.state import state_root
 
 SCHEMA = "chart_workflow.data_errors/1"
 DATA_ERROR_LABEL = "data_error"
@@ -51,7 +52,7 @@ def registry_path(cfg: dict) -> Path:
 
 def build_registry(cfg: dict) -> dict:
     """读全部标注批次,汇总「数据有误」标注(同股同范围合并)。不写文件。"""
-    ann_dir = root_dir(cfg) / "annotations"
+    ann_dir = state_root() / "annotations"
     entries: dict[tuple, dict] = {}
     skipped: list[str] = []
     n_batches = 0

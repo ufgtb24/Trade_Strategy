@@ -23,10 +23,14 @@ DEFAULT_CONFIG = {
         "first_passage_enabled": True,   # 首次穿越方向注入开关
     },
     "last_selected_pattern": "bottom_burst",
-    # 看图工作流模式(path2_web/workflow.py):清单 / 标注的根目录与服务端截断依据
+    # 看图工作流模式(path2_web/workflow.py):清单根目录、K 线数据目录与服务端截断依据。
+    # 标注批次等记账类文件不在这里,写到 chart_workflow 的状态根(chart_workflow/state.py)。
+    # train_end / dataset_dir / view_floor 必须与 chart_workflow.config.DEFAULTS 同值(有测试钉住)。
     "workflow": {
-        "root": "outputs/chart_workflow",   # 相对 repo root
+        "root": "outputs/chart_workflow",   # 清单所在根目录,相对 repo root
         "train_end": "2025-12-31",          # 待验证;图、清单、标注都不得越过这一天
+        "dataset_dir": "datasets/pkls_until_20251231",   # 截断副本,相对 repo root;顶层 dataset_dir 不动
+        "view_floor": "2025-01-01",         # 本轮看图下界(待验证):图窗早于它的清单不列、打不开
     },
 }
 

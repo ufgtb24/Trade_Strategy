@@ -1,13 +1,22 @@
 """看图工作流模式的路由:读清单、取截断后的 K 线、收标注批次。
 
-纯投影层:只做读文件、按 train_end 截断、校验后写文件,不含任何走势语义。
-清单由命令行工具 chart_workflow 生成(<root>/lists/<list_id>.json);标注批次由这里写到
-<root>/annotations/<batch_id>.json。root / train_end 取 config 的 workflow 子树。
+纯投影层:只做「校验参数 → 调函数 → 序列化」,不含任何走势语义。
+清单由命令行工具 chart_workflow 生成(<root>/lists/<list_id>.json,root 取 config 的 workflow 子树);
+标注批次写到 chart_workflow 的状态根(<状态根>/annotations/<batch_id>.json,见 chart_workflow/state.py),
+打开清单时经 chart_workflow.views.record 记一条「看过」。K 线经 chart_workflow.loader 只读截断副本
+(workflow.dataset_dir),不是副本就 503。
 
 红线:训练段末日 train_end 之后的数据不出服务端——
   /workflow/ohlc       end 先截到 train_end
   /workflow/lists/{id} 读清单时兜底:view_end 截到 train_end,晚于它的日期标记一律删掉
   POST annotations     所有日期必须不晚于 train_end
+本轮看图下界 view_floor(workflow 子树,默认 2025-01-01,待验证)之前的不给看——
+  /workflow/lists      任何一条 view_start 早于下界的清单不列出
+  /workflow/lists/{id} 这种清单 403
+  /workflow/ohlc       start 先截到下界
+  POST annotations     框选起止、买点都不得早于下界
+拿不到状态根(StateRootMissing)时记不了「看过」:打开清单、发送标注一律 503,不给图;
+/workflow/lists 照常列名字,但每项带 blocked = "state_root_missing" 与消息。
 """
 from __future__ import annotations
 
@@ -22,6 +31,9 @@ import pandas as pd
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
+from chart_workflow import views
+from chart_workflow.loader import NotASnapshot, load_bars
+from chart_workflow.state import StateRootMissing, state_root
 from path2_web.config import DEFAULT_CONFIG
 from path2_web.data import serialize_ohlc, slice_window
 
@@ -72,6 +84,38 @@ def _train_end(cfg: dict) -> str:
     return str(_wf_cfg(cfg)["train_end"])
 
 
+def _view_floor(cfg: dict) -> str:
+    return str(_wf_cfg(cfg)["view_floor"])
+
+
+def _data_dir(cfg: dict) -> Path:
+    p = Path(_wf_cfg(cfg)["dataset_dir"])
+    return p if p.is_absolute() else _REPO_ROOT / p
+
+
+def _state_root() -> Path:
+    try:
+        return state_root()
+    except StateRootMissing as e:
+        raise HTTPException(503, str(e)) from None
+
+
+def _bars(cfg: dict, symbol: str, end: str) -> pd.DataFrame:
+    """经 chart_workflow.loader 读截断副本:不是副本 → 503;没有这只股票 → 404。"""
+    try:
+        return load_bars(_data_dir(cfg), symbol, end)
+    except NotASnapshot as e:
+        raise HTTPException(503, str(e)) from None
+    except FileNotFoundError:
+        raise HTTPException(404, f"pkl not found: {symbol}") from None
+
+
+def _before_floor(doc: dict, floor: str) -> bool:
+    """清单里有没有图窗起点早于看图下界的条目。"""
+    return any(not isinstance(it, dict) or str(it.get("view_start") or "") < floor
+               for it in doc.get("items") or [])
+
+
 def _check_list_id(list_id: str) -> None:
     if not list_id or not _LIST_ID_RE.fullmatch(list_id):
         raise HTTPException(400, f"非法清单名: {list_id!r}")
@@ -115,15 +159,27 @@ def build_workflow_router(*, get_config) -> APIRouter:
 
     @router.get("/lists")
     def wf_lists():
-        d = _root(get_config()) / "lists"
+        cfg = get_config()
+        floor = _view_floor(cfg)
+        try:
+            state_root()
+            blocked = None
+        except StateRootMissing as e:
+            blocked = str(e)
+        d = _root(cfg) / "lists"
         out = []
         for p in sorted(d.glob("*.json")) if d.exists() else []:
             doc = _read_json(p)
             if not isinstance(doc, dict) or not _LIST_ID_RE.fullmatch(p.stem):
                 continue
-            out.append({"list_id": p.stem, "kind": doc.get("kind"), "title": doc.get("title"),
-                        "created_at": doc.get("created_at"),
-                        "n_items": len(doc.get("items") or [])})
+            if _before_floor(doc, floor):
+                continue
+            row = {"list_id": p.stem, "kind": doc.get("kind"), "title": doc.get("title"),
+                   "created_at": doc.get("created_at"), "n_items": len(doc.get("items") or [])}
+            if blocked:
+                row["blocked"] = "state_root_missing"
+                row["blocked_message"] = blocked
+            out.append(row)
         out.sort(key=lambda x: x["created_at"] or "", reverse=True)
         return out
 
@@ -137,6 +193,17 @@ def build_workflow_router(*, get_config) -> APIRouter:
         doc = _read_json(p)
         if not isinstance(doc, dict):
             raise HTTPException(500, f"清单文件损坏: {list_id}")
+        floor = _view_floor(cfg)
+        if _before_floor(doc, floor):
+            raise HTTPException(403, f"这份清单的图窗早于本轮看图下界 {floor}，不能打开")
+        kind = doc.get("kind")
+        try:      # 记不了「看过」就不给图
+            views.record(surface="web", event="open_list", outcome_visible=kind != "contrast_blind",
+                         list_id=list_id, list_kind=kind, list_doc=doc)
+        except StateRootMissing as e:
+            raise HTTPException(503, str(e)) from None
+        except OSError as e:
+            raise HTTPException(503, f"看过记录写不进去:{e}") from None
         return clip_list(doc, _train_end(cfg))
 
     @router.get("/ohlc")
@@ -145,11 +212,9 @@ def build_workflow_router(*, get_config) -> APIRouter:
         if not (_is_date(start) and _is_date(end)):
             raise HTTPException(400, "start / end 必须是 YYYY-MM-DD")
         cfg = get_config()
+        start = max(start, _view_floor(cfg))
         end = min(end, _train_end(cfg))
-        pkl = Path(cfg["dataset_dir"]) / f"{symbol}.pkl"
-        if not pkl.exists():
-            raise HTTPException(404, f"pkl not found: {symbol}")
-        win = slice_window(pd.read_pickle(pkl), start, end)
+        win = slice_window(_bars(cfg, symbol, end), start, end)
         return serialize_ohlc(symbol, win)
 
     def _validate(ann: AnnotationIn, cfg: dict, dates_cache: dict) -> list[str]:
@@ -158,12 +223,15 @@ def build_workflow_router(*, get_config) -> APIRouter:
         train_end = _train_end(cfg)
         if not _SYMBOL_RE.fullmatch(ann.symbol or ""):
             return [f"{tag}: 非法代码 {ann.symbol!r}"]
+        floor = _view_floor(cfg)
         for name in ("range_start", "range_end") + (("buy_date",) if ann.buy_date else ()):
             v = getattr(ann, name)
             if not _is_date(v):
                 errs.append(f"{tag}: {name} 不是日期 {v!r}")
             elif v > train_end:
                 errs.append(f"{tag}: {name}={v} 晚于训练段末日 {train_end}")
+            elif v < floor:
+                errs.append(f"{tag}: {name}={v} 早于本轮看图下界 {floor}")
         if errs:
             return errs
         if ann.range_start > ann.range_end:
@@ -177,11 +245,13 @@ def build_workflow_router(*, get_config) -> APIRouter:
                 errs.append(f"{tag}: 买点早于形态起点")
             elif ann.buy_date > ann.range_end:
                 if ann.symbol not in dates_cache:
-                    pkl = Path(cfg["dataset_dir"]) / f"{ann.symbol}.pkl"
-                    if not pkl.exists():
+                    try:
+                        df = _bars(cfg, ann.symbol, train_end)
+                    except HTTPException as e:
+                        if e.status_code != 404:
+                            raise
                         return errs + [f"{tag}: 找不到 {ann.symbol} 的行情"]
-                    dates_cache[ann.symbol] = slice_window(
-                        pd.read_pickle(pkl), "1900-01-01", train_end)["date"]
+                    dates_cache[ann.symbol] = slice_window(df, "1900-01-01", train_end)["date"]
                 d = dates_cache[ann.symbol]
                 n_after = int(((d > pd.Timestamp(ann.range_end))
                                & (d <= pd.Timestamp(ann.buy_date))).sum())
@@ -194,6 +264,7 @@ def build_workflow_router(*, get_config) -> APIRouter:
     def wf_post_annotations(req: AnnotationBatchIn):
         _check_list_id(req.list_id)
         cfg = get_config()
+        root = _state_root()
         if not req.annotations:
             raise HTTPException(400, "没有可发送的标注")
         errs: list[str] = []
@@ -203,7 +274,7 @@ def build_workflow_router(*, get_config) -> APIRouter:
         if errs:
             raise HTTPException(400, "; ".join(errs[:20]))
         now = _now()
-        out_dir = _root(cfg) / "annotations"
+        out_dir = root / "annotations"
         out_dir.mkdir(parents=True, exist_ok=True)
         base = now.strftime("%Y%m%dT%H%M%S")
         batch_id, k = base, 1
@@ -230,7 +301,7 @@ def build_workflow_router(*, get_config) -> APIRouter:
 
     @router.get("/annotations")
     def wf_list_annotations():
-        d = _root(get_config()) / "annotations"
+        d = _state_root() / "annotations"
         out = []
         for p in sorted(d.glob("*.json")) if d.exists() else []:
             if not _BATCH_RE.fullmatch(p.stem):

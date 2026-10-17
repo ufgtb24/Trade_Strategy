@@ -14,11 +14,12 @@ from chart_workflow.dataerrors import (apply_registry, build_registry, excluded_
 from chart_workflow.ledger import add_round
 from chart_workflow.listfile import write_list
 from chart_workflow.panel import build_panel
+from chart_workflow.state import state_root
 from tests.chart_workflow.conftest import make_stock
 
 
 def _batch(cfg, batch_id, anns, list_id="r1"):
-    d = root_dir(cfg) / "annotations"
+    d = state_root() / "annotations"
     d.mkdir(parents=True, exist_ok=True)
     (d / f"{batch_id}.json").write_text(json.dumps({
         "schema": "chart_workflow.annotations/1", "batch_id": batch_id,
@@ -44,7 +45,7 @@ def test_registry_collects_only_data_error_and_merges(cw_env):
         _ann("AAA", "2025-06-02", "2025-06-03", ann_id="a3"),
         _ann("DDD", "2025-06-05", "2025-06-01", ann_id="bad"),       # 起点晚于终点 → 跳过
     ], list_id="r2")
-    (root_dir(cfg) / "annotations" / "20261009T090001.json").write_text("{坏文件")
+    (state_root() / "annotations" / "20261009T090001.json").write_text("{坏文件")
     reg = build_registry(cfg)
     assert reg["schema"] == "chart_workflow.data_errors/1"
     assert reg["n_batches"] == 2

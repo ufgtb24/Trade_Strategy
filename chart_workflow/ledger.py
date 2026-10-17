@@ -1,4 +1,4 @@
-"""命令:账本追加与汇总(<root>/ledger.jsonl,每轮一行 JSON)。
+"""命令:账本追加与汇总(<状态根>/ledger.jsonl,每轮一行 JSON;状态根见 state.py)。
 
     uv run python -m chart_workflow.ledger add --kind rule --rule-id quietbase --version v2 \\
         --source annotation:20261008T101500 --change "加了条件:…" --list-id r003-contrast-quietbase-v2
@@ -20,17 +20,19 @@ from pathlib import Path
 
 from chart_workflow.config import load_config, root_dir
 from chart_workflow.control import ALL_SCOPE
+from chart_workflow.state import StateRootMissing, state_root
 
 KINDS = ("bigmoves", "rule", "mined")
 SOURCE_RE = re.compile(r"^(annotation:\S+|mining|literature|user-text)$")
 
 
-def ledger_path(cfg: dict) -> Path:
-    return root_dir(cfg) / "ledger.jsonl"
+def ledger_path() -> Path:
+    """账本在状态根里(记账类文件唯一的家)。"""
+    return state_root() / "ledger.jsonl"
 
 
-def read_ledger(cfg: dict) -> list[dict]:
-    p = ledger_path(cfg)
+def read_ledger() -> list[dict]:
+    p = ledger_path()
     if not p.exists():
         return []
     return [json.loads(line) for line in p.read_text().splitlines() if line.strip()]
@@ -61,7 +63,7 @@ def add_round(cfg: dict, *, kind: str, rule_id: str, version: str, source: str, 
             summary_all = {k: r.get(k) for k in
                            ("n_hits", "dir_lead", "dir_noise", "mag_lead", "mag_noise")}
         graduated = bool(summary.get("graduation", {}).get("passed", False))
-    rows = read_ledger(cfg)
+    rows = read_ledger()
     entry = {
         "round": (max(r["round"] for r in rows) + 1) if rows else 1,
         "ts": datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
@@ -72,7 +74,7 @@ def add_round(cfg: dict, *, kind: str, rule_id: str, version: str, source: str, 
         "xcheck": _xcheck_counts(doc),
         "note": note,
     }
-    p = ledger_path(cfg)
+    p = ledger_path()
     p.parent.mkdir(parents=True, exist_ok=True)
     with p.open("a") as f:
         f.write(json.dumps(entry, ensure_ascii=False) + "\n")
@@ -131,12 +133,16 @@ def main(argv=None) -> None:
             e = add_round(cfg, kind=args.kind, rule_id=args.rule_id, version=args.version,
                           source=args.source, change=args.change, list_id=args.list_id,
                           note=args.note)
-        except (ValueError, FileNotFoundError) as ex:
+        except (ValueError, FileNotFoundError, StateRootMissing) as ex:
             print(f"错误:{ex}", file=sys.stderr)
             sys.exit(2)
-        print(f"已记第 {e['round']} 轮 → {ledger_path(cfg)}")
+        print(f"已记第 {e['round']} 轮 → {ledger_path()}")
     else:
-        print(render(read_ledger(cfg)))
+        try:
+            print(render(read_ledger()))
+        except StateRootMissing as ex:
+            print(f"错误:{ex}", file=sys.stderr)
+            sys.exit(2)
 
 
 if __name__ == "__main__":

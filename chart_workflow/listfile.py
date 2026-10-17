@@ -77,6 +77,7 @@ def exchange_of(cfg: dict, symbol: str) -> str | None:
 
 def make_item(row, cfg: dict, blind: bool = False) -> dict:
     """面板里的一行 → 清单里的一条。图窗:决策日往前 view.before_bars 个交易日,
+    起点截到看图下界 view_floor(之后第一个交易日;view_floor 为空时不截),
     到 min(t+H, train_end);盲看截到 t + view.blind_after_bars 为止。"""
     sym = row["symbol"]
     t = pd.Timestamp(row["date"])
@@ -85,6 +86,9 @@ def make_item(row, cfg: dict, blind: bool = False) -> dict:
     before = cfg["view"]["before_bars"]
     after = cfg["view"]["blind_after_bars"] if blind else cfg["H"]
     view_start = dates[max(0, i - before)]
+    floor = cfg.get("view_floor")
+    if floor:
+        view_start = max(view_start, dates[min(int(dates.searchsorted(pd.Timestamp(floor))), i)])
     view_end = min(dates[min(len(dates) - 1, i + after)], pd.Timestamp(cfg["train_end"]))
     item = {
         "item_id": f"{sym}@{_d(t)}",
@@ -114,7 +118,7 @@ def make_item(row, cfg: dict, blind: bool = False) -> dict:
 def new_list(list_id: str, kind: str, title: str, cfg: dict, params_extra: dict | None = None
              ) -> dict:
     pool = cfg["pool"]
-    params = {"k": cfg["k"], "H": cfg["H"],
+    params = {"k": cfg["k"], "H": cfg["H"], "view_floor": cfg.get("view_floor"),
               "pool": {"price_max": pool["price_max"], "dv_min": pool["dv_min"],
                        "dv_max": pool["dv_max"], "m_min": pool["m_min"]}}
     params.update(params_extra or {})

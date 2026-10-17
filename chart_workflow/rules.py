@@ -24,7 +24,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from chart_workflow.panel import read_stock
+from chart_workflow.loader import read_bars
 
 TRADING_TO_CALENDAR_RATIO = 1.65   # 与 path2_web/scan.py 同值:交易日 → 日历日
 
@@ -62,7 +62,7 @@ def _signal_bool(fn, df: pd.DataFrame) -> np.ndarray:
 def _rule_worker(args):
     rule_path, symbol, cfg = args
     fn = load_rule(rule_path)
-    df = read_stock(cfg, symbol)
+    df = read_bars(cfg, symbol)
     if len(df) == 0:
         return symbol, [], []
     sig = _signal_bool(fn, df)
@@ -126,7 +126,7 @@ def _app_worker(args):
     params = _app_params(mod, params_yaml)
     meta = mod.eval_meta(params)
     end_node, head = meta["end_node"], int(meta["head_buffer_trading_days"])
-    df = read_stock(cfg, symbol)                      # 已截到训练段末日
+    df = read_bars(cfg, symbol)                      # 已截到训练段末日
     lo = pd.Timestamp(cfg["train_start"])
     buf_start = lo - pd.Timedelta(days=round(head * TRADING_TO_CALENDAR_RATIO))
     win = df[df.index >= buf_start].reset_index()     # 'date' 列 + 0-based 行号

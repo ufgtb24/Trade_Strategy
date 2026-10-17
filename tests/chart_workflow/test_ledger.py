@@ -38,7 +38,7 @@ def test_add_and_show(cw_env):
     assert e2["summary_all"] == {"n_hits": 10, "dir_lead": 0.2, "dir_noise": 0.05,
                                  "mag_lead": 0.01, "mag_noise": 0.004}
     assert e2["graduated"] is True
-    rows = read_ledger(cfg)
+    rows = read_ledger()
     assert len(rows) == 2
     text = render(rows)
     assert "累计尝试次数：2" in text and "+0.200" in text

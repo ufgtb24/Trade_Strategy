@@ -3,6 +3,9 @@
     uv run python -m chart_workflow.bigmoves --list-id r001-bigmoves [--top 300]
 
 步骤(阈值都在 config 的 bigmoves 子树,全部待验证):
+  0. 看图下界:只取决策日不早于「看图下界 view_floor 之后第 floor_context_bars 个交易日」的
+     股票日(按该股自己的交易日算),保证图上留出涨前形态;图窗起点也截到下界(listfile.make_item)。
+     --view-floor 可覆盖配置(传 none 关掉,仅供测试)
   1. 候选:面板里每个股票日都是候选,指标是相对涨幅 rel 与涨幅原值 rise
   2. 最低门槛:rel ≥ rel_min
   3. 同一段行情只取一次:每只股票按 rel 从大到小贪心取,取中一个就压掉它前后
@@ -25,6 +28,7 @@ from chart_workflow.config import load_config
 from chart_workflow.dataerrors import load_pool
 from chart_workflow.features import PRE_STATES
 from chart_workflow.listfile import deep_link, make_item, new_list, write_list
+from chart_workflow.loader import trading_dates
 from chart_workflow.xcheck import run_xcheck
 
 GROUP_KEYS = {"深跌": "deep_drop", "已在涨": "rising", "横盘": "flat", "其他": "other"}
@@ -50,6 +54,23 @@ def cap_per_week(df: pd.DataFrame, per_week: int) -> pd.DataFrame:
     return df.groupby("_wk", sort=False).head(per_week).drop(columns="_wk")
 
 
+def after_view_floor(panel: pd.DataFrame, cfg: dict) -> pd.DataFrame:
+    """只留决策日不早于「view_floor 之后第 floor_context_bars 个交易日」的行(按各股自己的交易日)。
+    view_floor 为空时原样返回。"""
+    floor = cfg.get("view_floor")
+    if not floor or len(panel) == 0:
+        return panel
+    n = int(cfg["bigmoves"]["floor_context_bars"])
+    keep = np.zeros(len(panel), dtype=bool)
+    dates_col = pd.to_datetime(panel["date"]).values
+    for sym, idx in panel.groupby("symbol", sort=False).indices.items():
+        dates = trading_dates(cfg, sym)
+        after = dates[dates >= pd.Timestamp(floor)]
+        if len(after) > n:
+            keep[idx] = dates_col[idx] >= after[n].to_datetime64()
+    return panel[keep]
+
+
 def select_bigmoves(panel: pd.DataFrame, bcfg: dict, top: int) -> pd.DataFrame:
     cands = panel[np.isfinite(panel["rel"]) & (panel["rel"] >= bcfg["rel_min"])]
     picked = suppress_same_move(cands, int(bcfg["suppress_bars"]))
@@ -60,7 +81,7 @@ def select_bigmoves(panel: pd.DataFrame, bcfg: dict, top: int) -> pd.DataFrame:
 
 def build_list(panel: pd.DataFrame, cfg: dict, list_id: str, top: int, title: str | None = None,
                errata_info: dict | None = None) -> dict:
-    sel = select_bigmoves(panel, cfg["bigmoves"], top)
+    sel = select_bigmoves(after_view_floor(panel, cfg), cfg["bigmoves"], top)
     extra = {"bigmoves": {**cfg["bigmoves"], "top": top}}
     if errata_info is not None:
         extra["data_errors"] = errata_info
@@ -83,8 +104,12 @@ def main(argv=None) -> None:
     ap.add_argument("--title", default=None)
     ap.add_argument("--no-xcheck", action="store_true", help="不做跨源比对(离线时用)")
     ap.add_argument("--refresh-panel", action="store_true", help="忽略面板缓存重算")
+    ap.add_argument("--view-floor", default=None,
+                    help="覆盖看图下界(YYYY-MM-DD;none = 关掉,仅供测试)")
     args = ap.parse_args(argv)
     cfg = load_config()
+    if args.view_floor is not None:
+        cfg["view_floor"] = None if args.view_floor.lower() == "none" else args.view_floor
     top = args.top if args.top is not None else int(cfg["bigmoves"]["top"])
     panel, errata = load_pool(cfg, refresh=args.refresh_panel)
     doc = build_list(panel, cfg, args.list_id, top, args.title, errata_info=errata)
