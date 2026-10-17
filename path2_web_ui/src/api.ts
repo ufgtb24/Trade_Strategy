@@ -248,9 +248,10 @@ export function listWorkflowLists(): Promise<WorkflowListMeta[]> {
 export function loadWorkflowList(listId: string): Promise<WorkflowList> {
   return getWorkflowJson(`/workflow/lists/${encodeURIComponent(listId)}`)
 }
-/** 后端先把 end 截到训练段末日,再按 /ohlc 同口径切片序列化。 */
+/** 后端先把 end 截到训练段末日,再按 /ohlc 同口径切片序列化。
+ *  出错时只报状态码和后端说明,不把请求地址(含图窗终点,能推出决策日)显示到图上。 */
 export function getWorkflowOhlc(symbol: string, start: string, end: string): Promise<Ohlc> {
-  return getJson(`/workflow/ohlc?symbol=${encodeURIComponent(symbol)}&start=${start}&end=${end}`)
+  return getWorkflowJson(`/workflow/ohlc?symbol=${encodeURIComponent(symbol)}&start=${start}&end=${end}`)
 }
 export async function sendAnnotations(
   listId: string, annotations: Annotation[],

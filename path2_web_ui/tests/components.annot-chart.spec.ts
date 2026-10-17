@@ -247,6 +247,23 @@ describe('AnnotChart', () => {
     expect(w.find('[data-testid="xcheck-warn"]').exists()).toBe(false)   // 盲看不显示比对结果
   })
 
+  it('大涨段清单没有买点时不显示跨源比对提示(日子与涨跌幅可能在决策日之后);有买点后显示', async () => {
+    const { w, store } = await mountChart('bigmoves')
+    expect(w.find('[data-testid="xcheck-warn"]').exists()).toBe(false)
+    expect(w.text()).not.toContain('两份数据不一致')
+    expect(w.text()).not.toContain('2025-03-13')
+    store.upsertAnnotation(ITEM.item_id, { label: 'negative' })      // 只标判定、没有买点:仍不显示
+    await w.setProps({ annotation: store.drafts.get(ITEM.item_id)! })
+    expect(w.find('[data-testid="xcheck-warn"]').exists()).toBe(false)
+    store.setBuyPoint(ITEM.item_id, '2025-03-11')
+    await w.setProps({ annotation: store.drafts.get(ITEM.item_id)! })
+    expect(w.find('[data-testid="xcheck-warn"]').text())
+      .toContain('2025-03-13（我们 +402.9%，Nasdaq -37.1%）')
+    store.toggleBuyPoint(ITEM.item_id, '2025-03-11')                  // 买点全去掉:又藏起来
+    await w.setProps({ annotation: store.drafts.get(ITEM.item_id)! })
+    expect(w.find('[data-testid="xcheck-warn"]').exists()).toBe(false)
+  })
+
   it('跨源比对不一致:图头列出那几天和两边的涨跌幅;一致或取不到时不显示', async () => {
     const { w } = await mountChart('contrast')
     const warn = w.find('[data-testid="xcheck-warn"]')

@@ -15,7 +15,8 @@
                 :aria-selected="g.key === store.groupKey" :data-group="g.key"
                 @click="store.setGroup(g.key)">{{ g.title }}</button>
       </div>
-      <select v-if="store.allTags.length" data-testid="wf-tag" :value="store.tagFilter"
+      <select v-if="store.allTags.length && store.listKind !== 'bigmoves'" data-testid="wf-tag"
+              :value="store.tagFilter"
               @change="store.setTagFilter(($event.target as HTMLSelectElement).value)">
         <option value="">全部标签</option>
         <option v-for="t in store.allTags" :key="t" :value="t">{{ t }}</option>
@@ -94,6 +95,9 @@
  * 入口:App.vue 见到 URL 带 wf 参数时渲染本视图。深链 ?wf=<list_id>&item=<item_id> 打开清单、
  * 翻到含这一条的页、高亮并放大;?wf= 为空时打开最新的一份清单。打开清单后 URL 同步成 ?wf=<list_id>。
  * 草稿非空时离开页面要确认(beforeunload)。
+ *
+ * 大涨段清单不给标签筛选:标签描述的是决策日当天(跳空、量倍数),按它筛等于提示决策日在哪,
+ * 与图头点买点前不显示标签同一个理由(见 AnnotChart)。
  *
  * 翻页:上一页 / 下一页按钮、页码框输入后回车、键盘 PgUp / PgDn。焦点在文字输入框里或放大框开着时
  * 不接管 PgUp / PgDn。翻页后网格滚回顶部。 */

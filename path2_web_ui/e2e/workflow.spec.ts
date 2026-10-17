@@ -100,12 +100,14 @@ test('看图工作流:框选、点买点、标正例、写备注 → 抽屉里�
   const cell = page.locator(`.annot-chart[data-item-id="${ITEM_A}"]`)
   await expect(cell.locator('canvas').first()).toBeVisible({ timeout: 20_000 })
 
-  // 跨源比对:不一致的段图头写明那几天,一致的段不显示
+  // 跨源比对:大涨段点第一个买点前不显示(列出的日子可能在决策日之后);有了买点后,
+  // 不一致的段图头写明那几天,一致的段不显示
+  await expect(cell.getByTestId('xcheck-warn')).toHaveCount(0)
+  await annotateFirst(page, cell, 'e2e 备注一')
   await expect(cell.getByTestId('xcheck-warn')).toContainText('两份数据不一致：2025-06-10')
   await expect(page.locator(`.annot-chart[data-item-id="${ITEM_B}"]`).getByTestId('xcheck-warn'))
     .toHaveCount(0)
 
-  await annotateFirst(page, cell, 'e2e 备注一')
   await expect(page.getByTestId('wf-drawer')).toHaveText('已标注 (1)')
 
   // 抽屉:改备注
@@ -336,6 +338,7 @@ test('看图工作流:点买点前图头不露结果;Shift 多买点;正例不�
     await expect(cell.locator('.head')).not.toContainText('涨幅')
     await expect(cell.locator('.head')).not.toContainText('决策日')
     await expect(cell.getByTestId('outcome-hidden')).toBeVisible()
+    await expect(page.getByTestId('wf-tag')).toHaveCount(0)          // 大涨段不给标签筛选
     await expect(cell.locator('.radio', { has: page.getByTestId('label-negative') })).toContainText('像但不买')
     await expect(cell.getByTestId('tool-log')).toHaveAttribute('aria-pressed', 'true')
 

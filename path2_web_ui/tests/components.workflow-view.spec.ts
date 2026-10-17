@@ -115,3 +115,29 @@ describe('WorkflowView 记账类文件不可用 / 打不开清单', () => {
     expect(w.find('[data-testid="wf-load-error"]').text()).toContain('503')
   })
 })
+
+
+describe('WorkflowView 标签筛选', () => {
+  beforeEach(() => { setActivePinia(createPinia()) })
+  afterEach(() => { w?.unmount(); document.body.innerHTML = '' })
+
+  function tagged(kind: WorkflowList['kind']): WorkflowList {
+    const doc = mkList(4)
+    doc.kind = kind
+    doc.items.forEach((it, i) => { it.tags = [i % 2 ? '跳空' : '不跳空'] })
+    return doc
+  }
+
+  it('大涨段清单不给标签筛选(标签描述决策日当天,按它筛等于提示决策日);对照清单照常给', async () => {
+    ;(loadWorkflowList as any).mockResolvedValueOnce(tagged('bigmoves'))
+    let store = await mountView()
+    expect(store.allTags.length).toBe(2)
+    expect(w.find('[data-testid="wf-tag"]').exists()).toBe(false)
+    w.unmount()
+    setActivePinia(createPinia())
+    ;(loadWorkflowList as any).mockResolvedValueOnce(tagged('contrast'))
+    store = await mountView()
+    expect(w.find('[data-testid="wf-tag"]').exists()).toBe(true)
+    expect(store.allTags).toEqual(['不跳空', '跳空'])
+  })
+})
