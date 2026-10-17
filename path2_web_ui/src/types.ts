@@ -281,7 +281,7 @@ export type Tier = Level
 export type WorkflowListKind = 'bigmoves' | 'contrast' | 'contrast_blind'
 
 /** 看图工作流里的单张图事件:放大看了 / 点了买点或选了判定 / 大涨段第一次露出结果 */
-export type ChartViewEvent = 'zoom' | 'annotate' | 'reveal'
+export type ChartViewEvent = 'zoom' | 'annotate' | 'reveal' | 'peek'
 
 /** 后端状态根:在哪、是不是来自环境变量(临时目录,记录不进正式账本)、能不能用 */
 export interface WorkflowStateInfo {

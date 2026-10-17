@@ -7,7 +7,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from path2_web.app import create_app
-from tests.path2_web.conftest import debug_data
+from tests.path2_web.conftest import debug_data, guard_tag
 
 
 @pytest.fixture
@@ -128,7 +128,7 @@ def test_rename_missing_404(app, outputs):
 def test_load_by_name(app, outputs):
     (outputs / "scans").mkdir(parents=True)
     (outputs / "scans" / "myexp.json").write_text(json.dumps(
-        {"scan": {"hits": 5, "view_guard": {"view_floor": "2025-01-01", "train_end": "2025-12-31"}},
+        {"scan": {"hits": 5, "view_guard": guard_tag(outputs.parent / "data", "2025-01-01")},
          "pattern_ids": []}))
     r = app.get("/scans/myexp")
     assert r.status_code == 200 and r.json()["scan"]["hits"] == 5

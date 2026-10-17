@@ -21,14 +21,24 @@ worktree 里运行工具,都经 state_root() 自动定位到主目录这一份�
 水位(防「标记在、账本却是旧的」):标记文件跟代码一起提交,合了代码、没合账本(或账本较旧)
 的分支照样有标记。所以另在 git 公共目录里记一份水位
 (<git 公共目录>/chart_workflow/watermark.json,不随分支走、所有 worktree 共用):
-只追加的文件(账本、看过记录、操作日志、水位重置记录)记见过的每一行的指纹,
+只追加的文件(账本、看过记录、操作日志、水位重置记录)每份记「到最后一个完整行为止的字节数 + 这一段的
+sha256 + 行数」,见过的每一行的指纹另存在旁边的 watermark.seen/ 下(每份一个只追加的文本文件);
 只增不改的目录(原始标注、看过的清单快照、事实表快照、规则存档、配置存档)记见过的文件名。
-每次 state_root() 先核对「见过的行和文件都还在」(只看在不在、不看顺序,按行合并后行序变了也不误报),
-少了就抛 StateRootRegressed(「账本比上次看到的少，可能切到了旧分支」)停下;核对通过后把当前内容记进水位。
-写入方写完再调 advance(root),把刚写的内容也记进去。
+每次 state_root() 先核对「见过的行和文件都还在」:文件开头那一段和上次一字不差(正常追加)就只把新行的
+指纹追加进见过记录;开头变了(按行合并后行序变了、或少了行)才拿见过记录里的全部指纹逐个找——只看在不在、
+不看顺序,行序变了不误报;少了就抛 StateRootRegressed(「账本比上次看到的少，可能切到了旧分支」)停下。
+同一进程里文件大小和修改时间都没变就不再读它。核对通过后把当前内容记进水位;
+写入方写完再调 advance(root),把刚写的内容也记进去。check_root() 做同样的核对但什么都不写。
 有意改写记账文件(例如迁移旧账、重编轮次)之后,用 reset-watermark 显式重置,必须写原因,
 重置记录追加到状态根的 watermark_resets.jsonl(受 git 跟踪)。
-环境变量指定的临时状态根不在 git 分支切换的范围里,水位就放在它自己目录下的 .watermark.json。
+环境变量指定的临时状态根不在 git 分支切换的范围里,水位就放在它自己目录下的 .watermark.json
+(见过记录在 .watermark.seen/)。
+
+别的分支上有更新的账:水位只认本机工具见过的行,另一台机器的账经 git 到了本机、本机工具还没运行过就切到
+旧分支,水位查不出来。所以给出状态根之前还查本地分支与远端跟踪分支:有改过记账目录(标记文件除外)、
+又不是当前分支祖先的提交 → StateRootDiverged(「别的分支上有更新的账」,并列出是哪些分支、几个提交)。
+当前分支领先别的分支是正常的,不拦。分支指向没变时沿用上次的结果,不再跑 git。
+状态根不在 git 仓库里(环境变量指的临时目录)时不查。
 
 副本登记(见 snaplock.py):state_root() 给出状态根之前,还核对本机训练数据副本的内容指纹与
 状态根里 snapshot_lock.json 登记的是否一致,不一致就停下。
@@ -101,9 +111,11 @@ _KINDS = (
     ("副本登记", "snapshot_lock.json", "files_one"),
 )
 
-WATERMARK_SCHEMA = "chart_workflow.watermark/1"
+WATERMARK_SCHEMA = "chart_workflow.watermark/2"
+_OLD_SCHEMA = "chart_workflow.watermark/1"        # 旧格式:整份行指纹表存在水位文件里,读到时按慢路径核对并改写
 RESETS_FILE = "watermark_resets.jsonl"
 REGRESSED_TEXT = "账本比上次看到的少，可能切到了旧分支"
+DIVERGED_TEXT = "别的分支上有更新的账"
 # 只追加的文件:按行记指纹
 _LINE_FILES = ("ledger.jsonl", "views.jsonl", RESETS_FILE)
 _LINE_DIRS = ("oplog",)                       # 目录下的 *.jsonl
@@ -118,6 +130,11 @@ class StateRootMissing(RuntimeError):
 class StateRootRegressed(StateRootMissing):
     """标记在,但记账文件比水位里见过的少(多半是主目录切到了旧分支)。
     是 StateRootMissing 的子类:所有「拿不到状态根就停」的地方照样停下。"""
+
+
+class StateRootDiverged(StateRootMissing):
+    """本地分支或远端跟踪分支上有改过记账目录、又不在当前分支里的提交(另一台机器记的账经 git 到了本机、
+    还没合进来)。接着写两边的账就分叉了,所以停下。"""
 
 
 @lru_cache(maxsize=16)
@@ -164,63 +181,160 @@ def watermark_path(root: Path, start: Path = REPO_ROOT) -> Path:
 
 
 _HASH_CACHE: dict[tuple[str, int, int], list[str]] = {}
+_OK_CACHE: dict[tuple[str, str], tuple] = {}         # (水位文件, 相对路径) → 上次核对通过时的 (大小, 修改时间, 记录)
 _WM_LOCK = threading.Lock()
 
 
+def _hashes_of(chunk: bytes) -> list[str]:
+    """一段字节里每个完整行(以换行结尾)的指纹;空行不算。"""
+    out = []
+    for line in chunk.split(b"\n")[:-1]:
+        line = line.rstrip(b"\r")
+        if line.strip():
+            out.append(hashlib.sha1(line).hexdigest()[:16])
+    return out
+
+
 def _line_hashes(p: Path) -> list[str]:
-    """文件里每个完整行(以换行结尾)的指纹,去重排序。正在追加、还没写完换行的末行不算,
+    """文件里每个完整行的指纹,去重排序。正在追加、还没写完换行的末行不算,
     免得把半行记进水位、之后又当成「少了一行」误报。按 (路径, 大小, 修改时间) 缓存。"""
     st = p.stat()
     key = (str(p), st.st_size, st.st_mtime_ns)
     if key not in _HASH_CACHE:
         if len(_HASH_CACHE) > 256:
             _HASH_CACHE.clear()
-        data = p.read_bytes()
-        hs = set()
-        for line in data.split(b"\n")[:-1]:          # 最后一段没有换行结尾,不算
-            line = line.rstrip(b"\r")
-            if line.strip():
-                hs.add(hashlib.sha1(line).hexdigest()[:16])
-        _HASH_CACHE[key] = sorted(hs)
+        _HASH_CACHE[key] = sorted(set(_hashes_of(p.read_bytes())))
     return _HASH_CACHE[key]
 
 
-def _current(root: Path) -> dict:
-    """状态根当前内容的水位形式:{"lines": {相对路径: [行指纹…]}, "files": {目录: [文件名…]}}。"""
-    lines: dict[str, list[str]] = {}
-    for rel in _LINE_FILES:
-        if (root / rel).is_file():
-            lines[rel] = _line_hashes(root / rel)
+def _line_rels(root: Path) -> list[str]:
+    out = [rel for rel in _LINE_FILES if (root / rel).is_file()]
     for d in _LINE_DIRS:
         if (root / d).is_dir():
-            for f in sorted((root / d).glob("*.jsonl")):
-                lines[f"{d}/{f.name}"] = _line_hashes(f)
+            out += [f"{d}/{f.name}" for f in sorted((root / d).glob("*.jsonl"))]
+    return out
+
+
+def _current_files(root: Path) -> dict[str, list[str]]:
     files: dict[str, list[str]] = {}
     for d in _FILE_DIRS:
         if (root / d).is_dir():
             files[d] = sorted(str(f.relative_to(root / d)) for f in (root / d).rglob("*")
                               if f.is_file() and not f.name.endswith(".tmp"))
-    return {"lines": lines, "files": files}
+    return files
 
 
-def _missing(wm: dict, cur: dict) -> list[str]:
-    """水位里见过、现在不在的东西,一条一句中文。空表 = 见过的都还在。"""
+def _seen_file(wm_file: Path, rel: str) -> Path:
+    """见过的行指纹存在水位文件旁边的 <水位文件名>.seen/ 下,一个只追加的文本文件一份。"""
+    return wm_file.with_name(wm_file.stem + ".seen") / (rel.replace("/", "__") + ".txt")
+
+
+def _entry_n(entry) -> int:
+    if isinstance(entry, list):                       # 旧格式(chart_workflow.watermark/1):整份指纹表
+        return len(entry)
+    return int(entry.get("n", 0)) if isinstance(entry, dict) else 0
+
+
+def _read_seen(wm_file: Path, rel: str) -> set[str] | None:
+    try:
+        return {x for x in _seen_file(wm_file, rel).read_text().split() if x}
+    except FileNotFoundError:
+        return None
+
+
+def _check_lines(root: Path, rel: str, entry, wm_file: Path):
+    """核对一份只追加的文件:见过的行都还在。返回 (新记录, 见过记录的改法, 问题)。
+    新记录 {"bytes": 到最后一个完整行为止的字节数, "sha": 这一段的 sha256, "n": 见过的行数};
+    改法 ("append" | "rewrite", 行指纹) 或 None。
+    快路径:文件开头那一段和上次见过的一字不差(正常追加)→ 只把后面新出现的行记进见过记录。
+    慢路径(开头那段变了:按行合并后行序变了、或少了行):拿见过记录里的全部行指纹逐个找,有找不到的就是少了。"""
+    p = root / rel
+    if not p.is_file():
+        n = _entry_n(entry)
+        return None, None, (f"{rel} 少了 {n} 行(上次见过 {n} 行,现在 0 行)" if n else None)
+    st = p.stat()
+    ck = (str(wm_file), rel)
+    if isinstance(entry, dict) and _OK_CACHE.get(ck) == (st.st_size, st.st_mtime_ns, entry.get("sha")):
+        return entry, None, None
+    data = p.read_bytes()
+    end = data.rfind(b"\n") + 1
+    if isinstance(entry, dict) and entry.get("bytes", 0) <= end \
+            and hashlib.sha256(data[:entry["bytes"]]).hexdigest() == entry.get("sha"):
+        if entry["bytes"] == end:
+            return entry, None, None
+        new = _hashes_of(data[entry["bytes"]:end])
+        return ({"bytes": end, "sha": hashlib.sha256(data[:end]).hexdigest(), "n": entry["n"] + len(new)},
+                ("append", new), None)
+    if isinstance(entry, list):
+        seen = set(entry)
+    elif entry:
+        seen = _read_seen(wm_file, rel)
+        if seen is None:
+            return None, None, f"{rel} 的见过记录({_seen_file(wm_file, rel)})不见了,核对不了"
+    else:
+        seen = set()
+    cur = set(_hashes_of(data[:end]))
+    lost = len(seen - cur)
+    if lost:
+        return None, None, f"{rel} 少了 {lost} 行(上次见过 {len(seen)} 行,现在 {len(cur)} 行)"
+    return ({"bytes": end, "sha": hashlib.sha256(data[:end]).hexdigest(), "n": len(cur)},
+            ("rewrite", sorted(cur)), None)
+
+
+def _missing_files(wm_files: dict, cur: dict) -> list[str]:
     out = []
-    for rel, hs in sorted(wm.get("lines", {}).items()):
-        have = set(cur["lines"].get(rel, ()))
-        lost = sum(1 for h in hs if h not in have)
-        if lost:
-            out.append(f"{rel} 少了 {lost} 行(上次见过 {len(hs)} 行,现在 {len(have)} 行)")
-    for d, names in sorted(wm.get("files", {}).items()):
-        have = set(cur["files"].get(d, ()))
+    for d, names in sorted(wm_files.items()):
+        have = set(cur.get(d, ()))
         lost = [n for n in names if n not in have]
         if lost:
             out.append(f"{d}/ 少了 {len(lost)} 个文件(例如 {lost[0]})")
     return out
 
 
+def _scan(root: Path, wm_file: Path, wm: dict):
+    """把状态根当前内容和水位比一遍:(问题清单, 新的行记录, 见过记录的改法, 当前文件名)。"""
+    old = wm.get("lines", {})
+    problems, lines, ops = [], {}, {}
+    for rel in sorted(set(_line_rels(root)) | set(old)):
+        entry, op, prob = _check_lines(root, rel, old.get(rel), wm_file)
+        if prob:
+            problems.append(prob)
+            continue
+        if entry is not None:
+            lines[rel] = entry
+        if op:
+            ops[rel] = op
+    files = _current_files(root)
+    problems += _missing_files(wm.get("files", {}), files)
+    return problems, lines, ops, files
+
+
+def _apply(root: Path, wm_file: Path, wm: dict, lines: dict, ops: dict, files: dict) -> None:
+    """先改见过记录(只追加;慢路径整份重写),再写水位文件(有变化才写)。中途断掉也安全:
+    水位文件还是旧的,下次照旧从那里核对,见过记录里多出的指纹不影响判断。"""
+    for rel, (how, hs) in ops.items():
+        f = _seen_file(wm_file, rel)
+        f.parent.mkdir(parents=True, exist_ok=True)
+        if how == "rewrite":
+            tmp = f.with_name(f"{f.name}.{os.getpid()}.{threading.get_ident()}.tmp")
+            tmp.write_text("".join(h + "\n" for h in hs))
+            os.replace(tmp, f)
+        elif hs:
+            with f.open("a") as fh:
+                fh.write("".join(h + "\n" for h in hs))
+    if wm.get("schema") != WATERMARK_SCHEMA or wm.get("lines") != lines or wm.get("files") != files:
+        _write_wm(wm_file, root, {"lines": lines, "files": files})
+    for rel, entry in lines.items():
+        try:
+            st = (root / rel).stat()
+        except FileNotFoundError:
+            continue
+        if st.st_size >= entry["bytes"]:
+            _OK_CACHE[(str(wm_file), rel)] = (st.st_size, st.st_mtime_ns, entry["sha"])
+
+
 def _summary(wm: dict) -> dict:
-    return {"lines": {k: len(v) for k, v in sorted(wm.get("lines", {}).items())},
+    return {"lines": {k: _entry_n(v) for k, v in sorted(wm.get("lines", {}).items())},
             "files": {k: len(v) for k, v in sorted(wm.get("files", {}).items())}}
 
 
@@ -232,7 +346,7 @@ def _read_wm(wm_file: Path) -> dict:
     except (OSError, ValueError) as e:
         raise StateRootMissing(f"水位文件 {wm_file} 读不了({e});核对无从谈起,先停下。"
                                f"确认无误后可运行 reset-watermark 重建") from None
-    if not isinstance(wm, dict) or wm.get("schema") != WATERMARK_SCHEMA:
+    if not isinstance(wm, dict) or wm.get("schema") not in (WATERMARK_SCHEMA, _OLD_SCHEMA):
         raise StateRootMissing(f"水位文件 {wm_file} 格式不对;确认无误后可运行 reset-watermark 重建")
     return wm
 
@@ -246,34 +360,134 @@ def _write_wm(wm_file: Path, root: Path, cur: dict) -> None:
     os.replace(tmp, wm_file)
 
 
-def _sync(root: Path, wm_file: Path) -> None:
-    """核对水位:见过的行和文件都还在 → 把当前内容记进水位;少了 → StateRootRegressed。"""
+def _sync(root: Path, wm_file: Path, write: bool = True) -> None:
+    """核对水位:见过的行和文件都还在 → write 时把当前内容记进水位;少了 → StateRootRegressed。
+    write=False:只核对,什么都不写(只读接口用)。"""
     with _WM_LOCK:
         wm = _read_wm(wm_file)
-        cur = _current(root)
-        miss = _missing(wm, cur) if wm else []
-        if miss:
+        problems, lines, ops, files = _scan(root, wm_file, wm)
+        if problems:
             raise StateRootRegressed(
-                f"{REGRESSED_TEXT}:状态根 {root} 里" + ";".join(miss) +
+                f"{REGRESSED_TEXT}:状态根 {root} 里" + ";".join(problems) +
                 f"。先切回最新的分支再用。确实是有意改写(例如迁移旧账、重编轮次),运行 "
                 f"python -m chart_workflow.state reset-watermark --reason \"<原因>\" 重置水位"
                 f"(水位文件 {wm_file})")
-        if not wm or {k: wm.get(k) for k in ("lines", "files")} != cur:
-            _write_wm(wm_file, root, cur)
+        if write:
+            _apply(root, wm_file, wm, lines, ops, files)
+
+
+# ── 别的分支上有没有更新的账 ─────────────────────────────────────────────────
+
+@lru_cache(maxsize=16)
+def _repo_of(root: str) -> tuple[str, str, str] | None:
+    """root 所在 git 仓库:(工作区顶层, git 目录, 公共目录);不在仓库里或 git 不可用 → None。"""
+    try:
+        r = subprocess.run(["git", "rev-parse", "--path-format=absolute", "--show-toplevel", "--git-dir",
+                            "--git-common-dir"], cwd=root, capture_output=True, text=True, timeout=10)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if r.returncode != 0:
+        return None
+    top, gitdir, common = r.stdout.strip().splitlines()[:3]
+    return top, gitdir, common
+
+
+def _refs_signature(gitdir: str, common: str) -> tuple:
+    """当前分支与全部本地 / 远端跟踪分支的指向有没有变:HEAD、packed-refs、refs/heads 与 refs/remotes 下
+    每个文件的 (路径, 大小, 修改时间)。没变就沿用上次的核对结果,不再跑 git。"""
+    items = []
+    for f in (Path(gitdir) / "HEAD", Path(common) / "packed-refs"):
+        try:
+            st = f.stat()
+            items.append((str(f), st.st_size, st.st_mtime_ns, f.read_text() if f.name == "HEAD" else ""))
+        except OSError:
+            pass
+    for sub in ("refs/heads", "refs/remotes"):
+        for dp, _, fns in os.walk(Path(common) / sub):
+            for fn in fns:
+                f = Path(dp) / fn
+                try:
+                    st = f.stat()
+                except OSError:
+                    continue
+                items.append((str(f), st.st_size, st.st_mtime_ns, ""))
+    return tuple(sorted(items))
+
+
+_DIVERGE_CACHE: dict[tuple, list[str]] = {}
+
+
+def _git_out(top: str, *args) -> str | None:
+    try:
+        r = subprocess.run(["git", *args], cwd=top, capture_output=True, text=True, timeout=30)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return r.stdout if r.returncode == 0 else None
+
+
+def foreign_ledger_refs(root: Path) -> list[str]:
+    """本地分支或远端跟踪分支上,改过记账目录(标记文件除外)、又不是当前分支祖先的提交,按分支列:
+    ["origin/wayfinder(3 个提交)", …]。root 不在 git 仓库里(环境变量指的临时状态根)→ 空表。
+    当前分支领先别的分支是正常的(只看别的分支有、当前分支没有的提交)。"""
+    root = Path(root).resolve()
+    repo = _repo_of(str(root))
+    if repo is None:
+        return []
+    top, gitdir, common = repo
+    rel = os.path.relpath(root, top)
+    if rel.startswith(".."):
+        return []
+    key = (str(root), _refs_signature(gitdir, common))
+    if key in _DIVERGE_CACHE:
+        return _DIVERGE_CACHE[key]
+    paths = ["--", rel, f":(exclude){rel}/{MARKER}"]
+    out: list[str] = []
+    found = _git_out(top, "log", "--branches", "--remotes", "--not", "HEAD", "--format=%H", *paths)
+    if found and found.split():
+        refs = _git_out(top, "for-each-ref", "--format=%(refname:short)", "refs/heads", "refs/remotes") or ""
+        for ref in refs.split():
+            if ref.endswith("/HEAD"):
+                continue
+            n = _git_out(top, "rev-list", "--count", ref, "--not", "HEAD", *paths)
+            if n and int(n.strip()) > 0:
+                out.append(f"{ref}({int(n.strip())} 个提交)")
+    if len(_DIVERGE_CACHE) > 64:
+        _DIVERGE_CACHE.clear()
+    _DIVERGE_CACHE[key] = out
+    return out
+
+
+def _check_diverged(root: Path) -> None:
+    refs = foreign_ledger_refs(root)
+    if refs:
+        raise StateRootDiverged(
+            f"{DIVERGED_TEXT}:{'、'.join(refs)} 上有改过记账目录 {root} 的提交,当前分支里没有"
+            f"(多半是另一台机器记了账,或别的分支上记过账)。先把它们合进当前分支、再用;"
+            f"不要的分支删掉。不合就接着写,两边的账会分叉")
+
+
+def _checked(start: Path, write: bool) -> Path:
+    path = locate(start)
+    if not (path / MARKER).is_file():
+        raise StateRootMissing(missing_message(path))
+    _sync(path, watermark_path(path, start), write=write)
+    _check_diverged(path)
+    from chart_workflow import snaplock             # 函数内导入:snaplock 依赖本模块
+    snaplock.verify(snaplock.local_dataset_dir(), path)
+    return path
 
 
 def state_root(start: Path = REPO_ROOT) -> Path:
     """记账类文件的唯一的家。目录里没有标记文件 → StateRootMissing(绝不新建);
-    记账文件比水位里见过的少 → StateRootRegressed。核对通过时顺手把当前内容记进水位。
-    本机副本不是账上登记的那一份 → snaplock.SnapshotMismatch;主目录的账还没登记副本 →
-    snaplock.SnapshotNotRegistered(两者都是 StateRootMissing 的子类)。"""
-    path = locate(start)
-    if not (path / MARKER).is_file():
-        raise StateRootMissing(missing_message(path))
-    _sync(path, watermark_path(path, start))
-    from chart_workflow import snaplock             # 函数内导入:snaplock 依赖本模块
-    snaplock.verify(snaplock.local_dataset_dir(), path)
-    return path
+    记账文件比水位里见过的少 → StateRootRegressed;别的分支上有更新的账 → StateRootDiverged。
+    核对通过时顺手把当前内容记进水位。本机副本不是账上登记的那一份 → snaplock.SnapshotMismatch;
+    账还没登记副本 → snaplock.SnapshotNotRegistered(这几种都是 StateRootMissing 的子类)。"""
+    return _checked(start, write=True)
+
+
+def check_root(start: Path = REPO_ROOT) -> Path:
+    """和 state_root 同样的核对,但什么都不写(只读接口用,例如网页的「状态根在哪」)。"""
+    return _checked(start, write=False)
 
 
 def advance(root: Path) -> None:
@@ -296,13 +510,15 @@ def reset_watermark(root: Path, reason: str, start: Path = REPO_ROOT) -> dict:
             wm = _read_wm(wm_file)
         except StateRootMissing:
             wm = {}
-        cur = _current(root)
+        problems = _scan(root, wm_file, wm)[0] if wm else []
+        _, lines, ops, files = _scan(root, wm_file, {})
         rec = {"ts": datetime.now().isoformat(timespec="seconds"), "reason": reason,
-               "watermark": str(wm_file), "missing": _missing(wm, cur) if wm else [],
-               "before": _summary(wm), "after": _summary(cur)}
+               "watermark": str(wm_file), "missing": problems,
+               "before": _summary(wm), "after": _summary({"lines": lines, "files": files})}
         with (root / RESETS_FILE).open("a") as f:
             f.write(json.dumps(rec, ensure_ascii=False) + "\n")
-        _write_wm(wm_file, root, _current(root))
+        _, lines, ops, files = _scan(root, wm_file, {})
+        _apply(root, wm_file, {}, lines, ops, files)
     return rec
 
 
@@ -438,10 +654,9 @@ def main(argv=None) -> None:
         print(f"本机训练数据副本:{e}", file=sys.stderr)
     lock = snaplock.read_lock(path)
     if lock is None:
-        print("账上登记的副本:没有登记(第一次在生成副本的那台机器上运行 state snapshot-register)")
-        if not os.environ.get(ENV_VAR):
-            sys.exit(2)
-        return
+        print("账上登记的副本:没有登记(第一次在生成副本的那台机器上运行 state snapshot-register;"
+              "临时状态根也要登记)", file=sys.stderr)
+        sys.exit(2)
     cur = lock["current"]
     print(f"账上登记的副本:指纹 {cur['sha']},{cur['n_files']} 个文件,{cur['created_at']} 在 "
           f"{cur['generated_on']} 生成({cur['registered_at']} 在 {cur['registered_on']} 登记;"

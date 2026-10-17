@@ -400,6 +400,9 @@ test('看图工作流:点买点前图头不露结果;Shift 多买点;正例不�
     expect(reveals.some(v => v.list_id === V2_ID)).toBe(true)          // 这一张也记了 reveal
     expect(a.first_buy_points).toEqual(reveals[0].buy_points)
     expect(a.changed_after_reveal).toBe(true)
+    // 决策日之后的走势在第一次露出结果之前是否已在别处露出过:服务端填,分两级
+    expect(a.outcome_seen_elsewhere.before).toBe(reveals[0].ts)
+    expect(['careful', 'in_list', null]).toContain(a.outcome_seen_elsewhere.level)
   } finally {
     rmSync(V2_PATH, { force: true })
   }

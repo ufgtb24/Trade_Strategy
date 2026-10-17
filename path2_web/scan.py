@@ -50,7 +50,8 @@ def _scan_ticker_multi(pkl_path, module_paths, start_date, end_date,
                        buf_start, buf_end, end_nodes, label_horizon,
                        pattern_params_dicts,
                        price_min=None, price_max=None, volume_min=None,
-                       first_passage_enabled=True, first_passage_k=5.0, bars_until=None):
+                       first_passage_enabled=True, first_passage_k=5.0, bars_until=None,
+                       view_floor=None):
     """单股多 pattern worker(模块级,ProcessPool pickle 安全)。
 
     返回 4-tuple (symbol, per_pattern_dict | None, random_first_passage | None, err | None):
@@ -72,6 +73,8 @@ def _scan_ticker_multi(pkl_path, module_paths, start_date, end_date,
 
     bars_until:非 None → 行情经 chart_workflow.loader 读(pkl_path 所在目录必须是截断副本),截到这一天(含);
     None → 直接读 pkl(扫描脚本用)。
+    view_floor:非 None → 调试视图的看图下界:投影时删掉锚点早于它的事件(serialize.redact_before),
+    内部照常用含预热的 win 计算。
 
     df 语义:传 win(slice_window 切出的 buf 窗口,已含 horizon 后向缓冲)+ start_ts/end_ts
     (scan 区间)。win 比 scan 区间宽(含缓冲),start_ts/end_ts 在其内过滤出 scan 区间日、
@@ -108,6 +111,8 @@ def _scan_ticker_multi(pkl_path, module_paths, start_date, end_date,
         # [start, end];全 pattern 共用同一 win/窗界。
         lo = int(win["date"].searchsorted(start_ts, "left"))
         hi = int(win["date"].searchsorted(end_ts, "right")) - 1
+        floor_idx = (int(win["date"].searchsorted(pd.Timestamp(view_floor), "left"))
+                     if view_floor else None)
         for pid, mod_path in module_paths.items():
             mod = importlib.import_module(mod_path)
             pd_dict = (pattern_params_dicts or {}).get(pid)
@@ -134,7 +139,7 @@ def _scan_ticker_multi(pkl_path, module_paths, start_date, end_date,
                 price_min=price_min, price_max=price_max,
                 first_passage_enabled=first_passage_enabled,
                 first_passage_k=first_passage_k,
-                sample_window=(lo, hi))
+                sample_window=(lo, hi), view_floor_idx=floor_idx)
             per_pattern[pid] = out
             if out["summary"]["matches"] > 0:
                 any_match = True
@@ -305,8 +310,9 @@ def run_scan_multi(*, data_dir,
     note:本次 scan 的自由文本备注,落盘为 scan.note。
     price_min/price_max/volume_min:扫描过滤(见 _scan_ticker_multi);三者一并落盘为
     scan.filters,供事后解释命中数差异。
-    view_guard:{view_floor, train_end} | None——调试视图的看图范围护栏(path2_web/guard.py)。非 None 时
-    每只股票经 chart_workflow.loader 读(data_dir 必须是截断副本),截到 train_end,并原样落盘为 scan.view_guard;
+    view_guard:{view_floor, train_end, snapshot_sha} | None——调试视图的看图范围护栏(path2_web/guard.py)。
+    非 None 时每只股票经 chart_workflow.loader 读(data_dir 必须是截断副本),截到 train_end;投影时删掉锚点
+    早于 view_floor 的事件(每只股票每个 pattern 记下 view_floor_idx);原样落盘为 scan.view_guard;
     起止日期由调用方先截进看图范围。
     """
     if executor_factory is None:
@@ -330,7 +336,8 @@ def run_scan_multi(*, data_dir,
                               volume_min=volume_min,
                               first_passage_enabled=first_passage_enabled,
                               first_passage_k=first_passage_k,
-                              bars_until=(view_guard or {}).get("train_end")) for p in pkls]
+                              bars_until=(view_guard or {}).get("train_end"),
+                              view_floor=(view_guard or {}).get("view_floor")) for p in pkls]
             for fut in as_completed(futs):
                 if cancel_event is not None and cancel_event.is_set():
                     # 强制终止 worker(SIGKILL + waitpid 死亡确认)

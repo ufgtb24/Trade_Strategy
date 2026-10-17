@@ -3,10 +3,13 @@
 两台机器都用来看图,事实表、清单、对照成绩要在两台上算得一样,所以截断副本只在一台机器上生成,
 原样拷到另一台;不在两台各自重新生成(两台下载的原始行情不同,复权也会随时间变,重新生成就不一样)。
 
-指纹(fingerprint):按文件内容算,不看修改时间——副本目录里每个文件(含 SNAPSHOT.json)按文件名排序,
-逐个取内容的 sha256,把「文件名 TAB 内容指纹」逐行拼起来再取一次 sha256。拷贝时保留不保留修改时间
-都不影响它;多一个、少一个或改了一个文件都会变。整份副本算一遍约零点几秒,同一进程里按
-(目录, SNAPSHOT.json 的修改时间)记住结果,进程运行中原地改了副本要重启才会重新算。
+指纹(fingerprint):按文件内容算,不看修改时间——副本目录里的 *.pkl 与 SNAPSHOT.json(别的文件不算,
+同步工具留下的隐藏文件之类不会让两份副本对不上)按文件名排序,逐个取内容的 sha256,把「文件名 TAB
+内容指纹」逐行拼起来再取一次 sha256。拷贝时保留不保留修改时间都不影响它;多一个、少一个或改了一个
+文件都会变。整份副本算一遍约零点几秒,同一进程里记住结果,连同算的时候每个文件的大小和修改时间:
+  · fingerprint() 每次先列一遍目录比各文件的大小和修改时间,有一个变了(含多了、少了)就重算;
+  · 读一只股票(loader.load_bars → verify(file=...))只比那一个文件的大小和修改时间,变了就整份重算再核对。
+所以进程运行中原地改了副本里的文件,下次读它或下次核对整份副本时就会发现,不用重启。
 
 登记文件:<状态根>/snapshot_lock.json(受 git 跟踪):
 {"schema": "chart_workflow.snapshot_lock/1",
@@ -20,8 +23,8 @@
 本机副本的指纹与登记的是否一致:
   不一致 → SnapshotMismatch(「本机的训练数据副本和账上登记的不是同一份,请把登记那一份原样拷过来」,
            并写出登记的指纹和本机的指纹);
-  没登记 → 主目录的状态根:SnapshotNotRegistered(先显式登记);
-           环境变量指定的临时状态根(测试、端到端、冒烟):不核对。
+  没登记 → SnapshotNotRegistered(先显式登记)。环境变量指定的临时状态根(测试、端到端、冒烟)也一样:
+           临时状态根也要登记一份(测试里由 fixture 登记,端到端开跑前用 snapshot-register 登记)。
 """
 from __future__ import annotations
 
@@ -40,7 +43,7 @@ LOCK_SCHEMA = "chart_workflow.snapshot_lock/1"
 MISMATCH_TEXT = "本机的训练数据副本和账上登记的不是同一份，请把登记那一份原样拷过来"
 _SNAPSHOT_FILE = "SNAPSHOT.json"           # 与 loader.SNAPSHOT_FILE 同值(避免循环导入)
 
-_FP: dict[tuple[str, int], dict] = {}
+_FP: dict[str, dict] = {}                  # 目录 → {"stats": {文件名: (大小, 修改时间)}, "fp": 指纹}
 _VERIFIED: set[tuple] = set()
 
 
@@ -63,24 +66,38 @@ def _manifest(ddir: Path) -> tuple[dict, int]:
     return (man if isinstance(man, dict) else {}), mtime
 
 
+def _counted(name: str) -> bool:
+    return name.endswith(".pkl") or name == _SNAPSHOT_FILE
+
+
+def _listing(ddir: Path) -> dict[str, tuple[int, int]]:
+    """指纹算哪些文件,以及它们现在的 (大小, 修改时间)。"""
+    out = {}
+    with os.scandir(ddir) as it:
+        for e in it:
+            if _counted(e.name) and e.is_file():
+                st = e.stat()
+                out[e.name] = (st.st_size, st.st_mtime_ns)
+    return out
+
+
 def fingerprint(ddir, use_memo: bool = True) -> dict:
     """副本的内容指纹 {"sha", "n_files", "cutoff", "created_at", "generated_on"}(见模块说明)。
     use_memo=False:不用进程内记住的结果,重新按内容算。"""
     ddir = Path(ddir)
-    man, mtime = _manifest(ddir)
-    key = (str(ddir.resolve()), mtime)
-    if use_memo and key in _FP:
-        return _FP[key]
+    man, _ = _manifest(ddir)
+    key = str(ddir.resolve())
+    stats = _listing(ddir)
+    memo = _FP.get(key)
+    if use_memo and memo is not None and memo["stats"] == stats:
+        return memo["fp"]
     h = hashlib.sha256()
-    n_pkl = 0
-    for f in sorted(ddir.iterdir(), key=lambda p: p.name):
-        if not f.is_file():
-            continue
-        h.update(f"{f.name}\t{hashlib.sha256(f.read_bytes()).hexdigest()}\n".encode())
-        n_pkl += f.suffix == ".pkl"
-    fp = {"sha": h.hexdigest(), "n_files": n_pkl, "cutoff": man.get("cutoff"),
-          "created_at": man.get("created_at"), "generated_on": man.get("host")}
-    _FP[key] = fp
+    for name in sorted(stats):
+        h.update(f"{name}\t{hashlib.sha256((ddir / name).read_bytes()).hexdigest()}\n".encode())
+    fp = {"sha": h.hexdigest(), "n_files": sum(n.endswith(".pkl") for n in stats),
+          "cutoff": man.get("cutoff"), "created_at": man.get("created_at"),
+          "generated_on": man.get("host")}
+    _FP[key] = {"stats": stats, "fp": fp}
     return fp
 
 
@@ -169,9 +186,19 @@ def mismatch_message(lock: dict, fp: dict, ddir: Path) -> str:
             f"确实要换副本,运行 python -m chart_workflow.state snapshot-replace --reason \"<原因>\"")
 
 
-def verify(ddir, root: Path | None = None) -> None:
-    """核对本机副本 ddir 与 root(缺省:当前状态根位置)登记的是否同一份(见模块说明)。"""
-    from_env = bool(os.environ.get(_state.ENV_VAR))
+def _file_unchanged(ddir: Path, file: str) -> bool:
+    """这个文件的大小和修改时间与记住的指纹算的时候一样。"""
+    memo = _FP.get(str(ddir.resolve()))
+    try:
+        st = (ddir / file).stat()
+    except OSError:
+        return False
+    return memo is not None and memo["stats"].get(Path(file).name) == (st.st_size, st.st_mtime_ns)
+
+
+def verify(ddir, root: Path | None = None, file: str | None = None) -> None:
+    """核对本机副本 ddir 与 root(缺省:当前状态根位置)登记的是否同一份(见模块说明)。
+    file:这次要读的那个文件——给了就只比它的大小和修改时间(读股票时用,快);不给就列整个目录比。"""
     root = Path(root) if root is not None else _state.locate()
     ddir = Path(ddir)
     lp = lock_path(root)
@@ -180,19 +207,18 @@ def verify(ddir, root: Path | None = None) -> None:
         lock_key = (st.st_mtime_ns, st.st_size)
     except FileNotFoundError:
         lock_key = None
-    _, man_mtime = _manifest(ddir)
-    key = (str(root), lock_key, str(ddir.resolve()), man_mtime)
-    if key in _VERIFIED:
+    _manifest(ddir)
+    key = (str(root), lock_key, str(ddir.resolve()))
+    if file is not None and key in _VERIFIED and _file_unchanged(ddir, file):
         return
     lock = read_lock(root) if lock_key is not None else None
     if lock is None:
-        if from_env:
-            return                          # 临时状态根:不核对
         raise SnapshotNotRegistered(
             f"状态根 {root} 还没登记这本账用哪一份训练数据副本。在生成副本的那台机器上运行 "
             f"python -m chart_workflow.state snapshot-register 登记(登记文件随记账文件进 git);"
             f"另一台机器把那一份副本原样拷过来,不要自己重新生成")
     fp = fingerprint(ddir)
     if fp["sha"] != lock["current"]["sha"]:
+        _VERIFIED.discard(key)
         raise SnapshotMismatch(mismatch_message(lock, fp, ddir))
     _VERIFIED.add(key)

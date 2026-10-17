@@ -52,9 +52,10 @@ def check_symbol(symbol) -> str:
     return symbol
 
 
-def check_snapshot(ddir) -> dict:
+def check_snapshot(ddir, file: str | None = None) -> dict:
     """读 ddir/SNAPSHOT.json 并缓存(按文件修改时间);不合格 → NotASnapshot;
-    不是账上登记的那一份副本 → snaplock.SnapshotMismatch / SnapshotNotRegistered。"""
+    不是账上登记的那一份副本 → snaplock.SnapshotMismatch / SnapshotNotRegistered。
+    file:这次要读的文件(只核对它变没变,见 snaplock.verify);不给就核对整个目录。"""
     ddir = Path(ddir)
     f = ddir / SNAPSHOT_FILE
     try:
@@ -65,7 +66,7 @@ def check_snapshot(ddir) -> dict:
     key = (str(f.resolve()), mtime)
     if key in _MANIFESTS:
         from chart_workflow.snaplock import verify
-        verify(ddir)                                 # 已核对过的直接返回(按登记文件与清单记住)
+        verify(ddir, file=file)                      # 已核对过、要读的文件没变的直接返回
         return _MANIFESTS[key]
     try:
         man = json.loads(f.read_text())
@@ -78,7 +79,7 @@ def check_snapshot(ddir) -> dict:
         raise NotASnapshot(f"数据目录 {ddir} 的截断终点 {cutoff} 晚于 {HARD_END},不能用")
     _MANIFESTS[key] = man
     from chart_workflow.snaplock import verify      # 函数内导入:snaplock 依赖 state,state 依赖 config
-    verify(ddir)
+    verify(ddir, file=file)
     return man
 
 
@@ -87,7 +88,7 @@ def load_bars(ddir, symbol: str, end: str) -> pd.DataFrame:
     代码名不合格 → ValueError;文件不存在 → FileNotFoundError;截完仍晚于 HARD_END → PastHardEnd。"""
     check_symbol(symbol)
     ddir = Path(ddir)
-    check_snapshot(ddir)
+    check_snapshot(ddir, file=f"{symbol}.pkl")
     df = pd.read_pickle(ddir / f"{symbol}.pkl")
     if getattr(df.index, "tz", None) is not None:
         df = df.copy()

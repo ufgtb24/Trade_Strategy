@@ -8,6 +8,9 @@
 create_shape / revise_shape / add_case / rename_shape / merge_shape / set_status 六类(要素的四类见
 elements.py);摆过没选的、被拒的都只进日志、不进卡。写入流程:校验 → 追加日志 → 从全部日志重算受影响的
 要素与卡 → 写文件(规范化 JSON:ensure_ascii=False, indent=1, sort_keys=True,先写临时文件再换名)。
+要素与卡这两类操作只能经决定文件写进日志(oplog.append 拒绝直接写)。重算(rebuild)前先把日志里每条
+要素与卡的操作按顺序重新走一遍决定文件的校验(revalidate):不合格、或校验补全后和日志里记的不一样
+(手写进日志、改过工具补的字段)都报出来,不合格时不覆盖磁盘。
 
     uv run python -m chart_workflow.shapes apply <决定.json>
     uv run python -m chart_workflow.shapes show [<shape_id>]
@@ -23,12 +26,12 @@ elements.py);摆过没选的、被拒的都只进日志、不进卡。写入流�
 规则(validate,任一不过就拒绝写入并列出全部问题):origin 必填;推荐来的(adopted / edited)要写
 suggested_by;改过的推荐要带 suggested_value(用户自己写的也可以带,记下当时摆着的推荐);
 触发引用触发候选(term 不是 custom)时永远算推荐——推荐来的只能是 detector 或 own_library,
-用户自己写的必须带非空 said_first_match。
+用户自己写的(手写触发 custom 也一样)必须带非空 said_first_match。
 形态卡上要素那一项的来源记录记的是「角色是谁定的」(把这条要素以这个角色放进这个形态);
 要素本身是谁提的记在要素库里。
 从你以前的形态卡复用(own_library)时,会话只填 from_card:旧卡编号 shape_id、版本 version、编号 ref
-(要素那一项 ing_id、触发 trig_id、story、exit_pref);不接受会话自带的 root。工具去旧卡那个版本里找到
-那一条,把它当初的来源(它本身也是复用的,就取它的 root,一直到底)抄成 root;引用的要素(合并过的按并入
+(要素那一项 ing_id、触发 trig_id、story、exit_pref),只能从同一类的项抄(故事从故事、触发从触发);
+不接受会话自带的 root。工具去旧卡那个版本里找到那一条,把它当初的来源(它本身也是复用的,就取它的 root,一直到底)抄成 root;引用的要素(合并过的按并入
 的那条比)或触发编号和旧卡那一条对不上、卡 / 版本 / 那一条不存在,都拒绝。算条件构成时递归到 root,
 防止采纳过的系统推荐经用户的卡转一手被洗成用户来源。
 包一层的粒度:每个要素项、每个触发、每个分歧答案、形态名字、story、exit_pref、每个样本的买点与形态认领。
@@ -38,6 +41,7 @@ suggested_by;改过的推荐要带 suggested_value(用户自己写的也可以�
  in_trial | judged | merged", "merged_into": null, "current_version": 1,
  "versions": [{"version", "ts", "change", "after_seeing_outcome", "list_kind", "from_ann",
                "card": {"ingredients": [{"ing_id", "element": "E001", "role": "must | bonus | must_not",
+                                          "element_version": <这一版建立时那条要素的版本号,工具填>,
                                           <来源记录字段:角色是谁定的>}],
                         "triggers": [{"trig_id", "term": "T1..T8 | custom", "text", <来源记录字段>}],
                         "story": <来源记录> | null, "exit_pref": <来源记录> | null}}],
@@ -45,7 +49,8 @@ suggested_by;改过的推荐要带 suggested_value(用户自己写的也可以�
             "divergence_answers": [{"dvid", "options": ["E001", "E002"], "choice": <来源记录,value 是选中的要素>}],
             "facts_ref", "version"}]}
 新写的卡版本只能引用要素库里在用或待写代码的要素(合并过的要引用它并入的那条),同一条要素在一张卡里
-只出现一次;旧版本里引用的编号合并后照常能解析(elements.resolve)。
+只出现一次;旧版本里引用的编号合并后照常能解析(elements.resolve)。判定、打印、账本都按卡上记下的
+要素版本取定义和来源(旧日志里的卡没记版本号的,取那条要素自己的当前版本)。
 版本只追加;改名只改 name,旧名进 aliases;合并时被并的卡写 status = merged 与 merged_into。
 after_seeing_outcome 由这一版引用的标注(from_ann)所在批次头的 outcome_visible 推出(v1 批次按 true;
 没引用标注时取决定文件 ctx 的 outcome_visible,缺省按 true),apply 时算好写进日志,replay 只照抄。
@@ -131,6 +136,8 @@ def validate(rec, path: str, term: str | None = None, wrapped: bool = True) -> l
         errs.append(f"{path}: suggested_by 不合法 {by!r}")
     if origin == "suggested_edited" and "suggested_value" not in rec:
         errs.append(f"{path}: 改过的推荐要带 suggested_value(推荐原值)")
+    if term == "custom" and origin == "user_written" and not str(rec.get("said_first_match") or "").strip():
+        errs.append(f"{path}: 自己写的触发记成用户说的,要带 said_first_match(用户原话)")
     refs_table = term is not None and term != "custom"
     if refs_table:
         if origin == "user_written" and not str(rec.get("said_first_match") or "").strip():
@@ -153,18 +160,31 @@ def validate(rec, path: str, term: str | None = None, wrapped: bool = True) -> l
     return errs
 
 
-def _element(card: dict, ref: str) -> tuple[dict | None, tuple | None]:
-    """卡的某个版本里 ref 指的那一条及它引用的东西:要素项 → ("element", 编号),
-    触发 → ("term", 编号);story、exit_pref 没有引用(None)。"""
+def _element(card: dict, ref: str) -> tuple[dict | None, tuple | None, str | None]:
+    """卡的某个版本里 ref 指的那一条、它引用的东西(要素项 → ("element", 编号),触发 → ("term", 编号);
+    story、exit_pref 没有引用,为 None)和它是哪一类(ingredient / trigger / story / exit_pref)。"""
     for ing in card.get("ingredients", []):
         if ing.get("ing_id") == ref:
-            return ing, ("element", ing.get("element"))
+            return ing, ("element", ing.get("element")), "ingredient"
     for t in card.get("triggers", []):
         if t.get("trig_id") == ref:
-            return t, ("term", t.get("term"))
+            return t, ("term", t.get("term")), "trigger"
     if ref in ("story", "exit_pref") and isinstance(card.get(ref), dict):
-        return card[ref], None
-    return None, None
+        return card[ref], None, ref
+    return None, None, None
+
+
+def _kind_of(sub: str) -> str:
+    """value 里一条来源记录是哪一类(按它在 value 里的位置)。"""
+    if sub.startswith("card.ingredients"):
+        return "ingredient"
+    if sub.startswith("card.triggers"):
+        return "trigger"
+    if sub.startswith("card."):
+        return sub[len("card."):]
+    if sub.startswith("divergence_answers"):
+        return "divergence_choice"
+    return sub
 
 
 def _bottom(el: dict) -> dict:
@@ -225,9 +245,13 @@ def resolve_own_library(act: str, v: dict, cards: dict, els: dict, path: str) ->
         if ver is None:
             errs.append(f"{where}: 旧卡 {fc['shape_id']} 没有版本 v{fc['version']}")
             continue
-        el, old_ref = _element(ver["card"], fc["ref"])
+        el, old_ref, old_kind = _element(ver["card"], fc["ref"])
         if el is None:
             errs.append(f"{where}: 旧卡 {fc['shape_id']} v{fc['version']} 里没有 {fc['ref']!r}")
+            continue
+        if old_kind != _kind_of(sub):
+            errs.append(f"{where}: 只能从旧卡同一类的项复用来源(这一项是 {_kind_of(sub)},"
+                        f"旧卡的 {fc['ref']!r} 是 {old_kind})")
             continue
         if ref is not None and not _same_ref(ref, old_ref, els):
             errs.append(f"{where}: 引用 {ref[1]},旧卡那一条引用的是 {old_ref[1] if old_ref else '别的东西'},"
@@ -469,33 +493,34 @@ def _next_id(ids) -> str:
     return f"s{(max(nums) + 1) if nums else 1:03d}"
 
 
-def prepare(decision: dict, existing_ops: list[dict], anns: dict) -> tuple[list[dict], dict]:
-    """校验决定文件并补全(分配 shape_id / element_id、解析 $new 与 $<as>、规范化要素定义、
-    推出 after_seeing_outcome / list_kind / batch_id)。返回 (待追加的条目, 重算后的全部卡)。
-    任何问题 → ShapeValidationError(列出全部)。"""
+class _State:
+    """预演状态:卡、要素、用过的 shape_id。"""
+
+    def __init__(self, ops: list[dict]):
+        self.cards = replay(ops)
+        self.els = E.replay(ops)
+        self.ids = set(self.cards) | {(o.get("target") or {}).get("shape_id") for o in ops}
+
+
+def _prepare_ops(raw_ops: list, head: dict, st: _State, anns: dict, where) -> tuple[list[dict], list[str]]:
+    """逐条校验并补全(分配 shape_id / element_id、解析 $new 与 $<as>、规范化要素定义、抄 own_library 的
+    root、记下卡上每个要素当时的版本号、推出 after_seeing_outcome / list_kind / batch_id),合格的作用到
+    预演状态 st 上。where(k):第 k 条的位置说明。返回 (补全后的条目, 问题清单)。"""
     errs: list[str] = []
-    if not isinstance(decision, dict) or decision.get("schema") != DECISION_SCHEMA:
-        raise ShapeValidationError([f"schema 必须是 {DECISION_SCHEMA}"])
-    ops = decision.get("ops")
-    if not isinstance(ops, list) or not ops:
-        raise ShapeValidationError(["ops 必须是非空列表"])
-    head_ctx = decision.get("ctx") or {}
-    cards = replay(existing_ops)
-    els = E.replay(existing_ops)
+    head_ctx = head.get("ctx") or {}
     local: dict[str, str] = {}                       # create_element 的 as → 分到的编号
-    ids = set(cards) | {(o.get("target") or {}).get("shape_id") for o in existing_ops}
     last_new = None
     out = []
-    for k, raw in enumerate(ops):
-        path = f"ops[{k}]"
+    for k, raw in enumerate(raw_ops):
+        path = where(k)
         if not isinstance(raw, dict):
             errs.append(f"{path}: 不是对象")
             continue
         if "ts" in raw or "op_id" in raw:
             errs.append(f"{path}: 不要自带 ts / op_id")
         op = copy.deepcopy(raw)
-        op.setdefault("actor", decision.get("actor"))
-        op.setdefault("surface", decision.get("surface"))
+        op.setdefault("actor", head.get("actor"))
+        op.setdefault("surface", head.get("surface"))
         op.setdefault("ctx", head_ctx)
         e = oplog.check_entry(op)
         if e:
@@ -503,7 +528,7 @@ def prepare(decision: dict, existing_ops: list[dict], anns: dict) -> tuple[list[
             continue
         act = op["act"]
         if act in oplog.ELEMENT_ACTS:
-            e = E.prepare_op(op, els, local, path)
+            e = E.prepare_op(op, st.els, local, path)
             if e:
                 errs += e
                 continue
@@ -521,17 +546,17 @@ def prepare(decision: dict, existing_ops: list[dict], anns: dict) -> tuple[list[
         sid = op["target"].get("shape_id")
         if act == "create_shape":
             if sid is None:
-                sid = _next_id(ids)
+                sid = _next_id(st.ids)
             elif not SHAPE_ID_RE.fullmatch(str(sid)):
                 errs.append(f"{path}: shape_id 不合法 {sid!r}")
                 continue
-            ids.add(sid)
+            st.ids.add(sid)
             last_new = sid
-        e = _validate_value(act, v, path, els)
+        e = _validate_value(act, v, path, st.els)
         if e:
             errs += e
             continue
-        e = resolve_own_library(act, v, cards, els, path)
+        e = resolve_own_library(act, v, st.cards, st.els, path)
         if e:
             errs += e
             continue
@@ -542,6 +567,8 @@ def prepare(decision: dict, existing_ops: list[dict], anns: dict) -> tuple[list[
             sid = last_new
         op["target"]["shape_id"] = sid
         if act in ("create_shape", "revise_shape"):
+            for ing in v["card"].get("ingredients", []):      # 记下卡这一版引用的每个要素当时的版本
+                ing["element_version"] = st.els[ing["element"]]["current_version"]
             refs = v.get("from_ann") or []
             missing = [a for a in refs if a not in anns]
             if missing:
@@ -564,14 +591,84 @@ def prepare(decision: dict, existing_ops: list[dict], anns: dict) -> tuple[list[
                 continue
             v["batch_id"] = a["batch_id"]
         try:
-            _step(cards, {**op, "ts": "预演"})
+            _step(st.cards, {**op, "ts": "预演"})
         except ValueError as ex:
             errs.append(f"{path}: {ex}")
             continue
         out.append(op)
+    return out, errs
+
+
+def prepare(decision: dict, existing_ops: list[dict], anns: dict) -> tuple[list[dict], dict]:
+    """校验决定文件并补全(见 _prepare_ops)。返回 (待追加的条目, 重算后的全部卡)。
+    任何问题 → ShapeValidationError(列出全部)。"""
+    if not isinstance(decision, dict) or decision.get("schema") != DECISION_SCHEMA:
+        raise ShapeValidationError([f"schema 必须是 {DECISION_SCHEMA}"])
+    ops = decision.get("ops")
+    if not isinstance(ops, list) or not ops:
+        raise ShapeValidationError(["ops 必须是非空列表"])
+    st = _State(existing_ops)
+    out, errs = _prepare_ops(ops, decision, st, anns, lambda k: f"ops[{k}]")
     if errs:
         raise ShapeValidationError(errs)
-    return out, cards
+    return out, st.cards
+
+
+def _as_decision_op(op: dict) -> dict:
+    """日志里的一条要素 / 卡操作还原成决定文件里的写法:去掉 ts / op_id 和工具补的东西
+    (own_library 抄来的 root、卡上记下的要素版本号),好让它重新走一遍决定文件的校验。"""
+    raw = copy.deepcopy({k: v for k, v in op.items() if k not in ("ts", "op_id")})
+    v = raw.get("value")
+    if raw.get("act") in oplog.SHAPE_ACTS and isinstance(v, dict):
+        for rec, _, _ in _origin_records(raw["act"], v):
+            if rec.get("suggested_by") == "own_library":
+                rec.pop("root", None)
+        card = v.get("card") if isinstance(v.get("card"), dict) else {}
+        for ing in card.get("ingredients") or []:
+            if isinstance(ing, dict):
+                ing.pop("element_version", None)
+    return raw
+
+
+def _old_format_tolerant(redone: dict, logged: dict) -> dict:
+    """旧日志里的卡还没记要素版本号(那时判定一律按最新版本):日志里没有这个字段的,重算结果也去掉再比。
+    只容忍「没有」,记了而且和重算的不同照样算对不上。"""
+    v, lv = redone.get("value"), logged.get("value")
+    if redone.get("act") not in ("create_shape", "revise_shape") or not isinstance(lv, dict):
+        return redone
+    old = [i for i in ((lv.get("card") or {}).get("ingredients") or []) if isinstance(i, dict)]
+    if not old or any("element_version" in i for i in old):
+        return redone
+    redone = copy.deepcopy(redone)
+    for ing in redone["value"]["card"].get("ingredients", []):
+        ing.pop("element_version", None)
+    return redone
+
+
+def revalidate(ops: list[dict], anns: dict) -> list[str]:
+    """把日志里每条要素与形态卡的操作按顺序重新走一遍决定文件的校验(当时的状态 = 它前面的日志重算出来的),
+    不合格、或校验后补全的结果和日志里记的不一样,都列出来。直接写进日志、绕开决定文件的操作就在这里现形。"""
+    st = _State([])
+    problems = []
+    for k, op in enumerate(ops):
+        act = op.get("act")
+        if act in oplog.SHAPE_ACTS or act in oplog.ELEMENT_ACTS:
+            trial = copy.deepcopy(st)
+            where = lambda _, k=k, op=op: f"日志第 {k + 1} 条({op.get('act')},{op.get('op_id')})"
+            out, errs = _prepare_ops([_as_decision_op(op)], {}, trial, anns, where)
+            if errs:
+                problems += errs
+            elif _old_format_tolerant({**out[0], "ts": op.get("ts"), "op_id": op.get("op_id")}, op) != op:
+                problems.append(f"{where(0)}: 重新校验补全后和日志里记的不一样(日志被改过,或没经决定文件写入)")
+        try:
+            E.step(st.els, op)
+            _step(st.cards, op)
+        except ValueError as ex:
+            problems.append(f"日志第 {k + 1} 条({act},{op.get('op_id')}): {ex}")
+        sid = (op.get("target") or {}).get("shape_id")
+        if sid:
+            st.ids.add(sid)
+    return problems
 
 
 def touched_elements(ops: list[dict]) -> list[str]:
@@ -589,7 +686,7 @@ def apply(decision: dict) -> tuple[list[dict], list[str]]:
     返回 (追加的条目, 受影响的 shape_id);受影响的要素编号见 touched_elements(追加的条目)。"""
     existing = oplog.read_all()
     ops, _ = prepare(decision, existing, _ann_index())
-    written = oplog.append(ops)
+    written = oplog.append(ops, oplog.VIA_DECISION)
     all_ops = oplog.read_all()
     E.write_all(E.replay(all_ops), touched_elements(written))
     cards = replay(all_ops)
@@ -600,8 +697,13 @@ def apply(decision: dict) -> tuple[list[dict], list[str]]:
 
 
 def rebuild(verify: bool) -> list[str]:
-    """从日志从头重算全部要素与卡。verify:与磁盘逐字比对,返回不一致清单;否则用重算结果覆盖磁盘。"""
-    problems = E.rebuild(verify)
+    """从日志从头重算全部要素与卡。先把每条要素与卡的操作重新走一遍决定文件的校验(revalidate):
+    verify 时把不合格的列进返回的问题清单;不 verify 时有不合格的就 ShapeValidationError,不覆盖磁盘。
+    verify:与磁盘逐字比对,返回不一致清单;否则用重算结果覆盖磁盘。"""
+    bad = revalidate(oplog.read_all(), _ann_index())
+    if bad and not verify:
+        raise ShapeValidationError(bad)
+    problems = bad + E.rebuild(verify)
     cards = replay(oplog.read_all())
     d = shapes_dir()
     on_disk = {p.stem for p in d.glob("*.json")} if d.exists() else set()
@@ -651,15 +753,19 @@ def _term_text(term: str, text: str | None = None) -> str:
 
 
 def _ing_text(i: dict, els: dict) -> str:
-    """卡上一个要素项:编号「名字」:条件(角色是谁定的)。"""
+    """卡上一个要素项:编号「名字」:条件(角色是谁定的)。条件按卡上记下的那一版要素(旧卡没记版本就取
+    这条要素自己的当前版本),不跟后来的修订与合并。"""
     if "element" not in i:
         return f"{_term_text(i.get('term'), i.get('text'))}（{origin_text(i)}）"
     eid = i["element"]
     s = E.label(els, eid)
     if eid in els:
-        d = els[E.resolve(els, eid)]["versions"][-1].get("definition")
-        if d is not None:
-            s += f"：{E.definition_text(d)}"
+        n = i.get("element_version")
+        ver = E.element_version(els, eid, n) if n else els[eid]["versions"][-1]
+        d = ver.get("definition")
+        s += f"：{E.definition_text(d)}" if d is not None else "：卡这一版建立时待写代码"
+        if n and n != els[eid]["current_version"]:
+            s += f"（卡上记的是 v{n}，要素现在是 v{els[eid]['current_version']}）"
     return s + f"（角色：{origin_text(i)}）"
 
 
@@ -784,8 +890,9 @@ def main(argv=None) -> None:
             written, touched = apply(decision)
             print(f"已写 {len(written)} 条操作日志 → {oplog.oplog_dir()}")
             els = E.replay(oplog.read_all())
+            all_ops = oplog.read_all()
             for eid in touched_elements(written):
-                print(E.render(els[eid]))
+                print(E.render(els[eid], all_ops))
             for sid in touched:
                 print(render(load_card(sid), els))
         elif args.cmd == "show":

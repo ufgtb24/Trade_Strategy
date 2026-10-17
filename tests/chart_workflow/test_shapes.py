@@ -8,7 +8,7 @@ import json
 
 import pytest
 
-from chart_workflow import elements, oplog, shapes, state
+from chart_workflow import elements, ledger, oplog, shapes, state
 from chart_workflow.ledger import add_round, read_ledger, render as render_ledger
 from chart_workflow.config import root_dir
 
@@ -61,7 +61,8 @@ CARD = {
         {"ing_id": "i3", "element": "$flat", "role": "bonus", "origin": "user_written"},
     ],
     "triggers": [{"trig_id": "t1", "term": "T5", **DET},
-                 {"trig_id": "t2", "term": "custom", "text": "放量阳线过前高", "origin": "user_written"}],
+                 {"trig_id": "t2", "term": "custom", "text": "放量阳线过前高", "origin": "user_written",
+                  "said_first_match": "放量阳线过前高的时候买"}],
     "story": {"value": "突破阻力后抛压被吃掉", "origin": "user_written"},
     "exit_pref": None,
 }
@@ -122,6 +123,7 @@ def _state(state_dir):
     (lambda c: c["ingredients"][1].update(role="maybe"), "role"),
     (lambda c: c["triggers"][1].pop("text"), "text"),
     (lambda c: c["triggers"][0].update(origin="user_written"), "said_first_match"),
+    (lambda c: c["triggers"][1].pop("said_first_match"), "said_first_match"),   # 手写触发记成用户说的
 ])
 def test_origin_rules_reject(state_dir, mutate, needle):
     _batch(state_dir, "b1", [_ann("a1")])
@@ -256,6 +258,12 @@ def test_v1_batch_counts_as_outcome_visible(state_dir):
     assert v["after_seeing_outcome"] is True and v["list_kind"] is None
 
 
+def _impl(source):
+    """测试里直接记账用的核对结果(真实流程由对照页的规则核对给出,见 test_rulecheck.py)。"""
+    return {"source": source, "declared": [{"element": "E001", "element_resolved": "E001", "role": "must"}],
+            "samples_checked": 1, "samples_skipped": []}
+
+
 def _reuse(ing_id, element, ref, shape_id="s001", version=1, **extra):
     return {"ing_id": ing_id, "element": element, "role": "bonus", "origin": "suggested_adopted",
             "suggested_by": "own_library",
@@ -280,7 +288,7 @@ def test_ledger_conditions_by_element(state_dir, cw_env):
     lists = root_dir(cfg) / "lists"
     lists.mkdir(parents=True)
     (lists / "r5-contrast.json").write_text(json.dumps({"list_id": "r5-contrast", "kind": "contrast"}))
-    e = add_round(cfg, kind="rule", rule_id="s001", version="v1", source="shape:s001@v1",
+    e = add_round(cfg, kind="rule", rule_id="s001", version="v1", source="shape:s001@v1", implements=_impl("shape:s001@v1"),
                   change="首版", list_id="r5-contrast")
     conds = {c["cond_id"]: c for c in e["conditions"]}
     assert set(conds) == {"i1", "i2", "i3", "t1", "t2"}
@@ -297,7 +305,7 @@ def test_ledger_conditions_by_element(state_dir, cw_env):
     assert "要素 你说的 2 / 你提的角度 0 / 事实表 1 / 会话 0；角色你定的 2/3；触发 你说的 1 / 事实表 1" \
         in render_ledger(read_ledger())
     (lists / "r6-contrast.json").write_text(json.dumps({"list_id": "r6-contrast", "kind": "contrast"}))
-    e = add_round(cfg, kind="rule", rule_id="s003", version="v1", source="shape:s003@v1",
+    e = add_round(cfg, kind="rule", rule_id="s003", version="v1", source="shape:s003@v1", implements=_impl("shape:s003@v1"),
                   change="复用", list_id="r6-contrast")
     c = e["conditions"][0]
     assert c["suggested_by"] == "own_library" and c["element"] == "E002"
@@ -307,35 +315,62 @@ def test_ledger_conditions_by_element(state_dir, cw_env):
                                                      "origin": "user_written"}], "triggers": []},
                                    name="派发也算加分")))
     (lists / "r7-contrast.json").write_text(json.dumps({"list_id": "r7-contrast", "kind": "contrast"}))
-    m1 = add_round(cfg, kind="rule", rule_id="s004", version="v1", source="shape:s004@v1",
+    m1 = add_round(cfg, kind="rule", rule_id="s004", version="v1", source="shape:s004@v1", implements=_impl("shape:s004@v1"),
                    change="角色用户定", list_id="r7-contrast")["conditions"][0]
     assert (m1["element_origin"], m1["element_suggested_by"]) == ("suggested_adopted", "detector")
     assert (m1["origin"], m1["root_origin"]) == ("user_written", "user_written")
     with pytest.raises(FileNotFoundError):
-        add_round(cfg, kind="rule", rule_id="s001", version="v2", source="shape:s001@v2",
+        add_round(cfg, kind="rule", rule_id="s001", version="v2", source="shape:s001@v2", implements=_impl("shape:s001@v2"),
                   change="x", list_id="r5-contrast")
     with pytest.raises(FileNotFoundError):
-        add_round(cfg, kind="rule", rule_id="s009", version="v1", source="shape:s009@v1",
+        add_round(cfg, kind="rule", rule_id="s009", version="v1", source="shape:s009@v1", implements=_impl("shape:s009@v1"),
                   change="x", list_id="r5-contrast")
 
 
 def test_ledger_marks_user_proposed_angle(state_dir, cw_env, monkeypatch):
-    """要素读的事实行是用户提的角度:哪怕要素是事实表推荐的,账本记 angle_by = user,不算系统推荐。"""
+    """要素读的事实行是用户提的角度:哪怕要素是事实表推荐的,账本记 angle_by = user,不算系统推荐。
+    出处指的「提出角度」日志条目要真在、且排在要素建立之前才算。"""
     from chart_workflow import facts
     cfg, _ = cw_env
+    oplog.append([{"act": "propose_fact", "actor": "user", "surface": "chat", "op_id": "op-dist",
+                   "value": {"said": "看最近一个月有没有派发"}}])
     _base(state_dir)
     src = {"kind": "user", "date": "2026-10-17", "said": "看最近一个月有没有派发", "op_id": "op-dist"}
     monkeypatch.setitem(facts.ROWS, "F13", {**facts.ROWS["F13"], "source": src})
     lists = root_dir(cfg) / "lists"
     lists.mkdir(parents=True)
     (lists / "r5-contrast.json").write_text(json.dumps({"list_id": "r5-contrast", "kind": "contrast"}))
-    e = add_round(cfg, kind="rule", rule_id="s001", version="v1", source="shape:s001@v1",
+    e = add_round(cfg, kind="rule", rule_id="s001", version="v1", source="shape:s001@v1", implements=_impl("shape:s001@v1"),
                   change="首版", list_id="r5-contrast")
     i2 = next(c for c in e["conditions"] if c["cond_id"] == "i2")
     assert i2["element_suggested_by"] == "detector"
     assert (i2["angle_by"], i2["angle_ops"]) == ("user", ["op-dist"])
     assert "要素 你说的 2 / 你提的角度 1 / 事实表 0" in render_ledger(read_ledger())
     assert "你提的角度" in elements.render(elements.load_all()["E002"])
+
+
+@pytest.mark.parametrize("when", ["missing", "after", "not_propose"])
+def test_user_angle_needs_earlier_propose_entry(state_dir, cw_env, monkeypatch, when):
+    """出处指的日志条目不在、排在要素建立之后、或不是「提出角度」:都不算你提的角度,按预设记。"""
+    from chart_workflow import facts
+    cfg, _ = cw_env
+    entry = {"act": "propose_fact" if when != "not_propose" else "type", "actor": "user", "surface": "chat",
+             "op_id": "op-dist", "value": {"said": "看最近一个月有没有派发"}}
+    if when == "not_propose":
+        oplog.append([entry])
+    _base(state_dir)
+    if when == "after":
+        oplog.append([entry])
+    src = {"kind": "user", "date": "2026-10-17", "said": "看最近一个月有没有派发", "op_id": "op-dist"}
+    monkeypatch.setitem(facts.ROWS, "F13", {**facts.ROWS["F13"], "source": src})
+    lists = root_dir(cfg) / "lists"
+    lists.mkdir(parents=True)
+    (lists / "r5-contrast.json").write_text(json.dumps({"list_id": "r5-contrast", "kind": "contrast"}))
+    e = add_round(cfg, kind="rule", rule_id="s001", version="v1", source="shape:s001@v1", implements=_impl("shape:s001@v1"),
+                  change="首版", list_id="r5-contrast")
+    i2 = next(c for c in e["conditions"] if c["cond_id"] == "i2")
+    assert (i2["angle_by"], i2["angle_ops"]) == ("preset", [])
+    assert "你提的角度 0" in render_ledger(read_ledger())
 
 
 @pytest.mark.parametrize("ing,needle", [
@@ -355,15 +390,179 @@ def test_own_library_reuse_checked_against_old_card(state_dir, ing, needle):
     assert _state(state_dir) == before
 
 
+FLAT = {"row": "F11", "value": "segments", "cond": "events_any", "user_params": {"bars": 20}}
+
+
 def test_own_library_reuse_follows_element_merge(state_dir):
-    """旧卡引用的要素后来并进了另一条:复用时引用并入的那条,认作同一个东西。"""
-    _base(state_dir)
-    shapes.apply(_decision({"act": "merge_element", "target": {"element_id": "E002"},
-                            "value": {"into": "E004", "reason": "用户说是同一个意思"}, "actor": "user"}))
-    shapes.apply(_decision(_create({"ingredients": [_reuse("j1", "E004", "i2")], "triggers": []},
+    """旧卡引用的待写代码要素后来写成计算、并进了定义相同的另一条:复用时引用并入的那条,认作同一个东西。"""
+    _base(state_dir)                               # s001 的 i3 引用待写代码的 E003
+    shapes.apply(_decision(el_op("plat", "最近 20 根里有平台段", FLAT, user=False),
+                           {"act": "merge_element", "target": {"element_id": "E003"},
+                            "value": {"into": "$plat", "reason": "用户说是同一个意思", "definition": FLAT,
+                                      "origin": "suggested_adopted", "suggested_by": "session"},
+                            "actor": "user"}))
+    shapes.apply(_decision(_create({"ingredients": [_reuse("j1", "E005", "i3")], "triggers": []},
                                    name="复用")))
     j1 = shapes.load_card("s002")["versions"][0]["card"]["ingredients"][0]
-    assert j1["root"] == {"origin": "suggested_adopted", "suggested_by": "detector"}
+    assert j1["root"] == {"origin": "user_written"}
+
+
+def test_own_library_reuse_needs_same_kind(state_dir):
+    """复用旧卡抄来源只能从同一类的项抄:故事从故事抄,不能从触发或要素项抄。"""
+    _base(state_dir)
+    story = {"value": "突破后抛压被吃掉", "origin": "suggested_adopted", "suggested_by": "own_library",
+             "from_card": {"shape_id": "s001", "version": 1, "ref": "t2"}}
+    with pytest.raises(shapes.ShapeValidationError, match="只能从旧卡同一类的项复用来源.*story.*trigger"):
+        shapes.apply(_decision(_create({"ingredients": [], "triggers": [], "story": story}, name="复用")))
+    story["from_card"]["ref"] = "story"
+    shapes.apply(_decision(_create({"ingredients": [], "triggers": [], "story": story}, name="复用")))
+    assert shapes.load_card("s002")["versions"][0]["card"]["story"]["root"] == {"origin": "user_written"}
+
+
+def test_ledger_unchanged_by_merge(state_dir):
+    """合并之后,账本给旧卡那一版记的要素项不变:来源、版本、读的事实行都按卡这一版建立时那条要素算。"""
+    _base(state_dir)                               # s001 的 i3 引用待写代码的 E003(用户说的)
+    before = ledger.shape_conditions("shape:s001@v1")
+    shapes.apply(_decision(el_op("plat", "最近 20 根里有平台段", FLAT, user=False),
+                           {"act": "merge_element", "target": {"element_id": "E003"},
+                            "value": {"into": "$plat", "reason": "用户说是同一个意思", "definition": FLAT,
+                                      "origin": "suggested_adopted", "suggested_by": "session"},
+                            "actor": "user"}))
+    after = ledger.shape_conditions("shape:s001@v1")
+    assert after[2].pop("element_resolved") == "E005" and before[2].pop("element_resolved") == "E003"
+    assert after == before
+    i3 = after[2]
+    assert (i3["element"], i3["element_version"], i3["element_origin"]) == ("E003", 1, "user_written")
+    assert (i3["fact_rows"], i3["angle_by"], i3["definition_origin"]) == ([], None, None)
+    # 新建的卡版本引用 E003:记的是写成计算的那一版,定义是谁定的跟着记(会话定的)
+    shapes.apply(_decision(_create({"ingredients": [{"ing_id": "j1", "element": "E005", "role": "must",
+                                                     "origin": "user_written"}], "triggers": []}, name="平台")))
+    j1 = ledger.shape_conditions("shape:s002@v1")[0]
+    assert (j1["element_origin"], j1["element_suggested_by"], j1["fact_rows"]) == \
+        ("suggested_adopted", "detector", ["F11"])
+
+
+def test_ledger_records_who_wrote_pending_definition(state_dir):
+    """待写代码的要素写成计算时记下定义是谁定的;新卡引用写成计算的那一版,账本记这个来源;
+    旧卡那一版仍记当时待写代码。"""
+    _base(state_dir)                               # E003 待写代码(用户说的)
+    shapes.apply(_decision({"act": "revise_element", "target": {"element_id": "E003"},
+                            "value": {"definition": FLAT, "change": "写成计算", "origin": "suggested_adopted",
+                                      "suggested_by": "session"}}))
+    shapes.apply(_decision(_create({"ingredients": [{"ing_id": "j1", "element": "E003", "role": "must",
+                                                     "origin": "user_written"}], "triggers": []}, name="平台")))
+    j1 = ledger.shape_conditions("shape:s002@v1")[0]
+    assert (j1["element_origin"], j1["element_version"], j1["fact_rows"]) == ("user_written", 2, ["F11"])
+    assert (j1["definition_origin"], j1["definition_suggested_by"]) == ("suggested_adopted", "session")
+    i3 = ledger.shape_conditions("shape:s001@v1")[2]
+    assert (i3["element_version"], i3["definition_origin"], i3["fact_rows"]) == (1, None, [])
+
+
+VOLD = {"row": "F07", "value": "vr", "cond": "at_least", "default_params": {"x": 3.0}}
+
+
+def test_card_version_keeps_element_version(state_dir):
+    """要素修订后,旧卡那一版仍按当时的要素版本判定、打印、记账;卡的新版本记新的版本号。"""
+    _batch(state_dir, "b1", [_ann("a1")])
+    vol_ing = {"ingredients": [{"ing_id": "v1", "element": "$vol", "role": "must", "origin": "user_written"}],
+               "triggers": []}
+    shapes.apply(_decision(el_op("vol", "放量", VOLD, user=False), _create(vol_ing, name="放量")))
+    shapes.apply(_decision({"act": "revise_element", "target": {"element_id": "E001"},
+                            "value": {"definition": {**VOLD, "default_params": {"x": 2.5}},
+                                      "change": "默认倍数改 2.5"}}))
+    card = shapes.load_card("s001")
+    assert card["versions"][0]["card"]["ingredients"][0]["element_version"] == 1
+    assert ledger.shape_conditions("shape:s001@v1")[0]["element_version"] == 1
+    assert "3" in shapes.render(card) and "2.5" not in shapes.render(card)
+    snap = {"results": [{"ann_id": "a1", "facts": {"symbol": "AAA", "buy_date": "2025-07-14",
+                                                   "rows": [{"fid": "F07", "value": {"vr": 2.8}}]}}]}
+    els = elements.load_all()
+    assert "否" in elements.render_eval(snap, els, card=card)                   # 按 v1:至少 3 倍
+    assert elements.evaluate_element(els, "E001", snap["results"][0]["facts"])[0] == "yes"   # 当前版本
+    ids = copy.deepcopy(vol_ing)
+    ids["ingredients"][0]["element"] = "E001"
+    shapes.apply(_decision({"act": "revise_shape", "target": {"shape_id": "s001"},
+                            "value": {"card": ids, "change": "跟上要素新版本"}}))
+    card = shapes.load_card("s001")
+    assert card["versions"][1]["card"]["ingredients"][0]["element_version"] == 2
+    assert "是" in elements.render_eval(snap, els, card=card).split("\n")[1]
+    assert ledger.shape_conditions("shape:s001@v2")[0]["element_version"] == 2
+    with pytest.raises(shapes.ShapeValidationError, match="未知字段"):           # 版本号由工具填
+        bad = copy.deepcopy(ids)
+        bad["ingredients"][0]["element_version"] = 1
+        shapes.apply(_decision({"act": "revise_shape", "target": {"shape_id": "s001"},
+                                "value": {"card": bad, "change": "自己填版本"}}))
+
+
+def test_decision_file_cannot_carry_ts_op_id_or_element_from_card(state_dir):
+    """决定文件不能自带时间和编号;要素不带旧卡指引(要素按编号复用,不抄来源)。"""
+    _batch(state_dir, "b1", [_ann("a1")])
+    for extra in ({"op_id": "20260101T000000-deadbeef"}, {"ts": "2026-01-01T00:00:00"}):
+        with pytest.raises(shapes.ShapeValidationError, match="不要自带 ts / op_id"):
+            shapes.apply(_decision({**ELEMS[0], **extra}))
+    op = copy.deepcopy(ELEMS[1])
+    op["value"]["from_card"] = {"shape_id": "s001", "version": 1, "ref": "i2"}
+    with pytest.raises(shapes.ShapeValidationError, match="要素不带 from_card"):
+        shapes.apply(_decision(op))
+    assert oplog.read_all() == []
+
+
+def _raw_append(state_dir, entry):
+    """绕开工具,直接往日志文件末尾加一行(模拟手写日志)。"""
+    f = sorted((state_dir / "oplog").glob("*.jsonl"))[-1]
+    with f.open("a") as fh:
+        fh.write(json.dumps(entry, ensure_ascii=False) + "\n")
+
+
+def test_direct_log_writes_of_elements_and_cards_rejected(state_dir):
+    """直接写操作日志:入口拒绝要素与卡两类操作;手写进日志文件的,重算时重新走决定文件的校验被抓出来。"""
+    _base(state_dir)
+    full = {k: None for k in oplog.FIELDS}
+    for op in (ELEMS[0], _create(CARD_IDS, name="另一张")):
+        with pytest.raises(ValueError, match="只能经决定文件写"):
+            oplog.append([{**full, **op, "actor": "session", "surface": "chat", "ctx": {}}])
+    assert shapes.rebuild(verify=True) == []
+    # 要素记成用户说的,不带原话
+    bad_el = {**full, **copy.deepcopy(ELEMS[0]), "actor": "session", "surface": "chat",
+              "ctx": {"list_id": "r1"}, "ts": "2026-10-17T00:00:00", "op_id": "20261017T000000-aaaaaaaa"}
+    bad_el["target"] = {"element_id": "E009"}
+    bad_el["value"]["definition"] = {"row": "F13", "value": "events", "cond": "events_any",
+                                     "user_params": {"bars": 30}}
+    bad_el["value"].pop("said_first_match")
+    _raw_append(state_dir, bad_el)
+    before = _state(state_dir)
+    with pytest.raises(shapes.ShapeValidationError, match="said_first_match"):
+        shapes.rebuild(verify=False)
+    assert _state(state_dir) == before                                   # 不覆盖磁盘
+    assert any("said_first_match" in m for m in shapes.rebuild(verify=True))
+
+
+def test_tampered_tool_filled_fields_caught(state_dir):
+    """工具补的字段(卡上的要素版本号、复用抄来的来源)被手改:重新校验补全后和日志对不上。"""
+    _base(state_dir)
+    card2 = {"ingredients": [_reuse("j1", "E002", "i2")], "triggers": []}
+    shapes.apply(_decision(_create(card2, name="复用")))
+    f = sorted((state_dir / "oplog").glob("*.jsonl"))[-1]
+    lines = f.read_text().splitlines()
+    last = json.loads(lines[-1])
+    last["value"]["card"]["ingredients"][0]["root"] = {"origin": "user_written", "said_first_match": "我说的"}
+    _raw_append(state_dir, {**last, "op_id": "20261017T000000-bbbbbbbb", "target": {"shape_id": "s003"}})
+    assert any("和日志里记的不一样" in m for m in shapes.rebuild(verify=True))
+
+
+def test_old_cards_without_element_version_still_revalidate(state_dir):
+    """旧日志里的卡没记要素版本号(那时一律按最新版本):照常重新校验通过、照常打印。"""
+    _base(state_dir)
+    f = sorted((state_dir / "oplog").glob("*.jsonl"))[-1]
+    rows = [json.loads(x) for x in f.read_text().splitlines()]
+    for r in rows:
+        if r["act"] == "create_shape":
+            for ing in r["value"]["card"]["ingredients"]:
+                ing.pop("element_version")
+    f.write_text("".join(json.dumps(r, ensure_ascii=False) + "\n" for r in rows))
+    state.reset_watermark(state_dir, "测试:改成旧格式")
+    assert shapes.rebuild(verify=False) == []
+    assert "按收盘至少越过一个峰" in shapes.render(shapes.load_card("s001"))
 
 
 def test_pending_summary_and_possible_duplicates(state_dir, capsys):

@@ -15,16 +15,17 @@ from chart_workflow import state
 from chart_workflow.config import DEFAULTS as CW_DEFAULTS
 from path2_web.app import create_app
 from path2_web.config import DEFAULT_CONFIG, load_config
-from tests.chart_workflow.conftest import write_snapshot_manifest
+from tests.chart_workflow.conftest import autolock, write_snapshot_manifest
 
 TRAIN_END = "2025-12-31"
 
 
 @pytest.fixture(autouse=True)
-def state_dir(tmp_path, monkeypatch):
-    """临时状态根(已 init):测试绝不写主目录的记账类文件。"""
+def state_dir(request, tmp_path, monkeypatch):
+    """临时状态根(已 init、已登记副本):测试绝不写主目录的记账类文件。"""
     root = state.init(tmp_path / "state")
     monkeypatch.setenv(state.ENV_VAR, str(root))
+    autolock(request, monkeypatch, tmp_path, root)
     return root
 
 
@@ -172,9 +173,11 @@ def test_backend_train_end_2026_is_hard_capped(tmp_path, state_dir):
 
 def test_state_endpoint_reports_root_and_source(tmp_path, state_dir, monkeypatch):
     c, _ = _client(tmp_path)
+    (state_dir / "ledger.jsonl").write_text('{"r": 1}\n')
     body = c.get("/workflow/state").json()
     assert body == {"path": str(state_dir), "from_env": True, "env_var": state.ENV_VAR,
                     "ok": True, "message": None}
+    assert not (state_dir / ".watermark.json").exists()           # 只读接口不写水位
     gone = tmp_path / "no_marker"
     monkeypatch.setenv(state.ENV_VAR, str(gone))
     body = c.get("/workflow/state").json()
@@ -255,7 +258,9 @@ def test_annotation_written(tmp_path, monkeypatch, state_dir):
     a0 = {k: v for k, v in anns[0].items() if k != "buy_date"}
     assert saved["annotations"][0] == {**a0, "buy_points": [{"date": "2025-11-03", "primary": True}],
                                        "peeked_before_buy": False, "first_buy_points": None,
-                                       "changed_after_reveal": False}
+                                       "changed_after_reveal": False,
+                                       "outcome_seen_elsewhere": {"level": None, "before": None,
+                                                                  "careful": [], "in_list": []}}
     assert saved["annotations"][1]["label"] == "negative"
     assert saved["annotations"][2]["buy_points"] == [] and "buy_date" not in saved["annotations"][2]
     lst = c.get("/workflow/annotations").json()
@@ -562,3 +567,149 @@ def test_reveal_kept_when_buy_point_unchanged(tmp_path, state_dir):
         _v2(buy_points=[{"date": "2025-11-03", "primary": True}])]})
     a = json.loads(Path(r.json()["path"]).read_text())["annotations"][0]
     assert a["first_buy_points"] is None and a["changed_after_reveal"] is False
+
+
+def test_final_buy_point_differs_from_reveal_counts_as_changed(tmp_path, state_dir):
+    """前端交来的第一次买点和服务端记的一致、也说没改过,但最后的买点和露出结果时不同:算改过。"""
+    c, root = _client(tmp_path)
+    _reveal(c, "2025-11-05")
+    r = c.post("/workflow/annotations", json={"list_id": "r002-bigmoves", "annotations": [
+        _v2(buy_points=[{"date": "2025-11-03", "primary": True}],
+            first_buy_points=[{"date": "2025-11-05", "primary": True}], changed_after_reveal=False)]})
+    assert r.status_code == 200, r.text
+    a = json.loads(Path(r.json()["path"]).read_text())["annotations"][0]
+    assert a["changed_after_reveal"] is True
+
+
+def _post_big(c, **over):
+    over.setdefault("peeked_before_buy", False)
+    r = c.post("/workflow/annotations", json={"list_id": "r002-bigmoves", "annotations": [
+        _v2(buy_points=[{"date": "2025-11-05", "primary": True}], **over)]})
+    assert r.status_code == 200, r.text
+    return json.loads(Path(r.json()["path"]).read_text())["annotations"][0]
+
+
+def test_peek_recorded_and_corrects_peeked_before_buy(tmp_path, state_dir):
+    """往右拖看后续记一条 peek;收标注时第一次露出结果之前有 peek 就置 peeked_before_buy,前端说没有也不算。"""
+    c, root = _client(tmp_path)
+    assert _post_big(c)["peeked_before_buy"] is False
+    r = c.post("/workflow/views", json={"list_id": "r002-bigmoves", "item_id": "AAA@2025-11-03",
+                                        "event": "peek"})
+    assert r.status_code == 200, r.text
+    assert _views(state_dir)[-1]["event"] == "peek_chart"
+    assert _post_big(c, peeked_before_buy=False)["peeked_before_buy"] is True     # 还没露出过:到现在都算
+    _reveal(c, "2025-11-05")
+    assert _post_big(c)["peeked_before_buy"] is True                               # peek 在 reveal 之前
+
+
+def test_peek_after_reveal_not_peeked_before_buy(tmp_path, state_dir):
+    from chart_workflow import views
+    c, root = _client(tmp_path)
+    _reveal(c, "2025-11-05")
+    views.record(surface="web", event="peek_chart", outcome_visible=True, ts="2030-01-01T00:00:00",
+                 list_id="r002-bigmoves", list_kind="bigmoves", item_id="AAA@2025-11-03",
+                 charts=[{"symbol": "AAA", "start": "2025-10-01", "end": "2025-12-30"}])
+    assert _post_big(c)["peeked_before_buy"] is False
+
+
+def test_bigmoves_annotation_must_be_list_item(tmp_path, state_dir):
+    c, root = _client(tmp_path)
+    r = c.post("/workflow/annotations", json={"list_id": "r002-bigmoves", "annotations": [
+        _v2(item_id="AAA@2025-11-20", buy_points=[{"date": "2025-11-05", "primary": True}])]})
+    assert r.status_code == 400 and "不在清单" in r.text
+
+
+def _elsewhere(c, **over):
+    return _post_big(c, **over)["outcome_seen_elsewhere"]
+
+
+def test_outcome_seen_elsewhere_two_levels(tmp_path, state_dir):
+    """r002-bigmoves 的 AAA@2025-11-03(图窗 10-01 → 12-30):在它第一次露出结果之前,别处看得到它决策日之后
+    那段的记录分两级——打开含它的对照清单只算「只在清单里出现过」,放大看了那张图算「仔细看过」;
+    前端交来的值不作数。"""
+    from chart_workflow import views
+    c, root = _client(tmp_path)
+    _write_list(root, "c003", "2026-10-02T09:00:00", kind="contrast", item_id="AAA@2025-11-20",
+                t="2025-11-20", view_start="2025-10-15", view_end="2025-12-15")
+    _write_list(root, "blind", "2026-10-02T09:00:00", kind="contrast_blind", item_id="AAA@2025-11-20",
+                t="2025-11-20", view_start="2025-10-15", view_end="2025-12-15")
+    _write_list(root, "c004", "2026-10-02T09:00:00", kind="contrast", item_id="BBB@2025-11-20",
+                symbol="BBB", t="2025-11-20", view_start="2025-10-15", view_end="2025-12-15")
+    _write_list(root, "c005", "2026-10-02T09:00:00", kind="contrast", item_id="AAA@2025-10-20",
+                t="2025-10-20", view_start="2025-10-01", view_end="2025-11-03")     # 只到决策日当天
+    for lid in ("blind", "c004", "c005", "r002-bigmoves"):                         # 都不算
+        assert c.get(f"/workflow/lists/{lid}").status_code == 200
+    seen = _elsewhere(c, outcome_seen_elsewhere={"level": "careful"})
+    assert seen == {"level": None, "before": None, "careful": [], "in_list": []}
+    assert c.get("/workflow/lists/c003").status_code == 200
+    seen = _elsewhere(c)
+    assert seen["level"] == "in_list" and [x["list_id"] for x in seen["in_list"]] == ["c003"]
+    assert c.post("/workflow/views", json={"list_id": "c003", "item_id": "AAA@2025-11-20",
+                                           "event": "zoom"}).status_code == 200
+    seen = _elsewhere(c, outcome_seen_elsewhere=None)
+    assert seen["level"] == "careful" and seen["careful"][0]["event"] == "zoom_chart"
+    assert [x["list_id"] for x in seen["in_list"]] == ["c003"]
+    _reveal(c, "2025-11-05")
+    views.record(surface="chat", event="show_chart", outcome_visible=True, ts="2030-01-01T00:00:00",
+                 charts=[{"symbol": "AAA", "start": "2025-11-01", "end": "2025-12-01"}])
+    seen = _elsewhere(c)                                                   # 露出结果之后的不算
+    assert seen["before"] == _views(state_dir)[-2]["ts"] and len(seen["careful"]) == 1
+    # 对照清单的标注:不查,填 null
+    r = c.post("/workflow/annotations", json={"list_id": "c003", "annotations": [
+        _v2(item_id="AAA@2025-11-20", buy_points=[{"date": "2025-11-20", "primary": True}],
+            outcome_seen_elsewhere={"level": None})]})
+    assert json.loads(Path(r.json()["path"]).read_text())["annotations"][0]["outcome_seen_elsewhere"] is None
+
+
+@pytest.mark.parametrize("surface,event,level", [
+    ("chat", "show_chart", "careful"), ("manual", "show_chart", "careful"), ("debug", "show_chart", "careful")])
+def test_outcome_seen_elsewhere_other_surfaces(tmp_path, state_dir, surface, event, level):
+    from chart_workflow import views
+    c, root = _client(tmp_path)
+    views.record(surface=surface, event=event, outcome_visible=True, ts="2026-10-01T00:00:00",
+                 backfill=surface == "manual", note="补记:测试" if surface == "manual" else "",
+                 charts=[{"symbol": "AAA", "start": "2025-10-01", "end": "2025-11-04"}])
+    assert _elsewhere(c)["level"] == level
+
+
+def test_other_bigmoves_list_counts_only_what_it_showed(tmp_path, state_dir):
+    """别的大涨段清单里的同股条目:没露出结果前只露到它的决策日后几根,盖不到就不算;露出结果后整个图窗都算。"""
+    c, root = _client(tmp_path)
+    _write_list(root, "r003-bigmoves", "2026-10-02T09:00:00", item_id="AAA@2025-10-01", t="2025-10-01",
+                view_start="2025-10-01", view_end="2025-12-30")
+    assert c.get("/workflow/lists/r003-bigmoves").status_code == 200
+    for ev in ("zoom", "annotate"):
+        c.post("/workflow/views", json={"list_id": "r003-bigmoves", "item_id": "AAA@2025-10-01", "event": ev})
+    assert _elsewhere(c)["level"] is None                                  # 只露到 10-22
+    c.post("/workflow/views", json={"list_id": "r003-bigmoves", "item_id": "AAA@2025-10-01", "event": "peek"})
+    seen = _elsewhere(c)
+    assert seen["level"] == "careful" and [x["event"] for x in seen["careful"]] == ["peek_chart"]
+
+
+def test_same_item_in_other_bigmoves_list_not_counted_before_its_reveal(tmp_path, state_dir):
+    """同一个条目出现在另一份大涨段清单里:露出结果前那一小段是设计上就给看的,打开那份清单不算别处露出过;
+    同一个条目出现在对照清单里(整个图窗看得到结果)照样算。"""
+    c, root = _client(tmp_path)
+    _write_list(root, "r009-bigmoves", "2026-10-02T09:00:00")          # 同一条 AAA@2025-11-03
+    assert c.get("/workflow/lists/r009-bigmoves").status_code == 200
+    assert _elsewhere(c)["level"] is None
+    _write_list(root, "c009", "2026-10-02T09:00:00", kind="contrast")
+    assert c.get("/workflow/lists/c009").status_code == 200
+    assert _elsewhere(c)["level"] == "in_list"
+
+
+def test_same_list_neighbours_left_end_not_counted(tmp_path, state_dir):
+    """同一份大涨段清单里同股的另一条:按生成规则看不到这一条的决策日,只会从左端露出它的一段后续
+    (左端残留),打开清单、放大那一条都不算别处露出过。"""
+    c, root = _client(tmp_path, lists=())
+    a = {"item_id": "AAA@2025-11-03", "symbol": "AAA", "t": "2025-11-03", "entry_date": "2025-11-04",
+         "view_start": "2025-10-01", "view_end": "2025-11-20", "marks": {}, "metrics": {}, "tags": []}
+    b = {**a, "item_id": "AAA@2025-12-15", "t": "2025-12-15", "view_start": "2025-11-10", "view_end": "2025-12-30"}
+    doc = {"schema": "chart_workflow.list/1", "list_id": "r002-bigmoves", "kind": "bigmoves", "title": "t",
+           "created_at": "2026-10-01T08:00:00", "train_start": "2024-01-01", "train_end": TRAIN_END, "params": {},
+           "groups": [{"key": "all", "title": "全部", "item_ids": [a["item_id"], b["item_id"]]}], "items": [a, b]}
+    (root / "lists" / "r002-bigmoves.json").write_text(json.dumps(doc, ensure_ascii=False))
+    assert c.get("/workflow/lists/r002-bigmoves").status_code == 200
+    assert c.post("/workflow/views", json={"list_id": "r002-bigmoves", "item_id": b["item_id"],
+                                           "event": "zoom"}).status_code == 200
+    assert _elsewhere(c)["level"] is None

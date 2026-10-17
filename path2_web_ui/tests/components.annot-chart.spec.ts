@@ -1,5 +1,6 @@
 /** AnnotChart:模拟 brush 事件后草稿里有起止,模拟点击后有买点(Shift 多买点、主买点规则),
- *  盲看清单不渲染上下线;大涨段清单点买点前不露结果、初始右边界、往右看过后续的记录;
+ *  盲看清单不渲染上下线;大涨段清单点买点前不露结果、露出结果要等后端记上(记不上就继续藏着)、
+ *  初始右边界、往右看过后续的记录(也发给后端);
  *  跨源比对不一致的提示(盲看不显示)、「数据有误」标签、判定文字随清单种类变;空心 / 实心 K 线、
  *  对数开关、证券类别;小图双击放大、放大图的滚轮缩放;点买点模式下单击等一下才生效,
  *  双击不先设买点(不闪结果、不留改点痕迹)。
@@ -41,6 +42,7 @@ function makeFakeChart() {
 vi.mock('echarts', () => ({ init: vi.fn(() => makeFakeChart()) }))
 
 import * as echarts from 'echarts'
+import { recordChartView } from '../src/api'
 import AnnotChart from '../src/components/AnnotChart.vue'
 import { CLICK_DELAY_MS, useWorkflowStore } from '../src/stores/workflow'
 
@@ -180,6 +182,43 @@ describe('AnnotChart', () => {
     expect([lastOption.dataZoom[0].start, lastOption.dataZoom[0].end]).toEqual([10, 60])
   })
 
+  it('大涨段露出结果要等后端记上才显示;记不上就继续藏着、提示,再点买点重试', async () => {
+    const { w, store } = await mountChart('bigmoves')
+    const rv = recordChartView as any
+    let resolve: (v: any) => void = () => {}
+    rv.mockImplementationOnce(() => new Promise(r => { resolve = r }))
+    store.setBuyPoint(ITEM.item_id, '2025-03-11')
+    await w.setProps({ annotation: store.drafts.get(ITEM.item_id)! })
+    expect(w.find('[data-testid="outcome-hidden"]').exists()).toBe(true)       // 还没记上
+    expect(lastOption.series[0].markLine.data).toHaveLength(0)
+    resolve({ ok: true, ts: '2026-10-17T10:00:00' })
+    await flushPromises()
+    expect(store.isRevealConfirmed(ITEM.item_id)).toBe(true)
+    expect(w.find('[data-testid="outcome-hidden"]').exists()).toBe(false)
+    expect(w.text()).toContain('决策日 2025-03-12')
+  })
+
+  it('露出结果的记录写失败:结果继续藏着,撤回第一次买点并提示;再点买点重新记', async () => {
+    const { w, store } = await mountChart('bigmoves')
+    const rv = recordChartView as any
+    rv.mockRejectedValueOnce(new Error('503:状态根不可用'))
+    store.setBuyPoint(ITEM.item_id, '2025-03-11')
+    await flushPromises()
+    await w.setProps({ annotation: store.drafts.get(ITEM.item_id)! })
+    expect(w.find('[data-testid="outcome-hidden"]').exists()).toBe(true)
+    expect(store.viewError).toContain('结果继续藏着')
+    expect(store.revealed.size).toBe(0)
+    expect(store.drafts.get(ITEM.item_id)!.first_buy_points).toBeNull()
+    rv.mockClear()
+    store.setBuyPoint(ITEM.item_id, '2025-03-13')
+    await flushPromises()
+    await w.setProps({ annotation: store.drafts.get(ITEM.item_id)! })
+    expect(rv.mock.calls.filter((c: any[]) => c[2] === 'reveal').map((c: any[]) => c[3]))
+      .toEqual([[{ date: '2025-03-13', primary: true }]])
+    expect(store.drafts.get(ITEM.item_id)!.first_buy_points).toEqual([{ date: '2025-03-13', primary: true }])
+    expect(w.find('[data-testid="outcome-hidden"]').exists()).toBe(false)
+  })
+
   it('大涨段初始窗口:从图窗起点到决策日后 3~15 根;往右拖过它才记成点买点前看过后续', async () => {
     OHLC = Array.from({ length: 60 }, (_, i) => {
       const d = new Date(Date.UTC(2025, 2, 3 + i))
@@ -199,10 +238,13 @@ describe('AnnotChart', () => {
     expect(store.isPeeked(item.item_id)).toBe(false)
     store.upsertAnnotation(item.item_id, { label: 'negative' })
     expect(store.drafts.get(item.item_id)!.peeked_before_buy).toBe(false)
+    ;(recordChartView as any).mockClear()
     currentZoom = { start: 0, end: 100 }                           // 拖到最右:看过后续
+    handlers.datazoom()
     handlers.datazoom()
     expect(store.isPeeked(item.item_id)).toBe(true)
     expect(store.drafts.get(item.item_id)!.peeked_before_buy).toBe(true)
+    expect((recordChartView as any).mock.calls.map((c: any[]) => c[2])).toEqual(['peek'])   // 发给后端,只一次
     // 放大图沿用同一个初始右边界
     store.setZoom(null)
     await mountChart('bigmoves', item, true)

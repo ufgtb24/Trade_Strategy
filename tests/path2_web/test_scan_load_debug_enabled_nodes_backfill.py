@@ -23,7 +23,7 @@ from path2_web.scan import run_scan_multi
 from path2_web.serialize import serialize_pattern
 from path2_apps.bottom_burst import build_pattern as build_bbb, Params as PBbb
 from path2_apps.bo_only import build_pattern as build_bo, Params as PBo
-from tests.path2_web.conftest import debug_data
+from tests.path2_web.conftest import debug_data, guard_tag
 
 
 SCAN_TS = "20260627T140000"
@@ -61,6 +61,7 @@ def app_with_pre_v4_scan(tmp_path):
         workers=1, ticker_regex=None, scan_ts=SCAN_TS,
         outputs_root=str(outputs),
         executor_factory=lambda w: ThreadPoolExecutor(max_workers=w),
+        view_guard=guard_tag(data),
     )
 
     # 模拟 pre-v4 scan 文件:剔除刚落盘文件里的 debug_enabled_nodes(当前 serialize_pattern

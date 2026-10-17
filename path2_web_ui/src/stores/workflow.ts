@@ -9,16 +9,18 @@
  *
  * 大涨段清单点第一个买点之前不露结果(AnnotChart):每张图的初始右边界(决策日之后随机
  * 3~15 根,initialRight)每次打开清单随机一次,小图和放大图共用;没有买点时把窗口右端拖过它,
- * 这张图就记进 peeked,之后草稿的 peeked_before_buy = true。
+ * 这张图就记进 peeked,之后草稿的 peeked_before_buy = true,并经后端记一条 peek(后端收标注时据此校正)。
  * 改点痕迹(只在大涨段清单记):买点从无到有那一刻结果就露出来了,把当时的买点记进 revealed,草稿的
  * first_buy_points 就是它;之后买点有任何改动(换点、加点、去点),或者「清除」这张图的标注,都记进
  * changedAfterReveal(草稿 changed_after_reveal = true);清除或去掉全部买点时也记进 peeked。
  * peeked / revealed / changedAfterReveal 按「清单 + 条目」记,整个页面会话内不清空(重新打开同一份
  * 清单、切走再切回都还在),草稿被清除后痕迹也留着,下次再标这张图照样带上。
  * 改点痕迹最终以后端为准:结果露出的那一刻经后端记一条 reveal(带当时的买点),后端收标注时按这张图
- * 最早那次 reveal 校正,刷新页面、换天都洗不掉。
- * 单张图的看过事件(放大看了 zoom、点了买点或选了判定 annotate、露出结果 reveal)经后端记进看过记录,
- * 每张图每种事件在一次打开清单里只记一次;发送标注前先等这些请求落地(reveal 要在标注之前记上)。
+ * 最早那次 reveal 校正,刷新页面、换天都洗不掉。reveal 写成功之后才真正显示结果(revealConfirmed,
+ * AnnotChart 据此决定藏不藏);写失败就撤回 revealed、结果继续藏着并在 viewError 提示,下次改买点时重试。
+ * 单张图的看过事件(放大看了 zoom、点了买点或选了判定 annotate、露出结果 reveal、往右拖看后续 peek)
+ * 经后端记进看过记录,每张图每种事件在一次打开清单里只记一次;发送标注前先等这些请求落地
+ * (reveal 要在标注之前记上)。
  * 对数 / 线性坐标开关也在这里(默认对数,本次页面会话内有效,不写浏览器存储)。 */
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
@@ -116,6 +118,8 @@ export const useWorkflowStore = defineStore('workflow', () => {
   const peeked = ref(new Set<string>())
   /** 大涨段:第一次露出结果时的买点(键同上) */
   const revealed = ref(new Map<string, BuyPoint[]>())
+  /** 大涨段:后端已确认记下露出结果的图(键同上);确认之前结果继续藏着 */
+  const revealConfirmed = ref(new Set<string>())
   /** 大涨段:露出结果后买点改过或清除过的图(键同上) */
   const changedAfterReveal = ref(new Set<string>())
   /** 后端状态根信息(来自环境变量时界面显示提示条);取不到为 null */
@@ -174,6 +178,31 @@ export const useWorkflowStore = defineStore('workflow', () => {
 
   function isPeeked(itemId: string): boolean {
     return peeked.value.has(trailKey(itemId))
+  }
+
+  /** 这张图的露出结果后端已经记上了(大涨段据此才显示结果)。 */
+  function isRevealConfirmed(itemId: string): boolean {
+    return revealConfirmed.value.has(trailKey(itemId))
+  }
+
+  /** 大涨段结果此刻要露出:先经后端记 reveal,写成功才算露出;写失败撤回 revealed(草稿的第一次买点
+   *  一并清掉),结果继续藏着并提示,下次改买点时重试。 */
+  function sendReveal(itemId: string, bps: BuyPoint[]) {
+    if (!current.value) return
+    const key = trailKey(itemId)
+    const p = recordChartView(current.value.list_id, itemId, 'reveal', bps)
+      .then(() => {
+        revealConfirmed.value.add(key)
+        viewError.value = null
+      })
+      .catch((e: any) => {
+        revealed.value.delete(key)
+        const d = drafts.value.get(itemId)
+        if (d) drafts.value.set(itemId, { ...d, first_buy_points: null })
+        viewError.value = `露出结果没记上(${itemId}),结果继续藏着;再点一次买点重试:`
+          + String(e?.message ?? e)
+      })
+    pendingViews.push(p)
   }
 
   /** 记一条单张图事件;同一张图同一种事件在本次打开清单里只记一次。记不进去时写 viewError,
@@ -270,9 +299,9 @@ export const useWorkflowStore = defineStore('workflow', () => {
       const before = prev.buy_points ?? []
       const after = patch.buy_points ?? before
       if (!revealed.value.has(key)) {
-        if (after.length) {                                                    // 结果此刻露出
+        if (after.length) {                                   // 结果此刻露出(后端记上后才显示)
           revealed.value.set(key, after.map(b => ({ ...b })))
-          noteChartView(itemId, 'reveal', after.map(b => ({ ...b })))
+          sendReveal(itemId, after.map(b => ({ ...b })))
         }
       } else if (!sameBuyPoints(before, after)) {
         changedAfterReveal.value.add(key)                                      // 看过结果后改过
@@ -308,11 +337,12 @@ export const useWorkflowStore = defineStore('workflow', () => {
     upsertAnnotation(itemId, { buy_points: next })
   }
 
-  /** 点买点前往右展开看过后续:记下来;已有草稿的立刻写 peeked_before_buy。 */
+  /** 点买点前往右展开看过后续:记下来并经后端记一条 peek;已有草稿的立刻写 peeked_before_buy。 */
   function markPeeked(itemId: string) {
     const key = trailKey(itemId)
     if (peeked.value.has(key)) return
     peeked.value.add(key)
+    noteChartView(itemId, 'peek')
     const d = drafts.value.get(itemId)
     if (d) drafts.value.set(itemId, { ...d, peeked_before_buy: true })
   }
@@ -385,12 +415,12 @@ export const useWorkflowStore = defineStore('workflow', () => {
   return {
     lists, current, loadError, groupKey, tagFilter, page, drafts, draftListId,
     sending, sendError, lastSent, zoomItemId, zoomWindow, highlightItemId,
-    initialRight, peeked, revealed, changedAfterReveal, stateInfo, viewEventsSent, viewError,
+    initialRight, peeked, revealed, revealConfirmed, changedAfterReveal, stateInfo, viewEventsSent, viewError,
     logScale,
     isBlind, listKind, itemsById, currentGroup, groupItems, allTags, filteredItems, pageCount,
     pageItems, draftList, draftCount, incomplete, zoomItem,
     loadLists, openList, setGroup, setTagFilter, setPage, gotoItem,
-    upsertAnnotation, setBuyPoint, toggleBuyPoint, markPeeked, isPeeked, noteChartView,
+    upsertAnnotation, setBuyPoint, toggleBuyPoint, markPeeked, isPeeked, isRevealConfirmed, noteChartView,
     initialRightOf,
     toggleLogScale,
     deleteAnnotation, clearDrafts, send, setZoom,

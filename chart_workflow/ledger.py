@@ -21,18 +21,24 @@ add 自动从清单里读 summary 的「全部」行(盲看清单没有 summary,
 <指纹>.json,内容相同不重复写)、数据错误登记指纹 data_errors_sha(清单里记了才有)、截断副本
 snapshot {dir, cutoff, created_at, sha(副本清单的指纹), fingerprint(整份副本按内容的指纹,见 snaplock)}。
 source 是 shape:<shape_id>@v<版本> 时(规则来自哪张形态卡的哪个版本),从形态卡读那个版本,
-写入 conditions:每个要素项与触发一项。按要素记:
-  要素项 {"cond_id", "kind": "ingredient", "element"(卡上引用的编号), "element_resolved"(合并后解析到的),
-          "element_version", "element_origin", "element_suggested_by", "element_has_said"   # 要素本身是谁提的
+写入 conditions:每个要素项与触发一项。按要素记,一律取卡这一版建立时那条要素的那一版(卡上记下的要素
+编号与版本号),之后要素修订、被合并都不改变账本记的东西:
+  要素项 {"cond_id", "kind": "ingredient", "element"(卡上引用的编号), "element_resolved"(现在合并后解析到的,
+          只作参考), "element_version"(卡上记下的版本),
+          "element_origin", "element_suggested_by", "element_has_said",   # 要素本身是谁提的
+          "definition_origin", "definition_suggested_by", "definition_has_said",   # 那一版的定义是谁定的
           "fact_rows", "angle_by": "preset | user | null", "angle_ops",   # 它读的事实行是谁提的角度
           "role", "origin", "suggested_by", "has_said_first_match", "root_origin", "root_suggested_by"}
           # 后面这几项是「角色是谁定的」(卡上这一项的来源记录)
   触发   {"cond_id", "kind": "trigger", "term", "origin", "suggested_by", "has_said_first_match",
           "root_origin", "root_suggested_by"}
 root_* 是沿 own_library 的 root 递归到底后的来源(不是 own_library 时就是它自己的来源)。
-angle_by = user:要素读的事实行里有用户提的角度(facts.ROWS 的 source),angle_ops 是用户提它的操作
-日志条目——这种要素不算系统推荐;null:要素待写代码,还没读任何事实行。
+angle_by = user:要素读的事实行是用户提的角度(facts.ROWS 的 source 指向的「提出角度」日志条目真在、且排在
+那一版定义建立之前),angle_ops 是那条日志——这种要素不算系统推荐;null:那一版待写代码,还没读任何事实行。
 账本里不预先合并成几类,怎么划、各算谁的留给流程骨架。卡、版本或卡上引用的要素不存在就报错。
+来源写形态卡的行还必须带 rule_implements(规则声明它实现了卡上哪些要素与角色、在卡的几个样本上核对过,
+见 rulecheck.py;对照页核对通过后传进来),没有就拒绝记——手动 add 拿不到核对结果,所以形态卡来源只能经
+对照页命令记账。
 新字段一律可选,旧行照常读。
 自动记账的行另有:rule_sha(规则文件或参数文件的 sha256)、rule_archive(存档位置,相对状态根)、
 app_commit / app_dirty(app 方式:当时的 git 提交、app 目录有没有未提交改动)、years(这次统计与
@@ -167,7 +173,7 @@ def _resolve_root(rec: dict) -> dict:
     return rec
 
 
-def _ingredient_condition(it: dict, els: dict) -> dict:
+def _ingredient_condition(it: dict, els: dict, ops: list[dict]) -> dict:
     from chart_workflow import elements as E
 
     root = _resolve_root(it)
@@ -180,19 +186,23 @@ def _ingredient_condition(it: dict, els: dict) -> dict:
         return {**out, "term": it.get("term")}
     if eid not in els:
         raise FileNotFoundError(f"要素 {eid} 不在要素库里")
-    rid = E.resolve(els, eid)
-    el = els[rid]
-    d = el["versions"][-1].get("definition")
-    who, ops = E.angle(d)
-    return {**out, "element": eid, "element_resolved": rid, "element_version": el["current_version"],
+    el = els[eid]                                  # 卡上引用的那条,不跟合并
+    ver = E.element_version(els, eid, it["element_version"]) if it.get("element_version") \
+        else el["versions"][-1]                    # 旧卡没记版本:取这条要素自己的当前版本
+    d, do = ver.get("definition"), ver.get("definition_origin") or {}
+    who, angle_ops = E.angle(ver, ops)
+    return {**out, "element": eid, "element_resolved": E.resolve(els, eid), "element_version": ver["version"],
             "element_origin": el.get("origin"), "element_suggested_by": el.get("suggested_by"),
             "element_has_said": bool(str(el.get("said_first_match") or "").strip()),
-            "fact_rows": [d["row"]] if d else [], "angle_by": who, "angle_ops": ops}
+            "definition_origin": do.get("origin"), "definition_suggested_by": do.get("suggested_by"),
+            "definition_has_said": bool(str(do.get("said_first_match") or "").strip()),
+            "fact_rows": [d["row"]] if d else [], "angle_by": who, "angle_ops": angle_ops}
 
 
 def shape_conditions(source: str) -> list[dict]:
     """source = shape:<id>@v<n> → 那个版本每个要素项与触发的来源。
     卡、版本或引用的要素不存在 → FileNotFoundError。"""
+    from chart_workflow import oplog
     from chart_workflow.elements import load_all
     from chart_workflow.shapes import load_card
 
@@ -203,7 +213,8 @@ def shape_conditions(source: str) -> list[dict]:
     if ver is None:
         raise FileNotFoundError(f"形态卡 {m.group(1)} 没有版本 v{n}")
     els = load_all()
-    out = [_ingredient_condition(it, els) for it in ver["card"].get("ingredients", [])]
+    ops = oplog.read_all()
+    out = [_ingredient_condition(it, els, ops) for it in ver["card"].get("ingredients", [])]
     for it in ver["card"].get("triggers", []):
         root = _resolve_root(it)
         out.append({"cond_id": it["trig_id"], "kind": "trigger", "term": it.get("term"),
@@ -263,14 +274,25 @@ def _append(root: Path, entry: dict) -> dict:
     return {**entry, "round": rnd}
 
 
+def _check_implements(source: str, implements: dict | None) -> None:
+    if not SHAPE_SOURCE_RE.fullmatch(source):
+        return
+    if not isinstance(implements, dict) or implements.get("source") != source or not implements.get("declared"):
+        raise ValueError(f"来源写的是形态卡 {source}:要先核对规则和卡一致(规则声明 IMPLEMENTS,"
+                         f"对照页命令会核对并记账),手动记账不收形态卡来源")
+
+
 def add_round(cfg: dict, *, kind: str, rule_id: str, version: str, source: str, change: str,
               list_id: str, note: str = "", auto: bool = False, rule_sha: str | None = None,
               rule_archive: str | None = None, app_commit: str | None = None,
-              app_dirty: bool | None = None, years: list[str] | None = None) -> dict:
-    """追加一行(清单已写好:大涨段、盲看、手动记账)。auto:命令自动记账;手动记账时清单已有自动行就拒绝。"""
+              app_dirty: bool | None = None, years: list[str] | None = None,
+              implements: dict | None = None) -> dict:
+    """追加一行(清单已写好:大涨段、盲看、手动记账)。auto:命令自动记账;手动记账时清单已有自动行就拒绝。
+    implements:来源是形态卡时必填,rulecheck.check_rule_against_shape 的结果。"""
     if kind not in KINDS:
         raise ValueError(f"kind 必须是 {KINDS} 之一: {kind!r}")
     check_source(source)
+    _check_implements(source, implements)
     lp = list_path(cfg, list_id)
     if not lp.exists():
         raise FileNotFoundError(f"清单不存在: {lp}")
@@ -282,6 +304,8 @@ def add_round(cfg: dict, *, kind: str, rule_id: str, version: str, source: str, 
     entry = _entry(cfg, root, kind=kind, rule_id=rule_id, version=version, source=source,
                    change=change, list_id=list_id, note=note, params=doc.get("params"))
     entry["summary_all"], entry["graduated"] = _summary_all(doc.get("summary"))
+    if implements is not None:
+        entry["rule_implements"] = implements
     if auto:
         entry.update({"auto": True, "rule_sha": rule_sha, "rule_archive": rule_archive,
                       "app_commit": app_commit, "app_dirty": app_dirty, "years": years})
@@ -292,7 +316,8 @@ def record_round(cfg: dict, ctx: dict, *, summary: dict, years: list[str],
                  other_years_reason: str | None = None) -> dict:
     """算成绩的那一刻记账(由 control.summarize 调用,清单还没写盘)。
     ctx:记账上下文 {kind, rule_id, version, source, change, list_id, note?, params?(清单 params,
-    取数据错误登记与跨源比对条数), rule_sha?, rule_archive?, app_commit?, app_dirty?}。
+    取数据错误登记与跨源比对条数), rule_sha?, rule_archive?, app_commit?, app_dirty?,
+    implements?(来源是形态卡时必填,见 add_round)}。
     缺字段、清单名已存在(文件在或账本里有)→ ValueError。"""
     if not isinstance(ctx, dict):
         raise ValueError("记账上下文必须是 dict")
@@ -300,11 +325,14 @@ def record_round(cfg: dict, ctx: dict, *, summary: dict, years: list[str],
     if missing:
         raise ValueError(f"记账上下文缺 {missing}")
     check_new_list_id(cfg, ctx["list_id"])
+    _check_implements(ctx["source"], ctx.get("implements"))
     root = state_root()
     entry = _entry(cfg, root, kind=ctx["kind"], rule_id=ctx["rule_id"], version=ctx["version"],
                    source=ctx["source"], change=ctx["change"], list_id=ctx["list_id"],
                    note=ctx.get("note") or "", params=ctx.get("params"))
     entry["summary_all"], entry["graduated"] = _summary_all(summary)
+    if ctx.get("implements") is not None:
+        entry["rule_implements"] = ctx["implements"]
     entry.update({"auto": True, "rule_sha": ctx.get("rule_sha"), "rule_archive": ctx.get("rule_archive"),
                   "app_commit": ctx.get("app_commit"), "app_dirty": ctx.get("app_dirty"),
                   "years": [str(y) for y in years]})
@@ -324,8 +352,9 @@ def _xc(x) -> str:
 
 
 # 条件来源的展示分类(只是展示,账本里存的是逐条原样):
-#   要素项按要素本身是谁提的计——用户提的算「你说的」;不是用户提的、但读的事实行是用户提的角度,
-#   算「你提的角度」(不算系统推荐);其余按推荐来自谁。旧格式的要素项按卡上的来源计。
+#   要素项按那一版的定义是谁定的计(没记定义来源的旧行按要素本身是谁提的)——用户定的算「你说的」;
+#   不是用户定的、但读的事实行是用户提的角度,算「你提的角度」(不算系统推荐);其余按推荐来自谁。
+#   旧格式的要素项按卡上的来源计。
 #   角色:卡上这一项沿 own_library 递归到底是用户定的,算「你定的」。
 #   触发按递归到底的来源计。
 _BY_LABEL = {"detector": "事实表", "session": "会话", "llm": "大模型", "general_knowledge": "常识"}
@@ -351,12 +380,15 @@ def _conds(r: dict) -> str:
         role_user += c.get("root_origin") == "user_written"
         if "element" not in c:
             key = _who(c.get("root_origin"), c.get("root_suggested_by"))
-        elif c.get("element_origin") == "user_written":
-            key = "你说的"
-        elif c.get("angle_by") == "user":
-            key = "你提的角度"
         else:
-            key = _who(c.get("element_origin"), c.get("element_suggested_by"))
+            o, by = ((c["definition_origin"], c.get("definition_suggested_by")) if c.get("definition_origin")
+                     else (c.get("element_origin"), c.get("element_suggested_by")))
+            if o == "user_written":
+                key = "你说的"
+            elif c.get("angle_by") == "user":
+                key = "你提的角度"
+            else:
+                key = _who(o, by)
         ing[key] = ing.get(key, 0) + 1
     fmt = lambda d: " / ".join(f"{k} {n}" for k, n in d.items())
     return f"要素 {fmt(ing)}；角色你定的 {role_user}/{n_ing}；触发 {fmt(trig)}"

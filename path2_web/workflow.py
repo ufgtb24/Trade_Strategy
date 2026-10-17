@@ -7,13 +7,17 @@
 大涨段清单的改点痕迹 first_buy_points(第一次露出结果时的买点)与 changed_after_reveal(露出结果后
 买点改过或清除过);批次头的 list_kind / outcome_visible 由这里读清单文件的 kind 填,不信前端),
 打开清单时经 chart_workflow.views.record 记一条「看过」;单张图的事件(放大看了、点了买点或选了判定、
-大涨段第一次露出结果)经 POST /workflow/views 再各记一条。K 线经 chart_workflow.loader 只读截断副本
+大涨段第一次露出结果、点买点前往右拖看后续)经 POST /workflow/views 再各记一条。K 线经 chart_workflow.loader 只读截断副本
 (workflow.dataset_dir),不是副本就 503。
 
 改点痕迹以服务端为准:大涨段批次收进来时,查每张图以前有没有记过 reveal(跨刷新、跨页面会话、跨天,
 按 item_id 跨清单查),有就以最早那次的买点为准——first_buy_points 用记录里的值;提交的
 first_buy_points 缺失或跟它不一样、或最后的买点跟它不一样,changed_after_reveal 一律置 true。
-前端传来的这两个值不作数(只会被并成 true,不会被采信成 false)。
+前端传来的这两个值不作数(只会被并成 true,不会被采信成 false)。peeked_before_buy 同样以服务端为准:
+第一次露出结果之前(没露出过 = 到现在)记过这张图的 peek 就置 true。
+大涨段标注还由服务端填 outcome_seen_elsewhere:这一条决策日之后的走势在第一次露出结果之前是否已经在别处
+露出过,分「仔细看过」与「只在清单里出现过」两级(见 chart_workflow.views.outcome_trail);前端的值不作数,
+别的清单种类填 null。大涨段的每条标注都必须是这份清单里的条目。
 
 红线:训练段末日 train_end 之后的数据不出服务端(train_end 先和 loader.HARD_END 取小,配置写成
 2026 年也不越过 2025-12-31)——
@@ -27,7 +31,8 @@ first_buy_points 缺失或跟它不一样、或最后的买点跟它不一样,ch
   POST annotations     框选起止、买点都不得早于下界
 拿不到状态根(StateRootMissing,含水位核对不过的 StateRootRegressed)时记不了「看过」:打开清单、
 发送标注一律 503,不给图;/workflow/lists 照常列名字,但每项带 blocked = "state_root_missing" 与消息。
-/workflow/state 只读地报告状态根在哪、是不是来自环境变量(端到端测试开跑前核对,界面据此显示提示条)。
+/workflow/state 只读地报告状态根在哪、是不是来自环境变量(端到端测试开跑前核对,界面据此显示提示条;
+只核对、不写水位,见 chart_workflow.state.check_root)。
 """
 from __future__ import annotations
 
@@ -102,14 +107,15 @@ class AnnotationBatchIn(BaseModel):
 
 class ChartViewIn(BaseModel):
     """看图工作流里的单张图事件:zoom = 放大看了;annotate = 点了买点或选了判定;
-    reveal = 大涨段第一次露出结果(带当时的买点)。"""
+    reveal = 大涨段第一次露出结果(带当时的买点);peek = 大涨段点买点前往右拖看了后续。"""
     list_id: str
     item_id: str
     event: str
     buy_points: Optional[list[BuyPointIn]] = None
 
 
-_CHART_EVENTS = {"zoom": "zoom_chart", "annotate": "annotate_chart", "reveal": "reveal"}
+_CHART_EVENTS = {"zoom": "zoom_chart", "annotate": "annotate_chart", "reveal": "reveal",
+                 "peek": "peek_chart"}
 
 
 def _bp_key(bps) -> set[tuple[str, bool]]:
@@ -238,7 +244,7 @@ def build_workflow_router(*, get_config) -> APIRouter:
             return {"path": None, "from_env": from_env, "env_var": cw_state.ENV_VAR,
                     "ok": False, "message": str(e)}
         try:
-            state_root()
+            cw_state.check_root()                   # 只核对,不写水位
             ok, msg = True, None
         except StateRootMissing as e:
             ok, msg = False, str(e)
@@ -437,8 +443,11 @@ def build_workflow_router(*, get_config) -> APIRouter:
         list_kind = lst.get("kind")
         errs: list[str] = []
         cache: dict = {}
+        ids = {it.get("item_id") for it in lst.get("items") or [] if isinstance(it, dict)}
         for a in req.annotations:
             errs += _validate(a, cfg, cache)
+            if list_kind == "bigmoves" and a.item_id not in ids:
+                errs.append(f"{a.item_id}: 不在清单 {req.list_id} 里")
         if errs:
             raise HTTPException(400, "; ".join(errs[:20]))
         now = _now()
@@ -458,13 +467,17 @@ def build_workflow_router(*, get_config) -> APIRouter:
             d["ann_id"] = d.get("ann_id") or str(uuid.uuid4())
             d["updated_at"] = d.get("updated_at") or now.strftime("%Y-%m-%dT%H:%M:%S")
             anns.append(d)
-        if list_kind == "bigmoves":           # 改点痕迹以服务端记过的 reveal 为准
+        if list_kind == "bigmoves":           # 改点痕迹、看过后续、别处露出过:以服务端的看过记录为准
+            items = {it.get("item_id"): it for it in lst.get("items") or [] if isinstance(it, dict)}
             try:
-                reveals = views.first_reveals()
+                rows = views.read_views()
             except StateRootMissing as e:
                 raise HTTPException(503, str(e)) from None
             for d in anns:
-                rv = reveals.get(d["item_id"])
+                trail = views.outcome_trail(items[d["item_id"]], req.list_id, rows)
+                d["peeked_before_buy"] = bool(d["peeked_before_buy"] or trail["peeked"])
+                d["outcome_seen_elsewhere"] = trail["seen_elsewhere"]
+                rv = trail["first_reveal"]
                 if rv is None:
                     continue
                 rec = [{"date": b["date"], "primary": bool(b["primary"])} for b in rv["buy_points"]]
@@ -472,6 +485,9 @@ def build_workflow_router(*, get_config) -> APIRouter:
                     d["changed_after_reveal"] or _bp_key(d["first_buy_points"]) != _bp_key(rec)
                     or _bp_key(d["buy_points"]) != _bp_key(rec))
                 d["first_buy_points"] = rec
+        else:
+            for d in anns:
+                d["outcome_seen_elsewhere"] = None
         doc = {
             "schema": BATCH_SCHEMA,
             "batch_id": batch_id,

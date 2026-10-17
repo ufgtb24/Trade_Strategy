@@ -363,10 +363,10 @@ def test_normalize_canonical_form():
     (D("F05", "runs", "events_any", user={"bars": 0}), "至少是 1"),
     (D("F05", "runs", "events_any", user={"bars": 2.5}), "必须是整数"),
     (D("F01", "n_cleared", "at_least", user={"x": 0}), "恒成立"),
-    (D("F01", "n_cleared", "at_least", user={"x": 5}), "不会超过 4,至少 5 不可能成立"),
+    (D("F01", "n_cleared", "at_least", user={"x": 5}), "至少 5不可能成立(按收盘越过的峰个数在 0 到 4 之间)"),
     (D("F12", "up_ratio", "at_most", user={"x": 1}), "恒成立"),
-    (D("F12", "up_ratio", "at_most", user={"x": -0.1}), "不会低于 0,至多 -0.1 不可能成立"),
-    (D("F08", "dd250", "at_least", user={"x": 0.1}), "不会超过 0"),
+    (D("F12", "up_ratio", "at_most", user={"x": -0.1}), "至多 -0.1不可能成立"),
+    (D("F08", "dd250", "at_least", user={"x": 0.1}), "至少 0.1不可能成立"),
     (D("F07", "vr", "between", user={"lo": 2, "hi": 1}), "下限要小于上限"),
     (D("F07", "vr", "between", user={"lo": 2, "hi": 2}), "下限要小于上限"),
     (D("F01", "n_cleared", "between", user={"lo": 2, "hi": 1}), "个数可以相等"),
@@ -413,6 +413,40 @@ def test_within_n_needs_declared_bars_before(monkeypatch):
 def test_synonym_forms_rejected_with_canonical_hint(d, needle):
     out, errs = E.normalize_definition(d)
     assert out is None and any(needle in e for e in errs), errs
+
+
+@pytest.mark.parametrize("d,needle", [
+    # 「只是在问有没有」:按值实际能取到的范围判,不只在正好碰到边界时才拒
+    (D("F04", "bars", "at_most", "close", user={"x": 9999}), "只是在问「按收盘至少越过一个峰"),
+    (D("F04", "bars", "at_most", "close", user={"x": 260}), "只是在问「按收盘至少越过一个峰"),
+    (D("F06", "vs_latest_run", "at_least", user={"x": 0.000000001}), "只是在问「窗口里有放量段"),
+    (D("F06", "vs_latest_run", "at_most", user={"x": 1000000000}), "只是在问「窗口里有放量段"),
+    # 量比、涨幅、比值:合理范围外按近乎恒成立 / 近乎不可能拒绝
+    (D("F07", "vr", "at_least", user={"x": 0.000000001}), "近乎恒成立"),
+    (D("F07", "vr", "at_most", user={"x": 1000}), "近乎恒成立"),
+    (D("F08", "M", "at_least", user={"x": 2}), "近乎不可能成立"),
+    # 百分比写成整数:提示单位
+    (D("F12", "rise", "at_least", user={"x": 30}), "30% 要写成 0.3"),
+    (D("F10", "gap", "at_least", user={"x": 8}), "8% 要写成 0.08"),
+    (D("F12", "rise", "between", user={"lo": 0.1, "hi": 30}), "30% 要写成 0.3"),
+    # 最近 N 根不比看图窗口短
+    (D("F05", "runs", "events_any", user={"bars": 261}), "不比看图窗口短"),
+])
+def test_bounds_reject_trivial_thresholds(d, needle):
+    out, errs = E.normalize_definition(d)
+    assert out is None and any(needle in e for e in errs), errs
+
+
+def test_bounds_keep_reasonable_thresholds():
+    for d in (D("F04", "bars", "at_most", "close", user={"x": 30}),
+              D("F06", "vs_latest_run", "at_most", user={"x": 0.5}),
+              D("F07", "vr", "at_least", user={"x": 50}),
+              D("F12", "rise", "at_least", user={"x": 0.3}),
+              D("F05", "runs", "events_any", user={"bars": 260})):
+        out, errs = E.normalize_definition(d)
+        assert errs == [] and out is not None, (d, errs)
+    out, errs = E.normalize_definition(D("F07", "vr", "at_least", user={"x": 0.01}))
+    assert "买点当天量比的合理范围是 0.05 到 100,待验证" in errs[0] and "%" not in errs[0]   # 倍数不提示百分比
 
 
 def _charts():
@@ -530,6 +564,9 @@ def test_create_element_rejects(state_dir, op, needle):
     assert oplog.read_all() == []
 
 
+WHO = {"origin": "suggested_adopted", "suggested_by": "session"}       # 写成计算是会话定的
+
+
 def test_revise_keeps_identity_and_pending_checked_for_duplicates(state_dir):
     _apply(el_op("v", "放量", VOL, user=False), el_op("p", "两个峰", PK2),
            el_op("t", "突破前横着走", None, needs="现有事实没有横走时长"),
@@ -538,6 +575,7 @@ def test_revise_keeps_identity_and_pending_checked_for_duplicates(state_dir):
             "value": {"definition": {**VOL, "default_params": {"x": 2.5}}, "change": "默认倍数改 2.5"}})
     el = _els()["E001"]
     assert el["current_version"] == 2 and el["versions"][1]["definition"]["default_params"] == {"x": 2.5}
+    assert el["versions"][1]["definition_origin"] == el["versions"][0]["definition_origin"] == DET
     for bad, needle in ((D("F07", "vr", "at_least", user={"x": 2.5}), "定义变了就是另一条要素"),
                         (D("F07", "vr", "between", default={"lo": 2.5, "hi": 9}), "定义变了就是另一条要素"),
                         (D("F07", "vr", "at_least", default={"x": -1}), "恒成立"),
@@ -545,19 +583,33 @@ def test_revise_keeps_identity_and_pending_checked_for_duplicates(state_dir):
         with pytest.raises(shapes.ShapeValidationError, match=needle):
             _apply({"act": "revise_element", "target": {"element_id": "E001"},
                     "value": {"definition": bad, "change": "改"}})
-    # 待写代码的写成计算:和已有的相同 → 拒绝,提示合并;不同 → 变成在用
+    # 只改系统默认值也不能改成和别的要素同一条(用户说的「量比至少 3」已经有了)
+    _apply(el_op("v3", "量比至少 3 倍", D("F07", "vr", "at_least", user={"x": 3})))      # E005
+    with pytest.raises(shapes.ShapeValidationError, match="E005.*成了同一条"):
+        _apply({"act": "revise_element", "target": {"element_id": "E001"},
+                "value": {"definition": {**VOL, "default_params": {"x": 3}}, "change": "改回 3"}})
+    # 待写代码的写成计算:和已有的相同 → 拒绝,提示合并;不同 → 变成在用;要带是谁定的
     with pytest.raises(shapes.ShapeValidationError) as ei:
         _apply({"act": "revise_element", "target": {"element_id": "E004"},
-                "value": {"definition": PK2, "change": "写成计算"}})
+                "value": {"definition": PK2, "change": "写成计算", **WHO}})
     assert "E002" in str(ei.value) and "merge_element" in str(ei.value)
+    with pytest.raises(shapes.ShapeValidationError, match="写成计算是谁定的.*origin 必填"):
+        _apply({"act": "revise_element", "target": {"element_id": "E004"},
+                "value": {"definition": D("F01", "n_cleared", "at_least", user={"x": 3}), "change": "写成计算"}})
     _apply({"act": "revise_element", "target": {"element_id": "E004"},
-            "value": {"definition": D("F01", "n_cleared", "at_least", user={"x": 3}), "change": "写成计算"}})
-    assert _els()["E004"]["status"] == "active" and _els()["E003"]["status"] == "pending_code"
+            "value": {"definition": D("F01", "n_cleared", "at_least", user={"x": 3}), "change": "写成计算",
+                      **WHO}})
+    el = _els()["E004"]
+    assert el["status"] == "active" and _els()["E003"]["status"] == "pending_code"
+    assert el["versions"][1]["definition_origin"] == WHO and el["versions"][0]["definition_origin"] is None
+    assert "定义是谁定的：采纳了会话的推荐（v2）" in E.render(el, oplog.read_all())
     with pytest.raises(shapes.ShapeValidationError, match="change 必填"):
         _apply({"act": "revise_element", "target": {"element_id": "E003"}, "value": {"needs": "还缺"}})
 
 
-def test_merge_moves_aliases_and_old_ids_resolve(state_dir):
+def test_merge_only_same_definitions(state_dir):
+    """合并只许发生在定义相同的两条之间:在用的直接比;待写代码的要带写成计算的定义和是谁定的,
+    工具核对相同才并;被并的记下写成计算的那一版,名字和别名挂到并入的那条,旧编号照常解析。"""
     _batch(state_dir, "b1", [_ann("a1")])
     _apply(el_op("p", "按收盘至少越过一个峰", PK1),
            el_op("t", "收盘站上前高", None, needs="还没想好怎么算"),
@@ -566,21 +618,34 @@ def test_merge_moves_aliases_and_old_ids_resolve(state_dir):
                "name": {"value": "站上前高", "origin": "user_written"}, "change": "新建", "from_ann": ["a1"],
                "card": {"ingredients": [{"ing_id": "i1", "element": "$t", "role": "must",
                                          "origin": "user_written"}], "triggers": []}}})
-    _apply({"act": "merge_element", "target": {"element_id": "E002"},
-            "value": {"into": "E001", "reason": "用户确认是同一个意思"}, "actor": "user"})
+    merge = {"act": "merge_element", "target": {"element_id": "E002"}, "actor": "user",
+             "value": {"into": "E001", "reason": "用户确认是同一个意思"}}
+    with pytest.raises(shapes.ShapeValidationError, match="还是待写代码:合并要带它写成计算的定义"):
+        _apply(merge)
+    with pytest.raises(shapes.ShapeValidationError, match="不是同一个意思"):
+        _apply({**merge, "value": {**merge["value"], "definition": PK2, **WHO}})
+    with pytest.raises(shapes.ShapeValidationError, match="origin 必填"):
+        _apply({**merge, "value": {**merge["value"], "definition": PK1}})
+    _apply({**merge, "value": {**merge["value"], "definition": PK1, **WHO}})
     els = _els()
     assert els["E002"]["status"] == "merged" and els["E002"]["merged_into"] == "E001"
+    v2 = els["E002"]["versions"][1]
+    assert v2["definition"] == _norm(PK1) and v2["definition_origin"] == WHO and "并入" in v2["change"]
     assert [(a["text"], a.get("from")) for a in els["E001"]["aliases"]] == \
         [("收盘站上前高", "E002"), ("站上前高", "E002")]
-    assert els["E002"]["versions"] and els["E002"]["aliases"]               # 什么都不删
+    assert els["E002"]["versions"][0]["needs"] and els["E002"]["aliases"]   # 什么都不删
     assert E.resolve(els, "E002") == "E001"
-    card = shapes.load_card("s001")                                         # 旧卡照常解析
+    card = shapes.load_card("s001")                                         # 旧卡照常解析,按卡上记的版本
+    assert card["versions"][0]["card"]["ingredients"][0]["element_version"] == 1
     text = shapes.render(card)
-    assert "E002「收盘站上前高」（已合并到 E001「按收盘至少越过一个峰」）：按收盘越过的峰个数至少 1" in text
-    assert E.evaluate_element(els, "E002", _qmmm())[0] == "yes"             # 按并入的那条判
+    assert "E002「收盘站上前高」（已合并到 E001「按收盘至少越过一个峰」）：卡这一版建立时待写代码" in text
+    f = _qmmm()
+    assert E.evaluate_element(els, "E002", f)[0] == "yes"                   # 不给版本:按并入的那条判
+    assert E.evaluate_element(els, "E002", f, version=1)[0] == "unknown"    # 卡上记的版本:当时待写代码
     with pytest.raises(shapes.ShapeValidationError, match="已合并到 E001"):  # 新版本不能再引用旧编号
         _apply({"act": "revise_shape", "target": {"shape_id": "s001"}, "value": {
-            "change": "x", "card": card["versions"][0]["card"]}})
+            "change": "x", "card": {"ingredients": [{"ing_id": "i1", "element": "E002", "role": "must",
+                                                     "origin": "user_written"}], "triggers": []}}})
     for op, needle in (({"act": "merge_element", "target": {"element_id": "E001"}, "value": {"into": "E002"}},
                         "已合并到 E001"),
                        ({"act": "merge_element", "target": {"element_id": "E001"}, "value": {"into": "E001"}},
@@ -589,11 +654,42 @@ def test_merge_moves_aliases_and_old_ids_resolve(state_dir):
                         "对 E001 操作")):
         with pytest.raises(shapes.ShapeValidationError, match=needle):
             _apply(op)
-    _apply(el_op("two", "两个峰", PK2))                                      # E003
-    _apply({"act": "merge_element", "target": {"element_id": "E003"}, "value": {"into": "E001"}})
-    with pytest.raises(shapes.ShapeValidationError) as ei:                  # 定义同已合并的 → 报并入的那条
-        _apply(el_op("z", "越过两个峰", PK2))
+    _apply(el_op("two", "两个峰", PK2))                                      # E003:在用,定义不同
+    with pytest.raises(shapes.ShapeValidationError, match="只能合并定义相同的两条"):
+        _apply({"act": "merge_element", "target": {"element_id": "E003"}, "value": {"into": "E001"}})
+    with pytest.raises(shapes.ShapeValidationError, match="在用,合并不用带 definition"):
+        _apply({"act": "merge_element", "target": {"element_id": "E003"},
+                "value": {"into": "E001", "definition": PK1, **WHO}})
+    _apply(el_op("w", "以后再说", None, needs="还没想好"))                   # E004:待写代码
+    with pytest.raises(shapes.ShapeValidationError, match="比不了是不是同一个意思"):
+        _apply({"act": "merge_element", "target": {"element_id": "E003"}, "value": {"into": "E004"}})
+    with pytest.raises(shapes.ShapeValidationError) as ei:                  # 和在用的 E001 相同 → 报 E001
+        _apply(el_op("z", "越过一个峰", PK1))
     assert "已有要素 E001" in str(ei.value)
+
+
+def test_find_same_ignores_merged_definitions():
+    """已合并要素的定义不算到并入的那条头上(旧日志里可能有定义不同的合并):照样能建。"""
+    els = {"E001": {"element_id": "E001", "status": "active", "merged_into": None, "name": {"value": "两个峰"},
+                    "versions": [{"definition": _norm(PK2)}]},
+           "E002": {"element_id": "E002", "status": "merged", "merged_into": "E001", "name": {"value": "派发"},
+                    "versions": [{"definition": _norm(DIST20)}]}}
+    assert E.find_same(els, _norm(DIST20)) is None
+    assert E.find_same(els, _norm(PK2)) == "E001"
+
+
+def test_user_and_default_param_count_as_same(state_dir):
+    """同一个参数不论写在用户参数还是系统默认,都按同一条算:不能借换个位置并存。"""
+    _apply(el_op("u", "量比至少 3 倍", D("F07", "vr", "at_least", user={"x": 3})))
+    with pytest.raises(shapes.ShapeValidationError, match="已有要素 E001"):
+        _apply(el_op("d", "放量", D("F07", "vr", "at_least", default={"x": 3}), user=False))
+    _apply(el_op("d", "明显放量", D("F07", "vr", "at_least", default={"x": 5}), user=False))     # 值不同:另一条
+    with pytest.raises(shapes.ShapeValidationError, match="已有要素 E002"):                      # 系统默认不算身份
+        _apply(el_op("d2", "放量了", D("F07", "vr", "at_least", default={"x": 8}), user=False))
+    assert E.same_meaning(_norm(D("F05", "runs", "events_at_least", user={"k": 2}, default={"bars": 20})),
+                          _norm(D("F05", "runs", "events_at_least", user={"k": 2, "bars": 20})))
+    assert not E.same_meaning(_norm(D("F07", "vr", "at_least", user={"x": 3})),
+                              _norm(D("F07", "vr", "at_least", user={"x": 4})))
 
 
 def test_element_files_written_and_in_watermark(state_dir):
@@ -702,7 +798,10 @@ def test_user_proposed_row_labeled_and_op_checked(state_dir, monkeypatch, capsys
     f = _qmmm()
     assert next(r for r in f["rows"] if r["fid"] == "F13")["source"] == src
     assert "⟨你提的角度，2026-10-17⟩" in facts.render({**f, "symbol": "QMMM"})
-    assert E.angle(_norm(DIST20)) == ("user", ["op-1"])                   # 要素读的是用户提的角度
-    assert E.angle(_norm(PK1)) == ("preset", [])
+    ops = oplog.read_all()                                                 # 要素读的是用户提的角度
+    assert E.angle({"definition": _norm(DIST20), "op_id": "later"}, ops) == ("user", ["op-1"])
+    assert E.angle({"definition": _norm(DIST20), "op_id": "op-1"}, ops) == ("preset", [])   # 不早于这一版
+    assert E.angle({"definition": _norm(PK1), "op_id": "later"}, ops) == ("preset", [])
+    assert E.angle({"definition": None}, ops) == (None, [])
     facts.main(["--check-row", "近期派发", "--reads", "distribution"])
     assert "同名：F13" in capsys.readouterr().out

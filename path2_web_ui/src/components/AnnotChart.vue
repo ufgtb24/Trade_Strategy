@@ -67,7 +67,8 @@
  *
  * 大涨段清单点第一个买点之前不露结果:不画决策日、买入日、上下线、最高点,图头不显示决策日、
  * 涨幅、最大单日跳变、标签和跨源比对不一致的提示;初始横向窗口从图窗起点到决策日后随机 3~15 根(store.initialRightOf),
- * 用户把窗口右端拖过它就记成「点买点前看过后续」(store.markPeeked)。有了买点后照常显示,窗口不动。
+ * 用户把窗口右端拖过它就记成「点买点前看过后续」(store.markPeeked)。有了买点、且后端记上了露出结果
+ * (store.isRevealConfirmed)之后照常显示,窗口不动;记不上就继续藏着。
  * 露出结果之后再改买点或「清除」,store 记成「看过结果后改过」(见 stores/workflow.ts 的改点痕迹)。
  *
  * 两个互斥的工具开关:「框选起止」用 ECharts lineX brush + createBrushRequestHandler 把
@@ -101,8 +102,9 @@ const store = useWorkflowStore()
 const blind = computed(() => props.blind ?? store.isBlind)
 const kind = computed(() => store.listKind)
 const hasBuy = computed(() => (props.annotation?.buy_points?.length ?? 0) > 0)
-/** 大涨段清单还没有买点:不露结果 */
-const hideOutcome = computed(() => kind.value === 'bigmoves' && !hasBuy.value)
+/** 大涨段清单还没有买点,或露出结果还没被后端记上:不露结果 */
+const hideOutcome = computed(() =>
+  kind.value === 'bigmoves' && !(hasBuy.value && store.isRevealConfirmed(props.item.item_id)))
 // 跨源比对不一致的段在图头列出那几天;盲看清单不显示(也不该带这份结果);大涨段点第一个买点前
 // 也不显示——列出的日子和涨跌幅可能落在决策日之后,同样会露结果
 const xcheckText = computed(() => {

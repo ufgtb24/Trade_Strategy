@@ -6,9 +6,10 @@ import { apiBase } from './ports'
 
 // 调试视图的看图范围护栏(path2_web/guard.py)端到端:
 //   ① 读了完整行情的旧扫描在历史列表里标「旧扫描」、不列成绩,双击打不开并提示原因;
-//   ② 新扫描的区间被截进看图范围(训练段末日为止、不早于看图下界),文件带 view_guard;
+//   ② 新扫描的区间被截进看图范围(训练段末日为止、不早于看图下界),文件带 view_guard(含副本指纹),
+//      文件里的事件锚点都不早于看图下界那根;
 //   ③ 打开新扫描、点一只股票:K 线最后一根不晚于训练段末日,看图下界之前的 bar 没有价格,
-//      状态根的看过记录里多一条 surface=debug 的 show_chart。
+//      状态根的看过记录里多一条按整份清单记的 open_list(debug_scan)和一条 surface=debug 的 show_chart。
 // 前提与 workflow.spec.ts 相同:后端用临时状态根启动(CHART_WORKFLOW_STATE_ROOT),截断副本已生成。
 // 扫描文件写在本 worktree 的 outputs/path2_web/scans/,跑完删掉;看过记录留在临时状态根里,由建它的人整个删掉。
 // 跑法:CHART_WORKFLOW_STATE_ROOT=/tmp/<临时目录> npx playwright test e2e/debug-view-guard.spec.ts --workers=1
@@ -60,8 +61,16 @@ test('新扫描的区间截进看图范围、带 view_guard', async ({ request }
   await expect.poll(() => existsSync(path), { timeout: 120_000 }).toBe(true)
   const s = JSON.parse(readFileSync(path, 'utf8')).scan
   expect([s.start_date, s.end_date]).toEqual([FLOOR, TRAIN_END])
-  expect(s.view_guard).toEqual({ view_floor: FLOOR, train_end: TRAIN_END })
+  expect(s.view_guard).toMatchObject({ view_floor: FLOOR, train_end: TRAIN_END })
+  expect(s.view_guard.snapshot_sha).toMatch(/^[0-9a-f]{64}$/)
   expect(s.hits).toBeGreaterThan(0)
+  const results = JSON.parse(readFileSync(path, 'utf8')).results as any[]
+  for (const r of results) {
+    const out = r.per_pattern.bo_only
+    const anchor = (e: any) => Math.min(...Object.entries(e)
+      .filter(([k, v]) => k.endsWith('_idx') && k !== 'instance_idx' && typeof v === 'number').map(([, v]) => v as number))
+    expect(out.analysis.events.every((e: any) => anchor(e) >= out.view_floor_idx)).toBe(true)
+  }
 })
 
 test('旧扫描标出来、不列成绩、打不开', async ({ page }) => {
@@ -95,8 +104,10 @@ test('新扫描的 K 线只到训练段末日、看图下界之前不给价格,�
   expect(pre.length).toBeGreaterThan(0)                          // 探测器预热段占位
   expect(pre.every(b => b.o === null && b.c === null)).toBe(true)
   expect(bars.filter(b => b.date >= FLOOR).every(b => b.o !== null)).toBe(true)
-  await expect.poll(() => views().filter(v => v.surface === 'debug').length).toBe(before + 1)
-  const v = views().filter(x => x.surface === 'debug').at(-1)
+  await expect.poll(() => views().filter(v => v.surface === 'debug').length).toBe(before + 2)
+  const dbg = views().filter(x => x.surface === 'debug').slice(-2)
+  expect([dbg[0].event, dbg[0].list_kind]).toEqual(['open_list', 'debug_scan'])
+  const v = dbg[1]
   expect(v.event).toBe('show_chart')
   expect(v.charts[0].symbol).toBe(sym)
   expect(v.charts[0].start >= FLOOR && v.charts[0].end <= TRAIN_END).toBe(true)

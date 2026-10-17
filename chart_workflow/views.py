@@ -1,5 +1,5 @@
-"""看过记录:用户每看一次图(网页打开清单、看图工作流里放大 / 标注单张图、调试视图里看一张图、
-会话在聊天里贴图、补记历史接触)都记一行。
+"""看过记录:用户每看一次图(网页打开清单、看图工作流里放大 / 标注单张图、调试视图里看一张图或预览一只
+股票、调试视图打开扫描结果、会话在聊天里贴图、补记历史接触)都记一行。
 
 record() 是写 <状态根>/views.jsonl 的唯一入口(后端打开清单、收单张图事件、调试视图取 K 线时调用;
 会话经下面的命令行调用)。对照页排除看过的样本、按尝试扣运气都要用这份记录;以哪一级为准、排除逻辑
@@ -8,7 +8,7 @@ record() 是写 <状态根>/views.jsonl 的唯一入口(后端打开清单、收
 行格式(每行一个 JSON):
 {"ts": "YYYY-MM-DDTHH:MM:SS",
  "surface": "web | debug | chat | manual",   # 看图工作流 / 调试视图 / 会话在聊天里贴的图 / 补记
- "event": "open_list | show_chart | zoom_chart | annotate_chart | reveal",
+ "event": "open_list | show_chart | zoom_chart | annotate_chart | reveal | peek_chart",
  "list_id": "r001-bigmoves" | null, "list_kind": "bigmoves" | null,
  "outcome_visible": true,                 # 看图时看不看得到结果:盲看清单为 false,其余为 true
  "list_sha12": "<清单内容 sha256 前 12 位>" | null,
@@ -20,13 +20,23 @@ record() 是写 <状态根>/views.jsonl 的唯一入口(后端打开清单、收
  "buy_points": [{"date", "primary"}]}     # 只有 reveal 才有:露出结果那一刻的买点
 
 事件:
-  open_list       打开整份清单(整份都算看过,保守口径)
-  show_chart      看了一张图:调试视图取 K 线(surface = debug)、会话在聊天里贴图、补记
+  open_list       打开整份清单(整份都算看过,保守口径);调试视图打开扫描结果也记这个(list_kind = debug_scan)
+  show_chart      看了一张图:调试视图取 K 线或单股预览(surface = debug)、会话在聊天里贴图、补记
   zoom_chart      看图工作流里放大看了某一张图
   annotate_chart  看图工作流里给某一张图点了买点或选了判定
   reveal          大涨段清单里某一张图第一次露出结果(买点从无到有),带当时的买点;
                   后端收标注时以这张图最早那次 reveal 的买点为准(见 first_reveals)
+  peek_chart      大涨段清单里某一张图点买点前把窗口往右拖、看了决策日之后的走势
 单张图事件每张图每种在一次打开清单里只记一次(前端去重)。
+
+大涨段标注收进来时,后端用 outcome_trail 从全部看过记录查这一条决策日之后的走势,在这张图第一次露出结果
+之前是否已经在别处露出过(同代码、图窗盖住决策日之后那段、看得到结果),分两级记:
+  careful   仔细看过:单张图的放大、标注、露出结果、往右拖看后续,调试视图看那只股票的图,聊天贴图,补记
+  in_list   只在清单里出现过:只是打开过含它的清单(看图工作流或调试视图打开整份清单)
+看图工作流里大涨段的图没露出结果前只露到决策日后 PRE_REVEAL_RIGHT_MAX 根;同一份大涨段清单里的同股条目
+按生成规则看不到彼此的决策日,只会从左端露出一点别条的后续(左端残留),不计;这一条自己(同一个条目,
+在哪份大涨段清单里都一样)露出结果前那一小段是设计上就给看的,也不计;这一条自己往右拖看后续另记
+peeked_before_buy,不算「别处」。以哪一级为准由流程骨架定,这里只如实记。
 
 会话在聊天里贴图(surface = chat)时,图窗(以及记整份清单时清单里每条的图窗)不得早于本轮看图下界
 view_floor、不得晚于训练段末日:越界就拒绝,提醒会话这张图本不该贴。确实要记(例如用户主动贴了旧图),
@@ -59,8 +69,10 @@ from chart_workflow.config import load_config, root_dir
 from chart_workflow.state import StateRootMissing, state_root
 
 SURFACES = ("web", "debug", "chat", "manual")
-EVENTS = ("open_list", "show_chart", "zoom_chart", "annotate_chart", "reveal")
-CHART_EVENTS = ("zoom_chart", "annotate_chart", "reveal")     # 看图工作流里的单张图事件
+EVENTS = ("open_list", "show_chart", "zoom_chart", "annotate_chart", "reveal", "peek_chart")
+CHART_EVENTS = ("zoom_chart", "annotate_chart", "reveal", "peek_chart")     # 看图工作流里的单张图事件
+CAREFUL_EVENTS = ("show_chart",) + CHART_EVENTS              # 仔细看过:单张图(另加聊天贴图、补记)
+PRE_REVEAL_RIGHT_MAX = 15        # 大涨段露出结果前一张图最多露到决策日后几根(与前端 INITIAL_RIGHT_MAX 同值)
 SNAPSHOT_SCHEMA = "chart_workflow.viewed_list/1"
 ITEM_FIELDS = ("item_id", "symbol", "t", "view_start", "view_end")
 LIST_FIELDS = ("kind", "title", "created_at", "train_end")
@@ -195,16 +207,100 @@ def read_views() -> list[dict]:
     return [json.loads(line) for line in p.read_text().splitlines() if line.strip()]
 
 
-def first_reveals() -> dict[str, dict]:
-    """每张图(item_id,跨清单)最早那次 reveal 行:{item_id: 行}。跨刷新、跨页面会话、跨天都算。"""
+def first_reveals(rows: list[dict] | None = None) -> dict[str, dict]:
+    """每张图(item_id,跨清单)最早那次 reveal 行:{item_id: 行}。跨刷新、跨页面会话、跨天都算。
+    rows:已读出的看过记录(省得重读)。"""
     out: dict[str, dict] = {}
-    for r in read_views():
+    for r in read_views() if rows is None else rows:
         if r.get("event") != "reveal" or not r.get("item_id"):
             continue
         cur = out.get(r["item_id"])
         if cur is None or str(r.get("ts")) < str(cur.get("ts")):
             out[r["item_id"]] = r
     return out
+
+
+def _t_of(item_id) -> str | None:
+    m = re.fullmatch(r".+@(\d{4}-\d{2}-\d{2})", str(item_id or ""))
+    return m.group(1) if m else None
+
+
+def _pre_reveal_end(t: str, end: str) -> str:
+    """大涨段露出结果前一张图最多露到哪天:决策日后 PRE_REVEAL_RIGHT_MAX 个工作日(节假日只会让真实那根更早)。"""
+    import pandas as pd
+
+    return min(str(end), (pd.Timestamp(t) + pd.offsets.BDay(PRE_REVEAL_RIGHT_MAX)).strftime("%Y-%m-%d"))
+
+
+def _exposed(r: dict, reveals: dict, snap) -> list[tuple]:
+    """一行看过记录露出了哪些 (条目, 代码, 起点, 终点)。大涨段清单里那时还没露出结果的图只露到决策日后几根;
+    露出结果、往右拖看后续的那张图按整个图窗。"""
+    big = r.get("list_kind") == "bigmoves"
+
+    def cut(item_id, sym, start, end, t):
+        rv = reveals.get(item_id)
+        if big and t and not (rv and str(rv.get("ts")) <= str(r.get("ts"))):
+            return item_id, sym, start, _pre_reveal_end(t, end)
+        return item_id, sym, start, end
+
+    out = []
+    if r.get("snapshot"):
+        for it in snap(r["snapshot"]).get("items") or []:
+            out.append(cut(it.get("item_id"), it.get("symbol"), it.get("view_start"), it.get("view_end"),
+                           it.get("t")))
+    for c in r.get("charts") or []:
+        if r.get("event") in ("reveal", "peek_chart"):
+            out.append((r.get("item_id"), c["symbol"], c["start"], c["end"]))
+        else:
+            out.append(cut(r.get("item_id"), c["symbol"], c["start"], c["end"], _t_of(r.get("item_id"))))
+    return out
+
+
+def outcome_trail(item: dict, list_id: str, rows: list[dict] | None = None) -> dict:
+    """大涨段清单里一条(item:清单里的这一条,要 item_id / symbol / t / view_end)的露出痕迹:
+    {"first_reveal": 最早那次 reveal 行 | None,
+     "peeked": 第一次露出结果前(没露出过 = 到现在)有没有往右拖看过后续(任何清单里的这一条),
+     "seen_elsewhere": {"level": "careful | in_list" | None, "before": 截止时刻 | None,
+                        "careful": [出处], "in_list": [出处]}}
+    出处 = {"ts", "surface", "event", "list_id", "item_id"}。截止时刻 = 这张图第一次露出结果的时刻(同一秒的
+    也算在前,保守);没露出过就是到现在。见模块说明。"""
+    rows = read_views() if rows is None else rows
+    reveals = first_reveals(rows)
+    item_id, sym, t, end = item["item_id"], item["symbol"], str(item["t"]), str(item["view_end"])
+    rv = reveals.get(item_id)
+    before = str(rv["ts"]) if rv else None
+    root = state_root()
+    cache: dict[str, dict] = {}
+
+    def snap(rel):
+        if rel not in cache:
+            try:
+                cache[rel] = json.loads((root / rel).read_text())
+            except (OSError, ValueError):
+                cache[rel] = {}
+        return cache[rel]
+
+    peeked, careful, in_list = False, [], []
+    for r in rows:
+        if before is not None and str(r.get("ts")) > before:
+            continue
+        if r.get("item_id") == item_id:            # 这一条自己的单张图事件
+            peeked = peeked or r.get("event") == "peek_chart"
+            continue
+        if not r.get("outcome_visible") or r.get("list_id") == list_id:     # 盲看;同一份清单只有左端残留
+            continue
+        big = r.get("list_kind") == "bigmoves"
+        if not any(s == sym and str(a) <= end and str(b) > t and not (big and iid == item_id)
+                   for iid, s, a, b in _exposed(r, reveals, snap)):
+            continue
+        ref = {k: r.get(k) for k in ("ts", "surface", "event", "list_id", "item_id")}
+        if r.get("surface") in ("chat", "manual") or r.get("event") in CAREFUL_EVENTS:
+            careful.append(ref)
+        else:
+            in_list.append(ref)
+    level = "careful" if careful else "in_list" if in_list else None
+    return {"first_reveal": rv, "peeked": peeked,
+            "seen_elsewhere": {"level": level, "before": before, "careful": careful, "in_list": in_list}}
 
 
 def viewed_set() -> set[tuple[str, str, str]]:

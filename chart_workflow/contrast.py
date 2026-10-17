@@ -23,6 +23,9 @@ n_blind 个;图窗截到决策日之后 view.blind_after_bars 个交易日为止
 16 位>__<文件名>(内容相同不重复写);app 方式存档参数文件(给了 --params 时),另记 git HEAD 与
 path2_apps/<app>/ 有没有未提交改动(代码版本与 chart_workflow/、path2/ 的改动另见账本 provenance)。
 账本 kind:--blind → blind,source = mining → mined,其余 rule。
+来源写形态卡(shape:<shape_id>@v<版本>)时,开工前先核对规则和卡(rulecheck.py):规则文件或 app 模块要声明
+IMPLEMENTS(实现了卡上哪些要素、各是什么角色),和卡那一版一致;卡的样本上规则信号和卡上要素的判定一致。
+任一不过就停,什么都不生成;通过后把声明与核对结果记进账本(rule_implements)。
 """
 from __future__ import annotations
 
@@ -43,6 +46,7 @@ from chart_workflow.dataerrors import load_pool
 from chart_workflow.ledger import add_round, check_new_list_id, check_source, read_ledger
 from chart_workflow.listfile import (ListValidationError, deep_link, drop_window_overlaps, make_item,
                                      new_list, write_list)
+from chart_workflow.rulecheck import check_rule_against_shape
 from chart_workflow.rules import (app_module_path, hits_from_app, hits_from_rule, join_panel,
                                   rule_fingerprint)
 from chart_workflow.state import StateRootMissing, advance, state_root
@@ -213,10 +217,13 @@ def main(argv=None) -> None:
     if args.params and not args.app:
         ap.error("--params 只能和 --app 一起用")
     cfg = load_config()
-    try:                      # 拿不到状态根就停,什么都不生成;来源不对、清单名用过也先停
+    try:                      # 拿不到状态根就停,什么都不生成;来源不对、清单名用过、规则和形态卡对不上也先停
         root = state_root()
         check_source(args.source)
         check_new_list_id(cfg, args.list_id)
+        implements = (check_rule_against_shape(args.source, cfg, rule=args.rule, app=args.app,
+                                               params=args.params)
+                      if args.source.startswith("shape:") else None)
     except (StateRootMissing, ValueError, FileNotFoundError) as e:
         print(f"错误:{e}", file=sys.stderr)
         sys.exit(2)
@@ -232,7 +239,7 @@ def main(argv=None) -> None:
     ctx = {"kind": kind,
            "rule_id": args.rule_id or (Path(args.rule).stem if args.rule else f"app:{args.app}"),
            "version": args.version or _default_version(args.rule, args.params),
-           "source": args.source, "change": args.change, "note": args.note, **arch}
+           "source": args.source, "change": args.change, "note": args.note, "implements": implements, **arch}
     try:                      # 普通模式:成绩算完当场记账(summarize 里)
         doc = build_list(panel, hits, cfg, args.list_id, args.blind, label, args.title,
                          errata_info=errata, ledger=ctx,
@@ -249,7 +256,7 @@ def main(argv=None) -> None:
     if args.blind:
         try:
             entry = add_round(cfg, **{k: ctx[k] for k in ("kind", "rule_id", "version", "source",
-                                                          "change", "note")},
+                                                          "change", "note", "implements")},
                               list_id=args.list_id, auto=True, years=doc["params"]["inner_years"],
                               **arch)
         except BaseException as e:

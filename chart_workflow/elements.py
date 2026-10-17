@@ -18,26 +18,33 @@ F01～F15 每一行都能直接立要素,不用写代码:
     不给 N 就是整个看图窗口)/ events_at_least(至少 k 个)。
   · 定义 = {"row", "value", "cond", "variant", "user_params", "default_params"},建要素时当场校验:
     行、值、条件类型不存在,类型不匹配,口径不对,参数缺 / 多 / 类型不对,一律拒绝(不拖到判定时答
-    「无法判定」)。恒成立、不可能成立的定义也拒绝。
+    「无法判定」)。恒成立、不可能成立的定义也拒绝:按值声明的上下界判;根数的上界是看图窗口最长多少根;
+    量比、涨幅、比值数学上没有边界,声明的是合理范围(待验证),阈值落在范围外按「近乎恒成立 / 近乎不可能」
+    拒绝;百分比写成整数(30% 写成 30)出界时报错里提示单位。
   · 现有事实行都算不出的角度才记「待写代码」(definition 为 null,needs 写缺什么)。
 
-身份看定义,不看字面:身份 = 读的行 + 值 + 条件类型 + 口径 + user_params(系统默认值不算身份)。
+身份看定义,不看字面(same_meaning):读的行、值、条件类型、口径相同,并且 user_params 相同(系统默认值
+不算身份),或者两处参数合在一起相同——同一个参数不论写在 user_params 还是 default_params 都按同一条算。
 同一个意思只许一种写法,换个条件类型写出来的同义定义当场拒绝并指出该怎么写:
   · events_at_least 的 k 至少 2(k = 1 就是 events_any);
   · between 的一端碰到值的上下界就是 at_least / at_most;个数的阈值必须是整数;
   · 各值声明里的 same_as:跨行或跨类型的同义写法(如「按收盘连续越过 1 个峰」= F01 越过个数至少 1、
     「最近 1 根里有放量段」= F07 当天量比、「涨前状态是深跌」= dd250 至多深跌线),拒绝并指到规范写法;
-  · 「算不出时判否」的值(F04、F06 的 vs_latest_run)在下界上的 at_least 只是在问那个东西在不在,拒绝。
+  · 「算不出时判否」的值(F04、F06 的 vs_latest_run)的阈值盖住了值能取到的整个范围(at_least 不高于下界、
+    at_most 不低于上界)就只是在问那个东西在不在,拒绝并指到那一条。
   互为反面的写法(「最近 20 根里有派发」与「…没有派发」、at_least 2 与 at_most 1)是两条要素:
   意思相反,配上相反的角色才等价,那是卡上的事。
   其余去重规则:
-  · 新建的定义和已有要素相同(在用的;已合并的指到它并入的那条)→ 拒绝新建并报那个编号,
-    会话把这次的说法用 alias_element 挂上去。
+  · 新建的定义和在用的要素相同 → 拒绝新建并报那个编号,会话把这次的说法用 alias_element 挂上去。
+    已合并要素的定义不算到它并入的那条头上。
   · 在用要素的身份不变:revise_element 只能改系统默认值,定义变了就是另一条要素,新建。
-  · 待写代码的要素写成计算(revise_element 给 definition)时,定义和已有要素相同 → 拒绝,
-    提示用 merge_element 并过去(会话先问用户;工具只给合并操作和查重提示)。
-  · merge_element 是显式操作:被并的标 merged 与 merged_into,名字和别名挂到并入的那条,
-    引用旧编号的卡照常解析到新编号(resolve)。什么都不删。
+  · 待写代码的要素写成计算(revise_element 给 definition,并带这个定义是谁定的)时,定义和已有要素相同
+    → 拒绝,提示用 merge_element 并过去(会话先问用户;工具只给合并操作和查重提示)。
+  · merge_element 是显式操作,只许合并定义相同的两条:在用的直接比;待写代码的要带它写成计算的定义和
+    是谁定的,工具核对相同才并,被并的先追加写成计算的那一版。被并的标 merged 与 merged_into,名字和别名
+    挂到并入的那条,新卡引用旧编号会被拒、查询时解析到新编号(resolve)。什么都不删。
+  · 形态卡每个版本记下每个要素当时的版本号(工具填):判定、打印、账本都按记下的那一版取定义和来源,
+    要素后来的修订与合并不改变旧卡版本的含义。
 
 要素文件 <状态根>/elements/<element_id>.json(chart_workflow.element/1),是操作日志的物化结果
 (replay 是纯函数),版本只追加:
@@ -47,7 +54,8 @@ F01～F15 每一行都能直接立要素,不用写代码:
  "status": "active | pending_code | merged", "merged_into": null, "current_version": 1,
  "versions": [{"version", "ts", "op_id", "change", "needs",
                "definition": {"row": "F01", "value": "n_cleared", "cond": "at_least", "variant": null,
-                              "user_params": {"x": 1}, "default_params": {}} | null}]}
+                              "user_params": {"x": 1}, "default_params": {}} | null,
+               "definition_origin": <这一版的定义是谁定的(来源记录字段)> | null}]}
 status 由当前状态推出:合并过 → merged;当前版本有 definition → active(在用);没有 → pending_code。
 参数分两类:user_params 是用户说出来或选定的(「两个峰」里的 2),default_params 是系统取的默认值
 (待验证);每个参数只在其中一处。没有隐藏默认值:条件类型要的参数必须写在两处之一
@@ -57,12 +65,15 @@ status 由当前状态推出:合并过 → merged;当前版本有 definition →
   create_element  target {"element_id"(可省,自动分配), "as"(可省;同一决定文件里后面用 "$<as>" 指它)}
                   value {"name": <来源记录>, "origin", "suggested_by", "said_first_match", "suggested_value",
                          "definition": {...} | null, "needs"(definition 为 null 时必填)}
-  revise_element  target {"element_id"}  value {"definition", "needs", "change"}
+  revise_element  target {"element_id"}  value {"definition", "needs", "change",
+                                                 来源记录字段(待写代码写成计算时必填:定义是谁定的)}
   alias_element   target {"element_id"}  value {"text"}
-  merge_element   target {"element_id"(被并的)}  value {"into", "reason"}
+  merge_element   target {"element_id"(被并的)}  value {"into", "reason",
+                                                       "definition" + 来源记录字段(被并的是待写代码时必填)}
 谁提的:origin 必填;user_written 要带 said_first_match(用户原话);推荐来的 suggested_by 只能是
 detector(事实表)/ session / llm / general_knowledge(要素按编号复用,不经 own_library 抄来源)。
-要素读的事实行若是用户提的角度(facts.ROWS 的 source),账本记成「你提的角度」,不算系统推荐。
+要素读的事实行若是用户提的角度(facts.ROWS 的 source),且出处指的「提出角度」日志条目存在、排在这一版
+要素建立之前,账本记成「你提的角度」,不算系统推荐;否则按预设记。
 
 判定(evaluate,纯函数):读一张图的事实表(facts.compute_facts 的输出),答 yes / no / unknown 和一句
 理由。只读事实表,事实表只用买点及以前的 K 线,所以判定也读不到买点之后。值是 null 时按值的声明:
@@ -115,8 +126,10 @@ def _features_cfg() -> dict:
 # kind:count(整数)/ number / bool / category / events。title:人话名,"{variant}" 换成口径。
 # path:在这一行事实值(row["value"])里的取法,"." 分层,"{variant}" 换成口径。
 # variants:有口径的值写口径列表,没有的不写(定义里 variant 就是 null)。
-# lo / hi:值的下界 / 上界(写 ("cfg", 键) 的从 config 的 facts 子树取),用来拒绝恒成立、不可能、
-#          以及一端碰到边界的 between(那是 at_least / at_most)。
+# lo / hi:值的下界 / 上界,用来拒绝恒成立、不可能、以及一端碰到边界的 between(那是 at_least / at_most)。
+#          ("cfg", 键) 从 config 的 facts 子树取;("win", 偏移) = 看图窗口最长多少根 + 偏移(见 max_window_bars)。
+#          soft = True:数学上没有边界(量比、涨幅、比值),这里是合理范围(待验证)——阈值落在范围外按
+#          「近乎恒成立 / 近乎不可能」拒绝;百分比写成了整数(30% 写成 30)时会出界,报错里提示单位。
 # none:值是 null 时怎么判;不写 = unknown(回看不够长);("no", 理由) = 说的那个东西不存在,判否。
 # exists:none 判否的值,在下界上的 at_least 等于问哪一条(拒绝时提示)。
 # needs:这些取法(可含 "*" 表示列表里每一项)有一个是 null 就答 unknown(判定所依赖的输入算不出)。
@@ -154,6 +167,7 @@ def _pre_state_same(cond, p, variant):
 
 _EVENTS = {"bars_before": True}
 _MAXP = ("cfg", "max_peaks")
+_MAXB = ("win", -1)                    # 离买点的根数最多是窗口长度减一
 
 VALUES: dict[str, dict[str, dict]] = {
     "F01": {
@@ -170,7 +184,7 @@ VALUES: dict[str, dict[str, dict]] = {
     },
     "F04": {
         "bars": {"kind": "count", "title": "{variant}最早越过的那个峰离买点的根数", "path": "{variant}.bars",
-                 "variants": VARIANTS, "lo": 1, "none": ("no", "没有越过的峰"),
+                 "variants": VARIANTS, "lo": 1, "hi": _MAXB, "none": ("no", "没有越过的峰"),
                  "exists": "{variant}至少越过一个峰(F01 / F02 的 n_cleared at_least 1)"},
     },
     "F05": {
@@ -180,20 +194,24 @@ VALUES: dict[str, dict[str, dict]] = {
     "F06": {
         "dry": {"kind": "bool", "title": "买点前几天（含当天）量比都低于 1", "path": "dry", "needs": ("days.*.vr",)},
         "vs_latest_run": {"kind": "number", "title": "买点前几天均量 ÷ 最近一段放量段均量",
-                          "path": "vs_latest_run", "lo": 0, "unit": "times",
+                          "path": "vs_latest_run", "lo": 0.01, "hi": 10, "soft": True, "unit": "times",
                           "none": ("no", "窗口里没有放量段可比"),
                           "exists": "窗口里有放量段(F05 的 runs events_any)"},
     },
     "F07": {
-        "vr": {"kind": "number", "title": "买点当天量比", "path": "vr", "lo": 0, "unit": "times"},
+        "vr": {"kind": "number", "title": "买点当天量比", "path": "vr", "lo": 0.05, "hi": 100, "soft": True,
+               "unit": "times"},
     },
     "F08": {
         "pre_state": {"kind": "category", "title": "涨前状态", "path": "pre_state", "choices": PRE_STATES,
                       "same_as": _pre_state_same},
         "dd250": {"kind": "number", "title": "收盘离 250 日最高的幅度", "path": "dd250", "lo": -1, "hi": 0, "unit": "pct"},
-        "r60": {"kind": "number", "title": "60 日涨幅", "path": "r60", "lo": -1, "unit": "pct"},
-        "width40": {"kind": "number", "title": "40 日振幅占收盘", "path": "width40", "lo": 0, "unit": "pct"},
-        "M": {"kind": "number", "title": "日常波动幅度 M", "path": "M", "lo": 0, "unit": "pct"},
+        "r60": {"kind": "number", "title": "60 日涨幅", "path": "r60", "lo": -0.95, "hi": 20, "soft": True,
+                "unit": "pct"},
+        "width40": {"kind": "number", "title": "40 日振幅占收盘", "path": "width40", "lo": 0.005, "hi": 10,
+                    "soft": True, "unit": "pct"},
+        "M": {"kind": "number", "title": "日常波动幅度 M", "path": "M", "lo": 0.002, "hi": 1, "soft": True,
+              "unit": "pct"},
     },
     "F09": {
         f"{reg}_segments": {"kind": "events", "title": f"{REGIME_TEXT[reg]}段", "path": "segments",
@@ -201,14 +219,16 @@ VALUES: dict[str, dict[str, dict]] = {
         for reg in ("up", "down", "sideways")
     },
     "F10": {
-        "gap": {"kind": "number", "title": "当天开盘相对前一天收盘", "path": "gap", "lo": -1, "unit": "pct"},
+        "gap": {"kind": "number", "title": "当天开盘相对前一天收盘", "path": "gap", "lo": -0.9, "hi": 3,
+                "soft": True, "unit": "pct"},
         "gap_m_flag": {"kind": "bool", "title": "开盘跳空够 gap_m 倍 M", "path": "gap_m_flag", "needs": ("M",)},
     },
     "F11": {
         "segments": {"kind": "events", "title": "平台段", "path": "segments", "events": {"date": "start", **_EVENTS}},
     },
     "F12": {
-        "rise": {"kind": "number", "title": "买点前一段的涨幅", "path": "rise", "lo": -1, "unit": "pct"},
+        "rise": {"kind": "number", "title": "买点前一段的涨幅", "path": "rise", "lo": -0.95, "hi": 20,
+                 "soft": True, "unit": "pct"},
         "up_ratio": {"kind": "number", "title": "买点前一段的收阳比例", "path": "up_ratio", "lo": 0, "hi": 1,
                      "unit": "pct"},
         "max_dd": {"kind": "number", "title": "买点前一段的收盘最大回撤", "path": "max_dd", "lo": 0, "hi": 1,
@@ -267,9 +287,21 @@ def check_values() -> list[str]:
 
 # ── 判定(纯函数,只读事实表的值) ────────────────────────────────────────────
 
+def max_window_bars() -> int:
+    """看图窗口最长多少根:没框选时取买点前 default_lookback_bars 根(含买点共这么多加一根),框选时起点不早于
+    看图下界、买点不晚于训练段末日,最长是这两天之间的交易日数(按工作日算,待验证)。"""
+    import pandas as pd
+
+    cfg = load_config()
+    span = len(pd.bdate_range(str(cfg.get("view_floor") or cfg["train_start"]), str(cfg["train_end"])))
+    return max(int(cfg["facts"]["default_lookback_bars"]) + 1, span)
+
+
 def _bound(spec: dict, key: str):
     b = spec.get(key)
-    return _facts_cfg()[b[1]] if isinstance(b, tuple) else b
+    if isinstance(b, tuple):
+        return max_window_bars() + b[1] if b[0] == "win" else _facts_cfg()[b[1]]
+    return b
 
 
 def _vtitle(spec: dict, variant) -> str:
@@ -375,10 +407,21 @@ def evaluate(definition: dict, facts: dict) -> tuple[str, str]:
     return _judge(fid, spec, variant, definition["cond"], params, x)
 
 
-def evaluate_element(els: dict, eid: str, facts: dict) -> tuple[str, str]:
-    """一条要素(合并过的按它并入的那条)在一张图上的判定;待写代码的答 unknown。"""
-    el = els[resolve(els, eid)]
-    ver = el["versions"][-1]
+def element_version(els: dict, eid: str, version: int | None = None) -> dict:
+    """要素的一个版本。version 给了(形态卡上记下的版本号)→ 就取卡上引用的那条要素的那一版,不跟合并;
+    没给 → 合并过的按它并入的那条,取当前版本。"""
+    if version is not None:
+        vs = els[eid]["versions"]
+        if not 1 <= version <= len(vs):
+            raise ValueError(f"{eid} 没有版本 v{version}")
+        return vs[version - 1]
+    return els[resolve(els, eid)]["versions"][-1]
+
+
+def evaluate_element(els: dict, eid: str, facts: dict, version: int | None = None) -> tuple[str, str]:
+    """一条要素在一张图上的判定;待写代码的答 unknown。version:形态卡上记下的版本号(按那一版的定义判,
+    要素后来修订、合并都不影响);不给就按合并后的当前版本。"""
+    ver = element_version(els, eid, version)
     if ver.get("definition") is None:
         return "unknown", f"待写代码（{ver.get('needs') or '现有事实算不出'}）"
     return evaluate(ver["definition"], facts)
@@ -411,29 +454,43 @@ def _coerce_param(name: str, kind: str, spec: dict, x, at: str) -> tuple[object,
     return float(x), []
 
 
+def _unit_hint(spec: dict, x) -> str:
+    """百分比写成了整数(30% 写成 30)时出界:提示单位。"""
+    lo, hi = _bound(spec, "lo"), _bound(spec, "hi")
+    if spec.get("unit") == "pct" and abs(x) >= 1 and (lo is None or x / 100 >= lo) \
+            and (hi is None or x / 100 <= hi):
+        return f"(像是把百分数直接写成了数:{x:g}% 要写成 {x / 100:g})"
+    return ""
+
+
 def _semantic_errors(fid: str, vname: str, spec: dict, cond: str, p: dict, variant, at: str) -> list[str]:
     """恒成立 / 不可能 / 换种写法就是另一条定义的,拒绝。"""
     name, kind = _vtitle(spec, variant), spec["kind"]
     lo_b, hi_b = _bound(spec, "lo"), _bound(spec, "hi")
+    soft = "近乎" if spec.get("soft") else ""
+    span = f"{lo_b if lo_b is not None else '-∞'} 到 {hi_b if hi_b is not None else '+∞'}"
+    rng = f"{name}的合理范围是 {span},待验证" if soft else f"{name}在 {span} 之间"
     exists = spec.get("exists", "").replace("{variant}", VARIANT_TEXT.get(variant, ""))
 
     def trivial(what):
         if exists:
-            return [f"{at}: {name}{what}在有值时总成立,没有值时判否,所以它只是在问「{exists}」,直接用那一条"]
-        return [f"{at}: {name}{what}恒成立({name}在 {lo_b if lo_b is not None else '-∞'} 到 "
-                f"{hi_b if hi_b is not None else '+∞'} 之间),不能当条件"]
+            return [f"{at}: {name}{what}在有值时{soft}总成立,没有值时判否,所以它只是在问「{exists}」,直接用那一条"]
+        return [f"{at}: {name}{what}{soft}恒成立({rng}),不能当条件"]
+
+    def impossible(what, x):
+        return [f"{at}: {name}{what}{soft}不可能成立({rng}){_unit_hint(spec, x)}"]
 
     errs: list[str] = []
     if cond == "at_least":
         if lo_b is not None and p["x"] <= lo_b:
             errs += trivial(f"至少 {p['x']}")
         elif hi_b is not None and p["x"] > hi_b:
-            errs.append(f"{at}: {name}不会超过 {hi_b},至少 {p['x']} 不可能成立")
+            errs += impossible(f"至少 {p['x']}", p["x"])
     elif cond == "at_most":
         if hi_b is not None and p["x"] >= hi_b:
             errs += trivial(f"至多 {p['x']}")
         elif lo_b is not None and p["x"] < lo_b:
-            errs.append(f"{at}: {name}不会低于 {lo_b},至多 {p['x']} 不可能成立")
+            errs += impossible(f"至多 {p['x']}", p["x"])
     elif cond == "between":
         lo, hi = p["lo"], p["hi"]
         if lo > hi or (kind == "number" and lo == hi):
@@ -441,11 +498,15 @@ def _semantic_errors(fid: str, vname: str, spec: dict, cond: str, p: dict, varia
         elif lo_b is not None and lo <= lo_b:
             errs.append(f"{at}: 下限 {lo} 碰到了{name}的下界 {lo_b},等于至多 {hi}:写成 at_most")
         elif hi_b is not None and hi >= hi_b:
-            errs.append(f"{at}: 上限 {hi} 碰到了{name}的上界 {hi_b},等于至少 {lo}:写成 at_least")
+            errs.append(f"{at}: 上限 {hi} 碰到了{name}的上界 {hi_b}{_unit_hint(spec, hi)},等于至少 {lo}:写成 at_least")
     elif cond == "is_one_of" and len(p["values"]) == len(spec["choices"]):
         errs.append(f"{at}: 选了全部类别,恒成立,不能当条件")
-    elif cond.startswith("events_") and p.get("bars") is not None and not spec["events"].get("bars_before"):
-        errs.append(f"{at}: {fid} 的{name}没有离买点根数,不能限定最近 N 根")
+    elif cond.startswith("events_") and p.get("bars") is not None:
+        if not spec["events"].get("bars_before"):
+            errs.append(f"{at}: {fid} 的{name}没有离买点根数,不能限定最近 N 根")
+        elif p["bars"] >= max_window_bars():
+            errs.append(f"{at}: 最近 {p['bars']} 根不比看图窗口短(窗口最长 {max_window_bars()} 根),"
+                        f"等于整个窗口:不写 bars")
     if not errs and spec.get("same_as"):
         hint = spec["same_as"](cond, p, variant)
         if hint:
@@ -520,6 +581,17 @@ def identity(definition: dict) -> str:
                        definition["user_params"]], sort_keys=True, ensure_ascii=False)
 
 
+def same_meaning(a: dict, b: dict) -> bool:
+    """两个定义是不是同一条要素:行、值、条件类型、口径相同,并且用户参数相同(系统默认值不算身份),
+    或者把两处参数合在一起相同——同一个参数不论写在 user_params 还是 default_params 都按同一条算
+    (「量比至少 3」用户说的和系统默认的,不能借换个位置并存)。"""
+    head = lambda d: [d["row"], d["value"], d["cond"], d["variant"]]
+    if head(a) != head(b):
+        return False
+    merged = lambda d: {**d["default_params"], **d["user_params"]}
+    return a["user_params"] == b["user_params"] or merged(a) == merged(b)
+
+
 def definition_text(definition: dict) -> str:
     spec = VALUES[definition["row"]][definition["value"]]
     p = {**definition["default_params"], **definition["user_params"]}
@@ -559,12 +631,12 @@ def resolve(els: dict, eid: str) -> str:
 
 
 def find_same(els: dict, definition: dict, exclude: str | None = None) -> str | None:
-    """定义相同的已有要素(在用的,或合并前有这个定义的——返回它并入的那条);没有 → None。"""
-    key = identity(definition)
+    """和这个定义是同一条要素的在用要素(见 same_meaning);没有 → None。已合并的要素不算——
+    合并只许发生在定义相同的两条之间,不把被并那条的定义算到并入的那条头上。"""
     for eid, el in sorted(els.items()):
         d = el["versions"][-1].get("definition")
-        if eid != exclude and d is not None and identity(d) == key:
-            return resolve(els, eid)
+        if eid != exclude and el["status"] == "active" and d is not None and same_meaning(d, definition):
+            return eid
     return None
 
 
@@ -575,7 +647,7 @@ def similar(els: dict, definition: dict) -> list[str]:
         d = el["versions"][-1].get("definition")
         if el["status"] == "active" and d is not None and (d["row"], d["value"], d["variant"]) == \
                 (definition["row"], definition["value"], definition["variant"]) \
-                and identity(d) != identity(definition):
+                and not same_meaning(d, definition):
             out.append(f"{eid}「{el['name'].get('value')}」（{definition_text(d)}）")
     return out
 
@@ -692,14 +764,20 @@ def prepare_op(op: dict, els: dict, local: dict, path: str) -> list[str]:
                     return errs + e
                 if identity(defn) != identity(cur):
                     return errs + [f"{path}: 定义变了就是另一条要素(只能改系统默认值);新建一条"]
+                same = find_same(els, defn, exclude=eid)
+                if same:
+                    return errs + [f"{path}: 这样改完和已有要素 {same}「{els[same]['name'].get('value')}」"
+                                   f"成了同一条,不能改"]
             elif defn is not None:
                 defn, e = normalize_definition(defn, f"{path}.definition")
                 if e:
                     return errs + e
+                errs += _validate_origin(v, f"{path}(写成计算是谁定的)", wrapped=False, need_said=True)
                 same = find_same(els, defn, exclude=eid)
                 if same:
                     return errs + [f"{path}: 写成计算后和已有要素 {same}「{els[same]['name'].get('value')}」"
-                                   f"定义相同;问过用户后用 merge_element 把 {eid} 并到 {same}"]
+                                   f"定义相同;问过用户后用 merge_element 把 {eid} 并到 {same}"
+                                   f"(合并时带上这条定义和是谁定的,工具核对相同才合并)"]
             elif not str(v.get("needs") or "").strip():
                 errs.append(f"{path}: 还是待写代码就要写 needs")
             v["definition"] = defn
@@ -717,17 +795,57 @@ def prepare_op(op: dict, els: dict, local: dict, path: str) -> list[str]:
                     errs.append(f"{path}: 并入的要素 {into!r} 不存在或就是自己")
                 elif els[into]["status"] == "merged":
                     errs.append(f"{path}: {into} 已合并到 {resolve(els, into)},并到 {resolve(els, into)}")
+                elif els[into]["status"] != "active":
+                    errs.append(f"{path}: {into} 还是待写代码,比不了是不是同一个意思;只能并到在用的要素上")
+                else:
+                    errs += _merge_errors(el, els[into], v, path)
         if errs:
             return errs
     step(els, {**op, "ts": op.get("ts") or "预演", "op_id": op.get("op_id")})
     return []
 
 
-def _version(n: int, op: dict) -> dict:
+def _merge_errors(el: dict, into: dict, v: dict, path: str) -> list[str]:
+    """合并只许发生在定义相同的两条之间(就地把 v["definition"] 规范化)。在用的直接比;待写代码的要带
+    它写成计算的定义和是谁定的(origin 等),工具核对和并入的那条相同才合并。"""
+    src, dst = el["versions"][-1].get("definition"), into["versions"][-1]["definition"]
+    eid, iid = el["element_id"], into["element_id"]
+    if src is not None:
+        if "definition" in v:
+            return [f"{path}: {eid} 已经在用,合并不用带 definition"]
+        if not same_meaning(src, dst):
+            return [f"{path}: 只能合并定义相同的两条:{eid}({definition_text(src)})和 "
+                    f"{iid}({definition_text(dst)})不是同一个意思"]
+        return []
+    if v.get("definition") is None:
+        return [f"{path}: {eid} 还是待写代码:合并要带它写成计算的定义(definition)和是谁定的(origin 等),"
+                f"工具核对和 {iid} 相同才合并"]
+    defn, errs = normalize_definition(v["definition"], f"{path}.definition")
+    errs += _validate_origin(v, f"{path}(写成计算是谁定的)", wrapped=False, need_said=True)
+    if defn is not None:
+        v["definition"] = defn
+        if not same_meaning(defn, dst):
+            errs.append(f"{path}: {eid} 写成计算({definition_text(defn)})和 {iid}({definition_text(dst)})"
+                        f"不是同一个意思,不能合并")
+    return errs
+
+
+ORIGIN_KEYS = ("origin", "suggested_by", "said_first_match", "suggested_value")
+
+
+def _origin_of(v: dict) -> dict:
+    return {k: copy.deepcopy(v[k]) for k in ORIGIN_KEYS if k in v}
+
+
+def _version(n: int, op: dict, definition_origin: dict | None = None, change: str | None = None) -> dict:
+    """一个版本。definition_origin:这一版的定义是谁定的(建要素时就是要素的来源;待写代码写成计算、
+    合并时由那条操作带来;只改系统默认值的版本沿用上一版的)。待写代码的版本为 None。"""
     v = op["value"]
-    return {"version": n, "ts": op["ts"], "op_id": op.get("op_id"), "change": v.get("change") or "新建",
-            "needs": v.get("needs") if v.get("definition") is None else None,
-            "definition": copy.deepcopy(v.get("definition"))}
+    has = v.get("definition") is not None
+    return {"version": n, "ts": op["ts"], "op_id": op.get("op_id"), "change": change or v.get("change") or "新建",
+            "needs": None if has else v.get("needs"),
+            "definition": copy.deepcopy(v.get("definition")),
+            "definition_origin": copy.deepcopy(definition_origin) if has else None}
 
 
 def step(els: dict, op: dict) -> None:
@@ -742,20 +860,27 @@ def step(els: dict, op: dict) -> None:
         el = {"schema": SCHEMA, "element_id": eid, "name": copy.deepcopy(v["name"]),
               **{k: copy.deepcopy(v[k]) for k in ("origin", "suggested_by", "said_first_match",
                                                   "suggested_value") if k in v},
-              "aliases": [], "merged_into": None, "current_version": 1, "versions": [_version(1, op)]}
+              "aliases": [], "merged_into": None, "current_version": 1,
+              "versions": [_version(1, op, _origin_of(v))]}
         els[eid] = el
     else:
         if eid not in els:
             raise ValueError(f"要素 {eid!r} 不存在")
         el = els[eid]
         if act == "revise_element":
+            prev = el["versions"][-1]
+            who = _origin_of(v) if prev.get("definition") is None else prev.get("definition_origin")
             el["current_version"] += 1
-            el["versions"].append(_version(el["current_version"], op))
+            el["versions"].append(_version(el["current_version"], op, who))
         elif act == "alias_element":
             el["aliases"].append({"text": " ".join(str(v["text"]).split()), "ts": op["ts"],
                                   "op_id": op.get("op_id"), "actor": op.get("actor")})
         elif act == "merge_element":
             into = els[v["into"]]
+            if v.get("definition") is not None:          # 待写代码的:先记下写成计算的这一版,再并
+                el["current_version"] += 1
+                el["versions"].append(_version(el["current_version"], op, _origin_of(v),
+                                               change=f"写成计算,和 {v['into']} 相同,并入"))
             el["merged_into"] = v["into"]
             have = _texts(into)
             for t in [el["name"].get("value")] + [a["text"] for a in el["aliases"]]:
@@ -845,12 +970,22 @@ def origin_text(rec: dict) -> str:
     return f"改过的{BY_TEXT.get(by, by)}推荐（原为 {rec.get('suggested_value')}）"
 
 
-def angle(definition: dict | None) -> tuple[str | None, list[str]]:
-    """要素读的事实行是谁提的角度:("user" | "preset" | None(待写代码), 用户提那一行的操作日志条目)。"""
+def angle(ver: dict, ops: list[dict]) -> tuple[str | None, list[str]]:
+    """要素这一版读的事实行是谁提的角度:("user" | "preset" | None(待写代码), 用户提那一行的操作日志条目)。
+    只有代码里写的出处(facts.ROWS 的 source)指向的那条「提出角度」(propose_fact)真在日志里、
+    而且排在这一版的定义建立之前,才算用户提的角度;否则按预设的算。"""
+    definition = ver.get("definition")
     if definition is None:
         return None, []
     src = ROWS.get(definition["row"], {}).get("source", {})
-    return ("user", [src.get("op_id")]) if src.get("kind") == "user" else ("preset", [])
+    if src.get("kind") != "user":
+        return "preset", []
+    pos = {o.get("op_id"): k for k, o in enumerate(ops)}
+    k = pos.get(src.get("op_id"))
+    here = pos.get(ver.get("op_id"), len(ops))
+    if k is None or ops[k].get("act") != "propose_fact" or k >= here:
+        return "preset", []
+    return "user", [src["op_id"]]
 
 
 def label(els: dict, eid: str) -> str:
@@ -867,7 +1002,8 @@ def label(els: dict, eid: str) -> str:
     return s
 
 
-def render(el: dict) -> str:
+def render(el: dict, ops: list[dict] | None = None) -> str:
+    """一条要素的人话打印。ops:操作日志(判断「你提的角度」用;缺省现读)。"""
     ver = el["versions"][-1]
     d = ver.get("definition")
     lines = [f"{el['element_id']} 「{el['name'].get('value')}」  {STATUS_TEXT[el['status']]}"
@@ -877,9 +1013,11 @@ def render(el: dict) -> str:
     if d is None:
         lines.append(f"  待写代码：{ver.get('needs')}")
     else:
-        who, _ = angle(d)
+        who, _ = angle(ver, oplog.read_all() if ops is None else ops)
         lines.append(f"  条件：{definition_text(d)}（读 {d['row']}「{ROWS[d['row']]['title']}」的 {d['value']}"
                      + ("，你提的角度" if who == "user" else "") + f"）；{params_text(d)}")
+        if ver.get("definition_origin") and ver["version"] > 1:
+            lines.append(f"  定义是谁定的：{origin_text(ver['definition_origin'])}（v{ver['version']}）")
     if el["aliases"]:
         lines.append("  别的说法：" + "、".join(
             a["text"] + (f"（从 {a['from']} 并来）" if a.get("from") else "") for a in el["aliases"]))
@@ -893,7 +1031,8 @@ def _value_line(name: str, spec: dict) -> str:
         bits.append("，口径 " + " / ".join(f"{v}={VARIANT_TEXT[v]}" for v in spec["variants"]))
     lo, hi = _bound(spec, "lo"), _bound(spec, "hi")
     if lo is not None or hi is not None:
-        bits.append(f"，范围 {'' if lo is None else lo}～{'' if hi is None else hi}")
+        bits.append(f"，{'合理范围（待验证）' if spec.get('soft') else '范围'} "
+                    f"{'' if lo is None else lo}～{'' if hi is None else hi}")
     if kind == "category":
         bits.append("，取值 " + " / ".join(spec["choices"]))
     if kind == "events":
@@ -935,17 +1074,17 @@ def render_eval(snapshot: dict, els: dict, eids: list[str] | None = None, card: 
     for r in snapshot["results"]:
         f = r["facts"]
         lines.append(f"{f.get('symbol')} 买点 {f.get('buy_date')}" + (f"（标注 {r['ann_id']}）" if r.get("ann_id") else ""))
-        if card is not None:
-            items = [(ing["element"], ROLE_TEXT.get(ing.get("role"), ing.get("role")))
+        if card is not None:            # 按卡上记下的要素版本判
+            items = [(ing["element"], ROLE_TEXT.get(ing.get("role"), ing.get("role")), ing.get("element_version"))
                      for ing in card["versions"][-1]["card"].get("ingredients", []) if ing.get("element")]
         else:
-            items = [(eid, None) for eid in (eids or [e for e, el in sorted(els.items())
-                                                      if el["status"] == "active"])]
-        for eid, role in items:
+            items = [(eid, None, None) for eid in (eids or [e for e, el in sorted(els.items())
+                                                            if el["status"] == "active"])]
+        for eid, role, version in items:
             if eid not in els:
                 lines.append(f"  {eid}：要素库里没有")
                 continue
-            verdict, why = evaluate_element(els, eid, f)
+            verdict, why = evaluate_element(els, eid, f, version)
             lines.append(f"  {'【' + role + '】' if role else ''}{label(els, eid)}：{VERDICT_TEXT[verdict]}（{why}）")
         if not items:
             lines.append("  (没有要判的要素)")
@@ -979,14 +1118,15 @@ def main(argv=None) -> None:
     ev.add_argument("--shape", help="按这张形态卡当前版本引用的要素与角色判")
     args = ap.parse_args(argv)
     try:
-        els = replay(oplog.read_all())
+        ops = oplog.read_all()
+        els = replay(ops)
         if args.cmd == "show":
             if args.element_id:
                 if args.element_id not in els:
                     raise FileNotFoundError(f"要素不存在: {args.element_id}")
-                print(render(els[args.element_id]))
+                print(render(els[args.element_id], ops))
             else:
-                print("\n\n".join(render(el) for _, el in sorted(els.items())) or "(还没有要素)")
+                print("\n\n".join(render(el, ops) for _, el in sorted(els.items())) or "(还没有要素)")
         elif args.cmd == "conds":
             print(render_conds())
         elif args.cmd == "find":

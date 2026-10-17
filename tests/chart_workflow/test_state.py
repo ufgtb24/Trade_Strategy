@@ -24,7 +24,7 @@ def _git(cwd, *args):
 def no_snapshot_lock(monkeypatch):
     """主目录状态根的测试只看标记与水位:副本登记的核对另见 test_snaplock。"""
     from chart_workflow import snaplock
-    monkeypatch.setattr(snaplock, "verify", lambda ddir, root=None: None)
+    monkeypatch.setattr(snaplock, "verify", lambda ddir, root=None, file=None: None)
 
 
 def test_worktree_resolves_to_main_and_marker_required(tmp_path, monkeypatch, no_snapshot_lock):
@@ -177,7 +177,7 @@ def test_writers_advance_watermark(state_dir):
                  charts=[{"symbol": "A", "start": "2025-02-03", "end": "2025-03-03"}],
                  note="测试", ts="2026-10-17T10:00:00", backfill=True)
     wm = json.loads((state_dir / ".watermark.json").read_text())
-    assert len(wm["lines"]["views.jsonl"]) == 1
+    assert wm["lines"]["views.jsonl"]["n"] == 1
 
 
 def test_append_only_files_merge_by_line_and_tmp_ignored():
@@ -256,3 +256,130 @@ def test_no_ledger_path_built_from_root_dir():
                     any(re.search(rf"[\"'/]{re.escape(n)}", code) for n in LEDGER_NAMES):
                 bad.append(f"{f.name}:{i}")
     assert not bad, f"记账类路径经 root_dir 拼出:{sorted(set(bad))}"
+
+
+# ── 水位:不存每行指纹进水位文件、只读核对不写、旧格式照常核对 ─────────────────────
+
+def test_watermark_compact_and_seen_lines_kept(state_dir):
+    """水位文件里每份只追加的文件只记字节数、开头那段的指纹、行数;见过的行指纹在旁边的见过记录里,
+    正常追加只往见过记录追加新行。"""
+    from chart_workflow import views
+    for k in range(3):
+        views.record(surface="manual", event="show_chart", outcome_visible=True,
+                     charts=[{"symbol": "A", "start": "2025-02-03", "end": "2025-03-03"}],
+                     note=f"测试 {k}", ts=f"2026-10-17T10:00:0{k}", backfill=True)
+    raw = (state_dir / ".watermark.json").read_text()
+    wm = json.loads(raw)
+    e = wm["lines"]["views.jsonl"]
+    assert set(e) == {"bytes", "sha", "n"} and e["n"] == 3
+    assert e["bytes"] == (state_dir / "views.jsonl").stat().st_size
+    seen = (state_dir / ".watermark.seen" / "views.jsonl.txt").read_text().split()
+    assert len(seen) == 3 and not any(h in raw for h in seen)          # 行指纹不在水位文件里
+    (state_dir / "views.jsonl").write_text("\n".join(
+        (state_dir / "views.jsonl").read_text().splitlines()[1:]) + "\n")   # 删掉第一行
+    with pytest.raises(state.StateRootRegressed, match="views.jsonl 少了 1 行"):
+        state.state_root()
+
+
+def test_check_root_writes_nothing(state_dir):
+    (state_dir / "ledger.jsonl").write_text('{"r": 1}\n')
+    assert not (state_dir / ".watermark.json").exists()
+    assert state.check_root() == state_dir
+    assert not (state_dir / ".watermark.json").exists() and not (state_dir / ".watermark.seen").exists()
+    state.state_root()
+    before = (state_dir / ".watermark.json").read_text()
+    with (state_dir / "ledger.jsonl").open("a") as f:
+        f.write('{"r": 2}\n')
+    state.check_root()
+    assert (state_dir / ".watermark.json").read_text() == before
+    (state_dir / "ledger.jsonl").write_text('{"r": 2}\n')                # 少了见过的一行:只读核对也停
+    with pytest.raises(state.StateRootRegressed):
+        state.check_root()
+
+
+def test_old_format_watermark_still_checked(state_dir):
+    """旧格式水位(整份行指纹表在水位文件里):照样核对,少了行就停;核对通过就改写成新格式。"""
+    led = state_dir / "ledger.jsonl"
+    led.write_text('{"r": 1}\n{"r": 2}\n')
+    old = {"schema": "chart_workflow.watermark/1", "state_root": str(state_dir),
+           "lines": {"ledger.jsonl": state._line_hashes(led)}, "files": {}}
+    (state_dir / ".watermark.json").write_text(json.dumps(old))
+    led.write_text('{"r": 2}\n')
+    with pytest.raises(state.StateRootRegressed, match="ledger.jsonl 少了 1 行"):
+        state.state_root()
+    led.write_text('{"r": 2}\n{"r": 1}\n{"r": 3}\n')
+    state.state_root()
+    wm = json.loads((state_dir / ".watermark.json").read_text())
+    assert wm["schema"] == state.WATERMARK_SCHEMA and wm["lines"]["ledger.jsonl"]["n"] == 3
+
+
+def test_seen_record_lost_stops(state_dir):
+    led = state_dir / "ledger.jsonl"
+    led.write_text('{"r": 1}\n')
+    state.state_root()
+    (state_dir / ".watermark.seen" / "ledger.jsonl.txt").unlink()
+    led.write_text('{"x": 1}\n{"r": 1}\n')                               # 开头变了,要用见过记录
+    with pytest.raises(state.StateRootRegressed, match="见过记录"):
+        state.state_root()
+
+
+# ── 别的分支上有更新的账(真实的临时 git 仓库)──────────────────────────────
+
+def _repo_with_state(tmp_path, monkeypatch):
+    monkeypatch.delenv(state.ENV_VAR, raising=False)
+    main = tmp_path / "main"
+    root = main / "outputs" / "chart_workflow"
+    root.mkdir(parents=True)
+    _git(main, "init", "-q", "-b", "master")
+    (root / state.MARKER).write_text(state.MARKER_TEXT)
+    (root / "ledger.jsonl").write_text('{"r": 1}\n')
+    (main / "code.py").write_text("x = 1\n")
+    _commit_all(main, "代码与账本")
+    return main, root
+
+
+def test_other_branch_with_newer_ledger_stops(tmp_path, monkeypatch, no_snapshot_lock):
+    main, root = _repo_with_state(tmp_path, monkeypatch)
+    assert state.state_root(start=main) == root.resolve()
+    _git(main, "checkout", "-q", "-b", "pc")                      # 另一台机器的分支记了账
+    with (root / "ledger.jsonl").open("a") as f:
+        f.write('{"r": "pc"}\n')
+    _commit_all(main, "pc 记账")
+    _git(main, "checkout", "-q", "master")
+    with pytest.raises(state.StateRootDiverged) as ei:
+        state.state_root(start=main)
+    assert state.DIVERGED_TEXT in str(ei.value) and "pc(1 个提交)" in str(ei.value)
+    assert isinstance(ei.value, state.StateRootMissing)
+    with pytest.raises(state.StateRootDiverged):
+        state.check_root(start=main)
+    _git(main, "merge", "-q", "--no-edit", "pc")                   # 合进来就照常
+    assert state.state_root(start=main) == root.resolve()
+
+
+def test_remote_tracking_branch_counts_and_ahead_is_fine(tmp_path, monkeypatch, no_snapshot_lock):
+    main, root = _repo_with_state(tmp_path, monkeypatch)
+    base = subprocess.run(["git", "rev-parse", "HEAD"], cwd=main, capture_output=True, text=True).stdout.strip()
+    with (root / "ledger.jsonl").open("a") as f:                  # 本分支领先:正常
+        f.write('{"r": 2}\n')
+    _commit_all(main, "本机记账")
+    _git(main, "update-ref", "refs/remotes/origin/master", base)    # 远端落后(是祖先):正常
+    assert state.state_root(start=main) == root.resolve()
+    _git(main, "checkout", "-q", "-b", "tmp", base)               # 造一个远端领先、和本地分叉的提交
+    (root / "views.jsonl").write_text('{"v": 1}\n')
+    _commit_all(main, "另一台机器看过")
+    far = subprocess.run(["git", "rev-parse", "HEAD"], cwd=main, capture_output=True, text=True).stdout.strip()
+    _git(main, "checkout", "-q", "master")
+    _git(main, "branch", "-D", "tmp")
+    _git(main, "update-ref", "refs/remotes/origin/master", far)
+    with pytest.raises(state.StateRootDiverged, match="origin/master"):
+        state.state_root(start=main)
+
+
+def test_other_branch_touching_only_code_or_marker_is_fine(tmp_path, monkeypatch, no_snapshot_lock):
+    main, root = _repo_with_state(tmp_path, monkeypatch)
+    _git(main, "checkout", "-q", "-b", "feature")
+    (main / "code.py").write_text("x = 2\n")
+    (root / state.MARKER).write_text(state.MARKER_TEXT + "\n多一行说明\n")   # 只改了标记文件:算代码
+    _commit_all(main, "改代码与标记说明")
+    _git(main, "checkout", "-q", "master")
+    assert state.state_root(start=main) == root.resolve()

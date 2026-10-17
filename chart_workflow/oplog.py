@@ -11,7 +11,8 @@ read_all() 按月份文件顺序读回。文件:<状态根>/oplog/<YYYY-MM>.json
  "ctx": {"list_id": "...", "list_kind": "bigmoves", "outcome_visible": true, "n_shown": 7}}
 
 摆过没选的、被拒的、改写过的都留在日志里;只有 SHAPE_ACTS 这几类会进形态卡,ELEMENT_ACTS 这几类
-会进要素库。propose_fact:用户提了一个现有事实行没有的角度(value {"said": 原话}),只进日志——
+会进要素库——这两类只能经决定文件(shapes.apply)写入,直接调 append 写它们会被拒;重算(shapes rebuild)
+时还会把它们逐条重新走一遍决定文件的校验(shapes.revalidate)。propose_fact:用户提了一个现有事实行没有的角度(value {"said": 原话}),只进日志——
 照它写成的事实行在 facts.ROWS 里把出处指向这一条(op_id)。
 """
 from __future__ import annotations
@@ -29,6 +30,7 @@ ELEMENT_ACTS = ("create_element", "revise_element", "alias_element", "merge_elem
 ACTS = ("shown", "pick", "unpick", "edit", "type", "reject", "first_impression",
         "first_impression_skipped", "confirm", "undo", "propose_fact") + SHAPE_ACTS + ELEMENT_ACTS
 FIELDS = ("ts", "op_id", "actor", "surface", "act", "target", "value", "options", "ctx")
+VIA_DECISION = object()          # shapes.apply 校验完决定文件后传给 append 的凭据
 
 
 def oplog_dir() -> Path:
@@ -60,8 +62,16 @@ def check_entry(e) -> list[str]:
     return errs
 
 
-def append(entries: list[dict]) -> list[dict]:
-    """补上 ts / op_id 后一次性追加到当月文件,返回补全后的条目。任何一条格式不对就一条都不写。"""
+def append(entries: list[dict], via=None) -> list[dict]:
+    """补上 ts / op_id 后一次性追加到当月文件,返回补全后的条目。任何一条格式不对就一条都不写。
+    要素与形态卡这两类操作只能经决定文件写(shapes.apply 校验后传 via=VIA_DECISION);直接写日志
+    不跑来源校验,拒绝。"""
+    if via is not VIA_DECISION:
+        bad = sorted({e.get("act") for e in entries if isinstance(e, dict)
+                      and (e.get("act") in SHAPE_ACTS or e.get("act") in ELEMENT_ACTS)})
+        if bad:
+            raise ValueError(f"{'、'.join(bad)} 只能经决定文件写(python -m chart_workflow.shapes apply);"
+                             f"直接写操作日志不跑来源校验")
     errs = [f"第 {k + 1} 条:{m}" for k, e in enumerate(entries) for m in check_entry(e)]
     if errs:
         raise ValueError("; ".join(errs))

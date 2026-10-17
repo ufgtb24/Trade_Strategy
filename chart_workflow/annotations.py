@@ -7,8 +7,12 @@
       框选起止可空(「数据有误」除外),peeked_before_buy;大涨段清单的改点痕迹 first_buy_points
       (第一次露出结果时的买点,null = 没露出过)与 changed_after_reveal(露出结果后买点改过或清除过);
       批次头有 list_kind 与 outcome_visible(后端按清单文件的 kind 填:盲看清单 false,其余 true)。
+      大涨段标注还有 outcome_seen_elsewhere(后端填:决策日之后的走势在第一次露出结果之前是否已经在别处
+      露出过,{"level": "careful | in_list" | null, "before", "careful": [出处], "in_list": [出处]},
+      见 views.outcome_trail;以哪一级为准由流程骨架定),别的清单种类为 null。
 读 v1 时:buy_date 视为一个主买点,outcome_visible 视为 true,list_kind 为 null,peeked_before_buy 为 false。
-没有改点痕迹字段的(v1 与早期 v2):first_buy_points 为 null,changed_after_reveal 为 false。
+没有改点痕迹字段的(v1 与早期 v2):first_buy_points 为 null,changed_after_reveal 为 false;
+没有 outcome_seen_elsewhere 的为 null(没查过,不等于没露出过)。
 """
 from __future__ import annotations
 
@@ -25,7 +29,7 @@ def _norm_v1(a: dict) -> dict:
             "range_start": a.get("range_start"), "range_end": a.get("range_end"),
             "buy_points": [{"date": bd, "primary": True}] if bd else [],
             "label": a.get("label"), "note": a.get("note", ""), "peeked_before_buy": False,
-            "first_buy_points": None, "changed_after_reveal": False,
+            "first_buy_points": None, "changed_after_reveal": False, "outcome_seen_elsewhere": None,
             "updated_at": a.get("updated_at")}
 
 
@@ -46,6 +50,7 @@ def _norm_v2(a: dict) -> dict:
             "first_buy_points": None if first is None else
             [{"date": b["date"], "primary": bool(b.get("primary"))} for b in first],
             "changed_after_reveal": bool(a.get("changed_after_reveal", False)),
+            "outcome_seen_elsewhere": a.get("outcome_seen_elsewhere"),
             "updated_at": a.get("updated_at")}
 
 
