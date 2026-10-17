@@ -1,15 +1,18 @@
-"""操作日志:看图「说出形态」时每一下点选、改写、拒绝、建卡改卡都记一行,只追加。
+"""操作日志:看图「说出形态」时每一下点选、改写、拒绝、建卡改卡、建要素改要素都记一行,只追加。
 
-操作日志是唯一真相,形态卡是它的物化结果(见 shapes.replay)。append() 是唯一写入口,
+操作日志是唯一真相,要素与形态卡是它的物化结果(见 elements.replay、shapes.replay)。append() 是唯一写入口,
 read_all() 按月份文件顺序读回。文件:<状态根>/oplog/<YYYY-MM>.jsonl,每行一条:
 {"ts": "YYYY-MM-DDTHH:MM:SS", "op_id": "<uuid4>", "actor": "user | session", "surface": "chat",
  "act": "shown | pick | unpick | edit | type | reject | first_impression | first_impression_skipped |
-         confirm | undo | create_shape | revise_shape | add_case | rename_shape | merge_shape | set_status",
- "target": {"ann_id": "...", "shape_id": "s001", "version": 2, "field": "triggers"},
+         confirm | undo | propose_fact | create_shape | revise_shape | add_case | rename_shape |
+         merge_shape | set_status | create_element | revise_element | alias_element | merge_element",
+ "target": {"ann_id": "...", "shape_id": "s001", "element_id": "E001", "version": 2, "field": "triggers"},
  "value": ..., "options": [{"sid": "...", "value": "...", "suggested_by": "detector", "rank": 1}],
  "ctx": {"list_id": "...", "list_kind": "bigmoves", "outcome_visible": true, "n_shown": 7}}
 
-摆过没选的、被拒的、改写过的都留在日志里;只有 SHAPE_ACTS 这几类会进形态卡。
+摆过没选的、被拒的、改写过的都留在日志里;只有 SHAPE_ACTS 这几类会进形态卡,ELEMENT_ACTS 这几类
+会进要素库。propose_fact:用户提了一个现有事实行没有的角度(value {"said": 原话}),只进日志——
+照它写成的事实行在 facts.ROWS 里把出处指向这一条(op_id)。
 """
 from __future__ import annotations
 
@@ -22,8 +25,9 @@ from chart_workflow.state import advance, state_root
 
 ACTORS = ("user", "session")
 SHAPE_ACTS = ("create_shape", "revise_shape", "add_case", "rename_shape", "merge_shape", "set_status")
+ELEMENT_ACTS = ("create_element", "revise_element", "alias_element", "merge_element")
 ACTS = ("shown", "pick", "unpick", "edit", "type", "reject", "first_impression",
-        "first_impression_skipped", "confirm", "undo") + SHAPE_ACTS
+        "first_impression_skipped", "confirm", "undo", "propose_fact") + SHAPE_ACTS + ELEMENT_ACTS
 FIELDS = ("ts", "op_id", "actor", "surface", "act", "target", "value", "options", "ctx")
 
 
@@ -50,6 +54,9 @@ def check_entry(e) -> list[str]:
             errs.append(f"{k} 必须是对象")
     if e.get("options") is not None and not isinstance(e["options"], list):
         errs.append("options 必须是列表")
+    if e.get("act") == "propose_fact" and not (isinstance(e.get("value"), dict)
+                                               and str(e["value"].get("said") or "").strip()):
+        errs.append("propose_fact 的 value 要带 said(用户提这个角度的原话)")
     return errs
 
 

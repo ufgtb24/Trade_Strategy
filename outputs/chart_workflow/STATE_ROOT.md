@@ -12,10 +12,15 @@ path2_web 的看图工作流后端)自动定位主目录(git 仓库的 main work
 - `annotations/`:原始标注批次
 - `views.jsonl`、`viewed_lists/`:看过记录与看过的清单快照
 - `facts/`:给用户看过的事实表快照
-- `shapes/`:形态卡(由操作日志重算)
-- `oplog/`:操作日志(形态卡的唯一真相)
+- `elements/`:要素库(在事实表的行上定出来的是 / 否条件,由操作日志重算)
+- `shapes/`:形态卡(引用要素编号,由操作日志重算)
+- `oplog/`:操作日志(要素与形态卡的唯一真相)
 - `ledger.jsonl`:账本
 - `rule_archive/`:对照页用过的规则文件存档
+- `config_archive/`:每轮记账时生效配置的全文存档(按指纹)
+- `watermark_resets.jsonl`:水位重置记录(谁、为什么改写过记账文件)
+- `snapshot_lock.json`:这本账用的是哪一份训练数据副本(指纹、文件数、生成时间、在哪台机器生成,
+  以及换副本的记录)。两台机器必须用同一份副本:在一台机器生成,原样拷到另一台
 
 不进 git 的(可重算的产物,随各自 worktree 的 `outputs/chart_workflow/`):清单 `lists/`、
 缓存 `cache/`、数据错误登记 `data_errors.json`。

@@ -193,9 +193,18 @@ def test_append_only_files_merge_by_line_and_tmp_ignored():
                        ("outputs/chart_workflow/.watermark.json", True),
                        ("outputs/chart_workflow/annotations/b.json", False),
                        ("outputs/chart_workflow/config_archive/x.json", False),
+                       ("outputs/chart_workflow/elements/E001.json", False),
+                       ("outputs/chart_workflow/elements/E001.json.tmp", True),
                        ("outputs/chart_workflow/watermark_resets.jsonl", False)):
         r = subprocess.run(["git", "check-ignore", "-q", "--no-index", f], cwd=REPO_ROOT)
         assert (r.returncode == 0) == ignored, f
+
+
+def test_tracked_marker_matches_code():
+    """受 git 跟踪的标记文件与代码里的说明一致(列出了全部进 git 的记账类文件,含要素库)。"""
+    assert (REPO_ROOT / "outputs" / "chart_workflow" / state.MARKER).read_text() == state.MARKER_TEXT
+    for _, rel, _ in state._KINDS:
+        assert f"`{rel}" in state.MARKER_TEXT, rel
 
 
 def test_not_a_repo(tmp_path, monkeypatch):
@@ -210,7 +219,7 @@ def test_not_a_repo(tmp_path, monkeypatch):
 #   ② 由 root_dir(...) 起头的 `/` 路径链里出现记账类名字的字符串字面量,
 # 都算违规。用 AST 找出所有以 root_dir(...) 为最左操作数的 BinOp(Div) 链,检查链上的字面量;
 # 另用正则兜底扫同一行里同时出现 root_dir( 与记账类名字的情况。
-LEDGER_NAMES = ("annotations", "ledger.jsonl", "views.jsonl", "viewed_lists", "shapes", "oplog",
+LEDGER_NAMES = ("annotations", "ledger.jsonl", "views.jsonl", "viewed_lists", "elements", "shapes", "oplog",
                 "facts", "rule_archive", "config_archive", "watermark_resets", "snapshot_lock")
 
 

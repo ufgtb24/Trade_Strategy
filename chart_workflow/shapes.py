@@ -1,14 +1,18 @@
-"""形态卡:一种形态由哪些要素组成、各按什么口径算、触发、买前失效、为什么会涨、卖法。
+"""形态卡:一种形态引用哪些要素、各是什么角色、触发、为什么会涨、卖法。
 
-操作日志(oplog.py)是唯一真相,形态卡是它的物化结果:replay(ops) 是纯函数,只看
-create_shape / revise_shape / add_case / rename_shape / merge_shape / set_status 六类;
-摆过没选的、被拒的都只进日志、不进卡。写入流程:校验 → 追加日志 → 从全部日志重算受影响的卡 → 写卡
-(规范化 JSON:ensure_ascii=False, indent=1, sort_keys=True,先写临时文件再换名)。
+要素(是 / 否条件,有自己的编号 E001…)在要素库里(elements.py),形态卡只引用要素编号,角色
+(必须有 / 加分 / 有它就不买)写在卡上——同一条要素在不同形态里可以是不同角色。事实表的行(facts.py)
+只是计算方法与每张图的结果,不进形态卡。口径分歧的回答,就是在两条候选要素里选一条。
+
+操作日志(oplog.py)是唯一真相,形态卡与要素都是它的物化结果:replay(ops) 是纯函数,只看
+create_shape / revise_shape / add_case / rename_shape / merge_shape / set_status 六类(要素的四类见
+elements.py);摆过没选的、被拒的都只进日志、不进卡。写入流程:校验 → 追加日志 → 从全部日志重算受影响的
+要素与卡 → 写文件(规范化 JSON:ensure_ascii=False, indent=1, sort_keys=True,先写临时文件再换名)。
 
     uv run python -m chart_workflow.shapes apply <决定.json>
     uv run python -m chart_workflow.shapes show [<shape_id>]
     uv run python -m chart_workflow.shapes show --pending
-    uv run python -m chart_workflow.shapes rebuild [--verify]
+    uv run python -m chart_workflow.shapes rebuild [--verify]     # 形态卡与要素一起重算 / 比对
 
 来源记录(每个会变成规则条件的值包一层;数值门槛不包):
 {"value": ..., "origin": "user_written | suggested_adopted | suggested_edited",
@@ -18,32 +22,37 @@ create_shape / revise_shape / add_case / rename_shape / merge_shape / set_status
  "root": {<own_library 复用时,那条值当初入库时的来源记录,由工具从旧卡里抄>}}
 规则(validate,任一不过就拒绝写入并列出全部问题):origin 必填;推荐来的(adopted / edited)要写
 suggested_by;改过的推荐要带 suggested_value(用户自己写的也可以带,记下当时摆着的推荐);
-引用事实表行 / 触发候选 / 失效模板(term 不是 custom)的值永远算推荐——推荐来的只能是
-detector 或 own_library,用户自己写的必须带非空 said_first_match。
-从你以前的形态卡复用(own_library)时,会话只填 from_card:旧卡编号 shape_id、版本 version、要素编号
-ref(要素 ing_id、触发 trig_id、口径选择 "<ing_id>.choices.<名>"、story、exit_pref);不接受会话自带的
-root。工具去旧卡那个版本里找到那一条,把它当初的来源(它本身也是复用的,就取它的 root,一直到底)
-抄成 root;引用编号(term)和旧卡那一条对不上、卡 / 版本 / 要素不存在,都拒绝。算条件构成时递归到
-root,防止采纳过的系统推荐经用户的卡转一手被洗成用户来源。
-包一层的粒度:每个要素(及 choices 里每一项)、每个触发、每个分歧答案、形态名字、story、exit_pref、
-每个样本的买点与形态认领。
+触发引用触发候选(term 不是 custom)时永远算推荐——推荐来的只能是 detector 或 own_library,
+用户自己写的必须带非空 said_first_match。
+形态卡上要素那一项的来源记录记的是「角色是谁定的」(把这条要素以这个角色放进这个形态);
+要素本身是谁提的记在要素库里。
+从你以前的形态卡复用(own_library)时,会话只填 from_card:旧卡编号 shape_id、版本 version、编号 ref
+(要素那一项 ing_id、触发 trig_id、story、exit_pref);不接受会话自带的 root。工具去旧卡那个版本里找到
+那一条,把它当初的来源(它本身也是复用的,就取它的 root,一直到底)抄成 root;引用的要素(合并过的按并入
+的那条比)或触发编号和旧卡那一条对不上、卡 / 版本 / 那一条不存在,都拒绝。算条件构成时递归到 root,
+防止采纳过的系统推荐经用户的卡转一手被洗成用户来源。
+包一层的粒度:每个要素项、每个触发、每个分歧答案、形态名字、story、exit_pref、每个样本的买点与形态认领。
 
 形态卡 <状态根>/shapes/<shape_id>.json(chart_workflow.shape/1):
 {"schema", "shape_id": "s001", "name": <来源记录>, "aliases": [旧名], "status": "draft | confirmed |
  in_trial | judged | merged", "merged_into": null, "current_version": 1,
  "versions": [{"version", "ts", "change", "after_seeing_outcome", "list_kind", "from_ann",
-               "card": {"ingredients": [{"ing_id", "term": "F01..F15 | T1..T8 | I1 | I2 | custom",
-                                          "text"(custom 必填), "role": "must | bonus | must_not",
-                                          <来源记录字段>, "choices": {名: <来源记录>}}],
+               "card": {"ingredients": [{"ing_id", "element": "E001", "role": "must | bonus | must_not",
+                                          <来源记录字段:角色是谁定的>}],
                         "triggers": [{"trig_id", "term": "T1..T8 | custom", "text", <来源记录字段>}],
                         "story": <来源记录> | null, "exit_pref": <来源记录> | null}}],
  "cases": [{"ann_id", "batch_id", "buy_date": <来源记录>, "trigger_ref": "t1", "shape_claim": <来源记录>,
-            "divergence_answers": [{"dvid", "options", "choice": <来源记录>}], "facts_ref", "version"}]}
+            "divergence_answers": [{"dvid", "options": ["E001", "E002"], "choice": <来源记录,value 是选中的要素>}],
+            "facts_ref", "version"}]}
+新写的卡版本只能引用要素库里在用或待写代码的要素(合并过的要引用它并入的那条),同一条要素在一张卡里
+只出现一次;旧版本里引用的编号合并后照常能解析(elements.resolve)。
 版本只追加;改名只改 name,旧名进 aliases;合并时被并的卡写 status = merged 与 merged_into。
 after_seeing_outcome 由这一版引用的标注(from_ann)所在批次头的 outcome_visible 推出(v1 批次按 true;
 没引用标注时取决定文件 ctx 的 outcome_visible,缺省按 true),apply 时算好写进日志,replay 只照抄。
+show --pending 会提示可能重复的卡:两张卡当前版本引用的要素与角色、触发都相同(只提示,合并要用户确认后
+显式 merge_shape)。
 
-决定文件(会话把聊天里定下的一批东西写成一个文件,一次写进日志和卡;全部校验通过才写,任何一条不过
+决定文件(会话把聊天里定下的一批东西写成一个文件,一次写进日志、要素和卡;全部校验通过才写,任何一条不过
 就一条都不写):
 {"schema": "chart_workflow.decision/1", "actor": "session", "surface": "chat", "ctx": {...},
  "ops": [<操作日志条目,不含 ts / op_id;actor / surface / ctx 缺省取文件头>]}
@@ -55,7 +64,10 @@ after_seeing_outcome 由这一版引用的标注(from_ann)所在批次头的 out
   rename_shape  target {"shape_id"}  value {"name"}
   merge_shape   target {"shape_id"}  value {"into"}
   set_status    target {"shape_id"}  value {"status"}
-同一个决定文件里,后面的操作用 shape_id = "$new" 指这个文件里最近一次 create_shape 建的卡。
+四类要素操作(create_element / revise_element / alias_element / merge_element)见 elements.py。
+同一个决定文件里,后面的操作用 shape_id = "$new" 指这个文件里最近一次 create_shape 建的卡;
+create_element 带 target.as 时,后面用 "$<as>" 指它建的要素(卡上的 element、分歧的选项与答案、
+要素操作的 target 与 into 都可以这样写)。
 
 红线:不 import 标签口径(labels)、对照(control)、面板(panel)、清单(listfile),不读清单文件。
 """
@@ -68,6 +80,7 @@ import re
 import sys
 from pathlib import Path
 
+from chart_workflow import elements as E
 from chart_workflow import oplog
 from chart_workflow.annotations import iter_batches
 from chart_workflow.facts import INVALIDATIONS, ROWS, TRIGGERS
@@ -75,7 +88,7 @@ from chart_workflow.state import StateRootMissing, state_root
 
 SCHEMA = "chart_workflow.shape/1"
 DECISION_SCHEMA = "chart_workflow.decision/1"
-ORIGINS = ("user_written", "suggested_adopted", "suggested_edited")
+ORIGINS = E.ORIGINS
 SUGGESTED_BY = ("own_library", "detector", "llm", "general_knowledge", "session")
 ROLES = ("must", "bonus", "must_not")
 STATUSES = ("draft", "confirmed", "in_trial", "judged", "merged")
@@ -83,8 +96,8 @@ ORIGIN_FIELDS = ("origin", "suggested_by", "suggested_value", "said_first_match"
 ROOT_FIELDS = ("origin", "suggested_by", "suggested_value", "said_first_match")
 SHAPE_ID_RE = re.compile(r"^s(\d{3,})$")
 NEW_REF = "$new"
-CARD_TERMS = tuple(ROWS) + tuple(TRIGGERS) + tuple(INVALIDATIONS) + ("custom",)
 TRIGGER_TERMS = tuple(TRIGGERS) + ("custom",)
+ING_FIELDS = ("ing_id", "element", "role") + ORIGIN_FIELDS
 ROLE_TEXT = {"must": "必须有", "bonus": "加分", "must_not": "有它就不买"}
 BY_TEXT = {"detector": "事实表", "own_library": "你以前的形态卡", "llm": "大模型",
            "general_knowledge": "通用常识", "session": "会话"}
@@ -101,8 +114,8 @@ class ShapeValidationError(ValueError):
 # ── 来源记录与卡的校验 ───────────────────────────────────────────────────────
 
 def validate(rec, path: str, term: str | None = None, wrapped: bool = True) -> list[str]:
-    """一条来源记录的问题清单。wrapped:要求带 value(要素 / 触发的来源字段直接摊在条目上,不带 value)。
-    term:这个值引用的事实表行 / 触发 / 失效模板编号(custom 或 None 表示不引用)。"""
+    """一条来源记录的问题清单。wrapped:要求带 value(要素项 / 触发的来源字段直接摊在条目上,不带 value)。
+    term:这个值引用的触发候选编号(custom 或 None 表示不引用)。"""
     if not isinstance(rec, dict):
         return [f"{path}: 不是对象"]
     errs = []
@@ -124,7 +137,7 @@ def validate(rec, path: str, term: str | None = None, wrapped: bool = True) -> l
             errs.append(f"{path}: 引用 {term} 却记成用户自己写的,要带 said_first_match(用户先说的原话)")
         if origin in ("suggested_adopted", "suggested_edited") and by not in ("detector", "own_library",
                                                                               None):
-            errs.append(f"{path}: {term} 来自事实表,推荐来源只能是 detector 或 own_library")
+            errs.append(f"{path}: {term} 是事实脚本给的触发候选,推荐来源只能是 detector 或 own_library")
     if "root" in rec:
         errs.append(f"{path}: 不要自带 root;复用旧卡只给 from_card(旧卡编号、版本、要素编号),"
                     f"当初的来源由工具从旧卡里抄")
@@ -140,17 +153,15 @@ def validate(rec, path: str, term: str | None = None, wrapped: bool = True) -> l
     return errs
 
 
-def _element(card: dict, ref: str) -> tuple[dict | None, str | None]:
-    """卡的某个版本里 ref 指的那一条及它引用的编号(term;口径选择、story、exit_pref 没有 term)。"""
+def _element(card: dict, ref: str) -> tuple[dict | None, tuple | None]:
+    """卡的某个版本里 ref 指的那一条及它引用的东西:要素项 → ("element", 编号),
+    触发 → ("term", 编号);story、exit_pref 没有引用(None)。"""
     for ing in card.get("ingredients", []):
         if ing.get("ing_id") == ref:
-            return ing, ing.get("term")
-        for name, ch in (ing.get("choices") or {}).items():
-            if ref == f"{ing.get('ing_id')}.choices.{name}":
-                return ch, None
+            return ing, ("element", ing.get("element"))
     for t in card.get("triggers", []):
         if t.get("trig_id") == ref:
-            return t, t.get("term")
+            return t, ("term", t.get("term"))
     if ref in ("story", "exit_pref") and isinstance(card.get(ref), dict):
         return card[ref], None
     return None, None
@@ -164,17 +175,17 @@ def _bottom(el: dict) -> dict:
 
 
 def _origin_records(act: str, v: dict):
-    """一条形态操作 value 里所有来源记录:(记录, 引用编号, 路径)。"""
+    """一条形态操作 value 里所有来源记录:(记录, 引用的东西, 路径)。"""
     if act in ("create_shape", "rename_shape") and isinstance(v.get("name"), dict):
         yield v["name"], None, "name"
     card = v.get("card") if act in ("create_shape", "revise_shape") else None
     if isinstance(card, dict):
         for k, ing in enumerate(card.get("ingredients", [])):
-            yield ing, ing.get("term"), f"card.ingredients[{k}]"
-            for name, ch in (ing.get("choices") or {}).items():
-                yield ch, None, f"card.ingredients[{k}].choices.{name}"
+            if isinstance(ing, dict):
+                yield ing, ("element", ing.get("element")), f"card.ingredients[{k}]"
         for k, t in enumerate(card.get("triggers", [])):
-            yield t, t.get("term"), f"card.triggers[{k}]"
+            if isinstance(t, dict):
+                yield t, ("term", t.get("term")), f"card.triggers[{k}]"
         for key in ("story", "exit_pref"):
             if isinstance(card.get(key), dict):
                 yield card[key], None, f"card.{key}"
@@ -187,10 +198,21 @@ def _origin_records(act: str, v: dict):
                 yield da["choice"], None, f"divergence_answers[{k}].choice"
 
 
-def resolve_own_library(act: str, v: dict, cards: dict, path: str) -> list[str]:
+def _same_ref(new, old, els: dict) -> bool:
+    """复用时引用的东西是否相同:要素按合并后解析到的那条比,触发按编号比。"""
+    if new is None or old is None:
+        return new == old
+    if new[0] != old[0]:
+        return False
+    if new[0] == "element" and new[1] in els and old[1] in els:
+        return E.resolve(els, new[1]) == E.resolve(els, old[1])
+    return new[1] == old[1]
+
+
+def resolve_own_library(act: str, v: dict, cards: dict, els: dict, path: str) -> list[str]:
     """把 value 里每条 own_library 复用的 root 从旧卡里抄过来(就地改)。返回问题清单。"""
     errs = []
-    for rec, term, sub in _origin_records(act, v):
+    for rec, ref, sub in _origin_records(act, v):
         if rec.get("suggested_by") != "own_library":
             continue
         fc = rec["from_card"]
@@ -203,18 +225,20 @@ def resolve_own_library(act: str, v: dict, cards: dict, path: str) -> list[str]:
         if ver is None:
             errs.append(f"{where}: 旧卡 {fc['shape_id']} 没有版本 v{fc['version']}")
             continue
-        el, old_term = _element(ver["card"], fc["ref"])
+        el, old_ref = _element(ver["card"], fc["ref"])
         if el is None:
             errs.append(f"{where}: 旧卡 {fc['shape_id']} v{fc['version']} 里没有 {fc['ref']!r}")
             continue
-        if term is not None and old_term != term:
-            errs.append(f"{where}: 引用 {term},旧卡那一条引用的是 {old_term},不是同一个东西")
+        if ref is not None and not _same_ref(ref, old_ref, els):
+            errs.append(f"{where}: 引用 {ref[1]},旧卡那一条引用的是 {old_ref[1] if old_ref else '别的东西'},"
+                        f"不是同一个东西")
             continue
         rec["root"] = _bottom(el)
     return errs
 
 
-def validate_card(card, path: str = "card") -> list[str]:
+def validate_card(card, path: str, els: dict) -> list[str]:
+    """一个卡版本的格式,以及它引用的要素是否在要素库里(els 是预演状态)。"""
     if not isinstance(card, dict):
         return [f"{path}: 不是对象"]
     errs = []
@@ -224,29 +248,31 @@ def validate_card(card, path: str = "card") -> list[str]:
     ings = card.get("ingredients", [])
     if not isinstance(ings, list):
         return errs + [f"{path}.ingredients: 必须是列表"]
-    seen = set()
+    seen, used = set(), {}
     for k, ing in enumerate(ings):
         p = f"{path}.ingredients[{k}]"
         if not isinstance(ing, dict):
             errs.append(f"{p}: 不是对象")
             continue
-        iid, term = ing.get("ing_id"), ing.get("term")
+        extra = set(ing) - set(ING_FIELDS)
+        if extra:
+            errs.append(f"{p}: 未知字段 {sorted(extra)}(要素项只写 ing_id、element、role 和来源记录;"
+                        f"条件、口径、参数在要素库里)")
+        iid, eid = ing.get("ing_id"), ing.get("element")
         if not isinstance(iid, str) or not iid or iid in seen:
             errs.append(f"{p}: ing_id 缺失或重复 {iid!r}")
         seen.add(iid)
-        if term not in CARD_TERMS:
-            errs.append(f"{p}: term 不认识 {term!r}")
-        if term == "custom" and not str(ing.get("text") or "").strip():
-            errs.append(f"{p}: 自己写的要素(custom)要带 text")
+        if eid not in els:
+            errs.append(f"{p}: 要素 {eid!r} 不在要素库里(先 create_element;现有事实算不出的也建一条待写代码的)")
+        elif els[eid]["status"] == "merged":
+            errs.append(f"{p}: {eid} 已合并到 {E.resolve(els, eid)},引用 {E.resolve(els, eid)}")
+        elif eid in used:
+            errs.append(f"{p}: 要素 {eid} 在这张卡里已经出现过({used[eid]}),一张卡里只出现一次")
+        else:
+            used[eid] = iid
         if ing.get("role") not in ROLES:
             errs.append(f"{p}: role 只能是 {'/'.join(ROLES)}")
-        errs += validate(ing, p, term, wrapped=False)
-        choices = ing.get("choices") or {}
-        if not isinstance(choices, dict):
-            errs.append(f"{p}.choices: 必须是对象")
-        else:
-            for name, ch in choices.items():      # 口径选择本身不引用事实表编号
-                errs += validate(ch, f"{p}.choices.{name}")
+        errs += validate(ing, p, None, wrapped=False)
     trigs = card.get("triggers", [])
     if not isinstance(trigs, list):
         return errs + [f"{path}.triggers: 必须是列表"]
@@ -271,8 +297,8 @@ def validate_card(card, path: str = "card") -> list[str]:
     return errs
 
 
-def _validate_value(act: str, v, path: str) -> list[str]:
-    """六类形态操作 value 的格式(不看状态)。"""
+def _validate_value(act: str, v, path: str, els: dict) -> list[str]:
+    """六类形态操作 value 的格式(要素引用对 els 核对)。"""
     if not isinstance(v, dict):
         return [f"{path}: value 必须是对象"]
     errs = []
@@ -281,7 +307,7 @@ def _validate_value(act: str, v, path: str) -> list[str]:
         if isinstance(v.get("name"), dict) and not str(v["name"].get("value") or "").strip():
             errs.append(f"{path}.name: 名字不能为空")
     if act in ("create_shape", "revise_shape"):
-        errs += validate_card(v.get("card"), f"{path}.card")
+        errs += validate_card(v.get("card"), f"{path}.card", els)
         if not str(v.get("change") or "").strip():
             errs.append(f"{path}: change 必填(一句话说这一版改了什么)")
         if not isinstance(v.get("from_ann", []), list):
@@ -292,14 +318,48 @@ def _validate_value(act: str, v, path: str) -> list[str]:
         errs += validate(v.get("buy_date"), f"{path}.buy_date")
         errs += validate(v.get("shape_claim"), f"{path}.shape_claim")
         for k, da in enumerate(v.get("divergence_answers") or []):
+            p = f"{path}.divergence_answers[{k}]"
             if not isinstance(da, dict) or not isinstance(da.get("dvid"), str):
-                errs.append(f"{path}.divergence_answers[{k}]: 要有 dvid")
+                errs.append(f"{p}: 要有 dvid")
                 continue
-            errs += validate(da.get("choice"), f"{path}.divergence_answers[{k}].choice")
+            opts = da.get("options")
+            if not (isinstance(opts, list) and len(opts) >= 2 and len(set(map(str, opts))) == len(opts)):
+                errs.append(f"{p}: options 是两条以上不同的候选要素编号(口径分歧就是在候选要素里选一条)")
+            else:
+                miss = [o for o in opts if o not in els]
+                if miss:
+                    errs.append(f"{p}: 候选要素 {miss} 不在要素库里")
+            errs += validate(da.get("choice"), f"{p}.choice")
+            if isinstance(opts, list) and isinstance(da.get("choice"), dict) \
+                    and da["choice"].get("value") not in opts:
+                errs.append(f"{p}.choice: 选的要从 options 里挑")
     if act == "merge_shape" and not isinstance(v.get("into"), str):
         errs.append(f"{path}: into 必填")
     if act == "set_status" and v.get("status") not in STATUSES[:-1]:
         errs.append(f"{path}: status 只能是 {'/'.join(STATUSES[:-1])}(并卡用 merge_shape)")
+    return errs
+
+
+def _subst_refs(act: str, v, local: dict, path: str) -> list[str]:
+    """形态操作里的 "$<as>" 换成同一决定文件里 create_element 分到的编号(就地改)。"""
+    errs: list[str] = []
+    if not isinstance(v, dict):
+        return errs
+    card = v.get("card") if act in ("create_shape", "revise_shape") else None
+    if isinstance(card, dict):
+        for k, ing in enumerate(card.get("ingredients") or []):
+            if isinstance(ing, dict) and "element" in ing:
+                ing["element"] = E.subst(ing["element"], local, f"{path}.card.ingredients[{k}].element", errs)
+    if act == "add_case":
+        for k, da in enumerate(v.get("divergence_answers") or []):
+            if not isinstance(da, dict):
+                continue
+            if isinstance(da.get("options"), list):
+                da["options"] = [E.subst(o, local, f"{path}.divergence_answers[{k}].options", errs)
+                                 for o in da["options"]]
+            if isinstance(da.get("choice"), dict) and "value" in da["choice"]:
+                da["choice"]["value"] = E.subst(da["choice"]["value"], local,
+                                                f"{path}.divergence_answers[{k}].choice", errs)
     return errs
 
 
@@ -410,8 +470,9 @@ def _next_id(ids) -> str:
 
 
 def prepare(decision: dict, existing_ops: list[dict], anns: dict) -> tuple[list[dict], dict]:
-    """校验决定文件并补全(分配 shape_id、解析 $new、推出 after_seeing_outcome / list_kind / batch_id)。
-    返回 (待追加的条目, 重算后的全部卡)。任何问题 → ShapeValidationError(列出全部)。"""
+    """校验决定文件并补全(分配 shape_id / element_id、解析 $new 与 $<as>、规范化要素定义、
+    推出 after_seeing_outcome / list_kind / batch_id)。返回 (待追加的条目, 重算后的全部卡)。
+    任何问题 → ShapeValidationError(列出全部)。"""
     errs: list[str] = []
     if not isinstance(decision, dict) or decision.get("schema") != DECISION_SCHEMA:
         raise ShapeValidationError([f"schema 必须是 {DECISION_SCHEMA}"])
@@ -420,6 +481,8 @@ def prepare(decision: dict, existing_ops: list[dict], anns: dict) -> tuple[list[
         raise ShapeValidationError(["ops 必须是非空列表"])
     head_ctx = decision.get("ctx") or {}
     cards = replay(existing_ops)
+    els = E.replay(existing_ops)
+    local: dict[str, str] = {}                       # create_element 的 as → 分到的编号
     ids = set(cards) | {(o.get("target") or {}).get("shape_id") for o in existing_ops}
     last_new = None
     out = []
@@ -439,11 +502,22 @@ def prepare(decision: dict, existing_ops: list[dict], anns: dict) -> tuple[list[
             errs += [f"{path}: {m}" for m in e]
             continue
         act = op["act"]
+        if act in oplog.ELEMENT_ACTS:
+            e = E.prepare_op(op, els, local, path)
+            if e:
+                errs += e
+                continue
+            out.append(op)
+            continue
         if act not in oplog.SHAPE_ACTS:
             out.append(op)
             continue
         op["target"] = dict(op.get("target") or {})
         v = op.get("value")
+        e = _subst_refs(act, v, local, path)
+        if e:
+            errs += e
+            continue
         sid = op["target"].get("shape_id")
         if act == "create_shape":
             if sid is None:
@@ -453,11 +527,11 @@ def prepare(decision: dict, existing_ops: list[dict], anns: dict) -> tuple[list[
                 continue
             ids.add(sid)
             last_new = sid
-        e = _validate_value(act, v, path)
+        e = _validate_value(act, v, path, els)
         if e:
             errs += e
             continue
-        e = resolve_own_library(act, v, cards, path)
+        e = resolve_own_library(act, v, cards, els, path)
         if e:
             errs += e
             continue
@@ -500,12 +574,25 @@ def prepare(decision: dict, existing_ops: list[dict], anns: dict) -> tuple[list[
     return out, cards
 
 
+def touched_elements(ops: list[dict]) -> list[str]:
+    out = set()
+    for o in ops:
+        if o["act"] in oplog.ELEMENT_ACTS:
+            out.add(o["target"]["element_id"])
+            if o["act"] == "merge_element":
+                out.add(o["value"]["into"])
+    return sorted(out)
+
+
 def apply(decision: dict) -> tuple[list[dict], list[str]]:
-    """校验 → 追加日志 → 从全部日志重算受影响的卡 → 写卡。返回 (追加的条目, 受影响的 shape_id)。"""
+    """校验 → 追加日志 → 从全部日志重算受影响的要素与卡 → 写文件。
+    返回 (追加的条目, 受影响的 shape_id);受影响的要素编号见 touched_elements(追加的条目)。"""
     existing = oplog.read_all()
     ops, _ = prepare(decision, existing, _ann_index())
     written = oplog.append(ops)
-    cards = replay(oplog.read_all())
+    all_ops = oplog.read_all()
+    E.write_all(E.replay(all_ops), touched_elements(written))
+    cards = replay(all_ops)
     touched = sorted({o["target"]["shape_id"] for o in written if o["act"] in oplog.SHAPE_ACTS})
     for sid in touched:
         write_card(cards[sid])
@@ -513,11 +600,11 @@ def apply(decision: dict) -> tuple[list[dict], list[str]]:
 
 
 def rebuild(verify: bool) -> list[str]:
-    """从日志从头重算全部卡。verify:与磁盘逐字比对,返回不一致清单;否则用重算结果覆盖磁盘。"""
+    """从日志从头重算全部要素与卡。verify:与磁盘逐字比对,返回不一致清单;否则用重算结果覆盖磁盘。"""
+    problems = E.rebuild(verify)
     cards = replay(oplog.read_all())
     d = shapes_dir()
     on_disk = {p.stem for p in d.glob("*.json")} if d.exists() else set()
-    problems = []
     for sid, card in sorted(cards.items()):
         p = d / f"{sid}.json"
         if verify:
@@ -556,14 +643,29 @@ def _fmt(x) -> str:
 def _term_text(term: str, text: str | None = None) -> str:
     if term == "custom":
         return text or "(自己写的)"
-    if term in ROWS:
-        return f"{term} {ROWS[term][1]}"
+    if term in ROWS:                              # 旧格式的要素项(引用事实行编号)只用于打印
+        return f"{term} {ROWS[term]['title']}"
     if term in TRIGGERS:
         return f"{term} {TRIGGERS[term][1]}"
     return f"{term} {INVALIDATIONS.get(term, '')}"
 
 
-def render(card: dict) -> str:
+def _ing_text(i: dict, els: dict) -> str:
+    """卡上一个要素项:编号「名字」:条件(角色是谁定的)。"""
+    if "element" not in i:
+        return f"{_term_text(i.get('term'), i.get('text'))}（{origin_text(i)}）"
+    eid = i["element"]
+    s = E.label(els, eid)
+    if eid in els:
+        d = els[E.resolve(els, eid)]["versions"][-1].get("definition")
+        if d is not None:
+            s += f"：{E.definition_text(d)}"
+    return s + f"（角色：{origin_text(i)}）"
+
+
+def render(card: dict, els: dict | None = None) -> str:
+    """一张卡的人话打印。els:要素库(缺省从操作日志重算)。"""
+    els = E.replay(oplog.read_all()) if els is None else els
     ver = card["versions"][-1]
     cc = ver["card"]
     lines = [f"{card['shape_id']} 「{card['name']['value']}」（{origin_text(card['name'])}）"
@@ -579,10 +681,7 @@ def render(card: dict) -> str:
             continue
         lines.append(f"  【{ROLE_TEXT[role]}】")
         for i in ings:
-            ch = "；".join(f"{name}：{_fmt(c['value'])}（{origin_text(c)}）"
-                          for name, c in (i.get("choices") or {}).items())
-            lines.append(f"    · {_term_text(i['term'], i.get('text'))}（{origin_text(i)}）"
-                         + (f"；{ch}" if ch else ""))
+            lines.append(f"    · {_ing_text(i, els)}")
     if cc.get("triggers"):
         lines.append("  【触发】")
         for t in cc["triggers"]:
@@ -603,14 +702,40 @@ def _ledger_attempts() -> tuple[int, int]:
     return sum(1 for r in rows if r.get("kind") != "bigmoves"), len(rows)
 
 
+def possible_duplicates(cards: dict, els: dict) -> list[list[str]]:
+    """当前版本引用的要素(按合并后解析)与角色、触发(编号与自写文字)都相同的卡,两张以上成一组。
+    只是提示:绝不自动合并。"""
+    groups: dict[str, list[str]] = {}
+    for sid, c in sorted(cards.items()):
+        if c["status"] == "merged":
+            continue
+        cc = c["versions"][-1]["card"]
+        ings = sorted((E.resolve(els, i["element"]) if i.get("element") in els else str(i.get("element")),
+                       i.get("role")) for i in cc.get("ingredients", []))
+        trigs = sorted((t.get("term"), " ".join(str(t.get("text") or "").split()))
+                       for t in cc.get("triggers", []))
+        groups.setdefault(json.dumps([ings, trigs], ensure_ascii=False), []).append(sid)
+    return [g for g in groups.values() if len(g) > 1]
+
+
 def render_pending() -> str:
     from chart_workflow.views import read_views
 
-    cards = replay(oplog.read_all())
+    ops = oplog.read_all()
+    cards = replay(ops)
+    els = E.replay(ops)
     lines = ["【现有形态卡】"]
     lines += [f"  {sid} 「{c['name']['value']}」 {STATUS_TEXT.get(c['status'], c['status'])} "
               f"v{c['current_version']}，样本 {len(c['cases'])} 个" for sid, c in sorted(cards.items())] \
         or ["  (还没有)"]
+    dups = possible_duplicates(cards, els)
+    if dups:
+        lines.append("\n【可能重复的形态卡(引用的要素和角色、触发都相同;要不要合并,问过用户再 merge_shape)】")
+        lines += [f"  {'、'.join(g)}" for g in dups]
+    todo = [eid for eid, el in sorted(els.items()) if el["status"] == "pending_code"]
+    lines.append(f"\n【要素库】在用 {sum(el['status'] == 'active' for el in els.values())} 条，"
+                 f"待写代码 {len(todo)} 条，已合并 {sum(el['status'] == 'merged' for el in els.values())} 条")
+    lines += [f"  待写代码 {E.label(els, eid)}：{els[eid]['versions'][-1].get('needs')}" for eid in todo]
     used = {cs["ann_id"] for c in cards.values() for cs in c["cases"]}
     lines.append("\n【还没被任何形态卡的样本引用的标注(待处理,按批次)】")
     n_pending = 0
@@ -631,7 +756,6 @@ def render_pending() -> str:
     if not n_pending:
         lines.append("  (没有)")
     lines.append("\n【操作日志最后 10 条】")
-    ops = oplog.read_all()
     for o in ops[-10:]:
         tgt = o.get("target") or {}
         lines.append(f"  {o['ts']} {o['actor']} {o['act']} "
@@ -659,16 +783,20 @@ def main(argv=None) -> None:
             decision = json.loads(Path(args.path).read_text())
             written, touched = apply(decision)
             print(f"已写 {len(written)} 条操作日志 → {oplog.oplog_dir()}")
+            els = E.replay(oplog.read_all())
+            for eid in touched_elements(written):
+                print(E.render(els[eid]))
             for sid in touched:
-                print(render(load_card(sid)))
+                print(render(load_card(sid), els))
         elif args.cmd == "show":
             if args.pending:
                 print(render_pending())
             elif args.shape_id:
                 print(render(load_card(args.shape_id)))
             else:
-                cards = replay(oplog.read_all())
-                print("\n\n".join(render(c) for _, c in sorted(cards.items())) or "(还没有形态卡)")
+                ops = oplog.read_all()
+                cards, els = replay(ops), E.replay(ops)
+                print("\n\n".join(render(c, els) for _, c in sorted(cards.items())) or "(还没有形态卡)")
         else:
             problems = rebuild(args.verify)
             for p in problems:
@@ -676,9 +804,9 @@ def main(argv=None) -> None:
             if args.verify:
                 if problems:
                     sys.exit(1)
-                print("全部形态卡与操作日志重算结果一致")
+                print("全部要素与形态卡和操作日志重算结果一致")
             else:
-                print(f"已用日志重算结果覆盖形态卡 → {shapes_dir()}")
+                print(f"已用日志重算结果覆盖要素与形态卡 → {E.elements_dir()}、{shapes_dir()}")
     except (ValueError, FileNotFoundError, StateRootMissing) as e:     # 含 ShapeValidationError
         print(f"错误:{e}", file=sys.stderr)
         sys.exit(2)

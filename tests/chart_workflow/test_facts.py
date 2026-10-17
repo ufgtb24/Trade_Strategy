@@ -118,7 +118,8 @@ def test_fixed_checklist_shape():
                        "rows", "divergences", "triggers", "invalidation_templates"]
     for r in f["rows"]:
         assert list(r) == ["fid", "group", "title", "text", "value", "chart_dates", "variant",
-                           "unfinished", "divergence"]
+                           "unfinished", "divergence", "source"]
+        assert r["source"] == facts.ROWS[r["fid"]]["source"]          # 每一行标出处
         assert all(d <= "2025-07-14" for d in r["chart_dates"])
     order = [t["tid"] for t in f["triggers"]]
     assert order == sorted(order)
@@ -231,7 +232,7 @@ def test_cli_rejects_path_like_symbol(cw_env, tmp_path, capsys, monkeypatch):
 
 # ── 智能层导入检查 ─────────────────────────────────────────────────────────
 
-SMART = ("facts", "shapes", "oplog", "views", "state", "loader", "annotations")
+SMART = ("facts", "elements", "shapes", "oplog", "views", "state", "loader", "annotations")
 FORBIDDEN = {"chart_workflow.labels", "chart_workflow.control", "chart_workflow.panel",
              "chart_workflow.listfile"}
 
@@ -283,6 +284,6 @@ def test_smart_layer_imports_and_no_outcome_fields():
         bad = {f"chart_workflow.{m}" for m in chains} & FORBIDDEN
         assert not bad, f"{name}.py 间接 import 了 {bad}:" + "; ".join(
             " → ".join(chains[b.split(".")[1]]) for b in sorted(bad))
-        if name in ("facts", "shapes", "oplog"):
+        if name in ("facts", "elements", "shapes", "oplog"):
             lits = {n.value for n in ast.walk(tree) if isinstance(n, ast.Constant) and isinstance(n.value, str)}
             assert not ({"marks", "metrics"} & lits), f"{name}.py 出现了清单结果字段名"

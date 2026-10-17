@@ -6,7 +6,11 @@
   2. 标出形态     用户在 path2_web 的「看图工作流」模式里看清单、点买点(可多个)、标判定后发送
                   (打开清单自动记「看过」;会话在聊天里贴的图用 views record 记)
   3. 列事实       python -m chart_workflow.facts --batch <batch_id>     只用买点及以前的 K 线
-  4. 写形态卡     python -m chart_workflow.shapes apply <决定.json>     每个值记来源
+                  (事实只给数值和描述、不带判断;每一行标出处:预设的,或用户提的角度)
+  4. 定要素、写形态卡  python -m chart_workflow.shapes apply <决定.json>     每个值记来源
+                  要素 = 在事实行上定出来的是 / 否条件,有自己的编号(E001…),可被几个形态共用;
+                  形态卡引用要素编号,角色写在卡上。python -m chart_workflow.elements find / eval
+                  建之前查重、对卡时逐条判是 / 否 / 无法判定
   5. 对照着看     python -m chart_workflow.contrast --list-id <id> (--rule <py> | --app <pid>)
                       --source <来源> --change "<改了什么>" [--blind]     (自动记账、存档规则)
   6. 收紧或放弃   改规则再跑;python -m chart_workflow.ledger show 看账本
@@ -17,9 +21,9 @@
   snapshot(生成截断副本)/ securities(证券分类与图头类别)/ labels(标签口径)/ features(分组特征)/
   panel(池内股票日面板)/ dataerrors(数据错误登记与排除)/ control(同日对照与毕业判定)/
   rules(取命中)/ listfile(清单文件)/ annotations(标注批次 v1 / v2 统一读取)/
-  views(看过记录)/ facts(事实表)/ oplog(操作日志)/ shapes(形态卡)/ ledger(账本)/
+  views(看过记录)/ facts(事实表)/ oplog(操作日志)/ elements(要素库)/ shapes(形态卡)/ ledger(账本)/
   bigmoves、contrast(两个出清单的命令)/ xcheck(跨源比对)。
-  智能层(facts / shapes / oplog / views / state / loader / annotations)不 import 标签口径、对照、
+  智能层(facts / elements / shapes / oplog / views / state / loader / annotations)不 import 标签口径、对照、
   面板、清单模块(间接导入也不行),不读清单里的结果字段。
 
 文件放哪:
@@ -30,7 +34,7 @@
   记下见过的账本行与文件,少了就停下(state.StateRootRegressed);有意改写记账文件后用
   state reset-watermark --reason 显式重置。
   记账类文件都在状态根:annotations/(原始标注)、views.jsonl 与 viewed_lists/(看过记录)、
-  facts/(事实表快照)、shapes/(形态卡)、oplog/(操作日志)、ledger.jsonl(账本)、
+  facts/(事实表快照)、elements/(要素库)、shapes/(形态卡)、oplog/(操作日志)、ledger.jsonl(账本)、
   rule_archive/(规则存档)、config_archive/(配置存档)、watermark_resets.jsonl(水位重置记录)。
   只追加的几个文件按行合并(.gitattributes merge=union)。工具只写文件、不自己 commit,提交由用户做。
   可重算的产物仍随各自 worktree 的 config.root(默认 outputs/chart_workflow,不进 git):

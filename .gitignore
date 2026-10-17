@@ -12,6 +12,7 @@ datasets
 !/outputs/chart_workflow/views.jsonl
 !/outputs/chart_workflow/viewed_lists/
 !/outputs/chart_workflow/facts/
+!/outputs/chart_workflow/elements/
 !/outputs/chart_workflow/shapes/
 !/outputs/chart_workflow/oplog/
 !/outputs/chart_workflow/ledger.jsonl

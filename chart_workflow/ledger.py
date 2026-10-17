@@ -21,12 +21,19 @@ add 自动从清单里读 summary 的「全部」行(盲看清单没有 summary,
 <指纹>.json,内容相同不重复写)、数据错误登记指纹 data_errors_sha(清单里记了才有)、截断副本
 snapshot {dir, cutoff, created_at, sha(副本清单的指纹), fingerprint(整份副本按内容的指纹,见 snaplock)}。
 source 是 shape:<shape_id>@v<版本> 时(规则来自哪张形态卡的哪个版本),从形态卡读那个版本,
-写入 conditions:每个要素与触发一项
-  {"cond_id", "kind": "ingredient | trigger", "term", "role", "origin", "suggested_by",
-   "has_said_first_match", "root_origin", "root_suggested_by"}
+写入 conditions:每个要素项与触发一项。按要素记:
+  要素项 {"cond_id", "kind": "ingredient", "element"(卡上引用的编号), "element_resolved"(合并后解析到的),
+          "element_version", "element_origin", "element_suggested_by", "element_has_said"   # 要素本身是谁提的
+          "fact_rows", "angle_by": "preset | user | null", "angle_ops",   # 它读的事实行是谁提的角度
+          "role", "origin", "suggested_by", "has_said_first_match", "root_origin", "root_suggested_by"}
+          # 后面这几项是「角色是谁定的」(卡上这一项的来源记录)
+  触发   {"cond_id", "kind": "trigger", "term", "origin", "suggested_by", "has_said_first_match",
+          "root_origin", "root_suggested_by"}
 root_* 是沿 own_library 的 root 递归到底后的来源(不是 own_library 时就是它自己的来源)。
-账本里不预先合并成几类,怎么划、各算谁的留给流程骨架。卡或版本不存在就报错。新字段一律可选,
-旧行照常读。
+angle_by = user:要素读的事实行里有用户提的角度(facts.ROWS 的 source),angle_ops 是用户提它的操作
+日志条目——这种要素不算系统推荐;null:要素待写代码,还没读任何事实行。
+账本里不预先合并成几类,怎么划、各算谁的留给流程骨架。卡、版本或卡上引用的要素不存在就报错。
+新字段一律可选,旧行照常读。
 自动记账的行另有:rule_sha(规则文件或参数文件的 sha256)、rule_archive(存档位置,相对状态根)、
 app_commit / app_dirty(app 方式:当时的 git 提交、app 目录有没有未提交改动)、years(这次统计与
 图集用了哪些年份)。kind:bigmoves(大涨段,不算尝试)/ rule / mined / blind(盲看轮;算不算尝试由流程
@@ -160,8 +167,33 @@ def _resolve_root(rec: dict) -> dict:
     return rec
 
 
+def _ingredient_condition(it: dict, els: dict) -> dict:
+    from chart_workflow import elements as E
+
+    root = _resolve_root(it)
+    out = {"cond_id": it["ing_id"], "kind": "ingredient", "role": it.get("role"),
+           "origin": it.get("origin"), "suggested_by": it.get("suggested_by"),
+           "has_said_first_match": bool(str(it.get("said_first_match") or "").strip()),
+           "root_origin": root.get("origin"), "root_suggested_by": root.get("suggested_by")}
+    eid = it.get("element")
+    if eid is None:                                # 旧格式的要素项(引用事实行编号)
+        return {**out, "term": it.get("term")}
+    if eid not in els:
+        raise FileNotFoundError(f"要素 {eid} 不在要素库里")
+    rid = E.resolve(els, eid)
+    el = els[rid]
+    d = el["versions"][-1].get("definition")
+    who, ops = E.angle(d)
+    return {**out, "element": eid, "element_resolved": rid, "element_version": el["current_version"],
+            "element_origin": el.get("origin"), "element_suggested_by": el.get("suggested_by"),
+            "element_has_said": bool(str(el.get("said_first_match") or "").strip()),
+            "fact_rows": list(d["reads"]) if d else [], "angle_by": who, "angle_ops": ops}
+
+
 def shape_conditions(source: str) -> list[dict]:
-    """source = shape:<id>@v<n> → 那个版本每个要素与触发的来源。卡或版本不存在 → FileNotFoundError。"""
+    """source = shape:<id>@v<n> → 那个版本每个要素项与触发的来源。
+    卡、版本或引用的要素不存在 → FileNotFoundError。"""
+    from chart_workflow.elements import load_all
     from chart_workflow.shapes import load_card
 
     m = SHAPE_SOURCE_RE.fullmatch(source)
@@ -170,16 +202,14 @@ def shape_conditions(source: str) -> list[dict]:
     ver = next((v for v in card["versions"] if v["version"] == n), None)
     if ver is None:
         raise FileNotFoundError(f"形态卡 {m.group(1)} 没有版本 v{n}")
-    out = []
-    for kind, items, id_key in (("ingredient", ver["card"].get("ingredients", []), "ing_id"),
-                                ("trigger", ver["card"].get("triggers", []), "trig_id")):
-        for it in items:
-            root = _resolve_root(it)
-            out.append({"cond_id": it[id_key], "kind": kind, "term": it.get("term"),
-                        "role": it.get("role"), "origin": it.get("origin"),
-                        "suggested_by": it.get("suggested_by"),
-                        "has_said_first_match": bool(str(it.get("said_first_match") or "").strip()),
-                        "root_origin": root.get("origin"), "root_suggested_by": root.get("suggested_by")})
+    els = load_all()
+    out = [_ingredient_condition(it, els) for it in ver["card"].get("ingredients", [])]
+    for it in ver["card"].get("triggers", []):
+        root = _resolve_root(it)
+        out.append({"cond_id": it["trig_id"], "kind": "trigger", "term": it.get("term"),
+                    "origin": it.get("origin"), "suggested_by": it.get("suggested_by"),
+                    "has_said_first_match": bool(str(it.get("said_first_match") or "").strip()),
+                    "root_origin": root.get("origin"), "root_suggested_by": root.get("suggested_by")})
     return out
 
 
@@ -293,21 +323,43 @@ def _xc(x) -> str:
     return "—" if not x else f"{x['ok']}/{x['mismatch']}/{x['unavailable']}"
 
 
-# 条件来源的展示分类:按递归到底的来源计数(只是展示,账本里存的是逐条原样)。
-# 用户自己写的算「你说的」(哪怕当时摆着推荐),其余按推荐来自谁。
+# 条件来源的展示分类(只是展示,账本里存的是逐条原样):
+#   要素项按要素本身是谁提的计——用户提的算「你说的」;不是用户提的、但读的事实行是用户提的角度,
+#   算「你提的角度」(不算系统推荐);其余按推荐来自谁。旧格式的要素项按卡上的来源计。
+#   角色:卡上这一项沿 own_library 递归到底是用户定的,算「你定的」。
+#   触发按递归到底的来源计。
 _BY_LABEL = {"detector": "事实表", "session": "会话", "llm": "大模型", "general_knowledge": "常识"}
+
+
+def _who(origin, by) -> str:
+    return "你说的" if origin == "user_written" else _BY_LABEL.get(by, "其他")
 
 
 def _conds(r: dict) -> str:
     cs = r.get("conditions")
     if not cs:
         return "—"
-    counts = {"你说的": 0, "事实表": 0, "会话": 0}
+    ing = {"你说的": 0, "你提的角度": 0, "事实表": 0, "会话": 0}
+    trig = {"你说的": 0, "事实表": 0}
+    n_ing = role_user = 0
     for c in cs:
-        key = ("你说的" if c.get("root_origin") == "user_written"
-               else _BY_LABEL.get(c.get("root_suggested_by"), "其他"))
-        counts[key] = counts.get(key, 0) + 1
-    return " / ".join(f"{k} {n}" for k, n in counts.items())
+        if c.get("kind") == "trigger":
+            key = _who(c.get("root_origin"), c.get("root_suggested_by"))
+            trig[key] = trig.get(key, 0) + 1
+            continue
+        n_ing += 1
+        role_user += c.get("root_origin") == "user_written"
+        if "element" not in c:
+            key = _who(c.get("root_origin"), c.get("root_suggested_by"))
+        elif c.get("element_origin") == "user_written":
+            key = "你说的"
+        elif c.get("angle_by") == "user":
+            key = "你提的角度"
+        else:
+            key = _who(c.get("element_origin"), c.get("element_suggested_by"))
+        ing[key] = ing.get(key, 0) + 1
+    fmt = lambda d: " / ".join(f"{k} {n}" for k, n in d.items())
+    return f"要素 {fmt(ing)}；角色你定的 {role_user}/{n_ing}；触发 {fmt(trig)}"
 
 
 def render(rows: list[dict]) -> str:

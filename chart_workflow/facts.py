@@ -3,6 +3,12 @@
 
     uv run python -m chart_workflow.facts --batch <batch_id> [--ann <ann_id>] [--json]
     uv run python -m chart_workflow.facts --symbol S --buy-date D [--range-start D] [--json]
+    uv run python -m chart_workflow.facts --rows                       # 列出全部事实行与出处
+    uv run python -m chart_workflow.facts --check-row "<标题>" --reads a,b   # 新增一行之前查重
+
+事实只是计算方法(ROWS 里的一行)加每张图的结果(下面的 rows),只给数值和描述、不带判断,
+没有角色、不进形态卡;是 / 否条件是要素(elements.py),在这些行上定出来。每一行标出处(source):
+预设的,或者用户提的角度(哪天提的、原话、那次提的操作日志条目)。
 
 输出(compute_facts 的返回值,键顺序固定,数值统一保留 4 位小数):
 {"schema": "chart_workflow.facts/1", "facts_code": "<本文件源码 sha256 前 12 位>",
@@ -10,7 +16,8 @@
  "window": ["2025-02-28", "2025-07-14"], "window_source": "box | default",
  "rows": [{"fid": "F01", "group": "峰与突破", "title": "按收盘越过的峰", "text": "<人话>",
            "value": {...}, "chart_dates": ["2025-03-12", ...],      # 图上该标出的日期
-           "variant": "close" | "high" | null, "unfinished": false, "divergence": "DV1" | null}],
+           "variant": "close" | "high" | null, "unfinished": false, "divergence": "DV1" | null,
+           "source": {"kind": "preset"} | {"kind": "user", "date", "said", "op_id"}}],
  "divergences": [{"dvid": "DV1", "rows": ["F01", "F02"], "question": "...",
                   "options": [{"variant": "close", "text": "..."}, ...]}],
  "triggers": [{"tid": "T5", "kind": TRIGGERS["T5"][0], "text": "...", "chart_dates": [...],
@@ -64,17 +71,34 @@ SCHEMA = "chart_workflow.facts/1"
 SNAPSHOT_SCHEMA = "chart_workflow.facts_snapshot/1"
 FACTS_CODE = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()[:12]
 
-# 事实表的固定行(编号、分组、标题)、触发候选(编号、种类、名字)、买前失效模板:形态卡的 term 引用这些编号
+# 事实表的固定行。每一行是一种计算方法(分组、标题、读哪些量 reads、出处 source),
+# 每张图的结果是 compute_facts 输出里的那一行。事实只给数值和描述、不带判断,没有角色、不进形态卡;
+# 要素(elements.py)在这些行上定是 / 否条件。
+# 出处:PRESET = 预设;用户提的角度做成的行写 {"kind": "user", "date": 哪天提的, "said": 原话,
+# "op_id": 那次提的操作日志条目(act = propose_fact)}——在它上面立的要素,账本记成「你提的角度」。
+# reads 用来查重:新增一行之前跑 python -m chart_workflow.facts --check-row,
+# 同名或读同样量的已有行会列出来(只提示,不拦)。
+PRESET = {"kind": "preset"}
 ROWS = {
-    "F01": ("峰与突破", "按收盘越过的峰"), "F02": ("峰与突破", "按最高价越过的峰"),
-    "F03": ("峰与突破", "几天内连续突破"), "F04": ("峰与突破", "越过的峰最早是多久以前"),
-    "F05": ("成交量", "放量段"), "F06": ("成交量", "买点前几天缩量"),
-    "F07": ("成交量", "买点当天量倍数"),
-    "F08": ("涨跌与位置", "涨前状态"), "F09": ("涨跌与位置", "近期走势区段"),
-    "F10": ("涨跌与位置", "当天跳空"), "F11": ("涨跌与位置", "买点前有平台段"),
-    "F12": ("涨跌与位置", "买点前一段走势"),
-    "F13": ("派发", "近期派发"),
-    "F14": ("回踩", "突破后回踩企稳"), "F15": ("回踩", "回踩被越过的峰后收盘收回"),
+    "F01": {"group": "峰与突破", "title": "按收盘越过的峰", "reads": ("peaks_close",), "source": PRESET},
+    "F02": {"group": "峰与突破", "title": "按最高价越过的峰", "reads": ("peaks_high",), "source": PRESET},
+    "F03": {"group": "峰与突破", "title": "几天内连续突破",
+            "reads": ("peaks_close", "peaks_high", "first_clear"), "source": PRESET},
+    "F04": {"group": "峰与突破", "title": "越过的峰最早是多久以前",
+            "reads": ("peaks_close", "peaks_high", "first_clear"), "source": PRESET},
+    "F05": {"group": "成交量", "title": "放量段", "reads": ("vol_ratio",), "source": PRESET},
+    "F06": {"group": "成交量", "title": "买点前几天缩量", "reads": ("vol_ratio",), "source": PRESET},
+    "F07": {"group": "成交量", "title": "买点当天量倍数", "reads": ("vol_ratio",), "source": PRESET},
+    "F08": {"group": "涨跌与位置", "title": "涨前状态", "reads": ("pre_state",), "source": PRESET},
+    "F09": {"group": "涨跌与位置", "title": "近期走势区段", "reads": ("trend_segments",), "source": PRESET},
+    "F10": {"group": "涨跌与位置", "title": "当天跳空", "reads": ("gap",), "source": PRESET},
+    "F11": {"group": "涨跌与位置", "title": "买点前有平台段", "reads": ("platform_segments",),
+            "source": PRESET},
+    "F12": {"group": "涨跌与位置", "title": "买点前一段走势", "reads": ("close_path",), "source": PRESET},
+    "F13": {"group": "派发", "title": "近期派发", "reads": ("distribution",), "source": PRESET},
+    "F14": {"group": "回踩", "title": "突破后回踩企稳", "reads": ("throwback",), "source": PRESET},
+    "F15": {"group": "回踩", "title": "回踩被越过的峰后收盘收回",
+            "reads": ("peaks_close", "peaks_high", "first_clear", "low"), "source": PRESET},
 }
 TRIGGERS = {
     "T1": ("bo_day", "突破当天"), "T2": ("burst_last", "连续突破的最后一根"),
@@ -149,10 +173,10 @@ def _span(ctx: "_Ctx", a: int, b: int) -> str:
 
 
 def _row(fid, text, value, dates, variant=None, unfinished=False) -> dict:
-    group, title = ROWS[fid]
-    return {"fid": fid, "group": group, "title": title, "text": text, "value": value,
+    d = ROWS[fid]
+    return {"fid": fid, "group": d["group"], "title": d["title"], "text": text, "value": value,
             "chart_dates": sorted(set(dates)), "variant": variant,
-            "unfinished": bool(unfinished), "divergence": None}
+            "unfinished": bool(unfinished), "divergence": None, "source": dict(d["source"])}
 
 
 # ── 峰与突破 ────────────────────────────────────────────────────────────────
@@ -211,19 +235,24 @@ def _peaks_row(ctx: _Ctx, fid: str, variant: str, peaks: list[dict]) -> dict:
     return _row(fid, text, value, dates, variant)
 
 
-def _burst(ctx: _Ctx, peaks: list[dict]) -> tuple[list[int], bool, list[int]]:
-    """越过了的峰的首次越过日(排序);相邻两次相隔 ≤ burst_gap_bars 根算连续突破。"""
+def _burst(ctx: _Ctx, peaks: list[dict]) -> tuple[list[int], bool, list[int], int]:
+    """越过了的峰的首次越过日(排序);相邻两次相隔 ≤ burst_gap_bars 根算连续突破。
+    另返回最长的一串连续突破里有几个峰(chain;没有越过的峰为 0,只越过一个为 1)。"""
     fcs = sorted(p["fc"] for p in peaks if p["cleared"])
     gap = int(ctx.p["burst_gap_bars"])
     pair_idx = sorted({x for a, b in zip(fcs, fcs[1:]) if b - a <= gap for x in (a, b)})
-    return fcs, bool(pair_idx), pair_idx
+    chain = cur = min(1, len(fcs))
+    for a, b in zip(fcs, fcs[1:]):
+        cur = cur + 1 if b - a <= gap else 1
+        chain = max(chain, cur)
+    return fcs, bool(pair_idx), pair_idx, chain
 
 
 def _burst_row(ctx: _Ctx, peaks_by: dict) -> dict:
     value, parts, dates = {}, [], []
     for var in ("close", "high"):
-        fcs, burst, pair = _burst(ctx, peaks_by[var])
-        value[var] = {"dates": [ctx.d[i] for i in fcs], "burst": burst}
+        fcs, burst, pair, chain = _burst(ctx, peaks_by[var])
+        value[var] = {"dates": [ctx.d[i] for i in fcs], "burst": burst, "chain": chain}
         dates += [ctx.d[i] for i in pair]
         if not fcs:
             parts.append(f"{VARIANT_TEXT[var]}：没有越过的峰")
@@ -232,7 +261,7 @@ def _burst_row(ctx: _Ctx, peaks_by: dict) -> dict:
         else:
             days = "、".join(ctx.md(i) for i in fcs)
             verdict = (f"其中相隔 ≤ {ctx.p['burst_gap_bars']} 根的算连续突破（"
-                       + "、".join(ctx.md(i) for i in pair) + "）") if burst else \
+                       + "、".join(ctx.md(i) for i in pair) + f"），最长一串连着越过 {chain} 个峰") if burst else \
                 f"相邻两次都相隔超过 {ctx.p['burst_gap_bars']} 根，不算连续"
             parts.append(f"{VARIANT_TEXT[var]}：首次越过在 {days}，{verdict}")
     if not value["close"]["dates"] and not value["high"]["dates"]:
@@ -722,6 +751,9 @@ def render(f: dict) -> str:
             group = r["group"]
             lines.append(f"\n【{group}】")
         tag = f"  ⟨口径分歧 {r['divergence']}⟩" if r["divergence"] else ""
+        src = r.get("source") or PRESET
+        if src.get("kind") == "user":
+            tag += f"  ⟨你提的角度，{src.get('date')}⟩"
         lines.append(f"{CIRCLED[k]} {r['title']}：{r['text']}{tag}")
     if f["divergences"]:
         lines.append("\n【口径分歧】")
@@ -734,6 +766,75 @@ def render(f: dict) -> str:
               or ["(一个都没命中,请用户自己说一句)"])
     lines.append("\n【买前失效(模板,不预勾)】")
     lines += [f"{i['iid']} {i['text']}" for i in f["invalidation_templates"]]
+    return "\n".join(lines)
+
+
+def source_text(src: dict) -> str:
+    if src.get("kind") == "user":
+        return f"你提的角度（{src.get('date')}，原话「{src.get('said')}」，操作日志 {src.get('op_id')}）"
+    return "预设"
+
+
+def check_rows(rows: dict | None = None) -> list[str]:
+    """事实行登记本身的问题:字段缺失、标题重复、出处不合格(用户提的要写 date / said / op_id)。"""
+    rows = ROWS if rows is None else rows
+    errs, titles = [], {}
+    for fid, d in rows.items():
+        if not (isinstance(d.get("group"), str) and isinstance(d.get("title"), str)
+                and isinstance(d.get("reads"), tuple) and d["reads"]):
+            errs.append(f"{fid}: 要有 group、title 和非空的 reads")
+        src = d.get("source") or {}
+        if src.get("kind") == "user":
+            miss = [k for k in ("date", "said", "op_id") if not str(src.get(k) or "").strip()]
+            if miss:
+                errs.append(f"{fid}: 用户提的角度要写 {'、'.join(miss)}")
+        elif src != PRESET:
+            errs.append(f"{fid}: source 只能是预设或用户提的角度")
+        if d.get("title") in titles:
+            errs.append(f"{fid}: 标题和 {titles[d['title']]} 重复")
+        titles.setdefault(d.get("title"), fid)
+    return errs
+
+
+def check_new_row(title: str, reads, rows: dict | None = None) -> list[str]:
+    """新增一行之前的查重提示(只提示,不拦):同名的行、读的量完全相同的行、读到相同量的行。"""
+    rows = ROWS if rows is None else rows
+    title = " ".join(str(title).split())
+    reads = {str(x).strip() for x in reads if str(x).strip()}
+    known = {x for d in rows.values() for x in d["reads"]}
+    hints = []
+    for fid, d in rows.items():
+        if " ".join(d["title"].split()) == title:
+            hints.append(f"同名：{fid}「{d['title']}」")
+    for fid, d in rows.items():
+        shared = reads & set(d["reads"])
+        if not shared:
+            continue
+        how = "读的量完全相同" if set(d["reads"]) == reads else f"也读 {'、'.join(sorted(shared))}"
+        hints.append(f"{how}：{fid}「{d['title']}」（读 {'、'.join(d['reads'])}）")
+    unknown = sorted(reads - known)
+    if unknown:
+        hints.append(f"现有行都没读过的量：{'、'.join(unknown)}（现有的量：{'、'.join(sorted(known))}）")
+    return hints
+
+
+def source_warnings(ops: list[dict], rows: dict | None = None) -> list[str]:
+    """用户提的角度做成的行,操作日志里找不到那次提的条目(op_id,act = propose_fact)就报。"""
+    rows = ROWS if rows is None else rows
+    proposed = {o.get("op_id") for o in ops if o.get("act") == "propose_fact"}
+    return [f"{fid}: 出处写的操作日志条目 {d['source'].get('op_id')} 不在日志里(或不是 propose_fact)"
+            for fid, d in rows.items()
+            if d["source"].get("kind") == "user" and d["source"].get("op_id") not in proposed]
+
+
+def render_rows() -> str:
+    lines = [f"{fid} {d['group']}／{d['title']}  读 {'、'.join(d['reads'])}  出处：{source_text(d['source'])}"
+             for fid, d in ROWS.items()]
+    try:
+        from chart_workflow.oplog import read_all
+        lines += [f"⚠ {w}" for w in source_warnings(read_all())]
+    except StateRootMissing as e:
+        lines.append(f"(没核对出处里的操作日志条目:{e})")
     return "\n".join(lines)
 
 
@@ -763,7 +864,17 @@ def main(argv=None) -> None:
     ap.add_argument("--buy-date")
     ap.add_argument("--range-start")
     ap.add_argument("--json", action="store_true", help="只把结果 JSON 打到标准输出")
+    ap.add_argument("--rows", action="store_true", help="列出全部事实行(计算方法)与出处")
+    ap.add_argument("--check-row", metavar="TITLE", help="新增事实行之前查重:同名或读同样量的已有行")
+    ap.add_argument("--reads", default="", help="和 --check-row 一起:新行读哪些量,逗号分隔")
     args = ap.parse_args(argv)
+    if args.rows:
+        print(render_rows())
+        return
+    if args.check_row:
+        hints = check_new_row(args.check_row, args.reads.split(","))
+        print("\n".join(hints) if hints else "没有同名或读同样量的已有行")
+        return
     if bool(args.batch) == bool(args.symbol):
         ap.error("--batch 与 --symbol 二选一")
     cfg = load_config()

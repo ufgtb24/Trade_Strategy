@@ -1,8 +1,8 @@
 """状态根:看图工作流记账类文件唯一的家。
 
 记账类文件(原始标注 annotations/、看过记录 views.jsonl 与 viewed_lists/、事实表快照 facts/、
-形态卡 shapes/、操作日志 oplog/、账本 ledger.jsonl、规则存档 rule_archive/、配置存档 config_archive/、
-水位重置记录 watermark_resets.jsonl)只存一份,放在
+要素库 elements/、形态卡 shapes/、操作日志 oplog/、账本 ledger.jsonl、规则存档 rule_archive/、
+配置存档 config_archive/、水位重置记录 watermark_resets.jsonl、副本登记 snapshot_lock.json)只存一份,放在
 **主目录**(git 仓库的 main worktree)的 outputs/chart_workflow/ 下,受 git 跟踪;在任何
 worktree 里运行工具,都经 state_root() 自动定位到主目录这一份。工具只写文件、不自己 commit。
 
@@ -71,8 +71,9 @@ path2_web 的看图工作流后端)自动定位主目录(git 仓库的 main work
 - `annotations/`:原始标注批次
 - `views.jsonl`、`viewed_lists/`:看过记录与看过的清单快照
 - `facts/`:给用户看过的事实表快照
-- `shapes/`:形态卡(由操作日志重算)
-- `oplog/`:操作日志(形态卡的唯一真相)
+- `elements/`:要素库(在事实表的行上定出来的是 / 否条件,由操作日志重算)
+- `shapes/`:形态卡(引用要素编号,由操作日志重算)
+- `oplog/`:操作日志(要素与形态卡的唯一真相)
 - `ledger.jsonl`:账本
 - `rule_archive/`:对照页用过的规则文件存档
 - `config_archive/`:每轮记账时生效配置的全文存档(按指纹)
@@ -90,6 +91,7 @@ _KINDS = (
     ("看过记录", "views.jsonl", "lines"),
     ("看过的清单快照", "viewed_lists", "glob_json"),
     ("事实表快照", "facts", "glob_json"),
+    ("要素", "elements", "glob_json"),
     ("形态卡", "shapes", "glob_json"),
     ("操作日志条目", "oplog", "jsonl_lines"),
     ("账本行", "ledger.jsonl", "lines"),
@@ -106,7 +108,7 @@ REGRESSED_TEXT = "账本比上次看到的少，可能切到了旧分支"
 _LINE_FILES = ("ledger.jsonl", "views.jsonl", RESETS_FILE)
 _LINE_DIRS = ("oplog",)                       # 目录下的 *.jsonl
 # 只增不改的目录:按文件名记(递归,相对目录的路径)
-_FILE_DIRS = ("annotations", "viewed_lists", "facts", "rule_archive", "config_archive")
+_FILE_DIRS = ("annotations", "viewed_lists", "facts", "elements", "rule_archive", "config_archive")
 
 
 class StateRootMissing(RuntimeError):
