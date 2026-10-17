@@ -173,6 +173,24 @@ def test_writers_advance_watermark(state_dir):
     assert len(wm["lines"]["views.jsonl"]) == 1
 
 
+def test_append_only_files_merge_by_line_and_tmp_ignored():
+    """只追加的记账文件按行合并(两台机器各自追加后合并不冲突);记账目录里的临时文件不进 git。"""
+    paths = ["outputs/chart_workflow/ledger.jsonl", "outputs/chart_workflow/views.jsonl",
+             "outputs/chart_workflow/oplog/2026-10.jsonl",
+             "outputs/chart_workflow/watermark_resets.jsonl"]
+    out = subprocess.run(["git", "check-attr", "merge", "--", *paths], cwd=REPO_ROOT,
+                         capture_output=True, text=True, check=True).stdout
+    assert out.count(": merge: union") == len(paths), out
+    for f, ignored in (("outputs/chart_workflow/ledger.jsonl.123.tmp", True),
+                       ("outputs/chart_workflow/annotations/b.json.tmp", True),
+                       ("outputs/chart_workflow/.watermark.json", True),
+                       ("outputs/chart_workflow/annotations/b.json", False),
+                       ("outputs/chart_workflow/config_archive/x.json", False),
+                       ("outputs/chart_workflow/watermark_resets.jsonl", False)):
+        r = subprocess.run(["git", "check-ignore", "-q", "--no-index", f], cwd=REPO_ROOT)
+        assert (r.returncode == 0) == ignored, f
+
+
 def test_not_a_repo(tmp_path, monkeypatch):
     monkeypatch.delenv(state.ENV_VAR, raising=False)
     with pytest.raises(state.StateRootMissing):
