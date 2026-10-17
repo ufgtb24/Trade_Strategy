@@ -12,7 +12,7 @@
             mag 值,每个值权重 1/格内个数(每个命中合计贡献权重 1),合在一起取加权中位数
 偶然波动:命中按 symbol 分组,有放回抽满原 symbol 数,对照不动,重复 n_boot 次(seed 固定),
   取领先的标准差(ddof=1)× 放大系数(命中数 ≥ noise_large_n 用 inflate_large,否则 inflate_small)。
-分年:按决策日 t 的年份分别算,另加「全部」一行。
+分年:按决策日 t 的年份分别算(默认训练段全部年份,对照页只给内圈年份),另加「全部」一行。
 扎堆度(「全部」命中):单 ISO 周命中占比最大值、单只股票命中占比最大值、不同股票数 / 周数。
 """
 from __future__ import annotations
@@ -198,10 +198,11 @@ def train_years(cfg: dict) -> list[str]:
     return [str(y) for y in range(y0, y1 + 1)]
 
 
-def summarize(control: Control, rows: np.ndarray, cfg: dict) -> dict:
-    """清单 summary:「全部」+ 每个训练年份各一行,扎堆度,毕业判定。"""
+def summarize(control: Control, rows: np.ndarray, cfg: dict, years: list[str] | None = None) -> dict:
+    """清单 summary:「全部」+ 每个年份各一行,扎堆度,毕业判定。
+    years:逐年行与「逐年都为正」只看这些年;默认训练段全部年份(对照页传内圈年份)。"""
     ccfg = cfg["control"]
-    years = train_years(cfg)
+    years = [str(y) for y in years] if years is not None else train_years(cfg)
     p = control.panel
     out_rows = []
     by_scope: dict = {}

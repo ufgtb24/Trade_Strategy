@@ -100,7 +100,7 @@ def rule_fingerprint(rule_path) -> str:
 
 # ── app 方式 ────────────────────────────────────────────────────────────────
 
-def _app_module(pattern_id: str):
+def app_module_path(pattern_id: str):
     from path2_web.discovery import PatternRegistry
     reg = PatternRegistry()
     mp = reg.module_path(pattern_id)
@@ -148,7 +148,7 @@ def _app_worker(args):
 
 
 def hits_from_app(pattern_id: str, params_yaml, symbols, cfg: dict) -> pd.DataFrame:
-    module_path = _app_module(pattern_id)
+    module_path = app_module_path(pattern_id)
     py = str(Path(params_yaml).resolve()) if params_yaml else None
     jobs = [(module_path, py, s, cfg) for s in symbols]
     results = _map(_app_worker, jobs, cfg)

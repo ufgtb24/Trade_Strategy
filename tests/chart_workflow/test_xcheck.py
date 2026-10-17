@@ -178,7 +178,7 @@ def test_run_xcheck_on_lists(cw_env, tmp_path):
                                "unavailable": info["unavailable"]}
 
     # 盲看清单:只记条数,逐段结果不进清单;手工塞进去会被校验拒绝
-    hits = panel[["symbol", "date"]].head(10)
+    hits = panel[panel["date"] >= "2025-01-01"][["symbol", "date"]].head(10)   # 内圈年份只有 2025
     blind = build_contrast(panel, hits, cfg, "t-xb", True, "r")
     binfo = run_xcheck(blind, cfg, src, verbose=False)
     assert sum(binfo[k] for k in ("ok", "mismatch", "unavailable")) == len(blind["items"])

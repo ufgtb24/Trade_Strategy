@@ -101,7 +101,7 @@ def test_contrast_list_has_summary_and_groups(cw_env, tmp_path):
     hits = hits_from_rule(rule, sorted(panel["symbol"].unique()), cfg)
     doc = build_contrast(panel, hits, cfg, "t-contrast", False, "r.py@x")
     write_list(doc, cfg)
-    assert [r["scope"] for r in doc["summary"]["rows"]] == ["全部", "2024", "2025"]
+    assert [r["scope"] for r in doc["summary"]["rows"]] == ["全部", "2025"]     # 内圈只给 2025
     assert [g["key"] for g in doc["groups"]] == ["win", "lose", "all"]
     by_id = {it["item_id"]: it for it in doc["items"]}
     assert all(by_id[i]["metrics"]["dir"] == 1 for i in doc["groups"][0]["item_ids"])
