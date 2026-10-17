@@ -98,6 +98,15 @@ def rule_fingerprint(rule_path) -> str:
     return hashlib.sha256(Path(rule_path).read_bytes()).hexdigest()[:10]
 
 
+def rule_identity(rule: str | None = None, app: str | None = None, params: str | None = None) -> str:
+    """一条规则的身份指纹:规则文件 → rule:<文件内容指纹>;app → app:<pattern_id>:<参数 yaml 内容指纹 | default>
+    (app 的代码版本另由账本的 app_commit / app_dirty 记)。对照清单的 params.rule_identity 记它,账本核对规则
+    和形态卡时拿核对用的那条比,对不上就拒。"""
+    if rule:
+        return f"rule:{rule_fingerprint(rule)}"
+    return f"app:{app}:{rule_fingerprint(params) if params else 'default'}"
+
+
 # ── app 方式 ────────────────────────────────────────────────────────────────
 
 def app_module_path(pattern_id: str):

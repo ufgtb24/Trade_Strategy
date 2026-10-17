@@ -811,23 +811,39 @@ def test_user_proposed_row_labeled_and_op_checked(state_dir, monkeypatch, capsys
 
 
 @pytest.mark.parametrize("d,want", [
-    (D("F07", "vr", "between", user={"lo": 3, "hi": 150}), ("at_least", {"x": 3.0}, {})),
-    (D("F07", "vr", "between", user={"lo": 3}, default={"hi": 100}), ("at_least", {"x": 3.0}, {})),
     (D("F12", "up_ratio", "between", user={"lo": 0.5, "hi": 1}), ("at_least", {"x": 0.5}, {})),
     (D("F01", "n_cleared", "between", user={"lo": 0, "hi": 2}), ("at_most", {"x": 2}, {})),
     (D("F01", "n_cleared", "between", user={"lo": 0, "hi": 0}), ("at_most", {"x": 0}, {})),
     (D("F04", "bars", "between", "close", user={"lo": 1, "hi": 30}), ("at_most", {"x": 30}, {})),
-    (D("F07", "vr", "between", default={"lo": 0.01, "hi": 2}), ("at_most", {}, {"x": 2.0})),
+    (D("F07", "vr", "between", default={"lo": 0, "hi": 2}), ("at_most", {}, {"x": 2.0})),    # 量比不小于 0
+    (D("F12", "rise", "between", user={"lo": -1, "hi": 0.3}), ("at_most", {"x": 0.3}, {})),  # 涨幅不小于 -1
 ])
-def test_between_touching_one_bound_becomes_one_sided(d, want):
-    """between 只有一端碰到(或越过)值的边界(量比这类是合理范围):只剩另一端,按 at_least / at_most 处理,
+def test_between_touching_one_hard_bound_becomes_one_sided(d, want):
+    """between 只有一端碰到(或越过)值本来就取不到的硬边界:只剩另一端,按 at_least / at_most 处理,
     参数留在原来那一处。"""
     out, errs = E.normalize_definition(d)
     assert errs == [] and (out["cond"], out["user_params"], out["default_params"]) == want
 
 
+@pytest.mark.parametrize("d,hint", [
+    (D("F07", "vr", "between", user={"lo": 3, "hi": 150}), "上限 150 倍,在合理范围(到 100 倍,待验证)之外"),
+    (D("F07", "vr", "between", default={"lo": 0.01, "hi": 2}), "下限 0.01 倍,在合理范围(从 0.05 倍 起"),
+])
+def test_between_outside_soft_range_kept_with_hint(d, hint):
+    """只落在合理范围(软边界)之外的一端:原样保留用户写的两端,不改写,打印要素时给提示。"""
+    out, errs = E.normalize_definition(d)
+    assert errs == [] and out["cond"] == "between"
+    assert {**out["default_params"], **out["user_params"]} == {**d["default_params"], **d["user_params"]}
+    assert any(hint in h for h in E.definition_hints(out)), E.definition_hints(out)
+    assert E.definition_hints(_norm(D("F07", "vr", "between", user={"lo": 3, "hi": 50}))) == []
+
+
 def test_one_sided_between_dedups_against_existing_at_least():
-    """「量比在 3 到 150 之间」按「量比至少 3」处理,和已有的那条查重:是同一条,不另立一条。"""
-    els = {"E001": {"eid": "E001", "status": "active", "versions": [{"version": 1, "definition": _norm(D("F07", "vr", "at_least", user={"x": 3}))}]}}
+    """硬边界上规范化后和已有的那条查重:「收阳比例在 50% 到 100% 之间」就是「收阳比例至少 50%」;
+    软边界不改写:「量比在 3 到 150 之间」和「量比至少 3」是两条。"""
+    def lib(d):
+        return {"E001": {"eid": "E001", "status": "active", "versions": [{"version": 1, "definition": _norm(d)}]}}
+    out, errs = E.normalize_definition(D("F12", "up_ratio", "between", user={"lo": 0.5, "hi": 1}))
+    assert errs == [] and E.find_same(lib(D("F12", "up_ratio", "at_least", user={"x": 0.5})), out) == "E001"
     out, errs = E.normalize_definition(D("F07", "vr", "between", user={"lo": 3, "hi": 150}))
-    assert errs == [] and E.find_same(els, out) == "E001"
+    assert errs == [] and E.find_same(lib(D("F07", "vr", "at_least", user={"x": 3})), out) is None

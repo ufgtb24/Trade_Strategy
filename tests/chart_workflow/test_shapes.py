@@ -261,10 +261,12 @@ def test_v1_batch_counts_as_outcome_visible(state_dir):
 
 @pytest.fixture(autouse=True)
 def _stub_rule_check(monkeypatch):
-    """本文件只测账本按要素记来源:账本自己跑的规则核对换成桩(真的核对见 test_rulecheck.py)。"""
-    from chart_workflow import rulecheck
+    """本文件只测账本按要素记来源:账本自己跑的规则核对、规则和清单的指纹绑定都换成桩(这里的清单不记规则
+    指纹,桩规则的指纹也是空;真的核对与绑定见 test_rulecheck.py)。"""
+    from chart_workflow import rulecheck, rules
     monkeypatch.setattr(rulecheck, "check_rule_against_shape",
                         lambda source, cfg, **kw: {"source": source, "declared": [], "stub": True})
+    monkeypatch.setattr(rules, "rule_identity", lambda *a, **kw: None)
 
 
 def _reuse(ing_id, element, ref, shape_id="s001", version=1, **extra):
@@ -528,7 +530,8 @@ def test_direct_log_writes_of_elements_and_cards_rejected(state_dir):
     assert shapes.rebuild(verify=True) == []
     # 要素记成用户说的,不带原话
     bad_el = {**full, **copy.deepcopy(ELEMS[0]), "actor": "session", "surface": "chat",
-              "ctx": {"list_id": "r1"}, "ts": "2026-10-17T00:00:00", "op_id": "20261017T000000-aaaaaaaa"}
+              "ctx": {"list_id": "r1"}, "ts": "2026-10-17T00:00:00", "op_id": "20261017T000000-aaaaaaaa",
+              "rules_version": oplog.RULES_VERSION}
     bad_el["target"] = {"element_id": "E009"}
     bad_el["value"]["definition"] = {"row": "F13", "value": "events", "cond": "events_any",
                                      "user_params": {"bars": 30}}
@@ -568,32 +571,96 @@ def _rewrite_log(state_dir, rows):
 
 
 def test_old_cards_without_element_version_still_revalidate(state_dir):
-    """开卡记要素版本号那次提交之前写的卡没有这个字段:日志开头那一段旧条目照常重新校验通过、照常打印。"""
+    """第 1 版(没有校验版本号的旧条目)的卡可以没记要素版本号:照常重新校验通过、照常打印。"""
     _base(state_dir)
     f = sorted((state_dir / "oplog").glob("*.jsonl"))[-1]
     rows = [json.loads(x) for x in f.read_text().splitlines()]
     _strip_versions(rows)
-    for k, r in enumerate(rows):
-        r["ts"] = f"2026-10-01T00:00:{k:02d}"
+    for r in rows:
+        r.pop("rules_version")
     _rewrite_log(state_dir, rows)
     assert shapes.rebuild(verify=False) == []
     assert "按收盘至少越过一个峰" in shapes.render(shapes.load_card("s001"))
 
 
-@pytest.mark.parametrize("when", ["new", "old_after_new"])
-def test_missing_element_version_only_forgiven_for_old_entries(state_dir, when):
-    """新写的卡不记要素版本号算对不上;把时间改早、却排在新条目后面的,也不算旧条目。"""
+@pytest.mark.parametrize("when,needle", [
+    ("v2", "和日志里记的不一样"),                                  # 第 2 版的卡不记要素版本号
+    ("unversioned_after_v2", "校验版本号是第 1 版,比前面的条目"),  # 去掉版本号冒充旧条目
+    ("newer", "校验版本号 9 不认识"),
+])
+def test_missing_element_version_only_forgiven_for_old_entries(state_dir, when, needle):
+    """只有第 1 版的条目可以不记要素版本号;排在第 2 版条目后面却没有版本号的不算旧条目;版本号比工具新的不认。"""
     _base(state_dir)
     f = sorted((state_dir / "oplog").glob("*.jsonl"))[-1]
     rows = [json.loads(x) for x in f.read_text().splitlines()]
     _strip_versions(rows)
-    if when == "old_after_new":
-        for r in rows:
-            if r["act"] == "create_shape":
-                r["ts"] = "2026-10-01T00:00:00"
+    for r in rows:
+        if r["act"] == "create_shape" and when != "v2":
+            r.pop("rules_version")
+            if when == "newer":
+                r["rules_version"] = 9
     _rewrite_log(state_dir, rows)
-    with pytest.raises(shapes.ShapeValidationError, match="和日志里记的不一样"):
+    with pytest.raises(shapes.ShapeValidationError, match=needle):
         shapes.rebuild(verify=False)
+
+
+def _v1_log(state_dir, *ops):
+    """按第 1 版的规则写一批操作,再去掉校验版本号(模拟收紧规则之前、旧工具写的日志)。"""
+    _batch(state_dir, "b1", [_ann("a1")])
+    with oplog.rules_at(1):
+        shapes.apply(_decision(*ops))
+    f = sorted((state_dir / "oplog").glob("*.jsonl"))[-1]
+    rows = [json.loads(x) for x in f.read_text().splitlines()]
+    for r in rows:
+        r.pop("rules_version")
+    _rewrite_log(state_dir, rows)
+    return rows
+
+
+OLD_OK = [el_op("d150", "最近 150 根里有派发", {**DIST, "user_params": {"bars": 150}}),
+          el_op("far", "最早越过的峰离买点 10 到 150 根",
+                {"row": "F04", "value": "bars", "cond": "between", "variant": "close",
+                 "user_params": {"lo": 10, "hi": 150}}),
+          {"act": "create_shape", "value": {
+              "name": {"value": "老卡", "origin": "user_written"}, "change": "新建", "from_ann": ["a1"],
+              "card": {"ingredients": [{"ing_id": "i1", "element": "$d150", "role": "must_not",
+                                        "origin": "user_written"}],          # 角色记成用户定的,当时不要原话
+                       "triggers": [{"trig_id": "t1", "term": "T5", **DET}], "story": None, "exit_pref": None}}}]
+
+
+def test_entries_legal_when_written_do_not_lock_tools(state_dir, capsys):
+    """第 1 版规则下能写进去的三种条目(最近 150 根、10~150 根、角色不带原话),现在的规则都不再允许:
+    只提示、不拦——重算、正常写入、账本取数照常;逐条提示只在 rebuild --verify 里。"""
+    _v1_log(state_dir, *OLD_OK)
+    assert shapes.rebuild(verify=True) == []
+    err = capsys.readouterr().err
+    assert err.count("写入时按第 1 版规则合法,现在的规则不再允许") == 3
+    assert "不比事实表窗口短" in err and "按现在的规则补全出来的样子不同" in err and "said_first_match" in err
+    shapes.apply(_decision(el_op("pk1", "按收盘至少越过一个峰", PK1)))
+    assert "操作日志里有 3 条是按旧版校验规则写的" in capsys.readouterr().err
+    conds = ledger.shape_conditions("shape:s001@v1")
+    assert [(c.get("element"), c["origin"], c["has_said_first_match"]) for c in conds] == \
+        [("E001", "user_written", False), (None, "suggested_adopted", False)]
+    assert oplog.read_all()[-1]["rules_version"] == oplog.RULES_VERSION
+
+
+@pytest.mark.parametrize("tamper", [
+    lambda rows: rows[0]["value"].pop("said_first_match"),                  # 手改掉了用户原话
+    lambda rows: rows[1]["value"]["definition"]["user_params"].update(lo=1, hi=30),   # 第 1 版要求写成 at_most
+])
+def test_old_entry_tampered_against_its_own_version_blocks(state_dir, tamper):
+    """旧条目连自己那一版的规则都不合格:说成可能被改过,拦。"""
+    rows = _v1_log(state_dir, *OLD_OK)
+    tamper(rows)
+    _rewrite_log(state_dir, rows)
+    with pytest.raises(shapes.ShapeValidationError, match="连写入时的第 1 版规则都不合格,可能被改过"):
+        shapes.apply(_decision(el_op("pk1", "按收盘至少越过一个峰", PK1)))
+
+
+def test_decision_file_cannot_carry_rules_version(state_dir):
+    _batch(state_dir, "b1", [_ann("a1")])
+    with pytest.raises(shapes.ShapeValidationError, match="不要自带 ts / op_id / rules_version"):
+        shapes.apply(_decision({**el_op("pk1", "按收盘至少越过一个峰", PK1), "rules_version": 1}))
 
 
 def test_bad_log_blocks_normal_write_and_ledger(state_dir):
@@ -601,15 +668,16 @@ def test_bad_log_blocks_normal_write_and_ledger(state_dir):
     _base(state_dir)
     full = {k: None for k in oplog.FIELDS}
     bad_el = {**full, **copy.deepcopy(ELEMS[0]), "actor": "session", "surface": "chat",
-              "ctx": {"list_id": "r1"}, "ts": "2026-10-17T23:00:00", "op_id": "20261017T230000-aaaaaaaa"}
+              "ctx": {"list_id": "r1"}, "ts": "2026-10-17T23:00:00", "op_id": "20261017T230000-aaaaaaaa",
+              "rules_version": oplog.RULES_VERSION}
     bad_el["target"] = {"element_id": "E009"}
     bad_el["value"]["definition"] = {"row": "F13", "value": "events", "cond": "events_any", "user_params": {"bars": 30}}
     bad_el["value"].pop("said_first_match")
     _raw_append(state_dir, bad_el)
-    with pytest.raises(shapes.ShapeValidationError, match="已有不合格的条目"):
+    with pytest.raises(shapes.ShapeValidationError, match="可能被改过的条目"):
         shapes.apply(_decision({"act": "alias_element", "target": {"element_id": "E009"}, "value": {"text": "x"}}))
     assert not (state_dir / "elements" / "E009.json").exists()
-    with pytest.raises(ValueError, match="已有不合格的条目"):
+    with pytest.raises(ValueError, match="可能被改过的条目"):
         ledger.shape_conditions("shape:s001@v1")
 
 

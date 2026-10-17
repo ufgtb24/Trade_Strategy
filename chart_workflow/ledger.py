@@ -38,7 +38,8 @@ angle_by = user:要素读的事实行是用户提的角度(facts.ROWS 的 source
 账本里不预先合并成几类,怎么划、各算谁的留给流程骨架。卡、版本或卡上引用的要素不存在就报错。
 来源写形态卡的行,账本记账时自己把规则和卡核对一遍(rulecheck.check_rule_against_shape:声明一致、样本一致、
 样本股逐日一致),不收调用方传来的核对结果;通过后把结果记进 rule_implements,不过就拒绝记。核对要用规则本身
-(规则文件或 app),手动 add 不带规则,所以形态卡来源只能经对照页命令记账。
+(规则文件或 app),并且要和清单实际用的规则同一条(按清单 params.rule_identity 的指纹比,见 rules.rule_identity);
+手动 add 不带规则,所以形态卡来源只能经对照页命令记账。
 新字段一律可选,旧行照常读。
 自动记账的行另有:rule_sha(规则文件或参数文件的 sha256)、rule_archive(存档位置,相对状态根)、
 app_commit / app_dirty(app 方式:当时的 git 提交、app 目录有没有未提交改动)、years(这次统计与
@@ -274,13 +275,20 @@ def _append(root: Path, entry: dict) -> dict:
     return {**entry, "round": rnd}
 
 
-def _shape_check(cfg: dict, source: str, rule: str | None, app: str | None, app_params: str | None) -> dict | None:
-    """来源是形态卡时,账本自己核对规则和卡(见模块说明);不是形态卡 → None。没给规则 / 核对不过 → ValueError。"""
+def _shape_check(cfg: dict, source: str, rule: str | None, app: str | None, app_params: str | None,
+                 list_params: dict | None) -> dict | None:
+    """来源是形态卡时,账本自己核对规则和卡(见模块说明);不是形态卡 → None。没给规则、核对用的规则和清单
+    实际用的规则(list_params.rule_identity)对不上、核对不过 → ValueError。"""
     if not SHAPE_SOURCE_RE.fullmatch(source):
         return None
     if not (rule or app):
         raise ValueError(f"来源写的是形态卡 {source}:记账时要给出规则(规则文件或 app),账本自己核对规则和卡一致;"
                          f"手动记账不收形态卡来源")
+    from chart_workflow.rules import rule_identity
+    want, have = (list_params or {}).get("rule_identity"), rule_identity(rule, app, app_params)
+    if want != have:
+        raise ValueError(f"来源写的是形态卡 {source}:核对用的规则({have})和清单实际用的规则"
+                         f"({want or '清单没记规则指纹'})对不上,只能拿生成这份清单的那条规则核对")
     from chart_workflow import rulecheck             # 函数内导入:rulecheck 依赖本模块
     return rulecheck.check_rule_against_shape(source, cfg, rule=rule, app=app, params=app_params)
 
@@ -295,11 +303,11 @@ def add_round(cfg: dict, *, kind: str, rule_id: str, version: str, source: str, 
     if kind not in KINDS:
         raise ValueError(f"kind 必须是 {KINDS} 之一: {kind!r}")
     check_source(source)
-    implements = _shape_check(cfg, source, rule, app, app_params)
     lp = list_path(cfg, list_id)
     if not lp.exists():
         raise FileNotFoundError(f"清单不存在: {lp}")
     doc = json.loads(lp.read_text())
+    implements = _shape_check(cfg, source, rule, app, app_params, doc.get("params"))
     rows = read_ledger()
     if not auto and any(r.get("list_id") == list_id and r.get("auto") for r in rows):
         raise ValueError(f"这份清单已自动记账: {list_id}")
@@ -328,7 +336,8 @@ def record_round(cfg: dict, ctx: dict, *, summary: dict, years: list[str],
     if missing:
         raise ValueError(f"记账上下文缺 {missing}")
     check_new_list_id(cfg, ctx["list_id"])
-    implements = _shape_check(cfg, ctx["source"], ctx.get("rule"), ctx.get("app"), ctx.get("app_params"))
+    implements = _shape_check(cfg, ctx["source"], ctx.get("rule"), ctx.get("app"), ctx.get("app_params"),
+                              ctx.get("params"))
     root = state_root()
     entry = _entry(cfg, root, kind=ctx["kind"], rule_id=ctx["rule_id"], version=ctx["version"],
                    source=ctx["source"], change=ctx["change"], list_id=ctx["list_id"],

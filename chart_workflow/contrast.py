@@ -49,7 +49,7 @@ from chart_workflow.listfile import (ListValidationError, deep_link, drop_window
                                      new_list, write_list)
 from chart_workflow.rulecheck import check_rule_against_shape
 from chart_workflow.rules import (app_module_path, hits_from_app, hits_from_rule, join_panel,
-                                  rule_fingerprint)
+                                  rule_fingerprint, rule_identity)
 from chart_workflow.state import StateRootMissing, advance, state_root
 from chart_workflow.xcheck import run_xcheck
 
@@ -90,10 +90,11 @@ def blind_sample(joined: pd.DataFrame, cfg: dict) -> pd.DataFrame:
 
 def build_list(panel: pd.DataFrame, hits: pd.DataFrame, cfg: dict, list_id: str, blind: bool,
                rule_label: str, title: str | None = None, errata_info: dict | None = None, *,
-               ledger: dict | None = None, xcheck: bool = False) -> dict:
+               ledger: dict | None = None, xcheck: bool = False, rule_identity: str | None = None) -> dict:
     """hits:(symbol, date) 命中。先按决策日年份过滤到内圈年份,再和面板连接,只留池内、
     有有效标签的股票日。panel 应已按数据错误登记排除过(load_pool),同日对照在整张面板上算。
-    xcheck:生成后对每段做跨源比对(普通模式在算成绩之前做)。
+    xcheck:生成后对每段做跨源比对(普通模式在算成绩之前做)。rule_identity:规则的身份指纹
+    (rules.rule_identity),记进清单 params,账本核对规则和形态卡时拿它比。
     ledger:记账上下文(见 ledger.record_round,list_id 与 params 由这里填);普通模式必填——
     成绩由 control.summarize 算,算完当场记账,不给就拒绝(ValueError)。盲看模式不算成绩,忽略它。"""
     ccfg = cfg["contrast"]
@@ -103,7 +104,8 @@ def build_list(panel: pd.DataFrame, hits: pd.DataFrame, cfg: dict, list_id: str,
     joined = join_panel(hits_in, panel).sort_values(["date", "symbol"]).reset_index(drop=True)
     kind = "contrast_blind" if blind else "contrast"
     doc = new_list(list_id, kind, title or (("盲看：" if blind else "对照：") + rule_label), cfg,
-                   {"rule": rule_label, "inner_years": years, "n_raw_hits": int(len(hits)),
+                   {"rule": rule_label, "rule_identity": rule_identity, "inner_years": years,
+                    "n_raw_hits": int(len(hits)),
                     "n_hits_inner_years": int(len(hits_in)), "n_pool_hits": int(len(joined)),
                     **({"data_errors": errata_info} if errata_info is not None else {})})
     if blind:
@@ -244,6 +246,7 @@ def main(argv=None) -> None:
     try:                      # 普通模式:成绩算完当场记账(summarize 里)
         doc = build_list(panel, hits, cfg, args.list_id, args.blind, label, args.title,
                          errata_info=errata, ledger=ctx,
+                         rule_identity=rule_identity(args.rule, args.app, args.params),
                          xcheck=bool(cfg["xcheck"]["enabled"] and not args.no_xcheck))
     except (ValueError, FileNotFoundError, StateRootMissing, OSError) as e:
         print(f"错误:{e}", file=sys.stderr)

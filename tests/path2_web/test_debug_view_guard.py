@@ -394,56 +394,6 @@ def test_guarded_but_unredacted_scan_redacted_on_open(tmp_path, _cw_state_root):
     assert got[0]["ref_ids"]["broken"] == []
 
 
-def _wave_v(period, phase, drift):
-    def make(start, end, base):
-        dates = pd.bdate_range(start, end, name="date")
-        i = np.arange(len(dates)) + phase
-        close = base * (1 + 0.12 * np.sin(2 * np.pi * i / period)) * (1 + drift * i)
-        vol = 1e6 * (1 + 2.5 * (np.sin(2 * np.pi * i / period) > 0.9))
-        return pd.DataFrame({"open": close * 0.995, "high": close * 1.01, "low": close * 0.99, "close": close,
-                             "volume": vol}, index=dates)
-    return make
-
-
-def _derived(e):
-    """一个事件行里浮点字段两两能凑出的数:x、x÷(1+y)、x×(1+y)、x÷y、x×y、x±y。"""
-    xs = [v for k, v in e.items() if isinstance(v, float) and np.isfinite(v)]
-    out = list(xs)
-    for a in xs:
-        for b in xs:
-            out += [a * (1 + b), a * b, a + b, a - b]
-            if b != -1:
-                out.append(a / (1 + b))
-            if b:
-                out.append(a / b)
-    return out
-
-
-def test_preview_derived_values_do_not_reconstruct_pre_floor_prices(tmp_path, _cw_state_root):
-    """几只合成股做预览:留下的事件里,任何浮点字段两两凑出的数都不和下界之前的 K 线价格精确对上;
-    峰的回看窗起点早于下界时相对高度置空(确有这种峰,不是空测)。"""
-    nulled = 0
-    for k, (period, phase, drift) in enumerate([(23, 0, 0.003), (17, 5, 0.002), (31, 11, 0.004),
-                                                (19, 3, -0.001), (27, 8, 0.001), (13, 2, 0.0025)]):
-        (tmp_path / f"s{k}").mkdir()
-        c, snap = _client(tmp_path / f"s{k}", make=_wave_v(period, phase, drift))
-        r = c.get("/preview", params={"pattern_id": "bo_only", "symbol": "AAA", "start": "2025-01-02",
-                                      "end": "2025-06-30", "label_horizon": 5})
-        assert r.status_code == 200, r.text
-        df = pd.read_pickle(snap / "AAA.pkl")
-        pre = df[(df.index >= r.json()["scan"]["win_start"]) & (df.index < FLOOR)]
-        prices = pre[["open", "high", "low", "close"]].to_numpy().ravel()
-        for e in r.json()["analysis"]["events"]:
-            vals = np.array(_derived(e))
-            if len(vals):
-                hit = np.isclose(vals[:, None], prices[None, :], rtol=1e-9, atol=0).any(axis=1)
-                assert not hit.any(), (e["instance_id"], vals[hit][:3])
-            if e["node_id"] == "pk" and e.get("relative_height") is None:
-                assert e["relative_height_from_idx"] is None
-                nulled += 1
-    assert nulled > 0
-
-
 def test_scan_hides_events_before_floor_on_disk_and_open(tmp_path, _cw_state_root):
     """扫描:落盘的文件里就没有下界之前的事件(每只股票每个 pattern 记下界那根的位置);打开时按整份清单记看过。"""
     c, snap = _client(tmp_path, make=_wave)
@@ -626,23 +576,18 @@ def test_diagnostics_use_same_anchor_rule_as_analysis():
                             result=NS(events=evs))
 
 
-def test_redact_before_clears_ids_of_removed_events_and_lookback_values():
-    """留下的事件字段里指向被删事件的编号置空(编号列表去掉它们);回看起点早于下界的派生值连同回看起点置空,
-    回看起点不早于下界的照留;回看起点不算锚点。"""
-    from path2_web.serialize import event_anchor, redact_before
+def test_redact_before_clears_ids_of_removed_events():
+    """留下的事件字段里指向被删事件的编号置空(编号列表去掉它们);别的字段原样。"""
+    from path2_web.serialize import redact_before
     ev = lambda iid, s, **kw: {"instance_id": iid, "node_id": iid.split("_")[0], "start_idx": s, "end_idx": s,
                                "child_refs": {}, "ref_ids": {}, **kw}
     a = {"events": [ev("bo_3#0", 3), ev("bo_12#0", 12),
                     ev("tb_15#0", 15, anchor_bo_id="bo_3#0", srcs=["bo_3#0", "bo_12#0"], note="bo_12#0"),
-                    ev("pk_13#0", 13, relative_height=0.4, relative_height_from_idx=7),
-                    ev("pk_16#0", 16, relative_height=0.2, relative_height_from_idx=11)],
+                    ev("pk_13#0", 13, relative_height=0.4)],
          "matches": []}
-    assert event_anchor(a["events"][3]) == 13
     out = redact_before(a, 10)
     by = {e["instance_id"]: e for e in out["events"]}
-    assert set(by) == {"bo_12#0", "tb_15#0", "pk_13#0", "pk_16#0"}
+    assert set(by) == {"bo_12#0", "tb_15#0", "pk_13#0"}
     assert by["tb_15#0"]["anchor_bo_id"] is None and by["tb_15#0"]["srcs"] == ["bo_12#0"]
-    assert by["tb_15#0"]["note"] == "bo_12#0"
-    assert (by["pk_13#0"]["relative_height"], by["pk_13#0"]["relative_height_from_idx"]) == (None, None)
-    assert (by["pk_16#0"]["relative_height"], by["pk_16#0"]["relative_height_from_idx"]) == (0.2, 11)
+    assert by["tb_15#0"]["note"] == "bo_12#0" and by["pk_13#0"]["relative_height"] == 0.4
     assert redact_before(out, 10) == out

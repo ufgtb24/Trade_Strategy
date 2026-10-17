@@ -8,17 +8,24 @@
 引用的编号,也可以写它合并后并入的编号(按合并后解析到的那条比)。
 
 「卡说成立」(一天、一只股票的事实表上):卡上必须有的要素全是「是」、有它就不买的全是「否」(按卡上记下的
-要素版本判;加分项不参与);卡上有触发时,还要当天出现卡上的某个触发(T1~T8 由事实表判;只剩手写触发时
-判定不了)。有要素无法判定(待写代码、回看不够长)或触发判定不了 → 这一天卡判定不了,不比。
+要素版本判;加分项不参与);卡上有触发时,还要当天出现卡上的某个触发(T1~T8 由事实表判)。有要素无法判定
+(待写代码、回看不够长)→ 这一天卡判定不了,不比。不成立时报错写明是哪个要素不对,或者当天缺的是哪个触发。
+卡上有手写触发(custom,没有能算的定义)就核对不了规则哪天该成立:直接拒绝,点名是哪个触发,出路是在事实表
+加一行把它算出来,或者换成表里的触发。
 
+三处用同一个口径:规则拿不到用户的框,只能按固定回看(不框选,买点前 default_lookback_bars 根)算事实表,
+所以样本核对和逐日核对也按固定回看判卡。
 两道核对(只比规则和卡是否一致,不碰任何前瞻收益):
-  样本:卡那一版及以前加进来的样本,在样本的买点那天按标注的框选起点算事实表,规则信号要和「卡说成立」相同。
-        判定不了或读不到行情的样本跳过并列出原因;能核对的样本少于 shape_check.min_samples(默认 3,待验证)
-        就拒绝,报错里给两条出路:先给卡加样本,或者这条规则不声明来自形态卡。
-  逐日(反例):每只能核对的样本股,在看图范围内(不早于看图下界、不晚于训练段末日)逐日按默认回看算事实表,
+  样本:卡那一版及以前加进来的样本,在样本的买点那天按固定回看判卡,规则信号要和「卡说成立」相同。
+        另按用户框的窗口判一次:两者判得不同的样本单独列出(这张卡在固定回看下表达不了用户框选时的意思),
+        这是卡的问题,不作为拒规则的理由,也不算进能核对的个数。判定不了或读不到行情的样本跳过并列出原因;
+        能核对的样本少于 shape_check.min_samples(默认 3,待验证)就拒绝,报错里写清缺在哪,给两条出路:
+        先给卡加样本,或者这条规则不声明来自形态卡。
+  逐日(反例):每只能核对的样本股,在看图范围内(不早于看图下界、不晚于训练段末日)逐日按固定回看判卡,
         卡能判定的每一天,规则信号都要和「卡说成立」一致;不一致的天数占卡能判定天数的比例超过
         shape_check.max_disagree_share(默认 0,即必须全部一致,待验证)就拒绝,列出不一致的天。
-        永远成立、或明显比卡宽的规则在卡说不成立的日子上就过不了。
+        永远成立、或明显比卡宽的规则在卡说不成立的日子上就过不了;所以卡判「不成立」的天少于
+        shape_check.min_negative_days(默认 20,待验证)时反例不够,也拒绝。
 规则信号:规则文件方式在这只股票截到训练段末日的行情上算一次 signal(df),逐日读;app 方式跑这只股票,
 看那天在不在命中里。卡与要素从操作日志重算(先重走全部日志的校验),不读磁盘上的卡与要素文件。
 """
@@ -32,7 +39,7 @@ from chart_workflow.ledger import SHAPE_SOURCE_RE
 
 ROLES = ("must", "bonus", "must_not")
 ROLE_TEXT = {"must": "必须有", "bonus": "加分", "must_not": "有它就不买"}
-DEFAULTS = {"min_samples": 3, "max_disagree_share": 0.0}     # 与 config 的 shape_check 同值,都待验证
+DEFAULTS = {"min_samples": 3, "max_disagree_share": 0.0, "min_negative_days": 20}   # 与 config 的 shape_check 同值,都待验证
 SHOW_DAYS = 10
 
 
@@ -96,26 +103,35 @@ def check_declaration(decl: dict, ver: dict, els: dict, shape: str) -> list[dict
 
 
 def card_says(card: dict, els: dict, facts: dict) -> tuple[bool | None, str]:
-    """一天的事实表上「卡说成立」吗(见模块说明):(True / False / None = 判定不了, 判定不了的理由)。"""
+    """一天的事实表上「卡说成立」吗(见模块说明):(True / False / None = 判定不了, 理由)。理由:判定不了时
+    说哪个要素判定不了;不成立时说是哪个要素不对,或者要素都成立但当天缺卡上的哪个触发。
+    前提:卡上没有手写触发(来源写形态卡时 check_rule_against_shape 先拒了这种卡)。"""
     from chart_workflow import elements as E
+    from chart_workflow.facts import TRIGGERS
 
-    ok = True
+    why_not = ""
     for ing in card.get("ingredients", []):
         if ing.get("role") == "bonus" or not ing.get("element"):
             continue
         v, why = E.evaluate_element(els, ing["element"], facts, ing.get("element_version"))
         if v == "unknown":
             return None, f"{E.label(els, ing['element'])} 无法判定({why})"
-        ok = ok and (v == "yes" if ing["role"] == "must" else v == "no")
+        if not why_not and v != ("yes" if ing["role"] == "must" else "no"):
+            why_not = f"{E.label(els, ing['element'])} 是「{'是' if v == 'yes' else '否'}」(卡上是「{ROLE_TEXT[ing['role']]}」)"
+    if why_not:
+        return False, why_not
     terms = [t.get("term") for t in card.get("triggers", [])]
-    if not ok or not terms:
-        return ok, ""
-    today = {t.get("tid") for t in facts.get("triggers") or []}
-    if any(t in today for t in terms if t != "custom"):
+    if not terms:
         return True, ""
-    if "custom" in terms:
-        return None, "卡上表里的触发当天都没出现,手写触发判定不了"
-    return False, ""
+    today = {t.get("tid") for t in facts.get("triggers") or []}
+    if any(t in today for t in terms):
+        return True, ""
+    return False, "要素都成立,当天缺卡上的触发 " + "、".join(f"{t}({TRIGGERS[t][1]})" for t in terms)
+
+
+def custom_triggers(card: dict) -> list[str]:
+    """卡上的手写触发(没有能算的定义),每个一句:「t2「放量站上年线」」。"""
+    return [f"{t.get('trig_id')}「{t.get('text') or ''}」" for t in card.get("triggers", []) if t.get("term") == "custom"]
 
 
 class _Signals:
@@ -155,13 +171,16 @@ def _bars(cfg: dict, symbol: str, cache: dict):
 
 def check_samples(cfg: dict, card: dict, ver: dict, n: int, els: dict, anns: dict, sig: _Signals,
                   bars: dict) -> dict:
-    """卡的样本图上,规则信号和「卡说成立」是否一致。返回 {"checked", "skipped": [原因], "symbols": [能核对的股票]};
-    有不一致的、或能核对的少于最少个数 → RuleShapeMismatch。"""
+    """卡的样本上,规则信号和「卡说成立」是否一致。卡按固定回看(买点前 default_lookback_bars 根,和逐日核对、
+    规则同一个口径)判;另按用户框的窗口判一次,两者判得不同的样本单独列出(这张卡在固定回看下表达不了用户
+    框选时的意思),不比、不算进能核对的个数。返回 {"checked", "skipped": [原因], "unexpressible": [说明],
+    "symbols": [能核对的股票]};有不一致的、或能核对的少于最少个数 → RuleShapeMismatch。"""
     from chart_workflow.facts import facts_for
 
     shape = f"{card['shape_id']}@v{n}"
     need = int(_settings(cfg)["min_samples"])
-    bad, skipped, checked, symbols = [], [], 0, set()
+    lookback = int(cfg["facts"]["default_lookback_bars"])
+    bad, skipped, unexpressible, checked, symbols = [], [], [], 0, set()
     for case in card.get("cases") or []:
         if case.get("version", 0) > n:
             continue
@@ -172,8 +191,7 @@ def check_samples(cfg: dict, card: dict, ver: dict, n: int, els: dict, anns: dic
             skipped.append(f"{tag}:找不到标注或买点")
             continue
         try:
-            facts = facts_for(cfg, a["symbol"], day, a.get("range_start"))
-            says, why = card_says(ver["card"], els, facts)
+            says, why = card_says(ver["card"], els, facts_for(cfg, a["symbol"], day, None))
             if says is None:
                 skipped.append(f"{tag}:{why}")
                 continue
@@ -183,31 +201,47 @@ def check_samples(cfg: dict, card: dict, ver: dict, n: int, els: dict, anns: dic
         except (ValueError, FileNotFoundError) as e:
             skipped.append(f"{tag}:{e}")
             continue
+        if a.get("range_start"):
+            try:
+                boxed, _ = card_says(ver["card"], els, facts_for(cfg, a["symbol"], day, a["range_start"]))
+            except (ValueError, FileNotFoundError):
+                boxed = None
+            if boxed is not None and boxed != says:
+                unexpressible.append(f"{tag}:按你框的窗口(从 {a['range_start']} 起)卡{'成立' if boxed else '不成立'},"
+                                     f"按固定回看(买点前 {lookback} 根)卡{'成立' if says else '不成立'}")
+                continue
         checked += 1
         symbols.add(a["symbol"])
         if got != says:
-            bad.append(f"{tag}:卡说{'成立' if says else '不成立'},规则信号{'成立' if got else '不成立'}")
+            bad.append(f"{tag}:卡说{'成立' if says else f'不成立({why})'},规则信号{'成立' if got else '不成立'}")
     if bad:
         raise RuleShapeMismatch(f"规则在形态卡 {shape} 的样本上和卡说的不一致:" + ";".join(bad))
     if checked < need:
-        why = (";跳过的:" + ";".join(skipped)) if skipped else ""
+        why = ""
+        if unexpressible:
+            why += (f";其中 {len(unexpressible)} 个样本按你框选的窗口和按固定回看判得不同——这张卡在固定回看下"
+                    f"表达不了你框选时的意思,这些样本不拿来核对规则:" + ";".join(unexpressible))
+        if skipped:
+            why += ";跳过的:" + ";".join(skipped)
         raise RuleShapeMismatch(
             f"形态卡 {shape} 能核对的样本只有 {checked} 个,至少要 {need} 个(待验证),核对不了规则和卡是否一致{why}。"
             f"两条出路:先给卡加样本(add_case),或者这条规则不声明来自形态卡(来源写 user-text / mining 等)")
-    return {"checked": checked, "skipped": skipped, "symbols": sorted(symbols)}
+    return {"checked": checked, "skipped": skipped, "unexpressible": unexpressible, "symbols": sorted(symbols)}
 
 
 def check_days(cfg: dict, card: dict, ver: dict, n: int, els: dict, symbols: list[str], sig: _Signals,
                bars: dict) -> dict:
-    """反例核对:每只样本股在看图范围内逐日比规则信号和「卡说成立」。返回 {"days", "unknown", "disagree": 个数,
-    "examples": [前几个不一致的天]};不一致的比例超过容差、或卡一天都判定不了 → RuleShapeMismatch。"""
+    """反例核对:每只样本股在看图范围内逐日比规则信号和「卡说成立」。返回 {"days", "negative", "unknown",
+    "disagree": 个数, "examples": [前几个不一致的天]};不一致的比例超过容差,或卡判「不成立」的天少于
+    shape_check.min_negative_days(反例不够,看不出规则是不是比卡宽)→ RuleShapeMismatch。"""
     import pandas as pd
 
     from chart_workflow.facts import compute_facts
 
     shape = f"{card['shape_id']}@v{n}"
+    st = _settings(cfg)
     lo, hi = pd.Timestamp(cfg.get("view_floor") or cfg["train_start"]), pd.Timestamp(cfg["train_end"])
-    days, unknown, bad = 0, 0, []
+    days, negative, unknown, bad = 0, 0, 0, []
     for sym in symbols:
         df = _bars(cfg, sym, bars)
         got = sig.on(sym, df)
@@ -219,30 +253,37 @@ def check_days(cfg: dict, card: dict, ver: dict, n: int, els: dict, symbols: lis
             except ValueError:
                 unknown += 1
                 continue
-            says, _ = card_says(ver["card"], els, facts)
+            says, why = card_says(ver["card"], els, facts)
             if says is None:
                 unknown += 1
                 continue
             days += 1
+            negative += not says
             if got.get(day) != says:
-                bad.append((sym, day, says, got.get(day)))
-    if days == 0:
-        raise RuleShapeMismatch(f"形态卡 {shape} 在样本股的看图范围内一天都判定不了,核对不了规则和卡是否一致")
-    share = len(bad) / days
-    tol = float(_settings(cfg)["max_disagree_share"])
-    examples = [f"{s} {d}:卡说{'成立' if c else '不成立'},规则{'成立' if r else '不成立'}" for s, d, c, r in bad]
-    if share > tol:
+                bad.append((sym, day, says, why, got.get(day)))
+    tol = float(st["max_disagree_share"])
+    examples = [f"{s} {d}:卡说{'成立' if c else f'不成立({w})'},规则{'成立' if r else '不成立'}"
+                for s, d, c, w, r in bad]
+    if days and len(bad) / days > tol:
         raise RuleShapeMismatch(
             f"规则和形态卡 {shape} 在样本股看图范围内逐日比:卡能判定的 {days} 天里有 {len(bad)} 天不一致"
             f"(容差 {tol:.0%},待验证):" + ";".join(examples[:SHOW_DAYS])
             + (f";…共 {len(bad)} 天" if len(bad) > SHOW_DAYS else ""))
-    return {"days": days, "unknown": unknown, "disagree": len(bad), "examples": examples[:SHOW_DAYS]}
+    need = int(st["min_negative_days"])
+    if negative < need:
+        raise RuleShapeMismatch(
+            f"形态卡 {shape} 在样本股看图范围内卡判「不成立」的只有 {negative} 天(卡能判定 {days} 天),至少要 "
+            f"{need} 天(待验证)才看得出规则是不是比卡宽(永远成立的规则在卡成立的日子上也全对)。"
+            f"出路:给卡加别的股票、别的时段的样本,让样本股的看图范围里有更多卡不成立的日子")
+    return {"days": days, "negative": negative, "unknown": unknown, "disagree": len(bad),
+            "examples": examples[:SHOW_DAYS]}
 
 
 def check_rule_against_shape(source: str, cfg: dict, *, rule: str | None = None, app: str | None = None,
                              params: str | None = None) -> dict:
     """来源是形态卡时的全部核对。返回要记进账本的 {"source", "declared", "samples_checked", "samples_skipped",
-    "days_checked", "days_unknown", "days_disagree", "disagree_examples"};任何一项不过 → RuleShapeMismatch
+    "samples_unexpressible", "days_checked", "days_negative", "days_unknown", "days_disagree",
+    "disagree_examples"};任何一项不过 → RuleShapeMismatch
     (日志校验不过 → ShapeValidationError;卡或版本不存在 → FileNotFoundError)。"""
     from chart_workflow.shapes import _ann_index, checked_state
 
@@ -257,10 +298,18 @@ def check_rule_against_shape(source: str, cfg: dict, *, rule: str | None = None,
     ver = next((v for v in card["versions"] if v["version"] == n), None)
     if ver is None:
         raise FileNotFoundError(f"形态卡 {m.group(1)} 没有版本 v{n}")
-    declared = check_declaration(declared_implements(rule, app), ver, els, f"{card['shape_id']}@v{n}")
+    shape = f"{card['shape_id']}@v{n}"
+    custom = custom_triggers(ver["card"])
+    if custom:
+        raise RuleShapeMismatch(
+            f"形态卡 {shape} 上的触发 {'、'.join(custom)} 是手写触发,没有能算的定义,核对不了规则哪天该成立。"
+            f"两条出路:在事实表加一行把它算出来(先记一条提角度的日志 propose_fact,再照它写事实行),"
+            f"或者把它换成表里的触发(T1~T8)")
+    declared = check_declaration(declared_implements(rule, app), ver, els, shape)
     sig, bars = _Signals(cfg, rule, app, params), {}
     res = check_samples(cfg, card, ver, n, els, _ann_index(), sig, bars)
     daily = check_days(cfg, card, ver, n, els, res["symbols"], sig, bars)
     return {"source": source, "declared": declared, "samples_checked": res["checked"],
-            "samples_skipped": res["skipped"], "days_checked": daily["days"], "days_unknown": daily["unknown"],
+            "samples_skipped": res["skipped"], "samples_unexpressible": res["unexpressible"],
+            "days_checked": daily["days"], "days_negative": daily["negative"], "days_unknown": daily["unknown"],
             "days_disagree": daily["disagree"], "disagree_examples": daily["examples"]}

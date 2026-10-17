@@ -20,16 +20,19 @@ F01～F15 每一行都能直接立要素,不用写代码:
     行、值、条件类型不存在,类型不匹配,口径不对,参数缺 / 多 / 类型不对,一律拒绝(不拖到判定时答
     「无法判定」)。恒成立、不可能成立的定义也拒绝:按值声明的上下界判;根数的上界是规则逐日判要素时
     事实表窗口的根数(不框选:买点前 default_lookback_bars 根加买点);
-    量比、涨幅、比值数学上没有边界,声明的是合理范围(待验证),阈值落在范围外按「近乎恒成立 / 近乎不可能」
-    拒绝;百分比写成整数(30% 写成 30)出界时报错里提示单位。
+    量比、涨幅、比值数学上没有边界,声明的是合理范围(待验证),at_least / at_most 的阈值落在范围外按
+    「近乎恒成立 / 近乎不可能」拒绝;between 只有一端落在合理范围外时原样保留两端,打印要素时给提示
+    (definition_hints);百分比写成整数(30% 写成 30)出界时报错里提示单位。
+    这些都是现在(第 2 版)的校验规则;重走旧日志条目时按那条自己的版本(shapes 模块说明)。
   · 现有事实行都算不出的角度才记「待写代码」(definition 为 null,needs 写缺什么)。
 
 身份看定义,不看字面(same_meaning):读的行、值、条件类型、口径相同,并且 user_params 相同(系统默认值
 不算身份),或者两处参数合在一起相同——同一个参数不论写在 user_params 还是 default_params 都按同一条算。
 同一个意思只许一种写法,换个条件类型写出来的同义定义当场拒绝并指出该怎么写:
   · events_at_least 的 k 至少 2(k = 1 就是 events_any);
-  · between 的一端碰到(或越过)值的上下界就是 at_least / at_most:不拒绝,规范化成那一种再查重
-    (两端都碰到就是恒成立,拒绝);个数的阈值必须是整数;
+  · between 的一端碰到(或越过)值本来就取不到的硬边界(个数、根数、比例的上下界,比值不小于 0、涨跌幅不小于
+    -1)就是 at_least / at_most:不拒绝,规范化成那一种再查重(两端都碰到就是恒成立,拒绝);只落在合理范围
+    外的软边界不改写;个数的阈值必须是整数;
   · 各值声明里的 same_as:跨行或跨类型的同义写法(如「按收盘连续越过 1 个峰」= F01 越过个数至少 1、
     「最近 1 根里有放量段」= F07 当天量比、「涨前状态是深跌」= dd250 至多深跌线),拒绝并指到规范写法;
   · 「算不出时判否」的值(F04、F06 的 vs_latest_run)的阈值盖住了值能取到的整个范围(at_least 不高于下界、
@@ -131,8 +134,10 @@ def _features_cfg() -> dict:
 # lo / hi:值的下界 / 上界,用来拒绝恒成立、不可能;一端碰到(或越过)边界的 between 只剩另一端,按 at_least /
 #          at_most 规范化(再和已有要素查重)。
 #          ("cfg", 键) 从 config 的 facts 子树取;("win", 偏移) = 事实表窗口多少根 + 偏移(见 max_window_bars)。
-#          soft = True:数学上没有边界(量比、涨幅、比值),这里是合理范围(待验证)——阈值落在范围外按
-#          「近乎恒成立 / 近乎不可能」拒绝;百分比写成了整数(30% 写成 30)时会出界,报错里提示单位。
+#          soft = True:数学上没有边界(量比、涨幅、比值),这里是合理范围(待验证)——at_least / at_most 的阈值
+#          落在范围外按「近乎恒成立 / 近乎不可能」拒绝;between 只有一端落在范围外时原样保留两端、只给提示;
+#          百分比写成了整数(30% 写成 30)时会出界,报错里提示单位。
+# hard:soft 的值本来就取不到的边界(比值不小于 0、涨跌幅不小于 -1),(下界, 上界),没有写 None。
 # none:值是 null 时怎么判;不写 = unknown(回看不够长);("no", 理由) = 说的那个东西不存在,判否。
 # exists:none 判否的值,在下界上的 at_least 等于问哪一条(拒绝时提示)。
 # needs:这些取法(可含 "*" 表示列表里每一项)有一个是 null 就答 unknown(判定所依赖的输入算不出)。
@@ -197,24 +202,25 @@ VALUES: dict[str, dict[str, dict]] = {
     "F06": {
         "dry": {"kind": "bool", "title": "买点前几天（含当天）量比都低于 1", "path": "dry", "needs": ("days.*.vr",)},
         "vs_latest_run": {"kind": "number", "title": "买点前几天均量 ÷ 最近一段放量段均量",
-                          "path": "vs_latest_run", "lo": 0.01, "hi": 10, "soft": True, "unit": "times",
+                          "path": "vs_latest_run", "lo": 0.01, "hi": 10, "soft": True, "hard": (0, None),
+                          "unit": "times",
                           "none": ("no", "窗口里没有放量段可比"),
                           "exists": "窗口里有放量段(F05 的 runs events_any)"},
     },
     "F07": {
         "vr": {"kind": "number", "title": "买点当天量比", "path": "vr", "lo": 0.05, "hi": 100, "soft": True,
-               "unit": "times"},
+               "hard": (0, None), "unit": "times"},
     },
     "F08": {
         "pre_state": {"kind": "category", "title": "涨前状态", "path": "pre_state", "choices": PRE_STATES,
                       "same_as": _pre_state_same},
         "dd250": {"kind": "number", "title": "收盘离 250 日最高的幅度", "path": "dd250", "lo": -1, "hi": 0, "unit": "pct"},
         "r60": {"kind": "number", "title": "60 日涨幅", "path": "r60", "lo": -0.95, "hi": 20, "soft": True,
-                "unit": "pct"},
+                "hard": (-1, None), "unit": "pct"},
         "width40": {"kind": "number", "title": "40 日振幅占收盘", "path": "width40", "lo": 0.005, "hi": 10,
-                    "soft": True, "unit": "pct"},
+                    "soft": True, "hard": (0, None), "unit": "pct"},
         "M": {"kind": "number", "title": "日常波动幅度 M", "path": "M", "lo": 0.002, "hi": 1, "soft": True,
-              "unit": "pct"},
+              "hard": (0, None), "unit": "pct"},
     },
     "F09": {
         f"{reg}_segments": {"kind": "events", "title": f"{REGIME_TEXT[reg]}段", "path": "segments",
@@ -223,7 +229,7 @@ VALUES: dict[str, dict[str, dict]] = {
     },
     "F10": {
         "gap": {"kind": "number", "title": "当天开盘相对前一天收盘", "path": "gap", "lo": -0.9, "hi": 3,
-                "soft": True, "unit": "pct"},
+                "soft": True, "hard": (-1, None), "unit": "pct"},
         "gap_m_flag": {"kind": "bool", "title": "开盘跳空够 gap_m 倍 M", "path": "gap_m_flag", "needs": ("M",)},
     },
     "F11": {
@@ -231,7 +237,7 @@ VALUES: dict[str, dict[str, dict]] = {
     },
     "F12": {
         "rise": {"kind": "number", "title": "买点前一段的涨幅", "path": "rise", "lo": -0.95, "hi": 20,
-                 "soft": True, "unit": "pct"},
+                 "soft": True, "hard": (-1, None), "unit": "pct"},
         "up_ratio": {"kind": "number", "title": "买点前一段的收阳比例", "path": "up_ratio", "lo": 0, "hi": 1,
                      "unit": "pct"},
         "max_dd": {"kind": "number", "title": "买点前一段的收盘最大回撤", "path": "max_dd", "lo": 0, "hi": 1,
@@ -293,7 +299,14 @@ def check_values() -> list[str]:
 def max_window_bars() -> int:
     """事实表窗口多少根:规则逐日判要素时不框选,窗口取买点前 default_lookback_bars 根,含买点共这么多加一根。
     根数类的值(离买点多少根、最近 N 根)按它定上界——超过它的阈值在规则里等于整个窗口。卡的样本按用户框的
-    起点算,框得比这长时样本上能取到更大的根数,这里不放宽(待验证)。"""
+    起点算,框得比这长时样本上能取到更大的根数,这里不放宽(待验证)。
+    第 1 版校验规则(重走旧日志条目时,见 shapes 模块说明)按整个看图范围:看图下界到训练段末日的工作日数。"""
+    if oplog.rules_now() < 2:
+        import pandas as pd
+
+        cfg = load_config()
+        span = len(pd.bdate_range(str(cfg.get("view_floor") or cfg["train_start"]), str(cfg["train_end"])))
+        return max(int(cfg["facts"]["default_lookback_bars"]) + 1, span)
     return int(_facts_cfg()["default_lookback_bars"]) + 1
 
 
@@ -495,6 +508,11 @@ def _semantic_errors(fid: str, vname: str, spec: dict, cond: str, p: dict, varia
         lo, hi = p["lo"], p["hi"]
         if lo > hi or (kind == "number" and lo == hi):
             errs.append(f"{at}: 下限要小于上限" + ("(个数可以相等,表示正好几个)" if kind == "count" else ""))
+        elif oplog.rules_now() < 2:                   # 第 1 版:一端碰到边界就要求换写法
+            if lo_b is not None and lo <= lo_b:
+                errs.append(f"{at}: 下限 {lo} 碰到了{name}的下界 {lo_b},等于至多 {hi}:写成 at_most")
+            elif hi_b is not None and hi >= hi_b:
+                errs.append(f"{at}: 上限 {hi} 碰到了{name}的上界 {hi_b}{_unit_hint(spec, hi)},等于至少 {lo}:写成 at_least")
         elif hi_b is not None and hi > hi_b and _unit_hint(spec, hi):
             errs.append(f"{at}: 上限 {hi} 越过了{name}的上界 {hi_b}{_unit_hint(spec, hi)}")
         elif lo_b is not None and lo <= lo_b and hi_b is not None and hi >= hi_b:
@@ -514,16 +532,26 @@ def _semantic_errors(fid: str, vname: str, spec: dict, cond: str, p: dict, varia
     return errs
 
 
+def _hard(spec: dict) -> tuple:
+    """值本来就取不到的边界:硬边界的值就是它声明的上下界;soft 的值(合理范围)另声明 hard。"""
+    if spec.get("soft"):
+        return tuple(spec.get("hard") or (None, None))
+    return _bound(spec, "lo"), _bound(spec, "hi")
+
+
 def _one_sided(spec: dict, up: dict, dp: dict) -> tuple[str, dict, dict]:
-    """between 只有一端碰到(或越过)值的边界(soft 的值是合理范围)时只剩另一端:上限碰到上界 → at_least 下限,
-    下限碰到下界 → at_most 上限;参数留在原来那一处(用户说的还是用户说的)。两端都碰到、都没碰到、上下限
-    颠倒、上限越过上界且像把百分数写成了数 → 原样返回 between,由 _semantic_errors 判。"""
+    """between 只有一端碰到(或越过)值本来就取不到的硬边界时只剩另一端:上限碰到上界 → at_least 下限,
+    下限碰到下界 → at_most 上限;参数留在原来那一处(用户说的还是用户说的)。只落在「合理范围」之外的软边界
+    不改写(见 definition_hints)。两端都碰到、都没碰到、上下限颠倒、上限像把百分数写成了数 → 原样返回
+    between,由 _semantic_errors 判。"""
     p = {**dp, **up}
     lo, hi = p["lo"], p["hi"]
-    lo_b, hi_b = _bound(spec, "lo"), _bound(spec, "hi")
+    lo_b, hi_b = _hard(spec)
     hit_lo = lo_b is not None and lo <= lo_b
     hit_hi = hi_b is not None and hi >= hi_b
-    if lo > hi or (spec["kind"] == "number" and lo == hi) or hit_lo == hit_hi or (hi > hi_b and _unit_hint(spec, hi)):
+    soft_hi = _bound(spec, "hi")
+    if lo > hi or (spec["kind"] == "number" and lo == hi) or hit_lo == hit_hi \
+            or (soft_hi is not None and hi > soft_hi and _unit_hint(spec, hi)):
         return "between", up, dp
     keep, cond = ("lo", "at_least") if hit_hi else ("hi", "at_most")
     move = lambda d: {"x": d[keep]} if keep in d else {}
@@ -585,13 +613,31 @@ def normalize_definition(d, path: str = "definition") -> tuple[dict | None, list
                 errs += e
     if errs:
         return None, errs
-    if cond == "between":
+    if cond == "between" and oplog.rules_now() >= 2:
         cond, out_u, out_d = _one_sided(spec, out_u, out_d)
     errs = _semantic_errors(fid, vname, spec, cond, {**out_d, **out_u}, variant, path)
     if errs:
         return None, errs
     return {"row": fid, "value": vname, "cond": cond, "variant": variant,
             "user_params": out_u, "default_params": out_d}, []
+
+
+def definition_hints(definition: dict) -> list[str]:
+    """合法但值得提醒的地方(不拒绝、不改写):between 只有一端落在合理范围(待验证)之外,那一端几乎不起作用。"""
+    spec = VALUES[definition["row"]][definition["value"]]
+    if definition["cond"] != "between" or not spec.get("soft"):
+        return []
+    p = {**definition["default_params"], **definition["user_params"]}
+    lo_b, hi_b = _bound(spec, "lo"), _bound(spec, "hi")
+    name = _vtitle(spec, definition["variant"])
+    out = []
+    if hi_b is not None and p["hi"] > hi_b:
+        out.append(f"{name}的上限 {fmt_value(spec, p['hi'])},在合理范围(到 {fmt_value(spec, hi_b)},待验证)之外,"
+                   f"这一端几乎不起作用;照你写的两端保留")
+    if lo_b is not None and p["lo"] < lo_b:
+        out.append(f"{name}的下限 {fmt_value(spec, p['lo'])},在合理范围(从 {fmt_value(spec, lo_b)} 起,待验证)之外,"
+                   f"这一端几乎不起作用;照你写的两端保留")
+    return out
 
 
 def identity(definition: dict) -> str:
@@ -1037,6 +1083,7 @@ def render(el: dict, ops: list[dict] | None = None) -> str:
                      + ("，你提的角度" if who == "user" else "") + f"）；{params_text(d)}")
         if ver.get("definition_origin") and ver["version"] > 1:
             lines.append(f"  定义是谁定的：{origin_text(ver['definition_origin'])}（v{ver['version']}）")
+        lines += [f"  提示：{h}" for h in definition_hints(d)]
     if el["aliases"]:
         lines.append("  别的说法：" + "、".join(
             a["text"] + (f"（从 {a['from']} 并来）" if a.get("from") else "") for a in el["aliases"]))
