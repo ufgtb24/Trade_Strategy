@@ -329,7 +329,10 @@ describe('AnnotChart', () => {
     const { w, store } = await mountChart('bigmoves')
     await w.find('[data-testid="tool-buy"]').trigger('click')
     vi.useFakeTimers()
+    // 单击要等的时间不短于常见的双击间隔
+    expect(CLICK_DELAY_MS).toBeGreaterThanOrEqual(200)
     zrHandlers.click({ offsetX: 100, offsetY: 50, event: { detail: 1 } })
+    vi.advanceTimersByTime(CLICK_DELAY_MS - 1)                    // 第二下 click 来之前
     await w.vm.$nextTick()
     // 第一下单击还没生效:草稿里没有买点,图头仍藏着结果(不会闪一下)
     expect(store.drafts.has(ITEM.item_id)).toBe(false)

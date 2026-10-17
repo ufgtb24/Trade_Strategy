@@ -72,7 +72,7 @@ def test_rounds_recomputed_after_union_merge(cw_env, state_dir):
     other = [json.dumps({"round": 1, "ts": "2026-10-01T08:00:00", "kind": "rule", "rule_id": "z",
                          "version": "v1", "source": "user-text", "change": "别的机器",
                          "list_id": "z1"}, ensure_ascii=False),
-             json.dumps({"round": 2, "ts": "2026-10-02T08:00:00", "kind": "bigmoves",
+             json.dumps({"round": 1, "ts": "2026-10-02T08:00:00", "kind": "bigmoves",
                          "rule_id": "bigmoves", "version": "x", "source": "bigmoves",
                          "change": "别的机器", "list_id": "z2"}, ensure_ascii=False)]
     (state_dir / "ledger.jsonl").write_text("\n".join([lines[0], *other, lines[1]]) + "\n")
