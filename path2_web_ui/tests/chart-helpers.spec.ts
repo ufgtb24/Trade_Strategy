@@ -117,7 +117,7 @@ describe('buildVolumeSeriesAndYAxis', () => {
     expect(yAxisOverride.min).toBe(0)
     expect(yAxisOverride.max).toBeCloseTo(11.25, 9)
     // 所有 bar value ≥ 0（与 0 baseline 同向、单向往上）
-    expect(volSeries.data.every(d => d.value >= 0)).toBe(true)
+    expect(volSeries.data.every(d => d.value != null && d.value >= 0)).toBe(true)
   })
 
   it('does not throw when vol_max is 0 (all-zero visible volumes)', () => {

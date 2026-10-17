@@ -25,6 +25,8 @@
                 <span class="scan-name">{{ r.name }}</span>
                 <span class="scan-ts">{{ formatTs(r.scan_ts) }}</span>
                 <span v-if="r.partial" class="partial-badge">未完成</span>
+                <span v-if="r.old_scan" class="partial-badge old-badge"
+                      title="加看图范围护栏之前扫的,读的是完整行情:可能含本轮看图范围以外的命中和走势,不列成绩、不能打开,请重新扫描">旧扫描</span>
                 <span v-for="pid in r.pattern_ids" :key="pid" class="chip"
                       :class="{ 'chip--stale': r.per_pattern[pid]?.params_consistent === false }"
                       :title="r.per_pattern[pid]?.params_consistent === false
@@ -199,11 +201,18 @@ async function performDelete() {
 async function onOpen() {
   if (selected.value.size !== 1) return
   const ts = Array.from(selected.value)[0]
-  await scan.open(ts)
+  try { await scan.open(ts) } catch (e) { openFailed(e); return }
   emit('close')
 }
 function openOne(name: string) {
-  scan.open(name).then(() => emit('close'))
+  scan.open(name).then(() => emit('close'), openFailed)
+}
+// 打不开(如读了完整行情的旧扫描,后端 409):提示后端给的说明,列表留着
+function openFailed(e: any) {
+  const msg = String(e?.message ?? e)
+  let detail = msg.match(/→ \d+: ([\s\S]*)$/)?.[1] ?? msg
+  try { detail = JSON.parse(detail).detail ?? detail } catch { /* 不是 JSON:原样 */ }
+  view.showToast(`打不开:${detail}`)
 }
 
 // 复制选中(单个)扫描文件的完整磁盘文件名 <stem>.json 到剪贴板
@@ -253,6 +262,7 @@ function formatSize(bytes: number): string {
   return `${(bytes / 1024 ** 3).toFixed(2)} GB`
 }
 function hasPerPattern(r: ScanHistoryEntry): boolean {
+  if (r.old_scan) return false              // 旧扫描:后端不给命中数与成绩,整格 —
   return r.per_pattern != null && Object.keys(r.per_pattern).length > 0
 }
 // FP 格:fp 缺失(后端归一,含 n_bars==0)→ 整格 —;否则 "方向 / 随机" 两侧各自 fmtRatio(null=分母 0 → —)
@@ -314,6 +324,7 @@ button.btn-stop { background: #ef4444; color: #fff; }
 .scan-ts { display: block; font-size: 10px; color: #94a3b8; }
 .chip { display: inline-block; padding: 1px 6px; background: #e5e7eb;
         border-radius: 8px; font-size: 10px; margin-right: 4px; }
+.old-badge { background: #374151; color: #fff; }
 .partial-badge {
   display: inline-block;
   margin-left: 6px;

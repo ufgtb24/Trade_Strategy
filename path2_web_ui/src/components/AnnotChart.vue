@@ -81,7 +81,7 @@
  * (框选开着时拖动是框选);只在已取回的 K 线里缩放,不会多取数据。 */
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import * as echarts from 'echarts'
-import type { Annotation, AnnotationLabel, Bar, WorkflowItem } from '../types'
+import type { Annotation, AnnotationLabel, PricedBar as Bar, WorkflowItem } from '../types'
 import { getWorkflowOhlc } from '../api'
 import {
   CLICK_DELAY_MS, labelText, orderedBuyPoints, useWorkflowStore, type ZoomWindow,

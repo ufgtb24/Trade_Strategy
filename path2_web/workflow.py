@@ -152,10 +152,11 @@ def _state_root() -> Path:
 
 
 def _bars(cfg: dict, symbol: str, end: str) -> pd.DataFrame:
-    """经 chart_workflow.loader 读截断副本:不是副本 → 503;没有这只股票 → 404。"""
+    """经 chart_workflow.loader 读截断副本:不是副本、与账上登记的副本不是同一份(或主目录的账还没登记)
+    → 503;没有这只股票 → 404。"""
     try:
         return load_bars(_data_dir(cfg), symbol, end)
-    except NotASnapshot as e:
+    except (NotASnapshot, StateRootMissing) as e:
         raise HTTPException(503, str(e)) from None
     except FileNotFoundError:
         raise HTTPException(404, f"pkl not found: {symbol}") from None

@@ -48,6 +48,9 @@ function fixture() {
 }
 
 const listBatches = () => (existsSync(ANN_DIR) ? readdirSync(ANN_DIR).filter(f => f.endsWith('.json')) : [])
+const VIEWS = resolve(STATE_ROOT, 'views.jsonl')
+const readViews = (): any[] => (existsSync(VIEWS)
+  ? readFileSync(VIEWS, 'utf8').split('\n').filter(Boolean).map(l => JSON.parse(l)) : [])
 
 async function chartBox(cell: Locator) {
   const box = await cell.locator('.chart').boundingBox()
@@ -390,8 +393,12 @@ test('看图工作流:点买点前图头不露结果;Shift 多买点;正例不�
     expect(a.buy_points.filter((x: any) => x.primary)).toHaveLength(1)
     expect(a.buy_points[0].primary).toBe(true)
     expect(a.buy_points.every((x: any) => x.date >= '2025-04-01' && x.date <= '2025-08-27')).toBe(true)
-    // 露出结果后又 Shift 加了一个买点:记下第一次的买点,标「看过结果后改过」
-    expect(a.first_buy_points).toEqual([a.buy_points[0]])
+    // 露出结果后又 Shift 加了一个买点:标「看过结果后改过」。第一次的买点以服务端记的最早那次 reveal 为准
+    // (同一张图跨清单算:前面的用例可能已在别的清单里给这张图点过买点)
+    const reveals = readViews().filter(v => v.event === 'reveal' && v.item_id === ITEM_B)
+      .sort((x, y) => (x.ts < y.ts ? -1 : x.ts > y.ts ? 1 : 0))
+    expect(reveals.some(v => v.list_id === V2_ID)).toBe(true)          // 这一张也记了 reveal
+    expect(a.first_buy_points).toEqual(reveals[0].buy_points)
     expect(a.changed_after_reveal).toBe(true)
   } finally {
     rmSync(V2_PATH, { force: true })

@@ -20,8 +20,9 @@ from sse_starlette.sse import EventSourceResponse
 
 from path2.dag import diagnose as _dag_diagnose
 from path2.dag.engine import analyze as _dag_analyze_engine
+from path2_web import guard
 from path2_web import scan as scan_mod
-from path2_web.data import slice_window, serialize_ohlc
+from path2_web.data import slice_window
 from path2_web.diagnose import diagnose_symbol, derive_response, Query
 from path2_web.gate_collector import attach_and_collect, detach
 from path2_web.serialize import serialize_pattern
@@ -224,6 +225,9 @@ def build_router(*, registry, config_path, get_config, set_config,
 
     # 看图工作流模式(/workflow/*):读清单、截断后的 K 线、收标注批次
     router.include_router(build_workflow_router(get_config=get_config))
+    # 调试视图也只露本轮看图范围(path2_web/guard.py):行情经截断副本读、截到训练段末日,
+    # 看图下界之前的 K 线不给值;本进程已记过「看过」的图窗 (symbol, 首根, 末根)
+    debug_seen: set[tuple[str, str, str]] = set()
 
     @router.get("/patterns")
     def get_patterns():
@@ -239,12 +243,9 @@ def build_router(*, registry, config_path, get_config, set_config,
 
     @router.get("/ohlc")
     def get_ohlc(symbol: str, start: str, end: str):
-        cfg = get_config()
-        pkl = Path(cfg["dataset_dir"]) / f"{symbol}.pkl"
-        if not pkl.exists():
-            raise HTTPException(404, f"pkl not found: {symbol}")
-        win = slice_window(pd.read_pickle(pkl), start, end)
-        return serialize_ohlc(symbol, win)
+        out = guard.ohlc(get_config(), symbol, start, end)
+        guard.record_chart(out, debug_seen)      # 记不进「看过」就不给图
+        return out
 
     @router.get("/config")
     def read_config():
@@ -260,7 +261,7 @@ def build_router(*, registry, config_path, get_config, set_config,
 
     @router.get("/scans/")
     def scans_list_flat():
-        return scan_mod.list_scans_flat(outputs_root)
+        return guard.mark_old_scans(get_config(), scan_mod.list_scans_flat(outputs_root))
 
     @router.get("/scans/{name}")
     def scan_load_flat(name: str):
@@ -269,6 +270,7 @@ def build_router(*, registry, config_path, get_config, set_config,
             data = scan_mod.load_scan_flat(name, outputs_root)
         except FileNotFoundError:
             raise HTTPException(404, "scan not found")
+        guard.check_openable(get_config(), data)    # 读了完整行情的旧扫描不能打开
         # 用当前 palette 覆盖历史 scan file 里冻结的 event_styles。颜色是纯 UI 关注点,
         # 不属于扫描结果快照的必要部分——允许调 palette 后不用重扫也生效。
         # pattern 在 registry 缺失(被删/改名)时跳过,保留文件里的原值。
@@ -333,11 +335,9 @@ def build_router(*, registry, config_path, get_config, set_config,
             mod = registry.get(pattern_id)
             if mod is None:
                 raise HTTPException(404, f"unknown pattern: {pattern_id}")
-            cfg = get_config()
-            pkl = Path(cfg["dataset_dir"]) / f"{symbol}.pkl"
-            if not pkl.exists():
-                raise HTTPException(404, f"pkl not found: {symbol}")
-            win = slice_window(pd.read_pickle(pkl), start, end)
+            guard.check_dates(start, end)
+            # start 是分析窗起点(含探测器预热),不截;行情截到训练段末日
+            win = slice_window(guard.bars(get_config(), symbol, end), start, end)
             if params_override:
                 # A5:params_override 存在时用它闭合 spec(Working Copy 直诊断,不落 yaml)。
                 try:
@@ -389,9 +389,7 @@ def build_router(*, registry, config_path, get_config, set_config,
         if mod is None:
             raise HTTPException(404, f"unknown pattern: {pattern_id}")
         cfg = get_config()
-        pkl = Path(cfg["dataset_dir"]) / f"{symbol}.pkl"
-        if not pkl.exists():
-            raise HTTPException(404, f"pkl not found: {symbol}")
+        start, end = guard.clamp_range(cfg, start, end)   # 扫描区间截进本轮看图范围
 
         try:
             if params_override:
@@ -412,8 +410,7 @@ def build_router(*, registry, config_path, get_config, set_config,
             buf_end   = str((end_ts   + pd.Timedelta(days=round(label_horizon * scan_mod.TRADING_TO_CALENDAR_RATIO))).date())
 
             # 复刻 worker 单 pattern 调用(含样本消费窗截取,口径与 scan worker 一致)
-            df = pd.read_pickle(pkl)
-            win = slice_window(df, buf_start, buf_end)
+            win = slice_window(guard.bars(cfg, symbol, buf_end), buf_start, buf_end)
             res = mod.analyze(win, p)
             from path2_web.serialize import serialize_per_pattern_result
             lo = int(win["date"].searchsorted(start_ts, "left"))
@@ -643,6 +640,10 @@ def build_router(*, registry, config_path, get_config, set_config,
             if registry.get(pid) is None:
                 raise HTTPException(404, f"unknown pattern: {pid}")
         cfg = get_config()
+        # 扫描区间截进本轮看图范围;行情读截断副本(先核对是副本、是账上登记的那一份)
+        start_date, end_date = guard.clamp_range(cfg, req.start_date, req.end_date)
+        data_dir = guard.data_dir(cfg)
+        view_guard = guard.scan_tag(cfg)
         scan_ts = time.strftime("%Y%m%dT%H%M%S")
         import yaml as _yaml
 
@@ -696,14 +697,14 @@ def build_router(*, registry, config_path, get_config, set_config,
 
         def job(on_progress, cancel_event, save_event):
             return scan_mod.run_scan_multi(
-                data_dir=cfg["dataset_dir"],
+                data_dir=data_dir,
                 pattern_specs_json=specs,
                 module_paths=module_paths,
                 pattern_ids=req.pattern_ids,
                 end_nodes=end_nodes,
                 head_buffer_trading_days=head_buffer,
                 label_horizon=req.label_horizon,
-                start_date=req.start_date, end_date=req.end_date,
+                start_date=start_date, end_date=end_date,
                 workers=req.workers, ticker_regex=req.ticker_regex,
                 scan_ts=scan_ts, outputs_root=outputs_root,
                 on_progress=on_progress, executor_factory=_exec_factory,
@@ -714,6 +715,7 @@ def build_router(*, registry, config_path, get_config, set_config,
                 volume_min=req.volume_min,
                 first_passage_enabled=req.first_passage_enabled,
                 first_passage_k=req.first_passage_k,
+                view_guard=view_guard,
             )
 
         def done_meta(result):

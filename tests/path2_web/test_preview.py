@@ -7,6 +7,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from path2_web.app import create_app
+from tests.path2_web.conftest import debug_data
 
 
 def _mk_pkl(data_dir: Path, symbol: str):
@@ -22,7 +23,7 @@ def _client(tmp_path, with_pkl: str | None = "AAA"):
     if with_pkl:
         _mk_pkl(data_dir, with_pkl)
     cfg = {
-        "dataset_dir": str(data_dir),
+        **debug_data(data_dir),
         "scan": {"start_date": "2025-01-01", "end_date": "2025-12-31",
                  "workers": 1, "ticker_regex": None},
         "last_selected_pattern": "bottom_burst",
@@ -106,11 +107,12 @@ def test_preview_pkl_not_found_404(tmp_path):
 
 
 def test_preview_empty_window_returns_empty_collections(tmp_path):
-    """窗口超出数据范围 → 200 + 空集 dict,非 null,非 error。"""
+    """窗口(在看图范围内)超出数据范围 → 200 + 空集 dict,非 null,非 error。
+    窗口在看图范围外是 400,见 test_debug_view_guard.py。"""
     c = _client(tmp_path)
     r = c.get("/preview", params={"pattern_id": "bottom_burst",
-                                   "symbol": "AAA", "start": "2099-01-01",
-                                   "end": "2099-12-31", "label_horizon": 20})
+                                   "symbol": "AAA", "start": "2025-12-01",
+                                   "end": "2025-12-31", "label_horizon": 20})
     assert r.status_code == 200
     body = r.json()
     assert body["analysis"]["events"] == []

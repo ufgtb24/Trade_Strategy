@@ -16,6 +16,7 @@ from fastapi.testclient import TestClient
 
 from path2_web.app import create_app
 from path2_web import scan as scan_mod
+from tests.path2_web.conftest import debug_data
 
 SCAN_BODY = {"start_date": "2025-01-01", "end_date": "2025-02-01", "workers": 1}
 
@@ -47,7 +48,7 @@ def files_scan_client(tmp_path, monkeypatch):
 
     cfg_path = tmp_path / "config.json"
     cfg_path.write_text(json.dumps({
-        "dataset_dir": str(data),
+        **debug_data(data),
         "scan": {"start_date": "2024-02-01", "end_date": "2024-06-30",
                  "workers": 1, "ticker_regex": None, "label_horizon": 20},
         "last_selected_pattern": "bo_only",

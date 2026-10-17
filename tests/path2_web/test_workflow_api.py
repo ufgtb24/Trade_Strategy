@@ -529,6 +529,20 @@ def test_refresh_cannot_wash_out_reveal(tmp_path, state_dir):
     assert a["first_buy_points"] == [{"date": "2025-11-05", "primary": True}]
 
 
+def test_reveal_trail_lost_counts_as_changed(tmp_path, state_dir):
+    """最后的买点和 reveal 时一样,但前端交来的第一次买点缺失或对不上(刷新丢了痕迹):照样算改过。"""
+    c, root = _client(tmp_path)
+    _reveal(c, "2025-11-05")
+    final = [{"date": "2025-11-05", "primary": True}]
+    for first in (None, [{"date": "2025-11-03", "primary": True}]):
+        r = c.post("/workflow/annotations", json={"list_id": "r002-bigmoves", "annotations": [
+            _v2(buy_points=final, first_buy_points=first, changed_after_reveal=False)]})
+        assert r.status_code == 200, r.text
+        a = json.loads(Path(r.json()["path"]).read_text())["annotations"][0]
+        assert a["changed_after_reveal"] is True
+        assert a["first_buy_points"] == final
+
+
 def test_reveal_kept_when_buy_point_unchanged(tmp_path, state_dir):
     c, root = _client(tmp_path)
     _reveal(c, "2025-11-05")

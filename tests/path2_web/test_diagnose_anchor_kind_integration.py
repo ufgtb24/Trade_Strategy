@@ -23,9 +23,9 @@ from path2_web.app import create_app
 
 @pytest.fixture
 def client_with_real_pkl(tmp_path, monkeypatch):
-    """使用真实 pkl 数据(dataset_dir 复用 /home/yu/PycharmProjects/Trade_Strategy/datasets/pkls)
+    """使用真实截断副本(repo 下 datasets/pkls_until_20251231;调试视图只读截断副本)
     · 保 TSLA 类活跃股票有 tb events 命中埋点。若数据集不可访问 · skip test。"""
-    real_dataset = Path("/home/yu/PycharmProjects/Trade_Strategy/datasets/pkls")
+    real_dataset = Path(__file__).resolve().parents[2] / "datasets" / "pkls_until_20251231"
     if not (real_dataset / "TSLA.pkl").exists():
         pytest.skip("real dataset unavailable · skip integration test")
 
@@ -40,6 +40,7 @@ def client_with_real_pkl(tmp_path, monkeypatch):
     cfg_path = tmp_path / "config.json"
     cfg_path.write_text(json.dumps({
         "dataset_dir": str(real_dataset),
+        "workflow": {"dataset_dir": str(real_dataset)},
         "scan": {"start_date": "2025-01-01", "end_date": "2026-01-01",
                  "workers": 1, "ticker_regex": None, "label_horizon": 20},
         "last_selected_pattern": "bottom_burst",
