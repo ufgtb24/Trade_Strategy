@@ -1,19 +1,32 @@
-"""看过记录:用户每看一次图(网页打开清单、会话在聊天里贴图、补记历史接触)都记一行。
+"""看过记录:用户每看一次图(网页打开清单、看图工作流里放大 / 标注单张图、调试视图里看一张图、
+会话在聊天里贴图、补记历史接触)都记一行。
 
-record() 是写 <状态根>/views.jsonl 的唯一入口(后端打开清单时调用;会话经下面的命令行调用)。
-对照页排除看过的样本、按尝试扣运气都要用这份记录;排除逻辑本身不在这里。
+record() 是写 <状态根>/views.jsonl 的唯一入口(后端打开清单、收单张图事件、调试视图取 K 线时调用;
+会话经下面的命令行调用)。对照页排除看过的样本、按尝试扣运气都要用这份记录;以哪一级为准、排除逻辑
+本身不在这里。
 
 行格式(每行一个 JSON):
 {"ts": "YYYY-MM-DDTHH:MM:SS",
- "surface": "web | chat | manual",       # 后端打开清单 / 会话在聊天里贴的图 / 补记
- "event": "open_list | show_chart",
+ "surface": "web | debug | chat | manual",   # 看图工作流 / 调试视图 / 会话在聊天里贴的图 / 补记
+ "event": "open_list | show_chart | zoom_chart | annotate_chart | reveal",
  "list_id": "r001-bigmoves" | null, "list_kind": "bigmoves" | null,
  "outcome_visible": true,                 # 看图时看不看得到结果:盲看清单为 false,其余为 true
  "list_sha12": "<清单内容 sha256 前 12 位>" | null,
  "snapshot": "viewed_lists/<list_id>@<sha12>.json" | null,
  "charts": [{"symbol": "DJT", "start": "2023-07-21", "end": "2024-03-11"}],   # show_chart 用
  "note": "", "backfill": false,
- "outside_reason": "…"}                   # 只有聊天里记了下界以外的图窗时才有
+ "outside_reason": "…",                   # 只有聊天里记了下界以外的图窗时才有
+ "item_id": "DJT@2025-06-02",             # 单张图事件才有
+ "buy_points": [{"date", "primary"}]}     # 只有 reveal 才有:露出结果那一刻的买点
+
+事件:
+  open_list       打开整份清单(整份都算看过,保守口径)
+  show_chart      看了一张图:调试视图取 K 线(surface = debug)、会话在聊天里贴图、补记
+  zoom_chart      看图工作流里放大看了某一张图
+  annotate_chart  看图工作流里给某一张图点了买点或选了判定
+  reveal          大涨段清单里某一张图第一次露出结果(买点从无到有),带当时的买点;
+                  后端收标注时以这张图最早那次 reveal 的买点为准(见 first_reveals)
+单张图事件每张图每种在一次打开清单里只记一次(前端去重)。
 
 会话在聊天里贴图(surface = chat)时,图窗(以及记整份清单时清单里每条的图窗)不得早于本轮看图下界
 view_floor、不得晚于训练段末日:越界就拒绝,提醒会话这张图本不该贴。确实要记(例如用户主动贴了旧图),
@@ -45,8 +58,9 @@ from chart_workflow import state as _state
 from chart_workflow.config import load_config, root_dir
 from chart_workflow.state import StateRootMissing, state_root
 
-SURFACES = ("web", "chat", "manual")
-EVENTS = ("open_list", "show_chart")
+SURFACES = ("web", "debug", "chat", "manual")
+EVENTS = ("open_list", "show_chart", "zoom_chart", "annotate_chart", "reveal")
+CHART_EVENTS = ("zoom_chart", "annotate_chart", "reveal")     # 看图工作流里的单张图事件
 SNAPSHOT_SCHEMA = "chart_workflow.viewed_list/1"
 ITEM_FIELDS = ("item_id", "symbol", "t", "view_start", "view_end")
 LIST_FIELDS = ("kind", "title", "created_at", "train_end")
@@ -107,7 +121,8 @@ def _outside(windows: list[tuple[str, str, str]], floor: str | None, train_end: 
 def record(*, surface: str, event: str, outcome_visible: bool, list_id: str | None = None,
            list_kind: str | None = None, list_doc: dict | None = None, charts=None,
            note: str = "", ts: str | None = None, backfill: bool = False,
-           allow_outside: bool = False, outside_reason: str = "") -> dict:
+           allow_outside: bool = False, outside_reason: str = "", item_id: str | None = None,
+           buy_points: list | None = None) -> dict:
     """追加一行看过记录,返回这一行。参数不合法 → ValueError;拿不到状态根 → StateRootMissing。
     surface = chat 时图窗越过看图下界或训练段末日 → ValueError,除非 allow_outside 且写了 outside_reason。"""
     if surface not in SURFACES:
@@ -127,6 +142,19 @@ def record(*, surface: str, event: str, outcome_visible: bool, list_id: str | No
         raise ValueError("show_chart 必须给图窗(symbol / start / end)")
     if event == "open_list" and not list_id:
         raise ValueError("open_list 必须给 list_id")
+    if event in CHART_EVENTS:
+        if not (isinstance(item_id, str) and item_id and list_id and len(charts) == 1):
+            raise ValueError(f"{event} 必须给 list_id、item_id 和这张图的图窗")
+    elif item_id is not None:
+        raise ValueError("只有单张图事件才带 item_id")
+    if event == "reveal":
+        if not (isinstance(buy_points, list) and buy_points and all(
+                isinstance(b, dict) and isinstance(b.get("date"), str) and _DATE_RE.match(b["date"])
+                and isinstance(b.get("primary"), bool) for b in buy_points)):
+            raise ValueError("reveal 必须带露出结果那一刻的买点 [{date, primary}]")
+        buy_points = [{"date": b["date"], "primary": b["primary"]} for b in buy_points]
+    elif buy_points is not None:
+        raise ValueError("只有 reveal 才带买点")
     reason = str(outside_reason or "").strip()
     if surface == "chat":
         cfg = load_config()
@@ -150,6 +178,10 @@ def record(*, surface: str, event: str, outcome_visible: bool, list_id: str | No
            "charts": charts, "note": note, "backfill": bool(backfill)}
     if surface == "chat" and reason:
         row["outside_reason"] = reason
+    if item_id is not None:
+        row["item_id"] = item_id
+    if buy_points is not None:
+        row["buy_points"] = buy_points
     with (root / "views.jsonl").open("a") as f:
         f.write(json.dumps(row, ensure_ascii=False) + "\n")
     _state.advance(root)
@@ -161,6 +193,18 @@ def read_views() -> list[dict]:
     if not p.exists():
         return []
     return [json.loads(line) for line in p.read_text().splitlines() if line.strip()]
+
+
+def first_reveals() -> dict[str, dict]:
+    """每张图(item_id,跨清单)最早那次 reveal 行:{item_id: 行}。跨刷新、跨页面会话、跨天都算。"""
+    out: dict[str, dict] = {}
+    for r in read_views():
+        if r.get("event") != "reveal" or not r.get("item_id"):
+            continue
+        cur = out.get(r["item_id"])
+        if cur is None or str(r.get("ts")) < str(cur.get("ts")):
+            out[r["item_id"]] = r
+    return out
 
 
 def viewed_set() -> set[tuple[str, str, str]]:
@@ -208,8 +252,13 @@ def _render(rows: list[dict], symbol: str | None) -> str:
                 continue
         what = (f"清单 {r['list_id']}" if r["event"] == "open_list"
                 else "、".join(f"{c['symbol']} {c['start']}→{c['end']}" for c in charts))
-        if r["event"] == "show_chart" and r.get("list_id"):
+        if r["event"] != "open_list" and r.get("list_id"):
             what += f"(清单 {r['list_id']})"
+        what = {"zoom_chart": "放大看了 ", "annotate_chart": "标注了 ",
+                "reveal": "露出结果 "}.get(r["event"], "") + what
+        if r.get("buy_points"):
+            what += " 买点 " + "、".join(("★" if b["primary"] else "") + b["date"]
+                                         for b in r["buy_points"])
         tags = [r["surface"], "看得到结果" if r["outcome_visible"] else "看不到结果"]
         if r.get("backfill"):
             tags.append("补记")

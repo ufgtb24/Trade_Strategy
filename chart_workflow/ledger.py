@@ -19,7 +19,7 @@ add 自动从清单里读 summary 的「全部」行(盲看清单没有 summary,
 每行都带 provenance(能不能原样重跑):当前 git 提交号 commit、chart_workflow/ 与 path2/ 有没有
 未提交改动 dirty、当时生效配置的指纹 config_sha 与全文存档 config_archive(<状态根>/config_archive/
 <指纹>.json,内容相同不重复写)、数据错误登记指纹 data_errors_sha(清单里记了才有)、截断副本
-snapshot {dir, cutoff, created_at, sha}(副本清单的创建时间与指纹)。
+snapshot {dir, cutoff, created_at, sha(副本清单的指纹), fingerprint(整份副本按内容的指纹,见 snaplock)}。
 source 是 shape:<shape_id>@v<版本> 时(规则来自哪张形态卡的哪个版本),从形态卡读那个版本,
 写入 conditions:每个要素与触发一项
   {"cond_id", "kind": "ingredient | trigger", "term", "role", "origin", "suggested_by",
@@ -134,8 +134,10 @@ def provenance(cfg: dict, root: Path, params: dict | None = None) -> dict:
             shown = str(Path(ddir).relative_to(REPO_ROOT))
         except ValueError:
             shown = str(ddir)
+        from chart_workflow.snaplock import fingerprint
         snap = {"dir": shown, "cutoff": man.get("cutoff"), "created_at": man.get("created_at"),
-                "sha": _sha16((Path(ddir) / SNAPSHOT_FILE).read_bytes())}
+                "sha": _sha16((Path(ddir) / SNAPSHOT_FILE).read_bytes()),
+                "fingerprint": fingerprint(ddir)["sha"]}
     except (NotASnapshot, OSError):
         pass
     de = (params or {}).get("data_errors") or {}

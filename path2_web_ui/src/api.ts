@@ -3,7 +3,7 @@ import type {
   ScanProgress, ScanDone, ScanHistoryEntry, Analysis, ScanMeta, NodesScopeResponse,
   TimeScopeResponse, PairScopeResponse, ParamsDiffResp,
   WorkflowListMeta, WorkflowList, Annotation, AnnotationBatchResult, AnnotationBatchMeta,
-  WorkflowStateInfo,
+  WorkflowStateInfo, ChartViewEvent, BuyPoint,
 } from './types'
 // Task 10 · ParamsChip(及 Task 11 抽屉)按 `from '../api'` 消费 diff 响应类型,故随 getParamsDiff 一并重导出。
 export type { ParamsDiffResp }
@@ -257,6 +257,23 @@ export function loadWorkflowList(listId: string): Promise<WorkflowList> {
  *  出错时只报状态码和后端说明,不把请求地址(含图窗终点,能推出决策日)显示到图上。 */
 export function getWorkflowOhlc(symbol: string, start: string, end: string): Promise<Ohlc> {
   return getWorkflowJson(`/workflow/ohlc?symbol=${encodeURIComponent(symbol)}&start=${start}&end=${end}`)
+}
+/** 记一条单张图事件(看过记录);reveal 带露出结果那一刻的买点。出错时带状态码与后端说明。 */
+export async function recordChartView(
+  listId: string, itemId: string, event: ChartViewEvent, buyPoints?: BuyPoint[],
+): Promise<{ ok: boolean, ts: string }> {
+  const r = await fetch(`${BASE}/workflow/views`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ list_id: listId, item_id: itemId, event,
+                           ...(buyPoints ? { buy_points: buyPoints } : {}) }),
+  })
+  if (!r.ok) {
+    const text = await r.text()
+    let msg = text
+    try { msg = JSON.parse(text)?.detail ?? text } catch { /* 正文不是 JSON 就原样显示 */ }
+    throw new Error(`${r.status}:${msg}`)
+  }
+  return r.json()
 }
 export async function sendAnnotations(
   listId: string, annotations: Annotation[],

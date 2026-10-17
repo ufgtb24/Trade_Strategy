@@ -17,6 +17,7 @@ const BARS: Bar[] = ['2025-03-10', '2025-03-11', '2025-03-12', '2025-03-13', '20
 let OHLC: Bar[] = BARS
 vi.mock('../src/api', () => ({
   getWorkflowOhlc: vi.fn(async () => ({ symbol: 'AAA', bars: OHLC })),
+  recordChartView: vi.fn(async () => ({ ok: true, ts: '2026-10-17T10:00:00' })),
 }))
 
 let handlers: Record<string, (p?: any) => void> = {}

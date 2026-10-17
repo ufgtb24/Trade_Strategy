@@ -7,7 +7,7 @@
 截完为空的不写,计入 n_skipped_empty。写清单文件 dst/SNAPSHOT.json:
 {
   "schema": "chart_workflow.snapshot/1",
-  "cutoff": "2025-12-31", "src": "<src 绝对路径>", "created_at": "YYYY-MM-DDTHH:MM:SS",
+  "cutoff": "2025-12-31", "src": "<src 绝对路径>", "created_at": "YYYY-MM-DDTHH:MM:SS", "host": "<生成它的主机名>",
   "n_files": 5700, "n_skipped_empty": 12, "max_date": "2025-12-31",
   "files": {"AAPL.pkl": {"src_size": 123, "src_mtime_ns": 456, "n_rows": 1062, "last_date": "2025-12-31"}}
 }
@@ -16,7 +16,11 @@
 
 红线:cutoff 不得晚于 loader.HARD_END(代码常量);全程只打印计数和路径,不打印任何行内容。
 这是 chart_workflow 里唯一允许读全量 datasets/pkls/ 的模块;它只读源目录,不改其中任何文件。
-副本不进 git,每台机器各生成一次。
+副本不进 git。两台机器都用来看图时,副本只在一台机器上生成,原样拷到另一台(不在两台各自重新生成:
+两台下载的原始行情不同,复权也会随时间变,重新生成就不一样);生成后用
+python -m chart_workflow.state snapshot-register 把它登记成这本账的正式副本(见 snaplock.py),
+之后读数据、记账都核对本机副本与登记的是同一份。登记之后再重建或换副本,必须走
+python -m chart_workflow.state snapshot-replace --reason "<原因>"。
 """
 from __future__ import annotations
 
@@ -25,6 +29,7 @@ import json
 import os
 import shutil
 import sys
+import socket
 from datetime import datetime
 from pathlib import Path
 
@@ -35,6 +40,11 @@ from chart_workflow.loader import HARD_END, SNAPSHOT_FILE, SNAPSHOT_SCHEMA
 
 DEFAULT_SRC = "datasets/pkls"
 DEFAULT_DST = "datasets/pkls_until_20251231"
+
+
+REPLACE_HINT = ("注意:这份副本拿来当正式副本(登记进账本)之后,换副本必须走 "
+                "python -m chart_workflow.state snapshot-replace --reason \"<原因>\";"
+                "另一台机器不要自己生成,把登记的那一份原样拷过去")
 
 
 class SnapshotError(RuntimeError):
@@ -66,7 +76,7 @@ def _write_all(src: Path, out: Path, cutoff: str, verbose: bool) -> dict:
             print(f"[snapshot] {k + 1}/{len(paths)}")
     return {
         "schema": SNAPSHOT_SCHEMA, "cutoff": cutoff, "src": str(src.resolve()),
-        "created_at": datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
+        "created_at": datetime.now().strftime("%Y-%m-%dT%H:%M:%S"), "host": socket.gethostname(),
         "n_files": len(files), "n_skipped_empty": skipped,
         "max_date": max((f["last_date"] for f in files.values()), default=None),
         "files": files,
@@ -102,7 +112,7 @@ def build_snapshot(src, dst, cutoff: str = HARD_END, rebuild: bool = False,
     if dst.resolve() == src.resolve():
         raise SnapshotError("目标目录不能是源目录")
     if dst.exists() and not rebuild:
-        raise SnapshotError(f"目标目录已存在: {dst}(要重建加 --rebuild)")
+        raise SnapshotError(f"目标目录已存在: {dst},不覆盖。{REPLACE_HINT}(确实要重建加 --rebuild)")
     tmp = dst.parent / f".{dst.name}.tmp-{os.getpid()}"
     shutil.rmtree(tmp, ignore_errors=True)
     tmp.mkdir(parents=True)
@@ -141,6 +151,10 @@ def main(argv=None) -> None:
         sys.exit(2)
     print(f"写入 {dst}:{man['n_files']} 个文件,截完为空跳过 {man['n_skipped_empty']} 个,"
           f"最后一天 {man['max_date']}(截断终点 {man['cutoff']})")
+    print("=" * 60)
+    print(f"!! {REPLACE_HINT}")
+    print("!! 第一次登记:python -m chart_workflow.state snapshot-register")
+    print("=" * 60)
 
 
 if __name__ == "__main__":

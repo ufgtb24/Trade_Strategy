@@ -8,6 +8,8 @@ min(训练段末日, until, HARD_END),最后再核对一遍最后一天不晚于
 不用 assert——python -O 会去掉 assert)。副本清单可以伪造、配置可以写错,真正挡得住的是这道硬上限。
 代码名先过格式校验(check_symbol:字母数字开头,只含字母数字 . -,不含 ..),防止 ../ 之类的名字
 读到副本目录以外的文件。
+读之前还核对这份副本就是账上登记的那一份(snaplock.verify,按文件内容的指纹):不是同一份就停下,
+两台机器的数据不同,同一张图算出的事实和成绩就不同,账会混在一起。
 
 红线:HARD_END(2025-12-31)之后是验证段,任何研究、看图、工具都不得读到。它是代码常量,
 不受配置覆盖;config.load_config 也会拒绝晚于它的 train_end。
@@ -51,7 +53,8 @@ def check_symbol(symbol) -> str:
 
 
 def check_snapshot(ddir) -> dict:
-    """读 ddir/SNAPSHOT.json 并缓存(按文件修改时间);不合格 → NotASnapshot。"""
+    """读 ddir/SNAPSHOT.json 并缓存(按文件修改时间);不合格 → NotASnapshot;
+    不是账上登记的那一份副本 → snaplock.SnapshotMismatch / SnapshotNotRegistered。"""
     ddir = Path(ddir)
     f = ddir / SNAPSHOT_FILE
     try:
@@ -61,6 +64,8 @@ def check_snapshot(ddir) -> dict:
                            f"先运行 python -m chart_workflow.snapshot") from None
     key = (str(f.resolve()), mtime)
     if key in _MANIFESTS:
+        from chart_workflow.snaplock import verify
+        verify(ddir)                                 # 已核对过的直接返回(按登记文件与清单记住)
         return _MANIFESTS[key]
     try:
         man = json.loads(f.read_text())
@@ -72,6 +77,8 @@ def check_snapshot(ddir) -> dict:
     if cutoff > HARD_END:
         raise NotASnapshot(f"数据目录 {ddir} 的截断终点 {cutoff} 晚于 {HARD_END},不能用")
     _MANIFESTS[key] = man
+    from chart_workflow.snaplock import verify      # 函数内导入:snaplock 依赖 state,state 依赖 config
+    verify(ddir)
     return man
 
 

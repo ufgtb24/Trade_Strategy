@@ -6,8 +6,14 @@
 格式 chart_workflow.annotations/2:每条标注多个买点 buy_points,框选起止除「数据有误」外可空;
 大涨段清单的改点痕迹 first_buy_points(第一次露出结果时的买点)与 changed_after_reveal(露出结果后
 买点改过或清除过);批次头的 list_kind / outcome_visible 由这里读清单文件的 kind 填,不信前端),
-打开清单时经 chart_workflow.views.record 记一条「看过」。K 线经 chart_workflow.loader 只读截断副本
+打开清单时经 chart_workflow.views.record 记一条「看过」;单张图的事件(放大看了、点了买点或选了判定、
+大涨段第一次露出结果)经 POST /workflow/views 再各记一条。K 线经 chart_workflow.loader 只读截断副本
 (workflow.dataset_dir),不是副本就 503。
+
+改点痕迹以服务端为准:大涨段批次收进来时,查每张图以前有没有记过 reveal(跨刷新、跨页面会话、跨天,
+按 item_id 跨清单查),有就以最早那次的买点为准——first_buy_points 用记录里的值;提交的
+first_buy_points 缺失或跟它不一样、或最后的买点跟它不一样,changed_after_reveal 一律置 true。
+前端传来的这两个值不作数(只会被并成 true,不会被采信成 false)。
 
 红线:训练段末日 train_end 之后的数据不出服务端(train_end 先和 loader.HARD_END 取小,配置写成
 2026 年也不越过 2025-12-31)——
@@ -92,6 +98,22 @@ def _buy_points(ann: AnnotationIn) -> list[dict]:
 class AnnotationBatchIn(BaseModel):
     list_id: str
     annotations: list[AnnotationIn]
+
+
+class ChartViewIn(BaseModel):
+    """看图工作流里的单张图事件:zoom = 放大看了;annotate = 点了买点或选了判定;
+    reveal = 大涨段第一次露出结果(带当时的买点)。"""
+    list_id: str
+    item_id: str
+    event: str
+    buy_points: Optional[list[BuyPointIn]] = None
+
+
+_CHART_EVENTS = {"zoom": "zoom_chart", "annotate": "annotate_chart", "reveal": "reveal"}
+
+
+def _bp_key(bps) -> set[tuple[str, bool]]:
+    return {(b["date"], bool(b["primary"])) for b in bps or []}
 
 
 def _now() -> datetime:
@@ -276,6 +298,55 @@ def build_workflow_router(*, get_config) -> APIRouter:
                 opened.setdefault(sym, set()).add((max(vs, floor), ve))
         return doc
 
+    @router.post("/views")
+    def wf_chart_view(req: ChartViewIn):
+        """记一条单张图事件(看过记录);图窗取清单里这一条的(截到看图下界与训练段末日)。"""
+        _check_list_id(req.list_id)
+        event = _CHART_EVENTS.get(req.event)
+        if event is None:
+            raise HTTPException(400, f"event 只能是 {'/'.join(_CHART_EVENTS)}")
+        cfg = get_config()
+        p = _root(cfg) / "lists" / f"{req.list_id}.json"
+        if not p.exists():
+            raise HTTPException(404, f"清单不存在: {req.list_id}")
+        doc = _read_json(p)
+        if not isinstance(doc, dict):
+            raise HTTPException(500, f"清单文件损坏: {req.list_id}")
+        floor, train_end = _view_floor(cfg), _train_end(cfg)
+        if _before_floor(doc, floor):
+            raise HTTPException(403, f"这份清单的图窗早于本轮看图下界 {floor}，不能打开")
+        doc = clip_list(doc, train_end)
+        it = next((x for x in doc.get("items") or [] if x.get("item_id") == req.item_id), None)
+        if it is None:
+            raise HTTPException(404, f"清单 {req.list_id} 里没有 {req.item_id}")
+        bps = None
+        if event == "reveal":
+            bps = [{"date": b.date, "primary": b.primary} for b in req.buy_points or []]
+            errs = [] if bps else ["reveal 必须带露出结果那一刻的买点"]
+            errs += _validate_bps(bps, req.item_id, "买点")
+            for b in bps:
+                if not _is_date(b["date"]) or b["date"] < floor or b["date"] > train_end:
+                    errs.append(f"买点 {b['date']!r} 不是日期或越过了本轮看图范围 {floor}~{train_end}")
+            if errs:
+                raise HTTPException(400, "; ".join(errs))
+        elif req.buy_points is not None:
+            raise HTTPException(400, "只有 reveal 才带买点")
+        kind = doc.get("kind")
+        try:
+            row = views.record(surface="web", event=event, outcome_visible=kind != "contrast_blind",
+                               list_id=req.list_id, list_kind=kind, item_id=req.item_id,
+                               charts=[{"symbol": it.get("symbol"),
+                                        "start": max(str(it.get("view_start")), floor),
+                                        "end": str(it.get("view_end"))}],
+                               buy_points=bps)
+        except StateRootMissing as e:
+            raise HTTPException(503, str(e)) from None
+        except ValueError as e:
+            raise HTTPException(400, str(e)) from None
+        except OSError as e:
+            raise HTTPException(503, f"看过记录写不进去:{e}") from None
+        return {"ok": True, "ts": row["ts"]}
+
     @router.get("/ohlc")
     def wf_ohlc(symbol: str, start: str, end: str):
         _check_symbol(symbol)
@@ -386,6 +457,20 @@ def build_workflow_router(*, get_config) -> APIRouter:
             d["ann_id"] = d.get("ann_id") or str(uuid.uuid4())
             d["updated_at"] = d.get("updated_at") or now.strftime("%Y-%m-%dT%H:%M:%S")
             anns.append(d)
+        if list_kind == "bigmoves":           # 改点痕迹以服务端记过的 reveal 为准
+            try:
+                reveals = views.first_reveals()
+            except StateRootMissing as e:
+                raise HTTPException(503, str(e)) from None
+            for d in anns:
+                rv = reveals.get(d["item_id"])
+                if rv is None:
+                    continue
+                rec = [{"date": b["date"], "primary": bool(b["primary"])} for b in rv["buy_points"]]
+                d["changed_after_reveal"] = bool(
+                    d["changed_after_reveal"] or _bp_key(d["first_buy_points"]) != _bp_key(rec)
+                    or _bp_key(d["buy_points"]) != _bp_key(rec))
+                d["first_buy_points"] = rec
         doc = {
             "schema": BATCH_SCHEMA,
             "batch_id": batch_id,

@@ -1,7 +1,7 @@
 .idea
 datasets
 # outputs 下一律不进 git,唯一例外是看图工作流的记账类文件(状态根,见 chart_workflow/state.py):
-# 原始标注、看过记录、事实表快照、形态卡、操作日志、账本、规则存档、配置存档、水位重置记录丢了无法重算,受 git 跟踪;
+# 原始标注、看过记录、事实表快照、形态卡、操作日志、账本、规则存档、配置存档、水位重置记录、副本登记丢了无法重算,受 git 跟踪;
 # 清单 lists/、缓存 cache/、数据错误登记 data_errors.json 可重算,仍忽略。
 # 顺序要紧:父目录被忽略时子路径无法用 ! 重新纳入,所以先 /outputs/* 再逐级开例外。
 /outputs/*
@@ -18,6 +18,7 @@ datasets
 !/outputs/chart_workflow/rule_archive/
 !/outputs/chart_workflow/config_archive/
 !/outputs/chart_workflow/watermark_resets.jsonl
+!/outputs/chart_workflow/snapshot_lock.json
 # 记账目录里崩溃留下的临时文件、临时状态根才用的水位文件不进 git(放在例外之后才压得住)
 /outputs/chart_workflow/**/*.tmp
 /outputs/chart_workflow/.watermark.json

@@ -6,7 +6,9 @@ import { setActivePinia, createPinia } from 'pinia'
 import type { WorkflowList } from '../src/types'
 
 const sendAnnotations = vi.fn()
+const recordChartView = vi.fn(async (..._args: any[]) => ({ ok: true, ts: '2026-10-17T10:00:00' }))
 vi.mock('../src/api', () => ({
+  recordChartView: (...args: any[]) => (recordChartView as any)(...args),
   listWorkflowLists: vi.fn(async () => []),
   loadWorkflowList: vi.fn(),
   getWorkflowState: vi.fn(async () => ({ path: '/tmp/st', from_env: true,
@@ -318,5 +320,72 @@ describe('workflow store · 改点痕迹', () => {
     ;(api.getWorkflowState as any).mockRejectedValueOnce(new Error('503'))
     await s.loadLists()
     expect(s.stateInfo).toBeNull()
+  })
+})
+
+describe('workflow store · 单张图的看过事件', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia())
+    sendAnnotations.mockReset()
+    recordChartView.mockClear()
+  })
+  const calls = () => recordChartView.mock.calls.map((c: any[]) => c.slice(1, 3).join(':'))
+
+  it('放大、点买点 / 选判定、露出结果各记一次;重新打开清单再记', async () => {
+    const s = useWorkflowStore()
+    const doc = mkList()
+    ;(loadWorkflowList as any).mockResolvedValue(doc)
+    await s.openList('r001')
+    const [a, b] = doc.items.map(it => it.item_id)
+    s.setZoom(a)
+    s.setZoom(null)
+    s.setZoom(a)                                        // 同一次打开里再放大:不再记
+    s.upsertAnnotation(a, { note: '只写备注' })          // 备注不算标注
+    expect(calls()).toEqual([`${a}:zoom`])
+    s.upsertAnnotation(a, { label: 'negative' })
+    s.setBuyPoint(a, '2025-03-14')                       // 大涨段:结果此刻露出
+    s.setBuyPoint(a, '2025-03-10')
+    expect(calls()).toEqual([`${a}:zoom`, `${a}:annotate`, `${a}:reveal`])
+    const reveal = recordChartView.mock.calls.find((c: any[]) => c[2] === 'reveal')!
+    expect(reveal[0]).toBe('r001')
+    expect(reveal[3]).toEqual([{ date: '2025-03-14', primary: true }])
+    s.setZoom(b)
+    expect(calls().at(-1)).toBe(`${b}:zoom`)
+    s.clearDrafts()
+    await s.openList('r001')
+    s.setZoom(a)
+    expect(calls().filter(c => c === `${a}:zoom`)).toHaveLength(2)
+  })
+
+  it('对照清单不记 reveal;记不进去时写说明,下次可以再记', async () => {
+    const s = useWorkflowStore()
+    s.current = mkList(8, 'contrast')
+    const id = s.current.items[0].item_id
+    s.setBuyPoint(id, '2025-03-14')
+    expect(calls()).toEqual([`${id}:annotate`])
+    recordChartView.mockRejectedValueOnce(new Error('503:状态根不可用'))
+    s.setZoom(id)
+    await new Promise(r => setTimeout(r, 0))
+    expect(s.viewError).toContain('503')
+    s.setZoom(id)
+    expect(calls().filter(c => c === `${id}:zoom`)).toHaveLength(2)
+  })
+
+  it('发送标注前先等单张图事件落地(reveal 要在标注之前记上)', async () => {
+    const s = useWorkflowStore()
+    s.current = mkList()
+    const id = s.current.items[0].item_id
+    const waiting: Array<() => void> = []
+    recordChartView.mockImplementation(() => new Promise(r => { waiting.push(() => r({ ok: true })) }) as any)
+    s.upsertAnnotation(id, { label: 'positive', buy_points: [{ date: '2025-03-14', primary: true }] })
+    sendAnnotations.mockResolvedValue({ batch_id: 'b', path: '/x', n: 1 })
+    const done = s.send()
+    await new Promise(r => setTimeout(r, 0))
+    expect(sendAnnotations).not.toHaveBeenCalled()
+    expect(waiting).toHaveLength(2)                      // reveal + annotate
+    waiting.forEach(f => f())
+    expect(await done).toBe(true)
+    expect(sendAnnotations).toHaveBeenCalledTimes(1)
+    recordChartView.mockImplementation(async () => ({ ok: true, ts: '' }) as any)
   })
 })

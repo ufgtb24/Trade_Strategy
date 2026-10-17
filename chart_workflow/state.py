@@ -30,9 +30,14 @@ worktree 里运行工具,都经 state_root() 自动定位到主目录这一份�
 重置记录追加到状态根的 watermark_resets.jsonl(受 git 跟踪)。
 环境变量指定的临时状态根不在 git 分支切换的范围里,水位就放在它自己目录下的 .watermark.json。
 
+副本登记(见 snaplock.py):state_root() 给出状态根之前,还核对本机训练数据副本的内容指纹与
+状态根里 snapshot_lock.json 登记的是否一致,不一致就停下。
+
     uv run python -m chart_workflow.state show
     uv run python -m chart_workflow.state init <目录>
     uv run python -m chart_workflow.state reset-watermark --reason "<原因>"
+    uv run python -m chart_workflow.state snapshot-register [--generated-on <主机名>]
+    uv run python -m chart_workflow.state snapshot-replace --reason "<原因>"
 """
 from __future__ import annotations
 
@@ -72,6 +77,8 @@ path2_web 的看图工作流后端)自动定位主目录(git 仓库的 main work
 - `rule_archive/`:对照页用过的规则文件存档
 - `config_archive/`:每轮记账时生效配置的全文存档(按指纹)
 - `watermark_resets.jsonl`:水位重置记录(谁、为什么改写过记账文件)
+- `snapshot_lock.json`:这本账用的是哪一份训练数据副本(指纹、文件数、生成时间、在哪台机器生成,
+  以及换副本的记录)。两台机器必须用同一份副本:在一台机器生成,原样拷到另一台
 
 不进 git 的(可重算的产物,随各自 worktree 的 `outputs/chart_workflow/`):清单 `lists/`、
 缓存 `cache/`、数据错误登记 `data_errors.json`。
@@ -89,6 +96,7 @@ _KINDS = (
     ("规则存档", "rule_archive", "files"),
     ("配置存档", "config_archive", "files"),
     ("水位重置记录", "watermark_resets.jsonl", "lines"),
+    ("副本登记", "snapshot_lock.json", "files_one"),
 )
 
 WATERMARK_SCHEMA = "chart_workflow.watermark/1"
@@ -254,11 +262,15 @@ def _sync(root: Path, wm_file: Path) -> None:
 
 def state_root(start: Path = REPO_ROOT) -> Path:
     """记账类文件的唯一的家。目录里没有标记文件 → StateRootMissing(绝不新建);
-    记账文件比水位里见过的少 → StateRootRegressed。核对通过时顺手把当前内容记进水位。"""
+    记账文件比水位里见过的少 → StateRootRegressed。核对通过时顺手把当前内容记进水位。
+    本机副本不是账上登记的那一份 → snaplock.SnapshotMismatch;主目录的账还没登记副本 →
+    snaplock.SnapshotNotRegistered(两者都是 StateRootMissing 的子类)。"""
     path = locate(start)
     if not (path / MARKER).is_file():
         raise StateRootMissing(missing_message(path))
     _sync(path, watermark_path(path, start))
+    from chart_workflow import snaplock             # 函数内导入:snaplock 依赖本模块
+    snaplock.verify(snaplock.local_dataset_dir(), path)
     return path
 
 
@@ -329,6 +341,8 @@ def init(path: Path) -> Path:
 def _count(p: Path, how: str) -> int:
     if not p.exists():
         return 0
+    if how == "files_one":
+        return 1
     if how == "lines":
         return sum(1 for line in p.read_text().splitlines() if line.strip())
     if how == "glob_json":
@@ -346,6 +360,12 @@ def main(argv=None) -> None:
     a.add_argument("path")
     r = sub.add_parser("reset-watermark", help="有意改写记账文件后重置水位(必须写原因,留记录)")
     r.add_argument("--reason", required=True, help="为什么改写了记账文件(例如「迁移旧账」)")
+    g = sub.add_parser("snapshot-register", help="第一次登记这本账用的训练数据副本(本机副本)")
+    g.add_argument("--generated-on", default=None,
+                   help="副本在哪台机器生成;缺省取副本清单里记的主机,没有就取本机")
+    c = sub.add_parser("snapshot-replace", help="换副本:登记成本机副本(必须写原因,留记录)")
+    c.add_argument("--reason", required=True)
+    c.add_argument("--generated-on", default=None)
     args = ap.parse_args(argv)
     if args.cmd == "init":
         try:
@@ -360,6 +380,25 @@ def main(argv=None) -> None:
     except StateRootMissing as e:
         print(f"错误:{e}", file=sys.stderr)
         sys.exit(2)
+    if args.cmd in ("snapshot-register", "snapshot-replace"):
+        from chart_workflow import snaplock
+        if not (path / MARKER).is_file():
+            print(f"错误:{missing_message(path)}", file=sys.stderr)
+            sys.exit(2)
+        ddir = snaplock.local_dataset_dir()
+        try:
+            if args.cmd == "snapshot-register":
+                doc = snaplock.register(path, ddir, args.generated_on)
+            else:
+                doc = snaplock.replace(path, ddir, args.reason, args.generated_on)
+        except (ValueError, StateRootMissing) as e:
+            print(f"错误:{e}", file=sys.stderr)
+            sys.exit(2)
+        cur = doc["current"]
+        print(f"已登记副本 {cur['dir']}:指纹 {cur['sha']},{cur['n_files']} 个文件,"
+              f"{cur['created_at']} 在 {cur['generated_on']} 生成 → {snaplock.lock_path(path)}")
+        print("登记文件随记账文件进 git;另一台机器把这份副本原样拷过去,用 state show 核对指纹一致")
+        return
     if args.cmd == "reset-watermark":
         try:
             rec = reset_watermark(path, args.reason)
@@ -386,6 +425,29 @@ def main(argv=None) -> None:
         sys.exit(2)
     for name, rel, how in _KINDS:
         print(f"  {name:<10} {_count(path / rel, how):>6}  ({rel})")
+    from chart_workflow import snaplock
+    ddir = snaplock.local_dataset_dir()
+    try:
+        fp = snaplock.fingerprint(ddir, use_memo=False)
+        print(f"本机训练数据副本 {ddir}:指纹 {fp['sha']},{fp['n_files']} 个文件,"
+              f"{fp['created_at']} 生成")
+    except StateRootMissing as e:
+        fp = None
+        print(f"本机训练数据副本:{e}", file=sys.stderr)
+    lock = snaplock.read_lock(path)
+    if lock is None:
+        print("账上登记的副本:没有登记(第一次在生成副本的那台机器上运行 state snapshot-register)")
+        if not os.environ.get(ENV_VAR):
+            sys.exit(2)
+        return
+    cur = lock["current"]
+    print(f"账上登记的副本:指纹 {cur['sha']},{cur['n_files']} 个文件,{cur['created_at']} 在 "
+          f"{cur['generated_on']} 生成({cur['registered_at']} 在 {cur['registered_on']} 登记;"
+          f"换过 {len(lock['history'])} 次)")
+    if fp is None or fp["sha"] != cur["sha"]:
+        print(f"不一致:{snaplock.MISMATCH_TEXT}", file=sys.stderr)
+        sys.exit(2)
+    print("一致:本机副本就是账上登记的那一份")
 
 
 if __name__ == "__main__":

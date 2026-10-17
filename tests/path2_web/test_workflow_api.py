@@ -444,3 +444,107 @@ def test_reveal_trail_validated(tmp_path, state_dir, first, needle):
     r = c.post("/workflow/annotations", json={"list_id": "r002", "annotations": [
         _v2(first_buy_points=first)]})
     assert r.status_code == 400 and needle in r.text, r.text
+
+
+# ── 单张图的看过事件;改点痕迹以服务端记过的 reveal 为准 ─────────────────────────
+
+def _views(state_dir):
+    p = state_dir / "views.jsonl"
+    return [json.loads(x) for x in p.read_text().splitlines()] if p.exists() else []
+
+
+def test_chart_view_events_recorded(tmp_path, state_dir):
+    c, root = _client(tmp_path)                     # r002-bigmoves:AAA@2025-11-03,图窗 10-01 → 12-30
+    for ev in ("zoom", "annotate"):
+        r = c.post("/workflow/views", json={"list_id": "r002-bigmoves", "item_id": "AAA@2025-11-03",
+                                            "event": ev})
+        assert r.status_code == 200, r.text
+    r = c.post("/workflow/views", json={"list_id": "r002-bigmoves", "item_id": "AAA@2025-11-03",
+                                        "event": "reveal",
+                                        "buy_points": [{"date": "2025-11-05", "primary": True}]})
+    assert r.status_code == 200, r.text
+    rows = _views(state_dir)
+    assert [x["event"] for x in rows] == ["zoom_chart", "annotate_chart", "reveal"]
+    for x in rows:
+        assert x["surface"] == "web" and x["item_id"] == "AAA@2025-11-03"
+        assert x["list_id"] == "r002-bigmoves" and x["list_kind"] == "bigmoves"
+        assert x["charts"] == [{"symbol": "AAA", "start": "2025-10-01", "end": "2025-12-30"}]
+    assert rows[2]["buy_points"] == [{"date": "2025-11-05", "primary": True}]
+    assert "buy_points" not in rows[0]
+
+
+@pytest.mark.parametrize("body,code", [
+    ({"event": "look"}, 400),
+    ({"item_id": "ZZZ@2025-11-03"}, 404),
+    ({"event": "reveal"}, 400),                                          # reveal 不带买点
+    ({"event": "reveal", "buy_points": [{"date": "2026-01-05", "primary": True}]}, 400),
+    ({"event": "reveal", "buy_points": [{"date": "2025-11-05", "primary": "y"}]}, 422),
+    ({"buy_points": [{"date": "2025-11-05", "primary": True}]}, 400),    # 只有 reveal 才带买点
+    ({"list_id": "nope"}, 404),
+])
+def test_chart_view_rejects(tmp_path, state_dir, body, code):
+    c, root = _client(tmp_path)
+    req = {"list_id": "r002-bigmoves", "item_id": "AAA@2025-11-03", "event": "zoom", **body}
+    assert c.post("/workflow/views", json=req).status_code == code
+    assert _views(state_dir) == []
+
+
+def test_chart_view_respects_floor_and_state_root(tmp_path, state_dir, monkeypatch):
+    c, root = _client(tmp_path)
+    _write_list(root, "early", "2026-10-03T09:00:00", view_start="2024-12-20")
+    assert c.post("/workflow/views", json={"list_id": "early", "item_id": "AAA@2025-11-03",
+                                           "event": "zoom"}).status_code == 403
+    gone = tmp_path / "no_marker"
+    gone.mkdir()
+    monkeypatch.setenv(state.ENV_VAR, str(gone))
+    assert c.post("/workflow/views", json={"list_id": "r002-bigmoves", "item_id": "AAA@2025-11-03",
+                                           "event": "zoom"}).status_code == 503
+
+
+def _reveal(c, date):
+    r = c.post("/workflow/views", json={"list_id": "r002-bigmoves", "item_id": "AAA@2025-11-03",
+                                        "event": "reveal", "buy_points": [{"date": date, "primary": True}]})
+    assert r.status_code == 200, r.text
+
+
+def test_refresh_cannot_wash_out_reveal(tmp_path, state_dir):
+    """先记 reveal(买点 11-05),再模拟刷新后提交「干净」的标注(第一次买点写成 11-03、没改过):
+    落盘 changed_after_reveal = true,first_buy_points 是 reveal 时的买点。"""
+    c, root = _client(tmp_path)
+    _reveal(c, "2025-11-05")
+    _reveal(c, "2025-11-03")                         # 刷新后点买点又记了一次 reveal:以最早那次为准
+    clean = _v2(buy_points=[{"date": "2025-11-03", "primary": True}],
+                first_buy_points=[{"date": "2025-11-03", "primary": True}],
+                changed_after_reveal=False, peeked_before_buy=False)
+    r = c.post("/workflow/annotations", json={"list_id": "r002-bigmoves", "annotations": [clean]})
+    assert r.status_code == 200, r.text
+    a = json.loads(Path(r.json()["path"]).read_text())["annotations"][0]
+    assert a["changed_after_reveal"] is True
+    assert a["first_buy_points"] == [{"date": "2025-11-05", "primary": True}]
+    # 前端没传第一次买点(旧前端 / 改过请求)也一样
+    r = c.post("/workflow/annotations", json={"list_id": "r002-bigmoves", "annotations": [
+        _v2(buy_points=[{"date": "2025-11-03", "primary": True}])]})
+    a = json.loads(Path(r.json()["path"]).read_text())["annotations"][0]
+    assert a["changed_after_reveal"] is True
+    assert a["first_buy_points"] == [{"date": "2025-11-05", "primary": True}]
+
+
+def test_reveal_kept_when_buy_point_unchanged(tmp_path, state_dir):
+    c, root = _client(tmp_path)
+    _reveal(c, "2025-11-05")
+    same = _v2(buy_points=[{"date": "2025-11-05", "primary": True}],
+               first_buy_points=[{"date": "2025-11-05", "primary": True}], changed_after_reveal=False)
+    r = c.post("/workflow/annotations", json={"list_id": "r002-bigmoves", "annotations": [same]})
+    a = json.loads(Path(r.json()["path"]).read_text())["annotations"][0]
+    assert a["changed_after_reveal"] is False                         # 没改过就不冤枉
+    assert a["first_buy_points"] == [{"date": "2025-11-05", "primary": True}]
+    # 前端说改过,服务端不会把它改回没改过
+    r = c.post("/workflow/annotations", json={"list_id": "r002-bigmoves", "annotations": [
+        {**same, "changed_after_reveal": True}]})
+    assert json.loads(Path(r.json()["path"]).read_text())["annotations"][0]["changed_after_reveal"] is True
+    # 对照清单一开始就看得到结果:不套用 reveal
+    _write_list(root, "c002", "2026-10-01T09:00:00", kind="contrast")
+    r = c.post("/workflow/annotations", json={"list_id": "c002", "annotations": [
+        _v2(buy_points=[{"date": "2025-11-03", "primary": True}])]})
+    a = json.loads(Path(r.json()["path"]).read_text())["annotations"][0]
+    assert a["first_buy_points"] is None and a["changed_after_reveal"] is False

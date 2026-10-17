@@ -27,6 +27,7 @@ vi.mock('../src/api', () => ({
                                          env_var: 'CHART_WORKFLOW_STATE_ROOT', ok: true,
                                          message: null })),
   sendAnnotations: vi.fn(),
+  recordChartView: vi.fn(async () => ({ ok: true, ts: '2026-10-17T10:00:00' })),
 }))
 
 import WorkflowView from '../src/components/WorkflowView.vue'
@@ -117,6 +118,14 @@ describe('WorkflowView 记账类文件不可用 / 打不开清单', () => {
     const html = w.html()
     expect(html.indexOf('wf-blocked')).toBeLessThan(html.indexOf('data-testid="wf-list"'))
     expect(w.find('[data-testid="wf-load-error"]').text()).toContain('503')
+  })
+
+  it('单张图事件记不进去:顶上显示说明', async () => {
+    const store = await mountView()
+    expect(w.find('[data-testid="wf-view-error"]').exists()).toBe(false)
+    store.viewError = '看过记录没记上(S0@2025-03-10):503:状态根不可用'
+    await w.vm.$nextTick()
+    expect(w.find('[data-testid="wf-view-error"]').text()).toContain('看过记录没记上')
   })
 
   it('状态根来自环境变量:顶上显示文字提示(写明是临时状态根与路径);来自主目录时不显示', async () => {

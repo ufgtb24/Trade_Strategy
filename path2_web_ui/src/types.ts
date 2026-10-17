@@ -263,6 +263,9 @@ export type Tier = Level
 // ─── 看图工作流模式(/workflow/*):清单由命令行工具 chart_workflow 生成,标注批次由后端写盘 ───
 export type WorkflowListKind = 'bigmoves' | 'contrast' | 'contrast_blind'
 
+/** 看图工作流里的单张图事件:放大看了 / 点了买点或选了判定 / 大涨段第一次露出结果 */
+export type ChartViewEvent = 'zoom' | 'annotate' | 'reveal'
+
 /** 后端状态根:在哪、是不是来自环境变量(临时目录,记录不进正式账本)、能不能用 */
 export interface WorkflowStateInfo {
   path: string | null; from_env: boolean; env_var: string; ok: boolean; message: string | null

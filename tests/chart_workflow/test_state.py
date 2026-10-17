@@ -20,7 +20,14 @@ def _git(cwd, *args):
                         "HOME": str(cwd)})
 
 
-def test_worktree_resolves_to_main_and_marker_required(tmp_path, monkeypatch):
+@pytest.fixture
+def no_snapshot_lock(monkeypatch):
+    """主目录状态根的测试只看标记与水位:副本登记的核对另见 test_snaplock。"""
+    from chart_workflow import snaplock
+    monkeypatch.setattr(snaplock, "verify", lambda ddir, root=None: None)
+
+
+def test_worktree_resolves_to_main_and_marker_required(tmp_path, monkeypatch, no_snapshot_lock):
     main = tmp_path / "main"
     main.mkdir()
     _git(main, "init", "-q", "-b", "master")
@@ -76,7 +83,7 @@ def _commit_all(repo, msg):
     _git(repo, "commit", "-q", "-m", msg)
 
 
-def test_watermark_stops_old_branch_and_code_only_merge(tmp_path, monkeypatch):
+def test_watermark_stops_old_branch_and_code_only_merge(tmp_path, monkeypatch, no_snapshot_lock):
     """主目录切到账本较旧的分支、或切到只合了代码(有标记、没账本)的分支:停下,不接着写。"""
     monkeypatch.delenv(state.ENV_VAR, raising=False)
     main = tmp_path / "main"
@@ -204,7 +211,7 @@ def test_not_a_repo(tmp_path, monkeypatch):
 # 都算违规。用 AST 找出所有以 root_dir(...) 为最左操作数的 BinOp(Div) 链,检查链上的字面量;
 # 另用正则兜底扫同一行里同时出现 root_dir( 与记账类名字的情况。
 LEDGER_NAMES = ("annotations", "ledger.jsonl", "views.jsonl", "viewed_lists", "shapes", "oplog",
-                "facts", "rule_archive", "config_archive", "watermark_resets")
+                "facts", "rule_archive", "config_archive", "watermark_resets", "snapshot_lock")
 
 
 def _files():

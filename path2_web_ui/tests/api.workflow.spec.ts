@@ -1,7 +1,7 @@
 // 看图工作流的取数出错时:只显示状态码和后端说明(detail),不把请求地址带进错误文字——
 // K 线请求的地址里有图窗终点(决策日之后 H 根),显示到图上就能推出决策日。
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { getWorkflowOhlc, getWorkflowState, loadWorkflowList } from '../src/api'
+import { getWorkflowOhlc, getWorkflowState, loadWorkflowList, recordChartView } from '../src/api'
 
 const fail = (status: number, body: string) =>
   Promise.resolve({ ok: false, status, text: () => Promise.resolve(body) } as any)
@@ -33,5 +33,17 @@ describe('workflow api 错误文字', () => {
     expect(String((f.mock.calls[0] as any)[0])).toMatch(/\/workflow\/state$/)
     vi.stubGlobal('fetch', vi.fn(() => fail(500, '{"detail":"x"}')))
     expect((await getWorkflowState().catch(e => e)).message).toBe('500:x')
+  })
+
+  it('单张图事件:POST /workflow/views,reveal 带买点;出错带状态码与说明', async () => {
+    const f = vi.fn((..._a: any[]) => Promise.resolve({ ok: true, json: () => Promise.resolve({ ok: true }) } as any))
+    vi.stubGlobal('fetch', f)
+    await recordChartView('r1', 'AAA@2025-03-12', 'zoom')
+    await recordChartView('r1', 'AAA@2025-03-12', 'reveal', [{ date: '2025-03-13', primary: true }])
+    expect(String(f.mock.calls[0][0])).toMatch(/\/workflow\/views$/)
+    expect(JSON.parse(f.mock.calls[0][1].body)).toEqual({ list_id: 'r1', item_id: 'AAA@2025-03-12', event: 'zoom' })
+    expect(JSON.parse(f.mock.calls[1][1].body).buy_points).toEqual([{ date: '2025-03-13', primary: true }])
+    vi.stubGlobal('fetch', vi.fn(() => fail(503, '{"detail":"状态根不可用"}')))
+    expect((await recordChartView('r1', 'x', 'zoom').catch(e => e)).message).toBe('503:状态根不可用')
   })
 })

@@ -140,3 +140,36 @@ def test_bigmoves_respect_view_floor(cw_env):
     # 关掉下界(仅测试用)时 2024 年的段会回来
     doc2 = build_big(panel, {**cfg, "view_floor": None, "bigmoves": bcfg}, "t-big2", top=300)
     assert any(it["t"] < "2025-01-01" for it in doc2["items"])
+
+
+def test_chart_events_and_first_reveals(state_dir):
+    win = [{"symbol": "A", "start": "2025-02-03", "end": "2025-04-01"}]
+    base = {"surface": "web", "outcome_visible": True, "list_id": "r1", "list_kind": "bigmoves",
+            "charts": win, "item_id": "A@2025-03-03"}
+    views.record(event="zoom_chart", **base)
+    views.record(event="annotate_chart", **base)
+    views.record(event="reveal", buy_points=[{"date": "2025-03-05", "primary": True}],
+                 ts="2026-10-17T10:00:00", **base)
+    views.record(event="reveal", buy_points=[{"date": "2025-03-03", "primary": True}],
+                 ts="2026-10-17T11:00:00", **base)
+    rows = views.read_views()
+    assert [r["event"] for r in rows] == ["zoom_chart", "annotate_chart", "reveal", "reveal"]
+    assert rows[0]["item_id"] == "A@2025-03-03" and "buy_points" not in rows[0]
+    first = views.first_reveals()
+    assert first["A@2025-03-03"]["buy_points"] == [{"date": "2025-03-05", "primary": True}]
+    assert views.viewed_set() == {("A", "2025-02-03", "2025-04-01")}
+    for bad in ({"event": "zoom_chart", "item_id": None},                  # 单张图事件要 item_id
+                {"event": "reveal"},                                      # reveal 要买点
+                {"event": "reveal", "buy_points": [{"date": "2025-03-05"}]},
+                {"event": "zoom_chart", "buy_points": [{"date": "2025-03-05", "primary": True}]},
+                {"event": "show_chart", "surface": "chat"}):              # 只有单张图事件带 item_id
+        with pytest.raises(ValueError):
+            views.record(**{**base, **bad})
+    assert len(views.read_views()) == 4
+    views.main(["show"])
+
+
+def test_debug_surface_accepted(state_dir):
+    views.record(surface="debug", event="show_chart", outcome_visible=True,
+                 charts=[{"symbol": "A", "start": "2025-01-02", "end": "2025-06-30"}])
+    assert views.read_views()[0]["surface"] == "debug"

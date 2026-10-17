@@ -15,14 +15,20 @@
  * changedAfterReveal(草稿 changed_after_reveal = true);清除或去掉全部买点时也记进 peeked。
  * peeked / revealed / changedAfterReveal 按「清单 + 条目」记,整个页面会话内不清空(重新打开同一份
  * 清单、切走再切回都还在),草稿被清除后痕迹也留着,下次再标这张图照样带上。
+ * 改点痕迹最终以后端为准:结果露出的那一刻经后端记一条 reveal(带当时的买点),后端收标注时按这张图
+ * 最早那次 reveal 校正,刷新页面、换天都洗不掉。
+ * 单张图的看过事件(放大看了 zoom、点了买点或选了判定 annotate、露出结果 reveal)经后端记进看过记录,
+ * 每张图每种事件在一次打开清单里只记一次;发送标注前先等这些请求落地(reveal 要在标注之前记上)。
  * 对数 / 线性坐标开关也在这里(默认对数,本次页面会话内有效,不写浏览器存储)。 */
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 import type {
   Annotation, AnnotationBatchResult, AnnotationLabel, BuyPoint, WorkflowItem, WorkflowList,
-  WorkflowListKind, WorkflowListMeta, WorkflowStateInfo,
+  WorkflowListKind, WorkflowListMeta, WorkflowStateInfo, ChartViewEvent,
 } from '../types'
-import { getWorkflowState, listWorkflowLists, loadWorkflowList, sendAnnotations } from '../api'
+import {
+  getWorkflowState, listWorkflowLists, loadWorkflowList, recordChartView, sendAnnotations,
+} from '../api'
 
 export const PAGE_SIZE = 6
 
@@ -114,6 +120,12 @@ export const useWorkflowStore = defineStore('workflow', () => {
   const changedAfterReveal = ref(new Set<string>())
   /** 后端状态根信息(来自环境变量时界面显示提示条);取不到为 null */
   const stateInfo = ref<WorkflowStateInfo | null>(null)
+  /** 本次打开清单里已经记过的单张图事件(键:条目::事件) */
+  const viewEventsSent = ref(new Set<string>())
+  /** 单张图事件记不进去时的说明 */
+  const viewError = ref<string | null>(null)
+  /** 还没落地的单张图事件请求;发送标注前先等它们 */
+  let pendingViews: Promise<unknown>[] = []
   /** 主图纵轴用对数坐标(默认);只在本次页面会话内有效 */
   const logScale = ref(true)
 
@@ -164,6 +176,23 @@ export const useWorkflowStore = defineStore('workflow', () => {
     return peeked.value.has(trailKey(itemId))
   }
 
+  /** 记一条单张图事件;同一张图同一种事件在本次打开清单里只记一次。记不进去时写 viewError,
+   *  并允许下次再记。 */
+  function noteChartView(itemId: string, event: ChartViewEvent, buyPoints?: BuyPoint[]) {
+    if (!current.value) return
+    const key = `${itemId}::${event}`
+    if (viewEventsSent.value.has(key)) return
+    viewEventsSent.value.add(key)
+    const listId = current.value.list_id
+    const p = recordChartView(listId, itemId, event, buyPoints)
+      .then(() => { viewError.value = null })
+      .catch((e: any) => {
+        viewEventsSent.value.delete(key)
+        viewError.value = `看过记录没记上(${itemId}):${String(e?.message ?? e)}`
+      })
+    pendingViews.push(p)
+  }
+
   /** 打开一份清单;有别的清单的未发送草稿时先确认丢弃(取消则不切换,返回 false)。
    *  itemId:深链用,打开后翻到含它的那一页、高亮并放大。 */
   async function openList(listId: string, opts: { itemId?: string | null } = {}): Promise<boolean> {
@@ -185,6 +214,7 @@ export const useWorkflowStore = defineStore('workflow', () => {
     tagFilter.value = ''
     page.value = 0
     initialRight.value = new Map(current.value.items.map(it => [it.item_id, randomRight()]))
+    viewEventsSent.value = new Set()
     setZoom(null)
     highlightItemId.value = null
     sendError.value = null
@@ -240,7 +270,10 @@ export const useWorkflowStore = defineStore('workflow', () => {
       const before = prev.buy_points ?? []
       const after = patch.buy_points ?? before
       if (!revealed.value.has(key)) {
-        if (after.length) revealed.value.set(key, after.map(b => ({ ...b })))   // 结果此刻露出
+        if (after.length) {                                                    // 结果此刻露出
+          revealed.value.set(key, after.map(b => ({ ...b })))
+          noteChartView(itemId, 'reveal', after.map(b => ({ ...b })))
+        }
       } else if (!sameBuyPoints(before, after)) {
         changedAfterReveal.value.add(key)                                      // 看过结果后改过
         if (!after.length) peeked.value.add(key)
@@ -252,6 +285,7 @@ export const useWorkflowStore = defineStore('workflow', () => {
                                first_buy_points: first ? first.map(b => ({ ...b })) : null,
                                changed_after_reveal: changedAfterReveal.value.has(key),
                                updated_at: nowLocal() })
+    if ('buy_points' in patch || 'label' in patch) noteChartView(itemId, 'annotate')
     draftListId.value = current.value.list_id
     lastSent.value = null
   }
@@ -325,6 +359,7 @@ export const useWorkflowStore = defineStore('workflow', () => {
     sending.value = true
     sendError.value = null
     try {
+      await Promise.allSettled(pendingViews.splice(0))     // reveal 等事件先落地
       const res = await sendAnnotations(draftListId.value ?? current.value.list_id, draftList.value)
       lastSent.value = res
       clearDrafts()
@@ -341,17 +376,22 @@ export const useWorkflowStore = defineStore('workflow', () => {
   function setZoom(itemId: string | null, win: ZoomWindow | null = null) {
     zoomItemId.value = itemId
     zoomWindow.value = itemId ? win : null
-    if (itemId) highlightItemId.value = itemId
+    if (itemId) {
+      highlightItemId.value = itemId
+      noteChartView(itemId, 'zoom')
+    }
   }
 
   return {
     lists, current, loadError, groupKey, tagFilter, page, drafts, draftListId,
     sending, sendError, lastSent, zoomItemId, zoomWindow, highlightItemId,
-    initialRight, peeked, revealed, changedAfterReveal, stateInfo, logScale,
+    initialRight, peeked, revealed, changedAfterReveal, stateInfo, viewEventsSent, viewError,
+    logScale,
     isBlind, listKind, itemsById, currentGroup, groupItems, allTags, filteredItems, pageCount,
     pageItems, draftList, draftCount, incomplete, zoomItem,
     loadLists, openList, setGroup, setTagFilter, setPage, gotoItem,
-    upsertAnnotation, setBuyPoint, toggleBuyPoint, markPeeked, isPeeked, initialRightOf,
+    upsertAnnotation, setBuyPoint, toggleBuyPoint, markPeeked, isPeeked, noteChartView,
+    initialRightOf,
     toggleLogScale,
     deleteAnnotation, clearDrafts, send, setZoom,
   }

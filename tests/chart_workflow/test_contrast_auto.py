@@ -142,6 +142,7 @@ def test_ledger_rows_carry_provenance(env, state_dir):
         assert len(pv["data_errors_sha"]) == 16
         assert pv["snapshot"]["cutoff"] == "2025-12-31" and len(pv["snapshot"]["sha"]) == 16
         assert pv["snapshot"]["created_at"] == "2026-10-17T00:00:00"
+        assert len(pv["snapshot"]["fingerprint"]) == 64
     # 配置相同 → 存档只有一份
     assert len(list((state_dir / "config_archive").iterdir())) == 1
 

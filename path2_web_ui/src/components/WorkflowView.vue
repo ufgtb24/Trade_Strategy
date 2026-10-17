@@ -1,6 +1,7 @@
 <template>
   <div class="wf">
     <div v-if="blockedMessage" class="err blocked" data-testid="wf-blocked">{{ blockedMessage }}</div>
+    <div v-if="store.viewError" class="err" data-testid="wf-view-error">{{ store.viewError }}</div>
     <div v-if="store.stateInfo?.from_env" class="state-env" role="status" data-testid="wf-state-env">
       <b>【临时状态根】</b>记账类文件写到环境变量 {{ store.stateInfo.env_var }} 指的
       {{ store.stateInfo.path }}，看过记录和标注不进正式账本。正式使用请不带这个环境变量重启后端。

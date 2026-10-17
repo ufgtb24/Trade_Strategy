@@ -146,6 +146,21 @@ def test_snapshot_refuses_late_cutoff_and_existing_dst(tmp_path):
         snapshot_main(["--src", str(src), "--dst", str(tmp_path / "y"), "--cutoff", "2026-01-05"])
 
 
+def test_snapshot_cli_refuses_existing_and_warns_about_replace(tmp_path, capsys):
+    """命令行:目标目录已存在就拒绝覆盖(原样不动);生成成功时醒目提示「当正式副本后换副本要走显式命令」。"""
+    src = _src(tmp_path)
+    dst = tmp_path / "dst"
+    snapshot_main(["--src", str(src), "--dst", str(dst)])
+    out = capsys.readouterr().out
+    assert "!!" in out and "snapshot-replace --reason" in out and "snapshot-register" in out
+    before = {p.name: p.read_bytes() for p in dst.iterdir()}
+    with pytest.raises(SystemExit):
+        snapshot_main(["--src", str(src), "--dst", str(dst)])
+    err = capsys.readouterr().err
+    assert "已存在" in err and "不覆盖" in err and "snapshot-replace" in err
+    assert {p.name: p.read_bytes() for p in dst.iterdir()} == before
+
+
 def test_read_pickle_only_in_loader_and_snapshot():
     """读数据口唯一:chart_workflow 下只有 loader.py / snapshot.py 出现 read_pickle;后端看图工作流不直接读。"""
     hits = sorted(p.name for p in (REPO_ROOT / "chart_workflow").glob("*.py")
