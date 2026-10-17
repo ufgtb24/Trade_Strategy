@@ -7,7 +7,14 @@
 add 自动从清单里读 summary 的「全部」行(盲看清单没有 summary,记 null)和生成清单时生效的
 数据错误登记条数(n_data_errors)与跨源比对「一致 / 不一致 / 取不到」各多少段(xcheck),
 清单里没记就是 null;轮次号自动加 1。
-show 打印 Markdown 表,末尾给累计尝试次数(大涨段轮不算尝试)。
+source 是 shape:<shape_id>@v<版本> 时(规则来自哪张形态卡的哪个版本),从形态卡读那个版本,
+写入 conditions:每个要素与触发一项
+  {"cond_id", "kind": "ingredient | trigger", "term", "role", "origin", "suggested_by",
+   "has_said_first_match", "root_origin", "root_suggested_by"}
+root_* 是沿 own_library 的 root 递归到底后的来源(不是 own_library 时就是它自己的来源)。
+账本里不预先合并成几类,怎么划、各算谁的留给流程骨架。卡或版本不存在就报错。新字段一律可选,
+旧行照常读。
+show 打印 Markdown 表(「条件来源」一列按来源计数,只是展示),末尾给累计尝试次数(大涨段轮不算尝试)。
 """
 from __future__ import annotations
 
@@ -23,7 +30,10 @@ from chart_workflow.control import ALL_SCOPE
 from chart_workflow.state import StateRootMissing, state_root
 
 KINDS = ("bigmoves", "rule", "mined")
-SOURCE_RE = re.compile(r"^(annotation:\S+|mining|literature|user-text)$")
+SOURCE_RE = re.compile(r"^(annotation:\S+|mining|literature|user-text|shape:s\d{3,}@v\d+|bigmoves)$")
+SHAPE_SOURCE_RE = re.compile(r"^shape:(s\d{3,})@v(\d+)$")
+SOURCE_HELP = ("source 必须是 annotation:<batch_id> / mining / literature / user-text / "
+               "shape:<shape_id>@v<版本> / bigmoves")
 
 
 def ledger_path() -> Path:
@@ -45,12 +55,44 @@ def _xcheck_counts(doc: dict) -> dict | None:
     return {"ok": x.get("ok"), "mismatch": x.get("mismatch"), "unavailable": x.get("unavailable")}
 
 
+def _resolve_root(rec: dict) -> dict:
+    """沿 own_library 的 root 递归到底:返回真正的来源记录。"""
+    seen = 0
+    while rec.get("suggested_by") == "own_library" and isinstance(rec.get("root"), dict) and seen < 50:
+        rec, seen = rec["root"], seen + 1
+    return rec
+
+
+def shape_conditions(source: str) -> list[dict]:
+    """source = shape:<id>@v<n> → 那个版本每个要素与触发的来源。卡或版本不存在 → FileNotFoundError。"""
+    from chart_workflow.shapes import load_card
+
+    m = SHAPE_SOURCE_RE.fullmatch(source)
+    card = load_card(m.group(1))
+    n = int(m.group(2))
+    ver = next((v for v in card["versions"] if v["version"] == n), None)
+    if ver is None:
+        raise FileNotFoundError(f"形态卡 {m.group(1)} 没有版本 v{n}")
+    out = []
+    for kind, items, id_key in (("ingredient", ver["card"].get("ingredients", []), "ing_id"),
+                                ("trigger", ver["card"].get("triggers", []), "trig_id")):
+        for it in items:
+            root = _resolve_root(it)
+            out.append({"cond_id": it[id_key], "kind": kind, "term": it.get("term"),
+                        "role": it.get("role"), "origin": it.get("origin"),
+                        "suggested_by": it.get("suggested_by"),
+                        "has_said_first_match": bool(str(it.get("said_first_match") or "").strip()),
+                        "root_origin": root.get("origin"), "root_suggested_by": root.get("suggested_by")})
+    return out
+
+
 def add_round(cfg: dict, *, kind: str, rule_id: str, version: str, source: str, change: str,
               list_id: str, note: str = "") -> dict:
     if kind not in KINDS:
         raise ValueError(f"kind 必须是 {KINDS} 之一: {kind!r}")
     if not SOURCE_RE.fullmatch(source):
-        raise ValueError("source 必须是 annotation:<batch_id> / mining / literature / user-text")
+        raise ValueError(SOURCE_HELP)
+    conditions = shape_conditions(source) if SHAPE_SOURCE_RE.fullmatch(source) else None
     list_path = root_dir(cfg) / "lists" / f"{list_id}.json"
     if not list_path.exists():
         raise FileNotFoundError(f"清单不存在: {list_path}")
@@ -74,6 +116,8 @@ def add_round(cfg: dict, *, kind: str, rule_id: str, version: str, source: str, 
         "xcheck": _xcheck_counts(doc),
         "note": note,
     }
+    if conditions is not None:
+        entry["conditions"] = conditions
     p = ledger_path()
     p.parent.mkdir(parents=True, exist_ok=True)
     with p.open("a") as f:
@@ -91,11 +135,28 @@ def _xc(x) -> str:
     return "—" if not x else f"{x['ok']}/{x['mismatch']}/{x['unavailable']}"
 
 
+# 条件来源的展示分类:按递归到底的来源计数(只是展示,账本里存的是逐条原样)。
+# 用户自己写的算「你说的」(哪怕当时摆着推荐),其余按推荐来自谁。
+_BY_LABEL = {"detector": "事实表", "session": "会话", "llm": "大模型", "general_knowledge": "常识"}
+
+
+def _conds(r: dict) -> str:
+    cs = r.get("conditions")
+    if not cs:
+        return "—"
+    counts = {"你说的": 0, "事实表": 0, "会话": 0}
+    for c in cs:
+        key = ("你说的" if c.get("root_origin") == "user_written"
+               else _BY_LABEL.get(c.get("root_suggested_by"), "其他"))
+        counts[key] = counts.get(key, 0) + 1
+    return " / ".join(f"{k} {n}" for k, n in counts.items())
+
+
 def render(rows: list[dict]) -> str:
     head = ("| 轮次 | 时间 | 类型 | 规则 | 版本 | 来源 | 改了什么 | 清单 | 命中数 | 方向领先 "
             "| 方向偶然波动 | 幅度领先 | 幅度偶然波动 | 是否毕业 | 数据错误登记 "
-            "| 跨源比对(一致/不一致/取不到) |")
-    sep = "|" + "---|" * 16
+            "| 跨源比对(一致/不一致/取不到) | 条件来源 |")
+    sep = "|" + "---|" * 17
     lines = [head, sep]
     for r in rows:
         s = r.get("summary_all") or {}
@@ -107,7 +168,7 @@ def render(rows: list[dict]) -> str:
             f"| {_f(s.get('dir_lead'))} | {_f(s.get('dir_noise'), False)} "
             f"| {_f(s.get('mag_lead'))} | {_f(s.get('mag_noise'), False)} | {grad} "
             f"| {'—' if r.get('n_data_errors') is None else r['n_data_errors']} "
-            f"| {_xc(r.get('xcheck'))} |")
+            f"| {_xc(r.get('xcheck'))} | {_conds(r)} |")
     attempts = sum(1 for r in rows if r["kind"] != "bigmoves")
     lines.append("")
     lines.append(f"累计尝试次数：{attempts}（共 {len(rows)} 轮，大涨段轮不计入）")
