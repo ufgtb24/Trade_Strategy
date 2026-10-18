@@ -124,6 +124,13 @@ describe('卡成立日清单', () => {
                                                          first_verdict: 'yes', n: 2 } })
     expect(lastEnd()).toBe('2022-05-10')
     expect(w.find('[data-testid="card-changed"]').text()).toContain('第一下是「是」')
+    expect(w.find('[data-testid="card-late"]').exists()).toBe(false)
+  })
+
+  it('揭开后才标的注明不进统计', async () => {
+    const { w } = await mountChart({ [ITEM.item_id]: { mark_id: 'm3', verdict: 'yes', reason: '', ts: '',
+                                                         first_verdict: 'yes', n: 1, late: true } })
+    expect(w.find('[data-testid="card-late"]').text()).toContain('不进统计')
   })
 
   it('顶上显示标了几张,没有已标注抽屉', async () => {

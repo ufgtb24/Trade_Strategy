@@ -43,6 +43,7 @@
         <b data-testid="card-verdict">已标：{{ cardMark.verdict === 'yes' ? '是' : '不是' }}</b>
         <template v-if="cardMark.verdict === 'no'">——{{ cardMark.reason }}</template>
         <span v-if="cardMark.n > 1" data-testid="card-changed">（看过走势后改过，第一下是「{{ cardMark.first_verdict === 'yes' ? '是' : '不是' }}」）</span>
+        <span v-if="cardMark.late" data-testid="card-late">（揭开后才标：这张图的后续先在别的清单里画出来过，不进统计）</span>
         · 再改会记成看过走势之后改的
       </template>
     </div>
@@ -100,7 +101,7 @@
  * 卡成立日清单(card_hits,只在调试模式下用):不框选、不点买点、不选判定,只有「是」「不是」两个按钮,「不是」
  * 要写一句为什么再点「记下」;后端记上之前只画到成立日(条目的 view_end),记上之后重取到 reveal_end,
  * 露出成立日之后的走势。成立日画一条竖线;成立日之前卡也成立过的段(item.card_true_runs)画浅灰底,第一段写
- * 「卡也成立」。标过的显示标的是什么,改过的注明第一下是什么。
+ * 「卡也成立」。标过的显示标的是什么,改过的注明第一下是什么,揭开后才标的注明不进统计。
  *
  * 两个互斥的工具开关:「框选起止」用 ECharts lineX brush + createBrushRequestHandler 把
  * (startIdx, endIdx) 换成日期写进草稿;「点买点」在图上点一下,把那根 K 线设成唯一的(主)买点,

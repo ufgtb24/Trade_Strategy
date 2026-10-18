@@ -234,7 +234,7 @@ def test_debug_mode_cannot_open_formal_lists(tmp_path, debug_root):
 
 
 def test_formal_mode_web_refuses_views_inside_debug_segment(tmp_path, monkeypatch, _cw_state_root):
-    """正式模式:调试视图的 K 线、看图工作流的清单,露出整张都在调试段里的图 → 409(记不进「看过」就不给图),
+    """正式模式:调试视图的 K 线、看图工作流的清单与单张图事件,露出整张都在调试段里的图 → 409(记不进「看过」就不给图),
     正式账一行不多;跨出调试段的图照旧。正式的看图下界放到调试段以前(只有测试里能这样配)才走得到这一步。"""
     monkeypatch.delenv(mode.ENV_VAR, raising=False)
     _, snap = _client(tmp_path)
@@ -251,6 +251,8 @@ def test_formal_mode_web_refuses_views_inside_debug_segment(tmp_path, monkeypatc
     assert r.status_code == 409 and "整张都在调试段" in r.json()["detail"]
     r = c.get("/workflow/lists/r-old")
     assert r.status_code == 409 and "整张都在调试段" in r.json()["detail"]
+    r = c.post("/workflow/views", json={"list_id": "r-old", "item_id": "AAA@2022-03-01", "event": "zoom"})
+    assert r.status_code == 409 and "整张都在调试段" in r.json()["detail"]           # 单张图事件也是 409
     assert ledger() == before and not (_cw_state_root / "views.jsonl").exists()
     r = c.get("/ohlc", params={"symbol": "AAA", "start": "2022-08-01", "end": "2022-11-30"})
     assert r.status_code == 200, r.text

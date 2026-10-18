@@ -9,7 +9,7 @@ import json
 import pytest
 from fastapi.testclient import TestClient
 
-from chart_workflow import cardhits, debugroot, mode, rulecheck
+from chart_workflow import cardhits, debugroot, mode, rulecheck, views
 from chart_workflow.config import load_config
 from path2_web.app import create_app
 from tests.chart_workflow.test_cardhits import _fake_verdicts, make_card, write_batch, write_stocks
@@ -134,3 +134,18 @@ def test_formal_mode_refuses_card_hits(setup, monkeypatch, tmp_path, _cw_state_r
         r = c.post("/workflow/card_marks", json={"list_id": lid, "item_id": it["item_id"], "verdict": "yes"})
         assert r.status_code == 403
     assert digest(_cw_state_root, watermark=False) == before
+
+
+def test_wrong_mode_window_is_409_like_other_view_entries(setup, monkeypatch):
+    """记看过时图窗和当前模式对不上(正常配置走不到,这里硬造):标「是 / 不是」、放大和打开清单一样报 409,什么都不记。"""
+    client, doc, droot = setup
+    c = client()
+    lid = doc["list_id"]
+    it = c.get(f"/workflow/lists/{lid}").json()["items"][0]
+    n = len(_views(droot))
+    monkeypatch.setattr(views, "_wrong_mode", lambda wins: "图窗和当前模式对不上")
+    r = c.post("/workflow/card_marks", json={"list_id": lid, "item_id": it["item_id"], "verdict": "yes"})
+    assert r.status_code == 409 and not cardhits.read_marks()
+    assert c.post("/workflow/views", json={"list_id": lid, "item_id": it["item_id"], "event": "zoom"}).status_code == 409
+    assert c.get(f"/workflow/lists/{lid}").status_code == 409
+    assert len(_views(droot)) == n

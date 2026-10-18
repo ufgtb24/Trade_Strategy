@@ -91,6 +91,36 @@ def fast(monkeypatch):
     monkeypatch.setattr(rulecheck, "_verdicts", _fake_verdicts)
 
 
+def revise_card(sid: str) -> None:
+    """给卡出一个新版本(内容不变,只改说明)。"""
+    _, cards, _ = shapes.checked_state()
+    card = cards[sid]["versions"][-1]["card"]
+    plain = {**card, "ingredients": [{k: v for k, v in i.items() if k != "element_version"} for i in card["ingredients"]]}
+    shapes.apply({"schema": shapes.DECISION_SCHEMA, "mode": mode.DEBUG, "actor": "session", "surface": "chat",
+                  "ctx": {"list_id": "dbg-big", "list_kind": "bigmoves", "outcome_visible": True},
+                  "ops": [{"act": "revise_shape", "target": {"shape_id": sid},
+                           "value": {"card": plain, "change": "改了说明", "from_ann": [SAMPLE[0]]}}]})
+
+
+def open_list(doc: dict) -> None:
+    """像网页那样打开清单:记一条看过(没标的图只画到成立日)。"""
+    views.record(surface="web", event="open_list", outcome_visible=False, list_id=doc["list_id"],
+                 list_kind=cardhits.KIND, list_doc=doc)
+
+
+def reveal_and_mark(doc: dict, it: dict, verdict: str = "yes", reason: str = "") -> dict:
+    """像网页那样标一张:先记一条露出成立日之后走势的看过,再写标记。"""
+    views.record(surface="web", event="show_chart", outcome_visible=True, list_id=doc["list_id"],
+                 list_kind=cardhits.KIND, charts=[{"symbol": it["symbol"], "start": it["view_start"],
+                                                   "end": it["reveal_end"]}])
+    return cardhits.record_mark(doc, it["item_id"], verdict, reason)
+
+
+def _drawn_after_t(it: dict, drawn: dict) -> bool:
+    """drawn(打开过的清单里没标的图,只画到成立日)有没有画到 it 成立日之后、露出终点以前。"""
+    return drawn["symbol"] == it["symbol"] and drawn["t"] > it["t"] and drawn["view_start"] <= it["reveal_end"]
+
+
 def _says(cfg, sid, symbols):
     _, cards, els = shapes.checked_state()
     card = cards[sid]["versions"][-1]["card"]
@@ -263,11 +293,12 @@ def test_classify_rules(fast, hits):
     assert cardhits.pending()["marks"] == []
 
 
-def test_summary_counts_and_relation_share(fast, dbg):
+def test_summary_counts_and_relation_share(fast, dbg, monkeypatch):
     """四张卡:s001 的「不是」归成先后;s002 的「不是」只缺一个量,引用待写代码的 E002;s003 也引用 E002、没生成
-    清单;s004 什么都没有。E002 还没归类时它不算证据:有证据的 2 张里 1 张碰到过关系类问题(不超过一半,不建议改),
-    连同没证据的 1 / 4;把 E002 归成「挑哪一次」→ s003 也有了证据,有证据的 3 张都碰到过(s002、s003 是靠共用的
-    E002,注明共用),建议改。
+    清单;s004 什么都没有。E002 还没归类时它不算证据:有证据的 2 张里 1 张碰到过关系类问题,连同没证据的 1 / 4;
+    还有没归类的、标注也不够数,不给建议,写明差什么。把 E002 归成「挑哪一次」→ s003 也有了证据,有证据的 3 张都
+    碰到过(s002、s003 是靠共用的 E002,注明共用);标注数还不够照样不给建议,下限放到 3 下才给「建议改」,
+    并写明凭了几下标注。
     不按卡算的两个比例、每张卡「第一下『不是』几张、其中关系类几张、已标几张」都在。"""
     cfg, pkl_dir, droot = dbg
     cfg["shape_check"] = {**cfg["shape_check"], "pool_positive_stocks": 2, "pool_max_stocks": 5}
@@ -298,7 +329,11 @@ def test_summary_counts_and_relation_share(fast, dbg):
     assert c2["lists"][0]["unmarked"] == len(d2["items"]) - 1 and c2["lists"][0]["no_relation"] == 0
     assert [c["has_evidence"] for c in s["cards"]] == [True, True, False, False]
     assert c1["touched_relation"] and not c2["touched_relation"] and not c3["touched_relation"]
-    assert (s["n_cards_touched_relation"], s["share_touched_relation"], s["suggest_switch"]) == (1, 1 / 2, False)
+    assert (s["n_cards_touched_relation"], s["share_touched_relation"], s["suggest_switch"]) == (1, 1 / 2, None)
+    assert s["n_marks_counted"] == 3 and len(s["not_enough"]) == 2
+    text = cardhits.render_summary(s)
+    assert ("证据还不够,先不给改不改的建议:还有 0 条「不是」的理由、1 条待写代码的要素没归类" in text
+            and f"计入统计的标注一共 3 下,至少要 {cardhits.MIN_MARKS} 下" in text and "建议把" not in text)
     assert s["share_touched_relation_all_cards"] == 1 / 4
     assert s["ratios"]["reasons"] == {"n": 2, "classified": 2, "relation": 1, "share": 0.5}
     assert s["ratios"]["elements"] == {"n": 1, "classified": 0, "relation": 0, "share": None}
@@ -307,15 +342,19 @@ def test_summary_counts_and_relation_share(fast, dbg):
     assert len(s["unclassified"]["elements"]) == 1 and len(s["changed_after_reveal"]) == 1
     flat = s["unclassified"]["elements"][0]["element_id"]
     cardhits.classify("element", flat, "挑哪一次")
+    assert cardhits.summary(save=False)["suggest_switch"] is None              # 归完了,标注数还不够
+    monkeypatch.setattr(cardhits, "MIN_MARKS", 3)
     s = cardhits.summary()
     assert (s["n_cards_touched_relation"], s["share_touched_relation"], s["suggest_switch"]) == (3, 1.0, True)
+    assert s["not_enough"] == []
     assert [c["has_evidence"] for c in s["cards"]] == [True, True, True, False]
     assert s["ratios"]["elements"] == {"n": 1, "classified": 1, "relation": 1, "share": 1.0}
     assert any(f"和 {s3} 共用" in t for t in s["cards"][1]["touched_relation"])
     text = cardhits.render_summary(s)
     for needle in ("建了 4 张形态卡", "其中有证据的 3 张", "已标 2 / 2 张", "其中归成关系类的 1 张", "先跌后横盘的顺序不对",
                    "会话归的", "所有第一下「不是」的理由 2 条,归了类的 2 条里关系类 1 条(50%)",
-                   "有证据的 3 张里 3 张(100%);连同没证据的是 3 / 4 张", "建议把形态卡改成「事件加关系」",
+                   "有证据的 3 张里 3 张(100%);连同没证据的是 3 / 4 张", "凭计入统计的 3 下标注、有证据的 3 张卡",
+                   "建议把形态卡改成「事件加关系」",
                    "结论由你拍板", "看过走势后改了的 1 张", "大致只列一张", f"和 {s3} 共用"):
         assert needle in text, needle
     assert len(list((droot / "card_review" / "summaries").glob("*.json"))) == 2
@@ -350,21 +389,100 @@ def test_list_not_in_this_debug_ledger_refused(fast, hits):
         cardhits.record_mark(doc, doc["items"][0]["item_id"], "yes")
 
 
-def test_prior_unmarked_items_block_overlapping_days(fast, hits):
-    """上一份清单还没标完就生成下一份:和上一份里还没标的图(同一只股票)可见范围交叠的不列;标完以后不再受限。"""
+def test_unopened_list_elsewhere_blocks_nothing(fast, hits):
+    """必须能过:在别的目录(比如 worktree)生成过一份、没打开也没标,回来换个名字再生成,清单一张不少。"""
+    cfg, _, sid = hits
+    a = cardhits.make(sid, list_id="dbg-hits-a", cfg=cfg)
+    a["path"].unlink()                                          # 像是在另一个目录里生成的
+    b = cardhits.make(sid, list_id="dbg-hits-b", cfg=cfg)
+    assert b["row"]["n_prior_drawn"] == 0 and b["row"]["prior_blockers"] == []
+    assert [x["item_id"] for x in b["doc"]["items"]] == [x["item_id"] for x in a["doc"]["items"]]
+
+
+def test_second_card_after_first_opened_not_marked(fast, hits):
+    """必须能过:第一张卡的清单打开了、一张没标,就生成第二张(共用要素)的卡,张数接近这份数据能给的。
+    只去掉成立日之后的走势已经在第一份里画出来过的;去掉的记下是哪份清单挡的、在哪个目录。"""
+    cfg, _, sid = hits
+    a = cardhits.make(sid, list_id="dbg-hits-a", cfg=cfg)
+    open_list(a["doc"])
+    s2 = make_card(elements=(("pk", "按收盘越过一个峰", "E001", "must"),), triggers=("T3",), name="越过前高创新高")
+    with pytest.MonkeyPatch.context() as m:                     # 参照:不排「已经画出来过」的,这份数据能给几张
+        m.setattr(cardhits, "_drawn_by_card_lists", lambda rows: {})
+        ref = cardhits.make(s2, list_id="dbg-hits-ref", cfg=cfg)["doc"]["items"]
+    c = cardhits.make(s2, list_id="dbg-hits-c", cfg=cfg)
+    items = c["doc"]["items"]
+    assert len(items) >= len(ref) - 1 and len(items) > 0
+    assert not any(_drawn_after_t(x, y) for x in items for y in a["doc"]["items"])
+    assert c["row"]["n_prior_drawn"] > 0
+    assert c["row"]["prior_blockers"][0]["list_id"] == "dbg-hits-a"
+    assert c["row"]["prior_blockers"][0]["lists_dir"] == str(a["path"].parent)
+
+
+def test_new_version_after_marking_a_few(fast, hits):
+    """必须能过:v1 的清单打开、标了 3 张就出 v2 再生成,张数接近这份数据能给的(标过的 3 张露出了全段,和它们交叠的
+    由「仔细看过」去掉,那是真看过)。"""
+    cfg, _, sid = hits
+    a = cardhits.make(sid, cfg=cfg)["doc"]
+    open_list(a)
+    for it in a["items"][:3]:
+        reveal_and_mark(a, it)
+    revise_card(sid)
+    with pytest.MonkeyPatch.context() as m:
+        m.setattr(cardhits, "_drawn_by_card_lists", lambda rows: {})
+        ref = cardhits.make(sid, list_id="dbg-hits-ref", cfg=cfg)["doc"]["items"]
+    d = cardhits.make(sid, cfg=cfg)
+    assert d["doc"]["list_id"] == f"dbg-hits-{sid}-v2"
+    assert len(d["doc"]["items"]) >= len(ref) - 1 and len(d["doc"]["items"]) > 0
+
+
+def test_all_days_already_drawn_gives_notice_with_where(fast, hits, capsys, monkeypatch):
+    """成立日之后的走势都已经在打开过的清单里画出来过:不生成,提示写清挡路的是哪份清单、在哪个目录、怎么打开。"""
+    cfg, _, sid = hits
+    a = cardhits.make(sid, list_id="dbg-hits-a", cfg=cfg)
+    views.record(surface="web", event="show_chart", outcome_visible=False, list_id="dbg-hits-a",
+                 list_kind=cardhits.KIND,
+                 charts=[{"symbol": f"C{i}", "start": mode.DEBUG_START, "end": mode.DEBUG_END} for i in range(6)])
+    monkeypatch.setattr(cardhits, "load_config", lambda: cfg)
+    cardhits.main(["make", "--shape", sid, "--list-id", "dbg-hits-b"])
+    out = capsys.readouterr().out
+    row = cardhits.read_lists()[-1]
+    assert row["list_id"] is None and row["empty"]["kind"] == "prior_drawn"
+    for needle in ("提示:", "dbg-hits-a 挡了", str(a["path"].parent), "wf=dbg-hits-a", "出路"):
+        assert needle in out, needle
+
+
+def test_mark_after_seen_elsewhere_counts_apart(fast, hits):
+    """标一张之前,这份清单生成以后别的清单已经露出过它的后续:照收,记成「揭开后才标」,不进统计、不用归类,
+    小结单独列条数。清单生成以前的接触不算(那由生成时管)。"""
     cfg, _, sid = hits
     a = cardhits.make(sid, list_id="dbg-hits-a", cfg=cfg)["doc"]
-    b = cardhits.make(sid, list_id="dbg-hits-b", cfg=cfg)
-    for x in b["doc"]["items"] if b["doc"] else []:
-        for y in a["items"]:
-            if x["symbol"] == y["symbol"]:
-                assert not (x["view_start"] <= y["reveal_end"] and y["view_start"] <= x["reveal_end"]), (x, y)
-    assert b["row"]["n_prior_overlap"] > 0
-    for d in (a, b["doc"]):
-        for it in (d or {}).get("items", []):
-            cardhits.record_mark(d, it["item_id"], "yes")
-    c = cardhits.make(sid, list_id="dbg-hits-c", cfg=cfg)
-    assert c["row"]["n_prior_overlap"] == 0 and c["doc"] is not None
+    b = cardhits.make(sid, list_id="dbg-hits-b", cfg=cfg)["doc"]          # a 没打开,b 和 a 一样
+    x, y = a["items"][0], a["items"][1]
+    reveal_and_mark(b, x)                                                 # 先在 b 里标了 x,露出了后续
+    views.record(surface="manual", event="show_chart", outcome_visible=False, backfill=True,
+                 ts="2020-01-01T00:00:00", note="补记:很早以前看过", charts=[
+                     {"symbol": y["symbol"], "start": y["view_start"], "end": y["reveal_end"]}])
+    late = reveal_and_mark(a, x, "no", "放量不在突破那天")
+    ok = reveal_and_mark(a, y, "yes")
+    assert [z["list_id"] for z in late["seen_before_mark"]] == ["dbg-hits-b"]
+    assert "seen_before_mark" not in ok
+    assert cardhits.pending()["marks"] == []
+    with pytest.raises(cardhits.CardHitsRefused, match="揭开后才标"):
+        cardhits.classify("mark", late["mark_id"], "先后")
+    s = cardhits.summary(save=False)
+    la = next(x_ for x_ in s["cards"][0]["lists"] if x_["list_id"] == "dbg-hits-a")
+    assert (la["marked"], la["late"], la["counted"], la["yes"], la["no"]) == (2, 1, 1, 1, 0)
+    assert s["n_marks_counted"] == 2 and [m["item_id"] for m in s["late_marks"]] == [x["item_id"]]
+    text = cardhits.render_summary(s)
+    assert "其中揭开后才标 1 张,不进统计" in text and "揭开后才标的 1 张" in text and "先在 dbg-hits-b 看到过后续" in text
+    s2 = make_card(elements=(("pk", "按收盘越过一个峰", "E001", "must"),), triggers=("T3",), name="越过前高创新高")
+    c = cardhits.make(s2, list_id="dbg-hits-c", cfg=cfg)["doc"]
+    views.record(surface="web", event="show_chart", outcome_visible=False, list_id="dbg-hits-zz",
+                 list_kind=cardhits.KIND,
+                 charts=[{"symbol": f"C{i}", "start": mode.DEBUG_START, "end": mode.DEBUG_END} for i in range(6)])
+    assert reveal_and_mark(c, c["items"][0])["seen_before_mark"]
+    s = cardhits.summary(save=False)
+    assert [x_["has_evidence"] for x_ in s["cards"]] == [True, False]      # 只有揭开后才标的,不算有证据
 
 
 def test_normal_use_end_to_end_then_clear(hits, state_dir, monkeypatch, capsys):
@@ -388,6 +506,7 @@ def test_normal_use_end_to_end_then_clear(hits, state_dir, monkeypatch, capsys):
     out = capsys.readouterr().out
     n = len(doc["items"])
     assert f"已标 {n} / {n} 张" in out and "有证据的 1 张里 1 张(100%);连同没证据的是 1 / 1 张" in out
+    assert f"证据还不够,先不给改不改的建议:计入统计的标注一共 {n} 下,至少要 {cardhits.MIN_MARKS} 下" in out
     debugroot.main(["show"])
     assert "卡成立日的标记与归类" in capsys.readouterr().out
     path, removed = debugroot.clear()

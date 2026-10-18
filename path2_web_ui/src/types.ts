@@ -352,6 +352,8 @@ export interface CardMark {
   first_verdict: 'yes' | 'no'
   /** 一共标过几下;大于 1 说明看过走势后改过 */
   n: number
+  /** 揭开后才标:标第一下之前,这张图成立日之后的走势已经在别的清单里画出来过(不进小结统计) */
+  late?: boolean
 }
 
 export interface WorkflowXcheck {
