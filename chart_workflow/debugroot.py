@@ -158,6 +158,8 @@ def clear() -> tuple[Path, list[str]]:
         for child in sorted(path.iterdir()):
             if child.name in KEEP and child.is_dir() and not child.is_symlink():
                 continue
+            if child.name == state.DEBUG_MARKER and child.is_file() and not child.is_symlink():
+                continue                                # 标记下面重写,不算删掉的东西
             _remove(child)
             removed.append(child.name)
     _write(path, ddir)
