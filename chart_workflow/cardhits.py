@@ -22,19 +22,28 @@
     图上要留出成立之前的形态;紧挨着下界就成立的,那一段多半在下界之前就开始了,第一天也不是真的第一天。
   - 去掉以前已经仔细看过后面走势的(views.outcome_trail 的「仔细看过」,例如卡自己的样本、以前的成立日清单里
     标过的):标的时候已经知道涨跌了。只在清单里出现过的照留。
-  - 同一只股票的两次,谁的成立日都不落在另一次的完整图窗里(listfile.drop_window_overlaps,图窗到露出终点):
-    否则标一张的时候会从另一张露出它后面的走势。
+  - 去掉和以前任何一份卡成立日清单里还没标的图(同一只股票)整段可见范围(图窗起点到露出终点)交叠的:那张图还没标,
+    这次的图会露出它成立日之后的走势,或者它一直画着的部分露出这次成立日之后的走势。以前标过的图已经露出了全段,
+    由上一条(仔细看过)管。
+  - 同一份清单里同一只股票的两次,整段可见范围不许有任何交叠(listfile.drop_window_overlaps 的 disjoint):
+    否则标一张的时候会从另一张露出它后面的走势。所以一只股票在一份清单里大致只有一张,是这只股票在调试段里几次
+    成立里随机挑的一次;这张图成立日之前的部分里,卡也成立过的天标出来(card_true_runs,都在成立日之前,不露后续),
+    看得出卡在同一段里是不是连着成立了好几次。
   - 先按固定种子打乱,再按这个顺序去掉互相露底的,取前 max_items 次(默认 MAX_ITEMS = 30,待验证)。种子由账上
     登记的训练数据副本指纹和卡的编号、版本算出:同一张卡同一版重跑,清单一样。
   - 卡上有手写触发(算不出哪天该成立)、有待写代码的要素(哪天都判定不了)、在调试段里一天都不成立、成立的都看过了:
     不生成清单,打印为什么和出路,在 card_review/lists.jsonl 记一行(小结里列出来),不当错误。
   每条的图窗从成立日往前 view.before_bars 根(截到看图下界)到成立日本身(view_end = t);露出终点 reveal_end
   = 成立日后 H 根(截到训练段末日)。marks 只有成立日,不带指标、标签、跨源比对;没有买入日,entry_date 写成立日。
-  清单名默认 dbg-hits-<卡编号>-v<版本>;同名已存在就停。
+  清单名默认 dbg-hits-<卡编号>-v<版本>;同名已存在就停——清单目录里有这个文件,或者调试账的生成登记里有这个名字
+  (调试账是各个目录共用的一本,清单文件却在各自目录里:在别的目录生成过同名清单,这里再生成一份,小结就会重复计数)。
+  生成时把清单内容的指纹记进登记;网页打开、标记时清单内容必须和登记的一样(is_registered):调试账清空过、或者是
+  别处生成的同名清单,标了也进不了小结,一律拒绝,提示重新生成。
 
-标「是 / 不是」(网页 POST /workflow/card_marks 调 record_mark):标之前后端只放行到成立日的 K 线,标完才放行到
-reveal_end,并记一条看过(show_chart,看得到结果)。可以改,但改的那一下已经看过后面的走势:每一下都追加一行,
-first 标出这张图的第一下。小结按第一下算(看走势之前的判断),改过的单独列出(待验证)。
+标「是 / 不是」(网页 POST /workflow/card_marks:先 check_mark 校验,通过了才记一条看过、再 record_mark):标之前
+后端只放行到成立日的 K 线,标完才放行到 reveal_end,并记一条看过(show_chart,看得到结果)。可以改,但改的那一下
+已经看过后面的走势:每一下都追加一行,first 标出这张图的第一下。小结按第一下算(看走势之前的判断),改过的单独
+列出、不进统计(待验证);只有第一下的「不是」要归类。
 
 归类(classify):「不是」的理由、记成待写代码的要素各带一个类别。类别由会话归(by = session);用户可以改,
 会话照用户的话记(by = user)。每次归类追加一行,以最后一行为准,历史都留着。类别(CATEGORIES):
@@ -46,17 +55,21 @@ first 标出这张图的第一下。小结按第一下算(看走势之前的判�
   其他 other                     平卡照样能用、也不缺量(阈值不对、数据有误、说不清……)
 待写代码的要素 = 要素库里任何一版没有定义(definition 为 null)的要素;它的 needs 原样保留,类别另记在这里。
 
-小结(summary):打印,并在 card_review/summaries/ 存一份。列出调试账里建了几张卡(不算已并入别的卡的);每张卡
-各版成立日清单的条数,第一下标「是」「不是」各几张、还没标的、看过走势后改了的;「不是」的理由和待写代码的要素
-各类别各有多少、附原话和谁归的、还没归类的;碰到过关系类问题的卡占几成;按默认判法(超过 SWITCH_SHARE = 一半
-就建议改成「事件加关系」,待验证)给一句建议。原始数字全列,结论由用户拍板。
+小结(summary):打印,并在 card_review/summaries/ 存一份。生成登记里同名的清单只算第一次(早先的重复登记不重复计数)。
+列出调试账里建了几张卡(不算已并入别的卡的);每张卡各版成立日清单:已标几张 / 共几张,第一下标「是」几张、「不是」
+几张、其中归成关系类的几张,还没标的、看过走势后改了的;「不是」的理由和待写代码的要素各类别各有多少、附原话和
+谁归的、还没归类的;不按卡算的两个比例(所有第一下「不是」的理由里关系类占几成、所有记成待写代码的要素里关系类
+占几成,每条要素只算一次,分母都只算归了类的);碰到过关系类问题的卡占几成,分母只算有证据的卡(任何一版的清单里
+标过至少一张,或者引用过记成待写代码、已经归了类的要素),连同没证据的卡另给一个数;按默认判法(有证据的卡里超过
+SWITCH_SHARE = 一半碰到过,就建议改成「事件加关系」,待验证)给一句建议。原始数字全列,结论由用户拍板。
 「这张卡碰到过关系类问题」= 下面任一条成立:
   - 这张卡任何一版的成立日清单里,有一张第一下标「不是」、理由归成事件关系;
-  - 这张卡任何一版引用过的要素(合并过的连同它并入的那条)里,有记成待写代码、归成事件关系的。
+  - 这张卡任何一版引用过的要素(合并过的连同它并入的那条)里,有记成待写代码、归成事件关系的;这条要素别的卡
+    也引用的,注明和哪几张卡共用(一条共用要素会让每张引用它的卡都算碰到过)。
 
 存放(都在 <调试账>/card_review/ 下,只追加):
-  lists.jsonl       每次生成一行:清单名、卡与版本、条数、抽了多少股票、多少次成立、去掉多少、种子;
-                    没生成清单的也记一行(list_id 为 null,empty 写原因)
+  lists.jsonl       每次生成一行:清单名、卡与版本、条数、每张的可见范围、清单内容指纹、生成在哪个目录、抽了多少
+                    股票、多少次成立、去掉多少、种子;没生成清单的也记一行(list_id 为 null,empty 写原因)
   marks.jsonl       每一下「是 / 不是」一行
   categories.jsonl  每次归类一行
   summaries/        小结存档(<时刻>.json)
@@ -111,6 +124,8 @@ CATEGORY_HINT = {
 ALIASES = {"缺一个量": "quantity", "先后": "relation:sequence", "同一件事": "relation:same_event",
            "跨事件比较": "relation:compare", "挑哪一次": "relation:which", "其他": "other"}
 RELATION = tuple(k for k in CATEGORIES if k.startswith("relation:"))
+PICK_NOTE = ("同一只股票大致只列一张(两张的可见范围不许交叠),是它在调试段里几次成立中随机挑的一次;"
+             "图上成立日之前的灰色段是卡也成立过的天")
 
 
 class CardHitsRefused(ValueError):
@@ -181,13 +196,70 @@ def _d(x) -> str:
     return pd.Timestamp(x).strftime("%Y-%m-%d")
 
 
-def make_item(cfg: dict, symbol: str, t: str) -> dict:
-    """清单里的一条:图窗到成立日为止,露出终点另记(见模块说明)。"""
+def true_runs_before(says: dict[str, tuple], start: str, t: str) -> list[list[str]]:
+    """图窗里成立日之前、卡也成立过的天,按连续段 [[起, 止], …](都早于 t、不早于 start)。"""
+    out, cur = [], None
+    for day in sorted(d for d in says if start <= d < t):
+        if says[day][0] is True:
+            if cur is None:
+                cur = [day, day]
+                out.append(cur)
+            else:
+                cur[1] = day
+        else:
+            cur = None
+    return out
+
+
+def make_item(cfg: dict, symbol: str, t: str, says: dict[str, tuple] | None = None) -> dict:
+    """清单里的一条:图窗到成立日为止,露出终点另记;card_true_runs 是成立日之前卡也成立过的天(见模块说明)。"""
     start, end = view_window(cfg, symbol, t)
     t = _d(t)
     return {"item_id": f"{symbol}@{t}", "symbol": symbol, "t": t, "entry_date": t,
             "view_start": _d(start), "view_end": t, "reveal_end": _d(end),
+            "card_true_runs": true_runs_before(says or {}, _d(start), t),
             "tags": [], "marks": {"decision": t}, "metrics": {}, **security_fields(cfg, symbol)}
+
+
+def registered_lists() -> dict[str, dict]:
+    """生成登记里每个清单名第一次的那一行(早先同名的重复登记只认第一次)。"""
+    out: dict[str, dict] = {}
+    for r in read_lists():
+        if r.get("list_id") and r["list_id"] not in out:
+            out[r["list_id"]] = r
+    return out
+
+
+def is_registered(doc: dict) -> bool:
+    """这份卡成立日清单的内容和调试账生成登记里同名的那一份一样(见模块说明)。"""
+    r = registered_lists().get(doc.get("list_id"))
+    return r is not None and r.get("list_sha12") == views.list_sha12(doc)
+
+
+def unregistered_text(doc: dict) -> str:
+    return (f"卡成立日清单 {doc.get('list_id')} 不在现在这本调试账的生成登记里(调试账清空过,或者是在别的目录生成的"
+            f"同名清单、内容不一样),标了也进不了小结;重新生成一份再标")
+
+
+def _prior_windows(cfg: dict) -> dict[str, list[tuple[str, str]]]:
+    """以前各份卡成立日清单里还没标的图:{代码: [(图窗起点, 露出终点)]}。"""
+    marked = {(m["list_id"], m["item_id"]) for m in read_marks()}
+    out: dict[str, list[tuple[str, str]]] = {}
+    for lid, r in registered_lists().items():
+        items = r.get("items")
+        if items is None:                         # 早先的登记没记可见范围:按现在的配置重算
+            items = []
+            for iid in r.get("item_ids") or []:
+                sym, t = iid.split("@", 1)
+                try:
+                    a, b = view_window(cfg, sym, t)
+                except (ValueError, FileNotFoundError):
+                    continue
+                items.append({"item_id": iid, "symbol": sym, "view_start": _d(a), "reveal_end": _d(b)})
+        for it in items:
+            if (lid, it["item_id"]) not in marked:
+                out.setdefault(it["symbol"], []).append((it["view_start"], it["reveal_end"]))
+    return out
 
 
 def _first_allowed(cfg: dict, symbol: str) -> str | None:
@@ -285,6 +357,11 @@ def make(shape_id: str, version: int | None = None, list_id: str | None = None, 
             raise CardHitsRefused(f"这一版卡的成立日清单已经生成过({list_id}),接着标就行:{deep_link(list_id)};"
                                   f"确实要另生成一份,用 --list-id 换个名字(会去掉已经标过的)") from None
         raise CardHitsRefused(str(e)) from None
+    reg = registered_lists().get(list_id)
+    if reg is not None:
+        raise CardHitsRefused(f"调试账的生成登记里已经有清单 {list_id}({reg.get('ts')} 在 {reg.get('lists_dir') or '别的目录'} "
+                              f"生成):调试账是各个目录共用的一本,同名再生成一份,小结会重复计数。接着标那一份,"
+                              f"或者用 --list-id 换个名字")
     name = card["name"].get("value") if isinstance(card.get("name"), dict) else card.get("name")
     row = {"ts": _now(), "list_id": None, "shape_id": shape_id, "version": n, "card_name": name, "n_items": 0}
     why = _cannot_list(ver["card"], els)
@@ -352,30 +429,49 @@ def make(shape_id: str, version: int | None = None, list_id: str | None = None, 
         if views.outcome_trail(item, list_id, rows, dates_of)["seen_elsewhere"]["level"] != "careful":
             fresh.append((s, d))
     row["n_seen_excluded"] = len(eps) - len(fresh)
-    if not fresh:
+    prior = _prior_windows(cfg)
+    clean = []
+    for s, d in fresh:
+        a, b = (_d(x) for x in view_window(cfg, s, d))
+        if not any(a <= pb and pa <= b for pa, pb in prior.get(s, ())):
+            clean.append((s, d))
+    row["n_prior_overlap"] = len(fresh) - len(clean)
+    if not clean and fresh:
+        row["empty"] = {"kind": "prior_unmarked",
+                        "text": f"这一版卡在调试段里还能列的 {len(fresh)} 次,都和以前清单里还没标的图(同一只股票)"
+                                f"可见范围交叠,列出来会互相露出成立日之后的走势",
+                        "way_out": "先把以前那几份卡成立日清单标完,再生成"}
+        _append("lists.jsonl", row)
+        return {"row": row, "path": None, "doc": None}
+    if not clean:
         row["empty"] = {"kind": "all_seen",
                         "text": f"这一版卡在调试段里成立 {len(eps)} 次,都已经仔细看过后面的走势(样本、以前标过的),"
                                 f"标的时候已经知道涨跌,不再列",
                         "way_out": "这张卡在调试段上的证据已经用完了;要更多就放宽卡,或等正式段"}
         _append("lists.jsonl", row)
         return {"row": row, "path": None, "doc": None}
+    fresh = clean
     seed = _seed(pool_seed, shape_id, n)
     order = sorted(fresh)
     random.Random(seed).shuffle(order)
     df = pd.DataFrame(order, columns=["symbol", "date"]).assign(date=lambda x: pd.to_datetime(x["date"]))
-    kept = drop_window_overlaps(df, cfg)
+    kept = drop_window_overlaps(df, cfg, disjoint=True)
     row["n_overlap_dropped"] = len(df) - len(kept)
     picked = kept.head(max_items)
     params = {k: row[k] for k in ("shape_id", "version", "card_name", "n_stocks_sample", "n_stocks_pool",
                                   "n_pool_positive", "n_episodes", "n_too_early", "n_seen_excluded",
-                                  "n_overlap_dropped", "pool_order_seed")}
-    params.update(max_items=max_items, sample_seed=str(seed), card_lines=card_lines(ver["card"], els))
+                                  "n_prior_overlap", "n_overlap_dropped", "pool_order_seed")}
+    params.update(max_items=max_items, sample_seed=str(seed), card_lines=card_lines(ver["card"], els),
+                  note=PICK_NOTE)
     doc = new_list(list_id, KIND, f"卡成立日 {shape_id}@v{n}「{name}」（{len(picked)} 张）", cfg, {KIND: params})
-    doc["items"] = [make_item(cfg, s, _d(d)) for s, d in zip(picked["symbol"], picked["date"])]
+    doc["items"] = [make_item(cfg, s, _d(d), mats[s][1]) for s, d in zip(picked["symbol"], picked["date"])]
     ids = [it["item_id"] for it in doc["items"]]
     doc["groups"] = [{"key": "all", "title": f"全部（{len(ids)}）", "item_ids": ids}]
     path = write_list(doc, cfg)
-    row.update(list_id=list_id, n_items=len(ids), item_ids=ids)
+    doc = json.loads(path.read_text())        # 指纹按落盘的内容算(网页读的就是它)
+    row.update(list_id=list_id, n_items=len(ids), item_ids=ids, list_sha12=views.list_sha12(doc),
+               lists_dir=str(path.parent),
+               items=[{k: it[k] for k in ("item_id", "symbol", "t", "view_start", "reveal_end")} for it in doc["items"]])
     try:
         _append("lists.jsonl", row)
     except BaseException:
@@ -386,9 +482,9 @@ def make(shape_id: str, version: int | None = None, list_id: str | None = None, 
 
 # ── 标「是 / 不是」 ──────────────────────────────────────────────────────────
 
-def record_mark(doc: dict, item_id: str, verdict: str, reason: str = "", surface: str = "web") -> dict:
-    """记一下「是 / 不是」(只追加),返回这一行。doc 是卡成立日清单。不在调试模式、清单不对、参数不对 →
-    CardHitsRefused;调试账不可用 → StateRootMissing。"""
+def check_mark(doc: dict, item_id: str, verdict: str, reason: str = "") -> tuple[dict, str]:
+    """标「是 / 不是」之前的全部校验(网页在记看过、放行之前先调它):通过 → (这一条, 规范化后的理由);
+    不在调试模式、清单不对或没登记、参数不对 → CardHitsRefused;调试账不可用 → StateRootMissing。"""
     require_debug()
     if not isinstance(doc, dict) or doc.get("kind") != KIND:
         raise CardHitsRefused("只有卡成立日清单才标「是 / 不是」")
@@ -404,9 +500,15 @@ def record_mark(doc: dict, item_id: str, verdict: str, reason: str = "", surface
     if verdict == "no" and not reason:
         raise CardHitsRefused("标「不是」要写一句为什么")
     if len(reason) > REASON_MAX:
-        raise CardHitsRefused(f"理由最多 {REASON_MAX} 字")
-    if verdict == "yes":
-        reason = ""
+        raise CardHitsRefused(f"理由最多 {REASON_MAX} 字(现在 {len(reason)} 字)")
+    if not is_registered(doc):
+        raise CardHitsRefused(unregistered_text(doc))
+    return it, ("" if verdict == "yes" else reason)
+
+
+def record_mark(doc: dict, item_id: str, verdict: str, reason: str = "", surface: str = "web") -> dict:
+    """记一下「是 / 不是」(只追加),返回这一行。doc 是卡成立日清单(落盘的内容)。校验见 check_mark。"""
+    it, reason = check_mark(doc, item_id, verdict, reason)
     p = (doc.get("params") or {}).get(KIND) or {}
     lid = doc.get("list_id")
     prior = any(m.get("list_id") == lid and m.get("item_id") == item_id for m in read_marks())
@@ -459,6 +561,8 @@ def classify(target: str, target_id: str, category: str, by: str = "session", no
             raise CardHitsRefused(f"没有标记 {target_id}(用 pending 看还没归类的标记编号)")
         if m["verdict"] != "no":
             raise CardHitsRefused(f"标记 {target_id} 标的是「是」,只给「不是」的理由归类")
+        if not m.get("first"):
+            raise CardHitsRefused(f"标记 {target_id} 是看过走势后改的那一下,不进统计,不用归类(只给每张图的第一下归类)")
     elif target == "element":
         _, _, els = shapes.checked_state()
         if target_id not in els:
@@ -487,7 +591,9 @@ def pending() -> dict:
     require_debug()
     cats = current_categories()
     _, _, els = shapes.checked_state()
-    marks = [m for m in read_marks() if m["verdict"] == "no" and ("mark", m["mark_id"]) not in cats]
+    regs = registered_lists()
+    marks = [m for m in read_marks() if m["verdict"] == "no" and m.get("first") and m["list_id"] in regs
+             and ("mark", m["mark_id"]) not in cats]
     elements = [{"element_id": eid, "label": E.label(els, eid), "needs": _needs(el)}
                 for eid, el in sorted(els.items()) if ever_pending(el) and ("element", eid) not in cats]
     return {"marks": marks, "elements": elements}
@@ -511,55 +617,78 @@ def _card_elements(card: dict, els: dict) -> list[str]:
     return sorted(out)
 
 
+def _share(k: int, n: int) -> float | None:
+    return k / n if n else None
+
+
 def summary(save: bool = True) -> dict:
     """汇总调试账里的证据(见模块说明);save 时在 card_review/summaries/ 存一份。"""
     require_debug()
     _, cards, els = shapes.checked_state()
-    lists, marks, cats = read_lists(), read_marks(), current_categories()
+    regs, marks, cats = registered_lists(), read_marks(), current_categories()
+    empties: dict[tuple[str, int], dict] = {}
+    for r in read_lists():
+        if r.get("list_id") is None:
+            empties[(r["shape_id"], r["version"])] = r          # 同一版没生成清单的,只留最后一次
 
     def cat_of(target, tid):
         c = cats.get((target, tid))
         return None if c is None else {"category": c["category"], "by": c["by"], "changes": c["changes"],
                                        "note": c.get("note") or ""}
 
+    def is_rel(c):
+        return bool(c) and c["category"] in RELATION
+
     live = {sid: c for sid, c in sorted(cards.items()) if c["status"] != "merged"}
+    refs = {sid: _card_elements(c, els) for sid, c in live.items()}
     pending_els = {eid: {"element_id": eid, "label": E.label(els, eid), "needs": _needs(el),
-                         "status": el["status"], "category": cat_of("element", eid)}
+                         "status": el["status"], "category": cat_of("element", eid),
+                         "cards": sorted(sid for sid, r in refs.items() if eid in r)}
                    for eid, el in sorted(els.items()) if ever_pending(el)}
     reasons, changed_all, per_card = [], [], []
     for sid, card in live.items():
         out_lists, touched = [], []
-        for r in [x for x in lists if x.get("shape_id") == sid]:
-            if r.get("list_id") is None:
-                out_lists.append({"version": r["version"], "list_id": None, "empty": r.get("empty")})
-                continue
-            mk = marks_of(r["list_id"], marks)
+        tot = {"n_items": 0, "marked": 0, "yes": 0, "no": 0, "no_relation": 0}
+        for lid, r in [(k, v) for k, v in regs.items() if v.get("shape_id") == sid]:
+            mk = marks_of(lid, marks)
             firsts = [v["first"] for v in mk.values()]
             changed = [{"item_id": k, "first": v["first"], "latest": v["latest"]} for k, v in mk.items()
                        if (v["latest"]["verdict"], v["latest"]["reason"]) != (v["first"]["verdict"], v["first"]["reason"])]
+            n_rel = 0
             for f in firsts:
-                if f["verdict"] == "no":
-                    rr = {**{k: f[k] for k in ("mark_id", "list_id", "item_id", "shape_id", "version", "reason")},
-                          "category": cat_of("mark", f["mark_id"])}
-                    reasons.append(rr)
-                    if rr["category"] and rr["category"]["category"] in RELATION:
-                        touched.append(f"成立日清单 {r['list_id']} 里 {f['item_id']} 标「不是」:{f['reason']}"
-                                       f"({CATEGORIES[rr['category']['category']]})")
-            changed_all += [{**c, "list_id": r["list_id"]} for c in changed]
-            out_lists.append({"version": r["version"], "list_id": r["list_id"], "n_items": r["n_items"],
-                              "yes": sum(f["verdict"] == "yes" for f in firsts),
-                              "no": sum(f["verdict"] == "no" for f in firsts),
-                              "unmarked": r["n_items"] - len(firsts), "changed": len(changed)})
-        refs = _card_elements(card, els)
-        for eid in refs:
-            pe = pending_els.get(eid)
-            if pe and pe["category"] and pe["category"]["category"] in RELATION:
+                if f["verdict"] != "no":
+                    continue
+                rr = {**{k: f[k] for k in ("mark_id", "list_id", "item_id", "shape_id", "version", "reason")},
+                      "category": cat_of("mark", f["mark_id"])}
+                reasons.append(rr)
+                if is_rel(rr["category"]):
+                    n_rel += 1
+                    touched.append(f"成立日清单 {lid} 里 {f['item_id']} 标「不是」:{f['reason']}"
+                                   f"({CATEGORIES[rr['category']['category']]})")
+            changed_all += [{**c, "list_id": lid} for c in changed]
+            x = {"version": r["version"], "list_id": lid, "n_items": r["n_items"], "marked": len(firsts),
+                 "yes": sum(f["verdict"] == "yes" for f in firsts), "no": sum(f["verdict"] == "no" for f in firsts),
+                 "no_relation": n_rel, "unmarked": r["n_items"] - len(firsts), "changed": len(changed)}
+            out_lists.append(x)
+            for k in tot:
+                tot[k] += x[k]
+        for (esid, ever), r in sorted(empties.items()):
+            if esid == sid and not any(x["version"] == ever for x in out_lists):
+                out_lists.append({"version": ever, "list_id": None, "empty": r.get("empty")})
+        out_lists.sort(key=lambda x: (x["version"], x["list_id"] or ""))
+        mine = [eid for eid in refs[sid] if eid in pending_els]
+        for eid in mine:
+            pe = pending_els[eid]
+            if is_rel(pe["category"]):
+                others = [c for c in pe["cards"] if c != sid]
                 touched.append(f"引用的 {pe['label']},缺:{pe['needs'] or '—'}"
-                               f"({CATEGORIES[pe['category']['category']]})")
+                               f"({CATEGORIES[pe['category']['category']]})"
+                               + (f",和 {'、'.join(others)} 共用" if others else ""))
         name = card["name"].get("value") if isinstance(card.get("name"), dict) else card.get("name")
         per_card.append({"shape_id": sid, "name": name, "status": card["status"],
-                         "current_version": card["current_version"], "lists": out_lists,
-                         "pending_elements": [eid for eid in refs if eid in pending_els],
+                         "current_version": card["current_version"], "lists": out_lists, "totals": tot,
+                         "pending_elements": mine,
+                         "has_evidence": tot["marked"] > 0 or any(pending_els[e]["category"] for e in mine),
                          "touched_relation": touched})
     by_cat: dict[str, dict] = {c: {"reasons": [], "elements": []} for c in CATEGORIES}
     unclassified = {"reasons": [r for r in reasons if r["category"] is None],
@@ -570,16 +699,22 @@ def summary(save: bool = True) -> dict:
     for e in pending_els.values():
         if e["category"]:
             by_cat[e["category"]["category"]]["elements"].append(e)
+    rc = [r for r in reasons if r["category"]]
+    ec = [e for e in pending_els.values() if e["category"]]
+    ratios = {"reasons": {"n": len(reasons), "classified": len(rc), "relation": sum(is_rel(r["category"]) for r in rc)},
+              "elements": {"n": len(pending_els), "classified": len(ec),
+                           "relation": sum(is_rel(e["category"]) for e in ec)}}
+    for v in ratios.values():
+        v["share"] = _share(v["relation"], v["classified"])
     n_cards = len(per_card)
+    n_ev = sum(c["has_evidence"] for c in per_card)
     n_touched = sum(bool(c["touched_relation"]) for c in per_card)
-    share = n_touched / n_cards if n_cards else None
+    share = _share(n_touched, n_ev)
     out = {"ts": _now(), "n_cards": n_cards, "n_merged": len(cards) - n_cards, "cards": per_card,
            "by_category": by_cat, "unclassified": unclassified, "changed_after_reveal": changed_all,
-           "n_cards_touched_relation": n_touched, "share_touched_relation": share,
-           "switch_share": SWITCH_SHARE,
-           "suggest_switch": None if share is None else share > SWITCH_SHARE,
-           "n_cards_without_evidence": sum(not any(x.get("yes") or x.get("no") for x in c["lists"])
-                                           and not c["pending_elements"] for c in per_card)}
+           "ratios": ratios, "n_cards_with_evidence": n_ev, "n_cards_touched_relation": n_touched,
+           "share_touched_relation": share, "share_touched_relation_all_cards": _share(n_touched, n_cards),
+           "switch_share": SWITCH_SHARE, "suggest_switch": None if share is None else share > SWITCH_SHARE}
     if save:
         d = review_dir() / "summaries"
         d.mkdir(parents=True, exist_ok=True)
@@ -598,22 +733,28 @@ def _by(cat: dict) -> str:
     return f"[{BY_TEXT[cat['by']]}{more}]"
 
 
+def _pct(x: float | None) -> str:
+    return "—" if x is None else f"{x:.0%}"
+
+
 def render_summary(s: dict) -> str:
     """小结的人话版本。"""
     L = [mode.DEBUG_LABEL, f"调试账里建了 {s['n_cards']} 张形态卡"
-         + (f"(另有 {s['n_merged']} 张已并入别的卡,不算)" if s["n_merged"] else "") + "。", ""]
+         + (f"(另有 {s['n_merged']} 张已并入别的卡,不算)" if s["n_merged"] else "")
+         + f",其中有证据的 {s['n_cards_with_evidence']} 张(标过至少一张,或者引用过归了类的待写代码要素)。",
+         f"每份成立日清单里,{PICK_NOTE}。", ""]
     for c in s["cards"]:
         L.append(f"■ {c['shape_id']}「{c['name']}」(现在 v{c['current_version']},"
-                 f"{shapes.STATUS_TEXT.get(c['status'], c['status'])})")
+                 f"{shapes.STATUS_TEXT.get(c['status'], c['status'])})" + ("" if c["has_evidence"] else ",还没有证据"))
         if not c["lists"]:
             L.append("  还没生成成立日清单")
         for x in c["lists"]:
             if x["list_id"] is None:
                 L.append(f"  v{x['version']}:没生成清单——{(x.get('empty') or {}).get('text', '')}")
             else:
-                L.append(f"  v{x['version']} 成立日清单 {x['list_id']}:{x['n_items']} 张,第一下标「是」{x['yes']} 张、"
-                         f"「不是」{x['no']} 张,还没标 {x['unmarked']} 张"
-                         + (f",看过走势后改了 {x['changed']} 张" if x["changed"] else ""))
+                L.append(f"  v{x['version']} 成立日清单 {x['list_id']}:已标 {x['marked']} / {x['n_items']} 张;"
+                         f"第一下标「是」{x['yes']} 张、「不是」{x['no']} 张,其中归成关系类的 {x['no_relation']} 张"
+                         + (f";看过走势后改了 {x['changed']} 张" if x["changed"] else ""))
         if c["pending_elements"]:
             L.append(f"  引用过的待写代码要素:{'、'.join(c['pending_elements'])}")
         L.append("  碰到过关系类问题:" + ("是。" + ";".join(c["touched_relation"]) if c["touched_relation"] else "没有"))
@@ -624,10 +765,17 @@ def render_summary(s: dict) -> str:
         for r in b["reasons"]:
             L.append(f"    · {r['item_id']}({r['shape_id']}@v{r['version']}):「{r['reason']}」{_by(r['category'])}")
         for e in b["elements"]:
-            L.append(f"    · {e['label']} 缺:{e['needs'] or '—'} {_by(e['category'])}")
+            L.append(f"    · {e['label']} 缺:{e['needs'] or '—'} {_by(e['category'])}"
+                     + (f"(引用它的卡:{'、'.join(e['cards'])})" if e["cards"] else ""))
     u = s["unclassified"]
     if u["reasons"] or u["elements"]:
         L.append(f"  还没归类:理由 {len(u['reasons'])} 条、要素 {len(u['elements'])} 条(pending 列出编号)")
+    rr, re_ = s["ratios"]["reasons"], s["ratios"]["elements"]
+    L += ["", "不按卡算:",
+          f"  所有第一下「不是」的理由 {rr['n']} 条,归了类的 {rr['classified']} 条里关系类 {rr['relation']} 条"
+          f"({_pct(rr['share'])})",
+          f"  所有记成待写代码的要素 {re_['n']} 条(每条只算一次),归了类的 {re_['classified']} 条里关系类 "
+          f"{re_['relation']} 条({_pct(re_['share'])})"]
     if s["changed_after_reveal"]:
         L += ["", f"看过走势后改了的 {len(s['changed_after_reveal'])} 张(不进上面的数):"]
         for c in s["changed_after_reveal"]:
@@ -636,12 +784,13 @@ def render_summary(s: dict) -> str:
                      f"后来「{VERDICT_TEXT[la['verdict']]}」{la['reason']}")
     L.append("")
     if s["share_touched_relation"] is None:
-        L.append("还没有形态卡,谈不上要不要改写法。")
+        L.append("还没有有证据的形态卡,谈不上要不要改写法。")
     else:
-        L.append(f"碰到过关系类问题的卡:{s['n_cards_touched_relation']} / {s['n_cards']} 张"
-                 f"({s['share_touched_relation']:.0%});还没有任何证据的卡 {s['n_cards_without_evidence']} 张。")
+        L.append(f"碰到过关系类问题的卡:有证据的 {s['n_cards_with_evidence']} 张里 {s['n_cards_touched_relation']} 张"
+                 f"({_pct(s['share_touched_relation'])});连同没证据的是 {s['n_cards_touched_relation']} / "
+                 f"{s['n_cards']} 张。")
         verdict = ("建议把形态卡改成「事件加关系」" if s["suggest_switch"] else "暂不建议改,平的要素组合还够用")
-        L.append(f"按默认判法(超过 {s['switch_share']:.0%} 的卡碰到过就建议改,待验证):{verdict}。"
+        L.append(f"按默认判法(有证据的卡里超过 {s['switch_share']:.0%} 碰到过就建议改,待验证):{verdict}。"
                  + ("还有没归类的,归完可能会变。" if u["reasons"] or u["elements"] else "") + "结论由你拍板。")
     if s.get("saved_to"):
         L.append(f"(这份小结存在 {s['saved_to']})")
@@ -660,8 +809,9 @@ def _print_make(res: dict) -> None:
     print(f"写入 {res['path']}(调试模式的清单;标记和小结只写调试账,不进正式账、不记账本、不算尝试)")
     print(f"{head}:样本股 {row['n_stocks_sample']} 只 + 随机抽 {row['n_stocks_pool']} 只(其中有成立日的 "
           f"{row['n_pool_positive']} 只);连续成立算一次,共 {row['n_episodes']} 次(另有 {row['n_too_early']} 次紧挨着"
-          f"调试段开头、没列),去掉以前仔细看过后面走势的 "
-          f"{row['n_seen_excluded']} 次、同股互相露底的 {row['n_overlap_dropped']} 次,列 {row['n_items']} 张")
+          f"调试段开头、没列),去掉以前仔细看过后面走势的 {row['n_seen_excluded']} 次、和以前清单里还没标的图交叠的 "
+          f"{row['n_prior_overlap']} 次、同股互相露底的 {row['n_overlap_dropped']} 次,列 {row['n_items']} 张"
+          f"(同一只股票大致一张,随机挑其中一次)")
     if row.get("unreadable"):
         print("读不了的股票:" + ";".join(row["unreadable"]), file=sys.stderr)
     print("打开:", deep_link(row["list_id"]))

@@ -339,6 +339,8 @@ export interface WorkflowItem {
   tags: string[]
   /** 卡成立日清单:标完「是 / 不是」后图窗露到哪天(标之前只到成立日 view_end) */
   reveal_end?: string
+  /** 卡成立日清单:图窗里成立日之前卡也成立过的段 [起, 止](都早于成立日) */
+  card_true_runs?: [string, string][]
 }
 
 /** 卡成立日清单里一张图现在的标记(后端只追加,这是最后一下;first_verdict 是第一下) */

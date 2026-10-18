@@ -40,10 +40,11 @@ first_buy_points 缺失或跟它不一样、或最后的买点跟它不一样,ch
 打开 / 记单张图事件 / 发标注一律 403;调试模式下清单里任何日期晚于调试段终点也 403(不截断:截了也会从
 条目编号、决策日露出后面的日子)。正式模式的这些行为不变。
 
-卡成立日清单(kind = card_hits,chart_workflow.cardhits,只在调试模式下用;正式模式列表里不出现、打开 403):
+卡成立日清单(kind = card_hits,chart_workflow.cardhits,只在调试模式下用;正式模式列表里不出现、打开 403;
+内容和调试账的生成登记对不上的——调试账清空过、或别处生成的同名清单——同样不列出、打开 403):
 用户逐张点「是 / 不是」(POST /workflow/card_marks,「不是」要写一句为什么),标记只写调试账。标之前不露成立日
 之后的走势:打开清单记的看过是盲看(outcome_visible = false),/workflow/ohlc 只放行到成立日(条目的 view_end);
-标完才放行到露出终点 reveal_end,并先记一条看过(show_chart,看得到结果)再写标记。打开清单时把每张图现在的
+标完才放行到露出终点 reveal_end:先校验(理由、清单登记),通过了再记一条看过(show_chart,看得到结果)、再写标记。打开清单时把每张图现在的
 标记带在 card_marks 里,已经标过的直接放行到 reveal_end(同样记一条看过)。这种清单不收标注批次,单张图事件只收
 放大(zoom)。
 """
@@ -235,8 +236,14 @@ def _list_refusal(doc: dict, cfg: dict) -> str | None:
     foreign = cw_mode.foreign_reason(doc, "清单")
     if foreign:
         return foreign
-    if doc.get("kind") == cardhits.KIND and not cw_mode.is_debug():
-        return "卡成立日清单只在调试模式下用,正式模式打不开"
+    if doc.get("kind") == cardhits.KIND:
+        if not cw_mode.is_debug():
+            return "卡成立日清单只在调试模式下用,正式模式打不开"
+        try:
+            if not cardhits.is_registered(doc):
+                return cardhits.unregistered_text(doc)
+        except StateRootMissing:
+            pass                          # 调试账不可用:打开、标记时照常 503
     floor = _view_floor(cfg)
     if _before_floor(doc, floor):
         return f"这份清单的图窗早于本轮看图下界 {floor}，不能打开"
@@ -434,8 +441,12 @@ def build_workflow_router(*, get_config) -> APIRouter:
                   None)
         if it is None:
             raise HTTPException(404, f"清单 {req.list_id} 里没有 {req.item_id}")
-        if req.verdict not in cardhits.VERDICTS or (req.verdict == "no" and not req.reason.strip()):
-            raise HTTPException(400, "只能标「是」或「不是」;标「不是」要写一句为什么")
+        try:                                 # 先校验,通过了才记看过、放行
+            cardhits.check_mark(doc, req.item_id, req.verdict, req.reason)
+        except StateRootMissing as e:
+            raise HTTPException(503, str(e)) from None
+        except ValueError as e:
+            raise HTTPException(400, str(e)) from None
         floor, train_end = _view_floor(cfg), _train_end(cfg)
         start, end = _card_window(it, floor, train_end, True)
         try:

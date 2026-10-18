@@ -48,6 +48,7 @@
 
     <section v-if="store.isCardHits && cardLines.length" class="card-lines" data-testid="wf-card-lines">
       <b>卡上写的：</b><span v-for="(l, k) in cardLines" :key="k">{{ l }}</span>
+      <span v-if="cardNote" class="card-note" data-testid="wf-card-note">{{ cardNote }}</span>
     </section>
 
     <section v-if="store.current?.summary" class="summary" data-testid="wf-summary">
@@ -131,6 +132,7 @@ const modeLabel = computed(() => useModeStore().banner?.text ?? null)
 const drawerOpen = ref(false)
 /** 卡成立日清单:卡这一版写了什么(生成清单时记在 params 里) */
 const cardLines = computed<string[]>(() => store.current?.params?.card_hits?.card_lines ?? [])
+const cardNote = computed<string>(() => store.current?.params?.card_hits?.note ?? '')
 const gridEl = ref<HTMLElement | null>(null)
 /** 后端拿不到记账类文件的家时,清单目录每项都带 blocked 与说明;打开清单、发标注都会被拒 */
 const blockedMessage = computed(() => store.lists.find(l => l.blocked)?.blocked_message
@@ -228,6 +230,7 @@ onBeforeUnmount(() => {
 .card-count { font-weight: 700; }
 .card-lines { display: flex; flex-wrap: wrap; gap: 4px 14px; padding: 4px 8px; border-bottom: 1px solid #cbd5e1;
               font-size: 12px; color: #0f172a; }
+.card-note { color: #475569; }
 .err { color: #b91c1c; padding: 6px 8px; }
 .err.blocked { font-weight: 700; border-left: 4px solid #0f172a; color: #0f172a; }
 .state-env { padding: 6px 8px; border: 2px dashed #0f172a; color: #0f172a; background: #fff;

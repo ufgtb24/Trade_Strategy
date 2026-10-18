@@ -66,6 +66,10 @@ def test_blind_until_marked_then_revealed_full_flow(setup, _cw_state_root):
     n = len(_views(droot))
     r = c.post("/workflow/card_marks", json={"list_id": lid, "item_id": it0["item_id"], "verdict": "no", "reason": " "})
     assert r.status_code == 400 and "写一句为什么" in r.json()["detail"]
+    r = c.post("/workflow/card_marks", json={"list_id": lid, "item_id": it0["item_id"], "verdict": "no",
+                                             "reason": "长" * (cardhits.REASON_MAX + 1)})
+    assert r.status_code == 400 and "理由最多" in r.json()["detail"]
+    assert _ohlc(c, it0, it0["reveal_end"]).status_code == 403
     assert len(_views(droot)) == n and not cardhits.read_marks()          # 不合格的什么都不记、不露
     r = c.post("/workflow/card_marks", json={"list_id": lid, "item_id": it0["item_id"], "verdict": "yes"})
     assert r.status_code == 200, r.text
@@ -104,6 +108,12 @@ def test_blind_until_marked_then_revealed_full_flow(setup, _cw_state_root):
     assert digest(_cw_state_root) == before                                # 正式账一个字节不变
     _, removed = debugroot.clear()
     assert "card_review" in removed
+    c3 = client()                          # 清空以后,这个目录里的旧清单不在新调试账的登记里:不列、打不开、标不了
+    assert lid not in [x["list_id"] for x in c3.get("/workflow/lists").json()]
+    r = c3.get(f"/workflow/lists/{lid}")
+    assert r.status_code == 403 and "生成登记" in r.json()["detail"]
+    r = c3.post("/workflow/card_marks", json={"list_id": lid, "item_id": it0["item_id"], "verdict": "yes"})
+    assert r.status_code == 403 and not cardhits.read_marks()
 
 
 def test_formal_mode_refuses_card_hits(setup, monkeypatch, tmp_path, _cw_state_root):

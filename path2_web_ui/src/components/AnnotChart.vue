@@ -99,7 +99,8 @@
  *
  * 卡成立日清单(card_hits,只在调试模式下用):不框选、不点买点、不选判定,只有「是」「不是」两个按钮,「不是」
  * 要写一句为什么再点「记下」;后端记上之前只画到成立日(条目的 view_end),记上之后重取到 reveal_end,
- * 露出成立日之后的走势。成立日画一条竖线。标过的显示标的是什么,改过的注明第一下是什么。
+ * 露出成立日之后的走势。成立日画一条竖线;成立日之前卡也成立过的段(item.card_true_runs)画浅灰底,第一段写
+ * 「卡也成立」。标过的显示标的是什么,改过的注明第一下是什么。
  *
  * 两个互斥的工具开关:「框选起止」用 ECharts lineX brush + createBrushRequestHandler 把
  * (startIdx, endIdx) 换成日期写进草稿;「点买点」在图上点一下,把那根 K 线设成唯一的(主)买点,
@@ -355,6 +356,17 @@ function buildOption(zoom: ZoomWindow | null) {
   }
   const a = props.annotation
   const areas: any[] = []
+  if (cardMode.value) {          // 成立日之前卡也成立过的段:浅灰底 + 文字,不靠色相
+    (props.item.card_true_runs ?? []).forEach(([s0, s1], k) => {
+      if (!has.has(s0) || !has.has(s1)) return
+      const s2 = dates[dates.indexOf(s1) + 1] ?? s1     // 画到下一根:只成立一天的段也有宽度(段都早于成立日)
+      areas.push([
+        { xAxis: s0, name: k === 0 ? '卡也成立' : '', itemStyle: { color: 'rgba(15,23,42,0.10)' },
+          label: { show: k === 0, position: 'insideBottom', color: INK, fontSize: 10 } },
+        { xAxis: s2 },
+      ])
+    })
+  }
   if (a?.range_start && a?.range_end) {
     areas.push([
       { xAxis: a.range_start, name: labelText(a.label, kind.value),

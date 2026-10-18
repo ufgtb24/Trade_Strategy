@@ -23,8 +23,9 @@ vi.mock('../src/api', () => ({
   listWorkflowLists: vi.fn(async () => []),
   getWorkflowState: vi.fn(async () => ({ path: '/x', from_env: false, env_var: 'X', ok: true, message: null })),
 }))
+let lastOption: any = null
 vi.mock('echarts', () => ({ init: vi.fn(() => ({
-  setOption: vi.fn(), getOption: () => ({}), on: vi.fn(), off: vi.fn(),
+  setOption: vi.fn((o: any) => { lastOption = o }), getOption: () => ({}), on: vi.fn(), off: vi.fn(),
   getZr: () => ({ on: vi.fn(), off: vi.fn() }), dispatchAction: vi.fn(), resize: vi.fn(), dispose: vi.fn(),
 })) }))
 
@@ -36,13 +37,14 @@ import { useWorkflowStore } from '../src/stores/workflow'
 const ITEM: WorkflowItem = {
   item_id: 'C1@2022-03-15', symbol: 'C1', t: '2022-03-15', entry_date: '2022-03-15',
   view_start: '2021-11-01', view_end: '2022-03-15', reveal_end: '2022-05-10',
-  marks: { decision: '2022-03-15' }, metrics: {}, tags: [],
+  marks: { decision: '2022-03-15' }, metrics: {}, tags: [], card_true_runs: [['2022-03-01', '2022-03-01']],
 }
 
 function mkList(marks: Record<string, CardMark> = {}): WorkflowList {
   return { schema: 'chart_workflow.list/1', list_id: 'dbg-hits-s001-v1', kind: 'card_hits', title: '【调试】卡成立日',
            created_at: '2026-10-18T09:00:00', train_start: '2021-10-01', train_end: '2022-09-30',
-           params: { card_hits: { card_lines: ['必须有:E001「收盘越过前面的峰」(按收盘越过的峰个数至少 1)'] } },
+           params: { card_hits: { card_lines: ['必须有:E001「收盘越过前面的峰」(按收盘越过的峰个数至少 1)'],
+                                  note: '同一只股票大致只列一张' } },
            groups: [{ key: 'all', title: '全部', item_ids: [ITEM.item_id] }], items: [ITEM],
            card_marks: marks }
 }
@@ -75,6 +77,14 @@ describe('卡成立日清单', () => {
     expect(lastEnd()).toBe('2022-03-15')
     expect(w.find('[data-testid="decision"]').text()).toBe('卡成立日 2022-03-15')
     expect(w.find('[data-testid="card-hint"]').text()).toContain('标完才露出成立日之后的走势')
+  })
+
+  it('成立日之前卡也成立过的段画成浅灰底,写「卡也成立」', async () => {
+    await mountChart()
+    const areas = lastOption.series[0].markArea.data
+    expect(areas).toHaveLength(1)
+    expect(areas[0][0]).toMatchObject({ xAxis: '2022-03-01', name: '卡也成立' })
+    expect(areas[0][1]).toEqual({ xAxis: '2022-03-15' })        // 只成立一天:画到下一根,不是零宽
   })
 
   it('点「不是」要写一句为什么才能记下;记上之后才取到露出终点', async () => {
@@ -124,6 +134,7 @@ describe('卡成立日清单', () => {
     await flushPromises()
     expect(w.find('[data-testid="wf-card-count"]').text()).toContain('已标 1 / 1 张')
     expect(w.find('[data-testid="wf-card-lines"]').text()).toContain('必须有:E001「收盘越过前面的峰」')
+    expect(w.find('[data-testid="wf-card-note"]').text()).toContain('同一只股票大致只列一张')
     expect(w.find('[data-testid="wf-drawer"]').exists()).toBe(false)
   })
 })

@@ -6,7 +6,8 @@ sec_label / sec_known,名录里查不到的 sec_label 为「未知（名录里�
   contrast        对照清单,有 summary
   contrast_blind  盲看清单,无 summary;marks 只有 decision / entry,metrics 只有 M
   card_hits       卡成立日清单(cardhits.py,只在调试模式下用),无 summary;图窗终点 view_end 就是成立日 t,
-                  标完「是 / 不是」才露到 reveal_end;marks 只有 decision,metrics 为空,不带跨源比对
+                  标完「是 / 不是」才露到 reveal_end;marks 只有 decision,metrics 为空,不带跨源比对;
+                  card_true_runs 是成立日之前卡也成立过的段(都早于 t)
 
 写入前校验(任一不过就拒绝写):list_id 合法;所有日期不晚于 train_end;
 每个 view_end ≤ train_end;item_id 唯一;分组引用的 item 都存在;
@@ -17,7 +18,8 @@ sec_label / sec_known,名录里查不到的 sec_label 为「未知（名录里�
 
 图窗(view_window)是 make_item 与「同股不互相露底」(drop_window_overlaps)共用的唯一口径:
 同一只股票的两条,谁的决策日都不得落在另一条的完整图窗里(起点截到看图下界之后、到图窗终点),
-否则打开一张图就露出另一条的决策日和后续走势。
+否则打开一张图就露出另一条的决策日和后续走势。disjoint=True 时更严:两条的整段图窗(起点到终点)不许有任何
+交叠——靠后那条的图窗起点落在靠前那条决策日之后的那段里,打开靠后那条就提前露出靠前那条的后续(卡成立日清单用)。
 """
 from __future__ import annotations
 
@@ -118,11 +120,11 @@ def view_window(cfg: dict, symbol: str, t, blind: bool = False) -> tuple[pd.Time
 
 
 def drop_window_overlaps(df: pd.DataFrame, cfg: dict, blind: bool = False,
-                         min_gap_bars: int = 0) -> pd.DataFrame:
+                         min_gap_bars: int = 0, disjoint: bool = False) -> pd.DataFrame:
     """同股不互相露底:按 df 的行序逐条贪心,一条只有在 ① 它的决策日不落在已取中的同股任一条的
     图窗里、② 已取中的同股任一条的决策日不落在它的图窗里、③ 与已取中的同股各条相隔超过
-    min_gap_bars 个交易日时才取。df 要有 symbol / date 列;返回取中的行(保持原行序)。
-    图窗与交易日序号只在同股已有取中的条目时才算(只出现一次的股票不读行情)。"""
+    min_gap_bars 个交易日、④ disjoint 时两条的整段图窗不交叠,才取。df 要有 symbol / date 列;
+    返回取中的行(保持原行序)。图窗与交易日序号只在同股已有取中的条目时才算(只出现一次的股票不读行情)。"""
     keep = []
     taken: dict[str, list[pd.Timestamp]] = {}
     cache: dict[tuple[str, pd.Timestamp], tuple[pd.Timestamp, pd.Timestamp, int]] = {}
@@ -141,7 +143,8 @@ def drop_window_overlaps(df: pd.DataFrame, cfg: dict, blind: bool = False,
             ok = True
             for t2 in mine:
                 s2, e2, i2 = geo(sym, t2)
-                if s2 <= t <= e2 or s <= t2 <= e or abs(i - i2) <= min_gap_bars:
+                if (s2 <= t <= e2 or s <= t2 <= e or abs(i - i2) <= min_gap_bars
+                        or (disjoint and s <= e2 and s2 <= e)):
                     ok = False
                     break
             if not ok:
@@ -289,6 +292,9 @@ def _card_hits_errors(doc: dict, train_end: str) -> list[str]:
             errs.append(f"露出终点 reveal_end 要在成立日到训练段末日 {train_end} 之间: {tag} {rev!r}")
         if set(it.get("marks") or {}) - {"decision"} or it.get("metrics"):
             errs.append(f"卡成立日清单含结果字段: {tag}")
+        for run in it.get("card_true_runs") or []:
+            if not (isinstance(run, list) and len(run) == 2 and str(it.get("view_start")) <= run[0] <= run[1] < str(t)):
+                errs.append(f"成立日之前卡也成立的段要在图窗起点到成立日之前: {tag} {run!r}")
         if "xcheck" in it:
             errs.append(f"卡成立日清单不得含跨源比对结果: {tag}")
     return errs

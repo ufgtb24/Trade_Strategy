@@ -127,22 +127,38 @@ def test_make_lists_first_day_of_each_run_inside_debug_segment(hits, state_dir):
         assert mode.DEBUG_START <= it["view_start"] < it["t"]
         assert it["marks"] == {"decision": it["t"]} and it["metrics"] == {} and "xcheck" not in it
     by_sym = {}
-    for it in doc["items"]:
+    for it in doc["items"]:                     # 同一只股票的两张,整段可见范围(图窗起点到露出终点)不交叠
         for o in by_sym.get(it["symbol"], []):
-            assert not (o["view_start"] <= it["t"] <= o["reveal_end"] or it["view_start"] <= o["t"] <= it["reveal_end"])
+            assert not (o["view_start"] <= it["reveal_end"] and it["view_start"] <= o["reveal_end"]), (o, it)
         by_sym.setdefault(it["symbol"], []).append(it)
-    assert [r["list_id"] for r in cardhits.read_lists()] == [doc["list_id"]]
+        earlier = {d for d, (v, _) in says[it["symbol"]].items() if v is True and it["view_start"] <= d < it["t"]}
+        runs = it["card_true_runs"]
+        assert all(it["view_start"] <= x <= y < it["t"] for x, y in runs)
+        assert {d for d in earlier if any(x <= d <= y for x, y in runs)} == earlier      # 成立日之前卡也成立的天都标出
+        assert all(says[it["symbol"]][x][0] is True and says[it["symbol"]][y][0] is True for x, y in runs)
+    assert any(it["card_true_runs"] for it in doc["items"])
+    assert "大致只列一张" in doc["params"]["card_hits"]["note"]
+    reg, = cardhits.read_lists()
+    assert reg["list_id"] == doc["list_id"] and reg["list_sha12"] == views.list_sha12(
+        json.loads(res["path"].read_text())) and len(reg["items"]) == len(doc["items"])
     assert doc["params"]["card_hits"]["card_lines"] == ["必须有:E001「按收盘越过前面的峰」(按收盘越过的峰个数至少 1)"]
     assert digest(state_dir) == before
     assert (droot / "card_review" / "lists.jsonl").exists()
 
 
 def test_sampling_is_reproducible(fast, hits):
-    """种子固定:同一张卡同一版,重跑出来的一样;只列 3 张时就是全量顺序的前 3 张。"""
+    """种子固定:同一张卡同一版,重跑出来的一样;只列 3 张时就是全量顺序的前 3 张。(每份标完再生成下一份:
+    没标的图会挡住下一份里和它交叠的天;这里只记标记、不记看过,所以下一份还能列同样的天。)"""
     cfg, _, sid = hits
-    full = cardhits.make(sid, list_id="dbg-hits-a", cfg=cfg)["doc"]["items"]
-    again = cardhits.make(sid, list_id="dbg-hits-b", cfg=cfg)["doc"]["items"]
-    few = cardhits.make(sid, list_id="dbg-hits-c", max_items=3, cfg=cfg)["doc"]["items"]
+
+    def make_and_mark(lid, **kw):
+        doc = cardhits.make(sid, list_id=lid, cfg=cfg, **kw)["doc"]
+        for it in doc["items"]:
+            cardhits.record_mark(doc, it["item_id"], "yes")
+        return doc["items"]
+    full = make_and_mark("dbg-hits-a")
+    again = make_and_mark("dbg-hits-b")
+    few = make_and_mark("dbg-hits-c", max_items=3)
     assert [x["item_id"] for x in again] == [x["item_id"] for x in full]
     assert [x["item_id"] for x in few] == [x["item_id"] for x in full][:3]
     assert len({x["item_id"] for x in full}) == len(full) >= 4
@@ -151,7 +167,10 @@ def test_sampling_is_reproducible(fast, hits):
 def test_already_seen_days_left_out(fast, hits):
     """以前已经仔细看过后面走势的成立日(比如卡自己的样本、以前标过的)不再列。"""
     cfg, _, sid = hits
-    first = cardhits.make(sid, list_id="dbg-hits-a", cfg=cfg)["doc"]["items"][0]
+    doc = cardhits.make(sid, list_id="dbg-hits-a", cfg=cfg)["doc"]
+    for it in doc["items"]:
+        cardhits.record_mark(doc, it["item_id"], "yes")
+    first = doc["items"][0]
     views.record(surface="manual", event="show_chart", outcome_visible=True, charts=[
         {"symbol": first["symbol"], "start": first["view_start"], "end": first["reveal_end"]}])
     res = cardhits.make(sid, list_id="dbg-hits-b", cfg=cfg)
@@ -245,8 +264,11 @@ def test_classify_rules(fast, hits):
 
 
 def test_summary_counts_and_relation_share(fast, dbg):
-    """两张卡:一张的「不是」归成事件关系、一张只缺一个量 → 碰到过关系类问题 1 / 2 张,不超过一半,不建议改;
-    再给第二张卡引用的待写代码要素归成事件关系 → 2 / 2,建议改。原始数字、原话、谁归的都在。"""
+    """四张卡:s001 的「不是」归成先后;s002 的「不是」只缺一个量,引用待写代码的 E002;s003 也引用 E002、没生成
+    清单;s004 什么都没有。E002 还没归类时它不算证据:有证据的 2 张里 1 张碰到过关系类问题(不超过一半,不建议改),
+    连同没证据的 1 / 4;把 E002 归成「挑哪一次」→ s003 也有了证据,有证据的 3 张都碰到过(s002、s003 是靠共用的
+    E002,注明共用),建议改。
+    不按卡算的两个比例、每张卡「第一下『不是』几张、其中关系类几张、已标几张」都在。"""
     cfg, pkl_dir, droot = dbg
     cfg["shape_check"] = {**cfg["shape_check"], "pool_positive_stocks": 2, "pool_max_stocks": 5}
     write_stocks(pkl_dir)
@@ -254,33 +276,95 @@ def test_summary_counts_and_relation_share(fast, dbg):
     s1 = make_card()
     s2 = make_card(elements=(("pk", "按收盘越过一个峰", "E001", "must"), ("flat", "突破前横着走", None, "bonus")),
                    name="越过前高带横盘")
-    d1 = cardhits.make(s1, cfg=cfg)["doc"]
-    d2 = cardhits.make(s2, cfg=cfg, list_id="dbg-hits-two")["doc"]
+    s3 = make_card(elements=(("pk", "按收盘越过一个峰", "E001", "must"), ("flat", "突破前横着走", "E002", "bonus")),
+                   triggers=("T3",), name="创新高带横盘")
+    make_card(elements=(("pk", "按收盘越过一个峰", "E001", "must"),), triggers=("T7",), name="越过前高缩量")
+    d1 = cardhits.make(s1, cfg=cfg, max_items=2)["doc"]
     m = [cardhits.record_mark(d1, d1["items"][0]["item_id"], "yes"),
-         cardhits.record_mark(d1, d1["items"][1]["item_id"], "no", "先跌后横盘的顺序不对"),
-         cardhits.record_mark(d2, d2["items"][0]["item_id"], "no", "量不够大")]
-    cardhits.record_mark(d1, d1["items"][0]["item_id"], "no", "看完走势改了")        # 看过走势后改的
+         cardhits.record_mark(d1, d1["items"][1]["item_id"], "no", "先跌后横盘的顺序不对")]
+    d2 = cardhits.make(s2, cfg=cfg, list_id="dbg-hits-two")["doc"]        # d1 标完了,不受它限制
+    m.append(cardhits.record_mark(d2, d2["items"][0]["item_id"], "no", "量不够大"))
+    late = cardhits.record_mark(d1, d1["items"][0]["item_id"], "no", "看完走势改了")      # 看过走势后改的
     cardhits.classify("mark", m[1]["mark_id"], "先后")
     cardhits.classify("mark", m[2]["mark_id"], "缺一个量")
+    with pytest.raises(cardhits.CardHitsRefused, match="看过走势后改的"):
+        cardhits.classify("mark", late["mark_id"], "先后")
+    assert cardhits.pending()["marks"] == []                    # 改的那一下不进统计,也不列进待归类
     s = cardhits.summary()
-    assert s["n_cards"] == 2
-    c1, c2 = s["cards"]
-    assert (c1["lists"][0]["yes"], c1["lists"][0]["no"], c1["lists"][0]["changed"]) == (1, 1, 1)
-    assert c1["lists"][0]["unmarked"] == len(d1["items"]) - 2
-    assert c1["touched_relation"] and not c2["touched_relation"]
-    assert (s["n_cards_touched_relation"], s["suggest_switch"]) == (1, False)
+    assert (s["n_cards"], s["n_cards_with_evidence"]) == (4, 2)
+    c1, c2, c3, c4 = s["cards"]
+    l1 = c1["lists"][0]
+    assert (l1["marked"], l1["n_items"], l1["yes"], l1["no"], l1["no_relation"], l1["changed"]) == (2, 2, 1, 1, 1, 1)
+    assert c2["lists"][0]["unmarked"] == len(d2["items"]) - 1 and c2["lists"][0]["no_relation"] == 0
+    assert [c["has_evidence"] for c in s["cards"]] == [True, True, False, False]
+    assert c1["touched_relation"] and not c2["touched_relation"] and not c3["touched_relation"]
+    assert (s["n_cards_touched_relation"], s["share_touched_relation"], s["suggest_switch"]) == (1, 1 / 2, False)
+    assert s["share_touched_relation_all_cards"] == 1 / 4
+    assert s["ratios"]["reasons"] == {"n": 2, "classified": 2, "relation": 1, "share": 0.5}
+    assert s["ratios"]["elements"] == {"n": 1, "classified": 0, "relation": 0, "share": None}
     assert [r["reason"] for r in s["by_category"]["relation:sequence"]["reasons"]] == ["先跌后横盘的顺序不对"]
     assert [r["reason"] for r in s["by_category"]["quantity"]["reasons"]] == ["量不够大"]
     assert len(s["unclassified"]["elements"]) == 1 and len(s["changed_after_reveal"]) == 1
     flat = s["unclassified"]["elements"][0]["element_id"]
     cardhits.classify("element", flat, "挑哪一次")
     s = cardhits.summary()
-    assert (s["n_cards_touched_relation"], s["share_touched_relation"], s["suggest_switch"]) == (2, 1.0, True)
+    assert (s["n_cards_touched_relation"], s["share_touched_relation"], s["suggest_switch"]) == (3, 1.0, True)
+    assert [c["has_evidence"] for c in s["cards"]] == [True, True, True, False]
+    assert s["ratios"]["elements"] == {"n": 1, "classified": 1, "relation": 1, "share": 1.0}
+    assert any(f"和 {s3} 共用" in t for t in s["cards"][1]["touched_relation"])
     text = cardhits.render_summary(s)
-    for needle in ("建了 2 张形态卡", "先跌后横盘的顺序不对", "会话归的", "建议把形态卡改成「事件加关系」", "结论由你拍板",
-                   "看过走势后改了的 1 张"):
+    for needle in ("建了 4 张形态卡", "其中有证据的 3 张", "已标 2 / 2 张", "其中归成关系类的 1 张", "先跌后横盘的顺序不对",
+                   "会话归的", "所有第一下「不是」的理由 2 条,归了类的 2 条里关系类 1 条(50%)",
+                   "有证据的 3 张里 3 张(100%);连同没证据的是 3 / 4 张", "建议把形态卡改成「事件加关系」",
+                   "结论由你拍板", "看过走势后改了的 1 张", "大致只列一张", f"和 {s3} 共用"):
         assert needle in text, needle
     assert len(list((droot / "card_review" / "summaries").glob("*.json"))) == 2
+
+
+def test_same_name_once_per_debug_ledger_and_summary_dedupes(fast, hits):
+    """调试账是各个目录共用的一本:同名清单在别的目录生成过(这里看不到那个文件),再生成就拒;早先重复登记的,
+    小结只算一次。"""
+    cfg, droot, sid = hits
+    res = cardhits.make(sid, list_id="dbg-hits-x", cfg=cfg)
+    cardhits.record_mark(res["doc"], res["doc"]["items"][0]["item_id"], "no", "量不够")
+    res["path"].unlink()                                        # 像是在另一个目录里生成的
+    with pytest.raises(cardhits.CardHitsRefused, match="生成登记里已经有清单 dbg-hits-x"):
+        cardhits.make(sid, list_id="dbg-hits-x", cfg=cfg)
+    with (droot / "card_review" / "lists.jsonl").open("a") as f:      # 早先的重复登记
+        f.write(json.dumps(res["row"], ensure_ascii=False) + "\n")
+    s = cardhits.summary(save=False)
+    assert len(s["cards"][0]["lists"]) == 1 and s["ratios"]["reasons"]["n"] == 1
+    assert cardhits.render_summary(s).count("dbg-hits-x") == 1
+
+
+def test_list_not_in_this_debug_ledger_refused(fast, hits):
+    """调试账清空过(清单文件留在别的目录里)、或者清单内容和登记的不一样:标了进不了小结,拒绝。"""
+    cfg, _, sid = hits
+    doc = cardhits.make(sid, cfg=cfg)["doc"]
+    assert cardhits.is_registered(doc)
+    with pytest.raises(cardhits.CardHitsRefused, match="不在现在这本调试账的生成登记里"):
+        cardhits.record_mark({**doc, "title": "改过"}, doc["items"][0]["item_id"], "yes")
+    debugroot.clear()
+    assert (root_dir(cfg) / "lists" / f"{doc['list_id']}.json").exists()       # 清单文件在这个目录里,没被清
+    with pytest.raises(cardhits.CardHitsRefused, match="不在现在这本调试账的生成登记里"):
+        cardhits.record_mark(doc, doc["items"][0]["item_id"], "yes")
+
+
+def test_prior_unmarked_items_block_overlapping_days(fast, hits):
+    """上一份清单还没标完就生成下一份:和上一份里还没标的图(同一只股票)可见范围交叠的不列;标完以后不再受限。"""
+    cfg, _, sid = hits
+    a = cardhits.make(sid, list_id="dbg-hits-a", cfg=cfg)["doc"]
+    b = cardhits.make(sid, list_id="dbg-hits-b", cfg=cfg)
+    for x in b["doc"]["items"] if b["doc"] else []:
+        for y in a["items"]:
+            if x["symbol"] == y["symbol"]:
+                assert not (x["view_start"] <= y["reveal_end"] and y["view_start"] <= x["reveal_end"]), (x, y)
+    assert b["row"]["n_prior_overlap"] > 0
+    for d in (a, b["doc"]):
+        for it in (d or {}).get("items", []):
+            cardhits.record_mark(d, it["item_id"], "yes")
+    c = cardhits.make(sid, list_id="dbg-hits-c", cfg=cfg)
+    assert c["row"]["n_prior_overlap"] == 0 and c["doc"] is not None
 
 
 def test_normal_use_end_to_end_then_clear(hits, state_dir, monkeypatch, capsys):
@@ -302,7 +386,8 @@ def test_normal_use_end_to_end_then_clear(hits, state_dir, monkeypatch, capsys):
     capsys.readouterr()
     cardhits.main(["summary"])
     out = capsys.readouterr().out
-    assert f"还没标 0 张" in out and "碰到过关系类问题的卡:1 / 1 张" in out
+    n = len(doc["items"])
+    assert f"已标 {n} / {n} 张" in out and "有证据的 1 张里 1 张(100%);连同没证据的是 1 / 1 张" in out
     debugroot.main(["show"])
     assert "卡成立日的标记与归类" in capsys.readouterr().out
     path, removed = debugroot.clear()
