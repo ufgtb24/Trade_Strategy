@@ -48,8 +48,8 @@ def autolock(request, monkeypatch, tmp_path, root: Path) -> None:
             sha = snaplock.fingerprint(ddir)["sha"]
         except state.StateRootMissing:
             return real(ddir, root, file)            # 不是副本:照常报错
-        if not (r / state.MARKER).is_file():
-            return real(ddir, root, file)            # 不是状态根:照常报错,不往里写东西
+        if not ((r / state.MARKER).is_file() or (r / state.DEBUG_MARKER).is_file()):
+            return real(ddir, root, file)            # 不是状态根(正式账或调试账):照常报错,不往里写东西
         lock = snaplock.read_lock(r)
         if lock is None:
             snaplock.register(r, ddir, "测试")

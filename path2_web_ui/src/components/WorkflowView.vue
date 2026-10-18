@@ -84,7 +84,8 @@
     <div v-if="store.zoomItem" class="backdrop" data-testid="wf-zoom" @click.self="store.setZoom(null)">
       <div class="modal">
         <div class="modal-head">
-          <span>放大查看 <span class="hint-inline">滚轮横向缩放（以鼠标处为中心），按住拖动平移（框选时除外），双击图退出放大</span></span>
+          <span>放大查看 <b v-if="modeLabel" class="mode-tag" data-testid="wf-zoom-mode">【{{ modeLabel }}】</b>
+            <span class="hint-inline">滚轮横向缩放（以鼠标处为中心），按住拖动平移（框选时除外），双击图退出放大</span></span>
           <button type="button" data-testid="wf-zoom-close" @click="store.setZoom(null)">关闭</button>
         </div>
         <AnnotChart :item="store.zoomItem" :annotation="store.drafts.get(store.zoomItem.item_id) ?? null"
@@ -113,9 +114,12 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import AnnotChart from './AnnotChart.vue'
 import AnnotReviewPanel from './AnnotReviewPanel.vue'
 import { useWorkflowStore } from '../stores/workflow'
+import { useModeStore } from '../stores/mode'
 
 const emit = defineEmits<{ exit: [] }>()
 const store = useWorkflowStore()
+// 页顶横幅(调试模式、模式未知、前后端模式对不上)被放大图盖住了,放大图的标题行里再写一遍
+const modeLabel = computed(() => useModeStore().banner?.text ?? null)
 const drawerOpen = ref(false)
 const gridEl = ref<HTMLElement | null>(null)
 /** 后端拿不到记账类文件的家时,清单目录每项都带 blocked 与说明;打开清单、发标注都会被拒 */
@@ -201,7 +205,7 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
-.wf { display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+.wf { display: flex; flex-direction: column; height: calc(100vh - var(--mode-banner-h, 0px)); overflow: hidden; }
 .top { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 6px 8px;
        border-bottom: 1px solid #cbd5e1; font-size: 13px; }
 .list-select { max-width: 520px; }
@@ -232,4 +236,5 @@ onBeforeUnmount(() => {
 .modal-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;
               font-weight: 700; }
 .hint-inline { font-weight: 400; font-size: 12px; color: #475569; margin-left: 8px; }
+.mode-tag { background: #0f172a; color: #fff; padding: 1px 6px; margin-left: 6px; }
 </style>

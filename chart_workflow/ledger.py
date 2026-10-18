@@ -59,6 +59,7 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
+from chart_workflow import mode
 from chart_workflow import state as _state
 from chart_workflow.config import REPO_ROOT, dataset_dir, load_config, root_dir
 from chart_workflow.control import ALL_SCOPE
@@ -98,7 +99,9 @@ def list_path(cfg: dict, list_id: str) -> Path:
 
 
 def check_new_list_id(cfg: dict, list_id: str) -> None:
-    """新清单名不得已存在:清单文件在、或账本里已有这个清单名 → ValueError。"""
+    """新清单名不得已存在:清单文件在、或账本里已有这个清单名 → ValueError。
+    清单名和模式对不上(调试模式要 dbg- 开头,正式模式不收它)→ mode.ModeError(ValueError 的子类)。"""
+    mode.check_list_id(list_id)
     if list_path(cfg, list_id).exists():
         raise ValueError(f"清单 {list_id} 已存在:同名重新生成会覆盖旧清单、账本对不上,换一个清单名")
     if any(r.get("list_id") == list_id for r in read_ledger()):
@@ -303,10 +306,14 @@ def add_round(cfg: dict, *, kind: str, rule_id: str, version: str, source: str, 
     if kind not in KINDS:
         raise ValueError(f"kind 必须是 {KINDS} 之一: {kind!r}")
     check_source(source)
+    mode.check_list_id(list_id)
     lp = list_path(cfg, list_id)
     if not lp.exists():
         raise FileNotFoundError(f"清单不存在: {lp}")
     doc = json.loads(lp.read_text())
+    foreign = mode.foreign_reason(doc, "清单")
+    if foreign:
+        raise mode.ModeError(f"{foreign}:{list_id}")
     implements = _shape_check(cfg, source, rule, app, app_params, doc.get("params"))
     rows = read_ledger()
     if not auto and any(r.get("list_id") == list_id and r.get("auto") for r in rows):
@@ -427,7 +434,11 @@ def render(rows: list[dict]) -> str:
             f"| {_xc(r.get('xcheck'))} | {_conds(r)} |")
     attempts = sum(1 for r in rows if r["kind"] != "bigmoves")
     lines.append("")
-    lines.append(f"累计尝试次数：{attempts}（共 {len(rows)} 轮，大涨段轮不计入）")
+    if mode.is_debug():
+        lines.insert(0, f"**{mode.DEBUG_LABEL}**（这是调试账，下面的轮次都不算尝试）\n")
+        lines.append(f"调试账共 {len(rows)} 轮（不算尝试）")
+    else:
+        lines.append(f"累计尝试次数：{attempts}（共 {len(rows)} 轮，大涨段轮不计入）")
     return "\n".join(lines)
 
 

@@ -1,4 +1,5 @@
 <template>
+  <ModeBanner />
   <WorkflowView v-if="wfMode" @exit="exitWorkflow" />
   <div v-else class="app">
     <aside class="left">
@@ -20,6 +21,7 @@ import SidebarScanPanel from './SidebarScanPanel.vue'
 import SidebarResultList from './SidebarResultList.vue'
 import ChartArea from './ChartArea.vue'
 import WorkflowView from './WorkflowView.vue'
+import ModeBanner from './ModeBanner.vue'
 import { useConfigStore } from '../stores/config'
 import { useViewStore } from '../stores/view'
 
@@ -52,7 +54,8 @@ onBeforeUnmount(() => window.removeEventListener('beforeunload', _guard))
 <style>
 * { box-sizing: border-box; }
 body { margin: 0; font-family: system-ui, sans-serif; color: #0f172a; }
-.app { display: grid; grid-template-columns: minmax(220px, max-content) 1fr; height: 100vh; }
+.app { display: grid; grid-template-columns: minmax(220px, max-content) 1fr;
+       height: calc(100vh - var(--mode-banner-h, 0px)); }
 .left { border-right: 1px solid #e5e7eb; display: flex; flex-direction: column; overflow: hidden; max-width: 50vw; }
 .right { display: flex; flex-direction: column; min-height: 0; overflow: auto; }
 .mode-bar { padding: 4px 8px; border-bottom: 1px solid #e5e7eb; }

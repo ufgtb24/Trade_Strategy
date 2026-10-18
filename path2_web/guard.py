@@ -1,7 +1,9 @@
 """调试视图的看图范围护栏:调试视图只露本轮看图范围内的行情与命中。
 
 本轮看图范围 = [看图下界 view_floor, 训练段末日 train_end],与看图工作流同一份(configs 的 workflow 子树,
-train_end 先和 chart_workflow.loader.HARD_END 取小,配置写成 2026 年也不越过 2025-12-31)。
+train_end 先和读行情的上限 chart_workflow.loader.read_ceiling() 取小,配置写成 2026 年也不越过 2025-12-31)。
+调试模式(chart_workflow.mode)下看图范围是调试段 2021-10-01..2022-09-30(代码常量,配置改不了),读行情一律截到
+2022-09-30;扫描结果的护栏标记另带 mode = debug,两种模式只打开自己的扫描。
 调试视图的各接口(path2_web/api.py)都经这里:
 
 - 读行情:一律经 chart_workflow.loader 读截断副本(workflow.dataset_dir),截到 train_end;顶层 dataset_dir
@@ -9,7 +11,8 @@ train_end 先和 chart_workflow.loader.HARD_END 取小,配置写成 2026 年也�
   副本里没有这只股票 → 404。探测器预热要的更早的行情照常在内部读。
 - K 线(/ohlc):看图下界之前的 bar 只留日期,价格与量置 null——事件与 match 按序号和 K 线对齐,这些 bar
   要占位,但不给看。每张露出了 K 线的图经 chart_workflow.views.record 记一条看过(surface=debug,
-  outcome_visible=true:调试视图的图带着买点之后的走势),同一进程里同一图窗只记一次;记不进去就不给图(503)。
+  outcome_visible=true:调试视图的图带着买点之后的走势),同一进程里同一图窗只记一次;记不进去就不给图(503;
+  图窗和当前模式对不上——正式模式下整张都在调试段里——是 409,见 chart_workflow.views)。
 - 单股预览(/preview)与扫描(/scan):起止截到看图范围内;扫描结果的 scan 段带
   view_guard = {view_floor, train_end, snapshot_sha}(这份扫描读的是截断副本、起点不早于这个下界、
   副本按内容的指纹是多少)。
@@ -19,9 +22,10 @@ train_end 先和 chart_workflow.loader.HARD_END 取小,配置写成 2026 年也�
   内部照常用长预热计算。诊断的分析窗起点不早于「下界往前推这个 app 声明的预热天数」;按 bar 诊断的
   框选起点不早于下界那根(截到它),框选终点早于它就 400;成对诊断点到下界之前的事件也 400。
   诊断里的计数(总数、通过数、各失败原因的个数)是整段分析窗的统计,原样保留,只删行和样例。
-- 打开扫描结果(/scans/{name}):带 view_guard、范围不比现在宽、副本指纹和现在的副本一致的照常给;没有
-  view_guard 的一律当旧扫描拦(409,提示重新扫描)——它读的可能是完整行情、没经副本核对、带着预热段的事件;
-  副本指纹对不上(换过副本)的也拦。扫描文件是一次性产物,不为旧文件写截取重算,重新扫一遍就是带护栏的新文件。
+- 打开扫描结果(/scans/{name}):带 view_guard、属于当前模式、范围不比现在宽、副本指纹和现在的副本一致的照常给;
+  没有 view_guard 的一律当旧扫描拦(409,提示重新扫描)——它读的可能是完整行情、没经副本核对、带着预热段的事件;
+  另一种模式的扫描(标记里的 mode 对不上)、副本指纹对不上(换过副本)的也拦。扫描文件是一次性产物,不为旧文件
+  写截取重算,重新扫一遍就是带护栏的新文件。
 - 扫描列表(/scans/):要拦的扫描照常列名字,但不给命中数、中位数和首次穿越比,带 old_scan = true。
 - 记看过:单股预览记这只股票和它露出的区间(到前瞻窗终点,截到训练段末日);打开扫描按整份清单的口径记一条
   open_list(list_kind = debug_scan,清单快照里每只股票一条,图窗是扫描区间到前瞻窗终点)。记不进去就不给。
@@ -42,6 +46,7 @@ import pandas as pd
 from fastapi import HTTPException
 from fastapi.encoders import jsonable_encoder
 
+from chart_workflow import mode as cw_mode
 from chart_workflow import views
 from chart_workflow.loader import NotASnapshot, check_snapshot
 from chart_workflow.snaplock import fingerprint
@@ -108,6 +113,8 @@ def _record(**kw) -> None:
         views.record(surface="debug", outcome_visible=True, **kw)
     except StateRootMissing as e:
         raise HTTPException(503, str(e)) from None
+    except ValueError as e:              # 图窗和当前模式对不上(看过记录两种模式各记各的)
+        raise HTTPException(409, str(e)) from None
     except OSError as e:
         raise HTTPException(503, f"看过记录写不进去:{e}") from None
 
@@ -158,17 +165,25 @@ def current_snapshot_sha(cfg: dict) -> str | None:
 
 
 def scan_tag(cfg: dict, ddir: str) -> dict:
+    """扫描结果的护栏标记;调试模式另带 mode = debug(正式模式的标记格式不变)。"""
     floor, te = bounds(cfg)
-    return {"view_floor": floor, "train_end": te, "snapshot_sha": fingerprint(ddir)["sha"]}
+    tag = {"view_floor": floor, "train_end": te, "snapshot_sha": fingerprint(ddir)["sha"]}
+    if cw_mode.is_debug():
+        tag["mode"] = cw_mode.DEBUG
+    return tag
 
 
 def scan_block_reason(cfg: dict, scan: dict, sha: str | None) -> str | None:
-    """这份扫描为什么要拦(None = 不拦):没有护栏标记 → 旧扫描;范围比现在宽;副本指纹和现在的不一致。"""
+    """这份扫描为什么要拦(None = 不拦):没有护栏标记 → 旧扫描;属于另一种模式;范围比现在宽;
+    副本指纹和现在的不一致。"""
     floor, te = bounds(cfg)
     tag = scan.get("view_guard")
     if not isinstance(tag, dict):
         return (f"这份扫描是加看图范围护栏之前扫的(区间 {scan.get('start_date')}~{scan.get('end_date')}),"
                 f"读的可能是完整行情、带着预热段的事件,可能含本轮看图范围 {floor}~{te} 以外的命中和走势")
+    foreign = cw_mode.foreign_reason(tag, "扫描")
+    if foreign:
+        return foreign
     if str(tag.get("view_floor") or "") < floor or str(tag.get("train_end") or "9999") > te:
         return (f"这份扫描的看图范围 {tag.get('view_floor')}~{tag.get('train_end')} 比本轮 {floor}~{te} 宽")
     if not tag.get("snapshot_sha") or tag.get("snapshot_sha") != sha:

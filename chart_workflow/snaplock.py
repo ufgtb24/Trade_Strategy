@@ -178,12 +178,13 @@ def replace(root: Path, ddir, reason: str, generated_on: str | None = None) -> d
     return doc
 
 
-def mismatch_message(lock: dict, fp: dict, ddir: Path) -> str:
+def mismatch_message(lock: dict, fp: dict, ddir: Path, debug: bool = False) -> str:
     cur = lock["current"]
+    fix = ("调试账要和正式账用同一份副本:正式账换过副本的话,运行 python -m chart_workflow.debugroot clear 重建调试账"
+           if debug else "确实要换副本,运行 python -m chart_workflow.state snapshot-replace --reason \"<原因>\"")
     return (f"{MISMATCH_TEXT}。登记的指纹 {cur['sha']}({cur.get('n_files')} 个文件,"
             f"{cur.get('created_at')} 在 {cur.get('generated_on')} 生成);"
-            f"本机 {ddir} 的指纹 {fp['sha']}({fp['n_files']} 个文件,{fp.get('created_at')} 生成)。"
-            f"确实要换副本,运行 python -m chart_workflow.state snapshot-replace --reason \"<原因>\"")
+            f"本机 {ddir} 的指纹 {fp['sha']}({fp['n_files']} 个文件,{fp.get('created_at')} 生成)。{fix}")
 
 
 def _file_unchanged(ddir: Path, file: str) -> bool:
@@ -212,6 +213,10 @@ def verify(ddir, root: Path | None = None, file: str | None = None) -> None:
     if file is not None and key in _VERIFIED and _file_unchanged(ddir, file):
         return
     lock = read_lock(root) if lock_key is not None else None
+    if lock is None and (root / _state.DEBUG_MARKER).exists():
+        raise SnapshotNotRegistered(
+            f"调试账 {root} 还没登记训练数据副本:运行 python -m chart_workflow.debugroot clear 清空重建"
+            f"(重建时登记本机副本,要和正式账登记的是同一份)")
     if lock is None:
         raise SnapshotNotRegistered(
             f"状态根 {root} 还没登记这本账用哪一份训练数据副本。在生成副本的那台机器上运行 "
@@ -220,5 +225,5 @@ def verify(ddir, root: Path | None = None, file: str | None = None) -> None:
     fp = fingerprint(ddir)
     if fp["sha"] != lock["current"]["sha"]:
         _VERIFIED.discard(key)
-        raise SnapshotMismatch(mismatch_message(lock, fp, ddir))
+        raise SnapshotMismatch(mismatch_message(lock, fp, ddir, debug=(root / _state.DEBUG_MARKER).exists()))
     _VERIFIED.add(key)

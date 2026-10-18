@@ -13,6 +13,9 @@ min(训练段末日, until, HARD_END),最后再核对一遍最后一天不晚于
 
 红线:HARD_END(2025-12-31)之后是验证段,任何研究、看图、工具都不得读到。它是代码常量,
 不受配置覆盖;config.load_config 也会拒绝晚于它的 train_end。
+调试模式(chart_workflow.mode)下上限再收到调试段终点 mode.DEBUG_END(2022-09-30,同样是代码常量):
+读出来的行情一律截到 read_ceiling(),截完仍晚于它 → PastHardEnd。调试时看不到 2022-10 起的预检段、训练段、
+验证段;要求观察期走完的前瞻收益在调试段末尾自然算不出来,不会拿后面的数据补。
 本模块不 import 标签口径(labels)和清单(listfile),事实脚本可以放心经它读数据。
 """
 from __future__ import annotations
@@ -24,6 +27,7 @@ from pathlib import Path
 
 import pandas as pd
 
+from chart_workflow import mode
 from chart_workflow.config import dataset_dir
 
 HARD_END = "2025-12-31"
@@ -42,7 +46,12 @@ class NotASnapshot(RuntimeError):
 
 
 class PastHardEnd(RuntimeError):
-    """读出来的行情晚于 HARD_END(读到了验证段)。截断失效时的最后一道闸。"""
+    """读出来的行情晚于 HARD_END(读到了验证段;调试模式下是晚于调试段终点)。截断失效时的最后一道闸。"""
+
+
+def read_ceiling() -> str:
+    """这次读行情的上限:正式模式 HARD_END,调试模式再收到调试段终点(mode.DEBUG_END)。"""
+    return mode.read_ceiling(HARD_END)
 
 
 def check_symbol(symbol) -> str:
@@ -84,33 +93,35 @@ def check_snapshot(ddir, file: str | None = None) -> dict:
 
 
 def load_bars(ddir, symbol: str, end: str) -> pd.DataFrame:
-    """读 ddir/<symbol>.pkl:先校验代码名、check_snapshot;去 tz、按日期排序;截到 min(end, HARD_END)(含)。
-    代码名不合格 → ValueError;文件不存在 → FileNotFoundError;截完仍晚于 HARD_END → PastHardEnd。"""
+    """读 ddir/<symbol>.pkl:先校验代码名、check_snapshot;去 tz、按日期排序;截到 min(end, read_ceiling())(含)。
+    代码名不合格 → ValueError;文件不存在 → FileNotFoundError;截完仍晚于上限 → PastHardEnd。"""
     check_symbol(symbol)
     ddir = Path(ddir)
+    ceiling = read_ceiling()
     check_snapshot(ddir, file=f"{symbol}.pkl")
     df = pd.read_pickle(ddir / f"{symbol}.pkl")
     if getattr(df.index, "tz", None) is not None:
         df = df.copy()
         df.index = df.index.tz_localize(None)
     df = df.sort_index()
-    df = df[df.index <= pd.Timestamp(min(str(end), HARD_END))]
-    if len(df) and df.index[-1] > pd.Timestamp(HARD_END):
-        raise PastHardEnd(f"{symbol} 读到了验证段({df.index[-1].date()} 晚于 {HARD_END})")
+    df = df[df.index <= pd.Timestamp(min(str(end), ceiling))]
+    if len(df) and df.index[-1] > pd.Timestamp(ceiling):
+        what = "验证段" if ceiling == HARD_END else "调试段之后的行情"
+        raise PastHardEnd(f"{symbol} 读到了{what}({df.index[-1].date()} 晚于 {ceiling})")
     return df
 
 
 def read_bars(cfg: dict, symbol: str, until: str | None = None) -> pd.DataFrame:
-    """读 dataset_dir(cfg)/<symbol>.pkl,截到 min(cfg["train_end"], until, HARD_END)(含)。"""
-    ends = [str(cfg["train_end"]), HARD_END] + ([str(until)] if until else [])
+    """读 dataset_dir(cfg)/<symbol>.pkl,截到 min(cfg["train_end"], until, read_ceiling())(含)。"""
+    ends = [str(cfg["train_end"]), read_ceiling()] + ([str(until)] if until else [])
     return load_bars(dataset_dir(cfg), symbol, min(ends))
 
 
 @lru_cache(maxsize=4096)
-def _dates_cached(ddir: str, train_end: str, symbol: str) -> pd.DatetimeIndex:
+def _dates_cached(ddir: str, train_end: str, symbol: str, ceiling: str) -> pd.DatetimeIndex:
     return load_bars(ddir, symbol, train_end).index
 
 
 def trading_dates(cfg: dict, symbol: str) -> pd.DatetimeIndex:
-    """一只股票截到训练段末日的交易日序列(图窗按交易日偏移时用)。"""
-    return _dates_cached(str(dataset_dir(cfg)), str(cfg["train_end"]), symbol)
+    """一只股票截到训练段末日的交易日序列(图窗按交易日偏移时用)。上限进缓存的键:换了模式不拿旧结果。"""
+    return _dates_cached(str(dataset_dir(cfg)), str(cfg["train_end"]), symbol, read_ceiling())

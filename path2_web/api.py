@@ -18,6 +18,7 @@ from fastapi import Path as FPath
 from pydantic import BaseModel, Field, field_validator
 from sse_starlette.sse import EventSourceResponse
 
+from chart_workflow import mode as cw_mode
 from path2.dag import diagnose as _dag_diagnose
 from path2.dag.engine import analyze as _dag_analyze_engine
 from path2_web import guard
@@ -246,6 +247,14 @@ def build_router(*, registry, config_path, get_config, set_config,
         out = guard.ohlc(get_config(), symbol, start, end)
         guard.record_chart(out, debug_seen)      # 记不进「看过」就不给图
         return out
+
+    @router.get("/mode")
+    def get_mode():
+        """现在是正式模式还是调试模式,以及生效的看图范围(界面据此在顶上挂调试模式的横幅)。"""
+        floor, te = guard.bounds(get_config())
+        debug = cw_mode.is_debug()
+        return {"mode": cw_mode.current(), "label": cw_mode.DEBUG_LABEL if debug else None,
+                "view_floor": floor, "train_end": te}
 
     @router.get("/config")
     def read_config():

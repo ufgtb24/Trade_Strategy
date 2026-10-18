@@ -26,10 +26,14 @@ def make_app():
 
 
 def main() -> None:
+    from chart_workflow import mode as cw_mode
     from path2_web.config import load_config
     cfg = load_config()
     # ===== 参数(在此处直接改) =====
     HOST = "127.0.0.1"
+    # 看图工作流的调试模式(环境变量 CHART_WORKFLOW_MODE=debug,由 scripts/path2/run_path2_web_debug.py 设好):
+    # 后端起在 debug_mode_backend_port,和正式模式的端口分开(见 chart_workflow/mode.py)。
+    CW_DEBUG = cw_mode.is_debug()
     # DEBUG_MODE=1: 调试模式(PyCharm Debug main.py 时用),后端起在 backend_port_dbg、
     # reload=False(reload=True 会 fork worker、pydevd trace 断在主进程,断点不命中)。
     # 另:重启后首次 debug fire 断点不命中(第二次起正常)为环境性现象(IDE/pydevd
@@ -38,7 +42,8 @@ def main() -> None:
     # 与 run_path2_web.py 起的主实例并存时:只在 PyCharm Debug config 里设 DEBUG_MODE=1,
     # 主实例走默认分支,两端口 8001/8002 互不冲突。
     DEBUG_MODE = os.environ.get("DEBUG_MODE") == "1"
-    PORT = int(cfg["backend_port_dbg"] if DEBUG_MODE else cfg["backend_port"])
+    PORT = int(cfg["debug_mode_backend_port"] if CW_DEBUG else
+               cfg["backend_port_dbg"] if DEBUG_MODE else cfg["backend_port"])
     RELOAD = not DEBUG_MODE
     # ================================
     uvicorn.run("path2_web.main:make_app", factory=True,

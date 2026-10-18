@@ -10,6 +10,8 @@ sec_label / sec_known,名录里查不到的 sec_label 为「未知（名录里�
 每个 view_end ≤ train_end;item_id 唯一;分组引用的 item 都存在;
 盲看清单不含任何和结果有关的字段(包括逐段的跨源比对结果)。同名清单已存在就拒绝写
 (FileExistsError):重新生成会覆盖旧清单,账本里的那一轮就对不上了。
+调试模式(mode.py):清单带 mode = debug、标题加【调试】,清单名以 dbg- 开头,train_end 不晚于调试段终点;
+正式模式拒绝带调试标记或 dbg- 开头的清单(正式清单不带 mode,格式不变)。
 
 图窗(view_window)是 make_item 与「同股不互相露底」(drop_window_overlaps)共用的唯一口径:
 同一只股票的两条,谁的决策日都不得落在另一条的完整图窗里(起点截到看图下界之后、到图窗终点),
@@ -27,6 +29,7 @@ from urllib.parse import quote
 import numpy as np
 import pandas as pd
 
+from chart_workflow import mode
 from chart_workflow.config import root_dir
 from chart_workflow.features import tags_of
 from chart_workflow.panel import trading_dates
@@ -184,12 +187,16 @@ def new_list(list_id: str, kind: str, title: str, cfg: dict, params_extra: dict 
               "pool": {"price_max": pool["price_max"], "dv_min": pool["dv_min"],
                        "dv_max": pool["dv_max"], "m_min": pool["m_min"]}}
     params.update(params_extra or {})
-    return {
+    doc = {
         "schema": SCHEMA, "list_id": list_id, "kind": kind, "title": title,
         "created_at": datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
         "train_start": cfg["train_start"], "train_end": cfg["train_end"],
         "params": params, "groups": [], "items": [],
     }
+    if mode.is_debug():          # 调试模式的清单带标记,正式模式打不开;正式清单的格式不变
+        doc["mode"] = mode.DEBUG
+        doc["title"] = f"【调试】{title}"
+    return doc
 
 
 def _dates_in(obj, path: str = ""):
@@ -210,6 +217,14 @@ def validate(doc: dict) -> None:
     lid = doc.get("list_id", "")
     if not isinstance(lid, str) or not LIST_ID_RE.fullmatch(lid):
         errs.append(f"list_id 不合法: {lid!r}")
+    else:
+        try:
+            mode.check_list_id(lid)
+        except mode.ModeError as e:
+            errs.append(str(e))
+    foreign = mode.foreign_reason(doc, "清单")
+    if foreign:
+        errs.append(foreign)
     kind = doc.get("kind")
     if kind not in KINDS:
         errs.append(f"kind 不合法: {kind!r}")
@@ -217,6 +232,9 @@ def validate(doc: dict) -> None:
     if not isinstance(train_end, str) or not _DATE_RE.match(train_end):
         errs.append(f"train_end 不合法: {train_end!r}")
         raise ListValidationError("; ".join(errs))
+    if mode.is_debug() and train_end > mode.DEBUG_END:
+        errs.append(f"调试模式的清单 train_end={train_end} 晚于调试段终点 {mode.DEBUG_END}")
+        train_end = mode.DEBUG_END
     items = doc.get("items") or []
     ids = [it.get("item_id") for it in items]
     dup = sorted({i for i in ids if ids.count(i) > 1})
@@ -267,12 +285,13 @@ def write_list(doc: dict, cfg: dict) -> Path:
 
 
 def deep_link(list_id: str, item_id: str | None = None, port: int | None = None) -> str:
-    """path2_web 工作流模式的深链(前端端口取 configs/path2_web.yaml)。"""
+    """path2_web 工作流模式的深链(前端端口取 configs/path2_web.yaml;调试模式取调试模式网页的前端端口)。"""
     if port is None:
+        key = "debug_mode_frontend_port" if mode.is_debug() else "frontend_port"
         try:
             from path2_web.config import load_config as _web_cfg
-            port = int(_web_cfg()["frontend_port"])
+            port = int(_web_cfg()[key])
         except Exception:      # noqa: BLE001
-            port = 5173
+            port = 5181 if mode.is_debug() else 5173
     url = f"http://localhost:{port}/?wf={quote(list_id)}"
     return url + (f"&item={quote(item_id)}" if item_id else "")
