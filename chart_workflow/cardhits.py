@@ -14,9 +14,13 @@
 东西只写调试账(<调试账>/card_review/)和调试模式的清单目录,不进正式账、不记账本、不算尝试。
 
 生成清单(make):
-  - 股票:和规则核对(rulecheck)逐日判卡的同一批——卡那一版的样本股,加沿全局固定顺序抽的随机池
-    (rulecheck.draw_pool:抽到「这一版卡有成立日」的满 shape_check.pool_positive_stocks 只为止,最多抽
-    pool_max_stocks 只)。在看图范围(调试段)里逐日按固定回看判卡,和规则核对同一个口径(rulecheck.materials)。
+  - 股票:卡那一版的样本股在前,接着沿全局固定的抽股顺序(rulecheck.pool_order,所有卡同一个顺序)逐只往下判,
+    每只股票按下面几条去掉成立日以后,剩下的随机取一次(按种子和代码,可重现);去光了的股票跳过。凑满 max_items
+    张(默认 MAX_ITEMS = 30,待验证)或判满 max_stocks 只股票(默认 MAX_STOCKS = 200,待验证)为止。别的卡成立日
+    清单里还有没标的图的股票(打开没打开都算)排到最后才取:并行的几张卡、改过几版的卡不挤在同一批股票的同一段上,
+    免得后标的那张记成揭开后才标、白标。在看图范围(调试段)里逐日按固定回看判卡,和规则核对同一个口径
+    (rulecheck.materials)。所以每只股票在一份清单里只有一张,同股的图不会互相露底;这张图成立日之前的部分里,
+    卡也成立过的天标出来(card_true_runs,都在成立日之前,不露后续),看得出卡在同一段里是不是连着成立了好几次。
   - 连续几个交易日都成立算一次,取第一天(成立日);判定不了或不成立的一天把前后隔开(待验证)。
   - 成立日至少在看图下界之后 bigmoves.floor_context_bars 个交易日(和大涨段同一个口径,按这只股票自己的交易日):
     图上要留出成立之前的形态;紧挨着下界就成立的,那一段多半在下界之前就开始了,第一天也不是真的第一天。
@@ -26,12 +30,8 @@
     自己的成立日,这次的成立日落在那段里,后续就已经给用户看过了(看过记录里有的才算;生成了没打开的清单不挡)。
     挡路的清单、生成目录、打开的链接记进登记(prior_blockers)并打印出来。反过来的方向——这次的图画着的部分盖住了
     以前某张还没标的图的后续——生成时不管,到标那张旧图时再记(见下面「揭开后才标」)。
-  - 同一份清单里同一只股票的两次,整段可见范围不许有任何交叠(listfile.drop_window_overlaps 的 disjoint):
-    否则标一张的时候会从另一张露出它后面的走势。所以一只股票在一份清单里大致只有一张,是这只股票在调试段里几次
-    成立里随机挑的一次;这张图成立日之前的部分里,卡也成立过的天标出来(card_true_runs,都在成立日之前,不露后续),
-    看得出卡在同一段里是不是连着成立了好几次。
-  - 先按固定种子打乱,再按这个顺序去掉互相露底的,取前 max_items 次(默认 MAX_ITEMS = 30,待验证)。种子由账上
-    登记的训练数据副本指纹和卡的编号、版本算出:同一张卡同一版重跑,清单一样。
+  - 种子由账上登记的训练数据副本指纹和卡的编号、版本算出:同一张卡同一版在同样的账上重跑,清单一样。
+  - 同一张卡同一版已经登记过别的清单:照样生成(那几份里还没标的股票按上面排到最后),打印提醒和那几份在哪。
   - 卡上有手写触发(算不出哪天该成立)、有待写代码的要素(哪天都判定不了)、在调试段里一天都不成立、成立的都看过了、
     后续都已经在打开过的清单里画出来过:不生成清单,打印为什么和出路,在 card_review/lists.jsonl 记一行(小结里
     列出来),不当错误。
@@ -48,7 +48,8 @@
 列出、不进统计(待验证);只有第一下的「不是」要归类。
 揭开后才标:标第一下之前,这份清单生成以后别处(别的清单、别的界面;看过记录里每次画出的范围)已经画出过这张图
 成立日之后的走势,照收,这一行带 seen_before_mark(出处),不进统计、不用归类,小结单独列出。清单生成以前的接触
-不算,那由生成时管。
+不算,那由生成时管。网页打开清单时先对每张没标的图查一遍(late_if_marked),现在标就会记成揭开后才标的,标之前
+就注明出处、可以跳过。
 
 归类(classify):「不是」的理由、记成待写代码的要素各带一个类别。类别由会话归(by = session);用户可以改,
 会话照用户的话记(by = user)。每次归类追加一行,以最后一行为准,历史都留着。类别(CATEGORIES):
@@ -68,15 +69,17 @@
 有计入统计的标注,或者引用过记成待写代码、已经归了类的要素),连同没证据的卡另给一个数;揭开后才标的单独列条数。
 还有没归类的、计入统计的标注少于 MIN_MARKS 下(默认 30,待验证)或者没有有证据的卡时,不给建议,写明还差什么;
 否则按默认判法(有证据的卡里超过 SWITCH_SHARE = 一半碰到过,就建议改成「事件加关系」,待验证)给一句建议,同一句
-写明凭了几下标注。原始数字全列,结论由用户拍板。
+写明凭了几下标注。一下都没标过、只凭和别的卡共用的已归类要素算作有证据的卡,单独注明(口径不变)。原始数字全列,
+结论由用户拍板。
 「这张卡碰到过关系类问题」= 下面任一条成立:
   - 这张卡任何一版的成立日清单里,有一张第一下标「不是」、理由归成事件关系;
   - 这张卡任何一版引用过的要素(合并过的连同它并入的那条)里,有记成待写代码、归成事件关系的;这条要素别的卡
     也引用的,注明和哪几张卡共用(一条共用要素会让每张引用它的卡都算碰到过)。
 
 存放(都在 <调试账>/card_review/ 下,只追加):
-  lists.jsonl       每次生成一行:清单名、卡与版本、条数、每张的可见范围、清单内容指纹、生成在哪个目录、抽了多少
-                    股票、多少次成立、去掉多少(挡路的清单)、种子;没生成清单的也记一行(list_id 为 null,empty 写原因)
+  lists.jsonl       每次生成一行:清单名、卡与版本、条数、每张的可见范围、清单内容指纹、生成在哪个目录、判了多少
+                    股票(排到最后的几只、用时)、多少次成立、去掉多少(挡路的清单)、同一版已有的清单、种子;
+                    没生成清单的也记一行(list_id 为 null,empty 写原因)
   marks.jsonl       每一下「是 / 不是」一行
   categories.jsonl  每次归类一行
   summaries/        小结存档(<时刻>.json)
@@ -99,13 +102,14 @@ from chart_workflow import elements as E
 from chart_workflow import mode, rulecheck, shapes, views
 from chart_workflow.config import load_config
 from chart_workflow.ledger import check_new_list_id
-from chart_workflow.listfile import deep_link, drop_window_overlaps, new_list, security_fields, view_window, write_list
+from chart_workflow.listfile import deep_link, new_list, security_fields, view_window, write_list
 from chart_workflow.loader import trading_dates
 from chart_workflow.state import StateRootMissing, state_root
 
 KIND = "card_hits"
 DIR = "card_review"
 MAX_ITEMS = 30           # 每张卡每版至多列几次(待验证)
+MAX_STOCKS = 200         # 生成一份清单最多逐日判多少只股票(待验证)
 REASON_MAX = 500
 SWITCH_SHARE = 0.5       # 碰到过关系类问题的卡超过这个比例,就建议改成「事件加关系」(待验证)
 MIN_MARKS = 30           # 计入统计的标注少于这么多下,不给改不改的建议(待验证)
@@ -132,7 +136,7 @@ CATEGORY_HINT = {
 ALIASES = {"缺一个量": "quantity", "先后": "relation:sequence", "同一件事": "relation:same_event",
            "跨事件比较": "relation:compare", "挑哪一次": "relation:which", "其他": "other"}
 RELATION = tuple(k for k in CATEGORIES if k.startswith("relation:"))
-PICK_NOTE = ("同一只股票大致只列一张(两张的可见范围不许交叠),是它在调试段里几次成立中随机挑的一次;"
+PICK_NOTE = ("每只股票只列一张,是它在调试段里几次成立中随机挑的一次;别的清单里还没标的股票排在最后才取;"
              "图上成立日之前的灰色段是卡也成立过的天")
 
 
@@ -263,19 +267,19 @@ def _blockers_text(blockers: list[dict]) -> str:
                     f"打开 {deep_link(b['list_id'])})" for b in blockers)
 
 
-def _where(seen: list[dict]) -> str:
+def where_text(seen: list[dict]) -> str:
     """揭开后才标的出处,给人看:清单名;不在清单里的看图(聊天贴图、补记)写「清单以外」。"""
     return "、".join(sorted({str(x.get("list_id") or "清单以外") for x in seen}))
 
 
-def seen_before_mark(doc: dict, it: dict) -> list[dict]:
+def seen_before_mark(doc: dict, it: dict, drawn: list[dict] | None = None) -> list[dict]:
     """这份清单生成以后,别处(别的清单、别的界面)已经画出过这张图成立日之后的走势:[出处 {ts, list_id, event}]。
-    这份清单自己的不算(标这张时自己露出的、打开时画到成立日的)。"""
+    这份清单自己的不算(标这张时自己露出的、打开时画到成立日的)。drawn:已经读出的 views.drawn_ranges()。"""
     lid = doc.get("list_id")
     since = str((registered_lists().get(lid) or {}).get("ts") or "")
     sym, t, end = it.get("symbol"), str(it.get("t")), str(it.get("reveal_end"))
     out = []
-    for d in views.drawn_ranges():
+    for d in views.drawn_ranges() if drawn is None else drawn:
         if d["symbol"] == sym and d["list_id"] != lid and d["ts"] >= since and d["end"] > t and d["start"] <= end:
             src = {k: d[k] for k in ("ts", "list_id", "event")}
             if src not in out:
@@ -345,7 +349,7 @@ def _never_text(stats: dict) -> str:
 
 
 def make(shape_id: str, version: int | None = None, list_id: str | None = None, max_items: int = MAX_ITEMS,
-         cfg: dict | None = None) -> dict:
+         cfg: dict | None = None, max_stocks: int = MAX_STOCKS) -> dict:
     """生成卡成立日清单(见模块说明)。返回 {"row": 记进 lists.jsonl 的那一行, "path": 清单文件 | None,
     "doc": 清单 | None}。生成不了(手写触发、待写代码、一天都不成立、都看过了)时 path / doc 为 None,
     row["empty"] 写原因。不在调试模式、卡不存在、清单名用过 → CardHitsRefused / ValueError;
@@ -367,6 +371,9 @@ def make(shape_id: str, version: int | None = None, list_id: str | None = None, 
     max_items = int(max_items)
     if max_items < 1:
         raise CardHitsRefused("--max 至少是 1")
+    max_stocks = int(max_stocks)
+    if max_stocks < 1:
+        raise CardHitsRefused("--max-stocks 至少是 1")
     default_id = list_id is None
     list_id = list_id or f"dbg-hits-{shape_id}-v{n}"
     try:
@@ -390,109 +397,24 @@ def make(shape_id: str, version: int | None = None, list_id: str | None = None, 
         row["empty"] = why
         _append("lists.jsonl", row)
         return {"row": row, "path": None, "doc": None}
-    anns = shapes._ann_index()
-    samples = rulecheck.sample_stocks(card, n, anns)
-    pool_seed = rulecheck.pool_seed(cfg)
-    pool = rulecheck.draw_pool(cfg, ver["card"], els, pool_seed, samples, None, None, None)
-    mats = {**rulecheck.materials(cfg, ver["card"], els, samples, None, None, None), **pool["mats"]}
-    stocks = samples + [s for s in pool["stocks"] if s not in samples]
-    eps, unreadable = [], []
-    why_false, why_unknown = Counter(), Counter()
-    days = unknown = early = 0
-    for s in stocks:
-        err, says, _ = mats[s]
-        if err is not None:
-            unreadable.append(f"{s}:{err}")
-            continue
-        first_ok = _first_allowed(cfg, s)
-        for d in episodes(says):
-            if first_ok is None or d < first_ok:
-                early += 1
-            else:
-                eps.append((s, d))
-        for v, w in says.values():
-            if v is None:
-                unknown += 1
-                why_unknown[w] += 1
-            else:
-                days += 1
-                if v is False:
-                    why_false[w] += 1
-    stats = {"stocks": len(stocks) - len(unreadable), "days": days, "unknown": unknown,
-             "why_false": why_false.most_common(5), "why_unknown": why_unknown.most_common(3)}
-    row.update(n_stocks_sample=len(samples), n_stocks_pool=len(pool["stocks"]),
-               n_pool_positive=len(pool["positive"]), n_episodes=len(eps), n_too_early=early,
-               unreadable=unreadable[:10], pool_order_seed=pool_seed)
-    if not eps and early:
-        row["empty"] = {"kind": "too_early",
-                        "text": f"这一版卡在调试段里成立 {early} 次,都紧挨着调试段开头(看图下界之后不到 "
-                                f"{cfg['bigmoves']['floor_context_bars']} 个交易日),图上留不出成立之前的形态",
-                        "way_out": "这张卡在调试段上没有能看的成立日;要更多就放宽卡,或等正式段"}
+    same = [{"list_id": lid, "lists_dir": r.get("lists_dir")} for lid, r in registered_lists().items()
+            if r.get("shape_id") == shape_id and r.get("version") == n]
+    if same:
+        row["same_version_lists"] = same
+    res = _draw(cfg, shape_id, n, ver["card"], els, card, list_id, max_items, max_stocks)
+    row.update({k: v for k, v in res.items() if k not in ("picked", "mats", "stats")})
+    if not res["picked"]:
+        row["empty"] = _empty_reason(res, cfg)
         _append("lists.jsonl", row)
         return {"row": row, "path": None, "doc": None}
-    if not eps:
-        row["empty"] = {"kind": "never", "text": _never_text(stats),
-                        "way_out": "卡比你的意思窄:看最常见的不成立原因是哪条要素,放宽它或换一条"}
-        _append("lists.jsonl", row)
-        return {"row": row, "path": None, "doc": None}
-    rows = views.read_views()
-
-    def dates_of(sym):
-        try:
-            return trading_dates(cfg, sym)
-        except (ValueError, FileNotFoundError):
-            return None
-
-    fresh = []
-    for s, d in eps:
-        _, end = view_window(cfg, s, d)
-        item = {"item_id": f"{s}@{d}", "symbol": s, "t": d, "view_end": _d(end)}
-        if views.outcome_trail(item, list_id, rows, dates_of)["seen_elsewhere"]["level"] != "careful":
-            fresh.append((s, d))
-    row["n_seen_excluded"] = len(eps) - len(fresh)
-    drawn = _drawn_by_card_lists(rows)
-    clean, blockers = [], Counter()
-    for s, d in fresh:
-        end = _d(view_window(cfg, s, d)[1])
-        hit = {lid for a, b, lid in drawn.get(s, ()) if b > d and a <= end}     # 这次成立日之后的走势已经画出来过
-        if hit:
-            blockers.update(hit)
-        else:
-            clean.append((s, d))
-    row["n_prior_drawn"] = len(fresh) - len(clean)
-    regs = registered_lists()
-    row["prior_blockers"] = [{"list_id": lid, "n": k, "lists_dir": (regs.get(lid) or {}).get("lists_dir")}
-                             for lid, k in sorted(blockers.items(), key=lambda x: (-x[1], str(x[0])))]
-    if not clean and fresh:
-        row["empty"] = {"kind": "prior_drawn",
-                        "text": f"这一版卡在调试段里还能列的 {len(fresh)} 次,成立日之后的走势都已经在以前打开过的卡成立日"
-                                f"清单里画出来过,标的时候已经知道涨跌:{_blockers_text(row['prior_blockers'])}",
-                        "way_out": "这些天的后续已经给你看过,标不标那几份都改不回来;要更多就放宽卡、换一张卡,"
-                                   "或者清空调试账从头来(debugroot clear,全部调试工作一起丢)"}
-        _append("lists.jsonl", row)
-        return {"row": row, "path": None, "doc": None}
-    if not clean:
-        row["empty"] = {"kind": "all_seen",
-                        "text": f"这一版卡在调试段里成立 {len(eps)} 次,都已经仔细看过后面的走势(样本、以前标过的),"
-                                f"标的时候已经知道涨跌,不再列",
-                        "way_out": "这张卡在调试段上的证据已经用完了;要更多就放宽卡,或等正式段"}
-        _append("lists.jsonl", row)
-        return {"row": row, "path": None, "doc": None}
-    fresh = clean
-    seed = _seed(pool_seed, shape_id, n)
-    order = sorted(fresh)
-    random.Random(seed).shuffle(order)
-    df = pd.DataFrame(order, columns=["symbol", "date"]).assign(date=lambda x: pd.to_datetime(x["date"]))
-    kept = drop_window_overlaps(df, cfg, disjoint=True)
-    row["n_overlap_dropped"] = len(df) - len(kept)
-    picked = kept.head(max_items)
-    params = {k: row[k] for k in ("shape_id", "version", "card_name", "n_stocks_sample", "n_stocks_pool",
-                                  "n_pool_positive", "n_episodes", "n_too_early", "n_seen_excluded",
-                                  "n_prior_drawn", "n_overlap_dropped", "pool_order_seed")}
-    params.update(max_items=max_items, sample_seed=str(seed), card_lines=card_lines(ver["card"], els),
+    params = {k: row[k] for k in ("shape_id", "version", "card_name", "n_stocks_sample", "n_stocks_drawn",
+                                  "n_stocks_busy", "n_episodes", "n_too_early", "n_seen_excluded", "n_prior_drawn",
+                                  "n_other_runs", "max_stocks", "pool_order_seed")}
+    params.update(max_items=max_items, sample_seed=res["sample_seed"], card_lines=card_lines(ver["card"], els),
                   note=PICK_NOTE)
+    picked = res["picked"]
     doc = new_list(list_id, KIND, f"卡成立日 {shape_id}@v{n}「{name}」（{len(picked)} 张）", cfg, {KIND: params})
-    doc["items"] = [make_item(cfg, s, _d(d), mats[s][1]) for s, d in zip(picked["symbol"], picked["date"])]
+    doc["items"] = [make_item(cfg, s_, d, res["mats"][s_][1]) for s_, d in picked]
     ids = [it["item_id"] for it in doc["items"]]
     doc["groups"] = [{"key": "all", "title": f"全部（{len(ids)}）", "item_ids": ids}]
     path = write_list(doc, cfg)
@@ -506,6 +428,138 @@ def make(shape_id: str, version: int | None = None, list_id: str | None = None, 
         path.unlink(missing_ok=True)          # 不留没登记的清单
         raise
     return {"row": row, "path": path, "doc": doc}
+
+
+def _busy_symbols() -> dict[str, list[str]]:
+    """别的卡成立日清单里还没标的图所在的股票:{代码: [清单名]}(打开没打开都算)。生成时往后排,不排除。"""
+    marked = {(m["list_id"], m["item_id"]) for m in read_marks()}
+    out: dict[str, list[str]] = {}
+    for lid, r in registered_lists().items():
+        items = r.get("items") or [{"item_id": i, "symbol": i.split("@", 1)[0]} for i in r.get("item_ids") or []]
+        for it in items:
+            if (lid, it["item_id"]) not in marked:
+                out.setdefault(it["symbol"], []).append(lid)
+    return out
+
+
+def _draw(cfg: dict, shape_id: str, n: int, card_v: dict, els: dict, card: dict, list_id: str, max_items: int,
+          max_stocks: int) -> dict:
+    """沿全局固定的抽股顺序(卡的样本股在前)逐只往下判卡,每只股票在去掉排除的成立日以后随机取一次,凑满
+    max_items 张或判满 max_stocks 只股票为止;别的清单里还没标的股票排到最后(见模块说明)。分批算,结果按
+    顺序截到凑满的那一只,和分批方式、进程数无关。返回登记用的计数,外加 picked [(代码, 成立日)]、mats、stats。"""
+    import math
+    import time
+
+    t0 = time.time()
+    samples = rulecheck.sample_stocks(card, n, shapes._ann_index())
+    pool_seed = rulecheck.pool_seed(cfg)
+    seed = _seed(pool_seed, shape_id, n)
+    busy = _busy_symbols()
+    order = samples + rulecheck.pool_order(cfg, pool_seed, samples)
+    order = [x for x in order if x not in busy] + [x for x in order if x in busy]
+    lo, hi = rulecheck._view_range(cfg)
+    workers = max(1, int(cfg.get("workers", 1)))
+    rows = views.read_views()
+    drawn = _drawn_by_card_lists(rows)
+
+    def dates_of(sym):
+        try:
+            return trading_dates(cfg, sym)
+        except (ValueError, FileNotFoundError):
+            return None
+
+    picked, done, mats, unreadable, blockers = [], [], {}, [], Counter()
+    c = Counter()
+    why_false, why_unknown = Counter(), Counter()
+    it_order = iter(order)
+    while len(picked) < max_items and len(done) < max_stocks:
+        want = max_items - len(picked)
+        size = math.ceil(want * len(done) / len(picked)) if picked else want
+        size = min(max(size, workers), max_stocks - len(done))
+        batch = []
+        for x in it_order:
+            d = dates_of(x)
+            if d is not None and ((d >= lo) & (d <= hi)).any():
+                batch.append(x)
+                if len(batch) >= size:
+                    break
+        if not batch:
+            break                                            # 股票取完了
+        got = rulecheck.materials(cfg, card_v, els, batch, None, None, None)
+        for x in batch:
+            done.append(x)
+            mats[x] = got[x]
+            err, says, _ = got[x]
+            if err is not None:
+                unreadable.append(f"{x}:{err}")
+                continue
+            for v, w in says.values():
+                if v is None:
+                    c["unknown"] += 1
+                    why_unknown[w] += 1
+                else:
+                    c["days"] += 1
+                    if v is False:
+                        why_false[w] += 1
+            first_ok = _first_allowed(cfg, x)
+            all_eps = episodes(says)
+            eps = [d for d in all_eps if first_ok is not None and d >= first_ok]
+            c["too_early"] += len(all_eps) - len(eps)
+            c["episodes"] += len(eps)
+            c["with_episodes"] += bool(eps)
+            fresh = []
+            for d in eps:
+                end = _d(view_window(cfg, x, d)[1])
+                item = {"item_id": f"{x}@{d}", "symbol": x, "t": d, "view_end": end}
+                if views.outcome_trail(item, list_id, rows, dates_of)["seen_elsewhere"]["level"] == "careful":
+                    c["seen"] += 1
+                    continue
+                hit = {lid for a, b, lid in drawn.get(x, ()) if b > d and a <= end}   # 这次成立日之后的走势已经画出来过
+                if hit:
+                    blockers.update(hit)
+                    c["prior"] += 1
+                    continue
+                fresh.append(d)
+            if fresh:
+                picked.append((x, random.Random(f"{seed}|{x}").choice(fresh)))
+                c["other"] += len(fresh) - 1
+                if len(picked) >= max_items:
+                    break
+    regs = registered_lists()
+    return {"picked": picked, "mats": mats,
+            "stats": {"stocks": len(done) - len(unreadable), "days": c["days"], "unknown": c["unknown"],
+                      "why_false": why_false.most_common(5), "why_unknown": why_unknown.most_common(3)},
+            "n_stocks_sample": len(samples), "n_stocks_drawn": len(done), "n_stocks_with_episodes": c["with_episodes"],
+            "n_stocks_busy": len(busy), "n_episodes": c["episodes"], "n_too_early": c["too_early"],
+            "n_seen_excluded": c["seen"], "n_prior_drawn": c["prior"], "n_other_runs": c["other"],
+            "prior_blockers": [{"list_id": lid, "n": k, "lists_dir": (regs.get(lid) or {}).get("lists_dir")}
+                               for lid, k in sorted(blockers.items(), key=lambda x: (-x[1], str(x[0])))],
+            "max_stocks": max_stocks, "unreadable": unreadable[:10], "pool_order_seed": pool_seed,
+            "sample_seed": str(seed), "seconds": round(time.time() - t0, 1)}
+
+
+def _empty_reason(res: dict, cfg: dict) -> dict:
+    """一张都没列出来时的原因和出路(判到的股票上,成立日被哪一道去光了)。"""
+    k = res["n_stocks_drawn"]
+    if not res["n_episodes"] and res["n_too_early"]:
+        return {"kind": "too_early",
+                "text": f"判了 {k} 只股票,这一版卡成立的 {res['n_too_early']} 次都紧挨着调试段开头(看图下界之后不到 "
+                        f"{cfg['bigmoves']['floor_context_bars']} 个交易日),图上留不出成立之前的形态",
+                "way_out": "这张卡在调试段上没有能看的成立日;要更多就放宽卡,或等正式段"}
+    if not res["n_episodes"]:
+        return {"kind": "never", "text": _never_text(res["stats"]),
+                "way_out": "卡比你的意思窄:看最常见的不成立原因是哪条要素,放宽它或换一条"}
+    if res["n_seen_excluded"] == res["n_episodes"]:
+        return {"kind": "all_seen",
+                "text": f"判了 {k} 只股票(上限 {res['max_stocks']} 只),这一版卡成立的 {res['n_episodes']} 次都已经仔细看过"
+                        f"后面的走势(样本、以前标过的),标的时候已经知道涨跌,不再列",
+                "way_out": "这张卡在调试段上的证据已经用完了;要更多就放宽卡,或等正式段"}
+    return {"kind": "prior_drawn",
+            "text": f"判了 {k} 只股票(上限 {res['max_stocks']} 只),这一版卡还能列的 "
+                    f"{res['n_episodes'] - res['n_seen_excluded']} 次,成立日之后的走势都已经在以前打开过的卡成立日清单里"
+                    f"画出来过,标的时候已经知道涨跌:{_blockers_text(res['prior_blockers'])}",
+            "way_out": "这些天的后续已经给你看过,标不标那几份都改不回来;要更多就放宽卡、换一张卡,"
+                       "或者清空调试账从头来(debugroot clear,全部调试工作一起丢)"}
 
 
 # ── 标「是 / 不是」 ──────────────────────────────────────────────────────────
@@ -548,6 +602,19 @@ def record_mark(doc: dict, item_id: str, verdict: str, reason: str = "", surface
         row["seen_before_mark"] = seen
     _append("marks.jsonl", row)
     return row
+
+
+def late_if_marked(doc: dict, marked_ids) -> dict[str, str]:
+    """这份清单里还没标的图,现在去标会记成揭开后才标的:{item_id: 出处(给人看)}。网页打开清单时在标之前注明,
+    用户可以跳过(读一次看过记录)。"""
+    drawn = views.drawn_ranges()
+    out = {}
+    for it in doc.get("items") or []:
+        if isinstance(it, dict) and it.get("item_id") not in marked_ids:
+            seen = seen_before_mark(doc, it, drawn)
+            if seen:
+                out[it["item_id"]] = where_text(seen)
+    return out
 
 
 def marks_of(list_id: str, marks: list[dict] | None = None) -> dict[str, dict]:
@@ -595,7 +662,7 @@ def classify(target: str, target_id: str, category: str, by: str = "session", no
         if not m.get("first"):
             raise CardHitsRefused(f"标记 {target_id} 是看过走势后改的那一下,不进统计,不用归类(只给每张图的第一下归类)")
         if m.get("seen_before_mark"):
-            raise CardHitsRefused(f"标记 {target_id} 是揭开后才标的(这张图的后续先在 {_where(m['seen_before_mark'])} "
+            raise CardHitsRefused(f"标记 {target_id} 是揭开后才标的(这张图的后续先在 {where_text(m['seen_before_mark'])} "
                                   f"画出来过),不进统计,不用归类")
     elif target == "element":
         _, _, els = shapes.checked_state()
@@ -725,10 +792,14 @@ def summary(save: bool = True) -> dict:
                                f"({CATEGORIES[pe['category']['category']]})"
                                + (f",和 {'、'.join(others)} 共用" if others else ""))
         name = card["name"].get("value") if isinstance(card.get("name"), dict) else card.get("name")
+        ev_els = [e for e in mine if pending_els[e]["category"]]
+        only_shared = (ev_els if tot["counted"] == 0 and ev_els and all(len(pending_els[e]["cards"]) > 1 for e in ev_els)
+                       else [])
         per_card.append({"shape_id": sid, "name": name, "status": card["status"],
                          "current_version": card["current_version"], "lists": out_lists, "totals": tot,
                          "pending_elements": mine,
-                         "has_evidence": tot["counted"] > 0 or any(pending_els[e]["category"] for e in mine),
+                         "has_evidence": tot["counted"] > 0 or bool(ev_els),
+                         "evidence_only_shared": only_shared,
                          "touched_relation": touched})
     by_cat: dict[str, dict] = {c: {"reasons": [], "elements": []} for c in CATEGORIES}
     unclassified = {"reasons": [r for r in reasons if r["category"] is None],
@@ -796,7 +867,9 @@ def render_summary(s: dict) -> str:
          f"每份成立日清单里,{PICK_NOTE}。", ""]
     for c in s["cards"]:
         L.append(f"■ {c['shape_id']}「{c['name']}」(现在 v{c['current_version']},"
-                 f"{shapes.STATUS_TEXT.get(c['status'], c['status'])})" + ("" if c["has_evidence"] else ",还没有证据"))
+                 f"{shapes.STATUS_TEXT.get(c['status'], c['status'])})" + ("" if c["has_evidence"] else ",还没有证据")
+                 + (f",一下都没标过,只凭和别的卡共用的 {'、'.join(c['evidence_only_shared'])} 算作有证据"
+                    if c["evidence_only_shared"] else ""))
         if not c["lists"]:
             L.append("  还没生成成立日清单")
         for x in c["lists"]:
@@ -837,13 +910,16 @@ def render_summary(s: dict) -> str:
     if s["late_marks"]:
         L += ["", f"揭开后才标的 {len(s['late_marks'])} 张(这张图成立日之后的走势先在别处画出来过,不进上面的数):"]
         for c in s["late_marks"]:
-            L.append(f"  · {c['item_id']}(清单 {c['list_id']}):先在 {_where(c['seen'])} 看到过后续,"
+            L.append(f"  · {c['item_id']}(清单 {c['list_id']}):先在 {where_text(c['seen'])} 看到过后续,"
                      f"标的是「{VERDICT_TEXT[c['first']['verdict']]}」{c['first']['reason']}")
     L.append("")
+    shared_only = [c["shape_id"] for c in s["cards"] if c["evidence_only_shared"]]
     if s["share_touched_relation"] is not None:
         L.append(f"碰到过关系类问题的卡:有证据的 {s['n_cards_with_evidence']} 张里 {s['n_cards_touched_relation']} 张"
                  f"({_pct(s['share_touched_relation'])});连同没证据的是 {s['n_cards_touched_relation']} / "
-                 f"{s['n_cards']} 张。")
+                 f"{s['n_cards']} 张。"
+                 + (f"有证据的卡里,{'、'.join(shared_only)} 一下都没标过,只凭和别的卡共用的待写代码要素算作有证据。"
+                    if shared_only else ""))
     if s["not_enough"]:
         L.append("证据还不够,先不给改不改的建议:" + ";".join(s["not_enough"]) + "。")
     else:
@@ -865,13 +941,17 @@ def _print_make(res: dict) -> None:
         print(f"提示:{head} 没生成成立日清单。{e['text']}。出路:{e['way_out']}。(已记进调试账,小结里会列出来)")
         return
     print(f"写入 {res['path']}(调试模式的清单;标记和小结只写调试账,不进正式账、不记账本、不算尝试)")
-    print(f"{head}:样本股 {row['n_stocks_sample']} 只 + 随机抽 {row['n_stocks_pool']} 只(其中有成立日的 "
-          f"{row['n_pool_positive']} 只);连续成立算一次,共 {row['n_episodes']} 次(另有 {row['n_too_early']} 次紧挨着"
+    print(f"{head}:沿全局抽股顺序判了 {row['n_stocks_drawn']} 只股票(样本股 {row['n_stocks_sample']} 只在前,别的清单里"
+          f"还没标的 {row['n_stocks_busy']} 只排在最后;上限 {row['max_stocks']} 只,用时 {row['seconds']} 秒),其中有成立日的 "
+          f"{row['n_stocks_with_episodes']} 只;连续成立算一次,共 {row['n_episodes']} 次(另有 {row['n_too_early']} 次紧挨着"
           f"调试段开头、没列),去掉以前仔细看过后面走势的 {row['n_seen_excluded']} 次、后续走势已在以前打开过的清单里"
-          f"画出来的 {row['n_prior_drawn']} 次、同股互相露底的 {row['n_overlap_dropped']} 次,列 {row['n_items']} 张"
-          f"(同一只股票大致一张,随机挑其中一次)")
+          f"画出来的 {row['n_prior_drawn']} 次;每只股票只取一次(另 {row['n_other_runs']} 次没取),列 {row['n_items']} 张")
     if row["prior_blockers"]:
         print("  后续走势已画出来的那几次,挡路的清单:" + _blockers_text(row["prior_blockers"]))
+    for x in row.get("same_version_lists") or []:
+        print(f"  提醒:这一版卡已经有一份清单 {x['list_id']}(在 {x['lists_dir'] or '别的目录'} 生成,打开 "
+              f"{deep_link(x['list_id'])})。两份都标的话,同一只股票同一段的图后标的那张会记成揭开后才标、不进统计;"
+              f"这次已经把那份里还没标的股票排到最后")
     if row.get("unreadable"):
         print("读不了的股票:" + ";".join(row["unreadable"]), file=sys.stderr)
     print("打开:", deep_link(row["list_id"]))
@@ -886,6 +966,8 @@ def main(argv=None) -> None:
     mk.add_argument("--version", type=int, default=None, help="卡的版本,默认当前版本")
     mk.add_argument("--list-id", default=None, help="默认 dbg-hits-<卡编号>-v<版本>")
     mk.add_argument("--max", type=int, default=MAX_ITEMS, help=f"至多列几次,默认 {MAX_ITEMS}(待验证)")
+    mk.add_argument("--max-stocks", type=int, default=MAX_STOCKS,
+                    help=f"最多逐日判多少只股票,默认 {MAX_STOCKS}(待验证)")
     sub.add_parser("pending", help="还没归类的「不是」理由与待写代码要素")
     cl = sub.add_parser("classify", help="给「不是」的理由或待写代码的要素归类")
     g = cl.add_mutually_exclusive_group(required=True)
@@ -900,7 +982,7 @@ def main(argv=None) -> None:
     args = ap.parse_args(argv)
     try:
         if args.cmd == "make":
-            _print_make(make(args.shape, args.version, args.list_id, args.max))
+            _print_make(make(args.shape, args.version, args.list_id, args.max, max_stocks=args.max_stocks))
         elif args.cmd == "pending":
             p = pending()
             print(f"还没归类的「不是」:{len(p['marks'])} 条")

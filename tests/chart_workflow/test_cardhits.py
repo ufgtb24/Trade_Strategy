@@ -87,6 +87,15 @@ def _fake_verdicts(cfg, card, els, df):
 
 
 @pytest.fixture
+def hits20(dbg):
+    """同 hits,但有 20 只合成股(看几张卡、几个版本会不会挤在同一批股票上)。"""
+    cfg, pkl_dir, droot = dbg
+    write_stocks(pkl_dir, n=20)
+    write_batch(droot)
+    return cfg, droot, make_card()
+
+
+@pytest.fixture
 def fast(monkeypatch):
     monkeypatch.setattr(rulecheck, "_verdicts", _fake_verdicts)
 
@@ -167,7 +176,7 @@ def test_make_lists_first_day_of_each_run_inside_debug_segment(hits, state_dir):
         assert {d for d in earlier if any(x <= d <= y for x, y in runs)} == earlier      # 成立日之前卡也成立的天都标出
         assert all(says[it["symbol"]][x][0] is True and says[it["symbol"]][y][0] is True for x, y in runs)
     assert any(it["card_true_runs"] for it in doc["items"])
-    assert "大致只列一张" in doc["params"]["card_hits"]["note"]
+    assert "每只股票只列一张" in doc["params"]["card_hits"]["note"]
     reg, = cardhits.read_lists()
     assert reg["list_id"] == doc["list_id"] and reg["list_sha12"] == views.list_sha12(
         json.loads(res["path"].read_text())) and len(reg["items"]) == len(doc["items"])
@@ -348,6 +357,7 @@ def test_summary_counts_and_relation_share(fast, dbg, monkeypatch):
     assert (s["n_cards_touched_relation"], s["share_touched_relation"], s["suggest_switch"]) == (3, 1.0, True)
     assert s["not_enough"] == []
     assert [c["has_evidence"] for c in s["cards"]] == [True, True, True, False]
+    assert [c["evidence_only_shared"] for c in s["cards"]] == [[], [], [flat], []]       # s003 一下没标,只凭共用的 E002
     assert s["ratios"]["elements"] == {"n": 1, "classified": 1, "relation": 1, "share": 1.0}
     assert any(f"和 {s3} 共用" in t for t in s["cards"][1]["touched_relation"])
     text = cardhits.render_summary(s)
@@ -355,7 +365,9 @@ def test_summary_counts_and_relation_share(fast, dbg, monkeypatch):
                    "会话归的", "所有第一下「不是」的理由 2 条,归了类的 2 条里关系类 1 条(50%)",
                    "有证据的 3 张里 3 张(100%);连同没证据的是 3 / 4 张", "凭计入统计的 3 下标注、有证据的 3 张卡",
                    "建议把形态卡改成「事件加关系」",
-                   "结论由你拍板", "看过走势后改了的 1 张", "大致只列一张", f"和 {s3} 共用"):
+                   "结论由你拍板", "看过走势后改了的 1 张", "每只股票只列一张", f"和 {s3} 共用",
+                   f"一下都没标过,只凭和别的卡共用的 {flat} 算作有证据",
+                   f"有证据的卡里,{s3} 一下都没标过,只凭和别的卡共用的待写代码要素算作有证据"):
         assert needle in text, needle
     assert len(list((droot / "card_review" / "summaries").glob("*.json"))) == 2
 
@@ -436,8 +448,11 @@ def test_new_version_after_marking_a_few(fast, hits):
 
 
 def test_all_days_already_drawn_gives_notice_with_where(fast, hits, capsys, monkeypatch):
-    """成立日之后的走势都已经在打开过的清单里画出来过:不生成,提示写清挡路的是哪份清单、在哪个目录、怎么打开。"""
+    """成立日之后的走势都已经在打开过的清单里画出来过:不生成,提示写清挡路的是哪份清单、在哪个目录、怎么打开。
+    (调试段最后一天的成立日之后没有走势可露,挡不住,这里先去掉。)"""
     cfg, _, sid = hits
+    orig = cardhits.episodes
+    monkeypatch.setattr(cardhits, "episodes", lambda says: [d for d in orig(says) if d < "2022-09-01"])
     a = cardhits.make(sid, list_id="dbg-hits-a", cfg=cfg)
     views.record(surface="web", event="show_chart", outcome_visible=False, list_id="dbg-hits-a",
                  list_kind=cardhits.KIND,
@@ -449,6 +464,88 @@ def test_all_days_already_drawn_gives_notice_with_where(fast, hits, capsys, monk
     assert row["list_id"] is None and row["empty"]["kind"] == "prior_drawn"
     for needle in ("提示:", "dbg-hits-a 挡了", str(a["path"].parent), "wf=dbg-hits-a", "出路"):
         assert needle in out, needle
+
+
+def _second_card() -> str:
+    return make_card(elements=(("pk", "按收盘越过一个峰", "E001", "must"),), triggers=("T3",), name="越过前高创新高")
+
+
+def _late_marks() -> int:
+    return sum(bool(m.get("seen_before_mark")) for m in cardhits.read_marks())
+
+
+def _syms(doc) -> set:
+    return {it["symbol"] for it in doc["items"]}
+
+
+def test_parallel_lists_take_other_stocks_nothing_wasted(fast, hits20, capsys):
+    """必须能过:两张卡的清单连着生成、同一版在两处各生成一份,先标完一份再标另一份——后生成的那份避开前一份
+    还没标的股票,张数照样满,事先查不出会白标的,标完也没有揭开后才标的。同一版第二份生成时提醒第一份在哪。"""
+    cfg, _, sid = hits20
+    l1 = cardhits.make(sid, cfg=cfg, max_items=4)["doc"]
+    l2 = cardhits.make(_second_card(), cfg=cfg, max_items=4)["doc"]
+    r3 = cardhits.make(sid, list_id="dbg-hits-again", cfg=cfg, max_items=4)
+    l3 = r3["doc"]
+    assert len(l1["items"]) == len(l2["items"]) == len(l3["items"]) == 4
+    assert not (_syms(l1) & _syms(l2)) and not (_syms(l3) & (_syms(l1) | _syms(l2)))
+    assert [x["list_id"] for x in r3["row"]["same_version_lists"]] == [l1["list_id"]]
+    cardhits._print_make(r3)
+    assert f"提醒:这一版卡已经有一份清单 {l1['list_id']}" in capsys.readouterr().out
+    for d in (l1, l2, l3):
+        open_list(d)
+    for d in (l1, l2, l3):
+        assert cardhits.late_if_marked(d, set()) == {}
+        for it in d["items"]:
+            reveal_and_mark(d, it)
+    assert _late_marks() == 0
+
+
+def test_open_first_then_second_mark_both_nothing_wasted(fast, hits20):
+    """必须能过:第一份打开了、没标就生成第二份,打开第二份看一眼,回去标完第一份,再标完第二份:没有白标的。"""
+    cfg, _, sid = hits20
+    l1 = cardhits.make(sid, cfg=cfg, max_items=4)["doc"]
+    open_list(l1)
+    l2 = cardhits.make(_second_card(), cfg=cfg, max_items=4)["doc"]
+    assert len(l2["items"]) == 4
+    open_list(l2)
+    for d in (l1, l2):
+        assert cardhits.late_if_marked(d, set()) == {}
+        for it in d["items"]:
+            reveal_and_mark(d, it)
+    assert _late_marks() == 0
+
+
+def test_mark_v2_then_rest_of_v1_nothing_wasted(fast, hits20):
+    """必须能过:v1 标了 3 张就出 v2,标完 v2 再回头标 v1 剩下的:v2 避开 v1 还没标的股票,没有白标的。"""
+    cfg, _, sid = hits20
+    v1 = cardhits.make(sid, cfg=cfg, max_items=4)["doc"]
+    open_list(v1)
+    for it in v1["items"][:3]:
+        reveal_and_mark(v1, it)
+    revise_card(sid)
+    v2 = cardhits.make(sid, cfg=cfg, max_items=4)["doc"]
+    assert len(v2["items"]) == 4 and v1["items"][3]["symbol"] not in _syms(v2)
+    open_list(v2)
+    for it in v2["items"]:
+        reveal_and_mark(v2, it)
+    assert cardhits.late_if_marked(v1, {it["item_id"] for it in v1["items"][:3]}) == {}
+    reveal_and_mark(v1, v1["items"][3])
+    assert _late_marks() == 0
+
+
+def test_revise_card_to_v4_every_version_has_charts(fast, hits20):
+    """必须能过:标完一份 → 改卡 → 再出一份,连着改到 v4,每一版都还列得满(沿抽股顺序往下取新股票)。"""
+    cfg, _, sid = hits20
+    d = cardhits.make(sid, cfg=cfg, max_items=4)["doc"]
+    for k in range(2, 5):
+        open_list(d)
+        for it in d["items"]:
+            reveal_and_mark(d, it)
+        revise_card(sid)
+        r = cardhits.make(sid, cfg=cfg, max_items=4)
+        d = r["doc"]
+        assert d is not None and d["list_id"] == f"dbg-hits-{sid}-v{k}" and len(d["items"]) == 4, r["row"].get("empty")
+    assert _late_marks() == 0
 
 
 def test_mark_after_seen_elsewhere_counts_apart(fast, hits):

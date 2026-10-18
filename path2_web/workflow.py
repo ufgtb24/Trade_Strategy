@@ -46,7 +46,8 @@ first_buy_points 缺失或跟它不一样、或最后的买点跟它不一样,ch
 之后的走势:打开清单记的看过是盲看(outcome_visible = false),/workflow/ohlc 只放行到成立日(条目的 view_end);
 标完才放行到露出终点 reveal_end:先校验(理由、清单登记),通过了再记一条看过(show_chart,看得到结果)、再写标记。打开清单时把每张图现在的
 标记带在 card_marks 里,已经标过的直接放行到 reveal_end(同样记一条看过);揭开后才标的(cardhits 模块说明)
-带 late,前端注明不进统计。这种清单不收标注批次,单张图事件只收放大(zoom)。
+带 late 和出处 late_where,前端注明不进统计;还没标、但现在标就会记成揭开后才标的,打开时在 card_late 里给出
+{item_id: 出处},前端在标之前注明可以跳过。这种清单不收标注批次,单张图事件只收放大(zoom)。
 记看过时图窗和当前模式对不上(views.WrongMode),打开清单、单张图事件、标「是 / 不是」都报 409。
 """
 from __future__ import annotations
@@ -300,7 +301,8 @@ def _card_marks(list_id: str) -> dict[str, dict]:
     return {k: {"mark_id": v["latest"]["mark_id"], "verdict": v["latest"]["verdict"],
                 "reason": v["latest"]["reason"], "ts": v["latest"]["ts"],
                 "first_verdict": v["first"]["verdict"], "n": v["n"],
-                "late": bool(v["first"].get("seen_before_mark"))} for k, v in got.items()}
+                "late": bool(v["first"].get("seen_before_mark")),
+                "late_where": cardhits.where_text(v["first"].get("seen_before_mark") or [])} for k, v in got.items()}
 
 
 def _validate_bps(bps: list[dict], tag: str, name: str) -> list[str]:
@@ -418,6 +420,10 @@ def build_workflow_router(*, get_config) -> APIRouter:
                 opened.setdefault(sym, set()).add(win)
         if kind == cardhits.KIND:
             doc["card_marks"] = marks
+            try:                         # 没标的图里现在标会记成揭开后才标的,标之前就注明
+                doc["card_late"] = cardhits.late_if_marked(doc, set(marks))
+            except StateRootMissing as e:
+                raise HTTPException(503, str(e)) from None
         return doc
 
     @router.post("/card_marks")

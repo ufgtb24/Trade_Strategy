@@ -44,7 +44,7 @@ function mkList(marks: Record<string, CardMark> = {}): WorkflowList {
   return { schema: 'chart_workflow.list/1', list_id: 'dbg-hits-s001-v1', kind: 'card_hits', title: '【调试】卡成立日',
            created_at: '2026-10-18T09:00:00', train_start: '2021-10-01', train_end: '2022-09-30',
            params: { card_hits: { card_lines: ['必须有:E001「收盘越过前面的峰」(按收盘越过的峰个数至少 1)'],
-                                  note: '同一只股票大致只列一张' } },
+                                  note: '每只股票只列一张' } },
            groups: [{ key: 'all', title: '全部', item_ids: [ITEM.item_id] }], items: [ITEM],
            card_marks: marks }
 }
@@ -127,10 +127,31 @@ describe('卡成立日清单', () => {
     expect(w.find('[data-testid="card-late"]').exists()).toBe(false)
   })
 
-  it('揭开后才标的注明不进统计', async () => {
+  it('揭开后才标的注明出处、不进统计', async () => {
     const { w } = await mountChart({ [ITEM.item_id]: { mark_id: 'm3', verdict: 'yes', reason: '', ts: '',
-                                                         first_verdict: 'yes', n: 1, late: true } })
-    expect(w.find('[data-testid="card-late"]').text()).toContain('不进统计')
+                                                         first_verdict: 'yes', n: 1, late: true, late_where: '清单以外' } })
+    const t = w.find('[data-testid="card-late"]').text()
+    expect(t).toContain('先在 清单以外 看到过后续')
+    expect(t).toContain('不进统计')
+    expect(w.find('[data-testid="card-late-before"]').exists()).toBe(false)
+  })
+
+  it('还没标、现在标会记成揭开后才标的:标之前就注明出处,可以跳过;顶上写有几张', async () => {
+    const store = useWorkflowStore()
+    store.current = { ...mkList(), card_late: { [ITEM.item_id]: 'dbg-hits-s002-v1' } }
+    store.cardMarks = new Map()
+    const w = mount(AnnotChart, { props: { item: ITEM } })
+    await flushPromises()
+    const t = w.find('[data-testid="card-late-before"]').text()
+    expect(t).toContain('dbg-hits-s002-v1')
+    expect(t).toContain('可以跳过')
+    const v = mount(WorkflowView, { global: { stubs: { AnnotChart: true, AnnotReviewPanel: true } } })
+    await flushPromises()
+    expect(v.find('[data-testid="wf-card-late-count"]').text()).toBe('1')
+    store.cardMarks = new Map([[ITEM.item_id, { mark_id: 'm4', verdict: 'yes', reason: '', ts: '', first_verdict: 'yes',
+                                                n: 1, late: true, late_where: 'dbg-hits-s002-v1' } as CardMark]])
+    await flushPromises()
+    expect(v.find('[data-testid="wf-card-late-count"]').exists()).toBe(false)     // 标过的不再算
   })
 
   it('顶上显示标了几张,没有已标注抽屉', async () => {
@@ -141,7 +162,7 @@ describe('卡成立日清单', () => {
     await flushPromises()
     expect(w.find('[data-testid="wf-card-count"]').text()).toContain('已标 1 / 1 张')
     expect(w.find('[data-testid="wf-card-lines"]').text()).toContain('必须有:E001「收盘越过前面的峰」')
-    expect(w.find('[data-testid="wf-card-note"]').text()).toContain('同一只股票大致只列一张')
+    expect(w.find('[data-testid="wf-card-note"]').text()).toContain('每只股票只列一张')
     expect(w.find('[data-testid="wf-drawer"]').exists()).toBe(false)
   })
 })

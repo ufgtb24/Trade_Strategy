@@ -149,3 +149,23 @@ def test_wrong_mode_window_is_409_like_other_view_entries(setup, monkeypatch):
     assert c.post("/workflow/views", json={"list_id": lid, "item_id": it["item_id"], "event": "zoom"}).status_code == 409
     assert c.get(f"/workflow/lists/{lid}").status_code == 409
     assert len(_views(droot)) == n
+
+
+def test_open_list_says_in_advance_which_would_not_count(setup, tmp_path):
+    """打开清单时,还没标、但现在标就会记成揭开后才标的图事先注明出处(card_late);照标的话照收、带上出处。
+    (合成数据只有 4 只股票:同一张卡再生成一份,只能取同一批股票的同一批图。)"""
+    client, doc, _ = setup
+    lid = doc["list_id"]
+    cfg = load_config(path=tmp_path / "none.yaml", override={"dataset_dir": str(tmp_path / "snap"),
+                                                             "root": str(tmp_path / "wf"), "workers": 1})
+    other = cardhits.make(doc["params"]["card_hits"]["shape_id"], list_id="dbg-hits-y", cfg=cfg, max_items=6)["doc"]
+    it = doc["items"][0]
+    assert it["item_id"] in [x["item_id"] for x in other["items"]]
+    c = client()
+    c.get(f"/workflow/lists/{lid}")
+    assert c.post("/workflow/card_marks", json={"list_id": lid, "item_id": it["item_id"], "verdict": "yes"}).status_code == 200
+    got = c.get("/workflow/lists/dbg-hits-y").json()
+    assert got["card_late"] == {it["item_id"]: lid}
+    assert c.get(f"/workflow/lists/{lid}").json()["card_late"] == {}            # 自己清单里露出的不算
+    r = c.post("/workflow/card_marks", json={"list_id": "dbg-hits-y", "item_id": it["item_id"], "verdict": "yes"})
+    assert r.status_code == 200 and r.json()["card_mark"]["late"] is True and r.json()["card_mark"]["late_where"] == lid

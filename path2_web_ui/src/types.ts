@@ -352,8 +352,10 @@ export interface CardMark {
   first_verdict: 'yes' | 'no'
   /** 一共标过几下;大于 1 说明看过走势后改过 */
   n: number
-  /** 揭开后才标:标第一下之前,这张图成立日之后的走势已经在别的清单里画出来过(不进小结统计) */
+  /** 揭开后才标:标第一下之前,这张图成立日之后的走势已经在别处画出来过(不进小结统计) */
   late?: boolean
+  /** 揭开后才标的出处(清单名;不在清单里的写「清单以外」) */
+  late_where?: string
 }
 
 export interface WorkflowXcheck {
@@ -374,6 +376,8 @@ export interface WorkflowList {
   items: WorkflowItem[]
   /** 卡成立日清单:每张图现在的标记(打开清单时后端带上) */
   card_marks?: Record<string, CardMark>
+  /** 卡成立日清单:还没标、但现在标就会记成揭开后才标的图 {item_id: 出处}(打开清单时后端算好) */
+  card_late?: Record<string, string>
 }
 
 /** 正例 / 反例 / 数据有误(用户确认行情数据有错,汇总进数据错误登记) */

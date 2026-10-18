@@ -36,7 +36,8 @@
                 @click="goPage(store.page + 1)">下一页</button>
       </div>
       <span v-if="store.isCardHits" class="card-count" data-testid="wf-card-count">
-        已标 {{ store.cardMarkedCount }} / {{ store.current?.items.length ?? 0 }} 张（每张点「是」或「不是」，立刻记下）</span>
+        已标 {{ store.cardMarkedCount }} / {{ store.current?.items.length ?? 0 }} 张（每张点「是」或「不是」，立刻记下）<template
+          v-if="store.cardLateCount">；还没标的里 <b data-testid="wf-card-late-count">{{ store.cardLateCount }}</b> 张后续已在别处给你看过，标了不进统计，可以跳过</template></span>
       <button v-else type="button" class="drawer-toggle" data-testid="wf-drawer" :aria-pressed="drawerOpen"
               @click="drawerOpen = !drawerOpen">已标注 ({{ store.draftCount }})</button>
     </header>

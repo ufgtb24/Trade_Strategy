@@ -38,12 +38,13 @@
               @click="openZoom">放大</button>
     </div>
     <div v-if="cardMode" class="hint-line" data-testid="card-hint">
-      <template v-if="!cardMark">卡说这一天成立。是你说的那个形态吗？标完才露出成立日之后的走势</template>
+      <template v-if="!cardMark">卡说这一天成立。是你说的那个形态吗？标完才露出成立日之后的走势<b v-if="lateWhere"
+          data-testid="card-late-before">（这张的后续已在 {{ lateWhere }} 给你看过，标了不进统计，可以跳过）</b></template>
       <template v-else>
         <b data-testid="card-verdict">已标：{{ cardMark.verdict === 'yes' ? '是' : '不是' }}</b>
         <template v-if="cardMark.verdict === 'no'">——{{ cardMark.reason }}</template>
         <span v-if="cardMark.n > 1" data-testid="card-changed">（看过走势后改过，第一下是「{{ cardMark.first_verdict === 'yes' ? '是' : '不是' }}」）</span>
-        <span v-if="cardMark.late" data-testid="card-late">（揭开后才标：这张图的后续先在别的清单里画出来过，不进统计）</span>
+        <span v-if="cardMark.late" data-testid="card-late">（揭开后才标：先在 {{ cardMark.late_where || '别处' }} 看到过后续，不进统计）</span>
         · 再改会记成看过走势之后改的
       </template>
     </div>
@@ -101,7 +102,8 @@
  * 卡成立日清单(card_hits,只在调试模式下用):不框选、不点买点、不选判定,只有「是」「不是」两个按钮,「不是」
  * 要写一句为什么再点「记下」;后端记上之前只画到成立日(条目的 view_end),记上之后重取到 reveal_end,
  * 露出成立日之后的走势。成立日画一条竖线;成立日之前卡也成立过的段(item.card_true_runs)画浅灰底,第一段写
- * 「卡也成立」。标过的显示标的是什么,改过的注明第一下是什么,揭开后才标的注明不进统计。
+ * 「卡也成立」。标过的显示标的是什么,改过的注明第一下是什么,揭开后才标的注明出处、不进统计;还没标、但现在
+ * 标就会记成揭开后才标的(list.card_late),标之前就注明出处、可以跳过。
  *
  * 两个互斥的工具开关:「框选起止」用 ECharts lineX brush + createBrushRequestHandler 把
  * (startIdx, endIdx) 换成日期写进草稿;「点买点」在图上点一下,把那根 K 线设成唯一的(主)买点,
@@ -137,6 +139,9 @@ const kind = computed(() => store.listKind)
 const cardMode = computed(() => kind.value === 'card_hits')
 const cardMark = computed(() => (cardMode.value ? store.cardMarkOf(props.item.item_id) : null))
 const cardRevealed = computed(() => !!cardMark.value)
+/** 还没标、但现在标就会记成揭开后才标:出处(后端打开清单时算好) */
+const lateWhere = computed(() => (cardMode.value && !cardMark.value
+  ? store.current?.card_late?.[props.item.item_id] ?? '' : ''))
 const noOpen = ref(false)
 const reason = ref('')
 const cardBusy = ref(false)

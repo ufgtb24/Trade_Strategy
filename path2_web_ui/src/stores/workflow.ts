@@ -143,6 +143,9 @@ export const useWorkflowStore = defineStore('workflow', () => {
   const isBlind = computed(() => current.value?.kind === 'contrast_blind')
   const isCardHits = computed(() => current.value?.kind === 'card_hits')
   const cardMarkedCount = computed(() => cardMarks.value.size)
+  /** 还没标、但现在标就会记成揭开后才标(不进统计)的张数 */
+  const cardLateCount = computed(() => Object.keys(current.value?.card_late ?? {})
+    .filter(id => !cardMarks.value.has(id)).length)
   const listKind = computed<WorkflowListKind | null>(() => current.value?.kind ?? null)
   const itemsById = computed(() => new Map<string, WorkflowItem>(
     (current.value?.items ?? []).map(it => [it.item_id, it])))
@@ -445,7 +448,7 @@ export const useWorkflowStore = defineStore('workflow', () => {
     sending, sendError, lastSent, zoomItemId, zoomWindow, highlightItemId,
     initialRight, peeked, revealed, revealConfirmed, changedAfterReveal, stateInfo, viewEventsSent, viewError,
     logScale, cardMarks,
-    isBlind, isCardHits, cardMarkedCount, listKind, itemsById, currentGroup, groupItems, allTags, filteredItems, pageCount,
+    isBlind, isCardHits, cardMarkedCount, cardLateCount, listKind, itemsById, currentGroup, groupItems, allTags, filteredItems, pageCount,
     pageItems, draftList, draftCount, incomplete, zoomItem,
     loadLists, openList, setGroup, setTagFilter, setPage, gotoItem,
     upsertAnnotation, setBuyPoint, toggleBuyPoint, markPeeked, isPeeked, isRevealConfirmed, noteChartView,
