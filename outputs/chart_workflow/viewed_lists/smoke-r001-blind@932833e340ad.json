@@ -1,0 +1,179 @@
+{
+ "schema": "chart_workflow.viewed_list/1",
+ "list_id": "smoke-r001-blind",
+ "sha12": "932833e340ad",
+ "kind": "contrast_blind",
+ "title": "盲看：outputs/chart_workflow/rules/vol3_high20.py@19014af9d1",
+ "created_at": "2026-10-07T12:40:20",
+ "train_end": "2025-12-31",
+ "items": [
+  {
+   "item_id": "NTST@2024-01-10",
+   "symbol": "NTST",
+   "t": "2024-01-10",
+   "view_start": "2023-07-20",
+   "view_end": "2024-01-18"
+  },
+  {
+   "item_id": "TILE@2024-03-21",
+   "symbol": "TILE",
+   "t": "2024-03-21",
+   "view_start": "2023-09-28",
+   "view_end": "2024-03-28"
+  },
+  {
+   "item_id": "ZUMZ@2024-04-23",
+   "symbol": "ZUMZ",
+   "t": "2024-04-23",
+   "view_start": "2023-10-30",
+   "view_end": "2024-04-30"
+  },
+  {
+   "item_id": "AMSC@2024-05-30",
+   "symbol": "AMSC",
+   "t": "2024-05-30",
+   "view_start": "2023-12-06",
+   "view_end": "2024-06-06"
+  },
+  {
+   "item_id": "CFFN@2024-06-28",
+   "symbol": "CFFN",
+   "t": "2024-06-28",
+   "view_start": "2024-01-05",
+   "view_end": "2024-07-08"
+  },
+  {
+   "item_id": "FUBO@2024-08-16",
+   "symbol": "FUBO",
+   "t": "2024-08-16",
+   "view_start": "2024-02-26",
+   "view_end": "2024-08-23"
+  },
+  {
+   "item_id": "HUYA@2024-10-04",
+   "symbol": "HUYA",
+   "t": "2024-10-04",
+   "view_start": "2024-04-15",
+   "view_end": "2024-10-11"
+  },
+  {
+   "item_id": "BW@2024-10-15",
+   "symbol": "BW",
+   "t": "2024-10-15",
+   "view_start": "2024-04-24",
+   "view_end": "2024-10-22"
+  },
+  {
+   "item_id": "HNST@2024-11-11",
+   "symbol": "HNST",
+   "t": "2024-11-11",
+   "view_start": "2024-05-21",
+   "view_end": "2024-11-18"
+  },
+  {
+   "item_id": "QUBT@2024-11-13",
+   "symbol": "QUBT",
+   "t": "2024-11-13",
+   "view_start": "2024-05-23",
+   "view_end": "2024-11-20"
+  },
+  {
+   "item_id": "RPC@2024-11-21",
+   "symbol": "RPC",
+   "t": "2024-11-21",
+   "view_start": "2024-06-03",
+   "view_end": "2024-11-29"
+  },
+  {
+   "item_id": "AMPG@2024-12-24",
+   "symbol": "AMPG",
+   "t": "2024-12-24",
+   "view_start": "2024-07-05",
+   "view_end": "2025-01-02"
+  },
+  {
+   "item_id": "ONDS@2024-12-26",
+   "symbol": "ONDS",
+   "t": "2024-12-26",
+   "view_start": "2024-07-08",
+   "view_end": "2025-01-03"
+  },
+  {
+   "item_id": "IVZ@2025-01-28",
+   "symbol": "IVZ",
+   "t": "2025-01-28",
+   "view_start": "2024-08-05",
+   "view_end": "2025-02-04"
+  },
+  {
+   "item_id": "LYG@2025-02-28",
+   "symbol": "LYG",
+   "t": "2025-02-28",
+   "view_start": "2024-09-05",
+   "view_end": "2025-03-07"
+  },
+  {
+   "item_id": "AGEN@2025-06-04",
+   "symbol": "AGEN",
+   "t": "2025-06-04",
+   "view_start": "2024-12-09",
+   "view_end": "2025-06-11"
+  },
+  {
+   "item_id": "TDOC@2025-06-23",
+   "symbol": "TDOC",
+   "t": "2025-06-23",
+   "view_start": "2024-12-26",
+   "view_end": "2025-06-30"
+  },
+  {
+   "item_id": "OSPN@2025-06-27",
+   "symbol": "OSPN",
+   "t": "2025-06-27",
+   "view_start": "2025-01-02",
+   "view_end": "2025-07-07"
+  },
+  {
+   "item_id": "IMXI@2025-08-11",
+   "symbol": "IMXI",
+   "t": "2025-08-11",
+   "view_start": "2025-02-18",
+   "view_end": "2025-08-18"
+  },
+  {
+   "item_id": "UFG@2025-08-18",
+   "symbol": "UFG",
+   "t": "2025-08-18",
+   "view_start": "2025-02-25",
+   "view_end": "2025-08-25"
+  },
+  {
+   "item_id": "BKKT@2025-09-22",
+   "symbol": "BKKT",
+   "t": "2025-09-22",
+   "view_start": "2025-03-31",
+   "view_end": "2025-09-29"
+  },
+  {
+   "item_id": "OVID@2025-10-03",
+   "symbol": "OVID",
+   "t": "2025-10-03",
+   "view_start": "2025-04-11",
+   "view_end": "2025-10-10"
+  },
+  {
+   "item_id": "GPUS@2025-10-07",
+   "symbol": "GPUS",
+   "t": "2025-10-07",
+   "view_start": "2025-04-15",
+   "view_end": "2025-10-14"
+  },
+  {
+   "item_id": "VERI@2025-10-15",
+   "symbol": "VERI",
+   "t": "2025-10-15",
+   "view_start": "2025-04-24",
+   "view_end": "2025-10-22"
+  }
+ ]
+}

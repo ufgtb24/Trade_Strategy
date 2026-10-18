@@ -1,0 +1,2251 @@
+{
+ "schema": "chart_workflow.viewed_list/1",
+ "list_id": "smoke-r001-contrast",
+ "sha12": "c270d7246531",
+ "kind": "contrast",
+ "title": "对照：outputs/chart_workflow/rules/vol3_high20.py@19014af9d1",
+ "created_at": "2026-10-07T12:40:21",
+ "train_end": "2025-12-31",
+ "items": [
+  {
+   "item_id": "PWP@2024-06-28",
+   "symbol": "PWP",
+   "t": "2024-06-28",
+   "view_start": "2024-01-05",
+   "view_end": "2024-08-26"
+  },
+  {
+   "item_id": "APLD@2024-09-05",
+   "symbol": "APLD",
+   "t": "2024-09-05",
+   "view_start": "2024-03-14",
+   "view_end": "2024-10-31"
+  },
+  {
+   "item_id": "RAIL@2024-09-11",
+   "symbol": "RAIL",
+   "t": "2024-09-11",
+   "view_start": "2024-03-20",
+   "view_end": "2024-11-06"
+  },
+  {
+   "item_id": "BFLY@2024-11-06",
+   "symbol": "BFLY",
+   "t": "2024-11-06",
+   "view_start": "2024-05-16",
+   "view_end": "2025-01-06"
+  },
+  {
+   "item_id": "AVXL@2024-11-08",
+   "symbol": "AVXL",
+   "t": "2024-11-08",
+   "view_start": "2024-05-20",
+   "view_end": "2025-01-08"
+  },
+  {
+   "item_id": "RCAT@2024-11-25",
+   "symbol": "RCAT",
+   "t": "2024-11-25",
+   "view_start": "2024-06-05",
+   "view_end": "2025-01-27"
+  },
+  {
+   "item_id": "ABCL@2025-06-10",
+   "symbol": "ABCL",
+   "t": "2025-06-10",
+   "view_start": "2024-12-13",
+   "view_end": "2025-08-07"
+  },
+  {
+   "item_id": "AMPX@2025-07-08",
+   "symbol": "AMPX",
+   "t": "2025-07-08",
+   "view_start": "2025-01-13",
+   "view_end": "2025-09-03"
+  },
+  {
+   "item_id": "ABVX@2025-07-14",
+   "symbol": "ABVX",
+   "t": "2025-07-14",
+   "view_start": "2025-01-17",
+   "view_end": "2025-09-09"
+  },
+  {
+   "item_id": "GAU@2025-09-03",
+   "symbol": "GAU",
+   "t": "2025-09-03",
+   "view_start": "2025-03-12",
+   "view_end": "2025-10-29"
+  },
+  {
+   "item_id": "ALM@2025-09-23",
+   "symbol": "ALM",
+   "t": "2025-09-23",
+   "view_start": "2025-04-01",
+   "view_end": "2025-11-18"
+  },
+  {
+   "item_id": "IMNM@2025-09-26",
+   "symbol": "IMNM",
+   "t": "2025-09-26",
+   "view_start": "2025-04-04",
+   "view_end": "2025-11-21"
+  },
+  {
+   "item_id": "ALXO@2024-04-16",
+   "symbol": "ALXO",
+   "t": "2024-04-16",
+   "view_start": "2023-10-23",
+   "view_end": "2024-06-12"
+  },
+  {
+   "item_id": "CLNE@2024-05-31",
+   "symbol": "CLNE",
+   "t": "2024-05-31",
+   "view_start": "2023-12-07",
+   "view_end": "2024-07-30"
+  },
+  {
+   "item_id": "JMIA@2024-12-05",
+   "symbol": "JMIA",
+   "t": "2024-12-05",
+   "view_start": "2024-06-14",
+   "view_end": "2025-02-05"
+  },
+  {
+   "item_id": "AVXL@2024-12-26",
+   "symbol": "AVXL",
+   "t": "2024-12-26",
+   "view_start": "2024-07-08",
+   "view_end": "2025-02-26"
+  },
+  {
+   "item_id": "BLDP@2025-01-06",
+   "symbol": "BLDP",
+   "t": "2025-01-06",
+   "view_start": "2024-07-16",
+   "view_end": "2025-03-06"
+  },
+  {
+   "item_id": "MD@2025-02-20",
+   "symbol": "MD",
+   "t": "2025-02-20",
+   "view_start": "2024-08-27",
+   "view_end": "2025-04-17"
+  },
+  {
+   "item_id": "ECX@2025-02-27",
+   "symbol": "ECX",
+   "t": "2025-02-27",
+   "view_start": "2024-09-04",
+   "view_end": "2025-04-25"
+  },
+  {
+   "item_id": "LYG@2025-02-27",
+   "symbol": "LYG",
+   "t": "2025-02-27",
+   "view_start": "2024-09-04",
+   "view_end": "2025-04-25"
+  },
+  {
+   "item_id": "ACIC@2025-06-03",
+   "symbol": "ACIC",
+   "t": "2025-06-03",
+   "view_start": "2024-12-06",
+   "view_end": "2025-07-31"
+  },
+  {
+   "item_id": "OTLK@2025-08-25",
+   "symbol": "OTLK",
+   "t": "2025-08-25",
+   "view_start": "2025-03-04",
+   "view_end": "2025-10-21"
+  },
+  {
+   "item_id": "FCEL@2025-09-22",
+   "symbol": "FCEL",
+   "t": "2025-09-22",
+   "view_start": "2025-03-31",
+   "view_end": "2025-11-17"
+  },
+  {
+   "item_id": "CABA@2025-10-31",
+   "symbol": "CABA",
+   "t": "2025-10-31",
+   "view_start": "2025-05-12",
+   "view_end": "2025-12-30"
+  },
+  {
+   "item_id": "ZIM@2024-01-05",
+   "symbol": "ZIM",
+   "t": "2024-01-05",
+   "view_start": "2023-07-17",
+   "view_end": "2024-03-05"
+  },
+  {
+   "item_id": "NKTX@2024-01-08",
+   "symbol": "NKTX",
+   "t": "2024-01-08",
+   "view_start": "2023-07-18",
+   "view_end": "2024-03-06"
+  },
+  {
+   "item_id": "NTST@2024-01-10",
+   "symbol": "NTST",
+   "t": "2024-01-10",
+   "view_start": "2023-07-20",
+   "view_end": "2024-03-08"
+  },
+  {
+   "item_id": "UEC@2024-01-12",
+   "symbol": "UEC",
+   "t": "2024-01-12",
+   "view_start": "2023-07-24",
+   "view_end": "2024-03-12"
+  },
+  {
+   "item_id": "WIT@2024-01-12",
+   "symbol": "WIT",
+   "t": "2024-01-12",
+   "view_start": "2023-07-24",
+   "view_end": "2024-03-12"
+  },
+  {
+   "item_id": "LAB@2024-01-17",
+   "symbol": "LAB",
+   "t": "2024-01-17",
+   "view_start": "2023-07-26",
+   "view_end": "2024-03-14"
+  },
+  {
+   "item_id": "GOOS@2024-02-01",
+   "symbol": "GOOS",
+   "t": "2024-02-01",
+   "view_start": "2023-08-10",
+   "view_end": "2024-04-01"
+  },
+  {
+   "item_id": "LUNR@2024-02-12",
+   "symbol": "LUNR",
+   "t": "2024-02-12",
+   "view_start": "2023-08-21",
+   "view_end": "2024-04-10"
+  },
+  {
+   "item_id": "LXRX@2024-02-12",
+   "symbol": "LXRX",
+   "t": "2024-02-12",
+   "view_start": "2023-08-21",
+   "view_end": "2024-04-10"
+  },
+  {
+   "item_id": "BDTX@2024-02-16",
+   "symbol": "BDTX",
+   "t": "2024-02-16",
+   "view_start": "2023-08-25",
+   "view_end": "2024-04-16"
+  },
+  {
+   "item_id": "SHC@2024-02-26",
+   "symbol": "SHC",
+   "t": "2024-02-26",
+   "view_start": "2023-09-01",
+   "view_end": "2024-04-23"
+  },
+  {
+   "item_id": "AHCO@2024-02-27",
+   "symbol": "AHCO",
+   "t": "2024-02-27",
+   "view_start": "2023-09-05",
+   "view_end": "2024-04-24"
+  },
+  {
+   "item_id": "LFST@2024-02-28",
+   "symbol": "LFST",
+   "t": "2024-02-28",
+   "view_start": "2023-09-06",
+   "view_end": "2024-04-25"
+  },
+  {
+   "item_id": "VTEX@2024-02-28",
+   "symbol": "VTEX",
+   "t": "2024-02-28",
+   "view_start": "2023-09-06",
+   "view_end": "2024-04-25"
+  },
+  {
+   "item_id": "GDRX@2024-02-29",
+   "symbol": "GDRX",
+   "t": "2024-02-29",
+   "view_start": "2023-09-07",
+   "view_end": "2024-04-26"
+  },
+  {
+   "item_id": "CXM@2024-03-01",
+   "symbol": "CXM",
+   "t": "2024-03-01",
+   "view_start": "2023-09-08",
+   "view_end": "2024-04-29"
+  },
+  {
+   "item_id": "REAL@2024-03-04",
+   "symbol": "REAL",
+   "t": "2024-03-04",
+   "view_start": "2023-09-11",
+   "view_end": "2024-04-30"
+  },
+  {
+   "item_id": "BBVA@2024-03-06",
+   "symbol": "BBVA",
+   "t": "2024-03-06",
+   "view_start": "2023-09-13",
+   "view_end": "2024-05-02"
+  },
+  {
+   "item_id": "RSI@2024-03-07",
+   "symbol": "RSI",
+   "t": "2024-03-07",
+   "view_start": "2023-09-14",
+   "view_end": "2024-05-03"
+  },
+  {
+   "item_id": "YEXT@2024-03-07",
+   "symbol": "YEXT",
+   "t": "2024-03-07",
+   "view_start": "2023-09-14",
+   "view_end": "2024-05-03"
+  },
+  {
+   "item_id": "OPRA@2024-03-08",
+   "symbol": "OPRA",
+   "t": "2024-03-08",
+   "view_start": "2023-09-15",
+   "view_end": "2024-05-06"
+  },
+  {
+   "item_id": "INO@2024-03-11",
+   "symbol": "INO",
+   "t": "2024-03-11",
+   "view_start": "2023-09-18",
+   "view_end": "2024-05-07"
+  },
+  {
+   "item_id": "NN@2024-03-11",
+   "symbol": "NN",
+   "t": "2024-03-11",
+   "view_start": "2023-09-18",
+   "view_end": "2024-05-07"
+  },
+  {
+   "item_id": "EH@2024-03-12",
+   "symbol": "EH",
+   "t": "2024-03-12",
+   "view_start": "2023-09-19",
+   "view_end": "2024-05-08"
+  },
+  {
+   "item_id": "GTES@2024-03-13",
+   "symbol": "GTES",
+   "t": "2024-03-13",
+   "view_start": "2023-09-20",
+   "view_end": "2024-05-09"
+  },
+  {
+   "item_id": "SMR@2024-03-14",
+   "symbol": "SMR",
+   "t": "2024-03-14",
+   "view_start": "2023-09-21",
+   "view_end": "2024-05-10"
+  },
+  {
+   "item_id": "SPRY@2024-03-15",
+   "symbol": "SPRY",
+   "t": "2024-03-15",
+   "view_start": "2023-09-22",
+   "view_end": "2024-05-13"
+  },
+  {
+   "item_id": "QUIK@2024-03-18",
+   "symbol": "QUIK",
+   "t": "2024-03-18",
+   "view_start": "2023-09-25",
+   "view_end": "2024-05-14"
+  },
+  {
+   "item_id": "TILE@2024-03-21",
+   "symbol": "TILE",
+   "t": "2024-03-21",
+   "view_start": "2023-09-28",
+   "view_end": "2024-05-17"
+  },
+  {
+   "item_id": "ECVT@2024-03-26",
+   "symbol": "ECVT",
+   "t": "2024-03-26",
+   "view_start": "2023-10-03",
+   "view_end": "2024-05-22"
+  },
+  {
+   "item_id": "NUVB@2024-03-26",
+   "symbol": "NUVB",
+   "t": "2024-03-26",
+   "view_start": "2023-10-03",
+   "view_end": "2024-05-22"
+  },
+  {
+   "item_id": "STOK@2024-03-26",
+   "symbol": "STOK",
+   "t": "2024-03-26",
+   "view_start": "2023-10-03",
+   "view_end": "2024-05-22"
+  },
+  {
+   "item_id": "OUST@2024-03-28",
+   "symbol": "OUST",
+   "t": "2024-03-28",
+   "view_start": "2023-10-05",
+   "view_end": "2024-05-24"
+  },
+  {
+   "item_id": "ZETA@2024-04-04",
+   "symbol": "ZETA",
+   "t": "2024-04-04",
+   "view_start": "2023-10-11",
+   "view_end": "2024-05-31"
+  },
+  {
+   "item_id": "MITK@2024-04-15",
+   "symbol": "MITK",
+   "t": "2024-04-15",
+   "view_start": "2023-10-20",
+   "view_end": "2024-06-11"
+  },
+  {
+   "item_id": "ZUMZ@2024-04-23",
+   "symbol": "ZUMZ",
+   "t": "2024-04-23",
+   "view_start": "2023-10-30",
+   "view_end": "2024-06-20"
+  },
+  {
+   "item_id": "ANVS@2024-04-26",
+   "symbol": "ANVS",
+   "t": "2024-04-26",
+   "view_start": "2023-11-02",
+   "view_end": "2024-06-25"
+  },
+  {
+   "item_id": "ARLP@2024-04-29",
+   "symbol": "ARLP",
+   "t": "2024-04-29",
+   "view_start": "2023-11-03",
+   "view_end": "2024-06-26"
+  },
+  {
+   "item_id": "AQN@2024-05-02",
+   "symbol": "AQN",
+   "t": "2024-05-02",
+   "view_start": "2023-11-08",
+   "view_end": "2024-07-01"
+  },
+  {
+   "item_id": "ENVX@2024-05-02",
+   "symbol": "ENVX",
+   "t": "2024-05-02",
+   "view_start": "2023-11-08",
+   "view_end": "2024-07-01"
+  },
+  {
+   "item_id": "TROX@2024-05-02",
+   "symbol": "TROX",
+   "t": "2024-05-02",
+   "view_start": "2023-11-08",
+   "view_end": "2024-07-01"
+  },
+  {
+   "item_id": "LOCO@2024-05-03",
+   "symbol": "LOCO",
+   "t": "2024-05-03",
+   "view_start": "2023-11-09",
+   "view_end": "2024-07-02"
+  },
+  {
+   "item_id": "TDAY@2024-05-03",
+   "symbol": "TDAY",
+   "t": "2024-05-03",
+   "view_start": "2023-11-09",
+   "view_end": "2024-07-02"
+  },
+  {
+   "item_id": "LOMA@2024-05-06",
+   "symbol": "LOMA",
+   "t": "2024-05-06",
+   "view_start": "2023-11-10",
+   "view_end": "2024-07-03"
+  },
+  {
+   "item_id": "ELAN@2024-05-08",
+   "symbol": "ELAN",
+   "t": "2024-05-08",
+   "view_start": "2023-11-14",
+   "view_end": "2024-07-08"
+  },
+  {
+   "item_id": "CMRC@2024-05-09",
+   "symbol": "CMRC",
+   "t": "2024-05-09",
+   "view_start": "2023-11-15",
+   "view_end": "2024-07-09"
+  },
+  {
+   "item_id": "FNKO@2024-05-10",
+   "symbol": "FNKO",
+   "t": "2024-05-10",
+   "view_start": "2023-11-16",
+   "view_end": "2024-07-10"
+  },
+  {
+   "item_id": "ZIM@2024-05-10",
+   "symbol": "ZIM",
+   "t": "2024-05-10",
+   "view_start": "2023-11-16",
+   "view_end": "2024-07-10"
+  },
+  {
+   "item_id": "MPT@2024-05-13",
+   "symbol": "MPT",
+   "t": "2024-05-13",
+   "view_start": "2023-11-17",
+   "view_end": "2024-07-11"
+  },
+  {
+   "item_id": "VFS@2024-05-13",
+   "symbol": "VFS",
+   "t": "2024-05-13",
+   "view_start": "2023-11-17",
+   "view_end": "2024-07-11"
+  },
+  {
+   "item_id": "AMC@2024-05-14",
+   "symbol": "AMC",
+   "t": "2024-05-14",
+   "view_start": "2023-11-20",
+   "view_end": "2024-07-12"
+  },
+  {
+   "item_id": "PLUG@2024-05-14",
+   "symbol": "PLUG",
+   "t": "2024-05-14",
+   "view_start": "2023-11-20",
+   "view_end": "2024-07-12"
+  },
+  {
+   "item_id": "MGNI@2024-05-15",
+   "symbol": "MGNI",
+   "t": "2024-05-15",
+   "view_start": "2023-11-21",
+   "view_end": "2024-07-15"
+  },
+  {
+   "item_id": "PLRX@2024-05-15",
+   "symbol": "PLRX",
+   "t": "2024-05-15",
+   "view_start": "2023-11-21",
+   "view_end": "2024-07-15"
+  },
+  {
+   "item_id": "GOOS@2024-05-16",
+   "symbol": "GOOS",
+   "t": "2024-05-16",
+   "view_start": "2023-11-22",
+   "view_end": "2024-07-16"
+  },
+  {
+   "item_id": "IQ@2024-05-16",
+   "symbol": "IQ",
+   "t": "2024-05-16",
+   "view_start": "2023-11-22",
+   "view_end": "2024-07-16"
+  },
+  {
+   "item_id": "ASTS@2024-05-20",
+   "symbol": "ASTS",
+   "t": "2024-05-20",
+   "view_start": "2023-11-27",
+   "view_end": "2024-07-18"
+  },
+  {
+   "item_id": "HIMS@2024-05-20",
+   "symbol": "HIMS",
+   "t": "2024-05-20",
+   "view_start": "2023-11-27",
+   "view_end": "2024-07-18"
+  },
+  {
+   "item_id": "NVGS@2024-05-21",
+   "symbol": "NVGS",
+   "t": "2024-05-21",
+   "view_start": "2023-11-28",
+   "view_end": "2024-07-19"
+  },
+  {
+   "item_id": "WOOF@2024-05-22",
+   "symbol": "WOOF",
+   "t": "2024-05-22",
+   "view_start": "2023-11-29",
+   "view_end": "2024-07-22"
+  },
+  {
+   "item_id": "AMSC@2024-05-30",
+   "symbol": "AMSC",
+   "t": "2024-05-30",
+   "view_start": "2023-12-06",
+   "view_end": "2024-07-29"
+  },
+  {
+   "item_id": "CORZ@2024-06-06",
+   "symbol": "CORZ",
+   "t": "2024-06-06",
+   "view_start": "2024-01-24",
+   "view_end": "2024-08-05"
+  },
+  {
+   "item_id": "IRT@2024-06-10",
+   "symbol": "IRT",
+   "t": "2024-06-10",
+   "view_start": "2023-12-15",
+   "view_end": "2024-08-07"
+  },
+  {
+   "item_id": "RSI@2024-06-13",
+   "symbol": "RSI",
+   "t": "2024-06-13",
+   "view_start": "2023-12-20",
+   "view_end": "2024-08-12"
+  },
+  {
+   "item_id": "NABL@2024-06-21",
+   "symbol": "NABL",
+   "t": "2024-06-21",
+   "view_start": "2023-12-28",
+   "view_end": "2024-08-19"
+  },
+  {
+   "item_id": "EC@2024-06-24",
+   "symbol": "EC",
+   "t": "2024-06-24",
+   "view_start": "2023-12-29",
+   "view_end": "2024-08-20"
+  },
+  {
+   "item_id": "BTDR@2024-06-25",
+   "symbol": "BTDR",
+   "t": "2024-06-25",
+   "view_start": "2024-01-02",
+   "view_end": "2024-08-21"
+  },
+  {
+   "item_id": "DAKT@2024-06-27",
+   "symbol": "DAKT",
+   "t": "2024-06-27",
+   "view_start": "2024-01-04",
+   "view_end": "2024-08-23"
+  },
+  {
+   "item_id": "ADMA@2024-06-28",
+   "symbol": "ADMA",
+   "t": "2024-06-28",
+   "view_start": "2024-01-05",
+   "view_end": "2024-08-26"
+  },
+  {
+   "item_id": "AIV@2024-06-28",
+   "symbol": "AIV",
+   "t": "2024-06-28",
+   "view_start": "2024-01-05",
+   "view_end": "2024-08-26"
+  },
+  {
+   "item_id": "AUR@2024-06-28",
+   "symbol": "AUR",
+   "t": "2024-06-28",
+   "view_start": "2024-01-05",
+   "view_end": "2024-08-26"
+  },
+  {
+   "item_id": "CFFN@2024-06-28",
+   "symbol": "CFFN",
+   "t": "2024-06-28",
+   "view_start": "2024-01-05",
+   "view_end": "2024-08-26"
+  },
+  {
+   "item_id": "LILA@2024-06-28",
+   "symbol": "LILA",
+   "t": "2024-06-28",
+   "view_start": "2024-01-05",
+   "view_end": "2024-08-26"
+  },
+  {
+   "item_id": "SAFE@2024-06-28",
+   "symbol": "SAFE",
+   "t": "2024-06-28",
+   "view_start": "2024-01-05",
+   "view_end": "2024-08-26"
+  },
+  {
+   "item_id": "QS@2024-07-11",
+   "symbol": "QS",
+   "t": "2024-07-11",
+   "view_start": "2024-01-18",
+   "view_end": "2024-09-06"
+  },
+  {
+   "item_id": "QS@2024-07-15",
+   "symbol": "QS",
+   "t": "2024-07-15",
+   "view_start": "2024-01-22",
+   "view_end": "2024-09-10"
+  },
+  {
+   "item_id": "AEHR@2024-07-16",
+   "symbol": "AEHR",
+   "t": "2024-07-16",
+   "view_start": "2024-01-23",
+   "view_end": "2024-09-11"
+  },
+  {
+   "item_id": "RES@2024-07-25",
+   "symbol": "RES",
+   "t": "2024-07-25",
+   "view_start": "2024-02-01",
+   "view_end": "2024-09-20"
+  },
+  {
+   "item_id": "ERII@2024-08-01",
+   "symbol": "ERII",
+   "t": "2024-08-01",
+   "view_start": "2024-02-08",
+   "view_end": "2024-09-27"
+  },
+  {
+   "item_id": "UAA@2024-08-08",
+   "symbol": "UAA",
+   "t": "2024-08-08",
+   "view_start": "2024-02-15",
+   "view_end": "2024-10-04"
+  },
+  {
+   "item_id": "PSNL@2024-08-12",
+   "symbol": "PSNL",
+   "t": "2024-08-12",
+   "view_start": "2024-02-20",
+   "view_end": "2024-10-08"
+  },
+  {
+   "item_id": "SEZL@2024-08-12",
+   "symbol": "SEZL",
+   "t": "2024-08-12",
+   "view_start": "2024-02-20",
+   "view_end": "2024-10-08"
+  },
+  {
+   "item_id": "FUBO@2024-08-16",
+   "symbol": "FUBO",
+   "t": "2024-08-16",
+   "view_start": "2024-02-26",
+   "view_end": "2024-10-14"
+  },
+  {
+   "item_id": "RKLB@2024-08-16",
+   "symbol": "RKLB",
+   "t": "2024-08-16",
+   "view_start": "2024-02-26",
+   "view_end": "2024-10-14"
+  },
+  {
+   "item_id": "GOOS@2024-08-20",
+   "symbol": "GOOS",
+   "t": "2024-08-20",
+   "view_start": "2024-02-28",
+   "view_end": "2024-10-16"
+  },
+  {
+   "item_id": "OPRA@2024-08-22",
+   "symbol": "OPRA",
+   "t": "2024-08-22",
+   "view_start": "2024-03-01",
+   "view_end": "2024-10-18"
+  },
+  {
+   "item_id": "AVPT@2024-09-04",
+   "symbol": "AVPT",
+   "t": "2024-09-04",
+   "view_start": "2024-03-13",
+   "view_end": "2024-10-30"
+  },
+  {
+   "item_id": "CNH@2024-09-09",
+   "symbol": "CNH",
+   "t": "2024-09-09",
+   "view_start": "2024-03-18",
+   "view_end": "2024-11-04"
+  },
+  {
+   "item_id": "BLCO@2024-09-18",
+   "symbol": "BLCO",
+   "t": "2024-09-18",
+   "view_start": "2024-03-27",
+   "view_end": "2024-11-13"
+  },
+  {
+   "item_id": "LOMA@2024-09-18",
+   "symbol": "LOMA",
+   "t": "2024-09-18",
+   "view_start": "2024-03-27",
+   "view_end": "2024-11-13"
+  },
+  {
+   "item_id": "EU@2024-09-20",
+   "symbol": "EU",
+   "t": "2024-09-20",
+   "view_start": "2024-04-01",
+   "view_end": "2024-11-15"
+  },
+  {
+   "item_id": "WWW@2024-09-20",
+   "symbol": "WWW",
+   "t": "2024-09-20",
+   "view_start": "2024-04-01",
+   "view_end": "2024-11-15"
+  },
+  {
+   "item_id": "ZVRA@2024-09-20",
+   "symbol": "ZVRA",
+   "t": "2024-09-20",
+   "view_start": "2024-04-01",
+   "view_end": "2024-11-15"
+  },
+  {
+   "item_id": "POET@2024-09-24",
+   "symbol": "POET",
+   "t": "2024-09-24",
+   "view_start": "2024-04-03",
+   "view_end": "2024-11-19"
+  },
+  {
+   "item_id": "PPTA@2024-09-26",
+   "symbol": "PPTA",
+   "t": "2024-09-26",
+   "view_start": "2024-04-05",
+   "view_end": "2024-11-21"
+  },
+  {
+   "item_id": "WB@2024-09-26",
+   "symbol": "WB",
+   "t": "2024-09-26",
+   "view_start": "2024-04-05",
+   "view_end": "2024-11-21"
+  },
+  {
+   "item_id": "DDL@2024-09-30",
+   "symbol": "DDL",
+   "t": "2024-09-30",
+   "view_start": "2024-04-09",
+   "view_end": "2024-11-25"
+  },
+  {
+   "item_id": "FINV@2024-10-01",
+   "symbol": "FINV",
+   "t": "2024-10-01",
+   "view_start": "2024-04-10",
+   "view_end": "2024-11-26"
+  },
+  {
+   "item_id": "EVGO@2024-10-03",
+   "symbol": "EVGO",
+   "t": "2024-10-03",
+   "view_start": "2024-04-12",
+   "view_end": "2024-11-29"
+  },
+  {
+   "item_id": "HUYA@2024-10-04",
+   "symbol": "HUYA",
+   "t": "2024-10-04",
+   "view_start": "2024-04-15",
+   "view_end": "2024-12-02"
+  },
+  {
+   "item_id": "LX@2024-10-04",
+   "symbol": "LX",
+   "t": "2024-10-04",
+   "view_start": "2024-04-15",
+   "view_end": "2024-12-02"
+  },
+  {
+   "item_id": "MFG@2024-10-07",
+   "symbol": "MFG",
+   "t": "2024-10-07",
+   "view_start": "2024-04-16",
+   "view_end": "2024-12-03"
+  },
+  {
+   "item_id": "GRND@2024-10-08",
+   "symbol": "GRND",
+   "t": "2024-10-08",
+   "view_start": "2024-04-17",
+   "view_end": "2024-12-04"
+  },
+  {
+   "item_id": "BW@2024-10-15",
+   "symbol": "BW",
+   "t": "2024-10-15",
+   "view_start": "2024-04-24",
+   "view_end": "2024-12-11"
+  },
+  {
+   "item_id": "TNXP@2024-10-17",
+   "symbol": "TNXP",
+   "t": "2024-10-17",
+   "view_start": "2024-04-26",
+   "view_end": "2024-12-13"
+  },
+  {
+   "item_id": "CGC@2024-10-22",
+   "symbol": "CGC",
+   "t": "2024-10-22",
+   "view_start": "2024-05-01",
+   "view_end": "2024-12-18"
+  },
+  {
+   "item_id": "GRRR@2024-10-22",
+   "symbol": "GRRR",
+   "t": "2024-10-22",
+   "view_start": "2024-05-01",
+   "view_end": "2024-12-18"
+  },
+  {
+   "item_id": "JOBY@2024-10-22",
+   "symbol": "JOBY",
+   "t": "2024-10-22",
+   "view_start": "2024-05-01",
+   "view_end": "2024-12-18"
+  },
+  {
+   "item_id": "PHUN@2024-10-22",
+   "symbol": "PHUN",
+   "t": "2024-10-22",
+   "view_start": "2024-05-01",
+   "view_end": "2024-12-18"
+  },
+  {
+   "item_id": "HAFC@2024-10-23",
+   "symbol": "HAFC",
+   "t": "2024-10-23",
+   "view_start": "2024-05-02",
+   "view_end": "2024-12-19"
+  },
+  {
+   "item_id": "IBRX@2024-10-24",
+   "symbol": "IBRX",
+   "t": "2024-10-24",
+   "view_start": "2024-05-03",
+   "view_end": "2024-12-20"
+  },
+  {
+   "item_id": "ALEC@2024-11-04",
+   "symbol": "ALEC",
+   "t": "2024-11-04",
+   "view_start": "2024-05-14",
+   "view_end": "2025-01-02"
+  },
+  {
+   "item_id": "BFLY@2024-11-05",
+   "symbol": "BFLY",
+   "t": "2024-11-05",
+   "view_start": "2024-05-15",
+   "view_end": "2025-01-03"
+  },
+  {
+   "item_id": "GOGO@2024-11-05",
+   "symbol": "GOGO",
+   "t": "2024-11-05",
+   "view_start": "2024-05-15",
+   "view_end": "2025-01-03"
+  },
+  {
+   "item_id": "DXYZ@2024-11-06",
+   "symbol": "DXYZ",
+   "t": "2024-11-06",
+   "view_start": "2024-05-16",
+   "view_end": "2025-01-06"
+  },
+  {
+   "item_id": "FCF@2024-11-06",
+   "symbol": "FCF",
+   "t": "2024-11-06",
+   "view_start": "2024-05-16",
+   "view_end": "2025-01-06"
+  },
+  {
+   "item_id": "QURE@2024-11-06",
+   "symbol": "QURE",
+   "t": "2024-11-06",
+   "view_start": "2024-05-16",
+   "view_end": "2025-01-06"
+  },
+  {
+   "item_id": "TMCI@2024-11-06",
+   "symbol": "TMCI",
+   "t": "2024-11-06",
+   "view_start": "2024-05-16",
+   "view_end": "2025-01-06"
+  },
+  {
+   "item_id": "UPWK@2024-11-07",
+   "symbol": "UPWK",
+   "t": "2024-11-07",
+   "view_start": "2024-05-17",
+   "view_end": "2025-01-07"
+  },
+  {
+   "item_id": "RGTI@2024-11-08",
+   "symbol": "RGTI",
+   "t": "2024-11-08",
+   "view_start": "2024-05-20",
+   "view_end": "2025-01-08"
+  },
+  {
+   "item_id": "XERS@2024-11-08",
+   "symbol": "XERS",
+   "t": "2024-11-08",
+   "view_start": "2024-05-20",
+   "view_end": "2025-01-08"
+  },
+  {
+   "item_id": "BTBT@2024-11-11",
+   "symbol": "BTBT",
+   "t": "2024-11-11",
+   "view_start": "2024-05-21",
+   "view_end": "2025-01-10"
+  },
+  {
+   "item_id": "HNST@2024-11-11",
+   "symbol": "HNST",
+   "t": "2024-11-11",
+   "view_start": "2024-05-21",
+   "view_end": "2025-01-10"
+  },
+  {
+   "item_id": "GRAB@2024-11-12",
+   "symbol": "GRAB",
+   "t": "2024-11-12",
+   "view_start": "2024-05-22",
+   "view_end": "2025-01-13"
+  },
+  {
+   "item_id": "OSG@2024-11-13",
+   "symbol": "OSG",
+   "t": "2024-11-13",
+   "view_start": "2024-05-23",
+   "view_end": "2025-01-14"
+  },
+  {
+   "item_id": "QUBT@2024-11-13",
+   "symbol": "QUBT",
+   "t": "2024-11-13",
+   "view_start": "2024-05-23",
+   "view_end": "2025-01-14"
+  },
+  {
+   "item_id": "BKSY@2024-11-14",
+   "symbol": "BKSY",
+   "t": "2024-11-14",
+   "view_start": "2024-05-24",
+   "view_end": "2025-01-15"
+  },
+  {
+   "item_id": "LOMA@2024-11-14",
+   "symbol": "LOMA",
+   "t": "2024-11-14",
+   "view_start": "2024-05-24",
+   "view_end": "2025-01-15"
+  },
+  {
+   "item_id": "UAVS@2024-11-14",
+   "symbol": "UAVS",
+   "t": "2024-11-14",
+   "view_start": "2024-05-24",
+   "view_end": "2025-01-15"
+  },
+  {
+   "item_id": "NEXT@2024-11-19",
+   "symbol": "NEXT",
+   "t": "2024-11-19",
+   "view_start": "2024-05-30",
+   "view_end": "2025-01-21"
+  },
+  {
+   "item_id": "RPC@2024-11-21",
+   "symbol": "RPC",
+   "t": "2024-11-21",
+   "view_start": "2024-06-03",
+   "view_end": "2025-01-23"
+  },
+  {
+   "item_id": "KT@2024-11-22",
+   "symbol": "KT",
+   "t": "2024-11-22",
+   "view_start": "2024-06-04",
+   "view_end": "2025-01-24"
+  },
+  {
+   "item_id": "RCAT@2024-11-22",
+   "symbol": "RCAT",
+   "t": "2024-11-22",
+   "view_start": "2024-06-04",
+   "view_end": "2025-01-24"
+  },
+  {
+   "item_id": "TCMD@2024-11-22",
+   "symbol": "TCMD",
+   "t": "2024-11-22",
+   "view_start": "2024-06-04",
+   "view_end": "2025-01-24"
+  },
+  {
+   "item_id": "ACHR@2024-11-25",
+   "symbol": "ACHR",
+   "t": "2024-11-25",
+   "view_start": "2024-06-05",
+   "view_end": "2025-01-27"
+  },
+  {
+   "item_id": "RPC@2024-11-25",
+   "symbol": "RPC",
+   "t": "2024-11-25",
+   "view_start": "2024-06-05",
+   "view_end": "2025-01-27"
+  },
+  {
+   "item_id": "SBH@2024-11-25",
+   "symbol": "SBH",
+   "t": "2024-11-25",
+   "view_start": "2024-06-05",
+   "view_end": "2025-01-27"
+  },
+  {
+   "item_id": "NCDL@2024-11-26",
+   "symbol": "NCDL",
+   "t": "2024-11-26",
+   "view_start": "2024-06-06",
+   "view_end": "2025-01-28"
+  },
+  {
+   "item_id": "SRTA@2024-11-26",
+   "symbol": "SRTA",
+   "t": "2024-11-26",
+   "view_start": "2024-06-06",
+   "view_end": "2025-01-28"
+  },
+  {
+   "item_id": "TNYA@2024-11-27",
+   "symbol": "TNYA",
+   "t": "2024-11-27",
+   "view_start": "2024-06-07",
+   "view_end": "2025-01-29"
+  },
+  {
+   "item_id": "NCDL@2024-12-02",
+   "symbol": "NCDL",
+   "t": "2024-12-02",
+   "view_start": "2024-06-11",
+   "view_end": "2025-01-31"
+  },
+  {
+   "item_id": "BZFD@2024-12-04",
+   "symbol": "BZFD",
+   "t": "2024-12-04",
+   "view_start": "2024-06-13",
+   "view_end": "2025-02-04"
+  },
+  {
+   "item_id": "PPTA@2024-12-04",
+   "symbol": "PPTA",
+   "t": "2024-12-04",
+   "view_start": "2024-06-13",
+   "view_end": "2025-02-04"
+  },
+  {
+   "item_id": "BBAI@2024-12-06",
+   "symbol": "BBAI",
+   "t": "2024-12-06",
+   "view_start": "2024-06-17",
+   "view_end": "2025-02-06"
+  },
+  {
+   "item_id": "ALLT@2024-12-11",
+   "symbol": "ALLT",
+   "t": "2024-12-11",
+   "view_start": "2024-06-21",
+   "view_end": "2025-02-11"
+  },
+  {
+   "item_id": "SGMT@2024-12-16",
+   "symbol": "SGMT",
+   "t": "2024-12-16",
+   "view_start": "2024-06-26",
+   "view_end": "2025-02-14"
+  },
+  {
+   "item_id": "KULR@2024-12-18",
+   "symbol": "KULR",
+   "t": "2024-12-18",
+   "view_start": "2024-06-28",
+   "view_end": "2025-02-19"
+  },
+  {
+   "item_id": "CADL@2024-12-19",
+   "symbol": "CADL",
+   "t": "2024-12-19",
+   "view_start": "2024-07-01",
+   "view_end": "2025-02-20"
+  },
+  {
+   "item_id": "AISP@2024-12-23",
+   "symbol": "AISP",
+   "t": "2024-12-23",
+   "view_start": "2024-07-03",
+   "view_end": "2025-02-24"
+  },
+  {
+   "item_id": "RR@2024-12-23",
+   "symbol": "RR",
+   "t": "2024-12-23",
+   "view_start": "2024-07-03",
+   "view_end": "2025-02-24"
+  },
+  {
+   "item_id": "XRX@2024-12-23",
+   "symbol": "XRX",
+   "t": "2024-12-23",
+   "view_start": "2024-07-03",
+   "view_end": "2025-02-24"
+  },
+  {
+   "item_id": "AMPG@2024-12-24",
+   "symbol": "AMPG",
+   "t": "2024-12-24",
+   "view_start": "2024-07-05",
+   "view_end": "2025-02-25"
+  },
+  {
+   "item_id": "ALLT@2024-12-26",
+   "symbol": "ALLT",
+   "t": "2024-12-26",
+   "view_start": "2024-07-08",
+   "view_end": "2025-02-26"
+  },
+  {
+   "item_id": "AMPG@2024-12-26",
+   "symbol": "AMPG",
+   "t": "2024-12-26",
+   "view_start": "2024-07-08",
+   "view_end": "2025-02-26"
+  },
+  {
+   "item_id": "INVZ@2024-12-26",
+   "symbol": "INVZ",
+   "t": "2024-12-26",
+   "view_start": "2024-07-08",
+   "view_end": "2025-02-26"
+  },
+  {
+   "item_id": "LAES@2024-12-26",
+   "symbol": "LAES",
+   "t": "2024-12-26",
+   "view_start": "2024-07-08",
+   "view_end": "2025-02-26"
+  },
+  {
+   "item_id": "ONDS@2024-12-26",
+   "symbol": "ONDS",
+   "t": "2024-12-26",
+   "view_start": "2024-07-08",
+   "view_end": "2025-02-26"
+  },
+  {
+   "item_id": "ONDS@2024-12-30",
+   "symbol": "ONDS",
+   "t": "2024-12-30",
+   "view_start": "2024-07-10",
+   "view_end": "2025-02-28"
+  },
+  {
+   "item_id": "GFAI@2025-01-03",
+   "symbol": "GFAI",
+   "t": "2025-01-03",
+   "view_start": "2024-07-15",
+   "view_end": "2025-03-05"
+  },
+  {
+   "item_id": "OPFI@2025-01-03",
+   "symbol": "OPFI",
+   "t": "2025-01-03",
+   "view_start": "2024-07-15",
+   "view_end": "2025-03-05"
+  },
+  {
+   "item_id": "SGMT@2025-01-06",
+   "symbol": "SGMT",
+   "t": "2025-01-06",
+   "view_start": "2024-07-16",
+   "view_end": "2025-03-06"
+  },
+  {
+   "item_id": "NUVB@2025-01-07",
+   "symbol": "NUVB",
+   "t": "2025-01-07",
+   "view_start": "2024-07-17",
+   "view_end": "2025-03-07"
+  },
+  {
+   "item_id": "OPFI@2025-01-13",
+   "symbol": "OPFI",
+   "t": "2025-01-13",
+   "view_start": "2024-07-22",
+   "view_end": "2025-03-12"
+  },
+  {
+   "item_id": "SPIR@2025-01-16",
+   "symbol": "SPIR",
+   "t": "2025-01-16",
+   "view_start": "2024-07-25",
+   "view_end": "2025-03-17"
+  },
+  {
+   "item_id": "IA@2025-01-23",
+   "symbol": "IA",
+   "t": "2025-01-23",
+   "view_start": "2024-07-31",
+   "view_end": "2025-03-21"
+  },
+  {
+   "item_id": "TRIP@2025-01-23",
+   "symbol": "TRIP",
+   "t": "2025-01-23",
+   "view_start": "2024-07-31",
+   "view_end": "2025-03-21"
+  },
+  {
+   "item_id": "VNET@2025-01-23",
+   "symbol": "VNET",
+   "t": "2025-01-23",
+   "view_start": "2024-07-31",
+   "view_end": "2025-03-21"
+  },
+  {
+   "item_id": "SGHC@2025-01-24",
+   "symbol": "SGHC",
+   "t": "2025-01-24",
+   "view_start": "2024-08-01",
+   "view_end": "2025-03-24"
+  },
+  {
+   "item_id": "IVZ@2025-01-28",
+   "symbol": "IVZ",
+   "t": "2025-01-28",
+   "view_start": "2024-08-05",
+   "view_end": "2025-03-26"
+  },
+  {
+   "item_id": "BFLY@2025-02-04",
+   "symbol": "BFLY",
+   "t": "2025-02-04",
+   "view_start": "2024-08-12",
+   "view_end": "2025-04-02"
+  },
+  {
+   "item_id": "CRNT@2025-02-05",
+   "symbol": "CRNT",
+   "t": "2025-02-05",
+   "view_start": "2024-08-13",
+   "view_end": "2025-04-03"
+  },
+  {
+   "item_id": "NOV@2025-02-05",
+   "symbol": "NOV",
+   "t": "2025-02-05",
+   "view_start": "2024-08-13",
+   "view_end": "2025-04-03"
+  },
+  {
+   "item_id": "TDOC@2025-02-14",
+   "symbol": "TDOC",
+   "t": "2025-02-14",
+   "view_start": "2024-08-22",
+   "view_end": "2025-04-14"
+  },
+  {
+   "item_id": "SEDG@2025-02-19",
+   "symbol": "SEDG",
+   "t": "2025-02-19",
+   "view_start": "2024-08-26",
+   "view_end": "2025-04-16"
+  },
+  {
+   "item_id": "WIMI@2025-02-21",
+   "symbol": "WIMI",
+   "t": "2025-02-21",
+   "view_start": "2024-08-28",
+   "view_end": "2025-04-21"
+  },
+  {
+   "item_id": "VISN@2025-02-26",
+   "symbol": "VISN",
+   "t": "2025-02-26",
+   "view_start": "2024-09-03",
+   "view_end": "2025-04-24"
+  },
+  {
+   "item_id": "LYG@2025-02-28",
+   "symbol": "LYG",
+   "t": "2025-02-28",
+   "view_start": "2024-09-05",
+   "view_end": "2025-04-28"
+  },
+  {
+   "item_id": "RILY@2025-02-28",
+   "symbol": "RILY",
+   "t": "2025-02-28",
+   "view_start": "2024-09-05",
+   "view_end": "2025-04-28"
+  },
+  {
+   "item_id": "CTM@2025-03-03",
+   "symbol": "CTM",
+   "t": "2025-03-03",
+   "view_start": "2024-09-06",
+   "view_end": "2025-04-29"
+  },
+  {
+   "item_id": "ECX@2025-03-06",
+   "symbol": "ECX",
+   "t": "2025-03-06",
+   "view_start": "2024-09-11",
+   "view_end": "2025-05-02"
+  },
+  {
+   "item_id": "TRVI@2025-03-10",
+   "symbol": "TRVI",
+   "t": "2025-03-10",
+   "view_start": "2024-09-13",
+   "view_end": "2025-05-06"
+  },
+  {
+   "item_id": "ASM@2025-03-12",
+   "symbol": "ASM",
+   "t": "2025-03-12",
+   "view_start": "2024-09-17",
+   "view_end": "2025-05-08"
+  },
+  {
+   "item_id": "TGB@2025-03-13",
+   "symbol": "TGB",
+   "t": "2025-03-13",
+   "view_start": "2024-09-18",
+   "view_end": "2025-05-09"
+  },
+  {
+   "item_id": "XERS@2025-03-14",
+   "symbol": "XERS",
+   "t": "2025-03-14",
+   "view_start": "2024-09-19",
+   "view_end": "2025-05-12"
+  },
+  {
+   "item_id": "OUST@2025-03-21",
+   "symbol": "OUST",
+   "t": "2025-03-21",
+   "view_start": "2024-09-26",
+   "view_end": "2025-05-19"
+  },
+  {
+   "item_id": "TMC@2025-04-15",
+   "symbol": "TMC",
+   "t": "2025-04-15",
+   "view_start": "2024-10-21",
+   "view_end": "2025-06-12"
+  },
+  {
+   "item_id": "YALA@2025-04-25",
+   "symbol": "YALA",
+   "t": "2025-04-25",
+   "view_start": "2024-10-30",
+   "view_end": "2025-06-24"
+  },
+  {
+   "item_id": "KODK@2025-05-05",
+   "symbol": "KODK",
+   "t": "2025-05-05",
+   "view_start": "2024-11-07",
+   "view_end": "2025-07-02"
+  },
+  {
+   "item_id": "IHS@2025-05-07",
+   "symbol": "IHS",
+   "t": "2025-05-07",
+   "view_start": "2024-11-11",
+   "view_end": "2025-07-07"
+  },
+  {
+   "item_id": "BMBL@2025-05-08",
+   "symbol": "BMBL",
+   "t": "2025-05-08",
+   "view_start": "2024-11-12",
+   "view_end": "2025-07-08"
+  },
+  {
+   "item_id": "XRAY@2025-05-08",
+   "symbol": "XRAY",
+   "t": "2025-05-08",
+   "view_start": "2024-11-12",
+   "view_end": "2025-07-08"
+  },
+  {
+   "item_id": "GDOT@2025-05-09",
+   "symbol": "GDOT",
+   "t": "2025-05-09",
+   "view_start": "2024-11-13",
+   "view_end": "2025-07-09"
+  },
+  {
+   "item_id": "MITK@2025-05-09",
+   "symbol": "MITK",
+   "t": "2025-05-09",
+   "view_start": "2024-11-13",
+   "view_end": "2025-07-09"
+  },
+  {
+   "item_id": "MVST@2025-05-13",
+   "symbol": "MVST",
+   "t": "2025-05-13",
+   "view_start": "2024-11-15",
+   "view_end": "2025-07-11"
+  },
+  {
+   "item_id": "GOTU@2025-05-15",
+   "symbol": "GOTU",
+   "t": "2025-05-15",
+   "view_start": "2024-11-19",
+   "view_end": "2025-07-15"
+  },
+  {
+   "item_id": "CFFN@2025-05-16",
+   "symbol": "CFFN",
+   "t": "2025-05-16",
+   "view_start": "2024-11-20",
+   "view_end": "2025-07-16"
+  },
+  {
+   "item_id": "TMC@2025-05-19",
+   "symbol": "TMC",
+   "t": "2025-05-19",
+   "view_start": "2024-11-21",
+   "view_end": "2025-07-17"
+  },
+  {
+   "item_id": "LAES@2025-05-22",
+   "symbol": "LAES",
+   "t": "2025-05-22",
+   "view_start": "2024-11-26",
+   "view_end": "2025-07-22"
+  },
+  {
+   "item_id": "QSI@2025-05-22",
+   "symbol": "QSI",
+   "t": "2025-05-22",
+   "view_start": "2024-11-26",
+   "view_end": "2025-07-22"
+  },
+  {
+   "item_id": "FCEL@2025-05-23",
+   "symbol": "FCEL",
+   "t": "2025-05-23",
+   "view_start": "2024-11-27",
+   "view_end": "2025-07-23"
+  },
+  {
+   "item_id": "AMC@2025-05-27",
+   "symbol": "AMC",
+   "t": "2025-05-27",
+   "view_start": "2024-11-29",
+   "view_end": "2025-07-24"
+  },
+  {
+   "item_id": "RR@2025-05-27",
+   "symbol": "RR",
+   "t": "2025-05-27",
+   "view_start": "2024-11-29",
+   "view_end": "2025-07-24"
+  },
+  {
+   "item_id": "LOCO@2025-05-30",
+   "symbol": "LOCO",
+   "t": "2025-05-30",
+   "view_start": "2024-12-04",
+   "view_end": "2025-07-29"
+  },
+  {
+   "item_id": "FMST@2025-06-02",
+   "symbol": "FMST",
+   "t": "2025-06-02",
+   "view_start": "2024-12-05",
+   "view_end": "2025-07-30"
+  },
+  {
+   "item_id": "ORIC@2025-06-02",
+   "symbol": "ORIC",
+   "t": "2025-06-02",
+   "view_start": "2024-12-05",
+   "view_end": "2025-07-30"
+  },
+  {
+   "item_id": "AGEN@2025-06-04",
+   "symbol": "AGEN",
+   "t": "2025-06-04",
+   "view_start": "2024-12-09",
+   "view_end": "2025-08-01"
+  },
+  {
+   "item_id": "CHGG@2025-06-06",
+   "symbol": "CHGG",
+   "t": "2025-06-06",
+   "view_start": "2024-12-11",
+   "view_end": "2025-08-05"
+  },
+  {
+   "item_id": "TGB@2025-06-06",
+   "symbol": "TGB",
+   "t": "2025-06-06",
+   "view_start": "2024-12-11",
+   "view_end": "2025-08-05"
+  },
+  {
+   "item_id": "NCNA@2025-06-09",
+   "symbol": "NCNA",
+   "t": "2025-06-09",
+   "view_start": "2024-12-12",
+   "view_end": "2025-08-06"
+  },
+  {
+   "item_id": "SKE@2025-06-20",
+   "symbol": "SKE",
+   "t": "2025-06-20",
+   "view_start": "2024-12-24",
+   "view_end": "2025-08-18"
+  },
+  {
+   "item_id": "ZETA@2025-06-20",
+   "symbol": "ZETA",
+   "t": "2025-06-20",
+   "view_start": "2024-12-24",
+   "view_end": "2025-08-18"
+  },
+  {
+   "item_id": "TDOC@2025-06-23",
+   "symbol": "TDOC",
+   "t": "2025-06-23",
+   "view_start": "2024-12-26",
+   "view_end": "2025-08-19"
+  },
+  {
+   "item_id": "MANU@2025-06-24",
+   "symbol": "MANU",
+   "t": "2025-06-24",
+   "view_start": "2024-12-27",
+   "view_end": "2025-08-20"
+  },
+  {
+   "item_id": "BMBL@2025-06-25",
+   "symbol": "BMBL",
+   "t": "2025-06-25",
+   "view_start": "2024-12-30",
+   "view_end": "2025-08-21"
+  },
+  {
+   "item_id": "QS@2025-06-25",
+   "symbol": "QS",
+   "t": "2025-06-25",
+   "view_start": "2024-12-30",
+   "view_end": "2025-08-21"
+  },
+  {
+   "item_id": "CIFR@2025-06-26",
+   "symbol": "CIFR",
+   "t": "2025-06-26",
+   "view_start": "2024-12-31",
+   "view_end": "2025-08-22"
+  },
+  {
+   "item_id": "QS@2025-06-26",
+   "symbol": "QS",
+   "t": "2025-06-26",
+   "view_start": "2024-12-31",
+   "view_end": "2025-08-22"
+  },
+  {
+   "item_id": "BGC@2025-06-27",
+   "symbol": "BGC",
+   "t": "2025-06-27",
+   "view_start": "2025-01-02",
+   "view_end": "2025-08-25"
+  },
+  {
+   "item_id": "MATV@2025-06-27",
+   "symbol": "MATV",
+   "t": "2025-06-27",
+   "view_start": "2025-01-02",
+   "view_end": "2025-08-25"
+  },
+  {
+   "item_id": "OSPN@2025-06-27",
+   "symbol": "OSPN",
+   "t": "2025-06-27",
+   "view_start": "2025-01-02",
+   "view_end": "2025-08-25"
+  },
+  {
+   "item_id": "RERE@2025-07-07",
+   "symbol": "RERE",
+   "t": "2025-07-07",
+   "view_start": "2025-01-10",
+   "view_end": "2025-09-02"
+  },
+  {
+   "item_id": "METC@2025-07-14",
+   "symbol": "METC",
+   "t": "2025-07-14",
+   "view_start": "2025-01-17",
+   "view_end": "2025-09-09"
+  },
+  {
+   "item_id": "NEXT@2025-07-14",
+   "symbol": "NEXT",
+   "t": "2025-07-14",
+   "view_start": "2025-01-17",
+   "view_end": "2025-09-09"
+  },
+  {
+   "item_id": "HUYA@2025-07-15",
+   "symbol": "HUYA",
+   "t": "2025-07-15",
+   "view_start": "2025-01-21",
+   "view_end": "2025-09-10"
+  },
+  {
+   "item_id": "DGXX@2025-07-17",
+   "symbol": "DGXX",
+   "t": "2025-07-17",
+   "view_start": "2025-01-23",
+   "view_end": "2025-09-12"
+  },
+  {
+   "item_id": "KSCP@2025-07-17",
+   "symbol": "KSCP",
+   "t": "2025-07-17",
+   "view_start": "2025-01-23",
+   "view_end": "2025-09-12"
+  },
+  {
+   "item_id": "VERI@2025-07-17",
+   "symbol": "VERI",
+   "t": "2025-07-17",
+   "view_start": "2025-01-23",
+   "view_end": "2025-09-12"
+  },
+  {
+   "item_id": "VERI@2025-07-18",
+   "symbol": "VERI",
+   "t": "2025-07-18",
+   "view_start": "2025-01-24",
+   "view_end": "2025-09-15"
+  },
+  {
+   "item_id": "KEEL@2025-07-22",
+   "symbol": "KEEL",
+   "t": "2025-07-22",
+   "view_start": "2025-01-28",
+   "view_end": "2025-09-17"
+  },
+  {
+   "item_id": "UAVS@2025-07-23",
+   "symbol": "UAVS",
+   "t": "2025-07-23",
+   "view_start": "2025-01-29",
+   "view_end": "2025-09-18"
+  },
+  {
+   "item_id": "REZI@2025-07-30",
+   "symbol": "REZI",
+   "t": "2025-07-30",
+   "view_start": "2025-02-05",
+   "view_end": "2025-09-25"
+  },
+  {
+   "item_id": "ATEC@2025-08-04",
+   "symbol": "ATEC",
+   "t": "2025-08-04",
+   "view_start": "2025-02-10",
+   "view_end": "2025-09-30"
+  },
+  {
+   "item_id": "AXGN@2025-08-05",
+   "symbol": "AXGN",
+   "t": "2025-08-05",
+   "view_start": "2025-02-11",
+   "view_end": "2025-10-01"
+  },
+  {
+   "item_id": "DYN@2025-08-06",
+   "symbol": "DYN",
+   "t": "2025-08-06",
+   "view_start": "2025-02-12",
+   "view_end": "2025-10-02"
+  },
+  {
+   "item_id": "GO@2025-08-06",
+   "symbol": "GO",
+   "t": "2025-08-06",
+   "view_start": "2025-02-12",
+   "view_end": "2025-10-02"
+  },
+  {
+   "item_id": "MYGN@2025-08-06",
+   "symbol": "MYGN",
+   "t": "2025-08-06",
+   "view_start": "2025-02-12",
+   "view_end": "2025-10-02"
+  },
+  {
+   "item_id": "SIGA@2025-08-07",
+   "symbol": "SIGA",
+   "t": "2025-08-07",
+   "view_start": "2025-02-13",
+   "view_end": "2025-10-03"
+  },
+  {
+   "item_id": "VIAV@2025-08-08",
+   "symbol": "VIAV",
+   "t": "2025-08-08",
+   "view_start": "2025-02-14",
+   "view_end": "2025-10-06"
+  },
+  {
+   "item_id": "CGC@2025-08-11",
+   "symbol": "CGC",
+   "t": "2025-08-11",
+   "view_start": "2025-02-18",
+   "view_end": "2025-10-07"
+  },
+  {
+   "item_id": "IMXI@2025-08-11",
+   "symbol": "IMXI",
+   "t": "2025-08-11",
+   "view_start": "2025-02-18",
+   "view_end": "2025-10-07"
+  },
+  {
+   "item_id": "CRNC@2025-08-12",
+   "symbol": "CRNC",
+   "t": "2025-08-12",
+   "view_start": "2025-02-19",
+   "view_end": "2025-10-08"
+  },
+  {
+   "item_id": "DDD@2025-08-12",
+   "symbol": "DDD",
+   "t": "2025-08-12",
+   "view_start": "2025-02-19",
+   "view_end": "2025-10-08"
+  },
+  {
+   "item_id": "SNDL@2025-08-12",
+   "symbol": "SNDL",
+   "t": "2025-08-12",
+   "view_start": "2025-02-19",
+   "view_end": "2025-10-08"
+  },
+  {
+   "item_id": "UFG@2025-08-13",
+   "symbol": "UFG",
+   "t": "2025-08-13",
+   "view_start": "2025-02-20",
+   "view_end": "2025-10-09"
+  },
+  {
+   "item_id": "CGTX@2025-08-14",
+   "symbol": "CGTX",
+   "t": "2025-08-14",
+   "view_start": "2025-02-21",
+   "view_end": "2025-10-10"
+  },
+  {
+   "item_id": "UFG@2025-08-18",
+   "symbol": "UFG",
+   "t": "2025-08-18",
+   "view_start": "2025-02-25",
+   "view_end": "2025-10-14"
+  },
+  {
+   "item_id": "RLX@2025-08-22",
+   "symbol": "RLX",
+   "t": "2025-08-22",
+   "view_start": "2025-03-03",
+   "view_end": "2025-10-20"
+  },
+  {
+   "item_id": "HBNC@2025-08-26",
+   "symbol": "HBNC",
+   "t": "2025-08-26",
+   "view_start": "2025-03-05",
+   "view_end": "2025-10-22"
+  },
+  {
+   "item_id": "LWLG@2025-08-26",
+   "symbol": "LWLG",
+   "t": "2025-08-26",
+   "view_start": "2025-03-05",
+   "view_end": "2025-10-22"
+  },
+  {
+   "item_id": "KSS@2025-08-27",
+   "symbol": "KSS",
+   "t": "2025-08-27",
+   "view_start": "2025-03-06",
+   "view_end": "2025-10-23"
+  },
+  {
+   "item_id": "SERV@2025-08-27",
+   "symbol": "SERV",
+   "t": "2025-08-27",
+   "view_start": "2025-03-06",
+   "view_end": "2025-10-23"
+  },
+  {
+   "item_id": "OPRA@2025-09-03",
+   "symbol": "OPRA",
+   "t": "2025-09-03",
+   "view_start": "2025-03-12",
+   "view_end": "2025-10-29"
+  },
+  {
+   "item_id": "HYMC@2025-09-12",
+   "symbol": "HYMC",
+   "t": "2025-09-12",
+   "view_start": "2025-03-21",
+   "view_end": "2025-11-07"
+  },
+  {
+   "item_id": "DEFT@2025-09-15",
+   "symbol": "DEFT",
+   "t": "2025-09-15",
+   "view_start": "2025-03-24",
+   "view_end": "2025-11-10"
+  },
+  {
+   "item_id": "KEEL@2025-09-15",
+   "symbol": "KEEL",
+   "t": "2025-09-15",
+   "view_start": "2025-03-24",
+   "view_end": "2025-11-10"
+  },
+  {
+   "item_id": "AXTI@2025-09-19",
+   "symbol": "AXTI",
+   "t": "2025-09-19",
+   "view_start": "2025-03-28",
+   "view_end": "2025-11-14"
+  },
+  {
+   "item_id": "URG@2025-09-19",
+   "symbol": "URG",
+   "t": "2025-09-19",
+   "view_start": "2025-03-28",
+   "view_end": "2025-11-14"
+  },
+  {
+   "item_id": "BKKT@2025-09-22",
+   "symbol": "BKKT",
+   "t": "2025-09-22",
+   "view_start": "2025-03-31",
+   "view_end": "2025-11-17"
+  },
+  {
+   "item_id": "SSYS@2025-09-23",
+   "symbol": "SSYS",
+   "t": "2025-09-23",
+   "view_start": "2025-04-01",
+   "view_end": "2025-11-18"
+  },
+  {
+   "item_id": "IMSR@2025-09-24",
+   "symbol": "IMSR",
+   "t": "2025-09-24",
+   "view_start": "2025-04-02",
+   "view_end": "2025-11-19"
+  },
+  {
+   "item_id": "LAC@2025-09-24",
+   "symbol": "LAC",
+   "t": "2025-09-24",
+   "view_start": "2025-04-02",
+   "view_end": "2025-11-19"
+  },
+  {
+   "item_id": "ABAT@2025-09-29",
+   "symbol": "ABAT",
+   "t": "2025-09-29",
+   "view_start": "2025-04-07",
+   "view_end": "2025-11-24"
+  },
+  {
+   "item_id": "AVTX@2025-09-29",
+   "symbol": "AVTX",
+   "t": "2025-09-29",
+   "view_start": "2025-04-07",
+   "view_end": "2025-11-24"
+  },
+  {
+   "item_id": "DVLT@2025-09-29",
+   "symbol": "DVLT",
+   "t": "2025-09-29",
+   "view_start": "2025-04-07",
+   "view_end": "2025-11-24"
+  },
+  {
+   "item_id": "DPRO@2025-09-30",
+   "symbol": "DPRO",
+   "t": "2025-09-30",
+   "view_start": "2025-04-08",
+   "view_end": "2025-11-25"
+  },
+  {
+   "item_id": "DPRO@2025-10-01",
+   "symbol": "DPRO",
+   "t": "2025-10-01",
+   "view_start": "2025-04-09",
+   "view_end": "2025-11-26"
+  },
+  {
+   "item_id": "XIFR@2025-10-01",
+   "symbol": "XIFR",
+   "t": "2025-10-01",
+   "view_start": "2025-04-09",
+   "view_end": "2025-11-26"
+  },
+  {
+   "item_id": "ERAS@2025-10-03",
+   "symbol": "ERAS",
+   "t": "2025-10-03",
+   "view_start": "2025-04-11",
+   "view_end": "2025-12-01"
+  },
+  {
+   "item_id": "GPUS@2025-10-03",
+   "symbol": "GPUS",
+   "t": "2025-10-03",
+   "view_start": "2025-04-11",
+   "view_end": "2025-12-01"
+  },
+  {
+   "item_id": "OVID@2025-10-03",
+   "symbol": "OVID",
+   "t": "2025-10-03",
+   "view_start": "2025-04-11",
+   "view_end": "2025-12-01"
+  },
+  {
+   "item_id": "RUM@2025-10-03",
+   "symbol": "RUM",
+   "t": "2025-10-03",
+   "view_start": "2025-04-11",
+   "view_end": "2025-12-01"
+  },
+  {
+   "item_id": "ALM@2025-10-06",
+   "symbol": "ALM",
+   "t": "2025-10-06",
+   "view_start": "2025-04-14",
+   "view_end": "2025-12-02"
+  },
+  {
+   "item_id": "AXTI@2025-10-06",
+   "symbol": "AXTI",
+   "t": "2025-10-06",
+   "view_start": "2025-04-14",
+   "view_end": "2025-12-02"
+  },
+  {
+   "item_id": "SES@2025-10-06",
+   "symbol": "SES",
+   "t": "2025-10-06",
+   "view_start": "2025-04-14",
+   "view_end": "2025-12-02"
+  },
+  {
+   "item_id": "GPUS@2025-10-07",
+   "symbol": "GPUS",
+   "t": "2025-10-07",
+   "view_start": "2025-04-15",
+   "view_end": "2025-12-03"
+  },
+  {
+   "item_id": "CODI@2025-10-09",
+   "symbol": "CODI",
+   "t": "2025-10-09",
+   "view_start": "2025-04-17",
+   "view_end": "2025-12-05"
+  },
+  {
+   "item_id": "IMSR@2025-10-10",
+   "symbol": "IMSR",
+   "t": "2025-10-10",
+   "view_start": "2025-04-21",
+   "view_end": "2025-12-08"
+  },
+  {
+   "item_id": "ZENA@2025-10-10",
+   "symbol": "ZENA",
+   "t": "2025-10-10",
+   "view_start": "2025-04-21",
+   "view_end": "2025-12-08"
+  },
+  {
+   "item_id": "WTI@2025-10-13",
+   "symbol": "WTI",
+   "t": "2025-10-13",
+   "view_start": "2025-04-22",
+   "view_end": "2025-12-09"
+  },
+  {
+   "item_id": "KOPN@2025-10-14",
+   "symbol": "KOPN",
+   "t": "2025-10-14",
+   "view_start": "2025-04-23",
+   "view_end": "2025-12-10"
+  },
+  {
+   "item_id": "NB@2025-10-14",
+   "symbol": "NB",
+   "t": "2025-10-14",
+   "view_start": "2025-04-23",
+   "view_end": "2025-12-10"
+  },
+  {
+   "item_id": "NVA@2025-10-14",
+   "symbol": "NVA",
+   "t": "2025-10-14",
+   "view_start": "2025-04-23",
+   "view_end": "2025-12-10"
+  },
+  {
+   "item_id": "URG@2025-10-14",
+   "symbol": "URG",
+   "t": "2025-10-14",
+   "view_start": "2025-04-23",
+   "view_end": "2025-12-10"
+  },
+  {
+   "item_id": "BZAI@2025-10-15",
+   "symbol": "BZAI",
+   "t": "2025-10-15",
+   "view_start": "2025-04-24",
+   "view_end": "2025-12-11"
+  },
+  {
+   "item_id": "SES@2025-10-15",
+   "symbol": "SES",
+   "t": "2025-10-15",
+   "view_start": "2025-04-24",
+   "view_end": "2025-12-11"
+  },
+  {
+   "item_id": "SLS@2025-10-15",
+   "symbol": "SLS",
+   "t": "2025-10-15",
+   "view_start": "2025-04-24",
+   "view_end": "2025-12-11"
+  },
+  {
+   "item_id": "VERI@2025-10-15",
+   "symbol": "VERI",
+   "t": "2025-10-15",
+   "view_start": "2025-04-24",
+   "view_end": "2025-12-11"
+  },
+  {
+   "item_id": "DGXX@2025-10-16",
+   "symbol": "DGXX",
+   "t": "2025-10-16",
+   "view_start": "2025-04-25",
+   "view_end": "2025-12-12"
+  },
+  {
+   "item_id": "BBVA@2025-10-17",
+   "symbol": "BBVA",
+   "t": "2025-10-17",
+   "view_start": "2025-04-28",
+   "view_end": "2025-12-15"
+  },
+  {
+   "item_id": "SPAI@2025-10-17",
+   "symbol": "SPAI",
+   "t": "2025-10-17",
+   "view_start": "2025-04-28",
+   "view_end": "2025-12-15"
+  },
+  {
+   "item_id": "CCO@2025-10-20",
+   "symbol": "CCO",
+   "t": "2025-10-20",
+   "view_start": "2025-04-29",
+   "view_end": "2025-12-16"
+  },
+  {
+   "item_id": "DGXX@2025-10-20",
+   "symbol": "DGXX",
+   "t": "2025-10-20",
+   "view_start": "2025-04-29",
+   "view_end": "2025-12-16"
+  },
+  {
+   "item_id": "FLWS@2025-10-21",
+   "symbol": "FLWS",
+   "t": "2025-10-21",
+   "view_start": "2025-04-30",
+   "view_end": "2025-12-17"
+  },
+  {
+   "item_id": "NOV@2025-10-28",
+   "symbol": "NOV",
+   "t": "2025-10-28",
+   "view_start": "2025-05-07",
+   "view_end": "2025-12-24"
+  },
+  {
+   "item_id": "ATEC@2025-10-31",
+   "symbol": "ATEC",
+   "t": "2025-10-31",
+   "view_start": "2025-05-12",
+   "view_end": "2025-12-30"
+  },
+  {
+   "item_id": "BFLY@2025-11-03",
+   "symbol": "BFLY",
+   "t": "2025-11-03",
+   "view_start": "2025-05-13",
+   "view_end": "2025-12-31"
+  }
+ ]
+}
