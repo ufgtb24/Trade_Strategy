@@ -31,6 +31,8 @@ F13、F14、F15)列全窗口里的全部(描述和图上标记可能只列几段
 不排序、不打分。口径分歧只在同一说法的两种理解在这张图上结论不同时才生成(DV1 峰按收盘还是
 最高价、DV2 派发看多远、DV3 放量指哪段)。触发候选只列买点当天命中的(T1~T8 固定顺序),
 一个都没命中时为空列表。买前失效模板固定、不预勾。参数在 config 的 facts 子树(全部待验证)。
+停牌日(当天没成交)的量比判定不了,记 null、不当 0(当 0 的话,写在量比上的「至多 x」会在停牌日判成「是」):
+F05~F07 和触发里的量比都按这个口径;F06 的均量比(这几天均量 ÷ 最近一段放量段均量)读到停牌日也判定不了。
 
 红线:compute_facts 第一步就把 K 线截到买点当天(含),之后的任何计算都读不到买点之后的数据
 (有「把买点之后换成随机数,输出一字不差」的测试守住);读数据只经 loader(截断副本),
@@ -150,7 +152,8 @@ class _Ctx:
         self.features_cfg = features_cfg
         self.m_period = m_period
         self.year = df.index[-1].year
-        self.vr = calculate_vol_ratio(df["volume"], int(fcfg["vol_baseline"])).to_numpy(float)
+        vr = calculate_vol_ratio(df["volume"], int(fcfg["vol_baseline"])).to_numpy(float)
+        self.vr = np.where(self.v > 0, vr, np.nan)     # 停牌(当天没成交)的量比判定不了,不给 0
         self.bars = df.reset_index()          # 'date' 列 + 0-based 行号,喂 detector
 
     def md(self, i: int) -> str:
@@ -294,7 +297,7 @@ def _oldest_row(ctx: _Ctx, peaks_by: dict) -> dict:
 
 def _vol_run_spans(ctx: _Ctx) -> list[dict]:
     """窗口里量比 ≥ vol_run_min 的日子连成段:两段之间隔着的不达标根数 ≤ vol_run_gap 就合并;
-    全部段按日期排。平均量比按段的起止之间全部根数算(含合并进来的间隔日)。"""
+    全部段按日期排。平均量比按段的起止之间全部根数算(含合并进来的间隔日;停牌日的量比判定不了,不计入)。"""
     vr = ctx.vr
     days = [i for i in range(ctx.rs, ctx.ib + 1) if math.isfinite(vr[i]) and vr[i] >= ctx.p["vol_run_min"]]
     runs: list[list[int]] = []
@@ -350,22 +353,30 @@ def _dry_row(ctx: _Ctx, runs: list[dict]) -> dict:
     vrs = [ctx.vr[i] for i in idx]
     dry = all(math.isfinite(x) and x < 1 for x in vrs)
     latest = next((r for r in runs if r["latest"]), None)
+    # 均量比读到的日子(这几天 + 最近一段放量段)里有停牌日就判定不了:all_traded 记 null,要素判 unknown
+    read = idx + list(range(latest["a"], latest["b"] + 1)) if latest else []
+    traded = all(ctx.v[i] > 0 for i in read)
     ratio = (float(np.mean(ctx.v[idx])) / latest["vol_mean"]
-             if latest and latest["vol_mean"] > 0 else None)
+             if latest and traded and latest["vol_mean"] > 0 else None)
     value = {"days": [{"date": ctx.d[i], "vr": _r(ctx.vr[i])} for i in idx], "dry": dry,
-             "vs_latest_run": _r(ratio)}
+             "vs_latest_run": _r(ratio), "all_traded": True if traded else None}
     text = (f"买点前 {len(idx)} 天（含买点当天）量比 "
             + "、".join("—" if not math.isfinite(x) else f"{x:.2f}" for x in vrs)
-            + ("，都低于 1（缩量）" if dry else "，不是都低于 1"))
+            + ("，都低于 1（缩量）" if dry
+               else "，有算不出量比的日子（—：回看不够长，或当天没成交）" if not all(map(math.isfinite, vrs))
+               else "，不是都低于 1"))
     text += (f"；这几天均量是最近一段放量段均量的 {ratio:.2f}" if ratio is not None
+             else "；这几天或最近一段放量段里有停牌日（当天没成交），均量比判定不了" if not traded
              else "；窗口里没有放量段可比")
     return _row("F06", text, value, [ctx.d[i] for i in idx])
 
 
 def _today_vol_row(ctx: _Ctx) -> dict:
     x = ctx.vr[ctx.ib]
-    if not math.isfinite(x):
-        text = f"没有（量比要 {ctx.p['vol_baseline']} 根历史做基线，不够）"
+    if not ctx.v[ctx.ib] > 0:
+        text = "没有（当天没成交，停牌，量比判定不了）"
+    elif not math.isfinite(x):
+        text = f"没有（量比要前 {ctx.p['vol_baseline']} 根的均量做基线：历史不够，或前面一直没成交）"
     else:
         text = f"买点当天量比 {x:.2f}（{_vol_rule(ctx)}）"
     return _row("F07", text, {"vr": _r(x)}, [ctx.d[ctx.ib]])
@@ -664,7 +675,7 @@ def _triggers(ctx: _Ctx, peaks_by: dict, tb_segs: list[dict]) -> list[dict]:
             out.append({"tid": "T6", "kind": TRIGGERS["T6"][0], "variants": [],
                         "text": f"当天跳空 {_pct(g)}（开盘相对前一天收盘）", "chart_dates": [ctx.d[ib]]})
     vr = ctx.vr[ib]
-    if math.isfinite(vr) and ctx.v[ib] > 0 and vr < float(p["dry_day_ratio"]):    # 停牌(当天没成交)不算缩量
+    if math.isfinite(vr) and vr < float(p["dry_day_ratio"]):    # 停牌(当天没成交)量比判定不了,不算缩量
         out.append({"tid": "T7", "kind": TRIGGERS["T7"][0], "variants": [],
                     "text": f"当天缩量（量比 {vr:.2f}，低于 {p['dry_day_ratio']:g}）", "chart_dates": [ctx.d[ib]]})
     starts = [s for s in tb_segs if s["a"] == ib]

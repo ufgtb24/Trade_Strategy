@@ -79,26 +79,30 @@ def _batch(state_dir, cases=SAMPLES):
         "list_kind": "bigmoves", "outcome_visible": True, "annotations": anns}, ensure_ascii=False))
 
 
-def _case(ann_id, day):
+def _case(ann_id, day, ref="t1"):
     return {"act": "add_case", "target": {"shape_id": "$new"}, "value": {
-        "ann_id": ann_id, "buy_date": {"value": day, "origin": "user_written"}, "trigger_ref": "t1",
+        "ann_id": ann_id, "buy_date": {"value": day, "origin": "user_written"}, "trigger_ref": ref,
         "shape_claim": {"value": "new", "origin": "user_written"}, "divergence_answers": [],
         "facts_ref": f"facts/b1.json#{ann_id}/{day}"}}
 
 
-def _card(cases=SAMPLES, pk=PK1, triggers=("T7",), custom=None):
+def _card(cases=SAMPLES, pk=PK1, triggers=("T7",), custom=None, extra=()):
+    """extra:卡上再加几项用户写的要素 (as_, 名字, 定义, 角色),编号接着 E002 往下排。"""
     trig = [{"trig_id": f"t{k + 1}", "term": t, **DET} for k, t in enumerate(triggers)]
     if custom:
         trig.append({"trig_id": f"t{len(trig) + 1}", "term": "custom", "text": custom, "origin": "user_written",
                      "said_first_match": custom})
     card = {"ingredients": [{"ing_id": "i1", "element": "$pk", "role": "must", "origin": "user_written",
                              "said_first_match": "越过前高"},
-                            {"ing_id": "i2", "element": "$dist", "role": "must_not", **DET}],
+                            {"ing_id": "i2", "element": "$dist", "role": "must_not", **DET}]
+            + [{"ing_id": f"i{k + 3}", "element": f"${a}", "role": role, "origin": "user_written",
+                "said_first_match": name} for k, (a, name, _, role) in enumerate(extra)],
             "triggers": trig, "story": None, "exit_pref": None}
     ops = [el_op("pk", "按收盘越过前面的峰", pk), el_op("dist", "最近 20 根里有派发", DIST, user=False),
+           *[el_op(a, name, d) for a, name, d, _ in extra],
            {"act": "create_shape", "value": {"name": {"value": "越过前高后缩量", "origin": "user_written"},
                                              "card": card, "change": "新建", "from_ann": [cases[0][0]]}}]
-    shapes.apply(_decision(*ops, *[_case(c[0], c[1]) for c in cases]))
+    shapes.apply(_decision(*ops, *[_case(c[0], c[1], "t1" if trig else None) for c in cases]))
 
 
 @pytest.fixture
@@ -373,6 +377,32 @@ def test_no_decidable_day_refused(env, state_dir):
     cfg["shape_check"].update(min_samples=0, min_positive_samples=0)
     with pytest.raises(rulecheck.RuleShapeMismatch, match=r"卡判「不成立」的只有 0 天\(卡能判定 0 天\)"):
         rulecheck.check_rule_against_shape("shape:s001@v1", cfg, rule=_rule(tmp, _rule_text()))
+
+
+QUIET = {"row": "F07", "value": "vr", "cond": "at_most", "user_params": {"x": 1}}
+# 规则自己用成交量算「当天量比至多 1」;CAREFUL 停牌日(当天没成交)不成立,NAIVE 把停牌日的量比当 0、成立
+_RATIO = "float(df.loc[d, 'volume']) <= float(df['volume'].rolling(63).mean().shift(1).loc[d])"
+CAREFUL = f"pk and dist and float(df.loc[d, 'volume']) > 0 and {_RATIO}"
+NAIVE = f"pk and dist and {_RATIO}"
+
+
+@pytest.mark.parametrize("when", [CAREFUL, NAIVE])
+def test_zero_volume_day_undecidable_in_sample_and_daily_check(env, state_dir, when):
+    """停牌日(当天没成交)的量比判定不了,不当 0:卡上有「买点当天量比至多 1」时,QMM 7/9 停牌——这天的样本
+    跳过并写明原因,逐日核对不比这一天(规则在这天成立不成立都不算不一致),其余照常核对。"""
+    cfg, pkl_dir, tmp = env
+    df = qmmm_synthetic()
+    df.loc["2025-07-09", "volume"] = 0.0
+    df.to_pickle(pkl_dir / "QMM.pkl")
+    cases = SAMPLES + (("a4", "2025-07-09"),)
+    _batch(state_dir, cases)
+    _card(cases, triggers=(), extra=(("quiet", "当天不放量", QUIET, "must"),))
+    res = rulecheck.check_rule_against_shape(
+        "shape:s001@v1", cfg, rule=_rule(tmp, _rule_text(when, '{"E001": "must", "E002": "must_not", "E003": "must"}')))
+    assert (res["samples_checked"], res["samples_positive"]) == (3, 3)
+    assert len(res["samples_skipped"]) == 1 and res["samples_skipped"][0].startswith("样本 a4(QMM 买点 2025-07-09)")
+    assert "当天没成交" in res["samples_skipped"][0]
+    assert (res["days_unknown"], res["days_checked"], res["days_positive"], res["days_disagree"]) == (1, 20, 5, 0)
 
 
 def test_ledger_check_rule_bound_to_list_rule(env):

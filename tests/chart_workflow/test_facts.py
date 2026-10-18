@@ -126,6 +126,42 @@ def test_dry_day_trigger_not_on_zero_volume():
     assert "T7" not in _tids(compute_facts(no_base, "2025-07-14"))
 
 
+def test_volume_ratios_undecidable_on_zero_volume_day():
+    """停牌日(当天没成交)的量比判定不了,记 null、不给 0:买点当天没成交时,F07 的量比、F06 里这一天的量比和
+    均量比都是 null,描述写明原因;量很小但不是 0 照样算。放量段中间夹着停牌日时均量比同样判定不了;
+    窗口里没有放量段时,买点当天停牌照样是「没有放量段可比」。"""
+    df = qmmm_synthetic()
+    r = _rows(compute_facts(df, "2025-07-14"))
+    assert r["F07"]["value"]["vr"] > 0 and r["F06"]["value"]["vs_latest_run"] > 0
+    assert r["F06"]["value"]["all_traded"] is True
+    zero = df.copy()
+    zero.loc["2025-07-14", "volume"] = 0.0
+    r = _rows(compute_facts(zero, "2025-07-14"))
+    assert r["F07"]["value"] == {"vr": None} and r["F07"]["text"] == "没有（当天没成交，停牌，量比判定不了）"
+    f06 = r["F06"]["value"]
+    assert [d["vr"] is None for d in f06["days"]] == [False, False, True]
+    assert f06["vs_latest_run"] is None and f06["all_traded"] is None and not f06["dry"]
+    assert "有算不出量比的日子（—：回看不够长，或当天没成交）" in r["F06"]["text"]
+    assert "均量比判定不了" in r["F06"]["text"]
+    tiny = df.copy()
+    tiny.loc["2025-07-14", "volume"] = 10_000.0
+    r = _rows(compute_facts(tiny, "2025-07-14"))
+    assert 0 < r["F07"]["value"]["vr"] < 0.01 and r["F06"]["value"]["all_traded"] is True
+    mid = df.copy()
+    mid.loc["2025-06-25", "volume"] = 0.0                  # 放量段中间停牌一天,前后放量合并成一段
+    r = _rows(compute_facts(mid, "2025-07-14"))
+    latest = next(x for x in r["F05"]["value"]["runs"] if x["latest"])
+    assert latest["start"] <= "2025-06-25" <= latest["end"]
+    assert r["F06"]["value"]["vs_latest_run"] is None and r["F06"]["value"]["all_traded"] is None
+    assert r["F07"]["value"]["vr"] > 0                    # 买点当天有成交,当天量比照算
+    flat = df.copy()
+    flat["volume"] = 1_000_000.0
+    flat.loc["2025-07-14", "volume"] = 0.0
+    r = _rows(compute_facts(flat, "2025-07-14"))
+    assert r["F05"]["value"]["all_runs"] == [] and r["F06"]["value"]["vs_latest_run"] is None
+    assert r["F06"]["value"]["all_traded"] is True and "窗口里没有放量段可比" in r["F06"]["text"]
+
+
 def test_fixed_checklist_shape():
     f = compute_facts(qmmm_synthetic(), "2025-07-14")
     assert f["window_source"] == "default" and f["schema"] == "chart_workflow.facts/1"

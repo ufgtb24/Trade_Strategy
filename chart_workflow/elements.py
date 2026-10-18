@@ -85,8 +85,8 @@ detector(事实表)/ session / llm / general_knowledge(要素按编号复用,不
 
 判定(evaluate,纯函数):读一张图的事实表(facts.compute_facts 的输出),答 yes / no / unknown 和一句
 理由。只读事实表,事实表只用买点及以前的 K 线,所以判定也读不到买点之后。值是 null 时按值的声明:
-默认 unknown(回看不够长);说的那个东西不存在的(没有越过的峰、窗口里没有放量段)判 no;
-判定依赖的输入算不出的(needs)判 unknown。旧快照里缺字段 → unknown,提示重算事实表。
+默认 unknown(回看不够长;量比类的值在停牌日——当天没成交——也是 null);说的那个东西不存在的(没有越过的峰、
+窗口里没有放量段)判 no;判定依赖的输入算不出的(needs)判 unknown。旧快照里缺字段 → unknown,提示重算事实表。
 
 红线:不 import 标签口径(labels)、对照(control)、面板(panel)、清单(listfile),不读清单文件。
 """
@@ -162,6 +162,7 @@ def _features_cfg() -> dict:
 # none:值是 null 时怎么判;不写 = unknown(回看不够长);("no", 理由) = 说的那个东西不存在,判否。
 # exists:none 判否的值,在下界上的 at_least 等于问哪一条(拒绝时提示)。
 # needs:这些取法(可含 "*" 表示列表里每一项)有一个是 null 就答 unknown(判定所依赖的输入算不出)。
+# na:答 unknown 时理由里怎么说算不出;不写 = 回看不够长(needs 的写「它要用的 … 回看不够长」)。
 # choices:类别的全部取值。events:{"date": 事件日期字段, "bars_before": 带不带离买点根数};
 # where:事件过滤(声明的一部分,不是参数)。unit:显示用,pct 按百分比、times 按倍数。
 # same_as:函数 (cond, params, variant) → 提示 | None,这样写等于另一条定义时拒绝并指到规范写法。
@@ -221,16 +222,18 @@ VALUES: dict[str, dict[str, dict]] = {
                  "events": {"date": "start", **_EVENTS}, "same_as": _runs_same},
     },
     "F06": {
-        "dry": {"kind": "bool", "title": "买点前几天（含当天）量比都低于 1", "path": "dry", "needs": ("days.*.vr",)},
+        "dry": {"kind": "bool", "title": "买点前几天（含当天）量比都低于 1", "path": "dry", "needs": ("days.*.vr",),
+                "na": "这几天里有量比算不出的日子：回看不够长，或当天没成交"},
         "vs_latest_run": {"kind": "number", "title": "买点前几天均量 ÷ 最近一段放量段均量",
                           "path": "vs_latest_run", "lo": 0.01, "hi": 10, "soft": True, "hard": (0, None),
-                          "unit": "times",
+                          "unit": "times", "needs": ("all_traded",),
+                          "na": "这几天或最近一段放量段里有停牌日，当天没成交",
                           "none": ("no", "窗口里没有放量段可比"),
                           "exists": "窗口里有放量段(F05 的 runs events_any)"},
     },
     "F07": {
         "vr": {"kind": "number", "title": "买点当天量比", "path": "vr", "lo": 0.05, "hi": 100, "soft": True,
-               "hard": (0, None), "unit": "times"},
+               "hard": (0, None), "unit": "times", "na": "回看不够长，或当天没成交"},
     },
     "F08": {
         "pre_state": {"kind": "category", "title": "涨前状态", "path": "pre_state", "choices": PRE_STATES,
@@ -451,13 +454,15 @@ def evaluate(definition: dict, facts: dict) -> tuple[str, str]:
     if not found:
         return "unknown", f"{fid} 里没有{name}（旧快照），重算事实表"
     for need in spec.get("needs", ()):
+        if isinstance(root, dict) and need.split(".")[0] not in root:
+            return "unknown", f"{fid} 的{name}缺它要用的 {need}（旧快照），重算事实表"
         if None in _collect(root, need.split(".")):
-            return "unknown", f"{fid} 的{name}算不出（它要用的 {need} 回看不够长）"
+            return "unknown", f"{fid} 的{name}算不出（{spec.get('na') or f'它要用的 {need} 回看不够长'}）"
     if x is None:
         none = spec.get("none")
         if none:
             return none[0], f"{fid} {none[1]}"
-        return "unknown", f"{fid} 的{name}算不出（回看不够长）"
+        return "unknown", f"{fid} 的{name}算不出（{spec.get('na', '回看不够长')}）"
     params = {**definition.get("default_params", {}), **definition.get("user_params", {})}
     return _judge(fid, spec, variant, definition["cond"], params, x)
 
