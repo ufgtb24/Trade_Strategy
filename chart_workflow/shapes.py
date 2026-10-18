@@ -79,6 +79,7 @@ show --pending 会提示可能重复的卡:两张卡当前版本引用的要素�
 就一条都不写):
 {"schema": "chart_workflow.decision/1", "actor": "session", "surface": "chat", "ctx": {...},
  "ops": [<操作日志条目,不含 ts / op_id;actor / surface / ctx 缺省取文件头>]}
+调试模式(mode.py)的决定文件另写 "mode": "debug";调试模式不收没写它的,正式模式不收写了它的。
 六类形态操作的 target / value:
   create_shape  target {"shape_id"(可省,自动分配 s001、s002…)}  value {"name", "card", "change", "from_ann"}
   revise_shape  target {"shape_id"}  value {"card", "change", "from_ann"}
@@ -105,7 +106,7 @@ import sys
 from pathlib import Path
 
 from chart_workflow import elements as E
-from chart_workflow import oplog
+from chart_workflow import mode, oplog
 from chart_workflow.annotations import iter_batches
 from chart_workflow.facts import INVALIDATIONS, ROWS, TRIGGERS
 from chart_workflow.state import StateRootMissing, state_root
@@ -798,9 +799,23 @@ def checked_state() -> tuple[list[dict], dict, dict]:
     return ops, replay(ops), E.replay(ops)
 
 
+def check_decision_mode(decision: dict) -> None:
+    """决定文件和当前模式对得上(见 mode.py):调试模式的决定文件必须写 "mode": "debug",正式模式拒绝它。
+    会话在调试时忘了带模式环境变量,命令当场报错,测试要素、测试卡不会悄悄写进正式的操作日志。
+    对不上 → ShapeValidationError。"""
+    want = decision.get("mode") if isinstance(decision, dict) else None
+    if mode.is_debug() and want != mode.DEBUG:
+        raise ShapeValidationError([f'调试模式的决定文件要写 "mode": "{mode.DEBUG}"(防止它被正式模式收下)'])
+    if not mode.is_debug() and want not in (None, mode.FORMAL):
+        raise ShapeValidationError([f'这份决定文件写着 "mode": {want!r},是调试模式的,正式模式不收;'
+                                    f'调试时每条命令前带上 {mode.ENV_VAR}={mode.DEBUG}'])
+
+
 def apply(decision: dict) -> tuple[list[dict], list[str]]:
     """校验(先重走全部日志,再校验这个决定文件)→ 追加日志 → 从全部日志重算受影响的要素与卡 → 写文件。
-    返回 (追加的条目, 受影响的 shape_id);受影响的要素编号见 touched_elements(追加的条目)。"""
+    返回 (追加的条目, 受影响的 shape_id);受影响的要素编号见 touched_elements(追加的条目)。
+    决定文件的 mode 和当前模式对不上 → ShapeValidationError(check_decision_mode)。"""
+    check_decision_mode(decision)
     existing = checked_ops()
     ops, _ = prepare(decision, existing, _ann_index())
     written = oplog.append(ops, oplog.VIA_DECISION)

@@ -41,6 +41,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from chart_workflow import mode
 from chart_workflow.config import REPO_ROOT, load_config
 from chart_workflow.control import Control, summarize
 from chart_workflow.dataerrors import load_pool
@@ -221,6 +222,7 @@ def main(argv=None) -> None:
         ap.error("--params 只能和 --app 一起用")
     cfg = load_config()
     try:                      # 拿不到状态根就停,什么都不生成;来源不对、清单名用过、规则和形态卡对不上也先停
+        mode.check_list_id(args.list_id)      # 清单名和模式对不上(调试时忘了带模式环境变量):什么都不碰
         root = state_root()
         check_source(args.source)
         check_new_list_id(cfg, args.list_id)

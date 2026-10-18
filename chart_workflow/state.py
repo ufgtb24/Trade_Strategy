@@ -53,6 +53,16 @@ sha256 + 行数」,见过的每一行的指纹另存在旁边的 watermark.seen/
 副本登记(见 snaplock.py):state_root() 给出状态根之前,还核对本机训练数据副本的内容指纹与
 状态根里 snapshot_lock.json 登记的是否一致,不一致就停下。
 
+调试模式(见 mode.py,环境变量 CHART_WORKFLOW_MODE=debug):状态根换成调试账——环境变量
+CHART_WORKFLOW_DEBUG_STATE_ROOT 有值就用它,否则是主目录的 outputs/chart_workflow_debug/(不进 git)。
+调试模式不认 CHART_WORKFLOW_STATE_ROOT,正式账一行都不写。调试账的标记文件是 DEBUG_LEDGER.md:
+  正式模式:状态根里有 DEBUG_LEDGER.md → 停下(那是调试账);
+  调试模式:没有 DEBUG_LEDGER.md、有 STATE_ROOT.md、或者和正式账是同一个目录 / 互相包含 → 停下。
+调试账不进 git、能清空重来,切分支动不了它,所以没有水位,也不查别的分支:advance 什么都不做,
+reset-watermark 拒绝;正式水位(git 公共目录里那份)调试模式一律不读不写——主目录的调试账和正式账在同一个
+仓库里,按仓库取水位位置就会落到正式那份上,所以 watermark_path 遇到调试模式或调试账直接报错。
+调试账的副本登记照样核对(同一份训练数据副本)。新建、清空见 debugroot.py;init 只建正式格式的账。
+
     uv run python -m chart_workflow.state show
     uv run python -m chart_workflow.state init <目录>
     uv run python -m chart_workflow.state reset-watermark --reason "<原因>"
@@ -72,10 +82,13 @@ from datetime import datetime
 from functools import lru_cache
 from pathlib import Path
 
+from chart_workflow import mode
 from chart_workflow.config import REPO_ROOT
 
 MARKER = "STATE_ROOT.md"
 ENV_VAR = "CHART_WORKFLOW_STATE_ROOT"
+DEBUG_MARKER = "DEBUG_LEDGER.md"                  # 调试账的标记(见模块说明「调试模式」)
+DEBUG_ENV_VAR = "CHART_WORKFLOW_DEBUG_STATE_ROOT"
 
 MARKER_TEXT = """# 看图工作流的记账类文件
 
@@ -155,6 +168,10 @@ class NotInRepo(StateRootMissing):
     """目录不在 git 仓库里。"""
 
 
+class WrongModeRoot(StateRootMissing):
+    """状态根属于另一种模式:正式模式遇到调试账,调试模式遇到正式账或和正式账重叠的目录。"""
+
+
 @lru_cache(maxsize=16)
 def _git_common_dir(start: str) -> str:
     try:
@@ -174,12 +191,56 @@ def main_worktree(start: Path = REPO_ROOT) -> Path:
     return Path(_git_common_dir(str(Path(start).resolve()))).parent
 
 
-def locate(start: Path = REPO_ROOT) -> Path:
-    """状态根应在的位置(不检查标记)。环境变量优先。"""
+def formal_locate(start: Path = REPO_ROOT) -> Path:
+    """正式账应在的位置(不检查标记,不看模式)。环境变量 CHART_WORKFLOW_STATE_ROOT 优先。"""
     env = os.environ.get(ENV_VAR)
     if env:
         return Path(env).resolve()
     return main_worktree(start) / "outputs" / "chart_workflow"
+
+
+def debug_default(start: Path = REPO_ROOT) -> Path:
+    """调试账的默认位置:主目录的 outputs/chart_workflow_debug(正式账默认位置旁边加 _debug)。"""
+    return mode.debug_variant(main_worktree(start) / "outputs" / "chart_workflow")
+
+
+def debug_locate(start: Path = REPO_ROOT) -> Path:
+    """调试账应在的位置(不检查标记,不看模式)。环境变量 CHART_WORKFLOW_DEBUG_STATE_ROOT 优先。"""
+    env = os.environ.get(DEBUG_ENV_VAR)
+    if env:
+        return Path(env).resolve()
+    return debug_default(start)
+
+
+def locate(start: Path = REPO_ROOT) -> Path:
+    """当前模式的状态根应在的位置(不检查标记):正式模式 formal_locate,调试模式 debug_locate。"""
+    return debug_locate(start) if mode.is_debug() else formal_locate(start)
+
+
+def overlaps(a: Path, b: Path) -> bool:
+    """两个目录是同一个,或一个在另一个里面。"""
+    a, b = Path(a).resolve(), Path(b).resolve()
+    return a == b or a in b.parents or b in a.parents
+
+
+def check_debug_root(path: Path) -> None:
+    """path 能当调试账用。有正式账的标记、或和正式账是同一个目录 / 互相包含 → WrongModeRoot;
+    没有调试账的标记(还没建)→ StateRootMissing。消息是给用户看的中文。"""
+    path = Path(path)
+    if (path / MARKER).exists():
+        raise WrongModeRoot(f"{path} 里有正式账的标记 {MARKER},不是调试账,调试模式不用它。"
+                            f"它在调试账的位置上时,运行 python -m chart_workflow.debugroot clear 清空重建")
+    try:
+        formal = formal_locate()
+    except StateRootMissing:
+        formal = None
+    if formal is not None and overlaps(path, formal):
+        raise WrongModeRoot(f"调试账 {path} 和正式账 {formal} 是同一个目录或互相包含,调试模式不用它")
+    if not (path / DEBUG_MARKER).is_file():
+        raise StateRootMissing(
+            f"{path} 下没有调试账的标记 {DEBUG_MARKER}:调试账还没建。运行 python -m chart_workflow.debugroot "
+            f"init 新建(启动脚本 scripts/path2/run_path2_web_debug.py 会自动建);那里已有别的东西时,"
+            f"运行 python -m chart_workflow.debugroot clear 清空重建")
 
 
 def missing_message(path: Path) -> str:
@@ -189,10 +250,18 @@ def missing_message(path: Path) -> str:
             f"再运行 python -m chart_workflow.state init <那个目录>")
 
 
+def _refuse_debug_watermark(root: Path) -> None:
+    """调试模式、或 root 是调试账:不碰任何水位(见模块说明「调试模式」)。"""
+    if mode.is_debug() or (Path(root) / DEBUG_MARKER).exists():
+        raise StateRootMissing(f"调试模式与调试账没有水位,不读写任何水位文件({root})")
+
+
 def watermark_path(root: Path) -> Path:
     """root 的水位文件,位置只跟着 root 走:root 是环境变量指定的临时状态根,或者不在 git 仓库里 →
     root/.watermark.json;否则 → root 所在仓库的 <git 公共目录>/chart_workflow/watermark.json(不随分支走、
-    所有 worktree 共用)。不拿代码所在的仓库兜底——别的仓库里的状态根不会把水位写进这份代码所在仓库的 .git。"""
+    所有 worktree 共用)。不拿代码所在的仓库兜底——别的仓库里的状态根不会把水位写进这份代码所在仓库的 .git。
+    调试模式或 root 是调试账 → StateRootMissing(调试账没有水位,主目录的调试账按仓库取会落到正式水位上)。"""
+    _refuse_debug_watermark(root)
     env = os.environ.get(ENV_VAR)
     if env and Path(env).resolve() == Path(root).resolve():
         return Path(root) / ".watermark.json"
@@ -394,7 +463,8 @@ def _foreign_root(wm: dict, root: Path) -> str | None:
 def _sync(root: Path, wm_file: Path, write: bool = True) -> None:
     """核对水位:见过的行和文件都还在 → write 时把当前内容记进水位;少了 → StateRootRegressed;
     水位文件记的是别的状态根 → ForeignWatermark(不拿别处的水位当本账的比)。
-    write=False:只核对,什么都不写(只读接口用)。"""
+    write=False:只核对,什么都不写(只读接口用)。调试模式或调试账 → StateRootMissing(不碰水位)。"""
+    _refuse_debug_watermark(root)
     with _WM_LOCK:
         wm = _read_wm(wm_file)
         foreign = _foreign_root(wm, root)
@@ -579,12 +649,20 @@ def _check_diverged(root: Path) -> None:
 
 
 def _checked(start: Path, write: bool) -> Path:
-    path = locate(start)
+    from chart_workflow import snaplock             # 函数内导入:snaplock 依赖本模块
+    if mode.is_debug():
+        path = debug_locate(start)
+        check_debug_root(path)
+        snaplock.verify(snaplock.local_dataset_dir(), path)
+        return path
+    path = formal_locate(start)
+    if (path / DEBUG_MARKER).exists():
+        raise WrongModeRoot(f"状态根 {path} 是调试账(有标记 {DEBUG_MARKER}),正式模式不用它;"
+                            f"把环境变量 {ENV_VAR} 指到正式账,或调试时设 {mode.ENV_VAR}={mode.DEBUG}")
     if not (path / MARKER).is_file():
         raise StateRootMissing(missing_message(path))
     _sync(path, watermark_path(path), write=write)
     _check_diverged(path)
-    from chart_workflow import snaplock             # 函数内导入:snaplock 依赖本模块
     snaplock.verify(snaplock.local_dataset_dir(), path)
     return path
 
@@ -593,7 +671,8 @@ def state_root(start: Path = REPO_ROOT) -> Path:
     """记账类文件的唯一的家。目录里没有标记文件 → StateRootMissing(绝不新建);
     记账文件比水位里见过的少 → StateRootRegressed;别的分支上有更新的账 → StateRootDiverged。
     核对通过时顺手把当前内容记进水位。本机副本不是账上登记的那一份 → snaplock.SnapshotMismatch;
-    账还没登记副本 → snaplock.SnapshotNotRegistered(这几种都是 StateRootMissing 的子类)。"""
+    账还没登记副本 → snaplock.SnapshotNotRegistered(这几种都是 StateRootMissing 的子类)。
+    调试模式下是调试账(见模块说明「调试模式」):不能用 → StateRootMissing / WrongModeRoot,不碰水位。"""
     return _checked(start, write=True)
 
 
@@ -603,7 +682,10 @@ def check_root(start: Path = REPO_ROOT) -> Path:
 
 
 def advance(root: Path) -> None:
-    """写入方写完记账文件后调用:核对并把刚写的内容记进水位(下次切到旧分支就能发现少了它)。"""
+    """写入方写完记账文件后调用:核对并把刚写的内容记进水位(下次切到旧分支就能发现少了它)。
+    调试模式下什么都不做(调试账没有水位)。"""
+    if mode.is_debug():
+        return
     _sync(Path(root), watermark_path(root))
 
 
@@ -615,6 +697,7 @@ def reset_watermark(root: Path, reason: str) -> dict:
     if not reason:
         raise ValueError("重置水位必须写明原因(--reason)")
     root = Path(root)
+    _refuse_debug_watermark(root)
     if not (root / MARKER).is_file():
         raise StateRootMissing(missing_message(root))
     wm_file = watermark_path(root)
@@ -667,6 +750,9 @@ def init(path: Path) -> Path:
         raise ValueError(f"{path} 是默认状态根位置,不能用 init 新建:那里的标记文件随记账文件"
                          f"一起受 git 跟踪,切回有记账文件的分支即可。测试或临时用途请 init 别的目录,"
                          f"并用环境变量 {ENV_VAR} 指向它")
+    if (path / DEBUG_MARKER).exists() or path in [mode.debug_variant(p) for p in _default_root_of(path)]:
+        raise ValueError(f"{path} 是调试账(或调试账的默认位置),不能在这里开正式格式的账;"
+                         f"调试账用 python -m chart_workflow.debugroot init")
     path.mkdir(parents=True, exist_ok=True)
     marker = path / MARKER
     if not marker.exists():
@@ -703,6 +789,15 @@ def main(argv=None) -> None:
     c.add_argument("--reason", required=True)
     c.add_argument("--generated-on", default=None)
     args = ap.parse_args(argv)
+    try:
+        debug = mode.is_debug()
+    except mode.ModeError as e:
+        print(f"错误:{e}", file=sys.stderr)
+        sys.exit(2)
+    if debug and args.cmd != "show":
+        print(f"错误:调试模式下 state {args.cmd} 不可用:调试账没有水位,新建、清空、登记副本用 "
+              f"python -m chart_workflow.debugroot init / clear", file=sys.stderr)
+        sys.exit(2)
     if args.cmd == "init":
         try:
             p = init(Path(args.path))
@@ -746,19 +841,34 @@ def main(argv=None) -> None:
             print(f"  重置前少了:{m}")
         print(f"重置记录已追加到 {path / RESETS_FILE}")
         return
-    src = f"环境变量 {ENV_VAR}" if os.environ.get(ENV_VAR) else "主目录"
-    has = (path / MARKER).is_file()
-    print(f"状态根:{path}(来自{src})")
-    print(f"标记文件 {MARKER}:{'在' if has else '不在'}")
-    if not has:
-        print(missing_message(path), file=sys.stderr)
-        sys.exit(2)
-    try:
-        _sync(path, watermark_path(path))
-        print(f"水位核对:通过({watermark_path(path)})")
-    except StateRootMissing as e:
-        print(f"水位核对:不通过。{e}", file=sys.stderr)
-        sys.exit(2)
+    if debug:
+        src = f"环境变量 {DEBUG_ENV_VAR}" if os.environ.get(DEBUG_ENV_VAR) else "主目录"
+        print(f"调试模式:{mode.DEBUG_LABEL}")
+        print(f"状态根:{path}(调试账,来自{src})")
+        try:
+            check_debug_root(path)
+        except StateRootMissing as e:
+            print(f"标记文件 {DEBUG_MARKER}:不能用。{e}", file=sys.stderr)
+            sys.exit(2)
+        print(f"标记文件 {DEBUG_MARKER}:在")
+        print("水位:调试账没有水位(不进 git,能清空重来)")
+    else:
+        src = f"环境变量 {ENV_VAR}" if os.environ.get(ENV_VAR) else "主目录"
+        has = (path / MARKER).is_file()
+        print(f"状态根:{path}(来自{src})")
+        print(f"标记文件 {MARKER}:{'在' if has else '不在'}")
+        if not has:
+            print(missing_message(path), file=sys.stderr)
+            sys.exit(2)
+        if (path / DEBUG_MARKER).exists():
+            print(f"这是调试账(有标记 {DEBUG_MARKER}),正式模式不用它", file=sys.stderr)
+            sys.exit(2)
+        try:
+            _sync(path, watermark_path(path))
+            print(f"水位核对:通过({watermark_path(path)})")
+        except StateRootMissing as e:
+            print(f"水位核对:不通过。{e}", file=sys.stderr)
+            sys.exit(2)
     for name, rel, how in _KINDS:
         print(f"  {name:<10} {_count(path / rel, how):>6}  ({rel})")
     from chart_workflow import snaplock
@@ -772,8 +882,9 @@ def main(argv=None) -> None:
         print(f"本机训练数据副本:{e}", file=sys.stderr)
     lock = snaplock.read_lock(path)
     if lock is None:
-        print("账上登记的副本:没有登记(第一次在生成副本的那台机器上运行 state snapshot-register;"
-              "临时状态根也要登记)", file=sys.stderr)
+        print("账上登记的副本:没有登记(" + ("调试账运行 python -m chart_workflow.debugroot clear 重建" if debug else
+              "第一次在生成副本的那台机器上运行 state snapshot-register;临时状态根也要登记") + ")",
+              file=sys.stderr)
         sys.exit(2)
     cur = lock["current"]
     print(f"账上登记的副本:指纹 {cur['sha']},{cur['n_files']} 个文件,{cur['created_at']} 在 "

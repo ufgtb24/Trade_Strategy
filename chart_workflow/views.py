@@ -68,6 +68,7 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
+from chart_workflow import mode
 from chart_workflow import state as _state
 from chart_workflow.config import load_config, root_dir
 from chart_workflow.state import StateRootMissing, state_root
@@ -423,6 +424,7 @@ def main(argv=None) -> None:
                 raise ValueError("要么给 --symbol --start --end(一张图),要么给 --list-id(整份清单)")
             event, charts = "open_list", None
         if args.list_id:
+            mode.check_list_id(args.list_id)      # 调试时忘了带模式环境变量:当场报错,不记进正式账
             p = root_dir(load_config()) / "lists" / f"{args.list_id}.json"
             if _LIST_ID_RE.fullmatch(args.list_id) and p.exists():
                 doc = json.loads(p.read_text())

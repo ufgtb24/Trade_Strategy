@@ -19,7 +19,8 @@
   7. 毕业         清单 summary 里的毕业判定通过
 
 模块分工:
-  config(默认值)/ state(状态根:记账类文件唯一的家)/ loader(唯一的读数据口,只读截断副本)/
+  config(默认值)/ mode(正式模式与调试模式)/ state(状态根:记账类文件唯一的家)/
+  debugroot(调试账的新建与清空)/ loader(唯一的读数据口,只读截断副本)/
   snapshot(生成截断副本)/ securities(证券分类与图头类别)/ labels(标签口径)/ features(分组特征)/
   panel(池内股票日面板)/ dataerrors(数据错误登记与排除)/ control(同日对照与毕业判定)/
   rules(取命中)/ listfile(清单文件)/ annotations(标注批次 v1 / v2 统一读取)/
@@ -60,4 +61,11 @@ data_errors.json,并排除受影响的股票日。
 
 默认值全部集中在 config.py 的 DEFAULTS,可由 configs/chart_workflow.yaml 覆盖;
 标「待验证」的数值都是先取的默认值。
+
+调试模式(mode.py):已有数据最早的一年 2021-10-01..2022-09-30 是调试段,只用来调试这套工具,不进正式账、
+不算尝试。网页用 uv run python scripts/path2/run_path2_web_debug.py 一条命令启动;会话在调试时每条命令前带
+CHART_WORKFLOW_MODE=debug(清单名 dbg- 开头,决定文件写 "mode": "debug",忘了带会当场报错)。调试模式下
+看图范围、训练段、内圈年份强制成调试段,读任何行情都截在 2022-09-30;记账写调试账(主目录的
+outputs/chart_workflow_debug/,不进 git,没有水位),正式账一行都不写;清单、缓存放 _debug 目录。
+调试账清空重来:uv run python -m chart_workflow.debugroot clear(见 debugroot.py)。
 """

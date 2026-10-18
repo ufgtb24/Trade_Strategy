@@ -12,6 +12,10 @@ DEFAULT_CONFIG = {
     "backend_port": 8000,
     "backend_port_dbg": 8002,
     "frontend_port": 5173,
+    # 看图工作流调试模式(scripts/path2/run_path2_web_debug.py,见 chart_workflow/mode.py)的前后端端口(待验证):
+    # 和正式模式的端口分开,两个网页可以同时开着
+    "debug_mode_backend_port": 8011,
+    "debug_mode_frontend_port": 5181,
     "dataset_dir": "datasets/pkls",   # 调试视图已不读它:K 线、诊断、预览、扫描一律读 workflow.dataset_dir(见 guard.py)
     "scan": {
         "start_date": "2025-01-01",

@@ -14,6 +14,9 @@
 
 两个进程并行运行,任一退出或按 Ctrl+C 时一并优雅关停。
 参数在 main() 顶部声明(无 argparse,遵循入口规范)。
+
+本脚本起的是正式模式。看图工作流的调试模式(调试段 2021-10..2022-09,写调试账、不进正式账)用
+scripts/path2/run_path2_web_debug.py 启动,端口另配,和正式模式可以同时开着。
 """
 from __future__ import annotations
 
@@ -170,30 +173,30 @@ def _terminate(proc: subprocess.Popen) -> None:
         os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
 
 
-def main() -> None:
-    # ===== 参数(在此处直接改) =====
-    from path2_web.config import load_config
-    cfg = load_config()
-    BACKEND_PORT = int(cfg["backend_port"])   # 改端口请改 configs/path2_web.yaml
-    FRONTEND_PORT = int(cfg["frontend_port"])  # 通过 --port 传给 vite,--strictPort 禁止自动换端口
-    BACKEND_CMD = ["uv", "run", "python", "-m", "path2_web.main"]
-    FRONTEND_CMD = ["npm", "run", "dev", "--", "--port", str(FRONTEND_PORT), "--strictPort"]
-    FRONTEND_DIR = REPO / "path2_web_ui"
-    # ================================
+def serve(backend_port: int, frontend_port: int, *, backend_env: dict[str, str] | None = None,
+          tag: str = "run_path2_web") -> None:
+    """清场 → 起后端与前端 → 等任一退出或 Ctrl+C 后一并关停。
+
+    backend_env:合进后端子进程环境的变量(例如看图工作流的模式,见 run_path2_web_debug.py);
+    后端端口由 path2_web.main 自己按同一份配置取,这里的 backend_port 用于清场和前端的 VITE_API_BASE。
+    """
+    backend_cmd = ["uv", "run", "python", "-m", "path2_web.main"]
+    frontend_cmd = ["npm", "run", "dev", "--", "--port", str(frontend_port), "--strictPort"]
+    frontend_dir = REPO / "path2_web_ui"
 
     # 启动前清场:检测到端口已被占用(通常是本工具的残留实例)就统统关闭,不绕开
-    _free_port(BACKEND_PORT, "backend")
-    _free_port(FRONTEND_PORT, "frontend")
+    _free_port(backend_port, "backend")
+    _free_port(frontend_port, "frontend")
 
-    _ensure_frontend_deps(FRONTEND_DIR)
+    _ensure_frontend_deps(frontend_dir)
 
     procs: list[tuple[str, subprocess.Popen]] = []
-    print(f"[run_path2_web] 启动后端: {' '.join(BACKEND_CMD)}")
-    procs.append(("backend", _spawn(BACKEND_CMD, REPO)))
-    print(f"[run_path2_web] 启动前端: {' '.join(FRONTEND_CMD)} (cwd={FRONTEND_DIR})")
+    print(f"[{tag}] 启动后端: {' '.join(backend_cmd)}")
+    procs.append(("backend", _spawn(backend_cmd, REPO, env={**os.environ, **(backend_env or {})})))
+    print(f"[{tag}] 启动前端: {' '.join(frontend_cmd)} (cwd={frontend_dir})")
     frontend_env = _frontend_env()
-    frontend_env["VITE_API_BASE"] = f"http://localhost:{BACKEND_PORT}"
-    procs.append(("frontend", _spawn(FRONTEND_CMD, FRONTEND_DIR, env=frontend_env)))
+    frontend_env["VITE_API_BASE"] = f"http://localhost:{backend_port}"
+    procs.append(("frontend", _spawn(frontend_cmd, frontend_dir, env=frontend_env)))
 
     # 统一接管 SIGINT(Ctrl+C)/SIGTERM(kill、timeout):首次触发即把两者都
     # 设为忽略,确保随后的清理段不会被第二次信号(PyCharm 停止键常连发)打断。
@@ -204,24 +207,35 @@ def main() -> None:
     signal.signal(signal.SIGINT, _on_signal)
     signal.signal(signal.SIGTERM, _on_signal)
 
-    print("[run_path2_web] 前后端已启动,按 Ctrl+C 退出。")
+    print(f"[{tag}] 前后端已启动,按 Ctrl+C 退出。")
     try:
         while True:
             for name, proc in procs:
                 code = proc.poll()
                 if code is not None:
-                    print(f"[run_path2_web] {name} 进程已退出(code={code}),关停其余进程。")
+                    print(f"[{tag}] {name} 进程已退出(code={code}),关停其余进程。")
                     return
             time.sleep(0.5)
     except KeyboardInterrupt:
-        print("\n[run_path2_web] 收到中断信号,正在关停...")
+        print(f"\n[{tag}] 收到中断信号,正在关停...")
     finally:
         # 进入清理前再次确保信号被忽略(覆盖 return 路径与竞态窗口)
         signal.signal(signal.SIGINT, signal.SIG_IGN)
         signal.signal(signal.SIGTERM, signal.SIG_IGN)
         for name, proc in procs:
             _terminate(proc)
-        print("[run_path2_web] 已全部关停。")
+        print(f"[{tag}] 已全部关停。")
+
+
+def main() -> None:
+    # ===== 参数(在此处直接改) =====
+    from path2_web.config import load_config
+    cfg = load_config()
+    BACKEND_PORT = int(cfg["backend_port"])   # 改端口请改 configs/path2_web.yaml
+    FRONTEND_PORT = int(cfg["frontend_port"])  # 通过 --port 传给 vite,--strictPort 禁止自动换端口
+    # ================================
+    # 正式模式:后端显式按正式模式起(shell 里留着调试模式的环境变量也不受影响,见 chart_workflow/mode.py)
+    serve(BACKEND_PORT, FRONTEND_PORT, backend_env={"CHART_WORKFLOW_MODE": "formal"})
 
 
 if __name__ == "__main__":

@@ -31,6 +31,7 @@ import sys
 import numpy as np
 import pandas as pd
 
+from chart_workflow import mode
 from chart_workflow.config import load_config
 from chart_workflow.dataerrors import load_pool
 from chart_workflow.features import PRE_STATES
@@ -116,6 +117,7 @@ def main(argv=None) -> None:
     if args.view_floor is not None:
         cfg["view_floor"] = None if args.view_floor.lower() == "none" else args.view_floor
     try:
+        mode.check_list_id(args.list_id)      # 清单名和模式对不上(调试时忘了带模式环境变量)就停,什么都不碰
         state_root()                          # 拿不到状态根就停,什么都不生成
         check_new_list_id(cfg, args.list_id)  # 清单名用过也停
     except (StateRootMissing, ValueError) as e:

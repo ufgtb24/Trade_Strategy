@@ -283,9 +283,19 @@ export type WorkflowListKind = 'bigmoves' | 'contrast' | 'contrast_blind'
 /** 看图工作流里的单张图事件:放大看了 / 点了买点或选了判定 / 大涨段第一次露出结果 */
 export type ChartViewEvent = 'zoom' | 'annotate' | 'reveal' | 'peek'
 
-/** 后端状态根:在哪、是不是来自环境变量(临时目录,记录不进正式账本)、能不能用 */
+/** 后端状态根:在哪、是不是来自环境变量(临时目录,记录不进正式账本)、能不能用、是哪种模式 */
 export interface WorkflowStateInfo {
   path: string | null; from_env: boolean; env_var: string; ok: boolean; message: string | null
+  mode?: 'formal' | 'debug'; mode_label?: string | null
+}
+
+/** 后端是正式模式还是看图工作流的调试模式(调试段,写调试账、不进正式账),以及生效的看图范围 */
+export interface ModeInfo {
+  mode: 'formal' | 'debug'
+  /** 调试模式时界面顶上横幅的文字;正式模式为 null */
+  label: string | null
+  view_floor: string
+  train_end: string
 }
 
 export interface WorkflowListMeta {

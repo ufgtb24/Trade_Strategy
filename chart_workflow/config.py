@@ -8,6 +8,8 @@
 `root` 只放可重算的产物(清单 lists/、缓存 cache/、数据错误登记 data_errors.json),随各自
 worktree;记账类文件放状态根(见 state.py),不经 root_dir。`dataset_dir` 默认指向截断副本
 (见 snapshot.py / loader.py),train_end 不得晚于 loader.HARD_END(load_config 检查)。
+调试模式(mode.py)下 load_config 把训练段起止、看图下界、内圈年份强制换成调试段 2021-10-01..2022-09-30,
+root 换成旁边的 _debug 目录;正式模式一个键都不改。
 """
 from __future__ import annotations
 
@@ -143,7 +145,9 @@ def _deep_merge(base: dict, override: dict) -> dict:
 
 
 def load_config(path=DEFAULT_PATH, override: dict | None = None) -> dict:
-    """读默认值 → yaml 覆盖(文件不存在就跳过) → override 覆盖(测试 / 命令行用)。"""
+    """读默认值 → yaml 覆盖(文件不存在就跳过) → override 覆盖(测试 / 命令行用)。
+    调试模式(chart_workflow.mode)最后再把训练段起止、看图下界、内圈年份强制写成调试段,root 换成旁边的
+    _debug 目录——yaml 和 override 都改不了它们。"""
     cfg = copy.deepcopy(DEFAULTS)
     path = Path(path)
     if path.exists():
@@ -153,7 +157,8 @@ def load_config(path=DEFAULT_PATH, override: dict | None = None) -> dict:
     from chart_workflow.loader import HARD_END
     if str(cfg["train_end"]) > HARD_END:
         raise ValueError(f"train_end={cfg['train_end']} 晚于 {HARD_END}:之后是验证段,不得读到")
-    return cfg
+    from chart_workflow import mode
+    return mode.apply_to_workflow_config(cfg, resolve_path(cfg["root"]))
 
 
 def resolve_path(p) -> Path:

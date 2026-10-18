@@ -32,7 +32,13 @@ first_buy_points 缺失或跟它不一样、或最后的买点跟它不一样,ch
 拿不到状态根(StateRootMissing,含水位核对不过的 StateRootRegressed)时记不了「看过」:打开清单、
 发送标注一律 503,不给图;/workflow/lists 照常列名字,但每项带 blocked = "state_root_missing" 与消息。
 /workflow/state 只读地报告状态根在哪、是不是来自环境变量(端到端测试开跑前核对,界面据此显示提示条;
-只核对、不写水位,见 chart_workflow.state.check_root)。
+只核对、不写水位,见 chart_workflow.state.check_root),以及现在是哪种模式。
+
+调试模式(chart_workflow.mode,后端进程带环境变量 CHART_WORKFLOW_MODE=debug 启动):workflow 子树的看图下界、
+训练段末日强制成调试段 2021-10-01..2022-09-30(配置改不了),清单目录换成 root 旁边的 _debug 目录,状态根是调试账。
+两种模式只认自己的清单:清单名(调试模式 dbg- 开头,正式模式不收它)或清单文件的 mode 标记对不上 → 列表里不出现、
+打开 / 记单张图事件 / 发标注一律 403;调试模式下清单里任何日期晚于调试段终点也 403(不截断:截了也会从
+条目编号、决策日露出后面的日子)。正式模式的这些行为不变。
 """
 from __future__ import annotations
 
@@ -48,9 +54,10 @@ import pandas as pd
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, StrictBool
 
+from chart_workflow import mode as cw_mode
 from chart_workflow import state as cw_state
 from chart_workflow import views
-from chart_workflow.loader import HARD_END, NotASnapshot, check_symbol, load_bars
+from chart_workflow.loader import NotASnapshot, check_symbol, load_bars, read_ceiling
 from chart_workflow.state import StateRootMissing, state_root
 from path2_web.config import DEFAULT_CONFIG
 from path2_web.data import serialize_ohlc, slice_window
@@ -128,17 +135,24 @@ def _now() -> datetime:
 
 
 def _wf_cfg(cfg: dict) -> dict:
-    return {**DEFAULT_CONFIG["workflow"], **(cfg.get("workflow") or {})}
+    """生效的 workflow 子树:默认值 ← 配置;调试模式再把看图下界、训练段末日强制成调试段(配置改不了)。"""
+    wf = {**DEFAULT_CONFIG["workflow"], **(cfg.get("workflow") or {})}
+    if cw_mode.is_debug():
+        wf.update(view_floor=cw_mode.DEBUG_START, train_end=cw_mode.DEBUG_END)
+    return wf
 
 
 def _root(cfg: dict) -> Path:
+    """清单所在的根目录;调试模式是配置的 root 旁边加 _debug 的目录。"""
     p = Path(_wf_cfg(cfg)["root"])
-    return p if p.is_absolute() else _REPO_ROOT / p
+    p = p if p.is_absolute() else _REPO_ROOT / p
+    return cw_mode.debug_variant(p) if cw_mode.is_debug() else p
 
 
 def _train_end(cfg: dict) -> str:
-    """训练段末日:配置值和 HARD_END 取小(配置写成 2026 年也不越过硬上限)。"""
-    return min(str(_wf_cfg(cfg)["train_end"]), HARD_END)
+    """训练段末日:配置值和读行情的上限取小(正式模式 HARD_END,配置写成 2026 年也不越过它;
+    调试模式是调试段终点)。"""
+    return min(str(_wf_cfg(cfg)["train_end"]), read_ceiling())
 
 
 def _view_floor(cfg: dict) -> str:
@@ -177,8 +191,42 @@ def _before_floor(doc: dict, floor: str) -> bool:
 
 
 def _check_list_id(list_id: str) -> None:
+    """清单名格式不对 → 400;和当前模式对不上(调试模式要 dbg- 开头,正式模式不收它)→ 403。"""
     if not list_id or not _LIST_ID_RE.fullmatch(list_id):
         raise HTTPException(400, f"非法清单名: {list_id!r}")
+    try:
+        cw_mode.check_list_id(list_id)
+    except cw_mode.ModeError as e:
+        raise HTTPException(403, str(e)) from None
+
+
+def _dates_in(obj):
+    """清单条目里所有 YYYY-MM-DD 形式的字符串(含条目编号里「代码@日期」的日期)。"""
+    if isinstance(obj, dict):
+        for v in obj.values():
+            yield from _dates_in(v)
+    elif isinstance(obj, list):
+        for v in obj:
+            yield from _dates_in(v)
+    elif isinstance(obj, str):
+        yield from re.findall(r"\d{4}-\d{2}-\d{2}", obj)
+
+
+def _list_refusal(doc: dict, cfg: dict) -> str | None:
+    """这份清单在当前模式下为什么不能列出 / 打开(None = 能):属于另一种模式;图窗早于看图下界;
+    调试模式下任何日期晚于调试段终点(不截断,整份拦下)。"""
+    foreign = cw_mode.foreign_reason(doc, "清单")
+    if foreign:
+        return foreign
+    floor = _view_floor(cfg)
+    if _before_floor(doc, floor):
+        return f"这份清单的图窗早于本轮看图下界 {floor}，不能打开"
+    if cw_mode.is_debug():
+        te = _train_end(cfg)
+        late = [d for d in _dates_in(doc.get("items") or []) if d > te]
+        if late or str(doc.get("train_end") or "") > te:
+            return f"这份清单有晚于调试段终点 {te} 的日期，调试模式打不开"
+    return None
 
 
 def _check_symbol(symbol: str) -> None:
@@ -236,25 +284,27 @@ def build_workflow_router(*, get_config) -> APIRouter:
 
     @router.get("/state")
     def wf_state():
-        """状态根在哪、是不是来自环境变量、能不能用(只读,不建任何东西)。"""
-        from_env = bool(os.environ.get(cw_state.ENV_VAR))
+        """状态根在哪、是不是来自环境变量、能不能用(只读,不建任何东西);调试模式另报 mode 与 mode_label
+        (状态根是调试账,环境变量是 CHART_WORKFLOW_DEBUG_STATE_ROOT)。"""
+        debug = cw_mode.is_debug()
+        env_var = cw_state.DEBUG_ENV_VAR if debug else cw_state.ENV_VAR
+        head = {"from_env": bool(os.environ.get(env_var)), "env_var": env_var}
+        if debug:
+            head.update(mode=cw_mode.DEBUG, mode_label=cw_mode.DEBUG_LABEL)
         try:
             path = str(cw_state.locate())
         except StateRootMissing as e:
-            return {"path": None, "from_env": from_env, "env_var": cw_state.ENV_VAR,
-                    "ok": False, "message": str(e)}
+            return {"path": None, **head, "ok": False, "message": str(e)}
         try:
             cw_state.check_root()                   # 只核对,不写水位
             ok, msg = True, None
         except StateRootMissing as e:
             ok, msg = False, str(e)
-        return {"path": path, "from_env": from_env, "env_var": cw_state.ENV_VAR,
-                "ok": ok, "message": msg}
+        return {"path": path, **head, "ok": ok, "message": msg}
 
     @router.get("/lists")
     def wf_lists():
         cfg = get_config()
-        floor = _view_floor(cfg)
         try:
             state_root()
             blocked = None
@@ -266,7 +316,11 @@ def build_workflow_router(*, get_config) -> APIRouter:
             doc = _read_json(p)
             if not isinstance(doc, dict) or not _LIST_ID_RE.fullmatch(p.stem):
                 continue
-            if _before_floor(doc, floor):
+            try:
+                cw_mode.check_list_id(p.stem)
+            except cw_mode.ModeError:
+                continue
+            if _list_refusal(doc, cfg):
                 continue
             row = {"list_id": p.stem, "kind": doc.get("kind"), "title": doc.get("title"),
                    "created_at": doc.get("created_at"), "n_items": len(doc.get("items") or [])}
@@ -288,8 +342,9 @@ def build_workflow_router(*, get_config) -> APIRouter:
         if not isinstance(doc, dict):
             raise HTTPException(500, f"清单文件损坏: {list_id}")
         floor = _view_floor(cfg)
-        if _before_floor(doc, floor):
-            raise HTTPException(403, f"这份清单的图窗早于本轮看图下界 {floor}，不能打开")
+        why = _list_refusal(doc, cfg)
+        if why:
+            raise HTTPException(403, why)
         kind = doc.get("kind")
         try:      # 记不了「看过」就不给图
             views.record(surface="web", event="open_list", outcome_visible=kind != "contrast_blind",
@@ -320,8 +375,9 @@ def build_workflow_router(*, get_config) -> APIRouter:
         if not isinstance(doc, dict):
             raise HTTPException(500, f"清单文件损坏: {req.list_id}")
         floor, train_end = _view_floor(cfg), _train_end(cfg)
-        if _before_floor(doc, floor):
-            raise HTTPException(403, f"这份清单的图窗早于本轮看图下界 {floor}，不能打开")
+        why = _list_refusal(doc, cfg)
+        if why:
+            raise HTTPException(403, why)
         doc = clip_list(doc, train_end)
         it = next((x for x in doc.get("items") or [] if x.get("item_id") == req.item_id), None)
         if it is None:
@@ -440,6 +496,9 @@ def build_workflow_router(*, get_config) -> APIRouter:
         lst = _read_json(_root(cfg) / "lists" / f"{req.list_id}.json")
         if not isinstance(lst, dict):
             raise HTTPException(400, f"读不到清单 {req.list_id},批次头的清单种类无从填写")
+        foreign = cw_mode.foreign_reason(lst, "清单")
+        if foreign:
+            raise HTTPException(403, foreign)
         list_kind = lst.get("kind")
         errs: list[str] = []
         cache: dict = {}
