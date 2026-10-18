@@ -45,6 +45,14 @@ def _fresh_caches():
     loader._dates_cached.cache_clear()
 
 
+@pytest.fixture(autouse=True)
+def main_formal(tmp_path, monkeypatch):
+    """主目录默认的正式账(调试账不得碰它)在测试里换成 tmp 下的一个位置:真主目录的 .git 测试碰不得。"""
+    p = tmp_path / "main_repo" / "outputs" / "chart_workflow"
+    monkeypatch.setattr(state, "formal_default", lambda start=None: p)
+    return p
+
+
 @pytest.fixture
 def dbg(tmp_path, monkeypatch, state_dir):
     """调试模式 + 已建好的临时调试账;返回 (cfg, pkl_dir, 调试账)。cfg 在调试模式下读,数据与产物都在 tmp。"""
@@ -218,8 +226,8 @@ def test_debug_cli_writes_only_debug_ledger(dbg, tmp_path, monkeypatch, state_di
         for it in doc["items"]:
             assert it["view_end"] <= mode.DEBUG_END and it["t"] <= mode.DEBUG_END
     assert not (tmp_path / "out").exists()                  # 正式的产物目录没碰
-    # 聊天贴图越过调试段终点 → 拒绝(不加 --allow-outside)
-    with pytest.raises(ValueError, match="越界"):
+    # 聊天贴图越过调试段终点 → 拒绝
+    with pytest.raises(ValueError, match="越出了调试段"):
         views.record(surface="chat", event="show_chart", outcome_visible=True,
                      charts=[{"symbol": "C0", "start": "2022-09-01", "end": "2022-10-31"}])
 
@@ -372,7 +380,7 @@ def test_debug_snapshot_lock_is_checked(tmp_path, monkeypatch, state_dir):
 # ── 清空重来:只删调试账,指向别处就拒 ─────────────────────────────────────────
 
 def _fill(droot: Path) -> None:
-    for rel in ("annotations/20220101T000000.json", "oplog/2026-10.jsonl", "lists/dbg-x.json",
+    for rel in ("annotations/20220101T000000.json", "oplog/2026-10.jsonl", "viewed_lists/dbg-x@1.json",
                 "cache/panel_x.parquet", "facts/f.json"):
         (droot / rel).parent.mkdir(parents=True, exist_ok=True)
         (droot / rel).write_text("x\n")
@@ -386,7 +394,8 @@ def test_clear_wipes_debug_ledger_keeps_cache(dbg, tmp_path, state_dir):
     outside = tmp_path / "outside"
     outside.mkdir()
     (outside / "keep.txt").write_text("别删我")
-    (droot / "link").symlink_to(outside, target_is_directory=True)
+    (droot / "lists").symlink_to(outside, target_is_directory=True)    # 认识的名字,但是个链接
+    (droot / "snapshot_lock.json.tmp").write_text("x")                 # 工具留下的临时文件
     before = digest(state_dir)
     path, removed = debugroot.clear()
     assert path == droot.resolve()
@@ -472,3 +481,117 @@ def test_state_show_in_debug(dbg, capsys):
     assert mode.DEBUG_LABEL in out and "调试账" in out and "没有水位" in out
     with pytest.raises(SystemExit):
         state.main(["reset-watermark", "--reason", "x"])
+
+
+def test_clear_stops_on_unknown_entries(dbg, tmp_path):
+    """清空只删认识的条目:顶层有不认识的东西(文件、目录、链接)就停下、列出来,一样都不删。"""
+    _, _, droot = dbg
+    _fill(droot)
+    (droot / "notes.txt").write_text("用户自己的笔记")
+    (droot / "photos").mkdir()
+    outside = tmp_path / "outside2"
+    outside.mkdir()
+    (outside / "keep.txt").write_text("x")
+    (droot / "link").symlink_to(outside, target_is_directory=True)
+    before = digest(droot)
+    with pytest.raises(debugroot.DebugRootRefused, match="不认识") as ei:
+        debugroot.clear()
+    assert all(n in str(ei.value) for n in ("notes.txt", "photos", "link"))
+    assert digest(droot) == before and (droot / "photos").is_dir()
+
+
+@pytest.mark.parametrize("how", ["default", "env"])
+def test_symlinked_debug_location_refused(dbg, tmp_path, monkeypatch, how):
+    """调试账的位置本身是符号链接:新建、清空都拒绝(按解析之前的路径判断),链接指向的目录一样都不删。"""
+    _, _, droot = dbg
+    _fill(droot)
+    link = tmp_path / "linked_debug_root"
+    link.symlink_to(droot, target_is_directory=True)
+    if how == "default":
+        monkeypatch.delenv(state.DEBUG_ENV_VAR)
+        monkeypatch.setattr(state, "debug_default", lambda start=None: link)
+    else:
+        monkeypatch.setenv(state.DEBUG_ENV_VAR, str(link))
+    before = digest(droot)
+    with pytest.raises(debugroot.DebugRootRefused, match="符号链接"):
+        debugroot.clear()
+    with pytest.raises(debugroot.DebugRootRefused, match="符号链接"):
+        debugroot.init()
+    assert digest(droot) == before
+
+
+def test_debug_root_never_inside_any_formal_ledger(dbg, tmp_path, monkeypatch, main_formal, state_dir):
+    """两个环境变量同时指错(正式账变量指临时目录、调试账变量指主目录正式账下面一个不存在的子目录):
+    新建、清空、给状态根都拒绝,主目录正式账里什么都不建;往上任何一层有正式账标记的目录同样拒绝。"""
+    main_formal.mkdir(parents=True)
+    (main_formal / state.MARKER).write_text("x")
+    (main_formal / "ledger.jsonl").write_text('{"r": 1}\n')
+    before = digest(main_formal)
+    for target in (main_formal / "debug_sub", main_formal):
+        monkeypatch.setenv(state.DEBUG_ENV_VAR, str(target))
+        with pytest.raises(debugroot.DebugRootRefused, match="正式账"):
+            debugroot.init()
+        with pytest.raises(debugroot.DebugRootRefused, match="正式账"):
+            debugroot.clear()
+        with pytest.raises(state.WrongModeRoot):
+            state.state_root()
+    assert digest(main_formal) == before and not (main_formal / "debug_sub").exists()
+    other = tmp_path / "some_old_copy_of_formal"                # 既不是环境变量指的、也不是主目录的
+    other.mkdir()
+    (other / state.MARKER).write_text("x")
+    deep = other / "a" / "b"
+    monkeypatch.setenv(state.DEBUG_ENV_VAR, str(deep))
+    with pytest.raises(debugroot.DebugRootRefused, match="那一层有标记"):
+        debugroot.init()
+    assert not (other / "a").exists()
+    deep.mkdir(parents=True)
+    (deep / state.DEBUG_MARKER).write_text("x")
+    with pytest.raises(state.WrongModeRoot, match="那一层有标记"):
+        state.state_root()
+
+
+# ── 看过记录:两种模式各记各的 ────────────────────────────────────────────────
+
+def test_debug_mode_views_only_inside_debug_segment(dbg, state_dir):
+    """调试模式:越出调试段的图,不分聊天还是补记、加了 --allow-outside 也不收,提示去正式模式记;调试账、正式账
+    都一行不多。"""
+    _, _, droot = dbg
+    before_f, before_d = digest(state_dir), digest(droot)
+    cases = [dict(surface="chat", charts=[{"symbol": "AAA", "start": "2025-03-03", "end": "2025-05-30"}],
+                  allow_outside=True, outside_reason="用户主动贴的"),
+             dict(surface="manual", backfill=True, ts="2026-10-18T09:00:00", note="补记",
+                  charts=[{"symbol": "AAA", "start": "2025-03-03", "end": "2025-05-30"}]),
+             dict(surface="manual", charts=[{"symbol": "AAA", "start": "2022-08-01", "end": "2022-11-30"}]),
+             dict(surface="manual", charts=[{"symbol": "AAA", "start": "2021-06-01", "end": "2021-12-31"}]),
+             dict(surface="chat", event="open_list", list_id="dbg-x", list_doc={"kind": "bigmoves", "items": [
+                 {"item_id": "A@2022-03-01", "symbol": "A", "view_start": "2022-01-03", "view_end": "2022-04-29"},
+                 {"item_id": "B@2023-03-01", "symbol": "B", "view_start": "2023-01-03", "view_end": "2023-04-28"}]})]
+    for kw in cases:
+        kw = {"event": "show_chart", "outcome_visible": True, **kw}
+        with pytest.raises(ValueError, match="越出了调试段") as ei:
+            views.record(**kw)
+        assert "正式模式下记" in str(ei.value)
+    assert digest(state_dir) == before_f and digest(droot) == before_d
+    views.record(surface="manual", event="show_chart", outcome_visible=True,
+                 charts=[{"symbol": "AAA", "start": "2021-10-08", "end": "2022-09-30"}])   # 调试段以内照收
+
+
+def test_formal_mode_refuses_views_inside_debug_segment(state_dir, monkeypatch):
+    """正式模式:整张都在调试段里的图,聊天加 --allow-outside、手动、补记都不收,提示带上模式变量;
+    只是一部分落在调试段里的照旧(补记不受看图下界限制)。"""
+    monkeypatch.delenv(mode.ENV_VAR, raising=False)
+    before = digest(state_dir)
+    for kw in (dict(surface="chat", allow_outside=True, outside_reason="忘了带模式变量"),
+               dict(surface="manual"),
+               dict(surface="manual", backfill=True, ts="2026-10-18T09:00:00", note="补记")):
+        with pytest.raises(ValueError, match="整张都在调试段") as ei:
+            views.record(event="show_chart", outcome_visible=True,
+                         charts=[{"symbol": "AAA", "start": "2022-01-03", "end": "2022-03-01"}], **kw)
+        assert f"{mode.ENV_VAR}=debug" in str(ei.value)
+    assert digest(state_dir) == before
+    views.record(surface="manual", event="show_chart", outcome_visible=True, backfill=True,
+                 ts="2026-10-18T09:00:00", note="补记:跨进预检段",
+                 charts=[{"symbol": "AAA", "start": "2022-08-01", "end": "2022-11-30"}])
+    with pytest.raises(SystemExit):                              # 命令行同样拦
+        views.main(["record", "--surface", "chat", "--symbol", "AAA", "--start", "2022-01-03", "--end",
+                    "2022-03-01", "--outcome-visible", "yes", "--allow-outside", "--reason", "x"])

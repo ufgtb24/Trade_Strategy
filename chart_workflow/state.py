@@ -57,7 +57,8 @@ sha256 + 行数」,见过的每一行的指纹另存在旁边的 watermark.seen/
 CHART_WORKFLOW_DEBUG_STATE_ROOT 有值就用它,否则是主目录的 outputs/chart_workflow_debug/(不进 git)。
 调试模式不认 CHART_WORKFLOW_STATE_ROOT,正式账一行都不写。调试账的标记文件是 DEBUG_LEDGER.md:
   正式模式:状态根里有 DEBUG_LEDGER.md → 停下(那是调试账);
-  调试模式:没有 DEBUG_LEDGER.md、有 STATE_ROOT.md、或者和正式账是同一个目录 / 互相包含 → 停下。
+  调试模式:没有 DEBUG_LEDGER.md、有 STATE_ROOT.md、或者碰到正式账 → 停下。「碰到」= 和环境变量指的正式账、
+  主目录默认的正式账任何一份是同一个目录 / 互相包含,或者往上任何一层里有 STATE_ROOT.md(formal_conflict)。
 调试账不进 git、能清空重来,切分支动不了它,所以没有水位,也不查别的分支:advance 什么都不做,
 reset-watermark 拒绝;正式水位(git 公共目录里那份)调试模式一律不读不写——主目录的调试账和正式账在同一个
 仓库里,按仓库取水位位置就会落到正式那份上,所以 watermark_path 遇到调试模式或调试账直接报错。
@@ -199,17 +200,27 @@ def formal_locate(start: Path = REPO_ROOT) -> Path:
     return main_worktree(start) / "outputs" / "chart_workflow"
 
 
+def formal_default(start: Path = REPO_ROOT) -> Path:
+    """正式账的默认位置(主目录的 outputs/chart_workflow),不看环境变量。"""
+    return main_worktree(start) / "outputs" / "chart_workflow"
+
+
 def debug_default(start: Path = REPO_ROOT) -> Path:
     """调试账的默认位置:主目录的 outputs/chart_workflow_debug(正式账默认位置旁边加 _debug)。"""
     return mode.debug_variant(main_worktree(start) / "outputs" / "chart_workflow")
 
 
-def debug_locate(start: Path = REPO_ROOT) -> Path:
-    """调试账应在的位置(不检查标记,不看模式)。环境变量 CHART_WORKFLOW_DEBUG_STATE_ROOT 优先。"""
+def debug_location_raw(start: Path = REPO_ROOT) -> Path:
+    """调试账应在的位置,不解析符号链接(清空前用它看这个位置本身是不是链接)。环境变量优先。"""
     env = os.environ.get(DEBUG_ENV_VAR)
     if env:
-        return Path(env).resolve()
+        return Path(os.path.abspath(env))
     return debug_default(start)
+
+
+def debug_locate(start: Path = REPO_ROOT) -> Path:
+    """调试账应在的位置(不检查标记,不看模式)。环境变量 CHART_WORKFLOW_DEBUG_STATE_ROOT 优先。"""
+    return debug_location_raw(start).resolve()
 
 
 def locate(start: Path = REPO_ROOT) -> Path:
@@ -223,19 +234,44 @@ def overlaps(a: Path, b: Path) -> bool:
     return a == b or a in b.parents or b in a.parents
 
 
+def formal_candidates() -> list[Path]:
+    """调试账不得碰的正式账位置:环境变量 CHART_WORKFLOW_STATE_ROOT 指的那份,以及主目录默认的那份
+    (两个都比:环境变量指着临时目录时,主目录那份照样不能碰)。主目录取不到(git 不可用)就只比前一个。"""
+    out = []
+    env = os.environ.get(ENV_VAR)
+    if env:
+        out.append(Path(env).resolve())
+    try:
+        out.append(formal_default().resolve())
+    except StateRootMissing:
+        pass
+    return out
+
+
+def formal_conflict(path: Path) -> str | None:
+    """path 当调试账会不会碰到正式账(给用户看的中文;None = 不会):和任何一份正式账(formal_candidates)是同一个
+    目录或互相包含;或者往上逐层(不含 path 自己)任何一层里有正式账的标记 STATE_ROOT.md。
+    path 自己里面有标记由调用方各自处理(清空时调试账的默认位置上允许有旧的正式格式标记,见 debugroot)。"""
+    path = Path(path).resolve()
+    for f in formal_candidates():
+        if overlaps(path, f):
+            return f"调试账 {path} 和正式账 {f} 是同一个目录或互相包含"
+    for up in path.parents:
+        if (up / MARKER).exists():
+            return f"调试账 {path} 在正式账 {up} 里面(那一层有标记 {MARKER})"
+    return None
+
+
 def check_debug_root(path: Path) -> None:
-    """path 能当调试账用。有正式账的标记、或和正式账是同一个目录 / 互相包含 → WrongModeRoot;
+    """path 能当调试账用。有正式账的标记、或碰到正式账(formal_conflict)→ WrongModeRoot;
     没有调试账的标记(还没建)→ StateRootMissing。消息是给用户看的中文。"""
     path = Path(path)
     if (path / MARKER).exists():
         raise WrongModeRoot(f"{path} 里有正式账的标记 {MARKER},不是调试账,调试模式不用它。"
                             f"它在调试账的位置上时,运行 python -m chart_workflow.debugroot clear 清空重建")
-    try:
-        formal = formal_locate()
-    except StateRootMissing:
-        formal = None
-    if formal is not None and overlaps(path, formal):
-        raise WrongModeRoot(f"调试账 {path} 和正式账 {formal} 是同一个目录或互相包含,调试模式不用它")
+    why = formal_conflict(path)
+    if why:
+        raise WrongModeRoot(f"{why},调试模式不用它")
     if not (path / DEBUG_MARKER).is_file():
         raise StateRootMissing(
             f"{path} 下没有调试账的标记 {DEBUG_MARKER}:调试账还没建。运行 python -m chart_workflow.debugroot "

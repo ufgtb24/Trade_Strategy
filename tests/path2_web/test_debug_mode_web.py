@@ -35,6 +35,14 @@ def _fresh_snaplock():
     snaplock._VERIFIED.clear()
 
 
+@pytest.fixture(autouse=True)
+def main_formal(tmp_path, monkeypatch):
+    """主目录默认的正式账(调试账不得碰它)在测试里换成 tmp 下的一个位置:真主目录的 .git 测试碰不得。"""
+    p = tmp_path / "main_repo" / "outputs" / "chart_workflow"
+    monkeypatch.setattr(state, "formal_default", lambda start=None: p)
+    return p
+
+
 @pytest.fixture
 def debug_root(tmp_path, monkeypatch, _cw_state_root):
     """调试模式 + 临时调试账(正式账仍是 conftest 的临时状态根)。"""
@@ -223,6 +231,29 @@ def test_debug_mode_cannot_open_formal_lists(tmp_path, debug_root):
         r = c.post("/workflow/views", json={"list_id": lid, "item_id": "AAA@2022-03-01", "event": "zoom"})
         assert r.status_code == 403, lid
     assert c.get("/workflow/lists/dbg-in-formal-dir").status_code == 404
+
+
+def test_formal_mode_web_refuses_views_inside_debug_segment(tmp_path, monkeypatch, _cw_state_root):
+    """正式模式:调试视图的 K 线、看图工作流的清单,露出整张都在调试段里的图 → 409(记不进「看过」就不给图),
+    正式账一行不多;跨出调试段的图照旧。正式的看图下界放到调试段以前(只有测试里能这样配)才走得到这一步。"""
+    monkeypatch.delenv(mode.ENV_VAR, raising=False)
+    _, snap = _client(tmp_path)
+    d = tmp_path / "wf"
+    _put_list(d, _list_doc("r-old", tag=False))                     # 正式名字、不带标记,图窗 2021-11..2022-04
+    cfg = {"dataset_dir": str(tmp_path / "full"), "last_selected_pattern": "bo_only",
+           "workflow": {"dataset_dir": str(snap), "root": str(d), "train_end": "2025-12-31",
+                        "view_floor": "2021-10-01"}}
+    c = TestClient(create_app(outputs_root=str(tmp_path / "outputs2"), use_thread_pool=True, config_override=cfg))
+    def ledger():                         # 副本登记会被测试夹具在读行情时换成这份合成数据,不算记账
+        return {k: v for k, v in digest(_cw_state_root, watermark=False).items() if k != "snapshot_lock.json"}
+    before = ledger()
+    r = c.get("/ohlc", params={"symbol": "AAA", "start": "2022-01-03", "end": "2022-03-01"})
+    assert r.status_code == 409 and "整张都在调试段" in r.json()["detail"]
+    r = c.get("/workflow/lists/r-old")
+    assert r.status_code == 409 and "整张都在调试段" in r.json()["detail"]
+    assert ledger() == before and not (_cw_state_root / "views.jsonl").exists()
+    r = c.get("/ohlc", params={"symbol": "AAA", "start": "2022-08-01", "end": "2022-11-30"})
+    assert r.status_code == 200, r.text
 
 
 def test_formal_mode_cannot_open_debug_lists(tmp_path, monkeypatch, _cw_state_root):

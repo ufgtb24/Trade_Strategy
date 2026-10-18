@@ -42,6 +42,11 @@ record() 是写 <状态根>/views.jsonl 的唯一入口(后端打开清单、收
 补记(backfill 或 surface = manual)记的是旧界面下的历史接触,当时结果全程可见:不按露出前截断,也不因为
 是同一条或同一份清单跳过。以哪一级为准由流程骨架定,这里只如实记。
 
+两种模式各记各的(不分界面,不认 --allow-outside,补记也一样;见 _wrong_mode):调试模式(mode.py)只记调试段
+以内的图窗,越出调试段的图属于正式范围,要到正式模式下记,免得真看过的训练段图只进了调试账、一清就没了;
+正式模式不收整张都在调试段里的图窗,那是调试时看的,进了正式账就进了 git 和水位,只能有记录地重置水位才删得掉。
+调试段的图不参与正式流程的任何一步(排除看过的样本、按尝试扣运气、露出结果的核对都只看训练段以后),
+所以正式模式下连补记也不收,真要记就带模式变量记进调试账。
 会话在聊天里贴图(surface = chat)时,图窗(以及记整份清单时清单里每条的图窗)不得早于本轮看图下界
 view_floor、不得晚于训练段末日:越界就拒绝,提醒会话这张图本不该贴。确实要记(例如用户主动贴了旧图),
 显式加 --allow-outside 并用 --reason 写明原因,原因记进这一行。补记(manual)不受此限:历史接触本来就早。
@@ -136,6 +141,28 @@ def _outside(windows: list[tuple[str, str, str]], floor: str | None, train_end: 
     return out
 
 
+def _wrong_mode(windows: list[tuple]) -> str | None:
+    """图窗和当前模式对不上时给用户看的说明(None = 对得上):调试模式下越出调试段的(或日期不全、核对不了的);
+    正式模式下整张都在调试段里的。见模块说明「两种模式各记各的」。"""
+    lo, hi = mode.DEBUG_START, mode.DEBUG_END
+    debug = mode.is_debug()
+    bad = []
+    for sym, s, e in windows:
+        dated = isinstance(s, str) and isinstance(e, str) and bool(_DATE_RE.match(s) and _DATE_RE.match(e))
+        if debug and not (dated and lo <= s and e <= hi):
+            bad.append(f"{sym} {s}→{e}")
+        elif not debug and dated and lo <= s and e <= hi:
+            bad.append(f"{sym} {s}→{e}")
+    if not bad:
+        return None
+    if debug:
+        return (f"调试模式只记调试段 {lo}～{hi} 以内的图,这几张越出了调试段:" + ";".join(bad[:5]) +
+                f"。越出调试段的图属于正式范围,看过要记进正式账:去掉环境变量 {mode.ENV_VAR}、在正式模式下记"
+                f"(调试模式不认 --allow-outside)")
+    return (f"这几张图整张都在调试段 {lo}～{hi} 里,是调试时看的,正式账不收(补记也一样):" + ";".join(bad[:5]) +
+            f"。带上 {mode.ENV_VAR}={mode.DEBUG} 记进调试账")
+
+
 def record(*, surface: str, event: str, outcome_visible: bool, list_id: str | None = None,
            list_kind: str | None = None, list_doc: dict | None = None, charts=None,
            note: str = "", ts: str | None = None, backfill: bool = False,
@@ -174,11 +201,14 @@ def record(*, surface: str, event: str, outcome_visible: bool, list_id: str | No
     elif buy_points is not None:
         raise ValueError("只有 reveal 才带买点")
     reason = str(outside_reason or "").strip()
+    wins = [(c["symbol"], c["start"], c["end"]) for c in charts]
+    wins += [(it.get("symbol"), it.get("view_start"), it.get("view_end"))
+             for it in (list_doc or {}).get("items") or [] if isinstance(it, dict)]
+    wrong = _wrong_mode(wins)
+    if wrong:                                     # 不分界面、不认 allow_outside、补记也一样
+        raise ValueError(wrong)
     if surface == "chat":
         cfg = load_config()
-        wins = [(c["symbol"], c["start"], c["end"]) for c in charts]
-        wins += [(it.get("symbol"), it.get("view_start"), it.get("view_end"))
-                 for it in (list_doc or {}).get("items") or [] if isinstance(it, dict)]
         bad = _outside(wins, cfg.get("view_floor"), str(cfg["train_end"]))
         if bad and not (allow_outside and reason):
             raise ValueError("聊天里贴的图越界:" + ";".join(bad[:5]) +

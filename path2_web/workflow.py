@@ -351,6 +351,8 @@ def build_workflow_router(*, get_config) -> APIRouter:
                          list_id=list_id, list_kind=kind, list_doc=doc)
         except StateRootMissing as e:
             raise HTTPException(503, str(e)) from None
+        except ValueError as e:          # 图窗和当前模式对不上(看过记录两种模式各记各的)
+            raise HTTPException(409, str(e)) from None
         except OSError as e:
             raise HTTPException(503, f"看过记录写不进去:{e}") from None
         doc = clip_list(doc, _train_end(cfg))

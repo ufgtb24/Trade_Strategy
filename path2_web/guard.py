@@ -11,7 +11,8 @@ train_end 先和读行情的上限 chart_workflow.loader.read_ceiling() 取小,�
   副本里没有这只股票 → 404。探测器预热要的更早的行情照常在内部读。
 - K 线(/ohlc):看图下界之前的 bar 只留日期,价格与量置 null——事件与 match 按序号和 K 线对齐,这些 bar
   要占位,但不给看。每张露出了 K 线的图经 chart_workflow.views.record 记一条看过(surface=debug,
-  outcome_visible=true:调试视图的图带着买点之后的走势),同一进程里同一图窗只记一次;记不进去就不给图(503)。
+  outcome_visible=true:调试视图的图带着买点之后的走势),同一进程里同一图窗只记一次;记不进去就不给图(503;
+  图窗和当前模式对不上——正式模式下整张都在调试段里——是 409,见 chart_workflow.views)。
 - 单股预览(/preview)与扫描(/scan):起止截到看图范围内;扫描结果的 scan 段带
   view_guard = {view_floor, train_end, snapshot_sha}(这份扫描读的是截断副本、起点不早于这个下界、
   副本按内容的指纹是多少)。
@@ -112,6 +113,8 @@ def _record(**kw) -> None:
         views.record(surface="debug", outcome_visible=True, **kw)
     except StateRootMissing as e:
         raise HTTPException(503, str(e)) from None
+    except ValueError as e:              # 图窗和当前模式对不上(看过记录两种模式各记各的)
+        raise HTTPException(409, str(e)) from None
     except OSError as e:
         raise HTTPException(503, f"看过记录写不进去:{e}") from None
 

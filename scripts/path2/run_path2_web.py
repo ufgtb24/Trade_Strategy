@@ -174,10 +174,11 @@ def _terminate(proc: subprocess.Popen) -> None:
 
 
 def serve(backend_port: int, frontend_port: int, *, backend_env: dict[str, str] | None = None,
-          tag: str = "run_path2_web") -> None:
+          frontend_env: dict[str, str] | None = None, tag: str = "run_path2_web") -> None:
     """清场 → 起后端与前端 → 等任一退出或 Ctrl+C 后一并关停。
 
-    backend_env:合进后端子进程环境的变量(例如看图工作流的模式,见 run_path2_web_debug.py);
+    backend_env / frontend_env:合进后端 / 前端子进程环境的变量(例如看图工作流的模式,见 run_path2_web_debug.py;
+    前端拿到启动时的模式,和后端报的对不上就在页顶报警);
     后端端口由 path2_web.main 自己按同一份配置取,这里的 backend_port 用于清场和前端的 VITE_API_BASE。
     """
     backend_cmd = ["uv", "run", "python", "-m", "path2_web.main"]
@@ -194,9 +195,8 @@ def serve(backend_port: int, frontend_port: int, *, backend_env: dict[str, str] 
     print(f"[{tag}] 启动后端: {' '.join(backend_cmd)}")
     procs.append(("backend", _spawn(backend_cmd, REPO, env={**os.environ, **(backend_env or {})})))
     print(f"[{tag}] 启动前端: {' '.join(frontend_cmd)} (cwd={frontend_dir})")
-    frontend_env = _frontend_env()
-    frontend_env["VITE_API_BASE"] = f"http://localhost:{backend_port}"
-    procs.append(("frontend", _spawn(frontend_cmd, frontend_dir, env=frontend_env)))
+    fe_env = {**_frontend_env(), **(frontend_env or {}), "VITE_API_BASE": f"http://localhost:{backend_port}"}
+    procs.append(("frontend", _spawn(frontend_cmd, frontend_dir, env=fe_env)))
 
     # 统一接管 SIGINT(Ctrl+C)/SIGTERM(kill、timeout):首次触发即把两者都
     # 设为忽略,确保随后的清理段不会被第二次信号(PyCharm 停止键常连发)打断。
@@ -234,8 +234,10 @@ def main() -> None:
     BACKEND_PORT = int(cfg["backend_port"])   # 改端口请改 configs/path2_web.yaml
     FRONTEND_PORT = int(cfg["frontend_port"])  # 通过 --port 传给 vite,--strictPort 禁止自动换端口
     # ================================
-    # 正式模式:后端显式按正式模式起(shell 里留着调试模式的环境变量也不受影响,见 chart_workflow/mode.py)
-    serve(BACKEND_PORT, FRONTEND_PORT, backend_env={"CHART_WORKFLOW_MODE": "formal"})
+    # 正式模式:后端显式按正式模式起(shell 里留着调试模式的环境变量也不受影响,见 chart_workflow/mode.py);
+    # 前端也告诉它是正式模式,后端报的不一样就在页顶报警
+    serve(BACKEND_PORT, FRONTEND_PORT, backend_env={"CHART_WORKFLOW_MODE": "formal"},
+          frontend_env={"VITE_CHART_WORKFLOW_MODE": "formal"})
 
 
 if __name__ == "__main__":

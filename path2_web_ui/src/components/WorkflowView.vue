@@ -118,8 +118,8 @@ import { useModeStore } from '../stores/mode'
 
 const emit = defineEmits<{ exit: [] }>()
 const store = useWorkflowStore()
-// 调试模式:放大图盖住了页顶横幅,放大图的标题行里再写一遍(App 启动时已读过模式)
-const modeLabel = computed(() => useModeStore().info?.label ?? null)
+// 页顶横幅(调试模式、模式未知、前后端模式对不上)被放大图盖住了,放大图的标题行里再写一遍
+const modeLabel = computed(() => useModeStore().banner?.text ?? null)
 const drawerOpen = ref(false)
 const gridEl = ref<HTMLElement | null>(null)
 /** 后端拿不到记账类文件的家时,清单目录每项都带 blocked 与说明;打开清单、发标注都会被拒 */
