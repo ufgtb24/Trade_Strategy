@@ -60,6 +60,28 @@ def autolock(request, monkeypatch, tmp_path, root: Path) -> None:
     monkeypatch.setattr(snaplock, "verify", verify)
 
 
+def no_repo_git_dir(monkeypatch) -> None:
+    """测试绝不读写这份代码所在仓库的 git 公共目录(主目录的 .git,水位就放在那里):要在它下面找公共目录就报错。
+    测试用的是临时状态根(环境变量)或 tmp 下自建的仓库。"""
+    from chart_workflow.config import REPO_ROOT
+
+    real = state._git_common_dir
+    repo = Path(REPO_ROOT).resolve()
+
+    def guarded(start):
+        p = Path(start).resolve()
+        if p == repo or repo in p.parents:
+            raise AssertionError(f"测试在代码仓库里找 git 公共目录({start}),会碰到主目录的 .git")
+        return real(start)
+
+    monkeypatch.setattr(state, "_git_common_dir", guarded)
+
+
+@pytest.fixture(autouse=True)
+def _no_repo_git_dir(monkeypatch):
+    no_repo_git_dir(monkeypatch)
+
+
 @pytest.fixture(autouse=True)
 def state_dir(request, tmp_path, monkeypatch):
     """临时状态根(已 init、已登记副本),经环境变量生效;返回它的路径。"""

@@ -23,13 +23,17 @@
         这是卡的问题,不作为拒规则的理由,也不算进能核对的个数。判定不了或读不到行情的样本跳过并列出原因;
         能核对的样本少于 min_samples(默认 3)、或其中买点当天卡成立的少于 min_positive_samples(默认 2;
         卡在样本上都不成立时,永远不成立的规则也全对)就拒绝,报错里写清缺在哪、出路是什么。
-  逐日:跑两批股票——全部样本股(样本有没有被排除、跳过都算:逐日按固定回看判,和框无关),加上从训练副本的
-        股票池里随机抽的 pool_stocks 只(默认 40;种子由卡的编号和版本定,同一版卡每次核对、以后重跑都抽到
-        同一批;只抽看图范围内有交易日的)。在看图范围内(不早于看图下界、不晚于训练段末日)逐日按固定回看
-        判卡,卡能判定的每一天,规则信号都要和「卡说成立」一致;不一致的天数占卡能判定天数的比例超过
-        max_disagree_share(默认 0,即必须全部一致)就拒绝,列出不一致的天。永远成立、比卡宽的规则在卡不成立
-        的日子上露馅,比卡窄、永远不成立的规则在卡成立的日子上露馅;所以卡判「不成立」的天少于
-        min_negative_days(默认 20)、或判「成立」的天少于 min_positive_days(默认 10)时也拒绝。
+  逐日:跑两批股票——全部样本股(样本有没有被排除、跳过都算:逐日按固定回看判,和框无关),加上从训练副本
+        随机抽的股票:抽股顺序由卡的编号定(不含版本,draw_pool / pool_order),沿这个顺序往下取看图范围内
+        有交易日的股票,直到「这一版卡在上面有卡成立日」的满 pool_positive_stocks 只(默认 40),最多取
+        pool_max_stocks 只(默认 300);取到的不论有没有卡成立日都进逐日比较(没有的,规则在上面也必须
+        不成立);取满上限还凑不够就拒,报错写明找到几只、上限多少、怎么调高、调高要多花多少时间。
+        比卡窄的规则抓不抓得住,取决于有卡成立日的股票有几只,不取决于一共抽了几只,所以下限按只数定。
+        在看图范围内(不早于看图下界、不晚于训练段末日)逐日按固定回看判卡,卡能判定的每一天,规则信号都要
+        和「卡说成立」一致;不一致的天数占卡能判定天数的比例超过 max_disagree_share(默认 0,即必须全部一致)
+        就拒绝,列出不一致的天。永远成立、比卡宽的规则在卡不成立的日子上露馅,比卡窄、永远不成立的规则在
+        卡成立的日子上露馅;卡判「不成立」的天少于 min_negative_days(默认 20)时也拒绝。
+        抽股顺序事先算得出来,有人照着这批股票刻意去凑规则照样防不住——这一点接受。
 规则信号:规则文件方式在这只股票截到训练段末日的行情上算一次 signal(df),逐日读;app 方式跑这只股票,
 看那天在不在命中里。卡与要素从操作日志重算(先重走全部日志的校验),不读磁盘上的卡与要素文件。
 逐日核对按股票并行(cfg["workers"]);逐日卡说什么、规则信号在进程内缓存,键含卡与要素的全部内容、配置、
@@ -50,7 +54,7 @@ from chart_workflow.ledger import SHAPE_SOURCE_RE
 ROLES = ("must", "bonus", "must_not")
 ROLE_TEXT = {"must": "必须有", "bonus": "加分", "must_not": "有它就不买"}
 DEFAULTS = {"min_samples": 3, "min_positive_samples": 2, "max_disagree_share": 0.0, "min_negative_days": 20,
-            "min_positive_days": 10, "pool_stocks": 40}      # 与 config 的 shape_check 同值,都待验证
+            "pool_positive_stocks": 40, "pool_max_stocks": 300}      # 与 config 的 shape_check 同值,都待验证
 SHOW_DAYS = 10
 
 
@@ -225,6 +229,9 @@ def _stock_job(job):
 
 
 def _run_jobs(jobs: list, cfg: dict) -> list:
+    """多只时按 cfg["workers"] 开进程池(Linux 上默认 fork 方式启动子进程)。现在的入口(对照页命令、记账命令)
+    走到核对这一步时都是单线程;以后要从多线程的进程(比如网页后端)调用,fork 有死锁风险,要改用 forkserver
+    方式启动(ProcessPoolExecutor 的 mp_context)。"""
     workers = max(1, int(cfg.get("workers", 1)))
     if workers == 1 or len(jobs) < 2:
         return [_stock_job(j) for j in jobs]
@@ -281,31 +288,62 @@ def sample_stocks(card: dict, n: int, anns: dict) -> list[str]:
     return sorted({a["symbol"] for _, a, _ in _cases(card, n, anns) if a})
 
 
-def pool_stocks(cfg: dict, shape_id: str, n: int, exclude) -> list[str]:
-    """从训练副本的股票池里随机抽 shape_check.pool_stocks 只(默认 40,待验证),样本股不算在内,只要看图范围内
-    有交易日的。种子由卡的编号和版本定:同一版卡每次核对、以后重跑都抽到同一批。"""
-    from chart_workflow.loader import trading_dates
+def pool_order(cfg: dict, shape_id: str, exclude) -> list[str]:
+    """抽股顺序:训练副本的全部股票去掉 exclude(样本股),按卡的编号定的种子打乱。种子不含版本:这张卡的
+    每一版都沿同一个顺序往下取,内容不变的改版抽到的就是同一批。种子事先算得出来,有人照着这批股票刻意去凑
+    规则照样防不住——这一点接受。"""
     from chart_workflow.securities import local_symbols
 
-    want = int(_settings(cfg)["pool_stocks"])
-    if want <= 0:
-        return []
-    seed = int.from_bytes(hashlib.sha256(f"{shape_id}@v{n}".encode()).digest()[:8], "big")
     skip = set(exclude)
     cands = [s for s in local_symbols(cfg) if s not in skip]
-    random.Random(seed).shuffle(cands)
+    random.Random(int.from_bytes(hashlib.sha256(shape_id.encode()).digest()[:8], "big")).shuffle(cands)
+    return cands
+
+
+def draw_pool(cfg: dict, card: dict, els: dict, shape_id: str, exclude, rule: str | None, app: str | None,
+              params: str | None) -> dict:
+    """沿抽股顺序往下取看图范围里有交易日的股票,直到「这一版卡在上面有卡成立日」的满 pool_positive_stocks
+    只(默认 40),最多取 pool_max_stocks 只(默认 300;都待验证)。抽到的股票不论有没有卡成立日都进逐日比较。
+    分批算(每批按目前有卡成立日的比例估还要几只),结果按顺序截到凑满的那一只,和分批方式、进程数无关。
+    返回 {"stocks": [抽到的,按抽的顺序], "positive": [其中有卡成立日的], "mats": {代码: 核对材料},
+    "seconds": 用时}。"""
+    import math
+    import time
+
+    from chart_workflow.loader import trading_dates
+
+    st = _settings(cfg)
+    need, cap = int(st["pool_positive_stocks"]), int(st["pool_max_stocks"])
+    workers = max(1, int(cfg.get("workers", 1)))
     lo, hi = _view_range(cfg)
-    out = []
-    for s in cands:
-        if len(out) >= want:
-            break
-        try:
-            d = trading_dates(cfg, s)
-        except (ValueError, FileNotFoundError):
-            continue
-        if ((d >= lo) & (d <= hi)).any():
-            out.append(s)
-    return sorted(out)
+    order = iter(pool_order(cfg, shape_id, exclude))
+    drawn, positive, mats, t0 = [], [], {}, time.time()
+    while len(positive) < need and len(drawn) < cap:
+        want = need - len(positive)
+        size = math.ceil(want * len(drawn) / len(positive)) if positive else want
+        size = min(max(size, workers), cap - len(drawn))
+        batch = []
+        for s in order:
+            try:
+                d = trading_dates(cfg, s)
+            except (ValueError, FileNotFoundError):
+                continue
+            if ((d >= lo) & (d <= hi)).any():
+                batch.append(s)
+                if len(batch) >= size:
+                    break
+        if not batch:
+            break                                        # 股票池取完了
+        got = materials(cfg, card, els, batch, rule, app, params)
+        for s in batch:
+            drawn.append(s)
+            mats[s] = got[s]
+            err, says, _ = got[s]
+            if err is None and any(x is True for x, _ in says.values()):
+                positive.append(s)
+                if len(positive) >= need:
+                    break
+    return {"stocks": drawn, "positive": positive, "mats": mats, "seconds": time.time() - t0}
 
 
 def check_samples(cfg: dict, card: dict, ver: dict, n: int, els: dict, anns: dict, mats: dict) -> dict:
@@ -377,8 +415,8 @@ def check_samples(cfg: dict, card: dict, ver: dict, n: int, els: dict, anns: dic
 def check_days(cfg: dict, card: dict, n: int, symbols: list[str], mats: dict, where: str) -> dict:
     """逐日核对:symbols(样本股加随机抽的股票)在看图范围内逐日比规则信号和「卡说成立」。where:报错里怎么称呼
     这批股票。返回 {"days", "negative", "positive", "unknown", "disagree": 个数, "examples": [前几个不一致的天],
-    "unreadable": [读不了的股票]};不一致的比例超过容差、卡判「不成立」的天少于 min_negative_days、或卡判
-    「成立」的天少于 min_positive_days → RuleShapeMismatch。"""
+    "unreadable": [读不了的股票]};不一致的比例超过容差、或卡判「不成立」的天少于 min_negative_days →
+    RuleShapeMismatch。"""
     shape = f"{card['shape_id']}@v{n}"
     st = _settings(cfg)
     days, negative, unknown, bad, unreadable = 0, 0, 0, [], []
@@ -410,22 +448,18 @@ def check_days(cfg: dict, card: dict, n: int, symbols: list[str], mats: dict, wh
             f"形态卡 {shape} 在{where}看图范围内卡判「不成立」的只有 {negative} 天(卡能判定 {days} 天),至少要 "
             f"{need} 天(待验证)才看得出规则是不是比卡宽(永远成立的规则在卡成立的日子上也全对)。"
             f"出路:给卡加别的股票、别的时段的样本,让核对的股票里有更多卡不成立的日子")
-    need = int(st["min_positive_days"])
-    if positive < need:
-        raise RuleShapeMismatch(
-            f"形态卡 {shape} 在{where}看图范围内卡判「成立」的只有 {positive} 天(卡能判定 {days} 天),至少要 "
-            f"{need} 天(待验证)才看得出规则是不是比卡窄(只在卡成立的一部分日子成立的规则,天数少了也可能全对)。"
-            f"出路:给卡加别的股票、别的时段、买点当天卡成立的样本")
     return {"days": days, "negative": negative, "positive": positive, "unknown": unknown, "disagree": len(bad),
             "examples": examples[:SHOW_DAYS], "unreadable": unreadable}
 
 
 def check_rule_against_shape(source: str, cfg: dict, *, rule: str | None = None, app: str | None = None,
                              params: str | None = None) -> dict:
-    """来源是形态卡时的全部核对。返回要记进账本的 {"source", "declared", "samples_checked", "samples_positive",
-    "samples_skipped", "samples_unexpressible", "sample_stocks", "pool_stocks", "stocks_unreadable",
-    "days_checked", "days_negative", "days_positive", "days_unknown", "days_disagree", "disagree_examples"};
-    任何一项不过 → RuleShapeMismatch(日志校验不过 → ShapeValidationError;卡或版本不存在 → FileNotFoundError)。"""
+    """来源是形态卡时的全部核对。返回要记进账本的 {"source", "declared", "facts_code", "samples_checked",
+    "samples_positive", "samples_skipped", "samples_unexpressible", "sample_stocks", "pool_stocks",
+    "pool_positive_stocks", "stocks_unreadable", "days_checked", "days_negative", "days_positive", "days_unknown",
+    "days_disagree", "disagree_examples"}(facts_code:判卡用的事实表代码版本);任何一项不过 →
+    RuleShapeMismatch(日志校验不过 → ShapeValidationError;卡或版本不存在 → FileNotFoundError)。"""
+    from chart_workflow.facts import FACTS_CODE
     from chart_workflow.shapes import _ann_index, checked_state
 
     if not (rule or app):
@@ -453,13 +487,20 @@ def check_rule_against_shape(source: str, cfg: dict, *, rule: str | None = None,
     samples = sample_stocks(card, n, anns)
     res = check_samples(cfg, card, ver, n, els, anns,
                         materials(cfg, ver["card"], els, samples, rule, app, params, says=False))
-    pool = pool_stocks(cfg, card["shape_id"], n, samples)
-    stocks = samples + pool
+    pool = draw_pool(cfg, ver["card"], els, card["shape_id"], samples, rule, app, params)
+    need, cap = int(_settings(cfg)["pool_positive_stocks"]), int(_settings(cfg)["pool_max_stocks"])
+    if len(pool["positive"]) < need:
+        raise RuleShapeMismatch(
+            f"形态卡 {shape} 的随机抽股:沿固定顺序抽了 {len(pool['stocks'])} 只(上限 {cap} 只),其中有卡成立日的"
+            f"只有 {len(pool['positive'])} 只,至少要 {need} 只(待验证)。卡成立的日子太少,看不出规则是不是比卡窄。"
+            f"出路:在配置 shape_check.pool_max_stocks 调高抽股上限——这次抽 {len(pool['stocks'])} 只用了 "
+            f"{pool['seconds']:.0f} 秒,耗时大致随抽的只数等比例增加;或者放宽卡,让它在更多股票上成立")
+    stocks = samples + pool["stocks"]
     daily = check_days(cfg, card, n, stocks, materials(cfg, ver["card"], els, stocks, rule, app, params),
-                       f"样本股和随机抽的 {len(pool)} 只股票" if pool else "样本股")
-    return {"source": source, "declared": declared, "samples_checked": res["checked"],
+                       f"样本股和随机抽的 {len(pool['stocks'])} 只股票" if pool["stocks"] else "样本股")
+    return {"source": source, "declared": declared, "facts_code": FACTS_CODE, "samples_checked": res["checked"],
             "samples_positive": res["positive"], "samples_skipped": res["skipped"],
-            "samples_unexpressible": res["unexpressible"], "sample_stocks": samples, "pool_stocks": pool,
-            "stocks_unreadable": daily["unreadable"], "days_checked": daily["days"],
-            "days_negative": daily["negative"], "days_positive": daily["positive"], "days_unknown": daily["unknown"],
-            "days_disagree": daily["disagree"], "disagree_examples": daily["examples"]}
+            "samples_unexpressible": res["unexpressible"], "sample_stocks": samples, "pool_stocks": pool["stocks"],
+            "pool_positive_stocks": pool["positive"], "stocks_unreadable": daily["unreadable"],
+            "days_checked": daily["days"], "days_negative": daily["negative"], "days_positive": daily["positive"],
+            "days_unknown": daily["unknown"], "days_disagree": daily["disagree"], "disagree_examples": daily["examples"]}

@@ -24,7 +24,7 @@ import path2_apps.bottom_burst as _bbb
 import path2_apps.bottom_burst.dag_spec as _bbb_dag
 from chart_workflow import state
 from chart_workflow.loader import SNAPSHOT_FILE, SNAPSHOT_SCHEMA
-from tests.chart_workflow.conftest import autolock
+from tests.chart_workflow.conftest import autolock, no_repo_git_dir
 
 EARLY_FLOOR = "2000-01-01"
 
@@ -48,6 +48,7 @@ def _cw_state_root(request, tmp_path_factory, monkeypatch):
     base = tmp_path_factory.mktemp("cw")
     root = state.init(base / "state")
     monkeypatch.setenv(state.ENV_VAR, str(root))
+    no_repo_git_dir(monkeypatch)                    # 绝不碰主目录的 .git(见 chart_workflow 的 conftest)
     autolock(request, monkeypatch, base, root)      # 临时状态根也登记副本(见 chart_workflow 的 conftest)
     return root
 

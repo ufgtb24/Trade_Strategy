@@ -385,6 +385,17 @@ def test_other_branch_touching_only_code_or_marker_is_fine(tmp_path, monkeypatch
     assert state.state_root(start=main) == root.resolve()
 
 
+def test_watermark_of_root_in_other_repo_stays_in_that_repo(tmp_path, monkeypatch, no_snapshot_lock):
+    """别的仓库里的状态根:推进水位、重置水位都写进那个仓库自己的 .git,不写这份代码所在仓库的(主目录的 .git;
+    夹具 no_repo_git_dir 拦着,真去找就报错)。"""
+    main, root = _repo_with_state(tmp_path, monkeypatch)
+    wm = main.resolve() / ".git" / "chart_workflow" / "watermark.json"
+    state.advance(root)
+    assert state.watermark_path(root) == wm and wm.is_file()
+    state.reset_watermark(root, "测试:别的仓库里的状态根")
+    assert json.loads(wm.read_text())["state_root"] == str(root)
+
+
 def test_merged_into_other_branch_by_merge_commit_is_fine(tmp_path, monkeypatch, no_snapshot_lock):
     """用合并提交(非快进)把当前分支合进别的分支:那个分支上有改过记账目录的合并提交,但账当前分支全有;
     当前分支再记一次账(追加行、要素文件随操作日志改写)照样不拦。那个分支之后再记新账才拦。"""

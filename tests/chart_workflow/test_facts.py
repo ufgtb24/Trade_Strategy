@@ -110,6 +110,22 @@ def test_qmmm_golden():
     assert "T3" in _tids(g) and "T5" not in _tids(g)
 
 
+def test_dry_day_trigger_not_on_zero_volume():
+    """「当天缩量」(T7):当天没成交(停牌)、或者算量比的参照量是 0 时都不算;量很小但不是 0 照样算。"""
+    df = qmmm_synthetic()
+    assert "T7" in _tids(compute_facts(df, "2025-07-14"))
+    zero = df.copy()
+    zero.loc["2025-07-14", "volume"] = 0.0
+    assert "T7" not in _tids(compute_facts(zero, "2025-07-14"))
+    tiny = df.copy()
+    tiny.loc["2025-07-14", "volume"] = 1.0
+    assert "T7" in _tids(compute_facts(tiny, "2025-07-14"))
+    no_base = df.copy()
+    no_base.loc[no_base.index < "2025-07-14", "volume"] = 0.0          # 前面一直没成交:参照量是 0
+    no_base.loc["2025-07-14", "volume"] = 100.0
+    assert "T7" not in _tids(compute_facts(no_base, "2025-07-14"))
+
+
 def test_fixed_checklist_shape():
     f = compute_facts(qmmm_synthetic(), "2025-07-14")
     assert f["window_source"] == "default" and f["schema"] == "chart_workflow.facts/1"

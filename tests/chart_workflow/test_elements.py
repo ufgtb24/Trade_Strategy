@@ -825,6 +825,32 @@ def test_between_touching_one_hard_bound_becomes_one_sided(d, want):
     assert errs == [] and (out["cond"], out["user_params"], out["default_params"]) == want
 
 
+def test_quality_fingerprint_covers_what_checks_read(monkeypatch):
+    """质量把关指纹:默认回看根数(根数上界)、配置里的边界(最多几个峰)、代码里的合理范围常量、同义换写提示里
+    引用的放量线与深跌线,任何一个变了指纹就变;质量把关不读的配置变了指纹不变。"""
+    base = E.quality_fingerprint()
+    assert base == E.quality_fingerprint() and len(base) == 16
+    facts_cfg, feat_cfg = dict(E._facts_cfg()), dict(E._features_cfg())
+
+    def with_facts(**kw):
+        monkeypatch.setattr(E, "_facts_cfg", lambda: {**facts_cfg, **kw})
+        try:
+            return E.quality_fingerprint()
+        finally:
+            monkeypatch.setattr(E, "_facts_cfg", lambda: facts_cfg)
+
+    assert with_facts(default_lookback_bars=60) != base
+    assert with_facts(max_peaks=facts_cfg["max_peaks"] + 1) != base
+    assert with_facts(vol_run_min=facts_cfg["vol_run_min"] + 0.5) != base
+    assert with_facts(gap_abs=facts_cfg["gap_abs"] + 0.01) == base                 # 质量把关不读它
+    monkeypatch.setattr(E, "_features_cfg", lambda: {**feat_cfg, "deep_drop_dd250": feat_cfg["deep_drop_dd250"] - 0.1})
+    assert E.quality_fingerprint() != base
+    monkeypatch.setattr(E, "_features_cfg", lambda: feat_cfg)
+    assert E.quality_fingerprint() == base
+    monkeypatch.setitem(E.VALUES["F07"]["vr"], "hi", 50)                           # 合理范围常量收紧
+    assert E.quality_fingerprint() != base
+
+
 def test_between_touching_bound_under_rules_v1_and_when_rewalking():
     """同一个 between(下限碰到下界):第 1 版规则拒绝并要求换写法;重走日志里已有的条目时不改写,只记一条提示。"""
     d = D("F04", "bars", "between", "close", user={"lo": 1, "hi": 30})

@@ -20,7 +20,8 @@ worktree 里运行工具,都经 state_root() 自动定位到主目录这一份�
 
 水位(防「标记在、账本却是旧的」):标记文件跟代码一起提交,合了代码、没合账本(或账本较旧)
 的分支照样有标记。所以另在 git 公共目录里记一份水位
-(<git 公共目录>/chart_workflow/watermark.json,不随分支走、所有 worktree 共用):
+(<git 公共目录>/chart_workflow/watermark.json,不随分支走、所有 worktree 共用;公共目录按状态根所在的仓库取,
+不按代码所在的仓库取):
 只追加的文件(账本、看过记录、操作日志、水位重置记录)每份记「到最后一个完整行为止的字节数 + 这一段的
 sha256 + 行数」,见过的每一行的指纹另存在旁边的 watermark.seen/ 下(每份一个只追加的文本文件);
 只增不改的目录(原始标注、看过的清单快照、事实表快照、规则存档、配置存档)记见过的文件名。
@@ -179,13 +180,16 @@ def missing_message(path: Path) -> str:
             f"再运行 python -m chart_workflow.state init <那个目录>")
 
 
-def watermark_path(root: Path, start: Path = REPO_ROOT) -> Path:
+def watermark_path(root: Path, start: Path | None = None) -> Path:
     """root 的水位文件。root 是环境变量指定的临时状态根 → root/.watermark.json;
-    否则 → <git 公共目录>/chart_workflow/watermark.json(不随分支走、所有 worktree 共用)。"""
+    否则 → <git 公共目录>/chart_workflow/watermark.json(不随分支走、所有 worktree 共用)。git 公共目录按 root
+    所在的仓库取(start 不给时从 root 本身起找),不按代码所在的仓库取——别的仓库里的状态根不会把水位写进
+    这份代码所在仓库的 .git。"""
     env = os.environ.get(ENV_VAR)
     if env and Path(env).resolve() == Path(root).resolve():
         return Path(root) / ".watermark.json"
-    return Path(_git_common_dir(str(Path(start).resolve()))) / "chart_workflow" / "watermark.json"
+    return Path(_git_common_dir(str(Path(start if start is not None else root).resolve()))) / "chart_workflow" \
+        / "watermark.json"
 
 
 _HASH_CACHE: dict[tuple[str, int, int], list[str]] = {}
@@ -577,7 +581,7 @@ def advance(root: Path) -> None:
     _sync(Path(root), watermark_path(root))
 
 
-def reset_watermark(root: Path, reason: str, start: Path = REPO_ROOT) -> dict:
+def reset_watermark(root: Path, reason: str, start: Path | None = None) -> dict:
     """显式重置水位为当前内容。reason 必填;重置记录(时间、原因、少了什么、前后条数)
     追加到 root/watermark_resets.jsonl,返回这条记录。只在有意改写记账文件之后用。"""
     reason = (reason or "").strip()

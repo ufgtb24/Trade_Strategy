@@ -23,9 +23,10 @@ F01～F15 每一行都能直接立要素,不用写代码:
     量比、涨幅、比值数学上没有边界,声明的是合理范围(待验证),at_least / at_most 的阈值落在范围外按
     「近乎恒成立 / 近乎不可能」拒绝;between 只有一端落在合理范围外时原样保留两端,打印要素时给提示
     (definition_hints);百分比写成整数(30% 写成 30)出界时报错里提示单位。
-    这些都是现在(第 2 版)的校验规则;重走旧日志条目时按那条自己的版本(shapes 模块说明)。
+    这些都是现在(第 3 版)的校验规则;重走旧日志条目时按那条自己的版本(shapes 模块说明)。
     这一段都是写入时的质量把关,其中边界、根数上界、合理范围取决于当时的配置:重走日志里已有的条目时
-    (quality_as_notices)不合格只记成提示、不当错误,between 也不按现在的硬边界改写(会改写时同样只提示)。
+    (quality_as_notices)先把不合格的记下来、不当错误,between 也不按现在的硬边界改写(会改写时同样记下);
+    写入时工具记下这些把关读到的值的指纹(quality_fingerprint),重走时指纹没变却不合格就当被改过,指纹变了只提示。
   · 现有事实行都算不出的角度才记「待写代码」(definition 为 null,needs 写缺什么)。
 
 身份看定义,不看字面(same_meaning):读的行、值、条件类型、口径相同,并且 user_params 相同(系统默认值
@@ -95,6 +96,7 @@ import argparse
 import contextlib
 import contextvars
 import copy
+import hashlib
 import json
 import math
 import re
@@ -334,6 +336,27 @@ def _bound(spec: dict, key: str):
     if isinstance(b, tuple):
         return max_window_bars() + b[1] if b[0] == "win" else _facts_cfg()[b[1]]
     return b
+
+
+def _plain(x):
+    """去掉函数(same_as 这类代码本身不进指纹,改代码要加校验版本号),元组按列表。"""
+    if isinstance(x, dict):
+        return {k: _plain(v) for k, v in x.items() if not callable(v)}
+    if isinstance(x, (list, tuple)):
+        return [_plain(v) for v in x]
+    return x
+
+
+def quality_fingerprint() -> str:
+    """定义的质量把关(恒成立 / 不可能 / 根数上界 / 合理范围 / 同义换写)实际读到的全部值的指纹:每个可判定的值
+    按现在的配置解析出来的上下界与硬边界、合理范围、单位、类别、事件属性,根数上界(事实表窗口),以及同义换写
+    提示里引用的放量线、深跌线。不管来自配置还是代码常量,任何一个变了指纹就变。工具写日志时记进要素与形态卡
+    的条目(oplog.append),重走时据此分辨「写入后配置变了」和「写入时就不合格」。"""
+    table = {f"{fid}.{vname}": {**_plain(spec), "lo": _bound(spec, "lo"), "hi": _bound(spec, "hi")}
+             for fid, vals in VALUES.items() for vname, spec in vals.items()}       # 硬边界:soft 的在声明里,其余就是上下界
+    table["_window"] = max_window_bars()
+    table["_said"] = [_facts_cfg()["vol_run_min"], _features_cfg()["deep_drop_dd250"]]
+    return hashlib.sha256(json.dumps(table, sort_keys=True, ensure_ascii=False, default=str).encode()).hexdigest()[:16]
 
 
 def _vtitle(spec: dict, variant) -> str:

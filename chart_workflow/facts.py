@@ -664,7 +664,7 @@ def _triggers(ctx: _Ctx, peaks_by: dict, tb_segs: list[dict]) -> list[dict]:
             out.append({"tid": "T6", "kind": TRIGGERS["T6"][0], "variants": [],
                         "text": f"当天跳空 {_pct(g)}（开盘相对前一天收盘）", "chart_dates": [ctx.d[ib]]})
     vr = ctx.vr[ib]
-    if math.isfinite(vr) and vr < float(p["dry_day_ratio"]):
+    if math.isfinite(vr) and ctx.v[ib] > 0 and vr < float(p["dry_day_ratio"]):    # 停牌(当天没成交)不算缩量
         out.append({"tid": "T7", "kind": TRIGGERS["T7"][0], "variants": [],
                     "text": f"当天缩量（量比 {vr:.2f}，低于 {p['dry_day_ratio']:g}）", "chart_dates": [ctx.d[ib]]})
     starts = [s for s in tb_segs if s["a"] == ib]
