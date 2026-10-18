@@ -396,6 +396,69 @@ def test_watermark_of_root_in_other_repo_stays_in_that_repo(tmp_path, monkeypatc
     assert json.loads(wm.read_text())["state_root"] == str(root)
 
 
+def test_foreign_watermark_stops_and_reset_names_it(tmp_path, monkeypatch, no_snapshot_lock):
+    """水位文件里记的是别的状态根(比如测试把临时仓库的水位写了进来):核对停下并写明是哪个状态根的;
+    重置时不拿它比,记录里写明。"""
+    main, root = _repo_with_state(tmp_path, monkeypatch)
+    wm = main.resolve() / ".git" / "chart_workflow" / "watermark.json"
+    wm.parent.mkdir(parents=True)
+    other = tmp_path / "别处" / "outputs" / "chart_workflow"
+    wm.write_text(json.dumps({"schema": state.WATERMARK_SCHEMA, "state_root": str(other),
+                              "lines": {"ledger.jsonl": {"bytes": 999, "sha": "0" * 64, "n": 9}}, "files": {}}))
+    with pytest.raises(state.ForeignWatermark, match=f"记的是状态根 {other} 的水位,不是 "):
+        state.state_root(start=main)
+    with pytest.raises(state.ForeignWatermark):
+        state.advance(root)
+    rec = state.reset_watermark(root, "测试:别处的水位")
+    assert rec["foreign_watermark"] == str(other) and rec["missing"] == []
+    assert json.loads(wm.read_text())["state_root"] == str(root)
+    assert state.state_root(start=main) == root.resolve()
+
+
+def test_root_outside_git_keeps_watermark_beside_it(tmp_path, monkeypatch):
+    """不在 git 仓库里、也不是环境变量指定的状态根:水位放在它自己目录下,不拿代码所在的仓库兜底。"""
+    root = state.init(tmp_path / "loose")
+    monkeypatch.setenv(state.ENV_VAR, str(tmp_path / "另一本"))
+    assert state.watermark_path(root) == root / ".watermark.json"
+    (root / "ledger.jsonl").write_text('{"r": 1}\n')
+    state.advance(root)
+    assert (root / ".watermark.json").is_file()
+
+
+def test_tests_leave_repo_watermark_alone(tmp_path, monkeypatch, no_snapshot_lock):
+    """在 tmp 下自建仓库的状态根上推进、重置水位,真仓库的 .git/chart_workflow 一字不变(整场测试另有夹具
+    在开跑前后比一遍)。"""
+    from tests.chart_workflow.conftest import assert_repo_watermark_unchanged, repo_watermark_digest
+
+    before = repo_watermark_digest()
+    main, root = _repo_with_state(tmp_path, monkeypatch)
+    state.advance(root)
+    state.reset_watermark(root, "测试")
+    assert state.state_root(start=main) == root.resolve()
+    assert_repo_watermark_unchanged(before)
+
+
+def test_repo_watermark_guard_tells_main_root_writes_from_leaks(tmp_path, monkeypatch):
+    """整场测试前后比真仓库 .git/chart_workflow 的那道夹具:没变就过;变了但水位记的还是主目录自己的账(同一
+    时间有人在主目录用工具)只警告;记成了别的状态根(测试写进来的)就失败。用 tmp 下假的公共目录测。"""
+    import tests.chart_workflow.conftest as cf
+
+    fake = tmp_path / "repo" / ".git"
+    (fake / "chart_workflow").mkdir(parents=True)
+    monkeypatch.setattr(cf, "_repo_common_dir", lambda: fake)
+    wm = fake / "chart_workflow" / "watermark.json"
+    own = str(tmp_path / "repo" / "outputs" / "chart_workflow")
+    wm.write_text(json.dumps({"state_root": own, "n": 1}))
+    before = cf.repo_watermark_digest()
+    cf.assert_repo_watermark_unchanged(before)
+    wm.write_text(json.dumps({"state_root": own, "n": 2}))
+    with pytest.warns(UserWarning, match="主目录自己的账"):
+        cf.assert_repo_watermark_unchanged(before)
+    wm.write_text(json.dumps({"state_root": str(tmp_path / "pytest-x" / "main" / "outputs" / "chart_workflow")}))
+    with pytest.raises(AssertionError, match="不是主目录自己的账"):
+        cf.assert_repo_watermark_unchanged(before)
+
+
 def test_merged_into_other_branch_by_merge_commit_is_fine(tmp_path, monkeypatch, no_snapshot_lock):
     """用合并提交(非快进)把当前分支合进别的分支:那个分支上有改过记账目录的合并提交,但账当前分支全有;
     当前分支再记一次账(追加行、要素文件随操作日志改写)照样不拦。那个分支之后再记新账才拦。"""

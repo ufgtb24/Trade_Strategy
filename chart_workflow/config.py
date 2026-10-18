@@ -103,7 +103,7 @@ DEFAULTS: dict = {
     "shape_check": {     # 规则来自形态卡时的核对(rulecheck.py,全部待验证)
         "min_samples": 3,           # 至少要几个能核对的样本
         "min_positive_samples": 2,  # 能核对的样本里,买点当天卡成立的至少要几个
-        "pool_positive_stocks": 40, # 逐日核对另从训练副本随机抽股(顺序由卡的编号定):抽到有卡成立日的满这么多只
+        "pool_positive_stocks": 40, # 逐日核对另从训练副本随机抽股(顺序全局固定,种子是登记的副本指纹):抽到有卡成立日的满这么多只
         "pool_max_stocks": 300,     # 随机抽股最多抽几只;抽满还凑不够上一项就拒(调高它,耗时随只数等比例增加)
         "max_disagree_share": 0.0,  # 逐日比,规则和卡不一致的天数最多占卡能判定天数的多少
         "min_negative_days": 20,    # 逐日比,卡判「不成立」的天至少要几天(反例不够看不出规则是否比卡宽)

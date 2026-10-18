@@ -2,7 +2,7 @@
 样本所在的股票也算)与随机抽的股票看图范围内逐日,规则信号都要和「卡说成立」一致(永远成立、比卡宽、比卡窄、
 永远不成立的规则都过不了);三处都按固定回看判卡,按用户框的窗口判得不同的样本单独列出、不拿来核对;卡上有
 手写触发就拒;能核对的样本、其中卡成立的样本、卡判「不成立」的天、有卡成立日的随机股不够就拒;随机抽股的顺序
-只由卡的编号定(内容不变的改版抽到同一批),沿顺序抽到有卡成立日的够数为止、有上限;逐日材料在同一次运行里
+全局固定(种子是登记的训练数据副本指纹,和卡的编号、版本无关),沿顺序抽到有卡成立日的够数为止、有上限;逐日材料在同一次运行里
 缓存、可并行;账本记账时自己重跑核对,核对用的规则要和清单实际用的规则指纹相同;对照页开工前就核对,不过什么
 都不生成。
 
@@ -490,7 +490,7 @@ def test_rare_card_keeps_drawing_until_enough_stocks_with_card_days(env, monkeyp
     _rare_pool(pkl_dir)
     _card()
     cfg["shape_check"].update(pool_positive_stocks=2, pool_max_stocks=10)
-    order = rulecheck.pool_order(cfg, "s001", ["QMM"])
+    order = rulecheck.pool_order(cfg, rulecheck.pool_seed(cfg), ["QMM"])
     upto = max(order.index("H1"), order.index("H2")) + 1
     assert upto > 2                                            # 前 2 只里不够,要往下抽
     res = rulecheck.check_rule_against_shape("shape:s001@v1", cfg, rule=_rule(tmp, _rule_text()))
@@ -511,7 +511,7 @@ def test_rare_card_refused_when_cap_reached(env):
     cfg, pkl_dir, tmp = env
     _rare_pool(pkl_dir)
     _card()
-    order = rulecheck.pool_order(cfg, "s001", ["QMM"])
+    order = rulecheck.pool_order(cfg, rulecheck.pool_seed(cfg), ["QMM"])
     cap = max(order.index("H1"), order.index("H2"))             # 第 2 只有卡成立日的正好抽不到
     cfg["shape_check"].update(pool_positive_stocks=2, pool_max_stocks=cap)
     with pytest.raises(rulecheck.RuleShapeMismatch) as ei:
@@ -530,52 +530,68 @@ def test_draw_pool_stops_exactly_where_count_is_reached(cw_env, monkeypatch):
     names = [f"Z{i:02d}" for i in range(20)]
     monkeypatch.setattr("chart_workflow.securities.local_symbols", lambda cfg: names)
     monkeypatch.setattr("chart_workflow.loader.trading_dates", lambda cfg, s: pd.DatetimeIndex(["2025-07-01"]))
-    order = rulecheck.pool_order(cfg, "s001", [])
+    order = rulecheck.pool_order(cfg, "seed", [])
     hits = {order[i] for i in (1, 6, 9)}
     monkeypatch.setattr(rulecheck, "materials", lambda cfg, card, els, batch, *a, **k:
                         {s: (None, {"2025-07-01": (s in hits, "")}, {}) for s in batch})
     cfg["shape_check"] = {**cfg["shape_check"], "pool_positive_stocks": 3, "pool_max_stocks": 20}
     for workers in (1, 4, 16):
         cfg["workers"] = workers
-        got = rulecheck.draw_pool(cfg, {}, {}, "s001", [], None, None, None)
+        got = rulecheck.draw_pool(cfg, {}, {}, "seed", [], None, None, None)
         assert got["stocks"] == order[:10] and got["positive"] == [order[1], order[6], order[9]]
 
 
-def test_pool_order_from_shape_id_only(cw_env, tmp_path):
-    """抽股顺序只由卡的编号定(不含版本),和排除名单的顺序无关;样本股不在里面;看图范围里一天行情都没有的
-    股票抽的时候跳过。"""
+def test_pool_order_global_seeded_by_snapshot_fingerprint(cw_env, tmp_path):
+    """抽股顺序全局固定:种子是账上登记的训练数据副本指纹,和排除名单的顺序无关;换一份副本(指纹变了)顺序就变;
+    样本股不在里面;看图范围里一天行情都没有的股票抽的时候跳过。"""
+    from chart_workflow import snaplock
+
     cfg, pkl_dir = cw_env
     cfg["view_floor"] = FLOOR
     for i in range(12):
         make_stock(seed=i, end="2025-12-31").to_pickle(pkl_dir / f"S{i:02d}.pkl")
     make_stock(seed=99, end="2025-03-31").to_pickle(pkl_dir / "OLD.pkl")          # 看图下界之前就没了
-    a = rulecheck.pool_order(cfg, "s001", ["S00", "S01"])
-    assert a == rulecheck.pool_order(cfg, "s001", ["S01", "S00"]) and not {"S00", "S01"} & set(a)
-    assert rulecheck.pool_order(cfg, "s002", ["S00", "S01"]) != a
-    import inspect
-    assert "version" not in str(inspect.signature(rulecheck.pool_order)) and "n" not in inspect.signature(
-        rulecheck.pool_order).parameters
+    seed = rulecheck.pool_seed(cfg)
+    assert seed == snaplock.fingerprint(pkl_dir)["sha"]                          # 就是登记的那份副本的指纹
+    a = rulecheck.pool_order(cfg, seed, ["S00", "S01"])
+    assert a == rulecheck.pool_order(cfg, seed, ["S01", "S00"]) and not {"S00", "S01"} & set(a)
     cfg["shape_check"] = {**cfg["shape_check"], "pool_positive_stocks": 100, "pool_max_stocks": 100}
     never = _rule(tmp_path, "import pandas as pd\n\ndef signal(df):\n    return pd.Series(False, index=df.index)\n")
-    got = rulecheck.draw_pool(cfg, {"ingredients": [], "triggers": []}, {}, "s001", ["S00"], never, None, None)
-    assert got["stocks"] == [x for x in rulecheck.pool_order(cfg, "s001", ["S00"]) if x != "OLD"]
+    got = rulecheck.draw_pool(cfg, {"ingredients": [], "triggers": []}, {}, seed, ["S00"], never, None, None)
+    assert got["stocks"] == [x for x in rulecheck.pool_order(cfg, seed, ["S00"]) if x != "OLD"]
+    make_stock(seed=7, end="2025-12-31", price=11.0).to_pickle(pkl_dir / "S03.pkl")   # 换了一份副本
+    other = rulecheck.pool_seed(cfg)
+    assert other != seed and rulecheck.pool_order(cfg, other, ["S00", "S01"]) != a
 
 
-def test_unchanged_revision_draws_same_pool(env):
-    """内容不变的改版:抽到的随机股和上一版是同一批(换版本号挑不了股票)。"""
+def test_card_id_and_version_do_not_change_pool_order(env, state_dir):
+    """卡的编号、版本都不影响抽股顺序:同一张卡内容不变的改版抽到同一批;另一张卡(编号不同、内容也不同)
+    沿同一个顺序往下取,抽到的是同一个顺序的开头一段。"""
     cfg, pkl_dir, tmp = env
     _rare_pool(pkl_dir)
     _card()
     cfg["shape_check"]["pool_positive_stocks"] = 1
     card = shapes.load_card("s001")["versions"][0]["card"]
+    plain = {**card, "ingredients": [{k: v for k, v in i.items() if k != "element_version"} for i in card["ingredients"]]}
     shapes.apply(_decision({"act": "revise_shape", "target": {"shape_id": "s001"},
-                            "value": {"card": {**card, "ingredients": [
-                                {k: v for k, v in i.items() if k != "element_version"} for i in card["ingredients"]]},
-                                "change": "只改了说明", "from_ann": ["a1"]}}))
+                            "value": {"card": plain, "change": "只改了说明", "from_ann": ["a1"]}}))
+    shapes.apply(_decision({"act": "create_shape", "value": {
+        "name": {"value": "另一张卡", "origin": "user_written"}, "change": "新建", "from_ann": ["a1"],
+        "card": {**plain, "triggers": plain["triggers"] + [{"trig_id": "t9", "term": "T3", **DET}]}}},
+        *[_case(c[0], c[1]) | {"target": {"shape_id": "$new"}} for c in SAMPLES]))
     rule = _rule(tmp, _rule_text())
     v1 = rulecheck.check_rule_against_shape("shape:s001@v1", cfg, rule=rule)
     v2 = rulecheck.check_rule_against_shape("shape:s001@v2", cfg, rule=rule)
     assert v1["pool_stocks"] == v2["pool_stocks"] and v1["pool_positive_stocks"] == v2["pool_positive_stocks"]
+    order = rulecheck.pool_order(cfg, rulecheck.pool_seed(cfg), ["QMM"])
+    assert v1["pool_order_seed"] == rulecheck.pool_seed(cfg)
+    try:
+        other = rulecheck.check_rule_against_shape("shape:s002@v1", cfg, rule=_rule(
+            tmp, _rule_text("pk and dist and bool(trig & {'T7', 'T3'})"), "s002.py"))["pool_stocks"]
+    except rulecheck.RuleShapeMismatch as e:                   # 判法不同,核对结果不论;只看抽股顺序
+        raise AssertionError(str(e)) from None
+    for got in (v1["pool_stocks"], other):
+        assert got == order[:len(got)]
 
 
 def test_daily_materials_cached_within_run_and_keyed_by_inputs(env, monkeypatch):

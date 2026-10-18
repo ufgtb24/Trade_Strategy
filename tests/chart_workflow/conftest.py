@@ -60,6 +60,61 @@ def autolock(request, monkeypatch, tmp_path, root: Path) -> None:
     monkeypatch.setattr(snaplock, "verify", verify)
 
 
+def _repo_common_dir() -> Path | None:
+    import subprocess
+
+    from chart_workflow.config import REPO_ROOT
+
+    r = subprocess.run(["git", "rev-parse", "--path-format=absolute", "--git-common-dir"], cwd=REPO_ROOT,
+                       capture_output=True, text=True)
+    return Path(r.stdout.strip()) if r.returncode == 0 else None
+
+
+def repo_watermark_digest() -> dict:
+    """真仓库(这份代码所在的仓库,主目录与各 worktree 共用)git 公共目录下 chart_workflow/ 里每个文件的指纹
+    {相对路径: sha256};没有这个目录 → 空。只读。"""
+    import hashlib
+
+    common = _repo_common_dir()
+    d = common / "chart_workflow" if common else None
+    if d is None or not d.is_dir():
+        return {}
+    return {str(p.relative_to(d)): hashlib.sha256(p.read_bytes()).hexdigest() for p in sorted(d.rglob("*"))
+            if p.is_file()}
+
+
+def assert_repo_watermark_unchanged(before: dict) -> None:
+    """真仓库的 .git/chart_workflow 和 before 比:一字不差就过。变了的话,看水位文件里记的是哪个状态根:还是
+    主目录自己的账(同一时间有人在主目录用工具记了账,测试碰不到那里——夹具 no_repo_git_dir 拦着)→ 只给一条
+    警告;记成了别的状态根(测试或别的工具把别处的水位写了进来)→ 失败。"""
+    import warnings
+
+    after = repo_watermark_digest()
+    if after == before:
+        return
+    changed = sorted(k for k in set(before) | set(after) if before.get(k) != after.get(k))
+    common = _repo_common_dir()
+    try:
+        owner = json.loads((common / "chart_workflow" / "watermark.json").read_text()).get("state_root")
+    except (OSError, ValueError, TypeError):
+        owner = None
+    main_root = (common.parent / "outputs" / "chart_workflow").resolve() if common else None
+    if owner and main_root and Path(owner).resolve() == main_root:
+        warnings.warn(f"跑测试期间真仓库 .git/chart_workflow 变了({changed}),水位记的还是主目录自己的账,"
+                      f"多半是同一时间有人在主目录用工具,不是测试写的")
+        return
+    raise AssertionError(f"跑测试前后,真仓库 .git/chart_workflow 下的水位变了,水位文件记的状态根是 {owner}"
+                         f"(不是主目录自己的账,测试不许写那里):内容变了的 {changed}")
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _repo_watermark_untouched():
+    """整场测试跑完,真仓库的 .git/chart_workflow 必须和开跑前一字不差。"""
+    before = repo_watermark_digest()
+    yield
+    assert_repo_watermark_unchanged(before)
+
+
 def no_repo_git_dir(monkeypatch) -> None:
     """测试绝不读写这份代码所在仓库的 git 公共目录(主目录的 .git,水位就放在那里):要在它下面找公共目录就报错。
     测试用的是临时状态根(环境变量)或 tmp 下自建的仓库。"""

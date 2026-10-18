@@ -190,9 +190,7 @@ def test_log_and_cards_consistent_and_verify(state_dir, capsys):
     _batch(state_dir, "b1", [_ann("a1"), _ann("a2")])
     _batch(state_dir, "b2", [_ann("a3")], visible=False, kind="contrast_blind")
     shapes.apply(_decision(*ELEMS, el_op("pk1h", "按最高价至少越过一个峰", PK1_HIGH), _create(), _case()))
-    second = copy.deepcopy(CARD_IDS)
-    second["triggers"] = second["triggers"][:1]                         # 和 s001 定义不同(同定义的新卡会被拒)
-    shapes.apply(_decision(_create(second, name="回踩收回", from_ann=("a3",))))
+    shapes.apply(_decision(_create(CARD_IDS, name="回踩收回", from_ann=("a3",))))
     revised = copy.deepcopy(CARD_IDS)
     revised["triggers"].append({"trig_id": "t3", "term": "T1", **DET})
     shapes.apply(_decision({"act": "revise_shape", "target": {"shape_id": "s001"},
@@ -319,8 +317,7 @@ def test_ledger_conditions_by_element(state_dir, cw_env):
     assert (c["root_origin"], c["root_suggested_by"]) == ("suggested_adopted", "detector")
     # 要素是事实表推荐的、角色是用户定的:两件事分开记
     shapes.apply(_decision(_create({"ingredients": [{"ing_id": "m1", "element": "E002", "role": "bonus",
-                                                     "origin": "user_written", "said_first_match": "用户说的"}],
-                                    "triggers": [{"trig_id": "t1", "term": "T1", **DET}]},       # 和 s003 定义不同
+                                                     "origin": "user_written", "said_first_match": "用户说的"}], "triggers": []},
                                    name="派发也算加分")))
     (lists / "r7-contrast.json").write_text(json.dumps({"list_id": "r7-contrast", "kind": "contrast"}))
     m1 = add_round(cfg, kind="rule", rule_id="s004", version="v1", source="shape:s004@v1", rule="stub.py",
@@ -553,9 +550,10 @@ def test_tampered_tool_filled_fields_caught(state_dir):
     card2 = {"ingredients": [_reuse("j1", "E002", "i2")], "triggers": []}
     shapes.apply(_decision(_create(card2, name="复用")))
     f = sorted((state_dir / "oplog").glob("*.jsonl"))[-1]
-    rows = [json.loads(x) for x in f.read_text().splitlines()]
-    rows[-1]["value"]["card"]["ingredients"][0]["root"] = {"origin": "user_written", "said_first_match": "我说的"}
-    _rewrite_log(state_dir, rows)
+    lines = f.read_text().splitlines()
+    last = json.loads(lines[-1])
+    last["value"]["card"]["ingredients"][0]["root"] = {"origin": "user_written", "said_first_match": "我说的"}
+    _raw_append(state_dir, {**last, "op_id": "20261017T000000-bbbbbbbb", "target": {"shape_id": "s003"}})
     assert any("和日志里记的不一样" in m for m in shapes.rebuild(verify=True))
 
 
@@ -775,26 +773,6 @@ def test_v2_entries_still_usable(state_dir, monkeypatch, capsys):
     assert len(notes) == 1 and "按现在的配置不合格(第 2 版条目没记配置指纹" in notes[0]
 
 
-def test_same_definition_card_refused(state_dir):
-    """新建卡、或给卡改版,定义(要素与版本、角色、触发)和已有别的卡的当前版本完全相同就拒,指到那张卡;
-    触发或角色不同照常。"""
-    _base(state_dir)
-    with pytest.raises(shapes.ShapeValidationError, match="和已有的形态卡 s001 的当前版本完全相同,不新建"):
-        shapes.apply(_decision(_create(CARD_IDS, name="换个名字")))
-    other = copy.deepcopy(CARD_IDS)
-    other["triggers"] = other["triggers"][:1]
-    shapes.apply(_decision(_create(other, name="少一个触发")))                 # s002
-    bonus = copy.deepcopy(CARD_IDS)
-    bonus["ingredients"][0]["role"] = "bonus"
-    shapes.apply(_decision(_create(bonus, name="角色不同")))                   # s003
-    with pytest.raises(shapes.ShapeValidationError, match="s002 改版后的定义.*和已有的形态卡 s001"):
-        shapes.apply(_decision({"act": "revise_shape", "target": {"shape_id": "s002"},
-                                "value": {"card": copy.deepcopy(CARD_IDS), "change": "改成和 s001 一样",
-                                          "from_ann": ["a1"]}}))
-    shapes.apply(_decision({"act": "revise_shape", "target": {"shape_id": "s001"},     # 内容不变的改版不拦
-                            "value": {"card": copy.deepcopy(CARD_IDS), "change": "只改说明", "from_ann": ["a1"]}}))
-
-
 def test_rebuild_verify_lists_element_id_conflict(state_dir):
     """日志里同一个要素编号建了两次(手写进日志):重算核对把它列进问题清单、不抛错;重算覆盖照样拒绝。"""
     _base(state_dir)
@@ -854,19 +832,15 @@ def test_ledger_reads_log_not_disk(state_dir):
 
 
 def test_pending_summary_and_possible_duplicates(state_dir, capsys):
-    """同定义的卡第 3 版起建不进来;第 2 版时期留下的照常可用,待处理清单里列成可能重复。"""
     _batch(state_dir, "b1", [_ann("a1"), _ann("a2")])
-    with oplog.rules_at(2):
-        shapes.apply(_decision(*ELEMS, el_op("pk1h", "按最高价至少越过一个峰", PK1_HIGH), _create(), _case()))
+    shapes.apply(_decision(*ELEMS, el_op("pk1h", "按最高价至少越过一个峰", PK1_HIGH), _create(), _case()))
     text = shapes.render_pending()
     assert "s001" in text and "a2" in text and "a1 AAA" not in text
     assert "累计尝试 0 次" in text and "create_shape" in text
     assert "待写代码 E003「突破前一个月横着走」（待写代码）：现有事实没有「横着走了多久」" in text
     assert "在用 3 条，待写代码 1 条，已合并 0 条" in text
     assert "可能重复" not in text
-    with oplog.rules_at(2):
-        shapes.apply(_decision(_create(CARD_IDS, name="另一个说法")))     # 要素、角色、触发全同
-    _as_v2_log(state_dir)
+    shapes.apply(_decision(_create(CARD_IDS, name="另一个说法")))     # 要素、角色、触发全同
     other = copy.deepcopy(CARD_IDS)
     other["ingredients"][0]["role"] = "bonus"                          # 角色不同:不算重复
     shapes.apply(_decision(_create(other, name="角色不同")))

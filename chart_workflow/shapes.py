@@ -28,8 +28,7 @@ elements.py);摆过没选的、被拒的都只进日志、不进卡。写入流�
   第 2 版:卡上每个要素项都记要素版本号;角色记成用户定的要带 said_first_match;根数的上界按规则逐日判时的
           事实表窗口(买点前 default_lookback_bars 根加买点);between 一端碰到值本来就取不到的硬边界时规范化成
           at_least / at_most,只落在「合理范围」之外的软边界原样保留两端、只给提示(elements 模块说明)。
-  第 3 版:要素与卡的条目记质量把关指纹(见上);新建形态卡、或给卡改版时,定义(要素与版本、角色、触发)和
-          已有的别的卡的当前版本完全相同就拒绝,指到那张卡(换编号会换掉规则核对的抽股顺序,见 rulecheck)。
+  第 3 版:要素与卡的条目记质量把关指纹(见上)。
 
     uv run python -m chart_workflow.shapes apply <决定.json>
     uv run python -m chart_workflow.shapes show [<shape_id>]
@@ -592,12 +591,6 @@ def _prepare_ops(raw_ops: list, head: dict, st: _State, anns: dict, where) -> tu
         if act in ("create_shape", "revise_shape"):
             for ing in v["card"].get("ingredients", []):      # 记下卡这一版引用的每个要素当时的版本
                 ing["element_version"] = st.els[ing["element"]]["current_version"]
-            twin = _same_definition(v["card"], st, sid) if oplog.rules_now() >= 3 else None
-            if twin:
-                what = "这张新卡" if act == "create_shape" else f"{sid} 改版后"
-                errs.append(f"{path}: {what}的定义(要素与版本、角色、触发)和已有的形态卡 {twin} 的当前版本完全"
-                            f"相同,不{'新建' if act == 'create_shape' else '改'}:要用就引用 {twin},要改就对 {twin} 改版")
-                continue
             refs = v.get("from_ann") or []
             missing = [a for a in refs if a not in anns]
             if missing:
@@ -626,25 +619,6 @@ def _prepare_ops(raw_ops: list, head: dict, st: _State, anns: dict, where) -> tu
             continue
         out.append(op)
     return out, errs
-
-
-def definition_key(card: dict, els: dict) -> tuple:
-    """卡一个版本的定义:要素(按合并后解析到的编号)与它记下的版本、角色,触发(手写触发连同文字)。"""
-    ings = sorted((E.resolve(els, i["element"]), i.get("element_version"), i.get("role"))
-                  for i in card.get("ingredients") or [] if i.get("element"))
-    trigs = sorted((t.get("term"), " ".join(str(t.get("text") or "").split()) if t.get("term") == "custom" else "")
-                   for t in card.get("triggers") or [])
-    return tuple(ings), tuple(trigs)
-
-
-def _same_definition(card: dict, st: "_State", own: str | None) -> str | None:
-    """定义和 card 完全相同的别的卡(比各卡的当前版本,不比 own 自己);没有 → None。新建和改版都查:改版改成和
-    别的卡一样,同样等于换了个编号重抽。"""
-    key = definition_key(card, st.els)
-    for sid, c in sorted(st.cards.items()):
-        if sid != own and c["versions"] and definition_key(c["versions"][-1]["card"], st.els) == key:
-            return sid
-    return None
 
 
 def prepare(decision: dict, existing_ops: list[dict], anns: dict) -> tuple[list[dict], dict]:

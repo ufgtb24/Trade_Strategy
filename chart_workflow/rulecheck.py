@@ -24,7 +24,8 @@
         能核对的样本少于 min_samples(默认 3)、或其中买点当天卡成立的少于 min_positive_samples(默认 2;
         卡在样本上都不成立时,永远不成立的规则也全对)就拒绝,报错里写清缺在哪、出路是什么。
   逐日:跑两批股票——全部样本股(样本有没有被排除、跳过都算:逐日按固定回看判,和框无关),加上从训练副本
-        随机抽的股票:抽股顺序由卡的编号定(不含版本,draw_pool / pool_order),沿这个顺序往下取看图范围内
+        随机抽的股票:抽股顺序全局固定,种子是账上登记的训练数据副本指纹(和卡的编号、版本都无关,
+        draw_pool / pool_order),沿这个顺序往下取看图范围内
         有交易日的股票,直到「这一版卡在上面有卡成立日」的满 pool_positive_stocks 只(默认 40),最多取
         pool_max_stocks 只(默认 300);取到的不论有没有卡成立日都进逐日比较(没有的,规则在上面也必须
         不成立);取满上限还凑不够就拒,报错写明找到几只、上限多少、怎么调高、调高要多花多少时间。
@@ -33,7 +34,8 @@
         和「卡说成立」一致;不一致的天数占卡能判定天数的比例超过 max_disagree_share(默认 0,即必须全部一致)
         就拒绝,列出不一致的天。永远成立、比卡宽的规则在卡不成立的日子上露馅,比卡窄、永远不成立的规则在
         卡成立的日子上露馅;卡判「不成立」的天少于 min_negative_days(默认 20)时也拒绝。
-        抽股顺序事先算得出来,有人照着这批股票刻意去凑规则照样防不住——这一点接受。
+        抽股顺序事先算得出来,有人刻意照这批股票去凑过滤条件照样防不住——这一点接受:每次核对现抽一批,
+        会变成「失败不记账、可以反复重抽」,更糟。
 规则信号:规则文件方式在这只股票截到训练段末日的行情上算一次 signal(df),逐日读;app 方式跑这只股票,
 看那天在不在命中里。卡与要素从操作日志重算(先重走全部日志的校验),不读磁盘上的卡与要素文件。
 逐日核对按股票并行(cfg["workers"]);逐日卡说什么、规则信号在进程内缓存,键含卡与要素的全部内容、配置、
@@ -288,19 +290,30 @@ def sample_stocks(card: dict, n: int, anns: dict) -> list[str]:
     return sorted({a["symbol"] for _, a, _ in _cases(card, n, anns) if a})
 
 
-def pool_order(cfg: dict, shape_id: str, exclude) -> list[str]:
-    """抽股顺序:训练副本的全部股票去掉 exclude(样本股),按卡的编号定的种子打乱。种子不含版本:这张卡的
-    每一版都沿同一个顺序往下取,内容不变的改版抽到的就是同一批。种子事先算得出来,有人照着这批股票刻意去凑
-    规则照样防不住——这一点接受。"""
+def pool_seed(cfg: dict) -> str:
+    """抽股顺序的种子:账上登记的训练数据副本指纹(先核对本机副本就是登记的那一份)。"""
+    from chart_workflow import snaplock
+    from chart_workflow.config import dataset_dir
+    from chart_workflow.state import locate
+
+    snaplock.verify(dataset_dir(cfg))
+    return snaplock.read_lock(locate())["current"]["sha"]
+
+
+def pool_order(cfg: dict, seed: str, exclude) -> list[str]:
+    """抽股顺序:训练副本的全部股票去掉 exclude(样本股),按 seed(账上登记的副本指纹,见 pool_seed)打乱。
+    顺序全局固定,和卡的编号、版本都无关:所有卡都沿同一个顺序往下取,换编号、换版本挑不了股票。顺序事先算得
+    出来,有人刻意照这批股票去凑过滤条件照样防不住——这一点接受:每次核对现抽一批,会变成「失败不记账、可以
+    反复重抽」,更糟。"""
     from chart_workflow.securities import local_symbols
 
     skip = set(exclude)
     cands = [s for s in local_symbols(cfg) if s not in skip]
-    random.Random(int.from_bytes(hashlib.sha256(shape_id.encode()).digest()[:8], "big")).shuffle(cands)
+    random.Random(int.from_bytes(hashlib.sha256(seed.encode()).digest()[:8], "big")).shuffle(cands)
     return cands
 
 
-def draw_pool(cfg: dict, card: dict, els: dict, shape_id: str, exclude, rule: str | None, app: str | None,
+def draw_pool(cfg: dict, card: dict, els: dict, seed: str, exclude, rule: str | None, app: str | None,
               params: str | None) -> dict:
     """沿抽股顺序往下取看图范围里有交易日的股票,直到「这一版卡在上面有卡成立日」的满 pool_positive_stocks
     只(默认 40),最多取 pool_max_stocks 只(默认 300;都待验证)。抽到的股票不论有没有卡成立日都进逐日比较。
@@ -316,7 +329,7 @@ def draw_pool(cfg: dict, card: dict, els: dict, shape_id: str, exclude, rule: st
     need, cap = int(st["pool_positive_stocks"]), int(st["pool_max_stocks"])
     workers = max(1, int(cfg.get("workers", 1)))
     lo, hi = _view_range(cfg)
-    order = iter(pool_order(cfg, shape_id, exclude))
+    order = iter(pool_order(cfg, seed, exclude))
     drawn, positive, mats, t0 = [], [], {}, time.time()
     while len(positive) < need and len(drawn) < cap:
         want = need - len(positive)
@@ -456,9 +469,10 @@ def check_rule_against_shape(source: str, cfg: dict, *, rule: str | None = None,
                              params: str | None = None) -> dict:
     """来源是形态卡时的全部核对。返回要记进账本的 {"source", "declared", "facts_code", "samples_checked",
     "samples_positive", "samples_skipped", "samples_unexpressible", "sample_stocks", "pool_stocks",
-    "pool_positive_stocks", "stocks_unreadable", "days_checked", "days_negative", "days_positive", "days_unknown",
-    "days_disagree", "disagree_examples"}(facts_code:判卡用的事实表代码版本);任何一项不过 →
-    RuleShapeMismatch(日志校验不过 → ShapeValidationError;卡或版本不存在 → FileNotFoundError)。"""
+    "pool_positive_stocks", "pool_order_seed", "stocks_unreadable", "days_checked", "days_negative",
+    "days_positive", "days_unknown", "days_disagree", "disagree_examples"}(facts_code:判卡用的事实表代码版本;
+    pool_order_seed:抽股顺序的种子,即账上登记的副本指纹);任何一项不过 → RuleShapeMismatch
+    (日志校验不过 → ShapeValidationError;卡或版本不存在 → FileNotFoundError)。"""
     from chart_workflow.facts import FACTS_CODE
     from chart_workflow.shapes import _ann_index, checked_state
 
@@ -487,7 +501,8 @@ def check_rule_against_shape(source: str, cfg: dict, *, rule: str | None = None,
     samples = sample_stocks(card, n, anns)
     res = check_samples(cfg, card, ver, n, els, anns,
                         materials(cfg, ver["card"], els, samples, rule, app, params, says=False))
-    pool = draw_pool(cfg, ver["card"], els, card["shape_id"], samples, rule, app, params)
+    seed = pool_seed(cfg)
+    pool = draw_pool(cfg, ver["card"], els, seed, samples, rule, app, params)
     need, cap = int(_settings(cfg)["pool_positive_stocks"]), int(_settings(cfg)["pool_max_stocks"])
     if len(pool["positive"]) < need:
         raise RuleShapeMismatch(
@@ -501,6 +516,6 @@ def check_rule_against_shape(source: str, cfg: dict, *, rule: str | None = None,
     return {"source": source, "declared": declared, "facts_code": FACTS_CODE, "samples_checked": res["checked"],
             "samples_positive": res["positive"], "samples_skipped": res["skipped"],
             "samples_unexpressible": res["unexpressible"], "sample_stocks": samples, "pool_stocks": pool["stocks"],
-            "pool_positive_stocks": pool["positive"], "stocks_unreadable": daily["unreadable"],
-            "days_checked": daily["days"], "days_negative": daily["negative"], "days_positive": daily["positive"],
+            "pool_positive_stocks": pool["positive"], "pool_order_seed": seed,
+            "stocks_unreadable": daily["unreadable"], "days_checked": daily["days"], "days_negative": daily["negative"], "days_positive": daily["positive"],
             "days_unknown": daily["unknown"], "days_disagree": daily["disagree"], "disagree_examples": daily["examples"]}

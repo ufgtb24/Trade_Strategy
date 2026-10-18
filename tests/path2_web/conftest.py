@@ -24,7 +24,8 @@ import path2_apps.bottom_burst as _bbb
 import path2_apps.bottom_burst.dag_spec as _bbb_dag
 from chart_workflow import state
 from chart_workflow.loader import SNAPSHOT_FILE, SNAPSHOT_SCHEMA
-from tests.chart_workflow.conftest import autolock, no_repo_git_dir
+from tests.chart_workflow.conftest import (assert_repo_watermark_unchanged, autolock, no_repo_git_dir,
+                                           repo_watermark_digest)
 
 EARLY_FLOOR = "2000-01-01"
 
@@ -41,6 +42,14 @@ def _stub_load_params_to_default(monkeypatch):
 def _early_floor_allowed(monkeypatch):
     import path2_web.app as app_mod
     monkeypatch.setattr(app_mod, "_cw_view_floor", lambda: "1900-01-01")
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _repo_watermark_untouched():
+    """整场测试跑完,真仓库的 .git/chart_workflow 必须和开跑前一字不差(见 chart_workflow 的 conftest)。"""
+    before = repo_watermark_digest()
+    yield
+    assert_repo_watermark_unchanged(before)
 
 
 @pytest.fixture(autouse=True)
