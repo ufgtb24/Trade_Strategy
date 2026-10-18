@@ -203,16 +203,70 @@ def serialize_analysis(res) -> dict:
     return {"events": out_events, "matches": [_match_to_dict(m) for m in res.matches]}
 
 
-def summarize(res) -> dict:
+def summarize(res, min_start: int | None = None) -> dict:
     """{node_id: count} ∪ {"matches": n}(命中股列表的计数徽章,§7.3)。
-    node_id 为 None(未标注事件)跳过。"""
+    node_id 为 None(未标注事件)跳过;min_start 给了就只数锚点(event_anchor)不早于它的事件(看图下界护栏)。"""
     counts: dict = {}
     for e in res.events:
-        if e.node_id is None:
+        if e.node_id is None or (min_start is not None and event_anchor(_event_to_dict(e)) < min_start):
             continue
         counts[e.node_id] = counts.get(e.node_id, 0) + 1
     counts["matches"] = len(res.matches)
     return counts
+
+
+def event_anchor(e: dict) -> int:
+    """事件行的锚点:它声明的最早一根 bar——start_idx 与其余以 _idx 结尾的整数字段(confirm_idx、峰事件的
+    peak_idx 等;instance_idx 是流序不是 bar)里最小的那个。按字段命名约定取,不认具体事件类型。"""
+    xs = [v for k, v in e.items() if k.endswith("_idx") and k != "instance_idx"
+          and isinstance(v, int) and not isinstance(v, bool)]
+    return min(xs) if xs else -1
+
+
+def _drop_ids(v, gone: set):
+    """字段值里指向被删事件的编号:单个编号置空,编号列表去掉它们;别的值原样。"""
+    if isinstance(v, str):
+        return None if v in gone else v
+    if isinstance(v, (list, tuple)) and any(isinstance(x, str) and x in gone for x in v):
+        return [x for x in v if not (isinstance(x, str) and x in gone)]
+    return v
+
+
+def redact_before(analysis: dict, floor_idx: int) -> dict:
+    """看图下界护栏(调试视图只露本轮看图范围,见 path2_web/guard.py):删掉锚点(event_anchor)早于
+    floor_idx 那根的事件;留下的事件与 match 里指向被删事件(或事件表里没有的)的引用一并删掉,事件字段里
+    指向被删事件的编号置空;match 的 where / 边判定只留涉及的事件都还在的条目;match 起点截到 floor_idx。
+    纯函数,返回新 dict,幂等。留下的事件自己的派生值(相对高度、量比、距离这类)原样保留,可能带着下界之前
+    行情的零星数值(已知残留,见 path2_web/guard.py 模块说明)。"""
+    events = [dict(e) for e in analysis.get("events") or [] if event_anchor(e) >= floor_idx]
+    keep = {e["instance_id"] for e in events}
+    gone = {e.get("instance_id") for e in analysis.get("events") or []} - keep - {None}
+    for e in events:
+        for key in ("child_refs", "ref_ids"):
+            if isinstance(e.get(key), dict):
+                e[key] = {k: [i for i in v if i in keep] for k, v in e[key].items()}
+        if gone:
+            for k, v in list(e.items()):
+                if k not in ("instance_id", "child_refs", "ref_ids"):
+                    e[k] = _drop_ids(v, gone)
+    matches = []
+    for m in analysis.get("matches") or []:
+        m = dict(m)
+        ni = m.get("node_index") or {}
+        m["node_index"] = {nid: iid for nid, iid in ni.items() if iid in keep}
+        m["children"] = [i for i in m.get("children") or [] if i in keep]
+        pt = m.get("predicate_trace")
+        if pt:
+            m["predicate_trace"] = {
+                "where_results": {nid: c for nid, c in (pt.get("where_results") or {}).items()
+                                  if ni.get(nid) in keep},
+                "edge_results": {k: w for k, w in (pt.get("edge_results") or {}).items()
+                                 if w.get("src") in keep and w.get("dst") in keep},
+            }
+        if isinstance(m.get("start_idx"), int) and m["start_idx"] < floor_idx:
+            m["start_idx"] = floor_idx
+        matches.append(m)
+    return {**analysis, "events": events, "matches": matches}
 
 
 # ── pattern 静态层(拓扑面板数据源,§7.1) ──
@@ -349,7 +403,7 @@ def serialize_per_pattern_result(res, end_node: str, label_horizon: int,
                                   price_min=None, price_max=None, *,
                                   first_passage_enabled: bool = True,
                                   first_passage_k: float = 5.0,
-                                  sample_window=None) -> dict:
+                                  sample_window=None, view_floor_idx: int | None = None) -> dict:
     """单股单 pattern 投影,服务多 pattern worker。
 
     args:
@@ -371,6 +425,9 @@ def serialize_per_pattern_result(res, end_node: str, label_horizon: int,
             lo <= t <= hi 计样本,跨界段只取窗内部分;None = 全量(向后兼容)。
             label 前瞻窗不受截取影响(仍看未来 N 根)。matches 过滤口径不变
             (任一段起点 ∈ [start_ts, end_ts])。
+        view_floor_idx: 看图下界那根在 win 里的行号(调试视图护栏);给了就按 redact_before 删掉锚点早于它
+            的事件与引用,summary 的节点计数也只数下界及以后的事件,并原样记进返回的 view_floor_idx。
+            内部照常用完整 win(含预热)计算。None = 不删(扫描脚本用)。
 
     返回 {summary, analysis, max_forward_return, min_forward_drawdown, match_fp_counts}:
       - analysis.events: 全集照旧(含缓冲段;K 线灰色层数据源)
@@ -462,7 +519,9 @@ def serialize_per_pattern_result(res, end_node: str, label_horizon: int,
 
     analysis["matches"] = [_with_labels(md)
                            for md in analysis["matches"] if md["match_id"] in ret_by_id]
-    summary = summarize(res)
+    if view_floor_idx is not None:
+        analysis = redact_before(analysis, view_floor_idx)
+    summary = summarize(res, min_start=view_floor_idx)
     summary["matches"] = len(analysis["matches"])
 
     rets = [md["forward_return"] for md in analysis["matches"]
@@ -473,6 +532,9 @@ def serialize_per_pattern_result(res, end_node: str, label_horizon: int,
            if md["forward_drawdown"] is not None]
     min_dd = min(dds) if dds else None
 
-    return {"summary": summary, "analysis": analysis,
-            "max_forward_return": max_ret, "min_forward_drawdown": min_dd,
-            "match_fp_counts": match_fp_counts}
+    out = {"summary": summary, "analysis": analysis,
+           "max_forward_return": max_ret, "min_forward_drawdown": min_dd,
+           "match_fp_counts": match_fp_counts}
+    if view_floor_idx is not None:
+        out["view_floor_idx"] = int(view_floor_idx)
+    return out

@@ -100,3 +100,48 @@ describe('ScanResultDialog · 显示 name + rename', () => {
     w.unmount()
   })
 })
+
+describe('ScanResultDialog · 读了完整行情的旧扫描', () => {
+  beforeEach(() => { setActivePinia(createPinia()) })
+
+  const OLD: ScanHistoryEntry = {
+    name: '旧的', scan_ts: '20260601T090000', pattern_ids: ['bo_only'],
+    hits: null, total: 100, size: 1024, partial: false, old_scan: true,
+    start_date: '2024-01-02', end_date: '2026-06-01', win_end: '2026-08-07', view_guard: null,
+    per_pattern: { bo_only: { hits: null, median: null, fp: null, params_consistent: true } },
+  }
+
+  it('标「旧扫描」,命中数、中位数、首次穿越比整格 —', async () => {
+    vi.spyOn(api, 'listScans').mockResolvedValue([OLD, ROWS[0]])
+    const w = mount(ScanResultDialog, { attachTo: document.body })
+    await flushPromises()
+    const [old, fresh] = w.findAll('tbody tr')
+    expect(old.find('.old-badge').text()).toBe('旧扫描')
+    expect(old.find('.old-badge').attributes('title')).toContain('请重新扫描')
+    expect(old.findAll('.hits-num').length).toBe(0)
+    expect(old.findAll('.na').map(x => x.text())).toEqual(['—', '—', '—'])
+    expect(fresh.find('.old-badge').exists()).toBe(false)
+    expect(fresh.findAll('.hits-num').map(c => c.text())).toEqual(['12'])
+    w.unmount()
+  })
+
+  it('打不开时提示后端给的说明,对话框不关', async () => {
+    vi.spyOn(api, 'listScans').mockResolvedValue([OLD])
+    vi.spyOn(api, 'loadScan').mockRejectedValue(
+      new Error('GET /scans/%E6%97%A7%E7%9A%84 → 409: {"detail":"这份扫描是加看图范围护栏之前扫的,请重新扫描"}'))
+    const w = mount(ScanResultDialog, { attachTo: document.body })
+    await flushPromises()
+    const { useViewStore } = await import('../src/stores/view')
+    const toast = vi.spyOn(useViewStore(), 'showToast')
+    await w.findAll('tbody tr')[0].trigger('dblclick')
+    await flushPromises()
+    expect(toast).toHaveBeenCalledWith('打不开:这份扫描是加看图范围护栏之前扫的,请重新扫描')
+    expect(w.emitted('close')).toBeUndefined()
+    await w.findAll('tbody tr')[0].trigger('click')
+    await w.findAll('footer button').find(b => b.text() === 'Open')!.trigger('click')
+    await flushPromises()
+    expect(toast).toHaveBeenCalledTimes(2)
+    expect(w.emitted('close')).toBeUndefined()
+    w.unmount()
+  })
+})

@@ -1,6 +1,7 @@
 """池内「股票日面板」:逐只读 pkl,算 M、成交额中位、池子成员、全部标签与分组特征。
 
-每只股票先截到训练段末日(之后的行一律丢弃、不被任何计算读到),再算:
+每只股票经唯一的读数据口(loader,只读截断副本)读进来并截到训练段末日(之后的行一律丢弃、
+不被任何计算读到),再算:
   M_t      = rolling_atr_pct_nanmedian(high, low, close, m_period)(第 t 日收盘已知)
   dv_t     = median(close·volume over [t-19..t])
   标签     = labels.label_frame(要求 t+H 存在 ⇒ t+H 不晚于训练段末日)
@@ -18,14 +19,16 @@ M_t 有限且 ≥ m_min(剔除平时几乎不动的股票);open[t+1] > 0;标签�
 面板缓存到 <root>/cache/panel_<参数指纹>.parquet。指纹覆盖:训练段、k、H、M 回看、
 池子与特征参数、数据窗口回看天数、池内普通股名单、行情文件(名称 / 大小 / 修改时间)与本模块版本,
 任一变化都会重算。
+
+红线:缓存里存着训练段每个股票日(含 2024 年)的后续涨跌(dir / mag / U / D / 最高点),
+研究不得直接读它——2024 年留作没看过的那年,成绩只经 control.summarize(默认只给内圈年份、会记账)拿。
+写缓存时在同一目录写一份 README.txt 说明这一点。
 """
 from __future__ import annotations
 
 import hashlib
 import json
 from concurrent.futures import ProcessPoolExecutor
-from functools import lru_cache
-from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -33,6 +36,7 @@ import pandas as pd
 from chart_workflow.config import dataset_dir, root_dir
 from chart_workflow.features import feature_frame
 from chart_workflow.labels import label_frame
+from chart_workflow import loader
 from chart_workflow.securities import classify_universe, local_symbols
 from path2.calc.atr import rolling_atr_pct_nanmedian
 
@@ -45,15 +49,17 @@ PANEL_COLUMNS = [
     "win_start", "win_end", "max_jump",
 ]
 
+CACHE_README = """这个目录是看图工作流的可重算缓存(chart_workflow/panel.py 生成)。
+
+panel_*.parquet 含 2024 年的后续涨跌，研究不得直接读。
+里面存着训练段每个股票日的后续涨跌(含 2024 年,那一年留作没看过的那年)。要看成绩,只经
+chart_workflow.control.summarize:它默认只给内圈年份,算完自动记账。
+"""
+
 
 def read_stock(cfg: dict, symbol: str) -> pd.DataFrame:
-    """读一只股票并截到训练段末日(含)。tz-aware 先去 tz。"""
-    df = pd.read_pickle(dataset_dir(cfg) / f"{symbol}.pkl")
-    if getattr(df.index, "tz", None) is not None:
-        df = df.copy()
-        df.index = df.index.tz_localize(None)
-    df = df.sort_index()
-    return df[df.index <= pd.Timestamp(cfg["train_end"])]
+    """读一只股票并截到训练段末日(含),经唯一的读数据口(只读截断副本)。"""
+    return loader.read_bars(cfg, symbol)
 
 
 def stock_panel(df: pd.DataFrame, symbol: str, cfg: dict, common: bool) -> pd.DataFrame:
@@ -164,21 +170,12 @@ def build_panel(cfg: dict, refresh: bool = False, symbols=None, verbose: bool = 
     panel = panel.sort_values(["date", "symbol"]).reset_index(drop=True)
     cache.parent.mkdir(parents=True, exist_ok=True)
     panel.to_parquet(cache, index=False)
+    (cache.parent / "README.txt").write_text(CACHE_README)
     if verbose:
         print(f"[panel] {len(panel)} 个池内股票日,{panel['symbol'].nunique()} 只股票 → {cache}")
     return panel
 
 
-@lru_cache(maxsize=4096)
-def _dates_cached(ddir: str, train_end: str, symbol: str) -> pd.DatetimeIndex:
-    df = pd.read_pickle(Path(ddir) / f"{symbol}.pkl")
-    idx = df.index
-    if getattr(idx, "tz", None) is not None:
-        idx = idx.tz_localize(None)
-    idx = idx.sort_values()
-    return idx[idx <= pd.Timestamp(train_end)]
-
-
 def trading_dates(cfg: dict, symbol: str) -> pd.DatetimeIndex:
     """一只股票截到训练段末日的交易日序列(图窗按交易日偏移时用)。"""
-    return _dates_cached(str(dataset_dir(cfg)), str(cfg["train_end"]), symbol)
+    return loader.trading_dates(cfg, symbol)

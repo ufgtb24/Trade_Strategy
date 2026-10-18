@@ -1,13 +1,19 @@
 """清单文件(<root>/lists/<list_id>.json)的组装、校验与写入。
 
-格式 schema = "chart_workflow.list/1",三种 kind:
+格式 schema = "chart_workflow.list/1",三种 kind(每条都带证券类别 sec_class / sec_source /
+sec_label / sec_known,名录里查不到的 sec_label 为「未知（名录里查不到）」):
   bigmoves        大涨段清单,无 summary
   contrast        对照清单,有 summary
   contrast_blind  盲看清单,无 summary;marks 只有 decision / entry,metrics 只有 M
 
 写入前校验(任一不过就拒绝写):list_id 合法;所有日期不晚于 train_end;
 每个 view_end ≤ train_end;item_id 唯一;分组引用的 item 都存在;
-盲看清单不含任何和结果有关的字段(包括逐段的跨源比对结果)。
+盲看清单不含任何和结果有关的字段(包括逐段的跨源比对结果)。同名清单已存在就拒绝写
+(FileExistsError):重新生成会覆盖旧清单,账本里的那一轮就对不上了。
+
+图窗(view_window)是 make_item 与「同股不互相露底」(drop_window_overlaps)共用的唯一口径:
+同一只股票的两条,谁的决策日都不得落在另一条的完整图窗里(起点截到看图下界之后、到图窗终点),
+否则打开一张图就露出另一条的决策日和后续走势。
 """
 from __future__ import annotations
 
@@ -24,7 +30,7 @@ import pandas as pd
 from chart_workflow.config import root_dir
 from chart_workflow.features import tags_of
 from chart_workflow.panel import trading_dates
-from chart_workflow.securities import load_exchanges
+from chart_workflow.securities import CLASS_LABELS, classify_with_source, load_cached_names, load_exchanges
 
 SCHEMA = "chart_workflow.list/1"
 KINDS = ("bigmoves", "contrast", "contrast_blind")
@@ -75,17 +81,76 @@ def exchange_of(cfg: dict, symbol: str) -> str | None:
     return _EXCHANGES[key].get(symbol)
 
 
-def make_item(row, cfg: dict, blind: bool = False) -> dict:
-    """面板里的一行 → 清单里的一条。图窗:决策日往前 view.before_bars 个交易日,
-    到 min(t+H, train_end);盲看截到 t + view.blind_after_bars 为止。"""
-    sym = row["symbol"]
-    t = pd.Timestamp(row["date"])
-    dates = trading_dates(cfg, sym)
+_NAMES: dict[str, dict] = {}
+
+
+def security_fields(cfg: dict, symbol: str) -> dict:
+    """证券类别四个字段(只读证券名录缓存,不联网):名录里查不到的标「未知（名录里查不到）」。"""
+    key = str(root_dir(cfg))
+    if key not in _NAMES:
+        _NAMES[key] = load_cached_names(cfg)
+    cls, src = classify_with_source(symbol, _NAMES[key].get(symbol))
+    known = src != "code_rule"
+    return {"sec_class": cls, "sec_source": src,
+            "sec_label": CLASS_LABELS.get(cls, cls) if known else "未知（名录里查不到）",
+            "sec_known": known}
+
+
+def view_window(cfg: dict, symbol: str, t, blind: bool = False) -> tuple[pd.Timestamp, pd.Timestamp]:
+    """一条的图窗 (起点, 终点):决策日往前 view.before_bars 个交易日,起点截到看图下界 view_floor
+    (之后第一个交易日;view_floor 为空时不截),到 min(t+H, train_end);盲看截到 t + view.blind_after_bars。"""
+    t = pd.Timestamp(t)
+    dates = trading_dates(cfg, symbol)
     i = int(dates.searchsorted(t))
     before = cfg["view"]["before_bars"]
     after = cfg["view"]["blind_after_bars"] if blind else cfg["H"]
     view_start = dates[max(0, i - before)]
+    floor = cfg.get("view_floor")
+    if floor:
+        view_start = max(view_start, dates[min(int(dates.searchsorted(pd.Timestamp(floor))), i)])
     view_end = min(dates[min(len(dates) - 1, i + after)], pd.Timestamp(cfg["train_end"]))
+    return view_start, view_end
+
+
+def drop_window_overlaps(df: pd.DataFrame, cfg: dict, blind: bool = False,
+                         min_gap_bars: int = 0) -> pd.DataFrame:
+    """同股不互相露底:按 df 的行序逐条贪心,一条只有在 ① 它的决策日不落在已取中的同股任一条的
+    图窗里、② 已取中的同股任一条的决策日不落在它的图窗里、③ 与已取中的同股各条相隔超过
+    min_gap_bars 个交易日时才取。df 要有 symbol / date 列;返回取中的行(保持原行序)。
+    图窗与交易日序号只在同股已有取中的条目时才算(只出现一次的股票不读行情)。"""
+    keep = []
+    taken: dict[str, list[pd.Timestamp]] = {}
+    cache: dict[tuple[str, pd.Timestamp], tuple[pd.Timestamp, pd.Timestamp, int]] = {}
+
+    def geo(sym: str, t: pd.Timestamp) -> tuple[pd.Timestamp, pd.Timestamp, int]:
+        if (sym, t) not in cache:
+            s, e = view_window(cfg, sym, t, blind=blind)
+            cache[(sym, t)] = (s, e, int(trading_dates(cfg, sym).searchsorted(t)))
+        return cache[(sym, t)]
+
+    for idx, sym, d in zip(df.index, df["symbol"].values, df["date"].values):
+        t = pd.Timestamp(d)
+        mine = taken.setdefault(sym, [])
+        if mine:
+            s, e, i = geo(sym, t)
+            ok = True
+            for t2 in mine:
+                s2, e2, i2 = geo(sym, t2)
+                if s2 <= t <= e2 or s <= t2 <= e or abs(i - i2) <= min_gap_bars:
+                    ok = False
+                    break
+            if not ok:
+                continue
+        mine.append(t)
+        keep.append(idx)
+    return df.loc[keep]
+
+
+def make_item(row, cfg: dict, blind: bool = False) -> dict:
+    """面板里的一行 → 清单里的一条。图窗见 view_window。"""
+    sym = row["symbol"]
+    t = pd.Timestamp(row["date"])
+    view_start, view_end = view_window(cfg, sym, t, blind=blind)
     item = {
         "item_id": f"{sym}@{_d(t)}",
         "symbol": sym,
@@ -95,6 +160,7 @@ def make_item(row, cfg: dict, blind: bool = False) -> dict:
         "view_start": _d(view_start),
         "view_end": _d(view_end),
         "tags": tags_of(bool(row["gap"]), str(row["vol_tag"] or "")),
+        **security_fields(cfg, sym),            # 不含结果,盲看清单也写
     }
     if blind:
         item["marks"] = {"decision": _d(t), "entry": _d(row["entry_date"])}
@@ -114,7 +180,7 @@ def make_item(row, cfg: dict, blind: bool = False) -> dict:
 def new_list(list_id: str, kind: str, title: str, cfg: dict, params_extra: dict | None = None
              ) -> dict:
     pool = cfg["pool"]
-    params = {"k": cfg["k"], "H": cfg["H"],
+    params = {"k": cfg["k"], "H": cfg["H"], "view_floor": cfg.get("view_floor"),
               "pool": {"price_max": pool["price_max"], "dv_min": pool["dv_min"],
                        "dv_max": pool["dv_max"], "m_min": pool["m_min"]}}
     params.update(params_extra or {})
@@ -185,12 +251,15 @@ def validate(doc: dict) -> None:
 
 
 def write_list(doc: dict, cfg: dict) -> Path:
-    """校验后写入 <root>/lists/<list_id>.json(先写临时文件再改名)。"""
+    """校验后写入 <root>/lists/<list_id>.json(先写临时文件再改名)。同名清单已存在 → FileExistsError。"""
     doc = clean_json(doc)
     validate(doc)
     out_dir = root_dir(cfg) / "lists"
     out_dir.mkdir(parents=True, exist_ok=True)
     path = out_dir / f"{doc['list_id']}.json"
+    if path.exists():
+        raise FileExistsError(f"清单 {doc['list_id']} 已存在:同名重新生成会覆盖旧清单、账本对不上,"
+                              f"换一个清单名")
     tmp = path.with_suffix(".json.tmp")
     tmp.write_text(json.dumps(doc, ensure_ascii=False, indent=1))
     tmp.replace(path)

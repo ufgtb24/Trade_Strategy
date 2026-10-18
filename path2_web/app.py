@@ -1,4 +1,7 @@
-"""create_app:组装 FastAPI 实例(registry + config + router + CORS)。"""
+"""create_app:组装 FastAPI 实例(registry + config + router + CORS)。
+
+启动时核对看图下界:后端自己的看图下界(workflow.view_floor,调试视图与看图工作流共用)不得早于
+chart_workflow 配置的看图下界,否则拒绝启动(RuntimeError)——受 git 跟踪的 web 配置不能把能看的范围改早。"""
 from __future__ import annotations
 
 from pathlib import Path
@@ -10,8 +13,24 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from path2_web.api import build_router
 from path2_web.config import load_config, save_config, DEFAULT_PATH
 from path2_web.discovery import PatternRegistry
+from path2_web.workflow import _view_floor
 
 _DEFAULT_OUTPUTS_ROOT = str(Path(__file__).resolve().parents[1] / "outputs" / "path2_web")  # 锚 repo root
+
+
+def _cw_view_floor() -> str | None:
+    """chart_workflow 配置的看图下界(测试里替换它)。"""
+    from chart_workflow.config import load_config as cw_load_config
+
+    return cw_load_config().get("view_floor")
+
+
+def check_view_floor(cfg: dict) -> None:
+    """后端的看图下界早于 chart_workflow 配置的 → RuntimeError(拒绝启动)。"""
+    mine, theirs = _view_floor(cfg), _cw_view_floor()
+    if theirs and mine < str(theirs):
+        raise RuntimeError(f"后端的看图下界 {mine} 早于看图工作流配置的 {theirs}(chart_workflow),拒绝启动;"
+                           f"改回不早于 {theirs} 再启动")
 
 
 class _NoKeepAliveMiddleware(BaseHTTPMiddleware):
@@ -32,6 +51,7 @@ def create_app(*, config_override=None, config_path=DEFAULT_PATH,
                outputs_root=_DEFAULT_OUTPUTS_ROOT, use_thread_pool=False) -> FastAPI:
     registry = PatternRegistry()
     state = {"config": config_override if config_override is not None else load_config(config_path)}
+    check_view_floor(state["config"])
 
     def get_config():
         return state["config"]

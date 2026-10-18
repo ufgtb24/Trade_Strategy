@@ -34,7 +34,7 @@ from typing import Callable
 import pandas as pd
 
 from chart_workflow.config import root_dir
-from chart_workflow.panel import read_stock, trading_dates
+from chart_workflow.loader import read_bars, trading_dates
 
 URL = ("https://api.nasdaq.com/api/quote/{symbol}/historical?assetclass=stocks"
        "&fromdate={fromdate}&todate={todate}&limit=9999")
@@ -199,7 +199,7 @@ def check_item(item: dict, cfg: dict, source: NasdaqSource) -> dict:
     if theirs is None:
         return {"status": "unavailable", "n_compared": 0, "n_missing": 0, "mismatch_days": [],
                 "reason": note, "window": [start.strftime("%Y-%m-%d"), end.strftime("%Y-%m-%d")]}
-    ours = read_stock(cfg, sym)["close"]
+    ours = read_bars(cfg, sym)["close"]
     res = compare_window(ours, theirs, start, end, float(cfg["xcheck"]["tolerance"]))
     res["window"] = [start.strftime("%Y-%m-%d"), end.strftime("%Y-%m-%d")]
     return res

@@ -24,7 +24,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from chart_workflow.panel import read_stock
+from chart_workflow.loader import read_bars
 
 TRADING_TO_CALENDAR_RATIO = 1.65   # 与 path2_web/scan.py 同值:交易日 → 日历日
 
@@ -62,7 +62,7 @@ def _signal_bool(fn, df: pd.DataFrame) -> np.ndarray:
 def _rule_worker(args):
     rule_path, symbol, cfg = args
     fn = load_rule(rule_path)
-    df = read_stock(cfg, symbol)
+    df = read_bars(cfg, symbol)
     if len(df) == 0:
         return symbol, [], []
     sig = _signal_bool(fn, df)
@@ -98,9 +98,18 @@ def rule_fingerprint(rule_path) -> str:
     return hashlib.sha256(Path(rule_path).read_bytes()).hexdigest()[:10]
 
 
+def rule_identity(rule: str | None = None, app: str | None = None, params: str | None = None) -> str:
+    """一条规则的身份指纹:规则文件 → rule:<文件内容指纹>;app → app:<pattern_id>:<参数 yaml 内容指纹 | default>
+    (app 的代码版本另由账本的 app_commit / app_dirty 记)。对照清单的 params.rule_identity 记它,账本核对规则
+    和形态卡时拿核对用的那条比,对不上就拒。"""
+    if rule:
+        return f"rule:{rule_fingerprint(rule)}"
+    return f"app:{app}:{rule_fingerprint(params) if params else 'default'}"
+
+
 # ── app 方式 ────────────────────────────────────────────────────────────────
 
-def _app_module(pattern_id: str):
+def app_module_path(pattern_id: str):
     from path2_web.discovery import PatternRegistry
     reg = PatternRegistry()
     mp = reg.module_path(pattern_id)
@@ -126,7 +135,7 @@ def _app_worker(args):
     params = _app_params(mod, params_yaml)
     meta = mod.eval_meta(params)
     end_node, head = meta["end_node"], int(meta["head_buffer_trading_days"])
-    df = read_stock(cfg, symbol)                      # 已截到训练段末日
+    df = read_bars(cfg, symbol)                      # 已截到训练段末日
     lo = pd.Timestamp(cfg["train_start"])
     buf_start = lo - pd.Timedelta(days=round(head * TRADING_TO_CALENDAR_RATIO))
     win = df[df.index >= buf_start].reset_index()     # 'date' 列 + 0-based 行号
@@ -148,7 +157,7 @@ def _app_worker(args):
 
 
 def hits_from_app(pattern_id: str, params_yaml, symbols, cfg: dict) -> pd.DataFrame:
-    module_path = _app_module(pattern_id)
+    module_path = app_module_path(pattern_id)
     py = str(Path(params_yaml).resolve()) if params_yaml else None
     jobs = [(module_path, py, s, cfg) for s in symbols]
     results = _map(_app_worker, jobs, cfg)

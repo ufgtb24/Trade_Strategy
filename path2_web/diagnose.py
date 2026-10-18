@@ -59,9 +59,10 @@ def serialize_diagnostics(diag) -> dict:
     }
 
 
-def diagnose_symbol(spec, df, params, *, symbol: str, pattern_id: str) -> dict:
-    """对单股跑 per-node 诊断并序列化。spec 须与 params 一致(where 在 build_pattern 时闭合 params)。"""
-    diag = _diagnose(spec, df, params)
+def diagnose_symbol(spec, df, params, *, symbol: str, pattern_id: str, diag=None) -> dict:
+    """对单股跑 per-node 诊断并序列化。spec 须与 params 一致(where 在 build_pattern 时闭合 params)。
+    diag:调用方已算好的诊断结果(它还要拿原始事件做别的,例如按锚点删减),给了就不再算。"""
+    diag = _diagnose(spec, df, params) if diag is None else diag
     out = serialize_diagnostics(diag)
     out["symbol"] = symbol
     out["pattern_id"] = pattern_id

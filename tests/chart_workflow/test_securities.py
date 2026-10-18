@@ -97,3 +97,32 @@ def test_cache_roundtrip(tmp_path, monkeypatch):
         raise AssertionError("有缓存且不 refresh 时不应下载")
     monkeypatch.setattr(sec, "_download", boom)
     assert sec.load_names(cfg) == {"AAA": "Aaa Inc. Common Stock"}
+
+
+def test_classify_with_source_and_list_items(cw_env):
+    """名录里有名字的写 sec_known = true 和中文类别;没有的写「未知（名录里查不到）」。"""
+    from chart_workflow.bigmoves import build_list as build_big
+    from chart_workflow.config import root_dir
+    from chart_workflow.panel import build_panel
+    from chart_workflow.securities import CLASS_LABELS, classify_with_source
+    from tests.chart_workflow.conftest import make_stock
+
+    assert classify_with_source("GJP", None) == ("structured", "manual")
+    assert classify_with_source("ABC", "Abc Inc. Common Stock") == ("common", "listing")
+    assert classify_with_source("ABCDW", None) == ("warrant", "code_rule")
+    assert classify_with_source("ZZZ", None) == ("common", "code_rule")
+    assert set(CLASS_LABELS) >= {"common", "adr", "mlp", "cef", "spac_shell", "other"}
+
+    cfg, pkl_dir = cw_env
+    make_stock(seed=80, sigma=0.04).to_pickle(pkl_dir / "SEA.pkl")
+    make_stock(seed=81, sigma=0.04).to_pickle(pkl_dir / "SEB.pkl")
+    cache = root_dir(cfg) / "cache"
+    cache.mkdir(parents=True, exist_ok=True)
+    (cache / "securities.csv").write_text(
+        "symbol,name,marketCap,exchange\nSEA,Sea Corp American Depositary Shares,1,nyse\n")
+    panel = build_panel(cfg, verbose=False)
+    doc = build_big(panel, {**cfg, "bigmoves": {**cfg["bigmoves"], "rel_min": 0.5}}, "t-sec", 300)
+    by = {it["symbol"]: it for it in doc["items"]}
+    assert (by["SEA"]["sec_label"], by["SEA"]["sec_known"], by["SEA"]["sec_source"]) == ("ADR", True, "listing")
+    assert (by["SEB"]["sec_label"], by["SEB"]["sec_known"], by["SEB"]["sec_source"]) == \
+        ("未知（名录里查不到）", False, "code_rule")

@@ -11,14 +11,15 @@ from chart_workflow.config import root_dir
 from chart_workflow.contrast import build_list as build_contrast
 from chart_workflow.dataerrors import (apply_registry, build_registry, excluded_mask, load_pool,
                                        registry_path)
-from chart_workflow.ledger import add_round
+from chart_workflow.ledger import read_ledger
 from chart_workflow.listfile import write_list
 from chart_workflow.panel import build_panel
+from chart_workflow.state import state_root
 from tests.chart_workflow.conftest import make_stock
 
 
 def _batch(cfg, batch_id, anns, list_id="r1"):
-    d = root_dir(cfg) / "annotations"
+    d = state_root() / "annotations"
     d.mkdir(parents=True, exist_ok=True)
     (d / f"{batch_id}.json").write_text(json.dumps({
         "schema": "chart_workflow.annotations/1", "batch_id": batch_id,
@@ -44,7 +45,7 @@ def test_registry_collects_only_data_error_and_merges(cw_env):
         _ann("AAA", "2025-06-02", "2025-06-03", ann_id="a3"),
         _ann("DDD", "2025-06-05", "2025-06-01", ann_id="bad"),       # 起点晚于终点 → 跳过
     ], list_id="r2")
-    (root_dir(cfg) / "annotations" / "20261009T090001.json").write_text("{坏文件")
+    (state_root() / "annotations" / "20261009T090001.json").write_text("{坏文件")
     reg = build_registry(cfg)
     assert reg["schema"] == "chart_workflow.data_errors/1"
     assert reg["n_batches"] == 2
@@ -108,13 +109,14 @@ def test_pool_excludes_registered_ranges_everywhere(cw_env, tmp_path):
 
     # 对照清单:命中落在被排除的股票日上也会被丢掉,同日对照里也没有它们
     hits = gone[["symbol", "date"]].head(5)
-    doc = build_contrast(panel, hits, cfg, "t-c", False, "r", errata_info=info)
+    doc = build_contrast(panel, hits, cfg, "t-c", False, "r", errata_info=info, ledger={
+        "kind": "rule", "rule_id": "r", "version": "x", "source": "user-text", "change": "测试"})
     assert doc["params"]["n_pool_hits"] == 0
     assert doc["summary"]["rows"][0]["n_hits"] == 0
     write_list(doc, cfg)
-    entry = add_round(cfg, kind="rule", rule_id="r", version="v1", source="user-text",
-                      change="x", list_id="t-c")
-    assert entry["n_data_errors"] == 1
+    entry = read_ledger()[-1]                     # 算成绩时当场记的那一行
+    assert entry["list_id"] == "t-c" and entry["n_data_errors"] == 1
+    assert entry["provenance"]["data_errors_sha"] == info["sha"]
 
 
 def test_items_carry_exchange_from_securities_cache(cw_env):
@@ -130,3 +132,24 @@ def test_items_carry_exchange_from_securities_cache(cw_env):
     ex = {it["symbol"]: it["exchange"] for it in doc["items"]}
     assert ex.get("EXA") == "NYSE"
     assert ex.get("EXB") is None                        # 名单里没有 → 网页只用代码
+
+
+def test_registry_reads_v1_and_v2(cw_env):
+    """数据错误登记对 v1 和 v2 批次都能汇总(v2:买点列表、框选可空,数据有误仍必有起止)。"""
+    cfg, _ = cw_env
+    _batch(cfg, "20261008T101500", [_ann("AAA", "2025-03-03", "2025-03-07", ann_id="v1")])
+    d = state_root() / "annotations"
+    (d / "20261017T090000.json").write_text(json.dumps({
+        "schema": "chart_workflow.annotations/2", "batch_id": "20261017T090000", "list_id": "r9",
+        "list_kind": "bigmoves", "outcome_visible": True, "train_end": "2025-12-31",
+        "annotations": [
+            {"ann_id": "v2", "item_id": "BBB@2025-06-02", "symbol": "BBB", "range_start": "2025-06-02",
+             "range_end": "2025-06-04", "buy_points": [], "label": "data_error", "note": "复权",
+             "peeked_before_buy": False, "updated_at": "2026-10-17T09:00:00"},
+            {"ann_id": "v2p", "item_id": "CCC@2025-06-02", "symbol": "CCC", "range_start": None,
+             "range_end": None, "buy_points": [{"date": "2025-06-02", "primary": True}],
+             "label": "positive", "note": "", "peeked_before_buy": False}]}, ensure_ascii=False))
+    reg = build_registry(cfg)
+    assert reg["n_batches"] == 2 and reg["skipped_files"] == []
+    assert [(e["symbol"], e["sources"][0]["ann_id"]) for e in reg["entries"]] == [("AAA", "v1"),
+                                                                                  ("BBB", "v2")]

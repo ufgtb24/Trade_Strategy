@@ -2,15 +2,20 @@
   <div class="annot-chart" :class="{ large, highlighted }" :data-item-id="item.item_id">
     <div class="head">
       <span class="sym">{{ item.symbol }}</span>
-      <span class="when">决策日 {{ item.t }}</span>
-      <template v-if="!blind">
-        <span v-if="item.metrics.rel != null" class="metric">相对涨幅 {{ fmtNum(item.metrics.rel) }}</span>
-        <span v-if="item.metrics.rise != null" class="metric">涨幅 {{ fmtPct(item.metrics.rise) }}</span>
-        <span v-if="item.metrics.max_jump != null" class="metric"
-              title="从决策日往前一段到观察窗结束,单日收盘相对前一天的最大变化倍数(跌按倒数算),仅供核对数据时参考">
-          最大单日跳变 ×{{ fmtNum(item.metrics.max_jump) }}</span>
-        <span v-for="t in item.tags" :key="t" class="tag">{{ t }}</span>
+      <span v-if="item.sec_label" class="sec" :class="{ unknown: item.sec_known === false }"
+            data-testid="sec-label">{{ item.sec_label }}</span>
+      <template v-if="!hideOutcome">
+        <span class="when" data-testid="decision">决策日 {{ item.t }}</span>
+        <template v-if="!blind">
+          <span v-if="item.metrics.rel != null" class="metric">相对涨幅 {{ fmtNum(item.metrics.rel) }}</span>
+          <span v-if="item.metrics.rise != null" class="metric">涨幅 {{ fmtPct(item.metrics.rise) }}</span>
+          <span v-if="item.metrics.max_jump != null" class="metric"
+                title="从决策日往前一段到观察窗结束,单日收盘相对前一天的最大变化倍数(跌按倒数算),仅供核对数据时参考">
+            最大单日跳变 ×{{ fmtNum(item.metrics.max_jump) }}</span>
+          <span v-for="t in item.tags" :key="t" class="tag">{{ t }}</span>
+        </template>
       </template>
+      <span v-else class="hint-inline" data-testid="outcome-hidden">点了买点再显示清单的标记</span>
     </div>
     <div v-if="xcheckText" class="xcheck-warn" data-testid="xcheck-warn"
          title="生成清单时拿 Nasdaq 日线逐日比涨跌幅,单日倍数之比超出阈值就列在这里;确认有误请标「数据有误」">
@@ -19,27 +24,32 @@
       <button type="button" class="tool" :aria-pressed="mode === 'brush'" data-testid="tool-brush"
               @click="setMode('brush')">框选起止</button>
       <button type="button" class="tool" :aria-pressed="mode === 'buy'" data-testid="tool-buy"
+              title="点一下设一个买点;按住 Shift 点再加一个,Shift 点已有的买点取消它"
               @click="setMode('buy')">点买点</button>
       <label class="radio"><input type="radio" :name="`lbl-${uid}`" value="positive"
              :checked="annotation?.label === 'positive'" data-testid="label-positive"
-             @change="setLabel('positive')">正例</label>
+             @change="setLabel('positive')">{{ labelText('positive', kind) }}</label>
       <label class="radio"><input type="radio" :name="`lbl-${uid}`" value="negative"
              :checked="annotation?.label === 'negative'" data-testid="label-negative"
-             @change="setLabel('negative')">反例</label>
+             @change="setLabel('negative')">{{ labelText('negative', kind) }}</label>
       <label class="radio"><input type="radio" :name="`lbl-${uid}`" value="data_error"
              :checked="annotation?.label === 'data_error'" data-testid="label-data-error"
              @change="setLabel('data_error')">数据有误</label>
       <input class="note" type="text" placeholder="备注" maxlength="500" data-testid="note"
              :value="annotation?.note ?? ''" @input="onNote">
+      <button type="button" class="tool" data-testid="tool-log" :aria-pressed="store.logScale"
+              title="主图纵轴:对数坐标(按下)/ 线性坐标" @click="store.toggleLogScale()">
+        {{ store.logScale ? '对数' : '线性' }}</button>
       <button type="button" class="tool" data-testid="tool-clear" :disabled="!annotation"
               @click="store.deleteAnnotation(item.item_id)">清除</button>
       <button v-if="!large" type="button" class="tool" data-testid="tool-zoom" title="也可以双击图放大"
               @click="openZoom">放大</button>
     </div>
+    <div class="hint-line" data-testid="brush-hint">框上更好，会话靠它找你说的峰（框选起止可以不填，「数据有误」除外）</div>
     <div v-if="annotation" class="ann-line" data-testid="ann-summary">
-      <b>{{ labelText(annotation.label) }}</b>
+      <b>{{ labelText(annotation.label, kind) }}</b>
       起止 {{ annotation.range_start ?? '未框' }} → {{ annotation.range_end ?? '未框' }}
-      · 买点 {{ annotation.buy_date ?? '无' }}
+      · 买点 {{ buyText(annotation) }}
     </div>
     <div v-if="error" class="err">{{ error }}</div>
     <div ref="el" class="chart" :class="{ armed: mode !== 'none' }" />
@@ -51,19 +61,32 @@
  *
  * 画两类东西:清单自带的标记(决策日 / 买入日竖线,上下线横线,最高点;盲看清单只画
  * 决策日和买入日),用户的标注(形态范围 markArea、买点 markPoint)。正例和反例靠文字
- * 标签与线型(实线 / 虚线)区分,不靠色相。
+ * 标签与线型(实线 / 虚线)区分,不靠色相;判定文字随清单种类变(store.labelText)。
+ * 用户色盲:K 线涨 = 白色填充深色边、跌 = 深色填充,量柱涨浅灰、跌深灰;主买点实心三角「★买点」,
+ * 其他买点空心三角「买点2」「买点3」……;主图纵轴默认对数(store.logScale)。
+ *
+ * 大涨段清单点第一个买点之前不露结果:不画决策日、买入日、上下线、最高点,图头不显示决策日、
+ * 涨幅、最大单日跳变、标签和跨源比对不一致的提示;初始横向窗口从图窗起点到决策日后随机 3~15 根(store.initialRightOf),
+ * 用户把窗口右端拖过它就记成「点买点前看过后续」(store.markPeeked)。有了买点、且后端记上了露出结果
+ * (store.isRevealConfirmed)之后照常显示,窗口不动;记不上就继续藏着。
+ * 露出结果之后再改买点或「清除」,store 记成「看过结果后改过」(见 stores/workflow.ts 的改点痕迹)。
  *
  * 两个互斥的工具开关:「框选起止」用 ECharts lineX brush + createBrushRequestHandler 把
- * (startIdx, endIdx) 换成日期写进草稿;「点买点」在图上点一下,把那根 K 线的日期写成买点。
+ * (startIdx, endIdx) 换成日期写进草稿;「点买点」在图上点一下,把那根 K 线设成唯一的(主)买点,
+ * 按住 Shift 点再加一个,Shift 点已有的买点取消它。
  *
+ * 点买点模式下单击要等 CLICK_DELAY_MS:这段时间里没有双击才设买点。双击只管放大 / 退出放大,
+ * 不会先设一个买点、把结果闪出来再还原。
  * 小图双击打开放大模态框,放大图里双击关掉它;放大图从小图当时的缩放窗口开始。
  * 小图和放大图都挂 inside dataZoom:滚轮横向缩放(ECharts 以鼠标处为不动点),按住拖动平移
  * (框选开着时拖动是框选);只在已取回的 K 线里缩放,不会多取数据。 */
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import * as echarts from 'echarts'
-import type { Annotation, AnnotationLabel, Bar, WorkflowItem } from '../types'
+import type { Annotation, AnnotationLabel, PricedBar as Bar, WorkflowItem } from '../types'
 import { getWorkflowOhlc } from '../api'
-import { useWorkflowStore, type ZoomWindow } from '../stores/workflow'
+import {
+  CLICK_DELAY_MS, labelText, orderedBuyPoints, useWorkflowStore, type ZoomWindow,
+} from '../stores/workflow'
 import { createBrushRequestHandler } from './klineBrushHandler'
 
 const props = withDefaults(defineProps<{
@@ -77,10 +100,16 @@ const props = withDefaults(defineProps<{
 
 const store = useWorkflowStore()
 const blind = computed(() => props.blind ?? store.isBlind)
-// 跨源比对不一致的段在图头列出那几天;盲看清单不显示(也不该带这份结果)
+const kind = computed(() => store.listKind)
+const hasBuy = computed(() => (props.annotation?.buy_points?.length ?? 0) > 0)
+/** 大涨段清单还没有买点,或露出结果还没被后端记上:不露结果 */
+const hideOutcome = computed(() =>
+  kind.value === 'bigmoves' && !(hasBuy.value && store.isRevealConfirmed(props.item.item_id)))
+// 跨源比对不一致的段在图头列出那几天;盲看清单不显示(也不该带这份结果);大涨段点第一个买点前
+// 也不显示——列出的日子和涨跌幅可能落在决策日之后,同样会露结果
 const xcheckText = computed(() => {
   const x = props.item.xcheck
-  if (blind.value || !x || x.status !== 'mismatch') return ''
+  if (blind.value || hideOutcome.value || !x || x.status !== 'mismatch') return ''
   const sgn = (r: number) => `${r >= 0 ? '+' : ''}${(r * 100).toFixed(1)}%`
   const days = x.mismatch_days.slice(0, 5)
     .map(d => `${d.date}（我们 ${sgn(d.r_ours)}，Nasdaq ${sgn(d.r_nasdaq)}）`).join('；')
@@ -94,11 +123,19 @@ const error = ref<string | null>(null)
 const mode = ref<'none' | 'brush' | 'buy'>('none')
 let chart: echarts.ECharts | null = null
 let ro: ResizeObserver | null = null
-/** 双击前浏览器先发两次 click;点买点模式下第一次 click 已写了买点。记下那次 click 之前的草稿,
- *  双击时还原,双击只管放大 / 退出放大。undefined = 没有可还原的。 */
-let beforeClick: Annotation | null | undefined
+/** 等着生效的那次单击(双击前浏览器先发两次 click;等 CLICK_DELAY_MS 没有双击才设买点) */
+let clickTimer: ReturnType<typeof setTimeout> | null = null
+
+function cancelPendingClick() {
+  if (clickTimer != null) {
+    clearTimeout(clickTimer)
+    clickTimer = null
+  }
+}
 
 const INK = '#0f172a'
+const VOL_UP = '#cbd5e1'      // 涨:浅灰
+const VOL_DOWN = '#475569'    // 跌:深灰
 const BRUSH_OPTION = {
   xAxisIndex: 0,
   brushType: 'lineX' as const,
@@ -116,9 +153,9 @@ function fmtVol(x: number | null | undefined) {
   if (x == null) return '—'
   return x >= 1e8 ? `${(x / 1e8).toFixed(2)}亿` : x >= 1e4 ? `${(x / 1e4).toFixed(1)}万` : String(Math.round(x))
 }
-function labelText(l: AnnotationLabel | null | undefined) {
-  return l === 'positive' ? '正例' : l === 'negative' ? '反例'
-    : l === 'data_error' ? '数据有误' : '未选标签'
+function buyText(a: Annotation) {
+  const bps = orderedBuyPoints(a.buy_points)
+  return bps.length ? bps.map(b => (b.primary ? '★' : '') + b.date).join('、') : '无'
 }
 /** 正例实线、反例虚线、数据有误点线(不靠色相区分) */
 const BORDER_TYPE: Record<string, string> = { positive: 'solid', negative: 'dashed', data_error: 'dotted' }
@@ -150,9 +187,10 @@ function onNote(e: Event) {
 
 function onZrClick(e: any) {
   if (mode.value !== 'buy') return
-  if ((e.event?.detail ?? 1) >= 2) return      // 双击的第二次 click
-  const cur = store.drafts.get(props.item.item_id)
-  beforeClick = cur ? { ...cur } : null
+  if ((e.event?.detail ?? 1) >= 2) {           // 双击的第二次 click:前一次也不算
+    cancelPendingClick()
+    return
+  }
   if (!chart || !bars.value.length) return
   const px = [e.offsetX, e.offsetY]
   if (!chart.containPixel({ gridIndex: 0 }, px) && !chart.containPixel({ gridIndex: 1 }, px)) return
@@ -161,29 +199,63 @@ function onZrClick(e: any) {
   const x = Array.isArray(p) ? p[0] : p
   if (x == null || Number.isNaN(Number(x))) return
   const idx = Math.min(bars.value.length - 1, Math.max(0, Math.round(Number(x))))
-  store.upsertAnnotation(props.item.item_id, { buy_date: bars.value[idx].date })
+  const date = bars.value[idx].date
+  const shift = !!e.event?.shiftKey
+  cancelPendingClick()
+  clickTimer = setTimeout(() => {
+    clickTimer = null
+    if (shift) store.toggleBuyPoint(props.item.item_id, date)
+    else store.setBuyPoint(props.item.item_id, date)
+  }, CLICK_DELAY_MS)
+}
+
+/** 决策日在已取回 K 线里的序号(没有正好那天就取之后第一根)。 */
+function decisionIdx(): number {
+  const t = props.item.marks?.decision ?? props.item.t
+  const i = bars.value.findIndex(b => b.date >= t)
+  return i < 0 ? bars.value.length - 1 : i
+}
+
+/** 初始右边界的 K 线序号:决策日之后 store 里记的那么多根。 */
+function initialRightIdx(): number {
+  return Math.min(bars.value.length - 1, decisionIdx() + store.initialRightOf(props.item.item_id))
+}
+
+/** 没有买点时,窗口右端拖过初始右边界 → 记成点买点前看过后续。 */
+function onDataZoom() {
+  if (!hideOutcome.value || !chart || !bars.value.length) return
+  const dz = (chart.getOption() as any)?.dataZoom?.[0]
+  if (!dz) return
+  const end = dz.endValue != null ? Number(dz.endValue)
+    : dz.end != null ? Math.round((Number(dz.end) / 100) * (bars.value.length - 1)) : null
+  if (end != null && end > initialRightIdx()) store.markPeeked(props.item.item_id)
 }
 
 function onZrDblClick() {
-  if (mode.value === 'buy' && beforeClick !== undefined) {
-    if (beforeClick) store.upsertAnnotation(props.item.item_id, beforeClick)
-    else store.deleteAnnotation(props.item.item_id)
-  }
-  beforeClick = undefined
+  cancelPendingClick()                         // 双击带出的单击不设买点
   if (props.large) store.setZoom(null)
   else openZoom()
 }
 
 function currentZoom(): ZoomWindow | null {
   const dz = (chart?.getOption() as any)?.dataZoom?.[0]
-  return dz?.start != null && dz?.end != null ? { start: dz.start, end: dz.end } : null
+  if (dz?.start != null && dz?.end != null) return { start: dz.start, end: dz.end }
+  if (dz?.startValue != null && dz?.endValue != null) {
+    return { startValue: dz.startValue, endValue: dz.endValue }
+  }
+  return null
+}
+
+/** 还没有买点的大涨段图:从图窗起点到初始右边界;其余为 null(全段)。 */
+function initialWindow(): ZoomWindow | null {
+  return hideOutcome.value && bars.value.length ? { startValue: 0, endValue: initialRightIdx() } : null
 }
 
 function openZoom() {
   store.setZoom(props.item.item_id, currentZoom())
 }
 
-/** zoom:横向缩放窗口(百分比);null = 全段。 */
+/** zoom:横向缩放窗口(百分比或序号);null = 全段。 */
 function buildOption(zoom: ZoomWindow | null) {
   const b = bars.value
   const dates = b.map(x => x.date)
@@ -191,16 +263,17 @@ function buildOption(zoom: ZoomWindow | null) {
   const byDate = new Map(b.map(x => [x.date, x]))
   const m = props.item.marks ?? {}
   const lines: any[] = []
-  if (m.decision && has.has(m.decision)) {
+  const showMarks = !hideOutcome.value
+  if (showMarks && m.decision && has.has(m.decision)) {
     lines.push({ xAxis: m.decision, lineStyle: { type: 'solid', color: INK, width: 1 },
                  label: { formatter: '决策日', position: 'insideEndTop' } })
   }
-  if (m.entry && has.has(m.entry)) {
+  if (showMarks && m.entry && has.has(m.entry)) {
     lines.push({ xAxis: m.entry, lineStyle: { type: 'dotted', color: INK, width: 1 },
                  label: { formatter: '买入日', position: 'insideEndBottom' } })
   }
   const points: any[] = []
-  if (!blind.value) {
+  if (!blind.value && showMarks) {
     if (m.up_line != null) {
       lines.push({ yAxis: m.up_line, lineStyle: { type: 'dashed', color: '#475569' },
                    label: { formatter: '上线', position: 'insideStartTop' } })
@@ -219,19 +292,26 @@ function buildOption(zoom: ZoomWindow | null) {
   const areas: any[] = []
   if (a?.range_start && a?.range_end) {
     areas.push([
-      { xAxis: a.range_start, name: labelText(a.label),
+      { xAxis: a.range_start, name: labelText(a.label, kind.value),
         itemStyle: { color: 'rgba(15,23,42,0.07)', borderColor: INK, borderWidth: 1.5,
                      borderType: BORDER_TYPE[a.label ?? ''] ?? 'solid' },
         label: { show: true, position: 'insideTop', color: INK, fontWeight: 'bold' } },
       { xAxis: a.range_end },
     ])
   }
-  if (a?.buy_date && byDate.has(a.buy_date)) {
-    points.push({ name: '买点', coord: [a.buy_date, byDate.get(a.buy_date)!.l],
+  orderedBuyPoints(a?.buy_points).forEach((bp, k) => {
+    if (!byDate.has(bp.date)) return
+    const text = bp.primary ? '★买点' : `买点${k + 1}`
+    points.push({ name: text, coord: [bp.date, byDate.get(bp.date)!.l],
                   symbol: 'triangle', symbolSize: 12, symbolOffset: [0, 10],
-                  itemStyle: { color: INK },
-                  label: { show: true, position: 'bottom', formatter: '买点', color: INK } })
-  }
+                  // 主买点实心、其他空心(不靠色相)
+                  itemStyle: bp.primary ? { color: INK }
+                    : { color: '#ffffff', borderColor: INK, borderWidth: 1.5 },
+                  label: { show: true, position: 'bottom', formatter: text, color: INK } })
+  })
+  const range = zoom == null ? { start: 0, end: 100 }
+    : zoom.start != null ? { start: zoom.start, end: zoom.end }
+      : { startValue: zoom.startValue, endValue: zoom.endValue }
   return {
     animation: false,
     grid: [
@@ -245,7 +325,10 @@ function buildOption(zoom: ZoomWindow | null) {
         axisLabel: { fontSize: 10 } },
     ],
     yAxis: [
-      { scale: true, gridIndex: 0, splitNumber: 4, axisLabel: { fontSize: 10 } },
+      store.logScale
+        ? { type: 'log', gridIndex: 0, splitNumber: 4, axisLabel: { fontSize: 10 },
+            min: (v: any) => v.min * 0.97, max: (v: any) => v.max * 1.03 }
+        : { type: 'value', scale: true, gridIndex: 0, splitNumber: 4, axisLabel: { fontSize: 10 } },
       { gridIndex: 1, splitNumber: 2, axisLabel: { show: false }, splitLine: { show: false } },
     ],
     axisPointer: { link: [{ xAxisIndex: 'all' }] },
@@ -267,30 +350,32 @@ function buildOption(zoom: ZoomWindow | null) {
     },
     brush: BRUSH_OPTION,
     toolbox: { show: false },
-    dataZoom: [{ type: 'inside', xAxisIndex: [0, 1], start: zoom?.start ?? 0, end: zoom?.end ?? 100,
+    dataZoom: [{ type: 'inside', xAxisIndex: [0, 1], ...range,
                  zoomOnMouseWheel: true, moveOnMouseMove: true, moveOnMouseWheel: false, minValueSpan: 10 }],
     series: [
       {
         type: 'candlestick', name: 'K线', xAxisIndex: 0, yAxisIndex: 0, barWidth: '70%',
         data: b.map(x => [x.o, x.c, x.l, x.h]),
-        itemStyle: { color: '#47b262', color0: '#eb5454', borderColor: '#47b262',
-                     borderColor0: '#eb5454' },
+        // 涨 = 白色填充 + 深色边,跌 = 深色填充(不靠红绿色相)
+        itemStyle: { color: '#ffffff', color0: INK, borderColor: INK, borderColor0: INK },
         markLine: { symbol: 'none', silent: true, data: lines },
         markArea: { silent: true, data: areas },
         markPoint: { silent: true, data: points },
       },
       {
         type: 'bar', name: '成交量', xAxisIndex: 1, yAxisIndex: 1,
-        data: b.map(x => x.v), itemStyle: { color: '#94a3b8' },
+        data: b.map(x => ({ value: x.v, itemStyle: { color: x.c >= x.o ? VOL_UP : VOL_DOWN } })),
       },
     ],
   }
 }
 
-/** keepZoom:改标注触发的重画保留当前缩放窗口;重取数据时小图回到全段,放大图从小图当时的窗口开始。 */
+/** keepZoom:改标注触发的重画保留当前缩放窗口;重取数据时小图回到初始窗口(还没买点的大涨段图
+ *  到初始右边界,其余全段),放大图从小图当时的窗口开始。 */
 function render(keepZoom = true) {
   if (!chart || !bars.value.length) return
-  const zoom = keepZoom ? currentZoom() : props.large ? store.zoomWindow : null
+  const zoom = keepZoom ? currentZoom()
+    : (props.large ? store.zoomWindow : null) ?? initialWindow()
   chart.setOption(buildOption(zoom) as any, { notMerge: true })
   if (mode.value === 'brush') {
     chart.dispatchAction({ type: 'takeGlobalCursor', key: 'brush',
@@ -314,6 +399,7 @@ onMounted(() => {
   chart = echarts.init(el.value)
   chart.on('brushselected', brushH.onBrushSelected)
   chart.on('brushEnd', brushH.onBrushEnd)
+  chart.on('datazoom', onDataZoom)
   chart.getZr().on('click', onZrClick)
   chart.getZr().on('dblclick', onZrDblClick)
   if (typeof ResizeObserver !== 'undefined') {
@@ -324,9 +410,11 @@ onMounted(() => {
 })
 
 watch(() => props.item.item_id, () => { mode.value = 'none'; void load() })
-watch(() => [props.annotation, blind.value], () => render(), { deep: true })
+watch(() => [props.annotation, blind.value, hideOutcome.value, store.logScale], () => render(),
+      { deep: true })
 
 onBeforeUnmount(() => {
+  cancelPendingClick()
   ro?.disconnect()
   chart?.dispose()
   chart = null
@@ -340,6 +428,10 @@ onBeforeUnmount(() => {
 .head { display: flex; flex-wrap: wrap; gap: 6px; align-items: baseline; font-size: 12px; }
 .sym { font-weight: 700; font-size: 14px; }
 .when, .metric { color: #334155; }
+.sec { border: 1px solid #94a3b8; border-radius: 3px; padding: 0 4px; font-size: 11px; color: #334155; }
+.sec.unknown { font-weight: 700; border: 2px solid #0f172a; color: #0f172a; }
+.hint-inline { color: #475569; font-size: 11px; }
+.hint-line { font-size: 11px; color: #475569; margin-bottom: 2px; }
 .tag { border: 1px solid #94a3b8; border-radius: 3px; padding: 0 4px; font-size: 11px; color: #334155; }
 .xcheck-warn { font-size: 12px; font-weight: 700; color: #0f172a; border-left: 3px solid #0f172a;
                padding-left: 4px; margin: 2px 0; }

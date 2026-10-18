@@ -1,5 +1,5 @@
 // ECharts option 构造(纯函数,spec §8.3 方案 B)。类型无关:只依赖 start_idx/end_idx/instance_id + 色。
-import type { Bar, EventDict, MatchDict, Level, Tier, Topology } from '../types'
+import type { Bar, EventDict, MatchDict, Level, Tier, Topology, PricedBar } from '../types'
 import { colorOf } from './colors'
 import { packByBand, packBrackets } from './geometry'
 import { isBandVisible, renderGridOf, splitIntervalAtScanEnd, subBandTagList } from './visible'
@@ -121,9 +121,22 @@ export interface EventBundle {
   // ── spec 2026-07-11: shift+click 累积器命中 marker 的白蒙+黑线 overlay 数据 ──
   veilData: any[]         // 副图 point + interval
   veilPriceData: any[]    // 主图 pricePoint
-  candle: number[][]
-  volume: number[]
+  candle: Array<number[] | '-'>     // 没有价格的 bar(看图下界之前)为 '-',不画
+  volume: Array<number | '-'>
   dates: string[]
+}
+
+/** 有价格的 bar。调试视图里看图下界之前的 bar 只留日期(探测器预热用,这一轮不给看),一律不画;
+ *  叠加物(事件、match 括号)落在这段里的不画,跨进来的从第一根有价格的 bar 画起——类型无关,
+ *  只看 bar 有没有价格。 */
+export function isPriced(b: Bar | undefined | null): b is PricedBar {
+  return !!b && b.o != null && b.h != null && b.l != null && b.c != null && b.v != null
+}
+
+/** 第一根有价格的 bar 的序号(全有价格时为 0;全没有时为 bars.length)。 */
+export function firstPricedIdx(bars: Bar[]): number {
+  const i = bars.findIndex(b => isPriced(b))
+  return i < 0 ? bars.length : i
 }
 
 export function computeEventData(
@@ -150,8 +163,10 @@ export function computeEventData(
     tagToNodes?.[bandKeyOf(e)]?.[0] ?? nodeOfEventByBand(e)
 
   const dates = bars.map((b) => b.date)
-  const candle = bars.map((b) => [b.o, b.c, b.l, b.h])
-  const volume = bars.map((b) => b.v)
+  const candle = bars.map((b) => isPriced(b) ? [b.o, b.c, b.l, b.h] : '-' as const)
+  const volume = bars.map((b) => isPriced(b) ? b.v : '-' as const)
+  // 看图下界之前没有价格的那段:落在里面的叠加物不画,跨进来的从第一根有价格的 bar 画起
+  const lead = firstPricedIdx(bars)
 
   // pk 三态合成 + pk_id 反查(契约 C4/C5):必须按本股全部 events 算,在 level/nodeVisible
   // 过滤(下方 filtered)之前——被过滤掉的 bo 依然要能"突破"一个仍然可见的 pk。
@@ -194,7 +209,10 @@ export function computeEventData(
       .map((e) => e.start_idx as number),
   )
 
-  const pricePointData = priceAnchored.map((e) => {
+  const pricePointData = priceAnchored.filter((e) => {
+    const idx = (typeof e.peak_idx === 'number' ? e.peak_idx : e.start_idx) as number
+    return idx >= lead
+  }).map((e) => {
     // 渲染锚点:pk 事件用 peak_idx(峰 bar 精确局部高点,serialize 平铺带出),价格查
     // bars[peak_idx].h(不读演化后的 price);start_idx 仍是事件几何锚(登记 bar)。
     // pk 判别子 = 带 peak_idx(number,契约 C4);bo 等其他 price-anchored 事件无 peak_idx,
@@ -202,8 +220,8 @@ export function computeEventData(
     const isPk = typeof e.peak_idx === 'number'
     const renderIdx = (isPk ? e.peak_idx : e.start_idx) as number
     const bar = bars[renderIdx]
-    const y = bar ? bar.h * 1.005 : 0
-    const anchorY = bar ? bar.h : 0
+    const y = isPriced(bar) ? bar.h * 1.005 : 0
+    const anchorY = isPriced(bar) ? bar.h : 0
     // bo 盒文本:ref_ids.broken 列出的被突破 pk instance_id → 查 pkIds 得 pk_id 数字
     // (契约 C5,取代已删的 broken_peak_ids 字段)。查不到(引用的 pk 不在本次 events 里)的
     // id 静默丢弃,不留 undefined 占位。
@@ -230,6 +248,8 @@ export function computeEventData(
   // 合并 spot + span 一并送 packByBand,同 band 内共享同一次 packLanes 分 lane
   // (spec 2026-07-13:spot 从 band 中心固定位置改为参与 lane packing,消除视觉重叠 bug)
   const packedAll = packByBand(timeAnchored, subTags, bandKeyOf)
+    .filter((e) => (e.end_idx as number) >= lead)
+    .map((e) => ((e.start_idx as number) < lead ? { ...e, start_idx: lead } : e))
   const intervalData: any[] = []
   const pointData: any[] = []
   for (const e of packedAll) {
@@ -258,10 +278,10 @@ export function computeEventData(
     }
   }
 
-  const brackets = packBrackets(matches)
+  const brackets = packBrackets(matches).filter((m) => m.end_idx >= lead)
   const bracketData = brackets.map((m) => {
     const data: { value: number[]; match_id: string; instance_id?: string } = {
-      value: [m.start_idx, m.end_idx, m.lane, m.ordinal],
+      value: [Math.max(m.start_idx, lead), m.end_idx, m.lane, m.ordinal],
       match_id: m.match_id,
     }
     if (endNode) {
@@ -1319,7 +1339,10 @@ export function buildShadingMarkArea(
  * @param visEnd    可见区间结束 bar 索引（含）
  */
 export function buildVolumeSeriesAndYAxis(bars: Bar[], visStart: number, visEnd: number) {
-  const visBars = bars.slice(visStart, visEnd + 1)
+  // 只按有价格的 bar 算纵轴;可见区一根有价格的都没有时退回全部有价格的 bar
+  let visBars = bars.slice(visStart, visEnd + 1).filter(isPriced)
+  if (!visBars.length) visBars = bars.filter(isPriced)
+  if (!visBars.length) visBars = [{ date: '', o: 0, h: 1, l: 0, c: 0, v: 0, rv: 0 }]
   const priceMin = Math.min(...visBars.map(b => b.l))
   const priceMax = Math.max(...visBars.map(b => b.h))
   const priceRange = priceMax - priceMin
@@ -1340,10 +1363,10 @@ export function buildVolumeSeriesAndYAxis(bars: Bar[], visStart: number, visEnd:
     // 下面的 kline-hit-spanner (z=0) 触发 K-bar OHLC tooltip。未来若 volume 需要独立
     // tooltip,关掉 silent 并加 tooltip.formatter 即可。
     silent: true as const,
-    data: bars.map(b => ({
-      value: displayBottom + b.v * volScale,
+    data: bars.map(b => ({                     // 没有价格的 bar:value 为 null,不画
+      value: isPriced(b) ? displayBottom + b.v * volScale : null,
       itemStyle: {
-        color: b.c >= b.o ? '#D3D3D3' : '#696969',
+        color: isPriced(b) && b.c >= b.o ? '#D3D3D3' : '#696969',
         borderColor: 'black',
         borderWidth: 0.5,
         opacity: 0.5,
@@ -1467,16 +1490,17 @@ export function buildBarTooltipFormatter(bars: Bar[]) {
     const idx = p.dataIndex
     const b = bars[idx]
     if (!b) return ''
+    if (!isPriced(b)) return [`Date: ${b.date}`, `Index: ${idx}`, '<hr/>看图下界之前，不显示'].join('<br/>')
     const prev = idx > 0 ? bars[idx - 1] : null
     let chgStr: string
-    if (prev) {
+    if (isPriced(prev)) {
       const chg = (b.c - prev.c) / prev.c * 100
       const sign = chg >= 0 ? '+' : ''
       chgStr = `${sign}${chg.toFixed(2)}%`
     } else {
       chgStr = 'N/A'
     }
-    const rvStr = b.rv > 0 ? b.rv.toFixed(2) : 'N/A'
+    const rvStr = b.rv != null && b.rv > 0 ? b.rv.toFixed(2) : 'N/A'
     const volStr = Math.round(b.v).toLocaleString('en-US')
     return [
       `Date: ${b.date}`,

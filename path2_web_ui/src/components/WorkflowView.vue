@@ -1,5 +1,11 @@
 <template>
   <div class="wf">
+    <div v-if="blockedMessage" class="err blocked" data-testid="wf-blocked">{{ blockedMessage }}</div>
+    <div v-if="store.viewError" class="err" data-testid="wf-view-error">{{ store.viewError }}</div>
+    <div v-if="store.stateInfo?.from_env" class="state-env" role="status" data-testid="wf-state-env">
+      <b>【临时状态根】</b>记账类文件写到环境变量 {{ store.stateInfo.env_var }} 指的
+      {{ store.stateInfo.path }}，看过记录和标注不进正式账本。正式使用请不带这个环境变量重启后端。
+    </div>
     <header class="top">
       <button type="button" data-testid="wf-exit" @click="emit('exit')">返回调试视图</button>
       <select class="list-select" data-testid="wf-list" :value="store.current?.list_id ?? ''"
@@ -14,7 +20,8 @@
                 :aria-selected="g.key === store.groupKey" :data-group="g.key"
                 @click="store.setGroup(g.key)">{{ g.title }}</button>
       </div>
-      <select v-if="store.allTags.length" data-testid="wf-tag" :value="store.tagFilter"
+      <select v-if="store.allTags.length && store.listKind !== 'bigmoves'" data-testid="wf-tag"
+              :value="store.tagFilter"
               @change="store.setTagFilter(($event.target as HTMLSelectElement).value)">
         <option value="">全部标签</option>
         <option v-for="t in store.allTags" :key="t" :value="t">{{ t }}</option>
@@ -32,7 +39,7 @@
               @click="drawerOpen = !drawerOpen">已标注 ({{ store.draftCount }})</button>
     </header>
 
-    <div v-if="store.loadError" class="err">{{ store.loadError }}</div>
+    <div v-if="store.loadError" class="err" data-testid="wf-load-error">{{ store.loadError }}</div>
     <div v-if="!store.lists.length && !store.loadError" class="hint">
       还没有清单。清单由会话用命令行工具生成，放在 outputs/chart_workflow/lists/ 下。
     </div>
@@ -94,9 +101,15 @@
  * 翻到含这一条的页、高亮并放大;?wf= 为空时打开最新的一份清单。打开清单后 URL 同步成 ?wf=<list_id>。
  * 草稿非空时离开页面要确认(beforeunload)。
  *
+ * 后端的状态根来自环境变量(测试、冒烟用的临时目录)时,顶上显示一条文字提示(不靠颜色区分),
+ * 免得正式使用时记录悄悄写进临时目录。
+ *
+ * 大涨段清单不给标签筛选:标签描述的是决策日当天(跳空、量倍数),按它筛等于提示决策日在哪,
+ * 与图头点买点前不显示标签同一个理由(见 AnnotChart)。
+ *
  * 翻页:上一页 / 下一页按钮、页码框输入后回车、键盘 PgUp / PgDn。焦点在文字输入框里或放大框开着时
  * 不接管 PgUp / PgDn。翻页后网格滚回顶部。 */
-import { onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import AnnotChart from './AnnotChart.vue'
 import AnnotReviewPanel from './AnnotReviewPanel.vue'
 import { useWorkflowStore } from '../stores/workflow'
@@ -105,6 +118,9 @@ const emit = defineEmits<{ exit: [] }>()
 const store = useWorkflowStore()
 const drawerOpen = ref(false)
 const gridEl = ref<HTMLElement | null>(null)
+/** 后端拿不到记账类文件的家时,清单目录每项都带 blocked 与说明;打开清单、发标注都会被拒 */
+const blockedMessage = computed(() => store.lists.find(l => l.blocked)?.blocked_message
+  ?? (store.lists.some(l => l.blocked) ? '记账类文件的家不可用，暂时不能打开清单、发送标注' : ''))
 
 const KIND_TEXT: Record<string, string> = {
   bigmoves: '大涨段', contrast: '对照', contrast_blind: '盲看',
@@ -196,6 +212,9 @@ onBeforeUnmount(() => {
 .page-input { width: 4.5em; font-size: 13px; text-align: center; }
 .drawer-toggle[aria-pressed="true"] { background: #0f172a; color: #fff; }
 .err { color: #b91c1c; padding: 6px 8px; }
+.err.blocked { font-weight: 700; border-left: 4px solid #0f172a; color: #0f172a; }
+.state-env { padding: 6px 8px; border: 2px dashed #0f172a; color: #0f172a; background: #fff;
+             font-size: 13px; }
 .hint { color: #475569; padding: 6px 8px; }
 .summary { padding: 4px 8px; border-bottom: 1px solid #cbd5e1; font-size: 12px; overflow-x: auto; }
 .summary table { border-collapse: collapse; }

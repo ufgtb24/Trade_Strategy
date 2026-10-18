@@ -14,6 +14,7 @@ from path2_apps.bottom_burst.dag_spec import build_pattern
 from path2_web.app import create_app
 from path2_web.diagnose import derive_response, Query, Response, NodesPayload, PairFailure, Caveat
 from tests.path2.fixtures.positive_case import positive_case
+from tests.path2_web.conftest import debug_data
 
 
 def _dgnx_diag():
@@ -117,7 +118,7 @@ def _client(tmp_path):
     data_dir = tmp_path / "pkls"
     data_dir.mkdir()
     _mk_pkl(data_dir, "AAA")
-    cfg = {"dataset_dir": str(data_dir),
+    cfg = {**debug_data(data_dir),
           "scan": {"start_date": "2025-01-01", "end_date": "2025-12-31",
                     "workers": 1, "ticker_regex": None},
           "last_selected_pattern": "bottom_burst"}

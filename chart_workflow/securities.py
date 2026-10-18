@@ -52,6 +52,13 @@ MANUAL: dict[str, str] = {
 
 COMMON_CLASSES = ("common", "adr", "mlp")
 
+# 图头显示用的中文类别名
+CLASS_LABELS: dict[str, str] = {
+    "common": "普通股", "adr": "ADR", "mlp": "有限合伙单位", "preferred": "优先股",
+    "debt": "债券票据", "warrant": "认股权证", "right": "权利", "unit": "单位",
+    "structured": "结构化产品", "cef": "封闭式基金", "spac_shell": "SPAC 空壳", "other": "其他",
+}
+
 
 def normalize_symbol(sym: str) -> str:
     """筛选器代码对齐到本地 pkl 代码:`/` → `-`,`^` → `-P`。"""
@@ -74,12 +81,18 @@ def classify_code(symbol: str) -> str:
     return "common"
 
 
-def classify(symbol: str, name: str | None) -> str:
+def classify_with_source(symbol: str, name: str | None) -> tuple[str, str]:
+    """(类别, 依据):manual = 人工补充表;listing = 名录里有名字,按名称判;
+    code_rule = 名录里查不到,按代码规则推断(多半判成 common,实际可能是 ETF / 场外股票等)。"""
     if symbol in MANUAL:
-        return MANUAL[symbol]
+        return MANUAL[symbol], "manual"
     if name:
-        return classify_name(name)
-    return classify_code(symbol)
+        return classify_name(name), "listing"
+    return classify_code(symbol), "code_rule"
+
+
+def classify(symbol: str, name: str | None) -> str:
+    return classify_with_source(symbol, name)[0]
 
 
 def is_common(cls: str, common_classes=COMMON_CLASSES) -> bool:
@@ -143,6 +156,12 @@ def load_names(cfg: dict, refresh: bool = False) -> dict[str, str]:
         return _read_cache(path) if path.exists() else {}
     _write_cache(path, rows)
     return {r["symbol"]: r["name"] for r in rows}
+
+
+def load_cached_names(cfg: dict) -> dict[str, str]:
+    """只读缓存(不触发下载):{symbol: name}。缓存不在 → 空表。"""
+    path = _cache_path(cfg)
+    return _read_cache(path) if path.exists() else {}
 
 
 # 筛选器下载件的交易所 → 大写交易所名

@@ -1,3 +1,8 @@
 docs/feature_candidates.md merge=union
 docs/feature_candidates_archive.md merge=union
 docs/sample_usage/*.jsonl merge=union
+# 看图工作流的只追加记账文件按行合并:两台机器各自追加后合并不冲突(账本轮次号读时重算,不会重复)
+outputs/chart_workflow/ledger.jsonl merge=union
+outputs/chart_workflow/views.jsonl merge=union
+outputs/chart_workflow/oplog/*.jsonl merge=union
+outputs/chart_workflow/watermark_resets.jsonl merge=union

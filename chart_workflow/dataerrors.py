@@ -1,8 +1,8 @@
 """数据错误登记:用户核对后(跨源比对会在图头提示两份数据不一致的日子),把行情有误的段标成「数据有误」,
 这里把它们汇总成登记,并从股票池面板里排除受影响的股票日。
 
-工具在生成任何清单、计算任何统计之前都走 `load_pool()`:先重读 <root>/annotations/
-下全部标注批次,把 label = "data_error" 的标注汇总写成 <root>/data_errors.json,
+工具在生成任何清单、计算任何统计之前都走 `load_pool()`:先重读 <状态根>/annotations/
+下全部标注批次(v1 / v2 都认,见 annotations.read_batch;状态根见 state.py),把 label = "data_error" 的标注汇总写成 <root>/data_errors.json,
 再从池内面板里排除受影响的股票日。大涨段、对照清单、同日对照与各项统计用的都是排除后的面板。
 
 排除规则(待验证):对每条登记(股票 S,框选范围 [a, b]),S 的决策日 t 的数据窗口
@@ -28,6 +28,7 @@
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 import sys
@@ -37,8 +38,10 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from chart_workflow.annotations import iter_batches
 from chart_workflow.config import root_dir
 from chart_workflow.panel import build_panel
+from chart_workflow.state import state_root
 
 SCHEMA = "chart_workflow.data_errors/1"
 DATA_ERROR_LABEL = "data_error"
@@ -51,21 +54,15 @@ def registry_path(cfg: dict) -> Path:
 
 def build_registry(cfg: dict) -> dict:
     """读全部标注批次,汇总「数据有误」标注(同股同范围合并)。不写文件。"""
-    ann_dir = root_dir(cfg) / "annotations"
     entries: dict[tuple, dict] = {}
     skipped: list[str] = []
     n_batches = 0
-    for p in sorted(ann_dir.glob("*.json")) if ann_dir.exists() else []:
-        try:
-            doc = json.loads(p.read_text())
-            anns = doc["annotations"]
-            if not isinstance(anns, list):
-                raise ValueError("annotations 不是列表")
-        except (OSError, ValueError, KeyError, TypeError):
+    for p, doc, _ in iter_batches(state_root() / "annotations"):
+        if doc is None:
             skipped.append(p.name)
             continue
         n_batches += 1
-        for a in anns:
+        for a in doc["annotations"]:
             if not isinstance(a, dict) or a.get("label") != DATA_ERROR_LABEL:
                 continue
             sym, s, e = a.get("symbol"), a.get("range_start"), a.get("range_end")
@@ -127,7 +124,8 @@ def load_pool(cfg: dict, refresh: bool = False, verbose: bool = True
               ) -> tuple[pd.DataFrame, dict]:
     """清单与统计的统一入口:重建并写出数据错误登记 → 取池内面板 → 排除受影响的股票日。
 
-    返回 (面板, 登记摘要 {n_entries, n_excluded_rows, built_at, registry})。
+    返回 (面板, 登记摘要 {n_entries, n_excluded_rows, built_at, registry, sha})。
+    sha:登记内容的指纹(回看根数、H 与全部登记条目,不含生成时间),记进清单与账本,供原样重跑时核对。
     """
     reg = build_registry(cfg)
     path = write_registry(reg, cfg)
@@ -138,6 +136,9 @@ def load_pool(cfg: dict, refresh: bool = False, verbose: bool = True
         if reg["skipped_files"]:
             print(f"[data_errors] 警告:跳过读不了的标注 {reg['skipped_files'][:10]}",
                   file=sys.stderr)
+    raw = json.dumps({k: reg[k] for k in ("lookback_bars", "H", "entries")}, sort_keys=True,
+                     ensure_ascii=False, default=str)
     info = {"n_entries": reg["n_entries"], "n_excluded_rows": n_ex,
-            "built_at": reg["built_at"], "registry": path.name}
+            "built_at": reg["built_at"], "registry": path.name,
+            "sha": hashlib.sha256(raw.encode()).hexdigest()[:16]}
     return panel, info

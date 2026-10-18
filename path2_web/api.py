@@ -20,8 +20,9 @@ from sse_starlette.sse import EventSourceResponse
 
 from path2.dag import diagnose as _dag_diagnose
 from path2.dag.engine import analyze as _dag_analyze_engine
+from path2_web import guard
 from path2_web import scan as scan_mod
-from path2_web.data import slice_window, serialize_ohlc
+from path2_web.data import slice_window
 from path2_web.diagnose import diagnose_symbol, derive_response, Query
 from path2_web.gate_collector import attach_and_collect, detach
 from path2_web.serialize import serialize_pattern
@@ -224,6 +225,9 @@ def build_router(*, registry, config_path, get_config, set_config,
 
     # 看图工作流模式(/workflow/*):读清单、截断后的 K 线、收标注批次
     router.include_router(build_workflow_router(get_config=get_config))
+    # 调试视图也只露本轮看图范围(path2_web/guard.py):行情经截断副本读、截到训练段末日,
+    # 看图下界之前的 K 线不给值;本进程已记过「看过」的图窗 (symbol, 首根, 末根)
+    debug_seen: set[tuple[str, str, str]] = set()
 
     @router.get("/patterns")
     def get_patterns():
@@ -239,12 +243,9 @@ def build_router(*, registry, config_path, get_config, set_config,
 
     @router.get("/ohlc")
     def get_ohlc(symbol: str, start: str, end: str):
-        cfg = get_config()
-        pkl = Path(cfg["dataset_dir"]) / f"{symbol}.pkl"
-        if not pkl.exists():
-            raise HTTPException(404, f"pkl not found: {symbol}")
-        win = slice_window(pd.read_pickle(pkl), start, end)
-        return serialize_ohlc(symbol, win)
+        out = guard.ohlc(get_config(), symbol, start, end)
+        guard.record_chart(out, debug_seen)      # 记不进「看过」就不给图
+        return out
 
     @router.get("/config")
     def read_config():
@@ -252,12 +253,15 @@ def build_router(*, registry, config_path, get_config, set_config,
 
     @router.put("/config")
     def write_config(cfg: dict):
+        # 看图工作流那一段只读:不经这里改(看图下界、训练段末日、数据目录是护栏的一部分),
+        # 一律沿用当前生效的值;落盘时也不写它(见 config.save_config)
+        cfg = {**cfg, "workflow": get_config().get("workflow")}
         set_config(cfg)
         return {"ok": True}
 
     @router.get("/scans/")
     def scans_list_flat():
-        return scan_mod.list_scans_flat(outputs_root)
+        return guard.mark_old_scans(get_config(), scan_mod.list_scans_flat(outputs_root))
 
     @router.get("/scans/{name}")
     def scan_load_flat(name: str):
@@ -266,6 +270,10 @@ def build_router(*, registry, config_path, get_config, set_config,
             data = scan_mod.load_scan_flat(name, outputs_root)
         except FileNotFoundError:
             raise HTTPException(404, "scan not found")
+        cfg = get_config()
+        guard.check_openable(cfg, data)    # 没护栏标记、范围更宽、换过副本的扫描不能打开
+        guard.redact_scan(data)            # 锚点早于看图下界的事件不给(落盘时已删,兜底)
+        guard.record_scan_open(cfg, name, data)    # 结果列表露出每只股的成绩:记不进「看过」就不给
         # 用当前 palette 覆盖历史 scan file 里冻结的 event_styles。颜色是纯 UI 关注点,
         # 不属于扫描结果快照的必要部分——允许调 palette 后不用重扫也生效。
         # pattern 在 registry 缺失(被删/改名)时跳过,保留文件里的原值。
@@ -322,33 +330,39 @@ def build_router(*, registry, config_path, get_config, set_config,
         # v3(2026-07-16 node-gated-debug,后更名 anchor_kind) 契约 #7 扩展:双 env 独立
         # (DEBUG_BAR_RANGE + DEBUG_ANCHOR_KIND)· finally 无条件 pop 两 env(即使本次未写
         # DEBUG_ANCHOR_KIND 也 pop 兜底)。
-        if start_bar is not None and end_bar is not None:
-            os.environ["DEBUG_BAR_RANGE"] = f"{start_bar},{end_bar}"
-        if anchor_kind:                             # ★ v3 · 空串也视同未传
-            os.environ["DEBUG_ANCHOR_KIND"] = anchor_kind
         try:
             mod = registry.get(pattern_id)
             if mod is None:
                 raise HTTPException(404, f"unknown pattern: {pattern_id}")
+            guard.check_dates(start, end)
             cfg = get_config()
-            pkl = Path(cfg["dataset_dir"]) / f"{symbol}.pkl"
-            if not pkl.exists():
-                raise HTTPException(404, f"pkl not found: {symbol}")
-            win = slice_window(pd.read_pickle(pkl), start, end)
             if params_override:
                 # A5:params_override 存在时用它闭合 spec(Working Copy 直诊断,不落 yaml)。
                 try:
                     _p = mod.Params.from_dict(json.loads(params_override), strict=False)
                 except (ValueError, json.JSONDecodeError) as e:
                     raise HTTPException(400, f"params_override 非法: {e}") from e
-                spec = mod.build_pattern(_p)
             else:
                 # 现状路径:诊断每次都重新 build_pattern(load_params())——与 /scan 同口径(yaml SSoT 热加载)。
                 # 不能复用 mod.PATTERN_DAG(它是 import 时一次性 build,Params.default() 闭合,与 yaml 漂移)。
-                spec = mod.build_pattern(mod.load_params())
+                _p = mod.load_params()
+            spec = mod.build_pattern(_p)
+            # start 是分析窗起点(含探测器预热):不早于「看图下界往前推这个 app 的预热天数」;行情截到训练段末日。
+            # 返回前删掉锚点早于看图下界的事件、诊断行和失败尝试(guard 模块说明)。
+            start = guard.diagnose_start(cfg, start, require_eval_meta(mod, params=_p)["head_buffer_trading_days"])
+            win = slice_window(guard.bars(cfg, symbol, end), start, end)
+            floor_idx = guard.floor_index(win, cfg)
+            start_bar, end_bar = guard.clamp_bars(start_bar, end_bar, floor_idx)
+            if start_bar is not None and end_bar is not None:
+                os.environ["DEBUG_BAR_RANGE"] = f"{start_bar},{end_bar}"
+            if anchor_kind:                             # ★ v3 · 空串也视同未传
+                os.environ["DEBUG_ANCHOR_KIND"] = anchor_kind
             if scope is None:
-                # legacy 路径:无 scope 参数 → 字节等价,前端旧 api.ts::getDiagnose 不用改。
-                return diagnose_symbol(spec, win, None, symbol=symbol, pattern_id=pattern_id)
+                # legacy 路径:无 scope 参数 → 前端旧 api.ts::getDiagnose 不用改。
+                diag = _dag_diagnose(spec, win, None)
+                return guard.redact_diagnostics(
+                    diagnose_symbol(spec, win, None, symbol=symbol, pattern_id=pattern_id, diag=diag), floor_idx,
+                    guard.diag_anchors(diag))
             # A' 按 scope 分派(见 docs/research/2026-07-18_debug-double-pause-analysis/final_report.md §3.1):
             # scope=nodes 只需 diag · scope=time/pair 只需 result(+ gate_failures) · 三 scope 数据依赖完全正交
             # (derive_response 三 branch 逐字核实无 hidden cross-dep)· 只跑该 scope 需要的那 pass 消双 pause。
@@ -369,9 +383,10 @@ def build_router(*, registry, config_path, get_config, set_config,
                     detach(spec)
             # unknown scope 走 derive_response · 由其抛 ValueError → HTTPException(400)
             try:
-                return derive_response(query, diag=diag, spec=spec, result=result)
+                resp = derive_response(query, diag=diag, spec=spec, result=result)
             except ValueError as e:
                 raise HTTPException(400, str(e)) from e
+            return guard.redact_scoped(resp, floor_idx, diag=diag, result=result)
         # ⚠ env is process-wide; concurrent /diagnose calls race — v2 finally-pop 让并发下互相清 env,
         # undefined under concurrency, single-user debug tool.
         finally:
@@ -386,9 +401,7 @@ def build_router(*, registry, config_path, get_config, set_config,
         if mod is None:
             raise HTTPException(404, f"unknown pattern: {pattern_id}")
         cfg = get_config()
-        pkl = Path(cfg["dataset_dir"]) / f"{symbol}.pkl"
-        if not pkl.exists():
-            raise HTTPException(404, f"pkl not found: {symbol}")
+        start, end = guard.clamp_range(cfg, start, end)   # 扫描区间截进本轮看图范围
 
         try:
             if params_override:
@@ -409,8 +422,7 @@ def build_router(*, registry, config_path, get_config, set_config,
             buf_end   = str((end_ts   + pd.Timedelta(days=round(label_horizon * scan_mod.TRADING_TO_CALENDAR_RATIO))).date())
 
             # 复刻 worker 单 pattern 调用(含样本消费窗截取,口径与 scan worker 一致)
-            df = pd.read_pickle(pkl)
-            win = slice_window(df, buf_start, buf_end)
+            win = slice_window(guard.bars(cfg, symbol, buf_end), buf_start, buf_end)
             res = mod.analyze(win, p)
             from path2_web.serialize import serialize_per_pattern_result
             lo = int(win["date"].searchsorted(start_ts, "left"))
@@ -418,7 +430,7 @@ def build_router(*, registry, config_path, get_config, set_config,
             out = serialize_per_pattern_result(
                 res, end_node=end_node, label_horizon=label_horizon,
                 win=win, start_ts=start_ts, end_ts=end_ts,
-                sample_window=(lo, hi))
+                sample_window=(lo, hi), view_floor_idx=guard.floor_index(win, cfg))
             pattern_spec = serialize_pattern(mod.build_pattern(p if p is not None else mod.load_params()))
             scan_meta = {
                 "start_date": start, "end_date": end,
@@ -429,6 +441,7 @@ def build_router(*, registry, config_path, get_config, set_config,
             raise
         except Exception as e:
             raise HTTPException(500, f"{type(e).__name__}: {e}") from e
+        guard.record_preview(cfg, symbol, start, buf_end)    # 露出了这只股的命中与成绩:记不进「看过」就不给
         return {"analysis": out["analysis"], "summary": out["summary"],
                 "pattern_spec": pattern_spec, "scan": scan_meta}
 
@@ -640,6 +653,10 @@ def build_router(*, registry, config_path, get_config, set_config,
             if registry.get(pid) is None:
                 raise HTTPException(404, f"unknown pattern: {pid}")
         cfg = get_config()
+        # 扫描区间截进本轮看图范围;行情读截断副本(先核对是副本、是账上登记的那一份)
+        start_date, end_date = guard.clamp_range(cfg, req.start_date, req.end_date)
+        data_dir = guard.data_dir(cfg)
+        view_guard = guard.scan_tag(cfg, data_dir)
         scan_ts = time.strftime("%Y%m%dT%H%M%S")
         import yaml as _yaml
 
@@ -693,14 +710,14 @@ def build_router(*, registry, config_path, get_config, set_config,
 
         def job(on_progress, cancel_event, save_event):
             return scan_mod.run_scan_multi(
-                data_dir=cfg["dataset_dir"],
+                data_dir=data_dir,
                 pattern_specs_json=specs,
                 module_paths=module_paths,
                 pattern_ids=req.pattern_ids,
                 end_nodes=end_nodes,
                 head_buffer_trading_days=head_buffer,
                 label_horizon=req.label_horizon,
-                start_date=req.start_date, end_date=req.end_date,
+                start_date=start_date, end_date=end_date,
                 workers=req.workers, ticker_regex=req.ticker_regex,
                 scan_ts=scan_ts, outputs_root=outputs_root,
                 on_progress=on_progress, executor_factory=_exec_factory,
@@ -711,6 +728,7 @@ def build_router(*, registry, config_path, get_config, set_config,
                 volume_min=req.volume_min,
                 first_passage_enabled=req.first_passage_enabled,
                 first_passage_k=req.first_passage_k,
+                view_guard=view_guard,
             )
 
         def done_meta(result):

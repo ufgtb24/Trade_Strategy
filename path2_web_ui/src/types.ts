@@ -117,6 +117,7 @@ export interface ScanMeta {
   label_horizon: number                                // 必有(非 optional)
   first_passage_k: number                              // 几何对称单 k(波动率标准化阈值 = k × σ)
   partial?: boolean
+  view_guard?: ViewGuard                               // 带护栏扫的才有
 }
 export interface StockResult {
   symbol: string
@@ -131,8 +132,16 @@ export interface MultiScanResultFile {
   results: StockResult[]
 }
 
-export interface Bar { date: string; o: number; h: number; l: number; c: number; v: number; rv: number }
+/** 一根 K 线。调试视图里看图下界之前的 bar(探测器预热用,这一轮不给看)只留日期,价格与量为 null:
+ *  留着它们只为让按序号定位的事件 / match 与 K 线对齐,渲染时一律不画(见 render/chart.ts 的 isPriced)。 */
+export interface Bar {
+  date: string; o: number | null; h: number | null; l: number | null; c: number | null
+  v: number | null; rv: number | null
+}
+/** 有价格的 K 线(看图工作流的图窗都在看图下界之后,根根有价格) */
+export interface PricedBar { date: string; o: number; h: number; l: number; c: number; v: number; rv: number }
 export interface Ohlc { symbol: string; bars: Bar[] }
+export interface PricedOhlc { symbol: string; bars: PricedBar[] }
 
 export interface AttrRow {
   instance_id: string; node_id: string
@@ -225,10 +234,18 @@ export interface ScanHistoryEntry {
   // history 列表聚合:每 pattern 的 match 数 + forward_return 中位数(无 match → null)
   // + 首次穿越方向比例对(fp 必填——显式标注的 fixture 会挡漏字段;null=该 pattern 无 first_passage 数据)
   // + 参数结构一致性(快照 vs 当前默认;false=当时代码与当前不同;null=无法判断:无快照或 pid 无 app)
-  per_pattern: Record<string, { hits: number; median: number | null;
+  per_pattern: Record<string, { hits: number | null; median: number | null;
                                 fp: FirstPassageRatio | null;
                                 params_consistent: boolean | null }>
+  // 文件里 scan 段的区间与看图范围护栏标记(缺失为 null)
+  start_date?: string | null; end_date?: string | null; win_end?: string | null
+  view_guard?: ViewGuard | null
+  // 读了完整行情的旧扫描(区间越出本轮看图范围):命中数、中位数、首次穿越比为 null,打开会被后端拒绝
+  old_scan?: boolean
 }
+
+/** 扫描时的看图范围护栏:这份扫描读的是截断副本、起点不早于 view_floor */
+export interface ViewGuard { view_floor: string; train_end: string }
 
 export interface AppConfig {
   dataset_dir: string
@@ -263,8 +280,20 @@ export type Tier = Level
 // ─── 看图工作流模式(/workflow/*):清单由命令行工具 chart_workflow 生成,标注批次由后端写盘 ───
 export type WorkflowListKind = 'bigmoves' | 'contrast' | 'contrast_blind'
 
+/** 看图工作流里的单张图事件:放大看了 / 点了买点或选了判定 / 大涨段第一次露出结果 */
+export type ChartViewEvent = 'zoom' | 'annotate' | 'reveal' | 'peek'
+
+/** 后端状态根:在哪、是不是来自环境变量(临时目录,记录不进正式账本)、能不能用 */
+export interface WorkflowStateInfo {
+  path: string | null; from_env: boolean; env_var: string; ok: boolean; message: string | null
+}
+
 export interface WorkflowListMeta {
   list_id: string; kind: WorkflowListKind; title: string; created_at: string; n_items: number
+  /** 后端拿不到记账类文件的家(状态根)时为 'state_root_missing':这时打不开清单、发不了标注 */
+  blocked?: string
+  /** blocked 时后端给的中文说明 */
+  blocked_message?: string
 }
 
 export interface WorkflowSummaryRow {
@@ -288,6 +317,10 @@ export interface WorkflowItem {
   exchange?: string | null
   /** 跨源比对(与 Nasdaq 日线逐日比涨跌幅);盲看清单没有 */
   xcheck?: WorkflowXcheck
+  /** 证券类别(如「普通股」「未知（名录里查不到）」);旧清单没有这个字段 */
+  sec_label?: string
+  /** false = 证券名录里查不到,类别是按代码规则推断的 */
+  sec_known?: boolean
   /** 盲看清单只有 decision / entry */
   marks: { decision?: string; entry?: string; up_line?: number; down_line?: number; peak_date?: string }
   /** 盲看清单只有 M */
@@ -316,11 +349,22 @@ export interface WorkflowList {
 /** 正例 / 反例 / 数据有误(用户确认行情数据有错,汇总进数据错误登记) */
 export type AnnotationLabel = 'positive' | 'negative' | 'data_error'
 
-/** 一条标注草稿(每个 item 最多一条)。range / label 齐了才能发送。 */
+/** 一个买点;每张图至多一个主买点(primary)。 */
+export interface BuyPoint { date: string; primary: boolean }
+
+/** 一条标注草稿(每个 item 最多一条)。标签必填;「数据有误」要框选起止;正例至少一个买点。 */
 export interface Annotation {
   ann_id: string; item_id: string; symbol: string
-  range_start: string | null; range_end: string | null; buy_date: string | null
-  label: AnnotationLabel | null; note: string; updated_at: string
+  range_start: string | null; range_end: string | null
+  buy_points: BuyPoint[]
+  label: AnnotationLabel | null; note: string
+  /** 点第一个买点之前,把图往右展开看过决策日之后的走势 */
+  peeked_before_buy: boolean
+  /** 大涨段清单:第一次露出结果(买点从无到有)时的买点;没露出过为 null */
+  first_buy_points: BuyPoint[] | null
+  /** 大涨段清单:露出结果之后买点改过或清除过(「看过结果后改过」) */
+  changed_after_reveal: boolean
+  updated_at: string
 }
 
 export interface AnnotationBatchResult { batch_id: string; path: string; n: number }
