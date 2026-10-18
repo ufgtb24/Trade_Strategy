@@ -570,46 +570,49 @@ def _rewrite_log(state_dir, rows):
     state.reset_watermark(state_dir, "测试:改写日志")
 
 
-def _declare_legacy(state_dir):
-    """临时状态根声明含有旧工具写的条目(没有校验版本号的按第 1 版重走)。"""
-    (state_dir / oplog.LEGACY_FILE).write_text(json.dumps({"unversioned_as": 1, "reason": "测试:模拟旧工具写的日志"}))
+def _as_v2_log(state_dir):
+    """把日志里现有的条目改成第 2 版工具写的样子(版本号 2、没有质量把关指纹),模拟合并前留下的真实条目。"""
+    f = sorted((state_dir / "oplog").glob("*.jsonl"))[-1]
+    rows = [json.loads(x) for x in f.read_text().splitlines()]
+    for r in rows:
+        r["rules_version"] = 2
+        r.pop("quality_fp", None)
+    _rewrite_log(state_dir, rows)
+    return rows
 
 
 def test_old_cards_without_element_version_still_revalidate(state_dir):
-    """第 1 版(声明过的、没有校验版本号的旧条目)的卡可以没记要素版本号:照常重新校验通过、照常打印。"""
+    """第 1 版条目的卡可以没记要素版本号:照常重新校验通过、照常打印。"""
     _base(state_dir)
     f = sorted((state_dir / "oplog").glob("*.jsonl"))[-1]
     rows = [json.loads(x) for x in f.read_text().splitlines()]
     _strip_versions(rows)
     for r in rows:
-        r.pop("rules_version")
+        r["rules_version"] = 1
     _rewrite_log(state_dir, rows)
-    _declare_legacy(state_dir)
     assert shapes.rebuild(verify=False) == []
     assert "按收盘至少越过一个峰" in shapes.render(shapes.load_card("s001"))
 
 
 @pytest.mark.parametrize("when,needle", [
-    ("v2", "和日志里记的不一样"),                                  # 第 2 版的卡不记要素版本号
-    ("unversioned_after_v2", "校验版本号是第 1 版,比前面的条目"),  # 声明过旧版条目,去掉版本号冒充旧条目
-    ("unversioned_undeclared", "没有校验版本号.*当作被改过"),
+    ("current", "和日志里记的不一样"),                             # 现在这一版的卡不记要素版本号
+    ("v1_after_newer", "校验版本号是第 1 版,比前面的条目"),        # 改成第 1 版冒充旧条目
+    ("unversioned", "没有校验版本号.*当作被改过"),
     ("newer", "校验版本号 9 不认识"),
 ])
 def test_missing_element_version_only_forgiven_for_old_entries(state_dir, when, needle):
-    """只有第 1 版的条目可以不记要素版本号;排在第 2 版条目后面却没有版本号的不算旧条目;状态根没声明含旧版
-    条目时,没有版本号一律当作被改过;版本号比工具新的不认。"""
+    """只有第 1 版的条目可以不记要素版本号;排在新版条目后面的第 1 版条目不算旧条目;没有版本号的一律当作
+    被改过,没有例外;版本号比工具新的不认。"""
     _base(state_dir)
     f = sorted((state_dir / "oplog").glob("*.jsonl"))[-1]
     rows = [json.loads(x) for x in f.read_text().splitlines()]
     _strip_versions(rows)
     for r in rows:
-        if r["act"] == "create_shape" and when != "v2":
+        if r["act"] == "create_shape" and when != "current":
             r.pop("rules_version")
-            if when == "newer":
-                r["rules_version"] = 9
+            if when != "unversioned":
+                r["rules_version"] = {"newer": 9, "v1_after_newer": 1}[when]
     _rewrite_log(state_dir, rows)
-    if when == "unversioned_after_v2":
-        _declare_legacy(state_dir)
     with pytest.raises(shapes.ShapeValidationError, match=needle):
         shapes.rebuild(verify=False)
     with pytest.raises(shapes.ShapeValidationError, match=needle):       # 正常写入前的重走一样拦
@@ -618,16 +621,16 @@ def test_missing_element_version_only_forgiven_for_old_entries(state_dir, when, 
 
 
 def _v1_log(state_dir, *ops):
-    """按第 1 版的规则写一批操作,再去掉校验版本号(模拟收紧规则之前、旧工具写的日志)。"""
+    """按第 1 版的规则写一批操作,再把版本号改成 1、去掉质量把关指纹(模拟收紧规则之前、旧工具写的日志)。"""
     _batch(state_dir, "b1", [_ann("a1")])
     with oplog.rules_at(1):
         shapes.apply(_decision(*ops))
     f = sorted((state_dir / "oplog").glob("*.jsonl"))[-1]
     rows = [json.loads(x) for x in f.read_text().splitlines()]
     for r in rows:
-        r.pop("rules_version")
+        r["rules_version"] = 1
+        r.pop("quality_fp", None)
     _rewrite_log(state_dir, rows)
-    _declare_legacy(state_dir)
     return rows
 
 
@@ -648,11 +651,11 @@ def test_entries_legal_when_written_do_not_lock_tools(state_dir, capsys):
     _v1_log(state_dir, *OLD_OK)
     assert shapes.rebuild(verify=True) == []
     err = capsys.readouterr().err
-    assert err.count("写入时合格,现在不再合格(只提示,不影响使用)") == 3
-    assert "按现在的第 2 版规则,最近 150 根不比事实表窗口短" in err
-    assert "按现在的第 2 版规则补全出来的样子不同" in err and "said_first_match" in err
+    assert err.count("(只提示,不影响使用): 校验规则收紧了(写入时第 1 版,现在第 3 版),按现在的规则:") == 3
+    assert "最近 150 根不比事实表窗口短" in err and "等于 at_least" in err and "said_first_match" in err
+    assert "写入后配置变了" not in err and "按现在的配置不合格" not in err      # 配置没变,只是规则收紧
     shapes.apply(_decision(el_op("pk1", "按收盘至少越过一个峰", PK1)))
-    assert "操作日志里有 3 条写入时合格、现在不再合格" in capsys.readouterr().err
+    assert "操作日志里有 3 条按现在的配置或校验规则不再合格" in capsys.readouterr().err
     conds = ledger.shape_conditions("shape:s001@v1")
     assert [(c.get("element"), c["origin"], c["has_said_first_match"]) for c in conds] == \
         [("E001", "user_written", False), (None, "suggested_adopted", False)]
@@ -680,7 +683,7 @@ def test_old_entry_failing_quality_check_of_its_own_version_only_notices(state_d
     _rewrite_log(state_dir, rows)
     assert shapes.rebuild(verify=False) == []
     note = [x for x in capsys.readouterr().err.splitlines() if x.startswith("提示:日志第 2 条")]
-    assert len(note) == 1 and "按现在的配置,下限 1 碰到了" in note[0]
+    assert len(note) == 1 and "按现在的配置不合格(第 1 版条目没记配置指纹" in note[0] and "下限 1 碰到了" in note[0]
     shapes.apply(_decision(el_op("pk1", "按收盘至少越过一个峰", PK1)))
 
 
@@ -692,32 +695,82 @@ def test_old_entry_failing_quality_check_of_its_own_version_only_notices(state_d
                                       "user_params": {"lo": 10, "hi": 80}}, "等于 at_least"),
 ])
 def test_config_change_does_not_lock_tools(state_dir, monkeypatch, capsys, name, definition, needle):
-    """默认回看 90 根时写入的条目,把默认回看改成 60 根之后:写入新条目照常进行,只对旧条目给一条提示;
-    同样的定义新写进来,照现在的配置把关。"""
+    """默认回看 90 根时写入的第 3 版条目,把默认回看改成 60 根之后(质量把关指纹跟着变):写入新条目照常进行,
+    只对旧条目给一条「写入后配置变了」的提示;同样的定义新写进来,照现在的配置把关。"""
     shapes.apply(_decision(el_op("old", name, definition)))
+    assert oplog.read_all()[0]["rules_version"] == 3 and oplog.read_all()[0]["quality_fp"]
     facts_cfg = {**elements._facts_cfg(), "default_lookback_bars": 60}
     monkeypatch.setattr(elements, "_facts_cfg", lambda: facts_cfg)
     shapes.apply(_decision(el_op("pk1", "按收盘至少越过一个峰", PK1)))
-    assert "操作日志里有 1 条写入时合格、现在不再合格" in capsys.readouterr().err
+    assert "操作日志里有 1 条按现在的配置或校验规则不再合格" in capsys.readouterr().err
     assert shapes.rebuild(verify=True) == []
     notes = [x for x in capsys.readouterr().err.splitlines() if x.startswith("提示:")]
     assert len(notes) == 1 and notes[0].startswith("提示:日志第 1 条(create_element,")
-    assert "按现在的配置," in notes[0] and needle in notes[0]
+    assert "写入后配置变了,按现在的配置:" in notes[0] and needle in notes[0]
     assert ledger.render(read_ledger()) is not None
     if "bars" in definition["user_params"]:
         with pytest.raises(shapes.ShapeValidationError, match=needle):
             shapes.apply(_decision(el_op("again", "最近 85 根里有派发(再写一次)", definition)))
 
 
-def test_legacy_declaration_only_in_state_root(state_dir):
-    """新建的状态根不带旧版条目声明;声明文件格式不对时说清楚怎么写。"""
-    assert not (state_dir / oplog.LEGACY_FILE).exists() and oplog.unversioned_as(state_dir) is None
-    _declare_legacy(state_dir)
-    assert oplog.unversioned_as(state_dir) == 1
-    for bad in ({"unversioned_as": 1}, {"unversioned_as": True, "reason": "x"}, {"unversioned_as": 2, "reason": "x"}):
-        (state_dir / oplog.LEGACY_FILE).write_text(json.dumps(bad))
-        with pytest.raises(ValueError, match="格式不对"):
-            oplog.unversioned_as(state_dir)
+def test_unversioned_entries_blocked_even_with_old_declaration_file(state_dir):
+    """没有版本号的条目一律拦:状态根里放一份以前那种声明文件也不起作用(工具不读它)。"""
+    _base(state_dir)
+    f = sorted((state_dir / "oplog").glob("*.jsonl"))[-1]
+    rows = [json.loads(x) for x in f.read_text().splitlines()]
+    for r in rows:
+        r.pop("rules_version")
+    _rewrite_log(state_dir, rows)
+    (state_dir / "legacy_rules.json").write_text(json.dumps({"unversioned_as": 1, "reason": "以前的声明"}))
+    with pytest.raises(shapes.ShapeValidationError, match="没有校验版本号"):
+        shapes.apply(_decision(el_op("pk9", "按最高价越过一个峰也算", PK1_HIGH)))
+
+
+D200 = {**DIST, "user_params": {"bars": 200}}
+
+
+def test_quality_failure_written_around_decision_file_blocks(state_dir, capsys):
+    """按现在的配置就不合格的条目(最近 200 根里有派发,超过 91 根的上界),绕开决定文件的把关写进日志:质量把关
+    指纹和现在一样却不合格,当被改过拦下,不再说成「写入时合格」。"""
+    with pytest.raises(shapes.ShapeValidationError, match="最近 200 根不比事实表窗口短"):
+        shapes.apply(_decision(el_op("d200", "最近 200 根里有派发", D200)))
+    with elements.quality_as_notices([]):                                 # 有意绕开:模块里公开的宽松开关
+        shapes.apply(_decision(el_op("d200", "最近 200 根里有派发", D200)))
+    with pytest.raises(shapes.ShapeValidationError, match="质量把关所依赖的配置写入后没变,按写入时的配置也不合格"):
+        shapes.apply(_decision(el_op("pk1", "按收盘至少越过一个峰", PK1)))
+    problems = shapes.rebuild(verify=True)
+    assert any("最近 200 根不比事实表窗口短" in m and "可能被改过" in m for m in problems)
+    assert "写入时合格" not in capsys.readouterr().err
+
+
+def test_current_entry_without_quality_fingerprint_blocks(state_dir):
+    """第 3 版条目缺工具补的质量把关指纹(手写日志、或去掉了它想冒充「配置变了」):拦。"""
+    _base(state_dir)
+    f = sorted((state_dir / "oplog").glob("*.jsonl"))[-1]
+    rows = [json.loads(x) for x in f.read_text().splitlines()]
+    rows[0].pop("quality_fp")
+    _rewrite_log(state_dir, rows)
+    with pytest.raises(shapes.ShapeValidationError, match="缺工具补的质量把关指纹"):
+        shapes.rebuild(verify=False)
+
+
+def test_v2_entries_still_usable(state_dir, monkeypatch, capsys):
+    """第 2 版工具写的条目(没有质量把关指纹):照常重走、照常写入新条目;改了配置后不合格只提示,说清分不清
+    是哪一种。"""
+    _batch(state_dir, "b1", [_ann("a1")])
+    with oplog.rules_at(2):
+        shapes.apply(_decision(*ELEMS, el_op("d85", "最近 85 根里有派发", {**DIST, "user_params": {"bars": 85}}),
+                               _create()))
+    rows = _as_v2_log(state_dir)
+    assert all("quality_fp" not in r and r["rules_version"] == 2 for r in rows)
+    shapes.apply(_decision(el_op("pk1h", "按最高价至少越过一个峰", PK1_HIGH)))
+    assert shapes.rebuild(verify=True) == [] and "提示:" not in capsys.readouterr().err
+    assert oplog.read_all()[-1]["rules_version"] == 3
+    facts_cfg = {**elements._facts_cfg(), "default_lookback_bars": 60}
+    monkeypatch.setattr(elements, "_facts_cfg", lambda: facts_cfg)
+    assert shapes.rebuild(verify=True) == []
+    notes = [x for x in capsys.readouterr().err.splitlines() if x.startswith("提示:")]
+    assert len(notes) == 1 and "按现在的配置不合格(第 2 版条目没记配置指纹" in notes[0]
 
 
 def test_rebuild_verify_lists_element_id_conflict(state_dir):
@@ -733,10 +786,22 @@ def test_rebuild_verify_lists_element_id_conflict(state_dir):
         shapes.rebuild(verify=False)
 
 
-def test_decision_file_cannot_carry_rules_version(state_dir):
+def test_quality_fp_only_filled_by_tool_for_elements_and_cards(state_dir):
+    """quality_fp 由工具补:要素与卡的条目记现在的质量把关指纹,别的条目记 null;格式不对的条目不收。"""
+    _base(state_dir)
+    oplog.append([{"act": "pick", "actor": "user", "surface": "chat", "target": {"ann_id": "a1"}, "value": "T5",
+                   "quality_fp": "0123456789abcdef"}])
+    rows = oplog.read_all()
+    assert {r["quality_fp"] for r in rows if r["act"] != "pick"} == {elements.quality_fingerprint()}
+    assert rows[-1]["act"] == "pick" and rows[-1]["quality_fp"] is None              # 写进来的值不作数
+    assert any("quality_fp 格式不对" in m for m in oplog.check_entry({**rows[0], "quality_fp": "xyz"}))
+
+
+@pytest.mark.parametrize("field,value", [("rules_version", 1), ("quality_fp", "0123456789abcdef")])
+def test_decision_file_cannot_carry_rules_version(state_dir, field, value):
     _batch(state_dir, "b1", [_ann("a1")])
-    with pytest.raises(shapes.ShapeValidationError, match="不要自带 ts / op_id / rules_version"):
-        shapes.apply(_decision({**el_op("pk1", "按收盘至少越过一个峰", PK1), "rules_version": 1}))
+    with pytest.raises(shapes.ShapeValidationError, match="不要自带 ts / op_id / rules_version / quality_fp"):
+        shapes.apply(_decision({**el_op("pk1", "按收盘至少越过一个峰", PK1), field: value}))
 
 
 def test_bad_log_blocks_normal_write_and_ledger(state_dir):

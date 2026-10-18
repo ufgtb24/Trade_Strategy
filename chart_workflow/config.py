@@ -103,10 +103,10 @@ DEFAULTS: dict = {
     "shape_check": {     # 规则来自形态卡时的核对(rulecheck.py,全部待验证)
         "min_samples": 3,           # 至少要几个能核对的样本
         "min_positive_samples": 2,  # 能核对的样本里,买点当天卡成立的至少要几个
-        "pool_stocks": 40,          # 逐日核对在样本股之外,从训练副本的股票池里随机抽几只(种子由卡的编号和版本定)
+        "pool_positive_stocks": 40, # 逐日核对另从训练副本随机抽股(顺序全局固定,种子是登记的副本指纹):抽到有卡成立日的满这么多只
+        "pool_max_stocks": 300,     # 随机抽股最多抽几只;抽满还凑不够上一项就拒(调高它,耗时随只数等比例增加)
         "max_disagree_share": 0.0,  # 逐日比,规则和卡不一致的天数最多占卡能判定天数的多少
         "min_negative_days": 20,    # 逐日比,卡判「不成立」的天至少要几天(反例不够看不出规则是否比卡宽)
-        "min_positive_days": 10,    # 逐日比,卡判「成立」的天至少要几天(太少看不出规则是否比卡窄)
     },
     "facts": {           # 事实表(facts.py,全部待验证)
         "default_lookback_bars": 90,    # 没框选起止时,窗口取买点前这么多根
@@ -127,7 +127,7 @@ DEFAULTS: dict = {
         "pullback_min": 0.05,           # 回落收回:回落幅度至少多少
         "new_high_bars": 20,            # 收盘创 N 日新高
         "gap_abs": 0.03,                # 当天跳空的绝对幅度
-        "dry_day_ratio": 0.7,           # 当天缩量:量比 < 此值
+        "dry_day_ratio": 0.7,           # 当天缩量:量比 < 此值(当天没成交、或参照量是 0 的停牌日不算)
     },
 }
 

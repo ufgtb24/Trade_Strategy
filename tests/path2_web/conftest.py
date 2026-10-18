@@ -24,7 +24,8 @@ import path2_apps.bottom_burst as _bbb
 import path2_apps.bottom_burst.dag_spec as _bbb_dag
 from chart_workflow import state
 from chart_workflow.loader import SNAPSHOT_FILE, SNAPSHOT_SCHEMA
-from tests.chart_workflow.conftest import autolock
+from tests.chart_workflow.conftest import (assert_repo_watermark_unchanged, autolock, no_repo_git_dir,
+                                           repo_watermark_digest)
 
 EARLY_FLOOR = "2000-01-01"
 
@@ -43,11 +44,20 @@ def _early_floor_allowed(monkeypatch):
     monkeypatch.setattr(app_mod, "_cw_view_floor", lambda: "1900-01-01")
 
 
+@pytest.fixture(scope="session", autouse=True)
+def _repo_watermark_untouched():
+    """整场测试跑完,真仓库的 .git/chart_workflow 必须和开跑前一字不差(见 chart_workflow 的 conftest)。"""
+    before = repo_watermark_digest()
+    yield
+    assert_repo_watermark_unchanged(before)
+
+
 @pytest.fixture(autouse=True)
 def _cw_state_root(request, tmp_path_factory, monkeypatch):
     base = tmp_path_factory.mktemp("cw")
     root = state.init(base / "state")
     monkeypatch.setenv(state.ENV_VAR, str(root))
+    no_repo_git_dir(monkeypatch)                    # 绝不碰主目录的 .git(见 chart_workflow 的 conftest)
     autolock(request, monkeypatch, base, root)      # 临时状态根也登记副本(见 chart_workflow 的 conftest)
     return root
 

@@ -20,7 +20,9 @@ worktree 里运行工具,都经 state_root() 自动定位到主目录这一份�
 
 水位(防「标记在、账本却是旧的」):标记文件跟代码一起提交,合了代码、没合账本(或账本较旧)
 的分支照样有标记。所以另在 git 公共目录里记一份水位
-(<git 公共目录>/chart_workflow/watermark.json,不随分支走、所有 worktree 共用):
+(<git 公共目录>/chart_workflow/watermark.json,不随分支走、所有 worktree 共用;公共目录按状态根所在的仓库取,
+不按代码所在的仓库取,状态根不在 git 仓库里就放在它自己目录下;水位文件里记着它是哪个状态根的,和当前状态根
+对不上就停下(ForeignWatermark),不拿别处的水位当本账的比):
 只追加的文件(账本、看过记录、操作日志、水位重置记录)每份记「到最后一个完整行为止的字节数 + 这一段的
 sha256 + 行数」,见过的每一行的指纹另存在旁边的 watermark.seen/ 下(每份一个只追加的文本文件);
 只增不改的目录(原始标注、看过的清单快照、事实表快照、规则存档、配置存档)记见过的文件名。
@@ -145,6 +147,14 @@ class StateRootDiverged(StateRootMissing):
     按内容比(见模块说明)。接着写两边的账就分叉了,所以停下。"""
 
 
+class ForeignWatermark(StateRootMissing):
+    """水位文件里记的是别的状态根的水位(多半是测试或别的工具把别处的水位写到了这里),不能拿来核对这本账。"""
+
+
+class NotInRepo(StateRootMissing):
+    """目录不在 git 仓库里。"""
+
+
 @lru_cache(maxsize=16)
 def _git_common_dir(start: str) -> str:
     try:
@@ -154,7 +164,7 @@ def _git_common_dir(start: str) -> str:
     except (OSError, subprocess.SubprocessError) as e:
         raise StateRootMissing(f"找不到主目录:git 不可用({type(e).__name__}: {e})") from e
     if r.returncode != 0:
-        raise StateRootMissing(f"找不到主目录:{start} 不在 git 仓库里({r.stderr.strip()})")
+        raise NotInRepo(f"找不到主目录:{start} 不在 git 仓库里({r.stderr.strip()})")
     return r.stdout.strip()
 
 
@@ -179,13 +189,18 @@ def missing_message(path: Path) -> str:
             f"再运行 python -m chart_workflow.state init <那个目录>")
 
 
-def watermark_path(root: Path, start: Path = REPO_ROOT) -> Path:
-    """root 的水位文件。root 是环境变量指定的临时状态根 → root/.watermark.json;
-    否则 → <git 公共目录>/chart_workflow/watermark.json(不随分支走、所有 worktree 共用)。"""
+def watermark_path(root: Path) -> Path:
+    """root 的水位文件,位置只跟着 root 走:root 是环境变量指定的临时状态根,或者不在 git 仓库里 →
+    root/.watermark.json;否则 → root 所在仓库的 <git 公共目录>/chart_workflow/watermark.json(不随分支走、
+    所有 worktree 共用)。不拿代码所在的仓库兜底——别的仓库里的状态根不会把水位写进这份代码所在仓库的 .git。"""
     env = os.environ.get(ENV_VAR)
     if env and Path(env).resolve() == Path(root).resolve():
         return Path(root) / ".watermark.json"
-    return Path(_git_common_dir(str(Path(start).resolve()))) / "chart_workflow" / "watermark.json"
+    try:
+        common = _git_common_dir(str(Path(root).resolve()))
+    except NotInRepo:
+        return Path(root) / ".watermark.json"
+    return Path(common) / "chart_workflow" / "watermark.json"
 
 
 _HASH_CACHE: dict[tuple[str, int, int], list[str]] = {}
@@ -368,11 +383,26 @@ def _write_wm(wm_file: Path, root: Path, cur: dict) -> None:
     os.replace(tmp, wm_file)
 
 
+def _foreign_root(wm: dict, root: Path) -> str | None:
+    """水位文件里记的状态根和 root 不是同一个 → 那个状态根(字符串);是同一个,或旧格式没记 → None。"""
+    other = wm.get("state_root")
+    if other and Path(other).resolve() != Path(root).resolve():
+        return str(other)
+    return None
+
+
 def _sync(root: Path, wm_file: Path, write: bool = True) -> None:
-    """核对水位:见过的行和文件都还在 → write 时把当前内容记进水位;少了 → StateRootRegressed。
+    """核对水位:见过的行和文件都还在 → write 时把当前内容记进水位;少了 → StateRootRegressed;
+    水位文件记的是别的状态根 → ForeignWatermark(不拿别处的水位当本账的比)。
     write=False:只核对,什么都不写(只读接口用)。"""
     with _WM_LOCK:
         wm = _read_wm(wm_file)
+        foreign = _foreign_root(wm, root)
+        if foreign:
+            raise ForeignWatermark(
+                f"水位文件 {wm_file} 记的是状态根 {foreign} 的水位,不是 {root} 的,不能拿它核对这本账"
+                f"(多半是测试或别的工具把别处的水位写到了这里)。确认这本账没问题后,运行 python -m "
+                f"chart_workflow.state reset-watermark --reason \"<原因>\" 重置水位")
         problems, lines, ops, files = _scan(root, wm_file, wm)
         if problems:
             raise StateRootRegressed(
@@ -552,7 +582,7 @@ def _checked(start: Path, write: bool) -> Path:
     path = locate(start)
     if not (path / MARKER).is_file():
         raise StateRootMissing(missing_message(path))
-    _sync(path, watermark_path(path, start), write=write)
+    _sync(path, watermark_path(path), write=write)
     _check_diverged(path)
     from chart_workflow import snaplock             # 函数内导入:snaplock 依赖本模块
     snaplock.verify(snaplock.local_dataset_dir(), path)
@@ -577,26 +607,32 @@ def advance(root: Path) -> None:
     _sync(Path(root), watermark_path(root))
 
 
-def reset_watermark(root: Path, reason: str, start: Path = REPO_ROOT) -> dict:
+def reset_watermark(root: Path, reason: str) -> dict:
     """显式重置水位为当前内容。reason 必填;重置记录(时间、原因、少了什么、前后条数)
-    追加到 root/watermark_resets.jsonl,返回这条记录。只在有意改写记账文件之后用。"""
+    追加到 root/watermark_resets.jsonl,返回这条记录。只在有意改写记账文件之后用。
+    原来的水位记的是别的状态根时不拿它比,记录里写明是哪个状态根的(foreign_watermark)。"""
     reason = (reason or "").strip()
     if not reason:
         raise ValueError("重置水位必须写明原因(--reason)")
     root = Path(root)
     if not (root / MARKER).is_file():
         raise StateRootMissing(missing_message(root))
-    wm_file = watermark_path(root, start)
+    wm_file = watermark_path(root)
     with _WM_LOCK:
         try:
             wm = _read_wm(wm_file)
         except StateRootMissing:
+            wm = {}
+        foreign = _foreign_root(wm, root)
+        if foreign:
             wm = {}
         problems = _scan(root, wm_file, wm)[0] if wm else []
         _, lines, ops, files = _scan(root, wm_file, {})
         rec = {"ts": datetime.now().isoformat(timespec="seconds"), "reason": reason,
                "watermark": str(wm_file), "missing": problems,
                "before": _summary(wm), "after": _summary({"lines": lines, "files": files})}
+        if foreign:
+            rec["foreign_watermark"] = foreign
         with (root / RESETS_FILE).open("a") as f:
             f.write(json.dumps(rec, ensure_ascii=False) + "\n")
         _, lines, ops, files = _scan(root, wm_file, {})

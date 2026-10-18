@@ -23,9 +23,10 @@ F01～F15 每一行都能直接立要素,不用写代码:
     量比、涨幅、比值数学上没有边界,声明的是合理范围(待验证),at_least / at_most 的阈值落在范围外按
     「近乎恒成立 / 近乎不可能」拒绝;between 只有一端落在合理范围外时原样保留两端,打印要素时给提示
     (definition_hints);百分比写成整数(30% 写成 30)出界时报错里提示单位。
-    这些都是现在(第 2 版)的校验规则;重走旧日志条目时按那条自己的版本(shapes 模块说明)。
+    这些都是现在(第 3 版)的校验规则;重走旧日志条目时按那条自己的版本(shapes 模块说明)。
     这一段都是写入时的质量把关,其中边界、根数上界、合理范围取决于当时的配置:重走日志里已有的条目时
-    (quality_as_notices)不合格只记成提示、不当错误,between 也不按现在的硬边界改写(会改写时同样只提示)。
+    (quality_as_notices)先把不合格的记下来、不当错误,between 也不按现在的硬边界改写(会改写时同样记下);
+    写入时工具记下这些把关读到的值的指纹(quality_fingerprint),重走时指纹没变却不合格就当被改过,指纹变了只提示。
   · 现有事实行都算不出的角度才记「待写代码」(definition 为 null,needs 写缺什么)。
 
 身份看定义,不看字面(same_meaning):读的行、值、条件类型、口径相同,并且 user_params 相同(系统默认值
@@ -84,8 +85,8 @@ detector(事实表)/ session / llm / general_knowledge(要素按编号复用,不
 
 判定(evaluate,纯函数):读一张图的事实表(facts.compute_facts 的输出),答 yes / no / unknown 和一句
 理由。只读事实表,事实表只用买点及以前的 K 线,所以判定也读不到买点之后。值是 null 时按值的声明:
-默认 unknown(回看不够长);说的那个东西不存在的(没有越过的峰、窗口里没有放量段)判 no;
-判定依赖的输入算不出的(needs)判 unknown。旧快照里缺字段 → unknown,提示重算事实表。
+默认 unknown(回看不够长;量比类的值在停牌日——当天没成交——也是 null);说的那个东西不存在的(没有越过的峰、
+窗口里没有放量段)判 no;判定依赖的输入算不出的(needs)判 unknown。旧快照里缺字段 → unknown,提示重算事实表。
 
 红线:不 import 标签口径(labels)、对照(control)、面板(panel)、清单(listfile),不读清单文件。
 """
@@ -95,6 +96,7 @@ import argparse
 import contextlib
 import contextvars
 import copy
+import hashlib
 import json
 import math
 import re
@@ -160,6 +162,7 @@ def _features_cfg() -> dict:
 # none:值是 null 时怎么判;不写 = unknown(回看不够长);("no", 理由) = 说的那个东西不存在,判否。
 # exists:none 判否的值,在下界上的 at_least 等于问哪一条(拒绝时提示)。
 # needs:这些取法(可含 "*" 表示列表里每一项)有一个是 null 就答 unknown(判定所依赖的输入算不出)。
+# na:答 unknown 时理由里怎么说算不出;不写 = 回看不够长(needs 的写「它要用的 … 回看不够长」)。
 # choices:类别的全部取值。events:{"date": 事件日期字段, "bars_before": 带不带离买点根数};
 # where:事件过滤(声明的一部分,不是参数)。unit:显示用,pct 按百分比、times 按倍数。
 # same_as:函数 (cond, params, variant) → 提示 | None,这样写等于另一条定义时拒绝并指到规范写法。
@@ -219,16 +222,18 @@ VALUES: dict[str, dict[str, dict]] = {
                  "events": {"date": "start", **_EVENTS}, "same_as": _runs_same},
     },
     "F06": {
-        "dry": {"kind": "bool", "title": "买点前几天（含当天）量比都低于 1", "path": "dry", "needs": ("days.*.vr",)},
+        "dry": {"kind": "bool", "title": "买点前几天（含当天）量比都低于 1", "path": "dry", "needs": ("days.*.vr",),
+                "na": "这几天里有量比算不出的日子：回看不够长，或当天没成交"},
         "vs_latest_run": {"kind": "number", "title": "买点前几天均量 ÷ 最近一段放量段均量",
                           "path": "vs_latest_run", "lo": 0.01, "hi": 10, "soft": True, "hard": (0, None),
-                          "unit": "times",
+                          "unit": "times", "needs": ("all_traded",),
+                          "na": "这几天或最近一段放量段里有停牌日，当天没成交",
                           "none": ("no", "窗口里没有放量段可比"),
                           "exists": "窗口里有放量段(F05 的 runs events_any)"},
     },
     "F07": {
         "vr": {"kind": "number", "title": "买点当天量比", "path": "vr", "lo": 0.05, "hi": 100, "soft": True,
-               "hard": (0, None), "unit": "times"},
+               "hard": (0, None), "unit": "times", "na": "回看不够长，或当天没成交"},
     },
     "F08": {
         "pre_state": {"kind": "category", "title": "涨前状态", "path": "pre_state", "choices": PRE_STATES,
@@ -336,6 +341,27 @@ def _bound(spec: dict, key: str):
     return b
 
 
+def _plain(x):
+    """去掉函数(same_as 这类代码本身不进指纹,改代码要加校验版本号),元组按列表。"""
+    if isinstance(x, dict):
+        return {k: _plain(v) for k, v in x.items() if not callable(v)}
+    if isinstance(x, (list, tuple)):
+        return [_plain(v) for v in x]
+    return x
+
+
+def quality_fingerprint() -> str:
+    """定义的质量把关(恒成立 / 不可能 / 根数上界 / 合理范围 / 同义换写)实际读到的全部值的指纹:每个可判定的值
+    按现在的配置解析出来的上下界与硬边界、合理范围、单位、类别、事件属性,根数上界(事实表窗口),以及同义换写
+    提示里引用的放量线、深跌线。不管来自配置还是代码常量,任何一个变了指纹就变。工具写日志时记进要素与形态卡
+    的条目(oplog.append),重走时据此分辨「写入后配置变了」和「写入时就不合格」。"""
+    table = {f"{fid}.{vname}": {**_plain(spec), "lo": _bound(spec, "lo"), "hi": _bound(spec, "hi")}
+             for fid, vals in VALUES.items() for vname, spec in vals.items()}       # 硬边界:soft 的在声明里,其余就是上下界
+    table["_window"] = max_window_bars()
+    table["_said"] = [_facts_cfg()["vol_run_min"], _features_cfg()["deep_drop_dd250"]]
+    return hashlib.sha256(json.dumps(table, sort_keys=True, ensure_ascii=False, default=str).encode()).hexdigest()[:16]
+
+
 def _vtitle(spec: dict, variant) -> str:
     return spec["title"].replace("{variant}", VARIANT_TEXT.get(variant, ""))
 
@@ -428,13 +454,15 @@ def evaluate(definition: dict, facts: dict) -> tuple[str, str]:
     if not found:
         return "unknown", f"{fid} 里没有{name}（旧快照），重算事实表"
     for need in spec.get("needs", ()):
+        if isinstance(root, dict) and need.split(".")[0] not in root:
+            return "unknown", f"{fid} 的{name}缺它要用的 {need}（旧快照），重算事实表"
         if None in _collect(root, need.split(".")):
-            return "unknown", f"{fid} 的{name}算不出（它要用的 {need} 回看不够长）"
+            return "unknown", f"{fid} 的{name}算不出（{spec.get('na') or f'它要用的 {need} 回看不够长'}）"
     if x is None:
         none = spec.get("none")
         if none:
             return none[0], f"{fid} {none[1]}"
-        return "unknown", f"{fid} 的{name}算不出（回看不够长）"
+        return "unknown", f"{fid} 的{name}算不出（{spec.get('na', '回看不够长')}）"
     params = {**definition.get("default_params", {}), **definition.get("user_params", {})}
     return _judge(fid, spec, variant, definition["cond"], params, x)
 
