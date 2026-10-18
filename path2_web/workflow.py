@@ -39,6 +39,13 @@ first_buy_points 缺失或跟它不一样、或最后的买点跟它不一样,ch
 两种模式只认自己的清单:清单名(调试模式 dbg- 开头,正式模式不收它)或清单文件的 mode 标记对不上 → 列表里不出现、
 打开 / 记单张图事件 / 发标注一律 403;调试模式下清单里任何日期晚于调试段终点也 403(不截断:截了也会从
 条目编号、决策日露出后面的日子)。正式模式的这些行为不变。
+
+卡成立日清单(kind = card_hits,chart_workflow.cardhits,只在调试模式下用;正式模式列表里不出现、打开 403):
+用户逐张点「是 / 不是」(POST /workflow/card_marks,「不是」要写一句为什么),标记只写调试账。标之前不露成立日
+之后的走势:打开清单记的看过是盲看(outcome_visible = false),/workflow/ohlc 只放行到成立日(条目的 view_end);
+标完才放行到露出终点 reveal_end,并先记一条看过(show_chart,看得到结果)再写标记。打开清单时把每张图现在的
+标记带在 card_marks 里,已经标过的直接放行到 reveal_end(同样记一条看过)。这种清单不收标注批次,单张图事件只收
+放大(zoom)。
 """
 from __future__ import annotations
 
@@ -54,6 +61,7 @@ import pandas as pd
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, StrictBool
 
+from chart_workflow import cardhits
 from chart_workflow import mode as cw_mode
 from chart_workflow import state as cw_state
 from chart_workflow import views
@@ -69,6 +77,7 @@ _LIST_ID_RE = re.compile(r"^(?!\.)(?!.*\.\.)[A-Za-z0-9_\-.]+$")
 _BATCH_RE = re.compile(r"^\d{8}T\d{6}(-\d+)?$")
 _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 _LABELS = ("positive", "negative", "data_error")   # 正例 / 反例 / 数据有误
+_BLIND_KINDS = ("contrast_blind", cardhits.KIND)   # 打开清单时看不到结果的清单种类
 NOTE_MAX = 500
 BUY_AFTER_MAX = 5          # 框选了起止时,买点最多落在形态结束后几个交易日内(待验证)
 BUY_POINTS_MAX = 10        # 一张图最多几个买点(待验证)
@@ -110,6 +119,14 @@ def _buy_points(ann: AnnotationIn) -> list[dict]:
 class AnnotationBatchIn(BaseModel):
     list_id: str
     annotations: list[AnnotationIn]
+
+
+class CardMarkIn(BaseModel):
+    """卡成立日清单里一张图的「是 / 不是」;「不是」要写一句为什么。"""
+    list_id: str
+    item_id: str
+    verdict: str
+    reason: str = ""
 
 
 class ChartViewIn(BaseModel):
@@ -218,6 +235,8 @@ def _list_refusal(doc: dict, cfg: dict) -> str | None:
     foreign = cw_mode.foreign_reason(doc, "清单")
     if foreign:
         return foreign
+    if doc.get("kind") == cardhits.KIND and not cw_mode.is_debug():
+        return "卡成立日清单只在调试模式下用,正式模式打不开"
     floor = _view_floor(cfg)
     if _before_floor(doc, floor):
         return f"这份清单的图窗早于本轮看图下界 {floor}，不能打开"
@@ -256,6 +275,23 @@ def clip_list(doc: dict, train_end: str) -> dict:
             it["marks"] = {k: v for k, v in marks.items()
                            if not (_is_date(v) and v > train_end)}
     return doc
+
+
+def _card_window(it: dict, floor: str, train_end: str, marked: bool) -> tuple[str, str]:
+    """卡成立日清单一张图放行的图窗:没标之前到成立日(view_end),标完到露出终点(截到训练段末日)。"""
+    end = min(str(it.get("reveal_end")), train_end) if marked else str(it.get("view_end"))
+    return max(str(it.get("view_start")), floor), end
+
+
+def _card_marks(list_id: str) -> dict[str, dict]:
+    """卡成立日清单每张图现在的标记(给前端):{item_id: {mark_id, verdict, reason, ts, first_verdict, n}}。"""
+    try:
+        got = cardhits.marks_of(list_id)
+    except StateRootMissing as e:
+        raise HTTPException(503, str(e)) from None
+    return {k: {"mark_id": v["latest"]["mark_id"], "verdict": v["latest"]["verdict"],
+                "reason": v["latest"]["reason"], "ts": v["latest"]["ts"],
+                "first_verdict": v["first"]["verdict"], "n": v["n"]} for k, v in got.items()}
 
 
 def _validate_bps(bps: list[dict], tag: str, name: str) -> list[str]:
@@ -346,21 +382,76 @@ def build_workflow_router(*, get_config) -> APIRouter:
         if why:
             raise HTTPException(403, why)
         kind = doc.get("kind")
+        train_end = _train_end(cfg)
+        marks = _card_marks(list_id) if kind == cardhits.KIND else {}
+        shown = [it for it in doc.get("items") or [] if isinstance(it, dict) and it.get("item_id") in marks]
         try:      # 记不了「看过」就不给图
-            views.record(surface="web", event="open_list", outcome_visible=kind != "contrast_blind",
+            views.record(surface="web", event="open_list", outcome_visible=kind not in _BLIND_KINDS,
                          list_id=list_id, list_kind=kind, list_doc=doc)
+            if shown:                    # 卡成立日清单里已经标过的图一打开就露出后面的走势
+                views.record(surface="web", event="show_chart", outcome_visible=True, list_id=list_id,
+                             list_kind=kind, note="卡成立日清单:打开时已经标过的图露出成立日之后的走势",
+                             charts=[dict(zip(("symbol", "start", "end"),
+                                              (it.get("symbol"), *_card_window(it, floor, train_end, True))))
+                                     for it in shown])
         except StateRootMissing as e:
             raise HTTPException(503, str(e)) from None
         except ValueError as e:          # 图窗和当前模式对不上(看过记录两种模式各记各的)
             raise HTTPException(409, str(e)) from None
         except OSError as e:
             raise HTTPException(503, f"看过记录写不进去:{e}") from None
-        doc = clip_list(doc, _train_end(cfg))
+        doc = clip_list(doc, train_end)
         for it in doc.get("items") or []:
             sym, vs, ve = it.get("symbol"), it.get("view_start"), it.get("view_end")
             if isinstance(sym, str) and _is_date(vs) and _is_date(ve):
-                opened.setdefault(sym, set()).add((max(vs, floor), ve))
+                win = (_card_window(it, floor, train_end, it.get("item_id") in marks) if kind == cardhits.KIND
+                       else (max(vs, floor), ve))
+                opened.setdefault(sym, set()).add(win)
+        if kind == cardhits.KIND:
+            doc["card_marks"] = marks
         return doc
+
+    @router.post("/card_marks")
+    def wf_card_mark(req: CardMarkIn):
+        """卡成立日清单里一张图标「是 / 不是」:先记一条看过(露出成立日之后的走势),再写标记,然后放行到
+        露出终点。只在调试模式下用。"""
+        _check_list_id(req.list_id)
+        if not cw_mode.is_debug():
+            raise HTTPException(403, "卡成立日清单只在调试模式下用,正式模式不收「是 / 不是」")
+        cfg = get_config()
+        p = _root(cfg) / "lists" / f"{req.list_id}.json"
+        if not p.exists():
+            raise HTTPException(404, f"清单不存在: {req.list_id}")
+        doc = _read_json(p)
+        if not isinstance(doc, dict):
+            raise HTTPException(500, f"清单文件损坏: {req.list_id}")
+        why = _list_refusal(doc, cfg)
+        if why:
+            raise HTTPException(403, why)
+        if doc.get("kind") != cardhits.KIND:
+            raise HTTPException(400, "只有卡成立日清单才标「是 / 不是」")
+        it = next((x for x in doc.get("items") or [] if isinstance(x, dict) and x.get("item_id") == req.item_id),
+                  None)
+        if it is None:
+            raise HTTPException(404, f"清单 {req.list_id} 里没有 {req.item_id}")
+        if req.verdict not in cardhits.VERDICTS or (req.verdict == "no" and not req.reason.strip()):
+            raise HTTPException(400, "只能标「是」或「不是」;标「不是」要写一句为什么")
+        floor, train_end = _view_floor(cfg), _train_end(cfg)
+        start, end = _card_window(it, floor, train_end, True)
+        try:
+            views.record(surface="web", event="show_chart", outcome_visible=True, list_id=req.list_id,
+                         list_kind=cardhits.KIND, charts=[{"symbol": it.get("symbol"), "start": start, "end": end}],
+                         note=f"卡成立日清单:{req.item_id} 标了「{cardhits.VERDICT_TEXT[req.verdict]}」,"
+                              f"露出成立日之后的走势")
+            row = cardhits.record_mark(doc, req.item_id, req.verdict, req.reason)
+        except StateRootMissing as e:
+            raise HTTPException(503, str(e)) from None
+        except ValueError as e:
+            raise HTTPException(400, str(e)) from None
+        except OSError as e:
+            raise HTTPException(503, f"标记写不进去:{e}") from None
+        opened.setdefault(it.get("symbol"), set()).add((start, end))
+        return {"mark": row, "reveal_end": end, "card_mark": _card_marks(req.list_id).get(req.item_id)}
 
     @router.post("/views")
     def wf_chart_view(req: ChartViewIn):
@@ -384,6 +475,23 @@ def build_workflow_router(*, get_config) -> APIRouter:
         it = next((x for x in doc.get("items") or [] if x.get("item_id") == req.item_id), None)
         if it is None:
             raise HTTPException(404, f"清单 {req.list_id} 里没有 {req.item_id}")
+        kind = doc.get("kind")
+        if kind == cardhits.KIND:            # 卡成立日清单:只收放大;看不看得到结果看这张标没标
+            if event != "zoom_chart":
+                raise HTTPException(400, "卡成立日清单只记放大;标「是 / 不是」走 /workflow/card_marks")
+            marked = req.item_id in _card_marks(req.list_id)
+            start, end = _card_window(it, floor, train_end, marked)
+            try:
+                row = views.record(surface="web", event=event, outcome_visible=marked, list_id=req.list_id,
+                                   list_kind=kind, item_id=req.item_id,
+                                   charts=[{"symbol": it.get("symbol"), "start": start, "end": end}])
+            except StateRootMissing as e:
+                raise HTTPException(503, str(e)) from None
+            except ValueError as e:
+                raise HTTPException(400, str(e)) from None
+            except OSError as e:
+                raise HTTPException(503, f"看过记录写不进去:{e}") from None
+            return {"ok": True, "ts": row["ts"]}
         bps = None
         if event == "reveal":
             bps = [{"date": b.date, "primary": b.primary} for b in req.buy_points or []]
@@ -396,7 +504,6 @@ def build_workflow_router(*, get_config) -> APIRouter:
                 raise HTTPException(400, "; ".join(errs))
         elif req.buy_points is not None:
             raise HTTPException(400, "只有 reveal 才带买点")
-        kind = doc.get("kind")
         try:
             row = views.record(surface="web", event=event, outcome_visible=kind != "contrast_blind",
                                list_id=req.list_id, list_kind=kind, item_id=req.item_id,
@@ -502,6 +609,8 @@ def build_workflow_router(*, get_config) -> APIRouter:
         if foreign:
             raise HTTPException(403, foreign)
         list_kind = lst.get("kind")
+        if list_kind == cardhits.KIND:
+            raise HTTPException(400, "卡成立日清单用「是 / 不是」标(/workflow/card_marks),不收标注批次")
         errs: list[str] = []
         cache: dict = {}
         ids = {it.get("item_id") for it in lst.get("items") or [] if isinstance(it, dict)}

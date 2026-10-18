@@ -1,10 +1,12 @@
 """清单文件(<root>/lists/<list_id>.json)的组装、校验与写入。
 
-格式 schema = "chart_workflow.list/1",三种 kind(每条都带证券类别 sec_class / sec_source /
+格式 schema = "chart_workflow.list/1",四种 kind(每条都带证券类别 sec_class / sec_source /
 sec_label / sec_known,名录里查不到的 sec_label 为「未知（名录里查不到）」):
   bigmoves        大涨段清单,无 summary
   contrast        对照清单,有 summary
   contrast_blind  盲看清单,无 summary;marks 只有 decision / entry,metrics 只有 M
+  card_hits       卡成立日清单(cardhits.py,只在调试模式下用),无 summary;图窗终点 view_end 就是成立日 t,
+                  标完「是 / 不是」才露到 reveal_end;marks 只有 decision,metrics 为空,不带跨源比对
 
 写入前校验(任一不过就拒绝写):list_id 合法;所有日期不晚于 train_end;
 每个 view_end ≤ train_end;item_id 唯一;分组引用的 item 都存在;
@@ -36,7 +38,7 @@ from chart_workflow.panel import trading_dates
 from chart_workflow.securities import CLASS_LABELS, classify_with_source, load_cached_names, load_exchanges
 
 SCHEMA = "chart_workflow.list/1"
-KINDS = ("bigmoves", "contrast", "contrast_blind")
+KINDS = ("bigmoves", "contrast", "contrast_blind", "card_hits")
 LIST_ID_RE = re.compile(r"^(?!\.)(?!.*\.\.)[A-Za-z0-9_\-.]+$")   # 不以点开头、不含 ..
 _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 BLIND_MARKS = {"decision", "entry"}
@@ -264,8 +266,32 @@ def validate(doc: dict) -> None:
                 errs.append(f"盲看清单不得含跨源比对结果: {it.get('item_id')}")
     if kind == "bigmoves" and "summary" in doc:
         errs.append("大涨段清单不得含 summary")
+    if kind == "card_hits":
+        errs += _card_hits_errors(doc, train_end)
     if errs:
         raise ListValidationError("; ".join(errs[:20]))
+
+
+def _card_hits_errors(doc: dict, train_end: str) -> list[str]:
+    """卡成立日清单的额外校验:只在调试模式下写;每条的图窗终点就是成立日(标完之前不露后面的走势),
+    露出终点 reveal_end 不早于成立日、不晚于训练段末日;不带任何和结果有关的字段。"""
+    errs = []
+    if not mode.is_debug():
+        errs.append("卡成立日清单只在调试模式下用,正式模式不写")
+    if "summary" in doc:
+        errs.append("卡成立日清单不得含 summary")
+    for it in doc.get("items") or []:
+        tag = it.get("item_id")
+        t, end, rev = it.get("t"), it.get("view_end"), it.get("reveal_end")
+        if end != t:
+            errs.append(f"卡成立日清单的图窗终点要是成立日: {tag} view_end={end!r} t={t!r}")
+        if not (isinstance(rev, str) and _DATE_RE.match(rev) and str(t) <= rev <= train_end):
+            errs.append(f"露出终点 reveal_end 要在成立日到训练段末日 {train_end} 之间: {tag} {rev!r}")
+        if set(it.get("marks") or {}) - {"decision"} or it.get("metrics"):
+            errs.append(f"卡成立日清单含结果字段: {tag}")
+        if "xcheck" in it:
+            errs.append(f"卡成立日清单不得含跨源比对结果: {tag}")
+    return errs
 
 
 def write_list(doc: dict, cfg: dict) -> Path:

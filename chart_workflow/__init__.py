@@ -25,7 +25,7 @@
   panel(池内股票日面板)/ dataerrors(数据错误登记与排除)/ control(同日对照与毕业判定)/
   rules(取命中)/ listfile(清单文件)/ annotations(标注批次 v1 / v2 统一读取)/
   views(看过记录)/ facts(事实表)/ oplog(操作日志)/ elements(要素库)/ shapes(形态卡)/ ledger(账本)/
-  bigmoves、contrast(两个出清单的命令)/ xcheck(跨源比对)。
+  bigmoves、contrast(两个出清单的命令)/ cardhits(卡成立日清单,只在调试模式下用)/ xcheck(跨源比对)。
   智能层(facts / elements / shapes / oplog / views / state / loader / annotations)不 import 标签口径、对照、
   面板、清单模块(间接导入也不行),不读清单里的结果字段。
 
@@ -68,4 +68,7 @@ CHART_WORKFLOW_MODE=debug(清单名 dbg- 开头,决定文件写 "mode": "debug",
 看图范围、训练段、内圈年份强制成调试段,读任何行情都截在 2022-09-30;记账写调试账(主目录的
 outputs/chart_workflow_debug/,不进 git,没有水位),正式账一行都不写;清单、缓存放 _debug 目录。
 调试账清空重来:uv run python -m chart_workflow.debugroot clear(见 debugroot.py)。
+调试模式下建好一张形态卡后,python -m chart_workflow.cardhits make --shape <卡编号> 在调试段里列出卡说成立的那些天,
+用户在网页里逐张标「是 / 不是」,会话给「不是」的理由和待写代码的要素归类,cardhits summary 汇总这些证据,
+帮用户判断形态卡要不要从「平的要素组合」改成「事件加关系」(见 cardhits.py;只写调试账)。
 """
