@@ -1,0 +1,46 @@
+{
+ "schema": "chart_workflow.viewed_list/1",
+ "list_id": "pc-r001-bigmoves-firstscreen",
+ "sha12": "c73b342f7f19",
+ "kind": "bigmoves",
+ "title": "pc 上旧清单 r001-bigmoves 的首屏 5 张(补记用)",
+ "created_at": null,
+ "train_end": null,
+ "items": [
+  {
+   "item_id": "IMSR@2025-08-19",
+   "symbol": "IMSR",
+   "t": null,
+   "view_start": "2025-02-26",
+   "view_end": "2025-10-15"
+  },
+  {
+   "item_id": "DJT@2024-01-11",
+   "symbol": "DJT",
+   "t": null,
+   "view_start": "2023-07-21",
+   "view_end": "2024-03-11"
+  },
+  {
+   "item_id": "LUMN@2024-06-17",
+   "symbol": "LUMN",
+   "t": null,
+   "view_start": "2023-12-22",
+   "view_end": "2024-08-14"
+  },
+  {
+   "item_id": "SMX@2025-11-03",
+   "symbol": "SMX",
+   "t": null,
+   "view_start": "2025-05-13",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "DXYZ@2024-10-22",
+   "symbol": "DXYZ",
+   "t": null,
+   "view_start": "2024-05-01",
+   "view_end": "2024-12-18"
+  }
+ ]
+}
