@@ -35,7 +35,10 @@
         <button type="button" :disabled="store.page >= store.pageCount - 1"
                 @click="goPage(store.page + 1)">下一页</button>
       </div>
-      <button type="button" class="drawer-toggle" data-testid="wf-drawer" :aria-pressed="drawerOpen"
+      <span v-if="store.isCardHits" class="card-count" data-testid="wf-card-count">
+        已标 {{ store.cardMarkedCount }} / {{ store.current?.items.length ?? 0 }} 张（每张点「是」或「不是」，立刻记下）<template
+          v-if="store.cardLateCount">；还没标的里 <b data-testid="wf-card-late-count">{{ store.cardLateCount }}</b> 张后续已在别处给你看过，标了不进统计，可以跳过</template></span>
+      <button v-else type="button" class="drawer-toggle" data-testid="wf-drawer" :aria-pressed="drawerOpen"
               @click="drawerOpen = !drawerOpen">已标注 ({{ store.draftCount }})</button>
     </header>
 
@@ -43,6 +46,11 @@
     <div v-if="!store.lists.length && !store.loadError" class="hint">
       还没有清单。清单由会话用命令行工具生成，放在 outputs/chart_workflow/lists/ 下。
     </div>
+
+    <section v-if="store.isCardHits && cardLines.length" class="card-lines" data-testid="wf-card-lines">
+      <b>卡上写的：</b><span v-for="(l, k) in cardLines" :key="k">{{ l }}</span>
+      <span v-if="cardNote" class="card-note" data-testid="wf-card-note">{{ cardNote }}</span>
+    </section>
 
     <section v-if="store.current?.summary" class="summary" data-testid="wf-summary">
       <table>
@@ -78,7 +86,7 @@
                     :annotation="store.drafts.get(it.item_id) ?? null"
                     :highlighted="store.highlightItemId === it.item_id" />
       </main>
-      <AnnotReviewPanel v-if="drawerOpen" />
+      <AnnotReviewPanel v-if="drawerOpen && !store.isCardHits" />
     </div>
 
     <div v-if="store.zoomItem" class="backdrop" data-testid="wf-zoom" @click.self="store.setZoom(null)">
@@ -105,6 +113,8 @@
  * 后端的状态根来自环境变量(测试、冒烟用的临时目录)时,顶上显示一条文字提示(不靠颜色区分),
  * 免得正式使用时记录悄悄写进临时目录。
  *
+ * 卡成立日清单(只在调试模式下用)每张图点「是 / 不是」立刻记下,不走草稿与发送:顶上显示标了几张,没有已标注抽屉。
+ *
  * 大涨段清单不给标签筛选:标签描述的是决策日当天(跳空、量倍数),按它筛等于提示决策日在哪,
  * 与图头点买点前不显示标签同一个理由(见 AnnotChart)。
  *
@@ -121,13 +131,16 @@ const store = useWorkflowStore()
 // 页顶横幅(调试模式、模式未知、前后端模式对不上)被放大图盖住了,放大图的标题行里再写一遍
 const modeLabel = computed(() => useModeStore().banner?.text ?? null)
 const drawerOpen = ref(false)
+/** 卡成立日清单:卡这一版写了什么(生成清单时记在 params 里) */
+const cardLines = computed<string[]>(() => store.current?.params?.card_hits?.card_lines ?? [])
+const cardNote = computed<string>(() => store.current?.params?.card_hits?.note ?? '')
 const gridEl = ref<HTMLElement | null>(null)
 /** 后端拿不到记账类文件的家时,清单目录每项都带 blocked 与说明;打开清单、发标注都会被拒 */
 const blockedMessage = computed(() => store.lists.find(l => l.blocked)?.blocked_message
   ?? (store.lists.some(l => l.blocked) ? '记账类文件的家不可用，暂时不能打开清单、发送标注' : ''))
 
 const KIND_TEXT: Record<string, string> = {
-  bigmoves: '大涨段', contrast: '对照', contrast_blind: '盲看',
+  bigmoves: '大涨段', contrast: '对照', contrast_blind: '盲看', card_hits: '卡成立日',
 }
 const CHECK_TEXT: Record<string, string> = {
   dir_lead: '方向领先够大', mag_lead: '幅度领先为正', each_year: '每年都领先',
@@ -215,6 +228,10 @@ onBeforeUnmount(() => {
 .pager { display: flex; gap: 6px; align-items: center; }
 .page-input { width: 4.5em; font-size: 13px; text-align: center; }
 .drawer-toggle[aria-pressed="true"] { background: #0f172a; color: #fff; }
+.card-count { font-weight: 700; }
+.card-lines { display: flex; flex-wrap: wrap; gap: 4px 14px; padding: 4px 8px; border-bottom: 1px solid #cbd5e1;
+              font-size: 12px; color: #0f172a; }
+.card-note { color: #475569; }
 .err { color: #b91c1c; padding: 6px 8px; }
 .err.blocked { font-weight: 700; border-left: 4px solid #0f172a; color: #0f172a; }
 .state-env { padding: 6px 8px; border: 2px dashed #0f172a; color: #0f172a; background: #fff;

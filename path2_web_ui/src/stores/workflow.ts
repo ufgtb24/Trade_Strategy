@@ -21,15 +21,20 @@
  * 单张图的看过事件(放大看了 zoom、点了买点或选了判定 annotate、露出结果 reveal、往右拖看后续 peek)
  * 经后端记进看过记录,每张图每种事件在一次打开清单里只记一次;发送标注前先等这些请求落地
  * (reveal 要在标注之前记上)。
- * 对数 / 线性坐标开关也在这里(默认对数,本次页面会话内有效,不写浏览器存储)。 */
+ * 对数 / 线性坐标开关也在这里(默认对数,本次页面会话内有效,不写浏览器存储)。
+ *
+ * 卡成立日清单(card_hits,只在调试模式下用)不走草稿和发送:每张图点「是」或「不是」(「不是」要写一句为什么)
+ * 立刻经后端记下(markCard),后端记上之后才放行到成立日之后的走势(cardMarks 里有这张图,AnnotChart 据此取
+ * 到 reveal_end 的 K 线)。打开清单时后端把每张图现在的标记带在 card_marks 里。可以改,改的那一下后端记成
+ * 看过走势之后的。 */
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 import type {
-  Annotation, AnnotationBatchResult, AnnotationLabel, BuyPoint, WorkflowItem, WorkflowList,
+  Annotation, AnnotationBatchResult, AnnotationLabel, BuyPoint, CardMark, WorkflowItem, WorkflowList,
   WorkflowListKind, WorkflowListMeta, WorkflowStateInfo, ChartViewEvent,
 } from '../types'
 import {
-  getWorkflowState, listWorkflowLists, loadWorkflowList, recordChartView, sendAnnotations,
+  getWorkflowState, listWorkflowLists, loadWorkflowList, postCardMark, recordChartView, sendAnnotations,
 } from '../api'
 
 export const PAGE_SIZE = 6
@@ -132,8 +137,15 @@ export const useWorkflowStore = defineStore('workflow', () => {
   let pendingViews: Promise<unknown>[] = []
   /** 主图纵轴用对数坐标(默认);只在本次页面会话内有效 */
   const logScale = ref(true)
+  /** 卡成立日清单:每张图现在的标记(后端记上的才在这里) */
+  const cardMarks = ref(new Map<string, CardMark>())
 
   const isBlind = computed(() => current.value?.kind === 'contrast_blind')
+  const isCardHits = computed(() => current.value?.kind === 'card_hits')
+  const cardMarkedCount = computed(() => cardMarks.value.size)
+  /** 还没标、但现在标就会记成揭开后才标(不进统计)的张数 */
+  const cardLateCount = computed(() => Object.keys(current.value?.card_late ?? {})
+    .filter(id => !cardMarks.value.has(id)).length)
   const listKind = computed<WorkflowListKind | null>(() => current.value?.kind ?? null)
   const itemsById = computed(() => new Map<string, WorkflowItem>(
     (current.value?.items ?? []).map(it => [it.item_id, it])))
@@ -243,6 +255,7 @@ export const useWorkflowStore = defineStore('workflow', () => {
     tagFilter.value = ''
     page.value = 0
     initialRight.value = new Map(current.value.items.map(it => [it.item_id, randomRight()]))
+    cardMarks.value = new Map(Object.entries(current.value.card_marks ?? {}))
     viewEventsSent.value = new Set()
     setZoom(null)
     highlightItemId.value = null
@@ -402,6 +415,24 @@ export const useWorkflowStore = defineStore('workflow', () => {
     }
   }
 
+  /** 卡成立日清单:这张图标「是 / 不是」。后端记上之后才算标了(此后放行成立日之后的走势);
+   *  返回 null = 记上了,否则是记不上的说明。 */
+  async function markCard(itemId: string, verdict: 'yes' | 'no', reason = ''): Promise<string | null> {
+    if (!current.value || !isCardHits.value) return '当前不是卡成立日清单'
+    if (verdict === 'no' && !reason.trim()) return '标「不是」要写一句为什么'
+    try {
+      const res = await postCardMark(current.value.list_id, itemId, verdict, verdict === 'no' ? reason.trim() : '')
+      cardMarks.value.set(itemId, res.card_mark)
+      return null
+    } catch (e: any) {
+      return `没记上:${String(e?.message ?? e)}`
+    }
+  }
+
+  function cardMarkOf(itemId: string): CardMark | null {
+    return cardMarks.value.get(itemId) ?? null
+  }
+
   /** 打开(itemId)或关闭(null)放大框;win 是小图当时的缩放窗口,放大图从它开始。 */
   function setZoom(itemId: string | null, win: ZoomWindow | null = null) {
     zoomItemId.value = itemId
@@ -416,13 +447,13 @@ export const useWorkflowStore = defineStore('workflow', () => {
     lists, current, loadError, groupKey, tagFilter, page, drafts, draftListId,
     sending, sendError, lastSent, zoomItemId, zoomWindow, highlightItemId,
     initialRight, peeked, revealed, revealConfirmed, changedAfterReveal, stateInfo, viewEventsSent, viewError,
-    logScale,
-    isBlind, listKind, itemsById, currentGroup, groupItems, allTags, filteredItems, pageCount,
+    logScale, cardMarks,
+    isBlind, isCardHits, cardMarkedCount, cardLateCount, listKind, itemsById, currentGroup, groupItems, allTags, filteredItems, pageCount,
     pageItems, draftList, draftCount, incomplete, zoomItem,
     loadLists, openList, setGroup, setTagFilter, setPage, gotoItem,
     upsertAnnotation, setBuyPoint, toggleBuyPoint, markPeeked, isPeeked, isRevealConfirmed, noteChartView,
     initialRightOf,
     toggleLogScale,
-    deleteAnnotation, clearDrafts, send, setZoom,
+    deleteAnnotation, clearDrafts, send, setZoom, markCard, cardMarkOf,
   }
 })

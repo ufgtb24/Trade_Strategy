@@ -9,9 +9,10 @@
   1. 候选:面板里每个股票日都是候选,指标是相对涨幅 rel 与涨幅原值 rise
   2. 最低门槛:rel ≥ rel_min
   3. 同一段行情只取一次、同股不互相露底:每只股票按 rel 从大到小贪心取,一个候选只有在
-     与已取中的同股各段相隔超过 suppress_bars 个交易日、而且双方的决策日都不落在对方的完整图窗里
-     (起点截到看图下界之后、到图窗终点,见 listfile.drop_window_overlaps)时才取——否则打开一张图,
-     点买点之前就能看到另一段的决策日和后续走势
+     与已取中的同股各段相隔超过 suppress_bars 个交易日、而且两段的整段图窗(起点截到看图下界之后、到图窗终点)
+     没有任何交叠(见 listfile.drop_window_overlaps 的 disjoint)时才取——否则打开一张图,点买点之前就能看到
+     另一段的决策日和后续走势:靠后那段的图窗起点只要落在靠前那段决策日之后的那段里,点买点之前画着的部分就
+     露出了靠前那段的大涨
   4. 每周限量:同一 ISO 周最多保留 per_week_max 段(取 rel 最大的)
   5. 总量:全局按 rel 降序取前 top 段
   6. 分组:按涨前状态分四组,另加不分组的「全部」;跳空与量倍数写进 tags
@@ -45,10 +46,10 @@ GROUP_KEYS = {"深跌": "deep_drop", "已在涨": "rising", "横盘": "flat", "�
 
 
 def suppress_same_move(cands: pd.DataFrame, cfg: dict) -> pd.DataFrame:
-    """每只股票按 rel 降序贪心:与已取中的同股各段相隔超过 suppress_bars 个交易日、且双方决策日
-    都不落在对方图窗里才取(listfile.drop_window_overlaps)。"""
+    """每只股票按 rel 降序贪心:与已取中的同股各段相隔超过 suppress_bars 个交易日、且两段的整段图窗
+    不交叠才取(listfile.drop_window_overlaps,disjoint)。"""
     ordered = cands.sort_values(["symbol", "rel", "date"], ascending=[True, False, True])
-    return drop_window_overlaps(ordered, cfg, min_gap_bars=int(cfg["bigmoves"]["suppress_bars"]))
+    return drop_window_overlaps(ordered, cfg, min_gap_bars=int(cfg["bigmoves"]["suppress_bars"]), disjoint=True)
 
 
 def cap_per_week(df: pd.DataFrame, per_week: int) -> pd.DataFrame:

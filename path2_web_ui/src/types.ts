@@ -278,7 +278,8 @@ export type Level = 'matched' | 'qualified' | 'detected'
 export type Tier = Level
 
 // ─── 看图工作流模式(/workflow/*):清单由命令行工具 chart_workflow 生成,标注批次由后端写盘 ───
-export type WorkflowListKind = 'bigmoves' | 'contrast' | 'contrast_blind'
+/** card_hits:卡成立日清单(只在调试模式下用;每张点「是 / 不是」,标完才露出成立日之后的走势) */
+export type WorkflowListKind = 'bigmoves' | 'contrast' | 'contrast_blind' | 'card_hits'
 
 /** 看图工作流里的单张图事件:放大看了 / 点了买点或选了判定 / 大涨段第一次露出结果 */
 export type ChartViewEvent = 'zoom' | 'annotate' | 'reveal' | 'peek'
@@ -333,9 +334,28 @@ export interface WorkflowItem {
   sec_known?: boolean
   /** 盲看清单只有 decision / entry */
   marks: { decision?: string; entry?: string; up_line?: number; down_line?: number; peak_date?: string }
-  /** 盲看清单只有 M */
+  /** 盲看清单只有 M;卡成立日清单为空 */
   metrics: Record<string, number | null>
   tags: string[]
+  /** 卡成立日清单:标完「是 / 不是」后图窗露到哪天(标之前只到成立日 view_end) */
+  reveal_end?: string
+  /** 卡成立日清单:图窗里成立日之前卡也成立过的段 [起, 止](都早于成立日) */
+  card_true_runs?: [string, string][]
+}
+
+/** 卡成立日清单里一张图现在的标记(后端只追加,这是最后一下;first_verdict 是第一下) */
+export interface CardMark {
+  mark_id: string
+  verdict: 'yes' | 'no'
+  reason: string
+  ts: string
+  first_verdict: 'yes' | 'no'
+  /** 一共标过几下;大于 1 说明看过走势后改过 */
+  n: number
+  /** 揭开后才标:标第一下之前,这张图成立日之后的走势已经在别处画出来过(不进小结统计) */
+  late?: boolean
+  /** 揭开后才标的出处(清单名;不在清单里的写「清单以外」) */
+  late_where?: string
 }
 
 export interface WorkflowXcheck {
@@ -354,6 +374,10 @@ export interface WorkflowList {
   summary?: WorkflowSummary
   groups: WorkflowGroup[]
   items: WorkflowItem[]
+  /** 卡成立日清单:每张图现在的标记(打开清单时后端带上) */
+  card_marks?: Record<string, CardMark>
+  /** 卡成立日清单:还没标、但现在标就会记成揭开后才标的图 {item_id: 出处}(打开清单时后端算好) */
+  card_late?: Record<string, string>
 }
 
 /** 正例 / 反例 / 数据有误(用户确认行情数据有错,汇总进数据错误登记) */

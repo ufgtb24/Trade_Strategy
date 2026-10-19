@@ -5,7 +5,7 @@
       <span v-if="item.sec_label" class="sec" :class="{ unknown: item.sec_known === false }"
             data-testid="sec-label">{{ item.sec_label }}</span>
       <template v-if="!hideOutcome">
-        <span class="when" data-testid="decision">决策日 {{ item.t }}</span>
+        <span class="when" data-testid="decision">{{ cardMode ? '卡成立日' : '决策日' }} {{ item.t }}</span>
         <template v-if="!blind">
           <span v-if="item.metrics.rel != null" class="metric">相对涨幅 {{ fmtNum(item.metrics.rel) }}</span>
           <span v-if="item.metrics.rise != null" class="metric">涨幅 {{ fmtPct(item.metrics.rise) }}</span>
@@ -20,7 +20,35 @@
     <div v-if="xcheckText" class="xcheck-warn" data-testid="xcheck-warn"
          title="生成清单时拿 Nasdaq 日线逐日比涨跌幅,单日倍数之比超出阈值就列在这里;确认有误请标「数据有误」">
       {{ xcheckText }}</div>
-    <div class="tools">
+    <div v-if="cardMode" class="tools" data-testid="card-tools">
+      <button type="button" class="tool verdict" data-testid="card-yes" :disabled="cardBusy"
+              :aria-pressed="cardMark?.verdict === 'yes'" @click="onCardYes">是</button>
+      <button type="button" class="tool verdict" data-testid="card-no" :disabled="cardBusy"
+              :aria-pressed="noOpen || cardMark?.verdict === 'no'" @click="onCardNo">不是</button>
+      <template v-if="noOpen">
+        <input v-model="reason" class="note" type="text" placeholder="为什么不是（一句话）" maxlength="500"
+               data-testid="card-reason" @keydown.enter="submitNo">
+        <button type="button" class="tool" data-testid="card-no-submit" :disabled="cardBusy || !reason.trim()"
+                @click="submitNo">记下</button>
+      </template>
+      <button type="button" class="tool" data-testid="tool-log" :aria-pressed="store.logScale"
+              title="主图纵轴:对数坐标(按下)/ 线性坐标" @click="store.toggleLogScale()">
+        {{ store.logScale ? '对数' : '线性' }}</button>
+      <button v-if="!large" type="button" class="tool" data-testid="tool-zoom" title="也可以双击图放大"
+              @click="openZoom">放大</button>
+    </div>
+    <div v-if="cardMode" class="hint-line" data-testid="card-hint">
+      <template v-if="!cardMark">卡说这一天成立。是你说的那个形态吗？标完才露出成立日之后的走势<b v-if="lateWhere"
+          data-testid="card-late-before">（这张的后续已在 {{ lateWhere }} 给你看过，标了不进统计，可以跳过）</b></template>
+      <template v-else>
+        <b data-testid="card-verdict">已标：{{ cardMark.verdict === 'yes' ? '是' : '不是' }}</b>
+        <template v-if="cardMark.verdict === 'no'">——{{ cardMark.reason }}</template>
+        <span v-if="cardMark.n > 1" data-testid="card-changed">（看过走势后改过，第一下是「{{ cardMark.first_verdict === 'yes' ? '是' : '不是' }}」）</span>
+        <span v-if="cardMark.late" data-testid="card-late">（揭开后才标：先在 {{ cardMark.late_where || '别处' }} 看到过后续，不进统计）</span>
+        · 再改会记成看过走势之后改的
+      </template>
+    </div>
+    <div v-if="!cardMode" class="tools">
       <button type="button" class="tool" :aria-pressed="mode === 'brush'" data-testid="tool-brush"
               @click="setMode('brush')">框选起止</button>
       <button type="button" class="tool" :aria-pressed="mode === 'buy'" data-testid="tool-buy"
@@ -45,7 +73,7 @@
       <button v-if="!large" type="button" class="tool" data-testid="tool-zoom" title="也可以双击图放大"
               @click="openZoom">放大</button>
     </div>
-    <div class="hint-line" data-testid="brush-hint">框上更好，会话靠它找你说的峰（框选起止可以不填，「数据有误」除外）</div>
+    <div v-if="!cardMode" class="hint-line" data-testid="brush-hint">框上更好，会话靠它找你说的峰（框选起止可以不填，「数据有误」除外）</div>
     <div v-if="annotation" class="ann-line" data-testid="ann-summary">
       <b>{{ labelText(annotation.label, kind) }}</b>
       起止 {{ annotation.range_start ?? '未框' }} → {{ annotation.range_end ?? '未框' }}
@@ -70,6 +98,12 @@
  * 用户把窗口右端拖过它就记成「点买点前看过后续」(store.markPeeked)。有了买点、且后端记上了露出结果
  * (store.isRevealConfirmed)之后照常显示,窗口不动;记不上就继续藏着。
  * 露出结果之后再改买点或「清除」,store 记成「看过结果后改过」(见 stores/workflow.ts 的改点痕迹)。
+ *
+ * 卡成立日清单(card_hits,只在调试模式下用):不框选、不点买点、不选判定,只有「是」「不是」两个按钮,「不是」
+ * 要写一句为什么再点「记下」;后端记上之前只画到成立日(条目的 view_end),记上之后重取到 reveal_end,
+ * 露出成立日之后的走势。成立日画一条竖线;成立日之前卡也成立过的段(item.card_true_runs)画浅灰底,第一段写
+ * 「卡也成立」。标过的显示标的是什么,改过的注明第一下是什么,揭开后才标的注明出处、不进统计;还没标、但现在
+ * 标就会记成揭开后才标的(list.card_late),标之前就注明出处、可以跳过。
  *
  * 两个互斥的工具开关:「框选起止」用 ECharts lineX brush + createBrushRequestHandler 把
  * (startIdx, endIdx) 换成日期写进草稿;「点买点」在图上点一下,把那根 K 线设成唯一的(主)买点,
@@ -101,6 +135,16 @@ const props = withDefaults(defineProps<{
 const store = useWorkflowStore()
 const blind = computed(() => props.blind ?? store.isBlind)
 const kind = computed(() => store.listKind)
+/** 卡成立日清单:只标「是 / 不是」;标完(后端记上)才露出成立日之后的走势 */
+const cardMode = computed(() => kind.value === 'card_hits')
+const cardMark = computed(() => (cardMode.value ? store.cardMarkOf(props.item.item_id) : null))
+const cardRevealed = computed(() => !!cardMark.value)
+/** 还没标、但现在标就会记成揭开后才标:出处(后端打开清单时算好) */
+const lateWhere = computed(() => (cardMode.value && !cardMark.value
+  ? store.current?.card_late?.[props.item.item_id] ?? '' : ''))
+const noOpen = ref(false)
+const reason = ref('')
+const cardBusy = ref(false)
 const hasBuy = computed(() => (props.annotation?.buy_points?.length ?? 0) > 0)
 /** 大涨段清单还没有买点,或露出结果还没被后端记上:不露结果 */
 const hideOutcome = computed(() =>
@@ -173,6 +217,34 @@ function setMode(m: 'brush' | 'buy') {
     type: 'takeGlobalCursor', key: 'brush',
     brushOption: { brushType: mode.value === 'brush' ? 'lineX' : false, brushMode: 'single' },
   })
+}
+
+async function submitCard(verdict: 'yes' | 'no', why = '') {
+  cardBusy.value = true
+  const err = await store.markCard(props.item.item_id, verdict, why)
+  cardBusy.value = false
+  if (err) {
+    error.value = err
+    return
+  }
+  error.value = null
+  noOpen.value = false
+  reason.value = ''
+}
+
+function onCardYes() {
+  noOpen.value = false
+  if (cardMark.value?.verdict !== 'yes') void submitCard('yes')
+}
+
+function onCardNo() {
+  noOpen.value = true
+  reason.value = cardMark.value?.verdict === 'no' ? cardMark.value.reason : reason.value
+}
+
+function submitNo() {
+  if (!reason.value.trim() || cardBusy.value) return
+  void submitCard('no', reason.value)
 }
 
 function setLabel(l: AnnotationLabel) {
@@ -266,7 +338,7 @@ function buildOption(zoom: ZoomWindow | null) {
   const showMarks = !hideOutcome.value
   if (showMarks && m.decision && has.has(m.decision)) {
     lines.push({ xAxis: m.decision, lineStyle: { type: 'solid', color: INK, width: 1 },
-                 label: { formatter: '决策日', position: 'insideEndTop' } })
+                 label: { formatter: cardMode.value ? '成立日' : '决策日', position: 'insideEndTop' } })
   }
   if (showMarks && m.entry && has.has(m.entry)) {
     lines.push({ xAxis: m.entry, lineStyle: { type: 'dotted', color: INK, width: 1 },
@@ -290,6 +362,17 @@ function buildOption(zoom: ZoomWindow | null) {
   }
   const a = props.annotation
   const areas: any[] = []
+  if (cardMode.value) {          // 成立日之前卡也成立过的段:浅灰底 + 文字,不靠色相
+    (props.item.card_true_runs ?? []).forEach(([s0, s1], k) => {
+      if (!has.has(s0) || !has.has(s1)) return
+      const s2 = dates[dates.indexOf(s1) + 1] ?? s1     // 画到下一根:只成立一天的段也有宽度(段都早于成立日)
+      areas.push([
+        { xAxis: s0, name: k === 0 ? '卡也成立' : '', itemStyle: { color: 'rgba(15,23,42,0.10)' },
+          label: { show: k === 0, position: 'insideBottom', color: INK, fontSize: 10 } },
+        { xAxis: s2 },
+      ])
+    })
+  }
   if (a?.range_start && a?.range_end) {
     areas.push([
       { xAxis: a.range_start, name: labelText(a.label, kind.value),
@@ -383,9 +466,14 @@ function render(keepZoom = true) {
   }
 }
 
+/** 取 K 线的终点:卡成立日清单标完了到 reveal_end,其余都到条目的 view_end。 */
+function loadEnd(): string {
+  return cardMode.value && cardRevealed.value ? (props.item.reveal_end ?? props.item.view_end) : props.item.view_end
+}
+
 async function load() {
   try {
-    const o = await getWorkflowOhlc(props.item.symbol, props.item.view_start, props.item.view_end)
+    const o = await getWorkflowOhlc(props.item.symbol, props.item.view_start, loadEnd())
     bars.value = o.bars
     error.value = o.bars.length ? null : '这段区间没有行情'
   } catch (e: any) {
@@ -409,7 +497,8 @@ onMounted(() => {
   void load()
 })
 
-watch(() => props.item.item_id, () => { mode.value = 'none'; void load() })
+watch(() => props.item.item_id, () => { mode.value = 'none'; noOpen.value = false; reason.value = ''; void load() })
+watch(cardRevealed, (now, before) => { if (now && !before) void load() })
 watch(() => [props.annotation, blind.value, hideOutcome.value, store.logScale], () => render(),
       { deep: true })
 
@@ -440,6 +529,7 @@ onBeforeUnmount(() => {
         cursor: pointer; }
 .tool[aria-pressed="true"] { background: #0f172a; color: #fff; border-color: #0f172a; }
 .tool:disabled { opacity: 0.5; cursor: default; }
+.tool.verdict { font-weight: 700; padding: 1px 12px; }
 .radio { display: inline-flex; align-items: center; gap: 2px; }
 .note { flex: 1 1 100px; min-width: 80px; font-size: 12px; padding: 1px 4px; }
 .ann-line { font-size: 11px; color: #334155; }

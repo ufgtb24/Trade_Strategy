@@ -8,6 +8,7 @@
 有值就是它(测试、冒烟用临时目录),否则是主目录的 outputs/chart_workflow_debug/(见 state.debug_locate)。
 里面的格式和正式账一样(标注 annotations/、看过记录 views.jsonl 与 viewed_lists/、事实表快照 facts/、要素
 elements/、形态卡 shapes/、操作日志 oplog/、账本 ledger.jsonl、规则存档、配置存档、副本登记 snapshot_lock.json),
+另有只在调试账里才有的 card_review/(卡成立日清单的标记、归类与小结,见 chart_workflow/cardhits.py),
 标记文件是 DEBUG_LEDGER.md;在主目录里运行时,调试模式的清单 lists/、缓存 cache/、数据错误登记
 data_errors.json 也在这里(调试模式的产物目录是 outputs/chart_workflow_debug,见 mode.debug_variant)。
 
@@ -25,8 +26,8 @@ data_errors.json 也在这里(调试模式的产物目录是 outputs/chart_workf
   - 里面不得有受 git 跟踪的文件(调试账不进 git,有就说明指错了);
   - 目录里要么有调试账的标记,要么是空的(或还不存在),要么就是调试账的默认位置(主目录的
     outputs/chart_workflow_debug,那里以前可能被人用正式格式 init 过)。别的目录一概不删。
-清空只删认识的条目(KNOWN:记账类文件与目录、清单、数据错误登记、标记、旧的正式格式标记与临时水位、
-这些名字后面跟着 .tmp 的临时文件);顶层有任何不认识的东西就停下、列出来,一样都不删。
+清空只删认识的条目(KNOWN:记账类文件与目录(含只有调试账才有的 card_review/)、清单、数据错误登记、标记、
+旧的正式格式标记与临时水位、这些名字后面跟着 .tmp 的临时文件);顶层有任何不认识的东西就停下、列出来,一样都不删。
 删的时候不跟随符号链接(链接只删链接本身)。其他 worktree 里生成的调试清单不在这里,不受影响。
 """
 from __future__ import annotations
@@ -42,9 +43,11 @@ from chart_workflow import mode, snaplock, state
 from chart_workflow.config import REPO_ROOT
 
 KEEP = ("cache",)            # 清空时保留的子目录(可重算、重算费时或要联网)
-# 清空时认识的顶层条目:记账类文件与目录(state._KINDS)、标记、调试模式的清单与数据错误登记、保留的缓存,
+# 只有调试账才有的记账类条目:(显示名, 相对路径, 统计方式),统计方式同 state._KINDS
+DEBUG_ONLY = (("卡成立日的标记与归类", "card_review", "files_deep"),)
+# 清空时认识的顶层条目:记账类文件与目录(state._KINDS 与只有调试账才有的 DEBUG_ONLY)、标记、调试模式的清单与数据错误登记、保留的缓存,
 # 以及调试账默认位置上可能留着的旧的正式格式标记与临时水位
-KNOWN = frozenset({rel for _, rel, _ in state._KINDS}
+KNOWN = frozenset({rel for _, rel, _ in state._KINDS + DEBUG_ONLY}
                   | {state.DEBUG_MARKER, "lists", "data_errors.json", *KEEP}
                   | {state.MARKER, ".watermark.json", ".watermark.seen"})
 
@@ -55,6 +58,8 @@ MARKER_TEXT = f"""# 看图工作流的调试账
 
 调试段 {mode.DEBUG_START}..{mode.DEBUG_END} 只用来调试看图工作流:这里的东西不进正式账、不算尝试,
 也不进 git。调试模式下读任何行情都截在 {mode.DEBUG_END}。
+
+卡成立日清单的「是 / 不是」标记、归类与小结在 card_review/(只有调试账才有,见 chart_workflow/cardhits.py)。
 
 清空重来:`uv run python -m chart_workflow.debugroot clear`(只删这本调试账,保留缓存 cache/)。
 
@@ -189,8 +194,14 @@ def clear() -> tuple[Path, list[str]]:
     return path, removed
 
 
+def _count(p: Path, how: str) -> int:
+    if how == "files_deep":
+        return sum(1 for f in p.rglob("*") if f.is_file()) if p.exists() else 0
+    return state._count(p, how)
+
+
 def _summary(path: Path) -> list[str]:
-    return [f"  {name:<10} {state._count(path / rel, how):>6}  ({rel})" for name, rel, how in state._KINDS]
+    return [f"  {name:<10} {_count(path / rel, how):>6}  ({rel})" for name, rel, how in state._KINDS + DEBUG_ONLY]
 
 
 def main(argv=None) -> None:

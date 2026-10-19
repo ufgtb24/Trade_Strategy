@@ -1,5 +1,6 @@
-"""大涨段:同一段行情只取一次、同股不互相露底(决策日不落在同股另一条的图窗里)、每周限量、分组特征只用 t 及以前(改 t 之后数据结果不变)、
-所有段都正常参加排名(最大单日跳变只作显示)。"""
+"""大涨段:同一段行情只取一次、同股不互相露底(同股两条的整段图窗不交叠:决策日不落在另一条的图窗里,靠后那条的
+图窗起点也不落在靠前那条决策日之后那段里)、每周限量、分组特征只用 t 及以前(改 t 之后数据结果不变)、
+所有段都正常参加排名(最大单日跳变只作显示)。正常行情上同股不交叠的几段照常都列出(不能拦多)。"""
 import numpy as np
 import pandas as pd
 
@@ -13,14 +14,16 @@ from tests.chart_workflow.conftest import make_stock
 
 
 def _same_stock_overlaps(cfg, rows) -> list:
-    """同股两条里,一条的决策日落在另一条完整图窗里的对子(应当为空)。rows:(symbol, t) 列表。"""
+    """同股两条里,整段图窗(起点到终点)交叠的对子(应当为空)。rows:(symbol, t) 列表。"""
     from chart_workflow.listfile import view_window
     bad = []
     for a in rows:
         s, e = view_window(cfg, a[0], a[1])
         for b in rows:
-            if b != a and b[0] == a[0] and s <= pd.Timestamp(b[1]) <= e:
-                bad.append((a, b))
+            if b != a and b[0] == a[0]:
+                s2, e2 = view_window(cfg, b[0], b[1])
+                if s <= e2 and s2 <= e:
+                    bad.append((a, b))
     return bad
 
 
@@ -32,18 +35,37 @@ def test_same_move_taken_once(cw_env):
     dates = trading_dates(cfg, "A")
     k0 = int(dates.searchsorted(pd.Timestamp("2025-03-03")))
     H = cfg["H"]
-    idx = {"A1": k0, "A2": k0 + 10, "A3": k0 + H - 5, "A4": k0 + 130}
+    before = cfg["view"]["before_bars"]
+    idx = {"A1": k0, "A2": k0 + 10, "A3": k0 + H - 5, "A4": k0 + 130, "A5": k0 + before + H + 1}
     cands = pd.DataFrame({
-        "symbol": ["A"] * 4 + ["B"],
-        "date": [dates[idx[k]] for k in ("A1", "A2", "A3", "A4")] + [dates[k0 + 10]],
-        "rel": [5.0, 4.0, 3.0, 2.5, 4.5],
+        "symbol": ["A"] * 5 + ["B"],
+        "date": [dates[idx[k]] for k in ("A1", "A2", "A3", "A4", "A5")] + [dates[k0 + 10]],
+        "rel": [5.0, 4.0, 3.0, 2.5, 2.4, 4.5],
     })
     kept = suppress_same_move(cands, cfg)
     a = sorted(kept[kept["symbol"] == "A"]["date"].tolist())
     # A2 离 A1 只有 10 根,被压掉;A3 离 A1 超过 20 根,但落在 A1 的图窗里(决策日后 H 根内),也压掉;
-    # A4 离 A1 130 根,双方图窗都碰不到对方的决策日,保留
-    assert a == [dates[idx["A1"]], dates[idx["A4"]]]
+    # A4 离 A1 130 根,谁的决策日都不在对方图窗里,但 A4 的图窗起点(往前 before_bars 根)落在 A1 决策日之后的
+    # H 根里——点买点之前就画着 A1 的大涨,压掉;A5 的图窗起点在 A1 图窗终点之后,两段不交叠,保留
+    assert a == [dates[idx["A1"]], dates[idx["A5"]]]
     assert kept[kept["symbol"] == "B"]["date"].tolist() == [dates[k0 + 10]]   # 别的股票不受影响
+    assert not _same_stock_overlaps(cfg, list(zip(kept["symbol"], kept["date"])))
+
+
+def test_far_apart_moves_of_one_stock_all_listed(cw_env):
+    """必须能过:同一只股票相隔很远、图窗不交叠的几段都列出;只有交叠的才压掉。"""
+    cfg, pkl_dir = cw_env
+    cfg = {**cfg, "view_floor": None}              # 图窗起点不截,按原样的 before_bars 算交叠
+    make_stock(seed=3).to_pickle(pkl_dir / "A.pkl")
+    from chart_workflow.loader import trading_dates
+    dates = trading_dates(cfg, "A")
+    gap = cfg["view"]["before_bars"] + cfg["H"] + 1
+    k0 = int(dates.searchsorted(pd.Timestamp("2024-01-02"))) + cfg["view"]["before_bars"]
+    ks = [k0, k0 + gap, k0 + 2 * gap]
+    cands = pd.DataFrame({"symbol": ["A"] * 4, "date": [dates[k] for k in ks] + [dates[ks[1] + 5 + cfg["H"]]],
+                          "rel": [3.0, 2.9, 2.8, 2.7]})
+    kept = suppress_same_move(cands, cfg)
+    assert sorted(kept["date"].tolist()) == [dates[k] for k in ks]
     assert not _same_stock_overlaps(cfg, list(zip(kept["symbol"], kept["date"])))
 
 

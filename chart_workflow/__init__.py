@@ -25,7 +25,7 @@
   panel(池内股票日面板)/ dataerrors(数据错误登记与排除)/ control(同日对照与毕业判定)/
   rules(取命中)/ listfile(清单文件)/ annotations(标注批次 v1 / v2 统一读取)/
   views(看过记录)/ facts(事实表)/ oplog(操作日志)/ elements(要素库)/ shapes(形态卡)/ ledger(账本)/
-  bigmoves、contrast(两个出清单的命令)/ xcheck(跨源比对)。
+  bigmoves、contrast(两个出清单的命令)/ cardhits(卡成立日清单,只在调试模式下用)/ xcheck(跨源比对)。
   智能层(facts / elements / shapes / oplog / views / state / loader / annotations)不 import 标签口径、对照、
   面板、清单模块(间接导入也不行),不读清单里的结果字段。
 
@@ -55,7 +55,8 @@ data_errors.json,并排除受影响的股票日。
 清单图窗起点截到下界,大涨段只取下界之后 floor_context_bars 个交易日以后的决策日,对照页的命中与
 统计只给内圈年份(contrast.inner_years,默认 2025);事实表回看可以读到下界之前,但只以数字出现。
 同一只股票在一份清单里出现多次时,谁的决策日都不落在另一条的图窗里(listfile.drop_window_overlaps),
-免得打开一张图就露出另一条的结果。
+免得打开一张图就露出另一条的结果;大涨段清单与卡成立日清单更严,同股两条的整段图窗不许有任何交叠(靠后那条的
+图窗起点落在靠前那条决策日之后,点买点之前画着的部分就露出了靠前那条的后续)。
 成绩只经 control.summarize 拿:默认只给内圈年份,算完当场记账(不给记账上下文就不算);算内圈以外的
 年份要写原因并记账。面板缓存含 2024 年的后续涨跌,研究不得直接读。
 
@@ -68,4 +69,7 @@ CHART_WORKFLOW_MODE=debug(清单名 dbg- 开头,决定文件写 "mode": "debug",
 看图范围、训练段、内圈年份强制成调试段,读任何行情都截在 2022-09-30;记账写调试账(主目录的
 outputs/chart_workflow_debug/,不进 git,没有水位),正式账一行都不写;清单、缓存放 _debug 目录。
 调试账清空重来:uv run python -m chart_workflow.debugroot clear(见 debugroot.py)。
+调试模式下建好一张形态卡后,python -m chart_workflow.cardhits make --shape <卡编号> 在调试段里列出卡说成立的那些天,
+用户在网页里逐张标「是 / 不是」,会话给「不是」的理由和待写代码的要素归类,cardhits summary 汇总这些证据,
+帮用户判断形态卡要不要从「平的要素组合」改成「事件加关系」(见 cardhits.py;只写调试账)。
 """

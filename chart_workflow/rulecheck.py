@@ -247,7 +247,8 @@ def _run_jobs(jobs: list, cfg: dict) -> list:
 def materials(cfg: dict, card: dict, els: dict, symbols: list[str], rule: str | None, app: str | None,
               params: str | None, *, says: bool = True) -> dict[str, tuple]:
     """每只股票的核对材料 {代码: (读不了的原因 | None, {日期: (卡说, 理由)} | None, {日期: 规则成立吗} | None)}。
-    says=False 只要规则信号。进程内缓存:逐日卡说按(卡与要素、配置、这只股票的数据)记,规则文件的信号按(规则
+    says=False 只要规则信号;规则文件和 app 都不给(卡成立日清单,cardhits)就只要逐日卡说、不算信号。
+    进程内缓存:逐日卡说按(卡与要素、配置、这只股票的数据)记,规则文件的信号按(规则
     指纹、配置、这只股票的数据)记;app 方式的信号不缓存(app 代码不进指纹)。缺的才算,多只时按 cfg["workers"] 并行。"""
     from chart_workflow.rules import rule_identity
 
@@ -262,7 +263,7 @@ def materials(cfg: dict, card: dict, els: dict, symbols: list[str], rule: str | 
             continue
         keys = (("says", ck, s, stamp), ("signal", rk, s, stamp) if rk else None)
         have[s] = [keys, _CACHE.get(keys[0]) if says else None, _CACHE.get(keys[1]) if rk else None]
-        want_says, want_signal = says and have[s][1] is None, have[s][2] is None
+        want_says, want_signal = says and have[s][1] is None, bool(rule or app) and have[s][2] is None
         if want_says or want_signal:
             jobs.append((cfg, s, card, els, rule, app, params, want_says, want_signal))
     for s, err, v, g in _run_jobs(jobs, cfg):

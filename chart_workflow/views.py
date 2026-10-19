@@ -46,7 +46,7 @@ record() 是写 <状态根>/views.jsonl 的唯一入口(后端打开清单、收
 以内的图窗,越出调试段的图属于正式范围,要到正式模式下记,免得真看过的训练段图只进了调试账、一清就没了;
 正式模式不收整张都在调试段里的图窗,那是调试时看的,进了正式账就进了 git 和水位,只能有记录地重置水位才删得掉。
 调试段的图不参与正式流程的任何一步(排除看过的样本、按尝试扣运气、露出结果的核对都只看训练段以后),
-所以正式模式下连补记也不收,真要记就带模式变量记进调试账。
+所以正式模式下连补记也不收,真要记就带模式变量记进调试账。对不上抛 WrongMode(ValueError 的子类,网页报 409)。
 会话在聊天里贴图(surface = chat)时,图窗(以及记整份清单时清单里每条的图窗)不得早于本轮看图下界
 view_floor、不得晚于训练段末日:越界就拒绝,提醒会话这张图本不该贴。确实要记(例如用户主动贴了旧图),
 显式加 --allow-outside 并用 --reason 写明原因,原因记进这一行。补记(manual)不受此限:历史接触本来就早。
@@ -91,6 +91,10 @@ LIST_FIELDS = ("kind", "title", "created_at", "train_end")
 _LIST_ID_RE = re.compile(r"^(?!\.)(?!.*\.\.)[A-Za-z0-9_\-.]+$")
 _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 _TS_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$")
+
+
+class WrongMode(ValueError):
+    """图窗和当前模式对不上(见模块说明「两种模式各记各的」);网页一律报 409。"""
 
 
 def views_path() -> Path:
@@ -206,7 +210,7 @@ def record(*, surface: str, event: str, outcome_visible: bool, list_id: str | No
              for it in (list_doc or {}).get("items") or [] if isinstance(it, dict)]
     wrong = _wrong_mode(wins)
     if wrong:                                     # 不分界面、不认 allow_outside、补记也一样
-        raise ValueError(wrong)
+        raise WrongMode(wrong)
     if surface == "chat":
         cfg = load_config()
         bad = _outside(wins, cfg.get("view_floor"), str(cfg["train_end"]))
@@ -354,6 +358,31 @@ def outcome_trail(item: dict, list_id: str, rows: list[dict] | None = None, date
     level = "careful" if careful else "in_list" if in_list else None
     return {"first_reveal": rv, "peeked": peeked,
             "seen_elsewhere": {"level": level, "before": before, "careful": careful, "in_list": in_list}}
+
+
+def drawn_ranges(rows: list[dict] | None = None) -> list[dict]:
+    """每行看过记录画出过哪些 K 线(不论看不看得到结果):[{"ts", "list_id", "list_kind", "event", "symbol",
+    "start", "end"}]。打开清单按快照里的每条图窗;大涨段清单里那时还没露出结果的图只算到露出前那天(按工作日估)。"""
+    rows = read_views() if rows is None else rows
+    reveals = first_reveals(rows)
+    root = state_root()
+    cache: dict[str, dict] = {}
+
+    def snap(rel):
+        if rel not in cache:
+            try:
+                cache[rel] = json.loads((root / rel).read_text())
+            except (OSError, ValueError):
+                cache[rel] = {}
+        return cache[rel]
+
+    out = []
+    for r in rows:
+        for _, sym, a, b, _ in _exposed(r, reveals, snap, _pre_reveal_end):
+            if isinstance(sym, str) and isinstance(a, str) and isinstance(b, str):
+                out.append({"ts": str(r.get("ts")), "list_id": r.get("list_id"), "list_kind": r.get("list_kind"),
+                            "event": r.get("event"), "symbol": sym, "start": a, "end": b})
+    return out
 
 
 def viewed_set() -> set[tuple[str, str, str]]:
