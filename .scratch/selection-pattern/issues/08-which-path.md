@@ -2,7 +2,7 @@
 
 Type: grilling (HITL)
 Status: open
-Blocked by: 02, 03, 04, 05, 09, 10, 12, 13, 16
+Blocked by: 02, 03, 04, 05, 09, 10, 12, 13, 16, 18
 
 ## Question
 
