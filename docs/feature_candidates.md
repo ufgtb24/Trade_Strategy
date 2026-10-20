@@ -214,7 +214,7 @@
 - **已知纠缠/反驳**：⚠ 剔除非普通股后，普通股本身在极低波动端还剩多少白赚，没有单独量。⚠ 与 FC-016 同源，是同一种对照在低波动一端的失效
 - **执行端动作**：未执行
 - **状态**：`exploratory`（方法结论，不进 feature-study）。修复归选股地图的「候选名单的规格」：股票池排除非普通股
-- **发现报告**：`.scratch/selection-pattern/research/02-resolution.md` §6；脚本 `.scratch/selection-pattern/scripts/02-voltilt-extreme.py`（输出 `02-voltilt-extreme.txt`）
+- **发现报告**：`.scratch-archive/selection-pattern/research/02-resolution.md` §6；脚本 `.scratch-archive/selection-pattern/scripts/02-voltilt-extreme.py`（输出 `02-voltilt-extreme.txt`）
 
 ### FC-016 · [对照基线] 同日按当天波动切五档的对照，挡不住波动两头和「平时就很疯的股票」（补 FC-004、FC-011）
 - **app / 轴**：`—`
@@ -246,7 +246,7 @@
   - ⚠ bb 系买点约八到九成落在平时波动第 7~10 档。
 - **执行端动作**：未执行
 - **状态**：`exploratory`（方法结论，不进 feature-study）。修复归选股地图的调查票「同日对照怎么配对才挡得住白得的领先」
-- **发现报告**：`.scratch/selection-pattern/research/02-resolution.md` §6；脚本 `.scratch/selection-pattern/scripts/02-voltilt-extreme.py`、`02-voltilt-past.py`（输出同名 `.txt`）
+- **发现报告**：`.scratch-archive/selection-pattern/research/02-resolution.md` §6；脚本 `.scratch-archive/selection-pattern/scripts/02-voltilt-extreme.py`、`02-voltilt-past.py`（输出同名 `.txt`）
 
 ---
 

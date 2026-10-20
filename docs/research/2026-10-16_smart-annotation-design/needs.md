@@ -13,7 +13,7 @@
 
 ## 1. 倒推：下游每个环节到底要什么
 
-标注的去处只有四个（流程见 `.scratch/selection-pattern/issues/14-chart-workflow.md` 第 2～4 步与地图 Notes「流程的工作方式」）：
+标注的去处只有四个（流程见 `.scratch-archive/selection-pattern/issues/14-chart-workflow.md` 第 2～4 步与地图 Notes「流程的工作方式」）：
 
 | 下游环节 | 它产出什么 | 需要从标注里拿到什么 |
 |---|---|---|

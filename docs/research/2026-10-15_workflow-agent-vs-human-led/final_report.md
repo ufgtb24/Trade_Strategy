@@ -19,7 +19,7 @@
 
 ## 1. 评判轴与瓶颈
 
-评判轴（用户指定「从找到最优股票的最终目标出发」）：最终拿到的 pattern 加配套买卖规则，在新数据上是否真有大优势。「在训练段上好看」不算，「做得快、做得多」本身也不算。判优标准沿用 `.scratch/selection-pattern/issues/12-criterion-vs-resolution.md`：判整套，对照为同日普通买入对照（`path2/CONTEXT.md:155`）；体检用首次穿越（`path2/CONTEXT.md:148`）和前瞻收益（`path2/CONTEXT.md:141`）。
+评判轴（用户指定「从找到最优股票的最终目标出发」）：最终拿到的 pattern 加配套买卖规则，在新数据上是否真有大优势。「在训练段上好看」不算，「做得快、做得多」本身也不算。判优标准沿用 `.scratch-archive/selection-pattern/issues/12-criterion-vs-resolution.md`：判整套，对照为同日普通买入对照（`path2/CONTEXT.md:155`）；体检用首次穿越（`path2/CONTEXT.md:148`）和前瞻收益（`path2/CONTEXT.md:141`）。
 
 瓶颈按顺序排（`constraints.md` 第 2、3 节）：
 
@@ -201,7 +201,7 @@
 
 ## 9. 口径与限定
 
-- 偶然波动「≈ 0.7 ÷ √独立买点数」来自 `.scratch/selection-pattern/research/02-resolution.md` 的假 pattern 模拟，口径是方向领先、观察期 40 日、线距 5、全部买点等权；配套买卖规则或观察期变了要重算。「看出」= 观察值越过 2 倍偶然波动，真实值 2.8 倍时有八成把握；加严重验用 2.5 倍。
+- 偶然波动「≈ 0.7 ÷ √独立买点数」来自 `.scratch-archive/selection-pattern/research/02-resolution.md` 的假 pattern 模拟，口径是方向领先、观察期 40 日、线距 5、全部买点等权；配套买卖规则或观察期变了要重算。「看出」= 观察值越过 2 倍偶然波动，真实值 2.8 倍时有八成把握；加严重验用 2.5 倍。
 - 「独立买点 ≈ 买点数 × 0.7～1」只适用于分散长相；扎堆长相的门槛更高。
 - 「试 K 个里最好的」按互相独立的候选取典型值；真实候选彼此相关时等效 K 更小，所以噪声风险的估计偏保守。
 - 看图抬高（h ÷ N、12 ÷ N）、精度示意、用户时间（每周 3 小时）都是推演或假设，没有实测。

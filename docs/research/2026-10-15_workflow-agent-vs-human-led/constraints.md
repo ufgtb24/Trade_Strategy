@@ -25,7 +25,7 @@
 
 ## 1. 从终点倒推：成功由什么决定
 
-终点（`.scratch/selection-pattern/issues/12-criterion-vs-resolution.md` Answer 第五、六、七节）：pattern 加配套买卖规则，整套对同日普通买入对照（`path2/CONTEXT.md:155`）有大优势——典型一笔每月多赚 3 个百分点以上；体检用的方向领先（首次穿越 `path2/CONTEXT.md:148`）0.15 以上（均待验证）——并在只用一次的验证段上看得出。
+终点（`.scratch-archive/selection-pattern/issues/12-criterion-vs-resolution.md` Answer 第五、六、七节）：pattern 加配套买卖规则，整套对同日普通买入对照（`path2/CONTEXT.md:155`）有大优势——典型一笔每月多赚 3 个百分点以上；体检用的方向领先（首次穿越 `path2/CONTEXT.md:148`）0.15 以上（均待验证）——并在只用一次的验证段上看得出。
 
 把它拆成三个依次的条件：
 
@@ -43,7 +43,7 @@
 
 **留着没碰过的数据（验证段）有多大。**
 - 数据截至 2026-10-05（地图 Notes「数据现状」）。验证段从 2026-01-01 起（`issues/01-holdout-data.md` 访谈记录）。体检用观察期 40 个交易日，买点要到 2026-08 初才有完整的观察窗，所以可用买点日约 2026-01-02..2026-08 初，**约 150 个交易日、30 周、0.6 年**。配套买卖规则持有更短的话会多一点。
-- 方向领先的 1 倍偶然波动 ≈ 0.7 ÷ √（独立买点数）（`.scratch/selection-pattern/research/02-resolution.md` 第 3 节末）；「看得出」= 真实领先 ≥ 2.8 倍偶然波动，等价于约 2 ÷ √（独立买点数）（`issues/09-target-pool-resolution.md` 结论 1）。
+- 方向领先的 1 倍偶然波动 ≈ 0.7 ÷ √（独立买点数）（`.scratch-archive/selection-pattern/research/02-resolution.md` 第 3 节末）；「看得出」= 真实领先 ≥ 2.8 倍偶然波动，等价于约 2 ÷ √（独立买点数）（`issues/09-target-pool-resolution.md` 结论 1）。
 - 要在验证段看出 0.15：独立买点约 **176 个**，即每个交易日约 **1.2 个互相独立的买点**（分散长相下独立买点 ≈ 买点数的 0.7～1 倍）。
 - 验证没过、加严再验（2.5 倍偶然波动，见 `issues/01-holdout-data.md`）：同样的买点数下要领先约 0.18，或者要约 243 个独立买点才能看出 0.15。
 
