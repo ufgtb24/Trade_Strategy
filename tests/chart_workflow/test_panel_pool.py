@@ -94,6 +94,49 @@ def test_quiet_stock_below_m_floor_excluded(cw_env):
     assert len(stock_panel(quiet, "QUIET", loose, True)) > 0
 
 
+def _with_shell(price: float, shell_end: str, seed: int = 1) -> pd.DataFrame:
+    """shell_end 及以前收盘钉在 price 上下、每天几乎不动(SPAC 壳期),之后从 price 起正常游走。"""
+    df = make_stock(seed=seed)
+    end = pd.Timestamp(shell_end)
+    df.loc[df.index > end, ["open", "high", "low", "close"]] *= (
+        price / df.loc[df.index > end, "open"].iloc[0])
+    pre = df.index <= end
+    noise = np.random.default_rng(seed).normal(0, 0.0005, pre.sum())
+    close = price * (1 + noise)
+    df.loc[pre, "close"] = close
+    df.loc[pre, "open"] = close
+    df.loc[pre, "high"] = close * 1.001
+    df.loc[pre, "low"] = close * 0.999
+    return df
+
+
+def test_spac_shell_and_next_lookback_bars_excluded(cw_env):
+    cfg, _ = cw_env
+    sp = cfg["pool"]["spac_shell"]
+    df = _with_shell(10.0, "2024-04-30")
+    out = stock_panel(df, "SHELL", cfg, True)
+    dates = df.index
+    j = dates.get_loc(pd.Timestamp("2024-04-30"))
+    first_ok = dates[j + sp["lookback_bars"] + 1]            # 壳期最后一天已滑出往前 lookback 根
+    assert len(out) > 0
+    assert out["date"].min() >= first_ok
+    off = {**cfg, "pool": {**cfg["pool"], "spac_shell": {**sp, "enabled": False}}}
+    back = stock_panel(df, "SHELL", off, True)
+    assert (back["date"] < first_ok).any()                   # 关掉后壳期之后那几个月回到池子
+
+
+def test_spac_shell_rule_leaves_others_alone(cw_env):
+    cfg, _ = cw_env
+    off = {**cfg, "pool": {**cfg["pool"], "spac_shell": {**cfg["pool"]["spac_shell"],
+                                                         "enabled": False}}}
+    base = make_stock(seed=1)                                # 价 ≈10、正常波动
+    pd.testing.assert_frame_equal(stock_panel(base, "OK", cfg, True),
+                                  stock_panel(base, "OK", off, True))
+    low = _with_shell(5.0, "2024-04-30")                     # 钉在 5 元不动:不是壳的价位
+    pd.testing.assert_frame_equal(stock_panel(low, "PIN5", cfg, True),
+                                  stock_panel(low, "PIN5", off, True))
+
+
 def test_max_jump_window(cw_env):
     cfg, _ = cw_env
     df = make_stock(seed=4, sigma=0.01)

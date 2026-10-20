@@ -27,6 +27,9 @@ NAME_CASES = [
     ("cef", "Foo Dividend Trust"),
     ("spac_shell", "Centurion Acquisition Corp. Class A Ordinary Shares"),
     ("spac_shell", "Archimedes Tech SPAC Partners II Co. Ordinary Shares"),
+    ("spac_shell", "Texas Ventures Acquisition III Corp Class A Ordinary Share"),   # 带编号的壳
+    ("spac_shell", "Mountain Crest Acquisition 6 Corp. Ordinary Shares"),
+    ("spac_shell", "YHN Acquisition I Limited Ordinary Shares"),
     ("common", "Apple Inc. Common Stock"),
     ("common", "Tiny Biotech Inc. Class A Common Stock"),
 ]

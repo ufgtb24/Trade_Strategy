@@ -8,7 +8,9 @@
   分组特征 = features.feature_frame(只用 t 及以前)
 一个股票日 (symbol, t) 进面板要同时满足:t ∈ [train_start, train_end];是普通股
 (证券分类 ∈ pool.common_classes);close[t] ≤ price_max;dv_t ∈ [dv_min, dv_max];
-M_t 有限且 ≥ m_min(剔除平时几乎不动的股票);open[t+1] > 0;标签有效。
+M_t 有限且 ≥ m_min(剔除平时几乎不动的股票);open[t+1] > 0;标签有效;
+[t − spac_shell.lookback_bars, t] 里没有 SPAC 壳期(spac_shell.enabled 时;壳期 = 往前 window 根
+收盘中位数在 [price_lo, price_hi] 且日振幅中位数 < range_max,只用 t 及以前)。
 
 另存三列数据窗口信息(lookback = data_errors.lookback_bars):
   win_start / win_end = 第 t 行往前 lookback 个交易日那天 / 第 t+H 个交易日那天,
@@ -40,7 +42,7 @@ from chart_workflow import loader
 from chart_workflow.securities import classify_universe, local_symbols
 from path2.calc.atr import rolling_atr_pct_nanmedian
 
-PANEL_VERSION = 3
+PANEL_VERSION = 4
 
 PANEL_COLUMNS = [
     "symbol", "date", "bar_idx", "entry_date", "close", "M", "dv",
@@ -79,6 +81,7 @@ def stock_panel(df: pd.DataFrame, symbol: str, cfg: dict, common: bool) -> pd.Da
     with np.errstate(divide="ignore", invalid="ignore"):
         jump = np.abs(np.log(df["close"] / df["close"].shift(1)))
     max_jump = np.exp(jump.rolling(cfg["H"] + look + 1, min_periods=1).max().shift(-cfg["H"]))
+    after_shell = _after_spac_shell(df, pool["spac_shell"])
 
     with np.errstate(invalid="ignore"):
         in_pool = (
@@ -88,6 +91,7 @@ def stock_panel(df: pd.DataFrame, symbol: str, cfg: dict, common: bool) -> pd.Da
             & np.isfinite(M.values) & (M.values > 0) & (M.values >= pool["m_min"])
             & (next_open > 0).values
             & lab["valid"].values
+            & ~after_shell
         )
     if not in_pool.any():
         return pd.DataFrame(columns=PANEL_COLUMNS)
@@ -111,6 +115,19 @@ def stock_panel(df: pd.DataFrame, symbol: str, cfg: dict, common: bool) -> pd.Da
     out = out[in_pool].reset_index(drop=True)
     out["dir"] = out["dir"].astype(int)
     return out[PANEL_COLUMNS]
+
+
+def _after_spac_shell(df: pd.DataFrame, sp: dict) -> np.ndarray:
+    """逐日:[t − lookback_bars, t] 里有没有 SPAC 壳期(见模块说明;只用 t 及以前)。未启用时全 False。"""
+    if not sp["enabled"]:
+        return np.zeros(len(df), dtype=bool)
+    w = int(sp["window"])
+    with np.errstate(divide="ignore", invalid="ignore"):
+        rng = (df["high"] - df["low"]) / df["close"]
+    shell = ((rng.rolling(w, min_periods=w).median() < sp["range_max"])
+             & df["close"].rolling(w, min_periods=w).median().between(sp["price_lo"], sp["price_hi"]))
+    seen = shell.astype(float).rolling(int(sp["lookback_bars"]) + 1, min_periods=1).max()
+    return (seen > 0).values
 
 
 def _worker(args) -> pd.DataFrame:

@@ -41,6 +41,17 @@ DEFAULTS: dict = {
         "dv_window": 20,
         "m_min": 0.01,              # 决策日 M_t 下限(含),剔除平时几乎不动的股票(待验证)
         "common_classes": ["common", "adr", "mlp"],   # 算池内普通股的证券类别
+        # SPAC 壳期:合并完改了名的壳按名称认不出,按价格认——window 根收盘中位数在 [price_lo, price_hi]、
+        # 日振幅 (high−low)/close 中位数 < range_max 的日子算壳期;决策日往前 lookback_bars 根(含当天)里
+        # 有过壳期就不进池。价位上限放到 12:2024 年后的壳因信托利息,价位在 10.5~12。全部待验证
+        "spac_shell": {
+            "enabled": True,
+            "lookback_bars": 120,   # = 图窗往前的根数(view.before_bars),图上看不到壳期
+            "window": 40,
+            "price_lo": 9.5,
+            "price_hi": 12.0,
+            "range_max": 0.006,
+        },
     },
     "features": {        # 分组特征阈值(全部待验证)
         "deep_drop_dd250": -0.5,    # dd250 ≤ 此值 → 深跌

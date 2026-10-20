@@ -40,8 +40,9 @@ CLASS_PATTERNS: list[tuple[str, re.Pattern]] = [
     ("cef", re.compile(r"\bFund\b|Closed[- ]End|Municipal|Muni\b|Income Trust\b"
                        r"|Opportunities Trust|Income Securities|High Yield|Credit Strategies"
                        r"|Dividend Trust|Bond\b", _I)),
-    ("spac_shell", re.compile(r"(?i:Acquisition (?:Corp|Corporation|Company|Co\b|Ltd|Limited|Inc)"
-                              r"|Acquisition Holdings)|\bSPAC\b")),
+    # 带编号的壳(Aeon Acquisition I Corp.、Mountain Crest Acquisition 6 Corp.)也算
+    ("spac_shell", re.compile(r"(?i:Acquisition(?: (?:[IVX]+|\d+))? (?:Corp|Corporation|Company|Co\b|Ltd"
+                              r"|Limited|Inc)|Acquisition Holdings)|\bSPAC\b")),
 ]
 
 # 名单里找不到名称、代码规则又没命中的几个,人工核定
