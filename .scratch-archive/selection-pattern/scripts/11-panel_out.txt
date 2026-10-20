@@ -1,0 +1,2 @@
+symbols 5778, common/adr/mlp 5064, agreement with 09 cls column 0.9962
+rows 832,990, stocks 2371, dates 2021-11-04T00:00:00.000000000..2025-11-03T00:00:00.000000000; per year {2021: 27386, 2022: 191080, 2023: 197384, 2024: 213535, 2025: 203605}; Mh strict coverage 0.886; 6s
