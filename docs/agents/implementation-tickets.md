@@ -310,7 +310,8 @@ the user reads the same file.
   which the user also plans other work around; a human review gate confirms a
   result. They are never one question: a passed gate does not approve a launch,
   and an approved launch does not stand for a review. The dispatcher tooling may
-  let the user pre-authorize launches for a time window; gates still stop.
+  let the user pre-authorize launches for a time window or until the user
+  revokes it; gates still stop.
 - **Blocking stays in ticket files.** Set each affected not-started ticket to
   `needs-info` and append a Comment linking the question. When the question resolves,
   restore the ready role and append a release Comment naming it. The board
