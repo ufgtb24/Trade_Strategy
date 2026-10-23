@@ -145,7 +145,7 @@ FastAPI 后端（pattern 发现 / 扫描 / 序列化 / 诊断）+ Vue3 前端（
 
 ## 修改 CLAUDE.md 时的动态化建议
 
-用户要求往 CLAUDE.md 增改内容时，先按三问给出常驻/按需的建议再动手：**读者是谁**（后台 session 只读 CLAUDE.md、没人替它调 skill）、**场景开始的信号是什么**（文件路径→rules `paths:`／用户口径词→skill／事件→hook／都没有→常驻）、**到位时机来不来得及**（rules 在 Read、Write、Edit 或命令行读单个文件时注入；新建文件要写完才到）。只有**长且少用**的内容值得迁；省 token≈0（有 cache），真收益是到位时机与按 agent 数倍乘。判据与实测边界见 `~/.claude/skills/env-note-keeper/notes/claude-md-dynamic-loading.md`。
+用户要求往 CLAUDE.md 增改内容时，先按三问给出常驻/按需的建议再动手：**读者是谁**（后台 session 只读 CLAUDE.md、没人替它调 skill）、**场景开始的信号是什么**（文件路径→rules `paths:`／用户口径词→skill／事件→hook／都没有→常驻）、**到位时机来不来得及**（rules 在 Read、Write、Edit 或命令行读单个文件时注入；新建文件要写完才到）。只有**长且少用**的内容值得迁；省 token 多半≈0（按提示缓存推断，文档没写），真收益是到位时机与按 agent 数倍乘。判据与实测边界见 `~/.claude/skills/env-note-keeper/notes/claude-md-dynamic-loading.md`。
 
 ## 计划必须自包含
 
