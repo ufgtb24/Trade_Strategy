@@ -8,7 +8,7 @@ description: Refresh the code map in CLAUDE.md — the per-layer boundaries, inv
 维护根目录 `CLAUDE.md` 的**「代码地图」节**——它是 Claude 下次 session 冷启动的唯一系统概览，
 **只反映当前代码状态**。
 
-术语表（`CONTEXT-MAP.md` → `path2/CONTEXT.md` / `path2_web/CONTEXT.md`）**不归本 skill 管**，
+术语表（`GLOSSARY-MAP.md` → `path2/GLOSSARY.md` / `path2_web/GLOSSARY.md`）**不归本 skill 管**，
 由 `/grill-with-docs` 维护；本 skill 也**绝不**写入 `docs/` 下的任何目录（那是 `write-user-doc` 的地盘）。
 
 ## 核心原则：文档写代码给不了的东西
@@ -28,7 +28,7 @@ description: Refresh the code map in CLAUDE.md — the per-layer boundaries, inv
 
 - ❌ 不写历史演进、不写"之前是 X 现在是 Y"（陈旧对比本身也会烂）
 - ❌ 不写未实现模块、未来计划、TODO
-- ❌ 不建新文档文件。这个仓库只有 `CLAUDE.md` + `CONTEXT.md` 两份 AI 上下文，**不要重新长出 `.claude/docs/` 那样的中间层**（2026-09-03 已整体删除，原因是它与 CLAUDE.md 大面积重叠且集体过时）
+- ❌ 不建新文档文件。这个仓库只有 `CLAUDE.md` + `GLOSSARY.md` 两份 AI 上下文，**不要重新长出 `.claude/docs/` 那样的中间层**（2026-09-03 已整体删除，原因是它与 CLAUDE.md 大面积重叠且集体过时）
 - ✅ 「代码地图」节 ≤ 60 行；`CLAUDE.md` 整体 ≤ 200 行。超了就是该往代码 docstring 沉，不是该新开文件
 - ✅ 每层最多写一条不变式。第二条重要的，写进代码 docstring
 
@@ -58,5 +58,5 @@ description: Refresh the code map in CLAUDE.md — the per-layer boundaries, inv
 
 ## 与另外两个 skill 的边界
 
-- 术语（某个词是什么意思）→ `/grill-with-docs` 维护 `CONTEXT.md`，本 skill 不碰
+- 术语（某个词是什么意思）→ `/grill-with-docs` 维护 `GLOSSARY.md`，本 skill 不碰
 - 研究报告 / 代码解释 / 临时计划 → `write-user-doc` skill，本 skill 不写 `docs/`

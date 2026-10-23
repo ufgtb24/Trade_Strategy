@@ -16,7 +16,7 @@ description: Use when 用户想把领域方法论概念（统计概念/评估口
 | **本 skill**（domain_notes） | 方法论概念：统计概念、评估指标与口径、归一化方法、数学工具 | `docs/domain_notes/` |
 | env_notes | 开发与系统环境配置经验（含 Claude Code） | `~/.claude/skills/env-note-keeper/notes/`（用户级 env-note-keeper skill） |
 | 评估纪律（已内联） | 评估的**试验纪律**（怎么做评估：对照、口径自检、小样本计数） | tune-gates / feature-study 各步骤内联（原独立 skill eval-discipline 已于 2026-08-20 解散） |
-| `CLAUDE.md` 代码地图 / 各 `CONTEXT.md` | 当前代码状态的结构性描述与术语（AI 上下文） | update-ai-context skill / `/grill-with-docs` |
+| `CLAUDE.md` 代码地图 / 各 `GLOSSARY.md` | 当前代码状态的结构性描述与术语（AI 上下文） | update-ai-context skill / `/grill-with-docs` |
 
 与评估纪律的分界：同一指标（如 first passage）的**概念解释**（是什么/怎么算/怎么读）归本笔记，**怎么用它做评估的流程纪律**（对照基线、口径自检）已内联 tune-gates / feature-study 各步骤，不在本笔记。
 

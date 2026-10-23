@@ -2,7 +2,7 @@
 
 path2 的调试可视化工具：把分析结果投影成 JSON、再渲染成可交互的界面。这里是界面自己的词汇——事件在图上怎么摆、显示到哪一档、参数怎么试、漏检从哪查。
 
-覆盖 `path2_web/`（FastAPI 后端）与 `path2_web_ui/`（Vue3 前端）。这一层不含任何走势语义：界面不知道 bo 和 burst 各是什么，只按 node 分轨、按 where 分列。核心词（事件 / node / match / where）见 [path2](../path2/CONTEXT.md)。
+覆盖 `path2_web/`（FastAPI 后端）与 `path2_web_ui/`（Vue3 前端）。这一层不含任何走势语义：界面不知道 bo 和 burst 各是什么，只按 node 分轨、按 where 分列。核心词（事件 / node / match / where）见 [path2](../path2/GLOSSARY.md)。
 
 ## Language
 

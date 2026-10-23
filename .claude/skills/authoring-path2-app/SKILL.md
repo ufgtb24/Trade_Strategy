@@ -19,7 +19,7 @@ workflow 内不可用)。派 subagent 只做"产出后回吐主会话"的纯分�
 ## REQUIRED BACKGROUND(开工先读)
 1. 本目录 `reference.md`(声明层契约与负知识:NodeSpec 声明契约 / 接线协议铁律 / K2 求解判据 / app 层负知识)
 2. 本目录 `design-heuristics.md`(设计决策手册:选型决策树/反模式/评估器;detector 失效边界速查见 authoring-path2-detector skill 的 reference §1)
-3. `path2/CONTEXT.md`(术语:where/edge/node/match/复合事件 等词的确切含义)——**grep 查词,别整读**
+3. `path2/GLOSSARY.md`(术语:where/edge/node/match/复合事件 等词的确切含义)——**grep 查词,别整读**
 
 **红线**:凡具体参数值/边结构/gap 数字,一律现场读代码(dag_spec.py / params.py /
 path2/atoms/*.py),绝不引用任何文档内嵌快照(含本 skill 自己的文档)。

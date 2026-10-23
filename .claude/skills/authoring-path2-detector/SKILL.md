@@ -28,7 +28,7 @@ description: Use when 用户要创建或修改 event 类 / detector(path2/atoms 
    设计)/ §4 on_gate 接线(Step 5 四条核对)/ §5 docstring 合同 + 公共库纪律
    (Step 2 合同三要素 / Step 4 regress 义务)/ §6 诊断契约同步(Step 6 义务)
 2. 本目录 reference.md §7(引擎侧契约与负知识:身份双轴 / children vs ref_slots / 事件端点 vs 检测过程 / 多流 produces / 负知识清单)
-3. `path2/CONTEXT.md`(术语:event/detector/confirm_idx/复合事件 等词的确切含义)——**grep 查词,别整读**
+3. `path2/GLOSSARY.md`(术语:event/detector/confirm_idx/复合事件 等词的确切含义)——**grep 查词,别整读**
 
 **红线**:凡具体参数值 / 判据阈值 / 字段名,一律现场读代码(`path2/atoms/*.py` /
 `path2/core.py`),绝不引用任何文档内嵌快照;reference.md 各节只负责告诉你去读
