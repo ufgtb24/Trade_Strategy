@@ -9,12 +9,12 @@
 
 | 词 | 意思 | 出处 |
 |---|---|---|
-| pattern | 一组节点和关系组成的走势声明 | [path2/GLOSSARY.md:96](../../path2/GLOSSARY.md) |
-| 买点 | 一次命中里真正用来算后续表现的那些 K 线；同一只股票同一天只算一次 | [path2/GLOSSARY.md:159](../../path2/GLOSSARY.md) |
-| 首次穿越 | 买点之后先碰上方目标线还是下方目标线 | [path2/GLOSSARY.md:148](../../path2/GLOSSARY.md) |
-| 同日普通买入对照 | 在买点的同一天、同样波动水平的全部普通买入，算同一个成绩；扣掉了那几天大盘的涨跌，只剩选股 | [path2/GLOSSARY.md:155](../../path2/GLOSSARY.md) |
-| 随机日基线 | 从整个股票池随机抽日子买入的成绩；不限同一天，所以比出来的差同时含择时与选股 | [path2/GLOSSARY.md:152](../../path2/GLOSSARY.md) |
-| 前瞻收益 | 买点之后观察期内最高涨到多少；量的是潜力，含波动率 | [path2/GLOSSARY.md:141](../../path2/GLOSSARY.md) |
+| pattern | 一组节点和关系组成的走势声明 | [path2/GLOSSARY.md:73](../../path2/GLOSSARY.md) |
+| 买点 | 一次命中里真正用来算后续表现的那些 K 线；同一只股票同一天只算一次 | [path2/GLOSSARY.md:118](../../path2/GLOSSARY.md) |
+| 首次穿越 | 买点之后先碰上方目标线还是下方目标线 | [path2/GLOSSARY.md:107](../../path2/GLOSSARY.md) |
+| 同日普通买入对照 | 在买点的同一天、同样波动水平的全部普通买入，算同一个成绩；扣掉了那几天大盘的涨跌，只剩选股 | [path2/GLOSSARY.md:114](../../path2/GLOSSARY.md) |
+| 随机日基线 | 从整个股票池随机抽日子买入的成绩；不限同一天，所以比出来的差同时含择时与选股 | [path2/GLOSSARY.md:111](../../path2/GLOSSARY.md) |
+| 前瞻收益 | 买点之后观察期内最高涨到多少；量的是潜力，含波动率 | [path2/GLOSSARY.md:103](../../path2/GLOSSARY.md) |
 | 方向成绩 | 买点里「先上的比先下的多多少」，按时段、偏重近期汇总 | [SKILL.md「固定口径」](../../.claude/skills/tune-gates-v3/SKILL.md) |
 | 统计折扣 | 领先部分按证据多少打折，证据越薄折得越多 | [SKILL.md「运行时用语」](../../.claude/skills/tune-gates-v3/SKILL.md) |
 
