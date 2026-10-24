@@ -1,0 +1,579 @@
+{
+ "elapsed_s": 63.0,
+ "symbols": 5778,
+ "range": {
+  "start": "2022-01-10",
+  "end": "2025-10-30",
+  "label_end": "2025-12-31"
+ },
+ "ranges": {
+  "2022-01..2025-10": {
+   "pool_days": 4850589,
+   "or_without": {
+    "count": 49729,
+    "stocks": 2017,
+    "active_dates": 951,
+    "up": 11798,
+    "down": 14874,
+    "none": 23057,
+    "Z": -0.027542872325044633,
+    "B": -0.04424805496746127,
+    "delta": 0.01670518264241664,
+    "score_shrunk": 0.0165134550939888,
+    "shrink_factor": 0.9885228702653619,
+    "shrink_status": "experimental_uncalibrated",
+    "random_day_difference": -0.03542523195828765,
+    "active_windows": 936,
+    "total_windows": 936,
+    "median_upside": 0.15977173309418458,
+    "delta_sd": 0.013256556882973856,
+    "z_sd": 0.01359749027894627,
+    "empty_fraction": 0.0,
+    "band_2sd": [
+     -0.009807931123531073,
+     0.04321829640836435
+    ],
+    "mde_80pct": 0.0371183592723268
+   },
+   "or_with_v10_vs_without": {
+    "pattern_with": {
+     "count": 54082,
+     "stocks": 2159,
+     "active_dates": 951,
+     "up": 12688,
+     "down": 16347,
+     "none": 25047,
+     "Z": -0.033515749406310295,
+     "B": -0.0450045220852444,
+     "delta": 0.011488772678934105,
+     "score_shrunk": 0.011386448717313787,
+     "shrink_factor": 0.9910935689581586,
+     "shrink_status": "experimental_uncalibrated",
+     "random_day_difference": -0.041398109039553314,
+     "active_windows": 936,
+     "total_windows": 936,
+     "median_upside": 0.15890104983339193
+    },
+    "added": {
+     "count": 4353,
+     "stocks": 323,
+     "active_dates": 917,
+     "up": 890,
+     "down": 1473,
+     "none": 1990,
+     "Z": -0.09011157643965481,
+     "B": -0.05493350039942803,
+     "delta": -0.03517807604022678,
+     "score_shrunk": -0.03517807604022678,
+     "shrink_factor": 0.8597229936315982,
+     "shrink_status": "experimental_uncalibrated",
+     "random_day_difference": -0.09799393607289783,
+     "active_windows": 936,
+     "total_windows": 936,
+     "median_upside": 0.14922121941498,
+     "delta_sd": 0.0448581252231517,
+     "z_sd": 0.04596188960198296,
+     "empty_fraction": 0.0,
+     "band_2sd": [
+      -0.12489432648653018,
+      0.05453817440607661
+     ],
+     "mde_80pct": 0.12560275062482473
+    },
+    "lost": {
+     "count": 0
+    },
+    "pattern_delta_change": -0.005216409963482535,
+    "pattern_score_shrunk_change": -0.005127006376675012
+   },
+   "or_with_v20_vs_without": {
+    "pattern_with": {
+     "count": 52122,
+     "stocks": 2094,
+     "active_dates": 951,
+     "up": 12247,
+     "down": 15764,
+     "none": 24111,
+     "Z": -0.032802551448865,
+     "B": -0.044988346218297746,
+     "delta": 0.012185794769432746,
+     "score_shrunk": 0.012085237374349063,
+     "shrink_factor": 0.9917479822214038,
+     "shrink_status": "experimental_uncalibrated",
+     "random_day_difference": -0.04068491108210802,
+     "active_windows": 936,
+     "total_windows": 936,
+     "median_upside": 0.1595650210667049
+    },
+    "added": {
+     "count": 2393,
+     "stocks": 179,
+     "active_dates": 829,
+     "up": 449,
+     "down": 890,
+     "none": 1054,
+     "Z": -0.13081332128959555,
+     "B": -0.06035008676556819,
+     "delta": -0.07046323452402736,
+     "score_shrunk": -0.07046323452402736,
+     "shrink_factor": 0.694813326347067,
+     "shrink_status": "experimental_uncalibrated",
+     "random_day_difference": -0.13869568092283857,
+     "active_windows": 931,
+     "total_windows": 936,
+     "median_upside": 0.15473889859939205,
+     "delta_sd": 0.05432709625148792,
+     "z_sd": 0.05631543185378234,
+     "empty_fraction": 0.0,
+     "band_2sd": [
+      -0.1791174270270032,
+      0.038190957978948475
+     ],
+     "mde_80pct": 0.15211586950416617
+    },
+    "lost": {
+     "count": 0
+    },
+    "pattern_delta_change": -0.004519387872983893,
+    "pattern_score_shrunk_change": -0.004428217719639737
+   },
+   "k2of3_vs_k_fixed": {
+    "pattern_with": {
+     "count": 61045,
+     "stocks": 2266,
+     "active_dates": 951,
+     "up": 14282,
+     "down": 18412,
+     "none": 28351,
+     "Z": -0.030107285850314684,
+     "B": -0.04647244301369718,
+     "delta": 0.016365157163382493,
+     "score_shrunk": 0.016280124354012167,
+     "shrink_factor": 0.994804033439985,
+     "shrink_status": "experimental_uncalibrated",
+     "random_day_difference": -0.0379896454835577,
+     "active_windows": 936,
+     "total_windows": 936,
+     "median_upside": 0.16366063898216643
+    },
+    "added": {
+     "count": 11316,
+     "stocks": 615,
+     "active_dates": 936,
+     "up": 2484,
+     "down": 3538,
+     "none": 5294,
+     "Z": -0.059199450389004066,
+     "B": -0.05906318249665355,
+     "delta": -0.00013626789235051534,
+     "score_shrunk": -0.00013626789235051534,
+     "shrink_factor": 0.8757459344782771,
+     "shrink_status": "experimental_uncalibrated",
+     "random_day_difference": -0.06708181002224708,
+     "active_windows": 936,
+     "total_windows": 936,
+     "median_upside": 0.18050334942896518,
+     "delta_sd": 0.023678954032950575,
+     "z_sd": 0.023920815993283506,
+     "empty_fraction": 0.0,
+     "band_2sd": [
+      -0.047494175958251665,
+      0.047221640173550634
+     ],
+     "mde_80pct": 0.0663010712922616
+    },
+    "lost": {
+     "count": 0
+    },
+    "pattern_delta_change": -0.00034002547903414643,
+    "pattern_score_shrunk_change": -0.0002333307399766324
+   },
+   "k2of3_vs_k_minus_1": {
+    "pattern_with": {
+     "count": 61045,
+     "stocks": 2266,
+     "active_dates": 951,
+     "up": 14282,
+     "down": 18412,
+     "none": 28351,
+     "Z": -0.030107285850314684,
+     "B": -0.04647244301369718,
+     "delta": 0.016365157163382493,
+     "score_shrunk": 0.016280124354012167,
+     "shrink_factor": 0.994804033439985,
+     "shrink_status": "experimental_uncalibrated",
+     "random_day_difference": -0.0379896454835577,
+     "active_windows": 936,
+     "total_windows": 936,
+     "median_upside": 0.16366063898216643
+    },
+    "added": {
+     "count": 0
+    },
+    "lost": {
+     "count": 98898,
+     "stocks": 3911,
+     "active_dates": 955,
+     "up": 25542,
+     "down": 28856,
+     "none": 44500,
+     "Z": -0.013975039190549293,
+     "B": -0.031026246668782655,
+     "delta": 0.01705120747823336,
+     "score_shrunk": 0.016745024889855627,
+     "shrink_factor": 0.9820433486151295,
+     "shrink_status": "experimental_uncalibrated",
+     "random_day_difference": -0.021857398823792312,
+     "active_windows": 936,
+     "total_windows": 936,
+     "median_upside": 0.11747321349312723,
+     "delta_sd": 0.009295378898168852,
+     "z_sd": 0.009355480212585731,
+     "empty_fraction": 0.0,
+     "band_2sd": [
+      -0.0015395503181043421,
+      0.035641965274571065
+     ],
+     "mde_80pct": 0.026027060914872783
+    },
+    "pattern_delta_change": -0.0012947415030521818,
+    "pattern_score_shrunk_change": -0.0012002351648013852
+   },
+   "and_all3_vs_without": {
+    "pattern_with": {
+     "count": 13584,
+     "stocks": 602,
+     "active_dates": 900,
+     "up": 3131,
+     "down": 3965,
+     "none": 6488,
+     "Z": -0.029179163389386635,
+     "B": -0.06222072835270688,
+     "delta": 0.033041564963320245,
+     "score_shrunk": 0.03230036344035291,
+     "shrink_factor": 0.9775676023883813,
+     "shrink_status": "experimental_uncalibrated",
+     "random_day_difference": -0.037061523022629654,
+     "active_windows": 936,
+     "total_windows": 936,
+     "median_upside": 0.2220259162596302
+    },
+    "added": {
+     "count": 0
+    },
+    "lost": {
+     "count": 36145,
+     "stocks": 1675,
+     "active_dates": 951,
+     "up": 8667,
+     "down": 10909,
+     "none": 16569,
+     "Z": -0.027554706271116402,
+     "B": -0.03813609570986285,
+     "delta": 0.010581389438746449,
+     "score_shrunk": 0.010350206754241352,
+     "shrink_factor": 0.9781519538768167,
+     "shrink_status": "experimental_uncalibrated",
+     "random_day_difference": -0.03543706590435942,
+     "active_windows": 936,
+     "total_windows": 936,
+     "median_upside": 0.14347016455412542,
+     "delta_sd": 0.01558272766923266,
+     "z_sd": 0.01576524126907661,
+     "empty_fraction": 0.0,
+     "band_2sd": [
+      -0.02058406589971887,
+      0.04174684477721177
+     ],
+     "mde_80pct": 0.043631637473851445
+    },
+    "pattern_delta_change": 0.016336382320903606,
+    "pattern_score_shrunk_change": 0.015786908346364113
+   }
+  },
+  "2024-01..2025-10": {
+   "pool_days": 2446624,
+   "or_without": {
+    "count": 29791,
+    "stocks": 1401,
+    "active_dates": 460,
+    "up": 7950,
+    "down": 8273,
+    "none": 13568,
+    "Z": -0.008983719402712103,
+    "B": -0.0284092916997961,
+    "delta": 0.019425572297084,
+    "score_shrunk": 0.019117492849416735,
+    "shrink_factor": 0.9841405214242512,
+    "shrink_status": "experimental_uncalibrated",
+    "random_day_difference": -0.02879356284241539,
+    "active_windows": 440,
+    "total_windows": 440,
+    "median_upside": 0.1843929284046788,
+    "delta_sd": 0.016236778364033692,
+    "z_sd": 0.016715746792112202,
+    "empty_fraction": 0.0,
+    "band_2sd": [
+     -0.013047984430983386,
+     0.05189912902515138
+    ],
+    "mde_80pct": 0.045462979419294336
+   },
+   "or_with_v10_vs_without": {
+    "pattern_with": {
+     "count": 32340,
+     "stocks": 1508,
+     "active_dates": 460,
+     "up": 8465,
+     "down": 9193,
+     "none": 14682,
+     "Z": -0.017111666696023504,
+     "B": -0.029284156230011626,
+     "delta": 0.012172489533988123,
+     "score_shrunk": 0.012034251502898633,
+     "shrink_factor": 0.9886434052209698,
+     "shrink_status": "experimental_uncalibrated",
+     "random_day_difference": -0.03692151013572679,
+     "active_windows": 440,
+     "total_windows": 440,
+     "median_upside": 0.18241451709805634
+    },
+    "added": {
+     "count": 2549,
+     "stocks": 187,
+     "active_dates": 448,
+     "up": 515,
+     "down": 920,
+     "none": 1114,
+     "Z": -0.11131546598840598,
+     "B": -0.04083682567757602,
+     "delta": -0.07047864031082995,
+     "score_shrunk": -0.07047864031082995,
+     "shrink_factor": 0.8050653774601402,
+     "shrink_status": "experimental_uncalibrated",
+     "random_day_difference": -0.13112530942810927,
+     "active_windows": 440,
+     "total_windows": 440,
+     "median_upside": 0.1579740899850881,
+     "delta_sd": 0.05651118325731729,
+     "z_sd": 0.05844463860317984,
+     "empty_fraction": 0.0,
+     "band_2sd": [
+      -0.18350100682546455,
+      0.04254372620380463
+     ],
+     "mde_80pct": 0.1582313131204884
+    },
+    "lost": {
+     "count": 0
+    },
+    "pattern_delta_change": -0.007253082763095876,
+    "pattern_score_shrunk_change": -0.007083241346518101
+   },
+   "or_with_v20_vs_without": {
+    "pattern_with": {
+     "count": 31187,
+     "stocks": 1460,
+     "active_dates": 460,
+     "up": 8206,
+     "down": 8803,
+     "none": 14178,
+     "Z": -0.014494092537478135,
+     "B": -0.028910586200852125,
+     "delta": 0.01441649366337399,
+     "score_shrunk": 0.014262613426956828,
+     "shrink_factor": 0.9893260982864297,
+     "shrink_status": "experimental_uncalibrated",
+     "random_day_difference": -0.03430393597718142,
+     "active_windows": 440,
+     "total_windows": 440,
+     "median_upside": 0.18343193485430143
+    },
+    "added": {
+     "count": 1396,
+     "stocks": 106,
+     "active_dates": 430,
+     "up": 256,
+     "down": 530,
+     "none": 610,
+     "Z": -0.12891881713256922,
+     "B": -0.04284503854808206,
+     "delta": -0.08607377858448717,
+     "score_shrunk": -0.08607377858448717,
+     "shrink_factor": 0.5902829263831241,
+     "shrink_status": "experimental_uncalibrated",
+     "random_day_difference": -0.14872866057227252,
+     "active_windows": 440,
+     "total_windows": 440,
+     "median_upside": 0.16646252184622223,
+     "delta_sd": 0.0689826759542679,
+     "z_sd": 0.07204345150463436,
+     "empty_fraction": 0.0,
+     "band_2sd": [
+      -0.22403913049302296,
+      0.05189157332404862
+     ],
+     "mde_80pct": 0.1931514926719501
+    },
+    "lost": {
+     "count": 0
+    },
+    "pattern_delta_change": -0.005009078633710008,
+    "pattern_score_shrunk_change": -0.004854879422459907
+   },
+   "k2of3_vs_k_fixed": {
+    "pattern_with": {
+     "count": 37640,
+     "stocks": 1646,
+     "active_dates": 460,
+     "up": 9803,
+     "down": 10687,
+     "none": 17150,
+     "Z": -0.009612260947724811,
+     "B": -0.030585520912932946,
+     "delta": 0.020973259965208137,
+     "score_shrunk": 0.0208757625749944,
+     "shrink_factor": 0.9953513478412287,
+     "shrink_status": "experimental_uncalibrated",
+     "random_day_difference": -0.029422104387428094,
+     "active_windows": 440,
+     "total_windows": 440,
+     "median_upside": 0.18749996740371033
+    },
+    "added": {
+     "count": 7849,
+     "stocks": 422,
+     "active_dates": 460,
+     "up": 1853,
+     "down": 2414,
+     "none": 3582,
+     "Z": -0.040094967423526,
+     "B": -0.04259582084899616,
+     "delta": 0.0025008534254701564,
+     "score_shrunk": 0.0020274617251050155,
+     "shrink_factor": 0.8107079385205697,
+     "shrink_status": "experimental_uncalibrated",
+     "random_day_difference": -0.05990481086322928,
+     "active_windows": 440,
+     "total_windows": 440,
+     "median_upside": 0.2011235998399541,
+     "delta_sd": 0.029512569301821938,
+     "z_sd": 0.03005756140422634,
+     "empty_fraction": 0.0,
+     "band_2sd": [
+      -0.05652428517817372,
+      0.06152599202911403
+     ],
+     "mde_80pct": 0.08263519404510142
+    },
+    "lost": {
+     "count": 0
+    },
+    "pattern_delta_change": 0.0015476876681241383,
+    "pattern_score_shrunk_change": 0.0017582697255776637
+   },
+   "k2of3_vs_k_minus_1": {
+    "pattern_with": {
+     "count": 37640,
+     "stocks": 1646,
+     "active_dates": 460,
+     "up": 9803,
+     "down": 10687,
+     "none": 17150,
+     "Z": -0.009612260947724811,
+     "B": -0.030585520912932946,
+     "delta": 0.020973259965208137,
+     "score_shrunk": 0.0208757625749944,
+     "shrink_factor": 0.9953513478412287,
+     "shrink_status": "experimental_uncalibrated",
+     "random_day_difference": -0.029422104387428094,
+     "active_windows": 440,
+     "total_windows": 440,
+     "median_upside": 0.18749996740371033
+    },
+    "added": {
+     "count": 0
+    },
+    "lost": {
+     "count": 56686,
+     "stocks": 3101,
+     "active_dates": 460,
+     "up": 17049,
+     "down": 14369,
+     "none": 25268,
+     "Z": 0.009470823893269113,
+     "B": -0.014979469321399734,
+     "delta": 0.024450293214668847,
+     "score_shrunk": 0.023894617255194785,
+     "shrink_factor": 0.9772732394415342,
+     "shrink_status": "experimental_uncalibrated",
+     "random_day_difference": -0.010339019546434172,
+     "active_windows": 440,
+     "total_windows": 440,
+     "median_upside": 0.128635321745611,
+     "delta_sd": 0.011461976549780175,
+     "z_sd": 0.011593722269533853,
+     "empty_fraction": 0.0,
+     "band_2sd": [
+      0.0015263401151084967,
+      0.04737424631422919
+     ],
+     "mde_80pct": 0.032093534339384486
+    },
+    "pattern_delta_change": -0.003358045889874088,
+    "pattern_score_shrunk_change": -0.003175313962058234
+   },
+   "and_all3_vs_without": {
+    "pattern_with": {
+     "count": 9751,
+     "stocks": 437,
+     "active_dates": 460,
+     "up": 2326,
+     "down": 2785,
+     "none": 4640,
+     "Z": -0.015825990509455403,
+     "B": -0.0448570467690851,
+     "delta": 0.029031056259629696,
+     "score_shrunk": 0.028192807547015634,
+     "shrink_factor": 0.9711257935254763,
+     "shrink_status": "experimental_uncalibrated",
+     "random_day_difference": -0.03563583394915869,
+     "active_windows": 440,
+     "total_windows": 440,
+     "median_upside": 0.2349397734563905
+    },
+    "added": {
+     "count": 0
+    },
+    "lost": {
+     "count": 20040,
+     "stocks": 1086,
+     "active_dates": 460,
+     "up": 5624,
+     "down": 5488,
+     "none": 8928,
+     "Z": -0.007795380748105361,
+     "B": -0.022759934452707322,
+     "delta": 0.014964553704601962,
+     "score_shrunk": 0.014479035385705575,
+     "shrink_factor": 0.9675554427829626,
+     "shrink_status": "experimental_uncalibrated",
+     "random_day_difference": -0.027605224187808645,
+     "active_windows": 440,
+     "total_windows": 440,
+     "median_upside": 0.16573635212865068,
+     "delta_sd": 0.018596395672210515,
+     "z_sd": 0.018969291121510894,
+     "empty_fraction": 0.0,
+     "band_2sd": [
+      -0.022228237639819067,
+      0.05215734504902299
+     ],
+     "mde_80pct": 0.05206990788218944
+    },
+    "pattern_delta_change": 0.009605483962545697,
+    "pattern_score_shrunk_change": 0.0090753146975989
+   }
+  }
+ }
+}
