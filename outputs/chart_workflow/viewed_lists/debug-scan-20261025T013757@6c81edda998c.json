@@ -1,0 +1,2174 @@
+{
+ "schema": "chart_workflow.viewed_list/1",
+ "list_id": "debug-scan-20261025T013757",
+ "sha12": "6c81edda998c",
+ "kind": "debug_scan",
+ "title": "调试视图扫描 20261025T013757",
+ "created_at": "20261025T013757",
+ "train_end": "2025-12-31",
+ "items": [
+  {
+   "item_id": "ABAT@2025-01-01",
+   "symbol": "ABAT",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "ABOS@2025-01-01",
+   "symbol": "ABOS",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "ABUS@2025-01-01",
+   "symbol": "ABUS",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "ACFN@2025-01-01",
+   "symbol": "ACFN",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "ACHR@2025-01-01",
+   "symbol": "ACHR",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "ACHV@2025-01-01",
+   "symbol": "ACHV",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "ACOG@2025-01-01",
+   "symbol": "ACOG",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "ADAG@2025-01-01",
+   "symbol": "ADAG",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "ADCT@2025-01-01",
+   "symbol": "ADCT",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "ADUR@2025-01-01",
+   "symbol": "ADUR",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "AIFA@2025-01-01",
+   "symbol": "AIFA",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "AIOT@2025-01-01",
+   "symbol": "AIOT",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "AIRJ@2025-01-01",
+   "symbol": "AIRJ",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "ALTO@2025-01-01",
+   "symbol": "ALTO",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "ALXO@2025-01-01",
+   "symbol": "ALXO",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "AMBO@2025-01-01",
+   "symbol": "AMBO",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "AMBR@2025-01-01",
+   "symbol": "AMBR",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "AMC@2025-01-01",
+   "symbol": "AMC",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "AMPG@2025-01-01",
+   "symbol": "AMPG",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "AMTD@2025-01-01",
+   "symbol": "AMTD",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "ANIX@2025-01-01",
+   "symbol": "ANIX",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "ANNX@2025-01-01",
+   "symbol": "ANNX",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "ANVS@2025-01-01",
+   "symbol": "ANVS",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "AP@2025-01-01",
+   "symbol": "AP",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "APYX@2025-01-01",
+   "symbol": "APYX",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "AQMS@2025-01-01",
+   "symbol": "AQMS",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "ARBB@2025-01-01",
+   "symbol": "ARBB",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "ARBE@2025-01-01",
+   "symbol": "ARBE",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "ARQT@2025-01-01",
+   "symbol": "ARQT",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "ARRY@2025-01-01",
+   "symbol": "ARRY",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "ASLE@2025-01-01",
+   "symbol": "ASLE",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "ASTI@2025-01-01",
+   "symbol": "ASTI",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "ATHE@2025-01-01",
+   "symbol": "ATHE",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "ATNM@2025-01-01",
+   "symbol": "ATNM",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "ATXG@2025-01-01",
+   "symbol": "ATXG",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "AUST@2025-01-01",
+   "symbol": "AUST",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "AVAH@2025-01-01",
+   "symbol": "AVAH",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "BALY@2025-01-01",
+   "symbol": "BALY",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "BCHT@2025-01-01",
+   "symbol": "BCHT",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "BEAT@2025-01-01",
+   "symbol": "BEAT",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "BEEM@2025-01-01",
+   "symbol": "BEEM",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "BGDE@2025-01-01",
+   "symbol": "BGDE",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "BHC@2025-01-01",
+   "symbol": "BHC",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "BLND@2025-01-01",
+   "symbol": "BLND",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "BLZE@2025-01-01",
+   "symbol": "BLZE",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "BRFH@2025-01-01",
+   "symbol": "BRFH",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "BTBD@2025-01-01",
+   "symbol": "BTBD",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "BWEN@2025-01-01",
+   "symbol": "BWEN",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "BZAI@2025-01-01",
+   "symbol": "BZAI",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "BZUN@2025-01-01",
+   "symbol": "BZUN",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "CALC@2025-01-01",
+   "symbol": "CALC",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "CALY@2025-01-01",
+   "symbol": "CALY",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "CAN@2025-01-01",
+   "symbol": "CAN",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "CATO@2025-01-01",
+   "symbol": "CATO",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "CCCC@2025-01-01",
+   "symbol": "CCCC",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "CCM@2025-01-01",
+   "symbol": "CCM",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "CEPU@2025-01-01",
+   "symbol": "CEPU",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "CGEN@2025-01-01",
+   "symbol": "CGEN",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "CGTX@2025-01-01",
+   "symbol": "CGTX",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "CLF@2025-01-01",
+   "symbol": "CLF",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "CLIR@2025-01-01",
+   "symbol": "CLIR",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "CLLS@2025-01-01",
+   "symbol": "CLLS",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "CLNN@2025-01-01",
+   "symbol": "CLNN",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "CLPT@2025-01-01",
+   "symbol": "CLPT",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "CLYM@2025-01-01",
+   "symbol": "CLYM",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "CMP@2025-01-01",
+   "symbol": "CMP",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "CMPX@2025-01-01",
+   "symbol": "CMPX",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "CNET@2025-01-01",
+   "symbol": "CNET",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "CNSY@2025-01-01",
+   "symbol": "CNSY",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "CNTB@2025-01-01",
+   "symbol": "CNTB",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "COCH@2025-01-01",
+   "symbol": "COCH",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "COE@2025-01-01",
+   "symbol": "COE",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "COHN@2025-01-01",
+   "symbol": "COHN",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "COOT@2025-01-01",
+   "symbol": "COOT",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "COSM@2025-01-01",
+   "symbol": "COSM",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "COYA@2025-01-01",
+   "symbol": "COYA",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "CPIX@2025-01-01",
+   "symbol": "CPIX",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "CREX@2025-01-01",
+   "symbol": "CREX",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "CRML@2025-01-01",
+   "symbol": "CRML",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "CTMX@2025-01-01",
+   "symbol": "CTMX",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "CTOR@2025-01-01",
+   "symbol": "CTOR",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "CTRN@2025-01-01",
+   "symbol": "CTRN",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "CVV@2025-01-01",
+   "symbol": "CVV",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "CXDO@2025-01-01",
+   "symbol": "CXDO",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "DBI@2025-01-01",
+   "symbol": "DBI",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "DBVT@2025-01-01",
+   "symbol": "DBVT",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "DCTH@2025-01-01",
+   "symbol": "DCTH",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "DDC@2025-01-01",
+   "symbol": "DDC",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "DDL@2025-01-01",
+   "symbol": "DDL",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "DHC@2025-01-01",
+   "symbol": "DHC",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "DMAC@2025-01-01",
+   "symbol": "DMAC",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "DOUG@2025-01-01",
+   "symbol": "DOUG",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "DRIO@2025-01-01",
+   "symbol": "DRIO",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "DVLT@2025-01-01",
+   "symbol": "DVLT",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "EH@2025-01-01",
+   "symbol": "EH",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "ELA@2025-01-01",
+   "symbol": "ELA",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "ELVA@2025-01-01",
+   "symbol": "ELVA",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "EMBC@2025-01-01",
+   "symbol": "EMBC",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "EPSN@2025-01-01",
+   "symbol": "EPSN",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "EQ@2025-01-01",
+   "symbol": "EQ",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "EU@2025-01-01",
+   "symbol": "EU",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "EVGO@2025-01-01",
+   "symbol": "EVGO",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "FBIO@2025-01-01",
+   "symbol": "FBIO",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "FCEL@2025-01-01",
+   "symbol": "FCEL",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "FEAM@2025-01-01",
+   "symbol": "FEAM",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "FHTX@2025-01-01",
+   "symbol": "FHTX",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "FKWL@2025-01-01",
+   "symbol": "FKWL",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "FLUX@2025-01-01",
+   "symbol": "FLUX",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "FLYX@2025-01-01",
+   "symbol": "FLYX",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "FMST@2025-01-01",
+   "symbol": "FMST",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "FNUC@2025-01-01",
+   "symbol": "FNUC",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "FOCL@2025-01-01",
+   "symbol": "FOCL",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "FOXX@2025-01-01",
+   "symbol": "FOXX",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "FSLY@2025-01-01",
+   "symbol": "FSLY",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "FULC@2025-01-01",
+   "symbol": "FULC",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "FURY@2025-01-01",
+   "symbol": "FURY",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "FWDI@2025-01-01",
+   "symbol": "FWDI",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "GAU@2025-01-01",
+   "symbol": "GAU",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "GEOS@2025-01-01",
+   "symbol": "GEOS",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "GLAS@2025-01-01",
+   "symbol": "GLAS",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "GLBS@2025-01-01",
+   "symbol": "GLBS",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "GNLX@2025-01-01",
+   "symbol": "GNLX",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "GNSS@2025-01-01",
+   "symbol": "GNSS",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "GPRO@2025-01-01",
+   "symbol": "GPRO",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "GRDX@2025-01-01",
+   "symbol": "GRDX",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "GRWG@2025-01-01",
+   "symbol": "GRWG",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "HIPO@2025-01-01",
+   "symbol": "HIPO",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "HMY@2025-01-01",
+   "symbol": "HMY",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "HOVR@2025-01-01",
+   "symbol": "HOVR",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "HOWL@2025-01-01",
+   "symbol": "HOWL",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "HRTX@2025-01-01",
+   "symbol": "HRTX",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "HTCR@2025-01-01",
+   "symbol": "HTCR",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "HTZ@2025-01-01",
+   "symbol": "HTZ",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "HYMC@2025-01-01",
+   "symbol": "HYMC",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "HYPD@2025-01-01",
+   "symbol": "HYPD",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "ILPT@2025-01-01",
+   "symbol": "ILPT",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "IMNM@2025-01-01",
+   "symbol": "IMNM",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "IMVT@2025-01-01",
+   "symbol": "IMVT",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "INSG@2025-01-01",
+   "symbol": "INSG",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "ITOC@2025-01-01",
+   "symbol": "ITOC",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "ITRG@2025-01-01",
+   "symbol": "ITRG",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "IVA@2025-01-01",
+   "symbol": "IVA",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "KINS@2025-01-01",
+   "symbol": "KINS",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "KOD@2025-01-01",
+   "symbol": "KOD",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "KODK@2025-01-01",
+   "symbol": "KODK",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "KRMD@2025-01-01",
+   "symbol": "KRMD",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "KSS@2025-01-01",
+   "symbol": "KSS",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "KVHI@2025-01-01",
+   "symbol": "KVHI",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "KYNB@2025-01-01",
+   "symbol": "KYNB",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "KZIA@2025-01-01",
+   "symbol": "KZIA",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "LASE@2025-01-01",
+   "symbol": "LASE",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "LBRT@2025-01-01",
+   "symbol": "LBRT",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "LGO@2025-01-01",
+   "symbol": "LGO",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "LI@2025-01-01",
+   "symbol": "LI",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "LION@2025-01-01",
+   "symbol": "LION",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "LITB@2025-01-01",
+   "symbol": "LITB",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "LPSN@2025-01-01",
+   "symbol": "LPSN",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "LU@2025-01-01",
+   "symbol": "LU",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "MAGN@2025-01-01",
+   "symbol": "MAGN",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "MAIA@2025-01-01",
+   "symbol": "MAIA",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "MATH@2025-01-01",
+   "symbol": "MATH",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "MBAI@2025-01-01",
+   "symbol": "MBAI",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "MDWD@2025-01-01",
+   "symbol": "MDWD",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "METCB@2025-01-01",
+   "symbol": "METCB",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "MGIH@2025-01-01",
+   "symbol": "MGIH",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "MIR@2025-01-01",
+   "symbol": "MIR",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "MLYS@2025-01-01",
+   "symbol": "MLYS",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "MMA@2025-01-01",
+   "symbol": "MMA",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "MNKD@2025-01-01",
+   "symbol": "MNKD",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "MOB@2025-01-01",
+   "symbol": "MOB",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "MPU@2025-01-01",
+   "symbol": "MPU",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "MRKR@2025-01-01",
+   "symbol": "MRKR",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "MTC@2025-01-01",
+   "symbol": "MTC",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "MTNB@2025-01-01",
+   "symbol": "MTNB",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "MXC@2025-01-01",
+   "symbol": "MXC",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "MYSE@2025-01-01",
+   "symbol": "MYSE",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "NAK@2025-01-01",
+   "symbol": "NAK",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "NAUT@2025-01-01",
+   "symbol": "NAUT",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "NBTX@2025-01-01",
+   "symbol": "NBTX",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "NDLS@2025-01-01",
+   "symbol": "NDLS",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "NIU@2025-01-01",
+   "symbol": "NIU",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "NKTR@2025-01-01",
+   "symbol": "NKTR",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "NMAD@2025-01-01",
+   "symbol": "NMAD",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "NMG@2025-01-01",
+   "symbol": "NMG",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "NPCE@2025-01-01",
+   "symbol": "NPCE",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "NRSN@2025-01-01",
+   "symbol": "NRSN",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "NTLA@2025-01-01",
+   "symbol": "NTLA",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "NTWK@2025-01-01",
+   "symbol": "NTWK",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "NVA@2025-01-01",
+   "symbol": "NVA",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "NVNI@2025-01-01",
+   "symbol": "NVNI",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "NXDT@2025-01-01",
+   "symbol": "NXDT",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "OBIO@2025-01-01",
+   "symbol": "OBIO",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "OMEX@2025-01-01",
+   "symbol": "OMEX",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "ONCY@2025-01-01",
+   "symbol": "ONCY",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "OPTT@2025-01-01",
+   "symbol": "OPTT",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "ORIO@2025-01-01",
+   "symbol": "ORIO",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "OSCR@2025-01-01",
+   "symbol": "OSCR",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "OSG@2025-01-01",
+   "symbol": "OSG",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "OSS@2025-01-01",
+   "symbol": "OSS",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "PALI@2025-01-01",
+   "symbol": "PALI",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "PATH@2025-01-01",
+   "symbol": "PATH",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "PAYS@2025-01-01",
+   "symbol": "PAYS",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "PBK@2025-01-01",
+   "symbol": "PBK",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "PCSA@2025-01-01",
+   "symbol": "PCSA",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "PEPG@2025-01-01",
+   "symbol": "PEPG",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "PHAT@2025-01-01",
+   "symbol": "PHAT",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "PLBY@2025-01-01",
+   "symbol": "PLBY",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "PONY@2025-01-01",
+   "symbol": "PONY",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "PPIH@2025-01-01",
+   "symbol": "PPIH",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "PRE@2025-01-01",
+   "symbol": "PRE",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "PTN@2025-01-01",
+   "symbol": "PTN",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "PULM@2025-01-01",
+   "symbol": "PULM",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "PUMP@2025-01-01",
+   "symbol": "PUMP",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "PYPD@2025-01-01",
+   "symbol": "PYPD",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "QCLS@2025-01-01",
+   "symbol": "QCLS",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "QNME@2025-01-01",
+   "symbol": "QNME",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "QTTB@2025-01-01",
+   "symbol": "QTTB",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "QUBT@2025-01-01",
+   "symbol": "QUBT",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "QUIK@2025-01-01",
+   "symbol": "QUIK",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "RAIL@2025-01-01",
+   "symbol": "RAIL",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "RENT@2025-01-01",
+   "symbol": "RENT",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "RERE@2025-01-01",
+   "symbol": "RERE",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "RGS@2025-01-01",
+   "symbol": "RGS",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "RGTI@2025-01-01",
+   "symbol": "RGTI",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "RILY@2025-01-01",
+   "symbol": "RILY",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "RILYL@2025-01-01",
+   "symbol": "RILYL",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "RKDA@2025-01-01",
+   "symbol": "RKDA",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "RKTO@2025-01-01",
+   "symbol": "RKTO",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "RLYB@2025-01-01",
+   "symbol": "RLYB",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "RSSS@2025-01-01",
+   "symbol": "RSSS",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "RUN@2025-01-01",
+   "symbol": "RUN",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "RYM@2025-01-01",
+   "symbol": "RYM",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "RZLV@2025-01-01",
+   "symbol": "RZLV",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "SBFM@2025-01-01",
+   "symbol": "SBFM",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "SDEV@2025-01-01",
+   "symbol": "SDEV",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "SDST@2025-01-01",
+   "symbol": "SDST",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "SGMT@2025-01-01",
+   "symbol": "SGMT",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "SHIM@2025-01-01",
+   "symbol": "SHIM",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "SIEB@2025-01-01",
+   "symbol": "SIEB",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "SIFY@2025-01-01",
+   "symbol": "SIFY",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "SKYX@2025-01-01",
+   "symbol": "SKYX",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "SLN@2025-01-01",
+   "symbol": "SLN",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "SLNH@2025-01-01",
+   "symbol": "SLNH",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "SLNHP@2025-01-01",
+   "symbol": "SLNHP",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "SMSI@2025-01-01",
+   "symbol": "SMSI",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "SNDX@2025-01-01",
+   "symbol": "SNDX",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "SNES@2025-01-01",
+   "symbol": "SNES",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "SNOA@2025-01-01",
+   "symbol": "SNOA",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "SNT@2025-01-01",
+   "symbol": "SNT",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "SOS@2025-01-01",
+   "symbol": "SOS",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "SPAI@2025-01-01",
+   "symbol": "SPAI",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "SPCE@2025-01-01",
+   "symbol": "SPCE",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "SPPL@2025-01-01",
+   "symbol": "SPPL",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "SPWR@2025-01-01",
+   "symbol": "SPWR",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "SSM@2025-01-01",
+   "symbol": "SSM",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "SSP@2025-01-01",
+   "symbol": "SSP",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "STEX@2025-01-01",
+   "symbol": "STEX",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "SUIG@2025-01-01",
+   "symbol": "SUIG",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "SUPV@2025-01-01",
+   "symbol": "SUPV",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "SYRE@2025-01-01",
+   "symbol": "SYRE",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "TBLA@2025-01-01",
+   "symbol": "TBLA",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "TEO@2025-01-01",
+   "symbol": "TEO",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "TGB@2025-01-01",
+   "symbol": "TGB",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "TIC@2025-01-01",
+   "symbol": "TIC",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "TIL@2025-01-01",
+   "symbol": "TIL",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "TISI@2025-01-01",
+   "symbol": "TISI",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "TKLF@2025-01-01",
+   "symbol": "TKLF",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "TLSA@2025-01-01",
+   "symbol": "TLSA",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "TONX@2025-01-01",
+   "symbol": "TONX",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "TOON@2025-01-01",
+   "symbol": "TOON",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "TPCS@2025-01-01",
+   "symbol": "TPCS",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "TRON@2025-01-01",
+   "symbol": "TRON",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "TRT@2025-01-01",
+   "symbol": "TRT",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "TULP@2025-01-01",
+   "symbol": "TULP",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "TVRD@2025-01-01",
+   "symbol": "TVRD",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "TWIN@2025-01-01",
+   "symbol": "TWIN",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "UAVS@2025-01-01",
+   "symbol": "UAVS",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "UCL@2025-01-01",
+   "symbol": "UCL",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "URGN@2025-01-01",
+   "symbol": "URGN",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "VATE@2025-01-01",
+   "symbol": "VATE",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "VERI@2025-01-01",
+   "symbol": "VERI",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "VIOT@2025-01-01",
+   "symbol": "VIOT",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "VNCE@2025-01-01",
+   "symbol": "VNCE",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "VNRX@2025-01-01",
+   "symbol": "VNRX",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "VOR@2025-01-01",
+   "symbol": "VOR",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "VRCA@2025-01-01",
+   "symbol": "VRCA",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "VSAT@2025-01-01",
+   "symbol": "VSAT",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "VTGN@2025-01-01",
+   "symbol": "VTGN",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "VVOS@2025-01-01",
+   "symbol": "VVOS",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "WATT@2025-01-01",
+   "symbol": "WATT",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "WHWK@2025-01-01",
+   "symbol": "WHWK",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "WIMI@2025-01-01",
+   "symbol": "WIMI",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "WRBY@2025-01-01",
+   "symbol": "WRBY",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "WRD@2025-01-01",
+   "symbol": "WRD",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "WWR@2025-01-01",
+   "symbol": "WWR",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "WYY@2025-01-01",
+   "symbol": "WYY",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "XELB@2025-01-01",
+   "symbol": "XELB",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "XFOR@2025-01-01",
+   "symbol": "XFOR",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "XHG@2025-01-01",
+   "symbol": "XHG",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "XNET@2025-01-01",
+   "symbol": "XNET",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "XPON@2025-01-01",
+   "symbol": "XPON",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "XTNT@2025-01-01",
+   "symbol": "XTNT",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "XYF@2025-01-01",
+   "symbol": "XYF",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "YQ@2025-01-01",
+   "symbol": "YQ",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "YSG@2025-01-01",
+   "symbol": "YSG",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "ZENA@2025-01-01",
+   "symbol": "ZENA",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "ZEPP@2025-01-01",
+   "symbol": "ZEPP",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "ZH@2025-01-01",
+   "symbol": "ZH",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  },
+  {
+   "item_id": "ZURA@2025-01-01",
+   "symbol": "ZURA",
+   "t": null,
+   "view_start": "2025-01-01",
+   "view_end": "2025-12-31"
+  }
+ ]
+}

@@ -1,0 +1,137 @@
+{
+ "n_stocks": 5778,
+ "scan_bb_v1": {
+  "wall_s": 17.868688501999713,
+  "scanned": 5778,
+  "hits": 982,
+  "errors": 0,
+  "matches": 2012,
+  "file_mb": 27.070358276367188
+ },
+ "scan_bottom_burst": {
+  "wall_s": 16.893800656020176,
+  "scanned": 5778,
+  "hits": 502,
+  "errors": 0,
+  "matches": 958,
+  "file_mb": 17.862873077392578
+ },
+ "precompute_all_atoms": {
+  "wall_s": 24.412290285981726,
+  "cpu_s": 620.0039377999783,
+  "json_mb": 185.31345176696777,
+  "gz_mb": 26.72085475921631
+ },
+ "variants": {
+  "bb_v1|distinct_pk 3→2": {
+   "base": 1569,
+   "after": 2274,
+   "added": 705,
+   "removed": 0,
+   "added_stocks": 614,
+   "removed_stocks": 0,
+   "p_hit_20": 0.999424255410237
+  },
+  "bb_v1|distinct_pk 3→4": {
+   "base": 1569,
+   "after": 937,
+   "added": 0,
+   "removed": 632,
+   "added_stocks": 0,
+   "removed_stocks": 553,
+   "p_hit_20": 0.0
+  },
+  "bb_v1|vol_spike 3→2": {
+   "base": 1569,
+   "after": 1956,
+   "added": 387,
+   "removed": 0,
+   "added_stocks": 317,
+   "removed_stocks": 0,
+   "p_hit_20": 0.9881259695690042
+  },
+  "bb_v1|vol_spike 3→4": {
+   "base": 1569,
+   "after": 1258,
+   "added": 0,
+   "removed": 311,
+   "added_stocks": 0,
+   "removed_stocks": 250,
+   "p_hit_20": 0.0
+  },
+  "bb_v1|first_drought 40→30": {
+   "base": 1569,
+   "after": 1832,
+   "added": 263,
+   "removed": 0,
+   "added_stocks": 198,
+   "removed_stocks": 0,
+   "p_hit_20": 0.955706403848437
+  },
+  "bb_v1|first_drought 40→50": {
+   "base": 1569,
+   "after": 1397,
+   "added": 0,
+   "removed": 172,
+   "added_stocks": 0,
+   "removed_stocks": 141,
+   "p_hit_20": 0.0
+  },
+  "bb_v1|day_drop 0.20→0.15": {
+   "base": 1569,
+   "after": 1469,
+   "added": 0,
+   "removed": 100,
+   "added_stocks": 0,
+   "removed_stocks": 93,
+   "p_hit_20": 0.0
+  },
+  "bb_v1|day_drop 0.20→0.25": {
+   "base": 1569,
+   "after": 1622,
+   "added": 53,
+   "removed": 0,
+   "added_stocks": 49,
+   "removed_stocks": 0,
+   "p_hit_20": 0.4874818183497125
+  },
+  "bb_v1|bo 突破门槛 0.0075→0.005(detector 参数)": {
+   "base": 1569,
+   "after": 1609,
+   "added": 76,
+   "removed": 36,
+   "added_stocks": 62,
+   "removed_stocks": 30,
+   "p_hit_20": 0.6222899758232905
+  },
+  "bb_v1|bo 突破门槛 0.0075→0.01(detector 参数)": {
+   "base": 1569,
+   "after": 1519,
+   "added": 39,
+   "removed": 89,
+   "added_stocks": 33,
+   "removed_stocks": 72,
+   "p_hit_20": 0.4075730271598863
+  },
+  "bottom_burst|vol_spike 10→8": {
+   "base": 2471,
+   "after": 3003,
+   "added": 532,
+   "removed": 0,
+   "added_stocks": 127,
+   "removed_stocks": 0,
+   "p_hit_20": 0.980028815026514
+  },
+  "bottom_burst|vol_spike 10→12": {
+   "base": 2471,
+   "after": 2102,
+   "added": 0,
+   "removed": 369,
+   "added_stocks": 0,
+   "removed_stocks": 75,
+   "p_hit_20": 0.0
+  }
+ },
+ "base_bb_v1": 1569,
+ "base_bottom_burst": 2471
+}

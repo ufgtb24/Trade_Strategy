@@ -1,0 +1,645 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<title>结构化标注原型</title>
+<!-- PROTOTYPE v2，用完即扔：回答「结构化标注存什么、界面和主视图怎么合、标完怎么对照 app」。
+     按 2026-10-25 用户拍板的方向重写：标注时只看干净 K 线、不能点选系统事件；名字和说明用用户自己的词、存成可复用清单；
+     角色不手填；对照只写人话三层、同轨叠画；对照开关换图自动关；汇总页按名字列对应表、新老分开。
+     数据来自 scripts/01-dump-proto-data.py（只读截到 2025-12-31 的副本）。状态只在内存里，刷新即丢。 -->
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 13px/1.45 system-ui, sans-serif; color: #0f172a; background: #fff; }
+  #top { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; padding: 6px 10px;
+         border-bottom: 1px solid #d4d4d8; background: #fafafa; }
+  #top .grp { display: flex; gap: 4px; align-items: center; }
+  #top .ttl { font-weight: 700; }
+  #top .tag { font-size: 11px; padding: 1px 6px; border: 1px solid #111; border-radius: 3px; }
+  button { font: inherit; padding: 2px 8px; border: 1px solid #a1a1aa; background: #fff; border-radius: 3px; cursor: pointer; }
+  button[aria-pressed="true"] { background: #111; color: #fff; border-color: #111; }
+  button:disabled { opacity: .4; cursor: default; }
+  select, input[type=text] { font: inherit; padding: 1px 4px; }
+  #wrap { display: grid; grid-template-columns: 1fr 400px; height: calc(100vh - 66px); }
+  #chartcol { overflow: auto; padding: 4px 0 0 0; }
+  #side { border-left: 1px solid #d4d4d8; overflow: auto; padding: 0 10px 40px; }
+  #tabs { position: sticky; top: 0; background: #fff; display: flex; gap: 4px; padding: 6px 0; border-bottom: 1px solid #e4e4e7; }
+  #side h3 { margin: 12px 0 4px; font-size: 13px; border-bottom: 1px solid #e4e4e7; padding-bottom: 2px; }
+  #side .muted { color: #52525b; font-size: 12px; }
+  #side .row { display: flex; gap: 6px; align-items: center; margin: 3px 0; flex-wrap: wrap; }
+  #side pre { background: #f4f4f5; padding: 6px; font-size: 11px; max-height: 520px; overflow: auto; white-space: pre-wrap; }
+  #side table { border-collapse: collapse; width: 100%; font-size: 12px; }
+  #side td, #side th { border: 1px solid #e4e4e7; padding: 3px 4px; vertical-align: top; text-align: left; }
+  .card { border: 1px solid #d4d4d8; border-radius: 4px; padding: 5px 7px; margin: 5px 0; }
+  .ok::before { content: "✓ "; font-weight: 700; }
+  .bad::before { content: "✗ "; font-weight: 700; }
+  .neu::before { content: "· "; font-weight: 700; }
+  .ok, .bad, .neu { display: block; margin-left: 4px; }
+  .bad { font-weight: 600; }
+  .unseen { font-size: 11px; border: 1px dashed #71717a; padding: 0 4px; border-radius: 3px; color: #3f3f46; }
+  .wbtn { margin: 2px 3px 2px 0; }
+  svg text { user-select: none; }
+  .hint { font-size: 12px; color: #3f3f46; padding: 2px 10px; min-height: 22px; }
+</style>
+</head>
+<body>
+<div id="top"></div>
+<div class="hint" id="hint"></div>
+<div id="wrap"><div id="chartcol"><svg id="chart" xmlns="http://www.w3.org/2000/svg"></svg></div><aside id="side"></aside></div>
+<script src="data.js"></script>
+<script>
+'use strict'
+const D = window.PROTO_DATA
+const SPEC = D.pattern_spec
+const APP = SPEC.pattern_id                       // bb_v1
+// 配色照搬主视图：node 本色来自 app 声明的 event_styles；进了 match 用本色，过了 where 深灰，只检测到浅灰；K 线绿涨红跌
+const NODE_COLOR = SPEC.event_styles
+const TIER_QUAL = '#9ca3af', TIER_DET = '#d1d5db', NEUTRAL = '#888888'
+const UP = '#47b262', DOWN = '#eb5454'
+const WHERE = {}
+for (const n of SPEC.topology.nodes) WHERE[n.node_id] = n.where_rules
+const APP_NODES = ['burst', 'tb']                 // 看图模式的副图轨（bo 画在主图上，pk 不画）
+
+// 对应表：真实流程里由会话在标完后按跨图证据写；原型里预先写好一份示意，按词的字面对
+const MAP = {
+  '放量突破': { by: '现成的 burst（突破串）', node: 'burst' },
+  '回踩': { by: '现成的回踩', node: 'tb' },
+  '横盘': { by: '现成的走势区段里的横盘段（不在任何 app 里，默认参数从没调过）', atom: 'trend', regime: 'sideways' },
+  '平台': { by: '现成的平台段（不在任何 app 里，默认参数从没调过）', atom: 'platform' },
+}
+const DMAP = {                                    // 说明 → where
+  '放量': { node: 'burst', clause: 'vol_spike', by: '突破串上「最大一根的量比平时大很多」这条要求' },
+  '突破过好几个峰': { node: 'burst', clause: 'distinct_pk', by: '突破串上「越过的峰够多」这条要求' },
+  '突破前沉寂够久': { node: 'burst', clause: 'first_drought', by: '突破串上「之前很久没突破过」这条要求' },
+  '回踩里没有大跌': { node: 'tb', clause: 'day_drop', by: '回踩上「没有单日大跌」这条要求' },
+}
+const PLAIN = { first_drought: '之前很久没突破过', distinct_pk: '越过的峰够多', vol_spike: '最大一根的量比平时大很多',
+                peak_age: '越过的峰够老', day_drop: '回踩里没有单日大跌' }
+// 待验证的默认值
+const TOL = 2           // app 事件的起点或终点落在框外几天以内，仍算同一件事
+const BUY_TOL = 3       // 正例：app 买点在前后几天以内（或落在回踩事件里）算「会买」
+const NOBUY_TOL = 1     // 像但不买：app 买点在前后几天以内算「买了」
+const CHANCE_WARN = 0.3 // 随手一框也被认出的比例超过它，就在汇总页提醒
+const NEW_MIN = 5       // 新标注不足几个框，只写「还不知道」
+
+// ── 状态（只在内存里） ──
+const S = {
+  stock: 0, mode: 'annot', cmp: false, tool: 'select', tab: 'edit',
+  cur: APP, patterns: [APP, '未归类'],
+  words: [], ann: {}, sel: null, drag: null, seq: 1, renaming: false, flags: [],
+}
+
+// ── 数据整理 ──
+const STOCKS = D.stocks.map(st => {
+  const byId = {}
+  const matchedIds = new Set()
+  for (const m of st.analysis.matches) for (const id of Object.values(m.node_index)) matchedIds.add(id)
+  const sys = []
+  for (const e of st.analysis.events) {
+    if (e.node_id === 'pk') continue
+    const it = { id: e.instance_id, node: e.node_id, s: e.start_idx, e: e.end_idx, f: e, matched: matchedIds.has(e.instance_id) }
+    sys.push(it); byId[it.id] = it
+  }
+  for (const e of st.analysis.events) if (e.node_id === 'burst' && matchedIds.has(e.instance_id))
+    for (const b of (e.child_refs.members || [])) if (byId[b]) byId[b].matched = true
+  for (const a of st.atoms) {
+    const it = { id: a.instance_id, node: null, atom: a.kind, regime: a.regime, s: a.start_idx, e: a.end_idx, f: a,
+                 label: a.kind === 'platform' ? '平台段' : ({ down: '下跌', sideways: '横盘', up: '上涨' })[a.regime] }
+    sys.push(it); byId[it.id] = it
+  }
+  const matches = st.analysis.matches.map((m, i) => ({ no: i + 1, s: m.start_idx, e: m.end_idx, buy: byId[m.node_index.tb].s,
+                                                      tb: byId[m.node_index.tb], nodes: m.node_index }))
+  return { symbol: st.symbol, bars: st.bars, sys, byId, matches }
+})
+const ST = () => STOCKS[S.stock]
+const annOf = st => (S.ann[st.symbol] ||= { boxes: [], buys: [], touched: false, sawApp: false })
+const A = () => annOf(ST())
+const isApp = p => p === APP
+const nid = p => p + (S.seq++)
+const W = id => S.words.find(w => w.id === id)
+const txt = id => (W(id) || {}).text || '（还没起名）'
+const dateOf = (st, i) => st.bars[Math.max(0, Math.min(st.bars.length - 1, i))].date
+const date = i => dateOf(ST(), i)
+function wordOf(text) {             // 用户的词：有就用，没有就新建；同一份清单跨图、跨 pattern 共用
+  let w = S.words.find(x => x.text === text)
+  if (!w) { w = { id: nid('w'), text, note: '' }; S.words.push(w) }
+  return w.id
+}
+const evalWhere = (node, se) => (WHERE[node] || []).map(r => {
+  const v = se.f[r.field]
+  const ok = v != null && ({ '>=': v >= r.threshold, '>': v > r.threshold, '<': v < r.threshold, '<=': v <= r.threshold })[r.op]
+  return { id: r.clause_id, ok: !!ok }
+})
+const qualified = se => !se.node || evalWhere(se.node, se).every(r => r.ok)
+function markEdit() { const a = A(); if (a.sawApp) a.touched = true }   // 「接触过 app」由界面顺手记
+
+// ── 说明的三种状态：有 / 没有 / 没看过 ──
+function descWordsOf(nameId) {      // 所有图上、同名的框用过的说明（按首次出现顺序）
+  const out = []
+  for (const st of STOCKS) for (const b of annOf(st).boxes) if (b.name === nameId)
+    for (const w of Object.keys(b.desc)) if (!out.includes(w)) out.push(w)
+  return out
+}
+const descState = (b, w) => b.desc[w] === true ? '有' : b.desc[w] === false ? '没有' : '没看过'
+function setName(b, id) {           // 选了名字，以前和它一起用过的说明默认全带上
+  b.name = id
+  for (const w of descWordsOf(id)) if (!(w in b.desc)) b.desc[w] = true
+}
+function parentOf(b, a) {           // 框套框：时间上被另一个框包住，默认算属于它
+  let p = null
+  for (const o of a.boxes) if (o !== b && o.s <= b.s && o.e >= b.e && (o.e - o.s) > (b.e - b.s))
+    if (!p || (o.e - o.s) < (p.e - p.s)) p = o
+  return p
+}
+
+// ── 对照：三层，只出人话 ──
+function candidates(b, st) {
+  const m = MAP[txt(b.name)]
+  if (!m) return null
+  const near = x => x >= b.s - TOL && x <= b.e + TOL
+  return st.sys.filter(se => (m.node ? se.node === m.node : se.atom === m.atom && (!m.regime || se.regime === m.regime))
+                             && se.e >= b.s - TOL && se.s <= b.e + TOL && (near(se.s) || near(se.e)))
+}
+function verdict(b, st) {
+  if (b.letGo) return { st: '放过了', why: [['neu', '你说这个框标宽了：只从样本里拿掉，不改 app']] }
+  const c = candidates(b, st)
+  if (!c) return { st: '还没进 app', why: [['neu', `对应表里「${txt(b.name)}」还没有接到 app 上`]] }
+  const m = MAP[txt(b.name)]
+  if (!c.length) {
+    const why = [['bad', `${m.by}在这里一段都没出`]]
+    if (m.atom) why.push(['neu', '这类 detector 的默认参数从没调过，认不出多半是参数要调，不一定要新写'])
+    return { st: '没认出', why }
+  }
+  const ov = x => Math.min(x.e, b.e) - Math.max(x.s, b.s)
+  const better = (x, p) => x.matched !== p.matched ? x.matched : ov(x) > ov(p)   // 进了 match 的优先，其次交叠多的
+  const pick = arr => arr.reduce((p, x) => better(x, p) ? x : p)
+  const q = c.filter(qualified)
+  const ev = q.length ? pick(q) : pick(c)
+  const why = []
+  const res = ev.node ? evalWhere(ev.node, ev) : []
+  for (const r of res) {
+    const w = S.words.find(x => DMAP[x.text] && DMAP[x.text].node === ev.node && DMAP[x.text].clause === r.id)
+    const s = w ? descState(b, w.id) : null
+    if (!r.ok && s === '有') why.push(['bad', `你说有「${w.text}」，app 认为它不够`])
+    else if (!r.ok && s === '没有') why.push(['bad', `你说这里没有「${w.text}」，app 却要求它`])
+    else if (!r.ok && s === '没看过') why.push(['bad', `app 认为「${w.text}」不够（这条说明你在这个框上还没看过）`])
+    else if (!r.ok) why.push(['bad', `还差一条你没提过的要求：${PLAIN[r.id] || r.id}`])
+    else if (s === '没有') why.push(['neu', `你说这里没有「${w.text}」，app 认为有`])
+  }
+  for (const w of Object.keys(b.desc)) if (b.desc[w] && !DMAP[txt(w)]) why.push(['neu', `「${txt(w)}」app 里还没有对应`])
+  if (q.length) return { st: '认出', ev, why: [['ok', `${m.by}在这里认出了`], ...why] }
+  return { st: '看到了但不够格', ev, why: [['neu', `${m.by}在这里看到了，但没过它的要求`], ...why] }
+}
+function buyVerdict(bp, st) {
+  if (!isApp(bp.pattern)) return { lines: [['neu', `「${bp.pattern}」还没有 app，买点没得对`]] }
+  const lines = []
+  let buys
+  if (bp.label === '正例') {
+    const m = st.matches.find(x => Math.abs(x.buy - bp.idx) <= BUY_TOL || (bp.idx >= x.tb.s && bp.idx <= x.tb.e))
+    buys = !!m
+    lines.push(m ? ['ok', 'app 会在这附近买'] : ['bad', 'app 不在这附近买'])
+    // 两框之间：前后连上没有
+    const a = annOf(st)
+    const before = a.boxes.filter(b => b.s <= bp.idx + TOL && b.e >= bp.idx - 40 && MAP[txt(b.name)] && MAP[txt(b.name)].node)
+    if (!before.length) lines.push(['neu', '买点前没有接到 app 上的框，只比买点'])
+    else {
+      const vs = before.map(b => [b, verdict(b, st)])
+      const bad = vs.filter(([, v]) => v.st !== '认出' && v.st !== '放过了')
+      if (bad.length) lines.push(['neu', `先看没认出的：${bad.map(([b]) => txt(b.name)).join('、')}`])
+      else if (m) lines.push(['ok', `${vs.map(([b]) => txt(b.name)).join('、')}都认出了，前后也连上了`])
+      else lines.push(['bad', `${vs.map(([b]) => txt(b.name)).join('、')}都认出了，但前后没连上（毛病在两段之间的关系上）`])
+    }
+  } else {
+    const m = st.matches.find(x => Math.abs(x.buy - bp.idx) <= NOBUY_TOL)
+    buys = !!m
+    lines.push(m ? ['bad', `app 会在这买，可你说不买${bp.note ? '：' + bp.note : ''}`] : ['ok', 'app 也不买'])
+  }
+  return { lines, buys }
+}
+function seeded(seed) { let r = seed % 2147483646 + 1; return () => (r = (r * 16807) % 2147483647) / 2147483647 }
+function chanceOf(nameId) {         // 底：同样宽的框随便挪个位置，被判「认出」的比例
+  let hit = 0, tot = 0
+  for (const st of STOCKS) for (const b of annOf(st).boxes) if (b.name === nameId && !b.letGo && MAP[txt(nameId)]) {
+    const w = b.e - b.s, N = st.bars.length, rnd = seeded(b.s * 7919 + b.e + 1)
+    for (let k = 0; k < 40; k++) {
+      const s = Math.floor(rnd() * Math.max(1, N - w))
+      tot++
+      if (verdict({ ...b, s, e: s + w, letGo: false }, st).st === '认出') hit++
+    }
+  }
+  return tot ? hit / tot : 0
+}
+
+// ── 示例标注：两只股票，演示「点名字带上说明」「后加的说明在旧框上是没看过」「框套框」「三层对照」 ──
+;(function seed() {
+  const mk = (st, name, s, e, desc = {}, note = '') => {
+    const b = { id: nid('b'), name: wordOf(name), s, e, desc: {}, note, letGo: false }
+    for (const [k, v] of Object.entries(desc)) b.desc[wordOf(k)] = v
+    annOf(st).boxes.push(b); return b
+  }
+  const buy = (st, idx, label, note = '') => annOf(st).buys.push({ id: nid('p'), idx, pattern: APP, label, note })
+  const [s0, s1] = STOCKS
+  mk(s0, '横盘', 135, 158)
+  mk(s0, '缩量', 140, 146)
+  W(wordOf('横盘')).note = '突破前价格窄幅横着走一段'
+  mk(s0, '放量突破', 159, 164, { 放量: true, 突破过好几个峰: true })
+  W(wordOf('放量突破')).note = '放量越过前面好几个峰'
+  mk(s0, '回踩', 164, 167)
+  buy(s0, 167, '正例')
+  mk(s0, '放量突破', 80, 82, { 放量: true, 突破过好几个峰: true })
+  buy(s0, 84, '正例')
+  buy(s0, 175, '像但不买', '回踩前一天放量长阴，当天就看得见')
+  // 第二张图上才想到「突破前沉寂够久」：第一张图上的同名框，这条就是「没看过」
+  mk(s1, '横盘', 98, 106)
+  mk(s1, '放量突破', 159, 165, { 放量: true, 突破过好几个峰: false, 突破前沉寂够久: true })
+  mk(s1, '回踩', 165, 167)
+  buy(s1, 166, '正例')
+  annOf(s1).touched = true          // 演示：这张图打开过对照后又改了标注，算老标注
+  annOf(s1).sawApp = true
+})()
+
+// ── 画图 ──
+const NS = 'http://www.w3.org/2000/svg'
+const LW = 118, MAIN_H = 380, ROW_H = 30, BR_H = 26
+let G = {}
+function el(tag, attrs, parent, text) {
+  const e = document.createElementNS(NS, tag)
+  for (const k in attrs) e.setAttribute(k, attrs[k])
+  if (text != null) e.textContent = text
+  ;(parent || G.svg).appendChild(e)
+  return e
+}
+function lanes() {
+  if (S.mode === 'view') return APP_NODES.map(n => ({ key: 'n:' + n, label: n, sub: 'node', node: n }))
+  const used = new Set(A().boxes.map(b => b.name))
+  const R = S.words.filter(w => used.has(w.id)).map(w => ({ key: w.id, label: w.text, sub: '你的词' }))
+  if (used.has(null)) R.push({ key: null, label: '（还没起名）', sub: '' })
+  return R
+}
+function sysOfLane(r) {
+  const st = ST()
+  if (S.mode === 'view') return st.sys.filter(se => se.node === r.node)
+  if (!S.cmp || r.key == null) return []
+  const m = MAP[txt(r.key)]
+  if (!m) return []
+  return st.sys.filter(se => m.node ? se.node === m.node : se.atom === m.atom && (!m.regime || se.regime === m.regime))
+}
+function colorOfSys(se) {
+  if (!se.node) return NEUTRAL                      // 当前 app 之外的 detector（平台段、走势区段）
+  if (se.matched) return NODE_COLOR[se.node] || NEUTRAL
+  return qualified(se) ? TIER_QUAL : TIER_DET
+}
+const sel = (type, id) => S.sel && S.sel.type === type && S.sel.id === id
+const showApp = () => S.mode === 'view' || S.cmp
+function draw() {
+  const svg = document.getElementById('chart')
+  svg.innerHTML = ''
+  const st = ST(), N = st.bars.length, a = A()
+  const Wd = Math.max(900, document.getElementById('chartcol').clientWidth - 6)
+  const step = (Wd - LW - 10) / N
+  const X = i => LW + (i + 0.5) * step, X0 = i => LW + i * step
+  const R = lanes()
+  const H = MAIN_H + 14 + (showApp() ? BR_H : 0) + R.length * ROW_H + 30
+  svg.setAttribute('width', Wd); svg.setAttribute('height', H)
+  G = { svg, step, X, X0, N, rowsY: [] }
+
+  // 主图
+  let lo = Infinity, hi = -Infinity
+  for (const b of st.bars) { lo = Math.min(lo, b.l); hi = Math.max(hi, b.h) }
+  const pad = (hi - lo) * 0.08; lo -= pad * 1.6; hi += pad
+  const Y = p => 8 + (hi - p) / (hi - lo) * (MAIN_H - 16)
+  el('rect', { x: LW, y: 4, width: Wd - LW - 10, height: MAIN_H - 4, fill: '#fff', stroke: '#e4e4e7' })
+  el('text', { x: 8, y: 20, 'font-size': 12, 'font-weight': 700 }, null, st.symbol)
+  el('text', { x: 8, y: 36, 'font-size': 11, fill: '#52525b' }, null, '主图')
+  const cw = Math.max(1.5, step * 0.62)
+  st.bars.forEach((b, i) => {
+    const up = b.c >= b.o
+    el('line', { x1: X(i), x2: X(i), y1: Y(b.h), y2: Y(b.l), stroke: up ? UP : DOWN, 'stroke-width': 1, 'pointer-events': 'none' })
+    el('rect', { x: X(i) - cw / 2, y: Y(Math.max(b.o, b.c)), width: cw, height: Math.max(1, Math.abs(Y(b.o) - Y(b.c))),
+                 fill: up ? UP : DOWN, stroke: up ? UP : DOWN, 'stroke-width': 0.8, 'pointer-events': 'none' })
+  })
+  if (S.mode === 'view') for (const se of st.sys) if (se.node === 'bo') {      // 看图模式：主图上的突破
+    const x = X(se.s), yy = Y(st.bars[se.s].h) - 6
+    el('path', { d: `M${x} ${yy - 7} L${x - 5} ${yy} L${x + 5} ${yy} Z`, fill: colorOfSys(se) })
+  }
+  if (S.mode === 'annot') for (const bp of a.buys) {                            // 我的买点
+    const x = X(bp.idx), yy = Y(st.bars[bp.idx].l) + 6, pos = bp.label === '正例', s = sel('buy', bp.id)
+    el('path', { d: `M${x} ${yy} L${x - 7} ${yy + 12} L${x + 7} ${yy + 12} Z`, fill: pos ? '#111' : '#fff', stroke: '#111',
+                 'stroke-width': s ? 3 : 1.5, 'data-buy': bp.id, cursor: 'pointer' })
+    el('text', { x, y: yy + 26, 'font-size': 11, 'text-anchor': 'middle', 'font-weight': 700, 'data-buy': bp.id, cursor: 'pointer' },
+       null, (pos ? '正' : '像') + (bp.pattern === S.cur ? '' : '·' + bp.pattern))
+    if (S.cmp && bp.pattern === S.cur) {
+      const v = buyVerdict(bp, st)
+      badge(x - 22, yy + 31, v.buys ? 'app 买' : 'app 不买', pos ? !v.buys : v.buys)
+    }
+    if (s) el('line', { x1: x, x2: x, y1: 4, y2: H - 30, stroke: '#111', 'stroke-dasharray': '2 3', 'pointer-events': 'none' })
+  }
+
+  let yy = MAIN_H + 14
+  if (showApp()) {                                                            // bracket 轨：app 的 match
+    el('text', { x: 8, y: yy + 15, 'font-size': 11, fill: '#52525b' }, null, 'bracket')
+    if (isApp(S.cur)) st.matches.forEach((m, i) => {
+      const ly = yy + 5 + (i % 2) * 12
+      el('rect', { x: X0(m.s), y: ly, width: (m.e - m.s + 1) * step, height: 4, fill: '#52525b' })
+      el('circle', { cx: X0(m.s) - 7, cy: ly + 2, r: 6, fill: '#fff', stroke: '#111' })
+      el('text', { x: X0(m.s) - 7, y: ly + 5.5, 'font-size': 9, 'text-anchor': 'middle' }, null, String(m.no))
+      el('path', { d: `M${X(m.buy) - 4} ${ly - 4} l8 0 l-4 7 Z`, fill: '#111' })
+    })
+    yy += BR_H
+  }
+  for (const r of R) {
+    G.rowsY.push({ y: yy, key: r.key })
+    el('rect', { x: LW, y: yy, width: Wd - LW - 10, height: ROW_H, fill: '#fff', stroke: '#f0f0f0' })
+    el('text', { x: 8, y: yy + 17, 'font-size': 12 }, null, r.label)
+    if (r.sub) el('text', { x: 8 + r.label.length * 12 + 6, y: yy + 17, 'font-size': 10, fill: '#71717a' }, null, r.sub)
+    const its = sysOfLane(r).sort((p, q) => p.s - q.s || q.e - p.e)          // 重叠的 app 事件分泳道（同主视图）
+    const ends = []
+    for (const se of its) { let k = ends.findIndex(e => e < se.s); if (k < 0) { k = ends.length; ends.push(0) } ends[k] = se.e; se._lane = k }
+    for (const se of its) drawSys(se, yy, se._lane, ends.length)
+    if (S.mode === 'annot') for (const b of a.boxes) if (b.name === r.key) drawBox(b, yy)
+    yy += ROW_H
+  }
+  for (let i = 0; i < N; i += 20) el('text', { x: X(i), y: H - 16, 'font-size': 10, 'text-anchor': 'middle', fill: '#52525b' }, null, st.bars[i].date)
+  if (S.drag && S.drag.cur != null) {
+    const p = Math.min(S.drag.i0, S.drag.cur), q = Math.max(S.drag.i0, S.drag.cur)
+    el('rect', { x: X0(p), y: 4, width: (q - p + 1) * step, height: H - 34, fill: 'rgba(0,0,0,.08)', stroke: '#000',
+                 'stroke-dasharray': '3 3', 'pointer-events': 'none' })
+  }
+}
+function drawSys(se, y, lane, nl) {
+  const { X0, step } = G
+  const lh = (ROW_H - 8) / nl, ly = y + 4 + lane * lh
+  const w = Math.max(3, (se.e - se.s + 1) * step - 1)
+  el('rect', { x: X0(se.s) + 0.5, y: ly + 0.5, width: w, height: lh - 1, fill: colorOfSys(se), 'pointer-events': 'none' })
+  if (se.label && w > se.label.length * 11 + 4 && lh >= 12)
+    el('text', { x: X0(se.s) + 4, y: ly + lh / 2 + 4, 'font-size': 10, fill: '#111', 'pointer-events': 'none' }, null, se.label)
+}
+function drawBox(b, y) {
+  const { X0, step } = G
+  const x = X0(b.s), w = Math.max(5, (b.e - b.s + 1) * step), s = sel('box', b.id)
+  el('rect', { x, y: y + 2, width: w, height: ROW_H - 4, fill: s ? 'rgba(0,0,0,.08)' : 'transparent', stroke: '#000',
+               'stroke-width': s ? 3.5 : 2, 'stroke-dasharray': '5 3', 'data-box': b.id, cursor: 'pointer' })
+  const p = parentOf(b, A())
+  const lab = txt(b.name) + (p ? ' ⊂ ' + txt(p.name) : '')
+  if (w > lab.length * 11) el('text', { x: x + 4, y: y + ROW_H - 7, 'font-size': 10, 'font-weight': 700, 'pointer-events': 'none' }, null, lab)
+  else if (p) el('text', { x: x + w + 2, y: y + ROW_H - 4, 'font-size': 9, fill: '#3f3f46', 'pointer-events': 'none' }, null, '⊂ ' + txt(p.name))
+  if (S.cmp) { const v = verdict(b, ST()); badge(x + w + 2, y + 3, v.st, v.st === '没认出' || v.st === '看到了但不够格') }
+}
+function badge(x, y, t, strong) {
+  const w = t.length * 11 + 6
+  el('rect', { x, y, width: w, height: 15, rx: 2, fill: strong ? '#111' : '#fff', stroke: '#111', 'pointer-events': 'none' })
+  el('text', { x: x + 3, y: y + 11.5, 'font-size': 10, fill: strong ? '#fff' : '#111', 'pointer-events': 'none' }, null, t)
+}
+
+// ── 鼠标 ──
+function idxAt(evt) {
+  const pt = G.svg.getBoundingClientRect()
+  return Math.max(0, Math.min(G.N - 1, Math.floor((evt.clientX - pt.left - LW) / G.step)))
+}
+function laneAt(evt) {
+  const yy = evt.clientY - G.svg.getBoundingClientRect().top
+  const r = G.rowsY.find(r => yy >= r.y && yy < r.y + ROW_H)
+  return r ? r.key : undefined
+}
+const chart = document.getElementById('chart')
+chart.addEventListener('mousedown', evt => {
+  if (S.mode !== 'annot' || S.tool !== 'box') return
+  S.drag = { i0: idxAt(evt), cur: idxAt(evt), lane: laneAt(evt) }; draw(); evt.preventDefault()
+})
+chart.addEventListener('mousemove', evt => { if (S.drag) { const c = idxAt(evt); if (c !== S.drag.cur) { S.drag.cur = c; draw() } } })
+window.addEventListener('mouseup', () => {
+  if (!S.drag) return
+  const p = Math.min(S.drag.i0, S.drag.cur), q = Math.max(S.drag.i0, S.drag.cur), lane = S.drag.lane
+  S.drag = null
+  const b = { id: nid('b'), name: null, s: p, e: q, desc: {}, note: '', letGo: false }
+  if (lane) setName(b, lane)                      // 在某个名字的轨上拖，默认就叫这个名字
+  A().boxes.push(b); markEdit()
+  S.sel = { type: 'box', id: b.id }; S.tab = 'edit'; S.renaming = false
+  render()
+})
+chart.addEventListener('click', evt => {
+  if (S.tool === 'box' && S.mode === 'annot') return
+  const t = evt.target, g = k => t.getAttribute && t.getAttribute(k)
+  if (S.mode === 'annot' && S.tool === 'buy') {
+    const i = idxAt(evt)
+    const ex = A().buys.find(b => b.idx === i && b.pattern === S.cur)
+    if (ex) S.sel = { type: 'buy', id: ex.id }
+    else { const b = { id: nid('p'), idx: i, pattern: S.cur, label: '正例', note: '' }; A().buys.push(b); markEdit(); S.sel = { type: 'buy', id: b.id } }
+    S.tab = 'edit'
+    return render()
+  }
+  if (g('data-buy')) S.sel = { type: 'buy', id: g('data-buy') }
+  else if (g('data-box')) S.sel = { type: 'box', id: g('data-box') }
+  else S.sel = null
+  S.renaming = false
+  if (S.sel) S.tab = 'edit'
+  render()
+})
+
+// ── 顶栏、侧栏 ──
+function render() {
+  if (showApp()) A().sawApp = true
+  renderTop(); renderSide(); draw(); renderHint()
+}
+const btn = (label, pressed, act, extra = '') => `<button type="button" aria-pressed="${!!pressed}" data-act="${act}" ${extra}>${label}</button>`
+const esc = t => String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;')
+function renderTop() {
+  const canCmp = S.mode === 'annot' && isApp(S.cur)
+  document.getElementById('top').innerHTML = `
+    <span class="ttl">结构化标注</span><span class="tag">PROTOTYPE v2 · 用完即扔</span>
+    <span class="grp">股票 ${STOCKS.map((s, i) => btn(s.symbol, S.stock === i, 'stock:' + i)).join('')}</span>
+    <span class="grp">主视图 ${btn('看图', S.mode === 'view', 'mode:view')}${btn('标注', S.mode === 'annot', 'mode:annot')}</span>
+    <span class="grp">当前 pattern <select data-act="cur">${S.patterns.map(p => `<option ${p === S.cur ? 'selected' : ''}>${esc(p)}</option>`).join('')}<option value="__new">＋ 新 pattern 名…</option></select></span>
+    <span class="grp">${btn('对照 app', S.cmp, 'cmp', canCmp ? '' : 'disabled title="标注模式下、当前 pattern 有 app 时才能开"')}<span class="muted" style="font-size:11px">换图自动关</span></span>
+    <span class="grp">工具 ${['select:选择', 'box:框', 'buy:点买点'].map(x => { const [k, l] = x.split(':'); return btn(l, S.tool === k, 'tool:' + k, S.mode === 'view' ? 'disabled' : '') }).join('')}</span>`
+}
+function renderHint() {
+  const h = S.mode === 'view' ? '看图模式：就是现在的主视图，只画 app 的输出。在这里看过 app 的图再去标，这张图的标注算「接触过 app」。'
+    : ({ select: '点虚线框或买点三角来改它。标注时图上只有 K 线和你自己的框；标完再开「对照 app」。',
+         box: '在图上横着拖出一个框（在某个名字的轨上拖，默认就叫这个名字）。拖完在右栏点一个你用过的词当名字，或者写个新词。',
+         buy: `在主图上点一根 K 线：加一个买点，归当前 pattern「${S.cur}」，默认正例。` })[S.tool]
+  document.getElementById('hint').textContent = h
+}
+function renderSide() {
+  const tabs = [['edit', '编辑'], ['words', '我的词'], ['sum', '本轮汇总'], ['json', '存下来的样子']]
+  let h = `<div id="tabs">${tabs.map(([k, l]) => btn(l, S.tab === k, 'tab:' + k)).join('')}</div>`
+  h += ({ edit: sideEdit, words: sideWords, sum: sideSum, json: sideJson })[S.tab]()
+  document.getElementById('side').innerHTML = h
+}
+function sideEdit() {
+  const st = ST(), a = A()
+  let h = ''
+  if (a.touched) h += '<div class="muted" style="margin-top:6px">这张图接触过 app：它上面的标注算老标注，不拿来说明 app 对没见过的图认不认得出。</div>'
+  if (!S.sel) return h + '<h3>选中的</h3><div class="muted">没选中。用「框」拖一个框，或点图上的虚线框、买点。</div>'
+  if (S.sel.type === 'box') {
+    const b = a.boxes.find(x => x.id === S.sel.id); if (!b) return h
+    h += `<h3>框 · ${date(b.s)}${b.e > b.s ? '～' + date(b.e) : ''}</h3>`
+    if (!b.name || S.renaming) {
+      const cnt = id => STOCKS.reduce((n, s2) => n + annOf(s2).boxes.filter(x => x.name === id).length, 0)
+      const ws = [...S.words].sort((p, q) => cnt(q.id) - cnt(p.id))
+      h += `<div class="muted">这个框叫什么？点一个你用过的词，或写个新词（任何词都能当名字）：</div><div>${ws.map(w => `<button type="button" class="wbtn" data-act="name:${w.id}">${esc(w.text)}</button>`).join('')}</div>
+            <div class="row"><input type="text" id="newname" placeholder="新词" style="width:140px">${btn('用这个词', false, 'newname')}</div>`
+    } else {
+      const w = W(b.name)
+      h += `<div class="row">名字 <b>${esc(w.text)}</b>${btn('换名字', false, 'rename')}</div>`
+      h += `<div class="row">「${esc(w.text)}」是什么 <input type="text" data-act="wnote:${w.id}" value="${esc(w.note)}" placeholder="一句话，所有图共用；第一次用时写，比如「W 形、V 形都算，有一个就行」" style="flex:1"></div>`
+    }
+    const p = parentOf(b, a)
+    h += `<div class="muted">${p ? `属于「${esc(txt(p.name))}」（${date(p.s)}～${date(p.e)}）：时间上被它包住，默认算属于它` : '不在别的框里'}</div>`
+    if (b.name) {
+      const ds = [...new Set([...descWordsOf(b.name), ...Object.keys(b.desc)])]
+      h += '<div class="muted" style="margin-top:6px">说明（这个名字以前用过的说明默认全带上；这张图上没有的点「没有」）：</div>'
+      if (!ds.length) h += '<div class="muted">（还没有）</div>'
+      for (const w of ds) {
+        const s = descState(b, w)
+        h += `<div class="row">${esc(txt(w))} ${btn('有', s === '有', 'd1:' + w)}${btn('没有', s === '没有', 'd0:' + w)}${s === '没看过' ? '<span class="unseen">没看过：这条是后加的，等它要进 app 时再回头看</span>' : ''}</div>`
+      }
+      h += `<div class="row"><input type="text" id="newdesc" list="allwords" placeholder="加一条说明" style="width:160px">${btn('加', false, 'adddesc')}</div>
+            <datalist id="allwords">${S.words.map(w => `<option value="${esc(w.text)}">`).join('')}</datalist>`
+    }
+    h += `<div class="row">一句话 <input type="text" data-act="bnote" value="${esc(b.note)}" placeholder="可空：只关于这个框" style="flex:1"></div>`
+    if (S.cmp) {
+      const v = verdict(b, st)
+      h += `<h3>对照 app：${v.st}</h3>${v.why.map(([c, t]) => `<span class="${c}">${esc(t)}</span>`).join('')}`
+      if (v.st === '没认出' || v.st === '看到了但不够格') h += `<div class="row">${btn('放过（我标宽了）', false, 'letgo')}<span class="muted">只把这一处从样本里拿掉，不改 app</span></div>`
+      if (v.st === '放过了') h += `<div class="row">${btn('撤销放过', false, 'letgo')}</div>`
+    }
+    h += `<div class="row" style="margin-top:8px">${btn('删掉这个框', false, 'delbox')}</div>`
+  } else if (S.sel.type === 'buy') {
+    const bp = a.buys.find(x => x.id === S.sel.id); if (!bp) return h
+    h += `<h3>买点 · ${date(bp.idx)}</h3>`
+    h += `<div class="row">pattern <select data-act="bpat">${S.patterns.map(p => `<option ${p === bp.pattern ? 'selected' : ''}>${esc(p)}</option>`).join('')}</select></div>`
+    h += `<div class="row"><label><input type="radio" name="bl" data-act="blabel:正例" ${bp.label === '正例' ? 'checked' : ''}> 正例</label>
+          <label><input type="radio" name="bl" data-act="blabel:像但不买" ${bp.label === '像但不买' ? 'checked' : ''}> 像但不买</label></div>`
+    h += `<div class="row">一句话 <input type="text" data-act="pnote" value="${esc(bp.note)}" placeholder="${bp.label === '像但不买' ? '为什么不买（买点那天就看得见的）' : '可空'}" style="flex:1"></div>`
+    h += '<div class="muted">前面各个框在这个买点里扮演哪个 node，由会话按名字、位置和框套框推断；推不出（比如同一个买点前有两段同名的框）时，会在图上指给你问。</div>'
+    if (S.cmp) { const v = buyVerdict(bp, st); h += `<h3>对照 app</h3>${v.lines.map(([c, t]) => `<span class="${c}">${esc(t)}</span>`).join('')}` }
+    h += `<div class="row" style="margin-top:8px">${btn('删掉这个买点', false, 'delbuy')}</div>`
+  }
+  return h
+}
+function sideWords() {
+  let h = '<h3>我的词（跨图、跨 pattern 共用）</h3><div class="muted">只有你用过的词，没有 app 的名单。改措辞只改这里一处，所有框跟着变；意思变了就另写一个新词。</div>'
+  const boxes = STOCKS.flatMap(st => annOf(st).boxes.map(b => ({ b, st })))
+  for (const w of S.words) {
+    const asName = boxes.filter(x => x.b.name === w.id)
+    const asDesc = boxes.filter(x => w.id in x.b.desc).length
+    h += `<div class="card"><div class="row"><b>${esc(w.text)}</b>${btn('改措辞', false, 'wren:' + w.id)}
+          <span class="muted">当名字 ${asName.length} 次 · 当说明 ${asDesc} 次</span></div>`
+    h += `<div class="row"><input type="text" data-act="wnote:${w.id}" value="${esc(w.note)}" placeholder="一句话：它指什么" style="flex:1"></div>`
+    const ds = descWordsOf(w.id)
+    if (ds.length) {
+      h += '<table><tr><th>说明</th><th>有</th><th>没有</th><th>没看过</th></tr>'
+      for (const d of ds) {
+        const c = s => asName.filter(x => descState(x.b, d) === s).length
+        h += `<tr><td>${esc(txt(d))}</td><td>${c('有')}</td><td>${c('没有')}</td><td>${c('没看过')}</td></tr>`
+      }
+      h += '</table>'
+    }
+    h += '</div>'
+  }
+  return h
+}
+function sideSum() {
+  if (!isApp(S.cur)) return `<h3>本轮汇总</h3><div class="muted">「${esc(S.cur)}」还没有 app，没得对照。</div>`
+  let h = `<h3>本轮汇总 · ${APP}（app 改版后这一页标为过期、重出）</h3>
+           <div class="muted">对应表由会话标完后写，原型里预先写好一份示意。只写个数不写百分比；新标注 = 没接触过 app 的图上的框，放前面。</div>`
+  const rows = []
+  for (const w of S.words) {
+    const items = STOCKS.flatMap(st => annOf(st).boxes.filter(b => b.name === w.id && !b.letGo).map(b => ({ b, st, old: annOf(st).touched })))
+    if (!items.length) continue
+    const k = arr => arr.filter(x => verdict(x.b, x.st).st === '认出').length
+    const nw = items.filter(x => !x.old), od = items.filter(x => x.old)
+    const m = MAP[w.text]
+    let cell = m ? '' : '—'
+    if (m) {
+      cell += nw.length < NEW_MIN ? `新：${k(nw)} / ${nw.length}（不足 ${NEW_MIN} 个，还不知道）` : `新：${k(nw)} / ${nw.length}`
+      cell += `<br>老：${k(od)} / ${od.length}`
+      if (chanceOf(w.id) >= CHANCE_WARN) cell += '<br><b>提醒：这类东西图上到处都有，随手一框也常被认出，这一行的数说明不了多少</b>'
+    }
+    const ds = descWordsOf(w.id).map(d => `你说的「${esc(txt(d))}」→ ${DMAP[txt(d)] ? DMAP[txt(d)].by : '还没放进 app'}`)
+    const flagged = S.flags.includes(w.id)
+    rows.push(`<tr><td><b>${esc(w.text)}</b>${ds.length ? '<br>' + ds.join('<br>') : ''}</td><td>${m ? m.by : '还没放进 app（会话写明理由）'}</td><td>${cell}</td>
+               <td>${flagged ? '已记给会话' : btn('这一行不对', false, 'flag:' + w.id)}</td></tr>`)
+  }
+  h += `<table><tr><th>你标的</th><th>app 里由谁来认</th><th>认出几处</th><th></th></tr>${rows.join('')}</table>`
+  const bs = STOCKS.flatMap(st => annOf(st).buys.filter(b => b.pattern === APP).map(b => ({ b, st, old: annOf(st).touched, v: buyVerdict(b, st) })))
+  const line = (arr, tag) => {
+    const pos = arr.filter(x => x.b.label === '正例'), neg = arr.filter(x => x.b.label === '像但不买')
+    return `<span class="neu">${tag}：正例 ${pos.length} 个，app 会买 ${pos.filter(x => x.v.buys).length} 个；像但不买 ${neg.length} 个，app 买了 ${neg.filter(x => x.v.buys).length} 个</span>`
+  }
+  h += `<h3>买点</h3>${line(bs.filter(x => !x.old), '新')}${line(bs.filter(x => x.old), '老')}`
+  const unlinked = bs.filter(x => x.v.lines.some(([c, t]) => c === 'bad' && t.includes('前后没连上')))
+  if (unlinked.length) h += `<h3>前后没连上的</h3>${unlinked.map(x => `<span class="bad">${x.st.symbol} ${dateOf(x.st, x.b.idx)}：各段都认出了，但前后没连上</span>`).join('')}`
+  h += '<div class="muted" style="margin-top:8px">训练段成绩已算好，要看就说（每轮不主动报）。</div>'
+  return h
+}
+function sideJson() {
+  return `<h3>存下来的样子（这一批的文件）</h3><div class="muted">每批一个新文件、文件名带机器名，只新增不改旧文件（改措辞也是新记一条）。框只记词的编号，所以改措辞只动词表；说明里没列出的词 = 没看过。框按日期存，不存系统编号。</div><pre>${esc(JSON.stringify(batch(), null, 1))}</pre>`
+}
+function batch() {
+  const charts = []
+  for (const st of STOCKS) {
+    const a = annOf(st); if (!a.boxes.length && !a.buys.length) continue
+    const d = i => st.bars[i].date
+    charts.push({
+      symbol: st.symbol, ...(a.touched ? { touched_app: true } : {}),
+      boxes: a.boxes.map(b => ({ id: b.id, name: b.name, start: d(b.s), end: d(b.e),
+        ...(Object.keys(b.desc).length ? { desc: Object.fromEntries(Object.entries(b.desc).map(([k, v]) => [k, v ? '有' : '没有'])) } : {}),
+        ...(b.note ? { note: b.note } : {}), ...(b.letGo ? { let_go: true } : {}) })),
+      buy_points: a.buys.map(b => ({ date: d(b.idx), pattern: b.pattern, label: b.label, ...(b.note ? { note: b.note } : {}) })),
+    })
+  }
+  return {
+    file: 'annotations/20261025-140311_upc.json', machine: 'upc', data_fingerprint: 'pkls_until_20251231 @ ' + D.snapshot,
+    words: S.words.map(w => ({ id: w.id, text: w.text, ...(w.note ? { note: w.note } : {}) })),
+    ...(S.patterns.length > 2 ? { new_patterns: S.patterns.slice(2) } : {}),
+    charts,
+  }
+}
+document.addEventListener('click', e => {
+  const act = e.target.getAttribute && e.target.getAttribute('data-act'); if (!act) return
+  const [k, v] = act.split(/:(.*)/s)
+  const a = A()
+  const b = S.sel && S.sel.type === 'box' ? a.boxes.find(x => x.id === S.sel.id) : null
+  const bp = S.sel && S.sel.type === 'buy' ? a.buys.find(x => x.id === S.sel.id) : null
+  if (k === 'stock') { S.stock = +v; S.sel = null; S.cmp = false }          // 换图：对照自动关
+  else if (k === 'mode') { S.mode = v; if (v === 'view') S.cmp = false }
+  else if (k === 'tool') S.tool = v
+  else if (k === 'tab') S.tab = v
+  else if (k === 'cmp') S.cmp = !S.cmp
+  else if (k === 'name' && b) { setName(b, v); S.renaming = false; markEdit() }
+  else if (k === 'newname' && b) { const t = document.getElementById('newname').value.trim(); if (!t) return; setName(b, wordOf(t)); S.renaming = false; markEdit() }
+  else if (k === 'rename' && b) S.renaming = true
+  else if ((k === 'd1' || k === 'd0') && b) { b.desc[v] = k === 'd1'; markEdit() }
+  else if (k === 'adddesc' && b) { const t = document.getElementById('newdesc').value.trim(); if (!t) return; b.desc[wordOf(t)] = true; markEdit() }
+  else if (k === 'letgo' && b) { b.letGo = !b.letGo; markEdit() }
+  else if (k === 'delbox' && b) { a.boxes = a.boxes.filter(x => x !== b); S.sel = null; markEdit() }
+  else if (k === 'blabel' && bp) { bp.label = v; markEdit() }
+  else if (k === 'delbuy' && bp) { a.buys = a.buys.filter(x => x !== bp); S.sel = null; markEdit() }
+  else if (k === 'wren') { const w = W(v); const t = prompt('新的措辞（所有用到它的框都跟着变）', w.text); if (t && t.trim()) w.text = t.trim() }
+  else if (k === 'flag') S.flags.push(v)
+  else return
+  render()
+})
+document.addEventListener('change', e => {
+  const act = e.target.getAttribute && e.target.getAttribute('data-act'); if (!act) return
+  const [k, v] = act.split(/:(.*)/s)
+  const a = A()
+  const b = S.sel && S.sel.type === 'box' ? a.boxes.find(x => x.id === S.sel.id) : null
+  const bp = S.sel && S.sel.type === 'buy' ? a.buys.find(x => x.id === S.sel.id) : null
+  if (k === 'cur') {
+    if (e.target.value === '__new') { const n = prompt('新 pattern 的名字（可以先随便起，之后改）'); if (n && !S.patterns.includes(n)) S.patterns.push(n); if (n) S.cur = n }
+    else S.cur = e.target.value
+    if (!isApp(S.cur)) S.cmp = false
+  } else if (k === 'wnote') W(v).note = e.target.value
+  else if (k === 'bnote' && b) { b.note = e.target.value; markEdit() }
+  else if (k === 'pnote' && bp) { bp.note = e.target.value; markEdit() }
+  else if (k === 'bpat' && bp) { bp.pattern = e.target.value; markEdit() }
+  else return
+  render()
+})
+window.addEventListener('resize', draw)
+render()
+</script>
+</body>
+</html>

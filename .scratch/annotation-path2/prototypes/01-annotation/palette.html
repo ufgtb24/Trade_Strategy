@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<title>安全色板筛选</title>
+<!-- PROTOTYPE：让用户亲眼挑出分不开的颜色对，剩下的就是以后新配色的安全色板。状态只在内存里。 -->
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 12px 16px 60px; font: 13px/1.5 system-ui, sans-serif; color: #0f172a; background: #fff; }
+  h2 { font-size: 15px; margin: 18px 0 6px; }
+  .muted { color: #52525b; }
+  table { border-collapse: collapse; }
+  th { font-weight: 600; font-size: 12px; padding: 2px 4px; white-space: nowrap; }
+  th.col { writing-mode: vertical-rl; height: 70px; vertical-align: bottom; }
+  td.cell { width: 64px; height: 44px; border: 1px solid #e4e4e7; padding: 3px; cursor: pointer; position: relative; }
+  td.cell:hover { outline: 2px solid #111; }
+  td.cell.bad { background: #111; }
+  td.cell.bad::after { content: "分不开"; position: absolute; right: 2px; bottom: 1px; font-size: 10px; color: #fff; }
+  td.self { background: #fafafa; }
+  .bars div { height: 6px; margin: 2px 0; border-radius: 1px; }
+  .blocks { display: flex; gap: 0; margin-top: 3px; }
+  .blocks span { flex: 1; height: 12px; }
+  .sw { display: inline-flex; align-items: center; gap: 6px; margin: 3px 14px 3px 0; }
+  .sw i { width: 34px; height: 18px; display: inline-block; border-radius: 2px; }
+  .fixed i { outline: 2px dashed #111; outline-offset: 1px; }
+  .lane { position: relative; height: 26px; border-bottom: 1px solid #f0f0f0; width: 900px; }
+  .lane span { position: absolute; top: 5px; height: 16px; border-radius: 2px; }
+  pre { background: #f4f4f5; padding: 8px; white-space: pre-wrap; }
+  button { font: inherit; padding: 2px 10px; }
+</style>
+</head>
+<body>
+<b>安全色板筛选</b>（PROTOTYPE）
+<p class="muted">带虚线框的是主视图现在就在用、不改的颜色；其余是候选。下面的表里每一格是两种颜色并排（上面是副图里的细条样子，下面是小色块）。
+<b>看着像、分不开的那一格点一下</b>（再点取消）。不用每格细看，扫一遍点出可疑的就行。点完看最下面的结果。</p>
+<div id="legend"></div>
+<h2>两两对照</h2>
+<table id="grid"></table>
+<h2>副图里的样子（候选色按顺序挨着排）</h2>
+<div id="lanes"></div>
+<h2>结果</h2>
+<div id="result"></div>
+<script>
+'use strict'
+const FIXED = [
+  ['bo', '#16f943'], ['pk', '#2563eb'], ['burst', '#FF1500'], ['tb', '#14b24e'],
+  ['过了 where 灰', '#9ca3af'], ['只检测到 浅灰', '#d1d5db'], ['兜底灰', '#888888'],
+]
+const CAND = [
+  ['1 蓝', '#0072B2'], ['2 橙', '#E69F00'], ['3 天蓝', '#56B4E9'], ['4 青绿', '#009E73'],
+  ['5 黄', '#F0E442'], ['6 朱红', '#D55E00'], ['7 粉紫', '#CC79A7'], ['8 深紫', '#6A3D9A'],
+  ['9 棕', '#8C510A'], ['10 深青', '#01665E'], ['11 粉', '#F781BF'], ['12 浅绿', '#B2DF8A'],
+]
+const ALL = [...FIXED.map(([n, c]) => ({ n, c, fixed: true })), ...CAND.map(([n, c]) => ({ n, c, fixed: false }))]
+const bad = new Set()
+const key = (i, j) => i < j ? i + '-' + j : j + '-' + i
+
+document.getElementById('legend').innerHTML =
+  ALL.map(x => `<span class="sw ${x.fixed ? 'fixed' : ''}"><i style="background:${x.c}"></i>${x.n}</span>`).join('')
+
+function grid() {
+  let h = '<tr><th></th>' + ALL.map(x => `<th class="col">${x.n}</th>`).join('') + '</tr>'
+  ALL.forEach((a, i) => {
+    if (a.fixed) return             // 现用色之间不用比，整行省掉
+    h += `<tr><th style="text-align:right">${a.n}</th>`
+    ALL.forEach((b, j) => {
+      if (j >= i) { h += '<td class="self"></td>'; return }
+      if (a.fixed && b.fixed) { h += '<td class="self"></td>'; return }
+      const k = key(i, j)
+      h += `<td class="cell ${bad.has(k) ? 'bad' : ''}" data-k="${k}"><div class="bars"><div style="background:${a.c}"></div><div style="background:${b.c}"></div></div>` +
+           `<div class="blocks"><span style="background:${a.c}"></span><span style="background:${b.c}"></span></div></td>`
+    })
+    h += '</tr>'
+  })
+  document.getElementById('grid').innerHTML = h
+}
+function lanes() {
+  // 模拟副图：几条轨上，各色事件挨着、交错出现
+  const order = ALL.map((x, i) => i)
+  let h = ''
+  for (let r = 0; r < 3; r++) {
+    h += '<div class="lane">'
+    let x = 4
+    for (let t = 0; t < order.length; t++) {
+      const c = ALL[order[(t + r * 5) % order.length]].c
+      const w = 14 + ((t * 7 + r * 3) % 4) * 12
+      h += `<span style="left:${x}px;width:${w}px;background:${c}"></span>`
+      x += w + 3
+    }
+    h += '</div>'
+  }
+  document.getElementById('lanes').innerHTML = h
+}
+function result() {
+  // 剔除：反复去掉卷入「分不开」最多的候选色（主视图现用色不剔），直到没有分不开的对
+  const keep = new Set(ALL.map((_, i) => i))
+  const pairs = [...bad].map(k => k.split('-').map(Number))
+  for (;;) {
+    const live = pairs.filter(([i, j]) => keep.has(i) && keep.has(j))
+    if (!live.length) break
+    const cnt = {}
+    for (const [i, j] of live) for (const x of [i, j]) if (!ALL[x].fixed) cnt[x] = (cnt[x] || 0) + 1
+    const ks = Object.keys(cnt)
+    if (!ks.length) break
+    const worst = ks.reduce((p, x) => cnt[x] > cnt[p] ? x : p)
+    keep.delete(+worst)
+  }
+  const safe = ALL.filter((x, i) => keep.has(i) && !x.fixed)
+  const dropped = ALL.filter((x, i) => !keep.has(i))
+  const marked = [...bad].map(k => k.split('-').map(Number)).map(([i, j]) => `${ALL[i].n} ↔ ${ALL[j].n}`)
+  document.getElementById('result').innerHTML =
+    `<div>你点出的分不开：${marked.length ? marked.join('；') : '（还没有）'}</div>` +
+    `<div>因此剔掉：${dropped.length ? dropped.map(x => x.n).join('、') : '（无）'}</div>` +
+    `<div style="margin-top:6px"><b>安全色板（按这个顺序分配给新种类）</b></div>` +
+    safe.map(x => `<span class="sw"><i style="background:${x.c}"></i>${x.n} ${x.c}</span>`).join('') +
+    `<p class="muted">把下面这段复制给我就行：</p><pre>分不开：${marked.join('；') || '无'}\n安全色板：${safe.map(x => x.c).join(' ')}</pre>`
+}
+document.addEventListener('click', e => {
+  const td = e.target.closest('td.cell'); if (!td) return
+  const k = td.dataset.k
+  bad.has(k) ? bad.delete(k) : bad.add(k)
+  grid(); result()
+})
+grid(); lanes(); result()
+</script>
+</body>
+</html>

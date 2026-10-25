@@ -1,0 +1,34 @@
+{
+ "关掉 distinct_pk": {
+  "base": 1569,
+  "after": 2700,
+  "added": 1131,
+  "removed": 0,
+  "added_stocks": 893,
+  "p_hit_20": 0.9999816765086778
+ },
+ "关掉 vol_spike": {
+  "base": 1569,
+  "after": 2427,
+  "added": 858,
+  "removed": 0,
+  "added_stocks": 647,
+  "p_hit_20": 0.9998442804072483
+ },
+ "关掉 first_drought": {
+  "base": 1569,
+  "after": 2564,
+  "added": 995,
+  "removed": 0,
+  "added_stocks": 666,
+  "p_hit_20": 0.999948292660238
+ },
+ "关掉 day_drop": {
+  "base": 1569,
+  "after": 1677,
+  "added": 108,
+  "removed": 0,
+  "added_stocks": 99,
+  "p_hit_20": 0.7379505287105044
+ }
+}

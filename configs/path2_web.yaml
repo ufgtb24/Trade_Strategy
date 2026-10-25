@@ -1,6 +1,8 @@
 backend_port: 8001
 backend_port_dbg: 8009
 frontend_port: 5171
+debug_mode_backend_port: 8011
+debug_mode_frontend_port: 5181
 dataset_dir: /home/yu/PycharmProjects/Trade_Strategy/datasets/pkls
 scan:
   start_date: '2025-01-01'
