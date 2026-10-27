@@ -48,8 +48,12 @@
   #chartcol { overflow: auto; padding: 4px 0 0 0; }
   #side { border-left: 1px solid #d4d4d8; overflow: auto; padding: 0 10px 40px; }
   #tabs { position: sticky; top: 0; z-index: 1; background: #fff; display: flex; gap: 4px; padding: 6px 0; border-bottom: 1px solid var(--line); }
-  .hdr { display: flex; gap: 8px; align-items: center; margin: 10px 0 4px; padding-bottom: 2px; border-bottom: 1px solid var(--line); }
-  .hdr .grow { flex: 1; }
+  .hdr { display: flex; gap: 8px; align-items: center; margin: 14px 0 4px; padding-top: 5px; border-top: 2px solid #3f3f46; }   /* 大节：粗线 + 间距（不用浅灰底、不用黑底） */
+  .blk { border: 1px solid #a1a1aa; border-radius: 4px; padding: 4px 7px; margin: 5px 0; }   /* 一项一块：侧栏统一的分隔规则 */
+  .blk .blk { margin: 5px 0 1px 8px; }                                                  /* 子名称的块放在父块里 */
+  .l2 { display: flex; flex-wrap: wrap; gap: 4px 6px; align-items: center; margin: 3px 0 0 12px; }   /* 块内第二行起缩进；放不下只在块内折 */
+  .conn { display: flex; gap: 6px; align-items: center; margin: 0 0 0 14px; font-family: var(--mono); font-size: 11px; }   /* 两块之间的 ↓ 与连没连上 */
+  .grow { flex: 1; }
   .kv { display: grid; grid-template-columns: 100px 1fr; gap: 4px 8px; align-items: center; }
   .kv > .k { font-family: var(--mono); font-size: 11.5px; color: var(--sym); }
   .kv input[type=text] { width: 100%; }
@@ -59,7 +63,6 @@
   th { font-family: var(--mono); font-size: 11px; color: var(--sym); font-weight: 400; }
   td.sub { padding-left: 14px; }
   td:first-child, th:first-child, th { white-space: nowrap; }
-  .card { border: 1px solid #d4d4d8; border-radius: 4px; padding: 5px 7px; margin: 6px 0; }
   #side pre { background: #f4f4f5; padding: 6px; font-size: 11px; max-height: 640px; overflow: auto; white-space: pre-wrap; }
   svg text { user-select: none; }
   .chip { font: 12.5px system-ui, sans-serif; color: var(--biz); background: var(--bizbg); border: 1.5px solid transparent; border-radius: 3px; padding: 0 5px; cursor: pointer; }
@@ -70,8 +73,6 @@
   .node { display: inline-flex; flex-direction: column; align-items: center; gap: 1px; }
   .nest { display: inline-flex; align-items: center; gap: 3px; padding: 2px 3px; border: 1.5px solid #3f3f46; border-radius: 4px; }   /* 父块与被包住的子块围在一起：深色实线框，块间保留 ⊃ */
   .arr { font-family: var(--mono); font-size: 11px; color: var(--sym); display: inline-flex; flex-direction: column; align-items: center; line-height: 1.1; padding-top: 2px; }
-  .vrow { border-left: 2px solid #d4d4d8; padding: 3px 0 3px 7px; margin: 6px 0; }
-  .vrow .meta { display: flex; gap: 8px; align-items: center; margin-top: 3px; flex-wrap: wrap; }
   .lnk { font-family: var(--mono); font-size: 11px; color: var(--sym); cursor: pointer; text-decoration: underline dotted; }
 </style>
 </head>
@@ -640,7 +641,7 @@ function sideEdit() {
   if (!S.sel) return `<div class="hdr">${sym('— 未选中')}</div>`
   if (S.sel.type === 'box') {
     const b = a.boxes.find(x => x.id === S.sel.id); if (!b) return ''
-    let h = `<div class="hdr">${sym('box #' + b.id, '框编号')} ${sym(span(st, b), '起止日期')}<span class="grow"></span>${btn('✕', false, 'delbox', 'title="删除这个框"')}</div><div class="kv">`
+    let h = `<div class="hdr">${sym('box #' + b.id, '框编号')} ${sym(span(st, b), '起止日期')}<span class="grow"></span>${btn('✕', false, 'delbox', 'title="删除这个框"')}</div><div class="blk"><div class="kv">`
     if (!b.name || S.renaming) {
       const cnt = id => STOCKS.reduce((n, s2) => n + annOf(s2).boxes.filter(x => x.name === id).length, 0)
       const ws = [...S.words].sort((p, q) => cnt(q.id) - cnt(p.id))
@@ -665,36 +666,37 @@ function sideEdit() {
             <datalist id="allwords">${S.words.map(w => `<option value="${esc(w.text)}">`).join('')}</datalist>`
     }
     h += `${kk('instance 注释', '只属于这一个框的备注')}<input type="text" class="biz" data-act="bnote" value="${esc(b.note)}" placeholder="box.note">`
-    h += '</div>'
+    h += '</div></div>'
     if (S.cmp) {
       const v = verdict(b, st)
+      let kv = ''
       const vt = tag(v.st, v.st === 'missing' || v.st === 'detected' ? 'bad' : '', ST_TIP[v.st]), vk = v.st === 'let_go' ? null : v.st === 'unmapped' ? 'session' : 'app'   // let_go 是用户的决定，unmapped 是还没翻译
       h += `<div class="hdr">${sym('compare', '和 app 对照的结果')} ${vk ? seg(vk, vt) : vt}<span class="grow"></span>${
-        ['missing', 'detected', 'let_go'].includes(v.st) ? btn('let_go', v.st === 'let_go', 'letgo', 'title="我标宽了：只从样本里拿掉，不改 app"') : ''}</div><div class="kv">`
-      if (v.res) h += `${kk('resolver', '你的这个词由 app 里的谁来认')}<div class="row">${seg('session', `<span title="${esc(MAP[txt(b.name)].doc)}">${sym(v.res)}</span>${v.flags.map(f => tag('⚠ ' + f, 'dash', FLAG_TIP[f])).join('')}`)}</div>`
+        ['missing', 'detected', 'let_go'].includes(v.st) ? btn('let_go', v.st === 'let_go', 'letgo', 'title="我标宽了：只从样本里拿掉，不改 app"') : ''}</div>`
+      if (v.res) kv += `${kk('resolver', '你的这个词由 app 里的谁来认')}<div class="row">${seg('session', `<span title="${esc(MAP[txt(b.name)].doc)}">${sym(v.res)}</span>${v.flags.map(f => tag('⚠ ' + f, 'dash', FLAG_TIP[f])).join('')}`)}</div>`
       if (v.checks.length) {
-        h += `${kk('checks', '属性逐条对照：你的判断和 app 的判断')}<table><tr><th${tip('属性；where: 开头的是 app 里有、你没写的条件')}>attr</th><th${tip('你的判断')}>user</th><th${tip('app 的判断')}>app</th></tr>${v.checks.map(c =>
+        kv += `${kk('checks', '属性逐条对照：你的判断和 app 的判断')}<table><tr><th${tip('属性；where: 开头的是 app 里有、你没写的条件')}>attr</th><th${tip('你的判断')}>user</th><th${tip('app 的判断')}>app</th></tr>${v.checks.map(c =>
           `<tr><td class="${c.attr ? '' : 'st-session'}">${c.attr ? biz(c.attr) : sym('where:' + c.clause, 'app 里有、你没写的条件')}</td><td>${sym(c.user)}</td><td class="st-app">${c.app === 'fail' ? tag('fail', 'bad', 'app 判这条不成立，和你的判断相反') : sym(c.app)}</td></tr>`).join('')}</table>`
       }
-      h += '</div>'
+      if (kv) h += `<div class="blk"><div class="kv">${kv}</div></div>`
     }
     return h
   }
   const bp = a.buys.find(x => x.id === S.sel.id); if (!bp) return ''
-  let h = `<div class="hdr">${sym('buy #' + bp.id, '买点编号')} ${sym(date(bp.idx), '买点日期')}<span class="grow"></span>${btn('✕', false, 'delbuy', 'title="删除这个买点"')}</div><div class="kv">`
+  let h = `<div class="hdr">${sym('buy #' + bp.id, '买点编号')} ${sym(date(bp.idx), '买点日期')}<span class="grow"></span>${btn('✕', false, 'delbuy', 'title="删除这个买点"')}</div><div class="blk"><div class="kv">`
   h += `${kk('pattern', '这个买点归在哪个 pattern')}<select data-act="bpat">${S.patterns.map(p => `<option ${p === bp.pattern ? 'selected' : ''}>${esc(p)}</option>`).join('')}</select>`
   h += `${kk('label', 'buy = 该买；no_buy = 像但不该买')}<div class="row">${btn('buy', bp.label === 'buy', 'blabel:buy')}${btn('no_buy', bp.label === 'no_buy', 'blabel:no_buy')}</div>`
   h += `${kk('instance 注释', '只属于这个买点的备注')}<input type="text" class="biz" data-act="pnote" value="${esc(bp.note)}" placeholder="${bp.label === 'no_buy' ? 'why no_buy（当天可见）' : 'buy.note'}">`
-  h += '</div>'
+  h += '</div></div>'
   // 成员：一排可点的名称块，按先后排、被包住的挂在里面；点一下进 / 出
   const ms = membersOf(bp, st), cmp = S.cmp && isApp(bp.pattern)
   const v = cmp ? buyVerdict(bp, st) : null
   h += `<div class="hdr">${sym('members', '这个买点的买入理由：点一块收进 / 移出；⊃ = 套在里面；悬停一块，主图描出对应的框')}</div>`
-  h += `<div class="chain">${treeOf(ms).map((n, i) => (i ? arrow(cmp ? v.links[i - 1] : null) : '') +
+  h += `<div class="blk"><div class="chain">${treeOf(ms).map((n, i) => (i ? arrow(cmp ? v.links[i - 1] : null) : '') +
         (n.kids.length ? `<span class="nest">${chipOf(n.b, true, cmp)}${n.kids.map(k => sym('⊃', '套在前一块里面') + chipOf(k, true, cmp)).join('')}</span>` : chipOf(n.b, true, cmp))).join('')}${
-        ms.length ? arrow(null) : ''}<span class="node">${tag(bp.label, '', '这个买点的 label')}</span></div>`
+        ms.length ? arrow(null) : ''}<span class="node">${tag(bp.label, '', '这个买点的 label')}</span></div></div>`
   const others = a.boxes.filter(b => b.s <= bp.idx && !ms.includes(b)).sort((p, q) => p.s - q.s)
-  if (others.length) h += `<div class="row" style="margin-top:6px">${sym('others', '这张图上买点之前、没收进成员的框；点一块收进')} ${others.map(b => chipOf(b, false, false)).join('')}</div>`
+  if (others.length) h += `<div class="hdr">${sym('others', '这张图上买点之前、没收进成员的框；点一块收进')}</div><div class="blk"><div class="row">${others.map(b => chipOf(b, false, false)).join('')}</div></div>`
   return h
 }
 function chipOf(b, on, cmp) {
@@ -709,7 +711,7 @@ function sideVocab() {
   for (const w of S.words) {
     const asName = boxes.filter(b => b.name === w.id)
     const asAttr = boxes.filter(b => w.id in b.attrs).length
-    h += `<div class="card"><div class="row"><b class="biz">${esc(w.text)}</b>${btn('✎', false, 'wren:' + w.id, 'title="改措辞（全局生效）"')}<span class="grow"></span>${sym(`name×${asName.length} · attr×${asAttr}`, `当名称用了 ${asName.length} 次，当属性用了 ${asAttr} 次（所有图）`)}</div>
+    h += `<div class="blk"><div class="row"><b class="biz">${esc(w.text)}</b>${btn('✎', false, 'wren:' + w.id, 'title="改措辞（全局生效）"')}<span class="grow"></span>${sym(`name×${asName.length} · attr×${asAttr}`, `当名称用了 ${asName.length} 次，当属性用了 ${asAttr} 次（所有图）`)}</div>
           <div class="kv" style="margin-top:3px">${kk('定义', '这个词的定义；跨图共用')}<input type="text" class="biz" data-act="wdef:${w.id}" value="${esc(w.def)}" placeholder="word.definition"></div>`
     const ds = attrsOf(w.id)
     if (ds.length) {
@@ -729,7 +731,7 @@ function sideSum() {
   const inst = STOCKS.flatMap((st, si) => annOf(st).buys.filter(b => b.pattern === S.cur).map(bp => ({ bp, st, si, sig: sigOf(bp, st), ms: membersOf(bp, st) })))
   const N = inst.length
   let h = `<div class="hdr">${sym('pattern', '当前 pattern：归在这个名字下的一组买点；用顶栏切换')} <b class="biz">${esc(S.cur)}</b> ${app ? sym('app: ' + APP, '目前实现这个 pattern 的 app') + ' ' + seg('session', tag('resolver: mock', 'dash', 'mock 专有：「由谁来认」是手写的示意，不是会话推出来的')) : sym('app: —', '还没有 app：没有翻译，也没有对照结果')}</div>`
-  h += `<div class="kv">${kk('定义', '一句话写这个 pattern 想抓什么')}<input type="text" class="biz" data-act="pdef" value="${esc(S.pdef[S.cur] || '')}" placeholder="pattern.definition"></div>`
+  h += `<div class="blk"><div class="kv">${kk('定义', '一句话写这个 pattern 想抓什么')}<input type="text" class="biz" data-act="pdef" value="${esc(S.pdef[S.cur] || '')}" placeholder="pattern.definition"></div></div>`
   // 元素：本 pattern 各 instance 成员里出现过的名称，竖排、上下顺序 = 名称轨顺序；套在里面的缩进；箭头在相邻顶层元素之间
   const rk = rankOf(S.cur)
   const kidName = new Set(), topName = new Set()
@@ -739,7 +741,7 @@ function sideSum() {
   const uniq = arr => [...new Map(arr.map(x => [x.b.id, x])).values()]
   const cell = arr => { const k = arr.filter(x => verdict(x.b, x.st).st === 'qualified').length; return `${k}/${arr.length}` }
   const tops = [...topName].sort((p, q) => rk[p] - rk[q])
-  const elem = (id, kid) => {
+  const elem = (id, kid, inner = '') => {          // 一个名称一块：第一行名称 + in；第二行起缩进放翻译和 app 结果、属性；子名称的块放在里面
     const w = W(id), m = MAP[w.text], items = uniq(memBoxes(id))
     const attrs = attrsOf(id).map(d => {
       const t = items.filter(x => attrState(x.b, d) === 'true').length, nl = items.filter(x => attrState(x.b, d) === 'null').length
@@ -747,12 +749,13 @@ function sideSum() {
       return `<span class="row" style="gap:3px"><span class="chip ro" style="font-size:11.5px">${esc(txt(d))}</span>${sym(t + '/' + (items.length - nl), `判断过「${txt(d)}」的 ${items.length - nl} 个框里，${t} 个是 true`)}${nl ? tag('null ' + nl, 'dash', `还有 ${nl} 个框没判断这一条`) : ''}${app && !dm ? seg('session', tag('unmapped', 'dash', '这条属性还没翻译进 app')) : ''}</span>`
     }).join('')
     const sf = app && m && m.atom ? ['default_params'] : [], af = app && m && chanceOf(id) >= CHANCE_WARN ? ['chance_high'] : []
-    // 一行按来源排成连续三段：用户的（名称、in）| 会话翻译（由谁来认、⚠ default_params、⚑）| app 跑出（qualified、chance_high）
+    // 第二行按来源排成连续两段：会话翻译（由谁来认、⚠ default_params、⚑）| app 跑出（qualified、chance_high）
     const ses = app ? `<span title="${esc(m ? '由谁来认「' + w.text + '」——' + m.doc : '「' + w.text + '」还没翻译：app 里没有对应的东西')}">${sym(resName(m))}</span>${sf.map(f => tag('⚠ ' + f, 'dash', FLAG_TIP[f])).join('')}${S.flags.includes(id) ? tag('flagged', 'on', '你已标过这一行翻译不对') : btn('⚑', false, 'flag:' + id, 'title="这一行翻译不对就点它"')}` : ''
     const run = app && m ? `${sym('qualified ' + cell(items), `「${w.text}」框里 app 认出够格的 / 框数（所有图）`)}${af.map(f => tag('⚠ ' + f, 'dash', FLAG_TIP[f])).join('')}` : ''
-    return `<div class="erow" style="margin-left:${kid ? 18 : 0}px">
-      <div class="row">${kid ? sym('⊃', '套在上一行的框里面') : ''}${roChip({ id: 'n' + id, name: id })}${sym('in ' + inOf(id) + '/' + N, `${N} 个买点里有 ${inOf(id)} 个的成员中有「${w.text}」`)}<span class="grow"></span>${seg('session', ses)}${seg('app', run)}</div>
-      ${attrs ? `<div class="row" style="margin:2px 0 0 14px;gap:6px">${attrs}</div>` : ''}</div>`
+    return `<div class="blk">
+      <div class="row">${kid ? sym('⊃', '套在父名称的框里面') : ''}${roChip({ id: 'n' + id, name: id })}<span class="grow"></span>${sym('in ' + inOf(id) + '/' + N, `${N} 个买点里有 ${inOf(id)} 个的成员中有「${w.text}」`)}</div>
+      ${ses || run ? `<div class="l2">${seg('session', ses)}${seg('app', run)}</div>` : ''}
+      ${attrs ? `<div class="l2">${attrs}</div>` : ''}${inner}</div>`
   }
   const linkAgg = (p, q) => {                       // 相邻两个顶层元素之间：各 instance 的 link 汇总
     if (!app) return ''
@@ -767,9 +770,9 @@ function sideSum() {
   }
   h += `<div class="hdr">${sym('elements', '这个 pattern 的买点成员里出现过的名称，按先后从上到下排')} ${sym('n=' + N, `这个 pattern 一共 ${N} 个买点（所有图）`)}<span class="grow"></span></div>`
   tops.forEach((id, i) => {
-    if (i) h += `<div class="arr" style="flex-direction:row;gap:6px;margin:1px 0 1px 10px"><span title="上下两行的先后">↓</span> ${linkAgg(tops[i - 1], id)}</div>`
-    h += elem(id, false)
-    for (const k of [...kidName].filter(k => !topName.has(k) && inst.some(x => treeOf(x.ms).some(n => n.b.name === id && n.kids.some(c => c.name === k))))) h += elem(k, true)
+    if (i) h += `<div class="conn"><span title="上下两块的先后">↓</span> ${linkAgg(tops[i - 1], id)}</div>`
+    const kids = [...kidName].filter(k => !topName.has(k) && inst.some(x => treeOf(x.ms).some(n => n.b.name === id && n.kids.some(c => c.name === k))))
+    h += elem(id, false, kids.map(k => elem(k, true)).join(''))
   })
   // 分组：按骨架（顶层成员名称序列）完全相同归组；每组一个「→ pattern」
   const groups = {}
@@ -782,9 +785,10 @@ function sideSum() {
     const ab = lb => xs.filter(x => x.bp.label === lb && buyVerdict(x.bp, x.st).app === 'buy').length
     const part = (lb, n) => !n ? '' : sym(`${lb} ${n}`, lb === 'buy' ? `其中 ${n} 个你标 buy（该买）` : `其中 ${n} 个你标 no_buy（像但不该买）`) + (app ? seg('app', tag('app:buy ' + ab(lb) + '/' + n, (lb === 'buy' ? ab(lb) < n : ab(lb) > 0) ? 'bad' : '',
       lb === 'buy' ? `这 ${n} 个 buy，app 买了 ${ab(lb)} 个${ab(lb) < n ? `，漏买 ${n - ab(lb)} 个` : ''}` : `这 ${n} 个 no_buy，app 买了 ${ab(lb)} 个${ab(lb) > 0 ? `，误买 ${ab(lb)} 个` : ''}`)) : '')   // buy 看 app 漏了几个，no_buy 看 app 误买几个，有问题的反白
-    h += `<div class="vrow"><div class="chain">${chain}</div><div class="meta">${sym('×' + xs.length, `这组 ${xs.length} 个买点`)} ${part('buy', nb)} ${part('no_buy', nn)}<span class="grow"></span>
-          <select data-act="vmove:${esc(sig)}" class="sym" title="把整组挪到别的 pattern；只改归类，不切页"><option value="">→ pattern</option>${S.patterns.filter(p => p !== S.cur).map(p => `<option>${esc(p)}</option>`).join('')}<option value="__new">+ new</option></select></div>
-          <div class="meta">${xs.map(x => thumb(x)).join('')}</div></div>`
+    h += `<div class="blk"><div class="chain">${chain}</div>
+          <div class="row" style="flex-wrap:nowrap;align-items:flex-start;margin-top:3px"><span class="row" style="flex:1">${sym('×' + xs.length, `这组 ${xs.length} 个买点`)} ${part('buy', nb)} ${part('no_buy', nn)}</span>
+          <select style="flex:none" data-act="vmove:${esc(sig)}" class="sym" title="把整组挪到别的 pattern；只改归类，不切页"><option value="">→ pattern</option>${S.patterns.filter(p => p !== S.cur).map(p => `<option>${esc(p)}</option>`).join('')}<option value="__new">+ new</option></select></div>
+          <div class="row" style="margin-top:4px">${xs.map(x => thumb(x)).join('')}</div></div>`
   }
   return h
 }
