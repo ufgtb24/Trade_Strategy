@@ -15,3 +15,5 @@ scan:
   price_max: 30
   volume_min: 10000
 last_selected_pattern: bb_v1
+workflow:
+  debug_view_guard: false

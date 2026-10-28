@@ -51,7 +51,7 @@ def _scan_ticker_multi(pkl_path, module_paths, start_date, end_date,
                        pattern_params_dicts,
                        price_min=None, price_max=None, volume_min=None,
                        first_passage_enabled=True, first_passage_k=5.0, bars_until=None,
-                       view_floor=None):
+                       view_floor=None, raw_bars=False):
     """单股多 pattern worker(模块级,ProcessPool pickle 安全)。
 
     返回 4-tuple (symbol, per_pattern_dict | None, random_first_passage | None, err | None):
@@ -72,7 +72,8 @@ def _scan_ticker_multi(pkl_path, module_paths, start_date, end_date,
     buffered win)。
 
     bars_until:非 None → 行情经 chart_workflow.loader 读(pkl_path 所在目录必须是截断副本),截到这一天(含);
-    None → 直接读 pkl(扫描脚本用)。
+    None → 直接读 pkl(扫描脚本用)。raw_bars=True(调试视图护栏关着)时不经 loader、不要求截断副本,
+    读完整 pkl 后同样截到 bars_until(guard.raw_bars)。
     view_floor:非 None → 调试视图的看图下界:投影时删掉锚点早于它的事件(serialize.redact_before),
     内部照常用含预热的 win 计算。
 
@@ -87,6 +88,9 @@ def _scan_ticker_multi(pkl_path, module_paths, start_date, end_date,
     try:
         if bars_until is None:
             df = pd.read_pickle(pkl_path)
+        elif raw_bars:
+            from path2_web.guard import raw_bars as _raw_bars
+            df = _raw_bars(Path(pkl_path).parent, symbol, bars_until)
         else:
             from chart_workflow.loader import load_bars
             df = load_bars(Path(pkl_path).parent, symbol, bars_until)
@@ -311,7 +315,8 @@ def run_scan_multi(*, data_dir,
     price_min/price_max/volume_min:扫描过滤(见 _scan_ticker_multi);三者一并落盘为
     scan.filters,供事后解释命中数差异。
     view_guard:{view_floor, train_end, snapshot_sha} | None——调试视图的看图范围护栏(path2_web/guard.py)。
-    非 None 时每只股票经 chart_workflow.loader 读(data_dir 必须是截断副本),截到 train_end;投影时删掉锚点
+    非 None 时每只股票经 chart_workflow.loader 读(data_dir 必须是截断副本;带 unguarded = true 时不经 loader、
+    不要求副本),截到 train_end;投影时删掉锚点
     早于 view_floor 的事件(每只股票每个 pattern 记下 view_floor_idx);原样落盘为 scan.view_guard;
     起止日期由调用方先截进看图范围。
     """
@@ -337,7 +342,8 @@ def run_scan_multi(*, data_dir,
                               first_passage_enabled=first_passage_enabled,
                               first_passage_k=first_passage_k,
                               bars_until=(view_guard or {}).get("train_end"),
-                              view_floor=(view_guard or {}).get("view_floor")) for p in pkls]
+                              view_floor=(view_guard or {}).get("view_floor"),
+                              raw_bars=bool((view_guard or {}).get("unguarded"))) for p in pkls]
             for fut in as_completed(futs):
                 if cancel_event is not None and cancel_event.is_set():
                     # 强制终止 worker(SIGKILL + waitpid 死亡确认)

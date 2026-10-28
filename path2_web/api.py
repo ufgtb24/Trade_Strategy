@@ -245,7 +245,7 @@ def build_router(*, registry, config_path, get_config, set_config,
     @router.get("/ohlc")
     def get_ohlc(symbol: str, start: str, end: str):
         out = guard.ohlc(get_config(), symbol, start, end)
-        guard.record_chart(out, debug_seen)      # 记不进「看过」就不给图
+        guard.record_chart(get_config(), out, debug_seen)      # 记不进「看过」就不给图
         return out
 
     @router.get("/mode")

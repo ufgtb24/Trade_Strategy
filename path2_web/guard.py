@@ -37,10 +37,16 @@ train_end 先和读行情的上限 chart_workflow.loader.read_ceiling() 取小,�
 检测代码(path2/)不为护栏改动,这里也不认具体事件类型去逐个清理。
 
 只做截取与拦截,不做任何走势判断(纯投影层)。
+
+护栏开关(workflow.debug_view_guard,缺省 true):设成 false 时调试视图改读顶层 dataset_dir 的完整行情
+(不必是截断副本),读出来照样截到训练段末日 train_end(与读行情上限取小,不越过 2025-12-31);
+不核对副本、不设看图下界、不记看过。打开扫描时只拦没有护栏标记的旧扫描、另一种模式的扫描和
+train_end 比现在晚的扫描。开关关着扫出来的文件 snapshot_sha 为 null,开关打开后当换过副本拦掉。
 """
 from __future__ import annotations
 
 import re
+from pathlib import Path
 
 import pandas as pd
 from fastapi import HTTPException
@@ -48,25 +54,49 @@ from fastapi.encoders import jsonable_encoder
 
 from chart_workflow import mode as cw_mode
 from chart_workflow import views
-from chart_workflow.loader import NotASnapshot, check_snapshot
+from chart_workflow.loader import NotASnapshot, check_snapshot, check_symbol, read_ceiling
 from chart_workflow.snaplock import fingerprint
 from chart_workflow.state import StateRootMissing
 from path2_web.data import serialize_ohlc, slice_window
 from path2_web.serialize import event_anchor, redact_before
-from path2_web.workflow import _bars, _data_dir, _is_date, _train_end, _view_floor
+from path2_web.workflow import (_REPO_ROOT, _bars, _data_dir, _is_date, _train_end, _view_floor,
+                                _wf_cfg)
 
 TRADING_TO_CALENDAR_RATIO = 1.65   # 与 path2_web/scan.py 同值:交易日 → 日历日
 
 _PRICE_KEYS = ("o", "h", "l", "c", "v", "rv")
 
+_NO_FLOOR = "1900-01-01"   # 护栏关掉时的看图下界:等于不设
+
+
+def unguarded(cfg: dict) -> bool:
+    """护栏开关关着(workflow.debug_view_guard 为 false)。"""
+    return _wf_cfg(cfg).get("debug_view_guard", True) is False
+
+
+def raw_bars(ddir, symbol: str, end: str) -> pd.DataFrame:
+    """护栏关着时读一只股票:ddir/<symbol>.pkl 不必是截断副本;去 tz、按日期排序,截到
+    min(end, read_ceiling())(含)。代码名不合格 → ValueError;文件不存在 → FileNotFoundError。"""
+    check_symbol(symbol)
+    df = pd.read_pickle(Path(ddir) / f"{symbol}.pkl")
+    if getattr(df.index, "tz", None) is not None:
+        df = df.copy()
+        df.index = df.index.tz_localize(None)
+    df = df.sort_index()
+    return df[df.index <= pd.Timestamp(min(str(end), read_ceiling()))]
+
 
 def bounds(cfg: dict) -> tuple[str, str]:
-    """本轮看图范围 (view_floor, train_end)。"""
-    return _view_floor(cfg), _train_end(cfg)
+    """本轮看图范围 (view_floor, train_end);护栏关着时不设下界。"""
+    return (_NO_FLOOR if unguarded(cfg) else _view_floor(cfg)), _train_end(cfg)
 
 
 def data_dir(cfg: dict) -> str:
-    """调试视图读的截断副本目录(先核对是不是副本、是不是账上登记的那一份,不是就 503)。"""
+    """调试视图读的行情目录。护栏开着:截断副本(先核对是不是副本、是不是账上登记的那一份,不是就 503);
+    关着:顶层 dataset_dir。"""
+    if unguarded(cfg):
+        d = Path(cfg["dataset_dir"])
+        return str(d if d.is_absolute() else _REPO_ROOT / d)
     d = _data_dir(cfg)
     try:
         check_snapshot(d)
@@ -76,9 +106,17 @@ def data_dir(cfg: dict) -> str:
 
 
 def bars(cfg: dict, symbol: str, end: str | None = None) -> pd.DataFrame:
-    """经 chart_workflow.loader 读一只股票,截到 min(end, train_end)(含)。"""
+    """读一只股票,截到 min(end, train_end)(含)。护栏开着经 chart_workflow.loader 读截断副本。"""
     te = _train_end(cfg)
-    return _bars(cfg, symbol, min(str(end), te) if end else te)
+    until = min(str(end), te) if end else te
+    if not unguarded(cfg):
+        return _bars(cfg, symbol, until)
+    try:
+        return raw_bars(data_dir(cfg), symbol, until)
+    except FileNotFoundError:
+        raise HTTPException(404, f"pkl not found: {symbol}") from None
+    except ValueError as e:                  # 代码名不合格
+        raise HTTPException(400, str(e)) from None
 
 
 def check_dates(start, end) -> None:
@@ -119,9 +157,11 @@ def _record(**kw) -> None:
         raise HTTPException(503, f"看过记录写不进去:{e}") from None
 
 
-def record_chart(out: dict, seen: set) -> None:
+def record_chart(cfg: dict, out: dict, seen: set) -> None:
     """露出了 K 线的图记一条看过(surface=debug);seen 是本进程已记过的图窗,同一图窗只记一次。
-    记不进去 → 503(不给图)。"""
+    记不进去 → 503(不给图)。护栏关着不记。"""
+    if unguarded(cfg):
+        return
     shown = [b["date"] for b in out["bars"] if b["o"] is not None]
     if not shown:
         return
@@ -134,7 +174,10 @@ def record_chart(out: dict, seen: set) -> None:
 
 
 def record_preview(cfg: dict, symbol: str, start: str, end: str) -> None:
-    """单股预览露出了这只股票 [start, end](end 是前瞻窗终点)的命中与成绩:记一条看过。记不进去 → 503。"""
+    """单股预览露出了这只股票 [start, end](end 是前瞻窗终点)的命中与成绩:记一条看过。记不进去 → 503。
+    护栏关着不记。"""
+    if unguarded(cfg):
+        return
     _record(event="show_chart", charts=[{"symbol": symbol, "start": start, "end": min(end, _train_end(cfg))}],
             note="调试视图的单股预览")
 
@@ -144,7 +187,10 @@ def _scan_list_id(name: str) -> str:
 
 
 def record_scan_open(cfg: dict, name: str, data: dict) -> None:
-    """打开扫描:结果列表露出每只命中股的成绩,按整份清单的口径记一条 open_list。记不进去 → 503。"""
+    """打开扫描:结果列表露出每只命中股的成绩,按整份清单的口径记一条 open_list。记不进去 → 503。
+    护栏关着不记。"""
+    if unguarded(cfg):
+        return
     scan = data.get("scan") or {}
     start = max(str(scan.get("start_date") or ""), _view_floor(cfg))
     end = min(str(scan.get("win_end") or scan.get("end_date") or ""), _train_end(cfg))
@@ -157,7 +203,9 @@ def record_scan_open(cfg: dict, name: str, data: dict) -> None:
 
 
 def current_snapshot_sha(cfg: dict) -> str | None:
-    """现在的截断副本按内容的指纹;读不了(不是副本等)为 None。"""
+    """现在的截断副本按内容的指纹;读不了(不是副本等)或护栏关着为 None。"""
+    if unguarded(cfg):
+        return None
     try:
         return fingerprint(_data_dir(cfg))["sha"]
     except (NotASnapshot, StateRootMissing, OSError):
@@ -165,9 +213,13 @@ def current_snapshot_sha(cfg: dict) -> str | None:
 
 
 def scan_tag(cfg: dict, ddir: str) -> dict:
-    """扫描结果的护栏标记;调试模式另带 mode = debug(正式模式的标记格式不变)。"""
+    """扫描结果的护栏标记;调试模式另带 mode = debug(正式模式的标记格式不变)。
+    护栏关着:snapshot_sha 为 None,另带 unguarded = true(扫描 worker 据此不经 loader 读)。"""
     floor, te = bounds(cfg)
-    tag = {"view_floor": floor, "train_end": te, "snapshot_sha": fingerprint(ddir)["sha"]}
+    if unguarded(cfg):
+        tag = {"view_floor": floor, "train_end": te, "snapshot_sha": None, "unguarded": True}
+    else:
+        tag = {"view_floor": floor, "train_end": te, "snapshot_sha": fingerprint(ddir)["sha"]}
     if cw_mode.is_debug():
         tag["mode"] = cw_mode.DEBUG
     return tag
@@ -184,9 +236,10 @@ def scan_block_reason(cfg: dict, scan: dict, sha: str | None) -> str | None:
     foreign = cw_mode.foreign_reason(tag, "扫描")
     if foreign:
         return foreign
-    if str(tag.get("view_floor") or "") < floor or str(tag.get("train_end") or "9999") > te:
+    off = unguarded(cfg)
+    if (not off and str(tag.get("view_floor") or "") < floor) or str(tag.get("train_end") or "9999") > te:
         return (f"这份扫描的看图范围 {tag.get('view_floor')}~{tag.get('train_end')} 比本轮 {floor}~{te} 宽")
-    if not tag.get("snapshot_sha") or tag.get("snapshot_sha") != sha:
+    if not off and (not tag.get("snapshot_sha") or tag.get("snapshot_sha") != sha):
         return "这份扫描读的截断副本和现在的不是同一份(换过副本,或扫描时没记副本指纹)"
     return None
 
@@ -234,12 +287,12 @@ def mark_old_scans(cfg: dict, rows: list[dict]) -> list[dict]:
 
 def floor_index(win: pd.DataFrame, cfg: dict) -> int:
     """看图下界那根在 win 里的行号(win 有 date 列)。"""
-    return int(win["date"].searchsorted(pd.Timestamp(_view_floor(cfg)), "left"))
+    return int(win["date"].searchsorted(pd.Timestamp(bounds(cfg)[0]), "left"))
 
 
 def diagnose_start(cfg: dict, start: str, head_buffer_days: int) -> str:
     """诊断的分析窗起点:不早于「看图下界往前推 head_buffer_days 个交易日(按日历日折算)」。"""
-    lo = (pd.Timestamp(_view_floor(cfg))
+    lo = (pd.Timestamp(bounds(cfg)[0])
           - pd.Timedelta(days=round(head_buffer_days * TRADING_TO_CALENDAR_RATIO))).strftime("%Y-%m-%d")
     return max(start, lo)
 

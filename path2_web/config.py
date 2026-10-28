@@ -39,6 +39,9 @@ DEFAULT_CONFIG = {
         "train_end": "2025-12-31",          # 待验证;图、清单、标注都不得越过这一天
         "dataset_dir": "datasets/pkls_until_20251231",   # 截断副本,相对 repo root;看图工作流与调试视图都读它
         "view_floor": "2025-01-01",         # 本轮看图下界(待验证):图窗早于它的清单不列、打不开,调试视图不露它之前的 K 线
+        # 调试视图护栏开关(见 path2_web/guard.py):false = 调试视图改读顶层 dataset_dir 的完整行情,
+        # 仍截到训练段末日(不越过 2025-12-31),不核对副本、不设看图下界、不记看过。看图工作流不受影响
+        "debug_view_guard": True,
     },
 }
 

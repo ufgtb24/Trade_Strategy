@@ -86,7 +86,7 @@ FastAPI 后端（pattern 发现 / 扫描 / 序列化 / 诊断）+ Vue3 前端（
 
 ## 开发环境
 - 包管理：`uv`（`uv add` / `uv run` / `uv sync`）
-- Playwright 卫生：本回合**用过** playwright MCP（截图/快照/console log）的情况下，任务完成时清空 `.playwright-mcp/` 目录（`rm -rf .playwright-mcp/*`，保留目录本身）；本回合**没用**则不动它。该目录是 playwright 临时产物缓存（page-*.yml / console-*.log 等），不入 git、不进 PR、积累后占空间
+- Playwright 卫生：本回合**用过** playwright MCP（截图/快照/console log）的情况下，任务完成时清空 `.playwright-mcp/` 目录（`find .playwright-mcp -mindepth 1 -delete`，保留目录本身；别用带 `*` 的 rm，会触发 cc 的危险删除确认）；本回合**没用**则不动它。该目录是 playwright 临时产物缓存（page-*.yml / console-*.log 等），不入 git、不进 PR、积累后占空间
 - Playwright 截图默认参数：调用 `browser_take_screenshot` 前先 `browser_resize(2560, 1440)`，截图统一 `scale="device"`。按场景分两种模式：
   - **整页截图**：`fullPage=True` —— 看整体布局、多组件对照
   - **元素级截图**：`fullPage=False`，并指定 `target=<selector>` —— 放大看单个组件细节、省 token
