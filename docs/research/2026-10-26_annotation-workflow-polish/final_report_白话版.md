@@ -104,9 +104,10 @@ flowchart TD
 | 侧栏标签页 | `edit` `vocab` `pattern` `json` | `instance`（选中的那一个框或买点）`features`（全部特征）`pattern` `json`：前两个是「实例」和「概念」之分；界面上残留的「名字 / 词 / 措辞」都改成「特征 / 特征名」 |
 | pattern 页 | 特征区叫 `elements`，后面跟 `n=3`，像是「由 3 个特征组成」 | 特征区改叫 `features`；页头单独一行 `instances  buy 3 · no_buy 2`，说的是这个 pattern 一共有几次买点 |
 | 两段之间的签 | `ok` / `broken` / `pending`，看的是「在不在同一次 match 里」，悬停「上下两样连成同一次命中」看不懂 | `connected` / `disconnected` / `not_qualified`，只看这两段之间那条边的条件（先后、隔几根）成不成立；悬停直接写特征名。整次凑没凑成看买点上的 `app:buy` |
-| 想看签说的是哪几个 | 没办法 | 点签，在下面展开那几个买点的小图；点小图跳到那张图，两个框和 app 认出的两个事件一起描出来、图上其余的框和事件都变淡，对照自动打开；悬停写出隔了几根、边要求几根 |
-| 对照时的框 | 框旁挂 `qualified` / `detected` 字；band 叠多了被压扁 | band 颜色和看图模式同一套（进了 match 是本色、够格深灰、不够格浅灰）；`qualified` / `detected` / `missing` 字签由 `compare` 旁的复选框 `labels` 开关，签的底色和 band 一样：每根深灰 band 右端挂 `qualified`、每根浅灰 band 挂 `detected`（框外的也挂），进了 match（本色 band）的不挂；你的框底下什么都没有时框旁挂 `missing`（白底虚线）；`optional` 这类会话定的签改成会话的浅蓝底。band 一样粗，叠多了这条轨加高 |
+| 想看签说的是哪几个 | 没办法 | 点签，在下面展开那几个买点的小图；点小图跳到那张图，两个框和 app 认出的两个事件一起描出来、图上其余的框和事件都变淡，自动切到 `compare`；悬停写出隔了几根、边要求几根 |
+| 对照时的框 | 框旁挂 `qualified` / `detected` 字；band 叠多了被压扁 | band 颜色和 `app` 档（原看图模式）同一套（进了 match 是本色、够格深灰、不够格浅灰）；`qualified` / `detected` / `missing` 字签由复选框 `labels` 开关（`app`、`compare` 两档能用），签的底色和 band 一样：每根深灰 band 右端挂 `qualified`、每根浅灰 band 挂 `detected`（框外的也挂），进了 match（本色 band）的不挂；你的框底下什么都没有时框旁挂 `missing`（白底虚线）；`optional` 这类会话定的签改成会话的浅蓝底。band 一样粗，叠多了这条轨加高 |
 | 子框的 `⊂` | 挂在框左上角外侧，和归属字母挤在一起 | 放到框的上边沿、转 90 度开口朝上，朝着上一条轨里的父框 |
+| 顶栏 `mode` | `view` / `annotate` 两档，`compare` 是 `annotate` 里的一个开关 | `app`（只看 app 的结果）/ `annotate`（只看你的框）/ `compare`（叠在一起，照样能画框）三档；`view` 改名 `app`，说的就是它显示什么 |
 | 切到别的 pattern 时的框 | 只有三角和 bracket 变淡，框照常黑 | 只被别的 pattern 的买点收的框跟着一起淡；没被任何买点收的框（只标事件、刚画的）照常显示 |
 
 点 `connected 2` 展开的两张小图，和点第二张跳过去的样子（WHLRP：放量突破、回踩两个框粗虚线，app 认出的两个事件黑框）：
@@ -179,6 +180,6 @@ pattern 页的页头：`instances` 一行写这个 pattern 一共几次买点，
 | 项 | 数 |
 |---|---|
 | sim 实操 | 三轮；第一轮从零标 4 只股票 7 个买点 |
-| 界面改动 | 26 项（ux U1～U26）+ 你追加的 12 项（U27～U38） |
+| 界面改动 | 26 项（ux U1～U26）+ 你追加的 13 项（U27～U39） |
 | critic 质疑 | 46 条：解决 39、交你定 4（并成 D1、D2）、不接受 1、critic 自己撤回 2 |
 | 高频操作点击数 | 画已有特征的框 3→1；改起止 不能→1；补收没收的框 2～3→1；归组 2→1；几周后回来 要回忆→0 |

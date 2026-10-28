@@ -6,6 +6,8 @@
 <!-- MOCK v3（ux，2026-10-26，标注流程与界面打磨）：在上一轮 mock（docs/research/2026-10-26_annotation-topology-grouping/repro/mock.html）上改，改动逐条见同目录上一级 ux.md §4 的 U1～U15。
      2026-10-28 lead 按用户意见加四处（final_report.md §3 U27～U30）：框 edit 栏「买点」一行指定归属；两个及以上买点时买点标 a / b / c、框角写它属于谁；
      选中买点时界面直接标「画了没收」（◂）；同一买点两段同名标 dup。
+     同日：删掉 carry 对比开关（D2 已定：带上的属性一律算没看过）。
+     同日：mode 改三档 app / annotate / compare（原 view → app，原 compare 开关升为第三档），labels 在 app、compare 两档可用。
      同日：qualified / detected / missing 签加回、由顶栏 labels 复选框管；签跟 band 同一套档位与底色（qualified 深灰、detected 浅灰、missing 白底虚线，进了 match 不挂签），qualified / detected 挂在每根灰 band 上（框外的也挂），框旁只剩 missing；app:buy 签改琥珀底。
      同日：对照时图上去掉 qualified / detected 签（看 band 颜色），band 等粗、叠多了轨加高（同主视图）。
      同日：两段之间的签可点——pattern 页展开计进这个数的正例缩略图，点了跳图、选中买点、描出两个框和 app 用到的两个事件、打开对照；成员链箭头上的签点了直接描出；悬停写出量到的间隔。
@@ -166,7 +168,7 @@ const CHANCE_WARN = 0.3 // 随手一框也被判 qualified 的比例超过它，
 
 // ── 状态（只在内存里） ──
 const S = {
-  stock: 0, mode: 'annotate', cmp: false, labels: true, tool: 'box', tab: 'instance', swallow: false, carry: 'null', clock: 0, selAt: 0, live: null,
+  stock: 0, mode: 'annotate', labels: true, tool: 'box', tab: 'instance', swallow: false, clock: 0, selAt: 0, live: null,
   ans: {}, answered: [], askOpen: false, merges: [], pendMerge: null,
   cur: FAKE.pattern, patterns: [FAKE.pattern, UNSORTED],
   words: [], ann: {}, sel: null, drag: null, seq: 1, renaming: false, flags: [],
@@ -201,7 +203,10 @@ const ST = () => STOCKS[S.stock]
 const annOf = st => (S.ann[st.symbol] ||= { boxes: [], buys: [] })
 const A = () => annOf(ST())
 const isApp = p => !!PAPP[p]
-const cmpOn = () => S.cmp && S.mode === 'annotate' && isApp(S.cur)   // 对照开关换图不再自动关（U8）；当前 pattern 没有 app 时不生效
+// mode 三档（用户 2026-10-28）：app = 只显示 app 跑出来的结果（轨按 node 分，不显示你的框、不能编辑）；annotate = 只显示你的框；
+// compare = 你的框 + app 的结果叠画（照样能画框、改框、放买点）。原 view 改名 app，原 annotate 里的 compare 开关升成第三档。换图不退出 compare（U8）
+const isAnn = () => S.mode === 'annotate' || S.mode === 'compare'   // 显示并能编辑你的框
+const cmpOn = () => S.mode === 'compare' && isApp(S.cur)            // 当前 pattern 没有 app 时按 annotate 显示，切回有 app 的 pattern 自动恢复
 const nid = p => p + (S.seq++)
 const W = id => S.words.find(w => w.id === id)
 const txt = id => (W(id) || {}).text || ''
@@ -233,9 +238,8 @@ function kidWordsOf(nameId) {        // 在这个名称的框里画成过子框�
   for (const st of STOCKS) { const a = annOf(st); for (const c of a.boxes) { const p = parentOf(c, a); if (p && p.name === nameId && c.name && !out.includes(c.name)) out.push(c.name) } }
   return out
 }
-function setName(b, id) {           // 选了名称，以前和它一起用过的属性都列出来；carry=null（推荐）时算没看过，carry=true（现行规则）时算有
+function setName(b, id) {           // 选了特征，以前和它一起用过的属性都列出来，一律算没看过（null）：D2 用户 2026-10-28 定，carry 对比开关已删
   b.name = id
-  if (S.carry === 'true') for (const w of attrsIn(id, S.cur)) if (!(w in b.attrs)) b.attrs[w] = true
 }
 // 框 o 包住框 b：b 完全落在 o 里，且 o 更长。不带容差：首尾交叠的两段一律按先后读（sim 第三轮 L1：容差把随手画的回踩和放量突破判成父子，
 // 名称级从属一翻，整个 pattern 的轨标题和轨序都倒过来；critic 撤回 Q6）。想表达属于而边画出去了，在子框 edit 栏点上 ⊂（attach）
@@ -508,7 +512,7 @@ function laneParent(id) {            // 名称级的从属（node 之间的关�
   return bs.length && ps.every(p => p && p.name === ps[0].name) ? ps[0].name : null
 }
 function lanes() {
-  if (S.mode === 'view') return APP_NODES.map(n => ({ key: 'n:' + n, label: n, biz: false, node: n }))
+  if (S.mode === 'app') return APP_NODES.map(n => ({ key: 'n:' + n, label: n, biz: false, node: n }))
   const used = new Set(A().boxes.map(b => b.name))
   const show = new Set([...used, ...(mustsOf(S.cur) || []).map(wid).filter(Boolean)])   // 必须有的名称即使这张图上还没画也给一条轨：新图上直接在轨里拖就是带名字的框（sim F18）
   // 名称轨的先后：当前 pattern 各 instance 里两两比先后（对应主视图 band 按拓扑排）；不在任何 instance 里的名称排后面、按这张图上最早出现排
@@ -552,7 +556,7 @@ function rankOf(p) {                // 名称在 pattern p 里的先后（0 = �
 }
 function sysOfLane(r) {
   const st = ST()
-  if (S.mode === 'view') return st.sys.filter(se => se.node === r.node)
+  if (S.mode === 'app') return st.sys.filter(se => se.node === r.node)
   if (!cmpOn() || r.key == null) return []
   const m = MAP[txt(r.key)]
   if (!m) return []
@@ -564,8 +568,8 @@ function colorOfSys(se) {
   return qualified(se) ? TIER_QUAL : TIER_DET
 }
 const sel = (type, id) => S.sel && S.sel.type === type && S.sel.id === id
-const showApp = () => S.mode === 'view' || cmpOn()
-const selBuy = () => S.mode === 'annotate' && S.sel && S.sel.type === 'buy' ? A().buys.find(x => x.id === S.sel.id) : null
+const showApp = () => S.mode === 'app' || cmpOn()
+const selBuy = () => isAnn() && S.sel && S.sel.type === 'buy' ? A().buys.find(x => x.id === S.sel.id) : null
 function packRows(items) {          // 时间上不重叠的放同一行
   const ends = []
   for (const it of items) { let k = ends.findIndex(e => e < it.s); if (k < 0) { k = ends.length; ends.push(0) } ends[k] = it.e; it.row = k }
@@ -581,26 +585,26 @@ function draw() {
   const R = lanes()
   // 从两段之间的签跳来时，焦点收窄到这两个框：这个买点的其他成员也跟着变淡，图上只剩这两个框和 app 用到的两个事件是实的（用户 2026-10-28）。
   // 不借选中的灰色填充：填充只表示「选中」（instance 页正在编辑的那一个），这时选中的是买点
-  const pairB = S.mode === 'annotate' && S.pair ? S.pair.map(id => a.boxes.find(b => b.id === id)) : null, pairOk = !!(pairB && pairB[0] && pairB[1])
+  const pairB = isAnn() && S.pair ? S.pair.map(id => a.boxes.find(b => b.id === id)) : null, pairOk = !!(pairB && pairB[0] && pairB[1])
   const pinfo = pairOk ? pairInfo(pairB[0], pairB[1], st) : null
   const sb = selBuy(), focus = pairOk ? new Set(pairB) : sb ? new Set(membersOf(sb, st)) : null
-  const LT = S.mode === 'annotate' ? lettersOf(st) : null, cand = sb && !pairOk ? new Set(unclaimed(sb, st)) : null
-  const uR = S.mode === 'annotate' ? a.buys.map(bp => ({ bp, ...rangeOf(bp, st) })).sort((p, q) => p.s - q.s) : []
+  const LT = isAnn() ? lettersOf(st) : null, cand = sb && !pairOk ? new Set(unclaimed(sb, st)) : null
+  const uR = isAnn() ? a.buys.map(bp => ({ bp, ...rangeOf(bp, st) })).sort((p, q) => p.s - q.s) : []
   const aR = showApp() && isApp(S.cur) ? st.matches.map(m => ({ m, s: m.s, e: m.e })) : []
   const nU = packRows(uR), nA = packRows(aR)
-  const BRH = S.mode === 'annotate' ? 10 + (nU + nA) * 13 : BR_H
+  const BRH = isAnn() ? 10 + (nU + nA) * 13 : BR_H
   // 同主视图（path2_web_ui/src/render/subGeometry.ts）：每根 band 一样粗，同一条轨里叠的条数多了就把这条轨加高，不压扁 band（用户 2026-10-28）
   const rowLay = R.map(r => {
     const its = sysOfLane(r).sort((p, q) => p.s - q.s || q.e - p.e), ends = []
     for (const se of its) { let k = ends.findIndex(e => e < se.s); if (k < 0) { k = ends.length; ends.push(0) } ends[k] = se.e; se._lane = k }
     return { its, nl: ends.length, h: Math.max(ROW_H, 12 + ends.length * BAND_H + Math.max(0, ends.length - 1) * BAND_GAP) }
   })
-  const H = MAIN_H + 14 + (S.mode === 'annotate' || showApp() ? BRH : 0) + rowLay.reduce((t, x) => t + x.h, 0) + 30
+  const H = MAIN_H + 14 + (isAnn() || showApp() ? BRH : 0) + rowLay.reduce((t, x) => t + x.h, 0) + 30
   svg.setAttribute('width', Wd); svg.setAttribute('height', H)
   // 框跟着 pattern 变淡按成员算（用户 2026-10-28）：当前 pattern 没有一个买点收了它、而别的 pattern 有买点收了它，才淡（和那次买入的三角、bracket 同淡）。
   // 不按特征算：那样别的 pattern 的买点会一半框黑一半框灰，刚画还没放买点的新特征框也会一画就灰。什么买点都没收的框照常显示
   const inCur = new Set(), inOther = new Set()
-  if (S.mode === 'annotate') for (const bp of a.buys) for (const b of membersOf(bp, st)) (bp.pattern === S.cur ? inCur : inOther).add(b)
+  if (isAnn()) for (const bp of a.buys) for (const b of membersOf(bp, st)) (bp.pattern === S.cur ? inCur : inOther).add(b)
   const away = new Set([...inOther].filter(b => !inCur.has(b)))
   G = { svg, step, X, X0, N, rowsY: [], boxPos: {}, evPos: {}, lt: LT, cand, away, pz: pairOk ? new Set(pairB) : null, pev: pinfo ? new Set([pinfo.x, pinfo.y].filter(Boolean).map(e => e.id)) : null }
 
@@ -619,12 +623,12 @@ function draw() {
     el('rect', { x: X(i) - cw / 2, y: Y(Math.max(b.o, b.c)), width: cw, height: Math.max(1, Math.abs(Y(b.o) - Y(b.c))),
                  fill: up ? UP : DOWN, stroke: up ? UP : DOWN, 'stroke-width': 0.8, 'pointer-events': 'none' })
   })
-  if (S.mode === 'view') for (const se of st.sys) if (se.node === 'bo') {      // view 模式：主图上的突破
+  if (S.mode === 'app') for (const se of st.sys) if (se.node === 'bo') {      // view 模式：主图上的突破
     const x = X(se.s), yy = Y(st.bars[se.s].h) - 6
     el('path', { d: `M${x} ${yy - 7} L${x - 5} ${yy} L${x + 5} ${yy} Z`, fill: colorOfSys(se) })
   }
   if (sb) el('rect', { x: X0(sb.idx + 1), y: 4, width: Math.max(0, Wd - 10 - X0(sb.idx + 1)), height: MAIN_H - 4, fill: '#000', opacity: 0.07, 'pointer-events': 'none' })   // 选中买点时，之后那段暗一档：看得见，但提醒「这之后是后来的事」，label 和理由只按这天及以前（flow v3 X3、sim）
-  if (S.mode === 'annotate') for (const bp of a.buys) {                         // 用户的买点：实心 buy，空心 no_buy；不写字（U4）
+  if (isAnn()) for (const bp of a.buys) {                         // 用户的买点：实心 buy，空心 no_buy；不写字（U4）
     const x = X(bp.idx), yy = Y(st.bars[bp.idx].l) + 6, pos = bp.label === 'buy', s = sel('buy', bp.id), cur = bp.pattern === S.cur
     const tri = el('path', { d: `M${x} ${yy} L${x - 7} ${yy + 12} L${x + 7} ${yy + 12} Z`, fill: pos ? '#111' : '#fff', stroke: '#111',
                  'stroke-width': s ? 3 : 1.5, opacity: cur ? 1 : 0.4, 'data-buy': bp.id, cursor: 'pointer' })   // 别的 pattern 的买点和它的 bracket 一样变淡
@@ -641,7 +645,7 @@ function draw() {
   }
 
   let yy = MAIN_H + 14
-  if (S.mode === 'annotate') {                                                // bracket 轨：用户的范围（虚线，由成员派生）+ 对照时 app 的 match（实心）
+  if (isAnn()) {                                                // bracket 轨：用户的范围（虚线，由成员派生）+ 对照时 app 的 match（实心）
     symText(8, yy + 15, 'bracket')
     for (const r of uR) {
       const ly = yy + 4 + r.row * 13, s = sb === r.bp || S.live === r.bp.id, cur = r.bp.pattern === S.cur   // 当前买点的 bracket 一直加粗（画框时也是）
@@ -689,12 +693,12 @@ function draw() {
     }
     else symText(8, yy + 19, r.label)
     for (const se of L.its) drawSys(se, yy, se._lane, L.nl, rh)                  // 重叠的 app 事件分泳道（同主视图）
-    if (S.mode === 'annotate') for (const b of a.boxes) if (b.name === r.key) drawBox(b, yy, focus, rh)   // 你的框拉满整条轨（轨变高时框跟着高；正式版再定）
+    if (isAnn()) for (const b of a.boxes) if (b.name === r.key) drawBox(b, yy, focus, rh)   // 你的框拉满整条轨（轨变高时框跟着高；正式版再定）
     yy += rh
   })
-  const act = S.mode === 'annotate' && (S.hover && a.boxes.find(b => b.id === S.hover) || (S.sel && S.sel.type === 'box' && a.boxes.find(b => b.id === S.sel.id)))
+  const act = isAnn() && (S.hover && a.boxes.find(b => b.id === S.hover) || (S.sel && S.sel.type === 'box' && a.boxes.find(b => b.id === S.sel.id)))
   const pairs = []
-  const lh = S.mode === 'annotate' && String(S.hover).startsWith('lane:') && R.find(r => r.parent && 'lane:' + r.key === S.hover)
+  const lh = isAnn() && String(S.hover).startsWith('lane:') && R.find(r => r.parent && 'lane:' + r.key === S.hover)
   if (lh) for (const c of a.boxes) { const pa = c.name === lh.key && parentOf(c, a); if (pa && pa.name === lh.parent) pairs.push([c, pa]) }   // 停在轨标题上：这张图上这一对名称的父子框一起描出来
   if (act) {
     const pa = parentOf(act, a); if (pa) pairs.push([act, pa])
@@ -730,7 +734,7 @@ function drawSys(se, y, lane, nl, rh) {
     symText(X0(se.s) + 4, ly + lh / 2 + 4, se.label, { fill: '#111', 'pointer-events': 'none' })
   // 每根灰 band 挂自己的档位签（用户 2026-10-28，框外的也挂）：深灰 = qualified（够格但没进 match），浅灰 = detected（认出但不够格）；
   // 进了 match 的画 node 本色，不挂。签和 band 等高、贴在 band 右端，底色就是 band 的颜色
-  if (S.mode === 'annotate' && cmpOn() && S.labels && se.node && !se.matched) {
+  if ((S.mode === 'app' || cmpOn()) && S.labels && se.node && !se.matched) {   // labels 在图上有 app band 的两档（app、compare）都生效
     const t = qualified(se) ? 'qualified' : 'detected', tx = X0(se.s) + 0.5 + w + 2, tw = t.length * 5.3 + 5, o = G.pev && !G.pev.has(se.id) ? 0.3 : 1
     el('rect', { x: tx, y: ly + 0.5 - 1, width: tw, height: lh + 1, rx: 1.5, fill: t === 'qualified' ? TIER_QUAL : TIER_DET, stroke: '#111', 'stroke-width': 0.6, opacity: o, 'pointer-events': 'none' })
     el('text', { x: tx + 2.5, y: ly + lh - 0.5, 'font-size': 8.5, 'font-family': MONO, fill: '#111', opacity: o, 'pointer-events': 'none' }, null, t)
@@ -794,7 +798,7 @@ function edgeAt(evt) {
 }
 chart.addEventListener('mousedown', evt => {
   S.swallow = false
-  if (S.mode !== 'annotate' || S.tool !== 'box') return
+  if (!isAnn() || S.tool !== 'box') return
   const ed = edgeAt(evt)
   if (ed) { const lb = S.live && A().buys.find(x => x.id === S.live)
     S.drag = { resize: A().boxes.find(b => b.id === ed.id), side: ed.side, cur: null, range: lb ? rangeOf(lb, ST()) : null }; evt.preventDefault(); return }
@@ -802,7 +806,7 @@ chart.addEventListener('mousedown', evt => {
 })
 chart.addEventListener('mousemove', evt => {
   const d = S.drag
-  if (!d) { if (S.mode === 'annotate' && S.tool === 'box' && evt.target.style) evt.target.style.cursor = edgeAt(evt) ? 'ew-resize' : ''; return }
+  if (!d) { if (isAnn() && S.tool === 'box' && evt.target.style) evt.target.style.cursor = edgeAt(evt) ? 'ew-resize' : ''; return }
   if (d.resize) {
     const c = idxAt(evt), b = d.resize
     if (d.side === 'l') b.s = Math.min(c, b.e); else b.e = Math.max(c, b.s)
@@ -830,7 +834,7 @@ chart.addEventListener('click', evt => {
   if (S.swallow) { S.swallow = false; return }
   S.pair = null                                     // 在图上点任何地方，从签跳来的描边就收起
   const t = evt.target, g = k => t.getAttribute && t.getAttribute(k)
-  if (S.mode === 'annotate' && S.tool === 'buy') {  // 放一个买点后自动回到画框（U7）
+  if (isAnn() && S.tool === 'buy') {  // 放一个买点后自动回到画框（U7）
     const i = idxAt(evt)
     const ex = A().buys.find(b => b.idx === i && b.pattern === S.cur)
     if (ex) S.sel = { type: 'buy', id: ex.id }
@@ -880,16 +884,13 @@ const LINK_CLS = { connected: '', disconnected: 'bad', not_qualified: 'dash' }
 const seg = (k, inner) => inner ? `<span class="st-${k}">${inner}</span>` : ''   // 按来源给一段内容加底色：session = 会话翻译，app = app 跑出；用户的不加
 const nUnsorted = () => STOCKS.reduce((n, st) => n + annOf(st).buys.filter(b => b.pattern === UNSORTED).length, 0)
 function renderTop() {
-  const canCmp = S.mode === 'annotate' && isApp(S.cur)
   const optTxt = p => p === UNSORTED ? `${p} · ${nUnsorted()}` : p   // 未归类带剩余个数：第 2 步做完没有一眼可见（U9）
   document.getElementById('top').innerHTML = `
     <span class="ttl">结构化标注</span>${tag('MOCK v3')}
     <span class="grp">${sym('symbol')} ${STOCKS.map((s, i) => `<button type="button" aria-pressed="${S.stock === i}" data-act="stock:${i}">${s.symbol}</button>`).join('')}</span>
-    <span class="grp">${sym('mode')} ${btn('view', S.mode === 'view', 'mode:view')}${btn('annotate', S.mode === 'annotate', 'mode:annotate')}</span>
+    <span class="grp">${sym('mode')} ${btn('app', S.mode === 'app', 'mode:app', 'title="只显示 app 在 K 线上跑出来的结果，轨按 node 分；不显示你的框、不能编辑"')}${btn('annotate', S.mode === 'annotate', 'mode:annotate', 'title="只显示你的框，轨按特征分"')}${btn('compare', S.mode === 'compare', 'mode:compare', (isApp(S.cur) ? '' : 'disabled ') + 'title="你的框和 app 的结果叠在一起：进了 match 的画成 node 本色，够格但没进 match 的深灰，认出但不够格的浅灰；照样能画框、改框。当前 pattern 没有 app 时按 annotate 显示，换图不退出"')}<label class="sym" style="display:inline-flex;gap:3px;align-items:center;margin-left:6px;${S.mode === 'app' || cmpOn() ? '' : 'color:#a1a1aa'}" title="每根灰 band 右端挂它的档位签，分清深灰和浅灰：qualified 深灰底（够格但没进 match）、detected 浅灰底（认出但不够格），框外的 band 也挂；进了 match 的是 node 本色，不挂。compare 下你的框底下什么都没有时框旁挂 missing（白底虚线）。app、compare 两档可用"><input type="checkbox" data-act="labels" ${S.labels ? 'checked' : ''} ${S.mode === 'app' || cmpOn() ? '' : 'disabled'}>labels</label></span>
     <span class="grp">${sym('pattern')} <select data-act="cur">${S.patterns.map(p => `<option value="${esc(p)}" ${p === S.cur ? 'selected' : ''}>${esc(optTxt(p))}</option>`).join('')}<option value="__new">+ new</option></select></span>
-    <span class="grp">${btn('compare', cmpOn(), 'cmp', canCmp ? 'title="在图上叠画 app 的结果：进了 match 的画成 node 本色，够格但没进 match 的深灰，认出但不够格的浅灰。换图不关，要关再点一下"' : 'disabled title="annotate 模式且 pattern 有 app 时可用"')}<label class="sym" style="display:inline-flex;gap:3px;align-items:center;${cmpOn() ? '' : 'color:#a1a1aa'}" title="每根灰 band 右端挂它的档位签，分清深灰和浅灰：qualified 深灰底（够格但没进 match）、detected 浅灰底（认出但不够格），框外的 band 也挂；进了 match 的是 node 本色，不挂。你的框底下什么都没有时框旁挂 missing（白底虚线）。关掉只看 band 颜色，会话那一侧的浅蓝签照常显示"><input type="checkbox" data-act="labels" ${S.labels ? 'checked' : ''} ${cmpOn() ? '' : 'disabled'}>labels</label></span>
-    <span class="grp">${sym('carry', 'MOCK 专有，方向题：选特征时带上的属性算「没看过」（null，推荐）还是算「有」（true，现行规则）')} ${btn('null', S.carry === 'null', 'carry:null')}${btn('true', S.carry === 'true', 'carry:true')}</span>
-    <span class="grp">${sym('tool')} ${[['box', '拖动 = 画框，点一下 = 选中'], ['buy', '点一根 K 线放一个买点；放完回到 box']].map(([k, t]) => btn(k, S.tool === k, 'tool:' + k, (S.mode === 'view' ? 'disabled ' : '') + `title="${t}"`)).join('')}</span>`
+    <span class="grp">${sym('tool')} ${[['box', '拖动 = 画框，点一下 = 选中'], ['buy', '点一根 K 线放一个买点；放完回到 box']].map(([k, t]) => btn(k, S.tool === k, 'tool:' + k, (S.mode === 'app' ? 'disabled ' : '') + `title="${t}"`)).join('')}</span>`
 }
 function renderSide() {
   const tabs = ['instance', 'features', 'pattern', 'json']   // 概念页 features / pattern，实例页 instance（选中的框或买点）；用户 2026-10-28 定名
@@ -1293,12 +1294,10 @@ document.addEventListener('click', e => {
   const b = S.sel && S.sel.type === 'box' ? a.boxes.find(x => x.id === S.sel.id) : null
   const bp = S.sel && S.sel.type === 'buy' ? a.buys.find(x => x.id === S.sel.id) : null
   if (k === 'stock') { S.stock = +v; S.sel = null; S.pair = null }                         // 换图：对照不再自动关（U8）
-  else if (k === 'mode') S.mode = v                                          // 对照开关只由用户手动切（cmpOn 只在 annotate 模式生效）
+  else if (k === 'mode') S.mode = v                                          // 三档只由用户手动切；换图不变
   else if (k === 'tool') S.tool = v
   else if (k === 'tab') S.tab = v
-  else if (k === 'cmp') S.cmp = !S.cmp
   else if (k === 'labels') S.labels = !S.labels
-  else if (k === 'carry') S.carry = v
   else if (k === 'selbuy') S.sel = { type: 'buy', id: v }
   else if (k === 'mtake') {                       // 「画了没收」：点一下把那个框收进这个买点的成员（flow v3 §12-4）
     const [si, bid, boxid] = v.split(':'), bpx = annOf(STOCKS[+si]).buys.find(x => x.id === bid)
@@ -1343,8 +1342,8 @@ document.addEventListener('click', e => {
     const bpx = a.buys.find(x => x.id === v); if (bpx) (S.ov[bpx.id] ||= {})[b.id] = !membersOf(bpx, ST()).includes(b)
   }
   else if (k === 'lkopen') S.lkOpen = S.lkOpen === v ? null : v
-  else if (k === 'lkgoto') { const [si, id, x, y] = v.split(':'); S.stock = +si; S.sel = { type: 'buy', id }; S.pair = [x, y]; S.cmp = true }   // 签是 app 的结果：跳过去顺手打开对照；侧栏留在 pattern 页
-  else if (k === 'lkshow') { const [x, y] = v.split(':'); S.pair = [x, y]; S.cmp = true }
+  else if (k === 'lkgoto') { const [si, id, x, y] = v.split(':'); S.stock = +si; S.sel = { type: 'buy', id }; S.pair = [x, y]; S.mode = 'compare' }   // 签是 app 的结果：跳过去顺手切到 compare（原「打开对照；侧栏留在 pattern 页
+  else if (k === 'lkshow') { const [x, y] = v.split(':'); S.pair = [x, y]; S.mode = 'compare' }
   else if (k === 'goto') { const [si, id] = v.split(':'); S.stock = +si; S.sel = { type: 'buy', id }; S.pair = null }   // 侧栏留在 pattern tab，方便在 groups 里挨个看；要改这个买点再点 edit；对照开着就保持开着
   else if (k === 'vmoveto') {                     // 骨架相同的组一下挪过去：只改归属、不切页
     const [gid, to] = v.split('§')
