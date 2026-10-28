@@ -6,7 +6,7 @@
 <!-- MOCK v3（ux，2026-10-26，标注流程与界面打磨）：在上一轮 mock（docs/research/2026-10-26_annotation-topology-grouping/repro/mock.html）上改，改动逐条见同目录上一级 ux.md §4 的 U1～U15。
      2026-10-28 lead 按用户意见加四处（final_report.md §3 U27～U30）：框 edit 栏「买点」一行指定归属；两个及以上买点时买点标 a / b / c、框角写它属于谁；
      选中买点时界面直接标「画了没收」（◂）；同一买点两段同名标 dup。
-     同日：qualified / detected / missing 签加回、由顶栏 labels 复选框管（qualified 琥珀、另两个朱红）；app:buy 签改琥珀底。
+     同日：qualified / detected / missing 签加回、由顶栏 labels 复选框管；签跟 band 同一套档位与底色（qualified 深灰、detected 浅灰、missing 白底虚线，进了 match 不挂签），qualified / detected 挂在每根灰 band 上（框外的也挂），框旁只剩 missing；app:buy 签改琥珀底。
      同日：对照时图上去掉 qualified / detected 签（看 band 颜色），band 等粗、叠多了轨加高（同主视图）。
      同日：两段之间的签可点——pattern 页展开计进这个数的正例缩略图，点了跳图、选中买点、描出两个框和 app 用到的两个事件、打开对照；成员链箭头上的签点了直接描出；悬停写出量到的间隔。
      同日：相邻两段的签改成只看两两关系（逐对查 app 里那条边），值 ok / broken / pending → connected / disconnected / not_qualified。
@@ -39,6 +39,7 @@
   #top .ttl { font-weight: 700; }
   .tag { font-family: var(--mono); font-size: 10.5px; padding: 0 5px; border: 1px solid #71717a; border-radius: 3px; color: #111; white-space: nowrap; }
   .tag.dash { border-style: dashed; }
+  .tag.tq { background: #9ca3af; } .tag.td { background: #d1d5db; }   /* 同 band 档位：qualified 深灰、detected 浅灰 */
   .tag.on { background: #111; color: #fff; border-color: #111; }   /* 黑底白字 = 选中 / 按下 / 用户自己标的 */
   :root { --bad: #D55E00; }   /* 朱红：用户色板里唯一和主视图现用色都分得开的颜色 */
   .tag.bad { background: var(--bad); color: #fff; border-color: var(--bad); font-weight: 700; }   /* 朱红底白字 = 违背预期（app 漏买 / 误买、没认出、没连上） */
@@ -727,6 +728,13 @@ function drawSys(se, y, lane, nl, rh) {
   G.evPos[se.id] = { x: X0(se.s) + 0.5, y: ly + 0.5, w, h: lh - 1 }
   if (se.label && w > se.label.length * 7 + 4 && lh >= 12)
     symText(X0(se.s) + 4, ly + lh / 2 + 4, se.label, { fill: '#111', 'pointer-events': 'none' })
+  // 每根灰 band 挂自己的档位签（用户 2026-10-28，框外的也挂）：深灰 = qualified（够格但没进 match），浅灰 = detected（认出但不够格）；
+  // 进了 match 的画 node 本色，不挂。签和 band 等高、贴在 band 右端，底色就是 band 的颜色
+  if (S.mode === 'annotate' && cmpOn() && S.labels && se.node && !se.matched) {
+    const t = qualified(se) ? 'qualified' : 'detected', tx = X0(se.s) + 0.5 + w + 2, tw = t.length * 5.3 + 5, o = G.pev && !G.pev.has(se.id) ? 0.3 : 1
+    el('rect', { x: tx, y: ly + 0.5 - 1, width: tw, height: lh + 1, rx: 1.5, fill: t === 'qualified' ? TIER_QUAL : TIER_DET, stroke: '#111', 'stroke-width': 0.6, opacity: o, 'pointer-events': 'none' })
+    el('text', { x: tx + 2.5, y: ly + lh - 0.5, 'font-size': 8.5, 'font-family': MONO, fill: '#111', opacity: o, 'pointer-events': 'none' }, null, t)
+  }
 }
 function drawBox(b, y, focus, rh = ROW_H) {
   const { X0, step } = G
@@ -749,16 +757,19 @@ function drawBox(b, y, focus, rh = ROW_H) {
   const ow = G.lt ? ownersOf(b, ST()).map(x => G.lt.get(x.id)) : []
   if (ow.length) symText(x - 3, y + rh / 2 + 4, ow.join(' '), { 'font-size': 10.5, 'font-weight': 700, 'text-anchor': 'end', opacity: op, 'pointer-events': 'none' })
   let bx = x + w + 3
-  // app 对这个框的判断签 qualified / detected / missing 由顶栏 labels 复选框管（用户 2026-10-28）：qualified 琥珀底（app 的结果，和你一致），
-  // detected / missing 朱红底（app 和你对不上）；关掉时只看框底下 band 的颜色。optional / must_not / excluded / unmapped 是会话那一侧的状态（浅蓝底），
-  // not_sample 是你的决定（白底），这两类不归 labels 管、对照开着就显示——于是 labels 关掉时，没有 band 又没有签的框就是 missing
-  if (cmpOn()) { const v = verdict(b, ST()), ses = ['unmapped', 'excluded', 'optional', 'must_not'].includes(v.st), appv = ['qualified', 'detected', 'missing'].includes(v.st)
-    if (!appv || S.labels) { badge(x + w + 2, y + 7, v.st, v.st === 'missing' || v.st === 'detected', ses, ses ? 'session' : appv ? 'app' : ''); bx += v.st.length * 6.6 + 12 } }
+  // labels 复选框管的签只为分清深灰 / 浅灰 band（用户 2026-10-28）：签和 band 同一套档位、同一种底色——qualified 深灰底（够格但没进 match），
+  // detected 浅灰底（认出但不够格）；进了 match 的画 node 本色，一看就知道够格，不挂签；框底下什么都没有挂 missing（白底虚线，同「空着」）。
+  // 不再用琥珀 / 朱红：那是「这个框的结论」的说法，和 band 两套颜色说同一件事反而难读。optional / must_not / excluded / unmapped（会话，浅蓝）与 not_sample（你的，白底）不归 labels 管
+  if (cmpOn()) { const v = verdict(b, ST()), ses = ['unmapped', 'excluded', 'optional', 'must_not'].includes(v.st)
+    let t = null, src = ''
+    if (ses || v.st === 'not_sample') { t = v.st; src = ses ? 'session' : '' }
+    else if (S.labels && v.st === 'missing') t = 'missing'                     // qualified / detected 改由每根 band 自己挂（见 drawSys），框旁只剩 missing
+    if (t) { badge(x + w + 2, y + 7, t, false, ses || t === 'missing', src); bx += t.length * 6.6 + 12 } }
   if (cd) symText(bx, y + 20, '◂', { 'font-size': 17, 'font-weight': 700, 'pointer-events': 'none' })   // 画了没收：挂在框右边（对照开着时排在状态签后面）
 }
 function badge(x, y, t, strong, dash, src) {   // src：来源底色，session = 会话浅蓝，app = app 琥珀（与侧栏同，用户 2026-10-28）；strong 朱红优先
   const w = t.length * 6.6 + 8
-  el('rect', { x, y, width: w, height: 15, rx: 2, fill: strong ? '#D55E00' : src === 'session' ? '#93c5fd' : src === 'app' ? '#fdecc0' : '#fff', stroke: strong ? '#D55E00' : '#111', 'stroke-dasharray': dash ? '3 2' : 'none', 'pointer-events': 'none' })   // strong = 违背预期，朱红底白字（黑色只表示选中）；dash = 空着 / 不在（同侧栏虚线签）
+  el('rect', { x, y, width: w, height: 15, rx: 2, fill: strong ? '#D55E00' : ({ session: '#93c5fd', app: '#fdecc0', qual: TIER_QUAL, det: TIER_DET })[src] || '#fff', stroke: strong ? '#D55E00' : '#111', 'stroke-dasharray': dash ? '3 2' : 'none', 'pointer-events': 'none' })   // strong = 违背预期，朱红底白字（黑色只表示选中）；dash = 空着 / 不在（同侧栏虚线签）
   el('text', { x: x + 4, y: y + 11, 'font-size': 10.5, 'font-family': MONO, fill: strong ? '#fff' : '#111', 'font-weight': strong ? 700 : 400, 'pointer-events': 'none' }, null, t)
 }
 
@@ -857,7 +868,7 @@ const sym = (t, h) => `<span class="sym"${tip(h)}>${esc(t)}</span>`
 const kk = (t, h) => `<span class="k"${tip(h)}>${esc(t)}</span>`
 const biz = t => `<span class="biz">${esc(t)}</span>`
 const tag = (t, cls = '', h) => `<span class="tag ${cls}"${tip(h)}>${esc(t)}</span>`
-const ST_TIP = { qualified: 'app 认出了，而且够格', detected: 'app 看到了，但不够格（会话按原因分流，你不用逐个处理）', missing: 'app 没认出（会话按原因分流，你不用逐个处理）', unmapped: '这个特征会话还没处理（下一轮会处理），没法对照', excluded: '这个特征会话看过、没放进 app，没法对照（原因见 pattern 页悬停）', not_sample: '你标宽了，这一处不当样本用（不改 app）',
+const ST_TIP = { matched: 'app 认出了、够格，而且进了一次 match（band 是 node 本色）', qualified: 'app 认出了，而且够格，但没进 match（band 深灰）', detected: 'app 看到了，但不够格（会话按原因分流，你不用逐个处理）', missing: 'app 没认出（会话按原因分流，你不用逐个处理）', unmapped: '这个特征会话还没处理（下一轮会处理），没法对照', excluded: '这个特征会话看过、没放进 app，没法对照（原因见 pattern 页悬停）', not_sample: '你标宽了，这一处不当样本用（不改 app）',
   optional: '可有可无：由它依附的那一段读（where / 子事件），不单独认', must_not: '必须没有：由一条否定边或它依附那段的 where 查，不单独认' }
 const FLAG_TIP = { default_params: '这个翻译用的是现成事件的默认参数，还没为这里调过', chance_high: '同样宽的框随便挪个位置也常被判够格（超过三成）：这一行的认出数说明不了什么' }
 const LINK_TIP = {   // 两段之间那条边，逐对查（用户 2026-10-28 定名）
@@ -876,7 +887,7 @@ function renderTop() {
     <span class="grp">${sym('symbol')} ${STOCKS.map((s, i) => `<button type="button" aria-pressed="${S.stock === i}" data-act="stock:${i}">${s.symbol}</button>`).join('')}</span>
     <span class="grp">${sym('mode')} ${btn('view', S.mode === 'view', 'mode:view')}${btn('annotate', S.mode === 'annotate', 'mode:annotate')}</span>
     <span class="grp">${sym('pattern')} <select data-act="cur">${S.patterns.map(p => `<option value="${esc(p)}" ${p === S.cur ? 'selected' : ''}>${esc(optTxt(p))}</option>`).join('')}<option value="__new">+ new</option></select></span>
-    <span class="grp">${btn('compare', cmpOn(), 'cmp', canCmp ? 'title="在图上叠画 app 的结果：进了 match 的画成 node 本色，够格的深灰，认出但不够格的浅灰。换图不关，要关再点一下"' : 'disabled title="annotate 模式且 pattern 有 app 时可用"')}<label class="sym" style="display:inline-flex;gap:3px;align-items:center;${cmpOn() ? '' : 'color:#a1a1aa'}" title="框旁 app 的判断签：qualified 琥珀底（认出且够格）、detected 朱红底（认出但不够格）、missing 朱红底（没认出）；关掉只看 band 颜色，会话那一侧的浅蓝签照常显示"><input type="checkbox" data-act="labels" ${S.labels ? 'checked' : ''} ${cmpOn() ? '' : 'disabled'}>labels</label></span>
+    <span class="grp">${btn('compare', cmpOn(), 'cmp', canCmp ? 'title="在图上叠画 app 的结果：进了 match 的画成 node 本色，够格但没进 match 的深灰，认出但不够格的浅灰。换图不关，要关再点一下"' : 'disabled title="annotate 模式且 pattern 有 app 时可用"')}<label class="sym" style="display:inline-flex;gap:3px;align-items:center;${cmpOn() ? '' : 'color:#a1a1aa'}" title="每根灰 band 右端挂它的档位签，分清深灰和浅灰：qualified 深灰底（够格但没进 match）、detected 浅灰底（认出但不够格），框外的 band 也挂；进了 match 的是 node 本色，不挂。你的框底下什么都没有时框旁挂 missing（白底虚线）。关掉只看 band 颜色，会话那一侧的浅蓝签照常显示"><input type="checkbox" data-act="labels" ${S.labels ? 'checked' : ''} ${cmpOn() ? '' : 'disabled'}>labels</label></span>
     <span class="grp">${sym('carry', 'MOCK 专有，方向题：选特征时带上的属性算「没看过」（null，推荐）还是算「有」（true，现行规则）')} ${btn('null', S.carry === 'null', 'carry:null')}${btn('true', S.carry === 'true', 'carry:true')}</span>
     <span class="grp">${sym('tool')} ${[['box', '拖动 = 画框，点一下 = 选中'], ['buy', '点一根 K 线放一个买点；放完回到 box']].map(([k, t]) => btn(k, S.tool === k, 'tool:' + k, (S.mode === 'view' ? 'disabled ' : '') + `title="${t}"`)).join('')}</span>`
 }
@@ -980,7 +991,8 @@ function sideEdit() {
       const v = verdict(b, st)
       let kv = ''
       const ns = v.st === 'unmapped' || v.st === 'excluded', hang = v.st === 'optional' || v.st === 'must_not'
-      const vt = tag(v.st, v.st === 'missing' || v.st === 'detected' ? 'bad' : ns || hang ? 'dash' : '', ns ? MS_TIP(txt(b.name)) : ST_TIP[v.st]), vk = v.st === 'not_sample' ? null : ns || hang ? 'session' : 'app'   // not_sample 是用户的决定，unmapped / excluded 是会话那边的状态
+      const tst = v.st === 'qualified' && v.ev && v.ev.matched ? 'matched' : v.st   // 和图上的签同一套档位（用户 2026-10-28）：进了 match 的写 matched，用它的 node 本色
+      const vt = tag(tst, tst === 'qualified' ? 'tq' : tst === 'detected' ? 'td' : tst === 'missing' || ns || hang ? 'dash' : '', ns ? MS_TIP(txt(b.name)) : ST_TIP[tst]).replace('class="tag', tst === 'matched' ? `style="background:${NODE_COLOR[v.ev.node] || NEUTRAL}" class="tag` : 'class="tag'), vk = v.st === 'not_sample' ? null : ns || hang ? 'session' : 'app'   // not_sample 是用户的决定，unmapped / excluded 是会话那边的状态
       h += `<div class="hdr">${sym('compare', '和 app 对照的结果')} ${vk ? seg(vk, vt) : vt}</div>`
       if (v.res) kv += `${kk('resolver', '你的这个特征由 app 里的谁来认')}<div class="row">${seg('session', `<span title="${esc(MAP[txt(b.name)].doc)}">${sym(v.res)}</span>${v.flags.map(f => tag('⚠ ' + f, 'dash', FLAG_TIP[f])).join('')}`)}</div>`
       if (v.checks.length) {

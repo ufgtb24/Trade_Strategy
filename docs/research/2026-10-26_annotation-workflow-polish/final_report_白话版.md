@@ -105,7 +105,7 @@ flowchart TD
 | pattern 页 | 特征区叫 `elements`，后面跟 `n=3`，像是「由 3 个特征组成」 | 特征区改叫 `features`；页头单独一行 `instances  buy 3 · no_buy 2`，说的是这个 pattern 一共有几次买点 |
 | 两段之间的签 | `ok` / `broken` / `pending`，看的是「在不在同一次 match 里」，悬停「上下两样连成同一次命中」看不懂 | `connected` / `disconnected` / `not_qualified`，只看这两段之间那条边的条件（先后、隔几根）成不成立；悬停直接写特征名。整次凑没凑成看买点上的 `app:buy` |
 | 想看签说的是哪几个 | 没办法 | 点签，在下面展开那几个买点的小图；点小图跳到那张图，两个框和 app 认出的两个事件一起描出来、图上其余的框和事件都变淡，对照自动打开；悬停写出隔了几根、边要求几根 |
-| 对照时的框 | 框旁挂 `qualified` / `detected` 字；band 叠多了被压扁 | band 颜色和看图模式同一套（进了 match 是本色、够格深灰、不够格浅灰）；`qualified` / `detected` / `missing` 字签由 `compare` 旁的复选框 `labels` 开关，`qualified` 琥珀底、另两个朱红底；`optional` 这类会话定的签改成会话的浅蓝底。band 一样粗，叠多了这条轨加高 |
+| 对照时的框 | 框旁挂 `qualified` / `detected` 字；band 叠多了被压扁 | band 颜色和看图模式同一套（进了 match 是本色、够格深灰、不够格浅灰）；`qualified` / `detected` / `missing` 字签由 `compare` 旁的复选框 `labels` 开关，签的底色和 band 一样：每根深灰 band 右端挂 `qualified`、每根浅灰 band 挂 `detected`（框外的也挂），进了 match（本色 band）的不挂；你的框底下什么都没有时框旁挂 `missing`（白底虚线）；`optional` 这类会话定的签改成会话的浅蓝底。band 一样粗，叠多了这条轨加高 |
 | 子框的 `⊂` | 挂在框左上角外侧，和归属字母挤在一起 | 放到框的上边沿、转 90 度开口朝上，朝着上一条轨里的父框 |
 | 切到别的 pattern 时的框 | 只有三角和 bracket 变淡，框照常黑 | 只被别的 pattern 的买点收的框跟着一起淡；没被任何买点收的框（只标事件、刚画的）照常显示 |
 
