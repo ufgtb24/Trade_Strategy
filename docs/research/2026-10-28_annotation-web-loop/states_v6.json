@@ -1,0 +1,881 @@
+[
+ {
+  "state": "01-flow-look",
+  "note": "流程第 1 步：打开 WHLRP（这张图还没标），annotate 档、什么都没选中，看干净的 K 线",
+  "steps": [
+   {
+    "waitFor": "#side #tabs"
+   },
+   {
+    "eval": "const a=annOf(STOCKS[1]);a.boxes=[];a.buys=[];render()"
+   },
+   {
+    "click": "[data-act=\"stock:1\"]"
+   },
+   {
+    "wait": 200
+   }
+  ],
+  "probe": "({stock:ST().symbol,mode:S.mode,boxes:A().boxes.length,buys:A().buys.length,sel:S.sel})",
+  "expect": {
+   "stock": "WHLRP",
+   "mode": "annotate",
+   "boxes": 0,
+   "buys": 0,
+   "sel": null
+  },
+  "crops": [
+   {
+    "name": "side",
+    "selector": "#side"
+   },
+   {
+    "name": "chart",
+    "selector": "#chart"
+   },
+   {
+    "name": "focus",
+    "clip": {
+     "x": 900,
+     "y": 37,
+     "width": 1000,
+     "height": 620
+    }
+   }
+  ]
+ },
+ {
+  "state": "02-flow-draw-box",
+  "note": "流程第 2 步：在主图上拖出一个框（159～165 根），侧栏 selection 页让你给它选特征",
+  "steps": [
+   {
+    "waitFor": "#side #tabs"
+   },
+   {
+    "eval": "const a=annOf(STOCKS[1]);a.boxes=[];a.buys=[];render()"
+   },
+   {
+    "click": "[data-act=\"stock:1\"]"
+   },
+   {
+    "wait": 200
+   },
+   {
+    "pw": "const g=await page.evaluate(()=>{const r=G.svg.getBoundingClientRect();return {l:r.left+LW,t:r.top,s:G.step}});const x=i=>g.l+(i+0.5)*g.s,y=g.t+180;await page.mouse.move(x(159),y);await page.mouse.down();await page.mouse.move(x(159)+12,y,{steps:3});await page.mouse.move(x(165),y,{steps:6});await page.mouse.up();"
+   },
+   {
+    "wait": 200
+   }
+  ],
+  "probe": "(()=>{const a=annOf(ST()),s=S.sel,b=s&&s.type==='box'?a.boxes.find(x=>x.id===s.id):null,p=s&&s.type==='buy'?a.buys.find(x=>x.id===s.id):null;return {mode:S.mode,tab:S.tab,stock:ST().symbol,cur:S.cur,sel:s?s.type:null,box:b?[txt(b.name),b.s,b.e]:null,buy:p?[p.idx,p.label,p.pattern]:null}})()",
+  "expect": {
+   "stock": "WHLRP",
+   "sel": "box",
+   "box": [
+    "",
+    159,
+    165
+   ]
+  },
+  "crops": [
+   {
+    "name": "side",
+    "selector": "#side"
+   },
+   {
+    "name": "focus",
+    "clip": {
+     "x": 900,
+     "y": 37,
+     "width": 1000,
+     "height": 620
+    }
+   }
+  ]
+ },
+ {
+  "state": "03-flow-name-attr",
+  "note": "流程第 3 步：给新框选特征「放量突破」，属性「放量」点 true，其余属性还是 null",
+  "steps": [
+   {
+    "waitFor": "#side #tabs"
+   },
+   {
+    "eval": "const a=annOf(STOCKS[1]);a.boxes=[];a.buys=[];render()"
+   },
+   {
+    "click": "[data-act=\"stock:1\"]"
+   },
+   {
+    "wait": 200
+   },
+   {
+    "pw": "const g=await page.evaluate(()=>{const r=G.svg.getBoundingClientRect();return {l:r.left+LW,t:r.top,s:G.step}});const x=i=>g.l+(i+0.5)*g.s,y=g.t+180;await page.mouse.move(x(159),y);await page.mouse.down();await page.mouse.move(x(159)+12,y,{steps:3});await page.mouse.move(x(165),y,{steps:6});await page.mouse.up();"
+   },
+   {
+    "wait": 200
+   },
+   {
+    "click": "#namepick button:text-is(\"放量突破\")"
+   },
+   {
+    "wait": 150
+   },
+   {
+    "eval": "document.querySelector('#side [data-act=\"a1:'+S.words.find(w=>w.text==='放量').id+'\"]').click()"
+   },
+   {
+    "wait": 150
+   }
+  ],
+  "probe": "(()=>{const b=A().boxes.find(x=>x.id===S.sel.id);return {sel:S.sel.type,box:[txt(b.name),b.s,b.e],attrs:Object.fromEntries(Object.entries(b.attrs).map(([k,v])=>[txt(k),v]))}})()",
+  "expect": {
+   "sel": "box",
+   "box": [
+    "放量突破",
+    159,
+    165
+   ],
+   "attrs": {
+    "放量": true
+   }
+  },
+  "crops": [
+   {
+    "name": "side",
+    "selector": "#side"
+   },
+   {
+    "name": "focus",
+    "clip": {
+     "x": 900,
+     "y": 37,
+     "width": 1000,
+     "height": 620
+    }
+   }
+  ]
+ },
+ {
+  "state": "04-flow-place-buy",
+  "note": "流程第 4 步：再画一段「回踩」（166～167 根），用 point 在第 167 根放买点；selection 页显示这个买点和它收进的成员链",
+  "steps": [
+   {
+    "waitFor": "#side #tabs"
+   },
+   {
+    "eval": "const a=annOf(STOCKS[1]);a.boxes=[];a.buys=[];render()"
+   },
+   {
+    "click": "[data-act=\"stock:1\"]"
+   },
+   {
+    "wait": 200
+   },
+   {
+    "pw": "const g=await page.evaluate(()=>{const r=G.svg.getBoundingClientRect();return {l:r.left+LW,t:r.top,s:G.step}});const x=i=>g.l+(i+0.5)*g.s,y=g.t+180;await page.mouse.move(x(159),y);await page.mouse.down();await page.mouse.move(x(159)+12,y,{steps:3});await page.mouse.move(x(165),y,{steps:6});await page.mouse.up();"
+   },
+   {
+    "wait": 200
+   },
+   {
+    "click": "#namepick button:text-is(\"放量突破\")"
+   },
+   {
+    "wait": 150
+   },
+   {
+    "eval": "document.querySelector('#side [data-act=\"a1:'+S.words.find(w=>w.text==='放量').id+'\"]').click()"
+   },
+   {
+    "wait": 150
+   },
+   {
+    "pw": "const g=await page.evaluate(()=>{const r=G.svg.getBoundingClientRect();return {l:r.left+LW,t:r.top,s:G.step}});const x=i=>g.l+(i+0.5)*g.s,y=g.t+180;await page.mouse.move(x(166),y);await page.mouse.down();await page.mouse.move(x(166)+12,y,{steps:3});await page.mouse.move(x(167),y,{steps:6});await page.mouse.up();"
+   },
+   {
+    "wait": 150
+   },
+   {
+    "click": "#namepick button:text-is(\"回踩\")"
+   },
+   {
+    "wait": 150
+   },
+   {
+    "click": "[data-act=\"tool:point\"]"
+   },
+   {
+    "pw": "const g=await page.evaluate(()=>{const r=G.svg.getBoundingClientRect();return {l:r.left+LW,t:r.top,s:G.step}});await page.mouse.click(g.l+(167.5)*g.s,g.t+180);"
+   },
+   {
+    "wait": 200
+   }
+  ],
+  "probe": "(()=>{const p=A().buys.find(x=>x.id===S.sel.id);return {sel:S.sel.type,buy:[p.idx,p.label,p.pattern],chain:sigArr(p,ST()),tool:S.tool}})()",
+  "expect": {
+   "sel": "buy",
+   "buy": [
+    167,
+    "buy",
+    "横盘突破回踩"
+   ],
+   "chain": [
+    "放量突破",
+    "回踩"
+   ],
+   "tool": "box"
+  },
+  "crops": [
+   {
+    "name": "side",
+    "selector": "#side"
+   },
+   {
+    "name": "chart",
+    "selector": "#chart"
+   },
+   {
+    "name": "focus",
+    "clip": {
+     "x": 900,
+     "y": 37,
+     "width": 1000,
+     "height": 620
+    }
+   }
+  ]
+ },
+ {
+  "state": "05-flow-pattern",
+  "note": "流程第 5 步：切到 pattern 页看「横盘突破回踩」的汇总：页头计数、features 区、instances 表（含刚标的 WHLRP 买点）",
+  "steps": [
+   {
+    "waitFor": "#side #tabs"
+   },
+   {
+    "eval": "const a=annOf(STOCKS[1]);a.boxes=[];a.buys=[];render()"
+   },
+   {
+    "click": "[data-act=\"stock:1\"]"
+   },
+   {
+    "wait": 200
+   },
+   {
+    "pw": "const g=await page.evaluate(()=>{const r=G.svg.getBoundingClientRect();return {l:r.left+LW,t:r.top,s:G.step}});const x=i=>g.l+(i+0.5)*g.s,y=g.t+180;await page.mouse.move(x(159),y);await page.mouse.down();await page.mouse.move(x(159)+12,y,{steps:3});await page.mouse.move(x(165),y,{steps:6});await page.mouse.up();"
+   },
+   {
+    "wait": 200
+   },
+   {
+    "click": "#namepick button:text-is(\"放量突破\")"
+   },
+   {
+    "wait": 150
+   },
+   {
+    "eval": "document.querySelector('#side [data-act=\"a1:'+S.words.find(w=>w.text==='放量').id+'\"]').click()"
+   },
+   {
+    "wait": 150
+   },
+   {
+    "pw": "const g=await page.evaluate(()=>{const r=G.svg.getBoundingClientRect();return {l:r.left+LW,t:r.top,s:G.step}});const x=i=>g.l+(i+0.5)*g.s,y=g.t+180;await page.mouse.move(x(166),y);await page.mouse.down();await page.mouse.move(x(166)+12,y,{steps:3});await page.mouse.move(x(167),y,{steps:6});await page.mouse.up();"
+   },
+   {
+    "wait": 150
+   },
+   {
+    "click": "#namepick button:text-is(\"回踩\")"
+   },
+   {
+    "wait": 150
+   },
+   {
+    "click": "[data-act=\"tool:point\"]"
+   },
+   {
+    "pw": "const g=await page.evaluate(()=>{const r=G.svg.getBoundingClientRect();return {l:r.left+LW,t:r.top,s:G.step}});await page.mouse.click(g.l+(167.5)*g.s,g.t+180);"
+   },
+   {
+    "wait": 200
+   },
+   {
+    "click": "[data-act=\"tab:pattern\"]"
+   },
+   {
+    "wait": 200
+   },
+   {
+    "css": "#wrap{height:auto!important} #side{overflow:visible!important}"
+   }
+  ],
+  "fullPage": true,
+  "probe": "({tab:S.tab,cur:S.cur,whlrp:annOf(STOCKS[1]).buys.filter(b=>b.pattern===S.cur).map(b=>[b.idx,b.label])})",
+  "expect": {
+   "tab": "pattern",
+   "cur": "横盘突破回踩",
+   "whlrp": [
+    [
+     167,
+     "buy"
+    ]
+   ]
+  },
+  "crops": [
+   {
+    "name": "side",
+    "selector": "#side"
+   }
+  ]
+ },
+ {
+  "state": "06-flow-feature-open",
+  "note": "流程第 6 步：在 features 区点开「回踩」的计数（in 2/3），按收了它 / 没收它两排列出买点缩略图",
+  "steps": [
+   {
+    "waitFor": "#side #tabs"
+   },
+   {
+    "eval": "const a=annOf(STOCKS[1]);a.boxes=[];a.buys=[];render()"
+   },
+   {
+    "click": "[data-act=\"stock:1\"]"
+   },
+   {
+    "wait": 200
+   },
+   {
+    "pw": "const g=await page.evaluate(()=>{const r=G.svg.getBoundingClientRect();return {l:r.left+LW,t:r.top,s:G.step}});const x=i=>g.l+(i+0.5)*g.s,y=g.t+180;await page.mouse.move(x(159),y);await page.mouse.down();await page.mouse.move(x(159)+12,y,{steps:3});await page.mouse.move(x(165),y,{steps:6});await page.mouse.up();"
+   },
+   {
+    "wait": 200
+   },
+   {
+    "click": "#namepick button:text-is(\"放量突破\")"
+   },
+   {
+    "wait": 150
+   },
+   {
+    "eval": "document.querySelector('#side [data-act=\"a1:'+S.words.find(w=>w.text==='放量').id+'\"]').click()"
+   },
+   {
+    "wait": 150
+   },
+   {
+    "pw": "const g=await page.evaluate(()=>{const r=G.svg.getBoundingClientRect();return {l:r.left+LW,t:r.top,s:G.step}});const x=i=>g.l+(i+0.5)*g.s,y=g.t+180;await page.mouse.move(x(166),y);await page.mouse.down();await page.mouse.move(x(166)+12,y,{steps:3});await page.mouse.move(x(167),y,{steps:6});await page.mouse.up();"
+   },
+   {
+    "wait": 150
+   },
+   {
+    "click": "#namepick button:text-is(\"回踩\")"
+   },
+   {
+    "wait": 150
+   },
+   {
+    "click": "[data-act=\"tool:point\"]"
+   },
+   {
+    "pw": "const g=await page.evaluate(()=>{const r=G.svg.getBoundingClientRect();return {l:r.left+LW,t:r.top,s:G.step}});await page.mouse.click(g.l+(167.5)*g.s,g.t+180);"
+   },
+   {
+    "wait": 200
+   },
+   {
+    "click": "[data-act=\"tab:pattern\"]"
+   },
+   {
+    "wait": 200
+   },
+   {
+    "click": "[data-act=\"vkey:feat|回踩\"]"
+   },
+   {
+    "wait": 200
+   },
+   {
+    "css": "#wrap{height:auto!important} #side{overflow:visible!important}"
+   }
+  ],
+  "fullPage": true,
+  "probe": "({tab:S.tab,cur:S.cur,vKey:S.vKey})",
+  "expect": {
+   "tab": "pattern",
+   "cur": "横盘突破回踩",
+   "vKey": "feat|回踩"
+  },
+  "crops": [
+   {
+    "name": "side",
+    "selector": "#side"
+   }
+  ]
+ },
+ {
+  "state": "07-features",
+  "note": "features 页：你的全部特征、定义、用在多少个框上",
+  "steps": [
+   {
+    "waitFor": "#side #tabs"
+   },
+   {
+    "click": "[data-act=\"tab:features\"]"
+   },
+   {
+    "css": "#wrap{height:auto!important} #side{overflow:visible!important}"
+   }
+  ],
+  "fullPage": true,
+  "probe": "({tab:S.tab})",
+  "expect": {
+   "tab": "features"
+  },
+  "crops": [
+   {
+    "name": "side",
+    "selector": "#side"
+   }
+  ]
+ },
+ {
+  "state": "08-q1-name",
+  "note": "会话第 1 题（名字题，链接 #q=q1）：侧栏按 buy in / not_in 两排列出要看的图",
+  "path": "#q=q1",
+  "steps": [
+   {
+    "waitFor": "#side #tabs"
+   },
+   {
+    "css": "#wrap{height:auto!important} #side{overflow:visible!important}"
+   }
+  ],
+  "fullPage": true,
+  "probe": "({q:S.q,tab:S.tab,cur:S.cur})",
+  "expect": {
+   "q": "q1",
+   "tab": "pattern",
+   "cur": "横盘突破回踩"
+  },
+  "crops": [
+   {
+    "name": "side",
+    "selector": "#side"
+   }
+  ]
+ },
+ {
+  "state": "09-q2-attr",
+  "note": "会话第 2 题（属性题，#q=q2）：按 true / false / null 分排",
+  "path": "#q=q2",
+  "steps": [
+   {
+    "waitFor": "#side #tabs"
+   },
+   {
+    "css": "#wrap{height:auto!important} #side{overflow:visible!important}"
+   }
+  ],
+  "fullPage": true,
+  "probe": "({q:S.q,tab:S.tab,cur:S.cur})",
+  "expect": {
+   "q": "q2",
+   "tab": "pattern",
+   "cur": "横盘突破回踩"
+  },
+  "crops": [
+   {
+    "name": "side",
+    "selector": "#side"
+   }
+  ]
+ },
+ {
+  "state": "10-q3-dev",
+  "note": "会话第 3 题（偏离题，#q=q3）：切到 TVRD、选中第 84 根那个缺回踩的买点，selection 页的成员链标出缺的那一段",
+  "path": "#q=q3",
+  "steps": [
+   {
+    "waitFor": "#side #tabs"
+   }
+  ],
+  "probe": "(()=>{const r=(()=>{const a=annOf(ST()),s=S.sel,b=s&&s.type==='box'?a.boxes.find(x=>x.id===s.id):null,p=s&&s.type==='buy'?a.buys.find(x=>x.id===s.id):null;return {mode:S.mode,tab:S.tab,stock:ST().symbol,cur:S.cur,sel:s?s.type:null,box:b?[txt(b.name),b.s,b.e]:null,buy:p?[p.idx,p.label,p.pattern]:null}})();return {q:S.q,...r}})()",
+  "expect": {
+   "q": "q3",
+   "stock": "TVRD",
+   "tab": "selection",
+   "sel": "buy",
+   "buy": [
+    84,
+    "buy",
+    "横盘突破回踩"
+   ]
+  },
+  "crops": [
+   {
+    "name": "side",
+    "selector": "#side"
+   },
+   {
+    "name": "chart",
+    "selector": "#chart"
+   },
+   {
+    "name": "focus",
+    "clip": {
+     "x": 560,
+     "y": 37,
+     "width": 1215,
+     "height": 660
+    }
+   }
+  ]
+ },
+ {
+  "state": "11-q4-label",
+  "note": "会话第 4 题（翻 label 题，#q=q4）：选中第 175 根那个买点，显示 label 旧 → 新",
+  "path": "#q=q4",
+  "steps": [
+   {
+    "waitFor": "#side #tabs"
+   }
+  ],
+  "probe": "(()=>{const r=(()=>{const a=annOf(ST()),s=S.sel,b=s&&s.type==='box'?a.boxes.find(x=>x.id===s.id):null,p=s&&s.type==='buy'?a.buys.find(x=>x.id===s.id):null;return {mode:S.mode,tab:S.tab,stock:ST().symbol,cur:S.cur,sel:s?s.type:null,box:b?[txt(b.name),b.s,b.e]:null,buy:p?[p.idx,p.label,p.pattern]:null}})();return {q:S.q,...r}})()",
+  "expect": {
+   "q": "q4",
+   "stock": "TVRD",
+   "tab": "selection",
+   "sel": "buy",
+   "buy": [
+    175,
+    "no_buy",
+    "横盘突破回踩"
+   ]
+  },
+  "crops": [
+   {
+    "name": "side",
+    "selector": "#side"
+   },
+   {
+    "name": "focus",
+    "clip": {
+     "x": 560,
+     "y": 37,
+     "width": 1215,
+     "height": 660
+    }
+   }
+  ]
+ },
+ {
+  "state": "12-pattern-noapp",
+  "note": "没有 app 的已命名 pattern 页：先把未归类里以「下跌」开头的两个买点挪进新建的「底部反转」，再点开 features 区「回踩」的计数",
+  "steps": [
+   {
+    "waitFor": "#side #tabs"
+   },
+   {
+    "eval": "S.patterns.push('底部反转');for(const st of STOCKS)for(const bp of annOf(st).buys)if(bp.pattern==='未归类'&&sigOf(bp,st).startsWith('下跌'))bp.pattern='底部反转';S.cur='底部反转';S.tab='pattern';S.sel=null;render()"
+   },
+   {
+    "click": "[data-act=\"vkey:feat|回踩\"]"
+   },
+   {
+    "wait": 150
+   },
+   {
+    "css": "#wrap{height:auto!important} #side{overflow:visible!important}"
+   }
+  ],
+  "fullPage": true,
+  "probe": "({tab:S.tab,cur:S.cur,vKey:S.vKey,buys:STOCKS.flatMap(st=>annOf(st).buys.filter(b=>b.pattern==='底部反转').map(b=>st.symbol+':'+b.idx))})",
+  "expect": {
+   "tab": "pattern",
+   "cur": "底部反转",
+   "vKey": "feat|回踩",
+   "buys": [
+    "AMST:177",
+    "TVGN:166"
+   ]
+  },
+  "crops": [
+   {
+    "name": "side",
+    "selector": "#side"
+   }
+  ]
+ },
+ {
+  "state": "13-unsorted",
+  "note": "未归类页：顶栏 pattern 下拉选「未归类」，再切到 pattern 页：列出还没归到 pattern 的 3 个买点，每个带 move 下拉，能一下挪进「横盘突破回踩」的那个另有一个 move 按钮",
+  "steps": [
+   {
+    "waitFor": "#side #tabs"
+   },
+   {
+    "pw": "await page.selectOption('[data-act=\"cur\"]', '未归类')"
+   },
+   {
+    "wait": 150
+   },
+   {
+    "click": "[data-act=\"tab:pattern\"]"
+   },
+   {
+    "wait": 150
+   },
+   {
+    "css": "#wrap{height:auto!important} #side{overflow:visible!important}"
+   }
+  ],
+  "fullPage": true,
+  "probe": "({tab:S.tab,cur:S.cur,mode:S.mode,unsorted:nUnsorted()})",
+  "expect": {
+   "tab": "pattern",
+   "cur": "未归类",
+   "mode": "annotate",
+   "unsorted": 3
+  },
+  "crops": [
+   {
+    "name": "side",
+    "selector": "#side"
+   }
+  ]
+ },
+ {
+  "state": "14-compare-box",
+  "note": "compare 档选中 TVRD 第 159～164 根的「放量突破」框：主图叠画 app 的 band 与档位签，selection 页 compare 一节显示这个框的档位与对应的 node",
+  "steps": [
+   {
+    "waitFor": "#side #tabs"
+   },
+   {
+    "click": "[data-act=\"mode:compare\"]"
+   },
+   {
+    "eval": "const b=annOf(STOCKS[0]).boxes.find(x=>txt(x.name)==='放量突破'&&x.s===159);if(!b)throw new Error('TVRD 没有从第 159 根起的放量突破框');S.sel={type:'box',id:b.id};S.tab='selection';render()"
+   },
+   {
+    "wait": 150
+   }
+  ],
+  "probe": "(()=>{const a=annOf(ST()),s=S.sel,b=s&&s.type==='box'?a.boxes.find(x=>x.id===s.id):null,p=s&&s.type==='buy'?a.buys.find(x=>x.id===s.id):null;return {mode:S.mode,tab:S.tab,stock:ST().symbol,cur:S.cur,sel:s?s.type:null,box:b?[txt(b.name),b.s,b.e]:null,buy:p?[p.idx,p.label,p.pattern]:null}})()",
+  "expect": {
+   "mode": "compare",
+   "stock": "TVRD",
+   "tab": "selection",
+   "sel": "box",
+   "box": [
+    "放量突破",
+    159,
+    164
+   ]
+  },
+  "crops": [
+   {
+    "name": "side",
+    "selector": "#side"
+   },
+   {
+    "name": "chart",
+    "selector": "#chart"
+   },
+   {
+    "name": "focus",
+    "clip": {
+     "x": 560,
+     "y": 37,
+     "width": 1215,
+     "height": 660
+    }
+   }
+  ]
+ },
+ {
+  "state": "15-compare-pair",
+  "note": "pattern 页点「放量突破→回踩」之间的 connected 签展开缩略图，再点 TVRD 那张跳图：自动切 compare、选中买点、描出两个框",
+  "steps": [
+   {
+    "waitFor": "#side #tabs"
+   },
+   {
+    "click": "[data-act=\"tab:pattern\"]"
+   },
+   {
+    "wait": 150
+   },
+   {
+    "click": "[data-act=\"lkopen:放量突破→回踩:connected\"]"
+   },
+   {
+    "wait": 150
+   },
+   {
+    "click": "[data-act^=\"lkgoto:0:\"]"
+   },
+   {
+    "wait": 300
+   }
+  ],
+  "probe": "(()=>{const r=(()=>{const a=annOf(ST()),s=S.sel,b=s&&s.type==='box'?a.boxes.find(x=>x.id===s.id):null,p=s&&s.type==='buy'?a.buys.find(x=>x.id===s.id):null;return {mode:S.mode,tab:S.tab,stock:ST().symbol,cur:S.cur,sel:s?s.type:null,box:b?[txt(b.name),b.s,b.e]:null,buy:p?[p.idx,p.label,p.pattern]:null}})();return {...r,pair:S.pair&&S.pair.map(id=>{const b=annOf(ST()).boxes.find(x=>x.id===id);return b?[txt(b.name),b.s,b.e]:id})}})()",
+  "expect": {
+   "mode": "compare",
+   "stock": "TVRD",
+   "sel": "buy",
+   "buy": [
+    167,
+    "buy",
+    "横盘突破回踩"
+   ],
+   "pair": [
+    [
+     "放量突破",
+     159,
+     164
+    ],
+    [
+     "回踩",
+     164,
+     167
+    ]
+   ]
+  },
+  "crops": [
+   {
+    "name": "side",
+    "selector": "#side"
+   },
+   {
+    "name": "chart",
+    "selector": "#chart"
+   },
+   {
+    "name": "focus",
+    "clip": {
+     "x": 560,
+     "y": 37,
+     "width": 1215,
+     "height": 660
+    }
+   }
+  ]
+ },
+ {
+  "state": "16-compare-nobuy",
+  "note": "compare 档、tiers 开着，选中 TVGN 第 229 根的 no_buy（回踩前出了派发）：主图右缘的档位签、三角下的 app 判断签与差签，selection 页这个买点的成员链",
+  "steps": [
+   {
+    "waitFor": "#side #tabs"
+   },
+   {
+    "click": "[data-act=\"stock:3\"]"
+   },
+   {
+    "click": "[data-act=\"mode:compare\"]"
+   },
+   {
+    "eval": "const p=annOf(STOCKS[3]).buys.find(x=>x.idx===229&&x.label==='no_buy');if(!p)throw new Error('TVGN 没有第 229 根的 no_buy');S.sel={type:'buy',id:p.id};S.tab='selection';render()"
+   },
+   {
+    "wait": 150
+   }
+  ],
+  "probe": "(()=>{const r=(()=>{const a=annOf(ST()),s=S.sel,b=s&&s.type==='box'?a.boxes.find(x=>x.id===s.id):null,p=s&&s.type==='buy'?a.buys.find(x=>x.id===s.id):null;return {mode:S.mode,tab:S.tab,stock:ST().symbol,cur:S.cur,sel:s?s.type:null,box:b?[txt(b.name),b.s,b.e]:null,buy:p?[p.idx,p.label,p.pattern]:null}})();return {...r,labels:S.labels}})()",
+  "expect": {
+   "mode": "compare",
+   "labels": true,
+   "stock": "TVGN",
+   "sel": "buy",
+   "buy": [
+    229,
+    "no_buy",
+    "横盘突破回踩"
+   ]
+  },
+  "crops": [
+   {
+    "name": "side",
+    "selector": "#side"
+   },
+   {
+    "name": "chart",
+    "selector": "#chart"
+   },
+   {
+    "name": "focus",
+    "clip": {
+     "x": 990,
+     "y": 37,
+     "width": 1154,
+     "height": 670
+    }
+   }
+  ]
+ },
+ {
+  "state": "17-app-mode",
+  "note": "app 档（TVRD）：只看 app 的结果，不能编辑",
+  "steps": [
+   {
+    "waitFor": "#side #tabs"
+   },
+   {
+    "click": "[data-act=\"mode:app\"]"
+   },
+   {
+    "wait": 150
+   }
+  ],
+  "probe": "({mode:S.mode,stock:ST().symbol})",
+  "expect": {
+   "mode": "app",
+   "stock": "TVRD"
+  },
+  "crops": [
+   {
+    "name": "chart",
+    "selector": "#chart"
+   },
+   {
+    "name": "focus",
+    "clip": {
+     "x": 560,
+     "y": 37,
+     "width": 1215,
+     "height": 660
+    }
+   }
+  ]
+ },
+ {
+  "state": "18-json",
+  "note": "json 页：存下来的原始记录",
+  "steps": [
+   {
+    "waitFor": "#side #tabs"
+   },
+   {
+    "click": "[data-act=\"tab:json\"]"
+   },
+   {
+    "css": "#wrap{height:auto!important} #side{overflow:visible!important}"
+   }
+  ],
+  "fullPage": true,
+  "probe": "({tab:S.tab})",
+  "expect": {
+   "tab": "json"
+  },
+  "crops": [
+   {
+    "name": "side",
+    "selector": "#side"
+   }
+  ]
+ }
+]

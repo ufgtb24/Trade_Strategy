@@ -1,253 +1,250 @@
 ---
 name: web-loop
-description: 迭代改进(非从零开发)一个正在运行的、带浏览器界面的 web 应用时使用。驱动一个本地 Workflow 做多轮「implement→smoke→refresh→screenshot→多 reviewer 评审→收敛」循环,用 playwright 自动化视觉+功能评审,reviewer 对照固定 rubric 判绝对 pass/fail,直到满足需求收敛退出。输入=改进需求+前端 URL+项目命令。通用于任意带浏览器界面的 web 项目(项目特化值见 examples/<项目>.md)。
+description: 自动多轮迭代改进一个正在运行、有浏览器界面的应用：功能逻辑、交互、布局、文案都能改。每轮改完自动截图，由几个不同角度的评审（界面、功能、代码，可加独立复核、新手第一眼、砍多余元素）对照验收标准打分，直到达标。用户说「自动迭代改进 / 打磨 XX 工具或界面」「从多个角度评审并自动改」「loop 优化」「反复改到满意」时使用。页面上看不到结果的问题（后端算得对不对、性能）不归它管。
 ---
 
 # web-loop —— web 应用迭代评审循环
 
+本 skill 由主会话驱动：开跑前和主会话一起把需求、验收标准、截图配方定下来，开跑后一个本地 Workflow 自己循环到收敛或停止，主会话只监控、纠错、收尾汇报。subagent 与 teammate 不能调 Workflow，必须主会话发起。
+
 ## 何时用 / 不用
-- **用**:对一个**已在运行**的 web 应用(前端有浏览器界面)做**改进或修 bug**,希望多轮自动迭代 + 多维 reviewer(UX/功能/代码)把关 + playwright 自动评审界面,直到满足需求。
-- **不用**:从零开发新应用(本 skill 前提是"改运行中的现有代码");纯后端无界面服务(无可截图评审的 UI);一次性小改(不值得起多轮 workflow)。
 
-## 核心机制(为什么这样设计)
-完整可行性研究与设计依据见 `docs/research/2026-06-03-web-loop-skill-feasibility.md`。四个关键点:
-- **capture / review 解耦(命门)**:**capture 层**(单 agent 串行驱浏览器)按 states 清单截好全部 PNG + console,组成共享 manifest(manifest = `shots[]`+`consoleErrors[]`+`pageErrors[]`+`failedRequests[]`);**review 层**(ux/func/code 并行)只 `Read` manifest 里的 PNG → 多模态看图评判,**永久零浏览器**。浏览器并发只属于 capture 单层 → 绕开"多 reviewer 抢浏览器串台"。已实测坐实。
-- **收敛靠绝对标准(防死循环)**:reviewer 对照**固定 rubric**(`principles.md` + 用户的验收 spec)判**绝对** pass/fail,**不是**"还能不能挑出毛病"。问题分 `must`(挡退出)/`nice`(不挡)。对抗验证:相对标准(问题清空才退)50 轮不收敛,绝对标准 3 轮收敛。
-- **三层刷新**:前端改→Vite HMR + `page.reload()`;后端改→kill+restart(热重载技术上不可用);数据/状态改→重启 + 触发刷新(具体方式由项目定义,见 `examples/<项目>.md`)。
-- **回归 gate**:每轮 implement 后先跑 smoke 测试,红则 git 回滚本轮 + 记 must 强制下轮重做。
-- **GOAL 持久化(防漂移)**:多轮 fresh subagent 协作下 GOAL 会漂(reviewer 越深只盯 must / implementer 轮 ≥2 退化为修补匠 / 视觉直觉无文字通道)。本 skill 用二件套抗漂:**goal.md + refs/**(setup 阶段写入,reviewer/implementer 每轮 Read 完整版,prompt 段只放摘要);reviewer prompt 顺序固化(GOAL + 子项 + refs 占顶,issues 退后段);**收敛判据加严** = `openMust==0 && 全 GOAL 子项被本轮 verified 覆盖(coveredSubgoals 集合 ⊇ goalSubgoals 集合)`。覆盖证据强制绑本轮真实可定位标识(截图文件名+像素特征 / probe key / console 行号 / diff 函数名),仅写"看起来满足"等不可定位修辞 = evidence 不合格、不计入覆盖。
+- **用**：改进或修 bug 一个**已在运行**、有浏览器界面的应用，希望多轮自动迭代，由多个角度的评审把关。前端、后端、数据三档都能改，判断依据只来自浏览器里看得到的结果。
+- **不用**：
+  - 从零开发（前提是改运行中的现有代码）。
+  - 纯后端无界面服务。
+  - 一次性小改。
+  - 结果不落到页面上的逻辑（后端计算对错、性能、并发）：走测试或评估脚本。
+  - 单次 smoke + 截图 + 刷新要超过 10 分钟的项目（例如每次都全量重扫数据）：先在 `.web-loop-refresh.md` 里改用数据子集。
 
-## args(skill 内部表示,**非用户接口**)
+两种模式，骨架相同，开跑前由主会话判断并写进给用户点头的摘要：
 
-**用户只说自然语言开发需求**(一句人话,如"K线为什么挤在下方")。`args` 是 skill 在「智能入口层」(见下节)探测/诊断/对话后**内部填出**、喂给模板的中间产物——**用户全程不接触 args 函数格式**。推断不出的必要信息,skill **反过来对话问**用户(自然语言),用户口语答 → skill 内部转 args;**绝不要求用户填"smokeCmd 参数"之类**。用户可主动多说以加速,但这是**权利非义务**。
+| | `app`（默认） | `prototype` |
+|---|---|---|
+| 适用 | 有后端、有真实数据的应用 | 界面先行、后端没开发，原型背后的模拟逻辑和演示数据就是方案（没有后端的静态页，或用户说明是原型） |
+| 默认评审角度 | ux、func、code | newbie、razor、flow、contract |
+| 默认 `maxRounds` | 5 | 3 |
+| 额外产出 | 无 | 后端要求清单、方向题、「方案受影响的地方」 |
 
-下表是 skill 内部要填出的字段语义("怎么填"见「智能入口层」节):
-> 项目特异的示例值集中在 `examples/<项目>.md`(以 `examples/path2.md` 为例);下表只给通用语义。
+原型模式的细则见「原型模式」一节。
+
+## 运转方式
+
+每轮：implementer 改代码 → `wl.mjs verify`（快照、smoke、刷新、截图，全在一条命令里）→ 各角度评审并行判 → 脚本按台账推导出口。
+
+- **截图只由程序采集**：`capture.mjs` 按截图配方执行，评审只 Read 它产出的图，**不碰浏览器**；implementer 自查的截图不作为评审证据。
+- **验收标准开跑时冻结**：评审对照一份不变的标准判过不过，才停得下来（按「问题清空才停」跑 50 轮不收敛，按固定标准 3 轮收敛）。跑的过程中不改判断标准；标准写错了，用 override 豁免受影响的条目，改正后的标准下一次 run 生效。
+- **问题的状态由台账推导**：评审只报缺陷和子项是否达成，是否修好、是否复现由脚本按证据归并；只有负责角度能关闭自己的条目，别的角度只能凭本轮证据报「复现」。
+- **三档刷新**：implementer 每轮交回改动档位。`frontend` 不重启，截图器每次新开浏览器；`backend` 按 `healthUrl` 端口精确结束旧进程、用 `restartCmd` 重启，端口回 200 且进程号换了才算成功；`data` 在重启之外再执行 `refreshDataCmd`。
+- **回归 gate**：smoke 红时按快照只退回本轮改动，复跑 smoke——变绿说明本轮改坏了（下一轮重做，被退回的 diff 存档交给 implementer）；仍红说明环境或基线坏了，改动放回去，run 以 `blocked` 结束。被忽略的文件不进快照，回滚管不到。
+- **流程骨架固定**：动态只发生在开跑前（填参数、起草并冻结验收标准）；开跑后的改口只有三个受控通道（见「中途纠错」）。
+- **模型**：所有 agent 继承会话模型。评审用只读的 `Explore` 类型，它不加载项目 CLAUDE.md 和用户级 rules，所以评审要用到的规范原文必须收进 rubric。
+
+## args（skill 内部表示，非用户接口）
+
+用户只说自然语言需求。args 由「智能入口层」探测、诊断、对话后填出，写成 `<workdir>/args.json`；推断不出的必要信息用口语问用户，用户全程不接触 args 格式。项目特异的示例值见 `examples/<项目>.md`（范例 `examples/path2.md`）。
 
 | arg | 必填 | 说明 |
 |---|---|---|
-| `goal` | ✓ | 本次改进需求(基于已有代码)(配合 goalSubgoals 使用,拆显式子项见智能入口层 §2b) |
-| `goalSubgoals` | ✓ | GOAL 拆显式子项清单;每条 `{id, desc, verifiable_via, measurable, relatedRefs, relatedStates}`;主会话「智能入口层 §2b」自然语言诊断阶段拆出,1-6 条 |
-| `refImages` | 可选 | 用户提供的参考截图;每条 `{path, role, description, relatedSubgoals, relatedState?}`;role / description / relatedSubgoals 字段语义见「智能入口层 §2c」;用户未贴图时为空数组 |
-| `url` | ✓ | 外部启动的前端 URL |
-| `rubricPath` | ✓ | 验收标准 spec(reviewer 对照判 pass/fail) |
-| `smokeCmd` | ✓ | 回归 gate 命令 |
-| `uiDir` | ✓ | 前端项目绝对路径(playwright 临时脚本在此跑,否则 ESM import 失败) |
-| `shotsDir` | ✓ | 截图落盘目录(须在项目内);**约定填 `<workdir>/shots`**——与 run 状态同根,每次 run 单目录自包含、跨 run 不覆写(截图名只带轮号,共享目录会被下次 run 静默覆写) |
-| `states` | 可选 | capture 要截的状态轨迹清单 `[{state,recipe,probe?}]`(矩阵的行=功能轴);省略用最小首屏态。`probe` 可选 = page.evaluate 表达式,截图外采集 store/DOM 状态入 manifest `stateDumps`(第二证据通道,canvas 交互必配) |
-| `captureBackend` | 可选 | `mcp`(默认,系统 chrome,白送 console)/`script`(channel:chrome 串行)/`script-parallel`(逃生口) |
-| `lenses` | 可选 | review 维度轴(默认 `["ux","func","code"]`)。另有三个对抗 lens 可加:`rival`(第二位独立复核员,同一份 rubric、本轮互不通气,两位都过才算过)、`razor`(剃刀:没有任务对应的元素、概念 / 规则 / 固定词数高于 rubric 基线都记 must)、`newbie`(新手第一眼:先只看截图写读法再对照 rubric;看不到别的 lens 的已验证项与问题)。未登记的名字对照 rubric 里同名一节判 |
-| `restartCmd`+`healthUrl` | 后端改需要 | 后端重启命令 + 健康探针 |
-| `refreshDataCmd` | data 层改需要 | 数据刷新入口:以 `.md` 结尾→refresh agent read 该说明文件按步骤执行(多步/poll);否则当 shell 命令跑(单步,如 DB seed) |
-| `scanSubset` | 可选 | 迭代轮用的数据子集 regex(压墙钟) |
-| `workdir` | 自动 | 状态/截图落盘根(`.claude/web-loop/<runtag>`) |
-| `maxRounds`/`staleRounds` | 可选 | 收敛兜底(5 / 3)。⚠ 启用 P1 meta-agent 后,触发判据 = `mustStaleStreak >= max(1, staleRounds - 1)`,始终在 stalled 退出前 1 轮(或与 staleRounds=1 时同轮)给一次智力救场;判据 (b)(c) 同样挂 max(1, staleRounds-1)。详 「三条机检判据触发说明」节 |
+| `runtag`、`workdir` | ✓ | 主会话生成 runtag；`workdir` = `.claude/web-loop/<runtag>`（相对 repo root） |
+| `goal` | ✓ | 技术化的改进目标 |
+| `goalSubgoals` | ✓ | 1～6 个子项 `{id, desc, lenses, measurable, states, relatedRefs}`；`lenses` 是负责判它的角度（args.lenses 的子集），`states` 是证据所在的截图状态 |
+| `lenses` | ✓ | 评审角度。内置：`ux` `func` `code` `rival`（第二位独立复核）`razor`（砍多余元素）`newbie`（新手第一眼）`flow`（模拟用户走流程）`contract`（后端要求一致性，仅原型模式）；其他名字对照 rubric 的同名专节判 |
+| `url` | ✓ | 前端地址（可以是 `file://`），经 probe 协议派生 |
+| `statesPath` | ✓ | 截图配方文件；主会话可在 run 中途改，下一轮生效 |
+| `viewport` | 可选 | 默认 `{width:2560,height:1440,deviceScaleFactor:1}`；单个状态可覆盖 |
+| `uiDir` | ✓ | 前端项目目录，从这里解析 `@playwright/test` |
+| `rubricPath` | ✓ | 主会话起草的验收标准；init 拷成 `<workdir>/rubric.md` 冻结 |
+| `smokeCmd` | ✓ | 回归 gate 命令，以退出码判 |
+| `restartCmd`、`healthUrl` | 后端改需要 | `restartCmd` 起的就是那个常驻后端进程（verify 以脱离方式启动、不等它退出）；非 0 退出且端口没人监听立即判失败。`healthUrl` 选业务就绪后才返回 200 的接口（如返回实际数据的列表接口），不选只报进程存活的健康检查，否则截图可能截到还没加载完的空数据 |
+| `refreshDataCmd` | 数据改需要 | `.md` 结尾 = 说明文件，verify agent 先照着刷新，再带 `--refreshed` 跑 verify（此时不再重启后端）；否则当 shell 命令 |
+| `refImages` | 可选 | 参考图，见「参考图持久化」 |
+| `maxRounds`、`staleRounds`、`maxAgents` | 可选 | 默认 5（原型 3）、2、不限；`maxAgents` 若设置不小于 `2 + lenses 数` |
+| `continueFrom` | 续跑 | 上一次 run 的 workdir |
+| `mode`、`schemeFiles`、`contractPath` | 原型 | 见「原型模式」 |
 
-> ⚠ **模板已项目无关**:refresh 的 `data` 档通过 `refreshDataCmd` 兜底(以 `.md` 结尾则 refresh agent read 项目内说明文件执行多步刷新);capture 的 states 默认是最小首屏态。**任何项目只需传 `states` + `refreshDataCmd`,不改模板**。具体项目的 states / `.web-loop-refresh.md` 全文示例见 `examples/path2.md`。
+## 智能入口层（开跑前，主会话执行，全程自然语言）
 
-## 智能入口层(主会话在生成 workflow 之前执行;全程自然语言)
+能自己查的不问用户，推不准的回讲让用户点头，缺的口语问。
 
-用户只给一句自然语言需求。主会话(**不是 Workflow**——研究已证 Workflow 工具不懂项目,智能必在调用方)做下面四件事,内部填出 `args`。把负担推到极限:能自己查的绝不问用户,推不准的回讲确认,缺的口语问。
+### 1 探测项目事实（直接用，不打扰）
 
-### 2a 探测项目事实(强可靠,自动不打扰)
-读项目、跑命令,直接填出工程类 args——用户不再碰这些:
-- `uiDir`:读 `package.json`/`vite.config.*`/前端入口定位前端根。
-- `url`:**必须**经 §2a-bis 项目配置 probe 协议派生;**禁直接用 `examples/<项目>.md §1` 表中的字面 URL**——§1 表中端口相关行只能是占位/派生说明,不是值。
-- `smokeCmd`:读 `package.json` 的 test/lint script、CI 配置、`Makefile` → 组回归 gate 命令。
-- `rubricPath`:有 `examples/<项目>.md` 则取其中验收 spec 路径(配 `principles.md` 通用 rubric 骨架);无则转「对话补缺」问用户验收标准。
-- `restartCmd`/`healthUrl`:`healthUrl` 端口同 `url` 由 §2a-bis probe 派生;`restartCmd` 直接取自 examples(命令本身无端口耦合)。
-- `refreshDataCmd`:三档处理。
-  - 项目根/`uiDir` **已有** `.web-loop-refresh.md` → 先 grep 文件中 `localhost:\d+` 字面端口:
-    - **零字面端口**(已是 `${backend_port}` 占位或纯命令)→ 直接指向它(`refreshDataCmd = ".web-loop-refresh.md"`),不再问用户。
-    - **含字面端口**(老格式)→ 警告用户:"既有 .web-loop-refresh.md 含字面端口 `<grep 结果>`,可能与当前 yaml 派生端口 `<probe 值>` 不一致;建议删除该文件后重跑(主会话将按 §2a 新模板渲染)。本次先复用老文件继续。" 用户决定是否删。
-  - **没有,且能用单步命令搞定**(DB seed / 缓存清空 / 单 endpoint POST)→ 走「对话补缺」问一句,填单步 shell 命令。
-  - **没有,且是多步流程**(如重启后端 → 触发重扫 → poll 结果)→ 主会话**起草** `.web-loop-refresh.md` 落地到项目根,然后 `refreshDataCmd` 指向它。起草流程:
-    1. 基于 §2a 已探测到的事实(后端启动方式 / 端口 / health endpoint)+ 对话问用户"刷新数据需要走哪几步、每步打哪个 endpoint",撑出多步骨架。**端口必须用 §2a-bis probe 出的值**,模板里写占位 `${backend_port}` 等,主会话渲染替换后再写盘。
-    2. 命令内**用 cwd 相对路径,禁绝对路径**(`uv run ...`、`curl http://localhost:<port>/...`),保证跨 worktree 通用。
-    3. kill 旧进程**按端口/PID 精确**(`lsof -ti:<port> | xargs -r kill`),**绝不 `pkill -f`**(红线,详 L206)。
-    4. **回讲点头**(沿用「分级确认」):把起草草稿摘要回给用户("刷新会:① 端口 `<probe 出的 backend_port>` kill+restart 后端 ② POST /scan ③ poll /scans/... 至 results 非空 ④ 前端 reload — 对吗?")。
-    5. 用户点头后用 `Write` 工具落地到 `<repoRoot>/.web-loop-refresh.md`(已存在则跳过覆写,改提示用户手工 review)。落地后再走 §214 allowlist 前置补 `curl`/`kill`/`uv` 等权限。
-- `shotsDir`/`workdir`/`runtag`/轮数:纯 skill 约定自定(`runtag` 由主会话生成——脚本禁 `Date.now()`;`workdir`=`.claude/web-loop/<runtag>`;`shotsDir`=`<workdir>/shots`,run 产物单目录自包含)。
-- 探不到的**必要**项 → 转「对话补缺」。
+- `uiDir`：读 `package.json`、`vite.config.*` 定位前端根。
+- `smokeCmd`：读 `package.json` 的 test / lint script、CI 配置、`Makefile` 组命令。
+- `url`、`healthUrl`：必经下面的 probe 协议派生，不用字面值。
+- `restartCmd`：取自 `examples/<项目>.md`。
+- `refreshDataCmd`：项目根或 `uiDir` 已有 `.web-loop-refresh.md` 时，先 grep 其中的 `localhost:\d+`——零字面端口就直接指向它；含字面端口就提示用户该文件的端口可能与配置不一致，建议删掉重起草，本次先复用。没有这个文件且是单步命令（DB seed、缓存清空）就问用户一句；是多步流程就由主会话起草落地到项目根：
+  1. 依据已探测的启动方式、端口、健康接口，加上问用户「刷新要走哪几步、每步打哪个接口」；
+  2. 端口写 `${backend_port}` 占位，主会话渲染后再落盘；命令用 cwd 相对路径；
+  3. 结束旧进程按端口或进程号精确（`lsof -ti:<port>`，再 `kill <进程号>`）；
+  4. 等待异步结果时用能区分「路由写错」与「结果未就绪」的判法，让每一步失败都立刻报出原文，不要写成「404 就重试」；
+  5. 摘要回讲给用户，点头后 Write 落地；该文件入 git 共享。
+- 探不到的必要项转「对话补缺」，例如「没找到测试命令，你们项目怎么跑测试？」。
 
-### 2a-bis 项目配置 probe 协议(端口/URL 派生)
+**项目配置 probe 协议**（`url`、`healthUrl`、`.web-loop-refresh.md` 里的端口占位都走它）：
 
-`url`/`healthUrl` 类接口字段**必经此协议**派生,**禁字面值**。
+1. 读 `examples/<项目>.md` 的 probe 配方节；没有就直接问用户。
+2. 按配方读配置源的键，按公式算出具体串。
+3. 配置源或键缺失、解析失败：口语问用户（「没在 `<配置源>` 找到 `<键>`，前端在哪个端口？」），答案只对本次 run 有效，不写回项目配置；提示用户可以补上该键。
 
-**步骤**:
+本协议和 SKILL.md 全文不出现项目名和字面端口，“去哪找、键叫什么”只在 `examples/<项目>.md`。
 
-1. 读 `examples/<项目>.md` 的「§1b probe recipe」节(若无该节 → 直接转「对话补缺」问用户)。
-2. 按 recipe 的「配置源 + 键路径」读项目配置文件(支持 yaml/json/.env 等,recipe 自行声明格式)。
-3. 按 recipe 的「派生公式」算出 `url`/`healthUrl` 等具体串。
-4. 配置源缺失 / 键缺失 / 解析失败 → 转「对话补缺」问用户(口语问,如"未在 `<配置源>` 找到 `<键>`,前端 dev server 在哪个端口?")。
-5. 用户答 → **仅本次 run 生效**(不缓存,下次跑同样走步骤 1-4 可能再问);**不自动写回项目配置**(by-design,避免静默改用户工程);仅文字提示用户:"建议在 `<配置源>` 补 `<键>: <值>` 以后续静默 probe"。
+### 2 诊断需求，拆子项
 
-**适用范围**:`url` / `healthUrl` / `.web-loop-refresh.md` 模板里的端口占位符。
-**不适用**:`uiDir` / `restartCmd` / `rubricPath` / `pattern_id` 等非接口字段(直接从 examples 取字面值)。
+- 用户抱怨（如「K 线挤在下方」）→ 服务在跑时截当前界面，读相关组件代码，推出技术 goal，**回讲一句让用户点头**。
+- 拆 1～6 个子项，每条 `desc` 能在截图、探针或 diff 上核对，并指定负责角度（`lenses`）和证据所在的状态（`states`）。拆完一并回讲点头。
+- 看得到才推得到：偶发、隐蔽的 bug 需要用户给线索；主观审美默认只守底线（不崩、无报错、不回归），用户有偏好才补进 rubric。
 
-**红线**:本协议节及 SKILL.md 协议层全文**零项目名、零字面端口**。所有"去哪找、键叫什么"的知识必在 `examples/<项目>.md`。
+### 3 写截图配方（`statesPath`，JSON 数组）
 
-### 2b 自然语言诊断(弱可靠,需确认)
-把用户的模糊抱怨翻译成技术 `goal` + 定 `states`/`lenses`:
-- 用户抱怨(如"K线挤在下方")→ **截当前界面**(服务在跑时)+ **读相关组件代码** → 推测技术 goal(如"K线 grid 垂直空间被压缩,应占更大高度")。
-- `states`:从 goal 推相关界面轨迹(要观察哪几个交互态)。
-  - **canvas/WebGL 类无 DOM 界面**(ECharts、d3 canvas、WebGL 等):交互结果常无视觉差异,光靠截图取证会盲——关键交互态必配 `probe`(stateProbe 第二证据通道)。项目特异的取证 recipe(精确调用形状、像素定位方法)见 `examples/path2.md § canvas / ECharts 专题`。
-- `lenses`:默认三维 `["ux","func","code"]`,按 goal 偏重(布局问题偏 ux)。用户要「对抗」时加 `rival` / `razor` / `newbie`(见 args 表);`razor` 要求 rubric 写明任务清单、数法与基线,`newbie` 要求 rubric 写明各签 / 列 / 颜色的正确含义。
-- **goal 翻译完回讲一句让用户点头**("是想让 K 线占更大垂直空间吗?")——见「分级确认」。
-- **goal 翻译完继续拆显式子项**:把 goal 拆 1-6 个可勾选的子项,逐项填 `{id: "G1", desc: "K线 grid 占视口垂直 60% 以上", verifiable_via: "screenshot" | "console" | "probe" | "diff", measurable: "高度比 ≥ 0.60", relatedRefs: [<ref role 引用>], relatedStates: [<capture state 名>]}`。每条 `desc` 必须能在界面上肉眼勾选 / 在 console / probe / diff 文本上 grep 验证。
-- **拆完一并回讲点头**(沿用「分级确认」回讲机制):"这次要做的是 G1 K线占垂直 60%、G2 markers 居中、G3 侧栏 320px,对不对?"——用户确认后,args.goalSubgoals 填出,后续 Task 6 setup 阶段会写入 `<workdir>/goal.md`。
+每个状态：
 
-### 2c 参考图持久化(用户贴的截图 / mockup)
-
-用户在主会话贴的参考图(如"做成这样"目标态 / "改进前现状" baseline / "勿做成这样" anti-example),主会话**必须**在生成 Workflow 之前完成持久化——`~/.claude/image-cache/<uuid>/<n>.png` 是主会话临时缓存,对 spawn 出的 subagent 不可见(这是设计前提)。步骤:
-
-1. **遍历 image-cache**:从 `~/.claude/image-cache/` 找到所有本会话贴入的截图。
-2. **mkdir + cp**:`mkdir -p <workdir>/refs/`,把每张图 cp 到 `<workdir>/refs/<role>.png`(role 见下)。
-3. **体积上限校验 + 降采样**:对每张图先校验 — **单张 ≤ 2MB 且 像素 ≤ 2048×2048**(用 `identify`(ImageMagick)或 Pillow `Image.size` 探)。超限主会话用 `sips`(macOS)/ `convert`(ImageMagick)/ Pillow 降采样到长边 ≤ 2048、≤ 2MB,降采样后路径覆写入 manifest。
-4. **写 manifest.json**:`<workdir>/refs/manifest.json` 记录每张图的元数据:
-   ```json
-   [
-     {
-       "path": "<workdir>/refs/goal-layout.png",
-       "role": "goal",
-       "description": "目标:K线 grid 应占垂直 60%+,markers 不挤压价格线,侧栏宽 320px",
-       "relatedSubgoals": ["G1", "G3"],
-       "relatedState": "03-pick-hit",
-       "downsampled": false
-     }
-   ]
-   ```
-   - `role` 三档:`goal`("做成这样")/ `baseline`("改进前现状,**勿模仿**")/ `anti-example`("勿做成这样,**远离**")。
-   - `description` **必须以"目标 / 现状 / 负例"三字开头**(二次硬绑 role 语义到自然语言,降低 reviewer 误读概率)。
-   - `relatedSubgoals` 关联本次 GOAL 子项的 id 数组(reviewer 复核某子项时强制对照对应 ref)。
-   - `relatedState` 可选,对应某个 capture state(reviewer 看本轮 state 截图时一目了然该用哪张 ref 对照)。
-   - `downsampled` true 时 SUMMARY.md "## 参考图" 节单列(let 用户复盘知"超大 ref 已自动降采样")。
-5. **args 填出 refImages**:把 manifest.json 内容当 `refImages` 字段传入 Workflow args。
-6. **goal.md "参考图" 节**:Task 6 setup 写 goal.md 时,自动从 manifest.json 列出每张图的 path + role + description。
-
-⚠ **用户没贴图也合法**:跳过本步骤,args.refImages = []。Task 8 reviewer prompt 内插的「参考图清单」会显示"(无 ref,本次 GOAL 纯文字驱动)",reviewer prompt 的"第一步建基准"自动跳 refs Read 步骤、不报错。
-
-⚠ **role 自动定位的兜底**:主会话靠对话上下文推 role(用户口语"做成这样"+ 图 1 → role=goal;"现在长这样不好" + 图 2 → role=baseline);推不准时,**回讲让用户点头 role 分配**("第一张是目标、第二张是现状对吧?")。这是「分级确认」机制的延伸。
-
-⚠ **已知 risk**:本步骤是主会话 LLM 操作,role 分配 / 子项拆解可能拆错(详 `docs/research/2026-06-19_web-loop-goal-persistence/final_report.md` §5.1 single point of failure)。无更优兜底;最低兜底 = 回讲点头 + Task 10 SUMMARY.md 末"## 已知设计 risk"节提示人工复核。
-
-### 对话补缺(探测 + 诊断后仍缺的必要信息)
-主动用**自然语言**问用户(如"没找到测试命令,你们项目怎么跑测试?"),用户口语答 → skill 内部转 args。**绝不把缺口甩成"请填 smokeCmd 参数"。**
-
-### 分级确认(安全阀,把负担推到极限又不跑偏)
-- **强可靠推测直接用**:目录、命令、端口这类"项目里有客观答案"的,查到即用,不打扰。
-- **弱可靠推测回讲确认**:goal 翻译、smokeCmd 多候选歧义这类,回讲一句让用户点头再用。
-
-### 运维确认(上面之外,生成 workflow 前仍必做)
-- **服务在跑**:`curl -sf <url>` 和(涉及后端)`curl -sf <healthUrl>`。不在跑则**停下让用户外部启动**——本 skill 前提是"改运行中的应用",不负责起服务。
-- **capture 浏览器**:`captureBackend=mcp`(默认)用 playwright MCP(系统 chrome);MCP 不可加载则 capture 层自动退 `@playwright/test` `channel:'chrome'`(仍系统 chrome,不串台)。`shotsDir` 须在项目内(MCP sandbox 只许写项目根/`.playwright-mcp`)。
-- **smoke 基线**:跑一次 `smokeCmd` 确认改动前**本就全绿**(否则分不清回归来源)。
-- **setup 清理(N-1 保留)**:删除**旧 runtag** 目录下的 `shots/` 子目录(`.claude/web-loop/<旧runtag>/shots/`,保留 SUMMARY.md/issues.json/reviews/ 等文字记录,豁免清单**追加** goal.md / refs/ — 这些是本次 GOAL 持久化二件套,删了就失去事后回放)+ 整删 `.playwright-mcp/`。时机锁死在此处——**绝不在 finalize 删**(run 刚结束是截图最可能被人工复查的时刻,残留 must 的补证全靠它们)。清理**只按显式路径枚举,绝不 `git clean`/泛扫 untracked**(既有红线,曾有真实事故);豁免:`.web-loop-refresh.md`、各 run 文字记录、当前 run 目录、**goal.md / refs/**。
-
-### 三道推测天花板(诚实标注,别让用户以为 skill 全知)
-1. **推测会猜错 → 回讲确认**:goal 翻译可能猜歪,推完回讲让用户点头。
-2. **看得到才推得到 → 藏深的要线索**:能截图观察到的(布局崩)可自诊;偶发/隐蔽 bug(点某处偶尔闪退)需用户给线索。
-3. **主观审美推不准 → 通用底线兜底**:不崩/无 console error/不回归是通用底线(skill 自带);"好不好看"的取舍默认兜底,用户有特殊偏好才补。
-
-## 生成并运行 workflow
-1. 读脚本模板 `.claude/skills/web-loop/workflow-template.js`(参数化骨架,与 `principles.md` 配套)。
-2. 把收集的输入组装成 `args`(传**真实 JSON 值**,非 stringified —— 否则脚本里 `args.url` 等取不到)。
-3. **主会话**调 `Workflow({ script: <模板内容>, args: <args> })`。⚠ **subagent/teammate 不可调 Workflow**,必须主会话发起。
-4. **🚨 校验返回 `status`**:Workflow 返回后检查 `status`。
-   - `async_launched`(本地后台)→ 正常,继续监控。
-   - `remote_launched`(被推 CCR 云端)→ **立即中止并告知用户**:云端 session 访问不了本地 `localhost` + 本地浏览器(系统 chrome + 缓存 chromium),整条 playwright 评审链路会失效。
-   - (脚本内 preflight 还有等效兜底:`curl localhost` 必 200,workflow 若在云端会自然 fail-fast。)
-
-## 监控与收尾
-- `/workflows` 看实时进度(setup → iterate 各轮 → finalize)。
-- 收敛后读 `<workdir>/SUMMARY.md`:退出原因(`converged` / `max-rounds-hit`)、逐轮 verdict/issue 走势、残留 must/nice。
-- 若用了 `scanSubset`,SUMMARY 会提示终轮已用全集复核命中数与渲染。
-- `<workdir>/issues.json` + `reviews/round_NN.md` 是跨轮记忆 + resume 容灾(`resumeFromRunId` 仅同 session 有效)。
-
-## 三条机检判据触发说明(P0 §3.4,2026-06-21 final_report)
-
-iterate loop 末尾基于 issues 台账推 3 条无声判据,任一触发即写 `<workdir>/paused.latest.md`(最新一次)并 append 进 `<workdir>/paused.history.md` + 退出循环(保留 issues.json/verified.json/refs/,沿用现有 stalled 出口走 finalize):
-
-| 判据 | 含义 | 算法(workflow-template.js 末尾) |
-|---|---|---|
-| `oscillating` | 同一 must 跨轮"修复 → 回归"震荡 ≥2 次,implementer 在两修法间反复横跳(② 多 must 互冲硬证据) | `issues.some(i => i.severity==='must' && (i.regressionCount||0)>=2 && (i.status==='open'||i.status==='regressed'))` |
-| `treadmill` | 同 lens 新 must 累计 ≥ 老 must 修复累计 且最近 2 轮差值单调不降(每修一旧 must 引入一新 must;mustStaleStreak 因 id 不同不计) | `REVIEW_LENSES.some(lens => ...)` 见代码 |
-| `missingStates` | 同 GOAL 子项 unverifiable 跨 ≥2 轮 + requiredStates 集合有重叠 = capture STATES 漏一必要状态(workflow 内无能力补) | `(GOAL_SUBGOALS||[]).some(g => ...)` 见代码 |
-
-⚠ 触发后**不硬退出**——保留所有 workdir 文件,SUMMARY 顶部显式标 PAUSED 触发判据 + 续修指引(见下节)。
-
-## 续修协议(P0 §3.7,零 runtime 改动)
-
-§3.4 任一判据触发时,workflow 写 `<workdir>/paused.latest.md`(覆写最新)+ append `<workdir>/paused.history.md`(历史全量)+ `stalled=true` 走 finalize。用户三选一:
-
-1. **rubric/STATES/refImages 错位** → 改 args 起新 run
-2. **implementer 走偏 / reviewer 根因猜错** → 写 `<workdir>/human-hint-r{N+1}.md`(自然语言一段,描述真实根因 / 该改什么文件)→ 主会话调 `Workflow({resumeFromRunId: "<runtag>"})` 续跑同 run,保留已 verified 子项不重做
-3. **弃 workflow** → 转主会话 + sonnet implementer 手工修
-
-**iterate 顶端**自动检测 `<workdir>/human-hint-r${round}.md` —— 若存在,Read 内容并以"权威 · 必须遵循(用户人工指令)"段插入 implementer prompt 顶部;消化完 `mv` 到 `human-hint-r${round}.consumed.md` 防止下轮重复消费。
-
-**skill 入口控制流**(主会话生成 args 之前):若检测到 `<workdir>/paused.latest.md` 存在 + `<workdir>/human-hint-r{N+1}.md` 存在 → **不走 setup**(rubric/smoke baseline 已验证)、**不重做 r1..rN**(verified 已在台账)、直接调 `Workflow({resumeFromRunId: <runtag>})` 进 iterate r{N+1}。
-
-⚠ `resumeFromRunId` 仅同 session 有效(SKILL.md 已说);跨 session 切换 = 起新 run(失去 verified 进度)。
-
-## P1 meta-agent(缩窄版 · stall 触发 · 物理禁双源真理)
-
-reviewer 后 / 下轮 implementer 前位置,触发条件 OR(任一):
-
-```js
-const P1_TRIGGER_STREAK = Math.max(1, STALE_ROUNDS - 1);
-const p1Triggered = mustStaleStreak >= P1_TRIGGER_STREAK
-                 || coveredSubgoalsUnchangedRounds >= P1_TRIGGER_STREAK
-                 || gitDiffSmallRounds >= P1_TRIGGER_STREAK;
+```jsonc
+{ "state": "14-compare-box",              // 唯一，字母数字下划线连字符
+  "note": "compare 档选中放量突破框",       // 这个态展示什么，给评审看
+  "path": "#q=q3",                         // 可选，拼在 url 后
+  "viewport": { "width": 1600, "height": 900 },   // 可选
+  "steps": [ {"wait":800}, {"eval":"S.mode='compare'; render()"}, {"waitFor":".panel"},
+             {"click":"#btn"}, {"press":"Escape"}, {"css":"#wrap{height:auto!important}"},
+             {"pw":"await page.mouse.move(100,200)"} ],   // 每步恰好一个键
+  "fullPage": false,
+  "probe": "({mode:S.mode, box:S.sel&&S.sel.name})",      // 页面里求值的表达式
+  "expect": { "mode": "compare", "box": "放量突破" },      // 对探针结果做部分深比较
+  "crops": [ {"name":"side","selector":"#side"}, {"name":"chart","clip":{"x":0,"y":0,"width":1600,"height":900}} ] }
 ```
 
-> 触发条件随 `staleRounds` 自适应:`staleRounds=2` → 在 mustStaleStreak==1 时(早 stalled 退出 1 轮)触发;`staleRounds=1` 激进配置下与 stalled 同轮触发,此时 P1 主要价值变成 escapeRequest 给精确失败原因。
+- **探针记录「目标是谁」**（如选中框的名字），能断言的写进 `expect`；`expect` 不符、任一步抛错、选择器找不到都使该态失败，评审不会看到失败态的图，脚本会立对应的 must。
+- **配方里不写 `||` 兜底**：兜底会让「选错对象」也截成功图，而且 `expect` 无从核对。
+- **小字区域声明 `crops`**：评审只读，不能自己裁图。
+- **canvas / WebGL 界面**的交互结果常无视觉差异，关键交互态必配 `probe`；项目特异的取证做法见 `examples/<项目>.md`。
+- 原型模式的配方还要排进空、很多、互相矛盾等边界数据的状态；新补的演示数据字段都进后端要求清单。
+- 表达「一串状态就是一次流程」的角度（flow），要求配方里把流程经过的每一步按顺序排成状态。
 
-**META_AGENT_SCHEMA 3 字段(物理禁双源真理:无 issues / verified / rootCauseHypothesis)**:
-- `forbiddenApproaches`: `[{ issueId, triedMethod, why_failed_evidence }, ...]`,跨轮"试过且失败"清单 → 下轮 implementer prompt 权威·必须规避(跨轮 forbidden)内插,强制规避
-- `prioritizedMustIds`: 仅排序 issues.json 已有 must id 子集(不新增不删除)
-- `escapeRequest`: `{ type, detail } | null`,5 类(`missing_state` / `capture_layer_bug` / `rubric_too_strict` / `goal_unrealistic` / `reviewer_disagreement`)
+### 4 参考图持久化（用户贴了截图时）
 
-**输入**:goal.md + refs/manifest.json + 最近 ≤3 轮 reviews/round_NN.md + impl.md + git log + decision_log.json + issuesJson + verifiedLog。**模型**:opus。**位置**:reviewer 后 / 下轮 implementer 前。
+`~/.claude/image-cache/<uuid>/<n>.png` 是主会话的临时缓存，Workflow 内的 agent 看不到，所以由主会话在开跑前处理，不交给 agent：
 
-**prompt 强约束**(物理禁双源):"reviewer 的 issues/verified 是台账真相,你**不质疑、不修改、不复判**;若产生对某 must 的不同看法,必须走 `escapeRequest.type=reviewer_disagreement` 通道(强制人工介入,不让 implementer 选边)"。
+1. `mkdir -p <workdir>/refs/`，把图复制成 `<workdir>/refs/<role>.png`；单张超过 2MB 或 2048×2048 的降采样到长边 ≤ 2048。
+2. 写 `<workdir>/refs/manifest.json`：每张 `{path, role, description, relatedSubgoals, relatedState?, downsampled}`。
+3. `role` 三档：`goal`（做成这样）、`baseline`（改进前现状，不要模仿）、`anti-example`（不要做成这样）。`description` 以「目标」「现状」「负例」三字之一开头。
+4. role 靠对话推（「做成这样」→ goal，「现在长这样不好」→ baseline），推不准就回讲让用户点头。
+5. 把 manifest 内容填进 `refImages`；没贴图则为空数组。
 
-**落**:`<workdir>/decision_log.json` append-only(每轮 entry = `{round, forbiddenApproaches, prioritizedMustIds, escapeRequest}`)。下轮 implementer prompt 顶部内插 forbiddenApproaches(权威·必须规避,见 §3.5a-i 2 档模板)。
+### 5 起草验收标准（固定一步，写成 `rubricPath`）
 
-**escapeRequest 处理**:非 null → 写 `<workdir>/paused.latest.md` + append `<workdir>/paused.history.md` + `stalled=true`(走 finalize 的 PAUSED 节)。等同 §3.4 的 paused.latest.md 流程,**escapeRequest 是第 4 类触发判据**(`pausedReason='escapeRequest'`)。
+来源固定为：本次需求；之前定过的决定（研究报告里的「已定方向」、配色规范）；项目的界面文字规范（用户级 rule）；项目词表（`GLOSSARY-MAP.md` 指向的各词表）；项目 CLAUDE.md 的红线；续跑时上一次的 rubric；`principles.md` 通用底线。
 
-## implementer = opus(本 skill 例外,final_report §5.1 决策记录)
+结构固定：
 
-CLAUDE.md 宪法是「Implementer 一律 sonnet 禁用 haiku」,本 skill 是**单一例外**(用户 2026-06-21 拍板):
+- **硬规则**：每条能在截图、探针或 diff 上核对，注明出处。
+- **已定决定**：不再当方向题提。
+- **已知方向题**。
+- **角度专节**（标题 `## 角度 <名>`；`#` 个数 2～4 皆可，标题前可带编号，如 `### 5.1 角度 flow`，「术语表」同理）：`razor` 写任务清单、数法与起点计数法；`newbie` 写各签、列、颜色的正确含义；`flow` 写流程经过的状态顺序；其他自定义角度见下节。
+- **术语表**（原型模式必有，`## 术语表`，每行 `- 词：含义`）。
 
-- 理由 1:web-loop implementer 每轮要做"逆向工程已出错代码 + 多约束联合权衡 + 把策略级 nextStepPlan 翻译成精确 Edit 调用"——search + 约束推理,opus 强项
-- 理由 2:② 多 must 互冲在 multi-round 是结构性必然,sonnet 联合优化结构性弱
-- 理由 3:用户原话"opus agent 负责…类似 superpowers 写 spec 和 writing-plan"字面落地 = opus reviewer 写 plan + opus implementer 执行
-- token 成本估算:单 run 多 30-80K opus,但若 opus impl 命中率高 → 总轮数从 5-6 降到 3-4 → **总 token 可能净降**
+**评审读不到项目 CLAUDE.md 和用户级 rules**，所以评审要用到的规范条文、词表里的词原文收进 rubric，不写「按 CLAUDE.md」。
 
-**仅 implementer 例外,其他 sonnet agent(smoke / refresh / capture / persist / rollback)维持 sonnet**——本决策不滑坡。CLAUDE.md 加 web-loop 例外条款是 P2(详 final_report §5.1)。
+起草后给用户几句话的摘要（不是整份文件），标出哪些沿用、哪些是本次新加，连同所选模式和评审角度一起，用户点头后才开跑。
+
+### 6 选评审角度
+
+`app` 默认 `ux`、`func`、`code`，布局问题偏 ux。用户要「对抗」时加 `rival`、`razor`、`newbie`；`razor` 和 `newbie` 必须在 rubric 里有专节。`prototype` 默认 `newbie`、`razor`、`flow`、`contract`。用户可以增减。
+
+### 7 自定义评审角度专节
+
+名字不在内置清单里的角度，评审的全部判法来自 rubric 的 `## 角度 <名>` 专节，缺专节 init 不放行。专节写四件事：
+
+1. **看哪些状态**：状态名清单。
+2. **判什么**。
+3. **什么算 must**（其余算 nice）。
+4. **对哪些子项负责**：与 args 里子项的 `lenses` 对应，子项只认被点名的角度。
+
+评审不碰浏览器，「模拟用户走完整个流程」这类角度是按截图清单里排好顺序的一串状态来判，自己不能点击；流程里的每一步都要在配方里排成状态，缺的步骤评审记「取证缺口」。样例：
+
+```markdown
+## 角度 flow
+负责子项：G2、G4
+看的状态（按这个顺序当作一次连贯操作）：01-open → 03-pick → 05-annotate → 07-submit
+判什么：每一步下一步该做什么看得出；前后两个状态衔接（选中的对象没有无故变化）；走完能完成「标出一个买点并提交」。
+must：某一步看不出下一步该点哪里；前后状态对不上；走完任务做不了。
+nice：步骤间的过渡文案、提示的措辞。
+```
+
+### 8 运维确认（生成前必做）
+
+- 服务在跑：`curl -sf <url>`，涉及后端再 `curl -sf <healthUrl>`。不在跑就停下让用户外部启动，本 skill 不起服务。
+- 把 `node .claude/skills/web-loop/*`、smoke 和 restart 用到的命令先加进会话 allowlist，免得 agent 运行中弹权限提示打断。
+- smoke 基线必须本就全绿（init 会跑），否则分不清回归来源。
+
+## 原型模式
+
+骨架不变，多一份产出、一个出口，方案层受控：
+
+- **后端要求清单** `contractPath`：原型里每一处模拟逻辑、每个演示数据字段对应一条要求。放在原型旁边、不被 `.gitignore` 忽略、不在 workdir 里（这样随快照一起回滚）。首次没有时 init 生成骨架并停下，主会话按原型现状补齐再重跑 init。implementer 每轮改动模拟逻辑或数据时同步更新它。
+- **`schemeFiles`**（至少 1 个）：方案文件，即演示数据和模拟逻辑所在文件。方案层 = schemeFiles 里的字段与计算，加上 rubric「术语表」里的词。
+- **方案层的修改 implementer 不做主**：遇到方案层的 must，用挂起（`deferred`）提方向题；只有负责角度当轮同意它需要用户拍板，才生效。界面层（布局、配色、文案）照常改。已写进 rubric「已定决定」的除外。
+- **contract 角度只记三类 must**：本轮改了方案文件清单没跟上；清单与代码的字段或计算对不上；未经拍板改了方案层的含义。「后端可能拿不到」「这样算是否合理」一律进方向题，因为可行性不归 web-loop 判断。web-loop 不设计后端。
+- **节奏是「短跑 + 拍板 + 再跑」**：每次 2～3 轮，以 `decision-gap` 结束后，主会话把用户的拍板写进下一次 rubric 的「已定决定」，带 `continueFrom` 起下一次。
+
+## 生成并运行
+
+1. 写 `<workdir>/args.json`、`statesPath` 文件、`refs/`。
+2. `node .claude/skills/web-loop/wl.mjs init <workdir>`（Bash timeout 设 600000；太慢可后台运行加 Monitor）。它依次检查 args、`.gitignore` 是否覆盖 workdir、rubric 与角度专节、截图配方、smoke 基线、url 可达，再冻结 rubric、拍起点快照、截起点图 r00、生成 `<workdir>/workflow.js`。不通过时退出码 1 并逐条列错，按报错修 args 或配方再重跑；「提醒」行（大视口态没声明 crops、配方出现 `||`、有 probe 没 expect、flow 专节没按顺序列态名）不挡开跑，但要处理。
+3. 通过后**只 Read 一张** `shots/r00_contact.png`（起点图缩略总览），确认配方截到的是想要的画面；没写 `expect` 或看着可疑的态，再单独读那一张整图。
+4. 调 `Workflow({ scriptPath: "<workdir>/workflow.js" })`，**不传 args**（args 已由 init 注入脚本）。只接受返回 `async_launched`；`remote_launched` 立即中止并告知用户（云端访问不了本地页面）。
+5. **立刻**运行 `node .claude/skills/web-loop/wl.mjs attach <workdir> <runId> <Transcript dir>`，runId 与 Transcript dir 取自启动时打印的信息。
+
+## 监控与收尾
+
+- `node .claude/skills/web-loop/wl.mjs status <workdir>`：当前轮与阶段、开着的 must、子项状态、各 agent 的留言（`toMain`）。
+- 结束后 `node .claude/skills/web-loop/wl.mjs export <workdir>`：从运行记录回放出 `ledger.json`、`SUMMARY.md` 和各轮评审原文，全程不经 LLM 抄写。SUMMARY 开头的「需要你做的事」按出口给出下一步和工作区状态。
+- verify 的实际工作在脱离的后台进程里跑，命令最多等约 9 分钟。没跑完打印 `{"pending":true}`，属于正常；verify agent 接着重跑 `wl.mjs wait <workdir> --round N`，直到拿到带签名的那一行。同一轮重复调用 verify 只会打印已有结果，不会再起第二个进程；`intake` 会先等上一轮没跑完的 verify（最多 100 秒，没等完就在输出里报 `verifyRunning`，implementer 重跑 intake）。每轮在 `snap/` 下多出 `rNN.verify.out`、`rNN.verify.log` 供排查。
+- 某轮按 `.md` 说明刷新过数据、随后被回滚时，下一轮强制重刷数据。截图失败自动重试最多 2 次，超时、步骤、探针、`expect` 的失败不重试；manifest 里每个状态记着重试了几次。
+- 主会话读 SUMMARY，**用白话向用户汇报**：做了什么、现在界面是什么状态、哪些事要用户决定；数字表放在后面。
+- 工作区停在坏状态时，`wl.mjs restore <workdir> --to green --dry-run` 列出要动的路径给用户看，用户明确要求才去掉 `--dry-run` 执行；`--to before-restore` 撤销上一次 restore。
+- 运行记录读不到时，`wl.mjs export <workdir> --from-ledger <文件>`：文件放 Workflow 返回值（整个对象或其中的 ledger），渲染简版 SUMMARY。
+
+## 出口与下一步
+
+| 出口 | 含义 | 下一步 |
+|---|---|---|
+| `converged` | 所有子项达标且没有开着的 must | 汇报，结束 |
+| `evidence-gap` | 能修的都修完，剩下的是没截到的取证 | 补配方里缺的状态，续跑 |
+| `decision-gap`（仅原型） | 能改的都改完，剩下的要用户拍板 | 汇报方向题，拍板后续跑 |
+| `stalled` | 评审正常，但连续 `staleRounds` 轮既没修好 must、也没刷新子项达成数的最高纪录 | 看卡住的条目和已试过的做法，用 hint 或改配方 / 子项后续跑，或转手工 |
+| `blocked` | 环境或代理一再失败（退回后 smoke 仍红、连续 2 轮没能评审等） | 按 SUMMARY 的原因排查，再续跑 |
+| `max-rounds` | 跑满轮数 | 看残留 must，决定是否续跑 |
+| `budget` | 代理数达到上限或运行时预算耗尽 | 调 `maxAgents` 或续跑 |
+| `error` | 脚本意外异常 | 看 SUMMARY 里的错误信息 |
+
+出口都是结束，不存在「暂停后原地续」。
+
+## 中途纠错与续跑
+
+**run 进行中**只用三种文件，下一轮生效：
+
+| 要做的事 | 做法 |
+|---|---|
+| 配方写错、要加状态 | 改 `statesPath`；先试截一次：`node .claude/skills/web-loop/capture.mjs shoot --workdir <W> --round 99 --only <态> --out <W>/scratch/main` |
+| 告诉 implementer 真实根因、该改哪 | 写 `<W>/control/hint-<任意名>.md`（自然语言） |
+| 某条问题其实是配方问题或不该管 | 写 `<W>/control/override-<任意名>.json`：`{"id":"…","action":"waive","note":"…"}` 或 `{"id":"…","action":"unverifiable","requiredStates":["…"],"note":"…"}`（单个对象或数组） |
+
+**续跑**（任何出口之后）：起新 run，新 runtag、新 workdir，args 基本照旧（可以按 SUMMARY 改配方、子项、角度），加 `continueFrom: <上次 workdir>`。上次 workdir 没有 `ledger.json` 就先对它跑 `export`。每轮所有子项照常重新验证，延续下来的是条目身份、已试过的做法、方向题和起点计数。
 
 ## 红线
-- **本地执行**:只接受 `async_launched`,remote 必 fail-fast(否则 localhost + 本地 chromium 全失效)。
-- **reviewer 永久零浏览器**:review 层只 `Read` capture 产出的 PNG + 读 diff,**禁碰 playwright(MCP/脚本都禁)**。浏览器只由 capture 单层串行持有 —— 这是绕开"多 reviewer 抢 MCP 单例串台"的根本。串台只属于共享 MCP 单例;独立 chromium 实例(含 `channel:'chrome'`)不串台。
-- **后端归属 + kill 必须精确**:前端可由用户外部启动(HMR 托管),但后端/数据层改动须由 workflow 内 agent kill+restart(用户须提供 `restartCmd`)。⚠ `restartCmd` 里 kill 旧进程**必须按 PID/端口精确**(如 `lsof -ti:<port> | xargs -r kill`),**绝不用 `pkill -f <进程名模式>`** —— 实测会误杀正在执行该命令的 shell(Exit 144)。实测重启+ready 仅 0.7s。
-- **回归 gate 必设**:`smokeCmd` 不可省,否则多轮改代码无人拦回归。
-- **worktree 禁用**:agent 不设 `isolation` —— worktree 隔离副本会让外部 dev server 的 HMR 看不到改动,直接破坏刷新链路。
-- **完整性**:reviewer 对照 rubric 判绝对 pass/fail,不"想到更好做法就 fail";不伪造 verdict;不把 max-rounds 伪装成 converged。
-- **`.claude/web-loop/` 必须在仓库 .gitignore**:`<workdir>/refs/` 可能含用户私货截图(mockup / 客户敏感界面),意外 git add 后泄漏。setup 阶段检测仓库根 `.gitignore` 若无 `.claude/web-loop/` 条目则报 must(阻止 run),让用户先加再继续。
-- **refs 持久化由**主会话**干,绝不让 Workflow 内 subagent 干**:`~/.claude/image-cache/<uuid>/<n>.png` 是主会话临时缓存,对 spawn 出的 subagent 不可见;若让 workflow 内 agent 找图,必失败。主会话「智能入口层 §2c」执行 cp + 写 manifest.json,所有 ref 文件路径以 `<workdir>/refs/<role>.png` 形式经 args.refImages 传入 workflow。
 
-## 4 条原理边界(data 档 / 长跑 agent 必读)
-1. **allowlist 前置**:refresh agent 继承会话 tool allowlist。`.web-loop-refresh.md` 里的 `curl`/`kill`/`uv` 等若不在 allowlist,会在 agent 运行中弹权限提示打断长跑。→ **生成 workflow 前**,把这些命令先加进会话 allowlist。
-2. **stall 超时**:agent 默认 3min stall 超时;多步数据刷新(如全集重扫 1-2min)逼近阈值。→ 走数据子集(`scanSubset`)压时长,或在 refresh agent 的 `opts` 放宽 `stallMs`。
-3. **刷新说明文件路径写死**:`.web-loop-refresh.md` 的位置(项目根或 `uiDir`)二选一定死,`refreshDataCmd` 直接指向它,别让 agent 猜路径(护同-session resume 的 prompt hash 稳定)。⚠ 这里「写死」指**文件位置**——文件**内部**的 shell 命令应当用 cwd 相对路径(refresh agent 启动时 cwd = 项目根/当前 worktree),**禁写绝对路径**(如 `/home/.../<repo>`、`cd /home/.../<repo> && ...`),否则同一份说明文件无法跨 worktree 复用。
-4. **确定性**:Workflow 脚本禁 `Date.now()`/`Math.random()`(破坏 resume);prompt 内插的探测结果若变,缓存键 `hash(prompt,opts)` 随之失效重跑——这是动态适配的正确行为,非 bug。
+- **只在本地跑**：只接受 `async_launched`。
+- **主会话不得用 SendMessage 回复 workflow 子代理，run 期间不改代码**：回复会拉起同 id 的副本并发改文件；要影响 implementer，写 hint。
+- **评审零浏览器**：浏览器只由 `capture.mjs` 持有，这是绕开多评审抢浏览器串台的根本。
+- **kill 精确**：按端口或进程号，绝不 `pkill -f`（会误杀执行命令的 shell）。
+- **agent 不设 `isolation`**：隔离副本会让外部 dev server 的热更新看不到改动。
+- **`.claude/web-loop/` 必须被 `.gitignore` 忽略**（`refs/` 可能含用户私货截图），init 用 `git check-ignore` 检查，不通过不放行。
+- **refs 由主会话持久化**，不交给 Workflow 内的 agent。
+- **回归 gate 不可省**：`smokeCmd` 必填。
+- **完整性**：评审对照 rubric 判绝对 pass/fail；不伪造判定，不把 `max-rounds` 说成 `converged`。
 
-## 用于任意 web 项目(通用性)
-通用骨架 + 项目特异命令。刷新按 impl.md 首行 `kind` 三档,只换命令:
-- **frontend**(HMR)→ `page.reload()`,零重启。
-- **backend** → `restartCmd` + `healthUrl` 重启。
-- **data** → 重启 + `refreshDataCmd`:多步刷新(如重扫+poll)写成项目内 `.web-loop-refresh.md`、`refreshDataCmd` 指向它(项目无此文件时,主会话「智能入口 §2a 多步起草分支」起草后落地,而非要求用户手写);单步(DB seed / 缓存清空)直接填 shell 命令;无则报 must。
-- **rubric**:换成目标项目的验收 spec;`principles.md` 里标〔项目特化〕的占位(核心链路 / 架构红线 / smoke 命令)填目标项目的值。
+## 用于任意 web 项目
 
-新项目落地 = 照 `examples/path2.md` 的结构写一份 `examples/<项目>.md`(args + states + rubric 特化),主体三文件一字不改。`.web-loop-refresh.md` 不需要人工事先写——data 档首次跑时主会话按「智能入口 §2a 多步起草分支」自动起草 + 回讲点头 + 落地,后续跑直接复用入库版本(该文件应入 git 共享,不入 `.gitignore`,与 `.claude/web-loop/` run 产物性质相反)。
+主体文件（`workflow-template.js`、`wl.mjs`、`capture.mjs`、`principles.md`、本文件）与项目无关。新项目落地 = 照 `examples/path2.md` 的结构写 `examples/<项目>.md`：args 取值、probe 配方、截图配方示例、rubric 项目特化（核心链路、架构红线、smoke 命令）。`.web-loop-refresh.md` 不用事先手写，数据档首次跑时主会话按「探测项目事实」的多步分支起草。
+
+没有后端的静态页和原型，看 `examples/path2.md` 末节的静态页示例。
