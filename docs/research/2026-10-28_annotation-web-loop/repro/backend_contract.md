@@ -327,6 +327,7 @@
 - 形状：`{ miss: [特征名], extra: [特征名], order: bool, same: bool }`；`diffKey(d)` 是行折叠用的键（`=` 或 `−X +Y order`）。
 - 来源：用户标注 × 会话 mapping （页面算）。
 - 算法：`miss` = `musts` 里不在买点成员特征名里的；`extra` = 成员特征名里在 mapping 中 `level === 'must_not'` 的；`order` = 无缺失，且顶层成员里属于 `musts` 的特征名（去重后）的先后与 `musts` 的先后不同；`same` = 三者都无。buy 与 no_buy 同一种算法（旧「no_buy 的缺项只算最后一个已有必须有之前的」已删，代码里留有过期注释）。可有可无、`excluded`、`unmapped` 的名字不影响。没有 app 的 pattern 返回 `null`。`offSkel(bp, st)` = 有差（buy、no_buy 都算）；`vDev(x)` 只数 label 为 `buy` 且有差的（页头 `≠ k/n`、`dif` 排）。
+- 悬停（`diffTags`、成员链的缺项）：`−X` 写「mapping 里「X」是 must，标注里没有」，`+Y` 写「mapping 里「Y」是 must_not，标注里有」，`order` 写「标注的先后和 mapping 不同」；两边的事实都写出来，不写成「标注缺少」，因为差签不说错在哪边（用户 2026-10-30）。主图上的差签（`diffBadge`）不带悬停。
 - 代码位置：`diffOf`、`diffKey`、`offSkel`、`vDev`、`diffTags`、`diffBadge`
 
 ### alignMusts（成员链上的空槽对齐）
@@ -357,7 +358,7 @@
 - 形状：文本 `in k/N`（`N` = 该 pattern 的 buy 数）；`qualified k/n`；悬停里 `no_buy 里 k/n 个有`。
 - 来源：用户标注（计数）+ app（`qualified`）。
 - 算法：
-  - `in k/N`：label 为 `buy` 的买点里，成员含该特征名的个数 `k`；`k` 等于 `N` 时不显示；点它列出两排（有 / 没有，每排 buy 在前 no_buy 在后，排头 `in buy k · no_buy m` 与 `not_in buy ...`）。
+  - `in k/N`：label 为 `buy` 的买点里，成员含该特征名的个数 `k`；一律显示，`k` 等于 `N` 也显示；点它列出两排（有 / 没有，每排 buy 在前 no_buy 在后，排头 `in buy k · no_buy m` 与 `not_in buy ...`）。
   - `qualified k/n`：该特征名在这些 buy 里所有框中，`verdict.st === 'qualified'` 的个数 `k`，分母 `n` 是框数。
   - `no_buy 里 k/n`（`nbIn`）：同一特征在 no_buy 买点里的占比，只放悬停。
 - 代码位置：`sideSum`（`inTxt`、`cellN`、`nbIn`）、`vParts`（`feat`）

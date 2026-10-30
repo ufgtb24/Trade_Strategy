@@ -20,7 +20,8 @@
      2026-10-29 配色规范（本目录 color_spec_draft.md 定稿）：底色只说「这一段判断是谁下的」，按段上色——你的和界面从你的标注直接数出来的不加底，会话蓝，app 琥珀（加深到 #F2C25C，待验证）；
      朱红只盖 app 那一段。qualified k/n、match 一行的 buy k/n、buy ≠ k/n 拆段（分母和你标的 label 不上色）；instances 表列头去掉来源色。band 和档位签用档位色，不套琥珀（明文特例）；
      missing 没有 band，改 app 琥珀底实线边。虚线全界面只表示「你画的」：签一律实线；没判断的 null、什么都没画的空槽改灰字；缩略图里你的框全部虚线、按深浅粗细分状态。
-     另：⚑ n 去会话蓝、flagged 改白底、⚠ 警告签实线、当前买点成员链块与分排线改实线、相近词改加粗、bracket 上 app match 的 ▼ 改深灰、bracket 选中改叠灰、json 页去灰底、图例悬停补规则、点开 match 计数的排头改 match / no_match。 -->
+     另：⚑ n 去会话蓝、flagged 改白底、⚠ 警告签实线、当前买点成员链块与分排线改实线、相近词改加粗、bracket 上 app match 的 ▼ 改深灰、bracket 选中改叠灰、json 页去灰底、图例悬停补规则、点开 match 计数的排头改 match / no_match。
+     2026-10-30 用户定：features 区 in k/N 一律显示，k = N 也写（满了藏起来要先知道这条规则才看得懂，也和属性的 3/3 照写不一致）；特征名悬停里的「N 个 buy 都有」随之去掉。 -->
 <html lang="zh">
 <head>
 <meta charset="utf-8">
@@ -1138,8 +1139,8 @@ function memberChain(bp, st, cmp, small) {
     const arr = i ? arrow(x.gap ? null : lk) : ''
     if (x.gap) {
       const near = takeOf(bp, st, x.gap)
-      return arr + (near ? `<button type="button" class="chip off cand" data-act="mtake:${STOCKS.indexOf(st)}:${bp.id}:${near.id}" data-hover="${near.id}" title="标注缺少「${esc(x.gap)}」；点一下收进画了没收的那个">${esc(x.gap)}</button>`
-        : `<span class="chip gap" title="标注缺少「${esc(x.gap)}」">${esc(x.gap)}</span>`)
+      return arr + (near ? `<button type="button" class="chip off cand" data-act="mtake:${STOCKS.indexOf(st)}:${bp.id}:${near.id}" data-hover="${near.id}" title="mapping 里「${esc(x.gap)}」是 must，标注里没有；点一下收进画了没收的那个">${esc(x.gap)}</button>`
+        : `<span class="chip gap" title="mapping 里「${esc(x.gap)}」是 must，标注里没有">${esc(x.gap)}</span>`)
     }
     const n = x.n, lvl = app && app.table[txt(n.b.name)] ? app.table[txt(n.b.name)].level : null
     const main = (lvl === 'must_not' ? chip(n.b).replace('class="chip', 'class="chip neg') : chip(n.b))   // 必须没有的：划一道（有它就不买）
@@ -1347,11 +1348,12 @@ function qView() {
   return `<div class="hdr">${sym(q.id, '会话那道题的题号；题目在对话里')}<span class="grow"></span>${btn('close', false, 'qclose', 'title="收起这道题的图"')}</div><div class="blk">${body}</div>`
 }
 // 和 mapping 的差签：−X 缺了必须有、+Y 有了必须没有、order 必须有都在但先后和 app 不同；X、Y 是你的特征名（浅灰底无衬线），± 是程序记号。不标红。
+// 悬停把两边的事实都写出来（mapping 里是什么级、标注里有没有），不写「标注缺少 / 多了」：差签只说不一致、不说错在哪边（用户 2026-10-30）
 // 差是拿你的框和会话写的 mapping 比的：列表 must / must_not 列、每道题的图、主图买点下的差签一律会话浅蓝底，主图上也照这里的画法（diffBadge）。hint 接在缺项悬停后面
 function diffTags(d, hint = '') {
   if (d.same) return seg('session', tag('=', '', '标注和 mapping 一致'))
-  return seg('session', [...d.miss.map(t => `<span class="tag"${tip(`标注缺少「${t}」` + hint)}>−<span class="biz">${esc(t)}</span></span>`),
-    ...d.extra.map(t => `<span class="tag"${tip(`标注多了「${t}」`)}>+<span class="biz">${esc(t)}</span></span>`),
+  return seg('session', [...d.miss.map(t => `<span class="tag"${tip(`mapping 里「${t}」是 must，标注里没有` + hint)}>−<span class="biz">${esc(t)}</span></span>`),
+    ...d.extra.map(t => `<span class="tag"${tip(`mapping 里「${t}」是 must_not，标注里有`)}>+<span class="biz">${esc(t)}</span></span>`),
     ...(d.order ? [tag('order', '', '标注的先后和 mapping 不同')] : [])].join(' '))
 }
 const wordChip = (t, h) => `<span class="chip ro"${tip(h)}>${esc(t)}</span>`
@@ -1474,7 +1476,7 @@ function sideSum() {
           ${kk('instances', '这个 pattern 的全部买点')}<div class="row">${vh.inst}</div>${vInline('lab|buy')}${vInline('lab|no_buy')}${app ? `<div class="kvsep"></div>${kk('app', '按 label 分组数 app 的判断').replace('class="k"', 'class="k top"')}<div class="rows">${vh.app}</div>${['buy', 'no_buy'].flatMap(v => ['buy', 'no_buy'].map(ap => vInline(`app|${v}|${ap}`))).join('')}<div class="kvsep"></div>${VAR === 'A' ? '' : `${kk('diff', '标注 和 mapping 是否一致')}<div class="row">${vh.dif}</div>${vInline('dif|buy')}`}` : ''}
           ${kk('next', '现在等谁')}<div class="row">${facts}</div></div></div>`
     const N = buys.length               // elements 一律按全部 buy 算（flow v3 §12-6a、sim K1：只按主组算时偏离一多 n 就很小，取其一的另一支被藏掉）
-    const inTxt = (k, n, t) => n && k < n ? vDoor(`in ${k}/${n}`, 'feat|' + t, `${n} 个 buy 里 ${k} 个有「${t}」框`) : ''   // 不是每个都有时才显示（顶层次级同一条规则）
+    const inTxt = (k, n, t) => n ? vDoor(`in ${k}/${n}`, 'feat|' + t, `${n} 个 buy 里 ${k} 个有「${t}」框`) : ''   // 一律显示，k = n 也写（用户 2026-10-30；原先只在不是每个都有时显示）
     const nbIn = t => { const k = nobuys.filter(x => x.names.includes(t)).length; return nobuys.length ? `；no_buy 里 ${k}/${nobuys.length} 个有` : '' }
     const cellN = arr => ({ k: arr.filter(x => verdict(x.b, x.st).st === 'qualified').length, n: arr.length })
     const flagOf = id => { const f = flagAt(S.cur, id), on = !!f && flagSt(f) === 'open'   // 按下 = 你标的、等会话；会话改过那一行后弹起，旁边写 remapped
@@ -1494,7 +1496,7 @@ function sideSum() {
         if (i) h += pair(tops[i - 1], id) && !pair(id, tops[i - 1]) ? `<div class="conn"><span title="一起出现过，先后一致">↓</span></div>` : `<div class="conn">&nbsp;</div>`
         const attrs = attrsIn(id, S.cur).map(w => attrItem(id, w)).join('')
         const kids = [...(kidsOf[id] || [])].map(c => `<div class="blk"><div class="row">${kidMark('套在外框里')}${wordChip(txt(c))}<span class="grow"></span>${inTxt(k(c), buys.length, txt(c))}</div>${vInline('feat|' + txt(c))}</div>`).join('')
-        h += `<div class="blk"><div class="row">${wordChip(txt(id), buys.length && k(id) === buys.length ? `${buys.length} 个 buy 都有` + nbIn(txt(id)) : nbIn(txt(id)).slice(1))}<span class="grow"></span>${inTxt(k(id), buys.length, txt(id))}</div>${attrs ? `<div class="l2">${attrs}</div>` : ''}${vInline('feat|' + txt(id))}${kids}</div>`
+        h += `<div class="blk"><div class="row">${wordChip(txt(id), nbIn(txt(id)).slice(1))}<span class="grow"></span>${inTxt(k(id), buys.length, txt(id))}</div>${attrs ? `<div class="l2">${attrs}</div>` : ''}${vInline('feat|' + txt(id))}${kids}</div>`
       })
     } else {
       // 有 app：按 mapping 分层（flow v2 §12-1）。顶层 = 必须有（按 app 先后，主组人人都有、不带分母）；每段下面挂依附它的可有可无 / 必须没有，
@@ -1528,7 +1530,7 @@ function sideSum() {
           return `<div class="blk"><div class="row">${seg('session', tag(rr.level, '', LV_TIP[rr.level]))}${wordChip(w, rr.level === 'must_not' ? `${buys.filter(x => x.names.includes(w)).length} 个 buy 有「${w}」框` + nbIn(w) : nbIn(w).slice(1))}<span class="grow"></span>${rr.level === 'optional' ? inTxt(k, N, w) : ''}</div>
             <div class="l2">${seg('session', `<span title="${esc(RES_TIP[rr.res] + '：' + rr.doc)}">${sym(rr.res)}</span>${wi ? flagOf(wi) : ''}`)}</div>${vInline('feat|' + w)}</div>`
         }).join('')
-        h += `<div class="blk"><div class="row">${wordChip(t, N && kt === N ? `${N} 个 buy 都有` + nbIn(t) : nbIn(t).slice(1))}<span class="grow"></span>${inTxt(kt, N, t)}</div>
+        h += `<div class="blk"><div class="row">${wordChip(t, nbIn(t).slice(1))}<span class="grow"></span>${inTxt(kt, N, t)}</div>
           <div class="l2">${seg('session', ses)}${run}</div>${attrs ? `<div class="l2">${attrs}</div>` : ''}${vInline('feat|' + t)}${hang}</div>`   // 点开的两排紧跟这一段自己的几行、在挂在它下面的块（optional / must_not）之前：原先排在子块后面，读成子块的
       })
       // 两区：会话定成不放的、会话还没 map的。名字和属性都在这里；属性的悬停写它是哪个名字的
