@@ -119,7 +119,7 @@ implementer 交回的改动档位为 `data` 时,verify agent 读项目根的 `.w
 适用:`mode: "prototype"`,被改对象是一个直接用静态文件服务器打开的单页(原型、mock),没有数据层,没有 dev server。标注原型的两次 run 就是这样跑的。与 path2 web 的差别:
 
 - `url` 指向静态服务器上的那个 html 文件(端口由主会话临时起静态服务的结果决定,不写死);不传 `restartCmd` / `healthUrl` / `refreshDataCmd`,implementer 交回的改动档位只会是前端档。
-- 原型模式另需 `schemeFiles`(演示数据 / 模拟逻辑所在文件)与 `contractPath`(后端要求清单,放在原型旁边、不被忽略),默认角度 newbie、razor、flow、contract,`maxRounds` 3。
+- 原型模式另需 `schemeFiles`(演示数据 / 模拟逻辑所在文件)与 `contractPath`(后端要求清单,放在原型旁边、不被忽略),默认角度 newbie、razor、flow、contract,`maxRounds` 3。原型页面本身(html 里写着模拟逻辑)填进 `mockFiles`,contract 角度会通读它,查同一件事是否写了两套算法。
 - `smokeCmd` 是一条 `node <脚本路径>`:脚本自己加载页面、断言关键状态,失败以非零退出码表示。
 - 配方(`statesPath` 文件)的 `eval` 步直接用页面全局变量驱动状态,再用 `probe` 读回来、`expect` 断言:
 
@@ -130,6 +130,7 @@ implementer 交回的改动档位为 `data` 时,verify agent 读项目根的 `.w
   "mode": "prototype",
   "schemeFiles": ["<原型旁的演示数据文件>"],
   "contractPath": "<原型旁的后端要求清单>",
+  "mockFiles": ["<原型页面>.html"],
   "smokeCmd": "node <repoRoot>/<脚本目录>/smoke.mjs",
   "rubricPath": "<验收标准文档>",
   "lenses": ["newbie", "razor", "flow", "contract"],

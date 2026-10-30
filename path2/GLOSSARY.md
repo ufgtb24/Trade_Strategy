@@ -167,3 +167,7 @@ _Avoid_: 措辞 —— 已改称特征名。
 
 **定义 / 特征定义**：
 一句话说清一个特征什么算、什么不算；意思一旦定下就不改，要改就另起一个特征。
+
+**mapping / map**：
+会话为一个 pattern 写 app 时定下的清单：这个 pattern 用到的每个特征一行，写明它的级（must 必须有 / optional 可有可无 / must_not 必须没有 / excluded 不放），以及 app 用哪一部分认它（一个 node，或某个 node 上的一条 where）。会话写下或改动其中一行，叫把这个特征 map 到 app；还没写的特征是 unmapped。
+_Avoid_: 对应表 —— 已改称 mapping；翻译 —— 自造的说法，「map 方式不对」不要说成「翻译不对」。

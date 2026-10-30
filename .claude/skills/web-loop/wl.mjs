@@ -9,7 +9,8 @@
 //   restore <W> --to rNN|green|r00|before-restore [--dry-run]   人工退回（仅在用户要求时）
 //   attach <W> <runId> <transcriptDir>           Workflow 启动后立刻记下 journal 位置
 //   status <W> [--journal 路径]                   进行中的台账概览（回放 journal）
-//   export <W> [--journal 路径] | --from-ledger <文件>   结束后回放 journal，写 ledger.json、SUMMARY.md、各轮原始返回
+//   export <W> [--journal 路径] | --from-ledger <文件>   结束后回放 journal，写 ledger.json、SUMMARY.md、各轮原始返回，方向题证据图复制到 <W>/evidence/
+//   rubric-diff <旧> <新>                         按节列出两份验收标准的增删行（参数可为文件或运行目录），复用上次标准时只给用户看改动
 // 同时导出 loadCore / loadInjected / buildWorkflowSource / findJournal / parseJournal 供测试与 capture.mjs 使用。
 // 纪律：不经 LLM 抄写任何 JSON；git 快照只用临时 index（GIT_INDEX_FILE），不碰真 index、HEAD 与 stash，不提交；
 //   等待一律用 node 定时器；杀进程只按端口查出的进程号。
@@ -363,6 +364,7 @@ async function cmdInit(Warg) {
   let terms = [];
   if (cfg.mode === 'prototype') {
     for (const f of cfg.schemeFiles) if (!existsSync(resolve(root, f))) errs.push(`方案文件不存在：${f}`);
+    for (const f of cfg.mockFiles) if (!existsSync(resolve(root, f))) errs.push(`模拟逻辑文件不存在：${f}`);
     const cp = resolve(root, cfg.contractPath);
     if (cp === W || cp.startsWith(W + '/')) errs.push('后端要求清单 contractPath 不能放在运行目录里（要随代码快照一起回滚）');
     else if (git(root, ['check-ignore', '-q', cp], { literal: false }).code === 0) errs.push(`后端要求清单被 .gitignore 忽略了：${cfg.contractPath}（要放在原型旁边、不被忽略的位置）`);
@@ -416,7 +418,8 @@ async function cmdInit(Warg) {
   for (const k of [...DERIVED_KEYS, 'debug']) delete back[k];
   writeFileSync(join(W, 'args.json'), JSON.stringify(back, null, 2) + '\n');
   const seed = contAbs ? core.toSeed(readJson(join(contAbs, 'ledger.json'), '续跑来源 ledger.json')) : null;
-  const injected = { v: 1, args: back, seed, derived: { terms, root } };
+  // start：起点评审用的 r00 结果，直接注入、不经 LLM 转交
+  const injected = { v: 1, args: back, seed, derived: { terms, root }, start: { okStates: s0.okStates, errorStates: s0.errorStates, manifest: s0.manifest } };
   const src = buildWorkflowSource(readFileSync(TEMPLATE, 'utf8'), injected);
   checkWorkflowSyntax(src);
   const chk = core.validateArgs(injected.args, injected.derived);
@@ -723,7 +726,7 @@ function cmdStatus(Warg, o) {
   const { j, view } = loadView(ctx, o.journal);
   const rec = readRunRecord(ctx.W);
   const ended = rec && rec.status && rec.status !== 'running';
-  const rep = ctx.core.replay(ctx.cfg, ctx.injected.seed, view, ended ? 'end' : 'live');
+  const rep = ctx.core.replay(ctx.cfg, ctx.injected.seed, view, ended ? 'end' : 'live', ctx.injected.start);
   if (ended && rep.S.exit === 'interrupted' && isObj(rec.result) && rec.result.exitReason) ctx.core.markExit(rep.S, rec.result.exitReason, rec.result.exitDetail);
   const S = rep.S, cfg = ctx.cfg;
   say(`run：${cfg.runtag}　journal：${j.path}（${j.source}${j.note ? '；' + j.note : ''}）　已派代理：${rep.agentsUsed}`);
@@ -748,6 +751,36 @@ function renderFromLedger(L) {
   out.push('', '## 子项', '', ...Object.entries(led.subgoals || {}).map(([k, v]) => `- ${k}：${v}`), '', '## 方向题', '', ...(led.directions || []).map(d => `- ${d}`), '', '## 每轮走势', '', ...(led.rounds || []).map(r => `- ${r}`));
   return out.join('\n') + '\n';
 }
+// 方向题的证据图复制到 <W>/evidence/<方向题 id>/：init 清理旧 run 只删 shots/，证据图要留到用户拍板之后。
+// 本 run 提的：从 <W>/shots 按 shotTag 取，态名带 "__" 的按单张裁剪图取，否则取整页图加它的全部裁剪图。
+// 续跑延续下来的（shotTag 为空）：从上一个 run 的 evidence/ 取（evidenceFrom，相对 repo root）。
+// 取到图时先清空目标目录再复制（同一运行目录重新 init 后编号可能重复，不混进旧图）；一张都取不到时沿用目录里已有的。
+// 返回 { 方向题 id: [相对 W 的路径] }，交给 renderSummary 嵌图。
+export function copyEvidence(W, root, directions) {
+  const shots = join(W, 'shots'), out = {};
+  const have = existsSync(shots) ? readdirSync(shots) : [];
+  for (const d of directions || []) {
+    const dest = join(W, 'evidence', d.id), src = [];
+    if (d.shotTag) {
+      for (const raw of Array.isArray(d.states) ? d.states : []) {
+        const s = String(raw).replace(/^r\d\d_/, '').replace(/\.png$/, '');   // 评审有时写成文件名
+        const base = `${d.shotTag}_${s}`;
+        for (const f of have) if (f === `${base}.png` || (!s.includes('__') && f.startsWith(`${base}__`) && f.endsWith('.png'))) src.push(join(shots, f));
+      }
+    } else if (d.evidenceFrom) {
+      const from = resolve(root, d.evidenceFrom);
+      if (from !== dest && existsSync(from)) for (const f of readdirSync(from)) if (f.endsWith('.png')) src.push(join(from, f));
+    }
+    if (src.length) {
+      rmSync(dest, { recursive: true, force: true });
+      mkdirSync(dest, { recursive: true });
+      for (const f of src) copyFileSync(f, join(dest, basename(f)));
+    }
+    const got = existsSync(dest) ? readdirSync(dest).filter(f => f.endsWith('.png')).sort() : [];
+    if (got.length) out[d.id] = got.map(f => `evidence/${d.id}/${f}`);
+  }
+  return out;
+}
 async function cmdExport(Warg, o) {
   if (o.fromLedger) {
     const W = resolve(Warg);
@@ -763,14 +796,15 @@ async function cmdExport(Warg, o) {
   const rrp = runRecordPath(W);
   if (rrp) copyFileSync(rrp, join(W, 'run-record.json'));
   const view = parseJournal(readFileSync(existsSync(local) ? local : j.path, 'utf8'));
-  const rep = core.replay(cfg, ctx.injected.seed, view, 'end');
+  const rep = core.replay(cfg, ctx.injected.seed, view, 'end', ctx.injected.start);
   const S = rep.S, rec = readRunRecord(W);
   if (S.exit === 'interrupted' && rec && isObj(rec.result) && rec.result.exitReason) core.markExit(S, rec.result.exitReason, rec.result.exitDetail);
   let changed = null;
   try { const a = treeOf(ctx, 'r00'), b = latestTree(ctx); if (a && b) changed = diffTrees(ctx, a, b); } catch { /* 快照不可用 */ }
   const runId = existsSync(join(W, 'run.json')) ? readJson(join(W, 'run.json')).runId : null;
   writeFileSync(join(W, 'ledger.json'), JSON.stringify({ ...S, meta: { runtag: cfg.runtag, runId, exitReason: S.exit, agentsUsed: rep.agentsUsed } }, null, 2));
-  writeFileSync(join(W, 'SUMMARY.md'), core.renderSummary(cfg, S, { runId, agentsUsed: rep.agentsUsed, changed, journalNote: j.note }));
+  const evidence = copyEvidence(W, ctx.root, S.directions);
+  writeFileSync(join(W, 'SUMMARY.md'), core.renderSummary(cfg, S, { runId, agentsUsed: rep.agentsUsed, changed, journalNote: j.note, evidence }));
   for (const [label, r] of Object.entries(view.results)) {
     let m, dir, name;
     if ((m = label.match(/^review-(.+)-r(\d\d)$/))) { dir = join(W, 'reviews', `round_${m[2]}`); name = `${m[1]}.json`; }
@@ -780,6 +814,45 @@ async function cmdExport(Warg, o) {
     writeFileSync(join(dir, name), JSON.stringify(r, null, 2));
   }
   say(join(W, 'SUMMARY.md'));
+  return 0;
+}
+
+// ── rubric-diff：复用上次的验收标准时，只把改动给用户过目 ──
+// 按标题分节、节内按行集合比（忽略空行与行首尾空白）；改写的一行显示为一删一增。节名带上级标题（文档标题不算），
+// 免得各角度下同名的「must」小节并成一节；代码块里的 # 行不算标题。参数可以是文件，也可以是运行目录（取其冻结的 rubric.md）。
+function sectionsOf(text) {
+  const top = '（第一个标题之前）', out = new Map([[top, []]]), path = [];
+  let cur = top, fence = false;
+  for (const line of String(text).split('\n')) {
+    if (/^\s*(```|~~~)/.test(line)) fence = !fence;
+    const m = !fence && line.match(/^(#{1,6})\s+(.*)$/);
+    if (m) {
+      const lv = m[1].length;
+      path.length = lv - 1; path[lv - 1] = m[2].trim();
+      cur = path.slice(1).filter(Boolean).join(' › ') || path[0];
+      if (!out.has(cur)) out.set(cur, []);
+      continue;
+    }
+    if (line.trim()) out.get(cur).push(line.trim());
+  }
+  return out;
+}
+export function rubricDiff(oldText, newText) {
+  const A = sectionsOf(oldText), B = sectionsOf(newText), lines = [];
+  for (const [h, bl] of B) {
+    if (!A.has(h)) { if (bl.length) lines.push(`+ 新增一节「${h}」`, ...bl.map(l => `    + ${l}`)); continue; }
+    const al = A.get(h), as = new Set(al), bs = new Set(bl);
+    const del = al.filter(l => !bs.has(l)), add = bl.filter(l => !as.has(l));
+    if (del.length || add.length) lines.push(`~ 「${h}」`, ...del.map(l => `    - ${l}`), ...add.map(l => `    + ${l}`));
+  }
+  for (const [h, al] of A) if (!B.has(h) && al.length) lines.push(`- 删掉一节「${h}」`, ...al.map(l => `    - ${l}`));
+  return lines;
+}
+function cmdRubricDiff(a, b) {
+  if (!a || !b) { console.error('用法：wl.mjs rubric-diff <旧验收标准或运行目录> <新验收标准或运行目录>'); return 2; }
+  const text = p => { const f = resolve(p), r = join(f, 'rubric.md'); return readFileSync(existsSync(r) ? r : f, 'utf8'); };
+  const lines = rubricDiff(text(a), text(b));
+  say(lines.length ? lines.join('\n') : '两份验收标准没有差别（只比非空行）');
   return 0;
 }
 
@@ -809,8 +882,9 @@ async function main(argv) {
     case 'attach': return cmdAttach(W, rest[0], rest[1]);
     case 'status': return cmdStatus(W, o);
     case 'export': return cmdExport(W, o);
+    case 'rubric-diff': return cmdRubricDiff(W, rest[0]);
     default:
-      console.error('用法：wl.mjs init|verify|wait|intake|diff|restore|attach|status|export <运行目录> …（见文件头注释）');
+      console.error('用法：wl.mjs init|verify|wait|intake|diff|restore|attach|status|export|rubric-diff <运行目录> …（见文件头注释）');
       return 2;
   }
 }

@@ -566,5 +566,127 @@ sc('SC1', 'schema:reviewer 的 known 枚举含 decision;razor 多 counts;IMPL_SC
   for (const sch of [C.IMPL_SCHEMA, C.VERIFY_SCHEMA, rs]) expect(sch.type === 'object', 'schema 根须 object');
 });
 
+// ── 起点评审（INJECTED.start）──
+const START0 = { okStates: STATES, errorStates: [], manifest: '/abs/.claude/web-loop/rt/shots/r00_manifest.json' };
+const withStart = (a, o = {}) => ({ injected: { v: 1, args: a, seed: o.seed ?? null, start: START0 }, ...(o.seed ? { seed: o.seed } : {}) });
+sc('D50', '起点评审:先派 r00 评审再派 impl-r01;r00 prompt 指向 r00 清单;impl-r01 只拿到起点评审立的条目', async () => {
+  const a = newArgs({ debug: true, maxRounds: 1, staleRounds: 9 });
+  const r = await run(a, sim(a, { review: (L, n) => (L === 'ux' && n === 0 ? { issues: [mustIssue2('START_UX')], subgoals: [{ id: 'G1', status: 'unmet', evidence: 'e' }] } : undefined) }), withStart(a));
+  expectNoError(r);
+  const ls = labels(r);
+  expect(ls.slice(0, 3).every(l => /-r00$/.test(l)) && ls[3] === 'impl-r01', 'label 顺序=' + ls.slice(0, 5).join(','));
+  const p0 = byLabel(r.calls, 'review-ux-r00').prompt;
+  expect(p0.includes('起点评审') && p0.includes('r00_manifest.json'), 'r00 prompt 没说起点评审或没指向 r00 清单');
+  expect(byLabel(r.calls, 'impl-r01').prompt.includes('START_UX'), 'impl-r01 没拿到起点评审的条目');
+  expect(ret(r).state.issues.find(i => i.title === 'START_UX').bornRound === 0, '起点条目 bornRound 应为 0');
+});
+sc('D51', '起点评审就全部达标:converged,一个 implementer 都不派;SUMMARY 写「只做了起点评审」', async () => {
+  const a = newArgs({ debug: true });
+  const r = await run(a, sim(a, {}), withStart(a));
+  expectNoError(r);
+  const res = ret(r);
+  expect(res.exitReason === 'converged', 'exit=' + res.exitReason);
+  expect(!labels(r).some(l => /^(impl|verify)-/.test(l)), '不应派 implementer / verify: ' + labels(r).join(','));
+  const { cfg } = coreInit(a);
+  expect(core().renderSummary(cfg, res.state, {}).includes('只做了起点评审'), 'SUMMARY 没写只做了起点评审');
+});
+sc('D52', '续跑带起点评审:r00 评审占上一个 run 末轮之后的新轮号、不占修改轮数、streak 清零;下一个 label 是 impl-r05', async () => {
+  const led = seedLedger();
+  const a = newArgs({ debug: true, lenses: ['ux', 'func'], goalSubgoals: [{ id: 'G1', desc: 'd', lenses: ['ux'] }], continueFrom: '.claude/web-loop/old', maxRounds: 1, staleRounds: 9 });
+  const r = await run(a, sim(a, { review: L => (L === 'ux' ? ux([present('ux-r1-1')]) : { known: [present('func-r1-1')] }) }), withStart(a, { seed: led }));
+  expectNoError(r);
+  const ls = labels(r);
+  expect(ls[0] === 'review-ux-r00' && ls.includes('impl-r05') && !ls.includes('impl-r04') && !ls.includes('impl-r06'), 'label=' + ls.join(','));
+  const st = ret(r).state, startRec = st.rounds.find(x => x.start);
+  expect(startRec && startRec.round === 4 && startRec.streak === 0 && st.runFirstRound === 5, '起点评审记录不对: ' + JSON.stringify(startRec && { round: startRec.round, streak: startRec.streak }));
+});
+sc('D57', '续跑的起点评审:新条目、新方向题的编号不撞延续下来的 id', async () => {
+  const C = core(), a = newArgs({ lenses: ['ux'], goalSubgoals: [{ id: 'G1', desc: 'd', lenses: ['ux'] }] });
+  const { cfg, S: st } = coreInit(a);
+  const dir = t => ({ title: t, options: [{ choice: 'a', cost: 'c' }], recommend: 'a', why: 'w', states: [] });
+  for (const n of [1, 2, 3]) coreStep(cfg, st, n, { reviews: [okReview(cfg, 'ux', { issues: n === 3 ? [mustIssue2('OLD_R3')] : [], directions: n === 3 ? [dir('OLD_DIR')] : [] })] });
+  const { S: s2 } = coreInit(a, C.toSeed(st));
+  const r0 = C.beginStart(cfg, s2).round;
+  C.reduceRound(cfg, s2, r0, C.startVerify(START0, r0), [okReview(cfg, 'ux', { issues: [mustIssue2('NEW_START')], directions: [dir('NEW_DIR')] })]);
+  const ids = s2.issues.map(i => i.id), dids = s2.directions.map(d => d.id);
+  expect(new Set(ids).size === ids.length && new Set(dids).size === dids.length, '编号撞了: ' + ids.join(',') + ' / ' + dids.join(','));
+  expect(s2.issues.find(i => i.title === 'NEW_START').id === 'ux-r4-1', '新条目 id=' + s2.issues.find(i => i.title === 'NEW_START').id);
+});
+sc('D58', '续跑的起点评审不把上一个 run 末轮的结论当成自己的:旧「达成」不算本轮证据、刚修好的条目被别的角度复现就重开、最近一次绿是开跑前', async () => {
+  const C = core(), a = newArgs({ lenses: ['ux', 'func'], goalSubgoals: [{ id: 'G1', desc: 'd1', lenses: ['ux'] }, { id: 'G2', desc: 'd2', lenses: ['func'] }], staleRounds: 9 });
+  const { cfg, S: st } = coreInit(a);
+  const met = id => ({ id, status: 'met', evidence: 'e' });
+  coreStep(cfg, st, 1, { reviews: [okReview(cfg, 'ux', { issues: [mustIssue2('X')], subgoals: [{ id: 'G1', status: 'unmet', evidence: 'e' }] }), okReview(cfg, 'func', { subgoals: [{ id: 'G2', status: 'unmet', evidence: 'e' }] })] });
+  coreStep(cfg, st, 2, { reviews: [okReview(cfg, 'ux', { known: [gone('ux-r1-1')], subgoals: [met('G1')] }), okReview(cfg, 'func', { subgoals: [{ id: 'G2', status: 'unmet', evidence: 'e' }] })] });
+  expect(st.issues[0].status === 'fixed', '前置:X 应在 r02 修好');
+  const { S: s2 } = coreInit(a, C.toSeed(st));
+  const r0 = C.beginStart(cfg, s2).round;
+  C.reduceRound(cfg, s2, r0, C.startVerify(START0, r0), [okReview(cfg, 'ux', { subgoals: [] }),
+    okReview(cfg, 'func', { subgoals: [met('G2')], issues: [mustIssue2('X again', { matchesIssueId: 'ux-r1-1' })] })]);
+  expect(s2.exit !== 'converged', '不应收敛: exit=' + s2.exit);
+  expect(s2.issues.find(i => i.id === 'ux-r1-1').status === 'open', '被复现的刚修好条目应重开: ' + s2.issues.find(i => i.id === 'ux-r1-1').status);
+  expect(s2.lastGreenRound === 0, 'lastGreenRound=' + s2.lastGreenRound);
+  const sum = C.renderSummary(cfg, s2, {});
+  expect(sum.includes('最近一次绿是 r00（开跑前）') && sum.includes('| r00（起点） |'), 'SUMMARY 的绿或起点行不对');
+});
+sc('D59', '延续下来的方向题:不再按 shotTag 取新运行目录的截图,改从上一个 run 的 evidence/ 取;取不到时说明来源', async () => {
+  const C = core(), a = newArgs({ lenses: ['ux'], goalSubgoals: [{ id: 'G1', desc: 'd', lenses: ['ux'] }] });
+  const { cfg, S: st } = coreInit(a);
+  coreStep(cfg, st, 1, { reviews: [okReview(cfg, 'ux', { directions: [{ title: 'OLD', options: [], recommend: '', why: '', states: ['01-a'] }] })] });
+  const { cfg: c2, S: s2 } = coreInit({ ...a, continueFrom: '.claude/web-loop/old/' }, C.toSeed(st));
+  const d = s2.directions[0];
+  expect(d.shotTag === null && d.evidenceFrom === `.claude/web-loop/old/evidence/${d.id}`, '延续方向题字段不对: ' + JSON.stringify(d));
+  expect(C.renderSummary(c2, s2, {}).includes('在 .claude/web-loop/old/evidence/'), 'SUMMARY 没说明证据来源');
+});
+sc('D60', '上一轮有角度缺席时 verify 不带「无改动沿用上一轮评审」的提示;全员交回时带', async () => {
+  const C = core();
+  for (const [miss, want] of [[true, false], [false, true]]) {
+    const { cfg, S: st } = coreInit(newArgs({ lenses: ['ux', 'func'] }));
+    const r0 = C.beginStart(cfg, st).round;
+    C.reduceRound(cfg, st, r0, C.startVerify(START0, r0), [okReview(cfg, 'ux', { subgoals: [{ id: 'G1', status: 'unmet', evidence: 'e' }] }), miss ? null : okReview(cfg, 'func')]);
+    C.applyImpl(cfg, st, 1, okImpl());
+    expect(C.verifyPrompt(cfg, st, 1).includes('--no-change-hint') === want, `缺席=${miss} 时提示应为 ${want}`);
+  }
+});
+sc('D53', 'implementer prompt:只改被指出的地方;搜索定位后按行段读;自查截图限次', async () => {
+  const p = byLabel((await FULL_R2()).calls, 'impl-r02').prompt;
+  for (const [needle, why] of [['没有被指出的地方不要改', '只改指出的地方'], ['offset / limit', '按行段读'], ['每轮最多跑 2 次', '自查截图限次']])
+    expect(p.includes(needle), 'impl prompt 缺 ' + why);
+});
+sc('D54', '方向题带态与截图轮次;export 给了证据图时 SUMMARY 嵌图,没给时列出态名;有方向题时有「拍板之后」', async () => {
+  const a = newArgs({ debug: true, maxRounds: 1, staleRounds: 9 });
+  const dir = { title: 'DIR_T', options: [{ choice: 'a', cost: 'c' }], recommend: 'a', why: 'w', states: ['01-a'] };
+  const r = await run(a, sim(a, { review: (L, n) => (L === 'ux' && n === 0 ? { directions: [dir], subgoals: [{ id: 'G1', status: 'unmet', evidence: 'e' }] } : L === 'ux' && n === 1 ? { directions: [{ ...dir, title: 'DIR_R1', states: ['02-b'] }], subgoals: [{ id: 'G1', status: 'unmet', evidence: 'e' }] } : undefined) }), withStart(a));
+  expectNoError(r);
+  const st = ret(r).state, d0 = st.directions.find(d => d.title === 'DIR_T'), d1 = st.directions.find(d => d.title === 'DIR_R1');
+  expect(d0 && d0.shotTag === 'r00' && d0.states.join() === '01-a', '起点方向题的态/轮次不对: ' + JSON.stringify(d0));
+  expect(d1 && d1.shotTag === 'r01', '第 1 轮方向题 shotTag=' + (d1 && d1.shotTag));
+  const { cfg } = coreInit(a), C = core();
+  const withEv = C.renderSummary(cfg, st, { evidence: { [d0.id]: [`evidence/${d0.id}/r00_01-a.png`] } });
+  expect(withEv.includes(`![${d0.id}](evidence/${d0.id}/r00_01-a.png)`), 'SUMMARY 没嵌证据图');
+  expect(withEv.includes('r01_02-b') && withEv.includes('没找到图片文件'), '没有图时应列出态名');
+  expect(withEv.includes('## 拍板之后') && withEv.includes('web-loop 自己不保存决定'), '缺「拍板之后」');
+  expect(!C.renderSummary(cfg, { ...st, directions: [] }, {}).includes('## 拍板之后'), '没有方向题不该有「拍板之后」');
+});
+sc('D55', '原型模式 contract:mockFiles 进角色说明与 diff 过滤,有第④类;起点评审要求通读;contract 条目算方案层', async () => {
+  const a = PROTO({ mockFiles: ['proto/mock.html'], maxRounds: 1, debug: true });
+  const r = await run(a, sim(a, {}), { injected: { ...INJ(a), start: START0 } });
+  expectNoError(r);
+  const p0 = byLabel(r.calls, 'review-contract-r00').prompt;
+  expect(p0.includes('proto/mock.html') && p0.includes('④') && p0.includes('通读'), 'r00 contract prompt 缺 mockFiles / ④ / 通读');
+  const { cfg, S: st } = coreInit(PROTO({ mockFiles: ['proto/mock.html'] }));
+  coreStep(cfg, st, 1, { reviews: [okReview(cfg, 'newbie'), okReview(cfg, 'contract')] });
+  const p1 = core().reviewerPrompt(cfg, st, 2, 'contract', fakeVerify({ round: 2 }));
+  expect(/wl\.mjs diff[^\n]*proto\/mock\.html/.test(p1), '普通轮 contract 的 diff 过滤没带 mockFiles');
+  expect(core().inSchemeLayer(cfg, { lens: 'contract', files: [] }) === true, 'contract 条目应算方案层');
+});
+sc('D56', 'mockFiles 校验:非数组或含空串报错;app 模式写了报错', async () => {
+  const C = core();
+  expect(C.validateArgs(PROTO({ mockFiles: 'x.html' })).errors.some(e => /mockFiles/.test(e)), '非数组应报错');
+  expect(C.validateArgs(PROTO({ mockFiles: [''] })).errors.some(e => /mockFiles/.test(e)), '空串应报错');
+  expect(C.validateArgs(newArgs({ mockFiles: ['a.html'] })).errors.some(e => /mockFiles/.test(e)), 'app 模式写 mockFiles 应报错');
+  expect(!C.validateArgs(PROTO({ mockFiles: ['proto/mock.html'] })).errors.length, '合法 mockFiles 不该报错');
+});
+
 const fail = await runScenarios(S);
 process.exit(fail ? 1 : 0);

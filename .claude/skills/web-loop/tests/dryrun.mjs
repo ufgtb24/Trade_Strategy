@@ -120,7 +120,7 @@ export async function run(args, respond = () => undefined, o = {}) {
       const C = core(); const { cfg } = (() => { const v = C.validateArgs(args, injected && injected.derived); return v; })();
       const results = {}, started = [];
       for (const c of calls) { started.push(c.label); if (c.result !== undefined && !c.threw) results[c.label] = c.result; }
-      const rep = C.replay(cfg, o.seed ?? null, { results, started }, 'end');
+      const rep = C.replay(cfg, o.seed ?? null, { results, started }, 'end', injected && injected.start);
       out.replayCheck = { ok: deepEqual(rep.S, result.state), exitOk: rep.exitReason === result.exitReason };
     } catch (e) { out.replayCheck = { ok: false, exitOk: false, error: String(e.message) }; }
   }
@@ -170,7 +170,7 @@ export function expectNoError(res) {
 
 // ════════ 新设计(CORE/SHELL 结构)支持 ════════
 const CORE_BEGIN = '// ==== CORE BEGIN ====', CORE_END = '// ==== CORE END ====';
-const CORE_NAMES = 'verifyLine, normalizeImpl, normalizeReview, REVIEW_OPTS, COMMON, validateArgs, canonHash, initState, applyImpl, reviewGate, reduceRound, markExit, toSeed, replay, renderSummary, compactLedger, implPrompt, verifyPrompt, reviewerPrompt, finalReturn, normalizeVerify, BUILTIN_LENSES, verifyEffort, roundLine, reviewerSchema, IMPL_SCHEMA, VERIFY_SCHEMA, rtag, roundAgentEstimate';
+const CORE_NAMES = 'verifyLine, normalizeImpl, normalizeReview, REVIEW_OPTS, COMMON, validateArgs, canonHash, initState, applyImpl, reviewGate, reduceRound, markExit, toSeed, replay, renderSummary, compactLedger, implPrompt, verifyPrompt, reviewerPrompt, finalReturn, normalizeVerify, BUILTIN_LENSES, verifyEffort, roundLine, reviewerSchema, IMPL_SCHEMA, VERIFY_SCHEMA, rtag, roundAgentEstimate, startVerify, beginStart, inSchemeLayer, lensBrief';
 /** 按标记截取 CORE 并在空作用域求值(与 wl.mjs 的 loadCore 同口径,测试不依赖 wl.mjs) */
 export function loadCoreSource(path = TEMPLATE_PATH) {
   const src = readFileSync(path, 'utf8');

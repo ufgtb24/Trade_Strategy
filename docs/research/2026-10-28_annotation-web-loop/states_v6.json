@@ -877,5 +877,122 @@
     "selector": "#side"
    }
   ]
+ },
+ {
+  "state": "19-box-child",
+  "note": "annotate 档选中 TVRD 第 140～146 根的「缩量」框（套在横盘框里的子框）：selection 页「父框」一行",
+  "steps": [
+   {
+    "waitFor": "#side #tabs"
+   },
+   {
+    "eval": "const b=annOf(STOCKS[0]).boxes.find(x=>txt(x.name)==='缩量'&&x.s===140);if(!b)throw new Error('TVRD 没有从第 140 根起的缩量框');S.sel={type:'box',id:b.id};S.tab='selection';render()"
+   },
+   {
+    "wait": 150
+   }
+  ],
+  "probe": "(()=>{const a=annOf(ST()),s=S.sel,b=s&&s.type==='box'?a.boxes.find(x=>x.id===s.id):null,p=s&&s.type==='buy'?a.buys.find(x=>x.id===s.id):null;return {mode:S.mode,tab:S.tab,stock:ST().symbol,cur:S.cur,sel:s?s.type:null,box:b?[txt(b.name),b.s,b.e]:null,buy:p?[p.idx,p.label,p.pattern]:null}})()",
+  "expect": {
+   "mode": "annotate",
+   "stock": "TVRD",
+   "tab": "selection",
+   "sel": "box",
+   "box": [
+    "缩量",
+    140,
+    146
+   ]
+  },
+  "crops": [
+   {
+    "name": "side",
+    "selector": "#side"
+   }
+  ]
+ },
+ {
+  "state": "20-box-parent",
+  "note": "annotate 档选中 TVRD 第 135～158 根的「横盘」框（包着缩量的父框）：selection 页属性里画成子框的那一行",
+  "steps": [
+   {
+    "waitFor": "#side #tabs"
+   },
+   {
+    "eval": "const b=annOf(STOCKS[0]).boxes.find(x=>txt(x.name)==='横盘'&&x.s===135);if(!b)throw new Error('TVRD 没有从第 135 根起的横盘框');S.sel={type:'box',id:b.id};S.tab='selection';render()"
+   },
+   {
+    "wait": 150
+   }
+  ],
+  "probe": "(()=>{const a=annOf(ST()),s=S.sel,b=s&&s.type==='box'?a.boxes.find(x=>x.id===s.id):null,p=s&&s.type==='buy'?a.buys.find(x=>x.id===s.id):null;return {mode:S.mode,tab:S.tab,stock:ST().symbol,cur:S.cur,sel:s?s.type:null,box:b?[txt(b.name),b.s,b.e]:null,buy:p?[p.idx,p.label,p.pattern]:null}})()",
+  "expect": {
+   "mode": "annotate",
+   "stock": "TVRD",
+   "tab": "selection",
+   "sel": "box",
+   "box": [
+    "横盘",
+    135,
+    158
+   ]
+  },
+  "crops": [
+   {
+    "name": "side",
+    "selector": "#side"
+   }
+  ]
+ },
+ {
+  "state": "21-flag-remapped",
+  "note": "pattern 页的 ⚑ 两种样子：「回踩」刚点了 ⚑（按下、页头 ⚑ 1）；「缩量」是之前标过、会话后来改了那一行（⚑ 弹起、旁边 remapped，悬停写当时那一行是 optional · 挂在「横盘」下 · child）",
+  "steps": [
+   {
+    "waitFor": "#side #tabs"
+   },
+   {
+    "eval": "S.flags.push({pattern:FAKE.pattern,feature:wid('缩量'),snap:JSON.stringify({level:'optional',on:'横盘',res:'child',doc:'横盘里面有没有缩量'})});S.tab='pattern';render()"
+   },
+   {
+    "wait": 150
+   },
+   {
+    "eval": "document.querySelector('#side [data-act=\"flag:'+wid('回踩')+'\"]').click()"
+   },
+   {
+    "wait": 150
+   },
+   {
+    "css": "#wrap{height:auto!important} #side{overflow:visible!important}"
+   }
+  ],
+  "fullPage": true,
+  "probe": "({tab:S.tab,flags:S.flags.map(f=>[txt(f.feature),flagSt(f)]),exported:batch().patterns.map(p=>(p.flags||[]).map(f=>txt(f.feature)))})",
+  "expect": {
+   "tab": "pattern",
+   "flags": [
+    [
+     "缩量",
+     "remapped"
+    ],
+    [
+     "回踩",
+     "open"
+    ]
+   ],
+   "exported": [
+    [
+     "缩量",
+     "回踩"
+    ]
+   ]
+  },
+  "crops": [
+   {
+    "name": "side",
+    "selector": "#side"
+   }
+  ]
  }
 ]

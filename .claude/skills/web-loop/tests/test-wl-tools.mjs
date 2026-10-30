@@ -296,6 +296,59 @@ sc('W7', 'export:跑通一个收敛的 run → 假 journal → SUMMARY 含全部
   expect(led.meta && led.meta.exitReason === 'converged', 'ledger.meta.exitReason=' + (led.meta && led.meta.exitReason));
 }));
 
+// ── W19 方向题证据图 ──
+const fakeJournal = (R, calls) => { const lines = []; calls.forEach((c, i) => { lines.push(JSON.stringify({ type: 'started', key: i, label: c.label })); lines.push(JSON.stringify({ type: 'result', key: i, result: JSON.stringify(c.result) })); });
+  const jp = join(R.W, 'fake-journal.jsonl'); writeFileSync(jp, lines.join('\n') + '\n'); return jp; };
+sc('W19', 'init 注入起点截图结果;起点评审的方向题:export 把 r00 整页图与局部图复制进 evidence/<id>/ 并嵌进 SUMMARY;shots 清掉后再 export 仍沿用', withRepo({ lenses: ['ux'] }, async R => {
+  initOk(R);
+  const inj = wlm.loadInjected(join(R.W, 'workflow.js'));
+  expect(inj.start && inj.start.okStates.join() === '01-a,02-b' && /r00_manifest\.json$/.test(inj.start.manifest), 'INJECTED.start 不对: ' + JSON.stringify(inj.start));
+  const a = inj.args;
+  const dir = { title: 'DIR_T', options: [{ choice: 'a', cost: 'c' }], recommend: 'a', why: 'w', states: ['r00_01-a.png'] };   // 评审写成文件名也认
+  const r = await run(a, sim(a, { review: (L, n) => (n === 0 ? { directions: [dir] } : undefined) }), { injected: inj });
+  expect(!r.error, 'dryrun 出错: ' + (r.error && r.error.message));
+  const jp = fakeJournal(R, r.calls);
+  const e = R.wl('export', R.W, '--journal', jp);
+  expect(e.code === 0, 'export 失败: ' + e.out.slice(-400));
+  const id = JSON.parse(R.read(`.claude/web-loop/${R.runtag}/ledger.json`)).directions[0].id, ev = join(R.W, 'evidence', id);
+  const files = existsSync(ev) ? readdirSync(ev).sort() : [];
+  expect(files.includes('r00_01-a.png') && files.some(f => /^r00_01-a__box\.png$/.test(f)) && !files.some(f => /02-b/.test(f)), 'evidence 文件不对: ' + files.join(','));
+  const sum = () => R.read(`.claude/web-loop/${R.runtag}/SUMMARY.md`);
+  expect(sum().includes(`![${id}](evidence/${id}/r00_01-a.png)`), 'SUMMARY 没嵌证据图');
+  rmSync(join(R.W, 'shots'), { recursive: true, force: true });
+  expect(R.wl('export', R.W, '--journal', jp).code === 0 && sum().includes(`evidence/${id}/r00_01-a__box.png`), 'shots 清掉后再 export 应沿用 evidence');
+}));
+sc('W20', 'rubric-diff:按节列出增删行;参数可为运行目录(取冻结的 rubric.md);没差别时说没有差别', withRepo({}, R => {
+  R.w('old.md', '# 标准\n\n## 角度 ux\n\n- 按钮等宽\n- 不要灰字\n\n## 旧节\n\n- x\n');
+  R.w('new.md', '# 标准\n\n## 角度 ux\n\n- 按钮等宽\n- 灰字只给空态\n\n## 新节\n\n- y\n');
+  const lines = wlm.rubricDiff(R.read('old.md'), R.read('new.md'));
+  expect(lines.includes('~ 「角度 ux」') && lines.includes('    - - 不要灰字') && lines.includes('    + - 灰字只给空态'), '改动节不对: ' + lines.join(' | '));
+  const dup = wlm.rubricDiff('# T\n## 角度 ux\n### must\n- a\n## 角度 func\n### must\n- a\n```\n# 代码注释\n```\n', '# T\n## 角度 ux\n### must\n## 角度 func\n### must\n- a\n```\n# 代码注释\n```\n');
+  expect(dup.includes('~ 「角度 ux › must」') && dup.includes('    - - a') && !dup.some(l => /func|代码注释/.test(l)), '同名小节或代码块处理不对: ' + dup.join(' | '));
+  expect(lines.includes('+ 新增一节「新节」') && lines.includes('- 删掉一节「旧节」') && !lines.some(l => /按钮等宽/.test(l)), '增删节不对: ' + lines.join(' | '));
+  writeFileSync(join(R.W, 'rubric.md'), R.read('old.md'));
+  const o = R.wl('rubric-diff', R.W, 'new.md');
+  expect(o.code === 0 && o.out.includes('灰字只给空态'), '运行目录参数不认: ' + o.out);
+  expect(/没有差别/.test(R.wl('rubric-diff', 'old.md', 'old.md').out), '同一份应说没有差别');
+}), false);
+
+sc('W21', 'copyEvidence:整页图加裁剪图、态名写成文件名也认;延续方向题从上一个 run 的 evidence/ 取;重新复制前清掉旧图;没来源时沿用已有的', () => {
+  const root = mkdtempSync(join(tmpdir(), 'wl-ev-')), W = join(root, 'run2'), old = join(root, 'run1', 'evidence', 'dir-ux-r1-1');
+  try {
+    const put = (p, s = 'png') => { mkdirSync(join(p, '..'), { recursive: true }); writeFileSync(p, s); };
+    for (const f of ['r00_01-a.png', 'r00_01-a__box.png', 'r00_02-b.png', 'r02_01-a.png']) put(join(W, 'shots', f));
+    put(join(old, 'r01_03-c.png'));
+    put(join(W, 'evidence', 'dir-ux-r0-1', 'stale.png'));
+    const dirs = [{ id: 'dir-ux-r0-1', shotTag: 'r00', states: ['r00_01-a.png'] }, { id: 'dir-ux-r1-1', shotTag: null, evidenceFrom: 'run1/evidence/dir-ux-r1-1', states: ['03-c'] },
+      { id: 'dir-func-r2-1', shotTag: 'r02', states: ['09-none'] }];
+    put(join(W, 'evidence', 'dir-func-r2-1', 'kept.png'));
+    const ev = wlm.copyEvidence(W, root, dirs);
+    expect(ev['dir-ux-r0-1'].join() === 'evidence/dir-ux-r0-1/r00_01-a.png,evidence/dir-ux-r0-1/r00_01-a__box.png', '本 run 方向题: ' + ev['dir-ux-r0-1']);
+    expect(ev['dir-ux-r1-1'].join() === 'evidence/dir-ux-r1-1/r01_03-c.png', '延续方向题: ' + ev['dir-ux-r1-1']);
+    expect(ev['dir-func-r2-1'].join() === 'evidence/dir-func-r2-1/kept.png', '没来源时应沿用已有的: ' + ev['dir-func-r2-1']);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+}, false);
+
 // ── W15 restore ──
 sc('W15', 'restore:--dry-run 只列路径不动文件;真恢复回到 green 状态并可用 before-restore 撤销', withRepo({}, R => {
   initOk(R);

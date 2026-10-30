@@ -3,6 +3,7 @@
 //   shoot   --workdir W --round N [--only a,b] [--out DIR]   截各态整页图与局部图，写 rNN_manifest.json；最后一行打印 summary JSON
 //   check   --workdir W                                      起浏览器打开 url，打印 {ok, status, browser, error}
 //   contact --workdir W --round N                            把该轮各态整页图排成缩略总览 rNN_contact.png
+//   discover --workdir W [--out 文件] [--max N]               开跑前起草截图配方：首页每个看得见的可点控件一个态（默认写 <W>/states.draft.json）
 // 带 --out 是自查模式：写到 DIR，不和上一份清单比，不签名。只有浏览器起不来或参数错时退出码非 0；
 //   有失败态时退出码仍是 0（失败是数据，不是程序错误）。
 // 导出纯函数 validateStates / lintStates / matchExpect / computeNewErrors / buildSummary 供 wl.mjs 与测试使用。
@@ -267,6 +268,73 @@ export async function check({ W, cfg = null, root = null }) {
   } catch (e) { return { ok: false, status: null, browser: name, error: firstLine(e) }; }
   finally { await browser.close().catch(() => {}); }
 }
+/** 浏览器内执行：收集看得见、可点的控件，给每个配一个候选选择器（data-* 唯一优先，其次 #id，最后标签加文字） */
+function collectControls() {
+  const SEL = 'button, [role=tab], [role=button], a[href^="#"], select, summary, input[type=checkbox], input[type=radio], [onclick], [data-act], [data-action]';
+  const norm = s => String(s || '').trim().replace(/\s+/g, ' ');
+  const uniq = s => { try { return document.querySelectorAll(s).length === 1; } catch { return false; } };
+  const q = s => s.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+  const out = [], seen = new Set();
+  for (const el of document.querySelectorAll(SEL)) {
+    if (seen.has(el)) continue;
+    seen.add(el);
+    const r = el.getBoundingClientRect();
+    if (r.width < 2 || r.height < 2 || el.disabled || getComputedStyle(el).visibility === 'hidden') continue;
+    const tag = el.tagName.toLowerCase(), role = el.getAttribute('role'), text = norm(el.innerText || el.value || el.getAttribute('aria-label') || el.title).slice(0, 40);
+    let sel = null, hint = '';
+    for (const a of el.getAttributeNames()) {
+      if (!a.startsWith('data-') || a.startsWith('data-v-')) continue;
+      const v = el.getAttribute(a), s = v ? `[${a}="${q(v)}"]` : `[${a}]`;
+      if (uniq(s)) { sel = s; hint = v || a.slice(5); break; }
+    }
+    if (!sel && el.id && uniq('#' + CSS.escape(el.id))) { sel = '#' + CSS.escape(el.id); hint = el.id; }
+    if (!sel && text) {
+      const base = role ? `[role="${q(role)}"]` : tag;   // 带 role 的按 role 找，免得包着它的 div 也命中文字
+      const same = [...document.querySelectorAll(base)].filter(x => norm(x.innerText).toLowerCase().includes(text.toLowerCase()));
+      sel = `${base}:has-text("${q(text)}")` + (same.length > 1 ? ` >> nth=${same.indexOf(el)}` : '');
+      hint = text;
+    }
+    out.push({ sel, hint, text, kind: role || tag, box: [r.x, r.y, r.width, r.height] });   // sel 为空的也交回，由调用方列出
+  }
+  return out;
+}
+/**
+ * 配方草稿：打开首页，收集看得见的可点控件，每个生成一个「点它之后」的态，外加起点态 00-start。
+ * 选择器用 Playwright 复查，没有可用选择器或复查不过的列进 skipped；超过 max 的列进 overCap，不悄悄截断。
+ * 草稿只省掉手写选择器：与目标无关的态由主会话删掉，关键态补 probe / expect，再用 shoot --out 自查一遍。
+ */
+export async function discover({ W, out = null, max = 20, cfg = null, root = null }) {
+  W = resolve(W); root = root || gitRoot(W); cfg = cfg || loadCfg(W);
+  const dest = resolve(out || join(W, 'states.draft.json'));
+  if (cfg.statesPath && dest === resolve(root, cfg.statesPath)) throw new Error(`草稿不能覆盖正式配方 ${cfg.statesPath}，换一个 --out`);
+  const { browser, name } = await launch(root, cfg);
+  const kept = [], skipped = [], overCap = [];
+  try {
+    const vp = cfg.viewport;
+    const page = await (await browser.newContext({ viewport: { width: vp.width, height: vp.height }, deviceScaleFactor: vp.deviceScaleFactor || 1 })).newPage();
+    await page.goto(cfg.url, { waitUntil: 'load', timeout: 30000 });
+    await page.waitForTimeout(800);
+    for (const c of await page.evaluate(collectControls)) {
+      if (!c.sel) { skipped.push(`${c.kind} @(${Math.round(c.box[0])},${Math.round(c.box[1])})（没有 data-*、唯一 id 或文字，要手写选择器）`); continue; }
+      // 复查：恰好命中一个，且命中的就是收集到的那个（比位置；nth 写法只数个数会认错元素）
+      let n = 0, b = null;
+      try { n = await page.locator(c.sel).count(); if (n === 1) b = await page.locator(c.sel).boundingBox(); } catch { /* 选择器语法不被接受也算没通过 */ }
+      const same = b && [b.x, b.y, b.width, b.height].every((v, i) => Math.abs(v - c.box[i]) <= 1);
+      if (!same) { skipped.push(`${c.sel}（${n === 1 ? '命中的不是同一个元素' : `匹配 ${n} 个`}）`); continue; }
+      if (kept.length >= max) { overCap.push(c.sel); continue; }
+      kept.push(c);
+    }
+  } finally { await browser.close().catch(() => {}); }
+  const slug = s => String(s).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 24);
+  const states = [{ state: '00-start', note: '起点：首屏', steps: [{ wait: 800 }] },
+    ...kept.map((c, k) => ({ state: `${String(k + 1).padStart(2, '0')}-${slug(c.hint) || slug(c.kind) || 'click'}`, note: `草稿：点 ${c.kind}「${c.text || c.hint}」之后（无关就删，关键态补 probe / expect）`,
+      steps: [{ wait: 800 }, { click: c.sel }, { wait: 300 }] }))];
+  const errs = validateStates(states);
+  if (errs.length) throw new Error('生成的草稿没通过配方校验（这是 discover 的 bug）：' + errs.join('；'));
+  mkdirSync(resolve(dest, '..'), { recursive: true });
+  writeFileSync(dest, JSON.stringify(states, null, 2) + '\n');
+  return { out: dest, browser: name, states: states.length, skipped, overCap };
+}
 const escHtml = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 /** 缩略总览：每格宽 480 像素，下方写态名；失败态红框并写出错误首行。不依赖图像库，用同一个浏览器渲染。 */
 export async function contact({ W, round, cfg = null, root = null }) {
@@ -321,7 +389,8 @@ async function main(argv) {
   }
   if (cmd === 'check') { const r = await check({ W: o.workdir }); console.log(JSON.stringify(r)); return r.ok ? 0 : 1; }
   if (cmd === 'contact') { if (o.round == null) throw new Error('缺 --round'); console.log(await contact({ W: o.workdir, round: o.round })); return 0; }
-  console.error('用法：capture.mjs shoot|check|contact --workdir W [--round N] [--only a,b] [--out DIR]');
+  if (cmd === 'discover') { console.log(JSON.stringify(await discover({ W: o.workdir, out: o.out || null, max: o.max ? Number(o.max) : 20 }))); return 0; }
+  console.error('用法：capture.mjs shoot|check|contact|discover --workdir W [--round N] [--only a,b] [--out DIR|文件] [--max N]');
   return 2;
 }
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

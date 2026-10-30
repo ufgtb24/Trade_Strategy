@@ -1,7 +1,7 @@
 export const meta = {
   name: 'web-loop',
-  description: '多轮迭代改进运行中的 web 应用：implement → verify（快照/smoke/刷新/截图）→ 多角度评审 → 台账判收敛',
-  phases: [{ title: 'iterate', detail: '每轮 implement → verify → review' }],
+  description: '多轮迭代改进运行中的 web 应用：先评起点 → implement → verify（快照/smoke/刷新/截图）→ 多角度评审 → 台账判收敛',
+  phases: [{ title: 'iterate', detail: '起点评审，然后每轮 implement → verify → review' }],
 };
 
 // web-loop 的 Workflow 脚本模板（与 principles.md、wl.mjs、capture.mjs 配套）。
@@ -72,7 +72,7 @@ function reviewerSchema(lens) {
           subgoal: { type: ['string', 'null'] }, detail: STR, evidence: STR,
           matchesIssueId: { type: ['string', 'null'] }, unverifiable: { type: 'boolean' }, requiredStates: STRS, files: STRS } } },
       directions: { type: 'array', items: { type: 'object', required: ['title', 'options', 'recommend'],
-        properties: { title: STR, options: OPTIONS, recommend: STR, why: STR } } },
+        properties: { title: STR, options: OPTIONS, recommend: STR, why: STR, states: STRS } } },   // states：看得出这道题的态（可写局部图名 <态>__<crop>），export 据此留图
       toMain: TO_MAIN } };
   if (lens === 'razor') s.properties.counts = { type: 'object', properties: { now: { type: 'object' }, baseline: { type: 'object' } } };
   return s;
@@ -159,8 +159,9 @@ function validateArgs(A, derived) {
   cfg.staleRounds = cfg.staleRounds ?? Math.min(2, intIn(cfg.maxRounds, 1, 20) ? cfg.maxRounds : 2);
   if (!intIn(cfg.staleRounds, 1, 20)) errors.push('staleRounds 取 1～20 的整数');
   cfg.maxAgents = cfg.maxAgents ?? null;
-  if (cfg.maxAgents !== null && !(Number.isInteger(cfg.maxAgents) && cfg.maxAgents >= 2 + cfg.lenses.length))
-    errors.push(`maxAgents 要么为 null，要么是不小于 ${2 + cfg.lenses.length} 的整数`);
+  const minAgents = 2 + 2 * cfg.lenses.length;                // 起点评审 lenses 个 + 第一轮 2 + lenses 个
+  if (cfg.maxAgents !== null && !(Number.isInteger(cfg.maxAgents) && cfg.maxAgents >= minAgents))
+    errors.push(`maxAgents 要么为 null，要么是不小于 ${minAgents} 的整数（起点评审 ${cfg.lenses.length} 个，加第一轮 ${2 + cfg.lenses.length} 个）`);
 
   cfg.viewport = { ...DEFAULT_VIEWPORT, ...(isObj(cfg.viewport) ? cfg.viewport : {}) };
   for (const k of ['width', 'height', 'deviceScaleFactor']) if (!(typeof cfg.viewport[k] === 'number' && cfg.viewport[k] > 0)) errors.push(`viewport.${k} 要是正数`);
@@ -170,11 +171,13 @@ function validateArgs(A, derived) {
   for (const k of ['restartCmd', 'healthUrl', 'refreshDataCmd', 'continueFrom', 'contractPath']) cfg[k] = nonEmpty(cfg[k]) ? cfg[k] : null;
   cfg.schemeFiles = cfg.schemeFiles ?? [];
   if (!Array.isArray(cfg.schemeFiles) || cfg.schemeFiles.some(f => !nonEmpty(f))) { errors.push('schemeFiles 要是非空路径的数组'); cfg.schemeFiles = strs(cfg.schemeFiles); }
+  cfg.mockFiles = cfg.mockFiles ?? [];
+  if (!Array.isArray(cfg.mockFiles) || cfg.mockFiles.some(f => !nonEmpty(f))) { errors.push('mockFiles 要是非空路径的数组'); cfg.mockFiles = strs(cfg.mockFiles); }
   if (proto) {
     if (!cfg.schemeFiles.length) errors.push('原型模式要写 schemeFiles（演示数据、模拟逻辑所在的方案文件）');
     if (!cfg.contractPath) errors.push('原型模式要写 contractPath（后端要求清单）');
   } else {
-    if (cfg.schemeFiles.length || cfg.contractPath) errors.push('app 模式下 schemeFiles、contractPath 必须为空');
+    if (cfg.schemeFiles.length || cfg.contractPath || cfg.mockFiles.length) errors.push('app 模式下 schemeFiles、contractPath、mockFiles 必须为空');
     if (cfg.lenses.includes('contract')) errors.push('contract 角度核对的是原型的后端要求清单，只用于原型模式');
   }
 
@@ -195,7 +198,7 @@ function mkIssue(p) {
 
 function initState(cfg, seed) {
   const S = { round: 0, runFirstRound: 1, issues: [], directions: [], subgoals: {}, rounds: [],
-    lastKind: 'frontend', forceDataRefresh: false, streak: 0, skipStreak: 0, missStreak: {}, everReviewed: false, bestMet: 0, lastGreenRound: 0,
+    lastKind: 'frontend', forceDataRefresh: false, streak: 0, skipStreak: 0, missStreak: {}, everReviewed: false, bestMet: 0, lastGreenRound: 0, continued: false,
     counters: {}, doneControl: [], overrideErrors: [], toMain: [], baselineCounts: {}, lastCounts: {}, exit: null, exitDetail: null };
   for (const g of cfg.goalSubgoals) S.subgoals[g.id] = { desc: g.desc, lenses: g.lenses.slice(), byLens: {} };
   for (const L of cfg.lenses) S.missStreak[L] = 0;
@@ -203,8 +206,11 @@ function initState(cfg, seed) {
   if (!isObj(seed) || seed.v !== 1) throw new Error(`BLOCKED: 续跑 seed 的版本不认识（v=${isObj(seed) ? seed.v : typeof seed}），请用当前的 wl.mjs 重新 init`);
   S.round = Number.isInteger(seed.round) ? seed.round : 0;
   S.runFirstRound = S.round + 1;
+  S.continued = true;
   S.issues = (Array.isArray(seed.issues) ? seed.issues : []).filter(isObj).map(i => mkIssue(clone(i)));
-  S.directions = (Array.isArray(seed.directions) ? seed.directions : []).filter(isObj).map(clone);
+  // 延续下来的方向题：证据图在上一个 run 的 evidence/ 里（它的 export 复制过去的）；新运行目录的同名截图是新拍的，不能再按 shotTag 取
+  S.directions = (Array.isArray(seed.directions) ? seed.directions : []).filter(isObj).map(d => ({ ...clone(d), shotTag: null,
+    evidenceFrom: cfg.continueFrom ? `${cfg.continueFrom.replace(/\/$/, '')}/evidence/${d.id}` : (d.evidenceFrom || null) }));
   S.everReviewed = seed.everReviewed === true;
   S.lastKind = KINDS.includes(seed.lastKind) ? seed.lastKind : 'frontend';
   S.baselineCounts = isObj(seed.baselineCounts) ? clone(seed.baselineCounts) : {};
@@ -280,7 +286,7 @@ function normalizeReview(x) {
         detail: s(i.detail), evidence: s(i.evidence), matchesIssueId: nonEmpty(i.matchesIssueId) ? i.matchesIssueId : null,
         unverifiable: i.unverifiable === true, requiredStates: strs(i.requiredStates), files: strs(i.files) })),
     directions: f.directions.filter(d => isObj(d) && nonEmpty(d.title))
-      .map(d => ({ title: d.title, options: optsOf(d.options), recommend: s(d.recommend), why: s(d.why) })),
+      .map(d => ({ title: d.title, options: optsOf(d.options), recommend: s(d.recommend), why: s(d.why), states: strs(d.states) })),
     counts: isObj(x.counts) ? { now: isObj(x.counts.now) ? clone(x.counts.now) : null, baseline: isObj(x.counts.baseline) ? clone(x.counts.baseline) : null } : null,
     toMain: toMainOf(x) };
 }
@@ -335,8 +341,35 @@ function reviewGate(verify, round) {
   return out(null);
 }
 
-/** 原型模式：条目是否属于方案层（files 落在 schemeFiles 上，或标题与描述里出现术语表的词） */
+/**
+ * 起点评审：开跑后先评一遍开跑前的页面，implementer 从第一轮起就只处理评审指出的问题。
+ * 起点图是 init 截的、结果由 init 直接注入（不经 LLM 转交），这里把它造成一份带签名的短结果，让起点评审走与普通轮同一套 reviewGate。
+ * start = INJECTED.start = { okStates, errorStates, manifest }；round = beginStart 给的起点轮号。
+ */
+function startVerify(start, round) {
+  const res = { round, kind: 'start', kindAdjusted: null, envOk: true, noChange: false, journalCopied: false, snapOk: true, changedCount: 0, schemeTouched: [],
+    smoke: { pass: true, flaky: false, rolledBack: false, envBroken: false }, refreshOk: null,
+    capture: { okStates: strs(isObj(start) ? start.okStates : null), failedStates: [], errorStates: strs(isObj(start) ? start.errorStates : null), newErrors: [] },
+    manifest: isObj(start) && nonEmpty(start.manifest) ? start.manifest : null };
+  res.sig = canonHash(res);
+  return { result: JSON.stringify(res), note: '', toMain: null };
+}
+/**
+ * 起点评审的轮记录，截图用 r00。新 run 轮号为 0；续跑占上一个 run 末轮之后的一个新轮号——同号的话，台账里「本轮」的判断
+ * （子项结论、刚修好的条目、最近一次绿）会把上一个 run 末轮留下的数据当成起点评审自己的。implement 轮从它之后编号。
+ */
+function beginStart(cfg, S) {
+  const round = S.continued ? S.round + 1 : S.round;
+  S.runFirstRound = round + 1;
+  const rec = newRec(round, 'start');
+  rec.start = true;
+  S.rounds.push(rec);
+  return rec;
+}
+
+/** 原型模式：条目是否属于方案层（contract 角度的条目，files 落在 schemeFiles 上，或标题与描述里出现术语表的词） */
 function inSchemeLayer(cfg, iss) {
+  if (iss.lens === 'contract') return true;                  // contract 只管方案与清单的一致性，它的条目都在方案层
   const schemes = cfg.schemeFiles.map(stripLine);
   if ((iss.files || []).some(f => { const p = stripLine(f); return schemes.some(s => p === s || p.startsWith(s.replace(/\/$/, '') + '/') || (cfg.root && p === absIn(cfg.root, s))); })) return true;
   const text = `${iss.title || ''}\n${iss.detail || ''}`;
@@ -391,7 +424,8 @@ function applyImpl(cfg, S, round, impl) {
 function reduceRound(cfg, S, round, verify, reviews) {
   let rec = curRec(S, round);
   if (!rec) { rec = newRec(round, S.lastKind); S.rounds.push(rec); }
-  const gate = reviewGate(verify, round), res = gate.res, rt = rtag(round), P = paths(cfg, round);
+  const tagRound = rec.start ? 0 : round;               // 起点评审的标签与截图都是 r00（续跑时轮号不是 0）
+  const gate = reviewGate(verify, round), res = gate.res, rt = rtag(tagRound), P = paths(cfg, tagRound);
   if (isObj(verify) && verify.result != null && !res) rec.malformed.push(`verify-${rt}`);
   rec.verifyOk = !!res; rec.sigOk = gate.sigOk; rec.reviewed = gate.reviewable; rec.skipReason = gate.skipReason;
   rec.verifyNote = isObj(verify) && isStr(verify.note) ? clip(verify.note, 500) : '';
@@ -416,7 +450,7 @@ function reduceRound(cfg, S, round, verify, reviews) {
       openWf('wf-regress', `第 ${round} 轮改动使 smoke 失败，已退回`, `smoke 输出见 ${P.verifyJson}；被退回的改动见 ${P.rejected}`);
       S.lastGreenRound = round;                      // 退回后复跑是绿的，green 快照已更新为退回后的树
     }
-    if (res.smoke.pass === true) { closeWf('wf-regress'); S.lastGreenRound = round; }
+    if (res.smoke.pass === true) { closeWf('wf-regress'); S.lastGreenRound = tagRound; }   // 起点评审的绿就是开跑前（r00 快照）
     const c = res.capture;
     if (c) {
       for (const s of c.failedStates) openWf('wf-state-' + s, '截图失败：' + s, `原因见 ${P.manifest} 中该态的 error`, s);
@@ -467,7 +501,8 @@ function reduceRound(cfg, S, round, verify, reviews) {
             present();
             const p = iss.proposal || {};
             const did = nextId(S, `dir-impl-r${round}`);
-            S.directions.push({ id: did, lens: 'implementer', round, title: p.title || iss.title, options: p.options || [], recommend: p.recommend || '', why: p.why || '', alsoBy: [], issueId: iss.id });
+            S.directions.push({ id: did, lens: 'implementer', round, title: p.title || iss.title, options: p.options || [], recommend: p.recommend || '', why: p.why || '', alsoBy: [], issueId: iss.id,
+              states: iss.state ? [iss.state] : [], shotTag: rt });
             iss.needsDecision = 'agreed'; iss.decisionId = did; rec.agreed.push(iss.id);
           } else if (iss.needsDecision === 'agreed') present();
           else { present(); rec.deferRejected.push({ id: iss.id, reason: '没有挂起提议却回 decision，按 present 处理' }); }
@@ -519,7 +554,8 @@ function reduceRound(cfg, S, round, verify, reviews) {
       for (const d of r.directions) {
         const ex = S.directions.find(x => x.title === d.title);
         if (ex) { if (ex.lens !== L && !ex.alsoBy.includes(L)) ex.alsoBy.push(L); continue; }
-        S.directions.push({ id: nextId(S, `dir-${L}-r${round}`), lens: L, round, title: d.title, options: d.options, recommend: d.recommend, why: d.why, alsoBy: [] });
+        S.directions.push({ id: nextId(S, `dir-${L}-r${round}`), lens: L, round, title: d.title, options: d.options, recommend: d.recommend, why: d.why, alsoBy: [],
+          states: d.states, shotTag: rt });                 // shotTag：证据图所在那一轮截图的文件名前缀
       }
       if (r.counts) {
         if (!S.baselineCounts[L] && r.counts.baseline) S.baselineCounts[L] = r.counts.baseline;
@@ -545,7 +581,8 @@ function reduceRound(cfg, S, round, verify, reviews) {
   const fixedNow = S.issues.filter(i => i.status === 'fixed' && i.fixedRound === round && i.severity === 'must' && i.id !== 'wf-regress').length;
   const progress = fixedNow > 0 || met.length > S.bestMet || rec.agreed.length > 0;
   S.bestMet = Math.max(S.bestMet, met.length);
-  if (gate.reviewable && !S.everReviewed) { S.everReviewed = true; S.streak = 0; }     // 第一个评审轮只作起点
+  if (rec.start) { if (gate.reviewable) S.everReviewed = true; S.streak = 0; }        // 起点评审只立起点，不算一轮工作
+  else if (gate.reviewable && !S.everReviewed) { S.everReviewed = true; S.streak = 0; }   // 没有起点评审时（旧的 workflow.js），第一个评审轮作起点
   else S.streak = progress ? 0 : S.streak + 1;
   S.skipStreak = gate.reviewable || (res && res.noChange) ? 0 : S.skipStreak + 1;     // noChange 只计入 streak
   if (gate.reviewable) cfg.lenses.forEach((L, k) => { S.missStreak[L] = R[k] ? 0 : (S.missStreak[L] || 0) + 1; });
@@ -586,13 +623,14 @@ function verifyEffort(cfg, S) {
 }
 const mdRefresh = cfg => isStr(cfg.refreshDataCmd) && /\.md$/i.test(cfg.refreshDataCmd.trim());
 
+const recTag = r => (r.start ? 'r00（起点）' : rtag(r.round));
 /** 每轮一行紧凑记录（log 用，运行记录的 logs 会完整保留） */
 function roundLine(S) {
   const r = S.rounds[S.rounds.length - 1];
   if (!r) return '';
   const total = Object.keys(S.subgoals).length;
   const shots = r.capture ? `${r.capture.ok.length}/${r.capture.ok.length + r.capture.failed.length}` : '-';
-  return `${rtag(r.round)} kind=${r.kind}${r.kindAdjusted ? '→' + r.kindAdjusted : ''} smoke=${smokeWord(r)} shots=${shots} sig=${r.sigOk ? 'ok' : 'bad'}` +
+  return `${recTag(r)} kind=${r.kind}${r.kindAdjusted ? '→' + r.kindAdjusted : ''} smoke=${smokeWord(r)} shots=${shots} sig=${r.sigOk ? 'ok' : 'bad'}` +
     ` reviewed=${r.reviewed ? 'Y' : 'N(' + r.skipReason + ')'} fixed=[${r.fixed.join(',')}] born=[${r.born.join(',')}] reopened=[${r.reopened.join(',')}]` +
     ` openMust=${r.openConfirmed}${r.openUnverifiable ? '+' + r.openUnverifiable + '待取证' : ''} met=${r.met.length}/${total} streak=${r.streak}${S.exit ? ' exit=' + S.exit : ''}`;
 }
@@ -698,7 +736,8 @@ function implPrompt(cfg, S, round) {
   if (cfg.refreshDataCmd) kinds.push('`data`（改了数据或扫描逻辑，要重启并刷新数据）');
   kinds.push('`none`（本轮没改代码）');
   out.push(['【规则】',
-    '- 先读相关代码，确认现状，再动手。',
+    '- 只处理上面列出的问题（必须处理、可选）和还没达成的子项。没有被指出的地方不要改，哪怕你觉得能改得更好；想到的改进写进 toMain，由用户决定。',
+    '- 先读相关代码，确认现状，再动手。读代码先用搜索定位，再按行段读（Read 的 offset / limit）；不要整份读大文件，也不要反复整读同一个文件。',
     '- 试过、评审仍判存在的做法不要原样重试；要重试就在 summary 里写明这次有什么不同。每条处理过的 must 在 attempts 里写一句这次的做法。',
     '- 不改截图配方文件、验收标准和运行目录里的参数文件；配方有问题写进 toMain。',
     `- kind 按实际改动填，本 run 只支持：${kinds.join('、')}。`].join('\n'));
@@ -710,7 +749,8 @@ function implPrompt(cfg, S, round) {
       `- 补充演示数据或改动方案文件时，同一轮里同步更新后端要求清单 ${absIn(cfg.root, cfg.contractPath)}，每个新字段都要写进去。`,
       '- 负责评审没同意（判仍存在）的挂起提议，照常修。'].join('\n'));
   }
-  out.push(`【自查】要看效果就用 \`${P.cap} shoot --workdir ${q(P.W)} --round ${round} --only <态,…> --out ${q(P.W + '/scratch/impl-' + rtag(round))}\`，不要自己写截图脚本。自查截图不作为评审证据。`);
+  out.push(`【自查】要看效果就用 \`${P.cap} shoot --workdir ${q(P.W)} --round ${round} --only <态,…> --out ${q(P.W + '/scratch/impl-' + rtag(round))}\`，不要自己写截图脚本。` +
+    '只截本轮改动涉及的态，每轮最多跑 2 次；评审会在 verify 之后看全部截图。自查截图不作为评审证据。');
   out.push(`【标准】验收标准（本 run 冻结）：${P.rubric}；评审准则：${P.principles}。`);
   out.push(COMMON);
   return out.join('\n\n');
@@ -720,7 +760,7 @@ function verifyPrompt(cfg, S, round) {
   const P = paths(cfg, round), rec = curRec(S, round), kind = rec ? rec.kind : S.lastKind;
   const prev = S.rounds.find(r => r.round === round - 1);
   // 只有上一轮评审过、本轮又没应用 override 时，「无改动」才能直接沿用上一轮的评审结论
-  const hint = !!(prev && prev.reviewed) && !(rec && rec.overridesApplied.length);
+  const hint = !!(prev && prev.reviewed && !prev.missingLenses.length) && !(rec && rec.overridesApplied.length);   // 上一轮有角度缺席时不沿用，让它这轮补评
   const md = kind === 'data' && mdRefresh(cfg);
   const cmd = `${P.wl} verify ${q(P.W)} --round ${round} --kind ${kind}${hint ? ' --no-change-hint' : ''}${md ? ' --refreshed' : ''}`;
   const out = [`你是 web-loop 第 ${round} 轮的 verify：只负责跑一条命令并把结果原样转交。`];
@@ -745,8 +785,10 @@ function lensBrief(cfg, L, P) {
     newbie: '新手第一眼：你几周没碰这个工具、记不清内部词、色弱、不看悬停。先只看截图，心里记下每个签、列、颜色你以为是什么意思、下一步会点哪；再读 rubric 的术语与正确含义逐条对照：读错、读不出、会让你点错下一步 = must（写明读成了什么、正确是什么、哪张截图）。' +
       '同一概念在两处有两种叫法，或同一个词在两处意思不同，也记 must。读对的不立条目。读全部成功态的整页图。',
     flow: `模拟用户走流程：按 ${P.rubric} 里「角度 flow」专节列出的状态顺序，把截图当成一次连贯操作来判：每一步下一步该做什么是否看得出、前后状态是否衔接、走完能不能完成专节写的任务。${noClick}`,
-    contract: `后端要求一致性：读后端要求清单 ${absIn(cfg.root, cfg.contractPath)}、方案文件 ${cfg.schemeFiles.map(f => absIn(cfg.root, f)).join('、')}，以及本轮 diff（命令见证据段）。must 只有三类：` +
-      '① 本轮改了方案文件，清单没跟上；② 清单里有、代码里没有，或代码里有、清单里没有的字段或计算；③ 本轮改变了方案层的含义或计算，而这项改动不在 rubric「已定决定」里。' +
+    contract: `后端要求一致性：读后端要求清单 ${absIn(cfg.root, cfg.contractPath)}、方案文件 ${cfg.schemeFiles.map(f => absIn(cfg.root, f)).join('、')}` +
+      (cfg.mockFiles.length ? `、模拟逻辑所在的文件 ${cfg.mockFiles.map(f => absIn(cfg.root, f)).join('、')}` : '') + '，以及本轮 diff（命令见证据段）。只记四类问题：' +
+      '① 本轮改了方案文件，清单没跟上（must）；② 清单里有、代码里没有，或代码里有、清单里没有的字段或计算（must）；③ 本轮改变了方案层的含义或计算，而这项改动不在 rubric「已定决定」里（must）；' +
+      '④ 模拟逻辑自身不一致：同一个字段或计算在代码里有两套算法、两处可能算出不同结果（must，后端不知道该照哪个实现）；注释和代码说的不一样、定义了却没用到的常量或函数（nice）。' +
       '「后端可能拿不到」「这样算是否合理」一律写进 directions，不记 must。',
   }[L];
   return b || `你是『${L}』评审角度。看哪些状态、判什么、什么算 must，完全按 ${P.rubric} 里『角度 ${L}』专节；专节要你按顺序看一串状态时，就按截图清单里的顺序把它们当作一次连贯的操作流程来判，你自己不能点击。`;
@@ -754,25 +796,33 @@ function lensBrief(cfg, L, P) {
 const REFS_HOW = { ux: '先读全部参考图，按 role 区分对待。', rival: '先读全部参考图，按 role 区分对待。', func: '看说明即可，对照子项时按需读图。', flow: '看说明即可，需要时读图。' };
 
 function reviewerPrompt(cfg, S, round, L, verify) {
-  const P = paths(cfg, round), gate = reviewGate(verify, round), rec = curRec(S, round);
+  const gate = reviewGate(verify, round), rec = curRec(S, round), start = !!(rec && rec.start);
+  const P = paths(cfg, start ? 0 : round);                   // 起点评审看 init 截的 r00
   const newbie = L === 'newbie', seesDiff = L === 'code' || L === 'contract';
   const issues = S.issues || [];
   const own = issues.filter(i => i.status === 'open' && i.lens === L);
   const mySg = cfg.goalSubgoals.filter(g => g.lenses.includes(L));
-  const out = [`你是 web-loop 第 ${round} 轮的评审，角度：${L}。`, lensBrief(cfg, L, P)];
+  const out = [start ? `你是 web-loop 的起点评审，角度：${L}。评的是开跑前的页面，还没有任何修改；你找出的问题就是本 run 要修的。` : `你是 web-loop 第 ${round} 轮的评审，角度：${L}。`,
+    lensBrief(cfg, L, P)];
   out.push('【取证方式】你零浏览器、只读：只 Read 截图器已截好的图和文件，不碰 playwright，不创建任何文件。一次并行 Read 多张图。' +
     '看不清就读 manifest 里该态的局部图（crops 字段）；局部图也不够时记 unverifiable，requiredStates 写「<态>__需要局部图」。');
   out.push(`【GOAL（原文）】\n${cfg.goal}`);
   out.push('【你负责的子项】' + (mySg.length ? '在 subgoals 里逐条给出本轮结论（met / unmet / unverifiable）：\n' + mySg.map(g => `- ${g.id} · ${g.desc}` +
     (g.measurable ? ` · 可度量：${g.measurable}` : '') + (g.states.length ? ` · 态：${g.states.join('、')}` : '')).join('\n') : '本角度不负责子项，subgoals 交空数组。'));
   out.push('【参考图】' + refsBlock(cfg, REFS_HOW[L] || (BUILTIN_LENSES.includes(L) ? null : '按专节需要读图。')));
-  const ev = [`- 本轮截图清单：${P.manifest}（整页图、局部图、探针结果、报错都在里面；只看 ok 为 true 的态）`,
-    `- 开跑前起点：${P.r00}（开跑前就有的报错不算本次的问题）`];
-  if (seesDiff) {
-    const filt = L === 'contract' ? ' -- ' + [...cfg.schemeFiles, cfg.contractPath].filter(Boolean).map(q).join(' ') : '';
+  const ev = start
+    ? [`- 起点截图清单：${P.manifest}（整页图、局部图、探针结果、报错都在里面；只看 ok 为 true 的态）`]
+    : [`- 本轮截图清单：${P.manifest}（整页图、局部图、探针结果、报错都在里面；只看 ok 为 true 的态）`,
+      `- 开跑前起点：${P.r00}（开跑前就有的报错不算本次的问题）`];
+  if (seesDiff && start) {
+    ev.push(L === 'contract'
+      ? '- 这是起点评审，还没有改动：通读清单、方案文件和模拟逻辑文件，按 ②④ 全面找一遍（①③ 说的是本轮改动，起点不适用）；之后各轮只看本轮 diff 和你名下的条目。'
+      : '- 这是起点评审，还没有改动：读与你负责的子项、页面报错相关的代码。');
+  } else if (seesDiff) {
+    const filt = L === 'contract' ? ' -- ' + [...cfg.schemeFiles, ...cfg.mockFiles, cfg.contractPath].filter(Boolean).map(q).join(' ') : '';
     ev.push(`- 本轮代码改动：\`${P.wl} diff ${q(P.W)} --round ${round}${filt}\`（可加 -- <路径> 过滤）`);
   }
-  if (L === 'code' && rec) ev.push(`- implementer 自述（只给代码角度）：${indent(clip(rec.implSummary || '（未交回）', 1500))}\n- 改动文件：${(rec.changedFiles || []).join('、') || '（未列）'}`);
+  if (L === 'code' && rec && !start) ev.push(`- implementer 自述（只给代码角度）：${indent(clip(rec.implSummary || '（未交回）', 1500))}\n- 改动文件：${(rec.changedFiles || []).join('、') || '（未列）'}`);
   if (gate.sigOk && gate.res && gate.res.capture && gate.res.capture.failedStates.length)
     ev.push(`- 本轮截图失败的态（这些态没有截图，不要猜；原因见清单里该态的 error）：${gate.res.capture.failedStates.join('、')}`);
   else if (!gate.sigOk) ev.push('- 本轮各态截没截成功，以清单里各态的 ok 字段为准。');
@@ -801,7 +851,7 @@ function reviewerPrompt(cfg, S, round, L, verify) {
     '- 子项的 evidence 必须是本轮可以定位的证据：截图文件名加看到了什么、探针的键和值、报错原文、diff 里的文件和函数。',
     '- 根因在截图配方或缺少某个状态的问题，一律 unverifiable:true，并在 requiredStates 写出需要哪个态（可以是清单里还没有的新态名）。点名的态如果本轮已经截成功，会被按确证问题处理。',
     '- 复现已修好的问题用 matchesIssueId 引用它，不要换个说法另立一条。',
-    '- 需要用户拍板的取舍写进 directions（写明选项、各自代价、推荐），不进 issues。',
+    '- 需要用户拍板的取舍写进 directions（写明选项、各自代价、推荐），不进 issues；并在 states 里写出看得出这道题的态（要看局部图就写 <态>__<局部图名>），用户拍板时要看图。',
     '- issues 的 state 写问题所在的态；detail 不超过 6 行，evidence 不超过 3 行。'].join('\n'));
   if (L === 'razor') {
     const base = S.baselineCounts && S.baselineCounts.razor;
@@ -821,17 +871,28 @@ function reviewerPrompt(cfg, S, round, L, verify) {
  * mode = 'live'（进行中：停在未完成的环节并报告阶段）| 'end'（已结束：缺结果视为 null）。
  * end 模式下某轮 verify 从没开始过，说明 run 在 implementer 阶段被打断（SHELL 那时也不会归并这一轮），就此停下。
  */
-function replay(cfg, seed, view, mode) {
+function replay(cfg, seed, view, mode, start) {
   const S = initState(cfg, seed);
   const R = isObj(view) && isObj(view.results) ? view.results : {};
   const started = new Set(isObj(view) && Array.isArray(view.started) ? view.started : []);
   const has = l => Object.prototype.hasOwnProperty.call(R, l);
   const live = mode === 'live';
-  let stage = null, n = 0;
-  while (!S.exit && n < cfg.maxRounds) {
+  let stage = null, n = 0, halt = false;
+  if (isObj(start)) {                                        // 起点评审（start = INJECTED.start；旧的 workflow.js 没有它）
+    const l0 = cfg.lenses.map(L => `review-${L}-r00`), done = l0.filter(has);
+    if (!l0.some(l => started.has(l))) { if (live) stage = '起点评审即将开始'; halt = true; }
+    else if (live && done.length < l0.length && !started.has(`impl-${rtag((S.continued ? S.round + 1 : S.round) + 1)}`)) {   // 与 beginStart 的轮号一致
+      stage = `起点评审中：${done.length ? done.map(l => l.replace(/^review-|-r\d+$/g, '')).join('、') + ' 已交回' : '还没有角度交回'}`;
+      halt = true;
+    } else {
+      const r0 = beginStart(cfg, S).round;
+      reduceRound(cfg, S, r0, startVerify(start, r0), l0.map(l => (has(l) ? R[l] : null)));
+    }
+  }
+  while (!halt && !S.exit && n < cfg.maxRounds) {
     const round = S.round + 1, rt = rtag(round);
     const li = `impl-${rt}`, lv = `verify-${rt}`, lr = cfg.lenses.map(L => `review-${L}-${rt}`);
-    if (!started.has(li) && !started.has(lv)) { if (live && n) stage = `${rt} 即将开始`; break; }
+    if (!started.has(li) && !started.has(lv)) { if (live && (n || isObj(start))) stage = `${rt} 即将开始`; break; }
     if (!started.has(lv)) { if (live) stage = has(li) ? `${rt} verify 即将开始` : `${rt} implementer 进行中`; break; }
     if (live && !has(lv)) { stage = `${rt} verify 进行中`; break; }
     const verify = has(lv) ? R[lv] : null;
@@ -877,7 +938,8 @@ function renderSummary(cfg, S, info) {
 
   out.push(`# web-loop 运行总结：${cfg.runtag}`, '');
   out.push(`- 结论：${EXIT_TEXT[exit] || exit}（\`${exit}\`）${S.exitDetail ? '。' + S.exitDetail : ''}`);
-  out.push(`- 轮次：${rtag(S.runFirstRound)}～${rtag(S.round)}（本 run ${Math.max(0, S.round - S.runFirstRound + 1)} 轮，上限 ${cfg.maxRounds}）；代理数：${info.agentsUsed ?? '未知'}；模式：${cfg.mode}；评审角度：${cfg.lenses.join('、')}`);
+  const roundsText = !S.rounds.length ? `还没有开始评审（上限 ${cfg.maxRounds} 轮）` : S.round < S.runFirstRound ? `只做了起点评审，没有修改（上限 ${cfg.maxRounds} 轮）` : `${rtag(S.runFirstRound)}～${rtag(S.round)}（本 run ${S.round - S.runFirstRound + 1} 轮，上限 ${cfg.maxRounds}）`;
+  out.push(`- 轮次：${roundsText}；代理数：${info.agentsUsed ?? '未知'}；模式：${cfg.mode}；评审角度：${cfg.lenses.join('、')}`);
   if (info.runId) out.push(`- runId：${info.runId}`);
   if (info.journalNote) out.push(`- 注意：${info.journalNote}`);
 
@@ -910,19 +972,30 @@ function renderSummary(cfg, S, info) {
   for (const [st, list] of byStateGroups(confirmed)) { grouped.push(`**${st}**`, ''); for (const i of list) grouped.push(issueFull(i, 600, 300) + (i.needsDecision ? `\n  （${i.needsDecision === 'agreed' ? '已同意挂起，等你拍板' : '提议挂起，待负责角度表态'}）` : '')); grouped.push(''); }
   sec('还开着的确证问题', grouped);
   sec('待人工取证', gaps.map(i => `- ${i.id} [${i.lens}] ${i.title}：需要态 ${i.requiredStates.join('、') || '（未点名）'}${i.humanUnverifiable ? '（人工标注）' : ''}`));
-  sec('方向题', S.directions.flatMap(d => [`### ${d.id}：${d.title}`, `- 提出：${d.lens}（${rtag(d.round)}）${d.alsoBy.length ? '；也提到的角度：' + d.alsoBy.join('、') : ''}${d.issueId ? '；对应条目 ' + d.issueId : ''}`,
-    ...d.options.map(o => `- 选项「${o.choice}」：${o.cost}`), `- 推荐：${d.recommend || '（未写）'}${d.why ? '。理由：' + d.why : ''}`, '']));
+  // info.evidence = { 方向题 id: [相对 W 的图片路径] }，由 export 把证据图复制进 <W>/evidence/ 后传入（那里不随清理旧截图删掉）
+  const evOf = d => {
+    const ev = isObj(info.evidence) && Array.isArray(info.evidence[d.id]) ? info.evidence[d.id] : [];
+    if (ev.length) return ev.map(p => `![${d.id}](${p})`);
+    const st = strs(d.states);
+    if (!d.shotTag) return [`- 截图：上一次 run 提的方向题，${d.evidenceFrom ? `在 ${d.evidenceFrom} 里没找到证据图` : '没有证据图'}`];
+    return [st.length ? `- 截图：${st.map(s => `${d.shotTag}_${s}`).join('、')}（没找到图片文件）` : '- 截图：（评审没有指定）'];
+  };
+  sec('方向题', S.directions.flatMap(d => [`### ${d.id}：${d.title}`, `- 提出：${d.lens}（${d.shotTag === 'r00' ? '起点评审' : rtag(d.round)}）${d.alsoBy.length ? '；也提到的角度：' + d.alsoBy.join('、') : ''}${d.issueId ? '；对应条目 ' + d.issueId : ''}`,
+    ...d.options.map(o => `- 选项「${o.choice}」：${o.cost}`), `- 推荐：${d.recommend || '（未写）'}${d.why ? '。理由：' + d.why : ''}`, '', ...evOf(d), '']));
+  if (S.directions.length) sec('拍板之后', [
+    '- 方向题由用户拍板。拍板的结论由主会话写回项目里记录决定的地方（设计文档或规格），下一次起草验收标准时从那里读；web-loop 自己不保存决定。',
+    '- 用户只是觉得某个现状不错、没有定成规矩的，不写成决定。']);
   sec('可选改进', open.filter(i => i.severity === 'nice').map(i => `- ${i.id} [${i.lens}] ${i.title}${i.state ? `（态 ${i.state}）` : ''}`));
   sec('评审分歧', S.issues.filter(i => i.dissent.length || i.disputed || i.alsoReportedBy.length).map(i =>
     `- ${i.id} [${i.lens}] ${i.title}：${i.disputed ? '负责角度判修好后又被别的角度重开过；' : ''}${i.dissent.map(d => `${rtag(d.round)} ${d.lens} 不同意（${clip(d.evidence, 120)}）`).join('；')}${i.alsoReportedBy.length ? '；也报告的角度：' + i.alsoReportedBy.join('、') : ''}`));
   sec('每轮走势', ['| 轮 | kind | smoke | 截图 | 评审 | 修好 | 新增 | 重开 | 开着的确证 must | 子项达成 | streak |', '|---|---|---|---|---|---|---|---|---|---|---|',
-    ...S.rounds.map(r => `| ${rtag(r.round)} | ${r.kind}${r.kindAdjusted ? '→' + r.kindAdjusted : ''} | ${smokeWord(r)} | ${r.capture ? `${r.capture.ok.length}/${r.capture.ok.length + r.capture.failed.length}` : '-'} | ${r.reviewed ? '是' + (r.sigOk ? '' : '（签名不符）') : '否：' + r.skipReason} | ${r.fixed.join(' ') || '-'} | ${r.born.join(' ') || '-'} | ${r.reopened.join(' ') || '-'} | ${r.openConfirmed}${r.openUnverifiable ? `（另 ${r.openUnverifiable} 待取证）` : ''} | ${r.met.length}/${cfg.goalSubgoals.length} | ${r.streak} |`)]);
+    ...S.rounds.map(r => `| ${recTag(r)} | ${r.kind}${r.kindAdjusted ? '→' + r.kindAdjusted : ''} | ${smokeWord(r)} | ${r.capture ? `${r.capture.ok.length}/${r.capture.ok.length + r.capture.failed.length}` : '-'} | ${r.reviewed ? '是' + (r.sigOk ? '' : '（签名不符）') : '否：' + r.skipReason} | ${r.fixed.join(' ') || '-'} | ${r.born.join(' ') || '-'} | ${r.reopened.join(' ') || '-'} | ${r.openConfirmed}${r.openUnverifiable ? `（另 ${r.openUnverifiable} 待取证）` : ''} | ${r.met.length}/${cfg.goalSubgoals.length} | ${r.streak} |`)]);
   sec('本 run 改动的文件', Array.isArray(info.changed) ? info.changed.map(c => `- ${c.status} ${c.path}`) : ['（快照不可用，没有列出）']);
   sec('给主会话的留言', S.toMain.map(m => `- ${rtag(m.round)} ${m.from}：${m.text}`));
   const fixes = [];
   for (const e of S.overrideErrors) fixes.push(`- override 无效（${rtag(e.round)} ${e.key}）：${e.error}`);
   for (const r of S.rounds) {
-    const t = rtag(r.round), add = (name, v) => { if (v && (Array.isArray(v) ? v.length : Object.keys(v).length)) fixes.push(`- ${t} ${name}：${Array.isArray(v) ? v.map(x => (isObj(x) ? JSON.stringify(x) : x)).join('、') : JSON.stringify(v)}`); };
+    const t = recTag(r), add = (name, v) => { if (v && (Array.isArray(v) ? v.length : Object.keys(v).length)) fixes.push(`- ${t} ${name}：${Array.isArray(v) ? v.map(x => (isObj(x) ? JSON.stringify(x) : x)).join('、') : JSON.stringify(v)}`); };
     add('引用了不存在的 id（按新条目入账）', r.badMatch); add('名下条目没表态', r.untabled); add('负责子项没表态', r.untabledSubgoals);
     add('取证缺口不采信（点名的态已截成功）', r.unverifiableRejected); add('判修好但所在态没截成功（未生效）', r.goneIgnored);
     add('判达成但子项的态都没截成功（降为待取证）', r.metDowngraded); add('返回形状不对（按缺席处理）', r.malformed);
@@ -933,7 +1006,7 @@ function renderSummary(cfg, S, info) {
   sec('台账修正与异常', fixes);
   const shots = [];
   if (lastCap) {
-    const lt = rtag(lastCap.round);
+    const lt = lastCap.start ? 'r00' : rtag(lastCap.round);
     for (const s of lastCap.capture.ok) shots.push(`- ${s}：${W}/shots/r00_${s}.png → ${W}/shots/${lt}_${s}.png`);
     for (const s of lastCap.capture.failed) shots.push(`- ${s}：${W}/shots/r00_${s}.png → ${W}/shots/${lt}_${s}.failed.png（截图失败）`);
   }
@@ -966,9 +1039,16 @@ async function call(prompt, opts) {
 }
 
 const S = initState(cfg, INJECTED.seed ?? null);       // seed 版本不认识时抛 BLOCKED（此时一个 agent 都还没派）
+const START = INJECTED.start || null;                  // init 截 r00 时的结果；init 总会给，缺了（旧的 workflow.js）就不做起点评审
 
 phase('iterate');
 try {
+  if (START) {                                          // 起点评审：先评开跑前的页面，implementer 从第一轮起只处理评审指出的问题
+    const r0 = beginStart(cfg, S).round, sv = startVerify(START, r0);
+    const reviews = await parallel(cfg.lenses.map(L => () => call(reviewerPrompt(cfg, S, r0, L, sv), { label: `review-${L}-r00`, phase: 'iterate', ...REVIEW_OPTS, schema: reviewerSchema(L) })));
+    reduceRound(cfg, S, r0, sv, reviews);                // 起点就达标（或只剩取证缺口）时直接以出口结束，一轮都不改
+    log(roundLine(S));
+  }
   for (let i = 0; i < cfg.maxRounds && !S.exit && !threw; i++) {
     if (cfg.maxAgents != null && used + roundAgentEstimate(cfg) > cfg.maxAgents) { markExit(S, 'budget', budgetDetail(cfg, used)); break; }
     const round = S.round + 1, rt = rtag(round);

@@ -19,6 +19,7 @@
 - 含义：存下来的原始记录，json 页直接显示它。
 - 形状：`{ file, machine, data_fingerprint, features[], patterns[], charts[] }`。`file` 现为写死的 `annotations/20261025-140311_upc.json`，`machine` 写死 `upc`，`data_fingerprint` = `'pkls_until_20251231 @ ' + D.snapshot`（`D.snapshot` 是数据副本的生成时间，如 `2026-10-17T02:44:27`）。
 - 来源：页面状态拼出（用户标注）；`file`、`machine`、`data_fingerprint` 将来由会话或工具给，现在是假值。
+- `charts[]` 每项：`{ symbol, boxes[], buy_points[] }`。`symbol` 是股票代码；`boxes` 是这只股票上的全部框（形状见下面 box 一节）；`buy_points` 是这只股票上的全部买点（形状见 buy_point 一节）。会话靠 `symbol` 找到「哪只股票的框和买点」。
 - 算法：`charts` 只收有框或有买点的股票；`patterns` 去掉 `未归类`；`features` 和 `patterns` 的 `definition` 为空则不写该键。
 - 代码位置：`batch`、`sideJson`
 
@@ -31,7 +32,7 @@
 
 ### patterns 与 pattern 定义（S.patterns / S.pdef）
 - 含义：用户命名的 pattern 列表，每个可带一句定义；`未归类`（`UNSORTED`）是固定的占位，不是 pattern，没有定义，不导出。
-- 形状：`patterns: [{ name, definition? }]`；买点上的 `pattern` 字段存 pattern 名。
+- 形状：`patterns: [{ name, definition?, flags? }]`；买点上的 `pattern` 字段存 pattern 名；`flags` 见 flags 一节。
 - 来源：用户标注（顶栏 `+ new`、pattern 页的定义输入框、买点的 `pattern` 下拉、整行 / 整组 `move`）。
 - 算法：`move` 只改买点的 `pattern` 字段，不切页。顶栏 pattern 下拉里 `未归类` 一项带剩余个数 `未归类 · n`，`n` = 所有图上 `pattern === 未归类` 的买点数（`nUnsorted`，从用户标注直接数）。
 - 代码位置：`S.patterns`、`S.pdef`、`UNSORTED`、`nUnsorted`、`renderTop`、`vMove`、`vmoveto` / `vmove` 事件
@@ -66,7 +67,7 @@
 
 ### buy_point（买点）
 - 含义：用户在某一天放的一个买点，带 label 和归属 pattern。
-- 形状（内存）：`{ id: 'p<序号>', idx, pattern, label: 'buy'|'no_buy', note, frozen? }`；导出 `{ date, pattern, label, members[], members_edited?, note? }`，**导出里没有买点 id**。
+- 形状（内存）：`{ id: 'p<序号>', idx, pattern, label: 'buy'|'no_buy', note, frozen? }`；导出 `{ id, date, pattern, label, members[], members_edited?, note? }`。`id` 和框的 `id` 一样由页面计数器生成（用户 2026-10-30 定：买点存编号，会话的题目按它定位，挪到别的 pattern 后照样找得到）。正式版读回旧文件后要把计数器接到已有编号之后，否则会撞号。
 - 来源：用户标注。
 - 算法：点一根 K 线放买点，同一 pattern 同一天已有就改选它；新放的 label 默认 `buy`；`label` 含义是「只按当天看得到的信息判」；`no_buy` 挂在 `未归类` 时界面把 pattern 一格显示成待选，引导挂到它像的 pattern。放下后工具自动回到画框。
 - 代码位置：`click` 监听（`S.tool === 'point'`）、`batch`、`sideEdit` 里买点分支
@@ -96,7 +97,7 @@
 - 含义：机械可查的疑似漏收：买点之前、没收进它的框。
 - 形状：框的数组。
 - 来源：从用户标注派生。
-- 算法：框满足全部条件：`b.s <= bp.idx`；不是该买点成员；`b.e >= 范围起点 - NEAR`（`NEAR = 40`，待验证，代码注释写「和首次归组时切短了但没改的检查窗口取同一个数」）；`b.name` 在「该 pattern 的买点成员里出现过的名字」或「该 pattern 的 musts 对应的词」里；也不是同一 pattern 别的买点的成员。`takeOf(bp, st, t)` = 其中同名的、终点最近的一个（供空槽一下收进）。
+- 算法：框满足全部条件：`b.s <= bp.idx`；不是该买点成员；`b.e >= 范围起点 - NEAR`（`NEAR = 40`，待验证）；`b.name` 在「该 pattern 的买点成员里出现过的名字」或「该 pattern 的 musts 对应的词」里；也不是同一 pattern 别的买点的成员。`takeOf(bp, st, t)` = 其中同名的、终点最近的一个（供空槽一下收进）。
 - 代码位置：`unclaimed`、`takeOf`、`NEAR`
 
 ### dupNames（同买点内两段同名）
@@ -117,16 +118,16 @@
 
 ## 二 会话
 
-「会话」= 写 app 的 Claude Code 会话。以下在原型里是 `FAKE` 里写死的数据，注释说明「真实流程里由会话写，参照骨架和对应表随 app 进 git，不进标注文件」。
+「会话」= 写 app 的 Claude Code 会话。以下在原型里是 `FAKE` 里写死的数据，注释说明「真实流程里由会话写，参照骨架和 mapping 随 app 进 git，不进标注文件」。
 
 ### app 描述符（FAKE / PAPP）
 - 含义：某个 pattern 当前由哪个 app、哪个版本实现。
 - 形状：`FAKE = { id, ver, pattern, table, edges, musts, where, asks, blind, holdout }`；`PAPP = { <pattern 名>: app }`。现值 `id: 'sbt_v1'`、`ver: 2`、`pattern: '横盘突破回踩'`、`blind: 1`、`holdout: 0`。
 - 来源：会话。`blind` = 最近一次盲看用的版本；`holdout` = 最后检查已用的次数。
-- 算法：`isApp(p)` = `PAPP[p]` 存在；没有 app 的 pattern 在界面上走「平铺」分支，mode 的 `compare` 档不可用（`cmpOn` 为假）。当前只有一个 app，`MAP`、`DMAP`、`WHERE` 都是全局的、直接从这一个 app 派生，不随 pattern 切换。
+- 算法：`isApp(p)` = `PAPP[p]` 存在；没有 app 的 pattern 在界面上走「平铺」分支，mode 的 `compare` 档不可用（`cmpOn` 为假）。当前只有一个 app，`MAP`、`DMAP`、`WHERE` 都是全局的、直接从这一个 app 派生，不随 pattern 切换。**这是原型的示意限制，不是要求**：正式版要按买点所属 pattern 的 app 取这三样。另外，演示里 app 的 match 结果借的是 `bb_v1` 跑出来的，不是按 `sbt_v1` 自己的口径（`sbt_v1` 的 where 是 `bb_v1` 的子集、更宽，正式跑可能多出 match）。
 - 代码位置：`FAKE`、`PAPP`、`isApp`、`cmpOn`
 
-### table（对应表）
+### table（ mapping ）
 - 含义：用户的每个特征名在 app 里怎么对应：定级与由谁来认。
 - 形状：`{ <特征名文本>: row }`，`row` 字段：
   - `level`：`must`（必须有）/ `optional`（可有可无）/ `must_not`（必须没有）/ `excluded`（不放）；
@@ -135,11 +136,11 @@
   - `on`：`optional` / `must_not` 依附的那一段的特征名；
   - `attr`：这一行是哪个特征名的属性；`clause`：属性对应的 where 条款 id（如 `vol_spike`）。
 - 来源：会话（随 app 进 git）。
-- 算法：派生 `MAP`（`res` 以 `node:` 开头的行：特征名 → row，能单独对照）与 `DMAP`（带 `clause` 的行：属性名 → row）；`rowOf(t)` 查行；`mapState(t)`：查不到行 = `unmapped`（会话还没处理）、`level === 'excluded'` = `excluded`、否则 `mapped`。
+- 算法：派生 `MAP`（`res` 以 `node:` 开头的行：特征名 → row，能单独对照）与 `DMAP`（带 `clause` 的行：属性名 → row）；`rowOf(t)` 查行；`mapState(t)`：查不到行 = `unmapped`（会话还没 map）、`level === 'excluded'` = `excluded`、否则 `mapped`。
 - 代码位置：`FAKE.table`、`MAP`、`DMAP`、`rowOf`、`mapState`、`LV_TIP`、`RES_TIP`、`NODE_TIP`、`MS_TIP`
 
 ### musts（必须有的先后）
-- 含义：对应表里 `must` 的特征名，按 app 里的先后排。
+- 含义：mapping 里 `must` 的特征名，按 app 里的先后排。
 - 形状：特征名文本数组，现值 `['放量突破', '回踩']`。
 - 来源：会话。
 - 算法：偏离（差签）只按 `must` / `must_not` 算；没有 app 的 pattern `mustsOf` 返回 `null`。
@@ -161,37 +162,42 @@
 
 ### asks（会话的问题）与 #q=<id>
 - 含义：会话在对话里出题，每题一个链接 `mock_v4.html#q=<id>`；工具只按题号显示这道题要看的图，不显示题干和选项、不记回答（回答由会话记进它自己的问题记录，不写标注文件）。
-- 形状：`FAKE.asks = [ q ]`，`q` 字段：`id`；`kind`：`level`（给名字或属性定级）/ `dev`（偏离三选一）/ `seen`（上一轮这个买点 label 改过）；`word`（特征名）、`attr: true`（是属性题）、`on`（属性所在的特征名）、`guess`（会话猜的级，可 `null`）、`why`（依据句）；`si`（股票下标）、`bp`（买点对象，实现时应改为股票 + 买点日期）、`from`（旧 label）。`guess` 与 `why` 只是演示数据里留着，页面不读（题干、选项、推荐都在对话里，D1）。
+- 形状：`FAKE.asks = [ q ]`，`q` 字段：`id`；`kind`：`level`（给名字或属性定级）/ `dev`（偏离三选一）/ `seen`（上一轮这个买点 label 改过）；`word`（特征名）、`attr: true`（是属性题）、`on`（属性所在的特征名）、`guess`（会话猜的级，可 `null`）、`why`（依据句）；`bp_id`（买点题指向的买点编号，见 buy_point 一节）、`from`（旧 label）。`guess` 与 `why` 只是演示数据里留着，页面不读（题干、选项、推荐都在对话里，D1）。
 - 来源：会话（题号和每题的参数由会话给；页面从 URL hash 取题号）。
-- 算法：`hashQ` 用 `^#q=([\w-]+)$` 取题号；`openQ` 切到该 pattern，有 `bp` 的买点题再切到那张图、选中买点、打开 selection 页，名字 / 属性题打开 pattern 页；`openQs` = 未完成的题；`qDone(q)` 仅对 `kind === 'dev'` 成立：该买点已 `offSkel` 为假（图上改好了）则不再问。
-- 代码位置：`FAKE.asks`、`qOf`、`hashQ`、`openQ`、`closeQ`、`qDone`、`openQs`
+- 算法：`hashQ` 用 `^#q=([\w-]+)$` 取题号；`openQ` 切到题目的 pattern；买点题用 `qBuy(q)` 按 `bp_id` 在全部股票里找到那个买点，切到它所在的图和它现在所属的 pattern、选中它、打开 selection 页（找不到就只打开 pattern 页）；名字 / 属性题打开 pattern 页；`openQs` = 未完成的题；`qDone(q)` 仅对 `kind === 'dev'` 成立：该买点已 `offSkel` 为假（图上改好了）则不再问。
+- 代码位置：`FAKE.asks`、`qOf`、`qBuy`、`hashQ`、`openQ`、`closeQ`、`qDone`、`openQs`
 
 ### 题视图的数据（qView）
 - 含义：每道题要看的那几个买点的卡。
 - 形状：由 `vInst` 取出的买点实例列表分排。
-- 来源：用户标注 + 会话对应表 + app 判断（三类都用）。
+- 来源：用户标注 + 会话 mapping + app 判断（三类都用）。
 - 算法：买点一律取 `FAKE.pattern`（`openQ` 打开题时也把 `S.cur` 切到它）。`level` 名字题：把这个 pattern 的 `buy` 分成「有这个特征名的框」与「没有」两排，`no_buy` 里 `k/n` 个有放悬停；`level` 属性题：对「属性所在特征的框」按 `true` / `false` / `null` 分排，每排按买点聚合并写 `×n`（一个买点收了几个这样的框），`no_buy` 的 `t/j` 放悬停；`dev` 题：一张卡 + 差签，已改好则带 `done`；`seen` 题：一张卡 + `label` 旧 → 新。
 - 代码位置：`qView`、`vInst`、`vCard`、`attrCnt`
 
-### flags（⚑ 翻译不对）
-- 含义：用户在对应表某一行点 ⚑，表示「这行翻译不对，等会话看」。
-- 形状：被标的特征 id 数组 `S.flags`（内存，**当前不在标注文件里**）。
+### flags（⚑ map 方式不对）
+- 含义：用户在 mapping 某一行点 ⚑，表示「这一行 map 方式不对，等会话看」。
+- 形状：内存里 `S.flags` 每条 `{ pattern, feature, snap }`：哪个 pattern 的 mapping、哪个特征（词 id）那一行、点的时候那一行的写法（mapping 那一行整行转成字符串；还没 map 时是 `null`）。写进标注文件时放在所属 pattern 下：`patterns[].flags: [{ feature, mapping_row }]`，`mapping_row` 就是 `snap` 还原成的那一行（用户 2026-10-30 定）。
+- 状态（现算，不写进文件）：`open` = 那个 pattern 的 mapping 里这一行和 `snap` 一样，还在等会话；`remapped` = 不一样了，会话已经改过这一行。会话读文件时照同一规则拿 `mapping_row` 和自己现在的那一行比，只改 `open` 的。
 - 来源：用户标注，给会话读。
-- 算法：只在 `S.cur` 用到的特征范围内计数（`patUsed`）；点 ⚑ 后同一行显示 `flagged`。
-- 代码位置：`S.flags`、`flagOf`、`flag` 事件
+- 算法：
+  1. 点 ⚑：这一行没有 ⚑ 或只有 `remapped` 的 → 去掉旧的，按现在这一行记一条新的（`open`）；已有 `open` 的 → 撤销（删掉这条）。
+  2. 显示：`open` 时 ⚑ 按下；`remapped` 时 ⚑ 弹起，旁边一个 `remapped` 签，悬停写你标的时候那一行是什么（级 · 挂在哪一段下 · 落法）。
+  3. 计数（页头 `⚑ n`、`next`）：只数 `S.cur` 的、`open` 的、且特征在 `S.cur` 用到的范围内（`patUsed`）。
+- 注意：mapping 在原型里按特征名查（`FAKE.table` 以名字为键），改特征名后这一行查不到，已有的 ⚑ 会显示成 `remapped`；正式版按词 id 查就没有这个问题。
+- 代码位置：`S.flags`、`rowSnap`、`flagSt`、`flagAt`、`snapTxt`、`flagOf`、`flag` 事件、`batch`
 
 ### next（页头「现在等谁」）
 - 含义：机械推出的一个值，告诉用户现在该谁动。
 - 形状：枚举 `run_session` / `blind` / `you`。
 - 来源：现算，不存新状态；输入来自会话（asks、app、unmapped）与用户（flags）。
-- 算法：`asks.length || (!app && buys.length) || unmapped 数 || flags 数` 为真 → `run_session`；否则有 app 且 `app.blind < app.ver` → `blind`；否则 `you`。其中 `asks` 只在有 app 时取 `openQs()`；`unmapped` = 有 app 时当前 pattern 买点成员（特征名与属性名）里 `mapState` 为 `unmapped` 的；`buys` 是该 pattern 里 label 为 `buy` 的买点。
+- 算法：`asks.length || (!app && buys.length) || unmapped 数 || open 的 ⚑ 数` 为真 → `run_session`；否则有 app 且 `app.blind < app.ver` → `blind`；否则 `you`。其中 `asks` 只在有 app 时取 `openQs()`；`unmapped` = 有 app 时当前 pattern 买点成员（特征名与属性名）里 `mapState` 为 `unmapped` 的；`buys` 是该 pattern 里 label 为 `buy` 的买点。
 - 代码位置：`sideSum`（`next`、`NT`）、`patUsed`、`openQs`
 
 ---
 
 ## 三 app 计算
 
-本组包括 path2 框架 / app 跑出来的数据，也包括用 app 结果与（用户标注、会话对应表）比出来的派生量。原型里 app 的结果来自 `PROTO_DATA`（`bb_v1` 的真实扫描结果，截到 2025-12-31 的数据副本，4 只股票 TVRD / WHLRP / AMST / TVGN）；假 app `sbt_v1` 借用它的 match（两者 node 相同，`sbt_v1` 的 where 是 `bb_v1` 的子集）。
+本组包括 path2 框架 / app 跑出来的数据，也包括用 app 结果与（用户标注、会话 mapping ）比出来的派生量。原型里 app 的结果来自 `PROTO_DATA`（`bb_v1` 的真实扫描结果，截到 2025-12-31 的数据副本，4 只股票 TVRD / WHLRP / AMST / TVGN）；假 app `sbt_v1` 借用它的 match（两者 node 相同，`sbt_v1` 的 where 是 `bb_v1` 的子集）。
 
 ### pattern_spec（拓扑）
 - 含义：app 的 node 与边声明、各 node 的 where、事件颜色。
@@ -263,14 +269,14 @@
 ### candidates（框 ↔ app 事件的对应）
 - 含义：一个用户框在 app 里对应哪些事件。
 - 形状：`st.sys` 中事件项的数组；该特征名不在 `MAP` 里则返回 `null`。
-- 来源：app 事件 + 用户框 + 会话对应表。
+- 来源：app 事件 + 用户框 + 会话 mapping。
 - 算法：事件的 node 等于该特征名对应的 node，且时间有交叠（容差 `TOL = 2` 根），且事件的起点或终点落在框外 `TOL` 根以内（`near(se.s) || near(se.e)`，即起点或终点之一落在 `[b.s - TOL, b.e + TOL]` 里）。`TOL = 2`（app 事件的起点或终点落在框外几天以内仍算同一件事）。
 - 代码位置：`candidates`、`TOL`
 
 ### verdict（框级对照结果）
 - 含义：一个用户框和 app 对照的结果。
 - 形状：`{ st, res?, checks[], flags[], ev? }`；`st` 取值：`not_sample` / `null`（不对照）/ `unmapped` / `excluded` / `optional` / `must_not` / `mapped`（见算法第 2 步的边角情况）/ `missing` / `detected` / `qualified`（selection 页遇 `ev.matched` 改写 `matched`）。
-- 来源：app + 会话对应表 + 用户框。
+- 来源：app + 会话 mapping + 用户框。
 - 算法：
   1. `letGo` → `not_sample`；
   2. 特征名不在 `MAP`（没有候选）：若表里没有这一行、且不在当前 pattern 的买点成员用到的特征里 → `st: null`（不对照、不挂签）；有行且是挂在某段下面的（有 `on`）→ 写它的级（`optional` / `must_not`）；否则 `mapState`：通常是 `unmapped` / `excluded`。边角情况：表里有这一行、但它既不是 `node:` 行也没有 `on`（如属性行 `放量`），而用户拿这个词当了框的特征名，`mapState` 返回 `mapped`——主图不挂签（`sideTag` 不认它），selection 页 compare 一行原样写 `mapped`、没有悬停；
@@ -280,16 +286,16 @@
 
 ### verdict.checks（框上属性与 app 条款的逐条核对）
 - 含义：用户在这个框上的属性判断和 app 的 where 结果是否一致，只列对不上的。
-- 形状：`[{ attr: 属性名|null, clause: 条款 id|null, user: 'true'|'false'|'null'|'—', app: 'pass'|'fail'|'unmapped'|'excluded'|'mapped' }]`（`mapped` 只在边角情况出现：框上 `true` 的属性词在对应表里有行、但不是带 `clause` 的属性行，如把 `横盘` 当属性挂上）。
+- 形状：`[{ attr: 属性名|null, clause: 条款 id|null, user: 'true'|'false'|'null'|'—', app: 'pass'|'fail'|'unmapped'|'excluded'|'mapped' }]`（`mapped` 只在边角情况出现：框上 `true` 的属性词在 mapping 里有行、但不是带 `clause` 的属性行，如把 `横盘` 当属性挂上）。
 - 来源：app（条款结果）+ 用户（属性）+ 会话（`DMAP`）。
 - 算法：对选中事件所在 node 的每条采用条款：找 `DMAP` 里 node 与 clause 对得上的词 `w`；`user` = 该词在框上有键或在该特征下用过 → `attrState`，否则 `—`；`app` = 条款 `ok` → `pass` 否则 `fail`；`ok` 且用户不是 `false` 的不列。另外，框上 `true` 的属性若不在 `DMAP`（没进 app），追加一行 `{ attr, clause: null, user: 'true', app: mapState(...) }`。朱红规则（`chkCell`）：`user === 'true' && app === 'fail'` 或 `user === 'false' && app === 'pass'`，其余只写 `pass` / `fail`。
 - 代码位置：`verdict`、`chkCell`
 
 ### chanceOf 与 chance_high
 - 含义：随手一框也常被判 qualified 的底，用来提醒「这个 qualified 数说明不了什么」。
-- 形状：`chanceOf(特征 id)` 返回 0～1 的比例；`chance_high` 只作为 pattern 页必须有那段的警告签 `⚠ chance_high` 出现。`verdict` 也带一个 `flags[]`，selection 页 resolver 一行会画它，但代码里没有任何逻辑往里放东西（恒为空）；`FLAG_TIP` 里的 `default_params` 同样没有产生它的逻辑。
+- 形状：`chanceOf(特征 id, pattern)` 返回 0～1 的比例；`chance_high` 只作为 pattern 页必须有那段的警告签 `⚠ chance_high` 出现。`verdict` 也带一个 `flags[]`，selection 页 resolver 一行会画它，但代码里没有任何逻辑往里放东西（恒为空）；`FLAG_TIP` 里的 `default_params` 同样没有产生它的逻辑。
 - 来源：app 计算（拿用户框的宽度做随机位移，反复调 app 的 qualified）。
-- 算法：对该特征名下的每个框（跳过 `not_sample`，要求在 `MAP` 里）：保持宽度 `w = b.e - b.s`，随机起点 `s ∈ [0, max(1, N - w))`，共 40 次（`k < 40`），统计 `verdict(...).st === 'qualified'` 的比例；随机数 `seeded(b.s * 7919 + b.e + 1)`（线性同余，种子由框位置定，可复现）。`>= CHANCE_WARN`（`0.3`，随手一框也被判 qualified 的比例超过它就标 `chance_high`）时在 pattern 页必须有的那段标 `⚠ chance_high`。所有股票、所有 pattern 的同名框一起统计，不限当前 pattern。
+- 算法：对这个 pattern 里 label 为 buy 的买点的成员框中、该特征名的每个框（同一个框只算一次；跳过 `not_sample`，要求在 `MAP` 里）：保持宽度 `w = b.e - b.s`，随机起点 `s ∈ [0, max(1, N - w))`，共 40 次（`k < 40`），统计 `verdict(...).st === 'qualified'` 的比例；随机数 `seeded(b.s * 7919 + b.e + 1)`（线性同余，种子由框位置定，可复现）。`>= CHANCE_WARN`（`0.3`，随手一框也被判 qualified 的比例超过它就标 `chance_high`）时在 pattern 页必须有的那段标 `⚠ chance_high`。框的范围和旁边的 `qualified k/n` 一致（2026-10-30 起；原先统计全部股票、全部 pattern 的同名框）。
 - 代码位置：`chanceOf`、`seeded`、`CHANCE_WARN`、`FLAG_TIP`
 
 ### buyVerdict.app（app 在买点这一天有没有 match）
@@ -303,46 +309,47 @@
 - 代码位置：`buyVerdict`、`BUY_TOL`、`NOBUY_TOL`、`vRed`、`MV`、`vAppT`
 
 ### pairInfo / edgeCheck / links（两段之间的边）
-- 含义：买点里相邻两个顶层框之间，app 里那条边的条件是否成立。逐对检查，不看整次 match 凑没凑成（那是 `match` / `no_match` 的事）；一元 where（qualified）、二元边（这里）、整次 match 三层各管一件。
-- 形状：`pairInfo(a, b, st)` 返回 `{ st: 'connected'|'disconnected'|'not_qualified'|'—', ed, x, y, gap?, why?, miss? }`；`buyVerdict.links` 是 `[{ st, p, q, a, b, info }]`（买点顶层成员相邻两两一对，`p` / `q` 是特征名）；`buyVerdict.link` 是汇总。
+- 含义：mapping 里先后相邻的两段（`musts` 的相邻两项，即 app 里有边相连的两段）之间，app 里那条边的条件是否成立。逐对检查，不看整次 match 凑没凑成（那是 `match` / `no_match` 的事）；一元 where（qualified）、二元边（这里）、整次 match 三层各管一件。
+- 形状：`pairInfo(a, b, st, pattern)` 返回 `{ st: 'connected'|'disconnected'|'not_qualified'|'—', ed, x, y, gap?, why?, miss? }`；`buyVerdict.links` 是 `[{ st, p, q, a, b, info }]`：`musts` 每对相邻两项 `p`、`q` 一条，`a`、`b` 是买点顶层成员里第一个叫 `p`、`q` 的框，中间夹了别的框也照样配；两个框缺一个就没有这一条（用户 2026-10-30 定，成员链的箭头和 pattern 页两段之间的计数都用这一份）；`buyVerdict.link` 是汇总。
 - 来源：app（边）+ 用户框 + 会话（`MAP`、`edges`）。
 - 算法：
-  - 任一边的特征名不在 `MAP` → `—`；`edges` 里找不到 `src === ma.node && dst === mb.node` 的边 → `—`（不显示）。注意取 `edges` 用的是当前所选 pattern（`S.cur`）的 app（`S.cur` 没有 app 时退回 `FAKE`），不是买点所属 pattern 的 app。
+  - 任一边的特征名不在 `MAP` → `—`；`edges` 里找不到 `src === ma.node && dst === mb.node` 的边 → `—`（不显示）。`edges` 取买点所属 pattern 的 app；该 pattern 没有 app → `—`。
   - 两侧各取 `candidates` 里 `qualified` 的事件；任一侧为空 → `not_qualified`（带 `miss` 列出哪侧没 qualified）。
   - 两两组合调 `edgeCheck`，有成立的 → `connected`（带这一对和 `gap`）；都不成立 → `disconnected`，取 `off` 最小（最接近成立）的那一对，带 `gap` 与 `why`（`gap` 间隔不对 / `anchor` 接的是另一段）。
   - `edgeCheck(ed, x, y, st)`：边写了 `from_last_child` 时，`src` 事件取 `x` 的 `child_refs[from_last_child]` 的**最后一个**子事件（子事件列表为空或在本图事件里查不到 → 不成立，`gap` 为空、`why: 'gap'`）；边没写 `from_last_child` 时 `src` 就是 `x` 本身。`gap = y.s - src.e`；`off` = gap 低于 `min_gap` 的差值或高于 `max_gap` 的差值，区间内为 0；有 `anchor` 时要求 `y.f[anchor] === src.id`；`ok = off === 0 && 锚对`。挑「最接近成立的一对」时，锚不对的那一对的 `off` 另加 `0.5`；`why` = `off` 不为 0 时 `gap`，否则锚不对时 `anchor`。
+  - 成员链里，这一对的状态挂在 `b` 前面的箭头上。
   - `buyVerdict.link` 汇总：任一对 `disconnected` → `disconnected`；否则任一 `not_qualified` → `not_qualified`；否则任一 `connected` → `connected`；否则 `—`。
   - 间隔文案：`隔 gap 根，要 min_gap～max_gap 根`（`gapTxt`）。
-- 代码位置：`pairInfo`、`edgeCheck`、`pairLink`、`gapTxt`、`linkWhy`、`LINK_TIP`、`buyVerdict`
+- 代码位置：`pairInfo`、`edgeCheck`、`gapTxt`、`linkWhy`、`LINK_TIP`、`buyVerdict`
 
-### diffOf（差签：标注 vs 对应表）
-- 含义：买点成员的特征名和对应表 `musts` / `must_not` 的差；是客观比对结果，不说好坏，会话蓝底。
+### diffOf（差签：标注 vs mapping ）
+- 含义：买点成员的特征名和 mapping `musts` / `must_not` 的差；是客观比对结果，不说好坏，会话蓝底。
 - 形状：`{ miss: [特征名], extra: [特征名], order: bool, same: bool }`；`diffKey(d)` 是行折叠用的键（`=` 或 `−X +Y order`）。
-- 来源：用户标注 × 会话对应表（页面算）。
-- 算法：`miss` = `musts` 里不在买点成员特征名里的；`extra` = 成员特征名里在对应表中 `level === 'must_not'` 的；`order` = 无缺失，且顶层成员里属于 `musts` 的特征名（去重后）的先后与 `musts` 的先后不同；`same` = 三者都无。buy 与 no_buy 同一种算法（旧「no_buy 的缺项只算最后一个已有必须有之前的」已删，代码里留有过期注释）。可有可无、`excluded`、`unmapped` 的名字不影响。没有 app 的 pattern 返回 `null`。`offSkel(bp, st)` = 有差（buy、no_buy 都算）；`vDev(x)` 只数 label 为 `buy` 且有差的（页头 `≠ k/n`、`dif` 排）。
+- 来源：用户标注 × 会话 mapping （页面算）。
+- 算法：`miss` = `musts` 里不在买点成员特征名里的；`extra` = 成员特征名里在 mapping 中 `level === 'must_not'` 的；`order` = 无缺失，且顶层成员里属于 `musts` 的特征名（去重后）的先后与 `musts` 的先后不同；`same` = 三者都无。buy 与 no_buy 同一种算法（旧「no_buy 的缺项只算最后一个已有必须有之前的」已删，代码里留有过期注释）。可有可无、`excluded`、`unmapped` 的名字不影响。没有 app 的 pattern 返回 `null`。`offSkel(bp, st)` = 有差（buy、no_buy 都算）；`vDev(x)` 只数 label 为 `buy` 且有差的（页头 `≠ k/n`、`dif` 排）。
 - 代码位置：`diffOf`、`diffKey`、`offSkel`、`vDev`、`diffTags`、`diffBadge`
 
 ### alignMusts（成员链上的空槽对齐）
 - 含义：成员链按 `musts` 对齐，缺的位置放空槽，供一下收进。
 - 形状：`[{ n: 树节点 } | { gap: 特征名 }]`。
-- 来源：用户标注 × 会话对应表。
+- 来源：用户标注 × 会话 mapping。
 - 算法：顶层成员按 `musts` 顺序扫描，缺的（`miss`）在其位置放空槽，多余的保持原位；末尾再补尚未放的缺项。空槽是按钮的条件 = `takeOf` 能取到画了没收的同名框，否则是灰字空框。
 - 代码位置：`alignMusts`、`memberChain`
 
 ### fitsApp / vFit（一下挪过去）
 - 含义：一组买点能不能整组挪进某个已有 pattern。
 - 形状：布尔 / 目标 pattern 名。
-- 来源：会话对应表 × 用户标注。
-- 算法：`fitsApp(names, p)`：所有名字都在 `p` 的对应表里、`musts` 全有、没有 `must_not` 的名字；没有 app 的 pattern 改比骨架 `commonSig(p) === x.sig`；`vFit` 对这组买点逐个判断，都满足才返回（除当前 pattern 与 `未归类` 外第一个符合的）。「一下挪过去」按钮（`move <pattern 名>`）只在 `vFit` 找得到目标时、且只在这几处出现：未归类页的每一行、有 app 的 pattern 页里和对应表不一致的 buy 那几行（`vDev`），以及 features 区点开 `in k/N` 后的两排；其余行只有 `move` 下拉。
+- 来源：会话 mapping × 用户标注。
+- 算法：`fitsApp(names, p)`：所有名字都在 `p` 的 mapping 里、`musts` 全有、没有 `must_not` 的名字；没有 app 的 pattern 改比骨架 `commonSig(p) === x.sig`；`vFit` 对这组买点逐个判断，都满足才返回（除当前 pattern 与 `未归类` 外第一个符合的）。「一下挪过去」按钮（`move <pattern 名>`）只在 `vFit` 找得到目标时、且只在这几处出现：未归类页的每一行、有 app 的 pattern 页里和 mapping 不一致的 buy 那几行（`vDev`），以及 features 区点开 `in k/N` 后的两排；其余行只有 `move` 下拉。
 - 代码位置：`fitsApp`、`vFit`、`commonSig`、`vMove`
 
 ### features 区的分层（pattern 页）
 - 含义：pattern 页 features 区列哪些特征、按什么层次排。
 - 形状：一串块；块之间的 `↓` 行；有 app 时最底下 `excluded`、`unmapped` 两区。
-- 来源：有 app 时 = 会话对应表 × 用户标注；没有 app 时只用用户标注。
+- 来源：有 app 时 = 会话 mapping × 用户标注；没有 app 时只用用户标注。
 - 算法：
-  - 有 app：顶层 = `app.musts` 依序每段一块（词表里没有这个词的段跳过）；相邻两段之间一行 `↓` 加两段之间的签（见 `linkAgg`）。每段块里：特征名、`in k/N`、`res` 与 ⚑、`qualified k/n`（特征名在 `MAP` 里才有）、`⚠ chance_high`；属性行 = 对应表里 `attr` 等于该特征名、`level` 不是 `excluded`、且词表里有这个词的行；挂在下面的块 = 对应表里 `on` 等于该特征名的行，写 `level`、特征名、`res`（落法）与 ⚑，`optional` 的带 `in k/N`。最底下：`excluded` 区 = 对应表里 `level === 'excluded'` 且词表里有的词（悬停写 `why`，属性另写是哪个特征的）；`unmapped` 区 = 当前 pattern 全部买点（含 no_buy）成员框的特征名与属性名里，对应表没有的。
-  - 没有 app：顶层 = 当前 pattern 的 buy 成员里出现过的顶层特征名，按 `rankOf` 排；在 buy 里当过子框的特征名作为子块挂在父块里（⊂）；属性行 = `attrsIn(id, S.cur)`；相邻两块之间只在「有 buy 里前一个排在后一个前面、且没有 buy 反过来」时画 `↓`，否则留空行。
+  - 有 app：顶层 = `app.musts` 依序每段一块（词表里没有这个词的段跳过）；相邻两段之间一行 `↓` 加两段之间的签（见 `linkAgg`）。每段块里：特征名、`in k/N`、`res` 与 ⚑、`qualified k/n`（特征名在 `MAP` 里才有）、`⚠ chance_high`；属性行 = mapping 里 `attr` 等于该特征名、`level` 不是 `excluded`、且词表里有这个词的行；挂在下面的块 = mapping 里 `on` 等于该特征名的行，写 `level`、特征名、`res`（落法）与 ⚑，`optional` 的带 `in k/N`。最底下：`excluded` 区 = mapping 里 `level === 'excluded'` 且词表里有的词（悬停写 `why`，属性另写是哪个特征的）；`unmapped` 区 = 当前 pattern 全部买点（含 no_buy）成员框的特征名与属性名里，mapping 没有的。
+  - 没有 app：顶层 = 当前 pattern 的 buy 成员里出现过的顶层特征名，按 `rankOf` 排；在 buy 里当过子框的特征名作为子块挂在父块下面，前面写 ⊃（从上往下读「父 ⊃ 子」，和轨标题「子 ⊂ 父」同一个意思）；属性行 = `attrsIn(id, S.cur)`；相邻两块之间只在「有 buy 里前一个排在后一个前面、且没有 buy 反过来」时画 `↓`，否则留空行。
 - 代码位置：`sideSum`（`app.musts.forEach`、`hang`、`ex`、`um`；无 app 分支的 `tops`、`kidsOf`、`pair`）、`attrItem`、`flagOf`
 
 ### 计数：in k/N、qualified k/n、no_buy 里 k/n
@@ -373,13 +380,13 @@
 - 含义：pattern 页 features 区两个相邻的必须有之间那条边的 `connected` / `disconnected` / `not_qualified` 个数。
 - 形状：每类 `k 个 buy`，可点开缩略图。
 - 来源：app。
-- 算法：对每个 label 为 `buy` 的买点：在**顶层成员**里按特征名各找 `musts` 相邻两项（`p`、`q`）对应的第一个框（不要求这两个框在买点里相邻），找得到才调 `pairInfo` 并按结果归类。
-- 代码位置：`sideSum`（`linkAgg`）、`pairInfo`
+- 算法：对每个 label 为 `buy` 的买点，取 `buyVerdict.links` 里 `p`、`q` 对上的那一条，按它的结果归类（和成员链同一份配对）。
+- 代码位置：`sideSum`（`linkAgg`）、`buyVerdict`
 
 ### 买点列表的折叠与排序（instances 表）
 - 含义：一行一种组合，所有列都相同的买点折成一行 `×n`。
 - 形状：行键：有 app = `label | diffKey | ap`；`未归类` = `label | sig`。
-- 来源：用户标注 + 会话对应表 + app。
+- 来源：用户标注 + 会话 mapping + app。
 - 算法：全部买点先按 `sig` 稳定排序；按键分组；有 app 的行序：label 为 `buy` 的在前，其次按档（0 有差的 buy → 1 app 与 label 不一致 → 2 其余），同档个数多的在前；`未归类` 按骨架串排序，同骨架 buy 在前。没有 app 时后两列空，只按 label 折两行。
 - 代码位置：`sideSum`（`rows`、`tier`）、`vBy`
 
@@ -407,7 +414,6 @@
 
 | 常数 | 现值 | 含义 | 备注 |
 | --- | --- | --- | --- |
-| `PTOL` | 2 | 「属于」的容差（子框起止超出外框 2 根以内且一多半在外框里仍算属于） | 代码里定义了，但没有被任何逻辑引用（`contains` 无容差） |
 | `TOL` | 2 | app 事件起点或终点落在框外几天以内仍算同一件事 | `candidates` 使用 |
 | `BUY_TOL` | 3 | label=buy：app 买点在前后几天以内（或落在回踩事件里）算 app 也买 | `buyVerdict` |
 | `NOBUY_TOL` | 1 | label=no_buy：app 买点在前后几天以内算 app 买了 | `buyVerdict` |

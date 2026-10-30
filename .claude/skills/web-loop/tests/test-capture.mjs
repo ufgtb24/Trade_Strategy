@@ -63,7 +63,31 @@ if (PLAYWRIGHT_OK) {
       expect(existsSync(png) && /r01_contact\.png$/.test(png), 'contact 路径=' + png);
     } finally { R.cleanup(); }
   });
-} else console.log('SKIP C2 (本机没有可解析的 playwright / chrome)');
+  sc('C3', 'discover:每个看得见的可点控件一个态;选择器经复查唯一且命中同一元素;隐藏/禁用/外链不收;没选择器的与超上限的列出;不覆盖正式配方', async () => {
+    const R = makeRepo({});
+    try {
+      R.w('app/d.html', `<!doctype html><meta charset=utf-8><body>
+<button data-act="save">保存</button><button>保存</button><button>保存草稿</button>
+<div><div role="tab" id="t1">Tab One</div></div><div><div role="tab">第二页</div></div>
+<a href="#x">锚点</a><a href="https://example.com">外链</a>
+<button style="display:none">隐藏</button><button disabled>禁用</button>
+<span onclick="1">点我</span><span onclick="1">点我</span><button style="width:20px;height:20px"></button></body>`);
+      const cfg = JSON.parse(readFileSync(join(R.W, 'args.json'), 'utf8'));
+      cfg.url = 'file://' + join(R.repo, 'app/d.html'); cfg.viewport = { width: 1000, height: 700, deviceScaleFactor: 1 };
+      const s = await cap.discover({ W: R.W, cfg, root: R.repo, max: 7 });
+      const st = JSON.parse(readFileSync(s.out, 'utf8')), clicks = st.slice(1).map(x => x.steps[1].click);
+      expect(st[0].state === '00-start' && cap.validateStates(st).length === 0, '草稿应以 00-start 开头且通过校验');
+      expect(clicks.length === 7 && s.overCap.length === 1, `应收 7 个、超上限 1 个: ${clicks.length} / ${s.overCap}`);
+      expect(s.skipped.length === 1 && /^button @/.test(s.skipped[0]), '只有图标的按钮应列进 skipped: ' + s.skipped);
+      expect(clicks.includes('[data-act="save"]') && clicks.includes('#t1') && clicks.includes('button:has-text("保存") >> nth=1'), 'data-* / id / 同名第二个 选择器不对: ' + clicks.join(' ; '));
+      expect(clicks.includes('[role="tab"]:has-text("第二页")'), '带 role 的应按 role 找: ' + clicks.join(' ; '));
+      expect(!clicks.some(c => /隐藏|禁用|外链/.test(c)), '隐藏/禁用/外链不该收');
+      let threw = false;
+      try { await cap.discover({ W: R.W, cfg, root: R.repo, out: join(R.repo, cfg.statesPath) }); } catch { threw = true; }
+      expect(threw, '--out 指向正式配方应拒绝');
+    } finally { R.cleanup(); }
+  });
+} else console.log('SKIP C2/C3 (本机没有可解析的 playwright / chrome)');
 
 const fail = await runScenarios(S);
 process.exit(fail ? 1 : 0);
