@@ -18,7 +18,7 @@ path2 的调试可视化工具：把分析结果投影成 JSON、再渲染成可
 某个 app 参数的可编辑副本；改副本的内容与让图表用不用副本，是两件独立的事。
 
 **锚 pattern、active pattern**：
-左栏列表按哪个 app 排序筛股叫锚 pattern，右侧图表当前渲染哪个 app 叫 active pattern；两者正交，点单元格只切股、不切 active pattern。
+左栏列表按哪个 app 排序筛股叫锚 pattern，右侧图表当前渲染哪个 app 叫 active pattern；两者正交，点单元格只切股、不切 active pattern。两者选的都是 app，不是 pattern 本身。
 
 ### 显示深度
 
@@ -43,7 +43,12 @@ K 线蜡烛所在的图；声明为钉价格轴的点事件画在这里（如 bo
 一条 band 内部为了不让重叠事件互相压住而分出的泳道。
 
 **bracket**：
-一次 match 的时间跨度在图上的样子——一条带圈号的横带，圈号是它在本图内的编号。
+一次 match 的时间跨度在图上的样子——一条带圈号的横带，圈号是它在本图内的编号；标注里 sample 的跨度也画在这条轨上，画虚线、不带圈号。
+
+**tag**：
+= a small box shown next to a thing to give one status or conclusion about it.
+说的时候带上种类：match tag（sample 与 hit 比较的结果）、差 tag（sample 的 member box 与 mapping 比）、档位 tag（框底下 app 认到哪一档）、两段之间的 tag（相邻两段 app 连没连上）。
+_Avoid_: 签 —— 已改称 tag。
 
 ### 面板
 

@@ -71,7 +71,7 @@ attempt 里的一道判据；没通过的那道会被记下来上报，是回答
 ### 声明与求解
 
 **pattern**：
-一个形态的声明：一组 node 加一组边，引擎照着它求解。
+一种形态：用户起名并配一句定义的那个抽象走势；app 用 dag 声明它，引擎照着 dag 求解。看图标注里 sample 挂在 pattern 下，app 改版不改归属。
 
 **node**：
 声明里的一个位置：由哪个 detector 供货，以及占据这个位置的事件要满足什么一元条件。
@@ -115,8 +115,9 @@ _Avoid_: false positive —— 这里的缩写恒指 first passage。
 在每个买点的同一天、按当日波动分档配对的全部普通买入，算同一指标的平均值；候选减去它只剩选股，它与随机日基线之差就是择时。
 _Avoid_: 随机日基线 —— 那是从全宇宙随机抽日、不限同一天，含择时；把这里的对照叫成它会混淆两种口径。
 
-**买点 / 样本 bar**：
-一次命中里真正用于计算收益的那些根 K 线。
+**buy point / 买点**：
+一次命中里真正用于计算收益的那些根 K 线；只用于 app 一侧，标注里和它成对的是 sample date。
+_Avoid_: 样本 bar —— 已退役：sample 现在指标注里的样本，这里再叫样本会一词两义。
 
 ### 数据分段
 
@@ -171,3 +172,34 @@ _Avoid_: 措辞 —— 已改称特征名。
 **mapping / map**：
 会话为一个 pattern 写 app 时定下的清单：这个 pattern 用到的每个特征一行，写明它的级（must 必须有 / optional 可有可无 / must_not 必须没有 / excluded 不放），以及 app 用哪一部分认它（一个 node，或某个 node 上的一条 where）。会话写下或改动其中一行，叫把这个特征 map 到 app；还没写的特征是 unmapped。
 _Avoid_: 对应表 —— 已改称 mapping；翻译 —— 自造的说法，「map 方式不对」不要说成「翻译不对」。
+
+**dag / mapped pattern**：
+= mapped pattern; the declaration that an app writes for a pattern.
+app 对一个 pattern 的声明：一组 node 加一组边，引擎照着它求解；代码里是 `PatternSpec`。同一个 pattern 可以先后由几个 app、几个版本声明，各有各的 dag。
+
+**sample / 样本 / annotated pattern**：
+= annotated pattern; a judgment that the user makes on one chart under one pattern, together with its evidence.
+一个 sample date、一个 judgment（positive 或 negative）、所属 pattern，以及作为依据的 member box。judgment 只按 sample date 当天及以前看得到的信息下，不是后来涨没涨，也不是评估里的 label。每个 sample 只属于一个 pattern（或暂为 unsorted）；同一天对两个 pattern 下判断就是两个 sample。允许的状态词：positive / negative（judgment）、matched / unmatched（与 hit 比较的结果）。
+_Avoid_: 买点 —— 已退役：标注里不再用，买点只指 app 一侧；instance、实例 —— 会和事件身份 instance_id 混。
+
+**positive sample / 正样本**：
+= positive annotated pattern; a sample on whose date the pattern's app should buy.
+这天有这个 pattern 的样子，按它的逻辑当时会买；说的是当天的认定，不是后来涨了。
+_Avoid_: 正例 —— 已改称 positive sample；buy —— 已退役的取值，会被读成用户整体的买卖决定。
+
+**negative sample / 负样本**：
+= negative annotated pattern; a sample that the user picks because it looks like the pattern but should not be bought on its date.
+用户专门挑的、像这个 pattern 但 sample date 当天就看得出不该买的那天；理由写在 note 里，或画成 member box、属性。没标的日子不是 negative sample；negative sample 里 app 买了几个，不能当 app 的误报率。按特征计数时分母只数 positive sample。
+_Avoid_: 像但不买 —— 已改称 negative sample；反例 —— 会被读成所有没标的日子；no_buy —— 已退役的取值。
+
+**sample date / 样本日**：
+= the date on which a sample's judgment is made.
+图上画成用户的三角（positive 实心 ▲、negative 空心 △；不是 bracket 上标 app 买点的 ▼）。judgment 只按这一天及以前看得到的下；对照时拿 app 的 buy point 和它比远近。
+
+**member box / 成员框**：
+= a box that a sample takes in as the evidence for its judgment.
+必须在 sample date 当天或之前结束，跨过 sample date 的框不收，否则依据里混进后见之明。默认按离 sample date 的远近推断，用户可点进点出。一个框可以是几个 sample 的 member box；框本身不属于任何 pattern。和复合事件的成员（burst 收进的 bo）不是一回事，不单说「成员」。
+
+**unsorted / 未归类**：
+= the state of a sample whose pattern has not been chosen yet.
+过渡状态，不是一个 pattern；数据里 pattern 存 null。positive sample 可以先放这里攒着再归组；negative sample 的「像」必须有对象，放这里只算没填完。
