@@ -22,3 +22,4 @@ Blocked by: 01
 ## Comments
 
 - 2026-10-31 用户在说明书方向题中拍板（`docs/research/2026-10-30_annotation-user-manual/final_report.md` 第 3 节 M1、第 6 节、第 12 节）：盲看和标注同一界面，侧栏新标签页；作答前只画到 hit 买点那天、只标那一天，不画 app 的结构，防的是被 app 的分段往「是」上带；三个按钮 `pos` / `neg` / `off_pattern`（前两个与样本的 judgment 同义，`off_pattern` = 不是我说的那种样子，两类指向相反的改法）；理由只在走势藏着时写，露出后作答不能改、只可补标「认错了地方」；判 `neg` 的图不转负样本，盲看标记自成一组、每轮重算 match，会话定级时一并读；卡上加 `known` 键（「认得这张」）：认得就跳过、不进比例、补抽；以前揭开过的 hit 不再进随机部分。张数等数值待验证。
+- 2026-11-01 由[结构化标注：存什么、界面和主视图怎么合](01-structured-annotation.md)批准带入：盲看和标注同一界面，作答与对照共用该票第 3 节的 tag 与容差规则；流程见说明书 `.scratch/annotation-path2/manual.md` ⑥。

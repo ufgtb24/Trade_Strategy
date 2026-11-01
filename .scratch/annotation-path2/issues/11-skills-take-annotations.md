@@ -18,3 +18,7 @@ Blocked by: 01, 09
 - `feature-study`：加一个由循环技能按特征调用的入口（衔接第 05 张票的结论）。
 - 各技能的 description 触发词随之改（项目 `CLAUDE.md`「创作 skill」节：功能变了必须回头改 description）。
 - 还有哪些技能或文档默认「用语言描述 pattern」，要一并改。
+
+## Comments
+
+- 2026-11-01 由[结构化标注：存什么、界面和主视图怎么合](01-structured-annotation.md)批准带入：写 app 技能的输入是框（名字、属性、框套框）、样本（judgment、成员框、`note`）、pattern 定义、特征定义，加会话写的 mapping；会话不写标注文件。

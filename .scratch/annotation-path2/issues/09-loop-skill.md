@@ -27,3 +27,4 @@ Blocked by: 01, 08
 ## Comments
 
 - 2026-10-30 待并入的输入（两张票尚未解决）：[只在 negative sample 上出现的特征：定级时别被一半门槛吞掉](12-nobuy-only-feature-level.md) 会改会话定级的规则，[差 tag 不看属性：属性对不上时仍显示 =](13-diff-tag-attributes.md) 会改 `diff tag` 的算法和会话单子里问到哪些正例。两张解决后，答案作为本技能的输入。
+- 2026-11-01 由[结构化标注：存什么、界面和主视图怎么合](01-structured-annotation.md)批准带入：循环的输入输出以该票第 3、4 节与说明书 `.scratch/annotation-path2/manual.md` ④～⑦ 为准——会话读标注、定级（定级表见说明书 ④）、写 mapping 与 app、跑对照、每轮报翻了哪几张；训练段成绩只在用户问、准备调参、送检前给；调参后报丢了哪几张、看时藏后续走势；按「剩下的毛病值不值得修」停。

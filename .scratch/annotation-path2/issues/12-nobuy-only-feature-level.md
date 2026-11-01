@@ -1,7 +1,8 @@
 # 只在 negative sample 上出现的特征：定级时别被一半门槛吞掉
 
 Type: task (HITL)
-Status: open
+Status: claimed
+Claimed: 2026-11-01
 
 ## Question
 
