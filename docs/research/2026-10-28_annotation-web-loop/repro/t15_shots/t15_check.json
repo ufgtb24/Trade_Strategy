@@ -1,0 +1,409 @@
+{
+ "01_pattern_app": "selection\nfeatures\npattern\nuser\n \nsession\n \napp\npattern\n横盘突破回踩\napp: sbt_v1 v2\ndefinition\nsamples\npos 3\n·\nneg 2\nmatch\npos\nmatched 2\n·\nunmatched 1\nneg\nmatched 1\n·\nunmatched 1\nnext\nrun_session\nunmapped 2\nfeatures\n放量突破\nin pos 3/3 · neg 2/2\nnode:burst\n⚑\nqualified pos 2/3 · neg 1/2\n放量\ntrue pos 3/3 · neg 2/2\n突破过好几个峰\ntrue pos 2/3 · neg 1/2\noptional\n横盘\nin pos 1/3 · neg 1/2\ntracked\n⚑\nqualified pos 1/1 · neg 1/1\n↓\nconnected pos 2/3 · neg 1/2\n回踩\nin pos 2/3 · neg 2/2\nnode:tb\n⚑\nqualified pos 2/2 · neg 1/2\nmust_not\n派发\nin pos 0/3 · neg 1/2\nnegation\n⚑\nqualified\n—\nexcluded\n⚑\n缩量\nin pos 1/3 · neg 1/2\nexcluded\n⚑\n突破前沉寂够久\ntrue pos 1/3 · neg 0/2\nunmapped\n长下跌\nin pos 3/3 · neg 1/2\nunmapped\n收在高位\ntrue pos 1/3 · neg 0/2\nsamples\njudgment\nmust / must_not\nmatch\npos\n−回踩\nunmatched\n×1\n长下跌\n放量突破\n回踩\nTVRD 2024-12-24\nmove\nunsorted\n+ new\npos\n=\nmatched\n×2\n长下跌\n横盘\n放量突破\n回踩\nWHLRP 2024-03-21\n长下跌\n横盘\n缩量\n放量突破\n回踩\nTVRD 2025-04-28\nmove\nunsorted\n+ new\nneg\n=\nmatched\n×1\n长下跌\n横盘\n缩量\n放量突破\n回踩\nTVRD 2025-05-08\nmove\nunsorted\n+ new\nneg\n+派发\nunmatched\n×1\n横盘\n放量突破\n派发\n回踩\nTVGN 2025-01-24\nmove\nunsorted\n+ new",
+ "pattern_app vkey:jdg|pos": {
+  "door": "pos 3",
+  "rows": [
+   "pos 3"
+  ]
+ },
+ "pattern_app vkey:jdg|neg": {
+  "door": "neg 2",
+  "rows": [
+   "neg 2"
+  ]
+ },
+ "pattern_app vkey:match|pos|matched": {
+  "door": "matched 2",
+  "rows": [
+   "matched 2"
+  ]
+ },
+ "pattern_app vkey:match|pos|unmatched": {
+  "door": "unmatched 1",
+  "rows": [
+   "unmatched 1"
+  ]
+ },
+ "pattern_app vkey:match|neg|matched": {
+  "door": "matched 1",
+  "rows": [
+   "matched 1"
+  ]
+ },
+ "pattern_app vkey:match|neg|unmatched": {
+  "door": "unmatched 1",
+  "rows": [
+   "unmatched 1"
+  ]
+ },
+ "pattern_app vkey:feat|放量突破": {
+  "door": "in pos 3/3 · neg 2/2",
+  "rows": [
+   "in pos 3 · neg 2",
+   "not_in pos 0 · neg 0"
+  ]
+ },
+ "pattern_app vkey:qual|放量突破": {
+  "door": "qualified pos 2/3 · neg 1/2",
+  "rows": [
+   "qualified pos 2 · neg 1",
+   "not_qualified pos 1 · neg 1"
+  ]
+ },
+ "pattern_app vkey:attr|放量突破|放量": {
+  "door": "true pos 3/3 · neg 2/2",
+  "rows": [
+   "true pos 3 · neg 2",
+   "false pos 0 · neg 0",
+   "null pos 0 · neg 0"
+  ]
+ },
+ "pattern_app vkey:attr|放量突破|突破过好几个峰": {
+  "door": "true pos 2/3 · neg 1/2",
+  "rows": [
+   "true pos 2 · neg 1",
+   "false pos 1 · neg 0",
+   "null pos 0 · neg 1"
+  ]
+ },
+ "pattern_app vkey:feat|横盘": {
+  "door": "in pos 1/3 · neg 1/2",
+  "rows": [
+   "in pos 1 · neg 1",
+   "not_in pos 2 · neg 1"
+  ]
+ },
+ "pattern_app vkey:qual|横盘": {
+  "door": "qualified pos 1/1 · neg 1/1",
+  "rows": [
+   "qualified pos 1 · neg 1",
+   "not_qualified pos 0 · neg 0"
+  ]
+ },
+ "pattern_app lkopen:放量突破→回踩": {
+  "door": "connected pos 2/3 · neg 1/2",
+  "rows": [
+   "connected pos 2 · neg 1",
+   "disconnected pos 0 · neg 0",
+   "not_qualified pos 0 · neg 1",
+   "unpaired pos 1 · neg 0"
+  ]
+ },
+ "pattern_app vkey:feat|回踩": {
+  "door": "in pos 2/3 · neg 2/2",
+  "rows": [
+   "in pos 2 · neg 2",
+   "not_in pos 1 · neg 0"
+  ]
+ },
+ "pattern_app vkey:qual|回踩": {
+  "door": "qualified pos 2/2 · neg 1/2",
+  "rows": [
+   "qualified pos 2 · neg 1",
+   "not_qualified pos 0 · neg 1"
+  ]
+ },
+ "pattern_app vkey:feat|派发": {
+  "door": "in pos 0/3 · neg 1/2",
+  "rows": [
+   "in pos 0 · neg 1",
+   "not_in pos 3 · neg 1"
+  ]
+ },
+ "pattern_app vkey:feat|缩量": {
+  "door": "in pos 1/3 · neg 1/2",
+  "rows": [
+   "in pos 1 · neg 1",
+   "not_in pos 2 · neg 1"
+  ]
+ },
+ "pattern_app vkey:attr|放量突破|突破前沉寂够久": {
+  "door": "true pos 1/3 · neg 0/2",
+  "rows": [
+   "true pos 1 · neg 0",
+   "false pos 0 · neg 0",
+   "null pos 2 · neg 2"
+  ]
+ },
+ "pattern_app vkey:feat|长下跌": {
+  "door": "in pos 3/3 · neg 1/2",
+  "rows": [
+   "in pos 3 · neg 1",
+   "not_in pos 0 · neg 1"
+  ]
+ },
+ "pattern_app vkey:attr|放量突破|收在高位": {
+  "door": "true pos 1/3 · neg 0/2",
+  "rows": [
+   "true pos 1 · neg 0",
+   "false pos 0 · neg 0",
+   "null pos 2 · neg 2"
+  ]
+ },
+ "02_open_optional_in": "selection\nfeatures\npattern\nuser\n \nsession\n \napp\npattern\n横盘突破回踩\napp: sbt_v1 v2\ndefinition\nsamples\npos 3\n·\nneg 2\nmatch\npos\nmatched 2\n·\nunmatched 1\nneg\nmatched 1\n·\nunmatched 1\nnext\nrun_session\nunmapped 2\nfeatures\n放量突破\nin pos 3/3 · neg 2/2\nnode:burst\n⚑\nqualified pos 2/3 · neg 1/2\n放量\ntrue pos 3/3 · neg 2/2\n突破过好几个峰\ntrue pos 2/3 · neg 1/2\noptional\n横盘\nin pos 1/3 · neg 1/2\nin pos 1 · neg 1\nmove\nunsorted\n+ new\n长下跌\n横盘\n缩量\n放量突破\n回踩\nTVRD 2025-04-28\n=\nmatched\n长下跌\n横盘\n缩量\n放量突破\n回踩\nTVRD 2025-05-08\n=\nmatched\nnot_in pos 2 · neg 1\nmove\nunsorted\n+ new\n长下跌\n放量突破\n回踩\nTVRD 2024-12-24\n−回踩\nunmatched\n长下跌\n横盘\n放量突破\n回踩\nWHLRP 2024-03-21\n=\nmatched\n横盘\n放量突破\n派发\n回踩\nTVGN 2025-01-24\n+派发\nunmatched\ntracked\n⚑\nqualified pos 1/1 · neg 1/1\n↓\nconnected pos 2/3 · neg 1/2\n回踩\nin pos 2/3 · neg 2/2\nnode:tb\n⚑\nqualified pos 2/2 · neg 1/2\nmust_not\n派发\nin pos 0/3 · neg 1/2\nnegation\n⚑\nqualified\n—\nexcluded\n⚑\n缩量\nin pos 1/3 · neg 1/2\nexcluded\n⚑\n突破前沉寂够久\ntrue pos 1/3 · neg 0/2\nunmapped\n长下跌\nin pos 3/3 · neg 1/2\nunmapped\n收在高位\ntrue pos 1/3 · neg 0/2\nsamples\njudgment\nmust / must_not\nmatch\npos\n−回踩\nunmatched\n×1\n长下跌\n放量突破\n回踩\nTVRD 2024-12-24\nmove\nunsorted\n+ new\npos\n=\nmatched\n×2\n长下跌\n横盘\n放量突破\n回踩\nWHLRP 2024-03-21\n长下跌\n横盘\n缩量\n放量突破\n回踩\nTVRD 2025-04-28\nmove\nunsorted\n+ new\nneg\n=\nmatched\n×1\n长下跌\n横盘\n缩量\n放量突破\n回踩\nTVRD 2025-05-08\nmove\nunsorted\n+ new\nneg\n+派发\nunmatched\n×1\n横盘\n放量突破\n派发\n回踩\nTVGN 2025-01-24\nmove\nunsorted\n+ new",
+ "02b_open_optional_qualified": "selection\nfeatures\npattern\nuser\n \nsession\n \napp\npattern\n横盘突破回踩\napp: sbt_v1 v2\ndefinition\nsamples\npos 3\n·\nneg 2\nmatch\npos\nmatched 2\n·\nunmatched 1\nneg\nmatched 1\n·\nunmatched 1\nnext\nrun_session\nunmapped 2\nfeatures\n放量突破\nin pos 3/3 · neg 2/2\nnode:burst\n⚑\nqualified pos 2/3 · neg 1/2\n放量\ntrue pos 3/3 · neg 2/2\n突破过好几个峰\ntrue pos 2/3 · neg 1/2\noptional\n横盘\nin pos 1/3 · neg 1/2\ntracked\n⚑\nqualified pos 1/1 · neg 1/1\nqualified pos 1 · neg 1\nmove\nunsorted\n+ new\n长下跌\n横盘\n缩量\n放量突破\n回踩\nTVRD 2025-04-28\n=\nmatched\n长下跌\n横盘\n缩量\n放量突破\n回踩\nTVRD 2025-05-08\n=\nmatched\nnot_qualified pos 0 · neg 0\n↓\nconnected pos 2/3 · neg 1/2\n回踩\nin pos 2/3 · neg 2/2\nnode:tb\n⚑\nqualified pos 2/2 · neg 1/2\nmust_not\n派发\nin pos 0/3 · neg 1/2\nnegation\n⚑\nqualified\n—\nexcluded\n⚑\n缩量\nin pos 1/3 · neg 1/2\nexcluded\n⚑\n突破前沉寂够久\ntrue pos 1/3 · neg 0/2\nunmapped\n长下跌\nin pos 3/3 · neg 1/2\nunmapped\n收在高位\ntrue pos 1/3 · neg 0/2\nsamples\njudgment\nmust / must_not\nmatch\npos\n−回踩\nunmatched\n×1\n长下跌\n放量突破\n回踩\nTVRD 2024-12-24\nmove\nunsorted\n+ new\npos\n=\nmatched\n×2\n长下跌\n横盘\n放量突破\n回踩\nWHLRP 2024-03-21\n长下跌\n横盘\n缩量\n放量突破\n回踩\nTVRD 2025-04-28\nmove\nunsorted\n+ new\nneg\n=\nmatched\n×1\n长下跌\n横盘\n缩量\n放量突破\n回踩\nTVRD 2025-05-08\nmove\nunsorted\n+ new\nneg\n+派发\nunmatched\n×1\n横盘\n放量突破\n派发\n回踩\nTVGN 2025-01-24\nmove\nunsorted\n+ new",
+ "03_open_qualified": "selection\nfeatures\npattern\nuser\n \nsession\n \napp\npattern\n横盘突破回踩\napp: sbt_v1 v2\ndefinition\nsamples\npos 3\n·\nneg 2\nmatch\npos\nmatched 2\n·\nunmatched 1\nneg\nmatched 1\n·\nunmatched 1\nnext\nrun_session\nunmapped 2\nfeatures\n放量突破\nin pos 3/3 · neg 2/2\nnode:burst\n⚑\nqualified pos 2/3 · neg 1/2\n放量\ntrue pos 3/3 · neg 2/2\n突破过好几个峰\ntrue pos 2/3 · neg 1/2\noptional\n横盘\nin pos 1/3 · neg 1/2\ntracked\n⚑\nqualified pos 1/1 · neg 1/1\n↓\nconnected pos 2/3 · neg 1/2\n回踩\nin pos 2/3 · neg 2/2\nnode:tb\n⚑\nqualified pos 2/2 · neg 1/2\nqualified pos 2 · neg 1\nmove\nunsorted\n+ new\n长下跌\n横盘\n缩量\n放量突破\n回踩\nTVRD 2025-04-28\n=\nmatched\n长下跌\n横盘\n放量突破\n回踩\nWHLRP 2024-03-21\n=\nmatched\n长下跌\n横盘\n缩量\n放量突破\n回踩\nTVRD 2025-05-08\n=\nmatched\nnot_qualified pos 0 · neg 1\nmove\nunsorted\n+ new\n横盘\n放量突破\n派发\n回踩\nTVGN 2025-01-24\n+派发\nunmatched\nmust_not\n派发\nin pos 0/3 · neg 1/2\nnegation\n⚑\nqualified\n—\nexcluded\n⚑\n缩量\nin pos 1/3 · neg 1/2\nexcluded\n⚑\n突破前沉寂够久\ntrue pos 1/3 · neg 0/2\nunmapped\n长下跌\nin pos 3/3 · neg 1/2\nunmapped\n收在高位\ntrue pos 1/3 · neg 0/2\nsamples\njudgment\nmust / must_not\nmatch\npos\n−回踩\nunmatched\n×1\n长下跌\n放量突破\n回踩\nTVRD 2024-12-24\nmove\nunsorted\n+ new\npos\n=\nmatched\n×2\n长下跌\n横盘\n放量突破\n回踩\nWHLRP 2024-03-21\n长下跌\n横盘\n缩量\n放量突破\n回踩\nTVRD 2025-04-28\nmove\nunsorted\n+ new\nneg\n=\nmatched\n×1\n长下跌\n横盘\n缩量\n放量突破\n回踩\nTVRD 2025-05-08\nmove\nunsorted\n+ new\nneg\n+派发\nunmatched\n×1\n横盘\n放量突破\n派发\n回踩\nTVGN 2025-01-24\nmove\nunsorted\n+ new",
+ "04_open_attr": "selection\nfeatures\npattern\nuser\n \nsession\n \napp\npattern\n横盘突破回踩\napp: sbt_v1 v2\ndefinition\nsamples\npos 3\n·\nneg 2\nmatch\npos\nmatched 2\n·\nunmatched 1\nneg\nmatched 1\n·\nunmatched 1\nnext\nrun_session\nunmapped 2\nfeatures\n放量突破\nin pos 3/3 · neg 2/2\nnode:burst\n⚑\nqualified pos 2/3 · neg 1/2\n放量\ntrue pos 3/3 · neg 2/2\n突破过好几个峰\ntrue pos 2/3 · neg 1/2\ntrue pos 2 · neg 1\nmove\nunsorted\n+ new\n长下跌\n放量突破\n回踩\nTVRD 2024-12-24\n−回踩\nunmatched\n长下跌\n横盘\n缩量\n放量突破\n回踩\nTVRD 2025-04-28\n=\nmatched\n长下跌\n横盘\n缩量\n放量突破\n回踩\nTVRD 2025-05-08\n=\nmatched\nfalse pos 1 · neg 0\nmove\nunsorted\n+ new\n长下跌\n横盘\n放量突破\n回踩\nWHLRP 2024-03-21\n=\nmatched\nnull pos 0 · neg 1\nmove\nunsorted\n+ new\n横盘\n放量突破\n派发\n回踩\nTVGN 2025-01-24\n+派发\nunmatched\noptional\n横盘\nin pos 1/3 · neg 1/2\ntracked\n⚑\nqualified pos 1/1 · neg 1/1\n↓\nconnected pos 2/3 · neg 1/2\n回踩\nin pos 2/3 · neg 2/2\nnode:tb\n⚑\nqualified pos 2/2 · neg 1/2\nmust_not\n派发\nin pos 0/3 · neg 1/2\nnegation\n⚑\nqualified\n—\nexcluded\n⚑\n缩量\nin pos 1/3 · neg 1/2\nexcluded\n⚑\n突破前沉寂够久\ntrue pos 1/3 · neg 0/2\nunmapped\n长下跌\nin pos 3/3 · neg 1/2\nunmapped\n收在高位\ntrue pos 1/3 · neg 0/2\nsamples\njudgment\nmust / must_not\nmatch\npos\n−回踩\nunmatched\n×1\n长下跌\n放量突破\n回踩\nTVRD 2024-12-24\nmove\nunsorted\n+ new\npos\n=\nmatched\n×2\n长下跌\n横盘\n放量突破\n回踩\nWHLRP 2024-03-21\n长下跌\n横盘\n缩量\n放量突破\n回踩\nTVRD 2025-04-28\nmove\nunsorted\n+ new\nneg\n=\nmatched\n×1\n长下跌\n横盘\n缩量\n放量突破\n回踩\nTVRD 2025-05-08\nmove\nunsorted\n+ new\nneg\n+派发\nunmatched\n×1\n横盘\n放量突破\n派发\n回踩\nTVGN 2025-01-24\nmove\nunsorted\n+ new",
+ "05_open_must_not_in": "selection\nfeatures\npattern\nuser\n \nsession\n \napp\npattern\n横盘突破回踩\napp: sbt_v1 v2\ndefinition\nsamples\npos 3\n·\nneg 2\nmatch\npos\nmatched 2\n·\nunmatched 1\nneg\nmatched 1\n·\nunmatched 1\nnext\nrun_session\nunmapped 2\nfeatures\n放量突破\nin pos 3/3 · neg 2/2\nnode:burst\n⚑\nqualified pos 2/3 · neg 1/2\n放量\ntrue pos 3/3 · neg 2/2\n突破过好几个峰\ntrue pos 2/3 · neg 1/2\noptional\n横盘\nin pos 1/3 · neg 1/2\ntracked\n⚑\nqualified pos 1/1 · neg 1/1\n↓\nconnected pos 2/3 · neg 1/2\n回踩\nin pos 2/3 · neg 2/2\nnode:tb\n⚑\nqualified pos 2/2 · neg 1/2\nmust_not\n派发\nin pos 0/3 · neg 1/2\nin pos 0 · neg 1\nmove\nunsorted\n+ new\n横盘\n放量突破\n派发\n回踩\nTVGN 2025-01-24\n+派发\nunmatched\nnot_in pos 3 · neg 1\nmove\nunsorted\n+ new\n长下跌\n放量突破\n回踩\nTVRD 2024-12-24\n−回踩\nunmatched\n长下跌\n横盘\n缩量\n放量突破\n回踩\nTVRD 2025-04-28\n=\nmatched\n长下跌\n横盘\n放量突破\n回踩\nWHLRP 2024-03-21\n=\nmatched\n长下跌\n横盘\n缩量\n放量突破\n回踩\nTVRD 2025-05-08\n=\nmatched\nnegation\n⚑\nqualified\n—\nexcluded\n⚑\n缩量\nin pos 1/3 · neg 1/2\nexcluded\n⚑\n突破前沉寂够久\ntrue pos 1/3 · neg 0/2\nunmapped\n长下跌\nin pos 3/3 · neg 1/2\nunmapped\n收在高位\ntrue pos 1/3 · neg 0/2\nsamples\njudgment\nmust / must_not\nmatch\npos\n−回踩\nunmatched\n×1\n长下跌\n放量突破\n回踩\nTVRD 2024-12-24\nmove\nunsorted\n+ new\npos\n=\nmatched\n×2\n长下跌\n横盘\n放量突破\n回踩\nWHLRP 2024-03-21\n长下跌\n横盘\n缩量\n放量突破\n回踩\nTVRD 2025-04-28\nmove\nunsorted\n+ new\nneg\n=\nmatched\n×1\n长下跌\n横盘\n缩量\n放量突破\n回踩\nTVRD 2025-05-08\nmove\nunsorted\n+ new\nneg\n+派发\nunmatched\n×1\n横盘\n放量突破\n派发\n回踩\nTVGN 2025-01-24\nmove\nunsorted\n+ new",
+ "06_open_excluded": "selection\nfeatures\npattern\nuser\n \nsession\n \napp\npattern\n横盘突破回踩\napp: sbt_v1 v2\ndefinition\nsamples\npos 3\n·\nneg 2\nmatch\npos\nmatched 2\n·\nunmatched 1\nneg\nmatched 1\n·\nunmatched 1\nnext\nrun_session\nunmapped 2\nfeatures\n放量突破\nin pos 3/3 · neg 2/2\nnode:burst\n⚑\nqualified pos 2/3 · neg 1/2\n放量\ntrue pos 3/3 · neg 2/2\n突破过好几个峰\ntrue pos 2/3 · neg 1/2\noptional\n横盘\nin pos 1/3 · neg 1/2\ntracked\n⚑\nqualified pos 1/1 · neg 1/1\n↓\nconnected pos 2/3 · neg 1/2\n回踩\nin pos 2/3 · neg 2/2\nnode:tb\n⚑\nqualified pos 2/2 · neg 1/2\nmust_not\n派发\nin pos 0/3 · neg 1/2\nnegation\n⚑\nqualified\n—\nexcluded\n⚑\n缩量\nin pos 1/3 · neg 1/2\nin pos 1 · neg 1\nmove\nunsorted\n+ new\n长下跌\n横盘\n缩量\n放量突破\n回踩\nTVRD 2025-04-28\n=\nmatched\n长下跌\n横盘\n缩量\n放量突破\n回踩\nTVRD 2025-05-08\n=\nmatched\nnot_in pos 2 · neg 1\nmove\nunsorted\n+ new\n长下跌\n放量突破\n回踩\nTVRD 2024-12-24\n−回踩\nunmatched\n长下跌\n横盘\n放量突破\n回踩\nWHLRP 2024-03-21\n=\nmatched\n横盘\n放量突破\n派发\n回踩\nTVGN 2025-01-24\n+派发\nunmatched\nexcluded\n⚑\n突破前沉寂够久\ntrue pos 1/3 · neg 0/2\nunmapped\n长下跌\nin pos 3/3 · neg 1/2\nunmapped\n收在高位\ntrue pos 1/3 · neg 0/2\nsamples\njudgment\nmust / must_not\nmatch\npos\n−回踩\nunmatched\n×1\n长下跌\n放量突破\n回踩\nTVRD 2024-12-24\nmove\nunsorted\n+ new\npos\n=\nmatched\n×2\n长下跌\n横盘\n放量突破\n回踩\nWHLRP 2024-03-21\n长下跌\n横盘\n缩量\n放量突破\n回踩\nTVRD 2025-04-28\nmove\nunsorted\n+ new\nneg\n=\nmatched\n×1\n长下跌\n横盘\n缩量\n放量突破\n回踩\nTVRD 2025-05-08\nmove\nunsorted\n+ new\nneg\n+派发\nunmatched\n×1\n横盘\n放量突破\n派发\n回踩\nTVGN 2025-01-24\nmove\nunsorted\n+ new",
+ "07_open_header_neg": "selection\nfeatures\npattern\nuser\n \nsession\n \napp\npattern\n横盘突破回踩\napp: sbt_v1 v2\ndefinition\nsamples\npos 3\n·\nneg 2\nneg 2\nmove\nunsorted\n+ new\n长下跌\n横盘\n缩量\n放量突破\n回踩\nTVRD 2025-05-08\n=\nmatched\n横盘\n放量突破\n派发\n回踩\nTVGN 2025-01-24\n+派发\nunmatched\nmatch\npos\nmatched 2\n·\nunmatched 1\nneg\nmatched 1\n·\nunmatched 1\nnext\nrun_session\nunmapped 2\nfeatures\n放量突破\nin pos 3/3 · neg 2/2\nnode:burst\n⚑\nqualified pos 2/3 · neg 1/2\n放量\ntrue pos 3/3 · neg 2/2\n突破过好几个峰\ntrue pos 2/3 · neg 1/2\noptional\n横盘\nin pos 1/3 · neg 1/2\ntracked\n⚑\nqualified pos 1/1 · neg 1/1\n↓\nconnected pos 2/3 · neg 1/2\n回踩\nin pos 2/3 · neg 2/2\nnode:tb\n⚑\nqualified pos 2/2 · neg 1/2\nmust_not\n派发\nin pos 0/3 · neg 1/2\nnegation\n⚑\nqualified\n—\nexcluded\n⚑\n缩量\nin pos 1/3 · neg 1/2\nexcluded\n⚑\n突破前沉寂够久\ntrue pos 1/3 · neg 0/2\nunmapped\n长下跌\nin pos 3/3 · neg 1/2\nunmapped\n收在高位\ntrue pos 1/3 · neg 0/2\nsamples\njudgment\nmust / must_not\nmatch\npos\n−回踩\nunmatched\n×1\n长下跌\n放量突破\n回踩\nTVRD 2024-12-24\nmove\nunsorted\n+ new\npos\n=\nmatched\n×2\n长下跌\n横盘\n放量突破\n回踩\nWHLRP 2024-03-21\n长下跌\n横盘\n缩量\n放量突破\n回踩\nTVRD 2025-04-28\nmove\nunsorted\n+ new\nneg\n=\nmatched\n×1\n长下跌\n横盘\n缩量\n放量突破\n回踩\nTVRD 2025-05-08\nmove\nunsorted\n+ new\nneg\n+派发\nunmatched\n×1\n横盘\n放量突破\n派发\n回踩\nTVGN 2025-01-24\nmove\nunsorted\n+ new",
+ "08_open_match_zero": "selection\nfeatures\npattern\nuser\n \nsession\n \napp\npattern\n横盘突破回踩\napp: sbt_v1 v2\ndefinition\nsamples\npos 3\n·\nneg 2\nmatch\npos\nmatched 2\n·\nunmatched 1\nneg\nmatched 1\n·\nunmatched 1\nunmatched 1\nmove\nunsorted\n+ new\n长下跌\n放量突破\n回踩\nTVRD 2024-12-24\n−回踩\nunmatched\nnext\nrun_session\nunmapped 2\nfeatures\n放量突破\nin pos 3/3 · neg 2/2\nnode:burst\n⚑\nqualified pos 2/3 · neg 1/2\n放量\ntrue pos 3/3 · neg 2/2\n突破过好几个峰\ntrue pos 2/3 · neg 1/2\noptional\n横盘\nin pos 1/3 · neg 1/2\ntracked\n⚑\nqualified pos 1/1 · neg 1/1\n↓\nconnected pos 2/3 · neg 1/2\n回踩\nin pos 2/3 · neg 2/2\nnode:tb\n⚑\nqualified pos 2/2 · neg 1/2\nmust_not\n派发\nin pos 0/3 · neg 1/2\nnegation\n⚑\nqualified\n—\nexcluded\n⚑\n缩量\nin pos 1/3 · neg 1/2\nexcluded\n⚑\n突破前沉寂够久\ntrue pos 1/3 · neg 0/2\nunmapped\n长下跌\nin pos 3/3 · neg 1/2\nunmapped\n收在高位\ntrue pos 1/3 · neg 0/2\nsamples\njudgment\nmust / must_not\nmatch\npos\n−回踩\nunmatched\n×1\n长下跌\n放量突破\n回踩\nTVRD 2024-12-24\nmove\nunsorted\n+ new\npos\n=\nmatched\n×2\n长下跌\n横盘\n放量突破\n回踩\nWHLRP 2024-03-21\n长下跌\n横盘\n缩量\n放量突破\n回踩\nTVRD 2025-04-28\nmove\nunsorted\n+ new\nneg\n=\nmatched\n×1\n长下跌\n横盘\n缩量\n放量突破\n回踩\nTVRD 2025-05-08\nmove\nunsorted\n+ new\nneg\n+派发\nunmatched\n×1\n横盘\n放量突破\n派发\n回踩\nTVGN 2025-01-24\nmove\nunsorted\n+ new",
+ "09_open_link": "selection\nfeatures\npattern\nuser\n \nsession\n \napp\npattern\n横盘突破回踩\napp: sbt_v1 v2\ndefinition\nsamples\npos 3\n·\nneg 2\nmatch\npos\nmatched 2\n·\nunmatched 1\nneg\nmatched 1\n·\nunmatched 1\nnext\nrun_session\nunmapped 2\nfeatures\n放量突破\nin pos 3/3 · neg 2/2\nnode:burst\n⚑\nqualified pos 2/3 · neg 1/2\n放量\ntrue pos 3/3 · neg 2/2\n突破过好几个峰\ntrue pos 2/3 · neg 1/2\noptional\n横盘\nin pos 1/3 · neg 1/2\ntracked\n⚑\nqualified pos 1/1 · neg 1/1\n↓\nconnected pos 2/3 · neg 1/2\nconnected pos 2 · neg 1\nmove\nunsorted\n+ new\n长下跌\n横盘\n缩量\n放量突破\n回踩\nTVRD 2025-04-28\n=\nmatched\n长下跌\n横盘\n放量突破\n回踩\nWHLRP 2024-03-21\n=\nmatched\n长下跌\n横盘\n缩量\n放量突破\n回踩\nTVRD 2025-05-08\n=\nmatched\ndisconnected pos 0 · neg 0\nnot_qualified pos 0 · neg 1\nmove\nunsorted\n+ new\n横盘\n放量突破\n派发\n回踩\nTVGN 2025-01-24\n+派发\nunmatched\nunpaired pos 1 · neg 0\nmove\nunsorted\n+ new\n长下跌\n放量突破\n回踩\nTVRD 2024-12-24\n−回踩\nunmatched\n回踩\nin pos 2/3 · neg 2/2\nnode:tb\n⚑\nqualified pos 2/2 · neg 1/2\nmust_not\n派发\nin pos 0/3 · neg 1/2\nnegation\n⚑\nqualified\n—\nexcluded\n⚑\n缩量\nin pos 1/3 · neg 1/2\nexcluded\n⚑\n突破前沉寂够久\ntrue pos 1/3 · neg 0/2\nunmapped\n长下跌\nin pos 3/3 · neg 1/2\nunmapped\n收在高位\ntrue pos 1/3 · neg 0/2\nsamples\njudgment\nmust / must_not\nmatch\npos\n−回踩\nunmatched\n×1\n长下跌\n放量突破\n回踩\nTVRD 2024-12-24\nmove\nunsorted\n+ new\npos\n=\nmatched\n×2\n长下跌\n横盘\n放量突破\n回踩\nWHLRP 2024-03-21\n长下跌\n横盘\n缩量\n放量突破\n回踩\nTVRD 2025-04-28\nmove\nunsorted\n+ new\nneg\n=\nmatched\n×1\n长下跌\n横盘\n缩量\n放量突破\n回踩\nTVRD 2025-05-08\nmove\nunsorted\n+ new\nneg\n+派发\nunmatched\n×1\n横盘\n放量突破\n派发\n回踩\nTVGN 2025-01-24\nmove\nunsorted\n+ new",
+ "10_q1": "selection\nfeatures\npattern\nuser\n \nsession\n \napp\nq1\nclose\n长下跌\nin pos 3/3 · neg 1/2\nin pos 3 · neg 1\nmove\nunsorted\n+ new\n长下跌\n放量突破\n回踩\nTVRD 2024-12-24\n−回踩\nunmatched\n长下跌\n横盘\n缩量\n放量突破\n回踩\nTVRD 2025-04-28\n=\nmatched\n长下跌\n横盘\n放量突破\n回踩\nWHLRP 2024-03-21\n=\nmatched\n长下跌\n横盘\n缩量\n放量突破\n回踩\nTVRD 2025-05-08\n=\nmatched\nnot_in pos 0 · neg 1\nmove\nunsorted\n+ new\n横盘\n放量突破\n派发\n回踩\nTVGN 2025-01-24\n+派发\nunmatched\npattern\n横盘突破回踩\napp: sbt_v1 v2\ndefinition\nsamples\npos 3\n·\nneg 2\nmatch\npos\nmatched 2\n·\nunmatched 1\nneg\nmatched 1\n·\nunmatched 1\nnext\nrun_session\nunmapped 2\nfeatures\n放量突破\nin pos 3/3 · neg 2/2\nnode:burst\n⚑\nqualified pos 2/3 · neg 1/2\n放量\ntrue pos 3/3 · neg 2/2\n突破过好几个峰\ntrue pos 2/3 · neg 1/2\noptional\n横盘\nin pos 1/3 · neg 1/2\ntracked\n⚑\nqualified pos 1/1 · neg 1/1\n↓\nconnected pos 2/3 · neg 1/2\n回踩\nin pos 2/3 · neg 2/2\nnode:tb\n⚑\nqualified pos 2/2 · neg 1/2\nmust_not\n派发\nin pos 0/3 · neg 1/2\nnegation\n⚑\nqualified\n—\nexcluded\n⚑\n缩量\nin pos 1/3 · neg 1/2\nexcluded\n⚑\n突破前沉寂够久\ntrue pos 1/3 · neg 0/2\nunmapped\n长下跌\nin pos 3/3 · neg 1/2\nunmapped\n收在高位\ntrue pos 1/3 · neg 0/2\nsamples\njudgment\nmust / must_not\nmatch\npos\n−回踩\nunmatched\n×1\n长下跌\n放量突破\n回踩\nTVRD 2024-12-24\nmove\nunsorted\n+ new\npos\n=\nmatched\n×2\n长下跌\n横盘\n放量突破\n回踩\nWHLRP 2024-03-21\n长下跌\n横盘\n缩量\n放量突破\n回踩\nTVRD 2025-04-28\nmove\nunsorted\n+ new\nneg\n=\nmatched\n×1\n长下跌\n横盘\n缩量\n放量突破\n回踩\nTVRD 2025-05-08\nmove\nunsorted\n+ new\nneg\n+派发\nunmatched\n×1\n横盘\n放量突破\n派发\n回踩\nTVGN 2025-01-24\nmove\nunsorted\n+ new",
+ "10_q2": "selection\nfeatures\npattern\nuser\n \nsession\n \napp\nq2\nclose\n收在高位\ntrue pos 1/3 · neg 0/2\ntrue pos 1 · neg 0\nmove\nunsorted\n+ new\n长下跌\n横盘\n放量突破\n回踩\nWHLRP 2024-03-21\n=\nmatched\nfalse pos 0 · neg 0\nnull pos 2 · neg 2\nmove\nunsorted\n+ new\n长下跌\n放量突破\n回踩\nTVRD 2024-12-24\n−回踩\nunmatched\n长下跌\n横盘\n缩量\n放量突破\n回踩\nTVRD 2025-04-28\n=\nmatched\n长下跌\n横盘\n缩量\n放量突破\n回踩\nTVRD 2025-05-08\n=\nmatched\n横盘\n放量突破\n派发\n回踩\nTVGN 2025-01-24\n+派发\nunmatched\npattern\n横盘突破回踩\napp: sbt_v1 v2\ndefinition\nsamples\npos 3\n·\nneg 2\nmatch\npos\nmatched 2\n·\nunmatched 1\nneg\nmatched 1\n·\nunmatched 1\nnext\nrun_session\nunmapped 2\nfeatures\n放量突破\nin pos 3/3 · neg 2/2\nnode:burst\n⚑\nqualified pos 2/3 · neg 1/2\n放量\ntrue pos 3/3 · neg 2/2\n突破过好几个峰\ntrue pos 2/3 · neg 1/2\noptional\n横盘\nin pos 1/3 · neg 1/2\ntracked\n⚑\nqualified pos 1/1 · neg 1/1\n↓\nconnected pos 2/3 · neg 1/2\n回踩\nin pos 2/3 · neg 2/2\nnode:tb\n⚑\nqualified pos 2/2 · neg 1/2\nmust_not\n派发\nin pos 0/3 · neg 1/2\nnegation\n⚑\nqualified\n—\nexcluded\n⚑\n缩量\nin pos 1/3 · neg 1/2\nexcluded\n⚑\n突破前沉寂够久\ntrue pos 1/3 · neg 0/2\nunmapped\n长下跌\nin pos 3/3 · neg 1/2\nunmapped\n收在高位\ntrue pos 1/3 · neg 0/2\nsamples\njudgment\nmust / must_not\nmatch\npos\n−回踩\nunmatched\n×1\n长下跌\n放量突破\n回踩\nTVRD 2024-12-24\nmove\nunsorted\n+ new\npos\n=\nmatched\n×2\n长下跌\n横盘\n放量突破\n回踩\nWHLRP 2024-03-21\n长下跌\n横盘\n缩量\n放量突破\n回踩\nTVRD 2025-04-28\nmove\nunsorted\n+ new\nneg\n=\nmatched\n×1\n长下跌\n横盘\n缩量\n放量突破\n回踩\nTVRD 2025-05-08\nmove\nunsorted\n+ new\nneg\n+派发\nunmatched\n×1\n横盘\n放量突破\n派发\n回踩\nTVGN 2025-01-24\nmove\nunsorted\n+ new",
+ "10_q3": "selection\nfeatures\npattern\nuser\n \nsession\n \napp\nq3\nclose\n长下跌\n放量突破\n回踩\nTVRD 2024-12-24\n−回踩\nunmatched\na · 2024-12-24\ndelete\npattern\n横盘突破回踩\nunsorted\njudgment\npos\nneg\nnote\nmembers\n长下跌\n→\n放量突破\n→\n回踩\n→\n▲",
+ "10_q4": "selection\nfeatures\npattern\nuser\n \nsession\n \napp\nq4\nclose\n长下跌\n横盘\n缩量\n放量突破\n回踩\nTVRD 2025-05-08\njudgment\npos → neg\n=\nmatched\nc · 2025-05-08\ndelete\npattern\n横盘突破回踩\nunsorted\njudgment\npos\nneg\nnote\nmembers\n长下跌\n→\n横盘\n⊃\n缩量\n→\n放量突破\n→\n回踩\n→\n△\nothers\n长下跌\n放量突破",
+ "q1_vs_features": {
+  "q1": [
+   "in pos 3 · neg 1",
+   "moveunsorted+ new",
+   "not_in pos 0 · neg 1",
+   "moveunsorted+ new"
+  ],
+  "f1": [
+   "in pos 3 · neg 1",
+   "moveunsorted+ new",
+   "not_in pos 0 · neg 1",
+   "moveunsorted+ new"
+  ]
+ },
+ "11_unsorted": "selection\nfeatures\npattern\npattern\nunsorted\nsamples\npos 3\n·\nneg 0\nsamples\njudgment\nsequence\npos\n下跌\n→\n底部\n→\n放量突破\n×1\n下跌\n底部\n放量突破\nTVGN 2024-10-22\nmove\n横盘突破回踩\n+ new\npos\n下跌\n→\n底部\n→\n放量突破\n→\n回踩\n×1\n下跌\n底部\n放量突破\n回踩\nAMST 2024-01-18\nmove\n横盘突破回踩\n+ new\npos\n横盘\n→\n放量突破\n→\n回踩\n×1\n横盘\n放量突破\n回踩\nAMST 2023-09-11\nmove 横盘突破回踩\nmove\n横盘突破回踩\n+ new",
+ "unsorted vkey:jdg|pos": {
+  "door": "pos 3",
+  "rows": [
+   "pos 3"
+  ]
+ },
+ "unsorted vkey:jdg|neg": {
+  "door": "neg 0",
+  "rows": [
+   "neg 0"
+  ]
+ },
+ "12_pattern_noapp": "selection\nfeatures\npattern\npattern\nP\napp: —\ndefinition\nsamples\npos 3\n·\nneg 1\nnext\nrun_session\nfeatures\n下跌\nin pos 2/3 · neg 0/1\n↓\n横盘\nin pos 1/3 · neg 0/1\n↓\n底部\nin pos 2/3 · neg 0/1\nV形\ntrue pos 1/2 · neg 0/0\nW形\ntrue pos 1/2 · neg 0/0\n↓\n放量突破\nin pos 3/3 · neg 1/1\n放量\ntrue pos 3/3 · neg 1/1\n↓\n派发\nin pos 0/3 · neg 1/1\n↓\n回踩\nin pos 2/3 · neg 1/1\nsamples\njudgment\nmust / must_not\nmatch\npos\n×3\n下跌\n底部\n放量突破\nTVGN 2024-10-22\n下跌\n底部\n放量突破\n回踩\nAMST 2024-01-18\n横盘\n放量突破\n回踩\nAMST 2023-09-11\nmove\n横盘突破回踩\nunsorted\n+ new\nneg\n×1\n横盘\n放量突破\n派发\n回踩\nTVGN 2025-01-24\nmove\n横盘突破回踩\nunsorted\n+ new",
+ "noapp vkey:jdg|pos": {
+  "door": "pos 3",
+  "rows": [
+   "pos 3"
+  ]
+ },
+ "noapp vkey:jdg|neg": {
+  "door": "neg 1",
+  "rows": [
+   "neg 1"
+  ]
+ },
+ "noapp vkey:feat|下跌": {
+  "door": "in pos 2/3 · neg 0/1",
+  "rows": [
+   "in pos 2 · neg 0",
+   "not_in pos 1 · neg 1"
+  ]
+ },
+ "noapp vkey:feat|横盘": {
+  "door": "in pos 1/3 · neg 0/1",
+  "rows": [
+   "in pos 1 · neg 0",
+   "not_in pos 2 · neg 1"
+  ]
+ },
+ "noapp vkey:feat|底部": {
+  "door": "in pos 2/3 · neg 0/1",
+  "rows": [
+   "in pos 2 · neg 0",
+   "not_in pos 1 · neg 1"
+  ]
+ },
+ "noapp vkey:attr|底部|V形": {
+  "door": "true pos 1/2 · neg 0/0",
+  "rows": [
+   "true pos 1 · neg 0",
+   "false pos 0 · neg 0",
+   "null pos 1 · neg 0"
+  ]
+ },
+ "noapp vkey:attr|底部|W形": {
+  "door": "true pos 1/2 · neg 0/0",
+  "rows": [
+   "true pos 1 · neg 0",
+   "false pos 0 · neg 0",
+   "null pos 1 · neg 0"
+  ]
+ },
+ "noapp vkey:feat|放量突破": {
+  "door": "in pos 3/3 · neg 1/1",
+  "rows": [
+   "in pos 3 · neg 1",
+   "not_in pos 0 · neg 0"
+  ]
+ },
+ "noapp vkey:attr|放量突破|放量": {
+  "door": "true pos 3/3 · neg 1/1",
+  "rows": [
+   "true pos 3 · neg 1",
+   "false pos 0 · neg 0",
+   "null pos 0 · neg 0"
+  ]
+ },
+ "noapp vkey:feat|派发": {
+  "door": "in pos 0/3 · neg 1/1",
+  "rows": [
+   "in pos 0 · neg 1",
+   "not_in pos 3 · neg 0"
+  ]
+ },
+ "noapp vkey:feat|回踩": {
+  "door": "in pos 2/3 · neg 1/1",
+  "rows": [
+   "in pos 2 · neg 1",
+   "not_in pos 1 · neg 0"
+  ]
+ },
+ "13_compare_tvrd_pos": "selection\nfeatures\npattern\nuser\n \nsession\n \napp\nb · 2025-04-28\n=\nmatched\ndelete\npattern\n横盘突破回踩\nunsorted\njudgment\npos\nneg\nnote\nmembers\n长下跌\n→\n横盘\n⊃\n缩量\n→\n放量突破\n→\nconnected\n回踩\n→\n▲\nothers\n长下跌\n放量突破",
+ "14_compare_tvrd_neg": "selection\nfeatures\npattern\nuser\n \nsession\n \napp\nc · 2025-05-08\n=\nmatched\ndelete\npattern\n横盘突破回踩\nunsorted\njudgment\npos\nneg\nnote\nmembers\n长下跌\n→\n横盘\n⊃\n缩量\n→\n放量突破\n→\nconnected\n回踩\n→\n△\nothers\n长下跌\n放量突破",
+ "neg_chain_links": [
+  "connected"
+ ],
+ "chart_tips": [
+  [
+   "b",
+   "letter = sample id on this chart"
+  ],
+  [
+   "matched",
+   "app has a hit at the sample date"
+  ],
+  [
+   "=",
+   "annotation agrees with mapping"
+  ],
+  [
+   "a",
+   "letter = sample id on this chart"
+  ],
+  [
+   "unmatched",
+   "app has no hit at the sample date\ndiffers from annotation"
+  ],
+  [
+   "−回踩",
+   "mapping: “回踩” is must\nnot in annotation"
+  ],
+  [
+   "c",
+   "letter = sample id on this chart"
+  ],
+  [
+   "matched",
+   "app has a hit at the sample date\ndiffers from annotation"
+  ],
+  [
+   "=",
+   "annotation agrees with mapping"
+  ],
+  [
+   "a",
+   "letter = sample id on this chart"
+  ],
+  [
+   "b",
+   "letter = sample id on this chart"
+  ],
+  [
+   "c",
+   "letter = sample id on this chart"
+  ],
+  [
+   "1",
+   "hit number on this chart"
+  ],
+  [
+   "2",
+   "hit number on this chart"
+  ],
+  [
+   "b c",
+   "member box of the samples with these letters"
+  ],
+  [
+   "a",
+   "member box of the samples with these letters"
+  ],
+  [
+   "b c",
+   "member box of the samples with these letters"
+  ],
+  [
+   "b c",
+   "member box of the samples with these letters"
+  ],
+  [
+   "b c",
+   "member box of the samples with these letters"
+  ],
+  [
+   "a",
+   "member box of the samples with these letters"
+  ],
+  [
+   "b c",
+   "member box of the samples with these letters"
+  ],
+  [
+   "detected_only",
+   "detected, not qualified"
+  ],
+  [
+   "detected_only",
+   "detected, not qualified"
+  ],
+  [
+   "qualified_only",
+   "qualified, not in a hit"
+  ],
+  [
+   "detected_only",
+   "detected, not qualified"
+  ],
+  [
+   "detected_only",
+   "detected, not qualified"
+  ],
+  [
+   "unmapped",
+   "session has not mapped “长下跌” yet"
+  ],
+  [
+   "unmapped",
+   "session has not mapped “长下跌” yet"
+  ],
+  [
+   "optional",
+   "better with it, not required"
+  ],
+  [
+   "excluded",
+   "session decided not to include “缩量”: 你定为无关"
+  ]
+ ],
+ "tag_click_passthrough": [],
+ "missing_with_tiers_off": 1,
+ "15_tiers_off_missing": "selection\nfeatures\npattern\n— none",
+ "single_letter": "a · 2024-03-21",
+ "16_single_sample_letter": "selection\nfeatures\npattern\na · 2024-03-21\ndelete\npattern\n横盘突破回踩\nunsorted\njudgment\npos\nneg\nnote\nmembers\n长下跌\n→\n放量突破\n→\n回踩\n→\n▲\nothers\n横盘",
+ "box_fields": [
+  "feature",
+  "definition",
+  "member_of",
+  "attrs",
+  "",
+  "note"
+ ],
+ "17_box_member_of": "selection\nfeatures\npattern\n2025-04-15 → 2025-04-23\ndelete\nfeature\n放量突破\n⇄\ndefinition\n放量越过前面好几个峰\nmember_of\nb ▲ 2025-04-28\nc △ 2025-05-08\nattrs\n放量\ntrue\nfalse\n突破过好几个峰\ntrue\nfalse\n突破前沉寂够久\ntrue\nfalse\nnull\n收在高位\ntrue\nfalse\nnull\n+\nnote",
+ "18_features_tab": "selection\nfeatures\npattern\n长下跌\n✎\nmerge\n横盘\n缩量\n放量突破\n放量\n突破过好几个峰\n回踩\n突破前沉寂够久\n收在高位\n下跌\n底部\nV形\n派发\nW形\nbox×3 · attr×0\ndefinition\n横盘\n✎\nmerge\n长下跌\n缩量\n放量突破\n放量\n突破过好几个峰\n回踩\n突破前沉寂够久\n收在高位\n下跌\n底部\nV形\n派发\nW形\nbox×4 · attr×0\ndefinition\n缩量\n✎\nmerge\n长下跌\n横盘\n放量突破\n放量\n突破过好几个峰\n回踩\n突破前沉寂够久\n收在高位\n下跌\n底部\nV形\n派发\nW形\nbox×1 · attr×0\ndefinition\n放量突破\n✎\nmerge\n长下跌\n横盘\n缩量\n放量\n突破过好几个峰\n回踩\n突破前沉寂够久\n收在高位\n下跌\n底部\nV形\n派发\nW形\nbox×7 · attr×0\ndefinition\n放量\n✎\nmerge\n长下跌\n横盘\n缩量\n放量突破\n突破过好几个峰\n回踩\n突破前沉寂够久\n收在高位\n下跌\n底部\nV形\n派发\nW形\nbox×0 · attr×7\ndefinition\n突破过好几个峰\n✎\nmerge\n长下跌\n横盘\n缩量\n放量突破\n放量\n回踩\n突破前沉寂够久\n收在高位\n下跌\n底部\nV形\n派发\nW形\nbox×0 · attr×3\ndefinition\n回踩\n✎\nmerge\n长下跌\n横盘\n缩量\n放量突破\n放量\n突破过好几个峰\n突破前沉寂够久\n收在高位\n下跌\n底部\nV形\n派发\nW形\nbox×5 · attr×0\ndefinition\n突破前沉寂够久\n✎\nmerge\n长下跌\n横盘\n缩量\n放量突破\n放量\n突破过好几个峰\n回踩\n收在高位\n下跌\n底部\nV形\n派发\nW形\nbox×0 · attr×1\ndefinition\n收在高位\n✎\nmerge\n长下跌\n横盘\n缩量\n放量突破\n放量\n突破过好几个峰\n回踩\n突破前沉寂够久\n下跌\n底部\nV形\n派发\nW形\nbox×0 · attr×1\ndefinition\n下跌\n✎\nmerge\n长下跌\n横盘\n缩量\n放量突破\n放量\n突破过好几个峰\n回踩\n突破前沉寂够久\n收在高位\n底部\nV形\n派发\nW形\nbox×2 · attr×0\ndefinition\n底部\n✎\nmerge\n长下跌\n横盘\n缩量\n放量突破\n放量\n突破过好几个峰\n回踩\n突破前沉寂够久\n收在高位\n下跌\nV形\n派发\nW形\nbox×2 · attr×0\ndefinition\nV形\n✎\nmerge\n长下跌\n横盘\n缩量\n放量突破\n放量\n突破过好几个峰\n回踩\n突破前沉寂够久\n收在高位\n下跌\n底部\n派发\nW形\nbox×0 · attr×1\ndefinition\n派发\n✎\nmerge\n长下跌\n横盘\n缩量\n放量突破\n放量\n突破过好几个峰\n回踩\n突破前沉寂够久\n收在高位\n下跌\n底部\nV形\nW形\nbox×2 · attr×0\ndefinition\nW形\n✎\nmerge\n长下跌\n横盘\n缩量\n放量突破\n放量\n突破过好几个峰\n回踩\n突破前沉寂够久\n收在高位\n下跌\n底部\nV形\n派发\nbox×0 · attr×1\ndefinition",
+ "tabs": [
+  "selection",
+  "features",
+  "pattern"
+ ]
+}

@@ -171,7 +171,7 @@ _Avoid_: 措辞 —— 已改称特征名。
 
 **mapping / map**：
 会话为一个 pattern 写 app 时定下的清单：这个 pattern 用到的每个特征一行，写明它的级（must 必须有 / optional 可有可无 / must_not 必须没有 / excluded 不放），以及 app 用哪一部分认它（一个 node，或某个 node 上的一条 where）。会话写下或改动其中一行，叫把这个特征 map 到 app；还没写的特征是 unmapped。
-_Avoid_: 对应表 —— 已改称 mapping；翻译 —— 自造的说法，「map 方式不对」不要说成「翻译不对」。
+_Avoid_: 对应表 —— 已改称 mapping；翻译 —— 自造的说法，「map 方式不对」不要说成「翻译不对」；有更好 —— 会读成「有更好的东西」；级在讨论和文档里一律写英文 must / optional / must_not / excluded，中文只作这里的别名。
 
 **dag / mapped pattern**：
 = mapped pattern; the declaration that an app writes for a pattern.
@@ -203,3 +203,8 @@ _Avoid_: 像但不买 —— 已改称 negative sample；反例 —— 会被读
 **unsorted / 未归类**：
 = the state of a sample whose pattern has not been chosen yet.
 过渡状态，不是一个 pattern；数据里 pattern 存 null。positive sample 可以先放这里攒着再归组；negative sample 的「像」必须有对象，放这里只算没填完。
+
+**tracked**：
+= the way an optional feature lands in an app: the app computes it but does not filter on it.
+mapping 里 optional 一级的默认落法：app 照样算出它在每个 sample 上成不成立，对照里显示认没认出，也可以拿去量「改成 must 会不会更好」，但不拿它决定买不买、不进求解。防的是：一条 optional 写成 where 就等于 must。pattern 定义写明「有一个就行 / 凑够几样就行」时，那几样不走 tracked，而是一起落成「至少 k 条成立」，那是整组的 must。
+

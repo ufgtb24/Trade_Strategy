@@ -14,6 +14,7 @@
   - 后续走势只在盲看那一步先藏后露（第 4 节）。
   - 一个 node 包容多种特征用复合事件，path2 现有机制够用（第 7 节）。
   - 结构化标注：用 path2 的事件来标，标注和显示一一对应，一次标注可以有多个 pattern，先看特征和先定目标分阶段配合，合不合并看骨架（第 8 节）。
+- 用户说明书（2026-10-30 用户定，今后决策中优先级高于原型代码）：`.scratch/annotation-path2/manual.md`，假装工具已做完、按八步流程讲每个功能防的是哪种错；原型对照、要改要加的功能、冗余与用户 2026-10-31 拍板的方向题见`docs/research/2026-10-30_annotation-user-manual/final_report.md`（第 12 节为拍板结果）。各票拿不准时先查说明书。
 - 画图时已定（方向文档第 13 节）："较好"沿用 tune-gates-v3 的「比同日普通买入多出的部分」；地图到规格加开发任务为止；组合子与写法约定在图内、具体 detector 不在；旧代码在图内，先搭新的再拆旧的。另有：盲看从整个股票池随机抓、新写技能串循环、新特征放在要用的地方量且看不出先留着（第 3 节）。
 - 旧 effort「建一套找优秀选股 pattern 的流程」已归档在 `.scratch-archive/selection-pattern/`；它的评估纪律类结论（分辨力、幸存者偏差、股票池口径含 SPAC 排除、同日对照怎么配）沿用，见那份地图的 Decisions so far。
 - 用词以 `path2/GLOSSARY.md`（框架与走势）和 `path2_web/GLOSSARY.md`（界面）为准，对用户说话时带上「文件:行号」出处；查词先 grep 再只读那一段。
@@ -28,6 +29,7 @@
 - [训练段用多长：样本多，还是和现在的市场像](issues/02-training-range.md): 默认 2021-10-08～2025-12-31 全部，不切；保留 v3 的近期加权；各工具读同一个训练段设置；成绩按半年拆开、最近半年单列；改训练段须有证据，不许按行情像不像或成绩好看来挑
 
 - [标注、mapping、app 产出与对照：各环节东西的命名](issues/14-naming.md): 一名一格；sample（positive / negative）、box、dag、node / where、hit、event；match 改指 hit 与 sample 的比较、全仓改名另立；买点只留 app 一侧；英文为规范名，起名规则在 GLOSSARY-MAP；成员框须在样本日或之前结束
+- [界面显示的对称与统一](issues/15-display-consistency.md): 计数一律数样本、正负对偶写 `pos k/N · neg m/M`；汇总写比例、点开分排写个数；凡数样本的数都能点开；样本卡在哪都挂同一组 tag；数为 0 也显示
 
 ## Not yet specified
 

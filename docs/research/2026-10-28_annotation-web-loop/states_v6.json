@@ -698,7 +698,7 @@
  },
  {
   "state": "15-compare-pair",
-  "note": "pattern 页点「放量突破→回踩」之间的 connected 签展开缩略图，再点 TVRD 那张跳图：自动切 compare、选中买点、描出两个框",
+  "note": "pattern 页点「放量突破→回踩」之间的 connected 计数，展开四排缩略图，再点 TVRD 那张跳图：自动切 compare、选中买点、描出两个框",
   "steps": [
    {
     "waitFor": "#side #tabs"
@@ -710,7 +710,7 @@
     "wait": 150
    },
    {
-    "click": "[data-act=\"lkopen:放量突破→回踩:connected\"]"
+    "click": "[data-act=\"lkopen:放量突破→回踩\"]"
    },
    {
     "wait": 150
@@ -849,32 +849,6 @@
      "width": 1215,
      "height": 660
     }
-   }
-  ]
- },
- {
-  "state": "18-json",
-  "note": "json 页：存下来的原始记录",
-  "steps": [
-   {
-    "waitFor": "#side #tabs"
-   },
-   {
-    "click": "[data-act=\"tab:json\"]"
-   },
-   {
-    "css": "#wrap{height:auto!important} #side{overflow:visible!important}"
-   }
-  ],
-  "fullPage": true,
-  "probe": "({tab:S.tab})",
-  "expect": {
-   "tab": "json"
-  },
-  "crops": [
-   {
-    "name": "side",
-    "selector": "#side"
    }
   ]
  },

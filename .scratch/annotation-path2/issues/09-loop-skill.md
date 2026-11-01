@@ -26,4 +26,4 @@ Blocked by: 01, 08
 
 ## Comments
 
-- 2026-10-30 待并入的输入（两张票尚未解决）：[只在 negative sample 上出现的特征：定级时别被一半门槛吞掉](12-nobuy-only-feature-level.md) 会改会话定级的规则，[差 tag 不看属性：属性对不上时仍显示 =](13-diff-tag-attributes.md) 会改差签的算法和会话单子里问到哪些正例。两张解决后，答案作为本技能的输入。
+- 2026-10-30 待并入的输入（两张票尚未解决）：[只在 negative sample 上出现的特征：定级时别被一半门槛吞掉](12-nobuy-only-feature-level.md) 会改会话定级的规则，[差 tag 不看属性：属性对不上时仍显示 =](13-diff-tag-attributes.md) 会改 `diff tag` 的算法和会话单子里问到哪些正例。两张解决后，答案作为本技能的输入。
