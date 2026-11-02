@@ -21,6 +21,92 @@ Keep the skills' investigation methods and decision evidence requirements.
 This is a scoped override for decision work; it does not govern implementation
 branches or worktrees.
 
+## Decision triage
+
+The user decides direction; they do not review details. Spend their attention
+only where a wrong choice would go unseen or would cost something scarce.
+Triage every question when charting, before creating a ticket and before
+claiming one: the class decides whether it becomes a ticket at all and how the
+user takes part.
+
+### Costly resources
+
+What is scarce, irreversible or slow to verify differs by project: a holdout
+dataset whose every look is counted, a training run or compute job that takes
+days, data the user produced by hand, anything published or deleted. When
+charting, settle this list with the user and record it in `map.md` Notes as one
+bullet starting `Costly resources:`; for a map without one, propose it before
+the next claim. Triage against this list. Never carry another project's list
+over.
+
+### Two questions
+
+1. **How would a wrong choice show up?** (a) directly, while using the product
+   or looking at a result; (b) only after spending a costly resource; (c) not
+   in normal use, because it silently makes results look better or consistent
+   (leakage, a metric or comparison computed wrong, a display reporting
+   agreement where there is none).
+2. **What does redoing it cost?** Agent time only; the user's own work (data
+   they produced, terms they learned, numbers they rely on elsewhere); or a
+   costly resource.
+
+### Classes
+
+| Class | Test | Treatment |
+| --- | --- | --- |
+| `direction` | Changes what the product is for or what counts as success; or a wrong choice shows up only as (c), or would waste an irreversible costly resource | Grilling ticket with the full claim, direction and approval round. The user settles the principle; the agent proposes how to enforce it as automated checks and confirms the enforcement with a few concrete "block this / allow this" cases, never by showing check code. |
+| `fact` | Has a findable answer: what existing code supports, what data or sources show | Research ticket worked by a subagent. The user sees a one-sentence conclusion; direction and answer may be approved in one question. |
+| `owned` | Shows up as (a), but redoing it touches the user's own work | No ticket. The agent decides and, before changing anything, tells the user what will change and what happens to their existing work. |
+| `detail` | Shows up as (a) and costs only agent time | No ticket. The agent picks a default, lists it in the spec as an agent default, and the user corrects it in use. |
+
+Record the class on each ticket as a `Class:` line followed by a few words of
+reason.
+
+**Costly to verify.** When a wrong choice would show up only as (b), classify
+it by the rest of the table (usually `detail` or `owned`; the user does not set
+parameters), but before the spend the agent adds the cheapest early signal that
+would expose the error (a small subset, a short or dry run, a sanity metric),
+and the spend itself is a stop point.
+
+### Stop points
+
+Outside `direction` tickets, the agent stops for the user only to change what
+the product is for, alter or delete the user's own work, or spend a listed
+costly resource (start a multi-day run, look at a holdout, publish). Before a
+spend, give a short brief: what will be spent, why the result can be trusted,
+and what each outcome means. Batch every other question into the next report,
+and give numeric settings a default marked as awaiting validation instead of
+asking.
+
+### Prototypes
+
+A prototype ticket answers one named `direction` question and stops once it is
+answered. Do not polish details on a prototype, least of all one running on mock
+data, and do not open tickets out of prototype polishing: the questions it
+raises are `detail` or `owned`. It has drifted when the user is renaming or
+rewording it, when it spawns new tickets, or when its terms grow faster than the
+user can absorb them.
+
+### Terms the user must learn
+
+A decision may add a term, state or switch the user has to learn only if it
+guards against a `direction`- or `owned`-class error; state in one sentence
+which error. Whatever else stays unexplained, the user must understand what
+their inputs mean and what the product's conclusions mean: misreading either
+lets everything run while leading to wrong decisions.
+
+### When to leave the map
+
+Test the riskiest assumption early: if it can only be tested by running the core
+path end to end, make that an early ticket (by hand, or as a prototype on real
+data) instead of specifying around it. Once no open question is `direction`,
+stop opening and claiming tickets and synthesize the spec
+([spec-synthesis.md](spec-synthesis.md)), listing the remaining `detail` and
+`owned` items there as agent defaults. When adopting this triage on an existing
+map, put the open tickets' classes to the user in one table; on approval,
+resolve the `detail` and `owned` tickets with the answer "agent default, adjust
+in use".
+
 ## Wayfinding operations
 
 Used by `/wayfinder`. The **map** is a file with one **child** file per ticket.
@@ -50,7 +136,7 @@ An effort's map, tickets and research all live under one directory:
   subsection (see **Ticket framing**). A `Type:`
   line records the ticket type (`research`/`prototype`/`grilling`/`task`),
   optionally suffixed `(HITL)` or `(AFK)` where the type alone doesn't settle
-  it. A `Status:` line records
+  it. A `Class:` line records its triage class (see **Decision triage**). A `Status:` line records
   `open`/`claimed`/`resolved`. A `Claimed:`
   line records the claim date as `YYYY-MM-DD`, optionally followed by a
   pointer to the session (a session id, a branch, a short note). It is added
@@ -106,7 +192,8 @@ An effort's map, tickets and research all live under one directory:
   way. The confirmed direction opens
   `## Answer`, so the approval covers it and later readers know which way the
   answer leaned. A session that finds the purpose itself wrong says so there,
-  with the reason, and never re-aims the ticket on its own.
+  with the reason, and never re-aims the ticket on its own. For a `fact` ticket the direction and
+  the answer may be settled in one question (see **Decision triage**).
 - Industry standards, research findings, and existing code are **soft priors
   or candidate implementations** by default, not business goals.
 - Before resolving a ticket, ask: **Would solving this perfectly materially
