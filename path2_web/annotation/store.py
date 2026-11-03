@@ -24,8 +24,9 @@
 每条操作(op)把一个对象改成新值:
 - ts、machine:同文件名里的时间戳与机器名(每条操作自带,单拿出来也说得清是谁、什么时候改的);
 - kind:feature(词)/ pattern / box(框)/ sample(样本);
-- id:对象编号。词、框、样本的编号是 `w-<机器名>-<n>`、`b-<机器名>-<n>`、`s-<机器名>-<n>`,n 取自这台机器的
-  计数器:三种对象共用一个,接在本机用过的最大号之后,删掉的对象的号也不再用。pattern 没有编号,用名字;
+- id:对象编号。词、框、样本的编号是 `w-<机器名>-<n>`、`b-<机器名>-<n>`、`s-<机器名>-<n>`。n 取自计数器:
+  三种对象、两台机器共用一个序列,接在全部文件里用过的最大号之后,删掉的对象的号也不再用;编号带机器名,
+  两台在同步前各自取号也不会撞。pattern 没有编号,用名字;
 - base:写这条操作时看到的这个对象的最后一次修改,写成 `<那个文件名去掉 .json>#<第几条,从 0 起>`;新建为 null;
 - value:改完后的整个对象;null 表示删除。
 
@@ -35,9 +36,11 @@
 重放与冲突
 ----------
 文件按(时间戳、机器名、序号)排序,文件内按操作先后,逐条把对象设成 value。某条操作的 base 不是这个对象
-当时的最后一次修改,说明写它的人没看到那次修改(两台机器同步前各改了一次,或界面打开后另一台的文件才同步到):
-照样后改的那次生效,同时记一条冲突,写明对象、两次修改各是哪台机器什么时候做的。冲突只由文件决定,
-任何机器重放出的冲突都一样;界面据它提示用户。
+当时的最后一次修改,说明写它的人没看到那次修改(两台机器同步前各改了一次,或读过标注之后另一台的文件才同步到):
+照样后改的那次生效,同时记一条冲突(conflicts),写明对象、两次修改各是哪台机器什么时候做的。冲突只由文件
+决定,任何机器重放出的冲突都一样;每条冲突以后一次修改的引用 later.ref 为准,前后两次读到的是同一条。
+base 指向的修改本机还没有(那个文件还没同步到)时,不算冲突、照样生效,记进 unsynced:同步完它就消失,
+到时如果真有冲突会出现在 conflicts 里。unsynced 为空,说明每条修改依据的文件本机都有。
 
 状态的形状(会话读的就是它)
 --------------------------
@@ -48,11 +51,12 @@
                  boxes:   [{id, feature, start, end, attrs?, note?, detach?, attach?}],
                  samples: [{id, date, pattern, judgment, members[], members_edited?, note?}]}]}
 
-- machine、data_fingerprint 是读的这台机器和它的训练段副本指纹(读不到为 null);
+- machine 是读的这台机器;data_fingerprint 是标注所依据的训练段副本指纹:全部批次记的都是同一个时取它,
+  批次之间不一致或还没有批次时为 null。拿它和本机副本的指纹比,就知道标注和眼下读的 K 线是不是同一份;
 - 日期一律是 YYYY-MM-DD 字符串,不存 K 线下标;框不存系统事件编号;
 - feature 是特征编号,框还没起名时为 null;attrs 是特征编号 → true / false,键不在就是 null(没看过);
 - pattern 为 null 表示 unsorted;members 是冻结后的成员框编号,读的人不用重算推断;
-- patterns[].flags 的形状 [{feature, mapping_row}] 留给第二段,这里只校验形状;
+- patterns[].flags 的形状是 [{feature, mapping_row}],本模块只校验形状、不解释它;
 - 词、pattern 按第一次出现的先后排;charts 按代码排,框按(起点、终点、编号),样本按(样本日、编号)。
 
 保存时的校验
@@ -61,7 +65,7 @@
 op 序号或样本、框编号):
 - bad_op:形状不对。每种对象的必填键、可选键、取值类型;日期必须是真实日期且不晚于训练段末日 TRAIN_END;
   删除或基于一个从没出现过的对象;
-- duplicate_op:一批里同一个对象出现了两次(界面把多次修改合成最后的值再送);
+- duplicate_op:一批里同一个对象出现了两次(多次修改要合成最后的值再送,否则后一条会和前一条记成冲突);
 - bad_new_id:没出现过的词、框、样本编号不带本机机器名;
 - id_taken:出现过的(含已删的)词、框、样本编号被当成新建(base 为 null)再用;
 - 因果(防依据里混进样本日当天还看不到的东西):
@@ -81,15 +85,15 @@ op 序号或样本、框编号):
 怎么用
 ------
 - 读(会话、GET /annotations 用的是同一个函数):`read_annotations(cfg)`,cfg 是 path2_web.config.load_config()
-  的结果。返回 {state, conflicts, violations, fingerprint, revs, next_seq, ignored_files};
+  的结果。返回 {state, conflicts, unsynced, violations, fingerprint, revs, next_seq, ignored_files};
   会话只要状态时取 `read_annotations(load_config())["state"]`。会话不写标注文件。
-- 写(只由界面经 POST /annotations/batch 调):`append_batch(cfg, ops)`,ops 是 [{kind, id, base, value}]。
+- 写(POST /annotations/batch 调它):`append_batch(cfg, ops)`,ops 是 [{kind, id, base, value}]。
   base 取读结果的 revs[kind][id](没有就是 null);新对象的编号用读结果的 next_seq 依次往上取。
 - 标注目录不存在时读写都报 AnnotationDirMissing,不自动创建:worktree 里少了指向主目录的软链时,
   自动建目录会把标注写进随 worktree 一起删掉的地方。
-- 文件名合格、内容读不懂的批次文件报 AnnotationFileError 并指出是哪个文件;文件名不合格的非隐藏文件
-  不参与重放,列在 ignored_files 里。
-- 每次读都把全部文件重放一遍;文件多到读得慢时再加缓存。
+- 文件名合格、内容读不懂的批次文件报 AnnotationFileError 并指出是哪个文件,整个读取失败:跳过它会让
+  状态缺一块,之后的修改又以缺了的状态为依据。文件名不合格的非隐藏文件不参与重放,列在 ignored_files 里。
+- 每次读都把全部文件重放一遍。
 """
 from __future__ import annotations
 
@@ -101,7 +105,7 @@ import threading
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from path2_web.config import annotation_dir, machine_name
+from path2_web.config import MACHINE_PATTERN, annotation_dir, machine_name, view_dataset_dir
 from path2_web.data import TRAIN_END, check_symbol
 from path2_web.snapshot_fingerprint import read_fingerprint
 
@@ -117,12 +121,11 @@ _VALUE_KEYS = {
     "sample": (("id", "symbol", "date", "pattern", "judgment", "members"), ("members_edited", "note")),
 }
 _ID_LETTER = {"feature": "w", "box": "b", "sample": "s"}       # 带机器名编号的三种对象
-_ID_RE = re.compile(r"([wbs])-([A-Za-z0-9_]+)-([1-9]\d*)")
-_FILE_RE = re.compile(r"([A-Za-z0-9_]+)-(\d{8}T\d{6}\.\d{3}Z)-([1-9]\d*)\.json")
+_ID_RE = re.compile(rf"([wbs])-({MACHINE_PATTERN})-([1-9]\d*)")
+_FILE_RE = re.compile(rf"({MACHINE_PATTERN})-(\d{{8}}T\d{{6}}\.\d{{3}}Z)-([1-9]\d*)\.json")
 _DATE_RE = re.compile(r"\d{4}-\d{2}-\d{2}")
 _OP_KEYS = ("kind", "id", "base", "value")                     # 界面送来的一条操作
 _STORED_OP_KEYS = ("ts", "machine", *_OP_KEYS)                 # 文件里的一条操作
-_REPO_ROOT = Path(__file__).resolve().parents[2]
 
 _write_lock = threading.Lock()     # 同一进程里两次保存不交错(读现状 → 校验 → 写文件)
 
@@ -157,10 +160,11 @@ class _Batch:
 @dataclass
 class _Replay:
     """重放的结果。values:(kind, id) → 当前值,None 为已删,键按第一次出现的先后;
-    last:(kind, id) → 最后一次修改 {ref, machine, ts};conflicts:按重放先后的冲突。"""
+    last:(kind, id) → 最后一次修改 {ref, machine, ts};conflicts、unsynced:按重放先后(模块说明「重放与冲突」)。"""
     values: dict = field(default_factory=dict)
     last: dict = field(default_factory=dict)
     conflicts: list = field(default_factory=list)
+    unsynced: list = field(default_factory=list)
 
 
 # ---------------------------------------------------------------- 读
@@ -168,15 +172,18 @@ class _Replay:
 def read_annotations(cfg: dict) -> dict:
     """重放标注目录里的全部批次文件,返回当前标注。会话和 GET /annotations 都经这一个函数读。
 
-    返回 {state, conflicts, violations, fingerprint, revs, next_seq, ignored_files}:
+    返回 {state, conflicts, unsynced, violations, fingerprint, revs, next_seq, ignored_files}:
     - state:模块说明「状态的形状」;
-    - conflicts:[{kind, id, base, later: {ref, machine, ts}, earlier: {ref, machine, ts} | null}],
-      later 是没看到 earlier 就改了同一对象的那次修改(它生效);earlier 为 null 表示 base 指的修改还没同步到;
+    - conflicts:[{kind, id, base, later: {ref, machine, ts}, earlier: {ref, machine, ts}}],
+      later 是没看到 earlier 就改了同一对象的那次修改(它生效);
+    - unsynced:[{kind, id, base, ref}],ref 这条修改依据的 base 本机还没有(那个文件还没同步到);
     - violations:当前状态里越过样本日、或不在这只股票上的成员框(两台机器的修改合起来造成的),格式同
       BatchRejected.reasons;
-    - fingerprint:{local, local_error, recorded: [{fingerprint, batches}], consistent};
-    - revs:{kind: {id: 最后一次修改的引用}},含已删的对象,界面写操作时取作 base;
-    - next_seq:本机下一个可用的编号序号;
+    - fingerprint:{local, local_error, recorded: [{fingerprint, batches}], consistent}。local 是本机副本的
+      指纹(读不到为 null,原因在 local_error);recorded 是各批记下的指纹及批数;有任何一批与本机不同,
+      或本机读不到,consistent 为 false;
+    - revs:{kind: {id: 最后一次修改的引用}},含已删的对象,写操作时取作 base;
+    - next_seq:下一个可用的编号序号;
     - ignored_files:文件名不合格、没参与重放的非隐藏文件。
 
     标注目录不存在 → AnnotationDirMissing;批次文件读不懂 → AnnotationFileError;机器名不合格 → ValueError。
@@ -191,9 +198,11 @@ def read_annotations(cfg: dict) -> dict:
     revs: dict = {kind: {} for kind in KINDS}
     for (kind, oid), last in r.last.items():
         revs[kind][oid] = last["ref"]
+    recorded = next(iter(counts)) if len(counts) == 1 else None
     return {
-        "state": _state(r.values, machine, local),
+        "state": _state(r.values, machine, recorded),
         "conflicts": r.conflicts,
+        "unsynced": r.unsynced,
         "violations": _causality(r.values, touched=None),
         "fingerprint": {
             "local": local,
@@ -203,7 +212,7 @@ def read_annotations(cfg: dict) -> dict:
             "consistent": local is not None and all(fp == local for fp in counts),
         },
         "revs": revs,
-        "next_seq": _max_own_seq(r.values, machine) + 1,
+        "next_seq": _max_seq(r.values) + 1,
         "ignored_files": ignored,
     }
 
@@ -261,14 +270,20 @@ def _parse_batch(path: Path, machine: str, ts: str, seq: int) -> _Batch:
 
 
 def _replay(batches: list[_Batch]) -> _Replay:
-    """按给定顺序(已按时间戳、机器名、序号排好)逐条重放;base 不是当时的最后一次修改 → 记冲突,照样生效。"""
+    """按给定顺序(已按时间戳、机器名、序号排好)逐条重放,每条都生效。base 指向本机没有的修改 → 记 unsynced;
+    否则 base 不是当时的最后一次修改 → 记冲突。
+
+    base 若在本机,一定已经重放过:写它的那台机器当时有 base 所在的文件,时间戳排在那个文件之后。"""
     r = _Replay()
+    present = {f"{b.stem}#{i}" for b in batches for i in range(len(b.ops))}
     for b in batches:
         for i, op in enumerate(b.ops):
             key = (op["kind"], op["id"])
             prev = r.last.get(key)
             this = {"ref": f"{b.stem}#{i}", "machine": b.machine, "ts": b.ts}
-            if op["base"] != (prev["ref"] if prev else None):
+            if op["base"] is not None and op["base"] not in present:
+                r.unsynced.append({"kind": key[0], "id": key[1], "base": op["base"], "ref": this["ref"]})
+            elif op["base"] != (prev["ref"] if prev else None):
                 r.conflicts.append({"kind": key[0], "id": key[1], "base": op["base"],
                                     "later": this, "earlier": prev})
             r.values[key] = op["value"]
@@ -276,7 +291,7 @@ def _replay(batches: list[_Batch]) -> _Replay:
     return r
 
 
-def _state(values: dict, machine: str, local_fingerprint: str | None) -> dict:
+def _state(values: dict, machine: str, data_fingerprint: str | None) -> dict:
     """把重放出的对象排成「状态的形状」(模块说明)。"""
     features, patterns, charts = [], [], {}
     for (kind, _), v in values.items():
@@ -292,7 +307,7 @@ def _state(values: dict, machine: str, local_fingerprint: str | None) -> dict:
     for chart in charts.values():
         chart["boxes"].sort(key=lambda b: (b["start"], b["end"], b["id"]))
         chart["samples"].sort(key=lambda s: (s["date"], s["id"]))
-    return {"machine": machine, "data_fingerprint": local_fingerprint,
+    return {"machine": machine, "data_fingerprint": data_fingerprint,
             "features": features, "patterns": patterns, "charts": [charts[s] for s in sorted(charts)]}
 
 
@@ -302,22 +317,17 @@ def _ordered(kind: str, v: dict) -> dict:
     return {k: v[k] for k in (*required, *optional) if k in v and k != "symbol"}
 
 
-def _max_own_seq(values: dict, machine: str) -> int:
-    """本机用过的最大编号序号(含已删的对象),没有为 0。"""
-    seqs = [int(m.group(3)) for kind, oid in values
-            if kind in _ID_LETTER and (m := _ID_RE.fullmatch(oid)) and m.group(2) == machine]
-    return max(seqs, default=0)
+def _max_seq(values: dict) -> int:
+    """全部文件里用过的最大编号序号(两台机器、含已删的对象),没有为 0。"""
+    return max((int(_ID_RE.fullmatch(oid).group(3)) for kind, oid in values if kind in _ID_LETTER), default=0)
 
 
 def _local_fingerprint(cfg: dict) -> tuple[str | None, str | None]:
     """本机训练段副本的指纹:(指纹, None),读不到时 (None, 原因)。副本目录取配置的 view_dataset_dir。"""
-    raw = cfg.get("view_dataset_dir")
-    if not raw:
+    if not cfg.get("view_dataset_dir"):
         return None, "配置里没有 view_dataset_dir"
-    d = Path(raw)
-    d = d if d.is_absolute() else _REPO_ROOT / d
     try:
-        return read_fingerprint(d), None
+        return read_fingerprint(view_dataset_dir(cfg)), None
     except (OSError, ValueError) as e:      # 没有清单(ManifestMissing)、读不了、格式不对
         return None, str(e)
 
@@ -351,6 +361,7 @@ def append_batch(cfg: dict, ops, *, now: dt.datetime | None = None) -> str:
 
 
 def _reason(code: str, message: str, **context) -> dict:
+    """一条拒绝原因:{code, message, 涉及的 op 序号或样本、框编号}。"""
     return {"code": code, "message": message, **context}
 
 
@@ -526,10 +537,12 @@ def _value_problems(kind: str, oid: str, v: dict) -> list[str]:
 
 
 def _nonempty(x) -> bool:
+    """是非空字符串。"""
     return isinstance(x, str) and x != ""
 
 
 def _check_symbol(symbol, bad) -> None:
+    """代码名格式(path2_web.data.check_symbol,只查格式、不读行情);不合格经 bad 报问题。"""
     try:
         check_symbol(symbol)
     except ValueError as e:

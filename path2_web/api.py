@@ -30,8 +30,8 @@ from path2_web.diagnose import diagnose_symbol, derive_response, Query
 from path2_web.gate_collector import attach_and_collect, detach
 from path2_web.serialize import serialize_pattern
 from path2_web.annotation import store as annotation_store
+from path2_web.config import view_dataset_dir
 
-_REPO_ROOT = Path(__file__).resolve().parents[1]
 _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 
@@ -67,8 +67,7 @@ _SCAN_NAME_RE = re.compile(r"^(?!\.)[\w\-.]+$", re.UNICODE)
 
 def _data_dir(cfg: dict) -> Path:
     """网页读行情的目录:配置的 view_dataset_dir(相对路径按 repo root 解析);目录不存在 → 503。"""
-    d = Path(cfg["view_dataset_dir"])
-    d = d if d.is_absolute() else _REPO_ROOT / d
+    d = view_dataset_dir(cfg)
     if not d.is_dir():
         raise HTTPException(503, f"行情目录不存在: {d}(用 scripts/data/make_train_snapshot.py 生成)")
     return d

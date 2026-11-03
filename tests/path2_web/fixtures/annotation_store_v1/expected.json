@@ -41,6 +41,7 @@
    "earlier": {"ref": "upc-20261103T091000.000Z-1#3", "machine": "upc", "ts": "20261103T091000.000Z"}
   }
  ],
+ "unsynced": [],
  "violations": [],
  "next_seq": 8,
  "recorded_fingerprints": [

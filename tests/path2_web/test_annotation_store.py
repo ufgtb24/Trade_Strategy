@@ -5,10 +5,12 @@
 - 两台各自新建的对象不撞号;重放以后,新编号接在本机最大序号之后(删掉的号也不复用);
 - 任何一次保存都只新增一个文件,已有文件的内容哈希不变;没通过的保存一个文件都不写;
 - 同一个对象被两台机器在同步前各改一次:后改的那次生效,冲突被记下、说得清是哪个对象;
+  只同步到一半(某条修改依据的文件还没到)时不报假冲突,记成 unsynced,同步完就消失;
 - 写的人看到过的修改一定排在它前面(两台机器的钟不准也一样);
 - 两种因果违规(成员框终点晚于样本日、改框起止越过所属样本的样本日)被拒绝并报出原因;
   四种正常操作(不越界地改框起止、删样本、改名、合并)照常通过;
-- 指纹对不上(或本机读不到指纹)时,读结果标出不符,状态照常返回;
+- 指纹对不上(或本机读不到指纹)时,读结果标出不符,状态照常返回;状态里的 data_fingerprint 是标注所依据的
+  指纹(各批一致时),不是本机的;
 - 旧文件读出来逐条不变:fixtures/annotation_store_v1 是一组固定的批次文件,重放结果必须与同目录
   expected.json 逐条一致。以后改格式时这组文件和期望都不许改,新版要原样读出它们(spec 4.5)。
 """
@@ -116,6 +118,7 @@ def test_golden_v1_replays_to_fixed_state():
     expected = json.loads((FIXTURE / "expected.json").read_text(encoding="utf-8"))
     assert got["state"] == expected["state"]
     assert got["conflicts"] == expected["conflicts"]
+    assert got["unsynced"] == expected["unsynced"]
     assert got["violations"] == expected["violations"]
     assert got["next_seq"] == expected["next_seq"]
     assert got["fingerprint"]["recorded"] == expected["recorded_fingerprints"]
@@ -249,6 +252,26 @@ def test_concurrent_edits_later_wins_and_conflict_is_reported(tmp_path, pc_time,
         assert (conflict["kind"], conflict["id"], conflict["base"]) == ("box", "b-pc-1", base)
         loser = "pc" if winner == "upc" else "upc"
         assert (conflict["later"]["machine"], conflict["earlier"]["machine"]) == (winner, loser)
+
+
+def test_half_synced_edit_is_unsynced_not_a_conflict(tmp_path):
+    """upc 连改两次;pc 先只收到第二次的文件:不报冲突,记成 unsynced;第一次的文件到了以后两者都为空。"""
+    pc_dir, upc_dir = _adir(tmp_path, "pc"), _adir(tmp_path, "upc")
+    pc, upc = _cfg(pc_dir, "pc"), _cfg(upc_dir, "upc")
+    store.append_batch(pc, [_box("b-pc-1", "2024-03-01", "2024-03-05")], now=_at(9))
+    _sync(pc_dir, upc_dir)
+    first = store.append_batch(upc, [_box("b-pc-1", "2024-03-01", "2024-03-04", base=_rev(upc, "box", "b-pc-1"))],
+                               now=_at(9, 10))
+    second = store.append_batch(upc, [_box("b-pc-1", "2024-03-01", "2024-03-03", base=_rev(upc, "box", "b-pc-1"))],
+                                now=_at(9, 20))
+    shutil.copy2(upc_dir / second, pc_dir / second)
+    half = store.read_annotations(pc)
+    assert half["conflicts"] == []
+    assert half["unsynced"] == [{"kind": "box", "id": "b-pc-1", "base": f"{first[:-5]}#0", "ref": f"{second[:-5]}#0"}]
+    _sync(pc_dir, upc_dir)
+    full = store.read_annotations(pc)
+    assert full["conflicts"] == [] and full["unsynced"] == []
+    assert _boxes(pc)["b-pc-1"]["end"] == "2024-03-03"
 
 
 def test_edit_based_on_seen_change_is_ordered_after_it_despite_clock_skew(tmp_path):
@@ -388,6 +411,7 @@ def test_fingerprint_mismatch_is_flagged_and_state_still_returned(tmp_path):
     assert other["fingerprint"]["consistent"] is False
     assert other["fingerprint"]["local"] == fp_b
     assert other["fingerprint"]["recorded"] == [{"fingerprint": fp_a, "batches": 1}]
+    assert other["state"]["data_fingerprint"] == fp_a           # 标注依据的是 A,不是本机的 B
     assert other["state"]["charts"] == same["state"]["charts"]
 
     no_manifest = tmp_path / "snap_c"
