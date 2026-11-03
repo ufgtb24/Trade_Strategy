@@ -30,6 +30,7 @@ from path2_web.config import finder_settings, train_segment
 from path2_web.data import TRAIN_END, list_symbols, read_bars, serialize_ohlc, slice_window
 from path2_web.diagnose import diagnose_symbol, derive_response, Query
 from path2_web.finder import Finder, random_window
+from path2_web.peaks import peak_lines
 from path2_web.snapshot_fingerprint import ManifestMissing
 from path2_web.gate_collector import attach_and_collect, detach
 from path2_web.serialize import serialize_pattern
@@ -296,6 +297,15 @@ def build_router(*, registry, config_path, get_config, set_config,
     def get_symbols():
         """股票列表:训练段副本里有的股票代码(data.list_symbols),按字母序。"""
         return list_symbols(_data_dir(get_config()))
+
+    @router.get("/peaks")
+    def get_peaks(symbol: str):
+        """参照层 peaks:这只股票截到训练段末日的行情里 bo 检测产出的峰,[{date, price, end}](path2_web/peaks.py)。
+        代码名不合格 → 400;没有这只股票、或截完一根不剩 → 404(同 /ohlc 不给区间)。"""
+        df = _bars(get_config(), symbol)
+        if len(df) == 0:
+            raise HTTPException(404, f"{symbol} 在训练段末日 {TRAIN_END} 及以前没有行情")
+        return peak_lines(df)
 
     @router.get("/config")
     def read_config():
