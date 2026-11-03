@@ -1,7 +1,8 @@
 # 参照层 `peaks`（M8）
 
 Status: ready-for-agent
-Progress: not-started
+Progress: in-progress
+Claimed: 2026-11-03 parallel-tickets ticket-10 @ worktree impl/10-peaks-reference-layer
 Blocked by: 04
 
 ## Purpose
