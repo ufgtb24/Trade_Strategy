@@ -1,12 +1,12 @@
-"""框套框、样本成员、骨架、空槽的参照实现(path2_web/annotation/membership.py)。
+"""框套框、成员框、骨架、成员链空槽的参照实现(path2_web/annotation/membership.py)。
 
 钉住的要求:
-- 参照实现逐例给出 fixtures/membership_examples.json 里写好的答案。这份文件是 Python 与前端两份实现共用的
-  唯一事实来源,本测试只从它读答案,不另抄;
-- 例子覆盖票面列的全部情形:默认归属到包住它的框里最短的那个;detach 和 attach 互斥;按 GAP 链式扩展到
-  不再新增;被成员包住的框、attach 到成员上的框都带进来;跨过样本日的框收不进、空槽原因分得清;手动进出覆盖
-  自动推断;骨架只取顶层特征、子框和属性不进;顶层同名框标 dup;
-- 会话读标注时,存储重放出的状态原样喂给参照实现就能算出骨架与空槽。
+- 参照实现逐例给出 fixtures/membership_examples.json 里写好的答案。这份文件是参照实现与任何另写的实现
+  (比如前端本地算的)共用的唯一事实来源,本测试只从它读答案,不另抄;
+- 例子至少覆盖这些情形:默认归属到包住它的框里最短的那个;detach 和 attach 互斥;按 GAP 链式扩展到不再新增;
+  被成员框包住的框、attach 到成员框上的框都带进来;跨过样本日的框收不进成员框,空槽的两种原因分得清;
+  手动点进点出覆盖自动推断;骨架只取顶层框的特征的先后,子框和属性不进;顶层有两段同一特征时标 dup;
+- 会话读标注时,把存储重放出的状态原样交给参照实现,就能算出骨架与空槽。
 """
 from __future__ import annotations
 
@@ -24,27 +24,32 @@ DAYS = EXAMPLES["days"]
 GAP, NEAR = EXAMPLES["params"]["gap"], EXAMPLES["params"]["near"]
 CASES = EXAMPLES["cases"]
 
-# 票面要求例子至少覆盖的情形(covers 里的标记)
+# 例子至少要覆盖的情形(例子 covers 里的标记)
 REQUIRED_COVERS = {
     "nest_default_shortest",        # 默认归属到包住它的框里最短的那个
     "attach_detach_exclusive",      # detach 和 attach 互斥
     "gap_chain",                    # 按 GAP 链式扩展,直到不再新增
-    "contained_and_attached_join",  # 被成员包住的框、attach 到成员上的框都带进来
-    "crosses_sample_date",          # 跨过样本日的框收不进,空槽的原因分得清
-    "manual_overrides",             # 手动进出覆盖自动推断
-    "skeleton_top_level_only",      # 骨架只取顶层特征名的先后,子框和属性不进骨架
-    "dup",                          # 同名框标出 dup
+    "contained_and_attached_join",  # 被成员框包住的框、attach 到成员框上的框都带进来
+    "crosses_sample_date",          # 跨过样本日的框收不进成员框,空槽的原因分得清
+    "manual_overrides",             # 手动点进点出覆盖自动推断
+    "skeleton_top_level_only",      # 骨架只取顶层框的特征的先后,子框和属性不进骨架
+    "dup",                          # 顶层有两段同一特征时标出 dup
 }
 _DATE_KEYS = ("start", "end", "date")
 
 
+def _map_positions(x, f):
+    """把例子里写成 days 下标的 start / end / date 逐个交给 f,换成 f 的返回值;其余原样。"""
+    if isinstance(x, list):
+        return [_map_positions(v, f) for v in x]
+    if isinstance(x, dict):
+        return {k: f(v) if k in _DATE_KEYS and isinstance(v, int) else _map_positions(v, f) for k, v in x.items()}
+    return x
+
+
 def _dated(x):
     """把例子里写成 days 下标的 start / end / date 换成日期(例子文件 about 里的约定)。"""
-    if isinstance(x, list):
-        return [_dated(v) for v in x]
-    if isinstance(x, dict):
-        return {k: DAYS[v] if k in _DATE_KEYS and isinstance(v, int) else _dated(v) for k, v in x.items()}
-    return x
+    return _map_positions(x, DAYS.__getitem__)
 
 
 def _run(case: dict):
@@ -75,7 +80,7 @@ def test_example(case):
 
 
 def test_examples_cover_required_cases_and_are_well_formed():
-    """例子覆盖票面列的全部情形;每例名字不重复、写了为什么、只有 expect 与 expect_error 之一;
+    """例子覆盖 REQUIRED_COVERS 的全部情形;每例的 name 不重复、写了为什么、只有 expect 与 expect_error 之一;
     下标都落在 days 里,days 升序且不重复。"""
     names = [c["name"] for c in CASES]
     assert len(names) == len(set(names))
@@ -85,26 +90,14 @@ def test_examples_cover_required_cases_and_are_well_formed():
         assert ("expect" in c) != ("expect_error" in c), c["name"]
     assert DAYS == sorted(set(DAYS))
     positions = []
-
-    def walk(x):
-        if isinstance(x, list):
-            for v in x:
-                walk(v)
-        elif isinstance(x, dict):
-            for k, v in x.items():
-                if k in _DATE_KEYS and isinstance(v, int):
-                    positions.append(v)
-                else:
-                    walk(v)
-
-    walk(CASES)
+    _map_positions(CASES, positions.append)
     assert positions and all(0 <= p < len(DAYS) for p in positions)
 
 
 def test_session_reads_replayed_state_as_is():
-    """会话的读法:存储重放出的状态(fixtures/annotation_store_v1/expected.json,即 02 的固定例子的重放结果)
-    原样喂给参照实现。AAPL 的样本 s-pc-6 收了 b-pc-3(放量突破)和 b-pc-4(回踩),两者互不包住,骨架是两段;
-    同名的 b-pc-7 在样本日之前结束、没被收,留一个画了没收的空槽。days 用这段时间的工作日。"""
+    """会话的读法:存储重放出的状态(fixtures/annotation_store_v1/expected.json,存储测试钉住的固定重放结果)
+    原样交给参照实现。AAPL 的样本 s-pc-6 收了 b-pc-3(特征 w-pc-1)和 b-pc-4(特征 w-pc-2),两者互不包住,
+    骨架是两段;同为 w-pc-1 的 b-pc-7 在样本日之前结束、没被收,留一个画了没收的空槽。days 用这段时间的工作日。"""
     state = json.loads((FIXTURES / "annotation_store_v1" / "expected.json").read_text(encoding="utf-8"))["state"]
     aapl = next(c for c in state["charts"] if c["symbol"] == "AAPL")
     sample = aapl["samples"][0]

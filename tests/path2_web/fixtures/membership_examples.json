@@ -1,12 +1,12 @@
 {
  "about": [
-  "框套框、样本成员、骨架、空槽的带答案例子:Python 参照实现(path2_web/annotation/membership.py)和前端实现共用,这份文件是唯一的事实来源,测试从这里读,不另抄答案。",
+  "框套框、成员框、骨架、成员链空槽的带答案例子。Python 参照实现(path2_web/annotation/membership.py)和任何另写的实现(比如前端本地算的)都要逐例通过;这份文件是唯一的事实来源,测试从这里读,不另抄答案。",
   "params:算这些答案用的 gap、near。它们不是默认值;默认值改了,这里不用改。",
   "days:例子共用的交易日(含美股休市日的空缺)。例子里框的 start、end 和样本的 date 写成 days 的下标,调用实现前换成 days[下标] 这个日期;GAP、NEAR 数的是 K 线根数,不是天数。",
   "框的 feature 是特征编号,这里直接用词当编号,方便读;编号按字符串比。",
   "cases:每例有 name、covers(覆盖哪条要求)、why(为什么是这个答案)、fn、参数,以及 expect(期望结果)或 expect_error(期望报错的 code)。",
   "fn = parents:参数 boxes;expect 是 框编号 → 所属框编号或 null。对应 parents(boxes, days)。",
-  "fn = members:参数 date、boxes,可选 stored(存下的成员;没有表示新放的样本)、new_boxes(它是当前样本期间新画的框)、manual(框编号 → true 收进 / false 拿掉);expect 是成员框编号,按框的先后排。对应 sample_members(date, boxes, days, stored=, new_boxes=, manual=, gap=)。",
+  "fn = members:参数 date、boxes,可选 stored(存下的成员框;没有表示新放的样本)、new_boxes(它是当前样本期间新画的框)、manual(框编号 → true 收进 / false 拿掉);expect 是成员框编号,按框的先后排。对应 sample_members(date, boxes, days, stored=, new_boxes=, manual=, gap=)。",
   "fn = tree:参数 members、boxes;expect 是 {tree: [{box, kids}], skeleton: [特征编号或 null], dup: [特征编号]}。对应 member_tree、skeleton、dup_features(members, boxes, days)。",
   "fn = slots:参数 charts(状态里的 charts 形状)、symbol、sample;expect 是 [{box, feature, reason}],按框的先后排。对应 empty_slots(charts, symbol, sample, days, near=)。",
   "框的先后:起点早的在前,同起点长的在前,再按编号。"
@@ -114,7 +114,7 @@
    "name": "nothing_within_gap",
    "covers": ["gap_chain"],
    "fn": "members",
-   "why": "样本日 60 往前 20 根是 40,b1 终点 39 差一根;b2 在样本日之后。没有成员。",
+   "why": "样本日 60 往前 20 根是 40,b1 终点 39 差一根;b2 在样本日之后。没有成员框。",
    "date": 60,
    "boxes": [
     {"id": "b1", "feature": "横盘", "start": 20, "end": 39},
@@ -126,7 +126,7 @@
    "name": "contained_and_attached_join",
    "covers": ["contained_and_attached_join"],
    "fn": "members",
-   "why": "b1 先收进;被 b1 包住的 b2、点了 detach 的 b4(detach 只管属不属于 b1,不管是不是成员)、attach 到 b1 的 b3 都跟着进来;边界到 50,b5 终点 15 < 50 − 20,不收。",
+   "why": "b1 先收进;被 b1 包住的 b2、点了 detach 的 b4(detach 只管属不属于 b1,不管是不是成员框)、attach 到 b1 的 b3 都跟着进来;边界到 50,b5 终点 15 < 50 − 20,不收。",
    "date": 100,
    "boxes": [
     {"id": "b1", "feature": "横盘", "start": 60, "end": 95},
@@ -141,7 +141,7 @@
    "name": "stale_attach_does_not_join",
    "covers": ["contained_and_attached_join", "stale_attach"],
    "fn": "members",
-   "why": "b2 attach 到成员 b1,但两者已经不交叠,attach 不算数;b2 终点 40 < 80 − 20,不收。",
+   "why": "b2 attach 到成员框 b1,但两者已经不交叠,attach 不算数;b2 终点 40 < 80 − 20,不收。",
    "date": 100,
    "boxes": [
     {"id": "b1", "feature": "回踩", "start": 80, "end": 95},
@@ -167,7 +167,7 @@
    "name": "manual_in_and_out_win",
    "covers": ["manual_overrides", "crosses_sample_date"],
    "fn": "members",
-   "why": "推断的成员是 b1、b2(b2 靠 b1 接上)。手动拿掉 b1 只拿掉 b1,b2 照样在;手动收进离得远的 b3 就在;b4 跨过样本日,手动也收不进。",
+   "why": "推断的成员框是 b1、b2(b2 靠 b1 接上)。手动拿掉 b1 只拿掉 b1,b2 照样在;手动收进离得远的 b3 就在;b4 跨过样本日,手动也收不进。",
    "date": 100,
    "boxes": [
     {"id": "b1", "feature": "回踩", "start": 85, "end": 95},
@@ -182,7 +182,7 @@
    "name": "current_sample_grows_with_new_boxes",
    "covers": ["current_and_frozen", "manual_overrides"],
    "fn": "members",
-   "why": "存下的成员 b1 就是冻结的那份。它是当前样本期间新画了 b5、b6、b8:推断会收的 b5 并进来;b6 离得远,推断不收;b8 推断会收,但手动拿掉了,手动算数。旧框 b2 推断会收,但不是新画的,不再并进。",
+   "why": "存下的成员框 b1 就是冻结的那份。它是当前样本期间新画了 b5、b6、b8:推断会收的 b5 并进来;b6 离得远,推断不收;b8 推断会收,但手动拿掉了,手动算数。旧框 b2 推断会收,但不是新画的,不再并进。",
    "date": 100,
    "boxes": [
     {"id": "b1", "feature": "回踩", "start": 85, "end": 95},
@@ -200,7 +200,7 @@
    "name": "frozen_sample_keeps_its_members",
    "covers": ["current_and_frozen", "crosses_sample_date"],
    "fn": "members",
-   "why": "不是当前样本时,成员就是存下的那份:离得远的 b9 照样在(只加不踢),推断会收的 b2 不进;存下的 b7 后来跨过了样本日(比如两台机器的修改合在一起),不再算成员;b404 不在这张图上,不算。",
+   "why": "不是当前样本时,成员框就是存下的那份:离得远的 b9 照样在(只加不踢),推断会收的 b2 不进;存下的 b7 后来跨过了样本日(比如两台机器的修改合在一起),不再算成员框;b404 不在这张图上,不算。",
    "date": 100,
    "boxes": [
     {"id": "b1", "feature": "回踩", "start": 85, "end": 95},
@@ -215,7 +215,7 @@
    "name": "skeleton_is_top_level_names",
    "covers": ["skeleton_top_level_only"],
    "fn": "tree",
-   "why": "b2 在 b1 里、b3 在 b2 里,都是子框,不进骨架;属性也不进。b6 包住全部,但它不是成员,不参与成员之间的归属,b1 仍是顶层。",
+   "why": "b2 在 b1 里、b3 在 b2 里,都是子框,不进骨架;属性也不进。b6 包住全部,但它不是成员框,不参与成员框之间的归属,b1 仍是顶层。",
    "members": ["b1", "b2", "b3", "b4", "b5"],
    "boxes": [
     {"id": "b1", "feature": "横盘", "start": 10, "end": 40, "attrs": {"放量": false}},
@@ -231,7 +231,7 @@
    "name": "dup_only_on_top_level",
    "covers": ["dup"],
    "fn": "tree",
-   "why": "顶层有两段回踩(b1、b3),标 dup;b4 回踩是 b3 的子框,b6 缩量是 b5 的子框,子框同名不算 dup。",
+   "why": "顶层有两段回踩(b1、b3),标 dup;b4 回踩是 b3 的子框,b6 缩量是 b5 的子框,子框和顶层是同一特征不算 dup。",
    "members": ["b1", "b2", "b3", "b4", "b5", "b6"],
    "boxes": [
     {"id": "b1", "feature": "回踩", "start": 10, "end": 20},
@@ -247,7 +247,7 @@
    "name": "tree_with_detach_and_attach",
    "covers": ["attach_detach_exclusive", "skeleton_top_level_only"],
    "fn": "tree",
-   "why": "b2 点了 detach,成了顶层,进骨架;b3 attach 到 b1,是 b1 的子框;b5 attach 的 b9 不是成员,照默认归包住它的 b1;b4 在 b2 和 b1 里,归短的 b2。",
+   "why": "b2 点了 detach,成了顶层,进骨架;b3 attach 到 b1,是 b1 的子框;b5 attach 的 b9 不是成员框,照默认归包住它的 b1;b4 在 b2 和 b1 里,归短的 b2。",
    "members": ["b1", "b2", "b3", "b4", "b5"],
    "boxes": [
     {"id": "b1", "feature": "横盘", "start": 10, "end": 40},
@@ -263,7 +263,7 @@
    "name": "unnamed_boxes",
    "covers": ["skeleton_top_level_only", "dup"],
    "fn": "tree",
-   "why": "没起名的框在骨架里记 null;两个没起名的不算 dup。",
+   "why": "还没标特征的框在骨架里记 null;两个还没标特征的框不算 dup。",
    "members": ["b1", "b2", "b3"],
    "boxes": [
     {"id": "b1", "feature": null, "start": 10, "end": 20},
@@ -276,7 +276,7 @@
    "name": "slot_reasons",
    "covers": ["crosses_sample_date"],
    "fn": "slots",
-   "why": "s1 的范围起点是 60,往前 40 根到 20:b3 终点正好 20,算画了没收;b4 终点 19 差一根。b10 在范围里却没收(比如手动拿掉了),也算。b5 突破只在另一张图 BBB 的同一 pattern 里用过,它跨过了样本日,原因是 crosses_sample_date。不留空槽的:b6 缩量只在别的 pattern 用过;b7、b11 是同一张图、同一 pattern 别的样本的成员;b8 整段在样本日之后;b9 没起名。",
+   "why": "s1 的范围起点是 60,往前 40 根到 20:b3 终点正好 20,算画了没收;b4 终点 19 差一根。b10 在范围里却没收(比如手动拿掉了),也算。b5 突破只在另一张图 BBB 的同一 pattern 里出现过,它跨过了样本日,原因是 crosses_sample_date。不留空槽的:b6 缩量只在别的 pattern 出现过;b7、b11 是同一张图、同一 pattern 别的样本的成员框;b8 整段在样本日之后;b9 还没标特征。",
    "charts": [
     {"symbol": "AAA",
      "boxes": [
@@ -312,10 +312,37 @@
    "expect": [{"box": "b3", "feature": "横盘", "reason": "unclaimed"}, {"box": "b10", "feature": "横盘", "reason": "unclaimed"}, {"box": "b5", "feature": "突破", "reason": "crosses_sample_date"}]
   },
   {
+   "name": "stored_member_now_crossing",
+   "covers": ["crosses_sample_date"],
+   "fn": "slots",
+   "why": "s1 存下的成员框 b1 后来跨过了样本日(比如两台机器的修改合在一起),不再算成员框:它的特征横盘在同一 pattern(BBB 上的 t1)里出现过,于是留一个 crosses_sample_date 空槽;样本范围起点按剩下的成员框 b2 算是 90,往前 40 根到 50,b3 终点 30 太远,不留空槽。",
+   "charts": [
+    {"symbol": "AAA",
+     "boxes": [
+      {"id": "b1", "feature": "横盘", "start": 10, "end": 105},
+      {"id": "b2", "feature": "回踩", "start": 90, "end": 95},
+      {"id": "b3", "feature": "横盘", "start": 20, "end": 30}
+     ],
+     "samples": [
+      {"id": "s1", "date": 100, "pattern": "P", "judgment": "pos", "members": ["b1", "b2"]}
+     ]},
+    {"symbol": "BBB",
+     "boxes": [
+      {"id": "c1", "feature": "横盘", "start": 10, "end": 20}
+     ],
+     "samples": [
+      {"id": "t1", "date": 25, "pattern": "P", "judgment": "pos", "members": ["c1"]}
+     ]}
+   ],
+   "symbol": "AAA",
+   "sample": "s1",
+   "expect": [{"box": "b1", "feature": "横盘", "reason": "crosses_sample_date"}]
+  },
+  {
    "name": "unsorted_is_its_own_group",
    "covers": ["unsorted_slots"],
    "fn": "slots",
-   "why": "unsorted 的样本自成一组:横盘在 unsorted 样本的成员里用过,b2 留空槽;回踩只在 pattern P 里用过,b3 不留。",
+   "why": "unsorted 的样本自成一组:横盘在 unsorted 样本的成员框里出现过,b2 留空槽;回踩只在 pattern P 里出现过,b3 不留。",
    "charts": [
     {"symbol": "AAA",
      "boxes": [
