@@ -2,15 +2,16 @@
   <div ref="root" class="pattern-picker" :data-testid="tid">
     <button type="button" class="cur" :data-testid="`${tid}-button`" :aria-expanded="open"
             :title="pending ? 'pick the pattern it looks like' : title" @click="toggle">
-      <span v-if="pending" class="ann-nil">pattern?</span>
+      <span v-if="move" class="ann-sym">move</span>
+      <span v-else-if="pending" class="ann-nil">pattern?</span>
       <span v-else-if="value === null" class="ann-sym">unsorted</span>
       <span v-else class="ann-biz">{{ value }}</span>
       <span class="ann-sym caret">▾</span>
     </button>
-    <div v-if="open" class="menu" :data-testid="`${tid}-menu`">
-      <button v-for="p in names" :key="p" type="button" :class="['opt', { on: p === value }]"
+    <div v-if="open" :class="['menu', { end: move }]" :data-testid="`${tid}-menu`">
+      <button v-for="p in names" :key="p" type="button" :class="['opt', { on: !move && p === value }]"
               :data-testid="`${tid}-option`" :data-name="p" @click="pick(p)"><span class="ann-biz">{{ p }}</span></button>
-      <button type="button" :class="['opt', { on: value === null && !pending }]" :data-testid="`${tid}-unsorted`"
+      <button v-if="!move" type="button" :class="['opt', { on: value === null && !pending }]" :data-testid="`${tid}-unsorted`"
               title="unsorted: pattern not chosen yet; n = unsorted samples on all charts" @click="pick(null)">
         <span class="ann-sym">unsorted · {{ unsorted }}</span>
       </button>
@@ -28,21 +29,22 @@
 
 <script setup lang="ts">
 /**
- * 选 pattern 的下拉:顶栏的当前 pattern 和样本页的 pattern 一格共用。
+ * 选 pattern 的下拉:顶栏的当前 pattern、样本页的 pattern 一格、unsorted 页每行的 move 共用。
  * - 列出已有的 pattern(名字是用户写的内容:正常字体、浅灰底)、unsorted · n(全部图上 unsorted 的样本数)、+ new;
  * - + new 变成一个输入框,回车用这个名字(已有同名的就是选它);
- * - pending:负样本挂在 unsorted 时显示灰字 pattern?(它的「像」还没有对象,算没填完)。
+ * - pending:负样本挂在 unsorted 时显示灰字 pattern?(它的「像」还没有对象,算没填完);
+ * - move:按钮写 move,下拉里只列 value 以外的 pattern 和 + new(挪去哪),不列 unsorted。
  * 选中后发出 pick(名字,unsorted 为 null)。
  */
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useAnnotationStore } from '../stores/annotation'
 import { unsortedCount } from '../annotate/samples'
 
-const props = defineProps<{ value: string | null; tid: string; title: string; pending?: boolean }>()
+const props = defineProps<{ value: string | null; tid: string; title: string; pending?: boolean; move?: boolean }>()
 const emit = defineEmits<{ pick: [name: string | null] }>()
 
 const ann = useAnnotationStore()
-const names = computed(() => (ann.state?.patterns ?? []).map(p => p.name))
+const names = computed(() => (ann.state?.patterns ?? []).map(p => p.name).filter(p => !props.move || p !== props.value))
 const unsorted = computed(() => (ann.state ? unsortedCount(ann.state.charts) : 0))
 
 const root = ref<HTMLElement | null>(null)
@@ -95,6 +97,8 @@ onBeforeUnmount(() => document.removeEventListener('mousedown', onDocDown, true)
   display: flex; flex-direction: column; gap: 2px; padding: 4px;
   background: #fff; border: 1px solid var(--ink); border-radius: 4px;
 }
+/* move 按钮在侧栏右边:下拉向左展开,不出侧栏 */
+.menu.end { left: auto; right: 0; }
 .opt {
   display: flex; align-items: center; padding: 1px 4px; border: 1px solid transparent; border-radius: 3px;
   background: #fff; cursor: pointer; text-align: left;

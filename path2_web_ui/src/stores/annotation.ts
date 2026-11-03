@@ -21,6 +21,11 @@
  *   本页还记住点过的,当前样本重算推断时不会把点掉的框又收回来。跨过样本日的框收不进。
  * - 当前 pattern(顶栏 pattern 一格)记在浏览器里,刷新后还在;null 为 unsorted。
  *
+ * 归组与 pattern 页(派生量见 annotate/grouping.ts):
+ * - unsorted 页整行 move:同一批改这一行全部样本的 pattern(名字是新的就同一批新建);
+ * - pattern 页的 definition:写进这个 pattern(空着就拿掉定义);
+ * - 点开的计数(openCount):pattern 页上同时只点开一个数,换当前 pattern 时收起。
+ *
  * 合并与拆回:合并是一批操作(改写涉及的框、删掉被并的词)。还能拆回的合并由后端从标注文件里认出来
  * (读结果的 merges),刷新、换机器后照样能拆回;拆回再写一批,把词用原编号放回、把框改回去。
  *
@@ -121,6 +126,7 @@ export const useAnnotationStore = defineStore('annotation', () => {
   const freshBoxes = ref<ReadonlySet<string>>(new Set())             // 当前样本期间新画的框
   const manual = ref<Record<string, Record<string, boolean>>>({})    // 本页记住的手动点进点出:样本 → 框 → 进 / 出
   const currentPattern = ref<string | null>(loadPattern())           // 顶栏的当前 pattern;null = unsorted
+  const openCount = ref<string | null>(null)                         // pattern 页上点开的计数(grouping.ts 的 countId)
   const tab = ref<SidebarTab>('selection')
   const tool = ref<Tool>('box')
   const renaming = ref(false)                      // 选中框的 feature 一行处在「换特征」状态
@@ -400,6 +406,28 @@ export const useAnnotationStore = defineStore('annotation', () => {
     commit((r) => [...patternIfMissing(r, p), ...sampleIntent(sampleId, x => ({ ...x, pattern: p }))(r)])
   }
 
+  /** 整行挪进一个 pattern:同一批改这些样本的 pattern;名字是新的就同一批新建这个 pattern。 */
+  function moveSamples(ids: readonly string[], name: string): void {
+    const p = name.trim()
+    if (!p || !ids.length) return
+    commit((r) => {
+      const ops: AnnOp[] = []
+      for (const id of ids) ops.push(...sampleIntent(id, x => ({ ...x, pattern: p }))(r))
+      return ops.length ? [...patternIfMissing(r, p), ...ops] : []
+    })
+  }
+
+  /** pattern 的定义:写进这个 pattern;空着就拿掉定义。其余字段(flags)照旧。 */
+  function setPatternDefinition(name: string, text: string): void {
+    const t = text.trim()
+    commit((r) => {
+      const p = r.state.patterns.find(x => x.name === name)
+      if (!p || (p.definition ?? '') === t) return []
+      const { definition: _d, ...rest } = p
+      return [{ kind: 'pattern', id: name, base: baseOf(r, 'pattern', name), value: t ? { ...rest, definition: t } : rest }]
+    })
+  }
+
   /** 删样本;框留在图上。 */
   function deleteSample(sampleId: string): void {
     commit((r) => (findSample(r.state, sampleId) ? [{ kind: 'sample', id: sampleId, base: baseOf(r, 'sample', sampleId), value: null }] : []))
@@ -412,6 +440,7 @@ export const useAnnotationStore = defineStore('annotation', () => {
     const p = name === null ? null : name.trim()
     if (p === '') return
     if (p !== null && state.value && !state.value.patterns.some(x => x.name === p)) commit(r => patternIfMissing(r, p))
+    if (currentPattern.value !== p) openCount.value = null
     currentPattern.value = p
     savePattern(p)
   }
@@ -499,13 +528,13 @@ export const useAnnotationStore = defineStore('annotation', () => {
     freshBoxes.value = new Set()
   }
 
-  /** 选中一个样本,它成为当前样本。 */
-  function selectSample(id: string | null): void {
+  /** 选中一个样本,它成为当前样本。keepTab:侧栏留在当前页(从 pattern 页打开样本时),否则翻到 selection。 */
+  function selectSample(id: string | null, opts: { keepTab?: boolean } = {}): void {
     selectedSampleId.value = id
     selectedBoxId.value = null
     renaming.value = false
     if (id) {
-      tab.value = 'selection'
+      if (!opts.keepTab) tab.value = 'selection'
       makeCurrent(id)
     }
   }
@@ -530,12 +559,13 @@ export const useAnnotationStore = defineStore('annotation', () => {
 
   return {
     server, view, state, status, loadError, saveError, saving, machine, membership,
-    selectedBoxId, selectedBox, selectedSampleId, selectedSample, currentSampleId, currentSample, currentPattern,
+    selectedBoxId, selectedBox, selectedSampleId, selectedSample, currentSampleId, currentSample, currentPattern, openCount,
     tab, tool, renaming, nameFocus, merges, pendingMerge, daysBySymbol,
     newConflicts, fingerprint, featureById, nameOf,
     load, commit, flushed, createBox, resizeBox, deleteBox, setBoxFeature, setBoxNote, setAttr, addAttr,
     toggleBoxParent, setDefinition, renameFeature, previewMerge, applyMerge, unmerge, selectBox,
-    placeSample, toggleMember, setJudgment, setSampleNote, setSamplePattern, deleteSample, setCurrentPattern,
+    placeSample, toggleMember, setJudgment, setSampleNote, setSamplePattern, moveSamples, setPatternDefinition,
+    deleteSample, setCurrentPattern,
     selectSample, clearSelection, ackConflicts, setDays,
   }
 })
