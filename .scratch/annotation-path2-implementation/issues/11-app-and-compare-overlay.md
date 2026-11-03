@@ -1,7 +1,8 @@
 # `app` 模式与第一段的 `compare` 叠画
 
 Status: ready-for-agent
-Progress: not-started
+Progress: in-progress
+Claimed: 2026-11-03 parallel-tickets ticket-11 @ worktree impl/11-app-and-compare-overlay
 Blocked by: 07
 
 ## Purpose
