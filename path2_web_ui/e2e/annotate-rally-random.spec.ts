@@ -68,10 +68,12 @@ async function expectAnnotate(page: Page, symbol?: string) {
 }
 
 /** 看图记录的快照:仓库里的全部文件状态(含被忽略的,逐个列出)+ 标注目录里的文件。
- *  测试自己与开发服务器的产物不算(测试结果、playwright 缓存、vite 预构建、Python 字节码)。 */
+ *  测试自己、开发服务器与运行环境的产物不算(测试结果、playwright 缓存、vite 预构建、Python 字节码、
+ *  .venv 与 pytest 缓存:别的进程同时装依赖、跑测试时它们会变,和看图无关)。 */
 function recordsSnapshot(): string {
   const skip = [/^.. path2_web_ui\/test-results\//, /^.. path2_web_ui\/playwright-report\//,
-                /^.. \.playwright-mcp\//, /^.. path2_web_ui\/node_modules\//, /__pycache__\//]
+                /^.. \.playwright-mcp\//, /^.. path2_web_ui\/node_modules\//, /__pycache__\//,
+                /^.. \.venv\//, /^.. \.pytest_cache\//]
   const status = execSync('git status --porcelain --ignored --untracked-files=all', { cwd: REPO, encoding: 'utf8' })
     .split('\n').filter(l => l && !skip.some(r => r.test(l)))
   const ann = execSync('find -L annotations -type f -printf "%p %s %T@\\n" 2>/dev/null || true',
