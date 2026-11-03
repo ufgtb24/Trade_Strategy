@@ -1,0 +1,337 @@
+{
+ "about": [
+  "框套框、样本成员、骨架、空槽的带答案例子:Python 参照实现(path2_web/annotation/membership.py)和前端实现共用,这份文件是唯一的事实来源,测试从这里读,不另抄答案。",
+  "params:算这些答案用的 gap、near。它们不是默认值;默认值改了,这里不用改。",
+  "days:例子共用的交易日(含美股休市日的空缺)。例子里框的 start、end 和样本的 date 写成 days 的下标,调用实现前换成 days[下标] 这个日期;GAP、NEAR 数的是 K 线根数,不是天数。",
+  "框的 feature 是特征编号,这里直接用词当编号,方便读;编号按字符串比。",
+  "cases:每例有 name、covers(覆盖哪条要求)、why(为什么是这个答案)、fn、参数,以及 expect(期望结果)或 expect_error(期望报错的 code)。",
+  "fn = parents:参数 boxes;expect 是 框编号 → 所属框编号或 null。对应 parents(boxes, days)。",
+  "fn = members:参数 date、boxes,可选 stored(存下的成员;没有表示新放的样本)、new_boxes(它是当前样本期间新画的框)、manual(框编号 → true 收进 / false 拿掉);expect 是成员框编号,按框的先后排。对应 sample_members(date, boxes, days, stored=, new_boxes=, manual=, gap=)。",
+  "fn = tree:参数 members、boxes;expect 是 {tree: [{box, kids}], skeleton: [特征编号或 null], dup: [特征编号]}。对应 member_tree、skeleton、dup_features(members, boxes, days)。",
+  "fn = slots:参数 charts(状态里的 charts 形状)、symbol、sample;expect 是 [{box, feature, reason}],按框的先后排。对应 empty_slots(charts, symbol, sample, days, near=)。",
+  "框的先后:起点早的在前,同起点长的在前,再按编号。"
+ ],
+ "params": {"gap": 20, "near": 40},
+ "days": [
+  "2025-01-02", "2025-01-03", "2025-01-06", "2025-01-07", "2025-01-08", "2025-01-10", "2025-01-13", "2025-01-14", "2025-01-15", "2025-01-16",
+  "2025-01-17", "2025-01-21", "2025-01-22", "2025-01-23", "2025-01-24", "2025-01-27", "2025-01-28", "2025-01-29", "2025-01-30", "2025-01-31",
+  "2025-02-03", "2025-02-04", "2025-02-05", "2025-02-06", "2025-02-07", "2025-02-10", "2025-02-11", "2025-02-12", "2025-02-13", "2025-02-14",
+  "2025-02-18", "2025-02-19", "2025-02-20", "2025-02-21", "2025-02-24", "2025-02-25", "2025-02-26", "2025-02-27", "2025-02-28", "2025-03-03",
+  "2025-03-04", "2025-03-05", "2025-03-06", "2025-03-07", "2025-03-10", "2025-03-11", "2025-03-12", "2025-03-13", "2025-03-14", "2025-03-17",
+  "2025-03-18", "2025-03-19", "2025-03-20", "2025-03-21", "2025-03-24", "2025-03-25", "2025-03-26", "2025-03-27", "2025-03-28", "2025-03-31",
+  "2025-04-01", "2025-04-02", "2025-04-03", "2025-04-04", "2025-04-07", "2025-04-08", "2025-04-09", "2025-04-10", "2025-04-11", "2025-04-14",
+  "2025-04-15", "2025-04-16", "2025-04-17", "2025-04-21", "2025-04-22", "2025-04-23", "2025-04-24", "2025-04-25", "2025-04-28", "2025-04-29",
+  "2025-04-30", "2025-05-01", "2025-05-02", "2025-05-05", "2025-05-06", "2025-05-07", "2025-05-08", "2025-05-09", "2025-05-12", "2025-05-13",
+  "2025-05-14", "2025-05-15", "2025-05-16", "2025-05-19", "2025-05-20", "2025-05-21", "2025-05-22", "2025-05-23", "2025-05-27", "2025-05-28",
+  "2025-05-29", "2025-05-30", "2025-06-02", "2025-06-03", "2025-06-04", "2025-06-05", "2025-06-06", "2025-06-09", "2025-06-10", "2025-06-11",
+  "2025-06-12", "2025-06-13", "2025-06-16", "2025-06-17", "2025-06-18", "2025-06-20", "2025-06-23", "2025-06-24", "2025-06-25", "2025-06-26"
+ ],
+ "cases": [
+  {
+   "name": "nest_shortest_container",
+   "covers": ["nest_default_shortest"],
+   "fn": "parents",
+   "why": "b3 同时被 b1、b2 包住,取短的 b2(25 根 < 40 根);b2 只被 b1 包住;b4 和 b1 只交叠、没被包住,不属于任何框。",
+   "boxes": [
+    {"id": "b1", "feature": "横盘", "start": 0, "end": 40},
+    {"id": "b2", "feature": "缩量", "start": 5, "end": 30},
+    {"id": "b3", "feature": "小阳", "start": 10, "end": 20},
+    {"id": "b4", "feature": "放量", "start": 35, "end": 50}
+   ],
+   "expect": {"b1": null, "b2": "b1", "b3": "b2", "b4": null}
+  },
+  {
+   "name": "nest_edges_and_ties",
+   "covers": ["nest_default_shortest"],
+   "fn": "parents",
+   "why": "起点或终点重合也算包住(b2 在 b1 里);b3 和 b1 只共用一根 K 线,不算;b1、b4 起止相同、一样长,互不包住;b2 同时在 b1、b4 里,一样短、起点一样,取编号小的 b1;b7 同时在 b5、b6 里,两者一样长,取起点早的 b5。",
+   "boxes": [
+    {"id": "b1", "feature": "横盘", "start": 0, "end": 20},
+    {"id": "b2", "feature": "缩量", "start": 0, "end": 10},
+    {"id": "b3", "feature": "放量", "start": 20, "end": 30},
+    {"id": "b4", "feature": "横盘", "start": 0, "end": 20},
+    {"id": "b5", "feature": "横盘", "start": 40, "end": 70},
+    {"id": "b6", "feature": "派发", "start": 45, "end": 75},
+    {"id": "b7", "feature": "缩量", "start": 50, "end": 60}
+   ],
+   "expect": {"b1": null, "b2": "b1", "b3": null, "b4": null, "b5": null, "b6": null, "b7": "b5"}
+  },
+  {
+   "name": "detach_and_attach_override_default",
+   "covers": ["attach_detach_exclusive"],
+   "fn": "parents",
+   "why": "b3 在 b2、b1 里,点了 detach 就不属于任何框;b4 默认属于最短的 b2,attach 到 b1 就属于 b1;b5 只和 b1 交叠、没被包住,attach 到更长的 b1 就属于它。",
+   "boxes": [
+    {"id": "b1", "feature": "横盘", "start": 0, "end": 40},
+    {"id": "b2", "feature": "缩量", "start": 3, "end": 25},
+    {"id": "b3", "feature": "小阴", "start": 10, "end": 20, "detach": true},
+    {"id": "b4", "feature": "小阳", "start": 5, "end": 15, "attach": "b1"},
+    {"id": "b5", "feature": "放量", "start": 30, "end": 50, "attach": "b1"}
+   ],
+   "expect": {"b1": null, "b2": "b1", "b3": null, "b4": "b1", "b5": "b1"}
+  },
+  {
+   "name": "stale_attach_falls_back",
+   "covers": ["attach_detach_exclusive", "stale_attach"],
+   "fn": "parents",
+   "why": "attach 只在那个框还在、比它长、和它交叠时算数:b2 attach 的 b1 已经不交叠(也更短),照默认归包住它的 b3;b4 attach 的 b99 不存在;b5 attach 的 b6 比它短,照默认不属于任何框。所属的框一定更长,b5、b6 不会互相属于。",
+   "boxes": [
+    {"id": "b1", "feature": "横盘", "start": 0, "end": 10},
+    {"id": "b2", "feature": "回踩", "start": 20, "end": 40, "attach": "b1"},
+    {"id": "b3", "feature": "横盘", "start": 15, "end": 45},
+    {"id": "b4", "feature": "放量", "start": 50, "end": 52, "attach": "b99"},
+    {"id": "b5", "feature": "回踩", "start": 60, "end": 70, "attach": "b6"},
+    {"id": "b6", "feature": "缩量", "start": 65, "end": 68}
+   ],
+   "expect": {"b1": null, "b2": "b3", "b3": null, "b4": null, "b5": null, "b6": "b5"}
+  },
+  {
+   "name": "attach_and_detach_together_rejected",
+   "covers": ["attach_detach_exclusive"],
+   "fn": "parents",
+   "why": "detach 和 attach 互斥,同一个框两个都有是坏输入,报 attach_and_detach。",
+   "boxes": [
+    {"id": "b1", "feature": "横盘", "start": 0, "end": 20},
+    {"id": "b2", "feature": "缩量", "start": 5, "end": 10, "detach": true, "attach": "b1"}
+   ],
+   "expect_error": "attach_and_detach"
+  },
+  {
+   "name": "gap_chain_until_no_more",
+   "covers": ["gap_chain"],
+   "fn": "members",
+   "why": "边界从样本日 110 开始:b1 终点 104 ≥ 110 − 20,收进,边界移到 100;b2 终点 80 正好 = 100 − 20,收进,边界移到 70;b3 终点 50 正好 = 70 − 20,收进,边界移到 40;b4 终点 19 < 40 − 20,差一根,停下。数的是 K 线根数:b2 终点到 b1 起点隔 20 根,却隔了 29 天。",
+   "date": 110,
+   "boxes": [
+    {"id": "b1", "feature": "回踩", "start": 100, "end": 104},
+    {"id": "b2", "feature": "横盘", "start": 70, "end": 80},
+    {"id": "b3", "feature": "放量", "start": 40, "end": 50},
+    {"id": "b4", "feature": "底", "start": 10, "end": 19}
+   ],
+   "expect": ["b3", "b2", "b1"]
+  },
+  {
+   "name": "nothing_within_gap",
+   "covers": ["gap_chain"],
+   "fn": "members",
+   "why": "样本日 60 往前 20 根是 40,b1 终点 39 差一根;b2 在样本日之后。没有成员。",
+   "date": 60,
+   "boxes": [
+    {"id": "b1", "feature": "横盘", "start": 20, "end": 39},
+    {"id": "b2", "feature": "回踩", "start": 61, "end": 65}
+   ],
+   "expect": []
+  },
+  {
+   "name": "contained_and_attached_join",
+   "covers": ["contained_and_attached_join"],
+   "fn": "members",
+   "why": "b1 先收进;被 b1 包住的 b2、点了 detach 的 b4(detach 只管属不属于 b1,不管是不是成员)、attach 到 b1 的 b3 都跟着进来;边界到 50,b5 终点 15 < 50 − 20,不收。",
+   "date": 100,
+   "boxes": [
+    {"id": "b1", "feature": "横盘", "start": 60, "end": 95},
+    {"id": "b2", "feature": "缩量", "start": 65, "end": 70},
+    {"id": "b3", "feature": "小阴", "start": 50, "end": 62, "attach": "b1"},
+    {"id": "b4", "feature": "小阳", "start": 72, "end": 75, "detach": true},
+    {"id": "b5", "feature": "底", "start": 10, "end": 15}
+   ],
+   "expect": ["b3", "b1", "b2", "b4"]
+  },
+  {
+   "name": "stale_attach_does_not_join",
+   "covers": ["contained_and_attached_join", "stale_attach"],
+   "fn": "members",
+   "why": "b2 attach 到成员 b1,但两者已经不交叠,attach 不算数;b2 终点 40 < 80 − 20,不收。",
+   "date": 100,
+   "boxes": [
+    {"id": "b1", "feature": "回踩", "start": 80, "end": 95},
+    {"id": "b2", "feature": "横盘", "start": 30, "end": 40, "attach": "b1"}
+   ],
+   "expect": ["b1"]
+  },
+  {
+   "name": "crossing_box_is_never_a_member",
+   "covers": ["crosses_sample_date"],
+   "fn": "members",
+   "why": "b1 终点晚于样本日,不是候选,也就不能把边界拉到 15;在样本日当天结束的 b3 可以收;边界停在 40,b4 终点 18 < 40 − 20,不收。",
+   "date": 60,
+   "boxes": [
+    {"id": "b1", "feature": "横盘", "start": 15, "end": 65},
+    {"id": "b2", "feature": "缩量", "start": 40, "end": 55},
+    {"id": "b3", "feature": "回踩", "start": 55, "end": 60},
+    {"id": "b4", "feature": "底", "start": 5, "end": 18}
+   ],
+   "expect": ["b2", "b3"]
+  },
+  {
+   "name": "manual_in_and_out_win",
+   "covers": ["manual_overrides", "crosses_sample_date"],
+   "fn": "members",
+   "why": "推断的成员是 b1、b2(b2 靠 b1 接上)。手动拿掉 b1 只拿掉 b1,b2 照样在;手动收进离得远的 b3 就在;b4 跨过样本日,手动也收不进。",
+   "date": 100,
+   "boxes": [
+    {"id": "b1", "feature": "回踩", "start": 85, "end": 95},
+    {"id": "b2", "feature": "横盘", "start": 60, "end": 70},
+    {"id": "b3", "feature": "放量", "start": 20, "end": 30},
+    {"id": "b4", "feature": "缩量", "start": 90, "end": 105}
+   ],
+   "manual": {"b1": false, "b3": true, "b4": true},
+   "expect": ["b3", "b2"]
+  },
+  {
+   "name": "current_sample_grows_with_new_boxes",
+   "covers": ["current_and_frozen", "manual_overrides"],
+   "fn": "members",
+   "why": "存下的成员 b1 就是冻结的那份。它是当前样本期间新画了 b5、b6、b8:推断会收的 b5 并进来;b6 离得远,推断不收;b8 推断会收,但手动拿掉了,手动算数。旧框 b2 推断会收,但不是新画的,不再并进。",
+   "date": 100,
+   "boxes": [
+    {"id": "b1", "feature": "回踩", "start": 85, "end": 95},
+    {"id": "b2", "feature": "横盘", "start": 70, "end": 80},
+    {"id": "b5", "feature": "小阳", "start": 96, "end": 99},
+    {"id": "b6", "feature": "底", "start": 10, "end": 20},
+    {"id": "b8", "feature": "小阴", "start": 97, "end": 100}
+   ],
+   "stored": ["b1"],
+   "new_boxes": ["b5", "b6", "b8"],
+   "manual": {"b8": false},
+   "expect": ["b1", "b5"]
+  },
+  {
+   "name": "frozen_sample_keeps_its_members",
+   "covers": ["current_and_frozen", "crosses_sample_date"],
+   "fn": "members",
+   "why": "不是当前样本时,成员就是存下的那份:离得远的 b9 照样在(只加不踢),推断会收的 b2 不进;存下的 b7 后来跨过了样本日(比如两台机器的修改合在一起),不再算成员;b404 不在这张图上,不算。",
+   "date": 100,
+   "boxes": [
+    {"id": "b1", "feature": "回踩", "start": 85, "end": 95},
+    {"id": "b2", "feature": "横盘", "start": 70, "end": 80},
+    {"id": "b9", "feature": "底", "start": 5, "end": 10},
+    {"id": "b7", "feature": "放量", "start": 90, "end": 104}
+   ],
+   "stored": ["b1", "b9", "b7", "b404"],
+   "expect": ["b9", "b1"]
+  },
+  {
+   "name": "skeleton_is_top_level_names",
+   "covers": ["skeleton_top_level_only"],
+   "fn": "tree",
+   "why": "b2 在 b1 里、b3 在 b2 里,都是子框,不进骨架;属性也不进。b6 包住全部,但它不是成员,不参与成员之间的归属,b1 仍是顶层。",
+   "members": ["b1", "b2", "b3", "b4", "b5"],
+   "boxes": [
+    {"id": "b1", "feature": "横盘", "start": 10, "end": 40, "attrs": {"放量": false}},
+    {"id": "b2", "feature": "缩量", "start": 15, "end": 25},
+    {"id": "b3", "feature": "小阳", "start": 18, "end": 20},
+    {"id": "b4", "feature": "放量突破", "start": 41, "end": 45},
+    {"id": "b5", "feature": "回踩", "start": 46, "end": 55, "attrs": {"缩量": true}},
+    {"id": "b6", "feature": "横盘", "start": 0, "end": 60}
+   ],
+   "expect": {"tree": [{"box": "b1", "kids": [{"box": "b2", "kids": [{"box": "b3", "kids": []}]}]}, {"box": "b4", "kids": []}, {"box": "b5", "kids": []}], "skeleton": ["横盘", "放量突破", "回踩"], "dup": []}
+  },
+  {
+   "name": "dup_only_on_top_level",
+   "covers": ["dup"],
+   "fn": "tree",
+   "why": "顶层有两段回踩(b1、b3),标 dup;b4 回踩是 b3 的子框,b6 缩量是 b5 的子框,子框同名不算 dup。",
+   "members": ["b1", "b2", "b3", "b4", "b5", "b6"],
+   "boxes": [
+    {"id": "b1", "feature": "回踩", "start": 10, "end": 20},
+    {"id": "b2", "feature": "放量", "start": 22, "end": 30},
+    {"id": "b3", "feature": "回踩", "start": 32, "end": 40},
+    {"id": "b4", "feature": "回踩", "start": 33, "end": 36},
+    {"id": "b5", "feature": "缩量", "start": 50, "end": 60},
+    {"id": "b6", "feature": "缩量", "start": 52, "end": 55}
+   ],
+   "expect": {"tree": [{"box": "b1", "kids": []}, {"box": "b2", "kids": []}, {"box": "b3", "kids": [{"box": "b4", "kids": []}]}, {"box": "b5", "kids": [{"box": "b6", "kids": []}]}], "skeleton": ["回踩", "放量", "回踩", "缩量"], "dup": ["回踩"]}
+  },
+  {
+   "name": "tree_with_detach_and_attach",
+   "covers": ["attach_detach_exclusive", "skeleton_top_level_only"],
+   "fn": "tree",
+   "why": "b2 点了 detach,成了顶层,进骨架;b3 attach 到 b1,是 b1 的子框;b5 attach 的 b9 不是成员,照默认归包住它的 b1;b4 在 b2 和 b1 里,归短的 b2。",
+   "members": ["b1", "b2", "b3", "b4", "b5"],
+   "boxes": [
+    {"id": "b1", "feature": "横盘", "start": 10, "end": 40},
+    {"id": "b2", "feature": "缩量", "start": 15, "end": 25, "detach": true},
+    {"id": "b3", "feature": "放量", "start": 35, "end": 50, "attach": "b1"},
+    {"id": "b4", "feature": "小阴", "start": 20, "end": 22},
+    {"id": "b5", "feature": "小阳", "start": 30, "end": 34, "attach": "b9"},
+    {"id": "b9", "feature": "回踩", "start": 28, "end": 60}
+   ],
+   "expect": {"tree": [{"box": "b1", "kids": [{"box": "b5", "kids": []}, {"box": "b3", "kids": []}]}, {"box": "b2", "kids": [{"box": "b4", "kids": []}]}], "skeleton": ["横盘", "缩量"], "dup": []}
+  },
+  {
+   "name": "unnamed_boxes",
+   "covers": ["skeleton_top_level_only", "dup"],
+   "fn": "tree",
+   "why": "没起名的框在骨架里记 null;两个没起名的不算 dup。",
+   "members": ["b1", "b2", "b3"],
+   "boxes": [
+    {"id": "b1", "feature": null, "start": 10, "end": 20},
+    {"id": "b2", "feature": "横盘", "start": 25, "end": 30},
+    {"id": "b3", "feature": null, "start": 35, "end": 40}
+   ],
+   "expect": {"tree": [{"box": "b1", "kids": []}, {"box": "b2", "kids": []}, {"box": "b3", "kids": []}], "skeleton": [null, "横盘", null], "dup": []}
+  },
+  {
+   "name": "slot_reasons",
+   "covers": ["crosses_sample_date"],
+   "fn": "slots",
+   "why": "s1 的范围起点是 60,往前 40 根到 20:b3 终点正好 20,算画了没收;b4 终点 19 差一根。b10 在范围里却没收(比如手动拿掉了),也算。b5 突破只在另一张图 BBB 的同一 pattern 里用过,它跨过了样本日,原因是 crosses_sample_date。不留空槽的:b6 缩量只在别的 pattern 用过;b7、b11 是同一张图、同一 pattern 别的样本的成员;b8 整段在样本日之后;b9 没起名。",
+   "charts": [
+    {"symbol": "AAA",
+     "boxes": [
+      {"id": "b1", "feature": "回踩", "start": 80, "end": 95},
+      {"id": "b2", "feature": "横盘", "start": 60, "end": 75},
+      {"id": "b3", "feature": "横盘", "start": 12, "end": 20},
+      {"id": "b4", "feature": "横盘", "start": 5, "end": 19},
+      {"id": "b5", "feature": "突破", "start": 90, "end": 105},
+      {"id": "b6", "feature": "缩量", "start": 96, "end": 110},
+      {"id": "b7", "feature": "回踩", "start": 40, "end": 50},
+      {"id": "b8", "feature": "回踩", "start": 102, "end": 108},
+      {"id": "b9", "feature": null, "start": 50, "end": 55},
+      {"id": "b10", "feature": "横盘", "start": 61, "end": 70},
+      {"id": "b11", "feature": "放量", "start": 98, "end": 104}
+     ],
+     "samples": [
+      {"id": "s1", "date": 100, "pattern": "P", "judgment": "pos", "members": ["b2", "b1"]},
+      {"id": "s2", "date": 55, "pattern": "P", "judgment": "pos", "members": ["b7"]},
+      {"id": "s3", "date": 104, "pattern": "P", "judgment": "neg", "members": ["b11"]}
+     ]},
+    {"symbol": "BBB",
+     "boxes": [
+      {"id": "c1", "feature": "突破", "start": 10, "end": 20},
+      {"id": "c2", "feature": "缩量", "start": 30, "end": 40}
+     ],
+     "samples": [
+      {"id": "t1", "date": 25, "pattern": "P", "judgment": "pos", "members": ["c1"]},
+      {"id": "t2", "date": 45, "pattern": "Q", "judgment": "pos", "members": ["c2"]}
+     ]}
+   ],
+   "symbol": "AAA",
+   "sample": "s1",
+   "expect": [{"box": "b3", "feature": "横盘", "reason": "unclaimed"}, {"box": "b10", "feature": "横盘", "reason": "unclaimed"}, {"box": "b5", "feature": "突破", "reason": "crosses_sample_date"}]
+  },
+  {
+   "name": "unsorted_is_its_own_group",
+   "covers": ["unsorted_slots"],
+   "fn": "slots",
+   "why": "unsorted 的样本自成一组:横盘在 unsorted 样本的成员里用过,b2 留空槽;回踩只在 pattern P 里用过,b3 不留。",
+   "charts": [
+    {"symbol": "AAA",
+     "boxes": [
+      {"id": "b1", "feature": "横盘", "start": 35, "end": 45},
+      {"id": "b2", "feature": "横盘", "start": 10, "end": 20},
+      {"id": "b3", "feature": "回踩", "start": 20, "end": 30},
+      {"id": "b4", "feature": "回踩", "start": 70, "end": 75}
+     ],
+     "samples": [
+      {"id": "u1", "date": 50, "pattern": null, "judgment": "neg", "members": ["b1"]},
+      {"id": "p1", "date": 80, "pattern": "P", "judgment": "pos", "members": ["b4"]}
+     ]}
+   ],
+   "symbol": "AAA",
+   "sample": "u1",
+   "expect": [{"box": "b2", "feature": "横盘", "reason": "unclaimed"}]
+  }
+ ]
+}
