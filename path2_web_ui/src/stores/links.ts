@@ -8,7 +8,8 @@
  *   - 认不出的写法 → problem 记下(bad_link)。
  *   链接一律落在 annotate,提示条也只在 annotate 下显示。
  * - openSample(id):按编号找样本,打开它所在的图(图窗停在样本的跨度上)并选中它;找不到返回 false。
- *   样本链接、pattern 页的样本卡,以及第二段的题目链接(#q=)都用这一处。
+ *   当前 pattern 换成样本所在的 pattern(unsorted 的样本换成 unsorted),样本就和从 pattern 页打开时一样画出来:
+ *   不画淡、带字母。样本链接、pattern 页的样本卡,以及第二段的题目链接(#q=)都用这一处。
  */
 import { defineStore } from 'pinia'
 import { nextTick, ref, watch } from 'vue'
@@ -45,6 +46,7 @@ export const useLinkStore = defineStore('links', () => {
     const ann = useAnnotationStore()
     const hit = ann.state ? findSample(ann.state, id) : null
     if (!hit) return false
+    if (ann.currentPattern !== hit.sample.pattern) ann.setCurrentPattern(hit.sample.pattern)
     useViewStore().openSymbol(hit.chart.symbol, sampleWindow(hit))
     await nextTick()               // 换图会清掉选中(KlineChart 的 symbol 监听),等它跑完再选中
     ann.selectSample(id, opts)

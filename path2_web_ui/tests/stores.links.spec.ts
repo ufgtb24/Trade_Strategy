@@ -75,6 +75,7 @@ describe('样本编号', () => {
     fake.gate = new Promise(r => { open = r })
     const ann = useAnnotationStore()
     const loading = ann.load()
+    expect(ann.currentPattern).toBeNull()
     ann.tab = 'pattern'
     const view = useViewStore()
     const followed = useLinkStore().follow('#sample=s-pc-2')
@@ -88,6 +89,7 @@ describe('样本编号', () => {
     expect(ann.selectedSampleId).toBe('s-pc-2')
     expect(ann.currentSampleId).toBe('s-pc-2')
     expect(ann.tab).toBe('selection')
+    expect(ann.currentPattern).toBe('W底')               // 当前 pattern 换成样本所在的
     expect(useLinkStore().problem).toBeNull()
   })
   it('编号不存在:不换图,记下 not_found 和编号,落在 annotate', async () => {
