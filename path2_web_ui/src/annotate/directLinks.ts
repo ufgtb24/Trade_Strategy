@@ -11,7 +11,7 @@
  * 日期晚于训练段末日 TRAIN_END 的,一律截到 TRAIN_END(数据墙,spec 4.1)。图窗按日历日取:那天往前约半年、
  * 往后约两个月(往前多留,是因为样本的依据都在样本日之前)。
  *
- * 这里只是纯函数;跟着链接打开图、按编号找样本并选中它,在 stores/links.ts。
+ * 这里只是纯函数;跟着链接打开图、按编号找样本并选中它,在 stores/directLinks.ts。
  */
 import type { ViewWindow } from '../types'
 

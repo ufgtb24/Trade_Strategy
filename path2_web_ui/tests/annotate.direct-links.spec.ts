@@ -2,7 +2,7 @@
 import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
-import { TRAIN_END, chartLinkWindow, parseLink } from '../src/annotate/links'
+import { TRAIN_END, chartLinkWindow, parseLink } from '../src/annotate/directLinks'
 
 describe('parseLink', () => {
   it('股票 + 日期:代码去空白、转大写,键的先后不限', () => {

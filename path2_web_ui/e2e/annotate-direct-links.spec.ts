@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { REPO, TRAIN_END, routeTo, startBackend, stopBackend, type Backend } from './annotateHelpers'
 
 /**
- * 直达链接(格式见 src/annotate/links.ts):
+ * 直达链接(格式见 src/annotate/directLinks.ts):
  * 1. 股票 + 日期 #symbol=…&date=…:新开的页带着它,打开那只股票、图窗停在那天附近、落在 annotate;页面在 app 下时
  *    地址的 # 部分换成另一个,同样落在 annotate;日期写 2026-03-01 的,看得见的和图上的最后一根 K 线都不晚于 2025-12-31。
  * 2. 样本编号 #sample=…:新开的页带着它,等标注读完,打开样本所在的图并选中它;换一个编号照样跳过去;
@@ -108,26 +108,26 @@ test.describe('直达链接', () => {
 
     // 不存在的编号:不换图,提示条写明编号与 not_found,点 ok 收起
     await page.evaluate(() => { location.hash = '#sample=s-pc-999' })
-    const notice = page.getByTestId('notice-link')
+    const notice = page.getByTestId('notice-url')
     await expect(notice).toBeVisible()
     await expect(notice).toContainText('sample')
     await expect(notice).toContainText('s-pc-999')
     await expect(notice).toContainText('not_found')
     await expect(page.locator('.symbol-title-bar [data-symbol="NVDA"]')).toBeVisible()
     await page.screenshot({ path: testInfo.outputPath('04-sample-not-found.png'), fullPage: true })
-    await page.getByTestId('notice-link-ok').click()
+    await page.getByTestId('notice-url-ok').click()
     await expect(notice).toHaveCount(0)
 
     // 认不出的写法
     await page.evaluate(() => { location.hash = '#symbol=AAPL' })
-    await expect(notice).toContainText('bad_link')
+    await expect(notice).toContainText('bad_url')
     await expect(notice).toHaveAttribute('title', /#symbol=AAPL/)
 
     // 另开一页带着不存在的编号:同样提示
     const tab = await page.context().newPage()
     await routeTo(tab, backend!)
     await tab.goto('/#sample=s-pc-999')
-    await expect(tab.getByTestId('notice-link')).toContainText('not_found')
+    await expect(tab.getByTestId('notice-url')).toContainText('not_found')
     for (const p of [page, tab]) await p.unrouteAll({ behavior: 'ignoreErrors' })
   })
 })

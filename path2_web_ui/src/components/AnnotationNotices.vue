@@ -20,13 +20,13 @@
         <span class="key" title="the change it did not see">earlier</span><span class="val">{{ c.earlier ? `${c.earlier.machine} ${when(c.earlier.ts)}` : '—' }}</span>
       </div>
     </div>
-    <div v-if="links.problem" class="notice" data-testid="notice-link" :title="linkTip">
-      <span class="key">link</span>
+    <div v-if="links.problem" class="notice" data-testid="notice-url" :title="urlTip">
+      <span class="key">url</span>
       <template v-if="links.problem.code === 'not_found'">
         <span class="key">sample</span><span class="key">{{ links.problem.sample }}</span>
       </template>
       <span class="val">{{ links.problem.code }}</span>
-      <button type="button" class="ok" data-testid="notice-link-ok" @click="links.problem = null">ok</button>
+      <button type="button" class="ok" data-testid="notice-url-ok" @click="links.problem = null">ok</button>
     </div>
     <div v-if="ann.saveError" class="notice block" data-testid="notice-save">
       <div class="line">
@@ -54,31 +54,31 @@
  * - 标注读不到(标注目录不在 / 读失败);
  * - data_fingerprint mismatched:标注是对着另一份训练段副本做的(或本机副本没有指纹)。只报出来,图照常显示;
  * - conflict:两台机器同步前改了同一个对象,后改的那次生效。每条冲突只提示一次,点 ok 后不再出现;
- * - link:直达链接没跟成(样本编号不存在,或认不出的写法),一直显示到点 ok;
+ * - url:直达链接没跟成(样本编号不存在,或认不出的写法),一直显示到点 ok;
  * - save rejected:这次保存没通过后端的校验(比如另一台机器同步来的修改让这个框成了某个样本的成员框,
  *   改起止就越过了那个样本日)。每条原因写出 code 和它说的是哪个框、哪个样本(按重读后的状态),悬停看后端的原话;
  *   这次改动没有保存,一直显示到点 ok。
  */
 import { computed } from 'vue'
 import { useAnnotationStore } from '../stores/annotation'
-import { useLinkStore } from '../stores/links'
+import { useDirectLinkStore } from '../stores/directLinks'
 import { findBox, findSample, type AnnConflict } from '../annotate/model'
 import { sampleLetters, sampleTag } from '../annotate/samples'
 import type { SaveProblem } from '../stores/annotation'
 
 const ann = useAnnotationStore()
-const links = useLinkStore()
+const links = useDirectLinkStore()
 const fp = computed(() => ann.fingerprint)
 const mismatch = computed(() => !!fp.value && !fp.value.consistent)
 const shown = computed(() => mismatch.value || ann.newConflicts.length > 0 || !!ann.saveError || !!links.problem
   || ann.status === 'unavailable' || ann.status === 'load_failed')
 
-const LINK_FORMS = 'links: #symbol=<code>&date=<YYYY-MM-DD> or #sample=<sample id>'
-const linkTip = computed(() => {
+const URL_FORMS = 'url forms: #symbol=<code>&date=<YYYY-MM-DD> or #sample=<sample id>'
+const urlTip = computed(() => {
   const p = links.problem
   if (!p) return ''
-  return p.code === 'not_found' ? `no sample with this id in the annotations\n${LINK_FORMS}`
-    : `unrecognized link: #${p.raw}\n${LINK_FORMS}`
+  return p.code === 'not_found' ? `no sample with this id in the annotations\n${URL_FORMS}`
+    : `unrecognized url: #${p.raw}\n${URL_FORMS}`
 })
 
 const short = (s: string | null) => (s ? `${s.slice(0, 12)}…` : 'none')
