@@ -23,7 +23,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from path2_web.app import create_app
-from tests.path2_web.conftest import debug_data
+from tests.path2_web.conftest import data_cfg
 
 
 def _mk_pkl(data_dir, symbol: str, start: str = "2024-06-01", n: int = 400):
@@ -49,7 +49,7 @@ def preview_client(tmp_path):
     data_dir.mkdir()
     _mk_pkl(data_dir, "T")
     cfg = {
-        **debug_data(data_dir),
+        **data_cfg(data_dir),
         "scan": {"start_date": "2025-01-01", "end_date": "2025-12-31",
                  "workers": 1, "ticker_regex": None},
         "last_selected_pattern": "bo_only",

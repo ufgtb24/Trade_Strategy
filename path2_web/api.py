@@ -1,4 +1,8 @@
-"""HTTP 路由 + SSE 扫描编排。create_app 注入 registry/config/outputs_root。"""
+"""HTTP 路由 + SSE 扫描编排。create_app 注入 registry/config/outputs_root。
+
+读行情一律经 data.read_bars(数据墙:行截到训练段末日 TRAIN_END,代码常量;扫描 worker 由
+cap_at_train_end=True 走同一个函数),目录取配置的 view_dataset_dir(截到训练段末日的那份副本)。
+单股预览与扫描的区间终点截到 TRAIN_END;越过数据墙的扫描文件(scan.within_data_wall 为假)不给打开。"""
 from __future__ import annotations
 
 import asyncio
@@ -18,16 +22,16 @@ from fastapi import Path as FPath
 from pydantic import BaseModel, Field, field_validator
 from sse_starlette.sse import EventSourceResponse
 
-from chart_workflow import mode as cw_mode
 from path2.dag import diagnose as _dag_diagnose
 from path2.dag.engine import analyze as _dag_analyze_engine
-from path2_web import guard
 from path2_web import scan as scan_mod
-from path2_web.data import slice_window
+from path2_web.data import TRAIN_END, read_bars, serialize_ohlc, slice_window
 from path2_web.diagnose import diagnose_symbol, derive_response, Query
 from path2_web.gate_collector import attach_and_collect, detach
 from path2_web.serialize import serialize_pattern
-from path2_web.workflow import build_workflow_router
+
+_REPO_ROOT = Path(__file__).resolve().parents[1]
+_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 
 class ParamsSaveRequest(BaseModel):
@@ -58,6 +62,40 @@ _PARAM_FILE_RE = re.compile(r"^[A-Za-z0-9_\-]+\.yaml$")
 # \w 含中文; 允许小数点(调参脚本产物如 tune-bo-exceed_threshold-0.01-buf250),
 # 但禁首点 → 排除 . / .. / 隐藏文件; \w 天然排除 / \ 空格(防穿越)
 _SCAN_NAME_RE = re.compile(r"^(?!\.)[\w\-.]+$", re.UNICODE)
+
+
+def _data_dir(cfg: dict) -> Path:
+    """网页读行情的目录:配置的 view_dataset_dir(相对路径按 repo root 解析);目录不存在 → 503。"""
+    d = Path(cfg["view_dataset_dir"])
+    d = d if d.is_absolute() else _REPO_ROOT / d
+    if not d.is_dir():
+        raise HTTPException(503, f"行情目录不存在: {d}(用 scripts/data/make_train_snapshot.py 生成)")
+    return d
+
+
+def _bars(cfg: dict, symbol: str) -> pd.DataFrame:
+    """读一只股票(data.read_bars:截到训练段末日)。代码名不合格 → 400;没有这只股票 → 404。"""
+    try:
+        return read_bars(_data_dir(cfg), symbol)
+    except FileNotFoundError:
+        raise HTTPException(404, f"pkl not found: {symbol}") from None
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from None
+
+
+def _check_dates(start, end) -> None:
+    if not (isinstance(start, str) and _DATE_RE.fullmatch(start)
+            and isinstance(end, str) and _DATE_RE.fullmatch(end)):
+        raise HTTPException(400, "start / end 必须是 YYYY-MM-DD")
+
+
+def _clamp_range(start: str, end: str) -> tuple[str, str]:
+    """单股预览 / 扫描的区间:终点截到训练段末日 TRAIN_END;起点晚于它 → 400。"""
+    _check_dates(start, end)
+    end = min(end, TRAIN_END)
+    if start > end:
+        raise HTTPException(400, f"{start} 晚于区间终点 {end}(行情只到训练段末日 {TRAIN_END})")
+    return start, end
 
 
 def _validate_scan_name(name: str) -> None:
@@ -224,12 +262,6 @@ def build_router(*, registry, config_path, get_config, set_config,
 
     _TS_PATTERN = r"^\d{8}T\d{6}$"
 
-    # 看图工作流模式(/workflow/*):读清单、截断后的 K 线、收标注批次
-    router.include_router(build_workflow_router(get_config=get_config))
-    # 调试视图也只露本轮看图范围(path2_web/guard.py):行情经截断副本读、截到训练段末日,
-    # 看图下界之前的 K 线不给值;本进程已记过「看过」的图窗 (symbol, 首根, 末根)
-    debug_seen: set[tuple[str, str, str]] = set()
-
     @router.get("/patterns")
     def get_patterns():
         out = []
@@ -244,17 +276,8 @@ def build_router(*, registry, config_path, get_config, set_config,
 
     @router.get("/ohlc")
     def get_ohlc(symbol: str, start: str, end: str):
-        out = guard.ohlc(get_config(), symbol, start, end)
-        guard.record_chart(get_config(), out, debug_seen)      # 记不进「看过」就不给图
-        return out
-
-    @router.get("/mode")
-    def get_mode():
-        """现在是正式模式还是调试模式,以及生效的看图范围(界面据此在顶上挂调试模式的横幅)。"""
-        floor, te = guard.bounds(get_config())
-        debug = cw_mode.is_debug()
-        return {"mode": cw_mode.current(), "label": cw_mode.DEBUG_LABEL if debug else None,
-                "view_floor": floor, "train_end": te}
+        _check_dates(start, end)
+        return serialize_ohlc(symbol, slice_window(_bars(get_config(), symbol), start, end))
 
     @router.get("/config")
     def read_config():
@@ -262,15 +285,12 @@ def build_router(*, registry, config_path, get_config, set_config,
 
     @router.put("/config")
     def write_config(cfg: dict):
-        # 看图工作流那一段只读:不经这里改(看图下界、训练段末日、数据目录是护栏的一部分),
-        # 一律沿用当前生效的值;落盘时也不写它(见 config.save_config)
-        cfg = {**cfg, "workflow": get_config().get("workflow")}
         set_config(cfg)
         return {"ok": True}
 
     @router.get("/scans/")
     def scans_list_flat():
-        return guard.mark_old_scans(get_config(), scan_mod.list_scans_flat(outputs_root))
+        return scan_mod.list_scans_flat(outputs_root)
 
     @router.get("/scans/{name}")
     def scan_load_flat(name: str):
@@ -279,10 +299,10 @@ def build_router(*, registry, config_path, get_config, set_config,
             data = scan_mod.load_scan_flat(name, outputs_root)
         except FileNotFoundError:
             raise HTTPException(404, "scan not found")
-        cfg = get_config()
-        guard.check_openable(cfg, data)    # 没护栏标记、范围更宽、换过副本的扫描不能打开
-        guard.redact_scan(data)            # 锚点早于看图下界的事件不给(落盘时已删,兜底)
-        guard.record_scan_open(cfg, name, data)    # 结果列表露出每只股的成绩:记不进「看过」就不给
+        if not scan_mod.within_data_wall(data.get("scan")):
+            # 数据墙:没记 data_until(截断之前扫的)或晚于训练段末日的扫描,成绩可能用到 2026 年以后的走势
+            raise HTTPException(409, f"这份扫描没有截到训练段末日 {TRAIN_END} 的记录,可能用到了之后的行情,"
+                                     f"不能打开;请重新扫描")
         # 用当前 palette 覆盖历史 scan file 里冻结的 event_styles。颜色是纯 UI 关注点,
         # 不属于扫描结果快照的必要部分——允许调 palette 后不用重扫也生效。
         # pattern 在 registry 缺失(被删/改名)时跳过,保留文件里的原值。
@@ -343,8 +363,7 @@ def build_router(*, registry, config_path, get_config, set_config,
             mod = registry.get(pattern_id)
             if mod is None:
                 raise HTTPException(404, f"unknown pattern: {pattern_id}")
-            guard.check_dates(start, end)
-            cfg = get_config()
+            _check_dates(start, end)
             if params_override:
                 # A5:params_override 存在时用它闭合 spec(Working Copy 直诊断,不落 yaml)。
                 try:
@@ -356,22 +375,14 @@ def build_router(*, registry, config_path, get_config, set_config,
                 # 不能复用 mod.PATTERN_DAG(它是 import 时一次性 build,Params.default() 闭合,与 yaml 漂移)。
                 _p = mod.load_params()
             spec = mod.build_pattern(_p)
-            # start 是分析窗起点(含探测器预热):不早于「看图下界往前推这个 app 的预热天数」;行情截到训练段末日。
-            # 返回前删掉锚点早于看图下界的事件、诊断行和失败尝试(guard 模块说明)。
-            start = guard.diagnose_start(cfg, start, require_eval_meta(mod, params=_p)["head_buffer_trading_days"])
-            win = slice_window(guard.bars(cfg, symbol, end), start, end)
-            floor_idx = guard.floor_index(win, cfg)
-            start_bar, end_bar = guard.clamp_bars(start_bar, end_bar, floor_idx)
+            win = slice_window(_bars(get_config(), symbol), start, end)   # start 含探测器预热
             if start_bar is not None and end_bar is not None:
                 os.environ["DEBUG_BAR_RANGE"] = f"{start_bar},{end_bar}"
             if anchor_kind:                             # ★ v3 · 空串也视同未传
                 os.environ["DEBUG_ANCHOR_KIND"] = anchor_kind
             if scope is None:
                 # legacy 路径:无 scope 参数 → 前端旧 api.ts::getDiagnose 不用改。
-                diag = _dag_diagnose(spec, win, None)
-                return guard.redact_diagnostics(
-                    diagnose_symbol(spec, win, None, symbol=symbol, pattern_id=pattern_id, diag=diag), floor_idx,
-                    guard.diag_anchors(diag))
+                return diagnose_symbol(spec, win, None, symbol=symbol, pattern_id=pattern_id)
             # A' 按 scope 分派(见 docs/research/2026-07-18_debug-double-pause-analysis/final_report.md §3.1):
             # scope=nodes 只需 diag · scope=time/pair 只需 result(+ gate_failures) · 三 scope 数据依赖完全正交
             # (derive_response 三 branch 逐字核实无 hidden cross-dep)· 只跑该 scope 需要的那 pass 消双 pause。
@@ -392,10 +403,9 @@ def build_router(*, registry, config_path, get_config, set_config,
                     detach(spec)
             # unknown scope 走 derive_response · 由其抛 ValueError → HTTPException(400)
             try:
-                resp = derive_response(query, diag=diag, spec=spec, result=result)
+                return derive_response(query, diag=diag, spec=spec, result=result)
             except ValueError as e:
                 raise HTTPException(400, str(e)) from e
-            return guard.redact_scoped(resp, floor_idx, diag=diag, result=result)
         # ⚠ env is process-wide; concurrent /diagnose calls race — v2 finally-pop 让并发下互相清 env,
         # undefined under concurrency, single-user debug tool.
         finally:
@@ -410,7 +420,7 @@ def build_router(*, registry, config_path, get_config, set_config,
         if mod is None:
             raise HTTPException(404, f"unknown pattern: {pattern_id}")
         cfg = get_config()
-        start, end = guard.clamp_range(cfg, start, end)   # 扫描区间截进本轮看图范围
+        start, end = _clamp_range(start, end)   # 终点截到训练段末日
 
         try:
             if params_override:
@@ -431,7 +441,7 @@ def build_router(*, registry, config_path, get_config, set_config,
             buf_end   = str((end_ts   + pd.Timedelta(days=round(label_horizon * scan_mod.TRADING_TO_CALENDAR_RATIO))).date())
 
             # 复刻 worker 单 pattern 调用(含样本消费窗截取,口径与 scan worker 一致)
-            win = slice_window(guard.bars(cfg, symbol, buf_end), buf_start, buf_end)
+            win = slice_window(_bars(cfg, symbol), buf_start, buf_end)
             res = mod.analyze(win, p)
             from path2_web.serialize import serialize_per_pattern_result
             lo = int(win["date"].searchsorted(start_ts, "left"))
@@ -439,7 +449,7 @@ def build_router(*, registry, config_path, get_config, set_config,
             out = serialize_per_pattern_result(
                 res, end_node=end_node, label_horizon=label_horizon,
                 win=win, start_ts=start_ts, end_ts=end_ts,
-                sample_window=(lo, hi), view_floor_idx=guard.floor_index(win, cfg))
+                sample_window=(lo, hi))
             pattern_spec = serialize_pattern(mod.build_pattern(p if p is not None else mod.load_params()))
             scan_meta = {
                 "start_date": start, "end_date": end,
@@ -450,7 +460,6 @@ def build_router(*, registry, config_path, get_config, set_config,
             raise
         except Exception as e:
             raise HTTPException(500, f"{type(e).__name__}: {e}") from e
-        guard.record_preview(cfg, symbol, start, buf_end)    # 露出了这只股的命中与成绩:记不进「看过」就不给
         return {"analysis": out["analysis"], "summary": out["summary"],
                 "pattern_spec": pattern_spec, "scan": scan_meta}
 
@@ -661,11 +670,8 @@ def build_router(*, registry, config_path, get_config, set_config,
         for pid in req.pattern_ids:
             if registry.get(pid) is None:
                 raise HTTPException(404, f"unknown pattern: {pid}")
-        cfg = get_config()
-        # 扫描区间截进本轮看图范围;行情读截断副本(先核对是副本、是账上登记的那一份)
-        start_date, end_date = guard.clamp_range(cfg, req.start_date, req.end_date)
-        data_dir = guard.data_dir(cfg)
-        view_guard = guard.scan_tag(cfg, data_dir)
+        start_date, end_date = _clamp_range(req.start_date, req.end_date)   # 终点截到训练段末日
+        data_dir = str(_data_dir(get_config()))
         scan_ts = time.strftime("%Y%m%dT%H%M%S")
         import yaml as _yaml
 
@@ -737,7 +743,7 @@ def build_router(*, registry, config_path, get_config, set_config,
                 volume_min=req.volume_min,
                 first_passage_enabled=req.first_passage_enabled,
                 first_passage_k=req.first_passage_k,
-                view_guard=view_guard,
+                cap_at_train_end=True,          # 数据墙:网页扫描只读到训练段末日,落盘 data_until
             )
 
         def done_meta(result):

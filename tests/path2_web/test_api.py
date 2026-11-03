@@ -6,7 +6,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from path2_web.app import create_app
-from tests.path2_web.conftest import debug_data, guard_tag
+from tests.path2_web.conftest import TRAIN_END, data_cfg
 
 
 def _mk_dated_no_burst(tmp_path, symbol):
@@ -21,7 +21,7 @@ def _client(tmp_path):
     data_dir.mkdir()
     _mk_dated_no_burst(data_dir, "AAA")
     cfg = {
-        **debug_data(data_dir),
+        **data_cfg(data_dir),
         "scan": {"start_date": "2025-01-01", "end_date": "2025-12-31", "workers": 1, "ticker_regex": None},
         "last_selected_pattern": "bottom_burst",
     }
@@ -148,7 +148,7 @@ def _write_scan_file(tmp_path, name):
     (out / f"{name}.json").write_text(json.dumps(
         {"pattern_ids": ["bo_only"], "scan": {"scan_ts": "20260820T100000", "name": name,
                                               "hits": 0, "scanned": 0,
-                                              "view_guard": guard_tag(tmp_path / "pkls", "2025-01-01")},
+                                              "data_until": TRAIN_END},
          "per_pattern": {}, "results": []}))
     return out / f"{name}.json"
 

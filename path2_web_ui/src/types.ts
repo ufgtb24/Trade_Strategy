@@ -117,7 +117,6 @@ export interface ScanMeta {
   label_horizon: number                                // 必有(非 optional)
   first_passage_k: number                              // 几何对称单 k(波动率标准化阈值 = k × σ)
   partial?: boolean
-  view_guard?: ViewGuard                               // 带护栏扫的才有
 }
 export interface StockResult {
   symbol: string
@@ -132,16 +131,8 @@ export interface MultiScanResultFile {
   results: StockResult[]
 }
 
-/** 一根 K 线。调试视图里看图下界之前的 bar(探测器预热用,这一轮不给看)只留日期,价格与量为 null:
- *  留着它们只为让按序号定位的事件 / match 与 K 线对齐,渲染时一律不画(见 render/chart.ts 的 isPriced)。 */
-export interface Bar {
-  date: string; o: number | null; h: number | null; l: number | null; c: number | null
-  v: number | null; rv: number | null
-}
-/** 有价格的 K 线(看图工作流的图窗都在看图下界之后,根根有价格) */
-export interface PricedBar { date: string; o: number; h: number; l: number; c: number; v: number; rv: number }
+export interface Bar { date: string; o: number; h: number; l: number; c: number; v: number; rv: number }
 export interface Ohlc { symbol: string; bars: Bar[] }
-export interface PricedOhlc { symbol: string; bars: PricedBar[] }
 
 export interface AttrRow {
   instance_id: string; node_id: string
@@ -237,15 +228,10 @@ export interface ScanHistoryEntry {
   per_pattern: Record<string, { hits: number | null; median: number | null;
                                 fp: FirstPassageRatio | null;
                                 params_consistent: boolean | null }>
-  // 文件里 scan 段的区间与看图范围护栏标记(缺失为 null)
-  start_date?: string | null; end_date?: string | null; win_end?: string | null
-  view_guard?: ViewGuard | null
-  // 读了完整行情的旧扫描(区间越出本轮看图范围):命中数、中位数、首次穿越比为 null,打开会被后端拒绝
+  // 越过数据墙的扫描(没记 data_until,或晚于训练段末日 2025-12-31):命中数、中位数、首次穿越比为 null
+  // (可能用到了 2026 年以后的走势),打开会被后端拒绝(409)
   old_scan?: boolean
 }
-
-/** 扫描时的看图范围护栏:这份扫描读的是截断副本、起点不早于 view_floor */
-export interface ViewGuard { view_floor: string; train_end: string }
 
 export interface AppConfig {
   dataset_dir: string
@@ -276,131 +262,3 @@ export function isPoint(e: { start_idx: number; end_idx: number }): boolean {
 
 export type Level = 'matched' | 'qualified' | 'detected'
 export type Tier = Level
-
-// ─── 看图工作流模式(/workflow/*):清单由命令行工具 chart_workflow 生成,标注批次由后端写盘 ───
-/** card_hits:卡成立日清单(只在调试模式下用;每张点「是 / 不是」,标完才露出成立日之后的走势) */
-export type WorkflowListKind = 'bigmoves' | 'contrast' | 'contrast_blind' | 'card_hits'
-
-/** 看图工作流里的单张图事件:放大看了 / 点了买点或选了判定 / 大涨段第一次露出结果 */
-export type ChartViewEvent = 'zoom' | 'annotate' | 'reveal' | 'peek'
-
-/** 后端状态根:在哪、是不是来自环境变量(临时目录,记录不进正式账本)、能不能用、是哪种模式 */
-export interface WorkflowStateInfo {
-  path: string | null; from_env: boolean; env_var: string; ok: boolean; message: string | null
-  mode?: 'formal' | 'debug'; mode_label?: string | null
-}
-
-/** 后端是正式模式还是看图工作流的调试模式(调试段,写调试账、不进正式账),以及生效的看图范围 */
-export interface ModeInfo {
-  mode: 'formal' | 'debug'
-  /** 调试模式时界面顶上横幅的文字;正式模式为 null */
-  label: string | null
-  view_floor: string
-  train_end: string
-}
-
-export interface WorkflowListMeta {
-  list_id: string; kind: WorkflowListKind; title: string; created_at: string; n_items: number
-  /** 后端拿不到记账类文件的家(状态根)时为 'state_root_missing':这时打不开清单、发不了标注 */
-  blocked?: string
-  /** blocked 时后端给的中文说明 */
-  blocked_message?: string
-}
-
-export interface WorkflowSummaryRow {
-  scope: string; n_hits: number; n_stocks: number; n_weeks: number
-  hit_dir_mean: number | null; ctrl_dir_mean: number | null
-  dir_lead: number | null; dir_noise: number | null
-  hit_mag_median: number | null; ctrl_mag_median: number | null
-  mag_lead: number | null; mag_noise: number | null
-}
-
-export interface WorkflowSummary {
-  rows: WorkflowSummaryRow[]
-  concentration: { max_week_share: number | null; max_stock_share: number | null }
-  graduation: { passed: boolean; checks: Record<string, boolean> }
-}
-
-export interface WorkflowItem {
-  item_id: string; symbol: string; t: string; entry_date: string
-  view_start: string; view_end: string
-  /** 交易所(NASDAQ / NYSE / AMEX);证券名单里没有就是 null。目前网页不用它 */
-  exchange?: string | null
-  /** 跨源比对(与 Nasdaq 日线逐日比涨跌幅);盲看清单没有 */
-  xcheck?: WorkflowXcheck
-  /** 证券类别(如「普通股」「未知（名录里查不到）」);旧清单没有这个字段 */
-  sec_label?: string
-  /** false = 证券名录里查不到,类别是按代码规则推断的 */
-  sec_known?: boolean
-  /** 盲看清单只有 decision / entry */
-  marks: { decision?: string; entry?: string; up_line?: number; down_line?: number; peak_date?: string }
-  /** 盲看清单只有 M;卡成立日清单为空 */
-  metrics: Record<string, number | null>
-  tags: string[]
-  /** 卡成立日清单:标完「是 / 不是」后图窗露到哪天(标之前只到成立日 view_end) */
-  reveal_end?: string
-  /** 卡成立日清单:图窗里成立日之前卡也成立过的段 [起, 止](都早于成立日) */
-  card_true_runs?: [string, string][]
-}
-
-/** 卡成立日清单里一张图现在的标记(后端只追加,这是最后一下;first_verdict 是第一下) */
-export interface CardMark {
-  mark_id: string
-  verdict: 'yes' | 'no'
-  reason: string
-  ts: string
-  first_verdict: 'yes' | 'no'
-  /** 一共标过几下;大于 1 说明看过走势后改过 */
-  n: number
-  /** 揭开后才标:标第一下之前,这张图成立日之后的走势已经在别处画出来过(不进小结统计) */
-  late?: boolean
-  /** 揭开后才标的出处(清单名;不在清单里的写「清单以外」) */
-  late_where?: string
-}
-
-export interface WorkflowXcheck {
-  status: 'ok' | 'mismatch' | 'unavailable'
-  n_compared: number; n_missing: number
-  mismatch_days: { date: string; r_ours: number; r_nasdaq: number }[]
-  reason?: string; window?: [string, string]
-}
-
-export interface WorkflowGroup { key: string; title: string; item_ids: string[] }
-
-export interface WorkflowList {
-  schema: string; list_id: string; kind: WorkflowListKind; title: string; created_at: string
-  train_start: string; train_end: string
-  params: Record<string, any>
-  summary?: WorkflowSummary
-  groups: WorkflowGroup[]
-  items: WorkflowItem[]
-  /** 卡成立日清单:每张图现在的标记(打开清单时后端带上) */
-  card_marks?: Record<string, CardMark>
-  /** 卡成立日清单:还没标、但现在标就会记成揭开后才标的图 {item_id: 出处}(打开清单时后端算好) */
-  card_late?: Record<string, string>
-}
-
-/** 正例 / 反例 / 数据有误(用户确认行情数据有错,汇总进数据错误登记) */
-export type AnnotationLabel = 'positive' | 'negative' | 'data_error'
-
-/** 一个买点;每张图至多一个主买点(primary)。 */
-export interface BuyPoint { date: string; primary: boolean }
-
-/** 一条标注草稿(每个 item 最多一条)。标签必填;「数据有误」要框选起止;正例至少一个买点。 */
-export interface Annotation {
-  ann_id: string; item_id: string; symbol: string
-  range_start: string | null; range_end: string | null
-  buy_points: BuyPoint[]
-  label: AnnotationLabel | null; note: string
-  /** 点第一个买点之前,把图往右展开看过决策日之后的走势 */
-  peeked_before_buy: boolean
-  /** 大涨段清单:第一次露出结果(买点从无到有)时的买点;没露出过为 null */
-  first_buy_points: BuyPoint[] | null
-  /** 大涨段清单:露出结果之后买点改过或清除过(「看过结果后改过」) */
-  changed_after_reveal: boolean
-  updated_at: string
-}
-
-export interface AnnotationBatchResult { batch_id: string; path: string; n: number }
-
-export interface AnnotationBatchMeta { batch_id: string; list_id: string; n: number; created_at: string }

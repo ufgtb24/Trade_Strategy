@@ -14,7 +14,7 @@ from path2_web.serialize import serialize_pattern
 from path2_apps.bo_only import build_pattern as build_bo, Params as PBo
 import path2_apps.bo_only.params as bo_params
 import path2_apps.bottom_burst.params as bb_params
-from tests.path2_web.conftest import debug_data, guard_tag
+from tests.path2_web.conftest import TRAIN_END, data_cfg
 
 
 def _exp_fp(blob, pid):
@@ -53,12 +53,12 @@ def app_with_one_scan(tmp_path):
         workers=1, ticker_regex=None, scan_ts="20260627T130000",
         outputs_root=str(outputs),
         executor_factory=lambda w: ThreadPoolExecutor(max_workers=w),
-        view_guard=guard_tag(data),
+        cap_at_train_end=True,          # 与网页扫描同口径:截到训练段末日、落盘 data_until(否则打不开)
     )
 
     cfg_path = tmp_path / "config.json"
     cfg_path.write_text(json.dumps({
-        **debug_data(data),
+        **data_cfg(data),
         "scan": {"start_date": "2024-02-01", "end_date": "2024-06-30",
                  "workers": 1, "ticker_regex": None, "label_horizon": 20},
         "last_selected_pattern": "bo_only",
@@ -159,12 +159,12 @@ def app_with_two_patterns(tmp_path):
         workers=1, ticker_regex=None, scan_ts="20260701T130000",
         outputs_root=str(outputs),
         executor_factory=lambda w: ThreadPoolExecutor(max_workers=w),
-        view_guard=guard_tag(data),
+        cap_at_train_end=True,          # 与网页扫描同口径:截到训练段末日、落盘 data_until(否则打不开)
     )
 
     cfg_path = tmp_path / "config.json"
     cfg_path.write_text(json.dumps({
-        **debug_data(data),
+        **data_cfg(data),
         "scan": {"start_date": "2024-02-01", "end_date": "2024-06-30",
                  "workers": 1, "ticker_regex": None, "label_horizon": 20},
         "last_selected_pattern": "bo_only",
@@ -210,7 +210,7 @@ def test_get_scans_flat_per_pattern_aggregation_nonempty(tmp_path):
     blob = {
         "pattern_ids": ["bo_only", "bottom_burst", "bare", "ghost_app"],
         "scan": {"scan_ts": "20260702T130000", "scanned": 3, "hits": 2, "partial": False,
-                 "view_guard": guard_tag(data, "2025-01-01")},
+                 "data_until": TRAIN_END},
         "per_pattern": {
             "bo_only": {"stats": {"median": 0.05},
                         "first_passage_stats": {"n_bars": 10, "ratio": 0.6, "random_ratio": 0.5},
@@ -233,7 +233,7 @@ def test_get_scans_flat_per_pattern_aggregation_nonempty(tmp_path):
 
     cfg_path = tmp_path / "config.json"
     cfg_path.write_text(json.dumps({
-        **debug_data(data),
+        **data_cfg(data),
         "scan": {"start_date": "2024-02-01", "end_date": "2024-06-30",
                  "workers": 1, "ticker_regex": None, "label_horizon": 20},
         "last_selected_pattern": "bo_only",

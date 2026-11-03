@@ -1,4 +1,9 @@
-"""并发扫描(多 pattern):每只股读 pkl 一次 → slice_window → 对每 pattern analyze → 聚合 → 落盘。
+"""并发扫描(多 pattern):每只股读一次行情 → slice_window → 对每 pattern analyze → 聚合 → 落盘。
+
+数据墙:网页发起的扫描(api.post_scan)传 cap_at_train_end=True,行情经 data.read_bars 读、截到
+data.TRAIN_END,落盘的 scan 段记 data_until = TRAIN_END。别的调用方(研究脚本,如 scripts/path2/scan-wide.py)
+照旧直接读 pkl、不截,产物不带 data_until。没有 data_until(截断之前扫的、或脚本读完整行情扫的,成绩可能用到
+2026 年以后的走势)或比 TRAIN_END 晚的扫描文件,网页不给打开、列表里不给成绩(within_data_wall / list_scans_flat)。
 
 铁律:所有 pattern 必须经 discovery eval_meta 闸,故扫描永远走 buffered 路径,
 end_node/head_buffer/label_horizon 三者永远非 None。删除旧非缓冲分支。
@@ -30,7 +35,7 @@ _DEFAULT_OUTPUTS_ROOT = str(_REPO_ROOT / "outputs" / "path2_web")   # 锚到 rep
 
 from path2.dag.engine import analyze as _dag_analyze
 from path2.debug import set_current_symbol
-from path2_web.data import slice_window
+from path2_web.data import TRAIN_END, read_bars, slice_window
 from path2_web.gate_collector import attach_and_collect, detach
 from path2_web.serialize import serialize_per_pattern_result
 
@@ -50,8 +55,7 @@ def _scan_ticker_multi(pkl_path, module_paths, start_date, end_date,
                        buf_start, buf_end, end_nodes, label_horizon,
                        pattern_params_dicts,
                        price_min=None, price_max=None, volume_min=None,
-                       first_passage_enabled=True, first_passage_k=5.0, bars_until=None,
-                       view_floor=None, raw_bars=False):
+                       first_passage_enabled=True, first_passage_k=5.0, cap_at_train_end=False):
     """单股多 pattern worker(模块级,ProcessPool pickle 安全)。
 
     返回 4-tuple (symbol, per_pattern_dict | None, random_first_passage | None, err | None):
@@ -60,7 +64,7 @@ def _scan_ticker_multi(pkl_path, module_paths, start_date, end_date,
         且 first_passage_enabled 时才算;否则 None。
       err 非 None = 该股扫描异常,errors++,不进 results。
 
-    每股 read_pkl 一次,buf_win 切一次,然后逐 pattern import+analyze+投影。
+    每股读一次行情,buf_win 切一次,然后逐 pattern import+analyze+投影。
 
     pattern_params_dicts:{pid: dict} | None——主进程一次 load 的参数快照,直传每个
     worker(竞态修复:scan 期间改 yaml 不再影响本次 scan)。pid 在其中有值且该 app
@@ -71,11 +75,8 @@ def _scan_ticker_multi(pkl_path, module_paths, start_date, end_date,
     严格大于它,否则整只股跳过、不跑 detector(判定窗是 [start_date, end_date],不是
     buffered win)。
 
-    bars_until:非 None → 行情经 chart_workflow.loader 读(pkl_path 所在目录必须是截断副本),截到这一天(含);
-    None → 直接读 pkl(扫描脚本用)。raw_bars=True(调试视图护栏关着)时不经 loader、不要求截断副本,
-    读完整 pkl 后同样截到 bars_until(guard.raw_bars)。
-    view_floor:非 None → 调试视图的看图下界:投影时删掉锚点早于它的事件(serialize.redact_before),
-    内部照常用含预热的 win 计算。
+    cap_at_train_end:True → 经 data.read_bars 读(校验代码名、截到训练段末日,网页扫描用);
+    False → 直接读 pkl、不截(研究脚本用)。
 
     df 语义:传 win(slice_window 切出的 buf 窗口,已含 horizon 后向缓冲)+ start_ts/end_ts
     (scan 区间)。win 比 scan 区间宽(含缓冲),start_ts/end_ts 在其内过滤出 scan 区间日、
@@ -86,14 +87,8 @@ def _scan_ticker_multi(pkl_path, module_paths, start_date, end_date,
     symbol = Path(pkl_path).stem
     set_current_symbol(symbol)
     try:
-        if bars_until is None:
-            df = pd.read_pickle(pkl_path)
-        elif raw_bars:
-            from path2_web.guard import raw_bars as _raw_bars
-            df = _raw_bars(Path(pkl_path).parent, symbol, bars_until)
-        else:
-            from chart_workflow.loader import load_bars
-            df = load_bars(Path(pkl_path).parent, symbol, bars_until)
+        df = (read_bars(Path(pkl_path).parent, symbol) if cap_at_train_end
+              else pd.read_pickle(pkl_path))
         win = slice_window(df, buf_start, buf_end)
         if len(win) == 0:
             return (symbol, None, None, None)
@@ -115,8 +110,6 @@ def _scan_ticker_multi(pkl_path, module_paths, start_date, end_date,
         # [start, end];全 pattern 共用同一 win/窗界。
         lo = int(win["date"].searchsorted(start_ts, "left"))
         hi = int(win["date"].searchsorted(end_ts, "right")) - 1
-        floor_idx = (int(win["date"].searchsorted(pd.Timestamp(view_floor), "left"))
-                     if view_floor else None)
         for pid, mod_path in module_paths.items():
             mod = importlib.import_module(mod_path)
             pd_dict = (pattern_params_dicts or {}).get(pid)
@@ -143,7 +136,7 @@ def _scan_ticker_multi(pkl_path, module_paths, start_date, end_date,
                 price_min=price_min, price_max=price_max,
                 first_passage_enabled=first_passage_enabled,
                 first_passage_k=first_passage_k,
-                sample_window=(lo, hi), view_floor_idx=floor_idx)
+                sample_window=(lo, hi))
             per_pattern[pid] = out
             if out["summary"]["matches"] > 0:
                 any_match = True
@@ -301,7 +294,7 @@ def run_scan_multi(*, data_dir,
                    price_max: float | None = None,
                    volume_min: float | None = None,
                    save_event=None,
-                   view_guard: dict | None = None) -> dict:
+                   cap_at_train_end: bool = False) -> dict:
     """并发扫 data_dir/*.pkl,多 pattern 同时跑 + 落盘 MultiScanResultFile(spec §3.1)。
 
     cancel_event set + save_event set → break 优雅退出(已聚结果落盘,scan.partial=True);
@@ -314,11 +307,9 @@ def run_scan_multi(*, data_dir,
     note:本次 scan 的自由文本备注,落盘为 scan.note。
     price_min/price_max/volume_min:扫描过滤(见 _scan_ticker_multi);三者一并落盘为
     scan.filters,供事后解释命中数差异。
-    view_guard:{view_floor, train_end, snapshot_sha} | None——调试视图的看图范围护栏(path2_web/guard.py)。
-    非 None 时每只股票经 chart_workflow.loader 读(data_dir 必须是截断副本;带 unguarded = true 时不经 loader、
-    不要求副本),截到 train_end;投影时删掉锚点
-    早于 view_floor 的事件(每只股票每个 pattern 记下 view_floor_idx);原样落盘为 scan.view_guard;
-    起止日期由调用方先截进看图范围。
+    cap_at_train_end:True(网页扫描)→ 行情经 read_bars 截到训练段末日(数据墙,见模块说明),scan 段落盘
+    data_until = TRAIN_END,起止日期晚于 TRAIN_END 的部分没有行情、不产生命中;False(研究脚本)→ 直接读 pkl、
+    不截,不写 data_until(网页打不开这份结果)。
     """
     if executor_factory is None:
         executor_factory = lambda w: ProcessPoolExecutor(max_workers=w)
@@ -341,9 +332,7 @@ def run_scan_multi(*, data_dir,
                               volume_min=volume_min,
                               first_passage_enabled=first_passage_enabled,
                               first_passage_k=first_passage_k,
-                              bars_until=(view_guard or {}).get("train_end"),
-                              view_floor=(view_guard or {}).get("view_floor"),
-                              raw_bars=bool((view_guard or {}).get("unguarded"))) for p in pkls]
+                              cap_at_train_end=cap_at_train_end) for p in pkls]
             for fut in as_completed(futs):
                 if cancel_event is not None and cancel_event.is_set():
                     # 强制终止 worker(SIGKILL + waitpid 死亡确认)
@@ -423,7 +412,7 @@ def run_scan_multi(*, data_dir,
             "filters": {"price_min": price_min, "price_max": price_max,
                         "volume_min": volume_min},
             "partial": partial,
-            **({"view_guard": dict(view_guard)} if view_guard else {}),
+            **({"data_until": TRAIN_END} if cap_at_train_end else {}),
         },
         "results": agg["results"],
     }
@@ -468,12 +457,15 @@ def _params_consistent(pid: str, snapshot) -> Optional[bool]:
     return _params_field_tree(snapshot) == _params_field_tree(cur)
 
 
-_RANGE_KEYS = ("start_date", "end_date", "win_end", "view_guard")
+def within_data_wall(scan_section) -> bool:
+    """这份扫描读的行情截到了训练段末日:scan 段带 data_until 且不晚于 TRAIN_END。
+    没有 data_until 的是这道截断之前扫的(可能读了完整行情),一律当越过数据墙。"""
+    until = scan_section.get("data_until") if isinstance(scan_section, dict) else None
+    return isinstance(until, str) and until <= TRAIN_END
 
 
 def list_scans_flat(outputs_root: str = _DEFAULT_OUTPUTS_ROOT) -> list[dict]:
-    """[{name, scan_ts, pattern_ids, hits, total, size, partial, per_pattern,
-    start_date, end_date, win_end, view_guard}, ...]。
+    """[{name, scan_ts, pattern_ids, hits, total, size, partial, per_pattern[, old_scan]}, ...]。
     name = 文件名 stem(标识符);scan_ts = 文件内 scan.scan_ts(创建时间,排序用),
     读不出回退 stem(老文件兼容)。按 scan_ts 倒序。
     per_pattern = {pid: {"hits": match数, "median": float | None, "fp": dict | None}}——
@@ -481,8 +473,8 @@ def list_scans_flat(outputs_root: str = _DEFAULT_OUTPUTS_ROOT) -> list[dict]:
     median = per_pattern[pid].stats.median(match 级 forward_return 中位数,无 match 时为 None);
     fp = first_passage_stats 的 ratio/random_ratio 对(缺失或 n_bars==0 时为 None,内部值各自可为 None);
     params_consistent: bool|None——快照参数结构 vs 当前默认参数结构是否一致(只比字段名;None=无快照或 pid 无 app)。
-    start_date / end_date / win_end / view_guard 原样取自文件的 scan 段(缺失为 None),
-    调试视图据此认出读了完整行情的旧扫描(path2_web/guard.py)。"""
+    越过数据墙的扫描(within_data_wall 为假):带 old_scan = true,命中数、中位数、首次穿越比置 None——
+    它们可能用到了 2026 年以后的走势。"""
     d = Path(outputs_root) / "scans"
     if not d.exists():
         return []
@@ -515,11 +507,15 @@ def list_scans_flat(outputs_root: str = _DEFAULT_OUTPUTS_ROOT) -> list[dict]:
         except (json.JSONDecodeError, KeyError, OSError, AttributeError):
             pattern_ids, hits, total, partial, scan_ts = [], None, None, False, p.stem
             per_pattern, scan_section = {}, {}
-        rows.append({"name": p.stem, "scan_ts": scan_ts,
-                     "pattern_ids": pattern_ids, "hits": hits, "total": total,
-                     "size": p.stat().st_size, "partial": partial,
-                     "per_pattern": per_pattern,
-                     **{k: scan_section.get(k) for k in _RANGE_KEYS}})
+        row = {"name": p.stem, "scan_ts": scan_ts,
+               "pattern_ids": pattern_ids, "hits": hits, "total": total,
+               "size": p.stat().st_size, "partial": partial,
+               "per_pattern": per_pattern}
+        if not within_data_wall(scan_section):
+            row.update(old_scan=True, hits=None)
+            for pp in per_pattern.values():
+                pp.update(hits=None, median=None, fp=None)
+        rows.append(row)
     rows.sort(key=lambda r: r["scan_ts"], reverse=True)
     return rows
 

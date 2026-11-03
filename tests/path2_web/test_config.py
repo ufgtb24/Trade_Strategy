@@ -38,18 +38,6 @@ def test_label_horizon_default_and_merge(tmp_path):
     assert cfg["scan"]["start_date"] == "2024-01-01"              # 既有项不被覆盖
 
 
-def test_save_never_writes_workflow_from_memory(tmp_path):
-    """看图工作流那一段不从内存写回 yaml:文件里没有就不写,有就原样保留(前端切 app 时会整份 PUT)。"""
-    path = tmp_path / "path2_web.yaml"
-    cfg = load_config(path)
-    cfg["workflow"] = {**cfg["workflow"], "view_floor": "2024-01-01"}
-    cfg["last_selected_pattern"] = "bo_only"
-    save_config(cfg, path)
-    import yaml
-    disk = yaml.safe_load(path.read_text())
-    assert "workflow" not in disk and disk["last_selected_pattern"] == "bo_only"
-    assert load_config(path)["workflow"] == DEFAULT_CONFIG["workflow"]    # 仍跟代码默认值走
-    path.write_text("workflow:\n  view_floor: '2025-03-01'\n")
-    save_config(cfg, path)
-    disk = yaml.safe_load(path.read_text())
-    assert disk["workflow"] == {"view_floor": "2025-03-01"}               # 文件里原有的原样保留
+def test_default_web_data_dir_is_train_snapshot():
+    """网页读行情的目录默认是截到训练段末日的那份副本。"""
+    assert DEFAULT_CONFIG["view_dataset_dir"] == "datasets/pkls_until_20251231"

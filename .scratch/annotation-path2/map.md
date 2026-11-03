@@ -15,7 +15,7 @@
   - 一个 node 包容多种特征用复合事件，path2 现有机制够用（第 7 节）。
   - 结构化标注：用用户自己的词画框和放样本，会话翻成 path2 的 node / where / 边写进 mapping；对照时和显示用同一套画法；一次标注可以有多个 pattern，先看特征和先定目标分阶段配合，合不合并看骨架（第 8 节；细则见票「结构化标注：存什么、界面和主视图怎么合」）。
 - 用户说明书（2026-10-30 用户定，今后决策中优先级高于原型代码）：`.scratch/annotation-path2/manual.md`，假装工具已做完、按八步流程讲每个功能防的是哪种错；原型对照、要改要加的功能、冗余与用户 2026-10-31 拍板的方向题见`docs/research/2026-10-30_annotation-user-manual/final_report.md`（第 12 节为拍板结果）。各票拿不准时先查说明书。
-- 画图时已定（方向文档第 13 节）："较好"沿用 tune-gates-v3 的「比同日普通买入多出的部分」；地图到规格加开发任务为止；组合子与写法约定在图内、具体 detector 不在；旧代码在图内，先搭新的再拆旧的。另有：盲看从整个股票池随机抓、新写技能串循环、新特征放在要用的地方量且看不出先留着（第 3 节）。
+- 画图时已定（方向文档第 13 节）："较好"沿用 tune-gates-v3 的「比同日普通买入多出的部分」；地图到规格加开发任务为止；组合子与写法约定在图内、具体 detector 不在；旧代码在图内；2026-11-02 用户改定为旧看图工作流立即整体删除、不要账本，不等新的搭好（见票 10）。另有：盲看从整个股票池随机抓、新写技能串循环、新特征放在要用的地方量且看不出先留着（第 3 节）。
 - 旧 effort「建一套找优秀选股 pattern 的流程」已归档在 `.scratch-archive/selection-pattern/`；它的评估纪律类结论（分辨力、幸存者偏差、股票池口径含 SPAC 排除、同日对照怎么配）沿用，见那份地图的 Decisions so far。
 - 用词以 `path2/GLOSSARY.md`（框架与走势）和 `path2_web/GLOSSARY.md`（界面）为准，对用户说话时带上「文件:行号」出处；查词先 grep 再只读那一段。
 - 每张讨论票照例调 grilling 和 domain-modeling 两个技能；研究票由子代理调 research 技能，结论写进 `research/<NN>-<slug>.md`；原型票调 prototype 技能，代码放 `prototypes/`。票的规矩见 `docs/agents/decision-tickets.md`（认领、先和用户对倾向、结论经用户批准后才动地图和别的票）。
@@ -31,6 +31,7 @@
 - [标注、mapping、app 产出与对照：各环节东西的命名](issues/14-naming.md): 一名一格；sample（positive / negative）、box、dag、node / where、hit、event；match 改指 hit 与 sample 的比较、全仓改名另立；买点只留 app 一侧；英文为规范名，起名规则在 GLOSSARY-MAP；成员框须在样本日或之前结束
 - [界面显示的对称与统一](issues/15-display-consistency.md): 计数一律数样本、正负对偶写 `pos k/N · neg m/M`；汇总写比例、点开分排写个数；凡数样本的数都能点开；样本卡在哪都挂同一组 tag；数为 0 也显示
 - [结构化标注：存什么、界面和主视图怎么合](issues/01-structured-annotation.md): 标注是主视图的一个模式（annotate / compare / app）；框用用户自己的词、词表跨图共用；样本标 pos / neg，依据是样本日或之前结束的成员框、换样本后冻结；会话写 mapping、翻译与定级归会话；对照三层只给状态（tier / link / match tag），不比起止、不给数字
+- [旧看图工作流代码搬什么、拆什么](issues/10-old-code.md): 2026-11-02 用户改定：不搬，整体删除、不要账本；path2_web 调试视图只读训练段副本、硬截到 2025-12-31；截副本改成独立脚本；新工具要用的旧做法从提交 79a379a 找参照重写
 
 ## Not yet specified
 

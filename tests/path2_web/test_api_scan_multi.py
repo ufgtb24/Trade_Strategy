@@ -7,7 +7,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from path2_web.app import create_app
-from tests.path2_web.conftest import debug_data, guard_tag
+from tests.path2_web.conftest import TRAIN_END, data_cfg
 
 
 @pytest.fixture
@@ -28,7 +28,7 @@ def app(tmp_path, outputs):
 
     cfg_path = tmp_path / "config.json"
     cfg_path.write_text(json.dumps({
-        **debug_data(data),
+        **data_cfg(data),
         "scan": {"start_date": "2024-02-01", "end_date": "2024-06-30",
                  "workers": 1, "ticker_regex": None, "label_horizon": 20},
         "last_selected_pattern": "bo_only",
@@ -128,7 +128,7 @@ def test_rename_missing_404(app, outputs):
 def test_load_by_name(app, outputs):
     (outputs / "scans").mkdir(parents=True)
     (outputs / "scans" / "myexp.json").write_text(json.dumps(
-        {"scan": {"hits": 5, "view_guard": guard_tag(outputs.parent / "data", "2025-01-01")},
+        {"scan": {"hits": 5, "data_until": TRAIN_END},
          "pattern_ids": []}))
     r = app.get("/scans/myexp")
     assert r.status_code == 200 and r.json()["scan"]["hits"] == 5

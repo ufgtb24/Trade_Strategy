@@ -1,12 +1,46 @@
-"""唯一权威切片 slice_window() + OHLC 序列化。
+"""读行情 read_bars() + 唯一权威切片 slice_window() + OHLC 序列化。
 
 扫描 worker 与 /ohlc 共用 slice_window,保证 bars[i] ↔ start_idx==i 严格对齐
 (同一 (symbol,start,end) 下,K 线第 i 根 == detector 看到的第 i 个位置)。
+
+数据墙(用户定的红线):2026-01-01 起的行情一律不给用户看。网页的 K 线、诊断、单股预览、扫描都只经
+read_bars 读行情,它把行截到训练段末日 TRAIN_END(含)。TRAIN_END 是代码常量,配置改不了——
+配置里的数据目录即使误指到完整行情,也读不出 2026 年的 bar。读的目录本身应是截到训练段末日的那份副本
+(scripts/data/make_train_snapshot.py 生成)。
 """
 from __future__ import annotations
 
+import re
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
+
+TRAIN_END = "2025-12-31"     # 训练段末日:网页读行情的硬上限(代码常量,不从配置读)
+
+_SYMBOL_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9.\-]{0,14}$")
+
+
+def check_symbol(symbol) -> str:
+    """代码名格式校验:不合格(含路径分隔符、..、空白等,防路径穿越)→ ValueError。返回原样的代码名。"""
+    if not isinstance(symbol, str) or not _SYMBOL_RE.fullmatch(symbol) or ".." in symbol:
+        raise ValueError(f"非法代码: {symbol!r}")
+    return symbol
+
+
+def read_bars(data_dir, symbol: str) -> pd.DataFrame:
+    """网页读一只股票行情的唯一入口:校验代码名,读 data_dir/<symbol>.pkl,去 tz、按日期排序,
+    只留日期 ≤ TRAIN_END 的行。探测器预热要的更早的行情照常在内(调用方再用 slice_window 切窗)。
+
+    代码名不合格 → ValueError;文件不存在 → FileNotFoundError。
+    """
+    check_symbol(symbol)
+    df = pd.read_pickle(Path(data_dir) / f"{symbol}.pkl")
+    if getattr(df.index, "tz", None) is not None:
+        df = df.copy()
+        df.index = df.index.tz_localize(None)
+    df = df.sort_index()
+    return df[df.index <= pd.Timestamp(TRAIN_END)]
 
 
 def slice_window(df: pd.DataFrame, start_date, end_date) -> pd.DataFrame:

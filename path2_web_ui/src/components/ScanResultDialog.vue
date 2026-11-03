@@ -26,7 +26,7 @@
                 <span class="scan-ts">{{ formatTs(r.scan_ts) }}</span>
                 <span v-if="r.partial" class="partial-badge">未完成</span>
                 <span v-if="r.old_scan" class="partial-badge old-badge"
-                      title="加看图范围护栏之前扫的,读的是完整行情:可能含本轮看图范围以外的命中和走势,不列成绩、不能打开,请重新扫描">旧扫描</span>
+                      title="没有记下行情截到 2025-12-31,成绩可能用到了 2026 年以后的走势:不列成绩、不能打开,请重新扫描">旧扫描</span>
                 <span v-for="pid in r.pattern_ids" :key="pid" class="chip"
                       :class="{ 'chip--stale': r.per_pattern[pid]?.params_consistent === false }"
                       :title="r.per_pattern[pid]?.params_consistent === false
@@ -207,7 +207,7 @@ async function onOpen() {
 function openOne(name: string) {
   scan.open(name).then(() => emit('close'), openFailed)
 }
-// 打不开(如读了完整行情的旧扫描,后端 409):提示后端给的说明,列表留着
+// 打不开(如越过数据墙的旧扫描,后端 409):提示后端给的说明,列表留着
 function openFailed(e: any) {
   const msg = String(e?.message ?? e)
   let detail = msg.match(/→ \d+: ([\s\S]*)$/)?.[1] ?? msg

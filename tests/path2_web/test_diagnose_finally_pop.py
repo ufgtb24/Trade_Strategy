@@ -22,7 +22,7 @@ def client():
 
 
 def _pick_symbol_and_pattern(client):
-    """从 /patterns 拿一个真实 pattern_id · 从截断副本(workflow.dataset_dir,调试视图只读它)拿一个真实 symbol。"""
+    """从 /patterns 拿一个真实 pattern_id · 从网页读行情的目录(view_dataset_dir)拿一个真实 symbol。"""
     r = client.get("/patterns")
     assert r.status_code == 200, f"/patterns fail: {r.text}"
     patterns = r.json()
@@ -33,7 +33,7 @@ def _pick_symbol_and_pattern(client):
     assert cfg_r.status_code == 200
     cfg = cfg_r.json()
     from pathlib import Path
-    ddir = Path(cfg["workflow"]["dataset_dir"])
+    ddir = Path(cfg["view_dataset_dir"])
     if not ddir.is_absolute():
         ddir = Path(__file__).resolve().parents[2] / ddir
     pkls = sorted(ddir.glob("*.pkl"))

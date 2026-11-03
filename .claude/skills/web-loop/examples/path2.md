@@ -28,7 +28,7 @@
 - `healthUrl` = `http://localhost:${backend_port}/patterns`
 - `.web-loop-refresh.md` 里的 `${backend_port}` 同上,首次落地时渲染。
 
-配置源或键缺失时的处理见 SKILL.md 的 probe 协议。同一个 yaml 另有 `backend_port_dbg` / `debug_mode_*` 几组端口,是调试模式用的,不要取。
+配置源或键缺失时的处理见 SKILL.md 的 probe 协议。同一个 yaml 另有 `backend_port_dbg` 端口,是在 IDE 里断点调试后端时用的,不要取。
 
 ## 2. 截图配方(path2 界面状态轨迹示例,写进 `statesPath`)
 
