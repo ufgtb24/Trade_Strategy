@@ -1,7 +1,8 @@
 # 按代码打开任一只股票：标注模式的外壳与成交量
 
 Status: ready-for-agent
-Progress: not-started
+Progress: in-progress
+Claimed: 2026-11-03 parallel-tickets ticket-04 @ worktree impl/04-open-by-symbol-shell
 Blocked by: none
 
 ## Purpose
