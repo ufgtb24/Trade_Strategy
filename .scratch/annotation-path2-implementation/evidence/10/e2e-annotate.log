@@ -1,0 +1,24 @@
+代码：62f06738d39db18171a447bf51662d5ac227a62e（工作区 0 处未提交改动；端口临时改成 8090 / 5190，未提交）
+
+Running 17 tests using 1 worker
+
+  ✓   1 e2e/annotate-boxes.spec.ts:28:3 › 画框、起名与词表 › 拖框起名刷新后还在;轨上拖出带名字的框;改起止;属性回到 null;子框轨;改名处处生效;合并预览与拆回 (8.7s)
+  ✓   2 e2e/annotate-boxes.spec.ts:169:3 › 冲突与指纹不符 › 两种提示各出现一次,图照常显示;冲突看过后不再出现 (1.5s)
+  ✓   3 e2e/annotate-direct-links.spec.ts:63:3 › 直达链接 › 股票 + 日期:打开对的股票、图窗停在那天附近、落在 annotate;晚于 2025-12-31 的截到 2025-12-31;代码不存在有提示 (1.7s)
+  ✓   4 e2e/annotate-direct-links.spec.ts:98:3 › 直达链接 › 样本编号:打开样本所在的图并选中它;不存在的编号、认不出的写法有明确提示 (2.1s)
+  ✓   5 e2e/annotate-grouping.spec.ts:88:3 › 归组与 pattern 页 › pattern 页的计数与点开分排、definition、打开样本、轨序;unsorted 页按骨架分行、整行 move、刷新后还在 (3.6s)
+  ✓   6 e2e/annotate-open-by-symbol.spec.ts:58:3 › 按代码打开 · annotate › 副本里的代码回车打开:K 线止于 2025-12-31、只有 K 线和成交量;副本里没有的代码报 not_found (995ms)
+  ✓   7 e2e/annotate-open-by-symbol.spec.ts:95:3 › 按代码打开 · annotate › 现有扫描入口照旧能用:扫描结果是 app 视图;按代码打开切到 annotate;再从扫描列表选股回到 app (2.5s)
+  ✓   8 e2e/annotate-open-by-symbol.spec.ts:129:3 › 按代码打开 · annotate › 后端:非法代码 400,不存在 404 (612ms)
+  ✓   9 e2e/annotate-rally-random.spec.ts:104:3 › 找图入口 · rally / random › rally:从 app 视图点一行 → annotate,图停在那段涨之前、看得见那段涨,止于 2025-12-31 (1.8s)
+  ✓  10 e2e/annotate-rally-random.spec.ts:130:3 › 找图入口 · rally / random › random:从 app 视图点一下 → annotate,图窗不超过 250 根、止于 2025-12-31 (1.7s)
+  ✓  11 e2e/annotate-rally-random.spec.ts:145:3 › 找图入口 · rally / random › 看过什么一律不记:连点几行 rally、几次 random,文件与 localStorage 都不变 (3.2s)
+  ✓  12 e2e/annotate-ref-peaks.spec.ts:47:3 › 参照层 peaks › 默认关;勾上画出峰线(同 /peaks、止于 2025-12-31);换股票自动关 (2.8s)
+  ✓  13 e2e/annotate-ref-peaks.spec.ts:85:3 › 参照层 peaks › app 下不能用:复选框变灰、不能勾 (1.1s)
+  ✓  14 e2e/annotate-samples.spec.ts:77:3 › 放样本与成员框 › 自动收进之前的框、刷新不变;跨过样本日收不进;拖框边停在样本日;换掉当前样本后冻结;手动点进点出 (9.7s)
+  ✓  15 e2e/annotate-samples.spec.ts:222:3 › 保存被拒 › 另一台机器同步来的修改让本页的改动越界:界面写出原因,重读后框还在,再拖就停在样本日 (4.4s)
+  ✓  16 e2e/symbol-search.spec.ts:36:3 › symbol search e2e › empty state: search bar not rendered (263ms)
+  ✓  17 e2e/symbol-search.spec.ts:41:3 › symbol search e2e › after scan load: search bar visible + typing narrows list + Esc clears + Shift+B safe (1.1s)
+
+  17 passed (1.3m)
+exit=0
