@@ -1,7 +1,8 @@
 # 训练段副本指纹与标注目录的准备
 
 Status: ready-for-agent
-Progress: not-started
+Progress: in-progress
+Claimed: 2026-11-03 parallel-tickets ticket-01 @ worktree impl/01-snapshot-fingerprint-and-annotation-dir
 Blocked by: none
 
 ## Purpose
