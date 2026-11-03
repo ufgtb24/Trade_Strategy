@@ -1,9 +1,10 @@
 <template>
-  <div class="chart-area" :class="{ 'no-sidebar': !showSidebar }">
+  <div class="chart-area" :class="{ 'no-sidebar': !annotating && !showSidebar, annotating }">
     <!-- row0: 全局 level 控件 + 三 panel toggle chip + 休眠草稿 banner。
          .header-row 包一层让 banner 挂在 chip 行下方,同时对 grid 只占单一自动行——
          不新增显式行号,不改动 topology-row/kline/sidebar 既有的 auto-placement,避免二者同时出现时抢行。 -->
-    <div class="header-row">
+    <!-- annotate 模式不显示 app 相关的控件(档位、pattern、参数、拓扑、诊断侧栏) -->
+    <div v-if="!annotating" class="header-row">
       <div class="level-bar" data-testid="level-control">
         <button
           v-for="opt in LEVEL_OPTIONS"
@@ -35,12 +36,13 @@
       <DormantDraftBanner />
     </div>
     <!-- row1: 拓扑控制(可隐藏,wrapper .topology-row 让 CSS 精准跨列) -->
-    <div v-if="showTopology" class="topology-row">
+    <div v-if="!annotating && showTopology" class="topology-row">
       <TopologyControl @hover-node="onHoverNode" />
     </div>
     <!-- row2: K线 + 诊断侧栏(侧栏可隐藏) -->
     <KlineChart />
-    <DetailSidebar v-if="showSidebar" />
+    <AnnotationSidebar v-if="annotating" class="sidebar" />
+    <DetailSidebar v-else-if="showSidebar" />
     <WorkingCopyDrawer :open="drawerOpen" @close="drawerOpen = false" />
     <!-- Task 12 · 全局一次性提示(如 scan 完成自动固化 WC) -->
     <div v-if="view.toastMsg" class="toast">{{ view.toastMsg }}</div>
@@ -56,12 +58,13 @@ import DetailSidebar from './DetailSidebar.vue'
 import ParamsChip from './ParamsChip.vue'
 import WorkingCopyDrawer from './WorkingCopyDrawer.vue'
 import DormantDraftBanner from './DormantDraftBanner.vue'
+import AnnotationSidebar from './AnnotationSidebar.vue'
 import { useViewStore } from '../stores/view'
 import { usePanelsStore, type PanelKey } from '../stores/panels'
 import type { Level } from '../types'
 
 const view = useViewStore()
-const { level } = storeToRefs(view)
+const { level, annotating } = storeToRefs(view)
 const panels = usePanelsStore()
 const { showTopology, showSidebar } = storeToRefs(panels)
 // 抽屉开关 ref 由 ChartArea 持有,ParamsChip 只 emit toggle-drawer;WorkingCopyDrawer(Task 11)在此渲染
@@ -111,6 +114,7 @@ function onActivePatternChange(e: Event) {
   min-width: 0;
 }
 .chart-area.no-sidebar { grid-template-columns: 1fr; }
+.chart-area.annotating { grid-template-columns: 1fr 320px; }
 .header-row, .level-bar, .chart-area > .topology-row { grid-column: 1 / -1; }
 .chart-area > .kline-wrap-v2, .chart-area > .sidebar { grid-row: 3; }
 

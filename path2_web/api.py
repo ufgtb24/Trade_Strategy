@@ -25,7 +25,7 @@ from sse_starlette.sse import EventSourceResponse
 from path2.dag import diagnose as _dag_diagnose
 from path2.dag.engine import analyze as _dag_analyze_engine
 from path2_web import scan as scan_mod
-from path2_web.data import TRAIN_END, read_bars, serialize_ohlc, slice_window
+from path2_web.data import TRAIN_END, list_symbols, read_bars, serialize_ohlc, slice_window
 from path2_web.diagnose import diagnose_symbol, derive_response, Query
 from path2_web.gate_collector import attach_and_collect, detach
 from path2_web.serialize import serialize_pattern
@@ -275,9 +275,22 @@ def build_router(*, registry, config_path, get_config, set_config,
         return out
 
     @router.get("/ohlc")
-    def get_ohlc(symbol: str, start: str, end: str):
+    def get_ohlc(symbol: str, start: Optional[str] = None, end: Optional[str] = None):
+        """一只股票的 K 线。start / end 都不给 → 截到训练段末日的全部 K 线(按代码打开用);
+        给了就两个都要是 YYYY-MM-DD。代码名不合格 → 400;没有这只股票 → 404。
+        不给区间时,截完一根都不剩的(2026 年才上市的)也回 404:配置的目录误指到完整行情也打不开它。"""
+        if start is None and end is None:
+            df = _bars(get_config(), symbol)
+            if len(df) == 0:
+                raise HTTPException(404, f"{symbol} 在训练段末日 {TRAIN_END} 及以前没有行情")
+            return serialize_ohlc(symbol, df.reset_index())
         _check_dates(start, end)
         return serialize_ohlc(symbol, slice_window(_bars(get_config(), symbol), start, end))
+
+    @router.get("/symbols")
+    def get_symbols():
+        """股票列表:训练段副本里有的股票代码(data.list_symbols),按字母序。"""
+        return list_symbols(_data_dir(get_config()))
 
     @router.get("/config")
     def read_config():

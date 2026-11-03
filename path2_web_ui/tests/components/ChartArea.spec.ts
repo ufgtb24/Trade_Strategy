@@ -9,6 +9,7 @@ describe('ChartArea – level control', () => {
 
   function mountIt() {
     const v = useViewStore()
+    v.mode = 'app'          // 档位控件属于扫描结果视图
     const wrapper = mount(ChartArea, {
       global: {
         stubs: {

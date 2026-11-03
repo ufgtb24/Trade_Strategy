@@ -8,9 +8,14 @@ export type { ParamsDiffResp }
 
 const BASE = (import.meta as any).env?.VITE_API_BASE ?? 'http://localhost:8000'
 
+/** GET 失败时抛的错误带上 HTTP 状态码(调用方据此区分「不存在」与其他失败)。 */
+export class HttpError extends Error {
+  constructor(message: string, readonly status: number) { super(message) }
+}
+
 async function getJson<T>(path: string): Promise<T> {
   const r = await fetch(`${BASE}${path}`)
-  if (!r.ok) throw new Error(`GET ${path} → ${r.status}: ${await r.text()}`)
+  if (!r.ok) throw new HttpError(`GET ${path} → ${r.status}: ${await r.text()}`, r.status)
   return r.json() as Promise<T>
 }
 
@@ -24,6 +29,14 @@ export function getPatterns(): Promise<SerializedPattern[]> {
 }
 export function getOhlc(symbol: string, start: string, end: string): Promise<Ohlc> {
   return getJson(`/ohlc?symbol=${encodeURIComponent(symbol)}&start=${start}&end=${end}`)
+}
+/** 按代码打开:这只股票的全部 K 线(后端截到训练段末日)。 */
+export function getAllOhlc(symbol: string): Promise<Ohlc> {
+  return getJson(`/ohlc?symbol=${encodeURIComponent(symbol)}`)
+}
+/** 股票列表:训练段副本里有的股票代码,按字母序。 */
+export function getSymbols(): Promise<string[]> {
+  return getJson('/symbols')
 }
 export function listScans(): Promise<ScanHistoryEntry[]> {
   return getJson('/scans/')

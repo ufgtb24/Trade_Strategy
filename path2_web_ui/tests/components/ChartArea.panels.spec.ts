@@ -3,8 +3,10 @@ import { mount } from '@vue/test-utils'
 import { setActivePinia, createPinia } from 'pinia'
 import ChartArea from '../../src/components/ChartArea.vue'
 import { usePanelsStore } from '../../src/stores/panels'
+import { useViewStore } from '../../src/stores/view'
 
 function mountIt() {
+  useViewStore().mode = 'app'   // 面板开关属于扫描结果视图
   const wrapper = mount(ChartArea, {
     global: {
       stubs: {
