@@ -1,0 +1,43 @@
+票 03 独立审查：规范一侧（code-review skill，固定点 cb6dbb9，审查时 HEAD d8910fa）
+
+## 规范审查：票 03 的 membership 改动
+
+先说没问题的部分：四个改动文件里 grep `docs/research` 为空，也没有研究里的实验编号。`__init__.py` 补上了包说明，每个函数和类都有中文 docstring。这份代码只是纯计算，不是新路由，所以没碰「后端只做投影」那条线。
+
+### 一、违反成文规范
+
+**1. 把还不存在的界面写成了现状（硬违规，有一处可以豁免）**
+- 依据：CLAUDE.md「文档只反映当前代码状态，不写开发历史、不写未实现的设计」，以及这个包上次审查已经提过的「注释不写未来的调用方」。
+- 问题：票里写明前端实现不在本票、由 05 和 06 去做，但下面这几处用现在时写界面的行为：
+  - `membership.py:5`「界面(前端)为了交互流畅在本地算这些量」
+  - `membership.py:29`「全图的框用来分子框轨」
+  - `membership.py:65`「界面上挂 ◂,点一下收进」
+  - `membership.py:66`「界面上悬停写明原因」
+  - `membership.py:68`「别处都读这两个常数」
+  - `membership_examples.json:3`「和前端实现共用」
+- 可以豁免的：`membership.py:9` 写 vitest 从哪个路径读例子文件，这是票面明确要求写进模块文档的。
+
+**2. 「成员」单独使用（成文规则，严重程度可商量）**
+- 依据：`path2/GLOSSARY.md:171` 成员框词条写明「不单说『成员』」，以及 CLAUDE.md 编码规范「用 GLOSSARY 定下的词」。
+- 问题：模块说明和 docstring 里反复出现「样本成员」「成员树」「成员链」「成员推断」。同包的 store.py 一律写「成员框」。不过票面标题本身也写「成员推断」。
+
+**3. 测试文件引用票面和票号（中等）**
+- 依据：implementation-tickets.md「Cross-store references must include a path/link, not just an ambiguous ticket number」，以及 CLAUDE.md「不写开发历史」。
+- 问题：
+  - `test:105`「即 02 的固定例子」：前面已经给了路径，这个票号是多余的
+  - `test:6`、`test:27`、`test:78` 的「票面」：测试文件头应该把要求本身写清楚，现在写成了「覆盖票面列的全部情形」
+
+**4. 把特征编号说成「名」（中等）**
+- 依据：`path2/GLOSSARY.md:133-139` 区分「特征」和「特征名」，「名字」在 `_Avoid_` 里。
+- 问题：
+  - `test:35`「骨架只取顶层特征名的先后」与代码不符，代码返回的是特征编号（docstring 里也写的是编号）
+  - `test:36`、`test:107` 的「同名框」和 `membership.py:58` 的「没起名的」都应改说特征或特征编号
+
+### 二、代码坏味道（都只是个人判断）
+
+- **名字误导**：`empty_slots` 里的 `start = min(...)` 是样本范围起点的序号，可同一个循环里的 `b.start` 是日期字符串，两个 start 指的不是一类东西，容易读错，建议改名 `range_start`。另外 `_Box.s` / `_Box.e` 和 `start` / `end` 并存，用样本的地方又用 `x` 当变量名，也不好读。
+- **重复代码**：
+  - `{b["id"]: b["feature"] for b in boxes}` 在 `membership.py:158` 和 `:186` 各写了一次。
+  - 测试里 `_dated` 和 `walk` 按 `_DATE_KEYS` 递归遍历的写法也重复了一遍。
+- **跑到别的对象里取数据**：`_contains` 和 `_parent` 里内联的交叠判断都在读 `_Box` 的字段，适合做成 `_Box` 自己的方法。现在「包住」有单独的函数、「交叠」却是内联的，写法不对称。
+- **总是一起传的参数**：`(members, boxes, days)` 每次一起传。`dup_features` 会调 `skeleton`，`skeleton` 又调 `member_tree`，每层都重算一遍 `_pool`。不过输入格式是和前端、JSON 例子共用的约定，用 dict 有它的理由，这一点可以不改。
