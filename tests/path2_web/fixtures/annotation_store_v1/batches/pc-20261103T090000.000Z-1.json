@@ -1,0 +1,90 @@
+{
+ "schema": "path2_web.annotation/1",
+ "data_fingerprint": "40508e77199b91e351ea09182fe7d3b87aadb2f50c6d82f4ddb30d578cbcf559",
+ "ops": [
+  {
+   "ts": "20261103T090000.000Z",
+   "machine": "pc",
+   "kind": "feature",
+   "id": "w-pc-1",
+   "base": null,
+   "value": {
+    "id": "w-pc-1",
+    "name": "放量突破"
+   }
+  },
+  {
+   "ts": "20261103T090000.000Z",
+   "machine": "pc",
+   "kind": "feature",
+   "id": "w-pc-2",
+   "base": null,
+   "value": {
+    "id": "w-pc-2",
+    "name": "回踩",
+    "definition": "突破后缩量回落"
+   }
+  },
+  {
+   "ts": "20261103T090000.000Z",
+   "machine": "pc",
+   "kind": "pattern",
+   "id": "W底",
+   "base": null,
+   "value": {
+    "name": "W底",
+    "definition": "两个低点，第二个不破第一个"
+   }
+  },
+  {
+   "ts": "20261103T090000.000Z",
+   "machine": "pc",
+   "kind": "box",
+   "id": "b-pc-3",
+   "base": null,
+   "value": {
+    "id": "b-pc-3",
+    "symbol": "AAPL",
+    "feature": "w-pc-1",
+    "start": "2024-03-01",
+    "end": "2024-03-05"
+   }
+  },
+  {
+   "ts": "20261103T090000.000Z",
+   "machine": "pc",
+   "kind": "box",
+   "id": "b-pc-4",
+   "base": null,
+   "value": {
+    "id": "b-pc-4",
+    "symbol": "AAPL",
+    "feature": "w-pc-2",
+    "start": "2024-03-06",
+    "end": "2024-03-15",
+    "attrs": {
+     "w-pc-1": true
+    },
+    "note": "量很小"
+   }
+  },
+  {
+   "ts": "20261103T090000.000Z",
+   "machine": "pc",
+   "kind": "sample",
+   "id": "s-pc-5",
+   "base": null,
+   "value": {
+    "id": "s-pc-5",
+    "symbol": "AAPL",
+    "date": "2024-03-18",
+    "pattern": "W底",
+    "judgment": "pos",
+    "members": [
+     "b-pc-3",
+     "b-pc-4"
+    ]
+   }
+  }
+ ]
+}

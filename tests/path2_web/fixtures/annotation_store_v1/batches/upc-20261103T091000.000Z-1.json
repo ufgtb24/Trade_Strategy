@@ -1,0 +1,62 @@
+{
+ "schema": "path2_web.annotation/1",
+ "data_fingerprint": "9c1f5e0a7d3b2c4e6f8091a2b3c4d5e6f708192a3b4c5d6e7f8091a2b3c4d5e6",
+ "ops": [
+  {
+   "ts": "20261103T091000.000Z",
+   "machine": "upc",
+   "kind": "feature",
+   "id": "w-upc-1",
+   "base": null,
+   "value": {
+    "id": "w-upc-1",
+    "name": "缩量"
+   }
+  },
+  {
+   "ts": "20261103T091000.000Z",
+   "machine": "upc",
+   "kind": "box",
+   "id": "b-upc-2",
+   "base": null,
+   "value": {
+    "id": "b-upc-2",
+    "symbol": "MSFT",
+    "feature": "w-upc-1",
+    "start": "2023-05-01",
+    "end": "2023-05-20",
+    "detach": true
+   }
+  },
+  {
+   "ts": "20261103T091000.000Z",
+   "machine": "upc",
+   "kind": "sample",
+   "id": "s-upc-3",
+   "base": null,
+   "value": {
+    "id": "s-upc-3",
+    "symbol": "MSFT",
+    "date": "2023-05-22",
+    "pattern": null,
+    "judgment": "neg",
+    "members": [
+     "b-upc-2"
+    ],
+    "note": "后来跌了"
+   }
+  },
+  {
+   "ts": "20261103T091000.000Z",
+   "machine": "upc",
+   "kind": "feature",
+   "id": "w-pc-2",
+   "base": "pc-20261103T090000.000Z-1#1",
+   "value": {
+    "id": "w-pc-2",
+    "name": "回调",
+    "definition": "突破后缩量回落"
+   }
+  }
+ ]
+}

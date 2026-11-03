@@ -33,8 +33,9 @@ from path2_web.finder import Finder, random_window
 from path2_web.snapshot_fingerprint import ManifestMissing
 from path2_web.gate_collector import attach_and_collect, detach
 from path2_web.serialize import serialize_pattern
+from path2_web.annotation import store as annotation_store
+from path2_web.config import view_dataset_dir
 
-_REPO_ROOT = Path(__file__).resolve().parents[1]
 _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 
@@ -70,8 +71,7 @@ _SCAN_NAME_RE = re.compile(r"^(?!\.)[\w\-.]+$", re.UNICODE)
 
 def _data_dir(cfg: dict) -> Path:
     """网页读行情的目录:配置的 view_dataset_dir(相对路径按 repo root 解析);目录不存在 → 503。"""
-    d = Path(cfg["view_dataset_dir"])
-    d = d if d.is_absolute() else _REPO_ROOT / d
+    d = view_dataset_dir(cfg)
     if not d.is_dir():
         raise HTTPException(503, f"行情目录不存在: {d}(用 scripts/data/make_train_snapshot.py 生成)")
     return d
@@ -786,6 +786,40 @@ def build_router(*, registry, config_path, get_config, set_config,
         if not manager.cancel(scan_id, save=save):
             raise HTTPException(404, "scan not running or unknown")
         return {"ok": True}
+
+    # ---- 标注:读重放出的当前状态、追加一批操作(path2_web/annotation/store.py 模块说明) ----
+    # 只读写标注目录和训练段副本的指纹清单,不读行情。
+
+    def _annotation_failure(e: Exception) -> HTTPException:
+        """标注读写的异常 → HTTP:没通过校验 400(detail {reasons: [{code, message, …}]}),
+        标注目录不存在 503,其余(批次文件读不懂、机器名不合格、写文件失败)500。"""
+        if isinstance(e, annotation_store.BatchRejected):
+            return HTTPException(400, {"reasons": e.reasons})
+        if isinstance(e, annotation_store.AnnotationDirMissing):
+            return HTTPException(503, str(e))
+        return HTTPException(500, str(e))
+
+    @router.get("/annotations")
+    def annotations_read():
+        """当前标注:{state, conflicts, violations, fingerprint, revs, next_seq, ignored_files}。"""
+        try:
+            return annotation_store.read_annotations(get_config())
+        except (OSError, ValueError) as e:
+            raise _annotation_failure(e) from None
+
+    @router.post("/annotations/batch")
+    def annotations_append(batch: dict):
+        """追加一批操作:body {ops: [{kind, id, base, value}]}。校验不过一条也不写;
+        通过就写一个新批次文件,返回 {file, …同 GET /annotations}。"""
+        cfg = get_config()
+        try:
+            if set(batch) != {"ops"}:
+                raise annotation_store.BatchRejected(
+                    [{"code": "bad_op", "message": "body 应为 {ops: [{kind, id, base, value}]}"}])
+            name = annotation_store.append_batch(cfg, batch["ops"])
+            return {"file": name, **annotation_store.read_annotations(cfg)}
+        except (OSError, ValueError) as e:
+            raise _annotation_failure(e) from None
 
     # ── 找图:股票池 /pool、大涨段清单 /rally、随机给一段图 /random(path2_web/finder.py)──
     # 只读,看过什么一律不记。整池算一遍(首次约半分钟)的结果缓存在 <outputs_root>/finder/,
