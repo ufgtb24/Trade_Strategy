@@ -10,7 +10,7 @@
 <script setup lang="ts">
 /**
  * pattern 页、unsorted 页上代表一个样本的卡:三角(正样本 ▲、负样本 △)、股票代码、样本日。
- * 点一下在主图打开那张图(图窗停在样本的跨度上)并选中这个样本,侧栏留在当前页,方便挨个看;
+ * 点一下在主图打开那张图(图窗停在样本的跨度上)并选中这个样本,侧栏留在当前页,方便挨个看;compare 下换图仍留在 compare;
  * 主图上选中的那个样本,卡的边加粗。
  */
 import { useAnnotationStore } from '../stores/annotation'
@@ -21,7 +21,7 @@ const props = defineProps<{ x: ChartSample }>()
 const ann = useAnnotationStore()
 
 function open() {
-  void ann.openSample(props.x.sample.id, { keepTab: true })
+  void ann.openSample(props.x.sample.id, { keepTab: true, keepCompare: true })
 }
 </script>
 

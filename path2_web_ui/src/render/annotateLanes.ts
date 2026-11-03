@@ -13,9 +13,19 @@
  * - 暗一档:样本日之后的 K 线区盖一层 7% 的黑,K 线的形状仍看得清。
  * 轨标题里的特征名是用户写的内容,用正常字体加浅灰底(--chip-bg 同值),「⊂」、unnamed、bracket 与字母是程序
  * 固定文字,用等宽字体。
+ *
+ * compare 下(LaneDraw.compare)再叠上当前 pattern 的 app 的输出(哪条轨、哪一行见 render/compareOverlay.ts):
+ * - event 画成实心 band(和主视图副图的 band 一样,不描边),颜色按档位:进了 hit 的画 node 本色,qualified 深灰
+ *   #9ca3af,detected 浅灰 #d1d5db(render/colors.ts),不套琥珀;压在用户的框下面,框的虚线边照样看得见;
+ *   tiers 开着时灰 band 右端挂 tier tag(render/tierTags.ts);
+ * - hit 画在 bracket 轨上:app 琥珀 #F2C25C 底、细黑实线边(签一律实线;虚线只表示用户画的);
+ * - 悬停只给状态(node、档位、起止),不给实测值和门槛。
  */
 import type { Bar } from '../types'
 import type { AnnBox, Lane } from '../annotate/model'
+import type { CmpHit, CmpLane } from './compareOverlay'
+import { colorOf } from './colors'
+import { nextStarts, tierTagOf, tierTagShape, TIER_TAG_TIP } from './tierTags'
 import { triOf, type BoxMark } from '../annotate/samples'
 import { CROSSES_SAMPLE_DATE, UNCLAIMED } from '../annotate/membership'
 import { endIndex, startIndex, type BoxPx } from '../annotate/boxGeometry'
@@ -44,6 +54,9 @@ export const NEG_FILL = '#ffffff'     // 负样本:空心三角(白底黑边)
 export const AFTER_DIM = 'rgba(0,0,0,0.07)'   // 选中样本时样本日之后的 K 线区:暗一档,形状仍看得清
 export const BRACKET_ROW_H = 13       // bracket 轨里一行的高度
 export const BRACKET_BAR_H = 9        // bracket 轨里一条样本跨度的高度
+export const APP_BAR_H = 7            // compare:轨里一个 event 的 band 高(同主视图副图的 band)
+export const APP_ROW_H = 9            // compare:event 块里一行的高度(band + 行间空)
+export const APP_AMBER = '#F2C25C'    // app 琥珀(配色规范的来源轴):compare 下 bracket 轨上 hit 的底色
 export const MONO = 'ui-monospace, "JetBrains Mono", "DejaVu Sans Mono", Consolas, monospace'
 
 export interface LaneGeom { top: number; h: number }
@@ -146,7 +159,30 @@ export interface LaneDraw {
   draft: Draft | null
   zoom: { start: number; end: number } | null
   width: number
+  /** compare:叠上去的 app 输出(不给就是 annotate) */
+  compare?: CompareDraw | null
 }
+
+/** compare 下叠到图上的 app 输出。 */
+export interface CompareDraw {
+  /** 每条轨上叠的 event,和 lanes 按下标对齐 */
+  app: readonly CmpLane[]
+  /** bracket 轨上的 hit;hitRow0 是 hit 的第 0 行在 bracket 轨里排第几行(样本跨度占了前面几行) */
+  hits: readonly CmpHit[]
+  hitRow0: number
+  nodeColors: Record<string, string>
+  /** 顶栏 tiers:灰 band 右端挂不挂 tier tag */
+  tiers: boolean
+}
+
+/** event 在轨里的竖直范围:event 块竖直居中在轨里(去掉上下内边距),row 是块里的第几行。 */
+export function appBarY(g: LaneGeom, rows: number, row: number): { top: number; bottom: number } {
+  const blockH = rows * APP_ROW_H - (APP_ROW_H - APP_BAR_H)
+  const top = g.top + LANE_PAD + (g.h - 2 * LANE_PAD - blockH) / 2 + row * APP_ROW_H
+  return { top, bottom: top + APP_BAR_H }
+}
+
+const TIER_WORD = { matched: 'bound', qualified: 'qualified', detected: 'detected' } as const
 
 /** 轨标题:特征名(浅灰底)、子框轨写成「缩量 ⊂ 横盘」,还没起名的轨写 unnamed。 */
 function laneTitle(l: Lane, nameOf: LaneDraw['nameOf']): any {
@@ -240,6 +276,8 @@ export function buildAnnotateSubOption(bars: Bar[], d: LaneDraw): unknown {
     }
   }
 
+  const cmp = buildCompareSeries(dates, d)
+
   return {
     animation: false,
     tooltip: { trigger: 'item', show: true, appendToBody: true, confine: true },
@@ -320,8 +358,72 @@ export function buildAnnotateSubOption(bars: Bar[], d: LaneDraw): unknown {
         }
         return { type: 'group', children }
       },
-    }],
+    }, ...cmp],
   }
+}
+
+/** compare 的三个系列:轨上的 event(压在框下)、灰 band 右端的 tier tag(压在框上)、bracket 轨上的 hit。 */
+function buildCompareSeries(dates: readonly string[], d: LaneDraw): any[] {
+  const c = d.compare
+  if (!c || !dates.length) return []
+  // event:每个一行数据 [起点下标, 终点下标, 顶, 同一行下一个的起点(-1 = 没有)];画法按行号另存
+  const items: { key: string; start: number; end: number; top: number; color: string; tip: string; tag: ReturnType<typeof tierTagOf> }[] = []
+  c.app.forEach((la, i) => {
+    const g = d.geom[i]
+    if (!g) return
+    for (const e of la.events) {
+      items.push({
+        key: `${i}:${e.row}`, start: e.start, end: e.end, top: appBarY(g, la.rows, e.row).top,
+        color: colorOf(e.tier, e.node, c.nodeColors), tag: tierTagOf(e.tier),
+        tip: `${e.node} · ${TIER_WORD[e.tier]}<br>${dates[e.start] ?? e.start} – ${dates[e.end] ?? e.end}`,
+      })
+    }
+  })
+  const nexts = nextStarts(items)
+  const evRows = items.map((it, k) => [it.start, it.end, it.top, nexts[k]])
+  const tagIdx = c.tiers ? items.map((it, k) => (it.tag ? k : -1)).filter(k => k >= 0) : []
+  const tagRows = tagIdx.map(k => evRows[k])
+  const tip = (html: string) => `<span style="font-family:${MONO};color:${INK}">${html}</span>`
+  const series: any[] = [{
+    type: 'custom', name: 'compare-events', xAxisIndex: 0, yAxisIndex: 0, clip: true,
+    data: evRows, encode: { x: [0, 1] }, z: 8,
+    tooltip: { formatter: (p: any) => tip(items[p.dataIndex].tip) },
+    renderItem: (p: any, api: any) => {
+      const [x0, x1] = spanPx(api)
+      return { type: 'rect', shape: { x: x0, y: api.value(2), width: Math.max(3, x1 - x0), height: APP_BAR_H },
+               style: { fill: items[p.dataIndex].color } }
+    },
+  }, {
+    type: 'custom', name: 'compare-tier-tags', xAxisIndex: 0, yAxisIndex: 0, clip: true,
+    data: tagRows, encode: { x: [0, 1] }, z: 12,
+    tooltip: { formatter: (p: any) => tip(TIER_TAG_TIP[items[tagIdx[p.dataIndex]].tag!]) },
+    renderItem: (p: any, api: any) => {
+      const it = items[tagIdx[p.dataIndex]]
+      const [, x1] = spanPx(api)
+      const cs = p.coordSys
+      const next = api.value(3)
+      const limit = Math.min(cs.x + cs.width, next >= 0 ? api.coord([next, 0])[0] - api.size([1, 0])[0] / 2 : Infinity)
+      return tierTagShape(it.tag!, x1, api.value(2), APP_BAR_H, limit) ?? { type: 'group', children: [] }
+    },
+  }]
+  if (d.bracket) {
+    const g = d.bracket.geom
+    const hRows = c.hits.map(h => { const { top, bottom } = bracketYRange(g, c.hitRow0 + h.row); return [h.start, h.end, top, bottom] })
+    series.push({
+      type: 'custom', name: 'compare-hits', xAxisIndex: 0, yAxisIndex: 0, clip: true,
+      data: hRows, encode: { x: [0, 1] }, z: 9,
+      tooltip: { formatter: (p: any) => {
+        const h = c.hits[p.dataIndex]
+        return tip(`hit<br>${dates[h.start] ?? h.start} – ${dates[h.end] ?? h.end}`)
+      } },
+      renderItem: (_p: any, api: any) => {
+        const [x0, x1] = spanPx(api)
+        return { type: 'rect', shape: { x: x0, y: api.value(2), width: Math.max(3, x1 - x0), height: api.value(3) - api.value(2) },
+                 style: { fill: APP_AMBER, stroke: INK, lineWidth: 1 } }
+      },
+    })
+  }
+  return series
 }
 
 /** 框在副图上的像素范围(点选、改起止用)。toPx:K 线下标 → 该根 K 线中心的 x;bw:一根 K 线的宽度。 */

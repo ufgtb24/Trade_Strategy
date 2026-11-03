@@ -146,6 +146,9 @@ export interface RandomWindow { symbol: string; start: string; end: string }
 /** 参照层 peaks 的一条线(/peaks):峰那根 K 线 date、峰登记时的价 price、画到第一次被突破的那根 end
  *  (没被突破的到最后一根)。都截到训练段末日。 */
 export interface PeakLine { date: string; price: number; end: string }
+/** 第一段 compare 用的 mapping 文件(path2_apps/<app>/mapping.yaml,GET /mappings):标注里的 pattern 用哪个 app,
+ *  特征编号 → 认它的 node_id。problem 非 null(文件读不懂、node 不在 app 里、两个 app 写了同一个 pattern)时不能用。 */
+export interface AppMapping { app: string; pattern: string | null; features: Record<string, string>; problem: string | null }
 
 export interface AttrRow {
   instance_id: string; node_id: string

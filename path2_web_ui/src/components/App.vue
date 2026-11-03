@@ -21,11 +21,14 @@ import { useConfigStore } from '../stores/config'
 import { useViewStore } from '../stores/view'
 import { useAnnotationStore } from '../stores/annotation'
 import { useDirectLinkStore } from '../stores/directLinks'
+import { useAppLinkStore } from '../stores/appLink'
 
 // 启动即加载 config,使 loadScanFile 能读到持久化的 last_selected_pattern
 onMounted(() => { void useConfigStore().load() })
 // 标注:启动即读一遍(全部批次重放出的状态);之后每次保存都换上后端回来的结果
 onMounted(() => { void useAnnotationStore().load() })
+// 当前 pattern 的 app(mapping 文件):启动即读一遍,之后窗口重新拿到焦点再读(stores/appLink.ts)
+onMounted(() => { void useAppLinkStore().load() })
 // 直达链接(格式见 annotate/directLinks.ts):页面带着链接打开时跟一次,地址的 # 部分变了再跟
 const _links = useDirectLinkStore()
 const _follow = () => { void _links.follow(location.hash) }

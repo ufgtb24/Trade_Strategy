@@ -28,6 +28,29 @@
       <span v-if="randomStatus" class="status" data-testid="random-status"
             :title="RANDOM_HINT[randomStatus]">{{ randomStatus }}</span>
     </div>
+    <div class="grp" data-testid="mode-group">
+      <span class="key" title="pressed = your choice; grayed = unavailable now">mode</span>
+      <button type="button" :class="['entry', { on: mode === 'annotate' }]" data-testid="mode-annotate"
+              title="your annotation only" @click="links.setMode('annotate')">annotate</button>
+      <button type="button" :class="['entry', { on: mode === 'compare', off: !links.available }]"
+              data-testid="mode-compare" :disabled="!links.available" :title="modeTitle('compare')"
+              @click="links.setMode('compare')">compare</button>
+      <button type="button" :class="['entry', { on: mode === 'app', off: !links.available && mode !== 'app' }]"
+              data-testid="mode-app" :disabled="!links.available && mode !== 'app'" :title="modeTitle('app')"
+              @click="mode !== 'app' && links.setMode('app')">app</button>
+      <span v-if="linkedView && links.link" class="app-id" data-testid="linked-app"
+            :title="mappingTitle">{{ links.link.app }}</span>
+      <span v-if="linkedView && links.runStatus" class="status" data-testid="app-status"
+            :title="RUN_HINT[links.runStatus]">{{ links.runStatus }}</span>
+    </div>
+    <div class="grp" data-testid="tiers-group">
+      <label :class="['chk', { off: !tiersOn }]"
+             :title="tiersOn ? 'tier tags at the right end of gray bands: qualified_only (dark gray), detected_only (light gray)'
+                             : 'only in app / compare'">
+        <input type="checkbox" data-testid="tiers" :checked="view.tiers" :disabled="!tiersOn"
+               @change="view.setTiers(($event.target as HTMLInputElement).checked)" />tiers
+      </label>
+    </div>
     <div v-if="annotating" class="grp" data-testid="tool-group">
       <span class="key" title="what dragging on the chart does">tool</span>
       <button type="button" :class="['entry', { on: ann.tool === 'box' }]" data-testid="tool-box"
@@ -63,6 +86,10 @@
 <script setup lang="ts">
 /**
  * 主视图顶栏:
+ * - mode:annotate / compare / app。compare、app 只在当前 pattern 有 app(有一个能用的 mapping,stores/appLink.ts)
+ *   且已经打开一只股票时可用,否则变灰;从扫描列表选股时是 app(扫描结果)。compare、现算的 app 下旁边写 app 的名字,
+ *   悬停列出 mapping 的每一行。
+ * - tiers:app、compare 下 band 右端 qualified_only / detected_only 两种 tier tag 的开关,默认开;别的模式下变灰。
  * - symbol:输入代码回车,不经扫描直接打开那只股票的图,落在 annotate。代码先对股票列表
  *   (训练段副本里有的股票)核一遍,不在列表里就报 not_found、不动当前的图。输入框平时显示当前打开的股票。
  * - rally:展开 / 收起大涨段清单(RallyList),点一行打开那段涨之前的图,落在 annotate。
@@ -78,14 +105,42 @@ import { getRandom, getSymbols } from '../api'
 import { useViewStore } from '../stores/view'
 import { useAnnotationStore } from '../stores/annotation'
 import { useRefLayerStore, type PeaksStatus } from '../stores/refLayers'
+import { useAppLinkStore, type RunStatus } from '../stores/appLink'
 import { resolveSymbolInput } from '../annotate/symbolInput'
 import RallyList from './RallyList.vue'
 import PatternPicker from './PatternPicker.vue'
 
 const view = useViewStore()
-const { symbol, annotating } = storeToRefs(view)
+const { symbol, annotating, mode, linkedView } = storeToRefs(view)
 const ann = useAnnotationStore()
 const refs = useRefLayerStore()
+const links = useAppLinkStore()
+const tiersOn = computed(() => mode.value === 'app' || mode.value === 'compare')
+const RUN_HINT: Record<RunStatus, string> = {
+  loading: 'running the app of the current pattern on this symbol',
+  load_failed: 'could not run the app of the current pattern on this symbol',
+}
+/** compare / app 按钮的悬停:能用时说这一档是什么;用不了时说为什么。 */
+function modeTitle(m: 'compare' | 'app'): string {
+  if (links.available) {
+    return m === 'compare' ? `annotation with the output of app ${links.link!.app} overlaid; still editable`
+      : `output of app ${links.link!.app} only, lanes by node`
+  }
+  if (m === 'app' && mode.value === 'app') return 'scan results'
+  if (links.problem) return `the mapping of the current pattern cannot be used:\n${links.problem}`
+  if (!links.link) return 'the current pattern has no app (no path2_apps/<app>/mapping.yaml names it)'
+  return 'open a symbol first'
+}
+/** 现算的 app 旁的悬停:mapping 的每一行(特征名 → node);特征编号不在词表里的注明。 */
+const mappingTitle = computed(() => {
+  const l = links.link
+  if (!l) return ''
+  const rows = Object.entries(l.features).map(([fid, node]) => {
+    const known = ann.featureById.has(fid)
+    return `${known ? ann.nameOf(fid) : fid} → ${node}${known ? '' : ' (feature id not in the vocabulary)'}`
+  })
+  return [`app ${l.app}, mapping of pattern ${l.pattern}:`, ...rows].join('\n')
+})
 const PEAKS_HINT: Record<PeaksStatus, string> = {
   loading: 'loading the peaks of this symbol',
   load_failed: 'could not load the peaks',
@@ -161,6 +216,8 @@ async function onRandom() {
 }
 .entry.on { border-color: var(--ink); box-shadow: inset 0 -2px 0 var(--ink); }
 .entry:disabled { cursor: progress; }
+.entry.off { color: var(--ink-off); cursor: default; }   /* 变灰 = 现在用不了 */
+.app-id { font-family: var(--mono); font-size: 12px; color: var(--ink); padding: 0 4px; }
 .chk { display: flex; align-items: center; gap: 3px; font-family: var(--mono); font-size: 12px; color: var(--ink); cursor: pointer; }
 .chk input { margin: 0; accent-color: var(--ink); }   /* 勾上是黑的:浏览器默认的蓝会被读成会话蓝 */
 .chk.off { color: var(--ink-off); cursor: default; }
