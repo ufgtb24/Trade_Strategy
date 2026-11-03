@@ -8,7 +8,8 @@ import { REPO, TRAIN_END, lanes, routeTo, startBackend, stopBackend, type Backen
  * 1. 用现成的 app bo_only 加一份手写的 mapping(pattern W底:突破 → bo、横盘 → pk;e2e 后端从临时目录读它,
  *    见 e2e/annotationBackend.py):没有 mapping 的 pattern 下 compare、app 是灰的;W底 下切到 compare,
  *    app 的每个 event 出现在它对的那个特征的轨上、每个 hit 出现在 bracket 轨上,数目与后端 /preview 给的一致;
- *    图上没有任何对照 tag;app 的全部输出都落在截到 2025-12-31 的 K 线里。再切到 app:按 node 分轨的主视图画法。
+ *    图上没有任何对照 tag;app 的全部输出都落在截到 2025-12-31 的 K 线里;参照层 peaks 在 compare 下照样能开。
+ *    再切到 app:按 node 分轨的主视图画法,参照层自动关。
  * 2. compare 下从 pattern 页的样本卡换股票,不退出 compare;从代码输入、random、rally、链接进来都落在 annotate。
  *
  * 标注用 tests/path2_web/fixtures/annotation_grouping_v1 的例子批次(指纹换成测试后端本机副本的),写在临时目录里。
@@ -135,6 +136,15 @@ test.describe('compare / app 叠画(bo_only + 手写 mapping)', () => {
       .toEqual(mainNamesBefore)
     expect((await lanes(page)).map(l => l.text)).toEqual(['bracket', '横盘', '缩量 ⊂ 横盘', '突破', '派发'])
 
+    // 参照层 peaks 在 compare 下可用:勾上画出峰线(同 /peaks)
+    const box = page.getByTestId('ref-peaks')
+    await expect(box).toBeEnabled()
+    await box.check()
+    const peaks = await (await fetch(`${backend!.base}/peaks?symbol=AAPL`)).json()
+    expect(peaks.length).toBeGreaterThan(0)
+    await expect.poll(() => page.evaluate(() => ((window as any).__e2e.chartMain().getOption().series
+      .find((s: any) => s.name === 'ref-peaks')?.data ?? []).length)).toBe(peaks.length)
+
     // 图窗拉到第一个 hit 附近截图
     const h0 = Math.min(...hitRows.map(r => r[0]))
     await page.evaluate(([i, n]) => (window as any).__e2e.chartMain().dispatchAction(
@@ -147,6 +157,8 @@ test.describe('compare / app 叠画(bo_only + 手写 mapping)', () => {
     await expect(page.getByTestId('linked-app-label')).toHaveText('bo_only')
     await expect(page.getByTestId('level-control')).toBeVisible()
     await expect(page.getByTestId('tiers')).toBeEnabled()
+    await expect(box).not.toBeChecked()                                    // 参照层切到 app 自动关、不能勾
+    await expect(box).toBeDisabled()
     await expect.poll(async () => (await subRows(page, 'brackets'))?.length ?? -1).toBe(out.matches.length)
     await page.screenshot({ path: testInfo.outputPath('app-AAPL.png'), fullPage: true })
     await page.unrouteAll({ behavior: 'ignoreErrors' })
