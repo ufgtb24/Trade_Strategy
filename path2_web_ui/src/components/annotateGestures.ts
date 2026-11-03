@@ -166,14 +166,15 @@ export function createAnnotateGestures(d: GestureDeps) {
     attach() {
       d.mainEl()?.addEventListener('mousedown', onMainDown)
       d.subEl()?.addEventListener('mousedown', onSubDown)
-      window.addEventListener('mousemove', onMove)
-      window.addEventListener('mouseup', onUp)
+      // 捕获阶段:ECharts 在拖动期间会拦下冒泡的 mousemove
+      window.addEventListener('mousemove', onMove, true)
+      window.addEventListener('mouseup', onUp, true)
     },
     detach() {
       d.mainEl()?.removeEventListener('mousedown', onMainDown)
       d.subEl()?.removeEventListener('mousedown', onSubDown)
-      window.removeEventListener('mousemove', onMove)
-      window.removeEventListener('mouseup', onUp)
+      window.removeEventListener('mousemove', onMove, true)
+      window.removeEventListener('mouseup', onUp, true)
     },
     cancel,
   }

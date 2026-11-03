@@ -92,7 +92,7 @@
  * selection 页里选中一个框时的内容:起止、特征(起名或换特征)、定义、parent(框套框的 ⊂)、属性三态、note。
  * - 起名:词表里和输入有共同字的已有词排最前、加粗;回车用输入的名字(有同名的词就用它,没有就新起);
  * - 定义:这个词还没有定义时留一格写,写下就不再改(意思变了另起一个词);
- * - 属性:列出同一特征的框用过的属性(全部图),默认 null;再点一下已按下的那个回到 null;
+ * - 属性:列出同一特征的框用过的属性(全部图),默认 null;再点一下已按下的那个回到 null(这一行留着);
  *   在这个特征下画成过子框的词写成「⊂ 词」,不给 true(有就在框里画)。
  */
 import { computed, nextTick, ref, watch } from 'vue'
@@ -125,11 +125,20 @@ const pRow = computed(() => (hit.value ? parentRow(hit.value.box, hit.value.char
 const parentsHere = computed(() => (hit.value ? chartParents(hit.value.chart.boxes, days.value.length ? days.value : undefined) : {}))
 const kidWords = computed(() => (feature.value && ann.state
   ? kidWordsOf(feature.value.id, ann.state.charts, s => ann.daysBySymbol[s] ?? null) : []))
+// 选中这个框期间列出过的属性一直留着:点回 null 后,即使没有别的框用它,这一行也不消失
+const seenAttrs = ref<{ key: string; words: string[] }>({ key: '', words: [] })
+const seenKey = computed(() => `${hit.value?.box.id}|${feature.value?.id}`)
 const attrWords = computed(() => {
   if (!feature.value || !ann.state || !hit.value) return []
-  const ws = [...attrWordsOf(feature.value.id, ann.state.charts)]
-  for (const k of Object.keys(hit.value.box.attrs ?? {})) if (!ws.includes(k)) ws.push(k)
-  return ws.filter(w => !kidWords.value.includes(w))
+  const ws = seenAttrs.value.key === seenKey.value ? [...seenAttrs.value.words] : []
+  for (const k of [...attrWordsOf(feature.value.id, ann.state.charts), ...Object.keys(hit.value.box.attrs ?? {})]) {
+    if (!ws.includes(k)) ws.push(k)
+  }
+  return ws.filter(w => !kidWords.value.includes(w) && ann.featureById.has(w))
+})
+watch(attrWords, (ws) => {
+  const cur = seenAttrs.value
+  if (cur.key !== seenKey.value || ws.some(w => !cur.words.includes(w))) seenAttrs.value = { key: seenKey.value, words: ws }
 })
 
 const state = (w: string) => attrState(hit.value!.box, w)

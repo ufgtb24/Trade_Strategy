@@ -6,7 +6,7 @@ import { apiBase } from './ports'
  *
  * - 图最晚画到 2025-12-31;
  * - 训练段副本里没有的代码(2026 年才上市的不在副本里)不在列表里,回车后报 not_found,当前的图不动;
- * - annotate 下图上没有 app 的产物(主图 app 系列全空、副图没有 band/bracket),不显示档位与诊断侧栏;
+ * - annotate 下图上没有 app 的产物(主图 app 系列全空、副图只有用户的框、没有 band/bracket),不显示档位与诊断侧栏;
  * - 成交量画在 K 线区下方。
  *
  * 前提:后端已按 configs/path2_web.yaml 的 backend_port 启动,读真实的训练段副本(只读)。
@@ -47,8 +47,10 @@ async function ensureScan(request: APIRequestContext) {
   await expect.poll(async () => (await list()).length, { timeout: 240_000 }).toBeGreaterThan(0)
 }
 
+/** 副图上 app 的系列个数。annotate 下副图是用户的特征轨,只有用户的框(annotation-boxes),它不算 app 的产物。 */
 async function subSeriesCount(page: Page): Promise<number> {
-  return page.evaluate(() => ((window as any).__e2e.chartSub().getOption()?.series ?? []).length)
+  return page.evaluate(() => ((window as any).__e2e.chartSub().getOption()?.series ?? [])
+    .filter((s: any) => s.name !== 'annotation-boxes').length)
 }
 
 test.describe('按代码打开 · annotate', () => {
@@ -68,7 +70,7 @@ test.describe('按代码打开 · annotate', () => {
     expect(opt.dates.at(-1) <= TRAIN_END).toBe(true)
     await page.screenshot({ path: test.info().outputPath('annotate-open-by-symbol.png'), fullPage: true })
 
-    // 只有 K 线和成交量:app 的系列(价格点、高亮、遮罩)全空,副图没有任何系列
+    // 只有 K 线和成交量:app 的系列(价格点、高亮、遮罩)全空,副图没有 app 的系列
     const byName = Object.fromEntries(opt.series.map((s: any) => [s.name, s]))
     expect(byName.kline.n).toBe(opt.dates.length)
     expect(byName.volume.n).toBe(opt.dates.length)

@@ -101,7 +101,7 @@ import ResizableDivider from './ResizableDivider.vue'
 import CrosshairOverlay from './CrosshairOverlay.vue'
 import { useAnnotationStore } from '../stores/annotation'
 import { chartOf, computeLanes, type AnnBox } from '../annotate/model'
-import { buildAnnotateSubOption, laneGeometry, mainBoxMarks } from '../render/annotateLanes'
+import { buildAnnotateSubOption, laneGeometry, mainMarksSeries } from '../render/annotateLanes'
 import { createAnnotateGestures, type Draft } from './annotateGestures'
 
 const view = useViewStore()
@@ -550,6 +550,11 @@ function renderBarsOnly(forceResetZoom: boolean) {
   const mainOpt = buildMainOption(bars.value, emptyEventBundle(bars.value), input,
                                   { getChartEl: () => mainEl.value, height: chartMain.getHeight() }) as any
   mainOpt.dataZoom[0].moveOnMouseMove = false
+  // 滑块贴底,放在日期刻度下面(按百分比放会在高的窗口里压住成交量带)
+  const slider = mainOpt.dataZoom[1]
+  delete slider.top
+  Object.assign(slider, { bottom: 6, height: 22 })
+  mainOpt.series.push(mainMarksSeries(annDates.value, null, null))
   chartMain.setOption(mainOpt, true)
   lastMarkLineKey = null
   renderAnnotateLayers()
@@ -567,8 +572,7 @@ function renderAnnotateLayers() {
   }) as any, true)
   const sel = ann.selectedBox?.box ?? null
   const shownSel = sel && preview.value?.id === sel.id ? preview.value : sel
-  chartMain.setOption({ series: [{ name: 'kline', markArea: mainBoxMarks(annDates.value, shownSel,
-                                                                          draft.value ?? preview.value) }] })
+  chartMain.setOption({ series: [mainMarksSeries(annDates.value, shownSel, draft.value ?? preview.value)] })
 }
 
 // 主图容器高度变了:按新高度重排 K 线区与成交量带(成交量带高 = K 线区的 VOLUME_HEIGHT_RATIO)
@@ -769,7 +773,7 @@ onMounted(() => {
 
   // dev-only e2e hook
   if ((import.meta as any).env?.DEV) {
-    ;(window as any).__e2e = { view, chartMain: () => chartMain, chartSub: () => chartSub }
+    ;(window as any).__e2e = { view, ann: () => ann, chartMain: () => chartMain, chartSub: () => chartSub }
   }
 
   // Ctrl 切换(只作用于主图,副图无价格轴)
@@ -921,7 +925,8 @@ watch([effectiveAnalysis, nodeVisible, level, nodeColors, focusedInstanceRef, di
 
 // annotate:框、词表、选中、拖动中的样子变了 → 只重画标注的两层
 watch(() => [ann.view, ann.selectedBoxId, draft.value, preview.value], () => renderAnnotateLayers())
-watch(symbol, () => annGestures.cancel())
+// 换图:拖到一半的手势作废,选中的框(在原来那张图上)清掉
+watch(symbol, () => { annGestures.cancel(); ann.selectBox(null) })
 
 // subHeightOffset / subCanvasH 变化 → chart.resize()(RO 会自动触发,这里手动兜底)
 watch([subHeightOffset, subCanvasH], () => {

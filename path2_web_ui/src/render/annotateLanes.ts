@@ -166,18 +166,31 @@ export function boxRects(lanes: readonly Lane[], geom: readonly LaneGeom[], date
 }
 
 /**
- * 主图 K 线区上标出的范围:选中的框(浅灰底、虚线边)和正在拖出或改起止的框(虚线边)。
- * 返回 kline 系列的 markArea。
+ * 主图 K 线区上标出的范围:选中的框(浅灰底、虚线边)和正在拖出或改起止的框(虚线边),
+ * 竖直方向占满 K 线区,左右和副图上的框对齐(整根 K 线)。返回一个 custom 系列,按名字合并更新。
  */
-export function mainBoxMarks(dates: readonly string[],
-                             selected: { start: string; end: string } | null,
-                             live: { start: string; end: string } | null): unknown {
-  const area = (b: { start: string; end: string }, fill: string) => [
-    { xAxis: dates[startIndex(dates, b.start)], itemStyle: { color: fill, borderColor: INK, borderWidth: 1, borderType: 'dashed' } },
-    { xAxis: dates[endIndex(dates, b.end)] },
-  ]
-  const data: any[] = []
-  if (dates.length && selected) data.push(area(selected, 'rgba(0,0,0,0.06)'))
-  if (dates.length && live) data.push(area(live, 'rgba(255,255,255,0)'))
-  return { silent: true, data }
+export const MAIN_MARKS_SERIES = 'annotation-marks'
+
+export function mainMarksSeries(dates: readonly string[],
+                                selected: { start: string; end: string } | null,
+                                live: { start: string; end: string } | null): Record<string, unknown> {
+  const data: number[][] = []
+  if (dates.length && selected) data.push([startIndex(dates, selected.start), endIndex(dates, selected.end), 1])
+  if (dates.length && live) data.push([startIndex(dates, live.start), endIndex(dates, live.end), 0])
+  return {
+    type: 'custom', name: MAIN_MARKS_SERIES, xAxisIndex: 0, yAxisIndex: 0, data, silent: true, z: 1,
+    encode: { x: [0, 1] }, clip: true, tooltip: { show: false },
+    renderItem: (params: any, api: any) => {
+      const bw = api.size([1, 0])[0]
+      const x0 = api.coord([api.value(0), 0])[0] - bw / 2
+      const x1 = api.coord([api.value(1), 0])[0] + bw / 2
+      const cs = params.coordSys
+      return {
+        type: 'rect',
+        shape: { x: x0, y: cs.y, width: Math.max(1, x1 - x0), height: cs.height },
+        style: { fill: api.value(2) === 1 ? 'rgba(0,0,0,0.06)' : 'rgba(255,255,255,0)',
+                 stroke: INK, lineWidth: 1, lineDash: BOX_DASH },
+      }
+    },
+  }
 }
