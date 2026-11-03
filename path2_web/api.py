@@ -30,6 +30,7 @@ from path2_web.config import finder_settings, train_segment
 from path2_web.data import TRAIN_END, list_symbols, read_bars, serialize_ohlc, slice_window
 from path2_web.diagnose import diagnose_symbol, derive_response, Query
 from path2_web.finder import Finder, random_window
+from path2_web.peaks import peak_lines
 from path2_web.snapshot_fingerprint import ManifestMissing
 from path2_web.gate_collector import attach_and_collect, detach
 from path2_web.serialize import serialize_pattern
@@ -86,6 +87,15 @@ def _bars(cfg: dict, symbol: str) -> pd.DataFrame:
         raise HTTPException(404, f"pkl not found: {symbol}") from None
     except ValueError as e:
         raise HTTPException(400, str(e)) from None
+
+
+def _all_bars(cfg: dict, symbol: str) -> pd.DataFrame:
+    """一只股票截到训练段末日的全部行情(按代码打开、参照层用)。截完一根都不剩的(2026 年才上市的)→ 404:
+    配置的目录误指到完整行情也打不开它。代码名不合格 → 400,没有这只股票 → 404(同 _bars)。"""
+    df = _bars(cfg, symbol)
+    if len(df) == 0:
+        raise HTTPException(404, f"{symbol} 在训练段末日 {TRAIN_END} 及以前没有行情")
+    return df
 
 
 def _check_dates(start, end) -> None:
@@ -281,14 +291,10 @@ def build_router(*, registry, config_path, get_config, set_config,
 
     @router.get("/ohlc")
     def get_ohlc(symbol: str, start: Optional[str] = None, end: Optional[str] = None):
-        """一只股票的 K 线。start / end 都不给 → 截到训练段末日的全部 K 线(按代码打开用);
-        给了就两个都要是 YYYY-MM-DD。代码名不合格 → 400;没有这只股票 → 404。
-        不给区间时,截完一根都不剩的(2026 年才上市的)也回 404:配置的目录误指到完整行情也打不开它。"""
+        """一只股票的 K 线。start / end 都不给 → 截到训练段末日的全部 K 线(按代码打开用,见 _all_bars);
+        给了就两个都要是 YYYY-MM-DD。代码名不合格 → 400;没有这只股票 → 404。"""
         if start is None and end is None:
-            df = _bars(get_config(), symbol)
-            if len(df) == 0:
-                raise HTTPException(404, f"{symbol} 在训练段末日 {TRAIN_END} 及以前没有行情")
-            return serialize_ohlc(symbol, df.reset_index())
+            return serialize_ohlc(symbol, _all_bars(get_config(), symbol).reset_index())
         _check_dates(start, end)
         return serialize_ohlc(symbol, slice_window(_bars(get_config(), symbol), start, end))
 
@@ -296,6 +302,12 @@ def build_router(*, registry, config_path, get_config, set_config,
     def get_symbols():
         """股票列表:训练段副本里有的股票代码(data.list_symbols),按字母序。"""
         return list_symbols(_data_dir(get_config()))
+
+    @router.get("/peaks")
+    def get_peaks(symbol: str):
+        """参照层 peaks:这只股票截到训练段末日的行情里 bo 检测产出的峰,[{date, price, end}](path2_web/peaks.py)。
+        代码名不合格 → 400;没有这只股票、或截完一根不剩 → 404(见 _all_bars)。"""
+        return peak_lines(_all_bars(get_config(), symbol))
 
     @router.get("/config")
     def read_config():

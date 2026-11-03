@@ -1,7 +1,7 @@
 import type {
   SerializedPattern, MultiScanResultFile, Ohlc, Diagnostics, AppConfig,
   ScanProgress, ScanDone, ScanHistoryEntry, Analysis, ScanMeta, NodesScopeResponse,
-  TimeScopeResponse, PairScopeResponse, ParamsDiffResp, RallyItem, RandomWindow,
+  TimeScopeResponse, PairScopeResponse, ParamsDiffResp, RallyItem, RandomWindow, PeakLine,
 } from './types'
 import type { AnnOp, AnnRead } from './annotate/model'
 // Task 10 · ParamsChip(及 Task 11 抽屉)按 `from '../api'` 消费 diff 响应类型,故随 getParamsDiff 一并重导出。
@@ -46,6 +46,10 @@ export function getRally(): Promise<RallyItem[]> {
 /** 从股票池 × 训练段随机给一段图。 */
 export function getRandom(): Promise<RandomWindow> {
   return getJson('/random')
+}
+/** 参照层 peaks:这只股票在训练段里 bo 检测产出的峰,按峰的日期排。 */
+export function getPeaks(symbol: string): Promise<PeakLine[]> {
+  return getJson(`/peaks?symbol=${encodeURIComponent(symbol)}`)
 }
 /** 当前标注:全部批次文件重放出的状态,连同冲突、指纹比对、revs、next_seq(GET /annotations)。 */
 export function getAnnotations(): Promise<AnnRead> {

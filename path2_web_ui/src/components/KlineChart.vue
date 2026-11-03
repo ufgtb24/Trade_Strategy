@@ -112,6 +112,8 @@ import {
   packBrackets, triangleRect, type BracketItem, type Draft, type SampleMark,
 } from '../render/annotateLanes'
 import { createAnnotateGestures } from './annotateGestures'
+import { useRefLayerStore } from '../stores/refLayers'
+import { peaksSeries } from '../render/refLayers'
 
 const view = useViewStore()
 const { symbol, effectiveAnalysis, nodeColors, nodeVisible, level, tagMap, isolated,
@@ -141,6 +143,9 @@ const ann = useAnnotationStore()
 const draft = ref<Draft | null>(null)            // 正在拖出的新框
 const preview = ref<AnnBox | null>(null)         // 正在改起止的框
 const annDates = computed(() => bars.value.map(b => b.date))
+// 参照层 peaks:开着、且当前模式可用时才画峰线(开关、换股票自动关见 stores/refLayers.ts)
+const refs = useRefLayerStore()
+const shownPeaks = computed(() => refs.peaks && refs.available ? refs.lines : [])
 const annChart = computed(() => (ann.state ? chartOf(ann.state, symbol.value) : null))
 // 轨序:当前 pattern 里各段的先后(annotate/grouping.ts 的 featureOrder),不在其中的特征按这张图上首次出现排
 const annOrder = computed(() => featureOrder(ann.state ? patternSamples(ann.state, ann.currentPattern) : []))
@@ -592,7 +597,7 @@ function renderBarsOnly(forceResetZoom: boolean) {
   delete slider.top
   Object.assign(slider, { bottom: 6, height: 22 })
   mainOpt.series.push(mainMarksSeries(annDates.value, null, null), mainSamplesSeries(bars.value, []),
-                      afterDimSeries(annDates.value, null))
+                      afterDimSeries(annDates.value, null), peaksSeries(annDates.value, shownPeaks.value))
   chartMain.setOption(mainOpt, true)
   lastMarkLineKey = null
   renderAnnotateLayers()
@@ -616,6 +621,12 @@ function renderAnnotateLayers() {
     mainSamplesSeries(bars.value, annSampleMarks.value),
     afterDimSeries(annDates.value, annSelSample.value?.date ?? null),
   ] })
+}
+
+// 参照层开关或峰变了:只重画峰线这一个系列
+function renderRefLayers() {
+  if (!annotating.value || !chartMain || !bars.value.length) return
+  chartMain.setOption({ series: [peaksSeries(annDates.value, shownPeaks.value)] })
 }
 
 /** 主图上这一点(相对主图容器)落在哪个样本的三角上;后画的盖在上面,倒着找。 */
@@ -998,6 +1009,7 @@ watch([effectiveAnalysis, nodeVisible, level, nodeColors, focusedInstanceRef, di
 // annotate:框、词表、选中、拖动中的样子变了 → 只重画标注的两层
 watch(() => [ann.view, ann.selectedBoxId, ann.selectedSampleId, ann.currentSampleId, ann.currentPattern,
              draft.value, preview.value], () => renderAnnotateLayers())
+watch(shownPeaks, () => renderRefLayers())
 // 换图:拖到一半的手势作废,选中的框或样本(在原来那张图上)清掉,当前样本也清掉(冻结)
 watch(symbol, () => { annGestures.cancel(); ann.clearSelection() })
 

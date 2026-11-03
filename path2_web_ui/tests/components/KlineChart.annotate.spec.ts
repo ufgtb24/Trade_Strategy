@@ -4,6 +4,7 @@ import { mount, flushPromises } from '@vue/test-utils'
 import { setActivePinia, createPinia } from 'pinia'
 import KlineChart from '../../src/components/KlineChart.vue'
 import { useViewStore } from '../../src/stores/view'
+import { useRefLayerStore } from '../../src/stores/refLayers'
 import * as api from '../../src/api'
 import { SCAN_FILE } from '../fixtures'
 
@@ -17,6 +18,7 @@ vi.mock('../../src/api', () => ({
   saveWcMirror: async () => ({ ok: true } as any), clearWcMirror: async () => ({ ok: true } as any),
   getOhlc: vi.fn(() => Promise.resolve({ bars: [] })),
   getAllOhlc: vi.fn((symbol: string) => Promise.resolve({ symbol, bars: BARS })),
+  getPeaks: vi.fn(() => Promise.resolve([{ date: '2025-12-03', price: 11, end: '2025-12-09' }])),
 }))
 
 const charts: any[] = []
@@ -54,6 +56,24 @@ describe('KlineChart · annotate', () => {
     // app 的交互入口不出现
     expect(w.find('.brush-toggle-wrap').exists()).toBe(false)
     expect(w.find('[data-symbol="AAPL"]').exists()).toBe(true)
+  })
+
+  it('参照层 peaks:默认不画;勾上画出峰线;换股票后不画', async () => {
+    const view = useViewStore()
+    const refs = useRefLayerStore()
+    mount(KlineChart)
+    view.openSymbol('AAPL')
+    await flushPromises()
+    const main = charts[0]
+    const peaksData = () => main.setOption.mock.calls.flatMap((c: any[]) => c[0].series ?? [])
+      .filter((s: any) => s.name === 'ref-peaks').at(-1)?.data
+    expect(peaksData()).toEqual([])
+    await refs.setPeaks(true)
+    await flushPromises()
+    expect(peaksData()).toEqual([[2, 8, 11]])
+    view.openSymbol('MSFT')
+    await flushPromises()
+    expect(peaksData()).toEqual([])
   })
 
   it('右键不弹 driver 菜单', async () => {
