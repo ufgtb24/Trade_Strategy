@@ -1,7 +1,8 @@
 # 找图入口：`rally` 大涨段清单、`random` 与股票池
 
 Status: ready-for-agent
-Progress: not-started
+Progress: in-progress
+Claimed: 2026-11-03 parallel-tickets ticket-08 @ worktree impl/08-rally-random-pool
 Blocked by: 01, 04
 
 ## Purpose
