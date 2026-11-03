@@ -5,7 +5,7 @@
     <CandidateStatusBar :matches="effectiveAnalysis?.matches ?? []" />
     <ShiftPairBanner />
     <div class="sub-outer" :style="{ height: effectiveSubH + 'px' }" ref="subOuterEl">
-      <div class="band-zoom-controls" @wheel.stop>
+      <div v-if="!annotating" class="band-zoom-controls" @wheel.stop>
         <button type="button" class="band-zoom-btn"
                 :disabled="bandZoomFactor <= BAND_ZOOM_MIN"
                 title="缩小 marker 竖直尺寸(−0.2)"
@@ -37,7 +37,7 @@
         </svg>
       </button>
     </div>
-    <div class="brush-toggle-wrap">
+    <div v-if="!annotating" class="brush-toggle-wrap">
       <button type="button" class="brush-toggle-btn" :class="{ active: brushActive }"
               title="框选主图时段 → 查询该窗口内 gate 失败样例(入口 A · 快捷键 Shift+,)"
               @click="toggleBrush">框选</button>
@@ -79,8 +79,11 @@ import { storeToRefs } from 'pinia'
 import { useViewStore } from '../stores/view'
 import { dispatchDebugMenu, type MenuDispatch } from './KlineChart.debug-menu'
 import { usePanelsStore } from '../stores/panels'
-import { getOhlc } from '../api'
-import { computeEventData, buildMainOption, buildSubOption, buildVolumeSeriesAndYAxis } from '../render/chart'
+import { getAllOhlc, getOhlc } from '../api'
+import {
+  computeEventData, buildMainOption, buildSubOption, buildVolumeSeriesAndYAxis,
+  emptyEventBundle, mainGridLayout,
+} from '../render/chart'
 import {
   computeSubGeometry, composeEffectiveSubH, SUB_CANVAS_MIN_H, MIN_SUB_H,
   MAIN_MIN_H, BAND_ZOOM_MIN, BAND_ZOOM_MAX, LS_KEY_BAND_ZOOM,
@@ -101,7 +104,8 @@ const { symbol, effectiveAnalysis, nodeColors, nodeVisible, level, tagMap, isola
         effectivePattern, effectiveScan, scanFile, focusedInstanceRef, diag,
         activePatternId, activeDetailCard, selectedMatchId, candidateMatchIds,
         highlightedEventIds, pendingDisambigInstanceId, shiftSelectedEventIds,
-        focusedInstanceId, selectedInstanceId, compositionGroupIds } = storeToRefs(view)
+        focusedInstanceId, selectedInstanceId, compositionGroupIds, mode, annotating } = storeToRefs(view)
+// annotating:只画 K 线和成交量,不画任何 app 产物,也不给 app 相关的交互(框选诊断、driver 菜单、副图缩放)
 const panels = usePanelsStore()
 const { showSlider, subHeightOffset } = storeToRefs(panels)
 
@@ -202,6 +206,7 @@ function handleContextMenu(ev: MouseEvent) {
   // Chromium 对 canvas 会弹默认 image 菜单(save/copy/screenshot/inspect)。
   // 由 DOM handler 无条件拦浏览器菜单,再按 flag 决定是否 open。
   ev.preventDefault()
+  if (annotating.value) return
   if (markerContextMenuHandled) {
     markerContextMenuHandled = false
     return  // marker handler 已 open,跳 open
@@ -322,12 +327,25 @@ let roWrap: ResizeObserver | null = null
 let unsubCtrl: (() => void) | null = null
 let lastMarkLineKey: string | null = null
 
+// 只认最后一次请求的结果:连续换股时,先发的慢响应不能盖掉后发的(否则标题和 K 线对不上)
+let barsSeq = 0
 async function reloadBars() {
-  if (!symbol.value || !scanFile.value) { bars.value = []; return }
-  const { start, end } = windowOf(effectiveScan.value ?? scanFile.value.scan)
-  try {
-    bars.value = (await getOhlc(symbol.value, start, end)).bars
-  } catch { bars.value = [] }
+  const seq = ++barsSeq
+  const sym = symbol.value
+  let next: Bar[] = []
+  if (annotating.value) {
+    // 按代码打开:这只股票的全部 K 线(后端截到训练段末日)
+    if (sym) {
+      try { next = (await getAllOhlc(sym)).bars }
+      catch (e: any) {
+        if (seq === barsSeq) view.showToast(`${sym}: ${e?.status === 404 ? 'not_found' : 'load_failed'}`)
+      }
+    }
+  } else if (sym && scanFile.value) {
+    const { start, end } = windowOf(effectiveScan.value ?? scanFile.value.scan)
+    try { next = (await getOhlc(sym, start, end)).bars } catch { next = [] }
+  }
+  if (seq === barsSeq) bars.value = next
 }
 
 function strictWindowIdx(): { startIdx: number; endIdx: number } | null {
@@ -498,7 +516,27 @@ function readZoomOverride(): { start: number; end: number } | null {
   return null
 }
 
+// annotate:主图只有 K 线 + 成交量,副图留空
+function renderBarsOnly(forceResetZoom: boolean) {
+  if (!chartMain || !chartSub) return
+  subCanvasH.value = computeSubGeometry({ bracketLaneCount: 0, bandLaneCounts: [] }).subCanvasH
+  chartSub.clear()
+  if (!bars.value.length) { chartMain.clear(); return }
+  const input = { sliderShow: showSlider.value, zoomOverride: forceResetZoom ? null : readZoomOverride() }
+  const mainOpt = buildMainOption(bars.value, emptyEventBundle(bars.value), input,
+                                  { getChartEl: () => mainEl.value, height: chartMain.getHeight() })
+  chartMain.setOption(mainOpt as any, true)
+  lastMarkLineKey = null
+}
+
+// 主图容器高度变了:按新高度重排 K 线区与成交量带(成交量带高 = K 线区的 VOLUME_HEIGHT_RATIO)
+function relayoutMainGrid() {
+  if (!chartMain || !bars.value.length || !(chartMain.getOption() as any)?.grid) return
+  chartMain.setOption({ grid: mainGridLayout(chartMain.getHeight(), showSlider.value) })
+}
+
 function render(forceResetZoom = false) {
+  if (annotating.value) { renderBarsOnly(forceResetZoom); return }
   if (!chartMain || !chartSub || !effectiveAnalysis.value || !effectivePattern.value) return
   const params = { ...buildRenderInput(), zoomOverride: forceResetZoom ? null : readZoomOverride() }
   const bundle = computeEventData(bars.value, effectiveAnalysis.value.events, effectiveAnalysis.value.matches, params)
@@ -507,7 +545,8 @@ function render(forceResetZoom = false) {
   // 更新 subCanvasH → sub-inner div 高度触发 chartSub 容器 resize
   subCanvasH.value = subGeom.subCanvasH
 
-  const mainOpt = buildMainOption(bars.value, bundle, params, { getChartEl: () => mainEl.value })
+  const mainOpt = buildMainOption(bars.value, bundle, params,
+                                  { getChartEl: () => mainEl.value, height: chartMain.getHeight() })
   const subOpt  = buildSubOption(
     bars.value, bundle, subGeom,
     { ...params, zoomFactor: bandZoomFactor.value },
@@ -530,6 +569,7 @@ function onKeyDown(e: KeyboardEvent) {
   // Shift+,:切换框选光标态(与按钮 toggleBrush 同一路径 · 双向 toggle)。
   // Shift+,(key '<')不进搜索框:onGlobalCharKey 已整体屏蔽 shift(无需逐键让位)。
   if (isBrushToggleKey(e)) {
+    if (annotating.value) return
     toggleBrush()
     e.preventDefault()
     return
@@ -649,7 +689,7 @@ onMounted(() => {
   })
 
   // ResizeObserver 观测两 chart 容器
-  roMain = new ResizeObserver(() => { chartMain?.resize(); updateMainCanvasOffset() })
+  roMain = new ResizeObserver(() => { chartMain?.resize(); relayoutMainGrid(); updateMainCanvasOffset() })
   roMain.observe(mainEl.value!)
   roSub = new ResizeObserver(() => { chartSub?.resize(); updateMainCanvasOffset() })
   roSub.observe(subInnerEl.value!)
@@ -695,10 +735,10 @@ onMounted(() => {
     const visStart = Math.max(0, Math.round((start / 100) * N))
     const visEnd = Math.min(N - 1, Math.round((end / 100) * N) - 1)
     if (visEnd < visStart) return
-    const { volSeries, yAxisOverride } = buildVolumeSeriesAndYAxis(bars.value, visStart, visEnd)
+    const { volSeries, yAxisOverride, volAxisMax } = buildVolumeSeriesAndYAxis(bars.value, visStart, visEnd)
     chartMain.setOption({
       series: [{ name: 'volume', data: volSeries.data }],
-      yAxis: [{ min: yAxisOverride.min, max: yAxisOverride.max }],
+      yAxis: [{ min: yAxisOverride.min, max: yAxisOverride.max }, { max: volAxisMax }],
     })
   })
 
@@ -810,8 +850,11 @@ onBeforeUnmount(() => {
 })
 
 // ── Reactive watches ────────────────────────────────────────────────
-watch(symbol, () => void reloadBars().then(() => render(true)))
-watch([scanFile, effectiveScan], () => void reloadBars().then(() => render(false)))
+watch([symbol, mode], () => void reloadBars().then(() => render(true)))
+watch([scanFile, effectiveScan], () => {
+  if (annotating.value) return      // annotate 的图与扫描无关
+  void reloadBars().then(() => render(false))
+})
 watch([effectiveAnalysis, nodeVisible, level, nodeColors, focusedInstanceRef, diag, showSlider,
        selectedMatchId, candidateMatchIds, highlightedEventIds, pendingDisambigInstanceId,
        shiftSelectedEventIds, bandZoomFactor, focusedInstanceId, selectedInstanceId,

@@ -88,8 +88,8 @@ describe('chart.ts — computeEventData / buildMainOption / buildSubOption', () 
     expect(seriesNames).toContain('price-points')
     expect(seriesNames).not.toContain('satellites')
     expect(seriesNames).toContain('highlight-price')
-    // 主图只有 grid[0]
-    expect(opt.grid.length).toBe(1)
+    // 主图两个 grid:K 线区 + 下方成交量带
+    expect(opt.grid.length).toBe(2)
     // tooltip trigger=item(G2),不是 axis
     expect(opt.tooltip.trigger).toBe('item')
     // axisPointer 挂 xAxis/yAxis 组件级,不在 tooltip 里

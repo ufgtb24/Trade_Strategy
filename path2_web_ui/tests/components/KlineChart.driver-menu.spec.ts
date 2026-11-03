@@ -34,6 +34,8 @@ function makeFakeChart() {
     dispatchAction: vi.fn(),
     convertToPixel: () => [0, 0],
     getWidth: () => 800,
+    getHeight: () => 600,
+    clear: vi.fn(),
   }
 }
 vi.mock('echarts', () => ({

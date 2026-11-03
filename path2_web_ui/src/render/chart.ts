@@ -356,9 +356,58 @@ export function computeEventData(
 
 // ─── buildMainOption / buildSubOption(消费同一份 EventBundle,双 ECharts 实例架构)──
 
+/** buildMainOption 用到的那部分渲染入参(annotate 模式只给 sliderShow / zoomOverride)。 */
+export type MainOptionInput = Pick<BandRenderInput,
+  'strictWindow' | 'sliderShow' | 'zoomOverride' | 'tooltipResolver' | 'matchLabel'
+  | 'candidateMatchIds' | 'matches'>
+
+/** 没有任何 app 产物的 EventBundle:annotate 模式只画 K 线和成交量。 */
+export function emptyEventBundle(bars: Bar[]): EventBundle {
+  return {
+    pointData: [], intervalData: [], pricePointData: [],
+    bracketData: [], highlightData: [], highlightPriceData: [],
+    veilData: [], veilPriceData: [],
+    candle: bars.map((b) => [b.o, b.c, b.l, b.h]),
+    volume: bars.map((b) => b.v),
+    dates: bars.map((b) => b.date),
+  }
+}
+
+// ── 主图布局:上面 K 线区(grid0),下面成交量带(grid1),共用 x 轴缩放 ──
+/** 成交量带高度 / K 线区高度:默认「约主图的四分之一」,待验证。 */
+export const VOLUME_HEIGHT_RATIO = 0.25
+export const MAIN_GRID_TOP = 40        // 顶部留给代码标题条
+export const MAIN_GRID_GAP = 16        // K 线区与成交量带之间(两条 y 轴的端点刻度不相撞)
+export const MAIN_GRID_LEFT = 56
+export const MAIN_GRID_RIGHT = 16
+export const MAIN_DEFAULT_HEIGHT = 600 // 拿不到容器高度时(单元测试)的兜底
+export const MAIN_BOTTOM_WITH_SLIDER = 60   // 成交量带下沿到容器底:日期刻度 + 缩放滑块
+export const MAIN_BOTTOM_NO_SLIDER = 20     // 只剩日期刻度
+
+/** 主图两个 grid 的像素布局:成交量带高 = K 线区高 × VOLUME_HEIGHT_RATIO,滑块留在最下方。 */
+export function mainGridLayout(height: number, sliderShow: boolean) {
+  const bottom = sliderShow ? MAIN_BOTTOM_WITH_SLIDER : MAIN_BOTTOM_NO_SLIDER
+  const usable = Math.max(0, height - MAIN_GRID_TOP - MAIN_GRID_GAP - bottom)
+  const priceH = usable / (1 + VOLUME_HEIGHT_RATIO)
+  const volH = usable - priceH
+  return [
+    { left: MAIN_GRID_LEFT, right: MAIN_GRID_RIGHT, top: MAIN_GRID_TOP, height: priceH },
+    { left: MAIN_GRID_LEFT, right: MAIN_GRID_RIGHT, top: MAIN_GRID_TOP + priceH + MAIN_GRID_GAP, height: volH },
+  ]
+}
+
+/** 成交量轴刻度:1.2K / 3.4M / 5.6B。 */
+function formatVolumeTick(v: number): string {
+  const a = Math.abs(v)
+  if (a >= 1e9) return `${+(v / 1e9).toFixed(1)}B`
+  if (a >= 1e6) return `${+(v / 1e6).toFixed(1)}M`
+  if (a >= 1e3) return `${+(v / 1e3).toFixed(1)}K`
+  return String(v)
+}
+
 export function buildMainOption(
-  bars: Bar[], bundle: EventBundle, input: BandRenderInput,
-  opts?: { getChartEl?: () => HTMLElement | null },
+  bars: Bar[], bundle: EventBundle, input: MainOptionInput,
+  opts?: { getChartEl?: () => HTMLElement | null; height?: number },
 ): unknown {
   const { strictWindow, sliderShow, zoomOverride,
           tooltipResolver, matchLabel, candidateMatchIds } = input
@@ -377,7 +426,7 @@ export function buildMainOption(
   const initVisStart = Math.max(0, Math.round((zoomStart / 100) * N))
   const initVisEnd = Math.max(initVisStart, Math.min(N - 1, Math.round((zoomEnd / 100) * N) - 1))
 
-  const { volSeries, yAxisOverride } = buildVolumeSeriesAndYAxis(bars, initVisStart, initVisEnd)
+  const { volSeries, yAxisOverride, volAxisMax } = buildVolumeSeriesAndYAxis(bars, initVisStart, initVisEnd)
   const shadingMarkArea = sw ? buildShadingMarkArea(bars, bars[sw.startIdx].date, bars[sw.endIdx].date) : null
 
   const klineSeries: Record<string, unknown> = {
@@ -385,10 +434,10 @@ export function buildMainOption(
     barWidth: '70%',
     itemStyle: {
       borderWidth: 2,
-      color: '#47b262',
-      color0: '#eb5454',
-      borderColor: '#47b262',
-      borderColor0: '#eb5454',
+      color: CANDLE_UP,
+      color0: CANDLE_DOWN,
+      borderColor: CANDLE_UP,
+      borderColor0: CANDLE_DOWN,
     },
   }
   if (shadingMarkArea) klineSeries.markArea = shadingMarkArea
@@ -413,12 +462,23 @@ export function buildMainOption(
     animation: false,
     tooltip,
     // axisPointer.link 删除:双实例 echarts.connect 接管
-    grid: [{ left: 56, right: 16, top: 40, bottom: (sliderShow ?? true) ? 60 : 20 }],
+    grid: mainGridLayout(opts?.height ?? MAIN_DEFAULT_HEIGHT, sliderShow ?? true),
     xAxis: [{
       type: 'category', data: dates, gridIndex: 0, boundaryGap: true,
       axisLine: { onZero: false }, splitLine: { show: false },
+      axisLabel: { show: false }, axisTick: { show: false },   // 日期刻度画在下面成交量带的 x 轴上
       min: 'dataMin', max: 'dataMax',
       // G2 视觉隐:真实竖线由 CrosshairOverlay(DOM)一根到底渲染,axisPointer 只留 hover 事件源(修 S3)
+      axisPointer: {
+        show: true, type: 'none', snap: true,
+        label: { show: false },
+        triggerTooltip: false,
+      },
+    }, {
+      // 成交量带:与 K 线区同一组日期,hover 同样只当事件源
+      type: 'category', data: dates, gridIndex: 1, boundaryGap: true,
+      axisLine: { onZero: false }, splitLine: { show: false },
+      min: 'dataMin', max: 'dataMax',
       axisPointer: {
         show: true, type: 'none', snap: true,
         label: { show: false },
@@ -441,10 +501,13 @@ export function buildMainOption(
         },
         triggerTooltip: false,
       },
+    }, {
+      gridIndex: 1, min: 0, max: volAxisMax, splitNumber: 2,
+      axisLabel: { formatter: formatVolumeTick, showMaxLabel: false },   // 上限是可见区间最大量,不是整数刻度
     }],
     dataZoom: [
-      { type: 'inside', xAxisIndex: 0, start: zoomStart, end: zoomEnd },
-      { type: 'slider', xAxisIndex: 0, top: '92%', start: zoomStart, end: zoomEnd,
+      { type: 'inside', xAxisIndex: [0, 1], start: zoomStart, end: zoomEnd },
+      { type: 'slider', xAxisIndex: [0, 1], top: '92%', start: zoomStart, end: zoomEnd,
         show: sliderShow ?? true },
     ],
     series: [
@@ -452,6 +515,13 @@ export function buildMainOption(
       volSeries,
       // kline-hit-spanner: 透明覆盖整列,让 grid0 任意 y hover 触发 K-bar OHLC
       { type: 'custom', name: 'kline-hit-spanner', xAxisIndex: 0, yAxisIndex: 0,
+        data: bars.map((_, i) => [i]),
+        renderItem: renderHitSpanner,
+        encode: { x: 0 }, z: 0, zlevel: 0, silent: false, animation: false,
+        tooltip: { show: true, confine: true,
+                   formatter: buildBarTooltipFormatter(bars) } },
+      // 成交量带同样整列 hover 出同一份 K 线 tooltip
+      { type: 'custom', name: 'volume-hit-spanner', xAxisIndex: 1, yAxisIndex: 1,
         data: bars.map((_, i) => [i]),
         renderItem: renderHitSpanner,
         encode: { x: 0 }, z: 0, zlevel: 0, silent: false, animation: false,
@@ -1302,17 +1372,19 @@ export function buildShadingMarkArea(
   }
 }
 
+/** K 线涨跌色(阳 / 阴),成交量柱同色。这对红绿是用户指定保留的,优先于「冷暖或深浅区分」的配色通则。 */
+export const CANDLE_UP = '#47b262'
+export const CANDLE_DOWN = '#eb5454'
+/** K 线区上下各留出价格区间的这一比例作空白。 */
+const PRICE_PAD_RATIO = 0.05
+
 /**
- * Dev UI 1:1 复刻 — volume 叠加进价格区底部 20% 高度带。
+ * 成交量柱(画在 K 线区下方的成交量带 grid1)+ 可见区间的两条 y 轴范围。
  *
- * 计算可见区间 priceMin/Max → displayHeight = priceRange / 0.8 → displayBottom 留 10% 底部空白。
- * volScale = (displayHeight * 0.2) / visVolMax，每根 bar 的 value = displayBottom + b.v * volScale。
- *
- * displayBottom 钳到 ≥ 0：ECharts bar 的 baseline 恒为 value=0，无法像 matplotlib 那样
- * 显式指定 bottom。若 priceMin < priceRange/8 导致 displayBottom 算成负数（低价股），
- * 0 进入 yAxis 范围，volume bar 就会以 0 为基线双向溢出（小成交量 bar 朝下挂在 0 下方）。
- * 钳到 ≥ 0 后 0 永远 ≤ yAxis.min，bar 被 clip 后视觉等价于"从 grid 底向上单向"。代价：
- * 低价股底部 10% 价格 padding 被压扁、K 线最低点贴 axis 底；高价股完全无影响。
+ * - 价格轴(yAxis[0]):可见区间 low 的最小值 ~ high 的最大值,上下各留 PRICE_PAD_RATIO 的空白,下限钳到 ≥ 0;
+ * - 成交量轴(yAxis[1]):0 ~ 可见区间的最大成交量(全 0 时兜底 1);
+ * - 柱色同 K 线:收盘 ≥ 开盘用 CANDLE_UP,否则 CANDLE_DOWN。
+ * zoom/pan 时 KlineChart 按新的可见区间重算这两条轴。
  *
  * @param bars      完整 bars 数组
  * @param visStart  可见区间起始 bar 索引（含）
@@ -1322,37 +1394,27 @@ export function buildVolumeSeriesAndYAxis(bars: Bar[], visStart: number, visEnd:
   const visBars = bars.slice(visStart, visEnd + 1)
   const priceMin = Math.min(...visBars.map(b => b.l))
   const priceMax = Math.max(...visBars.map(b => b.h))
-  const priceRange = priceMax - priceMin
-  const displayHeight = priceRange / 0.8
-  const displayBottom = Math.max(0, priceMin - displayHeight * 0.1)
-  const displayTop = displayBottom + displayHeight
-  const visVolMax = Math.max(...visBars.map(b => b.v), 1)
-  const volScale = (displayHeight * 0.2) / visVolMax
+  const range = priceMax - priceMin
+  const pad = (range > 0 ? range : (Math.abs(priceMax) || 1)) * PRICE_PAD_RATIO
+  const volAxisMax = Math.max(...visBars.map(b => b.v), 1)
 
   const volSeries = {
     type: 'bar' as const,
     name: 'volume' as const,
-    xAxisIndex: 0 as const,
-    yAxisIndex: 0 as const,
-    barWidth: '100%' as const,
-    z: 3 as const,
-    // 纯展示 series,不接受 hit-event:让 hover volume bar 的鼠标事件 fall-through 到
-    // 下面的 kline-hit-spanner (z=0) 触发 K-bar OHLC tooltip。未来若 volume 需要独立
-    // tooltip,关掉 silent 并加 tooltip.formatter 即可。
+    xAxisIndex: 1 as const,
+    yAxisIndex: 1 as const,
+    barWidth: '70%' as const,
+    // 纯展示 series,不接受 hit-event:hover 落到下面的 volume-hit-spanner,出 K 线 tooltip。
     silent: true as const,
     data: bars.map(b => ({
-      value: displayBottom + b.v * volScale,
-      itemStyle: {
-        color: b.c >= b.o ? '#D3D3D3' : '#696969',
-        borderColor: 'black',
-        borderWidth: 0.5,
-        opacity: 0.5,
-      },
+      value: b.v,
+      itemStyle: { color: b.c >= b.o ? CANDLE_UP : CANDLE_DOWN },
     })),
   }
   return {
     volSeries,
-    yAxisOverride: { min: displayBottom, max: displayTop },
+    yAxisOverride: { min: Math.max(0, priceMin - pad), max: priceMax + pad },
+    volAxisMax,
   }
 }
 
@@ -1460,8 +1522,8 @@ export function buildBarTooltipFormatter(bars: Bar[]) {
     params: { seriesName?: string; dataIndex?: number } | Array<{ seriesName?: string; dataIndex?: number }>,
   ): string => {
     // item-trigger:单 param;axis-trigger:array(本 G2 不走此路径,但兼容防回滚)
-    // 允许 candlestick 'kline' 与 spanner 'kline-hit-spanner' 共享同一 OHLC formatter
-    const isKlineSrc = (n?: string) => n === 'kline' || n === 'kline-hit-spanner'
+    // 允许 candlestick 'kline' 与两条 spanner(K 线区、成交量带)共享同一 OHLC formatter
+    const isKlineSrc = (n?: string) => n === 'kline' || n === 'kline-hit-spanner' || n === 'volume-hit-spanner'
     const p = Array.isArray(params) ? params.find(x => isKlineSrc(x.seriesName)) : params
     if (!p || !isKlineSrc(p.seriesName) || typeof p.dataIndex !== 'number') return ''
     const idx = p.dataIndex
