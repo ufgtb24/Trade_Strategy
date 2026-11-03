@@ -2,27 +2,30 @@
   <aside class="annotation-sidebar" data-testid="annotation-sidebar">
     <nav class="tabs" role="tablist">
       <button v-for="t in TABS" :key="t" type="button" role="tab"
-              :class="['tab', { on: tab === t }]"
-              :aria-selected="tab === t"
+              :class="['tab', { on: ann.tab === t }]"
+              :aria-selected="ann.tab === t"
               :data-testid="`annotation-tab-${t}`"
-              @click="tab = t">{{ t }}</button>
+              @click="ann.tab = t">{{ t }}</button>
     </nav>
-    <section class="body" :data-testid="`annotation-page-${tab}`">
-      <span class="empty">empty</span>
+    <section class="body" :data-testid="`annotation-page-${ann.tab}`">
+      <BoxPanel v-if="ann.tab === 'selection' && ann.selectedBox" />
+      <FeaturesPanel v-else-if="ann.tab === 'features' && ann.state" />
+      <span v-else class="empty">empty</span>
     </section>
   </aside>
 </template>
 
 <script setup lang="ts">
 /**
- * annotate 模式的右侧栏,三页:selection(选中的框或样本)、features(词表)、pattern(当前 pattern 总览)。
- * 三页目前都是空页。
+ * annotate 模式的右侧栏,三页:selection(选中的框)、features(词表)、pattern(当前 pattern 总览,目前是空页)。
+ * 页签由标注 store 管:在图上选中框时自动翻到 selection。
  */
-import { ref } from 'vue'
+import { useAnnotationStore } from '../stores/annotation'
+import BoxPanel from './BoxPanel.vue'
+import FeaturesPanel from './FeaturesPanel.vue'
 
 const TABS = ['selection', 'features', 'pattern'] as const
-type Tab = typeof TABS[number]
-const tab = ref<Tab>('selection')
+const ann = useAnnotationStore()
 </script>
 
 <style scoped>
@@ -32,7 +35,7 @@ const tab = ref<Tab>('selection')
   border-left: 1px solid var(--line); background: #fff; color: var(--ink);
 }
 .tabs {
-  position: sticky; top: 0; display: flex; gap: 12px; padding: 6px 8px 0;
+  position: sticky; top: 0; z-index: 1; display: flex; gap: 12px; padding: 6px 8px 0;
   background: #fff; border-bottom: 1px solid var(--line-soft);
 }
 .tab, .empty { font-family: var(--mono); font-size: 12px; }

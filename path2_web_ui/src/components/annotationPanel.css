@@ -1,0 +1,31 @@
+/* annotate 侧栏各页共用的样式(字体与色值见 App.vue 的 :root 变量)。
+   - 程序固定文字(字段名、按钮、状态)用等宽字体:.ann-k、.ann-btn、.ann-sym;
+   - 用户写的内容(特征名、定义、note)用正常字体,不在输入框里的加浅灰底:.ann-biz;
+   - 文字一律黑;灰字只留给空着或没判过的状态:.ann-nil;
+   - 按下的按钮靠黑边加粗与下划线区分,不靠颜色。 */
+.ann-hdr { display: flex; align-items: center; gap: 6px; margin: 0 0 6px; }
+.ann-grow { flex: 1; }
+.ann-kv { display: grid; grid-template-columns: 76px 1fr; gap: 6px 8px; align-items: start; }
+.ann-k { font-family: var(--mono); font-size: 12px; color: var(--ink); padding-top: 2px; cursor: help; }
+.ann-row { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; min-width: 0; }
+.ann-sym { font-family: var(--mono); font-size: 12px; color: var(--ink); }
+.ann-nil { font-family: var(--mono); font-size: 12px; color: var(--ink-empty); }
+.ann-biz {
+  font-size: 13px; color: var(--ink); background: var(--chip-bg);
+  padding: 0 4px; border-radius: 3px; overflow-wrap: anywhere;
+}
+.ann-btn {
+  font-family: var(--mono); font-size: 12px; color: var(--ink); line-height: 1.5;
+  padding: 0 6px; border: 1px solid var(--line-strong); border-radius: 3px; background: #fff; cursor: pointer;
+}
+.ann-btn.on { border-color: var(--ink); box-shadow: inset 0 -2px 0 var(--ink); font-weight: 700; }
+.ann-btn:disabled { cursor: default; }
+.ann-btn.word { font-family: inherit; font-size: 13px; background: var(--chip-bg); }
+.ann-btn.word.near { font-weight: 700; border-color: var(--ink); }
+.ann-input, .ann-area {
+  font: 13px/1.45 system-ui, sans-serif; color: var(--ink); padding: 1px 4px;
+  border: 1px solid var(--line-strong); border-radius: 3px; background: #fff; min-width: 0;
+}
+.ann-area { width: 100%; resize: vertical; min-height: 2.2em; }
+.ann-blk { border: 1px solid var(--line); border-radius: 4px; padding: 6px 8px; margin: 0 0 6px; }
+.ann-off { opacity: 0.45; }

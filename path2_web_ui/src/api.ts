@@ -3,6 +3,7 @@ import type {
   ScanProgress, ScanDone, ScanHistoryEntry, Analysis, ScanMeta, NodesScopeResponse,
   TimeScopeResponse, PairScopeResponse, ParamsDiffResp, RallyItem, RandomWindow,
 } from './types'
+import type { AnnOp, AnnRead } from './annotate/model'
 // Task 10 · ParamsChip(及 Task 11 抽屉)按 `from '../api'` 消费 diff 响应类型,故随 getParamsDiff 一并重导出。
 export type { ParamsDiffResp }
 
@@ -46,6 +47,32 @@ export function getRally(): Promise<RallyItem[]> {
 export function getRandom(): Promise<RandomWindow> {
   return getJson('/random')
 }
+/** 当前标注:全部批次文件重放出的状态,连同冲突、指纹比对、revs、next_seq(GET /annotations)。 */
+export function getAnnotations(): Promise<AnnRead> {
+  return getJson('/annotations')
+}
+
+/** 保存没通过时抛的错误:status 是 HTTP 状态码;400 时 reasons 列出后端校验的原因。 */
+export class AnnotationSaveError extends HttpError {
+  constructor(message: string, status: number, readonly reasons: { code: string; message: string }[]) {
+    super(message, status)
+  }
+}
+
+/** 追加一批标注操作(POST /annotations/batch)。通过返回新的读结果(带 file);没通过抛 AnnotationSaveError。 */
+export async function postAnnotationBatch(ops: AnnOp[]): Promise<AnnRead & { file: string }> {
+  const r = await fetch(`${BASE}/annotations/batch`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ops }),
+  })
+  if (r.ok) return r.json()
+  let body: any = null
+  try { body = await r.json() } catch { /* 不是 JSON */ }
+  const detail = body?.detail
+  const reasons = Array.isArray(detail?.reasons) ? detail.reasons
+    : [{ code: `http_${r.status}`, message: typeof detail === 'string' ? detail : `HTTP ${r.status}` }]
+  throw new AnnotationSaveError(`POST /annotations/batch → ${r.status}`, r.status, reasons)
+}
+
 export function listScans(): Promise<ScanHistoryEntry[]> {
   return getJson('/scans/')
 }

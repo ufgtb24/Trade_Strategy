@@ -32,6 +32,8 @@
 
 「改特征名」「合并」「拆回」都是新记的操作:改名 = 写一条 feature;合并 = 同一批里改写涉及的框、删掉被并的词;
 拆回 = 再写一批把它们改回去(被删的词用原编号、base 取它被删的那次修改)。旧记录从不回头改。
+读的时候从文件里认出还能拆回的合并(merges):同一批里删掉一个词、又把一些框从这个词改成别的词(当特征或当
+属性),并且这个词到现在还没有放回词表。每条带上被删的词、并进的词和那些框改前改后的值,任何机器、刷新之后都能拆回。
 
 重放与冲突
 ----------
@@ -85,7 +87,7 @@ op 序号或样本、框编号):
 怎么用
 ------
 - 读(会话、GET /annotations 用的是同一个函数):`read_annotations(cfg)`,cfg 是 path2_web.config.load_config()
-  的结果。返回 {state, conflicts, unsynced, violations, fingerprint, revs, next_seq, ignored_files};
+  的结果。返回 {state, conflicts, unsynced, violations, fingerprint, merges, revs, next_seq, ignored_files};
   会话只要状态时取 `read_annotations(load_config())["state"]`。会话不写标注文件。
 - 写(POST /annotations/batch 调它):`append_batch(cfg, ops)`,ops 是 [{kind, id, base, value}]。
   base 取读结果的 revs[kind][id](没有就是 null);新对象的编号用读结果的 next_seq 依次往上取。
@@ -165,6 +167,8 @@ class _Replay:
     last: dict = field(default_factory=dict)
     conflicts: list = field(default_factory=list)
     unsynced: list = field(default_factory=list)
+    merges: list = field(default_factory=list)          # 认出的合并,按重放先后(read_annotations 再筛还能拆回的)
+    last_merge: dict = field(default_factory=dict)      # 词编号 → 最后一次合并掉它的那条
 
 
 # ---------------------------------------------------------------- 读
@@ -172,7 +176,7 @@ class _Replay:
 def read_annotations(cfg: dict) -> dict:
     """重放标注目录里的全部批次文件,返回当前标注。会话和 GET /annotations 都经这一个函数读。
 
-    返回 {state, conflicts, unsynced, violations, fingerprint, revs, next_seq, ignored_files}:
+    返回 {state, conflicts, unsynced, violations, fingerprint, merges, revs, next_seq, ignored_files}:
     - state:模块说明「状态的形状」;
     - conflicts:[{kind, id, base, later: {ref, machine, ts}, earlier: {ref, machine, ts}}],
       later 是没看到 earlier 就改了同一对象的那次修改(它生效);
@@ -182,6 +186,9 @@ def read_annotations(cfg: dict) -> dict:
     - fingerprint:{local, local_error, recorded: [{fingerprint, batches}], consistent}。local 是本机副本的
       指纹(读不到为 null,原因在 local_error);recorded 是各批记下的指纹及批数;有任何一批与本机不同,
       或本机读不到,consistent 为 false;
+    - merges:[{ref, machine, ts, feature, into, boxes: [{id, before, after}]}],还能拆回的合并(模块说明
+      「改特征名」一段):feature 是被删的词删之前的值,into 是并进的词,before / after 是那些框在这一批改前、
+      改后的值(带 symbol),按重放先后排;
     - revs:{kind: {id: 最后一次修改的引用}},含已删的对象,写操作时取作 base;
     - next_seq:下一个可用的编号序号;
     - ignored_files:文件名不合格、没参与重放的非隐藏文件。
@@ -211,6 +218,8 @@ def read_annotations(cfg: dict) -> dict:
                          for fp, n in sorted(counts.items(), key=lambda kv: (kv[0] is None, kv[0] or ""))],
             "consistent": local is not None and all(fp == local for fp in counts),
         },
+        "merges": [m for m in r.merges if r.values.get(("feature", m["feature"]["id"])) is None
+                   and m is r.last_merge[m["feature"]["id"]]],
         "revs": revs,
         "next_seq": _max_seq(r.values) + 1,
         "ignored_files": ignored,
@@ -273,10 +282,12 @@ def _replay(batches: list[_Batch]) -> _Replay:
     """按给定顺序(已按时间戳、机器名、序号排好)逐条重放,每条都生效。base 指向本机没有的修改 → 记 unsynced;
     否则 base 不是当时的最后一次修改 → 记冲突。
 
-    base 若在本机,一定已经重放过:写它的那台机器当时有 base 所在的文件,时间戳排在那个文件之后。"""
+    base 若在本机,一定已经重放过:写它的那台机器当时有 base 所在的文件,时间戳排在那个文件之后。
+    每一批重放完,顺带认出其中的合并(_note_merges)。"""
     r = _Replay()
     present = {f"{b.stem}#{i}" for b in batches for i in range(len(b.ops))}
     for b in batches:
+        before = {(op["kind"], op["id"]): r.values.get((op["kind"], op["id"])) for op in b.ops}
         for i, op in enumerate(b.ops):
             key = (op["kind"], op["id"])
             prev = r.last.get(key)
@@ -288,7 +299,36 @@ def _replay(batches: list[_Batch]) -> _Replay:
                                     "later": this, "earlier": prev})
             r.values[key] = op["value"]
             r.last[key] = this
+        _note_merges(r, b, before)
     return r
+
+
+def _note_merges(r: _Replay, b: _Batch, before: dict) -> None:
+    """认出这一批里的合并:删掉一个词,同一批又把一些框从它改走(当特征的改成别的词,当属性的键拿掉)。
+    before 是这一批每个对象改前的值。并进的词取第一个当特征改走的框的新特征;都是属性时取新加的属性键。"""
+    for i, op in enumerate(b.ops):
+        old = before[("feature", op["id"])] if op["kind"] == "feature" else None
+        if op["value"] is not None or old is None:
+            continue
+        fid, boxes, into = op["id"], [], None
+        for bop in b.ops:
+            was, now = before[("box", bop["id"])] if bop["kind"] == "box" else None, bop["value"]
+            if was is None or now is None:
+                continue
+            as_feature = was["feature"] == fid and now["feature"] != fid
+            as_attr = fid in was.get("attrs", {}) and fid not in now.get("attrs", {})
+            if not (as_feature or as_attr):
+                continue
+            boxes.append({"id": bop["id"], "before": was, "after": now})
+            if into is None and as_feature:
+                into = now["feature"]
+        if into is None:
+            into = next((k for x in boxes for k in x["after"].get("attrs", {}) if k not in x["before"].get("attrs", {})),
+                        None)
+        if boxes and into is not None:
+            m = {"ref": f"{b.stem}#{i}", "machine": b.machine, "ts": b.ts, "feature": old, "into": into, "boxes": boxes}
+            r.merges.append(m)
+            r.last_merge[fid] = m
 
 
 def _state(values: dict, machine: str, data_fingerprint: str | None) -> dict:

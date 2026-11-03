@@ -28,6 +28,12 @@
       <span v-if="randomStatus" class="status" data-testid="random-status"
             :title="RANDOM_HINT[randomStatus]">{{ randomStatus }}</span>
     </div>
+    <div v-if="annotating" class="grp" data-testid="tool-group">
+      <span class="key" title="what dragging on the chart does">tool</span>
+      <button type="button" :class="['entry', { on: ann.tool === 'box' }]" data-testid="tool-box"
+              title="drag on the chart to draw a box; drag a box edge on its lane to change it; click to select"
+              @click="ann.tool = 'box'">box</button>
+    </div>
     <span v-if="status" class="status" data-testid="symbol-status"
           title="训练段副本里没有这只股票(2026 年才上市的不在列表里)">{{ status }}</span>
     <!-- v-show:关上再打开时,清单、排序与滚动位置都还在 -->
@@ -42,17 +48,20 @@
  *   (训练段副本里有的股票)核一遍,不在列表里就报 not_found、不动当前的图。输入框平时显示当前打开的股票。
  * - rally:展开 / 收起大涨段清单(RallyList),点一行打开那段涨之前的图,落在 annotate。
  * - random:从股票池 × 训练段随机给一段图,落在 annotate,图停在那一段上。
+ * - tool(annotate 下):box = 在图上拖出框。
  * 看过什么一律不记。
  */
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import { getRandom, getSymbols } from '../api'
 import { useViewStore } from '../stores/view'
+import { useAnnotationStore } from '../stores/annotation'
 import { resolveSymbolInput } from '../annotate/symbolInput'
 import RallyList from './RallyList.vue'
 
 const view = useViewStore()
-const { symbol } = storeToRefs(view)
+const { symbol, annotating } = storeToRefs(view)
+const ann = useAnnotationStore()
 
 type RandomStatus = 'loading' | 'load_failed' | 'empty'
 const RANDOM_HINT: Record<RandomStatus, string> = {
