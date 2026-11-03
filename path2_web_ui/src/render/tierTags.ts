@@ -5,7 +5,8 @@
  *
  * 配色:签和 band 同一种档位色——qualified 深灰 #9ca3af、detected 浅灰 #d1d5db(render/colors.ts 的 colorOf),
  * 不套琥珀;细黑实线边、黑字、等宽字体(签一律实线,虚线只表示用户画的)。
- * 位置:贴在 band 右端外侧、和 band 同高;会压到同一行下一个 band、或伸出图的右缘时不挂(band 的灰色还在)。
+ * 位置:贴在 band 右端外侧、和 band 同高;会压到同一行下一个 band、伸出图的右缘,或(compare 下)横跨用户框的竖边时
+ * 不挂(band 的灰色还在)。
  */
 import type { Tier } from '../types'
 import { colorOf } from './colors'

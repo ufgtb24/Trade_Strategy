@@ -25,7 +25,7 @@ import type { Bar } from '../types'
 import type { AnnBox, Lane } from '../annotate/model'
 import type { CmpHit, CmpLane } from './compareOverlay'
 import { colorOf } from './colors'
-import { nextStarts, tierTagOf, tierTagShape, TIER_TAG_TIP } from './tierTags'
+import { nextStarts, tierTagOf, tierTagShape, tierTagWidth, TIER_TAG_GAP, TIER_TAG_TIP } from './tierTags'
 import { triOf, type BoxMark } from '../annotate/samples'
 import { CROSSES_SAMPLE_DATE, UNCLAIMED } from '../annotate/membership'
 import { endIndex, startIndex, type BoxPx } from '../annotate/boxGeometry'
@@ -367,14 +367,17 @@ function buildCompareSeries(dates: readonly string[], d: LaneDraw): any[] {
   const c = d.compare
   if (!c || !dates.length) return []
   // event:每个一行数据 [起点下标, 终点下标, 顶, 同一行下一个的起点(-1 = 没有)];画法按行号另存
-  const items: { key: string; start: number; end: number; top: number; color: string; tip: string; tag: ReturnType<typeof tierTagOf> }[] = []
+  const items: { key: string; start: number; end: number; top: number; color: string; tip: string;
+                 tag: ReturnType<typeof tierTagOf>; boxes: [number, number][] }[] = []
   c.app.forEach((la, i) => {
     const g = d.geom[i]
     if (!g) return
+    // 这条轨上用户的框(K 线下标):tier tag 不压框的竖边
+    const boxes = (d.lanes[i]?.boxes ?? []).map((lb): [number, number] => [startIndex(dates, lb.box.start), endIndex(dates, lb.box.end)])
     for (const e of la.events) {
       items.push({
-        key: `${i}:${e.row}`, start: e.start, end: e.end, top: appBarY(g, la.rows, e.row).top,
-        color: colorOf(e.tier, e.node, c.nodeColors), tag: tierTagOf(e.tier),
+        key: `${i}:${e.row}`, start: e.start, end: e.end, top: appBarY(g, la.rows, e.row).top, boxes,
+        color: colorOf(e.tier, e.node, c.nodeColors), tag: e.tiered ? tierTagOf(e.tier) : null,
         tip: `${e.node} · ${TIER_WORD[e.tier]}<br>${dates[e.start] ?? e.start} – ${dates[e.end] ?? e.end}`,
       })
     }
@@ -401,9 +404,16 @@ function buildCompareSeries(dates: readonly string[], d: LaneDraw): any[] {
       const it = items[tagIdx[p.dataIndex]]
       const [, x1] = spanPx(api)
       const cs = p.coordSys
+      const bw = api.size([1, 0])[0]
       const next = api.value(3)
-      const limit = Math.min(cs.x + cs.width, next >= 0 ? api.coord([next, 0])[0] - api.size([1, 0])[0] / 2 : Infinity)
-      return tierTagShape(it.tag!, x1, api.value(2), APP_BAR_H, limit) ?? { type: 'group', children: [] }
+      const limit = Math.min(cs.x + cs.width, next >= 0 ? api.coord([next, 0])[0] - bw / 2 : Infinity)
+      const shape = tierTagShape(it.tag!, x1, api.value(2), APP_BAR_H, limit)
+      if (!shape) return { type: 'group', children: [] }
+      // 签横跨了用户框的竖边(左边或右边)就不挂:框边是用户画的,不能被签盖住
+      const [t0, t1] = [x1, x1 + TIER_TAG_GAP * 2 + tierTagWidth(it.tag!)]
+      const cuts = it.boxes.some(([bs, be]) => [api.coord([bs, 0])[0] - bw / 2, api.coord([be, 0])[0] + bw / 2]
+        .some(edge => edge > t0 && edge < t1))
+      return cuts ? { type: 'group', children: [] } : shape
     },
   }]
   if (d.bracket) {

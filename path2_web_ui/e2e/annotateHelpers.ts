@@ -1,6 +1,6 @@
 import { expect, type Page } from '@playwright/test'
 import { spawn, type ChildProcess } from 'node:child_process'
-import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
@@ -36,15 +36,24 @@ export function freePort(): Promise<number> {
 
 export interface Backend { base: string; proc: ChildProcess; root: string }
 
-/** 起一个标注目录在临时目录里的后端;fill 往标注目录里放初始文件。 */
-export async function startBackend(fill?: (dir: string) => void): Promise<Backend> {
+/** 起一个标注目录在临时目录里的后端;fill 往标注目录里放初始文件。
+ *  mappings 给了就让后端从临时目录读 app 的 mapping 文件({app: 文件内容},见 e2e/annotationBackend.py),
+ *  不读 path2_apps/ 里的。 */
+export async function startBackend(fill?: (dir: string) => void, mappings?: Record<string, string>): Promise<Backend> {
   const root = mkdtempSync(join(tmpdir(), 'path2-annotate-e2e-'))
   const dir = join(root, 'annotations')
   mkdirSync(dir)
   fill?.(dir)
+  const extra: string[] = []
+  if (mappings) {
+    const mdir = join(root, 'mappings')
+    mkdirSync(mdir)
+    for (const [app, text] of Object.entries(mappings)) writeFileSync(join(mdir, `${app}.yaml`), text)
+    extra.push(mdir)
+  }
   const port = await freePort()
   const py = process.env.PATH2_E2E_PYTHON ? [process.env.PATH2_E2E_PYTHON] : ['uv', 'run', 'python']
-  const proc = spawn(py[0], [...py.slice(1), join(HERE, 'annotationBackend.py'), String(port), dir, MACHINE],
+  const proc = spawn(py[0], [...py.slice(1), join(HERE, 'annotationBackend.py'), String(port), dir, MACHINE, ...extra],
                      { cwd: REPO, stdio: ['ignore', 'inherit', 'inherit'] })
   const base = `http://127.0.0.1:${port}`
   await expect.poll(async () => {

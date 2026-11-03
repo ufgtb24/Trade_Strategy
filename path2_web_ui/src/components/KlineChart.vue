@@ -165,8 +165,9 @@ const cmp = computed(() => {
   const a = comparing.value ? effectiveAnalysis.value : null
   const features = links.link?.features
   if (!a || !features) return null
+  const untiered = new Set((effectivePattern.value?.topology.nodes ?? []).filter(n => n.solve === false).map(n => n.node_id))
   const { lanes, app } = compareLanes(baseLanes.value, features, a.events, (e) => view.eventTier(e),
-                                      (fid) => ann.featureById.has(fid))
+                                      (fid) => ann.featureById.has(fid), untiered)
   return { lanes, app, hits: packHits(a.matches) }
 })
 const annLanes = computed(() => cmp.value?.lanes ?? baseLanes.value)

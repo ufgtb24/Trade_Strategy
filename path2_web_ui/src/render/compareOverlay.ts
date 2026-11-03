@@ -16,8 +16,8 @@ import type { EventDict, MatchDict, Tier } from '../types'
 import type { Lane } from '../annotate/model'
 import { APP_ROW_H, LANE_ROW_H } from './annotateLanes'
 
-/** 叠到轨上的一个 event:它在 event 块里第几行、档位。 */
-export interface CmpEvent { id: string; node: string; start: number; end: number; tier: Tier; row: number }
+/** 叠到轨上的一个 event:它在 event 块里第几行、档位;tiered = 它的 node 分档(只显示、不进求解的 node 不分档,不挂 tier tag)。 */
+export interface CmpEvent { id: string; node: string; start: number; end: number; tier: Tier; tiered: boolean; row: number }
 /** 一条轨上叠的 event(按轨的下标与 lanes 对齐);rows 是 event 块的行数。 */
 export interface CmpLane { events: CmpEvent[]; rows: number }
 /** bracket 轨上的一个 hit,row 从 0 起(画的时候排在样本的那几行下面)。 */
@@ -43,11 +43,13 @@ export function laneRowsFor(appRows: number): number {
 
 /**
  * compare 下的特征轨:在 annotate 的轨(computeLanes 的结果)上叠 event,必要时另起特征轨、加高轨。
- * features:特征编号 → node_id(mapping);known:特征编号在不在词表里;tierOf:event 的档位。
+ * features:特征编号 → node_id(mapping);known:特征编号在不在词表里;tierOf:event 的档位;
+ * untiered:只显示、不进求解的 node(serialize 的 solve=false),它们的 event 不分档。
  */
 export function compareLanes(base: readonly Lane[], features: Readonly<Record<string, string>>,
                              events: readonly EventDict[], tierOf: (e: EventDict) => Tier,
-                             known: (fid: string) => boolean): { lanes: Lane[]; app: CmpLane[] } {
+                             known: (fid: string) => boolean,
+                             untiered: ReadonlySet<string> = new Set()): { lanes: Lane[]; app: CmpLane[] } {
   const byNode = new Map<string, EventDict[]>()
   for (const e of events) {
     if (!byNode.has(e.node_id)) byNode.set(e.node_id, [])
@@ -68,6 +70,7 @@ export function compareLanes(base: readonly Lane[], features: Readonly<Record<st
   const lanes = all.map(l => {
     const { rows, placed } = packRows(eventsOf(l.key).map(e => ({
       id: e.instance_id, node: e.node_id, start: e.start_idx, end: e.end_idx, tier: tierOf(e),
+      tiered: !untiered.has(e.node_id),
     })))
     app.push({ events: placed, rows })
     return { ...l, rows: Math.max(l.rows, laneRowsFor(rows), 1) }
