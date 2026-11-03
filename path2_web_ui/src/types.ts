@@ -143,6 +143,9 @@ export interface RallyItem {
 }
 /** 随机给的一段图(/random)。 */
 export interface RandomWindow { symbol: string; start: string; end: string }
+/** 参照层 peaks 的一条线(/peaks):峰那根 K 线 date、峰登记时的价 price、画到第一次被突破的那根 end
+ *  (没被突破的到最后一根)。都截到训练段末日。 */
+export interface PeakLine { date: string; price: number; end: string }
 
 export interface AttrRow {
   instance_id: string; node_id: string
