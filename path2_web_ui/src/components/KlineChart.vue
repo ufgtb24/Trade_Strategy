@@ -99,6 +99,10 @@ import CandidateStatusBar from './CandidateStatusBar.vue'
 import ShiftPairBanner from './ShiftPairBanner.vue'
 import ResizableDivider from './ResizableDivider.vue'
 import CrosshairOverlay from './CrosshairOverlay.vue'
+import { useAnnotationStore } from '../stores/annotation'
+import { chartOf, computeLanes, type AnnBox } from '../annotate/model'
+import { buildAnnotateSubOption, laneGeometry, mainBoxMarks } from '../render/annotateLanes'
+import { createAnnotateGestures, type Draft } from './annotateGestures'
 
 const view = useViewStore()
 const { symbol, effectiveAnalysis, nodeColors, nodeVisible, level, tagMap, isolated,
@@ -123,6 +127,16 @@ const mainEl = ref<HTMLElement | null>(null)
 const subOuterEl = ref<HTMLElement | null>(null)
 const subInnerEl = ref<HTMLElement | null>(null)
 const bars = ref<Bar[]>([])
+// annotate 下副图是用户的特征轨,框画在自己特征的轨上;画框、改起止的手势见 ./annotateGestures.ts
+const ann = useAnnotationStore()
+const draft = ref<Draft | null>(null)            // 正在拖出的新框
+const preview = ref<AnnBox | null>(null)         // 正在改起止的框
+const annDates = computed(() => bars.value.map(b => b.date))
+const annLanes = computed(() => {
+  const chart = ann.state ? chartOf(ann.state, symbol.value) : null
+  return chart ? computeLanes(chart.boxes, (f) => ann.nameOf(f) ?? f, annDates.value) : []
+})
+const annGeom = computed(() => laneGeometry(annLanes.value))
 // CrosshairOverlay(DOM 一根到底竖线)的 x 坐标 + main-chart 相对 kline-wrap 的偏移(修 S3)
 const overlayX = ref<number | null>(null)
 const mainCanvasOffsetX = ref<number>(0)
@@ -346,7 +360,9 @@ async function reloadBars() {
     const { start, end } = windowOf(effectiveScan.value ?? scanFile.value.scan)
     try { next = (await getOhlc(sym, start, end)).bars } catch { next = [] }
   }
-  if (seq === barsSeq) bars.value = next
+  if (seq !== barsSeq) return
+  bars.value = next
+  if (annotating.value && sym && next.length) ann.setDays(sym, next.map(b => b.date))
 }
 
 function strictWindowIdx(): { startIdx: number; endIdx: number } | null {
@@ -517,26 +533,48 @@ function readZoomOverride(): { start: number; end: number } | null {
   return null
 }
 
-// annotate:主图只有 K 线 + 成交量,副图留空。换图时(forceResetZoom)停在打开时给的图窗上,没给就按默认缩放
+// annotate:主图只有 K 线 + 成交量,副图是用户的特征轨。换图时(forceResetZoom)停在打开时给的图窗上,
+// 没给就按默认缩放。K 线区的拖动留给画框,所以关掉拖动平移,缩放滑块常显(在成交量带上拖也能平移)。
 function renderBarsOnly(forceResetZoom: boolean) {
   if (!chartMain || !chartSub) return
-  subCanvasH.value = computeSubGeometry({ bracketLaneCount: 0, bandLaneCounts: [] }).subCanvasH
-  chartSub.clear()
-  if (!bars.value.length) { chartMain.clear(); return }
+  if (!bars.value.length) {
+    subCanvasH.value = computeSubGeometry({ bracketLaneCount: 0, bandLaneCounts: [] }).subCanvasH
+    chartSub.clear()
+    chartMain.clear()
+    return
+  }
   const zoomOverride = forceResetZoom
     ? (viewWindow.value ? zoomForWindow(bars.value.map(b => b.date), viewWindow.value) : null)
     : readZoomOverride()
-  const input = { sliderShow: showSlider.value, zoomOverride }
+  const input = { sliderShow: true, zoomOverride }
   const mainOpt = buildMainOption(bars.value, emptyEventBundle(bars.value), input,
-                                  { getChartEl: () => mainEl.value, height: chartMain.getHeight() })
-  chartMain.setOption(mainOpt as any, true)
+                                  { getChartEl: () => mainEl.value, height: chartMain.getHeight() }) as any
+  mainOpt.dataZoom[0].moveOnMouseMove = false
+  chartMain.setOption(mainOpt, true)
   lastMarkLineKey = null
+  renderAnnotateLayers()
+}
+
+// annotate 的两层:副图的特征轨与框,主图 K 线区上选中的框、正在拖的框。框变了只重画这两层,不动 K 线与缩放
+function renderAnnotateLayers() {
+  if (!annotating.value || !chartMain || !chartSub || !bars.value.length) return
+  const { geom, height } = annGeom.value
+  subCanvasH.value = height
+  const zoom = readZoomOverride()
+  chartSub.setOption(buildAnnotateSubOption(bars.value, {
+    lanes: annLanes.value, geom, nameOf: ann.nameOf, selectedId: ann.selectedBoxId,
+    preview: preview.value, draft: draft.value, zoom, width: chartSub.getWidth(),
+  }) as any, true)
+  const sel = ann.selectedBox?.box ?? null
+  const shownSel = sel && preview.value?.id === sel.id ? preview.value : sel
+  chartMain.setOption({ series: [{ name: 'kline', markArea: mainBoxMarks(annDates.value, shownSel,
+                                                                          draft.value ?? preview.value) }] })
 }
 
 // 主图容器高度变了:按新高度重排 K 线区与成交量带(成交量带高 = K 线区的 VOLUME_HEIGHT_RATIO)
 function relayoutMainGrid() {
   if (!chartMain || !bars.value.length || !(chartMain.getOption() as any)?.grid) return
-  chartMain.setOption({ grid: mainGridLayout(chartMain.getHeight(), showSlider.value) })
+  chartMain.setOption({ grid: mainGridLayout(chartMain.getHeight(), annotating.value || showSlider.value) })
 }
 
 function render(forceResetZoom = false) {
@@ -580,6 +618,7 @@ function onKeyDown(e: KeyboardEvent) {
   }
   if (e.key !== 'Escape') return
   if (contextMenuVisible.value) { contextMenuVisible.value = false; return }
+  if (annotating.value) { annGestures.cancel(); ann.selectBox(null) }
   view.clearFocus()
   // Esc 也退出 brush 光标态(sync Vue state 与 ECharts 内部,防"点两下按钮才能重开")。
   // blur:Esc 本身是键盘事件 · 浏览器会把当前 focus 元素的 :focus-visible 判为 true,
@@ -623,6 +662,19 @@ const updateMainCanvasOffset = () => {
   if (!wrap || !main) return
   mainCanvasOffsetX.value = main.getBoundingClientRect().left - wrap.getBoundingClientRect().left
 }
+
+// ── annotate 下的画框手势 ──────────────────────────────────────────────
+const annGestures = createAnnotateGestures({
+  main: () => chartMain, sub: () => chartSub, mainEl: () => mainEl.value, subEl: () => subInnerEl.value,
+  active: () => annotating.value && ann.tool === 'box' && bars.value.length > 0 && ann.status === 'ready',
+  dates: () => annDates.value, lanes: () => annLanes.value, geom: () => annGeom.value.geom,
+  zoom: () => readZoomOverride(),
+  setDraft: (d) => { draft.value = d },
+  setPreview: (b) => { preview.value = b },
+  createBox: (start, end, feature) => { if (symbol.value) ann.createBox(symbol.value, start, end, feature) },
+  resizeBox: (id, start, end) => ann.resizeBox(id, start, end),
+  select: (id) => ann.selectBox(id),
+})
 
 // ── 挂钩 chart 生命周期 ─────────────────────────────────────────────
 onMounted(() => {
@@ -695,7 +747,7 @@ onMounted(() => {
   // ResizeObserver 观测两 chart 容器
   roMain = new ResizeObserver(() => { chartMain?.resize(); relayoutMainGrid(); updateMainCanvasOffset() })
   roMain.observe(mainEl.value!)
-  roSub = new ResizeObserver(() => { chartSub?.resize(); updateMainCanvasOffset() })
+  roSub = new ResizeObserver(() => { chartSub?.resize(); updateMainCanvasOffset(); renderAnnotateLayers() })
   roSub.observe(subInnerEl.value!)
 
   // containerH 追踪 wrap 高度,factorCap 消费(spec §6.1)
@@ -818,10 +870,12 @@ onMounted(() => {
     })
   })
 
+  annGestures.attach()
   void reloadBars().then(() => render(true))
 })
 
 onBeforeUnmount(() => {
+  annGestures.detach()
   window.removeEventListener('keydown', onKeyDown)
   document.removeEventListener('click', handleDocumentClick)
   subOuterEl.value?.removeEventListener('wheel', subWheelCapture, { capture: true })
@@ -864,6 +918,10 @@ watch([effectiveAnalysis, nodeVisible, level, nodeColors, focusedInstanceRef, di
        shiftSelectedEventIds, bandZoomFactor, focusedInstanceId, selectedInstanceId,
        compositionGroupIds],
       () => render(false), { deep: true })
+
+// annotate:框、词表、选中、拖动中的样子变了 → 只重画标注的两层
+watch(() => [ann.view, ann.selectedBoxId, draft.value, preview.value], () => renderAnnotateLayers())
+watch(symbol, () => annGestures.cancel())
 
 // subHeightOffset / subCanvasH 变化 → chart.resize()(RO 会自动触发,这里手动兜底)
 watch([subHeightOffset, subCanvasH], () => {

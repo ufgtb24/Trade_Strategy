@@ -35,6 +35,8 @@
       </div>
       <DormantDraftBanner />
     </div>
+    <!-- annotate:标注的提示条(指纹不符、冲突、保存被拒),占 row1 -->
+    <AnnotationNotices v-if="annotating" class="notices-row" />
     <!-- row1: 拓扑控制(可隐藏,wrapper .topology-row 让 CSS 精准跨列) -->
     <div v-if="!annotating && showTopology" class="topology-row">
       <TopologyControl @hover-node="onHoverNode" />
@@ -59,6 +61,7 @@ import ParamsChip from './ParamsChip.vue'
 import WorkingCopyDrawer from './WorkingCopyDrawer.vue'
 import DormantDraftBanner from './DormantDraftBanner.vue'
 import AnnotationSidebar from './AnnotationSidebar.vue'
+import AnnotationNotices from './AnnotationNotices.vue'
 import { useViewStore } from '../stores/view'
 import { usePanelsStore, type PanelKey } from '../stores/panels'
 import type { Level } from '../types'
@@ -115,7 +118,8 @@ function onActivePatternChange(e: Event) {
 }
 .chart-area.no-sidebar { grid-template-columns: 1fr; }
 .chart-area.annotating { grid-template-columns: 1fr 320px; }
-.header-row, .level-bar, .chart-area > .topology-row { grid-column: 1 / -1; }
+.header-row, .level-bar, .chart-area > .topology-row, .chart-area > .notices-row { grid-column: 1 / -1; }
+.chart-area > .notices-row { grid-row: 2; }
 .chart-area > .kline-wrap-v2, .chart-area > .sidebar { grid-row: 3; }
 
 .level-bar {
