@@ -52,10 +52,12 @@
           </span>
           <span class="ann-sym" title="samples in this row">×{{ r.samples.length }}</span>
         </div>
-        <div class="ann-row cards">
-          <SampleCard v-for="x in r.samples" :key="x.sample.id" :x="x" />
-          <span class="ann-grow" />
-          <PatternPicker :value="null" move tid="row-move"
+        <!-- move 管整行:单占卡片右边一栏,不落到某张卡正下方 -->
+        <div class="cardline">
+          <div class="ann-row cards">
+            <SampleCard v-for="x in r.samples" :key="x.sample.id" :x="x" />
+          </div>
+          <PatternPicker :value="null" move tid="row-move" class="move"
                          :title="`move ${r.samples.length === 1 ? 'this sample' : `these ${r.samples.length} samples`} to a pattern`"
                          @pick="$event !== null && ann.moveSamples(r.samples.map(x => x.sample.id), $event)" />
         </div>
@@ -150,5 +152,8 @@ const sequenceText = (r: SkeletonRow) => r.skeleton.map(f => (f === null ? 'unna
 .nw { flex-wrap: nowrap; }
 .seq { gap: 2px 4px; }
 .cards { margin-top: 4px; gap: 3px; }
+.cardline { display: flex; align-items: flex-start; gap: 4px; }
+.cardline .cards { flex: 1; }
+.cardline .move { flex: none; margin-top: 4px; }
 .conn { padding: 0 0 2px 10px; }
 </style>
