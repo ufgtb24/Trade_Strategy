@@ -377,7 +377,7 @@ export function emptyEventBundle(bars: Bar[]): EventBundle {
 /** 成交量带高度 / K 线区高度。spec 第 10 节默认「主图的四分之一」(待验证,V-S1 由用户看)。 */
 export const VOLUME_HEIGHT_RATIO = 0.25
 export const MAIN_GRID_TOP = 40        // 顶部留给代码标题条
-export const MAIN_GRID_GAP = 8         // K 线区与成交量带之间
+export const MAIN_GRID_GAP = 16        // K 线区与成交量带之间(两条 y 轴的端点刻度不相撞)
 export const MAIN_GRID_LEFT = 56
 export const MAIN_GRID_RIGHT = 16
 export const MAIN_DEFAULT_HEIGHT = 600 // 拿不到容器高度时(单元测试)的兜底
@@ -464,7 +464,7 @@ export function buildMainOption(
     xAxis: [{
       type: 'category', data: dates, gridIndex: 0, boundaryGap: true,
       axisLine: { onZero: false }, splitLine: { show: false },
-      axisLabel: { show: false },          // 日期刻度画在下面成交量带的 x 轴上
+      axisLabel: { show: false }, axisTick: { show: false },   // 日期刻度画在下面成交量带的 x 轴上
       min: 'dataMin', max: 'dataMax',
       // G2 视觉隐:真实竖线由 CrosshairOverlay(DOM)一根到底渲染,axisPointer 只留 hover 事件源(修 S3)
       axisPointer: {
@@ -501,7 +501,7 @@ export function buildMainOption(
       },
     }, {
       gridIndex: 1, min: 0, max: volAxisMax, splitNumber: 2,
-      axisLabel: { formatter: formatVolumeTick },
+      axisLabel: { formatter: formatVolumeTick, showMaxLabel: false },   // 上限是可见区间最大量,不是整数刻度
     }],
     dataZoom: [
       { type: 'inside', xAxisIndex: [0, 1], start: zoomStart, end: zoomEnd },

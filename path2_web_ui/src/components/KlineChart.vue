@@ -5,7 +5,7 @@
     <CandidateStatusBar :matches="effectiveAnalysis?.matches ?? []" />
     <ShiftPairBanner />
     <div class="sub-outer" :style="{ height: effectiveSubH + 'px' }" ref="subOuterEl">
-      <div class="band-zoom-controls" @wheel.stop>
+      <div v-if="!annotating" class="band-zoom-controls" @wheel.stop>
         <button type="button" class="band-zoom-btn"
                 :disabled="bandZoomFactor <= BAND_ZOOM_MIN"
                 title="缩小 marker 竖直尺寸(−0.2)"
