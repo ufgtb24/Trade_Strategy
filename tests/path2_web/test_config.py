@@ -91,3 +91,36 @@ def test_save_keeps_machine_unresolved(tmp_path):
     saved = yaml.safe_load(p.read_text())
     assert saved["machine"] is None
     assert saved["annotation_dir"] == "annotations"
+
+
+def test_train_segment_default_and_override(tmp_path):
+    """训练段设置:缺项补默认 2021-10-08～2025-12-31;只给起点时终点仍是默认。"""
+    from path2_web.config import train_segment
+    assert train_segment({}) == ("2021-10-08", "2025-12-31")
+    assert train_segment(load_config(tmp_path / "nope.yaml")) == ("2021-10-08", "2025-12-31")
+    p = tmp_path / "cfg.yaml"
+    p.write_text("train_segment:\n  start: 2023-01-03\n")          # yaml 不加引号会读成日期
+    assert train_segment(load_config(p)) == ("2023-01-03", "2025-12-31")
+
+
+@pytest.mark.parametrize("seg", [
+    {"end": "2026-01-02"},                       # 终点越过训练段末日
+    {"start": "2025-06-01", "end": "2025-01-01"},  # 起点晚于终点
+    {"start": "2021/10/08"},                     # 格式不对
+])
+def test_train_segment_rejects_bad_values(seg):
+    from path2_web.config import train_segment
+    with pytest.raises(ValueError):
+        train_segment({"train_segment": seg})
+
+
+def test_finder_settings_fill_missing_nested_keys(tmp_path):
+    """找图参数按层补缺项:只改 rally 的一项,其余 rally 项与 pool 子树仍是默认。"""
+    from path2_web.config import finder_settings
+    p = tmp_path / "cfg.yaml"
+    p.write_text("finder:\n  rally:\n    top: 7\n")
+    f = finder_settings(load_config(p))
+    assert f["rally"]["top"] == 7
+    assert f["rally"]["rel_min"] == DEFAULT_CONFIG["finder"]["rally"]["rel_min"]
+    assert f["pool"] == DEFAULT_CONFIG["finder"]["pool"]
+    assert finder_settings({}) == DEFAULT_CONFIG["finder"]

@@ -40,7 +40,8 @@ onBeforeUnmount(() => window.removeEventListener('beforeunload', _guard))
    --ink        文字一律黑
    --ink-off    没选上的状态(如未选中的页签)
    --ink-empty  空着的状态(如空页、占位)
-   --line       面板分隔线;--line-strong 输入框边;--line-soft 页签栏下沿;--bar-bg 顶栏底色 */
+   --line       面板分隔线;--line-strong 输入框边;--line-soft 页签栏下沿;--bar-bg 顶栏底色
+   --chip-bg    不在输入框里的业务内容(如清单里的股票代码)的浅灰底 */
 :root {
   --mono: ui-monospace, "JetBrains Mono", "DejaVu Sans Mono", Consolas, monospace;
   --ink: #111;
@@ -50,6 +51,7 @@ onBeforeUnmount(() => window.removeEventListener('beforeunload', _guard))
   --line-strong: #9ca3af;
   --line-soft: #e4e4e7;
   --bar-bg: #fafafa;
+  --chip-bg: #f4f4f5;
 }
 * { box-sizing: border-box; }
 body { margin: 0; font-family: system-ui, sans-serif; color: #0f172a; }

@@ -32,6 +32,17 @@ describe('view store · mode', () => {
     expect(v.activePatternId).toBe('bottom_burst')
   })
 
+  it('openSymbol 带图窗:记下图窗(拷一份);不带图窗就清掉', () => {
+    const v = useViewStore()
+    const win = { start: '2024-01-02', end: '2024-06-28' }
+    v.openSymbol('AAPL', win)
+    expect(v.mode).toBe('annotate')
+    expect(v.viewWindow).toEqual(win)
+    expect(v.viewWindow).not.toBe(win)
+    v.openSymbol('MSFT')
+    expect(v.viewWindow).toBeNull()
+  })
+
   it('annotate 下从扫描列表选股 → 回到 app', () => {
     const v = useViewStore()
     v.loadScanFile(SCAN_FILE)
