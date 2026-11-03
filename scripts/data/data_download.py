@@ -637,6 +637,10 @@ if __name__ == "__main__":
                         # mtime==today 跳过已下文件、只补缺口, 避免一跑又清空。
     rm_invalid = True    # True: yfinance 拉不到或数据不足 252 行时删旧 pkl，
                          #      避免"过期残留静默混入"（例如退市股 DTCK）
+    # 下载起点固定：训练段从 2021-10-08 起，起点写成固定日期才能一直覆盖它
+    # （写成「今天往前 5 年」会随下载日期后移，2026-11 下载就只从 2021-11-03 起）。
+    start_date = datetime.datetime(2021, 10, 1)
+    num_workers = 4      # 同时下载的进程数；本机有别的重任务时调小，只影响下载快慢
 
     use_cache = True
     stock_list_path = os.path.join(DATASETS_ROOT, "stock_list.pkl")
@@ -661,13 +665,13 @@ if __name__ == "__main__":
         multi_download_stock(
             all_tickers,
             save_root=os.path.join(DATASETS_ROOT, "pkls"),
-            days_from_now=365 * 5,
+            days_from_now=(datetime.datetime.now() - start_date).days,
             clear=clear,
             rm_invalid=rm_invalid,
-            # worker=10 + 12 HK 节点轮换: 每 400 只预防性切节点 + 任一 worker
-            # 被限速立即切 + 健康探针(2026-10-06 改为立即切, 不再原地冷却)。
-            # 12 节点各自独立出口 IP 分摊单 IP 限速, 下载完复原到开跑前的节点。
-            num_workers=10,
+            # HK 节点轮换: 每 400 只预防性切节点 + 任一 worker 被限速立即切
+            # + 健康探针(2026-10-06 改为立即切, 不再原地冷却)。
+            # 各节点独立出口 IP 分摊单 IP 限速, 下载完复原到开跑前的节点。
+            num_workers=num_workers,
             file_format="pkl",  # Change to 'csv' or 'pkl'
             node_rotation=hk_nodes,
             rotate_every=ROTATE_EVERY,
