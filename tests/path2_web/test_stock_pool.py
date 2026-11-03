@@ -155,3 +155,20 @@ def test_pool_mask_excludes_data_error_days():
     assert not m[150 - after:152 + before + 1].any()
     assert m[150 - after - 1] and m[152 + before + 1]
     assert m[60:150 - after].all() and m[152 + before + 1:].all()
+
+
+def test_volatility_scale_matches_first_passage_scale():
+    """M 与首次穿越用的 rolling_atr_pct_nanmedian 逐值相同,含窗口里有缺值的情形。"""
+    from path2.calc.atr import rolling_atr_pct_nanmedian
+    rng = np.random.default_rng(0)
+    n = 200
+    close = 5 * np.exp(np.cumsum(rng.normal(0, 0.03, n)))
+    df = pd.DataFrame({"open": close, "high": close * (1 + rng.uniform(0, 0.05, n)),
+                       "low": close * (1 - rng.uniform(0, 0.05, n)), "close": close,
+                       "volume": np.full(n, 1e6)}, index=pd.bdate_range("2024-01-01", periods=n))
+    df.iloc[[50, 51, 120], df.columns.get_loc("high")] = np.nan
+    df.iloc[[90], df.columns.get_loc("close")] = np.nan
+    ref = rolling_atr_pct_nanmedian(df["high"], df["low"], df["close"], period=20).to_numpy()
+    got = sp.volatility_scale(df, 20)
+    np.testing.assert_array_equal(np.isnan(got), np.isnan(ref))
+    np.testing.assert_allclose(got[~np.isnan(ref)], ref[~np.isnan(ref)], rtol=0, atol=1e-15)

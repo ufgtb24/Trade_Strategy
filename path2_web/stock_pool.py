@@ -40,8 +40,6 @@ import numpy as np
 import pandas as pd
 import yaml
 
-from path2.calc.atr import rolling_atr_pct_nanmedian
-
 _I = re.IGNORECASE
 # (类别, 正则):按顺序匹配,先命中者为准。除 spac_shell 外都不区分大小写。
 CLASS_PATTERNS: list[tuple[str, re.Pattern]] = [
@@ -124,8 +122,14 @@ def load_data_errors(path) -> list[dict]:
 
 
 def volatility_scale(df: pd.DataFrame, period: int) -> np.ndarray:
-    """波动尺度 M:TR/收盘价的 period 日滚动中位数(当日收盘已知),与首次穿越用的 M 同口径。"""
-    return rolling_atr_pct_nanmedian(df["high"], df["low"], df["close"], period=period).to_numpy()
+    """波动尺度 M:TR/收盘价的 period 日滚动中位数(当日收盘已知)。
+
+    与首次穿越用的 path2.calc.atr.rolling_atr_pct_nanmedian 逐值相同(窗口里有缺值同样给 NaN),
+    改用 pandas 自带的滚动中位数,整池算一遍快几倍。"""
+    prev_close = df["close"].shift(1)
+    tr = pd.concat([df["high"] - df["low"], (df["high"] - prev_close).abs(),
+                    (df["low"] - prev_close).abs()], axis=1).max(axis=1)
+    return (tr / df["close"]).rolling(period).median().to_numpy()
 
 
 def spac_shell_seen(df: pd.DataFrame, sp: dict) -> np.ndarray:
