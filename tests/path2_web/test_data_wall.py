@@ -1,6 +1,7 @@
 """数据墙:2026-01-01 起的行情一律不给用户看(path2_web/data.py 模块说明)。
 
 - read_bars 是网页读行情的唯一入口:校验代码名、去 tz、按日期排序、截到训练段末日 TRAIN_END(代码常量);
+- 按代码打开(/ohlc 不给区间)也只给到训练段末日;股票列表只列训练段副本里有的,2026 年才上市的不在、也打不开;
 - 配置的目录误指到带 2026 年行情的数据,K 线、网页扫描的 worker 也读不到 2026 年的 bar;
 - 单股预览与扫描的区间终点截到 TRAIN_END,起点晚于它 → 400;
 - 网页扫描(cap_at_train_end=True)落盘 data_until;研究脚本照旧读完整行情、不带 data_until;
@@ -87,6 +88,35 @@ def test_ohlc_never_returns_2026_bars(tmp_path, full_dir):
     assert dates and max(dates) == TRAIN_END
     r = c.get("/ohlc", params={"symbol": "AAA", "start": "2026-01-02", "end": "2026-03-31"})
     assert r.status_code == 200 and r.json()["bars"] == []
+
+
+def test_open_by_symbol_draws_until_train_end(tmp_path, full_dir):
+    """spec 1.8「按代码打开任何一只股票 → 图最晚画到 2025-12-31」:/ohlc 不给区间时,
+    行情跨过 2025-12-31 的股票也只给到训练段末日。"""
+    r = _client(tmp_path, full_dir).get("/ohlc", params={"symbol": "AAA"})
+    assert r.status_code == 200, r.text
+    dates = [b["date"] for b in r.json()["bars"]]
+    assert dates[0] == "2025-06-02" and dates[-1] == TRAIN_END
+
+
+def test_listed_in_2026_not_in_list_and_not_openable(tmp_path, full_dir):
+    """spec 1.8「2026 年才上市的股票 → 不出现在股票列表里,按代码也打不开」:训练段副本生成时跳过截完为空的
+    股票,所以副本里没有它;列表只列副本里的 pkl,按代码打开回 404。"""
+    snap = tmp_path / "snap"
+    snap.mkdir()
+    _write_pkl(snap, "AAA", end=TRAIN_END)               # 副本:截到训练段末日
+    (snap / "FINGERPRINT.json").write_text("{}")
+    _write_pkl(full_dir, "NEW26", start="2026-01-05")    # 完整行情里才有的 2026 年新股
+    c = _client(tmp_path, snap)
+    listed = c.get("/symbols").json()
+    assert listed == ["AAA"]
+    assert c.get("/ohlc", params={"symbol": "NEW26"}).status_code == 404
+
+
+def test_symbols_route_returns_codes_only(tmp_path, full_dir):
+    """/symbols 只回代码,不带任何日期或 K 线(目录里的行情跨过 2025-12-31 也一样)。"""
+    r = _client(tmp_path, full_dir).get("/symbols")
+    assert r.status_code == 200 and r.json() == ["AAA"]
 
 
 def test_ohlc_symbol_and_date_checks(tmp_path, full_dir):

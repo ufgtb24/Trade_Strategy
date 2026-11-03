@@ -77,3 +77,20 @@ def serialize_ohlc(symbol: str, win_df: pd.DataFrame) -> dict:
             "rv": float(rv_series.iloc[i]),
         })
     return {"symbol": symbol, "bars": bars}
+
+
+def list_symbols(data_dir) -> list[str]:
+    """股票列表:data_dir 里每个 <代码>.pkl 取文件名去后缀,只留过得了 check_symbol 的,按字母序返回。
+
+    data_dir 应是训练段副本:截完为空的股票(2026 年才上市的)生成副本时已经跳过,所以不在列表里。
+    不是 .pkl 的文件(副本的指纹清单、说明文件等)不算股票;不读文件内容。
+    """
+    out = []
+    for p in Path(data_dir).glob("*.pkl"):
+        if not p.is_file():
+            continue
+        try:
+            out.append(check_symbol(p.stem))
+        except ValueError:
+            continue
+    return sorted(out)
