@@ -99,6 +99,12 @@ decisions mean experiments or acceptance checks have passed. Classify remaining
 work as implementation, conditional validation, or a genuinely unresolved
 decision; lack of code alone is not a reason to reopen a settled decision.
 
+List agent defaults (decision-tickets.md, Decision triage) in their own section,
+apart from approved decisions. Label each with its class, `detail` or `owned`, and
+label each value marked to be validated (待验证) with who can settle it: a check
+(measurement or ordinary use) or only the user. Executors act on these labels
+(implementation-tickets.md, Keep direction and User questions).
+
 Before finishing, verify:
 
 - Every source in the declared set was read, including relevant approved amendments.
@@ -109,6 +115,7 @@ Before finishing, verify:
   choice has been promoted to a universal requirement.
 - Source links and spec destinations resolve; reused records are not duplicated.
 - Readiness reflects unresolved decisions and validation prerequisites accurately.
+- Every agent default carries its class, and every 待验证 value says who settles it.
 - Each hard constraint keeps the reason its source decision gives for it.
 
 If a source changes during synthesis, revisit its affected topic groups and

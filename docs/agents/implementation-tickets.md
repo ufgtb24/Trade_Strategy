@@ -147,6 +147,14 @@ recommends keeping or revising it, with wording; never keep compensating
 silently past that point. Replace approaches adopted only during implementation
 yourself. Never break or rewrite a decision on your own; the user decides.
 
+The spec's agent defaults are starting points the agent chose, not user decisions
+(decision-tickets.md, Decision triage). Treat a `detail` default like an approach
+adopted during implementation: revise it when that serves the ticket, and record
+the old value, the new value and the reason in the completion explanation, with no
+question and no spec edit. An `owned` default, and any default other tickets
+consume (an interface contract, a data format, a shared constant), changes only
+through a user question.
+
 ## Triage status and execution progress
 
 `Status` retains the official triage meaning. Interpret project-specific names
@@ -276,8 +284,14 @@ impossible, a decision whose cost now outweighs its purpose, a long job to appro
 an undeclared dependency, a build-on step about to use a result whose user-only
 part was never reviewed) gets one question file. That last case is the fallback
 for build-on points that review planning missed or that appear during execution:
-a prerequisite's `未安排人审：` part, or a default or measure an executor set and
-marked to be validated (待验证), counts as never reviewed.
+a prerequisite's `未安排人审：` part counts as never reviewed, and so does a default
+or measure marked to be validated (待验证) whose correctness only the user can
+judge. A 待验证 value that a measurement or ordinary use can check is the
+executor's to verify: before a build-on step depends on it, run the cheapest check
+that would expose a wrong value, record the result in the completion explanation,
+and revise the value under Keep direction when the check fails. A value no such
+check can settle is one only the user can judge; an executor that sets one records
+it as a `未安排人审：` line in its completion explanation, not as a bare 待验证.
 It is the single durable place for what is being decided, the routes, their costs
 and the recommendation. The board lists unresolved questions first; a session that asks
 the user reads the same file.
