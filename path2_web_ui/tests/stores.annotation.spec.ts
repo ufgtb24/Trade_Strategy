@@ -3,7 +3,7 @@
 // 后端换成内存里的假实现:收到一批就套到状态上,给每条操作记一个引用,和真后端的 revs 一样。
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
-import { applyOps, type AnnOp, type AnnRead, type AnnState } from '../src/annotate/model'
+import { applyOps, weekdaysCovering, type AnnOp, type AnnRead, type AnnState } from '../src/annotate/model'
 
 const fake = vi.hoisted(() => ({
   read: null as any,
@@ -43,6 +43,7 @@ function emptyRead(state: Partial<AnnState> = {}): AnnRead {
     conflicts: [], unsynced: [], violations: [],
     fingerprint: { local: 'fp', local_error: null, recorded: [], consistent: true }, merges: [],
     revs: { feature: {}, pattern: {}, box: {}, sample: {} }, next_seq: 1, ignored_files: [],
+    membership: { gap: 20, near: 40 },
   }
 }
 
@@ -216,6 +217,160 @@ describe('删框与保存失败', () => {
     await s.flushed()
     expect(s.state!.charts[0].boxes[0].end).toBe('2025-01-10')
     expect(s.saveError).toEqual([{ code: 'box_crosses_sample_date', message: 'x' }])
+  })
+})
+
+describe('样本与成员框', () => {
+  // AAA 的交易日:2025 年 1~3 月的工作日(1-20、2-17 休市);框 b-pc-1、b-pc-2 在样本日 2-28 之前,b-pc-3 跨过它
+  const DAYS = weekdaysCovering([{ start: '2025-01-02', end: '2025-03-31' }])
+    .filter(d => !['2025-01-20', '2025-02-17'].includes(d))
+  const boxes = () => [
+    { id: 'b-pc-1', feature: 'w-pc-9', start: '2025-01-06', end: '2025-01-17' },
+    { id: 'b-pc-2', feature: 'w-pc-9', start: '2025-02-03', end: '2025-02-14' },
+    { id: 'b-pc-3', feature: 'w-pc-9', start: '2025-02-24', end: '2025-03-05' },
+  ]
+  async function withChart(extra: Partial<AnnState> = {}) {
+    const r = emptyRead({ features: [{ id: 'w-pc-9', name: '横盘' }], charts: [{ symbol: 'AAA', boxes: boxes(), samples: [] }], ...extra })
+    r.next_seq = 10
+    const s = await ready(r)
+    s.setDays('AAA', DAYS)
+    return s
+  }
+  const sampleOps = () => fake.batches.flat().filter((o: any) => o.kind === 'sample')
+
+  it('放样本:归当前 pattern、默认 pos,成员框按推断(跨过样本日的不收);工具切回 box,它成为选中的当前样本', async () => {
+    const s = await withChart()
+    s.tool = 'point'
+    const id = s.placeSample('AAA', '2025-02-28')
+    expect(id).toBe('s-pc-10')
+    expect(s.tool).toBe('box')
+    expect(s.selectedSampleId).toBe(id)
+    expect(s.currentSampleId).toBe(id)
+    await s.flushed()
+    expect(fake.batches).toEqual([[{ kind: 'sample', id: 's-pc-10', base: null, value: {
+      id: 's-pc-10', symbol: 'AAA', date: '2025-02-28', pattern: null, judgment: 'pos', members: ['b-pc-1', 'b-pc-2'] } }]])
+  })
+
+  it('同一 pattern 同一天已有样本:点下去就是选中它,不新放;别的 pattern 同一天各放各的', async () => {
+    const s = await withChart({ patterns: [{ name: 'P' }] })
+    const a = s.placeSample('AAA', '2025-02-28')
+    await s.flushed()
+    s.clearSelection()
+    expect(s.placeSample('AAA', '2025-02-28')).toBe(a)
+    expect(s.selectedSampleId).toBe(a)
+    s.setCurrentPattern('P')
+    const b = s.placeSample('AAA', '2025-02-28')
+    expect(b).not.toBe(a)
+    await s.flushed()
+    expect(s.state!.charts[0].samples.map(x => x.pattern)).toEqual([null, 'P'])
+  })
+
+  it('当前样本期间新画的框,推断会收的就同一批并进它;跨过样本日的不收', async () => {
+    const s = await withChart()
+    const id = s.placeSample('AAA', '2025-02-28')!
+    await s.flushed()
+    const nb = s.createBox('AAA', '2025-02-20', '2025-02-26', null)!
+    s.createBox('AAA', '2025-02-21', '2025-03-04', null)
+    await s.flushed()
+    expect(fake.batches[1].map((o: any) => o.kind)).toEqual(['box', 'sample'])
+    expect(fake.batches[2].map((o: any) => o.kind)).toEqual(['box'])
+    expect(s.state!.charts[0].samples[0].members).toEqual(['b-pc-1', 'b-pc-2', nb])
+    expect(s.currentSampleId).toBe(id)
+  })
+
+  it('换掉当前样本(点空白处、选另一个样本)后冻结:之后补画的框不再并进旧样本', async () => {
+    const s = await withChart()
+    s.placeSample('AAA', '2025-02-28')
+    await s.flushed()
+    s.clearSelection()
+    expect(s.currentSampleId).toBeNull()
+    s.createBox('AAA', '2025-02-20', '2025-02-26', null)
+    await s.flushed()
+    expect(sampleOps()).toHaveLength(1)
+    expect(s.state!.charts[0].samples[0].members).toEqual(['b-pc-1', 'b-pc-2'])
+  })
+
+  it('选中框不换当前样本;改起止让新框进了推断范围也并进来(连带够得着的旧框不收:只收这期间动过的)', async () => {
+    const s = await withChart({ charts: [{ symbol: 'AAA', boxes: boxes().slice(0, 1), samples: [] }] })
+    const id = s.placeSample('AAA', '2025-03-31')!
+    await s.flushed()
+    expect(s.state!.charts[0].samples[0].members).toEqual([])
+    const nb = s.createBox('AAA', '2025-01-02', '2025-01-03', null)!
+    s.selectBox('b-pc-1')
+    expect(s.currentSampleId).toBe(id)
+    s.resizeBox(nb, '2025-01-02', '2025-03-14')
+    await s.flushed()
+    expect(s.state!.charts[0].samples[0].members).toEqual([nb])
+  })
+
+  it('手动点进点出:改存下的成员框、记 members_edited;点掉的新框不会被推断收回来;跨过样本日的点不进', async () => {
+    const s = await withChart()
+    const id = s.placeSample('AAA', '2025-02-28')!
+    const nb = s.createBox('AAA', '2025-02-20', '2025-02-26', null)!
+    await s.flushed()
+    s.toggleMember(id, nb)
+    s.toggleMember(id, 'b-pc-1')
+    await s.flushed()
+    expect(s.state!.charts[0].samples[0]).toMatchObject({ members: ['b-pc-2'], members_edited: true })
+    s.resizeBox(nb, '2025-02-19', '2025-02-26')
+    await s.flushed()
+    expect(s.state!.charts[0].samples[0].members).toEqual(['b-pc-2'])
+    const n = fake.batches.length
+    s.toggleMember(id, 'b-pc-3')
+    await s.flushed()
+    expect(fake.batches).toHaveLength(n)
+    s.toggleMember(id, 'b-pc-1')
+    await s.flushed()
+    expect(s.state!.charts[0].samples[0].members).toEqual(['b-pc-1', 'b-pc-2'])
+  })
+
+  it('样本页:改 judgment、note、pattern(新名字同一批新建 pattern);删样本后它不再是当前样本', async () => {
+    const s = await withChart()
+    const id = s.placeSample('AAA', '2025-02-28')!
+    s.setJudgment(id, 'neg')
+    s.setSampleNote(id, '放量不够')
+    s.setSamplePattern(id, ' W底 ')
+    await s.flushed()
+    expect(fake.batches.at(-1)!.map((o: any) => o.kind)).toEqual(['pattern', 'sample'])
+    expect(s.state!.patterns).toEqual([{ name: 'W底' }])
+    expect(s.state!.charts[0].samples[0]).toMatchObject({ judgment: 'neg', note: '放量不够', pattern: 'W底' })
+    s.deleteSample(id)
+    expect(s.currentSampleId).toBeNull()
+    expect(s.selectedSampleId).toBeNull()
+    await s.flushed()
+    expect(fake.batches.at(-1)).toEqual([{ kind: 'sample', id, base: 'pc-batch-4#1', value: null }])
+    expect(s.state!.charts[0].samples).toEqual([])
+  })
+
+  it('顶栏 + new:新建 pattern 并成为当前 pattern,记在浏览器里;刷新后不在词表里的名字退回 unsorted', async () => {
+    let s = await withChart()
+    s.setCurrentPattern('W底')
+    await s.flushed()
+    expect(fake.batches).toEqual([[{ kind: 'pattern', id: 'W底', base: null, value: { name: 'W底' } }]])
+    expect(s.currentPattern).toBe('W底')
+    setActivePinia(createPinia())
+    s = useAnnotationStore()
+    await s.load()
+    expect(s.currentPattern).toBe('W底')
+    localStorage.setItem('path2_web_ui.annotation.current_pattern.v1', JSON.stringify('不存在'))
+    setActivePinia(createPinia())
+    s = useAnnotationStore()
+    await s.load()
+    expect(s.currentPattern).toBeNull()
+  })
+
+  it('保存被拒:原因留给界面显示,并重读一次,显示后端眼下的状态(另一台机器同步来的修改)', async () => {
+    const s = await withChart({ charts: [{ symbol: 'AAA', boxes: boxes(), samples: [
+      { id: 's-pc-5', date: '2025-02-28', pattern: null, judgment: 'pos', members: ['b-pc-1'] }] }] })
+    // 另一台机器把 b-pc-2 也收进了 s-pc-5,本页还不知道
+    fake.read = { ...fake.read, state: { ...fake.read.state, charts: [{ ...fake.read.state.charts[0],
+      samples: [{ ...fake.read.state.charts[0].samples[0], members: ['b-pc-1', 'b-pc-2'] }] }] } }
+    fake.reject = [{ code: 'box_crosses_sample_date', message: 'x', sample: 's-pc-5', box: 'b-pc-2' }]
+    s.resizeBox('b-pc-2', '2025-02-03', '2025-03-04')
+    await s.flushed()
+    expect(s.saveError).toEqual(fake.reject)
+    expect(s.state!.charts[0].samples[0].members).toEqual(['b-pc-1', 'b-pc-2'])
+    expect(s.state!.charts[0].boxes.find(b => b.id === 'b-pc-2')!.end).toBe('2025-02-14')
   })
 })
 

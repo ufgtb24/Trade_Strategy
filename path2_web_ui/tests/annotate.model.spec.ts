@@ -16,6 +16,7 @@ function read(state: Partial<AnnState>): AnnRead {
     conflicts: [], unsynced: [], violations: [],
     fingerprint: { local: 'x', local_error: null, recorded: [], consistent: true }, merges: [],
     revs: { feature: {}, pattern: {}, box: {}, sample: {} }, next_seq: 1, ignored_files: [],
+    membership: { gap: 20, near: 40 },
   }
 }
 
