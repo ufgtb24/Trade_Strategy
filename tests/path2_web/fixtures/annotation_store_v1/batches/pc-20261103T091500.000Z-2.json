@@ -1,0 +1,53 @@
+{
+ "schema": "path2_web.annotation/1",
+ "data_fingerprint": "40508e77199b91e351ea09182fe7d3b87aadb2f50c6d82f4ddb30d578cbcf559",
+ "ops": [
+  {
+   "ts": "20261103T091500.000Z",
+   "machine": "pc",
+   "kind": "feature",
+   "id": "w-pc-2",
+   "base": "pc-20261103T090000.000Z-1#1",
+   "value": {
+    "id": "w-pc-2",
+    "name": "回踩",
+    "definition": "突破后缩量回落到前高附近"
+   }
+  },
+  {
+   "ts": "20261103T091500.000Z",
+   "machine": "pc",
+   "kind": "box",
+   "id": "b-pc-4",
+   "base": "pc-20261103T090000.000Z-1#4",
+   "value": {
+    "id": "b-pc-4",
+    "symbol": "AAPL",
+    "feature": "w-pc-2",
+    "start": "2024-03-06",
+    "end": "2024-03-14",
+    "attrs": {
+     "w-pc-1": true
+    },
+    "note": "量很小"
+   }
+  },
+  {
+   "ts": "20261103T091500.000Z",
+   "machine": "pc",
+   "kind": "pattern",
+   "id": "W底",
+   "base": "pc-20261103T090000.000Z-1#2",
+   "value": {
+    "name": "W底",
+    "definition": "两个低点，第二个不破第一个",
+    "flags": [
+     {
+      "feature": "w-pc-1",
+      "mapping_row": 2
+     }
+    ]
+   }
+  }
+ ]
+}

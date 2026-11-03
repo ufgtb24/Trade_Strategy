@@ -1,0 +1,55 @@
+{
+ "schema": "path2_web.annotation/1",
+ "data_fingerprint": "40508e77199b91e351ea09182fe7d3b87aadb2f50c6d82f4ddb30d578cbcf559",
+ "ops": [
+  {
+   "ts": "20261103T093000.000Z",
+   "machine": "upc",
+   "kind": "box",
+   "id": "b-upc-2",
+   "base": "upc-20261103T091000.000Z-1#1",
+   "value": {
+    "id": "b-upc-2",
+    "symbol": "MSFT",
+    "feature": "w-pc-2",
+    "start": "2023-05-01",
+    "end": "2023-05-20",
+    "detach": true
+   }
+  },
+  {
+   "ts": "20261103T093000.000Z",
+   "machine": "upc",
+   "kind": "feature",
+   "id": "w-upc-1",
+   "base": "upc-20261103T091000.000Z-1#0",
+   "value": null
+  },
+  {
+   "ts": "20261103T093000.000Z",
+   "machine": "upc",
+   "kind": "sample",
+   "id": "s-upc-3",
+   "base": "upc-20261103T091000.000Z-1#2",
+   "value": {
+    "id": "s-upc-3",
+    "symbol": "MSFT",
+    "date": "2023-05-22",
+    "pattern": "W底",
+    "judgment": "neg",
+    "members": [
+     "b-upc-2"
+    ],
+    "note": "后来跌了"
+   }
+  },
+  {
+   "ts": "20261103T093000.000Z",
+   "machine": "upc",
+   "kind": "sample",
+   "id": "s-pc-5",
+   "base": "pc-20261103T090000.000Z-1#5",
+   "value": null
+  }
+ ]
+}

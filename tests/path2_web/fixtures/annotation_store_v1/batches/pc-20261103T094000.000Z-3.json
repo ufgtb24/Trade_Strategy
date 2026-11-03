@@ -1,0 +1,40 @@
+{
+ "schema": "path2_web.annotation/1",
+ "data_fingerprint": "40508e77199b91e351ea09182fe7d3b87aadb2f50c6d82f4ddb30d578cbcf559",
+ "ops": [
+  {
+   "ts": "20261103T094000.000Z",
+   "machine": "pc",
+   "kind": "sample",
+   "id": "s-pc-6",
+   "base": null,
+   "value": {
+    "id": "s-pc-6",
+    "symbol": "AAPL",
+    "date": "2024-03-14",
+    "pattern": "W底",
+    "judgment": "pos",
+    "members": [
+     "b-pc-3",
+     "b-pc-4"
+    ],
+    "members_edited": true
+   }
+  },
+  {
+   "ts": "20261103T094000.000Z",
+   "machine": "pc",
+   "kind": "box",
+   "id": "b-pc-7",
+   "base": null,
+   "value": {
+    "id": "b-pc-7",
+    "symbol": "AAPL",
+    "feature": "w-pc-1",
+    "start": "2024-03-04",
+    "end": "2024-03-07",
+    "attach": "b-pc-3"
+   }
+  }
+ ]
+}
