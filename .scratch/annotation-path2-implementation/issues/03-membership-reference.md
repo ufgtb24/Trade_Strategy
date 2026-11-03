@@ -1,7 +1,8 @@
 # 成员推断、骨架、框套框：Python 参照实现与共用例子
 
 Status: ready-for-agent
-Progress: not-started
+Progress: in-progress
+Claimed: 2026-11-03 parallel-tickets ticket-03 @ worktree impl/03-membership-reference
 Blocked by: 02
 
 ## Purpose
