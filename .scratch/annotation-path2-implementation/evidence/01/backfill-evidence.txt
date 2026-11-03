@@ -1,0 +1,33 @@
+# 票 01：为 pc 现有训练段副本补写指纹清单（写共享数据）
+副本 datasets/pkls_until_20251231（主目录，pc 2026-11-02 22:06 生成，5766 个 pkl + 旧工具的 SNAPSHOT.json）
+代码 worktree 提交 df12de7700602335912f51a417ca61e279bdeb0e（impl/01-snapshot-fingerprint-and-annotation-dir），2026-11-03，主机 pc
+
+## 1. 补写前：全部 pkl 的内容哈希（独立工具 sha256sum）
+$ cd datasets/pkls_until_20251231 && LC_ALL=C sha256sum -- *.pkl | LC_ALL=C sort -k2 > pkl-sha256-before.txt
+$ find . -maxdepth 1 -type f -printf "%f %s %T@\n" | LC_ALL=C sort > stat-before.txt   # 文件名、大小、修改时间
+
+## 2. 补写
+$ backfill(datasets/pkls_until_20251231)   # 等同 snapshot_fingerprint.py 里 WRITE = True
+已写 FINGERPRINT.json:指纹 40508e77199b91e351ea09182fe7d3b87aadb2f50c6d82f4ddb30d578cbcf559,文件 5766 个
+退出码 0
+
+## 3. 补写后
+$ （同 1，输出到 pkl-sha256-after.txt、stat-after.txt）
+$ diff pkl-sha256-before.txt pkl-sha256-after.txt   # 输出为空，退出码 0
+退出码 0
+$ diff stat-before.txt stat-after.txt   # 只多了清单一个文件，其余文件大小与修改时间都没变
+1940a1941
+> FINGERPRINT.json 470814 1793691870.0758578020
+
+## 4. 读指纹的命令（两台机器自测用）
+$ uv run python scripts/data/snapshot_fingerprint.py
+指纹 40508e77199b91e351ea09182fe7d3b87aadb2f50c6d82f4ddb30d578cbcf559
+文件 5766 个
+与清单 FINGERPRINT.json 一致
+退出码 0
+
+## 5. 交叉核对
+- 清单里逐文件的哈希与 pkl-sha256-after.txt（sha256sum）逐一相同：5766 个全部一致。
+- 不用本项目代码重算总指纹，结果与清单相同：
+$ LC_ALL=C sha256sum -- *.pkl | LC_ALL=C sort -k2 | awk '{printf "%s\t%s\n", $2, $1}' | sha256sum
+40508e77199b91e351ea09182fe7d3b87aadb2f50c6d82f4ddb30d578cbcf559  -
