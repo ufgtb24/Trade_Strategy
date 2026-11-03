@@ -1,7 +1,8 @@
 # 归组与 pattern 页（unsorted、M9、计数）
 
 Status: ready-for-agent
-Progress: not-started
+Progress: in-progress
+Claimed: 2026-11-03 parallel-tickets ticket-07 @ worktree impl/07-grouping-and-pattern-page
 Blocked by: 06
 
 ## Purpose
