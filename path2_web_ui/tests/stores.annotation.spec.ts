@@ -391,6 +391,63 @@ describe('样本与成员框', () => {
   })
 })
 
+describe('归组与 pattern 页', () => {
+  const smp = (id: string, date: string, pattern: string | null, judgment: 'pos' | 'neg' = 'pos') =>
+    ({ id, date, pattern, judgment, members: [] as string[] })
+  async function withSamples() {
+    const r = emptyRead({ patterns: [{ name: 'W底', flags: [{ feature: 'w-pc-9', mapping_row: 1 }] }], charts: [
+      { symbol: 'AAA', boxes: [], samples: [smp('s-pc-1', '2025-02-03', null), smp('s-pc-2', '2025-02-10', null, 'neg')] },
+      { symbol: 'BBB', boxes: [], samples: [smp('s-pc-3', '2025-03-03', null), smp('s-pc-4', '2025-03-10', 'W底')] },
+    ] })
+    r.next_seq = 10
+    return ready(r)
+  }
+
+  it('整行 move:一批改这一行全部样本的 pattern;新名字同一批新建 pattern', async () => {
+    const s = await withSamples()
+    s.moveSamples(['s-pc-1', 's-pc-3'], 'W底')
+    await s.flushed()
+    expect(fake.batches).toEqual([[
+      { kind: 'sample', id: 's-pc-1', base: null, value: { ...smp('s-pc-1', '2025-02-03', 'W底'), symbol: 'AAA' } },
+      { kind: 'sample', id: 's-pc-3', base: null, value: { ...smp('s-pc-3', '2025-03-03', 'W底'), symbol: 'BBB' } },
+    ]])
+    s.moveSamples(['s-pc-2'], ' 旗形 ')
+    await s.flushed()
+    expect(fake.batches[1].map((o: any) => [o.kind, o.id, o.value.pattern ?? o.value.name])).toEqual([
+      ['pattern', '旗形', '旗形'], ['sample', 's-pc-2', '旗形']])
+    expect(s.state!.charts.flatMap(c => c.samples.map(x => [x.id, x.pattern]))).toEqual([
+      ['s-pc-1', 'W底'], ['s-pc-2', '旗形'], ['s-pc-3', 'W底'], ['s-pc-4', 'W底']])
+    expect(s.currentPattern).toBeNull()                    // 只改归类,不换当前 pattern
+  })
+
+  it('pattern 的定义:写进这个 pattern(flags 照旧),空着就拿掉;没改不送', async () => {
+    const s = await withSamples()
+    s.setPatternDefinition('W底', ' 两个低点,第二个不破第一个 ')
+    s.setPatternDefinition('W底', '两个低点,第二个不破第一个')
+    await s.flushed()
+    expect(fake.batches).toEqual([[{ kind: 'pattern', id: 'W底', base: null, value: {
+      name: 'W底', flags: [{ feature: 'w-pc-9', mapping_row: 1 }], definition: '两个低点,第二个不破第一个' } }]])
+    s.setPatternDefinition('W底', '  ')
+    await s.flushed()
+    expect(fake.batches[1]).toEqual([{ kind: 'pattern', id: 'W底', base: 'pc-batch-1#0',
+      value: { name: 'W底', flags: [{ feature: 'w-pc-9', mapping_row: 1 }] } }])
+  })
+
+  it('点开的计数换当前 pattern 时收起;从 pattern 页打开样本时侧栏留在当前页', async () => {
+    const s = await withSamples()
+    s.tab = 'pattern'
+    s.openCount = 'samples|pos'
+    s.setCurrentPattern(null)
+    expect(s.openCount).toBe('samples|pos')
+    s.setCurrentPattern('W底')
+    expect(s.openCount).toBeNull()
+    s.selectSample('s-pc-4', { keepTab: true })
+    expect([s.tab, s.selectedSampleId, s.currentSampleId]).toEqual(['pattern', 's-pc-4', 's-pc-4'])
+    s.selectSample('s-pc-1')
+    expect(s.tab).toBe('selection')
+  })
+})
+
 describe('冲突提示一次', () => {
   it('看过的冲突记下来,再读也不再算新的', async () => {
     const r = emptyRead()

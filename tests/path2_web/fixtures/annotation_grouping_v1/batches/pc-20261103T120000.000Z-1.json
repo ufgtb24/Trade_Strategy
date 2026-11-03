@@ -1,0 +1,552 @@
+{
+ "schema": "path2_web.annotation/1",
+ "data_fingerprint": "40508e77199b91e351ea09182fe7d3b87aadb2f50c6d82f4ddb30d578cbcf559",
+ "ops": [
+  {
+   "ts": "20261103T120000.000Z",
+   "machine": "pc",
+   "kind": "feature",
+   "id": "w-pc-1",
+   "base": null,
+   "value": {
+    "id": "w-pc-1",
+    "name": "横盘",
+    "definition": "价格在一段窄区间里来回"
+   }
+  },
+  {
+   "ts": "20261103T120000.000Z",
+   "machine": "pc",
+   "kind": "feature",
+   "id": "w-pc-2",
+   "base": null,
+   "value": {
+    "id": "w-pc-2",
+    "name": "缩量",
+    "definition": "成交量比前一段小一半以上"
+   }
+  },
+  {
+   "ts": "20261103T120000.000Z",
+   "machine": "pc",
+   "kind": "feature",
+   "id": "w-pc-3",
+   "base": null,
+   "value": {
+    "id": "w-pc-3",
+    "name": "突破"
+   }
+  },
+  {
+   "ts": "20261103T120000.000Z",
+   "machine": "pc",
+   "kind": "feature",
+   "id": "w-pc-4",
+   "base": null,
+   "value": {
+    "id": "w-pc-4",
+    "name": "放量",
+    "definition": "成交量明显放大"
+   }
+  },
+  {
+   "ts": "20261103T120000.000Z",
+   "machine": "pc",
+   "kind": "feature",
+   "id": "w-pc-5",
+   "base": null,
+   "value": {
+    "id": "w-pc-5",
+    "name": "回踩"
+   }
+  },
+  {
+   "ts": "20261103T120000.000Z",
+   "machine": "pc",
+   "kind": "feature",
+   "id": "w-pc-6",
+   "base": null,
+   "value": {
+    "id": "w-pc-6",
+    "name": "派发"
+   }
+  },
+  {
+   "ts": "20261103T120000.000Z",
+   "machine": "pc",
+   "kind": "feature",
+   "id": "w-pc-7",
+   "base": null,
+   "value": {
+    "id": "w-pc-7",
+    "name": "窄幅"
+   }
+  },
+  {
+   "ts": "20261103T120000.000Z",
+   "machine": "pc",
+   "kind": "pattern",
+   "id": "W底",
+   "base": null,
+   "value": {
+    "name": "W底"
+   }
+  },
+  {
+   "ts": "20261103T120000.000Z",
+   "machine": "pc",
+   "kind": "pattern",
+   "id": "旗形",
+   "base": null,
+   "value": {
+    "name": "旗形",
+    "definition": "上升途中的小平台"
+   }
+  },
+  {
+   "ts": "20261103T120000.000Z",
+   "machine": "pc",
+   "kind": "box",
+   "id": "b-pc-8",
+   "base": null,
+   "value": {
+    "id": "b-pc-8",
+    "symbol": "AAPL",
+    "feature": "w-pc-1",
+    "start": "2024-02-01",
+    "end": "2024-03-01",
+    "attrs": {
+     "w-pc-7": true
+    }
+   }
+  },
+  {
+   "ts": "20261103T120000.000Z",
+   "machine": "pc",
+   "kind": "box",
+   "id": "b-pc-9",
+   "base": null,
+   "value": {
+    "id": "b-pc-9",
+    "symbol": "AAPL",
+    "feature": "w-pc-2",
+    "start": "2024-02-12",
+    "end": "2024-02-23"
+   }
+  },
+  {
+   "ts": "20261103T120000.000Z",
+   "machine": "pc",
+   "kind": "box",
+   "id": "b-pc-10",
+   "base": null,
+   "value": {
+    "id": "b-pc-10",
+    "symbol": "AAPL",
+    "feature": "w-pc-3",
+    "start": "2024-03-04",
+    "end": "2024-03-08",
+    "attrs": {
+     "w-pc-4": true
+    }
+   }
+  },
+  {
+   "ts": "20261103T120000.000Z",
+   "machine": "pc",
+   "kind": "sample",
+   "id": "s-pc-11",
+   "base": null,
+   "value": {
+    "id": "s-pc-11",
+    "symbol": "AAPL",
+    "date": "2024-03-11",
+    "pattern": "W底",
+    "judgment": "pos",
+    "members": [
+     "b-pc-8",
+     "b-pc-9",
+     "b-pc-10"
+    ]
+   }
+  },
+  {
+   "ts": "20261103T120000.000Z",
+   "machine": "pc",
+   "kind": "box",
+   "id": "b-pc-12",
+   "base": null,
+   "value": {
+    "id": "b-pc-12",
+    "symbol": "AAPL",
+    "feature": "w-pc-1",
+    "start": "2024-05-01",
+    "end": "2024-05-31",
+    "attrs": {
+     "w-pc-7": false
+    }
+   }
+  },
+  {
+   "ts": "20261103T120000.000Z",
+   "machine": "pc",
+   "kind": "box",
+   "id": "b-pc-13",
+   "base": null,
+   "value": {
+    "id": "b-pc-13",
+    "symbol": "AAPL",
+    "feature": "w-pc-6",
+    "start": "2024-06-03",
+    "end": "2024-06-14"
+   }
+  },
+  {
+   "ts": "20261103T120000.000Z",
+   "machine": "pc",
+   "kind": "sample",
+   "id": "s-pc-14",
+   "base": null,
+   "value": {
+    "id": "s-pc-14",
+    "symbol": "AAPL",
+    "date": "2024-06-17",
+    "pattern": "W底",
+    "judgment": "neg",
+    "members": [
+     "b-pc-12",
+     "b-pc-13"
+    ]
+   }
+  },
+  {
+   "ts": "20261103T120000.000Z",
+   "machine": "pc",
+   "kind": "box",
+   "id": "b-pc-15",
+   "base": null,
+   "value": {
+    "id": "b-pc-15",
+    "symbol": "AAPL",
+    "feature": "w-pc-1",
+    "start": "2024-08-01",
+    "end": "2024-08-30"
+   }
+  },
+  {
+   "ts": "20261103T120000.000Z",
+   "machine": "pc",
+   "kind": "box",
+   "id": "b-pc-16",
+   "base": null,
+   "value": {
+    "id": "b-pc-16",
+    "symbol": "AAPL",
+    "feature": "w-pc-3",
+    "start": "2024-09-03",
+    "end": "2024-09-06"
+   }
+  },
+  {
+   "ts": "20261103T120000.000Z",
+   "machine": "pc",
+   "kind": "sample",
+   "id": "s-pc-17",
+   "base": null,
+   "value": {
+    "id": "s-pc-17",
+    "symbol": "AAPL",
+    "date": "2024-09-09",
+    "pattern": null,
+    "judgment": "neg",
+    "members": [
+     "b-pc-15",
+     "b-pc-16"
+    ]
+   }
+  },
+  {
+   "ts": "20261103T120000.000Z",
+   "machine": "pc",
+   "kind": "box",
+   "id": "b-pc-18",
+   "base": null,
+   "value": {
+    "id": "b-pc-18",
+    "symbol": "MSFT",
+    "feature": "w-pc-6",
+    "start": "2023-12-01",
+    "end": "2023-12-15"
+   }
+  },
+  {
+   "ts": "20261103T120000.000Z",
+   "machine": "pc",
+   "kind": "box",
+   "id": "b-pc-19",
+   "base": null,
+   "value": {
+    "id": "b-pc-19",
+    "symbol": "MSFT",
+    "feature": "w-pc-1",
+    "start": "2024-01-02",
+    "end": "2024-01-31"
+   }
+  },
+  {
+   "ts": "20261103T120000.000Z",
+   "machine": "pc",
+   "kind": "box",
+   "id": "b-pc-20",
+   "base": null,
+   "value": {
+    "id": "b-pc-20",
+    "symbol": "MSFT",
+    "feature": "w-pc-3",
+    "start": "2024-02-01",
+    "end": "2024-02-07",
+    "attrs": {
+     "w-pc-4": false
+    }
+   }
+  },
+  {
+   "ts": "20261103T120000.000Z",
+   "machine": "pc",
+   "kind": "sample",
+   "id": "s-pc-21",
+   "base": null,
+   "value": {
+    "id": "s-pc-21",
+    "symbol": "MSFT",
+    "date": "2024-02-08",
+    "pattern": "W底",
+    "judgment": "pos",
+    "members": [
+     "b-pc-19",
+     "b-pc-20"
+    ]
+   }
+  },
+  {
+   "ts": "20261103T120000.000Z",
+   "machine": "pc",
+   "kind": "box",
+   "id": "b-pc-22",
+   "base": null,
+   "value": {
+    "id": "b-pc-22",
+    "symbol": "MSFT",
+    "feature": "w-pc-1",
+    "start": "2024-04-01",
+    "end": "2024-04-30"
+   }
+  },
+  {
+   "ts": "20261103T120000.000Z",
+   "machine": "pc",
+   "kind": "box",
+   "id": "b-pc-23",
+   "base": null,
+   "value": {
+    "id": "b-pc-23",
+    "symbol": "MSFT",
+    "feature": "w-pc-2",
+    "start": "2024-04-08",
+    "end": "2024-04-19"
+   }
+  },
+  {
+   "ts": "20261103T120000.000Z",
+   "machine": "pc",
+   "kind": "box",
+   "id": "b-pc-24",
+   "base": null,
+   "value": {
+    "id": "b-pc-24",
+    "symbol": "MSFT",
+    "feature": "w-pc-3",
+    "start": "2024-05-01",
+    "end": "2024-05-07"
+   }
+  },
+  {
+   "ts": "20261103T120000.000Z",
+   "machine": "pc",
+   "kind": "sample",
+   "id": "s-pc-25",
+   "base": null,
+   "value": {
+    "id": "s-pc-25",
+    "symbol": "MSFT",
+    "date": "2024-05-08",
+    "pattern": null,
+    "judgment": "pos",
+    "members": [
+     "b-pc-22",
+     "b-pc-23",
+     "b-pc-24"
+    ]
+   }
+  },
+  {
+   "ts": "20261103T120000.000Z",
+   "machine": "pc",
+   "kind": "box",
+   "id": "b-pc-26",
+   "base": null,
+   "value": {
+    "id": "b-pc-26",
+    "symbol": "MSFT",
+    "feature": "w-pc-5",
+    "start": "2024-07-01",
+    "end": "2024-07-12"
+   }
+  },
+  {
+   "ts": "20261103T120000.000Z",
+   "machine": "pc",
+   "kind": "sample",
+   "id": "s-pc-27",
+   "base": null,
+   "value": {
+    "id": "s-pc-27",
+    "symbol": "MSFT",
+    "date": "2024-07-15",
+    "pattern": null,
+    "judgment": "pos",
+    "members": [
+     "b-pc-26"
+    ]
+   }
+  },
+  {
+   "ts": "20261103T120000.000Z",
+   "machine": "pc",
+   "kind": "box",
+   "id": "b-pc-28",
+   "base": null,
+   "value": {
+    "id": "b-pc-28",
+    "symbol": "NVDA",
+    "feature": "w-pc-1",
+    "start": "2024-03-01",
+    "end": "2024-03-28"
+   }
+  },
+  {
+   "ts": "20261103T120000.000Z",
+   "machine": "pc",
+   "kind": "box",
+   "id": "b-pc-29",
+   "base": null,
+   "value": {
+    "id": "b-pc-29",
+    "symbol": "NVDA",
+    "feature": "w-pc-3",
+    "start": "2024-04-01",
+    "end": "2024-04-05",
+    "attrs": {
+     "w-pc-4": false
+    }
+   }
+  },
+  {
+   "ts": "20261103T120000.000Z",
+   "machine": "pc",
+   "kind": "box",
+   "id": "b-pc-30",
+   "base": null,
+   "value": {
+    "id": "b-pc-30",
+    "symbol": "NVDA",
+    "feature": "w-pc-3",
+    "start": "2024-04-08",
+    "end": "2024-04-12",
+    "attrs": {
+     "w-pc-4": true
+    }
+   }
+  },
+  {
+   "ts": "20261103T120000.000Z",
+   "machine": "pc",
+   "kind": "sample",
+   "id": "s-pc-31",
+   "base": null,
+   "value": {
+    "id": "s-pc-31",
+    "symbol": "NVDA",
+    "date": "2024-04-15",
+    "pattern": "W底",
+    "judgment": "pos",
+    "members": [
+     "b-pc-28",
+     "b-pc-29",
+     "b-pc-30"
+    ]
+   }
+  },
+  {
+   "ts": "20261103T120000.000Z",
+   "machine": "pc",
+   "kind": "box",
+   "id": "b-pc-32",
+   "base": null,
+   "value": {
+    "id": "b-pc-32",
+    "symbol": "NVDA",
+    "feature": "w-pc-1",
+    "start": "2024-06-03",
+    "end": "2024-06-28"
+   }
+  },
+  {
+   "ts": "20261103T120000.000Z",
+   "machine": "pc",
+   "kind": "box",
+   "id": "b-pc-33",
+   "base": null,
+   "value": {
+    "id": "b-pc-33",
+    "symbol": "NVDA",
+    "feature": "w-pc-3",
+    "start": "2024-07-01",
+    "end": "2024-07-08"
+   }
+  },
+  {
+   "ts": "20261103T120000.000Z",
+   "machine": "pc",
+   "kind": "sample",
+   "id": "s-pc-34",
+   "base": null,
+   "value": {
+    "id": "s-pc-34",
+    "symbol": "NVDA",
+    "date": "2024-07-09",
+    "pattern": null,
+    "judgment": "pos",
+    "members": [
+     "b-pc-32",
+     "b-pc-33"
+    ]
+   }
+  },
+  {
+   "ts": "20261103T120000.000Z",
+   "machine": "pc",
+   "kind": "sample",
+   "id": "s-pc-35",
+   "base": null,
+   "value": {
+    "id": "s-pc-35",
+    "symbol": "NVDA",
+    "date": "2024-10-15",
+    "pattern": null,
+    "judgment": "pos",
+    "members": []
+   }
+  }
+ ]
+}
