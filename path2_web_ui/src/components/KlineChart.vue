@@ -80,6 +80,7 @@ import { useViewStore } from '../stores/view'
 import { dispatchDebugMenu, type MenuDispatch } from './KlineChart.debug-menu'
 import { usePanelsStore } from '../stores/panels'
 import { getAllOhlc, getOhlc } from '../api'
+import { zoomForWindow } from '../annotate/viewWindow'
 import {
   computeEventData, buildMainOption, buildSubOption, buildVolumeSeriesAndYAxis,
   emptyEventBundle, mainGridLayout,
@@ -104,7 +105,7 @@ const { symbol, effectiveAnalysis, nodeColors, nodeVisible, level, tagMap, isola
         effectivePattern, effectiveScan, scanFile, focusedInstanceRef, diag,
         activePatternId, activeDetailCard, selectedMatchId, candidateMatchIds,
         highlightedEventIds, pendingDisambigInstanceId, shiftSelectedEventIds,
-        focusedInstanceId, selectedInstanceId, compositionGroupIds, mode, annotating } = storeToRefs(view)
+        focusedInstanceId, selectedInstanceId, compositionGroupIds, mode, annotating, viewWindow } = storeToRefs(view)
 // annotating:只画 K 线和成交量,不画任何 app 产物,也不给 app 相关的交互(框选诊断、driver 菜单、副图缩放)
 const panels = usePanelsStore()
 const { showSlider, subHeightOffset } = storeToRefs(panels)
@@ -516,13 +517,16 @@ function readZoomOverride(): { start: number; end: number } | null {
   return null
 }
 
-// annotate:主图只有 K 线 + 成交量,副图留空
+// annotate:主图只有 K 线 + 成交量,副图留空。换图时(forceResetZoom)停在打开时给的图窗上,没给就按默认缩放
 function renderBarsOnly(forceResetZoom: boolean) {
   if (!chartMain || !chartSub) return
   subCanvasH.value = computeSubGeometry({ bracketLaneCount: 0, bandLaneCounts: [] }).subCanvasH
   chartSub.clear()
   if (!bars.value.length) { chartMain.clear(); return }
-  const input = { sliderShow: showSlider.value, zoomOverride: forceResetZoom ? null : readZoomOverride() }
+  const zoomOverride = forceResetZoom
+    ? (viewWindow.value ? zoomForWindow(bars.value.map(b => b.date), viewWindow.value) : null)
+    : readZoomOverride()
+  const input = { sliderShow: showSlider.value, zoomOverride }
   const mainOpt = buildMainOption(bars.value, emptyEventBundle(bars.value), input,
                                   { getChartEl: () => mainEl.value, height: chartMain.getHeight() })
   chartMain.setOption(mainOpt as any, true)
@@ -850,7 +854,7 @@ onBeforeUnmount(() => {
 })
 
 // ── Reactive watches ────────────────────────────────────────────────
-watch([symbol, mode], () => void reloadBars().then(() => render(true)))
+watch([symbol, mode, viewWindow], () => void reloadBars().then(() => render(true)))
 watch([scanFile, effectiveScan], () => {
   if (annotating.value) return      // annotate 的图与扫描无关
   void reloadBars().then(() => render(false))

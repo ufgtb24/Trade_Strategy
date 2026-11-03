@@ -1,7 +1,7 @@
 import type {
   SerializedPattern, MultiScanResultFile, Ohlc, Diagnostics, AppConfig,
   ScanProgress, ScanDone, ScanHistoryEntry, Analysis, ScanMeta, NodesScopeResponse,
-  TimeScopeResponse, PairScopeResponse, ParamsDiffResp,
+  TimeScopeResponse, PairScopeResponse, ParamsDiffResp, RallyItem, RandomWindow,
 } from './types'
 // Task 10 · ParamsChip(及 Task 11 抽屉)按 `from '../api'` 消费 diff 响应类型,故随 getParamsDiff 一并重导出。
 export type { ParamsDiffResp }
@@ -37,6 +37,14 @@ export function getAllOhlc(symbol: string): Promise<Ohlc> {
 /** 股票列表:训练段副本里有的股票代码,按字母序。 */
 export function getSymbols(): Promise<string[]> {
   return getJson('/symbols')
+}
+/** 训练段里的大涨段清单(后端首次整池算一遍约半分钟,之后读缓存)。 */
+export function getRally(): Promise<RallyItem[]> {
+  return getJson('/rally')
+}
+/** 从股票池 × 训练段随机给一段图。 */
+export function getRandom(): Promise<RandomWindow> {
+  return getJson('/random')
 }
 export function listScans(): Promise<ScanHistoryEntry[]> {
   return getJson('/scans/')

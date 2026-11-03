@@ -133,6 +133,16 @@ export interface MultiScanResultFile {
 
 export interface Bar { date: string; o: number; h: number; l: number; c: number; v: number; rv: number }
 export interface Ohlc { symbol: string; bars: Bar[] }
+/** 图窗:打开一只股票时停在哪段(两端日期 YYYY-MM-DD,含)。 */
+export interface ViewWindow { start: string; end: string }
+/** 大涨段清单的一行(/rally):涨前那天 date、最高点 peak_date、拿得到的涨幅 rise(小数)、
+ *  相对涨幅 rel(几倍止损距离)、图窗 view_start..view_end(停在涨之前,看得见那段涨)。 */
+export interface RallyItem {
+  symbol: string; date: string; peak_date: string; rise: number; rel: number
+  view_start: string; view_end: string
+}
+/** 随机给的一段图(/random)。 */
+export interface RandomWindow { symbol: string; start: string; end: string }
 
 export interface AttrRow {
   instance_id: string; node_id: string

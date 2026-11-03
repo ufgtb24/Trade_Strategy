@@ -16,6 +16,7 @@ from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
 from pathlib import Path
 from typing import Optional
 
+import numpy as np
 import pandas as pd
 from fastapi import APIRouter, HTTPException, Request
 from fastapi import Path as FPath
@@ -25,8 +26,11 @@ from sse_starlette.sse import EventSourceResponse
 from path2.dag import diagnose as _dag_diagnose
 from path2.dag.engine import analyze as _dag_analyze_engine
 from path2_web import scan as scan_mod
+from path2_web.config import finder_settings, train_segment
 from path2_web.data import TRAIN_END, list_symbols, read_bars, serialize_ohlc, slice_window
 from path2_web.diagnose import diagnose_symbol, derive_response, Query
+from path2_web.finder import Finder, random_window
+from path2_web.snapshot_fingerprint import ManifestMissing
 from path2_web.gate_collector import attach_and_collect, detach
 from path2_web.serialize import serialize_pattern
 from path2_web.annotation import store as annotation_store
@@ -816,5 +820,47 @@ def build_router(*, registry, config_path, get_config, set_config,
             return {"file": name, **annotation_store.read_annotations(cfg)}
         except (OSError, ValueError) as e:
             raise _annotation_failure(e) from None
+
+    # ── 找图:股票池 /pool、大涨段清单 /rally、随机给一段图 /random(path2_web/finder.py)──
+    # 只读,看过什么一律不记。整池算一遍(首次约半分钟)的结果缓存在 <outputs_root>/finder/,
+    # 训练段设置、副本指纹、找图参数、名称表、数据错误登记任一变化就重算。
+    finder = Finder()
+
+    def _finder_ctx():
+        """(找图结果, 行情目录, 训练段, 找图参数)。副本没有指纹清单、训练段或数据错误登记不合格 → 503。"""
+        cfg = get_config()
+        data_dir = _data_dir(cfg)
+        try:
+            segment, settings = train_segment(cfg), finder_settings(cfg)
+            index = finder.index(data_dir, segment=segment, settings=settings,
+                                 cache_dir=Path(outputs_root) / "finder")
+        except ManifestMissing as e:
+            raise HTTPException(503, str(e)) from None
+        except ValueError as e:
+            raise HTTPException(503, f"找图配置不合格: {e}") from None
+        return index, data_dir, segment, settings
+
+    @router.get("/pool")
+    def get_pool():
+        """股票池:有进池股票日的股票、进池股票日总数、读不了而跳过的股票。"""
+        index = _finder_ctx()[0]
+        return {"symbols": list(index.symbols), "stock_days": int(len(index.pool_date)),
+                "skipped": list(index.skipped)}
+
+    @router.get("/rally")
+    def get_rally():
+        """大涨段清单,按相对涨幅从大到小:[{symbol, date, peak_date, rise, rel, view_start, view_end}]。"""
+        return _finder_ctx()[0].rally
+
+    @router.get("/random")
+    def get_random(seed: Optional[int] = None):
+        """随机给一段图 {symbol, start, end}。seed 给了就可复现(测试用);股票池为空 → 404。"""
+        index, data_dir, segment, settings = _finder_ctx()
+        try:
+            return random_window(index, data_dir, segment=segment,
+                                 window_bars=int(settings["random_window_bars"]),
+                                 rng=np.random.default_rng(seed))
+        except LookupError as e:
+            raise HTTPException(404, str(e)) from None
 
     return router
