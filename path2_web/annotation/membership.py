@@ -40,9 +40,9 @@ detach 和 attach 互斥,同一个框两个都有时报 MembershipInputError(cod
 1. 候选只取在样本日当天或之前结束的框(因果);
 2. 边界从样本日开始往前扩:候选框的终点序号 ≥ 边界 − GAP 就并进来,边界随之更新为成员里最早的起点,
    循环到没有新增;
-3. spec 的第 3 步(带上被成员包住的框、attach 到成员上的框)在第 2 步停下时已经满足:这样的框和某个成员
-   交叠,终点不早于那个成员的起点,也就不早于边界,第 2 步已经收进来了。detach 只管属不属于外框,
-   不管是不是成员。
+3. 再带上被成员包住的框、attach 到成员上的框。这一步不用单独做:这样的框和某个成员交叠,终点不早于那个
+   成员的起点,也就不早于边界,第 2 步停下时已经收进来了。attach 照「框套框」第 2 条,不算数的 attach
+   不带进来;detach 只管属不属于外框,不管是不是成员。
 
 成员随后怎么变(sample_members)
 --------------------------------
@@ -74,8 +74,8 @@ from bisect import bisect_left
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 
-GAP = 20    # 待验证(V-01-1):从样本日往前,前后两段之间空几根 K 线以内仍算连着(样本到第一个框、框到框同一个数)
-NEAR = 40   # 待验证(V-01-1):样本范围起点往前几根以内没收进的框,算「画了没收」
+GAP = 20    # 暂定值,待验证:从样本日往前,前后两段之间空几根 K 线以内仍算连着(样本到第一个框、框到框同一个数)
+NEAR = 40   # 暂定值,待验证:样本范围起点往前几根以内没收进的框,算「画了没收」
 
 UNCLAIMED = "unclaimed"
 CROSSES_SAMPLE_DATE = "crosses_sample_date"
