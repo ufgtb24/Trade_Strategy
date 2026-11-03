@@ -83,6 +83,7 @@ FastAPI 后端（pattern 发现 / 扫描 / 序列化 / 诊断）+ Vue3 前端（
 ### 共享基础设施
 - `configs/` — YAML 配置（`params/`、`scan_config.yaml`、`path2_web.yaml` 等）
 - `datasets/pkls/` — 美股历史数据（Pickle）。所有 worktree 共用主目录这一份：worktree 里的 `datasets` 是准备时建的、指向主目录的软链（见「在 git worktree 里开发」），不要在 worktree 里另建。
+- `annotations/` — 用户的看图标注文件（配置键 `annotation_dir`）。git 忽略，pc 与 upc 用 Syncthing 同步；worktree 里同样是指向主目录的软链。不要改、删里面已有的文件；会话只读不写。
 - `scripts/path2/` — path2 核心入口脚本（`run_path2_web.py` 前后端启动、`path2_eval_scan.py` 评估、`scan-top-miss.py` 漏检扫描；无 argparse。诊断环境探测脚本 `path2_diag_env.py` 随 diagnose-event skill 走、不在本目录）
 
 ## 开发环境
@@ -98,7 +99,7 @@ FastAPI 后端（pattern 发现 / 扫描 / 序列化 / 诊断）+ Vue3 前端（
 
 - **共用数据**：`datasets/` 所有 worktree 读写同一份。`scripts/data/data_download.py` 更新行情会原地改写 pkl（`clear=True` 时整目录删掉重下），`scripts/data/preprocess.py` 会写 `datasets/process_pkls/`；跑这两个时，别在任何 worktree 同时跑扫描、评估或调参。要在固定数据上做的实验，先把数据复制一份快照再跑。`outputs/` 不共用，各 worktree 的扫描结果留在自己目录里。
 - **运行环境**：各 worktree 在自己根目录运行 `uv sync` 建 `.venv`。不要借用主目录的 `.venv`：本项目在里面是指向主目录的可编辑安装，worktree 里跑子目录下的脚本会悄悄导入主目录的代码。前端 `node_modules` 由 `scripts/path2/run_path2_web.py` 首次启动时自动 `npm ci`。
-- **删除 worktree**：`git worktree remove --force <目录>`，或先 `rm datasets` 只删链接；对软链不要用带末尾斜杠的 `rm -rf`。
+- **删除 worktree**：`git worktree remove --force <目录>`，或先 `rm datasets annotations` 只删链接；对软链不要用带末尾斜杠的 `rm -rf`。
 
 ## 编码规范
 - 语言：注释/文档中文
