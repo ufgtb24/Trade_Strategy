@@ -1,7 +1,8 @@
 # 画框、起名与词表
 
 Status: ready-for-agent
-Progress: not-started
+Progress: in-progress
+Claimed: 2026-11-03 parallel-tickets ticket-05 @ worktree impl/05-boxes-and-vocabulary
 Blocked by: 02, 03, 04
 
 ## Purpose
