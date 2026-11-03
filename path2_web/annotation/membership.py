@@ -70,7 +70,8 @@ detach 和 attach 互斥,同一个框两个都有时报 MembershipInputError(cod
 - crosses_sample_date(跨过样本日收不进):起点不晚于样本日、终点晚于样本日。
 整段在样本日之后的框、离得比 NEAR 远的框不留空槽。
 
-GAP、NEAR 的默认值只在本模块设定。例子文件自带它算答案用的值,改默认值不用改例子。
+GAP、NEAR 的默认值只在本模块设定;界面本地推断时读的是标注路由带出的同一对值(GET /annotations 的 membership)。
+例子文件自带它算答案用的值,改默认值不用改例子。
 本模块不读行情、不读写标注文件,只做纯计算。
 """
 from __future__ import annotations
