@@ -125,7 +125,7 @@ describe('compare 的系列', () => {
       compare: { app, hits: [], hitRow0: 0, nodeColors: {}, tiers: true },
     }) as any
     const s2 = series(opt, 'compare-tier-tags')
-    expect(s2.renderItem({ dataIndex: 1, coordSys: cs }, api(s2.data[1])).children).toEqual([])
+    expect(s2.renderItem({ dataIndex: 1, coordSys: cs }, api(s2.data[1]))).toBeNull()   // null:删掉上次画的 tag
   })
 
   it('hit:bracket 轨上排在样本跨度的那几行下面,app 琥珀底、细黑实线边', () => {

@@ -763,7 +763,7 @@ export function makeRenderTierTag(data: EventBundle['tierTagData'], bandGeom: Ba
   return (params: any, api: any) => {
     const d = data[params.dataIndex]
     const g = bandGeom[api.value(3) || 0]
-    if (!d || !g) return { type: 'group', children: [] }
+    if (!d || !g) return null
     const laneH = BAND_MARKER_H * zoomFactor
     const y = Math.max(g.top + BAND_TOP_PAD,
       Math.min(g.top + BAND_TOP_PAD + (api.value(2) || 0) * (laneH + BAND_LANE_GAP * zoomFactor), g.top + g.h - BAND_BOT_PAD - laneH))
@@ -771,7 +771,6 @@ export function makeRenderTierTag(data: EventBundle['tierTagData'], bandGeom: Ba
     // 区段事件的条画到终点那根的中心;点事件是以那根为中心的三角(半宽同 renderPointWithGeom)
     const right = api.coord([api.value(1), 0])[0] + (d.point ? Math.max(5, Math.min(20, unitW * 0.35)) : 0)
     return tierTagShape(d.text, right, y, laneH, tierTagLimit(api, params.coordSys, api.value(4)))
-      ?? { type: 'group', children: [] }
   }
 }
 

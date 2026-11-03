@@ -406,12 +406,13 @@ function buildCompareSeries(dates: readonly string[], d: LaneDraw): any[] {
       const [, x1] = spanPx(api)
       const bw = api.size([1, 0])[0]
       const shape = tierTagShape(it.tag!, x1, api.value(2), APP_BAR_H, tierTagLimit(api, p.coordSys, api.value(3)))
-      if (!shape) return { type: 'group', children: [] }
+      // 不挂时返回 null(见 tierTags.ts 的 tierTagShape):空 group 会留下上次缩放画的 tag
+      if (!shape) return null
       // tag 横跨了用户框的竖边(左边或右边)就不挂:框边是用户画的,不能被 tag 盖住
       const [t0, t1] = [x1, x1 + TIER_TAG_GAP * 2 + tierTagWidth(it.tag!)]
       const cuts = it.boxes.some(([bs, be]) => [api.coord([bs, 0])[0] - bw / 2, api.coord([be, 0])[0] + bw / 2]
         .some(edge => edge > t0 && edge < t1))
-      return cuts ? { type: 'group', children: [] } : shape
+      return cuts ? null : shape
     },
   }]
   if (d.bracket) {

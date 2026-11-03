@@ -41,6 +41,8 @@ export function tierTagWidth(text: TierTagText): number {
 /**
  * 一个 tag 的图形(ECharts custom series 的 group 子元素);放不下返回 null。
  * x:event 条右端;y、h:条的上沿与高;limit:tag 的右端不能越过的位置(tierTagLimit)。
+ * 放得下与否随缩放变,renderItem 不挂时要原样返回 null:ECharts 收到 null 会删掉这条数据上次画的元素,
+ * 收到空 group 却按下标合并子元素、什么也不删,上次缩放时画的 tag 会留在原来的像素位置上。
  */
 export function tierTagShape(text: TierTagText, x: number, y: number, h: number, limit: number, opacity = 1): any | null {
   const w = tierTagWidth(text)
