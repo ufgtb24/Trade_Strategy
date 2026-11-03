@@ -295,7 +295,7 @@ function nestOf(b: AnnBox): NestBox {
 }
 
 /** 算框套框用的交易日:这张图的 K 线日期在手(非空)就用它,否则用周一到周五代替(见 weekdaysCovering)。 */
-function daysFor(boxes: readonly AnnBox[], days?: readonly string[] | null): readonly string[] {
+export function daysFor(boxes: readonly AnnBox[], days?: readonly string[] | null): readonly string[] {
   return days && days.length ? days : weekdaysCovering(boxes)
 }
 
@@ -374,7 +374,8 @@ export interface Lane {
 
 /**
  * annotate 下一张图的特征轨:一个特征一条轨。
- * - 轨序:按特征在这张图上首次出现的先后(最早的起点;一样早按名字);
+ * - 轨序:rankOfFeature 给了就先按它(当前 pattern 里各段的先后,见 annotate/grouping.ts 的 featureOrder),
+ *   不在其中的特征排在后面;其余按特征在这张图上首次出现的先后(最早的起点;一样早按名字);
  * - 子框轨:这个特征的框全都属于同一个别的特征的框时,它是那个特征的子框轨,紧跟在那条轨后面,标题写成
  *   「缩量 ⊂ 横盘」;
  * - 还没起名的框单独一条轨,放最后;
@@ -382,7 +383,7 @@ export interface Lane {
  * days 是这张图的交易日(算框套框的长短用)。
  */
 export function computeLanes(boxes: readonly AnnBox[], nameOf: (fid: string) => string,
-                             days: readonly string[]): Lane[] {
+                             days: readonly string[], rankOfFeature?: ReadonlyMap<string, number> | null): Lane[] {
   const par = chartParents(boxes, days)
   const byId = new Map(boxes.map(b => [b.id, b]))
   const groups = new Map<string | null, AnnBox[]>()
@@ -391,8 +392,10 @@ export function computeLanes(boxes: readonly AnnBox[], nameOf: (fid: string) => 
     groups.get(b.feature)!.push(b)
   }
   const first = (fid: string) => groups.get(fid)!.reduce((m, b) => (b.start < m ? b.start : m), '9999-99-99')
+  const rank = (fid: string) => rankOfFeature?.get(fid) ?? Number.POSITIVE_INFINITY
   const named = [...groups.keys()].filter((k): k is string => k !== null)
-    .sort((a, b) => (first(a) < first(b) ? -1 : first(a) > first(b) ? 1 : nameOf(a) < nameOf(b) ? -1 : 1))
+    .sort((a, b) => (rank(a) !== rank(b) ? (rank(a) < rank(b) ? -1 : 1)
+      : first(a) < first(b) ? -1 : first(a) > first(b) ? 1 : nameOf(a) < nameOf(b) ? -1 : 1))
   const laneParent = new Map<string, string | null>()
   for (const fid of named) {
     const ps = groups.get(fid)!.map(b => { const p = par[b.id]; return p ? byId.get(p)?.feature ?? null : null })

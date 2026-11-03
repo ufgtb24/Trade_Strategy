@@ -1,0 +1,18 @@
+# 在提交 14a14f7 上跑,工作区干净;另起一个真后端在 8087(04、08 的 e2e 要用)
+
+Running 13 tests using 1 worker
+
+[1/13] e2e/annotate-boxes.spec.ts:28:3 › 画框、起名与词表 › 拖框起名刷新后还在;轨上拖出带名字的框;改起止;属性回到 null;子框轨;改名处处生效;合并预览与拆回
+[2/13] e2e/annotate-boxes.spec.ts:169:3 › 冲突与指纹不符 › 两种提示各出现一次,图照常显示;冲突看过后不再出现
+[3/13] e2e/annotate-grouping.spec.ts:88:3 › 归组与 pattern 页 › pattern 页的计数与点开分排、definition、打开样本、轨序;unsorted 页按骨架分行、整行 move、刷新后还在
+[4/13] e2e/annotate-open-by-symbol.spec.ts:58:3 › 按代码打开 · annotate › 副本里的代码回车打开:K 线止于 2025-12-31、只有 K 线和成交量;副本里没有的代码报 not_found
+[5/13] e2e/annotate-open-by-symbol.spec.ts:95:3 › 按代码打开 · annotate › 现有扫描入口照旧能用:扫描结果是 app 视图;按代码打开切到 annotate;再从扫描列表选股回到 app
+[6/13] e2e/annotate-open-by-symbol.spec.ts:129:3 › 按代码打开 · annotate › 后端:非法代码 400,不存在 404
+[7/13] e2e/annotate-rally-random.spec.ts:104:3 › 找图入口 · rally / random › rally:从 app 视图点一行 → annotate,图停在那段涨之前、看得见那段涨,止于 2025-12-31
+[8/13] e2e/annotate-rally-random.spec.ts:130:3 › 找图入口 · rally / random › random:从 app 视图点一下 → annotate,图窗不超过 250 根、止于 2025-12-31
+[9/13] e2e/annotate-rally-random.spec.ts:145:3 › 找图入口 · rally / random › 看过什么一律不记:连点几行 rally、几次 random,文件与 localStorage 都不变
+[10/13] e2e/annotate-samples.spec.ts:77:3 › 放样本与成员框 › 自动收进之前的框、刷新不变;跨过样本日收不进;拖框边停在样本日;换掉当前样本后冻结;手动点进点出
+[11/13] e2e/annotate-samples.spec.ts:222:3 › 保存被拒 › 另一台机器同步来的修改让本页的改动越界:界面写出原因,重读后框还在,再拖就停在样本日
+[12/13] e2e/symbol-search.spec.ts:36:3 › symbol search e2e › empty state: search bar not rendered
+[13/13] e2e/symbol-search.spec.ts:41:3 › symbol search e2e › after scan load: search bar visible + typing narrows list + Esc clears + Shift+B safe
+  13 passed (47.0s)

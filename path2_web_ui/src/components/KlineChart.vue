@@ -106,6 +106,7 @@ import { useAnnotationStore } from '../stores/annotation'
 import { chartOf, computeLanes, type AnnBox } from '../annotate/model'
 import { emptySlots } from '../annotate/membership'
 import { boxMarks, resizeLimit, sampleLetters, sampleRange, sampleTag } from '../annotate/samples'
+import { featureOrder, patternSamples } from '../annotate/grouping'
 import {
   afterDimSeries, bracketGeometry, buildAnnotateSubOption, laneGeometry, mainMarksSeries, mainSamplesSeries,
   packBrackets, triangleRect, type BracketItem, type Draft, type SampleMark,
@@ -141,9 +142,11 @@ const draft = ref<Draft | null>(null)            // 正在拖出的新框
 const preview = ref<AnnBox | null>(null)         // 正在改起止的框
 const annDates = computed(() => bars.value.map(b => b.date))
 const annChart = computed(() => (ann.state ? chartOf(ann.state, symbol.value) : null))
+// 轨序:当前 pattern 里各段的先后(annotate/grouping.ts 的 featureOrder),不在其中的特征按这张图上首次出现排
+const annOrder = computed(() => featureOrder(ann.state ? patternSamples(ann.state, ann.currentPattern) : []))
 const annLanes = computed(() => {
   const chart = annChart.value
-  return chart ? computeLanes(chart.boxes, (f) => ann.nameOf(f) ?? f, annDates.value) : []
+  return chart ? computeLanes(chart.boxes, (f) => ann.nameOf(f) ?? f, annDates.value, annOrder.value) : []
 })
 // 样本:字母(当前 pattern)、选中的样本(在这张图上)、它的空槽、框旁的标记、bracket 轨
 const annLetters = computed(() => sampleLetters(annChart.value, ann.currentPattern))
@@ -581,6 +584,9 @@ function renderBarsOnly(forceResetZoom: boolean) {
   const mainOpt = buildMainOption(bars.value, emptyEventBundle(bars.value), input,
                                   { getChartEl: () => mainEl.value, height: chartMain.getHeight() }) as any
   mainOpt.dataZoom[0].moveOnMouseMove = false
+  // 主图上的标注层(选中的框、样本日之后暗一档)是一段:只要有一端在图窗里、或横跨整个图窗就照画。
+  // 默认的 filter 要两端都在图窗里,图窗没拉到最后一根时「暗一档」整条消失;K 线、成交量只有一个 x,两种筛法一样
+  for (const dz of mainOpt.dataZoom) dz.filterMode = 'weakFilter'
   // 滑块贴底,放在日期刻度下面(按百分比放会在高的窗口里压住成交量带)
   const slider = mainOpt.dataZoom[1]
   delete slider.top
