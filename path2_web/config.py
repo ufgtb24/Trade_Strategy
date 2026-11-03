@@ -45,7 +45,9 @@ DEFAULT_CONFIG = {
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_PATH = _REPO_ROOT / "configs" / "path2_web.yaml"
 
-_MACHINE_RE = re.compile(r"[A-Za-z0-9_]+")
+# 机器名的写法:只许字母、数字和下划线。标注存储的文件名、对象编号也按它拆出机器名
+MACHINE_PATTERN = r"[A-Za-z0-9_]+"
+_MACHINE_RE = re.compile(MACHINE_PATTERN)
 
 
 def _merge(default: dict, override: dict) -> dict:
@@ -69,10 +71,20 @@ def save_config(cfg: dict, path=DEFAULT_PATH) -> None:
     path.write_text(yaml.safe_dump(cfg, allow_unicode=True, sort_keys=False))
 
 
-def annotation_dir(cfg: dict) -> Path:
-    """标注目录:配置的 annotation_dir,相对路径按 repo root 解析。"""
-    d = Path(cfg["annotation_dir"])
+def _repo_path(raw) -> Path:
+    """配置里的路径:相对路径按 repo root 解析,绝对路径原样。"""
+    d = Path(raw)
     return d if d.is_absolute() else _REPO_ROOT / d
+
+
+def view_dataset_dir(cfg: dict) -> Path:
+    """网页读行情的训练段副本目录:配置的 view_dataset_dir。缺这一项 → KeyError。"""
+    return _repo_path(cfg["view_dataset_dir"])
+
+
+def annotation_dir(cfg: dict) -> Path:
+    """标注目录:配置的 annotation_dir。"""
+    return _repo_path(cfg["annotation_dir"])
 
 
 def machine_name(cfg: dict) -> str:
