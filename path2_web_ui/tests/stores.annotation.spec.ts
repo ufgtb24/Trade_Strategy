@@ -27,7 +27,9 @@ vi.mock('../src/api', async () => {
       const next = model.applyOps(fake.read, ops)
       const revs = structuredClone(fake.read.revs)
       ops.forEach((op, i) => { revs[op.kind][op.id] = `${stem}#${i}` })
-      fake.read = { ...next, revs }
+      // 真后端从文件里认出合并;这里只模拟「词放回词表后,那条合并不再列出」
+      const merges = (fake.read.merges ?? []).filter((m: any) => !next.state.features.some((f: any) => f.id === m.feature.id))
+      fake.read = { ...next, revs, merges }
       return { file: `${stem}.json`, ...structuredClone(fake.read) }
     },
   }
@@ -39,7 +41,7 @@ function emptyRead(state: Partial<AnnState> = {}): AnnRead {
   return {
     state: { machine: 'pc', data_fingerprint: null, features: [], patterns: [], charts: [], ...state },
     conflicts: [], unsynced: [], violations: [],
-    fingerprint: { local: 'fp', local_error: null, recorded: [], consistent: true },
+    fingerprint: { local: 'fp', local_error: null, recorded: [], consistent: true }, merges: [],
     revs: { feature: {}, pattern: {}, box: {}, sample: {} }, next_seq: 1, ignored_files: [],
   }
 }
@@ -151,28 +153,40 @@ describe('词表', () => {
       value: { id: 'w-pc-1', name: '放量', definition: '量是前 20 根均量的两倍以上' } }]])
   })
 
-  it('合并:先预览波及几个框;合并后被并的词删掉;拆回恢复原样', async () => {
+  it('合并:先预览波及几个框;送出的一批改写涉及的框、删掉被并的词', async () => {
     const s = await ready(base())
-    const before = structuredClone(fake.read.state)
     const plan = s.previewMerge('w-pc-2', 'w-pc-1')!
     expect([plan.box, plan.attr]).toEqual([1, 1])
     s.applyMerge('w-pc-2', 'w-pc-1')
     await s.flushed()
     const merged = fake.batches[0]
-    expect(merged.at(-1)).toEqual({ kind: 'feature', id: 'w-pc-2', base: null, value: null })
+    expect(merged.map((o: AnnOp) => [o.kind, o.id, o.value === null])).toEqual([
+      ['box', 'b-pc-3', false], ['box', 'b-pc-4', false], ['feature', 'w-pc-2', true]])
+    expect(merged[0].value.feature).toBe('w-pc-1')
+    expect(merged[1].value.attrs).toEqual({ 'w-pc-1': true })      // 属性「量大」挪成「放量」
     expect(fake.read.state.features.map((f: any) => f.id)).toEqual(['w-pc-1'])
-    expect(fake.read.state.charts[0].boxes[0].feature).toBe('w-pc-1')
-    expect(fake.read.state.charts[1].boxes[0].attrs).toEqual({ 'w-pc-1': true })   // 属性「量大」挪成「放量」
-    expect(s.merges).toHaveLength(1)
+  })
 
+  it('拆回:按后端认出的合并,词用原编号放回(base 取它被删的那次),框改回合并前;之后不再列出', async () => {
+    const before = base()
+    const r = base()
+    r.state.features = [{ id: 'w-pc-1', name: '放量' }]
+    r.state.charts[0].boxes[0] = { ...r.state.charts[0].boxes[0], feature: 'w-pc-1' }
+    r.revs = { feature: { 'w-pc-1': 'b0#0', 'w-pc-2': 'b1#1' }, pattern: {}, box: { 'b-pc-3': 'b1#0' }, sample: {} }
+    r.merges = [{ ref: 'b1#1', machine: 'pc', ts: 't', feature: { id: 'w-pc-2', name: '量大', definition: '比前一段量大' },
+      into: 'w-pc-1', boxes: [{ id: 'b-pc-3',
+        before: { ...before.state.charts[0].boxes[0], symbol: 'AAA' }, after: { ...r.state.charts[0].boxes[0], symbol: 'AAA' } }] }]
+    const s = await ready(r)
+    expect(s.merges.map(m => [m.from.name, m.into, m.box, m.attr])).toEqual([['量大', 'w-pc-1', 1, 0]])
     s.unmerge(0)
     await s.flushed()
-    const back = fake.batches[1]
-    expect(back[0]).toEqual({ kind: 'feature', id: 'w-pc-2', base: 'pc-batch-1#2',
-      value: { id: 'w-pc-2', name: '量大', definition: '比前一段量大' } })
-    const norm = (st: any) => ({ ...st, features: [...st.features].sort((a: any, b: any) => (a.id < b.id ? -1 : 1)) })
-    expect(norm(fake.read.state)).toEqual(norm(before))
-    expect(s.merges).toHaveLength(0)
+    expect(fake.batches[0]).toEqual([
+      { kind: 'feature', id: 'w-pc-2', base: 'b1#1', value: { id: 'w-pc-2', name: '量大', definition: '比前一段量大' } },
+      { kind: 'box', id: 'b-pc-3', base: 'b1#0',
+        value: { id: 'b-pc-3', symbol: 'AAA', feature: 'w-pc-2', start: '2025-01-06', end: '2025-01-10' } },
+    ])
+    expect(fake.read.state.charts).toEqual(before.state.charts)
+    expect(s.merges).toEqual([])
   })
 })
 

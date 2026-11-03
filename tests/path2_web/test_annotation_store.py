@@ -448,3 +448,56 @@ def test_hidden_and_misnamed_files_are_skipped(tmp_path):
     result = store.read_annotations(_cfg(adir, "pc"))
     assert result["ignored_files"] == ["notes.txt"]
     assert result["state"]["charts"] == []
+
+
+# ---------------------------------------------------------------- 还能拆回的合并
+
+def test_golden_v1_lists_its_merge():
+    """例子文件里 upc 把「缩量」并进「回踩」:读出这条合并,带被删的词和那个框改前改后的值。"""
+    got = store.read_annotations(_cfg(FIXTURE / "batches", "pc"))["merges"]
+    assert [(m["ref"], m["machine"], m["feature"], m["into"]) for m in got] == [
+        ("upc-20261103T093000.000Z-2#1", "upc", {"id": "w-upc-1", "name": "缩量"}, "w-pc-2")]
+    [b] = got[0]["boxes"]
+    assert b["id"] == "b-upc-2"
+    assert (b["before"]["feature"], b["after"]["feature"]) == ("w-upc-1", "w-pc-2")
+    assert b["before"]["symbol"] == "MSFT"
+
+
+def test_merge_listed_until_split_back_from_any_machine(tmp_path):
+    """合并后另一台机器也读得到这条合并(刷新、换机器都能拆回);拆回后不再列出。属性里的那个词也算。"""
+    pc_dir, upc_dir = _adir(tmp_path, "pc"), _adir(tmp_path, "upc")
+    pc, upc = _cfg(pc_dir, "pc"), _cfg(upc_dir, "upc")
+    store.append_batch(pc, [_feature("w-pc-1", "放量"), _feature("w-pc-2", "量大", definition="比前段量大"),
+                            _box("b-pc-3", "2024-03-01", "2024-03-05", "w-pc-2"),
+                            _box("b-pc-4", "2024-03-06", "2024-03-08", "w-pc-1", attrs={"w-pc-2": True})], now=_at(9))
+    r = store.read_annotations(pc)
+    store.append_batch(pc, [
+        _box("b-pc-3", "2024-03-01", "2024-03-05", "w-pc-1", base=r["revs"]["box"]["b-pc-3"]),
+        _box("b-pc-4", "2024-03-06", "2024-03-08", "w-pc-1", attrs={"w-pc-1": True}, base=r["revs"]["box"]["b-pc-4"]),
+        _delete("feature", "w-pc-2", r["revs"]["feature"]["w-pc-2"]),
+    ], now=_at(9, 5))
+    _sync(pc_dir, upc_dir)
+    [m] = store.read_annotations(upc)["merges"]
+    assert m["feature"] == {"id": "w-pc-2", "name": "量大", "definition": "比前段量大"}
+    assert m["into"] == "w-pc-1"
+    assert [b["id"] for b in m["boxes"]] == ["b-pc-3", "b-pc-4"]
+
+    r = store.read_annotations(upc)
+    store.append_batch(upc, [
+        _feature("w-pc-2", "量大", definition="比前段量大", base=r["revs"]["feature"]["w-pc-2"]),
+        *[{**_op("box", b["id"], b["before"]), "base": r["revs"]["box"][b["id"]]} for b in m["boxes"]],
+    ], now=_at(9, 10))
+    assert store.read_annotations(upc)["merges"] == []
+    assert _boxes(upc)["b-pc-3"]["feature"] == "w-pc-2"
+
+
+def test_plain_delete_is_not_a_merge(tmp_path):
+    """删一个没人用的词、或删框时顺带删词,都不是合并。"""
+    cfg = _cfg(_adir(tmp_path), "pc")
+    store.append_batch(cfg, [_feature("w-pc-1", "放量"), _feature("w-pc-2", "备用"),
+                             _box("b-pc-3", "2024-03-01", "2024-03-05", "w-pc-1")], now=_at(9))
+    r = store.read_annotations(cfg)
+    store.append_batch(cfg, [_delete("feature", "w-pc-2", r["revs"]["feature"]["w-pc-2"]),
+                             _delete("box", "b-pc-3", r["revs"]["box"]["b-pc-3"]),
+                             _delete("feature", "w-pc-1", r["revs"]["feature"]["w-pc-1"])], now=_at(9, 5))
+    assert store.read_annotations(cfg)["merges"] == []

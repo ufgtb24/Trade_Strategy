@@ -101,8 +101,8 @@ import ResizableDivider from './ResizableDivider.vue'
 import CrosshairOverlay from './CrosshairOverlay.vue'
 import { useAnnotationStore } from '../stores/annotation'
 import { chartOf, computeLanes, type AnnBox } from '../annotate/model'
-import { buildAnnotateSubOption, laneGeometry, mainMarksSeries } from '../render/annotateLanes'
-import { createAnnotateGestures, type Draft } from './annotateGestures'
+import { buildAnnotateSubOption, laneGeometry, mainMarksSeries, type Draft } from '../render/annotateLanes'
+import { createAnnotateGestures } from './annotateGestures'
 
 const view = useViewStore()
 const { symbol, effectiveAnalysis, nodeColors, nodeVisible, level, tagMap, isolated,

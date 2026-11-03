@@ -20,11 +20,23 @@ export const INK = '#111'             // 文字与框线一律黑
 export const CHIP_BG = '#f4f4f5'      // 用户写的内容(不在输入框里)的浅灰底,同 App.vue 的 --chip-bg
 export const LANE_LINE = '#e4e4e7'    // 轨之间的分隔线,同 --line-soft
 export const SELECTED_FILL = 'rgba(0,0,0,0.10)'   // 选中的框:填浅灰(填充只表示「选中」)
+export const SELECTED_SPAN_FILL = 'rgba(0,0,0,0.06)'   // 主图 K 线区上选中的框的范围:面积大,比轨里的浅一档,免得压住 K 线
+export const NO_FILL = 'rgba(255,255,255,0)'
+export const TITLE_BG = 'rgba(255,255,255,0.85)'  // 轨标题垫白,压在框上也读得出
 export const BOX_DASH = [5, 3]        // 用户的框:虚线
 export const DRAFT_DASH = [2, 2]      // 正在拖出的框:短虚线
 export const MONO = 'ui-monospace, "JetBrains Mono", "DejaVu Sans Mono", Consolas, monospace'
 
 export interface LaneGeom { top: number; h: number }
+
+/** 正在拖出的新框:起止日期,以及它要进的那条轨(下标;等于轨数时画在最后另起的一条)。 */
+export interface Draft { start: string; end: string; lane: number }
+
+/** custom 系列里一个框占的横向像素:从起点那根 K 线的左边到终点那根的右边。 */
+function spanPx(api: any): [number, number] {
+  const bw = api.size([1, 0])[0]
+  return [api.coord([api.value(0), 0])[0] - bw / 2, api.coord([api.value(1), 0])[0] + bw / 2]
+}
 
 /** 每条轨的位置与高度,以及副图需要的总高(至少 SUB_CANVAS_MIN_H)。 */
 export function laneGeometry(lanes: readonly Lane[]): { geom: LaneGeom[]; height: number } {
@@ -57,7 +69,7 @@ export interface LaneDraw {
   /** 改起止时拖着的框:画在它新的位置上 */
   preview: AnnBox | null
   /** 正在拖出的新框:画在它要进的那条轨上(没有就画在最后) */
-  draft: { start: string; end: string; lane: number } | null
+  draft: Draft | null
   zoom: { start: number; end: number } | null
   width: number
 }
@@ -86,7 +98,7 @@ export function buildAnnotateSubOption(bars: Bar[], d: LaneDraw): unknown {
                     style: { fill: LANE_LINE }, z: 1, silent: true })
     const t = laneTitle(d.lanes[i], d.nameOf)
     graphics.push({ type: 'text', left: SUB_GRID_LEFT + 2, top: g.top + LANE_PAD, z: 30, silent: true,
-                    style: { ...t, fill: INK, fontSize: 12, backgroundColor: 'rgba(255,255,255,0.85)', padding: [0, 2] } })
+                    style: { ...t, fill: INK, fontSize: 12, backgroundColor: TITLE_BG, padding: [0, 2] } })
   })
 
   // 每个框一行数据:[起点下标, 终点下标, 顶, 底, 选中, 拖出中, 编号]
@@ -132,16 +144,14 @@ export function buildAnnotateSubOption(bars: Bar[], d: LaneDraw): unknown {
         },
       },
       renderItem: (_p: any, api: any) => {
-        const bw = api.size([1, 0])[0]
-        const x0 = api.coord([api.value(0), 0])[0] - bw / 2
-        const x1 = api.coord([api.value(1), 0])[0] + bw / 2
+        const [x0, x1] = spanPx(api)
         const top = api.value(2), bottom = api.value(3)
         const sel = api.value(4) === 1, draft = api.value(5) === 1
         return {
           type: 'rect',
           shape: { x: x0, y: top, width: Math.max(3, x1 - x0), height: bottom - top, r: 2 },
           style: {
-            fill: sel ? SELECTED_FILL : 'rgba(255,255,255,0)',
+            fill: sel ? SELECTED_FILL : NO_FILL,
             stroke: INK, lineWidth: sel ? 2.5 : 1.5, lineDash: draft ? DRAFT_DASH : BOX_DASH,
           },
         }
@@ -181,14 +191,12 @@ export function mainMarksSeries(dates: readonly string[],
     type: 'custom', name: MAIN_MARKS_SERIES, xAxisIndex: 0, yAxisIndex: 0, data, silent: true, z: 1,
     encode: { x: [0, 1] }, clip: true, tooltip: { show: false },
     renderItem: (params: any, api: any) => {
-      const bw = api.size([1, 0])[0]
-      const x0 = api.coord([api.value(0), 0])[0] - bw / 2
-      const x1 = api.coord([api.value(1), 0])[0] + bw / 2
+      const [x0, x1] = spanPx(api)
       const cs = params.coordSys
       return {
         type: 'rect',
         shape: { x: x0, y: cs.y, width: Math.max(1, x1 - x0), height: cs.height },
-        style: { fill: api.value(2) === 1 ? 'rgba(0,0,0,0.06)' : 'rgba(255,255,255,0)',
+        style: { fill: api.value(2) === 1 ? SELECTED_SPAN_FILL : NO_FILL,
                  stroke: INK, lineWidth: 1, lineDash: BOX_DASH },
       }
     },

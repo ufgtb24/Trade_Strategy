@@ -10,8 +10,8 @@
  *   next_seq 往上取。
  * - 保存没通过(后端校验拒绝、标注目录不在等):这一个意图丢掉,原因放进 saveError,显示回到后端的状态。
  *
- * 合并与拆回:合并是一批操作(改写涉及的框、删掉被并的词)。拆回要知道合并前的样子,合并时记在本页会话里
- * (merges),刷新页面后就没有了。
+ * 合并与拆回:合并是一批操作(改写涉及的框、删掉被并的词)。还能拆回的合并由后端从标注文件里认出来
+ * (读结果的 merges),刷新、换机器后照样能拆回;拆回再写一批,把词用原编号放回、把框改回去。
  *
  * 冲突提示一次:读结果里每条冲突以 later.ref 为准,看过的记在浏览器里,之后不再弹出。
  */
@@ -19,9 +19,9 @@ import { defineStore } from 'pinia'
 import { computed, ref, shallowRef } from 'vue'
 import { AnnotationSaveError, getAnnotations, postAnnotationBatch } from '../api'
 import {
-  applyOps, baseOf, boxValue, featureByName, featureValue, findBox, mergePlan, newId, toggleAttr,
+  applyOps, baseOf, boxValue, featureByName, featureValue, findBox, mergePlan, mergeRecords, newId, toggleAttr,
   toggleParent, unmergedBox, type AnnBox, type AnnConflict, type AnnFeature, type AnnOp, type AnnRead,
-  type MergeChange, type MergePlan, type ParentRow,
+  type MergePlan, type MergeRecord, type ParentRow,
 } from '../annotate/model'
 
 /** 一个动作:拿到读结果,给出要保存的这一批操作(没什么要改时给空数组)。 */
@@ -31,7 +31,6 @@ export type LoadStatus = 'idle' | 'loading' | 'ready' | 'unavailable' | 'load_fa
 export type SidebarTab = 'selection' | 'features' | 'pattern'
 export type Tool = 'box'
 export interface SaveProblem { code: string; message: string }
-export interface MergeRecord { from: AnnFeature; into: string; changes: MergeChange[] }
 
 const ACK_KEY = 'path2_web_ui.annotation.ack_conflicts.v1'
 
@@ -69,7 +68,6 @@ export const useAnnotationStore = defineStore('annotation', () => {
   const tool = ref<Tool>('box')
   const renaming = ref(false)                      // 选中框的 feature 一行处在「换特征」状态
   const nameFocus = ref(0)                         // 每加一次,侧栏把光标放进起名框
-  const merges = ref<MergeRecord[]>([])
   const pendingMerge = ref<{ from: string; into: string } | null>(null)
   const daysBySymbol = shallowRef<Record<string, string[]>>({})   // 打开过的图的交易日(算框套框的长短)
   const ack = ref<Set<string>>(loadAck())
@@ -82,6 +80,8 @@ export const useAnnotationStore = defineStore('annotation', () => {
     return r
   })
   const state = computed(() => view.value?.state ?? null)
+  /** 还能拆回的合并(后端从标注文件里认出的),按合并的先后。 */
+  const merges = computed<MergeRecord[]>(() => (server.value ? mergeRecords(server.value) : []))
   const machine = computed(() => server.value?.state.machine ?? null)
 
   const featureById = computed(() => new Map((state.value?.features ?? []).map(f => [f.id, f])))
@@ -147,15 +147,18 @@ export const useAnnotationStore = defineStore('annotation', () => {
     return Array.from({ length: n }, (_, i) => start + i)
   }
 
-  /** 按名字找词;没有就新起一个(编号此刻取定)。返回词编号和新建它的操作(已有时为空)。 */
-  function wordFor(name: string, seq: number): { id: string; create: AnnFeature | null } {
+  /** 按名字找词;没有就新起一个(编号此刻取定)。返回词编号和要新建的词(已有时为 null)。 */
+  function wordFor(name: string): { id: string; create: AnnFeature | null } {
     const hit = state.value ? featureByName(state.value, name) : null
     if (hit) return { id: hit.id, create: null }
-    return { id: newId('w', machine.value!, seq), create: { id: newId('w', machine.value!, seq), name: name.trim() } }
+    const id = newId('w', machine.value!, takeSeqs(1)[0])
+    return { id, create: { id, name: name.trim() } }
   }
 
-  function createFeatureOp(f: AnnFeature): AnnOp {
-    return { kind: 'feature', id: f.id, base: null, value: featureValue(f) }
+  /** 新词还不在读结果里时,给出新建它的操作(同一批里先建词、再让框用它)。 */
+  function createIfMissing(r: AnnRead, create: AnnFeature | null): AnnOp[] {
+    return create && !r.state.features.some(f => f.id === create.id)
+      ? [{ kind: 'feature', id: create.id, base: null, value: featureValue(create) }] : []
   }
 
   // ── 框 ──
@@ -198,19 +201,9 @@ export const useAnnotationStore = defineStore('annotation', () => {
 
   /** 给框定特征:选已有的词(给编号),或输入一个名字(有同名的就用它,没有就新起)。 */
   function setBoxFeature(boxId: string, pick: { id: string } | { name: string }): void {
-    let fid: string
-    let create: AnnFeature | null = null
-    if ('id' in pick) fid = pick.id
-    else {
-      if (!pick.name.trim()) return
-      const w = wordFor(pick.name, takeSeqs(1)[0])
-      fid = w.id
-      create = w.create
-    }
-    commit((r) => {
-      const ops: AnnOp[] = create && !r.state.features.some(f => f.id === create!.id) ? [createFeatureOp(create)] : []
-      return [...ops, ...boxIntent(boxId, b => ({ ...b, feature: fid }))(r)]
-    })
+    if ('name' in pick && !pick.name.trim()) return
+    const { id: fid, create } = 'id' in pick ? { id: pick.id, create: null } : wordFor(pick.name)
+    commit((r) => [...createIfMissing(r, create), ...boxIntent(boxId, b => ({ ...b, feature: fid }))(r)])
     renaming.value = false
   }
 
@@ -231,11 +224,9 @@ export const useAnnotationStore = defineStore('annotation', () => {
   /** 挂一条新属性(词表里的词;没有就新起),先判成 true。 */
   function addAttr(boxId: string, name: string): void {
     if (!name.trim()) return
-    const w = wordFor(name, takeSeqs(1)[0])
-    commit((r) => {
-      const ops: AnnOp[] = w.create && !r.state.features.some(f => f.id === w.id) ? [createFeatureOp(w.create)] : []
-      return [...ops, ...boxIntent(boxId, b => (b.attrs && w.id in b.attrs ? b : { ...b, attrs: { ...(b.attrs ?? {}), [w.id]: true } }))(r)]
-    })
+    const w = wordFor(name)
+    commit((r) => [...createIfMissing(r, w.create),
+      ...boxIntent(boxId, b => (b.attrs && w.id in b.attrs ? b : { ...b, attrs: { ...(b.attrs ?? {}), [w.id]: true } }))(r)])
   }
 
   /** 点 parent 一行的 ⊂(detach / attach,规则见 annotate/model.ts 的 parentRow)。 */
@@ -275,12 +266,9 @@ export const useAnnotationStore = defineStore('annotation', () => {
     return state.value ? mergePlan(state.value, from, into) : null
   }
 
-  /** 把 from 并进 into:同一批改写涉及的框、删掉 from。合并前的样子记在本页会话里,拆回用。 */
+  /** 把 from 并进 into:同一批改写涉及的框、删掉 from(后端据这一批认出合并,拆回时用)。 */
   function applyMerge(from: string, into: string): void {
-    const s = state.value
-    const word = s?.features.find(f => f.id === from)
-    if (!s || !word || from === into) return
-    merges.value = [...merges.value, { from: word, into, changes: mergePlan(s, from, into).changes }]
+    if (!state.value?.features.some(f => f.id === from) || from === into) return
     pendingMerge.value = null
     commit((r) => {
       const plan = mergePlan(r.state, from, into)
@@ -296,7 +284,6 @@ export const useAnnotationStore = defineStore('annotation', () => {
   function unmerge(i: number): void {
     const rec = merges.value[i]
     if (!rec) return
-    merges.value = merges.value.filter((_, k) => k !== i)
     commit((r) => {
       const ops: AnnOp[] = []
       if (!r.state.features.some(f => f.id === rec.from.id)) {

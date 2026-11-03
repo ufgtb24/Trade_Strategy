@@ -11,7 +11,7 @@ import { apiBase } from './ports'
  * 画框、起名与词表(annotate):
  * 1. 按代码打开 → 在 K 线区拖框 → 起名 → 刷新,框和名字都还在;在特征轨上拖出的框直接带这个名字;
  *    拖框边改起止;属性 true → 再点一下 → null(存下的是「没有这个键」);框套框的子框轨与 ⊂;
- *    改名后所有用到这个名字的框处处跟着变(两只股票);合并先显示会波及几个框,拆回后恢复原样。
+ *    改名后所有用到这个名字的框处处跟着变(两只股票);合并先显示会波及几个框,刷新后照样能拆回,拆回后恢复原样。
  * 2. 用标注存储的例子文件(tests/path2_web/fixtures/annotation_store_v1)造出冲突与指纹不符:
  *    两种提示各出现一次,图照常显示;冲突点 ok 后刷新不再出现。
  *
@@ -178,7 +178,7 @@ test.describe('画框、起名与词表', () => {
     await expect(page.getByTestId('definition-input')).toBeVisible()      // 新特征第一次用,留一格写定义
     await page.getByTestId('definition-input').fill('窄幅震荡、量缩')
     await page.getByTestId('definition-input').press('Enter')
-    await expect(page.getByTestId('box-definition')).toHaveText('窄幅震荡、量缩')
+    await expect(page.getByTestId('definition-text')).toHaveText('窄幅震荡、量缩')
     await settled(page)
     let st = await annState(page)
     const [box1] = boxesOf(st, A)
@@ -194,7 +194,7 @@ test.describe('画框、起名与词表', () => {
     const yLane = await laneY(page, '横盘')
     await page.mouse.click((await xOf(page, n - 60, 'sub')), yLane)                 // 点框中间 → 选中
     await expect(page.getByTestId('box-feature')).toHaveText('横盘')
-    await expect(page.getByTestId('box-definition')).toHaveText('窄幅震荡、量缩')
+    await expect(page.getByTestId('definition-text')).toHaveText('窄幅震荡、量缩')
 
     // ── 在特征轨上拖 → 新框直接带这个名字 ──
     await drag(page, await xOf(page, n - 30, 'sub'), yLane, await xOf(page, n - 20, 'sub'), yLane)
@@ -213,13 +213,13 @@ test.describe('画框、起名与词表', () => {
     // ── 子框:在大框里画一个小框,默认属于大框;子框轨写成「缩量 ⊂ 横盘」;⊂ 点掉 = detach ──
     await drawOnKline(page, n - 70, n - 60)
     await name(page, '缩量')
-    await expect(page.getByTestId('parent-toggle')).toHaveClass(/on/)
+    await expect(page.getByTestId('parent-toggle').first()).toHaveClass(/on/)
     await laneY(page, '缩量 ⊂ 横盘')
     await page.screenshot({ path: testInfo.outputPath('02-child-lane.png'), fullPage: true })
-    await page.getByTestId('parent-toggle').click()
-    await expect(page.getByTestId('parent-toggle')).not.toHaveClass(/on/)
+    await page.getByTestId('parent-toggle').first().click()
+    await expect(page.getByTestId('parent-toggle').first()).not.toHaveClass(/on/)
     await laneY(page, '缩量')
-    await page.getByTestId('parent-toggle').click()
+    await page.getByTestId('parent-toggle').first().click()
     await laneY(page, '缩量 ⊂ 横盘')
 
     // ── 属性三态:true → 再点一下 → null(存下的是没有这个键,不是 false)──
@@ -270,6 +270,11 @@ test.describe('画框、起名与词表', () => {
     const merged = await annState(page)
     expect(boxesOf(merged, B).every((b: any) => b.feature === featureId(merged, '盘整'))).toBe(true)
     await expect(page.getByTestId('feature-盘整').getByTestId('usage')).toHaveText('box×4 · attr×0')
+    // 合并记在标注文件里:刷新之后照样能拆回
+    await page.reload()
+    await openSymbol(page, B)
+    await page.getByTestId('annotation-tab-features').click()
+    await expect(page.getByTestId('merged-整理')).toContainText('box×1 · attr×0')
     await page.getByTestId('unmerge').click()
     await expect(page.getByTestId('feature-整理')).toBeVisible()
     await settled(page)
@@ -304,7 +309,7 @@ test.describe('冲突与指纹不符', () => {
     await page.goto('/')
     await openSymbol(page, 'AAPL')
     await expect(page.getByTestId('notice-fingerprint')).toHaveCount(1)
-    await expect(page.getByTestId('notice-fingerprint')).toContainText('mismatch')
+    await expect(page.getByTestId('notice-fingerprint')).toContainText('mismatched')
     await expect(page.getByTestId('notice-conflict')).toHaveCount(1)
     await expect(page.getByTestId('notice-conflict')).toContainText('×1')
     await expect(page.getByTestId('notice-conflict')).toContainText('回踩')

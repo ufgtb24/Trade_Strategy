@@ -1,8 +1,8 @@
 /**
- * 框套框的前端实现:同一张图上的框,算出每个框属于哪个框、成员框排成的树、骨架与 dup。
+ * 框套框的前端实现:同一张图上的框,算出每个框属于哪个框;另给「能不能手动挂上」的判断。
  *
- * 规则与后端参照实现 path2_web/annotation/membership.py 相同,两边逐例通过同一份带答案的例子
- * tests/path2_web/fixtures/membership_examples.json(tests/annotate.membership.spec.ts 读它)。
+ * 规则与后端参照实现 path2_web/annotation/membership.py 的 parents 相同,逐例通过同一份带答案的例子
+ * tests/path2_web/fixtures/membership_examples.json 里的 parents 例子(tests/annotate.membership.spec.ts 读它)。
  *
  * - 一个日期的序号 = days 里比它早的交易日有几个;先后、包住、交叠、长短都按序号比(「隔几根」是 K 线根数)。
  * - 框的长度 = 终点序号 − 起点序号;框的先后:起点早的在前,同起点长的在前,再按编号(字符串比)。
@@ -52,10 +52,6 @@ const len = (b: Ranked) => b.e - b.s
 const overlaps = (a: Ranked, b: Ranked) => a.s <= b.e && b.s <= a.e
 const contains = (o: Ranked, b: Ranked) => o.s <= b.s && b.e <= o.e && len(o) > len(b)
 
-function byOrder(a: Ranked, b: Ranked): number {
-  return a.s - b.s || b.e - a.e || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)
-}
-
 function pool(boxes: readonly NestBox[], days: readonly string[]): Map<string, Ranked> {
   const out = new Map<string, Ranked>()
   for (const b of boxes) {
@@ -91,44 +87,10 @@ export function parents(boxes: readonly NestBox[], days: readonly string[]): Rec
   return out
 }
 
-/** 框按先后排好的编号(起点早的在前,同起点长的在前,再按编号)。 */
-export function orderedIds(boxes: readonly NestBox[], days: readonly string[]): string[] {
-  return [...pool(boxes, days).values()].sort(byOrder).map(b => b.id)
-}
-
 /** b 和 o 交叠且 o 比 b 长:o 是 b 可以手动挂上(attach)的框。 */
 export function canAttach(b: NestBox, o: NestBox, days: readonly string[]): boolean {
   if (b.id === o.id) return false
   const p = pool([{ ...b, detach: false, attach: null }, { ...o, detach: false, attach: null }], days)
   const rb = p.get(b.id)!, ro = p.get(o.id)!
   return len(ro) > len(rb) && overlaps(ro, rb)
-}
-
-export interface TreeNode { box: string; kids: TreeNode[] }
-
-/** 成员框按框套框排成树,顶层和每层子框都按框的先后排;归属只在这组框之间找。 */
-export function memberTree(members: Iterable<string>, boxes: readonly NestBox[], days: readonly string[]): TreeNode[] {
-  const wanted = new Set(members)
-  const p = pool(boxes.filter(b => wanted.has(b.id)), days)
-  const kids = new Map<string | null, Ranked[]>()
-  for (const b of [...p.values()].sort(byOrder)) {
-    const k = parentIn(b, p)
-    if (!kids.has(k)) kids.set(k, [])
-    kids.get(k)!.push(b)
-  }
-  const node = (b: Ranked): TreeNode => ({ box: b.id, kids: (kids.get(b.id) ?? []).map(node) })
-  return (kids.get(null) ?? []).map(node)
-}
-
-/** 骨架:树顶层框的特征编号按先后排(还没标特征的为 null)。 */
-export function skeleton(members: Iterable<string>, boxes: readonly NestBox[], days: readonly string[]): (string | null)[] {
-  const feature = new Map(boxes.map(b => [b.id, b.feature]))
-  return memberTree(members, boxes, days).map(n => feature.get(n.box) ?? null)
-}
-
-/** 树顶层出现两次以上的特征编号,按第一次出现的先后排;还没标特征的不算。 */
-export function dupFeatures(members: Iterable<string>, boxes: readonly NestBox[], days: readonly string[]): string[] {
-  const tops = skeleton(members, boxes, days)
-  return tops.filter((f, i): f is string =>
-    f !== null && tops.indexOf(f) === i && tops.filter(x => x === f).length > 1)
 }

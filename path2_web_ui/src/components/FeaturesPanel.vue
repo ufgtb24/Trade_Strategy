@@ -23,13 +23,7 @@
         <span class="ann-grow" />
         <span class="ann-sym" data-testid="usage" title="boxes using it as feature / as attr (judged true or false); across all charts and patterns">box×{{ usage.get(f.id)?.box ?? 0 }} · attr×{{ usage.get(f.id)?.attr ?? 0 }}</span>
       </div>
-      <div class="ann-kv def">
-        <span class="ann-k" title="what it is; shared across charts. Fixed once written: if the meaning changes, start a new feature">definition</span>
-        <span v-if="f.definition" class="ann-biz">{{ f.definition }}</span>
-        <textarea v-else class="ann-area" rows="2"
-                  @keydown.enter.exact.prevent="($event.target as HTMLTextAreaElement).blur()"
-                  @blur="ann.setDefinition(f.id, ($event.target as HTMLTextAreaElement).value)" />
-      </div>
+      <div class="ann-kv def"><DefinitionField :feature="f" /></div>
       <div v-if="pending?.from === f.id && plan" class="ann-row line" data-testid="merge-preview">
         <span class="ann-biz">{{ f.name }}</span><span class="ann-sym">→</span><span class="ann-biz">{{ ann.nameOf(pending.into) }}</span>
         <span class="ann-sym" title="boxes that will change: as feature / as attr">box×{{ plan.box }} · attr×{{ plan.attr }}</span>
@@ -40,9 +34,9 @@
       <template v-for="(m, i) in ann.merges" :key="`m-${i}`">
         <div v-if="m.into === f.id" class="ann-row line" :data-testid="`merged-${m.from.name}`">
           <span class="ann-biz">{{ m.from.name }}</span><span class="ann-sym">→</span><span class="ann-biz">{{ f.name }}</span>
-          <span class="ann-sym" title="boxes changed by the merge: as feature / as attr">box×{{ count(m, 'box') }} · attr×{{ count(m, 'attr') }}</span>
+          <span class="ann-sym" title="boxes changed by the merge: as feature / as attr">box×{{ m.box }} · attr×{{ m.attr }}</span>
           <span class="ann-grow" />
-          <button type="button" class="ann-btn" data-testid="unmerge" title="split back: the word returns and the changed boxes revert (only within this page session)" @click="ann.unmerge(i)">unmerge</button>
+          <button type="button" class="ann-btn" data-testid="unmerge" title="split back: the word returns and the changed boxes revert" @click="ann.unmerge(i)">unmerge</button>
         </div>
       </template>
     </div>
@@ -53,13 +47,15 @@
 /**
  * features 页:整张词表。每个词一块:
  * - ✎ 改名(改一处,所有用到它的框跟着变;和别的词重名不改,报 name_taken);
- * - merge 选一个目标词,先预览会改多少个框,点 merge 才改;合并后目标词下面一行可以 unmerge(本页会话内);
+ * - merge 选一个目标词,先预览会改多少个框,点 merge 才改;合并后目标词下面一行可以 unmerge(合并记在标注文件里,
+ *   刷新、换机器后照样能拆回,直到拆回为止);
  * - box×n · attr×m:跨全部图、全部 pattern 的用量;
  * - 定义:还空着时留一格写,写下就不再改。
  */
 import { computed, nextTick, ref } from 'vue'
-import { useAnnotationStore, type MergeRecord } from '../stores/annotation'
+import { useAnnotationStore } from '../stores/annotation'
 import { featureUsage, type AnnFeature } from '../annotate/model'
+import DefinitionField from './DefinitionField.vue'
 
 const ann = useAnnotationStore()
 const features = computed(() => ann.state?.features ?? [])
@@ -90,9 +86,6 @@ function pickMerge(from: string, e: Event) {
   const into = (e.target as HTMLSelectElement).value
   ann.pendingMerge = into ? { from, into } : null
 }
-
-const count = (m: MergeRecord, k: 'box' | 'attr') =>
-  m.changes.filter(c => (k === 'box' ? c.before.feature === m.from.id : !!c.before.attrs && m.from.id in c.before.attrs)).length
 </script>
 
 <style src="./annotationPanel.css"></style>

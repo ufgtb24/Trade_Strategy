@@ -17,7 +17,7 @@
 
 <script setup lang="ts">
 /**
- * annotate 模式的右侧栏,三页:selection(选中的框)、features(词表)、pattern(当前 pattern 总览,尚未接上)。
+ * annotate 模式的右侧栏,三页:selection(选中的框)、features(词表)、pattern(当前 pattern 总览,目前是空页)。
  * 页签由标注 store 管:在图上选中框时自动翻到 selection。
  */
 import { useAnnotationStore } from '../stores/annotation'

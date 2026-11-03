@@ -801,7 +801,7 @@ def build_router(*, registry, config_path, get_config, set_config,
 
     @router.get("/annotations")
     def annotations_read():
-        """当前标注:{state, conflicts, violations, fingerprint, revs, next_seq, ignored_files}。"""
+        """当前标注:{state, conflicts, unsynced, violations, fingerprint, merges, revs, next_seq, ignored_files}。"""
         try:
             return annotation_store.read_annotations(get_config())
         except (OSError, ValueError) as e:

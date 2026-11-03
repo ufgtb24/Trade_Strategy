@@ -57,11 +57,23 @@ export interface AnnRead {
   unsynced: { kind: AnnKind; id: string; base: string; ref: string }[]
   violations: { code: string; message: string }[]
   fingerprint: AnnFingerprint
+  merges: AnnMerge[]
   revs: Record<AnnKind, Record<string, string>>
   next_seq: number
   ignored_files: string[]
 }
 export interface AnnOp { kind: AnnKind; id: string; base: string | null; value: any }
+/** 存进文件的框:状态里的框再带上它所在的股票。 */
+export type StoredBox = AnnBox & { symbol: string }
+/** 读结果里一条还能拆回的合并:被删的词(删之前的值)、并进的词、那些框在合并那一批改前改后的值。 */
+export interface AnnMerge {
+  ref: string
+  machine: string
+  ts: string
+  feature: AnnFeature
+  into: string
+  boxes: { id: string; before: StoredBox; after: StoredBox }[]
+}
 
 /** 带机器名的新编号:词 w、框 b、样本 s。 */
 export function newId(letter: 'w' | 'b' | 's', machine: string, seq: number): string {
@@ -259,9 +271,14 @@ function nestOf(b: AnnBox): NestBox {
   return { id: b.id, feature: b.feature, start: b.start, end: b.end, detach: !!b.detach, attach: b.attach ?? null }
 }
 
-/** 一张图上框套框的结果(框编号 → 所属框编号);days 缺省用周一到周五代替。 */
-export function chartParents(boxes: readonly AnnBox[], days?: readonly string[]): Record<string, string | null> {
-  return parents(boxes.map(nestOf), days ?? weekdaysCovering(boxes))
+/** 算框套框用的交易日:这张图的 K 线日期在手(非空)就用它,否则用周一到周五代替(见 weekdaysCovering)。 */
+function daysFor(boxes: readonly AnnBox[], days?: readonly string[] | null): readonly string[] {
+  return days && days.length ? days : weekdaysCovering(boxes)
+}
+
+/** 一张图上框套框的结果(框编号 → 所属框编号);days 缺省或为空时用周一到周五代替。 */
+export function chartParents(boxes: readonly AnnBox[], days?: readonly string[] | null): Record<string, string | null> {
+  return parents(boxes.map(nestOf), daysFor(boxes, days))
 }
 
 /**
@@ -273,7 +290,7 @@ export function kidWordsOf(fid: string, charts: readonly AnnChart[],
   const out: string[] = []
   for (const c of charts) {
     if (!c.boxes.some(b => b.feature === fid)) continue
-    const par = chartParents(c.boxes, daysOf(c.symbol) ?? undefined)
+    const par = chartParents(c.boxes, daysOf(c.symbol))
     const byId = new Map(c.boxes.map(b => [b.id, b]))
     for (const b of c.boxes) {
       const p = par[b.id]
@@ -286,30 +303,33 @@ export function kidWordsOf(fid: string, charts: readonly AnnChart[],
 // ── 框套框:选中框时的 parent 一行 ──────────────────────────────────────
 
 /**
- * 选中框时 parent 一行显示什么、点 ⊂ 会怎样:
- * - default:被别的框包住,默认属于它(⊂ 亮);点掉 = detach;
- * - attach:手动挂在一个交叠、更长的框上(⊂ 亮);点掉 = 拿掉 attach,回到默认;
- * - detached:被包住、但点掉过(⊂ 灭);再点 = 拿掉 detach;
- * - candidate:没被包住,有交叠、更长的框(取最短的,⊂ 灭);点上 = attach 到它。
- * 都没有为 null。detach 与 attach 互斥:改其中一个时另一个一并拿掉。
+ * 选中框时 parent 下面列的几行,每行一个别的框,点它的 ⊂ 会怎样:
+ * - default:被这个框包住,默认属于它(⊂ 亮);点掉 = detach;
+ * - attach:手动挂在这个交叠、更长的框上(⊂ 亮);点掉 = 拿掉 attach,回到默认;
+ * - detached:被这个框包住、但点掉过(⊂ 灭);再点 = 拿掉 detach;
+ * - candidate:和它交叠、比它长、可以手动挂上的框(⊂ 灭);点上 = attach 到它。
+ * 第一行是它现在属于(或点掉前属于)的框,其后是其余能挂上的框,按长短排。都没有为空数组。
+ * detach 与 attach 互斥:改其中一个时另一个一并拿掉。
  */
 export interface ParentRow { other: AnnBox; on: boolean; via: 'default' | 'attach' | 'detached' | 'candidate' }
 
-export function parentRow(b: AnnBox, boxes: readonly AnnBox[], days: readonly string[]): ParentRow | null {
+export function parentRows(b: AnnBox, boxes: readonly AnnBox[], days: readonly string[]): ParentRow[] {
+  const d = daysFor(boxes, days)
   const byId = new Map(boxes.map(x => [x.id, x]))
-  const eff = chartParents(boxes, days.length ? days : undefined)[b.id]
-  if (eff) return { other: byId.get(eff)!, on: true, via: b.attach === eff ? 'attach' : 'default' }
-  const plainBoxes = boxes.map(x => (x.id === b.id ? { ...x, detach: undefined, attach: undefined } : x))
-  const plain = chartParents(plainBoxes, days.length ? days : undefined)[b.id]
-  if (b.detach && plain) return { other: byId.get(plain)!, on: false, via: 'detached' }
-  const d = days.length ? days : weekdaysCovering(boxes)
+  const rows: ParentRow[] = []
+  const eff = chartParents(boxes, d)[b.id]
+  if (eff) rows.push({ other: byId.get(eff)!, on: true, via: b.attach === eff ? 'attach' : 'default' })
+  else if (b.detach) {
+    const plain = chartParents(boxes.map(x => (x.id === b.id ? { ...x, detach: undefined } : x)), d)[b.id]
+    if (plain) rows.push({ other: byId.get(plain)!, on: false, via: 'detached' })
+  }
   const length = (x: AnnBox) => rankOf(d, x.end) - rankOf(d, x.start)
-  const cands = boxes.filter(o => canAttach(nestOf(b), nestOf(o), d))
+  const cands = boxes.filter(o => !rows.some(r => r.other.id === o.id) && canAttach(nestOf(b), nestOf(o), d))
     .sort((p, q) => length(p) - length(q) || (p.start < q.start ? -1 : p.start > q.start ? 1 : p.id < q.id ? -1 : 1))
-  return cands.length ? { other: cands[0], on: false, via: 'candidate' } : null
+  return [...rows, ...cands.map(o => ({ other: o, on: false, via: 'candidate' as const }))]
 }
 
-/** 点一下 parent 一行的 ⊂ 之后的框(规则见 parentRow)。 */
+/** 点一下 parent 某一行的 ⊂ 之后的框(规则见 parentRows)。 */
 export function toggleParent(b: AnnBox, row: ParentRow): AnnBox {
   const next: AnnBox = { ...b }
   delete next.detach
@@ -340,7 +360,7 @@ export interface Lane {
  */
 export function computeLanes(boxes: readonly AnnBox[], nameOf: (fid: string) => string,
                              days: readonly string[]): Lane[] {
-  const par = chartParents(boxes, days.length ? days : undefined)
+  const par = chartParents(boxes, days)
   const byId = new Map(boxes.map(b => [b.id, b]))
   const groups = new Map<string | null, AnnBox[]>()
   for (const b of boxes) {
@@ -412,6 +432,20 @@ export function mergePlan(s: AnnState, from: string, into: string): MergePlan {
     changes.push({ symbol: c.symbol, before: b, after })
   }
   return { from, into, changes, box, attr }
+}
+
+/** 界面上的一条合并记录(由读结果的 merges 来):被并的词、并进的词、改过的框,以及当特征、当属性各改了几个框。 */
+export interface MergeRecord { from: AnnFeature; into: string; changes: MergeChange[]; box: number; attr: number }
+
+export function mergeRecords(r: AnnRead): MergeRecord[] {
+  return (r.merges ?? []).map(m => {
+    const changes = m.boxes.map(b => ({ symbol: b.before.symbol, before: b.before, after: b.after }))
+    return {
+      from: m.feature, into: m.into, changes,
+      box: changes.filter(c => c.before.feature === m.feature.id).length,
+      attr: changes.filter(c => !!c.before.attrs && m.feature.id in c.before.attrs).length,
+    }
+  })
 }
 
 /**

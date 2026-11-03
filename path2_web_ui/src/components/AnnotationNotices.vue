@@ -5,7 +5,7 @@
       <span class="key">annotations</span><span class="val">{{ ann.status }}</span>
     </div>
     <div v-if="mismatch" class="notice" data-testid="notice-fingerprint" :title="fingerprintTip">
-      <span class="key">data_fingerprint</span><span class="val">mismatch</span>
+      <span class="key">data_fingerprint</span><span class="val">mismatched</span>
     </div>
     <div v-if="ann.newConflicts.length" class="notice block" data-testid="notice-conflict"
          title="both machines changed the same object before syncing; the later change is in effect">
@@ -36,7 +36,7 @@
 /**
  * annotate 下图上方的提示条:
  * - 标注读不到(标注目录不在 / 读失败);
- * - data_fingerprint mismatch:标注是对着另一份训练段副本做的(或本机副本没有指纹)。只报出来,图照常显示;
+ * - data_fingerprint mismatched:标注是对着另一份训练段副本做的(或本机副本没有指纹)。只报出来,图照常显示;
  * - conflict:两台机器同步前改了同一个对象,后改的那次生效。每条冲突只提示一次,点 ok 后不再出现;
  * - save rejected:这次保存没通过后端的校验,显示退回保存前;悬停看原因。
  */
@@ -73,16 +73,16 @@ function label(c: AnnConflict): string | null {
 </script>
 
 <style scoped>
-/* 字体与色值见 App.vue 的 :root 变量;提示靠黑边与浅灰底醒目,不用颜色 */
+/* 字体与色值见 App.vue 的 :root 变量;提示靠黑色粗边框醒目,不用颜色;特征名是用户的内容,加浅灰底 */
 .ann-notices { display: flex; flex-wrap: wrap; gap: 6px; padding: 4px 8px; border-bottom: 1px solid var(--line); background: #fff; }
 .notice {
   display: flex; align-items: center; gap: 6px; padding: 2px 8px;
-  border: 1.5px solid var(--ink); border-radius: 4px; background: var(--chip-bg); cursor: help;
+  border: 1.5px solid var(--ink); border-radius: 4px; background: #fff; cursor: help;
 }
 .notice.block { flex-direction: column; align-items: flex-start; gap: 2px; }
 .line { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .key, .val, .ok { font-family: var(--mono); font-size: 12px; color: var(--ink); }
 .val { font-weight: 700; }
-.biz { font-size: 13px; color: var(--ink); background: #fff; padding: 0 4px; border-radius: 3px; }
+.biz { font-size: 13px; color: var(--ink); background: var(--chip-bg); padding: 0 4px; border-radius: 3px; }
 .ok { padding: 0 6px; border: 1px solid var(--ink); border-radius: 3px; background: #fff; cursor: pointer; }
 </style>

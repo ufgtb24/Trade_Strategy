@@ -3,7 +3,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   applyOps, attrCounts, attrState, attrWordsOf, boxValue, computeLanes, featureUsage, kidWordsOf,
-  mergePlan, parentRow, rankSuggestions, toggleAttr, toggleParent, unmergedBox, weekdaysCovering,
+  mergePlan, mergeRecords, parentRows, rankSuggestions, toggleAttr, toggleParent, unmergedBox, weekdaysCovering,
   type AnnBox, type AnnRead, type AnnState,
 } from '../src/annotate/model'
 
@@ -14,7 +14,7 @@ function read(state: Partial<AnnState>): AnnRead {
   return {
     state: { machine: 'pc', data_fingerprint: null, features: [], patterns: [], charts: [], ...state },
     conflicts: [], unsynced: [], violations: [],
-    fingerprint: { local: 'x', local_error: null, recorded: [], consistent: true },
+    fingerprint: { local: 'x', local_error: null, recorded: [], consistent: true }, merges: [],
     revs: { feature: {}, pattern: {}, box: {}, sample: {} }, next_seq: 1, ignored_files: [],
   }
 }
@@ -164,25 +164,48 @@ describe('parent 一行(框套框的 detach / attach)', () => {
   const outer = box('b1', 'w1', '2025-01-02', '2025-01-24')
   it('被包住:默认属于它,点掉 = detach;再点 = 拿掉 detach', () => {
     const inner = box('b2', 'w2', '2025-01-06', '2025-01-08')
-    const row = parentRow(inner, [outer, inner], DAYS)!
+    const [row] = parentRows(inner, [outer, inner], DAYS)
     expect([row.other.id, row.on, row.via]).toEqual(['b1', true, 'default'])
     const detached = toggleParent(inner, row)
     expect(detached.detach).toBe(true)
-    const row2 = parentRow(detached, [outer, detached], DAYS)!
-    expect([row2.on, row2.via]).toEqual([false, 'detached'])
+    const [row2] = parentRows(detached, [outer, detached], DAYS)
+    expect([row2.other.id, row2.on, row2.via]).toEqual(['b1', false, 'detached'])
     expect(toggleParent(detached, row2)).toEqual(inner)
   })
   it('没被包住、和更长的框交叠:点上 = attach;再点 = 拿掉 attach', () => {
     const edge = box('b3', 'w3', '2025-01-22', '2025-01-28')
-    const row = parentRow(edge, [outer, edge], DAYS)!
+    const [row] = parentRows(edge, [outer, edge], DAYS)
     expect([row.other.id, row.on, row.via]).toEqual(['b1', false, 'candidate'])
     const attached = toggleParent(edge, row)
     expect(attached.attach).toBe('b1')
-    const row2 = parentRow(attached, [outer, attached], DAYS)!
+    const [row2] = parentRows(attached, [outer, attached], DAYS)
     expect([row2.on, row2.via]).toEqual([true, 'attach'])
     expect(toggleParent(attached, row2)).toEqual(edge)
   })
+  it('能挂上的框都列出来,按长短排;被包住的框也能改挂到别的交叠、更长的框上', () => {
+    const inner = box('b2', 'w2', '2025-01-06', '2025-01-08')
+    const long = box('b4', 'w4', '2025-01-07', '2025-01-31')
+    const mid = box('b5', 'w5', '2025-01-08', '2025-01-28')
+    const rows = parentRows(inner, [outer, inner, long, mid], DAYS)
+    expect(rows.map(r => [r.other.id, r.via])).toEqual([['b1', 'default'], ['b5', 'candidate'], ['b4', 'candidate']])
+    expect(toggleParent(inner, rows[1]).attach).toBe('b5')
+  })
   it('没有包住、也没有交叠的更长框:没有这一行', () => {
-    expect(parentRow(outer, [outer], DAYS)).toBeNull()
+    expect(parentRows(outer, [outer], DAYS)).toEqual([])
+  })
+})
+
+describe('读结果里的合并记录', () => {
+  it('被并的词、并进的词、改过的框,以及当特征、当属性各几个框', () => {
+    const r = read({})
+    r.merges = [{ ref: 'f#2', machine: 'pc', ts: 't', feature: { id: 'w2', name: '量大' }, into: 'w1', boxes: [
+      { id: 'b1', before: { ...box('b1', 'w2', '2025-01-02', '2025-01-03'), symbol: 'A' },
+                  after: { ...box('b1', 'w1', '2025-01-02', '2025-01-03'), symbol: 'A' } },
+      { id: 'b2', before: { ...box('b2', 'w3', '2025-01-06', '2025-01-07', { attrs: { w2: true } }), symbol: 'B' },
+                  after: { ...box('b2', 'w3', '2025-01-06', '2025-01-07', { attrs: { w1: true } }), symbol: 'B' } },
+    ] }]
+    const [m] = mergeRecords(r)
+    expect([m.from.id, m.into, m.box, m.attr]).toEqual(['w2', 'w1', 1, 1])
+    expect(m.changes.map(c => c.symbol)).toEqual(['A', 'B'])
   })
 })
