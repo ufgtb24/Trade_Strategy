@@ -76,7 +76,7 @@ def test_annotation_dir_and_machine_overrides(tmp_path):
 
 def test_machine_name_rejects_path_like(tmp_path):
     from path2_web.config import machine_name
-    for bad in ("../x", "a/b", "a b", ".hidden"):
+    for bad in ("../x", "a/b", "a b", ".hidden", "yu-pc", "pc.lan"):
         with pytest.raises(ValueError):
             machine_name({"machine": bad})
 

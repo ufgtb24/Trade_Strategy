@@ -1,0 +1,15 @@
+# 票 01 独立代码审查：Standards 轴（code-review skill，固定点 142eeda，审查提交 c177b86）
+
+**硬违规**
+1. `CLAUDE.md`「共享基础设施」新加的 `annotations/` 这行里写了「文件只由网页保存时新增，从不改删已有文件」。仓库里还没有网页保存标注的代码，所以违反 CLAUDE.md「文档只反映当前代码状态…不写未实现的设计」。同一行的「会话只读不写」是动手前就要守的规则，可以留。
+2. 同一条规则，程度轻一些：`path2_web/config.py` 里 `machine` 的注释「写进标注文件名和对象编号」，以及 `path2_web/snapshot_fingerprint.py` 的 docstring「供标注存储和界面用」，写的都是还不存在的使用方。
+
+**其余成文标准都符合**：入口脚本没用 argparse，参数写在 main() 开头；没有引用 `docs/research/`；rm 用的是字面路径；CLAUDE.md 只加了一行项目事实。
+
+**判断性提示**（baseline smell）
+- Primitive Obsession：指纹清单是裸 dict，`fingerprint`、`files`、`n_files` 这几个字符串键在三个文件里各自取；check 和 backfill 用裸数字 0/1/2 作结果码。
+- Speculative Generality：`n_files` 能由 `len(files)` 算出来；`SCHEMA` 只有 `/1` 一个版本。
+- Middle Man：`read_fingerprint` 只是在转发 `read_manifest(...)["fingerprint"]`。
+- Duplicated Code：`datasets/pkls_until_20251231` 在三处写死：config 默认值、make_train_snapshot、新脚本。
+- Mysterious Name：库模块和脚本同名，都叫 `snapshot_fingerprint.py`。
+- `_file_sha256` 没有 docstring，按编码规范该补，但它是很小的私有函数，问题轻。

@@ -10,7 +10,8 @@
 按当前内容重算并与清单核对,供两台机器自测。清单名不以 .pkl 结尾:按 *.pkl 列股票、按 <代码>.pkl
 读行情的地方都不会把它当成股票。清单内容只由数据决定(不记生成时间、机器),不算登记、不记账。
 
-- read_fingerprint(dir):读清单里记的指纹(不重算,快),供标注存储和界面用;没有清单 → ManifestMissing。
+- read_fingerprint(dir):读清单里记的指纹(不重算,快),给标注核对所用的副本;没有清单 → ManifestMissing。
+  只读清单意味着:清单在、pkl 却被改过或拷缺了,它看不出来——这由核对命令(按内容重算)兜底。
 - compute_manifest(dir):按当前内容重算;write_manifest(dir):重算并写清单。
 """
 from __future__ import annotations
@@ -32,6 +33,7 @@ class ManifestMissing(FileNotFoundError):
 
 
 def _file_sha256(path: Path) -> str:
+    """一个文件内容的 sha256(十六进制),按 1 MiB 分块读。"""
     h = hashlib.sha256()
     with open(path, "rb") as f:
         for chunk in iter(lambda: f.read(1 << 20), b""):

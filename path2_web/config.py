@@ -37,7 +37,7 @@ DEFAULT_CONFIG = {
     # 标注目录:用户的标注文件放这里(相对 repo root)。git 忽略,两台机器用 Syncthing 同步;
     # worktree 里经 .worktree-prep 软链到主目录的同一目录
     "annotation_dir": "annotations",
-    # 机器名:写进标注文件名和对象编号,两台机器各用各的。null = 取本机主机名。
+    # 机器名:区分 pc 与 upc 各自写下的标注,两台机器各用各的。null = 取本机主机名。
     # 别在这份进 git 的配置里写死某台机器的名字,否则另一台拉取后会冒用它
     "machine": None,
 }
@@ -45,7 +45,7 @@ DEFAULT_CONFIG = {
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_PATH = _REPO_ROOT / "configs" / "path2_web.yaml"
 
-_MACHINE_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*")
+_MACHINE_RE = re.compile(r"[A-Za-z0-9_]+")
 
 
 def _merge(default: dict, override: dict) -> dict:
@@ -77,7 +77,8 @@ def annotation_dir(cfg: dict) -> Path:
 
 def machine_name(cfg: dict) -> str:
     """机器名:配置的 machine,没配(null)取本机主机名。
-    会用在文件名和编号里,只许字母、数字和 . _ -,且以字母或数字开头;不合格 → ValueError。"""
+    只许字母、数字和下划线:spec 的标注文件名与对象编号用 - 分隔各段,机器名里带 - 或 / 会拆错、写错位置。
+    不合格 → ValueError。"""
     name = cfg.get("machine") or socket.gethostname()
     if not isinstance(name, str) or not _MACHINE_RE.fullmatch(name):
         raise ValueError(f"机器名不合格: {name!r}(在配置的 machine 里另起一个)")

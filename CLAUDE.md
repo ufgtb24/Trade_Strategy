@@ -83,7 +83,7 @@ FastAPI 后端（pattern 发现 / 扫描 / 序列化 / 诊断）+ Vue3 前端（
 ### 共享基础设施
 - `configs/` — YAML 配置（`params/`、`scan_config.yaml`、`path2_web.yaml` 等）
 - `datasets/pkls/` — 美股历史数据（Pickle）。所有 worktree 共用主目录这一份：worktree 里的 `datasets` 是准备时建的、指向主目录的软链（见「在 git worktree 里开发」），不要在 worktree 里另建。
-- `annotations/` — 用户的看图标注文件（配置键 `annotation_dir`）。git 忽略，pc 与 upc 用 Syncthing 同步；worktree 里同样是指向主目录的软链。文件只由网页保存时新增，从不改删已有文件；会话只读不写。
+- `annotations/` — 用户的看图标注文件（配置键 `annotation_dir`）。git 忽略，pc 与 upc 用 Syncthing 同步；worktree 里同样是指向主目录的软链。不要改、删里面已有的文件；会话只读不写。
 - `scripts/path2/` — path2 核心入口脚本（`run_path2_web.py` 前后端启动、`path2_eval_scan.py` 评估、`scan-top-miss.py` 漏检扫描；无 argparse。诊断环境探测脚本 `path2_diag_env.py` 随 diagnose-event skill 走、不在本目录）
 
 ## 开发环境
