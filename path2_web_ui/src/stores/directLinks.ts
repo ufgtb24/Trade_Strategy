@@ -1,28 +1,32 @@
 /**
- * 直达链接与「按编号找样本」(spec 5.3「链接」;链接格式见 annotate/directLinks.ts)。
+ * 跟着直达链接走(spec 5.3「链接」;链接格式见 annotate/directLinks.ts)。
  *
- * - follow(hash):跟着页面地址 # 后面的链接走。页面打开时和地址的 # 部分变了时(App.vue)各跟一次;跟完把
- *   # 部分从地址里去掉,同一个链接在这一页再点一次照样会跟,刷新也不会把图拉回链接那里。
- *   - 股票 + 日期:打开那只股票,图窗停在那天附近,落在 annotate。代码不存在时和顶栏输入一样由换图报 not_found。
- *   - 样本编号:等标注读完,按编号找样本,打开它所在的图并选中它。编号不存在 → problem 记下,提示条一直显示到点 ok。
- *   - 认不出的写法 → problem 记下(bad_url)。
- *   链接一律落在 annotate,提示条也只在 annotate 下显示。
- * - openSample(id):按编号找样本,打开它所在的图(图窗停在样本的跨度上)并选中它;找不到返回 false。
- *   当前 pattern 换成样本所在的 pattern(unsorted 的样本换成 unsorted),样本就和从 pattern 页打开时一样画出来:
- *   不画淡、带字母。样本链接、pattern 页的样本卡,以及第二段的题目链接(#q=)都用这一处。
+ * follow(hash):跟着页面地址 # 后面的链接走。页面打开时和地址的 # 部分变了时(App.vue)各跟一次;跟完把
+ * # 部分从地址里去掉,同一个链接在这一页再点一次照样会跟,刷新也不会把图拉回链接那里。链接一律落在 annotate。
+ * - 股票 + 日期:代码先对股票列表(训练段副本里有的股票)核一遍,在就打开那只股票,图窗停在那天附近;
+ *   不在就记下 not_found、不动当前的图。股票列表没拿到时不拦,交给后端判(同顶栏 symbol 输入)。
+ * - 样本编号:等标注读完,按编号打开样本所在的图并选中它(标注 store 的 openSample);编号不存在 → 记下 not_found。
+ *   标注读不到时不记:提示条已经写了标注的状态。
+ * - 认不出的写法 → 记下 bad_url。
+ * 记下的原因(problem)显示在 annotate 的提示条上,一直到点 ok,或下一个链接跟成。
  */
 import { defineStore } from 'pinia'
-import { nextTick, ref, watch } from 'vue'
-import { findSample } from '../annotate/model'
-import { sampleWindow } from '../annotate/grouping'
-import { chartLinkWindow, parseLink } from '../annotate/directLinks'
+import { ref, watch } from 'vue'
+import { getSymbols } from '../api'
+import { chartLinkWindow, parseLink, type DirectLink } from '../annotate/directLinks'
+import { resolveSymbolInput } from '../annotate/symbolInput'
 import { useAnnotationStore } from './annotation'
 import { useViewStore } from './view'
 
-/** 链接没跟成的原因:样本编号不存在,或认不出的写法(raw 是 # 后面的原文)。 */
+/** 链接没跟成的原因:股票代码或样本编号不存在,或认不出的写法(raw 是 # 后面的原文)。 */
 export type LinkProblem =
-  | { code: 'not_found'; sample: string }
+  | { code: 'not_found'; kind: 'symbol' | 'sample'; id: string }
   | { code: 'bad_url'; raw: string }
+
+/** 股票列表;拿不到为 null。 */
+async function symbolSet(): Promise<ReadonlySet<string> | null> {
+  try { return new Set(await getSymbols()) } catch { return null }
+}
 
 export const useDirectLinkStore = defineStore('directLinks', () => {
   const problem = ref<LinkProblem | null>(null)
@@ -41,34 +45,29 @@ export const useDirectLinkStore = defineStore('directLinks', () => {
     })
   }
 
-  /** 按编号找样本,打开它所在的图并选中它。keepTab:侧栏留在当前页(从 pattern 页的样本卡打开时)。 */
-  async function openSample(id: string, opts: { keepTab?: boolean } = {}): Promise<boolean> {
+  /** 跟着链接打开图;没跟成返回原因(标注读不到时为 null,见模块说明)。 */
+  async function open(link: DirectLink): Promise<LinkProblem | null> {
+    if (link.kind === 'bad') return { code: 'bad_url', raw: link.raw }
+    if (link.kind === 'chart') {
+      const r = resolveSymbolInput(link.symbol, await symbolSet())
+      if (r.kind !== 'ok') return { code: 'not_found', kind: 'symbol', id: link.symbol }
+      useViewStore().openSymbol(r.symbol, chartLinkWindow(link.date))
+      return null
+    }
+    await annotationsSettled()
     const ann = useAnnotationStore()
-    const hit = ann.state ? findSample(ann.state, id) : null
-    if (!hit) return false
-    if (ann.currentPattern !== hit.sample.pattern) ann.setCurrentPattern(hit.sample.pattern)
-    useViewStore().openSymbol(hit.chart.symbol, sampleWindow(hit))
-    await nextTick()               // 换图会清掉选中(KlineChart 的 symbol 监听),等它跑完再选中
-    ann.selectSample(id, opts)
-    return true
+    if (ann.status !== 'ready' || (await ann.openSample(link.id))) return null
+    return { code: 'not_found', kind: 'sample', id: link.id }
   }
 
   async function follow(hash: string): Promise<void> {
     const link = parseLink(hash)
     if (!link) return
     history.replaceState(null, '', location.pathname + location.search)
-    const view = useViewStore()
     problem.value = null
-    if (link.kind === 'chart') {
-      view.openSymbol(link.symbol, chartLinkWindow(link.date).window)
-      return
-    }
-    view.mode = 'annotate'
-    if (link.kind === 'bad') { problem.value = { code: 'bad_url', raw: link.raw }; return }
-    await annotationsSettled()
-    if (useAnnotationStore().status !== 'ready') return     // 标注读不到:提示条已经写了 annotations 的状态
-    if (!(await openSample(link.id))) problem.value = { code: 'not_found', sample: link.id }
+    problem.value = await open(link)
+    useViewStore().enterAnnotate()      // 跟成时打开图已经落在 annotate;没跟成也落在这里,提示条在 annotate 下
   }
 
-  return { problem, openSample, follow }
+  return { problem, follow }
 })

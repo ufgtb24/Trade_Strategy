@@ -6,9 +6,10 @@ import { REPO, TRAIN_END, routeTo, startBackend, stopBackend, type Backend } fro
 /**
  * 直达链接(格式见 src/annotate/directLinks.ts):
  * 1. 股票 + 日期 #symbol=…&date=…:新开的页带着它,打开那只股票、图窗停在那天附近、落在 annotate;页面在 app 下时
- *    地址的 # 部分换成另一个,同样落在 annotate;日期写 2026-03-01 的,看得见的和图上的最后一根 K 线都不晚于 2025-12-31。
- * 2. 样本编号 #sample=…:新开的页带着它,等标注读完,打开样本所在的图并选中它;换一个编号照样跳过去;
- *    编号不存在、写法认不出时,提示条写明,点 ok 收起。
+ *    地址的 # 部分换成另一个,同样落在 annotate;日期写 2026-03-01 的,看得见的和图上的最后一根 K 线都不晚于 2025-12-31;
+ *    代码不在股票列表里时,当前的图不动,提示条写明。
+ * 2. 样本编号 #sample=…:新开的页带着它,等标注读完,打开样本所在的图并选中它(不换当前 pattern);换一个编号照样
+ *    跳过去;编号不存在、写法认不出时,提示条写明,点 ok 收起。
  *
  * 标注用一份固定的例子(tests/path2_web/fixtures/annotation_grouping_v1,标注存储的批次文件),由测试自己起的
  * 后端读(标注目录在系统临时目录,见 ./annotateHelpers.ts),不碰用户的标注目录。整页截图挂在测试结果里。
@@ -59,7 +60,7 @@ test.describe('直达链接', () => {
   })
   test.afterAll(() => stopBackend(backend))
 
-  test('股票 + 日期:打开对的股票、图窗停在那天附近、落在 annotate;晚于 2025-12-31 的截到 2025-12-31', async ({ page }, testInfo) => {
+  test('股票 + 日期:打开对的股票、图窗停在那天附近、落在 annotate;晚于 2025-12-31 的截到 2025-12-31;代码不存在有提示', async ({ page }, testInfo) => {
     await routeTo(page, backend!)
     // 新开的页带着链接(代码写成小写也认)
     await page.goto('/#symbol=msft&date=2024-05-10')
@@ -80,6 +81,17 @@ test.describe('直达链接', () => {
     expect(late.last).toBe(late.lastBar)                                                       // 图窗一直到最后一根
     expect(late.first >= '2025-07-04', JSON.stringify(late)).toBe(true)                       // 按 2025-12-31 往前约半年
     await page.screenshot({ path: testInfo.outputPath('02-chart-link-after-train-end.png'), fullPage: true })
+
+    // 代码不在股票列表里:不动当前的图,提示条写明代码与 not_found
+    const symbols: string[] = await (await fetch(`${backend!.base}/symbols`)).json()
+    expect(symbols).not.toContain('NOSUCH9')
+    await page.evaluate(() => { location.hash = '#symbol=nosuch9&date=2024-05-10' })
+    const notice = page.getByTestId('notice-url')
+    await expect(notice).toContainText('symbol')
+    await expect(notice).toContainText('NOSUCH9')
+    await expect(notice).toContainText('not_found')
+    await expect(page.locator('.symbol-title-bar [data-symbol="AAPL"]')).toBeVisible()
+    expect(await visibleRange(page)).toEqual(late)
     await page.unrouteAll({ behavior: 'ignoreErrors' })
   })
 
@@ -95,7 +107,7 @@ test.describe('直达链接', () => {
     await expectOpened(page, 'MSFT')
     await expect.poll(() => e2e(page, 'selectedSampleId')).toBe(msft)
     expect(await e2e(page, 'currentSampleId')).toBe(msft)
-    expect(await e2e(page, 'currentPattern')).toBe('W底')                                    // 当前 pattern 换成样本所在的
+    expect(await e2e(page, 'currentPattern')).toBeNull()                                     // 不换当前 pattern
     await expect(page.getByTestId('sample-panel')).toBeVisible()
     const r = await visibleRange(page)
     expect(r.first <= '2024-02-08' && '2024-02-08' <= r.last, JSON.stringify(r)).toBe(true)

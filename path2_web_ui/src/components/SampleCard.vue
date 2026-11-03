@@ -14,16 +14,14 @@
  * 主图上选中的那个样本,卡的边加粗。
  */
 import { useAnnotationStore } from '../stores/annotation'
-import { useDirectLinkStore } from '../stores/directLinks'
 import type { ChartSample } from '../annotate/grouping'
 import { triOf } from '../annotate/samples'
 
 const props = defineProps<{ x: ChartSample }>()
 const ann = useAnnotationStore()
-const links = useDirectLinkStore()
 
 function open() {
-  void links.openSample(props.x.sample.id, { keepTab: true })
+  void ann.openSample(props.x.sample.id, { keepTab: true })
 }
 </script>
 

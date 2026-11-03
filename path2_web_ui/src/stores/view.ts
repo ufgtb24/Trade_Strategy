@@ -661,6 +661,12 @@ export const useViewStore = defineStore('view', () => {
     viewWindow.value = win ? { start: win.start, end: win.end } : null
     resetChartState()
   }
+  /** 切到 annotate、图不换(直达链接没跟成时落在这里,提示条在 annotate 下);已在 annotate 就什么都不做。 */
+  function enterAnnotate() {
+    if (mode.value === 'annotate') return
+    mode.value = 'annotate'
+    resetChartState()
+  }
   function setActivePattern(pid: string) {
     activePatternId.value = pid
     useConfigStore().saveLastPattern(pid)
@@ -1130,7 +1136,7 @@ export const useViewStore = defineStore('view', () => {
     effectivePattern, effectiveAnalysis, effectiveScan,
     unionRows, sortedRows, filteredSortedRows, previewListRow, patternHitCounts,
     nodeColors, selectedMatchId, selectedMatch, tagMap, isolated, matchedIds, matchedEventIds, qualifiedIds,
-    mode, annotating, openSymbol, viewWindow,
+    mode, annotating, openSymbol, enterAnnotate, viewWindow,
     loadScanFile, clearScanFile, setCurrentScanName, currentScanName, selectSymbol, setActivePattern, setSort,
     toggleNode, toggleExpandedNode,
     focusMatch, focusEvent, clearFocus,

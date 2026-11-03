@@ -5,15 +5,17 @@
  *   <前端地址>/#symbol=<代码>&date=<YYYY-MM-DD>   股票 + 日期:打开那只股票,图窗停在那天附近,落在 annotate
  *   <前端地址>/#sample=<样本编号>                  样本编号:打开样本所在的那张图,并选中它
  *
- * 前端地址是 http://localhost:<configs/path2_web.yaml 的 frontend_port>。代码不分大小写;样本编号就是标注文件里
- * 样本的 id(如 s-pc-12)。
+ * 前端地址是 http://localhost:<configs/path2_web.yaml 的 frontend_port>。代码照顶栏输入的规则去空白、转大写;
+ * 样本编号就是标注文件里样本的 id(如 s-pc-12)。
  *
  * 日期晚于训练段末日 TRAIN_END 的,一律截到 TRAIN_END(数据墙,spec 4.1)。图窗按日历日取:那天往前约半年、
  * 往后约两个月(往前多留,是因为样本的依据都在样本日之前)。
  *
- * 这里只是纯函数;跟着链接打开图、按编号找样本并选中它,在 stores/directLinks.ts。
+ * 这里只是纯函数;跟着链接打开图在 stores/directLinks.ts。
  */
 import type { ViewWindow } from '../types'
+import { resolveSymbolInput } from './symbolInput'
+import { shiftDays } from './viewWindow'
 
 /** 训练段末日:和后端 path2_web/data.py 的 TRAIN_END 同值(单测核对两边一致)。 */
 export const TRAIN_END = '2025-12-31'
@@ -45,9 +47,9 @@ export function parseLink(hash: string): DirectLink | null {
   const p = new URLSearchParams(raw)
   const keys = [...p.keys()].sort().join(',')
   if (keys === 'date,symbol') {
-    const symbol = p.get('symbol')!.trim().toUpperCase()
+    const sym = resolveSymbolInput(p.get('symbol')!, null)
     const date = p.get('date')!.trim()
-    if (symbol && isDate(date)) return { kind: 'chart', symbol, date }
+    if (sym.kind === 'ok' && isDate(date)) return { kind: 'chart', symbol: sym.symbol, date }
   } else if (keys === 'sample') {
     const id = p.get('sample')!.trim()
     if (id) return { kind: 'sample', id }
@@ -55,14 +57,8 @@ export function parseLink(hash: string): DirectLink | null {
   return { kind: 'bad', raw }
 }
 
-const shiftDays = (d: string, n: number) => {
-  const t = new Date(`${d}T00:00:00Z`)
-  t.setUTCDate(t.getUTCDate() + n)
-  return t.toISOString().slice(0, 10)
-}
-
-/** 「股票 + 日期」链接停的那天(晚于 TRAIN_END 的截到 TRAIN_END)和图窗。 */
-export function chartLinkWindow(date: string): { date: string; window: ViewWindow } {
+/** 「股票 + 日期」链接的图窗:晚于 TRAIN_END 的日期先截到 TRAIN_END,再往前、往后各留一段。 */
+export function chartLinkWindow(date: string): ViewWindow {
   const d = date > TRAIN_END ? TRAIN_END : date
-  return { date: d, window: { start: shiftDays(d, -LINK_DAYS_BEFORE), end: shiftDays(d, LINK_DAYS_AFTER) } }
+  return { start: shiftDays(d, -LINK_DAYS_BEFORE), end: shiftDays(d, LINK_DAYS_AFTER) }
 }

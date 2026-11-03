@@ -23,7 +23,7 @@
     <div v-if="links.problem" class="notice" data-testid="notice-url" :title="urlTip">
       <span class="key">url</span>
       <template v-if="links.problem.code === 'not_found'">
-        <span class="key">sample</span><span class="key">{{ links.problem.sample }}</span>
+        <span class="key">{{ links.problem.kind }}</span><span class="key">{{ links.problem.id }}</span>
       </template>
       <span class="val">{{ links.problem.code }}</span>
       <button type="button" class="ok" data-testid="notice-url-ok" @click="links.problem = null">ok</button>
@@ -54,7 +54,7 @@
  * - 标注读不到(标注目录不在 / 读失败);
  * - data_fingerprint mismatched:标注是对着另一份训练段副本做的(或本机副本没有指纹)。只报出来,图照常显示;
  * - conflict:两台机器同步前改了同一个对象,后改的那次生效。每条冲突只提示一次,点 ok 后不再出现;
- * - url:直达链接没跟成(样本编号不存在,或认不出的写法),一直显示到点 ok;
+ * - url:直达链接没跟成(股票代码或样本编号不存在,或认不出的写法),一直显示到点 ok;
  * - save rejected:这次保存没通过后端的校验(比如另一台机器同步来的修改让这个框成了某个样本的成员框,
  *   改起止就越过了那个样本日)。每条原因写出 code 和它说的是哪个框、哪个样本(按重读后的状态),悬停看后端的原话;
  *   这次改动没有保存,一直显示到点 ok。
@@ -77,8 +77,9 @@ const URL_FORMS = 'url forms: #symbol=<code>&date=<YYYY-MM-DD> or #sample=<sampl
 const urlTip = computed(() => {
   const p = links.problem
   if (!p) return ''
-  return p.code === 'not_found' ? `no sample with this id in the annotations\n${URL_FORMS}`
-    : `unrecognized url: #${p.raw}\n${URL_FORMS}`
+  if (p.code === 'bad_url') return `unrecognized url: #${p.raw}\n${URL_FORMS}`
+  return p.kind === 'sample' ? `no sample with this id in the annotations\n${URL_FORMS}`
+    : `not in the training snapshot's symbols; the chart is unchanged\n${URL_FORMS}`
 })
 
 const short = (s: string | null) => (s ? `${s.slice(0, 12)}…` : 'none')

@@ -31,11 +31,11 @@ describe('parseLink', () => {
 
 describe('chartLinkWindow', () => {
   it('那天往前约半年、往后约两个月(日历日)', () => {
-    expect(chartLinkWindow('2024-05-10')).toEqual({ date: '2024-05-10', window: { start: '2023-11-12', end: '2024-07-09' } })
+    expect(chartLinkWindow('2024-05-10')).toEqual({ start: '2023-11-12', end: '2024-07-09' })
   })
-  it('晚于训练段末日的截到训练段末日', () => {
-    expect(chartLinkWindow('2026-03-01')).toEqual({ date: TRAIN_END, window: { start: '2025-07-04', end: '2026-03-01' } })
-    expect(chartLinkWindow(TRAIN_END).date).toBe(TRAIN_END)
+  it('晚于训练段末日的先截到训练段末日', () => {
+    expect(chartLinkWindow('2026-03-01')).toEqual(chartLinkWindow(TRAIN_END))
+    expect(chartLinkWindow('2026-03-01')).toEqual({ start: '2025-07-04', end: '2026-03-01' })
   })
 })
 
