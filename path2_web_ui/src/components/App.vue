@@ -35,6 +35,22 @@ onBeforeUnmount(() => window.removeEventListener('beforeunload', _guard))
 </script>
 
 <style>
+/* 标注界面的共用字体与中性色(灰都取自用户确认过的安全色板):
+   --mono       程序固定文字(字段名、状态、页签)的等宽字体
+   --ink        文字一律黑
+   --ink-off    没选上的状态(如未选中的页签)
+   --ink-empty  空着的状态(如空页、占位)
+   --line       面板分隔线;--line-strong 输入框边;--line-soft 页签栏下沿;--bar-bg 顶栏底色 */
+:root {
+  --mono: ui-monospace, "JetBrains Mono", "DejaVu Sans Mono", Consolas, monospace;
+  --ink: #111;
+  --ink-off: #888888;
+  --ink-empty: #9ca3af;
+  --line: #d1d5db;
+  --line-strong: #9ca3af;
+  --line-soft: #e4e4e7;
+  --bar-bg: #fafafa;
+}
 * { box-sizing: border-box; }
 body { margin: 0; font-family: system-ui, sans-serif; color: #0f172a; }
 .app { display: grid; grid-template-columns: minmax(220px, max-content) 1fr; grid-template-rows: auto 1fr; height: 100vh; }

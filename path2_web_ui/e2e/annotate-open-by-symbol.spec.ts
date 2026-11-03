@@ -1,8 +1,8 @@
-import { test, expect, type Page } from '@playwright/test'
+import { test, expect, type APIRequestContext, type Page } from '@playwright/test'
 import { apiBase } from './ports'
 
 /**
- * 按代码打开(实施票 04):不经扫描,在顶栏 symbol 输入代码回车,打开训练段副本里的任一只股票,落在 annotate。
+ * 按代码打开:不经扫描,在顶栏 symbol 输入代码回车,打开训练段副本里的任一只股票,落在 annotate。
  *
  * - 图最晚画到 2025-12-31;
  * - 训练段副本里没有的代码(2026 年才上市的不在副本里)不在列表里,回车后报 not_found,当前的图不动;
@@ -10,7 +10,8 @@ import { apiBase } from './ports'
  * - 成交量画在 K 线区下方。
  *
  * 前提:后端已按 configs/path2_web.yaml 的 backend_port 启动,读真实的训练段副本(只读)。
- * 代码从 /symbols 现取,不写死某只股票。
+ * 代码从 /symbols 现取,不写死某只股票。还没有扫描结果时,先对少数几只股票跑一次小扫描。
+ * 两张整页截图挂在测试结果里(annotate-*.png)。
  */
 
 const TRAIN_END = '2025-12-31'
@@ -34,6 +35,18 @@ async function mainOption(page: Page): Promise<any> {
   })
 }
 
+/** 本环境还没有扫描结果时,对少数几只股票跑一次小扫描(bo_only),等它落盘。 */
+async function ensureScan(request: APIRequestContext) {
+  const list = async () => (await (await request.get(`${apiBase}/scans/`)).json()) as any[]
+  if ((await list()).length > 0) return
+  const r = await request.post(`${apiBase}/scan`, { data: {
+    pattern_ids: ['bo_only'], start_date: '2025-01-01', end_date: TRAIN_END,
+    workers: 2, ticker_regex: '^AA', label_horizon: 20,
+  } })
+  expect(r.ok()).toBe(true)
+  await expect.poll(async () => (await list()).length, { timeout: 240_000 }).toBeGreaterThan(0)
+}
+
 async function subSeriesCount(page: Page): Promise<number> {
   return page.evaluate(() => ((window as any).__e2e.chartSub().getOption()?.series ?? []).length)
 }
@@ -53,6 +66,7 @@ test.describe('按代码打开 · annotate', () => {
     await expect.poll(async () => (await mainOption(page)).dates.length).toBeGreaterThan(0)
     const opt = await mainOption(page)
     expect(opt.dates.at(-1) <= TRAIN_END).toBe(true)
+    await page.screenshot({ path: test.info().outputPath('annotate-open-by-symbol.png'), fullPage: true })
 
     // 只有 K 线和成交量:app 的系列(价格点、高亮、遮罩)全空,副图没有任何系列
     const byName = Object.fromEntries(opt.series.map((s: any) => [s.name, s]))
@@ -75,9 +89,9 @@ test.describe('按代码打开 · annotate', () => {
     await expect(page.locator(`.symbol-title-bar [data-symbol="${code}"]`)).toBeVisible()
   })
 
-  test('现有扫描入口照旧能用:扫描结果是 app 视图;按代码打开切到 annotate;再从扫描列表选股回到 app', async ({ page, request }) => {
-    const scans: any[] = await (await request.get(`${apiBase}/scans/`)).json()
-    test.skip(scans.length === 0, '本 worktree 还没有扫描结果(先跑一次扫描)')
+  test('现有扫描入口照旧能用:扫描结果是 app 视图;按代码打开切到 annotate;再从扫描列表选股回到 app', async ({ page, request }, testInfo) => {
+    test.setTimeout(300_000)
+    await ensureScan(request)
 
     await page.goto('/')
     await page.getByRole('button', { name: /打开历史/ }).click()
@@ -101,6 +115,7 @@ test.describe('按代码打开 · annotate', () => {
       const o = await mainOption(page)
       return o.series.find((s: any) => s.name === 'price-points')?.n
     }).toBe(0)
+    await page.screenshot({ path: testInfo.outputPath('annotate-after-scan.png'), fullPage: true })
 
     // 从扫描列表选股 → 回到 app
     await firstRow.click()

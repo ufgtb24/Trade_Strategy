@@ -374,17 +374,19 @@ export function emptyEventBundle(bars: Bar[]): EventBundle {
 }
 
 // ── 主图布局:上面 K 线区(grid0),下面成交量带(grid1),共用 x 轴缩放 ──
-/** 成交量带高度 / K 线区高度。spec 第 10 节默认「主图的四分之一」(待验证,V-S1 由用户看)。 */
+/** 成交量带高度 / K 线区高度:默认「约主图的四分之一」,待验证。 */
 export const VOLUME_HEIGHT_RATIO = 0.25
 export const MAIN_GRID_TOP = 40        // 顶部留给代码标题条
 export const MAIN_GRID_GAP = 16        // K 线区与成交量带之间(两条 y 轴的端点刻度不相撞)
 export const MAIN_GRID_LEFT = 56
 export const MAIN_GRID_RIGHT = 16
 export const MAIN_DEFAULT_HEIGHT = 600 // 拿不到容器高度时(单元测试)的兜底
+export const MAIN_BOTTOM_WITH_SLIDER = 60   // 成交量带下沿到容器底:日期刻度 + 缩放滑块
+export const MAIN_BOTTOM_NO_SLIDER = 20     // 只剩日期刻度
 
 /** 主图两个 grid 的像素布局:成交量带高 = K 线区高 × VOLUME_HEIGHT_RATIO,滑块留在最下方。 */
 export function mainGridLayout(height: number, sliderShow: boolean) {
-  const bottom = sliderShow ? 60 : 20
+  const bottom = sliderShow ? MAIN_BOTTOM_WITH_SLIDER : MAIN_BOTTOM_NO_SLIDER
   const usable = Math.max(0, height - MAIN_GRID_TOP - MAIN_GRID_GAP - bottom)
   const priceH = usable / (1 + VOLUME_HEIGHT_RATIO)
   const volH = usable - priceH
@@ -1370,7 +1372,7 @@ export function buildShadingMarkArea(
   }
 }
 
-/** K 线涨跌色:用户 10-29 定维持主视图现状;成交量柱同色(spec 4.4)。 */
+/** K 线涨跌色(阳 / 阴),成交量柱同色。这对红绿是用户指定保留的,优先于「冷暖或深浅区分」的配色通则。 */
 export const CANDLE_UP = '#47b262'
 export const CANDLE_DOWN = '#eb5454'
 /** K 线区上下各留出价格区间的这一比例作空白。 */

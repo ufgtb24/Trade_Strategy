@@ -8,9 +8,14 @@ export type { ParamsDiffResp }
 
 const BASE = (import.meta as any).env?.VITE_API_BASE ?? 'http://localhost:8000'
 
+/** GET 失败时抛的错误带上 HTTP 状态码(调用方据此区分「不存在」与其他失败)。 */
+export class HttpError extends Error {
+  constructor(message: string, readonly status: number) { super(message) }
+}
+
 async function getJson<T>(path: string): Promise<T> {
   const r = await fetch(`${BASE}${path}`)
-  if (!r.ok) throw new Error(`GET ${path} → ${r.status}: ${await r.text()}`)
+  if (!r.ok) throw new HttpError(`GET ${path} → ${r.status}: ${await r.text()}`, r.status)
   return r.json() as Promise<T>
 }
 

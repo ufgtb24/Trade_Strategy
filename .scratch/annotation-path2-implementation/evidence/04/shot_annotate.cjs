@@ -1,4 +1,5 @@
-// 一次性截图脚本(不入库):打开主视图,按代码打开一只股票,拍整页与侧栏
+// 截图证据的生成脚本:打开主视图,按代码打开一只股票,拍整页、顶栏与侧栏(2560x1440)。
+// 用法:node shot_annotate.cjs <输出目录> [代码];前端须在 localhost:5144。playwright-core 路径指向票 04 的 worktree,换地方跑时改它。
 const { chromium } = require('/home/yu/PycharmProjects/Trade_Strategy-04-open-by-symbol-shell/path2_web_ui/node_modules/playwright-core')
 const OUT = process.argv[2]
 const SYM = process.argv[3] || 'AAPL'

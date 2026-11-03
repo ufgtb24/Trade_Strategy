@@ -16,7 +16,7 @@
 <script setup lang="ts">
 /**
  * annotate 模式的右侧栏,三页:selection(选中的框或样本)、features(词表)、pattern(当前 pattern 总览)。
- * 现在只有页签和空页;各页内容由画框、样本、归组几张票填。
+ * 三页目前都是空页。
  */
 import { ref } from 'vue'
 
@@ -26,21 +26,22 @@ const tab = ref<Tab>('selection')
 </script>
 
 <style scoped>
+/* 字体与色值见 App.vue 的 :root 变量 */
 .annotation-sidebar {
   display: flex; flex-direction: column; min-height: 0; overflow: auto;
-  border-left: 1px solid #d4d4d8; background: #fff; color: #111;
+  border-left: 1px solid var(--line); background: #fff; color: var(--ink);
 }
 .tabs {
   position: sticky; top: 0; display: flex; gap: 12px; padding: 6px 8px 0;
-  background: #fff; border-bottom: 1px solid #e4e4e7;
+  background: #fff; border-bottom: 1px solid var(--line-soft);
 }
-.tab, .empty { font-family: ui-monospace, "JetBrains Mono", "DejaVu Sans Mono", Consolas, monospace; font-size: 12px; }
+.tab, .empty { font-family: var(--mono); font-size: 12px; }
 /* 文字一律黑;没选上的页签按「没选上的状态」用灰字,选中的加黑色下划线 */
 .tab {
   padding: 2px 2px 4px; border: none; border-bottom: 2px solid transparent;
-  background: none; color: #71717a; cursor: pointer;
+  background: none; color: var(--ink-off); cursor: pointer;
 }
-.tab.on { color: #111; border-bottom-color: #111; }
+.tab.on { color: var(--ink); border-bottom-color: var(--ink); }
 .body { padding: 8px; }
-.empty { color: #a1a1aa; }
+.empty { color: var(--ink-empty); }
 </style>

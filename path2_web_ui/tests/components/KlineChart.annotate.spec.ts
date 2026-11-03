@@ -65,6 +65,21 @@ describe('KlineChart · annotate', () => {
     expect(w.find('.driver-menu').exists()).toBe(false)
   })
 
+  it('后端说没有这只股票(404)→ 提示 not_found;其他失败 → load_failed', async () => {
+    vi.mocked(api.getAllOhlc)
+      .mockImplementationOnce(() => Promise.reject({ status: 404 }))
+      .mockImplementationOnce(() => Promise.reject({ status: 503 }))
+    const view = useViewStore()
+    mount(KlineChart)
+    await flushPromises()
+    view.openSymbol('NOPE')
+    await flushPromises()
+    expect(view.toastMsg).toBe('NOPE: not_found')
+    view.openSymbol('DOWN')
+    await flushPromises()
+    expect(view.toastMsg).toBe('DOWN: load_failed')
+  })
+
   it('连续换股:只认最后一次请求的 K 线', async () => {
     let resolveSlow: (v: any) => void = () => {}
     vi.mocked(api.getAllOhlc)

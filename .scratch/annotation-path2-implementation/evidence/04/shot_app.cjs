@@ -1,4 +1,5 @@
-// 一次性截图脚本(不入库):打开本 worktree 的扫描结果,看 app 视图下成交量带与副图
+// 截图证据的生成脚本:打开第一份扫描结果,拍 app 视图下的成交量带与副图(2560x1440)。
+// 用法:node shot_app.cjs <输出目录>;前端须在 localhost:5144。playwright-core 路径指向票 04 的 worktree,换地方跑时改它。
 const { chromium } = require('/home/yu/PycharmProjects/Trade_Strategy-04-open-by-symbol-shell/path2_web_ui/node_modules/playwright-core')
 const OUT = process.argv[2]
 ;(async () => {

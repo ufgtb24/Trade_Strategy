@@ -104,9 +104,8 @@ const { symbol, effectiveAnalysis, nodeColors, nodeVisible, level, tagMap, isola
         effectivePattern, effectiveScan, scanFile, focusedInstanceRef, diag,
         activePatternId, activeDetailCard, selectedMatchId, candidateMatchIds,
         highlightedEventIds, pendingDisambigInstanceId, shiftSelectedEventIds,
-        focusedInstanceId, selectedInstanceId, compositionGroupIds, mode } = storeToRefs(view)
-// annotate:只画 K 线和成交量,不画任何 app 产物,也不给 app 相关的交互(框选诊断、driver 菜单)
-const annotating = computed(() => mode.value === 'annotate')
+        focusedInstanceId, selectedInstanceId, compositionGroupIds, mode, annotating } = storeToRefs(view)
+// annotating:只画 K 线和成交量,不画任何 app 产物,也不给 app 相关的交互(框选诊断、driver 菜单、副图缩放)
 const panels = usePanelsStore()
 const { showSlider, subHeightOffset } = storeToRefs(panels)
 
@@ -338,7 +337,9 @@ async function reloadBars() {
     // 按代码打开:这只股票的全部 K 线(后端截到训练段末日)
     if (sym) {
       try { next = (await getAllOhlc(sym)).bars }
-      catch { if (seq === barsSeq) view.showToast(`${sym}: load_failed`) }
+      catch (e: any) {
+        if (seq === barsSeq) view.showToast(`${sym}: ${e?.status === 404 ? 'not_found' : 'load_failed'}`)
+      }
     }
   } else if (sym && scanFile.value) {
     const { start, end } = windowOf(effectiveScan.value ?? scanFile.value.scan)
@@ -515,7 +516,7 @@ function readZoomOverride(): { start: number; end: number } | null {
   return null
 }
 
-// annotate:主图只有 K 线 + 成交量,副图留空(用户的框和样本由后续票画进来)
+// annotate:主图只有 K 线 + 成交量,副图留空
 function renderBarsOnly(forceResetZoom: boolean) {
   if (!chartMain || !chartSub) return
   subCanvasH.value = computeSubGeometry({ bracketLaneCount: 0, bandLaneCounts: [] }).subCanvasH

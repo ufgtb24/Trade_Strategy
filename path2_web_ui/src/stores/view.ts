@@ -181,8 +181,8 @@ import { useConfigStore } from './config'
 // shift+click 累积器条目(入口 D · KlineChart.ts::handleShiftClick 消费/写入)。
 // 实例化契约:instance_id/node_id(取代旧的复合身份字段)。
 export type ShiftSelectedEvent = { instance_id: string; node_id: string; source: 'main' | 'sub' }
-/** 主视图模式。annotate:按代码等入口打开的图,只画 K 线、成交量和用户自己的东西,不画任何 app 产物
- *  (effectiveAnalysis 恒为 null);app:扫描结果视图,按 node 分轨画 app 的产物(从扫描列表进来)。 */
+/** 主视图模式。annotate:按代码打开的图,只画 K 线和成交量,不画任何 app 产物(effectiveAnalysis 恒为 null);
+ *  app:扫描结果视图,按 node 分轨画 app 的产物(加载扫描、从扫描列表选股时进入)。 */
 export type ViewMode = 'annotate' | 'app'
 
 
@@ -240,6 +240,7 @@ export const useViewStore = defineStore('view', () => {
   const scanFile = shallowRef<MultiScanResultFile | null>(null)
   const currentScanName = ref<string | null>(null)
   const mode = ref<ViewMode>('annotate')
+  const annotating = computed(() => mode.value === 'annotate')
   const symbol = ref<string | null>(null)
   const activePatternId = ref<string | null>(null)
   const sortByPid = ref<string | null>(null)
@@ -452,7 +453,7 @@ export const useViewStore = defineStore('view', () => {
 
   // annotate 模式下恒为 null:图上、侧栏、状态条一律拿不到 app 的产物
   const effectiveAnalysis = computed<Analysis | null>(() => {
-    if (mode.value === 'annotate') return null
+    if (annotating.value) return null
     return _previewHits.value ? preview.value!.analysis : currentAnalysis.value
   })
 
@@ -630,11 +631,8 @@ export const useViewStore = defineStore('view', () => {
   function setCurrentScanName(name: string | null) {
     currentScanName.value = name
   }
-  function selectSymbol(s: string) {
-    // 锚-active 解耦:只切股、不动 activePatternId
-    // 从扫描列表选股 = 看这只股票的扫描结果
-    mode.value = 'app'
-    symbol.value = s
+  /** 换图时清掉上一张图上的焦点、展开、预览与候选。 */
+  function resetChartState() {
     clearFocus()
     manualExpandedNodes.value = new Set()   // 切数据源清空展开集
     hoveredEventId.value = null
@@ -643,6 +641,13 @@ export const useViewStore = defineStore('view', () => {
     candidateMatchIds.value = new Set()
     pendingDisambigInstanceId.value = null
     clearDetailCard()
+  }
+  function selectSymbol(s: string) {
+    // 锚-active 解耦:只切股、不动 activePatternId
+    // 从扫描列表选股 = 看这只股票的扫描结果
+    mode.value = 'app'
+    symbol.value = s
+    resetChartState()
     if (previewEnabled.value) void runPreview()
   }
   /** 按代码打开(顶栏 symbol):落在 annotate,不跑 app、不动扫描与 activePatternId。
@@ -650,14 +655,7 @@ export const useViewStore = defineStore('view', () => {
   function openSymbol(s: string) {
     mode.value = 'annotate'
     symbol.value = s
-    clearFocus()
-    manualExpandedNodes.value = new Set()
-    hoveredEventId.value = null
-    preview.value = null
-    previewError.value = null
-    candidateMatchIds.value = new Set()
-    pendingDisambigInstanceId.value = null
-    clearDetailCard()
+    resetChartState()
   }
   function setActivePattern(pid: string) {
     activePatternId.value = pid
@@ -937,7 +935,7 @@ export const useViewStore = defineStore('view', () => {
   }
 
   async function runPreview(): Promise<void> {
-    if (mode.value === 'annotate') return   // annotate 不跑 app
+    if (annotating.value) return   // annotate 不跑 app
     if (!scanFile.value || !symbol.value || !activePatternId.value) return
     // Task 9 · 探索态才跑 preview(浏览态锚 snapshot,无需临时计算)
     if (!workingCopy.value[activePatternId.value!]?.enabled) return
@@ -1128,7 +1126,7 @@ export const useViewStore = defineStore('view', () => {
     effectivePattern, effectiveAnalysis, effectiveScan,
     unionRows, sortedRows, filteredSortedRows, previewListRow, patternHitCounts,
     nodeColors, selectedMatchId, selectedMatch, tagMap, isolated, matchedIds, matchedEventIds, qualifiedIds,
-    mode, openSymbol,
+    mode, annotating, openSymbol,
     loadScanFile, clearScanFile, setCurrentScanName, currentScanName, selectSymbol, setActivePattern, setSort,
     toggleNode, toggleExpandedNode,
     focusMatch, focusEvent, clearFocus,

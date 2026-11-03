@@ -50,7 +50,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, onMounted, onBeforeUnmount } from 'vue'
+import { ref, onMounted, onBeforeUnmount } from 'vue'
 import { storeToRefs } from 'pinia'
 import TopologyControl from './TopologyControl.vue'
 import KlineChart from './KlineChart.vue'
@@ -64,8 +64,7 @@ import { usePanelsStore, type PanelKey } from '../stores/panels'
 import type { Level } from '../types'
 
 const view = useViewStore()
-const { level, mode } = storeToRefs(view)
-const annotating = computed(() => mode.value === 'annotate')
+const { level, annotating } = storeToRefs(view)
 const panels = usePanelsStore()
 const { showTopology, showSidebar } = storeToRefs(panels)
 // 抽屉开关 ref 由 ChartArea 持有,ParamsChip 只 emit toggle-drawer;WorkingCopyDrawer(Task 11)在此渲染

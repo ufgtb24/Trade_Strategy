@@ -7,7 +7,6 @@
         class="symbol-input"
         data-testid="symbol-input"
         list="symbol-list"
-        placeholder="code"
         spellcheck="false" autocomplete="off"
         title="输入代码回车打开(训练段副本里的股票,图画到 2025-12-31)"
         @input="status = null"
@@ -61,16 +60,16 @@ function onEnter() {
 </script>
 
 <style scoped>
+/* 字体与色值见 App.vue 的 :root 变量 */
 .top-bar {
   display: flex; align-items: center; gap: 6px 16px; flex-wrap: wrap;
-  padding: 4px 10px; background: #fafafa; border-bottom: 1px solid #d4d4d8; color: #111;
+  padding: 4px 10px; background: var(--bar-bg); border-bottom: 1px solid var(--line); color: var(--ink);
 }
 .grp { display: flex; align-items: center; gap: 6px; }
-.key, .status { font-family: ui-monospace, "JetBrains Mono", "DejaVu Sans Mono", Consolas, monospace; font-size: 12px; color: #111; }
-.status { padding: 0 6px; border: 1px solid #111; border-radius: 3px; }
+.key, .status { font-family: var(--mono); font-size: 12px; color: var(--ink); }
+.status { padding: 0 6px; border: 1px solid var(--ink); border-radius: 3px; }
 .symbol-input {
-  width: 110px; padding: 2px 6px; font-size: 13px; color: #111;
-  border: 1px solid #a1a1aa; border-radius: 3px; background: #fff;
+  width: 110px; padding: 2px 6px; font-size: 13px; color: var(--ink);
+  border: 1px solid var(--line-strong); border-radius: 3px; background: #fff;
 }
-.symbol-input::placeholder { font-family: ui-monospace, "JetBrains Mono", "DejaVu Sans Mono", Consolas, monospace; font-size: 11px; color: #a1a1aa; }
 </style>
