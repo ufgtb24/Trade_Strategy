@@ -1,5 +1,5 @@
 /**
- * 参照层 ref(spec 5.7):标注图上唯一画出来的、别的系统算出来的东西。先只有 peaks:bo 检测产出的峰,
+ * 参照层 ref(spec 5.7):标注图上唯一画出来的、别的系统算出来的东西。目前只有 peaks 一种:bo 检测产出的峰,
  * 画成水平线(后端 /peaks,截到训练段末日)。
  *
  * - 只在 annotate / compare 下可用(REF_MODES),还要已经打开了一只股票;
@@ -14,7 +14,7 @@ import { getPeaks } from '../api'
 import type { PeakLine } from '../types'
 import { useViewStore } from './view'
 
-/** 参照层可用的模式。按模式名判断:compare 还没有的时候也照样写上。 */
+/** 参照层可用的模式,按模式名列出;ViewMode 里没有的模式名(compare)不起作用。 */
 export const REF_MODES: readonly string[] = ['annotate', 'compare']
 
 export type PeaksStatus = 'loading' | 'load_failed' | 'empty'

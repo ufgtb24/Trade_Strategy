@@ -69,7 +69,7 @@
  * - random:从股票池 × 训练段随机给一段图,落在 annotate,图停在那一段上。
  * - tool(annotate 下):box = 在图上拖出框;point = 点一根 K 线放样本,放完自动回到 box。
  * - pattern(annotate 下):当前 pattern,新放的样本归它;下拉里有 unsorted · n 和 + new。
- * - ref:参照层,先只有 peaks(stores/refLayers.ts)。只在 annotate / compare 下可用,别的模式下变灰;默认关,换股票自动关。
+ * - ref:参照层,目前只有 peaks(stores/refLayers.ts)。只在 annotate / compare 下可用,别的模式下变灰;默认关,换股票自动关。
  * 看过什么一律不记。
  */
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
