@@ -5,7 +5,7 @@ import {
   DRAG_PX, EDGE_PX, boxAt, edgeOf, endIndex, isDrag, pannedZoom, resized, spanOf, startIndex,
 } from '../src/annotate/boxGeometry'
 import {
-  AWAY_OPACITY, BOX_DASH, CAND_DASH, DIM_OPACITY, LANE_PAD, LANE_ROW_H, LANES_TOP, MEMBER_DASH, NEG_FILL, POS_FILL,
+  AWAY_OPACITY, BOX_DASH, UNCLAIMED_DASH, DIM_OPACITY, LANE_PAD, LANE_ROW_H, LANES_TOP, MEMBER_DASH, NEG_FILL, POS_FILL,
   TRI_GAP, TRI_H, afterDimSeries, bracketGeometry, bracketRects, buildAnnotateSubOption, laneAt, laneGeometry,
   mainMarksSeries, mainSamplesSeries, packBrackets, triangleRect, type BracketItem,
 } from '../src/render/annotateLanes'
@@ -84,8 +84,8 @@ describe('特征轨', () => {
     const { geom } = laneGeometry(lanes)
     const marks = new Map<string, BoxMark>([
       ['b1', { owners: ['a', 'b'], away: false, focus: 'member' }],
-      ['b2', { owners: [], away: false, focus: 'cand' }],
-      ['b3', { owners: [], away: false, focus: 'cross' }],
+      ['b2', { owners: [], away: false, focus: 'unclaimed' }],
+      ['b3', { owners: [], away: false, focus: 'crosses_sample_date' }],
     ])
     const opt: any = buildAnnotateSubOption(DATES.map(date => ({ date } as any)), {
       lanes, geom, nameOf: () => 'x', selectedId: null, preview: null, draft: null, zoom: null, width: 800, marks,
@@ -97,7 +97,7 @@ describe('特征轨', () => {
     expect([r1.style.lineWidth, r1.style.lineDash, r1.style.opacity]).toEqual([2.5, MEMBER_DASH, 1])
     expect([owners.style.text, owners.style.align]).toEqual(['a b', 'right'])
     const [r2, take] = draw(1)
-    expect([r2.style.lineDash, take.style.text]).toEqual([CAND_DASH, '◂'])
+    expect([r2.style.lineDash, take.style.text]).toEqual([UNCLAIMED_DASH, '◂'])
     const [r3, cross] = draw(2)
     expect([r3.style.opacity, cross.style.text]).toEqual([DIM_OPACITY, '⇥'])
   })

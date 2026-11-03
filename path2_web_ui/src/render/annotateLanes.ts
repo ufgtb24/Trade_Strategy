@@ -16,7 +16,8 @@
  */
 import type { Bar } from '../types'
 import type { AnnBox, Lane } from '../annotate/model'
-import type { BoxMark } from '../annotate/samples'
+import { triOf, type BoxMark } from '../annotate/samples'
+import { CROSSES_SAMPLE_DATE, UNCLAIMED } from '../annotate/membership'
 import { endIndex, startIndex, type BoxPx } from '../annotate/boxGeometry'
 import { SUB_CANVAS_MIN_H, SUB_GRID_LEFT, SUB_GRID_RIGHT } from './subGeometry'
 
@@ -35,7 +36,7 @@ export const TITLE_BG = 'rgba(255,255,255,0.85)'  // 轨标题垫白,压在框�
 export const BOX_DASH = [5, 3]        // 用户的框:虚线
 export const DRAFT_DASH = [2, 2]      // 正在拖出的框:短虚线
 export const MEMBER_DASH = [7, 2]     // 选中样本时它的成员框:长虚线、线加粗
-export const CAND_DASH = [2, 2]       // 画了没收的框:短虚线(右侧挂 ◂)
+export const UNCLAIMED_DASH = [2, 2]  // 画了没收的框:短虚线(右侧挂 ◂)
 export const DIM_OPACITY = 0.28       // 选中样本时不相干的框、跨过样本日的空槽:画淡
 export const AWAY_OPACITY = 0.4       // 只属于别的 pattern 的样本的框、别的 pattern 的样本:画淡
 export const POS_FILL = INK           // 正样本:实心三角
@@ -164,13 +165,14 @@ function laneTitle(l: Lane, nameOf: LaneDraw['nameOf']): any {
 /** 一个框的画法:线宽、线型、深浅,以及框左侧的字母、右侧的 ◂ / ⇥。 */
 function boxLook(mark: BoxMark | undefined, sel: boolean, draft: boolean) {
   const f = mark?.focus ?? null
-  const opacity = sel || draft ? 1 : f === 'dim' || f === 'cross' ? DIM_OPACITY : mark?.away && f !== 'member' && f !== 'cand' ? AWAY_OPACITY : 1
+  const opacity = sel || draft ? 1 : f === 'dim' || f === CROSSES_SAMPLE_DATE ? DIM_OPACITY
+    : mark?.away && f !== 'member' && f !== UNCLAIMED ? AWAY_OPACITY : 1
   return {
     lineWidth: sel || f === 'member' ? 2.5 : 1.5,
-    lineDash: draft ? DRAFT_DASH : f === 'member' ? MEMBER_DASH : f === 'cand' ? CAND_DASH : BOX_DASH,
+    lineDash: draft ? DRAFT_DASH : f === 'member' ? MEMBER_DASH : f === UNCLAIMED ? UNCLAIMED_DASH : BOX_DASH,
     opacity,
     owners: mark?.owners.join(' ') ?? '',
-    side: f === 'cand' ? '◂' : f === 'cross' ? '⇥' : '',
+    side: f === UNCLAIMED ? '◂' : f === CROSSES_SAMPLE_DATE ? '⇥' : '',
   }
 }
 
@@ -209,8 +211,8 @@ export function buildAnnotateSubOption(bars: Bar[], d: LaneDraw): unknown {
     looks.push(boxLook(mark, sel, draft))
     tips.push([
       mark?.owners.length ? `member box of sample ${mark.owners.join(', ')}` : '',
-      mark?.focus === 'cand' ? 'maybe drawn but not added; click ◂ to add' : '',
-      mark?.focus === 'cross' ? 'crosses sample date: cannot be a member box of the selected sample' : '',
+      mark?.focus === UNCLAIMED ? 'maybe drawn but not added; click ◂ to add' : '',
+      mark?.focus === CROSSES_SAMPLE_DATE ? 'crosses sample date: cannot be a member box of the selected sample' : '',
       mark?.away ? 'member box of samples of another pattern only' : '',
     ].filter(Boolean).join('<br>'))
   }
@@ -290,7 +292,7 @@ export function buildAnnotateSubOption(bars: Bar[], d: LaneDraw): unknown {
       tooltip: {
         formatter: (p: any) => {
           const it = bItems[p.dataIndex]
-          return `<span style="font-family:${MONO};color:${INK}">${it.letter ? `${it.letter} ` : ''}${it.pos ? '▲' : '△'} `
+          return `<span style="font-family:${MONO};color:${INK}">${it.letter ? `${it.letter} ` : ''}${triOf(it.pos ? 'pos' : 'neg')} `
             + `${it.end}<br>${it.start} – ${it.end}</span>`
         },
       },

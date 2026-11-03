@@ -12,11 +12,10 @@ import {
   CROSSES_SAMPLE_DATE, UNCLAIMED, currentMemberBoxes, dupFeatures, emptySlots, memberTree,
   type Slot, type TreeNode,
 } from './membership'
-import type { AnnBox, AnnChart, AnnSample } from './model'
+import { sampleOrder, type AnnBox, type AnnChart, type AnnSample } from './model'
 
-const byDate = (a: AnnSample, b: AnnSample) => (a.date < b.date ? -1 : a.date > b.date ? 1 : a.id < b.id ? -1 : 1)
-/** 框的先后:起点早的在前,同起点长的在前,再按编号(日期字符串比,和按序号比的先后一致)。 */
-const boxOrder = (a: AnnBox, b: AnnBox) =>
+/** 框的先后(同 membership.ts):起点早的在前,同起点长的在前,再按编号(日期字符串比,和按序号比的先后一致)。 */
+const precedence = (a: AnnBox, b: AnnBox) =>
   a.start < b.start ? -1 : a.start > b.start ? 1 : a.end > b.end ? -1 : a.end < b.end ? 1 : a.id < b.id ? -1 : a.id > b.id ? 1 : 0
 
 /** 样本现在的成员框编号(存下的、还在这张图上、在样本日当天或之前结束的)。 */
@@ -33,7 +32,7 @@ export function crosses(b: { start: string; end: string }, smp: { date: string }
 export function sampleLetters(chart: AnnChart | null, pattern: string | null): Map<string, string> {
   const out = new Map<string, string>()
   if (!chart) return out
-  chart.samples.filter(s => s.pattern === pattern).sort(byDate)
+  chart.samples.filter(s => s.pattern === pattern).sort(sampleOrder)
     .forEach((s, i) => out.set(s.id, i < 26 ? String.fromCharCode(97 + i) : `z${i - 25}`))
   return out
 }
@@ -84,10 +83,10 @@ export function memberChain(smp: AnnSample, chart: AnnChart, charts: readonly An
   for (const slot of emptySlots(charts, chart.symbol, smp.id, days, near)) {
     items.push({ box: byId.get(slot.box)!, item: { kind: 'slot', slot } })
   }
-  return items.sort((a, b) => boxOrder(a.box, b.box)).map(x => x.item)
+  return items.sort((a, b) => precedence(a.box, b.box)).map(x => x.item)
 }
 
-export interface OtherBox { box: AnnBox; cand: boolean; cross: boolean }
+export interface OtherBox { box: AnnBox; unclaimed: boolean; crosses: boolean }
 
 /**
  * others 一排:起点不晚于样本日、不是它的成员框的框。画了没收的(unclaimed 空槽)排最前,跨过样本日的排最后
@@ -95,11 +94,11 @@ export interface OtherBox { box: AnnBox; cand: boolean; cross: boolean }
  */
 export function othersOf(smp: AnnSample, chart: AnnChart, slots: readonly Slot[]): OtherBox[] {
   const mine = memberIds(smp, chart)
-  const cand = new Set(slots.filter(s => s.reason === UNCLAIMED).map(s => s.box))
-  const rank = (o: OtherBox) => (o.cand ? 0 : o.cross ? 2 : 1)
+  const unclaimed = new Set(slots.filter(s => s.reason === UNCLAIMED).map(s => s.box))
+  const rank = (o: OtherBox) => (o.unclaimed ? 0 : o.crosses ? 2 : 1)
   return chart.boxes.filter(b => b.start <= smp.date && !mine.has(b.id))
-    .map(b => ({ box: b, cand: cand.has(b.id), cross: crosses(b, smp) }))
-    .sort((p, q) => rank(p) - rank(q) || boxOrder(p.box, q.box))
+    .map(b => ({ box: b, unclaimed: unclaimed.has(b.id), crosses: crosses(b, smp) }))
+    .sort((p, q) => rank(p) - rank(q) || precedence(p.box, q.box))
 }
 
 // ── 选中框时:member_of 一行、改起止的上限 ────────────────────────────
@@ -115,7 +114,7 @@ export interface MemberOfRow { sample: AnnSample; state: 'member' | 'open' | 'cr
 /** 选中框时 member_of 一行:收了它的全部样本(含别的 pattern 的),加上当前 pattern 里能收它的样本;按样本日排。 */
 export function memberOfRows(box: AnnBox, chart: AnnChart, pattern: string | null): MemberOfRow[] {
   const rows: MemberOfRow[] = []
-  for (const s of [...chart.samples].sort(byDate)) {
+  for (const s of [...chart.samples].sort(sampleOrder)) {
     const mine = s.pattern === pattern
     if (memberIds(s, chart).has(box.id)) rows.push({ sample: s, state: 'member', editable: mine })
     else if (mine && s.date >= box.start) {
@@ -141,10 +140,10 @@ export function resizeLimit(boxId: string, chart: AnnChart): AnnSample | null {
  * 副图上一个框的标记:
  * - owners:当前 pattern 里收了它的样本的字母(框左侧的小字母);
  * - away:只被别的 pattern 的样本收进(画淡);
- * - focus(选中样本时):member 是它的成员框(加粗)、cand 是画了没收(短虚线、右侧挂 ◂)、
- *   cross 是跨过样本日收不进的空槽(右侧挂 ⇥)、dim 是其余(画淡);没选中样本时为 null。
+ * - focus(选中样本时):member 是它的成员框(加粗)、unclaimed 是画了没收(短虚线、右侧挂 ◂)、
+ *   crosses_sample_date 是跨过样本日收不进的空槽(右侧挂 ⇥)、dim 是其余(画淡);没选中样本时为 null。
  */
-export interface BoxMark { owners: string[]; away: boolean; focus: 'member' | 'cand' | 'cross' | 'dim' | null }
+export interface BoxMark { owners: string[]; away: boolean; focus: 'member' | typeof UNCLAIMED | typeof CROSSES_SAMPLE_DATE | 'dim' | null }
 
 export function boxMarks(chart: AnnChart | null, pattern: string | null, selected: AnnSample | null,
                          slots: readonly Slot[]): Map<string, BoxMark> {
@@ -153,7 +152,7 @@ export function boxMarks(chart: AnnChart | null, pattern: string | null, selecte
   const letters = sampleLetters(chart, pattern)
   const owners = new Map<string, string[]>()
   const inCur = new Set<string>(), inOther = new Set<string>()
-  for (const s of [...chart.samples].sort(byDate)) {
+  for (const s of [...chart.samples].sort(sampleOrder)) {
     for (const id of memberIds(s, chart)) {
       if (s.pattern === pattern) {
         inCur.add(id)
@@ -168,7 +167,7 @@ export function boxMarks(chart: AnnChart | null, pattern: string | null, selecte
     let focus: BoxMark['focus'] = null
     if (focusMembers) {
       const r = slotOf.get(b.id)
-      focus = focusMembers.has(b.id) ? 'member' : r === UNCLAIMED ? 'cand' : r === CROSSES_SAMPLE_DATE ? 'cross' : 'dim'
+      focus = focusMembers.has(b.id) ? 'member' : r ?? 'dim'
     }
     out.set(b.id, { owners: owners.get(b.id) ?? [], away: inOther.has(b.id) && !inCur.has(b.id), focus })
   }

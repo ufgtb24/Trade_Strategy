@@ -143,7 +143,8 @@ function stripSymbol(v: any): any {
 
 const boxOrder = (a: AnnBox, b: AnnBox) =>
   a.start < b.start ? -1 : a.start > b.start ? 1 : a.end < b.end ? -1 : a.end > b.end ? 1 : a.id < b.id ? -1 : 1
-const sampleOrder = (a: AnnSample, b: AnnSample) =>
+/** 样本的先后:样本日早的在前,再按编号。 */
+export const sampleOrder = (a: AnnSample, b: AnnSample) =>
   a.date < b.date ? -1 : a.date > b.date ? 1 : a.id < b.id ? -1 : 1
 
 /**

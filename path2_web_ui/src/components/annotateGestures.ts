@@ -7,13 +7,14 @@
  * - tool = point:点 K 线区某一根 → 在那天放样本(或选中当前 pattern 那天已有的样本),之后工具自动回到 box;
  * - 成交量带拖动 → 左右平移图窗(K 线区的拖动留给画框;滚轮照常缩放)。两种工具都可以。
  * 改起止时,框是某些样本的成员框的,终点停在其中最早的样本日(不越过样本日),停住时在鼠标旁写它是哪个样本的
- * 成员框(M12)。
+ * 成员框:改共用的框时不悄悄改掉旧样本的依据。
  * 拖动超过 DRAG_PX 才算拖动(annotate/boxGeometry.ts)。拖的过程中的样子(新框、改了起止的框)交给调用方去画,
  * 松手时才保存。
  */
 import type { ECharts } from 'echarts'
 import type { AnnBox, Lane } from '../annotate/model'
 import type { BoxMark } from '../annotate/samples'
+import { UNCLAIMED } from '../annotate/membership'
 import {
   boxAt, edgeOf, endIndex, isDrag, pannedZoom, resized, spanOf, startIndex, type BoxPx,
 } from '../annotate/boxGeometry'
@@ -100,7 +101,7 @@ export function createAnnotateGestures(deps: GestureDeps) {
     const marks = deps.marks()
     if (!marks) return null
     for (const r of subRects()) {
-      if (marks.get(r.id)?.focus !== 'cand') continue
+      if (marks.get(r.id)?.focus !== UNCLAIMED) continue
       if (x >= r.right + SIDE_MARK_X[0] && x <= r.right + SIDE_MARK_X[1] && y >= r.top && y <= r.bottom) return r.id
     }
     return null

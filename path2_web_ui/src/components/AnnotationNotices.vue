@@ -28,12 +28,12 @@
       <div v-for="(r, i) in ann.saveError" :key="i" class="line" data-testid="notice-save-reason" :title="r.message">
         <span class="val">{{ r.code }}</span>
         <template v-if="boxOf(r)">
-          <span class="key" title="the box">box</span>
+          <span class="key">box</span>
           <span v-if="boxOf(r)!.feature" class="biz">{{ ann.nameOf(boxOf(r)!.feature) }}</span>
           <span class="key">{{ boxOf(r)!.start }} – {{ boxOf(r)!.end }}</span>
         </template>
         <template v-if="sampleOf(r)">
-          <span class="key" title="the sample">sample</span><span class="key">{{ sampleOf(r) }}</span>
+          <span class="key">sample</span><span class="key">{{ sampleOf(r) }}</span>
         </template>
       </div>
     </div>

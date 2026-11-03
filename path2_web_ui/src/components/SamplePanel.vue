@@ -35,12 +35,12 @@
       </div>
       <div class="ann-row" data-testid="sample-others">
         <template v-for="o in others" :key="o.box.id">
-          <span v-if="o.cross" class="chip cross" data-testid="other-chip" :data-box="o.box.id" data-cross="1"
+          <span v-if="o.crosses" class="ann-chip crosses" data-testid="other-chip" :data-box="o.box.id" data-cross="1"
                 :title="`${o.box.start} – ${o.box.end}\ncrosses sample date`"><BoxName :box="o.box" /></span>
-          <button v-else type="button" :class="['chip', { cand: o.cand }]" data-testid="other-chip" :data-box="o.box.id"
-                  :title="`${o.box.start} – ${o.box.end}\n${o.cand ? 'maybe drawn but not added; ' : ''}click to add`"
+          <button v-else type="button" :class="['ann-chip', { unclaimed: o.unclaimed }]" data-testid="other-chip" :data-box="o.box.id"
+                  :title="`${o.box.start} – ${o.box.end}\n${o.unclaimed ? 'maybe drawn but not added; ' : ''}click to add`"
                   @click="ann.toggleMember(sel.sample.id, o.box.id)">
-            <BoxName :box="o.box" /><span v-if="o.cand" class="ann-sym take">◂</span>
+            <BoxName :box="o.box" /><span v-if="o.unclaimed" class="ann-take">◂</span>
           </button>
         </template>
       </div>
@@ -83,11 +83,4 @@ const others = computed(() => {
 <style src="./annotationPanel.css"></style>
 <style scoped>
 .sec { margin-top: 10px; }
-.chip {
-  display: inline-flex; align-items: center; gap: 2px; padding: 0 3px; border-radius: 3px;
-  border: 1px solid var(--line-strong); background: #fff; font: inherit; cursor: pointer;
-}
-.chip.cand { border: 1.5px dashed var(--ink); }
-.chip.cross { opacity: 0.45; cursor: help; }
-.take { font-weight: 700; }
 </style>

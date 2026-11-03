@@ -280,14 +280,31 @@ describe('样本与成员框', () => {
 
   it('换掉当前样本(点空白处、选另一个样本)后冻结:之后补画的框不再并进旧样本', async () => {
     const s = await withChart()
-    s.placeSample('AAA', '2025-02-28')
+    const a = s.placeSample('AAA', '2025-02-28')!
     await s.flushed()
     s.clearSelection()
     expect(s.currentSampleId).toBeNull()
     s.createBox('AAA', '2025-02-20', '2025-02-26', null)
     await s.flushed()
     expect(sampleOps()).toHaveLength(1)
-    expect(s.state!.charts[0].samples[0].members).toEqual(['b-pc-1', 'b-pc-2'])
+    // 再让 a 当一次当前样本,然后选另一个样本 b:之后补画的框只并进 b(若推断收它),不进 a
+    s.selectSample(a)
+    const b = s.placeSample('AAA', '2025-03-31')!
+    expect(s.currentSampleId).toBe(b)
+    s.createBox('AAA', '2025-02-24', '2025-02-27', null)
+    await s.flushed()
+    const byId = (id: string) => s.state!.charts[0].samples.find(x => x.id === id)!
+    expect(byId(a).members).toEqual(['b-pc-1', 'b-pc-2'])
+    expect(byId(b).members).toContain(s.selectedBoxId)
+  })
+
+  it('改起止只让当前样本期间新画的框并进;拖一下旧框不会把它收进来(手动点掉的旧框不会因此回来)', async () => {
+    const s = await withChart({ charts: [{ symbol: 'AAA', boxes: boxes().slice(0, 1), samples: [] }] })
+    s.placeSample('AAA', '2025-03-31')
+    await s.flushed()
+    s.resizeBox('b-pc-1', '2025-01-06', '2025-03-14')
+    await s.flushed()
+    expect(s.state!.charts[0].samples[0].members).toEqual([])
   })
 
   it('选中框不换当前样本;改起止让新框进了推断范围也并进来(连带够得着的旧框不收:只收这期间动过的)', async () => {

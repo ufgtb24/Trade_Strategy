@@ -29,3 +29,14 @@
 .ann-area { width: 100%; resize: vertical; min-height: 2.2em; }
 .ann-blk { border: 1px solid var(--line); border-radius: 4px; padding: 6px 8px; margin: 0 0 6px; }
 .ann-off { opacity: 0.45; }
+/* 侧栏里代表一个框的块(成员链、others):成员框黑实线边;画了没收的用短虚线(它就是用户画的那个框,
+   和图上同一种短虚线,右侧 ◂);跨过样本日收不进的变淡(右侧 ⇥)。 */
+.ann-chip {
+  display: inline-flex; align-items: center; gap: 2px; padding: 0 3px; border-radius: 3px;
+  border: 1px solid var(--line-strong); background: #fff; font: inherit;
+}
+button.ann-chip { cursor: pointer; }
+.ann-chip.on { border: 1.5px solid var(--ink); }
+.ann-chip.unclaimed { border: 1.5px dashed var(--ink); }
+.ann-chip.crosses { opacity: 0.45; cursor: help; }
+.ann-take { font-family: var(--mono); font-size: 12px; color: var(--ink); font-weight: 700; }

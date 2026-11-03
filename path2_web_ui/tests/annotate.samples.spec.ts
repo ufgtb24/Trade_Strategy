@@ -66,8 +66,8 @@ describe('成员链与 others', () => {
 
   it('others:起点不晚于样本日、不是成员框的框;画了没收的在前,跨过样本日的在后', () => {
     const slots = emptySlots(charts, 'AAA', 's1', DAYS, NEAR)
-    expect(othersOf(aaa.samples[0], aaa, slots).map(o => `${o.box.id}${o.cand ? ':cand' : ''}${o.cross ? ':cross' : ''}`))
-      .toEqual(['b5:cand', 'b8', 'b6:cross'])
+    expect(othersOf(aaa.samples[0], aaa, slots).map(o => `${o.box.id}${o.unclaimed ? ':unclaimed' : ''}${o.crosses ? ':crosses' : ''}`))
+      .toEqual(['b5:unclaimed', 'b8', 'b6:crosses'])
   })
 })
 
@@ -115,6 +115,6 @@ describe('副图上框的标记', () => {
   it('选中样本时:成员框加粗、画了没收和跨过样本日的单独标出、其余画淡', () => {
     const slots = emptySlots([c], 'AAA', 's1', DAYS, NEAR)
     const m = boxMarks(c, 'P', c.samples[0], slots)
-    expect([...m].map(([id, x]) => `${id}:${x.focus}`)).toEqual(['b1:member', 'b2:cand', 'b3:cross', 'b4:dim'])
+    expect([...m].map(([id, x]) => `${id}:${x.focus}`)).toEqual(['b1:member', 'b2:unclaimed', 'b3:crosses_sample_date', 'b4:dim'])
   })
 })

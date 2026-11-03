@@ -15,8 +15,8 @@
  * - point 工具点一根 K 线放样本,归当前 pattern、默认 pos,成员框按推断;同一 pattern 同一天已有样本就是选中它;
  *   放完自动回到 box 工具。
  * - 当前样本:这张图上最后一次放下或选中的样本。画框、选中框都不换掉它;选中另一个样本换成它;点空白处、Esc、
- *   换图清掉。它是当前样本期间新画或改了起止的框,推断会收的就并进它(只加不踢);换掉时它的成员框就此冻结,
- *   以后补画的框不会并进去。
+ *   换图清掉。它是当前样本期间新画的框(含画完又改了起止的),推断会收的就并进它(只加不踢);换掉时它的成员框
+ *   就此冻结,以后补画的框不会并进去。
  * - 手动点进点出(样本页的成员链与 others、框页的 member_of)永远算数:直接改存下的成员框并记 members_edited;
  *   本页还记住点过的,当前样本重算推断时不会把点掉的框又收回来。跨过样本日的框收不进。
  * - 当前 pattern(顶栏 pattern 一格)记在浏览器里,刷新后还在;null 为 unsorted。
@@ -84,7 +84,7 @@ function sampleIntent(id: string, change: (s: AnnSample) => AnnSample): Intent {
   }
 }
 
-/** 当前样本:编号、它当前期间新画或改过起止的框、本页记住的手动点进点出、这张图的交易日。 */
+/** 当前样本:编号、它当前期间新画的框、本页记住的手动点进点出、这张图的交易日。 */
 interface Current { id: string; fresh: ReadonlySet<string>; manual: Record<string, boolean>; days: readonly string[] }
 
 /** 当前样本按推断重算成员框(只加不踢);变了就给出这一条样本操作。r 是已套上这次框改动的读结果。 */
@@ -118,7 +118,7 @@ export const useAnnotationStore = defineStore('annotation', () => {
   const selectedBoxId = ref<string | null>(null)
   const selectedSampleId = ref<string | null>(null)
   const currentSampleId = ref<string | null>(null)                  // 当前样本
-  const freshBoxes = ref<ReadonlySet<string>>(new Set())             // 当前样本期间新画或改过起止的框
+  const freshBoxes = ref<ReadonlySet<string>>(new Set())             // 当前样本期间新画的框
   const manual = ref<Record<string, Record<string, boolean>>>({})    // 本页记住的手动点进点出:样本 → 框 → 进 / 出
   const currentPattern = ref<string | null>(loadPattern())           // 顶栏的当前 pattern;null = unsorted
   const tab = ref<SidebarTab>('selection')
@@ -236,13 +236,13 @@ export const useAnnotationStore = defineStore('annotation', () => {
   // ── 框 ──
 
   /**
-   * 这张图上的当前样本(没有为 null)。touched:这次新画或改了起止的框,记进「当前样本期间动过的框」。
+   * 这张图上的当前样本(没有为 null)。drawn:这次新画的框,记进「当前样本期间新画的框」;改起止时不给。
    * 返回的是此刻的快照,意图保存时照它重算。
    */
-  function currentOn(symbol: string, touched: string): Current | null {
+  function currentOn(symbol: string, drawn: string | null): Current | null {
     const cur = currentSample.value
     if (!cur || cur.chart.symbol !== symbol) return null
-    freshBoxes.value = new Set([...freshBoxes.value, touched])
+    if (drawn) freshBoxes.value = new Set([...freshBoxes.value, drawn])
     return { id: cur.sample.id, fresh: freshBoxes.value, manual: { ...(manual.value[cur.sample.id] ?? {}) },
              days: daysBySymbol.value[symbol] ?? [] }
   }
@@ -268,10 +268,13 @@ export const useAnnotationStore = defineStore('annotation', () => {
     return id
   }
 
-  /** 改框的起止;改完推断会收它的话并进当前样本(越过样本日的限制由拖动时的界面守,保存时后端再查)。 */
+  /**
+   * 改框的起止。当前样本期间新画的框改完进了推断范围,也并进当前样本;别的框不并(只有新画的框会自动并进,
+   * 手动点掉的旧框不会因为拖了一下又被收回来)。越过样本日的限制由拖动时的界面守,保存时后端再查。
+   */
   function resizeBox(id: string, start: string, end: string): void {
     const hit = state.value ? findBox(state.value, id) : null
-    const cur = hit ? currentOn(hit.chart.symbol, id) : null
+    const cur = hit ? currentOn(hit.chart.symbol, null) : null
     commit(withCurrent(boxIntent(id, b => ({ ...b, start, end })), cur))
   }
 

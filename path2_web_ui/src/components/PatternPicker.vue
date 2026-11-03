@@ -2,17 +2,17 @@
   <div ref="root" class="pattern-picker" :data-testid="tid">
     <button type="button" class="cur" :data-testid="`${tid}-button`" :aria-expanded="open"
             :title="pending ? 'pick the pattern it looks like' : title" @click="toggle">
-      <span v-if="pending" class="nil">pattern?</span>
-      <span v-else-if="value === null" class="sym">unsorted</span>
-      <span v-else class="biz">{{ value }}</span>
-      <span class="sym caret">▾</span>
+      <span v-if="pending" class="ann-nil">pattern?</span>
+      <span v-else-if="value === null" class="ann-sym">unsorted</span>
+      <span v-else class="ann-biz">{{ value }}</span>
+      <span class="ann-sym caret">▾</span>
     </button>
     <div v-if="open" class="menu" :data-testid="`${tid}-menu`">
       <button v-for="p in names" :key="p" type="button" :class="['opt', { on: p === value }]"
-              :data-testid="`${tid}-option`" :data-name="p" @click="pick(p)"><span class="biz">{{ p }}</span></button>
+              :data-testid="`${tid}-option`" :data-name="p" @click="pick(p)"><span class="ann-biz">{{ p }}</span></button>
       <button type="button" :class="['opt', { on: value === null && !pending }]" :data-testid="`${tid}-unsorted`"
               title="unsorted: pattern not chosen yet; n = unsorted samples on all charts" @click="pick(null)">
-        <span class="sym">unsorted · {{ unsorted }}</span>
+        <span class="ann-sym">unsorted · {{ unsorted }}</span>
       </button>
       <div v-if="adding" class="opt">
         <input ref="input" v-model="draft" class="ann-input" :data-testid="`${tid}-new-input`"
@@ -20,7 +20,7 @@
                @keydown.enter.prevent="addNew" @keydown.esc.stop.prevent="adding = false" />
       </div>
       <button v-else type="button" class="opt" :data-testid="`${tid}-new`" title="new pattern" @click="startAdd">
-        <span class="sym">+ new</span>
+        <span class="ann-sym">+ new</span>
       </button>
     </div>
   </div>
@@ -89,10 +89,7 @@ onBeforeUnmount(() => document.removeEventListener('mousedown', onDocDown, true)
   display: inline-flex; align-items: center; gap: 4px; padding: 1px 6px;
   border: 1px solid var(--line-strong); border-radius: 3px; background: #fff; cursor: pointer;
 }
-.sym, .nil { font-family: var(--mono); font-size: 12px; color: var(--ink); }
-.nil { color: var(--ink-empty); }
 .caret { font-size: 10px; }
-.biz { font-size: 13px; color: var(--ink); background: var(--chip-bg); padding: 0 4px; border-radius: 3px; }
 .menu {
   position: absolute; top: 100%; left: 0; z-index: 60; margin-top: 2px; min-width: 140px;
   display: flex; flex-direction: column; gap: 2px; padding: 4px;
