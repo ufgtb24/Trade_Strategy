@@ -17,6 +17,7 @@
 import { currentMemberBoxes, memberTree, skeleton, type TreeNode } from './membership'
 import { attrState, daysFor, sampleOrder, type AnnBox, type AnnChart, type AnnSample, type AnnState, type AttrState } from './model'
 import { precedence, sampleRange } from './samples'
+import { shiftDays } from './viewWindow'
 import type { ViewWindow } from '../types'
 
 /** 一个样本连同它所在的图。 */
@@ -253,12 +254,6 @@ export function partCount(k: CountKey, p: Part): string {
 }
 
 // ── 打开样本 ─────────────────────────────────────────────────────────
-
-const shiftDays = (d: string, n: number) => {
-  const t = new Date(`${d}T00:00:00Z`)
-  t.setUTCDate(t.getUTCDate() + n)
-  return t.toISOString().slice(0, 10)
-}
 
 /** 打开样本时的图窗:样本的跨度(成员框最早的起点到样本日)前后各留约两个月(按日历日)。 */
 export function sampleWindow(x: ChartSample): ViewWindow {

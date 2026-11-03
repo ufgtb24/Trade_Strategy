@@ -20,6 +20,7 @@
  * - 手动点进点出(样本页的成员链与 others、框页的 member_of)永远算数:直接改存下的成员框并记 members_edited;
  *   本页还记住点过的,当前样本重算推断时不会把点掉的框又收回来。跨过样本日的框收不进。
  * - 当前 pattern(顶栏 pattern 一格)记在浏览器里,刷新后还在;null 为 unsorted。
+ * - 按编号打开样本(openSample):打开它所在的图并选中它,不换当前 pattern。
  *
  * 归组与 pattern 页(派生量见 annotate/grouping.ts):
  * - unsorted 页整行 move:同一批改这一行全部样本的 pattern(名字是新的就同一批新建);
@@ -32,7 +33,7 @@
  * 冲突提示一次:读结果里每条冲突以 later.ref 为准,看过的记在浏览器里,之后不再弹出。
  */
 import { defineStore } from 'pinia'
-import { computed, ref, shallowRef } from 'vue'
+import { computed, nextTick, ref, shallowRef } from 'vue'
 import { AnnotationSaveError, getAnnotations, postAnnotationBatch } from '../api'
 import {
   applyOps, baseOf, boxValue, chartOf, featureByName, featureValue, findBox, findSample, mergePlan, mergeRecords,
@@ -41,6 +42,8 @@ import {
 } from '../annotate/model'
 import { sampleMembers } from '../annotate/membership'
 import { memberIds } from '../annotate/samples'
+import { sampleWindow } from '../annotate/grouping'
+import { useViewStore } from './view'
 
 /** 一个动作:拿到读结果,给出要保存的这一批操作(没什么要改时给空数组)。 */
 export type Intent = (r: AnnRead) => AnnOp[]
@@ -542,6 +545,19 @@ export const useAnnotationStore = defineStore('annotation', () => {
     }
   }
 
+  /**
+   * 按编号找样本,打开它所在的图(图窗停在样本的跨度上)并选中它;找不到返回 false。
+   * 样本链接(stores/directLinks.ts)和 pattern 页的样本卡都走这一处。keepTab 同 selectSample。
+   */
+  async function openSample(id: string, opts: { keepTab?: boolean } = {}): Promise<boolean> {
+    const hit = state.value ? findSample(state.value, id) : null
+    if (!hit) return false
+    useViewStore().openSymbol(hit.chart.symbol, sampleWindow(hit))
+    await nextTick()               // 换图会清掉选中(KlineChart 的 symbol 监听),等它跑完再选中
+    selectSample(id, opts)
+    return true
+  }
+
   /** 点空白处、Esc、换图:什么都不选,当前样本也清掉(冻结)。 */
   function clearSelection(): void {
     selectBox(null)
@@ -569,6 +585,6 @@ export const useAnnotationStore = defineStore('annotation', () => {
     toggleBoxParent, setDefinition, renameFeature, previewMerge, applyMerge, unmerge, selectBox,
     placeSample, toggleMember, setJudgment, setSampleNote, setSamplePattern, moveSamples, setPatternDefinition,
     deleteSample, setCurrentPattern,
-    selectSample, clearSelection, ackConflicts, setDays,
+    selectSample, openSample, clearSelection, ackConflicts, setDays,
   }
 })
