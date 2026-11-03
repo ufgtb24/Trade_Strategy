@@ -167,7 +167,7 @@ import { computed, ref, shallowRef, watch } from 'vue'
 import type {
   MultiScanResultFile, StockResult, PerPatternResult,
   MatchDict, EventDict, Tier, Diagnostics, Level, SerializedPattern, Analysis, ScanMeta,
-  TimeScopeResponse, PairScopeResponse, WorkingCopySlot,
+  TimeScopeResponse, PairScopeResponse, WorkingCopySlot, ViewWindow,
 } from '../types'
 import { deriveNodeColors } from '../render/colors'
 import {
@@ -242,6 +242,9 @@ export const useViewStore = defineStore('view', () => {
   const mode = ref<ViewMode>('annotate')
   const annotating = computed(() => mode.value === 'annotate')
   const symbol = ref<string | null>(null)
+  // annotate 下打开时图停在哪段(rally / random 进来时给);null = 按默认缩放(整只股票)。
+  // 每次 openSymbol 都换一个新对象:同一只股票换一段也能触发重画
+  const viewWindow = ref<ViewWindow | null>(null)
   const activePatternId = ref<string | null>(null)
   const sortByPid = ref<string | null>(null)
   const sortDesc = ref(true)
@@ -650,11 +653,12 @@ export const useViewStore = defineStore('view', () => {
     resetChartState()
     if (previewEnabled.value) void runPreview()
   }
-  /** 按代码打开(顶栏 symbol):落在 annotate,不跑 app、不动扫描与 activePatternId。
-   *  代码是否存在由调用方先对股票列表核过。 */
-  function openSymbol(s: string) {
+  /** 按代码打开(顶栏 symbol、rally、random):落在 annotate,不跑 app、不动扫描与 activePatternId。
+   *  window 给了就让图停在那段上,不给按默认缩放。代码是否存在由调用方先核过。 */
+  function openSymbol(s: string, window: ViewWindow | null = null) {
     mode.value = 'annotate'
     symbol.value = s
+    viewWindow.value = window ? { start: window.start, end: window.end } : null
     resetChartState()
   }
   function setActivePattern(pid: string) {
@@ -1126,7 +1130,7 @@ export const useViewStore = defineStore('view', () => {
     effectivePattern, effectiveAnalysis, effectiveScan,
     unionRows, sortedRows, filteredSortedRows, previewListRow, patternHitCounts,
     nodeColors, selectedMatchId, selectedMatch, tagMap, isolated, matchedIds, matchedEventIds, qualifiedIds,
-    mode, annotating, openSymbol,
+    mode, annotating, openSymbol, viewWindow,
     loadScanFile, clearScanFile, setCurrentScanName, currentScanName, selectSymbol, setActivePattern, setSort,
     toggleNode, toggleExpandedNode,
     focusMatch, focusEvent, clearFocus,

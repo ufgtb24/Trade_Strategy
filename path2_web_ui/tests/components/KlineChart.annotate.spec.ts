@@ -80,6 +80,25 @@ describe('KlineChart · annotate', () => {
     expect(view.toastMsg).toBe('DOWN: load_failed')
   })
 
+  it('打开时给了图窗:停在那段上;同一只股票换一段也重画;不给图窗按默认缩放(整只股票)', async () => {
+    const view = useViewStore()
+    mount(KlineChart)
+    await flushPromises()
+    const zoomOf = () => {
+      const opt = charts[0].setOption.mock.calls.filter((c: any[]) => c[1] === true).at(-1)[0]
+      return { start: opt.dataZoom[0].start, end: opt.dataZoom[0].end }
+    }
+    view.openSymbol('AAPL', { start: '2025-12-11', end: '2025-12-20' })   // 第 10..19 根(共 30 根)
+    await flushPromises()
+    expect(zoomOf()).toEqual({ start: (10 / 30) * 100, end: (20 / 30) * 100 })
+    view.openSymbol('AAPL', { start: '2025-12-01', end: '2025-12-03' })
+    await flushPromises()
+    expect(zoomOf()).toEqual({ start: 0, end: 10 })
+    view.openSymbol('AAPL')
+    await flushPromises()
+    expect(zoomOf()).toEqual({ start: 0, end: 100 })
+  })
+
   it('连续换股:只认最后一次请求的 K 线', async () => {
     let resolveSlow: (v: any) => void = () => {}
     vi.mocked(api.getAllOhlc)
