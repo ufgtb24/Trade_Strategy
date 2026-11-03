@@ -61,7 +61,7 @@ describe('特征轨', () => {
     expect(laneAt(geom, geom[1].top + 1)).toBe(1)
     expect(laneAt(geom, 0)).toBe(-1)
   })
-  it('option:每个框一行数据、选中的标出来;子框轨标题写成「名 ⊂ 父名」;拖动不平移', () => {
+  it('option:每个框一行数据、选中的标出来;子框轨标题写成「名 ⊂ 父名」;拖动不平移;一端在图窗外的框照画', () => {
     const { geom } = laneGeometry(lanes)
     const names: Record<string, string> = { w1: '横盘', w2: '缩量' }
     const opt: any = buildAnnotateSubOption(DATES.map(date => ({ date } as any)), {
@@ -74,6 +74,7 @@ describe('特征轨', () => {
     const titles = opt.graphic.filter((g: any) => g.type === 'text').map((g: any) => g.style.text)
     expect(titles).toEqual(['{biz|横盘}', '{biz|缩量}{sym| ⊂ }{biz|横盘}'])
     expect(opt.dataZoom[0].moveOnMouseMove).toBe(false)
+    expect(opt.dataZoom[0].filterMode).toBe('weakFilter')
     const api = { size: () => [10], coord: ([i]: number[]) => [i * 10 + 5], value: (k: number) => rows[1][k] }
     const el = opt.series[0].renderItem({ dataIndex: 1 }, api).children[0]
     expect(el.shape.x).toBe(10)

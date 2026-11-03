@@ -584,6 +584,9 @@ function renderBarsOnly(forceResetZoom: boolean) {
   const mainOpt = buildMainOption(bars.value, emptyEventBundle(bars.value), input,
                                   { getChartEl: () => mainEl.value, height: chartMain.getHeight() }) as any
   mainOpt.dataZoom[0].moveOnMouseMove = false
+  // 主图上的标注层(选中的框、样本日之后暗一档)是一段:只要有一端在图窗里、或横跨整个图窗就照画。
+  // 默认的 filter 要两端都在图窗里,图窗没拉到最后一根时「暗一档」整条消失;K 线、成交量只有一个 x,两种筛法一样
+  for (const dz of mainOpt.dataZoom) dz.filterMode = 'weakFilter'
   // 滑块贴底,放在日期刻度下面(按百分比放会在高的窗口里压住成交量带)
   const slider = mainOpt.dataZoom[1]
   delete slider.top

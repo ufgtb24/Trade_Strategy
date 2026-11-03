@@ -59,6 +59,13 @@ async function laneTitles(page: Page): Promise<string[]> {
   return ls.filter(l => FEATURES.includes(l.text)).sort((a, b) => a.y - b.y).map(l => l.text)
 }
 
+/** 图上某个系列眼下真正画出的项数(经图窗筛过之后)。 */
+const drawn = (page: Page, which: 'main' | 'sub', name: string) => page.evaluate(([w, n]) => {
+  const e2e = (window as any).__e2e
+  const s = (w === 'main' ? e2e.chartMain() : e2e.chartSub()).getModel().getSeriesByName(n)[0]
+  return s ? s.getData().count() : -1
+}, [which, name] as const)
+
 async function openCard(page: Page, symbol: string, date: string, card?: Locator) {
   const c = card ?? page.locator('[data-testid="sample-card"]', { hasText: `${symbol}` }).filter({ hasText: date }).first()
   await c.click()
@@ -167,6 +174,10 @@ test.describe('归组与 pattern 页', () => {
     await expect(negRow.getByTestId('row-pending')).toHaveAttribute('title', 'pick the pattern it looks like')
     // 打开这一行的样本:当前 pattern 是 unsorted,W底 的样本、它的 bracket、只被它收进的框画淡
     await openCard(page, 'AAPL', '2024-09-09', negRow.getByTestId('sample-card'))
+    // 图窗左边切过 W底 那个负样本的跨度(2024-05-01 – 06-17):它的 bracket 照样画(画淡),不因起点在图窗外整条消失;
+    // 图窗右边没到最后一根:样本日之后暗一档照样画
+    await expect.poll(() => drawn(page, 'sub', 'annotation-brackets')).toBe(2)
+    await expect.poll(() => drawn(page, 'main', 'annotation-after-dim')).toBe(1)
     await page.screenshot({ path: testInfo.outputPath('03-unsorted-page.png'), fullPage: true })
     await page.getByTestId('annotation-sidebar').screenshot({ path: testInfo.outputPath('03b-unsorted-sidebar.png') })
 

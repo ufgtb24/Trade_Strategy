@@ -251,9 +251,11 @@ export function buildAnnotateSubOption(bars: Bar[], d: LaneDraw): unknown {
       axisPointer: { show: true, type: 'none', snap: true, label: { show: false }, triggerTooltip: false },
     }],
     yAxis: [{ type: 'value', gridIndex: 0, show: false, min: 0, max: 1 }],
-    // 拖动留给画框和改起止;滚轮照常缩放(和主图同步)
+    // 拖动留给画框和改起止;滚轮照常缩放(和主图同步)。
+    // weakFilter:框、bracket 是一段(起止两个 x),只要有一端在图窗里、或横跨整个图窗就照画(画到图窗边为止);
+    // 默认的 filter 要两端都在图窗里,起点在图窗左边外的框和 bracket 会整条消失
     dataZoom: [{ type: 'inside', xAxisIndex: 0, start: d.zoom?.start ?? 0, end: d.zoom?.end ?? 100,
-                 moveOnMouseMove: false }],
+                 moveOnMouseMove: false, filterMode: 'weakFilter' }],
     series: [{
       type: 'custom', name: 'annotation-boxes', xAxisIndex: 0, yAxisIndex: 0, clip: true,
       data: rows, encode: { x: [0, 1] }, z: 10,
