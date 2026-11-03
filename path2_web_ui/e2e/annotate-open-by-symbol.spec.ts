@@ -47,10 +47,11 @@ async function ensureScan(request: APIRequestContext) {
   await expect.poll(async () => (await list()).length, { timeout: 240_000 }).toBeGreaterThan(0)
 }
 
-/** 副图上 app 的系列个数。annotate 下副图是用户的特征轨,只有用户的框(annotation-boxes),它不算 app 的产物。 */
+/** 副图上 app 的系列个数。annotate 下副图是用户的特征轨,只有用户的框(annotation-boxes)和样本的跨度
+ *  (annotation-brackets),它们不算 app 的产物。 */
 async function subSeriesCount(page: Page): Promise<number> {
   return page.evaluate(() => ((window as any).__e2e.chartSub().getOption()?.series ?? [])
-    .filter((s: any) => s.name !== 'annotation-boxes').length)
+    .filter((s: any) => !['annotation-boxes', 'annotation-brackets'].includes(s.name)).length)
 }
 
 test.describe('按代码打开 · annotate', () => {

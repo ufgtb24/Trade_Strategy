@@ -189,7 +189,7 @@ test.describe('放样本与成员框', () => {
     await settled(page)
     expect(samplesOf(await annState(page), A).find((s: any) => s.id === sid).members).toEqual([b1, b2, b4])
     // b3:跨过 W底 样本的样本日(灰、点不了);被 unsorted 样本收进(只读)
-    await page.mouse.click(await xOf(page, n - 30, 'sub'), (await laneY(page, '横盘')) + 18)
+    await page.mouse.click(await xOf(page, n - 30, 'sub'), await laneY(page, '横盘'))
     await expect(page.getByTestId('box-span')).toHaveText(`${dates[n - 35]} – ${dates[n - 25]}`)
     await expect(page.getByTestId(`member-of-${sid}`)).toHaveAttribute('data-state', 'crosses')
     await expect(page.getByTestId(`member-of-${sid}`)).toBeDisabled()
