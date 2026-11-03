@@ -203,6 +203,7 @@ test.describe('放样本与成员框', () => {
     await page.getByTestId('sample-judgment-neg').click()
     await expect(page.getByTestId('sample-pattern-button')).toContainText('pattern?')   // 负样本挂在 unsorted:待选
     await settled(page)
+    await pickPattern(page, null)                         // 当前 pattern 换成 unsorted:空心三角不画淡,实心的画淡
     await page.screenshot({ path: testInfo.outputPath('05-neg-sample.png'), fullPage: true })
     await page.getByTestId('sample-delete').click()
     await settled(page)
