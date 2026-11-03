@@ -5,7 +5,7 @@ import { packByBand, packBrackets } from './geometry'
 import { isBandVisible, renderGridOf, splitIntervalAtScanEnd, subBandTagList } from './visible'
 import { ctrlState } from './ctrlState'
 import { derivePeakStates, peakIdIndex } from './peakState'
-import { nextStarts, tierTagOf, tierTagShape, TIER_TAG_TIP, type TierTagText } from './tierTags'
+import { nextStarts, tierTagLimit, tierTagOf, tierTagShape, TIER_TAG_TIP, type TierTagText } from './tierTags'
 import {
   BAND_TOP_PAD,
   BAND_BOT_PAD,
@@ -108,7 +108,7 @@ export interface BandRenderInput {
   matches?: MatchDict[]  // buildSubOption 的 markerTooltip formatter 用（自 KlineChart.vue 透传）
   // ── 副图 band 竖直 zoom(spec 2026-07-03):由 KlineChart 传入,default 1.0 ──────
   zoomFactor?: number
-  // ── 顶栏 tiers 开关(spec 5.2):副图 band 右端挂不挂 qualified_only / detected_only(render/tierTags.ts);缺省不挂 ──
+  // ── 顶栏 tiers 开关(spec 5.2):副图 event 条右端挂不挂 qualified_only / detected_only(render/tierTags.ts);缺省不挂 ──
   tiers?: boolean
 }
 
@@ -124,7 +124,7 @@ export interface EventBundle {
   // ── spec 2026-07-11: shift+click 累积器命中 marker 的白蒙+黑线 overlay 数据 ──
   veilData: any[]         // 副图 point + interval
   veilPriceData: any[]    // 主图 pricePoint
-  // 副图 band 上的 tier tag:{ value: [start, end, lane, band, 同一行下一个的起点(-1 = 没有)], text, point }
+  // 副图 event 条右端的 tier tag:{ value: [start, end, lane, band, 同一行下一个的起点(-1 = 没有)], text, point }
   tierTagData: { value: number[]; text: TierTagText; point: boolean }[]
   candle: number[][]
   volume: number[]
@@ -758,7 +758,7 @@ export function buildSubOption(
   }
 }
 
-/** 副图 band 右端的 tier tag:和 band 同一 lane 同高,压到同一行下一个 band 或伸出图右缘时不画。 */
+/** 副图 event 条右端的 tier tag:和条同一 lane 同高,压到同一行下一个条或伸出图右缘时不画。 */
 export function makeRenderTierTag(data: EventBundle['tierTagData'], bandGeom: BandGeom[], zoomFactor = 1.0) {
   return (params: any, api: any) => {
     const d = data[params.dataIndex]
@@ -768,12 +768,10 @@ export function makeRenderTierTag(data: EventBundle['tierTagData'], bandGeom: Ba
     const y = Math.max(g.top + BAND_TOP_PAD,
       Math.min(g.top + BAND_TOP_PAD + (api.value(2) || 0) * (laneH + BAND_LANE_GAP * zoomFactor), g.top + g.h - BAND_BOT_PAD - laneH))
     const unitW = api.size([1, 0])[0]
-    // 区段 band 画到终点那根的中心;点事件是以那根为中心的三角(半宽同 renderPointWithGeom)
+    // 区段事件的条画到终点那根的中心;点事件是以那根为中心的三角(半宽同 renderPointWithGeom)
     const right = api.coord([api.value(1), 0])[0] + (d.point ? Math.max(5, Math.min(20, unitW * 0.35)) : 0)
-    const cs = params.coordSys
-    const next = api.value(4)
-    const limit = Math.min(cs.x + cs.width, next >= 0 ? api.coord([next, 0])[0] - unitW / 2 : Infinity)
-    return tierTagShape(d.text, right, y, laneH, limit) ?? { type: 'group', children: [] }
+    return tierTagShape(d.text, right, y, laneH, tierTagLimit(api, params.coordSys, api.value(4)))
+      ?? { type: 'group', children: [] }
   }
 }
 

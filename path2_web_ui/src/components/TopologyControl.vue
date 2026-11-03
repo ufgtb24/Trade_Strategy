@@ -94,7 +94,7 @@ import type { TopoNode, NodesScopeResponse, WhereRule } from '../types'
 
 const emit = defineEmits<{ (e: 'hover-node', nodeId: string | null): void }>()
 const view = useViewStore()
-const { effectivePattern, nodeColors, nodeVisible, symbol, appId, appWindow } = storeToRefs(view)
+const { effectivePattern, nodeColors, nodeVisible, symbol, appId } = storeToRefs(view)
 
 const EMPTY: TopoLayout = { nodes: [], edges: [], parentEdges: [], width: 0, height: 0 }
 const layout = computed<TopoLayout>(() =>
@@ -163,7 +163,7 @@ async function handleEdgeClick(src: string, dst: string) {
   activeNodesEdge.value = { src, dst }
   nodesResponse.value = null
   nodesError.value = null
-  const w = appWindow.value
+  const w = view.appWindowOf()
   if (!symbol.value || !appId.value || !w) {
     nodesError.value = '缺 symbol/pattern/窗口,无法查询'
     return

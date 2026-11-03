@@ -312,7 +312,7 @@ def build_router(*, registry, config_path, get_config, set_config,
 
     @router.get("/mappings")
     def get_mappings():
-        """第一段 compare 用的 mapping 文件(path2_apps/<app>/mapping.yaml,格式见 path2_web/mapping.py):
+        """compare 用的 mapping 文件(path2_apps/<app>/mapping.yaml,格式见 path2_web/mapping.py):
         [{app, pattern, features: {特征编号: node_id}, problem}],problem 为 null 才能用。每次请求都重读文件。"""
         return read_mappings(registry)
 

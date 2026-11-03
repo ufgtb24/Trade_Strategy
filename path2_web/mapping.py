@@ -1,5 +1,5 @@
-"""第一段 compare 用的 mapping 文件(暂行):会话为验证 V-S1 手工写,说明一个标注里的 pattern 用哪个 app、
-app 的哪个 node 认用户的哪个特征。第二段的正式 mapping(还要写每个特征的级、where 与否定边)会取代它。
+"""compare 用的 mapping 文件(暂行的最小形式):会话为验证 V-S1 手工写,说明一个标注里的 pattern 用哪个 app、
+app 的哪个 node 认用户的哪个特征。只有这两样,不写特征的级。
 
 为什么放在 app 目录里
 --------------------
@@ -10,7 +10,7 @@ mapping 随 app 进 git,不进标注文件:标注文件只由工具写,会话不
 `path2_apps/<app>/mapping.yaml`,和这个 app 的 `dag_spec.py` 在同一个目录。有这个文件,这个 app 就是文件里
 那个 pattern 的 app;一个 app 最多对一个 pattern。
 
-    # 第一段 compare 用的 mapping(暂行)
+    # compare 用的 mapping(暂行)
     pattern: 放量突破          # 标注里的 pattern 名,和顶栏 pattern 下拉里的一字不差
     features:                 # 特征编号: 认它的 node(app 的 node_id)
       w-pc-3: bo

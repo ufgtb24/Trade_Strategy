@@ -128,7 +128,7 @@ const { symbol, effectiveAnalysis, nodeColors, nodeVisible, level, tagMap, isola
 // annotate 不画任何 app 产物,compare 把当前 pattern 的 app 的输出叠到特征轨和 bracket 轨上(render/compareOverlay.ts)。
 // wholeChart:图是这只股票截到训练段末日的全部 K 线(annotate、compare、现算的 app);扫描结果的 app 只画扫描窗口
 const wholeChart = computed(() => mode.value !== 'app' || linkedView.value)
-const links = useAppLinkStore()
+const appLink = useAppLinkStore()
 const panels = usePanelsStore()
 const { showSlider, subHeightOffset } = storeToRefs(panels)
 
@@ -161,16 +161,16 @@ const baseLanes = computed(() => {
   return chart ? computeLanes(chart.boxes, (f) => ann.nameOf(f) ?? f, annDates.value, annOrder.value) : []
 })
 // compare:mapping 对到特征的 node 的 event 叠到那条特征轨上(没有框的特征另起一条),hit 叠到 bracket 轨上
-const cmp = computed(() => {
+const overlay = computed(() => {
   const a = comparing.value ? effectiveAnalysis.value : null
-  const features = links.link?.features
+  const features = appLink.mapping?.features
   if (!a || !features) return null
   const untiered = new Set((effectivePattern.value?.topology.nodes ?? []).filter(n => n.solve === false).map(n => n.node_id))
   const { lanes, app } = compareLanes(baseLanes.value, features, a.events, (e) => view.eventTier(e),
                                       (fid) => ann.featureById.has(fid), untiered)
   return { lanes, app, hits: packHits(a.matches) }
 })
-const annLanes = computed(() => cmp.value?.lanes ?? baseLanes.value)
+const annLanes = computed(() => overlay.value?.lanes ?? baseLanes.value)
 // 样本:字母(当前 pattern)、选中的样本(在这张图上)、它的空槽、框旁的标记、bracket 轨
 const annLetters = computed(() => sampleLetters(annChart.value, ann.currentPattern))
 const annSelSample = computed(() =>
@@ -188,7 +188,7 @@ const annBracket = computed(() => {
   const { rows, placed } = packBrackets(items, annDates.value)
   // compare:hit 排在样本跨度的那几行下面(没有样本时从第一行起)
   const hitRow0 = placed.length ? rows : 0
-  const hitRows = cmp.value?.hits.rows ?? 0
+  const hitRows = overlay.value?.hits.rows ?? 0
   return { geom: bracketGeometry(Math.max(rows, hitRow0 + hitRows)), placed, hitRow0 }
 })
 const annSampleMarks = computed<SampleMark[]>(() => (annChart.value?.samples ?? []).map(smp => ({
@@ -632,7 +632,7 @@ function renderAnnotateLayers() {
   const { geom, height } = annGeom.value
   subCanvasH.value = height
   const zoom = readZoomOverride()
-  const c = cmp.value
+  const c = overlay.value
   chartSub.setOption(buildAnnotateSubOption(bars.value, {
     lanes: annLanes.value, geom, nameOf: ann.nameOf, selectedId: ann.selectedBoxId,
     preview: preview.value, draft: draft.value, zoom, width: chartSub.getWidth(),
@@ -1045,8 +1045,8 @@ watch([effectiveAnalysis, nodeVisible, level, nodeColors, focusedInstanceRef, di
 
 // annotate:框、词表、选中、拖动中的样子变了 → 只重画标注的两层;compare 下叠的 app 输出、tiers 变了也一样
 watch(() => [ann.view, ann.selectedBoxId, ann.selectedSampleId, ann.currentSampleId, ann.currentPattern,
-             draft.value, preview.value, cmp.value, tiers.value], () => renderAnnotateLayers())
-// app:tiers 开关只动副图 band 右端的签
+             draft.value, preview.value, overlay.value, tiers.value], () => renderAnnotateLayers())
+// app:tiers 开关只动副图 event 条右端的 tier tag
 watch(tiers, () => { if (!annotating.value) render(false) })
 watch(shownPeaks, () => renderRefLayers())
 // 换图:拖到一半的手势作废,选中的框或样本(在原来那张图上)清掉,当前样本也清掉(冻结)

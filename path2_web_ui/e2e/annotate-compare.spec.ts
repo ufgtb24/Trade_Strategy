@@ -10,7 +10,8 @@ import { REPO, TRAIN_END, lanes, routeTo, startBackend, stopBackend, type Backen
  *    app 的每个 event 出现在它对的那个特征的轨上、每个 hit 出现在 bracket 轨上,数目与后端 /preview 给的一致;
  *    图上没有任何对照 tag;app 的全部输出都落在截到 2025-12-31 的 K 线里;参照层 peaks 在 compare 下照样能开。
  *    再切到 app:按 node 分轨的主视图画法,参照层自动关。
- * 2. compare 下从 pattern 页的样本卡换股票,不退出 compare;从代码输入、random、rally、链接进来都落在 annotate。
+ * 2. compare 下换股票不退出 compare:pattern 页的样本卡、代码输入、random、rally 都留在 compare,app 对新股票重跑;
+ *    链接一律落在 annotate。从扫描结果的 app 出发用 rally、random 落在 annotate,由 e2e/annotate-rally-random.spec.ts 验。
  *
  * 标注用 tests/path2_web/fixtures/annotation_grouping_v1 的例子批次(指纹换成测试后端本机副本的),写在临时目录里。
  * 整页截图挂在测试结果里(compare-*.png、app-*.png)。
@@ -154,7 +155,7 @@ test.describe('compare / app 叠画(bo_only + 手写 mapping)', () => {
     // app:按 node 分轨的主视图画法,app 名、档位与 tiers 都在;hit 画成主视图的 bracket
     await page.getByTestId('mode-app').click()
     await expect.poll(() => view(page, 'mode')).toBe('app')
-    await expect(page.getByTestId('linked-app-label')).toHaveText('bo_only')
+    await expect(page.getByTestId('linked-app')).toHaveText('bo_only')
     await expect(page.getByTestId('level-control')).toBeVisible()
     await expect(page.getByTestId('tiers')).toBeEnabled()
     await expect(box).not.toBeChecked()                                    // 参照层切到 app 自动关、不能勾
@@ -164,7 +165,7 @@ test.describe('compare / app 叠画(bo_only + 手写 mapping)', () => {
     await page.unrouteAll({ behavior: 'ignoreErrors' })
   })
 
-  test('compare 下从样本卡换股票不退出 compare;代码输入、random、rally、链接进来落在 annotate', async ({ page }, testInfo) => {
+  test('compare 下用样本卡、代码输入、random、rally 换股票不退出 compare;链接进来落在 annotate', async ({ page }, testInfo) => {
     await routeTo(page, backend!)
     await page.goto('/#sample=s-pc-11')
     await waitChart(page, 'AAPL')
@@ -181,22 +182,25 @@ test.describe('compare / app 叠画(bo_only + 手写 mapping)', () => {
     await expect.poll(async () => (await subRows(page, 'compare-events'))?.length ?? -1).toBe(out.events.length)
     await page.screenshot({ path: testInfo.outputPath('compare-MSFT-from-sample-card.png'), fullPage: true })
 
-    // 代码输入
+    // 代码输入、random、rally:换了股票,仍在 compare,app 对新股票重跑
     await page.getByTestId('symbol-input').fill('NVDA')
     await page.getByTestId('symbol-input').press('Enter')
     await waitChart(page, 'NVDA')
-    await expect.poll(() => view(page, 'mode')).toBe('annotate')
-    // random
-    await enterCompare(page)
+    expect(await view(page, 'mode')).toBe('compare')
+    await expect.poll(() => runSymbol(page), { timeout: 60_000 }).toBe('NVDA')
     await page.getByTestId('random-button').click()
-    await expect.poll(() => view(page, 'mode'), { timeout: 120_000 }).toBe('annotate')
-    // rally
-    await enterCompare(page)
+    await expect.poll(() => view(page, 'symbol'), { timeout: 120_000 }).not.toBe('NVDA')
+    expect(await view(page, 'mode')).toBe('compare')
+    await expect.poll(async () => runSymbol(page), { timeout: 60_000 }).toBe(await view(page, 'symbol'))
     await page.getByTestId('rally-button').click()
     await expect(page.getByTestId('rally-row').first()).toBeVisible({ timeout: 300_000 })
-    await page.getByTestId('rally-row').first().click()
-    await expect.poll(() => view(page, 'mode')).toBe('annotate')
-    // 两种链接
+    const before = await view(page, 'symbol')
+    const row = page.locator(`[data-testid="rally-row"]:not([data-symbol="${before}"])`).first()
+    await row.click()
+    await expect.poll(() => view(page, 'symbol')).not.toBe(before)
+    expect(await view(page, 'mode')).toBe('compare')
+    await expect.poll(async () => runSymbol(page), { timeout: 60_000 }).toBe(await view(page, 'symbol'))
+    // 两种链接:落在 annotate
     for (const link of ['#symbol=AAPL&date=2024-03-11', '#sample=s-pc-21']) {
       await enterCompare(page)
       await page.evaluate(h => { location.hash = h }, link)

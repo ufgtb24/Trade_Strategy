@@ -13,10 +13,8 @@
           :title="opt.title"
           @click="view.setLevel(opt.value)"
         >{{ opt.label }}</button>
-        <!-- 现算的 app(顶栏切过来的):画的是当前 pattern 的 app,扫描的 pattern 选择与参数副本不适用 -->
-        <span v-if="linkedView" class="linked-app" data-testid="linked-app-label"
-              title="output of the app of the current pattern, run on this symbol">{{ view.appId ?? '' }}</span>
-        <template v-else>
+        <!-- 现算的 app(顶栏切过来的,app 名写在顶栏):扫描的 pattern 选择与参数副本不适用 -->
+        <template v-if="!linkedView">
           <select :value="view.activePatternId ?? ''"
                   data-role="active-pattern"
                   @change="onActivePatternChange"
@@ -151,7 +149,6 @@ function onActivePatternChange(e: Event) {
 .level-btn.active { background: #4a4aaa; color: #fff; border-color: #6a6acc; }
 
 .active-pattern-select { margin-left: 8px; font-size: 12px; padding: 2px 4px; }
-.linked-app { margin-left: 8px; font-family: var(--mono); font-size: 12px; color: #fff; }
 
 /* Task 12 · 全局 toast:fixed 底部居中,浮在所有面板/弹窗之上 */
 .toast {

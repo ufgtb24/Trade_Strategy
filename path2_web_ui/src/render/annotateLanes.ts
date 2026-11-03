@@ -15,17 +15,17 @@
  * 固定文字,用等宽字体。
  *
  * compare 下(LaneDraw.compare)再叠上当前 pattern 的 app 的输出(哪条轨、哪一行见 render/compareOverlay.ts):
- * - event 画成实心 band(和主视图副图的 band 一样,不描边),颜色按档位:进了 hit 的画 node 本色,qualified 深灰
+ * - event 画成实心的条(和主视图副图的 event 条一样,不描边),颜色按档位:进了 hit 的画 node 本色,qualified 深灰
  *   #9ca3af,detected 浅灰 #d1d5db(render/colors.ts),不套琥珀;压在用户的框下面,框的虚线边照样看得见;
- *   tiers 开着时灰 band 右端挂 tier tag(render/tierTags.ts);
- * - hit 画在 bracket 轨上:app 琥珀 #F2C25C 底、细黑实线边(签一律实线;虚线只表示用户画的);
- * - 悬停只给状态(node、档位、起止),不给实测值和门槛。
+ *   tiers 开着时灰条右端挂 tier tag(render/tierTags.ts);
+ * - hit 画在 bracket 轨上:app 琥珀 #F2C25C 底、细黑实线边(tag 和 app 的东西一律实线;虚线只表示用户画的);
+ * - 悬停只给状态(档位、起止),不给 node(那等于露出 mapping)、实测值和门槛。
  */
 import type { Bar } from '../types'
 import type { AnnBox, Lane } from '../annotate/model'
-import type { CmpHit, CmpLane } from './compareOverlay'
+import type { OverlayHit, OverlayLane } from './compareOverlay'
 import { colorOf } from './colors'
-import { nextStarts, tierTagOf, tierTagShape, tierTagWidth, TIER_TAG_GAP, TIER_TAG_TIP } from './tierTags'
+import { nextStarts, tierTagLimit, tierTagOf, tierTagShape, tierTagWidth, TIER_TAG_GAP, TIER_TAG_TIP } from './tierTags'
 import { triOf, type BoxMark } from '../annotate/samples'
 import { CROSSES_SAMPLE_DATE, UNCLAIMED } from '../annotate/membership'
 import { endIndex, startIndex, type BoxPx } from '../annotate/boxGeometry'
@@ -54,8 +54,8 @@ export const NEG_FILL = '#ffffff'     // 负样本:空心三角(白底黑边)
 export const AFTER_DIM = 'rgba(0,0,0,0.07)'   // 选中样本时样本日之后的 K 线区:暗一档,形状仍看得清
 export const BRACKET_ROW_H = 13       // bracket 轨里一行的高度
 export const BRACKET_BAR_H = 9        // bracket 轨里一条样本跨度的高度
-export const APP_BAR_H = 7            // compare:轨里一个 event 的 band 高(同主视图副图的 band)
-export const APP_ROW_H = 9            // compare:event 块里一行的高度(band + 行间空)
+export const APP_BAR_H = 7            // compare:轨里一个 event 条的高度(同主视图副图的 event 条)
+export const APP_ROW_H = 9            // compare:event 块里一行的高度(条高 + 行间空)
 export const APP_AMBER = '#F2C25C'    // app 琥珀(配色规范的来源轴):compare 下 bracket 轨上 hit 的底色
 export const MONO = 'ui-monospace, "JetBrains Mono", "DejaVu Sans Mono", Consolas, monospace'
 
@@ -166,12 +166,12 @@ export interface LaneDraw {
 /** compare 下叠到图上的 app 输出。 */
 export interface CompareDraw {
   /** 每条轨上叠的 event,和 lanes 按下标对齐 */
-  app: readonly CmpLane[]
+  app: readonly OverlayLane[]
   /** bracket 轨上的 hit;hitRow0 是 hit 的第 0 行在 bracket 轨里排第几行(样本跨度占了前面几行) */
-  hits: readonly CmpHit[]
+  hits: readonly OverlayHit[]
   hitRow0: number
   nodeColors: Record<string, string>
-  /** 顶栏 tiers:灰 band 右端挂不挂 tier tag */
+  /** 顶栏 tiers:灰条右端挂不挂 tier tag */
   tiers: boolean
 }
 
@@ -182,6 +182,7 @@ export function appBarY(g: LaneGeom, rows: number, row: number): { top: number; 
   return { top, bottom: top + APP_BAR_H }
 }
 
+// 悬停里档位的叫法:标注工具一律用 spec 4.3 的新名字,事件三档是 detected / qualified / bound(主视图沿用 matched)
 const TIER_WORD = { matched: 'bound', qualified: 'qualified', detected: 'detected' } as const
 
 /** 轨标题:特征名(浅灰底)、子框轨写成「缩量 ⊂ 横盘」,还没起名的轨写 unnamed。 */
@@ -362,7 +363,7 @@ export function buildAnnotateSubOption(bars: Bar[], d: LaneDraw): unknown {
   }
 }
 
-/** compare 的三个系列:轨上的 event(压在框下)、灰 band 右端的 tier tag(压在框上)、bracket 轨上的 hit。 */
+/** compare 的三个系列:轨上的 event(压在框下)、灰条右端的 tier tag(压在框上)、bracket 轨上的 hit。 */
 function buildCompareSeries(dates: readonly string[], d: LaneDraw): any[] {
   const c = d.compare
   if (!c || !dates.length) return []
@@ -378,7 +379,7 @@ function buildCompareSeries(dates: readonly string[], d: LaneDraw): any[] {
       items.push({
         key: `${i}:${e.row}`, start: e.start, end: e.end, top: appBarY(g, la.rows, e.row).top, boxes,
         color: colorOf(e.tier, e.node, c.nodeColors), tag: e.tiered ? tierTagOf(e.tier) : null,
-        tip: `${e.node} · ${TIER_WORD[e.tier]}<br>${dates[e.start] ?? e.start} – ${dates[e.end] ?? e.end}`,
+        tip: `${TIER_WORD[e.tier]}<br>${dates[e.start] ?? e.start} – ${dates[e.end] ?? e.end}`,
       })
     }
   })
@@ -403,13 +404,10 @@ function buildCompareSeries(dates: readonly string[], d: LaneDraw): any[] {
     renderItem: (p: any, api: any) => {
       const it = items[tagIdx[p.dataIndex]]
       const [, x1] = spanPx(api)
-      const cs = p.coordSys
       const bw = api.size([1, 0])[0]
-      const next = api.value(3)
-      const limit = Math.min(cs.x + cs.width, next >= 0 ? api.coord([next, 0])[0] - bw / 2 : Infinity)
-      const shape = tierTagShape(it.tag!, x1, api.value(2), APP_BAR_H, limit)
+      const shape = tierTagShape(it.tag!, x1, api.value(2), APP_BAR_H, tierTagLimit(api, p.coordSys, api.value(3)))
       if (!shape) return { type: 'group', children: [] }
-      // 签横跨了用户框的竖边(左边或右边)就不挂:框边是用户画的,不能被签盖住
+      // tag 横跨了用户框的竖边(左边或右边)就不挂:框边是用户画的,不能被 tag 盖住
       const [t0, t1] = [x1, x1 + TIER_TAG_GAP * 2 + tierTagWidth(it.tag!)]
       const cuts = it.boxes.some(([bs, be]) => [api.coord([bs, 0])[0] - bw / 2, api.coord([be, 0])[0] + bw / 2]
         .some(edge => edge > t0 && edge < t1))

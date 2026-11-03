@@ -50,16 +50,16 @@ describe('当前 pattern 的 app', () => {
 
   it('恰好一个、没有问题的 mapping 才算有 app;有问题的给出原因;没写 mapping 的没有原因', async () => {
     const { ann, links } = await setup('P')
-    expect(links.link?.app).toBe('bo_only')
+    expect(links.mapping?.app).toBe('bo_only')
     expect(links.available).toBe(true)
     ann.setCurrentPattern('BAD')
-    expect([links.link, links.available]).toEqual([null, false])
+    expect([links.mapping, links.available]).toEqual([null, false])
     expect(links.problem).toBe('bad_app: node not in app bad_app: x')
     ann.setCurrentPattern('DUP')
-    expect(links.link).toBeNull()
+    expect(links.mapping).toBeNull()
     expect(links.problem).toContain('a1: pattern also mapped by app a2')
     ann.setCurrentPattern('NONE')
-    expect([links.link, links.problem]).toEqual([null, null])
+    expect([links.mapping, links.problem]).toEqual([null, null])
   })
 
   it('没打开股票时不可用;没有 app 时切不过去', async () => {
@@ -104,16 +104,17 @@ describe('当前 pattern 的 app', () => {
     expect(api.getPreview).toHaveBeenCalledTimes(2)
   })
 
-  it('compare 下从样本卡换股票:留在 compare,对新股票重跑;代码输入换股票落回 annotate', async () => {
+  it('compare 下换股票:留在 compare,对新股票重跑;别的模式换股票落在 annotate', async () => {
     const { view, links } = await setup('P')
     links.setMode('compare')
     await flushPromises()
-    view.openSymbol('MSFT', null, { keepCompare: true })
+    view.openSymbol('MSFT')
     expect(view.mode).toBe('compare')
     expect(view.effectiveAnalysis).toBeNull()                    // 旧股票的输出不拿来画新股票
     await flushPromises()
     expect(vi.mocked(api.getPreview).mock.calls.at(-1)?.[1]).toBe('MSFT')
     expect(view.effectiveAnalysis).toEqual(ANALYSIS)
+    links.setMode('app')
     view.openSymbol('NVDA')
     expect(view.mode).toBe('annotate')
   })
@@ -134,14 +135,14 @@ describe('当前 pattern 的 app', () => {
     links.setMode('compare')
     await nextTick()
     expect(links.runStatus).toBe('loading')
-    view.openSymbol('MSFT', null, { keepCompare: true })
+    view.openSymbol('MSFT')
     await flushPromises()
     resolveSlow({ analysis: { events: [], matches: [] }, summary: {}, pattern_spec: SPEC,
                   scan: { win_start: 'x', win_end: 'y' } })
     await flushPromises()
     expect(view.linkedRun?.symbol).toBe('MSFT')
     vi.mocked(api.getPreview).mockImplementationOnce(() => Promise.reject(new Error('500')))
-    view.openSymbol('DOWN', null, { keepCompare: true })
+    view.openSymbol('DOWN')
     await flushPromises()
     expect([links.runStatus, view.effectiveAnalysis]).toEqual(['load_failed', null])
   })

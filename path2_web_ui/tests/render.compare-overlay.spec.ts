@@ -99,11 +99,12 @@ describe('compare 的系列', () => {
     expect(s.z).toBeLessThan(series(draw(true), 'annotation-boxes').z)
     const el = s.renderItem({ dataIndex: 0, coordSys: cs }, api(s.data[0]))
     expect([el.shape.x, el.shape.width, el.style.lineDash]).toEqual([10, 30, undefined])   // 实心,和框一样占整根 K 线
-    expect(s.tooltip.formatter({ dataIndex: 0 })).toContain('x · bound')
-    expect(s.tooltip.formatter({ dataIndex: 2 })).toContain('y · detected')
+    expect(s.tooltip.formatter({ dataIndex: 0 })).toContain('bound')        // 档位用 spec 4.3 的名字
+    expect(s.tooltip.formatter({ dataIndex: 2 })).toContain('detected')
+    expect(s.tooltip.formatter({ dataIndex: 0 })).not.toContain('x ·')     // 不写 node(那等于露出 mapping)
   })
 
-  it('tiers 开着:灰 band 右端挂 qualified_only / detected_only,进了 hit 的不挂;关掉就一个都不挂', () => {
+  it('tiers 开着:灰条右端挂 qualified_only / detected_only,进了 hit 的不挂;关掉就一个都不挂', () => {
     const on = series(draw(true), 'compare-tier-tags')
     expect(on.data).toHaveLength(2)
     const tag = on.renderItem({ dataIndex: 1, coordSys: cs }, api(on.data[1]))
@@ -114,10 +115,10 @@ describe('compare 的系列', () => {
   })
 
   it('tier tag 不压用户框的竖边:横跨框边就不挂', () => {
-    // x@2-6 的 band 右端在第 6 根右边(x=70),框 b2 在 w-b 轨上;w-a 轨的框 b1 是第 1..4 根(x 10..50),不挡
+    // x@2-6 的条右端在第 6 根右边(x=70),框 b2 在 w-b 轨上;w-a 轨的框 b1 是第 1..4 根(x 10..50),不挡
     const s = series(draw(true), 'compare-tier-tags')
     expect(s.renderItem({ dataIndex: 0, coordSys: cs }, api(s.data[0])).children).toHaveLength(2)
-    // y@8 在 w-b 轨,框 b2 是第 6..7 根:签从第 8 根右边起,不跨框边 → 挂;把框挪到第 8..10 根,签就跨了右边
+    // y@8 在 w-b 轨,框 b2 是第 6..7 根:tag 从第 8 根右边起,不跨框边 → 挂;把框挪到第 8..10 根,tag 就跨了右边
     const lanes2 = lanes.map((l, i) => (i === 1 ? { ...l, boxes: [{ box: box('b2', 'w-b', DATES[8], DATES[10]), row: 0 }] } : l))
     const opt = buildAnnotateSubOption(DATES.map(date => ({ date } as any)), {
       lanes: lanes2, geom, nameOf: f => f, selectedId: null, preview: null, draft: null, zoom: null, width: 800,
@@ -145,7 +146,7 @@ describe('tier tag', () => {
     expect(nextStarts([{ key: 'a', start: 5, end: 6 }, { key: 'a', start: 0, end: 2 }, { key: 'b', start: 3, end: 3 },
                        { key: 'a', start: 9, end: 9 }])).toEqual([9, 5, -1, -1])
   })
-  it('放不下(碰到下一个 band 或图右缘)不画;放得下贴在 band 右端、和 band 同高居中', () => {
+  it('放不下(碰到下一个条或图右缘)不画;放得下贴在条右端、和条同高居中', () => {
     const w = tierTagWidth('qualified_only')
     expect(tierTagShape('qualified_only', 100, 10, 7, 100 + w)).toBeNull()
     const g = tierTagShape('qualified_only', 100, 10, 7, 1000)
@@ -172,6 +173,6 @@ describe('tier tag', () => {
   })
 })
 
-it('event 块行高与 band 高同主视图副图', () => {
+it('event 块的条高、行高同主视图副图', () => {
   expect([APP_BAR_H, APP_ROW_H]).toEqual([7, 9])
 })

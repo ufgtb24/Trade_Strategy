@@ -1,8 +1,8 @@
 /**
  * 当前 pattern 的 app(spec 5.8):顶栏 mode 的 compare / app 两档靠它。
  *
- * - 哪个 app、哪个 node 认哪个特征:读后端 /mappings(path2_apps/<app>/mapping.yaml,第一段由会话为 V-S1 手工写,
- *   格式见 path2_web/mapping.py)。顶栏当前 pattern 恰好有一个没有问题的 mapping,就算「有 app」(link)。
+ * - 哪个 app、哪个 node 认哪个特征:读后端 /mappings(path2_apps/<app>/mapping.yaml,由会话为 V-S1 手工写,
+ *   格式见 path2_web/mapping.py)。顶栏当前 pattern 恰好有一个没有问题的 mapping,就算「有 app」(mapping)。
  *   页面启动时读一次,之后每次窗口重新拿到焦点再读一次(会话写完 mapping、用户切回浏览器就生效);
  * - compare / app 两档只在有 app、且已经打开了一只股票时可用(available);切到这两档走 view.enterLinked;
  * - 跑 app:在 compare 或从顶栏切到的 app 下,对当前股票走 /preview,区间是这只股票截到训练段末日的全部 K 线
@@ -18,7 +18,7 @@ import { getMappings, getPreview } from '../api'
 import type { AppMapping } from '../types'
 import { TRAIN_END } from '../annotate/directLinks'
 import { useAnnotationStore } from './annotation'
-import { useViewStore } from './view'
+import { useViewStore, type ViewMode } from './view'
 
 /** 跑 app 的区间起点:早于任何行情,后端按日期切片时等于从这只股票的第一根 K 线开始。 */
 export const WHOLE_HISTORY_START = '1900-01-01'
@@ -39,19 +39,19 @@ export const useAppLinkStore = defineStore('appLink', () => {
 
   /** 写了当前 pattern 的 mapping(可能不止一个,也可能有问题)。 */
   const entries = computed(() => (mappings.value ?? []).filter(m => m.pattern === ann.currentPattern))
-  /** 当前 pattern 的 app:恰好一个、没有问题的 mapping;否则 null。 */
-  const link = computed<AppMapping | null>(() =>
+  /** 当前 pattern 的 app 的 mapping:恰好一个、没有问题的;否则 null。 */
+  const mapping = computed<AppMapping | null>(() =>
     entries.value.length === 1 && entries.value[0].problem === null ? entries.value[0] : null)
   /** 写了 mapping 却用不了的原因(悬停提示用);没写 mapping 为 null。 */
   const problem = computed<string | null>(() => {
     const es = entries.value
-    if (!es.length || link.value) return null
+    if (!es.length || mapping.value) return null
     return es.map(m => `${m.app}: ${m.problem}`).join('\n')
   })
-  const available = computed(() => link.value !== null && view.symbol !== null)
+  const available = computed(() => mapping.value !== null && view.symbol !== null)
 
   /** 顶栏 mode:annotate 随时可切;compare / app 要 available。 */
-  function setMode(m: 'annotate' | 'compare' | 'app'): void {
+  function setMode(m: ViewMode): void {
     if (m === 'annotate') { view.enterAnnotate(); return }
     if (available.value) view.enterLinked(m)
   }
@@ -60,7 +60,7 @@ export const useAppLinkStore = defineStore('appLink', () => {
   async function run(): Promise<void> {
     const mine = ++request
     const sym = view.symbol
-    const app = link.value?.app ?? null
+    const app = mapping.value?.app ?? null
     view.setLinkedRun(null)
     if (!view.linkedView || !sym || !app) { runStatus.value = null; return }
     runStatus.value = 'loading'
@@ -75,7 +75,7 @@ export const useAppLinkStore = defineStore('appLink', () => {
   }
 
   // 切进 compare / 现算的 app(从 annotate 或扫描结果过来)、换股票、换 app:重跑;两档之间互切不重跑
-  watch(() => [view.linkedView, view.symbol, link.value?.app ?? null] as const, ([on, sym, app], old) => {
+  watch(() => [view.linkedView, view.symbol, mapping.value?.app ?? null] as const, ([on, sym, app], old) => {
     if (on && old && old[0] && old[1] === sym && old[2] === app) return
     if (on && !app) { view.enterAnnotate(); return }   // 当前 pattern 没有 app 了
     void run()
@@ -84,5 +84,5 @@ export const useAppLinkStore = defineStore('appLink', () => {
   function onFocus() { void load() }
   window.addEventListener('focus', onFocus)
 
-  return { mappings, entries, link, problem, available, runStatus, load, setMode }
+  return { mappings, entries, mapping, problem, available, runStatus, load, setMode }
 })

@@ -261,7 +261,7 @@ export const useViewStore = defineStore('view', () => {
   const comparing = computed(() => mode.value === 'compare')
   const linkedView = computed(() => mode.value === 'compare' || (mode.value === 'app' && appSource.value === 'linked'))
   const linkedRun = shallowRef<LinkedRun | null>(null)
-  // tiers:band 上 qualified_only / detected_only 两种 tier tag 的开关(app、compare 下),默认开,不记在浏览器里
+  // tiers:event 灰条右端 qualified_only / detected_only 两种 tier tag 的开关(app、compare 下),默认开,不记在浏览器里
   const tiers = ref(true)
   const symbol = ref<string | null>(null)
   // annotate 下打开时图停在哪段(rally / random 进来时给);null = 按默认缩放(整只股票)。
@@ -467,42 +467,42 @@ export const useViewStore = defineStore('view', () => {
     return currentPerStock.value?.per_pattern[activePatternId.value]?.analysis ?? null
   })
 
-  // preview-aware effective 三件套(linkedView 下一律取 linkedRun,且只认这只股票的)
-  const _linkedHits = computed(() => linkedView.value && linkedRun.value?.symbol === symbol.value)
+  // preview-aware effective 三件套。linkedView 下一律取 shownRun:现算的输出,且只认这只股票的
+  const shownRun = computed<LinkedRun | null>(() =>
+    linkedView.value && linkedRun.value?.symbol === symbol.value ? linkedRun.value : null)
   const _previewHits = computed(() =>
     !linkedView.value && previewEnabled.value && preview.value
     && preview.value.symbol === symbol.value
-    && preview.value.pattern_spec?.pattern_id === activePatternId.value)   // 回来的预览缺 pattern_spec 时当没命中
+    && preview.value.pattern_spec.pattern_id === activePatternId.value)
 
   const effectivePattern = computed<SerializedPattern | null>(() => {
-    if (linkedView.value) return _linkedHits.value ? linkedRun.value!.pattern_spec : null
+    if (linkedView.value) return shownRun.value?.pattern_spec ?? null
     return _previewHits.value ? preview.value!.pattern_spec : pattern.value
   })
 
   // annotate 模式下恒为 null:图上、侧栏、状态条一律拿不到 app 的产物
   const effectiveAnalysis = computed<Analysis | null>(() => {
     if (mode.value === 'annotate') return null
-    if (linkedView.value) return _linkedHits.value ? linkedRun.value!.analysis : null
+    if (linkedView.value) return shownRun.value?.analysis ?? null
     return _previewHits.value ? preview.value!.analysis : currentAnalysis.value
   })
 
   const effectiveScan = computed<ScanMeta | PreviewResp['scan'] | null>(() => {
-    if (linkedView.value) return _linkedHits.value ? linkedRun.value!.scan : null
+    if (linkedView.value) return shownRun.value?.scan ?? null
     if (_previewHits.value) return preview.value!.scan
     return scanFile.value?.scan ?? null
   })
 
-  // 图上画的是哪个 app 的产物、它的买点 node(eval_meta 的 end_node),以及跑它用的区间(诊断按同一区间跑)
-  const appId = computed<string | null>(() =>
-    linkedView.value ? (_linkedHits.value ? linkedRun.value!.app : null) : activePatternId.value)
-  const endNode = computed<string | null>(() => linkedView.value
-    ? (_linkedHits.value ? linkedRun.value!.scan.end_node ?? null : null)
-    : (activePatternId.value ? scanFile.value?.per_pattern[activePatternId.value]?.end_node ?? null : null))
-  // 区间 = 带缓冲的分析窗口 win_start..win_end(windowOf);缺了(老扫描文件)为 null,诊断与查询都不发
-  const appWindow = computed<{ start: string; end: string } | null>(() => {
+  // 图上画的是哪个 app 的产物、它的买点 node(eval_meta 的 end_node)
+  const appId = computed<string | null>(() => (linkedView.value ? shownRun.value?.app ?? null : activePatternId.value))
+  const endNode = computed<string | null>(() => (linkedView.value
+    ? shownRun.value?.scan.end_node ?? null
+    : (activePatternId.value ? scanFile.value?.per_pattern[activePatternId.value]?.end_node ?? null : null)))
+  /** 跑这个 app 用的区间(带缓冲的分析窗口,windowOf):诊断与入口 A/B/D 的查询按同一区间跑;还没有 app 产物为 null。 */
+  function appWindowOf(): { start: string; end: string } | null {
     const eff = effectiveScan.value
-    return eff?.win_start && eff.win_end && symbol.value && appId.value ? windowOf(eff as any) : null
-  })
+    return eff && symbol.value && appId.value ? windowOf(eff as any) : null
+  }
   // 诊断与入口 A/B/D 的参数覆盖:只有扫描结果的探索态有(linked 一律按 app 的参数文件跑)
   const appParamsOverride = computed<Record<string, any> | undefined>(() =>
     linkedView.value ? undefined : effectiveParamsOverride.value ?? undefined)
@@ -697,11 +697,12 @@ export const useViewStore = defineStore('view', () => {
     resetChartState()
     if (previewEnabled.value) void runPreview()
   }
-  /** 按代码打开(顶栏 symbol、rally、random、链接):落在 annotate,不跑 app、不动扫描与 activePatternId。
-   *  win 给了就让图停在那段上,不给按默认缩放。代码是否存在由调用方先核过。
-   *  keepCompare:在 compare 下换图(pattern 页、unsorted 页上点样本卡)时留在 compare;别的模式照样落在 annotate。 */
-  function openSymbol(s: string, win: ViewWindow | null = null, opts: { keepCompare?: boolean } = {}) {
-    if (!(opts.keepCompare && mode.value === 'compare')) mode.value = 'annotate'
+  /** 按代码打开(顶栏 symbol、rally、random,pattern 页的样本卡,链接):不动扫描与 activePatternId。
+   *  落点:在 compare 下换图留在 compare(决策票 01:换图不退出 compare),别的模式落在 annotate;
+   *  链接跟完一律回到 annotate(stores/directLinks.ts)。
+   *  win 给了就让图停在那段上,不给按默认缩放。代码是否存在由调用方先核过。 */
+  function openSymbol(s: string, win: ViewWindow | null = null) {
+    if (mode.value !== 'compare') mode.value = 'annotate'
     symbol.value = s
     viewWindow.value = win ? { start: win.start, end: win.end } : null
     resetChartState()
@@ -919,7 +920,7 @@ export const useViewStore = defineStore('view', () => {
   // 入口 A 请求恒不带 node 过滤(过滤是纯前端显示层,重新请求会让后端
   // node 过滤返回子集 → failedNodes 坍缩 → 下拉其他 node 置灰)。
   async function triggerTimeQuery(startBar: number, endBar: number): Promise<void> {
-    const w = appWindow.value
+    const w = appWindowOf()
     if (!symbol.value || !appId.value || !w) return
     try {
       timeScopeResponse.value = await getTimeDiagnose(
@@ -930,7 +931,7 @@ export const useViewStore = defineStore('view', () => {
     } catch { timeScopeResponse.value = null }
   }
   async function triggerPairQuery(srcInstanceId: string, dstInstanceId: string): Promise<void> {
-    const w = appWindow.value
+    const w = appWindowOf()
     if (!symbol.value || !appId.value || !w) return
     try {
       pairScopeResponse.value = await getPairDiagnose(
@@ -945,7 +946,7 @@ export const useViewStore = defineStore('view', () => {
   async function triggerEventDebug(
     instanceId: string, anchorKey: 'entry' | 'start' | 'end' | 'confirm'
   ): Promise<void> {
-    const w = appWindow.value
+    const w = appWindowOf()
     if (!symbol.value || !appId.value || !w) return
     const pid = appId.value
     const events = effectiveAnalysis.value?.events ?? []
@@ -1037,15 +1038,15 @@ export const useViewStore = defineStore('view', () => {
   }
 
   // diag 预取 watch:图上画的那个 app(appId)在同一区间上的诊断;qualified 档靠它判
-  watch([symbol, scanFile, appId, appWindow, preview, previewEnabled], async () => {
-    const w = appWindow.value
-    if (!symbol.value || !appId.value || !w) {
+  watch([symbol, scanFile, appId, linkedRun, preview, previewEnabled], async () => {
+    if (!symbol.value || !appId.value) {
       diag.value = null
       return
     }
     const reqSymbol = symbol.value
     const reqPid = appId.value
     try {
+      const w = appWindowOf()!
       const d = await getDiagnose(reqPid, symbol.value, w.start, w.end,
                                    appParamsOverride.value)   // Task 9 · 三环节一致性:探索态透传 WC
       if (symbol.value !== reqSymbol || appId.value !== reqPid) return
@@ -1191,7 +1192,7 @@ export const useViewStore = defineStore('view', () => {
     effectivePattern, effectiveAnalysis, effectiveScan,
     unionRows, sortedRows, filteredSortedRows, previewListRow, patternHitCounts,
     nodeColors, selectedMatchId, selectedMatch, tagMap, isolated, matchedIds, matchedEventIds, qualifiedIds,
-    mode, annotating, comparing, appSource, linkedView, linkedRun, tiers, appId, endNode, appWindow,
+    mode, annotating, comparing, appSource, linkedView, linkedRun, tiers, appId, endNode, appWindowOf,
     openSymbol, enterAnnotate, enterLinked, setLinkedRun, setTiers, viewWindow,
     loadScanFile, clearScanFile, setCurrentScanName, currentScanName, selectSymbol, setActivePattern, setSort,
     toggleNode, toggleExpandedNode,

@@ -21,7 +21,7 @@ const props = defineProps<{ x: ChartSample }>()
 const ann = useAnnotationStore()
 
 function open() {
-  void ann.openSample(props.x.sample.id, { keepTab: true, keepCompare: true })
+  void ann.openSample(props.x.sample.id, { keepTab: true })
 }
 </script>
 

@@ -51,7 +51,7 @@ export function getRandom(): Promise<RandomWindow> {
 export function getPeaks(symbol: string): Promise<PeakLine[]> {
   return getJson(`/peaks?symbol=${encodeURIComponent(symbol)}`)
 }
-/** 第一段 compare 用的 mapping 文件:每个有 mapping.yaml 的 app 一项(后端每次都重读文件)。 */
+/** compare 用的 mapping 文件:每个有 mapping.yaml 的 app 一项(后端每次都重读文件)。 */
 export function getMappings(): Promise<AppMapping[]> {
   return getJson('/mappings')
 }

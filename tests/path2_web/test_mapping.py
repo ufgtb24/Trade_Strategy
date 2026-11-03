@@ -1,4 +1,4 @@
-"""第一段 compare 用的 mapping 文件(path2_web/mapping.py):path2_apps/<app>/mapping.yaml 写明标注里的 pattern
+"""compare 用的 mapping 文件(path2_web/mapping.py):path2_apps/<app>/mapping.yaml 写明标注里的 pattern
 用这个 app、哪个特征编号由哪个 node 认;GET /mappings 把全部 app 的 mapping 连同查出来的问题给前端。
 
 - 读得懂的照原样给出;没有文件的 app 不出现;

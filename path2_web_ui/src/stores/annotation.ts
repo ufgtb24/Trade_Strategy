@@ -547,13 +547,12 @@ export const useAnnotationStore = defineStore('annotation', () => {
 
   /**
    * 按编号找样本,打开它所在的图(图窗停在样本的跨度上)并选中它;找不到返回 false。
-   * 样本链接(stores/directLinks.ts)和 pattern 页的样本卡都走这一处。keepTab 同 selectSample;
-   * keepCompare:compare 下换图留在 compare(样本卡用;链接一律落在 annotate)。
+   * 样本链接(stores/directLinks.ts)和 pattern 页的样本卡都走这一处。keepTab 同 selectSample。
    */
-  async function openSample(id: string, opts: { keepTab?: boolean; keepCompare?: boolean } = {}): Promise<boolean> {
+  async function openSample(id: string, opts: { keepTab?: boolean } = {}): Promise<boolean> {
     const hit = state.value ? findSample(state.value, id) : null
     if (!hit) return false
-    useViewStore().openSymbol(hit.chart.symbol, sampleWindow(hit), { keepCompare: opts.keepCompare })
+    useViewStore().openSymbol(hit.chart.symbol, sampleWindow(hit))
     await nextTick()               // 换图会清掉选中(KlineChart 的 symbol 监听),等它跑完再选中
     selectSample(id, opts)
     return true
