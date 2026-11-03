@@ -25,6 +25,14 @@ export function getPatterns(): Promise<SerializedPattern[]> {
 export function getOhlc(symbol: string, start: string, end: string): Promise<Ohlc> {
   return getJson(`/ohlc?symbol=${encodeURIComponent(symbol)}&start=${start}&end=${end}`)
 }
+/** 按代码打开:这只股票的全部 K 线(后端截到训练段末日)。 */
+export function getAllOhlc(symbol: string): Promise<Ohlc> {
+  return getJson(`/ohlc?symbol=${encodeURIComponent(symbol)}`)
+}
+/** 股票列表:训练段副本里有的股票代码,按字母序。 */
+export function getSymbols(): Promise<string[]> {
+  return getJson('/symbols')
+}
 export function listScans(): Promise<ScanHistoryEntry[]> {
   return getJson('/scans/')
 }

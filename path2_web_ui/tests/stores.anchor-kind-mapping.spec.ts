@@ -34,6 +34,7 @@ import * as api from '../src/api'
 
 // 最小 fixture · 模拟 store 已加载 scan 结果 + 已选 pattern + 已选 symbol
 function seedStoreForDebug(store: ReturnType<typeof useViewStore>) {
+  store.mode = 'app'      // 扫描结果视图(annotate 下拿不到 app 产物)
   store.symbol = 'AAA'
   store.activePatternId = 'bottom_burst'
   // 塞一个 tb event 供 anchorsOf 查(实例化契约:instance_id/node_id)

@@ -3,7 +3,10 @@
 //  的 buildKlineOption 单函数,行为现活在 buildMainOption/buildSubOption — 主体已换成 chartMain,
 //  故本文件不再叫 "slider",改名反映新调用对象。)
 import { describe, it, expect } from 'vitest'
-import { computeEventData, buildMainOption, buildSubOption, makeRenderPricePointHighlight, pkTriStyle } from '../src/render/chart'
+import {
+  computeEventData, buildMainOption, buildSubOption, makeRenderPricePointHighlight, pkTriStyle,
+  emptyEventBundle, mainGridLayout, VOLUME_HEIGHT_RATIO, CANDLE_UP, CANDLE_DOWN,
+} from '../src/render/chart'
 import type { BandRenderInput } from '../src/render/chart'
 import { computeSubGeometry } from '../src/render/subGeometry'
 import type { Bar, EventDict, Topology } from '../src/types'
@@ -32,26 +35,85 @@ function mkBundle(input: BandRenderInput) {
   return computeEventData(bars, [], [], input)
 }
 
-describe('buildMainOption — sliderShow toggles dataZoom[1].show + grid[0].bottom (chart.ts:309,342)', () => {
-  it('sliderShow=true → dataZoom[1].show=true, grid[0].bottom=60', () => {
+// 主图下沿到容器底的距离:成交量带(grid[1])底边以下留给滑块
+const bottomGap = (opt: any, height: number) => height - (opt.grid[1].top + opt.grid[1].height)
+
+describe('buildMainOption — sliderShow toggles dataZoom[1].show + 主图下沿留白', () => {
+  it('sliderShow=true → dataZoom[1].show=true, 成交量带下面留 60', () => {
     const input = baseInput({ sliderShow: true })
-    const opt: any = buildMainOption(bars, mkBundle(input), input)
+    const opt: any = buildMainOption(bars, mkBundle(input), input, { height: 700 })
     expect(opt.dataZoom[1].show).toBe(true)
-    expect(opt.grid[0].bottom).toBe(60)
+    expect(bottomGap(opt, 700)).toBeCloseTo(60, 6)
   })
 
-  it('sliderShow=false → dataZoom[1].show=false, grid[0].bottom=20', () => {
+  it('sliderShow=false → dataZoom[1].show=false, 成交量带下面留 20', () => {
     const input = baseInput({ sliderShow: false })
-    const opt: any = buildMainOption(bars, mkBundle(input), input)
+    const opt: any = buildMainOption(bars, mkBundle(input), input, { height: 700 })
     expect(opt.dataZoom[1].show).toBe(false)
-    expect(opt.grid[0].bottom).toBe(20)
+    expect(bottomGap(opt, 700)).toBeCloseTo(20, 6)
   })
 
-  it('sliderShow undefined → 默认等价 true(向后兼容,show=true, bottom=60)', () => {
+  it('sliderShow undefined → 默认等价 true(向后兼容,show=true, 留 60)', () => {
     const input = baseInput()
-    const opt: any = buildMainOption(bars, mkBundle(input), input)
+    const opt: any = buildMainOption(bars, mkBundle(input), input, { height: 700 })
     expect(opt.dataZoom[1].show).toBe(true)
-    expect(opt.grid[0].bottom).toBe(60)
+    expect(bottomGap(opt, 700)).toBeCloseTo(60, 6)
+  })
+})
+
+describe('buildMainOption — 成交量带画在 K 线区下方(spec M7、4.4)', () => {
+  const opt: any = buildMainOption(bars, emptyEventBundle(bars), { sliderShow: true }, { height: 700 })
+
+  it('两个 grid:成交量带在 K 线区正下方,高度为 K 线区的 VOLUME_HEIGHT_RATIO', () => {
+    expect(opt.grid).toHaveLength(2)
+    const [price, vol] = opt.grid
+    expect(vol.top).toBeGreaterThan(price.top + price.height)
+    expect(vol.height / price.height).toBeCloseTo(VOLUME_HEIGHT_RATIO, 6)
+    expect(VOLUME_HEIGHT_RATIO).toBe(0.25)
+    expect(mainGridLayout(700, true)).toEqual(opt.grid)
+  })
+
+  it('volume 系列挂在 grid[1] 的轴上,值是原始成交量,柱色同 K 线涨跌', () => {
+    const vol = opt.series.find((s: any) => s.name === 'volume')
+    expect(opt.xAxis[vol.xAxisIndex].gridIndex).toBe(1)
+    expect(opt.yAxis[vol.yAxisIndex].gridIndex).toBe(1)
+    expect(vol.data.map((d: any) => d.value)).toEqual([100, 200, 150])
+    const kline = opt.series.find((s: any) => s.name === 'kline')
+    expect(kline.itemStyle.color).toBe(CANDLE_UP)
+    expect(kline.itemStyle.color0).toBe(CANDLE_DOWN)
+    expect(vol.data[0].itemStyle.color).toBe(CANDLE_UP)
+  })
+
+  it('两个 x 轴一起缩放;日期刻度只画在成交量带下面', () => {
+    expect(opt.dataZoom[0].xAxisIndex).toEqual([0, 1])
+    expect(opt.dataZoom[1].xAxisIndex).toEqual([0, 1])
+    expect(opt.xAxis[0].axisLabel.show).toBe(false)
+    expect(opt.xAxis[1].data).toEqual(opt.xAxis[0].data)
+  })
+
+  it('成交量带有整列 hover 区,出同一份 K 线 tooltip', () => {
+    const sp = opt.series.find((s: any) => s.name === 'volume-hit-spanner')
+    expect(sp.xAxisIndex).toBe(1)
+    expect(sp.tooltip.formatter({ seriesName: 'volume-hit-spanner', dataIndex: 1 })).toContain('Date: 2024-01-02')
+  })
+})
+
+describe('emptyEventBundle — annotate 模式只画 K 线和成交量', () => {
+  it('没有任何 app 产物,只有 K 线与成交量数据', () => {
+    const b = emptyEventBundle(bars)
+    for (const k of ['pointData', 'intervalData', 'pricePointData', 'bracketData', 'highlightData',
+                     'highlightPriceData', 'veilData', 'veilPriceData'] as const) {
+      expect(b[k]).toEqual([])
+    }
+    expect(b.dates).toEqual(bars.map((x) => x.date))
+    expect(b.volume).toEqual([100, 200, 150])
+  })
+
+  it('buildMainOption 只要 sliderShow / zoomOverride 即可出图,app 的系列都是空的', () => {
+    const opt: any = buildMainOption(bars, emptyEventBundle(bars), { sliderShow: false })
+    for (const name of ['price-points', 'highlight-price', 'shift-veil-price']) {
+      expect(opt.series.find((s: any) => s.name === name).data).toEqual([])
+    }
   })
 })
 
@@ -95,18 +157,17 @@ describe('buildMainOption — y 轴窗口跟随 zoomOverride(修 zoom-in 后 ren
   const wideBundle = (input: BandRenderInput) => computeEventData(wideBars, [], [], input)
 
   it('zoomOverride 圈定低价前段 → yAxis.max 贴合可见窗(不回跳全局 high)', () => {
-    // 可见窗 idx 0..3 全在低价段(h=2):displayHeight=(2-1)/0.8=1.25,
-    // displayBottom=max(0,1-0.125)=0.875,displayTop=2.125。全局 high=100 → 全窗 max=123.75。
+    // 可见窗 idx 0..3 全在低价段(l=1,h=2):价格区间 1,上下各留 5% → max=2.05。全局 high=100 → 全窗 max=104.95。
     const input = baseInput({ zoomOverride: { start: 0, end: 40 } })
     const opt: any = buildMainOption(wideBars, wideBundle(input), input)
-    expect(opt.yAxis[0].max).toBeLessThan(10)          // 不得回跳到全局 high(123.75)
-    expect(opt.yAxis[0].max).toBeCloseTo(2.125, 6)     // 贴合可见窗
+    expect(opt.yAxis[0].max).toBeLessThan(10)          // 不得回跳到全局 high
+    expect(opt.yAxis[0].max).toBeCloseTo(2.05, 6)      // 贴合可见窗
   })
 
   it('无 zoomOverride → yAxis 覆盖全窗(既有行为不变)', () => {
     const input = baseInput()
     const opt: any = buildMainOption(wideBars, wideBundle(input), input)
-    expect(opt.yAxis[0].max).toBeCloseTo(123.75, 6)    // 全窗 displayTop
+    expect(opt.yAxis[0].max).toBeCloseTo(104.95, 6)    // 全窗 high 100 + 5% × 99
   })
 })
 

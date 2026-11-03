@@ -30,6 +30,7 @@ function seedStore(store: ReturnType<typeof useViewStore>, tbEvent: any, boEvent
   // 【Task 9 修正】previewEnabled 由 ref 改 computed(isExploring 别名),直接赋值静默 no-op。
   // 改为直接注入 workingCopy 槽位(enabled=true)达到同等效果 —— isExploring 只看
   // workingCopy.value[activePatternId]?.enabled,不需要真实 fork(此处无 params_snapshot)。
+  ;(store as any).mode = 'app'      // 扫描结果视图(annotate 下拿不到 app 产物)
   ;(store as any).workingCopy = { bottom_burst: { enabled: true, baseline: {}, currentDict: {} } }
   ;(store as any).preview = {
     symbol: 'AAPL',

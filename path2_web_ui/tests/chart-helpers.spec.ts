@@ -73,82 +73,61 @@ function mkBars2(items: Array<{ o: number; h: number; l: number; c: number; v: n
 }
 
 describe('buildVolumeSeriesAndYAxis', () => {
-  it('uses visible-range vol_max for scale (not full bars max)', () => {
+  it('价格轴按可见区间 low/high 上下各留 5%;成交量轴上限 = 可见区间最大成交量', () => {
     const bars = mkBars2([
       { o: 10, h: 12, l: 9, c: 11, v: 1000 },   // visible
       { o: 11, h: 13, l: 10, c: 12, v: 2000 },  // visible
-      { o: 12, h: 14, l: 11, c: 13, v: 5000 },  // NOT visible (big volume should NOT affect scale)
+      { o: 12, h: 14, l: 11, c: 13, v: 5000 },  // NOT visible (不影响两条轴)
     ])
-    const { volSeries, yAxisOverride } = buildVolumeSeriesAndYAxis(bars, 0, 1)
-    // displayHeight = priceRange / 0.8 = (13 - 9) / 0.8 = 5
-    // displayBottom = 9 - 5 * 0.1 = 8.5
-    // visVolMax = max(1000, 2000) = 2000
-    // volScale = 5 * 0.2 / 2000 = 0.0005
-    expect(yAxisOverride.min).toBeCloseTo(8.5, 9)
-    expect(yAxisOverride.max).toBeCloseTo(13.5, 9)
-    // bar[0]: value = 8.5 + 1000 * 0.0005 = 9.0
-    expect(volSeries.data[0].value).toBeCloseTo(9.0, 9)
-    // bar[1]: value = 8.5 + 2000 * 0.0005 = 9.5
-    expect(volSeries.data[1].value).toBeCloseTo(9.5, 9)
-    // bar[2] uses same scale (full bars data exists but viz uses visible scale)
-    expect(volSeries.data[2].value).toBeCloseTo(8.5 + 5000 * 0.0005, 9)
+    const { volSeries, yAxisOverride, volAxisMax } = buildVolumeSeriesAndYAxis(bars, 0, 1)
+    // 价格区间 9..13 = 4,留 0.2
+    expect(yAxisOverride.min).toBeCloseTo(8.8, 9)
+    expect(yAxisOverride.max).toBeCloseTo(13.2, 9)
+    expect(volAxisMax).toBe(2000)
+    // 柱高就是原始成交量(画在自己的轴上,不再折算进价格轴)
+    expect(volSeries.data.map(d => d.value)).toEqual([1000, 2000, 5000])
   })
 
-  it('color is up-grey when close>=open, down-grey when close<open', () => {
+  it('柱色同 K 线涨跌:close>=open 为阳线色,close<open 为阴线色', () => {
     const bars = mkBars2([
       { o: 10, h: 11, l: 9, c: 10, v: 100 },   // close==open => up
       { o: 10, h: 11, l: 9, c: 9.5, v: 100 },  // close<open => down
       { o: 10, h: 11, l: 9, c: 10.5, v: 100 }, // close>open => up
     ])
     const { volSeries } = buildVolumeSeriesAndYAxis(bars, 0, 2)
-    expect((volSeries.data[0].itemStyle as any).color).toBe('#D3D3D3')
-    expect((volSeries.data[1].itemStyle as any).color).toBe('#696969')
-    expect((volSeries.data[2].itemStyle as any).color).toBe('#D3D3D3')
+    expect((volSeries.data[0].itemStyle as any).color).toBe('#47b262')
+    expect((volSeries.data[1].itemStyle as any).color).toBe('#eb5454')
+    expect((volSeries.data[2].itemStyle as any).color).toBe('#47b262')
   })
 
-  it('clamps displayBottom to >= 0 when priceMin < priceRange/8 (低价股 bug 防回归)', () => {
-    // priceMin=1, priceMax=10 → range=9, displayHeight=11.25, raw displayBottom=1-1.125=-0.125
-    // 钳前 yAxis 含 0 会触发 volume bar 双向；钳到 0 后 0 ≤ yAxis.min，bar 单向
+  it('价格轴下限钳到 >= 0(低价股)', () => {
     const bars = mkBars2([
-      { o: 2, h: 3, l: 1, c: 2, v: 1000 },
+      { o: 0.2, h: 0.3, l: 0.01, c: 0.2, v: 1000 },
       { o: 5, h: 10, l: 4, c: 8, v: 500 },
     ])
-    const { yAxisOverride, volSeries } = buildVolumeSeriesAndYAxis(bars, 0, 1)
+    const { yAxisOverride } = buildVolumeSeriesAndYAxis(bars, 0, 1)
     expect(yAxisOverride.min).toBe(0)
-    expect(yAxisOverride.max).toBeCloseTo(11.25, 9)
-    // 所有 bar value ≥ 0（与 0 baseline 同向、单向往上）
-    expect(volSeries.data.every(d => d.value >= 0)).toBe(true)
   })
 
-  it('does not throw when vol_max is 0 (all-zero visible volumes)', () => {
+  it('价格不动时价格轴仍有宽度;可见区间成交量全 0 时成交量轴上限兜底 1', () => {
     const bars = mkBars2([
-      { o: 10, h: 11, l: 9, c: 10, v: 0 },
-      { o: 10, h: 11, l: 9, c: 10, v: 0 },
+      { o: 10, h: 10, l: 10, c: 10, v: 0 },
+      { o: 10, h: 10, l: 10, c: 10, v: 0 },
     ])
     expect(() => buildVolumeSeriesAndYAxis(bars, 0, 1)).not.toThrow()
-    const { volSeries, yAxisOverride } = buildVolumeSeriesAndYAxis(bars, 0, 1)
-    // 兜底 visVolMax=1, 所有 value = displayBottom
-    expect(volSeries.data.every(d => d.value === yAxisOverride.min)).toBe(true)
+    const { yAxisOverride, volAxisMax } = buildVolumeSeriesAndYAxis(bars, 0, 1)
+    expect(yAxisOverride.max).toBeGreaterThan(yAxisOverride.min)
+    expect(volAxisMax).toBe(1)
   })
 
-  it('volume series uses borderColor black, borderWidth 0.5, opacity 0.5', () => {
-    const bars = mkBars2([{ o: 10, h: 11, l: 9, c: 10, v: 100 }])
-    const { volSeries } = buildVolumeSeriesAndYAxis(bars, 0, 0)
-    const itemStyle = volSeries.data[0].itemStyle as any
-    expect(itemStyle.borderColor).toBe('black')
-    expect(itemStyle.borderWidth).toBe(0.5)
-    expect(itemStyle.opacity).toBe(0.5)
-  })
-
-  it('volSeries config: type=bar, name=volume, xAxisIndex=0, yAxisIndex=0, barWidth=100%, z=3', () => {
+  it('volSeries config: type=bar, name=volume, 挂在成交量带的轴(1,1)上, 纯展示', () => {
     const bars = mkBars2([{ o: 10, h: 11, l: 9, c: 10, v: 100 }])
     const { volSeries } = buildVolumeSeriesAndYAxis(bars, 0, 0)
     expect(volSeries.type).toBe('bar')
     expect(volSeries.name).toBe('volume')
-    expect(volSeries.xAxisIndex).toBe(0)
-    expect(volSeries.yAxisIndex).toBe(0)
-    expect(volSeries.barWidth).toBe('100%')
-    expect(volSeries.z).toBe(3)
+    expect(volSeries.xAxisIndex).toBe(1)
+    expect(volSeries.yAxisIndex).toBe(1)
+    expect(volSeries.silent).toBe(true)
   })
 })
 

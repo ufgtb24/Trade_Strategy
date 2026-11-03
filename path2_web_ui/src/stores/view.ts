@@ -1,4 +1,4 @@
-// 视图状态:scanFile / symbol / activePatternId / node 显隐 / 选中对象;
+// 视图状态:mode / scanFile / symbol / activePatternId / node 显隐 / 选中对象;
 // 派生 unionRows/sortedRows/pattern/currentAnalysis/effective 三件套。
 import { defineStore, acceptHMRUpdate } from 'pinia'
 
@@ -181,6 +181,10 @@ import { useConfigStore } from './config'
 // shift+click 累积器条目(入口 D · KlineChart.ts::handleShiftClick 消费/写入)。
 // 实例化契约:instance_id/node_id(取代旧的复合身份字段)。
 export type ShiftSelectedEvent = { instance_id: string; node_id: string; source: 'main' | 'sub' }
+/** 主视图模式。annotate:按代码等入口打开的图,只画 K 线、成交量和用户自己的东西,不画任何 app 产物
+ *  (effectiveAnalysis 恒为 null);app:扫描结果视图,按 node 分轨画 app 的产物(从扫描列表进来)。 */
+export type ViewMode = 'annotate' | 'app'
+
 
 export type Selected =
   | { kind: 'match'; matchId: string }
@@ -235,6 +239,7 @@ export const useViewStore = defineStore('view', () => {
   // 避免对 4000+ stocks×{events,matches,clauses} 树建深 Proxy 拖慢首屏与排序
   const scanFile = shallowRef<MultiScanResultFile | null>(null)
   const currentScanName = ref<string | null>(null)
+  const mode = ref<ViewMode>('annotate')
   const symbol = ref<string | null>(null)
   const activePatternId = ref<string | null>(null)
   const sortByPid = ref<string | null>(null)
@@ -445,8 +450,11 @@ export const useViewStore = defineStore('view', () => {
   const effectivePattern = computed<SerializedPattern | null>(() =>
     _previewHits.value ? preview.value!.pattern_spec : pattern.value)
 
-  const effectiveAnalysis = computed<Analysis | null>(() =>
-    _previewHits.value ? preview.value!.analysis : currentAnalysis.value)
+  // annotate 模式下恒为 null:图上、侧栏、状态条一律拿不到 app 的产物
+  const effectiveAnalysis = computed<Analysis | null>(() => {
+    if (mode.value === 'annotate') return null
+    return _previewHits.value ? preview.value!.analysis : currentAnalysis.value
+  })
 
   const effectiveScan = computed<ScanMeta | PreviewResp['scan'] | null>(() => {
     if (_previewHits.value) return preview.value!.scan
@@ -570,6 +578,7 @@ export const useViewStore = defineStore('view', () => {
   function loadScanFile(f: MultiScanResultFile) {
     scanFile.value = f
     currentScanName.value = f?.scan?.name ?? f?.scan?.scan_ts ?? null
+    mode.value = 'app'
     nodeVisible.value = {}
     clearFocus()
     manualExpandedNodes.value = new Set()   // 切数据源清空展开集
@@ -596,7 +605,11 @@ export const useViewStore = defineStore('view', () => {
   function clearScanFile() {
     scanFile.value = null
     currentScanName.value = null
-    symbol.value = null
+    // annotate 下打开的图与扫描无关,不跟着清
+    if (mode.value === 'app') {
+      symbol.value = null
+      mode.value = 'annotate'
+    }
     activePatternId.value = null
     sortByPid.value = null
     nodeVisible.value = {}
@@ -619,6 +632,8 @@ export const useViewStore = defineStore('view', () => {
   }
   function selectSymbol(s: string) {
     // 锚-active 解耦:只切股、不动 activePatternId
+    // 从扫描列表选股 = 看这只股票的扫描结果
+    mode.value = 'app'
     symbol.value = s
     clearFocus()
     manualExpandedNodes.value = new Set()   // 切数据源清空展开集
@@ -629,6 +644,20 @@ export const useViewStore = defineStore('view', () => {
     pendingDisambigInstanceId.value = null
     clearDetailCard()
     if (previewEnabled.value) void runPreview()
+  }
+  /** 按代码打开(顶栏 symbol):落在 annotate,不跑 app、不动扫描与 activePatternId。
+   *  代码是否存在由调用方先对股票列表核过。 */
+  function openSymbol(s: string) {
+    mode.value = 'annotate'
+    symbol.value = s
+    clearFocus()
+    manualExpandedNodes.value = new Set()
+    hoveredEventId.value = null
+    preview.value = null
+    previewError.value = null
+    candidateMatchIds.value = new Set()
+    pendingDisambigInstanceId.value = null
+    clearDetailCard()
   }
   function setActivePattern(pid: string) {
     activePatternId.value = pid
@@ -908,6 +937,7 @@ export const useViewStore = defineStore('view', () => {
   }
 
   async function runPreview(): Promise<void> {
+    if (mode.value === 'annotate') return   // annotate 不跑 app
     if (!scanFile.value || !symbol.value || !activePatternId.value) return
     // Task 9 · 探索态才跑 preview(浏览态锚 snapshot,无需临时计算)
     if (!workingCopy.value[activePatternId.value!]?.enabled) return
@@ -1098,6 +1128,7 @@ export const useViewStore = defineStore('view', () => {
     effectivePattern, effectiveAnalysis, effectiveScan,
     unionRows, sortedRows, filteredSortedRows, previewListRow, patternHitCounts,
     nodeColors, selectedMatchId, selectedMatch, tagMap, isolated, matchedIds, matchedEventIds, qualifiedIds,
+    mode, openSymbol,
     loadScanFile, clearScanFile, setCurrentScanName, currentScanName, selectSymbol, setActivePattern, setSort,
     toggleNode, toggleExpandedNode,
     focusMatch, focusEvent, clearFocus,
