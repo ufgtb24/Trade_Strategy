@@ -1,7 +1,8 @@
 # 标注存储：按机器追加批次、重放出当前状态
 
 Status: ready-for-agent
-Progress: not-started
+Progress: in-progress
+Claimed: 2026-11-03 parallel-tickets ticket-02 @ worktree impl/02-annotation-store
 Blocked by: 01
 
 ## Purpose

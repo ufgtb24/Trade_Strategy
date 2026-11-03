@@ -1,0 +1,25 @@
+# 票 01：新 worktree 的标注目录软链与 git 忽略核对
+worktree 提交 df12de7700602335912f51a417ca61e279bdeb0e（impl/01-snapshot-fingerprint-and-annotation-dir），2026-11-03
+
+## 准备脚本输出
+worktree <scratchpad>/wt-prep-test，主目录 /home/yu/PycharmProjects/Trade_Strategy
+已建 datasets -> /home/yu/PycharmProjects/Trade_Strategy/datasets
+已建 annotations -> /home/yu/PycharmProjects/Trade_Strategy/annotations
+执行：echo "提醒：在 worktree 根目录运行 uv sync，建这个 worktree 自己的 .venv；不要用主目录的 .venv。"
+提醒：在 worktree 根目录运行 uv sync，建这个 worktree 自己的 .venv；不要用主目录的 .venv。
+完成。软链路径与主目录共用同一份数据；删除 worktree 用 git worktree remove --force，不要对软链用带末尾斜杠的 rm -rf
+
+## 跑完准备脚本后，往 annotations 里放一个探针文件（.gitignore 为 /annotations）
+$ readlink annotations
+/home/yu/PycharmProjects/Trade_Strategy/annotations
+$ ls annotations/
+pc-probe-ticket01.json
+$ git status --porcelain --untracked-files=all   # 输出为空
+$ git check-ignore -v annotations
+.gitignore:5:/annotations	annotations
+
+## 对照：规则写成带末尾斜杠的 /annotations/ 时，软链会被当成新文件
+$ git status --porcelain --untracked-files=all -- annotations
+?? annotations
+
+（探针文件随后已删，主目录 annotations/ 恢复为空）
