@@ -12,10 +12,10 @@ import { defineStore } from 'pinia'
 import { computed, ref, shallowRef, watch } from 'vue'
 import { getPeaks } from '../api'
 import type { PeakLine } from '../types'
-import { useViewStore } from './view'
+import { useViewStore, type ViewMode } from './view'
 
-/** 参照层可用的模式,按模式名列出;ViewMode 里没有的模式名(compare)不起作用。 */
-export const REF_MODES: readonly string[] = ['annotate', 'compare']
+/** 参照层可用的模式。 */
+export const REF_MODES: readonly ViewMode[] = ['annotate', 'compare']
 
 export type PeaksStatus = 'loading' | 'load_failed' | 'empty'
 

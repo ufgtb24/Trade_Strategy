@@ -3,7 +3,7 @@
     <!-- row0: 全局 level 控件 + 三 panel toggle chip + 休眠草稿 banner。
          .header-row 包一层让 banner 挂在 chip 行下方,同时对 grid 只占单一自动行——
          不新增显式行号,不改动 topology-row/kline/sidebar 既有的 auto-placement,避免二者同时出现时抢行。 -->
-    <!-- annotate 模式不显示 app 相关的控件(档位、pattern、参数、拓扑、诊断侧栏) -->
+    <!-- annotate、compare 不显示 app 相关的控件(档位、pattern、参数、拓扑、诊断侧栏);compare 的 app 输出档位一直到 detected -->
     <div v-if="!annotating" class="header-row">
       <div class="level-bar" data-testid="level-control">
         <button
@@ -13,16 +13,19 @@
           :title="opt.title"
           @click="view.setLevel(opt.value)"
         >{{ opt.label }}</button>
-        <select :value="view.activePatternId ?? ''"
-                data-role="active-pattern"
-                @change="onActivePatternChange"
-                class="active-pattern-select"
-                v-if="view.patternIds.length > 0">
-          <option v-for="pid in view.patternIds" :key="pid" :value="pid">
-            {{ pid }}
-          </option>
-        </select>
-        <ParamsChip :drawer-open="drawerOpen" @toggle-drawer="drawerOpen = !drawerOpen" />
+        <!-- 现算的 app(顶栏切过来的,app 名写在顶栏):扫描的 pattern 选择与参数副本不适用 -->
+        <template v-if="!linkedView">
+          <select :value="view.activePatternId ?? ''"
+                  data-role="active-pattern"
+                  @change="onActivePatternChange"
+                  class="active-pattern-select"
+                  v-if="view.patternIds.length > 0">
+            <option v-for="pid in view.patternIds" :key="pid" :value="pid">
+              {{ pid }}
+            </option>
+          </select>
+          <ParamsChip :drawer-open="drawerOpen" @toggle-drawer="drawerOpen = !drawerOpen" />
+        </template>
         <span class="spacer" />
         <button
           v-for="t in PANEL_TOGGLES"
@@ -67,7 +70,7 @@ import { usePanelsStore, type PanelKey } from '../stores/panels'
 import type { Level } from '../types'
 
 const view = useViewStore()
-const { level, annotating } = storeToRefs(view)
+const { level, annotating, linkedView } = storeToRefs(view)
 const panels = usePanelsStore()
 const { showTopology, showSidebar } = storeToRefs(panels)
 // 抽屉开关 ref 由 ChartArea 持有,ParamsChip 只 emit toggle-drawer;WorkingCopyDrawer(Task 11)在此渲染

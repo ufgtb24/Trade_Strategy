@@ -114,14 +114,21 @@ import {
 import { createAnnotateGestures } from './annotateGestures'
 import { useRefLayerStore } from '../stores/refLayers'
 import { peaksSeries } from '../render/refLayers'
+import { useAppLinkStore } from '../stores/appLink'
+import { compareLanes, packHits } from '../render/compareOverlay'
 
 const view = useViewStore()
 const { symbol, effectiveAnalysis, nodeColors, nodeVisible, level, tagMap, isolated,
         effectivePattern, effectiveScan, scanFile, focusedInstanceRef, diag,
         activePatternId, activeDetailCard, selectedMatchId, candidateMatchIds,
         highlightedEventIds, pendingDisambigInstanceId, shiftSelectedEventIds,
-        focusedInstanceId, selectedInstanceId, compositionGroupIds, mode, annotating, viewWindow } = storeToRefs(view)
-// annotating:只画 K 线和成交量,不画任何 app 产物,也不给 app 相关的交互(框选诊断、driver 菜单、副图缩放)
+        focusedInstanceId, selectedInstanceId, compositionGroupIds, mode, annotating, viewWindow,
+        comparing, linkedView, tiers, endNode } = storeToRefs(view)
+// annotating(annotate、compare):画 K 线、成交量和用户的标注,不给 app 相关的交互(框选诊断、driver 菜单、副图缩放);
+// annotate 不画任何 app 产物,compare 把当前 pattern 的 app 的输出叠到特征轨和 bracket 轨上(render/compareOverlay.ts)。
+// wholeChart:图是这只股票截到训练段末日的全部 K 线(annotate、compare、现算的 app);扫描结果的 app 只画扫描窗口
+const wholeChart = computed(() => mode.value !== 'app' || linkedView.value)
+const appLink = useAppLinkStore()
 const panels = usePanelsStore()
 const { showSlider, subHeightOffset } = storeToRefs(panels)
 
@@ -149,10 +156,21 @@ const shownPeaks = computed(() => refs.peaks && refs.available ? refs.lines : []
 const annChart = computed(() => (ann.state ? chartOf(ann.state, symbol.value) : null))
 // 轨序:当前 pattern 里各段的先后(annotate/grouping.ts 的 featureOrder),不在其中的特征按这张图上首次出现排
 const annOrder = computed(() => featureOrder(ann.state ? patternSamples(ann.state, ann.currentPattern) : []))
-const annLanes = computed(() => {
+const baseLanes = computed(() => {
   const chart = annChart.value
   return chart ? computeLanes(chart.boxes, (f) => ann.nameOf(f) ?? f, annDates.value, annOrder.value) : []
 })
+// compare:mapping 对到特征的 node 的 event 叠到那条特征轨上(没有框的特征另起一条),hit 叠到 bracket 轨上
+const overlay = computed(() => {
+  const a = comparing.value ? effectiveAnalysis.value : null
+  const features = appLink.mapping?.features
+  if (!a || !features) return null
+  const untiered = new Set((effectivePattern.value?.topology.nodes ?? []).filter(n => n.solve === false).map(n => n.node_id))
+  const { lanes, app } = compareLanes(baseLanes.value, features, a.events, (e) => view.eventTier(e),
+                                      (fid) => ann.featureById.has(fid), untiered)
+  return { lanes, app, hits: packHits(a.matches) }
+})
+const annLanes = computed(() => overlay.value?.lanes ?? baseLanes.value)
 // 样本:字母(当前 pattern)、选中的样本(在这张图上)、它的空槽、框旁的标记、bracket 轨
 const annLetters = computed(() => sampleLetters(annChart.value, ann.currentPattern))
 const annSelSample = computed(() =>
@@ -168,7 +186,10 @@ const annBracket = computed(() => {
     emphasis: smp.id === ann.selectedSampleId ? 2 : smp.id === ann.currentSampleId ? 1 : 0,
   }))
   const { rows, placed } = packBrackets(items, annDates.value)
-  return { geom: bracketGeometry(rows), placed }
+  // compare:hit 排在样本跨度的那几行下面(没有样本时从第一行起)
+  const hitRow0 = placed.length ? rows : 0
+  const hitRows = overlay.value?.hits.rows ?? 0
+  return { geom: bracketGeometry(Math.max(rows, hitRow0 + hitRows)), placed, hitRow0 }
 })
 const annSampleMarks = computed<SampleMark[]>(() => (annChart.value?.samples ?? []).map(smp => ({
   id: smp.id, date: smp.date, pos: smp.judgment === 'pos', selected: smp.id === ann.selectedSampleId,
@@ -387,8 +408,8 @@ async function reloadBars() {
   const seq = ++barsSeq
   const sym = symbol.value
   let next: Bar[] = []
-  if (annotating.value) {
-    // 按代码打开:这只股票的全部 K 线(后端截到训练段末日)
+  if (wholeChart.value) {
+    // 按代码打开:这只股票的全部 K 线(后端截到训练段末日);compare 与现算的 app 也画这一份(app 的下标和它逐根对齐)
     if (sym) {
       try { next = (await getAllOhlc(sym)).bars }
       catch (e: any) {
@@ -405,6 +426,7 @@ async function reloadBars() {
 }
 
 function strictWindowIdx(): { startIdx: number; endIdx: number } | null {
+  if (linkedView.value) return null                 // 现算的 app 跑的是全部 K 线,没有缓冲段
   const s = scanFile.value?.scan
   if (!s || !s.win_start || s.win_start === s.start_date) return null
   const startIdx = bars.value.findIndex((b) => b.date >= s.start_date)
@@ -550,7 +572,7 @@ function buildRenderInput() {
     matchLabel,
     sliderShow: showSlider.value,
     zoomOverride: readZoomOverride(),
-    endNode: scanFile.value?.per_pattern[activePatternId.value!]?.end_node ?? undefined,
+    endNode: endNode.value ?? undefined,
     selectedMatchId: selectedMatchId.value,
     candidateMatchIds: candidateMatchIds.value,
     // 组成型组「一选全选」:0 归属非 match 组的选中集并入 group 高亮
@@ -560,6 +582,7 @@ function buildRenderInput() {
     pendingDisambigInstanceId: pendingDisambigInstanceId.value,
     shiftSelectedEventIds: shiftSelectedEventIds.value,
     matches: effectiveAnalysis.value?.matches ?? [],
+    tiers: tiers.value,
   }
 }
 
@@ -609,10 +632,13 @@ function renderAnnotateLayers() {
   const { geom, height } = annGeom.value
   subCanvasH.value = height
   const zoom = readZoomOverride()
+  const c = overlay.value
   chartSub.setOption(buildAnnotateSubOption(bars.value, {
     lanes: annLanes.value, geom, nameOf: ann.nameOf, selectedId: ann.selectedBoxId,
     preview: preview.value, draft: draft.value, zoom, width: chartSub.getWidth(),
     bracket: annBracket.value, marks: annMarks.value,
+    compare: c ? { app: c.app, hits: c.hits.placed, hitRow0: annBracket.value.hitRow0,
+                   nodeColors: nodeColors.value, tiers: tiers.value } : null,
   }) as any, true)
   const sel = ann.selectedBox?.box ?? null
   const shownSel = sel && preview.value?.id === sel.id ? preview.value : sel
@@ -652,7 +678,12 @@ function relayoutMainGrid() {
 
 function render(forceResetZoom = false) {
   if (annotating.value) { renderBarsOnly(forceResetZoom); return }
-  if (!chartMain || !chartSub || !effectiveAnalysis.value || !effectivePattern.value) return
+  if (!chartMain || !chartSub) return
+  if (!effectiveAnalysis.value || !effectivePattern.value) {
+    // 现算的 app 还没跑完(或没跑成):先只画 K 线,副图清空
+    if (linkedView.value) { renderBarsOnly(forceResetZoom); chartSub.clear() }
+    return
+  }
   const params = { ...buildRenderInput(), zoomOverride: forceResetZoom ? null : readZoomOverride() }
   const bundle = computeEventData(bars.value, effectiveAnalysis.value.events, effectiveAnalysis.value.matches, params)
   const subGeom = deriveSubGeometry()
@@ -995,9 +1026,15 @@ onBeforeUnmount(() => {
 })
 
 // ── Reactive watches ────────────────────────────────────────────────
-watch([symbol, mode, viewWindow], () => void reloadBars().then(() => render(true)))
+// 换图、换模式:重读 K 线,图窗回到打开时的样子。只是在画全部 K 线的几档之间切(annotate / compare / 现算的 app):
+// K 线不变,不重读,图窗不动
+watch([symbol, viewWindow], () => void reloadBars().then(() => render(true)))
+watch([mode, wholeChart], ([, whole], [, wasWhole]) => {
+  if (whole && wasWhole && bars.value.length) { render(false); return }
+  void reloadBars().then(() => render(true))
+})
 watch([scanFile, effectiveScan], () => {
-  if (annotating.value) return      // annotate 的图与扫描无关
+  if (wholeChart.value) return      // 画全部 K 线的几档与扫描无关
   void reloadBars().then(() => render(false))
 })
 watch([effectiveAnalysis, nodeVisible, level, nodeColors, focusedInstanceRef, diag, showSlider,
@@ -1006,9 +1043,11 @@ watch([effectiveAnalysis, nodeVisible, level, nodeColors, focusedInstanceRef, di
        compositionGroupIds],
       () => render(false), { deep: true })
 
-// annotate:框、词表、选中、拖动中的样子变了 → 只重画标注的两层
+// annotate:框、词表、选中、拖动中的样子变了 → 只重画标注的两层;compare 下叠的 app 输出、tiers 变了也一样
 watch(() => [ann.view, ann.selectedBoxId, ann.selectedSampleId, ann.currentSampleId, ann.currentPattern,
-             draft.value, preview.value], () => renderAnnotateLayers())
+             draft.value, preview.value, overlay.value, tiers.value], () => renderAnnotateLayers())
+// app:tiers 开关只动副图 event 条右端的 tier tag
+watch(tiers, () => { if (!annotating.value) render(false) })
 watch(shownPeaks, () => renderRefLayers())
 // 换图:拖到一半的手势作废,选中的框或样本(在原来那张图上)清掉,当前样本也清掉(冻结)
 watch(symbol, () => { annGestures.cancel(); ann.clearSelection() })

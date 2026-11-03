@@ -94,5 +94,7 @@ test.describe('参照层 peaks', () => {
     await expect(box).not.toBeChecked()
     await expect(box).toBeDisabled()
     await expect(page.getByTestId('ref-group').locator('label')).toHaveClass(/\boff\b/)
+    // 勾上时发出的 /peaks 可能还在路上(结果已不用):测试结束前撤掉转发,免得页面关掉时转发报错
+    await page.unrouteAll({ behavior: 'ignoreErrors' })
   })
 })

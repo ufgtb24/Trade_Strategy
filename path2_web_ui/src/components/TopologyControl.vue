@@ -88,14 +88,13 @@ import { computed, ref } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useViewStore } from '../stores/view'
 import { layoutTopology, type TopoLayout } from '../render/topology'
-import { windowOf } from '../render/visible'
 import { getNodesDiagnose } from '../api'
 import PairListCard from './PairListCard.vue'
 import type { TopoNode, NodesScopeResponse, WhereRule } from '../types'
 
 const emit = defineEmits<{ (e: 'hover-node', nodeId: string | null): void }>()
 const view = useViewStore()
-const { effectivePattern, nodeColors, nodeVisible, symbol, activePatternId, effectiveScan } = storeToRefs(view)
+const { effectivePattern, nodeColors, nodeVisible, symbol, appId } = storeToRefs(view)
 
 const EMPTY: TopoLayout = { nodes: [], edges: [], parentEdges: [], width: 0, height: 0 }
 const layout = computed<TopoLayout>(() =>
@@ -164,15 +163,15 @@ async function handleEdgeClick(src: string, dst: string) {
   activeNodesEdge.value = { src, dst }
   nodesResponse.value = null
   nodesError.value = null
-  if (!symbol.value || !activePatternId.value || !effectiveScan.value) {
+  const w = view.appWindowOf()
+  if (!symbol.value || !appId.value || !w) {
     nodesError.value = '缺 symbol/pattern/窗口,无法查询'
     return
   }
-  const w = windowOf(effectiveScan.value as any)
   nodesLoading.value = true
   try {
     nodesResponse.value = await getNodesDiagnose(
-      activePatternId.value, symbol.value, w.start, w.end, src, dst)
+      appId.value, symbol.value, w.start, w.end, src, dst)
   } catch (e: any) {
     nodesError.value = String(e?.message ?? e)
   } finally {
