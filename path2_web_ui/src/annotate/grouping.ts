@@ -16,16 +16,17 @@
  */
 import { currentMemberBoxes, memberTree, skeleton, type TreeNode } from './membership'
 import { attrState, daysFor, sampleOrder, type AnnBox, type AnnChart, type AnnSample, type AnnState, type AttrState } from './model'
+import { precedence, sampleRange } from './samples'
 import type { ViewWindow } from '../types'
 
 /** 一个样本连同它所在的图。 */
-export interface PSample { sample: AnnSample; chart: AnnChart }
+export interface ChartSample { sample: AnnSample; chart: AnnChart }
 /** 一张图的交易日;给不出时为 null / undefined。 */
 export type DaysOf = (symbol: string) => readonly string[] | null | undefined
 
 /** pattern(null 为 unsorted)的全部样本:按股票代码、再按样本日排。 */
-export function patternSamples(s: AnnState, pattern: string | null): PSample[] {
-  const out: PSample[] = []
+export function patternSamples(s: AnnState, pattern: string | null): ChartSample[] {
+  const out: ChartSample[] = []
   for (const chart of s.charts) {
     for (const sample of [...chart.samples].sort(sampleOrder)) if (sample.pattern === pattern) out.push({ sample, chart })
   }
@@ -33,29 +34,28 @@ export function patternSamples(s: AnnState, pattern: string | null): PSample[] {
 }
 
 /** 样本现在的成员框,按框的先后(起点早的在前,同起点长的在前,再按编号)。 */
-export function membersOf(x: PSample): AnnBox[] {
-  return currentMemberBoxes(x.sample, x.chart.boxes).sort((a, b) =>
-    a.start < b.start ? -1 : a.start > b.start ? 1 : a.end > b.end ? -1 : a.end < b.end ? 1 : a.id < b.id ? -1 : a.id > b.id ? 1 : 0)
+export function membersOf(x: ChartSample): AnnBox[] {
+  return currentMemberBoxes(x.sample, x.chart.boxes).sort(precedence)
 }
 
-function memberIdsOf(x: PSample): string[] {
+function memberIdsOf(x: ChartSample): string[] {
   return currentMemberBoxes(x.sample, x.chart.boxes).map(b => b.id)
 }
 
 /** 样本的骨架:成员框树顶层框的特征编号按先后排(还没标特征的为 null);子框和属性不进骨架。 */
-export function sampleSkeleton(x: PSample, daysOf: DaysOf): (string | null)[] {
+export function sampleSkeleton(x: ChartSample, daysOf: DaysOf): (string | null)[] {
   return skeleton(memberIdsOf(x), x.chart.boxes, daysFor(x.chart.boxes, daysOf(x.chart.symbol)))
 }
 
 /** 样本的成员框树(框套框只在成员框之间找)。 */
-export function sampleTree(x: PSample, daysOf: DaysOf): TreeNode[] {
+export function sampleTree(x: ChartSample, daysOf: DaysOf): TreeNode[] {
   return memberTree(memberIdsOf(x), x.chart.boxes, daysFor(x.chart.boxes, daysOf(x.chart.symbol)))
 }
 
 // ── unsorted 页:按骨架分行 ────────────────────────────────────────────
 
 /** unsorted 页的一行:judgment 与骨架都相同的样本。 */
-export interface SkeletonRow { judgment: AnnSample['judgment']; skeleton: (string | null)[]; samples: PSample[] }
+export interface SkeletonRow { judgment: AnnSample['judgment']; skeleton: (string | null)[]; samples: ChartSample[] }
 
 /**
  * unsorted 的样本按(judgment、骨架)分行。行序:骨架按特征名逐个比(名字按字符比,短的前缀排在前面,
@@ -91,7 +91,7 @@ export function unsortedRows(s: AnnState, daysOf: DaysOf, nameOf: (fid: string |
  * 最靠前的;从没同时出现过的也按平均位置定;先后互相矛盾(成环)时在剩下的全部里按平均位置取。
  * 还一样就按特征编号。不取平均位置直接排,是因为骨架长短不一时平均位置会被拉偏。
  */
-export function featureOrder(samples: readonly PSample[]): Map<string, number> {
+export function featureOrder(samples: readonly ChartSample[]): Map<string, number> {
   const before = new Map<string, Map<string, number>>()
   const pos = new Map<string, number[]>()
   for (const x of samples) {
@@ -130,10 +130,10 @@ export interface FeatureBlock { feature: string; kids: FeatureBlock[] }
  * 挂在那一块下面(一层层往下),也按 order 排。还没标特征的框不成块,它下面的子框也不收。
  * 同一个特征可以既是顶层块、又挂在别的块下面;一块下面不再挂它的上层(防成环)。
  */
-export function featureBlocks(samples: readonly PSample[], daysOf: DaysOf, order: ReadonlyMap<string, number>): FeatureBlock[] {
+export function featureBlocks(samples: readonly ChartSample[], daysOf: DaysOf, order: ReadonlyMap<string, number>): FeatureBlock[] {
   const tops = new Set<string>()
   const kidsOf = new Map<string, Set<string>>()
-  const featureById = (x: PSample) => new Map(x.chart.boxes.map(b => [b.id, b.feature]))
+  const featureById = (x: ChartSample) => new Map(x.chart.boxes.map(b => [b.id, b.feature]))
   for (const x of samples) {
     const fid = featureById(x)
     const walk = (node: TreeNode) => {
@@ -165,7 +165,7 @@ export function featureBlocks(samples: readonly PSample[], daysOf: DaysOf, order
 }
 
 /** 这组样本的成员框里,这个特征的框判过(true 或 false)的属性,按第一次出现的先后。 */
-export function attrsUsed(samples: readonly PSample[], fid: string): string[] {
+export function attrsUsed(samples: readonly ChartSample[], fid: string): string[] {
   const out: string[] = []
   for (const x of samples) for (const b of membersOf(x)) if (b.feature === fid) {
     for (const k of Object.keys(b.attrs ?? {})) if (!out.includes(k)) out.push(k)
@@ -176,12 +176,12 @@ export function attrsUsed(samples: readonly PSample[], fid: string): string[] {
 // ── 计数与分排 ────────────────────────────────────────────────────────
 
 /** 样本的成员框里有没有这个特征的框(哪一层都算)。 */
-export function hasFeature(x: PSample, fid: string): boolean {
+export function hasFeature(x: ChartSample, fid: string): boolean {
   return membersOf(x).some(b => b.feature === fid)
 }
 
 /** 样本上「这个特征的框的这个属性」:任一个 true 就算 true,都没判算 null,其余算 false(待验证,V-15-1)。 */
-export function attrOf(x: PSample, fid: string, wid: string): AttrState {
+export function attrOf(x: ChartSample, fid: string, wid: string): AttrState {
   const ss = membersOf(x).filter(b => b.feature === fid).map(b => attrState(b, wid))
   return ss.includes('true') ? 'true' : ss.every(v => v === 'null') ? 'null' : 'false'
 }
@@ -197,20 +197,20 @@ export function countId(k: CountKey): string {
   return k.kind === 'samples' ? `samples|${k.judgment}` : k.kind === 'in' ? `in|${k.feature}` : `attr|${k.feature}|${k.attr}`
 }
 
-/** 点开后的一排:排名(pos、neg、in、not_in、true、false、null)和这一排的样本(正样本在前)。 */
-export interface Part { label: 'pos' | 'neg' | 'in' | 'not_in' | AttrState; samples: PSample[] }
+/** 点开后的一排:这一排的名字(pos、neg、in、not_in、true、false、null)和这一排的样本(正样本在前)。 */
+export interface Part { label: 'pos' | 'neg' | 'in' | 'not_in' | AttrState; samples: ChartSample[] }
 
-const posFirst = (xs: PSample[]) => [...xs.filter(x => x.sample.judgment === 'pos'), ...xs.filter(x => x.sample.judgment !== 'pos')]
+const posFirst = (xs: ChartSample[]) => [...xs.filter(x => x.sample.judgment === 'pos'), ...xs.filter(x => x.sample.judgment !== 'pos')]
 
 /** 这个计数的分母:samples 与 in 是全部样本;attr 是有这个特征的框的样本。 */
-export function denominator(samples: readonly PSample[], k: CountKey): PSample[] {
+export function denominator(samples: readonly ChartSample[], k: CountKey): ChartSample[] {
   if (k.kind === 'samples') return samples.filter(x => x.sample.judgment === k.judgment)
   if (k.kind === 'in') return [...samples]
   return samples.filter(x => hasFeature(x, k.feature))
 }
 
 /** 点开后的分排:各排是分母的一个划分(各排之和等于分母),空的排也在。第一排就是汇总里的分子。 */
-export function countParts(samples: readonly PSample[], k: CountKey): Part[] {
+export function countParts(samples: readonly ChartSample[], k: CountKey): Part[] {
   const ys = denominator(samples, k)
   if (k.kind === 'samples') return [{ label: k.judgment, samples: ys }]
   if (k.kind === 'in') {
@@ -223,7 +223,7 @@ export function countParts(samples: readonly PSample[], k: CountKey): Part[] {
 }
 
 /** pos 与 neg 各有几个。 */
-export function byJudgment(xs: readonly PSample[]): { pos: number; neg: number } {
+export function byJudgment(xs: readonly ChartSample[]): { pos: number; neg: number } {
   let pos = 0, neg = 0
   for (const x of xs) if (x.sample.judgment === 'pos') pos++; else neg++
   return { pos, neg }
@@ -232,10 +232,24 @@ export function byJudgment(xs: readonly PSample[]): { pos: number; neg: number }
 /** 汇总的比例:分子是第一排(in、true),分母见 denominator。pos k/N · neg m/M。 */
 export interface Ratio { pos: number; posOf: number; neg: number; negOf: number }
 
-export function countRatio(samples: readonly PSample[], k: CountKey): Ratio {
+export function countRatio(samples: readonly ChartSample[], k: CountKey): Ratio {
   const all = byJudgment(denominator(samples, k))
   const hit = byJudgment(countParts(samples, k)[0].samples)
   return { pos: hit.pos, posOf: all.pos, neg: hit.neg, negOf: all.neg }
+}
+
+/** 汇总的写法:samples 写 `pos n`;in、属性写 `in pos k/N · neg m/M`、`true pos k/N · neg m/M`。 */
+export function countText(samples: readonly ChartSample[], k: CountKey): string {
+  if (k.kind === 'samples') return `${k.judgment} ${denominator(samples, k).length}`
+  const r = countRatio(samples, k)
+  return `${k.kind === 'in' ? 'in' : 'true'} pos ${r.pos}/${r.posOf} · neg ${r.neg}/${r.negOf}`
+}
+
+/** 排头里排名后面的个数:samples 那排写 ` n`,其余写 ` pos a · neg b`。 */
+export function partCount(k: CountKey, p: Part): string {
+  if (k.kind === 'samples') return ` ${p.samples.length}`
+  const n = byJudgment(p.samples)
+  return ` pos ${n.pos} · neg ${n.neg}`
 }
 
 // ── 打开样本 ─────────────────────────────────────────────────────────
@@ -247,8 +261,7 @@ const shiftDays = (d: string, n: number) => {
 }
 
 /** 打开样本时的图窗:样本的跨度(成员框最早的起点到样本日)前后各留约两个月(按日历日)。 */
-export function sampleWindow(x: PSample): ViewWindow {
-  let start = x.sample.date
-  for (const b of currentMemberBoxes(x.sample, x.chart.boxes)) if (b.start < start) start = b.start
-  return { start: shiftDays(start, -60), end: shiftDays(x.sample.date, 60) }
+export function sampleWindow(x: ChartSample): ViewWindow {
+  const r = sampleRange(x.sample, x.chart)
+  return { start: shiftDays(r.start, -60), end: shiftDays(r.end, 60) }
 }

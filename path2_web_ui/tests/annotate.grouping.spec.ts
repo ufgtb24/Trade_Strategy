@@ -9,8 +9,8 @@ import { readdirSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { applyOps, computeLanes, type AnnRead, type AnnState } from '../src/annotate/model'
 import {
-  attrOf, attrsUsed, countId, countParts, countRatio, denominator, featureBlocks, featureOrder, patternSamples,
-  sampleWindow, unsortedRows, type CountKey, type FeatureBlock, type PSample,
+  attrOf, attrsUsed, countId, countParts, countRatio, countText, denominator, featureBlocks, featureOrder, partCount,
+  patternSamples, sampleWindow, unsortedRows, type ChartSample, type CountKey, type FeatureBlock,
 } from '../src/annotate/grouping'
 
 const DIR = resolve(__dirname, '../../tests/path2_web/fixtures/annotation_grouping_v1/batches')
@@ -36,11 +36,11 @@ const st = fixtureState()
 const fid = (name: string) => st.features.find(f => f.name === name)!.id
 const nameOf = (f: string | null) => (f === null ? null : st.features.find(x => x.id === f)?.name ?? f)
 const noDays = () => null               // 例子里的图都没打开过:框套框用周一到周五代替
-const ratio = (xs: PSample[], k: CountKey) => {
+const ratio = (xs: ChartSample[], k: CountKey) => {
   const r = countRatio(xs, k)
   return `pos ${r.pos}/${r.posOf} · neg ${r.neg}/${r.negOf}`
 }
-const tag = (x: PSample) => `${x.chart.symbol} ${x.sample.date}`
+const tag = (x: ChartSample) => `${x.chart.symbol} ${x.sample.date}`
 
 describe('unsorted 页按骨架分行', () => {
   it('和成员推断的例子文件里骨架的答案一致;同一骨架同一 judgment 并成一行,neg 另起一行', () => {
@@ -123,6 +123,10 @@ describe('pattern 页的 features 区', () => {
     expect(trueOf('横盘', '窄幅')).toBe('pos 1/3 · neg 0/1')
     // NVDA 那个样本收了两个突破框,一个放量 false、一个 true:按「任一个」算 true
     expect(trueOf('突破', '放量')).toBe('pos 2/3 · neg 0/0')
+    // 界面上的写法
+    expect(countText(xs, { kind: 'samples', judgment: 'pos' })).toBe('pos 3')
+    expect(countText(xs, { kind: 'in', feature: fid('派发') })).toBe('in pos 0/3 · neg 1/1')
+    expect(countText(xs, { kind: 'attr', feature: fid('突破'), attr: fid('放量') })).toBe('true pos 2/3 · neg 0/0')
     // 一个样本都没有的 pattern:全是 0
     const none = patternSamples(st, '旗形')
     expect(none).toEqual([])
@@ -154,11 +158,15 @@ describe('pattern 页的 features 区', () => {
     expect(parts({ kind: 'attr', feature: fid('突破'), attr: fid('放量') })).toEqual([
       ['true', ['AAPL 2024-03-11', 'NVDA 2024-04-15']], ['false', ['MSFT 2024-02-08']], ['null', []]])
     expect(parts({ kind: 'samples', judgment: 'neg' })).toEqual([['neg', ['AAPL 2024-06-17']]])
+    const heads = (k: CountKey) => countParts(xs, k).map(p => `${p.label}${partCount(k, p)}`)
+    expect(heads({ kind: 'attr', feature: fid('突破'), attr: fid('放量') }))
+      .toEqual(['true pos 2 · neg 0', 'false pos 1 · neg 0', 'null pos 0 · neg 0'])
+    expect(heads({ kind: 'samples', judgment: 'pos' })).toEqual(['pos 3'])
   })
 })
 
 describe('同名框的「任一个」', () => {
-  const x = (attrs: (boolean | undefined)[]): PSample => {
+  const x = (attrs: (boolean | undefined)[]): ChartSample => {
     const boxes = attrs.map((v, i) => ({
       id: `b${i}`, feature: 'f', start: `2024-01-0${i + 1}`, end: `2024-01-0${i + 1}`, ...(v === undefined ? {} : { attrs: { w: v } }),
     }))

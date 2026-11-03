@@ -11,18 +11,13 @@
  */
 import { computed } from 'vue'
 import { useAnnotationStore } from '../stores/annotation'
-import { countId, countRatio, denominator, type CountKey, type PSample } from '../annotate/grouping'
+import { countId, countText, type ChartSample, type CountKey } from '../annotate/grouping'
 
-const props = defineProps<{ samples: readonly PSample[]; countKey: CountKey; tip: string }>()
+const props = defineProps<{ samples: readonly ChartSample[]; countKey: CountKey; tip: string }>()
 const ann = useAnnotationStore()
 const id = computed(() => countId(props.countKey))
 const on = computed(() => ann.openCount === id.value)
-const text = computed(() => {
-  const k = props.countKey
-  if (k.kind === 'samples') return `${k.judgment} ${denominator(props.samples, k).length}`
-  const r = countRatio(props.samples, k)
-  return `${k.kind === 'in' ? 'in' : 'true'} pos ${r.pos}/${r.posOf} · neg ${r.neg}/${r.negOf}`
-})
+const text = computed(() => countText(props.samples, props.countKey))
 </script>
 
 <style scoped>

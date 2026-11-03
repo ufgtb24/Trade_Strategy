@@ -16,10 +16,10 @@
 import { nextTick } from 'vue'
 import { useAnnotationStore } from '../stores/annotation'
 import { useViewStore } from '../stores/view'
-import { sampleWindow, type PSample } from '../annotate/grouping'
+import { sampleWindow, type ChartSample } from '../annotate/grouping'
 import { triOf } from '../annotate/samples'
 
-const props = defineProps<{ x: PSample }>()
+const props = defineProps<{ x: ChartSample }>()
 const ann = useAnnotationStore()
 const view = useViewStore()
 

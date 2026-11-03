@@ -106,8 +106,8 @@ test.describe('归组与 pattern 页', () => {
     await expect(pg.locator('[data-testid="feature-block"] > .ann-row [data-testid="feature-name"]'))
       .toHaveText(['横盘', '缩量', '突破', '派发'])
     await expect(pg.getByTestId('feature-arrow')).toHaveCount(2)                         // 顶层三块之间
-    await expect(pg.locator('[data-testid="feature-block"][data-feature="横盘"] [data-testid="feature-block"][data-feature="缩量"] [data-testid="feature-kid-mark"]'))
-      .toHaveText('⊃')
+    await expect(pg.locator('[data-testid="feature-block"][data-feature="横盘"] [data-testid="feature-block"][data-feature="缩量"] > .ann-row').first())
+      .toContainText('横盘⊃缩量')                                                          // 写成「横盘 ⊃ 缩量」
     await expect(door(page, `in|${fid('横盘')}`)).toHaveText('in pos 3/3 · neg 1/1')
     await expect(door(page, `in|${fid('缩量')}`)).toHaveText('in pos 1/3 · neg 0/1')
     await expect(door(page, `in|${fid('突破')}`)).toHaveText('in pos 3/3 · neg 0/1')
@@ -115,7 +115,9 @@ test.describe('归组与 pattern 页', () => {
     await expect(door(page, `attr|${fid('横盘')}|${fid('窄幅')}`)).toHaveText('true pos 1/3 · neg 0/1')
     await expect(door(page, `attr|${fid('突破')}|${fid('放量')}`)).toHaveText('true pos 2/3 · neg 0/0')   // 0/0 也显示
     await expect(door(page, `in|${fid('横盘')}`)).toHaveAttribute('title', /has a “横盘” box \/ all samples/)
-    await expect(pg.getByTestId('samples-row')).toHaveText([/pos\s*×3/, /neg\s*×1/])
+    const rowCards = (j: string) => page.locator(`[data-testid="samples-row"][data-judgment="${j}"] [data-testid="sample-card"]`)
+    await expect(rowCards('pos')).toHaveCount(3)
+    await expect(rowCards('neg')).toHaveCount(1)
 
     // ── 点开分排:各排之和等于分母,空的排也写排头 ──
     const narrow = `attr|${fid('横盘')}|${fid('窄幅')}`
@@ -165,7 +167,7 @@ test.describe('归组与 pattern 页', () => {
     await expect(door(page, 'samples|neg')).toHaveText('neg 1')
     const rows = up.getByTestId('unsorted-row')
     const rowKeys = async () => (await rows.all()).length
-      ? Promise.all((await rows.all()).map(async r => `${await r.getAttribute('data-judgment')}|${await r.getAttribute('data-sequence')}|${await r.getByTestId('sample-card').count()}`))
+      ? Promise.all((await rows.all()).map(async r => `${await r.getAttribute('data-judgment')}|${await r.getAttribute('data-skeleton')}|${await r.getByTestId('sample-card').count()}`))
       : []
     await expect.poll(rowKeys).toEqual(['pos|回踩|1', 'pos|横盘 → 突破|2', 'neg|横盘 → 突破|1', 'pos||1'])
     const negRow = rows.filter({ has: page.getByTestId('row-pending') })
@@ -183,7 +185,7 @@ test.describe('归组与 pattern 页', () => {
 
     // ── 整行 move:pos 的「横盘 → 突破」进 W底;neg 那行 + new 新起一个 ──
     const moved = ['MSFT|2024-05-08', 'NVDA|2024-07-09'].map(k => sid(...(k.split('|') as [string, string])))
-    const posRowEl = up.locator('[data-testid="unsorted-row"][data-judgment="pos"][data-sequence="横盘 → 突破"]')
+    const posRowEl = up.locator('[data-testid="unsorted-row"][data-judgment="pos"][data-skeleton="横盘 → 突破"]')
     await posRowEl.getByTestId('row-move-button').click()
     await expect(posRowEl.getByTestId('row-move-unsorted')).toHaveCount(0)              // move 里不列 unsorted
     await posRowEl.locator('[data-testid="row-move-option"][data-name="W底"]').click()
@@ -218,7 +220,8 @@ test.describe('归组与 pattern 页', () => {
     await pickPattern(page, '旗形')
     await expect(door(page, 'samples|pos')).toHaveText('pos 0')
     await expect(door(page, 'samples|neg')).toHaveText('neg 0')
-    await expect(page.getByTestId('samples-row')).toHaveText([/pos\s*×0/, /neg\s*×0/])
+    await expect(page.getByTestId('samples-row')).toHaveText(['pos', 'neg'])                 // 没有样本的行也在
+    await expect(page.locator('[data-testid="samples-row"] [data-testid="sample-card"]')).toHaveCount(0)
     await expect(page.getByTestId('pattern-definition')).toHaveValue('上升途中的小平台')
     await page.getByTestId('annotation-sidebar').screenshot({ path: testInfo.outputPath('04-empty-pattern.png') })
   })

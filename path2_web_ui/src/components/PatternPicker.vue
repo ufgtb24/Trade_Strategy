@@ -33,7 +33,7 @@
  * - 列出已有的 pattern(名字是用户写的内容:正常字体、浅灰底)、unsorted · n(全部图上 unsorted 的样本数)、+ new;
  * - + new 变成一个输入框,回车用这个名字(已有同名的就是选它);
  * - pending:负样本挂在 unsorted 时显示灰字 pattern?(它的「像」还没有对象,算没填完);
- * - move:按钮写 move,下拉里只列 value 以外的 pattern 和 + new(挪去哪),不列 unsorted。
+ * - move:按钮写 move,下拉里列已有的 pattern 和 + new(挪去哪),不列 unsorted(unsorted 页上的行本来就在那里)。
  * 选中后发出 pick(名字,unsorted 为 null)。
  */
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
@@ -44,7 +44,7 @@ const props = defineProps<{ value: string | null; tid: string; title: string; pe
 const emit = defineEmits<{ pick: [name: string | null] }>()
 
 const ann = useAnnotationStore()
-const names = computed(() => (ann.state?.patterns ?? []).map(p => p.name).filter(p => !props.move || p !== props.value))
+const names = computed(() => (ann.state?.patterns ?? []).map(p => p.name))
 const unsorted = computed(() => (ann.state ? unsortedCount(ann.state.charts) : 0))
 
 const root = ref<HTMLElement | null>(null)

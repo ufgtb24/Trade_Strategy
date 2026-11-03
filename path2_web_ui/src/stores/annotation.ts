@@ -151,6 +151,10 @@ export const useAnnotationStore = defineStore('annotation', () => {
   function nameOf(fid: string | null): string | null {
     return fid ? featureById.value.get(fid)?.name ?? fid : null
   }
+  /** 词的定义(还没写为空串):特征名、属性名的悬停只放它。 */
+  function definitionOf(fid: string): string {
+    return featureById.value.get(fid)?.definition ?? ''
+  }
 
   const selectedBox = computed(() => (selectedBoxId.value && state.value ? findBox(state.value, selectedBoxId.value) : null))
   const selectedSample = computed(() =>
@@ -401,15 +405,14 @@ export const useAnnotationStore = defineStore('annotation', () => {
 
   /** 改样本的 pattern(null = unsorted);名字是新的就同一批新建这个 pattern。 */
   function setSamplePattern(sampleId: string, name: string | null): void {
-    const p = name === null ? null : name.trim()
-    if (p === '') return
-    commit((r) => [...patternIfMissing(r, p), ...sampleIntent(sampleId, x => ({ ...x, pattern: p }))(r)])
+    moveSamples([sampleId], name)
   }
 
-  /** 整行挪进一个 pattern:同一批改这些样本的 pattern;名字是新的就同一批新建这个 pattern。 */
-  function moveSamples(ids: readonly string[], name: string): void {
-    const p = name.trim()
-    if (!p || !ids.length) return
+  /** 把几个样本(unsorted 页的一整行)挪进一个 pattern(null = unsorted):同一批改它们的 pattern;
+   *  名字是新的就同一批新建这个 pattern。 */
+  function moveSamples(ids: readonly string[], name: string | null): void {
+    const p = name === null ? null : name.trim()
+    if (p === '' || !ids.length) return
     commit((r) => {
       const ops: AnnOp[] = []
       for (const id of ids) ops.push(...sampleIntent(id, x => ({ ...x, pattern: p }))(r))
@@ -561,7 +564,7 @@ export const useAnnotationStore = defineStore('annotation', () => {
     server, view, state, status, loadError, saveError, saving, machine, membership,
     selectedBoxId, selectedBox, selectedSampleId, selectedSample, currentSampleId, currentSample, currentPattern, openCount,
     tab, tool, renaming, nameFocus, merges, pendingMerge, daysBySymbol,
-    newConflicts, fingerprint, featureById, nameOf,
+    newConflicts, fingerprint, featureById, nameOf, definitionOf,
     load, commit, flushed, createBox, resizeBox, deleteBox, setBoxFeature, setBoxNote, setAttr, addAttr,
     toggleBoxParent, setDefinition, renameFeature, previewMerge, applyMerge, unmerge, selectBox,
     placeSample, toggleMember, setJudgment, setSampleNote, setSamplePattern, moveSamples, setPatternDefinition,

@@ -15,7 +15,7 @@ import {
 import { sampleOrder, type AnnBox, type AnnChart, type AnnSample } from './model'
 
 /** 框的先后(同 membership.ts):起点早的在前,同起点长的在前,再按编号(日期字符串比,和按序号比的先后一致)。 */
-const precedence = (a: AnnBox, b: AnnBox) =>
+export const precedence = (a: AnnBox, b: AnnBox) =>
   a.start < b.start ? -1 : a.start > b.start ? 1 : a.end > b.end ? -1 : a.end < b.end ? 1 : a.id < b.id ? -1 : a.id > b.id ? 1 : 0
 
 /** 样本现在的成员框编号(存下的、还在这张图上、在样本日当天或之前结束的)。 */
