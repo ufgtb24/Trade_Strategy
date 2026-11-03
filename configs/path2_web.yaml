@@ -16,3 +16,16 @@ scan:
 last_selected_pattern: bb_v1
 annotation_dir: annotations
 machine: null
+train_segment:
+  start: '2021-10-08'
+  end: '2025-12-31'
+finder:
+  random_window_bars: 250
+  rally:
+    k: 5.0
+    horizon: 40
+    rel_min: 2.0
+    suppress_bars: 20
+    per_week_max: 5
+    top: 300
+    before_bars: 120
