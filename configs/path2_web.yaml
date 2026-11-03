@@ -14,3 +14,5 @@ scan:
   price_max: 30
   volume_min: 10000
 last_selected_pattern: bb_v1
+annotation_dir: annotations
+machine: null

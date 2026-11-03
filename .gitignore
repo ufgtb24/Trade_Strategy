@@ -1,5 +1,8 @@
 .idea
 datasets
+# 用户的标注文件(path2_web 配置 annotation_dir):不进 git,两台机器用 Syncthing 同步。
+# 不带末尾斜杠:worktree 里它是指向主目录的软链,带斜杠的规则只匹配真目录
+/annotations
 # outputs 目录(根目录与任何一层)整个不进 git
 /outputs/
 */**/outputs/

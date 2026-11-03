@@ -6,11 +6,12 @@
 
 逐个读 SRC/*.pkl:去 tz、按日期排序、只留日期 ≤ CUTOFF 的行,原样(列不变)写到 DST/<同名>.pkl;
 截完为空的不写,只计数。全程先写到 DST 同级的临时目录,写完逐个重读核对(最后一天 ≤ CUTOFF、行数对得上),
-全部通过才换名成 DST;任何一步失败就删掉临时目录、DST 原样不动。DST 已存在时 REBUILD = False 就拒绝。
+再按文件名与内容算指纹、写指纹清单(path2_web/snapshot_fingerprint.py;不算登记、不记账),全部通过才换名成 DST;任何一步失败就删掉临时目录、DST 原样不动。DST 已存在时 REBUILD = False 就拒绝。
 CUTOFF 不得晚于训练段末日(path2_web.data.TRAIN_END)。只读 SRC,不改其中任何文件;只打印计数和路径。
 
 副本不进 git(datasets/ 整个被忽略)。两台机器都要用时,只在一台上生成,原样拷到另一台——两台下载的原始行情
-不同,复权也会随时间变,各自生成就不是同一份。
+不同,复权也会随时间变,各自生成就不是同一份。指纹清单随副本一起拷,两台用 scripts/data/snapshot_fingerprint.py
+各核对一次,输出相同就是同一份。
 """
 from __future__ import annotations
 
@@ -26,6 +27,7 @@ REPO = Path(subprocess.check_output(["git", "rev-parse", "--show-toplevel"], tex
 sys.path.insert(0, str(REPO))
 
 from path2_web.data import TRAIN_END  # noqa: E402
+from path2_web.snapshot_fingerprint import write_manifest  # noqa: E402
 
 
 def _cut(df: pd.DataFrame, cutoff: pd.Timestamp) -> pd.DataFrame:
@@ -38,7 +40,8 @@ def _cut(df: pd.DataFrame, cutoff: pd.Timestamp) -> pd.DataFrame:
 
 
 def build(src: Path, dst: Path, cutoff: str, rebuild: bool) -> dict:
-    """生成副本,返回 {n_files, n_skipped_empty, max_date}。不满足前提或核对失败 → RuntimeError。"""
+    """生成副本(含指纹清单),返回 {n_files, n_skipped_empty, max_date, fingerprint}。
+    不满足前提或核对失败 → RuntimeError。"""
     if cutoff > TRAIN_END:
         raise RuntimeError(f"截断终点 {cutoff} 晚于训练段末日 {TRAIN_END},拒绝")
     cut_ts = pd.Timestamp(cutoff)                          # 不是日期就抛
@@ -76,6 +79,7 @@ def build(src: Path, dst: Path, cutoff: str, rebuild: bool) -> dict:
                 bad.append(name)
         if bad:
             raise RuntimeError(f"核对失败 {len(bad)} 项(最后一天晚于 {cutoff} 或行数不符): {bad[:5]}")
+        fingerprint = write_manifest(tmp)["fingerprint"]
 
         if dst.exists():
             old = dst.parent / f".{dst.name}.old-{os.getpid()}"
@@ -89,7 +93,8 @@ def build(src: Path, dst: Path, cutoff: str, rebuild: bool) -> dict:
         raise
     max_date = max((d for _, d in written.values()), default=None)
     return {"n_files": len(written), "n_skipped_empty": skipped,
-            "max_date": max_date.strftime("%Y-%m-%d") if max_date is not None else None}
+            "max_date": max_date.strftime("%Y-%m-%d") if max_date is not None else None,
+            "fingerprint": fingerprint}
 
 
 def main() -> None:
@@ -105,7 +110,7 @@ def main() -> None:
         print(f"错误:{e}", file=sys.stderr)
         sys.exit(2)
     print(f"[make_train_snapshot] 写入 {DST}:{out['n_files']} 个文件,截完为空跳过 {out['n_skipped_empty']} 个,"
-          f"最后一天 {out['max_date']}(截断终点 {CUTOFF})")
+          f"最后一天 {out['max_date']}(截断终点 {CUTOFF}),指纹 {out['fingerprint']}")
 
 
 if __name__ == "__main__":
