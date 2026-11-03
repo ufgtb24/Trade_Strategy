@@ -1,7 +1,8 @@
 # 现有技能改成以标注为输入
 
 Type: grilling
-Status: open
+Status: resolved
+Class: detail（实现细节）
 Blocked by: 01, 09
 
 ## Question
@@ -22,3 +23,7 @@ Blocked by: 01, 09
 ## Comments
 
 - 2026-11-01 由[结构化标注：存什么、界面和主视图怎么合](01-structured-annotation.md)批准带入：写 app 技能的输入是框（名字、属性、框套框）、样本（judgment、成员框、`note`）、pattern 定义、特征定义，加会话写的 mapping；会话不写标注文件。
+
+## Answer
+
+2026-11-03 随 `.scratch/annotation-path2/spec.md` 批准关闭：cc 定，用起来再调。规则见 spec 6.10。

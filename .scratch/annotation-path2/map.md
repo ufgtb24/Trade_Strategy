@@ -20,7 +20,12 @@
 - 用词以 `path2/GLOSSARY.md`（框架与走势）和 `path2_web/GLOSSARY.md`（界面）为准，对用户说话时带上「文件:行号」出处；查词先 grep 再只读那一段。
 - 每张讨论票照例调 grilling 和 domain-modeling 两个技能；研究票由子代理调 research 技能，结论写进 `research/<NN>-<slug>.md`；原型票调 prototype 技能，代码放 `prototypes/`。票的规矩见 `docs/agents/decision-tickets.md`（认领、先和用户对倾向、结论经用户批准后才动地图和别的票）。
 - 对用户：用户是方向的决策者，不是参数的决定者；阈值类数值先给默认值并标「待验证」。提问用 AskUserQuestion，推荐项放第一个并标「(推荐)」；用户在问「为什么」或要求澄清时只回答，不紧接着挂选择题。说话用白话、不打比方。用户色弱：要彩色，避开同冷暖、深浅相近的色对（绿-橙、蓝-紫、浅黄-浅绿）；新颜色只从用户确认过的安全色里选；主视图配色不动。
+- Costly resources: 2026 年起的数据（每读一次都算一次检查，撤不回）；最后检查的判决与检查次数；用户手工做的标注。
 - 用户有两台机器 pc 和 upc，现在的工作分支是 `annotation-path2`。
+- 2026-11-03 用户定：
+  - 开发分两段：第一段先造标注工具，用户用它标 3～5 张，cc 手工翻成 app、叠回图上对照，确认标注格式装得下用户的意思后，第二段再造其余部分。这一段取代人机协作方案（`docs/research/2026-11-01_human-cc-collab-workflow/方案.md` 4.1 节）里的「第 0 步在对话里手工走一遍」。
+  - 回到标准流程：决策 → spec → 实施票 → 实施。拍板层不写进本地图，作为 `spec.md` 开头一节交用户过目；不用该方案 4.3 节的「一份自包含计划」代替实施票。
+  - 同日用户批准 spec：`.scratch/annotation-path2/spec.md`（第 1 节拍板层；采用表 `research/spec-adoption.md`）。此后有效规则以 spec 为准，改拍板层要先问用户。
 - 研究票顺手量到的副产品，先写进答案、等用户批准后再登记进 `docs/feature_candidates.md`（2026-10-24 用户定；项目的登记规则和决策票「共享文件等批准后才改」在这里会撞，以后按这个顺序）。
 
 ## Decisions so far
@@ -32,6 +37,14 @@
 - [界面显示的对称与统一](issues/15-display-consistency.md): 计数一律数样本、正负对偶写 `pos k/N · neg m/M`；汇总写比例、点开分排写个数；凡数样本的数都能点开；样本卡在哪都挂同一组 tag；数为 0 也显示
 - [结构化标注：存什么、界面和主视图怎么合](issues/01-structured-annotation.md): 标注是主视图的一个模式（annotate / compare / app）；框用用户自己的词、词表跨图共用；样本标 pos / neg，依据是样本日或之前结束的成员框、换样本后冻结；会话写 mapping、翻译与定级归会话；对照三层只给状态（tier / link / match tag），不比起止、不给数字
 - [旧看图工作流代码搬什么、拆什么](issues/10-old-code.md): 2026-11-02 用户改定：不搬，整体删除、不要账本；path2_web 调试视图只读训练段副本、硬截到 2025-12-31；截副本改成独立脚本；新工具要用的旧做法从提交 79a379a 找参照重写
+
+- [「至少 k 条成立」组合子和「底部」类复合事件的写法约定](issues/06-k-of-n-and-composite.md): `optional` 落成 `tracked`（算、显示、可量、不筛）；写明「有一个就行 / 凑够几样」的落成至少 k 条；写法 cc 定，配检查保证不筛（spec 6.11）
+- [数据和标注在两台机器之间同步](issues/07-two-machine-sync.md): 两台都标；训练段副本以 pc 11-02 那份为准拷到 upc、不随下载更新；标注文件 git 外 + Syncthing、每台只新增自己的文件；完整行情不同步；最后检查只在 pc、次数记 git；upc 旧标注确认后删（spec 1.7、5.9）
+- [app 盲看清单：抽多少、显示什么、标记存什么](issues/08-blind-match-list.md): 界面照 Q2、Q3、Q6；张数默认随机 15 待验证，结论附可分辨的最小差别（spec 6.5）
+- [串起「图 → 代码」循环的技能](issues/09-loop-skill.md): 手工走过两三遍循环后再写，不按比例判停（spec 6.10）
+- [现有技能改成以标注为输入](issues/11-skills-take-annotations.md): cc 定（spec 6.10）
+- [只在 negative sample 上出现的特征：定级时别被一半门槛吞掉](issues/12-nobuy-only-feature-level.md): 负判断里出现过、正样本里不到一半的特征一定问用户；TVGN「派发」作检查例子（spec 6.1）
+- [`diff tag` 不看属性：属性对不上时仍显示 =](issues/13-diff-tag-attributes.md): `must` 判 `false`、`must_not` 判 `true` 算对不上，`null` 不算；WHLRP 2024-03-21 应显示对不上（spec 6.2）
 
 ## Not yet specified
 

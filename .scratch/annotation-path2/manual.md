@@ -35,30 +35,28 @@
 | 词 | 在这个工具里指什么 | 出处 |
 |---|---|---|
 | pattern | 你起名、配一句定义的那种走势。它是抽象的；你的样本挂在它下面，app 改版不改归属 | `path2/GLOSSARY.md:73` |
-| feature / 特征 | 你在图上认出来的一样东西，如横盘、缩量、放量突破；可以是一个框标的那一段，也可以是框上的一条属性 | `path2/GLOSSARY.md:161` |
-| 特征名 | 特征的叫法，随时可改，改了处处跟着变 | `path2/GLOSSARY.md:165` |
-| 定义 | 一句话说清这个特征什么算、什么不算；意思定下就不改 | `path2/GLOSSARY.md:169` |
+| feature / 特征 | 你在图上认出来的一样东西，如横盘、缩量、放量突破；可以是一个框标的那一段，也可以是框上的一条属性 | `path2/GLOSSARY.md:133` |
+| 特征名 | 特征的叫法，随时可改，改了处处跟着变 | `path2/GLOSSARY.md:137` |
+| 定义 | 一句话说清这个特征什么算、什么不算；意思定下就不改 | `path2/GLOSSARY.md:141` |
 | box / 框 | 你在图上拖出来的一段日期，标着一个特征（annotated feature） | `GLOSSARY-MAP.md:25` |
-| 属性 | 挂在框上的另一个特征，三态：`true` 有、`false` 没有、`null` 没看过 | `path2/GLOSSARY.md:161` |
-| sample / 样本 | 你在一张图上、相对某个 pattern 下的一次判断，连同依据（annotated pattern） | `path2/GLOSSARY.md:180` |
-| judgment | 样本的判断：`pos` 正样本或 `neg` 负样本 | `path2/GLOSSARY.md:180` |
-| positive sample / 正样本 | 这一天有这个 pattern 的样子，按它的逻辑当时会买 | `path2/GLOSSARY.md:185` |
-| negative sample / 负样本 | 你专门挑的、像这个 pattern，但这一天就看得出不该买的那天 | `path2/GLOSSARY.md:190` |
-| sample date / 样本日 | 样本下判断的那一天；图上正样本画实心 ▲、负样本画空心 △ | `path2/GLOSSARY.md:195` |
-| member box / 成员框 | 样本收进的框，即判断的依据；必须在样本日当天或之前结束 | `path2/GLOSSARY.md:199` |
-| unsorted / 未归类 | 样本还没指定 pattern 的过渡状态，不是一个 pattern | `path2/GLOSSARY.md:203` |
-| map / mapping | 会话把你的特征对到 app 的某一部分，这个动作叫 map；写下的那张表叫 mapping，每个特征一行、带一级 | `path2/GLOSSARY.md:172` |
-| dag | app 对一个 pattern 的声明：一组 node 加一组边（mapped pattern） | `path2/GLOSSARY.md:176` |
+| 属性 | 挂在框上的另一个特征，三态：`true` 有、`false` 没有、`null` 没看过 | `path2/GLOSSARY.md:133` |
+| sample / 样本 | 你在一张图上、相对某个 pattern 下的一次判断，连同依据（annotated pattern） | `path2/GLOSSARY.md:152` |
+| judgment | 样本的判断：`pos` 正样本或 `neg` 负样本 | `path2/GLOSSARY.md:152` |
+| positive sample / 正样本 | 这一天有这个 pattern 的样子，按它的逻辑当时会买 | `path2/GLOSSARY.md:157` |
+| negative sample / 负样本 | 你专门挑的、像这个 pattern，但这一天就看得出不该买的那天 | `path2/GLOSSARY.md:162` |
+| sample date / 样本日 | 样本下判断的那一天；图上正样本画实心 ▲、负样本画空心 △ | `path2/GLOSSARY.md:167` |
+| member box / 成员框 | 样本收进的框，即判断的依据；必须在样本日当天或之前结束 | `path2/GLOSSARY.md:171` |
+| unsorted / 未归类 | 样本还没指定 pattern 的过渡状态，不是一个 pattern | `path2/GLOSSARY.md:175` |
+| map / mapping | 会话把你的特征对到 app 的某一部分，这个动作叫 map；写下的那张表叫 mapping，每个特征一行、带一级 | `path2/GLOSSARY.md:144` |
 | app | 一个走势的完整声明，可以独立扫描与评估；每改一次升一版 | `path2/GLOSSARY.md:36` |
 | event | app 一侧 detector 产出的事件（recognized feature），和你的框成对 | `path2/GLOSSARY.md:44` |
 | hit | app 求解出的一次完整命中（recognized pattern），和你的样本成对 | `GLOSSARY-MAP.md:27` |
 | buy point / 买点 | hit 里真正买的那根 K 线。只用于 app 一侧；你的一侧叫样本日 | `path2/GLOSSARY.md:118` |
-| 确认根 | 只读到这一根就能断定事件已发生的那根 K 线；app 的买点不会早于它 | `path2/GLOSSARY.md:56` |
-| match | 拿 hit 和样本比：app 有 hit 的买点落在样本日附近，样本就是 `matched`，否则 `unmatched` | `path2/GLOSSARY.md:180` |
+| match | 拿 hit 和样本比：app 有 hit 的买点落在样本日附近，样本就是 `matched`，否则 `unmatched` | `path2/GLOSSARY.md:152` |
 | detected、qualified、bound | 一个 event 的三档，依次收窄：被检测出来、过了所在 node 的全部 where、进了某一次 hit | `path2_web/GLOSSARY.md:28`（该行第三档仍叫 matched，即这里的 bound） |
 | tag | 界面上挂在某样东西旁、显示一个状态或结论的小方框；说时带种类：`match tag`、`diff tag`、`tier tag`、`link tag` | `path2_web/GLOSSARY.md:48` |
 | bracket | 图上那条横带：app 每次 hit 的跨度，以及你每个样本的跨度（虚线） | `path2_web/GLOSSARY.md:45` |
-| 训练段 | 你可以随便看、随便量的那段历史：2021-10-08～2025-12-31 | `path2/GLOSSARY.md:124`（该行的日期范围已过时，以本表为准） |
+| 训练段 | 你可以随便看、随便量的那段历史：2021-10-08～2025-12-31 | `path2/GLOSSARY.md:124` |
 | 没碰过的数据 | 2026-01-01 起的数据，只给最后检查用 | — |
 | 同日普通买入对照 | 每个买点的同一天、同一池子里的普通买入；比它多出的部分只剩「挑得好不好」 | `path2/GLOSSARY.md:114` |
 | 随机日基线 | 随便哪天随便买一只；比它多出的部分含「挑得好」和「出手时机好」两样 | `path2/GLOSSARY.md:111` |
@@ -574,7 +572,7 @@ flowchart TD
 
 **版本。** app 每改一次升一版。工具里的对照每次按当前版本现算，永远是新的；存下来的结论——盲看标记、量特征的结论、检查次数——带版本，app 改过以后旧的显示为过期，不会被当成现状。
 
-**两台机器。** 标注每批一个新文件、文件名带机器名、只新增不改旧文件，两台机器同步时不会冲突；改特征名也是新记一条。标注里记着数据指纹，数据重做以后，每条标注对应哪一版数据仍然清楚。
+**两台机器。** pc 和 upc 都能标注，两台用同一份训练段数据副本（以 pc 2026-11-02 做的那份为准），这份副本不跟着行情下载更新，要重做就两台一起换。标注文件放在 git 之外，两台之间用 Syncthing 同步；每批一个新文件、文件名带机器名、只新增不改旧文件，框、样本、特征的编号也带机器名，两台各自新建不会撞号，同步时不会冲突；改特征名也是新记一条。标注里记着当时用的是哪份训练段副本，打开时和本机的对不上，工具会明确报出来，不悄悄照用。完整行情（含 2026 年）两台各自下载、不同步；最后检查只在 pc 上做，检查次数记在 git 里。
 
 **语言的位置。** 意思一律落到图上；语言只出现在四处，而且都挂在图上某样东西上：
 

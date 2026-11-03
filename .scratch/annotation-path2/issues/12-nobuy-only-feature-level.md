@@ -1,7 +1,8 @@
 # 只在 negative sample 上出现的特征：定级时别被一半门槛吞掉
 
 Type: task (HITL)
-Status: claimed
+Status: resolved
+Class: 显示与定级规则，错了只会悄悄让结论变好看，故默认随 spec 交用户批准
 Claimed: 2026-11-01
 
 ## Question
@@ -25,3 +26,11 @@ negative sample 上画出来的不买理由，是会话把 `must_not` 写进 pat
 **批准后要改的**：答案并入票「结构化标注：存什么、界面和主视图怎么合」里关于定级的规则（polish 报告的定级规则目前还没进那张票的答案），并作为输入交给票「串起「图 → 代码」循环的技能」；`mock_v4.html` 的演示 mapping 与 `backend_contract.md` 里 excluded 原因的说明如有涉及一并同步。
 
 相关：票「`diff tag` 不看属性：属性对不上时仍显示 =」（同样出在会话和工具怎么用 negative sample 上）。
+
+## Answer
+
+2026-11-03 用户批准 `.scratch/annotation-path2/spec.md` 1.9 节的默认，本票按它关闭。
+
+- 在负判断里出现过、正样本里不到一半的特征，定级时一定问用户，不默认丢掉。
+- 检查例子：TVGN 那个负样本上的「派发」。
+- 说明书已照此写；有效规则见 spec 6.1。

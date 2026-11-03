@@ -122,6 +122,8 @@ FastAPI 后端（pattern 发现 / 扫描 / 序列化 / 诊断）+ Vue3 前端（
 
 **后台 agent 交付约定**：**前提——仅当后台 agent 为本任务创建了独立 worktree 时才按此交付**；未创建 worktree（如纯研究/只读任务、或直接在当前 worktree 内工作）则不走此流程。适用时，完成任务后统一如此交付——① 在该 worktree 分支 `commit`；② `push` 该分支到 `origin`；③ 停下并只报告分支名，任务到此为止。**禁止开 PR**：不得用任何方式（`gh` / GitHub API / `curl` 等）创建 PR，合并一律由我手动完成。派后台 agent 时把本约定原样写进其 prompt（后台 agent 在隔离上下文运行、未必读得到本文件）。
 
+**实施票走自己的合并规则**：执行 `.scratch/<effort>-implementation/issues/` 下的实施票时（`/parallel-tickets` 派出的执行者、手动执行的会话都算），交付照 `docs/agents/implementation-tickets.md`「Execution in linked worktrees」和 parallel-tickets 的 `references/ticket-agent.md`：审查通过后由执行者用 `--no-ff` 把票分支合回调度分支（主目录当前检出的工作分支，如 `annotation-path2`）并写完成记录，这一步取代上一段的「推送分支、报分支名、等我合并」。调度分支合进 `master` 仍由我手动完成；禁止开 PR 同样适用。
+
 
 ## 创作 skill
 

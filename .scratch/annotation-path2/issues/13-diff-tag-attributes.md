@@ -1,7 +1,8 @@
 # `diff tag` 不看属性：属性对不上时仍显示 =
 
 Type: task (HITL)
-Status: open
+Status: resolved
+Class: 显示规则，属性对不上却显示一致不会在使用中被看出，故默认随 spec 交用户批准
 
 ## Question
 
@@ -26,3 +27,12 @@ Status: open
 **批准后要改的**：`mock_v4.html` 的 `diff tag` 算法与悬停、`backend_contract.md`「差」一节；答案并入票「结构化标注：存什么、界面和主视图怎么合」里关于对照的规则。
 
 相关：票「只在 negative sample 上出现的特征：定级时别被一半门槛吞掉」。
+
+## Answer
+
+2026-11-03 用户批准 `.scratch/annotation-path2/spec.md` 1.9 节的默认，本票按它关闭。
+
+- `must` 的属性判成 `false`、`must_not` 的属性判成 `true`，都算对不上；`null` 不算。
+- 连带：属性对不上的正样本，也进会话问用户的题。
+- 检查例子：WHLRP 2024-03-21 那个正样本应显示对不上。
+- 说明书已照此写；有效规则见 spec 6.2。
