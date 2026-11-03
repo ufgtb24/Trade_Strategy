@@ -1,0 +1,202 @@
+"""数据墙:2026-01-01 起的行情一律不给用户看(path2_web/data.py 模块说明)。
+
+- read_bars 是网页读行情的唯一入口:校验代码名、去 tz、按日期排序、截到训练段末日 TRAIN_END(代码常量);
+- 配置的目录误指到带 2026 年行情的数据,K 线、网页扫描的 worker 也读不到 2026 年的 bar;
+- 单股预览与扫描的区间终点截到 TRAIN_END,起点晚于它 → 400;
+- 网页扫描(cap_at_train_end=True)落盘 data_until;研究脚本照旧读完整行情、不带 data_until;
+  没有它(或晚于 TRAIN_END)的扫描打不开(409),列表里不给成绩。
+"""
+from __future__ import annotations
+
+import json
+import threading
+from concurrent.futures import ThreadPoolExecutor
+
+import numpy as np
+import pandas as pd
+import pytest
+from fastapi.testclient import TestClient
+
+from path2_web import data as data_mod
+from path2_web import scan as scan_mod
+from path2_web.app import create_app
+from tests.path2_web.conftest import data_cfg
+
+TRAIN_END = "2025-12-31"
+
+
+def _write_pkl(ddir, symbol: str, start="2025-06-02", end="2026-03-31", tz=None, shuffle=False) -> pd.DataFrame:
+    """写一只跨过 2025-12-31 的合成股票(工作日,价格缓慢上行),index 名 date,与真实 pkl 同形。"""
+    idx = pd.bdate_range(start, end, name="date", tz=tz)
+    n = len(idx)
+    close = 10 + np.arange(n) * 0.01
+    df = pd.DataFrame({"open": close, "high": close + 0.2, "low": close - 0.2, "close": close,
+                       "volume": np.full(n, 1e6)}, index=idx)
+    if shuffle:
+        df = df.sample(frac=1.0, random_state=0)
+    df.to_pickle(ddir / f"{symbol}.pkl")
+    return df
+
+
+@pytest.fixture
+def full_dir(tmp_path):
+    d = tmp_path / "pkls"
+    d.mkdir()
+    _write_pkl(d, "AAA")
+    return d
+
+
+def _client(tmp_path, ddir) -> TestClient:
+    cfg = {**data_cfg(ddir),
+           "scan": {"start_date": "2025-06-02", "end_date": "2025-12-31", "workers": 1, "ticker_regex": None},
+           "last_selected_pattern": "bo_only"}
+    return TestClient(create_app(config_override=cfg, outputs_root=str(tmp_path / "outputs"),
+                                 use_thread_pool=True))
+
+
+def test_train_end_is_code_constant():
+    assert data_mod.TRAIN_END == TRAIN_END
+
+
+def test_read_bars_caps_sorts_and_strips_tz(tmp_path):
+    _write_pkl(tmp_path, "TZ", tz="UTC", shuffle=True)
+    df = data_mod.read_bars(tmp_path, "TZ")
+    assert df.index.tz is None
+    assert df.index.is_monotonic_increasing
+    assert df.index.max() <= pd.Timestamp(TRAIN_END)
+    assert df.index.min() == pd.Timestamp("2025-06-02")          # 更早的行情(探测器预热)照常在内
+
+
+@pytest.mark.parametrize("bad", ["../AAA", "a/b", "..", "", " AAA", "AA A", ".hidden", "A..B", "X" * 16, None])
+def test_read_bars_rejects_bad_symbol(tmp_path, bad):
+    with pytest.raises(ValueError):
+        data_mod.read_bars(tmp_path, bad)
+
+
+def test_read_bars_missing_file(tmp_path):
+    with pytest.raises(FileNotFoundError):
+        data_mod.read_bars(tmp_path, "NOPE")
+
+
+def test_ohlc_never_returns_2026_bars(tmp_path, full_dir):
+    """配置的目录里的 pkl 带 2026 年行情:/ohlc 请求到 2026-03 也只给到 2025-12-31。"""
+    c = _client(tmp_path, full_dir)
+    r = c.get("/ohlc", params={"symbol": "AAA", "start": "2025-12-01", "end": "2026-03-31"})
+    assert r.status_code == 200, r.text
+    dates = [b["date"] for b in r.json()["bars"]]
+    assert dates and max(dates) == TRAIN_END
+    r = c.get("/ohlc", params={"symbol": "AAA", "start": "2026-01-02", "end": "2026-03-31"})
+    assert r.status_code == 200 and r.json()["bars"] == []
+
+
+def test_ohlc_symbol_and_date_checks(tmp_path, full_dir):
+    c = _client(tmp_path, full_dir)
+    assert c.get("/ohlc", params={"symbol": "../pkls/AAA", "start": "2025-12-01", "end": "2025-12-31"}).status_code == 400
+    assert c.get("/ohlc", params={"symbol": "NOPE", "start": "2025-12-01", "end": "2025-12-31"}).status_code == 404
+    assert c.get("/ohlc", params={"symbol": "AAA", "start": "2025/12/01", "end": "2025-12-31"}).status_code == 400
+
+
+def test_missing_data_dir_is_503(tmp_path):
+    c = _client(tmp_path, tmp_path / "no_such_dir")
+    r = c.get("/ohlc", params={"symbol": "AAA", "start": "2025-12-01", "end": "2025-12-31"})
+    assert r.status_code == 503
+
+
+def test_preview_end_clamped_and_start_after_train_end_400(tmp_path, full_dir):
+    c = _client(tmp_path, full_dir)
+    r = c.get("/preview", params={"pattern_id": "bo_only", "symbol": "AAA", "start": "2025-10-01",
+                                  "end": "2026-03-31", "label_horizon": 20})
+    assert r.status_code == 200, r.text
+    assert r.json()["scan"]["end_date"] == TRAIN_END
+    r = c.get("/preview", params={"pattern_id": "bo_only", "symbol": "AAA", "start": "2026-01-05",
+                                  "end": "2026-03-31", "label_horizon": 20})
+    assert r.status_code == 400
+
+
+def test_post_scan_clamps_end_and_reads_configured_dir(tmp_path, full_dir, monkeypatch):
+    """POST /scan:区间终点截到训练段末日,读配置的目录;起点晚于训练段末日 → 400。"""
+    got: dict = {}
+    done = threading.Event()
+
+    def fake_run(**kw):
+        got.update(kw)
+        done.set()
+        return {"scan": {"hits": 0, "errors": 0, "scanned": 0}}
+    monkeypatch.setattr(scan_mod, "run_scan_multi", fake_run)
+    c = _client(tmp_path, full_dir)
+    r = c.post("/scan", json={"pattern_ids": ["bo_only"], "start_date": "2025-06-02",
+                              "end_date": "2026-03-31", "workers": 1, "label_horizon": 20})
+    assert r.status_code == 200, r.text
+    assert done.wait(10)
+    assert got["end_date"] == TRAIN_END and got["data_dir"] == str(full_dir)
+    assert got["cap_at_train_end"] is True
+    r = c.post("/scan", json={"pattern_ids": ["bo_only"], "start_date": "2026-01-05",
+                              "end_date": "2026-03-31", "workers": 1, "label_horizon": 20})
+    assert r.status_code == 400
+
+
+def _run_scan(tmp_path, full_dir, monkeypatch, name: str, **kw) -> tuple[dict, list]:
+    """直接调 run_scan_multi 扫 full_dir(行情到 2026-03);返回 (结果, worker 读到的每只股票的最后一天)。"""
+    seen_max: list = []
+    real_slice = scan_mod.slice_window
+
+    def spy(df, start, end):
+        seen_max.append(df.index.max())
+        return real_slice(df, start, end)
+    monkeypatch.setattr(scan_mod, "slice_window", spy)
+    from path2_web.discovery import PatternRegistry
+    from path2_web.serialize import serialize_pattern
+    reg = PatternRegistry()
+    mod = reg.get("bo_only")
+    out = tmp_path / "outputs"
+    res = scan_mod.run_scan_multi(
+        data_dir=str(full_dir), pattern_specs_json={"bo_only": serialize_pattern(mod.build_pattern(mod.load_params()))},
+        module_paths={"bo_only": reg.module_path("bo_only")}, pattern_ids=["bo_only"],
+        end_nodes={"bo_only": mod.eval_meta()["end_node"]}, head_buffer_trading_days=20, label_horizon=20,
+        start_date="2025-07-01", end_date="2026-03-31", workers=1, ticker_regex=None, scan_ts=name, name=name,
+        outputs_root=str(out), executor_factory=lambda w: ThreadPoolExecutor(max_workers=w), **kw)
+    return res, seen_max
+
+
+def test_web_scan_worker_reads_capped_bars_and_marks_data_until(tmp_path, full_dir, monkeypatch):
+    """cap_at_train_end=True(网页扫描):worker 经 read_bars 读(看不到 2026 年的 bar),
+    落盘 scan.data_until = TRAIN_END,网页能打开。"""
+    res, seen_max = _run_scan(tmp_path, full_dir, monkeypatch, "20261102T000000", cap_at_train_end=True)
+    assert res["scan"]["data_until"] == TRAIN_END
+    assert seen_max and max(seen_max) <= pd.Timestamp(TRAIN_END)
+    c = _client(tmp_path, full_dir)
+    assert c.get("/scans/20261102T000000").status_code == 200
+    row = next(r for r in c.get("/scans/").json() if r["name"] == "20261102T000000")
+    assert "old_scan" not in row
+
+
+def test_script_scan_reads_full_data_and_cannot_be_opened(tmp_path, full_dir, monkeypatch):
+    """不传 cap_at_train_end(研究脚本,如 scan-wide.py):照旧读完整行情,不写 data_until,网页打不开。"""
+    res, seen_max = _run_scan(tmp_path, full_dir, monkeypatch, "20261102T000001")
+    assert "data_until" not in res["scan"]
+    assert max(seen_max) > pd.Timestamp(TRAIN_END)
+    c = _client(tmp_path, full_dir)
+    assert c.get("/scans/20261102T000001").status_code == 409
+    row = next(r for r in c.get("/scans/").json() if r["name"] == "20261102T000001")
+    assert row["old_scan"] is True
+
+
+@pytest.mark.parametrize("scan_section", [
+    {"hits": 1, "scanned": 1},                                  # 截断之前扫的:没有 data_until
+    {"hits": 1, "scanned": 1, "data_until": "2026-03-31"},      # 晚于训练段末日
+])
+def test_scan_beyond_data_wall_refused_and_numbers_hidden(tmp_path, full_dir, scan_section):
+    scans = tmp_path / "outputs" / "scans"
+    scans.mkdir(parents=True)
+    (scans / "old.json").write_text(json.dumps({
+        "pattern_ids": ["bo_only"], "scan": {"scan_ts": "20260906T231146", **scan_section},
+        "per_pattern": {"bo_only": {"stats": {"median": 0.12},
+                                    "first_passage_stats": {"n_bars": 3, "ratio": 0.5, "random_ratio": 0.4}}},
+        "results": [{"symbol": "AAA", "per_pattern": {"bo_only": {"summary": {"matches": 1}}}}]}))
+    c = _client(tmp_path, full_dir)
+    assert c.get("/scans/old").status_code == 409
+    row = next(r for r in c.get("/scans/").json() if r["name"] == "old")
+    assert row["old_scan"] is True and row["hits"] is None
+    assert row["per_pattern"]["bo_only"] | {"params_consistent": None} == \
+        {"hits": None, "median": None, "fp": None, "params_consistent": None}
+    assert c.delete("/scans/old").status_code == 200                # 删照常能删
