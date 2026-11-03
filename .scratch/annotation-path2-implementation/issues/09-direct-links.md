@@ -1,7 +1,8 @@
 # 直达链接：「股票 + 日期」与「样本编号」（M14）
 
 Status: ready-for-agent
-Progress: not-started
+Progress: in-progress
+Claimed: 2026-11-03 parallel-tickets ticket-09 @ worktree impl/09-direct-links
 Blocked by: 06
 
 ## Purpose
