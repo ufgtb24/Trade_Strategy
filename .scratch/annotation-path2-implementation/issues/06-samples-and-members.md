@@ -1,7 +1,8 @@
 # 放样本与成员框（含因果性、冻结与 M12）
 
 Status: ready-for-agent
-Progress: not-started
+Progress: in-progress
+Claimed: 2026-11-03 parallel-tickets ticket-06 @ worktree impl/06-samples-and-members
 Blocked by: 05
 
 ## Purpose
