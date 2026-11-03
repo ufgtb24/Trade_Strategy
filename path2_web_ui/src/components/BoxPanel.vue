@@ -1,5 +1,11 @@
 <template>
   <div v-if="sel" class="box-panel" data-testid="box-panel">
+    <div v-if="cur" class="ann-blk cur" data-testid="current-sample">
+      <button type="button" class="ann-btn on" data-testid="current-sample-button"
+              title="current sample: boxes drawn now join it by default; click to return to it"
+              @click="ann.selectSample(cur.sample.id)">{{ sampleTag(cur.sample, curLetter) }}</button>
+      <MemberChain :sample="cur.sample" :chart="cur.chart" :editable="false" tid="current-sample-members" />
+    </div>
     <div class="ann-hdr">
       <span class="ann-sym" data-testid="box-span" title="start – end; drag the box edges on its lane to change">{{ sel.box.start }} – {{ sel.box.end }}</span>
       <span class="ann-grow" />
@@ -28,6 +34,18 @@
       </div>
 
       <DefinitionField v-if="feature && !picking" :feature="feature" />
+
+      <span class="ann-k" title="samples this box is a member box of; click to add / remove. Samples of other patterns are read-only">member_of</span>
+      <div class="ann-row" data-testid="box-member-of">
+        <button v-for="r in memberOf" :key="r.sample.id" type="button"
+                :class="['ann-btn', { on: r.state === 'member', 'ann-off': !r.editable }]"
+                :disabled="!r.editable" :data-testid="`member-of-${r.sample.id}`" :data-state="r.state"
+                :title="MEMBER_OF_TIP[r.editable ? r.state : r.state === 'member' ? 'other' : r.state]"
+                @click="ann.toggleMember(r.sample.id, sel.box.id)">
+          {{ sampleTag(r.sample, letters.get(r.sample.id)) }}<span v-if="r.sample.pattern !== ann.currentPattern" :class="r.sample.pattern === null ? 'ann-sym pad' : 'ann-pat'">{{ r.sample.pattern ?? 'unsorted' }}</span>
+        </button>
+        <span v-if="!memberOf.length" class="ann-nil" title="no sample on or after its start yet">—</span>
+      </div>
 
       <template v-if="pRows.length">
         <span class="ann-k" title="the box it belongs to (⊂ on), or boxes it could belong to (⊂ off)">parent</span>
@@ -85,7 +103,10 @@
 
 <script setup lang="ts">
 /**
- * selection 页里选中一个框时的内容:起止、特征(起名或换特征)、定义、parent(框套框的 ⊂)、属性三态、note。
+ * selection 页里选中一个框时的内容:起止、特征(起名或换特征)、定义、member_of、parent(框套框的 ⊂)、属性三态、note。
+ * - 顶上:这张图上有当前样本时,一条它的成员链(只显示),点样本回到它;
+ * - member_of:收了它的全部样本(别的 pattern 的变淡、只读)和当前 pattern 里能收它的样本,点一下收进或拿掉;
+ *   框跨过样本日的那个样本变灰、点不了。删框前在这里看得见会波及哪些样本;
  * - 起名:词表里和输入有共同字的已有词排最前、加粗;回车用输入的名字(有同名的词就用它,没有就新起);
  * - 定义:这个词还没有定义时留一格写,写下就不再改(意思变了另起一个词);
  * - parent:它现在属于的框(⊂ 亮,点掉 = detach 或拿掉 attach),以及能手动挂上的交叠、更长的框(⊂ 灭,点上 = attach);
@@ -97,7 +118,9 @@ import { useAnnotationStore } from '../stores/annotation'
 import {
   attrState, attrWordsOf, chartParents, featureUsage, kidWordsOf, parentRows, rankSuggestions, type ParentRow,
 } from '../annotate/model'
+import { memberOfRows, sampleLetters, sampleTag } from '../annotate/samples'
 import DefinitionField from './DefinitionField.vue'
+import MemberChain from './MemberChain.vue'
 
 const PARENT_TIP: Record<ParentRow['via'], string> = {
   default: 'enclosed by this box, so it belongs to it by default; click off = it just happens to lie inside',
@@ -106,8 +129,21 @@ const PARENT_TIP: Record<ParentRow['via'], string> = {
   candidate: 'longer box overlapping it; click on = it belongs to this box',
 }
 
+const MEMBER_OF_TIP = {
+  member: 'member box of this sample; click to remove',
+  open: 'not a member box of this sample; click to add',
+  crosses: 'crosses sample date: this box ends after the sample date, so it cannot be a member box',
+  other: 'member box of a sample of another pattern; read-only (switch the pattern to edit)',
+} as const
+
 const ann = useAnnotationStore()
 const sel = computed(() => ann.selectedBox)
+// 这张图上的当前样本:画框时顶上一条它的成员链,看得见新画的框收没收进去
+const cur = computed(() => (ann.currentSample && sel.value && ann.currentSample.chart.symbol === sel.value.chart.symbol
+  ? ann.currentSample : null))
+const letters = computed(() => sampleLetters(sel.value?.chart ?? null, ann.currentPattern))
+const curLetter = computed(() => (cur.value ? letters.value.get(cur.value.sample.id) ?? null : null))
+const memberOf = computed(() => (sel.value ? memberOfRows(sel.value.box, sel.value.chart, ann.currentPattern) : []))
 const feature = computed(() => (sel.value?.box.feature ? ann.featureById.get(sel.value.box.feature) ?? null : null))
 const picking = computed(() => !!sel.value && (!sel.value.box.feature || ann.renaming))
 const days = computed(() => (sel.value ? ann.daysBySymbol[sel.value.chart.symbol] ?? [] : []))
@@ -168,5 +204,8 @@ watch(() => [ann.nameFocus, picking.value], async () => {
 <style src="./annotationPanel.css"></style>
 <style scoped>
 .picker, .attrs, .parents { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.cur { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 6px; }
+.pad { margin-left: 4px; }
+.ann-pat { font-family: system-ui, sans-serif; font-size: 12px; margin-left: 4px; padding: 0 3px; background: var(--chip-bg); border-radius: 3px; }
 .attr-input { width: 140px; }
 </style>

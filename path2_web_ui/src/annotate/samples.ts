@@ -38,6 +38,16 @@ export function sampleLetters(chart: AnnChart | null, pattern: string | null): M
   return out
 }
 
+/** 样本的三角:正样本实心 ▲,负样本空心 △(和图上同形)。 */
+export function triOf(judgment: AnnSample['judgment']): string {
+  return judgment === 'pos' ? '▲' : '△'
+}
+
+/** 样本在界面上的称呼:字母(当前 pattern 才有)、三角、样本日,如「a ▲ 2025-02-28」。 */
+export function sampleTag(smp: AnnSample, letter?: string | null): string {
+  return `${letter ? `${letter} ` : ''}${triOf(smp.judgment)} ${smp.date}`
+}
+
 /** 样本的跨度(bracket 轨上的虚线):起点 = 样本日和成员框起点里最早的,终点 = 样本日。 */
 export function sampleRange(smp: AnnSample, chart: AnnChart): { start: string; end: string } {
   let start = smp.date

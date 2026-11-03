@@ -43,7 +43,8 @@ export type Intent = (r: AnnRead) => AnnOp[]
 export type LoadStatus = 'idle' | 'loading' | 'ready' | 'unavailable' | 'load_failed'
 export type SidebarTab = 'selection' | 'features' | 'pattern'
 export type Tool = 'box' | 'point'
-export interface SaveProblem { code: string; message: string }
+/** 一条保存被拒的原因:code、后端的原话,以及涉及的样本、框编号(有就带)。 */
+export interface SaveProblem { code: string; message: string; sample?: string; box?: string }
 
 const ACK_KEY = 'path2_web_ui.annotation.ack_conflicts.v1'
 const PATTERN_KEY = 'path2_web_ui.annotation.current_pattern.v1'
