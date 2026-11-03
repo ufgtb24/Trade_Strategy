@@ -20,11 +20,17 @@ import TopBar from './TopBar.vue'
 import { useConfigStore } from '../stores/config'
 import { useViewStore } from '../stores/view'
 import { useAnnotationStore } from '../stores/annotation'
+import { useLinkStore } from '../stores/links'
 
 // 启动即加载 config,使 loadScanFile 能读到持久化的 last_selected_pattern
 onMounted(() => { void useConfigStore().load() })
 // 标注:启动即读一遍(全部批次重放出的状态);之后每次保存都换上后端回来的结果
 onMounted(() => { void useAnnotationStore().load() })
+// 直达链接(格式见 annotate/links.ts):页面带着链接打开时跟一次,地址的 # 部分变了再跟
+const _links = useLinkStore()
+const _follow = () => { void _links.follow(location.hash) }
+onMounted(() => { _follow(); window.addEventListener('hashchange', _follow) })
+onBeforeUnmount(() => window.removeEventListener('hashchange', _follow))
 
 // Task 13 · beforeunload 双保险:探索态有未落盘/未固化的脏 WC 时提示确认。
 // localStorage 已实时兜底(updateWorkingCopy 每次编辑都落盘),此提示只是防用户误刷新丢当前编辑焦点的 belt-and-suspenders。

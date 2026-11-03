@@ -13,20 +13,17 @@
  * 点一下在主图打开那张图(图窗停在样本的跨度上)并选中这个样本,侧栏留在当前页,方便挨个看;
  * 主图上选中的那个样本,卡的边加粗。
  */
-import { nextTick } from 'vue'
 import { useAnnotationStore } from '../stores/annotation'
-import { useViewStore } from '../stores/view'
-import { sampleWindow, type ChartSample } from '../annotate/grouping'
+import { useLinkStore } from '../stores/links'
+import type { ChartSample } from '../annotate/grouping'
 import { triOf } from '../annotate/samples'
 
 const props = defineProps<{ x: ChartSample }>()
 const ann = useAnnotationStore()
-const view = useViewStore()
+const links = useLinkStore()
 
-async function open() {
-  view.openSymbol(props.x.chart.symbol, sampleWindow(props.x))
-  await nextTick()               // 换图会清掉选中(KlineChart 的 symbol 监听),等它跑完再选中
-  ann.selectSample(props.x.sample.id, { keepTab: true })
+function open() {
+  void links.openSample(props.x.sample.id, { keepTab: true })
 }
 </script>
 
