@@ -149,6 +149,63 @@ def test_preview_end_clamped_and_start_after_train_end_400(tmp_path, full_dir):
     assert r.status_code == 400
 
 
+def _write_oscillating_pkl(ddir, symbol: str) -> pd.DataFrame:
+    """一只来回波动、2026 年 1 月起放量大涨的合成股票(2024-06 ~ 2026-03):用完整行情跑 bo_only,
+    2026 年有 bo、pk;截到 2025-12-31 跑就没有。"""
+    idx = pd.bdate_range("2024-06-03", "2026-03-31", name="date")
+    n = len(idx)
+    close = 10 + 1.5 * np.sin(np.arange(n) / 9.0) + np.random.default_rng(0).normal(0, 0.15, n)
+    late = idx >= pd.Timestamp("2026-01-05")
+    close[late] += np.linspace(0, 8, late.sum())
+    vol = np.where(late, 4e6, 1e6)
+    df = pd.DataFrame({"open": close, "high": close + 0.3, "low": close - 0.3, "close": close,
+                       "volume": vol}, index=idx)
+    df.to_pickle(ddir / f"{symbol}.pkl")
+    return df
+
+
+def test_app_run_for_compare_stops_at_train_end(tmp_path, full_dir):
+    """`app` / `compare` 模式跑 app 的那一次 /preview(区间:这只股票的全部 K 线,前端起点给 1900-01-01、
+    终点给训练段末日;见 path2_web_ui/src/stores/appLink.ts):app 的全部输出都落在截到 2025-12-31 的
+    K 线里。
+
+    - 配置的目录误指到带 2026 年行情的数据,2026 年的大涨在完整行情里会出 bo、pk(对照组证明这组数据测得出泄漏);
+    - 输出的事件、hit 与按代码打开的 K 线(/ohlc 不给区间)逐根对齐:和直接拿截断的 K 线跑 app 得到的完全一样,
+      每个下标都在那些 K 线里,hit 的买点日不晚于训练段末日;
+    - 回给前端的区间终点(scan.end_date、scan.win_end)也不晚于训练段末日。"""
+    import path2_apps.bo_only.dag_spec as bo_only
+    from path2_web.serialize import serialize_analysis
+
+    full = _write_oscillating_pkl(full_dir, "BBB")
+    c = _client(tmp_path, full_dir)
+    bars = c.get("/ohlc", params={"symbol": "BBB"}).json()["bars"]
+    assert bars[-1]["date"] == TRAIN_END
+    n = len(bars)
+
+    r = c.get("/preview", params={"pattern_id": "bo_only", "symbol": "BBB", "start": "1900-01-01",
+                                  "end": TRAIN_END, "label_horizon": 20})
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["scan"]["end_date"] == TRAIN_END and body["scan"]["win_end"] <= TRAIN_END
+
+    events, matches = body["analysis"]["events"], body["analysis"]["matches"]
+    assert events and matches
+    for d in events + matches:
+        idx = [v for k, v in d.items() if k.endswith("_idx") and isinstance(v, int)]
+        assert idx and max(idx) < n, d
+    for m in matches:
+        assert all(e < n for _, e in m["buy_span"]) and m["buy_date"] <= TRAIN_END
+
+    capped = full.loc[:TRAIN_END].reset_index()
+    direct = serialize_analysis(bo_only.analyze(capped, bo_only.load_params()))["events"]
+    key = lambda e: (e["instance_id"], e["start_idx"], e["end_idx"])
+    assert sorted(map(key, events)) == sorted(map(key, direct))
+
+    # 对照:拿完整行情跑,2026 年有事件(下标越过截断的 K 线)
+    leaked = bo_only.analyze(full.reset_index(), bo_only.load_params())
+    assert any(e.end_idx >= n for e in leaked.events)
+
+
 def test_post_scan_clamps_end_and_reads_configured_dir(tmp_path, full_dir, monkeypatch):
     """POST /scan:区间终点截到训练段末日,读配置的目录;起点晚于训练段末日 → 400。"""
     got: dict = {}

@@ -31,6 +31,7 @@ from path2_web.data import TRAIN_END, list_symbols, read_bars, serialize_ohlc, s
 from path2_web.diagnose import diagnose_symbol, derive_response, Query
 from path2_web.finder import Finder, random_window
 from path2_web.peaks import peak_lines
+from path2_web.mapping import read_mappings
 from path2_web.snapshot_fingerprint import ManifestMissing
 from path2_web.gate_collector import attach_and_collect, detach
 from path2_web.serialize import serialize_pattern
@@ -309,6 +310,12 @@ def build_router(*, registry, config_path, get_config, set_config,
         代码名不合格 → 400;没有这只股票、或截完一根不剩 → 404(见 _all_bars)。"""
         return peak_lines(_all_bars(get_config(), symbol))
 
+    @router.get("/mappings")
+    def get_mappings():
+        """第一段 compare 用的 mapping 文件(path2_apps/<app>/mapping.yaml,格式见 path2_web/mapping.py):
+        [{app, pattern, features: {特征编号: node_id}, problem}],problem 为 null 才能用。每次请求都重读文件。"""
+        return read_mappings(registry)
+
     @router.get("/config")
     def read_config():
         return get_config()
@@ -469,6 +476,7 @@ def build_router(*, registry, config_path, get_config, set_config,
             start_ts, end_ts = pd.to_datetime(start), pd.to_datetime(end)
             buf_start = str((start_ts - pd.Timedelta(days=round(head_buf * scan_mod.TRADING_TO_CALENDAR_RATIO))).date())
             buf_end   = str((end_ts   + pd.Timedelta(days=round(label_horizon * scan_mod.TRADING_TO_CALENDAR_RATIO))).date())
+            buf_end = min(buf_end, TRAIN_END)   # 行情本来就只读到训练段末日;回给前端的窗口也不越过它
 
             # 复刻 worker 单 pattern 调用(含样本消费窗截取,口径与 scan worker 一致)
             win = slice_window(_bars(cfg, symbol), buf_start, buf_end)
