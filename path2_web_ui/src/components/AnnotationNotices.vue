@@ -25,8 +25,16 @@
         <span class="key">save</span><span class="val">rejected</span>
         <button type="button" class="ok" @click="ann.saveError = null">ok</button>
       </div>
-      <div v-for="(r, i) in ann.saveError" :key="i" class="line" :title="r.message">
+      <div v-for="(r, i) in ann.saveError" :key="i" class="line" data-testid="notice-save-reason" :title="r.message">
         <span class="val">{{ r.code }}</span>
+        <template v-if="boxOf(r)">
+          <span class="key">box</span>
+          <span v-if="boxOf(r)!.feature" class="biz">{{ ann.nameOf(boxOf(r)!.feature) }}</span>
+          <span class="key">{{ boxOf(r)!.start }} – {{ boxOf(r)!.end }}</span>
+        </template>
+        <template v-if="sampleOf(r)">
+          <span class="key">sample</span><span class="key">{{ sampleOf(r) }}</span>
+        </template>
       </div>
     </div>
   </div>
@@ -38,11 +46,15 @@
  * - 标注读不到(标注目录不在 / 读失败);
  * - data_fingerprint mismatched:标注是对着另一份训练段副本做的(或本机副本没有指纹)。只报出来,图照常显示;
  * - conflict:两台机器同步前改了同一个对象,后改的那次生效。每条冲突只提示一次,点 ok 后不再出现;
- * - save rejected:这次保存没通过后端的校验,显示退回保存前;悬停看原因。
+ * - save rejected:这次保存没通过后端的校验(比如另一台机器同步来的修改让这个框成了某个样本的成员框,
+ *   改起止就越过了那个样本日)。每条原因写出 code 和它说的是哪个框、哪个样本(按重读后的状态),悬停看后端的原话;
+ *   这次改动没有保存,一直显示到点 ok。
  */
 import { computed } from 'vue'
 import { useAnnotationStore } from '../stores/annotation'
-import type { AnnConflict } from '../annotate/model'
+import { findBox, findSample, type AnnConflict } from '../annotate/model'
+import { sampleLetters, sampleTag } from '../annotate/samples'
+import type { SaveProblem } from '../stores/annotation'
 
 const ann = useAnnotationStore()
 const fp = computed(() => ann.fingerprint)
@@ -63,6 +75,19 @@ const fingerprintTip = computed(() => {
 function when(ts: string): string {
   const m = /^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})/.exec(ts)
   return m ? `${m[1]}-${m[2]}-${m[3]} ${m[4]}:${m[5]}` : ts
+}
+
+/** 被拒原因里提到的框(后端在 box 键里给框编号)。 */
+function boxOf(r: SaveProblem) {
+  const id = r.box
+  return typeof id === 'string' && ann.state ? findBox(ann.state, id)?.box ?? null : null
+}
+
+/** 被拒原因里提到的样本(sample 键),写成「a ▲ 2025-02-28」。 */
+function sampleOf(r: SaveProblem): string | null {
+  const id = r.sample
+  const hit = typeof id === 'string' && ann.state ? findSample(ann.state, id) : null
+  return hit ? sampleTag(hit.sample, sampleLetters(hit.chart, ann.currentPattern).get(hit.sample.id)) : null
 }
 
 function label(c: AnnConflict): string | null {

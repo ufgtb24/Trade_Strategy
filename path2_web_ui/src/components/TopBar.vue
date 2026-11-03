@@ -33,6 +33,14 @@
       <button type="button" :class="['entry', { on: ann.tool === 'box' }]" data-testid="tool-box"
               title="drag on the chart to draw a box; drag a box edge on its lane to change it; click to select"
               @click="ann.tool = 'box'">box</button>
+      <button type="button" :class="['entry', { on: ann.tool === 'point' }]" data-testid="tool-point"
+              title="click a bar to place a sample there (current pattern, pos); switches back to box"
+              @click="ann.tool = 'point'">point</button>
+    </div>
+    <div v-if="annotating" class="grp" data-testid="pattern-group">
+      <span class="key" title="the current pattern: new samples go to it">pattern</span>
+      <PatternPicker :value="ann.currentPattern" tid="top-pattern" title="the current pattern: new samples go to it"
+                     @pick="ann.setCurrentPattern($event)" />
     </div>
     <span v-if="status" class="status" data-testid="symbol-status"
           title="训练段副本里没有这只股票(2026 年才上市的不在列表里)">{{ status }}</span>
@@ -48,7 +56,8 @@
  *   (训练段副本里有的股票)核一遍,不在列表里就报 not_found、不动当前的图。输入框平时显示当前打开的股票。
  * - rally:展开 / 收起大涨段清单(RallyList),点一行打开那段涨之前的图,落在 annotate。
  * - random:从股票池 × 训练段随机给一段图,落在 annotate,图停在那一段上。
- * - tool(annotate 下):box = 在图上拖出框。
+ * - tool(annotate 下):box = 在图上拖出框;point = 点一根 K 线放样本,放完自动回到 box。
+ * - pattern(annotate 下):当前 pattern,新放的样本归它;下拉里有 unsorted · n 和 + new。
  * 看过什么一律不记。
  */
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
@@ -58,6 +67,7 @@ import { useViewStore } from '../stores/view'
 import { useAnnotationStore } from '../stores/annotation'
 import { resolveSymbolInput } from '../annotate/symbolInput'
 import RallyList from './RallyList.vue'
+import PatternPicker from './PatternPicker.vue'
 
 const view = useViewStore()
 const { symbol, annotating } = storeToRefs(view)

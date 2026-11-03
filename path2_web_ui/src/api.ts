@@ -54,7 +54,8 @@ export function getAnnotations(): Promise<AnnRead> {
 
 /** 保存没通过时抛的错误:status 是 HTTP 状态码;400 时 reasons 列出后端校验的原因。 */
 export class AnnotationSaveError extends HttpError {
-  constructor(message: string, status: number, readonly reasons: { code: string; message: string }[]) {
+  constructor(message: string, status: number,
+              readonly reasons: { code: string; message: string; sample?: string; box?: string }[]) {
     super(message, status)
   }
 }

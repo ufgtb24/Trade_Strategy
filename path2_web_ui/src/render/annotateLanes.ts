@@ -1,13 +1,23 @@
 /**
- * annotate 下的副图:一个特征一条轨,用户的框画在自己特征的轨上(虚线:全界面虚线只表示「用户画的」)。
- * 轨的排法(轨序、子框轨、交叠的框分行)由 annotate/model.ts 的 computeLanes 给;本模块只管几何与画法,
- * 以及主图 K 线区上「选中的框」「正在拖的框」的那一层。
+ * annotate 下的副图:第一条是 bracket 轨(每个样本的跨度画一条虚线,右端是样本的三角),下面一个特征一条轨,
+ * 用户的框画在自己特征的轨上(虚线:全界面虚线只表示「用户画的」)。
+ * 轨的排法(轨序、子框轨、交叠的框分行)由 annotate/model.ts 的 computeLanes 给,框旁的标记由
+ * annotate/samples.ts 的 boxMarks 给;本模块只管几何与画法,以及主图 K 线区上的几层:
+ * 「选中的框」「正在拖的框」的范围、样本的三角、选中样本时样本日之后暗一档。
  *
- * 配色:框和文字一律黑(#111),选中的框填浅灰;不引入新色相。轨标题里的特征名是用户写的内容,
- * 用正常字体加浅灰底(--chip-bg 同值),「⊂」与 unnamed 是程序固定文字,用等宽字体。
+ * 配色:框、三角和文字一律黑(#111),选中的框填浅灰;不引入新色相。区分靠线宽、线型和深浅:
+ * - 选中样本时,它的成员框线加粗、虚线拉长;画了没收的框换短虚线、右侧挂 ◂;跨过样本日收不进的空槽画淡、
+ *   右侧挂 ⇥;其余画淡;
+ * - 只被别的 pattern 的样本收进的框、别的 pattern 的样本(三角、bracket)画淡;
+ * - 正样本实心 ▲、负样本空心 △(白底黑边);
+ * - 暗一档:样本日之后的 K 线区盖一层 7% 的黑,K 线的形状仍看得清。
+ * 轨标题里的特征名是用户写的内容,用正常字体加浅灰底(--chip-bg 同值),「⊂」、unnamed、bracket 与字母是程序
+ * 固定文字,用等宽字体。
  */
 import type { Bar } from '../types'
 import type { AnnBox, Lane } from '../annotate/model'
+import { triOf, type BoxMark } from '../annotate/samples'
+import { CROSSES_SAMPLE_DATE, UNCLAIMED } from '../annotate/membership'
 import { endIndex, startIndex, type BoxPx } from '../annotate/boxGeometry'
 import { SUB_CANVAS_MIN_H, SUB_GRID_LEFT, SUB_GRID_RIGHT } from './subGeometry'
 
@@ -25,6 +35,15 @@ export const NO_FILL = 'rgba(255,255,255,0)'
 export const TITLE_BG = 'rgba(255,255,255,0.85)'  // 轨标题垫白,压在框上也读得出
 export const BOX_DASH = [5, 3]        // 用户的框:虚线
 export const DRAFT_DASH = [2, 2]      // 正在拖出的框:短虚线
+export const MEMBER_DASH = [7, 2]     // 选中样本时它的成员框:长虚线、线加粗
+export const UNCLAIMED_DASH = [2, 2]  // 画了没收的框:短虚线(右侧挂 ◂)
+export const DIM_OPACITY = 0.28       // 选中样本时不相干的框、跨过样本日的空槽:画淡
+export const AWAY_OPACITY = 0.4       // 只属于别的 pattern 的样本的框、别的 pattern 的样本:画淡
+export const POS_FILL = INK           // 正样本:实心三角
+export const NEG_FILL = '#ffffff'     // 负样本:空心三角(白底黑边)
+export const AFTER_DIM = 'rgba(0,0,0,0.07)'   // 选中样本时样本日之后的 K 线区:暗一档,形状仍看得清
+export const BRACKET_ROW_H = 13       // bracket 轨里一行的高度
+export const BRACKET_BAR_H = 9        // bracket 轨里一条样本跨度的高度
 export const MONO = 'ui-monospace, "JetBrains Mono", "DejaVu Sans Mono", Consolas, monospace'
 
 export interface LaneGeom { top: number; h: number }
@@ -38,16 +57,67 @@ function spanPx(api: any): [number, number] {
   return [api.coord([api.value(0), 0])[0] - bw / 2, api.coord([api.value(1), 0])[0] + bw / 2]
 }
 
-/** 每条轨的位置与高度,以及副图需要的总高(至少 SUB_CANVAS_MIN_H)。 */
-export function laneGeometry(lanes: readonly Lane[]): { geom: LaneGeom[]; height: number } {
+/** 每条轨的位置与高度,以及副图需要的总高(至少 SUB_CANVAS_MIN_H)。top:第一条特征轨的上沿(bracket 轨之下)。 */
+export function laneGeometry(lanes: readonly Lane[], top = LANES_TOP): { geom: LaneGeom[]; height: number } {
   const geom: LaneGeom[] = []
-  let y = LANES_TOP
+  let y = top
   for (const l of lanes) {
     const h = LANE_PAD * 2 + l.rows * LANE_ROW_H
     geom.push({ top: y, h })
     y += h
   }
   return { geom, height: Math.max(SUB_CANVAS_MIN_H, y + LANES_TOP) }
+}
+
+// ── bracket 轨 ────────────────────────────────────────────────────────
+
+/** bracket 轨上的一个样本:跨度、正负、字母(当前 pattern 才有)、画淡(别的 pattern)、加粗(选中 2、当前样本 1)。 */
+export interface BracketItem {
+  id: string
+  start: string
+  end: string
+  pos: boolean
+  letter: string | null
+  faded: boolean
+  emphasis: 0 | 1 | 2
+}
+export interface PlacedBracket { item: BracketItem; row: number }
+
+/** bracket 轨的排法:按起点排,一行里不交叠(按 K 线下标比)。 */
+export function packBrackets(items: readonly BracketItem[], dates: readonly string[]): { rows: number; placed: PlacedBracket[] } {
+  const sorted = [...items].sort((a, b) => (a.start < b.start ? -1 : a.start > b.start ? 1 : a.end > b.end ? -1 : 1))
+  const ends: number[] = []
+  const placed: PlacedBracket[] = []
+  for (const it of sorted) {
+    const s = startIndex(dates, it.start)
+    let row = ends.findIndex(e => e < s)
+    if (row < 0) { row = ends.length; ends.push(0) }
+    ends[row] = endIndex(dates, it.end)
+    placed.push({ item: it, row })
+  }
+  return { rows: Math.max(1, ends.length), placed }
+}
+
+/** bracket 轨的位置与高度(在最上面;没有样本时也留一行)。 */
+export function bracketGeometry(rows: number): LaneGeom {
+  return { top: LANES_TOP, h: LANE_PAD * 2 + Math.max(1, rows) * BRACKET_ROW_H }
+}
+
+/** bracket 轨里一行的竖直范围。 */
+function bracketYRange(g: LaneGeom, row: number): { top: number; bottom: number } {
+  const top = g.top + LANE_PAD + row * BRACKET_ROW_H + (BRACKET_ROW_H - BRACKET_BAR_H) / 2
+  return { top, bottom: top + BRACKET_BAR_H }
+}
+
+/** bracket 轨上各样本跨度的像素范围(点选样本用),toPx、bw 同 boxRects。 */
+export function bracketRects(placed: readonly PlacedBracket[], g: LaneGeom, dates: readonly string[],
+                             toPx: (i: number) => number, bw: number): BoxPx[] {
+  if (!dates.length) return []
+  return placed.map(({ item, row }) => {
+    const { top, bottom } = bracketYRange(g, row)
+    return { id: item.id, left: toPx(startIndex(dates, item.start)) - bw / 2,
+             right: toPx(endIndex(dates, item.end)) + bw / 2, top, bottom }
+  })
 }
 
 /** 落在哪条轨上(按 y);不在任何轨上为 -1。 */
@@ -64,6 +134,10 @@ export function boxYRange(g: LaneGeom, row: number): { top: number; bottom: numb
 export interface LaneDraw {
   lanes: readonly Lane[]
   geom: readonly LaneGeom[]
+  /** bracket 轨:位置与排好的样本跨度(不给就不画这条轨) */
+  bracket?: { geom: LaneGeom; placed: readonly PlacedBracket[] } | null
+  /** 框旁的标记(字母、画淡、选中样本时的成员框 / 画了没收 / 跨过样本日) */
+  marks?: ReadonlyMap<string, BoxMark> | null
   nameOf: (fid: string | null) => string | null
   selectedId: string | null
   /** 改起止时拖着的框:画在它新的位置上 */
@@ -88,11 +162,36 @@ function laneTitle(l: Lane, nameOf: LaneDraw['nameOf']): any {
   }
 }
 
-/** annotate 副图的 ECharts option:轨的分隔线与标题(graphic)+ 框(custom series)。 */
+/** 一个框的画法:线宽、线型、深浅,以及框左侧的字母、右侧的 ◂ / ⇥。 */
+function boxLook(mark: BoxMark | undefined, sel: boolean, draft: boolean) {
+  const f = mark?.focus ?? null
+  const opacity = sel || draft ? 1 : f === 'dim' || f === CROSSES_SAMPLE_DATE ? DIM_OPACITY
+    : mark?.away && f !== 'member' && f !== UNCLAIMED ? AWAY_OPACITY : 1
+  return {
+    lineWidth: sel || f === 'member' ? 2.5 : 1.5,
+    lineDash: draft ? DRAFT_DASH : f === 'member' ? MEMBER_DASH : f === UNCLAIMED ? UNCLAIMED_DASH : BOX_DASH,
+    opacity,
+    owners: mark?.owners.join(' ') ?? '',
+    side: f === UNCLAIMED ? '◂' : f === CROSSES_SAMPLE_DATE ? '⇥' : '',
+  }
+}
+
+/** 框右侧挂 ◂ / ⇥ 的那一小块的横向范围(相对框的右边):点 ◂ 收进当前选中的样本。 */
+export const SIDE_MARK_X: readonly [number, number] = [6, 20]
+
+/** annotate 副图的 ECharts option:轨的分隔线与标题(graphic)+ bracket 轨的样本跨度 + 框(custom series)。 */
 export function buildAnnotateSubOption(bars: Bar[], d: LaneDraw): unknown {
   const dates = bars.map(b => b.date)
   const graphics: any[] = []
   const w = d.width - SUB_GRID_LEFT - SUB_GRID_RIGHT
+  if (d.bracket) {
+    const g = d.bracket.geom
+    graphics.push({ type: 'rect', left: SUB_GRID_LEFT, top: g.top + g.h - 0.5, shape: { width: w, height: 1 },
+                    style: { fill: LANE_LINE }, z: 1, silent: true })
+    graphics.push({ type: 'text', left: SUB_GRID_LEFT + 2, top: g.top + LANE_PAD - 1, z: 30, silent: true,
+                    style: { text: 'bracket', fontFamily: MONO, fontSize: 12, fill: INK, backgroundColor: TITLE_BG,
+                             padding: [0, 2] } })
+  }
   d.geom.forEach((g, i) => {
     graphics.push({ type: 'rect', left: SUB_GRID_LEFT, top: g.top + g.h - 0.5, shape: { width: w, height: 1 },
                     style: { fill: LANE_LINE }, z: 1, silent: true })
@@ -101,11 +200,21 @@ export function buildAnnotateSubOption(bars: Bar[], d: LaneDraw): unknown {
                     style: { ...t, fill: INK, fontSize: 12, backgroundColor: TITLE_BG, padding: [0, 2] } })
   })
 
-  // 每个框一行数据:[起点下标, 终点下标, 顶, 底, 选中, 拖出中, 编号]
+  // 每个框一行数据:[起点下标, 终点下标, 顶, 底, 选中, 拖出中, 编号];画法(boxLook)按行号另存
   const rows: any[] = []
+  const looks: ReturnType<typeof boxLook>[] = []
+  const tips: string[] = []
   const push = (b: { id: string; start: string; end: string }, top: number, bottom: number, sel: boolean, draft: boolean) => {
     if (!dates.length) return
+    const mark = draft ? undefined : d.marks?.get(b.id)
     rows.push([startIndex(dates, b.start), endIndex(dates, b.end), top, bottom, sel ? 1 : 0, draft ? 1 : 0, b.id])
+    looks.push(boxLook(mark, sel, draft))
+    tips.push([
+      mark?.owners.length ? `member box of sample ${mark.owners.join(', ')}` : '',
+      mark?.focus === UNCLAIMED ? 'maybe drawn but not added; click ◂ to add' : '',
+      mark?.focus === CROSSES_SAMPLE_DATE ? 'crosses sample date: cannot be a member box of the selected sample' : '',
+      mark?.away ? 'member box of samples of another pattern only' : '',
+    ].filter(Boolean).join('<br>'))
   }
   d.lanes.forEach((l, i) => {
     for (const lb of l.boxes) {
@@ -118,6 +227,17 @@ export function buildAnnotateSubOption(bars: Bar[], d: LaneDraw): unknown {
     const g = d.geom[d.draft.lane] ?? { top: (d.geom.at(-1)?.top ?? LANES_TOP) + (d.geom.at(-1)?.h ?? 0), h: LANE_ROW_H + 2 * LANE_PAD }
     const { top, bottom } = boxYRange(g, 0)
     push({ id: '__draft', start: d.draft.start, end: d.draft.end }, top, bottom, false, true)
+  }
+
+  // bracket 轨:每个样本一行数据 [起点下标, 样本日下标, 顶, 底];画法按行号另存
+  const bRows: number[][] = []
+  const bItems: BracketItem[] = []
+  if (d.bracket && dates.length) {
+    for (const { item, row } of d.bracket.placed) {
+      const { top, bottom } = bracketYRange(d.bracket.geom, row)
+      bRows.push([startIndex(dates, item.start), endIndex(dates, item.end), top, bottom])
+      bItems.push(item)
+    }
   }
 
   return {
@@ -140,21 +260,63 @@ export function buildAnnotateSubOption(bars: Bar[], d: LaneDraw): unknown {
       tooltip: {
         formatter: (p: any) => {
           const [s, e] = [p.value[0], p.value[1]]
-          return `<span style="font-family:${MONO};color:${INK}">${dates[s]} – ${dates[e]}</span>`
+          const tip = tips[p.dataIndex]
+          return `<span style="font-family:${MONO};color:${INK}">${dates[s]} – ${dates[e]}${tip ? `<br>${tip}` : ''}</span>`
         },
       },
-      renderItem: (_p: any, api: any) => {
+      renderItem: (p: any, api: any) => {
         const [x0, x1] = spanPx(api)
         const top = api.value(2), bottom = api.value(3)
-        const sel = api.value(4) === 1, draft = api.value(5) === 1
-        return {
+        const sel = api.value(4) === 1
+        const look = looks[p.dataIndex]
+        const mid = (top + bottom) / 2
+        const children: any[] = [{
           type: 'rect',
           shape: { x: x0, y: top, width: Math.max(3, x1 - x0), height: bottom - top, r: 2 },
-          style: {
-            fill: sel ? SELECTED_FILL : NO_FILL,
-            stroke: INK, lineWidth: sel ? 2.5 : 1.5, lineDash: draft ? DRAFT_DASH : BOX_DASH,
-          },
+          style: { fill: sel ? SELECTED_FILL : NO_FILL, stroke: INK, lineWidth: look.lineWidth, lineDash: look.lineDash,
+                   opacity: look.opacity },
+        }]
+        if (look.owners) {
+          children.push({ type: 'text', style: { text: look.owners, x: x0 - 3, y: mid, align: 'right', verticalAlign: 'middle',
+                                                 font: `bold 10.5px ${MONO}`, fill: INK, opacity: look.opacity } })
         }
+        if (look.side) {
+          children.push({ type: 'text', style: { text: look.side, x: x1 + (SIDE_MARK_X[0] + SIDE_MARK_X[1]) / 2, y: mid,
+                                                 align: 'center', verticalAlign: 'middle', font: `bold 14px ${MONO}`, fill: INK } })
+        }
+        return { type: 'group', children }
+      },
+    }, {
+      type: 'custom', name: 'annotation-brackets', xAxisIndex: 0, yAxisIndex: 0, clip: true,
+      data: bRows, encode: { x: [0, 1] }, z: 9,
+      tooltip: {
+        formatter: (p: any) => {
+          const it = bItems[p.dataIndex]
+          return `<span style="font-family:${MONO};color:${INK}">${it.letter ? `${it.letter} ` : ''}${triOf(it.pos ? 'pos' : 'neg')} `
+            + `${it.end}<br>${it.start} – ${it.end}</span>`
+        },
+      },
+      renderItem: (p: any, api: any) => {
+        const [x0, x1] = spanPx(api)
+        const top = api.value(2), bottom = api.value(3)
+        const it = bItems[p.dataIndex]
+        const opacity = it.faded ? AWAY_OPACITY : 1
+        const xs = api.coord([api.value(1), 0])[0]
+        const children: any[] = [{
+          type: 'rect',
+          shape: { x: x0, y: top, width: Math.max(3, x1 - x0), height: bottom - top },
+          style: { fill: it.emphasis === 2 ? SELECTED_FILL : NO_FILL, stroke: INK, lineWidth: it.emphasis ? 2.5 : 1.3,
+                   lineDash: BOX_DASH, opacity },
+        }, {
+          type: 'polygon',
+          shape: { points: [[xs, top + 1], [xs - 4.5, bottom], [xs + 4.5, bottom]] },
+          style: { fill: it.pos ? POS_FILL : NEG_FILL, stroke: INK, lineWidth: 1.2, opacity },
+        }]
+        if (it.letter) {
+          children.push({ type: 'text', style: { text: it.letter, x: xs + 6, y: bottom, align: 'left', verticalAlign: 'bottom',
+                                                 font: `bold 9.5px ${MONO}`, fill: INK, opacity } })
+        }
+        return { type: 'group', children }
       },
     }],
   }
@@ -199,6 +361,71 @@ export function mainMarksSeries(dates: readonly string[],
         style: { fill: api.value(2) === 1 ? SELECTED_SPAN_FILL : NO_FILL,
                  stroke: INK, lineWidth: 1, lineDash: BOX_DASH },
       }
+    },
+  }
+}
+
+// ── 主图:样本的三角、样本日之后暗一档 ───────────────────────────────
+
+/** 主图上的一个样本:样本日、正负、选中、画淡(别的 pattern)、字母(当前 pattern 才有)。 */
+export interface SampleMark { id: string; date: string; pos: boolean; selected: boolean; faded: boolean; letter: string | null }
+
+export const SAMPLES_SERIES = 'annotation-samples'
+export const AFTER_DIM_SERIES = 'annotation-after-dim'
+export const TRI_GAP = 6           // 三角顶点在样本日那根 K 线最低价下方几像素
+export const TRI_H = 12            // 三角的高
+export const TRI_HALF_W = 7        // 三角底边的一半
+
+/** 一个样本三角在主图上的像素范围(点选用):(x, yLow) 是样本日那根 K 线的中心与最低价。 */
+export function triangleRect(x: number, yLow: number): { left: number; right: number; top: number; bottom: number } {
+  return { left: x - TRI_HALF_W - 1, right: x + TRI_HALF_W + 1, top: yLow + TRI_GAP - 1, bottom: yLow + TRI_GAP + TRI_H + 1 }
+}
+
+/** 主图上样本的三角(正样本实心 ▲、负样本空心 △),选中的线加粗,别的 pattern 的画淡,字母写在右下。 */
+export function mainSamplesSeries(bars: readonly Bar[], marks: readonly SampleMark[]): Record<string, unknown> {
+  const dates = bars.map(b => b.date)
+  const data: number[][] = []
+  const meta: SampleMark[] = []
+  for (const m of marks) {
+    const i = dates.indexOf(m.date)
+    if (i < 0) continue
+    data.push([i, bars[i].l])
+    meta.push(m)
+  }
+  return {
+    type: 'custom', name: SAMPLES_SERIES, xAxisIndex: 0, yAxisIndex: 0, data, silent: true, z: 15, clip: false,
+    encode: { x: 0, y: 1 }, tooltip: { show: false },
+    renderItem: (p: any, api: any) => {
+      const m = meta[p.dataIndex]
+      const [x, y] = api.coord([api.value(0), api.value(1)])
+      const y0 = y + TRI_GAP
+      const opacity = m.faded ? AWAY_OPACITY : 1
+      const children: any[] = [{
+        type: 'polygon',
+        shape: { points: [[x, y0], [x - TRI_HALF_W, y0 + TRI_H], [x + TRI_HALF_W, y0 + TRI_H]] },
+        style: { fill: m.pos ? POS_FILL : NEG_FILL, stroke: INK, lineWidth: m.selected ? 3 : 1.5, opacity },
+      }]
+      if (m.letter) {
+        children.push({ type: 'text', style: { text: m.letter, x: x + TRI_HALF_W + 2, y: y0 + TRI_H, align: 'left',
+                                               verticalAlign: 'bottom', font: `bold 12.5px ${MONO}`, fill: INK, opacity } })
+      }
+      return { type: 'group', children }
+    },
+  }
+}
+
+/** 选中样本时样本日之后的 K 线区盖一层浅黑(暗一档),压在 K 线上面、不挡鼠标;from 为 null 时不画。 */
+export function afterDimSeries(dates: readonly string[], from: string | null): Record<string, unknown> {
+  const i = from ? dates.indexOf(from) : -1
+  const data = i >= 0 && i + 1 < dates.length ? [[i + 1, dates.length - 1]] : []
+  return {
+    type: 'custom', name: AFTER_DIM_SERIES, xAxisIndex: 0, yAxisIndex: 0, data, silent: true, z: 3,
+    encode: { x: [0, 1] }, clip: true, tooltip: { show: false },
+    renderItem: (params: any, api: any) => {
+      const [x0, x1] = spanPx(api)
+      const cs = params.coordSys
+      return { type: 'rect', shape: { x: x0, y: cs.y, width: Math.max(1, x1 - x0), height: cs.height },
+               style: { fill: AFTER_DIM } }
     },
   }
 }

@@ -88,6 +88,17 @@ def test_append_then_read(snapshot, adir):
     assert client.get("/annotations").json()["state"] == body["state"]
 
 
+def test_reads_carry_the_membership_defaults_set_in_one_place(snapshot, adir):
+    """界面推断成员框用的 GAP、NEAR 由读路由带出,值就是参照实现模块里的那一处设定(读和保存后的读结果都带)。"""
+    from path2_web.annotation import membership
+
+    client = _client(snapshot, adir)
+    want = {"gap": membership.GAP, "near": membership.NEAR}
+    assert client.get("/annotations").json()["membership"] == want
+    r = client.post("/annotations/batch", json={"ops": [_box("b-pc-1", "2025-12-01", "2025-12-05")]})
+    assert r.json()["membership"] == want
+
+
 def test_append_violation_is_rejected_with_reasons(snapshot, adir):
     client = _client(snapshot, adir)
     client.post("/annotations/batch", json={"ops": [_box("b-pc-1", "2025-12-01", "2025-12-05"),

@@ -9,6 +9,7 @@
     </nav>
     <section class="body" :data-testid="`annotation-page-${ann.tab}`">
       <BoxPanel v-if="ann.tab === 'selection' && ann.selectedBox" />
+      <SamplePanel v-else-if="ann.tab === 'selection' && ann.selectedSample" />
       <FeaturesPanel v-else-if="ann.tab === 'features' && ann.state" />
       <span v-else class="empty">empty</span>
     </section>
@@ -17,12 +18,13 @@
 
 <script setup lang="ts">
 /**
- * annotate 模式的右侧栏,三页:selection(选中的框)、features(词表)、pattern(当前 pattern 总览,目前是空页)。
- * 页签由标注 store 管:在图上选中框时自动翻到 selection。
+ * annotate 模式的右侧栏,三页:selection(选中的框或样本)、features(词表)、pattern(当前 pattern 总览,目前是空页)。
+ * 页签由标注 store 管:在图上选中框或样本时自动翻到 selection。
  */
 import { useAnnotationStore } from '../stores/annotation'
 import BoxPanel from './BoxPanel.vue'
 import FeaturesPanel from './FeaturesPanel.vue'
+import SamplePanel from './SamplePanel.vue'
 
 const TABS = ['selection', 'features', 'pattern'] as const
 const ann = useAnnotationStore()

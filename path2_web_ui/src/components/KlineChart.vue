@@ -43,6 +43,9 @@
               @click="toggleBrush">框选</button>
     </div>
     <CrosshairOverlay :x="overlayX" />
+    <!-- annotate:改起止停在样本日时,鼠标旁写它是哪个样本的成员框 -->
+    <div v-if="resizeStop" class="resize-stop" data-testid="resize-stop"
+         :style="{ left: `${resizeStop.x + 12}px`, top: `${resizeStop.y + 12}px` }">{{ resizeStop.text }}</div>
     <div v-if="contextMenuVisible" ref="driverMenuEl" class="driver-menu"
          :style="{ left: contextMenuPos.x + 'px', top: contextMenuPos.y + 'px' }">
       <!-- 复制 instance_id · marker 右键即显示(contextMenuInstanceId 非 null)、空白右键隐藏 -->
@@ -101,7 +104,12 @@ import ResizableDivider from './ResizableDivider.vue'
 import CrosshairOverlay from './CrosshairOverlay.vue'
 import { useAnnotationStore } from '../stores/annotation'
 import { chartOf, computeLanes, type AnnBox } from '../annotate/model'
-import { buildAnnotateSubOption, laneGeometry, mainMarksSeries, type Draft } from '../render/annotateLanes'
+import { emptySlots } from '../annotate/membership'
+import { boxMarks, resizeLimit, sampleLetters, sampleRange, sampleTag } from '../annotate/samples'
+import {
+  afterDimSeries, bracketGeometry, buildAnnotateSubOption, laneGeometry, mainMarksSeries, mainSamplesSeries,
+  packBrackets, triangleRect, type BracketItem, type Draft, type SampleMark,
+} from '../render/annotateLanes'
 import { createAnnotateGestures } from './annotateGestures'
 
 const view = useViewStore()
@@ -132,11 +140,34 @@ const ann = useAnnotationStore()
 const draft = ref<Draft | null>(null)            // 正在拖出的新框
 const preview = ref<AnnBox | null>(null)         // 正在改起止的框
 const annDates = computed(() => bars.value.map(b => b.date))
+const annChart = computed(() => (ann.state ? chartOf(ann.state, symbol.value) : null))
 const annLanes = computed(() => {
-  const chart = ann.state ? chartOf(ann.state, symbol.value) : null
+  const chart = annChart.value
   return chart ? computeLanes(chart.boxes, (f) => ann.nameOf(f) ?? f, annDates.value) : []
 })
-const annGeom = computed(() => laneGeometry(annLanes.value))
+// 样本:字母(当前 pattern)、选中的样本(在这张图上)、它的空槽、框旁的标记、bracket 轨
+const annLetters = computed(() => sampleLetters(annChart.value, ann.currentPattern))
+const annSelSample = computed(() =>
+  (ann.selectedSample && ann.selectedSample.chart.symbol === symbol.value ? ann.selectedSample.sample : null))
+const annSlots = computed(() => (annSelSample.value && ann.state && ann.membership && symbol.value
+  ? emptySlots(ann.state.charts, symbol.value, annSelSample.value.id, annDates.value, ann.membership.near) : []))
+const annMarks = computed(() => boxMarks(annChart.value, ann.currentPattern, annSelSample.value, annSlots.value))
+const annBracket = computed(() => {
+  const chart = annChart.value
+  const items: BracketItem[] = (chart?.samples ?? []).map(smp => ({
+    id: smp.id, ...sampleRange(smp, chart!), pos: smp.judgment === 'pos', letter: annLetters.value.get(smp.id) ?? null,
+    faded: smp.pattern !== ann.currentPattern,
+    emphasis: smp.id === ann.selectedSampleId ? 2 : smp.id === ann.currentSampleId ? 1 : 0,
+  }))
+  const { rows, placed } = packBrackets(items, annDates.value)
+  return { geom: bracketGeometry(rows), placed }
+})
+const annSampleMarks = computed<SampleMark[]>(() => (annChart.value?.samples ?? []).map(smp => ({
+  id: smp.id, date: smp.date, pos: smp.judgment === 'pos', selected: smp.id === ann.selectedSampleId,
+  faded: smp.pattern !== ann.currentPattern, letter: annLetters.value.get(smp.id) ?? null,
+})))
+const annGeom = computed(() => laneGeometry(annLanes.value, annBracket.value.geom.top + annBracket.value.geom.h))
+const resizeStop = ref<{ x: number; y: number; text: string } | null>(null)   // 改起止停在样本日时的提示(页面坐标)
 // CrosshairOverlay(DOM 一根到底竖线)的 x 坐标 + main-chart 相对 kline-wrap 的偏移(修 S3)
 const overlayX = ref<number | null>(null)
 const mainCanvasOffsetX = ref<number>(0)
@@ -554,7 +585,8 @@ function renderBarsOnly(forceResetZoom: boolean) {
   const slider = mainOpt.dataZoom[1]
   delete slider.top
   Object.assign(slider, { bottom: 6, height: 22 })
-  mainOpt.series.push(mainMarksSeries(annDates.value, null, null))
+  mainOpt.series.push(mainMarksSeries(annDates.value, null, null), mainSamplesSeries(bars.value, []),
+                      afterDimSeries(annDates.value, null))
   chartMain.setOption(mainOpt, true)
   lastMarkLineKey = null
   renderAnnotateLayers()
@@ -569,10 +601,30 @@ function renderAnnotateLayers() {
   chartSub.setOption(buildAnnotateSubOption(bars.value, {
     lanes: annLanes.value, geom, nameOf: ann.nameOf, selectedId: ann.selectedBoxId,
     preview: preview.value, draft: draft.value, zoom, width: chartSub.getWidth(),
+    bracket: annBracket.value, marks: annMarks.value,
   }) as any, true)
   const sel = ann.selectedBox?.box ?? null
   const shownSel = sel && preview.value?.id === sel.id ? preview.value : sel
-  chartMain.setOption({ series: [mainMarksSeries(annDates.value, shownSel, draft.value ?? preview.value)] })
+  chartMain.setOption({ series: [
+    mainMarksSeries(annDates.value, shownSel, draft.value ?? preview.value),
+    mainSamplesSeries(bars.value, annSampleMarks.value),
+    afterDimSeries(annDates.value, annSelSample.value?.date ?? null),
+  ] })
+}
+
+/** 主图上这一点(相对主图容器)落在哪个样本的三角上;后画的盖在上面,倒着找。 */
+function sampleAtMain(x: number, y: number): string | null {
+  if (!chartMain) return null
+  const dates = annDates.value
+  const marks = annSampleMarks.value
+  for (let k = marks.length - 1; k >= 0; k--) {
+    const i = dates.indexOf(marks[k].date)
+    if (i < 0) continue
+    const [px, py] = chartMain.convertToPixel({ xAxisIndex: 0, yAxisIndex: 0 }, [i, bars.value[i].l]) as number[]
+    const r = triangleRect(px, py)
+    if (x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) return marks[k].id
+  }
+  return null
 }
 
 // 主图容器高度变了:按新高度重排 K 线区与成交量带(成交量带高 = K 线区的 VOLUME_HEIGHT_RATIO)
@@ -622,7 +674,7 @@ function onKeyDown(e: KeyboardEvent) {
   }
   if (e.key !== 'Escape') return
   if (contextMenuVisible.value) { contextMenuVisible.value = false; return }
-  if (annotating.value) { annGestures.cancel(); ann.selectBox(null) }
+  if (annotating.value) { annGestures.cancel(); ann.clearSelection() }
   view.clearFocus()
   // Esc 也退出 brush 光标态(sync Vue state 与 ECharts 内部,防"点两下按钮才能重开")。
   // blur:Esc 本身是键盘事件 · 浏览器会把当前 focus 元素的 :focus-visible 判为 true,
@@ -670,14 +722,28 @@ const updateMainCanvasOffset = () => {
 // ── annotate 下的画框手势 ──────────────────────────────────────────────
 const annGestures = createAnnotateGestures({
   main: () => chartMain, sub: () => chartSub, mainEl: () => mainEl.value, subEl: () => subInnerEl.value,
-  active: () => annotating.value && ann.tool === 'box' && bars.value.length > 0 && ann.status === 'ready',
+  active: () => annotating.value && bars.value.length > 0 && ann.status === 'ready',
+  tool: () => ann.tool,
   dates: () => annDates.value, lanes: () => annLanes.value, geom: () => annGeom.value.geom,
+  bracket: () => annBracket.value, marks: () => annMarks.value,
   zoom: () => readZoomOverride(),
+  sampleAt: sampleAtMain,
+  limitOf: (boxId) => {
+    const chart = annChart.value
+    const smp = chart ? resizeLimit(boxId, chart) : null
+    if (!chart || !smp) return null
+    const letter = smp.pattern === ann.currentPattern ? annLetters.value.get(smp.id) : null
+    return { date: smp.date, text: `member box of ${sampleTag(smp, letter)}` }
+  },
   setDraft: (d) => { draft.value = d },
   setPreview: (b) => { preview.value = b },
+  setStop: (st) => { resizeStop.value = st },
   createBox: (start, end, feature) => { if (symbol.value) ann.createBox(symbol.value, start, end, feature) },
   resizeBox: (id, start, end) => ann.resizeBox(id, start, end),
-  select: (id) => ann.selectBox(id),
+  select: (id) => (id ? ann.selectBox(id) : ann.clearSelection()),
+  selectSample: (id) => ann.selectSample(id),
+  placeSample: (date) => { if (symbol.value && date) ann.placeSample(symbol.value, date) },
+  take: (boxId) => { if (annSelSample.value) ann.toggleMember(annSelSample.value.id, boxId) },
 })
 
 // ── 挂钩 chart 生命周期 ─────────────────────────────────────────────
@@ -924,9 +990,10 @@ watch([effectiveAnalysis, nodeVisible, level, nodeColors, focusedInstanceRef, di
       () => render(false), { deep: true })
 
 // annotate:框、词表、选中、拖动中的样子变了 → 只重画标注的两层
-watch(() => [ann.view, ann.selectedBoxId, draft.value, preview.value], () => renderAnnotateLayers())
-// 换图:拖到一半的手势作废,选中的框(在原来那张图上)清掉
-watch(symbol, () => { annGestures.cancel(); ann.selectBox(null) })
+watch(() => [ann.view, ann.selectedBoxId, ann.selectedSampleId, ann.currentSampleId, ann.currentPattern,
+             draft.value, preview.value], () => renderAnnotateLayers())
+// 换图:拖到一半的手势作废,选中的框或样本(在原来那张图上)清掉,当前样本也清掉(冻结)
+watch(symbol, () => { annGestures.cancel(); ann.clearSelection() })
 
 // subHeightOffset / subCanvasH 变化 → chart.resize()(RO 会自动触发,这里手动兜底)
 watch([subHeightOffset, subCanvasH], () => {
@@ -945,6 +1012,11 @@ watch(activeDetailCard, (v, prev) => {
 <style scoped>
 /* 双 chart 上下 flex 布局,主图 fixed 顶、副图 overflow-y 滚动。
    min-width:0 让 flex 列能收缩到比 canvas 窄。 */
+.resize-stop {
+  position: fixed; z-index: 70; pointer-events: none; padding: 1px 6px;
+  font-family: var(--mono); font-size: 12px; color: var(--ink);
+  background: #fff; border: 1px solid var(--ink); border-radius: 3px;
+}
 .kline-wrap-v2 {
   display: flex;
   flex-direction: column;

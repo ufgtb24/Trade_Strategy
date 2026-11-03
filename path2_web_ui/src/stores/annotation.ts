@@ -8,7 +8,18 @@
  *   所以连着点几下,base 也都是最新的,不会自己和自己记成冲突。
  * - 新对象的编号在动作发生时就取定(显示与保存用同一个编号):机器名取 state.machine,序号从当前显示的
  *   next_seq 往上取。
- * - 保存没通过(后端校验拒绝、标注目录不在等):这一个意图丢掉,原因放进 saveError,显示回到后端的状态。
+ * - 保存没通过(后端校验拒绝、标注目录不在等):这一个意图丢掉,原因放进 saveError(界面上一直显示到点 ok),
+ *   并重读一次标注:被拒多半是另一台机器同步来的修改改变了前提,重读后显示的就是后端眼下的状态。
+ *
+ * 样本与成员框(成员框的规则见 annotate/membership.ts):
+ * - point 工具点一根 K 线放样本,归当前 pattern、默认 pos,成员框按推断;同一 pattern 同一天已有样本就是选中它;
+ *   放完自动回到 box 工具。
+ * - 当前样本:这张图上最后一次放下或选中的样本。画框、选中框都不换掉它;选中另一个样本换成它;点空白处、Esc、
+ *   换图清掉。它是当前样本期间新画的框(含画完又改了起止的),推断会收的就并进它(只加不踢);换掉时它的成员框
+ *   就此冻结,以后补画的框不会并进去。
+ * - 手动点进点出(样本页的成员链与 others、框页的 member_of)永远算数:直接改存下的成员框并记 members_edited;
+ *   本页还记住点过的,当前样本重算推断时不会把点掉的框又收回来。跨过样本日的框收不进。
+ * - 当前 pattern(顶栏 pattern 一格)记在浏览器里,刷新后还在;null 为 unsorted。
  *
  * 合并与拆回:合并是一批操作(改写涉及的框、删掉被并的词)。还能拆回的合并由后端从标注文件里认出来
  * (读结果的 merges),刷新、换机器后照样能拆回;拆回再写一批,把词用原编号放回、把框改回去。
@@ -19,20 +30,35 @@ import { defineStore } from 'pinia'
 import { computed, ref, shallowRef } from 'vue'
 import { AnnotationSaveError, getAnnotations, postAnnotationBatch } from '../api'
 import {
-  applyOps, baseOf, boxValue, featureByName, featureValue, findBox, mergePlan, mergeRecords, newId, toggleAttr,
-  toggleParent, unmergedBox, type AnnBox, type AnnConflict, type AnnFeature, type AnnOp, type AnnRead,
-  type MergePlan, type MergeRecord, type ParentRow,
+  applyOps, baseOf, boxValue, chartOf, featureByName, featureValue, findBox, findSample, mergePlan, mergeRecords,
+  newId, sampleValue, toggleAttr, toggleParent, unmergedBox, type AnnBox, type AnnConflict, type AnnFeature,
+  type AnnOp, type AnnRead, type AnnSample, type MergePlan, type MergeRecord, type ParentRow,
 } from '../annotate/model'
+import { sampleMembers } from '../annotate/membership'
+import { memberIds } from '../annotate/samples'
 
 /** 一个动作:拿到读结果,给出要保存的这一批操作(没什么要改时给空数组)。 */
 export type Intent = (r: AnnRead) => AnnOp[]
 
 export type LoadStatus = 'idle' | 'loading' | 'ready' | 'unavailable' | 'load_failed'
 export type SidebarTab = 'selection' | 'features' | 'pattern'
-export type Tool = 'box'
-export interface SaveProblem { code: string; message: string }
+export type Tool = 'box' | 'point'
+/** 一条保存被拒的原因:code、后端的原话,以及涉及的样本、框编号(有就带)。 */
+export interface SaveProblem { code: string; message: string; sample?: string; box?: string }
 
 const ACK_KEY = 'path2_web_ui.annotation.ack_conflicts.v1'
+const PATTERN_KEY = 'path2_web_ui.annotation.current_pattern.v1'
+
+function loadPattern(): string | null {
+  try {
+    const v = JSON.parse(localStorage.getItem(PATTERN_KEY) ?? 'null')
+    return typeof v === 'string' ? v : null
+  } catch { return null }
+}
+
+function savePattern(p: string | null): void {
+  try { localStorage.setItem(PATTERN_KEY, JSON.stringify(p)) } catch { /* 存不了就只在本页记住 */ }
+}
 
 function loadAck(): Set<string> {
   try {
@@ -44,6 +70,32 @@ function loadAck(): Set<string> {
 
 function saveAck(s: Set<string>): void {
   try { localStorage.setItem(ACK_KEY, JSON.stringify([...s])) } catch { /* 存不了就只在本页记住 */ }
+}
+
+const sameSet = (a: readonly string[], b: readonly string[]) =>
+  a.length === b.length && new Set([...a, ...b]).size === a.length
+
+/** 一个样本的改写:找到它就给出这一条操作,找不到(已被删)就什么都不做。 */
+function sampleIntent(id: string, change: (s: AnnSample) => AnnSample): Intent {
+  return (r) => {
+    const hit = findSample(r.state, id)
+    if (!hit) return []
+    return [{ kind: 'sample', id, base: baseOf(r, 'sample', id), value: sampleValue(hit.chart.symbol, change(hit.sample)) }]
+  }
+}
+
+/** 当前样本:编号、它当前期间新画的框、本页记住的手动点进点出、这张图的交易日。 */
+interface Current { id: string; fresh: ReadonlySet<string>; manual: Record<string, boolean>; days: readonly string[] }
+
+/** 当前样本按推断重算成员框(只加不踢);变了就给出这一条样本操作。r 是已套上这次框改动的读结果。 */
+function growCurrent(r: AnnRead, cur: Current): AnnOp[] {
+  const hit = findSample(r.state, cur.id)
+  if (!hit) return []
+  const next = sampleMembers(hit.sample.date, hit.chart.boxes, cur.days,
+                             { stored: hit.sample.members, newBoxes: cur.fresh, manual: cur.manual, gap: r.membership.gap })
+  if (sameSet(next, hit.sample.members)) return []
+  return [{ kind: 'sample', id: cur.id, base: baseOf(r, 'sample', cur.id),
+            value: sampleValue(hit.chart.symbol, { ...hit.sample, members: next }) }]
 }
 
 /** 一个框的改写:找到它就给出这一条操作,找不到(已被删)就什么都不做。 */
@@ -64,6 +116,11 @@ export const useAnnotationStore = defineStore('annotation', () => {
   const saving = ref(false)
 
   const selectedBoxId = ref<string | null>(null)
+  const selectedSampleId = ref<string | null>(null)
+  const currentSampleId = ref<string | null>(null)                  // 当前样本
+  const freshBoxes = ref<ReadonlySet<string>>(new Set())             // 当前样本期间新画的框
+  const manual = ref<Record<string, Record<string, boolean>>>({})    // 本页记住的手动点进点出:样本 → 框 → 进 / 出
+  const currentPattern = ref<string | null>(loadPattern())           // 顶栏的当前 pattern;null = unsorted
   const tab = ref<SidebarTab>('selection')
   const tool = ref<Tool>('box')
   const renaming = ref(false)                      // 选中框的 feature 一行处在「换特征」状态
@@ -90,6 +147,12 @@ export const useAnnotationStore = defineStore('annotation', () => {
   }
 
   const selectedBox = computed(() => (selectedBoxId.value && state.value ? findBox(state.value, selectedBoxId.value) : null))
+  const selectedSample = computed(() =>
+    (selectedSampleId.value && state.value ? findSample(state.value, selectedSampleId.value) : null))
+  const currentSample = computed(() =>
+    (currentSampleId.value && state.value ? findSample(state.value, currentSampleId.value) : null))
+  /** 成员框推断的默认值(后端读路由带出,和参照实现同一处设定)。 */
+  const membership = computed(() => server.value?.membership ?? null)
 
   /** 还没看过的冲突(每条以 later.ref 为准)。 */
   const newConflicts = computed<AnnConflict[]>(() =>
@@ -102,6 +165,9 @@ export const useAnnotationStore = defineStore('annotation', () => {
       server.value = await getAnnotations()
       status.value = 'ready'
       loadError.value = null
+      if (currentPattern.value !== null && !server.value.state.patterns.some(p => p.name === currentPattern.value)) {
+        setCurrentPattern(null)
+      }
     } catch (e: any) {
       status.value = e?.status === 503 ? 'unavailable' : 'load_failed'
       loadError.value = String(e?.message ?? e)
@@ -120,12 +186,18 @@ export const useAnnotationStore = defineStore('annotation', () => {
           saveError.value = e instanceof AnnotationSaveError ? e.reasons
             : [{ code: 'save_failed', message: String(e?.message ?? e) }]
           if (e?.status === 503) status.value = 'unavailable'
+          else if (e?.status === 400) await reread()
         }
         queue.value = queue.value.slice(1)
       }
     } finally {
       saving.value = false
     }
+  }
+
+  /** 保存被拒后重读一次:显示后端眼下的状态(比如另一台机器同步来的修改)。读不到就留着原来的。 */
+  async function reread(): Promise<void> {
+    try { server.value = await getAnnotations() } catch { /* 读不到:留着原来的读结果 */ }
   }
 
   /** 记下一个动作:马上显示,按顺序保存。 */
@@ -163,21 +235,47 @@ export const useAnnotationStore = defineStore('annotation', () => {
 
   // ── 框 ──
 
-  /** 画一个新框;feature 给了就直接带这个特征(在特征轨上拖出来的)。新框被选中。 */
+  /**
+   * 这张图上的当前样本(没有为 null)。drawn:这次新画的框,记进「当前样本期间新画的框」;改起止时不给。
+   * 返回的是此刻的快照,意图保存时照它重算。
+   */
+  function currentOn(symbol: string, drawn: string | null): Current | null {
+    const cur = currentSample.value
+    if (!cur || cur.chart.symbol !== symbol) return null
+    if (drawn) freshBoxes.value = new Set([...freshBoxes.value, drawn])
+    return { id: cur.sample.id, fresh: freshBoxes.value, manual: { ...(manual.value[cur.sample.id] ?? {}) },
+             days: daysBySymbol.value[symbol] ?? [] }
+  }
+
+  /** 一次框的改写,连同当前样本按推断重算出的成员框(同一批)。 */
+  function withCurrent(ops: (r: AnnRead) => AnnOp[], cur: Current | null): Intent {
+    return (r) => {
+      const first = ops(r)
+      return cur && first.length ? [...first, ...growCurrent(applyOps(r, first), cur)] : first
+    }
+  }
+
+  /** 画一个新框;feature 给了就直接带这个特征(在特征轨上拖出来的)。新框被选中;推断会收它的话并进当前样本。 */
   function createBox(symbol: string, start: string, end: string, feature: string | null): string | null {
     if (!machine.value) return null
     const [seq] = takeSeqs(1)
     const id = newId('b', machine.value, seq)
     const box: AnnBox = { id, feature, start, end }
-    commit(() => [{ kind: 'box', id, base: null, value: boxValue(symbol, box) }])
+    commit(withCurrent(() => [{ kind: 'box', id, base: null, value: boxValue(symbol, box) }], currentOn(symbol, id)))
     selectBox(id)
     renaming.value = false
     if (!feature) nameFocus.value++
     return id
   }
 
+  /**
+   * 改框的起止。当前样本期间新画的框改完进了推断范围,也并进当前样本;别的框不并(只有新画的框会自动并进,
+   * 手动点掉的旧框不会因为拖了一下又被收回来)。越过样本日的限制由拖动时的界面守,保存时后端再查。
+   */
   function resizeBox(id: string, start: string, end: string): void {
-    commit(boxIntent(id, b => ({ ...b, start, end })))
+    const hit = state.value ? findBox(state.value, id) : null
+    const cur = hit ? currentOn(hit.chart.symbol, null) : null
+    commit(withCurrent(boxIntent(id, b => ({ ...b, start, end })), cur))
   }
 
   /** 删框:同一批把它从样本的成员里拿掉,把挂在它上面的 attach 也拿掉(后端不许成员框指向不存在的框)。 */
@@ -232,6 +330,90 @@ export const useAnnotationStore = defineStore('annotation', () => {
   /** 点 parent 一行的 ⊂(detach / attach,规则见 annotate/model.ts 的 parentRow)。 */
   function toggleBoxParent(boxId: string, row: ParentRow): void {
     commit(boxIntent(boxId, b => toggleParent(b, row)))
+  }
+
+  // ── 样本与成员框 ──
+
+  /**
+   * point 工具点在某天:同一张图上当前 pattern 这天已有样本就选中它,否则放一个新样本(pos,成员框按推断)。
+   * 两种都会让它成为当前样本,并把工具切回 box。返回样本编号。
+   */
+  function placeSample(symbol: string, date: string): string | null {
+    tool.value = 'box'
+    if (!machine.value || !state.value) return null
+    const pattern = currentPattern.value
+    const same = chartOf(state.value, symbol)?.samples.find(x => x.date === date && x.pattern === pattern)
+    if (same) { selectSample(same.id); return same.id }
+    const id = newId('s', machine.value, takeSeqs(1)[0])
+    const days = daysBySymbol.value[symbol] ?? []
+    commit((r) => {
+      const boxes = chartOf(r.state, symbol)?.boxes ?? []
+      const members = sampleMembers(date, boxes, days, { gap: r.membership.gap })
+      return [{ kind: 'sample', id, base: null,
+                value: sampleValue(symbol, { id, date, pattern, judgment: 'pos', members }) }]
+    })
+    selectSample(id)
+    return id
+  }
+
+  /** 手动把框收进样本或拿掉(永远算数,记 members_edited);跨过样本日的框收不进。 */
+  function toggleMember(sampleId: string, boxId: string): void {
+    const hit = state.value ? findSample(state.value, sampleId) : null
+    const box = hit?.chart.boxes.find(b => b.id === boxId)
+    if (!hit || !box) return
+    const on = memberIds(hit.sample, hit.chart).has(boxId)
+    if (!on && box.end > hit.sample.date) return
+    manual.value = { ...manual.value, [sampleId]: { ...(manual.value[sampleId] ?? {}), [boxId]: !on } }
+    const days = daysBySymbol.value[hit.chart.symbol] ?? []
+    commit((r) => {
+      const h = findSample(r.state, sampleId)
+      if (!h) return []
+      const members = sampleMembers(h.sample.date, h.chart.boxes, days,
+                                    { stored: h.sample.members, manual: { [boxId]: !on }, gap: r.membership.gap })
+      return sampleIntent(sampleId, x => ({ ...x, members, members_edited: true }))(r)
+    })
+  }
+
+  function setJudgment(sampleId: string, judgment: AnnSample['judgment']): void {
+    commit(sampleIntent(sampleId, x => ({ ...x, judgment })))
+  }
+
+  function setSampleNote(sampleId: string, note: string): void {
+    commit(sampleIntent(sampleId, x => {
+      const next = { ...x }
+      if (note.trim()) next.note = note
+      else delete next.note
+      return next
+    }))
+  }
+
+  /** pattern 名还不在读结果里时,给出新建它的操作(同一批里先建 pattern、再让样本用它)。 */
+  function patternIfMissing(r: AnnRead, name: string | null): AnnOp[] {
+    return name !== null && !r.state.patterns.some(p => p.name === name)
+      ? [{ kind: 'pattern', id: name, base: null, value: { name } }] : []
+  }
+
+  /** 改样本的 pattern(null = unsorted);名字是新的就同一批新建这个 pattern。 */
+  function setSamplePattern(sampleId: string, name: string | null): void {
+    const p = name === null ? null : name.trim()
+    if (p === '') return
+    commit((r) => [...patternIfMissing(r, p), ...sampleIntent(sampleId, x => ({ ...x, pattern: p }))(r)])
+  }
+
+  /** 删样本;框留在图上。 */
+  function deleteSample(sampleId: string): void {
+    commit((r) => (findSample(r.state, sampleId) ? [{ kind: 'sample', id: sampleId, base: baseOf(r, 'sample', sampleId), value: null }] : []))
+    if (selectedSampleId.value === sampleId) selectedSampleId.value = null
+    if (currentSampleId.value === sampleId) makeCurrent(null)
+  }
+
+  /** 顶栏换当前 pattern(新放的样本归它);名字是新的就新建这个 pattern。 */
+  function setCurrentPattern(name: string | null): void {
+    const p = name === null ? null : name.trim()
+    if (p === '') return
+    if (p !== null && state.value && !state.value.patterns.some(x => x.name === p)) commit(r => patternIfMissing(r, p))
+    currentPattern.value = p
+    savePattern(p)
   }
 
   // ── 词表 ──
@@ -300,10 +482,39 @@ export const useAnnotationStore = defineStore('annotation', () => {
 
   // ── 选中、提示 ──
 
+  /** 选中一个框(null:只取消选中框)。当前样本不换。 */
   function selectBox(id: string | null): void {
     selectedBoxId.value = id
     renaming.value = false
-    if (id) tab.value = 'selection'
+    if (id) {
+      selectedSampleId.value = null
+      tab.value = 'selection'
+    }
+  }
+
+  /** 换当前样本:旧的就此冻结(以后新画的框不再并进它),新的从此刻起记「期间新画的框」。 */
+  function makeCurrent(id: string | null): void {
+    if (currentSampleId.value === id) return
+    currentSampleId.value = id
+    freshBoxes.value = new Set()
+  }
+
+  /** 选中一个样本,它成为当前样本。 */
+  function selectSample(id: string | null): void {
+    selectedSampleId.value = id
+    selectedBoxId.value = null
+    renaming.value = false
+    if (id) {
+      tab.value = 'selection'
+      makeCurrent(id)
+    }
+  }
+
+  /** 点空白处、Esc、换图:什么都不选,当前样本也清掉(冻结)。 */
+  function clearSelection(): void {
+    selectBox(null)
+    selectedSampleId.value = null
+    makeCurrent(null)
   }
 
   function ackConflicts(): void {
@@ -318,11 +529,13 @@ export const useAnnotationStore = defineStore('annotation', () => {
   }
 
   return {
-    server, view, state, status, loadError, saveError, saving, machine,
-    selectedBoxId, selectedBox, tab, tool, renaming, nameFocus, merges, pendingMerge, daysBySymbol,
+    server, view, state, status, loadError, saveError, saving, machine, membership,
+    selectedBoxId, selectedBox, selectedSampleId, selectedSample, currentSampleId, currentSample, currentPattern,
+    tab, tool, renaming, nameFocus, merges, pendingMerge, daysBySymbol,
     newConflicts, fingerprint, featureById, nameOf,
     load, commit, flushed, createBox, resizeBox, deleteBox, setBoxFeature, setBoxNote, setAttr, addAttr,
     toggleBoxParent, setDefinition, renameFeature, previewMerge, applyMerge, unmerge, selectBox,
-    ackConflicts, setDays,
+    placeSample, toggleMember, setJudgment, setSampleNote, setSamplePattern, deleteSample, setCurrentPattern,
+    selectSample, clearSelection, ackConflicts, setDays,
   }
 })

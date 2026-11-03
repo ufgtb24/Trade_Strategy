@@ -4,7 +4,8 @@
  *
  * 形状与后端 path2_web/annotation/store.py 的读结果一致(GET /annotations):
  *   {state: {machine, data_fingerprint, features, patterns, charts}, conflicts, unsynced, violations,
- *    fingerprint, revs, next_seq, ignored_files}
+ *    fingerprint, merges, revs, next_seq, ignored_files, membership}
+ * membership 是成员框推断的默认值 {gap, near},和会话用的参照实现读同一处设定。
  * 一条操作把一个对象改成新值 {kind, id, base, value};value 为 null 表示删除;框和样本的 value 带 symbol。
  *
  * 属性三态:attrs 是特征编号 → true / false,键不在就是 null(没看过)。null 不算「没有」:
@@ -51,6 +52,8 @@ export interface AnnFingerprint {
   recorded: { fingerprint: string | null; batches: number }[]
   consistent: boolean
 }
+/** 成员框推断的默认值:gap(前后两段空几根以内算连着)、near(画了没收的范围)。 */
+export interface MembershipDefaults { gap: number; near: number }
 export interface AnnRead {
   state: AnnState
   conflicts: AnnConflict[]
@@ -61,6 +64,7 @@ export interface AnnRead {
   revs: Record<AnnKind, Record<string, string>>
   next_seq: number
   ignored_files: string[]
+  membership: MembershipDefaults
 }
 export interface AnnOp { kind: AnnKind; id: string; base: string | null; value: any }
 /** 存进文件的框:状态里的框再带上它所在的股票。 */
@@ -95,6 +99,16 @@ export function boxValue(symbol: string, b: AnnBox): Record<string, unknown> {
   return v
 }
 
+/** 样本存进操作的值:带 symbol;members_edited 只写 true,空的 note 不写。 */
+export function sampleValue(symbol: string, smp: AnnSample): Record<string, unknown> {
+  const v: Record<string, unknown> = {
+    id: smp.id, symbol, date: smp.date, pattern: smp.pattern, judgment: smp.judgment, members: [...smp.members],
+  }
+  if (smp.members_edited) v.members_edited = true
+  if (smp.note) v.note = smp.note
+  return v
+}
+
 /** 词存进操作的值:定义为空就不写。 */
 export function featureValue(f: AnnFeature): Record<string, unknown> {
   return f.definition ? { id: f.id, name: f.name, definition: f.definition } : { id: f.id, name: f.name }
@@ -104,6 +118,14 @@ export function findBox(s: AnnState, id: string): { chart: AnnChart; box: AnnBox
   for (const chart of s.charts) {
     const box = chart.boxes.find(b => b.id === id)
     if (box) return { chart, box }
+  }
+  return null
+}
+
+export function findSample(s: AnnState, id: string): { chart: AnnChart; sample: AnnSample } | null {
+  for (const chart of s.charts) {
+    const sample = chart.samples.find(x => x.id === id)
+    if (sample) return { chart, sample }
   }
   return null
 }
@@ -121,7 +143,8 @@ function stripSymbol(v: any): any {
 
 const boxOrder = (a: AnnBox, b: AnnBox) =>
   a.start < b.start ? -1 : a.start > b.start ? 1 : a.end < b.end ? -1 : a.end > b.end ? 1 : a.id < b.id ? -1 : 1
-const sampleOrder = (a: AnnSample, b: AnnSample) =>
+/** 样本的先后:样本日早的在前,再按编号。 */
+export const sampleOrder = (a: AnnSample, b: AnnSample) =>
   a.date < b.date ? -1 : a.date > b.date ? 1 : a.id < b.id ? -1 : 1
 
 /**
