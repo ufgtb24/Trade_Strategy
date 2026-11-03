@@ -162,7 +162,7 @@ async function onRandom() {
 .entry.on { border-color: var(--ink); box-shadow: inset 0 -2px 0 var(--ink); }
 .entry:disabled { cursor: progress; }
 .chk { display: flex; align-items: center; gap: 3px; font-family: var(--mono); font-size: 12px; color: var(--ink); cursor: pointer; }
-.chk input { margin: 0; }
+.chk input { margin: 0; accent-color: var(--ink); }   /* 勾上是黑的:浏览器默认的蓝会被读成会话蓝 */
 .chk.off { color: var(--ink-off); cursor: default; }
 .rally-pop { position: absolute; top: 100%; left: 10px; z-index: 50; margin-top: 2px; }
 </style>
