@@ -1,0 +1,32 @@
+// 截图证据的生成脚本:顶栏 rally 展开清单、点一行打开、random 打开,各拍整页与顶栏(2560x1440)。
+// 用法:node shot_finder.cjs <输出目录> <前端地址>;playwright-core 路径指向票 08 的 worktree,换地方跑时改它。
+const { chromium } = require('/home/yu/PycharmProjects/Trade_Strategy-08-rally-random-pool/path2_web_ui/node_modules/playwright-core')
+const OUT = process.argv[2]
+const URL = process.argv[3] || 'http://localhost:5181/'
+;(async () => {
+  const browser = await chromium.launch()
+  const page = await browser.newPage({ viewport: { width: 2560, height: 1440 }, deviceScaleFactor: 1 })
+  await page.goto(URL)
+  await page.waitForSelector('[data-testid="rally-button"]')
+  await page.locator('[data-testid="top-bar"]').screenshot({ path: `${OUT}/00-top-bar.png` })
+  await page.click('[data-testid="rally-button"]')
+  await page.waitForSelector('[data-testid="rally-row"]', { timeout: 300000 })
+  await page.screenshot({ path: `${OUT}/01-rally-list.png`, fullPage: true })
+  await page.locator('[data-testid="rally-list"]').screenshot({ path: `${OUT}/02-rally-list-element.png` })
+  const row = page.locator('[data-testid="rally-row"]').nth(4)
+  const sym = await row.getAttribute('data-symbol')
+  await row.click()
+  await page.waitForSelector(`.symbol-title-bar [data-symbol="${sym}"]`)
+  await page.waitForTimeout(1200)
+  await page.screenshot({ path: `${OUT}/03-rally-opened-${sym}.png`, fullPage: true })
+  await page.click('[data-testid="rally-button"]')
+  await page.waitForTimeout(300)
+  await page.locator('[data-testid="rally-list"]').screenshot({ path: `${OUT}/04-rally-current-row.png` })
+  await page.click('[data-testid="rally-button"]')
+  await page.click('[data-testid="random-button"]')
+  await page.waitForFunction(() => !document.querySelector('[data-testid="random-button"]').disabled)
+  await page.waitForTimeout(1200)
+  const rsym = await page.inputValue('[data-testid="symbol-input"]')
+  await page.screenshot({ path: `${OUT}/05-random-opened-${rsym}.png`, fullPage: true })
+  await browser.close()
+})().catch((e) => { console.error(e); process.exit(1) })
