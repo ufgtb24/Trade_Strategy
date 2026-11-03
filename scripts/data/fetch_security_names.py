@@ -61,7 +61,7 @@ def main() -> None:
         sys.exit(1)
     tmp = out_path.with_suffix(".csv.tmp")
     with tmp.open("w", newline="", encoding="utf-8") as f:
-        w = csv.writer(f)
+        w = csv.writer(f, lineterminator="\n")
         w.writerow(["symbol", "name"])
         for sym in sorted(names):
             w.writerow([sym, names[sym]])
