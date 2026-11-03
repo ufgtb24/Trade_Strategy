@@ -98,9 +98,9 @@ def _bars(start="2024-01-01", n=300, close=5.0, volume=1e6, rng_pct=0.04) -> pd.
                          "close": c, "volume": np.full(n, volume)}, index=idx)
 
 
-def _mask(df, errors=(), common=True, segment=SEG):
+def _mask(df, errors=(), segment=SEG):
     M = sp.volatility_scale(df, POOL["m_period"])
-    return sp.pool_mask(df, common=common, segment=segment, pool=POOL, errors=list(errors), M=M)
+    return sp.pool_mask(df, segment=segment, pool=POOL, errors=list(errors), M=M)
 
 
 def test_pool_mask_normal_days_pass_after_warmup():
@@ -109,10 +109,6 @@ def test_pool_mask_normal_days_pass_after_warmup():
     warm = max(POOL["m_period"], POOL["dv_window"])
     assert not m[:warm - 1].any()               # M、成交额中位数还没攒够根数
     assert m[warm:].all()
-
-
-def test_pool_mask_not_common_excludes_all():
-    assert not _mask(_bars(), common=False).any()
 
 
 @pytest.mark.parametrize("kw", [

@@ -654,11 +654,11 @@ export const useViewStore = defineStore('view', () => {
     if (previewEnabled.value) void runPreview()
   }
   /** 按代码打开(顶栏 symbol、rally、random):落在 annotate,不跑 app、不动扫描与 activePatternId。
-   *  window 给了就让图停在那段上,不给按默认缩放。代码是否存在由调用方先核过。 */
-  function openSymbol(s: string, window: ViewWindow | null = null) {
+   *  win 给了就让图停在那段上,不给按默认缩放。代码是否存在由调用方先核过。 */
+  function openSymbol(s: string, win: ViewWindow | null = null) {
     mode.value = 'annotate'
     symbol.value = s
-    viewWindow.value = window ? { start: window.start, end: window.end } : null
+    viewWindow.value = win ? { start: win.start, end: win.end } : null
     resetChartState()
   }
   function setActivePattern(pid: string) {

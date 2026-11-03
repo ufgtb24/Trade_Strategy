@@ -292,7 +292,7 @@ def test_rally_labels_cut_at_stop_and_at_data_end():
     h = o * 1.01
     c = o.copy()
     M = np.full(6, 0.04)
-    lab = finder_mod.rally_labels(o, h, o * 0.99, c, M, k=5.0, horizon=4)
+    lab = finder_mod.rally_labels(o, h, c, M, k=5.0, horizon=4)
     # t=0:P = 10,止损线 10/1.2 ≈ 8.33;t+3 收盘 7 跌破 → 截在 t+3,最高 11.11
     assert lab["valid"][0] and lab["rise"][0] == pytest.approx(11.0 * 1.01 / 10 - 1)
     assert lab["peak_off"][0] == 2

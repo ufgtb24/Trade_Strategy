@@ -23,10 +23,13 @@
               :aria-expanded="rallyOpen" title="训练段里的大涨段清单,点一行打开那段涨之前的图"
               @click="rallyOpen = !rallyOpen">rally</button>
       <button type="button" class="entry" data-testid="random-button"
-              title="从股票池 × 训练段随机给一段图" :disabled="status === 'loading'"
+              title="从股票池 × 训练段随机给一段图" :disabled="randomStatus === 'loading'"
               @click="onRandom">random</button>
+      <span v-if="randomStatus" class="status" data-testid="random-status"
+            :title="RANDOM_HINT[randomStatus]">{{ randomStatus }}</span>
     </div>
-    <span v-if="status" class="status" data-testid="symbol-status" :title="STATUS_HINT[status]">{{ status }}</span>
+    <span v-if="status" class="status" data-testid="symbol-status"
+          title="训练段副本里没有这只股票(2026 年才上市的不在列表里)">{{ status }}</span>
     <!-- v-show:关上再打开时,清单、排序与滚动位置都还在 -->
     <RallyList v-if="rallyMounted" v-show="rallyOpen" class="rally-pop" @close="rallyOpen = false" />
   </header>
@@ -51,9 +54,8 @@ import RallyList from './RallyList.vue'
 const view = useViewStore()
 const { symbol } = storeToRefs(view)
 
-type Status = 'not_found' | 'loading' | 'load_failed' | 'empty'
-const STATUS_HINT: Record<Status, string> = {
-  not_found: '训练段副本里没有这只股票(2026 年才上市的不在列表里)',
+type RandomStatus = 'loading' | 'load_failed' | 'empty'
+const RANDOM_HINT: Record<RandomStatus, string> = {
   loading: '正在取随机的一段图(第一次要整池算一遍,约半分钟)',
   load_failed: '没取到随机的一段图',
   empty: '股票池是空的',
@@ -62,11 +64,12 @@ const STATUS_HINT: Record<Status, string> = {
 const symbols = ref<string[] | null>(null)        // null:还没拿到或拿失败(此时交给后端判)
 const symbolSet = computed(() => symbols.value ? new Set(symbols.value) : null)
 const draft = ref(symbol.value ?? '')
-const status = ref<Status | null>(null)
+const status = ref<'not_found' | null>(null)          // symbol 输入框的状态
+const randomStatus = ref<RandomStatus | null>(null)
 const rallyOpen = ref(false)
 const rallyMounted = ref(false)                   // 第一次展开才向后端要清单
 
-watch(symbol, (s) => { draft.value = s ?? ''; status.value = null })
+watch(symbol, (s) => { draft.value = s ?? ''; status.value = null; randomStatus.value = null })
 watch(rallyOpen, (v) => { if (v) rallyMounted.value = true })
 
 function onKeyDown(e: KeyboardEvent) {
@@ -90,13 +93,13 @@ function onEnter() {
 
 async function onRandom() {
   rallyOpen.value = false
-  status.value = 'loading'
+  randomStatus.value = 'loading'
   try {
     const w = await getRandom()
-    status.value = null
+    randomStatus.value = null
     view.openSymbol(w.symbol, { start: w.start, end: w.end })
   } catch (e: any) {
-    status.value = e?.status === 404 ? 'empty' : 'load_failed'
+    randomStatus.value = e?.status === 404 ? 'empty' : 'load_failed'
   }
 }
 </script>

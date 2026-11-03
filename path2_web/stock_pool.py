@@ -124,8 +124,8 @@ def load_data_errors(path) -> list[dict]:
 def volatility_scale(df: pd.DataFrame, period: int) -> np.ndarray:
     """波动尺度 M:TR/收盘价的 period 日滚动中位数(当日收盘已知)。
 
-    与首次穿越用的 path2.calc.atr.rolling_atr_pct_nanmedian 逐值相同(窗口里有缺值同样给 NaN),
-    改用 pandas 自带的滚动中位数,整池算一遍快几倍。"""
+    与首次穿越用的 path2.calc.atr.rolling_atr_pct_nanmedian 逐值相同(窗口里有缺值同样给 NaN);
+    这里用 pandas 自带的滚动中位数算,整池算一遍用时只是逐窗求中位数的几分之一。"""
     prev_close = df["close"].shift(1)
     tr = pd.concat([df["high"] - df["low"], (df["high"] - prev_close).abs(),
                     (df["low"] - prev_close).abs()], axis=1).max(axis=1)
@@ -159,16 +159,15 @@ def data_error_mask(dates: pd.DatetimeIndex, entries: list[dict], before: int, a
     return mask
 
 
-def pool_mask(df: pd.DataFrame, *, common: bool, segment: tuple[str, str], pool: dict,
-              errors: list[dict], M: np.ndarray) -> np.ndarray:
-    """一只股票逐日是否进池(条件见模块说明)。
+def pool_mask(df: pd.DataFrame, *, segment: tuple[str, str], pool: dict, errors: list[dict],
+              M: np.ndarray) -> np.ndarray:
+    """一只普通股逐日是否进池(除证券类别外的各条,见模块说明;类别由调用方先用 security_class 筛)。
 
-    df:这只股票的日线(DatetimeIndex 升序,已截到训练段终点);common:这只股票是不是普通股;
-    segment:训练段 (起点, 终点);pool:配置 finder.pool;errors:这只股票的数据错误登记;
-    M:volatility_scale 的结果(与 df 同长)。
+    df:这只股票的日线(DatetimeIndex 升序,已截到训练段终点);segment:训练段 (起点, 终点);
+    pool:配置 finder.pool;errors:这只股票的数据错误登记;M:volatility_scale 的结果(与 df 同长)。
     """
     n = len(df)
-    if not common or n == 0:
+    if n == 0:
         return np.zeros(n, dtype=bool)
     dates = df.index
     close = df["close"].to_numpy(dtype=float)

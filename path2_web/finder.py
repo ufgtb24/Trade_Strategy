@@ -45,6 +45,7 @@ from path2_web.snapshot_fingerprint import read_fingerprint
 FINDER_VERSION = 1
 _CACHE_PREFIX = "finder-"
 _RALLY_FIELDS = ("symbol", "date", "peak_date", "rise", "rel", "view_start", "view_end")
+_RALLY_ORDER = (["rel", "date", "symbol"], [False, True, True])    # 清单的先后:rel 大的在前,同值按日期、代码
 
 log = logging.getLogger(__name__)
 
@@ -65,13 +66,13 @@ class FinderIndex:
     skipped: tuple[str, ...]
 
 
-def rally_labels(open_, high, low, close, M, k: float, horizon: int) -> dict[str, np.ndarray]:
+def rally_labels(open_, high, close, M, k: float, horizon: int) -> dict[str, np.ndarray]:
     """逐日的拿得到的涨幅(口径见模块说明第 1 步)。输入是同长的 1-D 数组,已截到训练段终点。
 
     返回同长数组:valid(bool,次日开盘价与 M_t 都是有限正数)、rise、rel(无效处 NaN)、
     peak_off(最高价那天相对 t 的根数 1..horizon,无效为 -1)、end_off(观察期末根相对 t 的根数)。
     """
-    open_, high, low, close, M = (np.asarray(a, dtype=float) for a in (open_, high, low, close, M))
+    open_, high, close, M = (np.asarray(a, dtype=float) for a in (open_, high, close, M))
     n = len(close)
     H = int(horizon)
     pad = np.full(H, np.nan)
@@ -111,11 +112,11 @@ def stock_rows(df: pd.DataFrame, symbol: str, *, segment: tuple[str, str], setti
     """
     pool, rally = settings["pool"], settings["rally"]
     M = stock_pool.volatility_scale(df, int(pool["m_period"]))
-    in_pool = stock_pool.pool_mask(df, common=True, segment=segment, pool=pool, errors=errors, M=M)
+    in_pool = stock_pool.pool_mask(df, segment=segment, pool=pool, errors=errors, M=M)
     dates = df.index
     if not in_pool.any():
         return dates.values[:0].astype("datetime64[D]"), _empty_candidates()
-    lab = rally_labels(df["open"], df["high"], df["low"], df["close"], M,
+    lab = rally_labels(df["open"], df["high"], df["close"], M,
                        float(rally["k"]), int(rally["horizon"]))
     with np.errstate(invalid="ignore"):
         cand = in_pool & lab["valid"] & (lab["rel"] >= float(rally["rel_min"]))
@@ -158,12 +159,11 @@ def select_rally(cands: pd.DataFrame, rally: dict) -> pd.DataFrame:
     picked = ordered.iloc[keep]
     iso = pd.DatetimeIndex(picked["date"]).isocalendar()
     week = (iso["year"].astype(str) + "-" + iso["week"].astype(str)).to_numpy()
-    picked = (picked.assign(_week=week)
-              .sort_values(["rel", "date", "symbol"], ascending=[False, True, True])
+    by, asc = _RALLY_ORDER
+    picked = (picked.assign(_week=week).sort_values(by, ascending=asc)
               .groupby("_week", sort=False).head(int(rally["per_week_max"]))
               .drop(columns="_week"))
-    return (picked.sort_values(["rel", "date", "symbol"], ascending=[False, True, True])
-            .head(int(rally["top"])).reset_index(drop=True))
+    return picked.sort_values(by, ascending=asc).head(int(rally["top"])).reset_index(drop=True)
 
 
 def _day(v) -> str:

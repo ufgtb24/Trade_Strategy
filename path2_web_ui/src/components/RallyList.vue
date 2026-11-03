@@ -88,7 +88,8 @@ function open(it: RallyItem) {
 </script>
 
 <style scoped>
-/* 字体与色值见 App.vue 的 :root 变量。表头、状态是程序固定文字(等宽);行里是数据(正常字体,代码加浅灰底) */
+/* 字体与色值见 App.vue 的 :root 变量。表头、状态是程序固定文字(等宽);行里是数据(正常字体,代码加浅灰底)。
+   悬停底色取比代码浅灰底深一档的 --line-soft,白底上看得出 */
 .rally-list {
   max-height: 60vh; overflow: auto; background: #fff; color: var(--ink);
   border: 1px solid var(--line-strong); border-radius: 3px; box-shadow: 0 2px 8px rgb(0 0 0 / 12%);
@@ -103,7 +104,7 @@ th {
 td { padding: 2px 12px; white-space: nowrap; }
 td.num { font-variant-numeric: tabular-nums; }
 tbody tr { cursor: pointer; }
-tbody tr:hover { background: var(--bar-bg); }
+tbody tr:hover { background: var(--line-soft); }
 tbody tr.current { outline: 2px solid var(--ink); outline-offset: -2px; }
 .chip { padding: 0 4px; border-radius: 2px; background: var(--chip-bg); }
 </style>

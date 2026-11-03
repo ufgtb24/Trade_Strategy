@@ -45,9 +45,9 @@ DEFAULT_CONFIG = {
     # 机器名:区分 pc 与 upc 各自写下的标注,两台机器各用各的。null = 取本机主机名。
     # 别在这份进 git 的配置里写死某台机器的名字,否则另一台拉取后会冒用它
     "machine": None,
-    # 训练段设置(全仓唯一一处):找图、大涨段清单、random 等都读它,不各自写死年份。
-    # 终点不得晚于训练段末日 data.TRAIN_END(数据墙,代码常量)
-    "train_segment": {"start": "2021-10-08", "end": "2025-12-31"},
+    # 训练段设置:找图、大涨段清单、random 等都经 train_segment() 读这一项,不各自写死年份。
+    # 这里是缺项时的默认;终点不得晚于训练段末日 data.TRAIN_END(数据墙,代码常量)
+    "train_segment": {"start": "2021-10-08", "end": TRAIN_END},
     # 找图参数(只决定给用户看哪些图,不进任何成绩;数值都待验证)
     "finder": {
         "random_window_bars": 250,      # random 给的一段图有几根 K 线

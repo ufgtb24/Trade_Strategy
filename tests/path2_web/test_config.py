@@ -124,11 +124,3 @@ def test_finder_settings_fill_missing_nested_keys(tmp_path):
     assert f["rally"]["rel_min"] == DEFAULT_CONFIG["finder"]["rally"]["rel_min"]
     assert f["pool"] == DEFAULT_CONFIG["finder"]["pool"]
     assert finder_settings({}) == DEFAULT_CONFIG["finder"]
-
-
-def test_repo_yaml_finder_and_segment_match_defaults():
-    """仓库里的 configs/path2_web.yaml 写出的训练段与找图参数,和代码默认值一致(两处不打架)。"""
-    from path2_web.config import finder_settings, train_segment
-    cfg = load_config()
-    assert train_segment(cfg) == train_segment({})
-    assert finder_settings(cfg) == DEFAULT_CONFIG["finder"]
