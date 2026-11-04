@@ -67,6 +67,7 @@ import AnnotationSidebar from './AnnotationSidebar.vue'
 import AnnotationNotices from './AnnotationNotices.vue'
 import { useViewStore } from '../stores/view'
 import { usePanelsStore, type PanelKey } from '../stores/panels'
+import { useAnnotationStore } from '../stores/annotation'
 import type { Level } from '../types'
 
 const view = useViewStore()
@@ -88,6 +89,22 @@ function onKey(e: KeyboardEvent) {
 }
 onMounted(() => window.addEventListener('keydown', onKey))
 onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
+
+// Delete 删掉选中的框(与 selection 页的 delete 按钮同一动作:成员关系与挂在它上面的 attach 一并拿掉)。
+// 只认 Delete、不认 Backspace(后者在别处常用,误触代价是删掉用户的标注);
+// 焦点在可编辑元素时放行,写特征名、属性、定义时按 Delete 只删字。
+const ann = useAnnotationStore()
+function onDeleteKey(e: KeyboardEvent) {
+  if (e.key !== 'Delete' || e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return
+  const id = ann.selectedBoxId
+  if (!annotating.value || !id) return
+  const ae = document.activeElement as HTMLElement | null
+  if (ae && ae.closest('input, textarea, select, [contenteditable=""], [contenteditable="true"]')) return
+  e.preventDefault()
+  ann.deleteBox(id)
+}
+onMounted(() => window.addEventListener('keydown', onDeleteKey))
+onBeforeUnmount(() => window.removeEventListener('keydown', onDeleteKey))
 
 const LEVEL_OPTIONS: { value: Level; label: string; title: string }[] = [
   { value: 'matched', label: 'Matched',  title: '仅显示命中 match 的事件' },

@@ -9,7 +9,7 @@
     <div class="ann-hdr">
       <span class="ann-sym" data-testid="box-span" title="start – end; drag the box edges on its lane to change">{{ sel.box.start }} – {{ sel.box.end }}</span>
       <span class="ann-grow" />
-      <button type="button" class="ann-btn" data-testid="box-delete" title="delete this box now" @click="ann.deleteBox(sel.box.id)">delete</button>
+      <button type="button" class="ann-btn" data-testid="box-delete" title="delete this box now (key: Delete)" @click="ann.deleteBox(sel.box.id)">delete</button>
     </div>
     <div class="ann-kv">
       <span class="ann-k" title="the feature this box marks">feature</span>

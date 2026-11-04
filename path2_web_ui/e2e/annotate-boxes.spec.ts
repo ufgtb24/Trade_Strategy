@@ -148,6 +148,32 @@ test.describe('画框、起名与词表', () => {
     // 全部图止于训练段末日
     for (const c of (await annState(page)).charts) for (const b of c.boxes) expect(b.end <= TRAIN_END).toBe(true)
   })
+
+  test('选中框按 Delete 删框;焦点在输入框里时不删', async ({ page }) => {
+    await routeTo(page, backend!)
+    const symbols: string[] = await (await fetch(`${backend!.base}/symbols`)).json()
+    const C = symbols[Math.floor(symbols.length / 2) + 2]
+    await page.goto('/')
+    await openSymbol(page, C)
+    const n = await barCount(page)
+    const b = await drawOnKline(page, n - 40, n - 30)
+    await name(page, '误画')
+    await settled(page)
+    expect(boxesOf(await annState(page), C).map((x: any) => x.id)).toEqual([b])
+
+    // 焦点在定义格里:Delete 只删字,框还在
+    await page.getByTestId('definition-input').focus()
+    await page.keyboard.press('Delete')
+    await settled(page)
+    expect(boxesOf(await annState(page), C)).toHaveLength(1)
+
+    // 焦点离开输入框:Delete 删掉选中的框,选中随之清空
+    await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur())
+    await page.keyboard.press('Delete')
+    await settled(page)
+    expect(boxesOf(await annState(page), C)).toHaveLength(0)
+    expect(await page.evaluate(() => (window as any).__e2e.ann().selectedBoxId)).toBeNull()
+  })
 })
 
 test.describe('冲突与指纹不符', () => {
