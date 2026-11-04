@@ -168,7 +168,7 @@ const overlay = computed(() => {
   const untiered = new Set((effectivePattern.value?.topology.nodes ?? []).filter(n => n.solve === false).map(n => n.node_id))
   const { lanes, app } = compareLanes(baseLanes.value, features, a.events, (e) => view.eventTier(e),
                                       (fid) => ann.featureById.has(fid), untiered)
-  return { lanes, app, hits: packHits(a.matches) }
+  return { lanes, app, hits: packHits(a.matches, a.events, endNode.value) }
 })
 const annLanes = computed(() => overlay.value?.lanes ?? baseLanes.value)
 // 样本:字母(当前 pattern)、选中的样本(在这张图上)、它的空槽、框旁的标记、bracket 轨

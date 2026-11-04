@@ -2,7 +2,7 @@
 // chart.ts 的 tier-tags 系列):event 叠到 mapping 对到的特征轨上(没有框的特征另起一条),hit 叠到 bracket 轨上、
 // 排在样本跨度下面;档位色;tiers 开着才挂 qualified_only / detected_only;第一段不挂任何对照 tag。
 import { describe, it, expect } from 'vitest'
-import { compareLanes, laneRowsFor, packHits } from '../src/render/compareOverlay'
+import { buyDaysOf, compareLanes, laneRowsFor, packHits } from '../src/render/compareOverlay'
 import {
   APP_AMBER, APP_BAR_H, APP_ROW_H, INK, LANE_PAD, appBarY, bracketGeometry, buildAnnotateSubOption, laneGeometry,
 } from '../src/render/annotateLanes'
@@ -60,6 +60,19 @@ describe('compare:event 叠到哪条轨、哪一行', () => {
     const { rows, placed } = packHits(ms)
     expect(rows).toBe(2)
     expect(placed.map(h => [h.id, h.row])).toEqual([['m0', 0], ['m1', 1], ['m2', 0]])
+  })
+
+  it('hit 的买入日照 eval_meta 的 end_node 取:node 取它的 event 跨度,node.slot 取 slot 里 child 的跨度并起来', () => {
+    const tb: EventDict = { ...ev('tb', 4, 12), child_refs: { segments: ['seg@5-6#0', 'seg@9-9#0'] } }
+    const evs = [tb, ev('seg', 5, 6), ev('seg', 9, 9), ev('burst', 2, 3)]
+    const m = { match_id: 'm0', start_idx: 2, end_idx: 12, node_index: { tb: tb.instance_id, burst: 'burst@2-3#0' } } as unknown as MatchDict
+    const byId = new Map(evs.map(e => [e.instance_id, e]))
+    expect(buyDaysOf(m, byId, 'tb.segments')).toEqual([5, 6, 9])
+    expect(buyDaysOf(m, byId, 'burst')).toEqual([2, 3])
+    expect(buyDaysOf(m, byId, 'nope')).toEqual([])
+    expect(buyDaysOf(m, byId, null)).toEqual([])
+    expect(packHits([m], evs, 'tb.segments').placed[0].buys).toEqual([5, 6, 9])
+    expect(packHits([m]).placed[0].buys).toEqual([])
   })
 })
 
@@ -135,6 +148,22 @@ describe('compare 的系列', () => {
     expect(s.data[0][2]).toBe(rowTop)
     const el = s.renderItem({}, api(s.data[0]))
     expect([el.style.fill, el.style.stroke, el.style.lineDash]).toEqual([APP_AMBER, INK, undefined])
+  })
+
+  it('hit 条里每个买入日一个黑色 ▼,画在那根 K 线的中心', () => {
+    const withBuys = [{ ...hits.placed[0], buys: [1, 3] }]
+    const opt = buildAnnotateSubOption(DATES.map(date => ({ date } as any)), {
+      lanes, geom, nameOf: f => f, selectedId: null, preview: null, draft: null, zoom: null, width: 800,
+      bracket: { geom: bg, placed: [] },
+      compare: { app, hits: withBuys, hitRow0: 2, nodeColors: { x: '#1a80ba' }, tiers: true },
+    }) as any
+    const s = series(opt, 'compare-hits')
+    const el = s.renderItem({ dataIndex: 0 }, api(s.data[0]))
+    expect(el.type).toBe('group')
+    expect(el.children[0].style.fill).toBe(APP_AMBER)
+    const tris = el.children.slice(1)
+    expect(tris.map((t: any) => [t.type, t.style.fill, t.shape.points[2][0]])).toEqual([['polygon', INK, 15], ['polygon', INK, 35]])
+    expect(s.tooltip.formatter({ dataIndex: 0 })).toContain('buy ×2')
   })
 })
 

@@ -8,7 +8,8 @@
  *   没进 mapping 的 node、特征编号不在词表里的行都不画。
  * - 一条轨里 event 自己分行(交叠的不同行,同主视图副图的分行),这几行作为一块竖直居中在轨里、和用户的框叠在一起;
  *   轨的行数取「框的行数」与「event 块要的行数」中大的那个。
- * - hit:画在 bracket 轨上,排在样本跨度的那几行下面,自己分行。
+ * - hit:画在 bracket 轨上,排在样本跨度的那几行下面,自己分行;条里用 ▼ 标出 app 的每个买入日(buyDaysOf),
+ *   和样本的三角在同一条轨上比。
  * event、hit 的起止都是 K 线下标:app 跑的区间是这只股票截到训练段末日的全部 K 线,和图上的 K 线逐根对齐
  * (stores/appLink.ts;后端测试 tests/path2_web/test_data_wall.py 核对)。
  */
@@ -21,8 +22,8 @@ import { APP_ROW_H, LANE_ROW_H } from './annotateLanes'
 export interface OverlayEvent { id: string; node: string; start: number; end: number; tier: Tier; tiered: boolean; row: number }
 /** 一条轨上叠的 event(按轨的下标与 lanes 对齐);rows 是 event 块的行数。 */
 export interface OverlayLane { events: OverlayEvent[]; rows: number }
-/** bracket 轨上的一个 hit,row 从 0 起(画的时候排在样本的那几行下面)。 */
-export interface OverlayHit { id: string; start: number; end: number; row: number }
+/** bracket 轨上的一个 hit,row 从 0 起(画的时候排在样本的那几行下面);buys:app 在这次 hit 里的买入日(K 线下标,升序)。 */
+export interface OverlayHit { id: string; start: number; end: number; row: number; buys: number[] }
 
 /** event 块要占轨里几行(按轨的行高折算)。 */
 export function laneRowsFor(appRows: number): number {
@@ -68,8 +69,29 @@ export function compareLanes(base: readonly Lane[], features: Readonly<Record<st
   return { lanes, app }
 }
 
-/** bracket 轨上的 hit:各自分行(行号从 0 起)。 */
-export function packHits(matches: readonly MatchDict[]): { rows: number; placed: OverlayHit[] } {
-  const placed = packLanes([...matches]).map(m => ({ id: m.match_id, start: m.start_idx, end: m.end_idx, row: m.lane }))
+/**
+ * 一次 hit 里 app 的买入日(K 线下标,升序去重),和后端评估取买点日的口径一致(path2/eval.py 的 _resolve_end_events):
+ * endNode 是 app 的 eval_meta 声明的买点 node——'node' 取 hit 里这个 node 的 event;'node.slot' 取这个 node 的 event
+ * 在 slot 里的 child event;每个 event 跨度里的每一根都是买入日(path2/core.py 的 Event.sample_bar_indices)。
+ * 没有 endNode、或在这次 hit 里解析不到,为空。
+ */
+export function buyDaysOf(m: MatchDict, byId: ReadonlyMap<string, EventDict>, endNode: string | null | undefined): number[] {
+  if (!endNode) return []
+  const [nodeId, slot] = endNode.split('.')
+  const own = m.node_index?.[nodeId]
+  const parent = own ? byId.get(own) : undefined
+  if (!parent) return []
+  const evs = slot ? (parent.child_refs?.[slot] ?? []).map(id => byId.get(id)).filter((e): e is EventDict => !!e) : [parent]
+  const days = new Set<number>()
+  for (const e of evs) for (let i = e.start_idx; i <= e.end_idx; i++) days.add(i)
+  return [...days].sort((a, b) => a - b)
+}
+
+/** bracket 轨上的 hit:各自分行(行号从 0 起);events、endNode 给了就带上每个 hit 的买入日(见 buyDaysOf)。 */
+export function packHits(matches: readonly MatchDict[], events: readonly EventDict[] = [],
+                         endNode: string | null = null): { rows: number; placed: OverlayHit[] } {
+  const byId = new Map(events.map(e => [e.instance_id, e]))
+  const placed = packLanes([...matches]).map(m => ({ id: m.match_id, start: m.start_idx, end: m.end_idx, row: m.lane,
+                                                      buys: buyDaysOf(m, byId, endNode) }))
   return { rows: placed.reduce((n, h) => Math.max(n, h.row + 1), 0), placed }
 }

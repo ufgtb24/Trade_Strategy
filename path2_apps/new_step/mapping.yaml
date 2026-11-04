@@ -1,0 +1,4 @@
+# compare 用的 mapping(暂行,格式见 path2_web/mapping.py):标注里的 pattern 用哪个 app、app 的哪个 node 认用户的哪个特征。
+pattern: new_step
+features:
+  w-pc-11: burst      # 站上新平台 ← 阶跃那串突破;买点(企稳段里的每一天)由 compare 画在 bracket 轨上

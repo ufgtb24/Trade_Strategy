@@ -54,6 +54,7 @@ export const NEG_FILL = '#ffffff'     // 负样本:空心三角(白底黑边)
 export const AFTER_DIM = 'rgba(0,0,0,0.07)'   // 选中样本时样本日之后的 K 线区:暗一档,形状仍看得清
 export const BRACKET_ROW_H = 13       // bracket 轨里一行的高度
 export const BRACKET_BAR_H = 9        // bracket 轨里一条样本跨度的高度
+export const BUY_TRI_HALF_W = 4       // compare 下 hit 条里买入日 ▼ 底边的一半(K 线太窄时取半根 K 线宽)
 export const APP_BAR_H = 7            // compare:轨里一个 event 条的高度(同主视图副图的 event 条)
 export const APP_ROW_H = 9            // compare:event 块里一行的高度(条高 + 行间空)
 export const APP_AMBER = '#F2C25C'    // app 琥珀(配色规范的来源轴):compare 下 bracket 轨上 hit 的底色
@@ -423,12 +424,21 @@ function buildCompareSeries(dates: readonly string[], d: LaneDraw): any[] {
       data: hRows, encode: { x: [0, 1] }, z: 9,
       tooltip: { formatter: (p: any) => {
         const h = c.hits[p.dataIndex]
-        return tip(`hit<br>${dates[h.start] ?? h.start} – ${dates[h.end] ?? h.end}`)
+        return tip(`hit<br>${dates[h.start] ?? h.start} – ${dates[h.end] ?? h.end}<br>buy ×${h.buys.length}`)
       } },
-      renderItem: (_p: any, api: any) => {
+      renderItem: (p: any, api: any) => {
         const [x0, x1] = spanPx(api)
-        return { type: 'rect', shape: { x: x0, y: api.value(2), width: Math.max(3, x1 - x0), height: api.value(3) - api.value(2) },
-                 style: { fill: APP_AMBER, stroke: INK, lineWidth: 1 } }
+        const [top, bottom] = [api.value(2), api.value(3)]
+        const bar = { type: 'rect', shape: { x: x0, y: top, width: Math.max(3, x1 - x0), height: bottom - top },
+                      style: { fill: APP_AMBER, stroke: INK, lineWidth: 1 } }
+        // app 的买入日:条里每一天一个黑色 ▼(琥珀底上靠深浅分开),和样本的三角在同一条轨上比
+        const halfW = Math.min(BUY_TRI_HALF_W, api.size([1, 0])[0] / 2)
+        const tris = (c.hits[p.dataIndex]?.buys ?? []).map((i) => {
+          const x = api.coord([i, 0])[0]
+          return { type: 'polygon', shape: { points: [[x - halfW, top + 1], [x + halfW, top + 1], [x, bottom - 1]] },
+                   style: { fill: INK } }
+        })
+        return tris.length ? { type: 'group', children: [bar, ...tris] } : bar
       },
     })
   }
