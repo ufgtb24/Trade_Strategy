@@ -98,7 +98,7 @@ def test_diagnose_is_local_not_global():
     # 解耦性:NodeDiagnostic 不含任何"全局是否成解"字段
     # (produced_by = 物化来源元数据,Task 5 加入,非全局成解字段)
     rd = diag.nodes["bo"]
-    assert not hasattr(rd, "global_match")
+    assert not hasattr(rd, "global_hit")
     assert set(vars(rd).keys()) == {"node_id", "attr", "rel", "produced_by"}
 
 

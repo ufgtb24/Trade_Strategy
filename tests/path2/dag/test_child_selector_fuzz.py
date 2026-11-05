@@ -24,7 +24,7 @@ def test_oracle_understands_child_endpoint():
     边：ContainmentEdge("wrapper", Child("burst", "first_kid"))
       = src(wrapper) 应包含 burst 的 first_kid([10,20])，而不是整个 burst([0,200])
 
-    预期：brute_all 应有 1 个匹配（用 child first_kid 投影 -> [10,20] ⊆ [0,100] 成立）
+    预期：brute_all 应有 1 个 hit（用 child first_kid 投影 -> [10,20] ⊆ [0,100] 成立）
     若 brute_all 使用父整体(burst [0,200])：0 < 0 或 200 > 100 → 不匹配 → 返回空列表
     这有力证明 oracle 使用了 child 投影而非父整体。
     """
@@ -51,10 +51,10 @@ def test_oracle_understands_child_endpoint():
 
     results = brute_all([edge], streams)
 
-    # With child projection (first_kid=[10,20] ⊆ [0,100]): 1 match
-    # Without child projection (burst=[0,200] ⊄ [0,100]): 0 matches
+    # With child projection (first_kid=[10,20] ⊆ [0,100]): 1 hit
+    # Without child projection (burst=[0,200] ⊄ [0,100]): 0 hits
     assert len(results) == 1, (
-        f"期望 1 个匹配(child 投影用 first_kid [10,20])，"
+        f"期望 1 个 hit(child 投影用 first_kid [10,20])，"
         f"得到 {len(results)} 个 — oracle 可能未做 child 投影（用了 burst 整体 [0,200]）"
     )
     m = results[0]
@@ -74,8 +74,8 @@ def test_dst_child_aware_solve():
     边：ContainmentEdge("side", Child("burst", "first_kid"))
       = side 应包含 burst 的 first_kid([10,20])，而不是整个 burst([0,200])
 
-    若 dst 用父整体 (burst [0,200])：200 > 100 → 不满足 ContainmentEdge → 0 个匹配（错）
-    若 dst 用 child 投影 (first_kid [10,20])：10>=0 且 20<=100 → 满足 → 1 个匹配（正确）
+    若 dst 用父整体 (burst [0,200])：200 > 100 → 不满足 ContainmentEdge → 0 个 hit（错）
+    若 dst 用 child 投影 (first_kid [10,20])：10>=0 且 20<=100 → 满足 → 1 个 hit（正确）
 
     三重断言：
       (a) solve 与 brute_all 对齐（完备）
@@ -103,8 +103,8 @@ def test_dst_child_aware_solve():
 
     # --- 真值 ---
     ba = keyset(brute_all(edges, streams))
-    # brute_all 用 child 投影 → first_kid [10,20] ⊆ [0,100] → 1 个匹配
-    assert len(ba) == 1, f"brute_all 应有 1 个匹配（child 投影），得 {len(ba)}"
+    # brute_all 用 child 投影 → first_kid [10,20] ⊆ [0,100] → 1 个 hit
+    assert len(ba) == 1, f"brute_all 应有 1 个 hit（child 投影），得 {len(ba)}"
 
     plan = compile_plan(_spec(edges, streams))
 
@@ -114,13 +114,13 @@ def test_dst_child_aware_solve():
         f"solve 与 brute_all 不对齐：\n"
         f"  solve     = {dict(sn)}\n"
         f"  brute_all = {dict(ba)}\n"
-        f"（dst 未做 child 投影？用了 burst 整体 [0,200] 导致 0 匹配）"
+        f"（dst 未做 child 投影？用了 burst 整体 [0,200] 导致 0 个 hit）"
     )
 
     # (b) 剪枝健全：pruned == noprune
     sn_noprune = keyset(solve(plan, streams, collapse=False, memo_mode="off"))
     assert sn == sn_noprune, (
-        f"剪枝漏匹配：pruned={dict(sn)} != noprune={dict(sn_noprune)}"
+        f"剪枝漏命中：pruned={dict(sn)} != noprune={dict(sn_noprune)}"
     )
 
     # (c) 无假阳：每个 key 在 solve 中计数 <= brute_all
@@ -129,17 +129,17 @@ def test_dst_child_aware_solve():
 
 
 def test_dst_child_aware_c1_off_no_drop():
-    """入边 dst_selector → C1 必须对该 dst 节点关闭，否则按父 end_idx 塌缩丢真匹配。
+    """入边 dst_selector → C1 必须对该 dst 节点关闭，否则按父 end_idx 塌缩丢真 hit。
 
     reviewer 8000-trial fuzz 抓到的健全性 BLOCKER 的确定性固化反例。
 
     边：ContainmentEdge("A", Child("B","last_kid")) = A 应包含 B 的 last_kid。
     B 的两个候选父 end_idx 都=11（C1 退化路径会按 end=11 分到同组）：
       - B2 父 (9,11)，last_kid (11,12)：last_kid.end=12 > A.end=11 → 不满足 containment
-      - B4 父 (11,11)，last_kid (9,10)：last_kid ⊆ [9,11] → 真匹配
+      - B4 父 (11,11)，last_kid (9,10)：last_kid ⊆ [9,11] → 真 hit
     两者 last_kid.start ∈ [9,11] 都过 D4 per-edge 窗口预过滤（Containment 窗口只查 start）。
     若 C1 对该节点开启（退化按父 end=11 分组、留 (start,end,pos) argmin）→ 保 B2 丢 B4
-    → 生产 solve(collapse=True) 漏掉唯一真匹配 (A3,B4)。
+    → 生产 solve(collapse=True) 漏掉唯一真 hit (A3,B4)。
 
     主断言（bug 的硬证据）：pruned == noprune。修复前红（pruned 丢 B4），修复后绿。
     """
@@ -149,7 +149,7 @@ def test_dst_child_aware_c1_off_no_drop():
     b2_first = Ev("b2fk", 9, 10, pos=0)
     b2_last = Ev("b2lk", 11, 12, pos=1)
     B2 = WideEv("B2", 9, 11, pos=0, kids=(b2_first, b2_last))
-    # B4: 父 (11,11), last_kid ⊆ [9,11] → 真匹配；父 end 与 B2 相同(=11)
+    # B4: 父 (11,11), last_kid ⊆ [9,11] → 真 hit；父 end 与 B2 相同(=11)
     b4_first = Ev("b4fk", 9, 9, pos=0)
     b4_last = Ev("b4lk", 9, 10, pos=1)
     B4 = WideEv("B4", 11, 11, pos=1, kids=(b4_first, b4_last))
@@ -162,13 +162,13 @@ def test_dst_child_aware_c1_off_no_drop():
 
     # 真值：只有 (A3, B4) 满足 last_kid containment
     ba = keyset(brute_all(edges, streams))
-    assert len(ba) == 1, f"brute_all 应有 1 个匹配 (A3,B4)，得 {len(ba)}: {dict(ba)}"
+    assert len(ba) == 1, f"brute_all 应有 1 个 hit (A3,B4)，得 {len(ba)}: {dict(ba)}"
 
     # 主断言：剪枝健全 = pruned == noprune（修复前红、修复后绿）
     sn = keyset(solve(plan, streams))
     sn_noprune = keyset(solve(plan, streams, collapse=False, memo_mode="off"))
     assert sn == sn_noprune, (
-        f"C1 漏匹配（入边 dst_selector 未关 C1）：\n"
+        f"C1 漏命中（入边 dst_selector 未关 C1）：\n"
         f"  pruned   = {dict(sn)}\n"
         f"  noprune  = {dict(sn_noprune)}\n"
         f"（C1 按父 end=11 塌缩，保 B2 丢 B4）"
@@ -177,13 +177,13 @@ def test_dst_child_aware_c1_off_no_drop():
     # 完备：solve 对齐 brute_all
     assert sn == ba, f"solve 与 brute_all 不对齐：sn={dict(sn)} ba={dict(ba)}"
 
-    # 单匹配场景，solve 应找到 (A3,B4)
+    # 单 hit 场景，solve 应找到 (A3,B4)
     expect_key = (("A", 9, 11, 0), ("B", 11, 11, 1))
-    assert expect_key in sn, f"solve 漏掉真匹配 (A3,B4)：{dict(sn)}"
+    assert expect_key in sn, f"solve 漏掉真 hit (A3,B4)：{dict(sn)}"
 
 
 def test_negation_src_selector_c1_off_no_drop():
-    """带 src_selector 的 NegationEdge 的 src 节点 C1 必须关闭，否则按父 end_idx 塌缩丢真匹配。
+    """带 src_selector 的 NegationEdge 的 src 节点 C1 必须关闭，否则按父 end_idx 塌缩丢真 hit。
 
     final holistic reviewer fuzz 抓到的健全性 gap（D-final 修复）的确定性固化反例。
     与 D4 「入边 dst_selector → C1 关 dst」同类，出边通道的对称 bug。
@@ -192,7 +192,7 @@ def test_negation_src_selector_c1_off_no_drop():
       S → A → C        （正向链，S 是唯一 source）
       NegationEdge(Child("A","last_kid"), "B")  ← src_selector 非 None
       A 必须是中间节点（非 source），否则 _produce_wcc_next 的 source retry 会逐个试
-      A 的每个候选，绕过 C1 漏匹配（source retry 只对 source 节点逐步推进 ptr）。
+      A 的每个候选，绕过 C1 漏命中（source retry 只对 source 节点逐步推进 ptr）。
 
     A 的两个 WideEv 候选，父 end_idx 相同（= 10），但 last_kid 端点不同：
       - A1: parent (3, 10)，last_kid = (6, 8)  →  negation 窗口 [8, ∞)，B 事件 start=9 落入 → 违禁 → A1 无效
@@ -203,10 +203,10 @@ def test_negation_src_selector_c1_off_no_drop():
     S 事件 (0, 2)：在 A 之前（S.end=2 ≤ A.start，满足 TemporalEdge min_gap=0）。
 
     C1 开启时（未修复）：A1/A2 父 end=10 同组，_lef_dfs 内 cands 已塌缩为 [A1]；
-      A1 违禁 → 无匹配，pruned={}。source retry 只推进 S ptr（S 只有一个事件 → 很快耗尽），
+      A1 违禁 → 无 hit，pruned={}。source retry 只推进 S ptr（S 只有一个事件 → 很快耗尽），
       无法恢复 A2 → 整体 pruned={}。
-    C1 关闭时（noprune）：cands=[A1,A2]，A1 失败后继续试 A2 → A2 不违禁 → 匹配 (S,A2,C)。
-    → pruned != noprune：漏匹配。修复后 A 节点进 c1_off → C1 不塌缩 → 两者一致。
+    C1 关闭时（noprune）：cands=[A1,A2]，A1 失败后继续试 A2 → A2 不违禁 → 命中 (S,A2,C)。
+    → pruned != noprune：漏命中。修复后 A 节点进 c1_off → C1 不塌缩 → 两者一致。
 
     主断言（bug 的硬证据）：pruned == noprune。修复前红，修复后绿。
     """
@@ -248,19 +248,19 @@ def test_negation_src_selector_c1_off_no_drop():
 
     # 真值（brute_all：A2 有效，A1 违禁）
     ba = keyset(brute_all(edges, streams))
-    assert len(ba) == 1, f"brute_all 应有 1 个匹配 (S,A2,C)，得 {len(ba)}: {dict(ba)}"
+    assert len(ba) == 1, f"brute_all 应有 1 个 hit (S,A2,C)，得 {len(ba)}: {dict(ba)}"
 
     # 主断言：剪枝健全 = pruned == noprune（修复前红，修复后绿）
     sn = keyset(solve(plan, streams))
     sn_noprune = keyset(solve(plan, streams, collapse=False, memo_mode="off"))
     assert sn == sn_noprune, (
-        f"C1 漏匹配（带 src_selector 的 NegationEdge 的 src 未关 C1）：\n"
+        f"C1 漏命中（带 src_selector 的 NegationEdge 的 src 未关 C1）：\n"
         f"  pruned   = {dict(sn)}\n"
         f"  noprune  = {dict(sn_noprune)}\n"
-        f"（C1 按父 end=10 塌缩，保 A1 丢 A2；A1.last_kid 触发否定 → 无匹配）"
+        f"（C1 按父 end=10 塌缩，保 A1 丢 A2；A1.last_kid 触发否定 → 无 hit）"
     )
 
-    # 完备：solve 应找到唯一匹配 (S, A2, C)
+    # 完备：solve 应找到唯一 hit (S, A2, C)
     assert sn == ba, f"solve 与 brute_all 不对齐：sn={dict(sn)} ba={dict(ba)}"
 
 

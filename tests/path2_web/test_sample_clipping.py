@@ -1,7 +1,7 @@
 """样本消费窗截取 + eval 日级去重(tb v4 plan Task 7)。
 
 两 worker(scan 调 serialize / eval_runner._eval_ticker)的一切逐日消费
-(match_forward_returns / match_first_passage / n_buy_days)按 [start_ts, end_ts]
+(hit_forward_returns / hit_first_passage / n_buy_days)按 [start_ts, end_ts]
 双边截取(spec §10:跨 end_ts 的段只取窗内部分计样本);eval 聚合层新增
 dedup_daily 日级去重视图——重叠日 forward return 是同一物理观测,重复计数 =
 伪复制(B2 裁决);consensus_days = 被多 match sample_dates 覆盖的日数。
@@ -30,13 +30,13 @@ def _synth_win_with_date():
     df["date"] = pd.date_range("2020-01-01", periods=len(df), freq="D")
     spec = build_pattern(params)
     res = dag_analyze(df, params)
-    assert len(res.matches) >= 1, "合成 positive case 应至少 1 命中"
+    assert len(res.hits) >= 1, "合成 positive case 应至少 1 命中"
     return df, res, params
 
 
 def _sample_days(res, end_node: str) -> list[int]:
     """首 match 的 end_node 样本日并集(升序)。"""
-    m = res.matches[0]
+    m = res.hits[0]
     return sorted({t for ev in _resolve_end_events(m, end_node)
                    for t in ev.sample_bar_indices()})
 
@@ -57,7 +57,7 @@ class TestSampleClipping:
         hi = int(win["date"].searchsorted(end_ts, "right")) - 1
         in_days = [t for t in days if lo <= t <= hi and t + N < len(win)]
         assert in_days and len(in_days) < len(days), "构造失败:无窗内/窗外区分"
-        # 手工期望(原生 pandas 直算,不经 match_forward_returns——避免循环论证)
+        # 手工期望(原生 pandas 直算,不经 hit_forward_returns——避免循环论证)
         expect = statistics.mean(
             float(win["high"].iloc[t + 1: t + N + 1].max()) / float(win["close"].iat[t]) - 1.0
             for t in in_days)

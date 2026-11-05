@@ -16,8 +16,8 @@ def test_reify_where_results_are_clause_witness():
     from path2_apps.bottom_burst import analyze
     df, params = positive_case()
     res = analyze(df, params)
-    assert len(res.matches) >= 1, "fixture 应至少命中 1 次"
-    m = res.matches[0]
+    assert len(res.hits) >= 1, "fixture 应至少命中 1 次"
+    m = res.hits[0]
     wr = m.predicate_trace.where_results
     # burst 节点的 vol_spike clause 是富化的 ClauseWitness(带实测值/阈值),且 bool 兼容
     burst_cw = wr["burst"]["vol_spike"]
@@ -31,7 +31,7 @@ def test_reify_includes_burst_where():
     """B4 迁移后：③⑤⑥ 条件移入 burst node where。"""
     from path2_apps.bottom_burst import analyze
     df, params = positive_case()
-    m = analyze(df, params).matches[0]
+    m = analyze(df, params).hits[0]
     burst_clauses = m.predicate_trace.where_results["burst"]
     # ③ first_drought + ⑤ distinct_pk + ⑥ vol_spike 都在 burst 的 where_results
     assert "first_drought" in burst_clauses

@@ -66,7 +66,7 @@ def test_serialize_match_node_index_and_trace():
 def test_summarize_counts_by_node_id_plus_matches():
     res = _analyze_positive()
     s = serialize.summarize(res)
-    assert s["matches"] == len(res.matches)
+    assert s["matches"] == len(res.hits)
     assert "burst" in s and "bo" in s
     # 计数 == events 全集里该 node_id 数量
     n_bo = sum(1 for e in res.events if e.node_id == "bo")
@@ -360,7 +360,7 @@ def test_fp_counts_dedup_shared_leaf():
     b = Ev("b_1", 25, 27)   # 买点窗置于 df 后段:rolling(20) 的 M 样本充足(前 19 根为 NaN)
     m1 = reify(Solution(assign={"A": a1, "B": b}, chosen_idx={}), streams={}, plan=plan)
     m2 = reify(Solution(assign={"A": a2, "B": b}, chosen_idx={}), streams={}, plan=plan)
-    res = AnalysisResult(events=(), matches=(m1, m2), spec=None)
+    res = AnalysisResult(events=(), hits=(m1, m2), spec=None)
     win = _make_price_df(30)
     out = serialize_per_pattern_result(res, end_node="B", label_horizon=2,
                                        win=win, start_ts=win["date"].iat[0],
@@ -428,7 +428,7 @@ def test_serialize_child_refs_instanced():
     # 带 child 的容器(实例化标注),child_refs 才有非空断言面(Ev 无 child_slots)
     w1 = WideEv("w0", 0, 5, node_id="w0", instance_idx=0, instance_id="w0_0_5#0",
                 kids=(Ev("k0", 0, 0, node_id="k0", instance_idx=0, instance_id="k0_0#0"),))
-    res = AnalysisResult(events=(w1,), matches=(), spec=None)
+    res = AnalysisResult(events=(w1,), hits=(), spec=None)
     payload = serialize.serialize_analysis(res)
     for r in payload["events"]:
         for slot, ids in (r.get("child_refs") or {}).items():
@@ -445,7 +445,7 @@ def test_serialize_events_multi_instance_rows():
                 kids=(Ev("k0", 0, 0, node_id="k0", instance_idx=0, instance_id="k0_0#0"),))
     w2 = WideEv("w0", 10, 15, node_id="w0", instance_idx=1, instance_id="w0_10_15#1",
                 kids=(Ev("k0", 10, 10, node_id="k0", instance_idx=1, instance_id="k0_10#1"),))
-    res = AnalysisResult(events=(w1, w2), matches=(), spec=None)
+    res = AnalysisResult(events=(w1, w2), hits=(), spec=None)
     out = serialize.serialize_analysis(res)
     rows = [r for r in out["events"] if r["node_id"] == "w0"]
     assert len(rows) == 2, f"多实例应序列化 2 行,got {len(rows)}"

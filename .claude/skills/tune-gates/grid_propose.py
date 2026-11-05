@@ -632,7 +632,7 @@ def _probe_stock(pkl_path: str, *, app_module: str, configs: list, start_date: s
     counts = []
     for p, spec, end_node in _PROBE_CACHE[ck]:
         spans = set()
-        for m in analyze(spec, win, p).matches:
+        for m in analyze(spec, win, p).hits:
             evs = _resolve_end_events(m, end_node)
             if not any(s <= dates.iat[ev.start_idx] <= e for ev in evs):
                 continue

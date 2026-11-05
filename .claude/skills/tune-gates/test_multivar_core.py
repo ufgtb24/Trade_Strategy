@@ -381,7 +381,7 @@ def test_scan_one_stock_full_mode_new_columns():
 def test_scan_one_stock_deferred_mode_computes_no_labels(monkeypatch):
     def boom(*a, **k):
         raise AssertionError("延迟标签模式不得调用标签函数")
-    for name in ("match_first_passage", "match_forward_returns", "match_forward_drawdowns"):
+    for name in ("hit_first_passage", "hit_forward_returns", "hit_forward_drawdowns"):
         monkeypatch.setattr(MC, name, boom)
     rows, segs, _cfg, _win, cols = _syn_scan(_Seg, "deferred")
     assert len(rows) == 4 and all(set(r) == set(cols) for r in rows)

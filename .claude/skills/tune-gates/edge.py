@@ -188,7 +188,7 @@ def _worker(pkl_path, app_module, params, end_node, gate_cols, buf_start, buf_en
         pos[daily["idx"].to_numpy()] = np.arange(len(daily))
         closes = win["close"].to_numpy()
         ts, sids, vals = [], [], [[] for _ in gate_cols]
-        for m in res.matches:
+        for m in res.hits:
             events = _resolve_end_events(m, end_node)
             if not any(lo <= ev.start_idx <= hi for ev in events):
                 continue

@@ -16,10 +16,10 @@ def test_dag_spec_nodes_bo_burst_consumes():
     ids = {n.node_id for n in PATTERN_DAG.nodes}
     assert ids == {"bo", "burst", "pk", "tb", "tb_seg"}
     by = {n.node_id: n for n in PATTERN_DAG.nodes}
-    assert by["pk"].solve is False   # pk 孤立显示 node:不参与匹配
+    assert by["pk"].solve is False   # pk 孤立显示 node:不参与求解
     assert by["burst"].consumes_stream == "bo"          # burst consumes bo 流
     assert by["tb"].consumes_stream == "burst"          # tb consumes burst 流(ThrowbackDetectorV4 吃 BurstEvent)
-    # bo 无边 = 孤立 node(残缺 match 由 analyze 出口过滤)
+    # bo 无边 = 孤立 node(残缺 hit 由 analyze 出口过滤)
     endpoints = {ep for e in PATTERN_DAG.edges for ep in (e.src, e.dst)}
     assert "bo" not in endpoints
 
@@ -117,7 +117,7 @@ from path2.atoms.throwback_v4 import ThrowbackEventV4, ThrowbackSegmentV4
 
 
 def _synth_tb_v4_positive():
-    """合成正例(结构同 test_matches._synth_positive):
+    """合成正例(结构同 test_has_hit._synth_positive):
 
     高位下跌 → 横盘(含小 peaks) → 低位平台(drought ≥ 20) → 连续小步 BO →
     末 BO 放量 → 回落 3 根进 DOWN → 2 根不刷新小阳(第 1 根即入 STABLE) →
@@ -194,7 +194,7 @@ def _synth_tb_v4_positive():
 
 
 def _relaxed_params():
-    """宽松阈值(同 test_matches._synth_positive 配套调校,便于 bo/burst 稳定命中)。"""
+    """宽松阈值(同 test_has_hit._synth_positive 配套调校,便于 bo/burst 稳定命中)。"""
     from path2_apps.bottom_burst.params import Params
     return Params(
         bo=BoParams(min_relative_height=0.02,

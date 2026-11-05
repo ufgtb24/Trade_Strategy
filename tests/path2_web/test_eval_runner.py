@@ -339,7 +339,7 @@ def test_upstream_key_multi_instance_attaches_idx():
     import hashlib
     from path2_web.eval_runner import _upstream_key
     res = _analyze_dup_stream_for_upstream()
-    keys = sorted(_upstream_key(m, "dst", res.events) for m in res.matches)
+    keys = sorted(_upstream_key(m, "dst", res.events) for m in res.hits)
     # 手工构造:anchor(dst)排除;src 两实例 instance_id = src_5_10#0/#1
     expect = sorted(hashlib.sha1(f"src:src_5_10#{i}".encode()).hexdigest()[:12]
                     for i in (0, 1))
@@ -359,5 +359,5 @@ def test_upstream_key_single_instance_unchanged():
         NodeSpec(node_id="dst", detector=_fake_det_for_upstream([Ev("d0", 20, 20)])),
     ), edges=(TemporalEdge("src", "dst", min_gap=0, max_gap=100),))
     res = analyze(spec, None)
-    m = res.matches[0]
+    m = res.hits[0]
     assert _upstream_key(m, "dst", res.events) == _upstream_key(m, "dst")

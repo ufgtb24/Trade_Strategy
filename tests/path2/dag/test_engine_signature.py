@@ -103,9 +103,9 @@ def test_c1_field_level_grading_sound():
 
     场景：出边 TemporalEdge(Child("v","last_kid"), "w") 依赖 v.last_kid.end_idx。
     构造两个 WideEv 候选，父 end_idx 相同但 last_kid.end_idx 不同——旧 C1 按父
-    end_idx 分组会误塌缩（漏匹配）；新 C1 按 (selector="last_kid", field="end_idx")
+    end_idx 分组会误塌缩（漏命中）；新 C1 按 (selector="last_kid", field="end_idx")
     分组，分组键不同 → 不塌缩（健全）。
-    （C1 是塌缩层单元，只看 (cands, out_edges)、不看下游 w 候选；端到端 w 匹配由 D6 fuzz 覆盖。）
+    （C1 是塌缩层单元，只看 (cands, out_edges)、不看下游 w 候选；端到端 w 的命中由 D6 fuzz 覆盖。）
     """
     # 边：TemporalEdge src=Child("v","last_kid") → dst="w"
     edge_out = TemporalEdge(Child("v", "last_kid"), "w", min_gap=0, max_gap=100)

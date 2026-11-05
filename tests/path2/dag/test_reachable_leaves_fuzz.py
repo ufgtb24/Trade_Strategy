@@ -1,4 +1,4 @@
-"""整改三 fuzz(放宽后):共享 leaf 全 match 可见,不丢点。
+"""整改三 fuzz(放宽后):共享 leaf 全 hit 可见,不丢点。
 
 构造场景:两个不同 prefix event(src_a, src_b)处于同一 src 节点的流,都能绑同一个
 leaf event(leaf_0)。solve() 枚举两个 Solution:
@@ -47,7 +47,7 @@ def _spec_two_src_shared_leaf():
 
 
 def test_reachable_leaves_dedup_shared_leaf():
-    """放宽后:共享 leaf 全 match 可见(每个上游各产一个,不再独占)。"""
+    """放宽后:共享 leaf 全 hit 可见(每个上游各产一个,不再独占)。"""
     spec, src_a, src_b, leaf_x = _spec_two_src_shared_leaf()
     plan = compile_plan(spec)
     streams = {"src": [src_a, src_b], "leaf": [leaf_x]}

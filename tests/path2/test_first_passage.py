@@ -3,9 +3,9 @@
 覆盖:
   - 常量 / 辅助:DEFAULT_FP_K、_ticker_seed(md5 跨进程稳定)
   - _first_passage_at:几何对称单 k + 波动率尺度 M,四态(up/down/both/none)+ 越界
-  - match_first_passage:per-match 入口,单组四态计数(内算 M)
+  - hit_first_passage:per-hit 入口,单组四态计数(内算 M)
   - random_day_first_passage:随机日基线(Task 3 重写后的测试由 Task 3 落地)
-  - spans_first_passage:区间入口;match_first_passage 改由它实现后与逐 event 逐买点日
+  - spans_first_passage:区间入口;hit_first_passage 改由它实现后与逐 event 逐买点日
     直白版逐位对拍(合成数据、覆写 sample_bar_indices 的容器、positive_case fixture)
   - daily_first_passage:逐日一行的向量化实现与逐日调 _first_passage_at 的直白版逐位对拍
 """
@@ -23,7 +23,7 @@ import pandas as pd
 import pytest
 
 from path2.core import Event
-from path2.dag.result import PatternMatch, PredicateTrace
+from path2.dag.result import PatternHit, PredicateTrace
 from path2.calc.atr import rolling_atr_pct_nanmedian
 from path2.eval import (  # noqa: F401 —— 后续批次扩展导入
     DEFAULT_FP_K,
@@ -34,13 +34,13 @@ from path2.eval import (  # noqa: F401 —— 后续批次扩展导入
     _resolve_end_events,
     _ticker_seed,
     daily_first_passage,
-    match_first_passage,
+    hit_first_passage,
     random_day_first_passage,
     spans_first_passage,
 )
 
 
-# ---- 测试用 Event / PatternMatch 桩(与 test_eval.py 同口径) -------------------
+# ---- 测试用 Event / PatternHit 桩(与 test_eval.py 同口径) -------------------
 
 class Ev(Event):
     pass
@@ -50,9 +50,9 @@ def _ev(s, e):
     return Ev(start_idx=s, end_idx=e, confirm_idx=s)
 
 
-def _match(binding, node="tb"):
+def _hit(binding, node="tb"):
     members = binding if isinstance(binding, tuple) else (binding,)
-    return PatternMatch(
+    return PatternHit(
         start_idx=members[0].start_idx,
         end_idx=members[-1].end_idx,
         confirm_idx=members[0].start_idx,
@@ -177,7 +177,7 @@ def test_first_passage_at_out_of_range():
 
 
 # ---------------------------------------------------------------------------
-# match_first_passage:end_node event span 全买点日计数,单组 {up,down,both,none}。
+# hit_first_passage:end_node event span 全买点日计数,单组 {up,down,both,none}。
 # 内算 M(rolling_atr_pct_nanmedian, period=20)。M[t]=nan 的买点日跳过。
 # ---------------------------------------------------------------------------
 
@@ -192,7 +192,7 @@ def _fp_df(closes, highs, lows, dates="2024-01-01"):
     })
 
 
-def test_match_first_passage_single_buyday_up():
+def test_hit_first_passage_single_buyday_up():
     """单买点日 ev=[20,20]、M 恒定(造 df 使 TR/close 恒定):high[21] 触上行 → up=1。
 
     buyday 放在 idx=20(period=20 warm-up 后首个非 NaN M 处):close 恒 100、
@@ -200,26 +200,26 @@ def test_match_first_passage_single_buyday_up():
     """
     df = _fp_df([100]*30, [103]*30, [100]*30)
     df.loc[21, "high"] = 116   # 第 21 根冲高触上行(上行线=100*1.06=106)
-    m = _match(_ev(20, 20))
-    out = match_first_passage(m, "tb", df, horizon=3, k=2.0)
+    m = _hit(_ev(20, 20))
+    out = hit_first_passage(m, "tb", df, horizon=3, k=2.0)
     assert out == {"up": 1, "down": 0, "both": 0, "none": 0}
 
 
-def test_match_first_passage_spans_all_buydays():
+def test_hit_first_passage_spans_all_buydays():
     """span 全买点日计数:ev=[20,22] 三日均 up → up=3(M 在 period=20 warm-up 后非空)。"""
     df = _fp_df([100]*30, [103]*30, [100]*30)
     for i in (21, 22, 23):
         df.loc[i, "high"] = 116   # 三根均触上行(覆盖三买点日的 horizon 窗口)
-    m = _match(_ev(20, 22))
-    out = match_first_passage(m, "tb", df, horizon=3, k=2.0)
+    m = _hit(_ev(20, 22))
+    out = hit_first_passage(m, "tb", df, horizon=3, k=2.0)
     assert out["up"] == 3
 
 
-def test_match_first_passage_missing_node_raises():
+def test_hit_first_passage_missing_node_raises():
     df = _fp_df([100]*30, [103]*30, [100]*30)
-    m = _match(_ev(20, 20))
+    m = _hit(_ev(20, 20))
     with pytest.raises(KeyError):
-        match_first_passage(m, "nope", df, horizon=3, k=2.0)
+        hit_first_passage(m, "nope", df, horizon=3, k=2.0)
 
 
 # ---------------------------------------------------------------------------
@@ -260,19 +260,19 @@ def test_random_day_first_passage_no_candidates():
 
 
 # ---------------------------------------------------------------------------
-# spans_first_passage + match_first_passage 改造:match_first_passage 现在把各 event 的
+# spans_first_passage + hit_first_passage 改造:hit_first_passage 现在把各 event 的
 # sample_bar_indices() 压成连续段交给 spans_first_passage。对拍基准 = 改造前的逐 event、
-# 逐买点日直白版(_legacy_match_first_passage),要求四态计数逐位相等。
+# 逐买点日直白版(_legacy_hit_first_passage),要求四态计数逐位相等。
 # ---------------------------------------------------------------------------
 
 _FIXTURE_CSV = Path(__file__).resolve().parent / "fixtures" / "aapl_vol_slice.csv"
 _STATES = ("up", "down", "both", "none")
 
 
-def _legacy_match_first_passage(match, end_node, df, horizon, k, sample_window=None, M=None):
-    """改造前 match_first_passage 的直白版:逐 event、逐 sample_bar_indices() 买点日调
+def _legacy_hit_first_passage(hit, end_node, df, horizon, k, sample_window=None, M=None):
+    """改造前 hit_first_passage 的直白版:逐 event、逐 sample_bar_indices() 买点日调
     _first_passage_at 累计四态。"""
-    events = _resolve_end_events(match, end_node)
+    events = _resolve_end_events(hit, end_node)
     if M is None:
         M = rolling_atr_pct_nanmedian(df["high"], df["low"], df["close"], 20).values
     hi, lo, cl = df["high"].values, df["low"].values, df["close"].values
@@ -332,9 +332,9 @@ def test_index_runs_expands_back_to_original_sequence():
     assert _index_runs([5, 6, 7, 10, 11, 3, 3, 4]) == [(5, 7), (10, 11), (3, 3), (3, 4)]
 
 
-def test_match_first_passage_equals_legacy_on_random_spans():
+def test_hit_first_passage_equals_legacy_on_random_spans():
     """合成随机游走 + 随机 span(含热身期 M=NaN 段与尾部 horizon 越界段)× sample_window
-    × 内算/外传 M × 多组 horizon/k:match_first_passage、spans_first_passage 与直白版三方逐位相等。"""
+    × 内算/外传 M × 多组 horizon/k:hit_first_passage、spans_first_passage 与直白版三方逐位相等。"""
     df = _walk_df(260, seed=11)
     M_ext = rolling_atr_pct_nanmedian(df["high"], df["low"], df["close"], 20).values
     rng = np.random.default_rng(5)
@@ -347,16 +347,16 @@ def test_match_first_passage_equals_legacy_on_random_spans():
         lo_w = int(rng.integers(0, 200))
         sw = None if rng.random() < 0.4 else (lo_w, lo_w + int(rng.integers(0, 60)))
         M = None if rng.random() < 0.5 else M_ext
-        m = _match(_ev(s0, e0))
-        ref = _legacy_match_first_passage(m, "tb", df, horizon, k, sw, M)
-        assert match_first_passage(m, "tb", df, horizon, k, sw, M) == ref
+        m = _hit(_ev(s0, e0))
+        ref = _legacy_hit_first_passage(m, "tb", df, horizon, k, sw, M)
+        assert hit_first_passage(m, "tb", df, horizon, k, sw, M) == ref
         assert spans_first_passage(df, [(s0, e0)], horizon, k, sw, M) == ref
         for st in _STATES:
             seen[st] += ref[st]
     assert all(v > 0 for v in seen.values()), seen   # 四态都有样本,对拍才有牙齿
 
 
-def test_match_first_passage_equals_legacy_with_overridden_sample_bar_indices():
+def test_hit_first_passage_equals_legacy_with_overridden_sample_bar_indices():
     """end_node 为 'tb.segments':child 混合普通 span 与覆写 sample_bar_indices 的容器
     (乱序/跳号/重复);另测 end_node 直接指向覆写容器。均与直白版逐位相等。"""
     df = _walk_df(200, seed=3)
@@ -364,21 +364,21 @@ def test_match_first_passage_equals_legacy_with_overridden_sample_bar_indices():
     scattered = _Scattered(start_idx=21, end_idx=199, confirm_idx=21, picks=picks)
     holder = _Holder(start_idx=20, end_idx=199, confirm_idx=20,
                      segs=(_ev(30, 55), scattered, _ev(50, 70), _ev(185, 199)))
-    m_slot = _match(holder)
-    m_direct = _match(scattered)
+    m_slot = _hit(holder)
+    m_direct = _hit(scattered)
     total = 0
     for horizon, k in [(1, 1.0), (5, 2.0), (12, 1.0)]:
         for sw in (None, (25, 60), (44, 44)):
-            ref = _legacy_match_first_passage(m_slot, "tb.segments", df, horizon, k, sw)
-            assert match_first_passage(m_slot, "tb.segments", df, horizon, k, sw) == ref
+            ref = _legacy_hit_first_passage(m_slot, "tb.segments", df, horizon, k, sw)
+            assert hit_first_passage(m_slot, "tb.segments", df, horizon, k, sw) == ref
             total += sum(ref.values())
-            ref_d = _legacy_match_first_passage(m_direct, "tb", df, horizon, k, sw)
-            assert match_first_passage(m_direct, "tb", df, horizon, k, sw) == ref_d
+            ref_d = _legacy_hit_first_passage(m_direct, "tb", df, horizon, k, sw)
+            assert hit_first_passage(m_direct, "tb", df, horizon, k, sw) == ref_d
     assert total > 0
 
 
-def test_match_first_passage_equals_legacy_on_positive_case_fixture():
-    """共享 fixture(bottom_burst 合成正例)跑出真实 match,end_node 取 eval_meta 的
+def test_hit_first_passage_equals_legacy_on_positive_case_fixture():
+    """共享 fixture(bottom_burst 合成正例)跑出真实 hit,end_node 取 eval_meta 的
     'tb.segments'(多 child)与 'tb'(容器整 span):与直白版逐位相等。"""
     from path2.dag.engine import analyze
     from path2_apps.bottom_burst.dag_spec import build_pattern, eval_meta
@@ -386,15 +386,15 @@ def test_match_first_passage_equals_legacy_on_positive_case_fixture():
 
     df, params = positive_case()
     res = analyze(build_pattern(params), df, params)
-    assert res.matches, "positive_case fixture 应至少命中一个 match"
+    assert res.hits, "positive_case fixture 应至少有一个 hit"
     end_node = eval_meta(params)["end_node"]
     total = 0
-    for m in res.matches:
+    for m in res.hits:
         for node in (end_node, "tb"):
             for horizon in (5, 10, 40):
                 for sw in (None, (270, 295)):
-                    ref = _legacy_match_first_passage(m, node, df, horizon, 2.0, sw)
-                    assert match_first_passage(m, node, df, horizon, 2.0, sw) == ref
+                    ref = _legacy_hit_first_passage(m, node, df, horizon, 2.0, sw)
+                    assert hit_first_passage(m, node, df, horizon, 2.0, sw) == ref
                     total += sum(ref.values())
     assert total > 0
 

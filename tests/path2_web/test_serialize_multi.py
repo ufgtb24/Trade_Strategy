@@ -24,7 +24,7 @@ def _pick_pkl_with_match() -> Path:
             continue
         win = df.iloc[-300:]
         res = engine_analyze(spec, win, Params.default())
-        if len(res.matches) > 0:
+        if len(res.hits) > 0:
             return p
     return None
 
@@ -77,8 +77,8 @@ def test_per_pattern_events_full_set_kept():
                   for m in (slot if isinstance(slot, tuple) else (slot,))
                   if id(m) not in res_ids)
     assert len(out["analysis"]["events"]) == len(res.events) + n_child
-    # matches 是 res.matches 子集
-    assert len(out["analysis"]["matches"]) <= len(res.matches)
+    # matches 是 res.hits 子集
+    assert len(out["analysis"]["matches"]) <= len(res.hits)
 
 
 def test_max_forward_return_null_when_matches_empty():
@@ -131,7 +131,7 @@ def _synth_win_with_date():
     df["date"] = pd.date_range("2020-01-01", periods=len(df), freq="D")
     spec = build_pattern(params)
     res = dag_analyze(df, params)
-    assert len(res.matches) >= 1, "合成 positive case 应至少 1 命中"
+    assert len(res.hits) >= 1, "合成 positive case 应至少 1 命中"
     return df, res, params
 
 
@@ -202,7 +202,7 @@ def test_first_passage_disabled_omits_key():
 
 def test_match_fp_counts_single_group():
     """out["match_fp_counts"] 单组 {up,down,both,none}(不再按 pair_key 分);
-    至少计 1 买点日;k 参数透传到 match_first_passage(几何对称阈值)。"""
+    至少计 1 买点日;k 参数透传到 hit_first_passage(几何对称阈值)。"""
     win, res, _ = _synth_win_with_date()
     meta = eval_meta()
     out = serialize_per_pattern_result(

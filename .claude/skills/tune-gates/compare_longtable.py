@@ -139,7 +139,7 @@ def _engine_keys(matches, out_matches: list, key_nodes) -> list:
     zero = dict.fromkeys(STATES, 0)
     rows = []
     for mm in matches:
-        x = keep.get(mm.match_id)
+        x = keep.get(mm.hit_id)
         if x is None:
             continue
         fp = fp_of_span[tuple(map(tuple, x["buy_span"]))] or zero
@@ -207,7 +207,7 @@ def _worker(task):
         out = serialize_per_pattern_result(res, end_node=C["end_node"], label_horizon=C["H"], win=win,
                                            start_ts=s, end_ts=e, price_min=C["PRICE_MIN"], price_max=C["PRICE_MAX"],
                                            first_passage_k=C["K"], sample_window=(lo, hi))
-        ref = _engine_keys(res.matches, out["analysis"]["matches"], C["key_nodes"])
+        ref = _engine_keys(res.hits, out["analysis"]["matches"], C["key_nodes"])
         got = _table_keys(g, C["key_nodes"])
         n_cmp += 1
         if ref != got or out["match_fp_counts"] != _table_fp_counts(g, C["seg_cols"]):

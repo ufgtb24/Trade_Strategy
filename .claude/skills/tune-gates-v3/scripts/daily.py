@@ -320,7 +320,7 @@ class DailyEvaluator:
             dates, insufficient_history = set(), set()
             if not frame.empty:
                 result = module.analyze(frame.copy(deep=True), params=p)
-                for match in result.matches:
+                for match in result.hits:
                     for event in _resolve_end_events(match, end_node):
                         # match.confirm_idx 是整组区间的尾部，不能拿它替代买点事件确认日。
                         for index in event.sample_bar_indices():

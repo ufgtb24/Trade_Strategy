@@ -197,7 +197,7 @@ def test_probe_stock_only_detects_within_training_window(tmp_path, monkeypatch):
 
     def boom(*a, **k):
         raise AssertionError("探针不许算标签")
-    for name in ("match_first_passage", "match_forward_returns", "match_forward_drawdowns",
+    for name in ("hit_first_passage", "hit_forward_returns", "hit_forward_drawdowns",
                  "random_day_first_passage", "spans_first_passage", "daily_first_passage"):
         if hasattr(E, name):
             monkeypatch.setattr(E, name, boom)

@@ -2,7 +2,7 @@
 
 构造场景:出边为空叶子 + 同 end_idx 桶内多个 event_id 不同的 dst 候选(start 不同)。
 关 C1 后,所有 event_id 都进入候选(整改二);跑 solve 应 emit 全部合法 leaf。
-若未关 C1,C1 塌缩按父 end_idx 桶留 (start, end, pos) argmin → 漏匹配。
+若未关 C1,C1 塌缩按父 end_idx 桶留 (start, end, pos) argmin → 漏命中。
 
 复用 tests/path2/dag/_oracle.py 的 Ev 事件类 + 引入 FakeDetector(同 test_engine_analyze)。
 """

@@ -1,8 +1,8 @@
 """throwback_v1 跨层 DAG 集成测试(终审 I4 补):验证「引擎 max_gap(TemporalEdge)
-行为」与「tb node where(day_drop)对 res.matches 的过滤」这两条跨层契约。
+行为」与「tb node where(day_drop)对 res.hits 的过滤」这两条跨层契约。
 
 背景:93ab1cf(首段即停重写)删掉了 test_throwback_event.py,其中
-test_dag_engine_bo_to_tb_match / test_detect_multi_bo_same_span_yields_multi_instances
+test_dag_engine_bo_to_tb_hit / test_detect_multi_bo_same_span_yields_multi_instances
 monkeypatch evaluate_throwback 走 DAG 引擎断言 node_index span,重写后旧函数已消灭、
 monkeypatch 目标不复存在,只能靠等价重建覆盖回来——旧口径只剩结构断言
 (e.max_gap == tb.max_span / predicate 的 field/op/threshold),没人验过它们真的
@@ -73,7 +73,7 @@ class _FakeBurst:
 class TestDagIntegration:
     """两条独立 burst→tb 观测,验证 day_drop where 只放行合格的一条、node_index span 正确。"""
 
-    def test_day_drop_where_filters_match_and_node_index_span(self):
+    def test_day_drop_where_filters_hit_and_node_index_span(self):
         # burst1:span[8,9],last_bo close=103,回踩单日跌 (103-102.5)/103≈0.00485(<0.20 阈值)
         rows = _base_series(10)
         rows[9] = (100.0, 104.0, 100.0, 103.0, 5000)         # 9: last_bo
@@ -83,7 +83,7 @@ class TestDagIntegration:
         burst1 = _burst(_bo(8), _bo(9))
 
         # burst2:span[13,16]留宽余量(gbot=50)防破位截断,last_bo close=200,
-        # 回踩单日跌 (200-150)/200=0.25(>=0.20 阈值,应被 where 拦下,不进 matches)
+        # 回踩单日跌 (200-150)/200=0.25(>=0.20 阈值,应被 where 拦下,不进 hits)
         rows += [
             (50.0, 51.0, 49.0, 50.0, 3000),        # 13: 低锚,压低 span 内 gbot
             (100.0, 101.0, 99.0, 100.0, 1000),     # 14
@@ -111,15 +111,15 @@ class TestDagIntegration:
 
         res = analyze(spec, df=df)
 
-        # 两条 tb 事件都产了(where 不影响 detect() 产出,只影响 match 集)
+        # 两条 tb 事件都产了(where 不影响 detect() 产出,只影响 hit 集)
         tb_events = [e for e in res.events if isinstance(e, tb.ThrowbackEventV1)]
         assert len(tb_events) == 2
         drops = sorted(e.max_day_drop for e in tb_events)
         assert drops[0] < 0.20 <= drops[1]
 
-        # 只有 max_day_drop<0.20 的那条(burst1 锚)进 res.matches;node_index["tb"] span 正确
-        assert len(res.matches) == 1
-        m = res.matches[0]
+        # 只有 max_day_drop<0.20 的那条(burst1 锚)进 res.hits;node_index["tb"] span 正确
+        assert len(res.hits) == 1
+        m = res.hits[0]
         assert "bo" not in m.node_index                        # bo 孤立 node 不进 node_index
         assert m.node_index["burst"].end_idx == 9               # burst 承载合格的 last_bo(=9)
         assert (m.node_index["tb"].start_idx, m.node_index["tb"].end_idx) == (11, 11)

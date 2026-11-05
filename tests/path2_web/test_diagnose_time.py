@@ -33,7 +33,7 @@ from tests.path2.fixtures.positive_case import positive_case
 def _fake_result(gate_failures) -> AnalysisResult:
     """构造一个只带 gate_failures 的 AnalysisResult(events/matches 留空,derive_response
     的 scope=time 路径只读 result.gate_failures,不碰其余字段)。"""
-    return AnalysisResult(events=(), matches=(), gate_failures=tuple(gate_failures))
+    return AnalysisResult(events=(), hits=(), gate_failures=tuple(gate_failures))
 
 
 # ─── brief 字面 test(补真实 result 注入,见文件头说明) ──────────

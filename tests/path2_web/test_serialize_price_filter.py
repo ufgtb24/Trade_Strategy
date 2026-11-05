@@ -33,7 +33,7 @@ def _pick_pkl_with_match():
             continue
         win = df.iloc[-300:].reset_index()
         res = engine_analyze(spec, win, Params.default())
-        if len(res.matches) > 0:
+        if len(res.hits) > 0:
             return p
     return None
 
@@ -54,7 +54,7 @@ def scene():
     start_ts = pd.to_datetime(win["date"].iat[0])
     end_ts = pd.to_datetime(win["date"].iat[-1])
     per_match = []
-    for m in res.matches:
+    for m in res.hits:
         evs = _resolve_end_events(m, meta["end_node"])
         per_match.append([float(win["close"].iat[ev.start_idx]) for ev in evs])
     return res, meta, win, start_ts, end_ts, per_match

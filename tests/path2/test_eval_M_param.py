@@ -1,4 +1,4 @@
-"""match_first_passage / random_day_first_passage 的 M 外传与内算逐值相等,
+"""hit_first_passage / random_day_first_passage 的 M 外传与内算逐值相等,
 以及 M/df 长度契约(不一致须抛 ValueError,防跨窗错位喂入静默算错)。"""
 from pathlib import Path
 import numpy as np
@@ -7,7 +7,7 @@ import pytest
 
 from path2.calc.atr import rolling_atr_pct_nanmedian
 from path2.dag.engine import analyze
-from path2.eval import match_first_passage, random_day_first_passage
+from path2.eval import hit_first_passage, random_day_first_passage
 from path2_apps.bb_v1.dag_spec import build_pattern
 from path2_apps.bb_v1.params import Params
 
@@ -28,18 +28,18 @@ def _scene():
             continue
         win = df.iloc[-600:].reset_index()
         res = analyze(spec, win, p)
-        if res.matches:
+        if res.hits:
             return pk.stem, win, res
     pytest.skip("无命中股")
 
 
-def test_match_first_passage_M_param_equal():
+def test_hit_first_passage_M_param_equal():
     sym, win, res = _scene()
     M = rolling_atr_pct_nanmedian(win["high"], win["low"], win["close"], 20).values
     total = 0
-    for m in res.matches:
-        a = match_first_passage(m, "tb", win, 40, 5.0, sample_window=(100, 550))
-        b = match_first_passage(m, "tb", win, 40, 5.0, sample_window=(100, 550), M=M)
+    for m in res.hits:
+        a = hit_first_passage(m, "tb", win, 40, 5.0, sample_window=(100, 550))
+        b = hit_first_passage(m, "tb", win, 40, 5.0, sample_window=(100, 550), M=M)
         assert a == b
         total += sum(a.values())
     # 非空转守卫:若样本全落在 sample_window 外,a==b=={全零} 会平凡成立、
@@ -58,12 +58,12 @@ def test_random_day_M_param_equal():
     assert r_no_m["n_sampled"] > 0
 
 
-def test_match_first_passage_M_length_mismatch_raises():
+def test_hit_first_passage_M_length_mismatch_raises():
     sym, win, res = _scene()
     M = rolling_atr_pct_nanmedian(win["high"], win["low"], win["close"], 20).values
     m_too_long = np.concatenate([M, M[:5]])
     with pytest.raises(ValueError):
-        match_first_passage(res.matches[0], "tb", win, 40, 5.0, M=m_too_long)
+        hit_first_passage(res.hits[0], "tb", win, 40, 5.0, M=m_too_long)
 
 
 def test_random_day_M_length_mismatch_raises():
