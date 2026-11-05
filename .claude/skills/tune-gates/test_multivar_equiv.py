@@ -65,7 +65,7 @@ def _ref_keys(spec, p, win, lo, hi, s, e):
     out = serialize_per_pattern_result(res, end_node="tb", label_horizon=H, win=win, start_ts=s, end_ts=e,
                                        price_min=0.5, price_max=30.0, first_passage_k=K, sample_window=(lo, hi))
     keep = {m["hit_id"] for m in out["analysis"]["hits"]}
-    # serialize 只给同一买点事件(buy_span)的第一条 match 填四态;长表每行都带满额四态——回填后逐行比
+    # serialize 只给同一买点事件(buy_span)的第一条 hit 填四态;长表每行都带满额四态——回填后逐行比
     fp_of_span = {}
     for md in out["analysis"]["hits"]:
         fp_of_span.setdefault(tuple(map(tuple, md["buy_span"])), md["first_passage"])

@@ -19,7 +19,7 @@ workflow 内不可用)。派 subagent 只做"产出后回吐主会话"的纯分�
 ## REQUIRED BACKGROUND(开工先读)
 1. 本目录 `reference.md`(声明层契约与负知识:NodeSpec 声明契约 / 接线协议铁律 / K2 求解判据 / app 层负知识)
 2. 本目录 `design-heuristics.md`(设计决策手册:选型决策树/反模式/评估器;detector 失效边界速查见 authoring-path2-detector skill 的 reference §1)
-3. `path2/GLOSSARY.md`(术语:where/edge/node/match/复合事件 等词的确切含义)——**grep 查词,别整读**
+3. `path2/GLOSSARY.md`(术语:where/edge/node/hit/复合事件 等词的确切含义)——**grep 查词,别整读**
 
 **红线**:凡具体参数值/边结构/gap 数字,一律现场读代码(dag_spec.py / params.py /
 path2/atoms/*.py),绝不引用任何文档内嵌快照(含本 skill 自己的文档)。
@@ -77,7 +77,7 @@ path2/atoms/*.py),绝不引用任何文档内嵌快照(含本 skill 自己的文
 默认 `'time'`(marker 副图按 band × lane 排);要钉到 K 线主图价格轴的点事件
 (如 bo)选 `'price'`,且 event_cls 必须 `is_point=True`——`PatternSpec._validate_render_grid`
 会在编译期拒 span event × price grid 组合。span event(burst/trend/tb 等)一律 `'time'`。
-该字段是渲染层声明、与匹配/求解语义正交,但要求在 dag_spec 声明阶段就定下。
+该字段是渲染层声明、与命中/求解语义正交,但要求在 dag_spec 声明阶段就定下。
 现场参考 `path2_apps/bottom_burst/dag_spec.py` 的 bo node 写法。
 
 **容器/子结构 node 声明纪律(层①收尾时一并定)**:若拓扑含复合容器(如 tb 含
@@ -107,14 +107,14 @@ NodeSpec("note", det, produces_stream="note", solve=False),   # 取 'note' 流,�
 `PatternSpec` 构造期报错(契约 C3);不想在面板上看某条流,仍要建 node,只是
 `solve=False` + 前端隐藏该 band,不是省掉这个 node。
 
-**`solve=False`(只显示不参与匹配)**:node 是否参与求解由 bound_ids 判据(edge
+**`solve=False`(只显示不参与求解)**:node 是否参与求解由 bound_ids 判据(edge
 端点并集 ∩ detector 非空 ∩ `nodes[nid].solve`)决定。零边 pattern(`edges=()`,
-如 bo_only)`all_solve=True` 让每个 node 自成 WCC 都产 match——**这时加一个孤立
-显示 node 必须 `solve=False`**,否则该 node 也产 match,而 `serialize` 对每个
-match 取 `node_index[end_node]` 时,非 end_node 的 match 会 **KeyError**。
-`solve=False` 把它从求解集排除:事件照常物化进 `res.events` 渲染,只是不参与匹配、
-不出现在任何 match 的 node_index。判据:只显示不参与匹配的 node 一律 solve=False;
-参与匹配的 node 保持默认 solve=True。
+如 bo_only)`all_solve=True` 让每个 node 自成 WCC 都产 hit——**这时加一个孤立
+显示 node 必须 `solve=False`**,否则该 node 也产 hit,而 `serialize` 对每个
+hit 取 `node_index[end_node]` 时,非 end_node 的 hit 会 **KeyError**。
+`solve=False` 把它从求解集排除:事件照常物化进 `res.events` 渲染,只是不参与求解、
+不出现在任何 hit 的 node_index。判据:只显示不参与求解的 node 一律 solve=False;
+参与求解的 node 保持默认 solve=True。
 
 **三种「不参与求解」别混**:①**结构性出局**——子结构 node 无 detector 即无候选池
 (`bound_ids` 的 `detector is not None` 那项);②**声明性出局**——有流有池但

@@ -3,7 +3,7 @@
 
 流程(run):
   1. scan:单配置扫描,只许训练窗。检测参数取正式值(params.yaml),闸按放开值(wide_overrides)构造;
-     每只股票跑一次 pattern(engine.analyze,不走反转循环)。每个过了窗口与价格过滤的 match、它的每个
+     每只股票跑一次 pattern(engine.analyze,不走反转循环)。每个过了窗口与价格过滤的 hit、它的每个
      样本 bar t 写一行(bars,t 须落在买点区间内、前瞻窗完整、M 有效),同一 (symbol, seg_id, t) 可因
      前缀不同出现多行;另写与 multivar_scan 同口径的逐日基线(baseline)。断点续跑、分片提交、done 集
      规则与 multivar_scan 相同。
@@ -97,8 +97,8 @@ def gate_specs(mod, base_yaml: dict, wide_overrides: dict) -> list[dict]:
 
     参数:base_yaml = 正式参数(params.yaml 解析结果);wide_overrides = {section: {field: 放开值}}。
     探针在「正式参数 ⊕ 全部放开值」上做,用放开值与正式值两档;两者相同(正式值本来就是放开的)时改用
-    相邻取值来试。闸所在的 node 必须参与求解(match 里取得到它的字段),且不能是否定边的目标(否定边
-    目标上的闸收紧反而会多出 match,不能事后按行切)。
+    相邻取值来试。闸所在的 node 必须参与求解(hit 里取得到它的字段),且不能是否定边的目标(否定边
+    目标上的闸收紧反而会多出 hit,不能事后按行切)。
     返回 [{"param", "kind"("W"|"F"), "node", "field", "op", "production", "wide"}],production = 正式值。
     """
     from path2.dag._solve import compile_plan
@@ -131,7 +131,7 @@ def gate_specs(mod, base_yaml: dict, wide_overrides: dict) -> list[dict]:
     bound = {nid for w in compile_plan(spec).wcc_plans for nid in w.comp}
     loose = [g["param"] for g in out if g["node"] not in bound]
     if loose:
-        raise ValueError(f"{loose} 所在的 node 不参与求解,match 里取不到它们的字段,不能当闸事后切")
+        raise ValueError(f"{loose} 所在的 node 不参与求解,hit 里取不到它们的字段,不能当闸事后切")
     return out
 
 
@@ -166,7 +166,7 @@ def _worker(pkl_path, app_module, params, end_node, gate_cols, buf_start, buf_en
 
     返回 (symbol, 被过滤, bars | None, baseline | None, err)。样本 bar = 买点 node 事件的 sample_bar_indices
     落在买点区间 [lo, hi] 内、且是合格日(daily_first_passage 有这一天:前瞻窗完整、M 有效)的 t;
-    一个 match 内同一 t 只写一行。窗口与价格过滤与 multivar_core.scan_one_stock 相同。"""
+    一个 hit 内同一 t 只写一行。窗口与价格过滤与 multivar_core.scan_one_stock 相同。"""
     from path2 import config
     from path2.dag.engine import analyze
     from path2.eval import _resolve_end_events, daily_first_passage

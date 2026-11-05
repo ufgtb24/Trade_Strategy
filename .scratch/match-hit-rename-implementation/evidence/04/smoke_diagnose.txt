@@ -1,0 +1,28 @@
+/home/yu/PycharmProjects/Trade_Strategy-04-skills/path2_apps/_params_base.py:111: UserWarning: params dict section 'burst' 忽略未知字段: ['peak_age_min']
+  warnings.warn(f"params dict section '{name}' 忽略未知字段: {sorted(unknown)}")
+/home/yu/PycharmProjects/Trade_Strategy-04-skills/path2_apps/_params_base.py:111: UserWarning: params dict section 'tb' 忽略未知字段: ['max_day_drop_pct']
+  warnings.warn(f"params dict section '{name}' 忽略未知字段: {sorted(unknown)}")
+scan 文件 t04-smoke.json；dataset_dir 末段 pkls_until_20251231；data_until 2025-12-31；最晚买点日上限 2025-12-01；pattern_ids ['bb_v1']；hit_stocks 5
+各股 analysis.hits 条数 {'AMC': 1, 'PLTR': 3, 'PLUG': 1, 'SNAP': 1, 'SOFI': 2}
+诊断目标：AMC 的 tb_126#0（在 events 里、不在任何 hit 的 node_index 里）
+
+--- 步骤 1-2：环境探测与声明
+=== 诊断环境声明(核对,不符请纠正) ===
+worktree: /home/yu/PycharmProjects/Trade_Strategy-04-skills  (branch=impl/04-skills)
+scan: 20261104T231436  (/home/yu/PycharmProjects/Trade_Strategy-04-skills/outputs/path2_web/scans/t04-smoke.json)
+目标 pattern(xxx): bb_v1   (bo_only=漏检参照系,不诊断)
+params provenance: yaml
+params 重建: burst(min_bos=1/first_drought_min=40/distinct_pk_min=3/vol_spike_min=3) tb(max_rise_k=1.5/stop_confirm_bars=1/vol_window=14/anchor_mode=span_min/max_span=20/measure=close) bo(breakout_measure=close)
+窗口: win=2021-09-19~2026-02-05  label=2022-01-01~2025-12-01
+诊断目标: AMC 的 tb_126#0
+========================================
+
+--- 步骤 3：探索态检查
+provenance yaml ；含 working_copy： False
+
+--- 步骤 4：reference.md 的骨架 A
+burst_118_121#0 pass_where= False fd=93 dpk=2 vol=4.76
+骨架 A 读出 hits 1 条、events 78 条；候选 burst 1 个
+hit 的键： ['buy_date', 'buy_span', 'children', 'end_idx', 'first_passage', 'forward_drawdown', 'forward_return', 'hit_id', 'leaf', 'node_index', 'predicate_trace', 'start_idx']
+scan 里有没有 dropped_hits 键： False
+scan 文件含旧键字样： []

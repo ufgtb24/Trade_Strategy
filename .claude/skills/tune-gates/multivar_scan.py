@@ -256,7 +256,7 @@ def _done_symbols(out: Path, symbol_dirs=("longtable", "baseline")) -> tuple[set
     parts["empty"] = _read_symbols_csv(out / "empty_symbols.csv")
     done = set().union(*(parts[d] for d in symbol_dirs)) | set(parts["filtered"]) | set(parts["empty"])
     # 回归锁:"NA" 型 ticker 若被某处读成缺失值,会以 NaN 混进这个本应全是字符串的集合——直接炸,
-    # 不依赖"这只股票恰好有没有 match"这类数据巧合。
+    # 不依赖"这只股票恰好有没有 hit"这类数据巧合。
     assert not any(pd.isna(x) for x in done), "done 集混入 NaN——read_csv 把 'NA' 之类 ticker 读成缺失值了"
     return done, parts
 
@@ -495,13 +495,13 @@ def run(app: str, cfg, out_dir: str, *, label_mode: str = "full") -> None:
              f"- 分类:{ {col_of(d): k for d, k in cls.kinds.items()} }", f"- where 轴:{ {col_of(d): v for d, v in cls.where_fields.items()} }",
              f"- 研究设计 {cl['design']};检测组合数(detection_combos 实算,F 维不进组合):{n_combo}",
              f"- 断点续跑:本轮启动时 done 集共 {n_done0} 股 = 长表分片 symbol({len(parts0['longtable'])}) ∪ 基线分片 symbol({len(parts0['baseline'])}) ∪ filtered_symbols.csv({len(parts0['filtered'])}) ∪ empty_symbols.csv({len(parts0['empty'])});err 不计入 done、下次自动重试;总股数(TICKER_REGEX 命中全宇宙) {n_universe}",
-             f"- 股数(本轮):待扫 {len(pkls)} / 进 detector {n_det} / 过滤 {n_skip} / 有 match {n_hit} / 异常 {n_err};累计行(盘上分片元数据) {n_rows_all};{side_line}",
-             f"- 股数(累计跨 {n_runs} 轮 run_stats.jsonl):进 detector {cum_det} / 过滤 {cum_skip} / 有 match {cum_hit} / 异常事件 {cum_err} 次(同一 symbol 每轮重试各计一次,不去重)",
+             f"- 股数(本轮):待扫 {len(pkls)} / 进 detector {n_det} / 过滤 {n_skip} / 有 hit {n_hit} / 异常 {n_err};累计行(盘上分片元数据) {n_rows_all};{side_line}",
+             f"- 股数(累计跨 {n_runs} 轮 run_stats.jsonl):进 detector {cum_det} / 过滤 {cum_skip} / 有 hit {cum_hit} / 异常事件 {cum_err} 次(同一 symbol 每轮重试各计一次,不去重)",
              f"- 耗时(本轮):wall {wall:.0f}s @ {WORKERS} workers;worker 侧 scan_one_stock 累计 {per_ms_arr.sum() / 1000:.1f}s(≈总计算量,单线程 detector/solve 无 I/O 等待,CPU·s 量级);本进程(编排调度)cpu {time.process_time() - cpu0:.1f}s",
              f"- 耗时(累计跨 {n_runs} 轮):wall {cum_wall:.0f}s;worker 侧累计 {cum_worker_ms / 1000:.1f}s;本进程 cpu 累计 {cum_cpu:.1f}s",
              f"- 每股 scan_one_stock 耗时 ms(本轮 {len(per_ms)} 股):p50 {p50:.1f} / p90 {p90:.1f};每检测组合均摊 {avg_combo_ms:.3f}ms/股",
              f"- 每股 scan_one_stock 耗时 ms(累计 {len(cum_per_ms_arr)} 股):p50 {cum_p50:.1f} / p90 {cum_p90:.1f};每检测组合均摊 {cum_avg_combo_ms:.3f}ms/股",
-             f"- 宽进 where 下真扫格 × 年折的 match 数分布:{cnt_line}", ""]
+             f"- 宽进 where 下真扫格 × 年折的 hit 数分布:{cnt_line}", ""]
     (out / "ledger.md").write_text("\n".join(lines))
     print("\n".join(lines))
 

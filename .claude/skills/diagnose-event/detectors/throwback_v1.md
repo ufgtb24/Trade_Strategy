@@ -51,7 +51,7 @@ debug_break 三锚:`entry`@bo(每 burst)/ `confirm`@enter / `end`@exit;失败路
 - 持续阴跌每根刷新 trough、cnt 恒零 → 陪跑满 max_span → `budget_no_stable`(max_span 别过大)
 - V 反弹:DOWN 反弹臂回 UP 不判死;预算内再无回踩 → `budget_no_stable`
 - 热身期 vol(i) 为 NaN → STABLE 的 rise 臂短路不成立,该段只能靠 weak/break/timeout 收口——诊断"为什么没 rise"先查 `vol_window` 前的热身窗
-- 事件产了但 match 没了:看 tb where `day_drop`(max_day_drop ≥ 0.20)或 edge gap(enter − bo > max_span 不可能;gap 按 edge min_gap=1)
+- 事件产了但 hit 没了:看 tb where `day_drop`(max_day_drop ≥ 0.20)或 edge gap(enter − bo > max_span 不可能;gap 按 edge min_gap=1)
 - 参数名换代:`max_start_gap/max_window/atr_window/big_rise_k/judged_measure/reference_measure/scb_mode/anchor_mode` 已不存在
 
 ## 骨架 B 变体(局部重算该 burst)

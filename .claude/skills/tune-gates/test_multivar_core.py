@@ -305,7 +305,7 @@ def test_row_columns_label_modes():
         MC.ScanConfig(**kw, label_mode="lazy")
 
 
-# 合成 app:A 点事件 → B 区间事件(TemporalEdge,gap ≤5)。A 在 25、35,B 在 [27,30]、[37,41] → 两个 match。
+# 合成 app:A 点事件 → B 区间事件(TemporalEdge,gap ≤5)。A 在 25、35,B 在 [27,30]、[37,41] → 两个 hit。
 class _PtDet:
     event_cls = _Pt
 
@@ -367,7 +367,7 @@ def test_scan_one_stock_full_mode_new_columns():
     rows, segs, _cfg, win, cols = _syn_scan(_Seg, "full")
     spans = [((27, 30),), ((37, 41),)]
     assert segs == {MC.seg_id_of(k): k for k in spans}
-    assert len(rows) == 4 and all(set(r) == set(cols) for r in rows)      # 2 个检测组合 × 2 个 match
+    assert len(rows) == 4 and all(set(r) == set(cols) for r in rows)      # 2 个检测组合 × 2 个 hit
     M, c0 = MC.stock_scales(win)
     for r in rows:
         key = ((r["B.start"], r["B.end"]),)

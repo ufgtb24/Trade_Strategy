@@ -26,7 +26,7 @@ feature-study                                   tune-gates
 - `run_battery.py` — 统计电池：`gate_judgment`（闸式判定）、`run_battery`（连续 / 二元特征）。统计核（BH、Simes、簇稳健回归、按股线性化比率误差、层匹配差、分辨力）按文件路径加载 tune-gates 的 `inference.py` / `budget.py`，本端不另写一份。
 
 **口径**（全部入口共用）：
-- 观测单位 = **买点事件**（买点 node 解析出的事件区间组）。同一段买点被多个 match（不同前缀）共享时只算一次；认出同一段买点的列 = 买点事件键。
+- 观测单位 = **买点事件**（买点 node 解析出的事件区间组）。同一段买点被多个 hit（不同前缀）共享时只算一次；认出同一段买点的列 = 买点事件键。
 - 主标签 = 首次穿越率 up/(up+down+both)，none 不进分母，按定向 bar 合并；估计量内部一律是比例（0.02 = 2 点）。前瞻收益口径只在 `run_battery(label_type="forward_return")` 里保留，用来看幅度。
 - 误差按股去簇（CR1）；时间维用时间窗固定效应控制，窗宽由标签前瞻期推出（`inference.time_window_days(label_horizon)`）。
 - 最小关心改进 δ：`fs.resolve_delta(app)`——账本里最近一条 δ 裁定，没有则取 tune-gates 的默认设置（2 点）。
@@ -97,14 +97,14 @@ gf = fs.plan("<app>", "<window>", extra=[...])
 
 接入新 pattern（换 app 时做一次）：复制 `apps/_template/adapter.py` 到 `apps/<app>/adapter.py`，填五个常量与 `observe()`：
 - `APP_MODULE` — 提供 `Params` / `build_pattern` / `eval_meta` 的模块路径（`end_node` 由骨架从 `eval_meta()` 取，不用填）；
-- `PARAM_OVERRIDES` — 覆盖扫描快照参数，按 yaml section 分组，起手留空。**它是某一次扫描快照的属性，不是 app 的属性**：`Params.from_dict` 对快照里缺失的键注入当前代码默认值，扫描早于某参数引入时该参数会被静默启用、重放 match 集必失配——**换扫描文件必须重核**；
+- `PARAM_OVERRIDES` — 覆盖扫描快照参数，按 yaml section 分组，起手留空。**它是某一次扫描快照的属性，不是 app 的属性**：`Params.from_dict` 对快照里缺失的键注入当前代码默认值，扫描早于某参数引入时该参数会被静默启用、重放 hit 集必失配——**换扫描文件必须重核**；
 - `DEDUP_COLS` — 买点事件键：哪几列认出同一段买点，骨架据此事后去重。这几列必须函数决定买点 node 的事件，从而决定标签与四态；
 - `KNOWN_SIGNALS` — 已知信号列名，随登记簿已关闭段判定「有信号」的条目逐步长起来，起手留空；
 - `PARAM_FEATURES` — `{参数键: 特征名}`，声明「调这个参数，挑的是哪个特征」：
   - `status` 据此把定案挑选映射到特征轴，找出待对账项；
   - `reconcile` 第三步据此去当前 detector 的事件类上找这个字段，找不到就判第三步暂不可做；
   - 特征字段必须由 detector 产出、挂在事件上；还没实现的可以先声明，`observe()` 不引用它。起手留空。
-- `observe(m, evs, win, cols) -> dict | None` — 从一条 match 取本 app 特异的观测列，返回 `None` = 不进样本；不许产出骨架通用列。
+- `observe(m, evs, win, cols) -> dict | None` — 从一条 hit 取本 app 特异的观测列，返回 `None` = 不进样本；不许产出骨架通用列。
 
 每轮只写二十行脚本（仓库根目录从 `__file__` 派生，按脚本所在深度取 `parents[n]`，不硬编码绝对路径）：
 ```python
@@ -124,8 +124,8 @@ build_dataset(adapter, scan=SCAN, out_csv=OUT_CSV, compute_features=compute_feat
 ```
 
 `build_dataset(adapter, *, scan, out_csv, compute_features, pattern_id=None, param_overrides=None)` 骨架自带：
-- **两道自检门**（硬闸，不过即 raise，禁止注释掉）：match 集逐股对齐（重放 vs 扫描文件，防参数 / 引擎 / 数据漂移）；前瞻收益逐 match 用官方 API 重算，差 <1e-12；
-- 按 `DEDUP_COLS` 事后去重，随前缀变化的列取数据原序第一条存活 match 的值；
+- **两道自检门**（硬闸，不过即 raise，禁止注释掉）：hit 集逐股对齐（重放 vs 扫描文件，防参数 / 引擎 / 数据漂移）；前瞻收益逐 hit 用官方 API 重算，差 <1e-12；
+- 按 `DEDUP_COLS` 事后去重，随前缀变化的列取数据原序第一条存活 hit 的值；
 - 通用列：`symbol / entry_idx / entry_date / year / c0_atr_pct / label / up / down / both / none`（label = 前瞻收益；四态 = 买点事件内合格买点 bar 的首次穿越计数）。
 
 **控制列 = 两段拼接** `["c0_atr_pct"] + adapter.KNOWN_SIGNALS`（`fs.run` 只取数据里实际有的已知信号列，缺的记进结果的 `absent_signals`）：
@@ -240,4 +240,4 @@ out = fs.close(plan_path, res)   # res = run() 的返回值,或 verdicts 文件�
 | 报 win_rate 类无基线比例 | 高基率 pattern 上是基率复读，对子集区分无增量 → 报计数或对照基率 |
 | 推荐口径只看排序统计拍板 | 排序略优的口径硬闸可能更差——归一轴把不同波动 regime 的样本拉到不可比位置（TR 归一 vs 绝对 pct：AUC 0.728 vs 0.723 略优，硬闸首次穿越 +1.7 点 vs +5.6 点严格差）→ 口径结论须经闸式判定复核 |
 | 小样本报比例 | 计数比比例诚实；两位数样本的单窗数字噪声主导，别过度反应 |
-| 同期跨股 match 当独立样本 | 「那星期小盘股集体反弹」= 同一随机源的重复下注，名义 n 虚高 → 时间窗固定效应控制（窗宽由标签前瞻期推出）；时间维结论另看是否与发现样本时间不相交 |
+| 同期跨股 hit 当独立样本 | 「那星期小盘股集体反弹」= 同一随机源的重复下注，名义 n 虚高 → 时间窗固定效应控制（窗宽由标签前瞻期推出）；时间维结论另看是否与发现样本时间不相交 |

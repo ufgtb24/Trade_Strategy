@@ -20,7 +20,7 @@ description: Use when 用户要创建或修改 event 类 / detector(path2/atoms 
   - detector 选型分诊(该用哪个 detector / 约束降到哪层)——归 authoring-path2-app
   - app 拓扑 / 参数 / where 表达(where 构建 = app 范畴,本 skill 只占字段供给面:
     where 要引用的字段怎么设计 / 预计算)——归 authoring-path2-app
-  - 诊断已有事件(为什么没生成 / 没 match)——归 diagnose-event
+  - 诊断已有事件(为什么没生成 / 没命中)——归 diagnose-event
 
 ## REQUIRED BACKGROUND(开工先读)
 1. 本目录 reference.md(全部六节,自包含)——§1 detector 速查(Step 1 失效边界写法

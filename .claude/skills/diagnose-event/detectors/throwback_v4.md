@@ -70,7 +70,7 @@ debug_break 埋点三锚:`entry`@bo 根(每 burst 一次,tb 容器 entry 档)/ `
 - **全程 UP 无回踩**:一路阳线收涨,预算尽 0 段(budget_no_stable;= 无回踩无买点,bo_only 语义,正确静默)
 - **持续阴跌不破 global_bottom**:每根刷新 trough、count 恒清零,陪跑满整个预算 0 段(诊断归"存活无段";max_span 不能过大的原因之一)
 - **V 反弹**:DOWN→UP 直接转 UP 不产段(机器存活等下一轮回踩;非失效)
-- **前缀族多机重叠**:同 cluster 多 burst → 多容器 span 重叠,各带单来源 anchor_bo_id——**detector/match 层有意不去重**;统计伪复制由 eval 层 dedup_daily((symbol,date) 去重)处理,重叠不是 bug
+- **前缀族多机重叠**:同 cluster 多 burst → 多容器 span 重叠,各带单来源 anchor_bo_id——**detector/hit 层有意不去重**;统计伪复制由 eval 层 dedup_daily((symbol,date) 去重)处理,重叠不是 bug
 - **eval/scan 层 KeyError**:end_node 误用 detector 类名/旧身份词(正确 = `tb.segments`);params 误用旧字段名(max_start_gap/atr_window 已换代为 max_span/vol_window)
 
 ## 骨架 B 变体(局部重算该 burst 的段)

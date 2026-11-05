@@ -440,8 +440,8 @@ event 类型退回 Python 类型系统（`isinstance` 判别），**不进任何
   多流用法**（`BODetector` 的 bo/pk 就是）。不产 gf 的同流共享零影响。
 - **共享 detector 合法但只物化一次**：`run_streams` 按 `(id(detector), consumes_stream)` 去重，
   共享的多个 node 指向同一个事件 list，instance_id 按拓扑序首个消费 node 命名。
-- **两个 C1 别混**：求解剪枝的 C1（等-end 塌缩，`_solve.py`，漏匹配风险源，**改它必须先跑
-  多候选 fuzz** —— 真漏匹配 bug 曾两次逃过平凡场景的单测试）与运行期校验的 C1（声明⊆实例，
+- **两个 C1 别混**：求解剪枝的 C1（等-end 塌缩，`_solve.py`，漏命中风险源，**改它必须先跑
+  多候选 fuzz** —— 真漏命中 bug 曾两次逃过平凡场景的单测试）与运行期校验的 C1（声明⊆实例，
   `engine.py`，漂移检测）是同名不同机制。
 - **atoms 入库门槛**：至少两条不相关走势会用，或表达单一通用物理事件。**带形状偏见的命名一律
   拒入**（`RoundedBottom` 之类退到 `path2_apps/`）。detector 内部状态不得跨 `detect()` 调用。

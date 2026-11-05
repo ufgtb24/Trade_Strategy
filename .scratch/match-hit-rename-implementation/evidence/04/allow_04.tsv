@@ -1,0 +1,106 @@
+# 票 04 人工判定清单（照票 01 的格式，只收 .claude/skills）：读过上下文判为可留的行。格式：相对路径<TAB>该行去掉首尾空白后的原文<TAB>类别
+.claude/skills/authoring-path2-app/design-heuristics.md	| dst 端某字段 == src 端实例身份(锁定跨边身份) | 任意边 + `anchor_field=<dst字段>` | src 端身份恒为 `src_ep.instance_id`(交错标注后 detect 期即非 None;`anchor_src_field` 已退役、不再消费);**多 src 触发同类 dst 时(如 burst→tb)不用就任意匹配**,召回/精度同时塌;`spec.py::_validate_anchor` 强校验 |	中文「匹配」泛指（pid、锚点、档位、指纹、代码、分类、区间等对得上）
+.claude/skills/authoring-path2-detector/SKILL.md	- 在 anchorsOf 暴露的锚点在该 node 的 detector 内无匹配 debug_break,或 debug_break	中文「匹配」泛指（pid、锚点、档位、指纹、代码、分类、区间等对得上）
+.claude/skills/authoring-path2-detector/reference.md	4. `drawdown` 依赖区段完整高低，若业务要求的 drawdown 门槛对应单段跌幅，需确认 hysteresis 参数与区段粒度匹配——过粗分割使多段下跌被合并，单段 drawdown 虚高；过细分割使真实下跌段被切碎，单段 drawdown 不足。	中文「匹配」泛指（pid、锚点、档位、指纹、代码、分类、区间等对得上）
+.claude/skills/authoring-path2-detector/reference.md	≥1 个 `(anchor_kind, bar)` 匹配的 `debug_break`——否则"菜单显示但不 hit"无声失败	中文「匹配」泛指（pid、锚点、档位、指纹、代码、分类、区间等对得上）
+.claude/skills/authoring-path2-detector/reference.md	（`DEBUG_BAR_RANGE` 严格 ∈ 匹配，偏 1 不 fire）	中文「匹配」泛指（pid、锚点、档位、指纹、代码、分类、区间等对得上）
+.claude/skills/authoring-path2-detector/reference.md	（`debug_ctx.py` 无 node gate，三门合取 = `_DEBUG_MODE ∧ bar∈range ∧ anchor_kind 匹配`）；	中文「匹配」泛指（pid、锚点、档位、指纹、代码、分类、区间等对得上）
+.claude/skills/authoring-path2-detector/reference.md	tb → tb_v1/tb_seg)后，硬编码词与真实 node_id 不匹配，后端按 node 严格过滤	中文「匹配」泛指（pid、锚点、档位、指纹、代码、分类、区间等对得上）
+.claude/skills/diagnose-event/SKILL.md	若声明的 provenance 含 `working_copy`(wc.json 存在且 pid 匹配)→ 已用 WC params(探索态真理),继续。	中文「匹配」泛指（pid、锚点、档位、指纹、代码、分类、区间等对得上）
+.claude/skills/diagnose-event/path2_diag_env.py	存在 + pid 匹配 + enabled=true 才用(防切 pattern 滞后 + 休眠态误用);否则 None(回退 scan snapshot)。	中文「匹配」泛指（pid、锚点、档位、指纹、代码、分类、区间等对得上）
+.claude/skills/diagnose-event/path2_diag_env.py	# 探索态优先:wc.json 存在 + pid 匹配 + enabled → 用 WC dict;否则 scan snapshot	中文「匹配」泛指（pid、锚点、档位、指纹、代码、分类、区间等对得上）
+.claude/skills/diagnose-event/reference.md	6. **探索态读 wc.json**:若 `outputs/path2_web/wc.json` 存在(Write Copy 镜像,前端修改 WC 时落盘)且 `pid` 匹配 + `enabled=true` → 用其 `wc`(currentDict)替代 scan snapshot(wc 是探索态真理);窗口用 wc.json 的 win_start/win_end。`enabled=false`(休眠态)忽略、回退 scan。wc.json schema: `{pid, scan_ts, win_start, win_end, wc(currentDict), enabled, written_at}`。	中文「匹配」泛指（pid、锚点、档位、指纹、代码、分类、区间等对得上）
+.claude/skills/domain-note-keeper/SKILL.md	| 找不到匹配分类 | 推荐放最接近的分类 + 提醒「若此类越来越多，考虑场景 4 调维度」 |	中文「匹配」泛指（pid、锚点、档位、指纹、代码、分类、区间等对得上）
+.claude/skills/feature-study/SKILL.md	- `run_battery.py` — 统计电池：`gate_judgment`（闸式判定）、`run_battery`（连续 / 二元特征）。统计核（BH、Simes、簇稳健回归、按股线性化比率误差、层匹配差、分辨力）按文件路径加载 tune-gates 的 `inference.py` / `budget.py`，本端不另写一份。	统计里的配对（层匹配差等，同日或同层普通买入对照）
+.claude/skills/feature-study/SKILL.md	- 每个切点算：保留占比 r；原始差（保留合并率 − 池合并率，按股线性化 SE）；层匹配差（池内 M 三分位 × 时间窗）；分年原始差；控制后回归（因变量 = 买点事件首次穿越份额，按定向 bar 加权；自变量 = 过闸指示 + 控制列 + 时间窗固定效应；按股 CR1）。	统计里的配对（层匹配差等，同日或同层普通买入对照）
+.claude/skills/feature-study/SKILL.md	- `stats`：闸级 Simes p、BH q、族大小、控制列；族从哪来（`family_source`：预注册冻结 / 现场实测(未预注册)）与进族切点（`family_cuts`）；领头切点的原始差、层匹配差、控制后回归；并排三列「加权不去簇 / 加权去簇 / 不加权去簇」，另报买点事件等权一行（与主估计差超过一个 SE 时 `flag` 为真：效果主要落在买点 bar 多或少的买点事件上）。	统计里的配对（层匹配差等，同日或同层普通买入对照）
+.claude/skills/feature-study/fs.py	elif section == "待验证" and (m := _FC_HEAD.match(line)):	正则与模式匹配
+.claude/skills/feature-study/fs.py	elif section == "已关闭" and (m := _FC_CLOSED.match(line)):	正则与模式匹配
+.claude/skills/feature-study/run_battery.py	日历天),分年估计只作稳定性过滤。统计核(BH / Simes / 簇稳健回归 / 按股线性化比率误差 / 层匹配差 / 分辨力)	统计里的配对（层匹配差等，同日或同层普通买入对照）
+.claude/skills/feature-study/run_battery.py	B / seed: 层匹配差按股 bootstrap 的副本数与种子。	统计里的配对（层匹配差等，同日或同层普通买入对照）
+.claude/skills/feature-study/run_battery.py	层匹配差(inference.layer_matched_diff,池内 M 三分位 × 时间窗);分年原始差;	统计里的配对（层匹配差等，同日或同层普通买入对照）
+.claude/skills/feature-study/test_build_from_longtable.py	def test_self_check_counts_match_straight_dedup(tree):	「一致 / 等于」的通用说法
+.claude/skills/feature-study/test_build_from_longtable.py	def test_golden_prod_cell_matches_region_core(tmp_path, monkeypatch):	「一致 / 等于」的通用说法
+.claude/skills/feature-study/test_gate_judgment.py	def test_frozen_family_must_match_gates():	「一致 / 等于」的通用说法
+.claude/skills/feature-study/test_gate_judgment.py	def test_cluster_robust_regression_matches_hand_calculation():	「一致 / 等于」的通用说法
+.claude/skills/tune-gates/SKILL.md	- 旗标：分年 z；年交互 z（|z|>2）；按标签前瞻期等长时间窗的异质性检验（p<0.05）；两个底座的差中差（效果依赖其他闸）；换没换一批股票（两臂对逐日基线的层匹配差之差 ≥ δ/2）。	统计里的配对（层匹配差等，同日或同层普通买入对照）
+.claude/skills/tune-gates/SKILL.md	| 层匹配随机日基线 | 「同一天、同样波动水平的随机日」 |	统计里的配对（层匹配差等，同日或同层普通买入对照）
+.claude/skills/tune-gates/adopt.py	elif isinstance(v, str) and _PLAIN_WORD.match(v):	正则与模式匹配
+.claude/skills/tune-gates/app_setup.py	为什么不 glob:实测按名字模糊匹配会误伤 6 项、同时漏 3 项——真实存在的	中文「匹配」泛指（pid、锚点、档位、指纹、代码、分类、区间等对得上）
+.claude/skills/tune-gates/compare_longtable.py	cl = S.load_classification(APP, WINDOW); S.check_study_matches(cl, study_path); S.check_run_matches_classification(meta, cl)	「一致 / 等于」的通用说法
+.claude/skills/tune-gates/edge.py	3. 两个点各自逐年 + 合并做层匹配比较(edge_core.edge_by_year)与三分支判读;宽进点不是有边际、	统计里的配对（层匹配差等，同日或同层普通买入对照）
+.claude/skills/tune-gates/edge_core.py	就不同,按层匹配后 Δ 读到的是 pattern 本身,而不是它在「哪段行情、多高波动」上的构成。	统计里的配对（层匹配差等，同日或同层普通买入对照）
+.claude/skills/tune-gates/grid_propose.py	(study_io.check_study_matches / check_run_matches_classification)。同一份 grid	「一致 / 等于」的通用说法
+.claude/skills/tune-gates/inference.py	"""调参统计核:按股去簇的比率误差、多重比较、max-T 逐步法、簇稳健加权回归、闸存在性层匹配差。	统计里的配对（层匹配差等，同日或同层普通买入对照）
+.claude/skills/tune-gates/inference.py	# ── 闸存在性层匹配差 ──	统计里的配对（层匹配差等，同日或同层普通买入对照）
+.claude/skills/tune-gates/inference.py	"""闸存在性层匹配差:保留臂相对池的首次穿越率差,扣掉两臂在「波动层 × 时间窗」构成上的差异。	统计里的配对（层匹配差等，同日或同层普通买入对照）
+.claude/skills/tune-gates/ledger.py	def latest(app: str, kind: str, **match) -> dict | None:	「一致 / 等于」的通用说法
+.claude/skills/tune-gates/ledger.py	"""该 app 账本里按写入顺序最后一条 kind 记录;match 按顶层字段等值过滤(如 round=2)。没有 → None。"""	「一致 / 等于」的通用说法
+.claude/skills/tune-gates/ledger.py	bad = sorted(set(match) - set(COMMON_FIELDS))	「一致 / 等于」的通用说法
+.claude/skills/tune-gates/ledger.py	if rec["kind"] == kind and all(rec[k] == v for k, v in match.items()):	「一致 / 等于」的通用说法
+.claude/skills/tune-gates/multivar_scan.py	- 真扫维(combo)里的浮点列参与**精确相等**匹配(`region_core.prepare` 用	中文「匹配」泛指（pid、锚点、档位、指纹、代码、分类、区间等对得上）
+.claude/skills/tune-gates/reference.md	- 长表落盘前收缩列类型（字符串 → category、`buy_date` → datetime64、整数 `downcast`；`seg_id` 固定 int64）。**浮点列一律不动**：真扫维浮点列参与精确相等匹配，`fr` 被一致性验证按 12 位小数逐字比较，where 维浮点列走不等式，收窄都会出错。	中文「匹配」泛指（pid、锚点、档位、指纹、代码、分类、区间等对得上）
+.claude/skills/tune-gates/region_core.py	"prepare(): 0 行保留——combo/pred 列名或量纲与 combo_levels/pred_specs 档位不匹配、"	中文「匹配」泛指（pid、锚点、档位、指纹、代码、分类、区间等对得上）
+.claude/skills/tune-gates/region_core.py	"pred_specs 档位不匹配、fold 列的值不在 folds 里、或谓词列全为 NaN 都会导致这个结果。"	中文「匹配」泛指（pid、锚点、档位、指纹、代码、分类、区间等对得上）
+.claude/skills/tune-gates/region_core.py	"prepare_frames(): 全部片合计 0 行保留——combo/pred 列名或量纲与 combo_levels/pred_specs 档位不匹配、"	中文「匹配」泛指（pid、锚点、档位、指纹、代码、分类、区间等对得上）
+.claude/skills/tune-gates/region_core.py	代价之外还更难用:按坐标查一个格,张量是直接索引,CSV 得先读完半个 G 再逐列浮点匹配	中文「匹配」泛指（pid、锚点、档位、指纹、代码、分类、区间等对得上）
+.claude/skills/tune-gates/region_find.py	S.check_run_matches_classification(meta, cl)	「一致 / 等于」的通用说法
+.claude/skills/tune-gates/region_find.py	S.check_run_matches_classification(meta_s, cl_s)	「一致 / 等于」的通用说法
+.claude/skills/tune-gates/screen.py	"""换池漂移:两臂各自对逐日基线做层匹配后,匹配基线率之差。	统计里的配对（层匹配差等，同日或同层普通买入对照）
+.claude/skills/tune-gates/screen.py	优势估计、base = 层匹配基线率(matched_base_rate)。漂移 = base_a − base_b,即两臂的差里有多少	统计里的配对（层匹配差等，同日或同层普通买入对照）
+.claude/skills/tune-gates/screen.py	d = pool_drift(x, y, base, delta=delta, B=0)      # 漂移只用层匹配基线率的点估计,不做 bootstrap	统计里的配对（层匹配差等，同日或同层普通买入对照）
+.claude/skills/tune-gates/screen.py	S.check_run_matches_classification(meta, cl)	「一致 / 等于」的通用说法
+.claude/skills/tune-gates/stages.py	scope = "全部股票" if regex is None else f"代码匹配 {regex} 的股票"	中文「匹配」泛指（pid、锚点、档位、指纹、代码、分类、区间等对得上）
+.claude/skills/tune-gates/study_io.py	def check_run_matches_classification(meta: dict, cl: dict) -> None:	「一致 / 等于」的通用说法
+.claude/skills/tune-gates/test_compare_longtable.py	def test_plan_cells_grid_matches_full_cartesian_order():	「一致 / 等于」的通用说法
+.claude/skills/tune-gates/test_edge_core.py	def test_resolution_matches_hand_calc(delta):	「一致 / 等于」的通用说法
+.claude/skills/tune-gates/test_inference.py	def test_bh_bitwise_matches_battery():	「一致 / 等于」的通用说法
+.claude/skills/tune-gates/test_inference.py	def test_cluster_wls_matches_explicit_matrix():	「一致 / 等于」的通用说法
+.claude/skills/tune-gates/test_inference.py	# ── 闸存在性层匹配差 ──	统计里的配对（层匹配差等，同日或同层普通买入对照）
+.claude/skills/tune-gates/test_inference.py	"""保留臂 = 高 M 层全部 + 其余层随机 20%:层内是全体或随机子集,层匹配差 ≈ 0;原始差因构成偏向高 M 而明显为正。"""	统计里的配对（层匹配差等，同日或同层普通买入对照）
+.claude/skills/tune-gates/test_ledger.py	def test_latest_returns_last_matching_record():	「一致 / 等于」的通用说法
+.claude/skills/tune-gates/test_multivar_equiv.py	def test_row_columns_matches_scan_one_stock_row_keys():	「一致 / 等于」的通用说法
+.claude/skills/tune-gates/test_region_core.py	def test_score_delta_matches_hand_calc_at_non_ref_cell():	「一致 / 等于」的通用说法
+.claude/skills/tune-gates/test_region_core.py	# (naive=0.0705, optimism=0.1263, split_half=-0.1319)在 test_verdict_matches_real_bb_v1_run	「一致 / 等于」的通用说法
+.claude/skills/tune-gates/test_region_core.py	def test_verdict_matches_real_bb_v1_run():	「一致 / 等于」的通用说法
+.claude/skills/tune-gates/test_screen.py	def test_joint_axes_under_unit_weights_match_screen_core(main_df, main_res):	「一致 / 等于」的通用说法
+.claude/skills/tune-gates/test_segment_dedup.py	def test_golden_segment_counts_match_straight_dedup(golden_run):	「一致 / 等于」的通用说法
+.claude/skills/tune-gates/test_segment_dedup.py	def test_golden_row_mode_counts_match_cells_npz(golden_run):	「一致 / 等于」的通用说法
+.claude/skills/tune-gates/test_study_io.py	def test_classification_matches_hand_transcribed_values(cl):	「一致 / 等于」的通用说法
+.claude/skills/tune-gates/test_study_io.py	def test_check_run_matches_classification(cl):	「一致 / 等于」的通用说法
+.claude/skills/tune-gates/test_study_io.py	S.check_run_matches_classification({"study_fingerprint": cl["fingerprints"]["study"]}, cl)	「一致 / 等于」的通用说法
+.claude/skills/tune-gates/test_study_io.py	S.check_run_matches_classification({"study_fingerprint": "zzz"}, cl)	「一致 / 等于」的通用说法
+.claude/skills/tune-gates/test_study_io.py	(app_dir / "study.py").write_text("X = 1\n", encoding="utf-8")   # 内容随意,故意不匹配指纹	中文「匹配」泛指（pid、锚点、档位、指纹、代码、分类、区间等对得上）
+.claude/skills/tune-gates/test_study_io.py	(lt / "run_meta.json").write_text(json.dumps({"app": "demo", "study_fingerprint": "does-not-match"}),	「一致 / 等于」的通用说法
+.claude/skills/tune-gates/test_study_io.py	def test_check_regenerable_base_fingerprint_match_does_not_report_drift(tmp_path):	「一致 / 等于」的通用说法
+.claude/skills/tune-gates/test_tune.py	"""造一个已接入的 app(main 窗口):study.py + 与之匹配的 classification.json。返回窗口声明目录。"""	中文「匹配」泛指（pid、锚点、档位、指纹、代码、分类、区间等对得上）
+.claude/skills/tune-gates/test_tune.py	def test_settings_defaults_match_migrated_values():	「一致 / 等于」的通用说法
+.claude/skills/tune-gates/test_tune.py	"longtable", "cells.npz", "边际", "层匹配", "FP", "置信区间", "工作点", "宽进点", "δ",	统计里的配对（层匹配差等，同日或同层普通买入对照）
+.claude/skills/tune-gates/test_validate.py	def test_expected_power_single_hypothesis_matches_analytic():	「一致 / 等于」的通用说法
+.claude/skills/tune-gates/test_validate.py	def test_manifest_hash_matches_study_io():	「一致 / 等于」的通用说法
+.claude/skills/tune-gates/test_validate.py	def _refused(which, tmp_path, h, match):	测试框架
+.claude/skills/tune-gates/test_validate.py	with pytest.raises(HO.HoldoutLocked, match=match):	测试框架
+.claude/skills/tune-gates/tune.py	S.check_run_matches_classification(meta, cl)	「一致 / 等于」的通用说法
+.claude/skills/tune-gates-v3/scripts/governance.py	raise UsageError("检查区间必须精确匹配搜索前冻结的预留区间")	中文「匹配」泛指（pid、锚点、档位、指纹、代码、分类、区间等对得上）
+.claude/skills/tune-gates-v3/scripts/run.py	'score_version': 'matched-difference-window-v3', 'score_mode': plan.score_mode,	统计里的配对（层匹配差等，同日或同层普通买入对照）
+.claude/skills/tune-gates-v3/scripts/scoring.py	self._matched_direction = self._group_values[:, 0] - self._group_values[:, 1]	统计里的配对（层匹配差等，同日或同层普通买入对照）
+.claude/skills/tune-gates-v3/scripts/scoring.py	for array in (self._values, self._direction, self._group_values, self._matched_direction,	统计里的配对（层匹配差等，同日或同层普通买入对照）
+.claude/skills/tune-gates-v3/scripts/scoring.py	daily_matched = np.bincount(date_ids, weights=w * self._matched_direction[indices], minlength=n_dates)	统计里的配对（层匹配差等，同日或同层普通买入对照）
+.claude/skills/tune-gates-v3/scripts/scoring.py	matched = np.full(len(counts), np.nan)	统计里的配对（层匹配差等，同日或同层普通买入对照）
+.claude/skills/tune-gates-v3/scripts/scoring.py	np.divide(rolling(daily_matched), counts, out=matched, where=active)	统计里的配对（层匹配差等，同日或同层普通买入对照）
+.claude/skills/tune-gates-v3/scripts/scoring.py	return {"count": counts, "score": scores, "matched_score": matched,	统计里的配对（层匹配差等，同日或同层普通买入对照）
+.claude/skills/tune-gates-v3/tests/test_governance.py	with pytest.raises(UsageError, match="精确匹配"):	测试框架
+.claude/skills/tune-gates-v3/tests/test_run.py	def test_noise_written_and_matches_manifest(setup):	「一致 / 等于」的通用说法
+.claude/skills/tune-gates-v3/tests/test_scoring.py	def test_all_legal_starts_and_endpoint_counts_match_explicit_windows():	「一致 / 等于」的通用说法
+.claude/skills/tune-gates-v3/tests/test_scoring.py	def test_whole_pool_matching_is_identity_even_with_irregular_density():	统计里的配对（层匹配差等，同日或同层普通买入对照）
+.claude/skills/tune-gates-v3/tests/test_scoring.py	def test_same_date_matching_no_m_reports_fallback_explicitly():	统计里的配对（层匹配差等，同日或同层普通买入对照）
+.claude/skills/tune-gates-v3/tests/test_scoring.py	def test_unit_weights_match_unweighted_windows():	「一致 / 等于」的通用说法
+.claude/skills/tune-gates-v3/tests/test_shrinkage.py	def test_enabled_formula_matches_independent_pairwise_matrix_with_calendar_gaps():	「一致 / 等于」的通用说法
+.claude/skills/web-loop/capture.mjs	if (!same) { skipped.push(`${c.sel}（${n === 1 ? '命中的不是同一个元素' : `匹配 ${n} 个`}）`); continue; }	web-loop 工作流脚本
+.claude/skills/web-loop/examples/path2.md	- **view store 里可读的状态**:`nodeVisible`(node_id → 是否显示,`false` 为隐藏)、`selected`(`{kind:'match',matchId}` / `{kind:'node',nodeId}` / `null`)、`symbol`、`activePatternId`、`focusedMatchId`、`diag`。	归票 03（web-loop 示例第 62 行，本票不动）
+.claude/skills/web-loop/tests/_helpers.mjs	export function assertMatches(haystack, regex, label) {	web-loop 工作流脚本
+.claude/skills/web-loop/tests/_helpers.mjs	console.error(`FAIL ${label}: expected to match ${regex}`);	web-loop 工作流脚本
+.claude/skills/web-loop/tests/dryrun.mjs	if (filter && !id.match(new RegExp(filter))) continue;	web-loop 工作流脚本
+.claude/skills/web-loop/tests/test-design-scenarios.mjs	sc('D11', 'K6 负责角度 gone、其他角度同轮 matches 该条:关闭,记一条 dissent,不重开', async () => {	web-loop 工作流脚本
+.claude/skills/web-loop/tests/test-design-scenarios.mjs	sc('D12', 'K6 修好后另一角度 matches 重开(reopenedBy);负责角度 gone → fixed+disputed;再 matches 只记 dissent', async () => {	web-loop 工作流脚本
+.claude/skills/web-loop/tests/test-design-scenarios.mjs	sc('D13', 'CORE:负责角度自己 matches 一条已修好的条目 → 重开,regressions=1', async () => {	web-loop 工作流脚本
