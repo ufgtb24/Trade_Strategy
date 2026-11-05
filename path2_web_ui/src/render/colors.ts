@@ -39,9 +39,9 @@ function hslToHex(h: number, s: number, l: number): string {
   return `#${to(r)}${to(g)}${to(b)}`
 }
 
-/** 三档配色:matched=node 本色(缺色兜底 NEUTRAL)/ qualified=深灰 / detected=浅灰。 */
+/** 三档配色:in_hit=node 本色(缺色兜底 NEUTRAL)/ qualified=深灰 / detected=浅灰。 */
 export function colorOf(tier: Tier, node: string | null, nodeColors: Record<string, string>): string {
-  if (tier === 'matched') return (node && nodeColors[node]) || NEUTRAL
+  if (tier === 'in_hit') return (node && nodeColors[node]) || NEUTRAL
   if (tier === 'qualified') return '#9ca3af'
   return '#d1d5db'
 }

@@ -18,10 +18,10 @@ function scanFile2(): any {
   }
 }
 // 直接注入 preview + workingCopy(enabled=true)驱动探索态,避开 runPreview 异步(范式同 view.multi.spec.ts)
-function enterExplore(v: any, matches: any[]) {
+function enterExplore(v: any, hits: any[]) {
   ;(v as any).preview = {
     symbol: 'ACRS',
-    analysis: { events: [], hits: matches },
+    analysis: { events: [], hits },
     pattern_spec: { pattern_id: 'bbb', topology: { nodes: [], edges: [] }, event_styles: {} },
     scan: { label_horizon: 20 },
   }
@@ -91,7 +91,7 @@ describe('previewListRow', () => {
     const v = useViewStore()
     v.loadScanFile(scanFile2())
     v.setActivePattern('bbb'); v.selectSymbol('ACRS')
-    // 三条 match:fd 分别 -0.03 / -0.22 / null → min=-0.22(跳过 null)
+    // 三条 hit:fd 分别 -0.03 / -0.22 / null → min=-0.22(跳过 null)
     enterExplore(v, [
       { forward_return: 0.05, forward_drawdown: -0.03 },
       { forward_return: 0.08, forward_drawdown: -0.22 },
@@ -100,7 +100,7 @@ describe('previewListRow', () => {
     expect(v.previewListRow!.cells[0].fd).toBeCloseTo(-0.22)
   })
 
-  it('所有 match.forward_drawdown 都缺 → fd=null(无对偶值)', () => {
+  it('所有 hit.forward_drawdown 都缺 → fd=null(无对偶值)', () => {
     const v = useViewStore()
     v.loadScanFile(scanFile2())
     v.setActivePattern('bbb'); v.selectSymbol('ACRS')

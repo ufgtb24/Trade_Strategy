@@ -33,7 +33,7 @@ const SCAN_FILE_WC = {
 
 const PREVIEW_ANALYSIS = {
   ...ANALYSIS,
-  hits: [{ ...ANALYSIS.hits[0], hit_id: 'preview_match_1' }],
+  hits: [{ ...ANALYSIS.hits[0], hit_id: 'preview_hit_1' }],
 }
 const PREVIEW_RESP = {
   analysis: PREVIEW_ANALYSIS,
@@ -72,7 +72,7 @@ describe('view.preview computed', () => {
     v.forkWorkingCopy('bottom_burst')
     await v.setPreviewEnabled(true)
     await flushPromises()
-    expect(v.effectiveAnalysis?.hits[0].hit_id).toBe('preview_match_1')
+    expect(v.effectiveAnalysis?.hits[0].hit_id).toBe('preview_hit_1')
   })
 
   it('effectivePattern uses preview pattern_spec when active', async () => {

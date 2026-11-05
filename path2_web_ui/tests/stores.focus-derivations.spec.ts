@@ -1,5 +1,5 @@
-// Task 8 · 派生 computed 一致性测试。直接写 focusedMatchId/selectedInstanceId/
-// focusedInstanceId/manualExpandedNodes 底层 ref(而非经 focusMatch/focusEvent 等高层
+// Task 8 · 派生 computed 一致性测试。直接写 focusedHitId/selectedInstanceId/
+// focusedInstanceId/manualExpandedNodes 底层 ref(而非经 focusHit/focusEvent 等高层
 // action)构造前置状态,让"给定状态 → 派生是否正确"与 action 内部的归属判定逻辑解耦
 // (后者见 stores.focus-actions.spec.ts)。
 import { describe, it, expect, beforeEach } from 'vitest'
@@ -7,7 +7,7 @@ import { setActivePinia, createPinia } from 'pinia'
 import { useViewStore } from '../src/stores/view'
 import type { MultiScanResultFile, Analysis, SerializedPattern, TopoNode, TopoEdge, HitDict, EventDict } from '../src/types'
 
-// 最小 fixture:1 pattern · 2 nodes(bo/ta)· 1 edge · 1 match · events 集合(实例化契约)
+// 最小 fixture:1 pattern · 2 nodes(bo/ta)· 1 edge · 1 hit · events 集合(实例化契约)
 function makeFixture(): MultiScanResultFile {
   const nodes: TopoNode[] = [
     { node_id: 'bo', render_grid: 'price', where_rules: [] } as any,
@@ -50,23 +50,23 @@ describe('view store · 派生 computed 一致性', () => {
     const view = useViewStore()
     view.loadScanFile(makeFixture())
     expect(view.selected).toBeNull()
-    expect(view.selectedMatchId).toBeNull()
-    expect(view.selectedMatch).toBeNull()
+    expect(view.selectedHitId).toBeNull()
+    expect(view.selectedHit).toBeNull()
     expect(view.selectedInstanceId).toBeNull()
     expect(view.focusedInstanceId).toBeNull()
     expect(view.highlightedEventIds.size).toBe(0)
     expect(view.showTrace).toBe(false)
-    expect(view.markedMatchIds.size).toBe(0)
+    expect(view.markedHitIds.size).toBe(0)
     expect(view.markedEventIds.size).toBe(0)
   })
 
-  it('focusedMatchId="m1"(直写):selected/selectedMatch/selectedMatchId 派生 + showTrace=true + highlightedEventIds 含 members', () => {
+  it('focusedHitId="m1"(直写):selected/selectedHit/selectedHitId 派生 + showTrace=true + highlightedEventIds 含 members', () => {
     const view = useViewStore()
     view.loadScanFile(makeFixture())
-    view.focusedMatchId = 'm1'
-    expect(view.selected).toEqual({ kind: 'match', matchId: 'm1' })
-    expect(view.selectedMatchId).toBe('m1')
-    expect(view.selectedMatch?.hit_id).toBe('m1')
+    view.focusedHitId = 'm1'
+    expect(view.selected).toEqual({ kind: 'hit', hitId: 'm1' })
+    expect(view.selectedHitId).toBe('m1')
+    expect(view.selectedHit?.hit_id).toBe('m1')
     expect(view.selectedInstanceId).toBeNull()
     expect(view.focusedInstanceId).toBeNull()
     expect(view.showTrace).toBe(true)
@@ -74,30 +74,30 @@ describe('view store · 派生 computed 一致性', () => {
     // 但高亮用 expandAnchor=false(避免共享 leaf 反向污染),故 bo_10#0 不进高亮集
     expect(view.highlightedEventIds.has('ta_12_15#0')).toBe(true)
     expect(view.highlightedEventIds.has('bo_10#0')).toBe(false)
-    expect(view.markedMatchIds.has('m1')).toBe(true)
+    expect(view.markedHitIds.has('m1')).toBe(true)
   })
 
-  it('focusEvent("bo_10#0") 0 归属(anchor 不在 node_index):selectedInstanceId 派生 + match 不设 + expandedNodeIds 含 bo', () => {
+  it('focusEvent("bo_10#0") 0 归属(anchor 不在 node_index):selectedInstanceId 派生 + hit 不设 + expandedNodeIds 含 bo', () => {
     const view = useViewStore()
     view.loadScanFile(makeFixture())
-    // 归属判定只按 match.node_index 精确引用;bo_10#0 仅经 anchor_field 反查、不在
-    // node_index 中 → 0 归属 → 只聚焦实例(match 不设)
+    // 归属判定只按 hit.node_index 精确引用;bo_10#0 仅经 anchor_field 反查、不在
+    // node_index 中 → 0 归属 → 只聚焦实例(hit 不设)
     view.focusEvent('bo_10#0')
     expect(view.selectedInstanceId).toBe('bo_10#0')
-    expect(view.selectedMatchId).toBeNull()
+    expect(view.selectedHitId).toBeNull()
     expect(view.showTrace).toBe(false)
     expect(view.expandedNodeIds.has('bo')).toBe(true)  // add 焦点 node,不折叠其他
     expect(view.markedEventIds.has('bo_10#0')).toBe(true)
   })
 
-  it('focusEvent("ta_12_15#0") 唯一归属:同时驱动 match + 实例焦点 + add {ta}', () => {
+  it('focusEvent("ta_12_15#0") 唯一归属:同时驱动 hit + 实例焦点 + add {ta}', () => {
     const view = useViewStore()
     view.loadScanFile(makeFixture())
     view.focusEvent('ta_12_15#0')
-    expect(view.selectedMatchId).toBe('m1')
+    expect(view.selectedHitId).toBe('m1')
     expect(view.focusedInstanceId).toBe('ta_12_15#0')
     expect(view.showTrace).toBe(false)         // 实例焦点存在 → 不展 trace
-    expect(view.markedMatchIds.has('m1')).toBe(true)
+    expect(view.markedHitIds.has('m1')).toBe(true)
     expect(view.markedEventIds.has('ta_12_15#0')).toBe(true)
     expect(view.expandedNodeIds.has('ta')).toBe(true)
   })
@@ -105,14 +105,14 @@ describe('view store · 派生 computed 一致性', () => {
   it('setPendingDisambig 单独调不自动 push manualExpandedNodes(白盒 · 外部不应直调)', () => {
     const view = useViewStore()
     view.loadScanFile(makeFixture())
-    view.setCandidateMatches(['m1', 'm2'])
+    view.setCandidateHits(['m1', 'm2'])
     view.setPendingDisambig('ta_12_15#0')
-    expect(view.selectedMatchId).toBeNull()
+    expect(view.selectedHitId).toBeNull()
     expect(view.selectedInstanceId).toBeNull()
     expect(view.focusedInstanceId).toBeNull()
-    expect(view.markedMatchIds.size).toBe(2)   // 信息层如实反映所有归属
-    expect(view.markedMatchIds.has('m1')).toBe(true)
-    expect(view.markedMatchIds.has('m2')).toBe(true)
+    expect(view.markedHitIds.size).toBe(2)   // 信息层如实反映所有归属
+    expect(view.markedHitIds.has('m1')).toBe(true)
+    expect(view.markedHitIds.has('m2')).toBe(true)
     expect(view.markedEventIds.has('ta_12_15#0')).toBe(true)
     expect(view.expandedNodeIds.size).toBe(0)  // manual 未设 → 空集(pending 单独调不 push,
                                                 //   多归属场景经 focusEvent 会 push,见 focus-actions.spec.ts)
@@ -123,8 +123,8 @@ describe('view store · 派生 computed 一致性', () => {
     const view = useViewStore()
     view.loadScanFile(makeFixture())
     view.toggleExpandedNode('bo')
-    expect(view.selected).toBeNull()          // 派生 selected 只看 focusedMatchId(node 分支已删)
-    expect(view.selectedMatchId).toBeNull()
+    expect(view.selected).toBeNull()          // 派生 selected 只看 focusedHitId(node 分支已删)
+    expect(view.selectedHitId).toBeNull()
     expect(view.expandedNodeIds.has('bo')).toBe(true)
     expect(view.expandedNodeIds.size).toBe(1)
   })
@@ -168,10 +168,10 @@ describe('view store · 派生 computed 一致性', () => {
   it('clearFocus:清 focused,但 manualExpandedNodes 保留', () => {
     const view = useViewStore()
     view.loadScanFile(makeFixture())
-    view.focusedMatchId = 'm1'
+    view.focusedHitId = 'm1'
     view.toggleExpandedNode('bo')             // manualExpandedNodes = {bo}
     view.clearFocus()
-    expect(view.selectedMatchId).toBeNull()
+    expect(view.selectedHitId).toBeNull()
     expect(view.selectedInstanceId).toBeNull()
     expect(view.focusedInstanceId).toBeNull()
     expect(view.showTrace).toBe(false)

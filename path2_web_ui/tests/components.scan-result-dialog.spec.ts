@@ -52,7 +52,7 @@ describe('ScanResultDialog · 显示 name + rename', () => {
     w.unmount()
   })
 
-  it('Hits 列显示每 pattern 的 match 数 chip,Median 列同序显示中位数', async () => {
+  it('Hits 列显示每 pattern 的 hit 数 chip,Median 列同序显示中位数', async () => {
     vi.spyOn(api, 'listScans').mockResolvedValue(ROWS)
     const w = mount(ScanResultDialog, { attachTo: document.body })
     await flushPromises()

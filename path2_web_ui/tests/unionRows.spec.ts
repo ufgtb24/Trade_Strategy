@@ -40,17 +40,17 @@ function makeFile(): MultiScanResultFile {
 describe('unionRows / sortedRows', () => {
   beforeEach(() => setActivePinia(createPinia()))
 
-  it('unionRows shape: cells per pattern with num/fr and matched bool', () => {
+  it('unionRows shape: cells per pattern with num/fr and hasHit bool', () => {
     const v = useViewStore()
     v.loadScanFile(makeFile())
     expect(v.unionRows.length).toBe(3)
     const a = v.unionRows.find(r => r.symbol === 'AAA')!
     expect(a.cells.map(c => c.pid)).toEqual(['bo_only', 'bbb'])
     expect(a.cells[0].fr).toBeCloseTo(0.34)
-    expect(a.cells[1].matched).toBe(true)
+    expect(a.cells[1].hasHit).toBe(true)
     const b = v.unionRows.find(r => r.symbol === 'BBB')!
     expect(b.cells[1].fr).toBeNull()
-    expect(b.cells[1].matched).toBe(false)
+    expect(b.cells[1].hasHit).toBe(false)
   })
 
   it('cell.num reads summary.hits; cell.fr reads max_forward_return', () => {
@@ -60,12 +60,12 @@ describe('unionRows / sortedRows', () => {
     const bbbCell = bbb.cells.find(c => c.pid === 'bbb')!
     expect(bbbCell.num).toBe(0)            // summary.hits = 0
     expect(bbbCell.fr).toBe(null)          // max_forward_return = null
-    expect(bbbCell.matched).toBe(false)
+    expect(bbbCell.hasHit).toBe(false)
     const aaa = v.unionRows.find(r => r.symbol === 'AAA')!
     const aaaBo = aaa.cells.find(c => c.pid === 'bo_only')!
     expect(aaaBo.num).toBe(2)
     expect(aaaBo.fr).toBe(0.34)
-    expect(aaaBo.matched).toBe(true)
+    expect(aaaBo.hasHit).toBe(true)
   })
 
   it('default sortByPid is null → sortedRows preserves worker order', () => {
@@ -130,10 +130,10 @@ describe('unionRows / sortedRows', () => {
     expect(v.sortedRows.map(r => r.symbol)).toEqual(['CCC', 'BBB', 'AAA'])
   })
 
-  it('union row condition: at least one pattern has matches > 0', () => {
+  it('union row condition: at least one pattern has hits > 0', () => {
     const v = useViewStore()
     v.loadScanFile(makeFile())
-    // CCC bbb matched=1, BBB bo_only matched=1, AAA both >0 → all 3 in union
+    // CCC bbb hits=1, BBB bo_only hits=1, AAA both >0 → all 3 in union
     expect(v.unionRows.map(r => r.symbol).sort()).toEqual(['AAA', 'BBB', 'CCC'])
   })
 

@@ -22,9 +22,9 @@ function baseInput(overrides: Partial<BandRenderInput> = {}): BandRenderInput {
     topology: { nodes: [], edges: [] } as Topology,
     isolatedNodeIds: new Set(),
     tagList: [],
-    level: 'matched',
+    level: 'in_hit',
     nodeColors: {},
-    eventTier: () => 'matched',
+    eventTier: () => 'in_hit',
     nodeOfEventByBand: () => null,
     bandKeyOf: () => '',
     ...overrides,
@@ -247,8 +247,8 @@ describe('solve=False node 免疫 level 门控 + pk marker 三态色/peak_idx', 
     { instance_id: 'bo_1#0', node_id: 'bo', start_idx: 2, end_idx: 2,
       ref_ids: { broken: ['pk_2#0'] } } as any,
   ]
-  // 全部 tier=detected:无 solve 免疫时 level=matched 会被 RANK 过滤整段滤掉
-  const pkInput = (level: 'matched' | 'qualified' | 'detected' = 'matched'): BandRenderInput =>
+  // 全部 tier=detected:无 solve 免疫时 level=in_hit 会被 RANK 过滤整段滤掉
+  const pkInput = (level: 'in_hit' | 'qualified' | 'detected' = 'in_hit'): BandRenderInput =>
     baseInput({
       topology: pkTopo,
       tagList: ['pk', 'bo'],
@@ -260,24 +260,24 @@ describe('solve=False node 免疫 level 门控 + pk marker 三态色/peak_idx', 
       level,
     })
 
-  it('level=matched: solve=False 的 pk 事件免疫 RANK 过滤,仍进 pricePointData', () => {
-    const bundle = computeEventData(pkBars, pkEvents, [], pkInput('matched'))
+  it('level=in_hit: solve=False 的 pk 事件免疫 RANK 过滤,仍进 pricePointData', () => {
+    const bundle = computeEventData(pkBars, pkEvents, [], pkInput('in_hit'))
     expect(bundle.pricePointData.map((d) => d.instance_id)).toEqual(
       expect.arrayContaining(['pk_2#0', 'pk_0#0']),
     )
   })
 
-  it('level=matched: 无 solve 免疫的 bo detected 事件仍被滤掉(免疫只对 solve=False)', () => {
+  it('level=in_hit: 无 solve 免疫的 bo detected 事件仍被滤掉(免疫只对 solve=False)', () => {
     const withBo: EventDict[] = [
       ...pkEvents,
       { instance_id: 'bo_det#0', node_id: 'bo', start_idx: 1, end_idx: 1 } as any,
     ]
-    const bundle = computeEventData(pkBars, withBo, [], pkInput('matched'))
+    const bundle = computeEventData(pkBars, withBo, [], pkInput('in_hit'))
     expect(bundle.pricePointData.map((d) => d.instance_id)).not.toContain('bo_det#0')
   })
 
   it('pk marker: 位置=peak_idx(anchorY=bars[peak_idx].h);标签只有 id 数字;state 由 ref_ids 合成得出', () => {
-    const bundle = computeEventData(pkBars, pkEvents, [], pkInput('matched'))
+    const bundle = computeEventData(pkBars, pkEvents, [], pkInput('in_hit'))
     const d = bundle.pricePointData.find((x) => x.instance_id === 'pk_2#0')!
     expect(d.value[0]).toBe(1)                    // peak_idx=1,不是 start_idx=0
     expect(d.anchorY).toBe(pkBars[1].h)           // bars[1].h = 5
@@ -314,9 +314,9 @@ describe('solve=False node 免疫 level 门控 + pk marker 三态色/peak_idx', 
   })
 
   it('bo 被 level 过滤掉时,pk 三态仍按合成结果(证明合成发生在 filtered 之前)', () => {
-    // level=matched:bo_1#0 tier=detected(RANK 0)< matched(RANK 2)→ 被 RANK 过滤;
+    // level=in_hit:bo_1#0 tier=detected(RANK 0)< in_hit(RANK 2)→ 被 RANK 过滤;
     // pk_2#0 靠 solve=False 免疫仍进 pricePointData
-    const bundle = computeEventData(pkBars, pkEvents, [], pkInput('matched'))
+    const bundle = computeEventData(pkBars, pkEvents, [], pkInput('in_hit'))
     // 先证非空转:bo_1#0 确实被 level 过滤,不进 pricePointData
     expect(bundle.pricePointData.map((d) => d.instance_id)).not.toContain('bo_1#0')
     const pk = bundle.pricePointData.find((x) => x.instance_id === 'pk_2#0')!
@@ -325,12 +325,12 @@ describe('solve=False node 免疫 level 门控 + pk marker 三态色/peak_idx', 
 
   it('itemStyle.color 类型无关一律 tier 色:带 state 的 pk 与 bo 同口径(三态不走颜色)', () => {
     const withBo: EventDict[] = [
-      { instance_id: 'bo_match#0', node_id: 'bo', start_idx: 1, end_idx: 1 } as any,
+      { instance_id: 'bo_hit#0', node_id: 'bo', start_idx: 1, end_idx: 1 } as any,
       ...pkEvents,
     ]
     // level=detected 让 bo(detected tier)也过 RANK;pk 免疫与否都不影响
     const bundle = computeEventData(pkBars, withBo, [], pkInput('detected'))
-    const bo = bundle.pricePointData.find((x) => x.instance_id === 'bo_match#0')!
+    const bo = bundle.pricePointData.find((x) => x.instance_id === 'bo_hit#0')!
     expect(bo.itemStyle.color).toBe('#d1d5db')    // detected tier 浅灰
     const pk = bundle.pricePointData.find((x) => x.instance_id === 'pk_2#0')!
     expect(pk.itemStyle.color).toBe('#d1d5db')    // 同 tier 色,state 不影响颜色
@@ -340,8 +340,8 @@ describe('solve=False node 免疫 level 门控 + pk marker 三态色/peak_idx', 
   // 三态不再是原始字段,必须把"引用它的事件"一并喂入 computeEventData 才能合成出目标态
   // (契约 C4),故入参改整批 EventDict[],目标事件固定取 evs[0]。
   const renderPk = (evs: EventDict[]) => {
-    const bundle = computeEventData(pkBars, evs, [], pkInput('matched'))
-    const opt: any = buildMainOption(pkBars, bundle, pkInput('matched'))
+    const bundle = computeEventData(pkBars, evs, [], pkInput('in_hit'))
+    const opt: any = buildMainOption(pkBars, bundle, pkInput('in_hit'))
     const pp = opt.series.find((s: any) => s.name === 'price-points')
     const i = pp.data.findIndex((d: any) => d.instance_id === evs[0].instance_id)
     expect(i).toBeGreaterThanOrEqual(0)
@@ -439,8 +439,8 @@ describe('solve=False node 免疫 level 门控 + pk marker 三态色/peak_idx', 
   })
 
   it('buildMainOption 不再有 satellites 系列(卫星 pk 通道删除)', () => {
-    const bundle = computeEventData(pkBars, pkEvents, [], pkInput('matched'))
-    const opt: any = buildMainOption(pkBars, bundle, pkInput('matched'))
+    const bundle = computeEventData(pkBars, pkEvents, [], pkInput('in_hit'))
+    const opt: any = buildMainOption(pkBars, bundle, pkInput('in_hit'))
     const names = (opt.series || []).map((s: any) => s.name)
     expect(names).not.toContain('satellites')
   })

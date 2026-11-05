@@ -48,20 +48,20 @@ const INLINE_SCAN: MultiScanResultFile = {
           summary: { down: 2, side: 2, bo: 3, burst: 1, tb: 1, hits: 1 },
           analysis: {
             events: [
-              // down band: 事件 2 个 (down1#0 匹配, down2#0 仅 qualified)
+              // down band: 事件 2 个 (down1#0 进 hit, down2#0 仅 qualified)
               { node_id: 'down', instance_id: 'down1#0', instance_idx: 0, start_idx: 1,  end_idx: 6,  drawdown: 0.42, child_refs: {} },
               { node_id: 'down', instance_id: 'down2#0', instance_idx: 0, start_idx: 10, end_idx: 15, drawdown: 0.20, child_refs: {} },
-              // side band: 事件 2 个 (side1#0 匹配, side2#0 detected only)
+              // side band: 事件 2 个 (side1#0 进 hit, side2#0 detected only)
               { node_id: 'side', instance_id: 'side1#0', instance_idx: 0, start_idx: 4,  end_idx: 12, child_refs: {} },
               { node_id: 'side', instance_id: 'side2#0', instance_idx: 0, start_idx: 20, end_idx: 28, child_refs: {} },
               // bo band: 3 点事件 (无边 → 流源)
               { node_id: 'bo', instance_id: 'bo9#0',  instance_idx: 0, start_idx: 9,  end_idx: 9, child_refs: {} },
               { node_id: 'bo', instance_id: 'bo11#0', instance_idx: 0, start_idx: 11, end_idx: 11, child_refs: {} },
               { node_id: 'bo', instance_id: 'bo20#0', instance_idx: 0, start_idx: 20, end_idx: 20, child_refs: {} },
-              // burst band: 1 匹配
+              // burst band: 1 进 hit
               { node_id: 'burst', instance_id: 'burst1#0', instance_idx: 0, start_idx: 13, end_idx: 13, vol: 3.1,
                 child_refs: { members: ['bo9#0', 'bo11#0'] } },
-              // tb band: 1 匹配
+              // tb band: 1 进 hit
               { node_id: 'tb', instance_id: 'tb14#0', instance_idx: 0, start_idx: 14, end_idx: 14, child_refs: {} },
             ],
             hits: [
@@ -149,19 +149,19 @@ describe('DetailSidebar (5-node: pattern nodes + stream-source)', () => {
 
     const text = w.text()
 
-    // pattern nodes 有 detected ▸ qualified ▸ matched 漏斗
+    // pattern nodes 有 detected ▸ qualified ▸ in_hit 漏斗
     expect(text).toContain('▸')   // 漏斗收窄符
 
     // bo 是孤立流源 → 密度徽标行,含"原始检测"
     expect(text).toContain('原始检测')
 
-    // bo 行不含 matched 漏斗:断言 text 在 bo 相关位置包含"原始检测 3"(3 个 bo 点事件)
+    // bo 行不含 in_hit 漏斗:断言 text 在 bo 相关位置包含"原始检测 3"(3 个 bo 点事件)
     // 通过查找密度徽标的具体数字验证
     expect(text).toContain('原始检测 3')
   })
 
-  // ── 断言 2: bo 不含 matched 漏斗 ─────────────────────────────────────────
-  it('bo 徽标行不含 matched 漏斗(无 ▸ 符号嵌套在 bo 行)', async () => {
+  // ── 断言 2: bo 不含 in_hit 漏斗 ─────────────────────────────────────────
+  it('bo 徽标行不含 in_hit 漏斗(无 ▸ 符号嵌套在 bo 行)', async () => {
     setupStore()
     const w = mount(DetailSidebar)
     await flushPromises()
@@ -213,7 +213,7 @@ describe('DetailSidebar (5-node: pattern nodes + stream-source)', () => {
     expect(down1Row).toBeTruthy()
     await down1Row!.trigger('click')
 
-    // focusEvent('down1#0') 唯一归属 m1 → focusedMatchId='m1' + focusedInstanceId='down1#0'
+    // focusEvent('down1#0') 唯一归属 m1 → focusedHitId='m1' + focusedInstanceId='down1#0'
     expect(v.focusedInstanceId).toBe('down1#0')
   })
 
@@ -235,10 +235,10 @@ describe('DetailSidebar (5-node: pattern nodes + stream-source)', () => {
     expect(down1Row!.classes()).toContain('attr-row--selected')
   })
 
-  // ── 断言 6: per-match trace 在 focusMatch 后渲染 ────────────────────────
-  it('focusMatch 后渲染 trace(where_results + edge_results)', async () => {
+  // ── 断言 6: per-hit trace 在 focusHit 后渲染 ────────────────────────
+  it('focusHit 后渲染 trace(where_results + edge_results)', async () => {
     const v = setupStore()
-    v.focusMatch('m1')
+    v.focusHit('m1')
     const w = mount(DetailSidebar)
     await flushPromises()
 
@@ -253,33 +253,33 @@ describe('DetailSidebar (5-node: pattern nodes + stream-source)', () => {
   })
 
   // ── 断言 7: 计数正确性 ───────────────────────────────────────────────────
-  it('matched 计数正确:down matched=1 / burst matched=1(实例流复合键集合下不恒 miss)', async () => {
+  it('in_hit 计数正确:down in_hit=1 / burst in_hit=1(实例流复合键集合下不恒 miss)', async () => {
     const v = setupStore()
     const w = mount(DetailSidebar)
     await flushPromises()
 
-    // matchedIds(复合键集)= children of m1 的实例键 = ['down1#0','side1#0','burst1#0','tb14#0','bo9#0','bo11#0']
-    // trend0 band events = ['down1','down2']  → matched in trend0 = 1 (down1)
-    // burst band events  = ['burst1']         → matched in burst  = 1
+    // inHitIds(复合键集)= children of m1 的实例键 = ['down1#0','side1#0','burst1#0','tb14#0','bo9#0','bo11#0']
+    // trend0 band events = ['down1','down2']  → in_hit in trend0 = 1 (down1)
+    // burst band events  = ['burst1']         → in_hit in burst  = 1
 
-    // 找 down 漏斗行:格式为 detected ▸ qualified ▸ matched
-    // detected=2(down1+down2), qualified=1(down1,因为 down1 满足 clauses), matched=1(down1)
+    // 找 down 漏斗行:格式为 detected ▸ qualified ▸ in_hit
+    // detected=2(down1+down2), qualified=1(down1,因为 down1 满足 clauses), in_hit=1(down1)
     const funnelRows = w.findAll('.funnel-row')
     const downRow = funnelRows.find(r => r.text().includes('down'))!
     const downText = downRow.text()
-    // 精确序列断言:matched 段不被 qualified 段的数字掩盖(评审 C1 盲区:
-    // 旧断言 nums.toContain(1) 在 matched=0 时仍通过)
+    // 精确序列断言:in_hit 段不被 qualified 段的数字掩盖(评审 C1 盲区:
+    // 旧断言 nums.toContain(1) 在 in_hit=0 时仍通过)
     const nums = downText.match(/\d+/g)?.map(Number) ?? []
-    expect(nums).toEqual([2, 1, 1])   // detected=2(down1+down2) · qualified=1(down1) · matched=1(down1)
+    expect(nums).toEqual([2, 1, 1])   // detected=2(down1+down2) · qualified=1(down1) · in_hit=1(down1)
 
-    // burst 行: detected=1 · qualified=1(burst1 满足 vol) · matched=1
+    // burst 行: detected=1 · qualified=1(burst1 满足 vol) · in_hit=1
     const burstRow = funnelRows.find(r => r.text().includes('burst'))!
     const burstNums = burstRow.text().match(/\d+/g)?.map(Number) ?? []
     expect(burstNums).toEqual([1, 1, 1])
   })
 
   // ── 断言 7b: 候选表行 tier(rowTier)实例流下不降级 ────────────────────────
-  it('候选表 down1 行 tier=matched:色条宽度 12px(matched 档,非 qualified 6px 降级)', async () => {
+  it('候选表 down1 行 tier=in_hit:色条宽度 12px(in_hit 档,非 qualified 6px 降级)', async () => {
     setupStore()
     const w = mount(DetailSidebar)
     await flushPromises()
@@ -289,13 +289,13 @@ describe('DetailSidebar (5-node: pattern nodes + stream-source)', () => {
     const downRow = funnelRows.find(r => r.text().includes('down'))
     await downRow!.trigger('click')
 
-    // down1 是 m1 的 children(matched 实例),行色条宽度应取 matched 档 12px
+    // down1 是 m1 的 children(in_hit 实例),行色条宽度应取 in_hit 档 12px
     const attrRows = w.findAll('.attr-row')
     const down1Row = attrRows.find(r => r.text().includes('1-6'))   // down1: seg@1-6
     expect(down1Row).toBeTruthy()
     const cell = down1Row!.find('.cell-id')
     const borderLeft = cell!.attributes('style') ?? ''
-    // 浏览器序列化为 kebab-case(border-left);12px = matched 档(matched 最宽,评审建议的
+    // 浏览器序列化为 kebab-case(border-left);12px = in_hit 档(in_hit 最宽,评审建议的
     // 色盲/低对比宽度信道),qualified 档为 6px
     expect(borderLeft).toContain('border-left: 12px solid')
   })
@@ -311,8 +311,8 @@ describe('DetailSidebar (5-node: pattern nodes + stream-source)', () => {
     expect(boRow.text()).toContain('原始检测 3')
   })
 
-  // ── 断言 9: 命中匹配列表渲染 + forward_return 显示 ─────────────────────
-  it('命中匹配列表渲染,有 forward_return 时显示 ret_N 行', async () => {
+  // ── 断言 9: hit 列表渲染 + forward_return 显示 ─────────────────────
+  it('hit 列表渲染,有 forward_return 时显示 ret_N 行', async () => {
     // 构造带 label_horizon + forward_return 的 scan file
     const baseResult = INLINE_SCAN.results[0].per_pattern.test_pattern
     const scanWithLabel = {
@@ -342,16 +342,16 @@ describe('DetailSidebar (5-node: pattern nodes + stream-source)', () => {
     const w = mount(DetailSidebar)
     await flushPromises()
 
-    // 命中匹配列表应可见
-    expect(w.find('.match-row').exists()).toBe(true)
+    // hit 列表应可见
+    expect(w.find('.hit-row').exists()).toBe(true)
     // forward_return 行可见
-    expect(w.find('.match-ret').exists()).toBe(true)
+    expect(w.find('.hit-ret').exists()).toBe(true)
     expect(w.find('.ret-pos').exists()).toBe(true)  // 0.05 >= 0 → 绿色
     expect(w.text()).toContain('ret_20')
   })
 
-  // ── 断言 9b: 命中匹配列表 forward_drawdown 显示(与 forward_return 同行,带 d_N 前缀) ──
-  it('命中匹配列表渲染,有 forward_drawdown 时显示 d_N 行(带符号百分比)', async () => {
+  // ── 断言 9b: hit 列表 forward_drawdown 显示(与 forward_return 同行,带 d_N 前缀) ──
+  it('hit 列表渲染,有 forward_drawdown 时显示 d_N 行(带符号百分比)', async () => {
     const baseResult = INLINE_SCAN.results[0].per_pattern.test_pattern
     const scanWithDrawdown = {
       ...INLINE_SCAN,
@@ -380,14 +380,14 @@ describe('DetailSidebar (5-node: pattern nodes + stream-source)', () => {
     const w = mount(DetailSidebar)
     await flushPromises()
 
-    // forward_drawdown 行可见(与 forward_return 同级 .match-dd)
-    expect(w.find('.match-dd').exists()).toBe(true)
+    // forward_drawdown 行可见(与 forward_return 同级 .hit-dd)
+    expect(w.find('.hit-dd').exists()).toBe(true)
     expect(w.text()).toContain('d_20')
     expect(w.text()).toContain('-8.0%')
   })
 
-  // ── 断言 10: focusMatch 后 expandedNodeIds 清空(trace 可见) ─────────────
-  it('展开候选表后 focusMatch → 候选表收起,trace section 可见', async () => {
+  // ── 断言 10: focusHit 后 expandedNodeIds 清空(trace 可见) ─────────────
+  it('展开候选表后 focusHit → 候选表收起,trace section 可见', async () => {
     const v = setupStore()
     const w = mount(DetailSidebar)
     await flushPromises()
@@ -398,19 +398,19 @@ describe('DetailSidebar (5-node: pattern nodes + stream-source)', () => {
     await downRow.trigger('click')
     expect(w.find('.candidate-table-wrap').exists()).toBe(true)
 
-    // 选中 match → 候选表收起,match-trace 可见
-    v.focusMatch('m1')
+    // 选中 hit → 候选表收起,hit-trace 可见
+    v.focusHit('m1')
     await flushPromises()
 
     expect(w.find('.candidate-table-wrap').exists()).toBe(false)
-    expect(w.find('.match-trace').exists()).toBe(true)
+    expect(w.find('.hit-trace').exists()).toBe(true)
   })
 
   // ── 断言 11b: 候选表行 click 清空 M' candidate state(互斥,final review fix) ──
   it('候选表行 click 先 clearCandidates 再 selectEvent(spec §2.2 互斥)', async () => {
     const v = setupStore()
     // 注入 M' 候选状态
-    v.setCandidateMatches(['m1'])
+    v.setCandidateHits(['m1'])
     v.setPendingDisambig('down1#0')
     const w = mount(DetailSidebar)
     await flushPromises()
@@ -426,28 +426,28 @@ describe('DetailSidebar (5-node: pattern nodes + stream-source)', () => {
     await down1Row.trigger('click')
 
     // M' 候选状态已清
-    expect(v.candidateMatchIds.size).toBe(0)
+    expect(v.candidateHitIds.size).toBe(0)
     expect(v.pendingDisambigInstanceId).toBeNull()
     // selectEvent 已设:down1#0 唯一归属 m1 → focusedInstanceId
     expect(v.focusedInstanceId).toBe('down1#0')
   })
 
-  // ── 断言 11: 点命中匹配行 → selectMatch + setHighlightedEvents(children) + clearCandidates ──
-  it('点命中匹配行 → selected=match + 组高亮 + 候选清空', async () => {
+  // ── 断言 11: 点 hit 行 → selectHit + setHighlightedEvents(children) + clearCandidates ──
+  it('点 hit 行 → selected=hit + 组高亮 + 候选清空', async () => {
     const v = setupStore()
     const w = mount(DetailSidebar)
     await flushPromises()
 
-    const matchRows = w.findAll('.match-row')
-    expect(matchRows.length).toBeGreaterThan(0)
-    await matchRows[0].trigger('click')
+    const hitRows = w.findAll('.hit-row')
+    expect(hitRows.length).toBeGreaterThan(0)
+    await hitRows[0].trigger('click')
 
-    expect(v.selected?.kind).toBe('match')
-    expect((v.selected as any)?.matchId).toBe('m1')
+    expect(v.selected?.kind).toBe('hit')
+    expect((v.selected as any)?.hitId).toBe('m1')
     // 组高亮:children of m1 = instance_id 列表
     expect([...v.highlightedEventIds]).toEqual(expect.arrayContaining(['down1#0', 'side1#0']))
-    // 候选清空:clearCandidates → candidateMatchIds = empty Set
-    expect(v.candidateMatchIds.size).toBe(0)
+    // 候选清空:clearCandidates → candidateHitIds = empty Set
+    expect(v.candidateHitIds.size).toBe(0)
     // 实例焦点不改动(保持 null)
     expect(v.focusedInstanceId).toBeNull()
   })

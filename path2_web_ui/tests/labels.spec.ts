@@ -25,28 +25,28 @@ import { computeSubGeometry } from '../src/render/subGeometry'
 import type { Bar, HitDict, Topology } from '../src/types'
 
 describe('buildMarkerTooltipFormatter — ordinal consistency with packBrackets (Task 9 fix)', () => {
-  it('marker 归属节 ordinal uses start_idx sort, not raw matches order', () => {
-    const matches: HitDict[] = [
+  it('marker 归属节 ordinal uses start_idx sort, not raw hits order', () => {
+    const hits: HitDict[] = [
       // 故意乱序(非 start_idx 升序):
       { hit_id: 'm_late',  start_idx: 50, end_idx: 60, node_index: {}, children: ['eShared#0'], predicate_trace: null },
       { hit_id: 'm_early', start_idx: 10, end_idx: 20, node_index: {}, children: ['eShared#0'], predicate_trace: null },
       { hit_id: 'm_mid',   start_idx: 30, end_idx: 40, node_index: {}, children: ['eShared#0'], predicate_trace: null },
     ]
-    const fmt = buildMarkerTooltipFormatter(undefined, undefined, { matches, candidateMatchIds: new Set() })
+    const fmt = buildMarkerTooltipFormatter(undefined, undefined, { hits, candidateHitIds: new Set() })
     const out = fmt({ data: { instance_id: 'eShared#0' } })
     // start_idx 排序后: m_early=①, m_mid=②, m_late=③ → 三者都含 eShared
-    expect(out).toContain('归属: match ① ② ③')
+    expect(out).toContain('归属: hit ① ② ③')
   })
 })
 
-// ─── 6. Match tooltip label on buildSubOption brackets series(chart.ts:1055+ buildMarkerTooltipFormatter,
-//     恢复自 95f5554 版 labels.spec.ts「match tooltip label」describe,适配 buildSubOption 新签名)──
-describe('buildSubOption — brackets series match tooltip label (Task 6 review fix group 6)', () => {
+// ─── 6. hit tooltip label on buildSubOption brackets series(chart.ts:1055+ buildMarkerTooltipFormatter,
+//     恢复自 95f5554 版 labels.spec.ts「hit tooltip label」describe,适配 buildSubOption 新签名)──
+describe('buildSubOption — brackets series hit tooltip label (Task 6 review fix group 6)', () => {
   const bars: Bar[] = [
     { date: '2025-01-01', o: 1, h: 1, l: 1, c: 1, v: 1, rv: 0 },
     { date: '2025-01-02', o: 1, h: 1, l: 1, c: 1, v: 1, rv: 0 },
   ]
-  const match: HitDict = {
+  const hit: HitDict = {
     hit_id: 'm1', start_idx: 0, end_idx: 1, node_index: {}, children: [], predicate_trace: null,
   }
   function baseInput(overrides: Partial<BandRenderInput> = {}): BandRenderInput {
@@ -59,25 +59,25 @@ describe('buildSubOption — brackets series match tooltip label (Task 6 review 
       eventTier: () => 'detected',
       nodeOfEventByBand: () => null,
       bandKeyOf: () => '',
-      matches: [match],
+      hits: [hit],
       ...overrides,
     }
   }
 
-  it('matchLabel(matchId) 返回 label → brackets tooltip = "Match: <label><br/>组成 (N events):" + composition', () => {
-    const input = baseInput({ matchLabel: (id) => (id === 'm1' ? 'ret_20: +12.3%' : null) })
-    const bundle = computeEventData(bars, [], [match], input)
+  it('hitLabel(hitId) 返回 label → brackets tooltip = "hit: <label><br/>组成 (N events):" + composition', () => {
+    const input = baseInput({ hitLabel: (id) => (id === 'm1' ? 'ret_20: +12.3%' : null) })
+    const bundle = computeEventData(bars, [], [hit], input)
     const subGeom = computeSubGeometry({ bracketLaneCount: 1, bandLaneCounts: [] })
     const opt: any = buildSubOption(bars, bundle, subGeom, input, 800)
     const brackets = opt.series.find((s: any) => s.name === 'brackets')
     expect(brackets.tooltip).toBeDefined()
     expect(brackets.tooltip.formatter({ data: { hit_id: 'm1' } }))
-      .toBe('Match: ret_20: +12.3%<br/>组成 (0 events):')
+      .toBe('hit: ret_20: +12.3%<br/>组成 (0 events):')
   })
 
-  it('matchLabel(matchId)=null → brackets tooltip 仅 "组成 (N events):" + composition(无 Match 行)', () => {
-    const input = baseInput({ matchLabel: () => null })
-    const bundle = computeEventData(bars, [], [match], input)
+  it('hitLabel(hitId)=null → brackets tooltip 仅 "组成 (N events):" + composition(无 hit 行)', () => {
+    const input = baseInput({ hitLabel: () => null })
+    const bundle = computeEventData(bars, [], [hit], input)
     const subGeom = computeSubGeometry({ bracketLaneCount: 1, bandLaneCounts: [] })
     const opt: any = buildSubOption(bars, bundle, subGeom, input, 800)
     const brackets = opt.series.find((s: any) => s.name === 'brackets')

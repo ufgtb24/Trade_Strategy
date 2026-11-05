@@ -56,7 +56,7 @@ export interface BandGeom {
 }
 
 export interface SubGeometry {
-  bracketH: number      // bracket 区总高(空 matches 时 = 0)
+  bracketH: number      // bracket 区总高(空 hits 时 = 0)
   bandGeom: BandGeom[]  // 每 band 的 top/h/laneCount,顺序与输入 bandLaneCounts 一致
   subCanvasH: number    // 副图 canvas 需要的总高
   dividerY: number      // divider #2 的 y(1px 线)

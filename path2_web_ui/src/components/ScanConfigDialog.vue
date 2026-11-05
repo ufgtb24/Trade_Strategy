@@ -116,7 +116,7 @@ const firstPassageK = ref(5)
 const tickerRegex = ref('')
 const note = ref('')
 // 扫描过滤(spec §8):存 string 而非 number,空串 = 不过滤;
-// 价格锚 end_node 事件日收盘价(match 级),成交量是扫描区间内日均量(股票级预筛)
+// 价格锚 end_node 事件日收盘价(hit 级),成交量是扫描区间内日均量(股票级预筛)
 const priceMin = ref('')
 const priceMax = ref('')
 const volumeMin = ref('')

@@ -183,9 +183,6 @@ export function appBarY(g: LaneGeom, rows: number, row: number): { top: number; 
   return { top, bottom: top + APP_BAR_H }
 }
 
-// 悬停里档位的叫法:标注工具一律用 spec 4.3 的新名字,事件三档是 detected / qualified / in_hit(主视图沿用 matched)
-const TIER_WORD = { matched: 'in_hit', qualified: 'qualified', detected: 'detected' } as const
-
 /** 轨标题:特征名(浅灰底)、子框轨写成「缩量 ⊂ 横盘」,还没起名的轨写 unnamed。 */
 function laneTitle(l: Lane, nameOf: LaneDraw['nameOf']): any {
   if (l.key === null) return { text: '{sym|unnamed}', rich: { sym: { fontFamily: MONO, fontSize: 12, color: INK } } }
@@ -380,7 +377,7 @@ function buildCompareSeries(dates: readonly string[], d: LaneDraw): any[] {
       items.push({
         key: `${i}:${e.row}`, start: e.start, end: e.end, top: appBarY(g, la.rows, e.row).top, boxes,
         color: colorOf(e.tier, e.node, c.nodeColors), tag: e.tiered ? tierTagOf(e.tier) : null,
-        tip: `${TIER_WORD[e.tier]}<br>${dates[e.start] ?? e.start} – ${dates[e.end] ?? e.end}`,
+        tip: `${e.tier}<br>${dates[e.start] ?? e.start} – ${dates[e.end] ?? e.end}`,
       })
     }
   })

@@ -91,44 +91,44 @@ test('scan → load → 5-node topology → sidebar funnel visible', async ({ pa
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Test 2: level 切档(Matched / Qualified / Detected)
+// Test 2: level 切档(in_hit / qualified / detected)
 // ─────────────────────────────────────────────────────────────────────────────
-test('level control: Detected → Qualified → Matched active class + screenshot', async ({ page }) => {
+test('level control: detected → qualified → in_hit active class + screenshot', async ({ page }) => {
   await ensureScanLoaded(page)
 
   const levelBar = page.locator('[data-testid="level-control"]')
   await expect(levelBar).toBeVisible()
 
   // 获取三个按钮
-  const matchedBtn  = levelBar.getByRole('button', { name: 'Matched' })
-  const tracedBtn   = levelBar.getByRole('button', { name: 'Qualified' })
-  const detectedBtn = levelBar.getByRole('button', { name: 'Detected' })
+  const inHitBtn  = levelBar.getByRole('button', { name: 'in_hit' })
+  const tracedBtn   = levelBar.getByRole('button', { name: 'qualified' })
+  const detectedBtn = levelBar.getByRole('button', { name: 'detected' })
 
-  // 初始状态:Matched 应为 active(store 默认 level = 'matched')
-  await expect(matchedBtn).toHaveClass(/active/)
+  // 初始状态:in_hit 应为 active(store 默认 level = 'in_hit')
+  await expect(inHitBtn).toHaveClass(/active/)
   await expect(tracedBtn).not.toHaveClass(/active/)
   await expect(detectedBtn).not.toHaveClass(/active/)
 
-  // 切到 Detected
+  // 切到 detected
   await detectedBtn.click()
   await expect(detectedBtn).toHaveClass(/active/)
-  await expect(matchedBtn).not.toHaveClass(/active/)
+  await expect(inHitBtn).not.toHaveClass(/active/)
   await expect(tracedBtn).not.toHaveClass(/active/)
   await page.screenshot({ path: 'e2e-level-detected.png' })
 
-  // 切到 Qualified
+  // 切到 qualified
   await tracedBtn.click()
   await expect(tracedBtn).toHaveClass(/active/)
-  await expect(matchedBtn).not.toHaveClass(/active/)
+  await expect(inHitBtn).not.toHaveClass(/active/)
   await expect(detectedBtn).not.toHaveClass(/active/)
   await page.screenshot({ path: 'e2e-level-qualified.png' })
 
-  // 切回 Matched
-  await matchedBtn.click()
-  await expect(matchedBtn).toHaveClass(/active/)
+  // 切回 in_hit
+  await inHitBtn.click()
+  await expect(inHitBtn).toHaveClass(/active/)
   await expect(tracedBtn).not.toHaveClass(/active/)
   await expect(detectedBtn).not.toHaveClass(/active/)
-  await page.screenshot({ path: 'e2e-level-matched.png' })
+  await page.screenshot({ path: 'e2e-level-in_hit.png' })
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -137,8 +137,8 @@ test('level control: Detected → Qualified → Matched active class + screensho
 test('bidirectional highlight: sidebar candidate row click → selected class + chart screenshot', async ({ page }) => {
   await ensureScanLoaded(page)
 
-  // 先切到 Detected 档以确保有候选行
-  await page.locator('[data-testid="level-control"]').getByRole('button', { name: 'Detected' }).click()
+  // 先切到 detected 档以确保有候选行
+  await page.locator('[data-testid="level-control"]').getByRole('button', { name: 'detected' }).click()
 
   // 等 diag 加载好,漏斗行出现
   await expect(page.locator('.funnel-row').first()).toBeVisible({ timeout: 15_000 })
@@ -198,8 +198,8 @@ test('funnel overview: 4 pattern-node rows + 1 bo badge row + expand shows claus
   await expect(boRow).toHaveCount(1)
   await expect(boRow.locator('.badge')).toContainText('原始检测')
 
-  // 切到 Detected 档确保候选行非空
-  await page.locator('[data-testid="level-control"]').getByRole('button', { name: 'Detected' }).click()
+  // 切到 detected 档确保候选行非空
+  await page.locator('[data-testid="level-control"]').getByRole('button', { name: 'detected' }).click()
 
   // 展开第一个 pattern node 行
   const firstPatternRow = patternNodeRows.first()

@@ -6,7 +6,7 @@ describe('StopScanDialog', () => {
   it('renders hitStocks in prompt', () => {
     const w = mount(StopScanDialog, { props: { hitStocks: 7 } })
     expect(w.text()).toContain('7')
-    expect(w.text()).toContain('当前已经命中')
+    expect(w.text()).toContain('hit_stocks')
   })
 
   it('emits save on save button', async () => {

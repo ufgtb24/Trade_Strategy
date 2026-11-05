@@ -276,5 +276,5 @@ export function isPoint(e: { start_idx: number; end_idx: number }): boolean {
   return e.start_idx === e.end_idx
 }
 
-export type Level = 'matched' | 'qualified' | 'detected'
+export type Level = 'in_hit' | 'qualified' | 'detected'
 export type Tier = Level

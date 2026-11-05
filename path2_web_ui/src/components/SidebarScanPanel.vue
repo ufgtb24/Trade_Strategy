@@ -6,13 +6,13 @@
     </div>
 
     <div v-if="scan.running" class="prog">
-      {{ progress?.scanned ?? 0 }}/{{ progress?.total ?? 0 }} · 命中 {{ progress?.hit_stocks ?? 0 }}
+      {{ progress?.scanned ?? 0 }}/{{ progress?.total ?? 0 }} · <span class="sym" title="有 hit 的股票数">hit_stocks</span> {{ progress?.hit_stocks ?? 0 }}
       <button class="btn-stop" @click="onStopClick">停止扫描 ✕</button>
     </div>
     <div v-else-if="lastDone" class="done">
       <template v-if="lastDone.cancelled">扫描已取消</template>
       <template v-else-if="lastDone.error">扫描失败: {{ lastDone.error }}</template>
-      <template v-else>完成: 命中 {{ lastDone.hit_stocks }} / 错误 {{ lastDone.errors }}</template>
+      <template v-else>完成: <span class="sym" title="有 hit 的股票数">hit_stocks</span> {{ lastDone.hit_stocks }} / 错误 {{ lastDone.errors }}</template>
     </div>
 
     <ScanConfigDialog v-if="scanDialogOpen" @close="scanDialogOpen = false" />
@@ -60,6 +60,7 @@ watch(() => scan.running, (r) => { if (!r && stopDialogOpen.value) stopDialogOpe
                  background: #fff; cursor: pointer; }
 .topbar button:disabled { opacity: 0.4; cursor: not-allowed; }
 .prog, .done { font-size: 11px; margin-top: 6px; display: flex; align-items: center; gap: 8px; }
+.sym { font-family: var(--mono); }
 .btn-stop { padding: 2px 8px; font-size: 11px; border: 1px solid #ef4444;
             background: #ef4444; color: #fff; cursor: pointer; margin-left: auto; }
 </style>

@@ -22,7 +22,7 @@ const BASE: Lane[] = [
   { key: 'w-b', parent: null, rows: 1, boxes: [{ box: box('b2', 'w-b', DATES[6], DATES[7]), row: 0 }] },
   { key: null, parent: null, rows: 1, boxes: [{ box: box('b3', null, DATES[0], DATES[0]), row: 0 }] },
 ]
-const TIER: Record<string, Tier> = { 'x@1-3#0': 'matched', 'x@2-6#0': 'qualified', 'y@8-8#0': 'detected', 'z@5-5#0': 'detected' }
+const TIER: Record<string, Tier> = { 'x@1-3#0': 'in_hit', 'x@2-6#0': 'qualified', 'y@8-8#0': 'detected', 'z@5-5#0': 'detected' }
 const tierOf = (e: EventDict) => TIER[e.instance_id] ?? 'detected'
 
 describe('compare:event 叠到哪条轨、哪一行', () => {
@@ -32,7 +32,7 @@ describe('compare:event 叠到哪条轨、哪一行', () => {
     const { lanes, app } = compareLanes(BASE, { 'w-a': 'x', 'w-zz': 'u' }, events, tierOf, f => f !== 'w-zz')
     expect(lanes.map(l => l.key)).toEqual(['w-a', 'w-b', null])
     expect(app[0].events.map(e => [e.node, e.start, e.end, e.tier, e.row])).toEqual([
-      ['x', 1, 3, 'matched', 0], ['x', 2, 6, 'qualified', 1]])   // 交叠的分两行
+      ['x', 1, 3, 'in_hit', 0], ['x', 2, 6, 'qualified', 1]])   // 交叠的分两行
     expect(app[0].rows).toBe(2)
     expect([app[1].events, app[2].events]).toEqual([[], []])
     expect(lanes[0].rows).toBe(Math.max(1, laneRowsFor(2)))
@@ -169,7 +169,7 @@ describe('compare 的系列', () => {
 
 describe('tier tag', () => {
   it('只有 qualified、detected 挂,进了 hit 的不挂', () => {
-    expect([tierTagOf('matched'), tierTagOf('qualified'), tierTagOf('detected')]).toEqual([null, 'qualified_only', 'detected_only'])
+    expect([tierTagOf('in_hit'), tierTagOf('qualified'), tierTagOf('detected')]).toEqual([null, 'qualified_only', 'detected_only'])
   })
   it('同一行下一个的起点;不同行互不相干', () => {
     expect(nextStarts([{ key: 'a', start: 5, end: 6 }, { key: 'a', start: 0, end: 2 }, { key: 'b', start: 3, end: 3 },
@@ -186,7 +186,7 @@ describe('tier tag', () => {
     const topology = { nodes: [{ node_id: 'a', where_rules: [] }, { node_id: 'b', where_rules: [] },
                                { node_id: 'p', where_rules: [], solve: false }], edges: [] }
     const events = [ev('a', 0, 2), ev('a', 4, 5), ev('b', 1, 1), ev('p', 3, 4)]
-    const tiers: Record<string, Tier> = { 'a@0-2#0': 'matched', 'a@4-5#0': 'qualified', 'b@1-1#0': 'detected' }
+    const tiers: Record<string, Tier> = { 'a@0-2#0': 'in_hit', 'a@4-5#0': 'qualified', 'b@1-1#0': 'detected' }
     const bars = DATES.slice(0, 8).map(date => ({ date, o: 1, h: 1, l: 1, c: 1, v: 1, rv: 1 }))
     const input: any = {
       topology, isolatedNodeIds: new Set(), tagList: ['a', 'b', 'p'], level: 'detected', nodeColors: {},

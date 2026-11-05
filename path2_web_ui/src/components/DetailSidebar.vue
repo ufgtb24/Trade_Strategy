@@ -50,9 +50,9 @@
       </button>
     </div>
 
-    <!-- 硬伤级修补:被 A2 post-filter 淘汰的残缺 match(数据未到时恒不渲染,见 droppedMatches 注释) -->
-    <div v-if="droppedMatches.length" class="dropped-matches-notice">
-      ⚠ 这些 marker 属于被消费的 node · 当前 pattern 未触发({{ droppedMatches.length }} 个残缺 match)
+    <!-- 硬伤级修补:被 A2 post-filter 淘汰的残缺 hit(数据未到时恒不渲染,见 droppedHits 注释) -->
+    <div v-if="droppedHits.length" class="dropped-hits-notice">
+      ⚠ 这些 marker 属于被消费的 node · 当前 pattern 未触发({{ droppedHits.length }} 个残缺 hit)
     </div>
 
     <!-- 漏斗总览:analysis 就绪时常驻 -->
@@ -78,8 +78,8 @@
               {{ tracedCount(node) }}
             </span>
             <span class="funnel-arrow">▸</span>
-            <span class="funnel-segment" :style="{ color: tierColor('matched', node.node_id) }">
-              {{ matchedCountForNode(node) }}
+            <span class="funnel-segment" :style="{ color: tierColor('in_hit', node.node_id) }">
+              {{ inHitCountForNode(node) }}
             </span>
             <span class="expand-icon">{{ expandedNodeIds.has(node.node_id) ? '▲' : '▼' }}</span>
           </template>
@@ -127,23 +127,23 @@
       </div>
     </template>
 
-    <!-- 命中匹配列表:analysis 就绪时常驻;点行 → 选中 match 展开 trace + 图上高亮 -->
+    <!-- hit 列表:analysis 就绪时常驻;点行 → 选中 hit 展开 trace + 图上高亮 -->
     <template v-if="effectivePattern && effectiveAnalysis && effectiveAnalysis.hits.length">
-      <h3 class="section-title">命中匹配</h3>
+      <h3 class="section-title section-title--sym" title="这只股票、这个 pattern 的每一次 hit;点行 = 点图上的 bracket">hits</h3>
       <div
         v-for="(m, mi) in effectiveAnalysis.hits" :key="m.hit_id"
-        class="match-row"
-        :class="{ 'match-row--selected': markedMatchIds.has(m.hit_id) }"
-        @click="selectMatchRow(m.hit_id)"
+        class="hit-row"
+        :class="{ 'hit-row--selected': markedHitIds.has(m.hit_id) }"
+        @click="selectHitRow(m.hit_id)"
       >
-        <span class="match-span">{{ '①②③④⑤⑥⑦⑧⑨'[mi] ?? (mi + 1) }} {{ m.start_idx }}–{{ m.end_idx }}</span>
-        <span v-if="m.forward_return !== undefined" class="match-ret"
+        <span class="hit-span">{{ '①②③④⑤⑥⑦⑧⑨'[mi] ?? (mi + 1) }} {{ m.start_idx }}–{{ m.end_idx }}</span>
+        <span v-if="m.forward_return !== undefined" class="hit-ret"
               :class="m.forward_return !== null && m.forward_return >= 0 ? 'ret-pos' : 'ret-neg'">
           ret_{{ (effectiveScan ?? scanFile?.scan)?.label_horizon }}: {{ formatForwardReturn(m.forward_return) }}
           <span v-if="view.isExploring" class="ret-live"
                 title="探索态现算值(Working Copy 口径),与左侧列表的 scan 冻结 ret 口径不同">†</span>
         </span>
-        <span v-if="m.forward_drawdown !== undefined" class="match-dd"
+        <span v-if="m.forward_drawdown !== undefined" class="hit-dd"
               :class="m.forward_drawdown !== null && m.forward_drawdown < 0 ? 'dd-neg' : 'dd-pos'">
           d_{{ (effectiveScan ?? scanFile?.scan)?.label_horizon }}: {{ formatForwardReturn(m.forward_drawdown) }}
           <span v-if="view.isExploring" class="ret-live"
@@ -152,22 +152,22 @@
       </div>
     </template>
 
-    <!-- per-match trace:选中 match 时叠加显示 -->
-    <div v-if="showTrace && selectedMatch" ref="traceEl" class="match-trace">
-      <h3 class="section-title">匹配 trace</h3>
-      <div v-if="selectedMatch.forward_return !== undefined" class="ret-row">
-        ret_{{ (effectiveScan ?? scanFile?.scan)?.label_horizon }}: <strong>{{ formatForwardReturn(selectedMatch.forward_return) }}</strong>
+    <!-- per-hit trace:选中 hit 时叠加显示 -->
+    <div v-if="showTrace && selectedHit" ref="traceEl" class="hit-trace">
+      <h3 class="section-title section-title--sym" title="选中这次 hit 的留痕:各 node 的 where、各条边是否成立">hit_trace</h3>
+      <div v-if="selectedHit.forward_return !== undefined" class="ret-row">
+        ret_{{ (effectiveScan ?? scanFile?.scan)?.label_horizon }}: <strong>{{ formatForwardReturn(selectedHit.forward_return) }}</strong>
         <span v-if="view.isExploring" class="ret-live"
               title="探索态现算值(Working Copy 口径),与左侧列表的 scan 冻结 ret 口径不同">†</span>
       </div>
-      <div v-if="selectedMatch.forward_drawdown !== undefined" class="ret-row">
-        d_{{ (effectiveScan ?? scanFile?.scan)?.label_horizon }}: <strong>{{ formatForwardReturn(selectedMatch.forward_drawdown) }}</strong>
+      <div v-if="selectedHit.forward_drawdown !== undefined" class="ret-row">
+        d_{{ (effectiveScan ?? scanFile?.scan)?.label_horizon }}: <strong>{{ formatForwardReturn(selectedHit.forward_drawdown) }}</strong>
         <span v-if="view.isExploring" class="ret-live"
               title="探索态现算值(Working Copy 口径),与左侧列表的 scan 冻结 d 口径不同">†</span>
       </div>
       <!-- node 行:可点击,高亮当前聚焦实例 focusedInstanceRef -->
       <div
-        v-for="(nid, nodeKey) in selectedMatch.node_index" :key="nodeKey"
+        v-for="(nid, nodeKey) in selectedHit.node_index" :key="nodeKey"
         class="node-row trace-node-row"
         :class="{ 'trace-node-row--selected': isNodeSelected(nid) }"
         @click="selectNodeEvent(nid)"
@@ -176,8 +176,8 @@
         <!-- 硬伤 A · node.rel "K/N ✓" 徽标(数据存在才亮,来自 diag.nodes[node].rel) -->
         <RelBadge v-if="nodeRel(nodeKey)" :ok="nodeRel(nodeKey)!.ok" :total="nodeRel(nodeKey)!.total" size="sm" />
         <span class="event-ref">{{ nid }}</span>
-        <template v-if="selectedMatch.predicate_trace?.where_results[nodeKey]">
-          <span v-for="(w, cid) in selectedMatch.predicate_trace.where_results[nodeKey]" :key="cid" class="clause">
+        <template v-if="selectedHit.predicate_trace?.where_results[nodeKey]">
+          <span v-for="(w, cid) in selectedHit.predicate_trace.where_results[nodeKey]" :key="cid" class="clause">
             {{ cid }}={{ fmtValue(w.measured) }}
             <em v-if="w.op">({{ w.op }}{{ w.threshold }})</em>
             {{ w.satisfied ? '✓' : '✗' }}
@@ -185,12 +185,12 @@
         </template>
       </div>
       <h4>边</h4>
-      <div v-for="(w, key) in selectedMatch.predicate_trace?.edge_results" :key="key" class="edge-row">
+      <div v-for="(w, key) in selectedHit.predicate_trace?.edge_results" :key="key" class="edge-row">
         {{ key }} {{ fmt(w.measured?.value, w.measured?.kind) }} {{ w.satisfied ? '✓' : '✗' }}
       </div>
     </div>
 
-    <div v-if="!effectivePattern || !effectiveAnalysis" class="hint">hover K 线 event 看属性 · 点匹配带看 trace · 点拓扑节点展开候选表</div>
+    <div v-if="!effectivePattern || !effectiveAnalysis" class="hint">hover K 线 event 看属性 · 点 bracket 看 trace · 点拓扑节点展开候选表</div>
   </div>
 </template>
 
@@ -209,12 +209,12 @@ import type { TopoNode, AttrRow, ClauseWitness, PairPayload } from '../types'
 
 const view = useViewStore()
 const {
-  selectedMatch, effectivePattern, effectiveAnalysis,
-  diag, isolated, matchedIds, matchedEventIds, qualifiedIds, nodeColors, focusedInstanceRef, scanFile, effectiveScan,
+  selectedHit, effectivePattern, effectiveAnalysis,
+  diag, isolated, inHitIds, inHitEventIds, qualifiedIds, nodeColors, focusedInstanceRef, scanFile, effectiveScan,
   activeDetailCard, timeScopeResponse, pairScopeResponse,
   debugPending, debugTarget, debugError,
-  showTrace, expandedNodeIds, markedMatchIds, markedEventIds,   // Task 4 新增(集合版)
-  focusedMatchId,   // watch 滚动 trace 用
+  showTrace, expandedNodeIds, markedHitIds, markedEventIds,   // Task 4 新增(集合版)
+  focusedHitId,   // watch 滚动 trace 用
 } = storeToRefs(view)
 
 // DOM refs for scroll-to-trace
@@ -226,8 +226,8 @@ function toggleExpand(nodeId: string) {
   view.toggleExpandedNode(nodeId)
 }
 
-// trace 展开时滚入视口(旧 watch(selected) 里 kind==='match' 分支迁到这里)
-watch([showTrace, focusedMatchId], ([show]) => {
+// trace 展开时滚入视口(旧 watch(selected) 里 kind==='hit' 分支迁到这里)
+watch([showTrace, focusedHitId], ([show]) => {
   if (show) {
     nextTick(() => {
       if (traceEl.value && sidebarEl.value && typeof traceEl.value.scrollIntoView === 'function') {
@@ -251,19 +251,19 @@ function detectedCount(node: TopoNode): number {
 }
 
 function tracedCount(node: TopoNode): number {
-  // 实例流:matchedIds 集合元素为复合键,单键 has 恒 miss;改用 eventTier(实例级正确,
-  // 与 KlineChart.vue marker 上色同一判定)。traced = qualified ∪ matched = 非 detected。
+  // 实例流:inHitIds 集合元素为复合键,单键 has 恒 miss;改用 eventTier(实例级正确,
+  // 与 KlineChart.vue marker 上色同一判定)。traced = qualified ∪ in_hit = 非 detected。
   return bandEvents(node).filter(e => view.eventTier(e) !== 'detected').length
 }
 
-function matchedCountForNode(node: TopoNode): number {
-  // 实例流:同上,matched 档判定走 eventTier(实例级)
-  return bandEvents(node).filter(e => view.eventTier(e) === 'matched').length
+function inHitCountForNode(node: TopoNode): number {
+  // 实例流:同上,in_hit 档判定走 eventTier(实例级)
+  return bandEvents(node).filter(e => view.eventTier(e) === 'in_hit').length
 }
 
 // ─── 着色 ─────────────────────────────────────────────────────────────────────
 
-function tierColor(tier: 'detected' | 'qualified' | 'matched', nodeId: string): string {
+function tierColor(tier: 'detected' | 'qualified' | 'in_hit', nodeId: string): string {
   return colorOf(tier, nodeId, nodeColors.value)
 }
 
@@ -306,10 +306,10 @@ function combinatorDetail(w: ClauseWitness, prefix = ''): string {
   }).join('\n')
 }
 
-/** 候选表行的 tier:先看 matched 实例集,再看 qualifiedIds,否则 detected。
- *  实例流:AttrRow.instance_id 直接查集(matchedEventIds/qualifiedIds 集合元素即 instance_id)。 */
-function rowTier(row: AttrRow): 'matched' | 'qualified' | 'detected' {
-  if (matchedEventIds.value.has(row.instance_id)) return 'matched'
+/** 候选表行的 tier:先看 in_hit 实例集,再看 qualifiedIds,否则 detected。
+ *  实例流:AttrRow.instance_id 直接查集(inHitEventIds/qualifiedIds 集合元素即 instance_id)。 */
+function rowTier(row: AttrRow): 'in_hit' | 'qualified' | 'detected' {
+  if (inHitEventIds.value.has(row.instance_id)) return 'in_hit'
   if (qualifiedIds.value.has(row.instance_id)) return 'qualified'
   return 'detected'
 }
@@ -318,14 +318,14 @@ function rowTier(row: AttrRow): 'matched' | 'qualified' | 'detected' {
 function leftColor(row: AttrRow, nodeId: string): string {
   return colorOf(rowTier(row), nodeId, nodeColors.value)
 }
-/** 色条宽度按 tier 分档:matched 最宽,便于色盲/低对比场景通过宽度识别层级(色恒非唯一信道)。
+/** 色条宽度按 tier 分档:in_hit 最宽,便于色盲/低对比场景通过宽度识别层级(色恒非唯一信道)。
  * total = borderWidth + paddingLeft 保持 15px 恒定 → 文字左端在三档间对齐,只有色条本身变宽/变窄。 */
 function leftWidth(row: AttrRow): number {
   const t = rowTier(row)
-  return t === 'matched' ? 12 : t === 'qualified' ? 6 : 3
+  return t === 'in_hit' ? 12 : t === 'qualified' ? 6 : 3
 }
 
-// ─── 匹配 trace 双向高亮 ─────────────────────────────────────────────────────
+// ─── hit trace 双向高亮 ─────────────────────────────────────────────────────
 
 /**
  * 硬伤 A · node 的入边关系判定汇总(K/N)。diag.nodes[node].rel 是 RelRow[](按 src class 分行);
@@ -340,7 +340,7 @@ function nodeRel(nodeKey: string | number): { ok: number; total: number } | null
   }
 }
 
-/** match node_index 值为 instance_id 字符串(node 名 → 实例键),直接参与聚焦判定 */
+/** hit.node_index 值为 instance_id 字符串(node 名 → 实例键),直接参与聚焦判定 */
 function isNodeSelected(instanceId: string): boolean {
   return !!instanceId && instanceId === focusedInstanceRef.value
 }
@@ -355,9 +355,9 @@ function selectCandidateRow(instanceId: string) {
   view.focusEvent(instanceId)
 }
 
-/** 点击命中匹配列表行 → focusMatch(等价图上 bracket click,spec §3.3) */
-function selectMatchRow(matchId: string): void {
-  view.focusMatch(matchId)
+/** 点击 hit 列表行 → focusHit(等价图上 bracket click,spec §3.3) */
+function selectHitRow(hitId: string): void {
+  view.focusHit(hitId)
 }
 
 // ── 首次穿越方向 chip(Task 5) ─────────────────────────────────────────────
@@ -370,10 +370,10 @@ function selectMatchRow(matchId: string): void {
 const pairPayloadValid = computed(() =>
   !!pairScopeResponse.value && 'valid' in pairScopeResponse.value.payload)
 
-/** 硬伤级修补:dropped_hits(A2 post-filter 淘汰的残缺 match)已加到 path2/dag/result.py::
+/** 硬伤级修补:dropped_hits(A2 post-filter 淘汰的残缺 hit)已加到 path2/dag/result.py::
  * AnalysisResult,但 serialize.py 尚未序列化进前端 Analysis 契约——any-cast 防御式探测,同
  * 数据未到时恒空数组、不渲染。*/
-const droppedMatches = computed<unknown[]>(() => (effectiveAnalysis.value as any)?.dropped_hits ?? [])
+const droppedHits = computed<unknown[]>(() => (effectiveAnalysis.value as any)?.dropped_hits ?? [])
 
 function closeDetailCard() {
   view.clearDetailCard()   // clearDetailCard 内部已重置 currentDiagnoseNode
@@ -405,6 +405,7 @@ function undoSwap() {
 .sidebar { padding: 10px 12px; font-size: 12px; overflow-y: auto; }
 .panel-name { font-weight: 700; font-size: 13px; color: #334155; padding-bottom: 6px; margin-bottom: 8px; border-bottom: 1px solid #e2e8f0; }
 .section-title { font-size: 12px; font-weight: 600; color: #475569; margin: 8px 0 4px; }
+.section-title--sym { font-family: var(--mono); }
 
 .funnel-row {
   display: flex; align-items: center; gap: 6px; padding: 4px 6px;
@@ -435,26 +436,26 @@ function undoSwap() {
 .cell-clause { padding: 2px 6px; }
 .cell-clause em { color: #94a3b8; font-style: normal; }
 
-.match-row {
+.hit-row {
   display: flex; align-items: center; gap: 8px; padding: 4px 6px;
   border-radius: 4px; cursor: pointer; border: 1px solid transparent; margin-bottom: 2px;
 }
-.match-row:hover { background: #f1f5f9; }
-.match-row--selected { background: #fef9c3; border-color: #fbbf24; }
-.match-span { font-size: 11px; color: #475569; flex: 1; }
-.match-ret { font-weight: 700; font-size: 12px; }
+.hit-row:hover { background: #f1f5f9; }
+.hit-row--selected { background: #fef9c3; border-color: #fbbf24; }
+.hit-span { font-size: 11px; color: #475569; flex: 1; }
+.hit-ret { font-weight: 700; font-size: 12px; }
 .ret-pos { color: #16a34a; }
 .ret-neg { color: #dc2626; }
 /* forward_drawdown 显示(ret 的对偶):统一带符号百分比,负值(下行)用红,零/正值用绿;
-   颜色纪律遵循全项目色盲友好约定(饱和度而非色相区分,见 .match-ret)。 */
-.match-dd { font-weight: 700; font-size: 12px; }
+   颜色纪律遵循全项目色盲友好约定(饱和度而非色相区分,见 .hit-ret)。 */
+.hit-dd { font-weight: 700; font-size: 12px; }
 .dd-neg { color: #dc2626; }
 .dd-pos { color: #16a34a; }
 /* Task 13 · 探索态现算 ret 上标(与 scan 冻结口径区分) */
 .ret-live { color: #d97706; font-weight: 700; margin-left: 1px; }
 
 .ret-row { margin: 4px 0; color: #334155; }
-.match-trace { margin-top: 10px; border-top: 1px solid #e2e8f0; padding-top: 8px; }
+.hit-trace { margin-top: 10px; border-top: 1px solid #e2e8f0; padding-top: 8px; }
 .node-row, .edge-row { margin: 4px 0; display: flex; gap: 8px; flex-wrap: wrap; }
 .trace-node-row { cursor: pointer; padding: 3px 6px; border-radius: 4px; border: 1px solid transparent; }
 .trace-node-row:hover { background: #f1f5f9; }
@@ -473,7 +474,7 @@ function undoSwap() {
 }
 .caveats-top { margin: 2px 20px 6px 0; }
 .caveat { font-size: 11px; color: #92400e; background: #fefcbf; border-radius: 4px; padding: 3px 6px; margin-bottom: 2px; }
-.dropped-matches-notice {
+.dropped-hits-notice {
   font-size: 11px; color: #92400e; background: #fefcbf; border-radius: 4px;
   padding: 4px 6px; margin-bottom: 8px;
 }

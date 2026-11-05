@@ -10,18 +10,18 @@ import { storeToRefs } from 'pinia'
 import { useViewStore } from '../stores/view'
 import type { HitDict } from '../types'
 
-const props = defineProps<{ matches: HitDict[] }>()
+const props = defineProps<{ hits: HitDict[] }>()
 const view = useViewStore()
-const { candidateMatchIds } = storeToRefs(view)
+const { candidateHitIds } = storeToRefs(view)
 
 const ORDINAL_CHARS = ['①', '②', '③', '④', '⑤', '⑥', '⑦', '⑧', '⑨']
 
 const ordinalChars = computed<string[]>(() => {
-  if (candidateMatchIds.value.size === 0) return []
-  // Sort matches by start_idx to match packBrackets / tooltip ordinal semantics (same as Task 9 fix)
-  const sortedByStart = [...props.matches].sort((a, b) => a.start_idx - b.start_idx)
+  if (candidateHitIds.value.size === 0) return []
+  // Sort hits by start_idx to stay aligned with packBrackets / tooltip ordinal semantics (same as Task 9 fix)
+  const sortedByStart = [...props.hits].sort((a, b) => a.start_idx - b.start_idx)
   const out: string[] = []
-  for (const id of candidateMatchIds.value) {
+  for (const id of candidateHitIds.value) {
     const m = sortedByStart.find((mm) => mm.hit_id === id)
     if (!m) continue
     const ord = sortedByStart.indexOf(m) + 1

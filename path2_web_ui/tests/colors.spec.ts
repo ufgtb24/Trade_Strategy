@@ -29,15 +29,15 @@ describe('deriveNodeColors', () => {
 })
 
 describe('colorOf tier', () => {
-  it('matched→nodeColor / qualified→深灰 / detected→浅灰', () => {
+  it('in_hit→nodeColor / qualified→深灰 / detected→浅灰', () => {
     const rc = { burst: '#ff0000' }
-    expect(colorOf('matched', 'burst', rc)).toBe('#ff0000')
+    expect(colorOf('in_hit', 'burst', rc)).toBe('#ff0000')
     expect(colorOf('qualified', 'burst', rc)).toBe('#9ca3af')
     expect(colorOf('detected', 'burst', rc)).toBe('#d1d5db')
   })
-  it('matched + node 缺色 → NEUTRAL 兜底', () => {
-    expect(colorOf('matched', 'unknown', {})).toBe('#888888')
-    expect(colorOf('matched', null, {})).toBe('#888888')
+  it('in_hit + node 缺色 → NEUTRAL 兜底', () => {
+    expect(colorOf('in_hit', 'unknown', {})).toBe('#888888')
+    expect(colorOf('in_hit', null, {})).toBe('#888888')
   })
 })
 

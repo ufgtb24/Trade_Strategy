@@ -215,7 +215,7 @@ describe('buildMarkerTooltipFormatter', () => {
     raw: {}, refs: [],
   }
 
-  it('非 match 端点 + 非空 payload 渲染身份段 + 段头 Identity', () => {
+  it('非 hit 端点 + 非空 payload 渲染身份段 + 段头 Identity', () => {
     const resolver = (_eid: string): TooltipPayload => emptyPayload
     const fmt = buildMarkerTooltipFormatter(resolver, undefined)
     const html = fmt({ data: { instance_id: 'b1#0' } })
@@ -225,17 +225,17 @@ describe('buildMarkerTooltipFormatter', () => {
     expect(html).toContain('id:   b1')
   })
 
-  it('match 端点 + event 信息：顶行 + 三段拼接（不再互斥）', () => {
+  it('hit 端点 + event 信息：顶行 + 三段拼接（不再互斥）', () => {
     const resolver = (_eid: string): TooltipPayload => ({
       identity: { nodes: ['bo_burst'], dateStart: '2024-03-15', dateEnd: null, eventId: 'b1' },
       clauses: [{ cid: 'first_drought', node: 'bo_burst', measured: 0, op: '>=', threshold: 20, satisfied: false,
                   depth: 0, kind: null }],
       raw: { count: 2 }, refs: [],
     })
-    const matchLabel = (id: string) => `MATCH:${id}`
-    const fmt = buildMarkerTooltipFormatter(resolver, matchLabel)
+    const hitLabel = (id: string) => `HIT:${id}`
+    const fmt = buildMarkerTooltipFormatter(resolver, hitLabel)
     const html = fmt({ data: { instance_id: 'b1#0', hit_id: 'm1' } })
-    expect(html).toContain('Match: MATCH:m1')
+    expect(html).toContain('hit: HIT:m1')
     expect(html).toContain('<b>Identity</b>')
     expect(html).toContain('<b>Clauses</b>')
     expect(html).toContain('<b>Attributes</b>')
@@ -340,12 +340,12 @@ describe('buildMarkerTooltipFormatter', () => {
     expect(html).not.toContain('<b>Attributes</b>')
   })
 
-  it('match 端点但 matchLabel 返回 null 时不渲染顶行', () => {
+  it('hit 端点但 hitLabel 返回 null 时不渲染顶行', () => {
     const resolver = (_eid: string): TooltipPayload => emptyPayload
-    const matchLabel = (_id: string) => null
-    const fmt = buildMarkerTooltipFormatter(resolver, matchLabel)
+    const hitLabel = (_id: string) => null
+    const fmt = buildMarkerTooltipFormatter(resolver, hitLabel)
     const html = fmt({ data: { instance_id: 'b1#0', hit_id: 'm1' } })
-    expect(html).not.toContain('Match:')
+    expect(html).not.toContain('hit:')
     expect(html).toContain('<b>Identity</b>')   // 但 event 三段仍渲染
   })
 
