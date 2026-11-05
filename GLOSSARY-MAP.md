@@ -9,7 +9,7 @@
 
 ## Relationships
 
-- **path2 → path2_web**：path2_web 是 path2 的纯投影层，它渲染的对象就是 path2 里的 event / node / match。读 web 词条时如果碰到核心词，以 `path2/GLOSSARY.md` 那份为准。
+- **path2 → path2_web**：path2_web 是 path2 的纯投影层，它渲染的对象就是 path2 里的 event / node / hit。读 web 词条时如果碰到核心词，以 `path2/GLOSSARY.md` 那份为准。
 - **path2_web 不含走势语义**：界面不知道 bo 和 burst 各是什么，只按 node 分轨、按 where 分列。
 
 ## 命名规则
