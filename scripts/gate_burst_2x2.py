@@ -83,7 +83,7 @@ CELLS = {
 
 
 def _check(pkl_path: Path, params: Params, start: str, end: str):
-    """worker:返回 (ticker, hit, n_burst_events, err)。analyze 一遍同时取 matches 与体积。"""
+    """worker:返回 (ticker, hit, n_burst_events, err)。analyze 一遍同时取 hits 与体积。"""
     ticker = pkl_path.stem
     try:
         df = pd.read_pickle(pkl_path)
@@ -92,7 +92,7 @@ def _check(pkl_path: Path, params: Params, start: str, end: str):
             return (ticker, False, 0, None)
         res = analyze(win, params)
         n_burst = sum(1 for e in res.events if e.node_id == "burst")
-        return (ticker, len(res.matches) > 0, n_burst, None)
+        return (ticker, len(res.hits) > 0, n_burst, None)
     except Exception as e:
         return (ticker, False, 0, f"{type(e).__name__}: {e}")
 
@@ -114,7 +114,7 @@ def main() -> None:
     for cell, variant in CELLS.items():
         dag_spec_mod.BurstDetector = variant          # ★ 进程池 fork 前打补丁
         t0 = time.perf_counter()
-        matched, total_burst, errors = set(), 0, 0
+        hit_tickers, total_burst, errors = set(), 0, 0
         with ProcessPoolExecutor(max_workers=MAX_WORKERS) as ex:
             futs = [ex.submit(_check, p, PARAMS, START_DATE, END_DATE) for p in pkls]
             for f in as_completed(futs):
@@ -124,11 +124,11 @@ def main() -> None:
                     continue
                 total_burst += n_burst
                 if hit:
-                    matched.add(ticker)
-        hits[cell] = matched
+                    hit_tickers.add(ticker)
+        hits[cell] = hit_tickers
         vols[cell] = total_burst
-        (OUT_DIR / f"gate_{cell}.txt").write_text("\n".join(sorted(matched)) + "\n")
-        print(f"[{cell}] hit={len(matched)} burst_events={total_burst} "
+        (OUT_DIR / f"gate_{cell}.txt").write_text("\n".join(sorted(hit_tickers)) + "\n")
+        print(f"[{cell}] hit={len(hit_tickers)} burst_events={total_burst} "
               f"errors={errors} elapsed={time.perf_counter() - t0:.0f}s")
 
     h1, h2 = len(hits["span_greedy"]), len(hits["chain_greedy"])

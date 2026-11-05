@@ -2,14 +2,14 @@
 
 pattern 质量自动化检测:每只股双端缓冲切窗(首部供指标 warm-up、尾部供 label,
 参考 BreakoutStrategy/analysis/scanner.py 的 preprocess_dataframe),缓冲窗上跑
-analyze,取每个 match 的 END_NODE(买点窗,与 path2_apps eval_meta 口径同源,
+analyze,取每个 hit 的 END_NODE(买点窗,与 path2_apps eval_meta 口径同源,
 bottom_burst = 'tb.segments')算 close[t+N]/close[t]-1 的买点日均值,逐日消费按
 样本消费窗 [start, end] 双边截取(与 path2_web scan/eval 同口径),输出
 per-买点明细 CSV + 每 horizon 汇总(count/mean/median/win_rate)。
 
-口径说明:缓冲窗上的 match 集合与 path2_filter_bottom_burst.py(严格
+口径说明:缓冲窗上的 hit 集合与 path2_filter_bottom_burst.py(严格
 [START, END] 窗)不完全可比——首部多出的数据使 trend 分段、ATR/vol 基线在窗口
-早段更真实,match 可能增减。这是有意为之(评估口径更真实),不是 bug。detectors
+早段更真实,hit 可能增减。这是有意为之(评估口径更真实),不是 bug。detectors
 对切窗边界不平移不变,任何切窗口径都会影响检测,缓冲口径更接近"真实历史"。
 
 参数全部在 main() 起始声明(无 argparse,CLAUDE.md 入口规范)。
@@ -30,7 +30,7 @@ import pandas as pd
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
 
-from path2.eval import _resolve_end_events, match_forward_returns
+from path2.eval import _resolve_end_events, hit_forward_returns
 from path2_apps.bottom_burst import analyze
 from path2_apps.bottom_burst.params import Params
 from path2_web.data import slice_window
@@ -47,7 +47,7 @@ def _eval_ticker(
     模块级函数(非 closure/lambda),ProcessPool pickle 要求。
     有效性 = 买点起点日期 ∈ [start, end](前置组件允许伸进首部缓冲,
     买点落尾部缓冲的属窗外信号、丢弃);去重 = 同 ticker 内按容器 leaf 的
-    instance_id(多 match 共享同一买点窗只计一次,评估对象是买点)。
+    instance_id(多个 hit 共享同一买点窗只计一次,评估对象是买点)。
     逐日消费(收益/n_buy_days)按样本消费窗双边截取(与 path2_web scan/eval
     同口径):start_ts/end_ts 在 win 内行号 (lo, hi),跨界段只取窗内部分。
     返回 (ticker, rows, err_or_None);单股异常捕获返回 err,绝不抛(免终止整批)。
@@ -70,17 +70,17 @@ def _eval_ticker(
         hi = int(win["date"].searchsorted(end_ts, "right")) - 1
         rows: list[dict] = []
         seen: set[str] = set()
-        for m in res.matches:
-            leaf_ev = m.node_index[end_node.split(".")[0]]   # 容器(买点锚/去重键)
+        for h in res.hits:
+            leaf_ev = h.node_index[end_node.split(".")[0]]   # 容器(买点锚/去重键)
             buy_date = win["date"].iat[leaf_ev.start_idx]
             if not (start_ts <= buy_date <= end_ts):
                 continue
             if leaf_ev.instance_id in seen:
                 continue
             seen.add(leaf_ev.instance_id)
-            events = _resolve_end_events(m, end_node)        # 段级买点窗(tb.segments)
-            rets = match_forward_returns(m, end_node, win, horizons,
-                                         sample_window=(lo, hi))
+            events = _resolve_end_events(h, end_node)        # 段级买点窗(tb.segments)
+            rets = hit_forward_returns(h, end_node, win, horizons,
+                                       sample_window=(lo, hi))
             sample_days = sorted({t for ev in events
                                   for t in ev.sample_bar_indices()
                                   if lo <= t <= hi})
