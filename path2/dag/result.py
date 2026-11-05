@@ -1,6 +1,6 @@
-"""匹配产物 —— EdgeWitness / PredicateTrace / PatternMatch / AnalysisResult。
+"""引擎产物 —— EdgeWitness / PredicateTrace / PatternHit / AnalysisResult。
 
-引擎(Phase 2)产生它们。PatternMatch 继承 Event,node_index 为 node_id → 单 Event。
+引擎(Phase 2)产生它们。PatternHit 继承 Event,node_index 为 node_id → 单 Event。
 EdgeWitness 让 before/within 边可实证(命中两端留痕)。
 """
 from __future__ import annotations
@@ -24,7 +24,7 @@ class EdgeWitness:
 
 @dataclass(frozen=True)
 class ClauseWitness:
-    """单条 where clause 在一次匹配中的判定 + 实测对照(详版 trace 用)。
+    """单条 where clause 在一次命中里的判定 + 实测对照(详版 trace 用)。
     __bool__ == satisfied,使旧代码 `if where_results[nid][cid]` 行为不变(向后兼容)。
     组合子(and/or/not)witness 额外携带 children(witness 全量求值,不短路——诊断口径),
     label 供前端子行显示(叶子=字段名,组合子=kind)。"""
@@ -46,10 +46,10 @@ class PredicateTrace:
 
 
 @dataclass(frozen=True)
-class PatternMatch(Event):
-    """一次完整命中。继承 Event(start_idx/end_idx/confirm_idx)。match_id 为
-    match 唯一键(instance_id 契约:bits 段用各 node 实例键)。"""
-    match_id: str = ""
+class PatternHit(Event):
+    """一次完整命中(hit)。继承 Event(start_idx/end_idx/confirm_idx)。hit_id 为
+    hit 唯一键(instance_id 契约:bits 段用各 node 实例键)。"""
+    hit_id: str = ""
     pattern_id: str = ""
     node_index: Optional[Mapping[str, Event]] = None   # node_id → 单 Event
     children: Tuple[Event, ...] = ()                         # 全绑实例扁平(start_idx 升序)
@@ -67,12 +67,12 @@ class PatternMatch(Event):
 
 @dataclass(frozen=True)
 class AnalysisResult:
-    """走势包 analyze() 的返回值。events=所有节点流去重平铺(共享流只计一遍);matches=命中;spec=声明(供面板)。
+    """走势包 analyze() 的返回值。events=所有节点流去重平铺(共享流只计一遍);hits=命中;spec=声明(供面板)。
     gate_failures=Sprint 2 入口 A(scope=time):worker 挂 collector 跑 analyze 时,三 atom
     (BurstDetector/BODetector/ThrowbackDetector,Task 10-12)on_gate 吐出的短路失败记录快照
     (engine.analyze() 本身不产出,由调用方 dataclasses.replace 附加,默认空 → 既有调用方零改动)。"""
     events: Tuple[Event, ...]
-    matches: Tuple[PatternMatch, ...]
+    hits: Tuple[PatternHit, ...]
     spec: object = None
     gate_failures: Tuple[GateFailure, ...] = ()
 
@@ -83,7 +83,7 @@ class AnalysisResult:
         # detector 重复 evaluate 的信号。同一 instance_id 内允许多实例
         # (per-source 视角,属性按来源区分、可以不同),仅禁止「同 instance_id
         # 完全重复对象」(同 instance_id 全属性全等 = 重复 evaluate bug)。
-        # res.events 单视图 = 实例明细,只服务诊断/展示(统计读 match 不读 events)。
+        # res.events 单视图 = 实例明细,只服务诊断/展示(统计读 hit 不读 events)。
         for i, a in enumerate(self.events):
             for b in self.events[i + 1:]:
                 assert not (a.instance_id == b.instance_id and a == b), \
@@ -128,4 +128,4 @@ class NodeDiagnostic:
 class NodeDiagnostics:
     """diagnose() 的返回:每个 node 一份局部健康诊断。note 提醒单 node 局部性。"""
     nodes: Mapping[str, NodeDiagnostic]
-    note: str = "单 node 局部诊断;通过不代表能凑成完整匹配"
+    note: str = "单 node 局部诊断;通过不代表能凑成完整命中"

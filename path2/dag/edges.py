@@ -86,7 +86,7 @@ class DependencyEdge(ABC):
     def signature_fields(self) -> tuple[str, ...]:
         """前沿割签名据此自描述地构造维度:本边 satisfies/feasible_window
         实际依赖 e_src 的哪些字段。引擎签名取所有跨割边 signature_fields 的并集。
-        覆盖不全 = INV-C 漏匹配(verdict)。默认空(基类不依赖任何 src 字段)。"""
+        覆盖不全 = INV-C 漏命中(verdict)。默认空(基类不依赖任何 src 字段)。"""
         return ()
 
     def _anchor_ok(self, src_ep: Event, e_dst: Event) -> bool:
@@ -167,8 +167,8 @@ class OverlapEdge(DependencyEdge):
 @dataclass(frozen=True)
 class EqualsEdge(DependencyEdge):
     """同段边:src 与 dst 占据完全相同区间。
-    ★ 引擎硬约束(verdict §6.2,实证发现的漏匹配 bug 的修复):feasible_window 把
-    dst.start 钉死(非可放宽下界),C1 等-end 塌缩对其 SRC 节点会漏匹配 → 引擎必须对
+    ★ 引擎硬约束(verdict §6.2,实证发现的漏命中 bug 的修复):feasible_window 把
+    dst.start 钉死(非可放宽下界),C1 等-end 塌缩对其 SRC 节点会漏命中 → 引擎必须对
     "作为任何 EqualsEdge 之 SRC 的节点"关闭 C1(Phase 2;PatternSpec.eq_src_nodes 喂判据)。
     satisfies/window/sig 本身无需特殊。
     """
@@ -189,14 +189,14 @@ class StartContainmentEdge(DependencyEdge):
     与 ContainmentEdge 的区别:ContainmentEdge 要求 dst 整体被 src 包含(dst.end <= src.end);
     StartContainmentEdge 只要求 dst.start ∈ [src.start, src.end],dst.end 不受约束。
 
-    适用场景:side→burst 边迁移(match-preserving)。
+    适用场景:side→burst 边迁移(hit-preserving)。
       当前 ONCE 语义:ContainmentEdge("side","bo") 对 bo(点事件)= "side 包含 bo.start"。
       迁移后 burst 是宽事件(start=first_bo.start, end=last_bo.end);ContainmentEdge 会额外要求
-      last_bo.end <= side.end,比原语义更严,非 match-preserving。
+      last_bo.end <= side.end,比原语义更严,非 hit-preserving。
       StartContainmentEdge 精确保留原语义:只约束 burst.start(=first_bo.start) 落 side 区间。
 
     INV-C 健全:feasible_window 对 dst.start 双侧充要(window 充要 ⟺ satisfies),
-    不依赖 dst.end,无 satisfies-only 字段,无漏匹配风险。
+    不依赖 dst.end,无 satisfies-only 字段,无漏命中风险。
     signature_fields 覆盖 feasible_window 所读的 src 字段(start_idx + end_idx)。
     """
 

@@ -5,7 +5,7 @@ import numpy as np
 import pandas as pd
 
 # 首穿波动率尺度 M(rolling_atr_pct_nanmedian)的默认窗口。path2/eval.py 的
-# match_first_passage / random_day_first_passage 与调参工具链(multivar_core.py /
+# hit_first_passage / random_day_first_passage 与调参工具链(multivar_core.py /
 # multivar_scan.py)四处都要按同一把尺子外传/内算 M——单点导出避免散落字面量 20
 # 改一处不改另一处、静默分叉 FP 口径(复审 Important I-5)。
 FP_ATR_WINDOW: int = 20

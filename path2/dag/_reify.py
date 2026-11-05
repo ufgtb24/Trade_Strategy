@@ -1,5 +1,5 @@
 # path2/dag/_reify.py
-"""Solution -> PatternMatch 物化。node_index = node_id -> 单 Event;children 按 start 升序;
+"""Solution -> PatternHit 物化。node_index = node_id -> 单 Event;children 按 start 升序;
 PredicateTrace 重算 where(实证) + 每正向边 EdgeWitness。measured 为 kind-aware(硬伤 E · Task 13):
 按 edge 类型产出 MeasuredKindAware(kind/value/label),而非笼统 gap 语义。
 """
@@ -8,7 +8,7 @@ from __future__ import annotations
 from path2.dag.edges import (NegationEdge, TemporalEdge, ContainmentEdge, OverlapEdge,
                              EqualsEdge, StartContainmentEdge)
 from path2.dag.gate_failure import MeasuredKindAware
-from path2.dag.result import (PatternMatch, PredicateTrace, EdgeWitness)
+from path2.dag.result import (PatternHit, PredicateTrace, EdgeWitness)
 from path2.dag.where import witness_of
 from path2.dag._solve import endpoint
 
@@ -39,7 +39,7 @@ def _make_measured(edge, u, v) -> MeasuredKindAware:
     return MeasuredKindAware(kind='unknown', value=None, label='?')
 
 
-def reify(sol, streams, plan) -> PatternMatch:
+def reify(sol, streams, plan) -> PatternHit:
     assign = sol.assign
     children = sorted((c for b in assign.values() for c in _flat(b)),
                       key=lambda e: (e.start_idx, e.end_idx))
@@ -71,10 +71,10 @@ def reify(sol, streams, plan) -> PatternMatch:
             measured=_make_measured(e, a, b))
 
     node_bits = "|".join(f"{nid}:{e.instance_id}" for nid, e in sorted(assign.items()))
-    return PatternMatch(
-        match_id=f"{plan.pattern_id}@{start}-{end}#{node_bits}",
+    return PatternHit(
+        hit_id=f"{plan.pattern_id}@{start}-{end}#{node_bits}",
         start_idx=start, end_idx=end,
-        confirm_idx=end,   # 聚合体:所有 constituent event 物化后整个 match 才确认
+        confirm_idx=end,   # 聚合体:所有 constituent event 物化后整个 hit 才确认
         pattern_id=plan.pattern_id,
         node_index=dict(assign),
         children=tuple(children),

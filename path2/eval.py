@@ -1,16 +1,16 @@
-"""path2 评估层:match 买点的前瞻幅度 / 首次穿越方向(pattern 质量度量)。
+"""path2 评估层:hit 买点的前瞻幅度 / 首次穿越方向(pattern 质量度量)。
 
 走势-无关:只依赖 Event 区间 + df["close"]/df["high"]/df["low"]/df["date"]。放
 calc/atr.py 供 rolling_atr_pct_nanmedian(波动率尺度 M;calc 约定纯数值、本模块
-碰 Event/PatternMatch 故 calc 不放此处)。
+碰 Event/PatternHit 故 calc 不放此处)。
 
 幅度量(连续统计量、窗内逐点平均):
-  - match_forward_returns    : max(high[t+1..t+N])/close[t]-1(只看涨,盲区=先涨后跌回)
-  - match_forward_drawdowns  : min(low [t+1..t+N])/close[t]-1(下行镜像,补上述盲区)
+  - hit_forward_returns      : max(high[t+1..t+N])/close[t]-1(只看涨,盲区=先涨后跌回)
+  - hit_forward_drawdowns    : min(low [t+1..t+N])/close[t]-1(下行镜像,补上述盲区)
 
 首次穿越方向(分类量、买点单点;MFE/MAE 丢顺序,这一类把顺序补回来):
-  - spans_first_passage      : 一组买点日区间 (start, end) 上的四态计数(不依赖 match 的底层入口)
-  - match_first_passage      : 买点后窗口内先触上行线 P(1+kM)还是下行线 P/(1+kM)
+  - spans_first_passage      : 一组买点日区间 (start, end) 上的四态计数(不依赖 hit 的底层入口)
+  - hit_first_passage        : 买点后窗口内先触上行线 P(1+kM)还是下行线 P/(1+kM)
                                (end_node 事件的买点日压成区间后交给 spans_first_passage)
   - random_day_first_passage : 全宇宙随机日基线计数(无条件基准,对照 pattern 命中)
   - daily_first_passage      : 区间内全部合格日逐日一行(不抽样,逐日基线的原料;向量化)
@@ -25,7 +25,7 @@ import numpy as np
 import pandas as pd
 
 from path2.core import Event
-from path2.dag.result import PatternMatch
+from path2.dag.result import PatternHit
 
 
 # ---------------------------------------------------------------------------
@@ -92,7 +92,7 @@ def _first_passage_at(
     return "up" if iu < idn else "down"
 
 
-def _resolve_end_events(match, end_node: str) -> Tuple[Event, ...]:
+def _resolve_end_events(hit, end_node: str) -> Tuple[Event, ...]:
     """end_node 解析: 'node_id' → 单 event(现状语义); 'node_id.slot' →
     该容器 child_slots 中该 slot 的 child events(运行时物化,零 spec 依赖)。
 
@@ -102,12 +102,12 @@ def _resolve_end_events(match, end_node: str) -> Tuple[Event, ...]:
     slot 存在但为空 → 空样本(合法,非漂移);slot 名不存在 → KeyError(漂移)。
     """
     if "." not in end_node:
-        return (match.node_index[end_node],)   # 缺失 → KeyError(现状)
+        return (hit.node_index[end_node],)   # 缺失 → KeyError(现状)
     parts = end_node.split(".")
     if len(parts) > 2:
         raise ValueError(f"end_node 路径最多一级: {end_node!r}")
     parent_id, slot_name = parts
-    parent = match.node_index[parent_id]       # 缺失 → KeyError(现状)
+    parent = hit.node_index[parent_id]       # 缺失 → KeyError(现状)
     slot = parent.child_slots().get(slot_name)
     if slot is None:
         raise KeyError(
@@ -116,8 +116,8 @@ def _resolve_end_events(match, end_node: str) -> Tuple[Event, ...]:
     return tuple(slot) if isinstance(slot, tuple) else (slot,)
 
 
-def match_forward_returns(
-    match: PatternMatch,
+def hit_forward_returns(
+    hit: PatternHit,
     end_node: str,
     df: pd.DataFrame,
     horizons: Sequence[int],
@@ -131,13 +131,13 @@ def match_forward_returns(
     买点日 t 仅当 lo <= t <= hi 参与样本,跨界 tb_seg 只取窗内部分计样本;None = 全量
     (向后兼容)。label 前瞻窗不受截取影响(仍看未来 N 根——截的是买点日集合,不是 label 窗)。
 
-    df 必须就是产生该 match 的那个窗口 df(event 的 start_idx/end_idx 是它的
+    df 必须就是产生该 hit 的那个窗口 df(event 的 start_idx/end_idx 是它的
     0-based 行位置索引,索引对齐由调用方保证)。
     t+N 越界的买点日跳过(要求整个 N 日窗口完整可见);某 horizon 全部越界 → 该项 None。
     end_node 缺失 → KeyError;路径最多一级,child slot 无匹配 → KeyError
     (解析协议见 _resolve_end_events)。
     """
-    events = _resolve_end_events(match, end_node)   # 缺失 → KeyError(语义自然)
+    events = _resolve_end_events(hit, end_node)   # 缺失 → KeyError(语义自然)
     close = df["close"]
     high = df["high"]
     n_bars = len(df)
@@ -154,15 +154,15 @@ def match_forward_returns(
     return out
 
 
-def match_forward_drawdowns(
-    match: PatternMatch,
+def hit_forward_drawdowns(
+    hit: PatternHit,
     end_node: str,
     df: pd.DataFrame,
     horizons: Sequence[int],
     sample_window: Optional[tuple[int, int]] = None,
 ) -> dict[int, Optional[float]]:
     """end_node 解析出的 event(s)(买点窗)内逐买点日 min(low[t+1..t+N])/close[t]-1
-    的均值,每 horizon 一项——"未来 N 日内最大跌幅",match_forward_returns 的下行镜像
+    的均值,每 horizon 一项——"未来 N 日内最大跌幅",hit_forward_returns 的下行镜像
     (非端点收益)。补 mfr"只看涨"看不到的先涨后跌回场景。路径样本 = 各 child span
     bar 并集(统一标准协议,与 serialize 同一 _resolve_end_events)。
 
@@ -170,13 +170,13 @@ def match_forward_drawdowns(
     买点日 t 仅当 lo <= t <= hi 参与样本,跨界 tb_seg 只取窗内部分计样本;None = 全量
     (向后兼容)。label 前瞻窗不受截取影响(仍看未来 N 根——截的是买点日集合,不是 label 窗)。
 
-    与 match_forward_returns 同口径:df 必须就是产生该 match 的那个窗口 df
+    与 hit_forward_returns 同口径:df 必须就是产生该 hit 的那个窗口 df
     (event 的 start_idx/end_idx 是它的 0-based 行位置索引,索引对齐由调用方保证);
     t+N 越界的买点日跳过(要求整个 N 日窗口完整可见);某 horizon 全部越界 → 该项 None;
     end_node 缺失 → KeyError;路径最多一级,child slot 无匹配 → KeyError
     (解析协议见 _resolve_end_events)。
     """
-    events = _resolve_end_events(match, end_node)   # 缺失 → KeyError(语义自然)
+    events = _resolve_end_events(hit, end_node)   # 缺失 → KeyError(语义自然)
     close = df["close"]
     low = df["low"]
     n_bars = len(df)
@@ -216,13 +216,13 @@ def spans_first_passage(
     sample_window: Optional[tuple[int, int]] = None,
     M: Optional["np.ndarray"] = None,
 ) -> dict[str, int]:
-    """一组买点日区间上的首次穿越四态计数 {up, down, both, none}——不依赖 match 的底层入口。
+    """一组买点日区间上的首次穿越四态计数 {up, down, both, none}——不依赖 hit 的底层入口。
 
     spans: 可迭代的 (start_idx, end_idx),双端含,均为 df 的 0-based 行位置;逐段展开
     range(start, end+1) 逐日判定。重复的段重复计数——去重是调用方的事(例如同一回踩被
-    多个 match 共享时,先按回踩去重再传入)。
+    多个 hit 共享时,先按回踩去重再传入)。
 
-    其余口径与 match_first_passage 完全相同:
+    其余口径与 hit_first_passage 完全相同:
       - sample_window (lo, hi) 双端含:买点日 t 仅当 lo <= t <= hi 参与计数;只截买点日
         集合、不截前瞻窗;None = 全量。
       - M 缺省时按 rolling_atr_pct_nanmedian(high, low, close, FP_ATR_WINDOW) 内算;外传时
@@ -252,8 +252,8 @@ def spans_first_passage(
     return counts
 
 
-def match_first_passage(
-    match: PatternMatch,
+def hit_first_passage(
+    hit: PatternHit,
     end_node: str,
     df: pd.DataFrame,
     horizon: int,
@@ -263,7 +263,7 @@ def match_first_passage(
 ) -> dict[str, int]:
     """end_node 解析出的 event(s)(买点窗)内逐买点日的首次穿越四态计数:
     {up, down, both, none}(单组)。路径(如 'tb.segments')样本 = 各 child span bar 并集
-    (统一标准协议,与 match_forward_returns 同一 _resolve_end_events)。
+    (统一标准协议,与 hit_forward_returns 同一 _resolve_end_events)。
 
     sample_window: t4 配套的样本消费窗(spec §10 样本消费窗截取),双边含端 (lo, hi)——
     买点日 t 仅当 lo <= t <= hi 参与样本,跨界 tb_seg 只取窗内部分计样本;None = 全量
@@ -281,11 +281,11 @@ def match_first_passage(
     spans_first_passage——展开后买点日序列逐项不变,故对覆写了 sample_bar_indices 的
     容器同样逐位等价。
 
-    集合级 ratio 的分母 = 买点日数(up+down+both+none),与 match_forward_returns 的
+    集合级 ratio 的分母 = 买点日数(up+down+both+none),与 hit_forward_returns 的
     span 全买点日口径对齐。end_node 缺失 → KeyError;路径最多一级,child slot
     无匹配 → KeyError(解析协议见 _resolve_end_events)。
     """
-    events = _resolve_end_events(match, end_node)   # 缺失 → KeyError(语义自然)
+    events = _resolve_end_events(hit, end_node)   # 缺失 → KeyError(语义自然)
     spans = [run for ev in events for run in _index_runs(ev.sample_bar_indices())]
     return spans_first_passage(df, spans, horizon, k, sample_window, M)
 
@@ -308,7 +308,7 @@ def random_day_first_passage(
       2. rng = default_rng(_ticker_seed(ticker, seed))(ticker md5 派生,跨进程稳定);
       3. 抽 min(n_days, len(候选)) 日,逐个 _first_passage_at(几何对称单 k + M)判定、
          累计四态。M = rolling_atr_pct_nanmedian(默认内算,可由 M 参数外传),与
-         match_first_passage 同尺子。
+         hit_first_passage 同尺子。
 
     M: 外传的波动率尺度(每股算一次复用,供多次调用共享,省去重复计算);None 时内算。
     必须按同一个 df 算(len(M) 须等于 len(df)——候选日/首穿下标都是 df 行位置索引),

@@ -1,9 +1,9 @@
-"""app 入口装配工厂:把每个 path2_apps app 手写的 analyze/matches/PATTERN_DAG
+"""app 入口装配工厂:把每个 path2_apps app 手写的 analyze/has_hit/PATTERN_DAG
 三件套收口成一个闭包工厂,消除跨 app 的样板重复。
 
 走势-无关:只依赖 path2.dag.engine 的纯函数 analyze,不绑定任何具体走势。
 每个 app 把自己的 default_params 与 build_pattern 喂进来,工厂返回绑定了
-该 app 私有绑定的 analyze/matches + 默认参数实例 PATTERN_DAG。
+该 app 私有绑定的 analyze/has_hit + 默认参数实例 PATTERN_DAG。
 """
 from __future__ import annotations
 
@@ -27,9 +27,9 @@ def make_app(
         build_pattern: 把 Params 造为 PatternSpec 的工厂(各 app 自己的拓扑)。
 
     返回:
-        ``(analyze, matches, pattern_dag)``:
-        - ``analyze(df, params=None)``: params 缺省时调 default_params(),调引擎匹配。
-        - ``matches(df, params=None)``: analyze 是否有命中。
+        ``(analyze, has_hit, pattern_dag)``:
+        - ``analyze(df, params=None)``: params 缺省时调 default_params(),调引擎求解。
+        - ``has_hit(df, params=None)``: analyze 是否有命中。
         - ``pattern_dag``: build_pattern(default_params()) 的默认参数实例(discovery 入口)。
 
     语义:analyze 每次重新调 default_params()(保持原手写语义,不缓存实例);
@@ -43,7 +43,7 @@ def make_app(
         p = params or default_params()
         return _engine_analyze(build_pattern(p), df, p)
 
-    def matches(df: pd.DataFrame, params: Optional[object] = None) -> bool:
-        return len(analyze(df, params).matches) > 0
+    def has_hit(df: pd.DataFrame, params: Optional[object] = None) -> bool:
+        return len(analyze(df, params).hits) > 0
 
-    return analyze, matches, pattern_dag
+    return analyze, has_hit, pattern_dag
