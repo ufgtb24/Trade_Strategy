@@ -1,7 +1,8 @@
 # 框架、eval 与 app 的 Python 接口改名
 
 Status: ready-for-agent
-Progress: not-started
+Progress: in-progress
+Claimed: 2026-11-04 parallel-tickets ticket-rename-01 @ worktree impl/01-framework-python-api
 Blocked by: none
 
 ## Purpose
