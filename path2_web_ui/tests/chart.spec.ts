@@ -15,12 +15,12 @@ import {
 import type { BandRenderInput } from '../src/render/chart'
 import { computeSubGeometry, type BandGeom } from '../src/render/subGeometry'
 import {
-  deriveTagMap, isolatedNodeIds, eventTierOf, nodeOfEventByBand, bandKeyOf, matchedIds,
+  deriveTagMap, isolatedNodeIds, eventTierOf, nodeOfEventByBand, bandKeyOf, inHitIds,
 } from '../src/render/visible'
 import type { Bar, EventDict, HitDict, Topology, Level, Tier } from '../src/types'
 
 describe('chart.ts — computeEventData / buildMainOption / buildSubOption', () => {
-  // Fixtures(简化最小场景:1 bar / 1 event / 1 match, 用来验契约与切分正确)
+  // Fixtures(简化最小场景:1 bar / 1 event / 1 hit, 用来验契约与切分正确)
   const bars = [
     { date: '2025-01-01', o: 10, c: 12, h: 13, l: 9, v: 1000, rv: 0 },
     { date: '2025-01-02', o: 12, c: 11, h: 12.5, l: 10, v: 800, rv: 0 },
@@ -29,7 +29,7 @@ describe('chart.ts — computeEventData / buildMainOption / buildSubOption', () 
     { instance_id: 'burst_0_1#0', node_id: 'burst', start_idx: 0, end_idx: 1 },
     { instance_id: 'tb_1#0', node_id: 'tb', start_idx: 1, end_idx: 1 },
   ] as any[]
-  const matches = [
+  const hits = [
     { hit_id: 'm@0-1', start_idx: 0, end_idx: 1,
       node_index: { burst: 'burst_0_1#0', tb: 'tb_1#0' },
       children: ['burst_0_1#0', 'tb_1#0'],
@@ -45,9 +45,9 @@ describe('chart.ts — computeEventData / buildMainOption / buildSubOption', () 
     topology,
     isolatedNodeIds: new Set<string>(),
     tagList,
-    level: 'matched' as const,
+    level: 'in_hit' as const,
     nodeColors: { burst: '#2563eb', tb: '#16a34a' },
-    eventTier: () => 'matched' as const,
+    eventTier: () => 'in_hit' as const,
     nodeOfEventByBand: (e: any) => e.node_id,
     bandKeyOf: (e: any) => e.node_id,
     nodeVisible: {},
@@ -55,18 +55,18 @@ describe('chart.ts — computeEventData / buildMainOption / buildSubOption', () 
     selectedInstanceId: null,
     tooltipResolver: undefined,
     strictWindow: null,
-    matchLabel: () => null,
+    hitLabel: () => null,
     sliderShow: true,
     zoomOverride: null,
     endNode: undefined,
-    selectedMatchId: null,
-    candidateMatchIds: new Set<string>(),
+    selectedHitId: null,
+    candidateHitIds: new Set<string>(),
     highlightedEventIds: new Set<string>(),
     pendingDisambigInstanceId: null,
   }
 
   it('computeEventData bundles points/intervals/brackets/priceAnchored(satellites 已删)', () => {
-    const bundle = computeEventData(bars, events, matches, baseParams)
+    const bundle = computeEventData(bars, events, hits, baseParams)
     // burst_0_1 是 interval(start≠end),tb_1 是 point(start==end)
     expect(bundle.intervalData.some(d => d.instance_id === 'burst_0_1#0')).toBe(true)
     expect(bundle.pointData.some(d => d.instance_id === 'tb_1#0')).toBe(true)
@@ -75,8 +75,8 @@ describe('chart.ts — computeEventData / buildMainOption / buildSubOption', () 
   })
 
   it('buildMainOption returns option with kline+volume+hit-spanner+price series only (no brackets/points/intervals)', () => {
-    const bundle = computeEventData(bars, events, matches, { ...baseParams, matches })
-    const opt = buildMainOption(bars, bundle, { ...baseParams, matches }) as any
+    const bundle = computeEventData(bars, events, hits, { ...baseParams, hits })
+    const opt = buildMainOption(bars, bundle, { ...baseParams, hits }) as any
     const seriesNames = (opt.series ?? []).map((s: any) => s.name)
     expect(seriesNames).toContain('kline')
     expect(seriesNames).toContain('volume')
@@ -103,7 +103,7 @@ describe('chart.ts — computeEventData / buildMainOption / buildSubOption', () 
   })
 
   it('buildMainOption keeps original axisLabel formatter on yAxis[0] (0.879 not 0.8787...)', () => {
-    const bundle = computeEventData(bars, events, matches, baseParams)
+    const bundle = computeEventData(bars, events, hits, baseParams)
     const opt = buildMainOption(bars, bundle, baseParams) as any
     const yAxis0 = opt.yAxis[0]
     expect(typeof yAxis0.axisLabel.formatter).toBe('function')
@@ -141,7 +141,7 @@ describe('chart.ts — restored coverage (Task 6 review fix)', () => {
       ref_ids: { broken: ['pk0#0', 'pk1#0'] } } as any,
     { instance_id: 'bo11#0', node_id: 'bo', start_idx: 11, end_idx: 11 },
     { instance_id: 'tb16#0', node_id: 'tb', start_idx: 16, end_idx: 16 },
-    // detected-only:未 matched、未 qualified
+    // detected-only:未 in_hit、未 qualified
     { instance_id: 'boX#0', node_id: 'bo', start_idx: 20, end_idx: 20 },
     // pk 三态合成/text 派生的引用目标:不在 topology 里(band 不可见,不进任何 output 通道),
     // 只为给 bo9 的 ref_ids.broken 提供 pk_id 反查源(契约 C4/C5,合成发生在 filtered 之前)。
@@ -149,7 +149,7 @@ describe('chart.ts — restored coverage (Task 6 review fix)', () => {
     { instance_id: 'pk1#0', node_id: 'pk_ghost', start_idx: 0, end_idx: 0, peak_idx: 0, pk_id: 1 } as any,
   ] as any[]
 
-  const matches: HitDict[] = [
+  const hits: HitDict[] = [
     {
       hit_id: 'm1', start_idx: 1, end_idx: 16,
       node_index: { down: 'down1#0', side: 'side1#0', burst: 'burst1#0', tb: 'tb16#0' },
@@ -167,7 +167,7 @@ describe('chart.ts — restored coverage (Task 6 review fix)', () => {
   function makeInput(level: Level, overrides: Partial<BandRenderInput> = {}): BandRenderInput {
     const { tagToNodes, tagList } = deriveTagMap(topology.nodes)
     const isolated = isolatedNodeIds(topology)
-    const mIds = matchedIds(matches, events, topology.edges)
+    const mIds = inHitIds(hits, events, topology.edges)
     const qualifiedIds = new Set<string>()
     return {
       topology, isolatedNodeIds: isolated, tagList, level, nodeColors,
@@ -181,27 +181,27 @@ describe('chart.ts — restored coverage (Task 6 review fix)', () => {
     }
   }
 
-  // ── 1. level gating: RANK(matched>qualified>detected) + boX exclusion at matched (chart.ts:110-113) ──
-  describe('1. level gating — RANK + boX exclusion at matched level', () => {
-    it('RANK: level=qualified admits matched+qualified tiers, excludes detected-only', () => {
+  // ── 1. level gating: RANK(in_hit>qualified>detected) + boX exclusion at in_hit (chart.ts:110-113) ──
+  describe('1. level gating — RANK + boX exclusion at in_hit level', () => {
+    it('RANK: level=qualified admits in_hit+qualified tiers, excludes detected-only', () => {
       const stub: EventDict[] = [
         { instance_id: 'eDetected#0',  node_id: 'tb', start_idx: 1, end_idx: 1 },
         { instance_id: 'eQualified#0', node_id: 'tb', start_idx: 2, end_idx: 2 },
-        { instance_id: 'eMatched#0',   node_id: 'tb', start_idx: 3, end_idx: 3 },
+        { instance_id: 'eInHit#0',   node_id: 'tb', start_idx: 3, end_idx: 3 },
       ] as any[]
       const tierOf = (e: EventDict): Tier =>
-        e.instance_id === 'eMatched#0' ? 'matched' : e.instance_id === 'eQualified#0' ? 'qualified' : 'detected'
+        e.instance_id === 'eInHit#0' ? 'in_hit' : e.instance_id === 'eQualified#0' ? 'qualified' : 'detected'
       const input = makeInput('qualified', { eventTier: tierOf })
       const bundle = computeEventData(bars, stub, [], input)
       const ids = bundle.pointData.map((d) => d.instance_id)
-      expect(ids).toContain('eMatched#0')
+      expect(ids).toContain('eInHit#0')
       expect(ids).toContain('eQualified#0')
       expect(ids).not.toContain('eDetected#0')
     })
 
-    it('level=matched: boX (detected-only bo event) excluded from pricePointData; matched events remain', () => {
-      const input = makeInput('matched')
-      const bundle = computeEventData(bars, events, matches, input)
+    it('level=in_hit: boX (detected-only bo event) excluded from pricePointData; in_hit events remain', () => {
+      const input = makeInput('in_hit')
+      const bundle = computeEventData(bars, events, hits, input)
       expect(bundle.pricePointData.map((d) => d.instance_id)).not.toContain('boX#0')
       expect(bundle.intervalData.map((d) => d.instance_id))
         .toEqual(expect.arrayContaining(['down1#0', 'side1#0', 'burst1#0']))
@@ -210,7 +210,7 @@ describe('chart.ts — restored coverage (Task 6 review fix)', () => {
 
     it('level=detected: boX (and all other tiers) included in pricePointData', () => {
       const input = makeInput('detected')
-      const bundle = computeEventData(bars, events, matches, input)
+      const bundle = computeEventData(bars, events, hits, input)
       expect(bundle.pricePointData.map((d) => d.instance_id)).toEqual(
         expect.arrayContaining(['bo9#0', 'bo11#0', 'boX#0']),
       )
@@ -221,7 +221,7 @@ describe('chart.ts — restored coverage (Task 6 review fix)', () => {
   describe('2. render_grid routing + bo 盒文本(ref_ids.broken 派生,hasPks 已删)', () => {
     it('bo events (render_grid=price) 不进入 grid2 pointData;时间锚定 tb16 仍走 pointData', () => {
       const input = makeInput('detected')
-      const bundle = computeEventData(bars, events, matches, input)
+      const bundle = computeEventData(bars, events, hits, input)
       const boInPointData = bundle.pointData.filter((d) => ['bo9#0', 'bo11#0', 'boX#0'].includes(d.instance_id))
       expect(boInPointData.length).toBe(0)
       expect(bundle.pointData.some((d) => d.instance_id === 'tb16#0')).toBe(true)
@@ -229,7 +229,7 @@ describe('chart.ts — restored coverage (Task 6 review fix)', () => {
 
     it('pricePointData 含全部 3 个 bo 事件(value[0]=start_idx);text 取自 ref_ids.broken 查 pk_id([0,1] / "[]" 兜底)', () => {
       const input = makeInput('detected')
-      const bundle = computeEventData(bars, events, matches, input)
+      const bundle = computeEventData(bars, events, hits, input)
       expect(bundle.pricePointData.map((d) => d.instance_id).sort()).toEqual(['bo11#0', 'bo9#0', 'boX#0'])
       const bo9 = bundle.pricePointData.find((d) => d.instance_id === 'bo9#0')!
       const bo11 = bundle.pricePointData.find((d) => d.instance_id === 'bo11#0')!
@@ -241,7 +241,7 @@ describe('chart.ts — restored coverage (Task 6 review fix)', () => {
 
     it('satelliteData 通道已删(Task 7):pricePointData 不携带 hasPks 字段', () => {
       const input = makeInput('detected')
-      const bundle = computeEventData(bars, events, matches, input)
+      const bundle = computeEventData(bars, events, hits, input)
       // 卫星 pk 通道整体移除 → bundle 不再有 satelliteData 键
       expect((bundle as any).satelliteData).toBeUndefined()
       for (const d of bundle.pricePointData) {
@@ -420,7 +420,7 @@ describe('chart.ts — restored coverage (Task 6 review fix)', () => {
       expect(ofOther.map((d: any) => d.kind)).toEqual(['group'])
     })
 
-    // 0 归属(detected/qualified marker click,不在任何 match)也须画 focus 黑框:
+    // 0 归属(detected/qualified marker click,不在任何 hit)也须画 focus 黑框:
     // focusEvent 走 0 归属分支设 selectedInstanceId、focusedInstanceId=null;chart 的
     // selectedInstanceId 参数=合并 ref(=该实例),focus 分支须响应它,否则点击不出黑框。
     it('0 归属(selectedInstanceId 非空 / focusedInstanceId null)marker 也画 focus 黑框', () => {
@@ -437,7 +437,7 @@ describe('chart.ts — restored coverage (Task 6 review fix)', () => {
 
     it('buildMainOption: highlight-price z(21) > price-points z(12);satellites 系列已删(Task 7)', () => {
       const input = makeInput('detected')
-      const bundle = computeEventData(bars, events, matches, input)
+      const bundle = computeEventData(bars, events, hits, input)
       const opt = buildMainOption(bars, bundle, input) as any
       const S = (name: string) => opt.series.find((s: any) => s.name === name)
       expect(S('highlight-price').z).toBe(21)
@@ -450,7 +450,7 @@ describe('chart.ts — restored coverage (Task 6 review fix)', () => {
     // 顶层 animation:false 会连带跳过闪烁 → 两 highlight 系列必须显式 animation:true。
     it('highlight 系列显式 animation:true(顶层 animation:false 下 keyframeAnimation 才生效)', () => {
       const input = makeInput('detected')
-      const bundle = computeEventData(bars, events, matches, input)
+      const bundle = computeEventData(bars, events, hits, input)
       const mainOpt = buildMainOption(bars, bundle, input) as any
       expect(mainOpt.animation).toBe(false)
       expect(mainOpt.series.find((s: any) => s.name === 'highlight-price').animation).toBe(true)
@@ -466,7 +466,7 @@ describe('chart.ts — restored coverage (Task 6 review fix)', () => {
   describe('4. endNode → bracketData.instance_id', () => {
     it('endNode 缺省时 bracketData 只带 hit_id 不带 instance_id(向后兼容)', () => {
       const input = makeInput('detected')
-      const bundle = computeEventData(bars, events, matches, input)
+      const bundle = computeEventData(bars, events, hits, input)
       expect(bundle.bracketData.length).toBeGreaterThan(0)
       for (const d of bundle.bracketData) {
         expect(d.hit_id).toBe('m1')
@@ -476,26 +476,26 @@ describe('chart.ts — restored coverage (Task 6 review fix)', () => {
 
     it("endNode='tb' 时 bracketData.instance_id = node_index.tb(instance_id 字符串直用)", () => {
       const input = makeInput('detected', { endNode: 'tb' })
-      const bundle = computeEventData(bars, events, matches, input)
+      const bundle = computeEventData(bars, events, hits, input)
       expect(bundle.bracketData[0].instance_id).toBe('tb16#0')
     })
 
     it('endNode 指向不存在的 node 时 instance_id 安全降级为 undefined(不崩溃)', () => {
       const input = makeInput('detected', { endNode: 'nonexistent' })
-      expect(() => computeEventData(bars, events, matches, input)).not.toThrow()
-      const bundle = computeEventData(bars, events, matches, input)
+      expect(() => computeEventData(bars, events, hits, input)).not.toThrow()
+      const bundle = computeEventData(bars, events, hits, input)
       expect(bundle.bracketData[0].instance_id).toBeUndefined()
     })
 
     it('node_index 值已是 instance_id 字符串时直用(实例流契约)', () => {
-      const refMatches: HitDict[] = [{
+      const refHits: HitDict[] = [{
         hit_id: 'mk', start_idx: 1, end_idx: 16,
         node_index: { tb: 'tb16#0', down: 'down1#0', side: 'side1#0', burst: 'burst1#0' },
         children: ['down1#0', 'side1#0', 'burst1#0', 'tb16#0', 'tb18#0'],
         predicate_trace: { where_results: {}, edge_results: {} },
       }]
       const input = makeInput('detected', { endNode: 'tb' })
-      const bundle = computeEventData(bars, events, refMatches, input)
+      const bundle = computeEventData(bars, events, refHits, input)
       expect(bundle.bracketData[0].instance_id).toBe('tb16#0')
     })
   })
@@ -523,18 +523,18 @@ describe('buildSubDecorGraphics — Task 3', () => {
   const dividerY = 20
   const bracketH = 6
   const bandLabelTexts = ['bo', 'burst']
-  const matchesLabelVisible = true
+  const hitsLabelVisible = true
   const chartSubWidth = 800
   const expectedRectWidth = chartSubWidth - SUB_GRID_LEFT - SUB_GRID_RIGHT  // 728
 
   it('returns non-empty array of graphic elements', () => {
-    const g = buildSubDecorGraphics(bandGeom, dividerY, bracketH, bandLabelTexts, matchesLabelVisible, chartSubWidth)
+    const g = buildSubDecorGraphics(bandGeom, dividerY, bracketH, bandLabelTexts, hitsLabelVisible, chartSubWidth)
     expect(Array.isArray(g)).toBe(true)
     expect(g.length).toBeGreaterThan(0)
   })
 
   it('contains exactly 1 subDivider rect', () => {
-    const g = buildSubDecorGraphics(bandGeom, dividerY, bracketH, bandLabelTexts, matchesLabelVisible, chartSubWidth)
+    const g = buildSubDecorGraphics(bandGeom, dividerY, bracketH, bandLabelTexts, hitsLabelVisible, chartSubWidth)
     const dividers = g.filter((e: any) => e.type === 'rect' && e.style?.fill === SUB_DIVIDER_COLOR)
     expect(dividers.length).toBe(1)
     expect(dividers[0].top).toBe(dividerY - SUB_DIVIDER_H / 2)
@@ -545,7 +545,7 @@ describe('buildSubDecorGraphics — Task 3', () => {
   })
 
   it('contains 2 zebra rects (one per band)', () => {
-    const g = buildSubDecorGraphics(bandGeom, dividerY, bracketH, bandLabelTexts, matchesLabelVisible, chartSubWidth)
+    const g = buildSubDecorGraphics(bandGeom, dividerY, bracketH, bandLabelTexts, hitsLabelVisible, chartSubWidth)
     const zebras = g.filter((e: any) => e.type === 'rect' && (e.style?.fill === 'rgba(0,0,0,0.03)' || e.style?.fill === 'rgba(0,0,0,0)'))
     expect(zebras.length).toBe(2)
     // band 0 (bi=0): fill 'rgba(0,0,0,0.03)'
@@ -561,7 +561,7 @@ describe('buildSubDecorGraphics — Task 3', () => {
   })
 
   it('contains 2 band-inner splitLines (band 1 has 3 lanes → 2 gaps; band 0 has 1 lane → 0 lines)', () => {
-    const g = buildSubDecorGraphics(bandGeom, dividerY, bracketH, bandLabelTexts, matchesLabelVisible, chartSubWidth)
+    const g = buildSubDecorGraphics(bandGeom, dividerY, bracketH, bandLabelTexts, hitsLabelVisible, chartSubWidth)
     const splitLines = g.filter((e: any) => e.type === 'rect' && e.style?.fill === BAND_INNER_LINE_COLOR && e.shape?.height === BAND_INNER_LINE_H)
     expect(splitLines.length).toBe(2)
     // 位于 band 1 内 lane 之间: top = bandGeom[1].top + BAND_TOP_PAD + (lane+1) * BAND_LANE_H - 0.5
@@ -579,7 +579,7 @@ describe('buildSubDecorGraphics — Task 3', () => {
   })
 
   it('contains 2 bandLabel texts, one per band, aligned to band top (top pad)', () => {
-    const g = buildSubDecorGraphics(bandGeom, dividerY, bracketH, bandLabelTexts, matchesLabelVisible, chartSubWidth)
+    const g = buildSubDecorGraphics(bandGeom, dividerY, bracketH, bandLabelTexts, hitsLabelVisible, chartSubWidth)
     const labels = g.filter((e: any) => e.type === 'text' && ['bo', 'burst'].includes(e.style?.text))
     expect(labels.length).toBe(2)
     const boLabel = labels.find((e: any) => e.style.text === 'bo')
@@ -597,41 +597,41 @@ describe('buildSubDecorGraphics — Task 3', () => {
     expect(burstLabel!.top).toBe(bandGeom[1].top + BAND_TOP_PAD)
   })
 
-  it('contains 1 matchesLabel when matchesLabelVisible=true', () => {
-    const g = buildSubDecorGraphics(bandGeom, dividerY, bracketH, bandLabelTexts, matchesLabelVisible, chartSubWidth)
-    const matches = g.filter((e: any) => e.type === 'text' && e.style?.text === 'matches')
-    expect(matches.length).toBe(1)
-    // matches label 靠 bracket 区上边(BAND_TOP_PAD,与 bandLabels 顶 pad 对称),同款 verticalAlign:'top'
-    expect(matches[0].top).toBe(BAND_TOP_PAD)
-    expect(matches[0].left).toBe(SUB_GRID_LEFT + 2)
-    expect(matches[0].style.fontSize).toBe(13)
-    expect(matches[0].textVerticalAlign).toBe('top')
-    expect(matches[0].textAlign).toBe('left')
-    expect(matches[0].z).toBe(5)
+  it('contains 1 hitsLabel when hitsLabelVisible=true', () => {
+    const g = buildSubDecorGraphics(bandGeom, dividerY, bracketH, bandLabelTexts, hitsLabelVisible, chartSubWidth)
+    const hits = g.filter((e: any) => e.type === 'text' && e.style?.text === 'hits')
+    expect(hits.length).toBe(1)
+    // hits label 靠 bracket 区上边(BAND_TOP_PAD,与 bandLabels 顶 pad 对称),同款 verticalAlign:'top'
+    expect(hits[0].top).toBe(BAND_TOP_PAD)
+    expect(hits[0].left).toBe(SUB_GRID_LEFT + 2)
+    expect(hits[0].style.fontSize).toBe(13)
+    expect(hits[0].textVerticalAlign).toBe('top')
+    expect(hits[0].textAlign).toBe('left')
+    expect(hits[0].z).toBe(5)
   })
 
-  it('omits matchesLabel when matchesLabelVisible=false', () => {
+  it('omits hitsLabel when hitsLabelVisible=false', () => {
     const g = buildSubDecorGraphics(bandGeom, dividerY, bracketH, bandLabelTexts, false, chartSubWidth)
-    const matches = g.filter((e: any) => e.type === 'text' && e.style?.text === 'matches')
-    expect(matches.length).toBe(0)
+    const hits = g.filter((e: any) => e.type === 'text' && e.style?.text === 'hits')
+    expect(hits.length).toBe(0)
   })
 
   it('handles empty bandGeom (0 bands) gracefully', () => {
-    const g = buildSubDecorGraphics([], dividerY, bracketH, [], matchesLabelVisible, chartSubWidth)
+    const g = buildSubDecorGraphics([], dividerY, bracketH, [], hitsLabelVisible, chartSubWidth)
     // 空 bandGeom → 无 zebra、无 bandLabel、无 band-inner splitLine
     expect(g.filter((e: any) => e.type === 'rect' && (e.style?.fill === 'rgba(0,0,0,0.03)' || e.style?.fill === 'rgba(0,0,0,0)')).length).toBe(0)
-    expect(g.filter((e: any) => e.type === 'text' && e.style?.text === 'matches').length).toBe(1)
+    expect(g.filter((e: any) => e.type === 'text' && e.style?.text === 'hits').length).toBe(1)
     expect(g.filter((e: any) => e.type === 'rect' && e.style?.fill === SUB_DIVIDER_COLOR).length).toBe(1)
   })
 
   it('all elements marked silent to avoid stealing hover events from data series', () => {
-    const g = buildSubDecorGraphics(bandGeom, dividerY, bracketH, bandLabelTexts, matchesLabelVisible, chartSubWidth)
+    const g = buildSubDecorGraphics(bandGeom, dividerY, bracketH, bandLabelTexts, hitsLabelVisible, chartSubWidth)
     g.forEach((e: any) => {
       expect(e.silent).toBe(true)
     })
   })
 
-  it('lane 分隔线 y 乘 zoomFactor(z=2 错位修复)+ matchesLabel 顶 pad', () => {
+  it('lane 分隔线 y 乘 zoomFactor(z=2 错位修复)+ hitsLabel 顶 pad', () => {
     // 2-lane band:分隔线应落在 lane0/lane1 之间 gap 末端 = top + 4 + 1*9*z
     const bandGeom = [{ top: 50, h: 60, laneCount: 2 }]
     const g2 = buildSubDecorGraphics(bandGeom, 30, 26, ['burst'], true, 800, 2)
@@ -643,8 +643,8 @@ describe('buildSubDecorGraphics — Task 3', () => {
     const g1 = buildSubDecorGraphics(bandGeom, 30, 26, ['burst'], true, 800)
     const line1 = g1.find((el: any) => el.style?.fill === '#e0e6f1')
     expect(line1.top).toBe(63 - 0.5)
-    // matchesLabel 顶 pad:top = BAND_TOP_PAD(4) = 4
-    const label = g2.find((el: any) => el.style?.text === 'matches')
+    // hitsLabel 顶 pad:top = BAND_TOP_PAD(4) = 4
+    const label = g2.find((el: any) => el.style?.text === 'hits')
     expect(label.top).toBe(4)
   })
 })
@@ -662,7 +662,7 @@ describe('buildSubOption — Task 4 graphic switch', () => {
     { instance_id: 'burst_0_1#0', node_id: 'burst', start_idx: 0, end_idx: 1 },
     { instance_id: 'tb_1#0', node_id: 'tb', start_idx: 1, end_idx: 1 },
   ] as any[]
-  const matches = [
+  const hits = [
     { hit_id: 'm@0-1', start_idx: 0, end_idx: 1,
       node_index: { burst: 'burst_0_1#0', tb: 'tb_1#0' },
       children: ['burst_0_1#0', 'tb_1#0'],
@@ -677,9 +677,9 @@ describe('buildSubOption — Task 4 graphic switch', () => {
     topology,
     isolatedNodeIds: new Set<string>(),
     tagList,
-    level: 'matched' as const,
+    level: 'in_hit' as const,
     nodeColors: { burst: '#2563eb', tb: '#16a34a' },
-    eventTier: () => 'matched' as const,
+    eventTier: () => 'in_hit' as const,
     nodeOfEventByBand: (e: any) => e.node_id,
     bandKeyOf: (e: any) => e.node_id,
     nodeVisible: {},
@@ -687,40 +687,40 @@ describe('buildSubOption — Task 4 graphic switch', () => {
     selectedInstanceId: null,
     tooltipResolver: undefined,
     strictWindow: null,
-    matchLabel: () => null,
+    hitLabel: () => null,
     sliderShow: true,
     zoomOverride: null,
     endNode: undefined,
-    selectedMatchId: null,
-    candidateMatchIds: new Set<string>(),
+    selectedHitId: null,
+    candidateHitIds: new Set<string>(),
     highlightedEventIds: new Set<string>(),
     pendingDisambigInstanceId: null,
   }
   const chartSubWidth = 800
 
   it('option.graphic is populated by buildSubDecorGraphics', () => {
-    const bundle = computeEventData(bars, events, matches, baseParams as any)
+    const bundle = computeEventData(bars, events, hits, baseParams as any)
     const subGeom = computeSubGeometry({ bracketLaneCount: 1, bandLaneCounts: [1, 1] })
     const opt = buildSubOption(bars, bundle, subGeom, baseParams as any, chartSubWidth) as any
     expect(Array.isArray(opt.graphic)).toBe(true)
     expect(opt.graphic.length).toBeGreaterThan(0)
-    // 至少含: 1 subDivider + 2 zebra + 2 bandLabels + 1 matchesLabel = 6
+    // 至少含: 1 subDivider + 2 zebra + 2 bandLabels + 1 hitsLabel = 6
     expect(opt.graphic.length).toBeGreaterThanOrEqual(6)
   })
 
-  it('option.series no longer contains decor series (bandZebra / subDivider / matchesLabel / bandLabels)', () => {
-    const bundle = computeEventData(bars, events, matches, baseParams as any)
+  it('option.series no longer contains decor series (bandZebra / subDivider / hitsLabel / bandLabels)', () => {
+    const bundle = computeEventData(bars, events, hits, baseParams as any)
     const subGeom = computeSubGeometry({ bracketLaneCount: 1, bandLaneCounts: [1, 1] })
     const opt = buildSubOption(bars, bundle, subGeom, baseParams as any, chartSubWidth) as any
     const seriesNames = opt.series.map((s: any) => s.name)
     expect(seriesNames).not.toContain('bandZebra')
     expect(seriesNames).not.toContain('subDivider')
-    expect(seriesNames).not.toContain('matchesLabel')
+    expect(seriesNames).not.toContain('hitsLabel')
     expect(seriesNames).not.toContain('bandLabels')
   })
 
   it('option.series still contains data-driven decor consumers (brackets / points / intervals / highlight)', () => {
-    const bundle = computeEventData(bars, events, matches, baseParams as any)
+    const bundle = computeEventData(bars, events, hits, baseParams as any)
     const subGeom = computeSubGeometry({ bracketLaneCount: 1, bandLaneCounts: [1, 1] })
     const opt = buildSubOption(bars, bundle, subGeom, baseParams as any, chartSubWidth) as any
     const seriesNames = opt.series.map((s: any) => s.name)
@@ -732,7 +732,7 @@ describe('buildSubOption — Task 4 graphic switch', () => {
   })
 
   it('grid[0].left / right consume SUB_GRID_LEFT / SUB_GRID_RIGHT constants', () => {
-    const bundle = computeEventData(bars, events, matches, baseParams as any)
+    const bundle = computeEventData(bars, events, hits, baseParams as any)
     const subGeom = computeSubGeometry({ bracketLaneCount: 1, bandLaneCounts: [1, 1] })
     const opt = buildSubOption(bars, bundle, subGeom, baseParams as any, chartSubWidth) as any
     expect(opt.grid[0].left).toBe(56)   // SUB_GRID_LEFT
@@ -987,9 +987,9 @@ describe('chart.ts — renderer zoomFactor 传播(spec 2026-07-03)', () => {
   })
 
   it('buildSubOption 从 input.zoomFactor 消费并透传:与 makeRenderHighlightWithGeom(., ., 2) 等价', () => {
-    // 本 describe 块在文件末尾追加,前面各 describe 块内的 bars/events/matches/makeInput 均为
+    // 本 describe 块在文件末尾追加,前面各 describe 块内的 bars/events/hits/makeInput 均为
     // 块级作用域、不可跨块复用;此处按「chart.ts — restored coverage」块(tests/chart.spec.ts:117-177)
-    // 同款 fixture 形状自包含内联,保持语义等价(topology/events/matches/makeInput(level, overrides))。
+    // 同款 fixture 形状自包含内联,保持语义等价(topology/events/hits/makeInput(level, overrides))。
     const topology: Topology = { nodes: [
       { node_id: 'burst', where_rules: [] },
       { node_id: 'tb',    where_rules: [] },
@@ -1002,7 +1002,7 @@ describe('chart.ts — renderer zoomFactor 传播(spec 2026-07-03)', () => {
       { instance_id: 'burst_0_1#0', node_id: 'burst', start_idx: 0, end_idx: 1 },
       { instance_id: 'tb_1#0', node_id: 'tb', start_idx: 1, end_idx: 1 },
     ] as any[]
-    const matches: HitDict[] = [
+    const hits: HitDict[] = [
       { hit_id: 'm@0-1', start_idx: 0, end_idx: 1,
         node_index: { burst: 'burst_0_1#0', tb: 'tb_1#0' },
         children: ['burst_0_1#0', 'tb_1#0'],
@@ -1011,7 +1011,7 @@ describe('chart.ts — renderer zoomFactor 传播(spec 2026-07-03)', () => {
     function makeInput(level: Level, overrides: Partial<BandRenderInput> = {}): BandRenderInput {
       const { tagToNodes, tagList } = deriveTagMap(topology.nodes)
       const isolated = isolatedNodeIds(topology)
-      const mIds = matchedIds(matches, events, topology.edges)
+      const mIds = inHitIds(hits, events, topology.edges)
       const qualifiedIds = new Set<string>()
       return {
         topology, isolatedNodeIds: isolated, tagList, level,
@@ -1027,7 +1027,7 @@ describe('chart.ts — renderer zoomFactor 传播(spec 2026-07-03)', () => {
     }
 
     const input = makeInput('detected', { zoomFactor: 2 } as any)
-    const bundle = computeEventData(bars, events, matches, input)
+    const bundle = computeEventData(bars, events, hits, input)
     const subGeom = computeSubGeometry({ bracketLaneCount: 1, bandLaneCounts: [1, 1, 1, 1] }, 2)
     const opt = buildSubOption(bars, bundle, subGeom, input, 800) as any
     // highlight 系列必须存在 + animation:true(既有约束)
@@ -1043,7 +1043,7 @@ describe('chart.ts — renderer zoomFactor 传播(spec 2026-07-03)', () => {
 // ---------- Bracket zoomFactor 传播(spec 2026-07-03,mid-course scope 扩展) ----------
 describe('makeRenderBracket — zoomFactor 传播', () => {
   const fakeApi: any = {
-    value: (i: number) => [10, 20, 1, 1][i] ?? 0,   // lane=1, matchLabelIdx=1
+    value: (i: number) => [10, 20, 1, 1][i] ?? 0,   // lane=1, hitLabelIdx=1
     coord: ([v]: [number, number]) => [v === 10 ? 100 : 200, 0],
   }
   const items = [{ hit_id: 'm1' }]
@@ -1101,7 +1101,7 @@ describe('buildSubOption — bracket focus 信号装配', () => {
     { instance_id: 'burst_0_1#0', node_id: 'burst', start_idx: 0, end_idx: 1 },
     { instance_id: 'tb_1#0', node_id: 'tb', start_idx: 1, end_idx: 1 },
   ] as any[]
-  const matches: HitDict[] = [
+  const hits: HitDict[] = [
     { hit_id: 'm@0-1', start_idx: 0, end_idx: 1,
       node_index: { burst: 'burst_0_1#0', tb: 'tb_1#0' },
       children: ['burst_0_1#0', 'tb_1#0'],
@@ -1110,7 +1110,7 @@ describe('buildSubOption — bracket focus 信号装配', () => {
   function makeInput(overrides: Partial<BandRenderInput> = {}): BandRenderInput {
     const { tagToNodes, tagList } = deriveTagMap(topology.nodes)
     const isolated = isolatedNodeIds(topology)
-    const mIds = matchedIds(matches, events, topology.edges)
+    const mIds = inHitIds(hits, events, topology.edges)
     const qIds = new Set<string>()
     return {
       topology, isolatedNodeIds: isolated, tagList, level: 'detected' as Level,
@@ -1129,22 +1129,22 @@ describe('buildSubOption — bracket focus 信号装配', () => {
     coord: ([v]: [number, number]) => [v === 0 ? 100 : 200, 0],
   }
   function bracketRect(input: BandRenderInput) {
-    const bundle = computeEventData(bars, events, matches, input)
+    const bundle = computeEventData(bars, events, hits, input)
     const subGeom = computeSubGeometry({ bracketLaneCount: 1, bandLaneCounts: [1, 1] })
     const opt = buildSubOption(bars, bundle, subGeom, input, 800) as any
     const s = opt.series.find((x: any) => x.name === 'brackets')
     return (s.renderItem({ dataIndex: 0 }, bracketFakeApi) as any).children[0]
   }
 
-  it('selectedMatchId 有 + selectedInstanceId 空(点了 bracket 本身)→ focus:琥珀+粗深边', () => {
-    const rect = bracketRect(makeInput({ selectedMatchId: 'm@0-1', selectedInstanceId: null }))
+  it('selectedHitId 有 + selectedInstanceId 空(点了 bracket 本身)→ focus:琥珀+粗深边', () => {
+    const rect = bracketRect(makeInput({ selectedHitId: 'm@0-1', selectedInstanceId: null }))
     expect(rect.style.fill).toBe('#fbbf24')
     expect(rect.style.stroke).toBe('#1e293b')
     expect(rect.style.lineWidth).toBe(2.5)
   })
 
-  it('selectedMatchId 有 + selectedInstanceId 有(点了组内 marker)→ 成员:琥珀+细深边', () => {
-    const rect = bracketRect(makeInput({ selectedMatchId: 'm@0-1', selectedInstanceId: 'burst_0_1#0' }))
+  it('selectedHitId 有 + selectedInstanceId 有(点了组内 marker)→ 成员:琥珀+细深边', () => {
+    const rect = bracketRect(makeInput({ selectedHitId: 'm@0-1', selectedInstanceId: 'burst_0_1#0' }))
     expect(rect.style.fill).toBe('#fbbf24')
     expect(rect.style.stroke).toBe('#1e293b')
     expect(rect.style.lineWidth).toBe(1.5)
@@ -1172,9 +1172,9 @@ describe('computeEventData — 子结构段经引擎命名表 node_id 直落结�
     topology: cbTopology,
     isolatedNodeIds: new Set<string>(),
     tagList: ['tb', 'tb_seg'],
-    level: 'matched' as const,
+    level: 'in_hit' as const,
     nodeColors: { tb: '#D60000', tb_seg: '#16a34a' },
-    eventTier: () => 'matched' as const,
+    eventTier: () => 'in_hit' as const,
     nodeOfEventByBand: (e: any) => e.node_id,
     bandKeyOf: (e: any) => e.node_id,                  // 段自带 node_id='tb_seg',直连即分轨
     nodeVisible: {},
@@ -1182,12 +1182,12 @@ describe('computeEventData — 子结构段经引擎命名表 node_id 直落结�
     selectedInstanceId: null,
     tooltipResolver: undefined,
     strictWindow: null,
-    matchLabel: () => null,
+    hitLabel: () => null,
     sliderShow: true,
     zoomOverride: null,
     endNode: undefined,
-    selectedMatchId: null,
-    candidateMatchIds: new Set<string>(),
+    selectedHitId: null,
+    candidateHitIds: new Set<string>(),
     highlightedEventIds: new Set<string>(),
     pendingDisambigInstanceId: null,
   }

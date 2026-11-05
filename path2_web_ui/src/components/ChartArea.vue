@@ -107,9 +107,9 @@ onMounted(() => window.addEventListener('keydown', onDeleteKey))
 onBeforeUnmount(() => window.removeEventListener('keydown', onDeleteKey))
 
 const LEVEL_OPTIONS: { value: Level; label: string; title: string }[] = [
-  { value: 'matched', label: 'Matched',  title: '仅显示命中 match 的事件' },
-  { value: 'qualified',  label: 'Qualified',   title: '显示命中 match 或参与诊断 trace 的事件' },
-  { value: 'detected', label: 'Detected', title: '显示所有被 detector 检出的事件' },
+  { value: 'in_hit', label: 'in_hit', title: '仅显示进了某一次 hit 的事件' },
+  { value: 'qualified', label: 'qualified', title: '显示进了 hit 或参与诊断 trace 的事件' },
+  { value: 'detected', label: 'detected', title: '显示所有被 detector 检出的事件' },
 ]
 
 const PANEL_TOGGLES: { key: PanelKey; refKey: 'showTopology' | 'showSidebar' | 'showSlider'; label: string; title: string }[] = [
@@ -162,6 +162,7 @@ function onActivePatternChange(e: Event) {
   cursor: pointer;
   transition: background 0.15s, color 0.15s;
 }
+.level-btn:not(.panel-toggle) { font-family: var(--mono); }   /* 三档的固定文字是档位值本身 */
 .level-btn:hover { background: #2a2a4a; color: #ddd; }
 .level-btn.active { background: #4a4aaa; color: #fff; border-color: #6a6acc; }
 

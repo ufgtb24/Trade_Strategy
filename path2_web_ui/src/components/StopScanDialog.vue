@@ -1,7 +1,7 @@
 <template>
   <div class="backdrop">
     <div class="card" tabindex="-1">
-      <p class="prompt">当前已经命中 {{ hitStocks }}，是否保存？</p>
+      <p class="prompt sym" title="已扫到的有 hit 的股票数">hit_stocks: {{ hitStocks }}</p>
       <footer>
         <button data-testid="btn-save"     @click="$emit('save')">保存</button>
         <button data-testid="btn-discard"  @click="$emit('discard')">丢弃</button>
@@ -34,6 +34,7 @@ defineEmits<{ (e: 'save'): void; (e: 'discard'): void; (e: 'continue'): void }>(
   outline: none;
 }
 .prompt { margin: 0 0 16px; font-size: 14px; }
+.sym { font-family: var(--mono); }
 footer { display: flex; gap: 10px; justify-content: flex-end; }
 button { padding: 6px 14px; font-size: 13px; cursor: pointer; }
 button[data-testid="btn-save"]    { background: #2563eb; color: #fff; border: none; border-radius: 4px; }

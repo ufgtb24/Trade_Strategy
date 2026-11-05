@@ -36,15 +36,15 @@ vi.mock('../src/stores/config', () => ({
 }))
 
 /** Task 3(highlightedEventIds 协议化)辅助:highlightedEventIds 现在是依赖
- * selectedMatch(→ effectiveAnalysis.hits)的 computed,不再能靠 setHighlightedEvents
- * 直接注入。这里把 handleChartClick 用到的 ad-hoc matches 数组塞进 store(loadScanFile),
- * 让 selectedMatch 能在 effectiveAnalysis.hits 里查到同一个 hit_id。edges 留空:
- * 这里只验证「flat children 直接进 matchedIds 初始并集」,不涉及 child_refs/anchor_field
+ * selectedHit(→ effectiveAnalysis.hits)的 computed,不再能靠 setHighlightedEvents
+ * 直接注入。这里把 handleChartClick 用到的 ad-hoc hits 数组塞进 store(loadScanFile),
+ * 让 selectedHit 能在 effectiveAnalysis.hits 里查到同一个 hit_id。edges 留空:
+ * 这里只验证「flat children 直接进 inHitIds 初始并集」,不涉及 child_refs/anchor_field
  * 展开(那部分由文件末尾的 Task 3 协议派生专项测试覆盖)。
- * 【实例化】events 从 matches.children 动态生成:children 引用的事件必须在事件全集里
- * (children 已是 instance_id 列表),matchedIds 的实例集才有实例可落。 */
-function seedMatches(view: ReturnType<typeof useViewStore>, matches: any[]): void {
-  const instanceIds = [...new Set(matches.flatMap((m: any) => m.children))]
+ * 【实例化】events 从 hits.children 动态生成:children 引用的事件必须在事件全集里
+ * (children 已是 instance_id 列表),inHitIds 的实例集才有实例可落。 */
+function seedHits(view: ReturnType<typeof useViewStore>, hits: any[]): void {
+  const instanceIds = [...new Set(hits.flatMap((m: any) => m.children))]
   const events = instanceIds.map(id => ({ node_id: 'x', instance_id: id,
                                           start_idx: 0, end_idx: 1, child_refs: {} }))
   view.loadScanFile({
@@ -53,15 +53,15 @@ function seedMatches(view: ReturnType<typeof useViewStore>, matches: any[]): voi
     scan: { scan_ts: 't', start_date: '2024-01-01', end_date: '2024-12-31', workers: 1,
             scanned: 1, hit_stocks: 1, errors: 0, dataset_dir: '', params: '',
             win_start: '2024-01-01', win_end: '2024-12-31', label_horizon: 20 },
-    results: [{ symbol: 'S', per_pattern: { p: { summary: { hits: matches.length }, analysis: { events, hits: matches }, max_forward_return: null } } }],
+    results: [{ symbol: 'S', per_pattern: { p: { summary: { hits: hits.length }, analysis: { events, hits }, max_forward_return: null } } }],
   } as any)
   view.symbol = 'S'
   view.activePatternId = 'p'
 }
 
 /** Task 6 实例绑定 fixture:APCX 形态双入口同款(与 stores.focus-actions.spec.ts::makeDualEntryFixture
- * 逐字同构,独立复制避免跨文件耦合)——两 match 的 node_index 分别引用 tb_v1_293 #0/#1。 */
-function makeDualEntryFixture(events: EventDict[], matches: HitDict[]): MultiScanResultFile {
+ * 逐字同构,独立复制避免跨文件耦合)——两 hit 的 node_index 分别引用 tb_v1_293 #0/#1。 */
+function makeDualEntryFixture(events: EventDict[], hits: HitDict[]): MultiScanResultFile {
   const pattern: SerializedPattern = {
     pattern_id: 'p1',
     topology: {
@@ -77,8 +77,8 @@ function makeDualEntryFixture(events: EventDict[], matches: HitDict[]): MultiSca
     pattern_ids: ['p1'],
     per_pattern: { p1: { pattern_spec: pattern } as any },
     results: [{ symbol: 'AAA', per_pattern: { p1: { analysis: {
-      events, hits: matches,
-    } as any, summary: { hits: matches.length } } as any } } as any],
+      events, hits,
+    } as any, summary: { hits: hits.length } } as any } } as any],
     scan: { win_start: '2020-01-01', win_end: '2020-12-31', label_horizon: 20 } as any,
   } as any
 }
@@ -89,7 +89,7 @@ describe('KlineChart click handler (Task 9 实例化)', () => {
   it('marker 点击按 instance_id 直选(无解析)', async () => {
     const view = useViewStore()
     const { handleChartClick } = await import('../src/components/KlineChart')
-    // APCX 形态(Task 5 同款):两 match 的 node_index 分别引用 tb_v1_293 #0/#1(各属一个 match)。
+    // APCX 形态(Task 5 同款):两 hit 的 node_index 分别引用 tb_v1_293 #0/#1(各属一个 hit)。
     // marker data 恒带 instance_id(含 #idx),点击直接 focusEvent(instance_id) 精确直选。
     const m0 = { hit_id: 'bb@0-3#burst:burst_0_2|tb:tb_v1_293', start_idx: 0, end_idx: 3,
                  node_index: { burst: 'burst_0_2#0', tb: 'tb_v1_293#0' },
@@ -109,66 +109,66 @@ describe('KlineChart click handler (Task 9 实例化)', () => {
       { seriesName: 'points', data: { instance_id: 'tb_v1_293#0' } },
       [], view,
     )
-    expect(view.focusedMatchId).toBe(m0.hit_id)   // 直选引用 #0 的 match
+    expect(view.focusedHitId).toBe(m0.hit_id)   // 直选引用 #0 的 hit
     expect(view.focusedInstanceId).toBe('tb_v1_293#0')
     expect(view.pendingDisambigInstanceId).toBeNull()  // 不再弹待选择
-    // 点 #1 实例 → 直选引用 #1 的 match(验证 instance_id 不是写死 0)
+    // 点 #1 实例 → 直选引用 #1 的 hit(验证 instance_id 不是写死 0)
     handleChartClick(
       { seriesName: 'points', data: { instance_id: 'tb_v1_293#1' } },
       [], view,
     )
-    expect(view.focusedMatchId).toBe(m1.hit_id)
+    expect(view.focusedHitId).toBe(m1.hit_id)
     expect(view.pendingDisambigInstanceId).toBeNull()
   })
 
   it('marker click with ms.length === 0 → 只聚焦实例(selectedInstanceId)', async () => {
     const view = useViewStore()
     const { handleChartClick } = await import('../src/components/KlineChart')
-    const matches = [{ hit_id: 'm1', children: ['e_other#0'], start_idx: 0, end_idx: 1, node_index: {}, predicate_trace: null }]
-    handleChartClick({ seriesName: 'points', data: { instance_id: 'e_solo#0' } }, matches, view)
+    const hits = [{ hit_id: 'm1', children: ['e_other#0'], start_idx: 0, end_idx: 1, node_index: {}, predicate_trace: null }]
+    handleChartClick({ seriesName: 'points', data: { instance_id: 'e_solo#0' } }, hits, view)
     expect(view.selectedInstanceId).toBe('e_solo#0')
     expect(view.focusedInstanceRef).toBe('e_solo#0')
-    expect(view.candidateMatchIds.size).toBe(0)
+    expect(view.candidateHitIds.size).toBe(0)
   })
 
-  // unmatched marker(qualified/detected)与已选中 group 互斥:
+  // 没进 hit 的 marker(qualified/detected)与已选中 group 互斥:
   // 三条 marker 归属分支(===0 / ===1 / >1)都必须先清旧 group 再按新归属重设——
   // 此前 ms.length===0 漏清,导致点灰色 marker 后旧 group 高亮残留、与新 focus 共存。
   it('marker click with ms.length === 0 顺手清旧 group(与已选 group 互斥)', async () => {
     const view = useViewStore()
     const { handleChartClick } = await import('../src/components/KlineChart')
-    const matches = [{ hit_id: 'm1', children: ['eA#0', 'eB#0'], start_idx: 0, end_idx: 1,
-      // 实例流契约(Task 4):matchedIds 初始集来自 node_index 精确实例引用(非 children 身份展开)
+    const hits = [{ hit_id: 'm1', children: ['eA#0', 'eB#0'], start_idx: 0, end_idx: 1,
+      // 实例流契约(Task 4):inHitIds 初始集来自 node_index 精确实例引用(非 children 身份展开)
       node_index: { n0: 'eA#0', n1: 'eB#0' }, predicate_trace: null }]
-    seedMatches(view, matches)   // 落地真实 match 数据,让 focusMatch 真正派生非空 highlightedEventIds(而非 tautological 0)
-    view.focusMatch('m1')
+    seedHits(view, hits)   // 落地真实 hit 数据,让 focusHit 真正派生非空 highlightedEventIds(而非 tautological 0)
+    view.focusHit('m1')
     view.focusEvent('eA#0')
     expect(view.highlightedEventIds.size).toBeGreaterThan(0)   // arrange 阶段显式确认"旧 group"确实非空
-    handleChartClick({ seriesName: 'points', data: { instance_id: 'e_orphan#0' } }, matches, view)
+    handleChartClick({ seriesName: 'points', data: { instance_id: 'e_orphan#0' } }, hits, view)
     expect(view.focusedInstanceRef).toBe('e_orphan#0')
-    expect(view.selectedMatchId).toBeNull()
+    expect(view.selectedHitId).toBeNull()
     expect(view.highlightedEventIds.size).toBe(0)
-    expect(view.candidateMatchIds.size).toBe(0)
+    expect(view.candidateHitIds.size).toBe(0)
   })
 
-  it('marker click with ms.length === 1 → 直选 match + 精确聚焦实例', async () => {
+  it('marker click with ms.length === 1 → 直选 hit + 精确聚焦实例', async () => {
     const view = useViewStore()
     const { handleChartClick } = await import('../src/components/KlineChart')
-    const matches = [{ hit_id: 'm1', children: ['eA#0', 'eB#0', 'eC#0'], start_idx: 0, end_idx: 1,
+    const hits = [{ hit_id: 'm1', children: ['eA#0', 'eB#0', 'eC#0'], start_idx: 0, end_idx: 1,
       node_index: { n0: 'eA#0', n1: 'eB#0', n2: 'eC#0' }, predicate_trace: null }]
-    seedMatches(view, matches)
-    handleChartClick({ seriesName: 'intervals', data: { instance_id: 'eA#0' } }, matches, view)
-    expect(view.selectedMatchId).toBe('m1')
+    seedHits(view, hits)
+    handleChartClick({ seriesName: 'intervals', data: { instance_id: 'eA#0' } }, hits, view)
+    expect(view.selectedHitId).toBe('m1')
     expect(view.highlightedEventIds.size).toBe(3)
     expect(view.focusedInstanceId).toBe('eA#0')
     expect(view.focusedInstanceRef).toBe('eA#0')
-    expect(view.candidateMatchIds.size).toBe(0)
+    expect(view.candidateHitIds.size).toBe(0)
   })
 
   it('marker click with ms.length > 1 → candidate + pendingDisambigInstanceId (no selected)', async () => {
     const view = useViewStore()
     const { handleChartClick } = await import('../src/components/KlineChart')
-    const matches = [
+    const hits = [
       { hit_id: 'm1', children: ['eShared#0', 'eA#0'], start_idx: 0, end_idx: 1,
         node_index: { n0: 'eShared#0', n1: 'eA#0' }, predicate_trace: null },
       { hit_id: 'm3', children: ['eShared#0', 'eB#0'], start_idx: 0, end_idx: 1,
@@ -176,55 +176,55 @@ describe('KlineChart click handler (Task 9 实例化)', () => {
       { hit_id: 'm5', children: ['eShared#0', 'eC#0'], start_idx: 0, end_idx: 1,
         node_index: { n0: 'eShared#0', n1: 'eC#0' }, predicate_trace: null },
     ]
-    seedMatches(view, matches)   // focusEvent 内部改读 view.effectiveAnalysis(Task 3),不再直读传入的 matches 参数
-    handleChartClick({ seriesName: 'points', data: { instance_id: 'eShared#0' } }, matches, view)
-    expect(view.candidateMatchIds.size).toBe(3)
-    expect(view.candidateMatchIds.has('m1')).toBe(true)
-    expect(view.candidateMatchIds.has('m3')).toBe(true)
-    expect(view.candidateMatchIds.has('m5')).toBe(true)
+    seedHits(view, hits)   // focusEvent 内部改读 view.effectiveAnalysis(Task 3),不再直读传入的 hits 参数
+    handleChartClick({ seriesName: 'points', data: { instance_id: 'eShared#0' } }, hits, view)
+    expect(view.candidateHitIds.size).toBe(3)
+    expect(view.candidateHitIds.has('m1')).toBe(true)
+    expect(view.candidateHitIds.has('m3')).toBe(true)
+    expect(view.candidateHitIds.has('m5')).toBe(true)
     expect(view.pendingDisambigInstanceId).toBe('eShared#0')
-    expect(view.selectedMatchId).toBeNull()
+    expect(view.selectedHitId).toBeNull()
     expect(view.focusedInstanceRef).toBeNull()
     expect(view.highlightedEventIds.size).toBe(0)
   })
 
-  it('idempotent: click same multi-match event twice keeps candidate', async () => {
+  it('idempotent: click same multi-hit event twice keeps candidate', async () => {
     const view = useViewStore()
     const { handleChartClick } = await import('../src/components/KlineChart')
-    const matches = [
+    const hits = [
       { hit_id: 'm1', children: ['eShared#0'], start_idx: 0, end_idx: 1,
         node_index: { n0: 'eShared#0' }, predicate_trace: null },
       { hit_id: 'm2', children: ['eShared#0'], start_idx: 0, end_idx: 1,
         node_index: { n0: 'eShared#0' }, predicate_trace: null },
     ]
-    seedMatches(view, matches)   // focusEvent 内部改读 view.effectiveAnalysis(Task 3),不再直读传入的 matches 参数
-    handleChartClick({ seriesName: 'points', data: { instance_id: 'eShared#0' } }, matches, view)
-    const sizeBefore = view.candidateMatchIds.size
-    handleChartClick({ seriesName: 'points', data: { instance_id: 'eShared#0' } }, matches, view)
-    expect(view.candidateMatchIds.size).toBe(sizeBefore)
+    seedHits(view, hits)   // focusEvent 内部改读 view.effectiveAnalysis(Task 3),不再直读传入的 hits 参数
+    handleChartClick({ seriesName: 'points', data: { instance_id: 'eShared#0' } }, hits, view)
+    const sizeBefore = view.candidateHitIds.size
+    handleChartClick({ seriesName: 'points', data: { instance_id: 'eShared#0' } }, hits, view)
+    expect(view.candidateHitIds.size).toBe(sizeBefore)
     expect(view.pendingDisambigInstanceId).toBe('eShared#0')
   })
 
-  it('bracket click on candidate match → finalize: setHighlighted + selectMatch + clearCandidates', async () => {
+  it('bracket click on candidate hit → finalize: setHighlighted + selectHit + clearCandidates', async () => {
     const view = useViewStore()
     const { handleChartClick } = await import('../src/components/KlineChart')
-    const matches = [
+    const hits = [
       { hit_id: 'm1', children: ['eA#0', 'eB#0'], start_idx: 0, end_idx: 1,
         node_index: { n0: 'eA#0', n1: 'eB#0' }, predicate_trace: null },
       { hit_id: 'm3', children: ['eA#0', 'eC#0'], start_idx: 0, end_idx: 1,
         node_index: { n0: 'eA#0', n1: 'eC#0' }, predicate_trace: null },
     ]
-    seedMatches(view, matches)
+    seedHits(view, hits)
     // 先进 candidate
-    handleChartClick({ seriesName: 'points', data: { instance_id: 'eA#0' } }, matches, view)
-    expect(view.candidateMatchIds.size).toBe(2)
+    handleChartClick({ seriesName: 'points', data: { instance_id: 'eA#0' } }, hits, view)
+    expect(view.candidateHitIds.size).toBe(2)
     // 再 click 候选中的 bracket m3
-    handleChartClick({ seriesName: 'brackets', data: { hit_id: 'm3' } }, matches, view)
-    expect(view.selectedMatchId).toBe('m3')
+    handleChartClick({ seriesName: 'brackets', data: { hit_id: 'm3' } }, hits, view)
+    expect(view.selectedHitId).toBe('m3')
     expect(view.highlightedEventIds.size).toBe(2)
     expect(view.highlightedEventIds.has('eA#0')).toBe(true)
     expect(view.highlightedEventIds.has('eC#0')).toBe(true)
-    expect(view.candidateMatchIds.size).toBe(0)
+    expect(view.candidateHitIds.size).toBe(0)
     expect(view.pendingDisambigInstanceId).toBeNull()
   })
 
@@ -234,20 +234,20 @@ describe('KlineChart click handler (Task 9 实例化)', () => {
   it('bracket click 清实例焦点(防前次 marker focus 琥珀边遗留)', async () => {
     const view = useViewStore()
     const { handleChartClick } = await import('../src/components/KlineChart')
-    const matches = [
+    const hits = [
       { hit_id: 'm1', children: ['eA#0', 'eB#0'], start_idx: 0, end_idx: 1,
         node_index: { n0: 'eA#0', n1: 'eB#0' }, predicate_trace: null },
       { hit_id: 'm2', children: ['eC#0', 'eD#0'], start_idx: 0, end_idx: 1,
         node_index: { n0: 'eC#0', n1: 'eD#0' }, predicate_trace: null },
     ]
-    seedMatches(view, matches)   // focusEvent 内部改读 view.effectiveAnalysis(Task 3),不再直读传入的 matches 参数
-    // 步骤 1:点 eA(单归属 m1),此时 focusedInstanceRef='eA#0' + selectedMatchId='m1'
-    handleChartClick({ seriesName: 'points', data: { instance_id: 'eA#0' } }, matches, view)
+    seedHits(view, hits)   // focusEvent 内部改读 view.effectiveAnalysis(Task 3),不再直读传入的 hits 参数
+    // 步骤 1:点 eA(单归属 m1),此时 focusedInstanceRef='eA#0' + selectedHitId='m1'
+    handleChartClick({ seriesName: 'points', data: { instance_id: 'eA#0' } }, hits, view)
     expect(view.focusedInstanceRef).toBe('eA#0')
-    expect(view.selectedMatchId).toBe('m1')
-    // 步骤 2:切换点 bracket m2,期望焦点整体切换 —— selectedMatchId → 'm2' 且实例焦点 → null
-    handleChartClick({ seriesName: 'brackets', data: { hit_id: 'm2' } }, matches, view)
-    expect(view.selectedMatchId).toBe('m2')
+    expect(view.selectedHitId).toBe('m1')
+    // 步骤 2:切换点 bracket m2,期望焦点整体切换 —— selectedHitId → 'm2' 且实例焦点 → null
+    handleChartClick({ seriesName: 'brackets', data: { hit_id: 'm2' } }, hits, view)
+    expect(view.selectedHitId).toBe('m2')
     expect(view.focusedInstanceRef).toBeNull()
   })
 
@@ -338,14 +338,14 @@ describe('KlineChart shift+click accumulator (Task 18)', () => {
   })
 })
 
-// ─── Task 3 · highlightedEventIds 协议派生(修复"选中 match 后主图 BO 方框无 in-group 深边") ───
+// ─── Task 3 · highlightedEventIds 协议派生(修复"选中 hit 后主图 BO 方框无 in-group 深边") ───
 describe('handleChartClick × highlightedEventIds 协议派生', () => {
   beforeEach(() => setActivePinia(createPinia()))
 
-  it('选中一条 match(marker 单归属分支)后 highlightedEventIds 沿 child_refs 展开、含 BO id', async () => {
+  it('选中一条 hit(marker 单归属分支)后 highlightedEventIds 沿 child_refs 展开、含 BO id', async () => {
     const view = useViewStore()
     const { handleChartClick } = await import('../src/components/KlineChart')
-    // 造最小 scanFile:一个 burst-tb match,burst.child_refs.members=[bo_5]
+    // 造最小 scanFile:一个 burst-tb hit,burst.child_refs.members=[bo_5]
     const events = [
       { instance_id: 'burst_1#0', node_id: 'burst', start_idx: 5, end_idx: 6,
         child_refs: { members: ['bo_5#0'] } },
@@ -353,7 +353,7 @@ describe('handleChartClick × highlightedEventIds 协议派生', () => {
         child_refs: {}, anchor_bo_id: 'bo_5#0' },
       { instance_id: 'bo_5#0', node_id: 'bo', start_idx: 5, end_idx: 5, child_refs: {} },
     ]
-    const matches = [{ hit_id: 'match_1', start_idx: 5, end_idx: 8,
+    const hits = [{ hit_id: 'hit_1', start_idx: 5, end_idx: 8,
       node_index: { burst: 'burst_1#0', tb: 'tb_1#0' },
       children: ['burst_1#0', 'tb_1#0'], predicate_trace: null }]
     const topology = {
@@ -374,71 +374,71 @@ describe('handleChartClick × highlightedEventIds 协议派生', () => {
               scanned: 1, hit_stocks: 1, errors: 0, dataset_dir: '', params: '',
               win_start: '2024-01-01', win_end: '2024-12-31', label_horizon: 20 },
       results: [{ symbol: 'X', per_pattern: { bottom_burst: {
-        summary: { hits: 1 }, analysis: { events, hits: matches }, max_forward_return: null } } }],
+        summary: { hits: 1 }, analysis: { events, hits }, max_forward_return: null } } }],
     } as any)
     view.symbol = 'X'
     view.activePatternId = 'bottom_burst'
-    // 触发 marker 单归属分支:点 burst_1(唯一归属 match_1)
+    // 触发 marker 单归属分支:点 burst_1(唯一归属 hit_1)
     handleChartClick(
-      { seriesName: 'intervals', data: { instance_id: 'burst_1#0' } }, matches, view)
+      { seriesName: 'intervals', data: { instance_id: 'burst_1#0' } }, hits, view)
     // ★ 核心断言:highlightedEventIds 沿协议展开,含 BO(修复 UI bug 的 essence)
     expect(view.highlightedEventIds.has('burst_1#0')).toBe(true)
     expect(view.highlightedEventIds.has('tb_1#0')).toBe(true)
     expect(view.highlightedEventIds.has('bo_5#0')).toBe(true)   // ← child_refs 展开
-    expect(view.selectedMatchId).toBe('match_1')
+    expect(view.selectedHitId).toBe('hit_1')
   })
 
-  it('未选中 match 时 highlightedEventIds 是空集(clearFocus 自动清)', () => {
+  it('未选中 hit 时 highlightedEventIds 是空集(clearFocus 自动清)', () => {
     const view = useViewStore()
-    // 无需 loadScanFile;clearFocus() → selectedMatch 为 null → computed 是 empty set
+    // 无需 loadScanFile;clearFocus() → selectedHit 为 null → computed 是 empty set
     view.clearFocus()
     expect(view.highlightedEventIds.size).toBe(0)
   })
 })
 
-// ─── Task 4 · marker filter 判据改用 matchedIdsOf(tier/click 对齐)─────────────
-// Task 3 使 highlightedEventIds 沿 matchedIds 协议展开、BO tier=matched;但 KlineChart.ts
+// ─── Task 4 · marker filter 判据改用 inHitIdsOf(tier/click 对齐)─────────────
+// Task 3 使 highlightedEventIds 沿 inHitIds 协议展开、BO tier=in_hit;但 KlineChart.ts
 // 的 marker filter 仍读 m.children(不含 bo),点 bo 会走 fallback——tier 与 click 语义不一致。
 // 本 describe 覆盖协议展开后 filter 的三分支:多归属 candidate / 单归属 select / 真无归属 fallback。
-describe('handleChartClick × marker filter matchedIdsOf 协议展开(Task 4)', () => {
+describe('handleChartClick × marker filter inHitIdsOf 协议展开(Task 4)', () => {
   beforeEach(() => setActivePinia(createPinia()))
 
   /** Task 4 fixture helper:抽离三 it 共享的 loadScanFile 骨架(单 pattern/单 symbol/单 result,
-   * end_node 固定 'tb'),只保留 events/matches/topology 具体差异按参数传入。
-   * scan.hit_stocks/summary.hits 从 matches.length 派生(与各 it 原 inline 值一致:非空→hit_stocks=1)。*/
+   * end_node 固定 'tb'),只保留 events/hits/topology 具体差异按参数传入。
+   * scan.hit_stocks/summary.hits 从 hits.length 派生(与各 it 原 inline 值一致:非空→hit_stocks=1)。*/
   function seedFullFixture(
     view: ReturnType<typeof useViewStore>,
-    opts: { events: any[]; matches: HitDict[]; topology: any; symbol?: string; activePatternId?: string },
+    opts: { events: any[]; hits: HitDict[]; topology: any; symbol?: string; activePatternId?: string },
   ): void {
-    const { events, matches, topology, symbol = 'X', activePatternId = 'bottom_burst' } = opts
+    const { events, hits, topology, symbol = 'X', activePatternId = 'bottom_burst' } = opts
     view.loadScanFile({
       pattern_ids: [activePatternId],
       per_pattern: { [activePatternId]: {
         pattern_spec: { pattern_id: activePatternId, topology, event_styles: {} },
         end_node: 'tb' } },
       scan: { scan_ts: 't', start_date: '2024-01-01', end_date: '2024-12-31', workers: 1,
-              scanned: 1, hit_stocks: matches.length > 0 ? 1 : 0, errors: 0, dataset_dir: '', params: '',
+              scanned: 1, hit_stocks: hits.length > 0 ? 1 : 0, errors: 0, dataset_dir: '', params: '',
               win_start: '2024-01-01', win_end: '2024-12-31', label_horizon: 20 },
       results: [{ symbol, per_pattern: { [activePatternId]: {
-        summary: { hits: matches.length }, analysis: { events, hits: matches }, max_forward_return: null } } }],
+        summary: { hits: hits.length }, analysis: { events, hits }, max_forward_return: null } } }],
     } as any)
     view.symbol = symbol
     view.activePatternId = activePatternId
   }
 
-  it('marker click × 多归属:同一实例被 2+ match 的 node_index 引用 → candidate 分支', async () => {
+  it('marker click × 多归属:同一实例被 2+ hit 的 node_index 引用 → candidate 分支', async () => {
     const view = useViewStore()
     const { handleChartClick } = await import('../src/components/KlineChart')
-    // Task 5 契约变更:归属只按 match.node_index 精确引用(删除 children/anchor 身份
-    // 展开)。多归属 = 同一 instance_id 被 2+ match 引用(真共享实例)
+    // Task 5 契约变更:归属只按 hit.node_index 精确引用(删除 children/anchor 身份
+    // 展开)。多归属 = 同一 instance_id 被 2+ hit 引用(真共享实例)
     const events = [
       { instance_id: 'tb_shared#0', node_id: 'tb', start_idx: 10, end_idx: 10, child_refs: {} },
     ]
-    const matches = [
-      { hit_id: 'match_A', start_idx: 5, end_idx: 10,
+    const hits = [
+      { hit_id: 'hit_A', start_idx: 5, end_idx: 10,
         node_index: { tb: 'tb_shared#0' },
         children: ['tb_shared#0'], predicate_trace: null },
-      { hit_id: 'match_B', start_idx: 5, end_idx: 12,
+      { hit_id: 'hit_B', start_idx: 5, end_idx: 12,
         node_index: { tb: 'tb_shared#0' },
         children: ['tb_shared#0'], predicate_trace: null },
     ]
@@ -448,17 +448,17 @@ describe('handleChartClick × marker filter matchedIdsOf 协议展开(Task 4)', 
       ],
       edges: [],
     }
-    seedFullFixture(view, { events, matches, topology })
-    // tb_shared 的 #0 实例被 match_A 与 match_B 的 node_index 同时引用 → 属于两条 match
+    seedFullFixture(view, { events, hits, topology })
+    // tb_shared 的 #0 实例被 hit_A 与 hit_B 的 node_index 同时引用 → 属于两条 hit
     handleChartClick(
-      { seriesName: 'price-points', data: { instance_id: 'tb_shared#0' } }, matches, view)
-    expect([...view.candidateMatchIds].sort()).toEqual(['match_A', 'match_B'])
+      { seriesName: 'price-points', data: { instance_id: 'tb_shared#0' } }, hits, view)
+    expect([...view.candidateHitIds].sort()).toEqual(['hit_A', 'hit_B'])
     expect(view.pendingDisambigInstanceId).toBe('tb_shared#0')
-    expect(view.selectedMatchId).toBeNull()          // candidate 与 selected 互斥
-    expect(view.highlightedEventIds.size).toBe(0)    // selectedMatch=null → computed 空集
+    expect(view.selectedHitId).toBeNull()          // candidate 与 selected 互斥
+    expect(view.highlightedEventIds.size).toBe(0)    // selectedHit=null → computed 空集
   })
 
-  it('marker click × 单归属:实例只被 1 条 match 的 node_index 引用 → selectMatch + highlight 沿 child_refs 展开', async () => {
+  it('marker click × 单归属:实例只被 1 条 hit 的 node_index 引用 → selectHit + highlight 沿 child_refs 展开', async () => {
     const view = useViewStore()
     const { handleChartClick } = await import('../src/components/KlineChart')
     const events = [
@@ -468,7 +468,7 @@ describe('handleChartClick × marker filter matchedIdsOf 协议展开(Task 4)', 
         child_refs: {}, anchor_bo_id: 'bo_5#0' },
       { instance_id: 'bo_5#0', node_id: 'bo', start_idx: 5, end_idx: 5, child_refs: {} },
     ]
-    const matches = [{ hit_id: 'match_A', start_idx: 5, end_idx: 10,
+    const hits = [{ hit_id: 'hit_A', start_idx: 5, end_idx: 10,
       node_index: { burst: 'burst_A#0', tb: 'tb_A#0' },
       children: ['burst_A#0', 'tb_A#0'], predicate_trace: null }]
     const topology = {
@@ -479,14 +479,14 @@ describe('handleChartClick × marker filter matchedIdsOf 协议展开(Task 4)', 
       ],
       edges: [{ src: 'burst', dst: 'tb', kind: 'temporal', rule: '', anchor_field: 'anchor_bo_id' }],
     }
-    seedFullFixture(view, { events, matches, topology })
-    // 实例级入口(带 instance_id):tb_A#0 单实例被 match_A 的 node_index 精确引用 → 直选
+    seedFullFixture(view, { events, hits, topology })
+    // 实例级入口(带 instance_id):tb_A#0 单实例被 hit_A 的 node_index 精确引用 → 直选
     handleChartClick(
-      { seriesName: 'price-points', data: { instance_id: 'tb_A#0' } }, matches, view)
-    expect(view.selectedMatchId).toBe('match_A')
+      { seriesName: 'price-points', data: { instance_id: 'tb_A#0' } }, hits, view)
+    expect(view.selectedHitId).toBe('hit_A')
     expect(view.highlightedEventIds.has('bo_5#0')).toBe(true)   // 协议展开
     expect(view.focusedInstanceRef).toBe('tb_A#0')
-    expect(view.candidateMatchIds.size).toBe(0)
+    expect(view.candidateHitIds.size).toBe(0)
   })
 
   it('marker click × 真无归属:qualified/detected tier bo → fallback,只选实例', async () => {
@@ -495,22 +495,22 @@ describe('handleChartClick × marker filter matchedIdsOf 协议展开(Task 4)', 
     const events = [
       { instance_id: 'bo_99#0', node_id: 'bo', start_idx: 99, end_idx: 99, child_refs: {} },
     ]
-    const matches: HitDict[] = []
+    const hits: HitDict[] = []
     const topology = { nodes: [], edges: [] }
-    seedFullFixture(view, { events, matches, topology })
+    seedFullFixture(view, { events, hits, topology })
     handleChartClick(
-      { seriesName: 'price-points', data: { instance_id: 'bo_99#0' } }, matches, view)
-    expect(view.selectedMatchId).toBeNull()
+      { seriesName: 'price-points', data: { instance_id: 'bo_99#0' } }, hits, view)
+    expect(view.selectedHitId).toBeNull()
     expect(view.focusedInstanceRef).toBe('bo_99#0')
     expect(view.highlightedEventIds.size).toBe(0)
-    expect(view.candidateMatchIds.size).toBe(0)
+    expect(view.candidateHitIds.size).toBe(0)
   })
 })
 
-// ─── Task 3 · handleChartClick 3 分支迁移到 view.focus{Match,Event}/clearFocus ───
+// ─── Task 3 · handleChartClick 3 分支迁移到 view.focus{Hit,Event}/clearFocus ───
 // 复用 Task 2(stores.focus-actions.spec.ts)同构 fixture:bo/ta 两 node,e_ta_1 唯一归属 m1,
 // e_ta_2 唯一归属 m2 —— 与该文件已验证的 focusEvent('e_ta_1') 场景逐字一致。独立复制避免跨文件耦合
-// (承本文件既有 seedMatches/seedFullFixture 的 per-describe 本地 fixture 惯例)。
+// (承本文件既有 seedHits/seedFullFixture 的 per-describe 本地 fixture 惯例)。
 function makeFixture(): MultiScanResultFile {
   return {
     pattern_ids: ['p1'],
@@ -538,7 +538,7 @@ function makeFixture(): MultiScanResultFile {
       hits: [
         { hit_id: 'm1', start_idx: 10, end_idx: 15, node_index: { ta: 'e_ta_1#0' }, children: ['e_ta_1#0'] },
         { hit_id: 'm2', start_idx: 12, end_idx: 22, node_index: { ta: 'e_ta_2#0' }, children: ['e_ta_2#0'] },
-        // e_ta_2 属于 m2;e_ta_3 不属于任何 match(0 归属)
+        // e_ta_2 属于 m2;e_ta_3 不属于任何 hit(0 归属)
       ],
     } as any, summary: { hits: 2 } } as any } } as any],
     scan: { win_start: '2020-01-01', win_end: '2020-12-31', label_horizon: 20 } as any,
@@ -548,32 +548,32 @@ function makeFixture(): MultiScanResultFile {
 describe('handleChartClick · 焦点意图迁移(Task 3)', () => {
   beforeEach(() => setActivePinia(createPinia()))
 
-  it('空白 click → clearFocus:focusedMatchId/实例焦点 都清 · candidates 清', async () => {
+  it('空白 click → clearFocus:focusedHitId/实例焦点 都清 · candidates 清', async () => {
     const view = useViewStore()
     const { handleChartClick } = await import('../src/components/KlineChart')
     view.loadScanFile(makeFixture())              // 复用现有 fixture 或此文件顶部的 makeFixture
-    view.setCandidateMatches(['m1', 'm2'])
-    view.focusMatch('m1')
+    view.setCandidateHits(['m1', 'm2'])
+    view.focusHit('m1')
     handleChartClick(null, [], view)
-    expect(view.focusedMatchId).toBeNull()
+    expect(view.focusedHitId).toBeNull()
     expect(view.focusedInstanceRef).toBeNull()
-    expect(view.candidateMatchIds.size).toBe(0)
+    expect(view.candidateHitIds.size).toBe(0)
   })
 
-  it('bracket click → focusMatch:focusedMatchId=matchId · 实例焦点=null · manual 清空 · showTrace=true', async () => {
+  it('bracket click → focusHit:focusedHitId=hitId · 实例焦点=null · manual 清空 · showTrace=true', async () => {
     const view = useViewStore()
     const { handleChartClick } = await import('../src/components/KlineChart')
     view.loadScanFile(makeFixture())
     view.toggleExpandedNode('bo')                  // manual={bo}
     view.toggleExpandedNode('ta')                  // manual={bo,ta}(多展开)
-    const matches = view.effectiveAnalysis!.hits
+    const hits = view.effectiveAnalysis!.hits
     handleChartClick(
       { seriesName: 'brackets', data: { hit_id: 'm1' } },
-      matches, view
+      hits, view
     )
-    expect(view.focusedMatchId).toBe('m1')
+    expect(view.focusedHitId).toBe('m1')
     expect(view.focusedInstanceRef).toBeNull()
-    expect(view.manualExpandedNodes.size).toBe(0)  // focusMatch collapse all
+    expect(view.manualExpandedNodes.size).toBe(0)  // focusHit collapse all
     expect(view.showTrace).toBe(true)
   })
 
@@ -581,12 +581,12 @@ describe('handleChartClick · 焦点意图迁移(Task 3)', () => {
     const view = useViewStore()
     const { handleChartClick } = await import('../src/components/KlineChart')
     view.loadScanFile(makeFixture())
-    const matches = view.effectiveAnalysis!.hits
+    const hits = view.effectiveAnalysis!.hits
     handleChartClick(
       { seriesName: 'points', data: { instance_id: 'e_ta_1#0' } },
-      matches, view
+      hits, view
     )
-    expect(view.focusedMatchId).toBe('m1')
+    expect(view.focusedHitId).toBe('m1')
     expect(view.focusedInstanceRef).toBe('e_ta_1#0')
     expect(view.showTrace).toBe(false)
   })

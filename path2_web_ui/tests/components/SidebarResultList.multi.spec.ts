@@ -38,7 +38,7 @@ describe('SidebarResultList — pattern × field columns', () => {
     expect(keys).toEqual(['bo_only_num', 'bo_only_fr', 'bo_only_fd', 'bbb_num', 'bbb_fr', 'bbb_fd'])
   })
 
-  it('cell num 显 0 when matches=0; cell fr 显 — when null; cell fd 显 — when null', () => {
+  it('cell num 显 0 when hits=0; cell fr 显 — when null; cell fd 显 — when null', () => {
     const v = useViewStore()
     v.loadScanFile(file as any)
     const w = mount(SidebarResultList)
@@ -60,22 +60,22 @@ describe('SidebarResultList — pattern × field columns', () => {
     expect(aaaFd.text()).toBe('-7.0%')
   })
 
-  it('matched 类只在 num > 0 时加(num=0 无 matched;num>0 时 num/fr/fd 三染)', () => {
+  it('has-hit 类只在 num > 0 时加(num=0 无 has-hit;num>0 时 num/fr/fd 三染)', () => {
     const v = useViewStore()
     v.loadScanFile(file as any)
     const w = mount(SidebarResultList)
     const bbbNumBBB = w.find('td[data-cell-pid="bbb"][data-cell-field="num"][data-symbol="BBB"]')
     const bbbFrBBB  = w.find('td[data-cell-pid="bbb"][data-cell-field="fr"][data-symbol="BBB"]')
     const bbbFdBBB  = w.find('td[data-cell-pid="bbb"][data-cell-field="fd"][data-symbol="BBB"]')
-    expect(bbbNumBBB.classes()).not.toContain('matched')
-    expect(bbbFrBBB.classes()).not.toContain('matched')
-    expect(bbbFdBBB.classes()).not.toContain('matched')
+    expect(bbbNumBBB.classes()).not.toContain('has-hit')
+    expect(bbbFrBBB.classes()).not.toContain('has-hit')
+    expect(bbbFdBBB.classes()).not.toContain('has-hit')
     const aaaBoNum = w.find('td[data-cell-pid="bo_only"][data-cell-field="num"][data-symbol="AAA"]')
     const aaaBoFr  = w.find('td[data-cell-pid="bo_only"][data-cell-field="fr"][data-symbol="AAA"]')
     const aaaBoFd  = w.find('td[data-cell-pid="bo_only"][data-cell-field="fd"][data-symbol="AAA"]')
-    expect(aaaBoNum.classes()).toContain('matched')
-    expect(aaaBoFr.classes()).toContain('matched')
-    expect(aaaBoFd.classes()).toContain('matched')
+    expect(aaaBoNum.classes()).toContain('has-hit')
+    expect(aaaBoFr.classes()).toContain('has-hit')
+    expect(aaaBoFd.classes()).toContain('has-hit')
   })
 
   it('togglePattern hides num/fr/fd 三列 of that pid', async () => {
@@ -136,14 +136,14 @@ describe('SidebarResultList — pattern × field columns', () => {
 describe('SidebarResultList — filter全 0 行 + active row', () => {
   beforeEach(() => { setActivePinia(createPinia()); localStorage.clear() })
 
-  it('renders only rows with at least one matched visible pattern', async () => {
+  it('renders only rows with at least one has-hit visible pattern', async () => {
     const v = useViewStore()
     v.loadScanFile(file as any)                   // file has AAA/BBB(bbb 全 0)from top-of-file fixture
     const w = mount(SidebarResultList)
     await w.vm.$nextTick()
-    // AAA: bo_only + bbb matched → keep. BBB: bo_only matched, bbb 0 → keep (matched via bo_only).
+    // AAA: bo_only + bbb has hit → keep. BBB: bo_only has hit, bbb 0 → keep (has hit via bo_only).
     expect(w.findAll('td.sym').map(td => td.text())).toEqual(['AAA', 'BBB'])
-    // Now hide bo_only → only bbb visible;BBB.bbb matches=0 → BBB drop, AAA (bbb matches=1) keeps.
+    // Now hide bo_only → only bbb visible;BBB.bbb hits=0 → BBB drop, AAA (bbb hits=1) keeps.
     v.togglePattern('bo_only')
     await w.vm.$nextTick()
     const symsAfter = w.findAll('td.sym').map(td => td.text())

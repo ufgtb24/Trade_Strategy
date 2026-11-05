@@ -13,12 +13,12 @@ import { baseURL } from './ports'
 // 历史文件会随时间滚动),改为「打开历史 → 首行(list_scans_flat 按 scan_ts 倒序 = 最新一次
 // 扫描)」。
 //
-// 归属发现:不写死具体 event_id。用 src/render/visible.ts::matchedIds 的算法原样在浏览器端
-// 复刻(matchedIdsJs),对 window.__e2e.view.effectiveAnalysis 实时计算「event_id → 归属
+// 归属发现:不写死具体 event_id。用 src/render/visible.ts::inHitIds 的算法原样在浏览器端
+// 复刻(inHitIdsJs),对 window.__e2e.view.effectiveAnalysis 实时计算「event_id → 归属
 // hit_id 列表」,动态挑一个多归属(len>=2)与一个非孤立角色的单归属(len===1)event。
 // 已用 Python 对当前两份 outputs/path2_web/scans/*.json(4825 symbol × 2 pattern)做穷举
 // 验证:BTMWW 的 bo_162/bo_163 因 burst 前缀族(burst_162_163 ⊂ burst_162_164)天然多归属
-// ——且这是当前 dag_spec 下唯一可能真实多归属的角色(bo,因为 tb/burst 在各自 match 里都是
+// ——且这是当前 dag_spec 下唯一可能真实多归属的角色(bo,因为 tb/burst 在各自 hit 里都是
 // 1:1 使用)。bo 同时是孤立流源角色(isolatedNodeIds,zero-edge),DetailSidebar 候选表按
 // 既有设计(spec §3.4a `!isolated.has(node.node_id)` 闸,非本 spec 范围)永不为孤立角色渲染
 // ——故场景 3「候选表 pending 行黄底」改用等价的 markedEventIds 派生态断言(驱动
@@ -27,7 +27,7 @@ import { baseURL } from './ports'
 // 场景 5「detected event」:已用 curl /diagnose 核实 bottom_burst 的 tb/bo 两角色
 // where_rules 为空、任何候选行的 clauses={} 按 isQualifiedRow(Object.values({}).every(...)
 // 空数组恒 true)天然落 qualified 档,故「detected-only」在该 pattern 下不可达;转而找
-// 「非 matched(可能是 qualified)」候选行(tb_163 = qualified 但未进 match),与任务书
+// 「非 in_hit(可能是 qualified)」候选行(tb_163 = qualified 但未进 hit),与任务书
 // skeleton 自身 `/detected|qualified/` 的宽松断言一致,只是这里精确断言到 'qualified'。
 
 const SYMBOL = 'BTMWW'
@@ -107,7 +107,7 @@ async function setupChart(page: Page): Promise<void> {
     const e = (window as any).__e2e
     return !!(e && typeof e.chartMain === 'function' && typeof e.chartSub === 'function' && e.chartMain() && e.chartSub())
   }, { timeout: 15_000 })
-  // BTMWW/bottom_burst 已知 2 条 match(多归属发现的前提)
+  // BTMWW/bottom_burst 已知 2 条 hit(多归属发现的前提)
   await page.waitForFunction(
     () => ((window as any).__e2e?.view?.effectiveAnalysis?.hits?.length ?? 0) >= 2,
     { timeout: 15_000 },
@@ -127,18 +127,18 @@ async function zoomAroundBar(page: Page, centerIdx: number, halfWindowPct = 3): 
 }
 
 type Attribution = {
-  multi: { eventId: string; matchIds: string[] } | null
-  unique: { eventId: string; matchId: string } | null
+  multi: { eventId: string; hitIds: string[] } | null
+  unique: { eventId: string; hitId: string } | null
 }
 
-/** 在浏览器端复刻 src/render/visible.ts::matchedIds 算法,对当前 symbol/pattern 的
+/** 在浏览器端复刻 src/render/visible.ts::inHitIds 算法,对当前 symbol/pattern 的
  *  effectiveAnalysis 实时计算「event_id → 归属 hit_id 列表」,挑一个多归属 + 一个
  *  非孤立角色的单归属 event(单归属候选排除孤立角色,理由见文件头注释)。 */
 async function discoverAttribution(page: Page): Promise<Attribution> {
   return page.evaluate(() => {
-    function matchedIdsJs(matches: any[], events: any[], edges: any[]): Set<string> {
+    function inHitIdsJs(hits: any[], events: any[], edges: any[]): Set<string> {
       const s = new Set<string>()
-      for (const m of matches) for (const c of m.children) s.add(c)
+      for (const m of hits) for (const c of m.children) s.add(c)
       if (events.length === 0 || s.size === 0) return s
       const byId = new Map(events.map((e: any) => [e.event_id, e]))
       const anchorFields = new Set<string>()
@@ -163,7 +163,7 @@ async function discoverAttribution(page: Page): Promise<Attribution> {
     }
 
     const view = (window as any).__e2e.view
-    const matches = view.effectiveAnalysis.hits
+    const hits = view.effectiveAnalysis.hits
     const events = view.effectiveAnalysis.events
     const topology = view.effectivePattern.topology
     const edges = topology.edges
@@ -177,23 +177,23 @@ async function discoverAttribution(page: Page): Promise<Attribution> {
 
     const eventsById = new Map(events.map((e: any) => [e.event_id, e]))
     const owner = new Map<string, string[]>()
-    for (const m of matches) {
-      for (const eid of matchedIdsJs([m], events, edges)) {
+    for (const m of hits) {
+      for (const eid of inHitIdsJs([m], events, edges)) {
         if (!owner.has(eid)) owner.set(eid, [])
         owner.get(eid)!.push(m.event_id)
       }
     }
 
-    let multi: { eventId: string; matchIds: string[] } | null = null
+    let multi: { eventId: string; hitIds: string[] } | null = null
     for (const [eid, mids] of owner) {
-      if (mids.length >= 2) { multi = { eventId: eid, matchIds: mids }; break }
+      if (mids.length >= 2) { multi = { eventId: eid, hitIds: mids }; break }
     }
 
-    let unique: { eventId: string; matchId: string } | null = null
+    let unique: { eventId: string; hitId: string } | null = null
     for (const [eid, mids] of owner) {
       if (mids.length !== 1) continue
       const ev: any = eventsById.get(eid)
-      if (ev && !isolatedTags.has(ev.source_tag)) { unique = { eventId: eid, matchId: mids[0] }; break }
+      if (ev && !isolatedTags.has(ev.source_tag)) { unique = { eventId: eid, hitId: mids[0] }; break }
     }
 
     return { multi, unique }
@@ -265,7 +265,7 @@ async function locateEventPixel(page: Page, eventId: string): Promise<PixelPos> 
 /** 定位 bracket 可点击像素坐标:src/render/chart.ts::makeRenderBracket
  *  top = BAND_TOP_PAD + lane*BAND_LANE_H*zoomFactor(默认 1.0),bracket 区独立坐标(canvas
  *  局部 y=0 起,非挂某 band),故直接用常量算,不查 zebra。 */
-async function locateBracketPixel(page: Page, matchId: string): Promise<PixelPos> {
+async function locateBracketPixel(page: Page, hitId: string): Promise<PixelPos> {
   return page.evaluate((mid) => {
     const win = window as any
     const sub = win.__e2e.chartSub()
@@ -282,19 +282,19 @@ async function locateBracketPixel(page: Page, matchId: string): Promise<PixelPos
     const top = 4 + lane * 9   // BAND_TOP_PAD(4) + lane*BAND_LANE_H(9)*zoomFactor(默认 1.0)
     const innerY = top + 7 / 2   // BAND_MARKER_H(7)/2
     return { clientX: rect.left + (px0[0] + px1[0]) / 2, clientY: rect.top + innerY }
-  }, matchId)
+  }, hitId)
 }
 
 async function getFocusState(page: Page) {
   return page.evaluate(() => {
     const v = (window as any).__e2e.view
     return {
-      focusedMatchId: v.focusedMatchId as string | null,
+      focusedHitId: v.focusedHitId as string | null,
       focusedEventId: v.focusedEventId as string | null,
       showTrace: v.showTrace as boolean,
-      markedMatchIds: Array.from(v.markedMatchIds) as string[],
+      markedHitIds: Array.from(v.markedHitIds) as string[],
       markedEventIds: Array.from(v.markedEventIds) as string[],
-      candidateMatchIds: Array.from(v.candidateMatchIds) as string[],
+      candidateHitIds: Array.from(v.candidateHitIds) as string[],
       pendingDisambigEventId: v.pendingDisambigEventId as string | null,
       highlightedEventIds: Array.from(v.highlightedEventIds) as string[],
       level: v.level as string,
@@ -304,7 +304,7 @@ async function getFocusState(page: Page) {
 
 /** brackets series renderItem 探针(既有 marker-click-focus-highlight.spec.ts 手法):
  *  直接调真实挂载的 renderItem 拿渲染产物,验证选中态描边色/虚线等闭包烘焙的样式。 */
-async function probeBracketStyle(page: Page, matchId: string) {
+async function probeBracketStyle(page: Page, hitId: string) {
   return page.evaluate((mid) => {
     const sub = (window as any).__e2e.chartSub()
     const idx = sub.getOption().series.findIndex((x: any) => x.name === 'brackets')
@@ -315,51 +315,51 @@ async function probeBracketStyle(page: Page, matchId: string) {
     const fakeApi = { value: (k: number) => d.value[k], coord: () => [100, 200], size: () => [10, 0] }
     const shape = s.renderItem({ dataIndex: i }, fakeApi)
     return shape?.children?.[0]?.style ?? null
-  }, matchId)
+  }, hitId)
 }
 
 // ─── 5 场景(spec §6.3) ─────────────────────────────────────────────────────
 
-test('场景 1: bracket click → group 黑框亮 + bracket 深实边 + 命中匹配单行黄底 + trace 展开', async ({ page }) => {
+test('场景 1: bracket click → group 黑框亮 + bracket 深实边 + hit 列表单行黄底 + trace 展开', async ({ page }) => {
   test.setTimeout(300_000)
   await setupChart(page)
 
-  const matchIds: string[] = await page.evaluate(() =>
+  const hitIds: string[] = await page.evaluate(() =>
     ((window as any).__e2e.view.effectiveAnalysis.hits as any[]).map((m) => m.event_id))
-  const targetMatchId = matchIds[0]
+  const targetHitId = hitIds[0]
 
   const barIdx = await page.evaluate((mid) => {
     const m = ((window as any).__e2e.view.effectiveAnalysis.hits as any[]).find((x) => x.event_id === mid)
     return Math.floor((m.start_idx + m.end_idx) / 2)
-  }, targetMatchId)
+  }, targetHitId)
   await zoomAroundBar(page, barIdx)
 
-  const pos = await locateBracketPixel(page, targetMatchId)
+  const pos = await locateBracketPixel(page, targetHitId)
   expect(pos).not.toBeNull()
   await page.mouse.click(pos!.clientX, pos!.clientY)
   await page.waitForTimeout(500)
 
   const state = await getFocusState(page)
-  expect(state.focusedMatchId).toBe(targetMatchId)
+  expect(state.focusedHitId).toBe(targetHitId)
   expect(state.focusedEventId).toBeNull()
   expect(state.showTrace).toBe(true)
-  expect(state.markedMatchIds).toEqual([targetMatchId])
+  expect(state.markedHitIds).toEqual([targetHitId])
   expect(state.highlightedEventIds.length).toBeGreaterThan(0)   // 视觉层:group 展开集非空
 
-  await expect(page.locator('.match-trace')).toBeVisible()
-  await expect(page.locator('.match-row.match-row--selected')).toHaveCount(1)
+  await expect(page.locator('.hit-trace')).toBeVisible()
+  await expect(page.locator('.hit-row.hit-row--selected')).toHaveCount(1)
 
-  const style = await probeBracketStyle(page, targetMatchId)
+  const style = await probeBracketStyle(page, targetHitId)
   expect(style?.stroke).toBe(HL_FOCUS_EDGE)   // bracket 自身即被点者 → focus 深实边
 })
 
-test('场景 2: event marker 唯一归属 click → group 黑框 + focus 深边 + 命中匹配单行 + trace 不展', async ({ page }) => {
+test('场景 2: event marker 唯一归属 click → group 黑框 + focus 深边 + hit 列表单行 + trace 不展', async ({ page }) => {
   test.setTimeout(300_000)
   await setupChart(page)
 
   const attribution = await discoverAttribution(page)
   expect(attribution.unique).not.toBeNull()
-  const { eventId, matchId } = attribution.unique!
+  const { eventId, hitId } = attribution.unique!
 
   const barIdx = await page.evaluate((eid) => {
     const ev = ((window as any).__e2e.view.effectiveAnalysis.events as any[]).find((e) => e.event_id === eid)
@@ -374,14 +374,14 @@ test('场景 2: event marker 唯一归属 click → group 黑框 + focus 深边 
 
   const state = await getFocusState(page)
   expect(state.focusedEventId).toBe(eventId)
-  expect(state.focusedMatchId).toBe(matchId)
+  expect(state.focusedHitId).toBe(hitId)
   expect(state.showTrace).toBe(false)
-  expect(state.markedMatchIds).toEqual([matchId])
+  expect(state.markedHitIds).toEqual([hitId])
   expect(state.markedEventIds).toEqual([eventId])
   expect(state.highlightedEventIds).toContain(eventId)
 
-  await expect(page.locator('.match-trace')).not.toBeVisible()
-  await expect(page.locator('.match-row.match-row--selected')).toHaveCount(1)
+  await expect(page.locator('.hit-trace')).not.toBeVisible()
+  await expect(page.locator('.hit-row.hit-row--selected')).toHaveCount(1)
   await expect(page.locator('.candidate-table-wrap')).toBeVisible()
   await expect(page.locator('.attr-row.attr-row--selected')).toHaveCount(1)
 
@@ -394,14 +394,14 @@ test('场景 2: event marker 唯一归属 click → group 黑框 + focus 深边 
   expect(kind).toBe('focus')
 })
 
-test('场景 3: event marker 多归属 click → 无 group + 候选虚线 + pending 闪烁 + 命中匹配多行同亮', async ({ page }) => {
+test('场景 3: event marker 多归属 click → 无 group + 候选虚线 + pending 闪烁 + hit 列表多行同亮', async ({ page }) => {
   test.setTimeout(300_000)
   await setupChart(page)
 
   const attribution = await discoverAttribution(page)
   expect(attribution.multi).not.toBeNull()
-  const { eventId, matchIds } = attribution.multi!
-  expect(matchIds.length).toBeGreaterThanOrEqual(2)
+  const { eventId, hitIds } = attribution.multi!
+  expect(hitIds.length).toBeGreaterThanOrEqual(2)
 
   const barIdx = await page.evaluate((eid) => {
     const ev = ((window as any).__e2e.view.effectiveAnalysis.events as any[]).find((e) => e.event_id === eid)
@@ -415,12 +415,12 @@ test('场景 3: event marker 多归属 click → 无 group + 候选虚线 + pend
   await page.waitForTimeout(500)
 
   const state = await getFocusState(page)
-  expect(state.focusedMatchId).toBeNull()
+  expect(state.focusedHitId).toBeNull()
   expect(state.focusedEventId).toBeNull()
   expect(state.showTrace).toBe(false)
   expect(state.pendingDisambigEventId).toBe(eventId)
-  expect(new Set(state.candidateMatchIds)).toEqual(new Set(matchIds))
-  expect(new Set(state.markedMatchIds)).toEqual(new Set(matchIds))
+  expect(new Set(state.candidateHitIds)).toEqual(new Set(hitIds))
+  expect(new Set(state.markedHitIds)).toEqual(new Set(hitIds))
   // markedEventIds 是「候选表 pending 行黄底」的判据本身(DetailSidebar.vue:
   // `.attr-row--selected` ← markedEventIds.has(row.event_id));bo 是孤立流源角色
   // (isolatedNodeIds,zero-edge),候选表按既有设计永不为孤立角色渲染,故此处断言派生态
@@ -428,8 +428,8 @@ test('场景 3: event marker 多归属 click → 无 group + 候选虚线 + pend
   expect(state.markedEventIds).toEqual([eventId])
   expect(state.highlightedEventIds).toHaveLength(0)   // 视觉层:disambig 前不亮 group
 
-  await expect(page.locator('.match-trace')).not.toBeVisible()
-  await expect(page.locator('.match-row.match-row--selected')).toHaveCount(matchIds.length)
+  await expect(page.locator('.hit-trace')).not.toBeVisible()
+  await expect(page.locator('.hit-row.hit-row--selected')).toHaveCount(hitIds.length)
 
   // 视觉层(主图 highlight-price 系列,bo 是 price-anchored):pending 项 kind='pendingDisambig'
   const kind = await page.evaluate((eid) => {
@@ -439,59 +439,59 @@ test('场景 3: event marker 多归属 click → 无 group + 候选虚线 + pend
   }, eventId)
   expect(kind).toBe('pendingDisambig')
 
-  // candidate brackets 虚线琥珀:两条 match 的 bracket renderItem 都应落 isCandidate 分支
-  for (const mid of matchIds) {
+  // candidate brackets 虚线琥珀:两条 hit 的 bracket renderItem 都应落 isCandidate 分支
+  for (const mid of hitIds) {
     const style = await probeBracketStyle(page, mid)
     expect(style?.lineDash).toEqual([4, 3])
     expect(style?.stroke).toBe('#f59e0b')
   }
 })
 
-test('场景 4: sidebar 命中匹配某行 click → 副图 bracket 反打 + trace 展开', async ({ page }) => {
+test('场景 4: sidebar hit 列表某行 click → 副图 bracket 反打 + trace 展开', async ({ page }) => {
   test.setTimeout(300_000)
   await setupChart(page)
 
-  const matchIds: string[] = await page.evaluate(() =>
+  const hitIds: string[] = await page.evaluate(() =>
     ((window as any).__e2e.view.effectiveAnalysis.hits as any[]).map((m) => m.event_id))
-  const targetIdx = matchIds.length > 1 ? 1 : 0
-  const targetMatchId = matchIds[targetIdx]
+  const targetIdx = hitIds.length > 1 ? 1 : 0
+  const targetHitId = hitIds[targetIdx]
 
-  await page.locator('.match-row').nth(targetIdx).click()
+  await page.locator('.hit-row').nth(targetIdx).click()
   await page.waitForTimeout(500)
 
   const state = await getFocusState(page)
-  expect(state.focusedMatchId).toBe(targetMatchId)
+  expect(state.focusedHitId).toBe(targetHitId)
   expect(state.focusedEventId).toBeNull()
   expect(state.showTrace).toBe(true)
 
-  await expect(page.locator('.match-trace')).toBeVisible()
-  await expect(page.locator('.match-row.match-row--selected')).toHaveCount(1)
+  await expect(page.locator('.hit-trace')).toBeVisible()
+  await expect(page.locator('.hit-row.hit-row--selected')).toHaveCount(1)
 
-  // 反打副图 bracket:renderItem 闭包读取最新 selectedMatchId,focus 描边色应为 HL_FOCUS_EDGE
-  const style = await probeBracketStyle(page, targetMatchId)
+  // 反打副图 bracket:renderItem 闭包读取最新 selectedHitId,focus 描边色应为 HL_FOCUS_EDGE
+  const style = await probeBracketStyle(page, targetHitId)
   expect(style?.stroke).toBe(HL_FOCUS_EDGE)
 })
 
-test('场景 5: sidebar 候选表非-matched event click + level=matched → level 自动降', async ({ page }) => {
+test('场景 5: sidebar 候选表非 in_hit event click + level=in_hit → level 自动降', async ({ page }) => {
   test.setTimeout(300_000)
   await setupChart(page)
 
-  await page.locator('[data-testid="level-control"] .level-btn', { hasText: 'Matched' }).click()
-  await expect(page.locator('[data-testid="level-control"] .level-btn.active:not(.panel-toggle)')).toHaveText('Matched')
+  await page.locator('[data-testid="level-control"] .level-btn', { hasText: 'in_hit' }).click()
+  await expect(page.locator('[data-testid="level-control"] .level-btn.active:not(.panel-toggle)')).toHaveText('in_hit')
 
-  // 找一个非 matched 的候选行(tb/burst node,非孤立,候选表可展开)。
+  // 找一个非 in_hit 的候选行(tb/burst node,非孤立,候选表可展开)。
   // 注:bottom_burst 的 tb/bo where_rules 为空 → clauses={} 恒 isQualifiedRow=true,
-  // 「detected-only」在该 pattern 下不可达,故只要求非 matched(可能落 qualified,与任务书
+  // 「detected-only」在该 pattern 下不可达,故只要求非 in_hit(可能落 qualified,与任务书
   // skeleton 自身 `/detected|qualified/` 宽松断言一致);expectedLevel 据 qualifiedIds 精确算出。
   const target = await page.evaluate(() => {
     const view = (window as any).__e2e.view
     const diag = view.diag
-    const matchedIds = view.matchedIds as Set<string>
+    const inHitIds = view.inHitIds as Set<string>
     const qualifiedIds = view.qualifiedIds as Set<string>
     for (const node of ['tb', 'burst']) {
       const rows = diag?.nodes?.[node]?.attr ?? []
       for (const row of rows) {
-        if (!matchedIds.has(row.event_id)) {
+        if (!inHitIds.has(row.event_id)) {
           return {
             node,
             eventId: row.event_id as string,
@@ -516,8 +516,7 @@ test('场景 5: sidebar 候选表非-matched event click + level=matched → lev
   expect(state.focusedEventId).toBe(target!.eventId)
   expect(state.level).toBe(target!.expectedLevel)
 
-  const expectedLabel = target!.expectedLevel === 'detected' ? 'Detected' : 'Qualified'
-  await expect(page.locator('[data-testid="level-control"] .level-btn.active:not(.panel-toggle)')).toHaveText(expectedLabel)
+  await expect(page.locator('[data-testid="level-control"] .level-btn.active:not(.panel-toggle)')).toHaveText(target!.expectedLevel)
 
   // event 在图上可见并 focus 亮(level 已降,filter 放行该 tier)
   const kind = await page.evaluate((eid) => {

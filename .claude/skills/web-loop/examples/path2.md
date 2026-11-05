@@ -59,7 +59,7 @@
 通用原则:canvas 交互结果常无视觉差异,关键交互态必配 `probe` 作第二证据通道。
 
 - **dev e2e 钩子**:`window.__e2e = { view, chartMain: () => chartMain, chartSub: () => chartSub }`(`KlineChart.vue`,仅 dev server 下存在)。`view` 是 pinia view store;`chartMain` / `chartSub` 是返回 echarts 实例的函数,要调用:`__e2e.chartMain().convertToPixel(...)`。直接当对象用会 TypeError。
-- **view store 里可读的状态**:`nodeVisible`(node_id → 是否显示,`false` 为隐藏)、`selected`(`{kind:'match',matchId}` / `{kind:'node',nodeId}` / `null`)、`symbol`、`activePatternId`、`focusedMatchId`、`diag`。
+- **view store 里可读的状态**:`nodeVisible`(node_id → 是否显示,`false` 为隐藏)、`selected`(`{kind:'hit',hitId}` / `{kind:'node',nodeId}` / `null`)、`symbol`、`activePatternId`、`focusedHitId`、`diag`。
 - **定位 canvas 里的图形**(tooltip hover 等):`chartMain().getZr().storage.getDisplayList()` 过滤 rect 取中心,比坐标扫描可靠。精算 x 用 `chartMain().convertToPixel({xAxisIndex:0}, idx)`。
 - **probe 示例**(配方中的一个状态):
 

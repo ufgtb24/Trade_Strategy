@@ -1,0 +1,158 @@
+按行计（一行可能同时算进几类）：
+  mismatch 一族: 23
+  「一致 / 等于」：参数快照比较的 match 字段: 8
+  「一致 / 等于」：测试名，symbol 与 pattern_id 一致: 1
+  「一致 / 等于」：测试名，与硬编码值一致: 1
+  中文「匹配」泛指：DOM 选择器: 2
+  中文「匹配」泛指：标识符相等（node_id、instance_id、pointerId、文本）: 16
+  中文「匹配」泛指：正则: 1
+  新义本身: 2
+  新义本身：compare 下不出现对照 tag 的断言词表: 2
+  正则与模式匹配: 12
+  正则与模式匹配：str.match(编译好的正则): 2
+  正则与模式匹配：股票代码的前缀匹配: 3
+  测试框架: 45
+
+## mismatch 一族
+  path2_web_ui/e2e/annotate-boxes.spec.ts:214: await expect(page.getByTestId('notice-fingerprint')).toContainText('mismatched')
+  path2_web_ui/e2e/fixtures/build_miss_detection_fixture.py:17: mismatch + combine 淘汰 + 一对 4-subcheck 全清 pair)两支都写进 results,不代表
+  path2_web_ui/e2e/miss-detection-walkthrough.spec.ts:202: // 现拓扑只有 1 条边(burst_to_tb),LIXT 真实 4 pair 全失败(1 gap_out + 1 anchor_mismatch)。
+  path2_web_ui/src/components/AnnotationNotices.vue:7: <div v-if="mismatch" class="notice" data-testid="notice-fingerprint" :title="fingerprintTip">
+  path2_web_ui/src/components/AnnotationNotices.vue:8: <span class="key">data_fingerprint</span><span class="val">mismatched</span>
+  path2_web_ui/src/components/AnnotationNotices.vue:55: * - data_fingerprint mismatched:标注是对着另一份训练段副本做的(或本机副本没有指纹)。只报出来,图照常显示;
+  path2_web_ui/src/components/AnnotationNotices.vue:72: const mismatch = computed(() => !!fp.value && !fp.value.consistent)
+  path2_web_ui/src/components/AnnotationNotices.vue:73: const shown = computed(() => mismatch.value || ann.newConflicts.length > 0 || !!ann.saveError || !!links.problem
+  path2_web_ui/src/components/PairListCard.vue:31: <span>anchor 破位:{{ missCount('anchor_mismatch') }}</span>
+  path2_web_ui/src/components/ParamsChip.vue:18: <span v-if="diff && !diff.match && diff.has_snapshot && !diff.anchor_missing" class="warn" data-testid="mismatch-dot"
+  path2_web_ui/src/components/ParamsChip.vue:96: .anchor-missing { color: #94a3b8; font-size: 13px; font-weight: 700; cursor: help; line-height: 1; }  /* 锚文件已删除:灰"?",与 mismatch 琥珀⚠分离 */
+  path2_web_ui/tests/components/PairListCard.spec.ts:10: miss_reasons: { gap_out: 1, anchor_mismatch: 1, strict_fail: 1, negation_violated: 0 },
+  path2_web_ui/tests/components/PairListCard.spec.ts:13: { src_event_id: 'burst2', dst_event_id: 'tb2', subcheck_stage: 'anchor_mismatch', measured: null, threshold: null, edge_kind: 'TemporalEdge' },
+  path2_web_ui/tests/components/TopologyControl.spec.ts:85: miss_reasons: { gap_out: 3, anchor_mismatch: 0, strict_fail: 0, negation_violated: 0 },
+  path2_web_ui/tests/params-chip.spec.ts:1: // ParamsChip 两态(浏览灰/探索绿)+ chip 文本 A/B toggle + 内嵌抽屉 toggle 按钮 + mismatch dot
+  path2_web_ui/tests/params-chip.spec.ts:85: it('yaml 漂移:mismatch dot 出现,title 含后端给出的 anchor_file(非硬编码 params.yaml)', async () => {
+  path2_web_ui/tests/params-chip.spec.ts:92: await vi.waitFor(() => expect(w.find('[data-testid="mismatch-dot"]').exists()).toBe(true))
+  path2_web_ui/tests/params-chip.spec.ts:93: expect(w.get('[data-testid="mismatch-dot"]').attributes('title')).toContain('exp_wide.yaml')
+  path2_web_ui/tests/params-chip.spec.ts:102: await vi.waitFor(() => expect(w.find('[data-testid="mismatch-dot"]').exists()).toBe(true))
+  path2_web_ui/tests/params-chip.spec.ts:103: expect(w.get('[data-testid="mismatch-dot"]').attributes('title')).toContain('params.yaml')
+  path2_web_ui/tests/params-chip.spec.ts:157: it('锚文件被删:anchor_missing 灰?dot 出现 + title 含文件名,mismatch dot 不出现', async () => {
+  path2_web_ui/tests/params-chip.spec.ts:165: expect(w.find('[data-testid="mismatch-dot"]').exists()).toBe(false)   // 排他:锚没了不显 mismatch
+  path2_web_ui/tests/stores.preview.spec.ts:58: it('effectiveAnalysis falls back when preview.symbol mismatches symbol', async () => {
+
+## 新义本身
+  path2_web_ui/e2e/annotate-compare.spec.ts:24: const TAG_WORDS = ['missing', 'matched', 'unmatched', 'connected', 'disconnected', 'not_qualified',
+  path2_web_ui/tests/render.compare-overlay.spec.ts:99: for (const t of ['missing', 'matched', 'unmatched', 'connected', 'unmapped', 'excluded', 'chance_high', 'must']) {
+
+## 新义本身：compare 下不出现对照 tag 的断言词表
+  path2_web_ui/e2e/annotate-compare.spec.ts:24: const TAG_WORDS = ['missing', 'matched', 'unmatched', 'connected', 'disconnected', 'not_qualified',
+  path2_web_ui/tests/render.compare-overlay.spec.ts:99: for (const t of ['missing', 'matched', 'unmatched', 'connected', 'unmapped', 'excluded', 'chance_high', 'must']) {
+
+## 正则与模式匹配
+  path2_web_ui/e2e/annotate-grouping.spec.ts:54: const headSum = (h: string) => [...h.matchAll(/(?:pos|neg) (\d+)/g)].reduce((s, m) => s + Number(m[1]), 0)
+  path2_web_ui/src/components/ScanResultDialog.vue:213: let detail = msg.match(/→ \d+: ([\s\S]*)$/)?.[1] ?? msg
+  path2_web_ui/src/components/ScanResultDialog.vue:255: const m = ts.match(/^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})$/)
+  path2_web_ui/src/stores/view.ts:579: const m = pid.match(/^(.+)_(num|fr|fd)$/)
+  path2_web_ui/src/stores/view.ts:774: const m = k.match(/^(.+)_(num|fr|fd)$/)
+  path2_web_ui/tests/chart-helpers.spec.ts:261: expect((html.match(/color:#d33/g) ?? []).length).toBe(1)
+  path2_web_ui/tests/chart-helpers.spec.ts:425: expect((seg.match(/<b>/g) ?? []).length).toBe(2)
+  path2_web_ui/tests/chart-helpers.spec.ts:427: expect((seg.match(/color:#d33/g) ?? []).length).toBe(1)
+  path2_web_ui/tests/components/DetailSidebar.spec.ts:272: const nums = downText.match(/\d+/g)?.map(Number) ?? []
+  path2_web_ui/tests/components/DetailSidebar.spec.ts:277: const burstNums = burstRow.text().match(/\d+/g)?.map(Number) ?? []
+  path2_web_ui/tests/components/TopologyControl.spec.ts:189: const leftOf = (id: string) => parseFloat(w.get(`[data-node-id="${id}"]`).attributes('style')!.match(/left: ([\d.]+)px/)![1])
+  path2_web_ui/tests/components/TopologyControl.spec.ts:190: const topOf = (id: string) => parseFloat(w.get(`[data-node-id="${id}"]`).attributes('style')!.match(/top: ([\d.]+)px/)![1])
+
+## 测试框架
+  path2_web_ui/e2e/annotate-samples.spec.ts:102: expect(smp).toMatchObject({ date: dates[n - 30], pattern: 'W底', judgment: 'pos', members: [b1, b2] })
+  path2_web_ui/e2e/annotate-samples.spec.ts:166: expect(samplesOf(await annState(page), A)[0]).toMatchObject({ members: [b1, b2, b5, b4], members_edited: true })
+  path2_web_ui/e2e/annotate-samples.spec.ts:266: expect(boxesOf(st, A).find((b: any) => b.id === by)).toMatchObject({ start: dates[n - 45], end: dates[n - 40] })
+  path2_web_ui/tests/chart-helpers.spec.ts:181: expect(html).toMatch(/Chg:\s+-4\.76%/)
+  path2_web_ui/tests/chart-helpers.spec.ts:258: expect(L[0]).toMatch(/^first_drought\s+0\s+>= 20\s+✗$/)
+  path2_web_ui/tests/chart-helpers.spec.ts:259: expect(L[1]).toMatch(/^count\s+3\s+>= 2\s+✓$/)
+  path2_web_ui/tests/chart-helpers.spec.ts:296: expect(L[0]).toMatch(/^first_drought\s+0\s+>= 20\s+✗ \(in: bo_burst\)$/)
+  path2_web_ui/tests/chart-helpers.spec.ts:297: expect(L[1]).toMatch(/^first_drought\s+0\s+>= 0\s+✓ \(in: tb_burst\)$/)
+  path2_web_ui/tests/chart-helpers.spec.ts:298: expect(L[2]).toMatch(/^count\s+3\s+>= 2\s+✓$/)          // 单 node 不加后缀
+  path2_web_ui/tests/chart-helpers.spec.ts:390: expect(L[0]).toMatch(/^first_drought\s+45\s+>= 20\s+✓$/)
+  path2_web_ui/tests/chart-helpers.spec.ts:391: expect(L[1]).toMatch(/^pk_or_vol \(or\)\s+✓$/)
+  path2_web_ui/tests/chart-helpers.spec.ts:392: expect(L[2]).toMatch(/^├ distinct_pk\s+4\s+>= 3\s+✓$/)
+  path2_web_ui/tests/chart-helpers.spec.ts:393: expect(L[3]).toMatch(/^└ and\s+✓$/)
+  path2_web_ui/tests/chart-helpers.spec.ts:394: expect(L[4]).toMatch(/^ {2}├ max_bar_vol_ratio\s+5\s+>= 3\s+✓$/)
+  path2_web_ui/tests/chart-helpers.spec.ts:395: expect(L[5]).toMatch(/^ {2}└ not\s+✓$/)
+  path2_web_ui/tests/chart-helpers.spec.ts:396: expect(L[6]).toMatch(/^ {4}└ first_drought\s+45\s+>= 999\s+✗$/)
+  path2_web_ui/tests/chart-helpers.spec.ts:431: expect(render()).toMatch(/font-family:[^"]*monospace/)
+  path2_web_ui/tests/chart-helpers.spec.ts:444: expect(clauseLines(out)[0]).toMatch(/^no_late_gap \(not\)\s+✓$/)
+  path2_web_ui/tests/chart.spec.ts:300: expect(pending.children[1].keyframeAnimation).toMatchObject({ duration: 1200, loop: true })
+  path2_web_ui/tests/chart.spec.ts:376: expect(pending.children[1].keyframeAnimation).toMatchObject({ duration: 1200, loop: true })
+  path2_web_ui/tests/colors.spec.ts:27: expect(c.x).toMatch(/^#/)
+  path2_web_ui/tests/components/ScanConfigDialog.spec.ts:110: expect(savedArg.scan).toMatchObject({
+  path2_web_ui/tests/components/ScanConfigDialog.spec.ts:233: expect(spySave.mock.calls[0][0].scan).toMatchObject({
+  path2_web_ui/tests/components/ScanConfigDialog.spec.ts:236: expect(spyRun.mock.calls[0][0]).toMatchObject({
+  path2_web_ui/tests/components/ScanConfigDialog.spec.ts:249: expect(spyRun.mock.calls[0][0]).toMatchObject({
+  path2_web_ui/tests/components/ScanConfigDialog.spec.ts:283: expect(spyRun.mock.calls[0][0]).toMatchObject({ volume_min: 0 })
+  path2_web_ui/tests/components/ScanResultDialog.spec.ts:60: expect(w.find('.confirm-card').text()).toMatch(/Delete/)
+  path2_web_ui/tests/components/TopologyControl.spec.ts:40: expect(wrapper.get('[data-node-id="bo"]').attributes('style') ?? '').toMatch(/background/)
+  path2_web_ui/tests/components/TopologyControl.spec.ts:60: expect(style).toMatch(/left/)
+  path2_web_ui/tests/components/TopologyControl.spec.ts:61: expect(style).toMatch(/top/)
+  path2_web_ui/tests/components.DetailSidebar-debug-card.spec.ts:33: expect(html).toMatch(/等待|IDE|断点|PyCharm/)
+  path2_web_ui/tests/components.DetailSidebar-debug-card.spec.ts:43: expect(tooltip).toMatch(/取消|放弃|F9|F8|unblock/)
+  path2_web_ui/tests/components.failed-attempts-card.spec.ts:67: expect(clause).not.toMatch(/>=|<=|==/)
+  path2_web_ui/tests/components.failed-attempts-card.spec.ts:68: expect(clause).not.toMatch(/\([a-z_]+\)/)
+  path2_web_ui/tests/components.failed-attempts-card.spec.ts:86: expect(clause).toMatch(/-?\d+(\.\d+)?\s*>=\s*0/)   // value >= 0 形状,而非仅松散含 '0'
+  path2_web_ui/tests/components.failed-attempts-card.spec.ts:88: expect(clause).not.toMatch(/\([a-z_]+\)/)   // 无 (param) 括号
+  path2_web_ui/tests/components.failed-attempts-card.spec.ts:105: expect(clause).toMatch(/突破价:\s*42/)   // 冒号 + label + 值须连在一起出现
+  path2_web_ui/tests/components.failed-attempts-card.spec.ts:107: expect(clause).not.toMatch(/>=|<=|==/)
+  path2_web_ui/tests/instance-id-acceptance.spec.ts:67: expect(e.instance_id).toMatch(/#\d+$/)
+  path2_web_ui/tests/render.chart.mainoption.spec.ts:386: expect(pkTriStyle('nope')).toMatchObject({ fill: 'none', stroke: '#000000' })
+  path2_web_ui/tests/render.chart.mainoption.spec.ts:475: expect(pending.children[1].keyframeAnimation).toMatchObject({ duration: 1200, loop: true })
+  path2_web_ui/tests/stores.annotation.spec.ts:331: expect(s.state!.charts[0].samples[0]).toMatchObject({ members: ['b-pc-2'], members_edited: true })
+  path2_web_ui/tests/stores.annotation.spec.ts:353: expect(s.state!.charts[0].samples[0]).toMatchObject({ judgment: 'neg', note: '放量不够', pattern: 'W底' })
+  path2_web_ui/tests/visible.spec.ts:584: expect(row).toMatchObject({ nodeId: null, label: null, date: null })
+  path2_web_ui/tests/visible.spec.ts:601: expect(buildRefRows('b#0', custom, bars)[0]).toMatchObject({ slot: 'foo', dir: 'out', instanceId: 'a#0' })
+
+## 中文「匹配」泛指：DOM 选择器
+  path2_web_ui/e2e/subchart-tooltip-crosshair.spec.ts:93: // 会返回主图 rect(第一个匹配),导致副图 markerTooltip 的 flip 判定基于错的 cursorPageY
+  path2_web_ui/src/render/chart.ts:1512: * DOM 第一个匹配(通常 chartMain),副图 markerTooltip 的 flip 判定会拿到错的
+
+## 中文「匹配」泛指：标识符相等（node_id、instance_id、pointerId、文本）
+  path2_web_ui/src/components/FailedAttemptsCard.vue:25: * 真实 node 不匹配 → 后端 node 严格过滤后 0 结果,表现为"诊断卡片没有该
+  path2_web_ui/src/components/useFloatingPanel.ts:6: //   · 拖拽走 window 监听 + pointerId 匹配(同 ResizableDivider),不用 setPointerCapture
+  path2_web_ui/src/render/chart.ts:297: // 匹配;focusedInstanceId 是实例级,精确排除被点的那一个实例——同身份兄弟实例不误伤
+  path2_web_ui/src/render/chart.ts:1647: // hit.leaf(实例级,serialize 注入)匹配,同 leaf 被 >=2 hit 共享时输出确认行。
+  path2_web_ui/src/stores/view.ts:27: // anchor_bo_id 恒为 instance_id 形态(后端交错标注后 detect 期写入),纯精确匹配
+  path2_web_ui/src/stores/view.ts:162: // 实例化后白名单按 node_id 匹配;子结构 node(tb_seg 等)自身无 detector,
+  path2_web_ui/tests/chart.spec.ts:389: // 实例流:highlightedEventIds 集合元素为 instance_id 字符串(marker 的 instance_id 匹配)
+  path2_web_ui/tests/components/ShiftPairBanner.spec.ts:17: it('shiftPairPending=true + candidateHitIds 空 → 渲染 + 文本精确匹配', () => {
+  path2_web_ui/tests/stores.anchorsOf.spec.ts:18: *  instance_id 形态('bo_30#0' / 'bo_30_33#0'),恒为 instance_id;findBoBar 单路径精确匹配。
+  path2_web_ui/tests/stores.anchorsOf.spec.ts:19: *  本文件 fixture 一律用 instance_id 形态 anchor_bo_id,events 列表须含匹配 bo。
+  path2_web_ui/tests/stores.anchorsOf.spec.ts:170: it('精确匹配:返回同 instance_id bo.end_idx', () => {
+  path2_web_ui/tests/stores.anchorsOf.spec.ts:190: it('精确匹配(不看 node_id)', () => {
+  path2_web_ui/tests/subGeometry.spec.ts:168: // 每 band h = laneCount*9 + 8;不触 BAND_MIN_H 时字节匹配
+  path2_web_ui/tests/view.multi.spec.ts:88: // 切到 bbb → preview pattern_id 不匹配 → 退回扫描结果
+  path2_web_ui/tests/visible.spec.ts:229: it('renderGridOf: bandKey 匹配不到 TopoNode → fallback time', () => {
+  path2_web_ui/tests/visible.spec.ts:260: it('tag 匹配不到 node → 缺省 time,保留', () => {
+
+## 「一致 / 等于」：参数快照比较的 match 字段
+  path2_web_ui/src/components/ParamsChip.vue:18: <span v-if="diff && !diff.match && diff.has_snapshot && !diff.anchor_missing" class="warn" data-testid="mismatch-dot"
+  path2_web_ui/src/types.ts:264: export interface ParamsDiffResp { has_snapshot: boolean; match: boolean; diffs: ParamsDiffEntry[]
+  path2_web_ui/tests/params-chip.spec.ts:23: { ok: true, json: () => Promise.resolve({ has_snapshot: true, match: true, diffs: [] }) } as any)))
+  path2_web_ui/tests/params-chip.spec.ts:87: { ok: true, json: () => Promise.resolve({ has_snapshot: true, match: false,
+  path2_web_ui/tests/params-chip.spec.ts:98: { ok: true, json: () => Promise.resolve({ has_snapshot: true, match: false,
+  path2_web_ui/tests/params-chip.spec.ts:135: { ok: true, json: () => Promise.resolve({ has_snapshot: true, match: true, diffs: [] }) } as any))
+  path2_web_ui/tests/params-chip.spec.ts:149: { ok: true, json: () => Promise.resolve({ has_snapshot: true, match: true, diffs: [] }) } as any))
+  path2_web_ui/tests/params-chip.spec.ts:160: match: false, diffs: [], anchor_file: 'gone.yaml' }) } as any)))
+
+## 正则与模式匹配：str.match(编译好的正则)
+  path2_web_ui/src/components/workingCopyLayers.ts:25: const sec = line.match(SECTION_RE)
+  path2_web_ui/src/components/workingCopyLayers.ts:27: const kv = line.match(KV_RE)
+
+## 中文「匹配」泛指：正则
+  path2_web_ui/tests/chart-helpers.spec.ts:201: *  列宽随数据浮动,故断言用 \s+ 匹配列间距,只锁「树线 + 内容 + 判定符」。 */
+
+## 「一致 / 等于」：测试名，与硬编码值一致
+  path2_web_ui/tests/subGeometry.spec.ts:110: it('SUB_GRID_LEFT / RIGHT match chart.ts hardcoded values', () => {
+
+## 「一致 / 等于」：测试名，symbol 与 pattern_id 一致
+  path2_web_ui/tests/view.multi.spec.ts:72: it('effective triple uses preview when symbol AND pattern_id match', () => {
+
+## 正则与模式匹配：股票代码的前缀匹配
+  path2_web_ui/tests/view.symbol-search.spec.ts:39: it('prefix match is case-insensitive', () => {
+  path2_web_ui/tests/view.symbol-search.spec.ts:46: it('prefix (not substring): "aa" does not match "BAA"', () => {
+  path2_web_ui/tests/view.symbol-search.spec.ts:99: v.setSymbolQuery('bb')  // AND:AAA 前缀不匹配 → 全丢

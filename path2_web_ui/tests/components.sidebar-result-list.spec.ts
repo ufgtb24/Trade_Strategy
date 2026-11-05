@@ -482,11 +482,11 @@ describe('SidebarResultList · pattern 命中股票数', () => {
 
     const thBo = w.find('.col-pattern[data-pattern-pid="bo_only"]')
     expect(thBo.text()).toContain('bo_only')
-    expect(thBo.find('[data-testid="pattern-hit-count"]').text()).toBe('2')
+    expect(thBo.find('[data-testid="pattern-hit-stocks"]').text()).toBe('2')
 
     const thBbb = w.find('.col-pattern[data-pattern-pid="bbb"]')
     expect(thBbb.text()).toContain('bbb')
-    expect(thBbb.find('[data-testid="pattern-hit-count"]').text()).toBe('1')
+    expect(thBbb.find('[data-testid="pattern-hit-stocks"]').text()).toBe('1')
 
     w.unmount()
   })
@@ -502,7 +502,7 @@ describe('SidebarResultList · pattern 命中股票数', () => {
 
     expect(view.filteredSortedRows.length).toBe(1)   // 搜索确实生效
     expect(w.find('.col-pattern[data-pattern-pid="bo_only"]')
-            .find('[data-testid="pattern-hit-count"]').text()).toBe('2')
+            .find('[data-testid="pattern-hit-stocks"]').text()).toBe('2')
     w.unmount()
   })
 
@@ -515,7 +515,7 @@ describe('SidebarResultList · pattern 命中股票数', () => {
     await flushPromises()
 
     expect(w.find('.col-pattern[data-pattern-pid="bbb"]')
-            .find('[data-testid="pattern-hit-count"]').text()).toBe('0')
+            .find('[data-testid="pattern-hit-stocks"]').text()).toBe('0')
     w.unmount()
   })
 })

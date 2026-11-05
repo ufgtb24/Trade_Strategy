@@ -189,23 +189,23 @@ describe('view store — filteredSortedRows', () => {
     localStorage.clear()
   })
 
-  it('keeps rows with at least one matched cell in visible patterns (all visible)', () => {
+  it('keeps rows with at least one has-hit cell in visible patterns (all visible)', () => {
     const v = useViewStore()
     v.loadScanFile(makeFile())
     // v1 fixture (from tests/view.multi.spec.ts / unionRows.spec.ts) has 3 rows:
-    // AAA: bo_only matched, bbb matched
-    // BBB: bo_only matched, bbb unmatched
-    // CCC: both unmatched
-    // All visible → filter keeps AAA + BBB (both have at least one matched)
+    // AAA: bo_only has hit, bbb has hit
+    // BBB: bo_only has hit, bbb no hit
+    // CCC: both no hit
+    // All visible → filter keeps AAA + BBB (both have at least one has-hit)
     const symbols = v.filteredSortedRows.map(r => r.symbol).sort()
     expect(symbols).toEqual(['AAA', 'BBB'])
   })
 
-  it('hides rows whose only matched cell belongs to a hidden pattern', () => {
+  it('hides rows whose only has-hit cell belongs to a hidden pattern', () => {
     const v = useViewStore()
     v.loadScanFile(makeFile())
     v.togglePattern('bo_only')  // hide bo_only; only bbb remains visible
-    // AAA: bbb matched → keep. BBB: bbb unmatched → drop. CCC: both unmatched → drop.
+    // AAA: bbb has hit → keep. BBB: bbb no hit → drop. CCC: both no hit → drop.
     const symbols = v.filteredSortedRows.map(r => r.symbol)
     expect(symbols).toEqual(['AAA'])
   })
@@ -223,7 +223,7 @@ describe('view store — filteredSortedRows', () => {
     v.setSort('bo_only_fr')                       // desc: BBB(0.50) > AAA(0.34) > CCC(null sinks)
     const sortedOrder = v.sortedRows.map(r => r.symbol)  // ['BBB','AAA','CCC']
     const filteredOrder = v.filteredSortedRows.map(r => r.symbol)
-    // filter keeps AAA + BBB (both have at least one matched cell), drops CCC (both unmatched)
+    // filter keeps AAA + BBB (both have at least one has-hit cell), drops CCC (both no hit)
     // Order must be subsequence of sortedOrder: ['BBB','AAA']
     expect(filteredOrder).toEqual(sortedOrder.filter(s => filteredOrder.includes(s)))
     expect(filteredOrder).toEqual(['BBB', 'AAA'])
@@ -236,16 +236,16 @@ describe('view store — filteredSortedRows', () => {
   })
 })
 
-describe('view store — patternHitCounts', () => {
+describe('view store — patternHitStocks', () => {
   beforeEach(() => setActivePinia(createPinia()))
 
-  it('按 pattern 统计命中股票数(distinct symbol,非 match 次数)', () => {
+  it('按 pattern 统计命中股票数(distinct symbol,非 hit 次数)', () => {
     const v = useViewStore()
     // makeFile fixture: AAA(bo_only=2, bbb=1) · BBB(bo_only=1, bbb=0) · CCC(全 0)
-    // → bo_only 命中 AAA/BBB 两只;bbb 只命中 AAA 一只。注意 AAA 的 bo_only 有 2 个 match,
-    //   但只算 1 只股 —— 这正是「股票数 ≠ match 次数」的锁定点。
+    // → bo_only 命中 AAA/BBB 两只;bbb 只命中 AAA 一只。注意 AAA 的 bo_only 有 2 个 hit,
+    //   但只算 1 只股 —— 这正是「股票数 ≠ hit 次数」的锁定点。
     v.loadScanFile(makeFile())
-    expect(v.patternHitCounts).toEqual({ bo_only: 2, bbb: 1 })
+    expect(v.patternHitStocks).toEqual({ bo_only: 2, bbb: 1 })
   })
 
   it('零命中的 pattern 给出 0 而非缺键', () => {
@@ -253,7 +253,7 @@ describe('view store — patternHitCounts', () => {
     for (const r of f.results) r.per_pattern.bbb.summary.hits = 0
     const v = useViewStore()
     v.loadScanFile(f)
-    expect(v.patternHitCounts.bbb).toBe(0)
+    expect(v.patternHitStocks.bbb).toBe(0)
   })
 
   it('忽略 per_pattern 整个缺该 pid 键的股', () => {
@@ -261,22 +261,22 @@ describe('view store — patternHitCounts', () => {
     delete (f.results[0].per_pattern as any).bbb   // AAA 缺 bbb 键 → bbb 归零
     const v = useViewStore()
     v.loadScanFile(f)
-    expect(v.patternHitCounts).toEqual({ bo_only: 2, bbb: 0 })
+    expect(v.patternHitStocks).toEqual({ bo_only: 2, bbb: 0 })
   })
 
   it('不随 symbolQuery 变化(固定全量口径)', () => {
     const v = useViewStore()
     v.loadScanFile(makeFile())
-    const before = { ...v.patternHitCounts }
-    const nBefore = v.filteredSortedRows.length   // 全量可见下 = 2(CCC 全 0 被 matched 闸挡掉)
+    const before = { ...v.patternHitStocks }
+    const nBefore = v.filteredSortedRows.length   // 全量可见下 = 2(CCC 全 0 被 hit 闸挡掉)
     v.setSymbolQuery('AA')
     // 先确认搜索真的收窄了行数(否则本用例是 vacuous 的)
     expect(v.filteredSortedRows.length).toBeLessThan(nBefore)
-    expect(v.patternHitCounts).toEqual(before)
+    expect(v.patternHitStocks).toEqual(before)
   })
 
   it('无扫描文件时为空对象', () => {
     const v = useViewStore()
-    expect(v.patternHitCounts).toEqual({})
+    expect(v.patternHitStocks).toEqual({})
   })
 })

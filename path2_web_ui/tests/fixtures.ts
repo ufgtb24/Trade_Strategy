@@ -51,7 +51,7 @@ export const ANALYSIS: Analysis = {
     { instance_id: 'tb_16#0', node_id: 'tb', instance_idx: 0, start_idx: 16, end_idx: 16,
       child_refs: {} },
     { instance_id: 'bo_20#0', node_id: 'bo', instance_idx: 0, start_idx: 20, end_idx: 20,
-      child_refs: {} }, // 未匹配
+      child_refs: {} }, // 没进 hit
   ],
   hits: [
     { hit_id: 'm1',
@@ -93,5 +93,5 @@ export const DIAG: Diagnostics = {
                      clauses: { drawdown: { satisfied: true, measured: 0.42, op: '>=', threshold: 0.30 } } }], rel: [] },
     bo: { attr: [], rel: [{ src: 'down', kind: 'TemporalEdge', total_src: 3, ok_count: 1, ok_src_ids: ['down_1_6#0'] }] },
   },
-  note: '单 node 局部诊断;通过不代表能凑成完整匹配',
+  note: '单 node 局部诊断;通过不代表能凑成完整 hit',
 }

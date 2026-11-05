@@ -4,7 +4,7 @@ import { baseURL } from './ports'
 // 前提:后端 + 前端 dev server 在线(playwright.config.ts 的 webServer 自动启动前端;
 //        后端须外部启动 uv run python scripts/path2/run_path2_web.py)。
 // 固定 fixture:2026-06-30 17:52:56 扫描历史(outputs/path2_web/scans/20260630T175256.json)
-// 含 bottom_burst pattern 下 BTMWW(2 条 match,event_id 前缀 bottom_burst@),用于驱动
+// 含 bottom_burst pattern 下 BTMWW(2 条 hit,event_id 前缀 bottom_burst@),用于驱动
 // candidate/disambig 相关断言。
 
 const SCAN_TS = '2026-06-30 17:52:56'
@@ -136,7 +136,7 @@ test('double-click divider restores auto-fit', async ({ page }) => {
   expect(stored).toBeNull()
 })
 
-test('decor graphics survive zoom in (matches / bandLabels / subDivider / zebra remain in option.graphic)', async ({ page }) => {
+test('decor graphics survive zoom in (hits / bandLabels / subDivider / zebra remain in option.graphic)', async ({ page }) => {
   // trigger dataZoom to smallest window: start=90 end=100
   await page.evaluate(() => {
     const c = (window as any).__e2e.chartSub()
@@ -155,7 +155,7 @@ test('decor graphics survive zoom in (matches / bandLabels / subDivider / zebra 
   const elements: any[] = Array.isArray(graphic) && graphic.length > 0 && graphic[0].elements
     ? graphic[0].elements
     : (graphic as any[])
-  // 至少含 1 subDivider(#94a3b8 rect) + 至少 1 matchesLabel/bandLabel(text,fill 颜色不作断言,只查存在性)
+  // 至少含 1 subDivider(#94a3b8 rect) + 至少 1 hitsLabel/bandLabel(text,fill 颜色不作断言,只查存在性)
   const rects = elements.filter((e: any) => e.type === 'rect')
   const texts = elements.filter((e: any) => e.type === 'text')
   expect(rects.length).toBeGreaterThanOrEqual(1)
@@ -177,14 +177,14 @@ test('candidate banner sits outside sub-outer and stays put when scrolling', asy
   await page.waitForTimeout(200)
 
   // 就绪守卫:等 active pattern 的 analysis.hits 填充(≥2)后再置 candidate 态,
-  // 消除 effectiveAnalysis 异步就绪与固定 timeout 的竞态(banner 依赖 matches.length>=2)。
+  // 消除 effectiveAnalysis 异步就绪与固定 timeout 的竞态(banner 依赖 hits.length>=2)。
   await page.waitForFunction(() => ((window as any).__e2e?.view?.effectiveAnalysis?.hits ?? []).length >= 2)
   await page.evaluate(() => {
     const view = (window as any).__e2e?.view
-    const matches = view?.effectiveAnalysis?.hits ?? []
-    if (matches.length >= 2) {
-      view.setCandidateMatches(matches.slice(0, 2).map((m: any) => m.event_id))
-      view.setPendingDisambig(matches[0].children?.[0] ?? 'x')
+    const hits = view?.effectiveAnalysis?.hits ?? []
+    if (hits.length >= 2) {
+      view.setCandidateHits(hits.slice(0, 2).map((m: any) => m.event_id))
+      view.setPendingDisambig(hits[0].children?.[0] ?? 'x')
     }
   })
   await page.waitForTimeout(200)
@@ -218,14 +218,14 @@ test('fit 态无滚动条:常态与 candidate 态 scrollHeight === clientHeight'
   expect(normal.scroll).toBe(normal.client)
 
   // candidate 态:banner 出现在滚动容器外,不产生滚动(spec 验收 #1)
-  // 就绪守卫:等 matches 填充(≥2)后再置 candidate 态,消除 effectiveAnalysis 异步就绪竞态。
+  // 就绪守卫:等 hits 填充(≥2)后再置 candidate 态,消除 effectiveAnalysis 异步就绪竞态。
   await page.waitForFunction(() => ((window as any).__e2e?.view?.effectiveAnalysis?.hits ?? []).length >= 2)
   await page.evaluate(() => {
     const view = (window as any).__e2e?.view
-    const matches = view?.effectiveAnalysis?.hits ?? []
-    if (matches.length >= 2) {
-      view.setCandidateMatches(matches.slice(0, 2).map((m: any) => m.event_id))
-      view.setPendingDisambig(matches[0].children?.[0] ?? 'x')
+    const hits = view?.effectiveAnalysis?.hits ?? []
+    if (hits.length >= 2) {
+      view.setCandidateHits(hits.slice(0, 2).map((m: any) => m.event_id))
+      view.setPendingDisambig(hits[0].children?.[0] ?? 'x')
     }
   })
   await page.waitForTimeout(200)

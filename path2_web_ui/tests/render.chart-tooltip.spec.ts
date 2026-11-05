@@ -3,23 +3,23 @@ import { buildMarkerTooltipFormatter } from '../src/render/chart'
 import type { HitDict } from '../src/types'
 
 describe('buildMarkerTooltipFormatter multi-confirm', () => {
-  const matches = [
+  const hits = [
     { hit_id: 'm1', children: ['tb_6_7#0'], node_index: {}, leaf: 'tb_6_7#0' },
     { hit_id: 'm2', children: ['tb_6_7#0'], node_index: {}, leaf: 'tb_6_7#0' },
   ] as unknown as HitDict[]
 
-  it('同 leaf 被 >=2 match 共享时输出确认行', () => {
+  it('同 leaf 被 >=2 hit 共享时输出确认行', () => {
     const f = buildMarkerTooltipFormatter(undefined, undefined,
-      { matches, candidateMatchIds: new Set() })
+      { hits, candidateHitIds: new Set() })
     const html = f({ data: { instance_id: 'tb_6_7#0' } } as never)
-    expect(html).toContain('2 个 match 共享')
+    expect(html).toContain('shared_by_hits: 2')
   })
 
   it('独占 leaf 不输出确认行', () => {
     const f = buildMarkerTooltipFormatter(undefined, undefined,
-      { matches: [matches[0]], candidateMatchIds: new Set() })
+      { hits: [hits[0]], candidateHitIds: new Set() })
     const html = f({ data: { instance_id: 'tb_6_7#0' } } as never)
-    expect(html).not.toContain('共享')
+    expect(html).not.toContain('shared_by_hits')
   })
 })
 
@@ -43,13 +43,13 @@ describe('buildMarkerTooltipFormatter 实例级传递 (Task 9)', () => {
     expect(calls).toEqual(['tb_v1_293#1'])   // 精确到实例 instance_id,无 # 解析
   })
 
-  it('bracket data(hit_id)走 matchLabel + 组成段 · 不触发 resolver', () => {
+  it('bracket data(hit_id)走 hitLabel + 组成段 · 不触发 resolver', () => {
     const resolver = vi.fn(() => payloadOf('x'))
-    const matchLabel = vi.fn(() => 'ret_20: +5.0%')
-    const match = { hit_id: 'm9', children: ['a#0', 'b#0'],
+    const hitLabel = vi.fn(() => 'ret_20: +5.0%')
+    const hit = { hit_id: 'm9', children: ['a#0', 'b#0'],
                     node_index: { a: 'a#0', b: 'b#0' } } as unknown as HitDict
-    const f = buildMarkerTooltipFormatter(resolver, matchLabel,
-      { matches: [match], candidateMatchIds: new Set() })
+    const f = buildMarkerTooltipFormatter(resolver, hitLabel,
+      { hits: [hit], candidateHitIds: new Set() })
     const html = f({ data: { hit_id: 'm9' } } as never)
     expect(html).toContain('ret_20: +5.0%')
     expect(html).toContain('a: a#0')

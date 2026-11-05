@@ -13,7 +13,7 @@ import { colorOf } from './colors'
 
 export type TierTagText = 'qualified_only' | 'detected_only'
 
-/** event 的档位 → 它挂的 tag;进了 hit(matched)的不挂。 */
+/** event 的档位 → 它挂的 tag;in_hit 档不挂。 */
 export function tierTagOf(tier: Tier): TierTagText | null {
   return tier === 'qualified' ? 'qualified_only' : tier === 'detected' ? 'detected_only' : null
 }
@@ -31,7 +31,7 @@ export const TIER_TAG_TIP: Record<TierTagText, string> = {
 
 export const TIER_TAG_GAP = 2           // tag 与 event 条右端、与下一个条之间留的空
 const FONT = 8.5
-const MONO = 'ui-monospace, "JetBrains Mono", "DejaVu Sans Mono", Consolas, monospace'
+export const MONO = 'ui-monospace, "JetBrains Mono", "DejaVu Sans Mono", Consolas, monospace'
 
 /** tag 的宽度(按等宽字估算)。 */
 export function tierTagWidth(text: TierTagText): number {

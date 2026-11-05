@@ -5,7 +5,7 @@ import { packByBand, packBrackets } from './geometry'
 import { isBandVisible, renderGridOf, splitIntervalAtScanEnd, subBandTagList } from './visible'
 import { ctrlState } from './ctrlState'
 import { derivePeakStates, peakIdIndex } from './peakState'
-import { nextStarts, tierTagLimit, tierTagOf, tierTagShape, TIER_TAG_TIP, type TierTagText } from './tierTags'
+import { MONO, nextStarts, tierTagLimit, tierTagOf, tierTagShape, TIER_TAG_TIP, type TierTagText } from './tierTags'
 import {
   BAND_TOP_PAD,
   BAND_BOT_PAD,
@@ -87,7 +87,7 @@ export interface BandRenderInput {
   tooltipResolver?: (instanceId: string) => TooltipPayload
   // ── 缓冲窗/label 扩展(均可选,旧调用零改动) ──────────────────────────────────
   strictWindow?: { startIdx: number; endIdx: number } | null   // 严格窗边界(bar 索引);缺省不画
-  matchLabel?: (matchId: string) => string | null              // match 归属带 tooltip 行;null 不显示
+  hitLabel?: (hitId: string) => string | null              // hit 归属带 tooltip 行;null 不显示
   // ── dataZoom slider 显隐(可选,默认 true=显示,与历史行为一致) ──────────────
   sliderShow?: boolean
   // ── zoom 区间覆盖:传入则跳过 strictWindow 默认,保留用户当前 zoom(KlineChart
@@ -98,14 +98,14 @@ export interface BandRenderInput {
   // 的 event 三段分支也能触发。endNode 来自 eval_meta(铁律必有);缺省=不注入 instance_id(向后兼容)
   endNode?: string
   // ── M #3 / M' #19: bracket 三态 fill ────────────────────────────────────────
-  selectedMatchId?: string | null
-  candidateMatchIds?: ReadonlySet<string>
+  selectedHitId?: string | null
+  candidateHitIds?: ReadonlySet<string>
   // ── Task 5: highlight 三分支(group / focus / pendingDisambig) ───────────────
   highlightedEventIds?: ReadonlySet<string>
   pendingDisambigInstanceId?: string | null
   // ── spec 2026-07-10: 入口 D shift+click 已选中 marker 描边高亮 ────────────
   shiftSelectedEventIds?: ReadonlySet<string>
-  matches?: HitDict[]  // buildSubOption 的 markerTooltip formatter 用（自 KlineChart.vue 透传）
+  hits?: HitDict[]  // buildSubOption 的 markerTooltip formatter 用（自 KlineChart.vue 透传）
   // ── 副图 band 竖直 zoom(spec 2026-07-03):由 KlineChart 传入,default 1.0 ──────
   zoomFactor?: number
   // ── 顶栏 tiers 开关(spec 5.2):副图 event 条右端挂不挂 qualified_only / detected_only(render/tierTags.ts);缺省不挂 ──
@@ -132,7 +132,7 @@ export interface EventBundle {
 }
 
 export function computeEventData(
-  bars: Bar[], events: EventDict[], matches: HitDict[],
+  bars: Bar[], events: EventDict[], hits: HitDict[],
   input: BandRenderInput,
 ): EventBundle {
   const { topology, tagList, level, nodeColors, eventTier, nodeOfEventByBand, bandKeyOf,
@@ -166,8 +166,8 @@ export function computeEventData(
 
   // ── level 门控 + nodeVisible band 筛选 ──
   // solve=False 的 node(如 pk 显示 node)不参与求解、恒为 detected tier;若按 RANK 过滤,
-  // level=matched 时会被整段滤掉 → 免疫 level 门控(类型无关,solve 标志,Task 6 serialize 契约)。
-  const RANK: Record<Level, number> = { matched: 2, qualified: 1, detected: 0 }
+  // level=in_hit 时会被整段滤掉 → 免疫 level 门控(类型无关,solve 标志,Task 6 serialize 契约)。
+  const RANK: Record<Level, number> = { in_hit: 2, qualified: 1, detected: 0 }
   const solveFreeNodes = new Set((topology?.nodes ?? []).filter(n => n.solve === false).map(n => n.node_id))
   const filtered = events.filter((e) =>
     (solveFreeNodes.has(nodeOf(e) ?? '') || RANK[eventTier(e)] >= RANK[level]) &&
@@ -273,7 +273,7 @@ export function computeEventData(
     point: e.start_idx === e.end_idx,
   }))
 
-  const brackets = packBrackets(matches)
+  const brackets = packBrackets(hits)
   const bracketData = brackets.map((m) => {
     const data: { value: number[]; hit_id: string; instance_id?: string } = {
       value: [m.start_idx, m.end_idx, m.lane, m.ordinal],
@@ -293,7 +293,7 @@ export function computeEventData(
 
   // group 条目跳过焦点实例:被点 marker 由 focus 条目独家表达
   // (放大实心版双条目 = 同坐标双阴影,被点者投影会明显深于组员)。
-  // 实例流:matchedIds 集合元素为 instance_id 字符串,组内判定按 marker 的 instance_id
+  // 实例流:inHitIds 集合元素为 instance_id 字符串,组内判定按 marker 的 instance_id
   // 匹配;focusedInstanceId 是实例级,精确排除被点的那一个实例——同身份兄弟实例不误伤
   // (group 照常亮)。
   if (highlightedEventIds.size > 0) {
@@ -326,7 +326,7 @@ export function computeEventData(
   }
   // focus 条目按当前聚焦实例 find —— selectedInstanceId 是合并 ref(= store
   // selectedInstanceId ?? focusedInstanceId),覆盖 0 归属(detected/qualified marker click)
-  // 与 1 归属(直选 match);点 #0 只亮 #0,#1 不同时亮。0 归属也由此出黑框。
+  // 与 1 归属(直选 hit);点 #0 只亮 #0,#1 不同时亮。0 归属也由此出黑框。
   if (selectedInstanceId) {
     const selPoint = pointData.find((d) => d.instance_id === selectedInstanceId)
     if (selPoint) highlightData.push({ ...selPoint, kind: 'focus' as HlKind })
@@ -373,8 +373,8 @@ export function computeEventData(
 
 /** buildMainOption 用到的那部分渲染入参(annotate 模式只给 sliderShow / zoomOverride)。 */
 export type MainOptionInput = Pick<BandRenderInput,
-  'strictWindow' | 'sliderShow' | 'zoomOverride' | 'tooltipResolver' | 'matchLabel'
-  | 'candidateMatchIds' | 'matches'>
+  'strictWindow' | 'sliderShow' | 'zoomOverride' | 'tooltipResolver' | 'hitLabel'
+  | 'candidateHitIds' | 'hits'>
 
 /** 没有任何 app 产物的 EventBundle:annotate 模式只画 K 线和成交量。 */
 export function emptyEventBundle(bars: Bar[]): EventBundle {
@@ -425,7 +425,7 @@ export function buildMainOption(
   opts?: { getChartEl?: () => HTMLElement | null; height?: number },
 ): unknown {
   const { strictWindow, sliderShow, zoomOverride,
-          tooltipResolver, matchLabel, candidateMatchIds } = input
+          tooltipResolver, hitLabel, candidateHitIds } = input
   const { dates, candle, pricePointData, highlightPriceData, veilPriceData } = bundle
 
   const N = bars.length
@@ -465,12 +465,12 @@ export function buildMainOption(
     formatter: buildBarTooltipFormatter(bars),
   }
 
-  const markerTooltip = (tooltipResolver || matchLabel)
+  const markerTooltip = (tooltipResolver || hitLabel)
     ? { trigger: 'item' as const, show: true, confine: false,
         position: opts?.getChartEl ? makeViewportAwarePosition(opts.getChartEl) : viewportAwareTooltipPosition,
         extraCssText: 'max-height: calc(100vh - 16px); overflow-y: auto;',
-        formatter: buildMarkerTooltipFormatter(tooltipResolver, matchLabel,
-          { matches: input.matches ?? [], candidateMatchIds: candidateMatchIds ?? new Set() }) }
+        formatter: buildMarkerTooltipFormatter(tooltipResolver, hitLabel,
+          { hits: input.hits ?? [], candidateHitIds: candidateHitIds ?? new Set() }) }
     : undefined
 
   return {
@@ -560,14 +560,14 @@ export function buildMainOption(
 
 // Task 3: 副图装饰几何 graphic 组件数组构造(独立于 dataZoom,像素坐标)
 // spec: docs/superpowers/specs/2026-07-01-path2-web-subchart-fixed-decor-design.md
-// 返回顺序: zebra(z=1) → subDivider(z=2) + band-inner splitLine(z=2) → bandLabels/matchesLabel(z=5)
+// 返回顺序: zebra(z=1) → subDivider(z=2) + band-inner splitLine(z=2) → bandLabels/hitsLabel(z=5)
 // 用于 buildSubOption 的 option.graphic 字段;所有元素 silent=true 避免抢 hover 事件。
 export function buildSubDecorGraphics(
   bandGeom: BandGeom[],
   dividerY: number,
   bracketH: number,
   bandLabelTexts: string[],
-  matchesLabelVisible: boolean,
+  hitsLabelVisible: boolean,
   chartSubWidth: number,
   zoomFactor: number = 1.0,
 ): any[] {
@@ -639,8 +639,8 @@ export function buildSubDecorGraphics(
     })
   })
 
-  // 5. matchesLabel: bracket 区左侧文字(仅在 matchesLabelVisible=true 时),同款靠上对齐
-  if (matchesLabelVisible) {
+  // 5. hitsLabel: bracket 区左侧文字(仅在 hitsLabelVisible=true 时),同款靠上对齐
+  if (hitsLabelVisible) {
     graphics.push({
       type: 'text',
       left: SUB_GRID_LEFT + 2,
@@ -648,9 +648,10 @@ export function buildSubDecorGraphics(
       textAlign: 'left',
       textVerticalAlign: 'top',
       style: {
-        text: 'matches',
-        fill: '#424242',
+        text: 'hits',
+        fill: '#111',
         fontSize: 13,
+        fontFamily: MONO,
       },
       z: 5,
       silent: true,
@@ -665,8 +666,8 @@ export function buildSubOption(
   chartSubWidth: number,
   opts?: { getChartEl?: () => HTMLElement | null },
 ): unknown {
-  const { tooltipResolver, matchLabel, zoomOverride, strictWindow,
-          selectedMatchId, candidateMatchIds } = input
+  const { tooltipResolver, hitLabel, zoomOverride, strictWindow,
+          selectedHitId, candidateHitIds } = input
   const { dates, pointData, intervalData, bracketData, highlightData, veilData } = bundle
   const z = input.zoomFactor ?? 1.0   // 副图 band 竖直 zoom(spec 2026-07-03)
 
@@ -676,23 +677,23 @@ export function buildSubOption(
   const zoomStart = zoomOverride?.start ?? (hasBuffer ? (sw!.startIdx / N) * 100 : 0)
   const zoomEnd   = zoomOverride?.end   ?? (hasBuffer ? ((sw!.endIdx + 1) / N) * 100 : 100)
 
-  const markerTooltip = (tooltipResolver || matchLabel)
+  const markerTooltip = (tooltipResolver || hitLabel)
     ? { trigger: 'item' as const, show: true, confine: false,
         position: opts?.getChartEl ? makeViewportAwarePosition(opts.getChartEl) : viewportAwareTooltipPosition,
         extraCssText: 'max-height: calc(100vh - 16px); overflow-y: auto;',
-        formatter: buildMarkerTooltipFormatter(tooltipResolver, matchLabel,
-          { matches: input.matches ?? [], candidateMatchIds: candidateMatchIds ?? new Set() }) }
+        formatter: buildMarkerTooltipFormatter(tooltipResolver, hitLabel,
+          { hits: input.hits ?? [], candidateHitIds: candidateHitIds ?? new Set() }) }
     : undefined
 
-  // 装饰几何(zebra/subDivider/bandLabels/matchesLabel)改走 option.graphic,不再挂 series
+  // 装饰几何(zebra/subDivider/bandLabels/hitsLabel)改走 option.graphic,不再挂 series
   const bandLabelTexts = subBandTagList(input.tagList, input.topology)
-  const matchesLabelVisible = bracketData.length > 0
+  const hitsLabelVisible = bracketData.length > 0
   const decorGraphics = buildSubDecorGraphics(
     subGeom.bandGeom,
     subGeom.dividerY,
     subGeom.bracketH,
     bandLabelTexts,
-    matchesLabelVisible,
+    hitsLabelVisible,
     chartSubWidth,
     z,
   )
@@ -728,12 +729,12 @@ export function buildSubOption(
         data: pointData,
         renderItem: (p: any, api: any) => renderPointWithGeom(p, api, subGeom.bandGeom, z),
         encode: { x: 0 }, z: 10, tooltip: markerTooltip },
-      // brackets (z:11)。focus 信号:selectedMatchId 存在且无实例焦点 ⟺ bracket
-      // 本身是被点者(KlineChart.ts bracket 分支走 focusMatch 不设实例;marker 分支必设)
+      // brackets (z:11)。focus 信号:selectedHitId 存在且无实例焦点 ⟺ bracket
+      // 本身是被点者(KlineChart.ts bracket 分支走 focusHit 不设实例;marker 分支必设)
       { type: 'custom', name: 'brackets', xAxisIndex: 0, yAxisIndex: 0,
         data: bracketData,
-        renderItem: makeRenderBracket(bracketData, selectedMatchId ?? null, candidateMatchIds ?? new Set(), z,
-          (selectedMatchId ?? null) !== null && (input.selectedInstanceId ?? null) === null),
+        renderItem: makeRenderBracket(bracketData, selectedHitId ?? null, candidateHitIds ?? new Set(), z,
+          (selectedHitId ?? null) !== null && (input.selectedInstanceId ?? null) === null),
         encode: { x: [0, 1] }, z: 11, tooltip: markerTooltip,
         emphasis: { disabled: true } },
       // highlight (z:20)。animation:true 为 series 级显式开关:keyframeAnimation(pending 闪烁)
@@ -796,7 +797,7 @@ function renderHitSpanner(params: any, api: any) {
   }
 }
 
-// 选中词汇(2026-07-08 改):三档皆保 node/tier 分色(matched=node本色,qualified/detected=灰),
+// 选中词汇(2026-07-08 改):三档皆保 node/tier 分色(in_hit=node本色,qualified/detected=灰),
 // group=细深边, focus=粗深边;琥珀不再代表选中。AMBER_FILL 仅剩 bracket 默认底(bracket 无 tier 语义)。
 const AMBER_FILL = '#fbbf24'      // bracket 默认底(琥珀,非选中语义)
 const HL_FOCUS_EDGE = '#1e293b'   // slate-800(group/focus 深边、BO 文本、bracket 序号)
@@ -822,7 +823,7 @@ export function pendingBlinkAnimation() {
 
 // 按三态装配放大版图形(2026-07-08 改):group/focus 都保 node/tier 分色,
 // 靠边框粗细区分——group=细深边(1.5)、focus=粗深边(2.5),琥珀不再代表选中。
-// color 由 itemStyle.color 传入,已按 colorOf 三档分:matched=node本色 / qualified=中灰 / detected=浅灰。
+// color 由 itemStyle.color 传入,已按 colorOf 三档分:in_hit=node本色 / qualified=中灰 / detected=浅灰。
 // 放大实心版盖住下层本体 marker → 一律 silent:true 让 hover/click 穿透到本体系列。
 // pending 分层固定:白底垫层(阴影+琥珀边恒定)+ 本色 fill 层(单独闪)。
 // 禁止本色静态垫层——fill 闪暗时露出同色垫层 = 视觉不闪(c94baf7 同构陷阱)。
@@ -858,7 +859,7 @@ function buildHlShape(
 
 // 主图 price-anchored bo 盒放大版(grid0 价格轴)。实心放大版遮住本体文字 →
 // 重画盒+文本(字号不变)。stackOffset 与 renderPricePoint 同步(BO_STACK_PT)。
-// 2026-07-08 改:同 buildHlShape,group/focus 保 tier 分色(matched=橙/灰) + 细/粗深边;
+// 2026-07-08 改:同 buildHlShape,group/focus 保 tier 分色(in_hit=橙/灰) + 细/粗深边;
 // 文字色全 tier 统一 HL_FOCUS_EDGE(灰底可读,橙底可读);pending 白底+闪烁分层不动。
 // ⚠ closure factory:ECharts customSeries 不在 params 中传 data item,必须按 dataIndex 反查。
 export function makeRenderPricePointHighlight(
@@ -947,7 +948,7 @@ export function makeRenderPricePointHighlight(
 }
 
 // ─── 副图 renderer(独立坐标,消费 computeSubGeometry 派生的 bandGeom) ───────
-// (bandZebra/subDivider/matchesLabel/bandLabels 4 个 renderer 已随 Task 4 迁移到
+// (bandZebra/subDivider/hitsLabel/bandLabels 4 个 renderer 已随 Task 4 迁移到
 //  buildSubDecorGraphics 的 option.graphic 装配,不再需要 ECharts custom series renderItem)
 
 // renderIntervalWithGeom / renderPointWithGeom:改从 bandGeom 派生 bandTop/bandH
@@ -1197,8 +1198,8 @@ export function makeRenderShiftVeilPrice(
 // focusOnBracket = 琥珀 + 粗深边 + shadow;candidate = 0.35 琥珀底 + 琥珀虚线边不动。
 export function makeRenderBracket(
   items: Array<{ hit_id: string }>,
-  selectedMatchId: string | null,
-  candidateMatchIds: ReadonlySet<string>,
+  selectedHitId: string | null,
+  candidateHitIds: ReadonlySet<string>,
   zoomFactor: number = 1.0,
   focusOnBracket: boolean = false,
 ) {
@@ -1208,9 +1209,9 @@ export function makeRenderBracket(
     const lane = api.value(2) || 0
     const top = BAND_TOP_PAD + lane * BAND_LANE_H * zoomFactor
     const rectH = BAND_MARKER_H * zoomFactor
-    const matchId: string | undefined = items[params.dataIndex]?.hit_id
-    const isSelected = !!matchId && selectedMatchId === matchId
-    const isCandidate = !isSelected && !!matchId && candidateMatchIds.has(matchId)
+    const hitId: string | undefined = items[params.dataIndex]?.hit_id
+    const isSelected = !!hitId && selectedHitId === hitId
+    const isCandidate = !isSelected && !!hitId && candidateHitIds.has(hitId)
     const fill = isCandidate ? 'rgba(251,191,36,0.35)' : AMBER_FILL
     // 选中:居中外扩 + 投影(组员悬浮语义)。
     // 居中外扩后中心不变(−1.5z + (h+3z)/2 = rectH/2)→ 序号 text 的 y 公式不动。
@@ -1348,7 +1349,7 @@ function makeRenderPricePoint(
     return {
       type: 'group',
       children: [
-        // 1. 圆角矩形背景(按 tier 分色:matched=橙、qualified/detected=灰;无边框)
+        // 1. 圆角矩形背景(按 tier 分色:in_hit=橙、qualified/detected=灰;无边框)
         {
           type: 'rect',
           shape: { x: cx - w / 2, y: cy - h / 2, width: w, height: h, r: BO_BOX_RADIUS },
@@ -1591,10 +1592,13 @@ export function buildBarTooltipFormatter(bars: Bar[]) {
   }
 }
 
+/** 悬停里的程序固定文字:等宽。MONO 里有双引号,属性值用单引号括。 */
+const fixedLine = (s: string) => `<span style='font-family:${MONO}'>${s}</span>`
+
 /**
  * Marker tooltip formatter (series-level item-trigger)。
- * 三段结构 + 可选 match 顶行：
- *   - 顶行 (仅 params.data.hit_id 命中)：Match: {matchLabel(id)}
+ * 三段结构 + 可选 hit 顶行：
+ *   - 顶行 (仅 params.data.hit_id 命中)：hit: {hitLabel(id)}
  *   - 段 1 Identity：node / time / id
  *   - 段 2 Clauses：失败 ✗ 置顶 + 加粗；多 node 同 cid 行末加 (in: <node>)
  *   - 段 3 Attributes：raw（已去重）
@@ -1608,46 +1612,46 @@ export function buildBarTooltipFormatter(bars: Bar[]) {
  */
 export function buildMarkerTooltipFormatter(
   tooltipResolver: ((instanceId: string) => TooltipPayload) | undefined,
-  matchLabel: ((matchId: string) => string | null) | undefined,
-  ctx: { matches: HitDict[]; candidateMatchIds: ReadonlySet<string> } = { matches: [], candidateMatchIds: new Set() },
+  hitLabel: ((hitId: string) => string | null) | undefined,
+  ctx: { hits: HitDict[]; candidateHitIds: ReadonlySet<string> } = { hits: [], candidateHitIds: new Set() },
 ) {
   return (params: { data?: { instance_id?: string; hit_id?: string; [key: string]: unknown } } | null): string => {
     const data = params?.data
     if (!data) return ''
     const lines: string[] = []
 
-    // ── bracket 段：候选首行 + matchLabel + 组成段 (M #15 / M' #25) ────────
-    const matchId = data.hit_id as string | undefined
-    if (matchId) {
+    // ── bracket 段：候选首行 + hitLabel + 组成段 (M #15 / M' #25) ────────
+    const hitId = data.hit_id as string | undefined
+    if (hitId) {
       // 候选态首行 (M' #25)
-      if (ctx.candidateMatchIds.has(matchId)) {
+      if (ctx.candidateHitIds.has(hitId)) {
         lines.push('候选: click 此 bracket 选中该 group')
       }
-      // 既有 matchLabel
-      if (matchLabel) {
-        const ml = matchLabel(matchId)
-        if (ml) lines.push(`Match: ${ml}`)
+      // 既有 hitLabel
+      if (hitLabel) {
+        const label = hitLabel(hitId)
+        if (label) lines.push(fixedLine(`hit: ${label}`))
       }
       // 组成段 (M #15)
-      const match = ctx.matches.find((m) => m.hit_id === matchId)
-      if (match) {
-        lines.push(`组成 (${match.children.length} events):`)
-        for (const [nodeKey, instanceId] of Object.entries(match.node_index)) {
+      const hit = ctx.hits.find((m) => m.hit_id === hitId)
+      if (hit) {
+        lines.push(`组成 (${hit.children.length} events):`)
+        for (const [nodeKey, instanceId] of Object.entries(hit.node_index)) {
           lines.push(`  ${nodeKey}: ${instanceId}`)
         }
       }
     }
 
-    // ── 多确认段:该买点(实例)被几个 match 共享 ────────────────────────────
+    // ── 多确认段:该买点(实例)被几个 hit 共享 ────────────────────────────
     // 实例化契约:marker 的 data.instance_id 即买点锚 leaf(instance_id);共享计数按
-    // match.leaf(实例级,serialize 注入)匹配,同 leaf 被 >=2 match 共享时输出确认行。
+    // hit.leaf(实例级,serialize 注入)匹配,同 leaf 被 >=2 hit 共享时输出确认行。
     const instanceId = data.instance_id as string | undefined
-    if (instanceId && ctx.matches.length > 0) {
-      const sharedBy = ctx.matches.filter(
+    if (instanceId && ctx.hits.length > 0) {
+      const sharedBy = ctx.hits.filter(
         (m) => m.leaf === instanceId || m.children.includes(instanceId),
       ).length
       if (sharedBy >= 2) {
-        lines.push(`确认: ${sharedBy} 个 match 共享此买点`)
+        lines.push(fixedLine(`shared_by_hits: ${sharedBy}`))
       }
     }
 
@@ -1730,10 +1734,10 @@ export function buildMarkerTooltipFormatter(
     }
 
     // ── marker 归属节 (M #16, 仅非 bracket marker: 无 hit_id) ──────────
-    if (!matchId && instanceId && ctx.matches.length > 0) {
+    if (!hitId && instanceId && ctx.hits.length > 0) {
       // 按 start_idx 排序,与 packBrackets(geometry.ts:47-49)的 ordinal 语义一致;
       // 同时从 sortedByStart 过滤,保证 ordinals 以升序列出
-      const sortedByStart = [...ctx.matches].sort((a, b) => a.start_idx - b.start_idx)
+      const sortedByStart = [...ctx.hits].sort((a, b) => a.start_idx - b.start_idx)
       const ownedBy = sortedByStart.filter((m) => m.children.includes(instanceId))
       if (ownedBy.length > 0) {
         const ORDINAL_CHARS = '①②③④⑤⑥⑦⑧⑨'
@@ -1741,7 +1745,7 @@ export function buildMarkerTooltipFormatter(
           const ord = sortedByStart.indexOf(m) + 1
           return ord >= 1 && ord <= 9 ? ORDINAL_CHARS[ord - 1] : String(ord)
         })
-        lines.push(`归属: match ${ords.join(' ')}`)
+        lines.push(fixedLine(`in_hits: ${ords.join(' ')}`))
       }
     }
 

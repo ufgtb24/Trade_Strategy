@@ -1,5 +1,5 @@
 <template>
-  <div v-if="shiftPairPending && candidateMatchIds.size === 0" class="shift-pair-banner">
+  <div v-if="shiftPairPending && candidateHitIds.size === 0" class="shift-pair-banner">
     入口 D · 已选 1/2 — 再 shift+click 一个 event / Esc 取消
   </div>
 </template>
@@ -9,7 +9,7 @@ import { storeToRefs } from 'pinia'
 import { useViewStore } from '../stores/view'
 
 const view = useViewStore()
-const { shiftPairPending, candidateMatchIds } = storeToRefs(view)
+const { shiftPairPending, candidateHitIds } = storeToRefs(view)
 </script>
 
 <style scoped>

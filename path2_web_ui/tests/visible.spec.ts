@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { matchedIds, resolveTooltipData, buildRefRows } from '../src/render/visible'
+import { inHitIds, resolveTooltipData, buildRefRows } from '../src/render/visible'
 import {
   bandKeyOf, deriveTagMap, isolatedNodeIds, isQualifiedRow,
   qualifiedIdsOf, eventTierOf, nodeOfEventByBand, isBandVisible,
@@ -8,17 +8,17 @@ import {
 import type { TopoNode, TopoEdge, EventDict, HitDict, AttrRow, Diagnostics, Bar } from '../src/types'
 import { ANALYSIS } from './fixtures'
 
-const { hits: matches } = ANALYSIS
+const { hits } = ANALYSIS
 
-describe('matchedIds', () => {
-  it('matchedIds = union of all node_index 精确实例(instance_id 字符串直加)', () => {
-    const s = matchedIds(matches, ANALYSIS.events, [])
+describe('inHitIds', () => {
+  it('inHitIds = union of all node_index 精确实例(instance_id 字符串直加)', () => {
+    const s = inHitIds(hits, ANALYSIS.events, [])
     expect(s.has('bo_9#0')).toBe(true)
     expect(s.has('bo_20#0')).toBe(false)
   })
 
-  it('沿 child_refs.members 递归展开:matched composite event 的 constituent 也进 matched 集(协议驱动、非字段名)', () => {
-    const matches: HitDict[] = [{ hit_id: 'm1', start_idx: 0, end_idx: 10,
+  it('沿 child_refs.members 递归展开:in_hit composite event 的 constituent 也进 in_hit 集(协议驱动、非字段名)', () => {
+    const hits: HitDict[] = [{ hit_id: 'm1', start_idx: 0, end_idx: 10,
       node_index: { burst: 'burst_1_5#0' }, children: ['burst_1_5#0'], predicate_trace: null }]
     const events: EventDict[] = [
       { instance_id: 'burst_1_5#0', node_id: 'burst', instance_idx: 0, start_idx: 1, end_idx: 5,
@@ -28,7 +28,7 @@ describe('matchedIds', () => {
       { instance_id: 'bo_5#0', node_id: 'bo', instance_idx: 0, start_idx: 5, end_idx: 5, child_refs: {} },
       { instance_id: 'bo_99#0', node_id: 'bo', instance_idx: 0, start_idx: 99, end_idx: 99, child_refs: {} },
     ]
-    const s = matchedIds(matches, events, [])
+    const s = inHitIds(hits, events, [])
     expect(s.has('burst_1_5#0')).toBe(true)
     expect(s.has('bo_1#0')).toBe(true)
     expect(s.has('bo_3#0')).toBe(true)
@@ -36,8 +36,8 @@ describe('matchedIds', () => {
     expect(s.has('bo_99#0')).toBe(false)  // 不在 child_refs.members
   })
 
-  it('沿 edges.anchor_field 反查:tb.anchor_bo_id 引用的 bo 也进 matched 集(默认 expandAnchor)', () => {
-    const matches: HitDict[] = [{ hit_id: 'm1', start_idx: 0, end_idx: 10,
+  it('沿 edges.anchor_field 反查:tb.anchor_bo_id 引用的 bo 也进 in_hit 集(默认 expandAnchor)', () => {
+    const hits: HitDict[] = [{ hit_id: 'm1', start_idx: 0, end_idx: 10,
       node_index: { tb: 'tb_7#0' }, children: ['tb_7#0'], predicate_trace: null }]
     const events: EventDict[] = [
       { instance_id: 'tb_7#0', node_id: 'tb', instance_idx: 0, start_idx: 7, end_idx: 7,
@@ -45,13 +45,13 @@ describe('matchedIds', () => {
       { instance_id: 'bo_5#0', node_id: 'bo', instance_idx: 0, start_idx: 5, end_idx: 5, child_refs: {} },
     ]
     const edges: TopoEdge[] = [{ src: 'burst', dst: 'tb', kind: 'temporal', rule: '', anchor_field: 'anchor_bo_id' }]
-    const s = matchedIds(matches, events, edges)
+    const s = inHitIds(hits, events, edges)
     expect(s.has('tb_7#0')).toBe(true)
     expect(s.has('bo_5#0')).toBe(true)
   })
 
   it('实例级展开:同 (node,span) 多实例(instance_idx #0/#1)各进集、互不覆盖;node_index 精确引用两实例', () => {
-    const matches: HitDict[] = [{ hit_id: 'm1', start_idx: 0, end_idx: 10,
+    const hits: HitDict[] = [{ hit_id: 'm1', start_idx: 0, end_idx: 10,
       node_index: { tb: 'tb_266#0', tb2: 'tb_266#1' },
       children: ['tb_266#0', 'tb_266#1'], predicate_trace: null }]
     const events: EventDict[] = [
@@ -63,7 +63,7 @@ describe('matchedIds', () => {
       { instance_id: 'bo_6#0', node_id: 'bo', instance_idx: 0, start_idx: 6, end_idx: 6, child_refs: {} },
     ]
     const edges: TopoEdge[] = [{ src: 'burst', dst: 'tb', kind: 'temporal', rule: '', anchor_field: 'anchor_bo_id' }]
-    const s = matchedIds(matches, events, edges)
+    const s = inHitIds(hits, events, edges)
     expect(s.has('tb_266#0')).toBe(true)
     expect(s.has('tb_266#1')).toBe(true)
     // node_index 精确引用 #0/#1 → 两实例都进集;各实例 anchor 的 bo 各进集(不串)
@@ -73,12 +73,12 @@ describe('matchedIds', () => {
 
   it('events/edges 为空数组:无实例可展开 → 空集(node_index 无引用)', () => {
     const ms: HitDict[] = [{ hit_id: 'M1', start_idx: 1, end_idx: 5, children: ['burst_1_5#0'], node_index: {}, predicate_trace: null }]
-    const s = matchedIds(ms, [], [])
+    const s = inHitIds(ms, [], [])
     expect(s.size).toBe(0)
   })
 
-  it('matchedIds 初始集按 node_index 精确实例(非身份展开)', () => {
-    // 构造:两个 match,node_index 分别引用 tb_293 的 #0 / #1(APCX 形态)
+  it('inHitIds 初始集按 node_index 精确实例(非身份展开)', () => {
+    // 构造:两个 hit,node_index 分别引用 tb_293 的 #0 / #1(APCX 形态)
     const m0 = { hit_id: 'bb@0-3', start_idx: 0, end_idx: 3,
                  node_index: { burst: 'burst_0_2#0', tb: 'tb_293#0' },
                  children: ['burst_0_2#0', 'tb_293#0'], predicate_trace: null } as HitDict
@@ -89,12 +89,12 @@ describe('matchedIds', () => {
       { instance_id: 'tb_293#0', node_id: 'tb', instance_idx: 0, start_idx: 293, end_idx: 293, child_refs: {} } as EventDict,
       { instance_id: 'tb_293#1', node_id: 'tb', instance_idx: 1, start_idx: 293, end_idx: 293, child_refs: {} } as EventDict,
     ]
-    const s = matchedIds([m0, m1], events, [])
+    const s = inHitIds([m0, m1], events, [])
     expect(s.has('tb_293#0')).toBe(true)
     expect(s.has('tb_293#1')).toBe(true)   // 两实例各被引用 → 都进集
   })
 
-  it('matchedIds 未被引用的实例不进集', () => {
+  it('inHitIds 未被引用的实例不进集', () => {
     // 同 (node,span) 3 实例,只有 #0/#1 被引用 → #2 不进集
     const events = [
       { instance_id: 'tb_1#0', node_id: 'tb', instance_idx: 0, start_idx: 1, end_idx: 1, child_refs: {} } as EventDict,
@@ -104,7 +104,7 @@ describe('matchedIds', () => {
     const m = { hit_id: 'bb@1-1', start_idx: 1, end_idx: 1,
                 node_index: { tb: 'tb_1#1' },
                 children: ['tb_1#1'], predicate_trace: null } as HitDict
-    const s = matchedIds([m], events, [])
+    const s = inHitIds([m], events, [])
     expect(s.has('tb_1#0')).toBe(false)   // 身份展开的旧行为会进 #0;精确引用不进
     expect(s.has('tb_1#1')).toBe(true)
   })
@@ -145,28 +145,28 @@ describe('visible §3 band/tier', () => {
     expect(isQualifiedRow(fail)).toBe(false)
     expect(isQualifiedRow(empty)).toBe(true)
   })
-  it('eventTierOf: matched > qualified > detected', () => {
-    const matched = new Set(['m1#0']); const qualified = new Set(['t1#0'])
-    expect(eventTierOf(ev('m1#0', 'burst'), matched, qualified)).toBe('matched')
-    expect(eventTierOf(ev('t1#0', 'burst'), matched, qualified)).toBe('qualified')
-    expect(eventTierOf(ev('d1#0', 'burst'), matched, qualified)).toBe('detected')
+  it('eventTierOf: in_hit > qualified > detected', () => {
+    const inHit = new Set(['m1#0']); const qualified = new Set(['t1#0'])
+    expect(eventTierOf(ev('m1#0', 'burst'), inHit, qualified)).toBe('in_hit')
+    expect(eventTierOf(ev('t1#0', 'burst'), inHit, qualified)).toBe('qualified')
+    expect(eventTierOf(ev('d1#0', 'burst'), inHit, qualified)).toBe('detected')
   })
   it('eventTierOf 按实例级判定:同 (node,span) 不同实例可不同档', () => {
-    // 实例化契约:matched 集元素为 instance_id;#0 实例 matched、#1 实例仅 detected
-    const matched = new Set(['tb_266#0'])
+    // 实例化契约:in_hit 集元素为 instance_id;#0 实例 in_hit、#1 实例仅 detected
+    const inHit = new Set(['tb_266#0'])
     const qualified = new Set<string>()
     const e0 = { ...ev('tb_266#0', 'tb') }
     const e1 = { ...ev('tb_266#1', 'tb') }
-    expect(eventTierOf(e0, matched, qualified)).toBe('matched')
-    expect(eventTierOf(e1, matched, qualified)).toBe('detected')
+    expect(eventTierOf(e0, inHit, qualified)).toBe('in_hit')
+    expect(eventTierOf(e1, inHit, qualified)).toBe('detected')
   })
-  it('eventTierOf qualified 实例级判定:matched/qualified 集均 instance_id,同 (node,span) 两实例可不同档', () => {
-    const matched = new Set<string>()
+  it('eventTierOf qualified 实例级判定:in_hit/qualified 集均 instance_id,同 (node,span) 两实例可不同档', () => {
+    const inHit = new Set<string>()
     const qualified = new Set(['tb_266#0'])
     const e0 = { ...ev('tb_266#0', 'tb') }
     const e1 = { ...ev('tb_266#1', 'tb') }
-    expect(eventTierOf(e0, matched, qualified)).toBe('qualified')
-    expect(eventTierOf(e1, matched, qualified)).toBe('detected')  // 仅 #0 实例 qualified,#1 各判各的
+    expect(eventTierOf(e0, inHit, qualified)).toBe('qualified')
+    expect(eventTierOf(e1, inHit, qualified)).toBe('detected')  // 仅 #0 实例 qualified,#1 各判各的
   })
   it('nodeOfEventByBand: node_id → 单 node(1:1)', () => {
     const { tagToNodes, tagList } = deriveTagMap(nodes)

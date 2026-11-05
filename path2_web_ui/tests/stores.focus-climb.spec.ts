@@ -1,8 +1,8 @@
 // stores.focus-climb.spec.ts — focusEvent 子结构爬升契约(2026-08-16)
-// 背景:match 成员 = 各 node 绑定实例(node_index 只含 burst/tb 容器),bo/tb_seg
-// 子事件经容器 child_refs 挂靠、不是 match 成员——直接按 node_index 解析恒 0 归属,
+// 背景:hit 成员 = 各 node 绑定实例(node_index 只含 burst/tb 容器),bo/tb_seg
+// 子事件经容器 child_refs 挂靠、不是 hit 成员——直接按 node_index 解析恒 0 归属,
 // 点段/点 bo 只亮单点。爬升 = 经 child_refs 逆索引用父容器 instance_id 再解析,
-// 0/1/≥2 三分支照走(≥2 前缀族消歧);邻居段高亮由 matchedIds 的 child_refs 闭包内建。
+// 0/1/≥2 三分支照走(≥2 前缀族消歧);邻居段高亮由 inHitIds 的 child_refs 闭包内建。
 import { describe, it, expect, beforeEach } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
 import fs from 'node:fs'
@@ -35,16 +35,16 @@ function makeClimbFixture(): MultiScanResultFile {
     { instance_id: 'tb_30_31#0', node_id: 'tb', start_idx: 30, end_idx: 31,
       child_refs: { segments: ['tb_30#0'] } },
     { instance_id: 'tb_30#0', node_id: 'tb', start_idx: 30, end_idx: 30, child_refs: {} },
-    // 父容器不在任何 match 的段(0 归属回落)
+    // 父容器不在任何 hit 的段(0 归属回落)
     { instance_id: 'tb_40_41#0', node_id: 'tb', start_idx: 40, end_idx: 41,
       child_refs: { segments: ['tb_40#0'] } },
     { instance_id: 'tb_40#0', node_id: 'tb', start_idx: 40, end_idx: 40, child_refs: {} },
-    // 非 match 的组成型组(新形态:段直标 tb_seg)——「一选全选」用例数据
+    // 非 hit 的组成型组(新形态:段直标 tb_seg)——「一选全选」用例数据
     { instance_id: 'tb_50_52#0', node_id: 'tb', start_idx: 50, end_idx: 52,
       child_refs: { segments: ['tb_seg_50#0', 'tb_seg_51#0'] } },
     { instance_id: 'tb_seg_50#0', node_id: 'tb_seg', start_idx: 50, end_idx: 50, child_refs: {} },
     { instance_id: 'tb_seg_51#0', node_id: 'tb_seg', start_idx: 51, end_idx: 52, child_refs: {} },
-    // 孤立 burst(无 match 归属):引用型无关 node,不应触发组展开
+    // 孤立 burst(无 hit 归属):引用型无关 node,不应触发组展开
     { instance_id: 'burst_60_61#0', node_id: 'burst', start_idx: 60, end_idx: 61,
       child_refs: { members: ['bo_60#0'] } },
     { instance_id: 'bo_60#0', node_id: 'bo', start_idx: 60, end_idx: 60 },
@@ -68,15 +68,15 @@ function makeClimbFixture(): MultiScanResultFile {
 describe('view store — focusEvent 子结构爬升', () => {
   beforeEach(() => { setActivePinia(createPinia()) })
 
-  it('点 tb_seg → 爬升到容器所在 match 直选;邻居段/成员经 child_refs 闭包进 group 高亮集', () => {
+  it('点 tb_seg → 爬升到容器所在 hit 直选;邻居段/成员经 child_refs 闭包进 group 高亮集', () => {
     const view = useViewStore()
     view.loadScanFile(makeClimbFixture())
     view.focusEvent('tb_seg_15_18#0')
-    expect(view.focusedMatchId).toBe('m-full')
+    expect(view.focusedHitId).toBe('m-full')
     expect(view.focusedInstanceId).toBe('tb_seg_15_18#0')
     expect(view.selectedInstanceId).toBeNull()
     expect(view.pendingDisambigInstanceId).toBeNull()
-    // 邻居段 + 容器 + burst + bo 成员全进高亮集(matchedIds child_refs 闭包)
+    // 邻居段 + 容器 + burst + bo 成员全进高亮集(inHitIds child_refs 闭包)
     for (const id of ['tb_seg_11#0', 'tb_seg_15_18#0', 'tb_10_20#0', 'burst_4_6#0', 'bo_4#0', 'bo_6#0']) {
       expect(view.highlightedEventIds.has(id), id).toBe(true)
     }
@@ -86,39 +86,39 @@ describe('view store — focusEvent 子结构爬升', () => {
     }
   })
 
-  it('点唯一归属的 bo → 爬升 bo→burst 直选所在 match', () => {
+  it('点唯一归属的 bo → 爬升 bo→burst 直选所在 hit', () => {
     const view = useViewStore()
     view.loadScanFile(makeClimbFixture())
     view.focusEvent('bo_6#0')   // 只被 burst_4_6 引用 → m-full
-    expect(view.focusedMatchId).toBe('m-full')
+    expect(view.focusedHitId).toBe('m-full')
     expect(view.focusedInstanceId).toBe('bo_6#0')
     expect(view.pendingDisambigInstanceId).toBeNull()
   })
 
-  it('点前缀族共享 bo(两父 burst 各有 match)→ ≥2 归属弹候选消歧,不自动选', () => {
+  it('点前缀族共享 bo(两父 burst 各有 hit)→ ≥2 归属弹候选消歧,不自动选', () => {
     const view = useViewStore()
     view.loadScanFile(makeClimbFixture())
     view.focusEvent('bo_4#0')   // burst_4_6(m-full) 与 burst_4_5(m-prefix) 共享
-    expect(view.focusedMatchId).toBeNull()
+    expect(view.focusedHitId).toBeNull()
     expect(view.focusedInstanceId).toBeNull()
     expect(view.pendingDisambigInstanceId).toBe('bo_4#0')
-    expect(view.candidateMatchIds.has('m-full')).toBe(true)
-    expect(view.candidateMatchIds.has('m-prefix')).toBe(true)
+    expect(view.candidateHitIds.has('m-full')).toBe(true)
+    expect(view.candidateHitIds.has('m-prefix')).toBe(true)
   })
 
-  it('父容器不在任何 match → 维持 0 归属单点聚焦(行为与爬升前一致)', () => {
+  it('父容器不在任何 hit → 维持 0 归属单点聚焦(行为与爬升前一致)', () => {
     const view = useViewStore()
     view.loadScanFile(makeClimbFixture())
     view.focusEvent('tb_40#0')
     expect(view.selectedInstanceId).toBe('tb_40#0')
-    expect(view.focusedMatchId).toBeNull()
+    expect(view.focusedHitId).toBeNull()
     expect(view.highlightedEventIds.size).toBe(0)
   })
 
-  // ── 组成型组「一选全选」(2026-08-17):0 归属非 match 组,点组内任一成员 →
-  // 整组(容器+全部段)进 compositionGroupIds;match 存在时空集(match 闭包覆盖)。──
+  // ── 组成型组「一选全选」(2026-08-17):0 归属非 hit 组,点组内任一成员 →
+  // 整组(容器+全部段)进 compositionGroupIds;hit 存在时空集(hit 闭包覆盖)。──
 
-  it('点非 match 组的段 → 整组(容器+邻居段)进 compositionGroupIds', () => {
+  it('点非 hit 组的段 → 整组(容器+邻居段)进 compositionGroupIds', () => {
     const view = useViewStore()
     view.loadScanFile(makeClimbFixture())
     view.focusEvent('tb_seg_51#0')
@@ -131,7 +131,7 @@ describe('view store — focusEvent 子结构爬升', () => {
     expect(view.compositionGroupIds.has('tb_40_41#0')).toBe(false)
   })
 
-  it('点非 match 组的容器 → 同一整组(与点段等价)', () => {
+  it('点非 hit 组的容器 → 同一整组(与点段等价)', () => {
     const view = useViewStore()
     view.loadScanFile(makeClimbFixture())
     view.focusEvent('tb_50_52#0')
@@ -139,13 +139,13 @@ describe('view store — focusEvent 子结构爬升', () => {
     expect(view.compositionGroupIds.has('tb_seg_50#0')).toBe(true)
   })
 
-  it('match 组点段 → compositionGroupIds 空,由 match 闭包覆盖(一选全选不叠加)', () => {
+  it('hit 组点段 → compositionGroupIds 空,由 hit 闭包覆盖(一选全选不叠加)', () => {
     const view = useViewStore()
     view.loadScanFile(makeClimbFixture())
     view.focusEvent('tb_seg_15_18#0')   // m-full 直选(1 归属)
     expect(view.selectedInstanceId).toBeNull()
     expect(view.compositionGroupIds.size).toBe(0)
-    expect(view.highlightedEventIds.has('tb_seg_11#0')).toBe(true)   // match 闭包管组员
+    expect(view.highlightedEventIds.has('tb_seg_11#0')).toBe(true)   // hit 闭包管组员
   })
 
   it('引用型/无关 node(孤立 burst、旧形态段)不触发组展开,维持单点', () => {

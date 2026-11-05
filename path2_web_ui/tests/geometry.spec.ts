@@ -24,7 +24,7 @@ describe('geometry', () => {
     expect(Math.max(...lanes)).toBe(1)
   })
 
-  it('packBrackets packs match spans by lane', () => {
+  it('packBrackets packs hit spans by lane', () => {
     const b = packBrackets([
       { hit_id: 'm1', start_idx: 0, end_idx: 10 },
       { hit_id: 'm2', start_idx: 3, end_idx: 7 },   // 重叠 → lane 1

@@ -1,0 +1,14 @@
+# 票 03 截图自查的文字记录（shots.spec.ts 写入）
+扫描中 .prog：16/1414 · hit_stocks 1 停止扫描 ✕
+停止对话框：hit_stocks: 2；title=已扫到的有 hit 的股票数
+扫描完成 .done：done: hit_stocks 5 / errors 0
+当前 scan：bb_v1 / PLTR，hit 数 3
+档位按钮 in_hit：title=仅显示进了某一次 hit 的事件；font=ui-monospace, "JetBrains Mono", "DejaVu Sans Mono", Consolas, monospace
+档位按钮 qualified：title=显示进了 hit 或参与诊断 trace 的事件；font=ui-monospace, "JetBrains Mono", "DejaVu Sans Mono", Consolas, monospace
+档位按钮 detected：title=显示所有被 detector 检出的事件；font=ui-monospace, "JetBrains Mono", "DejaVu Sans Mono", Consolas, monospace
+副图轨标题（in_hit 档）：["burst","tb","hits"]
+点 hit 列表第 2 行：focusedHitId=bb_v1@401-426#burst:burst_401_414#0|tb:tb_419_426#0；标题 ["hits","hit_trace"]
+detected 档的 tier tag 系列：[["tier-tags",["detected_only","detected_only","detected_only","detected_only","detected_only","detected_only","detected_only","detected_only","detected_only","detected_only","detected_only","detected_only","detected_only","detected_only","detected_only","detected_only","detected_only","detected_only","detected_only","detected_only","detected_only","detected_only","detected_only","detected_only","
+localStorage 存旧值 matched 后刷新：level=in_hit
+compare-events 的档位取值：["qualified","in_hit"]
+compare 悬停文字：in_hit 2022-08-04 – 2022-08-04

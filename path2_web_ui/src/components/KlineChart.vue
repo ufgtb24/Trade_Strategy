@@ -2,7 +2,7 @@
   <div class="kline-wrap-v2" ref="wrapEl">
     <div ref="mainEl" class="main-chart" style="flex: 1" @contextmenu="handleContextMenu" />
     <ResizableDivider @drag="onDrag" @dragend="onDragEnd" @dblclick="onDblclick" />
-    <CandidateStatusBar :matches="effectiveAnalysis?.hits ?? []" />
+    <CandidateStatusBar :hits="effectiveAnalysis?.hits ?? []" />
     <ShiftPairBanner />
     <div class="sub-outer" :style="{ height: effectiveSubH + 'px' }" ref="subOuterEl">
       <div v-if="!annotating" class="band-zoom-controls" @wheel.stop>
@@ -120,7 +120,7 @@ import { compareLanes, packHits } from '../render/compareOverlay'
 const view = useViewStore()
 const { symbol, effectiveAnalysis, nodeColors, nodeVisible, level, tagMap, isolated,
         effectivePattern, effectiveScan, scanFile, focusedInstanceRef, diag,
-        activePatternId, activeDetailCard, selectedMatchId, candidateMatchIds,
+        activePatternId, activeDetailCard, selectedHitId, candidateHitIds,
         highlightedEventIds, pendingDisambigInstanceId, shiftSelectedEventIds,
         focusedInstanceId, selectedInstanceId, compositionGroupIds, mode, annotating, viewWindow,
         comparing, linkedView, tiers, endNode } = storeToRefs(view)
@@ -437,8 +437,8 @@ function strictWindowIdx(): { startIdx: number; endIdx: number } | null {
   return startIdx >= 0 && endIdx >= 0 ? { startIdx, endIdx } : null
 }
 
-function matchLabel(matchId: string): string | null {
-  const m = effectiveAnalysis.value?.hits.find((mm) => mm.hit_id === matchId)
+function hitLabel(hitId: string): string | null {
+  const m = effectiveAnalysis.value?.hits.find((mm) => mm.hit_id === hitId)
   if (!m || m.forward_return === undefined) return null
   const horizon = (effectiveScan.value ?? scanFile.value?.scan)?.label_horizon
   // forward_drawdown 与 forward_return 同层展示(T1 注入);老 scan file 无此字段时不追加。
@@ -569,19 +569,19 @@ function buildRenderInput() {
       resolveTooltipData(id, diag.value, effectiveAnalysis.value?.events ?? [], bars.value,
                          refLabelOf),
     strictWindow: strictWindowIdx(),
-    matchLabel,
+    hitLabel,
     sliderShow: showSlider.value,
     zoomOverride: readZoomOverride(),
     endNode: endNode.value ?? undefined,
-    selectedMatchId: selectedMatchId.value,
-    candidateMatchIds: candidateMatchIds.value,
-    // 组成型组「一选全选」:0 归属非 match 组的选中集并入 group 高亮
+    selectedHitId: selectedHitId.value,
+    candidateHitIds: candidateHitIds.value,
+    // 组成型组「一选全选」:0 归属非 hit 组的选中集并入 group 高亮
     // (chart group 分支按 focusedInstanceRef 排除点击者 → 点击者 focus 框独家,
-    // 组员 group 框;match 组时本集为空,由 matchedIds 闭包独占)。
+    // 组员 group 框;hit 组时本集为空,由 inHitIds 闭包独占)。
     highlightedEventIds: new Set([...highlightedEventIds.value, ...compositionGroupIds.value]),
     pendingDisambigInstanceId: pendingDisambigInstanceId.value,
     shiftSelectedEventIds: shiftSelectedEventIds.value,
-    matches: effectiveAnalysis.value?.hits ?? [],
+    hits: effectiveAnalysis.value?.hits ?? [],
     tiers: tiers.value,
   }
 }
@@ -1038,7 +1038,7 @@ watch([scanFile, effectiveScan], () => {
   void reloadBars().then(() => render(false))
 })
 watch([effectiveAnalysis, nodeVisible, level, nodeColors, focusedInstanceRef, diag, showSlider,
-       selectedMatchId, candidateMatchIds, highlightedEventIds, pendingDisambigInstanceId,
+       selectedHitId, candidateHitIds, highlightedEventIds, pendingDisambigInstanceId,
        shiftSelectedEventIds, bandZoomFactor, focusedInstanceId, selectedInstanceId,
        compositionGroupIds],
       () => render(false), { deep: true })

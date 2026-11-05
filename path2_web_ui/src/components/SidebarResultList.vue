@@ -35,7 +35,7 @@
                   @mouseenter="onPatternHover(pid, $event)"
                   @mouseleave="onPatternLeave">
                 {{ pid }}
-                <span class="hit-count" data-testid="pattern-hit-count">{{ patternHitCounts[pid] ?? 0 }}</span>
+                <span class="hit-stocks" data-testid="pattern-hit-stocks">{{ patternHitStocks[pid] ?? 0 }}</span>
               </th>
             </template>
           </tr>
@@ -86,21 +86,21 @@
               <td v-if="view.isColumnVisible(cell.pid, 'num')"
                   :data-cell-pid="cell.pid" data-cell-field="num"
                   :data-symbol="row.symbol"
-                  :class="['col col-num', { matched: cell.matched }]"
+                  :class="['col col-num', { 'has-hit': cell.hasHit }]"
                   @click="view.selectSymbol(row.symbol)">
                 {{ cell.num == null ? '—' : cell.num }}
               </td>
               <td v-if="view.isColumnVisible(cell.pid, 'fr')"
                   :data-cell-pid="cell.pid" data-cell-field="fr"
                   :data-symbol="row.symbol"
-                  :class="['col col-fr', { matched: cell.matched }]"
+                  :class="['col col-fr', { 'has-hit': cell.hasHit }]"
                   @click="view.selectSymbol(row.symbol)">
                 {{ cell.fr == null ? '—' : fmt(cell.fr) }}
               </td>
               <td v-if="view.isColumnVisible(cell.pid, 'fd')"
                   :data-cell-pid="cell.pid" data-cell-field="fd"
                   :data-symbol="row.symbol"
-                  :class="['col col-fd', { matched: cell.matched }]"
+                  :class="['col col-fd', { 'has-hit': cell.hasHit }]"
                   @click="view.selectSymbol(row.symbol)">
                 {{ cell.fd == null ? '—' : fmt(cell.fd) }}
               </td>
@@ -176,7 +176,7 @@ const view = useViewStore()
 const { scanFile, symbol,
         patternIds, sortedRows, filteredSortedRows, sortByPid, sortDesc,
         visiblePatterns, visibleFields, symbolQuery, previewListRow,
-        patternHitCounts } = storeToRefs(view)
+        patternHitStocks } = storeToRefs(view)
 
 const searchInputEl = ref<HTMLInputElement | null>(null)
 function onSearchInput(e: Event) {
@@ -428,7 +428,7 @@ table.multi thead tr.hdr-pattern th.col-pattern {
    display:block 让它落到 pid 正下方独占一行 —— 数字不再计入行内宽度,
    列宽只由 pid 决定,这正是竖排要省的横向空间。
    外层 th 的 white-space:nowrap 保持不动:它保证两行各自不再内部折行。 */
-table.multi thead tr.hdr-pattern th.col-pattern .hit-count {
+table.multi thead tr.hdr-pattern th.col-pattern .hit-stocks {
   display: block;
   font-size: 11px;
   color: #64748b;
@@ -447,12 +447,12 @@ table.multi tbody td { height: 26px; line-height: 18px;
 table.multi tbody tr.vpad td { padding: 0; border: 0; height: inherit; }
 table.multi td.sym { font-weight: 600; cursor: pointer; }
 table.multi td.col { cursor: pointer; background: #fafafa; }
-table.multi td.col.matched { background: #dcfce7; }
+table.multi td.col.has-hit { background: #dcfce7; }
 table.multi tr.active td { background: #1d4ed8; color: #fff; }
-table.multi tr.active td.col.matched { background: #1d4ed8; }
-/* 探索态现算对照行:淡黄底,区别于绿 matched / 蓝 active */
+table.multi tr.active td.col.has-hit { background: #1d4ed8; }
+/* 探索态现算对照行:淡黄底,区别于绿 has-hit / 蓝 active */
 /* 探索态现算对照行:整行取 chip「探索 · Working Copy」的绿(ParamsChip .mode-explore:
-   #10b981 底 / 白字 / 600)。与冻结行的浅绿(#dcfce7,matched)靠饱和度+白字区分,
+   #10b981 底 / 白字 / 600)。与冻结行的浅绿(#dcfce7,has-hit)靠饱和度+白字区分,
    不靠色相 —— 色盲友好(浅黄 vs 浅绿会混,深绿满字白字不会)。border 呼应 chip 轮廓。 */
 table.multi tr.preview-row td { background: #10b981; color: #ffffff; font-weight: 600; cursor: default; }
 table.multi tr.preview-row td:first-child { border-left: 2px solid #047857; }

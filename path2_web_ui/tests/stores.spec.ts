@@ -42,10 +42,16 @@ describe('view store', () => {
     expect(v.nodeColors.down).not.toBe(v.nodeColors.side)
   })
 
-  it('level 默认 matched,setLevel 改', () => {
+  it('level 默认 in_hit,setLevel 改', () => {
     const v = useViewStore()
-    expect(v.level).toBe('matched')
+    expect(v.level).toBe('in_hit')
     v.setLevel('detected'); expect(v.level).toBe('detected')
+  })
+
+  it('浏览器里存的档位值读不懂 → 退回默认档 in_hit', () => {
+    localStorage.setItem('path2_web_ui.level', 'not_a_level')
+    expect(useViewStore().level).toBe('in_hit')
+    localStorage.removeItem('path2_web_ui.level')
   })
 
   it('focusedInstanceId(直写)/hoverEvent set 单值 ref;同值幂等', () => {
@@ -55,20 +61,20 @@ describe('view store', () => {
     v.hoverEvent('bo_3_3#0'); expect(v.hoveredEventId).toBe('bo_3_3#0')
   })
 
-  it('computed matchedIds/eventTier 反映 analysis', () => {
+  it('computed inHitIds/eventTier 反映 analysis', () => {
     const v = useViewStore()
     v.loadScanFile(SCAN_FILE); v.selectSymbol('AAPL')
-    expect(v.matchedIds.has('bo_9#0')).toBe(true)
-    expect(v.matchedIds.has('bo_20#0')).toBe(false)
-    // bo_20#0 未匹配 → detected(无 diag qualified 覆盖它);bo_9#0 匹配 → matched
+    expect(v.inHitIds.has('bo_9#0')).toBe(true)
+    expect(v.inHitIds.has('bo_20#0')).toBe(false)
+    // bo_20#0 没进 hit → detected(无 diag qualified 覆盖它);bo_9#0 进了 hit → in_hit
     const boX = v.currentAnalysis!.events.find(e => e.instance_id === 'bo_20#0')!
     const bo9 = v.currentAnalysis!.events.find(e => e.instance_id === 'bo_9#0')!
     expect(v.eventTier(boX)).toBe('detected')
-    expect(v.eventTier(bo9)).toBe('matched')
+    expect(v.eventTier(bo9)).toBe('in_hit')
   })
 
-  it('diag 预取接线 + qualified 档:未匹配 event 全-satisfied → qualified', async () => {
-    // 自定义 diag:给未匹配的 boX 造一行 clauses 全 satisfied 的 AttrRow → qualified。
+  it('diag 预取接线 + qualified 档:没进 hit 的 event 全-satisfied → qualified', async () => {
+    // 自定义 diag:给没进 hit 的 boX 造一行 clauses 全 satisfied 的 AttrRow → qualified。
     const customDiag: Diagnostics = {
       symbol: 'AAPL', pattern_id: 'bottom_burst',
       nodes: {
@@ -86,10 +92,10 @@ describe('view store', () => {
 
     // ① 预取接线真的填充了 store
     expect(v.diag).toEqual(customDiag)
-    // ② bo_20#0 进 qualifiedIds 且不在 matchedIds → qualified(中间档)
+    // ② bo_20#0 进 qualifiedIds 且不在 inHitIds → qualified(中间档)
     // 实例流契约:qualifiedIds 元素 = instance_id(attr 行 instance_id 'bo_20#0')
     expect(v.qualifiedIds.has('bo_20#0')).toBe(true)
-    expect(v.matchedIds.has('bo_20#0')).toBe(false)
+    expect(v.inHitIds.has('bo_20#0')).toBe(false)
     const boX = v.currentAnalysis!.events.find(e => e.instance_id === 'bo_20#0')!
     expect(v.eventTier(boX)).toBe('qualified')
   })

@@ -14,7 +14,7 @@ describe('ShiftPairBanner', () => {
     expect(wrapper.find('.shift-pair-banner').exists()).toBe(false)
   })
 
-  it('shiftPairPending=true + candidateMatchIds 空 → 渲染 + 文本精确匹配', () => {
+  it('shiftPairPending=true + candidateHitIds 空 → 渲染 + 文本精确匹配', () => {
     const view = useViewStore()
     view.setShiftSelectedEvents([{ instance_id: 'e1', node_id: 'BO', source: 'main' }])
     const wrapper = mount(ShiftPairBanner)
@@ -23,10 +23,10 @@ describe('ShiftPairBanner', () => {
     expect(el.text()).toBe('入口 D · 已选 1/2 — 再 shift+click 一个 event / Esc 取消')
   })
 
-  it('shiftPairPending=true + candidateMatchIds 非空 → 排他,不渲染', () => {
+  it('shiftPairPending=true + candidateHitIds 非空 → 排他,不渲染', () => {
     const view = useViewStore()
     view.setShiftSelectedEvents([{ instance_id: 'e1', node_id: 'BO', source: 'main' }])
-    view.candidateMatchIds = new Set(['m1']) as any
+    view.candidateHitIds = new Set(['m1']) as any
     const wrapper = mount(ShiftPairBanner)
     expect(wrapper.find('.shift-pair-banner').exists()).toBe(false)
   })

@@ -1,0 +1,37 @@
+# 票 03 人工判定清单（照票 01 的格式，只收本票区域）：正则分不出来、读上下文判为可留的行。格式：相对路径<TAB>该行去掉首尾空白后的原文<TAB>类别
+path2_web_ui/e2e/annotate-compare.spec.ts	const TAG_WORDS = ['missing', 'matched', 'unmatched', 'connected', 'disconnected', 'not_qualified',	新义本身：compare 下不出现对照 tag 的断言词表
+path2_web_ui/e2e/subchart-tooltip-crosshair.spec.ts	// 会返回主图 rect(第一个匹配),导致副图 markerTooltip 的 flip 判定基于错的 cursorPageY	中文「匹配」泛指：DOM 选择器
+path2_web_ui/src/components/FailedAttemptsCard.vue	* 真实 node 不匹配 → 后端 node 严格过滤后 0 结果,表现为"诊断卡片没有该	中文「匹配」泛指：标识符相等（node_id、instance_id、pointerId、文本）
+path2_web_ui/src/components/ParamsChip.vue	<span v-if="diff && !diff.match && diff.has_snapshot && !diff.anchor_missing" class="warn" data-testid="mismatch-dot"	「一致 / 等于」：参数快照比较的 match 字段
+path2_web_ui/src/components/useFloatingPanel.ts	//   · 拖拽走 window 监听 + pointerId 匹配(同 ResizableDivider),不用 setPointerCapture	中文「匹配」泛指：标识符相等（node_id、instance_id、pointerId、文本）
+path2_web_ui/src/components/workingCopyLayers.ts	const sec = line.match(SECTION_RE)	正则与模式匹配：str.match(编译好的正则)
+path2_web_ui/src/components/workingCopyLayers.ts	const kv = line.match(KV_RE)	正则与模式匹配：str.match(编译好的正则)
+path2_web_ui/src/render/chart.ts	// 匹配;focusedInstanceId 是实例级,精确排除被点的那一个实例——同身份兄弟实例不误伤	中文「匹配」泛指：标识符相等（node_id、instance_id、pointerId、文本）
+path2_web_ui/src/render/chart.ts	* DOM 第一个匹配(通常 chartMain),副图 markerTooltip 的 flip 判定会拿到错的	中文「匹配」泛指：DOM 选择器
+path2_web_ui/src/render/chart.ts	// hit.leaf(实例级,serialize 注入)匹配,同 leaf 被 >=2 hit 共享时输出确认行。	中文「匹配」泛指：标识符相等（node_id、instance_id、pointerId、文本）
+path2_web_ui/src/stores/view.ts	// anchor_bo_id 恒为 instance_id 形态(后端交错标注后 detect 期写入),纯精确匹配	中文「匹配」泛指：标识符相等（node_id、instance_id、pointerId、文本）
+path2_web_ui/src/stores/view.ts	// 实例化后白名单按 node_id 匹配;子结构 node(tb_seg 等)自身无 detector,	中文「匹配」泛指：标识符相等（node_id、instance_id、pointerId、文本）
+path2_web_ui/src/types.ts	export interface ParamsDiffResp { has_snapshot: boolean; match: boolean; diffs: ParamsDiffEntry[]	「一致 / 等于」：参数快照比较的 match 字段
+path2_web_ui/tests/chart-helpers.spec.ts	*  列宽随数据浮动,故断言用 \s+ 匹配列间距,只锁「树线 + 内容 + 判定符」。 */	中文「匹配」泛指：正则
+path2_web_ui/tests/chart.spec.ts	// 实例流:highlightedEventIds 集合元素为 instance_id 字符串(marker 的 instance_id 匹配)	中文「匹配」泛指：标识符相等（node_id、instance_id、pointerId、文本）
+path2_web_ui/tests/components/ShiftPairBanner.spec.ts	it('shiftPairPending=true + candidateHitIds 空 → 渲染 + 文本精确匹配', () => {	中文「匹配」泛指：标识符相等（node_id、instance_id、pointerId、文本）
+path2_web_ui/tests/params-chip.spec.ts	{ ok: true, json: () => Promise.resolve({ has_snapshot: true, match: true, diffs: [] }) } as any)))	「一致 / 等于」：参数快照比较的 match 字段
+path2_web_ui/tests/params-chip.spec.ts	{ ok: true, json: () => Promise.resolve({ has_snapshot: true, match: false,	「一致 / 等于」：参数快照比较的 match 字段
+path2_web_ui/tests/params-chip.spec.ts	{ ok: true, json: () => Promise.resolve({ has_snapshot: true, match: false,	「一致 / 等于」：参数快照比较的 match 字段
+path2_web_ui/tests/params-chip.spec.ts	{ ok: true, json: () => Promise.resolve({ has_snapshot: true, match: true, diffs: [] }) } as any))	「一致 / 等于」：参数快照比较的 match 字段
+path2_web_ui/tests/params-chip.spec.ts	{ ok: true, json: () => Promise.resolve({ has_snapshot: true, match: true, diffs: [] }) } as any))	「一致 / 等于」：参数快照比较的 match 字段
+path2_web_ui/tests/params-chip.spec.ts	match: false, diffs: [], anchor_file: 'gone.yaml' }) } as any)))	「一致 / 等于」：参数快照比较的 match 字段
+path2_web_ui/tests/render.compare-overlay.spec.ts	for (const t of ['missing', 'matched', 'unmatched', 'connected', 'unmapped', 'excluded', 'chance_high', 'must']) {	新义本身：compare 下不出现对照 tag 的断言词表
+path2_web_ui/tests/stores.anchorsOf.spec.ts	*  instance_id 形态('bo_30#0' / 'bo_30_33#0'),恒为 instance_id;findBoBar 单路径精确匹配。	中文「匹配」泛指：标识符相等（node_id、instance_id、pointerId、文本）
+path2_web_ui/tests/stores.anchorsOf.spec.ts	*  本文件 fixture 一律用 instance_id 形态 anchor_bo_id,events 列表须含匹配 bo。	中文「匹配」泛指：标识符相等（node_id、instance_id、pointerId、文本）
+path2_web_ui/tests/stores.anchorsOf.spec.ts	it('精确匹配:返回同 instance_id bo.end_idx', () => {	中文「匹配」泛指：标识符相等（node_id、instance_id、pointerId、文本）
+path2_web_ui/tests/stores.anchorsOf.spec.ts	it('精确匹配(不看 node_id)', () => {	中文「匹配」泛指：标识符相等（node_id、instance_id、pointerId、文本）
+path2_web_ui/tests/subGeometry.spec.ts	it('SUB_GRID_LEFT / RIGHT match chart.ts hardcoded values', () => {	「一致 / 等于」：测试名，与硬编码值一致
+path2_web_ui/tests/subGeometry.spec.ts	// 每 band h = laneCount*9 + 8;不触 BAND_MIN_H 时字节匹配	中文「匹配」泛指：标识符相等（node_id、instance_id、pointerId、文本）
+path2_web_ui/tests/view.multi.spec.ts	it('effective triple uses preview when symbol AND pattern_id match', () => {	「一致 / 等于」：测试名，symbol 与 pattern_id 一致
+path2_web_ui/tests/view.multi.spec.ts	// 切到 bbb → preview pattern_id 不匹配 → 退回扫描结果	中文「匹配」泛指：标识符相等（node_id、instance_id、pointerId、文本）
+path2_web_ui/tests/view.symbol-search.spec.ts	it('prefix match is case-insensitive', () => {	正则与模式匹配：股票代码的前缀匹配
+path2_web_ui/tests/view.symbol-search.spec.ts	it('prefix (not substring): "aa" does not match "BAA"', () => {	正则与模式匹配：股票代码的前缀匹配
+path2_web_ui/tests/view.symbol-search.spec.ts	v.setSymbolQuery('bb')  // AND:AAA 前缀不匹配 → 全丢	正则与模式匹配：股票代码的前缀匹配
+path2_web_ui/tests/visible.spec.ts	it('renderGridOf: bandKey 匹配不到 TopoNode → fallback time', () => {	中文「匹配」泛指：标识符相等（node_id、instance_id、pointerId、文本）
+path2_web_ui/tests/visible.spec.ts	it('tag 匹配不到 node → 缺省 time,保留', () => {	中文「匹配」泛指：标识符相等（node_id、instance_id、pointerId、文本）

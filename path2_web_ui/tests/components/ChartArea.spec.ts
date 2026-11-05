@@ -22,7 +22,7 @@ describe('ChartArea – level control', () => {
     return { wrapper, v }
   }
 
-  it('renders 3 level options (matched / qualified / detected)', () => {
+  it('renders 3 level options (in_hit / qualified / detected)', () => {
     const { wrapper } = mountIt()
     const ctrl = wrapper.get('[data-testid="level-control"]')
     // 过滤掉 panel-toggle chip(新增 Topology/Sidebar/Slider),只看 level 按钮
@@ -31,27 +31,27 @@ describe('ChartArea – level control', () => {
     )
     expect(levelButtons.length).toBe(3)
     const labels = levelButtons.map((b) => b.text())
-    expect(labels).toContain('Matched')
-    expect(labels).toContain('Qualified')
-    expect(labels).toContain('Detected')
+    expect(labels).toContain('in_hit')
+    expect(labels).toContain('qualified')
+    expect(labels).toContain('detected')
   })
 
-  it('defaults to "matched" active', () => {
+  it('defaults to "in_hit" active', () => {
     const { wrapper } = mountIt()
     const active = wrapper.findAll('.level-btn.active')
     expect(active.length).toBe(1)
-    expect(active[0].text()).toBe('Matched')
+    expect(active[0].text()).toBe('in_hit')
   })
 
-  it('clicking "Detected" updates store.level and moves active class', async () => {
+  it('clicking "detected" updates store.level and moves active class', async () => {
     const { wrapper, v } = mountIt()
     const buttons = wrapper.findAll('.level-btn')
-    const detectedBtn = buttons.find((b) => b.text() === 'Detected')!
+    const detectedBtn = buttons.find((b) => b.text() === 'detected')!
     await detectedBtn.trigger('click')
     expect(v.level).toBe('detected')
     expect(detectedBtn.classes()).toContain('active')
-    // 原来的 Matched 不再 active
-    const matchedBtn = buttons.find((b) => b.text() === 'Matched')!
-    expect(matchedBtn.classes()).not.toContain('active')
+    // 原来的 in_hit 不再 active
+    const inHitBtn = buttons.find((b) => b.text() === 'in_hit')!
+    expect(inHitBtn.classes()).not.toContain('active')
   })
 })

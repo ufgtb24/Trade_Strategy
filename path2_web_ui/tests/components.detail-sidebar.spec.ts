@@ -75,12 +75,12 @@ function makeFixture(): MultiScanResultFile {
 describe('DetailSidebar · Task 4 视图分化', () => {
   beforeEach(() => setActivePinia(createPinia()))
 
-  it('bracket-focus:showTrace=true → .match-trace 渲染 · manualExpandedNodes=空 → 无候选表', () => {
+  it('bracket-focus:showTrace=true → .hit-trace 渲染 · manualExpandedNodes=空 → 无候选表', () => {
     const view = useViewStore()
     view.loadScanFile(makeFixture())
-    view.focusMatch('m1')
+    view.focusHit('m1')
     const wrapper = mount(DetailSidebar)
-    expect(wrapper.find('.match-trace').exists()).toBe(true)
+    expect(wrapper.find('.hit-trace').exists()).toBe(true)
     expect(wrapper.find('.candidate-table-wrap').exists()).toBe(false)
   })
 
@@ -90,18 +90,18 @@ describe('DetailSidebar · Task 4 视图分化', () => {
     await flushPromises()                         // diag 落地
     view.focusEvent('e_ta_1#0')                  // 唯一归属 m1;expandedNodeIds={ta}
     const wrapper = mount(DetailSidebar)
-    expect(wrapper.find('.match-trace').exists()).toBe(false)
+    expect(wrapper.find('.hit-trace').exists()).toBe(false)
     // 候选表存在
     expect(wrapper.find('.candidate-table-wrap').exists()).toBe(true)
-    // 命中匹配单行黄底(markedMatchIds={m1})
-    const rows = wrapper.findAll('.match-row')
-    const selectedRows = rows.filter(r => r.classes().includes('match-row--selected'))
+    // hit 列表单行黄底(markedHitIds={m1})
+    const rows = wrapper.findAll('.hit-row')
+    const selectedRows = rows.filter(r => r.classes().includes('hit-row--selected'))
     expect(selectedRows.length).toBe(1)
   })
 
-  it('多归属 pending:候选表在 pending event 所在 node 下方展开 · 命中匹配多行同亮', async () => {
+  it('多归属 pending:候选表在 pending event 所在 node 下方展开 · hit 列表多行同亮', async () => {
     const view = useViewStore()
-    // Task 5 契约变更:多归属 = 同一实例被 2+ match 的 node_index 引用(真共享,
+    // Task 5 契约变更:多归属 = 同一实例被 2+ hit 的 node_index 引用(真共享,
     // 删除 anchor_field 反查展开);构造 e_ta_1#0 被 m1/m2 同时引用
     const fixture = makeFixture() as any
     fixture.results[0].per_pattern.p1.analysis.hits = [
@@ -110,22 +110,22 @@ describe('DetailSidebar · Task 4 视图分化', () => {
     ]
     view.loadScanFile(fixture)
     await flushPromises()                         // diag 落地
-    view.focusEvent('e_ta_1#0')                  // 单实例被两 match 共享 → 多归属
+    view.focusEvent('e_ta_1#0')                  // 单实例被两 hit 共享 → 多归属
     const wrapper = mount(DetailSidebar)
-    expect(wrapper.find('.match-trace').exists()).toBe(false)
+    expect(wrapper.find('.hit-trace').exists()).toBe(false)
     expect(wrapper.find('.candidate-table-wrap').exists()).toBe(true)     // pending 兜底展开 ta
-    const rows = wrapper.findAll('.match-row')
-    const selectedRows = rows.filter(r => r.classes().includes('match-row--selected'))
+    const rows = wrapper.findAll('.hit-row')
+    const selectedRows = rows.filter(r => r.classes().includes('hit-row--selected'))
     expect(selectedRows.length).toBe(2)          // 信息层如实反映
   })
 
-  it('sidebar 命中匹配行 click:等价 bracket click 走 focusMatch → showTrace=true', async () => {
+  it('sidebar hit 行 click:等价 bracket click 走 focusHit → showTrace=true', async () => {
     const view = useViewStore()
     view.loadScanFile(makeFixture())
     const wrapper = mount(DetailSidebar)
-    const matchRows = wrapper.findAll('.match-row')
-    await matchRows[0].trigger('click')
-    expect(view.focusedMatchId).toBe('m1')
+    const hitRows = wrapper.findAll('.hit-row')
+    await hitRows[0].trigger('click')
+    expect(view.focusedHitId).toBe('m1')
     expect(view.focusedInstanceId).toBeNull()
     expect(view.showTrace).toBe(true)
   })

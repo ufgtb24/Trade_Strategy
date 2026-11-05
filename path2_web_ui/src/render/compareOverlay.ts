@@ -88,10 +88,10 @@ export function buyDaysOf(m: HitDict, byId: ReadonlyMap<string, EventDict>, endN
 }
 
 /** bracket 轨上的 hit:各自分行(行号从 0 起);events、endNode 给了就带上每个 hit 的买入日(见 buyDaysOf)。 */
-export function packHits(matches: readonly HitDict[], events: readonly EventDict[] = [],
+export function packHits(hits: readonly HitDict[], events: readonly EventDict[] = [],
                          endNode: string | null = null): { rows: number; placed: OverlayHit[] } {
   const byId = new Map(events.map(e => [e.instance_id, e]))
-  const placed = packLanes([...matches]).map(m => ({ id: m.hit_id, start: m.start_idx, end: m.end_idx, row: m.lane,
+  const placed = packLanes([...hits]).map(m => ({ id: m.hit_id, start: m.start_idx, end: m.end_idx, row: m.lane,
                                                       buys: buyDaysOf(m, byId, endNode) }))
   return { rows: placed.reduce((n, h) => Math.max(n, h.row + 1), 0), placed }
 }

@@ -172,7 +172,7 @@ import type {
 import { deriveNodeColors } from '../render/colors'
 import {
   deriveTagMap, isolatedNodeIds,
-  qualifiedIdsOf, matchedIds as matchedIdsOf,
+  qualifiedIdsOf, inHitIds as inHitIdsOf,
   bandKeyOf, eventTierOf, windowOf, nodeOfEventByBand,
 } from '../render/visible'
 import { getDiagnose, getPreview, getTimeDiagnose, getPairDiagnose, saveWcMirror, clearWcMirror, type PreviewResp } from '../api'
@@ -201,11 +201,11 @@ export interface LinkedRun {
 
 
 export type Selected =
-  | { kind: 'match'; matchId: string }
+  | { kind: 'hit'; hitId: string }
   | { kind: 'node'; nodeId: string }
   | null
 
-export type UnionCell = { pid: string; num: number | null; fr: number | null; fd: number | null; matched: boolean }
+export type UnionCell = { pid: string; num: number | null; fr: number | null; fd: number | null; hasHit: boolean }
 export type UnionRow  = { symbol: string; cells: UnionCell[] }
 export type PreviewRowCell = { pid: string; num: number | null; fr: number | null; fd: number | null; filled: boolean }
 export type PreviewRow     = { symbol: string; cells: PreviewRowCell[] }
@@ -235,13 +235,13 @@ function saveFieldsToLS(s: Set<FieldKey>): void {
 }
 
 const LS_KEY_LEVEL = 'path2_web_ui.level'
-const LEVEL_VALUES: readonly Level[] = ['matched', 'qualified', 'detected']
+const LEVEL_VALUES: readonly Level[] = ['in_hit', 'qualified', 'detected']
 function loadLevelFromLS(): Level {
   try {
     const raw = localStorage.getItem(LS_KEY_LEVEL)
-    if (raw == null) return 'matched'
-    return (LEVEL_VALUES as readonly string[]).includes(raw) ? (raw as Level) : 'matched'
-  } catch { return 'matched' }
+    if (raw == null) return 'in_hit'
+    return (LEVEL_VALUES as readonly string[]).includes(raw) ? (raw as Level) : 'in_hit'
+  } catch { return 'in_hit' }
 }
 function saveLevelToLS(l: Level): void {
   try { localStorage.setItem(LS_KEY_LEVEL, l) } catch { /* silent */ }
@@ -275,29 +275,29 @@ export const useViewStore = defineStore('view', () => {
   const symbolQuery = ref<string>('')
 
   const nodeVisible = ref<Record<string, boolean>>({})
-  // 焦点意图(实例级单入口,spec §3.1):focusedMatchId 非空 & 无实例焦点 → bracket-focus,
+  // 焦点意图(实例级单入口,spec §3.1):focusedHitId 非空 & 无实例焦点 → bracket-focus,
   // 展 trace;selectedInstanceId/focusedInstanceId 任一非空 → 实例-focus,不展 trace(可能
-  // 同时有 focusedMatchId=唯一归属 m);两者都空 & candidateMatchIds 非空 → 多归属 pending。
+  // 同时有 focusedHitId=唯一归属 m);两者都空 & candidateHitIds 非空 → 多归属 pending。
   //   0 归属(只聚焦实例) → selectedInstanceId 非空
-  //   1 归属(直选 match)  → focusedMatchId + focusedInstanceId 非空
-  const focusedMatchId = ref<string | null>(null)
+  //   1 归属(直选 hit)  → focusedHitId + focusedInstanceId 非空
+  const focusedHitId = ref<string | null>(null)
   const selectedInstanceId = ref<string | null>(null)
   const focusedInstanceId = ref<string | null>(null)
   // sidebar 漏斗手动 toggle 兜底:仅在无实例焦点/pending 时生效
   // sidebar 漏斗手动展开集合(多 node 可同时展开)。语义分层:
   //   手动入口(sidebar 漏斗行 / TopologyControl dblclick)= toggleExpandedNode (add/remove,不折叠其他)
   //   自动入口(focusEvent · marker/candidate/trace node click)= add 焦点 node(不折叠其他)
-  //   focusMatch(bracket / 命中匹配 click)= 清空(trace 独占)
+  //   focusHit(bracket / hit 列表 click)= 清空(trace 独占)
   //   4 处初始化(切数据源)= 清空
   const manualExpandedNodes = ref<Set<string>>(new Set())
   const level = ref<Level>(loadLevelFromLS())
-  const candidateMatchIds = ref<ReadonlySet<string>>(new Set())
+  const candidateHitIds = ref<ReadonlySet<string>>(new Set())
   const pendingDisambigInstanceId = ref<string | null>(null)
   const hoveredEventId = ref<string | null>(null)
   const diag = ref<Diagnostics | null>(null)
 
   // ── 入口 A/D(Task 18):KlineChart brush(scope=time)+ shift+click 跨图(scope=pair) ──
-  // shiftSelectedEvents 是唯一跨组件状态载体(同 focusedInstanceRef/candidateMatchIds 既有模式;
+  // shiftSelectedEvents 是唯一跨组件状态载体(同 focusedInstanceRef/candidateHitIds 既有模式;
   // KlineChart 本身零 props/零 emit,靠 store 与 DetailSidebar 通信),故放这里而非组件内 ref。
   const shiftSelectedEvents = ref<ShiftSelectedEvent[]>([])
   const activeDetailCard = ref<'time' | 'pair' | 'debug' | null>(null)
@@ -470,26 +470,26 @@ export const useViewStore = defineStore('view', () => {
   // preview-aware effective 三件套。linkedView 下一律取 shownRun:现算的输出,且只认这只股票的
   const shownRun = computed<LinkedRun | null>(() =>
     linkedView.value && linkedRun.value?.symbol === symbol.value ? linkedRun.value : null)
-  const _previewHits = computed(() =>
+  const _previewApplies = computed(() =>
     !linkedView.value && previewEnabled.value && preview.value
     && preview.value.symbol === symbol.value
     && preview.value.pattern_spec.pattern_id === activePatternId.value)
 
   const effectivePattern = computed<SerializedPattern | null>(() => {
     if (linkedView.value) return shownRun.value?.pattern_spec ?? null
-    return _previewHits.value ? preview.value!.pattern_spec : pattern.value
+    return _previewApplies.value ? preview.value!.pattern_spec : pattern.value
   })
 
   // annotate 模式下恒为 null:图上、侧栏、状态条一律拿不到 app 的产物
   const effectiveAnalysis = computed<Analysis | null>(() => {
     if (mode.value === 'annotate') return null
     if (linkedView.value) return shownRun.value?.analysis ?? null
-    return _previewHits.value ? preview.value!.analysis : currentAnalysis.value
+    return _previewApplies.value ? preview.value!.analysis : currentAnalysis.value
   })
 
   const effectiveScan = computed<ScanMeta | PreviewResp['scan'] | null>(() => {
     if (linkedView.value) return shownRun.value?.scan ?? null
-    if (_previewHits.value) return preview.value!.scan
+    if (_previewApplies.value) return preview.value!.scan
     return scanFile.value?.scan ?? null
   })
 
@@ -510,7 +510,7 @@ export const useViewStore = defineStore('view', () => {
   // 探索态列表对照行(dev ↳(UI) parity):从单股 preview 派生出与 unionRows 单行同构的对照行。
   // 只填 active pattern(preview 只现算了它),其余 pattern 留 filled:false(渲染层显空白,非 —)。
   const previewListRow = computed<PreviewRow | null>(() => {
-    if (!_previewHits.value || previewLoading.value) return null
+    if (!_previewApplies.value || previewLoading.value) return null
     const pv = preview.value!
     const pid = activePatternId.value!
     const ms = pv.analysis.hits
@@ -546,23 +546,23 @@ export const useViewStore = defineStore('view', () => {
           num: pp ? (pp.summary?.hits ?? 0) : null,
           fr:  pp?.max_forward_return ?? null,
           fd:  pp?.min_forward_drawdown ?? null,
-          matched: (pp?.summary?.hits ?? 0) > 0,
+          hasHit: (pp?.summary?.hits ?? 0) > 0,
         } as UnionCell
       }),
     }))
   })
 
-  // 每 pattern 的命中股票数(distinct symbol,非 match 次数)。
+  // 每 pattern 的命中股票数(distinct symbol,非 hit 次数)。
   // 源头是 unionRows —— 全量并集、未经 symbolQuery / visiblePatterns 过滤,
   // 因此「固定全量、不随筛选联动」由结构保证,无需额外开关。
-  const patternHitCounts = computed<Record<string, number>>(() => {
+  const patternHitStocks = computed<Record<string, number>>(() => {
     const f = scanFile.value
     if (!f) return {}
     const counts: Record<string, number> = {}
     for (const pid of f.pattern_ids) counts[pid] = 0   // 零命中也要有键,显示 0 而非空
     for (const row of unionRows.value) {
       for (const cell of row.cells) {
-        if (cell.matched) counts[cell.pid] += 1
+        if (cell.hasHit) counts[cell.pid] += 1
       }
     }
     return counts
@@ -610,7 +610,7 @@ export const useViewStore = defineStore('view', () => {
   const filteredSortedRows = computed<UnionRow[]>(() => {
     const q = symbolQuery.value.trim().toLowerCase()
     return sortedRows.value.filter(row => {
-      if (!row.cells.some(c => visiblePatterns.value.has(c.pid) && c.matched)) return false
+      if (!row.cells.some(c => visiblePatterns.value.has(c.pid) && c.hasHit)) return false
       if (q === '') return true
       return row.symbol.toLowerCase().startsWith(q)
     })
@@ -640,7 +640,7 @@ export const useViewStore = defineStore('view', () => {
     const last = cfg.config?.last_selected_pattern
     activePatternId.value = (last && f.pattern_ids.includes(last))
       ? last : (f.pattern_ids[0] ?? null)
-    candidateMatchIds.value = new Set()
+    candidateHitIds.value = new Set()
     pendingDisambigInstanceId.value = null
     clearDetailCard()
     symbolQuery.value = ''
@@ -665,7 +665,7 @@ export const useViewStore = defineStore('view', () => {
     hoveredEventId.value = null
     preview.value = null
     previewError.value = null
-    candidateMatchIds.value = new Set()
+    candidateHitIds.value = new Set()
     pendingDisambigInstanceId.value = null
     visiblePatterns.value = new Set()
     symbolQuery.value = ''
@@ -684,7 +684,7 @@ export const useViewStore = defineStore('view', () => {
     hoveredEventId.value = null
     preview.value = null
     previewError.value = null
-    candidateMatchIds.value = new Set()
+    candidateHitIds.value = new Set()
     pendingDisambigInstanceId.value = null
     clearDetailCard()
   }
@@ -728,7 +728,7 @@ export const useViewStore = defineStore('view', () => {
     useConfigStore().saveLastPattern(pid)
     clearFocus()
     manualExpandedNodes.value = new Set()   // 切数据源清空展开集
-    candidateMatchIds.value = new Set()
+    candidateHitIds.value = new Set()
     pendingDisambigInstanceId.value = null
     clearDetailCard()
     if (previewEnabled.value) void runPreview()
@@ -787,9 +787,9 @@ export const useViewStore = defineStore('view', () => {
     manualExpandedNodes.value = s
   }
 
-  // ── Task 2 高层 action(spec §3.3)· 消费点已统一到单入口 focusEvent/focusMatch ──
-  function focusMatch(matchId: string): void {
-    focusedMatchId.value = matchId
+  // ── Task 2 高层 action(spec §3.3)· 消费点已统一到单入口 focusEvent/focusHit ──
+  function focusHit(hitId: string): void {
+    focusedHitId.value = hitId
     selectedInstanceId.value = null
     focusedInstanceId.value = null
     manualExpandedNodes.value = new Set()  // collapse all · trace 独占视野
@@ -798,12 +798,12 @@ export const useViewStore = defineStore('view', () => {
 
   // 单入口实例级焦点(spec §5):focusEvent(instanceId)。所有调用点(marker 点击、
   // 侧栏实例行、候选表行)都持有 instance_id;身份级入口已消灭。
-  // 归属 = match.node_index 值(instance_id 字符串)精确引用计数 0/1/≥2:
-  //   0 → 只聚焦实例(selectedInstanceId=instanceId,不设 match)
-  //   1 → 直选(focusedMatchId + focusedInstanceId=instanceId)
-  //   ≥2 → 多归属 pending(candidateMatchIds + pendingDisambigInstanceId=instanceId)
+  // 归属 = hit.node_index 值(instance_id 字符串)精确引用计数 0/1/≥2:
+  //   0 → 只聚焦实例(selectedInstanceId=instanceId,不设 hit)
+  //   1 → 直选(focusedHitId + focusedInstanceId=instanceId)
+  //   ≥2 → 多归属 pending(candidateHitIds + pendingDisambigInstanceId=instanceId)
   function focusEvent(instanceId: string): void {
-    const matches = effectiveAnalysis.value?.hits ?? []
+    const hits = effectiveAnalysis.value?.hits ?? []
     const events  = effectiveAnalysis.value?.events  ?? []
 
     // 焦点意图:add 焦点所在 node 到展开集(不折叠其他 node);node 无解则不动集合。
@@ -817,13 +817,13 @@ export const useViewStore = defineStore('view', () => {
       }
     }
 
-    // 子结构爬升(2026-08-16):bo/tb_seg 等子事件不在 match.node_index(成员 = 各
+    // 子结构爬升(2026-08-16):bo/tb_seg 等子事件不在 hit.node_index(成员 = 各
     // node 绑定实例;子结构经容器 child_refs 挂靠),直接解析恒 0 归属 → 点段/点 bo
     // 只亮单点。补一层「子→父」:经 events 的 child_refs 建逆索引,用父容器
     // instance_id 再解析归属。多父(前缀族共享 bo)汇总后照走 0/1/≥2 三分支
-    // (≥2 弹候选消歧);邻居段高亮由 highlightedEventIds 的 matchedIds
+    // (≥2 弹候选消歧);邻居段高亮由 highlightedEventIds 的 inHitIds
     // child_refs 闭包内建(选中容器 → 其全部 segments 进高亮集)。
-    let ms = matches.filter(m => Object.values(m.node_index).includes(instanceId))
+    let ms = hits.filter(m => Object.values(m.node_index).includes(instanceId))
     if (ms.length === 0) {
       const parents = new Set<string>()
       for (const e of events) {
@@ -832,33 +832,33 @@ export const useViewStore = defineStore('view', () => {
         }
       }
       if (parents.size > 0) {
-        ms = matches.filter(m => Object.values(m.node_index).some(id => parents.has(id)))
+        ms = hits.filter(m => Object.values(m.node_index).some(id => parents.has(id)))
       }
     }
 
     if (ms.length === 0) {
-      focusedMatchId.value = null
+      focusedHitId.value = null
       selectedInstanceId.value = instanceId
       focusedInstanceId.value = null
       clearCandidates()
     } else if (ms.length === 1) {
-      focusedMatchId.value = ms[0].hit_id
+      focusedHitId.value = ms[0].hit_id
       selectedInstanceId.value = null
       focusedInstanceId.value = instanceId
       clearCandidates()
     } else {
-      // 多归属:信息层(markedMatchIds=candidates)+ 视觉层(不亮 group,等 disambig)
-      focusedMatchId.value = null
+      // 多归属:信息层(markedHitIds=candidates)+ 视觉层(不亮 group,等 disambig)
+      focusedHitId.value = null
       selectedInstanceId.value = null
       focusedInstanceId.value = null
-      setCandidateMatches(ms.map(m => m.hit_id))
+      setCandidateHits(ms.map(m => m.hit_id))
       pendingDisambigInstanceId.value = instanceId
     }
     autoFollowLevel(instanceId)
   }
 
   function clearFocus(): void {
-    focusedMatchId.value = null
+    focusedHitId.value = null
     selectedInstanceId.value = null
     focusedInstanceId.value = null
     clearCandidates()
@@ -870,18 +870,18 @@ export const useViewStore = defineStore('view', () => {
     const ev = effectiveAnalysis.value?.events.find(e => e.instance_id === instanceId)
     if (!ev) return
     const evTier = eventTier(ev)
-    const RANK: Record<Level, number> = { matched: 2, qualified: 1, detected: 0 }
+    const RANK: Record<Level, number> = { in_hit: 2, qualified: 1, detected: 0 }
     if (RANK[evTier] < RANK[level.value]) setLevel(evTier)
   }
 
   function setLevel(l: Level) { level.value = l; saveLevelToLS(l) }
   function hoverEvent(id: string | null) { hoveredEventId.value = id }
-  function setCandidateMatches(ids: string[]) {
-    candidateMatchIds.value = new Set(ids)
+  function setCandidateHits(ids: string[]) {
+    candidateHitIds.value = new Set(ids)
     if (ids.length === 0) pendingDisambigInstanceId.value = null
   }
   function clearCandidates() {
-    candidateMatchIds.value = new Set()
+    candidateHitIds.value = new Set()
     pendingDisambigInstanceId.value = null
   }
   function setPendingDisambig(iid: string | null) {
@@ -1054,27 +1054,27 @@ export const useViewStore = defineStore('view', () => {
     } catch { if (symbol.value === reqSymbol && appId.value === reqPid) diag.value = null }
   }, { immediate: true })
 
-  // spec §3.1 派生:导出符号保持,内部从 focusedMatchId + 实例焦点(selected/focusedInstanceId)派生。
+  // spec §3.1 派生:导出符号保持,内部从 focusedHitId + 实例焦点(selected/focusedInstanceId)派生。
   // selected 从 ref → computed(渲染层零改动 · storeToRefs 拿到的仍是 reactive)。
   const selected = computed<Selected>(() =>
-    focusedMatchId.value ? { kind: 'match' as const, matchId: focusedMatchId.value } : null)
+    focusedHitId.value ? { kind: 'hit' as const, hitId: focusedHitId.value } : null)
 
-  const selectedMatchId = computed<string | null>(() => focusedMatchId.value)
+  const selectedHitId = computed<string | null>(() => focusedHitId.value)
   // 当前聚焦实例(instance_id)的合并引用:selectedInstanceId(0 归属·只聚焦)与
   // focusedInstanceId(1 归属·直选)互斥,合并即「当前聚焦实例」。取代旧的事件级焦点派生。
   const focusedInstanceRef = computed<string | null>(() => selectedInstanceId.value ?? focusedInstanceId.value)
 
-  const selectedMatch = computed<HitDict | null>(() => {
-    if (!focusedMatchId.value || !effectiveAnalysis.value) return null
-    return effectiveAnalysis.value.hits.find(m => m.hit_id === focusedMatchId.value) ?? null
+  const selectedHit = computed<HitDict | null>(() => {
+    if (!focusedHitId.value || !effectiveAnalysis.value) return null
+    return effectiveAnalysis.value.hits.find(m => m.hit_id === focusedHitId.value) ?? null
   })
 
-  // 视觉层(spec §3.1 分层):focusedMatchId 存在 → 亮 group 展开集;多归属 pending 时不亮
-  // (candidateMatchIds 副轴驱动候选 bracket 虚线闪烁,不进 highlightedEventIds)。
+  // 视觉层(spec §3.1 分层):focusedHitId 存在 → 亮 group 展开集;多归属 pending 时不亮
+  // (candidateHitIds 副轴驱动候选 bracket 虚线闪烁,不进 highlightedEventIds)。
   const highlightedEventIds = computed<ReadonlySet<string>>(() => {
-    const m = selectedMatch.value
+    const m = selectedHit.value
     if (!m) return new Set<string>()
-    return matchedIdsOf(
+    return inHitIdsOf(
       [m],
       effectiveAnalysis.value?.events ?? [],
       effectivePattern.value?.topology.edges ?? [],
@@ -1082,15 +1082,15 @@ export const useViewStore = defineStore('view', () => {
     )
   })
 
-  // 匹配 trace 展开的唯一判据(spec §3.1):有 match 且无实例焦点(任一实例 ref 为空)才展 trace
+  // hit trace 展开的唯一判据(spec §3.1):有 hit 且无实例焦点(任一实例 ref 为空)才展 trace
   const showTrace = computed<boolean>(() =>
-    focusedMatchId.value !== null && selectedInstanceId.value === null && focusedInstanceId.value === null)
+    focusedHitId.value !== null && selectedInstanceId.value === null && focusedInstanceId.value === null)
 
-  // 组成型组「一选全选」(2026-08-17):0 归属(非 match)时,点组成型容器或其任一段 →
-  // 整组(容器+全部段)进视觉选中集,与 match 组高亮同款 group 边框(点击者仍由 focus
+  // 组成型组「一选全选」(2026-08-17):0 归属(非 hit)时,点组成型容器或其任一段 →
+  // 整组(容器+全部段)进视觉选中集,与 hit 组高亮同款 group 边框(点击者仍由 focus
   // 条目独家表达,chart group 分支按 focusedInstanceRef 排除)。1/≥2 归属时
-  // selectedInstanceId=null → 空集,由 match 的 matchedIds 闭包覆盖——本机制只
-  // 服务「无 match 的灰色组」。组成型判别 = topology.nodes[].produced_by 非空
+  // selectedInstanceId=null → 空集,由 hit 的 inHitIds 闭包覆盖——本机制只
+  // 服务「无 hit 的灰色组」。组成型判别 = topology.nodes[].produced_by 非空
   // (bo→burst 是引用型,公共资源,不在此列)。
   const compositionGroupIds = computed<ReadonlySet<string>>(() => {
     const iid = selectedInstanceId.value
@@ -1127,16 +1127,16 @@ export const useViewStore = defineStore('view', () => {
   // 漏斗展开集合:单 source = manualExpandedNodes。手动/自动分层写入:
   //   toggleExpandedNode (sidebar 漏斗行 / topology dblclick) = add/remove(不折叠其他)
   //   focusEvent (marker click) = add 焦点 node(不折叠其他)
-  //   focusMatch (bracket click) = 清空(trace 独占)
+  //   focusHit (bracket click) = 清空(trace 独占)
   const expandedNodeIds = computed<ReadonlySet<string>>(() => manualExpandedNodes.value)
 
-  // sidebar「命中匹配」列表"选中"样式判据(spec §3.1 信息层):
-  //   bracket-focus / disambig 后 → 单值 {focusedMatchId}
-  //   多归属 pending → candidateMatchIds(如实反映所有归属)
+  // sidebar hit 列表"选中"样式判据(spec §3.1 信息层):
+  //   bracket-focus / disambig 后 → 单值 {focusedHitId}
+  //   多归属 pending → candidateHitIds(如实反映所有归属)
   //   0 焦点 → 空集
-  const markedMatchIds = computed<ReadonlySet<string>>(() => {
-    if (focusedMatchId.value) return new Set([focusedMatchId.value])
-    if (candidateMatchIds.value.size > 0) return candidateMatchIds.value
+  const markedHitIds = computed<ReadonlySet<string>>(() => {
+    if (focusedHitId.value) return new Set([focusedHitId.value])
+    if (candidateHitIds.value.size > 0) return candidateHitIds.value
     return new Set()
   })
 
@@ -1158,26 +1158,26 @@ export const useViewStore = defineStore('view', () => {
   const isolated = computed<Set<string>>(() => effectivePattern.value
     ? isolatedNodeIds(effectivePattern.value.topology) : new Set())
 
-  const matchedIds = computed<Set<string>>(() => matchedIdsOf(
+  const inHitIds = computed<Set<string>>(() => inHitIdsOf(
     effectiveAnalysis.value?.hits ?? [], effectiveAnalysis.value?.events ?? [],
     effectivePattern.value?.topology.edges ?? []))
 
-  // 实例化契约下 matchedEventIds ≡ matchedIds(集合元素即 instance_id;身份级判定已消灭,
+  // 实例化契约下 inHitEventIds ≡ inHitIds(集合元素即 instance_id;身份级判定已消灭,
   // 消费方如 diag AttrRow 按 row.instance_id 判档)。保留导出名避免 Task 10 消费点空引用。
-  const matchedEventIds = computed<Set<string>>(() => new Set(matchedIds.value))
+  const inHitEventIds = computed<Set<string>>(() => new Set(inHitIds.value))
 
   const qualifiedIds = computed<Set<string>>(() => qualifiedIdsOf(diag.value))
 
   function bandKey(e: EventDict): string { return bandKeyOf(e) }
-  function eventTier(e: EventDict): Tier { return eventTierOf(e, matchedIds.value, qualifiedIds.value) }
+  function eventTier(e: EventDict): Tier { return eventTierOf(e, inHitIds.value, qualifiedIds.value) }
 
   return {
     scanFile, symbol, activePatternId, sortByPid, sortDesc,
     nodeVisible, selected,
-    focusedMatchId, selectedInstanceId, focusedInstanceId, manualExpandedNodes,  // 内部 ref(export 便于 whitebox 单元测)
-    level, focusedInstanceRef, highlightedEventIds, candidateMatchIds, pendingDisambigInstanceId, hoveredEventId, diag,
-    showTrace, expandedNodeIds, markedMatchIds, markedEventIds, // 派生 computed export
-    compositionGroupIds,   // 组成型组「一选全选」(0 归属非 match 组)
+    focusedHitId, selectedInstanceId, focusedInstanceId, manualExpandedNodes,  // 内部 ref(export 便于 whitebox 单元测)
+    level, focusedInstanceRef, highlightedEventIds, candidateHitIds, pendingDisambigInstanceId, hoveredEventId, diag,
+    showTrace, expandedNodeIds, markedHitIds, markedEventIds, // 派生 computed export
+    compositionGroupIds,   // 组成型组「一选全选」(0 归属非 hit 组)
     shiftSelectedEvents, activeDetailCard, timeScopeResponse, pairScopeResponse,
     shiftPairPending, shiftSelectedEventIds,
     previewEnabled, preview, previewLoading, previewError,
@@ -1190,15 +1190,15 @@ export const useViewStore = defineStore('view', () => {
     patternIds, currentPerStock, pattern, currentAnalysis,
     visiblePatterns, visibleFields, symbolQuery,
     effectivePattern, effectiveAnalysis, effectiveScan,
-    unionRows, sortedRows, filteredSortedRows, previewListRow, patternHitCounts,
-    nodeColors, selectedMatchId, selectedMatch, tagMap, isolated, matchedIds, matchedEventIds, qualifiedIds,
+    unionRows, sortedRows, filteredSortedRows, previewListRow, patternHitStocks,
+    nodeColors, selectedHitId, selectedHit, tagMap, isolated, inHitIds, inHitEventIds, qualifiedIds,
     mode, annotating, comparing, appSource, linkedView, linkedRun, tiers, appId, endNode, appWindowOf,
     openSymbol, enterAnnotate, enterLinked, setLinkedRun, setTiers, viewWindow,
     loadScanFile, clearScanFile, setCurrentScanName, currentScanName, selectSymbol, setActivePattern, setSort,
     toggleNode, toggleExpandedNode,
-    focusMatch, focusEvent, clearFocus,
+    focusHit, focusEvent, clearFocus,
     setLevel, hoverEvent,
-    setCandidateMatches, clearCandidates, setPendingDisambig,
+    setCandidateHits, clearCandidates, setPendingDisambig,
     setShiftSelectedEvents, clearShiftSelection, clearDetailCard, triggerTimeQuery, triggerPairQuery,
     // v2 event-debug(2026-07-15)
     debugPending, debugTarget, debugError, triggerEventDebug, cancelDebug,

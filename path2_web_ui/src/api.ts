@@ -178,8 +178,8 @@ export interface ScanReq {
   params_overrides?: Record<string, Record<string, any>>   // ★ Task 8 · pid → params dict(Working Copy 直扫)
   params_files?: Record<string, string>                     // pid → app 目录下的 yaml 文件名(与 params_overrides 互斥)
   note?: string                                             // ★ Task 8 · 扫描备注(命名实验)
-  price_min?: number | null                                 // match 级:end_node 事件日收盘价下限(闭区间)
-  price_max?: number | null                                 // match 级:end_node 事件日收盘价上限(闭区间)
+  price_min?: number | null                                 // hit 级:end_node 事件日收盘价下限(闭区间)
+  price_max?: number | null                                 // hit 级:end_node 事件日收盘价上限(闭区间)
   volume_min?: number | null                                // 股票级预筛:扫描区间内日均成交量下限(严格大于)
 }
 

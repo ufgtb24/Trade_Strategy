@@ -108,7 +108,7 @@ test('5. Start scan → 按钮变红「停止扫描」→ click → cancel + 「
   await expect(page.getByRole('button', { name: /扫描 ⚙/ })).toBeDisabled()
   // 点停止
   await stopBtn.click()
-  await expect(page.locator('.done')).toContainText(/扫描已取消|完成/, { timeout: 30_000 })
+  await expect(page.locator('.done')).toContainText(/扫描已取消|done/, { timeout: 30_000 })
   // 扫描按钮恢复可点
   await expect(page.getByRole('button', { name: /扫描 ⚙/ })).toBeEnabled()
 })

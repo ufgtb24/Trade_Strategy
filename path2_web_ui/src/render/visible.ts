@@ -2,22 +2,22 @@
 import type { EventDict, HitDict, TopoNode, TopoEdge, Topology, AttrRow, Diagnostics, Tier, ClauseWitness, ScanMeta, Bar } from '../types'
 import type { TooltipPayload, TooltipClauseRow, TooltipRefRow } from './chart'
 
-/** 所有匹配内实例 instance_id 的并集(schema-driven 协议驱动)。
+/** 所有 hit 内实例 instance_id 的并集(schema-driven 协议驱动)。
  *  展开规则:
- *  - 初始集 = ⋃_match node_index 的【精确实例】引用(值已是 instance_id 字符串),
- *    match 引用谁就是谁;children 保留作显示投影,不再作初始集来源
+ *  - 初始集 = ⋃_hit node_index 的【精确实例】引用(值已是 instance_id 字符串),
+ *    hit 引用谁就是谁;children 保留作显示投影,不再作初始集来源
  *  - 持有型引用:沿 ev.child_refs 所有 slot value(instance_id 列表)递归入队(直加字符串)
  *  - 弱引用(opts.expandAnchor!==false 时):从 edges 收集非空 anchor_field,遍历 ev 上
  *    对应字段(标量或集合;tb.anchor_bo_id 单值标量,未来多源可为数组)入队——anchor 字段值
  *    恒为 instance_id(后端交错标注后 detect 期写入),byId 直连命中即入集
- *  opts.expandAnchor=false 时只沿 child_refs 闭包、不反查 anchor——专用于按选中 match
+ *  opts.expandAnchor=false 时只沿 child_refs 闭包、不反查 anchor——专用于按选中 hit
  *  高亮(highlightedInstanceIds):anchor 是 leaf event 的元属性(记录触发源),不是链路结构,
- *  反查会在共享 leaf 场景把别的 match 的 bo 污染进高亮集。focusEvent 归属 / eventTier
- *  等用默认 expandAnchor=true(bo 经 anchor 归属 match)。matched 的 composite event
+ *  反查会在共享 leaf 场景把别的 hit 的 bo 污染进高亮集。focusEvent 归属 / eventTier
+ *  等用默认 expandAnchor=true(bo 经 anchor 归属 hit)。in_hit 的 composite event
  *  (如 burst)其 constituent bo 通过 child_refs 自然进集。
  *  实例化契约:集合元素为 instance_id 字符串(恒含 #idx);引用协议全实例化,零身份展开。 */
-export function matchedIds(
-  matches: HitDict[],
+export function inHitIds(
+  hits: HitDict[],
   events: EventDict[],
   edges: TopoEdge[],
   opts: { expandAnchor?: boolean } = {},
@@ -36,8 +36,8 @@ export function matchedIds(
   const resolveAnchor = (v: string): void => {
     if (byId.has(v)) enqueue(v)
   }
-  // 实例化初始集:match.node_index 值 = instance_id 字符串,引用谁就是谁。
-  for (const m of matches) {
+  // 实例化初始集:hit.node_index 值 = instance_id 字符串,引用谁就是谁。
+  for (const m of hits) {
     for (const ref of Object.values(m.node_index)) enqueue(ref)
   }
   if (s.size === 0) return s
@@ -115,10 +115,10 @@ export function qualifiedIdsOf(diag: Diagnostics | null): Set<string> {
   return out
 }
 
-/** event 处于哪一档:matched > qualified > detected。两档均实例级判定
+/** event 处于哪一档:in_hit > qualified > detected。两档均实例级判定
  *  (集合元素为 instance_id,同 node 多实例可不同档)。 */
-export function eventTierOf(e: EventDict, matched: Set<string>, qualified: Set<string>): Tier {
-  if (matched.has(e.instance_id)) return 'matched'
+export function eventTierOf(e: EventDict, inHit: Set<string>, qualified: Set<string>): Tier {
+  if (inHit.has(e.instance_id)) return 'in_hit'
   if (qualified.has(e.instance_id)) return 'qualified'
   return 'detected'
 }

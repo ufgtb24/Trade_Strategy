@@ -5,7 +5,7 @@
  * 语义:后端把样本统计截到 [start_ts, end_ts],但 events 全量下发(机器在尾缓冲区
  * 的轨迹有意可见)。副图 band interval 与 scanEnd(= scan.end_date 的 bar 索引,
  * 即 strictWindow.endIdx)相交时拆两段:
- *   - 窗内段:维持三档 level 色(matched 彩色)
+ *   - 窗内段:维持三档 level 色(in_hit 彩色)
  *   - 窗后段:detected 灰(#d1d5db,与 detected/traced 灰色语义同族 =「检测到但非样本」)
  * 边界:scanEndIdx 本身归窗内(与主图 buildShadingMarkArea 从 endIdx+1 起灰同一口径)。
  *
@@ -66,9 +66,9 @@ function baseInput(strictWindow: BandRenderInput['strictWindow']): BandRenderInp
     topology: { nodes: [{ node_id: 'tb_seg' }] } as any,
     isolatedNodeIds: new Set<string>(),
     tagList: ['tb_seg'],
-    level: 'matched',
+    level: 'in_hit',
     nodeColors: { tb_seg: '#16a34a' },
-    eventTier: () => 'matched',
+    eventTier: () => 'in_hit',
     nodeOfEventByBand: (e) => e.node_id,
     bandKeyOf: (e) => e.node_id,
     strictWindow,
@@ -80,10 +80,10 @@ describe('computeEventData — band interval 按 scanEnd 拆段', () => {
     { instance_id: 'seg_cross#0', node_id: 'tb_seg', instance_idx: 0, start_idx: 2, end_idx: 4 },  // 跨界
     { instance_id: 'seg_after#0', node_id: 'tb_seg', instance_idx: 0, start_idx: 4, end_idx: 4 },  // 点(窗外)
   ]
-  const matches: HitDict[] = []
+  const hits: HitDict[] = []
 
   it('strictWindow 缺省 → interval 不拆(老行为,单条原色)', () => {
-    const bundle = computeEventData(bars, events, matches, baseInput(null))
+    const bundle = computeEventData(bars, events, hits, baseInput(null))
     const cross = bundle.intervalData.filter((d) => d.instance_id === 'seg_cross#0')
     expect(cross).toHaveLength(1)
     expect(cross[0].value.slice(0, 2)).toEqual([2, 4])
@@ -91,11 +91,11 @@ describe('computeEventData — band interval 按 scanEnd 拆段', () => {
   })
 
   it('跨界 interval → 两条记录:窗内段原 level 色、窗后段 detected 灰,同 lane/band/instance_id', () => {
-    const bundle = computeEventData(bars, events, matches,
+    const bundle = computeEventData(bars, events, hits,
       baseInput({ startIdx: 0, endIdx: 3 }))
     const parts = bundle.intervalData.filter((d) => d.instance_id === 'seg_cross#0')
     expect(parts).toHaveLength(2)
-    // 窗内段 [2,3]:matched 彩色(node 本色)
+    // 窗内段 [2,3]:in_hit 彩色(node 本色)
     expect(parts[0].value.slice(0, 2)).toEqual([2, 3])
     expect(parts[0].itemStyle.color).toBe('#16a34a')
     // 窗后段 [4,4]:detected 灰(colorOf('detected') = #d1d5db)
@@ -104,14 +104,14 @@ describe('computeEventData — band interval 按 scanEnd 拆段', () => {
     // lane/band 不变(拆的是时间跨度,不占新轨道)
     expect(parts[0].value[2]).toBe(parts[1].value[2])
     expect(parts[0].value[3]).toBe(parts[1].value[3])
-    expect(parts[1].tier).toBe('matched')
+    expect(parts[1].tier).toBe('in_hit')
   })
 
   it('完全窗外 interval → 单条整段灰(机器轨迹可见但不计样本)', () => {
     const spanEvents: EventDict[] = [
       { instance_id: 'seg_after_all#0', node_id: 'tb_seg', instance_idx: 0, start_idx: 3, end_idx: 4 },
     ]
-    const bundle = computeEventData(bars, spanEvents, matches,
+    const bundle = computeEventData(bars, spanEvents, hits,
       baseInput({ startIdx: 0, endIdx: 2 }))
     const parts = bundle.intervalData.filter((d) => d.instance_id === 'seg_after_all#0')
     expect(parts).toHaveLength(1)
@@ -120,7 +120,7 @@ describe('computeEventData — band interval 按 scanEnd 拆段', () => {
   })
 
   it('point 事件不拆(本 task 范围 = interval band;窗外 point 维持原色)', () => {
-    const bundle = computeEventData(bars, events, matches,
+    const bundle = computeEventData(bars, events, hits,
       baseInput({ startIdx: 0, endIdx: 3 }))
     const pts = bundle.pointData.filter((d) => d.instance_id === 'seg_after#0')
     expect(pts).toHaveLength(1)

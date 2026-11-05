@@ -24,22 +24,22 @@ vi.mock('../src/stores/config', () => ({
 describe('CandidateStatusBar (Task 10)', () => {
   beforeEach(() => { setActivePinia(createPinia()) })
 
-  it('renders nothing when candidateMatchIds is empty', () => {
-    const w = mount(CandidateStatusBar, { props: { matches: [] } })
+  it('renders nothing when candidateHitIds is empty', () => {
+    const w = mount(CandidateStatusBar, { props: { hits: [] } })
     expect(w.find('.candidate-banner').exists()).toBe(false)
   })
 
-  it('renders banner with start_idx-sorted ordinals (not raw matches order)', async () => {
+  it('renders banner with start_idx-sorted ordinals (not raw hits order)', async () => {
     const view = useViewStore()
-    // Matches deliberately NOT in start_idx order — ensures ordinal is sorted by start_idx
-    const matches = [
+    // Hits deliberately NOT in start_idx order — ensures ordinal is sorted by start_idx
+    const hits = [
       { hit_id: 'm_late',  start_idx: 50, end_idx: 60, children: [], node_index: {}, predicate_trace: null },
       { hit_id: 'm_early', start_idx: 10, end_idx: 20, children: [], node_index: {}, predicate_trace: null },
       { hit_id: 'm_mid',   start_idx: 30, end_idx: 40, children: [], node_index: {}, predicate_trace: null },
     ]
-    const w = mount(CandidateStatusBar, { props: { matches } })
+    const w = mount(CandidateStatusBar, { props: { hits } })
     // Subscribe to all three — start_idx sort: m_early=①, m_mid=②, m_late=③
-    view.setCandidateMatches(['m_late', 'm_early', 'm_mid'])
+    view.setCandidateHits(['m_late', 'm_early', 'm_mid'])
     await w.vm.$nextTick()
     const text = w.text()
     expect(text).toContain('① ② ③')
@@ -50,22 +50,22 @@ describe('CandidateStatusBar (Task 10)', () => {
 
   it('subset of candidates produces non-sequential ordinals', async () => {
     const view = useViewStore()
-    const matches = [
+    const hits = [
       { hit_id: 'm_late',  start_idx: 50, end_idx: 60, children: [], node_index: {}, predicate_trace: null },
       { hit_id: 'm_early', start_idx: 10, end_idx: 20, children: [], node_index: {}, predicate_trace: null },
       { hit_id: 'm_mid',   start_idx: 30, end_idx: 40, children: [], node_index: {}, predicate_trace: null },
     ]
-    const w = mount(CandidateStatusBar, { props: { matches } })
+    const w = mount(CandidateStatusBar, { props: { hits } })
     // Candidate set is {m_early, m_late} (skip m_mid) → expected ① ③
-    view.setCandidateMatches(['m_late', 'm_early'])
+    view.setCandidateHits(['m_late', 'm_early'])
     await w.vm.$nextTick()
     const text = w.text()
     expect(text).toContain('① ③')
   })
 
   it('falls back to arabic for ordinal > 9', async () => {
-    // 10 matches, candidate is the 10th by start_idx (start_idx: 100, i=9)
-    const matches = Array.from({ length: 10 }, (_, i) => ({
+    // 10 hits, candidate is the 10th by start_idx (start_idx: 100, i=9)
+    const hits = Array.from({ length: 10 }, (_, i) => ({
       hit_id: `m${i}`,
       start_idx: (i + 1) * 10,
       end_idx: (i + 1) * 10 + 5,
@@ -73,9 +73,9 @@ describe('CandidateStatusBar (Task 10)', () => {
       node_index: {} as Record<string, string>,
       predicate_trace: null,
     }))
-    const w = mount(CandidateStatusBar, { props: { matches } })
+    const w = mount(CandidateStatusBar, { props: { hits } })
     const view = useViewStore()
-    view.setCandidateMatches(['m9'])  // 10th by start_idx (i=9, start_idx=100) → ordinal 10
+    view.setCandidateHits(['m9'])  // 10th by start_idx (i=9, start_idx=100) → ordinal 10
     await w.vm.$nextTick()
     expect(w.text()).toContain('10')
   })

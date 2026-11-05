@@ -37,7 +37,7 @@ test.beforeAll(() => {
 })
 
 // ─── setup:打开固定 fixture(DGNX 为 results[0],加载后自动选中)+ 显示 Sidebar/Topology
-//     面板 + 切到 Detected 档(两支 fixture 股均 0 match,Matched/Qualified 档下不渲染任何
+//     面板 + 切到 detected 档(两支 fixture 股均 0 hit,in_hit/qualified 档下不渲染任何
 //     event)。每 test 独立 page(默认全新 context,localStorage 面板显隐状态天然复位) ──
 async function setupFixtureChart(page: Page): Promise<void> {
   await page.goto(baseURL + '/')
@@ -58,7 +58,7 @@ async function setupFixtureChart(page: Page): Promise<void> {
         .find((b) => b.textContent?.trim() === text)
       el?.click()
     }
-    clickByText('.level-btn', 'Detected')
+    clickByText('.level-btn', 'detected')
     document.querySelector<HTMLElement>('[data-testid="panel-toggle-sidebar"]')?.click()
     document.querySelector<HTMLElement>('[data-testid="panel-toggle-topology"]')?.click()
   })
