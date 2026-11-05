@@ -244,53 +244,53 @@ def run_streams(spec, df, params=None, *, preset=None):
     return streams
 
 
-def _node_bits_of(match) -> str:
-    """match id 消歧的排序段:node_index 的 (nid, instance_id) 规范串(reify 同款拼接)。"""
-    ni = match.node_index or {}
+def _node_bits_of(hit) -> str:
+    """hit_id 消歧的排序段:node_index 的 (nid, instance_id) 规范串(reify 同款拼接)。"""
+    ni = hit.node_index or {}
     return "|".join(f"{nid}:{e.instance_id}" for nid, e in sorted(ni.items()))
 
 
 def analyze(spec, df, params=None) -> AnalysisResult:
-    """DAG 走势包 analyze:抽出 streams → compile plan → solve → reify matches。
-    返回 AnalysisResult(events / matches / spec / gate_failures)。
+    """DAG 走势包 analyze:抽出 streams → compile plan → solve → reify hits。
+    返回 AnalysisResult(events / hits / spec / gate_failures)。
 
     求解集由 compile_plan 的 K2 三要素判据决定(edge 端点并集 ∩ 非 neg_dst ∩
-    detector 非空)——孤立未消费 node 不求解,matches 直通无出口过滤。"""
+    detector 非空)——孤立未消费 node 不求解,hits 直通无出口过滤。"""
     streams = run_streams(spec, df, params)                 # 阶段1(抽出)
     plan = compile_plan(spec)                                # 阶段2
     sols = solve(plan, streams)                               # 阶段3
-    matches_out = tuple(reify(s, streams, plan) for s in sols)  # 阶段4
+    hits_out = tuple(reify(s, streams, plan) for s in sols)  # 阶段4
     # res.events 按 stream 身份(id(s))去重:共享 detector 时多个 node_id 指同一 list,
     # 朴素平铺会重复计入;按 id 去重确保每条唯一流只计一遍。
     seen_streams = {}
     for s in streams.values():
         seen_streams.setdefault(id(s), s)
     events = tuple(e for s in seen_streams.values() for e in s)
-    # 实例流协议:match 身份含上游组合,必须唯一。match_id 的 node_bits 段用
+    # 实例流协议:hit 身份含上游组合,必须唯一。hit_id 的 node_bits 段用
     # instance_id(标注后恒含 #idx),同流多实例组合天然可区分;但不同实例组合
-    # 仍可能产出同 id 的 match(碰撞)→ 惰性消歧:仅碰撞组、按
+    # 仍可能产出同 id 的 hit(碰撞)→ 惰性消歧:仅碰撞组、按
     # (start, end, node_bits) 排序附 #idx;不碰撞零差异。消歧后断言必成立。
     from collections import defaultdict
     from dataclasses import replace as _replace
     groups = defaultdict(list)
-    for i, m in enumerate(matches_out):
-        groups[m.match_id].append(i)
+    for i, h in enumerate(hits_out):
+        groups[h.hit_id].append(i)
     if any(len(v) > 1 for v in groups.values()):
-        new_matches = list(matches_out)
+        new_hits = list(hits_out)
         for ids in groups.values():
             if len(ids) < 2:
                 continue
-            ids.sort(key=lambda i: (new_matches[i].start_idx, new_matches[i].end_idx,
-                                    _node_bits_of(new_matches[i])))
+            ids.sort(key=lambda i: (new_hits[i].start_idx, new_hits[i].end_idx,
+                                    _node_bits_of(new_hits[i])))
             for idx, i in enumerate(ids):
-                m = new_matches[i]
-                new_matches[i] = _replace(m, match_id=f"{m.match_id}#{idx}")
-        matches_out = tuple(new_matches)
-    mid = [m.match_id for m in matches_out]
-    assert len(mid) == len(set(mid)), \
-        f"match match_id 重复: {len(mid) - len(set(mid))} 个(违反 match 唯一协议)"
-    return AnalysisResult(events=events, matches=matches_out, spec=spec)
+                h = new_hits[i]
+                new_hits[i] = _replace(h, hit_id=f"{h.hit_id}#{idx}")
+        hits_out = tuple(new_hits)
+    hid = [h.hit_id for h in hits_out]
+    assert len(hid) == len(set(hid)), \
+        f"hit_id 重复: {len(hid) - len(set(hid))} 个(违反 hit 唯一协议)"
+    return AnalysisResult(events=events, hits=hits_out, spec=spec)
 
 
-def matches(spec, df, params=None) -> bool:
-    return len(analyze(spec, df, params).matches) > 0
+def has_hit(spec, df, params=None) -> bool:
+    return len(analyze(spec, df, params).hits) > 0

@@ -53,7 +53,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from path2.calc.atr import (FP_ATR_WINDOW, calculate_atr, prev_bar_atr_pct,  # noqa: E402  与 detector 同源
                             rolling_atr_pct_nanmedian)
 from path2.dag.engine import analyze as dag_analyze  # noqa: E402
-from path2.eval import match_first_passage, match_forward_returns  # noqa: E402
+from path2.eval import hit_first_passage, hit_forward_returns  # noqa: E402
 from path2_web.serialize import _resolve_end_events    # noqa: E402  与 serialize 同口径过滤
 from path2_web.data import slice_window                # noqa: E402
 from run_battery import STATES, _cmp, load_tune_gates  # noqa: E402
@@ -169,7 +169,7 @@ def build_dataset(adapter, *, scan, out_csv, compute_features,
         # 自检 1 前置:serialize 同口径过滤(任一 end_node 事件起点 ∈ 窗 + 任一起点日
         # 收盘价 ∈ [pmin,pmax] 闭区间;serialize.py:341-351 同款)
         live, kept = set(), []
-        for m in res.matches:
+        for m in res.hits:
             events = _resolve_end_events(m, end_node)
             if not any(s <= win["date"].iat[ev.start_idx] <= e for ev in events):
                 continue
@@ -177,7 +177,7 @@ def build_dataset(adapter, *, scan, out_csv, compute_features,
             if not any((pmin is None or c >= pmin) and
                        (pmax is None or c <= pmax) for c in closes):
                 continue
-            live.add(m.match_id)
+            live.add(m.hit_id)
             kept.append((m, events))
         if live != ids:
             mset_fail.append((sym, len(live), len(ids)))
@@ -205,9 +205,9 @@ def build_dataset(adapter, *, scan, out_csv, compute_features,
         # 自检 2:覆盖全部通过窗/价格过滤的 kept match(不止最终留下的行),放在
         # observe() 之前——先证 label 可信,再谈要不要采信这条观测。
         for m, events in kept:
-            lab = match_forward_returns(m, end_node, win, [horizon],
-                                        sample_window=(lo, hi))[horizon]
-            ref = scan_lab.get(m.match_id)
+            lab = hit_forward_returns(m, end_node, win, [horizon],
+                                      sample_window=(lo, hi))[horizon]
+            ref = scan_lab.get(m.hit_id)
             if lab is None and ref is None:
                 n_lab_skipped += 1
                 continue   # 无 label(scan 窗末端 horizon 不可见),非失配——跳过不统计,
@@ -225,7 +225,7 @@ def build_dataset(adapter, *, scan, out_csv, compute_features,
                     f"adapter.observe() 返回值覆盖了骨架通用列: {clash}——"
                     "列的归属是本次改造的核心不变式,不许 app 层覆盖骨架列")
             # 买点在窗内的 bar 序号:必须与 label 的买点日集合同源——
-            # match_forward_returns(path2/eval.py)取买点日走的是
+            # hit_forward_returns(path2/eval.py)取买点日走的是
             # `for ev in events for t in ev.sample_bar_indices() if lo<=t<=hi`,
             # entry_idx 须复用同一遍历 + 同一窗过滤,不能写 min(ev.start_idx for ev
             # in events):多段 app 的 end_node 是「父 node.槽名」点号路径(如
@@ -243,7 +243,7 @@ def build_dataset(adapter, *, scan, out_csv, compute_features,
             # end_node 无点号的 app 二者相等,对点号路径 app(如 bottom_burst)未必。
             # 真要与 scan JSON 的行对齐,应该用 match_id 做 join,不要用 entry_date。
             entry_ts = pd.to_datetime(win["date"].iat[entry_idx])
-            fp = match_first_passage(m, end_node, win, horizon, k=fp_k, sample_window=(lo, hi), M=M)
+            fp = hit_first_passage(m, end_node, win, horizon, k=fp_k, sample_window=(lo, hi), M=M)
             row = {"symbol": sym, **obs,
                    "entry_idx": entry_idx,
                    "entry_date": str(entry_ts.date()),

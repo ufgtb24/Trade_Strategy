@@ -476,7 +476,7 @@ def test_scan_stats_leaf_and_shared_fields(tmp_path, tiny_pkls):
 def test_scan_stats_leaf_count_on_hits(tmp_path):
     """命中场景:leaf_count = 按买点 span 去重的买点数,口径非空有 teeth。"""
     from dataclasses import replace
-    from tests.path2_apps.bottom_burst.test_matches import _synth_positive
+    from tests.path2_apps.bottom_burst.test_has_hit import _synth_positive
     data = tmp_path / "data"
     data.mkdir()
     df = _synth_positive()

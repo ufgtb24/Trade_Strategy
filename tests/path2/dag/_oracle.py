@@ -96,17 +96,17 @@ def _cell_key(node_id, binding):
     return (node_id, binding.start_idx, binding.end_idx, binding.pos)
 
 
-def match_key(assign: Dict) -> tuple:
-    """一个匹配的规范键(可跨引擎/oracle 比较;用 Ev.pos 做 tiebreak)。
+def hit_key(assign: Dict) -> tuple:
+    """一个 hit 的规范键(可跨引擎/oracle 比较;用 Ev.pos 做 tiebreak)。
     assign: node_id -> Event | tuple[Event,...]。"""
     return tuple(sorted(_cell_key(nid, b) for nid, b in assign.items()))
 
 
 def keyset(solutions) -> Counter:
-    """solutions: 可迭代的「匹配」。每项要么是 dict(assign),要么有 .assign 属性。"""
+    """solutions: 可迭代的解(每个解即一次 hit 的 node 绑定)。每项要么是 dict(assign),要么有 .assign 属性。"""
     def _assign(s):
         return s.assign if hasattr(s, "assign") else s
-    return Counter(match_key(_assign(s)) for s in solutions)
+    return Counter(hit_key(_assign(s)) for s in solutions)
 
 
 def _ep(binding, selector):

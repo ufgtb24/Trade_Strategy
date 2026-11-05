@@ -1,8 +1,8 @@
-"""匹配产物类型:EdgeWitness / PredicateTrace / PatternMatch(展平不变式) / AnalysisResult。"""
+"""引擎产物类型:EdgeWitness / PredicateTrace / PatternHit(展平不变式) / AnalysisResult。"""
 import pytest
 from path2 import config
 from path2.core import Event
-from path2.dag.result import EdgeWitness, PredicateTrace, PatternMatch, AnalysisResult
+from path2.dag.result import EdgeWitness, PredicateTrace, PatternHit, AnalysisResult
 
 
 class Ev(Event):
@@ -18,12 +18,12 @@ def test_edge_witness_fields():
     assert w.satisfied is True and w.src_instance is a and w.measured == 1.0
 
 
-def test_pattern_match_flatten_invariant_ok():
+def test_pattern_hit_flatten_invariant_ok():
     """node_index 值集合 == children 集合。"""
     a = ev(0, 0)
     b = ev(2, 4)
-    m = PatternMatch(
-        match_id="m1", start_idx=0, end_idx=4, confirm_idx=0, pattern_id="p",
+    m = PatternHit(
+        hit_id="m1", start_idx=0, end_idx=4, confirm_idx=0, pattern_id="p",
         node_index={"down": a, "bo": b},
         children=(a, b),
         predicate_trace=PredicateTrace(where_results={}, edge_results={}),
@@ -31,21 +31,21 @@ def test_pattern_match_flatten_invariant_ok():
     assert m.node_index["bo"] is b
 
 
-def test_pattern_match_flatten_invariant_violation_raises():
+def test_pattern_hit_flatten_invariant_violation_raises():
     a = ev(0, 0); b = ev(2, 2)
     config.set_runtime_checks(True)
     with pytest.raises(AssertionError):
-        PatternMatch(
-            match_id="m1", start_idx=0, end_idx=2, confirm_idx=0, pattern_id="p",
+        PatternHit(
+            hit_id="m1", start_idx=0, end_idx=2, confirm_idx=0, pattern_id="p",
             node_index={"down": a, "bo": b},
             children=(a,),                               # 少了 b → 违反展平不变式
             predicate_trace=PredicateTrace(where_results={}, edge_results={}),
         )
 
 
-def test_analysis_result_holds_events_matches():
-    r = AnalysisResult(events=(ev(0, 0),), matches=(), spec=None)
-    assert len(r.events) == 1 and r.matches == ()
+def test_analysis_result_holds_events_hits():
+    r = AnalysisResult(events=(ev(0, 0),), hits=(), spec=None)
+    assert len(r.events) == 1 and r.hits == ()
 
 
 def test_analysis_result_allows_same_identity_multi_instances():
@@ -53,7 +53,7 @@ def test_analysis_result_allows_same_identity_multi_instances():
     from path2.atoms.breakout import BOEvent
     e1 = BOEvent(start_idx=1, end_idx=1, confirm_idx=1, drought=5)
     e2 = BOEvent(start_idx=1, end_idx=1, confirm_idx=1, drought=8)   # 同身份(1,1),属性不同
-    a = AnalysisResult(events=(e1, e2), matches=(), spec=None)
+    a = AnalysisResult(events=(e1, e2), hits=(), spec=None)
     assert a.events == (e1, e2)   # 同身份多实例不再抛断言
 
 
@@ -63,13 +63,13 @@ def test_analysis_result_rejects_identical_duplicate_objects():
     e1 = BOEvent(start_idx=1, end_idx=1, confirm_idx=1, drought=5)
     e2 = BOEvent(start_idx=1, end_idx=1, confirm_idx=1, drought=5)   # 全属性全等
     with pytest.raises(AssertionError):
-        AnalysisResult(events=(e1, e2), matches=(), spec=None)
+        AnalysisResult(events=(e1, e2), hits=(), spec=None)
 
 
-def test_match_id_uses_instance_ids():
-    """match_id 的 node_bits 段用 instance_id(标注后),不再用 event_id。
+def test_hit_id_uses_instance_ids():
+    """hit_id 的 node_bits 段用 instance_id(标注后),不再用 event_id。
 
-    TDD(Task 3):analyze 最小 spec 的 match 须带 match_id、无 event_id,
+    TDD(Task 3):analyze 最小 spec 的 hit 须带 hit_id、无 event_id,
     且 node_index 各实例的 instance_id 恒带 #idx(物化标注契约)。"""
     from path2.dag.edges import TemporalEdge
     from path2.dag.engine import analyze
@@ -87,10 +87,10 @@ def test_match_id_uses_instance_ids():
         NodeSpec("B", _Fake([OEv("b", 5, 5)])),
     ), edges=(TemporalEdge("A", "B", min_gap=0, max_gap=100),))
     res = analyze(spec, df=object())
-    assert res.matches, "平凡链应产出 match"
-    for m in res.matches:
-        assert hasattr(m, "match_id") and m.match_id
-        assert not hasattr(m, "event_id")          # Event 无此字段,PatternMatch 也不该有
+    assert res.hits, "平凡链应产出 hit"
+    for m in res.hits:
+        assert hasattr(m, "hit_id") and m.hit_id
+        assert not hasattr(m, "event_id")          # Event 无此字段,PatternHit 也不该有
         bits = {e.instance_id for e in m.node_index.values()}
         for b in bits:
             assert b is not None and "#" in b      # instance_id 恒带 #idx

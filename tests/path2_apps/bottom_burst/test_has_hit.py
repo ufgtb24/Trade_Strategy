@@ -1,7 +1,7 @@
 import numpy as np
 import pandas as pd
 
-from path2_apps.bottom_burst import matches
+from path2_apps.bottom_burst import has_hit
 from path2_apps.bottom_burst.params import Params, BoParams, BurstParams
 
 
@@ -135,7 +135,7 @@ def _synth_no_burst():
     })
 
 
-def test_matches_positive():
+def test_has_hit_positive():
     df = _synth_positive()
     p = Params.default()
     # 此 fixture 使用较低阈值便于稳定命中
@@ -146,15 +146,15 @@ def test_matches_positive():
         ),
         burst=BurstParams(min_bos=2, first_drought_min=20, distinct_pk_min=2, vol_spike_min=3.0),
     )
-    assert matches(df, p_relaxed) is True
+    assert has_hit(df, p_relaxed) is True
 
 
-def test_matches_no_burst_returns_false():
+def test_has_hit_no_burst_returns_false():
     df = _synth_no_burst()
-    assert matches(df) is False
+    assert has_hit(df) is False
 
 
-def test_matches_no_sideways_returns_false():
+def test_has_hit_no_sideways_returns_false():
     # 全程上涨 (无 sideways 段) → ① 不命中
     rng = np.random.default_rng(7)
     n = 250
@@ -166,7 +166,7 @@ def test_matches_no_sideways_returns_false():
         'close': closes,
         'volume': [1000.0] * n,
     })
-    assert matches(df) is False
+    assert has_hit(df) is False
 
 
 def _synth_no_drought():
@@ -261,7 +261,7 @@ def _synth_no_throwback():
     return df_copy
 
 
-def test_matches_no_drought_returns_false():
+def test_has_hit_no_drought_returns_false():
     df = _synth_no_drought()
     # 用与正例同的宽松阈值(便于 burst 命中),drought 谓词应单独筛掉
     p = Params(
@@ -272,11 +272,11 @@ def test_matches_no_drought_returns_false():
         burst=BurstParams(min_bos=2, first_drought_min=60, distinct_pk_min=2, vol_spike_min=3.0),
         # first_drought_min=60:fixture 的首 BO drought 远小于此 → 谓词 ③ 不命中
     )
-    assert matches(df, p) is False
+    assert has_hit(df, p) is False
 
 
-def test_matches_no_throwback_returns_false():
-    """末 BO 后 low 跌破 anchor → evaluate_throwback 返回 None → 不产 tb 事件 → matches False。"""
+def test_has_hit_no_throwback_returns_false():
+    """末 BO 后 low 跌破 anchor → evaluate_throwback 返回 None → 不产 tb 事件 → has_hit False。"""
     df = _synth_no_throwback()
     p = Params(
         bo=BoParams(
@@ -285,25 +285,25 @@ def test_matches_no_throwback_returns_false():
         ),
         burst=BurstParams(min_bos=2, first_drought_min=20, distinct_pk_min=2, vol_spike_min=3.0),
     )
-    assert matches(df, p) is False
+    assert has_hit(df, p) is False
 
 
-def test_matches_no_prior_down_returns_false():
+def test_has_hit_no_prior_down_returns_false():
     """fixture 满足 ①②③⑤⑥⑦ 但 first_bo 前 lookback_bars 内无 down 段 → False"""
     df = _synth_no_prior_down()
     p = Params(
         burst=BurstParams(min_bos=3, first_drought_min=20, distinct_pk_min=2, vol_spike_min=1.5),
     )
-    assert matches(df, p) is False
+    assert has_hit(df, p) is False
 
 
-def test_matches_shallow_prior_down_returns_false():
+def test_has_hit_shallow_prior_down_returns_false():
     """前置 down 存在但 drawdown < 0.25(浅回调) → False"""
     df = _synth_shallow_prior_down()
     p = Params(
         burst=BurstParams(min_bos=3, first_drought_min=20, distinct_pk_min=2, vol_spike_min=1.5),
     )
-    assert matches(df, p) is False
+    assert has_hit(df, p) is False
 
 
 def _synth_no_prior_down():
@@ -351,8 +351,8 @@ def _synth_shallow_prior_down():
 # last_bo 自身 throwback 失败 → False
 # ---------------------------------------------------------------------------
 
-def test_matches_broken_throwback_returns_false():
-    """末 BO 自身 post-bo low 跌破 anchor → evaluate_throwback 返回 None → 不产 tb 事件 → matches False。"""
+def test_has_hit_broken_throwback_returns_false():
+    """末 BO 自身 post-bo low 跌破 anchor → evaluate_throwback 返回 None → 不产 tb 事件 → has_hit False。"""
     df = _synth_no_throwback()
     p = Params(
         bo=BoParams(
@@ -361,4 +361,4 @@ def test_matches_broken_throwback_returns_false():
         ),
         burst=BurstParams(min_bos=2, first_drought_min=20, distinct_pk_min=2, vol_spike_min=3.0),
     )
-    assert matches(df, p) is False
+    assert has_hit(df, p) is False

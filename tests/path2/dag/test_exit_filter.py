@@ -1,4 +1,4 @@
-"""A2 出口过滤:被消费的孤立无边 node 产的残缺 match 被 analyze 出口丢弃,
+"""A2 出口过滤:被消费的孤立无边 node 产的残缺 hit 被 analyze 出口丢弃,
 res.events/topology 仍含该 node。
 
 判据(2026-06-28 收紧):node_index ⊆ {孤立 AND 被消费} 才过滤——「被消费」=
@@ -69,14 +69,14 @@ def _spec_with_isolated():
     )
 
 
-def test_isolated_node_degenerate_matches_filtered():
+def test_isolated_node_degenerate_hits_filtered():
     spec = _spec_with_isolated()
     df = pd.DataFrame({"close": range(20)})
     res = analyze(spec, df)
-    # 过滤后只剩连通 {A,B} 的完整 match；3 个 ISO 残缺 match 被丢
-    for m in res.matches:
+    # 过滤后只剩连通 {A,B} 的完整 hit；3 个 ISO 残缺 hit 被丢
+    for m in res.hits:
         assert set((m.node_index or {}).keys()) != {"ISO"}
-    assert any(set((m.node_index or {}).keys()) == {"A", "B"} for m in res.matches)
+    assert any(set((m.node_index or {}).keys()) == {"A", "B"} for m in res.hits)
     # res.events 仍含 ISO 的 event（孤立 node 露面 events, design §8.1 接受）
     # instance_id(物化标注后):ISO 节点 span(i,i) 点事件 → "ISO_{i}#0"
     assert any(e.instance_id.startswith("ISO_5") for e in res.events)

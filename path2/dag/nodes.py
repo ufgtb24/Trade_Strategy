@@ -44,9 +44,9 @@ class NodeSpec:
                       多流 detector(声明 produces)按此反射 event_cls。
     render_grid:      事件主 marker 渲染轴 — 'price' 钉 K线主图,需 event_cls.is_point=True;
                       'time' (默认) 走 sub-grid。
-    solve:            是否参与求解匹配。True(默认)= 进 bound_ids 参与 WCC 求解;
-                      False = 只显示不参与匹配(零边 pattern 的孤立 node 用,避免
-                      serialize 对每个 match 取 node_index[end_node] 时 KeyError)。
+    solve:            是否参与求解。True(默认)= 进 bound_ids 参与 WCC 求解;
+                      False = 只显示不参与求解(零边 pattern 的孤立 node 用,避免
+                      serialize 对每个 hit 取 node_index[end_node] 时 KeyError)。
     """
     node_id: str
     detector: Optional[object] = None
@@ -57,7 +57,7 @@ class NodeSpec:
     consumes_stream: Optional[str] = None
     produces_stream: Optional[str] = None
     render_grid: str = "time"
-    solve: bool = True     # 是否参与求解匹配。False = 只显示不参与匹配(零边 pattern 的孤立 node 用)
+    solve: bool = True     # 是否参与求解。False = 只显示不参与求解(零边 pattern 的孤立 node 用)
 
     def __post_init__(self) -> None:
         # event_cls 归一化(2026-08-06 agent team 定稿: 作者默认不写,写则校验;

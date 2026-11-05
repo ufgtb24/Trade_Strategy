@@ -113,7 +113,7 @@ class PatternSpec:
         """子结构 node(produced_by 非空)只有 node_id/event_cls/children/where 有意义。
 
         where 语义 = 诊断层判定(diagnose 从父容器槽内事件产 attr 行 → 前端
-        段级 tier),不进求解;gate match 用父 where 的 W.children(正交分层)。"""
+        段级 tier),不进求解;决定能否命中的是父 where 的 W.children(正交分层)。"""
         for n in self.nodes:
             if n.produced_by is None:
                 continue
@@ -188,7 +188,7 @@ class PatternSpec:
 
     def _validate_where_clauses(self) -> None:
         """同 node 内 where 的 clause_id 须唯一 —— clause_id 唯一用途是 predicate_trace 的 key,
-        重复会在 reify 的 {cid: ...} 字典推导里后写覆盖前写,静默丢一条诊断(匹配不受影响)。
+        重复会在 reify 的 {cid: ...} 字典推导里后写覆盖前写,静默丢一条诊断(命中不受影响)。
         跨 node 复用同名 clause_id 合法(trace 外层按 node_id 分桶)。"""
         for n in self.nodes:
             seen = set()
@@ -276,7 +276,7 @@ class PatternSpec:
                 group_ids = sorted(n.node_id for n in group)
                 raise ValueError(
                     f"detector 声明的流 {missing_list} 没有 node 认领(node 组 {group_ids});"
-                    f"多流 detector 的每条流都必须建 node,只显示不匹配用 solve=False"
+                    f"多流 detector 的每条流都必须建 node,只显示不求解用 solve=False"
                 )
 
     # ── 面板投影 + 引擎判据 ──
@@ -308,5 +308,5 @@ class PatternSpec:
 
     def eq_src_nodes(self) -> frozenset:
         """作为任何 EqualsEdge 之 src 的 node_id 集合。
-        Phase 2 引擎据此对这些节点关闭 C1 等-end 塌缩(verdict §6.2,否则漏匹配)。"""
+        Phase 2 引擎据此对这些节点关闭 C1 等-end 塌缩(verdict §6.2,否则漏命中)。"""
         return frozenset(e.src for e in self.edges if isinstance(e, EqualsEdge))

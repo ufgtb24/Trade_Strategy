@@ -30,7 +30,7 @@ def scene():
             continue
         win = df.iloc[-600:].reset_index()
         res = engine_analyze(spec, win, p)
-        if res.matches:
+        if res.hits:
             return res, eval_meta(p), win, pd.to_datetime(win["date"].iat[0]), pd.to_datetime(win["date"].iat[-1])
     pytest.skip("无命中股")
 
@@ -60,7 +60,7 @@ def test_fields_present_and_sum_invariant(scene):
 def test_buy_date_is_end_node_start(scene):
     res, meta, win, *_ = scene
     out = _run(scene)
-    by_id = {m.match_id: m for m in res.matches}
+    by_id = {m.hit_id: m for m in res.hits}
     for md in out["analysis"]["matches"]:
         ev = by_id[md["match_id"]].node_index[meta["end_node"].split(".")[0]]
         assert md["buy_date"] == str(pd.to_datetime(win["date"].iat[ev.start_idx]).date())

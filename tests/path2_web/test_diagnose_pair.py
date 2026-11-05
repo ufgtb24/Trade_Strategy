@@ -56,7 +56,7 @@ def _bbb_fixture():
     bo_1 = BOEvent(start_idx=1, end_idx=1, confirm_idx=1, node_id="bo", instance_id="bo_1")
     bo_2 = BOEvent(start_idx=5, end_idx=5, confirm_idx=5, node_id="bo", instance_id="bo_2")
     events = (bo_1, bo_2, bo_a, bo_b, burst_1, tb_1, tb_gap_out)
-    result = AnalysisResult(events=events, matches=(), spec=spec)
+    result = AnalysisResult(events=events, hits=(), spec=spec)
     return spec, result
 
 
@@ -78,7 +78,7 @@ def _negation_fixture():
                     node_id="neg_src", instance_id="neg_src_1")
     e_dst = Platform(start_idx=5, end_idx=8, confirm_idx=5,
                      node_id="neg_dst", instance_id="neg_dst_1")
-    result = AnalysisResult(events=(e_src, e_dst), matches=(), spec=spec)
+    result = AnalysisResult(events=(e_src, e_dst), hits=(), spec=spec)
     return spec, result
 
 

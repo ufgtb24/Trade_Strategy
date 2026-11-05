@@ -27,8 +27,8 @@ from path2.dag._reify import reify
 from path2.dag._solve import compile_plan, solve
 from path2.dag.edges import NegationEdge
 from path2.dag.engine import run_streams
-from path2.eval import (_resolve_end_events, match_first_passage, match_forward_drawdowns,
-                        match_forward_returns)
+from path2.eval import (_resolve_end_events, hit_first_passage, hit_forward_drawdowns,
+                        hit_forward_returns)
 
 Dim = tuple[str, str]  # (section, field)
 STATES = ("up", "down", "both", "none")
@@ -478,9 +478,9 @@ def scan_one_stock(symbol: str, win: pd.DataFrame, start_ts, end_ts, cfg: ScanCo
                 # 依赖 span 之外的状态——path2/core.py:112 docstring 允许嵌套容器 override
                 # 展开 child(与 span 全量不同);bb_v1 的 tb 未 override(用默认 range(start,
                 # end+1)),此前提当前成立,若未来 end_node 换成会 override 的容器需重新审视。
-                fr = match_forward_returns(m, cfg.end_node, win, [H], sample_window=(lo, hi))[H]
-                dd = match_forward_drawdowns(m, cfg.end_node, win, [H], sample_window=(lo, hi))[H]
-                fp = match_first_passage(m, cfg.end_node, win, H, K, sample_window=(lo, hi), M=M)
+                fr = hit_forward_returns(m, cfg.end_node, win, [H], sample_window=(lo, hi))[H]
+                dd = hit_forward_drawdowns(m, cfg.end_node, win, [H], sample_window=(lo, hi))[H]
+                fp = hit_first_passage(m, cfg.end_node, win, H, K, sample_window=(lo, hi), M=M)
                 label_memo[span_key] = (fr, dd, fp)
             leaf_ev = m.node_index[leaf]
             if leaf_ev.instance_id in seen_fp_leaves:

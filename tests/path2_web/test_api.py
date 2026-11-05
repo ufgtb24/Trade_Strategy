@@ -10,7 +10,7 @@ from tests.path2_web.conftest import TRAIN_END, data_cfg
 
 
 def _mk_dated_no_burst(tmp_path, symbol):
-    from tests.path2_apps.bottom_burst.test_matches import _synth_no_burst
+    from tests.path2_apps.bottom_burst.test_has_hit import _synth_no_burst
     df = _synth_no_burst()
     df.index = pd.date_range("2025-01-01", periods=len(df), freq="D", name="date")
     df.to_pickle(Path(tmp_path) / f"{symbol}.pkl")

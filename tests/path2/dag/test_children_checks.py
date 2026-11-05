@@ -116,4 +116,4 @@ def test_c3_slot_element_type_mismatch_raises():
 def test_c1c2c3_pass_when_declaration_matches_instance():
     spec = _spec({"members": "inner"})
     res = analyze(spec, df=object())
-    assert res.matches          # 无报错即通过
+    assert res.hits          # 无报错即通过

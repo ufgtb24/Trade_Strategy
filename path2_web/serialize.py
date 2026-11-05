@@ -1,6 +1,6 @@
 """dag 对象 → jsonable dict 投影层(纯函数,不读文件/不起服务)。
 
-消费 path2.dag 只读数据结构(AnalysisResult/PatternMatch/PredicateTrace/ClauseWitness/
+消费 path2.dag 只读数据结构(AnalysisResult/PatternHit/PredicateTrace/ClauseWitness/
 EdgeWitness/PatternTopology/NodeDiagnostics),投影成前端 JSON。path2 不引入 JSON 依赖。
 
 实例化契约:事件已由引擎物化标注(node_id/instance_idx/instance_id),serialize 层
@@ -169,7 +169,7 @@ def _match_to_dict(m) -> dict:
     """match → dict。match_id 为 match 唯一键;node_index 每节点值 = instance_id
     字符串(与事件行同源);children = instance_id 列表。旧身份字段不再输出。"""
     return {
-        "match_id": m.match_id,
+        "match_id": m.hit_id,
         "start_idx": m.start_idx,
         "end_idx": m.end_idx,
         "node_index": {
@@ -200,7 +200,7 @@ def serialize_analysis(res) -> dict:
                     seen.add(id(c))
                     extra.append(_event_to_dict(c))
     out_events.extend(extra)
-    return {"events": out_events, "matches": [_match_to_dict(m) for m in res.matches]}
+    return {"events": out_events, "matches": [_match_to_dict(m) for m in res.hits]}
 
 
 def summarize(res) -> dict:
@@ -211,7 +211,7 @@ def summarize(res) -> dict:
         if e.node_id is None:
             continue
         counts[e.node_id] = counts.get(e.node_id, 0) + 1
-    counts["matches"] = len(res.matches)
+    counts["matches"] = len(res.hits)
     return counts
 
 
@@ -365,7 +365,7 @@ def serialize_per_pattern_result(res, end_node: str, label_horizon: int,
             关闭时 match_fp_counts 为单组全 0 {up,down,both,none};每条 match 的
             first_passage 字段恒为 None。
         first_passage_k: 首次穿越几何对称阈值参数 k(上行 P(1+kM)、下行 P/(1+kM)),
-            match_first_passage 内算 M;默认 5.0。
+            hit_first_passage 内算 M;默认 5.0。
         sample_window: 样本消费窗(spec §10 截取),win 行号双边含端 (lo, hi)——
             forward_return / forward_drawdown / first_passage 的买点日 t 仅当
             lo <= t <= hi 计样本,跨界段只取窗内部分;None = 全量(向后兼容)。
@@ -394,8 +394,8 @@ def serialize_per_pattern_result(res, end_node: str, label_horizon: int,
                          按买点 span 去重后遍历全买点日累加(first_passage_enabled=False
                          或无 match → 单组全 0);集合级 ratio 的分母=买点日数
     """
-    from path2.eval import (match_forward_returns, match_forward_drawdowns,
-                            match_first_passage)
+    from path2.eval import (hit_forward_returns, hit_forward_drawdowns,
+                            hit_first_passage)
 
     ret_by_id: dict = {}
     dd_by_id: dict = {}
@@ -405,7 +405,7 @@ def serialize_per_pattern_result(res, end_node: str, label_horizon: int,
     date_by_id: dict = {}
     seen_fp_spans: set = set()
     match_fp_counts = {"up": 0, "down": 0, "both": 0, "none": 0}
-    for m in res.matches:
+    for m in res.hits:
         events = _resolve_end_events(m, end_node)          # 统一解析(与 eval 同函数)
         if not any(start_ts <= win["date"].iat[ev.start_idx] <= end_ts
                    for ev in events):
@@ -420,35 +420,35 @@ def serialize_per_pattern_result(res, end_node: str, label_horizon: int,
         # 实例流:leaf = end_node 事件 instance_id 字符串(instance_id 已含组内 #idx,
         # 无需 indexer 再编号)。
         leaf_ev = m.node_index[end_node.split(".")[0]]
-        leaf_by_id[m.match_id] = leaf_ev.instance_id
+        leaf_by_id[m.hit_id] = leaf_ev.instance_id
         # 买点 span:引擎按 (node, span) 给实例编 #idx,同一 span 可以物化出多个实例
         # (不同上游各锚出同一段,instance_id 不同),所以买点身份按 span 认、不按实例认。
         buy_span = tuple((ev.start_idx, ev.end_idx) for ev in events)
-        span_by_id[m.match_id] = [[int(s), int(e)] for s, e in buy_span]
-        date_by_id[m.match_id] = str(pd.to_datetime(win["date"].iat[leaf_ev.start_idx]).date())
-        ret_by_id[m.match_id] = match_forward_returns(
+        span_by_id[m.hit_id] = [[int(s), int(e)] for s, e in buy_span]
+        date_by_id[m.hit_id] = str(pd.to_datetime(win["date"].iat[leaf_ev.start_idx]).date())
+        ret_by_id[m.hit_id] = hit_forward_returns(
             m, end_node, win, [label_horizon],
             sample_window=sample_window)[label_horizon]
         # mfr 下行镜像(min_low):同一买点窗、同一 horizon,与 forward_return 并列
         # (Task 7 裁定 a:dd 同窗截取,避免 ret 截/dd 全量的样本日分裂破坏 ret ≥ dd 不变量)。
-        dd_by_id[m.match_id] = match_forward_drawdowns(
+        dd_by_id[m.hit_id] = hit_forward_drawdowns(
             m, end_node, win, [label_horizon],
             sample_window=sample_window)[label_horizon]
         # 首穿四态计数:span 全买点日(与 forward_return 同循环、同过滤口径)。
         # 同一买点 span 的多 match 只累加一次(买点日是物理属性,与上游 match 数、
         # 实例数都无关),保持「ratio 分母=买点日数」契约(与随机基线同口径)。
         # 去重键 = buy_span:同 span 的不同实例是同一个买点,按 instance_id 去重会重复计数。
-        # match_first_passage 内算 M、几何对称 k;返单组 {up,down,both,none}。
-        fp_by_id[m.match_id] = None
+        # hit_first_passage 内算 M、几何对称 k;返单组 {up,down,both,none}。
+        fp_by_id[m.hit_id] = None
         if first_passage_enabled:
             if buy_span not in seen_fp_spans:
                 seen_fp_spans.add(buy_span)
-                m_counts = match_first_passage(
+                m_counts = hit_first_passage(
                     m, end_node, win, label_horizon, first_passage_k,
                     sample_window=sample_window)
                 for s in ("up", "down", "both", "none"):
                     match_fp_counts[s] += m_counts[s]
-                fp_by_id[m.match_id] = {s: int(m_counts[s]) for s in ("up", "down", "both", "none")}
+                fp_by_id[m.hit_id] = {s: int(m_counts[s]) for s in ("up", "down", "both", "none")}
     analysis = serialize_analysis(res)
 
     def _with_labels(md):

@@ -11,7 +11,7 @@ from tests.path2_web.conftest import data_cfg
 
 
 def _mk_pkl(data_dir: Path, symbol: str):
-    from tests.path2_apps.bottom_burst.test_matches import _synth_no_burst
+    from tests.path2_apps.bottom_burst.test_has_hit import _synth_no_burst
     df = _synth_no_burst()
     df.index = pd.date_range("2025-01-01", periods=len(df), freq="D", name="date")
     df.to_pickle(data_dir / f"{symbol}.pkl")

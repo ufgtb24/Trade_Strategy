@@ -43,7 +43,7 @@ def observe(m, evs, win, cols) -> dict | None:
     """从一条 bb_v1 match 里取出 tb/bo/burst 几何观测列。
 
     参数:
-      m: 一条 match(res.matches 的元素)。
+      m: 一条 match(res.hits 的元素)。
       evs: {instance_id: event}——detector 直接产出的事件,**不含容器 child**(如
         bottom_burst 的 "tb.segments" 展开出的每个 segment,其 instance_id 不在
         这里;要取 child 用 m.node_index[父 node].child_slots())。bb_v1 本身的

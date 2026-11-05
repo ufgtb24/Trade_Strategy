@@ -1,5 +1,5 @@
 # path2/dag/_solve.py
-"""匹配求解核心:约束图编译 + 唯一求解函数 solve(plan, streams)。
+"""求解核心:约束图编译 + 唯一求解函数 solve(plan, streams)。
 
 语义:枚举所有满足 dag 约束的绑定(_dfs 回溯)+ where 候选预过滤【先于】C1 塌缩 +
 前沿割签名按边 signature_fields 自描述(在 _signature.py)。
@@ -63,17 +63,17 @@ def compile_plan(spec) -> Plan:
     positive_edge_srcs = frozenset(e.src for e in edges if not isinstance(e, NegationEdge))
     leaves = frozenset(n.node_id for n in spec.nodes if n.node_id not in positive_edge_srcs)
 
-    # ★ 纪律:改本节 C1 / c1_off / INV-C 剪枝口径前,必须先跑多候选 fuzz —— 真漏匹配 bug
+    # ★ 纪律:改本节 C1 / c1_off / INV-C 剪枝口径前,必须先跑多候选 fuzz —— 真漏命中 bug
     #   曾两次逃过平凡场景的单测试(下面 (2)/(3) 两源就是这么被抓出来的),只有独立 fuzz 抓得到。
     # C1 须关节点(c1_off 5 源总表):
     #   (1) EqualsEdge.src —— window 把 start 钉死、非单调(verdict §6.2);
     #   (2) 带 dst_selector 入边的 dst —— C1 退化按父 end_idx 塌缩,但该入边 satisfies 看的是
     #       候选 child(dst_selector) 端点(尤其 child.end 的 containment 上界),父 end 相同、child
-    #       端点不同的候选被误当可互换 → 丢真匹配(reviewer 8000-trial fuzz 抓到,D4 修复);
+    #       端点不同的候选被误当可互换 → 丢真 hit(reviewer 8000-trial fuzz 抓到,D4 修复);
     #   (3) 带 src_selector 的 NegationEdge 的 src —— C1 按节点出边 signature_fields() 复合键
     #       塌缩候选;但 NegationEdge.signature_fields() 返回空,_build_out_edges 把它过滤掉,
     #       导致 C1 学不到"negation 读了 src.child(key) 端点"。两个 src 候选父 end 相同但
-    #       child(key) 端点不同时被误当可互换塌缩 → negation 约束错判 → 漏匹配
+    #       child(key) 端点不同时被误当可互换塌缩 → negation 约束错判 → 漏命中
     #       (final holistic reviewer fuzz 抓到 3 例,D-final 修复);
     #   (4) 出边为空的叶子节点(plan.leaves)—— 整改二新增:reachable-leaves 兜不住的
     #       局部丢点;同 end 桶内多 leaf 候选不能被 C1 塌缩;
@@ -98,14 +98,14 @@ def compile_plan(spec) -> Plan:
     neg_dst = {e.dst for e in edges if isinstance(e, NegationEdge)}
     # K2 三要素判据(2026-08-06 拍板):求解 = edge 连通分量(端点并集) ∩ 非 neg_dst ∩ detector 非空。
     # 含边 pattern 的孤立未消费 node 平凡解不产(P1:孤立即不属 pattern,独立信号用独立 pattern 表达);
-    # 零边例外:整个 pattern 无任何 edge 时全求解(bo_only 全孤立形态,平凡 match 是唯一业务命中)。
+    # 零边例外:整个 pattern 无任何 edge 时全求解(bo_only 全孤立形态,平凡 hit 是唯一业务命中)。
     edge_endpoints = {ep for e in edges for ep in (e.src, e.dst)}   # 全部边含 NegationEdge
     all_solve = not edges                                            # 例外:整个 pattern 无任何 edge 时全求解(bo_only)
     bound_ids = [nid for nid in nodes
                  if (all_solve or nid in edge_endpoints)             # 求解=edge 连通分量(端点并集)
                  and nid not in neg_dst                              # 否定 dst 恒不绑(现状不变)
                  and nodes[nid].detector is not None                 # 结构性守卫:子结构 node 无候选池
-                 and nodes[nid].solve]                               # ★ solve=False:只显示不参与匹配
+                 and nodes[nid].solve]                               # ★ solve=False:只显示不参与求解
     wcc_plans: List[WccPlan] = []
     for comp in wccs(bound_ids, edges):      # 只对可绑节点求 WCC(否定 dst 是约束,不绑定)
         s, sub = sub_nodes_edges(comp, edges)

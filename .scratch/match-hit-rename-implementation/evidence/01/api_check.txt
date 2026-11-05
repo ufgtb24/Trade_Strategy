@@ -1,0 +1,114 @@
+旧接口名残留（范围内）：0
+
+拿不准、单列（不改，完成记录交代）：1
+  .scratch/annotation-path2/scripts/01-dump-proto-data.py:49: ms = [m for m in res.matches if full["date"].iloc[m.end_idx] >= pd.Timestamp("2023-06-01")]  [.matches 属性访问]
+
+不在范围的地方（历史与别的系统，不改）：22
+  .scratch-archive/selection-pattern/scripts/02-structure.py:50: for match in result.matches:  [.matches 属性访问]
+  .scratch-archive/selection-pattern/scripts/11-bbpos.py:52: for match in result.matches:  [.matches 属性访问]
+  .scratch/match-hit-rename-implementation/evidence/01/compare_outputs.py:75: fwd_ret = _pick(ev, "hit_forward_returns", "match_forward_returns")  [match_forward_returns]
+  .scratch/match-hit-rename-implementation/evidence/01/compare_outputs.py:76: fwd_dd = _pick(ev, "hit_forward_drawdowns", "match_forward_drawdowns")  [match_forward_drawdowns]
+  .scratch/match-hit-rename-implementation/evidence/01/compare_outputs.py:77: fp = _pick(ev, "hit_first_passage", "match_first_passage")  [match_first_passage]
+  .scratch/match-hit-rename-implementation/evidence/01/residual_check.py:9: 全仓 Python 里查 01 改掉的 Python 接口名是否还在：PatternMatch、match_forward_returns、  [PatternMatch, match_forward_returns]
+  .scratch/match-hit-rename-implementation/evidence/01/residual_check.py:10: match_forward_drawdowns、match_first_passage、`.matches` 属性访问（含 app 的 matches() 调用）、  [match_forward_drawdowns, match_first_passage, .matches 属性访问]
+  .scratch/match-hit-rename-implementation/evidence/01/residual_check.py:11: `.match_id` 属性访问、从 path2 / path2_apps 导入函数 matches。  [.match_id 属性访问]
+  .scratch/match-hit-rename-implementation/evidence/01/residual_check.py:166: ("PatternMatch", re.compile(r"\bPatternMatch\b")),  [PatternMatch]
+  .scratch/match-hit-rename-implementation/evidence/01/residual_check.py:167: ("match_forward_returns", re.compile(r"\bmatch_forward_returns\b")),  [match_forward_returns]
+  .scratch/match-hit-rename-implementation/evidence/01/residual_check.py:168: ("match_forward_drawdowns", re.compile(r"\bmatch_forward_drawdowns\b")),  [match_forward_drawdowns]
+  .scratch/match-hit-rename-implementation/evidence/01/residual_check.py:169: ("match_first_passage", re.compile(r"\bmatch_first_passage\b")),  [match_first_passage]
+  .scratch/match-hit-rename-implementation/evidence/01/residual_check.py:170: (".matches 属性访问", re.compile(r"\.matches\b(?!\?)")),   # 含 app.matches(...) 调用；JS 的 el.matches?.( 不算  [.matches 属性访问]
+  .scratch/match-hit-rename-implementation/evidence/01/residual_check.py:171: (".match_id 属性访问", re.compile(r"\.match_id\b")),  [.match_id 属性访问]
+  .scratch/match-hit-rename-implementation/evidence/01/residual_check.py:191: if ".matches 属性访问" in names and re.search(r"\b(?:summary|analysis)\.matches\b", line) \  [.matches 属性访问]
+  .scratch/match-hit-rename-implementation/evidence/01/residual_check.py:192: and not re.search(r"(?<!summary)(?<!analysis)\.matches\b", line):  [.matches 属性访问]
+  .scratch/match-hit-rename-implementation/evidence/01/residual_check.py:193: names.remove(".matches 属性访问")  [.matches 属性访问]
+  docs/research/2026-10-25_annotation-display-workflow/repro/batch_and_density.py:160: matched = {id(e) for m in res_bb.matches for e in m.node_index.values()}  [.matches 属性访问]
+  docs/research/2026-10-25_annotation-display-workflow/repro/batch_and_density.py:161: for m in res_bb.matches:          # burst 的成员 bo 也算进 match  [.matches 属性访问]
+  docs/research/2026-10-25_annotation-display-workflow/repro/bench_detectors.py:130: "n_events": len(res.events), "n_matches": len(res.matches),  [.matches 属性访问]
+  docs/research/2026-10-25_annotation-display-workflow/repro/chance_base_bb_v1.py:82: for m in res.matches:  [.matches 属性访问]
+  docs/research/2026-10-25_annotation-display-workflow/repro/pool_scan.py:62: for m in res.matches:  [.matches 属性访问]
+
+JSON 键字面量 "matches" / "match_id"（留给 02）：84
+  .claude/skills/feature-study/extract.py:159: if not pp or not pp["analysis"]["matches"]:
+  .claude/skills/feature-study/extract.py:161: scan_ids[rr["symbol"]] = {m["match_id"] for m in pp["analysis"]["matches"]}
+  .claude/skills/feature-study/extract.py:203: scan_lab = {m["match_id"]: m["forward_return"] for m in pp["analysis"]["matches"]}
+  .claude/skills/tune-gates/compare_longtable.py:135: keep = {x["match_id"]: x for x in out_matches}
+  .claude/skills/tune-gates/compare_longtable.py:210: ref = _engine_keys(res.hits, out["analysis"]["matches"], C["key_nodes"])
+  .claude/skills/tune-gates/test_compare_longtable.py:122: {"match_id": "m1", "buy_span": [[10, 12]], "forward_return": 0.1, "first_passage": fp1},
+  .claude/skills/tune-gates/test_compare_longtable.py:123: {"match_id": "m2", "buy_span": [[10, 12]], "forward_return": 0.1, "first_passage": None},
+  .claude/skills/tune-gates/test_compare_longtable.py:124: {"match_id": "m3", "buy_span": [[20, 21]], "forward_return": None, "first_passage": fp3},
+  .claude/skills/tune-gates/test_multivar_equiv.py:67: keep = {m["match_id"] for m in out["analysis"]["matches"]}
+  .claude/skills/tune-gates/test_multivar_equiv.py:70: for md in out["analysis"]["matches"]:
+  .claude/skills/tune-gates/test_multivar_equiv.py:76: md = next(x for x in out["analysis"]["matches"] if x["match_id"] == m.hit_id)
+  path2_web/scan.py:141: if out["summary"]["matches"] > 0:
+  path2_web/scan.py:192: for m in r["per_pattern"].get(pid, {}).get("analysis", {}).get("matches", [])
+  path2_web/scan.py:206: for m in r["per_pattern"].get(pid, {}).get("analysis", {}).get("matches", [])
+  path2_web/scan.py:381: for m in r["per_pattern"].get(pid, {}).get("analysis", {}).get("matches", [])
+  path2_web/scan.py:495: n += r.get("per_pattern", {}).get(pid, {}).get("summary", {}).get("matches", 0)
+  path2_web/serialize.py:172: "match_id": m.hit_id,
+  path2_web/serialize.py:203: return {"events": out_events, "matches": [_match_to_dict(m) for m in res.hits]}
+  path2_web/serialize.py:207: """{node_id: count} ∪ {"matches": n}(命中股列表的计数徽章,§7.3)。
+  path2_web/serialize.py:214: counts["matches"] = len(res.hits)
+  path2_web/serialize.py:387: - summary["matches"]: 窗内 match 数(覆写)
+  path2_web/serialize.py:456: "forward_return": ret_by_id[md["match_id"]],
+  path2_web/serialize.py:457: "forward_drawdown": dd_by_id[md["match_id"]],
+  path2_web/serialize.py:458: "leaf": leaf_by_id[md["match_id"]],   # instance_id 字符串
+  path2_web/serialize.py:459: "buy_span": span_by_id[md["match_id"]],   # [[start_idx, end_idx], ...]
+  path2_web/serialize.py:460: "buy_date": date_by_id[md["match_id"]],
+  path2_web/serialize.py:461: "first_passage": fp_by_id[md["match_id"]]}
+  path2_web/serialize.py:463: analysis["matches"] = [_with_labels(md)
+  path2_web/serialize.py:464: for md in analysis["matches"] if md["match_id"] in ret_by_id]
+  path2_web/serialize.py:466: summary["matches"] = len(analysis["matches"])
+  path2_web/serialize.py:468: rets = [md["forward_return"] for md in analysis["matches"]
+  path2_web/serialize.py:472: dds = [md["forward_drawdown"] for md in analysis["matches"]
+  path2_web_ui/e2e/fixtures/build_miss_detection_fixture.py:80: n_matches = per_pattern_out["summary"]["matches"]
+  tests/path2_web/test_data_wall.py:191: events, matches = body["analysis"]["events"], body["analysis"]["matches"]
+  tests/path2_web/test_data_wall.py:288: "results": [{"symbol": "AAA", "per_pattern": {"bo_only": {"summary": {"matches": 1}}}}]}))
+  tests/path2_web/test_preview.py:51: assert {"events", "matches"} <= set(body["analysis"])
+  tests/path2_web/test_preview.py:119: assert body["analysis"]["matches"] == []
+  tests/path2_web/test_preview.py:129: assert r.json()["analysis"]["matches"] == []
+  tests/path2_web/test_sample_clipping.py:68: matches = out["analysis"]["matches"]
+  tests/path2_web/test_scan_multi_pattern.py:198: for m in r["per_pattern"].get("bbb", {}).get("analysis", {}).get("matches", [])
+  tests/path2_web/test_scan_multi_pattern.py:231: for m in r["per_pattern"].get("bbb", {}).get("analysis", {}).get("matches", [])
+  tests/path2_web/test_scan_multi_pattern.py:380: ("AAA", {"bbb": {"analysis": {"matches": []}}},
+  tests/path2_web/test_scan_multi_pattern.py:509: for m in r["per_pattern"].get("bbb", {}).get("analysis", {}).get("matches", [])]
+  tests/path2_web/test_scan_multi_pattern.py:530: "matches": [{"leaf": "tb_10_15#0", "buy_span": [[10, 15]], "forward_return": ret}]}}}}
+  tests/path2_web/test_scan_multi_pattern.py:535: for m in r["per_pattern"]["bbb"]["analysis"]["matches"])
+  tests/path2_web/test_scans_route_flat.py:114: exp_hits = sum(r["per_pattern"]["bo_only"]["summary"]["matches"]
+  tests/path2_web/test_scans_route_flat.py:182: pid: {"hits": sum(r["per_pattern"].get(pid, {}).get("summary", {}).get("matches", 0)
+  tests/path2_web/test_scans_route_flat.py:226: {"symbol": "AAA", "per_pattern": {"bo_only": {"summary": {"matches": 2}}}},
+  tests/path2_web/test_scans_route_flat.py:227: {"symbol": "BBB", "per_pattern": {"bo_only": {"summary": {"matches": 1}},
+  tests/path2_web/test_scans_route_flat.py:228: "bottom_burst": {"summary": {"matches": 3}}}},
+  tests/path2_web/test_serialize.py:44: assert len(out["matches"]) >= 1
+  tests/path2_web/test_serialize.py:45: m = out["matches"][0]
+  tests/path2_web/test_serialize.py:46: assert {"match_id", "start_idx", "end_idx", "node_index", "children", "predicate_trace"} <= set(m)
+  tests/path2_web/test_serialize.py:69: assert s["matches"] == len(res.hits)
+  tests/path2_web/test_serialize.py:319: assert out["analysis"]["matches"]
+  tests/path2_web/test_serialize.py:320: for md in out["analysis"]["matches"]:
+  tests/path2_web/test_serialize.py:416: for m in payload["matches"]:
+  tests/path2_web/test_serialize.py:417: assert "match_id" in m and "event_id" not in m
+  tests/path2_web/test_serialize.py:481: assert len(out["analysis"]["matches"]) == 2
+  tests/path2_web/test_serialize.py:482: for md in out["analysis"]["matches"]:
+  tests/path2_web/test_serialize.py:489: leafs = {md["leaf"] for md in out2["analysis"]["matches"]}
+  tests/path2_web/test_serialize.py:516: ms = out["analysis"]["matches"]
+  tests/path2_web/test_serialize.py:536: matches = payload["matches"]
+  tests/path2_web/test_serialize_match_fp.py:46: ms = out["analysis"]["matches"]
+  tests/path2_web/test_serialize_match_fp.py:64: for md in out["analysis"]["matches"]:
+  tests/path2_web/test_serialize_match_fp.py:65: ev = by_id[md["match_id"]].node_index[meta["end_node"].split(".")[0]]
+  tests/path2_web/test_serialize_match_fp.py:71: assert all(m["first_passage"] is None for m in out["analysis"]["matches"])
+  tests/path2_web/test_serialize_multi.py:81: assert len(out["analysis"]["matches"]) <= len(res.hits)
+  tests/path2_web/test_serialize_multi.py:100: assert out["analysis"]["matches"] == []
+  tests/path2_web/test_serialize_multi.py:106: """summary['matches'] 是窗内 match 数(非全集)。"""
+  tests/path2_web/test_serialize_multi.py:120: assert out["summary"]["matches"] == 0
+  tests/path2_web/test_serialize_multi.py:152: matches = out["analysis"]["matches"]
+  tests/path2_web/test_serialize_multi.py:177: dds = [m["forward_drawdown"] for m in out["analysis"]["matches"]
+  tests/path2_web/test_serialize_multi.py:182: assert all("forward_drawdown" in m for m in out["analysis"]["matches"])
+  tests/path2_web/test_serialize_multi.py:198: assert out["analysis"]["matches"], "窗内应有 match"
+  tests/path2_web/test_serialize_multi.py:199: for m in out["analysis"]["matches"]:
+  tests/path2_web/test_serialize_multi.py:211: matches = out["analysis"]["matches"]
+  tests/path2_web/test_serialize_price_filter.py:73: assert len(out["analysis"]["matches"]) == len(per_match)
+  tests/path2_web/test_serialize_price_filter.py:74: assert out["summary"]["matches"] == len(per_match)
+  tests/path2_web/test_serialize_price_filter.py:80: assert out["analysis"]["matches"] == []
+  tests/path2_web/test_serialize_price_filter.py:81: assert out["summary"]["matches"] == 0
+  tests/path2_web/test_serialize_price_filter.py:88: assert out["analysis"]["matches"] == []
+  tests/path2_web/test_serialize_price_filter.py:89: assert out["summary"]["matches"] == 0
+  tests/path2_web/test_serialize_price_filter.py:98: kept = len(out["analysis"]["matches"])

@@ -70,10 +70,10 @@ def _ref_keys(spec, p, win, lo, hi, s, e):
     for md in out["analysis"]["matches"]:
         fp_of_span.setdefault(tuple(map(tuple, md["buy_span"])), md["first_passage"])
     keys = []
-    for m in res.matches:
-        if m.match_id not in keep:
+    for m in res.hits:
+        if m.hit_id not in keep:
             continue
-        md = next(x for x in out["analysis"]["matches"] if x["match_id"] == m.match_id)
+        md = next(x for x in out["analysis"]["matches"] if x["match_id"] == m.hit_id)
         fp = fp_of_span[tuple(map(tuple, md["buy_span"]))] or {"up": 0, "down": 0, "both": 0, "none": 0}
         spans = tuple((nid, ev.start_idx, ev.end_idx) for nid, ev in sorted(m.node_index.items()))
         keys.append((spans, None if md["forward_return"] is None else round(md["forward_return"], 12),

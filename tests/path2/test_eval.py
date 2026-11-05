@@ -1,17 +1,17 @@
-"""path2/eval.py:match 买点 N 日前瞻收益(match_forward_returns)/
-前瞻跌幅(match_forward_drawdowns,mfr 的下行镜像)。"""
+"""path2/eval.py:hit 买点 N 日前瞻收益(hit_forward_returns)/
+前瞻跌幅(hit_forward_drawdowns,mfr 的下行镜像)。"""
 from dataclasses import dataclass
 
 import pandas as pd
 import pytest
 
 from path2.core import Event
-from path2.dag.result import PatternMatch, PredicateTrace
+from path2.dag.result import PatternHit, PredicateTrace
 from path2.eval import (
     _resolve_end_events,
-    match_first_passage,
-    match_forward_returns,
-    match_forward_drawdowns,
+    hit_first_passage,
+    hit_forward_returns,
+    hit_forward_drawdowns,
 )
 
 
@@ -23,10 +23,10 @@ def _ev(s, e):
     return Ev(start_idx=s, end_idx=e, confirm_idx=s)
 
 
-def _match(binding, node="tb"):
-    """手造单 node 的 PatternMatch(children 与 node_index 展平一致,过不变式)。"""
+def _hit(binding, node="tb"):
+    """手造单 node 的 PatternHit(children 与 node_index 展平一致,过不变式)。"""
     members = binding if isinstance(binding, tuple) else (binding,)
-    return PatternMatch(
+    return PatternHit(
         start_idx=members[0].start_idx, end_idx=members[-1].end_idx, confirm_idx=members[0].start_idx,
         pattern_id="p", node_index={node: binding}, children=members,
         predicate_trace=PredicateTrace(where_results={}, edge_results={}),
@@ -67,57 +67,57 @@ def test_multi_day_window_average():
     t=0: max(high[1..2])/close[0]-1 = 400/100-1 = 3.0;
     t=1: max(high[2..3])/close[1]-1 = 500/200-1 = 1.5;
     → mean = 2.25。"""
-    m = _match(_ev(0, 1))
-    assert match_forward_returns(m, "tb", DF5, [2]) == {2: pytest.approx(2.25)}
+    m = _hit(_ev(0, 1))
+    assert hit_forward_returns(m, "tb", DF5, [2]) == {2: pytest.approx(2.25)}
 
 
 def test_peak_not_at_endpoint():
     """涨幅取窗口内最高价、非端点:tb=[0,0], N=2:
     close[t+N]=close[2]=300 端点收益仅 2.0;
     但 max(high[1..2])=400 → 最大涨幅 = 3.0,严格 > 端点。"""
-    m = _match(_ev(0, 0))
-    assert match_forward_returns(m, "tb", DF5, [2]) == {2: pytest.approx(3.0)}
+    m = _hit(_ev(0, 0))
+    assert hit_forward_returns(m, "tb", DF5, [2]) == {2: pytest.approx(3.0)}
 
 
 def test_single_day_window():
     """N=1 窗口只有 t+1 一根。tb=[2,2], N=1: high[3]/close[2]-1 = 500/300-1 = 2/3。"""
-    m = _match(_ev(2, 2))
-    assert match_forward_returns(m, "tb", DF5, [1]) == {1: pytest.approx(2 / 3)}
+    m = _hit(_ev(2, 2))
+    assert hit_forward_returns(m, "tb", DF5, [1]) == {1: pytest.approx(2 / 3)}
 
 
 def test_partial_out_of_range_skipped():
     """部分越界:只平均未越界买点日。tb=[2,3], N=2:
     t=2: max(high[3..4])/close[2]-1 = 550/300-1 = 5/6;t=3: idx5 越界 → skip → 5/6。"""
-    m = _match(_ev(2, 3))
-    assert match_forward_returns(m, "tb", DF5, [2]) == {2: pytest.approx(5 / 6)}
+    m = _hit(_ev(2, 3))
+    assert hit_forward_returns(m, "tb", DF5, [2]) == {2: pytest.approx(5 / 6)}
 
 
 def test_all_out_of_range_none():
     """全部越界 → 该 horizon None;其他 horizon 不受影响。tb=[3,4]:
     N=3 全越界 → None;N=1: t=3: high[4]/close[3]-1 = 550/400-1 = 0.375,t=4 skip → 0.375。"""
-    m = _match(_ev(3, 4))
-    out = match_forward_returns(m, "tb", DF5, [3, 1])
+    m = _hit(_ev(3, 4))
+    out = hit_forward_returns(m, "tb", DF5, [3, 1])
     assert out[3] is None
     assert out[1] == pytest.approx(0.375)
 
 
 def test_multi_horizon_keys():
     """多 horizon 一次调用返回全部键。"""
-    m = _match(_ev(0, 0))
-    out = match_forward_returns(m, "tb", DF5, (1, 2, 3))
+    m = _hit(_ev(0, 0))
+    out = hit_forward_returns(m, "tb", DF5, (1, 2, 3))
     assert set(out) == {1, 2, 3}
 
 
 def test_missing_node_raises():
     """node 缺失 → KeyError。"""
-    m = _match(_ev(0, 1))
+    m = _hit(_ev(0, 1))
     with pytest.raises(KeyError):
-        match_forward_returns(m, "nope", DF5, [1])
+        hit_forward_returns(m, "nope", DF5, [1])
 
 
 # ---------------------------------------------------------------------------
-# match_forward_drawdowns —— mfr 的下行镜像(min(low)/close-1),
-# 签名/越界守卫/返回类型/错误语义与 match_forward_returns 逐字一致。
+# hit_forward_drawdowns —— mfr 的下行镜像(min(low)/close-1),
+# 签名/越界守卫/返回类型/错误语义与 hit_forward_returns 逐字一致。
 # ---------------------------------------------------------------------------
 
 def test_drawdown_multi_day_window_average():
@@ -126,16 +126,16 @@ def test_drawdown_multi_day_window_average():
     t=0: min(low[1..2])/close[0]-1 = min(50,250)/100-1 = -0.5;
     t=1: min(low[2..3])/close[1]-1 = min(250,150)/200-1 = -0.25;
     → mean = -0.375。"""
-    m = _match(_ev(0, 1))
-    assert match_forward_drawdowns(m, "tb", DD5, [2]) == {2: pytest.approx(-0.375)}
+    m = _hit(_ev(0, 1))
+    assert hit_forward_drawdowns(m, "tb", DD5, [2]) == {2: pytest.approx(-0.375)}
 
 
 def test_drawdown_trough_not_at_endpoint():
     """跌幅取窗口内最低价、非端点(与 test_peak_not_at_endpoint 镜像)。tb=[0,0], N=2:
     close[t+N]=close[2]=300 端点仍是涨(300/100-1=2.0);
     但 min(low[1..2])=50 → 最大跌幅 = 50/100-1 = -0.5,严格 < 端点。"""
-    m = _match(_ev(0, 0))
-    assert match_forward_drawdowns(m, "tb", DD5, [2]) == {2: pytest.approx(-0.5)}
+    m = _hit(_ev(0, 0))
+    assert hit_forward_drawdowns(m, "tb", DD5, [2]) == {2: pytest.approx(-0.5)}
 
 
 def test_drawdown_rise_then_pullback_mirror():
@@ -143,9 +143,9 @@ def test_drawdown_rise_then_pullback_mirror():
     证明 drawdown 补的是 mfr"只看涨"看不到的下行。tb=[0,0], N=2:
     mfr  = max(high[1..2])/close[0]-1 = 400/100-1 = 3.0(正);
     draw = min(low[1..2])/close[0]-1  = 50/100-1  = -0.5(大负)。"""
-    m = _match(_ev(0, 0))
-    assert match_forward_returns(m, "tb", DD5, [2]) == {2: pytest.approx(3.0)}
-    assert match_forward_drawdowns(m, "tb", DD5, [2]) == {2: pytest.approx(-0.5)}
+    m = _hit(_ev(0, 0))
+    assert hit_forward_returns(m, "tb", DD5, [2]) == {2: pytest.approx(3.0)}
+    assert hit_forward_drawdowns(m, "tb", DD5, [2]) == {2: pytest.approx(-0.5)}
 
 
 def test_drawdown_single_sided_down():
@@ -154,8 +154,8 @@ def test_drawdown_single_sided_down():
     df_down = _df([500, 400, 300, 200, 100],
                   [510, 410, 310, 210, 110],
                   [480, 380, 280, 180, 80])
-    m = _match(_ev(0, 0))
-    out = match_forward_drawdowns(m, "tb", df_down, [2])
+    m = _hit(_ev(0, 0))
+    out = hit_forward_drawdowns(m, "tb", df_down, [2])
     expected = min(380, 280) / 500 - 1   # min(low[1..2])/close[0]-1
     assert out[2] == pytest.approx(expected)
 
@@ -164,31 +164,31 @@ def test_drawdown_partial_out_of_range_skipped():
     """部分越界:只平均未越界买点日(与 mfr 同口径)。tb=[2,3], N=2:
     t=2: min(low[3..4])/close[2]-1 = min(150,480)/300-1 = -0.5;
     t=3: idx5 越界 → skip → -0.5。"""
-    m = _match(_ev(2, 3))
-    assert match_forward_drawdowns(m, "tb", DD5, [2]) == {2: pytest.approx(-0.5)}
+    m = _hit(_ev(2, 3))
+    assert hit_forward_drawdowns(m, "tb", DD5, [2]) == {2: pytest.approx(-0.5)}
 
 
 def test_drawdown_all_out_of_range_none():
     """全部越界 → 该 horizon None;其他 horizon 不受影响(与 mfr 同)。tb=[3,4]:
     N=3 全越界 → None;N=1: t=3: low[4]/close[3]-1 = 480/400-1 = 0.2。"""
-    m = _match(_ev(3, 4))
-    out = match_forward_drawdowns(m, "tb", DD5, [3, 1])
+    m = _hit(_ev(3, 4))
+    out = hit_forward_drawdowns(m, "tb", DD5, [3, 1])
     assert out[3] is None
     assert out[1] == pytest.approx(0.2)
 
 
 def test_drawdown_multi_horizon_keys():
     """多 horizon 一次调用返回全部键。"""
-    m = _match(_ev(0, 0))
-    out = match_forward_drawdowns(m, "tb", DD5, (1, 2, 3))
+    m = _hit(_ev(0, 0))
+    out = hit_forward_drawdowns(m, "tb", DD5, (1, 2, 3))
     assert set(out) == {1, 2, 3}
 
 
 def test_drawdown_missing_node_raises():
     """node 缺失 → KeyError(与 mfr 同)。"""
-    m = _match(_ev(0, 1))
+    m = _hit(_ev(0, 1))
     with pytest.raises(KeyError):
-        match_forward_drawdowns(m, "nope", DD5, [1])
+        hit_forward_drawdowns(m, "nope", DD5, [1])
 
 
 def test_sample_bar_indices_default():
@@ -218,52 +218,52 @@ class Container(Event):
         return {"segments": self.segs}
 
 
-def _path_match():
-    """手造 tb 容器 match:容器内嵌 2 个 seg child(0-0 与 2-3,段间有间隙 1)。"""
+def _path_hit():
+    """手造 tb 容器 hit:容器内嵌 2 个 seg child(0-0 与 2-3,段间有间隙 1)。"""
     segs = (Seg(start_idx=0, end_idx=0, confirm_idx=0),
             Seg(start_idx=2, end_idx=3, confirm_idx=2))
     cont = Container(start_idx=0, end_idx=3, confirm_idx=0, segs=segs)
-    return PatternMatch(start_idx=0, end_idx=3, confirm_idx=0,
-                        node_index={"tb": cont}, children=(cont,))
+    return PatternHit(start_idx=0, end_idx=3, confirm_idx=0,
+                      node_index={"tb": cont}, children=(cont,))
 
 
 def test_resolve_plain_node_id():
-    m = _path_match()
+    m = _path_hit()
     assert _resolve_end_events(m, "tb") == (m.node_index["tb"],)
 
 
 def test_resolve_path_child_slot():
     # 路径第二段 = 父内 slot 名(家庭身份),非 class_id(全局身份)
-    m = _path_match()
+    m = _path_hit()
     events = _resolve_end_events(m, "tb.segments")
     assert [e.start_idx for e in events] == [0, 2]
 
 
 def test_resolve_path_missing_slot_raises():
-    m = _path_match()
+    m = _path_hit()
     with pytest.raises(KeyError, match="slot"):
         _resolve_end_events(m, "tb.nope")
 
 
 def test_resolve_multi_level_path_raises():
-    m = _path_match()
+    m = _path_hit()
     with pytest.raises(ValueError, match="最多一级"):
         _resolve_end_events(m, "a.b.c")
 
 
 def test_resolve_missing_parent_raises():
-    m = _path_match()
+    m = _path_hit()
     with pytest.raises(KeyError):
         _resolve_end_events(m, "nope")
 
 
-def test_match_forward_returns_path_samples_all_child_bars():
-    m = _path_match()
+def test_hit_forward_returns_path_samples_all_child_bars():
+    m = _path_hit()
     win = pd.DataFrame({  # 3 根样本 bar(0 和 2/3,间隙 1 不计), high/close 足够
         "high": [1.0, 1.0, 1.0, 1.0, 2.0, 2.0],
         "close": [1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
     })
-    rets = match_forward_returns(m, "tb.segments", win, [1])
+    rets = hit_forward_returns(m, "tb.segments", win, [1])
     # 样本 bar 0/2/3 的 max(high[t+1])/close[t]-1 = 0/0/1 → mean 1/3。
     # 三态区分:gap 包含采样(0/0/0/1)得 0.25、空解析得 None,均不等于 1/3。
     assert rets[1] == pytest.approx(1.0 / 3.0)
@@ -275,21 +275,21 @@ def test_match_forward_returns_path_samples_all_child_bars():
 # 与「手工物理截成仅窗内段的容器(全量)」结果逐值相等。
 # ---------------------------------------------------------------------------
 
-def _two_seg_match(s1, e1, s2, e2):
-    """手造 tb 容器 match:容器内嵌 2 个 seg child(span [s1,e1] 与 [s2,e2])。"""
+def _two_seg_hit(s1, e1, s2, e2):
+    """手造 tb 容器 hit:容器内嵌 2 个 seg child(span [s1,e1] 与 [s2,e2])。"""
     segs = (Seg(start_idx=s1, end_idx=e1, confirm_idx=s1),
             Seg(start_idx=s2, end_idx=e2, confirm_idx=s2))
     cont = Container(start_idx=s1, end_idx=e2, confirm_idx=s1, segs=segs)
-    return PatternMatch(start_idx=s1, end_idx=e2, confirm_idx=s1,
-                        node_index={"tb": cont}, children=(cont,))
+    return PatternHit(start_idx=s1, end_idx=e2, confirm_idx=s1,
+                      node_index={"tb": cont}, children=(cont,))
 
 
-def _one_seg_match(s, e):
-    """手造 tb 容器 match:仅 1 个 seg child(span [s,e])——物理截段对照组。"""
+def _one_seg_hit(s, e):
+    """手造 tb 容器 hit:仅 1 个 seg child(span [s,e])——物理截段对照组。"""
     segs = (Seg(start_idx=s, end_idx=e, confirm_idx=s),)
     cont = Container(start_idx=s, end_idx=e, confirm_idx=s, segs=segs)
-    return PatternMatch(start_idx=s, end_idx=e, confirm_idx=s,
-                        node_index={"tb": cont}, children=(cont,))
+    return PatternHit(start_idx=s, end_idx=e, confirm_idx=s,
+                      node_index={"tb": cont}, children=(cont,))
 
 
 class TestSampleWindow:
@@ -307,13 +307,13 @@ class TestSampleWindow:
         for i, h in zip(range(21, 26), (116, 118, 120, 122, 124)):
             high[i] = float(h)
         df = pd.DataFrame({"close": [100.0] * n, "high": high, "low": [99.0] * n})
-        two, one = _two_seg_match(10, 12, 20, 22), _one_seg_match(10, 12)
-        clipped = match_forward_returns(two, "tb.segments", df, [1, 5], sample_window=(0, 15))
-        assert clipped == match_forward_returns(one, "tb.segments", df, [1, 5])
+        two, one = _two_seg_hit(10, 12, 20, 22), _one_seg_hit(10, 12)
+        clipped = hit_forward_returns(two, "tb.segments", df, [1, 5], sample_window=(0, 15))
+        assert clipped == hit_forward_returns(one, "tb.segments", df, [1, 5])
         assert clipped[1] == pytest.approx(0.08)
         assert clipped[5] == pytest.approx(0.14)
         # 无窗 ≠ 截窗:窗外段2 的 3 天确实在全量里参与过
-        assert match_forward_returns(two, "tb.segments", df, [1, 5]) != clipped
+        assert hit_forward_returns(two, "tb.segments", df, [1, 5]) != clipped
 
     def test_first_passage_clipped(self):
         """两段 span [25,27] 与 [35,37](均 ≥20,M 样本足;[10,12] 会让 M 全 NaN、
@@ -328,12 +328,12 @@ class TestSampleWindow:
         for i in (36, 37, 38):
             low[i] = 90.0
         df = pd.DataFrame({"close": [100.0] * n, "high": high, "low": low})
-        two, one = _two_seg_match(25, 27, 35, 37), _one_seg_match(25, 27)
-        clipped = match_first_passage(two, "tb.segments", df, 1, sample_window=(0, 30))
-        assert clipped == match_first_passage(one, "tb.segments", df, 1)
+        two, one = _two_seg_hit(25, 27, 35, 37), _one_seg_hit(25, 27)
+        clipped = hit_first_passage(two, "tb.segments", df, 1, sample_window=(0, 30))
+        assert clipped == hit_first_passage(one, "tb.segments", df, 1)
         assert clipped == {"up": 3, "down": 0, "both": 0, "none": 0}
         # 无窗版本含窗外段2 的 3 个 down
-        assert match_first_passage(two, "tb.segments", df, 1) == \
+        assert hit_first_passage(two, "tb.segments", df, 1) == \
             {"up": 3, "down": 3, "both": 0, "none": 0}
 
     def test_forward_drawdowns_clipped(self):
@@ -350,14 +350,14 @@ class TestSampleWindow:
         for i, l in zip(range(21, 26), (84, 82, 80, 78, 76)):
             low[i] = float(l)
         df = pd.DataFrame({"close": [100.0] * n, "high": [101.0] * n, "low": low})
-        two, one = _two_seg_match(10, 12, 20, 22), _one_seg_match(10, 12)
-        clipped = match_forward_drawdowns(two, "tb.segments", df, [1, 5],
-                                          sample_window=(0, 15))
-        assert clipped == match_forward_drawdowns(one, "tb.segments", df, [1, 5])
+        two, one = _two_seg_hit(10, 12, 20, 22), _one_seg_hit(10, 12)
+        clipped = hit_forward_drawdowns(two, "tb.segments", df, [1, 5],
+                                        sample_window=(0, 15))
+        assert clipped == hit_forward_drawdowns(one, "tb.segments", df, [1, 5])
         assert clipped[1] == pytest.approx(-0.08)
         assert clipped[5] == pytest.approx(-0.14)
         # 无窗 ≠ 截窗:窗外段2 的 3 天确实在全量里参与过
-        assert match_forward_drawdowns(two, "tb.segments", df, [1, 5]) != clipped
+        assert hit_forward_drawdowns(two, "tb.segments", df, [1, 5]) != clipped
 
     def test_none_keeps_behavior(self):
         """sample_window=None 结果与不加参数完全一致(三函数各验一遍,回归护栏)。"""
@@ -367,10 +367,10 @@ class TestSampleWindow:
             "high": [101.0 + i * 0.1 for i in range(n)],
             "low": [99.0] * n,
         })
-        m = _two_seg_match(10, 12, 20, 22)
-        assert match_forward_returns(m, "tb.segments", df, [1, 5], sample_window=None) == \
-            match_forward_returns(m, "tb.segments", df, [1, 5])
-        assert match_forward_drawdowns(m, "tb.segments", df, [1, 5], sample_window=None) == \
-            match_forward_drawdowns(m, "tb.segments", df, [1, 5])
-        assert match_first_passage(m, "tb.segments", df, 1, sample_window=None) == \
-            match_first_passage(m, "tb.segments", df, 1)
+        m = _two_seg_hit(10, 12, 20, 22)
+        assert hit_forward_returns(m, "tb.segments", df, [1, 5], sample_window=None) == \
+            hit_forward_returns(m, "tb.segments", df, [1, 5])
+        assert hit_forward_drawdowns(m, "tb.segments", df, [1, 5], sample_window=None) == \
+            hit_forward_drawdowns(m, "tb.segments", df, [1, 5])
+        assert hit_first_passage(m, "tb.segments", df, 1, sample_window=None) == \
+            hit_first_passage(m, "tb.segments", df, 1)

@@ -1,8 +1,8 @@
-"""bo_only pattern 烟雾测试 — 单节点 dag 能扫小数据集出 bo events 与 matches。"""
+"""bo_only pattern 烟雾测试 — 单节点 dag 能扫小数据集出 bo events 与 hits。"""
 import pandas as pd
 
 from path2_apps.bo_only import (
-    PATTERN_DAG, build_pattern, analyze, matches, eval_meta, Params, load_params,
+    PATTERN_DAG, build_pattern, analyze, has_hit, eval_meta, Params, load_params,
 )
 
 
@@ -48,11 +48,11 @@ def test_analyze_runs_without_error_on_synthetic_df():
         "volume":[100.0]* n,
     })
     res = analyze(df)
-    assert hasattr(res, "events") and hasattr(res, "matches")
+    assert hasattr(res, "events") and hasattr(res, "hits")
 
 
-def test_matches_bool_wrapper():
-    """matches() 是 analyze().matches 非空的 bool。"""
+def test_has_hit_bool_wrapper():
+    """has_hit() 是 analyze().hits 非空的 bool。"""
     n = 50
     df = pd.DataFrame({
         "date": pd.date_range("2024-01-01", periods=n),
@@ -60,4 +60,4 @@ def test_matches_bool_wrapper():
         "low":   [9.5]  * n, "close":[10.0] * n,
         "volume":[100.0]* n,
     })
-    assert isinstance(matches(df), bool)
+    assert isinstance(has_hit(df), bool)

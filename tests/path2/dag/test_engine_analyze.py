@@ -5,7 +5,7 @@ from path2.dag.edges import TemporalEdge
 from path2.dag.nodes import NodeSpec
 from path2.dag.spec import PatternSpec
 from path2.dag.result import AnalysisResult
-from path2.dag.engine import analyze, matches
+from path2.dag.engine import analyze, has_hit
 
 
 class FakeDetector:
@@ -21,14 +21,14 @@ def _spec(nodes, edges):
                        edges=tuple(edges))
 
 
-def test_analyze_chain_produces_match():
+def test_analyze_chain_produces_hit():
     A = NodeSpec("A", detector=FakeDetector([Ev("a", 0, 0)]))
     B = NodeSpec("B", detector=FakeDetector([Ev("b", 5, 5)]))
     edges = [TemporalEdge("A", "B", min_gap=0, max_gap=100)]
     res = analyze(_spec([A, B], edges), df=object())
     assert isinstance(res, AnalysisResult)
-    assert len(res.matches) == 1
-    assert res.matches[0].node_index["B"].start_idx == 5
+    assert len(res.hits) == 1
+    assert res.hits[0].node_index["B"].start_idx == 5
     assert len(res.events) == 2                       # 两条流平铺
     assert res.spec is not None
 
@@ -40,14 +40,14 @@ def test_analyze_consumes_stream_order():
     tb = NodeSpec("tb", detector=FakeDetector([Ev("tb0", 4, 4)]), consumes_stream="bo")
     edges = [TemporalEdge("bo", "tb", min_gap=1, max_gap=5)]
     res = analyze(_spec([bo, tb], edges), df=object())
-    assert len(res.matches) == 1
+    assert len(res.hits) == 1
 
 
-def test_matches_bool():
+def test_has_hit_bool():
     A = NodeSpec("A", detector=FakeDetector([Ev("a", 0, 0)]))
-    B = NodeSpec("B", detector=FakeDetector([]))   # B 空 -> 无匹配
+    B = NodeSpec("B", detector=FakeDetector([]))   # B 空 -> 无 hit
     edges = [TemporalEdge("A", "B")]
-    assert matches(_spec([A, B], edges), df=object()) is False
+    assert has_hit(_spec([A, B], edges), df=object()) is False
 
 
 class _StrictRootDetector:
@@ -74,5 +74,5 @@ def test_analyze_calls_real_detector_arity():
                   consumes_stream="bo")
     edges = [TemporalEdge("bo", "tb", min_gap=1, max_gap=10)]
     res = analyze(_spec([bo, tb], edges), df=object())
-    assert len(res.matches) == 1
-    assert res.matches[0].node_index["tb"].start_idx == 3
+    assert len(res.hits) == 1
+    assert res.hits[0].node_index["tb"].start_idx == 3

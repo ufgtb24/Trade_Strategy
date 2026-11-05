@@ -38,7 +38,7 @@ def build_pattern(params: Params) -> PatternSpec:
     """参数化声明工厂:给定 params 造 PatternSpec。detector 实例 + where 阈值在此闭合。"""
     det = BODetector(**params.bo_kwargs())
     nodes = (
-        # bo 孤立 node：无边，残缺 match 由 analyze 出口过滤
+        # bo 孤立 node：无边，残缺 hit 由 analyze 出口过滤
         # render_grid='price': bo 主三角钉 K线主图; pk 由独立 pk node(孤立显示)承载
         NodeSpec("bo",
                  det,
@@ -79,7 +79,7 @@ def build_pattern(params: Params) -> PatternSpec:
     )
 
 
-analyze, matches, PATTERN_DAG = make_app(default_params=Params.default, build_pattern=build_pattern)
+analyze, has_hit, PATTERN_DAG = make_app(default_params=Params.default, build_pattern=build_pattern)
 
 
 def eval_meta(params: Optional[Params] = None) -> dict:

@@ -2,7 +2,7 @@
 
 背景:多流 detector 声明多条流(stream_schema 的键),声明了但没建 node 认领的流,
 此前只会在引擎 _translate_refs 阶段以一句误导性的「事件池外」报错现身——那一刻已经
-跑到求解匹配阶段,报错离病灶(PatternSpec 声明本身)很远。本测试把 review §1.2 的
+跑到求解阶段,报错离病灶(PatternSpec 声明本身)很远。本测试把 review §1.2 的
 实验固化:提前到 PatternSpec 构造期,报一句说人话、点名缺流的错。
 """
 import importlib

@@ -36,7 +36,7 @@ def build_pattern(params: Params) -> PatternSpec:
     )
 
 
-analyze, matches, PATTERN_DAG = make_app(default_params=Params.default, build_pattern=build_pattern)
+analyze, has_hit, PATTERN_DAG = make_app(default_params=Params.default, build_pattern=build_pattern)
 
 
 def eval_meta(params: Optional[Params] = None) -> dict:

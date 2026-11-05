@@ -48,7 +48,7 @@ def app(events):
         chosen = events(params, frame) if callable(events) else events
         matches = [SimpleNamespace(node_index={"buy": event}, confirm_idx=event.end_idx)
                    for event in chosen]
-        return SimpleNamespace(matches=matches)
+        return SimpleNamespace(hits=matches)
 
     return SimpleNamespace(Params=Params, build_pattern=lambda p: object(),
                            eval_meta=lambda params: {"end_node": "buy"},
@@ -482,7 +482,7 @@ def test_bottom_burst_buy_days_are_prefix_consistent_on_positive_synthetic_histo
                          "close": close, "volume": volume})
 
     def buy_days(frame):
-        return {index for match in bb.analyze(frame, params=params).matches
+        return {index for match in bb.analyze(frame, params=params).hits
                 for event in _resolve_end_events(match, "tb.segments")
                 for index in event.sample_bar_indices() if index >= event.confirm_idx}
 

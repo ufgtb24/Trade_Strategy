@@ -3,7 +3,7 @@
 验收 spec §12 标准 2/3:
   - 多流 detector 两条流各归各 node;
   - ref_slots 对象引用在统一标注后翻译成真 instance_id(Event.ref_ids);
-  - solve=False 的孤立 node 不参与匹配(零边 pattern 不 KeyError、matches 不含它);
+  - solve=False 的孤立 node 不参与求解(零边 pattern 不 KeyError、hits 不含它);
   - on_gate 的 GateFailure 按 gf.stream 路由到正确 node。
 """
 import pandas as pd
@@ -34,9 +34,9 @@ def test_end_to_end_streams_refs_solve():
     ranges, notes = streams["range"], streams["note"]
     assert ranges and notes
     assert notes[0].ref_ids_of("anchor") == (ranges[0].instance_id,)
-    # solve=False 的 note 不出现在 matches
+    # solve=False 的 note 不出现在 hits
     res = analyze(spec, _df())
-    assert all("note" not in m.node_index for m in res.matches)
+    assert all("note" not in m.node_index for m in res.hits)
 
 
 def test_end_to_end_gate_routes_to_range_node():

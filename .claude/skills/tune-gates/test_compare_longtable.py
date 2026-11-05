@@ -110,7 +110,7 @@ def test_plan_cells_screen_only_samples_design_combos():
 
 def _match(mid, tb, burst):
     ev = lambda s, e: types.SimpleNamespace(start_idx=s, end_idx=e)  # noqa: E731
-    return types.SimpleNamespace(match_id=mid, node_index={"tb": ev(*tb), "burst": ev(*burst)})
+    return types.SimpleNamespace(hit_id=mid, node_index={"tb": ev(*tb), "burst": ev(*burst)})
 
 
 def test_engine_keys_backfill_first_passage_per_buy_span():

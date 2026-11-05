@@ -9,7 +9,7 @@ Containment/Overlap/Equals 自动升维到 (u,(start_idx,end_idx))。
 
 C1(collapse_equal_end_keep_keymin):字段级定级塌缩(D3 升级)。
   - out_edges=None(无出边信息，或全无 selector):退化到原「按父 end_idx 分组，留 (start,end,pos) argmin」
-    行为——与旧逻辑字节等价，保证点事件 match-preserving 命脉。
+    行为——与旧逻辑字节等价，保证点事件 hit-preserving 命脉。
   - out_edges 含 selector 出边：分组键 = 所有出边依赖的 (selector_or_None, field) 组合向量，
     对每个候选按其 child(selector).field 的值构建复合分组键；
     完全相同分组键的候选才视为「等价」（留父 (start,end,pos) argmin）。
@@ -85,7 +85,7 @@ def collapse_equal_end_keep_keymin(
 
     out_edges=None 或无 child selector 出边：
       退化到原逻辑——按父 event.end_idx 分组，每组留 (start_idx,end_idx,stream_idx) argmin。
-      与旧实现字节等价（点事件 match-preserving 命脉）。
+      与旧实现字节等价（点事件 hit-preserving 命脉）。
 
     out_edges 含 child selector 出边：
       复合键模式——分组键 = 所有出边 (src_selector, field) 向量并集的值向量；

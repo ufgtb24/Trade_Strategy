@@ -36,7 +36,7 @@ def _agree(name, edges, streams, expect):
     pr = keyset(_pruned(edges, streams))
     no = keyset(_noprune(edges, streams))
     ba = keyset(brute_all(edges, streams))
-    assert pr == no, f"{name}: PRUNED!=NOPRUNE (剪枝漏匹配) pr={sorted(pr.elements())} no={sorted(no.elements())}"
+    assert pr == no, f"{name}: PRUNED!=NOPRUNE (剪枝漏命中) pr={sorted(pr.elements())} no={sorted(no.elements())}"
     assert all(pr[k] <= ba[k] for k in pr), f"{name}: PRUNED 含假阳(超出 BRUTE)"
     assert sorted(pr.elements()) == sorted(expect), f"{name}: got {sorted(pr.elements())}"
 
@@ -48,7 +48,7 @@ def test_OV_C1():
            [(("A", 0, 10, 0), ("B", 2, 12, 0)), (("A", 0, 10, 0), ("B", 5, 12, 1))])
 
 def test_OV_CHAIN():
-    # B3 放宽:C 是叶子,C0(idx=0)被两个 B 共享 -> 两个 B 各配 C0 一次,全 match 可见
+    # B3 放宽:C 是叶子,C0(idx=0)被两个 B 共享 -> 两个 B 各配 C0 一次,全 hit 可见
     edges = [OverlapEdge("A", "B"), OverlapEdge("B", "C")]
     streams = {"A": E("A", [(0, 20)]), "B": E("B", [(3, 25), (8, 25)]), "C": E("C", [(10, 30)])}
     pr = keyset(_pruned(edges, streams))
@@ -59,7 +59,7 @@ def test_OV_CHAIN():
     assert len(list(pr.elements())) >= 1, "OV-CHAIN: 至少保留一个 Solution"
 
 def test_OV_INTERIOR():
-    # B3 放宽:B 是叶子,B0(idx=0)被两个 A 共享 -> 两个 A 各配 B0 一次,全 match 可见
+    # B3 放宽:B 是叶子,B0(idx=0)被两个 A 共享 -> 两个 A 各配 B0 一次,全 hit 可见
     edges = [TemporalEdge("X", "A", min_gap=0, max_gap=100), OverlapEdge("A", "B")]
     streams = {"X": E("X", [(0, 0)]), "A": E("A", [(2, 10), (4, 10)]), "B": E("B", [(6, 15)])}
     pr = keyset(_pruned(edges, streams))
@@ -70,7 +70,7 @@ def test_OV_INTERIOR():
     assert len(list(pr.elements())) >= 1, "OV-INTERIOR: 至少保留一个 Solution"
 
 
-# ---- §7.2 EqualsEdge INV-C/C1(漏匹配反例 + 修复后不漏 + 对照测) ----
+# ---- §7.2 EqualsEdge INV-C/C1(漏命中反例 + 修复后不漏 + 对照测) ----
 def test_EQ_CE1_INTERIOR():
     _agree("EQ-CE1", [TemporalEdge("A", "B", min_gap=0, max_gap=100), EqualsEdge("B", "D")],
            {"A": E("A", [(0, 0)]), "B": E("B", [(0, 5), (3, 5)]), "D": E("D", [(3, 5)])},
@@ -104,7 +104,7 @@ def test_TMP_chain_noregression():
            [(("A", 0, 0, 0), ("B", 2, 3, 0), ("C", 4, 4, 0))])
 
 
-# ---- StartContainmentEdge:只约束 dst.start 落 src 区间(match-preserving side→burst 边) ----
+# ---- StartContainmentEdge:只约束 dst.start 落 src 区间(hit-preserving side→burst 边) ----
 def test_start_containment_edge_only_constrains_dst_start():
     """tail 超出 src 端仍匹配(只看 dst.start);dst.start 在 src 外则不匹配。"""
     e = StartContainmentEdge("side", "burst")
@@ -138,7 +138,7 @@ def test_start_containment_feasible_window():
 
 
 def test_start_containment_engine_agree():
-    """引擎差分:PRUNED==NOPRUNE,无假阳;burst 尾部超出 side 但 start 在内应被匹配到。"""
+    """引擎差分:PRUNED==NOPRUNE,无假阳;burst 尾部超出 side 但 start 在内应进 hit。"""
     # side=[0,10], burst_in_start=[5,15](start 在内,tail 超出) → 应出现; burst_out=[12,20] → 不出现
     _agree("SCE-engine",
            [StartContainmentEdge("side", "burst")],

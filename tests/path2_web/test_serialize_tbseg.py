@@ -18,7 +18,7 @@ def test_serialize_tbseg_walked_from_container():
     df = slice_window(pickle.load(open("datasets/pkls/ACUT.pkl", "rb")),
                       "2024-09-19", "2026-03-08")
     res = analyze(df, load_params())
-    if not res.matches:                      # AA 无 tb 命中时用合成断言跳过?不——必须有命中
+    if not res.hits:                         # AA 无 tb 命中时用合成断言跳过?不——必须有命中
         raise AssertionError("AA 无 match,换数据/窗口")
     out = serialize_analysis(res)
     tbs = [e for e in out["events"] if e.get("node_id") == "tb"]

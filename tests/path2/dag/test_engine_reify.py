@@ -1,10 +1,10 @@
 # tests/path2/dag/test_engine_reify.py
-"""reify:Solution -> PatternMatch(node_index/children/trace/EdgeWitness)。"""
+"""reify:Solution -> PatternHit(node_index/children/trace/EdgeWitness)。"""
 from tests.path2.dag._oracle import E, Ev, WideEv
 from path2.dag.edges import TemporalEdge, ContainmentEdge, Child
 from path2.dag.nodes import NodeSpec
 from path2.dag.spec import PatternSpec
-from path2.dag.result import PatternMatch
+from path2.dag.result import PatternHit
 from path2.dag._solve import compile_plan, solve
 from path2.dag._reify import reify
 
@@ -26,7 +26,7 @@ def test_reify_node_index_and_children():
     plan = compile_plan(_spec(nodes, edges))
     sol = solve(plan, streams)[0]
     m = reify(sol, streams, plan)
-    assert isinstance(m, PatternMatch)
+    assert isinstance(m, PatternHit)
     assert m.node_index["A"].start_idx == 0
     assert m.node_index["B"].end_idx == 8
     assert m.start_idx == 0 and m.end_idx == 8          # 跨度=children 包络
@@ -93,8 +93,8 @@ def test_reify_diagnose_child_aware_endpoint():
 
     plan = compile_plan(spec)
     sols = solve(plan, streams)
-    # 前提：求解层已找到匹配（D4 已实现）
-    assert len(sols) == 1, f"求解层应有 1 个匹配，得 {len(sols)} — D4 前提不满足"
+    # 前提：求解层已找到 hit（D4 已实现）
+    assert len(sols) == 1, f"求解层应有 1 个 hit，得 {len(sols)} — D4 前提不满足"
 
     m = reify(sols[0], streams, plan)
     ew = m.predicate_trace.edge_results[("wrapper", "burst")]
@@ -143,8 +143,8 @@ def test_reify_diagnose_child_aware_endpoint():
     )
 
 
-def test_reify_match_id_unique_content():
-    """同 span 不同内容(上游不同)的 match 的 match_id 必须不同(结构化编码)。"""
+def test_reify_hit_id_unique_content():
+    """同 span 不同内容(上游不同)的 hit 的 hit_id 必须不同(结构化编码)。"""
     from path2.dag._solve import Solution
     nodes = [NodeSpec("A", detector=_StubDetector()), NodeSpec("B", detector=_StubDetector())]
     edges = [TemporalEdge("A", "B", min_gap=0, max_gap=100)]
@@ -155,6 +155,6 @@ def test_reify_match_id_unique_content():
     b = Ev("b_1", 7, 9, instance_id="B_7_9#0")
     m1 = reify(Solution(assign={"A": a1, "B": b}, chosen_idx={}), streams={}, plan=plan)
     m2 = reify(Solution(assign={"A": a2, "B": b}, chosen_idx={}), streams={}, plan=plan)
-    assert m1.match_id != m2.match_id
-    assert m1.match_id.startswith("p@0-9#")
-    assert "A:A_0_5#0" in m1.match_id and "B:B_7_9#0" in m1.match_id   # 自描述:成员可见
+    assert m1.hit_id != m2.hit_id
+    assert m1.hit_id.startswith("p@0-9#")
+    assert "A:A_0_5#0" in m1.hit_id and "B:B_7_9#0" in m1.hit_id   # 自描述:成员可见

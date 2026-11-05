@@ -27,7 +27,7 @@ import pandas as pd
 
 from path2.dag.engine import analyze as _dag_analyze
 from path2.debug import set_current_symbol
-from path2.eval import _resolve_end_events, match_forward_returns
+from path2.eval import _resolve_end_events, hit_forward_returns
 from path2_web.data import slice_window
 from path2_web.gate_collector import attach_and_collect, detach
 from path2_web.scan import TRADING_TO_CALENDAR_RATIO, _list_pkls
@@ -75,7 +75,7 @@ def _eval_ticker(pkl_path: str, module_path: str, start: str, end: str,
             return (symbol, [], None)
         # 同 scan.py::_scan_ticker_multi 的 worker 双落(Task 15):不直接调 mod.analyze,
         # 自建 spec 换 on_gate collector 挂载窗口。此路径目前无 gate_failures 消费者
-        # (eval/regress/healthcheck 报表只读 res.matches),但两 worker 保持同一挂/收
+        # (eval/regress/healthcheck 报表只读 res.hits),但两 worker 保持同一挂/收
         # 模式,避免未来接入时再补一遍。
         spec = mod.build_pattern(params)
         collector = attach_and_collect(spec)
@@ -90,7 +90,7 @@ def _eval_ticker(pkl_path: str, module_path: str, start: str, end: str,
         hi = int(win["date"].searchsorted(end_ts, "right")) - 1
 
         # worker 内日级收益:逐 (symbol, t) 算一次(同日跨 match 同值,天然去重),
-        # 供聚合层 dedup_daily 展开;t+n 越界的 horizon 置 None(与 match_forward_returns
+        # 供聚合层 dedup_daily 展开;t+n 越界的 horizon 置 None(与 hit_forward_returns
         # 的越界跳过同语义,聚合层过滤)。
         day_ret_cache: dict = {}
 
@@ -104,7 +104,7 @@ def _eval_ticker(pkl_path: str, module_path: str, start: str, end: str,
             return day_ret_cache[t]
 
         rows: list = []
-        for m in res.matches:
+        for m in res.hits:
             events = _resolve_end_events(m, end_node)   # 路径协议:与 eval/serialize 同函数
             # 因果闸:买点取各 event 的 start_idx,必须 >= 其确认 bar(confirm_idx),否则前瞻。
             # retrospective 跨度事件(burst/trend/platform)confirm_idx=end,若误用其
@@ -126,8 +126,8 @@ def _eval_ticker(pkl_path: str, module_path: str, start: str, end: str,
             # ⚠ 不对称:keep 过滤=任一段在窗(上方 any),buy_date=容器 start(首段)——首段在窗前、
             # 后段在窗内的 match 会保留且 buy_date < start_ts,裁定设计内边缘,勿"修复"
             leaf_ev = m.node_index[end_node.split(".")[0]]
-            rets = match_forward_returns(m, end_node, win, list(horizons),
-                                         sample_window=(lo, hi))
+            rets = hit_forward_returns(m, end_node, win, list(horizons),
+                                       sample_window=(lo, hi))
             # 截窗样本日(升序):跨 end_ts 的段只取窗内部分(spec §10;与 rets 同窗)
             sample_days = sorted({t for ev in events
                                   for t in ev.sample_bar_indices()

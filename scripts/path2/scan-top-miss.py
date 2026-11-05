@@ -1,6 +1,6 @@
-"""scan-top-miss · 全宇宙批量出榜"大涨无 pattern match"股(入口 E · 独立 workflow)。
+"""scan-top-miss · 全宇宙批量出榜"大涨无 pattern hit"股(入口 E · 独立 workflow)。
 
-对 datasets/pkls/ 全集逐股跑 analyze:matches 非空(已命中)的股跳过;matches 为空、且
+对 datasets/pkls/ 全集逐股跑 analyze:hits 非空(已命中)的股跳过;hits 为空、且
 [start_date, end_date] 窗口内涨幅超过 min_pct% 的股视为"漏检候选"——再对该候选跑一次
 scope=time 分派(复用 Task 15 derive_response · gate_collector),取窗口内出现次数最多的
 gate_name 拼一条粗根因摘要,最终按涨幅降序输出 Top-K markdown 榜。
@@ -78,8 +78,8 @@ def main() -> None:
 
         if len(win) == 0:
             continue
-        if len(result.matches) > 0:
-            continue                                              # 已有 match · 不算漏检
+        if len(result.hits) > 0:
+            continue                                              # 已有 hit · 不算漏检
 
         pct = _compute_pct_change(win, start_date, end_date)
         if pct is None or pct < min_pct:
@@ -169,7 +169,7 @@ def _summarize_top_gate(failed_attempts) -> str:
 def _write_markdown(path: str, candidates, start: str, end: str, min_pct: float) -> None:
     with open(path, 'w') as f:
         f.write(f"# scan-top-miss · {start} -> {end}\n\n")
-        f.write(f"筛选:涨幅 > {min_pct}% · matches 为空 · 按涨幅降序\n\n")
+        f.write(f"筛选:涨幅 > {min_pct}% · hits 为空 · 按涨幅降序\n\n")
         f.write(f"## Top-{len(candidates)}\n\n")
         for i, (symbol, pct, s, e, gate) in enumerate(candidates, 1):
             f.write(f"{i}. **{symbol}** · {s} -> {e} · +{pct:.1f}%\n")

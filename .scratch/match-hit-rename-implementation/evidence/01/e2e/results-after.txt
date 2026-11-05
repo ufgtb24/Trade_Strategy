@@ -1,0 +1,41 @@
+✓ e2e/annotate-boxes.spec.ts:152:3 › 画框、起名与词表 › 选中框按 Delete 删框;焦点在输入框里时不删
+✓ e2e/annotate-boxes.spec.ts:209:3 › 冲突与指纹不符 › 两种提示各出现一次,图照常显示;冲突看过后不再出现
+✓ e2e/annotate-boxes.spec.ts:28:3 › 画框、起名与词表 › 拖框起名刷新后还在;轨上拖出带名字的框;改起止;属性回到 null;子框轨;改名处处生效;合并预览与拆回
+✓ e2e/annotate-compare.spec.ts:168:3 › compare / app 叠画(bo_only + 手写 mapping) › compare 下用样本卡、代码输入、random、rally 换股票不退出 compare;链接进来落在 annotate
+✓ e2e/annotate-compare.spec.ts:88:3 › compare / app 叠画(bo_only + 手写 mapping) › event 在对应特征的轨上、hit 在 bracket 轨上,没有对照 tag,不越过 2025-12-31;没有 mapping 的 pattern 下 compare 是灰的
+✓ e2e/annotate-direct-links.spec.ts:63:3 › 直达链接 › 股票 + 日期:打开对的股票、图窗停在那天附近、落在 annotate;晚于 2025-12-31 的截到 2025-12-31;代码不存在有提示
+✓ e2e/annotate-direct-links.spec.ts:98:3 › 直达链接 › 样本编号:打开样本所在的图并选中它;不存在的编号、认不出的写法有明确提示
+✓ e2e/annotate-grouping.spec.ts:88:3 › 归组与 pattern 页 › pattern 页的计数与点开分排、definition、打开样本、轨序;unsorted 页按骨架分行、整行 move、刷新后还在
+✓ e2e/annotate-open-by-symbol.spec.ts:129:3 › 按代码打开 · annotate › 后端:非法代码 400,不存在 404
+✓ e2e/annotate-open-by-symbol.spec.ts:58:3 › 按代码打开 · annotate › 副本里的代码回车打开:K 线止于 2025-12-31、只有 K 线和成交量;副本里没有的代码报 not_found
+✓ e2e/annotate-open-by-symbol.spec.ts:95:3 › 按代码打开 · annotate › 现有扫描入口照旧能用:扫描结果是 app 视图;按代码打开切到 annotate;再从扫描列表选股回到 app
+✓ e2e/annotate-rally-random.spec.ts:104:3 › 找图入口 · rally / random › rally:从 app 视图点一行 → annotate,图停在那段涨之前、看得见那段涨,止于 2025-12-31
+✓ e2e/annotate-rally-random.spec.ts:130:3 › 找图入口 · rally / random › random:从 app 视图点一下 → annotate,图窗不超过 250 根、止于 2025-12-31
+✘ e2e/annotate-rally-random.spec.ts:145:3 › 找图入口 · rally / random › 看过什么一律不记:连点几行 rally、几次 random,文件与 localStorage 都不变
+✓ e2e/annotate-ref-peaks.spec.ts:47:3 › 参照层 peaks › 默认关;勾上画出峰线(同 /peaks、止于 2025-12-31);换股票自动关
+✓ e2e/annotate-ref-peaks.spec.ts:85:3 › 参照层 peaks › app 下不能用:复选框变灰、不能勾
+✓ e2e/annotate-samples.spec.ts:222:3 › 保存被拒 › 另一台机器同步来的修改让本页的改动越界:界面写出原因,重读后框还在,再拖就停在样本日
+✓ e2e/annotate-samples.spec.ts:77:3 › 放样本与成员框 › 自动收进之前的框、刷新不变;跨过样本日收不进;拖框边停在样本日;换掉当前样本后冻结;手动点进点出
+✘ e2e/dev-ui-replication.spec.ts:129:1 › 2. after pan left, buffer bars visible; grey shading survives hover setOption (Task 8)
+✘ e2e/dev-ui-replication.spec.ts:158:1 › 3. bar tooltip 8 lines (Date/Volume/RV); Ctrl toggles axisPointer to orange
+✘ e2e/dev-ui-replication.spec.ts:310:1 › 4. hover price-point marker shows marker tooltip; path2 event fields present
+✘ e2e/dev-ui-replication.spec.ts:87:1 › 1. initial viewport: strict window with grey shading — screenshot baseline
+✘ e2e/flow.spec.ts:137:1 › bidirectional highlight: sidebar candidate row click → selected class + chart screenshot
+✘ e2e/flow.spec.ts:183:1 › funnel overview: 4 pattern-node rows + 1 bo badge row + expand shows clause table
+✘ e2e/flow.spec.ts:52:1 › scan → load → 5-node topology → sidebar funnel visible
+✘ e2e/flow.spec.ts:96:1 › level control: Detected → Qualified → Matched active class + screenshot
+✘ e2e/match-event-disambig.spec.ts:100:1 › multi-match: setCandidateMatches → candidate banner appears
+✘ e2e/match-event-disambig.spec.ts:121:1 › Esc clears candidate: banner disappears
+✘ e2e/match-event-disambig.spec.ts:139:1 › switch ticker clears candidate: banner disappears
+✘ e2e/miss-detection-walkthrough.spec.ts:163:1 › 入口 A · 主图 brush 框选时段 → FailedAttemptsCard 出 gate 失败 attempt(DGNX)
+- e2e/miss-detection-walkthrough.spec.ts:204:1 › 入口 B · 拓扑面板点 burst→tb edge → PairListCard 出 miss_reasons 分布(LIXT)
+- e2e/miss-detection-walkthrough.spec.ts:224:1 › 入口 D · shift+click burst+tb marker → PairDetailCard 出 4 subcheck(LIXT)
+- e2e/miss-detection-walkthrough.spec.ts:244:1 › 入口 D · 反向 shift+click(tb → burst)→ auto swap 提示 + 撤回按钮(LIXT)
+- e2e/miss-detection-walkthrough.spec.ts:273:1 › 入口 E · scan-top-miss workflow → markdown 榜含 DGNX
+✘ e2e/scan-dialog.spec.ts:29:1 › 1. open dialog → rows visible (列 Time/Hits/Size 都渲染)
+✘ e2e/scan-dialog.spec.ts:39:1 › 2. row click + Open → main view loads scanFile
+✘ e2e/scan-dialog.spec.ts:49:1 › 3. multi-select 2 rows + Delete → confirm → 行消失
+✘ e2e/scan-dialog.spec.ts:74:1 › 4. select currentScanTs + Delete → 红字提示 + 删后主视图清空
+✘ e2e/scan-dialog.spec.ts:99:1 › 5. Start scan → 按钮变红「停止扫描」→ click → cancel + 「扫描 ⚙」enabled
+✓ e2e/symbol-search.spec.ts:36:3 › symbol search e2e › empty state: search bar not rendered
+✓ e2e/symbol-search.spec.ts:41:3 › symbol search e2e › after scan load: search bar visible + typing narrows list + Esc clears + Shift+B safe

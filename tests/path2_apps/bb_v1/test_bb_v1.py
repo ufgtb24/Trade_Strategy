@@ -1,7 +1,7 @@
 """bb_v1 app 结构 + 冒烟测试(V1 throwback 完整备份)。
 
 结构断言:克隆 bottom_burst 骨架,唯一区别 = tb node 用 V1 ThrowbackDetectorV1。
-冒烟:真实数据 analyze 不炸(不要求有 match——V1 参数下命中与否不是本 app 的契约)。
+冒烟:真实数据 analyze 不炸(不要求有 hit——V1 参数下命中与否不是本 app 的契约)。
 """
 import pickle
 
@@ -19,7 +19,7 @@ def test_pattern_id_and_topology():
     spec = PATTERN_DAG if isinstance(PATTERN_DAG, PatternSpec) else build_pattern(Params.default())
     nodes = {n.node_id: n for n in spec.nodes}
     assert set(nodes) == {"bo", "burst", "pk", "tb"}
-    # pk 孤立显示 node:不参与匹配(solve=False)、无 where
+    # pk 孤立显示 node:不参与求解(solve=False)、无 where
     assert nodes["pk"].solve is False
     assert nodes["pk"].where == ()
     # bo 孤立 node:无边(edges 端点不含 bo)、无 where
@@ -72,7 +72,7 @@ def test_eval_meta():
 
 
 def test_analyze_smoke_real_data():
-    """真实数据 analyze 不炸(V1 全链路:BO → burst → tb V1)。不要求有 match。"""
+    """真实数据 analyze 不炸(V1 全链路:BO → burst → tb V1)。不要求有 hit。"""
     from path2_web.data import slice_window
     from path2_apps.bb_v1.dag_spec import analyze
 

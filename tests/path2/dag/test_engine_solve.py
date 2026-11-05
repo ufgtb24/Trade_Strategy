@@ -29,7 +29,7 @@ def test_SOLVE_C1_DROPS():
 
 def test_SOLVE_NAIVE_DROPS():
     # naive memo 把成功前沿也记 FAILED -> 漏兄弟源组合 => 证 charitable 必须
-    # B3 放宽:leaf 不再跨 match 独占 -> 两个 A 各配 B 一次,solve == brute_all
+    # B3 放宽:leaf 不再跨 hit 独占 -> 两个 A 各配 B 一次,solve == brute_all
     edges = [TemporalEdge("A", "B", min_gap=0, max_gap=100)]
     streams = {"A": E("A", [(0, 5), (1, 5)]), "B": E("B", [(7, 9)])}
     pr = keyset(_solve(edges, streams))
@@ -47,8 +47,8 @@ def test_SOLVE_NOMEMO_complete():
     assert pr == ba, "memo=off: 枚举所有合法绑定"
 
 
-def test_leaf_shared_all_matches_visible():
-    """同一 leaf 被多个上游共享 -> 每个上游各产一个 match(不再独占)。"""
+def test_leaf_shared_all_hits_visible():
+    """同一 leaf 被多个上游共享 -> 每个上游各产一个 hit(不再独占)。"""
     edges = [TemporalEdge("A", "B", min_gap=0, max_gap=100)]
     streams = {"A": E("A", [(0, 5), (1, 5)]), "B": E("B", [(7, 9)])}
     sols = _solve(edges, streams)

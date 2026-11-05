@@ -6,7 +6,7 @@ tb event [start_idx, end_idx] = 突破后可执行的整理买窗:
   - outcome ∈ ('rise', 'break', 'timeout')= 窗口关闭方式(见 ThrowbackEventV0);
   - 事件存在 ⟺ Phase 1 confirm 成功(confirm 前 anchor break / rise-before-confirm 不产)。
 可执行窗语义:窗内每一 bar 都是"当时已知买点仍开"的即时买入日,label pipeline
-逐日消费(path2/eval.py::match_forward_returns)。
+逐日消费(path2/eval.py::hit_forward_returns)。
 
 anchor = evaluate_throwback 显式入参(None 时回退 measure_at(bo-1, anchor_measure));
 detect 消费 burst 流、锚 burst 的 last_bo:anchor = measure_at(last_bo.end_idx - 1,

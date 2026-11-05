@@ -2,7 +2,7 @@
 """同 span 上游多实例的 anchor 消歧回归(交错标注重构的核心收益证明)。
 
 背景:重构前 anchor_bo_id 用 span 坐标,两个同 span 上游实例的 anchor 完全相等,
-_anchor_ok 对交叉组合(A1-B2、A2-B1)全部放行 ⇒ match 虚增。重构后 anchor_bo_id
+_anchor_ok 对交叉组合(A1-B2、A2-B1)全部放行 ⇒ hit 虚增。重构后 anchor_bo_id
 = 源 instance_id,_anchor_ok 按 instance_id 比较,交叉绑定被挡死。"""
 from dataclasses import dataclass
 from typing import ClassVar
@@ -55,13 +55,13 @@ class _Canned:
         return iter(self._evs)
 
 
-def test_same_span_upstream_no_cross_match():
-    """两个同 span src(S#0/S#1)各产一个 dst 锚定自己 ⇒ solve 恰好 2 match,无交叉。
+def test_same_span_upstream_no_cross_hit():
+    """两个同 span src(S#0/S#1)各产一个 dst 锚定自己 ⇒ solve 恰好 2 个 hit,无交叉。
 
     本 fixture 的 dst anchor 硬编码为 instance_id 形态(src_10#0/src_10#1)。重构前
     _anchor_ok 按 span 比较:src 的 span 形态 anchor 为 src_10,与 dst 的 src_10#0 不匹配
-    ⇒ 全 False ⇒ 0 match(此断言 ==2 即 RED)。重构后按 instance_id 比较:S#0 配 dst_a、
-    S#1 配 dst_b,恰 2 match,无交叉错绑。"""
+    ⇒ 全 False ⇒ 0 个 hit(此断言 ==2 即 RED)。重构后按 instance_id 比较:S#0 配 dst_a、
+    S#1 配 dst_b,恰 2 个 hit,无交叉错绑。"""
     s0 = _SrcEv(start_idx=10, end_idx=10, confirm_idx=10, seq=0)
     s1 = _SrcEv(start_idx=10, end_idx=10, confirm_idx=10, seq=1)   # 与 s0 同 span
     # dst 在 detect 期读 src.instance_id 写 anchor —— 须先标注 src(模拟交错标注效果)
@@ -75,8 +75,8 @@ def test_same_span_upstream_no_cross_match():
     )
     df = pd.DataFrame({"open": [1]*20, "high": [1]*20, "low": [1]*20, "close": [1]*20, "volume": [1]*20})
     res = analyze(spec, df)
-    # 重构前 0 match(anchor 形态不匹配),重构后 2 match(无交叉)
-    assert len(res.matches) == 2, f"期望 2 match(无交叉),实际 {len(res.matches)}"
+    # 重构前 0 个 hit(anchor 形态不匹配),重构后 2 个 hit(无交叉)
+    assert len(res.hits) == 2, f"期望 2 个 hit(无交叉),实际 {len(res.hits)}"
 
 
 def test_interleave_instance_numbering_unchanged():
