@@ -50,10 +50,10 @@
 | map / mapping | 会话把你的特征对到 app 的某一部分，这个动作叫 map；写下的那张表叫 mapping，每个特征一行、带一级 | `path2/GLOSSARY.md:144` |
 | app | 一个走势的完整声明，可以独立扫描与评估；每改一次升一版 | `path2/GLOSSARY.md:36` |
 | event | app 一侧 detector 产出的事件（recognized feature），和你的框成对 | `path2/GLOSSARY.md:44` |
-| hit | app 求解出的一次完整命中（recognized pattern），和你的样本成对 | `GLOSSARY-MAP.md:27` |
+| hit | app 求解出的一次完整命中（recognized pattern），和你的样本成对 | `path2/GLOSSARY.md:95` |
 | buy point / 买点 | hit 里真正买的那根 K 线。只用于 app 一侧；你的一侧叫样本日 | `path2/GLOSSARY.md:118` |
-| match | 拿 hit 和样本比：app 有 hit 的买点落在样本日附近，样本就是 `matched`，否则 `unmatched` | `path2/GLOSSARY.md:152` |
-| detected、qualified、in_hit | 一个 event 的三档，依次收窄：被检测出来、过了所在 node 的全部 where、进了某一次 hit | `path2_web/GLOSSARY.md:28`（该行第三档仍叫 matched，即这里的 in_hit） |
+| match | 拿 hit 和样本比：app 有 hit 的买点落在样本日附近，样本就是 `matched`，否则 `unmatched` | `path2/GLOSSARY.md:183` |
+| detected、qualified、in_hit | 一个 event 的三档，依次收窄：被检测出来、过了所在 node 的全部 where、进了某一次 hit | `path2_web/GLOSSARY.md:28` |
 | tag | 界面上挂在某样东西旁、显示一个状态或结论的小方框；说时带种类：`match tag`、`diff tag`、`tier tag`、`link tag` | `path2_web/GLOSSARY.md:48` |
 | bracket | 图上那条横带：app 每次 hit 的跨度，以及你每个样本的跨度（虚线） | `path2_web/GLOSSARY.md:45` |
 | 训练段 | 你可以随便看、随便量的那段历史：2021-10-08～2025-12-31 | `path2/GLOSSARY.md:124` |
@@ -70,7 +70,7 @@
 
 - **样本日 vs 买点**：样本日是你的判断落在哪天，买点是 app 按规则算出的那根 K 线。match 就是拿这两样比远近。
 - **样本 vs hit**：样本是你说「这天是 / 不是」，hit 是 app 说「这天是」。两者都画在 `bracket` 轨上，你的是虚线。
-- **path2 里的 match vs 这里的 hit**：path2 一直把一次完整求解结果叫 match，在这个工具里它叫 hit；match 在这里只指「拿 hit 和样本比远近」。`path2_web/GLOSSARY.md:45` 的 bracket 词条还写着「一次 match 的跨度」，读作「一次 hit 的跨度」。
+- **hit vs match**：hit 是 app 的一次完整求解结果，是个东西；match 是拿 hit 和样本比远近这个比较，全仓只有这一个意思。
 
 ---
 
