@@ -596,7 +596,7 @@ spec = PatternSpec(
 )
 ```
 
-> 💡 关于 `root`：它是个**退化字段**，引擎跑求解时**根本不读它**，只校验"你填的是一个已声明的 node_id"。形态的结构完全由 `nodes` + `edges` 表达，`root` 填哪个合法节点都不影响匹配结果。别把它当成"形态的入口/根节点"来理解。
+> 💡 关于 `root`：它是个**退化字段**，引擎跑求解时**根本不读它**，只校验"你填的是一个已声明的 node_id"。形态的结构完全由 `nodes` + `edges` 表达，`root` 填哪个合法节点都不影响求解结果。别把它当成"形态的入口/根节点"来理解。
 
 ### 几个关键决策点
 
@@ -620,7 +620,7 @@ spec = PatternSpec(
 框架里还有个 `ContainmentEdge`（要求小事件**整体**被大事件包住，起点和终点都得在里面）。`StartContainmentEdge` 是它的"宽松版"：只要求小事件的**起点**落在大事件区间内，终点超不超出去都不管。什么时候用它？当大事件只需要"罩住小事件的开头"就够了 —— 比如要求"突破爆发（burst）是从某个横盘段**内部**开始的"，至于这阵爆发会不会冲出横盘段的尾巴，并不关心。
 
 **③ 孤立 role —— 一个不连任何边的节点。**
-正常节点都靠边和别的节点发生关系。但你也可以放一个**不连任何边**的节点（叫"孤立 role"），单纯用它把某类事件**扫出来、画出来**。比如把 `bo` 当成一个"密度流源层"：它本身不参与形态约束，只负责给 `burst` / `tb` 当输入流、顺便在 K 线上把所有突破点都标出来。引擎对这种节点有个贴心处理：它会在出口把那些"只匹配到这一个孤立角色、没凑成完整形态"的残缺命中**丢掉**，这样孤立节点既能独立展示，又不会污染真正的形态命中结果。
+正常节点都靠边和别的节点发生关系。但你也可以放一个**不连任何边**的节点（叫"孤立 role"），单纯用它把某类事件**扫出来、画出来**。比如把 `bo` 当成一个"密度流源层"：它本身不参与形态约束，只负责给 `burst` / `tb` 当输入流、顺便在 K 线上把所有突破点都标出来。引擎对这种节点有个贴心处理：它会在出口把那些"只命中这一个孤立角色、没凑成完整形态"的残缺命中**丢掉**，这样孤立节点既能独立展示，又不会污染真正的形态命中结果。
 
 ### 跑起来：analyze
 
@@ -629,12 +629,12 @@ from path2.dag.engine import analyze
 
 result = analyze(spec, df, params=None)
 # result.events:  Tuple[Event, ...]         — 所有节点流平铺
-# result.matches: Tuple[PatternMatch, ...]  — 命中的形态实例
+# result.hits: Tuple[PatternHit, ...]  — 命中的形态实例
 # result.spec:    PatternSpec               — 声明本身（供面板消费）
 
-for match in result.matches:
-    bo_binding = match.role_index["bo"]   # 单实例事件；若该 role 声明为 Kleene 则是 Tuple[...]
-    tb_binding = match.role_index["tb"]   # ThrowbackEvent
+for hit in result.hits:
+    bo_binding = hit.role_index["bo"]   # 单实例事件；若该 role 声明为 Kleene 则是 Tuple[...]
+    tb_binding = hit.role_index["tb"]   # ThrowbackEvent
 ```
 
 > 💡 如果你要把这张图画到面板上，`PatternSpec.to_topology()` 能把声明投影成面板可直接消费的 `PatternTopology`（含类型化的节点和有向边），不用你再额外派生。

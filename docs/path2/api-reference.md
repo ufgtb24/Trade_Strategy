@@ -22,10 +22,10 @@ path2 是一个**独立的"走势表达"框架**。它要解决的问题很具�
 2. **Detector（探测器）**——一台"情节生产机"。喂给它一段 K 线 DataFrame，它就吐出一串某种类型的 Event。比如 `BODetector` 专门吐"突破"事件，`TrendSegmentDetector` 专门吐"趋势段"事件。
    *打个比方*：Detector 像一个专职剪辑师，只负责从原片里剪出某一类镜头。
 
-3. **PatternSpec（模式声明）**——你把整个"故事"写下来的地方。它说明：这个故事由哪几个角色（节点）组成、角色之间有什么先后/包含关系（边）。它是**纯数据**，不含任何匹配算法。
+3. **PatternSpec（模式声明）**——你把整个"故事"写下来的地方。它说明：这个故事由哪几个角色（节点）组成、角色之间有什么先后/包含关系（边）。它是**纯数据**，不含任何求解算法。
    *打个比方*：PatternSpec 就是剧本——只描述"谁先出场、谁包着谁"，不负责真正去演。
 
-4. **analyze()（匹配引擎入口）**——真正去"对剧本找演员"的导演。你把剧本（PatternSpec）和一段 K 线交给它，它返回 **AnalysisResult**，里面装着所有命中的故事实例。
+4. **analyze()（求解引擎入口）**——真正去"对剧本找演员"的导演。你把剧本（PatternSpec）和一段 K 线交给它，它返回 **AnalysisResult**，里面装着所有命中的故事实例。
 
 一句话串起来：**Detector 产出 Event 流 → PatternSpec 声明它们怎么组合成一个故事 → analyze() 在 K 线上找出所有符合的实例。**
 
@@ -42,8 +42,8 @@ path2 是一个**独立的"走势表达"框架**。它要解决的问题很具�
 3. [path2.dag.edges — 怎么声明角色之间的关系](#3-path2dagedges--怎么声明角色之间的关系)
 4. [path2.dag.where — 给单个角色加条件的便利函数](#4-path2dagwhere--给单个角色加条件的便利函数)
 5. [path2.dag.spec — 把角色和关系打包成完整故事](#5-path2dagspec--把角色和关系打包成完整故事)
-6. [path2.dag.engine — 真正去匹配](#6-path2dagengine--真正去匹配)
-7. [path2.dag.result — 匹配结果长什么样](#7-path2dagresult--匹配结果长什么样)
+6. [path2.dag.engine — 真正去求解](#6-path2dagengine--真正去求解)
+7. [path2.dag.result — 命中结果长什么样](#7-path2dagresult--命中结果长什么样)
 8. [path2.atoms — 开箱即用的 Detector 库](#8-path2atoms--开箱即用的-detector-库)
 9. [path2.calc — 纯数值计算函数库](#9-path2calc--纯数值计算函数库)
 10. [完整示例](#完整示例)
@@ -243,9 +243,9 @@ NodeSpec(
 
 **它是什么 / 什么时候用**：当一个角色不是"一个事件"而是"**连续的一串**同类事件"时，给它配 `KleeneSpec`。"Kleene 闭包"是个正则表达式术语，这里你可以理解成"重复 N 次的那种角色"。
 
-配了 `KleeneSpec` 之后，引擎会从事件流里抓出一段**连续子序列**，把整段当成一个绑定单元，参与外层故事的匹配。相应地，这个角色在结果里的值就从"单个事件"升级为"一个事件元组"。
+配了 `KleeneSpec` 之后，引擎会从事件流里抓出一段**连续子序列**，把整段当成一个绑定单元，参与外层故事的求解。相应地，这个角色在结果里的值就从"单个事件"升级为"一个事件元组"。
 
-> ✅ **框架仍支持** ❌ **当前示例 app 不用**：`KleeneSpec` 这套"求解期把一串同类事件绑成序列"的机制依然健在、可用，适合你在**自己的走势包里**表达"重复出现 N 次的角色"。但 `bottom_burst` 里那个"密集突破串"已经换了一条路——改用嵌套事件 `BurstEvent`（由 `BurstDetector` 在产事件阶段就把一串突破打包成一个宽事件，见 §8）。两条路的取舍：Kleene 把"成串"留到匹配期再算；嵌套事件把"成串"提前到产出期算好，整串变成一个能被引用、能被画图、能被单个 `where` 整体检查的实体。下面的字段说明和示例**仅用于说明 Kleene 用法**，本 app 不这么写。
+> ✅ **框架仍支持** ❌ **当前示例 app 不用**：`KleeneSpec` 这套"求解期把一串同类事件绑成序列"的机制依然健在、可用，适合你在**自己的走势包里**表达"重复出现 N 次的角色"。但 `bottom_burst` 里那个"密集突破串"已经换了一条路——改用嵌套事件 `BurstEvent`（由 `BurstDetector` 在产事件阶段就把一串突破打包成一个宽事件，见 §8）。两条路的取舍：Kleene 把"成串"留到求解期再算；嵌套事件把"成串"提前到产出期算好，整串变成一个能被引用、能被画图、能被单个 `where` 整体检查的实体。下面的字段说明和示例**仅用于说明 Kleene 用法**，本 app 不这么写。
 
 ```python
 @dataclass(frozen=True)
@@ -506,7 +506,7 @@ class EqualsEdge(DependencyEdge):
     dst: str
 ```
 
-> ⚠️ **引擎内部细节（了解即可）**：为防止漏匹配，引擎会对所有 `EqualsEdge` 的 `src` 节点关闭一项叫 "C1 等-end 塌缩" 的优化。你不用做任何事，知道"用了 EqualsEdge 会让引擎在这些节点上更保守"即可。
+> ⚠️ **引擎内部细节（了解即可）**：为防止漏命中，引擎会对所有 `EqualsEdge` 的 `src` 节点关闭一项叫 "C1 等-end 塌缩" 的优化。你不用做任何事，知道"用了 EqualsEdge 会让引擎在这些节点上更保守"即可。
 
 ---
 
@@ -703,7 +703,7 @@ from path2.dag import PatternSpec
 
 ### `PatternSpec`
 
-**它是什么**：一个走势包对外的"剧本"。它是**纯数据**，不含任何匹配逻辑——`nodes + edges` 合起来就是一张类型级 DAG（有向无环图）。
+**它是什么**：一个走势包对外的"剧本"。它是**纯数据**，不含任何求解逻辑——`nodes + edges` 合起来就是一张类型级 DAG（有向无环图）。
 
 ```python
 @dataclass(frozen=True)
@@ -719,9 +719,9 @@ class PatternSpec:
 
 | 字段 | 说明 |
 |---|---|
-| `pattern_id` | 模式唯一标识符，会进 `PatternMatch.pattern_id` |
+| `pattern_id` | 模式唯一标识符，会进 `PatternHit.pattern_id` |
 | `display_name` | 人类可读名，用于面板标题等 |
-| `nodes` | 全部角色声明；**顺序不影响匹配**（引擎内部会按依赖拓扑序自己排） |
+| `nodes` | 全部角色声明；**顺序不影响求解**（引擎内部会按依赖拓扑序自己排） |
 | `edges` | 全部边声明，定义角色间关系约束和 DAG 拓扑 |
 | `root` | 起点角色，填一个合法的 `node_id` 即可（用于校验） |
 | `event_styles` | `node_id → 样式对象`，供面板渲染，默认空 dict |
@@ -734,7 +734,7 @@ class PatternSpec:
 4. **detector DAG**：`consumes_stream` 引用的必须是已声明的 `node_id`。
 5. **`where` clause_id 唯一**：同一个 node 内 `where` 各条的 `clause_id` 不能重名（跨 node 可重名）。
 
-> 💡 **小贴士**：这些校验是你的好朋友——把剧本写错（比如边连到一个不存在的角色、或不小心连成了环），它会**立刻**在构造时报错，而不是等到匹配出诡异结果。
+> 💡 **小贴士**：这些校验是你的好朋友——把剧本写错（比如边连到一个不存在的角色、或不小心连成了环），它会**立刻**在构造时报错，而不是等到求解出诡异结果。
 
 ```python
 PatternSpec(
@@ -823,19 +823,19 @@ class TopoEdge:
 
 ---
 
-## 6. path2.dag.engine — 真正去匹配
+## 6. path2.dag.engine — 真正去求解
 
-**这一节是什么**：前面都在"声明"，这一节是"执行"。`analyze()` 是你日常唯一需要调的入口——把剧本和 K 线给它，拿回所有命中。`matches()` 是它的"只问有没有"的便捷版。
+**这一节是什么**：前面都在"声明"，这一节是"执行"。`analyze()` 是你日常唯一需要调的入口——把剧本和 K 线给它，拿回所有命中。`has_hit()` 是它的"只问有没有"的便捷版。
 
 ```python
-from path2.dag import analyze, matches
+from path2.dag import analyze, has_hit
 ```
 
 ---
 
 ### `analyze`
 
-**它是什么**：唯一公开的匹配入口。把 `PatternSpec` 跑在一段 K 线上，返回 `AnalysisResult`。
+**它是什么**：唯一公开的求解入口。把 `PatternSpec` 跑在一段 K 线上，返回 `AnalysisResult`。
 
 ```python
 def analyze(spec: PatternSpec, df, params=None) -> AnalysisResult
@@ -843,7 +843,7 @@ def analyze(spec: PatternSpec, df, params=None) -> AnalysisResult
 
 | 参数 | 类型 | 说明 |
 |---|---|---|
-| `spec` | `PatternSpec` | 你声明的模式规格，含全部节点、边、匹配策略 |
+| `spec` | `PatternSpec` | 你声明的模式规格，含全部节点、边、求解策略 |
 | `df` | `DataFrame` | 行情 K 线 DataFrame，会传给所有 detector 和 `MatchContext` |
 | `params` | `object` | 默认 `None`；运行时参数对象，透传进 `MatchContext.params` |
 
@@ -851,9 +851,9 @@ def analyze(spec: PatternSpec, df, params=None) -> AnalysisResult
 1. 按 `consumes_stream` 的依赖顺序逐个跑各节点 detector：根节点调 `detect(df)`，消费上游流的节点调 `detect(上游流, df)`。（这一步还会先做一次"同类多实例自动消歧"，给同类 detector 编 `source_tag`，见 §8。）
 2. `compile_plan` 把 `spec` 编译成约束图 `Plan`。
 3. 调 `solve(plan, streams, ctx)` 求解：枚举所有满足 DAG 约束的绑定（回溯 DFS），按 leaf event 跨 prefix 去重（reachable-leaves always-on）。
-4. `reify` 把求解结果物化成一个个 `PatternMatch`，并把全部事件流收齐。
+4. `reify` 把求解结果物化成一个个 `PatternHit`，并把全部事件流收齐。
 
-**出口处还有一道"孤立角色"过滤**：有些角色在图里没有任何边连它（既不当 `src` 也不当 `dst`），比如示例 app 里的 `bo`——它只当"密度流源层"（给 `burst` / `tb` 当输入、并可独立渲染所有突破点），并不参与形态匹配。这种孤立角色每个候选都会自成一解，产出一堆"只含 `bo` 这一个角色、没凑成完整形态"的残缺命中。引擎在出口处会**从 `spec.edges` 自动推出**哪些节点无边，然后把"`role_index` 里只剩孤立角色"的残缺命中丢掉。判据完全从边推导，不需要你做任何标记。
+**出口处还有一道"孤立角色"过滤**：有些角色在图里没有任何边连它（既不当 `src` 也不当 `dst`），比如示例 app 里的 `bo`——它只当"密度流源层"（给 `burst` / `tb` 当输入、并可独立渲染所有突破点），并不参与形态求解。这种孤立角色每个候选都会自成一解，产出一堆"只含 `bo` 这一个角色、没凑成完整形态"的残缺命中。引擎在出口处会**从 `spec.edges` 自动推出**哪些节点无边，然后把"`role_index` 里只剩孤立角色"的残缺命中丢掉。判据完全从边推导，不需要你做任何标记。
 
 ```python
 from path2.dag import analyze
@@ -864,34 +864,34 @@ params = Params.default()
 spec = build_pattern(params)
 result = analyze(spec, df, params)
 
-print(f"命中次数: {len(result.matches)}")
-for m in result.matches:
+print(f"命中次数: {len(result.hits)}")
+for m in result.hits:
     print(m.start_idx, m.end_idx, m.role_index.keys())
 ```
 
 ---
 
-### `matches`
+### `has_hit`
 
 **它是什么 / 什么时候用**：只想知道"这段 K 线到底有没有出现这个故事"，不关心细节时用它。返回 `bool`。
 
 ```python
-def matches(spec: PatternSpec, df, params=None) -> bool
+def has_hit(spec: PatternSpec, df, params=None) -> bool
 ```
 
-当且仅当 `analyze()` 至少命中一次时返回 `True`，等价于 `len(analyze(spec, df, params).matches) > 0`。
+当且仅当 `analyze()` 至少命中一次时返回 `True`，等价于 `len(analyze(spec, df, params).hits) > 0`。
 
 ---
 
-## 7. path2.dag.result — 匹配结果长什么样
+## 7. path2.dag.result — 命中结果长什么样
 
 **这一节是什么**：`analyze()` 返回的所有数据结构。读懂这一节，你才知道怎么从结果里把"突破了几次、回踩在哪根 bar"这些信息取出来。
 
 ```python
-from path2.dag import AnalysisResult, PatternMatch, PredicateTrace, ClauseWitness, EdgeWitness
+from path2.dag import AnalysisResult, PatternHit, PredicateTrace, ClauseWitness, EdgeWitness
 ```
 
-> 先建立直觉，自顶向下：`AnalysisResult` 装着一组 `PatternMatch`（每个是一次命中）；每个 `PatternMatch` 通过 `role_index` 告诉你"每个角色具体绑到了哪些事件"；如果开了诊断，`predicate_trace` 还会告诉你"每条 where、每条边到底过没过"。
+> 先建立直觉，自顶向下：`AnalysisResult` 装着一组 `PatternHit`（每个是一次命中）；每个 `PatternHit` 通过 `role_index` 告诉你"每个角色具体绑到了哪些事件"；如果开了诊断，`predicate_trace` 还会告诉你"每条 where、每条边到底过没过"。
 
 ---
 
@@ -903,27 +903,27 @@ from path2.dag import AnalysisResult, PatternMatch, PredicateTrace, ClauseWitnes
 @dataclass(frozen=True)
 class AnalysisResult:
     events:  Tuple[Event, ...]
-    matches: Tuple[PatternMatch, ...]
+    hits: Tuple[PatternHit, ...]
     spec:    object = None
 ```
 
 | 字段 | 说明 |
 |---|---|
 | `events` | 所有节点流平铺后的**全量**事件（含中间节点产出，不只是最终命中用到的） |
-| `matches` | 所有完整命中结果；空 tuple 表示没命中 |
+| `hits` | 所有完整命中结果；空 tuple 表示没命中 |
 | `spec` | 原始 `PatternSpec` 引用，面板可通过 `spec.to_topology()` 渲染拓扑视图 |
 
-> 💡 **`events` vs `matches` 的区别**：`events` 是"所有探测到的零件"，`matches` 是"真正拼成完整故事的成品"。调试时看 `events` 能知道"是不是某种零件压根没产出来"。
+> 💡 **`events` vs `hits` 的区别**：`events` 是"所有探测到的零件"，`hits` 是"真正拼成完整故事的成品"。调试时看 `events` 能知道"是不是某种零件压根没产出来"。
 
 ---
 
-### `PatternMatch`
+### `PatternHit`
 
 **它是什么**：一次完整的命中。它本身**也是一个 `Event`**（继承自 `Event`，所以有 `event_id`/`start_idx`/`end_idx`），这意味着它可以反过来作为更上层故事的一个角色，支持嵌套。
 
 ```python
 @dataclass(frozen=True)
-class PatternMatch(Event):
+class PatternHit(Event):
     pattern_id:      str                                    = ""
     role_index:      Optional[Mapping[str, RoleBinding]]   = None
     children:        Tuple[Event, ...]                      = ()
@@ -942,14 +942,14 @@ class PatternMatch(Event):
 > ⚠️ **小贴士**：`children` 和 `role_index` 指向**同一批对象**（`id` 一致），`children` 只是展平视图，别把它当成另一份数据重复遍历。
 
 ```python
-for m in result.matches:
+for m in result.hits:
     burst = m.role_index["burst"]    # ONCE 节点 → 单个 BurstEvent（嵌套事件）
     tb    = m.role_index["tb"]       # ONCE 节点 → ThrowbackEvent
     # 突破数从 burst 内部的 members 取（burst 是嵌套事件，装着那一串 BOEvent）
     print(f"突破数: {len(burst.members)}, 回踩确认 bar: {tb.end_idx}")
 ```
 
-> 💡 **想拿"这一串突破"里的细节，就钻进 `burst` 这个嵌套事件**：`burst.members` 是组成它的那一串 `BOEvent`（完整对象），`burst.child('first_bo')` / `burst.child('last_bo')` 取首尾那根。注意 `bo` 角色本身不进 `match`（它是孤立流源、被出口过滤），所以**别**再去取 `m.role_index["bo"]`。
+> 💡 **想拿"这一串突破"里的细节，就钻进 `burst` 这个嵌套事件**：`burst.members` 是组成它的那一串 `BOEvent`（完整对象），`burst.child('first_bo')` / `burst.child('last_bo')` 取首尾那根。注意 `bo` 角色本身不进 `hit`（它是孤立流源、被出口过滤），所以**别**再去取 `m.role_index["bo"]`。
 
 ---
 
@@ -1103,7 +1103,7 @@ class BODetector(BarwiseDetector)
 
 ### `BurstEvent`
 
-**它是什么（先讲人话）**：一串挤在一起的突破，被打包成**一个**宽事件。以前"一串突破"在框架里没有一个实体代表它——你只能在匹配期把一堆散点突破临时绑成序列。现在 `BurstEvent` 就是"这一串"本身：它有自己的起止（起点=串首突破的起点、终点=串尾突破的终点），肚子里装着组成它的那一根根突破。这样"这一串"终于能像普通事件一样被引用、被画在图上、被一个 `where` 条件整体检查。这就是**嵌套事件**最典型的样子。
+**它是什么（先讲人话）**：一串挤在一起的突破，被打包成**一个**宽事件。以前"一串突破"在框架里没有一个实体代表它——你只能在求解期把一堆散点突破临时绑成序列。现在 `BurstEvent` 就是"这一串"本身：它有自己的起止（起点=串首突破的起点、终点=串尾突破的终点），肚子里装着组成它的那一根根突破。这样"这一串"终于能像普通事件一样被引用、被画在图上、被一个 `where` 条件整体检查。这就是**嵌套事件**最典型的样子。
 
 ```python
 @dataclass(frozen=True)
@@ -1149,7 +1149,7 @@ def __init__(self, max_span: int, min_bos: int)
 | `max_span` | `int` | "成簇"窗口：后续突破的起点与段首起点之差超过它，就不再纳入同一串（保证这串是真挤在一起的） |
 | `min_bos` | `int` | 一串至少要有几根突破才产出 |
 
-> 💡 **构造参数只有"怎么切串"，没有"阈值"**：`max_span` / `min_bos` 是切串参数，走构造函数。那三个阈值（回调间距 / 峰数 / 量比）**不传给 detector**，而是写在 `burst` 节点的 `where` 里。在示例 app 里，`min_bos` 取的是顶层的 `MIN_BOS`（见 `params.burst_kwargs()`），和匹配口径保持一致。
+> 💡 **构造参数只有"怎么切串"，没有"阈值"**：`max_span` / `min_bos` 是切串参数，走构造函数。那三个阈值（回调间距 / 峰数 / 量比）**不传给 detector**，而是写在 `burst` 节点的 `where` 里。在示例 app 里，`min_bos` 取的是顶层的 `MIN_BOS`（见 `params.burst_kwargs()`），和求解口径保持一致。
 
 ---
 
@@ -1614,7 +1614,7 @@ calculate_vol_ratio(volumes: pd.Series, baseline_period: int = 63) -> pd.Series
 
 读到这里，前面的概念该串成一条线了。下面是 `bottom_burst` 走势包的核心声明结构——它用 **五个 `NodeSpec`（五个角色）+ 三条类型化边** 表达一个"底部反转后密集突破爆发"的故事。先把五个角色的分工讲清楚：
 
-- `bo`（突破点）：一个**孤立流源**——它在图里没有任何边连接，不参与形态匹配，只当"密度流源层"：一来给 `burst` / `tb` 当输入流，二来可以独立把所有突破点画到 K 线上。因为没边，它那种"只含 `bo` 一个角色"的残缺命中会被引擎出口过滤掉，所以 `bo` 不会出现在任何完整命中里（见 §6）。
+- `bo`（突破点）：一个**孤立流源**——它在图里没有任何边连接，不参与形态求解，只当"密度流源层"：一来给 `burst` / `tb` 当输入流，二来可以独立把所有突破点画到 K 线上。因为没边，它那种"只含 `bo` 一个角色"的残缺命中会被引擎出口过滤掉，所以 `bo` 不会出现在任何完整命中里（见 §6）。
 - `down`（下跌段） / `side`（横盘段）：**各持一个独立的** `TrendSegmentDetector` 实例（不是同一个对象），靠不同的 `where` 扮演两个角色。各持独立实例是为了激活引擎的自动消歧，给两边事件打上 `trend0` / `trend1` 前缀（见 §8 `source_tag`）。
 - `burst`（突破爆发）：一个**嵌套事件**角色。`BurstDetector` 消费 `bo` 流（`consumes_stream="bo"`），把密集突破切成串、每串聚合成一个 `BurstEvent`。它的三条 `where` 直接用 `W.attr` 读 `BurstEvent` 预先算好的预算字段（`first_drought` / `distinct_pk` / `max_vol_ratio`）。
 - `tb`（回踩确认）：一个消费 `bo` 流的派生角色（`consumes_stream="bo"`，吃的是 `BOEvent`、不是 `BurstEvent`）。
@@ -1673,6 +1673,6 @@ def build_pattern(params):
     )
 ```
 
-> 💡 **新模型里最反直觉的一点**：为什么 `bo` 明明产出了所有突破点，却不在任何 `match` 里？因为它是**孤立角色**——它不连任何边，只当"密度流源层"。形态匹配真正关心的是被 `BurstDetector` 聚合出来的 `burst`（那一串突破整体），以及它和下跌段、横盘段、回踩的关系。`bo` 就像"原材料"，被加工成 `burst` 后，原材料本身就退到幕后了。
+> 💡 **新模型里最反直觉的一点**：为什么 `bo` 明明产出了所有突破点，却不在任何 `hit` 里？因为它是**孤立角色**——它不连任何边，只当"密度流源层"。形态求解真正关心的是被 `BurstDetector` 聚合出来的 `burst`（那一串突破整体），以及它和下跌段、横盘段、回踩的关系。`bo` 就像"原材料"，被加工成 `burst` 后，原材料本身就退到幕后了。
 
 > 💡 **你现在应该能做到**：拿到一个陌生走势包的 `PatternSpec`，逐个角色看它的 detector + where，逐条边看它表达的关系，在脑子里还原出它想找的那个"故事"。这就是读懂 path2 走势包的核心能力。

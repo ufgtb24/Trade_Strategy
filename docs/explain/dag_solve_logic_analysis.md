@@ -14,7 +14,7 @@ path2 一次分析 `analyze(spec, df)` 分四阶段（见 `engine.py`）：
 ① run_streams   每个角色跑 detector，得到候选 event 池
 ② compile_plan  把 pattern 编译成求解计划（本文重点的前半）
 ③ solve         在候选池里挑出满足所有关系的组合（本文重点的后半）
-④ reify         把解翻译成完整 match 对象
+④ reify         把解翻译成完整 hit 对象
 ```
 
 `_solve.py` 负责 **② 编译 + ③ 求解**。
@@ -48,7 +48,7 @@ flowchart TD
     ANY --> DFS2["_any_dfs<br/>对称结构，不推进消费前沿"]
     DFS --> SOL["Solution 分配表"]
     DFS2 --> SOL
-    SOL --> REIFY["（阶段④）reify → match"]
+    SOL --> REIFY["（阶段④）reify → hit"]
 ```
 
 ---
@@ -79,7 +79,7 @@ flowchart TD
 ② 填 burst ：down 通过边 "down→burst (1~20 bar)" 把 burst 限制在
              【down 结束后 1~20 根 K 线】窗口里 → 窗口内挑一个
 ③ 填 tb    ：burst 把 tb 限制在【burst 之后】→ 挑一个
-④ 三格填满 = 一个完整匹配 ✓
+④ 三格填满 = 一个完整命中 ✓
 
    ③ tb 怎么挑都不行 → 退回 ②，burst 换一个
    ② burst 也试完了  → 退回 ①，down 换一个
@@ -128,7 +128,7 @@ flowchart TD
 
 **③ 筛资格（where 预过滤）`:224-226`**
 用 v 的 **where**（一元条件，如"burst 的 distinct_pk ≥ 3"）扔掉不够格的候选。
-🔒 **where 只许看 event 自己、不许偷看别的角色**：预过滤时 `ctx.bound` 被换成哨兵 `_TripWire`（`:26`），谁读了别人的绑定就当场 `RuntimeError`，绝不静默漏匹配。
+🔒 **where 只许看 event 自己、不许偷看别的角色**：预过滤时 `ctx.bound` 被换成哨兵 `_TripWire`（`:26`），谁读了别人的绑定就当场 `RuntimeError`，绝不静默漏命中。
 
 **④ 逐个试 + 复核关系（satisfies）`:231-239`**
 窗口只是**粗筛**，真正判定靠 `edge.satisfies`。对每个活着的候选，把所有前驱 edge 的关系 + `strict_clear` 精确验一遍；都过 → 填 v → 查否定边 `negation_clear` → **递归填下一格**（`:244`）。成功上返；失败撤销、试下一个。
@@ -147,7 +147,7 @@ flowchart TD
 
 **memo 最微妙**：它把"已填部分对后面的影响"压成一个**签名**——同签名 = 对剩下的格子完全等价。某签名一旦被证明走不通就记下，下次撞见**直接判死、不再展开**。
 
-> ⚠ **剪枝必须"健全"**：被记成死路的，必须**确实**是死路，否则会误砍掉正确答案（漏匹配）。所以签名只能由 edge 用 `signature_fields` **自描述**该读哪些字段（在 `_signature.py`）；派生属性只能进 ③ where 预过滤、**永不**进窗口/签名。
+> ⚠ **剪枝必须"健全"**：被记成死路的，必须**确实**是死路，否则会误砍掉正确答案（漏命中）。所以签名只能由 edge 用 `signature_fields` **自描述**该读哪些字段（在 `_signature.py`）；派生属性只能进 ③ where 预过滤、**永不**进窗口/签名。
 
 **一个边语义特例**：`EqualsEdge` 把位置钉死、破坏 C1 的单调前提，所以它的 **src 节点要关掉 C1**（`eq_src`，`:228` 的 `v not in eq_src`）。
 
@@ -170,7 +170,7 @@ flowchart TD
 
 ## 7. 物化（reify）
 
-solve 吐出的是一张张**"角色→选中 event（下标）"分配表** `Solution`。阶段④ `reify`（`_reify.py`）把它翻译成完整 match 对象：每个角色的真实 event、每条 edge 的见证、可下钻数据，供前端画图与诊断。
+solve 吐出的是一张张**"角色→选中 event（下标）"分配表** `Solution`。阶段④ `reify`（`_reify.py`）把它翻译成完整 hit 对象：每个角色的真实 event、每条 edge 的见证、可下钻数据，供前端画图与诊断。
 
 ---
 

@@ -1,4 +1,4 @@
-# 匹配与结果指南
+# 命中与结果指南
 
 这篇文档教你做三件事：**用一句话把一种"走势"描述出来 → 让引擎在 K 线上找到它 → 把找到的结果读出来**。
 
@@ -34,10 +34,10 @@ path2 把这两件事分开：
 先不管细节，感受一下调用长什么样：
 
 ```python
-from path2.dag.engine import analyze, matches
+from path2.dag.engine import analyze, has_hit
 
 result = analyze(spec, df, params=None)   # -> AnalysisResult，含全部命中
-hit    = matches(spec, df, params=None)   # -> bool，只问"有没有命中过"
+found  = has_hit(spec, df, params=None)   # -> bool，只问"有没有命中过"
 ```
 
 - `spec` 是你写的那份走势说明书（`PatternSpec`，下一节就教怎么写）。
@@ -45,7 +45,7 @@ hit    = matches(spec, df, params=None)   # -> bool，只问"有没有命中过"
 - `params` 是运行时参数，先填 `None`，第 5 节会讲它的用处。
 
 `analyze` 返回一个 `AnalysisResult`，里面装着"找到了几次、每次具体是哪些 K 线"。
-`matches` 是个偷懒的快捷方式，只告诉你"到底有没有找到过"，等价于 `len(analyze(...).matches) > 0`。
+`has_hit` 是个偷懒的快捷方式，只告诉你"到底有没有找到过"，等价于 `len(analyze(...).hits) > 0`。
 
 > 💡 小贴士：`analyze` 是引擎**唯一**的公开入口，你永远不需要手动去调用某个 detector，引擎会替你按正确顺序跑好它们。
 
@@ -58,7 +58,7 @@ hit    = matches(spec, df, params=None)   # -> bool，只问"有没有命中过"
 | 1. 跑 detector | 按依赖顺序把每个节点的 detector 跑一遍，得到各自的事件流。根节点直接看 `df`；下游节点看上游产出的事件流 + `df`（第 3 节讲"上游/下游"）。 |
 | 2. compile_plan | 把你的 `spec` 编译成一张内部约束图。 |
 | 3. 求解 | 枚举所有满足约束的合法绑定，按 leaf event 跨 prefix 去重。 |
-| 4. reify | 把每个合法组合物化成一个 `PatternMatch`（一条命中记录），并收集所有事件流。 |
+| 4. reify | 把每个合法组合物化成一个 `PatternHit`（一条命中记录），并收集所有事件流。 |
 
 你现在应该理解了：**你只负责写 `spec`，这四步引擎全包。** 下面开始学怎么写 `spec`。
 
@@ -244,7 +244,7 @@ burst_node = NodeSpec(
 
 除了把一串聚合成嵌套事件（§3.2），框架还提供一种更底层的方式让**一个角色直接绑定一串散点事件**——叫 **Kleene 节点**。给 `NodeSpec` 配上 `kleene=KleeneSpec(...)`，这个角色就从"绑一个"变成"绑一串"，引擎会在求解时从事件流里取一个连续子序列整段绑上。
 
-> 💡 "Kleene"这个词来自正则里的 `*`（零或多个），你可以理解成"这个角色匹配一串，而不是一个"。
+> 💡 "Kleene"这个词来自正则里的 `*`（零或多个），你可以理解成"这个角色绑定一串，而不是一个"。
 
 > ⚠️ **嵌套事件 vs Kleene，怎么选？** 二者都能表达"一串"，但出发点不同：
 > - **嵌套事件**（§3.2）把"一串"在 **detect 期**就聚合成一个真正的对象（如 `BurstEvent`），整串有自己的身份、能被画、聚合属性是普通字段。当前示例 app `bottom_burst` 表达"一串突破"用的就是它，**不再用 Kleene**。
@@ -376,7 +376,7 @@ from path2.dag.edges import EqualsEdge
 EqualsEdge(src="trend", dst="platform")
 ```
 
-> 💡 给你交代一个内部细节（用不到也没关系）：引擎为了不漏掉同段匹配，会对所有当过 `EqualsEdge` 之 `src` 的节点关闭一项叫 C1 的去重优化。`PatternSpec.eq_src_nodes()` 就是提供这个判据集合给引擎用的。你不用手动做任何事。
+> 💡 给你交代一个内部细节（用不到也没关系）：引擎为了不漏掉同段命中，会对所有当过 `EqualsEdge` 之 `src` 的节点关闭一项叫 C1 的去重优化。`PatternSpec.eq_src_nodes()` 就是提供这个判据集合给引擎用的。你不用手动做任何事。
 
 ### NegationEdge — 否定边（"禁止出现"）
 
@@ -489,7 +489,7 @@ node = NodeSpec(
 
 引擎对这种"图里没有任何边连它"的节点（叫**孤立 role**）有专门处理：如果不管，每个孤立的 bo 都会自成一个"只含 bo 这一个角色"的残缺命中——一堆语义垃圾。所以 `analyze` 在出口处会**自动识别出孤立 role**（从 `spec.edges` 推：哪些 `node_id` 从没在任何边里出现过），然后**丢弃那些"只含孤立 role"的残缺命中**。
 
-> 💡 效果：`bo` 既能作为一层独立的密度信息被扫描、渲染出来，又不会污染真正的形态匹配——你拿到的 `matches` 里，每一条都是凑齐了 down/side/burst/tb 关系的完整命中，不会冒出"只有一个孤零零 bo"的假命中。
+> 💡 效果：`bo` 既能作为一层独立的密度信息被扫描、渲染出来，又不会污染真正的形态命中——你拿到的 `hits` 里，每一条都是凑齐了 down/side/burst/tb 关系的完整命中，不会冒出"只有一个孤零零 bo"的假命中。
 > 锚点：`path2/dag/engine.py` 出口的孤立 role 推导 + 过滤。
 
 ---
@@ -510,7 +510,7 @@ for event in result.events:
     print(event.event_id, event.start_idx, event.end_idx)
 
 # 2) 全部命中
-print(f"共命中 {len(result.matches)} 次")
+print(f"共命中 {len(result.hits)} 次")
 
 # 3) 原始声明 —— 面板要画拓扑图时从这里拿
 topo = result.spec.to_topology()
@@ -519,24 +519,24 @@ topo = result.spec.to_topology()
 | 字段 | 类型 | 它是什么 |
 |------|------|---------|
 | `events` | `Tuple[Event, ...]` | 所有节点事件流的并集（平铺合并），供面板标注原始事件 |
-| `matches` | `Tuple[PatternMatch, ...]` | 全部命中；空 tuple 表示一次没命中 |
+| `hits` | `Tuple[PatternHit, ...]` | 全部命中；空 tuple 表示一次没命中 |
 | `spec` | `PatternSpec` | 你传进去的那份声明，面板可由它调 `to_topology()` 画拓扑（第 10 节） |
 
-> 💡 区分清楚：`events` 是"找到的所有零散事件点"，`matches` 是"把这些点按你的声明拼成的完整命中"。一个完整命中里通常包含好几个事件。
+> 💡 区分清楚：`events` 是"找到的所有零散事件点"，`hits` 是"把这些点按你的声明拼成的完整命中"。一个完整命中里通常包含好几个事件。
 
 ---
 
-## 8. 读单条命中：PatternMatch 与 role_index
+## 8. 读单条命中：PatternHit 与 role_index
 
-`result.matches` 里每一项是一个 `PatternMatch`，代表一次完整命中。它**继承自 `Event`**，所以自带位置信息：
+`result.hits` 里每一项是一个 `PatternHit`，代表一次完整命中。它**继承自 `Event`**，所以自带位置信息：
 
 ```python
-match = result.matches[0]
+hit = result.hits[0]
 
-print(match.event_id)    # 格式固定为 '<pattern_id>@<start_idx>-<end_idx>'
-print(match.start_idx)   # 这次命中跨度的起始 bar 索引
-print(match.end_idx)     # 这次命中跨度的结束 bar 索引
-print(match.pattern_id)  # 等于你声明里的 PatternSpec.pattern_id
+print(hit.event_id)    # 格式固定为 '<pattern_id>@<start_idx>-<end_idx>'
+print(hit.start_idx)   # 这次命中跨度的起始 bar 索引
+print(hit.end_idx)     # 这次命中跨度的结束 bar 索引
+print(hit.pattern_id)  # 等于你声明里的 PatternSpec.pattern_id
 ```
 
 ### role_index：哪个角色绑到了哪个事件
@@ -548,11 +548,11 @@ print(match.pattern_id)  # 等于你声明里的 PatternSpec.pattern_id
 
 ```python
 # 普通节点：拿到单个事件
-burst_event = match.role_index["burst"]
+burst_event = hit.role_index["burst"]
 print(burst_event.start_idx, burst_event.end_idx)
 
 # Kleene 节点：拿到一串事件（tuple）
-seq = match.role_index["seq"]
+seq = hit.role_index["seq"]
 print(f"绑了 {len(seq)} 个事件")
 for e in seq:
     print(f"  bar {e.start_idx}-{e.end_idx}")
@@ -567,7 +567,7 @@ for e in seq:
 `children` 是把 `role_index` 里所有值（Kleene 的会展开成单个元素）摊平、按 `start_idx` 升序排好的一个列表。
 
 ```python
-for child in match.children:
+for child in hit.children:
     print(child.event_id)
 ```
 
@@ -577,9 +577,9 @@ for child in match.children:
 ### 完整遍历模板
 
 ```python
-for match in result.matches:
-    print(f"命中 {match.pattern_id}：bar {match.start_idx}→{match.end_idx}")
-    for node_id, binding in match.role_index.items():
+for hit in result.hits:
+    print(f"命中 {hit.pattern_id}：bar {hit.start_idx}→{hit.end_idx}")
+    for node_id, binding in hit.role_index.items():
         if isinstance(binding, tuple):
             print(f"  [{node_id}] {len(binding)} 个事件")        # Kleene 节点
         else:
@@ -590,12 +590,12 @@ for match in result.matches:
 
 ## 9. 诊断命中：predicate_trace 与 EdgeWitness
 
-有时你想知道"这次命中**为什么**成立"——每个 `where` 条件过没过、每条边量出来的间隔是多少。这些"判定过程的留痕"放在 `match.predicate_trace` 里。
+有时你想知道"这次命中**为什么**成立"——每个 `where` 条件过没过、每条边量出来的间隔是多少。这些"判定过程的留痕"放在 `hit.predicate_trace` 里。
 
 > 💡 用途：把 `where_results` 渲染成节点上的"✅/❌"，把边的 `measured` 渲染成边标签。调参时它能帮你看清是哪一步卡住了、卡在什么数值——比如边标签显示"间隔 3 bar"，节点条件显示"实测 42 ≥ 阈值 40 ✅"。
 
 ```python
-trace = match.predicate_trace
+trace = hit.predicate_trace
 if trace is None:
     print("没有 trace")
 else:
@@ -709,7 +709,7 @@ for edge in topo.edges:
 
 | 字段 | 类型 | 默认值 | 说明 |
 |------|------|--------|------|
-| `pattern_id` | `str` | 必填 | 走势唯一标识，用于 `PatternMatch.pattern_id` |
+| `pattern_id` | `str` | 必填 | 走势唯一标识，用于 `PatternHit.pattern_id` |
 | `display_name` | `str` | 必填 | 人类可读名称，供面板展示 |
 | `nodes` | `Tuple[NodeSpec, ...]` | 必填 | 全部节点；引擎按拓扑序调用各节点 detector |
 | `edges` | `Tuple[DependencyEdge, ...]` | 必填 | 全部有向依赖边 |

@@ -26,7 +26,7 @@ graph LR
 
 你只负责左边那一格——**写声明**。中间的引擎和右边的结果，path2 都给你包好了。
 
-一句话总结：**你描述形状，引擎负责匹配。**
+一句话总结：**你描述形状，引擎负责求解。**
 
 ---
 
@@ -36,7 +36,7 @@ graph LR
 2. [两层约束的正交：where vs 类型化边](#两层约束的正交)
 3. [嵌套事件：把「一串同类事件」表达成一个整体](#嵌套事件--burstevent)
 4. [Kleene 节点：框架另有的一条「一串」路径（当前 app 未用）](#kleene-节点)
-5. [匹配语义：引擎到底怎么找出一次命中](#匹配语义)
+5. [求解语义：引擎到底怎么找出一次命中](#求解语义)
 6. [结果契约：拿到命中后能读到什么](#结果契约)
 7. [面板投影：to_topology](#面板投影)
 8. [参考：一个真实的完整声明](#参考完整声明例)
@@ -128,7 +128,7 @@ Detector 分两种，区别在于「它吃什么进去」：
 - `end_idx` 必须升序，否则抛 `ValueError`；
 - `event_id` 在本次 run 内必须唯一，否则抛 `ValueError`。
 
-> 💡 小贴士：作为 app 作者，你**几乎不会手写 `run(...)`**。你只是在声明里把 detector 实例交给节点，引擎会在内部按依赖顺序帮你跑。后面 [匹配语义](#匹配语义) 会看到引擎是怎么编排的。
+> 💡 小贴士：作为 app 作者，你**几乎不会手写 `run(...)`**。你只是在声明里把 detector 实例交给节点，引擎会在内部按依赖顺序帮你跑。后面 [求解语义](#求解语义) 会看到引擎是怎么编排的。
 
 ### Pattern-as-DAG —— 描述走势形状的图纸
 
@@ -143,9 +143,9 @@ path2 的回答是：**别用代码逻辑去拼，而是画一张图。**
 - 图的**节点**，是走势里的一个个**角色**（用 `NodeSpec` 描述）——「下跌段」「横盘段」「突破串」「回踩」各是一个节点。
 - 图的**有向边**，是角色之间的**结构关系**（用 `DependencyEdge` 的子类描述）——「下跌段 → 突破串」表达一种时序依赖。
 
-> 💡 为什么叫「类型级」？因为这张图描述的是**角色之间的关系**（「下跌段这种东西」和「突破串这种东西」怎么搭），而不是某根具体 bar、某个具体实例。它是模板，不是某次具体匹配的结果。
+> 💡 为什么叫「类型级」？因为这张图描述的是**角色之间的关系**（「下跌段这种东西」和「突破串这种东西」怎么搭），而不是某根具体 bar、某个具体实例。它是模板，不是某次具体求解的结果。
 
-整张图打包进一个 `PatternSpec` 交给引擎。你（app 侧）的全部工作就是**纯声明**，不写任何匹配逻辑：
+整张图打包进一个 `PatternSpec` 交给引擎。你（app 侧）的全部工作就是**纯声明**，不写任何求解逻辑：
 
 ```python
 PatternSpec(
@@ -153,7 +153,7 @@ PatternSpec(
     display_name="...",
     nodes=(...),   # Tuple[NodeSpec, ...]
     edges=(...),   # Tuple[DependencyEdge, ...]
-    root="burst",  # 退化字段：引擎匹配并不读它，只要求是一个合法的已声明 node_id
+    root="burst",  # 退化字段：引擎求解并不读它，只要求是一个合法的已声明 node_id
 )
 ```
 
@@ -407,7 +407,7 @@ class BurstEvent(Event):
 
 > 这一节讲的是**框架另有的一条路**：用一个会重复的「Kleene 节点」来表达「一串同类事件」。它和上一节的嵌套事件解决的是同一类问题，但走的是不同机制。**注意：当前唯一的示例 app `bottom_burst` 已经不用 Kleene 了**——它改用了上一节的嵌套事件 `BurstEvent`。Kleene 作为框架特性仍然完整保留、随时可用，下面的讲解（及其中的 bo 串例子）仅作 Kleene 机制示意。
 
-**Kleene 节点**的思路是：一个节点绑**一整串连续的同类事件**，整段作为单个绑定单元参与外层 DAG 匹配。
+**Kleene 节点**的思路是：一个节点绑**一整串连续的同类事件**，整段作为单个绑定单元参与外层 DAG 求解。
 
 > 💡 名字来源：Kleene 是正则里「闭包/重复」的那个 Kleene。你可以把它理解成「这个角色不是出现一次，而是连续出现若干次」。
 
@@ -511,13 +511,13 @@ KleeneSpec(
 
 迁移到嵌套事件后，当前 app 还用到两个小而关键的机制，单独点一下。
 
-### 孤立 role：让 bo 只当「密度流源层」、不污染形态匹配
+### 孤立 role：让 bo 只当「密度流源层」、不污染形态命中
 
 在当前 app 里，突破点 `bo` 节点**在图里没有任何边连它**（既不当 src 也不当 dst）——这种节点叫**孤立 role**。它为什么还在图里？因为它要给 `burst` 和 `tb` 当输入流（两者都 `consumes_stream="bo"`），同时也方便面板把所有突破点都画在 K 线上（一个「密度流源层」）。
 
 但孤立 role 会带来一个麻烦：它没有任何边约束，每个突破点候选都能自成一解，于是会产出一大堆「只含 bo 这一个角色、根本没凑成完整形态」的**残缺命中**（语义垃圾）。
 
-`analyze` 在出口处自动收拾这个问题：它从 `spec.edges` 推出哪些节点是「孤立无边 role」（把所有 node_id 减去所有边的端点），然后丢弃那些「绑定里只含孤立 role」的命中。判据完全从声明的边推出、不需要任何额外标记。结果：`bo` 既能作密度流源层被独立扫描/渲染，又给 `burst`/`tb` 当输入，但它本身不进任何完整形态匹配。
+`analyze` 在出口处自动收拾这个问题：它从 `spec.edges` 推出哪些节点是「孤立无边 role」（把所有 node_id 减去所有边的端点），然后丢弃那些「绑定里只含孤立 role」的命中。判据完全从声明的边推出、不需要任何额外标记。结果：`bo` 既能作密度流源层被独立扫描/渲染，又给 `burst`/`tb` 当输入，但它本身不进任何完整形态命中。
 
 ### source_tag：同一类 detector 有多个实例时，给 event_id 消歧
 
@@ -529,7 +529,7 @@ KleeneSpec(
 
 ---
 
-## 匹配语义
+## 求解语义
 
 声明写好了，引擎到底怎么从一堆候选事件里捞出一次次完整命中？这一节揭开盖子。
 
@@ -560,7 +560,7 @@ KleeneSpec(
   （reachable-leaves always-on，同一 leaf event 至多 emit 一次）
 
 阶段 4：reify
-  把求出的解物化成 PatternMatch，并收集 predicate_trace（诊断信息）
+  把求出的解物化成 PatternHit，并收集 predicate_trace（诊断信息）
 ```
 
 > 💡 阶段 1 的细节：引擎用 `run(node.detector, df)` 跑根节点，用 `run(node.detector, streams[上游], df)` 跑消费者节点。这跟前面 Detector 那节的「吃什么」完全对应——你不用自己排顺序，引擎按 `consumes_stream` 自动拓扑排序。
@@ -599,13 +599,13 @@ spec = PatternSpec(
 
 result = analyze(spec, df, params=None)
 
-for m in result.matches:
+for m in result.hits:
     print(m.start_idx, m.end_idx)
     event_a = m.role_index["a"]   # 单个 Event
     event_b = m.role_index["b"]   # 单个 Event
 ```
 
-读到这里你应该能看懂：两个角色 a、b，各自有 detector；a 带一条 where（强度够大）；一条时序边要求 b 在 a 之后 1~10 根 bar 出现；`analyze` 跑完，从 `result.matches` 里逐个取命中，再用 `role_index` 按 node_id 把绑定的具体事件取出来。下一节就讲结果里到底有什么。
+读到这里你应该能看懂：两个角色 a、b，各自有 detector；a 带一条 where（强度够大）；一条时序边要求 b 在 a 之后 1~10 根 bar 出现；`analyze` 跑完，从 `result.hits` 里逐个取命中，再用 `role_index` 按 node_id 把绑定的具体事件取出来。下一节就讲结果里到底有什么。
 
 ---
 
@@ -619,21 +619,21 @@ for m in result.matches:
 @dataclass(frozen=True)
 class AnalysisResult:
     events: Tuple[Event, ...]              # 所有节点流平铺合并（含中间节点产出）
-    matches: Tuple[PatternMatch, ...]      # 全部命中，空 tuple 表示无命中
+    hits: Tuple[PatternHit, ...]      # 全部命中，空 tuple 表示无命中
     spec: object = None                    # 原始 PatternSpec（面板用）
 ```
 
 - `events`：**所有节点**产出的全量事件，平铺合并在一起，**不限于命中内的子事件**。适合面板把原始事件全都标注出来。
-- `matches`：全部完整命中。空 tuple 就是没命中。
+- `hits`：全部完整命中。空 tuple 就是没命中。
 - `spec`：原始的 `PatternSpec` 引用，面板拿它去投影拓扑（见下一节）。
 
-### PatternMatch —— 一次完整命中
+### PatternHit —— 一次完整命中
 
-`PatternMatch` 继承自 `Event`，所以它本身也带 `event_id` / `start_idx` / `end_idx`（命中整体的区间）：
+`PatternHit` 继承自 `Event`，所以它本身也带 `event_id` / `start_idx` / `end_idx`（命中整体的区间）：
 
 ```python
 @dataclass(frozen=True)
-class PatternMatch(Event):
+class PatternHit(Event):
     pattern_id: str = ""                                    # 来自 PatternSpec.pattern_id
     role_index: Optional[Mapping[str, RoleBinding]] = None  # node_id → 绑定实例
     children: Tuple[Event, ...] = ()                        # role_index 展平，按 start_idx 升序
@@ -647,19 +647,19 @@ class PatternMatch(Event):
 读命中的典型姿势：
 
 ```python
-match = result.matches[0]
+hit = result.hits[0]
 
 # 读普通节点绑定（单个 Event）
-down_seg = match.role_index["down"]
-side_seg = match.role_index["side"]
+down_seg = hit.role_index["down"]
+side_seg = hit.role_index["side"]
 
 # 读突破爆发（单个 BurstEvent），再从它内部取成员突破
-burst = match.role_index["burst"]         # 单个 BurstEvent
+burst = hit.role_index["burst"]         # 单个 BurstEvent
 bo_seq = burst.members                    # Tuple[BOEvent, ...]，等价于 burst.children("members")
 print(f"突破串长度: {len(bo_seq)}  ==  burst.count = {burst.count}")
 
 # 读回踩节点
-tb = match.role_index["tb"]               # Event
+tb = hit.role_index["tb"]               # Event
 ```
 
 > 💡 注意：在当前 app 里，`bo` 是孤立 role、不进任何完整命中的 `role_index`（见前面「孤立 role」一节）。想读「那一串突破」，应该读 `role_index["burst"]` 拿到 `BurstEvent`，再从它的 `members` 取成员。（如果你用的是 Kleene 节点，则 `role_index[该节点]` 的值本身就是一个 `Tuple[Event, ...]`——这是框架仍支持的另一条路。）

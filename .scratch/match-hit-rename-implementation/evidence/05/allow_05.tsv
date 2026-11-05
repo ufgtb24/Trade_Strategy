@@ -1,0 +1,49 @@
+# 票 05 人工判定清单：读过上下文判为可留的行。格式：相对路径<TAB>该行去掉首尾空白后的原文<TAB>类别
+CLAUDE.md	- 评估纪律：策略评估核心指标 = median(forward_return) + 首次穿越率（win_rate 废弃：基率复读无增量）；任何「好/坏」判断必须带基线对照（随机日基线 / 池子基线率），孤立数字不下结论。完整五条（口径自检 / 用途匹配 / 小样本计数）见 `.claude/skills/eval-discipline/SKILL.md`（评估/删除模拟/阈值拍板时主动调该 skill）	中文「匹配」泛指（评估用途对得上）
+CLAUDE.md	**触发词只取我在提需求时会自然说出口的词**——产品名、功能名、领域概念（如 Clash、isp、链式代理；稳健区域、同时调好几个参数）。**绝不**把系统内部术语、内部文件名、实现细节当匹配词（反例：`iggfeed`、`multivar_scan`、F 维——我对这些"没什么印象"，需求里根本不会出现）。	中文「匹配」泛指（skill 触发词）
+docs/explain/next_mode_ptr_advance_通俗解释.md	这两行是 next 模式(`SKIP_TILL_NEXT_MATCH`)的实现核心——它的整套语义"事件互不重叠地依次生产 hit"就靠这两行硬钉死。删掉它们,引擎瞬间退化成"反复找同一个 hit"。	docs/explain 过时旧名（代码里已没有的枚举，单列）
+docs/explain/path2_pattern_framework_plain.md	| "看起来像头肩顶"(模糊视觉) | Path2 是 strict bool predicate framework,要么命中要么不命中,没有"像 78%"这种概率 | 用 ML / DTW / fuzzy 匹配,这是另一个框架 |	「一致 / 等于」的通用说法（fuzzy matching）
+docs/explain/path2_pattern_framework_plain.md	| 同形态略畸变(双底但中段抖动) | 没有 fuzzy matching | 当前只能写多个 OR 子句,或参数化模板 + 容忍度阈值 |	「一致 / 等于」的通用说法（fuzzy matching）
+docs/feature_candidates.md	### FC-004 · [对照基线] bb_v1 相对随机日：非匹配对照下更差，同波动率层匹配后更好	统计里的配对
+docs/feature_candidates.md	- **口径**：随机日基线按买点日 ATR% 分三层匹配后，层内 Δ(bb − 随机) FPR	统计里的配对
+docs/feature_candidates.md	- **方向**：非匹配 bb 0.444–0.461 < 随机 0.510（表面无优势）；**匹配后最高波动层**（bb 103/110 行在此）Δ = +0.030 / +0.017 / +0.071（k=4/5/6 三 k 全正）	统计里的配对
+docs/feature_candidates.md	- **登记理由**：不是 feature，是**基线口径**——记下来防止下次再用非匹配对照得出"bb 无方向优势"（本轮两轨同时被这个 artifact 骗过，摘要里已带限定句仍误读）。任何 bb vs 基线的比较**必须按波动率层匹配**	统计里的配对
+docs/feature_candidates.md	- **口径**：`BurstEvent.distinct_pk` = 簇内各 bo 突破过的 peak 并集大小（`path2/atoms/breakout.py`）。label 锚在 bb_v1 买点 node `tb` 的逐买点日；指标 = 首次穿越率 `up/(up+down)`（horizon=40，几何对称 k），与**按买点日 ATR% 三分层重加权的随机日基线**作差（层匹配是 FC-004 的硬要求）	统计里的配对
+docs/feature_candidates.md	- **效应量**：`≥3` 相对层匹配基线 ΔFPR **+0.100** [+0.047, +0.150]，`≥4` **+0.123** [+0.045, +0.193]（2025 窗，按票整簇自助）；**三档 k 同向且 CI 均不跨 0**（≥4：k4 +0.108 [+0.035,+0.178] / k5 +0.123 / k6 +0.138 [+0.052,+0.218]），过最低线。2024 窗三档 k 同样全正（≥3：+0.031/+0.045/+0.047）但 CI 全跨 0	统计里的配对
+docs/feature_candidates.md	- **口径**：`bb_v1` params `burst.first_drought_min`，读 `BurstEvent.first_drought`（= 簇首 bo 的 `drought_floor`，`ed9a9a8f` 后语义）。比较「过闸子集」与「一道闸都不设的宽进总体」各自相对**波动率层匹配随机日基线**的 ΔFPR（horizon=40、k=5）	统计里的配对
+docs/feature_candidates.md	- **口径**：`first_drought` / `distinct_pk` / `vol_spike`(=`max_bar_vol_ratio`) / `peak_age`(=`peak_age_max`) 四个 burst 量，各自与 `median(forward_return)`（`hit_forward_returns`，horizon=40，锚 bb_v1 买点 node `tb`）的关系；对照量是同一批样本的**层匹配随机日基线 med_fr**（按买点日 ATR% = `rolling_atr_pct_nanmedian(h,l,c,20)` 三分位分层重加权）与 `median(forward_drawdown)`	统计里的配对
+docs/feature_candidates.md	- **方向**：**无** —— 原始 med_fr 随四量单调上升，但层匹配基线以**相同斜率**同步上升，作差后全线贴 0 或转负	统计里的配对
+docs/feature_candidates.md	- **效应量**：`vol_spike` 五分位 med_fr 0.150→0.234（看似单调有利），同分箱的层匹配基线 0.178→0.241、`med_dd` 从 −0.119 恶化到 −0.226；Spearman(`vol_spike`, `|dd|`) **+0.188** > Spearman(`vol_spike`, `fr`) +0.105。`vol_spike × distinct_pk` 2×2 四格的 Δmed_fr = +0.009 / −0.011 / −0.005 / −0.019（2025），全部贴 0 或为负，而未层匹配的原始 med_fr 排序 0.251 > 0.216 > 0.209 > 0.166 看起来完美可加	统计里的配对
+docs/feature_candidates.md	- **原构造目的**：为回答「这四个量能不能加权求和当打分」而必须先验证「它们各自到底是不是利好因素」；`med_dd` 与层匹配基线都是为**反驳**「med_fr 单调上升 = 有利」而造出来的对照，结果反驳成立	统计里的配对
+docs/feature_candidates.md	- **登记理由**：不是 feature，是**目标口径的负面结论**——记下来防止下次再拿 `median(forward_return)` 当打分/加权/调参的优化目标。在 bb_v1 这批量上，优化 `fr` 中位数等于优化波动率。**任何以 `fr` 为目标的排序、打分、权重拟合都缺乏干净的优化目标；方向性判断必须走首次穿越率。** 与 FC-004（bb vs 基线必须按波动率层匹配）是同一件事的两面：FC-004 管「比较时要匹配」，本条管「匹配之后 `fr` 这个指标在这批量上还剩什么」（答案：不剩什么）	统计里的配对
+docs/feature_candidates.md	- **已知纠缠/反驳**：⚠ 只在 bb_v1 的 burst 四量上验过，**不是对 `fr` 这个指标本身的普遍否定**——换一批与波动率不相关的特征，`fr` 仍可能有信息。⚠ 层匹配用的是 ATR% 三分位，层数与切点未做敏感性。⚠ 同 FC-007 的四条统计局限（样本内 / 无 FDR / 单维去簇 / 跨年落差）	统计里的配对
+docs/feature_candidates.md	- **效应量**：`w2025` 全轴读数 ≥0.74 +0.065 / ≥1.06 +0.059 / ≥1.64 +0.060 / ≥2.61 +0.058 / ≥3(SSoT) +0.061 / ≥5.13 +0.065 / ≥8 +0.059 / ≥9.8 +0.052，而**不设闸的对照是 +0.067** —— 全轴在 +0.052~+0.071 之间抖动，没有一档高于不设闸。`w2024` 同形：+0.006~+0.022，对照 −0.003。分箱形状进一步显示它是**波动率读数**：五分位 med_fr 0.150→0.234 单调升，但层匹配基线同斜率升 0.178→0.241、`med_dd` 从 −0.119 恶化到 −0.226，剥离波动率的 FPR 反而从 0.594 轻微降到 0.548	统计里的配对
+docs/feature_candidates.md	### FC-011 · [对照基线] 随机日基线还必须匹配同一交易日，时间匹配粒度会改变结论（补 FC-004）	统计里的配对
+docs/feature_candidates.md	- **方向**：只按 ATR 层匹配，会把「买点扎堆在好行情时段」算成 pattern 优势；时间单元从 40 交易日窗改到同一交易日，2024 年读数由负转正	统计里的配对
+docs/feature_candidates.md	- **效应量**（按股整簇自助 SE）：ATR 三层、不匹配时间 2024 −0.7pt / 2025 +6.8pt；× 同一 40 交易日窗 −0.3 ± 1.5 / +2.0 ± 1.4；× 同一交易日 +2.5 ± 1.5 / +3.0 ± 1.4（2025 CI [+0.2, +5.8] 不跨 0，过最低线）。ATR 层数 3→10、切点全窗统一 vs 当日横截面，变化 ≤0.3pt	统计里的配对
+docs/feature_candidates.md	- **原构造目的**：为「pattern 相对随机日有没有优势」这道检查做匹配方式敏感性分析	统计里的配对
+docs/feature_candidates.md	- **已知纠缠/反驳**：⚠ 「同日比窗更对」是推导（label 窗完全重合），没有外部真值可对照。⚠ 补充 FC-004：层匹配之外还要同期匹配；FC-007~010 引用的「不设闸 +0.067」一类读数没做时间匹配	统计里的配对
+docs/feature_candidates.md	- **发现报告**：`docs/research/2026-09-13_pattern-tuning-workflow-redesign/stats_统计审查.md` §6、§10.1；脚本 `docs/research/2026-09-13_pattern-tuning-workflow-redesign/repro/stats/e5_baseline.py`、`e5b_matching.py`	路径（研究目录、归档里的文件名，路径不动）
+docs/feature_candidates.md	- **发现报告**：`.scratch-archive/selection-pattern/research/11-control-matching.md` §2.4、§6 第 1 条；脚本 `.scratch-archive/selection-pattern/scripts/11-panel.py`、`11-build.py`、`11-bias.py`（输出 `11-bias.csv.gz`、`11-bias_out.txt`）	路径（研究目录、归档里的文件名，路径不动）
+docs/path2/api-reference.md	from path2.dag import NodeSpec, KleeneSpec, MatchContext	docs/path2 过时旧名（代码里已没有，单列）
+docs/path2/api-reference.md	aggregate_where: Tuple[Tuple[str, Callable[[Tuple, MatchContext], bool]], ...] = ()	docs/path2 过时旧名（代码里已没有，单列）
+docs/path2/api-reference.md	| `aggregate_where` | `Tuple[Tuple[str, Callable], ...]` | `()` | 对**整串**的聚合条件列表，多条 AND；每个 fn 签名是 `(seq: tuple, ctx: MatchContext) -> bool` |	docs/path2 过时旧名（代码里已没有，单列）
+docs/path2/api-reference.md	### `MatchContext`	docs/path2 过时旧名（代码里已没有，单列）
+docs/path2/api-reference.md	class MatchContext:	docs/path2 过时旧名（代码里已没有，单列）
+docs/path2/api-reference.md	WherePredicate = Callable[[Union[Event, Tuple[Event, ...]], MatchContext], bool]	docs/path2 过时旧名（代码里已没有，单列）
+docs/path2/api-reference.md	它接受"已绑候选"（普通节点是单个 `Event`，Kleene 节点是 `Tuple[Event, ...]`）和 `MatchContext`，返回 `bool`。你一般不用手写它——第 4 节的便利函数（`attr`、`count` 等）会替你生成。	docs/path2 过时旧名（代码里已没有，单列）
+docs/path2/api-reference.md	| `df` | `DataFrame` | 行情 K 线 DataFrame，会传给所有 detector 和 `MatchContext` |	docs/path2 过时旧名（代码里已没有，单列）
+docs/path2/api-reference.md	| `params` | `object` | 默认 `None`；运行时参数对象，透传进 `MatchContext.params` |	docs/path2 过时旧名（代码里已没有，单列）
+docs/path2/concepts.md	WherePredicate = Callable[[Union[Event, Tuple[Event, ...]], MatchContext], bool]	docs/path2 过时旧名（代码里已没有，单列）
+docs/path2/concepts.md	第二个参数 `MatchContext` 是求值环境，它携带：	docs/path2 过时旧名（代码里已没有，单列）
+docs/path2/concepts.md	class MatchContext:	docs/path2 过时旧名（代码里已没有，单列）
+docs/path2/guide/authoring-patterns.md	aggregate_where:    Tuple[Tuple[str, Callable[[Tuple, MatchContext], bool]], ...] = ()	docs/path2 过时旧名（代码里已没有，单列）
+docs/path2/guide/authoring-patterns.md	## 9. `MatchContext`：谓词运行时的「环境」	docs/path2 过时旧名（代码里已没有，单列）
+docs/path2/guide/authoring-patterns.md	`MatchContext` 是引擎在求解时构造、注入给每个谓词的「环境包」。**你只读它、不构造它**——构造是引擎的事。	docs/path2 过时旧名（代码里已没有，单列）
+docs/path2/guide/authoring-patterns.md	class MatchContext:	docs/path2 过时旧名（代码里已没有，单列）
+docs/path2/guide/hits-and-results.md	读之前你不需要懂任何"事件框架"或"图匹配"理论。我们会从一个最小的例子起步，一步步把概念补齐，密集的字段表都放在最后供你查阅。	中文「匹配」泛指（图匹配这门理论的名字）
+docs/path2/guide/hits-and-results.md	- **`aggregate_where`**：对**整串**（而不是单个成员）的条件，函数签名是 `fn(tuple[Event,...], MatchContext) -> bool`，多个条件之间 AND 合取。	docs/path2 过时旧名（代码里已没有，单列）
+docs/path2/guide/hits-and-results.md	# where 函数签名：(候选, MatchContext) -> bool	docs/path2 过时旧名（代码里已没有，单列）
+docs/path2/guide/hits-and-results.md	### ctx.params 与 MatchContext	docs/path2 过时旧名（代码里已没有，单列）
+docs/path2/guide/hits-and-results.md	`where` 函数的第二个参数 `ctx` 是个 `MatchContext`，它带着你判定时可能需要的环境：	docs/path2 过时旧名（代码里已没有，单列）
+docs/path2/guide/hits-and-results.md	| `aggregate_where` | `Tuple[Tuple[str, Callable], ...]` | `()` | 整串聚合谓词列表，`fn(tuple[Event,...], MatchContext) -> bool`，AND 合取 |	docs/path2 过时旧名（代码里已没有，单列）

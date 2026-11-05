@@ -1,4 +1,4 @@
-# path2 入门：从零跑通你的第一个走势匹配
+# path2 入门：从零跑通你的第一个走势求解
 
 欢迎！如果你是第一次接触 path2，这篇文档就是为你写的。读完之后，你将能独立写出一段「描述某种 K 线走势、然后让程序在数据里自动找出它」的代码——全程不需要预先懂任何理论。
 
@@ -24,7 +24,7 @@ path2 的思路完全不同：**你只负责"说清楚你要什么"，剩下的"
 
 > 💡 **小贴士**：path2 是一个**独立的事件表达框架**。它跟项目里 BreakoutStrategy 那套选股/因子/挖掘的东西没有任何关系，你不需要了解那些概念。这里所有的"积木"都是自包含的。
 
-**你现在应该理解了**：path2 = 声明式地描述走势 + 引擎自动匹配。下面我们就一步步把上面这个例子真正跑起来。
+**你现在应该理解了**：path2 = 声明式地描述走势 + 引擎自动求解。下面我们就一步步把上面这个例子真正跑起来。
 
 ---
 
@@ -54,7 +54,7 @@ path2 里所有的检测器（detector，下面会解释）都只认一种输入
 - 行用整数下标（0, 1, 2, …），每一行就是一根 K 线；
 - 至少要有这 5 列：`open`、`high`、`low`、`close`、`volume`。
 
-下面我们造一段"假行情"来练手——它故意被设计成"先跌、再横盘、最后反弹"，方便我们待会儿能匹配到东西：
+下面我们造一段"假行情"来练手——它故意被设计成"先跌、再横盘、最后反弹"，方便我们待会儿能命中东西：
 
 ```python
 import numpy as np
@@ -199,7 +199,7 @@ spec = PatternSpec(
 - **`W.attr(name, op, thr)`**：最常用的筛选谓词，意思是"事件的 `name` 属性 `op` 阈值 `thr`"。比如 `W.attr("drawdown", ">=", 0.20)` = "回撤 ≥ 20%"。
 - **`label`**：人类可读的名字，给面板显示用。
 - **`TemporalEdge("down", "bo", min_gap=1, max_gap=60)`**：这根绳子要求 `bo.start_idx − down.end_idx ∈ [1, 60]`——也就是突破点开始的 bar，比下跌段结束的 bar 晚 1 到 60 根。
-- **`root`**：填任意一个合法的 `node_id` 即可（引擎做校验用，不影响匹配结果）。
+- **`root`**：填任意一个合法的 `node_id` 即可（引擎做校验用，不影响求解结果）。
 
 > ⚠️ **常见坑**：
 > - `where` 的每一项是个**二元组** `(clause_id, 谓词)`，别只写谓词。
@@ -226,7 +226,7 @@ result = analyze(spec, df)
 
 `params` 参数你现在可以忽略（传 `None` 或不传）。它的用途是：把任意运行时对象注入进去，供 `where` 谓词读取动态阈值。入门阶段用不到。
 
-> 还有个布尔快捷方式：`from path2.dag import matches`，`matches(spec, df)` 等价于 `len(analyze(spec, df).matches) > 0`，只想知道"有没有命中"时很方便。
+> 还有个布尔快捷方式：`from path2.dag import has_hit`，`has_hit(spec, df)` 等价于 `len(analyze(spec, df).hits) > 0`，只想知道"有没有命中"时很方便。
 
 ---
 
@@ -236,18 +236,18 @@ result = analyze(spec, df)
 
 ```python
 result.events   # Tuple[Event, ...]  —— 所有节点产出的事件，平铺合在一起（可用来在图上标注原始事件）
-result.matches  # Tuple[PatternMatch, ...]  —— 每命中一次就是一个 PatternMatch；没命中则是空 tuple
+result.hits  # Tuple[PatternHit, ...]  —— 每命中一次就是一个 PatternHit；没命中则是空 tuple
 result.spec     # 你传进去的 PatternSpec 引用（可调 result.spec.to_topology() 拿可视化拓扑）
 ```
 
-最关心的当然是 `result.matches`。每个命中是一个 `PatternMatch`，它本身也是一个 Event（所以有 `event_id` / `start_idx` / `end_idx`，分别是这次命中的编号和总区间）。
+最关心的当然是 `result.hits`。每个命中是一个 `PatternHit`，它本身也是一个 Event（所以有 `event_id` / `start_idx` / `end_idx`，分别是这次命中的编号和总区间）。
 
 怎么从一次命中里把"那段下跌"和"那个突破"取出来？用 **`role_index`**——它是一个字典，`node_id → 绑定到的事件`：
 
 ```python
-print(f"命中次数：{len(result.matches)}")
+print(f"命中次数：{len(result.hits)}")
 
-for m in result.matches:
+for m in result.hits:
     print(f"\n--- 命中 {m.event_id}  bar [{m.start_idx}, {m.end_idx}] ---")
 
     # role_index：用 node_id 取出这次命中里绑定的具体事件
@@ -262,7 +262,7 @@ for m in result.matches:
 
 ### 想看"为什么命中/没命中"？看 predicate_trace
 
-如果你想调试——比如某次本该命中却没命中——`PatternMatch` 还带了诊断信息：
+如果你想调试——比如某次本该命中却没命中——`PatternHit` 还带了诊断信息：
 
 ```python
 m.children         # 把所有绑定事件按 start_idx 升序展平的扁平视图（role_index 的派生）
@@ -329,7 +329,7 @@ spec2 = PatternSpec(
 )
 
 result2 = analyze(spec2, df)
-print(f"命中次数：{len(result2.matches)}")
+print(f"命中次数：{len(result2.hits)}")
 ```
 
 > 💡 **小贴士（包含边的方向）**：`ContainmentEdge` 的规范方向是「大区间 → 小区间」，写成 `ContainmentEdge("side", "bo")` 表示 `side.start ≤ bo.start` 且 `bo.end ≤ side.end`（即 bo 套在 side 里）。别写反了。
@@ -425,10 +425,10 @@ def main():
     result = analyze(spec, df)
 
     # ── 4. 读取结果 ────────────────────────────────────────────────────
-    print(f"命中次数：{len(result.matches)}")
+    print(f"命中次数：{len(result.hits)}")
     print(f"所有节点产出事件数：{len(result.events)}")
 
-    for m in result.matches:
+    for m in result.hits:
         down_seg = m.role_index["down"]
         side_seg = m.role_index["side"]
         bo_event = m.role_index["bo"]
@@ -460,7 +460,7 @@ if __name__ == "__main__":
 uv run python quickstart.py
 ```
 
-**到这里，你已经独立跑通了一个完整的 path2 匹配流程。** 下面是查阅性的速查表——不用通读，需要时回来翻即可。
+**到这里，你已经独立跑通了一个完整的 path2 求解流程。** 下面是查阅性的速查表——不用通读，需要时回来翻即可。
 
 ---
 
@@ -533,10 +533,10 @@ uv run python quickstart.py
 
 ```python
 result.events          # Tuple[Event, ...]  —— 所有节点事件流平铺
-result.matches         # Tuple[PatternMatch, ...] —— 命中列表
+result.hits         # Tuple[PatternHit, ...] —— 命中列表
 result.spec            # PatternSpec 引用
 
-m = result.matches[0]
+m = result.hits[0]
 m.event_id             # 本次命中的编号（继承自 Event）
 m.start_idx            # 命中区间起点（= 所有绑定事件 start_idx 的最小值）
 m.end_idx              # 命中区间终点（= 所有绑定事件 end_idx 的最大值）
@@ -606,6 +606,6 @@ path2 给出的答案是 **嵌套事件**（也叫复合 Event）：**一个事�
 - **把"一串"事件打包成一个事件（嵌套事件）**——比如"连续多个突破组成一簇爆发"：这是当前内置 app 的真实做法，去看 `path2_apps/bottom_burst/dag_spec.py` 里的 `build_pattern` 函数（上文 #10 已详解）。一串 bo 在那里是一个 `BurstEvent`，由 `BurstDetector` 消费 `bo` 流切串聚合而成。
 - **让一个 detector 消费另一个节点的事件流（`consumes_stream`）**——同上文件里，`burst`（切串聚合）和 `tb`（评回踩）都写了 `consumes_stream="bo"`，靠它把 detector 接成数据流水线（上文 #9.1.1）。
 - **绑"一串"事件（Kleene，框架的另一条路）**——除了嵌套事件，框架**还**支持用 Kleene 让"一个节点"直接绑"一整串"同类事件（配合 9.3 表里的 `first` / `last` / `count` / `any` / `distinct` 这些序列聚合谓词，以及 `KleeneSpec`）。它仍是框架的正式特性、随时可用；只是当前内置 app 选择了上面那条更干净的"嵌套事件"路、没有用它。如果你想试 Kleene，给某个 NodeSpec 传一个 `kleene=KleeneSpec(...)` 即可。
-- **只想要布尔判断**——`from path2.dag import matches`，`matches(spec, df)` 直接告诉你"有没有命中"。
+- **只想要布尔判断**——`from path2.dag import has_hit`，`has_hit(spec, df)` 直接告诉你"有没有命中"。
 
 祝你玩得愉快！

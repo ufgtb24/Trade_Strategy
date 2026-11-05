@@ -8,7 +8,7 @@
 
 `path2.dag` 就是让你**用代码把这个故事写下来**，然后让程序在历史行情里自动把符合这个故事的片段全部捞出来。
 
-这篇文档教你怎么把脑子里的「走势故事」翻译成 `path2.dag` 的声明。你不需要预先懂什么「事件框架」「DAG 匹配」之类的理论——我们会从一个最小的例子讲起，边写边解释。
+这篇文档教你怎么把脑子里的「走势故事」翻译成 `path2.dag` 的声明。你不需要预先懂什么「事件框架」「DAG 求解」之类的理论——我们会从一个最小的例子讲起，边写边解释。
 
 ---
 
@@ -71,7 +71,7 @@ def build_pattern(params):
     )
 
 result = analyze(build_pattern(params), df, params)
-for m in result.matches:
+for m in result.hits:
     print(m.role_index["down"], m.role_index["bo"])
 ```
 
@@ -185,7 +185,7 @@ NodeSpec(
 
 ### `label` —— 给人看的名字
 
-人类可读的名称，用于面板显示和调试，对匹配逻辑没有任何影响。默认空字符串。建议都填上，调试时一目了然。
+人类可读的名称，用于面板显示和调试，对求解逻辑没有任何影响。默认空字符串。建议都填上，调试时一目了然。
 
 ### `source_tag`：同类多实例自动消歧
 
@@ -225,7 +225,7 @@ side_det = TrendSegmentDetector(**p.trend_kwargs())   # 两个独立实例
 
 path2 有两种表达「一串」的办法：
 
-- **嵌套事件（推荐，本节讲）**——把「这一串」打包成**一个一等公民的宽事件**，让它像普通节点一样参与匹配。当前示例 app `bottom_burst` 走的就是这条路。
+- **嵌套事件（推荐，本节讲）**——把「这一串」打包成**一个一等公民的宽事件**，让它像普通节点一样参与求解。当前示例 app `bottom_burst` 走的就是这条路。
 - **Kleene（仍是框架特性，下一节讲）**——让一个节点直接绑「一整串散点事件」，在求解期把序列拼出来。
 
 > 💡 **怎么选？** 如果这一串能自然聚合成一个「有头有尾、有整体属性」的东西（比如「一段突破爆发」），优先用**嵌套事件**——它能被画在图上、被一条 `where` 整体检查、被边当作普通宽事件引用，最干净。只有当你确实想保留「松散的一串散点、连整体实体都不想造」时，才用 Kleene。
@@ -296,7 +296,7 @@ BurstDetector(
 
 > 💡 「Kleene」这个名字来自正则表达式里的「Kleene 闭包」（就是那个表示「重复若干次」的 `*`）。你可以把它理解成「这个角色重复出现 N 次」。
 
-引擎会从事件流里抠出一段满足约束的**连续子序列**，把**整段当作一个绑定单元**参与后续匹配。这带来一个重要后果：命中结果里，Kleene 节点对应的值是 `Tuple[Event, ...]`（一串），而不是单个事件。
+引擎会从事件流里抠出一段满足约束的**连续子序列**，把**整段当作一个绑定单元**参与后续求解。这带来一个重要后果：命中结果里，Kleene 节点对应的值是 `Tuple[Event, ...]`（一串），而不是单个事件。
 
 ### 它的字段
 
@@ -773,18 +773,18 @@ def build_pattern(params):
 - **①④** = 连到 `burst` 本体的两条边（`StartContainmentEdge` / `TemporalEdge`）+ `down`/`side` 各自的 `where`。
 - **⑦** = `burst→tb` 的时序边。
 
-> 💡 **`bo` 这个孤立节点是干嘛的？** 你会注意到 `bo` 节点既没有 `where`、也没有任何边连它——它是个**孤立 role**，只当「密度流源层」：一方面给 `burst`（切串）和 `tb`（评回踩）当输入流（它们都 `consumes_stream="bo"`），另一方面可以被独立扫描、把整条 K 线上的所有突破点都画出来。但因为它不参与任何形态约束，`analyze` 在出口会**自动把「只含 bo 这一个角色」的残缺命中丢掉**（这些是语义垃圾）。判据完全从 `spec.edges` 推出来——「没有任何边连的 role」就是孤立 role，不需要你做额外标记。所以 `bo` 既能当密度层展示、又不会污染真正的形态匹配。
+> 💡 **`bo` 这个孤立节点是干嘛的？** 你会注意到 `bo` 节点既没有 `where`、也没有任何边连它——它是个**孤立 role**，只当「密度流源层」：一方面给 `burst`（切串）和 `tb`（评回踩）当输入流（它们都 `consumes_stream="bo"`），另一方面可以被独立扫描、把整条 K 线上的所有突破点都画出来。但因为它不参与任何形态约束，`analyze` 在出口会**自动把「只含 bo 这一个角色」的残缺命中丢掉**（这些是语义垃圾）。判据完全从 `spec.edges` 推出来——「没有任何边连的 role」就是孤立 role，不需要你做额外标记。所以 `bo` 既能当密度层展示、又不会污染真正的形态命中。
 
-跑匹配并读结果：
+跑求解并读结果：
 
 ```python
 from path2.dag.engine import analyze
 
 result = analyze(build_pattern(params), df, params)
 
-print(f"命中 {len(result.matches)} 次")
+print(f"命中 {len(result.hits)} 次")
 
-for m in result.matches:
+for m in result.hits:
     burst = m.role_index["burst"]       # 单个 BurstEvent（嵌套宽事件）
     tb_event = m.role_index["tb"]       # 单个 ThrowbackEvent
     down_seg = m.role_index["down"]     # 单个 TrendSegmentEvent
@@ -804,7 +804,7 @@ for m in result.matches:
 
 写自定义谓词时偶尔会碰到 `ctx` 这个参数，这一节解释它是什么。
 
-`MatchContext` 是引擎在匹配时构造、注入给每个谓词的「环境包」。**你只读它、不构造它**——构造是引擎的事。
+`MatchContext` 是引擎在求解时构造、注入给每个谓词的「环境包」。**你只读它、不构造它**——构造是引擎的事。
 
 ```python
 @dataclass(frozen=True)
@@ -850,7 +850,7 @@ class PatternSpec:
     stock_list_columns: Tuple[object, ...] = ()
 ```
 
-💡 **构造时自动帮你查错**：`__post_init__` 在你构造 `PatternSpec` 的那一刻就做三类校验，有问题立刻抛 `ValueError`，不用等跑匹配才发现：
+💡 **构造时自动帮你查错**：`__post_init__` 在你构造 `PatternSpec` 的那一刻就做三类校验，有问题立刻抛 `ValueError`，不用等跑求解才发现：
 
 1. **DAG 合法性**：`root` 必须在 `nodes` 里；每条边的 `src`/`dst` 必须在 `nodes` 里；不能有环。
 2. **Kleene 参数**：`min_count >= 1`；`min_count <= max_count`；`span_from_first` 的 lo/hi 合法；`endpoint_for_edges` 必须是 `"first"` 或 `"last"`。
@@ -877,7 +877,7 @@ for edge in topo.edges:
 
 ---
 
-## 11. 读取匹配结果
+## 11. 读取命中结果
 
 `analyze(spec, df, params)` 返回一个 `AnalysisResult`：
 
@@ -885,15 +885,15 @@ for edge in topo.edges:
 @dataclass(frozen=True)
 class AnalysisResult:
     events:  Tuple[Event, ...]          # 所有节点流平铺（含未命中的候选事件）
-    matches: Tuple[PatternMatch, ...]   # 命中结果列表
+    hits: Tuple[PatternHit, ...]   # 命中结果列表
     spec:    object                     # 原始 PatternSpec（供面板 to_topology）
 ```
 
-你最关心的是 `matches`。每个 `PatternMatch` 本身也是一个 `Event`（有 `event_id` / `start_idx` / `end_idx`），并额外带这些：
+你最关心的是 `hits`。每个 `PatternHit` 本身也是一个 `Event`（有 `event_id` / `start_idx` / `end_idx`），并额外带这些：
 
 ```python
 @dataclass(frozen=True)
-class PatternMatch(Event):
+class PatternHit(Event):
     pattern_id:      str
     role_index:      Optional[Mapping[str, RoleBinding]]  # node_id -> 实例或序列
     children:        Tuple[Event, ...]                    # role_index 展平，按 start_idx 升序
@@ -929,7 +929,7 @@ print(trace.edge_results[("side", "burst")].satisfied)
 
 > 💡 `where_results[nid]` 的每个值是一个 `ClauseWitness`，不是裸 `bool`。它在布尔上下文里直接当真值用（`if trace.where_results["burst"]["first_drought"]:` 照样工作），但还额外带着 `measured`（实测量）、`op`、`threshold`，方便你看清「这条到底过没过、实测多少、阈值多少」。
 
-> ✅ **你现在应该能完整走通一遍了**：声明角色 → 加条件 → 连边 → 装进 `PatternSpec` → `analyze` → 从 `matches` 读结果 → 用 `predicate_trace` 调试。
+> ✅ **你现在应该能完整走通一遍了**：声明角色 → 加条件 → 连边 → 装进 `PatternSpec` → `analyze` → 从 `hits` 读结果 → 用 `predicate_trace` 调试。
 
 ---
 
