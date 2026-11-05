@@ -1,7 +1,8 @@
 # 前端内部命名、事件三档 `in_hit` 与界面文字
 
 Status: ready-for-agent
-Progress: not-started
+Progress: in-progress
+Claimed: 2026-11-04 parallel-tickets ticket-03 @ worktree impl/03-frontend-names-and-tiers
 Blocked by: 02
 
 ## Purpose
