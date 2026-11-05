@@ -1,0 +1,5 @@
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/4]⎯
+ Test Files  1 failed | 100 passed (101)
+      Tests  4 failed | 1089 passed (1093)
+   Start at  00:25:19
+   Duration  14.08s (transform 27.93s, setup 0ms, collect 114.01s, tests 21.92s, environment 118.05s, prepare 23.49s)

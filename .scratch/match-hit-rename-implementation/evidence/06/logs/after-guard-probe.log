@@ -1,0 +1,6 @@
+Traceback (most recent call last):
+  File "<string>", line 1, in <module>
+  File "/home/yu/PycharmProjects/Trade_Strategy-06-glossary-and-final-check/.scratch/match-hit-rename-implementation/evidence/04/wall/sitecustomize.py", line 21, in _hook
+    raise PermissionError(f"数据墙：拒绝读 {s}")
+PermissionError: 数据墙：拒绝读 datasets/pkls/AA.pkl
+护栏探测退出码 1（应非 0）

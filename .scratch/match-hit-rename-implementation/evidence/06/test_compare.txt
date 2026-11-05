@@ -1,0 +1,60 @@
+# 票 06 测试全套：终检（合并了 01～06 的树）对票 01 开工时的基线 1359914
+# 两边都带护栏 evidence/04/wall/sitecustomize.py 和重定向 evidence/06/wall/wall_redirect.py，命令见 run_py.sh
+
+## base
+6 failed, 1229 passed, 2 skipped, 5 warnings in 45.87s
+=== tune-gates
+547 passed, 13 skipped, 17 warnings
+=== tune-gates-v3
+156 passed, 13 warnings
+=== feature-study
+47 passed, 2 skipped
+=== diagnose-event
+11 passed
+文件: 4 通过, 0 失败; dryrun 场景: 107 通过, 0 失败
+护栏记录 0 行
+
+## after
+6 failed, 1229 passed, 2 skipped, 5 warnings in 46.55s
+=== tune-gates
+547 passed, 13 skipped, 17 warnings
+=== tune-gates-v3
+156 passed, 13 warnings
+=== feature-study
+47 passed, 2 skipped
+=== diagnose-event
+11 passed
+文件: 4 通过, 0 失败; dryrun 场景: 107 通过, 0 失败
+护栏记录 0 行
+
+## pytest 失败清单比较（基线 vs 终检）
+相同：
+FAILED tests/path2/atoms/test_throwback_v4.py::TestStable::test_new_high_arm_exit
+FAILED tests/path2/atoms/test_throwback_v4.py::TestStable::test_weak_exit_reentry
+FAILED tests/path2/atoms/test_throwback_v4.py::TestGlobalBreak::test_ratchet_chain_then_break
+FAILED tests/path2/atoms/test_throwback_v4.py::TestGates::test_no_gate_on_normal_exits
+FAILED tests/path2/test_self_contained.py::test_no_breakoutstrategy_imports_in_path2
+FAILED tests/path2_web/test_serialize_tbseg.py::test_serialize_tbseg_walked_from_container
+
+## 与票 01 不带护栏的基线（evidence/01/logs/pytest-base.log）比
+6 failed, 1229 passed, 2 skipped, 5 warnings in 41.45s
+失败清单相同
+
+## vitest（票 01 基线 evidence/01/logs/vitest-summary.log）
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 4 ⎯⎯⎯⎯⎯⎯⎯
+Tests  4 failed | 1088 passed (1092)
+Tests  4 failed | 1089 passed (1093)
+失败清单相同
+
+## vue-tsc：输出 0 行（通过）
+
+## e2e（票 01 基线 evidence/01/e2e/results-base.txt）
+基线 36 条（另有 miss-detection-walkthrough 5 条不跑：- 4、✘ 1）；终检 36 条
+基线：✓ 20、✘ 16、- 0
+终检：✓ 19、✘ 17、- 0
+只在基线：[]
+只在终检：[]
+状态不同：
+  e2e/annotate-rally-random.spec.ts › 找图入口 · rally / random › 看过什么一律不记:连点几行 rally、几次 random,文件与 localStorage 都不变：✓ → ✘
+结论：状态不同 1 条
+护栏记录 0 行
