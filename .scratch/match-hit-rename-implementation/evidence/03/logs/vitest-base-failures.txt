@@ -1,3 +1,4 @@
+# 基线 85ec540 vitest：1088 通过、4 失败
 tests/components.sidebar-result-list.spec.ts > SidebarResultList · global char forwarding > typing "1" is forwarded (digits accepted)
 tests/components.sidebar-result-list.spec.ts > SidebarResultList · global char forwarding > typing "." and "-" are forwarded
 tests/components.sidebar-result-list.spec.ts > SidebarResultList · global char forwarding > typing "a" while body has focus: input gets focus + query becomes "a"

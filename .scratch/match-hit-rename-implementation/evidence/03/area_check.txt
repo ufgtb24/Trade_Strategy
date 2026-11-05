@@ -115,7 +115,7 @@
   path2_web_ui/src/components/FailedAttemptsCard.vue:25: * 真实 node 不匹配 → 后端 node 严格过滤后 0 结果,表现为"诊断卡片没有该
   path2_web_ui/src/components/useFloatingPanel.ts:6: //   · 拖拽走 window 监听 + pointerId 匹配(同 ResizableDivider),不用 setPointerCapture
   path2_web_ui/src/render/chart.ts:297: // 匹配;focusedInstanceId 是实例级,精确排除被点的那一个实例——同身份兄弟实例不误伤
-  path2_web_ui/src/render/chart.ts:1644: // hit.leaf(实例级,serialize 注入)匹配,同 leaf 被 >=2 hit 共享时输出确认行。
+  path2_web_ui/src/render/chart.ts:1647: // hit.leaf(实例级,serialize 注入)匹配,同 leaf 被 >=2 hit 共享时输出确认行。
   path2_web_ui/src/stores/view.ts:27: // anchor_bo_id 恒为 instance_id 形态(后端交错标注后 detect 期写入),纯精确匹配
   path2_web_ui/src/stores/view.ts:162: // 实例化后白名单按 node_id 匹配;子结构 node(tb_seg 等)自身无 detector,
   path2_web_ui/tests/chart.spec.ts:389: // 实例流:highlightedEventIds 集合元素为 instance_id 字符串(marker 的 instance_id 匹配)

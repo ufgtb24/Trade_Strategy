@@ -1,0 +1,2 @@
+# 最后一轮 e2e 与截图脚本的数据墙护栏（evidence/04/wall/sitecustomize.py）记录：行数
+0
