@@ -152,7 +152,7 @@ describe('SidebarResultList · symbol search UI', () => {
       results: symbols.map(s => ({
         symbol: s,
         per_pattern: {
-          bo_only: { summary: { matches: 1 }, analysis: { events: [], matches: [] }, max_forward_return: 0.1 },
+          bo_only: { summary: { hits: 1 }, analysis: { events: [], hits: [] }, max_forward_return: 0.1 },
         },
       })),
     }
@@ -279,7 +279,7 @@ describe('SidebarResultList · global char forwarding', () => {
       results: symbols.map(s => ({
         symbol: s,
         per_pattern: {
-          bo_only: { summary: { matches: 1 }, analysis: { events: [], matches: [] }, max_forward_return: 0.1 },
+          bo_only: { summary: { hits: 1 }, analysis: { events: [], hits: [] }, max_forward_return: 0.1 },
         },
       })),
     }
@@ -463,12 +463,12 @@ describe('SidebarResultList · pattern 命中股票数', () => {
     const f = makeScanFile(['bo_only', 'bbb'], false)
     f.results = [
       { symbol: 'AAA', per_pattern: {
-        bo_only: { summary: { matches: 2 }, analysis: { events: [], matches: [] }, max_forward_return: 0.34 },
-        bbb:     { summary: { matches: 1 }, analysis: { events: [], matches: [] }, max_forward_return: 0.10 },
+        bo_only: { summary: { hits: 2 }, analysis: { events: [], hits: [] }, max_forward_return: 0.34 },
+        bbb:     { summary: { hits: 1 }, analysis: { events: [], hits: [] }, max_forward_return: 0.10 },
       }},
       { symbol: 'BBB', per_pattern: {
-        bo_only: { summary: { matches: 1 }, analysis: { events: [], matches: [] }, max_forward_return: 0.50 },
-        bbb:     { summary: { matches: 0 }, analysis: { events: [], matches: [] }, max_forward_return: null },
+        bo_only: { summary: { hits: 1 }, analysis: { events: [], hits: [] }, max_forward_return: 0.50 },
+        bbb:     { summary: { hits: 0 }, analysis: { events: [], hits: [] }, max_forward_return: null },
       }},
     ]
     return f
@@ -508,7 +508,7 @@ describe('SidebarResultList · pattern 命中股票数', () => {
 
   it('零命中的 pattern 显示 0', async () => {
     const f = makeScanFileWithResults()
-    for (const r of f.results) (r.per_pattern as any).bbb.summary.matches = 0
+    for (const r of f.results) (r.per_pattern as any).bbb.summary.hits = 0
     const view = useViewStore()
     view.loadScanFile(f)
     const w = mount(SidebarResultList, { attachTo: document.body })

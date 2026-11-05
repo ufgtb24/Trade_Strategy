@@ -62,26 +62,26 @@ export interface FirstPassageRatio {
   random_ratio: number | null
 }
 
-export interface MatchDict {
-  match_id: string               // 唯一 match 键(含 node_index 组合位)
+export interface HitDict {
+  hit_id: string                 // 唯一 hit 键(含 node_index 组合位)
   start_idx: number; end_idx: number
   node_index: Record<string, string>      // nid -> instance_id 字符串(全实例化引用)
   children: string[]                       // instance_id 列表
   predicate_trace?: PredicateTrace | null
   forward_return?: number | null
-  // per-match forward_drawdown(T1 注入,与 forward_return 并列;null=窗口内未触底,undefined=老 scan file 无此字段)
+  // per-hit forward_drawdown(T1 注入,与 forward_return 并列;null=窗口内未触底,undefined=老 scan file 无此字段)
   forward_drawdown?: number | null
-  // 按买点聚合锚:leaf 事件 instance_id(同 leaf 可被多 match 共享,多对一确认)
+  // 按买点聚合锚:leaf 事件 instance_id(同 leaf 可被多 hit 共享,多对一确认)
   leaf?: string
 }
-export interface Analysis { events: EventDict[]; matches: MatchDict[] }
+export interface Analysis { events: EventDict[]; hits: HitDict[] }
 
 // ── 多 pattern schema ───────────────────────────────────────────────
 export interface PerPatternResult {
-  summary: Record<string, number>            // {node_id: count} ∪ {matches: n}
+  summary: Record<string, number>            // {node_id: count} ∪ {hits: n}
   analysis: Analysis
   max_forward_return: number | null
-  // per-symbol-per-pattern 最差下行(T1 注入,聚合用 min;null=无 match,undefined=老 scan file)
+  // per-symbol-per-pattern 最差下行(T1 注入,聚合用 min;null=无 hit,undefined=老 scan file)
   min_forward_drawdown?: number | null
 }
 export interface PatternStats {
@@ -238,7 +238,7 @@ export interface ScanHistoryEntry {
   total: number | null
   size: number
   partial: boolean
-  // history 列表聚合:每 pattern 的 match 数 + forward_return 中位数(无 match → null)
+  // history 列表聚合:每 pattern 的 hit 数 + forward_return 中位数(无 hit → null)
   // + 首次穿越方向比例对(fp 必填——显式标注的 fixture 会挡漏字段;null=该 pattern 无 first_passage 数据)
   // + 参数结构一致性(快照 vs 当前默认;false=当时代码与当前不同;null=无法判断:无快照或 pid 无 app)
   per_pattern: Record<string, { hits: number | null; median: number | null;

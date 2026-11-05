@@ -23,8 +23,8 @@ vi.mock('../src/api', () => ({ saveWcMirror: async () => ({ ok: true } as any), 
     note: 'Task 4 fixture',
   })),
   getPreview: vi.fn(() => Promise.resolve({
-    analysis: { events: [], matches: [], node_index: {} },
-    summary: { events: 0, matches: 0 },
+    analysis: { events: [], hits: [], node_index: {} },
+    summary: { events: 0, hits: 0 },
     pattern_spec: {} as any, scan: {} as any,
   })),
   getTimeDiagnose: vi.fn(() => Promise.resolve({
@@ -63,11 +63,11 @@ function makeFixture(): MultiScanResultFile {
         { node_id: 'ta', instance_id: 'e_ta_2#0', instance_idx: 0, start_idx: 20, end_idx: 22,
           anchor_bo_id: 'e_bo_1#0', child_refs: {} },
       ],
-      matches: [
-        { match_id: 'm1', start_idx: 10, end_idx: 15, node_index: { ta: 'e_ta_1#0' }, children: ['e_ta_1#0'] },
-        { match_id: 'm2', start_idx: 12, end_idx: 22, node_index: { ta: 'e_ta_2#0' }, children: ['e_ta_2#0'] },
+      hits: [
+        { hit_id: 'm1', start_idx: 10, end_idx: 15, node_index: { ta: 'e_ta_1#0' }, children: ['e_ta_1#0'] },
+        { hit_id: 'm2', start_idx: 12, end_idx: 22, node_index: { ta: 'e_ta_2#0' }, children: ['e_ta_2#0'] },
       ],
-    } as any, summary: { matches: 2 } } as any } } as any],
+    } as any, summary: { hits: 2 } } as any } } as any],
     scan: { win_start: '2020-01-01', win_end: '2020-12-31', label_horizon: 20 } as any,
   } as any
 }
@@ -104,9 +104,9 @@ describe('DetailSidebar · Task 4 视图分化', () => {
     // Task 5 契约变更:多归属 = 同一实例被 2+ match 的 node_index 引用(真共享,
     // 删除 anchor_field 反查展开);构造 e_ta_1#0 被 m1/m2 同时引用
     const fixture = makeFixture() as any
-    fixture.results[0].per_pattern.p1.analysis.matches = [
-      { match_id: 'm1', start_idx: 10, end_idx: 15, node_index: { ta: 'e_ta_1#0' }, children: ['e_ta_1#0'] },
-      { match_id: 'm2', start_idx: 12, end_idx: 22, node_index: { ta: 'e_ta_1#0' }, children: ['e_ta_1#0'] },
+    fixture.results[0].per_pattern.p1.analysis.hits = [
+      { hit_id: 'm1', start_idx: 10, end_idx: 15, node_index: { ta: 'e_ta_1#0' }, children: ['e_ta_1#0'] },
+      { hit_id: 'm2', start_idx: 12, end_idx: 22, node_index: { ta: 'e_ta_1#0' }, children: ['e_ta_1#0'] },
     ]
     view.loadScanFile(fixture)
     await flushPromises()                         // diag 落地

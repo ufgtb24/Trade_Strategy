@@ -10,8 +10,8 @@ import type { Diagnostics } from '../src/types'
 vi.mock('../src/api', () => ({ saveWcMirror: async () => ({ ok: true } as any), clearWcMirror: async () => ({ ok: true } as any),
   getDiagnose: vi.fn(() => Promise.resolve(DIAG)),
   getPreview: vi.fn(() => Promise.resolve({
-    analysis: { events: [], matches: [], node_index: {} },
-    summary: { events: 0, matches: 0 },
+    analysis: { events: [], hits: [], node_index: {} },
+    summary: { events: 0, hits: 0 },
     pattern_spec: {} as any, scan: {} as any,
   })),
   listScans: vi.fn(() => Promise.resolve([])),
@@ -29,7 +29,7 @@ describe('view store', () => {
     const v = useViewStore()
     v.loadScanFile(SCAN_FILE)
     v.selectSymbol('AAPL')
-    expect(v.currentAnalysis?.matches.length).toBe(1)
+    expect(v.currentAnalysis?.hits.length).toBe(1)
     // 关 bo node → nodeVisible 记录
     v.toggleNode('bo')
     expect(v.nodeVisible.bo).toBe(false)

@@ -69,7 +69,7 @@ describe('view store · mode', () => {
     v.enterLinked('compare')
     expect([v.mode, v.annotating, v.comparing, v.linkedView, v.appSource]).toEqual(['compare', true, true, true, 'linked'])
     expect(v.effectiveAnalysis).toBeNull()                         // 扫描结果里有 AAPL,也不拿
-    const run = { symbol: 'MSFT', app: 'bo_only', analysis: { events: [], matches: [] },
+    const run = { symbol: 'MSFT', app: 'bo_only', analysis: { events: [], hits: [] },
                   pattern_spec: { pattern_id: 'bo_only', topology: { nodes: [], edges: [] }, event_styles: {}, debug_enabled_nodes: [] },
                   scan: { win_start: '1899-09-01', win_end: '2025-12-31', end_node: 'bo' } as any }
     v.setLinkedRun(run)

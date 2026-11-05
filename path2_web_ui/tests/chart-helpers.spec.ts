@@ -234,7 +234,7 @@ describe('buildMarkerTooltipFormatter', () => {
     })
     const matchLabel = (id: string) => `MATCH:${id}`
     const fmt = buildMarkerTooltipFormatter(resolver, matchLabel)
-    const html = fmt({ data: { instance_id: 'b1#0', match_id: 'm1' } })
+    const html = fmt({ data: { instance_id: 'b1#0', hit_id: 'm1' } })
     expect(html).toContain('Match: MATCH:m1')
     expect(html).toContain('<b>Identity</b>')
     expect(html).toContain('<b>Clauses</b>')
@@ -344,7 +344,7 @@ describe('buildMarkerTooltipFormatter', () => {
     const resolver = (_eid: string): TooltipPayload => emptyPayload
     const matchLabel = (_id: string) => null
     const fmt = buildMarkerTooltipFormatter(resolver, matchLabel)
-    const html = fmt({ data: { instance_id: 'b1#0', match_id: 'm1' } })
+    const html = fmt({ data: { instance_id: 'b1#0', hit_id: 'm1' } })
     expect(html).not.toContain('Match:')
     expect(html).toContain('<b>Identity</b>')   // 但 event 三段仍渲染
   })

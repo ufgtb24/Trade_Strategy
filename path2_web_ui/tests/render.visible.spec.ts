@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { matchedIds } from '../src/render/visible'
-import type { EventDict, MatchDict, TopoEdge } from '../src/types'
+import type { EventDict, HitDict, TopoEdge } from '../src/types'
 
 // 共享 leaf 场景:两个 burst 共用同一 tb(leaf-reuse 多对一确认)。
 // 实例化契约:anchor_bo_id 为 instance_id 字符串(单值标量,per-source 来源单值),
@@ -14,12 +14,12 @@ const BO_B: EventDict = { instance_id: 'bo_5#0', node_id: 'bo', instance_idx: 0,
 const EDGES: TopoEdge[] = [{ src: 'burst', dst: 'tb', kind: 'TemporalEdge', anchor_field: 'anchor_bo_id' }] as unknown as TopoEdge[]
 const EVENTS: EventDict[] = [BURST_S, TB_SHARED, BO_A, BO_B]
 
-const SHORT_MATCH: MatchDict = {
-  match_id: 'p@0-7#burst:burst_0_1#0|tb:tb_6_7#0',
+const SHORT_MATCH: HitDict = {
+  hit_id: 'p@0-7#burst:burst_0_1#0|tb:tb_6_7#0',
   start_idx: 0, end_idx: 7,
   node_index: { burst: 'burst_0_1#0', tb: 'tb_6_7#0' },
   children: ['burst_0_1#0', 'tb_6_7#0'],
-} as unknown as MatchDict
+} as unknown as HitDict
 
 describe('matchedIds 共享 leaf 高亮 vs 归属', () => {
   it('高亮(expandAnchor=false):选短 burst 时,tb 的 anchor 反查关闭,bo_b 不被拉进高亮', () => {
@@ -43,11 +43,11 @@ describe('matchedIds anchor 值 instance_id 形态直连', () => {
     anchor_bo_id: 'bo_5#0', child_refs: {} } as unknown as EventDict
   const BO_ANCHOR: EventDict = { instance_id: 'bo_5#0', node_id: 'bo', instance_idx: 0, start_idx: 5, end_idx: 5,
     child_refs: {} } as unknown as EventDict
-  const M: MatchDict = {
-    match_id: 'm', start_idx: 0, end_idx: 6,
+  const M: HitDict = {
+    hit_id: 'm', start_idx: 0, end_idx: 6,
     node_index: { tb: 'tb_5_6#0' },
     children: ['tb_5_6#0'],
-  } as unknown as MatchDict
+  } as unknown as HitDict
 
   it('anchor_bo_id 为 instance_id 形态:byId 直连命中 bo,并入集', () => {
     const ids = matchedIds([M], [TB_ANCHOR, BO_ANCHOR], [{ src: 'burst', dst: 'tb', kind: 'TemporalEdge', anchor_field: 'anchor_bo_id' }] as unknown as TopoEdge[])

@@ -107,8 +107,8 @@ describe('getNodesDiagnose', () => {
 
 describe('getPreview', () => {
   it('builds GET URL with query params + parses JSON', async () => {
-    const fakeResp = { analysis: { events: [], matches: [] },
-                       summary: { events: 0, matches: 0 },
+    const fakeResp = { analysis: { events: [], hits: [] },
+                       summary: { events: 0, hits: 0 },
                        pattern_spec: { pattern_id: 'p',
                                        topology: { nodes: [], edges: [] },
                                        event_styles: {} },
@@ -119,7 +119,7 @@ describe('getPreview', () => {
       new Response(JSON.stringify(fakeResp), { status: 200 })
     )
     const r = await getPreview('p', 'AAPL', '2025-01-01', '2025-12-31', 20)
-    expect(r.analysis.matches).toEqual([])
+    expect(r.analysis.hits).toEqual([])
     expect(fetchSpy).toHaveBeenCalledOnce()
     const url = fetchSpy.mock.calls[0][0] as string
     expect(url).toContain('/preview?pattern_id=p&symbol=AAPL')

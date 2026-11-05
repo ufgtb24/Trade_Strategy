@@ -5,10 +5,10 @@ import {
   qualifiedIdsOf, eventTierOf, nodeOfEventByBand, isBandVisible,
   renderGridOf, subBandTagList,
 } from '../src/render/visible'
-import type { TopoNode, TopoEdge, EventDict, MatchDict, AttrRow, Diagnostics, Bar } from '../src/types'
+import type { TopoNode, TopoEdge, EventDict, HitDict, AttrRow, Diagnostics, Bar } from '../src/types'
 import { ANALYSIS } from './fixtures'
 
-const { matches } = ANALYSIS
+const { hits: matches } = ANALYSIS
 
 describe('matchedIds', () => {
   it('matchedIds = union of all node_index 精确实例(instance_id 字符串直加)', () => {
@@ -18,7 +18,7 @@ describe('matchedIds', () => {
   })
 
   it('沿 child_refs.members 递归展开:matched composite event 的 constituent 也进 matched 集(协议驱动、非字段名)', () => {
-    const matches: MatchDict[] = [{ match_id: 'm1', start_idx: 0, end_idx: 10,
+    const matches: HitDict[] = [{ hit_id: 'm1', start_idx: 0, end_idx: 10,
       node_index: { burst: 'burst_1_5#0' }, children: ['burst_1_5#0'], predicate_trace: null }]
     const events: EventDict[] = [
       { instance_id: 'burst_1_5#0', node_id: 'burst', instance_idx: 0, start_idx: 1, end_idx: 5,
@@ -37,7 +37,7 @@ describe('matchedIds', () => {
   })
 
   it('沿 edges.anchor_field 反查:tb.anchor_bo_id 引用的 bo 也进 matched 集(默认 expandAnchor)', () => {
-    const matches: MatchDict[] = [{ match_id: 'm1', start_idx: 0, end_idx: 10,
+    const matches: HitDict[] = [{ hit_id: 'm1', start_idx: 0, end_idx: 10,
       node_index: { tb: 'tb_7#0' }, children: ['tb_7#0'], predicate_trace: null }]
     const events: EventDict[] = [
       { instance_id: 'tb_7#0', node_id: 'tb', instance_idx: 0, start_idx: 7, end_idx: 7,
@@ -51,7 +51,7 @@ describe('matchedIds', () => {
   })
 
   it('实例级展开:同 (node,span) 多实例(instance_idx #0/#1)各进集、互不覆盖;node_index 精确引用两实例', () => {
-    const matches: MatchDict[] = [{ match_id: 'm1', start_idx: 0, end_idx: 10,
+    const matches: HitDict[] = [{ hit_id: 'm1', start_idx: 0, end_idx: 10,
       node_index: { tb: 'tb_266#0', tb2: 'tb_266#1' },
       children: ['tb_266#0', 'tb_266#1'], predicate_trace: null }]
     const events: EventDict[] = [
@@ -72,19 +72,19 @@ describe('matchedIds', () => {
   })
 
   it('events/edges 为空数组:无实例可展开 → 空集(node_index 无引用)', () => {
-    const ms: MatchDict[] = [{ match_id: 'M1', start_idx: 1, end_idx: 5, children: ['burst_1_5#0'], node_index: {}, predicate_trace: null }]
+    const ms: HitDict[] = [{ hit_id: 'M1', start_idx: 1, end_idx: 5, children: ['burst_1_5#0'], node_index: {}, predicate_trace: null }]
     const s = matchedIds(ms, [], [])
     expect(s.size).toBe(0)
   })
 
   it('matchedIds 初始集按 node_index 精确实例(非身份展开)', () => {
     // 构造:两个 match,node_index 分别引用 tb_293 的 #0 / #1(APCX 形态)
-    const m0 = { match_id: 'bb@0-3', start_idx: 0, end_idx: 3,
+    const m0 = { hit_id: 'bb@0-3', start_idx: 0, end_idx: 3,
                  node_index: { burst: 'burst_0_2#0', tb: 'tb_293#0' },
-                 children: ['burst_0_2#0', 'tb_293#0'], predicate_trace: null } as MatchDict
-    const m1 = { match_id: 'bb@0-3b', start_idx: 0, end_idx: 3,
+                 children: ['burst_0_2#0', 'tb_293#0'], predicate_trace: null } as HitDict
+    const m1 = { hit_id: 'bb@0-3b', start_idx: 0, end_idx: 3,
                  node_index: { burst: 'burst_0_2#1', tb: 'tb_293#1' },
-                 children: ['burst_0_2#1', 'tb_293#1'], predicate_trace: null } as MatchDict
+                 children: ['burst_0_2#1', 'tb_293#1'], predicate_trace: null } as HitDict
     const events = [
       { instance_id: 'tb_293#0', node_id: 'tb', instance_idx: 0, start_idx: 293, end_idx: 293, child_refs: {} } as EventDict,
       { instance_id: 'tb_293#1', node_id: 'tb', instance_idx: 1, start_idx: 293, end_idx: 293, child_refs: {} } as EventDict,
@@ -101,9 +101,9 @@ describe('matchedIds', () => {
       { instance_id: 'tb_1#1', node_id: 'tb', instance_idx: 1, start_idx: 1, end_idx: 1, child_refs: {} } as EventDict,
       { instance_id: 'tb_1#2', node_id: 'tb', instance_idx: 2, start_idx: 1, end_idx: 1, child_refs: {} } as EventDict,
     ]
-    const m = { match_id: 'bb@1-1', start_idx: 1, end_idx: 1,
+    const m = { hit_id: 'bb@1-1', start_idx: 1, end_idx: 1,
                 node_index: { tb: 'tb_1#1' },
-                children: ['tb_1#1'], predicate_trace: null } as MatchDict
+                children: ['tb_1#1'], predicate_trace: null } as HitDict
     const s = matchedIds([m], events, [])
     expect(s.has('tb_1#0')).toBe(false)   // 身份展开的旧行为会进 #0;精确引用不进
     expect(s.has('tb_1#1')).toBe(true)

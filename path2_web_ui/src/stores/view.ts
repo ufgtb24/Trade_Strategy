@@ -166,7 +166,7 @@ export const DEBUG_ENABLED_NODES = Object.keys(anchorsOf).filter(k => k !== '_de
 import { computed, ref, shallowRef, watch } from 'vue'
 import type {
   MultiScanResultFile, StockResult, PerPatternResult,
-  MatchDict, EventDict, Tier, Diagnostics, Level, SerializedPattern, Analysis, ScanMeta,
+  HitDict, EventDict, Tier, Diagnostics, Level, SerializedPattern, Analysis, ScanMeta,
   TimeScopeResponse, PairScopeResponse, WorkingCopySlot, ViewWindow,
 } from '../types'
 import { deriveNodeColors } from '../render/colors'
@@ -250,7 +250,7 @@ function saveLevelToLS(l: Level): void {
 export const useViewStore = defineStore('view', () => {
   // ── state ────────────────────────────────────────────────────────
   // shallowRef:scanFile 全程整体替换(loadScanFile/clearScanFile),无内部 mutate,
-  // 避免对 4000+ stocks×{events,matches,clauses} 树建深 Proxy 拖慢首屏与排序
+  // 避免对 4000+ stocks×{events,hits,clauses} 树建深 Proxy 拖慢首屏与排序
   const scanFile = shallowRef<MultiScanResultFile | null>(null)
   const currentScanName = ref<string | null>(null)
   const mode = ref<ViewMode>('annotate')
@@ -513,7 +513,7 @@ export const useViewStore = defineStore('view', () => {
     if (!_previewHits.value || previewLoading.value) return null
     const pv = preview.value!
     const pid = activePatternId.value!
-    const ms = pv.analysis.matches
+    const ms = pv.analysis.hits
     const num = ms.length
     // fr 口径须与冻结行 unionRows 消费的 max_forward_return 一致(skip null,取 max);
     // 此处客户端重算是那份后端语义的对手件,后端若改 max 定义,这里需同步。
@@ -543,10 +543,10 @@ export const useViewStore = defineStore('view', () => {
         const pp: PerPatternResult | undefined = r.per_pattern[pid]
         return {
           pid,
-          num: pp ? (pp.summary?.matches ?? 0) : null,
+          num: pp ? (pp.summary?.hits ?? 0) : null,
           fr:  pp?.max_forward_return ?? null,
           fd:  pp?.min_forward_drawdown ?? null,
-          matched: (pp?.summary?.matches ?? 0) > 0,
+          matched: (pp?.summary?.hits ?? 0) > 0,
         } as UnionCell
       }),
     }))
@@ -803,7 +803,7 @@ export const useViewStore = defineStore('view', () => {
   //   1 → 直选(focusedMatchId + focusedInstanceId=instanceId)
   //   ≥2 → 多归属 pending(candidateMatchIds + pendingDisambigInstanceId=instanceId)
   function focusEvent(instanceId: string): void {
-    const matches = effectiveAnalysis.value?.matches ?? []
+    const matches = effectiveAnalysis.value?.hits ?? []
     const events  = effectiveAnalysis.value?.events  ?? []
 
     // 焦点意图:add 焦点所在 node 到展开集(不折叠其他 node);node 无解则不动集合。
@@ -842,7 +842,7 @@ export const useViewStore = defineStore('view', () => {
       focusedInstanceId.value = null
       clearCandidates()
     } else if (ms.length === 1) {
-      focusedMatchId.value = ms[0].match_id
+      focusedMatchId.value = ms[0].hit_id
       selectedInstanceId.value = null
       focusedInstanceId.value = instanceId
       clearCandidates()
@@ -851,7 +851,7 @@ export const useViewStore = defineStore('view', () => {
       focusedMatchId.value = null
       selectedInstanceId.value = null
       focusedInstanceId.value = null
-      setCandidateMatches(ms.map(m => m.match_id))
+      setCandidateMatches(ms.map(m => m.hit_id))
       pendingDisambigInstanceId.value = instanceId
     }
     autoFollowLevel(instanceId)
@@ -1064,9 +1064,9 @@ export const useViewStore = defineStore('view', () => {
   // focusedInstanceId(1 归属·直选)互斥,合并即「当前聚焦实例」。取代旧的事件级焦点派生。
   const focusedInstanceRef = computed<string | null>(() => selectedInstanceId.value ?? focusedInstanceId.value)
 
-  const selectedMatch = computed<MatchDict | null>(() => {
+  const selectedMatch = computed<HitDict | null>(() => {
     if (!focusedMatchId.value || !effectiveAnalysis.value) return null
-    return effectiveAnalysis.value.matches.find(m => m.match_id === focusedMatchId.value) ?? null
+    return effectiveAnalysis.value.hits.find(m => m.hit_id === focusedMatchId.value) ?? null
   })
 
   // 视觉层(spec §3.1 分层):focusedMatchId 存在 → 亮 group 展开集;多归属 pending 时不亮
@@ -1159,7 +1159,7 @@ export const useViewStore = defineStore('view', () => {
     ? isolatedNodeIds(effectivePattern.value.topology) : new Set())
 
   const matchedIds = computed<Set<string>>(() => matchedIdsOf(
-    effectiveAnalysis.value?.matches ?? [], effectiveAnalysis.value?.events ?? [],
+    effectiveAnalysis.value?.hits ?? [], effectiveAnalysis.value?.events ?? [],
     effectivePattern.value?.topology.edges ?? []))
 
   // 实例化契约下 matchedEventIds ≡ matchedIds(集合元素即 instance_id;身份级判定已消灭,

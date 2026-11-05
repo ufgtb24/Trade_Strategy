@@ -86,7 +86,7 @@ test('zoom-in 后点副图空白触发全量 render → 主图 y 轴不回跳全
   // 铺垫非空态(选一个 match),再点副图空白清空 —— 两步各触发一次 render(false)。
   await page.evaluate(() => {
     const view = (window as any).__e2e.view
-    const m = view.effectiveAnalysis?.matches?.[0]
+    const m = view.effectiveAnalysis?.hits?.[0]
     if (m) view.focusMatch(m.event_id)
   })
   await page.waitForTimeout(200)
@@ -108,7 +108,7 @@ test('zoom-in 后 Esc 清选中触发全量 render → 主图 y 轴不回跳全�
 
   await page.evaluate(() => {
     const view = (window as any).__e2e.view
-    const m = view.effectiveAnalysis?.matches?.[0]
+    const m = view.effectiveAnalysis?.hits?.[0]
     if (m) view.focusMatch(m.event_id)
   })
   await page.waitForTimeout(200)

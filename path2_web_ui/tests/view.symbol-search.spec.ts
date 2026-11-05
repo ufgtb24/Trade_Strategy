@@ -19,8 +19,8 @@ function makeFile(symbols: string[]): MultiScanResultFile {
     results: symbols.map(s => ({
       symbol: s,
       per_pattern: {
-        bo_only: { summary: { matches: 1 }, analysis: { events: [], matches: [] }, max_forward_return: 0.1 },
-        bbb:     { summary: { matches: 1 }, analysis: { events: [], matches: [] }, max_forward_return: 0.1 },
+        bo_only: { summary: { hits: 1 }, analysis: { events: [], hits: [] }, max_forward_return: 0.1 },
+        bbb:     { summary: { hits: 1 }, analysis: { events: [], hits: [] }, max_forward_return: 0.1 },
       },
     })),
   }
@@ -82,12 +82,12 @@ describe('view store · symbolQuery', () => {
       },
       results: [
         { symbol: 'AAA', per_pattern: {
-          bo_only: { summary: { matches: 1 }, analysis: { events: [], matches: [] }, max_forward_return: 0.1 },
-          bbb:     { summary: { matches: 0 }, analysis: { events: [], matches: [] }, max_forward_return: null },
+          bo_only: { summary: { hits: 1 }, analysis: { events: [], hits: [] }, max_forward_return: 0.1 },
+          bbb:     { summary: { hits: 0 }, analysis: { events: [], hits: [] }, max_forward_return: null },
         }},
         { symbol: 'BBB', per_pattern: {
-          bo_only: { summary: { matches: 0 }, analysis: { events: [], matches: [] }, max_forward_return: null },
-          bbb:     { summary: { matches: 1 }, analysis: { events: [], matches: [] }, max_forward_return: 0.2 },
+          bo_only: { summary: { hits: 0 }, analysis: { events: [], hits: [] }, max_forward_return: null },
+          bbb:     { summary: { hits: 1 }, analysis: { events: [], hits: [] }, max_forward_return: 0.2 },
         }},
       ],
     }

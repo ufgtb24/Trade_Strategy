@@ -17,7 +17,7 @@ function scanFile2(): any {
     scan: { scan_ts: '20260720T000000', start_date: '2025-01-01', end_date: '2025-06-01', label_horizon: 20 },
     // ACRS 在冻结扫描里 bbb 有命中 → 进 filteredSortedRows(否则不在列表、无宿主行)
     results: [{ symbol: 'ACRS', per_pattern: {
-      bbb: { summary: { matches: 1 }, max_forward_return: 0.5, analysis: { events: [], matches: [] } },
+      bbb: { summary: { hits: 1 }, max_forward_return: 0.5, analysis: { events: [], hits: [] } },
     } }],
   }
 }
@@ -27,7 +27,7 @@ function setupExplore(v: any) {
   v.selectSymbol('ACRS')
   ;(v as any).preview = {
     symbol: 'ACRS',
-    analysis: { events: [], matches: [{ forward_return: 0.30 }, { forward_return: 0.10 }] },
+    analysis: { events: [], hits: [{ forward_return: 0.30 }, { forward_return: 0.10 }] },
     pattern_spec: { pattern_id: 'bbb', topology: { nodes: [], edges: [] }, event_styles: {} },
     scan: { label_horizon: 20 },
   }

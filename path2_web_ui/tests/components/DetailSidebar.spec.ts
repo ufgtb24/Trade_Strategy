@@ -45,7 +45,7 @@ const INLINE_SCAN: MultiScanResultFile = {
       symbol: 'TEST',
       per_pattern: {
         test_pattern: {
-          summary: { down: 2, side: 2, bo: 3, burst: 1, tb: 1, matches: 1 },
+          summary: { down: 2, side: 2, bo: 3, burst: 1, tb: 1, hits: 1 },
           analysis: {
             events: [
               // down band: 事件 2 个 (down1#0 匹配, down2#0 仅 qualified)
@@ -64,9 +64,9 @@ const INLINE_SCAN: MultiScanResultFile = {
               // tb band: 1 匹配
               { node_id: 'tb', instance_id: 'tb14#0', instance_idx: 0, start_idx: 14, end_idx: 14, child_refs: {} },
             ],
-            matches: [
+            hits: [
               {
-                match_id: 'm1', start_idx: 1, end_idx: 14,
+                hit_id: 'm1', start_idx: 1, end_idx: 14,
                 node_index: { down: 'down1#0', side: 'side1#0', burst: 'burst1#0', tb: 'tb14#0' },
                 children: ['down1#0', 'side1#0', 'burst1#0', 'tb14#0', 'bo9#0', 'bo11#0'],
                 predicate_trace: {
@@ -326,8 +326,8 @@ describe('DetailSidebar (5-node: pattern nodes + stream-source)', () => {
               ...baseResult,
               analysis: {
                 ...baseResult.analysis,
-                matches: [
-                  { ...baseResult.analysis.matches[0], forward_return: 0.05 },
+                hits: [
+                  { ...baseResult.analysis.hits[0], forward_return: 0.05 },
                 ],
               },
             },
@@ -364,8 +364,8 @@ describe('DetailSidebar (5-node: pattern nodes + stream-source)', () => {
               ...baseResult,
               analysis: {
                 ...baseResult.analysis,
-                matches: [
-                  { ...baseResult.analysis.matches[0], forward_return: 0.05, forward_drawdown: -0.08 },
+                hits: [
+                  { ...baseResult.analysis.hits[0], forward_return: 0.05, forward_drawdown: -0.08 },
                 ],
               },
             },

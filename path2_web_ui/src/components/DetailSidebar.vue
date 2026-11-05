@@ -128,13 +128,13 @@
     </template>
 
     <!-- 命中匹配列表:analysis 就绪时常驻;点行 → 选中 match 展开 trace + 图上高亮 -->
-    <template v-if="effectivePattern && effectiveAnalysis && effectiveAnalysis.matches.length">
+    <template v-if="effectivePattern && effectiveAnalysis && effectiveAnalysis.hits.length">
       <h3 class="section-title">命中匹配</h3>
       <div
-        v-for="(m, mi) in effectiveAnalysis.matches" :key="m.match_id"
+        v-for="(m, mi) in effectiveAnalysis.hits" :key="m.hit_id"
         class="match-row"
-        :class="{ 'match-row--selected': markedMatchIds.has(m.match_id) }"
-        @click="selectMatchRow(m.match_id)"
+        :class="{ 'match-row--selected': markedMatchIds.has(m.hit_id) }"
+        @click="selectMatchRow(m.hit_id)"
       >
         <span class="match-span">{{ '①②③④⑤⑥⑦⑧⑨'[mi] ?? (mi + 1) }} {{ m.start_idx }}–{{ m.end_idx }}</span>
         <span v-if="m.forward_return !== undefined" class="match-ret"
@@ -370,10 +370,10 @@ function selectMatchRow(matchId: string): void {
 const pairPayloadValid = computed(() =>
   !!pairScopeResponse.value && 'valid' in pairScopeResponse.value.payload)
 
-/** 硬伤级修补:dropped_matches(A2 post-filter 淘汰的残缺 match)已加到 path2/dag/result.py::
+/** 硬伤级修补:dropped_hits(A2 post-filter 淘汰的残缺 match)已加到 path2/dag/result.py::
  * AnalysisResult,但 serialize.py 尚未序列化进前端 Analysis 契约——any-cast 防御式探测,同
  * 数据未到时恒空数组、不渲染。*/
-const droppedMatches = computed<unknown[]>(() => (effectiveAnalysis.value as any)?.dropped_matches ?? [])
+const droppedMatches = computed<unknown[]>(() => (effectiveAnalysis.value as any)?.dropped_hits ?? [])
 
 function closeDetailCard() {
   view.clearDetailCard()   // clearDetailCard 内部已重置 currentDiagnoseNode

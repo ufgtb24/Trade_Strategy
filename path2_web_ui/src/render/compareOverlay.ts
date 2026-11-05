@@ -13,7 +13,7 @@
  * event、hit 的起止都是 K 线下标:app 跑的区间是这只股票截到训练段末日的全部 K 线,和图上的 K 线逐根对齐
  * (stores/appLink.ts;后端测试 tests/path2_web/test_data_wall.py 核对)。
  */
-import type { EventDict, MatchDict, Tier } from '../types'
+import type { EventDict, HitDict, Tier } from '../types'
 import type { Lane } from '../annotate/model'
 import { packLanes } from './geometry'
 import { APP_ROW_H, LANE_ROW_H } from './annotateLanes'
@@ -75,7 +75,7 @@ export function compareLanes(base: readonly Lane[], features: Readonly<Record<st
  * 在 slot 里的 child event;每个 event 跨度里的每一根都是买入日(path2/core.py 的 Event.sample_bar_indices)。
  * 没有 endNode、或在这次 hit 里解析不到,为空。
  */
-export function buyDaysOf(m: MatchDict, byId: ReadonlyMap<string, EventDict>, endNode: string | null | undefined): number[] {
+export function buyDaysOf(m: HitDict, byId: ReadonlyMap<string, EventDict>, endNode: string | null | undefined): number[] {
   if (!endNode) return []
   const [nodeId, slot] = endNode.split('.')
   const own = m.node_index?.[nodeId]
@@ -88,10 +88,10 @@ export function buyDaysOf(m: MatchDict, byId: ReadonlyMap<string, EventDict>, en
 }
 
 /** bracket 轨上的 hit:各自分行(行号从 0 起);events、endNode 给了就带上每个 hit 的买入日(见 buyDaysOf)。 */
-export function packHits(matches: readonly MatchDict[], events: readonly EventDict[] = [],
+export function packHits(matches: readonly HitDict[], events: readonly EventDict[] = [],
                          endNode: string | null = null): { rows: number; placed: OverlayHit[] } {
   const byId = new Map(events.map(e => [e.instance_id, e]))
-  const placed = packLanes([...matches]).map(m => ({ id: m.match_id, start: m.start_idx, end: m.end_idx, row: m.lane,
+  const placed = packLanes([...matches]).map(m => ({ id: m.hit_id, start: m.start_idx, end: m.end_idx, row: m.lane,
                                                       buys: buyDaysOf(m, byId, endNode) }))
   return { rows: placed.reduce((n, h) => Math.max(n, h.row + 1), 0), placed }
 }

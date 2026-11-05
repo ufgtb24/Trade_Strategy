@@ -3,7 +3,7 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
 import { useViewStore } from '../src/stores/view'
-import type { MultiScanResultFile, MatchDict, EventDict, SerializedPattern } from '../src/types'
+import type { MultiScanResultFile, HitDict, EventDict, SerializedPattern } from '../src/types'
 
 // 基础 fixture:1 pattern · 2 nodes(bo/ta)· 1 edge · ta 3 实例(2 归属 1 无) · matches 2
 function makeFixture(): MultiScanResultFile {
@@ -30,12 +30,12 @@ function makeFixture(): MultiScanResultFile {
         { instance_id: 'ta_30_32#0', node_id: 'ta', instance_idx: 2, start_idx: 30, end_idx: 32,
           anchor_bo_id: 'bo_10#0', child_refs: {} },
       ],
-      matches: [
-        { match_id: 'm1', start_idx: 10, end_idx: 15, node_index: { ta: 'ta_12_15#0' }, children: ['bo_10#0', 'ta_12_15#0'] },
-        { match_id: 'm2', start_idx: 12, end_idx: 22, node_index: { ta: 'ta_20_22#0' }, children: ['bo_10#0', 'ta_20_22#0'] },
+      hits: [
+        { hit_id: 'm1', start_idx: 10, end_idx: 15, node_index: { ta: 'ta_12_15#0' }, children: ['bo_10#0', 'ta_12_15#0'] },
+        { hit_id: 'm2', start_idx: 12, end_idx: 22, node_index: { ta: 'ta_20_22#0' }, children: ['bo_10#0', 'ta_20_22#0'] },
         // ta_30_32#0 不属于任何 match(0 归属)
       ],
-    } as any, summary: { matches: 2 } } as any } } as any],
+    } as any, summary: { hits: 2 } } as any } } as any],
     scan: { win_start: '2020-01-01', win_end: '2020-12-31', label_horizon: 20 } as any,
   } as any
 }
@@ -148,7 +148,7 @@ describe('view store · focusMatch / focusEvent(单入口)/ clearFocus', () => {
 // ── Task 8(marker 实例绑定):focusEvent 单入口分级语义 ──────────────────────────
 // 归属 = match.node_index 值(instance_id 字符串)精确引用计数 0/1/≥2
 //   0 → 只聚焦实例;1 → 直选 match;≥2 → pendingDisambig(真共享实例)
-function makeDualEntryFixture(events: EventDict[], matches: MatchDict[]): MultiScanResultFile {
+function makeDualEntryFixture(events: EventDict[], matches: HitDict[]): MultiScanResultFile {
   const pattern: SerializedPattern = {
     pattern_id: 'p1',
     topology: {
@@ -164,8 +164,8 @@ function makeDualEntryFixture(events: EventDict[], matches: MatchDict[]): MultiS
     pattern_ids: ['p1'],
     per_pattern: { p1: { pattern_spec: pattern } as any },
     results: [{ symbol: 'AAA', per_pattern: { p1: { analysis: {
-      events, matches,
-    } as any, summary: { matches: matches.length } } as any } } as any],
+      events, hits: matches,
+    } as any, summary: { hits: matches.length } } as any } } as any],
     scan: { win_start: '2020-01-01', win_end: '2020-12-31', label_horizon: 20 } as any,
   } as any
 }
@@ -177,12 +177,12 @@ describe('view store · focusEvent 单入口(Task 8 实例绑定)', () => {
 
   it('focusEvent 按 instance_id 直选分属实例(不再待选择)', () => {
     // APCX 形态:两 match 的 node_index 分别引用 tb_v1_293#0/#1(各属一个 match)
-    const m0 = { match_id: 'bb@0-3#burst:burst_0_2|tb:tb_v1_293', start_idx: 0, end_idx: 3,
+    const m0 = { hit_id: 'bb@0-3#burst:burst_0_2|tb:tb_v1_293', start_idx: 0, end_idx: 3,
                  node_index: { burst: 'burst_0_2#0', tb: 'tb_v1_293#0' },
-                 children: ['burst_0_2#0', 'tb_v1_293#0'], predicate_trace: null } as MatchDict
-    const m1 = { match_id: 'bb@0-3#burst:burst_0_2|tb:tb_v1_293b', start_idx: 0, end_idx: 3,
+                 children: ['burst_0_2#0', 'tb_v1_293#0'], predicate_trace: null } as HitDict
+    const m1 = { hit_id: 'bb@0-3#burst:burst_0_2|tb:tb_v1_293b', start_idx: 0, end_idx: 3,
                  node_index: { burst: 'burst_0_2#1', tb: 'tb_v1_293#1' },
-                 children: ['burst_0_2#0', 'tb_v1_293#0'], predicate_trace: null } as MatchDict
+                 children: ['burst_0_2#0', 'tb_v1_293#0'], predicate_trace: null } as HitDict
     const events: EventDict[] = [
       { instance_id: 'tb_v1_293#0', node_id: 'tb', instance_idx: 0, start_idx: 12, end_idx: 15, child_refs: {} } as any,
       { instance_id: 'tb_v1_293#1', node_id: 'tb', instance_idx: 1, start_idx: 20, end_idx: 22, child_refs: {} } as any,
@@ -191,18 +191,18 @@ describe('view store · focusEvent 单入口(Task 8 实例绑定)', () => {
     const view = useViewStore()
     view.loadScanFile(makeDualEntryFixture(events, [m0, m1]))
     view.focusEvent('tb_v1_293#0')
-    expect(view.focusedMatchId).toBe(m0.match_id)          // 直选 match A
+    expect(view.focusedMatchId).toBe(m0.hit_id)          // 直选 match A
     expect(view.focusedInstanceId).toBe('tb_v1_293#0')
     expect(view.pendingDisambigInstanceId).toBeNull()       // 不再弹待选择
     view.focusEvent('tb_v1_293#1')
-    expect(view.focusedMatchId).toBe(m1.match_id)          // 直选 match B
+    expect(view.focusedMatchId).toBe(m1.hit_id)          // 直选 match B
   })
 
   it('focusEvent 真共享:同一 instance_id 被两 match 引用 → 待选择', () => {
-    const m0 = { match_id: 'bb@0-3a', start_idx: 0, end_idx: 3,
-                 node_index: { tb: 'tb_s#0' }, children: ['tb_s#0'], predicate_trace: null } as MatchDict
-    const m1 = { match_id: 'bb@0-3b', start_idx: 0, end_idx: 3,
-                 node_index: { tb: 'tb_s#0' }, children: ['tb_s#0'], predicate_trace: null } as MatchDict
+    const m0 = { hit_id: 'bb@0-3a', start_idx: 0, end_idx: 3,
+                 node_index: { tb: 'tb_s#0' }, children: ['tb_s#0'], predicate_trace: null } as HitDict
+    const m1 = { hit_id: 'bb@0-3b', start_idx: 0, end_idx: 3,
+                 node_index: { tb: 'tb_s#0' }, children: ['tb_s#0'], predicate_trace: null } as HitDict
     const events: EventDict[] = [
       { instance_id: 'tb_s#0', node_id: 'tb', instance_idx: 0, start_idx: 12, end_idx: 15, child_refs: {} } as any,
     ]

@@ -10,7 +10,7 @@ import { nextStarts, tierTagOf, tierTagShape, tierTagWidth, TIER_TAG_TIP } from 
 import { computeEventData, buildSubOption } from '../src/render/chart'
 import { computeSubGeometry } from '../src/render/subGeometry'
 import type { Lane } from '../src/annotate/model'
-import type { EventDict, MatchDict, Tier } from '../src/types'
+import type { EventDict, HitDict, Tier } from '../src/types'
 
 const ev = (node: string, s: number, e: number, k = 0): EventDict =>
   ({ instance_id: `${node}@${s}-${e}#${k}`, node_id: node, instance_idx: k, start_idx: s, end_idx: e })
@@ -55,8 +55,8 @@ describe('compare:event 叠到哪条轨、哪一行', () => {
   })
 
   it('hit 各自分行', () => {
-    const ms = [{ match_id: 'm0', start_idx: 1, end_idx: 3 }, { match_id: 'm1', start_idx: 2, end_idx: 4 },
-                { match_id: 'm2', start_idx: 5, end_idx: 5 }] as MatchDict[]
+    const ms = [{ hit_id: 'm0', start_idx: 1, end_idx: 3 }, { hit_id: 'm1', start_idx: 2, end_idx: 4 },
+                { hit_id: 'm2', start_idx: 5, end_idx: 5 }] as HitDict[]
     const { rows, placed } = packHits(ms)
     expect(rows).toBe(2)
     expect(placed.map(h => [h.id, h.row])).toEqual([['m0', 0], ['m1', 1], ['m2', 0]])
@@ -65,7 +65,7 @@ describe('compare:event 叠到哪条轨、哪一行', () => {
   it('hit 的买入日照 eval_meta 的 end_node 取:node 取它的 event 跨度,node.slot 取 slot 里 child 的跨度并起来', () => {
     const tb: EventDict = { ...ev('tb', 4, 12), child_refs: { segments: ['seg@5-6#0', 'seg@9-9#0'] } }
     const evs = [tb, ev('seg', 5, 6), ev('seg', 9, 9), ev('burst', 2, 3)]
-    const m = { match_id: 'm0', start_idx: 2, end_idx: 12, node_index: { tb: tb.instance_id, burst: 'burst@2-3#0' } } as unknown as MatchDict
+    const m = { hit_id: 'm0', start_idx: 2, end_idx: 12, node_index: { tb: tb.instance_id, burst: 'burst@2-3#0' } } as unknown as HitDict
     const byId = new Map(evs.map(e => [e.instance_id, e]))
     expect(buyDaysOf(m, byId, 'tb.segments')).toEqual([5, 6, 9])
     expect(buyDaysOf(m, byId, 'burst')).toEqual([2, 3])
@@ -81,7 +81,7 @@ describe('compare 的系列', () => {
   const { lanes, app } = compareLanes(BASE, { 'w-a': 'x', 'w-b': 'y' }, events, tierOf, () => true)
   const bg = bracketGeometry(3)
   const { geom } = laneGeometry(lanes, bg.top + bg.h)
-  const hits = packHits([{ match_id: 'm0', start_idx: 1, end_idx: 3 }] as MatchDict[])
+  const hits = packHits([{ hit_id: 'm0', start_idx: 1, end_idx: 3 }] as HitDict[])
   const draw = (tiers: boolean) => buildAnnotateSubOption(DATES.map(date => ({ date } as any)), {
     lanes, geom, nameOf: f => f, selectedId: null, preview: null, draft: null, zoom: null, width: 800,
     bracket: { geom: bg, placed: [] },

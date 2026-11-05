@@ -18,16 +18,16 @@ function makeFile(): MultiScanResultFile {
     },
     results: [
       { symbol: 'AAA', per_pattern: {
-        bo_only: { summary: { matches: 2 }, analysis: { events: [], matches: [] }, max_forward_return: 0.34 },
-        bbb:     { summary: { matches: 1 }, analysis: { events: [], matches: [] }, max_forward_return: 0.10 },
+        bo_only: { summary: { hits: 2 }, analysis: { events: [], hits: [] }, max_forward_return: 0.34 },
+        bbb:     { summary: { hits: 1 }, analysis: { events: [], hits: [] }, max_forward_return: 0.10 },
       }},
       { symbol: 'BBB', per_pattern: {
-        bo_only: { summary: { matches: 1 }, analysis: { events: [], matches: [] }, max_forward_return: 0.50 },
-        bbb:     { summary: { matches: 0 }, analysis: { events: [], matches: [] }, max_forward_return: null },
+        bo_only: { summary: { hits: 1 }, analysis: { events: [], hits: [] }, max_forward_return: 0.50 },
+        bbb:     { summary: { hits: 0 }, analysis: { events: [], hits: [] }, max_forward_return: null },
       }},
       { symbol: 'CCC', per_pattern: {
-        bo_only: { summary: { matches: 0 }, analysis: { events: [], matches: [] }, max_forward_return: null },
-        bbb:     { summary: { matches: 0 }, analysis: { events: [], matches: [] }, max_forward_return: null },
+        bo_only: { summary: { hits: 0 }, analysis: { events: [], hits: [] }, max_forward_return: null },
+        bbb:     { summary: { hits: 0 }, analysis: { events: [], hits: [] }, max_forward_return: null },
       }},
     ],
   }
@@ -77,7 +77,7 @@ describe('view store — multi pattern', () => {
     // Mock preview state
     ;(v as any).preview = {
       symbol: 'AAA',
-      analysis: { events: [{}], matches: [] },
+      analysis: { events: [{}], hits: [] },
       pattern_spec: { pattern_id: 'bo_only', topology: { nodes: [], edges: [] }, event_styles: {} },
       scan: {},
     }
@@ -250,7 +250,7 @@ describe('view store — patternHitCounts', () => {
 
   it('零命中的 pattern 给出 0 而非缺键', () => {
     const f = makeFile()
-    for (const r of f.results) r.per_pattern.bbb.summary.matches = 0
+    for (const r of f.results) r.per_pattern.bbb.summary.hits = 0
     const v = useViewStore()
     v.loadScanFile(f)
     expect(v.patternHitCounts.bbb).toBe(0)

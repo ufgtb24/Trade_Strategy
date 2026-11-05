@@ -17,7 +17,7 @@ import { computeSubGeometry, type BandGeom } from '../src/render/subGeometry'
 import {
   deriveTagMap, isolatedNodeIds, eventTierOf, nodeOfEventByBand, bandKeyOf, matchedIds,
 } from '../src/render/visible'
-import type { Bar, EventDict, MatchDict, Topology, Level, Tier } from '../src/types'
+import type { Bar, EventDict, HitDict, Topology, Level, Tier } from '../src/types'
 
 describe('chart.ts — computeEventData / buildMainOption / buildSubOption', () => {
   // Fixtures(简化最小场景:1 bar / 1 event / 1 match, 用来验契约与切分正确)
@@ -30,7 +30,7 @@ describe('chart.ts — computeEventData / buildMainOption / buildSubOption', () 
     { instance_id: 'tb_1#0', node_id: 'tb', start_idx: 1, end_idx: 1 },
   ] as any[]
   const matches = [
-    { match_id: 'm@0-1', start_idx: 0, end_idx: 1,
+    { hit_id: 'm@0-1', start_idx: 0, end_idx: 1,
       node_index: { burst: 'burst_0_1#0', tb: 'tb_1#0' },
       children: ['burst_0_1#0', 'tb_1#0'],
       forward_return: 0.05 } as any,
@@ -71,7 +71,7 @@ describe('chart.ts — computeEventData / buildMainOption / buildSubOption', () 
     expect(bundle.intervalData.some(d => d.instance_id === 'burst_0_1#0')).toBe(true)
     expect(bundle.pointData.some(d => d.instance_id === 'tb_1#0')).toBe(true)
     expect(bundle.bracketData.length).toBe(1)
-    expect(bundle.bracketData[0].match_id).toBe('m@0-1')
+    expect(bundle.bracketData[0].hit_id).toBe('m@0-1')
   })
 
   it('buildMainOption returns option with kline+volume+hit-spanner+price series only (no brackets/points/intervals)', () => {
@@ -149,9 +149,9 @@ describe('chart.ts — restored coverage (Task 6 review fix)', () => {
     { instance_id: 'pk1#0', node_id: 'pk_ghost', start_idx: 0, end_idx: 0, peak_idx: 0, pk_id: 1 } as any,
   ] as any[]
 
-  const matches: MatchDict[] = [
+  const matches: HitDict[] = [
     {
-      match_id: 'm1', start_idx: 1, end_idx: 16,
+      hit_id: 'm1', start_idx: 1, end_idx: 16,
       node_index: { down: 'down1#0', side: 'side1#0', burst: 'burst1#0', tb: 'tb16#0' },
       children: ['down1#0', 'side1#0', 'burst1#0', 'tb16#0'],
       predicate_trace: { where_results: {}, edge_results: {} },
@@ -464,12 +464,12 @@ describe('chart.ts — restored coverage (Task 6 review fix)', () => {
 
   // ── 4. endNode → bracketData.instance_id (chart.ts:200-204, §7-4) ──
   describe('4. endNode → bracketData.instance_id', () => {
-    it('endNode 缺省时 bracketData 只带 match_id 不带 instance_id(向后兼容)', () => {
+    it('endNode 缺省时 bracketData 只带 hit_id 不带 instance_id(向后兼容)', () => {
       const input = makeInput('detected')
       const bundle = computeEventData(bars, events, matches, input)
       expect(bundle.bracketData.length).toBeGreaterThan(0)
       for (const d of bundle.bracketData) {
-        expect(d.match_id).toBe('m1')
+        expect(d.hit_id).toBe('m1')
         expect(d.instance_id).toBeUndefined()
       }
     })
@@ -488,8 +488,8 @@ describe('chart.ts — restored coverage (Task 6 review fix)', () => {
     })
 
     it('node_index 值已是 instance_id 字符串时直用(实例流契约)', () => {
-      const refMatches: MatchDict[] = [{
-        match_id: 'mk', start_idx: 1, end_idx: 16,
+      const refMatches: HitDict[] = [{
+        hit_id: 'mk', start_idx: 1, end_idx: 16,
         node_index: { tb: 'tb16#0', down: 'down1#0', side: 'side1#0', burst: 'burst1#0' },
         children: ['down1#0', 'side1#0', 'burst1#0', 'tb16#0', 'tb18#0'],
         predicate_trace: { where_results: {}, edge_results: {} },
@@ -663,7 +663,7 @@ describe('buildSubOption — Task 4 graphic switch', () => {
     { instance_id: 'tb_1#0', node_id: 'tb', start_idx: 1, end_idx: 1 },
   ] as any[]
   const matches = [
-    { match_id: 'm@0-1', start_idx: 0, end_idx: 1,
+    { hit_id: 'm@0-1', start_idx: 0, end_idx: 1,
       node_index: { burst: 'burst_0_1#0', tb: 'tb_1#0' },
       children: ['burst_0_1#0', 'tb_1#0'],
       forward_return: 0.05 } as any,
@@ -834,7 +834,7 @@ describe('makeRenderBracket — 选中态放大+阴影', () => {
     value: (i: number) => [10, 20, 0, 1][i] ?? 0,
     coord: ([v]: [number, number]) => [v === 10 ? 100 : 200, 0],
   }
-  const items = [{ match_id: 'm1' }]
+  const items = [{ hit_id: 'm1' }]
   const mk = (selected: string | null, candidates = new Set<string>(), focus = false) =>
     makeRenderBracket(items, selected, candidates, 1.0, focus)({ dataIndex: 0 }, fakeApi) as any
 
@@ -1002,8 +1002,8 @@ describe('chart.ts — renderer zoomFactor 传播(spec 2026-07-03)', () => {
       { instance_id: 'burst_0_1#0', node_id: 'burst', start_idx: 0, end_idx: 1 },
       { instance_id: 'tb_1#0', node_id: 'tb', start_idx: 1, end_idx: 1 },
     ] as any[]
-    const matches: MatchDict[] = [
-      { match_id: 'm@0-1', start_idx: 0, end_idx: 1,
+    const matches: HitDict[] = [
+      { hit_id: 'm@0-1', start_idx: 0, end_idx: 1,
         node_index: { burst: 'burst_0_1#0', tb: 'tb_1#0' },
         children: ['burst_0_1#0', 'tb_1#0'],
         forward_return: 0.05 } as any,
@@ -1046,7 +1046,7 @@ describe('makeRenderBracket — zoomFactor 传播', () => {
     value: (i: number) => [10, 20, 1, 1][i] ?? 0,   // lane=1, matchLabelIdx=1
     coord: ([v]: [number, number]) => [v === 10 ? 100 : 200, 0],
   }
-  const items = [{ match_id: 'm1' }]
+  const items = [{ hit_id: 'm1' }]
   const TOP_PAD = 4      // subGeometry.ts BAND_TOP_PAD(bracket 区顶呼吸,unify 新增)
   const STRIDE = 9       // subGeometry.ts BAND_LANE_H(= 7+2)
   const RECT_H = 7       // subGeometry.ts BAND_MARKER_H
@@ -1101,8 +1101,8 @@ describe('buildSubOption — bracket focus 信号装配', () => {
     { instance_id: 'burst_0_1#0', node_id: 'burst', start_idx: 0, end_idx: 1 },
     { instance_id: 'tb_1#0', node_id: 'tb', start_idx: 1, end_idx: 1 },
   ] as any[]
-  const matches: MatchDict[] = [
-    { match_id: 'm@0-1', start_idx: 0, end_idx: 1,
+  const matches: HitDict[] = [
+    { hit_id: 'm@0-1', start_idx: 0, end_idx: 1,
       node_index: { burst: 'burst_0_1#0', tb: 'tb_1#0' },
       children: ['burst_0_1#0', 'tb_1#0'],
       forward_return: 0.05 } as any,

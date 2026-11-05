@@ -6,7 +6,7 @@ import { setActivePinia, createPinia } from 'pinia'
 import { useViewStore, SYMBOL_SORT_KEY } from '../src/stores/view'
 import type { MultiScanResultFile } from '../src/types'
 
-const emptyAnalysis = { events: [], matches: [] }
+const emptyAnalysis = { events: [], hits: [] }
 
 function makeFile(): MultiScanResultFile {
   return {
@@ -22,16 +22,16 @@ function makeFile(): MultiScanResultFile {
     },
     results: [
       { symbol: 'AAA', per_pattern: {
-        bo_only: { summary: { matches: 2 }, analysis: emptyAnalysis, max_forward_return: 0.34, min_forward_drawdown: -0.12 },
-        bbb:     { summary: { matches: 1 }, analysis: emptyAnalysis, max_forward_return: 0.10, min_forward_drawdown: -0.05 },
+        bo_only: { summary: { hits: 2 }, analysis: emptyAnalysis, max_forward_return: 0.34, min_forward_drawdown: -0.12 },
+        bbb:     { summary: { hits: 1 }, analysis: emptyAnalysis, max_forward_return: 0.10, min_forward_drawdown: -0.05 },
       }},
       { symbol: 'BBB', per_pattern: {
-        bo_only: { summary: { matches: 1 }, analysis: emptyAnalysis, max_forward_return: 0.50, min_forward_drawdown: null },
-        bbb:     { summary: { matches: 0 }, analysis: emptyAnalysis, max_forward_return: null, min_forward_drawdown: null },
+        bo_only: { summary: { hits: 1 }, analysis: emptyAnalysis, max_forward_return: 0.50, min_forward_drawdown: null },
+        bbb:     { summary: { hits: 0 }, analysis: emptyAnalysis, max_forward_return: null, min_forward_drawdown: null },
       }},
       { symbol: 'CCC', per_pattern: {
-        bo_only: { summary: { matches: 0 }, analysis: emptyAnalysis, max_forward_return: null, min_forward_drawdown: null },
-        bbb:     { summary: { matches: 1 }, analysis: emptyAnalysis, max_forward_return: 0.20, min_forward_drawdown: -0.18 },
+        bo_only: { summary: { hits: 0 }, analysis: emptyAnalysis, max_forward_return: null, min_forward_drawdown: null },
+        bbb:     { summary: { hits: 1 }, analysis: emptyAnalysis, max_forward_return: 0.20, min_forward_drawdown: -0.18 },
       }},
     ],
   }
@@ -53,12 +53,12 @@ describe('unionRows / sortedRows', () => {
     expect(b.cells[1].matched).toBe(false)
   })
 
-  it('cell.num reads summary.matches; cell.fr reads max_forward_return', () => {
+  it('cell.num reads summary.hits; cell.fr reads max_forward_return', () => {
     const v = useViewStore()
     v.loadScanFile(makeFile())
     const bbb = v.unionRows.find(r => r.symbol === 'BBB')!
     const bbbCell = bbb.cells.find(c => c.pid === 'bbb')!
-    expect(bbbCell.num).toBe(0)            // summary.matches = 0
+    expect(bbbCell.num).toBe(0)            // summary.hits = 0
     expect(bbbCell.fr).toBe(null)          // max_forward_return = null
     expect(bbbCell.matched).toBe(false)
     const aaa = v.unionRows.find(r => r.symbol === 'AAA')!

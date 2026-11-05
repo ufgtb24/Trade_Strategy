@@ -12,7 +12,7 @@ import { setActivePinia, createPinia } from 'pinia'
 import fs from 'node:fs'
 import path from 'node:path'
 import { useViewStore } from '../src/stores/view'
-import type { MultiScanResultFile, MatchDict, EventDict } from '../src/types'
+import type { MultiScanResultFile, HitDict, EventDict } from '../src/types'
 
 // vitest 环境不便 import json(项目无此先例),按旧 instance-binding 测试用 fs.readFile + JSON.parse,
 // fixture 挪入 tests/fixtures(outputs 不进 git);路径相对 path2_web_ui/(vitest 调用方 cwd)。
@@ -28,8 +28,8 @@ const analysis = scanJson.results[0].per_pattern['bb_v1'].analysis
 const OLD_IDENTITY_FIELDS = ['event_id', 'source_tag', 'class_id', 'instance_key']
 
 /** node_index 中引用 instanceId 的 match 列表(值 = instance_id 字符串精确引用)。 */
-function matchesReferencing(instanceId: string): MatchDict[] {
-  return analysis.matches.filter(m => Object.values(m.node_index).includes(instanceId))
+function matchesReferencing(instanceId: string): HitDict[] {
+  return analysis.hits.filter(m => Object.values(m.node_index).includes(instanceId))
 }
 
 /** 真共享 fixture:基于真实 scan 深拷贝,把两 match 的 node_index 都改成引用
@@ -38,13 +38,13 @@ function makeSharedFixture(): MultiScanResultFile {
   const base = JSON.parse(JSON.stringify(scanJson)) as MultiScanResultFile
   const a = base.results[0].per_pattern['bb_v1'].analysis
   const ev0 = a.events.find(e => e.instance_id === 'tb_293#0') as EventDict
-  a.matches = [
-    { match_id: 'm-shared-a', start_idx: 293, end_idx: 293,
+  a.hits = [
+    { hit_id: 'm-shared-a', start_idx: 293, end_idx: 293,
       node_index: { burst: 'burst_282_289#0', tb: 'tb_293#0' },
-      children: ['burst_282_289#0', 'tb_293#0'] } as MatchDict,
-    { match_id: 'm-shared-b', start_idx: 293, end_idx: 293,
+      children: ['burst_282_289#0', 'tb_293#0'] } as HitDict,
+    { hit_id: 'm-shared-b', start_idx: 293, end_idx: 293,
       node_index: { burst: 'burst_282_290#0', tb: 'tb_293#0' },
-      children: ['burst_282_290#0', 'tb_293#0'] } as MatchDict,
+      children: ['burst_282_290#0', 'tb_293#0'] } as HitDict,
   ]
   void ev0
   return base
@@ -76,9 +76,9 @@ describe('instance-id 真实数据验收(APCX · bb_v1)', () => {
     expect(matchesReferencing('tb_293#0')).toHaveLength(1)
     expect(matchesReferencing('tb_293#1')).toHaveLength(1)
     // 两引用对应不同 match
-    expect(matchesReferencing('tb_293#0')[0].match_id).not.toBe(matchesReferencing('tb_293#1')[0].match_id)
+    expect(matchesReferencing('tb_293#0')[0].hit_id).not.toBe(matchesReferencing('tb_293#1')[0].hit_id)
     // match.node_index 值是 instance_id 字符串,且 matches 也引用同一批实例
-    for (const m of analysis.matches) {
+    for (const m of analysis.hits) {
       for (const inst of Object.values(m.node_index)) {
         expect(typeof inst).toBe('string')
         expect(analysis.events.some(e => e.instance_id === inst)).toBe(true)
@@ -93,12 +93,12 @@ describe('instance-id 真实数据验收(APCX · bb_v1)', () => {
     const m1 = matchesReferencing('tb_293#1')[0]
 
     view.focusEvent('tb_293#0')
-    expect(view.focusedMatchId).toBe(m0.match_id)          // 直选 match A(引用 #0)
+    expect(view.focusedMatchId).toBe(m0.hit_id)          // 直选 match A(引用 #0)
     expect(view.focusedInstanceId).toBe('tb_293#0')
     expect(view.pendingDisambigInstanceId).toBeNull()       // 不再弹待选择
 
     view.focusEvent('tb_293#1')
-    expect(view.focusedMatchId).toBe(m1.match_id)          // 直选 match B(引用 #1)
+    expect(view.focusedMatchId).toBe(m1.hit_id)          // 直选 match B(引用 #1)
     expect(view.focusedInstanceId).toBe('tb_293#1')
     expect(view.pendingDisambigInstanceId).toBeNull()
   })

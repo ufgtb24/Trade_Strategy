@@ -15,7 +15,7 @@ import { describe, it, expect } from 'vitest'
 import { splitIntervalAtScanEnd } from '../src/render/visible'
 import { computeEventData } from '../src/render/chart'
 import type { BandRenderInput } from '../src/render/chart'
-import type { Bar, EventDict, MatchDict } from '../src/types'
+import type { Bar, EventDict, HitDict } from '../src/types'
 
 describe('splitIntervalAtScanEnd(纯函数)', () => {
   it('完全窗内(end <= scanEndIdx)→ [原区间],窗内段', () => {
@@ -80,7 +80,7 @@ describe('computeEventData — band interval 按 scanEnd 拆段', () => {
     { instance_id: 'seg_cross#0', node_id: 'tb_seg', instance_idx: 0, start_idx: 2, end_idx: 4 },  // 跨界
     { instance_id: 'seg_after#0', node_id: 'tb_seg', instance_idx: 0, start_idx: 4, end_idx: 4 },  // 点(窗外)
   ]
-  const matches: MatchDict[] = []
+  const matches: HitDict[] = []
 
   it('strictWindow 缺省 → interval 不拆(老行为,单条原色)', () => {
     const bundle = computeEventData(bars, events, matches, baseInput(null))

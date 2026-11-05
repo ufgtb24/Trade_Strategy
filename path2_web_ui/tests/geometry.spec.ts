@@ -26,13 +26,13 @@ describe('geometry', () => {
 
   it('packBrackets packs match spans by lane', () => {
     const b = packBrackets([
-      { match_id: 'm1', start_idx: 0, end_idx: 10 },
-      { match_id: 'm2', start_idx: 3, end_idx: 7 },   // 重叠 → lane 1
+      { hit_id: 'm1', start_idx: 0, end_idx: 10 },
+      { hit_id: 'm2', start_idx: 3, end_idx: 7 },   // 重叠 → lane 1
     ] as any)
-    expect(b.find(x => x.match_id === 'm1')!.lane).toBe(0)
-    expect(b.find(x => x.match_id === 'm2')!.lane).toBe(1)
+    expect(b.find(x => x.hit_id === 'm1')!.lane).toBe(0)
+    expect(b.find(x => x.hit_id === 'm2')!.lane).toBe(1)
     // 带序号(1-based)
-    expect(b.find(x => x.match_id === 'm1')!.ordinal).toBe(1)
+    expect(b.find(x => x.hit_id === 'm1')!.ordinal).toBe(1)
   })
 
   it('packLanes: inclusive spans sharing a bar take different lanes', () => {

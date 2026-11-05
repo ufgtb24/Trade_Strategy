@@ -7,8 +7,8 @@ import CandidateStatusBar from '../src/components/CandidateStatusBar.vue'
 vi.mock('../src/api', () => ({ saveWcMirror: async () => ({ ok: true } as any), clearWcMirror: async () => ({ ok: true } as any),
   getDiagnose: vi.fn(() => Promise.resolve(null)),
   getPreview: vi.fn(() => Promise.resolve({
-    analysis: { events: [], matches: [], node_index: {} },
-    summary: { events: 0, matches: 0 },
+    analysis: { events: [], hits: [], node_index: {} },
+    summary: { events: 0, hits: 0 },
     pattern_spec: {} as never, scan: {} as never,
   })),
   listScans: vi.fn(() => Promise.resolve([])),
@@ -33,9 +33,9 @@ describe('CandidateStatusBar (Task 10)', () => {
     const view = useViewStore()
     // Matches deliberately NOT in start_idx order — ensures ordinal is sorted by start_idx
     const matches = [
-      { match_id: 'm_late',  start_idx: 50, end_idx: 60, children: [], node_index: {}, predicate_trace: null },
-      { match_id: 'm_early', start_idx: 10, end_idx: 20, children: [], node_index: {}, predicate_trace: null },
-      { match_id: 'm_mid',   start_idx: 30, end_idx: 40, children: [], node_index: {}, predicate_trace: null },
+      { hit_id: 'm_late',  start_idx: 50, end_idx: 60, children: [], node_index: {}, predicate_trace: null },
+      { hit_id: 'm_early', start_idx: 10, end_idx: 20, children: [], node_index: {}, predicate_trace: null },
+      { hit_id: 'm_mid',   start_idx: 30, end_idx: 40, children: [], node_index: {}, predicate_trace: null },
     ]
     const w = mount(CandidateStatusBar, { props: { matches } })
     // Subscribe to all three — start_idx sort: m_early=①, m_mid=②, m_late=③
@@ -51,9 +51,9 @@ describe('CandidateStatusBar (Task 10)', () => {
   it('subset of candidates produces non-sequential ordinals', async () => {
     const view = useViewStore()
     const matches = [
-      { match_id: 'm_late',  start_idx: 50, end_idx: 60, children: [], node_index: {}, predicate_trace: null },
-      { match_id: 'm_early', start_idx: 10, end_idx: 20, children: [], node_index: {}, predicate_trace: null },
-      { match_id: 'm_mid',   start_idx: 30, end_idx: 40, children: [], node_index: {}, predicate_trace: null },
+      { hit_id: 'm_late',  start_idx: 50, end_idx: 60, children: [], node_index: {}, predicate_trace: null },
+      { hit_id: 'm_early', start_idx: 10, end_idx: 20, children: [], node_index: {}, predicate_trace: null },
+      { hit_id: 'm_mid',   start_idx: 30, end_idx: 40, children: [], node_index: {}, predicate_trace: null },
     ]
     const w = mount(CandidateStatusBar, { props: { matches } })
     // Candidate set is {m_early, m_late} (skip m_mid) → expected ① ③
@@ -66,7 +66,7 @@ describe('CandidateStatusBar (Task 10)', () => {
   it('falls back to arabic for ordinal > 9', async () => {
     // 10 matches, candidate is the 10th by start_idx (start_idx: 100, i=9)
     const matches = Array.from({ length: 10 }, (_, i) => ({
-      match_id: `m${i}`,
+      hit_id: `m${i}`,
       start_idx: (i + 1) * 10,
       end_idx: (i + 1) * 10 + 5,
       children: [] as string[],
