@@ -1,7 +1,8 @@
 # skills 的正文、脚本与输出
 
 Status: ready-for-agent
-Progress: not-started
+Progress: in-progress
+Claimed: 2026-11-04 parallel-tickets ticket-04 @ worktree impl/04-skills
 Blocked by: 02
 
 ## Purpose
