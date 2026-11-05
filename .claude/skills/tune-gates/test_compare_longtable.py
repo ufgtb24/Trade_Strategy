@@ -108,20 +108,20 @@ def test_plan_cells_screen_only_samples_design_combos():
 
 # ---- 首次穿越四态按买点事件回填与去重 ----
 
-def _match(mid, tb, burst):
+def _hit(hid, tb, burst):
     ev = lambda s, e: types.SimpleNamespace(start_idx=s, end_idx=e)  # noqa: E731
-    return types.SimpleNamespace(hit_id=mid, node_index={"tb": ev(*tb), "burst": ev(*burst)})
+    return types.SimpleNamespace(hit_id=hid, node_index={"tb": ev(*tb), "burst": ev(*burst)})
 
 
 def test_engine_keys_backfill_first_passage_per_buy_span():
-    """同一买点事件的两条 match:serialize 只给第一条填四态;回填后与长表的逐行满额四态逐行一致,
+    """同一买点事件的两条 hit:serialize 只给第一条填四态;回填后与长表的逐行满额四态逐行一致,
     而 hit_fp_counts 与长表按买点事件键去重后的四态和一致。"""
     fp1, fp3 = {"up": 2, "down": 1, "both": 0, "none": 3}, {"up": 0, "down": 4, "both": 1, "none": 0}
-    matches = [_match("m1", (10, 12), (1, 5)), _match("m2", (10, 12), (2, 5)), _match("m3", (20, 21), (15, 18))]
-    out_matches = [
-        {"hit_id": "m1", "buy_span": [[10, 12]], "forward_return": 0.1, "first_passage": fp1},
-        {"hit_id": "m2", "buy_span": [[10, 12]], "forward_return": 0.1, "first_passage": None},
-        {"hit_id": "m3", "buy_span": [[20, 21]], "forward_return": None, "first_passage": fp3},
+    hits = [_hit("h1", (10, 12), (1, 5)), _hit("h2", (10, 12), (2, 5)), _hit("h3", (20, 21), (15, 18))]
+    out_hits = [
+        {"hit_id": "h1", "buy_span": [[10, 12]], "forward_return": 0.1, "first_passage": fp1},
+        {"hit_id": "h2", "buy_span": [[10, 12]], "forward_return": 0.1, "first_passage": None},
+        {"hit_id": "h3", "buy_span": [[20, 21]], "forward_return": None, "first_passage": fp3},
     ]
     hit_fp_counts = {s: fp1[s] + fp3[s] for s in fp1}
     g = pd.DataFrame([
@@ -130,7 +130,7 @@ def test_engine_keys_backfill_first_passage_per_buy_span():
         {"burst.start": 15, "burst.end": 18, "tb.start": 20, "tb.end": 21, "fr": float("nan"), **{f"fp_{s}": v for s, v in fp3.items()}},
     ])
     key_nodes = ("burst", "tb")
-    assert _engine_keys(matches, out_matches, key_nodes) == _table_keys(g, key_nodes)
+    assert _engine_keys(hits, out_hits, key_nodes) == _table_keys(g, key_nodes)
     assert _table_fp_counts(g, ["tb.start", "tb.end"]) == hit_fp_counts
     # 不去重就会把同一段买点算两次——这正是要拦住的口径
     assert {s: int(g[f"fp_{s}"].sum()) for s in fp1} != hit_fp_counts

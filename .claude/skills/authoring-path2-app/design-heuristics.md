@@ -116,7 +116,7 @@
 | dst 紧随 src 之后(允许 gap) | `TemporalEdge(min_gap, max_gap)` | gap 是闭区间;锚 `src.end_idx → dst.start_idx`;`max_gap` 默认 `math.inf` |
 | dst 紧跟下一个 src,中间无更早同类 dst | `TemporalEdge(..., strict=True)` | `strict` 是 **kw_only**(防与 gap 位置参数错位);next 语义,漏写=any,影响召回。来源 `edges.py:104-109` |
 | src ⊇ dst 整体 | `ContainmentEdge` | dst.end 也受约束;dst 是宽事件时可能过严,常被 `StartContainmentEdge` 取代 |
-| src 只包含 dst 起点(dst.end 不约束) | `StartContainmentEdge` | match-preserving 弱化版,用于 dst 是宽事件且不该约束 dst.end 的场景(如 side→burst)。来源 `edges.py:178-204` |
+| src 只包含 dst 起点(dst.end 不约束) | `StartContainmentEdge` | hit-preserving 弱化版,用于 dst 是宽事件且不该约束 dst.end 的场景(如 side→burst)。来源 `edges.py:178-204` |
 | src 与 dst 部分交叠(dst 起于 src 内、延伸到 src 后) | `OverlapEdge` | 严格不等(不含端点);镜像方向写成 `OverlapEdge(dst, src)`,不单列。来源 `edges.py:144-157` |
 | src 与 dst 占据完全相同区间 | `EqualsEdge` | ⚠ **副作用**:作为 SRC 的节点会被引擎关闭 C1 剪枝(`PatternSpec.eq_src_nodes` 喂判据),性能/正确性陷阱。来源 `edges.py:160-175` |
 | src 锚定窗口内**禁止**存在 dst | `NegationEdge(min_gap, max_gap, inner_predicate=None)` | dst **不进 node_index/children 声明**(是约束非结构成员);`satisfies` **反转语义**(返 True = 违禁);取代旧 Neg detector 的 forbid。来源 `edges.py` |

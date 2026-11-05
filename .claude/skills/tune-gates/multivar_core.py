@@ -232,14 +232,14 @@ def classify(mod, base_dict: dict, scan_grid: dict, where_levels: dict) -> Class
 def check_predicate_axes(spec, fields: dict) -> None:
     """守卫 W/F 两类谓词轴(复审 I-4):spec §3.3 要求把 where/filter_params 当长表列谓词
     与"引擎施加"等价,前提是该 node 不是任何 NegationEdge 的目标——否则收紧谓词减少被
-    否定的事件、反而增加 match,事后按行过滤(只能减行)方向就错了。W 维(NodeSpec.where)
+    否定的事件、反而增加 hit,事后按行过滤(只能减行)方向就错了。W 维(NodeSpec.where)
     与 F 维(detector.filter_params)在 region 侧走的是同一条谓词轴(FILTER_PREDS +
     WHERE_PREDS 一起进 prepare 的 pred_specs),必须一起守——调用方须传入两类字段的并集
     (`{**cls.where_fields, **cls.filter_fields}`),不能只喂 where_fields。"""
     neg_dst = {e.dst for e in spec.edges if isinstance(e, NegationEdge)}
     for dim, (nid, field, _op) in fields.items():
         if nid in neg_dst:
-            raise ValueError(f"{col_of(dim)} 所在 node {nid!r} 是 NegationEdge 目标,谓词轴收紧可能增加 match,"
+            raise ValueError(f"{col_of(dim)} 所在 node {nid!r} 是 NegationEdge 目标,谓词轴收紧可能增加 hit,"
                              "不能作长表谓词轴(where/filter 均适用);改为真扫维")
 
 
@@ -443,7 +443,7 @@ def scan_one_stock(symbol: str, win: pd.DataFrame, start_ts, end_ts, cfg: ScanCo
         # ① BurstDetector 的 all_ends 物化对簇内每个 k 只 emit 一个前缀实例 ⟹ 两个 burst 不可能
         # 共享同一 last_bo;② 唯一的边 TemporalEdge(Child("burst", "last_bo"), "tb",
         # anchor_field="anchor_bo_id") 是身份标量相等;③ bo 是孤立 node、不进 node_index,不参与
-        # 笛卡尔拼接)下,同一个 end_node 实例在一个检测组合内至多属于一个 match(387 股实测零命中)。
+        # 笛卡尔拼接)下,同一个 end_node 实例在一个检测组合内至多属于一个 hit(387 股实测零命中)。
         # 命中说明拓扑变了,长表的行模型需要重新核对,故响亮失败(复审 I-1)。必须按 combo 重置:
         # instance_id 只由本股窗口内的 (node_id, span, 桶内序号) 决定,不同 combo 各自重跑 detector
         # 可能撞出同一个字符串。
@@ -488,10 +488,10 @@ def scan_one_stock(symbol: str, win: pd.DataFrame, start_ts, end_ts, cfg: ScanCo
                 # 悄悄落零行继续跑(复审 I-1)。
                 raise ValueError(
                     f"symbol={symbol}: end_node 事件物理实例 {leaf_ev.instance_id!r} 在同一"
-                    "检测组合内出现在多个 match 里——这只在当前拓扑的三条闩(见上方注释)"
+                    "检测组合内出现在多个 hit 里——这只在当前拓扑的三条闩(见上方注释)"
                     "成立时才不发生,命中说明拓扑已变,长表的行模型需要重新核对。"
                     "本工具不支持这种拓扑,请把相关维度改走真扫维(SCAN_GRID/detection_combos)"
-                    "而非谓词轴,或重新核实该拓扑是否真的会让同一 leaf 出现在多个 match 里。"
+                    "而非谓词轴,或重新核实该拓扑是否真的会让同一 leaf 出现在多个 hit 里。"
                 )
             seen_fp_leaves.add(leaf_ev.instance_id)
             row = {"symbol": symbol, **combo_cols}

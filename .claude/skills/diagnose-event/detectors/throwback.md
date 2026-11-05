@@ -77,6 +77,6 @@ for b in cand:
           and b['max_bar_vol_ratio'] >= snap['vol_spike_min'])
     print(b['instance_id'], 'pass_where=', pw,
           f"fd={b['first_drought']} dpk={b['distinct_pk']} vol={b['max_bar_vol_ratio']:.2f}")
-# cand 为空 → anchor 的 bo 没组进任何 burst(孤立 bo,看 dropped_matches)
+# cand 为空 → anchor 的 bo 没组进任何 burst(孤立 bo,看 dropped_hits)
 # cand 的 burst pass_where=False → 被 where 过滤,连带 tb 丢
 ```

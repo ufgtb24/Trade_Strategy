@@ -20,14 +20,14 @@ APP_MODULE = "path2_apps.bb_v1.dag_spec"
 
 # ⚠ 这是「某一次 scan 快照」的属性,不是「bb_v1 这个 app」的属性:Params.from_dict
 # 对快照里缺失的键会注入「当前代码默认值」,scan 早于某参数引入时该参数会被静默
-# 启用,重放 match 集必失配。当前配套的 scan(outputs/path2_web/scans/20260908T113225.json)
+# 启用,重放 hit 集必失配。当前配套的 scan(outputs/path2_web/scans/20260908T113225.json)
 # 的 params_snapshot 里 tb.max_day_drop_pct = 0.2 确实存在,所以这里必须是空 dict——
 # 换 scan 必须重核这个常量(骨架那边会提供一个可选入参临时覆盖它)。
 PARAM_OVERRIDES = {}
 
 # 去重键 = 买点事件身份 = (symbol, 回踩段起点, 回踩段终点)。all_ends 下同一个回踩会被不同 burst
 # 前缀各锚一次(tb 实例 id、锚定 bo 都不同),它们的 label 与四态完全相同,只算一个买点事件;
-# bo_idx / burst_count / m1_burst_runup 这类随锚点变化的列取数据原序第一条存活 match 的值。
+# bo_idx / burst_count / m1_burst_runup 这类随锚点变化的列取数据原序第一条存活 hit 的值。
 DEDUP_COLS = ("symbol", "tb_start", "tb_end")
 
 # bb 系当前的已知信号:来源 = docs/feature_candidates.md 已关闭段判定「有信号」的
@@ -40,10 +40,10 @@ PARAM_FEATURES = {"bo.exceed_threshold": "exceed_ratio_max"}
 
 
 def observe(m, evs, win, cols) -> dict | None:
-    """从一条 bb_v1 match 里取出 tb/bo/burst 几何观测列。
+    """从一条 bb_v1 hit 里取出 tb/bo/burst 几何观测列。
 
     参数:
-      m: 一条 match(res.hits 的元素)。
+      m: 一条 hit(res.hits 的元素)。
       evs: {instance_id: event}——detector 直接产出的事件,**不含容器 child**(如
         bottom_burst 的 "tb.segments" 展开出的每个 segment,其 instance_id 不在
         这里;要取 child 用 m.node_index[父 node].child_slots())。bb_v1 本身的
@@ -57,7 +57,7 @@ def observe(m, evs, win, cols) -> dict | None:
     返回:
       dict:仅 bb_v1 特异的列。骨架另行注入 symbol / label / entry_idx / entry_date / year /
         c0_atr_pct / up / down / both / none,本函数不再产出它们。
-      None:这条 match 不进样本(bo 在窗口首根之前、tb 起点越界、或锚点 ATR 非正)。
+      None:这条 hit 不进样本(bo 在窗口首根之前、tb 起点越界、或锚点 ATR 非正)。
     """
     tb = m.node_index["tb"]
     burst = m.node_index["burst"]

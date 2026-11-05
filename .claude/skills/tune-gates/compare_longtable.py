@@ -19,8 +19,8 @@
 
 **比较语义**：掩码谓词（F/W 维均按 classification 的字段与 op）、比较键（bound 节点 span + fr 12 位
 小数 + 四态多重集 + 每股 `hit_fp_counts`）、`serialize_per_pattern_result` 的全部入参与原件逐字相同。
-四态按买点事件计：serialize 只给同一买点事件（buy_span）的第一条 match 填首次穿越四态，长表每行都带
-所在买点事件的满额四态——引擎侧把首次出现时的四态回填给同一买点事件的每条 match，再按行比多重集；
+四态按买点事件计：serialize 只给同一买点事件（buy_span）的第一条 hit 填首次穿越四态，长表每行都带
+所在买点事件的满额四态——引擎侧把首次出现时的四态回填给同一买点事件的每条 hit，再按行比多重集；
 `hit_fp_counts` 与长表行按买点事件键（`study_io.segment_cols`）去重后的四态和比较。
 把「按格循环 → 内层按股」换成「按股并行 → 内层按格」不改变任何一次比较的内容：所有掩码谓词都是
 逐行的（无跨行聚合），先按 symbol 取子集再施掩码，与先施掩码再按 symbol 取子集等价。
@@ -127,23 +127,23 @@ def _plan_cells(cl: dict, fixed: dict, rng, n_random: int, n_tight: int) -> tupl
     return cells_a, cells_b, cells_c
 
 
-def _engine_keys(matches, out_matches: list, key_nodes) -> list:
-    """引擎侧逐 match 比较键(已排序):bound 节点 span + fr(12 位)+ 四态。
+def _engine_keys(hits, out_hits: list, key_nodes) -> list:
+    """引擎侧逐 hit 比较键(已排序):bound 节点 span + fr(12 位)+ 四态。
 
-    serialize 只给同一买点事件(buy_span)的第一条 match 填首次穿越四态、其余为 None;长表每行都带所在
-    买点事件的满额四态。这里把首次出现时的四态回填给同一买点事件的每条 match,两侧才能逐行对上。"""
-    keep = {x["hit_id"]: x for x in out_matches}
+    serialize 只给同一买点事件(buy_span)的第一条 hit 填首次穿越四态、其余为 None;长表每行都带所在
+    买点事件的满额四态。这里把首次出现时的四态回填给同一买点事件的每条 hit,两侧才能逐行对上。"""
+    keep = {x["hit_id"]: x for x in out_hits}
     fp_of_span: dict = {}
-    for x in out_matches:
+    for x in out_hits:
         fp_of_span.setdefault(tuple(map(tuple, x["buy_span"])), x["first_passage"])
     zero = dict.fromkeys(STATES, 0)
     rows = []
-    for mm in matches:
-        x = keep.get(mm.hit_id)
+    for h in hits:
+        x = keep.get(h.hit_id)
         if x is None:
             continue
         fp = fp_of_span[tuple(map(tuple, x["buy_span"]))] or zero
-        rows.append((tuple((nid, ev.start_idx, ev.end_idx) for nid, ev in sorted(mm.node_index.items()) if nid in key_nodes),
+        rows.append((tuple((nid, ev.start_idx, ev.end_idx) for nid, ev in sorted(h.node_index.items()) if nid in key_nodes),
                      None if x["forward_return"] is None else round(x["forward_return"], 12),
                      *(fp[s] for s in STATES)))
     return sorted(rows)

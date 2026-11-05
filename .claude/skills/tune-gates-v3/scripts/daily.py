@@ -320,9 +320,9 @@ class DailyEvaluator:
             dates, insufficient_history = set(), set()
             if not frame.empty:
                 result = module.analyze(frame.copy(deep=True), params=p)
-                for match in result.hits:
-                    for event in _resolve_end_events(match, end_node):
-                        # match.confirm_idx 是整组区间的尾部，不能拿它替代买点事件确认日。
+                for hit in result.hits:
+                    for event in _resolve_end_events(hit, end_node):
+                        # hit.confirm_idx 是整组区间的尾部，不能拿它替代买点事件确认日。
                         for index in event.sample_bar_indices():
                             if isinstance(index, bool) or not isinstance(index, Integral) or not 0 <= index < len(frame):
                                 raise ValueError("买点事件给出了检测输入范围外或非整数的样本下标")
