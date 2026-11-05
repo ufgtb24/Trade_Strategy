@@ -1,0 +1,127 @@
+## 行号引用（共 79 处）
+来源	引用	改前词头	改后词头	结论
+.claude/skills/tune-gates-v3/SKILL.md:14	path2/GLOSSARY.md:118	buy point / 买点	buy point / 买点	相同
+.claude/skills/tune-gates-v3/SKILL.md:15	path2/GLOSSARY.md:107	首次穿越 / FP	首次穿越 / FP	相同
+.claude/skills/tune-gates-v3/SKILL.md:17	path2/GLOSSARY.md:114	同日普通买入对照 / 同日对照 / 普通买入对照 / 普通对照 / matched baseline	同日普通买入对照 / 同日对照 / 普通买入对照 / 普通对照	规范词相同，词头有变
+.claude/skills/tune-gates-v3/SKILL.md:18	path2/GLOSSARY.md:111	随机日基线	随机日基线	相同
+.claude/skills/tune-gates-v3/SKILL.md:19	path2/GLOSSARY.md:103	前瞻收益 / mfr	前瞻收益 / mfr	相同
+.claude/skills/tune-gates-v3/references/method.md:43	path2/GLOSSARY.md:111	随机日基线	随机日基线	相同
+.claude/skills/tune-gates-v3/references/method.md:45	path2/GLOSSARY.md:114	同日普通买入对照 / 同日对照 / 普通买入对照 / 普通对照 / matched baseline	同日普通买入对照 / 同日对照 / 普通买入对照 / 普通对照	规范词相同，词头有变
+.claude/skills/write-user-doc/SKILL.md:30	path2/GLOSSARY.md:73	pattern	pattern	相同
+docs/explain/tune-gates_v3_通俗解释.md:12	path2/GLOSSARY.md:73	pattern	pattern	相同
+docs/explain/tune-gates_v3_通俗解释.md:13	path2/GLOSSARY.md:118	buy point / 买点	buy point / 买点	相同
+docs/explain/tune-gates_v3_通俗解释.md:14	path2/GLOSSARY.md:107	首次穿越 / FP	首次穿越 / FP	相同
+docs/explain/tune-gates_v3_通俗解释.md:15	path2/GLOSSARY.md:114	同日普通买入对照 / 同日对照 / 普通买入对照 / 普通对照 / matched baseline	同日普通买入对照 / 同日对照 / 普通买入对照 / 普通对照	规范词相同，词头有变
+docs/explain/tune-gates_v3_通俗解释.md:16	path2/GLOSSARY.md:111	随机日基线	随机日基线	相同
+docs/explain/tune-gates_v3_通俗解释.md:17	path2/GLOSSARY.md:103	前瞻收益 / mfr	前瞻收益 / mfr	相同
+.scratch/annotation-path2/spec.md:18	path2/GLOSSARY.md:73	pattern	pattern	相同
+.scratch/annotation-path2/spec.md:18	path2/GLOSSARY.md:114	同日普通买入对照 / 同日对照 / 普通买入对照 / 普通对照 / matched baseline	同日普通买入对照 / 同日对照 / 普通买入对照 / 普通对照	规范词相同，词头有变
+.scratch/annotation-path2/spec.md:19	path2/GLOSSARY.md:127	验证段 / holdout	验证段 / holdout	相同
+.scratch/annotation-path2/spec.md:32	path2/GLOSSARY.md:124	训练段 / train	训练段 / train	相同
+.scratch/annotation-path2/spec.md:52	path2/GLOSSARY.md:137	特征名	特征名	相同
+.scratch/annotation-path2/spec.md:52	path2/GLOSSARY.md:141	定义 / 特征定义	定义 / 特征定义	相同
+.scratch/annotation-path2/spec.md:56	path2/GLOSSARY.md:152	sample / 样本 / annotated pattern	sample / 样本 / annotated pattern	相同
+.scratch/annotation-path2/spec.md:57	path2/GLOSSARY.md:157	positive sample / 正样本	positive sample / 正样本	相同
+.scratch/annotation-path2/spec.md:57	path2/GLOSSARY.md:162	negative sample / 负样本	negative sample / 负样本	相同
+.scratch/annotation-path2/spec.md:58	path2/GLOSSARY.md:171	member box / 成员框	member box / 成员框	相同
+.scratch/annotation-path2/spec.md:58	path2/GLOSSARY.md:167	sample date / 样本日	sample date / 样本日	相同
+.scratch/annotation-path2/spec.md:61	path2/GLOSSARY.md:175	unsorted / 未归类	unsorted / 未归类	相同
+.scratch/annotation-path2/spec.md:64	path2_web/GLOSSARY.md:66	off_pattern / 不像	off_pattern / 不像	相同
+.scratch/annotation-path2/spec.md:64	path2_web/GLOSSARY.md:71	review / 复核	review / 复核	相同
+.scratch/annotation-path2/spec.md:64	path2_web/GLOSSARY.md:75	known	known	相同
+.scratch/annotation-path2/spec.md:66	path2/GLOSSARY.md:179	tracked	tracked	相同
+.scratch/annotation-path2/spec.md:70	path2/GLOSSARY.md:144	mapping / map	mapping / map	相同
+.scratch/annotation-path2/spec.md:314	path2_web/GLOSSARY.md:45	bracket	bracket	相同
+.scratch/annotation-path2/spec.md:420	path2/GLOSSARY.md:15	pk / 峰	pk / 峰	相同
+.scratch/annotation-path2/spec.md:713	path2/GLOSSARY.md:62	复合事件	复合事件	相同
+.scratch/annotation-path2/spec.md:755	path2/GLOSSARY.md:11	bo / 突破	bo / 突破	相同
+.scratch/annotation-path2/spec.md:755	path2/GLOSSARY.md:18	burst	burst	相同
+.scratch/annotation-path2/spec.md:755	path2/GLOSSARY.md:21	tb / 回踩	tb / 回踩	相同
+.scratch/annotation-path2/spec.md:755	path2/GLOSSARY.md:24	企稳段	企稳段	相同
+.scratch/annotation-path2/spec.md:755	path2/GLOSSARY.md:27	走势区段 / trend segment	走势区段 / trend segment	相同
+.scratch/annotation-path2/spec.md:755	path2/GLOSSARY.md:30	平台段 / platform	平台段 / platform	相同
+.scratch/annotation-path2/spec.md:755	path2/GLOSSARY.md:33	派发 / dist	派发 / dist	相同
+.scratch/annotation-path2/spec.md:968	path2/GLOSSARY.md:133	特征	特征	相同
+.scratch/annotation-path2/spec.md:968	path2/GLOSSARY.md:137	特征名	特征名	相同
+.scratch/annotation-path2/spec.md:968	path2/GLOSSARY.md:141	定义 / 特征定义	定义 / 特征定义	相同
+.scratch/annotation-path2/spec.md:968	path2/GLOSSARY.md:144	mapping / map	mapping / map	相同
+.scratch/annotation-path2/spec.md:968	path2/GLOSSARY.md:148	dag / mapped pattern	dag / mapped pattern	相同
+.scratch/annotation-path2/spec.md:968	path2/GLOSSARY.md:152	sample / 样本 / annotated pattern	sample / 样本 / annotated pattern	相同
+.scratch/annotation-path2/spec.md:968	path2/GLOSSARY.md:157	positive sample / 正样本	positive sample / 正样本	相同
+.scratch/annotation-path2/spec.md:968	path2/GLOSSARY.md:162	negative sample / 负样本	negative sample / 负样本	相同
+.scratch/annotation-path2/spec.md:968	path2/GLOSSARY.md:167	sample date / 样本日	sample date / 样本日	相同
+.scratch/annotation-path2/spec.md:968	path2/GLOSSARY.md:171	member box / 成员框	member box / 成员框	相同
+.scratch/annotation-path2/spec.md:968	path2/GLOSSARY.md:175	unsorted / 未归类	unsorted / 未归类	相同
+.scratch/annotation-path2/manual.md:37	path2/GLOSSARY.md:73	pattern	pattern	相同
+.scratch/annotation-path2/manual.md:38	path2/GLOSSARY.md:133	特征	特征	相同
+.scratch/annotation-path2/manual.md:39	path2/GLOSSARY.md:137	特征名	特征名	相同
+.scratch/annotation-path2/manual.md:40	path2/GLOSSARY.md:141	定义 / 特征定义	定义 / 特征定义	相同
+.scratch/annotation-path2/manual.md:42	path2/GLOSSARY.md:133	特征	特征	相同
+.scratch/annotation-path2/manual.md:43	path2/GLOSSARY.md:152	sample / 样本 / annotated pattern	sample / 样本 / annotated pattern	相同
+.scratch/annotation-path2/manual.md:44	path2/GLOSSARY.md:152	sample / 样本 / annotated pattern	sample / 样本 / annotated pattern	相同
+.scratch/annotation-path2/manual.md:45	path2/GLOSSARY.md:157	positive sample / 正样本	positive sample / 正样本	相同
+.scratch/annotation-path2/manual.md:46	path2/GLOSSARY.md:162	negative sample / 负样本	negative sample / 负样本	相同
+.scratch/annotation-path2/manual.md:47	path2/GLOSSARY.md:167	sample date / 样本日	sample date / 样本日	相同
+.scratch/annotation-path2/manual.md:48	path2/GLOSSARY.md:171	member box / 成员框	member box / 成员框	相同
+.scratch/annotation-path2/manual.md:49	path2/GLOSSARY.md:175	unsorted / 未归类	unsorted / 未归类	相同
+.scratch/annotation-path2/manual.md:50	path2/GLOSSARY.md:144	mapping / map	mapping / map	相同
+.scratch/annotation-path2/manual.md:51	path2/GLOSSARY.md:36	app	app	相同
+.scratch/annotation-path2/manual.md:52	path2/GLOSSARY.md:44	事件 / event	事件 / event	相同
+.scratch/annotation-path2/manual.md:54	path2/GLOSSARY.md:118	buy point / 买点	buy point / 买点	相同
+.scratch/annotation-path2/manual.md:55	path2/GLOSSARY.md:152	sample / 样本 / annotated pattern	sample / 样本 / annotated pattern	相同
+.scratch/annotation-path2/manual.md:56	path2_web/GLOSSARY.md:28	detected、qualified、matched	detected、qualified、in_hit	词条按票面改名
+.scratch/annotation-path2/manual.md:57	path2_web/GLOSSARY.md:48	tag	tag	相同
+.scratch/annotation-path2/manual.md:58	path2_web/GLOSSARY.md:45	bracket	bracket	相同
+.scratch/annotation-path2/manual.md:59	path2/GLOSSARY.md:124	训练段 / train	训练段 / train	相同
+.scratch/annotation-path2/manual.md:61	path2/GLOSSARY.md:114	同日普通买入对照 / 同日对照 / 普通买入对照 / 普通对照 / matched baseline	同日普通买入对照 / 同日对照 / 普通买入对照 / 普通对照	规范词相同，词头有变
+.scratch/annotation-path2/manual.md:62	path2/GLOSSARY.md:111	随机日基线	随机日基线	相同
+.scratch/annotation-path2/manual.md:66	path2/GLOSSARY.md:107	首次穿越 / FP	首次穿越 / FP	相同
+.scratch/annotation-path2/manual.md:73	path2_web/GLOSSARY.md:45	bracket	bracket	相同
+.scratch/annotation-path2/manual.md:541	path2/GLOSSARY.md:107	首次穿越 / FP	首次穿越 / FP	相同
+.scratch/annotation-path2-implementation/v-s1-notes.md:38	path2/GLOSSARY.md:169	sample date / 样本日	sample date / 样本日	相同
+
+按来源计：
+  .claude/skills/tune-gates-v3/SKILL.md: 5
+  .claude/skills/tune-gates-v3/references/method.md: 2
+  .claude/skills/write-user-doc/SKILL.md: 1
+  .scratch/annotation-path2-implementation/v-s1-notes.md: 1
+  .scratch/annotation-path2/manual.md: 26
+  .scratch/annotation-path2/spec.md: 38
+  docs/explain/tune-gates_v3_通俗解释.md: 6
+指向 path2 词表 :95～:102（这段内部的行动了）的引用：0
+
+本票在文档里改过的引用（改前有、现在没有的 / 现在有、改前没有的，都是词条有了自己的行，或删掉了过时的说明）：
+  去掉 .scratch/annotation-path2/manual.md:55 → path2/GLOSSARY.md:152
+  去掉 .scratch/annotation-path2/manual.md:73 → path2_web/GLOSSARY.md:45
+  新增 .scratch/annotation-path2/manual.md:53 → path2/GLOSSARY.md:95（hit / 命中 / recognized pattern）
+  新增 .scratch/annotation-path2/manual.md:55 → path2/GLOSSARY.md:183（match）
+
+## 逐行比较：改前改后不同的行
+path2/GLOSSARY.md: 改前 182 行，改后 190 行；前 182 行里不同的行号 [95, 96, 97, 98, 99, 100, 101, 102, 114, 116]
+path2_web/GLOSSARY.md: 改前 78 行，改后 78 行；前 78 行里不同的行号 [5, 26, 28, 29, 46, 62]
+结论：错位或行变动 0 处
+
+## 词条
+path2/GLOSSARY.md: 49 个词头
+path2_web/GLOSSARY.md: 18 个词头
+词头与 _Avoid_ 相交的检查覆盖两份词表全部词条
+  :95 词头 hit / 命中 / recognized pattern；_Avoid_ ['match', '匹配']
+  :183 词头 match；_Avoid_ ['app:buy', 'app:no_buy', 'shifted']
+  :188 词头 matching；_Avoid_ []
+  三档词条：['detected、qualified、in_hit']
+  CLAUDE.md 写 49 个词头，实际 49
+
+## 三个文件里剩下的 match 字样（逐行）
+path2/GLOSSARY.md:97: hit / 命中 / recognized pattern | _Avoid_: match —— 已退役的旧义：match 现在只指 hit 与 sample 的比较；匹配 —— 同一旧义的中文说法，泛指的「匹配」（正则匹配、参数名匹配）不在此列。
+path2/GLOSSARY.md:116: 同日普通买入对照 / 同日对照 / 普通买入对照 / 普通对照 | _Avoid_: 随机日基线 —— 那是从全宇宙随机抽日、不限同一天，含择时；把这里的对照叫成它会混淆两种口径；matched baseline —— matched 已是 sample 的状态词（与
+path2/GLOSSARY.md:154: sample / 样本 / annotated pattern | 一个 sample date、一个 judgment（positive 或 negative）、所属 pattern，以及作为依据的 member box。judgment 只按 sample dat
+path2/GLOSSARY.md:183: match | **match**：
+path2/GLOSSARY.md:185: match | 比较结果是 sample 的状态 matched / unmatched，界面上显示成 match tag。positive、negative sample 都比；negative sample ma
+path2/GLOSSARY.md:186: match | _Avoid_: `app:buy`、`app:no_buy` —— 已退役的取值；shifted —— 没有这一档，落不进容差就是 unmatched。
+path2/GLOSSARY.md:188: matching | **matching**：
+path2/GLOSSARY.md:190: matching | match 这个比较过程。求解出 hit 的是 solve，不叫 matching。
+path2_web/GLOSSARY.md:50: tag | 说的时候带上种类：`match tag`（sample 与 hit 比较的结果）、`diff tag`（sample 的 member box 与 mapping 比）、`tier tag`（框底下 
+GLOSSARY-MAP.md:19: 命名规则 | 1. **英文名为规范名**，中文作别名跟在词头后面。词性分工固定：名词指东西（pattern、sample、hit、event），动词指动作（annotate、map、recognize、match
+GLOSSARY-MAP.md:29: 命名规则 | 3. **组合名 = 修饰词 + 概念。** 阶段修饰词取那一行动作的过去分词；其余修饰词只能取这一格允许的状态词（在该格词条里列出，如 sample 允许 positive / negative、m
+GLOSSARY-MAP.md:31: 命名规则 | 5. **词条定义**：第一行写组合名，再写一句英文定语从句，写明动作的主体和条件（如 unmatched sample = unmatched annotated pattern; a sample
+结论：词条不通过 0 处

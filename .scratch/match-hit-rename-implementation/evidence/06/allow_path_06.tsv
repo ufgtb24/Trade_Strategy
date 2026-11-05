@@ -1,0 +1,16 @@
+# 票 06 全仓终检的整文件判定
+.scratch/match-hit-rename/	本批改名自身的记录（spec、票面、拆分总览里的新旧对照）
+.scratch/match-hit-rename-implementation/	本批改名自身的记录（spec、票面、拆分总览里的新旧对照）
+.scratch/annotation-path2/research/	研究目录（共用执行边界第 8 条）
+.scratch/annotation-path2/prototypes/	已 resolved 决定票的原型（历史资产，依赖旧数据格式）
+.scratch/annotation-path2/issues/01-structured-annotation.md	已关闭的票（共用执行边界第 8 条）
+.scratch/annotation-path2/issues/05-measure-in-context.md	已关闭的票（共用执行边界第 8 条）
+.scratch/annotation-path2/issues/08-blind-match-list.md	已关闭的票（共用执行边界第 8 条）
+.scratch/annotation-path2/issues/14-naming.md	已关闭的票（共用执行边界第 8 条）
+.scratch/annotation-path2/issues/15-display-consistency.md	已关闭的票（共用执行边界第 8 条）
+.scratch/annotation-path2-implementation/issues/01-snapshot-fingerprint-and-annotation-dir.md	已关闭的票（共用执行边界第 8 条）
+.scratch/annotation-path2-implementation/issues/11-app-and-compare-overlay.md	已关闭的票（共用执行边界第 8 条）
+.scratch/annotation-path2/issues/04-final-check-count.md	归档或已关闭票的文件名（统计配对 11-control-matching、决定票 08 blind-match-list）
+path2_web_ui/package-lock.json	第三方包名（minimatch、picomatch、balanced-match）
+experiments/news_sentiment_benchmark/	别的系统（新闻情感评测，正则变量与英文说明）
+docs/sample_usage/bb_v1.jsonl	落盘账本的值（共用执行边界第 7 条：一行旧义说明文字，三行统计配对）

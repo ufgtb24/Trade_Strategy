@@ -2,7 +2,7 @@
 
 path2 的调试可视化工具：把分析结果投影成 JSON、再渲染成可交互的界面。这里是界面自己的词汇——事件在图上怎么摆、显示到哪一档、参数怎么试、漏检从哪查。
 
-覆盖 `path2_web/`（FastAPI 后端）与 `path2_web_ui/`（Vue3 前端）。这一层不含任何走势语义：界面不知道 bo 和 burst 各是什么，只按 node 分轨、按 where 分列。核心词（事件 / node / match / where）见 [path2](../path2/GLOSSARY.md)。
+覆盖 `path2_web/`（FastAPI 后端）与 `path2_web_ui/`（Vue3 前端）。这一层不含任何走势语义：界面不知道 bo 和 burst 各是什么，只按 node 分轨、按 where 分列。核心词（事件 / node / hit / where）见 [path2](../path2/GLOSSARY.md)。
 
 ## Language
 
@@ -23,10 +23,10 @@ path2 的调试可视化工具：把分析结果投影成 JSON、再渲染成可
 ### 显示深度
 
 **显示档位 / level**：
-全局的显示深度旋钮，三档从浅到深依次是 detected、qualified、matched。
+全局的显示深度旋钮，三档从浅到深依次是 detected、qualified、in_hit。
 
-**detected、qualified、matched**：
-一个事件的三档可追溯深度，依次收窄——被检测出来、通过了所在 node 的全部 where、进了某一次 match。
+**detected、qualified、in_hit**：
+一个事件的三档可追溯深度，依次收窄——被检测出来、通过了所在 node 的全部 where、进了某一次 hit。
 
 ### 图上的几何
 
@@ -43,7 +43,7 @@ K 线蜡烛所在的图；声明为钉价格轴的点事件画在这里（如 bo
 一条 band 内部为了不让重叠事件互相压住而分出的泳道。
 
 **bracket**：
-一次 match 的时间跨度在图上的样子——一条带圈号的横带，圈号是它在本图内的编号；标注里 sample 的跨度也画在这条轨上，画虚线、不带圈号。
+一次 hit 的时间跨度在图上的样子——一条带圈号的横带，圈号是它在本图内的编号；标注里 sample 的跨度也画在这条轨上，画虚线、不带圈号。
 
 **tag**：
 = a small box shown next to a thing to give one status or conclusion about it.
@@ -59,7 +59,7 @@ pattern 的 DAG 图，同时是 node 的控制器：点节点切显隐，双击�
 右侧的漏斗总览与逐次命中留痕：每个 node 一行三档计数，展开看候选逐条卡在哪。
 
 **漏检入口**：
-回答「为什么这个事件或这条关系没被匹配上」的几个固定查询口径——按时段查失败的 attempt、按 node 看 miss 分布、指定两个事件问它们为什么没连上。
+回答「为什么这个事件或这条关系没命中」的几个固定查询口径——按时段查失败的 attempt、按 node 看 miss 分布、指定两个事件问它们为什么没连上。
 
 ### 标注工具
 

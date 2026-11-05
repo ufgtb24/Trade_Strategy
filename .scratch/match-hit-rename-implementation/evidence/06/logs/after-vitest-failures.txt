@@ -1,0 +1,4 @@
+FAIL  tests/components.sidebar-result-list.spec.ts > SidebarResultList · global char forwarding > typing "1" is forwarded (digits accepted)
+FAIL  tests/components.sidebar-result-list.spec.ts > SidebarResultList · global char forwarding > typing "." and "-" are forwarded
+FAIL  tests/components.sidebar-result-list.spec.ts > SidebarResultList · global char forwarding > typing "a" while body has focus: input gets focus + query becomes "a"
+FAIL  tests/components.sidebar-result-list.spec.ts > SidebarResultList · hover tooltip > hover 的 pattern 有 first_passage_stats → tooltip 渲染首次穿越块

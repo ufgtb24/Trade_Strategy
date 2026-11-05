@@ -92,14 +92,14 @@ _Avoid_: 定语、约束、条件。
 **求解 / solve**：
 枚举出所有同时满足全部 where 与全部边约束的事件组合。
 
-**match**：
-一次完整命中：每个参与求解的 node 各绑定一个具体事件。
+**hit / 命中 / recognized pattern**：
+= recognized pattern; one complete result that an app solves, with every solving node bound to a concrete event. app 求解出的一次完整命中：每个参与求解的 node 各绑定一个具体事件；代码里是 `PatternHit`。
+_Avoid_: match —— 已退役的旧义：match 现在只指 hit 与 sample 的比较；匹配 —— 同一旧义的中文说法，泛指的「匹配」（正则匹配、参数名匹配）不在此列。
 
 **node 诊断 / diagnose**：
-按 node 做的局部健康检查——这个 node 有哪些候选、卡在哪条 where、找不找得到关系伙伴；单 node 通过不代表能凑成完整匹配。
+按 node 做的局部健康检查——这个 node 有哪些候选、卡在哪条 where、找不找得到关系伙伴；单 node 通过不代表能凑成完整命中。
 
 ### 度量
-
 **前瞻收益 / mfr**：
 买点之后固定窗口内的最大上行幅度；含波动率，量的是盈利潜力。
 _Avoid_: 收益率（没说清是最大值还是终值）。
@@ -111,9 +111,9 @@ _Avoid_: false positive —— 这里的缩写恒指 first passage。
 **随机日基线**：
 从全宇宙随机抽日算同一指标得到的对照值；不限同一天，所以比出来的差同时含择时与选股，只看选股时改用同日普通买入对照。
 
-**同日普通买入对照 / 同日对照 / 普通买入对照 / 普通对照 / matched baseline**：
+**同日普通买入对照 / 同日对照 / 普通买入对照 / 普通对照**：
 在每个买点的同一天、按当日波动分档配对的全部普通买入，算同一指标的平均值；候选减去它只剩选股，它与随机日基线之差就是择时。
-_Avoid_: 随机日基线 —— 那是从全宇宙随机抽日、不限同一天，含择时；把这里的对照叫成它会混淆两种口径。
+_Avoid_: 随机日基线 —— 那是从全宇宙随机抽日、不限同一天，含择时；把这里的对照叫成它会混淆两种口径；matched baseline —— matched 已是 sample 的状态词（与 hit 比较的结果），这里再用会一词两义。
 
 **buy point / 买点**：
 一次命中里真正用于计算收益的那些根 K 线；只用于 app 一侧，标注里和它成对的是 sample date。
@@ -180,3 +180,11 @@ _Avoid_: 像但不买 —— 已改称 negative sample；反例 —— 会被读
 = the way an optional feature lands in an app: the app computes it but does not filter on it.
 mapping 里 optional 一级的默认落法：app 照样算出它在每个 sample 上成不成立，对照里显示认没认出，也可以拿去量「改成 must 会不会更好」，但不拿它决定买不买、不进求解。防的是：一条 optional 写成 where 就等于 must。pattern 定义写明「有一个就行 / 凑够几样就行」时，那几样不走 tracked，而是一起落成「至少 k 条成立」，那是整组的 must。
 
+**match**：
+= a comparison of a hit with a sample: whether the pattern's app has a hit whose buy point falls within tolerance of the sample date.
+比较结果是 sample 的状态 matched / unmatched，界面上显示成 match tag。positive、negative sample 都比；negative sample matched 就是 app 在不该买的地方买了。容差见 `.scratch/annotation-path2/spec.md` 第 10 节「match 容差」一行。
+_Avoid_: `app:buy`、`app:no_buy` —— 已退役的取值；shifted —— 没有这一档，落不进容差就是 unmatched。
+
+**matching**：
+= the process of comparing the hits of a pattern's app with that pattern's samples.
+match 这个比较过程。求解出 hit 的是 solve，不叫 matching。
