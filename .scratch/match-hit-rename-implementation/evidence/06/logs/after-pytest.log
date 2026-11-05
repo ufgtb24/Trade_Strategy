@@ -44,7 +44,7 @@ E   AssertionError: path2/ contains BreakoutStrategy references:
      +  where 0 = CompletedProcess(args=['grep', '-r', '-l', 'BreakoutStrategy', '/home/yu/PycharmProjects/Trade_Strategy-06-glossary-an...urncode=0, stdout='/home/yu/PycharmProjects/Trade_Strategy-06-glossary-and-final-check/path2/GLOSSARY.md\n', stderr='').returncode
 /home/yu/PycharmProjects/Trade_Strategy-06-glossary-and-final-check/tests/path2/test_self_contained.py:18: AssertionError: path2/ contains BreakoutStrategy references:
 E   FileNotFoundError: [Errno 2] No such file or directory: 'datasets/pkls_until_20251231/ACUT.pkl'
-/home/yu/PycharmProjects/Trade_Strategy-06-glossary-and-final-check/.scratch/match-hit-rename-implementation/evidence/06/wall/wall_redirect.py:19: FileNotFoundError: [Errno 2] No such file or directory: 'datasets/pkls_until_20251231/ACUT.pkl'
+/home/yu/PycharmProjects/Trade_Strategy-06-glossary-and-final-check/.scratch/match-hit-rename-implementation/evidence/06/wall/wall_redirect.py:20: FileNotFoundError: [Errno 2] No such file or directory: 'datasets/pkls_until_20251231/ACUT.pkl'
 =============================== warnings summary ===============================
 .venv/lib/python3.12/site-packages/fastapi/testclient.py:1
   /home/yu/PycharmProjects/Trade_Strategy-06-glossary-and-final-check/.venv/lib/python3.12/site-packages/fastapi/testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
@@ -63,7 +63,7 @@ tests/path2_web/test_params_dict.py::TestBoOnlyToDict::test_lenient_drops
     warnings.warn(f"params dict section '{name}' 忽略未知字段: {sorted(unknown)}")
 
 tests/scripts/test_data_download.py::test_creates_save_root_when_missing
-  /home/yu/.local/share/uv/python/cpython-3.12.12-linux-x86_64-gnu/lib/python3.12/multiprocessing/popen_fork.py:66: DeprecationWarning: This process (pid=1236114) is multi-threaded, use of fork() may lead to deadlocks in the child.
+  /home/yu/.local/share/uv/python/cpython-3.12.12-linux-x86_64-gnu/lib/python3.12/multiprocessing/popen_fork.py:66: DeprecationWarning: This process (pid=2346172) is multi-threaded, use of fork() may lead to deadlocks in the child.
     self.pid = os.fork()
 
 -- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
@@ -74,7 +74,7 @@ FAILED tests/path2/atoms/test_throwback_v4.py::TestGlobalBreak::test_ratchet_cha
 FAILED tests/path2/atoms/test_throwback_v4.py::TestGates::test_no_gate_on_normal_exits
 FAILED tests/path2/test_self_contained.py::test_no_breakoutstrategy_imports_in_path2
 FAILED tests/path2_web/test_serialize_tbseg.py::test_serialize_tbseg_walked_from_container
-SKIPPED [1] tests/path2_web/test_api.py:254: cancel race lost; scan completed before cancel intercepted (done={'type': 'done', 'pattern_ids': ['bottom_burst'], 'scan_ts': '20261105T002624', 'name': '20261105T002624', 'hit_stocks': 0, 'errors': 0, 'total': 31, 'partial': False})
-SKIPPED [1] tests/path2_web/test_api.py:282: cancel race lost; scan completed before cancel intercepted (done={'type': 'done', 'pattern_ids': ['bottom_burst'], 'scan_ts': '20261105T002625', 'name': '20261105T002625', 'hit_stocks': 0, 'errors': 0, 'total': 31, 'partial': False})
-6 failed, 1229 passed, 2 skipped, 5 warnings in 46.55s
+SKIPPED [1] tests/path2_web/test_api.py:254: cancel race lost; scan completed before cancel intercepted (done={'type': 'done', 'pattern_ids': ['bottom_burst'], 'scan_ts': '20261105T004110', 'name': '20261105T004110', 'hit_stocks': 0, 'errors': 0, 'total': 31, 'partial': False})
+SKIPPED [1] tests/path2_web/test_api.py:282: cancel race lost; scan completed before cancel intercepted (done={'type': 'done', 'pattern_ids': ['bottom_burst'], 'scan_ts': '20261105T004111', 'name': '20261105T004111', 'hit_stocks': 0, 'errors': 0, 'total': 31, 'partial': False})
+6 failed, 1229 passed, 2 skipped, 5 warnings in 52.96s
 exit=1

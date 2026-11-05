@@ -11,11 +11,11 @@ ssssssss...................................sss.......................... [ 77%]
 .claude/skills/tune-gates/test_edge.py: 2 warnings
 .claude/skills/tune-gates/test_multivar_scan.py: 9 warnings
 .claude/skills/tune-gates/test_tune.py: 6 warnings
-  /home/yu/.local/share/uv/python/cpython-3.12.12-linux-x86_64-gnu/lib/python3.12/multiprocessing/popen_fork.py:66: DeprecationWarning: This process (pid=1362549) is multi-threaded, use of fork() may lead to deadlocks in the child.
+  /home/yu/.local/share/uv/python/cpython-3.12.12-linux-x86_64-gnu/lib/python3.12/multiprocessing/popen_fork.py:66: DeprecationWarning: This process (pid=2415506) is multi-threaded, use of fork() may lead to deadlocks in the child.
     self.pid = os.fork()
 
 -- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
-547 passed, 13 skipped, 17 warnings in 186.35s (0:03:06)
+547 passed, 13 skipped, 17 warnings in 187.98s (0:03:07)
 exit=0
 === tune-gates-v3
 ........................................................................ [ 46%]
@@ -27,15 +27,15 @@ exit=0
     sampler = optuna.samplers.TPESampler(seed=cfg['search']['seed'],
 
 -- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
-156 passed, 13 warnings in 16.67s
+156 passed, 13 warnings in 31.83s
 exit=0
 === feature-study
 ......s........s.................................                        [100%]
-47 passed, 2 skipped in 3.71s
+47 passed, 2 skipped in 8.45s
 exit=0
 === diagnose-event
 ...........                                                              [100%]
-11 passed in 0.91s
+11 passed in 1.49s
 exit=0
 web-loop exit=0
 DONE

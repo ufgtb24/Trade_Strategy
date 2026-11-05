@@ -1,5 +1,11 @@
-# 票 06 测试全套：终检（合并了 01～06 的树）对票 01 开工时的基线 1359914
-# 两边都带护栏 evidence/04/wall/sitecustomize.py 和重定向 evidence/06/wall/wall_redirect.py，命令见 run_py.sh
+# 票 06 测试全套：终检（合并了 01～06 的树）对票 01 开工时的基线 1359914（1359914e548e78d2ea308fff2d305d79490abb61）
+# Python 与 skill：两边都带护栏 evidence/04/wall/sitecustomize.py 和重定向 evidence/06/wall/wall_redirect.py，命令见 run_py.sh。基线是干净检出；终检跑在 d67bf4989c0c6aa568248cdcd378f03b281a10f8，工作树只多未提交的日志。
+# 前端与 e2e：跑在 bc33f87860efef79e5f291a6435622141129fe6c。工作树多未提交的证据脚本；e2e 期间 configs/path2_web.yaml 的端口临时改成 8095 / 5195，跑完复原。
+# vitest：path2_web_ui 下 npx vitest run --reporter=default；vue-tsc：npx vue-tsc -b；e2e：evidence/06/e2e/run_e2e.sh。
+# 从前端与 e2e 所在提交到 Python 所在提交，证据目录之外的改动：
+ .scratch/annotation-path2/manual.md | 2 +-
+ path2/GLOSSARY.md                   | 2 +-
+ 2 files changed, 2 insertions(+), 2 deletions(-)
 
 ## base
 6 failed, 1229 passed, 2 skipped, 5 warnings in 45.87s
@@ -15,7 +21,7 @@
 护栏记录 0 行
 
 ## after
-6 failed, 1229 passed, 2 skipped, 5 warnings in 46.55s
+6 failed, 1229 passed, 2 skipped, 5 warnings in 52.96s
 === tune-gates
 547 passed, 13 skipped, 17 warnings
 === tune-gates-v3
@@ -41,20 +47,19 @@ FAILED tests/path2_web/test_serialize_tbseg.py::test_serialize_tbseg_walked_from
 失败清单相同
 
 ## vitest（票 01 基线 evidence/01/logs/vitest-summary.log）
-⎯⎯⎯⎯⎯⎯⎯ Failed Tests 4 ⎯⎯⎯⎯⎯⎯⎯
 Tests  4 failed | 1088 passed (1092)
 Tests  4 failed | 1089 passed (1093)
-失败清单相同
+失败清单相同（多出的 1 条通过是票 03 加的）
 
 ## vue-tsc：输出 0 行（通过）
 
-## e2e（票 01 基线 evidence/01/e2e/results-base.txt）
+## e2e（票 01 基线 evidence/01/e2e/results-base.txt，重跑 results-base-rerun-rally-random.txt）
+基线里以重跑为准的：e2e/annotate-rally-random.spec.ts › 找图入口 · rally / random › 看过什么一律不记:连点几行 rally、几次 random,文件与 localStorage 都不变：首轮 ✓，重跑 ✘
 基线 36 条（另有 miss-detection-walkthrough 5 条不跑：- 4、✘ 1）；终检 36 条
-基线：✓ 20、✘ 16、- 0
+基线：✓ 19、✘ 17、- 0
 终检：✓ 19、✘ 17、- 0
 只在基线：[]
 只在终检：[]
 状态不同：
-  e2e/annotate-rally-random.spec.ts › 找图入口 · rally / random › 看过什么一律不记:连点几行 rally、几次 random,文件与 localStorage 都不变：✓ → ✘
-结论：状态不同 1 条
+结论：状态不同 0 条
 护栏记录 0 行
