@@ -1,0 +1,18 @@
+文件 17 个，改动 17 个，改动处 253；行数校验：通过
+    61  match → hit
+    48  matches → hits
+    40  匹配 → 求解
+    37  PatternMatch → PatternHit
+    31  匹配 → 命中
+    17  matches → has_hit
+     4  matching → hits
+     4  形态匹配 → 求解
+     2   match 到 → 命中
+     2  匹配到 → 命中
+     1  hit   → found
+     1  match_forward_returns → hit_forward_returns
+     1  matched → in_hit
+     1  个走势匹配 → 次命中
+     1  匹配 → 找
+     1  匹配 → 绑定
+     1  匹配到 → 绑定

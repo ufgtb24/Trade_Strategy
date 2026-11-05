@@ -1,0 +1,21 @@
+文件 93 个；frontmatter 解析失败或缺 name：0 
+残留按类（次）：
+    2  mismatch 一族
+    2  中文「匹配」泛指（用途、粒度对得上）
+    8  中文「匹配」泛指（进程按名字匹配）
+    2  文件名、name（记忆文件名不改）
+    4  统计里的配对
+未归类（行）：49 ['MEMORY.md:33', 'MEMORY.md:36', 'feedback_argument_discipline.md:18', 'feedback_label_alignment_check.md:11', 'feedback_label_alignment_check.md:15', 'feedback_visual_companion_ui_only.md:13', 'project_bo_burst_redesign.md:3', 'project_bo_burst_redesign.md:17', 'project_bo_burst_redesign.md:23', 'project_bo_burst_redesign.md:28', 'project_bottom_burst_recall_collapse.md:38', 'project_burst_allends_chain.md:14', 'project_burst_allends_chain.md:15', 'project_first_drought_window_truncation.md:3', 'project_first_drought_window_truncation.md:10', 'project_first_drought_window_truncation.md:17', 'project_first_drought_window_truncation.md:22', 'project_first_drought_window_truncation.md:26', 'project_first_drought_window_truncation.md:27', 'project_first_passage_mfr_orthogonal.md:20', 'project_multivar_region_budget.md:12', 'project_path2_app_optimization_workflow.md:39', 'project_path2_edge_causality_lesson.md:16', 'project_path2_event_diagnosis_playbook.md:3', 'project_path2_event_diagnosis_playbook.md:11', 'project_path2_event_diagnosis_playbook.md:13', 'project_path2_nesting_mechanism.md:11', 'project_path2_nesting_mechanism.md:13', 'project_path2_nesting_mechanism.md:21', 'project_path2_nesting_mechanism.md:24', 'project_path2_nesting_mechanism.md:32', 'project_path2_nesting_mechanism.md:36', 'project_path2_nesting_mechanism.md:37', 'project_path2_nesting_mechanism.md:43', 'project_path2_nesting_mechanism.md:44', 'project_path2_nesting_mechanism.md:45', 'project_path2_nesting_mechanism.md:47', 'project_path2_nesting_mechanism.md:51', 'project_path2_nesting_mechanism.md:53', 'project_path2_nesting_mechanism.md:54', 'project_path2_pk_not_event.md:22', 'project_path2_pk_not_event.md:27', 'project_path2_web_multi_pattern_ux.md:12', 'project_tb_buypoint_modeling.md:11', 'project_tb_buypoint_modeling.md:15', 'project_tb_v1_revert_toxic_gate.md:11', 'project_tb_v1_revert_toxic_gate.md:15', 'reference_path2_role_term_deprecated.md:11', 'reference_path2_role_term_deprecated.md:14']
+写法不一致的链接：10
+    1  feedback_buggy_tool_outputs_trust_by_author.md -> [[feedback-no-sendmessage-to-workflow-agents]]
+    1  feedback_buggy_tool_outputs_trust_by_author.md -> [[project-web-loop-skill]]
+    1  feedback_liked_is_not_locked.md -> [[project-web-loop-skill]]
+    1  feedback_no_sendmessage_to_workflow_agents.md -> [[project-web-loop-skill]]
+    1  project_gap_black_candle_study.md -> [[feedback-eval-metrics-discipline]]
+    1  project_gap_black_candle_study.md -> [[project-first-passage-mfr-orthogonal]]
+    1  project_path2_app_authoring_skill_design.md -> [[feedback-plan-single-session-unmonitored]]
+    1  project_path2_app_authoring_skill_design.md -> [[project-path2-web-buffered-labels]]
+    1  project_web_loop_decision_layer_redesign.md -> [[project_web_loop_v2_plan_context.md]]
+    1  reference_ibus_gtk4_esc_stale_preedit.md -> [[reference-rime-librime-lua-pitfall]]
+指不到文件的链接：1
+    1  feedback_do_not_touch_proxy.md -> [[reference_clash_verge_isp_setup]]

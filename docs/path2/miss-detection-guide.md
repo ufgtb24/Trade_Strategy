@@ -10,7 +10,7 @@
 2. **Event 检出了、但没和其他 role 配上 pair**(比如 burst 与 tb 因 gap 超阈无法组合)
 3. **Pair 层每对都能过、但组合到最后 DFS 零解**(通道 ⑦ 组合级)
 
-漏检工具帮你**精确定位是哪一层出问题**,从而决定:改 detector 参数、改 dag_spec、或确认"设计正确、不该匹配"。
+漏检工具帮你**精确定位是哪一层出问题**,从而决定:改 detector 参数、改 dag_spec、或确认"设计正确、不该命中"。
 
 ---
 
@@ -200,7 +200,7 @@ burst_1 · burst
 | 全在 ③ satisfies | gap 参数问题 |
 | 全在 ④ anchor | anchor 语义问题 |
 | 只有 ⑦ combine | 上游都通过 · 组合冲突 · 深查 spec 结构 · 可能设计问题 |
-| 无 rejection_chain | 该 event 直接进了 match 或根本没进 solver · 应该看入口 B 分布 |
+| 无 rejection_chain | 该 event 直接进了 hit 或根本没进 solver · 应该看入口 B 分布 |
 
 ---
 
@@ -262,7 +262,7 @@ python scripts/path2/scan-top-miss.py \
 ```markdown
 # scan-top-miss · 2025-07-15 → 2025-09-01
 
-筛选:涨幅 > 30% · matches 为空 · 按涨幅降序
+筛选:涨幅 > 30% · hits 为空 · 按涨幅降序
 
 ## Top-5
 
@@ -372,8 +372,8 @@ A:是。Sprint 1 修 A/B/C/D 首批 · Sprint 2 修 E + refs_other_role · 硬�
 | **event** | detector 产出的一个具体实例(如某个 bo、某个 burst) |
 | **role** | dag_spec 中的一个占位类(如 burst、tb) |
 | **pair** | 两个具体 event 之间的关系候选(如 burst_1 + tb_3) |
-| **candidate** | 已 qualified 但还没进 match 的 event |
-| **match** | 完整满足 dag_spec 全部 role 的组合 |
+| **candidate** | 已 qualified 但还没进 hit 的 event |
+| **hit** | 完整满足 dag_spec 全部 role 的组合 |
 | **attempt** | detector 一次尝试产出 event 的过程(短路遇第一 gate fail 停) |
 | **gate** | detector 内部某条判据(如 chain_break / peak_relative_height) |
 | **subcheck** | pair 层的判据(feasible_window / satisfies / anchor / strict) |

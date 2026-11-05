@@ -21,7 +21,7 @@
 
 打个比方。假设你想找"先跌一波、然后在底部横盘、横盘期间连续放量突破、最后回踩确认"这种经典反转走势。如果手写代码，你得自己遍历 K 线、维护一堆状态机、拼各种 if-else——又臭又长还容易错。
 
-path2 换了个思路：你只需要**声明**这个走势"长什么样"（由哪些片段组成、片段之间有什么先后/包含关系），剩下的"怎么在数据里把它匹配出来"全部交给框架引擎。你写的是**规格说明（spec）**，不是匹配算法。
+path2 换了个思路：你只需要**声明**这个走势"长什么样"（由哪些片段组成、片段之间有什么先后/包含关系），剩下的"怎么在数据里把它找出来"全部交给框架引擎。你写的是**规格说明（spec）**，不是求解算法。
 
 > 💡 **一句话总结**：你负责"描述形状"，path2 负责"找到形状"。本篇就是带你写出一份这样的形状描述。
 
@@ -80,7 +80,7 @@ path2 把这些关系做成了**类型化的边**——不同种类的关系用�
 - `TemporalEdge`（时序边）：表达"A 结束后，B 在 [min_gap, max_gap] 根 K 线内开始"这种**先后+间隔**关系。
 - `ContainmentEdge`（包含边）：表达"A 区间**包住**了 B 区间"这种**包含**关系。
 
-> 💡 **为什么要分成不同的边类？** 因为引擎对每种关系有专门的高效判定和剪枝逻辑。你只管选对边类、填好参数，引擎自然知道怎么快速匹配。框架里还有 `OverlapEdge`（部分交叠）/ `EqualsEdge`（完全同段）/ `NegationEdge`（禁止存在）等其它边类，本走势用不到，先不展开。
+> 💡 **为什么要分成不同的边类？** 因为引擎对每种关系有专门的高效判定和剪枝逻辑。你只管选对边类、填好参数，引擎自然知道怎么快速求解。框架里还有 `OverlapEdge`（部分交叠）/ `EqualsEdge`（完全同段）/ `NegationEdge`（禁止存在）等其它边类，本走势用不到，先不展开。
 
 ### 概念 3：where —— "给单个片段加的过滤条件"
 
@@ -144,7 +144,7 @@ side ─StartContainment──┘
 - **真正连成走势的是 `burst`**——`down`（下跌）在 `burst` 之前，`side`（横盘）包住 `burst` 的起点，`burst` 之后紧跟 `tb`（回踩）。这三条关系就是三条边。
 - **`bo` 是个"孤立流源层"**——它自己不连任何边，只负责产出全部单点突破，再把这条突破流"喂"给 `burst`（用来切串聚合）和 `tb`（用来逐个评估回踩）。一句大白话：`bo` 是上游原料厂，不直接出现在走势的骨架里，但 `burst` 和 `tb` 都靠它供料。
 
-> 💡 为什么 `bo` 不连边、却还留它一个节点？因为我们既想用它当原料（喂 `burst`/`tb`），也想能单独把所有突破点画在 K 线上。引擎对这种"没有任何边连它"的孤立节点有专门处理（见本节末"`bo` 节点"小节），既不让它污染走势匹配、又能让它独立扫描渲染。
+> 💡 为什么 `bo` 不连边、却还留它一个节点？因为我们既想用它当原料（喂 `burst`/`tb`），也想能单独把所有突破点画在 K 线上。引擎对这种"没有任何边连它"的孤立节点有专门处理（见本节末"`bo` 节点"小节），既不让它污染走势命中、又能让它独立扫描渲染。
 
 下面逐个节点看。
 
@@ -213,7 +213,7 @@ NodeSpec("bo", BODetector(**params.bo_kwargs()))
 1. 当**原料**——这条突破流被喂给 `burst`（切串聚合成宽事件）和 `tb`（逐个评估回踩），见下文。
 2. 当**可独立渲染的密度层**——因为它没连任何边，所有 `bo` 都能单独被扫描出来、画在 K 线上，方便人眼看"哪里突破密集"。
 
-> 💡 **新概念：孤立流源 + 引擎自动过滤残缺匹配**。`bo` 这种"图里没有任何边连它"的节点，叫**孤立节点**。如果不管它，引擎会把每一个单独的 `bo` 候选都当成一次"匹配"（只含 `bo` 这一个角色、其它角色都缺席的残缺匹配），那是一堆语义垃圾。**引擎在出口处会自动识别出这种孤立节点（判据完全从你声明的边推出来，不需要你做任何标记），把"只含孤立节点"的残缺匹配丢掉。** 效果就是：`bo` 既能当原料、又能独立渲染，但**绝不会**污染真正的走势匹配。这又是一个"引擎替你兜底"的机制，你只管把 `bo` 声明成无 `where`、无边的普通节点即可。
+> 💡 **新概念：孤立流源 + 引擎自动过滤残缺命中**。`bo` 这种"图里没有任何边连它"的节点，叫**孤立节点**。如果不管它，引擎会把每一个单独的 `bo` 候选都当成一次"命中"（只含 `bo` 这一个角色、其它角色都缺席的残缺命中），那是一堆语义垃圾。**引擎在出口处会自动识别出这种孤立节点（判据完全从你声明的边推出来，不需要你做任何标记），把"只含孤立节点"的残缺命中丢掉。** 效果就是：`bo` 既能当原料、又能独立渲染，但**绝不会**污染真正的走势命中。这又是一个"引擎替你兜底"的机制，你只管把 `bo` 声明成无 `where`、无边的普通节点即可。
 
 ### 节点 `burst`（突破爆发，承载约束 ②③⑤⑥）—— 本走势的核心宽事件
 
@@ -348,7 +348,7 @@ def build_pattern(params: Params) -> PatternSpec:
     down_det = TrendSegmentDetector(**params.trend_kwargs())
     side_det = TrendSegmentDetector(**params.trend_kwargs())
     nodes = (
-        # bo 孤立流源：无 where、无边，只当原料 + 可独立渲染（残缺 match 由引擎出口过滤）
+        # bo 孤立流源：无 where、无边，只当原料 + 可独立渲染（残缺 hit 由引擎出口过滤）
         NodeSpec("bo",
                  BODetector(**params.bo_kwargs())),
 
@@ -398,13 +398,13 @@ def build_pattern(params: Params) -> PatternSpec:
 
 ## 六、调用 `analyze`、读取结果
 
-走势包写好了，怎么用？两个便利入口：`analyze`（要详细结果）和 `matches`（只要是/否）。
+走势包写好了，怎么用？两个便利入口：`analyze`（要详细结果）和 `has_hit`（只要是/否）。
 
 ### 最简调用
 
 ```python
 import pandas as pd
-from path2_apps.bottom_burst.dag_spec import analyze, matches
+from path2_apps.bottom_burst.dag_spec import analyze, has_hit
 from path2_apps.bottom_burst.params import Params
 
 # df 是 OHLCV DataFrame，索引为整数行号（0, 1, 2, ...）
@@ -412,10 +412,10 @@ df: pd.DataFrame = ...
 
 # 用默认参数扫描
 result = analyze(df)  # 等价于 analyze(df, Params.default())
-print(f"命中 {len(result.matches)} 次")
+print(f"命中 {len(result.hits)} 次")
 
 # 只需要是/否判断
-if matches(df):
+if has_hit(df):
     print("该股存在 bottom_burst 走势")
 ```
 
@@ -439,13 +439,13 @@ result = analyze(df, params)
 | 字段 | 类型 | 含义 |
 |------|------|------|
 | `events` | `Tuple[Event, ...]` | 所有节点流平铺（含**没命中**的 bo、TrendSegment 等原始事件） |
-| `matches` | `Tuple[PatternMatch, ...]` | **每一次完整命中**对应一个 `PatternMatch` |
+| `hits` | `Tuple[PatternHit, ...]` | **每一次完整命中**对应一个 `PatternHit` |
 | `spec` | `PatternSpec`（默认 `None`） | 本次用的声明，可调用 `spec.to_topology()` |
 
-每个 `PatternMatch` 里最有用的是 **`role_index`**——它是个字典，把每个 node_id 映射到这次命中里**实际绑定的那个事件（或那串事件）**。这正是你拿到"具体匹配到了哪段下跌、哪段横盘、哪几个突破"的地方：
+每个 `PatternHit` 里最有用的是 **`role_index`**——它是个字典，把每个 node_id 映射到这次命中里**实际绑定的那个事件（或那串事件）**。这正是你拿到"具体命中了哪段下跌、哪段横盘、哪几个突破"的地方：
 
 ```python
-for m in result.matches:
+for m in result.hits:
     print(f"命中区间: [{m.start_idx}, {m.end_idx}]")
 
     # role_index: node_id -> 这次命中绑定的事件（本走势全是单实例）
@@ -472,14 +472,14 @@ for m in result.matches:
 
 > ⚠️ **常见坑**：`role_index["burst"]` 拿到的是**单个 `BurstEvent` 宽事件**，不是 tuple——它的集体属性（`count` / `first_drought` / `distinct_pk` / `max_vol_ratio`）都是现成字段直读，组成它的那些单点突破在 `burst_ev.members` 里（`members[0]` 是首突破、`members[-1]` 是末突破）。
 >
-> 另外 `role_index` 里**没有 `"bo"` 键**：`bo` 是孤立流源，不进任何完整命中（它的残缺 match 被引擎出口过滤掉了）。要看这次命中涉及的单点突破，从 `burst_ev.members` 拿；要看全图所有突破（含没命中的），从 `result.events` 里筛 `BOEvent`。
+> 另外 `role_index` 里**没有 `"bo"` 键**：`bo` 是孤立流源，不进任何完整命中（它的残缺 hit 被引擎出口过滤掉了）。要看这次命中涉及的单点突破，从 `burst_ev.members` 拿；要看全图所有突破（含没命中的），从 `result.events` 里筛 `BOEvent`。
 
 ### 读取谓词实证（predicate_trace）—— 调试 / 做面板时用
 
-如果你想知道"这次命中里，每条 `where`、每条边到底是怎么判过的"，`PatternMatch.predicate_trace` 把每一步的求值结果都留了痕，非常适合调试或给 UI 面板做可视化：
+如果你想知道"这次命中里，每条 `where`、每条边到底是怎么判过的"，`PatternHit.predicate_trace` 把每一步的求值结果都留了痕，非常适合调试或给 UI 面板做可视化：
 
 ```python
-m = result.matches[0]
+m = result.hits[0]
 trace = m.predicate_trace
 
 # where 子句逐条结果：node_id -> {clause_id: 是否通过}
@@ -558,7 +558,7 @@ for edge in topo.edges:
 | `Params` | `path2_apps/bottom_burst/params.py` | 参数 SSoT，`default()` / `from_yaml()` 构造 |
 | `build_pattern(params)` | `path2_apps/bottom_burst/dag_spec.py` | 参数化声明工厂 |
 | `analyze(df, params)` | `path2_apps/bottom_burst/dag_spec.py` | 顶层便利入口，返回 `AnalysisResult` |
-| `matches(df, params)` | `path2_apps/bottom_burst/dag_spec.py` | 布尔判断便利入口 |
+| `has_hit(df, params)` | `path2_apps/bottom_burst/dag_spec.py` | 布尔判断便利入口 |
 | `PATTERN_DAG` | `path2_apps/bottom_burst/dag_spec.py` | 模块级 `PatternSpec` 常量（默认参数） |
 | `NodeSpec` | `path2.dag.nodes` | 节点声明（角色 + detector + where + consumes_stream） |
 | `consumes_stream`（`NodeSpec` 字段） | `path2.dag.nodes` | 声明本节点 detector 吃 df（`None`）还是上游某节点的事件流 |
@@ -567,8 +567,8 @@ for edge in topo.edges:
 | `StartContainmentEdge` | `path2.dag.edges` | 起点包含边（只约束小事件起点落进大区间，不管终点）；本走势 `side→burst` 用 |
 | `PatternSpec` | `path2.dag.spec` | 纯声明容器，`to_topology()` 投影 |
 | `W.attr` | `path2.dag.where` | where 一元谓词工厂（读单个片段/宽事件的一个字段比阈值）；本走势全部 `where` 用它 |
-| `AnalysisResult` | `path2.dag.result` | 引擎返回值（events / matches / spec） |
-| `PatternMatch` | `path2.dag.result` | 单次命中（role_index / children / predicate_trace） |
+| `AnalysisResult` | `path2.dag.result` | 引擎返回值（events / hits / spec） |
+| `PatternHit` | `path2.dag.result` | 单次命中（role_index / children / predicate_trace） |
 | `BOEvent` | `path2.atoms.breakout` | 单点突破事件（drought / broken_peak_ids / vol_ratio） |
 | `BurstEvent` | `path2.atoms.breakout` | 一串突破聚合成的嵌套宽事件（count / first_drought / distinct_pk / max_vol_ratio / members） |
 | `BurstDetector` | `path2.atoms.breakout` | 消费 bo 流切串聚合成 `BurstEvent` 的派生 detector（`max_span` / `min_bos`） |

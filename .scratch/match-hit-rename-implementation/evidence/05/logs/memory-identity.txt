@@ -1,0 +1,4 @@
+记忆备份：/home/yu/.claude/backups/memory-before-ticket05-20261104
+备份（改前）内容哈希：d273df6776020620c843aff64eefe82e7abc7a331d6b6b0d52d43d5da4dc5232
+记忆目录（改后）内容哈希：605eb0b401b8dc809e71ae976017b45d28c8b426d1acbf88fa0e1f24a4254b66
+算法：cd 目录 && find . -type f -print0 | sort -z | xargs -0 sha256sum | sha256sum

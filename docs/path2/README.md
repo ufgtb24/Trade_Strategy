@@ -78,7 +78,7 @@ for event in run(BODetector(), df):   # 把整张 df 喂给突破检测器
 |------|---------|
 | `nodes: Tuple[NodeSpec, ...]` | 图上的节点。每个节点 = 一个角色（`node_id`）+ 一个 detector + 可选的一元条件（`where`） |
 | `edges: Tuple[DependencyEdge, ...]` | 节点之间的有向关系边（时序 / 包含 / 起点包含 / 交叠 / 同段 / 否定，共 6 种） |
-| `root: str` | 历史保留的退化字段。须填一个合法 `node_id`，但**当前引擎并不读它**——匹配从哪里铺开，由引擎按图结构自动决定，不以 `root` 为起点 |
+| `root: str` | 历史保留的退化字段。须填一个合法 `node_id`，但**当前引擎并不读它**——求解从哪里铺开，由引擎按图结构自动决定，不以 `root` 为起点 |
 
 > ⚠️ 注意区分"两种条件"：节点上的 `where` 管的是**单段事件自己**满足什么（比如"这段下跌的回撤要 ≥ 0.25"）；边管的是**两段事件之间**的关系（比如"突破要在下跌结束后 120 根 K 线内出现"）。这条分工线（一元 vs 二元）是整个框架的设计骨架，务必记牢。
 
@@ -103,7 +103,7 @@ path2 提供了 6 种现成的边，覆盖了走势里最常见的几种关系�
 
 > 💡 `StartContainmentEdge` 和 `ContainmentEdge` 容易混：`ContainmentEdge` 要求 dst **整段**都被 src 包住（连 `dst.end ≤ src.end` 也得满足）；`StartContainmentEdge` **只看起点**——dst 从哪儿开始要落在 src 里，但 dst 的尾巴可以伸到 src 外面。当 dst 是一个宽事件、你又只关心"它是不是从某个背景段里起步"时，用后者；下面的完整示例里 `side → burst` 正是这种情况。
 
-> ⚠️ 常见坑：`NegationEdge` 的语义是**反着的**——它表达的是"禁区"。落在窗口里的 dst 是"违禁品"，引擎会因此判定这次匹配不成立。被它指向的 dst 节点不会进入最终结果（它是约束，不是结构的一部分）。`NegationEdge` 还可以传一个 `inner_predicate`，进一步限定"什么样的 dst 才算违禁"。
+> ⚠️ 常见坑：`NegationEdge` 的语义是**反着的**——它表达的是"禁区"。落在窗口里的 dst 是"违禁品"，引擎会因此判定这次命中不成立。被它指向的 dst 节点不会进入最终结果（它是约束，不是结构的一部分）。`NegationEdge` 还可以传一个 `inner_predicate`，进一步限定"什么样的 dst 才算违禁"。
 
 关于这六种边的完整语义、边界判定、以及怎么挑选，详见 [guide/edges.md](guide/edges.md)。
 
@@ -224,8 +224,8 @@ spec = PatternSpec(
 )
 
 result = analyze(spec, df)
-print(f"命中 {len(result.matches)} 次")
-for m in result.matches:
+print(f"命中 {len(result.hits)} 次")
+for m in result.hits:
     print(m.start_idx, m.end_idx, m.role_index.keys())
 ```
 
@@ -235,7 +235,7 @@ for m in result.matches:
 
 - **`down` / `side` 各持独立实例，引擎自动消歧 `event_id`**：两个节点都用 `TrendSegmentDetector`，但它们是**两个不同的对象**。两个实例产出的事件 `class_id` 都是 `'trend'`，如果 `event_id` 前缀都用 `'trend'` 就会撞。引擎在跑流前会自动处理这件事（见下方说明），给两个实例分别打上 `trend0` / `trend1` 前缀——**这件事你通常不用管**。
 
-- **`bo` 是孤立流源层，半成品命中会被自动过滤**：`bo` 节点没有任何边连它，它只是一层"密度信号"——既给 `burst` / `tb` 当输入流，又能在 K 线上把所有 bo 单独画出来。但它不参与任何配对。如果不管它，引擎会吐出一堆"只含 bo 这一个角色、根本没凑成完整形态"的半成品命中（语义垃圾）。引擎在出口处会**自动把这些半成品过滤掉**（见下方说明），所以 `bo` 不会污染真正的形态匹配。
+- **`bo` 是孤立流源层，半成品命中会被自动过滤**：`bo` 节点没有任何边连它，它只是一层"密度信号"——既给 `burst` / `tb` 当输入流，又能在 K 线上把所有 bo 单独画出来。但它不参与任何配对。如果不管它，引擎会吐出一堆"只含 bo 这一个角色、根本没凑成完整形态"的半成品命中（语义垃圾）。引擎在出口处会**自动把这些半成品过滤掉**（见下方说明），所以 `bo` 不会污染真正的形态命中。
 
 ### 顺带一提：`source_tag` 自动消歧（多数情况你不用管）
 
@@ -251,7 +251,7 @@ for m in result.matches:
 
 承上：`bo` 这种"图里没有任何边连它"的节点，叫**孤立 role**。引擎在 `analyze` 出口处会**自动**从 `spec.edges` 推算出哪些节点是孤立无边的，然后把"`role_index` 的角色全部落在孤立集合里"的命中——也就是那些只凑出 bo、没凑成完整形态的半成品——一律丢弃。判据完全从边自动推出，你不需要给 bo 做任何标记。
 
-这套机制的价值：让 bo 可以舒舒服服地当一层**独立的密度流源**（既喂下游、又能单独渲染），同时一点也不污染真正的形态匹配。
+这套机制的价值：让 bo 可以舒舒服服地当一层**独立的密度流源**（既喂下游、又能单独渲染），同时一点也不污染真正的形态命中。
 
 逐条把这 7 个约束翻译成上面这张 DAG 的完整推导，见 [example-bottom-burst.md](example-bottom-burst.md)。
 
@@ -262,16 +262,16 @@ for m in result.matches:
 调用 `analyze(spec, df)` 得到一个 `AnalysisResult`，它有三样东西：
 
 - `events`——所有节点的事件流平铺到一起（你声明的每个 detector 都跑了，这里是它们产出的全部事件）。其中会包含孤立流源层（如示例里的 `bo`）。注：**共享同一个 detector 的流会按身份去重、只计一遍**，不会因为多个节点指向同一份产出而重复堆叠。
-- `matches`——真正的**命中**列表，每项是一个 `PatternMatch`。
+- `hits`——真正的**命中**列表，每项是一个 `PatternHit`。
 - `spec`——把声明本身带回来（方便面板等下游使用）。
 
-每个 `PatternMatch` 本身就**继承自 `Event`**（所以它也有 `start_idx` / `end_idx`），此外还带：
+每个 `PatternHit` 本身就**继承自 `Event`**（所以它也有 `start_idx` / `end_idx`），此外还带：
 
 - `role_index`——`node_id → 绑定实例` 的映射。普通节点和嵌套节点都对应**单个 `Event`**（例如示例里的 `burst` 就是一个嵌套宽事件，它内部的成员 bo 通过 `event.children("members")` 取）。这是你"按角色取出命中里各段"的入口。
 - `children`——这次命中里所有绑定实例的扁平列表（按 `start_idx` 升序）。
 - `predicate_trace`——**可追溯的诊断**。它告诉你每个 `where` 子句在这次命中里通没通过（`where_results`），以及每条边的实测情况和两端实例（`edge_results` 里的 `EdgeWitness`，含实测 gap / overlap）。排查"为什么这里没命中 / 凭什么命中了"时，看它就对了。
 
-关于 `analyze()` 调用、`AnalysisResult` / `PatternMatch` / `role_index` / `predicate_trace` / `to_topology()` 的完整契约，详见 [guide/matching-and-results.md](guide/matching-and-results.md)。
+关于 `analyze()` 调用、`AnalysisResult` / `PatternHit` / `role_index` / `predicate_trace` / `to_topology()` 的完整契约，详见 [guide/hits-and-results.md](guide/hits-and-results.md)。
 
 > 💡 一句话总结：**声明（PatternSpec）进，结果（AnalysisResult）出；结果里 `role_index` 让你按角色取段，`predicate_trace` 让你看清每一步通没通过。**
 
@@ -298,7 +298,7 @@ for m in result.matches:
 | [concepts.md](concepts.md) | 概念篇：Event / Detector / 图模型的来龙去脉 |
 | [guide/building-blocks.md](guide/building-blocks.md) | 积木层指南：`path2.atoms` 探测器库（BO / Burst / Trend / Throwback / Platform / Distribution）与 `path2.calc` 纯数值函数逐个讲透 |
 | [guide/edges.md](guide/edges.md) | 关系边指南：6 种 `DependencyEdge` 的结构职责与语义判定详解 |
-| [guide/matching-and-results.md](guide/matching-and-results.md) | 匹配与结果：`analyze()` 与 `AnalysisResult` / `PatternMatch` / `role_index` / `predicate_trace` / `to_topology()` 契约 |
+| [guide/hits-and-results.md](guide/hits-and-results.md) | 命中与结果：`analyze()` 与 `AnalysisResult` / `PatternHit` / `role_index` / `predicate_trace` / `to_topology()` 契约 |
 | [guide/authoring-patterns.md](guide/authoring-patterns.md) | 编写模式：把一组文字约束系统性地落成 DAG 声明的方法 |
 | [example-bottom-burst.md](example-bottom-burst.md) | 完整 worked example：以 `bottom_burst` 为蓝本，走通 7 约束到 DAG 声明 |
 | [api-reference.md](api-reference.md) | API 速查表：各类型、字段、默认值一览（写代码时随手查） |

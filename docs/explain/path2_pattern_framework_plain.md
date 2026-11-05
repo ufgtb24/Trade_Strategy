@@ -7,7 +7,7 @@
 
 你想从一堆股票里挑出**形状对的**——不是"PE 小于 10"那种单指标筛,而是"这只票的 K 线走势看上去像某种特定形态"。
 
-最终交付一个函数:`matches(df) -> True/False`。喂进去一段日线 OHLCV,告诉你"像不像"。
+最终交付一个函数:`has_hit(df) -> True/False`。喂进去一段日线 OHLCV,告诉你"像不像"。
 
 你想要的"形态"举例:**高位下跌一段 → 长期横盘 → 触底反转 → 连续放量突破 → 短平台 → 加速上涨**(用户图例)。但框架不能只为这一种形态写,得能接住**任何**形态——双底、Cup-and-Handle、旗形整理、突破回踩……
 
@@ -65,7 +65,7 @@
 **第四步:写顶层判定**(直觉版,真正版本见研究文档)
 
 ```python
-def matches(df, params) -> bool:
+def has_hit(df, params) -> bool:
     # 1. 跑 4 个 atom 探测器,各得一条 Event 流
     bos       = list(run(BODetector(...), df))
     trends    = list(run(TrendSegmentDetector(...), df))
