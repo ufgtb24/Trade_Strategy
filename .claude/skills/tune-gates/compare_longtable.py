@@ -18,10 +18,10 @@
      检测组合里取(长表里只有这些)。
 
 **比较语义**：掩码谓词（F/W 维均按 classification 的字段与 op）、比较键（bound 节点 span + fr 12 位
-小数 + 四态多重集 + 每股 `match_fp_counts`）、`serialize_per_pattern_result` 的全部入参与原件逐字相同。
+小数 + 四态多重集 + 每股 `hit_fp_counts`）、`serialize_per_pattern_result` 的全部入参与原件逐字相同。
 四态按买点事件计：serialize 只给同一买点事件（buy_span）的第一条 match 填首次穿越四态，长表每行都带
 所在买点事件的满额四态——引擎侧把首次出现时的四态回填给同一买点事件的每条 match，再按行比多重集；
-`match_fp_counts` 与长表行按买点事件键（`study_io.segment_cols`）去重后的四态和比较。
+`hit_fp_counts` 与长表行按买点事件键（`study_io.segment_cols`）去重后的四态和比较。
 把「按格循环 → 内层按股」换成「按股并行 → 内层按格」不改变任何一次比较的内容：所有掩码谓词都是
 逐行的（无跨行聚合），先按 symbol 取子集再施掩码，与先施掩码再按 symbol 取子集等价。
 
@@ -132,7 +132,7 @@ def _engine_keys(matches, out_matches: list, key_nodes) -> list:
 
     serialize 只给同一买点事件(buy_span)的第一条 match 填首次穿越四态、其余为 None;长表每行都带所在
     买点事件的满额四态。这里把首次出现时的四态回填给同一买点事件的每条 match,两侧才能逐行对上。"""
-    keep = {x["match_id"]: x for x in out_matches}
+    keep = {x["hit_id"]: x for x in out_matches}
     fp_of_span: dict = {}
     for x in out_matches:
         fp_of_span.setdefault(tuple(map(tuple, x["buy_span"])), x["first_passage"])
@@ -158,7 +158,7 @@ def _table_keys(g: pd.DataFrame, key_nodes) -> list:
 
 
 def _table_fp_counts(g: pd.DataFrame, seg_cols: list) -> dict:
-    """长表侧四态和:同一买点事件的多行只计一次,与 serialize 的 match_fp_counts 同口径。"""
+    """长表侧四态和:同一买点事件的多行只计一次,与 serialize 的 hit_fp_counts 同口径。"""
     d = g.drop_duplicates(seg_cols)
     return {s: int(d[f"fp_{s}"].sum()) for s in STATES}
 
@@ -207,10 +207,10 @@ def _worker(task):
         out = serialize_per_pattern_result(res, end_node=C["end_node"], label_horizon=C["H"], win=win,
                                            start_ts=s, end_ts=e, price_min=C["PRICE_MIN"], price_max=C["PRICE_MAX"],
                                            first_passage_k=C["K"], sample_window=(lo, hi))
-        ref = _engine_keys(res.hits, out["analysis"]["matches"], C["key_nodes"])
+        ref = _engine_keys(res.hits, out["analysis"]["hits"], C["key_nodes"])
         got = _table_keys(g, C["key_nodes"])
         n_cmp += 1
-        if ref != got or out["match_fp_counts"] != _table_fp_counts(g, C["seg_cols"]):
+        if ref != got or out["hit_fp_counts"] != _table_fp_counts(g, C["seg_cols"]):
             mism.append((tag, stem, dict(cell), wname, len(ref), len(got)))
     return stem, n_cmp, mism, False
 

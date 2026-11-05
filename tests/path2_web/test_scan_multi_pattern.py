@@ -195,7 +195,7 @@ def test_multi_scan_per_pattern_has_stats(tmp_path, tiny_pkls):
     vals = [
         m["forward_return"]
         for r in saved["results"]
-        for m in r["per_pattern"].get("bbb", {}).get("analysis", {}).get("matches", [])
+        for m in r["per_pattern"].get("bbb", {}).get("analysis", {}).get("hits", [])
         if m.get("forward_return") is not None
     ]
     expected = _summarize_flat(vals)
@@ -228,7 +228,7 @@ def test_multi_scan_per_pattern_has_stats_drawdown(tmp_path, tiny_pkls):
     dd_vals = [
         m["forward_drawdown"]
         for r in saved["results"]
-        for m in r["per_pattern"].get("bbb", {}).get("analysis", {}).get("matches", [])
+        for m in r["per_pattern"].get("bbb", {}).get("analysis", {}).get("hits", [])
         if m.get("forward_drawdown") is not None
     ]
     expected = _summarize_flat(dd_vals)
@@ -294,14 +294,14 @@ from path2_web.scan import _aggregate_first_passage, _aggregate_multi
 
 def test_fp_stats_single_group_ratio():
     """_aggregate 返回 {pid: stats}(单组,含 k);ratio=up/(up+down)。
-    match_fp_counts: up=3,down=1,both=2,none=0 → n_bars=6,ratio=0.75。"""
+    hit_fp_counts: up=3,down=1,both=2,none=0 → n_bars=6,ratio=0.75。"""
     fake = [{
         "symbol": "AAA",
         "random_first_passage": {
             "n_sampled": 3,
             "counts": {"up": 2, "down": 1, "both": 0, "none": 0},
         },
-        "per_pattern": {"bbb": {"match_fp_counts": {
+        "per_pattern": {"bbb": {"hit_fp_counts": {
             "up": 3, "down": 1, "both": 2, "none": 0,
         }}},
     }]
@@ -326,7 +326,7 @@ def test_fp_stats_ratio_none_when_up_down_zero():
             "n_sampled": 1,
             "counts": {"up": 0, "down": 0, "both": 1, "none": 0},
         },
-        "per_pattern": {"bbb": {"match_fp_counts": {
+        "per_pattern": {"bbb": {"hit_fp_counts": {
             "up": 0, "down": 0, "both": 1, "none": 1,
         }}},
     }]
@@ -344,7 +344,7 @@ def test_fp_stats_global_random_aggregated_across_tickers():
         {"symbol": "AAA",
          "random_first_passage": {"n_sampled": 3,
                                   "counts": {"up": 1, "down": 0, "both": 0, "none": 0}},
-         "per_pattern": {"bbb": {}}},    # 无 match_fp_counts → match 侧零
+         "per_pattern": {"bbb": {}}},    # 无 hit_fp_counts → hit 侧零
         {"symbol": "BBB",
          "random_first_passage": {"n_sampled": 3,
                                   "counts": {"up": 2, "down": 1, "both": 0, "none": 0}},
@@ -352,7 +352,7 @@ def test_fp_stats_global_random_aggregated_across_tickers():
     ]
     s = _aggregate_first_passage(fake, ["bbb"], first_passage_k=2.0)["bbb"]
     assert s["random_up"] == 3 and s["random_down"] == 1
-    # match 侧空 → match 计数全 0、ratio None
+    # hit 侧空 → hit 计数全 0、ratio None
     assert s["up"] == 0 and s["down"] == 0 and s["ratio"] is None
 
 
@@ -363,7 +363,7 @@ def test_fp_stats_keys_complete_single_group():
         "symbol": "AAA",
         "random_first_passage": {"n_sampled": 1,
                                  "counts": {"up": 1, "down": 0, "both": 0, "none": 0}},
-        "per_pattern": {"bbb": {"match_fp_counts": {
+        "per_pattern": {"bbb": {"hit_fp_counts": {
             "up": 1, "down": 0, "both": 0, "none": 0,
         }}},
     }]
@@ -375,11 +375,11 @@ def test_fp_stats_keys_complete_single_group():
 
 def test_aggregate_multi_unpacks_4tuple_and_attaches_random_fp():
     """_aggregate_multi 解包 worker 4-tuple(symbol,per_pattern,random_fp,err);
-    StockResult 落 random_first_passage 字段;err/no-match 分支不进 results。"""
+    StockResult 落 random_first_passage 字段;err/no-hit 分支不进 results。"""
     fake_iter = [
-        ("AAA", {"bbb": {"analysis": {"matches": []}}},
-         {"n_sampled": 3, "counts": {}}, None),          # hit(有 match 的票)
-        ("BBB", None, None, None),                        # 无 match → 不入选
+        ("AAA", {"bbb": {"analysis": {"hits": []}}},
+         {"n_sampled": 3, "counts": {}}, None),          # 有 hit 的票
+        ("BBB", None, None, None),                        # 无 hit → 不入选
         ("CCC", None, None, "ValueError: boom"),          # 异常 → errors++
     ]
     agg = _aggregate_multi(iter(fake_iter), 3, ["bbb"], lambda *a: None)
@@ -432,7 +432,7 @@ def test_fp_stats_survive_json_roundtrip():
             "n_sampled": 3,
             "counts": {"up": 2, "down": 1, "both": 0, "none": 1},
         },
-        "per_pattern": {"bbb": {"match_fp_counts": {
+        "per_pattern": {"bbb": {"hit_fp_counts": {
             "up": 1, "down": 1, "both": 0, "none": 0,
         }}},
     }]
@@ -461,12 +461,12 @@ def test_scan_stats_leaf_and_shared_fields(tmp_path, tiny_pkls):
         executor_factory=lambda w: ThreadPoolExecutor(max_workers=w),
     )
     st = saved["per_pattern"]["bbb"]["stats"]
-    # 双口径:leaf_count = 买点数(count 是 match 数),恒 <= match 数
+    # 双口径:leaf_count = 买点数(count 是 hit 数),恒 <= hit 数
     assert isinstance(st["leaf_count"], int) and st["leaf_count"] >= 0
     assert st["leaf_count"] <= st["count"]
     sls = st["shared_leaf_stats"]
     assert set(sls) == {"n_shared_leaves", "n_exclusive_leaves", "share_ratio",
-                        "per_leaf_match_count_distribution",
+                        "per_leaf_hit_count_distribution",
                         "shared_win_rate", "exclusive_win_rate"}
     assert sls["n_shared_leaves"] + sls["n_exclusive_leaves"] == st["leaf_count"]
     if st["leaf_count"] == 0:
@@ -506,7 +506,7 @@ def test_scan_stats_leaf_count_on_hits(tmp_path):
     )
     st = saved["per_pattern"]["bbb"]["stats"]
     ms = [m for r in saved["results"]
-          for m in r["per_pattern"].get("bbb", {}).get("analysis", {}).get("matches", [])]
+          for m in r["per_pattern"].get("bbb", {}).get("analysis", {}).get("hits", [])]
     assert st["count"] >= 1
     spans = {tuple(map(tuple, m["buy_span"])) for m in ms}   # 单股票,span 即买点键
     assert st["leaf_count"] == len(spans) >= 1
@@ -518,8 +518,8 @@ def test_scan_stats_leaf_count_on_hits(tmp_path):
 def test_win_rate_of_separates_by_symbol():
     """跨股票同 span 不算共享(共享买点须同股票内)。
 
-    两股票各有 span [10, 15] 各 1 match(同 span、不同物理买点):按 (symbol, buy_span)
-    聚合应是两个独占买点、无共享。若跨股票按 span 聚合会把这两 match
+    两股票各有 span [10, 15] 各 1 hit(同 span、不同物理买点):按 (symbol, buy_span)
+    聚合应是两个独占买点、无共享。若跨股票按 span 聚合会把这两 hit
     当成共享同一买点 → shared_win_rate 误算;按股票分开后 shared 无候选 → None。
     """
     from collections import Counter
@@ -527,11 +527,11 @@ def test_win_rate_of_separates_by_symbol():
 
     def _hit(sym, ret):
         return {"symbol": sym, "per_pattern": {"bbb": {"analysis": {
-            "matches": [{"leaf": "tb_10_15#0", "buy_span": [[10, 15]], "forward_return": ret}]}}}}
+            "hits": [{"leaf": "tb_10_15#0", "buy_span": [[10, 15]], "forward_return": ret}]}}}}
 
     results = [_hit("AAA", 0.05), _hit("BBB", -0.03)]
     leaf_cnt = Counter(_buy_point_key(r["symbol"], m)
                        for r in results
-                       for m in r["per_pattern"]["bbb"]["analysis"]["matches"])
+                       for m in r["per_pattern"]["bbb"]["analysis"]["hits"])
     assert _win_rate_of(results, "bbb", leaf_cnt, shared=True) is None    # 跨股票不共享 → 无候选
     assert _win_rate_of(results, "bbb", leaf_cnt, shared=False) == 0.5    # 两独占,一胜一败

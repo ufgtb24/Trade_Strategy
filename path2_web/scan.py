@@ -59,8 +59,8 @@ def _scan_ticker_multi(pkl_path, module_paths, start_date, end_date,
     """单股多 pattern worker(模块级,ProcessPool pickle 安全)。
 
     返回 4-tuple (symbol, per_pattern_dict | None, random_first_passage | None, err | None):
-      per_pattern_dict 为 None = 该股不入选并集(所有 pattern matches 全空)。
-      random_first_passage = ticker-scoped 随机日基线(全 pattern 共享),仅 any_match
+      per_pattern_dict 为 None = 该股不入选并集(所有 pattern hits 全空)。
+      random_first_passage = ticker-scoped 随机日基线(全 pattern 共享),仅 any_hit
         且 first_passage_enabled 时才算;否则 None。
       err 非 None = 该股扫描异常,errors++,不进 results。
 
@@ -70,7 +70,7 @@ def _scan_ticker_multi(pkl_path, module_paths, start_date, end_date,
     worker(竞态修复:scan 期间改 yaml 不再影响本次 scan)。pid 在其中有值且该 app
     有 Params 类 → from_dict 重建;否则退回旧 load_params()/Params.default() 路径。
 
-    price_min/price_max:match 级价格过滤(闭区间,锚 end_node 事件日收盘价),透传给
+    price_min/price_max:hit 级价格过滤(闭区间,锚 end_node 事件日收盘价),透传给
     serialize_per_pattern_result。volume_min:股票级预筛——扫描区间内日均成交量必须
     严格大于它,否则整只股跳过、不跑 detector(判定窗是 [start_date, end_date],不是
     buffered win)。
@@ -104,7 +104,7 @@ def _scan_ticker_multi(pkl_path, module_paths, start_date, end_date,
                 return (symbol, None, None, None)
 
         per_pattern: dict = {}
-        any_match = False
+        any_hit = False
         # 样本消费窗(spec §10 截取):start_ts/end_ts 在 win 内的行号(双边含端)。
         # 机器照常跑满 win(含缓冲),逐日消费(forward_return/first_passage)截到
         # [start, end];全 pattern 共用同一 win/窗界。
@@ -138,12 +138,12 @@ def _scan_ticker_multi(pkl_path, module_paths, start_date, end_date,
                 first_passage_k=first_passage_k,
                 sample_window=(lo, hi))
             per_pattern[pid] = out
-            if out["summary"]["matches"] > 0:
-                any_match = True
+            if out["summary"]["hits"] > 0:
+                any_hit = True
 
-        if not any_match:
+        if not any_hit:
             return (symbol, None, None, None)
-        # 随机日基线:ticker-scoped,每票算一次、全 pattern 共享;仅 any_match 后才算。
+        # 随机日基线:ticker-scoped,每票算一次、全 pattern 共享;仅 any_hit 后才算。
         random_fp = None
         if first_passage_enabled:
             random_fp = random_day_first_passage(
@@ -177,7 +177,7 @@ def _aggregate_multi(results_iter, total: int, pattern_ids: list,
 
 
 def _buy_point_key(symbol: str, m: dict) -> tuple:
-    """match 的买点键 = (symbol, buy_span 元组)。
+    """hit 的买点键 = (symbol, buy_span 元组)。
 
     买点身份按 span 认:同一 span 的不同实例(instance_id #0/#1…)是同一个买点。
     buy_span 不含股票,跨股票同 span 是不同物理买点,所以键里带 symbol。"""
@@ -185,11 +185,11 @@ def _buy_point_key(symbol: str, m: dict) -> tuple:
 
 
 def _win_rate_of(results: list, pid: str, leaf_cnt: Counter, *, shared: bool) -> Optional[float]:
-    """共享(shared=True)/独占(shared=False)买点的 match 的 forward_return>0 比例。
-    leaf_cnt 键 = _buy_point_key;共享 = 同股票内同一买点 span 被 >=2 个 match 命中。"""
+    """共享(shared=True)/独占(shared=False)买点的 hit 的 forward_return>0 比例。
+    leaf_cnt 键 = _buy_point_key;共享 = 同股票内同一买点 span 出现在 >=2 个 hit 里。"""
     rets = [m["forward_return"]
             for r in results
-            for m in r["per_pattern"].get(pid, {}).get("analysis", {}).get("matches", [])
+            for m in r["per_pattern"].get(pid, {}).get("analysis", {}).get("hits", [])
             if m.get("forward_return") is not None
             and m.get("buy_span")
             and (leaf_cnt[_buy_point_key(r["symbol"], m)] >= 2) == shared]
@@ -199,11 +199,11 @@ def _win_rate_of(results: list, pid: str, leaf_cnt: Counter, *, shared: bool) ->
 def _buy_point_stats(results: list, pid: str) -> dict:
     """买点级双口径统计:{leaf_count, shared_leaf_stats}。
 
-    leaf_count = 不同买点 span 数(按 _buy_point_key 去重;stats["count"] 是 match 数=评估单元);
+    leaf_count = 不同买点 span 数(按 _buy_point_key 去重;stats["count"] 是 hit 数=评估单元);
     shared_leaf_stats 描述「多确认」规模与增信对照(研究支撑,非决策闸)。"""
     leaf_cnt = Counter(_buy_point_key(r["symbol"], m)
                        for r in results
-                       for m in r["per_pattern"].get(pid, {}).get("analysis", {}).get("matches", [])
+                       for m in r["per_pattern"].get(pid, {}).get("analysis", {}).get("hits", [])
                        if m.get("buy_span"))
     n_shared = sum(1 for c in leaf_cnt.values() if c >= 2)
     return {
@@ -212,7 +212,7 @@ def _buy_point_stats(results: list, pid: str) -> dict:
             "n_shared_leaves": n_shared,
             "n_exclusive_leaves": len(leaf_cnt) - n_shared,
             "share_ratio": (n_shared / len(leaf_cnt)) if leaf_cnt else None,
-            "per_leaf_match_count_distribution": sorted(Counter(leaf_cnt.values()).items()),
+            "per_leaf_hit_count_distribution": sorted(Counter(leaf_cnt.values()).items()),
             "shared_win_rate": _win_rate_of(results, pid, leaf_cnt, shared=True),
             "exclusive_win_rate": _win_rate_of(results, pid, leaf_cnt, shared=False),
         },
@@ -224,7 +224,7 @@ def _aggregate_first_passage(results: list, pattern_ids: list,
     """集合级首次穿越方向统计(单组,几何对称单 k)。{pid: stats_dict}。
 
     ① 全局随机基线:跨所有 results 的 random_first_passage.counts(单组)累加。
-    ② 每 pattern 从 per_pattern[pid].match_fp_counts(单组)累加买点日四态。
+    ② 每 pattern 从 per_pattern[pid].hit_fp_counts(单组)累加买点日四态。
     ③ 每 pattern 一项 stats(含 k 标注)。ratio=up/(up+down);全 0 → None。
     """
     STATES = ("up", "down", "both", "none")
@@ -238,22 +238,22 @@ def _aggregate_first_passage(results: list, pattern_ids: list,
 
     out: dict[str, dict] = {}
     for pid in pattern_ids:
-        mc = {s: 0 for s in STATES}
+        hc = {s: 0 for s in STATES}
         for r in results:
-            mfp = r.get("per_pattern", {}).get(pid, {}).get("match_fp_counts")
-            if not mfp:
+            hfp = r.get("per_pattern", {}).get(pid, {}).get("hit_fp_counts")
+            if not hfp:
                 continue
             for s in STATES:
-                mc[s] += mfp.get(s, 0)
-        up, down = mc["up"], mc["down"]
+                hc[s] += hfp.get(s, 0)
+        up, down = hc["up"], hc["down"]
         denom = up + down
         ratio = (up / denom) if denom else None
         r_up, r_down = global_rand["up"], global_rand["down"]
         r_denom = r_up + r_down
         random_ratio = (r_up / r_denom) if r_denom else None
         out[pid] = {
-            "up": up, "down": down, "both": mc["both"], "none": mc["none"],
-            "n_bars": up + down + mc["both"] + mc["none"],
+            "up": up, "down": down, "both": hc["both"], "none": hc["none"],
+            "n_bars": up + down + hc["both"] + hc["none"],
             "ratio": ratio,
             "random_up": r_up, "random_down": r_down,
             "random_both": global_rand["both"], "random_none": global_rand["none"],
@@ -369,26 +369,26 @@ def run_scan_multi(*, data_dir,
             entry["params_hash"] = params_hash(snap)
             entry["params_provenance"] = params_provenance.get(pid, "yaml")
         per_pattern_meta[pid] = entry
-    # 每 pattern 全宇宙聚合 stats / stats_drawdown(按 match 计,过滤 None)
-    #   stats         → forward_return(mfr,只看涨,count=match 数;leaf_count=买点 span 数双口径)
+    # 每 pattern 全宇宙聚合 stats / stats_drawdown(按 hit 计,过滤 None)
+    #   stats         → forward_return(mfr,只看涨,count=hit 数;leaf_count=买点 span 数双口径)
     #   stats_drawdown → forward_drawdown(min_low,mfr 下行镜像,与 stats 并列、同 shape)
     # 延迟导入避免与 eval_runner(反向依赖 scan 的 TRADING_TO_CALENDAR_RATIO/_list_pkls)循环导入
     from path2_web.eval_runner import _summarize_flat
     for pid in pattern_ids:
-        matches = [
+        hits = [
             m
             for r in agg["results"]
-            for m in r["per_pattern"].get(pid, {}).get("analysis", {}).get("matches", [])
+            for m in r["per_pattern"].get(pid, {}).get("analysis", {}).get("hits", [])
         ]
-        vals = [m["forward_return"] for m in matches
+        vals = [m["forward_return"] for m in hits
                 if m.get("forward_return") is not None]
         stats = _summarize_flat(vals)
         stats.update(_buy_point_stats(agg["results"], pid))
         per_pattern_meta[pid]["stats"] = stats
-        dd_vals = [m["forward_drawdown"] for m in matches
+        dd_vals = [m["forward_drawdown"] for m in hits
                    if m.get("forward_drawdown") is not None]
         per_pattern_meta[pid]["stats_drawdown"] = _summarize_flat(dd_vals)
-    # 首次穿越方向集合统计(分类量):全局随机基线 + 每 pattern match 侧计数 → ratio/random_ratio
+    # 首次穿越方向集合统计(分类量):全局随机基线 + 每 pattern hit 侧计数 → ratio/random_ratio
     if first_passage_enabled:
         fp_stats = _aggregate_first_passage(agg["results"], pattern_ids,
                                             first_passage_k=first_passage_k)
@@ -468,9 +468,9 @@ def list_scans_flat(outputs_root: str = _DEFAULT_OUTPUTS_ROOT) -> list[dict]:
     """[{name, scan_ts, pattern_ids, hit_stocks, total, size, partial, per_pattern[, old_scan]}, ...]。
     name = 文件名 stem(标识符);scan_ts = 文件内 scan.scan_ts(创建时间,排序用),
     读不出回退 stem(老文件兼容)。按 scan_ts 倒序。
-    per_pattern = {pid: {"hits": match数, "median": float | None, "fp": dict | None}}——
-    hits = Σ 各股票 summary.matches(结果文件只收录 match>0 的股票,未收录贡献 0);
-    median = per_pattern[pid].stats.median(match 级 forward_return 中位数,无 match 时为 None);
+    per_pattern = {pid: {"hits": hit数, "median": float | None, "fp": dict | None}}——
+    hits = Σ 各股票 summary.hits(结果文件只收录 hit>0 的股票,未收录贡献 0);
+    median = per_pattern[pid].stats.median(hit 级 forward_return 中位数,无 hit 时为 None);
     fp = first_passage_stats 的 ratio/random_ratio 对(缺失或 n_bars==0 时为 None,内部值各自可为 None);
     params_consistent: bool|None——快照参数结构 vs 当前默认参数结构是否一致(只比字段名;None=无快照或 pid 无 app)。
     越过数据墙的扫描(within_data_wall 为假):带 old_scan = true,命中数、中位数、首次穿越比置 None——
@@ -492,7 +492,7 @@ def list_scans_flat(outputs_root: str = _DEFAULT_OUTPUTS_ROOT) -> list[dict]:
             for pid in pattern_ids:
                 n = 0
                 for r in blob.get("results", []):
-                    n += r.get("per_pattern", {}).get(pid, {}).get("summary", {}).get("matches", 0)
+                    n += r.get("per_pattern", {}).get(pid, {}).get("summary", {}).get("hits", 0)
                 stats = blob.get("per_pattern", {}).get(pid, {}).get("stats", {})
                 # fp:首次穿越方向比例对。first_passage_stats 缺失(老文件/first_passage_enabled=False)
                 # 或 n_bars==0(该 pattern 无命中,随机基线无对照意义)→ None;内部值各自可为 None(分母 0)

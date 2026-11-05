@@ -61,7 +61,7 @@ def test_eval_ticker_positive_with_overrides(tmp_path):
     assert len({x["buy_date"] for x in rows}) == len(rows)
 
 
-def test_eval_ticker_default_params_no_match(tmp_path):
+def test_eval_ticker_default_params_no_hit(tmp_path):
     from tests.path2_apps.bottom_burst.test_has_hit import _synth_no_burst
     p = _write_pkl(tmp_path, "NOPE", _mk_dated(_synth_no_burst()))
     symbol, rows, err = eval_runner._eval_ticker(
@@ -181,7 +181,7 @@ def test_run_healthcheck_target_hit_and_magnitude(tmp_path):
         executor_factory=lambda w: ThreadPoolExecutor(max_workers=w))
     assert out["universe_hit_tickers"] == 1
     assert out["magnitude_ok"] is True
-    assert out["target_matches"] is True
+    assert out["target_hits"] is True
     assert out["meta"]["mode"] == "healthcheck"
 
 
@@ -199,7 +199,7 @@ def test_run_healthcheck_target_miss_and_zero_hits(tmp_path):
         executor_factory=lambda w: ThreadPoolExecutor(max_workers=w))
     assert out["universe_hit_tickers"] == 0
     assert out["magnitude_ok"] is False               # 0 命中 = 不健康
-    assert out["target_matches"] is False
+    assert out["target_hits"] is False
 
 
 import pytest
@@ -254,22 +254,22 @@ def test_summarize_flat_single_element_zero():
 
 
 def test_leaf_stats_buckets():
-    """买点级统计:buy_windows 按 (symbol, leaf) 去重、match_windows 按行、共享计数。
+    """买点级统计:buy_windows 按 (symbol, leaf) 去重、hit_windows 按行、共享计数。
     跨股票同 span leaf 不合并(reuse leaf 须同股票内)。"""
     rows = [
         {"symbol": "AAA", "leaf_event_id": "tb_1", "upstream_key": "k1"},
-        {"symbol": "AAA", "leaf_event_id": "tb_1", "upstream_key": "k2"},   # AAA 内同 leaf 两 match(共享)
+        {"symbol": "AAA", "leaf_event_id": "tb_1", "upstream_key": "k2"},   # AAA 内同 leaf 两 hit(共享)
         {"symbol": "BBB", "leaf_event_id": "tb_1", "upstream_key": "k3"},   # 跨股票同 span → 不同买点(独占)
     ]
     st = eval_runner._leaf_stats(rows)
     assert st["buy_windows"] == 2          # (AAA,tb_1) + (BBB,tb_1):跨股票不合并
-    assert st["match_windows"] == 3
-    assert st["shared_leaf_count"] == 1    # 仅 (AAA,tb_1) 被 2 match 共享
+    assert st["hit_windows"] == 3
+    assert st["shared_leaf_count"] == 1    # 仅 (AAA,tb_1) 被 2 hit 共享
     assert st["share_ratio"] == 0.5
 
 
 def test_eval_ticker_rows_carry_leaf_and_upstream(tmp_path):
-    """每 match 一行(不再按买点去重),行带 leaf_event_id + upstream_key。"""
+    """每 hit 一行(不再按买点去重),行带 leaf_event_id + upstream_key。"""
     p = _positive_pkl(tmp_path)
     symbol, rows, err = eval_runner._eval_ticker(
         str(p), APP, WIDE["start"], WIDE["end"],
@@ -283,7 +283,7 @@ def test_eval_ticker_rows_carry_leaf_and_upstream(tmp_path):
 
 
 def test_diff_results_two_level_anchor():
-    """同 buy_date 多 match:按 upstream_key 子行对比,不静默丢行。"""
+    """同 buy_date 多 hit:按 upstream_key 子行对比,不静默丢行。"""
     base = [
         {"symbol": "A", "buy_date": "2025-01-02", "upstream_key": "k1", "returns": {"2": 0.1}},
         {"symbol": "A", "buy_date": "2025-01-02", "upstream_key": "k2", "returns": {"2": 0.2}},
@@ -335,7 +335,7 @@ def _analyze_dup_stream_for_upstream():
 
 def test_upstream_key_multi_instance_attaches_idx():
     """实例流:多实例节点直接读物化 instance_id(含 #idx 后缀,与事件标注同源)。
-    两 match 的 upstream_key 因此可区分(旧实现同拼接 → sha1 碰撞)。"""
+    两 hit 的 upstream_key 因此可区分(旧实现同拼接 → sha1 碰撞)。"""
     import hashlib
     from path2_web.eval_runner import _upstream_key
     res = _analyze_dup_stream_for_upstream()

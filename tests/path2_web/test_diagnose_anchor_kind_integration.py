@@ -111,7 +111,7 @@ def test_anchor_kind_trough_only_trough_fires(client_with_real_pkl, fire_recorde
     r = client_with_real_pkl.get(_url(anchor_kind="trough"))
     assert r.status_code == 200
     anchor_kinds_fired = {anchor_kind for _, anchor_kind in fire_recorder}
-    # trough 埋点在 phase1 success 分支 · 需 tb 有真实 match 才 fire · 若数据无 tb match
+    # trough 埋点在 phase1 success 分支 · 需 tb 有真实 hit 才 fire · 若数据无 tb hit
     # 集合可能是空(允许) · 若非空则必须只含 trough
     assert anchor_kinds_fired <= {"trough"}, (
         f"expected only 'trough' (or empty) fires · got {anchor_kinds_fired}"

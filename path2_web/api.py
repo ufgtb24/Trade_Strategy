@@ -163,11 +163,11 @@ class ScanRequest(BaseModel):
     # 按引用通道:pid → app 目录下的 yaml 文件名(白名单 ^[A-Za-z0-9_\-]+\.yaml$)。
     # 语义 = 磁盘具名文件,后端自读自校验;文件身份落盘进 params_provenance
     params_files: dict[str, str] | None = None
-    price_min: float | None = None      # match 级:end_node 事件日收盘价下限(闭区间)
-    price_max: float | None = None      # match 级:end_node 事件日收盘价上限(闭区间)
+    price_min: float | None = None      # hit 级:end_node 事件日收盘价下限(闭区间)
+    price_max: float | None = None      # hit 级:end_node 事件日收盘价上限(闭区间)
     volume_min: float | None = None     # 股票级预筛:扫描区间内日均成交量必须严格大于此值
     note: str | None = None                             # scan 备注(命名实验)
-    # 首次穿越方向(分类量):per-match 注入 + ticker-scoped 随机日基线 + 集合级 stats
+    # 首次穿越方向(分类量):per-hit 注入 + ticker-scoped 随机日基线 + 集合级 stats
     first_passage_enabled: bool = True                  # 开关(False=不算首穿、向后兼容)
     first_passage_k: float = 5.0                        # 几何对称阈值倍数(上行 P(1+kM)、下行 P/(1+kM))
 

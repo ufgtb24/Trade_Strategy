@@ -4,7 +4,7 @@
 (hit_forward_returns / hit_first_passage / n_buy_days)按 [start_ts, end_ts]
 双边截取(spec §10:跨 end_ts 的段只取窗内部分计样本);eval 聚合层新增
 dedup_daily 日级去重视图——重叠日 forward return 是同一物理观测,重复计数 =
-伪复制(B2 裁决);consensus_days = 被多 match sample_dates 覆盖的日数。
+伪复制(B2 裁决);consensus_days = 被多 hit sample_dates 覆盖的日数。
 
 不依赖 datasets/pkls:合成 positive_case 驱动(模式同 test_serialize_multi /
 test_eval_runner)。fixture 现状:tb_spans=(263,264)+(287,287),样本日
@@ -35,7 +35,7 @@ def _synth_win_with_date():
 
 
 def _sample_days(res, end_node: str) -> list[int]:
-    """首 match 的 end_node 样本日并集(升序)。"""
+    """首 hit 的 end_node 样本日并集(升序)。"""
     m = res.hits[0]
     return sorted({t for ev in _resolve_end_events(m, end_node)
                    for t in ev.sample_bar_indices()})
@@ -44,7 +44,7 @@ def _sample_days(res, end_node: str) -> list[int]:
 class TestSampleClipping:
     def test_serialize_clips_crossing_segment(self):
         """end_ts 落在段内:注入的 forward_return 只用窗内日(手工截窗期望值)。
-        matches 过滤口径不变——跨界段任一起点在窗内 → match 保留。"""
+        hits 过滤口径不变——跨界段任一起点在窗内 → hit 保留。"""
         win, res, _ = _synth_win_with_date()
         meta = eval_meta()
         N = 5
@@ -65,16 +65,16 @@ class TestSampleClipping:
             res, end_node=meta["end_node"], label_horizon=N, win=win,
             start_ts=win["date"].iat[0], end_ts=end_ts,
             sample_window=(lo, hi))
-        matches = out["analysis"]["matches"]
-        assert matches, "口径不变:跨界段任一起点在窗内,match 应保留"
-        got = matches[0]["forward_return"]
+        hits = out["analysis"]["hits"]
+        assert hits, "口径不变:跨界段任一起点在窗内,hit 应保留"
+        got = hits[0]["forward_return"]
         assert got is not None
         assert got == pytest.approx(expect)
         # dd 同窗截取(裁定 a):min(low) 镜像用同一截窗日集合,样本日不分裂
         def _g(t: int) -> float:
             return float(win["low"].iloc[t + 1: t + N + 1].min()) / float(win["close"].iat[t]) - 1.0
         expect_dd = statistics.mean(_g(t) for t in in_days)
-        assert matches[0]["forward_drawdown"] == pytest.approx(expect_dd)
+        assert hits[0]["forward_drawdown"] == pytest.approx(expect_dd)
         # 非平凡:截窗值 ≠ 全量均值(证明确实剪掉了窗外日,而非恰好相等)
         all_days = [t for t in days if t + N < len(win)]
         full = statistics.mean(
@@ -121,8 +121,8 @@ class TestSampleClipping:
 
 class TestDedupDaily:
     def test_duplicate_day_counted_once(self):
-        """两 match(前缀族重叠机)段交叠:同 (symbol, date) 日级收益只计一票,
-        consensus_days 标记被多 match 覆盖的日。"""
+        """两 hit(前缀族重叠机)段交叠:同 (symbol, date) 日级收益只计一票,
+        consensus_days 标记被多 hit 覆盖的日。"""
         rows = [
             {"symbol": "AAA", "sample_dates": ["2025-01-02", "2025-01-03"],
              "day_returns": {"2025-01-02": {"2": 0.1}, "2025-01-03": {"2": 0.2}}},
@@ -135,7 +135,7 @@ class TestDedupDaily:
         # 去重日 = (AAA,01-02)(AAA,01-03)(AAA,01-04)(BBB,01-03) → 4 票(AAA 01-03 只一票)
         assert st["2"]["count"] == 4
         assert st["2"]["mean"] == pytest.approx((0.1 + 0.2 - 0.3 + 0.5) / 4)
-        # consensus_days:(AAA,2025-01-03) 被 2 match 覆盖 → 计;(BBB,01-03) 单 match 不计
+        # consensus_days:(AAA,2025-01-03) 被 2 hit 覆盖 → 计;(BBB,01-03) 单 hit 不计
         assert st["consensus_days"] == 1
 
     def test_eval_core_meta_carries_dedup_daily(self, tmp_path):

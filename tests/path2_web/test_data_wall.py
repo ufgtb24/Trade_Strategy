@@ -188,12 +188,12 @@ def test_app_run_for_compare_stops_at_train_end(tmp_path, full_dir):
     body = r.json()
     assert body["scan"]["end_date"] == TRAIN_END and body["scan"]["win_end"] <= TRAIN_END
 
-    events, matches = body["analysis"]["events"], body["analysis"]["matches"]
-    assert events and matches
-    for d in events + matches:
+    events, hits = body["analysis"]["events"], body["analysis"]["hits"]
+    assert events and hits
+    for d in events + hits:
         idx = [v for k, v in d.items() if k.endswith("_idx") and isinstance(v, int)]
         assert idx and max(idx) < n, d
-    for m in matches:
+    for m in hits:
         assert all(e < n for _, e in m["buy_span"]) and m["buy_date"] <= TRAIN_END
 
     capped = full.loc[:TRAIN_END].reset_index()
@@ -285,7 +285,7 @@ def test_scan_beyond_data_wall_refused_and_numbers_hidden(tmp_path, full_dir, sc
         "pattern_ids": ["bo_only"], "scan": {"scan_ts": "20260906T231146", **scan_section},
         "per_pattern": {"bo_only": {"stats": {"median": 0.12},
                                     "first_passage_stats": {"n_bars": 3, "ratio": 0.5, "random_ratio": 0.4}}},
-        "results": [{"symbol": "AAA", "per_pattern": {"bo_only": {"summary": {"matches": 1}}}}]}))
+        "results": [{"symbol": "AAA", "per_pattern": {"bo_only": {"summary": {"hits": 1}}}}]}))
     c = _client(tmp_path, full_dir)
     assert c.get("/scans/old").status_code == 409
     row = next(r for r in c.get("/scans/").json() if r["name"] == "old")

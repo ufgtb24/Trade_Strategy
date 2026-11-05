@@ -67,7 +67,7 @@ def main() -> None:
                               param_overrides=PARAM_OVERRIDES, **common)
         print(f"tickers_hit={out['universe_hit_tickers']} "
               f"magnitude_ok={out['magnitude_ok']} "
-              f"target_matches={out['target_matches']}")
+              f"target_hits={out['target_hits']}")
     else:
         raise ValueError(f"unknown MODE {MODE!r}")
     print(f"json -> {out['meta']['out_path']}")

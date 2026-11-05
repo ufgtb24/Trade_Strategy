@@ -1,4 +1,4 @@
-"""因果闸端到端测试:_eval_ticker 拒绝买点早于事件确认 bar(confirm_idx)的 match。
+"""因果闸端到端测试:_eval_ticker 拒绝买点早于事件确认 bar(confirm_idx)的 hit。
 
 依据 11_path2_causal_gate_guide.md:retrospective 事件(burst/trend/platform)
 confirm_idx=end,若误用其 start_idx 当买点是前瞻,因果闸须 raise。
@@ -22,7 +22,7 @@ class _RetroEvent(Event):
 
 
 def _gate_violation_res():
-    """违规 match:end_node event start_idx=5 < confirm_idx=10(用 start 当买点是前瞻)。"""
+    """违规 hit:end_node event start_idx=5 < confirm_idx=10(用 start 当买点是前瞻)。"""
     retro = _RetroEvent(start_idx=5, end_idx=10, confirm_idx=10,
                         node_id="end", instance_id="r1")
     m = PatternHit(
@@ -32,7 +32,7 @@ def _gate_violation_res():
 
 
 def _gate_ok_res():
-    """合法 match:end_node event start_idx==confirm_idx(确认类,如 tb)。"""
+    """合法 hit:end_node event start_idx==confirm_idx(确认类,如 tb)。"""
     ev = _RetroEvent(start_idx=7, end_idx=10, confirm_idx=7,
                      node_id="end", instance_id="ok1")
     m = PatternHit(

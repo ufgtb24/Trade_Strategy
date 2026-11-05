@@ -115,15 +115,15 @@ def _match(mid, tb, burst):
 
 def test_engine_keys_backfill_first_passage_per_buy_span():
     """同一买点事件的两条 match:serialize 只给第一条填四态;回填后与长表的逐行满额四态逐行一致,
-    而 match_fp_counts 与长表按买点事件键去重后的四态和一致。"""
+    而 hit_fp_counts 与长表按买点事件键去重后的四态和一致。"""
     fp1, fp3 = {"up": 2, "down": 1, "both": 0, "none": 3}, {"up": 0, "down": 4, "both": 1, "none": 0}
     matches = [_match("m1", (10, 12), (1, 5)), _match("m2", (10, 12), (2, 5)), _match("m3", (20, 21), (15, 18))]
     out_matches = [
-        {"match_id": "m1", "buy_span": [[10, 12]], "forward_return": 0.1, "first_passage": fp1},
-        {"match_id": "m2", "buy_span": [[10, 12]], "forward_return": 0.1, "first_passage": None},
-        {"match_id": "m3", "buy_span": [[20, 21]], "forward_return": None, "first_passage": fp3},
+        {"hit_id": "m1", "buy_span": [[10, 12]], "forward_return": 0.1, "first_passage": fp1},
+        {"hit_id": "m2", "buy_span": [[10, 12]], "forward_return": 0.1, "first_passage": None},
+        {"hit_id": "m3", "buy_span": [[20, 21]], "forward_return": None, "first_passage": fp3},
     ]
-    match_fp_counts = {s: fp1[s] + fp3[s] for s in fp1}
+    hit_fp_counts = {s: fp1[s] + fp3[s] for s in fp1}
     g = pd.DataFrame([
         {"burst.start": 1, "burst.end": 5, "tb.start": 10, "tb.end": 12, "fr": 0.1, **{f"fp_{s}": v for s, v in fp1.items()}},
         {"burst.start": 2, "burst.end": 5, "tb.start": 10, "tb.end": 12, "fr": 0.1, **{f"fp_{s}": v for s, v in fp1.items()}},
@@ -131,9 +131,9 @@ def test_engine_keys_backfill_first_passage_per_buy_span():
     ])
     key_nodes = ("burst", "tb")
     assert _engine_keys(matches, out_matches, key_nodes) == _table_keys(g, key_nodes)
-    assert _table_fp_counts(g, ["tb.start", "tb.end"]) == match_fp_counts
+    assert _table_fp_counts(g, ["tb.start", "tb.end"]) == hit_fp_counts
     # 不去重就会把同一段买点算两次——这正是要拦住的口径
-    assert {s: int(g[f"fp_{s}"].sum()) for s in fp1} != match_fp_counts
+    assert {s: int(g[f"fp_{s}"].sum()) for s in fp1} != hit_fp_counts
 
 
 # ---- 股票覆盖红线 ----

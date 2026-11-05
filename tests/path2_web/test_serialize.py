@@ -10,7 +10,7 @@ from path2_web import serialize
 
 def _analyze_positive():
     df, params = positive_case()
-    return dag_spec.analyze(df, params)   # 宽松 params → 必有 >=1 match
+    return dag_spec.analyze(df, params)   # 宽松 params → 必有 >=1 hit
 
 
 def test_jsonable_handles_tuple_none_nan_nested():
@@ -38,12 +38,12 @@ def test_serialize_events_flatten_subclass_attrs():
     assert isinstance(burst["distinct_pk"], int)
 
 
-def test_serialize_match_node_index_and_trace():
+def test_serialize_hit_node_index_and_trace():
     res = _analyze_positive()
     out = serialize.serialize_analysis(res)
-    assert len(out["matches"]) >= 1
-    m = out["matches"][0]
-    assert {"match_id", "start_idx", "end_idx", "node_index", "children", "predicate_trace"} <= set(m)
+    assert len(out["hits"]) >= 1
+    m = out["hits"][0]
+    assert {"hit_id", "start_idx", "end_idx", "node_index", "children", "predicate_trace"} <= set(m)
     # 实例流:node_index 每节点值 = instance_id 字符串(与事件行同源);bo 不进 node_index(isolated)
     assert isinstance(m["node_index"]["burst"], str) and "#" in m["node_index"]["burst"]
     assert isinstance(m["node_index"]["tb"], str) and "#" in m["node_index"]["tb"]
@@ -63,10 +63,10 @@ def test_serialize_match_node_index_and_trace():
     assert {"satisfied", "measured", "src", "dst"} <= set(ew)
 
 
-def test_summarize_counts_by_node_id_plus_matches():
+def test_summarize_counts_by_node_id_plus_hits():
     res = _analyze_positive()
     s = serialize.summarize(res)
-    assert s["matches"] == len(res.hits)
+    assert s["hits"] == len(res.hits)
     assert "burst" in s and "bo" in s
     # 计数 == events 全集里该 node_id 数量
     n_bo = sum(1 for e in res.events if e.node_id == "bo")
@@ -303,8 +303,8 @@ def test_rules_from_where_recursive():
     assert rules[1]["kind"] == "attr" and rules[1]["field"] == "first_drought"
 
 
-def test_serialize_match_has_leaf_instance_id():
-    """每个被过滤的 match dict 注入 leaf(= end_node 事件 instance_id 字符串)。
+def test_serialize_hit_has_leaf_instance_id():
+    """每个被过滤的 hit dict 注入 leaf(= end_node 事件 instance_id 字符串)。
     win 取 positive_case df 全量 + 合成 date 列(serialize 用 win['date'] 定位买点日)。"""
     import pandas as pd
     df, params = positive_case()
@@ -316,8 +316,8 @@ def test_serialize_match_has_leaf_instance_id():
     out = serialize.serialize_per_pattern_result(
         res, end_node="tb", label_horizon=5,
         win=win, start_ts=start_ts, end_ts=end_ts)
-    assert out["analysis"]["matches"]
-    for md in out["analysis"]["matches"]:
+    assert out["analysis"]["hits"]
+    for md in out["analysis"]["hits"]:
         assert isinstance(md.get("leaf"), str) and "#" in md["leaf"]
         assert "leaf_event_id" not in md, "leaf_event_id 兼容字段已随 event_id 体系删除"
 
@@ -338,7 +338,7 @@ def _make_price_df(n=30):
 
 
 def test_fp_counts_dedup_shared_leaf():
-    """共享 leaf 的多 match:首穿四态只按 leaf 累加一次(买点日是物理属性)。"""
+    """共享 leaf 的多 hit:首穿四态只按 leaf 累加一次(买点日是物理属性)。"""
     from tests.path2.dag._oracle import Ev
     from path2.dag._solve import Solution, compile_plan
     from path2.dag.nodes import NodeSpec
@@ -352,7 +352,7 @@ def test_fp_counts_dedup_shared_leaf():
         """占位 detector:只声明 event_cls(compile_plan 不调 detect,streams 直给)。"""
         event_cls = Ev
 
-    # 两上游(A)共享同一 leaf(B),span 相同:放宽后两个 match 可见
+    # 两上游(A)共享同一 leaf(B),span 相同:放宽后两个 hit 可见
     nodes = [NodeSpec("A", detector=_StubDetector()), NodeSpec("B", detector=_StubDetector())]
     edges = [TemporalEdge("A", "B", min_gap=0, max_gap=100)]
     plan = compile_plan(PatternSpec(pattern_id="p", nodes=tuple(nodes), edges=tuple(edges)))
@@ -366,10 +366,10 @@ def test_fp_counts_dedup_shared_leaf():
                                        win=win, start_ts=win["date"].iat[0],
                                        end_ts=win["date"].iat[-1],
                                        first_passage_enabled=True, first_passage_k=5.0)
-    assert out["match_fp_counts"] == {"up": 0, "down": 0, "both": 0, "none": 3}
+    assert out["hit_fp_counts"] == {"up": 0, "down": 0, "both": 0, "none": 3}
 
 
-# ── 实例流:契约层实例视图(instance_id / match leaf) ──
+# ── 实例流:契约层实例视图(instance_id / hit leaf) ──
 
 class _FakeDet:
     """合成 detector:忽略输入源,直接吐已构造好的 canned 事件序列(多实例流用)。"""
@@ -385,7 +385,7 @@ class _FakeDet:
 def _analyze_dup_stream():
     """src 流内同 node_id 同 span 两实例(仅 pos 不同)→ 多实例 res(engine 全流程)。
 
-    与 test_engine_hit_id_disambiguate 同构:两实例各产一个 match(match id 碰撞
+    与 test_engine_hit_id_disambiguate 同构:两实例各产一个 hit(hit id 碰撞
     由 engine 消歧为 #0/#1);events = (s0×2, d0)。"""
     from path2.dag.engine import analyze
     from path2.dag.spec import PatternSpec
@@ -410,11 +410,11 @@ def test_serialize_events_instance_id_contract():
             assert banned not in r, f"{banned} 残留"
 
 
-def test_serialize_match_instance_refs():
-    """match 行:node_index 值为 instance_id 字符串;children 全实例化;match_id。"""
+def test_serialize_hit_instance_refs():
+    """hit 行:node_index 值为 instance_id 字符串;children 全实例化;hit_id。"""
     payload = serialize.serialize_analysis(_analyze_dup_stream())
-    for m in payload["matches"]:
-        assert "match_id" in m and "event_id" not in m
+    for m in payload["hits"]:
+        assert "hit_id" in m and "event_id" not in m
         for nid, ref in m["node_index"].items():
             assert isinstance(ref, str) and "#" in ref
         for c in m["children"]:
@@ -460,8 +460,8 @@ def test_serialize_events_multi_instance_rows():
     assert by_id["w0_10_15#1"]["child_refs"]["kids"] == ["k0_10#1"]
 
 
-def test_serialize_match_multi_instance_leaf():
-    """match 行 leaf = end_node 事件 instance_id 字符串(与事件行同源)。"""
+def test_serialize_hit_multi_instance_leaf():
+    """hit 行 leaf = end_node 事件 instance_id 字符串(与事件行同源)。"""
     import pandas as pd
     res = _analyze_dup_stream()
     win = pd.DataFrame({"open": [100.0] * 30, "high": [101.0] * 30,
@@ -477,23 +477,23 @@ def test_serialize_match_multi_instance_leaf():
     assert {r["instance_id"] for r in evs if r["node_id"] == "src"} == {"src_5_10#0", "src_5_10#1"}
     d0 = next(r for r in evs if r["node_id"] == "dst")
     assert d0["instance_id"] == "dst_20#0"
-    # 两 match 共享 leaf d0:leaf = d0 行的 instance_id 字符串(与事件行同源)
-    assert len(out["analysis"]["matches"]) == 2
-    for md in out["analysis"]["matches"]:
+    # 两 hit 共享 leaf d0:leaf = d0 行的 instance_id 字符串(与事件行同源)
+    assert len(out["analysis"]["hits"]) == 2
+    for md in out["analysis"]["hits"]:
         assert md["leaf"] == "dst_20#0"
         assert "leaf_event_id" not in md
-    # end_node 锚到多实例 src:两 match 的 leaf 各自定位到具体实例(instance_id 区分)
+    # end_node 锚到多实例 src:两 hit 的 leaf 各自定位到具体实例(instance_id 区分)
     out2 = serialize.serialize_per_pattern_result(
         res, end_node="src", label_horizon=2,
         win=win, start_ts=start_ts, end_ts=end_ts)
-    leafs = {md["leaf"] for md in out2["analysis"]["matches"]}
+    leafs = {md["leaf"] for md in out2["analysis"]["hits"]}
     assert leafs == {"src_5_10#0", "src_5_10#1"}
 
 
 def test_fp_counts_dedup_same_span_instances():
     """end_node 事件是不同实例但 span 相同:同一个买点,首穿四态只计一次、leaf_count 计 1。
 
-    引擎按 (node, span) 编 #idx,dst 两实例物化成 dst_25_27#0 / #1;两 match 的 leaf
+    引擎按 (node, span) 编 #idx,dst 两实例物化成 dst_25_27#0 / #1;两 hit 的 leaf
     各指一个实例,buy_span 相同。首穿去重与 scan 聚合都按 span 认买点。"""
     import json
     from path2.dag.engine import analyze
@@ -513,34 +513,34 @@ def test_fp_counts_dedup_same_span_instances():
         res, end_node="dst", label_horizon=2,
         win=win, start_ts=win["date"].iat[0], end_ts=win["date"].iat[-1],
         first_passage_enabled=True, first_passage_k=5.0)
-    ms = out["analysis"]["matches"]
+    ms = out["analysis"]["hits"]
     assert len(ms) == 2
     assert {md["leaf"] for md in ms} == {"dst_25_27#0", "dst_25_27#1"}
     assert all(md["buy_span"] == [[25, 27]] for md in ms)
-    # 首穿四态只计一次:3 个买点日,第二条 match 的 first_passage 为 None
-    assert out["match_fp_counts"] == {"up": 0, "down": 0, "both": 0, "none": 3}
+    # 首穿四态只计一次:3 个买点日,第二条 hit 的 first_passage 为 None
+    assert out["hit_fp_counts"] == {"up": 0, "down": 0, "both": 0, "none": 3}
     assert [md["first_passage"] is not None for md in ms] == [True, False]
     assert ms[0]["first_passage"] == {"up": 0, "down": 0, "both": 0, "none": 3}
-    # scan 聚合(经 JSON 往返,buy_span 为 list):同一买点 span → leaf_count 1、被 2 match 共享
+    # scan 聚合(经 JSON 往返,buy_span 为 list):同一买点 span → leaf_count 1、被 2 hit 共享
     results = json.loads(json.dumps([{"symbol": "AAA", "per_pattern": {"dup_span": out}}]))
     st = _buy_point_stats(results, "dup_span")
     assert st["leaf_count"] == 1
     assert st["shared_leaf_stats"]["n_shared_leaves"] == 1
-    assert st["shared_leaf_stats"]["per_leaf_match_count_distribution"] == [(2, 1)]
+    assert st["shared_leaf_stats"]["per_leaf_hit_count_distribution"] == [(2, 1)]
 
 
-def test_serialize_match_node_index_instanced():
-    """match node_index 每节点值 = instance_id 字符串,与事件行 instance_id 同源。"""
-    res = _analyze_dup_stream()   # 同 node_id(s0)双实例 + 两 match,node_index 引用它们
+def test_serialize_hit_node_index_instanced():
+    """hit node_index 每节点值 = instance_id 字符串,与事件行 instance_id 同源。"""
+    res = _analyze_dup_stream()   # 同 node_id(s0)双实例 + 两 hit,node_index 引用它们
     payload = serialize.serialize_analysis(res)
-    matches = payload["matches"]
-    assert len(matches) == 2
+    hits = payload["hits"]
+    assert len(hits) == 2
     ev_rows = {r["instance_id"]: r for r in payload["events"]}
-    for m in matches:
+    for m in hits:
         for nid, ref in m["node_index"].items():
             assert isinstance(ref, str), f"node_index[{nid}] 应为 instance_id 字符串, 实为 {ref!r}"
             assert ref in ev_rows, f"{ref} 不在事件行(instance_id 编号不同源)"
-    # 双实例场景:src 节点的 instance_id 能区分两个实例(两 match 各引用一个)
-    src_refs = [ref for m in matches for nid, ref in m["node_index"].items()
+    # 双实例场景:src 节点的 instance_id 能区分两个实例(两 hit 各引用一个)
+    src_refs = [ref for m in hits for nid, ref in m["node_index"].items()
                 if nid == "src"]
     assert len({r for r in src_refs}) >= 2, "同 node_id 双实例的 instance_id 应区分"

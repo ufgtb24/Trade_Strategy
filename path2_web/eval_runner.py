@@ -5,9 +5,9 @@
   run_regress     与改前 baseline(一次 eval 的结果 JSON)按 (symbol, buy_date) 对拍
   run_healthcheck 新建/改动 detector 后的数量级体检 + 目标票命中确认
 
-与 scan.py::run_scan 的分工:run_scan 服务 web UI(全量序列化、单 horizon、按 match
-计数);本模块服务设计期评估(轻量 JSON、多 horizon、每 match 一行,meta 双口径
-buy_windows/match_windows)。module_path 一律指 app 包
+与 scan.py::run_scan 的分工:run_scan 服务 web UI(全量序列化、单 horizon、按 hit
+计数);本模块服务设计期评估(轻量 JSON、多 horizon、每 hit 一行,meta 双口径
+buy_windows/hit_windows)。module_path 一律指 app 包
 (如 "path2_apps.bottom_burst",经 __init__ 暴露 analyze/Params/eval_meta/
 PATTERN_DAG),非 dag_spec 子模块。
 """
@@ -36,18 +36,18 @@ from path2_web.scan import TRADING_TO_CALENDAR_RATIO, _list_pkls
 def _eval_ticker(pkl_path: str, module_path: str, start: str, end: str,
                  horizons: tuple, end_node: str, head_buffer_trading_days: int,
                  param_overrides: Optional[dict]):
-    """Worker:读 pkl → 双端缓冲切窗 → analyze → 窗内过滤 → 每 match 一行收益。
+    """Worker:读 pkl → 双端缓冲切窗 → analyze → 窗内过滤 → 每 hit 一行收益。
 
     模块级函数(ProcessPool pickle 安全)。base = mod.load_params() 读 app 同目录
     params.yaml(SSoT)。param_overrides 是 **nested dict**(如 {"bo":{"min_relative_height":0.02},
     "burst":{"min_bos":2}}),worker 内逐 section 用 dataclasses.replace 局部 patch
     子 dataclass 后合并(跨进程 pickle 安全)。语义:override 在 yaml base 之上,
-    与 web /scan 结果可比。有效性 = 买点起点日期 ∈ [start, end];评估单元 = match
-    (每 match 一行,共享 leaf 的多个 match 各占一行,不再按买点去重)。
+    与 web /scan 结果可比。有效性 = 买点起点日期 ∈ [start, end];评估单元 = hit
+    (每 hit 一行,共享 leaf 的多个 hit 各占一行,不再按买点去重)。
     逐日消费(returns/n_buy_days/sample_dates/day_returns)按样本消费窗双边截取
     (spec §10):start_ts/end_ts 在 win 内行号 (lo, hi),跨界段只取窗内部分。
     rows 每行含 sample_dates(截窗样本日 str 列表)与 day_returns({date: {horizon:
-    日级收益}})——同日跨 match 同值(worker 逐 (symbol,t) 算一次),供聚合层
+    日级收益}})——同日跨 hit 同值(worker 逐 (symbol,t) 算一次),供聚合层
     dedup_daily 日级去重(B2:重叠日 = 同一物理观测,重复计数 = 伪复制)。
     返回 (symbol, rows, err|None);单股异常捕获返回 err,绝不抛。
     """
@@ -89,7 +89,7 @@ def _eval_ticker(pkl_path: str, module_path: str, start: str, end: str,
         lo = int(win["date"].searchsorted(start_ts, "left"))
         hi = int(win["date"].searchsorted(end_ts, "right")) - 1
 
-        # worker 内日级收益:逐 (symbol, t) 算一次(同日跨 match 同值,天然去重),
+        # worker 内日级收益:逐 (symbol, t) 算一次(同日跨 hit 同值,天然去重),
         # 供聚合层 dedup_daily 展开;t+n 越界的 horizon 置 None(与 hit_forward_returns
         # 的越界跳过同语义,聚合层过滤)。
         day_ret_cache: dict = {}
@@ -121,10 +121,10 @@ def _eval_ticker(pkl_path: str, module_path: str, start: str, end: str,
             if not any(start_ts <= win["date"].iat[ev.start_idx] <= end_ts
                        for ev in events):
                 continue
-            # leaf 锚容器(match 身份;与 serialize leaf_by_id 同口径,值=instance_id 字符串;
+            # leaf 锚容器(hit 身份;与 serialize leaf_by_id 同口径,值=instance_id 字符串;
             # buy_date 锚容器 start=首段 enter)
             # ⚠ 不对称:keep 过滤=任一段在窗(上方 any),buy_date=容器 start(首段)——首段在窗前、
-            # 后段在窗内的 match 会保留且 buy_date < start_ts,裁定设计内边缘,勿"修复"
+            # 后段在窗内的 hit 会保留且 buy_date < start_ts,裁定设计内边缘,勿"修复"
             leaf_ev = m.node_index[end_node.split(".")[0]]
             rets = hit_forward_returns(m, end_node, win, list(horizons),
                                        sample_window=(lo, hi))
@@ -171,11 +171,11 @@ def _upstream_key(m, end_node: str, events=()) -> str:
 def _leaf_stats(rows: list) -> dict:
     """买点级统计:buy_windows(按 (symbol, leaf_event_id) 去重,向后兼容语义——leaf_event_id
     是 instance_id 字符串不含股票,跨股票同 instance_id 是不同物理买点,必须带 symbol)/
-    match_windows(评估单元=match)/shared_leaf_count(被 >=2 match 共享的买点数,同股票内)/share_ratio。"""
+    hit_windows(评估单元=hit)/shared_leaf_count(被 >=2 hit 共享的买点数,同股票内)/share_ratio。"""
     leaf_hits = Counter((r["symbol"], r["leaf_event_id"]) for r in rows)
     buy_windows = len(leaf_hits)
     shared = sum(1 for c in leaf_hits.values() if c >= 2)
-    return {"buy_windows": buy_windows, "match_windows": len(rows),
+    return {"buy_windows": buy_windows, "hit_windows": len(rows),
             "shared_leaf_count": shared,
             "share_ratio": (shared / buy_windows) if buy_windows else None}
 
@@ -184,9 +184,9 @@ def _dedup_daily_stats(rows: list, horizons: Sequence[int]) -> dict:
     """日级去重统计(tb v4 spec B2 裁决):展开全部 rows 的 day_returns,按 (symbol, date)
     去重后逐 horizon 过 _summarize_flat——重叠日 forward return 是同一物理观测,重复
     计数 = 伪复制;实盘触发 = 一股一天一动作,统计单元对齐交易单元。
-    consensus_days = 被多 match sample_dates 覆盖的 (symbol, date) 日数(显式字段)。
-    同 (symbol, date) 跨 match 的值理论同值(worker 逐 (symbol,t) 算一次),
-    setdefault 保留首见;旧 match 级 per_horizon 保留为诊断口径,本视图挂 meta.dedup_daily。"""
+    consensus_days = 被多 hit sample_dates 覆盖的 (symbol, date) 日数(显式字段)。
+    同 (symbol, date) 跨 hit 的值理论同值(worker 逐 (symbol,t) 算一次),
+    setdefault 保留首见;旧 hit 级 per_horizon 保留为诊断口径,本视图挂 meta.dedup_daily。"""
     cover = Counter((r["symbol"], d) for r in rows
                     for d in r.get("sample_dates", ()))
     per = {}
@@ -413,7 +413,7 @@ def run_healthcheck(*, module_path: str, start, end, target_ticker=None,
         "universe_buy_windows": cur["meta"]["buy_windows"],
         "magnitude_ok": min_tickers <= tickers_hit <= max_tickers,
         "target_ticker": target_ticker,
-        "target_matches": (any(r["symbol"] == target_ticker for r in cur["results"])
+        "target_hits": (any(r["symbol"] == target_ticker for r in cur["results"])
                            if target_ticker else None),
     }
     return _write_json(out, out_path, cur["meta"]["pattern_id"], "healthcheck")

@@ -48,7 +48,7 @@ def test_preview_analysis_schema(tmp_path):
     body = c.get("/preview", params={"pattern_id": "bottom_burst",
                                       "symbol": "AAA", "start": "2025-01-01",
                                       "end": "2025-12-31", "label_horizon": 20}).json()
-    assert {"events", "matches"} <= set(body["analysis"])
+    assert {"events", "hits"} <= set(body["analysis"])
 
 
 def test_preview_pattern_spec_has_topology(tmp_path):
@@ -116,17 +116,17 @@ def test_preview_empty_window_returns_empty_collections(tmp_path):
     assert r.status_code == 200
     body = r.json()
     assert body["analysis"]["events"] == []
-    assert body["analysis"]["matches"] == []
+    assert body["analysis"]["hits"] == []
 
 
-def test_preview_no_match_returns_empty_matches_not_error(tmp_path):
-    """_synth_no_burst 构造 0 命中:200 + matches=[],不报错。"""
+def test_preview_no_hit_returns_empty_hits_not_error(tmp_path):
+    """_synth_no_burst 构造 0 命中:200 + hits=[],不报错。"""
     c = _client(tmp_path)
     r = c.get("/preview", params={"pattern_id": "bottom_burst",
                                    "symbol": "AAA", "start": "2025-01-01",
                                    "end": "2025-12-31", "label_horizon": 20})
     assert r.status_code == 200
-    assert r.json()["analysis"]["matches"] == []
+    assert r.json()["analysis"]["hits"] == []
 
 
 def test_preview_yaml_value_error_returns_500(tmp_path, monkeypatch):

@@ -108,10 +108,10 @@ def test_delete_scans_ts_404_missing(app_with_one_scan):
 
 
 def test_get_scans_flat_per_pattern_hits_median(app_with_one_scan):
-    """history 行 per_pattern:hits = 该 pattern match 数(Σ summary.matches),median = stats.median。"""
+    """history 行 per_pattern:hits = 该 pattern hit 数(Σ summary.hits),median = stats.median。"""
     client, outputs = app_with_one_scan
     blob = json.loads((Path(outputs) / "scans" / "20260627T130000.json").read_text())
-    exp_hits = sum(r["per_pattern"]["bo_only"]["summary"]["matches"]
+    exp_hits = sum(r["per_pattern"]["bo_only"]["summary"]["hits"]
                    for r in blob["results"])
     exp_median = blob["per_pattern"]["bo_only"]["stats"]["median"]
 
@@ -179,7 +179,7 @@ def test_get_scans_flat_per_pattern_grouped_by_pid(app_with_two_patterns):
     client, outputs = app_with_two_patterns
     blob = json.loads((Path(outputs) / "scans" / "20260701T130000.json").read_text())
     exp = {
-        pid: {"hits": sum(r["per_pattern"].get(pid, {}).get("summary", {}).get("matches", 0)
+        pid: {"hits": sum(r["per_pattern"].get(pid, {}).get("summary", {}).get("hits", 0)
                           for r in blob["results"]),
               "median": blob["per_pattern"][pid]["stats"]["median"],
               "fp": _exp_fp(blob, pid)}
@@ -199,7 +199,7 @@ def test_get_scans_flat_per_pattern_grouped_by_pid(app_with_two_patterns):
 
 
 def test_get_scans_flat_per_pattern_aggregation_nonempty(tmp_path):
-    """非空结果文件对拍:per_pattern.hits = Σ summary.matches(≠ 有 match 股票数),median = stats.median。"""
+    """非空结果文件对拍:per_pattern.hits = Σ summary.hits(≠ 有 hit 股票数),median = stats.median。"""
     data = tmp_path / "data"
     data.mkdir()
     outputs = tmp_path / "out"
@@ -223,9 +223,9 @@ def test_get_scans_flat_per_pattern_aggregation_nonempty(tmp_path):
                           "params_snapshot": {"bo": {"x": 1}}},
         },
         "results": [
-            {"symbol": "AAA", "per_pattern": {"bo_only": {"summary": {"matches": 2}}}},
-            {"symbol": "BBB", "per_pattern": {"bo_only": {"summary": {"matches": 1}},
-                                              "bottom_burst": {"summary": {"matches": 3}}}},
+            {"symbol": "AAA", "per_pattern": {"bo_only": {"summary": {"hits": 2}}}},
+            {"symbol": "BBB", "per_pattern": {"bo_only": {"summary": {"hits": 1}},
+                                              "bottom_burst": {"summary": {"hits": 3}}}},
             {"symbol": "CCC", "per_pattern": {}},
         ],
     }

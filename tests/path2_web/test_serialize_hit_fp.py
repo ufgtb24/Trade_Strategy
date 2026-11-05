@@ -1,5 +1,5 @@
-"""serialize_per_pattern_result:match 级 buy_date + first_passage 四态。
-不变式:非 None 的 first_passage 四态逐项求和 == match_fp_counts。"""
+"""serialize_per_pattern_result:hit 级 buy_date + first_passage 四态。
+不变式:非 None 的 first_passage 四态逐项求和 == hit_fp_counts。"""
 from pathlib import Path
 import pandas as pd
 import pytest
@@ -43,7 +43,7 @@ def _run(scene, **kw):
 
 def test_fields_present_and_sum_invariant(scene):
     out = _run(scene)
-    ms = out["analysis"]["matches"]
+    ms = out["analysis"]["hits"]
     assert ms
     tot = {"up": 0, "down": 0, "both": 0, "none": 0}
     for m in ms:
@@ -53,7 +53,7 @@ def test_fields_present_and_sum_invariant(scene):
         if fp is not None:
             for k in tot:
                 tot[k] += fp[k]
-    assert tot == out["match_fp_counts"]
+    assert tot == out["hit_fp_counts"]
     assert any(m["first_passage"] is not None for m in ms)
 
 
@@ -61,12 +61,12 @@ def test_buy_date_is_end_node_start(scene):
     res, meta, win, *_ = scene
     out = _run(scene)
     by_id = {m.hit_id: m for m in res.hits}
-    for md in out["analysis"]["matches"]:
-        ev = by_id[md["match_id"]].node_index[meta["end_node"].split(".")[0]]
+    for md in out["analysis"]["hits"]:
+        ev = by_id[md["hit_id"]].node_index[meta["end_node"].split(".")[0]]
         assert md["buy_date"] == str(pd.to_datetime(win["date"].iat[ev.start_idx]).date())
 
 
 def test_disabled_first_passage_gives_none(scene):
     out = _run(scene, first_passage_enabled=False)
-    assert all(m["first_passage"] is None for m in out["analysis"]["matches"])
-    assert out["match_fp_counts"] == {"up": 0, "down": 0, "both": 0, "none": 0}
+    assert all(m["first_passage"] is None for m in out["analysis"]["hits"])
+    assert out["hit_fp_counts"] == {"up": 0, "down": 0, "both": 0, "none": 0}
