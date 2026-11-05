@@ -49,6 +49,8 @@ Blocked by: 05
   - `.scratch/annotation-path2-implementation/v-s1-notes.md`；
   - 实测共 40 处，都指向 :95 之后的行。
 - 全仓终检：在合并了 01～05 的树上，对全仓跑一次残留检查，再跑一次测试全套。
+  - 残留检查用 `evidence/05/residual_check.py`：`evidence/01/` 那份把中文文件名漏掉了（票 05 完成记录）；
+  - `docs/sample_usage/bb_v1.jsonl` 是落盘的账本，有一行说明文字是旧义「宽进 match」，其余是统计配对，照共用执行边界第 7 条不改，单列进允许列表；`docs/setup/ubuntu_tkinter_font_fix.md:140` 的「不匹配」是泛指。
 
 ## Scope and exclusions
 
