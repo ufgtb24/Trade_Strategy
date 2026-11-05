@@ -14,10 +14,10 @@ path2_apps 是**走势-特异层**：一个子包 = 一个具体形态，与 `pa
 不是其子包。**带形状偏见的命名与阈值只能落在这里**，不能进 `path2/atoms`。
 
 - 本层管：拓扑声明（哪些 node、哪些边、每个 node 的 where）+ 参数取值。
-- 本层不管：匹配求解、detector 实现、序列化与 UI 投影。
+- 本层不管：求解、detector 实现、序列化与 UI 投影。
 
 **零手搓编排是硬要求**：业务约束一律降为 NodeSpec / 类型化边 / where 声明，不在 app 里写簇构造、
-谓词循环或匹配编排。做不到就说明框架缺能力，该改框架而不是在 app 里绕。
+谓词循环或求解编排。做不到就说明框架缺能力，该改框架而不是在 app 里绕。
 
 子包清单以 `path2_apps/` 目录为准，每个子包的角色写在自己 `dag_spec.py` 的模块 docstring 首段。
 其中既有生产形态，也有只为验证引擎判定 / UI 渲染的 sandbox 子包——**sandbox 不是真实形态，
@@ -39,9 +39,9 @@ path2_apps 是**走势-特异层**：一个子包 = 一个具体形态，与 `pa
 - **children**：child slot 名 → 子 node_id，**唯一不可推导的部分，必须显式**；`produced_by`
   由它逆映射回填（单父确定 / 孤儿报错 / 多父报错）。
 - **produces_stream**：认领 detector 的哪条命名流（单流 detector 省略）；`event_cls` 按它反射。
-- **solve**：是否参与求解匹配，默认 True；`False` = 只显示不参与匹配（见 §4 K2 条目）。
+- **solve**：是否参与求解，默认 True；`False` = 只显示不参与求解（见 §4 K2 条目）。
 - **子结构 where（可选）= 诊断层判定**：`diagnose` 从父容器 `child_slots` 挖出该槽事件产 attr 行、
-  按它评估（无 where 则 vacuous 真）→ 前端段级 tier。**不进求解**——要让段属性 gate match，
+  按它评估（无 where 则 vacuous 真）→ 前端段级 tier。**不进求解**——要让段属性 gate hit，
   写父 where 的 `W.children`（显示与求解正交，两声明点各司其职；谓词对象可共享，**勿建第二套
   gate 机制**）。
 - 子结构 node 的 `consumes_stream` / `produces_stream` / `render_grid` 是死字段，spec 校验拒绝非默认值。
@@ -62,7 +62,7 @@ discovery 自动发现，**无需改框架或后端**。
 
 - `build_pattern` 是参数化声明工厂：detector 实例化与 where 阈值都在这里闭合。`PATTERN_DAG` 是它
   在默认参数下的模块级常量，供 discovery / 拓扑投影。
-- **入口三件套（`analyze` / `matches` / `PATTERN_DAG`）由 stdlib 的 `make_app` 闭包工厂装配，
+- **入口三件套（`analyze` / `has_hit` / `PATTERN_DAG`）由 stdlib 的 `make_app` 闭包工厂装配，
   不再手写**：app 只声明 `build_pattern` + `Params`。`eval_meta` 是 app 特异、留原地。
 - **`eval_meta` 是铁律不是可选**：discovery 有硬闸，不满足协议的包直接被拒。**不存在「app 不提供
   就回退」的路径**——别再为缺失情况写兜底分支。
@@ -72,9 +72,9 @@ discovery 自动发现，**无需改框架或后端**。
 - **容器结构声明**：容器事件内部结构由父的 `children={"segments": "tb_seg"}` 声明，两种情况——
   引用已有独立 node（burst `children={"members": "bo"}`）或引用子结构 node（tb 的情况）。
 - **多流 detector 由多个 node 分别认领每条流**：组内每个 node 各写一次 `produces_stream=...`；
-  声明的流必须全部被认领，未认领在构造期直接报错。只做展示、不参与匹配的流用 `solve=False`
+  声明的流必须全部被认领，未认领在构造期直接报错。只做展示、不参与求解的流用 `solve=False`
   （如 pk node：与 bo node 共享同一个 detector 实例，`solve=False` + `render_grid='price'`
-  让峰位随突破一起钉主图，但不进求解、不产 match）。
+  让峰位随突破一起钉主图，但不进求解、不产 hit）。
 - **head_buffer 必须由参数推导**（取本 app 全部 rolling lookback 的 max），**不能写死常量**：
   写死的常量不会随参数变化，改完阈值后缓冲不够会静默切错窗。
 
@@ -87,14 +87,14 @@ discovery 自动发现，**无需改框架或后端**。
 
 - **「一串同类事件」声明成单个宽事件 node，而不是重复节点或循环**：串级的计数 / 峰数 / 放量约束
   因此全部退化成读该事件上预算好的聚合量的普通 where，与单实例节点同式、引擎侧零特例。
-- **K2 三要素判据（求解层排除残缺节点）**：只为产流给别人消费的孤立 node 不该自成一个匹配——
+- **K2 三要素判据（求解层排除残缺节点）**：只为产流给别人消费的孤立 node 不该自成一次 hit——
   `_solve.py::compile_plan` 的 `bound_ids` = 边端点并集（整个 pattern 无任何边时全求解，`bo_only`
-  例外）+ 非否定 dst + detector 非空，三要素直接在求解层排除（**不是出口过滤**，残缺 match 根本
+  例外）+ 非否定 dst + detector 非空，三要素直接在求解层排除（**不是出口过滤**，残缺 hit 根本
   不会被生成）。**外加 `solve=False` 一道显式开关**：没有它，展示型 node 一旦落进「求解会纳入它」
-  的情形（含零边全求解例外），就会把自己的每个事件也物化成一条平凡 match，或让 serialize 对每个
-  match 取 `node_index[end_node]` 时抛 KeyError。
+  的情形（含零边全求解例外），就会把自己的每个事件也物化成一条平凡 hit，或让 serialize 对每个
+  hit 取 `node_index[end_node]` 时抛 KeyError。
 - **跨 node 的身份约束要用 anchor 复核，不能只靠时间 gap**：burst 会为同一簇物化一族共享簇首、
-  末端各异的前缀实例，光有 gap 区间约束不能保证被匹配到的回踩确实由这个 burst 的末 bo 触发。
+  末端各异的前缀实例，光有 gap 区间约束不能保证同一次 hit 里的回踩确实由这个 burst 的末 bo 触发。
   边上声明 anchor 字段做身份复核，才把「同一根 bo」钉死。
 - **同一份参数被 detector 和 edge 共用时，只写一处**：共用值归入对应 node 的参数 section，
   edge 显式引用该字段。两边各写各的会在调参时静默错位。

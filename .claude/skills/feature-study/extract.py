@@ -8,7 +8,7 @@
   - build_from_longtable(app, window, combo, *, gate_cols=None, working=None) —— 从 tune-gates 长表
     取一个检测组合的行(闸类字段用,免重放;保留同一买点事件的不同前缀行,供「任一行过闸」聚合)。
 
-观测单位 = 买点事件(买点 node 解析出的事件区间组)。同一段买点被多个 match(不同前缀)共享时,
+观测单位 = 买点事件(买点 node 解析出的事件区间组)。同一段买点被多个 hit(不同前缀)共享时,
 label 与首次穿越四态完全相同,只算一次。
 
 build_dataset 的列归属:骨架统一注入通用列 —— symbol / entry_idx(买点在窗内的 bar 序号)/ entry_date /
@@ -17,10 +17,10 @@ year / c0_atr_pct(冷启动通用波动率地板)/ label(前瞻收益)/ up / dow
 任何具体走势的 node 名,也不出现任何 node 名字面量。
 
 build_dataset 两道自检门(硬闸,不过即 raise,禁止绕过;底座等价先行的机器化):
-  1. match 集对齐:重放(经 serialize 同口径窗/价格过滤)hit_id 集合 == scan 文件
+  1. hit 集对齐:重放(经 serialize 同口径窗/价格过滤)hit_id 集合 == scan 文件
      hit_id 集合(防参数/引擎/数据漂移);
-  2. label 对齐:逐 match 官方 API 重算 vs scan forward_return,<1e-12 全数一致,
-     覆盖全部通过过滤的 match(不止最终去重后留下的行)。
+  2. label 对齐:逐 hit 官方 API 重算 vs scan forward_return,<1e-12 全数一致,
+     覆盖全部通过过滤的 hit(不止最终去重后留下的行)。
   任何一项失败 = 底座不等价,后续统计全部无效。
 
 2026-09-08 从原骨架(硬编码单个 app 的复制模板)改造为走势-无关的可 import 库:
@@ -144,7 +144,7 @@ def build_dataset(adapter, *, scan, out_csv, compute_features,
     overrides = adapter.PARAM_OVERRIDES if param_overrides is None else param_overrides
 
     # ⚠ Params.from_dict 对快照缺失的键会注入「当前代码默认值」——scan 早于某参数
-    # 引入时该参数被静默启用,重放 match 集必失配。overrides 是按当次 scan 快照实情
+    # 引入时该参数被静默启用,重放 hit 集必失配。overrides 是按当次 scan 快照实情
     # 显式声明的补丁(见 adapter.PARAM_OVERRIDES 的 docstring)。
     params = Params.from_dict(blob["per_pattern"][pid]["params_snapshot"])
     if overrides:
@@ -160,7 +160,7 @@ def build_dataset(adapter, *, scan, out_csv, compute_features,
             continue
         scan_ids[rr["symbol"]] = {m["hit_id"] for m in pp["analysis"]["hits"]}
 
-    rows, n_lab_fail, n_lab_compared, n_lab_skipped, mset_fail = [], 0, 0, 0, []
+    rows, n_lab_fail, n_lab_compared, n_lab_skipped, hit_set_fail = [], 0, 0, 0, []
     for sym, ids in scan_ids.items():
         win = slice_window(pd.read_pickle(data_dir / f"{sym}.pkl"), ws, we)
         res = dag_analyze(build_pattern(params), win, params)
@@ -180,7 +180,7 @@ def build_dataset(adapter, *, scan, out_csv, compute_features,
             live.add(m.hit_id)
             kept.append((m, events))
         if live != ids:
-            mset_fail.append((sym, len(live), len(ids)))
+            hit_set_fail.append((sym, len(live), len(ids)))
             continue
 
         evs = {ev.instance_id: ev for ev in res.events}
@@ -197,12 +197,12 @@ def build_dataset(adapter, *, scan, out_csv, compute_features,
         # 通用波动率地板:买点前一根的 atr/close(前一根保证时点安全,决策时刻已知)。
         # t<1、分母<=0、或任一端非有限 → NaN,不丢行。与 tune-gates 长表的同名列同一算式。
         c0 = prev_bar_atr_pct(win["high"], win["low"], win["close"], VOL_WINDOW)
-        # 首次穿越的波动率尺度,每股算一次,供逐 match 的四态计数复用
+        # 首次穿越的波动率尺度,每股算一次,供逐 hit 的四态计数复用
         M = rolling_atr_pct_nanmedian(win["high"], win["low"], win["close"], FP_ATR_WINDOW).values
         pp = next(r["per_pattern"][pid] for r in blob["results"] if r["symbol"] == sym)
         scan_lab = {m["hit_id"]: m["forward_return"] for m in pp["analysis"]["hits"]}
 
-        # 自检 2:覆盖全部通过窗/价格过滤的 kept match(不止最终留下的行),放在
+        # 自检 2:覆盖全部通过窗/价格过滤的 kept hit(不止最终留下的行),放在
         # observe() 之前——先证 label 可信,再谈要不要采信这条观测。
         for m, events in kept:
             lab = hit_forward_returns(m, end_node, win, [horizon],
@@ -254,14 +254,14 @@ def build_dataset(adapter, *, scan, out_csv, compute_features,
             row.update(compute_features(win, row))
             rows.append(row)
 
-    if mset_fail or n_lab_fail:
+    if hit_set_fail or n_lab_fail:
         raise AssertionError(
-            f"自检门失败:match 集不对齐 {mset_fail or 0} 股"
+            f"自检门失败:hit 集不对齐 {hit_set_fail or 0} 股"
             f"(先查 param_overrides:快照早于参数引入时 from_dict 注入当前默认,"
             f"再疑引擎/数据漂移),label 不一致 {n_lab_fail} 例。"
             f"底座不等价,禁止进统计。")
     if not rows:
-        raise ValueError("一行都没有:全部 match 被 observe() 判 None 或未产出可用观测,"
+        raise ValueError("一行都没有:全部 hit 被 observe() 判 None 或未产出可用观测,"
                          "无法写出 dataset(检查 adapter.observe() 与过滤条件)。")
 
     df = pd.DataFrame(rows)
@@ -269,7 +269,7 @@ def build_dataset(adapter, *, scan, out_csv, compute_features,
     if missing_cols:
         raise ValueError(f"adapter.DEDUP_COLS 声明的列不在输出里: {missing_cols}"
                          "(adapter.observe() 或骨架未产出这些列)")
-    # 按买点事件身份事后去重:同一段买点被多个 match 共享时只留数据原序第一条存活的 match。
+    # 按买点事件身份事后去重:同一段买点被多个 hit 共享时只留数据原序第一条存活的 hit。
     # label 与四态只由买点事件决定,去重不改变它们;observe() 里随前缀变化的列取第一条的值
     # (adapter 文件里写死为注释)。
     df = df.drop_duplicates(list(adapter.DEDUP_COLS), keep="first")
@@ -278,7 +278,7 @@ def build_dataset(adapter, *, scan, out_csv, compute_features,
     n_nan_c0 = int(df["c0_atr_pct"].isna().sum())
     # 拆成两个数,不再合并成一个「重算 N 例」——旧版那个数混了「真正参与 <1e-12
     # 比对」与「lab/ref 皆 None、跳过未比对」两类,读者得靠额外一段括号解释才看懂。
-    print(f"自检门通过(match 集逐股对齐,label 重算:比对 {n_lab_compared} 例全数 "
+    print(f"自检门通过(hit 集逐股对齐,label 重算:比对 {n_lab_compared} 例全数 "
          f"<1e-12、无 label 跳过 {n_lab_skipped} 例)")
     print(f"rows={len(df)} symbols={df['symbol'].nunique()} -> {out_csv}")
     print(f"c0_atr_pct NaN 计数={n_nan_c0}")

@@ -1,6 +1,6 @@
 ---
 name: diagnose-event
-description: 诊断 path2 单个 event(为什么没生成/没 match/confirm 位置)。用户说"诊断 SYM 的 INSTANCE_ID"或"SYM 的 tb/bo/burst 为什么..."时调。自动探测环境(scan 锚定)+ 按 reference 分析。
+description: 诊断 path2 单个 event(为什么没生成/没命中/confirm 位置)。用户说"诊断 SYM 的 INSTANCE_ID"或"SYM 的 tb/bo/burst 为什么..."时调。自动探测环境(scan 锚定)+ 按 reference 分析。
 ---
 
 # diagnose-event
@@ -8,7 +8,7 @@ description: 诊断 path2 单个 event(为什么没生成/没 match/confirm 位�
 诊断 path2 单个 event。用户给 symbol + instance_id(前端事件 id),自动探测环境(scan 锚定 4 参数),按 reference 分析。
 
 ## 何时调
-用户说:"诊断 X 的 INSTANCE_ID"、"X 的 tb_257_258 为什么没 match"、"bo_182 生出的 tb 为什么远"等单 event 诊断。
+用户说:"诊断 X 的 INSTANCE_ID"、"X 的 tb_257_258 为什么没命中"、"bo_182 生出的 tb 为什么远"等单 event 诊断。
 
 ## 步骤
 
@@ -33,7 +33,7 @@ print(format_declaration(env))
 
 ### 4. 诊断分析(按 reference,本目录 reference.md)
 读 reference.md,按问题选骨架:
-- "tb 为什么没 match" → 骨架 A(读 scan analysis.events/matches,tb.anchor_bo_id→burst.last_bo→where 判定)
+- "tb 为什么没命中" → 骨架 A(读 scan analysis.events/hits,tb.anchor_bo_id→burst.last_bo→where 判定)
 - "tb 企稳段为什么进不了 / 退出早 / 没生成 / 只有一段" → 骨架 B(切窗 df + 按
   detector 契约枚举——契约文件在 `detectors/` 目录,按 scan 的 pattern 对号:
   如 throwback_v4.md(V4 多段) / throwback_v1.md(V1 首段即停);无契约文件先读模块

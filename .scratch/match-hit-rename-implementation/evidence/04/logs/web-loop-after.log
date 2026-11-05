@@ -1,0 +1,6 @@
+ok   test-capture.mjs
+ok   test-design-scenarios.mjs
+ok   test-skill-doc.mjs
+ok   test-wl-tools.mjs
+
+文件: 4 通过, 0 失败; dryrun 场景: 107 通过, 0 失败

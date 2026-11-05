@@ -30,14 +30,14 @@
 扫描结果与逐格调引擎的等价性**不是工具单独的性质，是工具与 app 的联合性质**。工具代码是确定性的，但等价性还依赖三件属于 app 的事，换 app、改拓扑、加新轴都会重新打开：
 
 1. **`filter_params` 是 app 作者的一句声明，工具静态验不了**：detector 声明「该参数只控制发不发射、不改变事件字段」，工具据此把它踢出检测组合、改成事后按字段谓词切。若 emit 闸实际还改了事件字段，这个声明就是假的，只有真跑两边比才知道。
-2. **where 当列谓词的等价性依赖边拓扑**：若某 node 是 `NegationEdge` 的 dst，收紧 where 会让被否定的事件变少、反而增加 match，事后按行过滤补不出来（`check_predicate_axes` 挡住能静态识别的部分，挡不住的仍需实测）。
+2. **where 当列谓词的等价性依赖边拓扑**：若某 node 是 `NegationEdge` 的 dst，收紧 where 会让被否定的事件变少、反而增加 hit，事后按行过滤补不出来（`check_predicate_axes` 挡住能静态识别的部分，挡不住的仍需实测）。
 3. **流缓存的影响集是对着这个 app 的参数探出来的**：`classify` / `influence_dims` 在运行时判定哪个参数影响哪个 detector；参数若经探针看不见的路径（共享对象、模块级默认值）影响 detector，缓存会复用本该失效的流。残留的假设是「consumes 链与 detector node 集不随参数取值变」：预置流的键必须 ⊆ 当前 spec 的 detector node 集，越界即报错；「预置流与本次 params 同源」只能靠工具自己的缓存键正确。
 
 能被守卫拦住的静默分歧应尽量变成守卫（negation × 过滤型维、宽集去重命中都已改成命中即 raise）；最难消掉的是第 1 条的语义声明。
 
 ### 2.1 验证的是什么
 
-**Step A（逐格 vs 引擎）**：`tune.compare` 按股票并行（`workers`），抽样 = 扫描范围内（run_meta 的 `ticker_regex`，排除 `filtered_symbols.csv`）命中 `cmp_ticker_regex` 的股票 × 研究设计展开的检测组合里的随机格、角点与收紧 where 套（数量由 `cmp_n_random_cells`、`cmp_n_tight_cells` 控制，种子 `cmp_seed`）。比较长表按格谓词聚合的结果与直接调 `engine.analyze()` + serialize 的结果：比较键为 bound 节点 span + fr 12 位小数 + 四态多重集 + 每股 `match_fp_counts`；四态按买点事件回填（serialize 只给同一买点事件的第一条 match 填四态）。红线 `mismatch=0`，不得靠放宽比较键、放宽容差、跳过样本、缩小股票集达成。
+**Step A（逐格 vs 引擎）**：`tune.compare` 按股票并行（`workers`），抽样 = 扫描范围内（run_meta 的 `ticker_regex`，排除 `filtered_symbols.csv`）命中 `cmp_ticker_regex` 的股票 × 研究设计展开的检测组合里的随机格、角点与收紧 where 套（数量由 `cmp_n_random_cells`、`cmp_n_tight_cells` 控制，种子 `cmp_seed`）。比较长表按格谓词聚合的结果与直接调 `engine.analyze()` + serialize 的结果：比较键为 bound 节点 span + fr 12 位小数 + 四态多重集 + 每股 `hit_fp_counts`；四态按买点事件回填（serialize 只给同一买点事件的第一条 hit 填四态）。红线 `mismatch=0`，不得靠放宽比较键、放宽容差、跳过样本、缩小股票集达成。
 
 **股票覆盖红线**（`compare_longtable.MIN_SYMBOLS` = 500）：真正比过的股票 ≥500 只，或扫描范围内的股票全部比过（小范围试扫）。抽到的股票不够时验证直接拒绝执行、旧日志不动；结论行在 `mismatch=` 之后记下比过 / 抽到 / 扫描范围三个股数，`screen` / `find` 入口按它复核，缺这三个数的日志一律要求重做。全宇宙扫描用默认抽样范围约抽到一千只出头。
 
@@ -90,7 +90,7 @@
 1. **验证夹具的字面代码不能直接信**：`dict(a, **b)` 要求 `b` 的键是字符串，两侧都是元组键 dict 时直接 `TypeError`。改法：用 `{**a, **b}`。引用一段对照脚本之前先跑通。
 2. **参数名不能告诉你它属于哪类**：读起来像 where 阈值的百分比参数可能是 detector 内部 emit 闸（F），塞进 `WHERE_LEVELS` 会被 `classify()` 拒绝。一律以分类输出为准。
 3. **比较键不能写死含孤立 node**：不进求解集的 node 在长表里没有列，取键直接 `KeyError`。比较键只取实际进求解集的 node。
-4. **对照侧可能缺股票级前置过滤**：直接调引擎没有扫描那层股票级过滤，被整支过滤的股票会在引擎侧跑出 match、长表侧恒 0——是取数范围漏了过滤，不是被测对象分歧。先验地从股票池排除 `filtered_symbols.csv` 里的股票。
+4. **对照侧可能缺股票级前置过滤**：直接调引擎没有扫描那层股票级过滤，被整支过滤的股票会在引擎侧跑出 hit、长表侧恒 0——是取数范围漏了过滤，不是被测对象分歧。先验地从股票池排除 `filtered_symbols.csv` 里的股票。
 5. **对照脚本自造的保守边界可能多余**：自带一道比生产更严的「窗口切片行数过短则跳过」会漏股票；判据对齐生产代码实际用的边界（只跳空窗口）。
 6. **没有 mismatch 可查时，坑在夹具自己**：长表与引擎逐格一致时，排查耗时大多花在参照侧写错，上面 1~5 条都是这类。
 7. **格级全量产物是 `cells.npz`，不是 CSV**：联合空间一大，全网格逐格建 dict 再写全量 CSV 既吃内存又巨大，而全量 CSV 没有读取点。全量落 npz，CSV 只写前 `CSV_TOP` 格。
@@ -137,14 +137,14 @@
 - **同一检测组合内，同一买点事件只计一次**；任一前缀行过该格全部闸，就算这个买点事件过闸；估计量按买点 bar 合并比例。聚合在 `region_core` 里逐分片做（组内帕累托约简 + 包含-排斥，逐位精确）；`region_core.stock_sums` 给每股 U / D / N，筛选、验证、feature-study 共用。
 - **写盘时不去重**：同一买点事件各前缀行的闸字段不同，写盘去重会丢掉「任一前缀过闸」需要的信息，只能在聚合时去重。
 - **逐行口径**是旧产物的计数方式：长表每行都带满额四态，同一买点事件被多个前缀共享时重复计数。
-- 一致性验证与 path2_web 同口径：serialize 只给同一买点事件的第一条 match 填四态。
+- 一致性验证与 path2_web 同口径：serialize 只给同一买点事件的第一条 hit 填四态。
 
 ## 10. 输出目录布局
 
 ```
 outputs/tune_gates/<app>/
 ├── edge/                                  优势检查(单配置扫描,只许训练期)
-│   ├── bars/part-NNNN.parquet             每个 match 的每个样本 bar 一行:symbol, t, date, M, c0_atr_pct, 四态, seg_id, 闸字段
+│   ├── bars/part-NNNN.parquet             每个 hit 的每个样本 bar 一行:symbol, t, date, M, c0_atr_pct, 四态, seg_id, 闸字段
 │   ├── baseline/part-NNNN.parquet         逐日基线(与 bars 同号)
 │   ├── run_meta.json                      口径 + 放开值 + 指纹;与本次不同 → 拒绝续跑(restart=True 清空重扫)
 │   ├── shards_committed.csv               分片提交清单
