@@ -7,7 +7,7 @@ import pandas as pd
 from path2_web import eval_runner
 
 APP = "path2_apps.bottom_burst"
-# _synth_positive 的宽松命中参数(来源:tests/path2/apps/test_matches.py::test_matches_positive,
+# _synth_positive 的宽松命中参数(来源:tests/path2_apps/bottom_burst/test_has_hit.py::test_has_hit_positive,
 # 以 nested overrides dict 形式喂给评估器,验证 param_overrides 链路)。
 # nested dict 协议:顶层 key = section 名(bo/burst/tb/edges),value = section 内字段 dict。
 RELAXED = dict(
@@ -40,7 +40,7 @@ def _write_pkl(dir_path, symbol, df):
 
 
 def _positive_pkl(tmp_path, symbol="POS"):
-    from tests.path2_apps.bottom_burst.test_matches import _synth_positive
+    from tests.path2_apps.bottom_burst.test_has_hit import _synth_positive
     return _write_pkl(tmp_path, symbol, _mk_dated(_synth_positive()))
 
 
@@ -62,7 +62,7 @@ def test_eval_ticker_positive_with_overrides(tmp_path):
 
 
 def test_eval_ticker_default_params_no_match(tmp_path):
-    from tests.path2_apps.bottom_burst.test_matches import _synth_no_burst
+    from tests.path2_apps.bottom_burst.test_has_hit import _synth_no_burst
     p = _write_pkl(tmp_path, "NOPE", _mk_dated(_synth_no_burst()))
     symbol, rows, err = eval_runner._eval_ticker(
         str(p), APP, WIDE["start"], WIDE["end"],
@@ -82,7 +82,7 @@ def test_eval_ticker_bad_pkl_returns_error(tmp_path):
 
 
 def test_eval_core_aggregates_and_summarizes(tmp_path):
-    from tests.path2_apps.bottom_burst.test_matches import _synth_no_burst
+    from tests.path2_apps.bottom_burst.test_has_hit import _synth_no_burst
     data_dir = tmp_path / "pkls"
     data_dir.mkdir()
     _positive_pkl(data_dir)
@@ -167,7 +167,7 @@ def test_run_regress_detects_removed_on_param_change(tmp_path):
 
 
 def test_run_healthcheck_target_hit_and_magnitude(tmp_path):
-    from tests.path2_apps.bottom_burst.test_matches import _synth_no_burst
+    from tests.path2_apps.bottom_burst.test_has_hit import _synth_no_burst
     data_dir = tmp_path / "pkls"
     data_dir.mkdir()
     _positive_pkl(data_dir)                                   # POS 命中
@@ -186,7 +186,7 @@ def test_run_healthcheck_target_hit_and_magnitude(tmp_path):
 
 
 def test_run_healthcheck_target_miss_and_zero_hits(tmp_path):
-    from tests.path2_apps.bottom_burst.test_matches import _synth_no_burst
+    from tests.path2_apps.bottom_burst.test_has_hit import _synth_no_burst
     data_dir = tmp_path / "pkls"
     data_dir.mkdir()
     _write_pkl(data_dir, "NOPE", _mk_dated(_synth_no_burst()))

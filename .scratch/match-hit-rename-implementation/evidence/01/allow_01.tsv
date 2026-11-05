@@ -1,0 +1,15 @@
+# 票 01 人工判定清单：正则分不出来、读上下文判为可留的行。格式：相对路径<TAB>该行去掉首尾空白后的原文<TAB>类别
+scripts/path2/path2_eval_scan.py	f"target_matches={out['target_matches']}")	JSON 键（读 path2_web 评估输出的键，归 02）
+tests/path2/dag/test_child_selector_fuzz.py	若 brute_all 使用父整体(burst [0,200])：0 < 0 或 200 > 100 → 不匹配 → 返回空列表	中文「匹配」·泛指（边关系成立，e.satisfies 为真）
+tests/path2/dag/test_child_selector_fuzz.py	- first_kid：[10, 20]   → 完全落在 side [0,100] 内 → ContainmentEdge 用 child 投影时匹配	中文「匹配」·泛指（边关系成立，e.satisfies 为真）
+tests/path2/dag/test_child_selector_fuzz.py	- last_kid：[150, 180]  → 超出 side 范围 → 不匹配	中文「匹配」·泛指（边关系成立，e.satisfies 为真）
+tests/path2/dag/test_child_selector_fuzz.py	# B2: 父 (9,11), last_kid 端点超出 A → 不匹配	中文「匹配」·泛指（边关系成立，e.satisfies 为真）
+tests/path2/dag/test_engine_edges.py	"""tail 超出 src 端仍匹配(只看 dst.start);dst.start 在 src 外则不匹配。"""	中文「匹配」·泛指（边关系成立，e.satisfies 为真）
+tests/path2/dag/test_engine_edges.py	# side=[0,10], burst start=5(在内), tail=15(超出) → 应匹配	中文「匹配」·泛指（边关系成立，e.satisfies 为真）
+tests/path2/dag/test_engine_edges.py	assert e.satisfies(side, burst_tail_out) is True,  "tail 超出仍应匹配(只约束 start)"	中文「匹配」·泛指（边关系成立，e.satisfies 为真）
+tests/path2/dag/test_engine_edges.py	assert e.satisfies(side, burst_start_out) is False, "start 超出 src 不应匹配"	中文「匹配」·泛指（边关系成立，e.satisfies 为真）
+tests/path2/dag/test_engine_edges.py	"""dst.start 恰在 src 边界(=src.start 或 =src.end)应匹配;src.start-1 不匹配。"""	中文「匹配」·泛指（边关系成立，e.satisfies 为真）
+tests/path2/dag/test_engine_edges.py	assert e.satisfies(side, Ev("b0", 5, 100)) is True,  "dst.start == src.start 应匹配"	中文「匹配」·泛指（边关系成立，e.satisfies 为真）
+tests/path2/dag/test_engine_edges.py	assert e.satisfies(side, Ev("b1", 10, 100)) is True, "dst.start == src.end 应匹配"	中文「匹配」·泛指（边关系成立，e.satisfies 为真）
+tests/path2/dag/test_engine_edges.py	assert e.satisfies(side, Ev("b2", 4, 100)) is False, "dst.start < src.start 不匹配"	中文「匹配」·泛指（边关系成立，e.satisfies 为真）
+tests/path2/dag/test_engine_edges.py	assert e.satisfies(side, Ev("b3", 11, 100)) is False, "dst.start > src.end 不匹配"	中文「匹配」·泛指（边关系成立，e.satisfies 为真）

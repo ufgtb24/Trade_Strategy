@@ -385,7 +385,7 @@ class _FakeDet:
 def _analyze_dup_stream():
     """src 流内同 node_id 同 span 两实例(仅 pos 不同)→ 多实例 res(engine 全流程)。
 
-    与 test_engine_match_id_disambiguate 同构:两实例各产一个 match(match id 碰撞
+    与 test_engine_hit_id_disambiguate 同构:两实例各产一个 match(match id 碰撞
     由 engine 消歧为 #0/#1);events = (s0×2, d0)。"""
     from path2.dag.engine import analyze
     from path2.dag.spec import PatternSpec
