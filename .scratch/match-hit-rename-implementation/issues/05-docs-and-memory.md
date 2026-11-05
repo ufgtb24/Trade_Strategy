@@ -1,7 +1,8 @@
 # 文档、CLAUDE.md 与记忆
 
 Status: ready-for-agent
-Progress: not-started
+Progress: in-progress
+Claimed: 2026-11-04 parallel-tickets ticket-05 @ worktree impl/05-docs-and-memory
 Blocked by: 03, 04
 
 ## Purpose
