@@ -127,7 +127,7 @@ def _eval_ticker(pkl_path: str, module_path: str, start: str, end: str,
             # 后段在窗内的 match 会保留且 buy_date < start_ts,裁定设计内边缘,勿"修复"
             leaf_ev = m.node_index[end_node.split(".")[0]]
             rets = hit_forward_returns(m, end_node, win, list(horizons),
-                                         sample_window=(lo, hi))
+                                       sample_window=(lo, hi))
             # 截窗样本日(升序):跨 end_ts 的段只取窗内部分(spec §10;与 rets 同窗)
             sample_days = sorted({t for ev in events
                                   for t in ev.sample_bar_indices()

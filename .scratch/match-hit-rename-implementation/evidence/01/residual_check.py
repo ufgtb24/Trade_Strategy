@@ -54,42 +54,36 @@ def scope_of(rel: str) -> str | None:
     return None
 
 # 英文 match 字样的分类：(类别名, 作用于整行的正则)。命中的片段从行里抠掉，抠完还剩 match 字样才算没认领。
+# 这里只放全仓通用、不会掩盖旧义的写法；只对应个别行的判定一律进 --allow 清单。
 CATEGORIES: list[tuple[str, re.Pattern]] = [
     ("正则与模式匹配", re.compile(
         r"\bre\.(?:match|fullmatch)\b|\.fullmatch\(|\b[A-Za-z_]*_RE\.match\(|\b(?:pat|rx|regex|m_re)\.match\(|"
-        r"\bfnmatch\w*|\.match\(/|\bmatchAll\b|\bmatchMedia\b|\bno pkl matched\b", re.IGNORECASE)),
+        r"\bfnmatch\w*|\.match\(/|\bmatchAll\b|\bmatchMedia\b", re.IGNORECASE)),
     ("测试框架", re.compile(
         r"\b(?:raises|warns)\([^)]*\bmatch=|\bmatch=['\"][^'\"]*['\"]|\btoMatch(?:Object|Snapshot|InlineSnapshot)?\b")),
     ("mismatch 一族", re.compile(r"\w*mismatch\w*", re.IGNORECASE)),
     ("「一致 / 等于」的通用说法", re.compile(
-        r"\btest_\w*_match(?:es)?_(?:direct|brute(?:_force)?|reference|scalar_formula|instance|derived|end_anchor_kind|"
-        r"v1_signature|detector_signature)\w*|\b_pass_when_declaration_matches_instance\b|"
-        r"\btest_\w*_must_match_derived\b|\btest_negation_matches_brute\b|\bcheck_study_matches\b|"
-        r"\bledger\.latest\(\*\*match\)|\btest_build_writes_matching_manifest\b|"
-        r"既有测试只 match 字段名")),
+        r"\btest_\w*_match(?:es)?_(?:direct|brute(?:_force)?)\w*|\bcheck_study_matches\b|\bledger\.latest\(\*\*match\)")),
     ("统计里的配对", re.compile(
         r"\bmatched_\w+|\w+_matched\w*|\bbaseline_matching\b|\bmatched_difference\b|\bmatched baseline\b")),
     ("web-loop 工作流脚本", re.compile(r"\bmatchesIssueId\b|\bmatchExpect\b|\bbadMatch\b|\bmatchesSubgoal\b")),
     ("新义本身", re.compile(r"\bmatch tag\b|\bunmatched\b")),
 ]
 
-# 中文「匹配」的分类：泛指的说法（正则 / 前缀 / 名字 / 签名 / anchor 配对 / 边关系成立）
+# 中文「匹配」的分类：只放字面就是泛指的说法；anchor 配对、边关系成立这类要读上下文的，进 --allow 清单
 CN_CATEGORIES: list[tuple[str, re.Pattern]] = [
-    ("中文「匹配」·泛指（模式、前缀、名字、签名）", re.compile(
-        r"前缀匹配|正则匹配|最左匹配|grep 找到匹配|精确匹配\s*\w+\s*签名|名字?匹配|名匹配|误匹配|无匹配 → KeyError|"
-        r"帧匹配|anchor_kind 匹配|匹配 anchor_kind|anchor_kind 不匹配|只匹配 anchor_kind")),
-    ("中文「匹配」·泛指（anchor 配对）", re.compile(r"anchor 匹配|形态不匹配|src_10#0 不匹配|与它匹配的伙伴")),
+    ("中文「匹配」·泛指（正则、前缀、最左）", re.compile(r"前缀匹配|正则匹配|最左匹配")),
 ]
 
 
 def _strip_categories(line: str, cats) -> tuple[str, list[str]]:
-    hit_cats = []
+    found = []
     for name, rx in cats:
         new = rx.sub(" ", line)
         if new != line:
-            hit_cats.append(name)
+            found.append(name)
             line = new
-    return line, hit_cats
+    return line, found
 
 
 def classify(line: str) -> tuple[list[str], bool]:

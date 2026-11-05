@@ -206,7 +206,7 @@ def build_dataset(adapter, *, scan, out_csv, compute_features,
         # observe() 之前——先证 label 可信,再谈要不要采信这条观测。
         for m, events in kept:
             lab = hit_forward_returns(m, end_node, win, [horizon],
-                                        sample_window=(lo, hi))[horizon]
+                                      sample_window=(lo, hi))[horizon]
             ref = scan_lab.get(m.hit_id)
             if lab is None and ref is None:
                 n_lab_skipped += 1

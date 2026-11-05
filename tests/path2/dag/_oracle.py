@@ -103,7 +103,7 @@ def hit_key(assign: Dict) -> tuple:
 
 
 def keyset(solutions) -> Counter:
-    """solutions: 可迭代的 hit(求解层的解)。每项要么是 dict(assign),要么有 .assign 属性。"""
+    """solutions: 可迭代的解(每个解即一次 hit 的 node 绑定)。每项要么是 dict(assign),要么有 .assign 属性。"""
     def _assign(s):
         return s.assign if hasattr(s, "assign") else s
     return Counter(hit_key(_assign(s)) for s in solutions)

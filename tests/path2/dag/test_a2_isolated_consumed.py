@@ -75,7 +75,7 @@ def test_isolated_consumed_node_hit_still_not_emitted_regression():
     res = analyze(_spec([bo, burst, tb], edges), df=object())
 
     bo_only_hits = [m for m in res.hits
-                       if set(m.node_index.keys()) == {"bo"}]
+                    if set(m.node_index.keys()) == {"bo"}]
     assert bo_only_hits == [], "{bo} 孤立平凡解不产(bo 被 consumes_stream 消费、不在边端点)"
 
 

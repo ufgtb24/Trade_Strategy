@@ -1,7 +1,7 @@
 """tb v2 实施 gate:burst 2×2 析因 {span,chain}×{greedy,all_ends} 全集扫描。
 
 四格变体注入 = 替换 dag_spec.BurstDetector 模块属性(进程池 fork 前打补丁,Linux fork 继承)。
-每格输出 outputs/gate_<cell>.txt(命中 ticker);终端报 hit 数 / burst 体积 / A/B/AB 析因。
+每格输出 outputs/gate_<cell>.txt(命中 ticker);终端报有 hit 的股票数 / burst 体积 / A/B/AB 析因。
 参数在 main() 起始声明(无 argparse)。bo/tb 固定为 v2 新世界,只变 burst 物化。
 """
 from __future__ import annotations
@@ -83,7 +83,7 @@ CELLS = {
 
 
 def _check(pkl_path: Path, params: Params, start: str, end: str):
-    """worker:返回 (ticker, hit, n_burst_events, err)。analyze 一遍同时取 hits 与体积。"""
+    """worker:返回 (ticker, has_hit, n_burst_events, err)。analyze 一遍同时取 hits 与体积。"""
     ticker = pkl_path.stem
     try:
         df = pd.read_pickle(pkl_path)
@@ -108,7 +108,7 @@ def main() -> None:
 
     pkls = sorted(DATA_DIR.glob("*.pkl"))
     OUT_DIR.mkdir(exist_ok=True)
-    hits: dict[str, set] = {}
+    hit_tickers_by_cell: dict[str, set] = {}
     vols: dict[str, int] = {}
 
     for cell, variant in CELLS.items():
@@ -118,25 +118,25 @@ def main() -> None:
         with ProcessPoolExecutor(max_workers=MAX_WORKERS) as ex:
             futs = [ex.submit(_check, p, PARAMS, START_DATE, END_DATE) for p in pkls]
             for f in as_completed(futs):
-                ticker, hit, n_burst, err = f.result()
+                ticker, has_hit, n_burst, err = f.result()
                 if err:
                     errors += 1
                     continue
                 total_burst += n_burst
-                if hit:
+                if has_hit:
                     hit_tickers.add(ticker)
-        hits[cell] = hit_tickers
+        hit_tickers_by_cell[cell] = hit_tickers
         vols[cell] = total_burst
         (OUT_DIR / f"gate_{cell}.txt").write_text("\n".join(sorted(hit_tickers)) + "\n")
         print(f"[{cell}] hit={len(hit_tickers)} burst_events={total_burst} "
               f"errors={errors} elapsed={time.perf_counter() - t0:.0f}s")
 
-    h1, h2 = len(hits["span_greedy"]), len(hits["chain_greedy"])
-    h3, h4 = len(hits["span_allends"]), len(hits["chain_allends"])
+    h1, h2 = len(hit_tickers_by_cell["span_greedy"]), len(hit_tickers_by_cell["chain_greedy"])
+    h3, h4 = len(hit_tickers_by_cell["span_allends"]), len(hit_tickers_by_cell["chain_allends"])
     print(f"\n聚类主效应 B=(2)-(1)={h2 - h1}  枚举族主效应 A=(4)-(2)={h4 - h2}  "
           f"交互 AB=(4)-(3)-(2)+(1)={h4 - h3 - h2 + h1}")
-    print(f"new=(4)-(1): {sorted(hits['chain_allends'] - hits['span_greedy'])}")
-    print(f"LOST=(1)-(4): {sorted(hits['span_greedy'] - hits['chain_allends'])}")
+    print(f"new=(4)-(1): {sorted(hit_tickers_by_cell['chain_allends'] - hit_tickers_by_cell['span_greedy'])}")
+    print(f"LOST=(1)-(4): {sorted(hit_tickers_by_cell['span_greedy'] - hit_tickers_by_cell['chain_allends'])}")
     print(f"体积(burst_events/cell): { {c: vols[c] for c in CELLS} }")
 
 

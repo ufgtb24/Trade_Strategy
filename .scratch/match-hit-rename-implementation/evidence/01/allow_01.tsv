@@ -13,3 +13,28 @@ tests/path2/dag/test_engine_edges.py	assert e.satisfies(side, Ev("b0", 5, 100)) 
 tests/path2/dag/test_engine_edges.py	assert e.satisfies(side, Ev("b1", 10, 100)) is True, "dst.start == src.end 应匹配"	中文「匹配」·泛指（边关系成立，e.satisfies 为真）
 tests/path2/dag/test_engine_edges.py	assert e.satisfies(side, Ev("b2", 4, 100)) is False, "dst.start < src.start 不匹配"	中文「匹配」·泛指（边关系成立，e.satisfies 为真）
 tests/path2/dag/test_engine_edges.py	assert e.satisfies(side, Ev("b3", 11, 100)) is False, "dst.start > src.end 不匹配"	中文「匹配」·泛指（边关系成立，e.satisfies 为真）
+path2/debug_ctx.py	"""读 DEBUG_ANCHOR_KIND env · 未设或空串返 None(v1 兼容 fallback:不做 anchor_kind 匹配)。"""	中文「匹配」·泛指（模式、前缀、名字、签名）
+path2/debug_ctx.py	∧ (DEBUG_ANCHOR_KIND 未设 or 匹配 anchor_kind)	中文「匹配」·泛指（模式、前缀、名字、签名）
+path2/eval.py	同类型多 slot 时 slot 名寻址天然精确(按类型寻址会跨 slot 误匹配)。	中文「匹配」·泛指（模式、前缀、名字、签名）
+path2/eval.py	end_node 缺失 → KeyError;路径最多一级,child slot 无匹配 → KeyError	中文「匹配」·泛指（模式、前缀、名字、签名）
+path2/eval.py	end_node 缺失 → KeyError;路径最多一级,child slot 无匹配 → KeyError	中文「匹配」·泛指（模式、前缀、名字、签名）
+path2/eval.py	无匹配 → KeyError(解析协议见 _resolve_end_events)。	中文「匹配」·泛指（模式、前缀、名字、签名）
+scripts/path2_eval_bottom_burst.py	print(f"no pkl matched under {DATA_DIR} (regex={TICKER_REGEX!r})")	正则与模式匹配
+tests/path2/calc/test_atr.py	def test_prev_bar_atr_pct_matches_scalar_formula(period):	「一致 / 等于」的通用说法
+tests/path2/calc/test_atr_equivalence.py	def test_nan_inside_matches_reference():	「一致 / 等于」的通用说法
+tests/path2/dag/test_anchor_c1_off_fuzz.py	- 关 c1_off 第 5 源后:同 end 桶内多个 src 候选都不被塌缩 → 都能被 anchor 匹配到对应的 dst	中文「匹配」·泛指（anchor 配对）
+tests/path2/dag/test_anchor_c1_off_fuzz.py	"""同 end_idx 桶内每个 src 都能被 anchor 匹配到对应 dst(B4 c1_off 第 5 源)。	中文「匹配」·泛指（anchor 配对）
+tests/path2/dag/test_anchor_same_span_disambiguation.py	_anchor_ok 按 span 比较:src 的 span 形态 anchor 为 src_10,与 dst 的 src_10#0 不匹配	中文「匹配」·泛指（anchor 配对）
+tests/path2/dag/test_anchor_same_span_disambiguation.py	# 重构前 0 个 hit(anchor 形态不匹配),重构后 2 个 hit(无交叉)	中文「匹配」·泛指（anchor 配对）
+tests/path2/dag/test_children_checks.py	def test_c1c2c3_pass_when_declaration_matches_instance():	「一致 / 等于」的通用说法
+tests/path2/dag/test_diagnose_anchor_ok.py	dst 其实是 anchor 到别的 src(anchor_id 对不上),不是真正与它匹配的伙伴。	中文「匹配」·泛指（anchor 配对）
+tests/path2/dag/test_gate_failure_code_location.py	用 monkeypatch 把 sys._getframe 换成只返回单帧、且该帧匹配跳过规则①	中文「匹配」·泛指（模式、前缀、名字、签名）
+tests/path2/dag/test_spec_normalize.py	def test_explicit_produced_by_must_match_derived():	「一致 / 等于」的通用说法
+tests/path2/test_debug_ctx.py	- v3 anchor_kind 门限(DEBUG_ANCHOR_KIND 设 → 只匹配 anchor_kind fire · 其他 skip)	中文「匹配」·泛指（模式、前缀、名字、签名）
+tests/path2/test_debug_ctx.py	def test_anchor_kind_env_end_matches_end_anchor_kind(fresh_debug_ctx, fire_counter, monkeypatch):	「一致 / 等于」的通用说法
+tests/path2/test_debug_ctx.py	fresh_debug_ctx.debug_break(150, anchor_kind="end")   # anchor_kind 不匹配 · 不 fire	中文「匹配」·泛指（模式、前缀、名字、签名）
+tests/path2/test_self_contained.py	# grep 找到匹配返回 0;未找到返回 1	中文「匹配」·泛指（模式、前缀、名字、签名）
+tests/path2_apps/bb_v1/test_bb_v1.py	def test_throwback_kwargs_match_v1_signature():	「一致 / 等于」的通用说法
+tests/path2_apps/bottom_burst/test_params.py	"burst_kwargs() 必须精确匹配 BurstDetector 签名;阈值走 where 不进 detector"	中文「匹配」·泛指（模式、前缀、名字、签名）
+tests/path2_apps/bottom_burst/test_params.py	def test_tb_params_throwback_kwargs_matches_detector_signature():	「一致 / 等于」的通用说法
+tests/path2_apps/test_params_base_from_yaml_msg.py	前缀,用户会去改错文件。既有测试只 match 字段名,不锚前缀,故此处新增。	「一致 / 等于」的通用说法

@@ -3,27 +3,17 @@
   mismatch 一族: 19
   「一致 / 等于」的通用说法: 9
   中文「匹配」·泛指（anchor 配对）: 5
-  中文「匹配」·泛指（模式、前缀、名字、签名）: 15
+  中文「匹配」·泛指（模式、前缀、名字、签名）: 11
+  中文「匹配」·泛指（正则、前缀、最左）: 4
   中文「匹配」·泛指（边关系成立，e.satisfies 为真）: 13
   正则与模式匹配: 3
   测试框架: 51
 
-## 中文「匹配」·泛指（模式、前缀、名字、签名）
+## 中文「匹配」·泛指（正则、前缀、最左）
   path2/atoms/breakout.py:471: # 并列峰取最左(list.index 返回最左匹配,与 dev breakout_detector.py:463 行为一致)
   path2/dag/gate_failure.py:84: 3. 跳过 throwback 系模块的 _emit_tb_gate* helper 帧(v1/v3/v4,前缀匹配)
-  path2/debug_ctx.py:27: """读 DEBUG_ANCHOR_KIND env · 未设或空串返 None(v1 兼容 fallback:不做 anchor_kind 匹配)。"""
-  path2/debug_ctx.py:42: ∧ (DEBUG_ANCHOR_KIND 未设 or 匹配 anchor_kind)
-  path2/eval.py:101: 同类型多 slot 时 slot 名寻址天然精确(按类型寻址会跨 slot 误匹配)。
-  path2/eval.py:137: end_node 缺失 → KeyError;路径最多一级,child slot 无匹配 → KeyError
-  path2/eval.py:176: end_node 缺失 → KeyError;路径最多一级,child slot 无匹配 → KeyError
-  path2/eval.py:286: 无匹配 → KeyError(解析协议见 _resolve_end_events)。
   tests/path2/dag/test_gate_failure_code_location.py:3: + throwback 系模块的 _emit_tb_gate* helper 帧(v1 精确名;v3/v4 前缀匹配)。"""
   tests/path2/dag/test_gate_failure_code_location.py:72: """直调 throwback_v4._emit_tb_gate_v4 时,helper 帧同样被跳过(前缀匹配),
-  tests/path2/dag/test_gate_failure_code_location.py:101: 用 monkeypatch 把 sys._getframe 换成只返回单帧、且该帧匹配跳过规则①
-  tests/path2/test_debug_ctx.py:6: - v3 anchor_kind 门限(DEBUG_ANCHOR_KIND 设 → 只匹配 anchor_kind fire · 其他 skip)
-  tests/path2/test_debug_ctx.py:166: fresh_debug_ctx.debug_break(150, anchor_kind="end")   # anchor_kind 不匹配 · 不 fire
-  tests/path2/test_self_contained.py:17: # grep 找到匹配返回 0;未找到返回 1
-  tests/path2_apps/bottom_burst/test_params.py:69: "burst_kwargs() 必须精确匹配 BurstDetector 签名;阈值走 where 不进 detector"
 
 ## mismatch 一族
   path2/dag/diagnose.py:16: _MISS_GATE_RANK = {"gap_out": 0, "anchor_mismatch": 1, "strict_fail": 2}  # 由近及远(离成功最近排最高)
@@ -45,6 +35,19 @@
   tests/path2/test_eval_M_param.py:69: def test_random_day_M_length_mismatch_raises():
   tests/path2/test_first_passage.py:419: def test_spans_first_passage_M_length_mismatch_raises():
   tests/path2/test_first_passage.py:526: def test_daily_first_passage_M_length_mismatch_raises():
+
+## 中文「匹配」·泛指（模式、前缀、名字、签名）
+  path2/debug_ctx.py:27: """读 DEBUG_ANCHOR_KIND env · 未设或空串返 None(v1 兼容 fallback:不做 anchor_kind 匹配)。"""
+  path2/debug_ctx.py:42: ∧ (DEBUG_ANCHOR_KIND 未设 or 匹配 anchor_kind)
+  path2/eval.py:101: 同类型多 slot 时 slot 名寻址天然精确(按类型寻址会跨 slot 误匹配)。
+  path2/eval.py:137: end_node 缺失 → KeyError;路径最多一级,child slot 无匹配 → KeyError
+  path2/eval.py:176: end_node 缺失 → KeyError;路径最多一级,child slot 无匹配 → KeyError
+  path2/eval.py:286: 无匹配 → KeyError(解析协议见 _resolve_end_events)。
+  tests/path2/dag/test_gate_failure_code_location.py:101: 用 monkeypatch 把 sys._getframe 换成只返回单帧、且该帧匹配跳过规则①
+  tests/path2/test_debug_ctx.py:6: - v3 anchor_kind 门限(DEBUG_ANCHOR_KIND 设 → 只匹配 anchor_kind fire · 其他 skip)
+  tests/path2/test_debug_ctx.py:166: fresh_debug_ctx.debug_break(150, anchor_kind="end")   # anchor_kind 不匹配 · 不 fire
+  tests/path2/test_self_contained.py:17: # grep 找到匹配返回 0;未找到返回 1
+  tests/path2_apps/bottom_burst/test_params.py:69: "burst_kwargs() 必须精确匹配 BurstDetector 签名;阈值走 where 不进 detector"
 
 ## JSON 键（读 path2_web 评估输出的键，归 02）
   scripts/path2/path2_eval_scan.py:70: f"target_matches={out['target_matches']}")

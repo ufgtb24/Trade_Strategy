@@ -224,7 +224,7 @@ def _path_hit():
             Seg(start_idx=2, end_idx=3, confirm_idx=2))
     cont = Container(start_idx=0, end_idx=3, confirm_idx=0, segs=segs)
     return PatternHit(start_idx=0, end_idx=3, confirm_idx=0,
-                        node_index={"tb": cont}, children=(cont,))
+                      node_index={"tb": cont}, children=(cont,))
 
 
 def test_resolve_plain_node_id():
@@ -281,7 +281,7 @@ def _two_seg_hit(s1, e1, s2, e2):
             Seg(start_idx=s2, end_idx=e2, confirm_idx=s2))
     cont = Container(start_idx=s1, end_idx=e2, confirm_idx=s1, segs=segs)
     return PatternHit(start_idx=s1, end_idx=e2, confirm_idx=s1,
-                        node_index={"tb": cont}, children=(cont,))
+                      node_index={"tb": cont}, children=(cont,))
 
 
 def _one_seg_hit(s, e):
@@ -289,7 +289,7 @@ def _one_seg_hit(s, e):
     segs = (Seg(start_idx=s, end_idx=e, confirm_idx=s),)
     cont = Container(start_idx=s, end_idx=e, confirm_idx=s, segs=segs)
     return PatternHit(start_idx=s, end_idx=e, confirm_idx=s,
-                        node_index={"tb": cont}, children=(cont,))
+                      node_index={"tb": cont}, children=(cont,))
 
 
 class TestSampleWindow:
@@ -352,7 +352,7 @@ class TestSampleWindow:
         df = pd.DataFrame({"close": [100.0] * n, "high": [101.0] * n, "low": low})
         two, one = _two_seg_hit(10, 12, 20, 22), _one_seg_hit(10, 12)
         clipped = hit_forward_drawdowns(two, "tb.segments", df, [1, 5],
-                                          sample_window=(0, 15))
+                                        sample_window=(0, 15))
         assert clipped == hit_forward_drawdowns(one, "tb.segments", df, [1, 5])
         assert clipped[1] == pytest.approx(-0.08)
         assert clipped[5] == pytest.approx(-0.14)
