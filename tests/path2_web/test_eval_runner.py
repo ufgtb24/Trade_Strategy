@@ -94,7 +94,7 @@ def test_eval_core_aggregates_and_summarizes(tmp_path):
         executor_factory=lambda w: ThreadPoolExecutor(max_workers=w))
     m = out["meta"]
     assert m["scanned"] == 2 and m["errors"] == 0
-    assert m["tickers_hit"] == 1 and m["buy_windows"] >= 1
+    assert m["hit_stocks"] == 1 and m["buy_windows"] >= 1
     assert out["per_horizon"]["2"]["count"] >= 1
     assert out["per_horizon"]["2"]["win_rate"] is not None
     # results 按 (symbol, buy_date) 排序、全部来自 POS
@@ -179,7 +179,7 @@ def test_run_healthcheck_target_hit_and_magnitude(tmp_path):
         data_dir=str(data_dir), workers=2, ticker_regex=None,
         out_path=str(tmp_path / "hc.json"),
         executor_factory=lambda w: ThreadPoolExecutor(max_workers=w))
-    assert out["universe_hit_tickers"] == 1
+    assert out["universe_hit_stocks"] == 1
     assert out["magnitude_ok"] is True
     assert out["target_hits"] is True
     assert out["meta"]["mode"] == "healthcheck"
@@ -197,7 +197,7 @@ def test_run_healthcheck_target_miss_and_zero_hits(tmp_path):
         data_dir=str(data_dir), workers=2, ticker_regex=None,
         out_path=str(tmp_path / "hc2.json"),
         executor_factory=lambda w: ThreadPoolExecutor(max_workers=w))
-    assert out["universe_hit_tickers"] == 0
+    assert out["universe_hit_stocks"] == 0
     assert out["magnitude_ok"] is False               # 0 命中 = 不健康
     assert out["target_hits"] is False
 

@@ -266,7 +266,7 @@ def _eval_core(*, module_path: str, start, end, horizons: tuple,
             "scanned": len(pkls), "errors": errors,
             **_leaf_stats(results),
             "dedup_daily": _dedup_daily_stats(results, horizons),
-            "tickers_hit": len({r["symbol"] for r in results}),
+            "hit_stocks": len({r["symbol"] for r in results}),
             "elapsed_s": round(time.perf_counter() - t0, 1),
         },
         "per_horizon": _summarize(results, horizons),
@@ -406,14 +406,14 @@ def run_healthcheck(*, module_path: str, start, end, target_ticker=None,
                      param_overrides=param_overrides, data_dir=data_dir,
                      workers=workers, ticker_regex=ticker_regex,
                      executor_factory=executor_factory, on_progress=on_progress)
-    tickers_hit = cur["meta"]["tickers_hit"]
+    hit_stocks = cur["meta"]["hit_stocks"]
     out = {
         "meta": {**cur["meta"], "mode": "healthcheck"},
-        "universe_hit_tickers": tickers_hit,
+        "universe_hit_stocks": hit_stocks,
         "universe_buy_windows": cur["meta"]["buy_windows"],
-        "magnitude_ok": min_tickers <= tickers_hit <= max_tickers,
+        "magnitude_ok": min_tickers <= hit_stocks <= max_tickers,
         "target_ticker": target_ticker,
         "target_hits": (any(r["symbol"] == target_ticker for r in cur["results"])
-                           if target_ticker else None),
+                        if target_ticker else None),
     }
     return _write_json(out, out_path, cur["meta"]["pattern_id"], "healthcheck")

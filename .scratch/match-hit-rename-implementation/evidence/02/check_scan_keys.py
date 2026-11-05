@@ -10,14 +10,14 @@ blob = json.load(open(sys.argv[1], encoding="utf-8"))
 keys: Counter = Counter()
 
 
-def walk(o, path=""):
+def walk(o):
     if isinstance(o, dict):
         for k, v in o.items():
             keys[k] += 1
-            walk(v, f"{path}.{k}")
+            walk(v)
     elif isinstance(o, list):
         for v in o:
-            walk(v, path)
+            walk(v)
 
 
 walk(blob)

@@ -162,7 +162,7 @@ def main() -> None:
     n_tickers = detail["ticker"].nunique() if len(detail) else 0
     lines = [
         f"window=[{START_DATE}, {END_DATE}] end_node={END_NODE} "
-        f"buy_windows={len(detail)} tickers_hit={n_tickers} errors={len(errors)}"
+        f"buy_windows={len(detail)} hit_stocks={n_tickers} errors={len(errors)}"
     ]
     for n in HORIZONS:
         s = detail[f"ret_{n}"].dropna() if len(detail) else pd.Series(dtype=float)

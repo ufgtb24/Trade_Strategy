@@ -19,7 +19,7 @@
 =================================== FAILURES ===================================
 ______________________ TestStable.test_new_high_arm_exit _______________________
 
-self = <tests.path2.atoms.test_throwback_v4.TestStable object at 0x71b181b0f440>
+self = <tests.path2.atoms.test_throwback_v4.TestStable object at 0x70195642ba10>
 
     def test_new_high_arm_exit(self):
         # k=100 → rise 臂不可达,仅 close>peak 臂:peak=close[bo]=100;
@@ -36,7 +36,7 @@ E         Use -v to get more diff
 tests/path2/atoms/test_throwback_v4.py:116: AssertionError
 ______________________ TestStable.test_weak_exit_reentry _______________________
 
-self = <tests.path2.atoms.test_throwback_v4.TestStable object at 0x71b181b0eed0>
+self = <tests.path2.atoms.test_throwback_v4.TestStable object at 0x70195645c050>
 
     def test_weak_exit_reentry(self):
         # i=5 不刷新 cnt=1 → enter=5(trough=99);i=6 close=97.9<99 → weak (5,5),
@@ -52,7 +52,7 @@ E         Use -v to get more diff
 tests/path2/atoms/test_throwback_v4.py:124: AssertionError
 ________________ TestGlobalBreak.test_ratchet_chain_then_break _________________
 
-self = <tests.path2.atoms.test_throwback_v4.TestGlobalBreak object at 0x71b181b0c0b0>
+self = <tests.path2.atoms.test_throwback_v4.TestGlobalBreak object at 0x70195645c9b0>
 
     def test_ratchet_chain_then_break(self):
         # 两轮成功后第三根破抬升线才死:ratchet 生效则机器死于 i=10;
@@ -74,7 +74,7 @@ E         + budget
 tests/path2/atoms/test_throwback_v4.py:160: AssertionError
 ____________________ TestGates.test_no_gate_on_normal_exits ____________________
 
-self = <tests.path2.atoms.test_throwback_v4.TestGates object at 0x71b181c85ca0>
+self = <tests.path2.atoms.test_throwback_v4.TestGates object at 0x70195645e4b0>
 
     def test_no_gate_on_normal_exits(self):
         # 段级收口(rise/weak)、预算尽已有段(timeout 收口)、段外破线且已有段 →
@@ -140,7 +140,7 @@ tests/path2_web/test_params_dict.py::TestBoOnlyToDict::test_lenient_drops
     warnings.warn(f"params dict section '{name}' 忽略未知字段: {sorted(unknown)}")
 
 tests/scripts/test_data_download.py::test_creates_save_root_when_missing
-  /home/yu/.local/share/uv/python/cpython-3.12.12-linux-x86_64-gnu/lib/python3.12/multiprocessing/popen_fork.py:66: DeprecationWarning: This process (pid=3174602) is multi-threaded, use of fork() may lead to deadlocks in the child.
+  /home/yu/.local/share/uv/python/cpython-3.12.12-linux-x86_64-gnu/lib/python3.12/multiprocessing/popen_fork.py:66: DeprecationWarning: This process (pid=3877429) is multi-threaded, use of fork() may lead to deadlocks in the child.
     self.pid = os.fork()
 
 -- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
@@ -151,4 +151,4 @@ FAILED tests/path2/atoms/test_throwback_v4.py::TestGlobalBreak::test_ratchet_cha
 FAILED tests/path2/atoms/test_throwback_v4.py::TestGates::test_no_gate_on_normal_exits
 FAILED tests/path2/test_self_contained.py::test_no_breakoutstrategy_imports_in_path2
 FAILED tests/path2_web/test_serialize_tbseg.py::test_serialize_tbseg_walked_from_container
-6 failed, 1229 passed, 2 skipped, 5 warnings in 17.69s
+6 failed, 1229 passed, 2 skipped, 5 warnings in 36.49s

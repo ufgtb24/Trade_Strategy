@@ -1,5 +1,4 @@
 ## 代码文件（不含历史与别的系统）
-path2_web_ui/e2e/miss-detection-walkthrough.spec.ts:12:// 数据夹具:真实 /scan 的 any_match 闸(path2_web/scan.py:80-81)会把"全局 0 match"的股票
 ## types.ts 的 matches / match_id / MatchDict
 ## 正文 .md（归 04、05，只列出）
 .claude/skills/diagnose-event/detectors/throwback.md
