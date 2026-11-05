@@ -1,13 +1,13 @@
 按行计（一行可能同时算进几类）：
   mismatch 一族: 48
   web-loop 工作流脚本: 41
-  「一致 / 等于」的通用说法: 57
+  「一致 / 等于」的通用说法: 59
   中文「匹配」泛指（pid、锚点、档位、指纹、代码、分类、区间等对得上）: 23
   归票 03（web-loop 示例第 62 行，本票不动）: 1
   正则与模式匹配: 38
   测试框架: 211
   统计里的配对: 71
-  统计里的配对（层匹配差等，同日或同层普通买入对照）: 30
+  统计里的配对（层匹配差等，同日或同层普通买入对照）: 28
 
 ## 中文「匹配」泛指（pid、锚点、档位、指纹、代码、分类、区间等对得上）
   .claude/skills/authoring-path2-app/design-heuristics.md:128: | dst 端某字段 == src 端实例身份(锁定跨边身份) | 任意边 + `anchor_field=<dst字段>` | src 端身份恒为 `src_ep.instance_id`(交错标注后 detect 期即非 None;`anchor_src_field` 已退役、不再消费);**多 src 触发同类 dst 时(如 burst→tb)不用就任意匹配**,召回/精度同时塌;`spec.py::_validate_anchor` 强校验 |
@@ -274,10 +274,8 @@
   .claude/skills/tune-gates-v3/scripts/scoring.py:297: matched = np.full(len(counts), np.nan)
   .claude/skills/tune-gates-v3/scripts/scoring.py:299: np.divide(rolling(daily_matched), counts, out=matched, where=active)
   .claude/skills/tune-gates-v3/scripts/scoring.py:307: return {"count": counts, "score": scores, "matched_score": matched,
-  .claude/skills/tune-gates-v3/tests/test_scoring.py:112: def test_all_legal_starts_and_endpoint_counts_match_explicit_windows():
   .claude/skills/tune-gates-v3/tests/test_scoring.py:165: def test_whole_pool_matching_is_identity_even_with_irregular_density():
   .claude/skills/tune-gates-v3/tests/test_scoring.py:176: def test_same_date_matching_no_m_reports_fallback_explicitly():
-  .claude/skills/tune-gates-v3/tests/test_scoring.py:321: def test_unit_weights_match_unweighted_windows():
 
 ## 正则与模式匹配
   .claude/skills/feature-study/fs.py:150: elif section == "待验证" and (m := _FC_HEAD.match(line)):
@@ -449,6 +447,8 @@
   .claude/skills/tune-gates/tune.py:368: S.check_study_matches(cl, S.study_path(app, window))
   .claude/skills/tune-gates/tune.py:369: S.check_run_matches_classification(meta, cl)
   .claude/skills/tune-gates-v3/tests/test_run.py:341: def test_noise_written_and_matches_manifest(setup):
+  .claude/skills/tune-gates-v3/tests/test_scoring.py:112: def test_all_legal_starts_and_endpoint_counts_match_explicit_windows():
+  .claude/skills/tune-gates-v3/tests/test_scoring.py:321: def test_unit_weights_match_unweighted_windows():
   .claude/skills/tune-gates-v3/tests/test_shrinkage.py:45: def test_enabled_formula_matches_independent_pairwise_matrix_with_calendar_gaps():
 
 ## mismatch 一族

@@ -97,7 +97,7 @@ for b in cand:
           and b['max_bar_vol_ratio'] >= snap['vol_spike_min'])
     print(b['instance_id'], 'pass_where=', pw,
           f"fd={b['first_drought']} dpk={b['distinct_pk']} vol={b['max_bar_vol_ratio']:.2f}")
-# cand 为空 → anchor 的 bo 没组进任何 burst(孤立 bo,看 dropped_hits)
+# cand 为空 → anchor 的 bo 没组进任何 burst(孤立 bo)
 # cand 的 burst pass_where=False → 被 where 过滤,连带 tb 丢
 ```
 
@@ -118,7 +118,7 @@ for b in cand:
 - **tb confirm 远 / 落窗口末端**:bo 之后连续创新低 → trough(`[bo+1,i]` 的 argmin low)一直刷新 → confirm 要"trough 后满 `stop_confirm_bars` 根" → 被推到窗口末端。每根 bo 的搜索窗各自从 `bo+1` 起算,起点差一根 + 中间创新低,trough 位置就差很多(DVLT bo_255、ALT bo_182 同构)。
 - **tb 没命中(anchor 类)**:tb 的 `anchor_bo_id` 在 detect 时钉死=触发它的那根 bo(不可换);只有 `last_bo==anchor` 的 burst 能配,而每根 bo 唯一对应一个 burst 作 last_bo。该 burst 被 where 过滤 → tb 无主。别的 burst `last_bo` 不同,anchor 对不上,从来不是候选(DVLT tb_257_258 / tb_1056_1057)。
 - **burst 被 where 过滤**:`distinct_pk < min` 最常见(短前缀 pk 少);`first_drought`/`vol` 一般满足。`distinct_pk` 随前缀长度递增,所以**越靠后的 last_bo 的 burst 越容易达标**。
-- **孤立 bo 无 burst**:bo 前后 gap > gap_max 断链,或簇 < min_bos,bo 不进任何 burst;锚它的 tb 无主。看 scan 的 `dropped_hits`(`drop_reason='isolated_consumed'`)。
+- **孤立 bo 无 burst**:bo 前后 gap > gap_max 断链,或簇 < min_bos,bo 不进任何 burst;锚它的 tb 无主。
 - **单段化(多段 detector)**:rise 退段后段外继续暴涨 → rise-before-confirm 整 bo 终止,后续预算截断;本质是主升浪无回踩、无新 trough,自然无 re-entry(ZEPP 的 tb 单段化,详见 throwback_v4.md)。
 
 ## 救召回的方向(若策略允许)

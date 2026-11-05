@@ -51,7 +51,7 @@ print("\n--- 步骤 4：reference.md 的骨架 A")
 ref = (SKILL / "reference.md").read_text(encoding="utf-8")
 body = ref.split("### 骨架 A:", 1)[1]
 code = re.search(r"```python\n(.*?)```", body, re.S).group(1)
-for old in ("an['matches']", "dropped_matches"):
+for old in ("an['matches']", "dropped_matches", "dropped_hits"):
     assert old not in code, f"骨架 A 还留着旧键 {old}"
 code = re.sub(r"^pid = .*$", f"pid = {PID!r}", code, flags=re.M)
 scope = {"SCAN_PATH": str(scan_path), "SYM": SYM, "TARGET_TB": TARGET_TB}

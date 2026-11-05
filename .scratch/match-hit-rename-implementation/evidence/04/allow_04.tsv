@@ -91,10 +91,10 @@
 .claude/skills/tune-gates-v3/scripts/scoring.py	return {"count": counts, "score": scores, "matched_score": matched,	统计里的配对（层匹配差等，同日或同层普通买入对照）
 .claude/skills/tune-gates-v3/tests/test_governance.py	with pytest.raises(UsageError, match="精确匹配"):	测试框架
 .claude/skills/tune-gates-v3/tests/test_run.py	def test_noise_written_and_matches_manifest(setup):	「一致 / 等于」的通用说法
-.claude/skills/tune-gates-v3/tests/test_scoring.py	def test_all_legal_starts_and_endpoint_counts_match_explicit_windows():	统计里的配对（层匹配差等，同日或同层普通买入对照）
+.claude/skills/tune-gates-v3/tests/test_scoring.py	def test_all_legal_starts_and_endpoint_counts_match_explicit_windows():	「一致 / 等于」的通用说法
 .claude/skills/tune-gates-v3/tests/test_scoring.py	def test_whole_pool_matching_is_identity_even_with_irregular_density():	统计里的配对（层匹配差等，同日或同层普通买入对照）
 .claude/skills/tune-gates-v3/tests/test_scoring.py	def test_same_date_matching_no_m_reports_fallback_explicitly():	统计里的配对（层匹配差等，同日或同层普通买入对照）
-.claude/skills/tune-gates-v3/tests/test_scoring.py	def test_unit_weights_match_unweighted_windows():	统计里的配对（层匹配差等，同日或同层普通买入对照）
+.claude/skills/tune-gates-v3/tests/test_scoring.py	def test_unit_weights_match_unweighted_windows():	「一致 / 等于」的通用说法
 .claude/skills/tune-gates-v3/tests/test_shrinkage.py	def test_enabled_formula_matches_independent_pairwise_matrix_with_calendar_gaps():	「一致 / 等于」的通用说法
 .claude/skills/web-loop/capture.mjs	if (!same) { skipped.push(`${c.sel}（${n === 1 ? '命中的不是同一个元素' : `匹配 ${n} 个`}）`); continue; }	web-loop 工作流脚本
 .claude/skills/web-loop/examples/path2.md	- **view store 里可读的状态**:`nodeVisible`(node_id → 是否显示,`false` 为隐藏)、`selected`(`{kind:'match',matchId}` / `{kind:'node',nodeId}` / `null`)、`symbol`、`activePatternId`、`focusedMatchId`、`diag`。	归票 03（web-loop 示例第 62 行，本票不动）
