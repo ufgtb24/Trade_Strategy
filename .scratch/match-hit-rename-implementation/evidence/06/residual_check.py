@@ -117,6 +117,7 @@ def load_allow(path: str | None) -> dict[tuple[str, str], str]:
 
 
 def load_allow_path(path: str | None) -> list[tuple[str, str]]:
+    """读整文件判定清单，返回 (路径或前缀, 类别)。"""
     if not path:
         return []
     rows = []
@@ -142,18 +143,21 @@ REGIONS = [
 
 
 def region_of(rel: str) -> str:
+    """相对路径属于 REGIONS 的哪个区域，取第一个前缀对上的。"""
     return next(name for name, prefixes in REGIONS if rel.startswith(prefixes))
 
 
 def masked(loc_rel: str, i: int, line: str) -> str:
+    """位置加第一处 match 字样前后各 24 字，数字打码成 #。"""
     m = MATCH_IN_WORD.search(line) or CN_RE.search(line)
     snippet = line[max(0, m.start() - 24):m.end() + 24].strip()
     return f"{loc_rel}:{i}: …{re.sub(r'[0-9]', '#', snippet)}…"
 
 
-def cmd_report(paths: list[str], allow_path: str | None, allow_paths_file: str | None) -> int:
-    allow = load_allow(allow_path)
-    allow_paths = load_allow_path(allow_paths_file)
+def cmd_report(paths: list[str], line_allow_file: str | None, path_allow_file: str | None) -> int:
+    """全仓终检：line_allow_file 是逐行判定（--allow），path_allow_file 是整文件判定（--allow-path）。有「未归类」返回 1。"""
+    allow = load_allow(line_allow_file)
+    allow_paths = load_allow_path(path_allow_file)
     by_cat: dict[str, Counter] = defaultdict(Counter)
     rows: dict[str, list[str]] = defaultdict(list)
     n_lines = 0

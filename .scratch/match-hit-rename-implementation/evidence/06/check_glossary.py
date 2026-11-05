@@ -41,6 +41,7 @@ RENAMED = {"detected、qualified、matched": "detected、qualified、in_hit"}
 
 
 def show(base: str, path: str) -> list[str]:
+    """取 path 在提交 base 里的内容，按行返回。"""
     out = subprocess.run(["git", "show", f"{base}:{path}"], capture_output=True, check=True).stdout
     return out.decode("utf-8").splitlines()
 
@@ -59,10 +60,12 @@ def owner(lines: list[str], n: int) -> str:
 
 
 def canonical(head: str) -> str:
+    """词头里的规范词：` / ` 分隔的第一个。"""
     return head.split(" / ")[0].strip()
 
 
 def collect_refs(read_lines) -> list[tuple[str, int, str, int]]:
+    """在 SOURCES 里找词表行号引用。read_lines(文件) 返回该文件的行。返回 (来源, 来源行号, 词表, 词表行号)。"""
     refs = []
     for src in SOURCES:
         for ln, line in enumerate(read_lines(src), 1):
@@ -80,6 +83,7 @@ def collect_refs(read_lines) -> list[tuple[str, int, str, int]]:
 
 
 def check_refs(base: str, new_p2: list[str], new_web: list[str]) -> int:
+    """比较每处引用改前改后所属词条的规范词，并逐行比较两份词表；打印结果，返回不通过的处数。"""
     old = {P2: show(base, P2), WEB: show(base, WEB)}
     new = {P2: new_p2, WEB: new_web}
     refs = collect_refs(lambda src: show(base, src))   # 「改前所指」：引用取自改前的文档
@@ -163,6 +167,7 @@ def avoid_words(text: str) -> list[str]:
 
 
 def check_entries(new_p2: list[str], new_web: list[str]) -> int:
+    """按票面验收查词条（见模块说明第 2 条）；打印结果，返回不通过的处数。"""
     bad = 0
     print("\n## 词条")
     entries = {P2: parse_entries(new_p2), WEB: parse_entries(new_web)}
@@ -209,6 +214,7 @@ def check_entries(new_p2: list[str], new_web: list[str]) -> int:
 
 
 def main() -> int:
+    """入口：解析参数，跑两项检查，有不通过就返回 1。"""
     ap = argparse.ArgumentParser()
     ap.add_argument("base")
     ap.add_argument("--path2-new")

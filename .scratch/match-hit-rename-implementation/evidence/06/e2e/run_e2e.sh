@@ -3,11 +3,11 @@
 # 前提：configs/path2_web.yaml 的端口已临时改成 8095 / 5195（不提交，跑完复原）。
 # 用法：bash run_e2e.sh <被测 checkout 根目录> <日志目录>
 ROOT="$1"; LOGS="$2"
-EV=/home/yu/PycharmProjects/Trade_Strategy-06-glossary-and-final-check/.scratch/match-hit-rename-implementation/evidence
+EV="$(cd "$(dirname "$0")/../.." && pwd)"   # evidence/，随本脚本的位置，worktree 删了也找得到
 export PT_TICKET=06 WALL_LOG="$LOGS/e2e-wall.log" PYTHONPATH="$EV/04/wall" PYTHONDONTWRITEBYTECODE=1
 : > "$WALL_LOG"
 ADIR=$(mktemp -d "$LOGS/ann-XXXX")
-"$ROOT/.venv/bin/python" "$EV/06/e2e/e2e_backend.py" "$ROOT" 8095 "$ADIR" > "$LOGS/e2e-backend.log" 2>&1 &
+"$ROOT/.venv/bin/python" "$EV/02/e2e/e2e_backend.py" "$ROOT" 8095 "$ADIR" > "$LOGS/e2e-backend.log" 2>&1 &
 BPID=$!
 cd "$ROOT/path2_web_ui" || exit 1
 VITE_API_BASE=http://localhost:8095 npm run dev -- --port 5195 --strictPort > "$LOGS/e2e-vite.log" 2>&1 &

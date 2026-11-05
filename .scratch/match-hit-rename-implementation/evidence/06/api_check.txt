@@ -3,7 +3,7 @@
 拿不准、单列（不改，完成记录交代）：1
   .scratch/annotation-path2/scripts/01-dump-proto-data.py:49: ms = [m for m in res.matches if full["date"].iloc[m.end_idx] >= pd.Timestamp("2023-06-01")]  [.matches 属性访问]
 
-不在范围的地方（历史与别的系统，不改）：44
+不在范围的地方（历史与别的系统，不改）：56
   .scratch-archive/selection-pattern/scripts/02-structure.py:50: for match in result.matches:  [.matches 属性访问]
   .scratch-archive/selection-pattern/scripts/11-bbpos.py:52: for match in result.matches:  [.matches 属性访问]
   .scratch/match-hit-rename-implementation/evidence/01/compare_outputs.py:75: fwd_ret = _pick(ev, "hit_forward_returns", "match_forward_returns")  [match_forward_returns]
@@ -43,6 +43,18 @@
   .scratch/match-hit-rename-implementation/evidence/05/residual_check.py:192: if ".matches 属性访问" in names and re.search(r"\b(?:summary|analysis)\.matches\b", line) \  [.matches 属性访问]
   .scratch/match-hit-rename-implementation/evidence/05/residual_check.py:193: and not re.search(r"(?<!summary)(?<!analysis)\.matches\b", line):  [.matches 属性访问]
   .scratch/match-hit-rename-implementation/evidence/05/residual_check.py:194: names.remove(".matches 属性访问")  [.matches 属性访问]
+  .scratch/match-hit-rename-implementation/evidence/06/residual_check.py:13: 全仓 Python 里查 01 改掉的 Python 接口名是否还在：PatternMatch、match_forward_returns、  [PatternMatch, match_forward_returns]
+  .scratch/match-hit-rename-implementation/evidence/06/residual_check.py:14: match_forward_drawdowns、match_first_passage、`.matches` 属性访问（含 app 的 matches() 调用）、  [match_forward_drawdowns, match_first_passage, .matches 属性访问]
+  .scratch/match-hit-rename-implementation/evidence/06/residual_check.py:15: `.match_id` 属性访问、从 path2 / path2_apps 导入函数 matches。  [.match_id 属性访问]
+  .scratch/match-hit-rename-implementation/evidence/06/residual_check.py:263: ("PatternMatch", re.compile(r"\bPatternMatch\b")),  [PatternMatch]
+  .scratch/match-hit-rename-implementation/evidence/06/residual_check.py:264: ("match_forward_returns", re.compile(r"\bmatch_forward_returns\b")),  [match_forward_returns]
+  .scratch/match-hit-rename-implementation/evidence/06/residual_check.py:265: ("match_forward_drawdowns", re.compile(r"\bmatch_forward_drawdowns\b")),  [match_forward_drawdowns]
+  .scratch/match-hit-rename-implementation/evidence/06/residual_check.py:266: ("match_first_passage", re.compile(r"\bmatch_first_passage\b")),  [match_first_passage]
+  .scratch/match-hit-rename-implementation/evidence/06/residual_check.py:267: (".matches 属性访问", re.compile(r"\.matches\b(?!\?)")),   # 含 app.matches(...) 调用；JS 的 el.matches?.( 不算  [.matches 属性访问]
+  .scratch/match-hit-rename-implementation/evidence/06/residual_check.py:268: (".match_id 属性访问", re.compile(r"\.match_id\b")),  [.match_id 属性访问]
+  .scratch/match-hit-rename-implementation/evidence/06/residual_check.py:288: if ".matches 属性访问" in names and re.search(r"\b(?:summary|analysis)\.matches\b", line) \  [.matches 属性访问]
+  .scratch/match-hit-rename-implementation/evidence/06/residual_check.py:289: and not re.search(r"(?<!summary)(?<!analysis)\.matches\b", line):  [.matches 属性访问]
+  .scratch/match-hit-rename-implementation/evidence/06/residual_check.py:290: names.remove(".matches 属性访问")  [.matches 属性访问]
   docs/research/2026-10-25_annotation-display-workflow/repro/batch_and_density.py:160: matched = {id(e) for m in res_bb.matches for e in m.node_index.values()}  [.matches 属性访问]
   docs/research/2026-10-25_annotation-display-workflow/repro/batch_and_density.py:161: for m in res_bb.matches:          # burst 的成员 bo 也算进 match  [.matches 属性访问]
   docs/research/2026-10-25_annotation-display-workflow/repro/bench_detectors.py:130: "n_events": len(res.events), "n_matches": len(res.matches),  [.matches 属性访问]

@@ -12,6 +12,7 @@ _open = builtins.open
 
 
 def _redirected_open(file, *args, **kwargs):
+    """内置 open 的替身：路径里的 datasets/pkls/ 换成副本，其余照旧。"""
     if isinstance(file, (str, os.PathLike)):
         s = os.fspath(file)
         if isinstance(s, str) and "datasets/pkls/" in s:
@@ -20,10 +21,12 @@ def _redirected_open(file, *args, **kwargs):
 
 
 def pytest_configure(config):
+    """收集测试之前就换掉内置 open。"""
     builtins.open = _redirected_open
 
 
 def pytest_collection_modifyitems(items):
+    """收集完、跑测试之前，把各测试模块的目录常量换成副本。"""
     for it in items:
         mod = getattr(it, "module", None)
         for name in ("PKL_DIR", "DATA"):

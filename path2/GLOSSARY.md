@@ -186,5 +186,5 @@ mapping 里 optional 一级的默认落法：app 照样算出它在每个 sample
 _Avoid_: `app:buy`、`app:no_buy` —— 已退役的取值；shifted —— 没有这一档，落不进容差就是 unmatched。
 
 **matching**：
-= the process of comparing hits with samples.
+= the process of comparing the hits of a pattern's app with that pattern's samples.
 match 这个比较过程。求解出 hit 的是 solve，不叫 matching。

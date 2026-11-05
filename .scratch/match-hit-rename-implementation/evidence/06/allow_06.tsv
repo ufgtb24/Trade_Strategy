@@ -109,7 +109,7 @@
 .scratch/annotation-path2/manual.md	**7. 下一轮。** 你再说「看看我的标注」。会话先问新属性「前一天放量长阴」：它只出现在负样本里，放成 `must_not` 吗？你同意。它提醒这条规则是照两个负判断写的，在它们身上当然解释得通；它量了一下「因为这条才去掉的」那些买点——只有十几个，看不出比同日普通买入差，先留着、标待验证。再把三张 `off_pattern` 归成一类：app 的「放量」看的是整串突破里量最大的那一根，这三张是串里早先的 K 线放量、越过前高的那根反而缩量。它提议改成看越过前高的那一根，代价是全池少抓约三成 hit，你标过的正样本一张不丢。你同意。v2 出来后，会话报「翻了 1 张：TVRD 2025-05-08 负样本变成 `unmatched`，因为新加的『前一天放量长阴』否定条件」，samples 表上这一行带着标记。再做一份盲看，`off_pattern` 只剩 1 张，理由和别的都不同。你判断剩下的不值得修。	新义本身
 .scratch/annotation-path2/manual.md	**8. match 有容差，正负样本不同。**	新义本身
 .scratch/annotation-path2/manual.md	**颜色分工**：图例 `user` 白底 / `session` 蓝底 / `app` 琥珀底——每个 tag 一眼看出是谁说的：你自己标的、会话写的（如 mapping 的级、`diff tag`）、app 算的（如 `match tag`、`tier tag`）。**朱红只用于一件事：app 的判断和你相反**（正样本 `unmatched`、负样本 `matched`）。没有朱红，就是 app 和你一致。	新义本身
-.scratch/annotation-path2/manual.md	- **hit vs match**：hit 是 app 的一次完整求解结果，是个东西；match 是拿 hit 和样本比远近这个比较，全仓只有这一个意思。	新义本身
+.scratch/annotation-path2/manual.md	- **hit vs match**：hit 是 app 的一次完整求解结果，是个东西；match 是拿 hit 和样本比远近这个比较，讨论里只有这一个意思。	新义本身
 .scratch/annotation-path2/manual.md	- **match 为什么有容差**：你的样本日是定性的认定，app 的买点是按规则算出的那根 K 线，差一两天是常态。正样本：hit 的买点在样本日前后 3 天内，或样本日落在那次 hit 里买点所在的那段事件中（比如买点 node 是回踩，就是那段回踩），就算 `matched`——「我会在回踩里买」和 app 在回踩起点买说的是同一件事。负样本收得更紧，前后 1 天：负样本说的是「这一天不该买」，app 几天后买可能已经是另一种局面，不该算到它头上。天数待验证。顺带一提，app 的买点不会早于它所依赖的事件的确认根，所以 hit 的收益是当时真买得到的。	新义本身
 .scratch/annotation-path2/manual.md	- **samples 表**：一行一种组合——`judgment`、`diff tag`（列头 `must / must_not`）、`match tag`；所有列都相同的折成一行 `×n`。正样本在前，和 mapping 不一致的、和 app 相反的排最前；这一轮 app 改版后结论翻了的样本带标记。每行带缩略图，点一下跳到那张图、选中那个样本。	新义本身
 .scratch/annotation-path2/manual.md	- **三层 tag 各管一件**：`tier tag` 管一元 where（这一段认没认出），`link tag` 管边（两段连没连上），`match tag` 管整次 hit（这一天 app 买没买）。哪一层断了，就知道是 node、边还是整体的问题，会话该改哪儿。	新义本身

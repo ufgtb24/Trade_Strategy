@@ -1,7 +1,7 @@
-全部受管文本文件里含 match / 匹配 字样的行：5409（一行可算进几类，下面的条数加起来会多于它）
+全部受管文本文件里含 match / 匹配 字样的行：5832（一行可算进几类，下面的条数加起来会多于它）
 
 ## 按类别与区域的条数
-不在范围的地方：4179（.scratch/match-hit-rename* 1965、docs/ 其他 1678、其他 441、scripts/ 83、tests/ 10、.scratch/annotation-path2* 2）
+不在范围的地方：4602（.scratch/match-hit-rename* 2388、docs/ 其他 1678、其他 441、scripts/ 83、tests/ 10、.scratch/annotation-path2* 2）
 docs/explain 过时旧名（代码里已没有的字段，单列）：3（docs/explain/ 3）
 docs/explain 过时旧名（代码里已没有的枚举，单列）：1（docs/explain/ 1）
 docs/path2 过时旧名（代码里已没有，单列）：21（docs/path2/ 21）
