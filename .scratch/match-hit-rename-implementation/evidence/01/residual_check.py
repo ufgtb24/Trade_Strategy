@@ -2,12 +2,13 @@
 「允许保留的用法」分类计数；分不进任何一类的列为「未归类」，那些就是旧义残留或要人工看的地方。
 
 用法（在仓库根目录）：
-    python <本文件> area <路径> [<路径> ...] [--allow <人工判定清单>] [--detail]
+    python <本文件> area <路径> [<路径> ...] [--allow <人工判定清单>] [--exclude <路径前缀>] [--detail]
         对给定的文件或目录逐行查 match / matches / matched / matching（不分大小写、含在标识符里的）
         与中文「匹配」，输出各类计数；--detail 再逐行列出每一类。退出码：有「未归类」为 1，否则 0。
     python <本文件> api [--root <目录>]
-        全仓 Python 里查 01 改掉的四个 Python 接口名是否还在：PatternMatch、match_forward_returns、
-        match_forward_drawdowns、match_first_passage、`.matches` 属性访问、`.match_id` 属性访问。
+        全仓 Python 里查 01 改掉的 Python 接口名是否还在：PatternMatch、match_forward_returns、
+        match_forward_drawdowns、match_first_passage、`.matches` 属性访问（含 app 的 matches() 调用）、
+        `.match_id` 属性访问、从 path2 / path2_apps 导入函数 matches。
         JSON 键字面量 "matches" / "match_id"（含 `["matches"]`、`.get("matches")`）单列，留给 02。
         「不在范围的地方」（历史与别的系统）单列，不算残留。退出码：有残留为 1。
 
@@ -36,6 +37,21 @@ OUT_OF_SCOPE = (
     "scripts/implementation_board.py", "scripts/wayfinder_board.py", "docs/research/", "docs/tmp/",
     "docs/legacy/", "docs/superpowers/", "docs/agents/", ".scratch-archive/", "configs/security_names.csv",
 )
+EVIDENCE_RE = re.compile(r"^\.scratch/[^/]+/evidence/")   # 各 effort 的 evidence（含本批各票自己的检查脚本）
+# 拿不准、单列：不属于允许列表任何一类，也不硬改，由完成记录单独交代
+UNSURE = {
+    ".scratch/annotation-path2/scripts/01-dump-proto-data.py":
+        "已 resolved 的决定票 01 的原型取数脚本（历史资产，依赖已不在的 chart_workflow）",
+}
+
+
+def scope_of(rel: str) -> str | None:
+    """不在范围的路径返回类别名，范围内返回 None。"""
+    if rel in UNSURE:
+        return f"拿不准、单列（{UNSURE[rel]}）"
+    if rel.startswith(OUT_OF_SCOPE) or EVIDENCE_RE.match(rel):
+        return "不在范围的地方"
+    return None
 
 # 英文 match 字样的分类：(类别名, 作用于整行的正则)。命中的片段从行里抠掉，抠完还剩 match 字样才算没认领。
 CATEGORIES: list[tuple[str, re.Pattern]] = [
@@ -124,9 +140,10 @@ def cmd_area(paths: list[str], allow_path: str | None, detail: bool, exclude: li
             if not (MATCH_IN_WORD.search(line) or CN_RE.search(line)):
                 continue
             loc = f"{rel}:{i}: {line.strip()}"
-            if any(rel.startswith(o) for o in OUT_OF_SCOPE):
-                counts["不在范围的地方"] += 1
-                rows["不在范围的地方"].append(loc)
+            scope = scope_of(rel)
+            if scope:
+                counts[scope] += 1
+                rows[scope].append(loc)
                 continue
             cats, left = classify(line)
             if left and (rel, line.strip()) in allow:
@@ -156,8 +173,9 @@ API_PATTERNS = [
     ("match_forward_returns", re.compile(r"\bmatch_forward_returns\b")),
     ("match_forward_drawdowns", re.compile(r"\bmatch_forward_drawdowns\b")),
     ("match_first_passage", re.compile(r"\bmatch_first_passage\b")),
-    (".matches 属性访问", re.compile(r"\.matches\b(?!\s*\()")),
+    (".matches 属性访问", re.compile(r"\.matches\b(?!\?)")),   # 含 app.matches(...) 调用；JS 的 el.matches?.( 不算
     (".match_id 属性访问", re.compile(r"\.match_id\b")),
+    ("导入函数 matches", re.compile(r"\bfrom\s+path2(?:_apps)?[\w.]*\s+import\b.*\bmatches\b")),
 ]
 JSON_KEY_RE = re.compile(r"[\"']match(?:es|_id)[\"']")
 
@@ -166,6 +184,7 @@ def cmd_api(root: str) -> int:
     res = subprocess.run(["git", "-C", root, "ls-files", "*.py"], capture_output=True, text=True, check=True)
     bad: list[str] = []
     out_scope: list[str] = []
+    unsure: list[str] = []
     json_keys: list[str] = []
     for rel in res.stdout.splitlines():
         f = Path(root) / rel
@@ -178,12 +197,17 @@ def cmd_api(root: str) -> int:
             if ".matches 属性访问" in names and re.search(r"\b(?:summary|analysis)\.matches\b", line) \
                     and not re.search(r"(?<!summary)(?<!analysis)\.matches\b", line):
                 names.remove(".matches 属性访问")
+            scope = scope_of(rel)
             if names:
-                (out_scope if any(rel.startswith(o) for o in OUT_OF_SCOPE) else bad).append(f"{loc}  [{', '.join(names)}]")
-            if JSON_KEY_RE.search(line) and not any(rel.startswith(o) for o in OUT_OF_SCOPE):
+                row = f"{loc}  [{', '.join(names)}]"
+                (bad if scope is None else unsure if rel in UNSURE else out_scope).append(row)
+            if JSON_KEY_RE.search(line) and scope is None:
                 json_keys.append(loc)
     print(f"旧接口名残留（范围内）：{len(bad)}")
     for r in bad:
+        print("  " + r)
+    print(f"\n拿不准、单列（不改，完成记录交代）：{len(unsure)}")
+    for r in unsure:
         print("  " + r)
     print(f"\n不在范围的地方（历史与别的系统，不改）：{len(out_scope)}")
     for r in out_scope:

@@ -1,0 +1,141 @@
+按行计（一行可能同时算进几类）：
+  JSON 键（读 path2_web 评估输出的键，归 02）: 1
+  mismatch 一族: 19
+  「一致 / 等于」的通用说法: 9
+  中文「匹配」·泛指（anchor 配对）: 5
+  中文「匹配」·泛指（模式、前缀、名字、签名）: 15
+  中文「匹配」·泛指（边关系成立，e.satisfies 为真）: 13
+  正则与模式匹配: 3
+  测试框架: 51
+
+## 中文「匹配」·泛指（模式、前缀、名字、签名）
+  path2/atoms/breakout.py:471: # 并列峰取最左(list.index 返回最左匹配,与 dev breakout_detector.py:463 行为一致)
+  path2/dag/gate_failure.py:84: 3. 跳过 throwback 系模块的 _emit_tb_gate* helper 帧(v1/v3/v4,前缀匹配)
+  path2/debug_ctx.py:27: """读 DEBUG_ANCHOR_KIND env · 未设或空串返 None(v1 兼容 fallback:不做 anchor_kind 匹配)。"""
+  path2/debug_ctx.py:42: ∧ (DEBUG_ANCHOR_KIND 未设 or 匹配 anchor_kind)
+  path2/eval.py:101: 同类型多 slot 时 slot 名寻址天然精确(按类型寻址会跨 slot 误匹配)。
+  path2/eval.py:137: end_node 缺失 → KeyError;路径最多一级,child slot 无匹配 → KeyError
+  path2/eval.py:176: end_node 缺失 → KeyError;路径最多一级,child slot 无匹配 → KeyError
+  path2/eval.py:286: 无匹配 → KeyError(解析协议见 _resolve_end_events)。
+  tests/path2/dag/test_gate_failure_code_location.py:3: + throwback 系模块的 _emit_tb_gate* helper 帧(v1 精确名;v3/v4 前缀匹配)。"""
+  tests/path2/dag/test_gate_failure_code_location.py:72: """直调 throwback_v4._emit_tb_gate_v4 时,helper 帧同样被跳过(前缀匹配),
+  tests/path2/dag/test_gate_failure_code_location.py:101: 用 monkeypatch 把 sys._getframe 换成只返回单帧、且该帧匹配跳过规则①
+  tests/path2/test_debug_ctx.py:6: - v3 anchor_kind 门限(DEBUG_ANCHOR_KIND 设 → 只匹配 anchor_kind fire · 其他 skip)
+  tests/path2/test_debug_ctx.py:166: fresh_debug_ctx.debug_break(150, anchor_kind="end")   # anchor_kind 不匹配 · 不 fire
+  tests/path2/test_self_contained.py:17: # grep 找到匹配返回 0;未找到返回 1
+  tests/path2_apps/bottom_burst/test_params.py:69: "burst_kwargs() 必须精确匹配 BurstDetector 签名;阈值走 where 不进 detector"
+
+## mismatch 一族
+  path2/dag/diagnose.py:16: _MISS_GATE_RANK = {"gap_out": 0, "anchor_mismatch": 1, "strict_fail": 2}  # 由近及远(离成功最近排最高)
+  path2/dag/diagnose.py:87: """(a,b) 这一对候选卡在哪个 gate:由近及远 gap_out → anchor_mismatch → strict_fail。
+  path2/dag/diagnose.py:92: return "anchor_mismatch"
+  path2/dag/diagnose.py:115: (Sprint 1 Task 3:gap_out / anchor_mismatch / strict_fail,由近及远取代表性失败 pair 抽样
+  path2/dag/diagnose.py:127: miss = {"gap_out": 0, "anchor_mismatch": 0, "strict_fail": 0, "negation_violated": 0}
+  path2/dag/result.py:114: "gap_out": 0, "anchor_mismatch": 0, "strict_fail": 0, "negation_violated": 0,
+  tests/path2/dag/test_children_checks.py:103: def test_c3_slot_element_type_mismatch_raises():
+  tests/path2/dag/test_rel_miss_reasons.py:6: → anchor_mismatch(关系检查过、anchor 复核不过,硬伤 B)
+  tests/path2/dag/test_rel_miss_reasons.py:34: miss_reasons={"gap_out": 3, "anchor_mismatch": 5, "strict_fail": 0, "negation_violated": 0},
+  tests/path2/dag/test_rel_miss_reasons.py:36: assert r.miss_reasons["anchor_mismatch"] == 5
+  tests/path2/dag/test_rel_miss_reasons.py:42: assert r.miss_reasons == {"gap_out": 0, "anchor_mismatch": 0, "strict_fail": 0, "negation_violated": 0}
+  tests/path2/dag/test_rel_miss_reasons.py:91: assert r.miss_reasons == {"gap_out": 1, "anchor_mismatch": 0, "strict_fail": 0, "negation_violated": 0}
+  tests/path2/dag/test_rel_miss_reasons.py:119: def test_miss_reasons_anchor_mismatch_and_strict_fail_classified():
+  tests/path2/dag/test_rel_miss_reasons.py:120: """离成功最近的失败原因优先(strict_fail > anchor_mismatch > gap_out):
+  tests/path2/dag/test_rel_miss_reasons.py:139: assert r.miss_reasons == {"gap_out": 0, "anchor_mismatch": 0, "strict_fail": 1, "negation_violated": 0}
+  tests/path2/test_eval_M_param.py:61: def test_hit_first_passage_M_length_mismatch_raises():
+  tests/path2/test_eval_M_param.py:69: def test_random_day_M_length_mismatch_raises():
+  tests/path2/test_first_passage.py:419: def test_spans_first_passage_M_length_mismatch_raises():
+  tests/path2/test_first_passage.py:526: def test_daily_first_passage_M_length_mismatch_raises():
+
+## JSON 键（读 path2_web 评估输出的键，归 02）
+  scripts/path2/path2_eval_scan.py:70: f"target_matches={out['target_matches']}")
+
+## 正则与模式匹配
+  scripts/path2/run_path2_web.py:40: m = re.match(r"v(\d+)\.", out.stdout.strip())
+  scripts/path2_eval_bottom_burst.py:120: pkls = [p for p in pkls if pat.match(p.stem)]
+  scripts/path2_eval_bottom_burst.py:123: print(f"no pkl matched under {DATA_DIR} (regex={TICKER_REGEX!r})")
+
+## 测试框架
+  tests/path2/atoms/test_breakout_detector.py:90: with pytest.raises(ValueError, match="peak_measure"):
+  tests/path2/atoms/test_breakout_detector.py:92: with pytest.raises(ValueError, match="breakout_measure"):
+  tests/path2/atoms/test_throwback_v4.py:373: with pytest.raises(ValueError, match="measure"):
+  tests/path2/atoms/test_throwback_v4.py:375: with pytest.raises(ValueError, match="anchor_mode"):
+  tests/path2/dag/test_children_checks.py:78: with pytest.raises(RuntimeError, match="未物化"):
+  tests/path2/dag/test_children_checks.py:85: with pytest.raises(ValueError, match="未在 children 声明中"):
+  tests/path2/dag/test_children_checks.py:99: with pytest.raises(RuntimeError, match="未声明"):
+  tests/path2/dag/test_children_checks.py:112: with pytest.raises(RuntimeError, match="期望"):
+  tests/path2/dag/test_engine_annotate.py:61: with pytest.raises(ValueError, match="未在 children 声明中"):
+  tests/path2/dag/test_engine_graph.py:25: with pytest.raises(ValueError, match="cycle|环"):
+  tests/path2/dag/test_engine_multistream.py:49: with pytest.raises(ValueError, match="zz"):
+  tests/path2/dag/test_engine_multistream.py:154: with pytest.raises(ValueError, match="instance_id"):
+  tests/path2/dag/test_engine_preset.py:106: with pytest.raises(ValueError, match="没有 instance_id"):
+  tests/path2/dag/test_engine_preset.py:117: with pytest.raises(ValueError, match="ghost"):
+  tests/path2/dag/test_engine_preset.py:128: with pytest.raises(ValueError, match="未标注"):
+  tests/path2/dag/test_engine_preset.py:143: with pytest.raises(ValueError, match="另一份 spec"):
+  tests/path2/dag/test_nodes_multistream.py:35: with pytest.raises(ValueError, match="无流"):
+  tests/path2/dag/test_nodes_multistream.py:40: with pytest.raises(ValueError, match="produces_stream"):
+  tests/path2/dag/test_nodespec_normalize.py:21: with pytest.raises(ValueError, match="互斥"):
+  tests/path2/dag/test_nodespec_normalize.py:27: with pytest.raises(ValueError, match="event_cls"):
+  tests/path2/dag/test_nodespec_normalize.py:45: with pytest.raises(ValueError, match="event_cls"):
+  tests/path2/dag/test_spec.py:57: with pytest.raises(ValueError, match="clause_id"):
+  tests/path2/dag/test_spec.py:65: with pytest.raises(ValueError, match="node_id"):
+  tests/path2/dag/test_spec.py:143: with pytest.raises(ValueError, match="render_grid='price'"):
+  tests/path2/dag/test_spec_multistream.py:52: with pytest.raises(ValueError, match="自喂|同一 detector"):
+  tests/path2/dag/test_spec_normalize.py:27: with pytest.raises(ValueError, match="孤儿|未被任何父"):
+  tests/path2/dag/test_spec_normalize.py:35: with pytest.raises(ValueError, match="多父"):
+  tests/path2/dag/test_spec_normalize.py:42: with pytest.raises(ValueError, match="不一致"):
+  tests/path2/dag/test_spec_normalize.py:51: with pytest.raises(ValueError, match="produced_by 无法推导"):
+  tests/path2/dag/test_spec_normalize.py:57: with pytest.raises(ValueError, match="不存在"):
+  tests/path2/dag/test_spec_normalize.py:64: with pytest.raises(ValueError, match="consumes_stream|死字段"):
+  tests/path2/dag/test_spec_streams_bound.py:64: match='没有 node 认领' 且信息含缺的流名 pk。"""
+  tests/path2/dag/test_spec_streams_bound.py:66: with pytest.raises(ValueError, match="没有 node 认领") as exc_info:
+  tests/path2/dag/test_spec_streams_bound.py:101: with pytest.raises(ValueError, match="没有 node 认领") as exc_info:
+  tests/path2/dag/test_spec_streams_bound.py:122: with pytest.raises(ValueError, match="没有 node 认领") as exc_info:
+  tests/path2/dag/test_validate_anchor.py:46: with pytest.raises(ValueError, match="anchor_field"):
+  tests/path2/test_confirm_idx.py:29: with pytest.raises(ValueError, match="confirm_idx"):
+  tests/path2/test_confirm_idx.py:34: with pytest.raises(ValueError, match="confirm_idx"):
+  tests/path2/test_debug_ctx.py:113: with pytest.raises(TypeError, match="anchor_kind"):
+  tests/path2/test_debug_ctx.py:173: with pytest.raises(TypeError, match="class_id"):
+  tests/path2/test_eval.py:244: with pytest.raises(KeyError, match="slot"):
+  tests/path2/test_eval.py:250: with pytest.raises(ValueError, match="最多一级"):
+  tests/path2/test_event.py:33: with pytest.raises(TypeError, match="non-frozen"):
+  tests/path2/test_runner_bundle.py:52: with pytest.raises(ValueError, match="zz"):
+  tests/path2/test_runner_bundle.py:57: with pytest.raises(ValueError, match="多流"):
+  tests/path2/test_stream_schema.py:30: with pytest.raises(ValueError, match="event_cls"):
+  tests/path2_apps/bottom_burst/test_params.py:109: with pytest.raises(ValueError, match="typoooo"):
+  tests/path2_apps/bottom_burst/test_params.py:126: with pytest.raises(ValueError, match="bo_typooo"):
+  tests/path2_apps/bottom_burst/test_params.py:181: with pytest.raises(ValueError, match="pullback_min_atr"):
+  tests/path2_apps/test_params_base.py:39: with pytest.raises(ValueError, match="__nope__"):
+  tests/path2_apps/test_params_base.py:48: with pytest.raises(ValueError, match="__ghost_section__"):
+
+## 「一致 / 等于」的通用说法
+  tests/path2/calc/test_atr.py:80: def test_prev_bar_atr_pct_matches_scalar_formula(period):
+  tests/path2/calc/test_atr_equivalence.py:57: def test_nan_inside_matches_reference():
+  tests/path2/dag/test_children_checks.py:116: def test_c1c2c3_pass_when_declaration_matches_instance():
+  tests/path2/dag/test_engine_negation.py:44: def test_negation_matches_brute():
+  tests/path2/dag/test_spec_normalize.py:39: def test_explicit_produced_by_must_match_derived():
+  tests/path2/test_debug_ctx.py:102: def test_anchor_kind_env_end_matches_end_anchor_kind(fresh_debug_ctx, fire_counter, monkeypatch):
+  tests/path2_apps/bb_v1/test_bb_v1.py:46: def test_throwback_kwargs_match_v1_signature():
+  tests/path2_apps/bottom_burst/test_params.py:154: def test_tb_params_throwback_kwargs_matches_detector_signature():
+  tests/path2_apps/test_params_base_from_yaml_msg.py:4: 前缀,用户会去改错文件。既有测试只 match 字段名,不锚前缀,故此处新增。
+
+## 中文「匹配」·泛指（anchor 配对）
+  tests/path2/dag/test_anchor_c1_off_fuzz.py:6: - 关 c1_off 第 5 源后:同 end 桶内多个 src 候选都不被塌缩 → 都能被 anchor 匹配到对应的 dst
+  tests/path2/dag/test_anchor_c1_off_fuzz.py:68: """同 end_idx 桶内每个 src 都能被 anchor 匹配到对应 dst(B4 c1_off 第 5 源)。
+  tests/path2/dag/test_anchor_same_span_disambiguation.py:62: _anchor_ok 按 span 比较:src 的 span 形态 anchor 为 src_10,与 dst 的 src_10#0 不匹配
+  tests/path2/dag/test_anchor_same_span_disambiguation.py:78: # 重构前 0 个 hit(anchor 形态不匹配),重构后 2 个 hit(无交叉)
+  tests/path2/dag/test_diagnose_anchor_ok.py:7: dst 其实是 anchor 到别的 src(anchor_id 对不上),不是真正与它匹配的伙伴。
+
+## 中文「匹配」·泛指（边关系成立，e.satisfies 为真）
+  tests/path2/dag/test_child_selector_fuzz.py:28: 若 brute_all 使用父整体(burst [0,200])：0 < 0 或 200 > 100 → 不匹配 → 返回空列表
+  tests/path2/dag/test_child_selector_fuzz.py:71: - first_kid：[10, 20]   → 完全落在 side [0,100] 内 → ContainmentEdge 用 child 投影时匹配
+  tests/path2/dag/test_child_selector_fuzz.py:72: - last_kid：[150, 180]  → 超出 side 范围 → 不匹配
+  tests/path2/dag/test_child_selector_fuzz.py:148: # B2: 父 (9,11), last_kid 端点超出 A → 不匹配
+  tests/path2/dag/test_engine_edges.py:109: """tail 超出 src 端仍匹配(只看 dst.start);dst.start 在 src 外则不匹配。"""
+  tests/path2/dag/test_engine_edges.py:111: # side=[0,10], burst start=5(在内), tail=15(超出) → 应匹配
+  tests/path2/dag/test_engine_edges.py:116: assert e.satisfies(side, burst_tail_out) is True,  "tail 超出仍应匹配(只约束 start)"
+  tests/path2/dag/test_engine_edges.py:117: assert e.satisfies(side, burst_start_out) is False, "start 超出 src 不应匹配"
+  tests/path2/dag/test_engine_edges.py:121: """dst.start 恰在 src 边界(=src.start 或 =src.end)应匹配;src.start-1 不匹配。"""
+  tests/path2/dag/test_engine_edges.py:125: assert e.satisfies(side, Ev("b0", 5, 100)) is True,  "dst.start == src.start 应匹配"
+  tests/path2/dag/test_engine_edges.py:126: assert e.satisfies(side, Ev("b1", 10, 100)) is True, "dst.start == src.end 应匹配"
+  tests/path2/dag/test_engine_edges.py:127: assert e.satisfies(side, Ev("b2", 4, 100)) is False, "dst.start < src.start 不匹配"
+  tests/path2/dag/test_engine_edges.py:128: assert e.satisfies(side, Ev("b3", 11, 100)) is False, "dst.start > src.end 不匹配"
