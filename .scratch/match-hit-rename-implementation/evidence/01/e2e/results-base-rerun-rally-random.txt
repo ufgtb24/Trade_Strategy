@@ -1,0 +1,3 @@
+✓ e2e/annotate-rally-random.spec.ts:104:3 › 找图入口 · rally / random › rally:从 app 视图点一行 → annotate,图停在那段涨之前、看得见那段涨,止于 2025-12-31
+✓ e2e/annotate-rally-random.spec.ts:130:3 › 找图入口 · rally / random › random:从 app 视图点一下 → annotate,图窗不超过 250 根、止于 2025-12-31
+✘ e2e/annotate-rally-random.spec.ts:145:3 › 找图入口 · rally / random › 看过什么一律不记:连点几行 rally、几次 random,文件与 localStorage 都不变

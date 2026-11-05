@@ -1,0 +1,9 @@
+path2 来自 <worktree>/path2/__init__.py
+=== tune-gates
+547 passed, 13 skipped, 17 warnings in 199.41s (0:03:19)
+=== tune-gates-v3
+156 passed, 13 warnings in 30.17s
+=== feature-study
+47 passed, 2 skipped in 5.14s
+=== diagnose-event
+11 passed in 0.62s
