@@ -112,7 +112,7 @@ describe('compare 的系列', () => {
     expect(s.z).toBeLessThan(series(draw(true), 'annotation-boxes').z)
     const el = s.renderItem({ dataIndex: 0, coordSys: cs }, api(s.data[0]))
     expect([el.shape.x, el.shape.width, el.style.lineDash]).toEqual([10, 30, undefined])   // 实心,和框一样占整根 K 线
-    expect(s.tooltip.formatter({ dataIndex: 0 })).toContain('bound')        // 档位用 spec 4.3 的名字
+    expect(s.tooltip.formatter({ dataIndex: 0 })).toContain('in_hit')       // 档位用 spec 4.3 的名字
     expect(s.tooltip.formatter({ dataIndex: 2 })).toContain('detected')
     expect(s.tooltip.formatter({ dataIndex: 0 })).not.toContain('x ·')     // 不写 node(那等于露出 mapping)
   })

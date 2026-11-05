@@ -112,6 +112,16 @@ export function createAnnotateGestures(deps: GestureDeps) {
     return i >= 0 ? i : deps.lanes().length
   }
 
+  /**
+   * 按在图上开始手势时让出输入框的焦点:mousedown 上的 preventDefault 会挡住浏览器默认的失焦,
+   * 写完定义、note 后直接点图上的框,焦点还留在输入框里,Delete 删框就被当成在输入框里删字。
+   * 输入框失焦时照常保存(各输入框的 blur 处理)。
+   */
+  function releaseFocus() {
+    const a = document.activeElement as HTMLElement | null
+    if (a && a !== document.body && a.closest('input, textarea, select, [contenteditable=""], [contenteditable="true"]')) a.blur()
+  }
+
   function onMainDown(ev: MouseEvent) {
     const main = deps.main(), el = deps.mainEl()
     if (ev.button !== 0 || !deps.active() || !main || !el) return
@@ -121,11 +131,13 @@ export function createAnnotateGestures(deps: GestureDeps) {
         ? { kind: 'point', x0: x, y0: y, moved: false }
         : { kind: 'draw', src: 'main', x0: x, y0: y, i0: indexAt(main, x), lane: unnamedLane(),
             feature: null, hit: null, sample: deps.sampleAt(x, y), take: null, moved: false }
+      releaseFocus()
       ev.preventDefault()
     } else if (main.containPixel({ gridIndex: 1 }, [x, y])) {
       const z = deps.zoom() ?? { start: 0, end: 100 }
       gesture = { kind: 'pan', x0: ev.clientX, start: z.start, end: z.end,
                   width: el.clientWidth - MAIN_GRID_LEFT - MAIN_GRID_RIGHT }
+      releaseFocus()
       ev.preventDefault()
     }
   }
@@ -146,6 +158,7 @@ export function createAnnotateGestures(deps: GestureDeps) {
                   feature: li >= 0 ? deps.lanes()[li].key : null, hit: hit?.id ?? null,
                   sample: hit || take ? null : bracketAt(x, y), take, moved: false }
     }
+    releaseFocus()
     ev.preventDefault()
   }
 

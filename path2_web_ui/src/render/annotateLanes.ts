@@ -183,8 +183,8 @@ export function appBarY(g: LaneGeom, rows: number, row: number): { top: number; 
   return { top, bottom: top + APP_BAR_H }
 }
 
-// 悬停里档位的叫法:标注工具一律用 spec 4.3 的新名字,事件三档是 detected / qualified / bound(主视图沿用 matched)
-const TIER_WORD = { matched: 'bound', qualified: 'qualified', detected: 'detected' } as const
+// 悬停里档位的叫法:标注工具一律用 spec 4.3 的新名字,事件三档是 detected / qualified / in_hit(主视图沿用 matched)
+const TIER_WORD = { matched: 'in_hit', qualified: 'qualified', detected: 'detected' } as const
 
 /** 轨标题:特征名(浅灰底)、子框轨写成「缩量 ⊂ 横盘」,还没起名的轨写 unnamed。 */
 function laneTitle(l: Lane, nameOf: LaneDraw['nameOf']): any {

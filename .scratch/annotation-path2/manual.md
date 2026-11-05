@@ -53,7 +53,7 @@
 | hit | app 求解出的一次完整命中（recognized pattern），和你的样本成对 | `GLOSSARY-MAP.md:27` |
 | buy point / 买点 | hit 里真正买的那根 K 线。只用于 app 一侧；你的一侧叫样本日 | `path2/GLOSSARY.md:118` |
 | match | 拿 hit 和样本比：app 有 hit 的买点落在样本日附近，样本就是 `matched`，否则 `unmatched` | `path2/GLOSSARY.md:152` |
-| detected、qualified、bound | 一个 event 的三档，依次收窄：被检测出来、过了所在 node 的全部 where、进了某一次 hit | `path2_web/GLOSSARY.md:28`（该行第三档仍叫 matched，即这里的 bound） |
+| detected、qualified、in_hit | 一个 event 的三档，依次收窄：被检测出来、过了所在 node 的全部 where、进了某一次 hit | `path2_web/GLOSSARY.md:28`（该行第三档仍叫 matched，即这里的 in_hit） |
 | tag | 界面上挂在某样东西旁、显示一个状态或结论的小方框；说时带种类：`match tag`、`diff tag`、`tier tag`、`link tag` | `path2_web/GLOSSARY.md:48` |
 | bracket | 图上那条横带：app 每次 hit 的跨度，以及你每个样本的跨度（虚线） | `path2_web/GLOSSARY.md:45` |
 | 训练段 | 你可以随便看、随便量的那段历史：2021-10-08～2025-12-31 | `path2/GLOSSARY.md:124` |
@@ -201,7 +201,7 @@ flowchart TD
 |---|---|---|---|---|
 | `match tag` | 样本三角下；samples 表 `match` 列；页头 `match` 行 | `matched` / `unmatched` | app | 这一天 app 买没买 |
 | `diff tag` | 样本三角下（`=` 不画）；samples 表 `must / must_not` 列 | `−X` / `+Y` / `order` / `=` | 会话（按 mapping 比） | 这个样本的依据和 mapping 哪里不一样 |
-| `tier tag` | 图上：app 灰条的右端；`selection` 页：选中框时 | 图上 `qualified_only` / `detected_only`；`selection` 页 `bound` / `qualified` / `detected` / `missing` | app | app 认到哪一档 |
+| `tier tag` | 图上：app 灰条的右端；`selection` 页：选中框时 | 图上 `qualified_only` / `detected_only`；`selection` 页 `in_hit` / `qualified` / `detected` / `missing` | app | app 认到哪一档 |
 | 框旁的级 | 你的框旁 | `missing`（琥珀）；`unmapped` / `excluded` / `optional` / `must_not`（会话蓝） | app / 会话 | 这个框在 app 里的处境 |
 | `link tag` | `selection` 页成员链的箭头；features 区的 `↓` 行 | `connected` / `disconnected` / `not_qualified` | app | 相邻两段 app 连没连上 |
 
@@ -409,7 +409,7 @@ flowchart TD
 - 框旁的 tag 说这个框在 app 里的处境：`missing`（琥珀，app 该认它却没认出）；或会话蓝的 `unmapped` / `excluded` / `optional` / `must_not`（它在 mapping 里的地位，这时框底下没有 app 的条是正常的）。
 - 每个样本的三角下挂 `match tag` 和 `diff tag`。
 - 选中样本：`selection` 页成员链上相邻两段之间的箭头带 `link tag`，点一下在图上描出这两段和 app 用到的两个 event；收了 `must_not` 那一样的成员划一道。
-- 选中框：`selection` 页写它被认到哪一档（`bound` / `qualified` / `detected` / `missing`）、由 app 的哪一部分来认，以及框上属性和 app where 逐条对不上的（你标 `true` 而 app 判 `fail`，或反过来，朱红）。只列对不上的，不列实测值和门槛。
+- 选中框：`selection` 页写它被认到哪一档（`in_hit` / `qualified` / `detected` / `missing`）、由 app 的哪一部分来认，以及框上属性和 app where 逐条对不上的（你标 `true` 而 app 判 `fail`，或反过来，朱红）。只列对不上的，不列实测值和门槛。
 
 **`mode` 切到 `app`**：只看 app 在这张图上跑出了什么，和主视图一样。你没放样本的日子 app 也可能买了，在这里看得到。
 

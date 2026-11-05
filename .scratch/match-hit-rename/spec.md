@@ -22,7 +22,7 @@ match 的旧义必须在全仓退出，否则同一个词在代码、skill 输�
 | `AnalysisResult.matches` 及各处 `matches` 变量 | `hits` | 包括序列化后的 JSON 键（`path2_web/serialize.py` 的 `_match_to_dict` 等） |
 | `matches(spec, df, params)`（`path2/dag/engine.py`、`path2/stdlib/app.py`，返回 bool） | `has_hit` | — |
 | `match_forward_returns` / `match_forward_drawdowns` / `match_first_passage`（`path2/eval.py`） | `hit_forward_returns` / `hit_forward_drawdowns` / `hit_first_passage` | — |
-| 事件三档 `detected / qualified / matched`（`path2_web/GLOSSARY.md` 该词条及前端） | `detected / qualified / bound` | `bound` = 进了某一次 hit（词表 match 定义里的「绑定」）；已批准 |
+| 事件三档 `detected / qualified / matched`（`path2_web/GLOSSARY.md` 该词条及前端） | `detected / qualified / in_hit` | `in_hit` = 进了某一次 hit（2026-11-04 用户定） |
 | 扫描进度里的 `hits`（`path2_web/api.py`，数的是至少有一处命中的股票数） | `hit_stocks` | 先改它，腾出 `hits` 给新义 |
 | bracket 词条「一次 match」（`path2_web/GLOSSARY.md`） | 「一次 hit」 | 另加一句：标注里 sample 的跨度也画在 bracket 轨上 |
 

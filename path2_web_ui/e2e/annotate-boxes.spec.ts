@@ -173,6 +173,20 @@ test.describe('画框、起名与词表', () => {
     await settled(page)
     expect(boxesOf(await annState(page), C)).toHaveLength(0)
     expect(await page.evaluate(() => (window as any).__e2e.ann().selectedBoxId)).toBeNull()
+
+    // 写着定义直接去点副图上的框:点图让出焦点(定义照常存下),Delete 删的是框
+    const b2 = await drawOnKline(page, n - 60, n - 50)
+    await name(page, '误画二')
+    await page.getByTestId('definition-input').fill('随手写的定义')
+    await expect(page.getByTestId('definition-input')).toBeFocused()
+    await page.mouse.click(await xOf(page, n - 55, 'sub'), await laneY(page, '误画二'))
+    expect(await page.evaluate(() => document.activeElement?.tagName)).toBe('BODY')   // 定义格存下后收起
+    expect(await page.evaluate(() => (window as any).__e2e.ann().selectedBoxId)).toBe(b2)
+    await page.keyboard.press('Delete')
+    await settled(page)
+    const st = await annState(page)
+    expect(boxesOf(st, C)).toHaveLength(0)
+    expect(st.features.find((f: any) => f.name === '误画二')?.definition).toBe('随手写的定义')
   })
 })
 

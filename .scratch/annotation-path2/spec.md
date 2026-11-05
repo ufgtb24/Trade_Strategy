@@ -245,7 +245,7 @@
   - 用户的实物：sample = annotated pattern，box = annotated feature（`GLOSSARY-MAP.md:25`）；
   - app 的实物：hit = recognized pattern，event = recognized feature（`GLOSSARY-MAP.md:27`）；
   - match 指 hit 与样本的比较，tag 取值 `matched` / `unmatched`；
-  - 事件三档是 detected / qualified / `bound`；
+  - 事件三档是 detected / qualified / `in_hit`；
   - 买点只用于 app 一侧。
 - 本工具的界面和新代码一律用新名字。全仓 match → hit 的改名另有 spec（`.scratch/match-hit-rename/spec.md`），见第 11 节。
 - 数据键：`samples`、`sample_id`、`judgment`（取值 `pos` / `neg`）、`note`、`member_of`。
@@ -540,7 +540,7 @@
 - **认出**：app 那个 node 的 event 和框在时间上交叠，并且 event 的起点或终点（一端就够）落在框外 `TOL` 根以内（默认 2，待验证）。
 - **`tier tag`**：
   - 图上：`qualified_only` / `detected_only`；
-  - `selection` 页：`bound` / `qualified` / `detected` / `missing`；
+  - `selection` 页：`in_hit` / `qualified` / `detected` / `missing`；
   - 框旁的会话蓝 tag 写 `unmapped` / `excluded` / `optional` / `must_not`；
   - `missing` 用琥珀，不受 `tiers` 开关管。
 - **`link tag`**：取值 `connected` / `disconnected` / `not_qualified`。
