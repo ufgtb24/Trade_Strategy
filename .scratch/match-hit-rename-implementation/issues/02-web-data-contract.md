@@ -1,7 +1,8 @@
 # path2_web 后端与前后端之间的数据改名
 
 Status: ready-for-agent
-Progress: not-started
+Progress: in-progress
+Claimed: 2026-11-04 parallel-tickets ticket-02 @ worktree impl/02-web-data-contract
 Blocked by: 01
 
 ## Purpose
