@@ -1,7 +1,8 @@
 # 词表收尾与全仓终检
 
 Status: ready-for-agent
-Progress: not-started
+Progress: in-progress
+Claimed: 2026-11-05 parallel-tickets ticket-06 @ worktree impl/06-glossary-and-final-check
 Blocked by: 05
 
 ## Purpose
