@@ -1,0 +1,7 @@
+scan 文件 hit 数 8 有 hit 的股票数 5
+自检门通过(hit 集逐股对齐,label 重算:比对 8 例全数 <1e-12、无 label 跳过 0 例)
+rows=8 symbols=5 -> <临时目录>/t02_dataset.csv
+c0_atr_pct NaN 计数=0
+feature-study build_dataset：两道自检门通过；去重后行数 8
+tune-gates _engine_keys：读出 8 条 hit，hit_id 集合与 hit_fp_counts 都和 scan 文件一致
+diagnose-event diagnose_env：探测到 pattern bb_v1 ；返回字段 ['branch', 'instance_id', 'params', 'params_summary', 'pattern', 'provenance', 'scan_path', 'scan_ts', 'symbol', 'window', 'worktree']
