@@ -385,7 +385,8 @@ function buildCompareSeries(dates: readonly string[], d: LaneDraw): any[] {
   const evRows = items.map((it, k) => [it.start, it.end, it.top, nexts[k]])
   const tagIdx = c.tiers ? items.map((it, k) => (it.tag ? k : -1)).filter(k => k >= 0) : []
   const tagRows = tagIdx.map(k => evRows[k])
-  const tip = (html: string) => `<span style="font-family:${MONO};color:${INK}">${html}</span>`
+  // MONO 里有双引号,属性值用单引号括,否则 style 在字体名那里就断了
+  const tip = (html: string) => `<span style='font-family:${MONO};color:${INK}'>${html}</span>`
   const series: any[] = [{
     type: 'custom', name: 'compare-events', xAxisIndex: 0, yAxisIndex: 0, clip: true,
     data: evRows, encode: { x: [0, 1] }, z: 8,
