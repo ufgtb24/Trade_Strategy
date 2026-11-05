@@ -45,10 +45,10 @@ describe('SidebarScanPanel — topbar', () => {
     expect(w.findAll('button').find(b => b.text().includes('停止扫描'))).toBeDefined()
   })
 
-  it('progress renders scanned/total/hits when running', async () => {
+  it('progress renders scanned/total/hit_stocks when running', async () => {
     const scan = useScanStore()
     ;(scan as any).running = true
-    ;(scan as any).progress = { scanned: 12, total: 500, hits: 3, errors: 0 }
+    ;(scan as any).progress = { scanned: 12, total: 500, hit_stocks: 3, errors: 0 }
     const w = mount(SidebarScanPanel)
     await flushPromises()
     expect(w.text()).toContain('12/500')
@@ -72,10 +72,10 @@ describe('SidebarScanPanel — topbar', () => {
     expect(w.findComponent({ name: 'ScanResultDialog' }).exists()).toBe(true)
   })
 
-  it('click [停止扫描] with hits>0 opens StopScanDialog', async () => {
+  it('click [停止扫描] with hit_stocks>0 opens StopScanDialog', async () => {
     const scan = useScanStore()
     ;(scan as any).running = true
-    ;(scan as any).progress = { scanned: 12, total: 500, hits: 3, errors: 0 }
+    ;(scan as any).progress = { scanned: 12, total: 500, hit_stocks: 3, errors: 0 }
     const w = mount(SidebarScanPanel)
     await flushPromises()
     const stopBtn = w.findAll('button').find(b => b.text().includes('停止扫描'))!
@@ -83,10 +83,10 @@ describe('SidebarScanPanel — topbar', () => {
     expect(w.findComponent({ name: 'StopScanDialog' }).exists()).toBe(true)
   })
 
-  it('click [停止扫描] with hits=0 calls scan.cancel(false) directly', async () => {
+  it('click [停止扫描] with hit_stocks=0 calls scan.cancel(false) directly', async () => {
     const scan = useScanStore()
     ;(scan as any).running = true
-    ;(scan as any).progress = { scanned: 12, total: 500, hits: 0, errors: 0 }
+    ;(scan as any).progress = { scanned: 12, total: 500, hit_stocks: 0, errors: 0 }
     const spy = vi.spyOn(scan, 'cancel')
     const w = mount(SidebarScanPanel)
     await flushPromises()

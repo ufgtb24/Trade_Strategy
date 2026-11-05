@@ -103,7 +103,7 @@ export const useScanStore = defineStore('scan', () => {
           if (entry) {
             history.value = list
             await open(scanId)
-            lastDone.value = { type: 'done', hits: entry.hits ?? 0, errors: 0,
+            lastDone.value = { type: 'done', hit_stocks: entry.hit_stocks ?? 0, errors: 0,
                                total: entry.total ?? 0, partial: true,
                                scan_ts: scanId }
             break
@@ -111,7 +111,7 @@ export const useScanStore = defineStore('scan', () => {
           await new Promise(r => setTimeout(r, 200))
         }
       } else {
-        lastDone.value = { type: 'done', hits: 0, errors: 0, total: 0,
+        lastDone.value = { type: 'done', hit_stocks: 0, errors: 0, total: 0,
                            cancelled: true, scan_ts: scanId }
       }
       running.value = false

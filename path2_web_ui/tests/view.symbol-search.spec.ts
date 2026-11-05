@@ -12,7 +12,7 @@ function makeFile(symbols: string[]): MultiScanResultFile {
     },
     scan: {
       scan_ts: '20260714T120000', start_date: '2024-01-01', end_date: '2024-06-30',
-      workers: 1, scanned: symbols.length, hits: symbols.length, errors: 0,
+      workers: 1, scanned: symbols.length, hit_stocks: symbols.length, errors: 0,
       dataset_dir: '/d', params: 'default',
       win_start: '2023-09-01', win_end: '2024-07-15', label_horizon: 20, first_passage_k: 2,
     },
@@ -77,7 +77,7 @@ describe('view store · symbolQuery', () => {
       },
       scan: {
         scan_ts: '20260714T120000', start_date: '2024-01-01', end_date: '2024-06-30',
-        workers: 1, scanned: 2, hits: 2, errors: 0, dataset_dir: '/d', params: 'default',
+        workers: 1, scanned: 2, hit_stocks: 2, errors: 0, dataset_dir: '/d', params: 'default',
         win_start: '2023-09-01', win_end: '2024-07-15', label_horizon: 20, first_passage_k: 2,
       },
       results: [

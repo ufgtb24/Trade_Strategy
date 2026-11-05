@@ -220,8 +220,8 @@ class ScanManager:
         self._scans[scan_id] = {"queue": q, "done": False, "last": None,
                                 "cancel": cancel_event, "save": save_event}
 
-        def on_progress(scanned, total, hits, errors):
-            evt = {"scanned": scanned, "total": total, "hits": hits, "errors": errors}
+        def on_progress(scanned, total, hit_stocks, errors):
+            evt = {"scanned": scanned, "total": total, "hit_stocks": hit_stocks, "errors": errors}
             self._scans[scan_id]["last"] = evt
             loop.call_soon_threadsafe(q.put_nowait, evt)
 
@@ -231,10 +231,10 @@ class ScanManager:
                 done = {"type": "done", **done_meta_fn(result)}
             except scan_mod.ScanCancelled:
                 done = {"type": "done", "cancelled": True, "error": None,
-                        "hits": 0, "errors": 0, "total": 0}
+                        "hit_stocks": 0, "errors": 0, "total": 0}
             except Exception as e:           # noqa: BLE001
                 done = {"type": "done", "error": f"{type(e).__name__}: {e}",
-                        "hits": 0, "errors": 0, "total": 0}
+                        "hit_stocks": 0, "errors": 0, "total": 0}
             self._scans[scan_id]["last"] = done
             self._scans[scan_id]["done"] = True
             loop.call_soon_threadsafe(q.put_nowait, done)
@@ -788,7 +788,7 @@ def build_router(*, registry, config_path, get_config, set_config,
             s = result["scan"]
             return {"pattern_ids": req.pattern_ids, "scan_ts": scan_ts,
                     "name": name,
-                    "hits": s["hits"], "errors": s["errors"], "total": s["scanned"],
+                    "hit_stocks": s["hit_stocks"], "errors": s["errors"], "total": s["scanned"],
                     "partial": bool(s.get("partial", False))}
 
         name = (req.note or "").strip() or scan_ts

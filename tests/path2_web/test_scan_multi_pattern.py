@@ -383,7 +383,7 @@ def test_aggregate_multi_unpacks_4tuple_and_attaches_random_fp():
         ("CCC", None, None, "ValueError: boom"),          # 异常 → errors++
     ]
     agg = _aggregate_multi(iter(fake_iter), 3, ["bbb"], lambda *a: None)
-    assert agg["scanned"] == 3 and agg["hits"] == 1 and agg["errors"] == 1
+    assert agg["scanned"] == 3 and agg["hit_stocks"] == 1 and agg["errors"] == 1
     assert len(agg["results"]) == 1
     r = agg["results"][0]
     assert r["symbol"] == "AAA"

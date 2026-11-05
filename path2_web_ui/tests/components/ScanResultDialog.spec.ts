@@ -6,8 +6,8 @@ import { useViewStore } from '../../src/stores/view'
 
 vi.mock('../../src/api', () => ({ saveWcMirror: async () => ({ ok: true } as any), clearWcMirror: async () => ({ ok: true } as any),
   listScans: vi.fn(() => Promise.resolve([
-    {name: '20260603T120000', scan_ts: '20260603T120000', hits: 5, total: 200, size: 8192, partial: false},
-    {name: '20260601T100000', scan_ts: '20260601T100000', hits: 0, total: 200, size: 4096, partial: false},
+    {name: '20260603T120000', scan_ts: '20260603T120000', hit_stocks: 5, total: 200, size: 8192, partial: false},
+    {name: '20260601T100000', scan_ts: '20260601T100000', hit_stocks: 0, total: 200, size: 4096, partial: false},
   ])),
   loadScan: vi.fn(() => Promise.resolve({results: [], pattern_ids: [], scan: {scan_ts: '20260603T120000', name: '20260603T120000'}, pattern_spec: {topology: {nodes: []}}} as any)),
   deleteScan: vi.fn(() => Promise.resolve({ok: true})),
@@ -93,8 +93,8 @@ describe('ScanResultDialog', () => {
   it('显示「未完成」标当某行 partial=true', async () => {
     const { listScans } = await import('../../src/api')
     vi.mocked(listScans).mockResolvedValueOnce([
-      { name: '20260619T100000', scan_ts: '20260619T100000', hits: 3, total: 5, size: 200, partial: true },
-      { name: '20260619T100100', scan_ts: '20260619T100100', hits: 9, total: 9, size: 500, partial: false },
+      { name: '20260619T100000', scan_ts: '20260619T100000', hit_stocks: 3, total: 5, size: 200, partial: true },
+      { name: '20260619T100100', scan_ts: '20260619T100100', hit_stocks: 9, total: 9, size: 500, partial: false },
     ] as any)
     const w = mount(ScanResultDialog, { attachTo: document.body })
     await flushPromises()

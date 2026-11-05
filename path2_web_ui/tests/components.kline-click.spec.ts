@@ -51,7 +51,7 @@ function seedMatches(view: ReturnType<typeof useViewStore>, matches: any[]): voi
     pattern_ids: ['p'],
     per_pattern: { p: { pattern_spec: { pattern_id: 'p', topology: { nodes: [], edges: [] }, event_styles: {} }, end_node: 'x' } },
     scan: { scan_ts: 't', start_date: '2024-01-01', end_date: '2024-12-31', workers: 1,
-            scanned: 1, hits: 1, errors: 0, dataset_dir: '', params: '',
+            scanned: 1, hit_stocks: 1, errors: 0, dataset_dir: '', params: '',
             win_start: '2024-01-01', win_end: '2024-12-31', label_horizon: 20 },
     results: [{ symbol: 'S', per_pattern: { p: { summary: { matches: matches.length }, analysis: { events, matches }, max_forward_return: null } } }],
   } as any)
@@ -371,7 +371,7 @@ describe('handleChartClick × highlightedEventIds 协议派生', () => {
         end_node: 'tb',
       }},
       scan: { scan_ts: 't', start_date: '2024-01-01', end_date: '2024-12-31', workers: 1,
-              scanned: 1, hits: 1, errors: 0, dataset_dir: '', params: '',
+              scanned: 1, hit_stocks: 1, errors: 0, dataset_dir: '', params: '',
               win_start: '2024-01-01', win_end: '2024-12-31', label_horizon: 20 },
       results: [{ symbol: 'X', per_pattern: { bottom_burst: {
         summary: { matches: 1 }, analysis: { events, matches }, max_forward_return: null } } }],
@@ -405,7 +405,7 @@ describe('handleChartClick × marker filter matchedIdsOf 协议展开(Task 4)', 
 
   /** Task 4 fixture helper:抽离三 it 共享的 loadScanFile 骨架(单 pattern/单 symbol/单 result,
    * end_node 固定 'tb'),只保留 events/matches/topology 具体差异按参数传入。
-   * scan.hits/summary.matches 从 matches.length 派生(与各 it 原 inline 值一致:非空→hits=1)。*/
+   * scan.hit_stocks/summary.matches 从 matches.length 派生(与各 it 原 inline 值一致:非空→hit_stocks=1)。*/
   function seedFullFixture(
     view: ReturnType<typeof useViewStore>,
     opts: { events: any[]; matches: MatchDict[]; topology: any; symbol?: string; activePatternId?: string },
@@ -417,7 +417,7 @@ describe('handleChartClick × marker filter matchedIdsOf 协议展开(Task 4)', 
         pattern_spec: { pattern_id: activePatternId, topology, event_styles: {} },
         end_node: 'tb' } },
       scan: { scan_ts: 't', start_date: '2024-01-01', end_date: '2024-12-31', workers: 1,
-              scanned: 1, hits: matches.length > 0 ? 1 : 0, errors: 0, dataset_dir: '', params: '',
+              scanned: 1, hit_stocks: matches.length > 0 ? 1 : 0, errors: 0, dataset_dir: '', params: '',
               win_start: '2024-01-01', win_end: '2024-12-31', label_horizon: 20 },
       results: [{ symbol, per_pattern: { [activePatternId]: {
         summary: { matches: matches.length }, analysis: { events, matches }, max_forward_return: null } } }],

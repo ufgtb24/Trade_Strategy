@@ -209,7 +209,7 @@ def test_get_scans_flat_per_pattern_aggregation_nonempty(tmp_path):
     bb_dict["bo"] = dict(bb_dict.get("bo", {}), extra_field=1)   # 注入不存在字段 → 结构不一致
     blob = {
         "pattern_ids": ["bo_only", "bottom_burst", "bare", "ghost_app"],
-        "scan": {"scan_ts": "20260702T130000", "scanned": 3, "hits": 2, "partial": False,
+        "scan": {"scan_ts": "20260702T130000", "scanned": 3, "hit_stocks": 2, "partial": False,
                  "data_until": TRAIN_END},
         "per_pattern": {
             "bo_only": {"stats": {"median": 0.05},

@@ -89,7 +89,7 @@ def main() -> None:
             "scan_ts": FIXED_SCAN_TS,
             "start_date": START_DATE, "end_date": END_DATE,
             "workers": 1,
-            "scanned": len(SYMBOLS), "hits": len(SYMBOLS), "errors": 0,
+            "scanned": len(SYMBOLS), "hit_stocks": len(SYMBOLS), "errors": 0,
             "dataset_dir": str(REPO / "datasets" / "pkls"),
             "params": "default",
             "win_start": START_DATE, "win_end": END_DATE,

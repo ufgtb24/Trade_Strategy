@@ -74,8 +74,8 @@ describe('api', () => {
     vi.stubGlobal('EventSource', FakeES as any)
     const got: any[] = []
     const es = api.streamScan('S1', (e) => got.push(e), () => {})
-    handlers.es({ data: JSON.stringify({ scanned: 1, total: 10, hits: 0, errors: 0 }) })
-    handlers.es({ data: JSON.stringify({ type: 'done', hits: 2, errors: 0, total: 10 }) })
+    handlers.es({ data: JSON.stringify({ scanned: 1, total: 10, hit_stocks: 0, errors: 0 }) })
+    handlers.es({ data: JSON.stringify({ type: 'done', hit_stocks: 2, errors: 0, total: 10 }) })
     expect(got[0].scanned).toBe(1)
     expect(got[1].type).toBe('done')
     expect((es as any).url).toContain('/scan/S1/stream')
@@ -113,7 +113,7 @@ describe('getPreview', () => {
                                        topology: { nodes: [], edges: [] },
                                        event_styles: {} },
                        scan: { scan_ts: '', start_date: '2025-01-01', end_date: '2025-12-31',
-                               workers: 0, scanned: 0, hits: 0, errors: 0,
+                               workers: 0, scanned: 0, hit_stocks: 0, errors: 0,
                                dataset_dir: '', params: '' } }
     const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
       new Response(JSON.stringify(fakeResp), { status: 200 })

@@ -13,7 +13,7 @@ function makeFile(): MultiScanResultFile {
     },
     scan: {
       scan_ts: '20260627T120000', start_date: '2024-01-01', end_date: '2024-06-30',
-      workers: 1, scanned: 1, hits: 1, errors: 0, dataset_dir: '/d', params: 'default',
+      workers: 1, scanned: 1, hit_stocks: 1, errors: 0, dataset_dir: '/d', params: 'default',
       win_start: '2023-09-01', win_end: '2024-07-15', label_horizon: 20, first_passage_k: 2,
     },
     results: [

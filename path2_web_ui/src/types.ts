@@ -109,7 +109,7 @@ export interface PerPatternMeta {
 }
 export interface ScanMeta {
   scan_ts: string; name?: string; start_date: string; end_date: string; workers: number
-  scanned: number; hits: number; errors: number; dataset_dir: string
+  scanned: number; hit_stocks: number; errors: number; dataset_dir: string
   params?: string                                      // legacy 字段;Task 3 起新 scan 不再落盘,仅老 scan file 可能仍带
   params_schema_version?: number                       // Task 3 新增
   note?: string | null                                 // Task 3 新增(扫描备注,可为 null)
@@ -222,9 +222,9 @@ export interface PairPayload {
 // gap,见 task-17-report.md)时端点诚实降级为 stub dict,前端须能分辨(见 DetailSidebar pairPayloadValid)。
 export interface PairScopeResponse { scope: 'pair'; payload: PairPayload | { stub: true }; caveats: Caveat[] }
 
-export interface ScanProgress { scanned: number; total: number; hits: number; errors: number }
+export interface ScanProgress { scanned: number; total: number; hit_stocks: number; errors: number }
 export interface ScanDone {
-  type: 'done'; hits: number; errors: number; total: number
+  type: 'done'; hit_stocks: number; errors: number; total: number
   pattern_ids?: string[]; scan_ts?: string; name?: string; error?: string | null
   cancelled?: boolean
   partial?: boolean
@@ -234,7 +234,7 @@ export interface ScanHistoryEntry {
   scan_ts: string
   name: string
   pattern_ids: string[]                                 // 新增
-  hits: number | null
+  hit_stocks: number | null
   total: number | null
   size: number
   partial: boolean

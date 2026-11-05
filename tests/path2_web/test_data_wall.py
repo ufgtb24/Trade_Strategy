@@ -214,7 +214,7 @@ def test_post_scan_clamps_end_and_reads_configured_dir(tmp_path, full_dir, monke
     def fake_run(**kw):
         got.update(kw)
         done.set()
-        return {"scan": {"hits": 0, "errors": 0, "scanned": 0}}
+        return {"scan": {"hit_stocks": 0, "errors": 0, "scanned": 0}}
     monkeypatch.setattr(scan_mod, "run_scan_multi", fake_run)
     c = _client(tmp_path, full_dir)
     r = c.post("/scan", json={"pattern_ids": ["bo_only"], "start_date": "2025-06-02",
@@ -275,8 +275,8 @@ def test_script_scan_reads_full_data_and_cannot_be_opened(tmp_path, full_dir, mo
 
 
 @pytest.mark.parametrize("scan_section", [
-    {"hits": 1, "scanned": 1},                                  # 截断之前扫的:没有 data_until
-    {"hits": 1, "scanned": 1, "data_until": "2026-03-31"},      # 晚于训练段末日
+    {"hit_stocks": 1, "scanned": 1},                                  # 截断之前扫的:没有 data_until
+    {"hit_stocks": 1, "scanned": 1, "data_until": "2026-03-31"},      # 晚于训练段末日
 ])
 def test_scan_beyond_data_wall_refused_and_numbers_hidden(tmp_path, full_dir, scan_section):
     scans = tmp_path / "outputs" / "scans"
@@ -289,7 +289,7 @@ def test_scan_beyond_data_wall_refused_and_numbers_hidden(tmp_path, full_dir, sc
     c = _client(tmp_path, full_dir)
     assert c.get("/scans/old").status_code == 409
     row = next(r for r in c.get("/scans/").json() if r["name"] == "old")
-    assert row["old_scan"] is True and row["hits"] is None
+    assert row["old_scan"] is True and row["hit_stocks"] is None
     assert row["per_pattern"]["bo_only"] | {"params_consistent": None} == \
         {"hits": None, "median": None, "fp": None, "params_consistent": None}
     assert c.delete("/scans/old").status_code == 200                # 删照常能删

@@ -12,7 +12,7 @@ end_node/head_buffer/label_horizon 三者永远非 None。删除旧非缓冲分�
   {pattern_ids,
    per_pattern: {pid: {pattern_spec, end_node, stats, stats_drawdown,
                         [params_snapshot, params_hash, params_provenance]}},  # 后三者仅当调用方传入 pattern_params_dicts[pid] 时存在,老 scan file 没有
-   scan: {...win_*/label_horizon/scanned/hits/errors/params_schema_version/note/...},
+   scan: {...win_*/label_horizon/scanned/hit_stocks/errors/params_schema_version/note/...},
    results: [{symbol, per_pattern: {pid: {summary, analysis, max_forward_return, min_forward_drawdown}}}, ...]}
 """
 from __future__ import annotations
@@ -157,23 +157,23 @@ def _scan_ticker_multi(pkl_path, module_paths, start_date, end_date,
 
 def _aggregate_multi(results_iter, total: int, pattern_ids: list,
                      on_progress) -> dict:
-    """聚合 worker 结果(纯逻辑,不起进程)。on_progress(scanned,total,hits,errors) 每 ticker 调一次。
+    """聚合 worker 结果(纯逻辑,不起进程)。on_progress(scanned,total,hit_stocks,errors) 每 ticker 调一次。
 
     解包 worker 4-tuple (symbol, per_pattern, random_first_passage, err);命中票的
     StockResult 落 random_first_passage 字段(ticker-scoped 随机日基线,全 pattern 共享)。
     """
-    results, scanned, hits, errors = [], 0, 0, 0
+    results, scanned, hit_stocks, errors = [], 0, 0, 0
     for symbol, per_pattern, random_first_passage, err in results_iter:
         scanned += 1
         if err is not None:
             errors += 1
         elif per_pattern is not None:
-            hits += 1
+            hit_stocks += 1
             results.append({"symbol": symbol, "per_pattern": per_pattern,
                             "random_first_passage": random_first_passage})
-        on_progress(scanned, total, hits, errors)
+        on_progress(scanned, total, hit_stocks, errors)
     results.sort(key=lambda r: r["symbol"])
-    return {"results": results, "scanned": scanned, "hits": hits, "errors": errors}
+    return {"results": results, "scanned": scanned, "hit_stocks": hit_stocks, "errors": errors}
 
 
 def _buy_point_key(symbol: str, m: dict) -> tuple:
@@ -402,7 +402,7 @@ def run_scan_multi(*, data_dir,
             "name": name or scan_ts,
             "start_date": str(start_date), "end_date": str(end_date),
             "workers": workers,
-            "scanned": agg["scanned"], "hits": agg["hits"], "errors": agg["errors"],
+            "scanned": agg["scanned"], "hit_stocks": agg["hit_stocks"], "errors": agg["errors"],
             "dataset_dir": str(data_dir),
             "params_schema_version": 1,
             "note": note,
@@ -465,7 +465,7 @@ def within_data_wall(scan_section) -> bool:
 
 
 def list_scans_flat(outputs_root: str = _DEFAULT_OUTPUTS_ROOT) -> list[dict]:
-    """[{name, scan_ts, pattern_ids, hits, total, size, partial, per_pattern[, old_scan]}, ...]。
+    """[{name, scan_ts, pattern_ids, hit_stocks, total, size, partial, per_pattern[, old_scan]}, ...]。
     name = 文件名 stem(标识符);scan_ts = 文件内 scan.scan_ts(创建时间,排序用),
     读不出回退 stem(老文件兼容)。按 scan_ts 倒序。
     per_pattern = {pid: {"hits": match数, "median": float | None, "fp": dict | None}}——
@@ -484,7 +484,7 @@ def list_scans_flat(outputs_root: str = _DEFAULT_OUTPUTS_ROOT) -> list[dict]:
             blob = json.loads(p.read_text())
             pattern_ids = blob.get("pattern_ids", [])
             scan_section = blob["scan"]
-            hits = scan_section.get("hits")
+            hit_stocks = scan_section.get("hit_stocks")
             total = scan_section.get("scanned")
             partial = bool(scan_section.get("partial", False))
             scan_ts = scan_section.get("scan_ts") or p.stem
@@ -505,14 +505,14 @@ def list_scans_flat(outputs_root: str = _DEFAULT_OUTPUTS_ROOT) -> list[dict]:
                 per_pattern[pid] = {"hits": n, "median": stats.get("median"), "fp": fp,
                                     "params_consistent": _params_consistent(pid, snap)}
         except (json.JSONDecodeError, KeyError, OSError, AttributeError):
-            pattern_ids, hits, total, partial, scan_ts = [], None, None, False, p.stem
+            pattern_ids, hit_stocks, total, partial, scan_ts = [], None, None, False, p.stem
             per_pattern, scan_section = {}, {}
         row = {"name": p.stem, "scan_ts": scan_ts,
-               "pattern_ids": pattern_ids, "hits": hits, "total": total,
+               "pattern_ids": pattern_ids, "hit_stocks": hit_stocks, "total": total,
                "size": p.stat().st_size, "partial": partial,
                "per_pattern": per_pattern}
         if not within_data_wall(scan_section):
-            row.update(old_scan=True, hits=None)
+            row.update(old_scan=True, hit_stocks=None)
             for pp in per_pattern.values():
                 pp.update(hits=None, median=None, fp=None)
         rows.append(row)

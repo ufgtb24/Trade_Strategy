@@ -134,7 +134,7 @@ describe('scan store remove + cancel', () => {
   it('cancel(true) calls cancelScan(scan_id, true) when running', async () => {
     const { cancelScan, listScans, loadScan } = await import('../src/api')
     vi.mocked(listScans).mockResolvedValueOnce([
-      { scan_ts: 'scan_id_x', hits: 0, total: 0, size: 100, partial: true } as any
+      { scan_ts: 'scan_id_x', hit_stocks: 0, total: 0, size: 100, partial: true } as any
     ])
     vi.mocked(loadScan).mockResolvedValueOnce(SCAN_FILE as any)
     const s = useScanStore()
@@ -162,7 +162,7 @@ describe('scan store ignores progress while cancelling', () => {
     const { streamScan, startScan, cancelScan, loadScan, listScans } = await import('../src/api')
     vi.mocked(loadScan).mockResolvedValueOnce(SCAN_FILE as any)
     vi.mocked(listScans).mockResolvedValueOnce([
-      { scan_ts: 'scan_id_p', hits: 1, total: 10, size: 100, partial: true } as any
+      { scan_ts: 'scan_id_p', hit_stocks: 1, total: 10, size: 100, partial: true } as any
     ])
     vi.mocked(startScan).mockResolvedValueOnce('scan_id_p')
     let onEvt: ((e: any) => void) | null = null
@@ -175,13 +175,13 @@ describe('scan store ignores progress while cancelling', () => {
     await s.run({ pattern_ids: ['pat_p'], start_date: '2025-01-01', end_date: '2025-12-31',
                   workers: 1, ticker_regex: null, label_horizon: 20, first_passage_k: 2 })
     // 扫描中一条 progress event — 正常更新 store.progress
-    onEvt!({ scanned: 10, total: 100, hits: 1, errors: 0 })
-    expect(s.progress).toEqual({ scanned: 10, total: 100, hits: 1, errors: 0 })
+    onEvt!({ scanned: 10, total: 100, hit_stocks: 1, errors: 0 })
+    expect(s.progress).toEqual({ scanned: 10, total: 100, hit_stocks: 1, errors: 0 })
     // 发起 cancel(true) — cancelling 同步置 true,await cancelScan (mock) 立即 resolve
     const cancelPromise = s.cancel(true)
     // 此刻 cancelling=true,后续 SSE progress event 应被忽略
-    onEvt!({ scanned: 999, total: 100, hits: 99, errors: 0 })
-    expect(s.progress).toEqual({ scanned: 10, total: 100, hits: 1, errors: 0 })
+    onEvt!({ scanned: 999, total: 100, hit_stocks: 99, errors: 0 })
+    expect(s.progress).toEqual({ scanned: 10, total: 100, hit_stocks: 1, errors: 0 })
     await cancelPromise
   })
 })
@@ -208,7 +208,7 @@ describe('scan store auto-load on done', () => {
 
   it('done success → loadScan(name) called + view.scanFile injected', async () => {
     const { loadScan } = await import('../src/api')
-    await dispatchDone({ type: 'done', hits: 1, errors: 0, total: 1,
+    await dispatchDone({ type: 'done', hit_stocks: 1, errors: 0, total: 1,
                          scan_ts: '20260618T100000', name: 'myexp' })
     expect(loadScan).toHaveBeenCalledWith('myexp')
     expect(useViewStore().scanFile).not.toBeNull()
@@ -216,7 +216,7 @@ describe('scan store auto-load on done', () => {
 
   it('done cancelled → loadScan NOT called + view.scanFile stays null', async () => {
     const { loadScan } = await import('../src/api')
-    await dispatchDone({ type: 'done', hits: 0, errors: 0, total: 0,
+    await dispatchDone({ type: 'done', hit_stocks: 0, errors: 0, total: 0,
                          pattern_id: 'pat_x', scan_ts: '20260618T100000', cancelled: true })
     expect(loadScan).not.toHaveBeenCalled()
     expect(useViewStore().scanFile).toBeNull()
@@ -224,7 +224,7 @@ describe('scan store auto-load on done', () => {
 
   it('done error → loadScan NOT called', async () => {
     const { loadScan } = await import('../src/api')
-    await dispatchDone({ type: 'done', hits: 0, errors: 0, total: 0,
+    await dispatchDone({ type: 'done', hit_stocks: 0, errors: 0, total: 0,
                          error: 'boom' })
     expect(loadScan).not.toHaveBeenCalled()
     expect(useViewStore().scanFile).toBeNull()

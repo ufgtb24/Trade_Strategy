@@ -12,7 +12,7 @@ const file = {
     bbb:     { pattern_spec: { pattern_id: 'bbb',     topology: { nodes: [], edges: [] }, event_styles: {} }, end_node: 'tb' },
   },
   scan: { scan_ts: '20260627T120000', start_date: '2024-01-01', end_date: '2024-06-30',
-          workers: 1, scanned: 1, hits: 1, errors: 0, dataset_dir: '/d', params: 'd',
+          workers: 1, scanned: 1, hit_stocks: 1, errors: 0, dataset_dir: '/d', params: 'd',
           win_start: '2023-09-01', win_end: '2024-07-15', label_horizon: 20 },
   results: [{ symbol: 'AAA', per_pattern: {
     bo_only: { summary: { matches: 1 }, analysis: emptyAnalysis, max_forward_return: 0.1 },

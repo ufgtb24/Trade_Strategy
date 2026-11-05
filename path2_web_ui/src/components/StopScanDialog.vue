@@ -1,7 +1,7 @@
 <template>
   <div class="backdrop">
     <div class="card" tabindex="-1">
-      <p class="prompt">当前已经命中 {{ hits }}，是否保存？</p>
+      <p class="prompt">当前已经命中 {{ hitStocks }}，是否保存？</p>
       <footer>
         <button data-testid="btn-save"     @click="$emit('save')">保存</button>
         <button data-testid="btn-discard"  @click="$emit('discard')">丢弃</button>
@@ -12,9 +12,9 @@
 </template>
 
 <script setup lang="ts">
-// 三按钮中途停止对话框:hits 由父组件绑定 reactive progress.hits,扫描期间会跟着涨。
+// 三按钮中途停止对话框:hitStocks 由父组件绑定 reactive progress.hit_stocks,扫描期间会跟着涨。
 // Esc / 点 backdrop 外侧不响应——用户必须显式选保存/丢弃/继续才能离开。
-defineProps<{ hits: number }>()
+defineProps<{ hitStocks: number }>()
 defineEmits<{ (e: 'save'): void; (e: 'discard'): void; (e: 'continue'): void }>()
 </script>
 
