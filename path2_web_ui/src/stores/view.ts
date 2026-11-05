@@ -555,7 +555,7 @@ export const useViewStore = defineStore('view', () => {
   // 每 pattern 的命中股票数(distinct symbol,非 hit 次数)。
   // 源头是 unionRows —— 全量并集、未经 symbolQuery / visiblePatterns 过滤,
   // 因此「固定全量、不随筛选联动」由结构保证,无需额外开关。
-  const patternHitCounts = computed<Record<string, number>>(() => {
+  const patternHitStocks = computed<Record<string, number>>(() => {
     const f = scanFile.value
     if (!f) return {}
     const counts: Record<string, number> = {}
@@ -1190,7 +1190,7 @@ export const useViewStore = defineStore('view', () => {
     patternIds, currentPerStock, pattern, currentAnalysis,
     visiblePatterns, visibleFields, symbolQuery,
     effectivePattern, effectiveAnalysis, effectiveScan,
-    unionRows, sortedRows, filteredSortedRows, previewListRow, patternHitCounts,
+    unionRows, sortedRows, filteredSortedRows, previewListRow, patternHitStocks,
     nodeColors, selectedHitId, selectedHit, tagMap, isolated, inHitIds, inHitEventIds, qualifiedIds,
     mode, annotating, comparing, appSource, linkedView, linkedRun, tiers, appId, endNode, appWindowOf,
     openSymbol, enterAnnotate, enterLinked, setLinkedRun, setTiers, viewWindow,

@@ -35,7 +35,7 @@
                   @mouseenter="onPatternHover(pid, $event)"
                   @mouseleave="onPatternLeave">
                 {{ pid }}
-                <span class="hit-count" data-testid="pattern-hit-count">{{ patternHitCounts[pid] ?? 0 }}</span>
+                <span class="hit-stocks" data-testid="pattern-hit-stocks">{{ patternHitStocks[pid] ?? 0 }}</span>
               </th>
             </template>
           </tr>
@@ -176,7 +176,7 @@ const view = useViewStore()
 const { scanFile, symbol,
         patternIds, sortedRows, filteredSortedRows, sortByPid, sortDesc,
         visiblePatterns, visibleFields, symbolQuery, previewListRow,
-        patternHitCounts } = storeToRefs(view)
+        patternHitStocks } = storeToRefs(view)
 
 const searchInputEl = ref<HTMLInputElement | null>(null)
 function onSearchInput(e: Event) {
@@ -428,7 +428,7 @@ table.multi thead tr.hdr-pattern th.col-pattern {
    display:block 让它落到 pid 正下方独占一行 —— 数字不再计入行内宽度,
    列宽只由 pid 决定,这正是竖排要省的横向空间。
    外层 th 的 white-space:nowrap 保持不动:它保证两行各自不再内部折行。 */
-table.multi thead tr.hdr-pattern th.col-pattern .hit-count {
+table.multi thead tr.hdr-pattern th.col-pattern .hit-stocks {
   display: block;
   font-size: 11px;
   color: #64748b;

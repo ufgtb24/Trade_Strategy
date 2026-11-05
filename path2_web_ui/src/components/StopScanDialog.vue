@@ -1,7 +1,7 @@
 <template>
   <div class="backdrop">
     <div class="card" tabindex="-1">
-      <p class="prompt" title="已扫到的有 hit 的股票数"><span class="sym">hit_stocks</span>: {{ hitStocks }}，是否保存？</p>
+      <p class="prompt sym" title="已扫到的有 hit 的股票数">hit_stocks: {{ hitStocks }}</p>
       <footer>
         <button data-testid="btn-save"     @click="$emit('save')">保存</button>
         <button data-testid="btn-discard"  @click="$emit('discard')">丢弃</button>

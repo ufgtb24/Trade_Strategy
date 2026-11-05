@@ -649,7 +649,7 @@ export function buildSubDecorGraphics(
       textVerticalAlign: 'top',
       style: {
         text: 'hits',
-        fill: '#424242',
+        fill: '#111',
         fontSize: 13,
         fontFamily: MONO,
       },
@@ -1592,6 +1592,9 @@ export function buildBarTooltipFormatter(bars: Bar[]) {
   }
 }
 
+/** 悬停里的程序固定文字:等宽。MONO 里有双引号,属性值用单引号括。 */
+const fixedLine = (s: string) => `<span style='font-family:${MONO}'>${s}</span>`
+
 /**
  * Marker tooltip formatter (series-level item-trigger)。
  * 三段结构 + 可选 hit 顶行：
@@ -1627,7 +1630,7 @@ export function buildMarkerTooltipFormatter(
       // 既有 hitLabel
       if (hitLabel) {
         const label = hitLabel(hitId)
-        if (label) lines.push(`hit: ${label}`)
+        if (label) lines.push(fixedLine(`hit: ${label}`))
       }
       // 组成段 (M #15)
       const hit = ctx.hits.find((m) => m.hit_id === hitId)
@@ -1648,7 +1651,7 @@ export function buildMarkerTooltipFormatter(
         (m) => m.leaf === instanceId || m.children.includes(instanceId),
       ).length
       if (sharedBy >= 2) {
-        lines.push(`确认: ${sharedBy} 个 hit 共享此买点`)
+        lines.push(fixedLine(`shared_by_hits: ${sharedBy}`))
       }
     }
 
@@ -1742,7 +1745,7 @@ export function buildMarkerTooltipFormatter(
           const ord = sortedByStart.indexOf(m) + 1
           return ord >= 1 && ord <= 9 ? ORDINAL_CHARS[ord - 1] : String(ord)
         })
-        lines.push(`归属: hit ${ords.join(' ')}`)
+        lines.push(fixedLine(`in_hits: ${ords.join(' ')}`))
       }
     }
 

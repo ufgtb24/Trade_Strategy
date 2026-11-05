@@ -1,0 +1,23 @@
+annotate-boxes.spec.ts: store 成员 0，类名 0
+annotate-compare.spec.ts: store 成员 1，类名 0
+annotate-direct-links.spec.ts: store 成员 1，类名 0
+annotate-grouping.spec.ts: store 成员 0，类名 0
+annotate-open-by-symbol.spec.ts: store 成员 0，类名 0
+annotate-rally-random.spec.ts: store 成员 4，类名 0；不在 store 里：['first', 'last', 'lastBar', 'n']
+annotate-ref-peaks.spec.ts: store 成员 1，类名 0
+annotate-samples.spec.ts: store 成员 0，类名 0
+dev-ui-replication.spec.ts: store 成员 2，类名 0
+flow.spec.ts: store 成员 1，类名 3
+hit-event-disambig.spec.ts: store 成员 3，类名 0
+kline-ctrl-wheel-right-anchor.spec.ts: store 成员 1，类名 0
+marker-click-focus-highlight.spec.ts: store 成员 3，类名 0；不在 store 里：['selectedEventId']
+miss-detection-walkthrough.spec.ts: store 成员 2，类名 1
+scan-dialog.spec.ts: store 成员 0，类名 0
+shift-pair-feedback.spec.ts: store 成员 3，类名 0
+sidebar-chart-focus.spec.ts: store 成员 15，类名 4；不在 store 里：['focusedEventId', 'pendingDisambigEventId']
+subchart-band-zoom.spec.ts: store 成员 1，类名 0
+subchart-blankclick-yaxis.spec.ts: store 成员 3，类名 0
+subchart-scroll-drag.spec.ts: store 成员 4，类名 0
+subchart-tooltip-crosshair.spec.ts: store 成员 1，类名 0
+symbol-search.spec.ts: store 成员 0，类名 0
+未找到的名字合计 7

@@ -236,7 +236,7 @@ describe('view store — filteredSortedRows', () => {
   })
 })
 
-describe('view store — patternHitCounts', () => {
+describe('view store — patternHitStocks', () => {
   beforeEach(() => setActivePinia(createPinia()))
 
   it('按 pattern 统计命中股票数(distinct symbol,非 hit 次数)', () => {
@@ -245,7 +245,7 @@ describe('view store — patternHitCounts', () => {
     // → bo_only 命中 AAA/BBB 两只;bbb 只命中 AAA 一只。注意 AAA 的 bo_only 有 2 个 hit,
     //   但只算 1 只股 —— 这正是「股票数 ≠ hit 次数」的锁定点。
     v.loadScanFile(makeFile())
-    expect(v.patternHitCounts).toEqual({ bo_only: 2, bbb: 1 })
+    expect(v.patternHitStocks).toEqual({ bo_only: 2, bbb: 1 })
   })
 
   it('零命中的 pattern 给出 0 而非缺键', () => {
@@ -253,7 +253,7 @@ describe('view store — patternHitCounts', () => {
     for (const r of f.results) r.per_pattern.bbb.summary.hits = 0
     const v = useViewStore()
     v.loadScanFile(f)
-    expect(v.patternHitCounts.bbb).toBe(0)
+    expect(v.patternHitStocks.bbb).toBe(0)
   })
 
   it('忽略 per_pattern 整个缺该 pid 键的股', () => {
@@ -261,22 +261,22 @@ describe('view store — patternHitCounts', () => {
     delete (f.results[0].per_pattern as any).bbb   // AAA 缺 bbb 键 → bbb 归零
     const v = useViewStore()
     v.loadScanFile(f)
-    expect(v.patternHitCounts).toEqual({ bo_only: 2, bbb: 0 })
+    expect(v.patternHitStocks).toEqual({ bo_only: 2, bbb: 0 })
   })
 
   it('不随 symbolQuery 变化(固定全量口径)', () => {
     const v = useViewStore()
     v.loadScanFile(makeFile())
-    const before = { ...v.patternHitCounts }
+    const before = { ...v.patternHitStocks }
     const nBefore = v.filteredSortedRows.length   // 全量可见下 = 2(CCC 全 0 被 hit 闸挡掉)
     v.setSymbolQuery('AA')
     // 先确认搜索真的收窄了行数(否则本用例是 vacuous 的)
     expect(v.filteredSortedRows.length).toBeLessThan(nBefore)
-    expect(v.patternHitCounts).toEqual(before)
+    expect(v.patternHitStocks).toEqual(before)
   })
 
   it('无扫描文件时为空对象', () => {
     const v = useViewStore()
-    expect(v.patternHitCounts).toEqual({})
+    expect(v.patternHitStocks).toEqual({})
   })
 })

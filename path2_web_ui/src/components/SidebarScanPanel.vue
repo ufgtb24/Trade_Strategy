@@ -12,7 +12,7 @@
     <div v-else-if="lastDone" class="done">
       <template v-if="lastDone.cancelled">扫描已取消</template>
       <template v-else-if="lastDone.error">扫描失败: {{ lastDone.error }}</template>
-      <template v-else>完成: <span class="sym" title="有 hit 的股票数">hit_stocks</span> {{ lastDone.hit_stocks }} / 错误 {{ lastDone.errors }}</template>
+      <span v-else class="sym" title="hit_stocks:有 hit 的股票数">done: hit_stocks {{ lastDone.hit_stocks }} / errors {{ lastDone.errors }}</span>
     </div>
 
     <ScanConfigDialog v-if="scanDialogOpen" @close="scanDialogOpen = false" />

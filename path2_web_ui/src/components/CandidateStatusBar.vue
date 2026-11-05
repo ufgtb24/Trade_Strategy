@@ -18,7 +18,7 @@ const ORDINAL_CHARS = ['①', '②', '③', '④', '⑤', '⑥', '⑦', '⑧', '
 
 const ordinalChars = computed<string[]>(() => {
   if (candidateHitIds.value.size === 0) return []
-  // Sort hits by start_idx to stay aligned with packBrackets / tooltip ordinal semantics (same as Task 9 fix)
+  // 按 start_idx 排序,与 packBrackets、悬停里的序号一致
   const sortedByStart = [...props.hits].sort((a, b) => a.start_idx - b.start_idx)
   const out: string[] = []
   for (const id of candidateHitIds.value) {

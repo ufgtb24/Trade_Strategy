@@ -51,8 +51,8 @@
     </div>
 
     <!-- 硬伤级修补:被 A2 post-filter 淘汰的残缺 hit(数据未到时恒不渲染,见 droppedHits 注释) -->
-    <div v-if="droppedHits.length" class="dropped-hits-notice">
-      ⚠ 这些 marker 属于被消费的 node · 当前 pattern 未触发({{ droppedHits.length }} 个残缺 hit)
+    <div v-if="droppedHits.length" class="dropped-hits-notice" title="这些 marker 属于被消费的 node,当前 pattern 未触发">
+      ⚠ dropped_hits: {{ droppedHits.length }}
     </div>
 
     <!-- 漏斗总览:analysis 就绪时常驻 -->
@@ -226,7 +226,7 @@ function toggleExpand(nodeId: string) {
   view.toggleExpandedNode(nodeId)
 }
 
-// trace 展开时滚入视口(旧 watch(selected) 里 kind==='hit' 分支迁到这里)
+// trace 展开时滚入视口
 watch([showTrace, focusedHitId], ([show]) => {
   if (show) {
     nextTick(() => {
@@ -405,7 +405,7 @@ function undoSwap() {
 .sidebar { padding: 10px 12px; font-size: 12px; overflow-y: auto; }
 .panel-name { font-weight: 700; font-size: 13px; color: #334155; padding-bottom: 6px; margin-bottom: 8px; border-bottom: 1px solid #e2e8f0; }
 .section-title { font-size: 12px; font-weight: 600; color: #475569; margin: 8px 0 4px; }
-.section-title--sym { font-family: var(--mono); }
+.section-title--sym { font-family: var(--mono); color: var(--ink); }
 
 .funnel-row {
   display: flex; align-items: center; gap: 6px; padding: 4px 6px;

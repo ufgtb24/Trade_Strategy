@@ -1,6 +1,7 @@
 // label(N 日前瞻收益)与缓冲窗:纯函数 + chart 选项。
 import { describe, it, expect } from 'vitest'
 import { windowOf, formatForwardReturn } from '../src/render/visible'
+import { MONO } from '../src/render/tierTags'
 
 describe('windowOf', () => {
   it('缓冲扫描用 win_*', () => {
@@ -35,7 +36,7 @@ describe('buildMarkerTooltipFormatter — ordinal consistency with packBrackets 
     const fmt = buildMarkerTooltipFormatter(undefined, undefined, { hits, candidateHitIds: new Set() })
     const out = fmt({ data: { instance_id: 'eShared#0' } })
     // start_idx 排序后: m_early=①, m_mid=②, m_late=③ → 三者都含 eShared
-    expect(out).toContain('归属: hit ① ② ③')
+    expect(out).toContain('in_hits: ① ② ③')
   })
 })
 
@@ -72,7 +73,7 @@ describe('buildSubOption — brackets series hit tooltip label (Task 6 review fi
     const brackets = opt.series.find((s: any) => s.name === 'brackets')
     expect(brackets.tooltip).toBeDefined()
     expect(brackets.tooltip.formatter({ data: { hit_id: 'm1' } }))
-      .toBe('hit: ret_20: +12.3%<br/>组成 (0 events):')
+      .toBe(`<span style='font-family:${MONO}'>hit: ret_20: +12.3%</span><br/>组成 (0 events):`)
   })
 
   it('hitLabel(hitId)=null → brackets tooltip 仅 "组成 (N events):" + composition(无 hit 行)', () => {

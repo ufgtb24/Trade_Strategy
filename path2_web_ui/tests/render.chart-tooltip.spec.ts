@@ -12,14 +12,14 @@ describe('buildMarkerTooltipFormatter multi-confirm', () => {
     const f = buildMarkerTooltipFormatter(undefined, undefined,
       { hits, candidateHitIds: new Set() })
     const html = f({ data: { instance_id: 'tb_6_7#0' } } as never)
-    expect(html).toContain('2 个 hit 共享')
+    expect(html).toContain('shared_by_hits: 2')
   })
 
   it('独占 leaf 不输出确认行', () => {
     const f = buildMarkerTooltipFormatter(undefined, undefined,
       { hits: [hits[0]], candidateHitIds: new Set() })
     const html = f({ data: { instance_id: 'tb_6_7#0' } } as never)
-    expect(html).not.toContain('共享')
+    expect(html).not.toContain('shared_by_hits')
   })
 })
 

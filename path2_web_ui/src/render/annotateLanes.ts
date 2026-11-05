@@ -59,6 +59,8 @@ export const APP_BAR_H = 7            // compare:轨里一个 event 条的高度
 export const APP_ROW_H = 9            // compare:event 块里一行的高度(条高 + 行间空)
 export const APP_AMBER = '#F2C25C'    // app 琥珀(配色规范的来源轴):compare 下 bracket 轨上 hit 的底色
 export const MONO = 'ui-monospace, "JetBrains Mono", "DejaVu Sans Mono", Consolas, monospace'
+/** 悬停文字:等宽、黑字。MONO 里有双引号,属性值用单引号括,否则 style 在字体名那里就断了。 */
+const monoTip = (html: string) => `<span style='font-family:${MONO};color:${INK}'>${html}</span>`
 
 export interface LaneGeom { top: number; h: number }
 
@@ -300,7 +302,7 @@ export function buildAnnotateSubOption(bars: Bar[], d: LaneDraw): unknown {
         formatter: (p: any) => {
           const [s, e] = [p.value[0], p.value[1]]
           const tip = tips[p.dataIndex]
-          return `<span style="font-family:${MONO};color:${INK}">${dates[s]} – ${dates[e]}${tip ? `<br>${tip}` : ''}</span>`
+          return monoTip(`${dates[s]} – ${dates[e]}${tip ? `<br>${tip}` : ''}`)
         },
       },
       renderItem: (p: any, api: any) => {
@@ -331,8 +333,7 @@ export function buildAnnotateSubOption(bars: Bar[], d: LaneDraw): unknown {
       tooltip: {
         formatter: (p: any) => {
           const it = bItems[p.dataIndex]
-          return `<span style="font-family:${MONO};color:${INK}">${it.letter ? `${it.letter} ` : ''}${triOf(it.pos ? 'pos' : 'neg')} `
-            + `${it.end}<br>${it.start} – ${it.end}</span>`
+          return monoTip(`${it.letter ? `${it.letter} ` : ''}${triOf(it.pos ? 'pos' : 'neg')} ${it.end}<br>${it.start} – ${it.end}`)
         },
       },
       renderItem: (p: any, api: any) => {
@@ -385,12 +386,10 @@ function buildCompareSeries(dates: readonly string[], d: LaneDraw): any[] {
   const evRows = items.map((it, k) => [it.start, it.end, it.top, nexts[k]])
   const tagIdx = c.tiers ? items.map((it, k) => (it.tag ? k : -1)).filter(k => k >= 0) : []
   const tagRows = tagIdx.map(k => evRows[k])
-  // MONO 里有双引号,属性值用单引号括,否则 style 在字体名那里就断了
-  const tip = (html: string) => `<span style='font-family:${MONO};color:${INK}'>${html}</span>`
   const series: any[] = [{
     type: 'custom', name: 'compare-events', xAxisIndex: 0, yAxisIndex: 0, clip: true,
     data: evRows, encode: { x: [0, 1] }, z: 8,
-    tooltip: { formatter: (p: any) => tip(items[p.dataIndex].tip) },
+    tooltip: { formatter: (p: any) => monoTip(items[p.dataIndex].tip) },
     renderItem: (p: any, api: any) => {
       const [x0, x1] = spanPx(api)
       return { type: 'rect', shape: { x: x0, y: api.value(2), width: Math.max(3, x1 - x0), height: APP_BAR_H },
@@ -399,7 +398,7 @@ function buildCompareSeries(dates: readonly string[], d: LaneDraw): any[] {
   }, {
     type: 'custom', name: 'compare-tier-tags', xAxisIndex: 0, yAxisIndex: 0, clip: true,
     data: tagRows, encode: { x: [0, 1] }, z: 12,
-    tooltip: { formatter: (p: any) => tip(TIER_TAG_TIP[items[tagIdx[p.dataIndex]].tag!]) },
+    tooltip: { formatter: (p: any) => monoTip(TIER_TAG_TIP[items[tagIdx[p.dataIndex]].tag!]) },
     renderItem: (p: any, api: any) => {
       const it = items[tagIdx[p.dataIndex]]
       const [, x1] = spanPx(api)
@@ -422,7 +421,7 @@ function buildCompareSeries(dates: readonly string[], d: LaneDraw): any[] {
       data: hRows, encode: { x: [0, 1] }, z: 9,
       tooltip: { formatter: (p: any) => {
         const h = c.hits[p.dataIndex]
-        return tip(`hit<br>${dates[h.start] ?? h.start} – ${dates[h.end] ?? h.end}<br>buy ×${h.buys.length}`)
+        return monoTip(`hit<br>${dates[h.start] ?? h.start} – ${dates[h.end] ?? h.end}<br>buy ×${h.buys.length}`)
       } },
       renderItem: (p: any, api: any) => {
         const [x0, x1] = spanPx(api)
