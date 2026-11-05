@@ -1,0 +1,11 @@
+文件 93 个，改动 19 个，改动处 64；行数与未改行逐字校验：通过
+    43  match → hit
+     9  matches → hits
+     3  匹配 → 命中
+     2  match → 命中
+     2  test_matches → test_has_hit
+     1   match → 命中
+     1  _match_to_dict → _hit_to_dict
+     1  match_forward_returns → hit_forward_returns
+     1  matched → in_hit
+     1  matched → 命中
