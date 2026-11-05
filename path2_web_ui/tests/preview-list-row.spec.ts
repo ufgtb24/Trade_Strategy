@@ -21,7 +21,7 @@ function scanFile2(): any {
 function enterExplore(v: any, matches: any[]) {
   ;(v as any).preview = {
     symbol: 'ACRS',
-    analysis: { events: [], matches },
+    analysis: { events: [], hits: matches },
     pattern_spec: { pattern_id: 'bbb', topology: { nodes: [], edges: [] }, event_styles: {} },
     scan: { label_horizon: 20 },
   }
@@ -61,7 +61,7 @@ describe('previewListRow', () => {
     v.setActivePattern('bbb')
     v.selectSymbol('ACRS')
     ;(v as any).preview = {
-      symbol: 'ACRS', analysis: { events: [], matches: [{ forward_return: 0.1 }] },
+      symbol: 'ACRS', analysis: { events: [], hits: [{ forward_return: 0.1 }] },
       pattern_spec: { pattern_id: 'bbb', topology: { nodes: [], edges: [] }, event_styles: {} }, scan: { label_horizon: 20 },
     }
     expect(v.isExploring).toBe(false)

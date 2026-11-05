@@ -44,7 +44,7 @@ function seedTb(store: ReturnType<typeof useViewStore>) {
         { instance_id: 'tb_v1_1#0', node_id: 'tb', start_idx: 42, end_idx: 55, anchor_bo_id: 'bo_1#0',
           child_refs: {} },
       ],
-      matches: [], summary: {}, gate_failures: [],
+      hits: [], summary: {}, gate_failures: [],
     },
   }
   ;(store as any).symbol = 'AAPL'

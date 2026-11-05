@@ -56,7 +56,7 @@ const subRows = (page: Page, name: string) => page.evaluate(n =>
 /** 后端对这只股票跑 bo_only 的输出(和页面跑的同一个请求)。 */
 async function preview(b: Backend, symbol: string) {
   const r = await fetch(`${b.base}/preview?pattern_id=bo_only&symbol=${symbol}&start=1900-01-01&end=${TRAIN_END}&label_horizon=20`)
-  return (await r.json()).analysis as { events: any[]; matches: any[] }
+  return (await r.json()).analysis as { events: any[]; hits: any[] }
 }
 
 /** 副图轨的上沿(按轨标题),从上到下:{ text, top }。轨标题在轨顶内侧 4 像素处。 */
@@ -106,7 +106,7 @@ test.describe('compare / app 叠画(bo_only + 手写 mapping)', () => {
 
     const out = await preview(backend!, 'AAPL')
     expect(out.events.length).toBeGreaterThan(0)
-    expect(out.matches.length).toBeGreaterThan(0)
+    expect(out.hits.length).toBeGreaterThan(0)
     const dates: string[] = await page.evaluate(() => (window as any).__e2e.chartMain().getOption().xAxis[0].data)
     expect(dates.at(-1)).toBe(TRAIN_END)
 
@@ -118,7 +118,7 @@ test.describe('compare / app 叠画(bo_only + 手写 mapping)', () => {
     expect(got).toEqual(want)
     // hit:都在 bracket 轨上(第一条特征轨之上)
     const hitRows: number[][] = await subRows(page, 'compare-hits')
-    expect(hitRows.map(r => `${r[0]}-${r[1]}`).sort()).toEqual(out.matches.map(m => `${m.start_idx}-${m.end_idx}`).sort())
+    expect(hitRows.map(r => `${r[0]}-${r[1]}`).sort()).toEqual(out.hits.map(m => `${m.start_idx}-${m.end_idx}`).sort())
     for (const r of hitRows) expect(laneAtY(tops, r[2])).toBe('bracket')
     // 数据墙:全部输出都在截到训练段末日的 K 线里
     for (const r of [...evRows, ...hitRows]) {
@@ -160,7 +160,7 @@ test.describe('compare / app 叠画(bo_only + 手写 mapping)', () => {
     await expect(page.getByTestId('tiers')).toBeEnabled()
     await expect(box).not.toBeChecked()                                    // 参照层切到 app 自动关、不能勾
     await expect(box).toBeDisabled()
-    await expect.poll(async () => (await subRows(page, 'brackets'))?.length ?? -1).toBe(out.matches.length)
+    await expect.poll(async () => (await subRows(page, 'brackets'))?.length ?? -1).toBe(out.hits.length)
     await page.screenshot({ path: testInfo.outputPath('app-AAPL.png'), fullPage: true })
     await page.unrouteAll({ behavior: 'ignoreErrors' })
   })

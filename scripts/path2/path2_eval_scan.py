@@ -49,7 +49,7 @@ def main() -> None:
         out = run_eval(module_path=MODULE_PATH, start=START_DATE, end=END_DATE,
                        horizons=HORIZONS, param_overrides=PARAM_OVERRIDES, **common)
         m = out["meta"]
-        print(f"tickers_hit={m['tickers_hit']} buy_windows={m['buy_windows']} "
+        print(f"hit_stocks={m['hit_stocks']} buy_windows={m['buy_windows']} "
               f"errors={m['errors']} elapsed={m['elapsed_s']}s")
         for n, s in out["per_horizon"].items():
             print(f"ret_{n}: count={s['count']} mean={s['mean']} "
@@ -65,9 +65,9 @@ def main() -> None:
                               end=END_DATE, target_ticker=TARGET_TICKER,
                               min_tickers=MIN_TICKERS, max_tickers=MAX_TICKERS,
                               param_overrides=PARAM_OVERRIDES, **common)
-        print(f"tickers_hit={out['universe_hit_tickers']} "
+        print(f"hit_stocks={out['universe_hit_stocks']} "
               f"magnitude_ok={out['magnitude_ok']} "
-              f"target_matches={out['target_matches']}")
+              f"target_hits={out['target_hits']}")
     else:
         raise ValueError(f"unknown MODE {MODE!r}")
     print(f"json -> {out['meta']['out_path']}")

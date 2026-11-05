@@ -41,7 +41,7 @@ def web_app_client(tmp_path, monkeypatch):
 
     def _stub_run_scan_multi(**kwargs):
         captured["run_scan_multi_kwargs"] = kwargs
-        return {"scan": {"hits": 0, "errors": 0, "scanned": 0}, "per_pattern": {}}
+        return {"scan": {"hit_stocks": 0, "errors": 0, "scanned": 0}, "per_pattern": {}}
 
     monkeypatch.setattr(scan_mod, "run_scan_multi", _stub_run_scan_multi)
 

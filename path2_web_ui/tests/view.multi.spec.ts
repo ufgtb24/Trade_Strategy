@@ -13,21 +13,21 @@ function makeFile(): MultiScanResultFile {
     },
     scan: {
       scan_ts: '20260627T120000', start_date: '2024-01-01', end_date: '2024-06-30',
-      workers: 1, scanned: 1, hits: 1, errors: 0, dataset_dir: '/d', params: 'default',
+      workers: 1, scanned: 1, hit_stocks: 1, errors: 0, dataset_dir: '/d', params: 'default',
       win_start: '2023-09-01', win_end: '2024-07-15', label_horizon: 20, first_passage_k: 2,
     },
     results: [
       { symbol: 'AAA', per_pattern: {
-        bo_only: { summary: { matches: 2 }, analysis: { events: [], matches: [] }, max_forward_return: 0.34 },
-        bbb:     { summary: { matches: 1 }, analysis: { events: [], matches: [] }, max_forward_return: 0.10 },
+        bo_only: { summary: { hits: 2 }, analysis: { events: [], hits: [] }, max_forward_return: 0.34 },
+        bbb:     { summary: { hits: 1 }, analysis: { events: [], hits: [] }, max_forward_return: 0.10 },
       }},
       { symbol: 'BBB', per_pattern: {
-        bo_only: { summary: { matches: 1 }, analysis: { events: [], matches: [] }, max_forward_return: 0.50 },
-        bbb:     { summary: { matches: 0 }, analysis: { events: [], matches: [] }, max_forward_return: null },
+        bo_only: { summary: { hits: 1 }, analysis: { events: [], hits: [] }, max_forward_return: 0.50 },
+        bbb:     { summary: { hits: 0 }, analysis: { events: [], hits: [] }, max_forward_return: null },
       }},
       { symbol: 'CCC', per_pattern: {
-        bo_only: { summary: { matches: 0 }, analysis: { events: [], matches: [] }, max_forward_return: null },
-        bbb:     { summary: { matches: 0 }, analysis: { events: [], matches: [] }, max_forward_return: null },
+        bo_only: { summary: { hits: 0 }, analysis: { events: [], hits: [] }, max_forward_return: null },
+        bbb:     { summary: { hits: 0 }, analysis: { events: [], hits: [] }, max_forward_return: null },
       }},
     ],
   }
@@ -77,7 +77,7 @@ describe('view store — multi pattern', () => {
     // Mock preview state
     ;(v as any).preview = {
       symbol: 'AAA',
-      analysis: { events: [{}], matches: [] },
+      analysis: { events: [{}], hits: [] },
       pattern_spec: { pattern_id: 'bo_only', topology: { nodes: [], edges: [] }, event_styles: {} },
       scan: {},
     }
@@ -250,7 +250,7 @@ describe('view store — patternHitCounts', () => {
 
   it('零命中的 pattern 给出 0 而非缺键', () => {
     const f = makeFile()
-    for (const r of f.results) r.per_pattern.bbb.summary.matches = 0
+    for (const r of f.results) r.per_pattern.bbb.summary.hits = 0
     const v = useViewStore()
     v.loadScanFile(f)
     expect(v.patternHitCounts.bbb).toBe(0)

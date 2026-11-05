@@ -17,8 +17,8 @@ year / c0_atr_pct(冷启动通用波动率地板)/ label(前瞻收益)/ up / dow
 任何具体走势的 node 名,也不出现任何 node 名字面量。
 
 build_dataset 两道自检门(硬闸,不过即 raise,禁止绕过;底座等价先行的机器化):
-  1. match 集对齐:重放(经 serialize 同口径窗/价格过滤)match_id 集合 == scan 文件
-     match_id 集合(防参数/引擎/数据漂移);
+  1. match 集对齐:重放(经 serialize 同口径窗/价格过滤)hit_id 集合 == scan 文件
+     hit_id 集合(防参数/引擎/数据漂移);
   2. label 对齐:逐 match 官方 API 重算 vs scan forward_return,<1e-12 全数一致,
      覆盖全部通过过滤的 match(不止最终去重后留下的行)。
   任何一项失败 = 底座不等价,后续统计全部无效。
@@ -156,9 +156,9 @@ def build_dataset(adapter, *, scan, out_csv, compute_features,
     scan_ids: dict[str, set] = {}
     for rr in blob["results"]:
         pp = rr["per_pattern"].get(pid)
-        if not pp or not pp["analysis"]["matches"]:
+        if not pp or not pp["analysis"]["hits"]:
             continue
-        scan_ids[rr["symbol"]] = {m["match_id"] for m in pp["analysis"]["matches"]}
+        scan_ids[rr["symbol"]] = {m["hit_id"] for m in pp["analysis"]["hits"]}
 
     rows, n_lab_fail, n_lab_compared, n_lab_skipped, mset_fail = [], 0, 0, 0, []
     for sym, ids in scan_ids.items():
@@ -200,7 +200,7 @@ def build_dataset(adapter, *, scan, out_csv, compute_features,
         # 首次穿越的波动率尺度,每股算一次,供逐 match 的四态计数复用
         M = rolling_atr_pct_nanmedian(win["high"], win["low"], win["close"], FP_ATR_WINDOW).values
         pp = next(r["per_pattern"][pid] for r in blob["results"] if r["symbol"] == sym)
-        scan_lab = {m["match_id"]: m["forward_return"] for m in pp["analysis"]["matches"]}
+        scan_lab = {m["hit_id"]: m["forward_return"] for m in pp["analysis"]["hits"]}
 
         # 自检 2:覆盖全部通过窗/价格过滤的 kept match(不止最终留下的行),放在
         # observe() 之前——先证 label 可信,再谈要不要采信这条观测。
@@ -241,7 +241,7 @@ def build_dataset(adapter, *, scan, out_csv, compute_features,
             # entry_date 与 path2_web/serialize.py 的 leaf_ev 报日期口径不同:
             # serialize 取的是**容器起点**,这里取的是**采样窗内最早的买点日**——对
             # end_node 无点号的 app 二者相等,对点号路径 app(如 bottom_burst)未必。
-            # 真要与 scan JSON 的行对齐,应该用 match_id 做 join,不要用 entry_date。
+            # 真要与 scan JSON 的行对齐,应该用 hit_id 做 join,不要用 entry_date。
             entry_ts = pd.to_datetime(win["date"].iat[entry_idx])
             fp = hit_first_passage(m, end_node, win, horizon, k=fp_k, sample_window=(lo, hi), M=M)
             row = {"symbol": sym, **obs,

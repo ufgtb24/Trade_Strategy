@@ -7,7 +7,7 @@ from path2_web.scan import (write_result_file_flat, list_scans_flat,
 
 def _result(scan_ts: str, name: str) -> dict:
     return {"pattern_ids": ["bo_only"], "per_pattern": {},
-            "scan": {"scan_ts": scan_ts, "name": name, "hits": 0, "errors": 0,
+            "scan": {"scan_ts": scan_ts, "name": name, "hit_stocks": 0, "errors": 0,
                      "scanned": 1, "start_date": "2024-01-01", "end_date": "2024-06-30",
                      "workers": 1, "dataset_dir": "", "note": name,
                      "win_start": "", "win_end": "", "label_horizon": 20, "partial": False},
@@ -32,7 +32,7 @@ def test_list_returns_name_and_sorts_by_internal_scan_ts(tmp_path):
 def test_list_falls_back_to_stem_when_internal_scan_ts_missing(tmp_path):
     (tmp_path / "scans").mkdir()
     (tmp_path / "scans" / "20260101T000000.json").write_text(
-        json.dumps({"pattern_ids": [], "scan": {"hits": 0}}))
+        json.dumps({"pattern_ids": [], "scan": {"hit_stocks": 0}}))
     rows = list_scans_flat(str(tmp_path))
     assert rows[0]["name"] == "20260101T000000"
     assert rows[0]["scan_ts"] == "20260101T000000"   # 回退 stem,排序仍可用

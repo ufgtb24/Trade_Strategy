@@ -19,7 +19,7 @@ vi.mock('../../src/api', () => ({
     { app: 'bad', pattern: 'BAD', features: {}, problem: 'node not in app bad: x' },
   ])),
   getPreview: vi.fn(() => Promise.resolve({
-    analysis: { events: [], matches: [] }, summary: {},
+    analysis: { events: [], hits: [] }, summary: {},
     pattern_spec: { pattern_id: 'bo_only', topology: { nodes: [], edges: [] }, event_styles: {}, debug_enabled_nodes: [] },
     scan: { win_start: '1899-09-01', win_end: '2025-12-31', end_node: 'bo' },
   })),

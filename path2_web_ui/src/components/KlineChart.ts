@@ -6,12 +6,12 @@
  * 等不变量已下沉到 view.ts::focusEvent 内部，本文件不再直接消费 matches/events/edges。
  */
 
-import type { MatchDict } from '../types'
+import type { HitDict } from '../types'
 import type { useViewStore } from '../stores/view'
 
 export type ChartClickPayload = {
   seriesName?: string
-  data?: { instance_id?: string; match_id?: string }
+  data?: { instance_id?: string; hit_id?: string }
 } | null
 
 /** marker 分支覆盖的三种 series(点/区间/价格点;卫星 pk 通道已删,Task 7);
@@ -51,26 +51,26 @@ export function handleShiftClick(
  *
  * 分流规则(spec §3.3):
  *   空白 click       → view.clearFocus()
- *   brackets click   → view.focusMatch(match_id)
+ *   brackets click   → view.focusMatch(hit_id)
  *   MARKER_SERIES    → view.focusEvent(data.instance_id)(实例级单入口,直选分属实例;
  *                      无解析——marker data 已带 instance_id)
  *
  * @param p       ECharts click payload(空白点击时为 null 或 seriesName 缺失)
- * @param matches 当前 effectiveAnalysis.matches(保签名兼容,不再直接消费 —— focusEvent 内部读)
+ * @param matches 当前 effectiveAnalysis.hits(保签名兼容,不再直接消费 —— focusEvent 内部读)
  * @param view    useViewStore() 实例
  */
 export function handleChartClick(
   p: ChartClickPayload,
-  matches: MatchDict[],
+  matches: HitDict[],
   view: ReturnType<typeof useViewStore>,
 ): void {
   if (!p || !p.seriesName) {
     view.clearFocus()
     return
   }
-  if (p.seriesName === 'brackets' && p.data?.match_id) {
+  if (p.seriesName === 'brackets' && p.data?.hit_id) {
     // focusMatch 里不校验存在(简化);消费方无 bracket 不会触发该分支。
-    view.focusMatch(p.data.match_id)
+    view.focusMatch(p.data.hit_id)
     return
   }
   if (MARKER_SERIES.includes(p.seriesName) && p.data?.instance_id) {

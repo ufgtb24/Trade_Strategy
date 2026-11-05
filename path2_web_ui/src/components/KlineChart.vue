@@ -2,7 +2,7 @@
   <div class="kline-wrap-v2" ref="wrapEl">
     <div ref="mainEl" class="main-chart" style="flex: 1" @contextmenu="handleContextMenu" />
     <ResizableDivider @drag="onDrag" @dragend="onDragEnd" @dblclick="onDblclick" />
-    <CandidateStatusBar :matches="effectiveAnalysis?.matches ?? []" />
+    <CandidateStatusBar :matches="effectiveAnalysis?.hits ?? []" />
     <ShiftPairBanner />
     <div class="sub-outer" :style="{ height: effectiveSubH + 'px' }" ref="subOuterEl">
       <div v-if="!annotating" class="band-zoom-controls" @wheel.stop>
@@ -168,7 +168,7 @@ const overlay = computed(() => {
   const untiered = new Set((effectivePattern.value?.topology.nodes ?? []).filter(n => n.solve === false).map(n => n.node_id))
   const { lanes, app } = compareLanes(baseLanes.value, features, a.events, (e) => view.eventTier(e),
                                       (fid) => ann.featureById.has(fid), untiered)
-  return { lanes, app, hits: packHits(a.matches, a.events, endNode.value) }
+  return { lanes, app, hits: packHits(a.hits, a.events, endNode.value) }
 })
 const annLanes = computed(() => overlay.value?.lanes ?? baseLanes.value)
 // 样本:字母(当前 pattern)、选中的样本(在这张图上)、它的空槽、框旁的标记、bracket 轨
@@ -328,7 +328,7 @@ try:
     result = analyze(spec, df, params)   # df 需自己 load
 finally:
     detach(spec)
-print(f"matches: {len(result.matches)}, gate_failures: {len(collector.snapshot())}")
+print(f"hits: {len(result.hits)}, gate_failures: {len(collector.snapshot())}")
 `.trim()
 }
 
@@ -438,7 +438,7 @@ function strictWindowIdx(): { startIdx: number; endIdx: number } | null {
 }
 
 function matchLabel(matchId: string): string | null {
-  const m = effectiveAnalysis.value?.matches.find((mm) => mm.match_id === matchId)
+  const m = effectiveAnalysis.value?.hits.find((mm) => mm.hit_id === matchId)
   if (!m || m.forward_return === undefined) return null
   const horizon = (effectiveScan.value ?? scanFile.value?.scan)?.label_horizon
   // forward_drawdown 与 forward_return 同层展示(T1 注入);老 scan file 无此字段时不追加。
@@ -457,7 +457,7 @@ function deriveSubGeometry(zoomOverride?: number) {
   }
   // 需要 bundle 里 bracketData / intervalData / pointData 分组
   const params = buildRenderInput()
-  const bundle = computeEventData(bars.value, effectiveAnalysis.value.events, effectiveAnalysis.value.matches, params)
+  const bundle = computeEventData(bars.value, effectiveAnalysis.value.events, effectiveAnalysis.value.hits, params)
   const bracketLaneCount = bundle.bracketData.length === 0
     ? 0
     : (Math.max(0, ...bundle.bracketData.map((d: any) => d.value[2])) + 1)
@@ -581,7 +581,7 @@ function buildRenderInput() {
     highlightedEventIds: new Set([...highlightedEventIds.value, ...compositionGroupIds.value]),
     pendingDisambigInstanceId: pendingDisambigInstanceId.value,
     shiftSelectedEventIds: shiftSelectedEventIds.value,
-    matches: effectiveAnalysis.value?.matches ?? [],
+    matches: effectiveAnalysis.value?.hits ?? [],
     tiers: tiers.value,
   }
 }
@@ -685,7 +685,7 @@ function render(forceResetZoom = false) {
     return
   }
   const params = { ...buildRenderInput(), zoomOverride: forceResetZoom ? null : readZoomOverride() }
-  const bundle = computeEventData(bars.value, effectiveAnalysis.value.events, effectiveAnalysis.value.matches, params)
+  const bundle = computeEventData(bars.value, effectiveAnalysis.value.events, effectiveAnalysis.value.hits, params)
   const subGeom = deriveSubGeometry()
 
   // 更新 subCanvasH → sub-inner div 高度触发 chartSub 容器 resize
@@ -806,11 +806,11 @@ onMounted(() => {
   // shift+click 先被 handleMaybeShiftClick 拦截(入口 D),消费后不再回退到候选四分支。
   chartMain.on('click', (p: any) => {
     if (handleMaybeShiftClick(p, 'main')) return
-    handleChartClick(p, effectiveAnalysis.value?.matches ?? [], view)
+    handleChartClick(p, effectiveAnalysis.value?.hits ?? [], view)
   })
   chartSub.on('click', (p: any) => {
     if (handleMaybeShiftClick(p, 'sub')) return
-    handleChartClick(p, effectiveAnalysis.value?.matches ?? [], view)
+    handleChartClick(p, effectiveAnalysis.value?.hits ?? [], view)
   })
   // v2 event-debug(2026-07-15) · marker 右键 → debug 菜单(主+副图,tb marker 主要在副图泳道)
   // ECharts element-level, 只在数据项上触发 —— 空白 K 线 / 蜡烛区由 DOM handleContextMenu 兜底,
@@ -856,10 +856,10 @@ onMounted(() => {
   chartMain.on('brushEnd', brushH.onBrushEnd)
   // ZRender blank click:两 chart 各一套
   chartMain.getZr().on('click', (e: any) => {
-    if (!e.target) handleChartClick(null, effectiveAnalysis.value?.matches ?? [], view)
+    if (!e.target) handleChartClick(null, effectiveAnalysis.value?.hits ?? [], view)
   })
   chartSub.getZr().on('click', (e: any) => {
-    if (!e.target) handleChartClick(null, effectiveAnalysis.value?.matches ?? [], view)
+    if (!e.target) handleChartClick(null, effectiveAnalysis.value?.hits ?? [], view)
   })
 
   // ResizeObserver 观测两 chart 容器

@@ -6,19 +6,19 @@
     </div>
 
     <div v-if="scan.running" class="prog">
-      {{ progress?.scanned ?? 0 }}/{{ progress?.total ?? 0 }} · 命中 {{ progress?.hits ?? 0 }}
+      {{ progress?.scanned ?? 0 }}/{{ progress?.total ?? 0 }} · 命中 {{ progress?.hit_stocks ?? 0 }}
       <button class="btn-stop" @click="onStopClick">停止扫描 ✕</button>
     </div>
     <div v-else-if="lastDone" class="done">
       <template v-if="lastDone.cancelled">扫描已取消</template>
       <template v-else-if="lastDone.error">扫描失败: {{ lastDone.error }}</template>
-      <template v-else>完成: 命中 {{ lastDone.hits }} / 错误 {{ lastDone.errors }}</template>
+      <template v-else>完成: 命中 {{ lastDone.hit_stocks }} / 错误 {{ lastDone.errors }}</template>
     </div>
 
     <ScanConfigDialog v-if="scanDialogOpen" @close="scanDialogOpen = false" />
     <ScanResultDialog v-if="historyDialogOpen" @close="historyDialogOpen = false" />
     <StopScanDialog v-if="stopDialogOpen"
-                    :hits="progress?.hits ?? 0"
+                    :hit-stocks="progress?.hit_stocks ?? 0"
                     @save="onStopSave" @discard="onStopDiscard" @continue="onStopContinue" />
   </div>
 </template>
@@ -39,7 +39,7 @@ const historyDialogOpen = ref(false)
 const stopDialogOpen = ref(false)
 
 async function onStopClick() {
-  if ((progress.value?.hits ?? 0) > 0) {
+  if ((progress.value?.hit_stocks ?? 0) > 0) {
     stopDialogOpen.value = true
   } else {
     await scan.cancel(false)

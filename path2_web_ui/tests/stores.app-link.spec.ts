@@ -13,7 +13,7 @@ import * as api from '../src/api'
 
 const ANALYSIS = {
   events: [{ instance_id: 'bo@3-3#0', node_id: 'bo', instance_idx: 0, start_idx: 3, end_idx: 3 }],
-  matches: [{ match_id: 'm0', start_idx: 3, end_idx: 3, node_index: { bo: 'bo@3-3#0' }, children: ['bo@3-3#0'] }],
+  hits: [{ hit_id: 'm0', start_idx: 3, end_idx: 3, node_index: { bo: 'bo@3-3#0' }, children: ['bo@3-3#0'] }],
 }
 const SPEC = { pattern_id: 'bo_only', topology: { nodes: [{ node_id: 'bo', where_rules: [] }], edges: [] },
                event_styles: {}, debug_enabled_nodes: [] }
@@ -137,7 +137,7 @@ describe('当前 pattern 的 app', () => {
     expect(links.runStatus).toBe('loading')
     view.openSymbol('MSFT')
     await flushPromises()
-    resolveSlow({ analysis: { events: [], matches: [] }, summary: {}, pattern_spec: SPEC,
+    resolveSlow({ analysis: { events: [], hits: [] }, summary: {}, pattern_spec: SPEC,
                   scan: { win_start: 'x', win_end: 'y' } })
     await flushPromises()
     expect(view.linkedRun?.symbol).toBe('MSFT')

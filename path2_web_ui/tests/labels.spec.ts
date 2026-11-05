@@ -22,15 +22,15 @@ describe('formatForwardReturn', () => {
 import { buildMarkerTooltipFormatter, computeEventData, buildSubOption } from '../src/render/chart'
 import type { BandRenderInput } from '../src/render/chart'
 import { computeSubGeometry } from '../src/render/subGeometry'
-import type { Bar, MatchDict, Topology } from '../src/types'
+import type { Bar, HitDict, Topology } from '../src/types'
 
 describe('buildMarkerTooltipFormatter — ordinal consistency with packBrackets (Task 9 fix)', () => {
   it('marker 归属节 ordinal uses start_idx sort, not raw matches order', () => {
-    const matches: MatchDict[] = [
+    const matches: HitDict[] = [
       // 故意乱序(非 start_idx 升序):
-      { match_id: 'm_late',  start_idx: 50, end_idx: 60, node_index: {}, children: ['eShared#0'], predicate_trace: null },
-      { match_id: 'm_early', start_idx: 10, end_idx: 20, node_index: {}, children: ['eShared#0'], predicate_trace: null },
-      { match_id: 'm_mid',   start_idx: 30, end_idx: 40, node_index: {}, children: ['eShared#0'], predicate_trace: null },
+      { hit_id: 'm_late',  start_idx: 50, end_idx: 60, node_index: {}, children: ['eShared#0'], predicate_trace: null },
+      { hit_id: 'm_early', start_idx: 10, end_idx: 20, node_index: {}, children: ['eShared#0'], predicate_trace: null },
+      { hit_id: 'm_mid',   start_idx: 30, end_idx: 40, node_index: {}, children: ['eShared#0'], predicate_trace: null },
     ]
     const fmt = buildMarkerTooltipFormatter(undefined, undefined, { matches, candidateMatchIds: new Set() })
     const out = fmt({ data: { instance_id: 'eShared#0' } })
@@ -46,8 +46,8 @@ describe('buildSubOption — brackets series match tooltip label (Task 6 review 
     { date: '2025-01-01', o: 1, h: 1, l: 1, c: 1, v: 1, rv: 0 },
     { date: '2025-01-02', o: 1, h: 1, l: 1, c: 1, v: 1, rv: 0 },
   ]
-  const match: MatchDict = {
-    match_id: 'm1', start_idx: 0, end_idx: 1, node_index: {}, children: [], predicate_trace: null,
+  const match: HitDict = {
+    hit_id: 'm1', start_idx: 0, end_idx: 1, node_index: {}, children: [], predicate_trace: null,
   }
   function baseInput(overrides: Partial<BandRenderInput> = {}): BandRenderInput {
     return {
@@ -71,7 +71,7 @@ describe('buildSubOption — brackets series match tooltip label (Task 6 review 
     const opt: any = buildSubOption(bars, bundle, subGeom, input, 800)
     const brackets = opt.series.find((s: any) => s.name === 'brackets')
     expect(brackets.tooltip).toBeDefined()
-    expect(brackets.tooltip.formatter({ data: { match_id: 'm1' } }))
+    expect(brackets.tooltip.formatter({ data: { hit_id: 'm1' } }))
       .toBe('Match: ret_20: +12.3%<br/>组成 (0 events):')
   })
 
@@ -81,6 +81,6 @@ describe('buildSubOption — brackets series match tooltip label (Task 6 review 
     const subGeom = computeSubGeometry({ bracketLaneCount: 1, bandLaneCounts: [] })
     const opt: any = buildSubOption(bars, bundle, subGeom, input, 800)
     const brackets = opt.series.find((s: any) => s.name === 'brackets')
-    expect(brackets.tooltip.formatter({ data: { match_id: 'm1' } })).toBe('组成 (0 events):')
+    expect(brackets.tooltip.formatter({ data: { hit_id: 'm1' } })).toBe('组成 (0 events):')
   })
 })

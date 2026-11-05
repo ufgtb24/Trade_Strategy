@@ -70,10 +70,10 @@ async function waitForE2E(page: any): Promise<void> {
   await page.waitForFunction(() => !!(window as any).__e2e?.view, { timeout: 10_000 })
 }
 
-/** 等 effectiveAnalysis.matches 至少有 1 条(后端数据到达) */
+/** 等 effectiveAnalysis.hits 至少有 1 条(后端数据到达) */
 async function waitForMatches(page: any): Promise<void> {
   await page.waitForFunction(
-    () => ((window as any).__e2e?.view?.effectiveAnalysis?.matches?.length ?? 0) > 0,
+    () => ((window as any).__e2e?.view?.effectiveAnalysis?.hits?.length ?? 0) > 0,
     { timeout: 15_000 },
   )
 }
@@ -87,7 +87,7 @@ async function waitForMatches(page: any): Promise<void> {
 async function setRealCandidateMatches(page: any, n = 2): Promise<number> {
   return page.evaluate((count: number) => {
     const view = (window as any).__e2e?.view
-    const matches: Array<{ event_id: string }> = view?.effectiveAnalysis?.matches ?? []
+    const matches: Array<{ event_id: string }> = view?.effectiveAnalysis?.hits ?? []
     const ids = matches.slice(0, count).map((m) => m.event_id)
     if (ids.length > 0) view?.setCandidateMatches(ids)
     return ids.length

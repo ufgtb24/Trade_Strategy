@@ -62,26 +62,26 @@ export interface FirstPassageRatio {
   random_ratio: number | null
 }
 
-export interface MatchDict {
-  match_id: string               // 唯一 match 键(含 node_index 组合位)
+export interface HitDict {
+  hit_id: string                 // 唯一 hit 键(含 node_index 组合位)
   start_idx: number; end_idx: number
   node_index: Record<string, string>      // nid -> instance_id 字符串(全实例化引用)
   children: string[]                       // instance_id 列表
   predicate_trace?: PredicateTrace | null
   forward_return?: number | null
-  // per-match forward_drawdown(T1 注入,与 forward_return 并列;null=窗口内未触底,undefined=老 scan file 无此字段)
+  // per-hit forward_drawdown(T1 注入,与 forward_return 并列;null=窗口内未触底,undefined=老 scan file 无此字段)
   forward_drawdown?: number | null
-  // 按买点聚合锚:leaf 事件 instance_id(同 leaf 可被多 match 共享,多对一确认)
+  // 按买点聚合锚:leaf 事件 instance_id(同 leaf 可被多 hit 共享,多对一确认)
   leaf?: string
 }
-export interface Analysis { events: EventDict[]; matches: MatchDict[] }
+export interface Analysis { events: EventDict[]; hits: HitDict[] }
 
 // ── 多 pattern schema ───────────────────────────────────────────────
 export interface PerPatternResult {
-  summary: Record<string, number>            // {node_id: count} ∪ {matches: n}
+  summary: Record<string, number>            // {node_id: count} ∪ {hits: n}
   analysis: Analysis
   max_forward_return: number | null
-  // per-symbol-per-pattern 最差下行(T1 注入,聚合用 min;null=无 match,undefined=老 scan file)
+  // per-symbol-per-pattern 最差下行(T1 注入,聚合用 min;null=无 hit,undefined=老 scan file)
   min_forward_drawdown?: number | null
 }
 export interface PatternStats {
@@ -109,7 +109,7 @@ export interface PerPatternMeta {
 }
 export interface ScanMeta {
   scan_ts: string; name?: string; start_date: string; end_date: string; workers: number
-  scanned: number; hits: number; errors: number; dataset_dir: string
+  scanned: number; hit_stocks: number; errors: number; dataset_dir: string
   params?: string                                      // legacy 字段;Task 3 起新 scan 不再落盘,仅老 scan file 可能仍带
   params_schema_version?: number                       // Task 3 新增
   note?: string | null                                 // Task 3 新增(扫描备注,可为 null)
@@ -222,9 +222,9 @@ export interface PairPayload {
 // gap,见 task-17-report.md)时端点诚实降级为 stub dict,前端须能分辨(见 DetailSidebar pairPayloadValid)。
 export interface PairScopeResponse { scope: 'pair'; payload: PairPayload | { stub: true }; caveats: Caveat[] }
 
-export interface ScanProgress { scanned: number; total: number; hits: number; errors: number }
+export interface ScanProgress { scanned: number; total: number; hit_stocks: number; errors: number }
 export interface ScanDone {
-  type: 'done'; hits: number; errors: number; total: number
+  type: 'done'; hit_stocks: number; errors: number; total: number
   pattern_ids?: string[]; scan_ts?: string; name?: string; error?: string | null
   cancelled?: boolean
   partial?: boolean
@@ -234,11 +234,11 @@ export interface ScanHistoryEntry {
   scan_ts: string
   name: string
   pattern_ids: string[]                                 // 新增
-  hits: number | null
+  hit_stocks: number | null
   total: number | null
   size: number
   partial: boolean
-  // history 列表聚合:每 pattern 的 match 数 + forward_return 中位数(无 match → null)
+  // history 列表聚合:每 pattern 的 hit 数 + forward_return 中位数(无 hit → null)
   // + 首次穿越方向比例对(fp 必填——显式标注的 fixture 会挡漏字段;null=该 pattern 无 first_passage 数据)
   // + 参数结构一致性(快照 vs 当前默认;false=当时代码与当前不同;null=无法判断:无快照或 pid 无 app)
   per_pattern: Record<string, { hits: number | null; median: number | null;

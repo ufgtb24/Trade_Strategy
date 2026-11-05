@@ -19,7 +19,7 @@ def test_serialize_tbseg_walked_from_container():
                       "2024-09-19", "2026-03-08")
     res = analyze(df, load_params())
     if not res.hits:                         # AA 无 tb 命中时用合成断言跳过?不——必须有命中
-        raise AssertionError("AA 无 match,换数据/窗口")
+        raise AssertionError("AA 无 hit,换数据/窗口")
     out = serialize_analysis(res)
     tbs = [e for e in out["events"] if e.get("node_id") == "tb"]
     assert tbs, "tb 容器不在 out_events"

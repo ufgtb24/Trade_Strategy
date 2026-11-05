@@ -4,7 +4,7 @@
 EdgeWitness/PatternTopology/NodeDiagnostics),投影成前端 JSON。path2 不引入 JSON 依赖。
 
 实例化契约:事件已由引擎物化标注(node_id/instance_idx/instance_id),serialize 层
-只做纯投影、不再编号;match 行按 match_id 投影、node_index/children 值统一为
+只做纯投影、不再编号;hit 行按 hit_id 投影、node_index/children 值统一为
 instance_id 字符串。身份契约统一为 node_id/instance_id 双轴(旧 event_id/
 source_tag/instance_key 等字段已全部消灭),不在任何输出中出现。
 """
@@ -81,9 +81,9 @@ def _jsonable(v):
     return str(v)
 
 
-# ── event(全集,含未匹配;子类属性平铺,仅 tooltip 用) ──
+# ── event(全集,含未进 hit 的;子类属性平铺,仅 tooltip 用) ──
 def _event_to_dict(e) -> dict:
-    """event → dict(全集,含未匹配;子类属性平铺,仅 tooltip 用)。
+    """event → dict(全集,含未进 hit 的;子类属性平铺,仅 tooltip 用)。
 
     事件行新契约:instance_id/node_id/instance_idx 恒在(引擎物化标注,serialize
     不再编号);持有型 child 走 child_refs、引用型 ref 走 ref_ids,原始对象字段
@@ -125,7 +125,7 @@ def _event_to_dict(e) -> dict:
     return d
 
 
-# ── per-match 判定(reify 富化产物) ──
+# ── per-hit 判定(reify 富化产物) ──
 def _clause_to_dict(w) -> dict:
     """ClauseWitness → dict。组合子递归携带 children/label(仅非空时出现,叶子保持旧扁平形状)。"""
     d = {
@@ -165,11 +165,11 @@ def _trace_to_dict(pt) -> dict:
     }
 
 
-def _match_to_dict(m) -> dict:
-    """match → dict。match_id 为 match 唯一键;node_index 每节点值 = instance_id
+def _hit_to_dict(m) -> dict:
+    """hit → dict。hit_id 为 hit 唯一键;node_index 每节点值 = instance_id
     字符串(与事件行同源);children = instance_id 列表。旧身份字段不再输出。"""
     return {
-        "match_id": m.hit_id,
+        "hit_id": m.hit_id,
         "start_idx": m.start_idx,
         "end_idx": m.end_idx,
         "node_index": {
@@ -182,11 +182,11 @@ def _match_to_dict(m) -> dict:
 
 
 def serialize_analysis(res) -> dict:
-    """AnalysisResult → {events:[...], matches:[...]}(每只命中股一份,§7.2)。
+    """AnalysisResult → {events:[...], hits:[...]}(每只命中股一份,§7.2)。
 
-    纯投影:事件行/匹配行直接读引擎标注的 instance_id/node_id/instance_idx/match_id,
+    纯投影:事件行/hit 行直接读引擎标注的 instance_id/node_id/instance_idx/hit_id,
     serialize 层不编号、不附加任何旧身份字段。容器 child(如 tb.segments)不在
-    res.events/match.children,主动从各容器的 child_slots 挖出追加(非递归,仅一级;
+    res.events/hit.children,主动从各容器的 child_slots 挖出追加(非递归,仅一级;
     schema 稳定,老 scan 兼容),去重键 = 对象身份 id(c)。
     """
     out_events = [_event_to_dict(e) for e in res.events]
@@ -200,18 +200,18 @@ def serialize_analysis(res) -> dict:
                     seen.add(id(c))
                     extra.append(_event_to_dict(c))
     out_events.extend(extra)
-    return {"events": out_events, "matches": [_match_to_dict(m) for m in res.hits]}
+    return {"events": out_events, "hits": [_hit_to_dict(m) for m in res.hits]}
 
 
 def summarize(res) -> dict:
-    """{node_id: count} ∪ {"matches": n}(命中股列表的计数徽章,§7.3)。
+    """{node_id: count} ∪ {"hits": n}(命中股列表的计数徽章,§7.3)。
     node_id 为 None(未标注事件)跳过。"""
     counts: dict = {}
     for e in res.events:
         if e.node_id is None:
             continue
         counts[e.node_id] = counts.get(e.node_id, 0) + 1
-    counts["matches"] = len(res.hits)
+    counts["hits"] = len(res.hits)
     return counts
 
 
@@ -287,7 +287,7 @@ def _materialize_keys_of(det) -> list[str]:
     """detector 构造参数键(去 self)= 物化层 yaml 键。
 
     依据 author 约定:进 detector __init__ 的参数 = 物化层(决定 event 是否生成),
-    留在 node.where 的 = where 层(决定是否升 match)。反射 __init__ 签名精确捕获此约定,
+    留在 node.where 的 = where 层(决定是否升 hit)。反射 __init__ 签名精确捕获此约定,
     比 params.*_kwargs(手挑、可能漂移)更源头。
     子结构 node(produced_by 非空)无 detector → 无物化层参数,返回空。
     """
@@ -358,41 +358,41 @@ def serialize_per_pattern_result(res, end_node: str, label_horizon: int,
         label_horizon: 前瞻收益天数
         win: 已切好的 DataFrame(含 date 列 + OHLC)
         start_ts/end_ts: pd.Timestamp,严格窗左右边界(含)
-        price_min/price_max: match 级价格过滤区间(闭区间,None=不限)。锚 end_node
+        price_min/price_max: hit 级价格过滤区间(闭区间,None=不限)。锚 end_node
             事件日收盘价(路径=任一段起点日)——与窗口过滤、forward_return 共用
             同一 _resolve_end_events 解析。
-        first_passage_enabled: 是否累加首次穿越四态计数到 match_fp_counts(默认 True)。
-            关闭时 match_fp_counts 为单组全 0 {up,down,both,none};每条 match 的
+        first_passage_enabled: 是否累加首次穿越四态计数到 hit_fp_counts(默认 True)。
+            关闭时 hit_fp_counts 为单组全 0 {up,down,both,none};每条 hit 的
             first_passage 字段恒为 None。
         first_passage_k: 首次穿越几何对称阈值参数 k(上行 P(1+kM)、下行 P/(1+kM)),
             hit_first_passage 内算 M;默认 5.0。
         sample_window: 样本消费窗(spec §10 截取),win 行号双边含端 (lo, hi)——
             forward_return / forward_drawdown / first_passage 的买点日 t 仅当
             lo <= t <= hi 计样本,跨界段只取窗内部分;None = 全量(向后兼容)。
-            label 前瞻窗不受截取影响(仍看未来 N 根)。matches 过滤口径不变
+            label 前瞻窗不受截取影响(仍看未来 N 根)。hits 过滤口径不变
             (任一段起点 ∈ [start_ts, end_ts])。
 
-    返回 {summary, analysis, max_forward_return, min_forward_drawdown, match_fp_counts}:
+    返回 {summary, analysis, max_forward_return, min_forward_drawdown, hit_fp_counts}:
       - analysis.events: 全集照旧(含缓冲段;K 线灰色层数据源)
-      - analysis.matches: 仅保留 end_node 事件**任一**起点 ∈ [start_ts, end_ts] 且
-                          **任一**收盘价 ∈ [price_min, price_max] 的 match(任一过滤,
-                          统一标准协议;路径=各 child span bar 并集),每条注入
-                          forward_return + forward_drawdown(mfr 下行镜像)+ buy_date
-                          (end_node 事件起始日,YYYY-MM-DD)+ leaf(end_node 事件
-                          instance_id)+ buy_span(end_node 解析出的各事件
-                          [[start_idx, end_idx], ...],即买点 span)+ first_passage
-                          (该 match 买点 span 首次出现时的四态 dict,同 span 的后续
-                          match 为 None,first_passage_enabled=False 时恒 None;逐
-                          match 非 None 四态求和 = match_fp_counts)
-      - summary["matches"]: 窗内 match 数(覆写)
-      - max_forward_return: max over filtered matches 中非 None 的 forward_return;
+      - analysis.hits: 仅保留 end_node 事件**任一**起点 ∈ [start_ts, end_ts] 且
+                       **任一**收盘价 ∈ [price_min, price_max] 的 hit(任一过滤,
+                       统一标准协议;路径=各 child span bar 并集),每条注入
+                       forward_return + forward_drawdown(mfr 下行镜像)+ buy_date
+                       (end_node 事件起始日,YYYY-MM-DD)+ leaf(end_node 事件
+                       instance_id)+ buy_span(end_node 解析出的各事件
+                       [[start_idx, end_idx], ...],即买点 span)+ first_passage
+                       (该 hit 买点 span 首次出现时的四态 dict,同 span 的后续
+                       hit 为 None,first_passage_enabled=False 时恒 None;逐
+                       hit 非 None 四态求和 = hit_fp_counts)
+      - summary["hits"]: 窗内 hit 数(覆写)
+      - max_forward_return: max over filtered hits 中非 None 的 forward_return;
                             空 / 全 None → None
-      - min_forward_drawdown: min over filtered matches 中非 None 的 forward_drawdown
+      - min_forward_drawdown: min over filtered hits 中非 None 的 forward_drawdown
                               (最差下行;与 max_forward_return 的 max 对仗);
                               空 / 全 None → None
-      - match_fp_counts: per-pattern 首穿四态计数 单组 {up,down,both,none},
-                         按买点 span 去重后遍历全买点日累加(first_passage_enabled=False
-                         或无 match → 单组全 0);集合级 ratio 的分母=买点日数
+      - hit_fp_counts: per-pattern 首穿四态计数 单组 {up,down,both,none},
+                       按买点 span 去重后遍历全买点日累加(first_passage_enabled=False
+                       或无 hit → 单组全 0);集合级 ratio 的分母=买点日数
     """
     from path2.eval import (hit_forward_returns, hit_forward_drawdowns,
                             hit_first_passage)
@@ -404,19 +404,19 @@ def serialize_per_pattern_result(res, end_node: str, label_horizon: int,
     fp_by_id: dict = {}
     date_by_id: dict = {}
     seen_fp_spans: set = set()
-    match_fp_counts = {"up": 0, "down": 0, "both": 0, "none": 0}
+    hit_fp_counts = {"up": 0, "down": 0, "both": 0, "none": 0}
     for m in res.hits:
         events = _resolve_end_events(m, end_node)          # 统一解析(与 eval 同函数)
         if not any(start_ts <= win["date"].iat[ev.start_idx] <= end_ts
                    for ev in events):
             continue
-        # match 级价格过滤: 任一 tb_seg 起点日收盘价 ∈ [price_min, price_max]。
+        # hit 级价格过滤: 任一 tb_seg 起点日收盘价 ∈ [price_min, price_max]。
         # 闭区间,照搬 dev BreakoutStrategy/analysis/scanner.py:262-263,不要改成开区间。
         closes = [win["close"].iat[ev.start_idx] for ev in events]
         if not any((price_min is None or c >= price_min)
                    and (price_max is None or c <= price_max) for c in closes):
             continue
-        # leaf 锚容器(match 身份; tb_seg 段渲染已由 serialize_analysis 挖 child 承担)。
+        # leaf 锚容器(hit 身份; tb_seg 段渲染已由 serialize_analysis 挖 child 承担)。
         # 实例流:leaf = end_node 事件 instance_id 字符串(instance_id 已含组内 #idx,
         # 无需 indexer 再编号)。
         leaf_ev = m.node_index[end_node.split(".")[0]]
@@ -435,7 +435,7 @@ def serialize_per_pattern_result(res, end_node: str, label_horizon: int,
             m, end_node, win, [label_horizon],
             sample_window=sample_window)[label_horizon]
         # 首穿四态计数:span 全买点日(与 forward_return 同循环、同过滤口径)。
-        # 同一买点 span 的多 match 只累加一次(买点日是物理属性,与上游 match 数、
+        # 同一买点 span 的多 hit 只累加一次(买点日是物理属性,与上游 hit 数、
         # 实例数都无关),保持「ratio 分母=买点日数」契约(与随机基线同口径)。
         # 去重键 = buy_span:同 span 的不同实例是同一个买点,按 instance_id 去重会重复计数。
         # hit_first_passage 内算 M、几何对称 k;返单组 {up,down,both,none}。
@@ -447,32 +447,32 @@ def serialize_per_pattern_result(res, end_node: str, label_horizon: int,
                     m, end_node, win, label_horizon, first_passage_k,
                     sample_window=sample_window)
                 for s in ("up", "down", "both", "none"):
-                    match_fp_counts[s] += m_counts[s]
+                    hit_fp_counts[s] += m_counts[s]
                 fp_by_id[m.hit_id] = {s: int(m_counts[s]) for s in ("up", "down", "both", "none")}
     analysis = serialize_analysis(res)
 
     def _with_labels(md):
         return {**md,
-                "forward_return": ret_by_id[md["match_id"]],
-                "forward_drawdown": dd_by_id[md["match_id"]],
-                "leaf": leaf_by_id[md["match_id"]],   # instance_id 字符串
-                "buy_span": span_by_id[md["match_id"]],   # [[start_idx, end_idx], ...]
-                "buy_date": date_by_id[md["match_id"]],
-                "first_passage": fp_by_id[md["match_id"]]}
+                "forward_return": ret_by_id[md["hit_id"]],
+                "forward_drawdown": dd_by_id[md["hit_id"]],
+                "leaf": leaf_by_id[md["hit_id"]],   # instance_id 字符串
+                "buy_span": span_by_id[md["hit_id"]],   # [[start_idx, end_idx], ...]
+                "buy_date": date_by_id[md["hit_id"]],
+                "first_passage": fp_by_id[md["hit_id"]]}
 
-    analysis["matches"] = [_with_labels(md)
-                           for md in analysis["matches"] if md["match_id"] in ret_by_id]
+    analysis["hits"] = [_with_labels(md)
+                        for md in analysis["hits"] if md["hit_id"] in ret_by_id]
     summary = summarize(res)
-    summary["matches"] = len(analysis["matches"])
+    summary["hits"] = len(analysis["hits"])
 
-    rets = [md["forward_return"] for md in analysis["matches"]
+    rets = [md["forward_return"] for md in analysis["hits"]
             if md["forward_return"] is not None]
     max_ret = max(rets) if rets else None
 
-    dds = [md["forward_drawdown"] for md in analysis["matches"]
+    dds = [md["forward_drawdown"] for md in analysis["hits"]
            if md["forward_drawdown"] is not None]
     min_dd = min(dds) if dds else None
 
     return {"summary": summary, "analysis": analysis,
             "max_forward_return": max_ret, "min_forward_drawdown": min_dd,
-            "match_fp_counts": match_fp_counts}
+            "hit_fp_counts": hit_fp_counts}

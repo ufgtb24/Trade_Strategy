@@ -1,12 +1,12 @@
 import { describe, it, expect, vi } from 'vitest'
 import { buildMarkerTooltipFormatter } from '../src/render/chart'
-import type { MatchDict } from '../src/types'
+import type { HitDict } from '../src/types'
 
 describe('buildMarkerTooltipFormatter multi-confirm', () => {
   const matches = [
-    { match_id: 'm1', children: ['tb_6_7#0'], node_index: {}, leaf: 'tb_6_7#0' },
-    { match_id: 'm2', children: ['tb_6_7#0'], node_index: {}, leaf: 'tb_6_7#0' },
-  ] as unknown as MatchDict[]
+    { hit_id: 'm1', children: ['tb_6_7#0'], node_index: {}, leaf: 'tb_6_7#0' },
+    { hit_id: 'm2', children: ['tb_6_7#0'], node_index: {}, leaf: 'tb_6_7#0' },
+  ] as unknown as HitDict[]
 
   it('同 leaf 被 >=2 match 共享时输出确认行', () => {
     const f = buildMarkerTooltipFormatter(undefined, undefined,
@@ -43,14 +43,14 @@ describe('buildMarkerTooltipFormatter 实例级传递 (Task 9)', () => {
     expect(calls).toEqual(['tb_v1_293#1'])   // 精确到实例 instance_id,无 # 解析
   })
 
-  it('bracket data(match_id)走 matchLabel + 组成段 · 不触发 resolver', () => {
+  it('bracket data(hit_id)走 matchLabel + 组成段 · 不触发 resolver', () => {
     const resolver = vi.fn(() => payloadOf('x'))
     const matchLabel = vi.fn(() => 'ret_20: +5.0%')
-    const match = { match_id: 'm9', children: ['a#0', 'b#0'],
-                    node_index: { a: 'a#0', b: 'b#0' } } as unknown as MatchDict
+    const match = { hit_id: 'm9', children: ['a#0', 'b#0'],
+                    node_index: { a: 'a#0', b: 'b#0' } } as unknown as HitDict
     const f = buildMarkerTooltipFormatter(resolver, matchLabel,
       { matches: [match], candidateMatchIds: new Set() })
-    const html = f({ data: { match_id: 'm9' } } as never)
+    const html = f({ data: { hit_id: 'm9' } } as never)
     expect(html).toContain('ret_20: +5.0%')
     expect(html).toContain('a: a#0')
     expect(html).toContain('b: b#0')

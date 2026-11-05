@@ -78,14 +78,14 @@ def test_scan_then_stream_done(tmp_path):
                 evt = json.loads(payload)
                 if evt.get("type") == "done":
                     saw_done = True
-                    assert evt["hits"] == 0
+                    assert evt["hit_stocks"] == 0
                     break
     assert saw_done
     # 历史扫描可列出 + 加载
     scans = c.get("/scans/").json()
     assert len(scans) >= 1
     loaded = c.get(f"/scans/{scans[0]['scan_ts']}").json()
-    assert loaded["scan"]["hits"] == 0
+    assert loaded["scan"]["hit_stocks"] == 0
 
 
 def test_api_delete_scan_200(tmp_path):
@@ -95,7 +95,7 @@ def test_api_delete_scan_200(tmp_path):
     out.mkdir(parents=True, exist_ok=True)
     (out / "20260601T100000.json").write_text(
         '{"pattern_ids":["bottom_burst"],"per_pattern":{},'
-        '"scan":{"hits":0,"scanned":1,"partial":false},"results":[]}'
+        '"scan":{"hit_stocks":0,"scanned":1,"partial":false},"results":[]}'
     )
     r = c.delete("/scans/20260601T100000")
     assert r.status_code == 200
@@ -147,7 +147,7 @@ def _write_scan_file(tmp_path, name):
     out.mkdir(parents=True, exist_ok=True)
     (out / f"{name}.json").write_text(json.dumps(
         {"pattern_ids": ["bo_only"], "scan": {"scan_ts": "20260820T100000", "name": name,
-                                              "hits": 0, "scanned": 0,
+                                              "hit_stocks": 0, "scanned": 0,
                                               "data_until": TRAIN_END},
          "per_pattern": {}, "results": []}))
     return out / f"{name}.json"

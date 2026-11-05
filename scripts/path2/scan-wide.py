@@ -92,7 +92,7 @@ def main() -> None:
         first_passage_enabled=FIRST_PASSAGE_ENABLED, first_passage_k=FIRST_PASSAGE_K,
     )
     s = result["scan"]
-    print(f"scanned={s['scanned']} hits={s['hits']} errors={s['errors']}")
+    print(f"scanned={s['scanned']} hit_stocks={s['hit_stocks']} errors={s['errors']}")
     print(f"落盘: {REPO / 'outputs' / 'path2_web' / 'scans' / f'{OUT_NAME}.json'}")
 
 

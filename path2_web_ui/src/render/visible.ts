@@ -1,5 +1,5 @@
 // 可见集辅助函数(band/tier/tag/tooltip)。level 门控由 chart 层消费,此处仅提供纯函数原语。
-import type { EventDict, MatchDict, TopoNode, TopoEdge, Topology, AttrRow, Diagnostics, Tier, ClauseWitness, ScanMeta, Bar } from '../types'
+import type { EventDict, HitDict, TopoNode, TopoEdge, Topology, AttrRow, Diagnostics, Tier, ClauseWitness, ScanMeta, Bar } from '../types'
 import type { TooltipPayload, TooltipClauseRow, TooltipRefRow } from './chart'
 
 /** 所有匹配内实例 instance_id 的并集(schema-driven 协议驱动)。
@@ -17,7 +17,7 @@ import type { TooltipPayload, TooltipClauseRow, TooltipRefRow } from './chart'
  *  (如 burst)其 constituent bo 通过 child_refs 自然进集。
  *  实例化契约:集合元素为 instance_id 字符串(恒含 #idx);引用协议全实例化,零身份展开。 */
 export function matchedIds(
-  matches: MatchDict[],
+  matches: HitDict[],
   events: EventDict[],
   edges: TopoEdge[],
   opts: { expandAnchor?: boolean } = {},

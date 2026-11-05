@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { computeEventData } from '../../src/render/chart'
 import type { BandRenderInput } from '../../src/render/chart'
-import type { EventDict, MatchDict, Bar } from '../../src/types'
+import type { EventDict, HitDict, Bar } from '../../src/types'
 
 // 最小 fixture — 只覆盖 marker 装配路径。
 function makeBars(n = 10): Bar[] {

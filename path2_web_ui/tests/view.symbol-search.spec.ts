@@ -12,15 +12,15 @@ function makeFile(symbols: string[]): MultiScanResultFile {
     },
     scan: {
       scan_ts: '20260714T120000', start_date: '2024-01-01', end_date: '2024-06-30',
-      workers: 1, scanned: symbols.length, hits: symbols.length, errors: 0,
+      workers: 1, scanned: symbols.length, hit_stocks: symbols.length, errors: 0,
       dataset_dir: '/d', params: 'default',
       win_start: '2023-09-01', win_end: '2024-07-15', label_horizon: 20, first_passage_k: 2,
     },
     results: symbols.map(s => ({
       symbol: s,
       per_pattern: {
-        bo_only: { summary: { matches: 1 }, analysis: { events: [], matches: [] }, max_forward_return: 0.1 },
-        bbb:     { summary: { matches: 1 }, analysis: { events: [], matches: [] }, max_forward_return: 0.1 },
+        bo_only: { summary: { hits: 1 }, analysis: { events: [], hits: [] }, max_forward_return: 0.1 },
+        bbb:     { summary: { hits: 1 }, analysis: { events: [], hits: [] }, max_forward_return: 0.1 },
       },
     })),
   }
@@ -77,17 +77,17 @@ describe('view store · symbolQuery', () => {
       },
       scan: {
         scan_ts: '20260714T120000', start_date: '2024-01-01', end_date: '2024-06-30',
-        workers: 1, scanned: 2, hits: 2, errors: 0, dataset_dir: '/d', params: 'default',
+        workers: 1, scanned: 2, hit_stocks: 2, errors: 0, dataset_dir: '/d', params: 'default',
         win_start: '2023-09-01', win_end: '2024-07-15', label_horizon: 20, first_passage_k: 2,
       },
       results: [
         { symbol: 'AAA', per_pattern: {
-          bo_only: { summary: { matches: 1 }, analysis: { events: [], matches: [] }, max_forward_return: 0.1 },
-          bbb:     { summary: { matches: 0 }, analysis: { events: [], matches: [] }, max_forward_return: null },
+          bo_only: { summary: { hits: 1 }, analysis: { events: [], hits: [] }, max_forward_return: 0.1 },
+          bbb:     { summary: { hits: 0 }, analysis: { events: [], hits: [] }, max_forward_return: null },
         }},
         { symbol: 'BBB', per_pattern: {
-          bo_only: { summary: { matches: 0 }, analysis: { events: [], matches: [] }, max_forward_return: null },
-          bbb:     { summary: { matches: 1 }, analysis: { events: [], matches: [] }, max_forward_return: 0.2 },
+          bo_only: { summary: { hits: 0 }, analysis: { events: [], hits: [] }, max_forward_return: null },
+          bbb:     { summary: { hits: 1 }, analysis: { events: [], hits: [] }, max_forward_return: 0.2 },
         }},
       ],
     }

@@ -1,5 +1,5 @@
 // ECharts option 构造(纯函数,spec §8.3 方案 B)。类型无关:只依赖 start_idx/end_idx/instance_id + 色。
-import type { Bar, EventDict, MatchDict, Level, Tier, Topology } from '../types'
+import type { Bar, EventDict, HitDict, Level, Tier, Topology } from '../types'
 import { colorOf } from './colors'
 import { packByBand, packBrackets } from './geometry'
 import { isBandVisible, renderGridOf, splitIntervalAtScanEnd, subBandTagList } from './visible'
@@ -94,7 +94,7 @@ export interface BandRenderInput {
   //    render 时从 chart.getOption().dataZoom[0] 读出再回传,实现"非换股触发
   //    re-render 时不重置 zoom")。缺省/null = 走 strictWindow 默认,旧调用零回归。
   zoomOverride?: { start: number; end: number } | null
-  // §7-4 整治：bracket marker 同时承载 match_id + 端点 instance_id,让 buildMarkerTooltipFormatter
+  // §7-4 整治：bracket marker 同时承载 hit_id + 端点 instance_id,让 buildMarkerTooltipFormatter
   // 的 event 三段分支也能触发。endNode 来自 eval_meta(铁律必有);缺省=不注入 instance_id(向后兼容)
   endNode?: string
   // ── M #3 / M' #19: bracket 三态 fill ────────────────────────────────────────
@@ -105,7 +105,7 @@ export interface BandRenderInput {
   pendingDisambigInstanceId?: string | null
   // ── spec 2026-07-10: 入口 D shift+click 已选中 marker 描边高亮 ────────────
   shiftSelectedEventIds?: ReadonlySet<string>
-  matches?: MatchDict[]  // buildSubOption 的 markerTooltip formatter 用（自 KlineChart.vue 透传）
+  matches?: HitDict[]  // buildSubOption 的 markerTooltip formatter 用（自 KlineChart.vue 透传）
   // ── 副图 band 竖直 zoom(spec 2026-07-03):由 KlineChart 传入,default 1.0 ──────
   zoomFactor?: number
   // ── 顶栏 tiers 开关(spec 5.2):副图 event 条右端挂不挂 qualified_only / detected_only(render/tierTags.ts);缺省不挂 ──
@@ -132,7 +132,7 @@ export interface EventBundle {
 }
 
 export function computeEventData(
-  bars: Bar[], events: EventDict[], matches: MatchDict[],
+  bars: Bar[], events: EventDict[], matches: HitDict[],
   input: BandRenderInput,
 ): EventBundle {
   const { topology, tagList, level, nodeColors, eventTier, nodeOfEventByBand, bandKeyOf,
@@ -275,9 +275,9 @@ export function computeEventData(
 
   const brackets = packBrackets(matches)
   const bracketData = brackets.map((m) => {
-    const data: { value: number[]; match_id: string; instance_id?: string } = {
+    const data: { value: number[]; hit_id: string; instance_id?: string } = {
       value: [m.start_idx, m.end_idx, m.lane, m.ordinal],
-      match_id: m.match_id,
+      hit_id: m.hit_id,
     }
     if (endNode) {
       const v = m.node_index?.[endNode]
@@ -1196,7 +1196,7 @@ export function makeRenderShiftVeilPrice(
 // selected 非 focus = 琥珀 + 细深边 + shadow(与 marker in-group 一致);
 // focusOnBracket = 琥珀 + 粗深边 + shadow;candidate = 0.35 琥珀底 + 琥珀虚线边不动。
 export function makeRenderBracket(
-  items: Array<{ match_id: string }>,
+  items: Array<{ hit_id: string }>,
   selectedMatchId: string | null,
   candidateMatchIds: ReadonlySet<string>,
   zoomFactor: number = 1.0,
@@ -1208,7 +1208,7 @@ export function makeRenderBracket(
     const lane = api.value(2) || 0
     const top = BAND_TOP_PAD + lane * BAND_LANE_H * zoomFactor
     const rectH = BAND_MARKER_H * zoomFactor
-    const matchId: string | undefined = items[params.dataIndex]?.match_id
+    const matchId: string | undefined = items[params.dataIndex]?.hit_id
     const isSelected = !!matchId && selectedMatchId === matchId
     const isCandidate = !isSelected && !!matchId && candidateMatchIds.has(matchId)
     const fill = isCandidate ? 'rgba(251,191,36,0.35)' : AMBER_FILL
@@ -1594,7 +1594,7 @@ export function buildBarTooltipFormatter(bars: Bar[]) {
 /**
  * Marker tooltip formatter (series-level item-trigger)。
  * 三段结构 + 可选 match 顶行：
- *   - 顶行 (仅 params.data.match_id 命中)：Match: {matchLabel(id)}
+ *   - 顶行 (仅 params.data.hit_id 命中)：Match: {matchLabel(id)}
  *   - 段 1 Identity：node / time / id
  *   - 段 2 Clauses：失败 ✗ 置顶 + 加粗；多 node 同 cid 行末加 (in: <node>)
  *   - 段 3 Attributes：raw（已去重）
@@ -1609,15 +1609,15 @@ export function buildBarTooltipFormatter(bars: Bar[]) {
 export function buildMarkerTooltipFormatter(
   tooltipResolver: ((instanceId: string) => TooltipPayload) | undefined,
   matchLabel: ((matchId: string) => string | null) | undefined,
-  ctx: { matches: MatchDict[]; candidateMatchIds: ReadonlySet<string> } = { matches: [], candidateMatchIds: new Set() },
+  ctx: { matches: HitDict[]; candidateMatchIds: ReadonlySet<string> } = { matches: [], candidateMatchIds: new Set() },
 ) {
-  return (params: { data?: { instance_id?: string; match_id?: string; [key: string]: unknown } } | null): string => {
+  return (params: { data?: { instance_id?: string; hit_id?: string; [key: string]: unknown } } | null): string => {
     const data = params?.data
     if (!data) return ''
     const lines: string[] = []
 
     // ── bracket 段：候选首行 + matchLabel + 组成段 (M #15 / M' #25) ────────
-    const matchId = data.match_id as string | undefined
+    const matchId = data.hit_id as string | undefined
     if (matchId) {
       // 候选态首行 (M' #25)
       if (ctx.candidateMatchIds.has(matchId)) {
@@ -1629,7 +1629,7 @@ export function buildMarkerTooltipFormatter(
         if (ml) lines.push(`Match: ${ml}`)
       }
       // 组成段 (M #15)
-      const match = ctx.matches.find((m) => m.match_id === matchId)
+      const match = ctx.matches.find((m) => m.hit_id === matchId)
       if (match) {
         lines.push(`组成 (${match.children.length} events):`)
         for (const [nodeKey, instanceId] of Object.entries(match.node_index)) {
@@ -1729,7 +1729,7 @@ export function buildMarkerTooltipFormatter(
       }
     }
 
-    // ── marker 归属节 (M #16, 仅非 bracket marker: 无 match_id) ──────────
+    // ── marker 归属节 (M #16, 仅非 bracket marker: 无 hit_id) ──────────
     if (!matchId && instanceId && ctx.matches.length > 0) {
       // 按 start_idx 排序,与 packBrackets(geometry.ts:47-49)的 ordinal 语义一致;
       // 同时从 sortedByStart 过滤,保证 ordinals 以升序列出

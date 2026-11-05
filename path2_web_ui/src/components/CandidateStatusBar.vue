@@ -8,9 +8,9 @@
 import { computed } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useViewStore } from '../stores/view'
-import type { MatchDict } from '../types'
+import type { HitDict } from '../types'
 
-const props = defineProps<{ matches: MatchDict[] }>()
+const props = defineProps<{ matches: HitDict[] }>()
 const view = useViewStore()
 const { candidateMatchIds } = storeToRefs(view)
 
@@ -22,7 +22,7 @@ const ordinalChars = computed<string[]>(() => {
   const sortedByStart = [...props.matches].sort((a, b) => a.start_idx - b.start_idx)
   const out: string[] = []
   for (const id of candidateMatchIds.value) {
-    const m = sortedByStart.find((mm) => mm.match_id === id)
+    const m = sortedByStart.find((mm) => mm.hit_id === id)
     if (!m) continue
     const ord = sortedByStart.indexOf(m) + 1
     if (ord >= 1 && ord <= 9) out.push(ORDINAL_CHARS[ord - 1])

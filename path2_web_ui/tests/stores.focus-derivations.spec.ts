@@ -5,7 +5,7 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
 import { useViewStore } from '../src/stores/view'
-import type { MultiScanResultFile, Analysis, SerializedPattern, TopoNode, TopoEdge, MatchDict, EventDict } from '../src/types'
+import type { MultiScanResultFile, Analysis, SerializedPattern, TopoNode, TopoEdge, HitDict, EventDict } from '../src/types'
 
 // 最小 fixture:1 pattern · 2 nodes(bo/ta)· 1 edge · 1 match · events 集合(实例化契约)
 function makeFixture(): MultiScanResultFile {
@@ -26,19 +26,19 @@ function makeFixture(): MultiScanResultFile {
     { instance_id: 'ta_12_15#0', node_id: 'ta', instance_idx: 0, start_idx: 12, end_idx: 15,
       anchor_bo_id: 'bo_10#0', child_refs: {} } as any,
   ]
-  const m1: MatchDict = {
-    match_id: 'm1',
+  const m1: HitDict = {
+    hit_id: 'm1',
     start_idx: 10, end_idx: 15,
     node_index: { ta: 'ta_12_15#0' } as any,
     children: ['bo_10#0', 'ta_12_15#0'],
   } as any
   const analysis: Analysis = {
-    events, matches: [m1],
+    events, hits: [m1],
   } as any
   return {
     pattern_ids: ['p1'],
     per_pattern: { p1: { pattern_spec: pattern } as any },
-    results: [{ symbol: 'AAA', per_pattern: { p1: { analysis, summary: { matches: 1 } } as any } } as any],
+    results: [{ symbol: 'AAA', per_pattern: { p1: { analysis, summary: { hits: 1 } } as any } } as any],
     scan: { win_start: '2020-01-01', win_end: '2020-12-31', label_horizon: 20 } as any,
   } as any
 }
@@ -66,7 +66,7 @@ describe('view store · 派生 computed 一致性', () => {
     view.focusedMatchId = 'm1'
     expect(view.selected).toEqual({ kind: 'match', matchId: 'm1' })
     expect(view.selectedMatchId).toBe('m1')
-    expect(view.selectedMatch?.match_id).toBe('m1')
+    expect(view.selectedMatch?.hit_id).toBe('m1')
     expect(view.selectedInstanceId).toBeNull()
     expect(view.focusedInstanceId).toBeNull()
     expect(view.showTrace).toBe(true)

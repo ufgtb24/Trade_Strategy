@@ -50,7 +50,7 @@ function seedStoreForDebug(store: ReturnType<typeof useViewStore>) {
     symbol: 'AAA',
     pattern_spec: { pattern_id: 'bottom_burst' },
     scan: { win_start: '2024-01-01', win_end: '2024-07-01' },
-    analysis: { events: [tbEvent, boEvent], matches: [], summary: {}, gate_failures: [] },
+    analysis: { events: [tbEvent, boEvent], hits: [], summary: {}, gate_failures: [] },
   }
   ;(store as any).scanFile = {
     scan: {

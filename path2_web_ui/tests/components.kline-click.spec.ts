@@ -3,13 +3,13 @@ import { flushPromises } from '@vue/test-utils'
 import { setActivePinia, createPinia } from 'pinia'
 import { useViewStore } from '../src/stores/view'
 import { SCAN_FILE } from './fixtures'
-import type { EventDict, MatchDict, MultiScanResultFile, SerializedPattern } from '../src/types'
+import type { EventDict, HitDict, MultiScanResultFile, SerializedPattern } from '../src/types'
 
 vi.mock('../src/api', () => ({ saveWcMirror: async () => ({ ok: true } as any), clearWcMirror: async () => ({ ok: true } as any),
   getDiagnose: vi.fn(() => Promise.resolve(null)),
   getPreview: vi.fn(() => Promise.resolve({
-    analysis: { events: [], matches: [], node_index: {} },
-    summary: { events: 0, matches: 0 },
+    analysis: { events: [], hits: [], node_index: {} },
+    summary: { events: 0, hits: 0 },
     pattern_spec: {} as any, scan: {} as any,
   })),
   listScans: vi.fn(() => Promise.resolve([])),
@@ -36,9 +36,9 @@ vi.mock('../src/stores/config', () => ({
 }))
 
 /** Task 3(highlightedEventIds 协议化)辅助:highlightedEventIds 现在是依赖
- * selectedMatch(→ effectiveAnalysis.matches)的 computed,不再能靠 setHighlightedEvents
+ * selectedMatch(→ effectiveAnalysis.hits)的 computed,不再能靠 setHighlightedEvents
  * 直接注入。这里把 handleChartClick 用到的 ad-hoc matches 数组塞进 store(loadScanFile),
- * 让 selectedMatch 能在 effectiveAnalysis.matches 里查到同一个 match_id。edges 留空:
+ * 让 selectedMatch 能在 effectiveAnalysis.hits 里查到同一个 hit_id。edges 留空:
  * 这里只验证「flat children 直接进 matchedIds 初始并集」,不涉及 child_refs/anchor_field
  * 展开(那部分由文件末尾的 Task 3 协议派生专项测试覆盖)。
  * 【实例化】events 从 matches.children 动态生成:children 引用的事件必须在事件全集里
@@ -51,9 +51,9 @@ function seedMatches(view: ReturnType<typeof useViewStore>, matches: any[]): voi
     pattern_ids: ['p'],
     per_pattern: { p: { pattern_spec: { pattern_id: 'p', topology: { nodes: [], edges: [] }, event_styles: {} }, end_node: 'x' } },
     scan: { scan_ts: 't', start_date: '2024-01-01', end_date: '2024-12-31', workers: 1,
-            scanned: 1, hits: 1, errors: 0, dataset_dir: '', params: '',
+            scanned: 1, hit_stocks: 1, errors: 0, dataset_dir: '', params: '',
             win_start: '2024-01-01', win_end: '2024-12-31', label_horizon: 20 },
-    results: [{ symbol: 'S', per_pattern: { p: { summary: { matches: matches.length }, analysis: { events, matches }, max_forward_return: null } } }],
+    results: [{ symbol: 'S', per_pattern: { p: { summary: { hits: matches.length }, analysis: { events, hits: matches }, max_forward_return: null } } }],
   } as any)
   view.symbol = 'S'
   view.activePatternId = 'p'
@@ -61,7 +61,7 @@ function seedMatches(view: ReturnType<typeof useViewStore>, matches: any[]): voi
 
 /** Task 6 实例绑定 fixture:APCX 形态双入口同款(与 stores.focus-actions.spec.ts::makeDualEntryFixture
  * 逐字同构,独立复制避免跨文件耦合)——两 match 的 node_index 分别引用 tb_v1_293 #0/#1。 */
-function makeDualEntryFixture(events: EventDict[], matches: MatchDict[]): MultiScanResultFile {
+function makeDualEntryFixture(events: EventDict[], matches: HitDict[]): MultiScanResultFile {
   const pattern: SerializedPattern = {
     pattern_id: 'p1',
     topology: {
@@ -77,8 +77,8 @@ function makeDualEntryFixture(events: EventDict[], matches: MatchDict[]): MultiS
     pattern_ids: ['p1'],
     per_pattern: { p1: { pattern_spec: pattern } as any },
     results: [{ symbol: 'AAA', per_pattern: { p1: { analysis: {
-      events, matches,
-    } as any, summary: { matches: matches.length } } as any } } as any],
+      events, hits: matches,
+    } as any, summary: { hits: matches.length } } as any } } as any],
     scan: { win_start: '2020-01-01', win_end: '2020-12-31', label_horizon: 20 } as any,
   } as any
 }
@@ -91,12 +91,12 @@ describe('KlineChart click handler (Task 9 实例化)', () => {
     const { handleChartClick } = await import('../src/components/KlineChart')
     // APCX 形态(Task 5 同款):两 match 的 node_index 分别引用 tb_v1_293 #0/#1(各属一个 match)。
     // marker data 恒带 instance_id(含 #idx),点击直接 focusEvent(instance_id) 精确直选。
-    const m0 = { match_id: 'bb@0-3#burst:burst_0_2|tb:tb_v1_293', start_idx: 0, end_idx: 3,
+    const m0 = { hit_id: 'bb@0-3#burst:burst_0_2|tb:tb_v1_293', start_idx: 0, end_idx: 3,
                  node_index: { burst: 'burst_0_2#0', tb: 'tb_v1_293#0' },
-                 children: ['burst_0_2#0', 'tb_v1_293#0'], predicate_trace: null } as MatchDict
-    const m1 = { match_id: 'bb@0-3#burst:burst_0_2|tb:tb_v1_293b', start_idx: 0, end_idx: 3,
+                 children: ['burst_0_2#0', 'tb_v1_293#0'], predicate_trace: null } as HitDict
+    const m1 = { hit_id: 'bb@0-3#burst:burst_0_2|tb:tb_v1_293b', start_idx: 0, end_idx: 3,
                  node_index: { burst: 'burst_0_2#1', tb: 'tb_v1_293#1' },
-                 children: ['burst_0_2#1', 'tb_v1_293#1'], predicate_trace: null } as MatchDict
+                 children: ['burst_0_2#1', 'tb_v1_293#1'], predicate_trace: null } as HitDict
     const events: EventDict[] = [
       { instance_id: 'tb_v1_293#0', node_id: 'tb', instance_idx: 0, start_idx: 12, end_idx: 15, child_refs: {} },
       { instance_id: 'tb_v1_293#1', node_id: 'tb', instance_idx: 1, start_idx: 20, end_idx: 22, child_refs: {} },
@@ -109,7 +109,7 @@ describe('KlineChart click handler (Task 9 实例化)', () => {
       { seriesName: 'points', data: { instance_id: 'tb_v1_293#0' } },
       [], view,
     )
-    expect(view.focusedMatchId).toBe(m0.match_id)   // 直选引用 #0 的 match
+    expect(view.focusedMatchId).toBe(m0.hit_id)   // 直选引用 #0 的 match
     expect(view.focusedInstanceId).toBe('tb_v1_293#0')
     expect(view.pendingDisambigInstanceId).toBeNull()  // 不再弹待选择
     // 点 #1 实例 → 直选引用 #1 的 match(验证 instance_id 不是写死 0)
@@ -117,14 +117,14 @@ describe('KlineChart click handler (Task 9 实例化)', () => {
       { seriesName: 'points', data: { instance_id: 'tb_v1_293#1' } },
       [], view,
     )
-    expect(view.focusedMatchId).toBe(m1.match_id)
+    expect(view.focusedMatchId).toBe(m1.hit_id)
     expect(view.pendingDisambigInstanceId).toBeNull()
   })
 
   it('marker click with ms.length === 0 → 只聚焦实例(selectedInstanceId)', async () => {
     const view = useViewStore()
     const { handleChartClick } = await import('../src/components/KlineChart')
-    const matches = [{ match_id: 'm1', children: ['e_other#0'], start_idx: 0, end_idx: 1, node_index: {}, predicate_trace: null }]
+    const matches = [{ hit_id: 'm1', children: ['e_other#0'], start_idx: 0, end_idx: 1, node_index: {}, predicate_trace: null }]
     handleChartClick({ seriesName: 'points', data: { instance_id: 'e_solo#0' } }, matches, view)
     expect(view.selectedInstanceId).toBe('e_solo#0')
     expect(view.focusedInstanceRef).toBe('e_solo#0')
@@ -137,7 +137,7 @@ describe('KlineChart click handler (Task 9 实例化)', () => {
   it('marker click with ms.length === 0 顺手清旧 group(与已选 group 互斥)', async () => {
     const view = useViewStore()
     const { handleChartClick } = await import('../src/components/KlineChart')
-    const matches = [{ match_id: 'm1', children: ['eA#0', 'eB#0'], start_idx: 0, end_idx: 1,
+    const matches = [{ hit_id: 'm1', children: ['eA#0', 'eB#0'], start_idx: 0, end_idx: 1,
       // 实例流契约(Task 4):matchedIds 初始集来自 node_index 精确实例引用(非 children 身份展开)
       node_index: { n0: 'eA#0', n1: 'eB#0' }, predicate_trace: null }]
     seedMatches(view, matches)   // 落地真实 match 数据,让 focusMatch 真正派生非空 highlightedEventIds(而非 tautological 0)
@@ -154,7 +154,7 @@ describe('KlineChart click handler (Task 9 实例化)', () => {
   it('marker click with ms.length === 1 → 直选 match + 精确聚焦实例', async () => {
     const view = useViewStore()
     const { handleChartClick } = await import('../src/components/KlineChart')
-    const matches = [{ match_id: 'm1', children: ['eA#0', 'eB#0', 'eC#0'], start_idx: 0, end_idx: 1,
+    const matches = [{ hit_id: 'm1', children: ['eA#0', 'eB#0', 'eC#0'], start_idx: 0, end_idx: 1,
       node_index: { n0: 'eA#0', n1: 'eB#0', n2: 'eC#0' }, predicate_trace: null }]
     seedMatches(view, matches)
     handleChartClick({ seriesName: 'intervals', data: { instance_id: 'eA#0' } }, matches, view)
@@ -169,11 +169,11 @@ describe('KlineChart click handler (Task 9 实例化)', () => {
     const view = useViewStore()
     const { handleChartClick } = await import('../src/components/KlineChart')
     const matches = [
-      { match_id: 'm1', children: ['eShared#0', 'eA#0'], start_idx: 0, end_idx: 1,
+      { hit_id: 'm1', children: ['eShared#0', 'eA#0'], start_idx: 0, end_idx: 1,
         node_index: { n0: 'eShared#0', n1: 'eA#0' }, predicate_trace: null },
-      { match_id: 'm3', children: ['eShared#0', 'eB#0'], start_idx: 0, end_idx: 1,
+      { hit_id: 'm3', children: ['eShared#0', 'eB#0'], start_idx: 0, end_idx: 1,
         node_index: { n0: 'eShared#0', n1: 'eB#0' }, predicate_trace: null },
-      { match_id: 'm5', children: ['eShared#0', 'eC#0'], start_idx: 0, end_idx: 1,
+      { hit_id: 'm5', children: ['eShared#0', 'eC#0'], start_idx: 0, end_idx: 1,
         node_index: { n0: 'eShared#0', n1: 'eC#0' }, predicate_trace: null },
     ]
     seedMatches(view, matches)   // focusEvent 内部改读 view.effectiveAnalysis(Task 3),不再直读传入的 matches 参数
@@ -192,9 +192,9 @@ describe('KlineChart click handler (Task 9 实例化)', () => {
     const view = useViewStore()
     const { handleChartClick } = await import('../src/components/KlineChart')
     const matches = [
-      { match_id: 'm1', children: ['eShared#0'], start_idx: 0, end_idx: 1,
+      { hit_id: 'm1', children: ['eShared#0'], start_idx: 0, end_idx: 1,
         node_index: { n0: 'eShared#0' }, predicate_trace: null },
-      { match_id: 'm2', children: ['eShared#0'], start_idx: 0, end_idx: 1,
+      { hit_id: 'm2', children: ['eShared#0'], start_idx: 0, end_idx: 1,
         node_index: { n0: 'eShared#0' }, predicate_trace: null },
     ]
     seedMatches(view, matches)   // focusEvent 内部改读 view.effectiveAnalysis(Task 3),不再直读传入的 matches 参数
@@ -209,9 +209,9 @@ describe('KlineChart click handler (Task 9 实例化)', () => {
     const view = useViewStore()
     const { handleChartClick } = await import('../src/components/KlineChart')
     const matches = [
-      { match_id: 'm1', children: ['eA#0', 'eB#0'], start_idx: 0, end_idx: 1,
+      { hit_id: 'm1', children: ['eA#0', 'eB#0'], start_idx: 0, end_idx: 1,
         node_index: { n0: 'eA#0', n1: 'eB#0' }, predicate_trace: null },
-      { match_id: 'm3', children: ['eA#0', 'eC#0'], start_idx: 0, end_idx: 1,
+      { hit_id: 'm3', children: ['eA#0', 'eC#0'], start_idx: 0, end_idx: 1,
         node_index: { n0: 'eA#0', n1: 'eC#0' }, predicate_trace: null },
     ]
     seedMatches(view, matches)
@@ -219,7 +219,7 @@ describe('KlineChart click handler (Task 9 实例化)', () => {
     handleChartClick({ seriesName: 'points', data: { instance_id: 'eA#0' } }, matches, view)
     expect(view.candidateMatchIds.size).toBe(2)
     // 再 click 候选中的 bracket m3
-    handleChartClick({ seriesName: 'brackets', data: { match_id: 'm3' } }, matches, view)
+    handleChartClick({ seriesName: 'brackets', data: { hit_id: 'm3' } }, matches, view)
     expect(view.selectedMatchId).toBe('m3')
     expect(view.highlightedEventIds.size).toBe(2)
     expect(view.highlightedEventIds.has('eA#0')).toBe(true)
@@ -235,9 +235,9 @@ describe('KlineChart click handler (Task 9 实例化)', () => {
     const view = useViewStore()
     const { handleChartClick } = await import('../src/components/KlineChart')
     const matches = [
-      { match_id: 'm1', children: ['eA#0', 'eB#0'], start_idx: 0, end_idx: 1,
+      { hit_id: 'm1', children: ['eA#0', 'eB#0'], start_idx: 0, end_idx: 1,
         node_index: { n0: 'eA#0', n1: 'eB#0' }, predicate_trace: null },
-      { match_id: 'm2', children: ['eC#0', 'eD#0'], start_idx: 0, end_idx: 1,
+      { hit_id: 'm2', children: ['eC#0', 'eD#0'], start_idx: 0, end_idx: 1,
         node_index: { n0: 'eC#0', n1: 'eD#0' }, predicate_trace: null },
     ]
     seedMatches(view, matches)   // focusEvent 内部改读 view.effectiveAnalysis(Task 3),不再直读传入的 matches 参数
@@ -246,7 +246,7 @@ describe('KlineChart click handler (Task 9 实例化)', () => {
     expect(view.focusedInstanceRef).toBe('eA#0')
     expect(view.selectedMatchId).toBe('m1')
     // 步骤 2:切换点 bracket m2,期望焦点整体切换 —— selectedMatchId → 'm2' 且实例焦点 → null
-    handleChartClick({ seriesName: 'brackets', data: { match_id: 'm2' } }, matches, view)
+    handleChartClick({ seriesName: 'brackets', data: { hit_id: 'm2' } }, matches, view)
     expect(view.selectedMatchId).toBe('m2')
     expect(view.focusedInstanceRef).toBeNull()
   })
@@ -353,7 +353,7 @@ describe('handleChartClick × highlightedEventIds 协议派生', () => {
         child_refs: {}, anchor_bo_id: 'bo_5#0' },
       { instance_id: 'bo_5#0', node_id: 'bo', start_idx: 5, end_idx: 5, child_refs: {} },
     ]
-    const matches = [{ match_id: 'match_1', start_idx: 5, end_idx: 8,
+    const matches = [{ hit_id: 'match_1', start_idx: 5, end_idx: 8,
       node_index: { burst: 'burst_1#0', tb: 'tb_1#0' },
       children: ['burst_1#0', 'tb_1#0'], predicate_trace: null }]
     const topology = {
@@ -371,10 +371,10 @@ describe('handleChartClick × highlightedEventIds 协议派生', () => {
         end_node: 'tb',
       }},
       scan: { scan_ts: 't', start_date: '2024-01-01', end_date: '2024-12-31', workers: 1,
-              scanned: 1, hits: 1, errors: 0, dataset_dir: '', params: '',
+              scanned: 1, hit_stocks: 1, errors: 0, dataset_dir: '', params: '',
               win_start: '2024-01-01', win_end: '2024-12-31', label_horizon: 20 },
       results: [{ symbol: 'X', per_pattern: { bottom_burst: {
-        summary: { matches: 1 }, analysis: { events, matches }, max_forward_return: null } } }],
+        summary: { hits: 1 }, analysis: { events, hits: matches }, max_forward_return: null } } }],
     } as any)
     view.symbol = 'X'
     view.activePatternId = 'bottom_burst'
@@ -405,10 +405,10 @@ describe('handleChartClick × marker filter matchedIdsOf 协议展开(Task 4)', 
 
   /** Task 4 fixture helper:抽离三 it 共享的 loadScanFile 骨架(单 pattern/单 symbol/单 result,
    * end_node 固定 'tb'),只保留 events/matches/topology 具体差异按参数传入。
-   * scan.hits/summary.matches 从 matches.length 派生(与各 it 原 inline 值一致:非空→hits=1)。*/
+   * scan.hit_stocks/summary.hits 从 matches.length 派生(与各 it 原 inline 值一致:非空→hit_stocks=1)。*/
   function seedFullFixture(
     view: ReturnType<typeof useViewStore>,
-    opts: { events: any[]; matches: MatchDict[]; topology: any; symbol?: string; activePatternId?: string },
+    opts: { events: any[]; matches: HitDict[]; topology: any; symbol?: string; activePatternId?: string },
   ): void {
     const { events, matches, topology, symbol = 'X', activePatternId = 'bottom_burst' } = opts
     view.loadScanFile({
@@ -417,10 +417,10 @@ describe('handleChartClick × marker filter matchedIdsOf 协议展开(Task 4)', 
         pattern_spec: { pattern_id: activePatternId, topology, event_styles: {} },
         end_node: 'tb' } },
       scan: { scan_ts: 't', start_date: '2024-01-01', end_date: '2024-12-31', workers: 1,
-              scanned: 1, hits: matches.length > 0 ? 1 : 0, errors: 0, dataset_dir: '', params: '',
+              scanned: 1, hit_stocks: matches.length > 0 ? 1 : 0, errors: 0, dataset_dir: '', params: '',
               win_start: '2024-01-01', win_end: '2024-12-31', label_horizon: 20 },
       results: [{ symbol, per_pattern: { [activePatternId]: {
-        summary: { matches: matches.length }, analysis: { events, matches }, max_forward_return: null } } }],
+        summary: { hits: matches.length }, analysis: { events, hits: matches }, max_forward_return: null } } }],
     } as any)
     view.symbol = symbol
     view.activePatternId = activePatternId
@@ -435,10 +435,10 @@ describe('handleChartClick × marker filter matchedIdsOf 协议展开(Task 4)', 
       { instance_id: 'tb_shared#0', node_id: 'tb', start_idx: 10, end_idx: 10, child_refs: {} },
     ]
     const matches = [
-      { match_id: 'match_A', start_idx: 5, end_idx: 10,
+      { hit_id: 'match_A', start_idx: 5, end_idx: 10,
         node_index: { tb: 'tb_shared#0' },
         children: ['tb_shared#0'], predicate_trace: null },
-      { match_id: 'match_B', start_idx: 5, end_idx: 12,
+      { hit_id: 'match_B', start_idx: 5, end_idx: 12,
         node_index: { tb: 'tb_shared#0' },
         children: ['tb_shared#0'], predicate_trace: null },
     ]
@@ -468,7 +468,7 @@ describe('handleChartClick × marker filter matchedIdsOf 协议展开(Task 4)', 
         child_refs: {}, anchor_bo_id: 'bo_5#0' },
       { instance_id: 'bo_5#0', node_id: 'bo', start_idx: 5, end_idx: 5, child_refs: {} },
     ]
-    const matches = [{ match_id: 'match_A', start_idx: 5, end_idx: 10,
+    const matches = [{ hit_id: 'match_A', start_idx: 5, end_idx: 10,
       node_index: { burst: 'burst_A#0', tb: 'tb_A#0' },
       children: ['burst_A#0', 'tb_A#0'], predicate_trace: null }]
     const topology = {
@@ -495,7 +495,7 @@ describe('handleChartClick × marker filter matchedIdsOf 协议展开(Task 4)', 
     const events = [
       { instance_id: 'bo_99#0', node_id: 'bo', start_idx: 99, end_idx: 99, child_refs: {} },
     ]
-    const matches: MatchDict[] = []
+    const matches: HitDict[] = []
     const topology = { nodes: [], edges: [] }
     seedFullFixture(view, { events, matches, topology })
     handleChartClick(
@@ -535,12 +535,12 @@ function makeFixture(): MultiScanResultFile {
         { instance_id: 'e_ta_3#0', node_id: 'ta', start_idx: 30, end_idx: 32,
           anchor_bo_id: 'e_bo_1#0', child_refs: {} },
       ],
-      matches: [
-        { match_id: 'm1', start_idx: 10, end_idx: 15, node_index: { ta: 'e_ta_1#0' }, children: ['e_ta_1#0'] },
-        { match_id: 'm2', start_idx: 12, end_idx: 22, node_index: { ta: 'e_ta_2#0' }, children: ['e_ta_2#0'] },
+      hits: [
+        { hit_id: 'm1', start_idx: 10, end_idx: 15, node_index: { ta: 'e_ta_1#0' }, children: ['e_ta_1#0'] },
+        { hit_id: 'm2', start_idx: 12, end_idx: 22, node_index: { ta: 'e_ta_2#0' }, children: ['e_ta_2#0'] },
         // e_ta_2 属于 m2;e_ta_3 不属于任何 match(0 归属)
       ],
-    } as any, summary: { matches: 2 } } as any } } as any],
+    } as any, summary: { hits: 2 } } as any } } as any],
     scan: { win_start: '2020-01-01', win_end: '2020-12-31', label_horizon: 20 } as any,
   } as any
 }
@@ -566,9 +566,9 @@ describe('handleChartClick · 焦点意图迁移(Task 3)', () => {
     view.loadScanFile(makeFixture())
     view.toggleExpandedNode('bo')                  // manual={bo}
     view.toggleExpandedNode('ta')                  // manual={bo,ta}(多展开)
-    const matches = view.effectiveAnalysis!.matches
+    const matches = view.effectiveAnalysis!.hits
     handleChartClick(
-      { seriesName: 'brackets', data: { match_id: 'm1' } },
+      { seriesName: 'brackets', data: { hit_id: 'm1' } },
       matches, view
     )
     expect(view.focusedMatchId).toBe('m1')
@@ -581,7 +581,7 @@ describe('handleChartClick · 焦点意图迁移(Task 3)', () => {
     const view = useViewStore()
     const { handleChartClick } = await import('../src/components/KlineChart')
     view.loadScanFile(makeFixture())
-    const matches = view.effectiveAnalysis!.matches
+    const matches = view.effectiveAnalysis!.hits
     handleChartClick(
       { seriesName: 'points', data: { instance_id: 'e_ta_1#0' } },
       matches, view

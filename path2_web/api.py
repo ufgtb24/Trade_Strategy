@@ -163,11 +163,11 @@ class ScanRequest(BaseModel):
     # 按引用通道:pid → app 目录下的 yaml 文件名(白名单 ^[A-Za-z0-9_\-]+\.yaml$)。
     # 语义 = 磁盘具名文件,后端自读自校验;文件身份落盘进 params_provenance
     params_files: dict[str, str] | None = None
-    price_min: float | None = None      # match 级:end_node 事件日收盘价下限(闭区间)
-    price_max: float | None = None      # match 级:end_node 事件日收盘价上限(闭区间)
+    price_min: float | None = None      # hit 级:end_node 事件日收盘价下限(闭区间)
+    price_max: float | None = None      # hit 级:end_node 事件日收盘价上限(闭区间)
     volume_min: float | None = None     # 股票级预筛:扫描区间内日均成交量必须严格大于此值
     note: str | None = None                             # scan 备注(命名实验)
-    # 首次穿越方向(分类量):per-match 注入 + ticker-scoped 随机日基线 + 集合级 stats
+    # 首次穿越方向(分类量):per-hit 注入 + ticker-scoped 随机日基线 + 集合级 stats
     first_passage_enabled: bool = True                  # 开关(False=不算首穿、向后兼容)
     first_passage_k: float = 5.0                        # 几何对称阈值倍数(上行 P(1+kM)、下行 P/(1+kM))
 
@@ -220,8 +220,8 @@ class ScanManager:
         self._scans[scan_id] = {"queue": q, "done": False, "last": None,
                                 "cancel": cancel_event, "save": save_event}
 
-        def on_progress(scanned, total, hits, errors):
-            evt = {"scanned": scanned, "total": total, "hits": hits, "errors": errors}
+        def on_progress(scanned, total, hit_stocks, errors):
+            evt = {"scanned": scanned, "total": total, "hit_stocks": hit_stocks, "errors": errors}
             self._scans[scan_id]["last"] = evt
             loop.call_soon_threadsafe(q.put_nowait, evt)
 
@@ -231,10 +231,10 @@ class ScanManager:
                 done = {"type": "done", **done_meta_fn(result)}
             except scan_mod.ScanCancelled:
                 done = {"type": "done", "cancelled": True, "error": None,
-                        "hits": 0, "errors": 0, "total": 0}
+                        "hit_stocks": 0, "errors": 0, "total": 0}
             except Exception as e:           # noqa: BLE001
                 done = {"type": "done", "error": f"{type(e).__name__}: {e}",
-                        "hits": 0, "errors": 0, "total": 0}
+                        "hit_stocks": 0, "errors": 0, "total": 0}
             self._scans[scan_id]["last"] = done
             self._scans[scan_id]["done"] = True
             loop.call_soon_threadsafe(q.put_nowait, done)
@@ -788,7 +788,7 @@ def build_router(*, registry, config_path, get_config, set_config,
             s = result["scan"]
             return {"pattern_ids": req.pattern_ids, "scan_ts": scan_ts,
                     "name": name,
-                    "hits": s["hits"], "errors": s["errors"], "total": s["scanned"],
+                    "hit_stocks": s["hit_stocks"], "errors": s["errors"], "total": s["scanned"],
                     "partial": bool(s.get("partial", False))}
 
         name = (req.note or "").strip() or scan_ts

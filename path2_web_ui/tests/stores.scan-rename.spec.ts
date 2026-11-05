@@ -10,7 +10,7 @@ describe('scan store · rename + open(name)', () => {
     const renameSpy = vi.spyOn(api, 'renameScan').mockResolvedValue({ name: '新名字' })
     const listSpy = vi.spyOn(api, 'listScans').mockResolvedValue([
       { name: '新名字', scan_ts: '20260729T100000', pattern_ids: ['bo_only'],
-        hits: 1, total: 10, size: 100, partial: false, per_pattern: {} },
+        hit_stocks: 1, total: 10, size: 100, partial: false, per_pattern: {} },
     ])
     const s = useScanStore()
     await s.rename('old', '新名字')
@@ -23,7 +23,7 @@ describe('scan store · rename + open(name)', () => {
     const loadSpy = vi.spyOn(api, 'loadScan').mockResolvedValue({
       pattern_ids: [], per_pattern: {}, scan: {
         scan_ts: '20260729T100000', name: 'myexp', start_date: '', end_date: '',
-        workers: 1, scanned: 0, hits: 0, errors: 0, dataset_dir: '',
+        workers: 1, scanned: 0, hit_stocks: 0, errors: 0, dataset_dir: '',
         win_start: '', win_end: '', label_horizon: 20,
       } as any, results: [],
     } as any)

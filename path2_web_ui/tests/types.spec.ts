@@ -5,7 +5,7 @@ import { isPoint } from '../src/types'
 describe('types', () => {
   it('fixtures conform (compiles) and helpers work', () => {
     expect(PATTERN.pattern_id).toBe('bottom_burst')
-    expect(SCAN_FILE.results[0].per_pattern['bottom_burst'].analysis.matches.length).toBe(1)
+    expect(SCAN_FILE.results[0].per_pattern['bottom_burst'].analysis.hits.length).toBe(1)
     expect(DIAG.nodes.bo.rel[0].ok_count).toBe(1)
     // 几何自描述
     expect(isPoint(ANALYSIS.events.find(e => e.instance_id === 'bo_9#0')!)).toBe(true)

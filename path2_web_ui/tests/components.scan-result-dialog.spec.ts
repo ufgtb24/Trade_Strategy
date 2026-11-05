@@ -7,16 +7,16 @@ import type { ScanHistoryEntry } from '../src/types'
 
 const ROWS: ScanHistoryEntry[] = [
   { name: 'tb深度28-38', scan_ts: '20260729T100000', pattern_ids: ['bottom_burst'],
-    hits: 3, total: 100, size: 2048, partial: false,
+    hit_stocks: 3, total: 100, size: 2048, partial: false,
     per_pattern: { bottom_burst: { hits: 12, median: 0.13,
                                    fp: { ratio: 0.526, random_ratio: 0.498 },
                                    params_consistent: false } } },
   { name: '20260728T090000', scan_ts: '20260728T090000', pattern_ids: ['bo_only'],
-    hits: 1, total: 100, size: 1024, partial: false,
+    hit_stocks: 1, total: 100, size: 1024, partial: false,
     per_pattern: { bo_only: { hits: 25, median: null, fp: null,
                               params_consistent: true } } },
   { name: '双pattern', scan_ts: '20260727T090000', pattern_ids: ['bo_only', 'bottom_burst'],
-    hits: 1, total: 100, size: 2048, partial: false,
+    hit_stocks: 1, total: 100, size: 2048, partial: false,
     per_pattern: { bo_only: { hits: 5, median: 0.08,
                               fp: { ratio: 0.6, random_ratio: 0.498 },
                               params_consistent: true },
@@ -106,7 +106,7 @@ describe('ScanResultDialog · 越过数据墙的旧扫描', () => {
 
   const OLD: ScanHistoryEntry = {
     name: '旧的', scan_ts: '20260601T090000', pattern_ids: ['bo_only'],
-    hits: null, total: 100, size: 1024, partial: false, old_scan: true,
+    hit_stocks: null, total: 100, size: 1024, partial: false, old_scan: true,
     per_pattern: { bo_only: { hits: null, median: null, fp: null, params_consistent: true } },
   }
 

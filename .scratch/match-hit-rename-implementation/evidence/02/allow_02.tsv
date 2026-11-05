@@ -1,0 +1,16 @@
+# 票 02 人工判定清单（照票 01 的格式，只收本票区域）：正则分不出来、读上下文判为可留的行。格式：相对路径<TAB>该行去掉首尾空白后的原文<TAB>类别
+path2_web/api.py	"""文件名白名单校验(防路径穿越)后拼绝对路径。fullmatch(非 match):Python	正则与模式匹配（讲 re.match 与 fullmatch 的差别）
+path2_web/api.py	正则 `$` 会放过「结尾换行前」,match() 会让 "a.yaml\n" 这类名字漏网——写路径	正则与模式匹配（讲 re.match 与 fullmatch 的差别）
+path2_web/api.py	return {"has_snapshot": False, "match": False, "diffs": [],	「一致 / 等于」：参数快照比较的 match 字段（拆分总览第 2 条）
+path2_web/api.py	return {"has_snapshot": True, "anchor_missing": True, "match": False,	「一致 / 等于」：参数快照比较的 match 字段
+path2_web/api.py	return {"has_snapshot": True, "match": not diffs, "diffs": diffs,	「一致 / 等于」：参数快照比较的 match 字段
+path2_web/stock_pool.py	# (类别, 正则):按顺序匹配,先命中者为准。除 spac_shell 外都不区分大小写。	中文「匹配」泛指：正则
+tests/path2_web/test_diagnose_instance_key.py	def test_diag_attr_row_instance_id_matches_analysis_multi_instance():	「一致 / 等于」：测试名
+tests/path2_web/test_diagnose_time.py	"""node 过滤只留匹配 node_id 的 attempt(真实 result 注入,非 vacuous;	中文「匹配」泛指：node_id 相等
+tests/path2_web/test_params_diff.py	def test_diff_match_when_identical(diff_client_factory):	「一致 / 等于」：参数快照比较
+tests/path2_web/test_params_diff.py	assert body["match"] is True	「一致 / 等于」：参数快照比较的 match 字段
+tests/path2_web/test_params_diff.py	assert body["match"] is False	「一致 / 等于」：参数快照比较的 match 字段
+tests/path2_web/test_params_diff.py	"""provenance=file:X → 锚 X 而非 params.yaml。snapshot 取 X 的值 → match=True;	「一致 / 等于」：参数快照比较的 match 字段
+tests/path2_web/test_params_files.py	def test_key_order_matches_to_dict():	「一致 / 等于」：测试名
+tests/path2_web/test_snapshot_fingerprint.py	def test_manifest_file_hashes_match_independent_sha256(snap):	「一致 / 等于」：测试名
+tests/path2_web/test_stock_pool.py	def test_volatility_scale_matches_first_passage_scale():	「一致 / 等于」：测试名

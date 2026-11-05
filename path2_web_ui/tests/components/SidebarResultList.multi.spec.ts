@@ -4,7 +4,7 @@ import { mount } from '@vue/test-utils'
 import SidebarResultList from '../../src/components/SidebarResultList.vue'
 import { useViewStore, SYMBOL_SORT_KEY } from '../../src/stores/view'
 
-const emptyAnalysis = { events: [], matches: [] }
+const emptyAnalysis = { events: [], hits: [] }
 const file = {
   pattern_ids: ['bo_only', 'bbb'],
   per_pattern: {
@@ -12,16 +12,16 @@ const file = {
     bbb:     { pattern_spec: { pattern_id: 'bbb',     topology: { nodes: [], edges: [] }, event_styles: {} }, end_node: 'tb' },
   },
   scan: { scan_ts: '20260627T120000', start_date: '2024-01-01', end_date: '2024-06-30',
-          workers: 1, scanned: 2, hits: 2, errors: 0, dataset_dir: '/d', params: 'd',
+          workers: 1, scanned: 2, hit_stocks: 2, errors: 0, dataset_dir: '/d', params: 'd',
           win_start: '2023-09-01', win_end: '2024-07-15', label_horizon: 20 },
   results: [
     { symbol: 'AAA', per_pattern: {
-      bo_only: { summary: { matches: 2 }, analysis: emptyAnalysis, max_forward_return: 0.34, min_forward_drawdown: -0.07 },
-      bbb:     { summary: { matches: 1 }, analysis: emptyAnalysis, max_forward_return: 0.10, min_forward_drawdown: -0.15 },
+      bo_only: { summary: { hits: 2 }, analysis: emptyAnalysis, max_forward_return: 0.34, min_forward_drawdown: -0.07 },
+      bbb:     { summary: { hits: 1 }, analysis: emptyAnalysis, max_forward_return: 0.10, min_forward_drawdown: -0.15 },
     }},
     { symbol: 'BBB', per_pattern: {
-      bo_only: { summary: { matches: 1 }, analysis: emptyAnalysis, max_forward_return: 0.50, min_forward_drawdown: null },
-      bbb:     { summary: { matches: 0 }, analysis: emptyAnalysis, max_forward_return: null, min_forward_drawdown: null },
+      bo_only: { summary: { hits: 1 }, analysis: emptyAnalysis, max_forward_return: 0.50, min_forward_drawdown: null },
+      bbb:     { summary: { hits: 0 }, analysis: emptyAnalysis, max_forward_return: null, min_forward_drawdown: null },
     }},
   ],
 }

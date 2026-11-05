@@ -188,12 +188,12 @@ def test_app_run_for_compare_stops_at_train_end(tmp_path, full_dir):
     body = r.json()
     assert body["scan"]["end_date"] == TRAIN_END and body["scan"]["win_end"] <= TRAIN_END
 
-    events, matches = body["analysis"]["events"], body["analysis"]["matches"]
-    assert events and matches
-    for d in events + matches:
+    events, hits = body["analysis"]["events"], body["analysis"]["hits"]
+    assert events and hits
+    for d in events + hits:
         idx = [v for k, v in d.items() if k.endswith("_idx") and isinstance(v, int)]
         assert idx and max(idx) < n, d
-    for m in matches:
+    for m in hits:
         assert all(e < n for _, e in m["buy_span"]) and m["buy_date"] <= TRAIN_END
 
     capped = full.loc[:TRAIN_END].reset_index()
@@ -214,7 +214,7 @@ def test_post_scan_clamps_end_and_reads_configured_dir(tmp_path, full_dir, monke
     def fake_run(**kw):
         got.update(kw)
         done.set()
-        return {"scan": {"hits": 0, "errors": 0, "scanned": 0}}
+        return {"scan": {"hit_stocks": 0, "errors": 0, "scanned": 0}}
     monkeypatch.setattr(scan_mod, "run_scan_multi", fake_run)
     c = _client(tmp_path, full_dir)
     r = c.post("/scan", json={"pattern_ids": ["bo_only"], "start_date": "2025-06-02",
@@ -275,8 +275,8 @@ def test_script_scan_reads_full_data_and_cannot_be_opened(tmp_path, full_dir, mo
 
 
 @pytest.mark.parametrize("scan_section", [
-    {"hits": 1, "scanned": 1},                                  # 截断之前扫的:没有 data_until
-    {"hits": 1, "scanned": 1, "data_until": "2026-03-31"},      # 晚于训练段末日
+    {"hit_stocks": 1, "scanned": 1},                                  # 截断之前扫的:没有 data_until
+    {"hit_stocks": 1, "scanned": 1, "data_until": "2026-03-31"},      # 晚于训练段末日
 ])
 def test_scan_beyond_data_wall_refused_and_numbers_hidden(tmp_path, full_dir, scan_section):
     scans = tmp_path / "outputs" / "scans"
@@ -285,11 +285,11 @@ def test_scan_beyond_data_wall_refused_and_numbers_hidden(tmp_path, full_dir, sc
         "pattern_ids": ["bo_only"], "scan": {"scan_ts": "20260906T231146", **scan_section},
         "per_pattern": {"bo_only": {"stats": {"median": 0.12},
                                     "first_passage_stats": {"n_bars": 3, "ratio": 0.5, "random_ratio": 0.4}}},
-        "results": [{"symbol": "AAA", "per_pattern": {"bo_only": {"summary": {"matches": 1}}}}]}))
+        "results": [{"symbol": "AAA", "per_pattern": {"bo_only": {"summary": {"hits": 1}}}}]}))
     c = _client(tmp_path, full_dir)
     assert c.get("/scans/old").status_code == 409
     row = next(r for r in c.get("/scans/").json() if r["name"] == "old")
-    assert row["old_scan"] is True and row["hits"] is None
+    assert row["old_scan"] is True and row["hit_stocks"] is None
     assert row["per_pattern"]["bo_only"] | {"params_consistent": None} == \
         {"hits": None, "median": None, "fp": None, "params_consistent": None}
     assert c.delete("/scans/old").status_code == 200                # 删照常能删

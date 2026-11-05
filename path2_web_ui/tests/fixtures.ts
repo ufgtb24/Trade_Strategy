@@ -53,8 +53,8 @@ export const ANALYSIS: Analysis = {
     { instance_id: 'bo_20#0', node_id: 'bo', instance_idx: 0, start_idx: 20, end_idx: 20,
       child_refs: {} }, // 未匹配
   ],
-  matches: [
-    { match_id: 'm1',
+  hits: [
+    { hit_id: 'm1',
       start_idx: 1, end_idx: 16,
       node_index: { down: 'down_1_6#0', side: 'side_4_12#0', bo: 'bo_9#0', tb: 'tb_16#0' },
       children: ['down_1_6#0', 'side_4_12#0', 'bo_9#0', 'bo_11#0', 'tb_16#0'],
@@ -72,13 +72,13 @@ export const SCAN_FILE: MultiScanResultFile = {
   },
   scan: {
     scan_ts: '20260603T120000', start_date: '2025-01-01', end_date: '2025-12-31',
-    workers: 8, scanned: 100, hits: 1, errors: 0, dataset_dir: '/x', params: 'default',
+    workers: 8, scanned: 100, hit_stocks: 1, errors: 0, dataset_dir: '/x', params: 'default',
     win_start: '2025-01-01', win_end: '2025-12-31', label_horizon: 20, first_passage_k: 2,
   },
   results: [
     { symbol: 'AAPL', per_pattern: {
       bottom_burst: {
-        summary: { down: 1, side: 1, bo: 3, tb: 1, matches: 1 },
+        summary: { down: 1, side: 1, bo: 3, tb: 1, hits: 1 },
         analysis: ANALYSIS,
         max_forward_return: null,
       },

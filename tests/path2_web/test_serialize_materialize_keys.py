@@ -2,7 +2,7 @@
 
 materialize_keys = 该 node detector 的 __init__ 构造参数键(去 self)。
 依据 author 约定:进 detector __init__ 的 = 物化层(卡 event 生成),
-留在 node.where 的 = where 层(卡升 match)。反射 detector 精确捕获此约定。
+留在 node.where 的 = where 层(卡升 hit)。反射 detector 精确捕获此约定。
 """
 from path2_apps.bottom_burst import build_pattern, load_params
 from path2_web.serialize import serialize_pattern

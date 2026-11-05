@@ -10,7 +10,7 @@ def test_topology_nodes_carry_solve():
     out = serialize_pattern(spec)
     by_id = {n["node_id"]: n for n in out["topology"]["nodes"]}
     assert by_id["bo"]["solve"] is True
-    assert by_id["pk"]["solve"] is False      # pk 只显示不参与匹配
+    assert by_id["pk"]["solve"] is False      # pk 只显示不参与求解
     assert by_id["burst"]["solve"] is True
 
 

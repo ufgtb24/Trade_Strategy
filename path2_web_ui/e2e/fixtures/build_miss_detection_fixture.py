@@ -5,14 +5,14 @@ path2_web/scan.py:run_scan_multi 同款结构),供 miss-detection-walkthrough.sp
 的 test.beforeAll 通过既有"打开历史"UI 流程加载。
 
 为什么不能直接用 uv run python scripts/path2/run_path2_web.py 起后再跑一次真实 /scan:
-真实 /scan(path2_web/scan.py:_scan_ticker_multi)对每只股票有 any_match 闸——
-所有 pattern 全无 match 的股票整支被丢弃、不进 results(scan.py:80-81)。这个闸对
+真实 /scan(path2_web/scan.py:_scan_ticker_multi)对每只股票有 any_hit 闸——
+所有 pattern 全无 hit 的股票整支被丢弃、不进 results(scan.py:80-81)。这个闸对
 生产扫描是对的(避免结果文件塞满零信号股),但恰恰挡住了本 e2e 要验证的核心场景:
-DGNX 全局 0 match(它就是"该出 pattern 却没出"的漏检典范,design spec §1.1 原例),
+DGNX 全局 0 hit(它就是"该出 pattern 却没出"的漏检典范,design spec §1.1 原例),
 正常 /scan 永远不会把它纳入 results,UI 的"打开历史→选股"路径就摸不到它。
 
 本脚本复刻 _scan_ticker_multi 的单股分析链路(build_pattern→attach_and_collect→
-analyze→detach→serialize_per_pattern_result),但去掉 any_match 闸——强制把
+analyze→detach→serialize_per_pattern_result),但去掉 any_hit 闸——强制把
 DGNX(entry A · BurstDetector chain_break)和 LIXT(entry B/C/D · 真实 anchor
 mismatch + combine 淘汰 + 一对 4-subcheck 全清 pair)两支都写进 results,不代表
 生产行为变化(scan.py 本身零改动),纯 e2e 测试夹具。
@@ -42,8 +42,8 @@ FIXED_SCAN_TS = "29991231T235959"
 PATTERN_ID = "bottom_burst"
 LABEL_HORIZON = 20
 # 两支 fixture 股覆盖不相交的 e2e 场景:
-#   DGNX · 2025-01-22..2026-04-16 · 全局 0 match · burst chain_break(entry A 头号案例)
-#   LIXT · 2021-04-19..2026-04-16 · 全局 0 match · burst_1054_1056/tb_1057 anchor 淘汰
+#   DGNX · 2025-01-22..2026-04-16 · 全局 0 hit · burst chain_break(entry A 头号案例)
+#   LIXT · 2021-04-19..2026-04-16 · 全局 0 hit · burst_1054_1056/tb_1057 anchor 淘汰
 #          链(entry C rejection_chain)+ burst_1054_1055→tb_1057 4-subcheck 全清
 #          (entry D 正向)+ 反向点击触发 auto swap(entry D swap)
 SYMBOLS = ["DGNX", "LIXT"]
@@ -77,8 +77,8 @@ def main() -> None:
         per_pattern_out = _analyze_symbol(spec, params, symbol)
         results.append({"symbol": symbol, "per_pattern": {PATTERN_ID: per_pattern_out}})
         n_events = len(per_pattern_out["analysis"]["events"])
-        n_matches = per_pattern_out["summary"]["matches"]
-        print(f"[fixture] {symbol}: {n_events} events, {n_matches} matches (force-included)")
+        n_hits = per_pattern_out["summary"]["hits"]
+        print(f"[fixture] {symbol}: {n_events} events, {n_hits} hits (force-included)")
 
     result = {
         "pattern_ids": [PATTERN_ID],
@@ -89,7 +89,7 @@ def main() -> None:
             "scan_ts": FIXED_SCAN_TS,
             "start_date": START_DATE, "end_date": END_DATE,
             "workers": 1,
-            "scanned": len(SYMBOLS), "hits": len(SYMBOLS), "errors": 0,
+            "scanned": len(SYMBOLS), "hit_stocks": len(SYMBOLS), "errors": 0,
             "dataset_dir": str(REPO / "datasets" / "pkls"),
             "params": "default",
             "win_start": START_DATE, "win_end": END_DATE,

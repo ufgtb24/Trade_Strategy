@@ -49,11 +49,11 @@ function makeClimbFixture(): MultiScanResultFile {
       child_refs: { members: ['bo_60#0'] } },
     { instance_id: 'bo_60#0', node_id: 'bo', start_idx: 60, end_idx: 60 },
   ] as any
-  a.matches = [
-    { match_id: 'm-full', start_idx: 4, end_idx: 20,
+  a.hits = [
+    { hit_id: 'm-full', start_idx: 4, end_idx: 20,
       node_index: { burst: 'burst_4_6#0', tb: 'tb_10_20#0' },
       children: ['burst_4_6#0', 'tb_10_20#0'] } as any,
-    { match_id: 'm-prefix', start_idx: 4, end_idx: 31,
+    { hit_id: 'm-prefix', start_idx: 4, end_idx: 31,
       node_index: { burst: 'burst_4_5#0', tb: 'tb_30_31#0' },
       children: ['burst_4_5#0', 'tb_30_31#0'] } as any,
   ]

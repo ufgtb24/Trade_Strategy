@@ -15,7 +15,7 @@ import { baseURL } from './ports'
 //
 // 归属发现:不写死具体 event_id。用 src/render/visible.ts::matchedIds 的算法原样在浏览器端
 // 复刻(matchedIdsJs),对 window.__e2e.view.effectiveAnalysis 实时计算「event_id → 归属
-// match_id 列表」,动态挑一个多归属(len>=2)与一个非孤立角色的单归属(len===1)event。
+// hit_id 列表」,动态挑一个多归属(len>=2)与一个非孤立角色的单归属(len===1)event。
 // 已用 Python 对当前两份 outputs/path2_web/scans/*.json(4825 symbol × 2 pattern)做穷举
 // 验证:BTMWW 的 bo_162/bo_163 因 burst 前缀族(burst_162_163 ⊂ burst_162_164)天然多归属
 // ——且这是当前 dag_spec 下唯一可能真实多归属的角色(bo,因为 tb/burst 在各自 match 里都是
@@ -109,7 +109,7 @@ async function setupChart(page: Page): Promise<void> {
   }, { timeout: 15_000 })
   // BTMWW/bottom_burst 已知 2 条 match(多归属发现的前提)
   await page.waitForFunction(
-    () => ((window as any).__e2e?.view?.effectiveAnalysis?.matches?.length ?? 0) >= 2,
+    () => ((window as any).__e2e?.view?.effectiveAnalysis?.hits?.length ?? 0) >= 2,
     { timeout: 15_000 },
   )
   await page.waitForTimeout(300)
@@ -132,7 +132,7 @@ type Attribution = {
 }
 
 /** 在浏览器端复刻 src/render/visible.ts::matchedIds 算法,对当前 symbol/pattern 的
- *  effectiveAnalysis 实时计算「event_id → 归属 match_id 列表」,挑一个多归属 + 一个
+ *  effectiveAnalysis 实时计算「event_id → 归属 hit_id 列表」,挑一个多归属 + 一个
  *  非孤立角色的单归属 event(单归属候选排除孤立角色,理由见文件头注释)。 */
 async function discoverAttribution(page: Page): Promise<Attribution> {
   return page.evaluate(() => {
@@ -163,7 +163,7 @@ async function discoverAttribution(page: Page): Promise<Attribution> {
     }
 
     const view = (window as any).__e2e.view
-    const matches = view.effectiveAnalysis.matches
+    const matches = view.effectiveAnalysis.hits
     const events = view.effectiveAnalysis.events
     const topology = view.effectivePattern.topology
     const edges = topology.edges
@@ -273,7 +273,7 @@ async function locateBracketPixel(page: Page, matchId: string): Promise<PixelPos
     if (!subCanvas) return null
     const idx = sub.getOption().series.findIndex((s: any) => s.name === 'brackets')
     const s = sub.getOption().series[idx]
-    const d = s?.data?.find((x: any) => x.match_id === mid)
+    const d = s?.data?.find((x: any) => x.hit_id === mid)
     if (!d) return null
     const rect = subCanvas.getBoundingClientRect()
     const px0 = sub.convertToPixel({ seriesIndex: idx }, [d.value[0], 0])
@@ -309,7 +309,7 @@ async function probeBracketStyle(page: Page, matchId: string) {
     const sub = (window as any).__e2e.chartSub()
     const idx = sub.getOption().series.findIndex((x: any) => x.name === 'brackets')
     const s = sub.getOption().series[idx]
-    const i = s.data.findIndex((d: any) => d.match_id === mid)
+    const i = s.data.findIndex((d: any) => d.hit_id === mid)
     if (i < 0) return null
     const d = s.data[i]
     const fakeApi = { value: (k: number) => d.value[k], coord: () => [100, 200], size: () => [10, 0] }
@@ -325,11 +325,11 @@ test('场景 1: bracket click → group 黑框亮 + bracket 深实边 + 命中�
   await setupChart(page)
 
   const matchIds: string[] = await page.evaluate(() =>
-    ((window as any).__e2e.view.effectiveAnalysis.matches as any[]).map((m) => m.event_id))
+    ((window as any).__e2e.view.effectiveAnalysis.hits as any[]).map((m) => m.event_id))
   const targetMatchId = matchIds[0]
 
   const barIdx = await page.evaluate((mid) => {
-    const m = ((window as any).__e2e.view.effectiveAnalysis.matches as any[]).find((x) => x.event_id === mid)
+    const m = ((window as any).__e2e.view.effectiveAnalysis.hits as any[]).find((x) => x.event_id === mid)
     return Math.floor((m.start_idx + m.end_idx) / 2)
   }, targetMatchId)
   await zoomAroundBar(page, barIdx)
@@ -452,7 +452,7 @@ test('场景 4: sidebar 命中匹配某行 click → 副图 bracket 反打 + tra
   await setupChart(page)
 
   const matchIds: string[] = await page.evaluate(() =>
-    ((window as any).__e2e.view.effectiveAnalysis.matches as any[]).map((m) => m.event_id))
+    ((window as any).__e2e.view.effectiveAnalysis.hits as any[]).map((m) => m.event_id))
   const targetIdx = matchIds.length > 1 ? 1 : 0
   const targetMatchId = matchIds[targetIdx]
 

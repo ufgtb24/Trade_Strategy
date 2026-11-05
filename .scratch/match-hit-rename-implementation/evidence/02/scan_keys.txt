@@ -1,0 +1,16 @@
+scanned 10 hit_stocks 5 errors 0 Σ hits 8
+含 match 字样的键: []
+含 hit 字样的键: ['hit_fp_counts', 'hit_id', 'hit_stocks', 'hits', 'per_leaf_hit_count_distribution']
+ok   scan.hit_stocks
+ok   scan 段没有 hits
+ok   summary.hits
+ok   analysis.hits
+ok   analysis 没有 matches
+ok   每条 hit 有 hit_id
+ok   hit_fp_counts
+ok   per_leaf_hit_count_distribution
+ok   hit_stocks = 有 hit 的股票数
+ok   data_until 不晚于训练段末日
+ok   读的是训练段副本
+[{"name": "t02-hit-rename-d", "hit_stocks": 5, "total": 10, "partial": false, "per_pattern_hits": {"bb_v1": 8}}]
+8aa53d9a90ec95c20434a590b6072de3ed86c2b30a8585281520cec8977b997c  outputs/path2_web/scans/t02-hit-rename-d.json

@@ -38,7 +38,7 @@ function seedStore(store: ReturnType<typeof useViewStore>, tbEvent: any, boEvent
     scan: { win_start: '2025-01-01', win_end: '2025-12-31' },
     analysis: {
       events: [boEvent, tbEvent],
-      matches: [],
+      hits: [],
       summary: {},
       gate_failures: [],
     },

@@ -5,8 +5,8 @@ import { useViewStore } from '../src/stores/view'
 vi.mock('../src/api', () => ({ saveWcMirror: async () => ({ ok: true } as any), clearWcMirror: async () => ({ ok: true } as any),
   getDiagnose: vi.fn(() => Promise.resolve(null)),
   getPreview: vi.fn(() => Promise.resolve({
-    analysis: { events: [], matches: [], node_index: {} },
-    summary: { events: 0, matches: 0 },
+    analysis: { events: [], hits: [], node_index: {} },
+    summary: { events: 0, hits: 0 },
     pattern_spec: {} as any, scan: {} as any,
   })),
   listScans: vi.fn(() => Promise.resolve([])),

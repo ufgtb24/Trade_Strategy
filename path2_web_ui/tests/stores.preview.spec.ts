@@ -33,11 +33,11 @@ const SCAN_FILE_WC = {
 
 const PREVIEW_ANALYSIS = {
   ...ANALYSIS,
-  matches: [{ ...ANALYSIS.matches[0], match_id: 'preview_match_1' }],
+  hits: [{ ...ANALYSIS.hits[0], hit_id: 'preview_match_1' }],
 }
 const PREVIEW_RESP = {
   analysis: PREVIEW_ANALYSIS,
-  summary: { events: 6, matches: 1 },
+  summary: { events: 6, hits: 1 },
   pattern_spec: PATTERN,
   scan: { ...SCAN_FILE.scan, win_start: '2025-01-01', win_end: '2025-12-31' },
 }
@@ -52,7 +52,7 @@ describe('view.preview computed', () => {
   it('effectiveAnalysis falls back to scanFile when previewEnabled=false', () => {
     const v = useViewStore()
     v.loadScanFile(SCAN_FILE_WC); v.selectSymbol('AAPL')
-    expect(v.effectiveAnalysis?.matches[0].match_id).toBe('m1')
+    expect(v.effectiveAnalysis?.hits[0].hit_id).toBe('m1')
   })
 
   it('effectiveAnalysis falls back when preview.symbol mismatches symbol', async () => {
@@ -72,7 +72,7 @@ describe('view.preview computed', () => {
     v.forkWorkingCopy('bottom_burst')
     await v.setPreviewEnabled(true)
     await flushPromises()
-    expect(v.effectiveAnalysis?.matches[0].match_id).toBe('preview_match_1')
+    expect(v.effectiveAnalysis?.hits[0].hit_id).toBe('preview_match_1')
   })
 
   it('effectivePattern uses preview pattern_spec when active', async () => {

@@ -9,7 +9,7 @@ import { baseURL } from './ports'
 // path2 漏检调查工具(docs/superpowers/specs/2026-07-07-path2-miss-detection-tools-design.md)
 // 5 入口端到端走查(Task 24 · Sprint 3 收尾)。
 //
-// 数据夹具:真实 /scan 的 any_match 闸(path2_web/scan.py:80-81)会把"全局 0 match"的股票
+// 数据夹具:真实 /scan 的 any_hit 闸(path2_web/scan.py:80-81)会把"全局 0 hit"的股票
 // 整支剔出结果——这恰恰挡住本 spec 要验证的核心场景(DGNX 就是"该出 pattern 却没出"的
 // 漏检典范)。e2e/fixtures/build_miss_detection_fixture.py 复刻单股分析链路但去掉该闸,
 // 强制把 DGNX(entry A)和 LIXT(entry B/C/D,真实 anchor 淘汰链 + 一对 4-subcheck 全清

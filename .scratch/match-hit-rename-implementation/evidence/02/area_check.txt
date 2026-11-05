@@ -1,0 +1,77 @@
+按行计（一行可能同时算进几类）：
+  mismatch 一族: 4
+  「一致 / 等于」：参数快照比较: 1
+  「一致 / 等于」：参数快照比较的 match 字段: 8
+  「一致 / 等于」：参数快照比较的 match 字段（拆分总览第 2 条）: 1
+  「一致 / 等于」：测试名: 4
+  中文「匹配」泛指：node_id 相等: 1
+  中文「匹配」泛指：正则: 1
+  正则与模式匹配: 18
+  正则与模式匹配（讲 re.match 与 fullmatch 的差别）: 2
+  测试框架: 5
+
+## 正则与模式匹配
+  path2_web/annotation/store.py:239: m = _FILE_RE.fullmatch(name)
+  path2_web/annotation/store.py:362: return max((int(_ID_RE.fullmatch(oid).group(3)) for kind, oid in values if kind in _ID_LETTER), default=0)
+  path2_web/annotation/store.py:437: elif kind in _ID_LETTER and _ID_RE.fullmatch(oid).group(2) != machine:
+  path2_web/annotation/store.py:510: m = _ID_RE.fullmatch(oid)
+  path2_web/annotation/store.py:594: if not isinstance(s, str) or not _DATE_RE.fullmatch(s):
+  path2_web/api.py:103: if not (isinstance(start, str) and _DATE_RE.fullmatch(start)
+  path2_web/api.py:104: and isinstance(end, str) and _DATE_RE.fullmatch(end)):
+  path2_web/api.py:119: if not name or not _SCAN_NAME_RE.fullmatch(name):
+  path2_web/api.py:518: if not _PARAM_FILE_RE.fullmatch(name):
+  path2_web/api.py:531: if _PARAM_FILE_RE.fullmatch(p.name))
+  path2_web/api.py:684: if not re.match(_TS_PATTERN, req.scan_ts):
+  path2_web/config.py:141: if not isinstance(name, str) or not _MACHINE_RE.fullmatch(name):
+  path2_web/config.py:154: if not (_DATE_RE.fullmatch(start) and _DATE_RE.fullmatch(end)):
+  path2_web/data.py:26: if not isinstance(symbol, str) or not _SYMBOL_RE.fullmatch(symbol) or ".." in symbol:
+  path2_web/scan.py:271: pkls = [p for p in pkls if pat.match(p.stem)]
+  path2_web/scan.py:450: if not re.fullmatch(r"[a-z][a-z0-9_]*", pid):
+  path2_web/snapshot_fingerprint.py:79: or not _HEX64.fullmatch(str(manifest.get("fingerprint")))
+  path2_web/stock_pool.py:117: if not (isinstance(sym, str) and sym and _DATE_RE.fullmatch(start) and _DATE_RE.fullmatch(end)
+
+## 正则与模式匹配（讲 re.match 与 fullmatch 的差别）
+  path2_web/api.py:514: """文件名白名单校验(防路径穿越)后拼绝对路径。fullmatch(非 match):Python
+  path2_web/api.py:515: 正则 `$` 会放过「结尾换行前」,match() 会让 "a.yaml\n" 这类名字漏网——写路径
+
+## mismatch 一族
+  path2_web/api.py:565: 否则 params.yaml)。前端 hash mismatch dot 数据源。老 scan(无 snapshot)→
+  tests/path2_web/test_annotation_api.py:120: def test_read_reports_conflict_and_fingerprint_mismatch(snapshot, adir, tmp_path):
+  tests/path2_web/test_annotation_store.py:400: def test_fingerprint_mismatch_is_flagged_and_state_still_returned(tmp_path):
+  tests/path2_web/test_params_diff.py:2: (锚由 params_provenance 决定,不总是 params.yaml;hash mismatch dot 数据源)。"""
+
+## 「一致 / 等于」：参数快照比较的 match 字段（拆分总览第 2 条）
+  path2_web/api.py:583: return {"has_snapshot": False, "match": False, "diffs": [],
+
+## 「一致 / 等于」：参数快照比较的 match 字段
+  path2_web/api.py:594: return {"has_snapshot": True, "anchor_missing": True, "match": False,
+  path2_web/api.py:607: return {"has_snapshot": True, "match": not diffs, "diffs": diffs,
+  tests/path2_web/test_params_diff.py:56: assert body["match"] is True
+  tests/path2_web/test_params_diff.py:67: assert body["match"] is False
+  tests/path2_web/test_params_diff.py:112: """provenance=file:X → 锚 X 而非 params.yaml。snapshot 取 X 的值 → match=True;
+  tests/path2_web/test_params_diff.py:122: assert body["match"] is True
+  tests/path2_web/test_params_diff.py:134: assert body["match"] is True
+  tests/path2_web/test_params_diff.py:149: assert body["match"] is False
+
+## 中文「匹配」泛指：正则
+  path2_web/stock_pool.py:44: # (类别, 正则):按顺序匹配,先命中者为准。除 spac_shell 外都不区分大小写。
+
+## 测试框架
+  tests/path2_web/test_annotation_store.py:439: with pytest.raises(store.AnnotationFileError, match="pc-20261103T090000.000Z-1.json"):
+  tests/path2_web/test_gate_collector_multistream.py:74: with pytest.raises(ValueError, match="pk"):
+  tests/path2_web/test_gate_collector_node_id.py:63: with pytest.raises(RuntimeError, match='一 node 一实例'):
+  tests/path2_web/test_params_dict.py:27: with pytest.raises(ValueError, match="nonexistent_field"):
+  tests/path2_web/test_snapshot_fingerprint.py:104: with pytest.raises(ManifestMissing, match=MANIFEST_NAME):
+
+## 「一致 / 等于」：测试名
+  tests/path2_web/test_diagnose_instance_key.py:66: def test_diag_attr_row_instance_id_matches_analysis_multi_instance():
+  tests/path2_web/test_params_files.py:94: def test_key_order_matches_to_dict():
+  tests/path2_web/test_snapshot_fingerprint.py:120: def test_manifest_file_hashes_match_independent_sha256(snap):
+  tests/path2_web/test_stock_pool.py:156: def test_volatility_scale_matches_first_passage_scale():
+
+## 中文「匹配」泛指：node_id 相等
+  tests/path2_web/test_diagnose_time.py:71: """node 过滤只留匹配 node_id 的 attempt(真实 result 注入,非 vacuous;
+
+## 「一致 / 等于」：参数快照比较
+  tests/path2_web/test_params_diff.py:48: def test_diff_match_when_identical(diff_client_factory):
+exit=0

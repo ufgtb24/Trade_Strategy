@@ -176,12 +176,12 @@ test('candidate banner sits outside sub-outer and stays put when scrolling', asy
   await page.mouse.up()
   await page.waitForTimeout(200)
 
-  // 就绪守卫:等 active pattern 的 analysis.matches 填充(≥2)后再置 candidate 态,
+  // 就绪守卫:等 active pattern 的 analysis.hits 填充(≥2)后再置 candidate 态,
   // 消除 effectiveAnalysis 异步就绪与固定 timeout 的竞态(banner 依赖 matches.length>=2)。
-  await page.waitForFunction(() => ((window as any).__e2e?.view?.effectiveAnalysis?.matches ?? []).length >= 2)
+  await page.waitForFunction(() => ((window as any).__e2e?.view?.effectiveAnalysis?.hits ?? []).length >= 2)
   await page.evaluate(() => {
     const view = (window as any).__e2e?.view
-    const matches = view?.effectiveAnalysis?.matches ?? []
+    const matches = view?.effectiveAnalysis?.hits ?? []
     if (matches.length >= 2) {
       view.setCandidateMatches(matches.slice(0, 2).map((m: any) => m.event_id))
       view.setPendingDisambig(matches[0].children?.[0] ?? 'x')
@@ -219,10 +219,10 @@ test('fit 态无滚动条:常态与 candidate 态 scrollHeight === clientHeight'
 
   // candidate 态:banner 出现在滚动容器外,不产生滚动(spec 验收 #1)
   // 就绪守卫:等 matches 填充(≥2)后再置 candidate 态,消除 effectiveAnalysis 异步就绪竞态。
-  await page.waitForFunction(() => ((window as any).__e2e?.view?.effectiveAnalysis?.matches ?? []).length >= 2)
+  await page.waitForFunction(() => ((window as any).__e2e?.view?.effectiveAnalysis?.hits ?? []).length >= 2)
   await page.evaluate(() => {
     const view = (window as any).__e2e?.view
-    const matches = view?.effectiveAnalysis?.matches ?? []
+    const matches = view?.effectiveAnalysis?.hits ?? []
     if (matches.length >= 2) {
       view.setCandidateMatches(matches.slice(0, 2).map((m: any) => m.event_id))
       view.setPendingDisambig(matches[0].children?.[0] ?? 'x')

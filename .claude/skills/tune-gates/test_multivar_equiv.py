@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """反转循环(scan_one_stock)vs 逐格 engine.analyze + serialize 的精确对拍(真实数据;缺失 skip):
 uv run pytest .claude/skills/tune-gates/test_multivar_equiv.py -q
-键 = (各节点 span, fr(12 位), 四态) 多重集 + 每股 match_fp_counts;覆盖随机 8 格 + 4 角点 + 一套收紧 where。
+键 = (各节点 span, fr(12 位), 四态) 多重集 + 每股 hit_fp_counts;覆盖随机 8 格 + 4 角点 + 一套收紧 where。
 
 2026-08-30:随 tb 方案 C 换代更新。旧版 docstring 记过一条"控制方裁定"——tb.max_day_drop_pct
 探针判定为 F 维,故放 SCAN_GRID 不放 WHERE_LEVELS——那是针对旧 tb detector(该阈值当年是
@@ -64,21 +64,21 @@ def _ref_keys(spec, p, win, lo, hi, s, e):
     res = analyze(spec, win, p)
     out = serialize_per_pattern_result(res, end_node="tb", label_horizon=H, win=win, start_ts=s, end_ts=e,
                                        price_min=0.5, price_max=30.0, first_passage_k=K, sample_window=(lo, hi))
-    keep = {m["match_id"] for m in out["analysis"]["matches"]}
+    keep = {m["hit_id"] for m in out["analysis"]["hits"]}
     # serialize 只给同一买点事件(buy_span)的第一条 match 填四态;长表每行都带满额四态——回填后逐行比
     fp_of_span = {}
-    for md in out["analysis"]["matches"]:
+    for md in out["analysis"]["hits"]:
         fp_of_span.setdefault(tuple(map(tuple, md["buy_span"])), md["first_passage"])
     keys = []
     for m in res.hits:
         if m.hit_id not in keep:
             continue
-        md = next(x for x in out["analysis"]["matches"] if x["match_id"] == m.hit_id)
+        md = next(x for x in out["analysis"]["hits"] if x["hit_id"] == m.hit_id)
         fp = fp_of_span[tuple(map(tuple, md["buy_span"]))] or {"up": 0, "down": 0, "both": 0, "none": 0}
         spans = tuple((nid, ev.start_idx, ev.end_idx) for nid, ev in sorted(m.node_index.items()))
         keys.append((spans, None if md["forward_return"] is None else round(md["forward_return"], 12),
                      fp["up"], fp["down"], fp["both"], fp["none"]))
-    return sorted(keys), out["match_fp_counts"]
+    return sorted(keys), out["hit_fp_counts"]
 
 
 def _pred(x, v, op):

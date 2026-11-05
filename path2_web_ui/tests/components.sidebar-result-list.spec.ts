@@ -25,7 +25,7 @@ function makeScanFile(pids: string[], withStats: boolean): MultiScanResultFile {
     scan: {
       scan_ts: '20260713T120000',
       start_date: '2025-01-01', end_date: '2026-12-31', workers: 2,
-      scanned: 0, hits: 0, errors: 0, dataset_dir: '', params: 'default',
+      scanned: 0, hit_stocks: 0, errors: 0, dataset_dir: '', params: 'default',
       win_start: '2025-01-01', win_end: '2026-12-31', label_horizon: 5, first_passage_k: 2,
     },
     results: [],
@@ -145,14 +145,14 @@ describe('SidebarResultList · symbol search UI', () => {
       },
       scan: {
         scan_ts: '20260714T120000', start_date: '2024-01-01', end_date: '2024-06-30',
-        workers: 1, scanned: symbols.length, hits: symbols.length, errors: 0,
+        workers: 1, scanned: symbols.length, hit_stocks: symbols.length, errors: 0,
         dataset_dir: '/d', params: 'default',
         win_start: '2024-01-01', win_end: '2024-06-30', label_horizon: 5, first_passage_k: 2,
       },
       results: symbols.map(s => ({
         symbol: s,
         per_pattern: {
-          bo_only: { summary: { matches: 1 }, analysis: { events: [], matches: [] }, max_forward_return: 0.1 },
+          bo_only: { summary: { hits: 1 }, analysis: { events: [], hits: [] }, max_forward_return: 0.1 },
         },
       })),
     }
@@ -272,14 +272,14 @@ describe('SidebarResultList · global char forwarding', () => {
       },
       scan: {
         scan_ts: '20260714T120000', start_date: '2024-01-01', end_date: '2024-06-30',
-        workers: 1, scanned: symbols.length, hits: symbols.length, errors: 0,
+        workers: 1, scanned: symbols.length, hit_stocks: symbols.length, errors: 0,
         dataset_dir: '/d', params: 'default',
         win_start: '2024-01-01', win_end: '2024-06-30', label_horizon: 5, first_passage_k: 2,
       },
       results: symbols.map(s => ({
         symbol: s,
         per_pattern: {
-          bo_only: { summary: { matches: 1 }, analysis: { events: [], matches: [] }, max_forward_return: 0.1 },
+          bo_only: { summary: { hits: 1 }, analysis: { events: [], hits: [] }, max_forward_return: 0.1 },
         },
       })),
     }
@@ -463,12 +463,12 @@ describe('SidebarResultList · pattern 命中股票数', () => {
     const f = makeScanFile(['bo_only', 'bbb'], false)
     f.results = [
       { symbol: 'AAA', per_pattern: {
-        bo_only: { summary: { matches: 2 }, analysis: { events: [], matches: [] }, max_forward_return: 0.34 },
-        bbb:     { summary: { matches: 1 }, analysis: { events: [], matches: [] }, max_forward_return: 0.10 },
+        bo_only: { summary: { hits: 2 }, analysis: { events: [], hits: [] }, max_forward_return: 0.34 },
+        bbb:     { summary: { hits: 1 }, analysis: { events: [], hits: [] }, max_forward_return: 0.10 },
       }},
       { symbol: 'BBB', per_pattern: {
-        bo_only: { summary: { matches: 1 }, analysis: { events: [], matches: [] }, max_forward_return: 0.50 },
-        bbb:     { summary: { matches: 0 }, analysis: { events: [], matches: [] }, max_forward_return: null },
+        bo_only: { summary: { hits: 1 }, analysis: { events: [], hits: [] }, max_forward_return: 0.50 },
+        bbb:     { summary: { hits: 0 }, analysis: { events: [], hits: [] }, max_forward_return: null },
       }},
     ]
     return f
@@ -508,7 +508,7 @@ describe('SidebarResultList · pattern 命中股票数', () => {
 
   it('零命中的 pattern 显示 0', async () => {
     const f = makeScanFileWithResults()
-    for (const r of f.results) (r.per_pattern as any).bbb.summary.matches = 0
+    for (const r of f.results) (r.per_pattern as any).bbb.summary.hits = 0
     const view = useViewStore()
     view.loadScanFile(f)
     const w = mount(SidebarResultList, { attachTo: document.body })

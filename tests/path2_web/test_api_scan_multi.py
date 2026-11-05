@@ -94,7 +94,7 @@ def test_post_scan_duplicate_name_409(app, outputs):
     """同名文件已存在 → 开扫前 409(不浪费扫描)。"""
     (outputs / "scans").mkdir(parents=True)
     (outputs / "scans" / "tb深度28-38.json").write_text(
-        json.dumps({"pattern_ids": [], "scan": {"hits": 0}}))
+        json.dumps({"pattern_ids": [], "scan": {"hit_stocks": 0}}))
     r = app.post("/scan", json={**_SCAN_BODY, "note": "tb深度28-38"})
     assert r.status_code == 409
 
@@ -102,7 +102,7 @@ def test_post_scan_duplicate_name_409(app, outputs):
 def test_rename_endpoint_moves_and_syncs(app, outputs):
     (outputs / "scans").mkdir(parents=True)
     (outputs / "scans" / "old.json").write_text(json.dumps({
-        "pattern_ids": [], "scan": {"scan_ts": "20260729T100000", "hits": 0, "note": "old"}}))
+        "pattern_ids": [], "scan": {"scan_ts": "20260729T100000", "hit_stocks": 0, "note": "old"}}))
     r = app.post("/scans/old/rename", json={"name": "新名字"})
     assert r.status_code == 200
     assert r.json()["name"] == "新名字"
@@ -114,7 +114,7 @@ def test_rename_endpoint_moves_and_syncs(app, outputs):
 def test_rename_collision_409(app, outputs):
     (outputs / "scans").mkdir(parents=True)
     for nm in ("a", "b"):
-        (outputs / "scans" / f"{nm}.json").write_text(json.dumps({"scan": {"hits": 0}}))
+        (outputs / "scans" / f"{nm}.json").write_text(json.dumps({"scan": {"hit_stocks": 0}}))
     r = app.post("/scans/a/rename", json={"name": "b"})
     assert r.status_code == 409
 
@@ -128,10 +128,10 @@ def test_rename_missing_404(app, outputs):
 def test_load_by_name(app, outputs):
     (outputs / "scans").mkdir(parents=True)
     (outputs / "scans" / "myexp.json").write_text(json.dumps(
-        {"scan": {"hits": 5, "data_until": TRAIN_END},
+        {"scan": {"hit_stocks": 5, "data_until": TRAIN_END},
          "pattern_ids": []}))
     r = app.get("/scans/myexp")
-    assert r.status_code == 200 and r.json()["scan"]["hits"] == 5
+    assert r.status_code == 200 and r.json()["scan"]["hit_stocks"] == 5
 
 
 # ---------------------------------------------------------------------------

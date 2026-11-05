@@ -1,5 +1,5 @@
 // 几何分流 + greedy lane packing(spec §8.2.4 / §8.3)。
-import type { EventDict, MatchDict } from '../types'
+import type { EventDict, HitDict } from '../types'
 
 interface Span { start_idx: number; end_idx: number }
 
@@ -44,7 +44,7 @@ export function packByBand<T extends { start_idx: number; end_idx: number }>(
 }
 
 /** 归属带:match.span lane packing + 1-based 序号(按 start 升序)。 */
-export function packBrackets(matches: MatchDict[]): (MatchDict & { lane: number; ordinal: number })[] {
+export function packBrackets(matches: HitDict[]): (HitDict & { lane: number; ordinal: number })[] {
   const ordered = [...matches].sort((a, b) => a.start_idx - b.start_idx)
   const withOrdinal = ordered.map((m, i) => ({ ...m, ordinal: i + 1 }))
   return packLanes(withOrdinal)
