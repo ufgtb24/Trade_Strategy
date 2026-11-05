@@ -1,0 +1,6 @@
+scan_id 20261104T224002
+data: {"scanned": 1, "total": 4, "hit_stocks": 0, "errors": 0}
+data: {"scanned": 2, "total": 4, "hit_stocks": 1, "errors": 0}
+data: {"scanned": 3, "total": 4, "hit_stocks": 2, "errors": 0}
+data: {"scanned": 4, "total": 4, "hit_stocks": 3, "errors": 0}
+data: {"type": "done", "pattern_ids": ["bb_v1"], "scan_ts": "20261104T224002", "name": "t02-sse", "hit_stocks": 3, "errors": 0, "total": 4, "partial": false}
