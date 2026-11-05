@@ -58,7 +58,7 @@ v1 的边界 = 手册再详细也是**绕过**限制,不是**消除**限制。�
 
 真正的补充在洞察二——UI 覆盖度断言不完全成立,得先修硬伤,才能让 P1/P2 二分"唯一未解"的叙事真正成立。
 
-**次要留项**:v2 里 `AnalysisResult.dropped_hits` 字段**保留**,但作用从"漏检归因数据源"改为"UI 呈现辅助"——用户视觉上会看到有 marker 但无 hit(设计过滤后残留的 marker),此时 tooltip 或候选级查询响应的 caveat 里一句"这些 marker 属于被消费的 role,当前 pattern 未触发"消除困惑。这是 UX 呈现约定,不是分类。
+**次要留项**:v2 里 `AnalysisResult.dropped_matches` 字段**保留**,但作用从"漏检归因数据源"改为"UI 呈现辅助"——用户视觉上会看到有 marker 但无 hit(设计过滤后残留的 marker),此时 tooltip 或候选级查询响应的 caveat 里一句"这些 marker 属于被消费的 role,当前 pattern 未触发"消除困惑。这是 UX 呈现约定,不是分类。
 
 ### 洞察二 · "UI 已覆盖 qualified 归因"是伪断言
 
@@ -87,7 +87,7 @@ v2 初稿曾把 UX 骨架定为"点股 → 一句全局摘要 banner",隐含前�
 - **Role-subset 查询**(拓扑点边):`GET /diagnose?scope=roles` → `pair_failures[]`(候选级)
 - **候选级查询**(点 K 线 marker):`GET /diagnose?scope=candidate` → `rejection_chain[]`(单 candidate 的淘汰路径)
 
-引擎侧的原子数据源(on_gate/SolveTrace/dropped_hits)本来就是逐 bar/逐 pair 记录,天然适配三种局部查询。撤的只是 UI 消费口径,数据源不动。
+引擎侧的原子数据源(on_gate/SolveTrace/dropped_matches)本来就是逐 bar/逐 pair 记录,天然适配三种局部查询。撤的只是 UI 消费口径,数据源不动。
 
 V1 D0"一键复制 driver 脚本"按钮**保留**,移到 K 线区右键菜单(banner 撤了,原来的落脚点没了)。
 
@@ -116,7 +116,7 @@ v2 引擎侧改动全部在 400 LOC 以内(Sprint 1 + Stage 0/1),Sprint 1 完成
 
 **~~O1 · 是否接受 P3 独立成一类?~~**(2026-07-06 已撤回)
 
-裁定:isolated_consumed 是设计正确过滤,不是漏检根因,P3 分类下架。`dropped_hits` 字段保留,作用改为 UI 呈现辅助(消除"有 marker 无 hit"的视觉困惑)。
+裁定:isolated_consumed 是设计正确过滤,不是漏检根因,P3 分类下架。`dropped_matches` 字段保留,作用改为 UI 呈现辅助(消除"有 marker 无 hit"的视觉困惑)。
 
 **O2 · Sprint 1 是否把前端消费层硬伤 A/B/C/D 全修?**(2026-07-06 更新:硬伤定位从 DetailSidebar 组件升级到前端消费层)
 

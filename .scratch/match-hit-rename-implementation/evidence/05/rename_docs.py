@@ -1,13 +1,14 @@
 """票 05：CLAUDE.md、docs/path2、docs/explain、docs/feature_candidates.md 里旧义 match 与「匹配」的逐处替换。
 
-只跑一次（在仓库根目录、git mv 之后）。每条替换带预期次数，次数不符整批不写；行数变了也不写，
+只跑一次（在仓库根目录、git mv 之后）；独立审查后改过的词已同步进表，从基线重跑能复现最终结果。每条替换带预期次数，次数不符整批不写；行数变了也不写，
 所以只换词、不增删行。不进表的（泛指的「匹配」、统计配对、过时旧名 MatchContext 等）一律不碰。
 
 译法：
 - 指产出（一次命中）：match → hit，「匹配」→「命中」；
 - 指求解过程（「匹配引擎」「匹配逻辑」「匹配期」）：→「求解」，和票 01 的 _solve.py、票 04 的
   authoring-path2-app 同一译法，「不参与命中」读不通；
-- 代码名照 spec：PatternMatch → PatternHit，.matches / matches: → hits，matches() → has_hit()。
+- 代码名照 spec：PatternMatch → PatternHit，.matches / matches: → hits，matches() → has_hit()；
+- 代码里已经没有的旧名（MatchContext、dropped_matches、SKIP_TILL_NEXT_MATCH 等）不改，进过时清单。
 """
 from __future__ import annotations
 
@@ -57,7 +58,7 @@ TABLE: dict[str, list[tuple[str, str, int]]] = {
         ("from path2.dag import analyze, matches", "from path2.dag import analyze, has_hit", 1),
         ("唯一公开的匹配入口", "唯一公开的求解入口", 1),
         ("边、匹配策略", "边、求解策略", 1),
-        ("并不参与形态匹配", "并不参与形态求解", 1),
+        ("并不参与形态匹配", "并不参与求解", 1),
         ("### `matches`", "### `has_hit`", 1),
         ("def matches(spec: PatternSpec", "def has_hit(spec: PatternSpec", 1),
         ("## 7. path2.dag.result — 匹配结果长什么样", "## 7. path2.dag.result — 命中结果长什么样", 1),
@@ -68,9 +69,9 @@ TABLE: dict[str, list[tuple[str, str, int]]] = {
         ("本身不进 `match`", "本身不进 `hit`", 1),
         ("你只能在匹配期把", "你只能在求解期把", 1),
         ("和匹配口径保持一致", "和求解口径保持一致", 1),
-        ("不参与形态匹配，只当", "不参与形态求解，只当", 1),
+        ("不参与形态匹配，只当", "不参与求解，只当", 1),
         ("却不在任何 `match` 里", "却不在任何 `hit` 里", 1),
-        ("形态匹配真正关心的是", "形态求解真正关心的是", 1),
+        ("形态匹配真正关心的是", "求解真正关心的是", 1),
     ],
     PATH2 + "concepts.md": [
         ("引擎负责匹配", "引擎负责求解", 1),
@@ -87,7 +88,7 @@ TABLE: dict[str, list[tuple[str, str, int]]] = {
         ("- `matches`：全部完整命中", "- `hits`：全部完整命中", 1),
     ],
     PATH2 + "example-bottom-burst.md": [
-        ("怎么在数据里把它匹配出来", "怎么在数据里把它求解出来", 1),
+        ("怎么在数据里把它匹配出来", "怎么在数据里把它找出来", 1),
         ("不是匹配算法", "不是求解算法", 1),
         ("怎么快速匹配", "怎么快速求解", 1),
         ("既不让它污染走势匹配", "既不让它污染走势命中", 1),
@@ -104,7 +105,7 @@ TABLE: dict[str, list[tuple[str, str, int]]] = {
         ("（events / matches / spec）", "（events / hits / spec）", 1),
     ],
     PATH2 + "getting-started.md": [
-        ("你的第一个走势匹配", "你的第一个走势求解", 1),
+        ("你的第一个走势匹配", "你的第一次命中", 1),
         ("引擎自动匹配", "引擎自动求解", 1),
         ("能匹配到东西", "能命中东西", 1),
         ("不影响匹配结果", "不影响求解结果", 1),
@@ -127,13 +128,13 @@ TABLE: dict[str, list[tuple[str, str, int]]] = {
     ],
     PATH2 + "guide/building-blocks.md": [
         ("不影响匹配结果", "不影响求解结果", 1),
-        ("只匹配到这一个孤立角色", "只命中这一个孤立角色", 1),
+        ("只匹配到这一个孤立角色", "只绑定这一个孤立角色", 1),
     ],
     PATH2 + "guide/edges.md": [
         ("任何匹配/搜索逻辑", "任何求解/搜索逻辑", 1),
         ("不会漏匹配", "不会漏命中", 1),
         ("就会漏匹配", "就会漏命中", 1),
-        ("不参与任何形态匹配", "不参与任何形态求解", 1),
+        ("不参与任何形态匹配", "不参与任何求解", 1),
         ("不用写一行匹配逻辑", "不用写一行求解逻辑", 1),
         ("**漏匹配**", "**漏命中**", 1),
         ("同样触发漏匹配", "同样触发漏命中", 1),
@@ -183,7 +184,6 @@ TABLE: dict[str, list[tuple[str, str, int]]] = {
     ],
     EXPLAIN + "path2_漏检分析_v1_v2_脉络.md": [
         ("以独立 match 形式", "以独立 hit 形式", 1),
-        ("dropped_matches", "dropped_hits", 3),
         ("有 marker 但无 match", "有 marker 但无 hit", 1),
         ("有 marker 无 match", "有 marker 无 hit", 1),
     ],

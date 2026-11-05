@@ -9,8 +9,8 @@
                  不转述数字；改动本身（旧词、新词）不打码。
 --summary        不列改动，只输出统计与校验：行数是否相同、没改的行是否逐字相同、每条「旧→新」的次数。
 
-校验「只换词」的办法：逐行比，行数必须相同（否则 FAIL、退出码 1），没改的行逐字相同；--summary 列出全部「旧→新」及次数，
-人读这张表确认里面只有换词。
+校验「只换词」的办法：逐行比，行数必须相同（否则 FAIL、退出码 1）；--summary 列出全部「旧→新」及次数，人读这张表确认
+里面只有换词。没有列在表里的差异不存在，因为每一处差异都会进表。
 """
 from __future__ import annotations
 
@@ -46,15 +46,16 @@ def changes(old: str, new: str) -> list[tuple[int, int, int, int]]:
 
 
 def mask(s: str, on: bool) -> str:
+    """on 时把数字换成 #，证据里不转述记忆中的数字。"""
     return re.sub(r"\d+", "#", s) if on else s
 
 
 def compare(label: str, before: str, after: str, args, stats: Counter, rows: list[str]) -> bool:
+    """逐行比一个文件：行数不同返回 False；否则把每处差异记进 stats（旧→新计数）和 rows（带前后文），返回 True。"""
     b_lines, a_lines = before.split("\n"), after.split("\n")
     if len(b_lines) != len(a_lines):
         print(f"FAIL 行数变了 {label}: {len(b_lines)} → {len(a_lines)}")
         return False
-    ok = True
     for i, (x, y) in enumerate(zip(b_lines, a_lines), 1):
         if x == y:
             continue
@@ -64,7 +65,7 @@ def compare(label: str, before: str, after: str, args, stats: Counter, rows: lis
             pre = mask(x[max(0, a - args.context):a], args.mask_digits)
             post = mask(x[b:b + args.context], args.mask_digits)
             rows.append(f"{label}:{i}: …{pre}[-{old}-]{{+{new}+}}{post}…")
-    return ok
+    return True
 
 
 def main() -> int:
@@ -108,7 +109,7 @@ def main() -> int:
                 ok = compare(new_path, x, y, args, stats, rows) and ok
 
     if args.summary:
-        print(f"文件 {n_files} 个，改动 {n_changed} 个，改动处 {sum(stats.values())}；行数与未改行逐字校验：{'通过' if ok else '不通过'}")
+        print(f"文件 {n_files} 个，改动 {n_changed} 个，改动处 {sum(stats.values())}；行数校验：{'通过' if ok else '不通过'}")
         for k, v in sorted(stats.items(), key=lambda kv: (-kv[1], kv[0])):
             print(f"  {v:4d}  {k}")
     else:

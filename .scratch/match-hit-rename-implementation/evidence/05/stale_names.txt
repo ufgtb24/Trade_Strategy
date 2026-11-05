@@ -120,3 +120,32 @@ docs/path2 里的代码名 305 个，代码里找不到 120 个（按提到次�
    1  tb_9  (miss-detection-guide.md 1)
    1  tb_binding  (guide/building-blocks.md 1)
    1  trigger_bar  (miss-detection-guide.md 1)
+
+## CLAUDE.md 点名退役的身份词（docs/path2 全文按整词计，含代码里还有这个词的）
+
+  55  event_id  (api-reference.md 13, guide/authoring-patterns.md 10, concepts.md 8, README.md 7, getting-started.md 6, guide/hits-and-results.md 6, guide/building-blocks.md 4, miss-detection-guide.md 1)
+   0  span_id  ()
+  80  class_id  (api-reference.md 23, guide/authoring-patterns.md 12, concepts.md 11, guide/hits-and-results.md 11, getting-started.md 10, example-bottom-burst.md 6, README.md 4, guide/building-blocks.md 3)
+  31  source_tag  (api-reference.md 10, concepts.md 6, guide/authoring-patterns.md 6, README.md 3, guide/hits-and-results.md 3, example-bottom-burst.md 2, guide/building-blocks.md 1)
+
+## 说法过时：孤立节点靠「出口过滤」丢残缺 hit（现在是孤立未消费 node 不求解，没有出口过滤）
+
+  README.md:238
+  README.md:250
+  README.md:252
+  api-reference.md:856
+  api-reference.md:936
+  api-reference.md:952
+  api-reference.md:1617
+  concepts.md:520
+  concepts.md:792
+  example-bottom-burst.md:216
+  example-bottom-burst.md:351
+  example-bottom-burst.md:475
+  getting-started.md:598
+  guide/authoring-patterns.md:776
+  guide/authoring-patterns.md:799
+  guide/building-blocks.md:623
+  guide/edges.md:360
+  guide/hits-and-results.md:490
+  guide/hits-and-results.md:493

@@ -24,16 +24,18 @@ KEEP = [
     ("中文「匹配」泛指（用途、粒度对得上）", re.compile(r"用途匹配|粒度匹配")),
     ("统计里的配对", re.compile(r"层匹配|非匹配|匹配后")),
 ]
-HIT = re.compile(r"match|匹配", re.IGNORECASE)
+OLD_WORD = re.compile(r"match|匹配", re.IGNORECASE)
 LINK = re.compile(r"\[\[([^\]\n]+)\]\]")
 MDLINK = re.compile(r"\]\(([^)\s]+\.md)\)")
 
 
 def norm(name: str) -> str:
+    """把 [[name]] 规整成可比的形式：去 .md，连字符当下划线。"""
     return name.removesuffix(".md").replace("-", "_")
 
 
 def front(path: Path) -> dict | None:
+    """解析文件开头的 yaml frontmatter；没有 frontmatter 返回 None，解析失败抛 yaml.YAMLError。"""
     text = path.read_text(encoding="utf-8")
     if not text.startswith("---\n"):
         return None
@@ -42,6 +44,7 @@ def front(path: Path) -> dict | None:
 
 
 def main() -> int:
+    """跑三项检查并打印，退出码见模块说明。"""
     mem = Path(sys.argv[1])
     files = sorted(mem.glob("*.md"))
     names = {p.stem for p in files}
@@ -76,13 +79,13 @@ def main() -> int:
                 for t in MDLINK.findall(line):
                     if not (mem / t).is_file():
                         dead[f"MEMORY.md -> ({t})"] += 1
-            if not HIT.search(line):
+            if not OLD_WORD.search(line):
                 continue
             rest = line
             for cat, rx in KEEP:
                 rest, n = rx.subn(" ", rest)
                 counts[cat] += n
-            if HIT.search(rest):
+            if OLD_WORD.search(rest):
                 left.append(f"{p.name}:{i}")
     print(f"文件 {len(files)} 个；frontmatter 解析失败或缺 name：{len(bad_front)}", bad_front or "")
     print("残留按类（次）：")

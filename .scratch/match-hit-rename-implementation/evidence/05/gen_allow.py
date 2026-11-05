@@ -19,6 +19,10 @@ RULES = [
     ("docs/path2/guide/hits-and-results.md", re.compile(r'"图匹配"理论'), GENERIC + "（图匹配这门理论的名字）"),
     ("CLAUDE.md", re.compile(r"用途匹配"), GENERIC + "（评估用途对得上）"),
     ("CLAUDE.md", re.compile(r"当匹配词"), GENERIC + "（skill 触发词）"),
+    ("docs/explain/next_mode_ptr_advance_通俗解释.md", re.compile(r"unmatched satisfy"),
+     "拿不准、单列（引用研究目录里的原词，说的是 tb 真锚不符却被放行，和样本状态 unmatched 无关；来源目录已不在）"),
+    ("docs/explain/path2_漏检分析_v1_v2_脉络.md", re.compile(r"dropped_matches"),
+     "docs/explain 过时旧名（代码里已没有的字段，单列）"),
     ("docs/explain/next_mode_ptr_advance_通俗解释.md", re.compile(r"SKIP_TILL_NEXT_MATCH"),
      "docs/explain 过时旧名（代码里已没有的枚举，单列）"),
     ("docs/explain/path2_pattern_framework_plain.md", re.compile(r"fuzzy (匹配|matching)"), "「一致 / 等于」的通用说法（fuzzy matching）"),
@@ -29,23 +33,30 @@ RULES = [
 
 def main() -> int:
     out = subprocess.run(
-        [sys.executable, str(HERE / "residual_check.py"), "area", "CLAUDE.md", "docs/path2", "docs/explain", "docs/feature_candidates.md"],
+        [sys.executable, str(HERE / "residual_check.py"), "area", "CLAUDE.md", "docs/path2", "docs/explain", "docs/feature_candidates.md", "--detail"],
         capture_output=True, text=True,
     ).stdout
     rows = []
     bad = 0
+    section = ""
     for raw in out.splitlines():
+        if raw.startswith("## "):
+            section = raw[3:]
+            continue
         m = re.match(r"  ((?:CLAUDE\.md|docs/[^:]+)):(\d+): (.*)$", raw)
         if not m:
             continue
-        rel, _, text = m.groups()
+        rel, lineno, text = m.groups()
         for prefix, rx, cat in RULES:
             if rel.startswith(prefix) and rx.search(text):
-                rows.append(f"{rel}\t{text}\t{cat}")
+                row = f"{rel}\t{text}\t{cat}"
+                if row not in rows:
+                    rows.append(row)
                 break
         else:
-            print("分不进去：", rel, _, text[:80])
-            bad += 1
+            if section == "未归类":        # 其他类别已被正则认领，没有规则改判就留在原类
+                print("分不进去：", rel, lineno, text[:80])
+                bad += 1
     head = "# 票 05 人工判定清单：读过上下文判为可留的行。格式：相对路径<TAB>该行去掉首尾空白后的原文<TAB>类别\n"
     (HERE / "allow_05.tsv").write_text(head + "\n".join(rows) + "\n", encoding="utf-8")
     print(f"写了 {len(rows)} 行，分不进去 {bad} 行")

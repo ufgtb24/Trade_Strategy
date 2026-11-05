@@ -141,8 +141,8 @@ def cmd_area(paths: list[str], allow_path: str | None, detail: bool, exclude: li
                 rows[scope].append(loc)
                 continue
             cats, left = classify(line)
-            if left and (rel, line.strip()) in allow:
-                cats, left = cats + [allow[(rel, line.strip())]], False
+            if (rel, line.strip()) in allow:   # 票 05 改：读过上下文的判定优先，正则把「unmatched satisfy」认成新义就是这样纠正
+                cats, left = [allow[(rel, line.strip())]], False
             if left:
                 counts["未归类"] += 1
                 rows["未归类"].append(loc)

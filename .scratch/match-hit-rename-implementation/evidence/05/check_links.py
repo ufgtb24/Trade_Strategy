@@ -19,6 +19,7 @@ FENCE_RE = re.compile(r"^\s*(```|~~~)")
 
 
 def body_lines(path: Path):
+    """逐行给出 (行号, 文本)，跳过围栏代码块。"""
     in_fence = False
     for i, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
         if FENCE_RE.match(line):
@@ -29,6 +30,7 @@ def body_lines(path: Path):
 
 
 def slug(text: str) -> str:
+    """按 GitHub 规则把标题文字转成锚点：去 Markdown 记号、小写、去标点、空格变连字符。"""
     text = re.sub(r"`([^`]*)`", r"\1", text)
     text = re.sub(r"\[([^\]]*)\]\([^)]*\)", r"\1", text)
     text = re.sub(r"[*_]{1,3}([^*_]+)[*_]{1,3}", r"\1", text).strip().lower()
@@ -42,6 +44,7 @@ def slug(text: str) -> str:
 
 
 def anchors(path: Path) -> set[str]:
+    """目标文件全部标题的锚点集合，重名的依次加 -1、-2。"""
     seen: dict[str, int] = {}
     found = set()
     for _, line in body_lines(path):
@@ -56,6 +59,7 @@ def anchors(path: Path) -> set[str]:
 
 
 def main(args: list[str]) -> int:
+    """检查给定文件或目录下的全部 Markdown，打印断链断锚，返回退出码。"""
     files: list[Path] = []
     for a in args:
         p = Path(a)

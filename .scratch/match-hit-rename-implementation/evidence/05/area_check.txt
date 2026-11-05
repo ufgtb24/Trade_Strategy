@@ -1,4 +1,5 @@
 按行计（一行可能同时算进几类）：
+  docs/explain 过时旧名（代码里已没有的字段，单列）: 3
   docs/explain 过时旧名（代码里已没有的枚举，单列）: 1
   docs/path2 过时旧名（代码里已没有，单列）: 21
   mismatch 一族: 2
@@ -7,7 +8,7 @@
   中文「匹配」泛指（skill 触发词）: 1
   中文「匹配」泛指（图匹配这门理论的名字）: 1
   中文「匹配」泛指（评估用途对得上）: 1
-  新义本身: 1
+  拿不准、单列（引用研究目录里的原词，说的是 tb 真锚不符却被放行，和样本状态 unmatched 无关；来源目录已不在）: 1
   统计里的配对: 19
   路径（研究目录、归档里的文件名，路径不动）: 2
 
@@ -20,12 +21,17 @@
 ## docs/explain 过时旧名（代码里已没有的枚举，单列）
   docs/explain/next_mode_ptr_advance_通俗解释.md:18: 这两行是 next 模式(`SKIP_TILL_NEXT_MATCH`)的实现核心——它的整套语义"事件互不重叠地依次生产 hit"就靠这两行硬钉死。删掉它们,引擎瞬间退化成"反复找同一个 hit"。
 
-## 新义本身
+## 拿不准、单列（引用研究目录里的原词，说的是 tb 真锚不符却被放行，和样本状态 unmatched 无关；来源目录已不在）
   docs/explain/next_mode_ptr_advance_通俗解释.md:197: `docs/research/2026-06-14_path2-tb-anchor-edge/` 里讨论的"unmatched satisfy"漂移,其实跟这两行有间接关系。
 
 ## 「一致 / 等于」的通用说法（fuzzy matching）
   docs/explain/path2_pattern_framework_plain.md:131: | "看起来像头肩顶"(模糊视觉) | Path2 是 strict bool predicate framework,要么命中要么不命中,没有"像 78%"这种概率 | 用 ML / DTW / fuzzy 匹配,这是另一个框架 |
   docs/explain/path2_pattern_framework_plain.md:134: | 同形态略畸变(双底但中段抖动) | 没有 fuzzy matching | 当前只能写多个 OR 子句,或参数化模板 + 容忍度阈值 |
+
+## docs/explain 过时旧名（代码里已没有的字段，单列）
+  docs/explain/path2_漏检分析_v1_v2_脉络.md:61: **次要留项**:v2 里 `AnalysisResult.dropped_matches` 字段**保留**,但作用从"漏检归因数据源"改为"UI 呈现辅助"——用户视觉上会看到有 marker 但无 hit(设计过滤后残留的 marker),此时 tooltip 或候选级查询响应的 caveat 里一句"这些 marker 属于被消费的 role,当前 pattern 未触发"消除困惑。这是 UX 呈现约定,不是分类。
+  docs/explain/path2_漏检分析_v1_v2_脉络.md:90: 引擎侧的原子数据源(on_gate/SolveTrace/dropped_matches)本来就是逐 bar/逐 pair 记录,天然适配三种局部查询。撤的只是 UI 消费口径,数据源不动。
+  docs/explain/path2_漏检分析_v1_v2_脉络.md:119: 裁定:isolated_consumed 是设计正确过滤,不是漏检根因,P3 分类下架。`dropped_matches` 字段保留,作用改为 UI 呈现辅助(消除"有 marker 无 hit"的视觉困惑)。
 
 ## 统计里的配对
   docs/feature_candidates.md:81: ### FC-004 · [对照基线] bb_v1 相对随机日：非匹配对照下更差，同波动率层匹配后更好
