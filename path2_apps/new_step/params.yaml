@@ -1,32 +1,20 @@
-# new_step 的参数。数值取自第一批标注里的 6 张图(CRNC、GEVO、INDO、QBTS、RGTI、SMX),全部待验证。
+# new_step 的参数。全部待验证:初值从用户 10 个正样本(CRNC、GEVO、INDO、QBTS、RGTI、SMX)量出、留余量。
 
-bo:
-  total_window: 20
-  min_side_bars: 6
-  min_relative_height: 0.2
-  exceed_threshold: 0.003
-  peak_supersede_threshold: 0.01
-  vol_baseline_period: 63
-  peak_measure: high
-  breakout_measure: close
-
-burst:
-  gap_max: 8
-  vol_baseline_period: 63
-  min_bos: 1
-  # 站上新平台:越过的不同峰数。标注里阶跃那串最少越过 2 个(INDO、RGTI)
-  distinct_pk_min: 2
-  # 阶跃放量:串内最大单根量比。标注里阶跃那串最小约 7(GEVO、INDO),取 5 留余量
-  vol_spike_min: 5
-
-tb:
-  # 阶跃后逐日判断企稳:沿用 bottom_burst 的多段企稳状态机,每个企稳段内每天都可买
-  max_rise_k: 1.5        # 涨离超过当时波动的这个倍数就算追涨,企稳段收口
-  stop_confirm_bars: 1   # 连续几根不创新低算企稳
-  vol_window: 14
-  anchor_mode: last_bo   # 起始支撑:阶跃那串末根突破的前一根收盘(旧平台顶);之后每段企稳收口时抬到那段的低点;收盘跌破就不再买。
-                         # 标注说的是「新平台最低点」,现有三种取法里 last_bo 最接近(span_min 会把回落到阶跃收盘之下的 RGTI 判死)
-  max_span: 60           # 阶跃后最多看多少根
-  measure: close
+plateau:
+  # ---- 识别器(切段)----
+  old_window: 15        # 旧平台固定取阶跃前多少根;也是开段时回看波动的窗
+  strong_k: 3.0         # 单根涨幅超过旧平台波动的这个倍数就开段 / 并入阶跃
+  max_step_bars: 5      # 一段阶跃最多几根
+  max_days: 40          # 阶跃之后最多看多少天
+  # ---- 条件(where)----
+  old_flat_max: 1.2     # 旧平台平:旧平台振幅不超过阶跃高度的这个倍数
+  step_rise_min: 0.4    # 大涨幅:阶跃累计涨幅(收益率)至少是这个值
+  vs_left_min: 4.0      # 阶跃比左侧强:最大单根涨幅至少是旧平台波动的这个倍数
+  vs_right_min: 2.5     # 阶跃比右侧强:最大单根涨幅至少是新平台波动的这个倍数
+  step_vol_min: 3.0     # 平台交界放量:阶跃里最大成交量至少是旧平台平均量的这个倍数
+  keep_min: 0.3         # 新平台守住:新平台(连同当天)最低收盘至少守住阶跃高度的这个比例
+  calm_max: 0.6         # 波动小:新平台振幅不超过阶跃高度的这个倍数
+  vs_high_max: 1.0      # 没追涨:当天收盘低于阶跃以来的最高价
+  body_min: 0.0         # 收阳:当天收盘高于开盘
 
 edges: {}

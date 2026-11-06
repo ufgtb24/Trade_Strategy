@@ -1,6 +1,6 @@
 ---
 name: diagnose-event
-description: 诊断 path2 单个 event(为什么没生成/没命中/confirm 位置)。用户说"诊断 SYM 的 INSTANCE_ID"或"SYM 的 tb/bo/burst 为什么..."时调。自动探测环境(scan 锚定)+ 按 reference 分析。
+description: 诊断 path2 单个 event(为什么没生成/没命中/confirm 位置)。用户说"诊断 SYM 的 INSTANCE_ID"或"SYM 的 tb/bo/burst 为什么..."、"new_step 的阶跃 / 新平台为什么没认出、这天为什么没买"时调。自动探测环境(scan 锚定)+ 按 reference 分析。
 ---
 
 # diagnose-event
@@ -38,6 +38,8 @@ print(format_declaration(env))
   detector 契约枚举——契约文件在 `detectors/` 目录,按 scan 的 pattern 对号:
   如 throwback_v4.md(V4 多段) / throwback_v1.md(V1 首段即停);无契约文件先读模块
   docstring + 源码)
+- new_step「阶跃为什么没认出 / 切成几级 / 这天为什么不是买点」→ 骨架 B,契约
+  `detectors/plateau.md`(该 app 的 params 声明不能用环境探测脚本的摘要,见契约文件)
 - "event 完全没生成" → 骨架 C(切窗 + detector.detect)
 
 诊断分析脚本临时写(/tmp),骨架 + API 签名在 reference.md。

@@ -1,4 +1,23 @@
 # compare 用的 mapping(暂行,格式见 path2_web/mapping.py):标注里的 pattern 用哪个 app、app 的哪个 node 认用户的哪个特征。
 pattern: new_step
 features:
-  w-pc-11: burst      # 站上新平台 ← 阶跃那串突破;买点(企稳段里的每一天)由 compare 画在 bracket 轨上
+  w-pc-11: plateau    # 站上新平台 ← 旧平台→阶跃→新平台的复合事件(截到当天);买点是它的 today 段
+# 给用户看的说明(格式见 path2_web/mapping.py):条件名、子段名旁显示的用户原话,取自 dag_spec.py 开头「约束归宿」那张表
+notes:
+  plateau: 站上新平台(旧平台 → 阶跃 → 新平台,新平台上每天截到当天)
+  old_plat: 旧平台(阶跃前固定长度的一段,不找旧平台起点)
+  step: 阶跃(一根或几根大幅上涨的强势K线)
+  new_plat: 新平台(阶跃之后到前一天)
+  today: 当天(买点)
+  plateau.old_flat: 旧平台平
+  plateau.step_big: 大涨幅
+  plateau.step_strong: 比左右两侧的波动率都高
+  plateau.step_vol: 平台交界放量
+  plateau.new_hold: 守在新平台最低点之上
+  plateau.new_calm: 波动小
+  plateau.no_chase: 没追涨
+  plateau.bull_close: 收阳线
+  step.step_big: 大涨幅
+  step.vs_left: 比左侧的波动率高
+  step.step_vol: 平台交界放量
+  today.bull_close: 收阳线
