@@ -1,0 +1,40 @@
+AssertionError: expected '' to be '1' // Object.is equality
+
+- Expected
++ Received
+
+- 1
+
+ ❯ tests/components.sidebar-result-list.spec.ts:313:30
+    311|     fireKey('1')
+    312|     await flushPromises()
+    313|     expect(view.symbolQuery).toBe('1')
+       |                              ^
+    314|     w.unmount()
+    315|   })
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/4]⎯
+
+ FAIL  tests/components.sidebar-result-list.spec.ts > SidebarResultList · global char forwarding > typing "." and "-" are forwarded
+AssertionError: expected '' to be '.-' // Object.is equality
+
+- Expected
++ Received
+
+- .-
+
+ ❯ tests/components.sidebar-result-list.spec.ts:341:30
+    339|     fireKey('-')
+    340|     await flushPromises()
+    341|     expect(view.symbolQuery).toBe('.-')
+       |                              ^
+    342|     w2.unmount()
+    343|   })
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/4]⎯
+
+ Test Files  1 failed | 106 passed (107)
+      Tests  4 failed | 1145 passed (1149)
+   Start at  11:28:56
+   Duration  13.64s (transform 31.69s, setup 0ms, collect 116.60s, tests 21.70s, environment 108.53s, prepare 22.79s)
+

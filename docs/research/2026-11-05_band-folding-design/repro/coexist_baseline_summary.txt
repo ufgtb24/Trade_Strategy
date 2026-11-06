@@ -1,0 +1,44 @@
+compare-coexist 改动前基线(2026-11-05,接手 fold-interaction 交接后、动任何重叠文件前;树 = HEAD 309e14a + 全部未提交改动)
+- vitest:107 文件 1149 条,失败 4 条,全在 tests/components.sidebar-result-list.spec.ts(与 fold-interaction 基线同一组)。原始输出 coexist_vitest_before.txt
+- vue-tsc -b:0 错误(coexist_tsc_before.txt 为空)
+- e2e(--workers=1,复用已在跑的 5171 dev server,annotate 系列自起临时后端):29 条里跑完 25 条,4 条失败:
+  annotate-open-by-symbol.spec.ts:95、annotate-rally-random.spec.ts:104 / 130 / 145(都是 expect(locator).toBeVisible() 等扫描入口的元素)。
+  subchart-band-zoom.spec.ts:68 C1 卡住(超时 600s 未结束),我手动停了这次运行,band-zoom 的 4 条没有基线。原始输出 coexist_e2e_before.txt
+
+改后(compare 落地后,同一棵树 + 本块改动):
+- vitest:107 文件 1147 条,失败 4 条,仍是 components.sidebar-result-list.spec.ts 那 4 条(同基线)。少的条数 = 删掉票 11 的 render.compare-overlay.spec.ts、新增 render.compare-layer.spec.ts 14 条与 subGeometry 5 条
+- vue-tsc -b:0 错误
+- tests/path2_web:514 过、1 个已知失败 test_serialize_tbseg_walked_from_container(同基线)
+- e2e(同一组 24 条):20 过、4 失败,失败的就是基线那 4 条(annotate-open-by-symbol:95、annotate-rally-random:104/130/145)。原始输出 coexist_e2e_after.txt
+- subchart-band-zoom 4 条:单独以 90 秒超时重跑,4 条都卡在「打开历史」里点一个固定的扫描时间戳那一行(setupChart 第 29 行附近),
+  8001 上没有那份扫描结果;和本块无关,基线时同样卡住
+
+最终树核算(2026-11-05 第三轮改完后;skeptic-2 指出上面「改后 1147 条」拆不开):
+上面的「改动前基线」不是一棵固定的树——取基线之后 fold-interaction 还在并行改它那几份测试(例如 geometry.spec.ts
+删掉 6 条旧几何测试),所以「改前 → 改后」的差拆不成逐文件的账。能复现的核算改成 HEAD(309e14a,已提交)对最终树:
+- 最终树:vitest 108 文件 1156 条,失败 4 条(仍是 components.sidebar-result-list.spec.ts 那 4 条);vue-tsc -b 0 错误。
+  e2e(--workers=1):annotate-compare 2、fold-rows 3、hit-event-disambig 3、annotate-samples 2、annotate-boxes 3,共 13 条全过。
+  sidebar-chart-focus 场景 5 改了期望,但它要一份固定的扫描结果,基线时就跑不了,这次也没跑。
+  逐文件条数取 vitest --reporter=json 的实际结果;HEAD 一侧按源码数 it( / test( 得出(这个数法在最终树上
+  除 annotate.membership.spec.ts 用 it.each 外逐文件与 vitest 实际条数一致;该文件 HEAD 与最终树相同,按实际 22 条记)。
+- HEAD:101 文件 1093 条。差 +63,逐文件:
+  compare 这一块(compare-coexist),净 +27:
+    tests/render.compare-overlay.spec.ts      16 → 删除(票 11 的旧 compare,随 compareOverlay.ts 退役;规格变更写在新文件头)
+    tests/render.compare-layer.spec.ts        新增 16(第三轮 +1:bracket 同起点一行里点 ▲ 选中的是它自己,做过反向对照)
+    tests/annotate.compare-read.spec.ts       新增 11
+    tests/render.compare-layout.spec.ts       新增 5
+    tests/stores.compare.spec.ts              新增 5(第三轮:聚焦不改档位、聚焦不选中、←/→ 等于点下一个样本、子框只认
+                                              配对 node 的子 node、当家行换走后聚焦作废;前三类与子框都做过反向对照:
+                                              把 store 改坏后对应用例变红)
+    tests/subGeometry.spec.ts                 25 → 30
+    tests/components.detail-sidebar.spec.ts   其中 +1(第三轮:主视图候选表选中行在当前档位画不出来时写 hidden;做过反向对照)
+  折叠主体(fold-interaction),净 +36(detail-sidebar 的 5 → 7 归这边,上面那 +1 另算):
+    tests/render.fold.spec.ts                 新增 18
+    tests/render.fold-rows.spec.ts            新增 10(compare-coexist 改过其中 bracket 底线那条)
+    tests/stores.step-focus.spec.ts           新增 11(第三轮 compare-coexist 把 keepLevel 那条改成「聚焦不改档位」)
+    tests/components.kline-click-fold.spec.ts 新增 5
+    tests/components.detail-sidebar.spec.ts   5 → 7(最终树 8,含上面 compare 那 +1)
+    tests/chart.spec.ts                       55 → 53
+    tests/components.candidate-status-bar.spec.ts 4 → 2
+    tests/geometry.spec.ts                    8 → 2
+  其余文件条数不变(内容可能改过,如 stores.focus-actions.spec.ts 第三轮把两条「自动降档」改成「档位不动」,条数不变)。

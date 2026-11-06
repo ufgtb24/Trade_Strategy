@@ -1,0 +1,125 @@
+
+Running 29 tests using 1 worker
+
+[1A[2K[1/29] e2e/annotate-boxes.spec.ts:28:3 › 画框、起名与词表 › 拖框起名刷新后还在;轨上拖出带名字的框;改起止;属性回到 null;子框轨;改名处处生效;合并预览与拆回
+[1A[2K[2/29] e2e/annotate-boxes.spec.ts:152:3 › 画框、起名与词表 › 选中框按 Delete 删框;焦点在输入框里时不删
+[1A[2K[3/29] e2e/annotate-boxes.spec.ts:209:3 › 冲突与指纹不符 › 两种提示各出现一次,图照常显示;冲突看过后不再出现
+[1A[2K[4/29] e2e/annotate-compare.spec.ts:88:3 › compare / app 叠画(bo_only + 手写 mapping) › event 在对应特征的轨上、hit 在 bracket 轨上,没有对照 tag,不越过 2025-12-31;没有 mapping 的 pattern 下 compare 是灰的
+[1A[2K[5/29] e2e/annotate-compare.spec.ts:170:3 › compare / app 叠画(bo_only + 手写 mapping) › compare 下用样本卡、代码输入、random、rally 换股票不退出 compare;链接进来落在 annotate
+[1A[2K[6/29] e2e/annotate-direct-links.spec.ts:63:3 › 直达链接 › 股票 + 日期:打开对的股票、图窗停在那天附近、落在 annotate;晚于 2025-12-31 的截到 2025-12-31;代码不存在有提示
+[1A[2K[7/29] e2e/annotate-direct-links.spec.ts:98:3 › 直达链接 › 样本编号:打开样本所在的图并选中它;不存在的编号、认不出的写法有明确提示
+[1A[2K[8/29] e2e/annotate-grouping.spec.ts:88:3 › 归组与 pattern 页 › pattern 页的计数与点开分排、definition、打开样本、轨序;unsorted 页按骨架分行、整行 move、刷新后还在
+[1A[2K[9/29] e2e/annotate-open-by-symbol.spec.ts:58:3 › 按代码打开 · annotate › 副本里的代码回车打开:K 线止于 2025-12-31、只有 K 线和成交量;副本里没有的代码报 not_found
+[1A[2K[10/29] e2e/annotate-open-by-symbol.spec.ts:95:3 › 按代码打开 · annotate › 现有扫描入口照旧能用:扫描结果是 app 视图;按代码打开切到 annotate;再从扫描列表选股回到 app
+[1A[2K  1) e2e/annotate-open-by-symbol.spec.ts:95:3 › 按代码打开 · annotate › 现有扫描入口照旧能用:扫描结果是 app 视图;按代码打开切到 annotate;再从扫描列表选股回到 app 
+
+    Error: [2mexpect([22m[31mlocator[39m[2m).[22mtoBeVisible[2m([22m[2m)[22m failed
+
+    Locator: locator('td.sym[data-symbol]').first()
+    Expected: visible
+    Timeout: 30000ms
+    Error: element(s) not found
+
+    Call log:
+    [2m  - Expect "toBeVisible" with timeout 30000ms[22m
+    [2m  - waiting for locator('td.sym[data-symbol]').first()[22m
+
+
+      103 |     await page.getByRole('button', { name: /^Open$/ }).click()
+      104 |     const firstRow = page.locator('td.sym[data-symbol]').first()
+    > 105 |     await expect(firstRow).toBeVisible({ timeout: 30_000 })
+          |                            ^
+      106 |     const scanSym = await firstRow.getAttribute('data-symbol')
+      107 |
+      108 |     // app:档位控件在,副图画出 app 的产物
+        at /home/yu/PycharmProjects/Trade_Strategy/path2_web_ui/e2e/annotate-open-by-symbol.spec.ts:105:28
+
+    Error Context: test-results/annotate-open-by-symbol-按代-8bd53-开切到-annotate-再从扫描列表选股回到-app/error-context.md
+
+
+[1A[2K[11/29] e2e/annotate-open-by-symbol.spec.ts:129:3 › 按代码打开 · annotate › 后端:非法代码 400,不存在 404
+[1A[2K[12/29] e2e/annotate-rally-random.spec.ts:104:3 › 找图入口 · rally / random › rally:从 app 视图点一行 → annotate,图停在那段涨之前、看得见那段涨,止于 2025-12-31
+[1A[2K  2) e2e/annotate-rally-random.spec.ts:104:3 › 找图入口 · rally / random › rally:从 app 视图点一行 → annotate,图停在那段涨之前、看得见那段涨,止于 2025-12-31 
+
+    Error: [2mexpect([22m[31mlocator[39m[2m).[22mtoBeVisible[2m([22m[2m)[22m failed
+
+    Locator: locator('td.sym[data-symbol]').first()
+    Expected: visible
+    Timeout: 30000ms
+    Error: element(s) not found
+
+    Call log:
+    [2m  - Expect "toBeVisible" with timeout 30000ms[22m
+    [2m  - waiting for locator('td.sym[data-symbol]').first()[22m
+
+
+      44 |   await page.locator('.file-list tbody tr').first().click()
+      45 |   await page.getByRole('button', { name: /^Open$/ }).click()
+    > 46 |   await expect(page.locator('td.sym[data-symbol]').first()).toBeVisible({ timeout: 30_000 })
+         |                                                             ^
+      47 |   await expect(page.getByTestId('level-control')).toBeVisible()
+      48 | }
+      49 |
+        at enterAppView (/home/yu/PycharmProjects/Trade_Strategy/path2_web_ui/e2e/annotate-rally-random.spec.ts:46:61)
+        at /home/yu/PycharmProjects/Trade_Strategy/path2_web_ui/e2e/annotate-rally-random.spec.ts:105:5
+
+    Error Context: test-results/annotate-rally-random-找图入口-988c1-在那段涨之前、看得见那段涨-止于-2025-12-31/error-context.md
+
+
+[1A[2K[13/29] e2e/annotate-rally-random.spec.ts:130:3 › 找图入口 · rally / random › random:从 app 视图点一下 → annotate,图窗不超过 250 根、止于 2025-12-31
+[1A[2K  3) e2e/annotate-rally-random.spec.ts:130:3 › 找图入口 · rally / random › random:从 app 视图点一下 → annotate,图窗不超过 250 根、止于 2025-12-31 
+
+    Error: [2mexpect([22m[31mlocator[39m[2m).[22mtoBeVisible[2m([22m[2m)[22m failed
+
+    Locator: locator('td.sym[data-symbol]').first()
+    Expected: visible
+    Timeout: 30000ms
+    Error: element(s) not found
+
+    Call log:
+    [2m  - Expect "toBeVisible" with timeout 30000ms[22m
+    [2m  - waiting for locator('td.sym[data-symbol]').first()[22m
+
+
+      44 |   await page.locator('.file-list tbody tr').first().click()
+      45 |   await page.getByRole('button', { name: /^Open$/ }).click()
+    > 46 |   await expect(page.locator('td.sym[data-symbol]').first()).toBeVisible({ timeout: 30_000 })
+         |                                                             ^
+      47 |   await expect(page.getByTestId('level-control')).toBeVisible()
+      48 | }
+      49 |
+        at enterAppView (/home/yu/PycharmProjects/Trade_Strategy/path2_web_ui/e2e/annotate-rally-random.spec.ts:46:61)
+        at /home/yu/PycharmProjects/Trade_Strategy/path2_web_ui/e2e/annotate-rally-random.spec.ts:132:5
+
+    Error Context: test-results/annotate-rally-random-找图入口-b6210-e-图窗不超过-250-根、止于-2025-12-31/error-context.md
+
+
+[1A[2K[14/29] e2e/annotate-rally-random.spec.ts:145:3 › 找图入口 · rally / random › 看过什么一律不记:连点几行 rally、几次 random,文件与 localStorage 都不变
+[1A[2K  4) e2e/annotate-rally-random.spec.ts:145:3 › 找图入口 · rally / random › 看过什么一律不记:连点几行 rally、几次 random,文件与 localStorage 都不变 
+
+    Error: spawnSync /bin/sh ENOBUFS
+
+      75 |                 /^.. \.playwright-mcp\//, /^.. path2_web_ui\/node_modules\//, /__pycache__\//,
+      76 |                 /^.. \.venv\//, /^.. \.pytest_cache\//]
+    > 77 |   const status = execSync('git status --porcelain --ignored --untracked-files=all', { cwd: REPO, encoding: 'utf8' })
+         |                  ^
+      78 |     .split('\n').filter(l => l && !skip.some(r => r.test(l)))
+      79 |   const ann = execSync('find -L annotations -type f -printf "%p %s %T@\\n" 2>/dev/null || true',
+      80 |                        { cwd: REPO, encoding: 'utf8' }).split('\n').filter(Boolean)
+        at recordsSnapshot (/home/yu/PycharmProjects/Trade_Strategy/path2_web_ui/e2e/annotate-rally-random.spec.ts:77:18)
+        at /home/yu/PycharmProjects/Trade_Strategy/path2_web_ui/e2e/annotate-rally-random.spec.ts:149:25
+
+    Error Context: test-results/annotate-rally-random-找图入口-0cbb1-random-文件与-localStorage-都不变/error-context.md
+
+
+[1A[2K[15/29] e2e/annotate-ref-peaks.spec.ts:47:3 › 参照层 peaks › 默认关;勾上画出峰线(同 /peaks、止于 2025-12-31);换股票自动关
+[1A[2K[16/29] e2e/annotate-ref-peaks.spec.ts:85:3 › 参照层 peaks › app 下不能用:复选框变灰、不能勾
+[1A[2K[17/29] e2e/annotate-samples.spec.ts:77:3 › 放样本与成员框 › 自动收进之前的框、刷新不变;跨过样本日收不进;拖框边停在样本日;换掉当前样本后冻结;手动点进点出
+[1A[2K[18/29] e2e/annotate-samples.spec.ts:222:3 › 保存被拒 › 另一台机器同步来的修改让本页的改动越界:界面写出原因,重读后框还在,再拖就停在样本日
+[1A[2K[19/29] e2e/fold-rows.spec.ts:57:1 › 族行、当前日竖线、←/→ 与 Esc
+[1A[2K[20/29] e2e/fold-rows.spec.ts:121:1 › 点一格:选中框、当前日、当家行;点共用的阶跃格:待选与候选实线框
+[1A[2K[21/29] e2e/fold-rows.spec.ts:181:1 › 副图竖直放大:副图变高、主图变矮;族行数不变、行高按倍数变
+[1A[2K[22/29] e2e/hit-event-disambig.spec.ts:60:1 › multi-hit: setCandidateHits → candidate banner appears
+[1A[2K[23/29] e2e/hit-event-disambig.spec.ts:81:1 › Esc clears candidate: banner disappears
+[1A[2K[24/29] e2e/hit-event-disambig.spec.ts:99:1 › switch ticker clears candidate: banner disappears
+[1A[2K[25/29] e2e/subchart-band-zoom.spec.ts:68:1 › C1: 点 + 按钮 → sub-inner height 涨、主图 flex 缩、readout 显示因子
