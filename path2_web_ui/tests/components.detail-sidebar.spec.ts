@@ -5,6 +5,7 @@ import { setActivePinia, createPinia } from 'pinia'
 import { mount, flushPromises } from '@vue/test-utils'
 import DetailSidebar from '../src/components/DetailSidebar.vue'
 import { useViewStore } from '../src/stores/view'
+import { getDiagnose } from '../src/api'
 import type { MultiScanResultFile } from '../src/types'
 
 // diag 经 view.ts 内部 watch([symbol,scanFile,activePatternId,...],async...) 异步拉取,
@@ -99,6 +100,31 @@ describe('DetailSidebar · Task 4 视图分化', () => {
     expect(selectedRows.length).toBe(1)
   })
 
+  it('聚焦不改档位:level=in_hit 时点一个不在 hit 里的候选,档位不动,选中的那一行写 hidden', async () => {
+    // 夹具里的事件都在 hit 里:另加一个不在任何 hit 里的 ta(analysis 与 diag 各一行)
+    const extra = { instance_id: 'e_ta_3#0', node_id: 'ta', start_idx: 30, end_idx: 33, clauses: {} }
+    const base: any = await (getDiagnose as any)()
+    vi.mocked(getDiagnose).mockResolvedValueOnce({ ...base, nodes: { ...base.nodes,
+      ta: { ...base.nodes.ta, attr: [...base.nodes.ta.attr, extra] } } })
+    const fx: any = makeFixture()
+    fx.results[0].per_pattern.p1.analysis.events.push({ node_id: 'ta', instance_id: 'e_ta_3#0', instance_idx: 0,
+                                                        start_idx: 30, end_idx: 33, child_refs: {} })
+    const view = useViewStore()
+    view.loadScanFile(fx)
+    view.setLevel('in_hit')
+    await flushPromises()                         // diag 落地
+    view.focusEvent('e_ta_3#0')                   // 不在任何 hit 里
+    const wrapper = mount(DetailSidebar)
+    await flushPromises()
+    expect(view.level).toBe('in_hit')
+    const tags = wrapper.findAll('[data-testid="candidate-hidden"]')
+    expect(tags.length).toBe(1)
+    expect(tags[0].element.closest('.attr-row')!.classList.contains('attr-row--selected')).toBe(true)
+    view.focusEvent('e_ta_1#0')                   // in_hit 的那个画得出来:不写
+    await flushPromises()
+    expect(wrapper.findAll('[data-testid="candidate-hidden"]').length).toBe(0)
+  })
+
   it('多归属 pending:候选表在 pending event 所在 node 下方展开 · hit 列表多行同亮', async () => {
     const view = useViewStore()
     // Task 5 契约变更:多归属 = 同一实例被 2+ hit 的 node_index 引用(真共享,
@@ -139,5 +165,45 @@ describe('DetailSidebar · Task 4 视图分化', () => {
     // template 结构:v-for 里每 funnel-row 后跟 v-if candidate-table-wrap(同 parent);
     // candidate-table-wrap 应真实渲染在 ta funnel-row 后(node 名已由上方 funnel-row 承载,标题不再冗余重复)
     expect(wrapper.find('.candidate-table-wrap').exists()).toBe(true)
+  })
+})
+
+describe('DetailSidebar · hit 列表写买入日期', () => {
+  beforeEach(() => setActivePinia(createPinia()))
+
+  function fixtureWithBuyNode(): MultiScanResultFile {
+    const f: any = makeFixture()
+    f.per_pattern.p1.end_node = 'ta'
+    const hits = f.results[0].per_pattern.p1.analysis.hits
+    f.results[0].per_pattern.p1.analysis.hits = [hits[1], hits[0]]   // 原顺序与买入日顺序相反
+    return f
+  }
+
+  it('行按第一个买入日排,行上写这一天的日期,不再是圈号', () => {
+    const view = useViewStore()
+    view.loadScanFile(fixtureWithBuyNode())
+    view.setBarDates(Array.from({ length: 30 }, (_, i) => `2024-02-${String(i + 1).padStart(2, '0')}`))
+    const wrapper = mount(DetailSidebar)
+    const labels = wrapper.findAll('.hit-row .hit-span').map(r => r.text())
+    expect(labels).toEqual(['2024-02-13', '2024-02-21'])   // m1 买在下标 12、m2 买在 20
+    expect(labels.join('')).not.toMatch(/[①②③④⑤⑥⑦⑧⑨]/)
+    // 悬停给起止日期,不给 K 线下标
+    expect(wrapper.findAll('.hit-row').map(r => r.attributes('title'))).toEqual(['2024-02-11 – 2024-02-16', '2024-02-13 – 2024-02-23'])
+  })
+
+  it('选中的 hit 行滚到看得见', async () => {
+    const view = useViewStore()
+    view.loadScanFile(fixtureWithBuyNode())
+    const scrolled: string[] = []
+    const orig = (Element.prototype as any).scrollIntoView
+    ;(Element.prototype as any).scrollIntoView = function (this: Element) { scrolled.push(this.className) }
+    try {
+      mount(DetailSidebar)
+      view.focusHit('m2')
+      await flushPromises()
+      expect(scrolled.some(c => c.includes('hit-row--selected'))).toBe(true)
+    } finally {
+      ;(Element.prototype as any).scrollIntoView = orig
+    }
   })
 })

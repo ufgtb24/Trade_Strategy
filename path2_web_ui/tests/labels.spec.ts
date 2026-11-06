@@ -1,7 +1,7 @@
 // label(N 日前瞻收益)与缓冲窗:纯函数 + chart 选项。
 import { describe, it, expect } from 'vitest'
 import { windowOf, formatForwardReturn } from '../src/render/visible'
-import { MONO } from '../src/render/tierTags'
+import { MONO } from '../src/render/fonts'
 
 describe('windowOf', () => {
   it('缓冲扫描用 win_*', () => {
@@ -26,7 +26,7 @@ import { computeSubGeometry } from '../src/render/subGeometry'
 import type { Bar, HitDict, Topology } from '../src/types'
 
 describe('buildMarkerTooltipFormatter — ordinal consistency with packBrackets (Task 9 fix)', () => {
-  it('marker 归属节 ordinal uses start_idx sort, not raw hits order', () => {
+  it('marker 归属节只报个数(bracket 折叠后一行几十次 hit,逐个圈号已无意义)', () => {
     const hits: HitDict[] = [
       // 故意乱序(非 start_idx 升序):
       { hit_id: 'm_late',  start_idx: 50, end_idx: 60, node_index: {}, children: ['eShared#0'], predicate_trace: null },
@@ -35,8 +35,7 @@ describe('buildMarkerTooltipFormatter — ordinal consistency with packBrackets 
     ]
     const fmt = buildMarkerTooltipFormatter(undefined, undefined, { hits, candidateHitIds: new Set() })
     const out = fmt({ data: { instance_id: 'eShared#0' } })
-    // start_idx 排序后: m_early=①, m_mid=②, m_late=③ → 三者都含 eShared
-    expect(out).toContain('in_hits: ① ② ③')
+    expect(out).toContain('in_hits: 3')
   })
 })
 

@@ -37,7 +37,7 @@ describe('chart.ts — computeEventData / buildMainOption / buildSubOption', () 
   ]
   const topology = { nodes: [
     { node_id: 'burst' },
-    { node_id: 'tb' },
+    { node_id: 'tb', is_point: true },
   ] } as any
   const tagList = ['burst', 'tb']
 
@@ -67,7 +67,7 @@ describe('chart.ts — computeEventData / buildMainOption / buildSubOption', () 
 
   it('computeEventData bundles points/intervals/brackets/priceAnchored(satellites 已删)', () => {
     const bundle = computeEventData(bars, events, hits, baseParams)
-    // burst_0_1 是 interval(start≠end),tb_1 是 point(start==end)
+    // burst_0_1 是 interval;tb_1 是 point——按拓扑 node 的 is_point 声明,不按单个实例的起止
     expect(bundle.intervalData.some(d => d.instance_id === 'burst_0_1#0')).toBe(true)
     expect(bundle.pointData.some(d => d.instance_id === 'tb_1#0')).toBe(true)
     expect(bundle.bracketData.length).toBe(1)
@@ -123,7 +123,7 @@ describe('chart.ts — restored coverage (Task 6 review fix)', () => {
       { node_id: 'side',  where_rules: [] },
       { node_id: 'bo',    render_grid: 'price', where_rules: [] },
       { node_id: 'burst', where_rules: [] },
-      { node_id: 'tb',    where_rules: [] },
+      { node_id: 'tb',    is_point: true, where_rules: [] },
     ],
     edges: [
       { src: 'down',  dst: 'burst', kind: 'TemporalEdge',    rule: 'before' },
@@ -261,7 +261,7 @@ describe('chart.ts — restored coverage (Task 6 review fix)', () => {
       // pointData 新 shape(spec 2026-07-13):[start, start, lane, band, nBands];lane=0, band=0
       const mk = (kind: 'group' | 'focus' | 'pendingDisambig') =>
         makeRenderHighlightWithGeom(
-          [{ value: [0, 0, 0, 0, 1], instance_id: 'e1', itemStyle: { color: '#22c55e' }, kind }],
+          [{ value: [0, 0, 0, 0, 1], instance_id: 'e1', itemStyle: { color: '#22c55e' }, kind, shape: 'point' as const }],
           bandGeom,
         )({ dataIndex: 0 }, fakeApi) as any
 
@@ -308,26 +308,40 @@ describe('chart.ts — restored coverage (Task 6 review fix)', () => {
         .not.toBe(pending.children[1].keyframeAnimation)
     })
 
-    it('makeRenderHighlightWithGeom: interval 放大版 — 高 7→10 居中外扩,长度不变,focus node色+粗深边', () => {
+    it('makeRenderHighlightWithGeom: extent 空心细框(族起点→成员终点,不填色);mark 框住那一格(高随档位、底对齐)', () => {
       const bandGeom: BandGeom[] = [{ top: 20, h: 40, laneCount: 1 }]
       const fakeApi: any = {
         value: (i: number) => [10, 20][i] ?? 0,
         coord: ([v]: [number, number]) => [v === 10 ? 100 : 200, 0],
         size: () => [10, 0],
       }
-      const shape = makeRenderHighlightWithGeom(
-        [{ value: [10, 20, 0, 0, 1], instance_id: 'e1', itemStyle: { color: '#3b82f6' }, kind: 'focus' }],
+      const ext = makeRenderHighlightWithGeom(
+        [{ value: [10, 20, 0, 0, 1], instance_id: 'e1', itemStyle: { color: '#3b82f6' }, kind: 'focus', shape: 'extent' }],
         bandGeom,
       )({ dataIndex: 0 }, fakeApi) as any
-      expect(shape.type).toBe('rect')
-      // 自顶向下(spec 2026-07-03-bracket-band-unify):本体 laneY = 20+4+0*(7+2) = 24;
-      // 放大版 y = 24−1.5, 高 10;x/width 不外扩(时间跨度语义)——几何全不动
-      expect(shape.shape).toEqual({ x: 100, y: 22.5, width: 100, height: 10 })
-      // fill 保 node 本色(2026-07-08 改),粗深边
-      expect(shape.style.fill).toBe('#3b82f6')
-      expect(shape.style.stroke).toBe('#1e293b')
-      expect(shape.style.lineWidth).toBe(2.5)
-      expect(shape.silent).toBe(true)
+      expect(ext.type).toBe('rect')
+      // 横向:起点中心 −0.4 根 −1 到终点中心 +0.4 根 +1(unitW=10);竖向:lane 顶 24 −1.5、高 7+3
+      expect(ext.shape).toEqual({ x: 95, y: 22.5, width: 110, height: 10 })
+      expect(ext.style.fill).toBe('none')          // 空心:实心复本会盖住族行里后面的格子
+      expect(ext.style.stroke).toBe('#1e293b')
+      expect(ext.style.lineWidth).toBe(1.5)
+      expect(ext.silent).toBe(true)
+
+      const mark = makeRenderHighlightWithGeom(
+        [{ value: [20, 20, 0, 0, 1, 0.4], instance_id: 'e1', itemStyle: { color: '#d1d5db' }, kind: 'focus', shape: 'mark' }],
+        bandGeom,
+      )({ dataIndex: 0 }, { ...fakeApi, value: (i: number) => [20, 20][i] ?? 0 }) as any
+      // 格高 = 7*0.4 = 2.8,底对齐 lane 底(24+7=31);框外扩 1.5
+      expect(mark.shape.y).toBeCloseTo(31 - 2.8 - 1.5)
+      expect(mark.shape.height).toBeCloseTo(2.8 + 3)
+      expect(mark.style.fill).toBe('none')
+      expect(mark.style.lineWidth).toBe(2.5)
+      expect(mark.keyframeAnimation).toBeUndefined()
+      const pend = makeRenderHighlightWithGeom(
+        [{ value: [20, 20, 0, 0, 1, 1], instance_id: 'e1', kind: 'pendingDisambig', shape: 'mark' }],
+        bandGeom,
+      )({ dataIndex: 0 }, { ...fakeApi, value: (i: number) => [20, 20][i] ?? 0 }) as any
+      expect(pend.keyframeAnimation).toMatchObject({ duration: 1200, loop: true })
     })
 
     // 主图 bo 盒放大版:实心版会遮住本体文字 → 必须重画盒+文本(字号不变)。
@@ -748,7 +762,7 @@ describe('副图空轨移除 — price tag 不参与分轨', () => {
     nodes: [
       { node_id: 'down', where_rules: [] },
       { node_id: 'bo',   render_grid: 'price', where_rules: [] },
-      { node_id: 'tb',   where_rules: [] },
+      { node_id: 'tb',   is_point: true, where_rules: [] },
     ],
     edges: [],
   }
@@ -828,69 +842,67 @@ describe('副图空轨移除 — price tag 不参与分轨', () => {
   })
 })
 
-// ---------- bracket 选中态放大+阴影(spec 2026-07-02-marker-highlight-elevation §3.3) ----------
-describe('makeRenderBracket — 选中态放大+阴影', () => {
+// ---------- bracket:一族 hit 一行;记号琥珀满高,选中 = 跨度空心框 + 记号深边框,候选 = 细实线框 ----------
+describe('makeRenderBracket — 记号、选中、候选、买入日', () => {
   const fakeApi: any = {
     value: (i: number) => [10, 20, 0, 1][i] ?? 0,
-    coord: ([v]: [number, number]) => [v === 10 ? 100 : 200, 0],
+    coord: ([v]: [number, number]) => [v === 10 ? 100 : v === 5 ? 50 : 200, 0],
+    size: () => [10, 0],
   }
-  const items = [{ hit_id: 'm1' }]
-  const mk = (selected: string | null, candidates = new Set<string>(), focus = false) =>
-    makeRenderBracket(items, selected, candidates, 1.0, focus)({ dataIndex: 0 }, fakeApi) as any
+  const mk = (item: any, selected: string | null, candidates = new Set<string>(), focus = false, api = fakeApi) =>
+    makeRenderBracket([item], selected, candidates, 1.0, focus)({ dataIndex: 0 }, api) as any
+  const mark = { hit_id: 'm1', hit_ids: ['m1'], kind: 'mark' as const, family_start: 10 }
 
-  it('选中(成员态):高 7→10 居中外扩 + 阴影,琥珀 + 细深边;text 公式不变(中心恰不动)', () => {
-    const g = mk('m1')
-    const rect = g.children[0]
-    // lane0 top = BAND_TOP_PAD(4);放大 y=top−1.5, h=7+3=10
-    expect(rect.shape.y).toBeCloseTo(rect0Top() - 1.5)
-    expect(rect.shape.height).toBe(10)
-    // 2026-07-08 改:琥珀底 + 细深边(1.5,in-group 语义)
-    expect(rect.style.fill).toBe('#fbbf24')
-    expect(rect.style.stroke).toBe('#1e293b')
-    expect(rect.style.lineWidth).toBe(1.5)
-    expect(rect.style.shadowBlur).toBe(6)
-    expect(rect.style.shadowOffsetY).toBe(2)
-    // 序号 text y = 本体中心 = 放大后中心(top−1.5+5 = top+3.5)
-    expect(g.children[1].style.y).toBeCloseTo(rect0Top() + 3.5)
+  it('普通:琥珀满高,横向起点中心 −0.4 根到终点中心 +0.4 根,无描边', () => {
+    const g = mk(mark, null)
+    expect(g.children).toHaveLength(1)
+    expect(g.children[0].shape).toEqual({ x: 96, y: 4, width: 108, height: 7 })
+    expect(g.children[0].style.fill).toBe('#fbbf24')
+    expect(g.children[0].style.stroke).toBeUndefined()
   })
 
-  it('选中(focus 态,focusOnBracket=true):同成员几何 + 粗深边(被点者标记)', () => {
-    const gFocus = mk('m1', new Set(), true)
-    const gMember = mk('m1')
-    const rect = gFocus.children[0]
-    // 几何与成员态字节等同(只差描边宽)
-    expect(rect.shape).toEqual(gMember.children[0].shape)
-    expect(rect.style.fill).toBe('#fbbf24')
-    expect(rect.style.stroke).toBe('#1e293b')
-    expect(rect.style.lineWidth).toBe(2.5)
-    expect(rect.style.shadowBlur).toBe(6)
-    // 序号 text 不受 focus 态影响
-    expect(gFocus.children[1].style.y).toBe(gMember.children[1].style.y)
-    expect(gFocus.children[1].style.fill).toBe('#334155')
+  it('选中:记号深边框(点 bracket 本身粗 2.5、点组内 marker 细 1.5)+ 阴影;族起点早于记号时另画跨度空心框', () => {
+    const member = mk(mark, 'm1')
+    const box = member.children[member.children.length - 1]
+    expect(box.style.fill).toBe('none')
+    expect(box.style.stroke).toBe('#1e293b')
+    expect(box.style.lineWidth).toBe(1.5)
+    expect(box.style.shadowBlur).toBe(6)
+    expect(mk(mark, 'm1', new Set(), true).children.at(-1).style.lineWidth).toBe(2.5)
+    // family_start == 记号起点:不画跨度框(和记号重合)
+    expect(member.children).toHaveLength(2)
+    const inFamily = mk({ ...mark, family_start: 5 }, 'm1')
+    expect(inFamily.children).toHaveLength(3)
+    const ext = inFamily.children[1]
+    expect(ext.style.fill).toBe('none')
+    expect(ext.style.lineWidth).toBe(1.5)
+    expect(ext.shape.x).toBe(50 - 4 - 1)
   })
 
-  it('candidate:几何不动(高 7,无阴影),0.35 琥珀底 + 琥珀虚线边(消歧可见性)', () => {
-    const cand = mk(null, new Set(['m1']))
-    expect(cand.children[0].shape.height).toBe(7)
-    expect(cand.children[0].style.fill).toBe('rgba(251,191,36,0.35)')
-    expect(cand.children[0].style.stroke).toBe('#f59e0b')
-    expect(cand.children[0].style.lineWidth).toBe(1.5)
-    expect(cand.children[0].style.lineDash).toEqual([4, 3])
-    expect(cand.children[0].style.shadowBlur).toBeUndefined()
+  it('候选:细实线框,不用虚线(虚线只表示用户画的),不闪', () => {
+    const cand = mk(mark, null, new Set(['m1']))
+    const box = cand.children[1]
+    expect(box.style.stroke).toBe('#1e293b')
+    expect(box.style.lineWidth).toBe(1.5)
+    expect(box.style.lineDash).toBeUndefined()
+    expect(cand.keyframeAnimation).toBeUndefined()
   })
 
-  it('普通:高 7,琥珀底(2026-07-08 改),无描边无阴影', () => {
-    const plain = mk(null)
-    expect(plain.children[0].shape.height).toBe(7)
-    expect(plain.children[0].style.fill).toBe('#fbbf24')
-    expect(plain.children[0].style.stroke).toBeUndefined()
-    expect(plain.children[0].style.shadowBlur).toBeUndefined()
+  it('买入日 ▼:黑色三角', () => {
+    const buy = mk({ hit_id: 'm1', hit_ids: ['m1'], kind: 'buy' }, null)
+    expect(buy.type).toBe('polygon')
+    expect(buy.style.fill).toBe('#111111')
   })
 
-  // lane0 的 top(= BAND_TOP_PAD):从普通分支反查,避免硬编码常量
-  function rect0Top(): number {
-    return (mk(null).children[0].shape.y as number)
-  }
+  it('zoomFactor:top = 4 + lane·9z,高 7z;不传 z 与 z=1 相同', () => {
+    const api = { ...fakeApi, value: (i: number) => [10, 20, 1, 1][i] ?? 0 }
+    const g2 = makeRenderBracket([mark], null, new Set(), 2)({ dataIndex: 0 }, api) as any
+    expect(g2.children[0].shape.y).toBe(4 + 1 * 9 * 2)
+    expect(g2.children[0].shape.height).toBe(14)
+    const g0 = makeRenderBracket([mark], null, new Set())({ dataIndex: 0 }, api) as any
+    const g1 = makeRenderBracket([mark], null, new Set(), 1.0)({ dataIndex: 0 }, api) as any
+    expect(g0.children[0].shape).toEqual(g1.children[0].shape)
+  })
 })
 
 // ---------- Task 2(spec 2026-07-03): 3 renderer + BandRenderInput.zoomFactor + buildSubOption 传播 ----------
@@ -902,6 +914,7 @@ describe('chart.ts — renderer zoomFactor 传播(spec 2026-07-03)', () => {
     const fakeApi: any = {
       value: (i: number) => [10, 20, 1, 0, 1][i] ?? 0,
       coord: ([v]: [number, number]) => [v === 10 ? 100 : 200, 0],
+      size: () => [10, 0],
       style: () => ({}),
     }
     // band top=20 h=40。z=2:laneH=14, gap=4, y = 20+4+1*(14+4) = 42, height=14
@@ -909,8 +922,14 @@ describe('chart.ts — renderer zoomFactor 传播(spec 2026-07-03)', () => {
     expect(shape.type).toBe('rect')
     expect(shape.shape.y).toBe(42)
     expect(shape.shape.height).toBe(14)
-    // x 方向不受 zoom 影响:width = x1-x0 = 100
-    expect(shape.shape.width).toBe(100)
+    // x 方向不受 zoom 影响:起点中心 −0.4 根到终点中心 +0.4 根(unitW=10)→ 96 .. 204
+    expect(shape.shape.x).toBe(96)
+    expect(shape.shape.width).toBe(108)
+    // 档位按高度分(value[5]=0.4):高 14*0.4,底对齐 lane 底(42+14)
+    const low = (renderIntervalWithGeom as any)({ dataIndex: 0 },
+      { ...fakeApi, value: (i: number) => [10, 20, 1, 0, 1, 0.4][i] ?? 0 }, bandGeom, 2)
+    expect(low.shape.height).toBeCloseTo(5.6)
+    expect(low.shape.y).toBeCloseTo(42 + 14 - 5.6)
     // 单参 backward-compat(z=1):y = 20+4+1*(7+2) = 33, height=7
     const shape1 = (renderIntervalWithGeom as any)({ dataIndex: 0 }, fakeApi, bandGeom)
     expect(shape1.shape.y).toBe(33)
@@ -960,7 +979,8 @@ describe('chart.ts — renderer zoomFactor 传播(spec 2026-07-03)', () => {
     // pointData 新 shape:[start, start, lane, band, nBands]
     // band top=20 h=20 → lane0 centerY = 20 + 4 + 0*(7*z+2*z) + 7*z/2 = 24 + 3.5*z
     // z=2 → centerY = 24 + 7 = 31;offsets +6*2 / -4*2
-    const items = [{ value: [0, 0, 0, 0, 1], instance_id: 'e1', itemStyle: { color: '#22c55e' }, kind: 'group' as const }]
+    const items = [{ value: [0, 0, 0, 0, 1], instance_id: 'e1', itemStyle: { color: '#22c55e' }, kind: 'group' as const,
+                     shape: 'point' as const }]
     const shape = makeRenderHighlightWithGeom(items, [{ top: 20, h: 20, laneCount: 1 }], 2)({ dataIndex: 0 }, fakeApi) as any
     expect(shape.shape.points[0][1]).toBe(31 + 12)   // 43
     expect(shape.shape.points[1][1]).toBe(31 - 8)    // 23
@@ -978,12 +998,18 @@ describe('chart.ts — renderer zoomFactor 传播(spec 2026-07-03)', () => {
       coord: ([v]: [number, number]) => [v === 10 ? 100 : 200, 0],
       size: () => [10, 0],
     }
-    // z=2:laneH=14, rawY=20+4+0=24, y=24−1.5*2=21, height=14+3*2=20
-    const items = [{ value: [10, 20, 0, 0, 1], instance_id: 'e1', itemStyle: { color: '#3b82f6' }, kind: 'focus' as const }]
+    // extent,z=2:laneH=14, rawY=20+4+0=24, y=24−1.5*2=21, height=14+3*2=20
+    const items = [{ value: [10, 20, 0, 0, 1], instance_id: 'e1', itemStyle: { color: '#3b82f6' }, kind: 'focus' as const,
+                     shape: 'extent' as const }]
     const shape = makeRenderHighlightWithGeom(items, bg, 2)({ dataIndex: 0 }, fakeApi) as any
     expect(shape.type).toBe('rect')
     expect(shape.shape.y).toBe(21)
     expect(shape.shape.height).toBe(20)
+    // mark,z=2,满高:y = 24+14−14−1.5 = 22.5, height = 14+3
+    const markItems = [{ value: [10, 20, 0, 0, 1, 1], instance_id: 'e1', kind: 'focus' as const, shape: 'mark' as const }]
+    const m = makeRenderHighlightWithGeom(markItems, bg, 2)({ dataIndex: 0 }, fakeApi) as any
+    expect(m.shape.y).toBe(22.5)
+    expect(m.shape.height).toBe(17)
   })
 
   it('buildSubOption 从 input.zoomFactor 消费并透传:与 makeRenderHighlightWithGeom(., ., 2) 等价', () => {
@@ -992,7 +1018,7 @@ describe('chart.ts — renderer zoomFactor 传播(spec 2026-07-03)', () => {
     // 同款 fixture 形状自包含内联,保持语义等价(topology/events/hits/makeInput(level, overrides))。
     const topology: Topology = { nodes: [
       { node_id: 'burst', where_rules: [] },
-      { node_id: 'tb',    where_rules: [] },
+      { node_id: 'tb',    is_point: true, where_rules: [] },
     ], edges: [] } as any
     const bars: Bar[] = [
       { date: '2025-01-01', o: 10, c: 12, h: 13, l: 9, v: 1000, rv: 0 },
@@ -1040,58 +1066,11 @@ describe('chart.ts — renderer zoomFactor 传播(spec 2026-07-03)', () => {
   })
 })
 
-// ---------- Bracket zoomFactor 传播(spec 2026-07-03,mid-course scope 扩展) ----------
-describe('makeRenderBracket — zoomFactor 传播', () => {
-  const fakeApi: any = {
-    value: (i: number) => [10, 20, 1, 1][i] ?? 0,   // lane=1, hitLabelIdx=1
-    coord: ([v]: [number, number]) => [v === 10 ? 100 : 200, 0],
-  }
-  const items = [{ hit_id: 'm1' }]
-  const TOP_PAD = 4      // subGeometry.ts BAND_TOP_PAD(bracket 区顶呼吸,unify 新增)
-  const STRIDE = 9       // subGeometry.ts BAND_LANE_H(= 7+2)
-  const RECT_H = 7       // subGeometry.ts BAND_MARKER_H
-
-  it('普通 bracket z=2:top = 4+lane*9z,height = 7z;text y = top + rectH/2', () => {
-    const g = makeRenderBracket(items, null, new Set(), 2)({ dataIndex: 0 }, fakeApi) as any
-    const rect = g.children[0]
-    // lane=1 → top = 4 + 1*9*2 = 22
-    expect(rect.shape.y).toBe(TOP_PAD + 1 * STRIDE * 2)
-    // rectH = 7*2 = 14
-    expect(rect.shape.height).toBe(RECT_H * 2)
-    // text y = top + rectH/2 = 22 + 7 = 29
-    expect(g.children[1].style.y).toBe(TOP_PAD + 1 * STRIDE * 2 + RECT_H * 2 / 2)
-    // text fontSize 不缩(与 band label 一致 policy)
-    expect(g.children[1].style.fontSize).toBe(12)
-  })
-
-  it('选中 bracket z=2:h = 7z+3z=20、offset −1.5z、中心不变(居中外扩语义)', () => {
-    const g = makeRenderBracket(items, 'm1', new Set(), 2)({ dataIndex: 0 }, fakeApi) as any
-    const rect = g.children[0]
-    const top = TOP_PAD + 1 * STRIDE * 2  // 22
-    // y = top − 1.5*2 = 19;h = 14 + 3*2 = 20
-    expect(rect.shape.y).toBe(top - 1.5 * 2)
-    expect(rect.shape.height).toBe(RECT_H * 2 + 3 * 2)
-    // 中心 = 19 + 10 = 29 = top + rectH/2(与普通版中心一致,居中语义保)
-    expect(rect.shape.y + rect.shape.height / 2).toBeCloseTo(top + RECT_H * 2 / 2)
-    // 琥珀填充 + 阴影
-    expect(rect.style.fill).toBe('#fbbf24')   // AMBER_FILL 统一(group-amber-focus-edge)
-    expect(rect.style.shadowBlur).toBe(6)
-  })
-
-  it('backward-compat:不传 z 与 z=1 行为字节等同', () => {
-    const g0 = makeRenderBracket(items, null, new Set())({ dataIndex: 0 }, fakeApi) as any
-    const g1 = makeRenderBracket(items, null, new Set(), 1.0)({ dataIndex: 0 }, fakeApi) as any
-    expect(g0.children[0].shape.y).toBe(g1.children[0].shape.y)
-    expect(g0.children[0].shape.height).toBe(g1.children[0].shape.height)
-    expect(g0.children[1].style.y).toBe(g1.children[1].style.y)
-  })
-})
-
 // ---------- bracket focus 装配(spec 2026-07-03-group-amber-focus-edge) ----------
 describe('buildSubOption — bracket focus 信号装配', () => {
   const topology: Topology = { nodes: [
     { node_id: 'burst', where_rules: [] },
-    { node_id: 'tb',    where_rules: [] },
+    { node_id: 'tb',    is_point: true, where_rules: [] },
   ], edges: [] } as any
   const bars: Bar[] = [
     { date: '2025-01-01', o: 10, c: 12, h: 13, l: 9, v: 1000, rv: 0 },
@@ -1127,27 +1106,28 @@ describe('buildSubOption — bracket focus 信号装配', () => {
   const bracketFakeApi: any = {
     value: (i: number) => [0, 1, 0, 1][i] ?? 0,
     coord: ([v]: [number, number]) => [v === 0 ? 100 : 200, 0],
+    size: () => [10, 0],
   }
-  function bracketRect(input: BandRenderInput) {
+  function bracketGroup(input: BandRenderInput) {
     const bundle = computeEventData(bars, events, hits, input)
     const subGeom = computeSubGeometry({ bracketLaneCount: 1, bandLaneCounts: [1, 1] })
     const opt = buildSubOption(bars, bundle, subGeom, input, 800) as any
     const s = opt.series.find((x: any) => x.name === 'brackets')
-    return (s.renderItem({ dataIndex: 0 }, bracketFakeApi) as any).children[0]
+    return s.renderItem({ dataIndex: 0 }, bracketFakeApi) as any
   }
 
-  it('selectedHitId 有 + selectedInstanceId 空(点了 bracket 本身)→ focus:琥珀+粗深边', () => {
-    const rect = bracketRect(makeInput({ selectedHitId: 'm@0-1', selectedInstanceId: null }))
-    expect(rect.style.fill).toBe('#fbbf24')
-    expect(rect.style.stroke).toBe('#1e293b')
-    expect(rect.style.lineWidth).toBe(2.5)
+  it('selectedHitId 有 + selectedInstanceId 空(点了 bracket 本身)→ focus:琥珀记号 + 粗深边框', () => {
+    const g = bracketGroup(makeInput({ selectedHitId: 'm@0-1', selectedInstanceId: null }))
+    expect(g.children[0].style.fill).toBe('#fbbf24')
+    expect(g.children.at(-1).style.stroke).toBe('#1e293b')
+    expect(g.children.at(-1).style.lineWidth).toBe(2.5)
   })
 
-  it('selectedHitId 有 + selectedInstanceId 有(点了组内 marker)→ 成员:琥珀+细深边', () => {
-    const rect = bracketRect(makeInput({ selectedHitId: 'm@0-1', selectedInstanceId: 'burst_0_1#0' }))
-    expect(rect.style.fill).toBe('#fbbf24')
-    expect(rect.style.stroke).toBe('#1e293b')
-    expect(rect.style.lineWidth).toBe(1.5)
+  it('selectedHitId 有 + selectedInstanceId 有(点了组内 marker)→ 成员:琥珀记号 + 细深边框', () => {
+    const g = bracketGroup(makeInput({ selectedHitId: 'm@0-1', selectedInstanceId: 'burst_0_1#0' }))
+    expect(g.children[0].style.fill).toBe('#fbbf24')
+    expect(g.children.at(-1).style.stroke).toBe('#1e293b')
+    expect(g.children.at(-1).style.lineWidth).toBe(1.5)
   })
 })
 

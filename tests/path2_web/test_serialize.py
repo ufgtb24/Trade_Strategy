@@ -132,6 +132,119 @@ def test_serialize_pattern_nodes_have_render_grid():
     assert by["tb"]["render_grid"] == "time"
 
 
+def test_serialize_pattern_nodes_have_is_point():
+    """serialize_pattern 节点 dict 透传事件类的 is_point:声明了点几何的类为 True,其余 False;
+    子结构 node 同样投影(取它声明的 event_cls)。前端按 node 分点 / 条,不按实例长度。"""
+    from path2_apps.bottom_burst.dag_spec import PATTERN_DAG as BB
+    from path2_apps.new_step.dag_spec import PATTERN_DAG as NS
+    bb = {n["node_id"]: n["is_point"] for n in serialize.serialize_pattern(BB)["topology"]["nodes"]}
+    assert bb == {"bo": True, "pk": True, "burst": False, "tb": False, "tb_seg": False}
+    ns = {n["node_id"]: n["is_point"] for n in serialize.serialize_pattern(NS)["topology"]["nodes"]}
+    # step 有一根长的前缀,但类没声明点几何 → False(一根长的照样画成格,不画成 ▼)
+    assert ns == {"plateau": False, "old_plat": False, "step": False, "new_plat": False, "today": True}
+    assert all(type(v) is bool for v in [*bb.values(), *ns.values()])
+
+
+def _srgb_lin(c: float) -> float:
+    return c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4
+
+
+def _rgb(hexcolor: str) -> tuple:
+    h = hexcolor.lstrip("#")
+    return tuple(int(h[i:i + 2], 16) / 255 for i in (0, 2, 4))
+
+
+def _luminance(hexcolor: str) -> float:
+    r, g, b = (_srgb_lin(c) for c in _rgb(hexcolor))
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b
+
+
+def _contrast(a: str, b: str) -> float:
+    la, lb = sorted([_luminance(a), _luminance(b)], reverse=True)
+    return (la + 0.05) / (lb + 0.05)
+
+
+def _lab(hexcolor: str) -> tuple:
+    """sRGB → CIELAB(D65)。"""
+    r, g, b = (_srgb_lin(c) for c in _rgb(hexcolor))
+    x = (0.4124 * r + 0.3576 * g + 0.1805 * b) / 0.95047
+    y = 0.2126 * r + 0.7152 * g + 0.0722 * b
+    z = (0.0193 * r + 0.1192 * g + 0.9505 * b) / 1.08883
+    f = [t ** (1 / 3) if t > 0.008856 else 7.787 * t + 16 / 116 for t in (x, y, z)]
+    return 116 * f[1] - 16, 500 * (f[0] - f[1]), 200 * (f[1] - f[2])
+
+
+_BAND_BG = "#f3f4f6"      # 副图浅灰底
+_QUALIFIED = "#9ca3af"    # qualified 档的深灰(path2_web_ui/src/render/colors.ts)
+_B_COOL, _B_WARM = -20.0, 20.0   # b* 冷暖界线(待验证);两线之间的颜色不分冷暖,判不合格
+
+
+def _palette_problems(pal) -> list:
+    """按用户的配色规则检查一组调色板,返回问题列表(空 = 合格)。
+    用户靠冷暖与深浅分色:相邻两色冷暖相反;每色中等深度、离浅底与 qualified 灰够远。
+    冷暖看 CIELAB b*(黄-蓝轴,红绿色盲也保留):绿的 b* 为正、算暖,所以橘-绿相邻会被抓出来。"""
+    out = []
+    temp = []
+    for c in pal:
+        L, _, bs = _lab(c)
+        if not 40 <= L <= 55:
+            out.append(f"{c}: L* {L:.1f} 不在 40～55")
+        if _contrast(c, _BAND_BG) < 3.5:
+            out.append(f"{c}: 对副图浅灰底对比度 {_contrast(c, _BAND_BG):.2f} < 3.5")
+        if _contrast(c, _QUALIFIED) < 1.6:
+            out.append(f"{c}: 对 qualified 灰对比度 {_contrast(c, _QUALIFIED):.2f} < 1.6")
+        if bs <= _B_COOL:
+            temp.append("cool")
+        elif bs >= _B_WARM:
+            temp.append("warm")
+        else:
+            temp.append(None)
+            out.append(f"{c}: b* {bs:.1f} 冷暖不明")
+    for i in range(len(pal) - 1):
+        if temp[i] is not None and temp[i] == temp[i + 1]:
+            out.append(f"{pal[i]} 与 {pal[i + 1]} 相邻却同为 {temp[i]}")
+    if len(set(c.lower() for c in pal)) < len(pal):
+        out.append("有重复颜色")
+    return out
+
+
+def test_palette_is_colorblind_safe():
+    """现用的兜底调色板通过配色检查。"""
+    assert _palette_problems(serialize._PALETTE) == []
+
+
+def test_palette_check_rejects_known_bad_palettes():
+    """负面对照:检查本身要能抓出坏色板,否则它坏了也看不出来。
+    - 橘与正绿相邻(用户点名分不清的一对;旧判据「蓝分量 > 红分量」会把绿判成冷色而放过);
+    - 换色前的旧色板(亮绿 #16f943 在白底上几乎看不见,红 #FF1500 与绿 #14b24e 相邻)。"""
+    orange_green = ["#5b6fd6", "#d97706", "#00a829", "#c0392b", "#1e5a96"]
+    probs = _palette_problems(orange_green)
+    assert any("#d97706 与 #00a829 相邻却同为 warm" in p for p in probs), probs
+    old = ["#16f943", "#2563eb", "#FF1500", "#14b24e", "#7c3aed", "#0891b2", "#ca8a04"]
+    probs = _palette_problems(old)
+    assert any(p.startswith("#16f943") for p in probs), probs
+    assert any("#FF1500 与 #14b24e 相邻却同为 warm" in p for p in probs), probs
+
+
+def test_registered_apps_fit_in_palette():
+    """每个已注册 app 的 node 数 ≤ 色板长度:超出会从头循环,同色 node 被前端按明度散开、
+    可能出中等深度。第 6 个 node 出现时在这里报出来,而不是界面上静默变色。"""
+    from path2_web.discovery import PatternRegistry
+    reg = PatternRegistry()
+    assert reg.ids(), reg.errors()
+    for pid in reg.ids():
+        nodes = serialize.serialize_pattern(reg.get(pid).PATTERN_DAG)["topology"]["nodes"]
+        assert len(nodes) <= len(serialize._PALETTE), (pid, [n["node_id"] for n in nodes])
+
+
+def test_palette_assigns_new_step_nodes_in_topology_order():
+    """new_step 五个 node 按拓扑首现序各取一色,相邻两条轨冷暖相反。"""
+    from path2_apps.new_step.dag_spec import PATTERN_DAG as NS
+    styles = serialize.serialize_pattern(NS)["event_styles"]
+    p = serialize._PALETTE
+    assert styles == {"plateau": p[0], "old_plat": p[1], "step": p[2], "new_plat": p[3], "today": p[4]}
+
+
 def test_burst_event_dict_child_refs_protocol():
     """child_refs 承载 BurstEvent.members(schema-driven,不硬编码字段名);
     顶层 members 字段消失(不留兼容层)。"""

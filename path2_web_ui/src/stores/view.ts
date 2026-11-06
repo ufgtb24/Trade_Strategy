@@ -12,6 +12,18 @@ import { defineStore, acceptHMRUpdate } from 'pinia'
 // - 前后端同 PR(#6): 后端 debug_break 与前端 anchorsOf 映射同 PR
 // ─────────────────────────────────────────────────────────────────
 
+/** 当家行:←/→ 在其中走的那一行(见 stepFocus)。key 是族键(band@起点 / hits@起点);external 是外部注册的行。 */
+export type ActiveFamily =
+  | { kind: 'band' | 'bracket'; key: string }
+  | { kind: 'external'; key: string; step: (dir: -1 | 1) => void }
+
+/**
+ * 焦点 action 的可选参数:当前日(竖线落点)与当家行(族键或现成的当家行)。
+ * 聚焦一律不改档位按钮(档位只由用户点):聚焦的 event 档位低于当前档位、图上画不出来时,只有当前日竖线落在
+ * 那天,侧栏(主视图的候选表、compare 的 diagnose)照样列出它。
+ */
+export interface FocusOpts { day?: number; family?: string | ActiveFamily | null }
+
 export type DebugAnchor = {
   key: 'entry' | 'start' | 'end' | 'confirm'
   bar: number
@@ -173,8 +185,9 @@ import { deriveNodeColors } from '../render/colors'
 import {
   deriveTagMap, isolatedNodeIds,
   qualifiedIdsOf, inHitIds as inHitIdsOf,
-  bandKeyOf, eventTierOf, windowOf, nodeOfEventByBand,
+  bandKeyOf, eventTierOf, windowOf, nodeOfEventByBand, isBandVisible,
 } from '../render/visible'
+import { buyDaysOf, familyKeyOf, foldBand, foldHits, HIT_FAMILY_PREFIX } from '../render/fold'
 import { getDiagnose, getPreview, getTimeDiagnose, getPairDiagnose, saveWcMirror, clearWcMirror, type PreviewResp } from '../api'
 import { useConfigStore } from './config'
 
@@ -295,6 +308,12 @@ export const useViewStore = defineStore('view', () => {
   const pendingDisambigInstanceId = ref<string | null>(null)
   const hoveredEventId = ref<string | null>(null)
   const diag = ref<Diagnostics | null>(null)
+  // 当前日(竖线落点,bar 索引)与当家行(←/→ 在其中走的那一行)。当家行三种:band 的一族、bracket 的一族 hit、
+  // 外部注册的行(compare 的用户样本行:被点时把自己设成当家行并带上自己的上一个 / 下一个)。
+  const currentDay = ref<number | null>(null)
+  const activeFamily = ref<ActiveFamily | null>(null)
+  // 图上 K 线的日期(KlineChart 载入 K 线后写入),给侧栏把 bar 下标换成日期
+  const barDates = ref<string[]>([])
 
   // ── 入口 A/D(Task 18):KlineChart brush(scope=time)+ shift+click 跨图(scope=pair) ──
   // shiftSelectedEvents 是唯一跨组件状态载体(同 focusedInstanceRef/candidateHitIds 既有模式;
@@ -788,41 +807,11 @@ export const useViewStore = defineStore('view', () => {
   }
 
   // ── Task 2 高层 action(spec §3.3)· 消费点已统一到单入口 focusEvent/focusHit ──
-  function focusHit(hitId: string): void {
-    focusedHitId.value = hitId
-    selectedInstanceId.value = null
-    focusedInstanceId.value = null
-    manualExpandedNodes.value = new Set()  // collapse all · trace 独占视野
-    clearCandidates()
-  }
-
-  // 单入口实例级焦点(spec §5):focusEvent(instanceId)。所有调用点(marker 点击、
-  // 侧栏实例行、候选表行)都持有 instance_id;身份级入口已消灭。
-  // 归属 = hit.node_index 值(instance_id 字符串)精确引用计数 0/1/≥2:
-  //   0 → 只聚焦实例(selectedInstanceId=instanceId,不设 hit)
-  //   1 → 直选(focusedHitId + focusedInstanceId=instanceId)
-  //   ≥2 → 多归属 pending(candidateHitIds + pendingDisambigInstanceId=instanceId)
-  function focusEvent(instanceId: string): void {
+  // 一个实例被哪些 hit 用到:先看 hit.node_index 的精确引用;没有就沿 child_refs 爬到父容器再看
+  // (bo/tb_seg 等子事件不在 node_index 里,经容器 child_refs 挂靠;多父时汇总)。
+  function hitsOfInstance(instanceId: string): HitDict[] {
     const hits = effectiveAnalysis.value?.hits ?? []
-    const events  = effectiveAnalysis.value?.events  ?? []
-
-    // 焦点意图:add 焦点所在 node 到展开集(不折叠其他 node);node 无解则不动集合。
-    const ev = events.find(e => e.instance_id === instanceId)
-    if (ev) {
-      const node = nodeOfEventByBand(ev, tagMap.value.tagToNodes, tagMap.value.tagList)
-      if (node && !manualExpandedNodes.value.has(node)) {
-        const s = new Set(manualExpandedNodes.value)
-        s.add(node)
-        manualExpandedNodes.value = s
-      }
-    }
-
-    // 子结构爬升(2026-08-16):bo/tb_seg 等子事件不在 hit.node_index(成员 = 各
-    // node 绑定实例;子结构经容器 child_refs 挂靠),直接解析恒 0 归属 → 点段/点 bo
-    // 只亮单点。补一层「子→父」:经 events 的 child_refs 建逆索引,用父容器
-    // instance_id 再解析归属。多父(前缀族共享 bo)汇总后照走 0/1/≥2 三分支
-    // (≥2 弹候选消歧);邻居段高亮由 highlightedEventIds 的 inHitIds
-    // child_refs 闭包内建(选中容器 → 其全部 segments 进高亮集)。
+    const events = effectiveAnalysis.value?.events ?? []
     let ms = hits.filter(m => Object.values(m.node_index).includes(instanceId))
     if (ms.length === 0) {
       const parents = new Set<string>()
@@ -835,16 +824,128 @@ export const useViewStore = defineStore('view', () => {
         ms = hits.filter(m => Object.values(m.node_index).some(id => parents.has(id)))
       }
     }
+    return ms
+  }
 
+  function firstBuyDayOf(m: HitDict): number {
+    const byId = new Map((effectiveAnalysis.value?.events ?? []).map(e => [e.instance_id, e]))
+    return buyDaysOf(m, byId, endNode.value)[0] ?? m.end_idx
+  }
+
+  function bracketFamilyOf(m: HitDict): ActiveFamily {
+    return { kind: 'bracket', key: familyKeyOf(HIT_FAMILY_PREFIX, m.start_idx) }
+  }
+
+  function toActiveFamily(f: FocusOpts['family'], fallback: ActiveFamily | null): ActiveFamily | null {
+    if (f === undefined) return fallback
+    if (f === null || typeof f !== 'string') return f
+    return f.startsWith(`${HIT_FAMILY_PREFIX}@`) ? { kind: 'bracket', key: f } : { kind: 'band', key: f }
+  }
+
+  // ── Task 2 高层 action(spec §3.3)· 消费点已统一到单入口 focusEvent/focusHit ──
+  // opts.day:当前日(缺省取这次 hit 的第一个买入日);opts.family:当家行(缺省取它所在的 bracket 族)。
+  function focusHit(hitId: string, opts: FocusOpts = {}): void {
+    focusedHitId.value = hitId
+    selectedInstanceId.value = null
+    focusedInstanceId.value = null
+    manualExpandedNodes.value = new Set()  // collapse all · trace 独占视野
+    clearCandidates()
+    const m = (effectiveAnalysis.value?.hits ?? []).find(h => h.hit_id === hitId)
+    currentDay.value = opts.day ?? (m ? firstBuyDayOf(m) : null)
+    activeFamily.value = toActiveFamily(opts.family, m ? bracketFamilyOf(m) : null)
+  }
+
+  // 这几次 hit 的买入日是否完全一样:每一次都解析得到买入日、且日子集合相同。
+  // 同一天的几次 hit 只差切法(如阶跃算一根还是两根),直接选中第一次;解析不到买入日的不算一样。
+  function sameBuyDays(ms: readonly HitDict[]): boolean {
+    if (ms.length < 2) return false
+    const byId = new Map((effectiveAnalysis.value?.events ?? []).map(e => [e.instance_id, e]))
+    let sig: string | null = null
+    for (const m of ms) {
+      const days = buyDaysOf(m, byId, endNode.value)
+      if (days.length === 0) return false
+      const s = days.join(',')
+      if (sig === null) sig = s
+      else if (s !== sig) return false
+    }
+    return true
+  }
+
+  // 点击统一规则(band 的格或整条、bracket 的格、买入日 ▼ 三处共用):先取点到的 hit 集合,
+  //   0 次 → 只聚焦成员;1 次 → 直选;≥2 次且买入日完全一样 → 直选第一次,←/→ 换同一天的下一次;
+  //   ≥2 次且买入日不全一样(如被几十天共用的旧平台、阶跃)→ 进待选(候选在 bracket 上加框)。
+  // bracket 的格、▼ 走这里;band 记号走 focusInstances(先把成员的 hit 合起来,再按同一规则分)。
+  function focusHits(hitIds: string[], opts: FocusOpts = {}): void {
+    if (hitIds.length === 0) return
+    const all = effectiveAnalysis.value?.hits ?? []
+    const ms = hitIds.map(id => all.find(h => h.hit_id === id)).filter((m): m is HitDict => !!m)
+    if (hitIds.length === 1 || sameBuyDays(ms)) { focusHit(hitIds[0], opts); return }
+    focusedHitId.value = null
+    selectedInstanceId.value = null
+    focusedInstanceId.value = null
+    setCandidateHits(hitIds)
+    pendingDisambigInstanceId.value = null
+    const m = (effectiveAnalysis.value?.hits ?? []).find(h => h.hit_id === hitIds[0])
+    currentDay.value = opts.day ?? null
+    activeFamily.value = toActiveFamily(opts.family, m ? bracketFamilyOf(m) : null)
+  }
+
+  /** 点 bracket 上的买入日 ▼:买在这天的 hit。 */
+  function focusBuyDay(day: number, hitIds: string[], family?: string): void {
+    focusHits(hitIds, { day, family })
+  }
+
+  // 单入口实例级焦点(spec §5):focusEvent(instanceId)。所有调用点(marker 点击、
+  // 侧栏实例行、候选表行)都持有 instance_id;身份级入口已消灭。
+  // 归属 = hit.node_index 值(instance_id 字符串)精确引用,没有就沿 child_refs 找父容器;按 hit 个数分:
+  //   0 → 只聚焦实例(selectedInstanceId=instanceId,不设 hit)
+  //   1,或 ≥2 且买入日完全一样 → 直选第一次(focusedHitId + focusedInstanceId=它的成员)
+  //   ≥2 且买入日不全一样 → 多归属 pending(candidateHitIds + pendingDisambigInstanceId=instanceId)
+  function focusEvent(instanceId: string, opts: FocusOpts = {}): void {
+    focusInstances([instanceId], opts)
+  }
+
+  /** 点副图族行上的一个记号:几个成员各自归属的 hit 合起来再走 0/1/≥2 三分支。 */
+  function focusMark(memberIds: string[], opts: FocusOpts = {}): void {
+    if (memberIds.length > 0) focusInstances(memberIds, opts)
+  }
+
+  function focusInstances(ids: string[], opts: FocusOpts): void {
+    const events = effectiveAnalysis.value?.events ?? []
+    const head = ids[0]
+
+    // 焦点意图:add 焦点所在 node 到展开集(不折叠其他 node);node 无解则不动集合。
+    const ev = events.find(e => e.instance_id === head)
+    if (ev) {
+      const node = nodeOfEventByBand(ev, tagMap.value.tagToNodes, tagMap.value.tagList)
+      if (node && !manualExpandedNodes.value.has(node)) {
+        const s = new Set(manualExpandedNodes.value)
+        s.add(node)
+        manualExpandedNodes.value = s
+      }
+    }
+
+    const ms: HitDict[] = []
+    const owner = new Map<string, string>()   // hit_id → 记号里第一个属于它的成员
+    for (const id of ids) {
+      for (const m of hitsOfInstance(id)) {
+        if (!owner.has(m.hit_id)) { owner.set(m.hit_id, id); ms.push(m) }
+      }
+    }
+
+    const bandFamily: ActiveFamily | null = ev ? { kind: 'band', key: familyKeyOf(bandKeyOf(ev), ev.start_idx) } : null
+    const sameDay = sameBuyDays(ms)
+    const pending = ms.length >= 2 && !sameDay
     if (ms.length === 0) {
       focusedHitId.value = null
-      selectedInstanceId.value = instanceId
+      selectedInstanceId.value = head
       focusedInstanceId.value = null
       clearCandidates()
-    } else if (ms.length === 1) {
+    } else if (!pending) {
+      // ms 按成员顺序(格里深档在前)、同一成员内按原顺序,取第一次
       focusedHitId.value = ms[0].hit_id
       selectedInstanceId.value = null
-      focusedInstanceId.value = instanceId
+      focusedInstanceId.value = owner.get(ms[0].hit_id) ?? head
       clearCandidates()
     } else {
       // 多归属:信息层(markedHitIds=candidates)+ 视觉层(不亮 group,等 disambig)
@@ -852,26 +953,110 @@ export const useViewStore = defineStore('view', () => {
       selectedInstanceId.value = null
       focusedInstanceId.value = null
       setCandidateHits(ms.map(m => m.hit_id))
-      pendingDisambigInstanceId.value = instanceId
+      pendingDisambigInstanceId.value = head
     }
-    autoFollowLevel(instanceId)
+    // 当前日:几个 hit 共用的单个对象(如旧平台)待选时还没定哪一天,不画竖线;其余取记号的终点
+    currentDay.value = pending && ids.length === 1 ? null : (opts.day ?? ev?.end_idx ?? null)
+    // 当家行:点进来的那一行;待选时在 bracket(←/→ 在候选间走),除非调用方带了自己的外部行
+    const external = opts.family != null && typeof opts.family !== 'string'
+    if (external || opts.family === null) {
+      activeFamily.value = toActiveFamily(opts.family, null)
+    } else if (pending) {
+      activeFamily.value = bracketFamilyOf(ms[0])
+    } else {
+      const rowFamily = toActiveFamily(opts.family, bandFamily)
+      // 一个成员被同一天几次 hit 共用(如 today):成员间走不出第二次,当家行仍是这一行,←/→ 在这几次 hit 间走
+      activeFamily.value = sameDay && ids.length === 1 && rowFamily
+        ? hitListFamily(ms.map(m => m.hit_id), rowFamily.key)
+        : rowFamily
+    }
   }
+
+  // 一串 hit 当作一行来走(外部行):每走一步直选那一次,当家行的键不变(加粗的仍是点进来的那一行)。
+  function hitListFamily(order: readonly string[], key: string): ActiveFamily {
+    return {
+      kind: 'external', key,
+      step: (d) => {
+        const j = stepIndex(order, focusedHitId.value, d)
+        if (j === null) return
+        focusHit(order[j])
+        activeFamily.value = hitListFamily(order, key)
+      },
+    }
+  }
+
+  // ← / →:在当家行里走到上 / 下一个,到两头停住。每走一步等于点一次。
+  //   外部行 → 调它自己的 step;
+  //   待选(当家行是 bracket 或未设)→ 在候选 hit 之间按终点走;
+  //   bracket 族 → 在这一族的 hit 里按终点走;
+  //   band 族 → 按族内成员顺序走(和画出来的一致:同一套显隐、档位筛选)。
+  function stepFocus(dir: -1 | 1): void {
+    const a = activeFamily.value
+    if (a?.kind === 'external') { a.step(dir); return }
+    const hits = effectiveAnalysis.value?.hits ?? []
+    const events = effectiveAnalysis.value?.events ?? []
+    if (candidateHitIds.value.size > 0 && (a === null || a.kind === 'bracket')) {
+      const order = hits.map((m, i) => ({ m, i })).filter(x => candidateHitIds.value.has(x.m.hit_id))
+        .sort((x, y) => x.m.end_idx - y.m.end_idx || x.i - y.i).map(x => x.m.hit_id)
+      stepCandidates(order, null, dir)
+      return
+    }
+    if (!a) return
+    if (a.kind === 'bracket') {
+      const fam = foldHits(hits, events, endNode.value).find(f => f.key === a.key)
+      if (!fam) return
+      const j = stepIndex(fam.hitIds, focusedHitId.value, dir)
+      if (j !== null) focusHit(fam.hitIds[j], { family: a.key })
+      return
+    }
+    const at = a.key.lastIndexOf('@')
+    const band = a.key.slice(0, at)
+    const start = Number(a.key.slice(at + 1))
+    const topoNodes = effectivePattern.value?.topology.nodes ?? []
+    const node = tagMap.value.tagToNodes[band]?.[0] ?? band
+    const spec = topoNodes.find(n => n.node_id === node)
+    const inFamily = events.filter(e => bandKeyOf(e) === band && e.start_idx === start &&
+      isBandVisible(band, nodeVisible.value, tagMap.value.tagToNodes))
+    const fam = foldBand(inFamily, { band, isPoint: spec?.is_point === true, tierOf: eventTier, level: level.value,
+                                     levelImmune: spec?.solve === false })[0]
+    if (!fam) return
+    const cur = focusedInstanceRef.value ?? pendingDisambigInstanceId.value
+    const j = stepIndex(fam.memberIds, cur, dir)
+    if (j !== null) focusEvent(fam.memberIds[j], { family: a.key })
+  }
+
+  // 从待选进入后,选中一个就不再是待选;记住候选顺序,之后的 ←/→ 仍在这几次 hit 之间走
+  // (候选可能跨几个 bracket 族,所以挂成外部行;加粗的是当前 hit 所在的那一族)。
+  function stepCandidates(order: readonly string[], cur: string | null, dir: -1 | 1): void {
+    const j = stepIndex(order, cur, dir)
+    if (j === null) return
+    focusHit(order[j])
+    const m = (effectiveAnalysis.value?.hits ?? []).find(h => h.hit_id === order[j])
+    activeFamily.value = {
+      kind: 'external', key: m ? bracketFamilyOf(m).key : `${HIT_FAMILY_PREFIX}@`,
+      step: (d) => stepCandidates(order, focusedHitId.value, d),
+    }
+  }
+
+  function stepIndex(order: readonly string[], cur: string | null, dir: -1 | 1): number | null {
+    if (order.length === 0) return null
+    const i = cur ? order.indexOf(cur) : -1
+    const j = i < 0 ? (dir > 0 ? 0 : order.length - 1) : i + dir
+    return j < 0 || j >= order.length || j === i ? null : j
+  }
+
+  function setCurrentDay(day: number | null): void { currentDay.value = day }
+  function setActiveFamily(f: ActiveFamily | null): void { activeFamily.value = f }
+  function setBarDates(d: string[]): void { barDates.value = d }
 
   function clearFocus(): void {
     focusedHitId.value = null
     selectedInstanceId.value = null
     focusedInstanceId.value = null
+    currentDay.value = null
+    activeFamily.value = null
     clearCandidates()
     clearShiftSelection()
-  }
-
-  // spec §3.5:单向放松门控;只降不升;仅 focusEvent 调用
-  function autoFollowLevel(instanceId: string): void {
-    const ev = effectiveAnalysis.value?.events.find(e => e.instance_id === instanceId)
-    if (!ev) return
-    const evTier = eventTier(ev)
-    const RANK: Record<Level, number> = { in_hit: 2, qualified: 1, detected: 0 }
-    if (RANK[evTier] < RANK[level.value]) setLevel(evTier)
   }
 
   function setLevel(l: Level) { level.value = l; saveLevelToLS(l) }
@@ -1168,6 +1353,9 @@ export const useViewStore = defineStore('view', () => {
 
   const qualifiedIds = computed<Set<string>>(() => qualifiedIdsOf(diag.value))
 
+  // 给渲染层的当家行族键(族行底线加粗、表头加粗)
+  const activeFamilyKey = computed<string | null>(() => activeFamily.value?.key ?? null)
+
   function bandKey(e: EventDict): string { return bandKeyOf(e) }
   function eventTier(e: EventDict): Tier { return eventTierOf(e, inHitIds.value, qualifiedIds.value) }
 
@@ -1197,6 +1385,8 @@ export const useViewStore = defineStore('view', () => {
     loadScanFile, clearScanFile, setCurrentScanName, currentScanName, selectSymbol, setActivePattern, setSort,
     toggleNode, toggleExpandedNode,
     focusHit, focusEvent, clearFocus,
+    focusMark, focusHits, focusBuyDay, stepFocus, setCurrentDay, setActiveFamily, setBarDates,
+    currentDay, activeFamily, activeFamilyKey, barDates,
     setLevel, hoverEvent,
     setCandidateHits, clearCandidates, setPendingDisambig,
     setShiftSelectedEvents, clearShiftSelection, clearDetailCard, triggerTimeQuery, triggerPairQuery,

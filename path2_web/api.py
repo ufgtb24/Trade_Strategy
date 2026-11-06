@@ -36,6 +36,7 @@ from path2_web.snapshot_fingerprint import ManifestMissing
 from path2_web.gate_collector import attach_and_collect, detach
 from path2_web.serialize import serialize_pattern
 from path2_web.annotation import membership as annotation_membership
+from path2_web.annotation import match as annotation_match
 from path2_web.annotation import store as annotation_store
 from path2_web.config import view_dataset_dir
 
@@ -821,15 +822,18 @@ def build_router(*, registry, config_path, get_config, set_config,
         return HTTPException(500, str(e))
 
     def _annotation_read(cfg: dict) -> dict:
-        """读结果再带上成员框推断的默认值 membership: {gap, near}。界面本地推断成员框、找「画了没收」时读它,
-        和会话用的参照实现(path2_web/annotation/membership.py)是同一处设定。"""
+        """读结果再带上成员框推断的默认值 membership: {gap, near},以及 match 的容差 match: {pos, neg}。
+        界面本地推断成员框、找「画了没收」、判 match 时读它们,和后端的设定(path2_web/annotation/membership.py、
+        path2_web/annotation/match.py)是同一处。"""
         return {**annotation_store.read_annotations(cfg),
-                "membership": {"gap": annotation_membership.GAP, "near": annotation_membership.NEAR}}
+                "membership": {"gap": annotation_membership.GAP, "near": annotation_membership.NEAR},
+                "match": {"pos": annotation_match.POS_TOL, "neg": annotation_match.NEG_TOL,
+                          "sub": annotation_match.SUB_TOL}}
 
     @router.get("/annotations")
     def annotations_read():
         """当前标注:{state, conflicts, unsynced, violations, fingerprint, merges, revs, next_seq, ignored_files,
-        membership}。"""
+        membership, match}。"""
         try:
             return _annotation_read(get_config())
         except (OSError, ValueError) as e:

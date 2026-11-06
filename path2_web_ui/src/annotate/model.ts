@@ -53,6 +53,9 @@ export interface AnnFingerprint {
   consistent: boolean
 }
 /** 成员框推断的默认值:gap(前后两段空几根以内算连着)、near(画了没收的范围)。 */
+/** match 的容差:正样本、负样本的买点离样本日几根以内算 matched(spec 第 10 节「match 容差」)。 */
+/** compare 对照容差(后端 path2_web/annotation/match.py 唯一设定):pos / neg 是 match 的买点离样本日根数,sub 是子框对子段的终点根数。 */
+export interface MatchTolerance { pos: number; neg: number; sub: number }
 export interface MembershipDefaults { gap: number; near: number }
 export interface AnnRead {
   state: AnnState
@@ -65,6 +68,8 @@ export interface AnnRead {
   next_seq: number
   ignored_files: string[]
   membership: MembershipDefaults
+  /** match 的容差(根数):后端 path2_web/annotation/match.py 唯一设定,判 match 时读它(annotate/compareRead.ts) */
+  match: MatchTolerance
 }
 export interface AnnOp { kind: AnnKind; id: string; base: string | null; value: any }
 /** 存进文件的框:状态里的框再带上它所在的股票。 */

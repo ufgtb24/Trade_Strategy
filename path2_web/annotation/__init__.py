@@ -5,4 +5,5 @@
   会话读标注、后端路由读写标注都只经它,它不依赖 FastAPI。
 - membership:框套框归属、成员框推断、骨架、dup、成员链空槽的参照实现(纯计算)。任何另写的实现都要逐例通过
   同一组带答案的例子 tests/path2_web/fixtures/membership_examples.json;GAP、NEAR 的默认值只在这里设定。
+- match:sample 与 hit 比较(match)的容差,只在这里设定;界面经 GET /annotations 读同一对值。
 """

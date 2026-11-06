@@ -231,3 +231,45 @@ describe('composeEffectiveSubH(spec 2026-07-03-subchart-boundary-model §1)', ()
     expect(composeEffectiveSubH(24, -10)).toBe(24)
   })
 })
+
+describe('compare 的合并几何(slots:用户轨插在 band 之间,bracket 上面让出 user 行)', () => {
+  const base = { bracketLaneCount: 2, bandLaneCounts: [3, 1] }
+  it('不传 slots 时与原来逐项相同', () => {
+    const a = computeSubGeometry(base, 1.5)
+    const b = computeSubGeometry({ ...base, slots: undefined }, 1.5)
+    expect(b).toEqual(a)
+    expect(a.appBracketTop).toBe(BAND_TOP_PAD)
+    expect(a.laneGeom).toEqual([])
+  })
+  it('按 slots 的先后堆叠:用户轨与 band 各占自己的高;band 的下标不变', () => {
+    const g = computeSubGeometry({
+      ...base, laneHeights: [26, 44], userBracketH: 21,
+      slots: [{ kind: 'lane', lane: 1 }, { kind: 'band', band: 1 }, { kind: 'lane', lane: 0 }, { kind: 'band', band: 0 }],
+    })
+    expect(g.appBracketTop).toBe(21)
+    expect(g.bracketH).toBe(21 + 2 * BAND_LANE_H + BAND_BOT_PAD)
+    const top0 = g.bracketH + DIVIDER_GAP
+    expect(g.laneGeom[1]).toEqual({ top: top0, h: 44 })
+    expect(g.bandGeom[1].top).toBe(top0 + 44)
+    expect(g.laneGeom[0].top).toBe(g.bandGeom[1].top + g.bandGeom[1].h)
+    expect(g.bandGeom[0].top).toBe(g.laneGeom[0].top + 26)
+    expect(g.subCanvasH).toBe(g.bandGeom[0].top + g.bandGeom[0].h)
+  })
+  it('没有 hit 也给 user 行留位', () => {
+    const g = computeSubGeometry({ bracketLaneCount: 0, bandLaneCounts: [1], userBracketH: 21,
+                                   slots: [{ kind: 'band', band: 0 }], laneHeights: [] })
+    expect(g.bracketH).toBe(21 + BAND_BOT_PAD)
+  })
+})
+
+describe('composeEffectiveSubH 的上限(三种模式都设:内容再高,K 线主图也不被挤掉)', () => {
+  it('给了上限:不超过上限;没给与原来相同', () => {
+    expect(composeEffectiveSubH(900, null, 500)).toBe(500)
+    expect(composeEffectiveSubH(300, null, 500)).toBe(300)
+    expect(composeEffectiveSubH(900, -600, 500)).toBe(300)
+    expect(composeEffectiveSubH(900, null)).toBe(900)
+  })
+  it('上限比最小高还小时退到最小高(容器还没量出高度的那一帧不塌成 0)', () => {
+    expect(composeEffectiveSubH(900, null, -300)).toBe(MIN_SUB_H)
+  })
+})

@@ -1,4 +1,6 @@
-// Task 8 · focusHit / focusEvent(单入口 instance_id)/ clearFocus + autoFollowLevel 单元测。
+// Task 8 · focusHit / focusEvent(单入口 instance_id)/ clearFocus 单元测。
+// 规格变更(2026-11-05 队长裁定,不是放宽):聚焦不再自动降档(原 autoFollowLevel 已删),档位按钮只由用户点;
+// 下面两条 level 用例相应改成「level 不动」。
 // 与 spec §5「focusEvent 单入口:focusEvent(instanceId: string)」逐行对齐。
 import { describe, it, expect, beforeEach } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
@@ -109,16 +111,17 @@ describe('view store · focusHit / focusEvent(单入口)/ clearFocus', () => {
     expect(view.showTrace).toBe(false)
   })
 
-  it('level auto-follow:选 detected 实例 + level=in_hit → setLevel("detected")', () => {
+  it('聚焦不改档位:选 detected 实例 + level=in_hit → level 仍是 in_hit,实例照样选中', () => {
     const view = useViewStore()
     view.loadScanFile(makeFixture())
     view.setLevel('in_hit')
     // ta_30_32#0 是 0 归属 → tier=detected(不在 inHitIds,若也不在 qualifiedIds 则 detected)
     view.focusEvent('ta_30_32#0')
-    expect(view.level).toBe('detected')
+    expect(view.level).toBe('in_hit')
+    expect(view.selectedInstanceId).toBe('ta_30_32#0')
   })
 
-  it('level auto-follow:选 in_hit 实例 + level=in_hit → level 不动', () => {
+  it('聚焦不改档位:选 in_hit 实例 + level=in_hit → level 不动', () => {
     const view = useViewStore()
     view.loadScanFile(makeFixture())
     view.setLevel('in_hit')
@@ -126,7 +129,7 @@ describe('view store · focusHit / focusEvent(单入口)/ clearFocus', () => {
     expect(view.level).toBe('in_hit')
   })
 
-  it('focusHit 不触发 level auto-follow', () => {
+  it('focusHit 不改档位', () => {
     const view = useViewStore()
     view.loadScanFile(makeFixture())
     view.setLevel('in_hit')

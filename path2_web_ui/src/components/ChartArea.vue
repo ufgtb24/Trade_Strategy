@@ -3,8 +3,9 @@
     <!-- row0: 全局 level 控件 + 三 panel toggle chip + 休眠草稿 banner。
          .header-row 包一层让 banner 挂在 chip 行下方,同时对 grid 只占单一自动行——
          不新增显式行号,不改动 topology-row/kline/sidebar 既有的 auto-placement,避免二者同时出现时抢行。 -->
-    <!-- annotate、compare 不显示 app 相关的控件(档位、pattern、参数、拓扑、诊断侧栏);compare 的 app 输出档位一直到 detected -->
-    <div v-if="!annotating" class="header-row">
+    <!-- annotate 不显示 app 相关的控件;compare 的副图就是主视图那张,档位按钮、拓扑面板与主视图共用同一份状态
+         (诊断侧栏只在 app 模式:compare 右栏是标注侧栏,样本的 diagnose 在 selection 页) -->
+    <div v-if="mode !== 'annotate'" class="header-row">
       <div class="level-bar" data-testid="level-control">
         <button
           v-for="opt in LEVEL_OPTIONS"
@@ -27,8 +28,10 @@
           <ParamsChip :drawer-open="drawerOpen" @toggle-drawer="drawerOpen = !drawerOpen" />
         </template>
         <span class="spacer" />
+        <!-- 副图竖直缩放(KlineChart 传送过来):放在顶栏,不盖副图里的东西 -->
+        <span id="band-zoom-slot" class="band-zoom-slot" />
         <button
-          v-for="t in PANEL_TOGGLES"
+          v-for="t in panelToggles"
           :key="t.key"
           :class="['level-btn', 'panel-toggle', { active: panels[t.refKey] }]"
           :data-testid="`panel-toggle-${t.key}`"
@@ -41,7 +44,7 @@
     <!-- annotate:标注的提示条(指纹不符、冲突、保存被拒),占 row1 -->
     <AnnotationNotices v-if="annotating" class="notices-row" />
     <!-- row1: 拓扑控制(可隐藏,wrapper .topology-row 让 CSS 精准跨列) -->
-    <div v-if="!annotating && showTopology" class="topology-row">
+    <div v-if="mode !== 'annotate' && showTopology" class="topology-row">
       <TopologyControl @hover-node="onHoverNode" />
     </div>
     <!-- row2: K线 + 诊断侧栏(侧栏可隐藏) -->
@@ -55,7 +58,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onBeforeUnmount } from 'vue'
+import { computed, ref, onMounted, onBeforeUnmount } from 'vue'
 import { storeToRefs } from 'pinia'
 import TopologyControl from './TopologyControl.vue'
 import KlineChart from './KlineChart.vue'
@@ -71,7 +74,7 @@ import { useAnnotationStore } from '../stores/annotation'
 import type { Level } from '../types'
 
 const view = useViewStore()
-const { level, annotating, linkedView } = storeToRefs(view)
+const { level, annotating, linkedView, mode } = storeToRefs(view)
 const panels = usePanelsStore()
 const { showTopology, showSidebar } = storeToRefs(panels)
 // 抽屉开关 ref 由 ChartArea 持有,ParamsChip 只 emit toggle-drawer;WorkingCopyDrawer(Task 11)在此渲染
@@ -118,6 +121,9 @@ const PANEL_TOGGLES: { key: PanelKey; refKey: 'showTopology' | 'showSidebar' | '
   { key: 'slider',   refKey: 'showSlider',   label: 'Slider',   title: '显示/隐藏 K 线下方缩放滑块' },
 ]
 
+// compare 下只留拓扑开关:诊断侧栏不出、缩放滑块常显
+const panelToggles = computed(() => (annotating.value ? PANEL_TOGGLES.filter(t => t.key === 'topology') : PANEL_TOGGLES))
+
 function onHoverNode(_nodeId: string | null) { /* 高亮交互留 KlineChart 内部增强 */ }
 
 function onActivePatternChange(e: Event) {
@@ -137,10 +143,15 @@ function onActivePatternChange(e: Event) {
   min-width: 0;
 }
 .chart-area.no-sidebar { grid-template-columns: 1fr; }
-.chart-area.annotating { grid-template-columns: 1fr 320px; }
+.chart-area.annotating { grid-template-columns: 1fr 320px; grid-template-rows: auto auto auto 1fr; }
 .header-row, .level-bar, .chart-area > .topology-row, .chart-area > .notices-row { grid-column: 1 / -1; }
 .chart-area > .notices-row { grid-row: 2; }
 .chart-area > .kline-wrap-v2, .chart-area > .sidebar { grid-row: 3; }
+/* annotate / compare:顶栏行(compare 才有)、拓扑(compare 才有)、标注提示条、K 线各占一行 */
+.chart-area.annotating > .header-row { grid-row: 1; }
+.chart-area.annotating > .topology-row { grid-row: 2; }
+.chart-area.annotating > .notices-row { grid-row: 3; }
+.chart-area.annotating > .kline-wrap-v2, .chart-area.annotating > .sidebar { grid-row: 4; }
 
 .level-bar {
   display: flex;
@@ -151,6 +162,7 @@ function onActivePatternChange(e: Event) {
   border-bottom: 1px solid #2a2a4a;
 }
 .spacer { flex: 1; }
+.band-zoom-slot { display: flex; align-items: center; }
 
 .level-btn {
   padding: 3px 14px;

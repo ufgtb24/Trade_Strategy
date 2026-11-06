@@ -5,7 +5,10 @@
     <CandidateStatusBar :hits="effectiveAnalysis?.hits ?? []" />
     <ShiftPairBanner />
     <div class="sub-outer" :style="{ height: effectiveSubH + 'px' }" ref="subOuterEl">
-      <div v-if="!annotating" class="band-zoom-controls" @wheel.stop>
+      <!-- 副图竖直缩放挪到顶栏(ChartArea 的 #band-zoom-slot):浮在副图右上角会盖住最右边的 ▲ 与 ✓ / ✗、hit 的 ▼
+           (训练段末日附近的样本正落在那里);顶栏和这个控件同在 annotate 以外的模式出现 -->
+      <Teleport v-if="mode !== 'annotate' && zoomSlot" :to="zoomSlot">
+      <div class="band-zoom-controls" data-testid="band-zoom-controls" @wheel.stop>
         <button type="button" class="band-zoom-btn"
                 :disabled="bandZoomFactor <= BAND_ZOOM_MIN"
                 title="缩小 marker 竖直尺寸(−0.2)"
@@ -16,10 +19,11 @@
                 title="放大 marker 竖直尺寸(+0.2)"
                 @click="onBandZoomPlus">+</button>
         <button type="button" class="band-zoom-btn band-zoom-reset"
-                :disabled="bandZoomFactor === BAND_ZOOM_MIN"
-                title="复位到 1.0×"
+                :disabled="bandZoomFactor === bandZoomHome"
+                :title="`复位到 ${formatFactor(bandZoomHome)}`"
                 @click="onBandZoomReset">↺</button>
       </div>
+      </Teleport>
       <div ref="subInnerEl" class="sub-inner" :style="{ height: subCanvasH + 'px' }" @contextmenu="handleContextMenu" />
     </div>
     <!-- 主图顶部居中标题:HTML 代码 + 一键复制按钮(取代原 canvas title)。
@@ -73,7 +77,7 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, onBeforeUnmount, ref, watch, computed, nextTick } from 'vue'
+import { onMounted, onBeforeUnmount, ref, shallowRef, watch, computed, nextTick } from 'vue'
 import * as echarts from 'echarts'
 import { isBrushToggleKey } from './klineBrushKey'
 import { createBrushRequestHandler } from './klineBrushHandler'
@@ -86,7 +90,7 @@ import { getAllOhlc, getOhlc } from '../api'
 import { zoomForWindow } from '../annotate/viewWindow'
 import {
   computeEventData, buildMainOption, buildSubOption, buildVolumeSeriesAndYAxis,
-  emptyEventBundle, mainGridLayout,
+  emptyEventBundle, mainGridLayout, type BandLabelExtra, type EventBundle,
 } from '../render/chart'
 import {
   computeSubGeometry, composeEffectiveSubH, SUB_CANVAS_MIN_H, MIN_SUB_H,
@@ -97,6 +101,7 @@ import { ctrlState } from '../render/ctrlState'
 import { bandKeyOf, nodeOfEventByBand, resolveTooltipData, windowOf, formatForwardReturn, subBandTagList } from '../render/visible'
 import { peakIdIndex } from '../render/peakState'
 import type { Bar } from '../types'
+import type { Lane } from '../annotate/model'
 import { handleChartClick, handleShiftClick, MARKER_SERIES } from './KlineChart'
 import CandidateStatusBar from './CandidateStatusBar.vue'
 import ShiftPairBanner from './ShiftPairBanner.vue'
@@ -108,14 +113,17 @@ import { emptySlots } from '../annotate/membership'
 import { boxMarks, resizeLimit, sampleLetters, sampleRange, sampleTag } from '../annotate/samples'
 import { featureOrder, patternSamples } from '../annotate/grouping'
 import {
-  afterDimSeries, bracketGeometry, buildAnnotateSubOption, laneGeometry, mainMarksSeries, mainSamplesSeries,
-  packBrackets, triangleRect, type BracketItem, type Draft, type SampleMark,
+  afterDimSeries, annotateDataZoom, annotateLayer, bracketGeometry, buildAnnotateSubOption, laneGeometry,
+  mainMarksSeries, mainSamplesSeries, packBrackets, triangleRect, BRACKET_ROW_H, COMPARE_BRACKET_ROW_H, LANE_PAD, LANE_ROW_H,
+  type BracketItem, type Draft, type LaneGeom, type SampleMark,
 } from '../render/annotateLanes'
 import { createAnnotateGestures } from './annotateGestures'
 import { useRefLayerStore } from '../stores/refLayers'
 import { peaksSeries } from '../render/refLayers'
 import { useAppLinkStore } from '../stores/appLink'
-import { compareLanes, packHits } from '../render/compareOverlay'
+import { compareSlots, type Slot } from '../render/compareLayout'
+import { useCompareStore, SAMPLES_ROW } from '../stores/compare'
+import { defaultFocus } from '../annotate/compareRead'
 
 const view = useViewStore()
 const { symbol, effectiveAnalysis, nodeColors, nodeVisible, level, tagMap, isolated,
@@ -123,9 +131,11 @@ const { symbol, effectiveAnalysis, nodeColors, nodeVisible, level, tagMap, isola
         activePatternId, activeDetailCard, selectedHitId, candidateHitIds,
         highlightedEventIds, pendingDisambigInstanceId, shiftSelectedEventIds,
         focusedInstanceId, selectedInstanceId, compositionGroupIds, mode, annotating, viewWindow,
-        comparing, linkedView, tiers, endNode } = storeToRefs(view)
-// annotating(annotate、compare):画 K 线、成交量和用户的标注,不给 app 相关的交互(框选诊断、driver 菜单、副图缩放);
-// annotate 不画任何 app 产物,compare 把当前 pattern 的 app 的输出叠到特征轨和 bracket 轨上(render/compareOverlay.ts)。
+        comparing, linkedView, endNode, currentDay, activeFamilyKey } = storeToRefs(view)
+// annotating(annotate、compare):画 K 线、成交量和用户的标注,不给框选诊断、driver 菜单。
+// annotate 不画任何 app 产物;compare 的副图就是主视图那张(app 的族行、bracket 的 hit 行、档位、缩放、选中与当前日),
+// 再把用户的特征轨插在它对上的 band 组上方、样本跨度放在 bracket 最上面的 user 行(标注层,render/annotateLanes.ts
+// 的 annotateLayer;轨序 render/compareLayout.ts);K 线区是 annotate 的标注层加上 app 模式 K 线区画的东西。
 // wholeChart:图是这只股票截到训练段末日的全部 K 线(annotate、compare、现算的 app);扫描结果的 app 只画扫描窗口
 const wholeChart = computed(() => mode.value !== 'app' || linkedView.value)
 const appLink = useAppLinkStore()
@@ -160,17 +170,55 @@ const baseLanes = computed(() => {
   const chart = annChart.value
   return chart ? computeLanes(chart.boxes, (f) => ann.nameOf(f) ?? f, annDates.value, annOrder.value) : []
 })
-// compare:mapping 对到特征的 node 的 event 叠到那条特征轨上(没有框的特征另起一条),hit 叠到 bracket 轨上
-const overlay = computed(() => {
-  const a = comparing.value ? effectiveAnalysis.value : null
-  const features = appLink.mapping?.features
-  if (!a || !features) return null
-  const untiered = new Set((effectivePattern.value?.topology.nodes ?? []).filter(n => n.solve === false).map(n => n.node_id))
-  const { lanes, app } = compareLanes(baseLanes.value, features, a.events, (e) => view.eventTier(e),
-                                      (fid) => ann.featureById.has(fid), untiered)
-  return { lanes, app, hits: packHits(a.hits, a.events, endNode.value) }
+const cmp = useCompareStore()
+// compare:app 跑完、当前 pattern 有 mapping 时,副图是主视图那张副图 + 标注层;还没跑完时照 annotate 只画标注
+const compareReady = computed(() => comparing.value && !!effectiveAnalysis.value && !!effectivePattern.value
+                                    && !!appLink.mapping && tagMap.value.tagList.length > 0)
+// compare:map 了的特征这张图上还没有框时另起一条空轨(排在特征轨之后、unnamed 之前),标题照样写 ⇣ node,
+// 可以直接在上面画框
+const annLanes = computed<Lane[]>(() => {
+  const base = baseLanes.value
+  const features = compareReady.value ? appLink.mapping?.features : null
+  if (!features) return base
+  const have = new Set(base.map(l => l.key))
+  const extra: Lane[] = Object.keys(features).filter(fid => !have.has(fid) && cmp.nodeOfFeature(fid) !== null)
+    .sort((a, b) => ((ann.nameOf(a) ?? a) < (ann.nameOf(b) ?? b) ? -1 : 1))
+    .map(fid => ({ key: fid, parent: null, rows: 1, boxes: [] }))
+  const unnamed = base.findIndex(l => l.key === null)
+  return unnamed < 0 ? [...base, ...extra] : [...base.slice(0, unnamed), ...extra, ...base.slice(unnamed)]
 })
-const annLanes = computed(() => overlay.value?.lanes ?? baseLanes.value)
+// compare 的轨序:用户轨照 annotate 顺序,map 了的轨下面紧跟它对的 band 组
+const cmpLayout = computed(() => {
+  const pat = effectivePattern.value
+  if (!compareReady.value || !pat || !appLink.mapping) return null
+  const bands = subBandTagList(tagMap.value.tagList, pat.topology)
+  return { bands, ...compareSlots(annLanes.value, bands, pat.topology, appLink.mapping.features,
+                                  (fid) => ann.featureById.has(fid)) }
+})
+// compare 合并后的用户轨几何(画的时候算出来,画框手势按它找轨)
+const cmpGeom = shallowRef<{ lanes: LaneGeom[]; height: number } | null>(null)
+// band 表头:node 名后跟用户的特征名(mapping 对到它的特征;app 模式与 compare 都写);compare 下没被任何框轨拉走的挂 app_only
+const shownMapping = computed(() => {
+  if (comparing.value) return appLink.mapping
+  const ms = (appLink.mappings ?? []).filter(m => m.app === view.appId && !m.problem)
+  return ms.find(m => m.pattern === ann.currentPattern) ?? ms[0] ?? null
+})
+const bandExtras = computed<Record<string, BandLabelExtra>>(() => {
+  const out: Record<string, BandLabelExtra> = {}
+  const m = shownMapping.value
+  const tags = tagMap.value.tagList
+  if (m) {
+    for (const tag of tags) {
+      const nodes = tagMap.value.tagToNodes[tag] ?? [tag]
+      const names = Object.entries(m.features).filter(([fid, node]) => ann.featureById.has(fid) && nodes.includes(node))
+        .map(([fid]) => ann.nameOf(fid) ?? fid)
+      if (names.length) out[tag] = { feature: names.join(' / ') }
+    }
+  }
+  const lay = cmpLayout.value
+  if (lay) for (const b of lay.appOnly) out[lay.bands[b]] = { ...out[lay.bands[b]], tag: 'app_only' }
+  return out
+})
 // 样本:字母(当前 pattern)、选中的样本(在这张图上)、它的空槽、框旁的标记、bracket 轨
 const annLetters = computed(() => sampleLetters(annChart.value, ann.currentPattern))
 const annSelSample = computed(() =>
@@ -180,22 +228,29 @@ const annSlots = computed(() => (annSelSample.value && ann.state && ann.membersh
 const annMarks = computed(() => boxMarks(annChart.value, ann.currentPattern, annSelSample.value, annSlots.value))
 const annBracket = computed(() => {
   const chart = annChart.value
-  const items: BracketItem[] = (chart?.samples ?? []).map(smp => ({
-    id: smp.id, ...sampleRange(smp, chart!), pos: smp.judgment === 'pos', letter: annLetters.value.get(smp.id) ?? null,
-    faded: smp.pattern !== ann.currentPattern,
-    emphasis: smp.id === ann.selectedSampleId ? 2 : smp.id === ann.currentSampleId ? 1 : 0,
-  }))
+  const reads = compareReady.value ? cmp.sampleReads : null
+  const items: BracketItem[] = (chart?.samples ?? []).map(smp => {
+    const r = reads?.get(smp.id)
+    const off = r?.match.offset
+    return {
+      id: smp.id, ...sampleRange(smp, chart!), pos: smp.judgment === 'pos', letter: annLetters.value.get(smp.id) ?? null,
+      faded: smp.pattern !== ann.currentPattern,
+      emphasis: smp.id === ann.selectedSampleId ? 2 : smp.id === ann.currentSampleId ? 1 : 0,
+      // compare:▲ 字母后的 ✓ / ✗(app 与这个样本的判断一致与否),matched / unmatched 与买点差几根在悬停
+      mark: r ? { sign: r.mark, tip: `${r.match.state}${off != null ? ` · buy ${off >= 0 ? '+' : ''}${off}` : ''}` } : null,
+    }
+  })
   const { rows, placed } = packBrackets(items, annDates.value)
-  // compare:hit 排在样本跨度的那几行下面(没有样本时从第一行起)
-  const hitRow0 = placed.length ? rows : 0
-  const hitRows = overlay.value?.hits.rows ?? 0
-  return { geom: bracketGeometry(Math.max(rows, hitRow0 + hitRows)), placed, hitRow0 }
+  // compare 下这就是 bracket 区最上面的 user 行(行高放大),app 的 hit 行接在它下面(subGeometry 的 userBracketH)
+  return { geom: bracketGeometry(rows, compareReady.value ? COMPARE_BRACKET_ROW_H : BRACKET_ROW_H), placed }
 })
 const annSampleMarks = computed<SampleMark[]>(() => (annChart.value?.samples ?? []).map(smp => ({
   id: smp.id, date: smp.date, pos: smp.judgment === 'pos', selected: smp.id === ann.selectedSampleId,
   faded: smp.pattern !== ann.currentPattern, letter: annLetters.value.get(smp.id) ?? null,
 })))
-const annGeom = computed(() => laneGeometry(annLanes.value, annBracket.value.geom.top + annBracket.value.geom.h))
+const annGeom = computed(() => (compareReady.value && cmpGeom.value
+  ? { geom: cmpGeom.value.lanes, height: cmpGeom.value.height }
+  : laneGeometry(annLanes.value, annBracket.value.geom.top + annBracket.value.geom.h)))
 const resizeStop = ref<{ x: number; y: number; text: string } | null>(null)   // 改起止停在样本日时的提示(页面坐标)
 // CrosshairOverlay(DOM 一根到底竖线)的 x 坐标 + main-chart 相对 kline-wrap 的偏移(修 S3)
 const overlayX = ref<number | null>(null)
@@ -377,13 +432,24 @@ function handleDocumentClick(ev: MouseEvent) {
 }
 
 // ── band zoom factor(spec 2026-07-03)─────────────────────────────────
-// 从 localStorage 初始化,parse 失败 / NaN / out-of-range 回 default 1.0
-function loadBandZoom(): number {
-  const raw = parseFloat(localStorage.getItem(LS_KEY_BAND_ZOOM) ?? '')
-  if (!Number.isFinite(raw) || raw < BAND_ZOOM_MIN || raw > BAND_ZOOM_MAX) return 1.0
+// 从 localStorage 初始化,parse 失败 / NaN / out-of-range 回 default。
+// compare 单独一份、默认放大一档:副图里多了用户轨和 user 行(▲ 与 ✓ / ✗),按主视图的 1.0× 每条轨不到 20 像素,
+// 第一屏读不出;放大只改行高,画出来的东西和主视图同一套。
+const LS_KEY_BAND_ZOOM_COMPARE = `${LS_KEY_BAND_ZOOM}-compare`
+const COMPARE_BAND_ZOOM_DEFAULT = 2.0   // 待验证:在真图上定
+function loadBandZoom(key = LS_KEY_BAND_ZOOM, dflt = 1.0): number {
+  const raw = parseFloat(localStorage.getItem(key) ?? '')
+  if (!Number.isFinite(raw) || raw < BAND_ZOOM_MIN || raw > BAND_ZOOM_MAX) return dflt
   return raw
 }
-const bandZoomFactor = ref<number>(loadBandZoom())
+const bandZoomApp = ref<number>(loadBandZoom())
+const bandZoomCmp = ref<number>(loadBandZoom(LS_KEY_BAND_ZOOM_COMPARE, COMPARE_BAND_ZOOM_DEFAULT))
+const bandZoomFactor = computed<number>({
+  get: () => (comparing.value ? bandZoomCmp.value : bandZoomApp.value),
+  set: (v) => { if (comparing.value) bandZoomCmp.value = v; else bandZoomApp.value = v },
+})
+// ↺ 复位到的值:app 1.0×,compare 它自己的默认
+const bandZoomHome = computed(() => (comparing.value ? COMPARE_BAND_ZOOM_DEFAULT : BAND_ZOOM_MIN))
 const containerH = ref<number>(0)   // wrapEl 高度,ResizeObserver 更新
 
 // 计算副图 canvas 需要的高度
@@ -392,7 +458,9 @@ const subCanvasH = ref<number>(SUB_CANVAS_MIN_H)  // 首帧兜底
 // 副图容器高度合成:fit(offset=null)贴合内容;负 offset = drag 藏掉的像素数,
 // zoom 只改 subCanvasH → 分界线随 zoom 移动而隐藏量守恒。
 // spec: 2026-07-03-subchart-boundary-model-design.md §1/§2
-const effectiveSubH = computed(() => composeEffectiveSubH(subCanvasH.value, subHeightOffset.value))
+// 上限:容器高减去主图至少要留的 MAIN_MIN_H,内容再高也不把 K 线主图挤掉(多出来的在副图里滚);容器还没量出高度时不设
+const effectiveSubH = computed(() => composeEffectiveSubH(subCanvasH.value, subHeightOffset.value,
+                                                          containerH.value > 0 ? containerH.value - MAIN_MIN_H : Infinity))
 
 let chartMain: echarts.ECharts | null = null
 let chartSub: echarts.ECharts | null = null
@@ -422,6 +490,7 @@ async function reloadBars() {
   }
   if (seq !== barsSeq) return
   bars.value = next
+  view.setBarDates(next.map(b => b.date))
   if (annotating.value && sym && next.length) ann.setDays(sym, next.map(b => b.date))
 }
 
@@ -458,6 +527,11 @@ function deriveSubGeometry(zoomOverride?: number) {
   // 需要 bundle 里 bracketData / intervalData / pointData 分组
   const params = buildRenderInput()
   const bundle = computeEventData(bars.value, effectiveAnalysis.value.events, effectiveAnalysis.value.hits, params)
+  return computeSubGeometry(laneCountsOf(bundle), z)
+}
+
+// bracket 区 hit 的行数、每条 band 的行数(由 computeEventData 排好的 lane 号读出)
+function laneCountsOf(bundle: EventBundle): { bracketLaneCount: number; bandLaneCounts: number[] } {
   const bracketLaneCount = bundle.bracketData.length === 0
     ? 0
     : (Math.max(0, ...bundle.bracketData.map((d: any) => d.value[2])) + 1)
@@ -471,7 +545,7 @@ function deriveSubGeometry(zoomOverride?: number) {
     }
     return maxLane + 1
   })
-  return computeSubGeometry({ bracketLaneCount, bandLaneCounts }, z)
+  return { bracketLaneCount, bandLaneCounts }
 }
 
 // factorCap(spec §6.1):naturalSubH_at_1(bandZoomFactor=1 时的副图 canvas 高)决定 zoom 上限。
@@ -490,7 +564,7 @@ const factorCap = computed<number>(() => {
 function setBandZoom(next: number) {
   const clamped = Math.max(BAND_ZOOM_MIN, Math.min(next, factorCap.value))
   bandZoomFactor.value = clamped
-  localStorage.setItem(LS_KEY_BAND_ZOOM, String(clamped))
+  localStorage.setItem(comparing.value ? LS_KEY_BAND_ZOOM_COMPARE : LS_KEY_BAND_ZOOM, String(clamped))
 }
 
 // 若 factorCap 收紧到低于当前 factor,自动 clamp(container resize / bandLaneCounts 变化)
@@ -507,7 +581,7 @@ function onBandZoomPlus() {
   setBandZoom(bandZoomFactor.value + BAND_ZOOM_STEP_BUTTON)
 }
 function onBandZoomReset() {
-  setBandZoom(BAND_ZOOM_MIN)
+  setBandZoom(bandZoomHome.value)
 }
 
 // Task 4 amendment(Task 5 e2e review 发现):ECharts dataZoomInside 在 canvas 上注册
@@ -582,7 +656,9 @@ function buildRenderInput() {
     pendingDisambigInstanceId: pendingDisambigInstanceId.value,
     shiftSelectedEventIds: shiftSelectedEventIds.value,
     hits: effectiveAnalysis.value?.hits ?? [],
-    tiers: tiers.value,
+    currentDay: currentDay.value,
+    activeFamily: activeFamilyKey.value,
+    bandExtras: bandExtras.value,
   }
 }
 
@@ -608,8 +684,11 @@ function renderBarsOnly(forceResetZoom: boolean) {
   const zoomOverride = forceResetZoom
     ? (viewWindow.value ? zoomForWindow(bars.value.map(b => b.date), viewWindow.value) : null)
     : readZoomOverride()
-  const input = { sliderShow: true, zoomOverride }
-  const mainOpt = buildMainOption(bars.value, emptyEventBundle(bars.value), input,
+  const cmpOn = compareReady.value && !!cmpBundle
+  const input = cmpOn ? { ...buildRenderInput(), sliderShow: true, zoomOverride } : { sliderShow: true, zoomOverride }
+  // compare:K 线区和 app 模式画的一样(画在价格区的 node 的记号、它们的高亮、当前日竖线);annotate 只有 K 线
+  const mainBundle = cmpOn ? cmpBundle! : emptyEventBundle(bars.value)
+  const mainOpt = buildMainOption(bars.value, mainBundle, input,
                                   { getChartEl: () => mainEl.value, height: chartMain.getHeight() }) as any
   mainOpt.dataZoom[0].moveOnMouseMove = false
   // 主图上的标注层(选中的框、样本日之后暗一档)是一段:只要有一端在图窗里、或横跨整个图窗就照画。
@@ -626,20 +705,23 @@ function renderBarsOnly(forceResetZoom: boolean) {
   renderAnnotateLayers()
 }
 
+// compare 的 app 产物(族行、hit 行、当前日):app 那边的状态变了(render)才重算,框变了只重画标注层时沿用
+let cmpBundle: EventBundle | null = null
+
 // annotate 的两层:副图的特征轨与框,主图 K 线区上选中的框、正在拖的框。框变了只重画这两层,不动 K 线与缩放
 function renderAnnotateLayers() {
   if (!annotating.value || !chartMain || !chartSub || !bars.value.length) return
-  const { geom, height } = annGeom.value
-  subCanvasH.value = height
-  const zoom = readZoomOverride()
-  const c = overlay.value
-  chartSub.setOption(buildAnnotateSubOption(bars.value, {
-    lanes: annLanes.value, geom, nameOf: ann.nameOf, selectedId: ann.selectedBoxId,
-    preview: preview.value, draft: draft.value, zoom, width: chartSub.getWidth(),
-    bracket: annBracket.value, marks: annMarks.value,
-    compare: c ? { app: c.app, hits: c.hits.placed, hitRow0: annBracket.value.hitRow0,
-                   nodeColors: nodeColors.value, tiers: tiers.value } : null,
-  }) as any, true)
+  if (compareReady.value) renderCompareSub()
+  else {
+    cmpGeom.value = null
+    const { geom, height } = annGeom.value
+    subCanvasH.value = height
+    chartSub.setOption(buildAnnotateSubOption(bars.value, {
+      lanes: annLanes.value, geom, nameOf: ann.nameOf, selectedId: ann.selectedBoxId,
+      preview: preview.value, draft: draft.value, zoom: readZoomOverride(), width: chartSub.getWidth(),
+      bracket: annBracket.value, marks: annMarks.value,
+    }) as any, true)
+  }
   const sel = ann.selectedBox?.box ?? null
   const shownSel = sel && preview.value?.id === sel.id ? preview.value : sel
   chartMain.setOption({ series: [
@@ -647,6 +729,43 @@ function renderAnnotateLayers() {
     mainSamplesSeries(bars.value, annSampleMarks.value),
     afterDimSeries(annDates.value, annSelSample.value?.date ?? null),
   ] })
+}
+
+// compare 的副图:主视图那张副图(buildSubOption,app 的族行与 hit 行,band 之间按 cmpLayout 让出用户轨),
+// 再合进标注层(annotateLayer:用户轨、bracket 的 user 行、⇣ / unmapped / ✓ ✗ / missing)
+function renderCompareSub() {
+  const lay = cmpLayout.value
+  if (!chartSub || !lay || !effectiveAnalysis.value) return
+  const bundle = cmpBundle ?? (cmpBundle = computeEventData(bars.value, effectiveAnalysis.value.events,
+                                                            effectiveAnalysis.value.hits, buildRenderInput()))
+  const zoom = readZoomOverride()
+  const params = { ...buildRenderInput(), zoomOverride: zoom, zoomFactor: bandZoomFactor.value }
+  const bg = annBracket.value.geom
+  const laneHeights = annLanes.value.map(l => LANE_PAD * 2 + Math.max(1, l.rows) * LANE_ROW_H)
+  const subGeom = computeSubGeometry({ ...laneCountsOf(bundle), slots: lay.slots, laneHeights,
+                                       userBracketH: bg.top + bg.h }, bandZoomFactor.value)
+  subCanvasH.value = subGeom.subCanvasH
+  cmpGeom.value = { lanes: subGeom.laneGeom, height: subGeom.subCanvasH }
+  const opt: any = buildSubOption(bars.value, bundle, subGeom, params, chartSub.getWidth(),
+                                  { getChartEl: () => subInnerEl.value })
+  const slotBox = (sl: Slot) => (sl.kind === 'lane' ? subGeom.laneGeom[sl.lane] : subGeom.bandGeom[sl.band])
+  const groups = lay.groups.map(g => {
+    const a = slotBox(lay.slots[g.from]), b = slotBox(lay.slots[g.to])
+    return { top: a.top, bottom: b.top + b.h }
+  })
+  const missing = new Set<string>()
+  for (const [id, r] of cmp.boxReads) if (r.level === 'missing') missing.add(id)
+  const layer = annotateLayer(bars.value, {
+    lanes: annLanes.value, geom: subGeom.laneGeom, nameOf: ann.nameOf, selectedId: ann.selectedBoxId,
+    preview: preview.value, draft: draft.value, zoom, width: chartSub.getWidth(),
+    bracket: annBracket.value, marks: annMarks.value,
+    compare: { laneNode: lay.laneNode, unmapped: lay.unmapped, groups, missing, compared: new Set(cmp.boxReads.keys()),
+               userActive: activeFamilyKey.value === SAMPLES_ROW },
+  })
+  opt.graphic.push(...layer.graphics)
+  opt.series.push(...layer.series)
+  opt.dataZoom = [annotateDataZoom(zoom)]
+  chartSub.setOption(opt, true)
 }
 
 // 参照层开关或峰变了:只重画峰线这一个系列
@@ -677,7 +796,14 @@ function relayoutMainGrid() {
 }
 
 function render(forceResetZoom = false) {
-  if (annotating.value) { renderBarsOnly(forceResetZoom); return }
+  if (annotating.value) {
+    // compare:app 那边的状态(产物、档位、选中、当前日)变了才走到这里,重算 app 产物再画
+    cmpBundle = compareReady.value && effectiveAnalysis.value
+      ? computeEventData(bars.value, effectiveAnalysis.value.events, effectiveAnalysis.value.hits, buildRenderInput())
+      : null
+    renderBarsOnly(forceResetZoom)
+    return
+  }
   if (!chartMain || !chartSub) return
   if (!effectiveAnalysis.value || !effectivePattern.value) {
     // 现算的 app 还没跑完(或没跑成):先只画 K 线,副图清空
@@ -717,6 +843,14 @@ function onKeyDown(e: KeyboardEvent) {
   if (isBrushToggleKey(e)) {
     if (annotating.value) return
     toggleBrush()
+    e.preventDefault()
+    return
+  }
+  // ←/→:在当家行里走到上 / 下一个(↑/↓ 已被左侧列表切股占用);带修饰键、输入法组字中不响应
+  if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && !e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey
+      && !e.isComposing && t?.tagName !== 'SELECT') {
+    if (!view.activeFamily && view.candidateHitIds.size === 0) return
+    view.stepFocus(e.key === 'ArrowLeft' ? -1 : 1)
     e.preventDefault()
     return
   }
@@ -788,14 +922,35 @@ const annGestures = createAnnotateGestures({
   setStop: (st) => { resizeStop.value = st },
   createBox: (start, end, feature) => { if (symbol.value) ann.createBox(symbol.value, start, end, feature) },
   resizeBox: (id, start, end) => ann.resizeBox(id, start, end),
-  select: (id) => (id ? ann.selectBox(id) : ann.clearSelection()),
-  selectSample: (id) => ann.selectSample(id),
+  select: (id) => {
+    if (!id) { ann.clearSelection(); return }
+    ann.selectBox(id)
+    if (compareReady.value) cmp.focusBox(id)          // 再点同一个框也重新聚焦(点过 app 的格之后)
+  },
+  selectSample: (id) => {
+    ann.selectSample(id)
+    if (compareReady.value) cmp.focusSample(id)
+  },
   placeSample: (date) => { if (symbol.value && date) ann.placeSample(symbol.value, date) },
   take: (boxId) => { if (annSelSample.value) ann.toggleMember(annSelSample.value.id, boxId) },
+  // compare:只有用户轨与 bracket 的 user 行归画框手势,app 的 band、hit 行留给图表的点击
+  claims: (y) => {
+    if (!compareReady.value) return true
+    const bg = annBracket.value.geom
+    if (y < bg.top + bg.h) return true
+    return (cmpGeom.value?.lanes ?? []).some(g => !!g && y >= g.top && y < g.top + g.h)
+  },
 })
+
+// 副图竖直缩放控件的落点:顶栏里的 #band-zoom-slot(ChartArea,annotate 以外的模式才有)。
+// 每次换模式等 DOM 更新完再找;找不到(单独挂载本组件时)就不画控件。
+const zoomSlot = shallowRef<HTMLElement | null>(null)
+const findZoomSlot = () => { zoomSlot.value = document.getElementById('band-zoom-slot') }
+watch(mode, findZoomSlot, { flush: 'post' })
 
 // ── 挂钩 chart 生命周期 ─────────────────────────────────────────────
 onMounted(() => {
+  findZoomSlot()
   window.addEventListener('keydown', onKeyDown)
   document.addEventListener('click', handleDocumentClick)
 
@@ -804,13 +959,17 @@ onMounted(() => {
 
   // click 分流:主/副 chart 各一套,handleChartClick 按 seriesName 天然分流;
   // shift+click 先被 handleMaybeShiftClick 拦截(入口 D),消费后不再回退到候选四分支。
+  // compare 下点中 app 的东西(格、条、▼)时取消标注框的选中:否则框仍选中,按 Delete 会删掉标注
+  const onAppClick = (p: any) => {
+    if (handleChartClick(p, effectiveAnalysis.value?.hits ?? [], view) && comparing.value) ann.selectBox(null)
+  }
   chartMain.on('click', (p: any) => {
     if (handleMaybeShiftClick(p, 'main')) return
-    handleChartClick(p, effectiveAnalysis.value?.hits ?? [], view)
+    onAppClick(p)
   })
   chartSub.on('click', (p: any) => {
     if (handleMaybeShiftClick(p, 'sub')) return
-    handleChartClick(p, effectiveAnalysis.value?.hits ?? [], view)
+    onAppClick(p)
   })
   // v2 event-debug(2026-07-15) · marker 右键 → debug 菜单(主+副图,tb marker 主要在副图泳道)
   // ECharts element-level, 只在数据项上触发 —— 空白 K 线 / 蜡烛区由 DOM handleContextMenu 兜底,
@@ -1040,14 +1199,31 @@ watch([scanFile, effectiveScan], () => {
 watch([effectiveAnalysis, nodeVisible, level, nodeColors, focusedInstanceRef, diag, showSlider,
        selectedHitId, candidateHitIds, highlightedEventIds, pendingDisambigInstanceId,
        shiftSelectedEventIds, bandZoomFactor, focusedInstanceId, selectedInstanceId,
-       compositionGroupIds],
+       compositionGroupIds, currentDay, activeFamilyKey],
       () => render(false), { deep: true })
 
-// annotate:框、词表、选中、拖动中的样子变了 → 只重画标注的两层;compare 下叠的 app 输出、tiers 变了也一样
+// annotate:框、词表、选中、拖动中的样子变了 → 只重画标注的两层;compare 下轨序、✓ / ✗、missing 变了也一样
 watch(() => [ann.view, ann.selectedBoxId, ann.selectedSampleId, ann.currentSampleId, ann.currentPattern,
-             draft.value, preview.value, overlay.value, tiers.value], () => renderAnnotateLayers())
-// app:tiers 开关只动副图 event 条右端的 tier tag
-watch(tiers, () => { if (!annotating.value) render(false) })
+             draft.value, preview.value, cmpLayout.value, cmp.sampleReads, cmp.boxReads], () => renderAnnotateLayers())
+// app 模式:band 表头的特征名(mapping、词表)变了
+watch(bandExtras, () => { if (!annotating.value) render(false) })
+
+// compare:选中样本 → 当前日落在样本日、选中配对的那个;选中框 → 落在框终点(stores/compare.ts)
+watch(() => ann.selectedSampleId, (id) => { if (id && compareReady.value) cmp.focusSample(id) })
+watch(() => ann.selectedBoxId, (id) => { if (id && compareReady.value) cmp.focusBox(id) })
+// 进 compare、换股票后 app 跑完:有选中的样本 / 框就聚焦它,否则默认聚焦离图窗中心最近的样本
+// (只设当前日与 app 的选中,不动标注的选中,侧栏不翻页)
+watch(() => [compareReady.value, effectiveAnalysis.value, view.barDates] as const, async ([ready]) => {
+  if (!ready) return
+  await nextTick()
+  const sel = ann.selectedSampleId
+  if (sel && cmp.focusSample(sel)) return
+  if (ann.selectedBoxId && cmp.focusBox(ann.selectedBoxId)) return
+  const z = readZoomOverride() ?? { start: 0, end: 100 }
+  const center = ((z.start + z.end) / 200) * bars.value.length
+  const id = defaultFocus(cmp.sampleDays, null, center)
+  if (id) cmp.focusSample(id)
+})
 watch(shownPeaks, () => renderRefLayers())
 // 换图:拖到一半的手势作废,选中的框或样本(在原来那张图上)清掉,当前样本也清掉(冻结)
 watch(symbol, () => { annGestures.cancel(); ann.clearSelection() })
@@ -1101,17 +1277,14 @@ watch(activeDetailCard, (v, prev) => {
   min-width: 0;
 }
 .band-zoom-controls {
-  position: absolute;
-  top: 4px;
-  right: 4px;
   display: flex;
   align-items: center;
   gap: 2px;
   padding: 2px 4px;
-  background: rgba(255, 255, 255, 0.85);
+  background: #ffffff;
   border: 1px solid #cbd5e1;
   border-radius: 4px;
-  z-index: 10;
+  margin-right: 8px;
   user-select: none;
 }
 .band-zoom-btn {

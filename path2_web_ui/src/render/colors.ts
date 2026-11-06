@@ -39,11 +39,20 @@ function hslToHex(h: number, s: number, l: number): string {
   return `#${to(r)}${to(g)}${to(b)}`
 }
 
+/**
+ * 两档灰(对白底与副图隔行底 rgba(0,0,0,0.03) ≈ #f7f7f7 的对比,看图的用户靠深浅分色):
+ * - qualified 深灰 #9ca3af:对隔行底 2.4;
+ * - detected 浅灰 #b4bac2:对隔行底 1.8、对白底 1.95(再浅的灰,例如对隔行底只有 1.4 的,矮格压在隔行底上几乎看不见);
+ *   比 qualified 浅(两者之间 1.3),深浅顺序 in_hit > qualified > detected 不变,两档主要靠格高(TIER_H)分开。
+ */
+export const QUALIFIED_GRAY = '#9ca3af'
+export const DETECTED_GRAY = '#b4bac2'
+
 /** 三档配色:in_hit=node 本色(缺色兜底 NEUTRAL)/ qualified=深灰 / detected=浅灰。 */
 export function colorOf(tier: Tier, node: string | null, nodeColors: Record<string, string>): string {
   if (tier === 'in_hit') return (node && nodeColors[node]) || NEUTRAL
-  if (tier === 'qualified') return '#9ca3af'
-  return '#d1d5db'
+  if (tier === 'qualified') return QUALIFIED_GRAY
+  return DETECTED_GRAY
 }
 
 /** topology + event_styles → { node_id: hexColor }。

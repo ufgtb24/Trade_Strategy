@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test'
-import { baseURL } from './ports'
+import { deleteSmallScan, openSmallScan, runSmallScan, smallScanName } from './smallScan'
 
 // 前提:后端 + 前端 dev server 在线(playwright.config.ts 的 webServer 自动启动前端;
 //        后端须外部启动 uv run python scripts/path2/run_path2_web.py)。
@@ -9,53 +9,15 @@ import { baseURL } from './ports'
 
 // ─── 辅助:确保至少有一次扫描历史并加载,选中第一只 ticker ───────────────────
 
-/**
- * 确保至少有一次扫描并加载到 UI,选中第一只 ticker。
- * 若无历史则触发全量扫描(最长 3 分钟)再加载。
- * 返回已选中的 ticker symbol。
- */
+// 夹具:new_step 小扫描(./smallScan.ts),整个文件共用一次,结束删掉。
+// (原先打开历史里第一个扫描、没有就全量扫描;现存扫描或是 bo_only 大文件、或越过数据墙打不开,改用小扫描。)
+const SCAN_NAME = smallScanName('hit_event_disambig')
+test.beforeAll(async () => { await runSmallScan(SCAN_NAME) })
+test.afterAll(async () => { await deleteSmallScan(SCAN_NAME) })
+
+/** 打开小扫描,选中第一只 ticker,返回它的 symbol。 */
 async function ensureScanLoaded(page: any): Promise<string> {
-  await page.goto(baseURL + '/')
-
-  // 等 app 初始化完成:「打开历史…」按钮出现
-  const openHistBtn = page.getByRole('button', { name: /打开历史/ })
-  await expect(openHistBtn).toBeVisible({ timeout: 15_000 })
-
-  // 检查是否已有历史记录
-  await openHistBtn.click()
-  await expect(page.locator('.backdrop')).toBeVisible({ timeout: 5_000 })
-  // 等 loading 完成
-  await expect(page.locator('.state')).not.toContainText('Loading', { timeout: 5_000 }).catch(() => {})
-
-  const hasRows = (await page.locator('.file-list tbody tr').count()) > 0
-  if (!hasRows) {
-    // 无历史 → 关历史 dialog → 开扫描配置 dialog(顶部工具条「扫描 ⚙」) → 全选 pattern → 扫描 → 重开
-    await page.getByRole('button', { name: 'Cancel' }).click()
-    await expect(page.locator('.backdrop')).not.toBeVisible()
-
-    await page.getByRole('button', { name: /扫描 ⚙/ }).click()
-    // 等 patterns 加载完成(pattern-list 渲染出行)后全选
-    await expect(page.locator('.pattern-list li').first()).toBeVisible({ timeout: 10_000 })
-    await page.locator('.backdrop').getByRole('button', { name: '全选' }).click()
-
-    // 等「开始扫描」启用后触发
-    const scanBtn = page.getByRole('button', { name: /开始扫描/ })
-    await expect(scanBtn).toBeEnabled({ timeout: 10_000 })
-    await scanBtn.click()
-
-    // 等扫描完成(最长 4 分钟)
-    await expect(page.locator('.done')).toBeVisible({ timeout: 240_000 })
-
-    // 重新打开历史 dialog
-    await openHistBtn.click()
-    await expect(page.locator('.backdrop')).toBeVisible({ timeout: 5_000 })
-    await expect(page.locator('.file-list')).toBeVisible({ timeout: 5_000 })
-  }
-
-  // 选第一行 → Open
-  await page.locator('.file-list tbody tr').first().click()
-  await page.getByRole('button', { name: /^Open$/ }).click()
-  await expect(page.locator('.backdrop')).not.toBeVisible()
+  await openSmallScan(page, SCAN_NAME)
 
   // 等 ticker 列表出现:SidebarResultList 渲染 td.sym
   await expect(page.locator('td.sym').first()).toBeVisible({ timeout: 30_000 })
@@ -79,16 +41,14 @@ async function waitForHits(page: any): Promise<void> {
 }
 
 /**
- * 用第一只 ticker 的真实 hit event_id(最多 n 条)调用 setCandidateHits。
+ * 用第一只 ticker 的真实 hit_id(最多 n 条)调用 setCandidateHits。
  * 返回实际设置的 id 数量(≥1 时 banner 才能出现)。
- * 注意:banner 的 v-if 条件是 ordinalChars.length>0,ordinalChars 依赖
- * candidateHitIds 中 id 同时存在于 props.hits,因此必须用真实 event_id。
  */
 async function setRealCandidateHits(page: any, n = 2): Promise<number> {
   return page.evaluate((count: number) => {
     const view = (window as any).__e2e?.view
-    const hits: Array<{ event_id: string }> = view?.effectiveAnalysis?.hits ?? []
-    const ids = hits.slice(0, count).map((m) => m.event_id)
+    const hits: Array<{ hit_id: string }> = view?.effectiveAnalysis?.hits ?? []
+    const ids = hits.slice(0, count).map((m) => m.hit_id)
     if (ids.length > 0) view?.setCandidateHits(ids)
     return ids.length
   }, n)
@@ -106,13 +66,13 @@ test('multi-hit: setCandidateHits → candidate banner appears', async ({ page }
   // banner 初始隐藏
   await expect(page.locator('.candidate-banner')).toBeHidden()
 
-  // 模拟进入 candidate 态(使用真实 hit event_id)
+  // 模拟进入 candidate 态(使用真实 hit_id)
   const idsSet = await setRealCandidateHits(page, 2)
   expect(idsSet).toBeGreaterThanOrEqual(1)
 
-  // banner 应变可见并包含"候选"
+  // banner 应变可见:`candidates n` `←/→` `Esc`
   await expect(page.locator('.candidate-banner')).toBeVisible()
-  await expect(page.locator('.candidate-banner')).toContainText('候选')
+  await expect(page.locator('.candidate-banner')).toContainText('candidates')
 })
 
 // ─────────────────────────────────────────────────────────────────────────────

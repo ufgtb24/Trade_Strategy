@@ -99,6 +99,17 @@ def test_reads_carry_the_membership_defaults_set_in_one_place(snapshot, adir):
     assert r.json()["membership"] == want
 
 
+def test_reads_carry_the_match_tolerance_set_in_one_place(snapshot, adir):
+    """界面判 match、子框对子段用的容差由读路由带出,值就是 path2_web/annotation/match.py 里的那一处设定(spec 第 10 节)。"""
+    from path2_web.annotation import match
+
+    client = _client(snapshot, adir)
+    want = {"pos": match.POS_TOL, "neg": match.NEG_TOL, "sub": match.SUB_TOL}
+    assert client.get("/annotations").json()["match"] == want
+    r = client.post("/annotations/batch", json={"ops": [_box("b-pc-1", "2025-12-01", "2025-12-05")]})
+    assert r.json()["match"] == want
+
+
 def test_append_violation_is_rejected_with_reasons(snapshot, adir):
     client = _client(snapshot, adir)
     client.post("/annotations/batch", json={"ops": [_box("b-pc-1", "2025-12-01", "2025-12-05"),

@@ -29,26 +29,7 @@ describe('CandidateStatusBar (Task 10)', () => {
     expect(w.find('.candidate-banner').exists()).toBe(false)
   })
 
-  it('renders banner with start_idx-sorted ordinals (not raw hits order)', async () => {
-    const view = useViewStore()
-    // Hits deliberately NOT in start_idx order — ensures ordinal is sorted by start_idx
-    const hits = [
-      { hit_id: 'm_late',  start_idx: 50, end_idx: 60, children: [], node_index: {}, predicate_trace: null },
-      { hit_id: 'm_early', start_idx: 10, end_idx: 20, children: [], node_index: {}, predicate_trace: null },
-      { hit_id: 'm_mid',   start_idx: 30, end_idx: 40, children: [], node_index: {}, predicate_trace: null },
-    ]
-    const w = mount(CandidateStatusBar, { props: { hits } })
-    // Subscribe to all three — start_idx sort: m_early=①, m_mid=②, m_late=③
-    view.setCandidateHits(['m_late', 'm_early', 'm_mid'])
-    await w.vm.$nextTick()
-    const text = w.text()
-    expect(text).toContain('① ② ③')
-    expect(text).toContain('候选')
-    expect(text).toContain('click 任一 bracket')
-    expect(text).toContain('Esc 取消')
-  })
-
-  it('subset of candidates produces non-sequential ordinals', async () => {
+  it('待选时只报个数 + 操作键(bracket 折叠后一行几十次 hit,圈号已无意义)', async () => {
     const view = useViewStore()
     const hits = [
       { hit_id: 'm_late',  start_idx: 50, end_idx: 60, children: [], node_index: {}, predicate_trace: null },
@@ -56,27 +37,12 @@ describe('CandidateStatusBar (Task 10)', () => {
       { hit_id: 'm_mid',   start_idx: 30, end_idx: 40, children: [], node_index: {}, predicate_trace: null },
     ]
     const w = mount(CandidateStatusBar, { props: { hits } })
-    // Candidate set is {m_early, m_late} (skip m_mid) → expected ① ③
     view.setCandidateHits(['m_late', 'm_early'])
     await w.vm.$nextTick()
     const text = w.text()
-    expect(text).toContain('① ③')
-  })
-
-  it('falls back to arabic for ordinal > 9', async () => {
-    // 10 hits, candidate is the 10th by start_idx (start_idx: 100, i=9)
-    const hits = Array.from({ length: 10 }, (_, i) => ({
-      hit_id: `m${i}`,
-      start_idx: (i + 1) * 10,
-      end_idx: (i + 1) * 10 + 5,
-      children: [] as string[],
-      node_index: {} as Record<string, string>,
-      predicate_trace: null,
-    }))
-    const w = mount(CandidateStatusBar, { props: { hits } })
-    const view = useViewStore()
-    view.setCandidateHits(['m9'])  // 10th by start_idx (i=9, start_idx=100) → ordinal 10
-    await w.vm.$nextTick()
-    expect(w.text()).toContain('10')
+    expect(text).toContain('candidates 2')
+    expect(text).toContain('←/→')
+    expect(text).toContain('Esc')
+    expect(text).not.toMatch(/[①②③]/)
   })
 })

@@ -472,7 +472,8 @@ test('场景 4: sidebar hit 列表某行 click → 副图 bracket 反打 + trace
   expect(style?.stroke).toBe(HL_FOCUS_EDGE)
 })
 
-test('场景 5: sidebar 候选表非 in_hit event click + level=in_hit → level 自动降', async ({ page }) => {
+// 规格变更(2026-11-05 队长裁定,不是放宽):聚焦不再自动降档,档位按钮只由用户点;本场景改成「level 不动」。
+test('场景 5: sidebar 候选表非 in_hit event click + level=in_hit → level 不动、实例照样选中', async ({ page }) => {
   test.setTimeout(300_000)
   await setupChart(page)
 
@@ -482,12 +483,11 @@ test('场景 5: sidebar 候选表非 in_hit event click + level=in_hit → level
   // 找一个非 in_hit 的候选行(tb/burst node,非孤立,候选表可展开)。
   // 注:bottom_burst 的 tb/bo where_rules 为空 → clauses={} 恒 isQualifiedRow=true,
   // 「detected-only」在该 pattern 下不可达,故只要求非 in_hit(可能落 qualified,与任务书
-  // skeleton 自身 `/detected|qualified/` 宽松断言一致);expectedLevel 据 qualifiedIds 精确算出。
+  // skeleton 自身 `/detected|qualified/` 宽松断言一致)。
   const target = await page.evaluate(() => {
     const view = (window as any).__e2e.view
     const diag = view.diag
     const inHitIds = view.inHitIds as Set<string>
-    const qualifiedIds = view.qualifiedIds as Set<string>
     for (const node of ['tb', 'burst']) {
       const rows = diag?.nodes?.[node]?.attr ?? []
       for (const row of rows) {
@@ -497,7 +497,6 @@ test('场景 5: sidebar 候选表非 in_hit event click + level=in_hit → level
             eventId: row.event_id as string,
             startIdx: row.start_idx as number,
             endIdx: row.end_idx as number,
-            expectedLevel: qualifiedIds.has(row.event_id) ? 'qualified' : 'detected',
           }
         }
       }
@@ -514,15 +513,7 @@ test('场景 5: sidebar 候选表非 in_hit event click + level=in_hit → level
 
   const state = await getFocusState(page)
   expect(state.focusedEventId).toBe(target!.eventId)
-  expect(state.level).toBe(target!.expectedLevel)
+  expect(state.level).toBe('in_hit')
 
-  await expect(page.locator('[data-testid="level-control"] .level-btn.active:not(.panel-toggle)')).toHaveText(target!.expectedLevel)
-
-  // event 在图上可见并 focus 亮(level 已降,filter 放行该 tier)
-  const kind = await page.evaluate((eid) => {
-    const sub = (window as any).__e2e.chartSub()
-    const s = sub.getOption().series.find((x: any) => x.name === 'highlight')
-    return s?.data?.find((d: any) => d.event_id === eid)?.kind ?? null
-  }, target!.eventId)
-  expect(kind).toBe('focus')
+  await expect(page.locator('[data-testid="level-control"] .level-btn.active:not(.panel-toggle)')).toHaveText('in_hit')
 })

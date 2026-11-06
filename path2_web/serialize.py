@@ -217,15 +217,24 @@ def summarize(res) -> dict:
 
 # ── pattern 静态层(拓扑面板数据源,§7.1) ──
 # event_styles 兜底调色板:PATTERN_DAG.event_styles 默认空,按 topology.nodes 里 node_id
-# 首次出现顺序 setdefault(见 _event_styles),索引 i 就是"第 i 个新 node_id"。当前拓扑覆盖
-# (apps 均无显式 event_styles 声明,全走兜底;bottom_burst 首现序 bo/pk/burst/tb/tb_seg):
-#   [0] bo     (主图 price-anchored [ids] 方框)
-#   [1] pk     (bottom_burst 的第二个 node_id;多流 bo detector 的 pk 流)
-#   [2] burst  (副图 interval)
-#   [3] tb     容器
-#   [4] tb_seg 企稳段:与 bo 兜底绿(#16f943)拉开——同色会触发 deriveNodeColors 明度散开
-#   [5..6]     未占用,给未来新 node_id 兜底(顺序即分配序,i % len 循环)
-_PALETTE = ["#16f943", "#2563eb", "#FF1500", "#14b24e", "#7c3aed", "#0891b2", "#ca8a04"]
+# 首次出现顺序 setdefault(见 _event_styles),索引 i 就是"第 i 个新 node_id",i % len 循环。
+# 配色约束(看图的用户是色盲,靠冷暖与深浅分色,不靠色相;按优先级):
+#   - 离浅底、离两档灰远:每色 L* 在 40～55(中等深度;更浅在白底 / 副图浅灰底 #f3f4f6 上看不出,
+#     更深是深靛、深褐,压掉形状),对 #f3f4f6 对比度 ≥ 3.5,对 qualified 深灰 #9ca3af ≥ 1.6
+#     (detected 浅灰 #b4bac2 更浅,自然更远;两档灰见前端 render/colors.ts)。
+#   - 冷暖交替:偶数位冷、奇数位暖,相邻两个 node(副图上通常是相邻两条轨)冷暖相反。冷暖按 CIELAB
+#     的 b*(黄-蓝轴,红绿色盲也保留这条轴)判:b* ≤ -20 冷、≥ +20 暖,中间不用(界线待验证)。
+#     绿的 b* 为正,和橘、红同属暖色——红-绿、绿-橘正是分不清的组合,所以相邻两位不会出现。
+#     冷暖说的是用户眼里的样子:紫 #7c3aed 在红绿色盲模拟下呈蓝(b* 约 -75),所以算冷。
+#   - 同冷暖的两色永不相邻(每条轨也有表头),只要求互不相同,不再要求明度拉开;代价是它们靠色相区分
+#     (蓝 / 紫、橘 / 赭),对色盲用户不如相邻两色好分。
+# 当前拓扑落位(apps 均无显式 event_styles 声明,全走兜底):
+#   new_step      plateau / old_plat / step / new_plat / today                → [0]～[4]
+#   bottom_burst  bo(主图) / pk(主图,solve=False 恒灰) / burst / tb / tb_seg   → [0]～[4]
+#   bb_v1、bo_only、try_complex_where 同上前缀
+# 第 6 个起回到 [0]:同色的 node 会被前端 deriveNodeColors 按明度散开、可能出中等深度;现役 app
+# 最多 5 个 node,tests/path2_web/test_serialize.py 对每个已注册 app 断言 node 数 ≤ 色板长度。
+_PALETTE = ["#2b6cb0", "#b45309", "#7c3aed", "#a0522d", "#5a67d8"]
 
 def _rule_from_meta(meta: dict) -> dict:
     """meta 树 → rule 树。and/or/not 递归 children;child/children 保持扁平(§3.1);
@@ -311,6 +320,9 @@ def serialize_pattern(spec) -> dict:
             "solve": bool(getattr(n, "solve", True)),   # 求解参与标志(solve=False 只显示;前端 level 免疫判据)
             "where_rules": _rules_from_where(n.where),
             "render_grid": n.render_grid,   # ★ 新增:透传 NodeSpec.render_grid
+            # 点几何声明:透传事件类的 is_point(子结构 node 的 event_cls 构造期必填,独立 node 由
+            # detector 流反射),前端据此按 node 分点 / 条,不按单个实例的长度判
+            "is_point": bool(getattr(n.event_cls, "is_point", False)),
             "materialize_keys": _materialize_keys_of(n.detector),
             "produced_by": n.produced_by,   # 子结构 node 物化来源(独立 node 为 None)
             "child_slot": tn.child_slot,    # 子结构 node 在父的 slot 名(独立 node 为 None)

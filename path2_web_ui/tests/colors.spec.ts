@@ -33,7 +33,7 @@ describe('colorOf tier', () => {
     const rc = { burst: '#ff0000' }
     expect(colorOf('in_hit', 'burst', rc)).toBe('#ff0000')
     expect(colorOf('qualified', 'burst', rc)).toBe('#9ca3af')
-    expect(colorOf('detected', 'burst', rc)).toBe('#d1d5db')
+    expect(colorOf('detected', 'burst', rc)).toBe('#b4bac2')
   })
   it('in_hit + node 缺色 → NEUTRAL 兜底', () => {
     expect(colorOf('in_hit', 'unknown', {})).toBe('#888888')

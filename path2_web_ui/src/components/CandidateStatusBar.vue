@@ -1,43 +1,24 @@
 <template>
-  <div v-if="ordinalChars.length > 0" class="candidate-banner">
-    候选: {{ ordinalChars.join(' ') }} — click 任一 bracket 高亮 / Esc 取消
+  <div v-if="count > 0" class="candidate-banner">
+    <span class="mono">candidates {{ count }}</span>
+    <span class="mono">←/→</span>
+    <span class="mono">Esc</span>
   </div>
 </template>
 
 <script setup lang="ts">
+// 多归属待选:一个记号(或共用对象)属于几次 hit 时出现。bracket 折叠后一行可含几十次 hit,逐个圈号已无意义,
+// 只报个数;候选在 bracket 上加框,←/→ 在候选间走、点其中一个选定,Esc 取消。
 import { computed } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useViewStore } from '../stores/view'
 import type { HitDict } from '../types'
 
-const props = defineProps<{ hits: HitDict[] }>()
+defineProps<{ hits: HitDict[] }>()
 const view = useViewStore()
 const { candidateHitIds } = storeToRefs(view)
 
-const ORDINAL_CHARS = ['①', '②', '③', '④', '⑤', '⑥', '⑦', '⑧', '⑨']
-
-const ordinalChars = computed<string[]>(() => {
-  if (candidateHitIds.value.size === 0) return []
-  // 按 start_idx 排序,与 packBrackets、悬停里的序号一致
-  const sortedByStart = [...props.hits].sort((a, b) => a.start_idx - b.start_idx)
-  const out: string[] = []
-  for (const id of candidateHitIds.value) {
-    const m = sortedByStart.find((mm) => mm.hit_id === id)
-    if (!m) continue
-    const ord = sortedByStart.indexOf(m) + 1
-    if (ord >= 1 && ord <= 9) out.push(ORDINAL_CHARS[ord - 1])
-    else if (ord > 9) out.push(String(ord))
-  }
-  // Sort output ordinals ascending (① ③ ⑤, not arbitrary Set iteration order)
-  out.sort((a, b) => {
-    const ai = ORDINAL_CHARS.indexOf(a)
-    const bi = ORDINAL_CHARS.indexOf(b)
-    const av = ai >= 0 ? ai : parseInt(a, 10) - 1
-    const bv = bi >= 0 ? bi : parseInt(b, 10) - 1
-    return av - bv
-  })
-  return out
-})
+const count = computed<number>(() => candidateHitIds.value.size)
 </script>
 
 <style scoped>
@@ -55,4 +36,5 @@ const ordinalChars = computed<string[]>(() => {
   pointer-events: none;
   flex-shrink: 0;
 }
+.mono { font-family: ui-monospace, "JetBrains Mono", "DejaVu Sans Mono", Consolas, monospace; margin-right: 12px; }
 </style>

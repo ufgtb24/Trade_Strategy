@@ -35,6 +35,16 @@
 
       <DefinitionField v-if="feature && !picking" :feature="feature" />
 
+      <template v-if="read">
+        <span class="ann-k" title="compare: app's level on the box end date for the node this feature maps to; start not compared">level</span>
+        <div class="ann-row">
+          <span class="ann-sym" data-testid="box-level" :data-level="read.level"
+                :title="`${read.node} @ ${dates[read.day] ?? read.day}; start not compared`">{{ read.level }}</span>
+          <span class="ann-sym">⇣ {{ read.node }}</span>
+          <span v-if="cmp.notes[read.node]" class="ann-biz">{{ cmp.notes[read.node] }}</span>
+        </div>
+      </template>
+
       <span class="ann-k" title="samples this box is a member box of; click to add / remove. Samples of other patterns are read-only">member_of</span>
       <div class="ann-row" data-testid="box-member-of">
         <button v-for="r in memberOf" :key="r.sample.id" type="button"
@@ -111,10 +121,14 @@
  * - 定义:这个词还没有定义时留一格写,写下就不再改(意思变了另起一个词);
  * - parent:它现在属于的框(⊂ 亮,点掉 = detach 或拿掉 attach),以及能手动挂上的交叠、更长的框(⊂ 灭,点上 = attach);
  * - 属性:列出同一特征的框用过的属性(全部图),默认 null;再点一下已按下的那个回到 null(这一行留着);
- *   在这个特征下画成过子框的词写成「⊂ 词」,不给 true 按钮(有就在框里画,画了这一行写 true)。
+ *   在这个特征下画成过子框的词写成「⊂ 词」,不给 true 按钮(有就在框里画,画了这一行写 true);
+ * - compare 下特征 map 到 app 的某个 node 时多一行 level:框终点那天配对那一格的档位,那天一个都没有为 missing
+ *   (stores/compare.ts 的 boxReads;框的左端不比)。
  */
 import { computed, nextTick, ref, watch } from 'vue'
 import { useAnnotationStore } from '../stores/annotation'
+import { useCompareStore } from '../stores/compare'
+import { useViewStore } from '../stores/view'
 import {
   attrState, attrWordsOf, chartParents, featureUsage, kidWordsOf, parentRows, rankSuggestions, type ParentRow,
 } from '../annotate/model'
@@ -138,6 +152,10 @@ const MEMBER_OF_TIP = {
 
 const ann = useAnnotationStore()
 const sel = computed(() => ann.selectedBox)
+const cmp = useCompareStore()
+const view = useViewStore()
+const read = computed(() => (sel.value ? cmp.boxReads.get(sel.value.box.id) ?? null : null))
+const dates = computed(() => view.barDates)
 // 这张图上的当前样本:画框时顶上一条它的成员链,看得见新画的框收没收进去
 const cur = computed(() => (ann.currentSample && sel.value && ann.currentSample.chart.symbol === sel.value.chart.symbol
   ? ann.currentSample : null))

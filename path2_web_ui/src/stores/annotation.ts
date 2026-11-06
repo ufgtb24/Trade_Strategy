@@ -166,6 +166,8 @@ export const useAnnotationStore = defineStore('annotation', () => {
     (currentSampleId.value && state.value ? findSample(state.value, currentSampleId.value) : null))
   /** 成员框推断的默认值(后端读路由带出,和参照实现同一处设定)。 */
   const membership = computed(() => server.value?.membership ?? null)
+  /** compare 对照的容差(后端 path2_web/annotation/match.py 唯一设定,读路由带出)。 */
+  const match = computed(() => server.value?.match ?? null)
 
   /** 还没看过的冲突(每条以 later.ref 为准)。 */
   const newConflicts = computed<AnnConflict[]>(() =>
@@ -577,7 +579,7 @@ export const useAnnotationStore = defineStore('annotation', () => {
   }
 
   return {
-    server, view, state, status, loadError, saveError, saving, machine, membership,
+    server, view, state, status, loadError, saveError, saving, machine, membership, match,
     selectedBoxId, selectedBox, selectedSampleId, selectedSample, currentSampleId, currentSample, currentPattern, openCount,
     tab, tool, renaming, nameFocus, merges, pendingMerge, daysBySymbol,
     newConflicts, fingerprint, featureById, nameOf, definitionOf,

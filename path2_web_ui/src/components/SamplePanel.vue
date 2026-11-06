@@ -28,6 +28,7 @@
       <span class="ann-k" title="member boxes: the basis of this judgment; click a box to remove it, a dashed slot to add it">members</span>
     </div>
     <MemberChain :sample="sel.sample" :chart="sel.chart" :editable="true" tid="sample-members" />
+    <SampleDiagnose />
 
     <template v-if="others.length">
       <div class="ann-hdr sec">
@@ -55,7 +56,8 @@
  * - pattern(负样本挂在 unsorted 时显示灰字 pattern?)、judgment(pos / neg)、note;
  * - members:成员链(MemberChain),点成员框拿掉、点画了没收的空槽收进;
  * - others:起点不晚于样本日、不是成员框的框,点一下收进;画了没收的排最前(短虚线、◂),
- *   跨过样本日的排最后(变淡、收不进,悬停写 crosses sample date)。
+ *   跨过样本日的排最后(变淡、收不进,悬停写 crosses sample date);
+ * - compare 下成员链下面多一块 diagnose(SampleDiagnose:match 与样本日那天 app 在场的 event,只给类别)。
  */
 import { computed } from 'vue'
 import { useAnnotationStore } from '../stores/annotation'
@@ -64,6 +66,7 @@ import { othersOf, sampleLetters, triOf } from '../annotate/samples'
 import BoxName from './BoxName.vue'
 import MemberChain from './MemberChain.vue'
 import PatternPicker from './PatternPicker.vue'
+import SampleDiagnose from './SampleDiagnose.vue'
 
 const JUDGMENTS = ['pos', 'neg'] as const
 

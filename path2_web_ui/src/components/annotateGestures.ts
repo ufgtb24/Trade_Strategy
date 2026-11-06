@@ -19,7 +19,7 @@ import {
   boxAt, edgeOf, endIndex, isDrag, pannedZoom, resized, spanOf, startIndex, type BoxPx,
 } from '../annotate/boxGeometry'
 import {
-  SIDE_MARK_X, boxRects, bracketRects, laneAt, type Draft, type LaneGeom, type PlacedBracket,
+  SIDE_MARK_X, boxRects, bracketPick, bracketRects, laneAt, type Draft, type LaneGeom, type PlacedBracket,
 } from '../render/annotateLanes'
 import { MAIN_GRID_LEFT, MAIN_GRID_RIGHT } from '../render/chart'
 
@@ -52,6 +52,11 @@ export interface GestureDeps {
   placeSample: (date: string) => void
   /** 把画了没收的框收进选中的样本 */
   take: (boxId: string) => void
+  /**
+   * 副图上这一高度(相对副图容器)归不归标注手势:compare 下只有用户轨与 bracket 的 user 行归它,
+   * 其余(app 的 band、hit 行)留给图表自己的点击。不给 = 整张副图都归它(annotate)。
+   */
+  claims?: (y: number) => boolean
 }
 
 type Gesture =
@@ -90,11 +95,11 @@ export function createAnnotateGestures(deps: GestureDeps) {
     return px ? boxRects(deps.lanes(), deps.geom(), deps.dates(), px.toPx, px.bw) : []
   }
   const inRect = (r: BoxPx, x: number, y: number) => x >= r.left && x <= r.right && y >= r.top && y <= r.bottom
-  /** 副图上这一点落在 bracket 轨哪个样本的跨度上。 */
+  /** 副图上这一点落在 bracket 轨哪个样本上(同起点并成一行时取 ▲ 离点最近的,见 bracketPick)。 */
   const bracketAt = (x: number, y: number): string | null => {
     const b = deps.bracket(), px = subPx()
     if (!b || !px) return null
-    return bracketRects(b.placed, b.geom, deps.dates(), px.toPx, px.bw).find(r => inRect(r, x, y))?.id ?? null
+    return bracketPick(bracketRects(b.placed, b.geom, deps.dates(), px.toPx, px.bw), px.bw, x, y)
   }
   /** 副图上这一点落在哪个画了没收的框右侧的 ◂ 上。 */
   const takeAt = (x: number, y: number): string | null => {
@@ -146,6 +151,7 @@ export function createAnnotateGestures(deps: GestureDeps) {
     const sub = deps.sub(), el = deps.subEl()
     if (ev.button !== 0 || !deps.active() || deps.tool() !== 'box' || !sub || !el) return
     const [x, y] = local(el, ev)
+    if (deps.claims && !deps.claims(y)) return
     const take = takeAt(x, y)
     const hit = take ? null : boxAt(subRects(), x, y)
     const side = hit ? edgeOf(hit, x) : null

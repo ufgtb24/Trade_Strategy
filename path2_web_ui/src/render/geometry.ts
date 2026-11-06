@@ -1,14 +1,5 @@
-// 几何分流 + greedy lane packing(spec §8.2.4 / §8.3)。
-import type { EventDict, HitDict } from '../types'
-
+// greedy lane packing(spec §8.3)。点还是条不在这里分:按拓扑 node 的 is_point 声明,见 render/fold.ts。
 interface Span { start_idx: number; end_idx: number }
-
-export function splitGeometry(events: EventDict[]): { points: EventDict[]; intervals: EventDict[] } {
-  const points: EventDict[] = []
-  const intervals: EventDict[] = []
-  for (const e of events) (e.start_idx === e.end_idx ? points : intervals).push(e)
-  return { points, intervals }
-}
 
 /**
  * greedy lane packing:按 start 升序,贪心放入第一个"末端 < 本 start"的 lane,否则开新 lane。
@@ -26,26 +17,4 @@ export function packLanes<T extends Span>(items: T[]): (T & { lane: number })[] 
     out.push({ ...it, lane })
   }
   return out
-}
-
-export type BandedItem<T> = T & { lane: number; band: number; nBands: number }
-
-/** 每 band 独立 packLanes:按 bandOrder 序,各 band 内部 lane 从 0 重置。空 band 不产出。 */
-export function packByBand<T extends { start_idx: number; end_idx: number }>(
-  items: T[], bandOrder: string[], bandKeyOf: (it: T) => string,
-): BandedItem<T>[] {
-  const out: BandedItem<T>[] = []
-  bandOrder.forEach((tag, band) => {
-    const inBand = items.filter(it => bandKeyOf(it) === tag)
-    for (const packed of packLanes(inBand))
-      out.push({ ...packed, band, nBands: bandOrder.length })
-  })
-  return out
-}
-
-/** 归属带:hit.span lane packing + 1-based 序号(按 start 升序)。 */
-export function packBrackets(hits: HitDict[]): (HitDict & { lane: number; ordinal: number })[] {
-  const ordered = [...hits].sort((a, b) => a.start_idx - b.start_idx)
-  const withOrdinal = ordered.map((m, i) => ({ ...m, ordinal: i + 1 }))
-  return packLanes(withOrdinal)
 }

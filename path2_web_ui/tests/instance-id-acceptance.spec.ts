@@ -6,7 +6,7 @@
 //   ① 数据级:事件行无 event_id/source_tag/class_id/instance_key 字段;instance_id 恒带 #idx;
 //      tb_293#0/#1 两实例(node_id='tb')各被一个 hit 的 node_index 精确引用
 //   ② 实例级入口:focusEvent('tb_293#0') → 直选 hit A;focusEvent('tb_293#1') → 直选 hit B;无待选择
-//   ③ 真共享 fixture:同一 instance_id 被两 hit 引用 → 待选择
+//   ③ 真共享 fixture:同一 instance_id 被两 hit 引用、买入日相同 → 直选第一次
 import { describe, it, expect, beforeEach } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
 import fs from 'node:fs'
@@ -103,12 +103,15 @@ describe('instance-id 真实数据验收(APCX · bb_v1)', () => {
     expect(view.pendingDisambigInstanceId).toBeNull()
   })
 
-  it('③ 真共享 fixture:同一 instance_id 被两 hit 引用 → 仍待选择', () => {
+  it('③ 真共享 fixture:同一 instance_id 被两 hit 引用;共享的就是买点(买入日相同)→ 直选第一次,不待选', () => {
+    // 点击统一规则:几次 hit 买入日完全一样 → 直选第一次、←/→ 换下一次;买入日不一样才待选
+    // (待选分支见 stores.step-focus.spec.ts「被几次 hit 共用的子段」)。
     const view = useViewStore()
     view.loadScanFile(makeSharedFixture())
-    view.focusEvent('tb_293#0')                             // 实例级入口,但实例真共享
-    expect(view.pendingDisambigInstanceId).toBe('tb_293#0')
-    expect(view.candidateHitIds.size).toBe(2)
-    expect(view.focusedHitId).toBeNull()
+    view.focusEvent('tb_293#0')                             // 实例级入口,实例真共享,且就是 end_node(tb)
+    expect(view.pendingDisambigInstanceId).toBeNull()
+    expect(view.candidateHitIds.size).toBe(0)
+    expect(view.focusedHitId).toBe('m-shared-a')
+    expect(view.focusedInstanceId).toBe('tb_293#0')
   })
 })

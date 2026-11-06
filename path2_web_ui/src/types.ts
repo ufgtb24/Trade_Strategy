@@ -9,6 +9,7 @@ export interface TopoNode {
   node_id: string
   solve?: boolean               // 求解参与标志(solve=False 只显示;前端 level 门控免疫判据,Task 6 serialize 契约)
   render_grid?: 'price' | 'time'
+  is_point?: boolean            // 事件类声明为点(Event.is_point);副图按它分画 ▼ 还是画条 / 格,不按单个实例的起止
   materialize_keys?: string[]
   where_rules: WhereRule[]
   produced_by?: string | null   // 子结构 node 的物化来源父 node_id(独立 node 缺省/None)
@@ -148,7 +149,11 @@ export interface RandomWindow { symbol: string; start: string; end: string }
 export interface PeakLine { date: string; price: number; end: string }
 /** compare 用的 mapping 文件(path2_apps/<app>/mapping.yaml,GET /mappings):标注里的 pattern 用哪个 app,
  *  特征编号 → 认它的 node_id。problem 非 null(文件读不懂、node 不在 app 里、两个 app 写了同一个 pattern)时不能用。 */
-export interface AppMapping { app: string; pattern: string | null; features: Record<string, string>; problem: string | null }
+/** /mappings 的一项:notes 是可选的用户原话附注(键 node 或 node.where,值一句话;后端校验过键存在)。 */
+export interface AppMapping {
+  app: string; pattern: string | null; features: Record<string, string>; notes?: Record<string, string>
+  problem: string | null
+}
 
 export interface AttrRow {
   instance_id: string; node_id: string

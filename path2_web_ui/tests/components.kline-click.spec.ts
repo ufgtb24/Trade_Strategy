@@ -430,30 +430,34 @@ describe('handleChartClick × marker filter inHitIdsOf 协议展开(Task 4)', ()
     const view = useViewStore()
     const { handleChartClick } = await import('../src/components/KlineChart')
     // Task 5 契约变更:归属只按 hit.node_index 精确引用(删除 children/anchor 身份
-    // 展开)。多归属 = 同一 instance_id 被 2+ hit 引用(真共享实例)
+    // 展开)。多归属 = 同一 instance_id 被 2+ hit 引用(真共享实例)。
+    // 两次 hit 的买点(tb)在不同的日子 → 进待选;买入日完全一样时直选第一次,见 stores.step-focus.spec.ts。
     const events = [
-      { instance_id: 'tb_shared#0', node_id: 'tb', start_idx: 10, end_idx: 10, child_refs: {} },
+      { instance_id: 'bo_shared#0', node_id: 'bo', start_idx: 5, end_idx: 5, child_refs: {} },
+      { instance_id: 'tb_a#0', node_id: 'tb', start_idx: 10, end_idx: 10, child_refs: {} },
+      { instance_id: 'tb_b#0', node_id: 'tb', start_idx: 12, end_idx: 12, child_refs: {} },
     ]
     const hits = [
       { hit_id: 'hit_A', start_idx: 5, end_idx: 10,
-        node_index: { tb: 'tb_shared#0' },
-        children: ['tb_shared#0'], predicate_trace: null },
+        node_index: { bo: 'bo_shared#0', tb: 'tb_a#0' },
+        children: ['bo_shared#0', 'tb_a#0'], predicate_trace: null },
       { hit_id: 'hit_B', start_idx: 5, end_idx: 12,
-        node_index: { tb: 'tb_shared#0' },
-        children: ['tb_shared#0'], predicate_trace: null },
+        node_index: { bo: 'bo_shared#0', tb: 'tb_b#0' },
+        children: ['bo_shared#0', 'tb_b#0'], predicate_trace: null },
     ]
     const topology = {
       nodes: [
+        { node_id: 'bo', where_rules: [] },
         { node_id: 'tb', where_rules: [] },
       ],
       edges: [],
     }
     seedFullFixture(view, { events, hits, topology })
-    // tb_shared 的 #0 实例被 hit_A 与 hit_B 的 node_index 同时引用 → 属于两条 hit
+    // bo_shared 的 #0 实例被 hit_A 与 hit_B 的 node_index 同时引用 → 属于两条 hit
     handleChartClick(
-      { seriesName: 'price-points', data: { instance_id: 'tb_shared#0' } }, hits, view)
+      { seriesName: 'price-points', data: { instance_id: 'bo_shared#0' } }, hits, view)
     expect([...view.candidateHitIds].sort()).toEqual(['hit_A', 'hit_B'])
-    expect(view.pendingDisambigInstanceId).toBe('tb_shared#0')
+    expect(view.pendingDisambigInstanceId).toBe('bo_shared#0')
     expect(view.selectedHitId).toBeNull()          // candidate 与 selected 互斥
     expect(view.highlightedEventIds.size).toBe(0)    // selectedHit=null → computed 空集
   })

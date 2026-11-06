@@ -6,7 +6,7 @@
  * 的轨迹有意可见)。副图 band interval 与 scanEnd(= scan.end_date 的 bar 索引,
  * 即 strictWindow.endIdx)相交时拆两段:
  *   - 窗内段:维持三档 level 色(in_hit 彩色)
- *   - 窗后段:detected 灰(#d1d5db,与 detected/traced 灰色语义同族 =「检测到但非样本」)
+ *   - 窗后段:detected 灰(#b4bac2,与 detected/traced 灰色语义同族 =「检测到但非样本」)
  * 边界:scanEndIdx 本身归窗内(与主图 buildShadingMarkArea 从 endIdx+1 起灰同一口径)。
  *
  * strictWindow 缺省(null)不拆 —— 与主图 shading 同门控,旧调用零回归。
@@ -98,9 +98,9 @@ describe('computeEventData — band interval 按 scanEnd 拆段', () => {
     // 窗内段 [2,3]:in_hit 彩色(node 本色)
     expect(parts[0].value.slice(0, 2)).toEqual([2, 3])
     expect(parts[0].itemStyle.color).toBe('#16a34a')
-    // 窗后段 [4,4]:detected 灰(colorOf('detected') = #d1d5db)
+    // 窗后段 [4,4]:detected 灰(colorOf('detected') = #b4bac2)
     expect(parts[1].value.slice(0, 2)).toEqual([4, 4])
-    expect(parts[1].itemStyle.color).toBe('#d1d5db')
+    expect(parts[1].itemStyle.color).toBe('#b4bac2')
     // lane/band 不变(拆的是时间跨度,不占新轨道)
     expect(parts[0].value[2]).toBe(parts[1].value[2])
     expect(parts[0].value[3]).toBe(parts[1].value[3])
@@ -116,14 +116,24 @@ describe('computeEventData — band interval 按 scanEnd 拆段', () => {
     const parts = bundle.intervalData.filter((d) => d.instance_id === 'seg_after_all#0')
     expect(parts).toHaveLength(1)
     expect(parts[0].value.slice(0, 2)).toEqual([3, 4])
-    expect(parts[0].itemStyle.color).toBe('#d1d5db')
+    expect(parts[0].itemStyle.color).toBe('#b4bac2')
   })
 
-  it('point 事件不拆(本 task 范围 = interval band;窗外 point 维持原色)', () => {
-    const bundle = computeEventData(bars, events, hits,
-      baseInput({ startIdx: 0, endIdx: 3 }))
-    const pts = bundle.pointData.filter((d) => d.instance_id === 'seg_after#0')
+  it('声明为点的 node 不拆(窗外 point 维持原色);点 / 条只看 node 的 is_point,不看实例自身跨度', () => {
+    const input = baseInput({ startIdx: 0, endIdx: 3 })
+    input.topology = { nodes: [{ node_id: 'tb_seg' }, { node_id: 'today', is_point: true }] } as any
+    input.tagList = ['tb_seg', 'today']
+    input.nodeColors = { tb_seg: '#16a34a', today: '#1a80ba' }
+    const withPoint: EventDict[] = [...events,
+      { instance_id: 'today_after#0', node_id: 'today', instance_idx: 0, start_idx: 4, end_idx: 4 }]
+    const bundle = computeEventData(bars, withPoint, hits, input)
+    const pts = bundle.pointData.filter((d) => d.instance_id === 'today_after#0')
     expect(pts).toHaveLength(1)
-    expect(pts[0].itemStyle.color).toBe('#16a34a')
+    expect(pts[0].itemStyle.color).toBe('#1a80ba')
+    // 单根的 tb_seg 实例没声明为点 → 仍是条(窗外整段灰),不进 pointData
+    expect(bundle.pointData.some((d) => d.instance_id === 'seg_after#0')).toBe(false)
+    const bar = bundle.intervalData.filter((d) => d.instance_id === 'seg_after#0')
+    expect(bar).toHaveLength(1)
+    expect(bar[0].itemStyle.color).toBe('#b4bac2')
   })
 })

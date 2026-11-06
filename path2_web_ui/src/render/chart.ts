@@ -1,11 +1,13 @@
 // ECharts option 构造(纯函数,spec §8.3 方案 B)。类型无关:只依赖 start_idx/end_idx/instance_id + 色。
 import type { Bar, EventDict, HitDict, Level, Tier, Topology } from '../types'
 import { colorOf } from './colors'
-import { packByBand, packBrackets } from './geometry'
+import { packLanes } from './geometry'
+import { foldBand, foldHits, formatMemberLabel, hitLabels, memberLabels, HIT_FAMILY_PREFIX,
+         type Family, type FoldMark, type HitFamily } from './fold'
 import { isBandVisible, renderGridOf, splitIntervalAtScanEnd, subBandTagList } from './visible'
 import { ctrlState } from './ctrlState'
 import { derivePeakStates, peakIdIndex } from './peakState'
-import { MONO, nextStarts, tierTagLimit, tierTagOf, tierTagShape, TIER_TAG_TIP, type TierTagText } from './tierTags'
+import { MONO } from './fonts'
 import {
   BAND_TOP_PAD,
   BAND_BOT_PAD,
@@ -20,6 +22,14 @@ import {
   BAND_INNER_LINE_H,
   SUB_GRID_LEFT,
   SUB_GRID_RIGHT,
+  TIER_H,
+  MARK_HALF_W,
+  FAMILY_LINE_COLOR,
+  FAMILY_LINE_AFTER_WINDOW,
+  FAMILY_LINE_H,
+  ACTIVE_LINE_H,
+  CURSOR_COLOR,
+  CURSOR_HALO,
   type BandGeom,
   type SubGeometry,
 } from './subGeometry'
@@ -108,9 +118,15 @@ export interface BandRenderInput {
   hits?: HitDict[]  // buildSubOption 的 markerTooltip formatter 用（自 KlineChart.vue 透传）
   // ── 副图 band 竖直 zoom(spec 2026-07-03):由 KlineChart 传入,default 1.0 ──────
   zoomFactor?: number
-  // ── 顶栏 tiers 开关(spec 5.2):副图 event 条右端挂不挂 qualified_only / detected_only(render/tierTags.ts);缺省不挂 ──
-  tiers?: boolean
+  // ── 当前日(竖线落点,bar 索引)与当家行(←/→ 在其中走的那一族的 family_key);缺省都不画 ──
+  currentDay?: number | null
+  activeFamily?: string | null
+  // ── band 表头:node 名后跟用户的特征名(mapping 对到它的特征)、compare 下没被任何框轨拉走的挂 app_only;键是 band ──
+  bandExtras?: Readonly<Record<string, BandLabelExtra>>
 }
+
+/** band 表头 node 名后面跟的东西:用户特征名(浅灰底)、程序标记(如 app_only,等宽)。 */
+export interface BandLabelExtra { feature?: string | null; tag?: string | null }
 
 // ─── Task 5: 共享 event 数据抽取(供 buildMainOption/buildSubOption 消费) ──────
 
@@ -124,8 +140,12 @@ export interface EventBundle {
   // ── spec 2026-07-11: shift+click 累积器命中 marker 的白蒙+黑线 overlay 数据 ──
   veilData: any[]         // 副图 point + interval
   veilPriceData: any[]    // 主图 pricePoint
-  // 副图 event 条右端的 tier tag:{ value: [start, end, lane, band, 同一行下一个的起点(-1 = 没有)], text, point }
-  tierTagData: { value: number[]; text: TierTagText; point: boolean }[]
+  // bracket 每族一行的底线:{ value: [start, end, lane, ordinal], family_key, multi, active }(ordinal 只是族的先后,不画)
+  bracketLineData: any[]
+  // 副图每族一条底线:{ value: [start, end, lane, band, nBands], family_key, multi, active, afterWindow, summary }
+  familyLineData: any[]
+  // 当前日竖线:[{ value: [barIdx] }] 或空
+  cursorData: any[]
   candle: number[][]
   volume: number[]
   dates: string[]
@@ -169,12 +189,12 @@ export function computeEventData(
   // level=in_hit 时会被整段滤掉 → 免疫 level 门控(类型无关,solve 标志,Task 6 serialize 契约)。
   const RANK: Record<Level, number> = { in_hit: 2, qualified: 1, detected: 0 }
   const solveFreeNodes = new Set((topology?.nodes ?? []).filter(n => n.solve === false).map(n => n.node_id))
-  const filtered = events.filter((e) =>
-    (solveFreeNodes.has(nodeOf(e) ?? '') || RANK[eventTier(e)] >= RANK[level]) &&
-    isBandVisible(bandKeyOf(e), nodeVisible, tagToNodes)
-  )
-  const priceAnchored = filtered.filter((e) => renderGridOf(e, topology, bandKeyOf) === 'price')
-  const timeAnchored = filtered.filter((e) => renderGridOf(e, topology, bandKeyOf) !== 'price')
+  // node 显隐筛选在前;副图的档位筛选放进 foldBand(梳子还是整条要用筛选前的成员数),主图价格点照旧按档位筛。
+  const visibleEvents = events.filter((e) => isBandVisible(bandKeyOf(e), nodeVisible, tagToNodes))
+  const passLevel = (e: EventDict): boolean =>
+    solveFreeNodes.has(nodeOf(e) ?? '') || RANK[eventTier(e)] >= RANK[level]
+  const priceAnchored = visibleEvents.filter((e) => renderGridOf(e, topology, bandKeyOf) === 'price' && passLevel(e))
+  const timeAnchored = visibleEvents.filter((e) => renderGridOf(e, topology, bandKeyOf) !== 'price')
 
   // 事件色:一律 tier 色(类型无关)。pk 三态不走颜色——renderer 按 state 把 ▽ 画成
   // 实心/空心/浅灰虚线(pkTriStyle,spec 2026-08-31 §3.5.4),itemStyle.color 对 pk 不消费。
@@ -232,141 +252,196 @@ export function computeEventData(
     }
   })
 
-  // 合并 spot + span 一并送 packByBand,同 band 内共享同一次 packLanes 分 lane
-  // (spec 2026-07-13:spot 从 band 中心固定位置改为参与 lane packing,消除视觉重叠 bug)
-  const packedAll = packByBand(timeAnchored, subTags, bandKeyOf)
+  // ── 副图:每条 band 折叠(render/fold.ts)→ 以族为单位分行 → 每个记号(整条 / 格 / 点)一条记录 ──
+  // 点还是条按拓扑 node 的 is_point 声明分,不按单个实例碰巧只占一根 K 线。
+  const byId = new Map(events.map((e) => [e.instance_id, e]))
+  const anchorFields = [...new Set((topology?.edges ?? []).map((ed) => ed.anchor_field)
+    .filter((f): f is string => !!f))]
+  const pointNodes = new Set((topology?.nodes ?? []).filter((n) => n.is_point === true).map((n) => n.node_id))
+  const activeFamily = input.activeFamily ?? null
   const intervalData: any[] = []
   const pointData: any[] = []
-  for (const e of packedAll) {
-    const isPoint = e.start_idx === e.end_idx
-    const record = {
-      value: [e.start_idx, e.end_idx, e.lane, e.band, e.nBands],
-      instance_id: e.instance_id,
-      tier: eventTier(e),
-      itemStyle: { color: eColor(e) },
+  const familyLineData: any[] = []
+  // instance_id → 它在图上的位置:高亮、消歧、shift-veil 都经它反查
+  const placeOf = new Map<string, { family: Family; mark: FoldMark; lane: number; band: number; rec: any }>()
+  const nBands = subTags.length
+  const lineParts = (start: number, end: number) =>
+    scanEndIdx === null ? [{ start, end, afterWindow: false }] : splitIntervalAtScanEnd({ start, end }, scanEndIdx)
+  subTags.forEach((tag, band) => {
+    const inBand = timeAnchored.filter((e) => bandKeyOf(e) === tag)
+    if (inBand.length === 0) return
+    const node = tagToNodes?.[tag]?.[0] ?? tag
+    const families = foldBand(inBand, {
+      band: tag, isPoint: pointNodes.has(node), tierOf: eventTier, level, levelImmune: solveFreeNodes.has(node),
+    })
+    for (const { f, lane } of packLanes(families.map((f) => ({ start_idx: f.start, end_idx: f.end, f })))) {
+      for (const part of lineParts(f.start, f.end)) {
+        familyLineData.push({
+          value: [part.start, part.end, lane, band, nBands], family_key: f.key, multi: f.multi,
+          active: activeFamily === f.key, afterWindow: part.afterWindow,
+          summary: familySummary(f, byId, eventTier, dates),
+        })
+      }
+      for (const mark of f.marks) {
+        const color = colorOf(mark.tier, node, nodeColors)
+        const after = colorOf('detected', node, nodeColors)
+        const base = {
+          instance_id: mark.memberIds[0], member_ids: mark.memberIds,
+          member_labels: mark.memberIds.length >= 2
+            ? memberLabels(mark.memberIds, byId, anchorFields).map((l) => formatMemberLabel(l, dates))
+            : undefined,
+          member_k: mark.memberIds.map((id) => f.memberIds.indexOf(id) + 1),
+          family_n: f.memberIds.length, family_key: f.key, family_start: f.start,
+          mark_kind: mark.kind, tier: mark.tier,
+        }
+        const H = TIER_H[mark.tier]
+        let first: any = null
+        if (mark.kind === 'point') {
+          first = { ...base, value: [mark.start, mark.end, lane, band, nBands, H], itemStyle: { color } }
+          pointData.push(first)
+        } else if (mark.kind === 'cell' || scanEndIdx === null) {
+          // 格整格判在扫描窗前还是后
+          const isAfter = scanEndIdx !== null && mark.start > scanEndIdx
+          first = { ...base, value: [mark.start, mark.end, lane, band, nBands, H],
+                    itemStyle: { color: isAfter ? after : color } }
+          intervalData.push(first)
+        } else {
+          // 整条跨过扫描末日:拆窗内 / 窗后两段,共享成员与族
+          for (const part of splitIntervalAtScanEnd({ start: mark.start, end: mark.end }, scanEndIdx)) {
+            const rec = { ...base, value: [part.start, part.end, lane, band, nBands, H],
+                          itemStyle: { color: part.afterWindow ? after : color } }
+            intervalData.push(rec)
+            first ??= rec
+          }
+        }
+        for (const id of mark.memberIds) placeOf.set(id, { family: f, mark, lane, band, rec: first })
+      }
     }
-    if (isPoint) { pointData.push(record); continue }
-    if (scanEndIdx === null) { intervalData.push(record); continue }
-    // 拆段记录共享 instance_id/lane/band/tooltip;仅 value 跨度与色不同
-    // (窗内段 level 色 / 窗后段 detected 灰)
-    for (const part of splitIntervalAtScanEnd({ start: e.start_idx, end: e.end_idx }, scanEndIdx)) {
-      intervalData.push({
-        value: [part.start, part.end, e.lane, e.band, e.nBands],
-        instance_id: e.instance_id,
-        tier: eventTier(e),
-        itemStyle: {
-          color: part.afterWindow
-            ? colorOf('detected', nodeOf(e), nodeColors)
-            : eColor(e),
-        },
-      })
+  })
+
+  // ── bracket 轨:hit 按同起点折;每族一行,记号是 hit 的终点(整条 / 格),买入日 ▼ 叠在上面 ──
+  const hitsById = new Map(hits.map((m) => [m.hit_id, m]))
+  const nodeOrder = (topology?.nodes ?? []).map((n) => n.node_id)
+  const hitLabelTexts = (ids: string[]): string[] | undefined => ids.length >= 2
+    ? hitLabels(ids, hitsById, byId, nodeOrder, anchorFields).map((l) => formatMemberLabel(l, dates))
+    : undefined
+  const bracketData: any[] = []
+  const bracketLineData: any[] = []
+  const hitFamilies = foldHits(hits, events, endNode)
+  const hitFamilyOf = new Map<string, { family: HitFamily; lane: number; ordinal: number }>()
+  const packedHits = packLanes(hitFamilies.map((f, i) => ({ start_idx: f.start, end_idx: f.end, f, ordinal: i + 1 })))
+  for (const { f, lane, ordinal } of packedHits) {
+    for (const id of f.hitIds) hitFamilyOf.set(id, { family: f, lane, ordinal })
+    bracketLineData.push({ value: [f.start, f.end, lane, ordinal], family_key: f.key, multi: f.multi,
+                           active: activeFamily === f.key })
+    for (const mark of f.marks) {
+      const rec: { value: number[]; kind: 'mark'; mark_kind: string; hit_id: string; hit_ids: string[];
+                   family_key: string; family_start: number; hit_labels?: string[]; instance_id?: string } = {
+        value: [mark.start, mark.end, lane, ordinal], kind: 'mark', mark_kind: mark.kind,
+        hit_id: mark.hitIds[0], hit_ids: mark.hitIds, family_key: f.key, family_start: f.start,
+        hit_labels: hitLabelTexts(mark.hitIds),
+      }
+      if (endNode) {
+        const v = hitsById.get(mark.hitIds[0])?.node_index?.[endNode]
+        if (v) rec.instance_id = v
+      }
+      bracketData.push(rec)
+    }
+    for (const buy of f.buys) {
+      bracketData.push({ value: [buy.day, buy.day, lane, ordinal], kind: 'buy', buy_day: buy.day,
+                         buy_date: dates[buy.day] ?? String(buy.day),
+                         hit_id: buy.hitIds[0], hit_ids: buy.hitIds, family_key: f.key, family_start: f.start,
+                         hit_labels: hitLabelTexts(buy.hitIds) })
     }
   }
 
-  // tier tag:副图上没进 hit 的 event(只显示的 node 不分档,不挂)。同一 band 的同一 lane 算一行
-  const tagged = packedAll.filter((e) => !solveFreeNodes.has(nodeOf(e) ?? '') && tierTagOf(eventTier(e)) !== null)
-  const nexts = nextStarts(packedAll.map((e) => ({ key: `${e.band}:${e.lane}`, start: e.start_idx, end: e.end_idx })))
-  const nextOf = new Map(packedAll.map((e, i) => [e, nexts[i]]))
-  const tierTagData = tagged.map((e) => ({
-    value: [e.start_idx, e.end_idx, e.lane, e.band, nextOf.get(e)!],
-    text: tierTagOf(eventTier(e))!,
-    point: e.start_idx === e.end_idx,
-  }))
-
-  const brackets = packBrackets(hits)
-  const bracketData = brackets.map((m) => {
-    const data: { value: number[]; hit_id: string; instance_id?: string } = {
-      value: [m.start_idx, m.end_idx, m.lane, m.ordinal],
-      hit_id: m.hit_id,
-    }
-    if (endNode) {
-      const v = m.node_index?.[endNode]
-      if (v) data.instance_id = v
-    }
-    return data
-  })
-
-  // highlight overlay 三分支
+  // ── 高亮:成员所在族行上画空心跨度框([族起点, 成员终点])+ 它那一格粗框;点记号照旧画放大实心版 ──
+  // group 条目跳过焦点实例(被点者由 focus 条目独家表达);同一个记号只画一次。
   type HlKind = 'group' | 'focus' | 'pendingDisambig'
   const highlightData: any[] = []
   const highlightPriceData: any[] = []
-
-  // group 条目跳过焦点实例:被点 marker 由 focus 条目独家表达
-  // (放大实心版双条目 = 同坐标双阴影,被点者投影会明显深于组员)。
-  // 实例流:inHitIds 集合元素为 instance_id 字符串,组内判定按 marker 的 instance_id
-  // 匹配;focusedInstanceId 是实例级,精确排除被点的那一个实例——同身份兄弟实例不误伤
-  // (group 照常亮)。
+  const drawn = new Set<string>()
+  const pushHl = (id: string, kind: HlKind): boolean => {
+    const at = placeOf.get(id)
+    if (!at) return false
+    const ev = byId.get(id)
+    const tag = `${kind}|${at.family.key}|${at.mark.start}`
+    if (drawn.has(tag)) return true
+    drawn.add(tag)
+    const color = at.rec?.itemStyle?.color
+    if (at.mark.kind === 'point') {
+      highlightData.push({ ...at.rec, kind, shape: 'point' })
+      return true
+    }
+    if (at.mark.kind === 'cell' && ev) {
+      highlightData.push({ value: [at.family.start, ev.end_idx, at.lane, at.band, nBands], instance_id: id,
+                           kind, shape: 'extent', itemStyle: { color } })
+    }
+    highlightData.push({ value: [at.mark.start, at.mark.end, at.lane, at.band, nBands, TIER_H[at.mark.tier]],
+                         instance_id: id, kind, shape: 'mark', itemStyle: { color } })
+    return true
+  }
   if (highlightedEventIds.size > 0) {
-    const inGroup = (d: { instance_id: string }) =>
-      highlightedEventIds.has(d.instance_id) && d.instance_id !== focusedInstanceId
-    for (const d of pointData) {
-      if (inGroup(d)) highlightData.push({ ...d, kind: 'group' as HlKind })
-    }
-    for (const d of intervalData) {
-      if (inGroup(d)) highlightData.push({ ...d, kind: 'group' as HlKind })
-    }
-    for (const d of pricePointData) {
-      if (inGroup(d)) highlightPriceData.push({ ...d, kind: 'group' as HlKind })
-    }
-  }
-  if (pendingDisambigInstanceId) {
-    const pd = pointData.find((d) => d.instance_id === pendingDisambigInstanceId)
-    if (pd) highlightData.push({ ...pd, kind: 'pendingDisambig' as HlKind })
-    else {
-      // interval 可能被 splitIntervalAtScanEnd 拆成窗内/窗后两段(filter 全收,
-      // 与 group 分支同口径);未拆数据 filter 恰返回单条,行为不变
-      const pis = intervalData.filter((d) => d.instance_id === pendingDisambigInstanceId)
-      if (pis.length > 0) {
-        for (const pi of pis) highlightData.push({ ...pi, kind: 'pendingDisambig' as HlKind })
-      } else {
-        const pp = pricePointData.find((d) => d.instance_id === pendingDisambigInstanceId)
-        if (pp) highlightPriceData.push({ ...pp, kind: 'pendingDisambig' as HlKind })
+    for (const id of highlightedEventIds) {
+      if (id === focusedInstanceId) continue
+      if (!pushHl(id, 'group')) {
+        const pp = pricePointData.find((d) => d.instance_id === id)
+        if (pp) highlightPriceData.push({ ...pp, kind: 'group' as HlKind })
       }
     }
   }
-  // focus 条目按当前聚焦实例 find —— selectedInstanceId 是合并 ref(= store
-  // selectedInstanceId ?? focusedInstanceId),覆盖 0 归属(detected/qualified marker click)
-  // 与 1 归属(直选 hit);点 #0 只亮 #0,#1 不同时亮。0 归属也由此出黑框。
-  if (selectedInstanceId) {
-    const selPoint = pointData.find((d) => d.instance_id === selectedInstanceId)
-    if (selPoint) highlightData.push({ ...selPoint, kind: 'focus' as HlKind })
-    else {
-      // interval 可能被 splitIntervalAtScanEnd 拆成窗内/窗后两段(filter 全收);
-      // 未拆数据 filter 恰返回单条,行为不变
-      const selIntervals = intervalData.filter((d) => d.instance_id === selectedInstanceId)
-      if (selIntervals.length > 0) {
-        for (const d of selIntervals) highlightData.push({ ...d, kind: 'focus' as HlKind })
-      } else {
-        const selPricePoint = pricePointData.find((d) => d.instance_id === selectedInstanceId)
-        if (selPricePoint) highlightPriceData.push({ ...selPricePoint, kind: 'focus' as HlKind })
-      }
-    }
+  if (pendingDisambigInstanceId && !pushHl(pendingDisambigInstanceId, 'pendingDisambig')) {
+    const pp = pricePointData.find((d) => d.instance_id === pendingDisambigInstanceId)
+    if (pp) highlightPriceData.push({ ...pp, kind: 'pendingDisambig' as HlKind })
+  }
+  // focus 条目按当前聚焦实例 —— selectedInstanceId 是合并 ref(= store selectedInstanceId ?? focusedInstanceId),
+  // 覆盖 0 归属与 1 归属(直选 hit)
+  if (selectedInstanceId && !pushHl(selectedInstanceId, 'focus')) {
+    const pp = pricePointData.find((d) => d.instance_id === selectedInstanceId)
+    if (pp) highlightPriceData.push({ ...pp, kind: 'focus' as HlKind })
   }
 
-  // ── spec 2026-07-11: shift-veil overlay 数据(z2:22 独立层,fill 白蒙 + 黑横线) ──
+  // ── shift-veil overlay(z2:22 独立层,fill 白蒙 + 黑横线):记号里任一成员被 shift 选中就盖 ──
   const veilData: any[] = []
   const veilPriceData: any[] = []
   if (shiftSelectedEventIds.size > 0) {
-    for (const d of pointData) {
-      if (shiftSelectedEventIds.has(d.instance_id))
-        veilData.push({ ...d, kind: 'point' })
-    }
-    for (const d of intervalData) {
-      if (shiftSelectedEventIds.has(d.instance_id))
-        veilData.push({ ...d, kind: 'interval' })
-    }
+    const hitAny = (d: { member_ids?: string[]; instance_id: string }) =>
+      (d.member_ids ?? [d.instance_id]).some((id) => shiftSelectedEventIds.has(id))
+    for (const d of pointData) if (hitAny(d)) veilData.push({ ...d, kind: 'point' })
+    for (const d of intervalData) if (hitAny(d)) veilData.push({ ...d, kind: 'interval' })
     for (const d of pricePointData) {
-      if (shiftSelectedEventIds.has(d.instance_id))
-        veilPriceData.push({ ...d, kind: 'pricePoint' })
+      if (shiftSelectedEventIds.has(d.instance_id)) veilPriceData.push({ ...d, kind: 'pricePoint' })
     }
   }
 
+  const currentDay = input.currentDay ?? null
+  const cursorData = currentDay === null || currentDay < 0 || currentDay >= bars.length ? [] : [{ value: [currentDay] }]
+
   return {
     pointData, intervalData, pricePointData,
-    bracketData, highlightData, highlightPriceData,
-    veilData, veilPriceData, tierTagData,
+    bracketData, bracketLineData, familyLineData, cursorData,
+    highlightData, highlightPriceData,
+    veilData, veilPriceData,
     candle, volume, dates,
   }
+}
+
+/** 悬停族底线时的摘要(等宽、键值):起点、终点范围、成员数与各档个数。 */
+function familySummary(f: Family, byId: ReadonlyMap<string, EventDict>, tierOf: (e: EventDict) => Tier,
+                       dates: readonly string[]): string {
+  const ends = f.memberIds.map((id) => byId.get(id)?.end_idx ?? f.end)
+  const count: Record<Tier, number> = { in_hit: 0, qualified: 0, detected: 0 }
+  for (const id of f.memberIds) {
+    const e = byId.get(id)
+    if (e) count[tierOf(e)] += 1
+  }
+  const d = (i: number) => dates[i] ?? String(i)
+  return [
+    `start: ${d(f.start)}`,
+    `end: ${d(Math.min(...ends))} … ${d(Math.max(...ends))}`,
+    `members: ${f.memberIds.length}`,
+    `in_hit: ${count.in_hit}`, `qualified: ${count.qualified}`, `detected: ${count.detected}`,
+  ].join('<br/>')
 }
 
 // ─── buildMainOption / buildSubOption(消费同一份 EventBundle,双 ECharts 实例架构)──
@@ -380,8 +455,9 @@ export type MainOptionInput = Pick<BandRenderInput,
 export function emptyEventBundle(bars: Bar[]): EventBundle {
   return {
     pointData: [], intervalData: [], pricePointData: [],
-    bracketData: [], highlightData: [], highlightPriceData: [],
-    veilData: [], veilPriceData: [], tierTagData: [],
+    bracketData: [], bracketLineData: [], familyLineData: [], cursorData: [],
+    highlightData: [], highlightPriceData: [],
+    veilData: [], veilPriceData: [],
     candle: bars.map((b) => [b.o, b.c, b.l, b.h]),
     volume: bars.map((b) => b.v),
     dates: bars.map((b) => b.date),
@@ -554,6 +630,15 @@ export function buildMainOption(
         data: veilPriceData, animation: false, silent: true,
         renderItem: makeRenderShiftVeilPrice(veilPriceData),
         z: 22 },
+      // 当前日竖线(K 线区与成交量带各一条,z:10):压在 K 线柱子与成交量柱上层,鼠标移开后照样看得见
+      // (画在下层时会被当天那根 K 线与上下影线整段盖住);两侧白边压在任何柱色上都拉开深浅。
+      // 低于价格标记(z:12)与高亮(z:21),▲▼ 仍压在竖线上面。
+      { type: 'custom', name: 'current-day', xAxisIndex: 0, yAxisIndex: 0,
+        data: bundle.cursorData, silent: true, animation: false,
+        renderItem: renderCursor, encode: { x: 0 }, z: 10 },
+      { type: 'custom', name: 'current-day-volume', xAxisIndex: 1, yAxisIndex: 1,
+        data: bundle.cursorData, silent: true, animation: false,
+        renderItem: renderCursor, encode: { x: 0 }, z: 10 },
     ],
   }
 }
@@ -570,12 +655,16 @@ export function buildSubDecorGraphics(
   hitsLabelVisible: boolean,
   chartSubWidth: number,
   zoomFactor: number = 1.0,
+  active: { band?: number; hits?: boolean } = {},   // 当家行所在那条 band / bracket 的表头加粗
+  extras: readonly (BandLabelExtra | null)[] = [],  // 表头 node 名后跟的用户特征名 / app_only(按 band 下标)
+  hitsTop: number = BAND_TOP_PAD,                    // hits 表头的顶(compare 下让出上面的 user 行)
 ): any[] {
   const graphics: any[] = []
   const rectWidth = chartSubWidth - SUB_GRID_LEFT - SUB_GRID_RIGHT
 
   // 1. zebra: 每 band 一条 rect,隔行 fill
   bandGeom.forEach((g, bi) => {
+    if (!g) return
     graphics.push({
       type: 'rect',
       left: SUB_GRID_LEFT,
@@ -600,7 +689,7 @@ export function buildSubDecorGraphics(
 
   // 3. band 内 lane splitLine: 相邻 lane 之间 1px 线
   bandGeom.forEach((g) => {
-    if (g.laneCount <= 1) return
+    if (!g || g.laneCount <= 1) return
     for (let lane = 0; lane < g.laneCount - 1; lane++) {
       // 分隔线落在 lane 与 lane+1 之间 gap 末端(自顶向下堆叠口径);乘 z 修 zoom 错位
       const topY = g.top + BAND_TOP_PAD + (lane + 1) * BAND_LANE_H * zoomFactor
@@ -622,18 +711,33 @@ export function buildSubDecorGraphics(
   //    verticalAlign: 'top' + top = band 顶 + pad → label 顶部对齐 band 顶部内边距,
   //    单/多 lane 视觉统一(不再随 band 高度浮到中间/下半)。
   bandGeom.forEach((g, bi) => {
+    if (!g) return
     const text = bandLabelTexts[bi] ?? ''
+    const ex = extras[bi] ?? null
+    const weight = active.band === bi ? 'bold' : 'normal'
+    // 特征名是用户写的内容:正常字体、浅灰底;app_only 是程序固定文字:等宽
+    const esc = (t: string) => t.replace(/[{}|]/g, ' ')
+    const rich = ex && (ex.feature || ex.tag)
+      ? `{n|${esc(text)}}${ex.feature ? `  {biz|${esc(ex.feature)}}` : ''}${ex.tag ? `  {tag|${esc(ex.tag)}}` : ''}`
+      : null
     graphics.push({
       type: 'text',
       left: SUB_GRID_LEFT + 2,
       top: g.top + BAND_TOP_PAD,
       textAlign: 'left',
       textVerticalAlign: 'top',
-      style: {
-        text,
-        fill: '#424242',
-        fontSize: 13,
-      },
+      style: rich
+        ? { text: rich, rich: {
+            n: { fill: '#000000', fontSize: 13, fontWeight: weight },
+            biz: { fill: '#000000', fontSize: 12, backgroundColor: '#f4f4f5', padding: [1, 4], borderRadius: 3 },
+            tag: { fill: '#000000', fontSize: 11, fontFamily: MONO },
+          } }
+        : {
+            text,
+            fill: '#000000',
+            fontSize: 13,
+            fontWeight: weight,
+          },
       z: 5,
       silent: true,
     })
@@ -644,14 +748,15 @@ export function buildSubDecorGraphics(
     graphics.push({
       type: 'text',
       left: SUB_GRID_LEFT + 2,
-      top: BAND_TOP_PAD,   // 与 bandLabels 的 pad 锚定语义对称(unify 顶 pad)
+      top: hitsTop,   // 与 bandLabels 的 pad 锚定语义对称(unify 顶 pad)
       textAlign: 'left',
       textVerticalAlign: 'top',
       style: {
         text: 'hits',
-        fill: '#111',
+        fill: '#000000',
         fontSize: 13,
         fontFamily: MONO,
+        fontWeight: active.hits ? 'bold' : 'normal',
       },
       z: 5,
       silent: true,
@@ -670,6 +775,7 @@ export function buildSubOption(
           selectedHitId, candidateHitIds } = input
   const { dates, pointData, intervalData, bracketData, highlightData, veilData } = bundle
   const z = input.zoomFactor ?? 1.0   // 副图 band 竖直 zoom(spec 2026-07-03)
+  const bracketTop = subGeom.appBracketTop ?? BAND_TOP_PAD
 
   const N = bars.length
   const sw = strictWindow ?? null
@@ -688,6 +794,9 @@ export function buildSubOption(
   // 装饰几何(zebra/subDivider/bandLabels/hitsLabel)改走 option.graphic,不再挂 series
   const bandLabelTexts = subBandTagList(input.tagList, input.topology)
   const hitsLabelVisible = bracketData.length > 0
+  // 当家行所在那条 band(或 bracket)的表头名字加粗
+  const activeKey = input.activeFamily ?? null
+  const activeBand = activeKey ? bandLabelTexts.indexOf(activeKey.slice(0, activeKey.lastIndexOf('@'))) : -1
   const decorGraphics = buildSubDecorGraphics(
     subGeom.bandGeom,
     subGeom.dividerY,
@@ -696,6 +805,9 @@ export function buildSubOption(
     hitsLabelVisible,
     chartSubWidth,
     z,
+    { band: activeBand, hits: !!activeKey && activeKey.startsWith(`${HIT_FAMILY_PREFIX}@`) },
+    bandLabelTexts.map((b) => input.bandExtras?.[b] ?? null),
+    bracketTop,
   )
 
   return {
@@ -719,7 +831,13 @@ export function buildSubOption(
     yAxis: [{ scale: true, gridIndex: 0, show: false }],
     dataZoom: [{ type: 'inside', xAxisIndex: 0, start: zoomStart, end: zoomEnd }],
     series: [
-      // intervals (z:9)
+      // 族底线(z:8,在条与格下层);透明命中区给族摘要悬停
+      { type: 'custom', name: 'family-lines', xAxisIndex: 0, yAxisIndex: 0,
+        data: bundle.familyLineData,
+        renderItem: makeRenderFamilyLine(bundle.familyLineData, subGeom.bandGeom, z),
+        encode: { x: [0, 1] }, z: 8,
+        tooltip: { show: true, formatter: (p: any) => bundle.familyLineData[p.dataIndex]?.summary ?? '' } },
+      // intervals (z:9):整条与格
       { type: 'custom', name: 'intervals', xAxisIndex: 0, yAxisIndex: 0,
         data: intervalData,
         renderItem: (p: any, api: any) => renderIntervalWithGeom(p, api, subGeom.bandGeom, z),
@@ -729,17 +847,21 @@ export function buildSubOption(
         data: pointData,
         renderItem: (p: any, api: any) => renderPointWithGeom(p, api, subGeom.bandGeom, z),
         encode: { x: 0 }, z: 10, tooltip: markerTooltip },
-      // brackets (z:11)。focus 信号:selectedHitId 存在且无实例焦点 ⟺ bracket
+      // bracket 族底线(z:10)
+      { type: 'custom', name: 'bracket-lines', xAxisIndex: 0, yAxisIndex: 0,
+        data: bundle.bracketLineData, silent: true,
+        renderItem: makeRenderBracketLine(bundle.bracketLineData, z, bracketTop),
+        encode: { x: [0, 1] }, z: 10 },
+      // brackets (z:11):hit 的记号与买入日 ▼。focus 信号:selectedHitId 存在且无实例焦点 ⟺ bracket
       // 本身是被点者(KlineChart.ts bracket 分支走 focusHit 不设实例;marker 分支必设)
       { type: 'custom', name: 'brackets', xAxisIndex: 0, yAxisIndex: 0,
         data: bracketData,
         renderItem: makeRenderBracket(bracketData, selectedHitId ?? null, candidateHitIds ?? new Set(), z,
-          (selectedHitId ?? null) !== null && (input.selectedInstanceId ?? null) === null),
+          (selectedHitId ?? null) !== null && (input.selectedInstanceId ?? null) === null, bracketTop),
         encode: { x: [0, 1] }, z: 11, tooltip: markerTooltip,
         emphasis: { disabled: true } },
       // highlight (z:20)。animation:true 为 series 级显式开关:keyframeAnimation(pending 闪烁)
       // 被 isAnimationEnabled() 闸住,继承顶层 animation:false 会整体跳过动画。
-      // 图形绘制全在 shape 字段,不涉及默认 x/y transition,无过渡副作用。
       { type: 'custom', name: 'highlight', xAxisIndex: 0, yAxisIndex: 0,
         data: highlightData, animation: true,
         renderItem: makeRenderHighlightWithGeom(highlightData, subGeom.bandGeom, z),
@@ -749,29 +871,11 @@ export function buildSubOption(
         data: veilData, animation: false, silent: true,
         renderItem: makeRenderShiftVeil(veilData, subGeom.bandGeom, z),
         z: 22 },
-      // tier tags (z:12):顶栏 tiers 开着才有数据
-      { type: 'custom', name: 'tier-tags', xAxisIndex: 0, yAxisIndex: 0,
-        data: input.tiers ? bundle.tierTagData : [],
-        renderItem: makeRenderTierTag(input.tiers ? bundle.tierTagData : [], subGeom.bandGeom, z),
-        encode: { x: [0, 1] }, z: 12,
-        tooltip: { show: true, formatter: (p: any) => TIER_TAG_TIP[bundle.tierTagData[p.dataIndex]?.text as TierTagText] ?? '' } },
+      // 当前日竖线(z:30,最上层):缩小后连成一片的格会把下层的线整段盖住;两侧白边压在任何色块上都拉开深浅
+      { type: 'custom', name: 'current-day', xAxisIndex: 0, yAxisIndex: 0,
+        data: bundle.cursorData, silent: true, animation: false,
+        renderItem: renderCursor, encode: { x: 0 }, z: 30 },
     ],
-  }
-}
-
-/** 副图 event 条右端的 tier tag:和条同一 lane 同高,压到同一行下一个条或伸出图右缘时不画。 */
-export function makeRenderTierTag(data: EventBundle['tierTagData'], bandGeom: BandGeom[], zoomFactor = 1.0) {
-  return (params: any, api: any) => {
-    const d = data[params.dataIndex]
-    const g = bandGeom[api.value(3) || 0]
-    if (!d || !g) return null
-    const laneH = BAND_MARKER_H * zoomFactor
-    const y = Math.max(g.top + BAND_TOP_PAD,
-      Math.min(g.top + BAND_TOP_PAD + (api.value(2) || 0) * (laneH + BAND_LANE_GAP * zoomFactor), g.top + g.h - BAND_BOT_PAD - laneH))
-    const unitW = api.size([1, 0])[0]
-    // 区段事件的条画到终点那根的中心;点事件是以那根为中心的三角(半宽同 renderPointWithGeom)
-    const right = api.coord([api.value(1), 0])[0] + (d.point ? Math.max(5, Math.min(20, unitW * 0.35)) : 0)
-    return tierTagShape(d.text, right, y, laneH, tierTagLimit(api, params.coordSys, api.value(4)))
   }
 }
 
@@ -958,21 +1062,36 @@ export function renderIntervalWithGeom(
   bandGeom: BandGeom[],
   zoomFactor: number = 1.0,
 ) {
-  const x0 = api.coord([api.value(0), 0])[0]
-  const x1 = api.coord([api.value(1), 0])[0]
   const lane = api.value(2) || 0
   const band = api.value(3) || 0
   const g = bandGeom[band]
   if (!g) return { type: 'group', children: [] }
-  const laneH = BAND_MARKER_H * zoomFactor
-  const gap = BAND_LANE_GAP * zoomFactor
-  // 自顶向下堆叠:lane0 贴 band 顶 pad(与 bracket 区方向一致,spec 2026-07-03-bracket-band-unify)
-  const rawY = g.top + BAND_TOP_PAD + lane * (laneH + gap)
-  const y = Math.max(g.top + BAND_TOP_PAD, Math.min(rawY, g.top + g.h - BAND_BOT_PAD - laneH))
+  const { x0, x1 } = markXRange(api, api.value(0), api.value(1))
+  const { y, laneH } = laneBox(g, lane, zoomFactor)
+  // 档位按高度分三档、底对齐(value[5] = 高度比例;缺省满高)
+  const h = laneH * (api.value(5) || 1)
   return {
     type: 'rect',
-    shape: { x: x0, y, width: Math.max(2, x1 - x0), height: laneH },
+    shape: { x: x0, y: y + laneH - h, width: Math.max(2, x1 - x0), height: h },
     style: api.style(),
+  }
+}
+
+/** lane 在 band 里的竖直范围:自顶向下堆叠,lane0 贴 band 顶 pad(与 bracket 区方向一致)。 */
+export function laneBox(g: BandGeom, lane: number, zoomFactor: number): { y: number; laneH: number } {
+  const laneH = BAND_MARKER_H * zoomFactor
+  const gap = BAND_LANE_GAP * zoomFactor
+  const rawY = g.top + BAND_TOP_PAD + lane * (laneH + gap)
+  const y = Math.max(g.top + BAND_TOP_PAD, Math.min(rawY, g.top + g.h - BAND_BOT_PAD - laneH))
+  return { y, laneH }
+}
+
+/** 记号的横向范围:从起点那根 K 线中心 −MARK_HALF_W 根到终点那根中心 +MARK_HALF_W 根(只占一根的记号也有一格宽)。 */
+export function markXRange(api: any, start: number, end: number, pad = 0): { x0: number; x1: number } {
+  const unitW = api.size([1, 0])[0]
+  return {
+    x0: api.coord([start, 0])[0] - MARK_HALF_W * unitW - pad,
+    x1: api.coord([end, 0])[0] + MARK_HALF_W * unitW + pad,
   }
 }
 
@@ -991,19 +1110,25 @@ export function renderPointWithGeom(
   const gap = BAND_LANE_GAP * zoomFactor
   const centerY = g.top + BAND_TOP_PAD + lane * (laneH + gap) + laneH / 2
   const unitW = api.size([1, 0])[0]
-  const w = Math.max(5, Math.min(20, unitW * 0.35))
+  // 档位按大小分三档(value[5] = 高度比例;缺省满尺寸)
+  const k = 0.6 + 0.4 * (api.value(5) || 1)
+  const w = Math.max(5, Math.min(20, unitW * 0.35)) * k
   return {
     type: 'polygon',
-    shape: { points: [[x, centerY + 4 * zoomFactor], [x - w, centerY - 3 * zoomFactor], [x + w, centerY - 3 * zoomFactor]] },
+    shape: { points: [[x, centerY + 4 * zoomFactor * k], [x - w, centerY - 3 * zoomFactor * k],
+                      [x + w, centerY - 3 * zoomFactor * k]] },
     style: api.style(),
   }
 }
 
-// makeRenderHighlightWithGeom:point/interval 分支都从 bandGeom 派生。
-// 画放大实心版(非描边框):group/focus 单图形,pending 白底+闪烁双层,见 buildHlShape。
+// makeRenderHighlightWithGeom:三种形状——
+//   point :点记号的放大实心版(group/focus 单图形,pending 白底+闪烁双层,见 buildHlShape);
+//   extent:成员的完整跨度 [族起点, 成员终点],空心细框,不填色(实心复本会盖住族行里后面的格子);
+//   mark  :成员所在的那一格(或整条),空心粗框;pending 时框闪烁。
+// 线宽:group 细、focus / pending 粗。一律 silent:true 让 hover/click 穿透到本体系列。
 export function makeRenderHighlightWithGeom(
   items: Array<{ value: number[]; instance_id: string; itemStyle?: { color?: string };
-                 kind: 'group' | 'focus' | 'pendingDisambig' }>,
+                 kind: 'group' | 'focus' | 'pendingDisambig'; shape?: 'point' | 'extent' | 'mark' }>,
   bandGeom: BandGeom[],
   zoomFactor: number = 1.0,   // 副图 band 竖直 zoom(spec 2026-07-03)
 ) {
@@ -1011,15 +1136,13 @@ export function makeRenderHighlightWithGeom(
     const item = items[params.dataIndex]
     const hlKind = item?.kind ?? 'focus'
     const color = item?.itemStyle?.color ?? '#888888'
-    // pointData/intervalData 均为 5 元组(spec 2026-07-13),不能再用 length 判别;
-    // 改用 start!==end(与 computeEventData 里 isPoint = start_idx===end_idx 同一口径)。
-    const isInterval = item ? item.value[0] !== item.value[1] : false
-    if (!isInterval) {
+    const lane = (item?.value?.[2] as number) || 0
+    const band = (item?.value?.[3] as number) || 0
+    const g = bandGeom[band]
+    if (!item || !g) return { type: 'group', children: [] }
+    const lw = hlKind === 'group' ? HL_GROUP_STROKE_WIDTH : HL_FOCUS_STROKE_WIDTH
+    if (item.shape === 'point') {
       const x = api.coord([api.value(0), 0])[0]
-      const lane = (item?.value?.[2] as number) || 0
-      const band = (item?.value?.[3] as number) || 0
-      const g = bandGeom[band]
-      if (!g) return { type: 'group', children: [] }
       const laneH = BAND_MARKER_H * zoomFactor
       const gap = BAND_LANE_GAP * zoomFactor
       const centerY = g.top + BAND_TOP_PAD + lane * (laneH + gap) + laneH / 2
@@ -1031,27 +1154,96 @@ export function makeRenderHighlightWithGeom(
         shape: { points: [[x, centerY + 6 * zoomFactor], [x - w, centerY - 4 * zoomFactor], [x + w, centerY - 4 * zoomFactor]] },
       }
       return buildHlShape(base, hlKind, color, 20)
-    } else {
-      const x0 = api.coord([api.value(0), 0])[0]
-      const x1 = api.coord([api.value(1), 0])[0]
-      const lane = (item?.value?.[2] as number) || 0
-      const band = (item?.value?.[3] as number) || 0
-      const g = bandGeom[band]
-      if (!g) return { type: 'group', children: [] }
-      const laneH = BAND_MARKER_H * zoomFactor
-      const gap = BAND_LANE_GAP * zoomFactor
-      const rawY = g.top + BAND_TOP_PAD + lane * (laneH + gap)
-      const y = Math.max(g.top + BAND_TOP_PAD, Math.min(rawY, g.top + g.h - BAND_BOT_PAD - laneH))
-      // 放大版:高 laneH→laneH+3z 居中外扩(offset −1.5z),比例恒 10/7,长度不变(时间跨度语义);
-      // 共享常量 HL_EXPAND_*(与 makeRenderBracket 选中态同一组数,spec §3.1)
-      const base = {
-        type: 'rect',
+    }
+    const { y, laneH } = laneBox(g, lane, zoomFactor)
+    if (item.shape === 'extent') {
+      const { x0, x1 } = markXRange(api, item.value[0], item.value[1], 1)
+      return {
+        type: 'rect', silent: true, z2: 20,
         shape: { x: x0, y: y - HL_EXPAND_OFFSET * zoomFactor, width: Math.max(2, x1 - x0),
                  height: laneH + HL_EXPAND_H * zoomFactor },
+        style: { fill: 'none', stroke: HL_FOCUS_EDGE, lineWidth: HL_GROUP_STROKE_WIDTH },
       }
-      return buildHlShape(base, hlKind, color, 20)
     }
+    // mark:框住那一格(高度跟格的档位走)
+    const { x0, x1 } = markXRange(api, item.value[0], item.value[1], 1.5)
+    const h = laneH * (item.value[5] || 1)
+    const el: Record<string, unknown> = {
+      type: 'rect', silent: true, z2: 21,
+      shape: { x: x0, y: y + laneH - h - 1.5, width: Math.max(3, x1 - x0), height: h + 3 },
+      style: { fill: 'none', stroke: HL_FOCUS_EDGE, lineWidth: lw, ...HL_SHADOW },
+    }
+    if (hlKind === 'pendingDisambig') el.keyframeAnimation = pendingBlinkAnimation()
+    return el
   }
+}
+
+/** 族底线 + 透明命中区(悬停整行给族摘要;格在上层,点格不受影响)+ 当家行的粗底线。 */
+export function makeRenderFamilyLine(
+  items: Array<{ multi?: boolean; active?: boolean; afterWindow?: boolean }>,
+  bandGeom: BandGeom[],
+  zoomFactor: number = 1.0,
+) {
+  return function renderFamilyLine(params: any, api: any) {
+    const item = items[params.dataIndex]
+    const g = bandGeom[api.value(3) || 0]
+    if (!item || !g) return { type: 'group', children: [] }
+    const { x0, x1 } = markXRange(api, api.value(0), api.value(1))
+    const { y, laneH } = laneBox(g, api.value(2) || 0, zoomFactor)
+    const width = Math.max(2, x1 - x0)
+    const bottom = y + laneH
+    const children: any[] = [
+      { type: 'rect', shape: { x: x0, y, width, height: laneH }, style: { fill: 'rgba(0,0,0,0.001)' } },
+    ]
+    if (item.multi) {
+      children.push({ type: 'rect', silent: true,
+                      shape: { x: x0, y: bottom - FAMILY_LINE_H, width, height: FAMILY_LINE_H },
+                      style: { fill: item.afterWindow ? FAMILY_LINE_AFTER_WINDOW : FAMILY_LINE_COLOR } })
+    }
+    if (item.active) {
+      children.push({ type: 'rect', silent: true,
+                      shape: { x: x0, y: bottom - 1, width, height: ACTIVE_LINE_H },
+                      style: { fill: HL_FOCUS_EDGE } })
+    }
+    return { type: 'group', children }
+  }
+}
+
+/** bracket 族底线(每一族都画,bracket 一律是梳子)、当家行粗底线。 */
+export function makeRenderBracketLine(
+  items: Array<{ multi?: boolean; active?: boolean }>,
+  zoomFactor: number = 1.0,
+  bracketTop: number = BAND_TOP_PAD,   // hit 第 0 行的顶(compare 下让出上面的 user 行,见 subGeometry 的 appBracketTop)
+) {
+  return function renderBracketLine(params: any, api: any) {
+    const item = items[params.dataIndex]
+    if (!item) return { type: 'group', children: [] }
+    const { x0, x1 } = markXRange(api, api.value(0), api.value(1))
+    const top = bracketTop + (api.value(2) || 0) * BAND_LANE_H * zoomFactor
+    const rectH = BAND_MARKER_H * zoomFactor
+    const width = Math.max(2, x1 - x0)
+    const children: any[] = [
+      { type: 'rect', shape: { x: x0, y: top + rectH - FAMILY_LINE_H, width, height: FAMILY_LINE_H },
+        style: { fill: FAMILY_LINE_COLOR } },
+    ]
+    if (item.active) {
+      children.push({ type: 'rect', shape: { x: x0, y: top + rectH - 1, width, height: ACTIVE_LINE_H },
+                      style: { fill: HL_FOCUS_EDGE } })
+    }
+    return { type: 'group', silent: true, children }
+  }
+}
+
+/** 当前日竖线:1px 深色、两侧白边,贯穿所在 grid 的全高。 */
+export function renderCursor(params: any, api: any) {
+  const x = api.coord([api.value(0), 0])[0]
+  const grid = params.coordSys
+  const line = (stroke: string, lineWidth: number) => ({
+    type: 'line', silent: true,
+    shape: { x1: x, y1: grid.y, x2: x, y2: grid.y + grid.height },
+    style: { stroke, lineWidth },
+  })
+  return { type: 'group', silent: true, children: [line(CURSOR_HALO, 3), line(CURSOR_COLOR, 1)] }
 }
 
 // ── spec 2026-07-11: shift-veil 副图 renderer(point + interval,fill 白蒙 + 黑横线) ──
@@ -1099,9 +1291,8 @@ export function makeRenderShiftVeil(
       }
     }
 
-    // interval 分支:参 renderIntervalWithGeom
-    const x0 = api.coord([api.value(0), 0])[0]
-    const x1 = api.coord([api.value(1), 0])[0]
+    // interval 分支:参 renderIntervalWithGeom(横向范围同记号)
+    const { x0, x1 } = markXRange(api, api.value(0), api.value(1))
     const lane = api.value(2) || 0
     const band = api.value(3) || 0
     const g = bandGeom[band]
@@ -1189,54 +1380,61 @@ export function makeRenderShiftVeilPrice(
   }
 }
 
-// bracket:副图独立坐标(canvas 局部 y=0 起,见 subGeometry.ts 几何约定)。
-// 几何与 band interval 统一(spec 2026-07-03-bracket-band-unify):本体高 BAND_MARKER_H*z、
-// stride BAND_LANE_H*z、区顶 BAND_TOP_PAD 呼吸;选中放大 +HL_EXPAND_H*z / −HL_EXPAND_OFFSET*z
-// (比例恒 10/7)。
-// 选中词汇(2026-07-08 改):bracket 默认底改为琥珀 AMBER_FILL(琥珀不再代表选中);
-// selected 非 focus = 琥珀 + 细深边 + shadow(与 marker in-group 一致);
-// focusOnBracket = 琥珀 + 粗深边 + shadow;candidate = 0.35 琥珀底 + 琥珀虚线边不动。
+// bracket:副图独立坐标(canvas 局部 y=0 起,见 subGeometry.ts 几何约定)。一族 hit(同起点)一行,一律画梳子:
+//   kind='mark':hit 的记号——每个 hit 一格立在它的终点(琥珀、满高),只有一次 hit 的族也是(不画整条);
+//   kind='buy' :买入日 ▼(黑),叠在上面。
+// 选中 hit:它的完整跨度 [族起点, hit 终点] 空心细框 + 它那一格深边框(点的是 bracket 本身用粗边,点组内 marker 用细边);
+// 候选 hit:它那一格细实线框(不用虚线:虚线只表示用户画的;不闪)。族底线在 bracket-lines 系列。
 export function makeRenderBracket(
-  items: Array<{ hit_id: string }>,
+  items: Array<{ hit_id: string; hit_ids?: string[]; kind?: 'mark' | 'buy'; family_start?: number }>,
   selectedHitId: string | null,
   candidateHitIds: ReadonlySet<string>,
   zoomFactor: number = 1.0,
   focusOnBracket: boolean = false,
+  bracketTop: number = BAND_TOP_PAD,   // hit 第 0 行的顶(同 makeRenderBracketLine)
 ) {
   return function renderBracket(params: any, api: any) {
-    const x0 = api.coord([api.value(0), 0])[0]
-    const x1 = api.coord([api.value(1), 0])[0]
+    const item = items[params.dataIndex]
     const lane = api.value(2) || 0
-    const top = BAND_TOP_PAD + lane * BAND_LANE_H * zoomFactor
+    const top = bracketTop + lane * BAND_LANE_H * zoomFactor
     const rectH = BAND_MARKER_H * zoomFactor
-    const hitId: string | undefined = items[params.dataIndex]?.hit_id
-    const isSelected = !!hitId && selectedHitId === hitId
-    const isCandidate = !isSelected && !!hitId && candidateHitIds.has(hitId)
-    const fill = isCandidate ? 'rgba(251,191,36,0.35)' : AMBER_FILL
-    // 选中:居中外扩 + 投影(组员悬浮语义)。
-    // 居中外扩后中心不变(−1.5z + (h+3z)/2 = rectH/2)→ 序号 text 的 y 公式不动。
-    const rectShape = isSelected
-      ? { x: x0, y: top - HL_EXPAND_OFFSET * zoomFactor, width: Math.max(2, x1 - x0),
-          height: rectH + HL_EXPAND_H * zoomFactor }
-      : { x: x0, y: top, width: Math.max(2, x1 - x0), height: rectH }
-    const rectStyle = isSelected
-      ? (focusOnBracket
-          ? { fill, stroke: HL_FOCUS_EDGE, lineWidth: HL_FOCUS_STROKE_WIDTH, ...HL_SHADOW }
-          : { fill, stroke: HL_FOCUS_EDGE, lineWidth: HL_GROUP_STROKE_WIDTH, ...HL_SHADOW })
-      : isCandidate
-        ? { fill, stroke: '#f59e0b', lineWidth: 1.5, lineDash: [4, 3] }
-        : { fill }
-    return {
-      type: 'group',
-      children: [
-        { type: 'rect', shape: rectShape, style: rectStyle },
-        { type: 'text',
-          style: { text: '①②③④⑤⑥⑦⑧⑨'[(api.value(3) - 1) % 9] ?? '·',
-                   x: x1 + 4, y: top + rectH / 2,
-                   fill: '#334155', fontSize: 12,
-                   textAlign: 'left', textVerticalAlign: 'middle' } },
-      ],
+    const ids = item?.hit_ids ?? (item?.hit_id ? [item.hit_id] : [])
+    if (item?.kind === 'buy') {
+      const x = api.coord([api.value(0), 0])[0]
+      const w = Math.max(3, Math.min(6, api.size([1, 0])[0] * 0.32))
+      return { type: 'polygon',
+               shape: { points: [[x - w, top + 0.5], [x + w, top + 0.5], [x, top + rectH * 0.65]] },
+               style: { fill: '#111111' } }
     }
+    const { x0, x1 } = markXRange(api, api.value(0), api.value(1))
+    const children: any[] = [
+      { type: 'rect', shape: { x: x0, y: top, width: Math.max(2, x1 - x0), height: rectH }, style: { fill: AMBER_FILL } },
+    ]
+    const isSelected = !!selectedHitId && ids.includes(selectedHitId)
+    const isCandidate = !isSelected && ids.some((id) => candidateHitIds.has(id))
+    if (isSelected) {
+      const fs = item?.family_start ?? api.value(0)
+      if (fs < api.value(0)) {
+        const ext = markXRange(api, fs, api.value(1), 1)
+        children.push({ type: 'rect',
+                        shape: { x: ext.x0, y: top - HL_EXPAND_OFFSET * zoomFactor, width: ext.x1 - ext.x0,
+                                 height: rectH + HL_EXPAND_H * zoomFactor },
+                        style: { fill: 'none', stroke: HL_FOCUS_EDGE, lineWidth: HL_GROUP_STROKE_WIDTH } })
+      }
+      const box = markXRange(api, api.value(0), api.value(1), 1.5)
+      children.push({ type: 'rect',
+                      shape: { x: box.x0, y: top - HL_EXPAND_OFFSET * zoomFactor, width: box.x1 - box.x0,
+                               height: rectH + HL_EXPAND_H * zoomFactor },
+                      style: { fill: 'none', stroke: HL_FOCUS_EDGE,
+                               lineWidth: focusOnBracket ? HL_FOCUS_STROKE_WIDTH : HL_GROUP_STROKE_WIDTH,
+                               ...HL_SHADOW } })
+    } else if (isCandidate) {
+      const box = markXRange(api, api.value(0), api.value(1), 1.5)
+      children.push({ type: 'rect',
+                      shape: { x: box.x0, y: top - 1, width: box.x1 - box.x0, height: rectH + 2 },
+                      style: { fill: 'none', stroke: HL_FOCUS_EDGE, lineWidth: HL_GROUP_STROKE_WIDTH } })
+    }
+    return { type: 'group', children }
   }
 }
 
@@ -1620,12 +1818,16 @@ export function buildMarkerTooltipFormatter(
     if (!data) return ''
     const lines: string[] = []
 
-    // ── bracket 段：候选首行 + hitLabel + 组成段 (M #15 / M' #25) ────────
+    // ── bracket 段：候选首行 + 买入日 + 同一记号上的几次 hit + hitLabel + 组成段 ────────
     const hitId = data.hit_id as string | undefined
     if (hitId) {
-      // 候选态首行 (M' #25)
-      if (ctx.candidateHitIds.has(hitId)) {
-        lines.push('候选: click 此 bracket 选中该 group')
+      const hitIds = (data.hit_ids as string[] | undefined) ?? [hitId]
+      if (hitIds.some((id) => ctx.candidateHitIds.has(id))) lines.push(fixedLine('candidate'))
+      if (data.kind === 'buy') lines.push(fixedLine(`buy: ${data.buy_date as string}`))
+      const hitLabelTexts = data.hit_labels as string[] | undefined
+      if (hitIds.length >= 2) {
+        lines.push(fixedLine(`hits: ${hitIds.length}`))
+        if (hitLabelTexts) for (const t of hitLabelTexts) lines.push(fixedLine(`  ${t}`))
       }
       // 既有 hitLabel
       if (hitLabel) {
@@ -1652,6 +1854,20 @@ export function buildMarkerTooltipFormatter(
       ).length
       if (sharedBy >= 2) {
         lines.push(fixedLine(`shared_by_hits: ${sharedBy}`))
+      }
+    }
+
+    // ── 族成员段:这个记号在族里第几个;同一格几个成员时逐个列出区分标签 ─────────────
+    const memberIds = data.member_ids as string[] | undefined
+    if (!hitId && memberIds) {
+      const ks = (data.member_k as number[] | undefined) ?? []
+      const n = data.family_n as number | undefined
+      if (memberIds.length >= 2) {
+        lines.push(fixedLine(`members: ${memberIds.length}`))
+        const labels = (data.member_labels as string[] | undefined) ?? memberIds
+        labels.forEach((t, i) => lines.push(fixedLine(`  ${ks[i] ?? '?'}/${n ?? '?'} ${t}`)))
+      } else if (n != null && n >= 2) {
+        lines.push(fixedLine(`member: ${ks[0] ?? '?'}/${n}`))
       }
     }
 
@@ -1734,19 +1950,10 @@ export function buildMarkerTooltipFormatter(
     }
 
     // ── marker 归属节 (M #16, 仅非 bracket marker: 无 hit_id) ──────────
+    // bracket 折叠后一行有几十次 hit,逐个圈号已无意义,只报个数
     if (!hitId && instanceId && ctx.hits.length > 0) {
-      // 按 start_idx 排序,与 packBrackets(geometry.ts:47-49)的 ordinal 语义一致;
-      // 同时从 sortedByStart 过滤,保证 ordinals 以升序列出
-      const sortedByStart = [...ctx.hits].sort((a, b) => a.start_idx - b.start_idx)
-      const ownedBy = sortedByStart.filter((m) => m.children.includes(instanceId))
-      if (ownedBy.length > 0) {
-        const ORDINAL_CHARS = '①②③④⑤⑥⑦⑧⑨'
-        const ords = ownedBy.map((m) => {
-          const ord = sortedByStart.indexOf(m) + 1
-          return ord >= 1 && ord <= 9 ? ORDINAL_CHARS[ord - 1] : String(ord)
-        })
-        lines.push(fixedLine(`in_hits: ${ords.join(' ')}`))
-      }
+      const owned = ctx.hits.filter((m) => m.children.includes(instanceId)).length
+      if (owned > 0) lines.push(fixedLine(`in_hits: ${owned}`))
     }
 
     return lines.join('<br/>')

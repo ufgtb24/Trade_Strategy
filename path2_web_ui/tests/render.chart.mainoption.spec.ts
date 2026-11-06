@@ -331,9 +331,9 @@ describe('solve=False node 免疫 level 门控 + pk marker 三态色/peak_idx', 
     // level=detected 让 bo(detected tier)也过 RANK;pk 免疫与否都不影响
     const bundle = computeEventData(pkBars, withBo, [], pkInput('detected'))
     const bo = bundle.pricePointData.find((x) => x.instance_id === 'bo_hit#0')!
-    expect(bo.itemStyle.color).toBe('#d1d5db')    // detected tier 浅灰
+    expect(bo.itemStyle.color).toBe('#b4bac2')    // detected tier 浅灰
     const pk = bundle.pricePointData.find((x) => x.instance_id === 'pk_2#0')!
-    expect(pk.itemStyle.color).toBe('#d1d5db')    // 同 tier 色,state 不影响颜色
+    expect(pk.itemStyle.color).toBe('#b4bac2')    // 同 tier 色,state 不影响颜色
   })
 
   // 渲染一组事件(pk 事件 + 其三态合成所需的引用事件),返回 pk 事件的 renderItem 产出的 group。

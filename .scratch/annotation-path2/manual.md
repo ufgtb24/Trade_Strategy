@@ -187,7 +187,7 @@ flowchart TD
 | `mode` | 图上画哪几层：`app` 只画 app 跑出的结果（一个 node 一条轨，只读）；`annotate` 只画你的框（一个特征名一条轨）；`compare` 两样叠画，照样可以画框、改框、放样本。当前 pattern 还没有 app 时 `compare` 变灰 |
 | `pattern` | 当前 pattern，新放的样本归它。下拉里有 `unsorted · n`（还有 n 个样本没归类）和 `+ new` |
 | `tool` | `box` 拖出框；`point` 点一根 K 线放样本，放完自动回到 `box` |
-| `tiers` | 图上 app 灰条右端的 `tier tag` 显示与否，默认开。图上 tag 挤、你只想看结构时关掉；框旁的 `missing` 不受它管，「app 没认出你的框」不会因为图挤被藏起来 |
+| `tiers` | 原来管图上 app 灰条右端的 `tier tag`。现在副图不再画这些小字（档位改由格子的高低与深浅表达），这个开关没有作用对象了，拟删，等你确认。框旁的 `missing` 一直不受它管 |
 
 **图**：主图是 K 线，下面是成交量；样本日画成三角。副图第一条是 `bracket` 轨，下面按 `mode` 分轨：标注时一个特征名一条轨，轨序就是这个 pattern 里各段的先后，被大框包住的框轨标题写成 `缩量 ⊂ 横盘`。别的 pattern 的样本、它们的 bracket，以及只被它们收进的框，都画得淡一些：同一张图上标了几个 pattern 时，你一眼分得出哪些是当前 pattern 的依据，不会把别的 pattern 的样本或依据当成这一个的。
 
@@ -201,11 +201,11 @@ flowchart TD
 |---|---|---|---|---|
 | `match tag` | 样本三角下；samples 表 `match` 列；页头 `match` 行 | `matched` / `unmatched` | app | 这一天 app 买没买 |
 | `diff tag` | 样本三角下（`=` 不画）；samples 表 `must / must_not` 列 | `−X` / `+Y` / `order` / `=` | 会话（按 mapping 比） | 这个样本的依据和 mapping 哪里不一样 |
-| `tier tag` | 图上：app 灰条的右端；`selection` 页：选中框时 | 图上 `qualified_only` / `detected_only`；`selection` 页 `in_hit` / `qualified` / `detected` / `missing` | app | app 认到哪一档 |
+| `tier tag` | `selection` 页：选中框时（图上不再挂小字，档位看格子的高低） | `in_hit` / `qualified` / `detected` / `missing` | app | 框终点那天 app 认到哪一档 |
 | 框旁的级 | 你的框旁 | `missing`（琥珀）；`unmapped` / `excluded` / `optional` / `must_not`（会话蓝） | app / 会话 | 这个框在 app 里的处境 |
 | `link tag` | `selection` 页成员链的箭头；features 区的 `↓` 行 | `connected` / `disconnected` / `not_qualified` | app | 相邻两段 app 连没连上 |
 
-`tier tag` 有两套写法，因为说的对象不同：图上的灰条是 app 的 event，不一定在你的框底下，tag 说它「只到了哪一档」（进了 hit 的画本色、不挂 tag）；`selection` 页说的是你选中的那个框，写的是和它对得上的 event 最深到了哪一档，对不上任何 event 就是 `missing`。`not_qualified` 是两段里至少有一段没有够格的 event，连没连上无从谈起。
+`tier tag` 现在只在 `selection` 页出现（图上的格子靠高低说档位，不挂小字）：说的是你选中的那个框，写框终点那天和它配上的那个 event 到了哪一档，那天一个都没有就是 `missing`。`not_qualified` 是两段里至少有一段没有够格的 event，连没连上无从谈起。
 
 **数据**：工具里所有图都止于 2025-12-31。
 
@@ -405,11 +405,16 @@ flowchart TD
 
 **图上（`mode` 切到 `compare`）**
 
-- app 的 event 画在你的框所在的同一条轨上：进了 hit 的画 node 本色，只过了 where 的深灰、只被检测到的浅灰，灰条右端挂 `qualified_only` / `detected_only`。
-- 框旁的 tag 说这个框在 app 里的处境：`missing`（琥珀，app 该认它却没认出）；或会话蓝的 `unmapped` / `excluded` / `optional` / `must_not`（它在 mapping 里的地位，这时框底下没有 app 的条是正常的）。
-- 每个样本的三角下挂 `match tag` 和 `diff tag`。
+- app 的部分就是 `app` 档那张图：K 线区上画的（画在价格区的 node 的记号，如 bo）和 `app` 档一样；副图里每个 node 一条 band，同一 node、同一起点的 event 折成一行，每个 event 一格立在它的终点那天；格子满高本色是进了 hit，中高深灰是过了这个 node 的全部 where，矮的浅灰是只被检测到。档位按钮和 `app` 档共用。自己没有 where 的子段（new_step 的 `old_plat`、`new_plat`）在 `qualified` 档照样全亮，那只说明它被切出来了，不说明这段够格；够不够格看它上面那条 plateau。
+- 你的特征轨照 `annotate` 的顺序；map 了的轨下面紧贴它对的那组 band（那个 node 和它的子段），左边一道竖线框住，轨标题在特征名后面写 `⇣ plateau` 这样的字——这就是「你的这个特征由 app 的哪一部分来认」。没 map 的轨挂 `unmapped`（白底蓝边），框底下没有 app 的东西是正常的。
+- 框的左端不和 app 的条比：app 的复合事件往往从一个固定长度的回看窗口开始，和你凭印象画的起点不是一回事（悬停在框上写 `start not compared`）。比的是框终点那天、样本日那天 app 怎么看。
+- bracket 轨上面 `user` 行是你的样本（▲），下面 `hits` 行是 app 的 hit（底线表示跨度，终点一格，▼ 是买点日）；▲ 旁的字母后挂 `✓`（app 和你的判断一致）或朱红底的 `✗`（不一致）。
+- 框终点那天 app 一个 event 都没有，框旁挂 `missing`（白底橙边）。`diff tag`、`link tag` 在第二段做。
+- 点一个样本（进 `compare` 时会先自动聚焦一个）：一条竖线落在样本日，只有和这个样本配上的那次 hit 用到的格加粗框；←/→ 走到上一个 / 下一个样本。自动聚焦的那个不算选中，`selection` 页照样写出它的 `match` 和 `diagnose`，点 `select` 才选中它。聚焦不会改你的档位按钮（`app` 档也一样，档位只由你点）：和样本配上的 event 在当前档位下画不出来时，竖线照样落在那天，`diagnose` 那一行写 `hidden`，想看就自己调档位。
+- `compare` 的副图默认放大到 2.0×（一行比 `app` 档高一倍），右上角的 −/+ 照样能调，和 `app` 档各记各的。
 - 选中样本：`selection` 页成员链上相邻两段之间的箭头带 `link tag`，点一下在图上描出这两段和 app 用到的两个 event；收了 `must_not` 那一样的成员划一道。
-- 选中框：`selection` 页写它被认到哪一档（`in_hit` / `qualified` / `detected` / `missing`）、由 app 的哪一部分来认，以及框上属性和 app where 逐条对不上的（你标 `true` 而 app 判 `fail`，或反过来，朱红）。只列对不上的，不列实测值和门槛。
+- 选中框：`selection` 页写它被认到哪一档（`in_hit` / `qualified` / `detected` / `missing`，读框终点那天）、由 app 的哪一部分来认，以及框上属性和 app where 逐条对不上的（你标 `true` 而 app 判 `fail`，或反过来，朱红；第二段）。只列对不上的，不列实测值和门槛。
+- 选中样本：`selection` 页多一块 `diagnose`：样本日那天 app 在场的 event 各一行，和样本配上的那行在最前，写档位和没过的条件名，名下是你定义里的原话（会话写在 mapping 的 `notes` 里）。这是「为什么没买」的答案。
 
 **`mode` 切到 `app`**：只看 app 在这张图上跑出了什么，和主视图一样。你没放样本的日子 app 也可能买了，在这里看得到。
 
@@ -433,7 +438,7 @@ flowchart TD
 - **`diff tag` 只摆事实，不说谁错**：它拿样本的成员框和 mapping 比——`−X` 是 mapping 里 X 定为 `must`、你的标注里没有；`+Y` 是你的标注里有 mapping 定为 `must_not` 的 Y；`order` 是先后不同；`=` 是一致。框上的属性同样参与比较（`must` 的属性你判了 `false`、`must_not` 的属性你判了 `true`，都算差）；`null`（没看过）不算差。可能是 mapping 错了，也可能是你漏标了、或者这个样本本来就不算这个 pattern——所以它是会话出题的依据，不是你的待办。
 - **负样本上的 tag 怎么读**：负样本 `unmatched` 是好事——app 没在不该买的那天买；`diff tag` 显示 `+派发`，说明你画的不买理由被 mapping 接住了。负样本 `matched`（朱红）说明 app 在你说不该买的地方买了：不买的理由要么没画出来，要么没被 map，要么画了也 map 了、app 却没认出那个框（看那个框旁是不是 `missing`）。负样本的 `matched` 个数不是误报率。
 - **只给状态，不给数字**：看到实测值和门槛，人会一张张放宽，app 变成拟合那几张图（E7 几张图上拟合）。门槛在 ⑦ 由整个训练段量。想看数字的话，主视图的诊断侧栏一直都在。
-- **「认出」是什么意思**：app 那个 node 的 event 和你的框时间上交叠，并且 event 的起点或终点（一端就行）落在框外 2 天以内。框的边是你随手画的，差一两天不算没认出（天数待验证）。
+- **「认出」是什么意思**：看框终点那天 app 在这个特征对的那个 node 上有没有 event、到了哪一档（那天有几个时，取有 hit 的那个，否则取最深的、同档取最近一次的）。框的起点不看——它是你凭整体印象画的，app 按定义推不出它。框里关键的位置（比如阶跃在哪几根）要你画一个子框才核对：子框和 app 那一段的终点差 2 天以内算对上（天数待验证）；没画子框时不核对位置。
 - **框旁的会话蓝 tag**：分开「app 没认出」（`missing`）和「app 本来就没被要求认它」（`excluded` 等）。没有它，框底下空着会被误读成 app 的错。
 - **样本下的 tag 在图上**：你补框、改属性时，就在原地看到这个样本的结论变没变，不用切到 `pattern` 页。
 - **`chance_high`：随手一框也认出的底**。有些东西铺满时间轴（如走势区段），框随便挪个位置也会被判「认出」，那一块的 `qualified` 计数就说明不了 app 真认得你的框。工具拿同样宽的框在随机位置上试，被判认出的比例过三成（待验证）就挂这个 tag。
@@ -708,7 +713,7 @@ flowchart TD
 | 用在哪 | 默认 |
 |---|---|
 | match 容差 | 正样本前后 3 天，或样本日落在那次 hit 买点所在的那段事件里；负样本前后 1 天 |
-| app 的 event 和你的框算同一件事（「认出」） | event 和框时间上交叠，且 event 的起点或终点（一端就行）落在框外 2 天以内 |
+| app 的 event 和你的框算同一件事（「认出」） | 框终点那天 app 有这个 node 的 event；你画了子框时，子框和 app 那一段的终点差 2 天以内 |
 | 自动收成员框 | 从样本日往前，前后两段之间空 20 根 K 线以内仍算连着 |
 | 「画了没收」的检查范围 | 样本跨度起点往前 40 根以内 |
 | `chance_high` | 同样宽的框随机挪位置，被判认出的比例超过三成 |

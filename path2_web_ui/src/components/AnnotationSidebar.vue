@@ -10,6 +10,7 @@
     <section class="body" :data-testid="`annotation-page-${ann.tab}`">
       <BoxPanel v-if="ann.tab === 'selection' && ann.selectedBox" />
       <SamplePanel v-else-if="ann.tab === 'selection' && ann.selectedSample" />
+      <FocusedSamplePanel v-else-if="ann.tab === 'selection' && cmp.focusedSample" />
       <FeaturesPanel v-else-if="ann.tab === 'features' && ann.state" />
       <PatternPanel v-else-if="ann.tab === 'pattern' && ann.state" />
       <span v-else class="empty">empty</span>
@@ -22,15 +23,19 @@
  * annotate 模式的右侧栏,三页:selection(选中的框或样本)、features(词表)、pattern(当前 pattern 总览;
  * 当前 pattern 是 unsorted 时是 unsorted 页)。
  * 页签由标注 store 管:在图上选中框或样本时自动翻到 selection。
+ * compare 下 selection 页什么都没选中时,显示进 compare 时默认聚焦的那个样本(FocusedSamplePanel,只读)。
  */
 import { useAnnotationStore } from '../stores/annotation'
+import { useCompareStore } from '../stores/compare'
 import BoxPanel from './BoxPanel.vue'
 import FeaturesPanel from './FeaturesPanel.vue'
+import FocusedSamplePanel from './FocusedSamplePanel.vue'
 import PatternPanel from './PatternPanel.vue'
 import SamplePanel from './SamplePanel.vue'
 
 const TABS = ['selection', 'features', 'pattern'] as const
 const ann = useAnnotationStore()
+const cmp = useCompareStore()
 </script>
 
 <style scoped>

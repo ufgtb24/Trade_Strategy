@@ -102,7 +102,9 @@
                 :class="{ 'attr-row--selected': markedEventIds.has(row.instance_id) }"
                 @click="selectCandidateRow(row.instance_id)"
               >
-                <td class="cell-id" :style="{ borderLeft: `${leftWidth(row)}px solid ${leftColor(row, node.node_id)}`, paddingLeft: `${15 - leftWidth(row)}px` }">seg@{{ row.start_idx }}-{{ row.end_idx }}</td>
+                <td class="cell-id" :style="{ borderLeft: `${leftWidth(row)}px solid ${leftColor(row, node.node_id)}`, paddingLeft: `${15 - leftWidth(row)}px` }">seg@{{ row.start_idx }}-{{ row.end_idx }}<span
+                    v-if="markedEventIds.has(row.instance_id) && belowLevel(row)" class="row-hidden" data-testid="candidate-hidden"
+                    :title="`not drawn at level ${view.level}; switch the level buttons to see it`"> hidden</span></td>
                 <td v-for="cid in nodeClauseIds(node.node_id)" :key="cid" class="cell-clause">
                   <template v-if="row.clauses[cid]">
                     <!-- 组合子 clause:单元格聚合 n/m(kind),完整逐分支明细挂 native title;
@@ -131,12 +133,13 @@
     <template v-if="effectivePattern && effectiveAnalysis && effectiveAnalysis.hits.length">
       <h3 class="section-title section-title--sym" title="这只股票、这个 pattern 的每一次 hit;点行 = 点图上的 bracket">hits</h3>
       <div
-        v-for="(m, mi) in effectiveAnalysis.hits" :key="m.hit_id"
+        v-for="m in hitRows" :key="m.hit_id"
         class="hit-row"
         :class="{ 'hit-row--selected': markedHitIds.has(m.hit_id) }"
+        :title="hitSpanTitle(m)"
         @click="selectHitRow(m.hit_id)"
       >
-        <span class="hit-span">{{ '①②③④⑤⑥⑦⑧⑨'[mi] ?? (mi + 1) }} {{ m.start_idx }}–{{ m.end_idx }}</span>
+        <span class="hit-span">{{ hitDayLabel(m) }}</span>
         <span v-if="m.forward_return !== undefined" class="hit-ret"
               :class="m.forward_return !== null && m.forward_return >= 0 ? 'ret-pos' : 'ret-neg'">
           ret_{{ (effectiveScan ?? scanFile?.scan)?.label_horizon }}: {{ formatForwardReturn(m.forward_return) }}
@@ -205,7 +208,8 @@ import RelBadge from '../shared/RelBadge.vue'
 import { fmt, fmtValue } from '../shared/formatters'
 import FailedAttemptsCard from './FailedAttemptsCard.vue'
 import PairDetailCard from './PairDetailCard.vue'
-import type { TopoNode, AttrRow, ClauseWitness, PairPayload } from '../types'
+import type { TopoNode, AttrRow, ClauseWitness, PairPayload, HitDict } from '../types'
+import { buyDaysOf } from '../render/fold'
 
 const view = useViewStore()
 const {
@@ -215,7 +219,32 @@ const {
   debugPending, debugTarget, debugError,
   showTrace, expandedNodeIds, markedHitIds, markedEventIds,   // Task 4 新增(集合版)
   focusedHitId,   // watch 滚动 trace 用
+  barDates, endNode,
 } = storeToRefs(view)
+
+// hit 列表:按买入日(没有买入日取终点)排、标日期。bracket 折叠后一行有几十次 hit,圈号会重号,改用日期;
+// 同一天几次 hit 各占一行,选中哪行有底色。
+// hit 列表按第一个买入日排、行上写这一天的日期(取代按起点排的圈号)
+const hitDays = computed<Map<string, number>>(() => {
+  const byId = new Map((effectiveAnalysis.value?.events ?? []).map(e => [e.instance_id, e]))
+  return new Map((effectiveAnalysis.value?.hits ?? [])
+    .map(m => [m.hit_id, buyDaysOf(m, byId, endNode.value)[0] ?? m.end_idx]))
+})
+const hitRows = computed<HitDict[]>(() => {
+  const hits = effectiveAnalysis.value?.hits ?? []
+  const days = hitDays.value
+  return hits.map((m, i) => ({ m, i, d: days.get(m.hit_id) ?? m.end_idx }))
+    .sort((a, b) => a.d - b.d || a.i - b.i).map(x => x.m)
+})
+// 悬停给这次 hit 的起止日期(不给 K 线下标)
+function hitSpanTitle(m: HitDict): string {
+  const d = (i: number) => barDates.value[i] ?? String(i)
+  return `${d(m.start_idx)} – ${d(m.end_idx)}`
+}
+function hitDayLabel(m: HitDict): string {
+  const d = hitDays.value.get(m.hit_id) ?? m.end_idx
+  return barDates.value[d] ?? String(d)
+}
 
 // DOM refs for scroll-to-trace
 const sidebarEl = ref<HTMLElement | null>(null)
@@ -225,6 +254,16 @@ const traceEl = ref<HTMLElement | null>(null)
 function toggleExpand(nodeId: string) {
   view.toggleExpandedNode(nodeId)
 }
+
+// 选中的 hit 行、标出的候选表行变了 → 滚到看得见(同一天走到第 2 次 hit、一族几十个成员时靠它)
+watch([markedHitIds, markedEventIds], () => {
+  nextTick(() => {
+    for (const sel of ['.hit-row--selected', '.attr-row--selected']) {
+      const el = sidebarEl.value?.querySelector(sel) as HTMLElement | null
+      if (el && typeof el.scrollIntoView === 'function') el.scrollIntoView({ block: 'nearest' })
+    }
+  })
+})
 
 // trace 展开时滚入视口
 watch([showTrace, focusedHitId], ([show]) => {
@@ -313,6 +352,9 @@ function rowTier(row: AttrRow): 'in_hit' | 'qualified' | 'detected' {
   if (qualifiedIds.value.has(row.instance_id)) return 'qualified'
   return 'detected'
 }
+/** 选中的这一行在当前档位下画不出来(聚焦不改档位按钮,档位只由用户点):行尾写 hidden。 */
+const TIER_RANK = { detected: 0, qualified: 1, in_hit: 2 } as const
+function belowLevel(row: AttrRow): boolean { return TIER_RANK[rowTier(row)] < TIER_RANK[view.level] }
 /** 候选表首列左侧色块色 · 走 colorOf 与副图 marker + 漏斗数字三处共用同一 API
  * leftColor 接受 nodeId 参数(template 从 v-for 传入,取代 expandedNode 单值假设) */
 function leftColor(row: AttrRow, nodeId: string): string {
@@ -429,6 +471,7 @@ function undoSwap() {
 .attr-row { cursor: pointer; }
 .attr-row:hover { background: #f1f5f9; }
 .attr-row--selected { background: #fef9c3 !important; }
+.row-hidden { font-family: ui-monospace, monospace; cursor: help; }
 .attr-row--selected td { border-top: 1px solid #fbbf24; border-bottom: 1px solid #fbbf24; }
 .attr-row--selected td:first-child { border-left: 1px solid #fbbf24; }
 .attr-row--selected td:last-child { border-right: 1px solid #fbbf24; }

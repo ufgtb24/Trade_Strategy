@@ -36,6 +36,7 @@ function read(state: Partial<AnnState> = {}): AnnRead {
     fingerprint: { local: 'fp', local_error: null, recorded: [], consistent: true }, merges: [],
     revs: { feature: {}, pattern: {}, box: {}, sample: {} }, next_seq: 1, ignored_files: [],
     membership: { gap: 20, near: 40 },
+    match: { pos: 3, neg: 1, sub: 2 },
   }
 }
 

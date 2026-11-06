@@ -14,22 +14,24 @@
  * 轨标题里的特征名是用户写的内容,用正常字体加浅灰底(--chip-bg 同值),「⊂」、unnamed、bracket 与字母是程序
  * 固定文字,用等宽字体。
  *
- * compare 下(LaneDraw.compare)再叠上当前 pattern 的 app 的输出(哪条轨、哪一行见 render/compareOverlay.ts):
- * - event 画成实心的条(和主视图副图的 event 条一样,不描边),颜色按档位:进了 hit 的画 node 本色,qualified 深灰
- *   #9ca3af,detected 浅灰 #d1d5db(render/colors.ts),不套琥珀;压在用户的框下面,框的虚线边照样看得见;
- *   tiers 开着时灰条右端挂 tier tag(render/tierTags.ts);
- * - hit 画在 bracket 轨上:app 琥珀 #F2C25C 底、细黑实线边(tag 和 app 的东西一律实线;虚线只表示用户画的);
- * - 悬停只给状态(档位、起止),不给 node(那等于露出 mapping)、实测值和门槛。
+ * compare 下这一层(annotateLayer 的 graphics + series)合进主视图那张副图(render/chart.ts 的 buildSubOption):
+ * 用户轨插在 app 的 band 之间(轨序 render/compareLayout.ts,几何 render/subGeometry.ts 的 slots),bracket 轨的
+ * 样本跨度占最上面的 user 行,app 的 hit 行接在下面。这一层在 compare 下多画(LaneDraw.compare):
+ * - 轨标题:map 了的轨在特征名后写 `⇣ <node>`,没 map 的挂会话蓝 `unmapped`;map 了的轨与它拉来的 band 组
+ *   左边一道竖线框住;
+ * - bracket 的 user 行:▲ 字母后挂 app 与用户判断一致与否的记号 `✓` / `✗`(✗ 朱红底),matched / unmatched 在悬停;
+ *   当家行是样本时(←/→ 在样本间走)user 行头与底线加粗;
+ * - 框终点那天它对的 node 一个 event 都没有:框右端挂琥珀 `missing`;map 了的框悬停写 `start not compared`
+ *   (框的左端不和 app 比,见 stores/compare.ts)。
+ * app 的东西一律不画进用户轨:用户轨只有用户画的框。
  */
 import type { Bar } from '../types'
 import type { AnnBox, Lane } from '../annotate/model'
-import type { OverlayHit, OverlayLane } from './compareOverlay'
-import { colorOf } from './colors'
-import { nextStarts, tierTagLimit, tierTagOf, tierTagShape, tierTagWidth, TIER_TAG_GAP, TIER_TAG_TIP } from './tierTags'
 import { triOf, type BoxMark } from '../annotate/samples'
 import { CROSSES_SAMPLE_DATE, UNCLAIMED } from '../annotate/membership'
 import { endIndex, startIndex, type BoxPx } from '../annotate/boxGeometry'
 import { SUB_CANVAS_MIN_H, SUB_GRID_LEFT, SUB_GRID_RIGHT } from './subGeometry'
+import { MONO } from './fonts'
 
 export const LANE_ROW_H = 18          // 轨里一行的高度
 export const LANE_BOX_H = 13          // 框的高度(行高减去上下空隙)
@@ -54,15 +56,22 @@ export const NEG_FILL = '#ffffff'     // 负样本:空心三角(白底黑边)
 export const AFTER_DIM = 'rgba(0,0,0,0.07)'   // 选中样本时样本日之后的 K 线区:暗一档,形状仍看得清
 export const BRACKET_ROW_H = 13       // bracket 轨里一行的高度
 export const BRACKET_BAR_H = 9        // bracket 轨里一条样本跨度的高度
-export const BUY_TRI_HALF_W = 4       // compare 下 hit 条里买入日 ▼ 底边的一半(K 线太窄时取半根 K 线宽)
-export const APP_BAR_H = 7            // compare:轨里一个 event 条的高度(同主视图副图的 event 条)
-export const APP_ROW_H = 9            // compare:event 块里一行的高度(条高 + 行间空)
-export const APP_AMBER = '#F2C25C'    // app 琥珀(配色规范的来源轴):compare 下 bracket 轨上 hit 的底色
-export const MONO = 'ui-monospace, "JetBrains Mono", "DejaVu Sans Mono", Consolas, monospace'
+export const COMPARE_BRACKET_ROW_H = 18   // compare 的 user 行:行高放大,▲ 与字母、✓ / ✗ 第一屏读得出(待验证)
+// compare 的两个小标签不铺浅色底(浅蓝、浅琥珀底在白图上和底色深浅相近,色盲下看不出):白底 + 中等深度
+// 描边 + 黑字。描边色取用户确认过的安全色板(1 蓝、2 橙),两者冷暖相反:unmapped 是冷(会话这一侧的事),
+// missing 是暖(app 那一侧缺东西)。
+export const UNMAPPED_EDGE = '#0072B2' // 蓝:compare 下没 map 的轨挂的 unmapped 的描边
+export const MISSING_EDGE = '#E69F00'  // 橙:compare 下框右端 missing 的描边
+const TAG_BOX = { backgroundColor: '#ffffff', borderWidth: 1.5, padding: [1, 3], borderRadius: 2 }
+export const VERMILION = '#D55E00'    // 朱红:只表示「app 的判断和你相反」(▲ 字母后的 ✗ 底色)
+export const GROUP_LINE = '#6b7280'   // compare:map 了的轨与它拉来的 band 组左边的竖线(同族底线的中性灰)
+export const GROUP_LINE_X = SUB_GRID_LEFT - 5
+export { MONO }
 /** 悬停文字:等宽、黑字。MONO 里有双引号,属性值用单引号括,否则 style 在字体名那里就断了。 */
 const monoTip = (html: string) => `<span style='font-family:${MONO};color:${INK}'>${html}</span>`
 
-export interface LaneGeom { top: number; h: number }
+/** 轨的位置与高度;rowH 只有 bracket 轨用(一行样本跨度的高度,缺省 BRACKET_ROW_H)。 */
+export interface LaneGeom { top: number; h: number; rowH?: number }
 
 /** 正在拖出的新框:起止日期,以及它要进的那条轨(下标;等于轨数时画在最后另起的一条)。 */
 export interface Draft { start: string; end: string; lane: number }
@@ -96,33 +105,45 @@ export interface BracketItem {
   letter: string | null
   faded: boolean
   emphasis: 0 | 1 | 2
+  /** compare:字母后的记号(app 与这个样本的判断一致 ✓ / 不一致 ✗)与它的悬停;annotate 不给 */
+  mark?: { sign: '✓' | '✗'; tip: string } | null
 }
 export interface PlacedBracket { item: BracketItem; row: number }
 
-/** bracket 轨的排法:按起点排,一行里不交叠(按 K 线下标比)。 */
+/**
+ * bracket 轨的排法:起点相同的样本跨度并成一行(同 app 副图「同起点折成一族」的规则,每个样本日一个 ▲);
+ * 起点不同的按起点排,一行里不交叠(按 K 线下标比)。
+ */
 export function packBrackets(items: readonly BracketItem[], dates: readonly string[]): { rows: number; placed: PlacedBracket[] } {
   const sorted = [...items].sort((a, b) => (a.start < b.start ? -1 : a.start > b.start ? 1 : a.end > b.end ? -1 : 1))
   const ends: number[] = []
   const placed: PlacedBracket[] = []
+  const rowOfStart = new Map<number, number>()
   for (const it of sorted) {
-    const s = startIndex(dates, it.start)
-    let row = ends.findIndex(e => e < s)
-    if (row < 0) { row = ends.length; ends.push(0) }
-    ends[row] = endIndex(dates, it.end)
+    const st = startIndex(dates, it.start), en = endIndex(dates, it.end)
+    let row = rowOfStart.get(st) ?? -1
+    if (row < 0) {
+      row = ends.findIndex(x => x < st)
+      if (row < 0) { row = ends.length; ends.push(-1) }
+      rowOfStart.set(st, row)
+    }
+    ends[row] = Math.max(ends[row], en)
     placed.push({ item: it, row })
   }
   return { rows: Math.max(1, ends.length), placed }
 }
 
-/** bracket 轨的位置与高度(在最上面;没有样本时也留一行)。 */
-export function bracketGeometry(rows: number): LaneGeom {
-  return { top: LANES_TOP, h: LANE_PAD * 2 + Math.max(1, rows) * BRACKET_ROW_H }
+/** bracket 轨的位置与高度(在最上面;没有样本时也留一行)。rowH:一行的高(compare 的 user 行放大)。 */
+export function bracketGeometry(rows: number, rowH: number = BRACKET_ROW_H): LaneGeom {
+  return { top: LANES_TOP, h: LANE_PAD * 2 + Math.max(1, rows) * rowH, rowH }
 }
 
-/** bracket 轨里一行的竖直范围。 */
+/** bracket 轨里一行的竖直范围(条高 = 行高减去上下各 2 像素的空)。 */
 function bracketYRange(g: LaneGeom, row: number): { top: number; bottom: number } {
-  const top = g.top + LANE_PAD + row * BRACKET_ROW_H + (BRACKET_ROW_H - BRACKET_BAR_H) / 2
-  return { top, bottom: top + BRACKET_BAR_H }
+  const rowH = g.rowH ?? BRACKET_ROW_H
+  const barH = rowH - (BRACKET_ROW_H - BRACKET_BAR_H)
+  const top = g.top + LANE_PAD + row * rowH + (rowH - barH) / 2
+  return { top, bottom: top + barH }
 }
 
 /** bracket 轨上各样本跨度的像素范围(点选样本用),toPx、bw 同 boxRects。 */
@@ -134,6 +155,27 @@ export function bracketRects(placed: readonly PlacedBracket[], g: LaneGeom, date
     return { id: item.id, left: toPx(startIndex(dates, item.start)) - bw / 2,
              right: toPx(endIndex(dates, item.end)) + bw / 2, top, bottom }
   })
+}
+
+/** bracket 一行里样本终点那个 ▲ 的半宽(随行高放大):画 ▲ 与点选样本共用。 */
+export function bracketMarkHalf(top: number, bottom: number): number {
+  return Math.max(4.5, (bottom - top) * 0.5)
+}
+
+/**
+ * bracket 轨上这一点点中的样本(rects 为 bracketRects 的结果)。同起点的几个样本并在一行、跨度一个包着一个,
+ * 所以在落进的几个里取终点(▲)离这一点最近的那个;▲ 右半边伸出跨度的那一截也算点中它。没点中为 null。
+ */
+export function bracketPick(rects: readonly BoxPx[], bw: number, x: number, y: number): string | null {
+  let best: { id: string; d: number } | null = null
+  for (const r of rects) {
+    const end = r.right - bw / 2
+    const right = Math.max(r.right, end + bracketMarkHalf(r.top, r.bottom))
+    if (x < r.left || x > right || y < r.top || y > r.bottom) continue
+    const d = Math.abs(end - x)
+    if (!best || d < best.d) best = { id: r.id, d }
+  }
+  return best?.id ?? null
 }
 
 /** 落在哪条轨上(按 y);不在任何轨上为 -1。 */
@@ -162,41 +204,44 @@ export interface LaneDraw {
   draft: Draft | null
   zoom: { start: number; end: number } | null
   width: number
-  /** compare:叠上去的 app 输出(不给就是 annotate) */
-  compare?: CompareDraw | null
+  /** compare 下多画的东西(不给就是 annotate) */
+  compare?: CompareMarks | null
 }
 
-/** compare 下叠到图上的 app 输出。 */
-export interface CompareDraw {
-  /** 每条轨上叠的 event,和 lanes 按下标对齐 */
-  app: readonly OverlayLane[]
-  /** bracket 轨上的 hit;hitRow0 是 hit 的第 0 行在 bracket 轨里排第几行(样本跨度占了前面几行) */
-  hits: readonly OverlayHit[]
-  hitRow0: number
-  nodeColors: Record<string, string>
-  /** 顶栏 tiers:灰条右端挂不挂 tier tag */
-  tiers: boolean
+/** compare 下标注层多画的东西(只是记号与标题,app 的条、hit 画在 app 那张副图里)。 */
+export interface CompareMarks {
+  /** 轨(下标)→ 它对的 node:标题写 `⇣ node` */
+  laneNode: ReadonlyMap<number, string>
+  /** 没 map 的特征轨(下标):标题挂 unmapped */
+  unmapped: ReadonlySet<number>
+  /** 组左边竖线的竖直范围(像素) */
+  groups: readonly { top: number; bottom: number }[]
+  /** 框终点那天它对的 node 一个 event 都没有的框:右端挂 missing */
+  missing: ReadonlySet<string>
+  /** map 了的框(悬停写 start not compared) */
+  compared: ReadonlySet<string>
+  /** 当家行是样本(←/→ 在样本间走):user 行头与底线加粗 */
+  userActive: boolean
 }
 
-/** event 在轨里的竖直范围:event 块竖直居中在轨里(去掉上下内边距),row 是块里的第几行。 */
-export function appBarY(g: LaneGeom, rows: number, row: number): { top: number; bottom: number } {
-  const blockH = rows * APP_ROW_H - (APP_ROW_H - APP_BAR_H)
-  const top = g.top + LANE_PAD + (g.h - 2 * LANE_PAD - blockH) / 2 + row * APP_ROW_H
-  return { top, bottom: top + APP_BAR_H }
-}
-
-/** 轨标题:特征名(浅灰底)、子框轨写成「缩量 ⊂ 横盘」,还没起名的轨写 unnamed。 */
-function laneTitle(l: Lane, nameOf: LaneDraw['nameOf']): any {
-  if (l.key === null) return { text: '{sym|unnamed}', rich: { sym: { fontFamily: MONO, fontSize: 12, color: INK } } }
-  const biz = (s: string) => `{biz|${s.replace(/[{}|]/g, ' ')}}`
-  const text = l.parent ? `${biz(nameOf(l.key) ?? '')}{sym| ⊂ }${biz(nameOf(l.parent) ?? '')}` : biz(nameOf(l.key) ?? '')
-  return {
-    text,
-    rich: {
-      biz: { backgroundColor: CHIP_BG, color: INK, fontSize: 12, padding: [1, 4], borderRadius: 3 },
-      sym: { fontFamily: MONO, fontSize: 12, color: INK, fontWeight: 'bold' },
-    },
+/**
+ * 轨标题:特征名(浅灰底)、子框轨写成「缩量 ⊂ 横盘」,还没起名的轨写 unnamed。
+ * compare:map 了的轨后面写 `⇣ <node>`(等宽),没 map 的挂会话蓝 unmapped。
+ */
+function laneTitle(l: Lane, nameOf: LaneDraw['nameOf'], cmp: { node?: string | null; unmapped?: boolean } = {}): any {
+  const rich = {
+    biz: { backgroundColor: CHIP_BG, color: INK, fontSize: 12, padding: [1, 4], borderRadius: 3 },
+    sym: { fontFamily: MONO, fontSize: 12, color: INK, fontWeight: 'bold' },
+    node: { fontFamily: MONO, fontSize: 12, color: INK },
+    tag: { fontFamily: MONO, fontSize: 11, color: INK, ...TAG_BOX, borderColor: UNMAPPED_EDGE },
   }
+  if (l.key === null) return { text: '{sym|unnamed}', rich }
+  const esc = (t: string) => t.replace(/[{}|]/g, ' ')
+  const biz = (t: string) => `{biz|${esc(t)}}`
+  let text = l.parent ? `${biz(nameOf(l.key) ?? '')}{sym| ⊂ }${biz(nameOf(l.parent) ?? '')}` : biz(nameOf(l.key) ?? '')
+  if (cmp.node) text += `{node|  ⇣ ${esc(cmp.node)}}`
+  else if (cmp.unmapped) text += '{node|  }{tag|unmapped}'
+  return { text, rich }
 }
 
 /** 一个框的画法:线宽、线型、深浅,以及框左侧的字母、右侧的 ◂ / ⇥。 */
@@ -216,26 +261,71 @@ function boxLook(mark: BoxMark | undefined, sel: boolean, draft: boolean) {
 /** 框右侧挂 ◂ / ⇥ 的那一小块的横向范围(相对框的右边):点 ◂ 收进当前选中的样本。 */
 export const SIDE_MARK_X: readonly [number, number] = [6, 20]
 
-/** annotate 副图的 ECharts option:轨的分隔线与标题(graphic)+ bracket 轨的样本跨度 + 框(custom series)。 */
+/** annotate 副图的 ECharts option:标注层(annotateLayer)单独成一张副图。 */
 export function buildAnnotateSubOption(bars: Bar[], d: LaneDraw): unknown {
+  const dates = bars.map(b => b.date)
+  const { graphics, series } = annotateLayer(bars, d)
+  return {
+    animation: false,
+    tooltip: { trigger: 'item', show: true, appendToBody: true, confine: true },
+    grid: [{ left: SUB_GRID_LEFT, right: SUB_GRID_RIGHT, top: 0, bottom: 0 }],
+    graphic: graphics,
+    xAxis: [{
+      type: 'category', data: dates, gridIndex: 0, boundaryGap: true,
+      axisLine: { show: false }, axisTick: { show: false }, axisLabel: { show: false }, splitLine: { show: false },
+      axisPointer: { show: true, type: 'none', snap: true, label: { show: false }, triggerTooltip: false },
+    }],
+    yAxis: [{ type: 'value', gridIndex: 0, show: false, min: 0, max: 1 }],
+    dataZoom: [annotateDataZoom(d.zoom)],
+    series,
+  }
+}
+
+/**
+ * 标注层副图的缩放:拖动留给画框和改起止;滚轮照常缩放(和主图同步)。
+ * weakFilter:框、bracket 是一段(起止两个 x),只要有一端在图窗里、或横跨整个图窗就照画(画到图窗边为止);
+ * 默认的 filter 要两端都在图窗里,起点在图窗左边外的框和 bracket 会整条消失。compare 合进 app 副图时也用它。
+ */
+export function annotateDataZoom(zoom: { start: number; end: number } | null): Record<string, unknown> {
+  return { type: 'inside', xAxisIndex: 0, start: zoom?.start ?? 0, end: zoom?.end ?? 100,
+           moveOnMouseMove: false, filterMode: 'weakFilter' }
+}
+
+/**
+ * 标注层:轨的分隔线与标题(graphic)+ bracket 轨的样本跨度 + 框(custom series)。annotate 单独成图,
+ * compare 合进主视图那张副图(几何由调用方按合并后的位置给)。
+ */
+export function annotateLayer(bars: Bar[], d: LaneDraw): { graphics: any[]; series: any[] } {
   const dates = bars.map(b => b.date)
   const graphics: any[] = []
   const w = d.width - SUB_GRID_LEFT - SUB_GRID_RIGHT
+  const cmp = d.compare ?? null
   if (d.bracket) {
     const g = d.bracket.geom
     graphics.push({ type: 'rect', left: SUB_GRID_LEFT, top: g.top + g.h - 0.5, shape: { width: w, height: 1 },
                     style: { fill: LANE_LINE }, z: 1, silent: true })
+    if (cmp?.userActive) {
+      graphics.push({ type: 'rect', left: SUB_GRID_LEFT, top: g.top + g.h - 3.5, shape: { width: w, height: 2 },
+                      style: { fill: INK }, z: 2, silent: true })
+    }
     graphics.push({ type: 'text', left: SUB_GRID_LEFT + 2, top: g.top + LANE_PAD - 1, z: 30, silent: true,
-                    style: { text: 'bracket', fontFamily: MONO, fontSize: 12, fill: INK, backgroundColor: TITLE_BG,
+                    style: { text: cmp ? 'user' : 'bracket', fontFamily: MONO, fontSize: 12, fill: INK,
+                             fontWeight: cmp?.userActive ? 'bold' : 'normal', backgroundColor: TITLE_BG,
                              padding: [0, 2] } })
   }
   d.geom.forEach((g, i) => {
+    if (!g) return
     graphics.push({ type: 'rect', left: SUB_GRID_LEFT, top: g.top + g.h - 0.5, shape: { width: w, height: 1 },
                     style: { fill: LANE_LINE }, z: 1, silent: true })
-    const t = laneTitle(d.lanes[i], d.nameOf)
+    const t = laneTitle(d.lanes[i], d.nameOf, { node: cmp?.laneNode.get(i) ?? null, unmapped: cmp?.unmapped.has(i) })
     graphics.push({ type: 'text', left: SUB_GRID_LEFT + 2, top: g.top + LANE_PAD, z: 30, silent: true,
                     style: { ...t, fill: INK, fontSize: 12, backgroundColor: TITLE_BG, padding: [0, 2] } })
   })
+  for (const gr of cmp?.groups ?? []) {
+    graphics.push({ type: 'rect', left: GROUP_LINE_X, top: gr.top + 2,
+                    shape: { width: 2, height: Math.max(2, gr.bottom - gr.top - 4) },
+                    style: { fill: GROUP_LINE }, z: 2, silent: true })
+  }
 
   // 每个框一行数据:[起点下标, 终点下标, 顶, 底, 选中, 拖出中, 编号];画法(boxLook)按行号另存
   const rows: any[] = []
@@ -251,6 +341,8 @@ export function buildAnnotateSubOption(bars: Bar[], d: LaneDraw): unknown {
       mark?.focus === UNCLAIMED ? 'maybe drawn but not added; click ◂ to add' : '',
       mark?.focus === CROSSES_SAMPLE_DATE ? 'crosses sample date: cannot be a member box of the selected sample' : '',
       mark?.away ? 'member box of samples of another pattern only' : '',
+      cmp?.missing.has(b.id) ? 'missing: no app event of its node on its end date' : '',
+      cmp?.compared.has(b.id) ? 'start not compared' : '',
     ].filter(Boolean).join('<br>'))
   }
   d.lanes.forEach((l, i) => {
@@ -277,169 +369,87 @@ export function buildAnnotateSubOption(bars: Bar[], d: LaneDraw): unknown {
     }
   }
 
-  const cmp = buildCompareSeries(dates, d)
+  const missing = rows.map(r => (cmp?.missing.has(r[6]) ? 1 : 0))
 
-  return {
-    animation: false,
-    tooltip: { trigger: 'item', show: true, appendToBody: true, confine: true },
-    grid: [{ left: SUB_GRID_LEFT, right: SUB_GRID_RIGHT, top: 0, bottom: 0 }],
-    graphic: graphics,
-    xAxis: [{
-      type: 'category', data: dates, gridIndex: 0, boundaryGap: true,
-      axisLine: { show: false }, axisTick: { show: false }, axisLabel: { show: false }, splitLine: { show: false },
-      axisPointer: { show: true, type: 'none', snap: true, label: { show: false }, triggerTooltip: false },
-    }],
-    yAxis: [{ type: 'value', gridIndex: 0, show: false, min: 0, max: 1 }],
-    // 拖动留给画框和改起止;滚轮照常缩放(和主图同步)。
-    // weakFilter:框、bracket 是一段(起止两个 x),只要有一端在图窗里、或横跨整个图窗就照画(画到图窗边为止);
-    // 默认的 filter 要两端都在图窗里,起点在图窗左边外的框和 bracket 会整条消失
-    dataZoom: [{ type: 'inside', xAxisIndex: 0, start: d.zoom?.start ?? 0, end: d.zoom?.end ?? 100,
-                 moveOnMouseMove: false, filterMode: 'weakFilter' }],
-    series: [{
-      type: 'custom', name: 'annotation-boxes', xAxisIndex: 0, yAxisIndex: 0, clip: true,
-      data: rows, encode: { x: [0, 1] }, z: 10,
-      tooltip: {
-        formatter: (p: any) => {
-          const [s, e] = [p.value[0], p.value[1]]
-          const tip = tips[p.dataIndex]
-          return monoTip(`${dates[s]} – ${dates[e]}${tip ? `<br>${tip}` : ''}`)
-        },
-      },
-      renderItem: (p: any, api: any) => {
-        const [x0, x1] = spanPx(api)
-        const top = api.value(2), bottom = api.value(3)
-        const sel = api.value(4) === 1
-        const look = looks[p.dataIndex]
-        const mid = (top + bottom) / 2
-        const children: any[] = [{
-          type: 'rect',
-          shape: { x: x0, y: top, width: Math.max(3, x1 - x0), height: bottom - top, r: 2 },
-          style: { fill: sel ? SELECTED_FILL : NO_FILL, stroke: INK, lineWidth: look.lineWidth, lineDash: look.lineDash,
-                   opacity: look.opacity },
-        }]
-        if (look.owners) {
-          children.push({ type: 'text', style: { text: look.owners, x: x0 - 3, y: mid, align: 'right', verticalAlign: 'middle',
-                                                 font: `bold 10.5px ${MONO}`, fill: INK, opacity: look.opacity } })
-        }
-        if (look.side) {
-          children.push({ type: 'text', style: { text: look.side, x: x1 + (SIDE_MARK_X[0] + SIDE_MARK_X[1]) / 2, y: mid,
-                                                 align: 'center', verticalAlign: 'middle', font: `bold 14px ${MONO}`, fill: INK } })
-        }
-        return { type: 'group', children }
-      },
-    }, {
-      type: 'custom', name: 'annotation-brackets', xAxisIndex: 0, yAxisIndex: 0, clip: true,
-      data: bRows, encode: { x: [0, 1] }, z: 9,
-      tooltip: {
-        formatter: (p: any) => {
-          const it = bItems[p.dataIndex]
-          return monoTip(`${it.letter ? `${it.letter} ` : ''}${triOf(it.pos ? 'pos' : 'neg')} ${it.end}<br>${it.start} – ${it.end}`)
-        },
-      },
-      renderItem: (p: any, api: any) => {
-        const [x0, x1] = spanPx(api)
-        const top = api.value(2), bottom = api.value(3)
-        const it = bItems[p.dataIndex]
-        const opacity = it.faded ? AWAY_OPACITY : 1
-        const xs = api.coord([api.value(1), 0])[0]
-        const children: any[] = [{
-          type: 'rect',
-          shape: { x: x0, y: top, width: Math.max(3, x1 - x0), height: bottom - top },
-          style: { fill: it.emphasis === 2 ? SELECTED_FILL : NO_FILL, stroke: INK, lineWidth: it.emphasis ? 2.5 : 1.3,
-                   lineDash: BOX_DASH, opacity },
-        }, {
-          type: 'polygon',
-          shape: { points: [[xs, top + 1], [xs - 4.5, bottom], [xs + 4.5, bottom]] },
-          style: { fill: it.pos ? POS_FILL : NEG_FILL, stroke: INK, lineWidth: 1.2, opacity },
-        }]
-        if (it.letter) {
-          children.push({ type: 'text', style: { text: it.letter, x: xs + 6, y: bottom, align: 'left', verticalAlign: 'bottom',
-                                                 font: `bold 9.5px ${MONO}`, fill: INK, opacity } })
-        }
-        return { type: 'group', children }
-      },
-    }, ...cmp],
-  }
-}
-
-/** compare 的三个系列:轨上的 event(压在框下)、灰条右端的 tier tag(压在框上)、bracket 轨上的 hit。 */
-function buildCompareSeries(dates: readonly string[], d: LaneDraw): any[] {
-  const c = d.compare
-  if (!c || !dates.length) return []
-  // event:每个一行数据 [起点下标, 终点下标, 顶, 同一行下一个的起点(-1 = 没有)];画法按行号另存
-  const items: { key: string; start: number; end: number; top: number; color: string; tip: string;
-                 tag: ReturnType<typeof tierTagOf>; boxes: [number, number][] }[] = []
-  c.app.forEach((la, i) => {
-    const g = d.geom[i]
-    if (!g) return
-    // 这条轨上用户的框(K 线下标):tier tag 不压框的竖边
-    const boxes = (d.lanes[i]?.boxes ?? []).map((lb): [number, number] => [startIndex(dates, lb.box.start), endIndex(dates, lb.box.end)])
-    for (const e of la.events) {
-      items.push({
-        key: `${i}:${e.row}`, start: e.start, end: e.end, top: appBarY(g, la.rows, e.row).top, boxes,
-        color: colorOf(e.tier, e.node, c.nodeColors), tag: e.tiered ? tierTagOf(e.tier) : null,
-        tip: `${e.tier}<br>${dates[e.start] ?? e.start} – ${dates[e.end] ?? e.end}`,
-      })
-    }
-  })
-  const nexts = nextStarts(items)
-  const evRows = items.map((it, k) => [it.start, it.end, it.top, nexts[k]])
-  const tagIdx = c.tiers ? items.map((it, k) => (it.tag ? k : -1)).filter(k => k >= 0) : []
-  const tagRows = tagIdx.map(k => evRows[k])
   const series: any[] = [{
-    type: 'custom', name: 'compare-events', xAxisIndex: 0, yAxisIndex: 0, clip: true,
-    data: evRows, encode: { x: [0, 1] }, z: 8,
-    tooltip: { formatter: (p: any) => monoTip(items[p.dataIndex].tip) },
+    type: 'custom', name: 'annotation-boxes', xAxisIndex: 0, yAxisIndex: 0, clip: true,
+    data: rows, encode: { x: [0, 1] }, z: 10,
+    tooltip: {
+      show: true,
+      formatter: (p: any) => {
+        const [s, e] = [p.value[0], p.value[1]]
+        const tip = tips[p.dataIndex]
+        return monoTip(`${dates[s]} – ${dates[e]}${tip ? `<br>${tip}` : ''}`)
+      },
+    },
     renderItem: (p: any, api: any) => {
       const [x0, x1] = spanPx(api)
-      return { type: 'rect', shape: { x: x0, y: api.value(2), width: Math.max(3, x1 - x0), height: APP_BAR_H },
-               style: { fill: items[p.dataIndex].color } }
+      const top = api.value(2), bottom = api.value(3)
+      const sel = api.value(4) === 1
+      const look = looks[p.dataIndex]
+      const mid = (top + bottom) / 2
+      const children: any[] = [{
+        type: 'rect',
+        shape: { x: x0, y: top, width: Math.max(3, x1 - x0), height: bottom - top, r: 2 },
+        style: { fill: sel ? SELECTED_FILL : NO_FILL, stroke: INK, lineWidth: look.lineWidth, lineDash: look.lineDash,
+                 opacity: look.opacity },
+      }]
+      if (look.owners) {
+        children.push({ type: 'text', style: { text: look.owners, x: x0 - 3, y: mid, align: 'right', verticalAlign: 'middle',
+                                               font: `bold 10.5px ${MONO}`, fill: INK, opacity: look.opacity } })
+      }
+      if (look.side) {
+        children.push({ type: 'text', style: { text: look.side, x: x1 + (SIDE_MARK_X[0] + SIDE_MARK_X[1]) / 2, y: mid,
+                                               align: 'center', verticalAlign: 'middle', font: `bold 14px ${MONO}`, fill: INK } })
+      }
+      if (missing[p.dataIndex]) {
+        children.push({ type: 'text', style: { text: 'missing', x: x1 + (look.side ? SIDE_MARK_X[1] + 4 : 4), y: mid,
+                                               align: 'left', verticalAlign: 'middle', font: `10.5px ${MONO}`, fill: INK,
+                                               ...TAG_BOX, borderColor: MISSING_EDGE } })
+      }
+      return { type: 'group', children }
     },
   }, {
-    type: 'custom', name: 'compare-tier-tags', xAxisIndex: 0, yAxisIndex: 0, clip: true,
-    data: tagRows, encode: { x: [0, 1] }, z: 12,
-    tooltip: { formatter: (p: any) => monoTip(TIER_TAG_TIP[items[tagIdx[p.dataIndex]].tag!]) },
+    type: 'custom', name: 'annotation-brackets', xAxisIndex: 0, yAxisIndex: 0, clip: true,
+    data: bRows, encode: { x: [0, 1] }, z: 9,
+    tooltip: {
+      show: true,
+      formatter: (p: any) => {
+        const it = bItems[p.dataIndex]
+        return monoTip(`${it.letter ? `${it.letter} ` : ''}${triOf(it.pos ? 'pos' : 'neg')} ${it.end}<br>${it.start} – ${it.end}`
+                       + (it.mark ? `<br>${it.mark.tip}` : ''))
+      },
+    },
     renderItem: (p: any, api: any) => {
-      const it = items[tagIdx[p.dataIndex]]
-      const [, x1] = spanPx(api)
-      const bw = api.size([1, 0])[0]
-      const shape = tierTagShape(it.tag!, x1, api.value(2), APP_BAR_H, tierTagLimit(api, p.coordSys, api.value(3)))
-      // 不挂时返回 null(见 tierTags.ts 的 tierTagShape):空 group 会留下上次缩放画的 tag
-      if (!shape) return null
-      // tag 横跨了用户框的竖边(左边或右边)就不挂:框边是用户画的,不能被 tag 盖住
-      const [t0, t1] = [x1, x1 + TIER_TAG_GAP * 2 + tierTagWidth(it.tag!)]
-      const cuts = it.boxes.some(([bs, be]) => [api.coord([bs, 0])[0] - bw / 2, api.coord([be, 0])[0] + bw / 2]
-        .some(edge => edge > t0 && edge < t1))
-      return cuts ? null : shape
+      const [x0, x1] = spanPx(api)
+      const top = api.value(2), bottom = api.value(3)
+      const it = bItems[p.dataIndex]
+      const opacity = it.faded ? AWAY_OPACITY : 1
+      const xs = api.coord([api.value(1), 0])[0]
+      // ▲ 的半宽随行高放大;字母与 ✓ / ✗ 在 ▲ 右边、隔 3 像素,竖直居中(不压在 ▲ 上)
+      const half = bracketMarkHalf(top, bottom)
+      const fontPx = bottom - top >= 12 ? 11.5 : 9.5
+      const children: any[] = [{
+        type: 'rect',
+        shape: { x: x0, y: top, width: Math.max(3, x1 - x0), height: bottom - top },
+        style: { fill: it.emphasis === 2 ? SELECTED_FILL : NO_FILL, stroke: INK, lineWidth: it.emphasis ? 2.5 : 1.3,
+                 lineDash: BOX_DASH, opacity },
+      }, {
+        type: 'polygon',
+        shape: { points: [[xs, top + 1], [xs - half, bottom], [xs + half, bottom]] },
+        style: { fill: it.pos ? POS_FILL : NEG_FILL, stroke: INK, lineWidth: 1.2, opacity },
+      }]
+      if (it.letter || it.mark) {
+        // ✗ 垫朱红底(只表示 app 的判断和你相反);字一律黑
+        const rich = { bg: it.mark?.sign === '✗' ? { backgroundColor: VERMILION, padding: [0, 1] } : {} }
+        const text = `${it.letter ?? ''}${it.mark ? ` {bg|${it.mark.sign}}` : ''}`
+        children.push({ type: 'text', style: { text, rich, x: xs + half + 3, y: (top + bottom) / 2, align: 'left',
+                                               verticalAlign: 'middle', font: `bold ${fontPx}px ${MONO}`, fill: INK, opacity } })
+      }
+      return { type: 'group', children }
     },
   }]
-  if (d.bracket) {
-    const g = d.bracket.geom
-    const hRows = c.hits.map(h => { const { top, bottom } = bracketYRange(g, c.hitRow0 + h.row); return [h.start, h.end, top, bottom] })
-    series.push({
-      type: 'custom', name: 'compare-hits', xAxisIndex: 0, yAxisIndex: 0, clip: true,
-      data: hRows, encode: { x: [0, 1] }, z: 9,
-      tooltip: { formatter: (p: any) => {
-        const h = c.hits[p.dataIndex]
-        return monoTip(`hit<br>${dates[h.start] ?? h.start} – ${dates[h.end] ?? h.end}<br>buy ×${h.buys.length}`)
-      } },
-      renderItem: (p: any, api: any) => {
-        const [x0, x1] = spanPx(api)
-        const [top, bottom] = [api.value(2), api.value(3)]
-        const bar = { type: 'rect', shape: { x: x0, y: top, width: Math.max(3, x1 - x0), height: bottom - top },
-                      style: { fill: APP_AMBER, stroke: INK, lineWidth: 1 } }
-        // app 的买入日:条里每一天一个黑色 ▼(琥珀底上靠深浅分开),和样本的三角在同一条轨上比
-        const halfW = Math.min(BUY_TRI_HALF_W, api.size([1, 0])[0] / 2)
-        const tris = (c.hits[p.dataIndex]?.buys ?? []).map((i) => {
-          const x = api.coord([i, 0])[0]
-          return { type: 'polygon', shape: { points: [[x - halfW, top + 1], [x + halfW, top + 1], [x, bottom - 1]] },
-                   style: { fill: INK } }
-        })
-        return tris.length ? { type: 'group', children: [bar, ...tris] } : bar
-      },
-    })
-  }
-  return series
+  return { graphics, series }
 }
 
 /** 框在副图上的像素范围(点选、改起止用)。toPx:K 线下标 → 该根 K 线中心的 x;bw:一根 K 线的宽度。 */
