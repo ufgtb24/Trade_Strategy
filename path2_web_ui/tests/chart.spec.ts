@@ -560,12 +560,12 @@ describe('buildSubDecorGraphics — Task 3', () => {
 
   it('contains 2 zebra rects (one per band)', () => {
     const g = buildSubDecorGraphics(bandGeom, dividerY, bracketH, bandLabelTexts, hitsLabelVisible, chartSubWidth)
-    const zebras = g.filter((e: any) => e.type === 'rect' && (e.style?.fill === 'rgba(0,0,0,0.03)' || e.style?.fill === 'rgba(0,0,0,0)'))
+    const zebras = g.filter((e: any) => e.type === 'rect' && (e.style?.fill === 'rgba(0,0,0,0.08)' || e.style?.fill === 'rgba(0,0,0,0)'))
     expect(zebras.length).toBe(2)
-    // band 0 (bi=0): fill 'rgba(0,0,0,0.03)'
+    // band 0 (bi=0): fill 'rgba(0,0,0,0.08)'
     const band0Zebra = zebras.find((e: any) => e.top === bandGeom[0].top)
     expect(band0Zebra).toBeDefined()
-    expect(band0Zebra!.style.fill).toBe('rgba(0,0,0,0.03)')
+    expect(band0Zebra!.style.fill).toBe('rgba(0,0,0,0.08)')
     expect(band0Zebra!.shape.height).toBe(bandGeom[0].h)
     expect(band0Zebra!.z).toBe(1)
     // band 1 (bi=1): fill transparent
@@ -633,7 +633,7 @@ describe('buildSubDecorGraphics — Task 3', () => {
   it('handles empty bandGeom (0 bands) gracefully', () => {
     const g = buildSubDecorGraphics([], dividerY, bracketH, [], hitsLabelVisible, chartSubWidth)
     // 空 bandGeom → 无 zebra、无 bandLabel、无 band-inner splitLine
-    expect(g.filter((e: any) => e.type === 'rect' && (e.style?.fill === 'rgba(0,0,0,0.03)' || e.style?.fill === 'rgba(0,0,0,0)')).length).toBe(0)
+    expect(g.filter((e: any) => e.type === 'rect' && (e.style?.fill === 'rgba(0,0,0,0.08)' || e.style?.fill === 'rgba(0,0,0,0)')).length).toBe(0)
     expect(g.filter((e: any) => e.type === 'text' && e.style?.text === 'hits').length).toBe(1)
     expect(g.filter((e: any) => e.type === 'rect' && e.style?.fill === SUB_DIVIDER_COLOR).length).toBe(1)
   })
@@ -649,13 +649,13 @@ describe('buildSubDecorGraphics — Task 3', () => {
     // 2-lane band:分隔线应落在 lane0/lane1 之间 gap 末端 = top + 4 + 1*9*z
     const bandGeom = [{ top: 50, h: 60, laneCount: 2 }]
     const g2 = buildSubDecorGraphics(bandGeom, 30, 26, ['burst'], true, 800, 2)
-    const line2 = g2.find((el: any) => el.style?.fill === '#e0e6f1')
+    const line2 = g2.find((el: any) => el.style?.fill === '#d1d5db')
     expect(line2).toBeTruthy()
     // z=2:topY = 50 + 4 + 1*9*2 = 72;元素 top = topY − 0.5(BAND_INNER_LINE_H/2)
     expect(line2.top).toBe(72 - 0.5)
     // 单参 backward-compat(z 缺省 = 1):topY = 50+4+9 = 63
     const g1 = buildSubDecorGraphics(bandGeom, 30, 26, ['burst'], true, 800)
-    const line1 = g1.find((el: any) => el.style?.fill === '#e0e6f1')
+    const line1 = g1.find((el: any) => el.style?.fill === '#d1d5db')
     expect(line1.top).toBe(63 - 0.5)
     // hitsLabel 顶 pad:top = BAND_TOP_PAD(4) = 4
     const label = g2.find((el: any) => el.style?.text === 'hits')

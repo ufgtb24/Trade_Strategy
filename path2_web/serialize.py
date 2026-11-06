@@ -217,24 +217,20 @@ def summarize(res) -> dict:
 
 # ── pattern 静态层(拓扑面板数据源,§7.1) ──
 # event_styles 兜底调色板:PATTERN_DAG.event_styles 默认空,按 topology.nodes 里 node_id
-# 首次出现顺序 setdefault(见 _event_styles),索引 i 就是"第 i 个新 node_id",i % len 循环。
-# 配色约束(看图的用户是色盲,靠冷暖与深浅分色,不靠色相;按优先级):
-#   - 离浅底、离两档灰远:每色 L* 在 40～55(中等深度;更浅在白底 / 副图浅灰底 #f3f4f6 上看不出,
-#     更深是深靛、深褐,压掉形状),对 #f3f4f6 对比度 ≥ 3.5,对 qualified 深灰 #9ca3af ≥ 1.6
-#     (detected 浅灰 #b4bac2 更浅,自然更远;两档灰见前端 render/colors.ts)。
-#   - 冷暖交替:偶数位冷、奇数位暖,相邻两个 node(副图上通常是相邻两条轨)冷暖相反。冷暖按 CIELAB
-#     的 b*(黄-蓝轴,红绿色盲也保留这条轴)判:b* ≤ -20 冷、≥ +20 暖,中间不用(界线待验证)。
-#     绿的 b* 为正,和橘、红同属暖色——红-绿、绿-橘正是分不清的组合,所以相邻两位不会出现。
-#     冷暖说的是用户眼里的样子:紫 #7c3aed 在红绿色盲模拟下呈蓝(b* 约 -75),所以算冷。
-#   - 同冷暖的两色永不相邻(每条轨也有表头),只要求互不相同,不再要求明度拉开;代价是它们靠色相区分
-#     (蓝 / 紫、橘 / 赭),对色盲用户不如相邻两色好分。
-# 当前拓扑落位(apps 均无显式 event_styles 声明,全走兜底):
-#   new_step      plateau / old_plat / step / new_plat / today                → [0]～[4]
-#   bottom_burst  bo(主图) / pk(主图,solve=False 恒灰) / burst / tb / tb_seg   → [0]～[4]
+# 首次出现顺序 setdefault(见 _event_styles),索引 i 就是"第 i 个新 node_id",i % 2 循环。
+# 两色天蓝 / 大红交替(用户 2026-11-06 定;看图的用户是色盲,靠冷暖与深浅分色,不靠色相):
+#   - 相邻两个 node(副图上是相邻两条轨)一冷一暖、一浅一深:天蓝 L* 约 61、大红 L* 约 45。
+#     冷暖按 CIELAB 的 b*(黄-蓝轴,红绿色盲也保留这条轴)判:b* ≤ -20 冷、≥ +20 暖。
+#   - 两色都离浅底够远:对副图隔行底 #ebebeb 对比度天蓝 2.6、大红 4.5;天蓝再浅就和底色、
+#     qualified 深灰 #9ca3af(L* 约 67)一样深了。天蓝和 qualified 灰深浅接近,靠冷暖与格高分开
+#     (两档灰见前端 render/colors.ts)。
+#   - 隔一条轨的两个 node 同色,靠表头与位置分;前端不再为同色 node 散开明度。
+# 当前拓扑落位(apps 均无显式 event_styles 声明,全走兜底;主图的 price 轨都排在最前,
+# 所以副图的轨从头到尾都是交替的,tests/path2_web/test_serialize.py 对每个已注册 app 断言):
+#   new_step      plateau 天蓝 / old_plat 大红 / step 天蓝 / new_plat 大红 / today 天蓝
+#   bottom_burst  bo(主图)天蓝 / pk(主图,solve=False 恒灰)/ burst 天蓝 / tb 大红 / tb_seg 天蓝
 #   bb_v1、bo_only、try_complex_where 同上前缀
-# 第 6 个起回到 [0]:同色的 node 会被前端 deriveNodeColors 按明度散开、可能出中等深度;现役 app
-# 最多 5 个 node,tests/path2_web/test_serialize.py 对每个已注册 app 断言 node 数 ≤ 色板长度。
-_PALETTE = ["#2b6cb0", "#b45309", "#7c3aed", "#a0522d", "#5a67d8"]
+_PALETTE = ["#1e9be0", "#d7000f"]
 
 def _rule_from_meta(meta: dict) -> dict:
     """meta 树 → rule 树。and/or/not 递归 children;child/children 保持扁平(§3.1);

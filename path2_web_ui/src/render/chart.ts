@@ -32,6 +32,7 @@ import {
   CURSOR_HALO,
   type BandGeom,
   type SubGeometry,
+  BAND_STRIPE_FILL,
 } from './subGeometry'
 
 // ─── 新签名 ──────────────────────────────────────────────────────────────────
@@ -189,7 +190,7 @@ export function computeEventData(
   // level=in_hit 时会被整段滤掉 → 免疫 level 门控(类型无关,solve 标志,Task 6 serialize 契约)。
   const RANK: Record<Level, number> = { in_hit: 2, qualified: 1, detected: 0 }
   const solveFreeNodes = new Set((topology?.nodes ?? []).filter(n => n.solve === false).map(n => n.node_id))
-  // node 显隐筛选在前;副图的档位筛选放进 foldBand(梳子还是整条要用筛选前的成员数),主图价格点照旧按档位筛。
+  // node 显隐筛选在前;副图的档位筛选放进 foldBand(先筛档位再折),主图价格点照旧按档位筛。
   const visibleEvents = events.filter((e) => isBandVisible(bandKeyOf(e), nodeVisible, tagToNodes))
   const passLevel = (e: EventDict): boolean =>
     solveFreeNodes.has(nodeOf(e) ?? '') || RANK[eventTier(e)] >= RANK[level]
@@ -670,7 +671,7 @@ export function buildSubDecorGraphics(
       left: SUB_GRID_LEFT,
       top: g.top,
       shape: { width: rectWidth, height: g.h },
-      style: { fill: bi % 2 === 0 ? 'rgba(0,0,0,0.03)' : 'rgba(0,0,0,0)' },
+      style: { fill: bi % 2 === 0 ? BAND_STRIPE_FILL : 'rgba(0,0,0,0)' },
       z: 1,
       silent: true,
     })

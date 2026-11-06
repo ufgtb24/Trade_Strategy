@@ -46,7 +46,10 @@ export const DIVIDER_GAP = 4
 // spec: docs/superpowers/specs/2026-07-01-path2-web-subchart-fixed-decor-design.md
 export const SUB_DIVIDER_COLOR = '#94a3b8'    // slate-400,bracket-band 分隔线
 export const SUB_DIVIDER_H = 2                // bracket-band 分隔线粗细(px)
-export const BAND_INNER_LINE_COLOR = '#e0e6f1' // 与旧 splitLine 同色
+// 副图隔行底:偶数下标的 band 垫一层 8% 黑(白底上 ≈ #ebebeb,和白底的明度差 L* 约 7,看图的用户才分得开相邻两条轨);
+// 再深就压近 detected 浅灰(对它现在 1.64)和天蓝(2.58),见 render/colors.ts 与 path2_web/serialize.py 的 _PALETTE
+export const BAND_STRIPE_FILL = 'rgba(0,0,0,0.08)'
+export const BAND_INNER_LINE_COLOR = '#d1d5db' // band 内行线:隔行底上也要看得见(对 #ebebeb 1.24、对白底 1.47)
 export const BAND_INNER_LINE_H = 1            // band 内 lane 分隔线粗细(px)
 export const MIN_SUB_H = 60                   // sub-outer 可压缩到的最小像素高度(120 仅为空数据兜底,60 为容器可视下界;内容更矮时退让到内容高)
 export const SUB_GRID_LEFT = 56               // chartSub grid[0].left

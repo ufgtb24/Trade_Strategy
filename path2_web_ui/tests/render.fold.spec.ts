@@ -46,11 +46,16 @@ describe('foldBand — 梳子与整条', () => {
     expect(f.memberIds).toEqual(['p@0-3#0', 'p@0-4#0', 'p@0-5#0'])
   })
 
-  it('梳子还是整条按筛选前的成员数:in_hit 档下只剩一个成员的族仍是一格,不变回整条', () => {
+  it('梳子还是整条按筛剩的成员数:in_hit 档下只剩一个成员的族画整条,低档位的成员不影响样子', () => {
     const tiers: Record<string, Tier> = { 'p@0-5#0': 'in_hit' }
-    const [f] = fold([ev('p', 0, 3), ev('p', 0, 4), ev('p', 0, 5)], tiers, 'in_hit')
-    expect(f.multi).toBe(true)
-    expect(f.marks).toEqual([{ kind: 'cell', start: 5, end: 5, memberIds: ['p@0-5#0'], tier: 'in_hit' }])
+    const evs = [ev('p', 0, 3), ev('p', 0, 4), ev('p', 0, 5)]
+    const [f] = fold(evs, tiers, 'in_hit')
+    expect(f.multi).toBe(false)
+    expect(f.marks).toEqual([{ kind: 'bar', start: 0, end: 5, memberIds: ['p@0-5#0'], tier: 'in_hit' }])
+    // 同一族切回 detected 档:三个成员都在,变回梳子
+    const [g] = fold(evs, tiers, 'detected')
+    expect(g.multi).toBe(true)
+    expect(g.marks.map(m => [m.kind, m.end])).toEqual([['cell', 3], ['cell', 4], ['cell', 5]])
   })
 
   it('筛选后族的右端缩到剩下成员的最大终点;筛空的族丢掉', () => {

@@ -97,8 +97,8 @@ describe('subGeometry — Task 2 new constants', () => {
   it('SUB_DIVIDER_H is 2 px', () => {
     expect(SUB_DIVIDER_H).toBe(2)
   })
-  it('BAND_INNER_LINE_COLOR is the legacy splitLine color', () => {
-    expect(BAND_INNER_LINE_COLOR).toBe('#e0e6f1')
+  it('BAND_INNER_LINE_COLOR stays visible on the band stripe', () => {
+    expect(BAND_INNER_LINE_COLOR).toBe('#d1d5db')
   })
   it('BAND_INNER_LINE_H is 1 px', () => {
     expect(BAND_INNER_LINE_H).toBe(1)

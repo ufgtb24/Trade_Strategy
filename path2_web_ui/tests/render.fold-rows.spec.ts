@@ -41,10 +41,10 @@ describe('computeEventData · 族行', () => {
     expect(b.intervalData[1].family_n).toBe(4)
   })
 
-  it('档位开到 in_hit:族只剩一格,底线缩到剩下成员的终点,仍画成格不变回整条', () => {
+  it('档位开到 in_hit:族只剩一个成员,画成整条 [族起点, 它的终点],被筛掉的成员不留空格', () => {
     const b = computeEventData(bars, fam, [], input(TIERS, { level: 'in_hit' }))
-    expect(b.familyLineData.map((d: any) => [d.value[0], d.value[1], d.multi])).toEqual([[0, 4, true]])
-    expect(b.intervalData.map((d: any) => [d.mark_kind, d.value[0]])).toEqual([['cell', 4]])
+    expect(b.familyLineData.map((d: any) => [d.value[0], d.value[1], d.multi])).toEqual([[0, 4, false]])
+    expect(b.intervalData.map((d: any) => [d.mark_kind, d.value[0], d.value[1]])).toEqual([['bar', 0, 4]])
   })
 
   it('扫描窗末拆段:底线拆成窗内 / 窗后两段;格整格判,窗后的格画成 detected 灰', () => {

@@ -242,14 +242,13 @@ class TestTbV4Wiring:
 
 class TestEventStyles:
     """event_styles 无显式声明,全走 serialize `_event_styles` 兜底调色板
-    (首现序 bo/pk/burst/tb/tb_seg 依次取槽位 [0]～[4];调色板冷暖交替,
-    副图相邻的 burst / tb / tb_seg 冷暖相反,五色互不相同——同色会触发 deriveNodeColors 明度散开)。"""
+    (首现序 bo/pk/burst/tb/tb_seg 依次天蓝、大红交替取色,副图相邻的 burst / tb / tb_seg 一冷一暖)。"""
 
     def test_palette_assigns_by_node_order(self):
         from path2_web.serialize import serialize_pattern
         spec = build_pattern(load_params())
         assert spec.event_styles == {}   # 显式声明已撤,全走兜底
         styles = serialize_pattern(spec)["event_styles"]
-        # 首现序调色板:bo [0]、pk [1]、burst [2]、tb [3]、tb_seg [4](色值本身由 tests/path2_web 的配色检查管)
+        # 首现序两色交替:bo / burst / tb_seg 取 [0]、pk / tb 取 [1](色值本身由 tests/path2_web 的配色检查管)
         from path2_web.serialize import _PALETTE as p
-        assert styles == {"bo": p[0], "pk": p[1], "burst": p[2], "tb": p[3], "tb_seg": p[4]}
+        assert styles == {"bo": p[0], "pk": p[1], "burst": p[0], "tb": p[1], "tb_seg": p[0]}

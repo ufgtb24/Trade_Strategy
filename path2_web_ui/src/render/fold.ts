@@ -6,10 +6,10 @@
  *
  * 规则:
  * - 认族:键 = 序列化下来的 start_idx 原值,只在同一条 band 内比;起点不同一律不折。
- * - 梳子还是整条:族在档位筛选**之前**的成员数 ≥ 2(multi)就画成「每个成员一格 + 一根中性底线」,
- *   否则画一根整条。若按筛选后的成员数判,档位开到 in_hit 时只剩一个成员的大族会变回一整块满色条,
- *   被读成整段都够格,切档时样子也会跳。
- * - 档位筛选:按显示档位筛成员,筛空的族丢掉;solve=false 的 node 免疫。族的右端 = 剩下成员的最大终点。
+ * - 档位筛选在先:按显示档位筛成员,筛空的族丢掉;solve=false 的 node 免疫。族的右端 = 剩下成员的最大终点。
+ *   之后的一切(梳子还是整条、分行)只看筛剩的成员,低档位的 event 不影响高档位的样子。
+ * - 梳子还是整条:筛剩的成员数 ≥ 2(multi)就画成「每个成员一格 + 一根中性底线」,否则画一根整条
+ *   (一个 event 和它的整段跨度)。所以切档位时同一族可能在梳子与整条之间变样,这是如实反映。
  * - 族内成员顺序:(end_idx, 档位深 → 浅, 输入顺序);每个不同终点一个格,格的档位 = 成员里最深的。
  * - 声明为点的 node(is_point)每族只有一个点记号(成员都在同一根上)。
  *
@@ -39,7 +39,7 @@ export interface Family {
   band: string
   start: number
   end: number           // 档位筛选后剩下成员的最大终点
-  multi: boolean        // 档位筛选前成员数 ≥ 2
+  multi: boolean        // 档位筛选后成员数 ≥ 2
   isPoint: boolean
   memberIds: string[]   // 档位筛选后剩下的成员,族内顺序(即 ←/→ 的步进顺序)
   marks: FoldMark[]
@@ -69,12 +69,11 @@ export function foldBand(events: readonly EventDict[], opts: FoldBandOptions): F
   const minRank = TIER_RANK[opts.level]
   const out: Family[] = []
   for (const start of [...groups.keys()].sort((a, b) => a - b)) {
-    const all = groups.get(start)!
-    const multi = all.length >= 2
-    const kept = all
+    const kept = groups.get(start)!
       .map((x) => ({ ...x, tier: opts.tierOf(x.e) }))
       .filter((x) => opts.levelImmune || TIER_RANK[x.tier] >= minRank)
     if (kept.length === 0) continue
+    const multi = kept.length >= 2
     kept.sort((a, b) => a.e.end_idx - b.e.end_idx || TIER_RANK[b.tier] - TIER_RANK[a.tier] || a.i - b.i)
     const end = kept.reduce((m, x) => Math.max(m, x.e.end_idx), start)
     const memberIds = kept.map((x) => x.e.instance_id)

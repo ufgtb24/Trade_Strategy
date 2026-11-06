@@ -8,12 +8,11 @@ describe('deriveNodeColors', () => {
     expect(c.bo).toBe('#2563eb')        // bo 仅 bo 一个 node → 原色
     expect(c.tb).toBe('#16a34a')        // tb 仅 tb
   })
-  it('multi-node_id band get distinct lightness variants', () => {
+  it('nodes sharing a color keep it (no lightness spreading)', () => {
     const c = deriveNodeColors(PATTERN.topology, PATTERN.event_styles)
-    // down/side 同 trend → 两个不同色(都非空、互异)
-    expect(c.down).toBeTruthy()
-    expect(c.side).toBeTruthy()
-    expect(c.down).not.toBe(c.side)
+    // down/side 的 event_styles 同色 → 照原色,不散开明度(两色交替的调色板隔一条轨本来就同色)
+    expect(c.down).toBe(PATTERN.event_styles.down)
+    expect(c.side).toBe(c.down)
   })
   it('is deterministic (order from topology.nodes)', () => {
     const a = deriveNodeColors(PATTERN.topology, PATTERN.event_styles)

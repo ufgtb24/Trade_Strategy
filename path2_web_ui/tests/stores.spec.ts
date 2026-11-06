@@ -39,7 +39,7 @@ describe('view store', () => {
     const v = useViewStore()
     v.loadScanFile(SCAN_FILE)
     expect(v.nodeColors.bo).toBe('#2563eb')
-    expect(v.nodeColors.down).not.toBe(v.nodeColors.side)
+    expect(v.nodeColors.down).toBe(v.nodeColors.side)   // event_styles 同色就同色,不散开明度
   })
 
   it('level 默认 in_hit,setLevel 改', () => {
