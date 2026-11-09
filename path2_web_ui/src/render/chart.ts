@@ -4,7 +4,7 @@ import { colorOf } from './colors'
 import { packLanes } from './geometry'
 import { foldBand, foldHits, formatMemberLabel, hitLabels, memberLabels, HIT_FAMILY_PREFIX,
          type Family, type FoldMark, type HitFamily } from './fold'
-import { isBandVisible, renderGridOf, splitIntervalAtScanEnd, subBandTagList } from './visible'
+import { isBandVisible, renderGridOf, splitIntervalAtScanEnd, subBandTagList, subBandTree } from './visible'
 import { ctrlState } from './ctrlState'
 import { derivePeakStates, peakIdIndex } from './peakState'
 import { MONO } from './fonts'
@@ -16,11 +16,13 @@ import {
   BAND_LANE_GAP,
   HL_EXPAND_H,
   HL_EXPAND_OFFSET,
-  SUB_DIVIDER_COLOR,
-  SUB_DIVIDER_H,
-  BAND_INNER_LINE_COLOR,
-  BAND_INNER_LINE_H,
+  HITS_FILL,
+  DIVIDER_GAP,
   SUB_GRID_LEFT,
+  SUB_ROW_LEFT,
+  SUB_TITLE_LEFT,
+  SUB_TITLE_Z,
+  BAND_STRIPE_OPAQUE,
   SUB_GRID_RIGHT,
   TIER_H,
   MARK_HALF_W,
@@ -33,6 +35,8 @@ import {
   type BandGeom,
   type SubGeometry,
   BAND_STRIPE_FILL,
+  FAMILY_HEAD_RATIO,
+  FAMILY_HEAD_W,
 } from './subGeometry'
 
 // ─── 新签名 ──────────────────────────────────────────────────────────────────
@@ -122,8 +126,10 @@ export interface BandRenderInput {
   // ── 当前日(竖线落点,bar 索引)与当家行(←/→ 在其中走的那一族的 family_key);缺省都不画 ──
   currentDay?: number | null
   activeFamily?: string | null
-  // ── band 表头:node 名后跟用户的特征名(mapping 对到它的特征)、compare 下没被任何框轨拉走的挂 app_only;键是 band ──
+  // ── band 表头:node 名后跟用户的特征名(mapping 对到它的特征)、compare 下所在组没有 node 被 map 的挂 app_only;键是 band ──
   bandExtras?: Readonly<Record<string, BandLabelExtra>>
+  // ── compare:选中的框对的 node 及其子孙 node 的 band,表头加粗(用户区与 app 区不相邻,靠它配对) ──
+  linkedBands?: readonly string[]
 }
 
 /** band 表头 node 名后面跟的东西:用户特征名(浅灰底)、程序标记(如 app_only,等宽)。 */
@@ -279,7 +285,7 @@ export function computeEventData(
       for (const part of lineParts(f.start, f.end)) {
         familyLineData.push({
           value: [part.start, part.end, lane, band, nBands], family_key: f.key, multi: f.multi,
-          active: activeFamily === f.key, afterWindow: part.afterWindow,
+          active: activeFamily === f.key, afterWindow: part.afterWindow, head: part.start === f.start,
           summary: familySummary(f, byId, eventTier, dates),
         })
       }
@@ -646,29 +652,33 @@ export function buildMainOption(
 
 // Task 3: 副图装饰几何 graphic 组件数组构造(独立于 dataZoom,像素坐标)
 // spec: docs/superpowers/specs/2026-07-01-path2-web-subchart-fixed-decor-design.md
-// 返回顺序: zebra(z=1) → subDivider(z=2) + band-inner splitLine(z=2) → bandLabels/hitsLabel(z=5)
+// 返回顺序: zebra(z=1) → subDivider(z=2) → bandLabels/hitsLabel(z=5)。band 里行与行之间不画线:
+// 每一行靠自己的族底线(起点带竖头)和格读,全宽的线只留给分区(bracket 与 band、compare 下用户轨与 app 轨)。
 // 用于 buildSubOption 的 option.graphic 字段;所有元素 silent=true 避免抢 hover 事件。
+const TREE_INDENT = 14   // 子轨名每深一层往右缩进的像素(待验证)
+
 export function buildSubDecorGraphics(
   bandGeom: BandGeom[],
-  dividerY: number,
   bracketH: number,
   bandLabelTexts: string[],
   hitsLabelVisible: boolean,
   chartSubWidth: number,
   zoomFactor: number = 1.0,
-  active: { band?: number; hits?: boolean } = {},   // 当家行所在那条 band / bracket 的表头加粗
+  active: { band?: number; hits?: boolean; linked?: readonly number[] } = {},   // 当家行所在那条 band / bracket、选中框对的 band 的表头加粗
   extras: readonly (BandLabelExtra | null)[] = [],  // 表头 node 名后跟的用户特征名 / app_only(按 band 下标)
   hitsTop: number = BAND_TOP_PAD,                    // hits 表头的顶(compare 下让出上面的 user 行)
+  tree: readonly ({ depth: number; last: boolean } | null)[] = [],  // 轨在父子树里的位置(subBandTree),子轨名缩进挂 ├ / └
 ): any[] {
   const graphics: any[] = []
-  const rectWidth = chartSubWidth - SUB_GRID_LEFT - SUB_GRID_RIGHT
+  // 行的底色、分隔线从容器最左起(盖住左边的轨名栏),轨名写在轨名栏里
+  const rectWidth = chartSubWidth - SUB_ROW_LEFT - SUB_GRID_RIGHT
 
   // 1. zebra: 每 band 一条 rect,隔行 fill
   bandGeom.forEach((g, bi) => {
     if (!g) return
     graphics.push({
       type: 'rect',
-      left: SUB_GRID_LEFT,
+      left: SUB_ROW_LEFT,
       top: g.top,
       shape: { width: rectWidth, height: g.h },
       style: { fill: bi % 2 === 0 ? BAND_STRIPE_FILL : 'rgba(0,0,0,0)' },
@@ -677,58 +687,49 @@ export function buildSubDecorGraphics(
     })
   })
 
-  // 2. subDivider: 1 条 2px 横线,bracket 与 band 之间
-  graphics.push({
-    type: 'rect',
-    left: SUB_GRID_LEFT,
-    top: dividerY - SUB_DIVIDER_H / 2,
-    shape: { width: rectWidth, height: SUB_DIVIDER_H },
-    style: { fill: SUB_DIVIDER_COLOR },
-    z: 2,
-    silent: true,
-  })
+  // 2. hits 区的底:浅黄,从 hits 区顶(compare 下是用户区底的那道粗深线)铺到第一条 band 的顶;
+  //    和 band 之间不画分隔线,靠底色分开
+  if (hitsLabelVisible) {
+    const top = hitsTop > BAND_TOP_PAD ? hitsTop : 0
+    graphics.push({
+      type: 'rect',
+      left: SUB_ROW_LEFT,
+      top,
+      shape: { width: rectWidth, height: bracketH + DIVIDER_GAP - top },
+      style: { fill: HITS_FILL },
+      z: 1,
+      silent: true,
+    })
+  }
 
-  // 3. band 内 lane splitLine: 相邻 lane 之间 1px 线
-  bandGeom.forEach((g) => {
-    if (!g || g.laneCount <= 1) return
-    for (let lane = 0; lane < g.laneCount - 1; lane++) {
-      // 分隔线落在 lane 与 lane+1 之间 gap 末端(自顶向下堆叠口径);乘 z 修 zoom 错位
-      const topY = g.top + BAND_TOP_PAD + (lane + 1) * BAND_LANE_H * zoomFactor
-      graphics.push({
-        type: 'rect',
-        left: SUB_GRID_LEFT,
-        top: topY - BAND_INNER_LINE_H / 2,
-        shape: { width: rectWidth, height: BAND_INNER_LINE_H },
-        style: { fill: BAND_INNER_LINE_COLOR },
-        z: 2,
-        silent: true,
-      })
-    }
-  })
-
-  // 4. bandLabels: 每 band 一个 text,靠 band 上边(top pad = BAND_TOP_PAD),grid 左侧 +2 px
+  // 4. bandLabels: 每 band 一个 text,靠 band 上边(top pad = BAND_TOP_PAD),从轨名栏左边(SUB_TITLE_LEFT)起
   //    ⚠ textAlign / textVerticalAlign 必须放元素顶层 —— style 内是 zrender TextStyle,
   //    键名是 align/verticalAlign,写 textVerticalAlign 会被静默无视。
   //    verticalAlign: 'top' + top = band 顶 + pad → label 顶部对齐 band 顶部内边距,
   //    单/多 lane 视觉统一(不再随 band 高度浮到中间/下半)。
   bandGeom.forEach((g, bi) => {
     if (!g) return
-    const text = bandLabelTexts[bi] ?? ''
+    // 子 node 的轨名往右缩进、前面挂 ├ / └(父的最后一个子 node),像文件夹树
+    const tr = tree[bi] ?? null
+    const depth = tr?.depth ?? 0
+    const text = (depth > 0 ? `${tr!.last ? '└' : '├'} ` : '') + (bandLabelTexts[bi] ?? '')
     const ex = extras[bi] ?? null
-    const weight = active.band === bi ? 'bold' : 'normal'
+    const weight = active.band === bi || active.linked?.includes(bi) ? 'bold' : 'normal'
     // 特征名是用户写的内容:正常字体、浅灰底;app_only 是程序固定文字:等宽
     const esc = (t: string) => t.replace(/[{}|]/g, ' ')
     const rich = ex && (ex.feature || ex.tag)
       ? `{n|${esc(text)}}${ex.feature ? `  {biz|${esc(ex.feature)}}` : ''}${ex.tag ? `  {tag|${esc(ex.tag)}}` : ''}`
       : null
+    // 垫一块和这一行同色的底,压在记号上面(轨名伸进 grid 时不被格、条盖住)
+    const bg = { backgroundColor: bi % 2 === 0 ? BAND_STRIPE_OPAQUE : '#ffffff', padding: [0, 2] }
     graphics.push({
       type: 'text',
-      left: SUB_GRID_LEFT + 2,
+      left: SUB_TITLE_LEFT + TREE_INDENT * Math.max(0, depth - 1) + (depth > 0 ? TREE_INDENT / 2 : 0),
       top: g.top + BAND_TOP_PAD,
       textAlign: 'left',
       textVerticalAlign: 'top',
       style: rich
-        ? { text: rich, rich: {
+        ? { text: rich, ...bg, rich: {
             n: { fill: '#000000', fontSize: 13, fontWeight: weight },
             biz: { fill: '#000000', fontSize: 12, backgroundColor: '#f4f4f5', padding: [1, 4], borderRadius: 3 },
             tag: { fill: '#000000', fontSize: 11, fontFamily: MONO },
@@ -738,8 +739,9 @@ export function buildSubDecorGraphics(
             fill: '#000000',
             fontSize: 13,
             fontWeight: weight,
+            ...bg,
           },
-      z: 5,
+      z: SUB_TITLE_Z,
       silent: true,
     })
   })
@@ -748,8 +750,9 @@ export function buildSubDecorGraphics(
   if (hitsLabelVisible) {
     graphics.push({
       type: 'text',
-      left: SUB_GRID_LEFT + 2,
-      top: hitsTop,   // 与 bandLabels 的 pad 锚定语义对称(unify 顶 pad)
+      left: SUB_TITLE_LEFT,
+      // 与 bandLabels 的 pad 锚定语义对称(unify 顶 pad);compare 下 hits 顶上是 user 行底的粗深线,下移 3 像素免得压字
+      top: hitsTop + (hitsTop > BAND_TOP_PAD ? 3 : 0),
       textAlign: 'left',
       textVerticalAlign: 'top',
       style: {
@@ -758,8 +761,10 @@ export function buildSubDecorGraphics(
         fontSize: 13,
         fontFamily: MONO,
         fontWeight: active.hits ? 'bold' : 'normal',
+        backgroundColor: HITS_FILL,
+        padding: [0, 2],
       },
-      z: 5,
+      z: SUB_TITLE_Z,
       silent: true,
     })
   }
@@ -792,7 +797,7 @@ export function buildSubOption(
           { hits: input.hits ?? [], candidateHitIds: candidateHitIds ?? new Set() }) }
     : undefined
 
-  // 装饰几何(zebra/subDivider/bandLabels/hitsLabel)改走 option.graphic,不再挂 series
+  // 装饰几何(zebra/hits 底/bandLabels/hitsLabel)改走 option.graphic,不再挂 series
   const bandLabelTexts = subBandTagList(input.tagList, input.topology)
   const hitsLabelVisible = bracketData.length > 0
   // 当家行所在那条 band(或 bracket)的表头名字加粗
@@ -800,15 +805,16 @@ export function buildSubOption(
   const activeBand = activeKey ? bandLabelTexts.indexOf(activeKey.slice(0, activeKey.lastIndexOf('@'))) : -1
   const decorGraphics = buildSubDecorGraphics(
     subGeom.bandGeom,
-    subGeom.dividerY,
     subGeom.bracketH,
     bandLabelTexts,
     hitsLabelVisible,
     chartSubWidth,
     z,
-    { band: activeBand, hits: !!activeKey && activeKey.startsWith(`${HIT_FAMILY_PREFIX}@`) },
+    { band: activeBand, hits: !!activeKey && activeKey.startsWith(`${HIT_FAMILY_PREFIX}@`),
+      linked: (input.linkedBands ?? []).map((b) => bandLabelTexts.indexOf(b)).filter((i) => i >= 0) },
     bandLabelTexts.map((b) => input.bandExtras?.[b] ?? null),
     bracketTop,
+    subBandTree(bandLabelTexts, input.topology),
   )
 
   return {
@@ -833,29 +839,29 @@ export function buildSubOption(
     dataZoom: [{ type: 'inside', xAxisIndex: 0, start: zoomStart, end: zoomEnd }],
     series: [
       // 族底线(z:8,在条与格下层);透明命中区给族摘要悬停
-      { type: 'custom', name: 'family-lines', xAxisIndex: 0, yAxisIndex: 0,
+      { type: 'custom', name: 'family-lines', xAxisIndex: 0, yAxisIndex: 0, clip: true,
         data: bundle.familyLineData,
         renderItem: makeRenderFamilyLine(bundle.familyLineData, subGeom.bandGeom, z),
         encode: { x: [0, 1] }, z: 8,
         tooltip: { show: true, formatter: (p: any) => bundle.familyLineData[p.dataIndex]?.summary ?? '' } },
       // intervals (z:9):整条与格
-      { type: 'custom', name: 'intervals', xAxisIndex: 0, yAxisIndex: 0,
+      { type: 'custom', name: 'intervals', xAxisIndex: 0, yAxisIndex: 0, clip: true,
         data: intervalData,
         renderItem: (p: any, api: any) => renderIntervalWithGeom(p, api, subGeom.bandGeom, z),
         encode: { x: [0, 1] }, z: 9, tooltip: markerTooltip },
       // points (z:10)
-      { type: 'custom', name: 'points', xAxisIndex: 0, yAxisIndex: 0,
+      { type: 'custom', name: 'points', xAxisIndex: 0, yAxisIndex: 0, clip: true,
         data: pointData,
         renderItem: (p: any, api: any) => renderPointWithGeom(p, api, subGeom.bandGeom, z),
         encode: { x: 0 }, z: 10, tooltip: markerTooltip },
       // bracket 族底线(z:10)
-      { type: 'custom', name: 'bracket-lines', xAxisIndex: 0, yAxisIndex: 0,
+      { type: 'custom', name: 'bracket-lines', xAxisIndex: 0, yAxisIndex: 0, clip: true,
         data: bundle.bracketLineData, silent: true,
         renderItem: makeRenderBracketLine(bundle.bracketLineData, z, bracketTop),
         encode: { x: [0, 1] }, z: 10 },
       // brackets (z:11):hit 的记号与买入日 ▼。focus 信号:selectedHitId 存在且无实例焦点 ⟺ bracket
       // 本身是被点者(KlineChart.ts bracket 分支走 focusHit 不设实例;marker 分支必设)
-      { type: 'custom', name: 'brackets', xAxisIndex: 0, yAxisIndex: 0,
+      { type: 'custom', name: 'brackets', xAxisIndex: 0, yAxisIndex: 0, clip: true,
         data: bracketData,
         renderItem: makeRenderBracket(bracketData, selectedHitId ?? null, candidateHitIds ?? new Set(), z,
           (selectedHitId ?? null) !== null && (input.selectedInstanceId ?? null) === null, bracketTop),
@@ -863,17 +869,17 @@ export function buildSubOption(
         emphasis: { disabled: true } },
       // highlight (z:20)。animation:true 为 series 级显式开关:keyframeAnimation(pending 闪烁)
       // 被 isAnimationEnabled() 闸住,继承顶层 animation:false 会整体跳过动画。
-      { type: 'custom', name: 'highlight', xAxisIndex: 0, yAxisIndex: 0,
+      { type: 'custom', name: 'highlight', xAxisIndex: 0, yAxisIndex: 0, clip: true,
         data: highlightData, animation: true,
         renderItem: makeRenderHighlightWithGeom(highlightData, subGeom.bandGeom, z),
         encode: { x: 0 }, z: 20, tooltip: markerTooltip },
       // shift-veil (z:22 高于 highlight,spec 2026-07-11):fill 白蒙 + 黑横线,与 highlight 三分支正交
-      { type: 'custom', name: 'shift-veil', xAxisIndex: 0, yAxisIndex: 0,
+      { type: 'custom', name: 'shift-veil', xAxisIndex: 0, yAxisIndex: 0, clip: true,
         data: veilData, animation: false, silent: true,
         renderItem: makeRenderShiftVeil(veilData, subGeom.bandGeom, z),
         z: 22 },
       // 当前日竖线(z:30,最上层):缩小后连成一片的格会把下层的线整段盖住;两侧白边压在任何色块上都拉开深浅
-      { type: 'custom', name: 'current-day', xAxisIndex: 0, yAxisIndex: 0,
+      { type: 'custom', name: 'current-day', xAxisIndex: 0, yAxisIndex: 0, clip: true,
         data: bundle.cursorData, silent: true, animation: false,
         renderItem: renderCursor, encode: { x: 0 }, z: 30 },
     ],
@@ -1179,9 +1185,10 @@ export function makeRenderHighlightWithGeom(
   }
 }
 
-/** 族底线 + 透明命中区(悬停整行给族摘要;格在上层,点格不受影响)+ 当家行的粗底线。 */
+/** 族底线(起点那天带一个竖头,读作「这一族从这天开始」)+ 透明命中区(悬停整行给族摘要;格在上层,
+ *  点格不受影响)+ 当家行的粗底线。 */
 export function makeRenderFamilyLine(
-  items: Array<{ multi?: boolean; active?: boolean; afterWindow?: boolean }>,
+  items: Array<{ multi?: boolean; active?: boolean; afterWindow?: boolean; head?: boolean }>,
   bandGeom: BandGeom[],
   zoomFactor: number = 1.0,
 ) {
@@ -1197,9 +1204,15 @@ export function makeRenderFamilyLine(
       { type: 'rect', shape: { x: x0, y, width, height: laneH }, style: { fill: 'rgba(0,0,0,0.001)' } },
     ]
     if (item.multi) {
+      const fill = item.afterWindow ? FAMILY_LINE_AFTER_WINDOW : FAMILY_LINE_COLOR
       children.push({ type: 'rect', silent: true,
                       shape: { x: x0, y: bottom - FAMILY_LINE_H, width, height: FAMILY_LINE_H },
-                      style: { fill: item.afterWindow ? FAMILY_LINE_AFTER_WINDOW : FAMILY_LINE_COLOR } })
+                      style: { fill } })
+      if (item.head) {
+        const hh = laneH * FAMILY_HEAD_RATIO
+        children.push({ type: 'rect', silent: true,
+                        shape: { x: x0, y: bottom - hh, width: FAMILY_HEAD_W, height: hh }, style: { fill } })
+      }
     }
     if (item.active) {
       children.push({ type: 'rect', silent: true,
@@ -1210,7 +1223,7 @@ export function makeRenderFamilyLine(
   }
 }
 
-/** bracket 族底线(每一族都画,bracket 一律是梳子)、当家行粗底线。 */
+/** bracket 族底线(每一族都画,bracket 一律是梳子;起点带竖头)、当家行粗底线。 */
 export function makeRenderBracketLine(
   items: Array<{ multi?: boolean; active?: boolean }>,
   zoomFactor: number = 1.0,
@@ -1223,8 +1236,12 @@ export function makeRenderBracketLine(
     const top = bracketTop + (api.value(2) || 0) * BAND_LANE_H * zoomFactor
     const rectH = BAND_MARKER_H * zoomFactor
     const width = Math.max(2, x1 - x0)
+    const hh = rectH * FAMILY_HEAD_RATIO
     const children: any[] = [
       { type: 'rect', shape: { x: x0, y: top + rectH - FAMILY_LINE_H, width, height: FAMILY_LINE_H },
+        style: { fill: FAMILY_LINE_COLOR } },
+      // 起点竖头:和 band 的族底线同一种读法
+      { type: 'rect', shape: { x: x0, y: top + rectH - hh, width: FAMILY_HEAD_W, height: hh },
         style: { fill: FAMILY_LINE_COLOR } },
     ]
     if (item.active) {

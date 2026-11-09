@@ -8,12 +8,12 @@
 // 第二段的 link tag、diff tag、chance_high 与档位小字(detected_only / qualified_only)仍一个都不许出现。
 import { describe, it, expect } from 'vitest'
 import {
-  COMPARE_BRACKET_ROW_H, GROUP_LINE, INK, LANE_PAD, MISSING_EDGE, UNMAPPED_EDGE, VERMILION, annotateLayer, bracketGeometry,
+  COMPARE_BRACKET_ROW_H, INK, LANE_PAD, MISSING_EDGE, UNMAPPED_EDGE, VERMILION, annotateLayer, bracketGeometry,
   buildAnnotateSubOption,
   bracketPick, bracketRects, laneGeometry, packBrackets, type BracketItem, type CompareMarks,
 } from '../src/render/annotateLanes'
 import { buildSubDecorGraphics, buildSubOption, computeEventData, makeRenderBracket } from '../src/render/chart'
-import { computeSubGeometry, BAND_TOP_PAD, BAND_LANE_H } from '../src/render/subGeometry'
+import { computeSubGeometry, BAND_TOP_PAD, BAND_LANE_H, USER_APP_EDGE_COLOR, USER_APP_EDGE_H } from '../src/render/subGeometry'
 import { buyDaysOf } from '../src/render/fold'
 import type { Lane } from '../src/annotate/model'
 import type { EventDict, HitDict } from '../src/types'
@@ -36,7 +36,7 @@ const items: BracketItem[] = [
     mark: { sign: '✗', tip: 'matched · buy -1' } },
 ]
 const CMP: CompareMarks = {
-  laneNode: new Map([[0, 'plateau']]), unmapped: new Set([1]), groups: [{ top: 40, bottom: 120 }],
+  laneNode: new Map([[0, 'plateau']]), unmapped: new Set([1]),
   missing: new Set(['b1']), compared: new Set(['b1']), userActive: false,
 }
 
@@ -70,10 +70,10 @@ describe('compare 的标注层', () => {
     expect(t[0]).toBe('bracket')
     expect(t.join(' ')).not.toMatch(/⇣|unmapped/)
   })
-  it('组左边一道中性灰竖线,画在组的上下沿之间', () => {
-    const line = layer(CMP).graphics.find(x => x.type === 'rect' && x.style.fill === GROUP_LINE)
-    expect(line.top).toBe(42)
-    expect(line.shape.height).toBe(76)
+  it('compare 的 bracket 可以放在用户区最后一行(特征轨下面):bracketGeometry 按给的顶排', () => {
+    const g = bracketGeometry(2, COMPARE_BRACKET_ROW_H, 90)
+    expect(g.top).toBe(90)
+    expect(g.h).toBe(LANE_PAD * 2 + 2 * COMPARE_BRACKET_ROW_H)
   })
   it('▲ 字母后挂 ✓ / ✗:✗ 垫朱红底,字一律黑;matched / unmatched 在悬停', () => {
     const s = layer(CMP).series.find(x => x.name === 'annotation-brackets')
@@ -113,10 +113,16 @@ describe('compare 的标注层', () => {
     const other = s.data.findIndex((r: any[]) => r[6] === 'b2')
     expect(JSON.stringify(s.renderItem({ dataIndex: other }, api(s.data[other])).children)).not.toContain('missing')
   })
-  it('当家行是样本时 user 行头与底线加粗', () => {
+  it('当家行是样本时 user 行头加粗', () => {
     const l = layer({ ...CMP, userActive: true })
     expect(l.graphics.find(g => g.type === 'text' && g.style.text === 'user').style.fontWeight).toBe('bold')
-    expect(l.graphics.some(g => g.type === 'rect' && g.style.fill === INK)).toBe(true)
+  })
+  it('用户的框与 app 的轨相邻处:每个给定的 y 一道全宽粗深线', () => {
+    const l = layer({ ...CMP, edges: [40, 120] })
+    const lines = l.graphics.filter(g => g.type === 'rect' && g.style.fill === USER_APP_EDGE_COLOR)
+    expect(lines.map(g => g.top + g.shape.height / 2)).toEqual([40, 120])
+    expect(lines.every(g => g.shape.height === USER_APP_EDGE_H)).toBe(true)
+    expect(layer(CMP).graphics.some(g => g.type === 'rect' && g.style.fill === USER_APP_EDGE_COLOR)).toBe(false)
   })
   it('只多出这几样;第二段的对照 tag 与档位小字一个都不出', () => {
     const all = JSON.stringify(layer(CMP).graphics) + JSON.stringify(layer(CMP).series.map(s => s.name))
@@ -187,7 +193,7 @@ describe('合进的主视图副图', () => {
 
   it('band 表头:node 名后跟用户特征名(正常字体、浅灰底)与 app_only(等宽);不给就只有 node 名', () => {
     const geom = computeSubGeometry({ bracketLaneCount: 0, bandLaneCounts: [1, 1] })
-    const g = buildSubDecorGraphics(geom.bandGeom, geom.dividerY, geom.bracketH, ['plateau', 'step'], false, 800, 1, {},
+    const g = buildSubDecorGraphics(geom.bandGeom, geom.bracketH, ['plateau', 'step'], false, 800, 1, {},
                                     [{ feature: '站上新平台' }, { tag: 'app_only' }])
     const t = g.filter(x => x.type === 'text').map(x => x.style)
     expect(t[0].text).toBe('{n|plateau}  {biz|站上新平台}')
@@ -195,8 +201,16 @@ describe('合进的主视图副图', () => {
     expect(t[0].rich.biz.fontFamily).toBeUndefined()
     expect(t[1].text).toBe('{n|step}  {tag|app_only}')
     expect(t[1].rich.tag.fontFamily).toMatch(/mono/i)
-    const plain = buildSubDecorGraphics(geom.bandGeom, geom.dividerY, geom.bracketH, ['plateau', 'step'], false, 800)
+    const plain = buildSubDecorGraphics(geom.bandGeom, geom.bracketH, ['plateau', 'step'], false, 800)
     expect(plain.filter(x => x.type === 'text').map(x => x.style.text)).toEqual(['plateau', 'step'])
+  })
+  it('buildSubOption 读 input.linkedBands:选中框对的 band 表头加粗,其余照常', () => {
+    const bundle = computeEventData(bars, [ev('plateau', 1, 4), ev('step', 2, 2)], [], input)
+    const geom = computeSubGeometry({ bracketLaneCount: 0, bandLaneCounts: [1, 1] })
+    const opt: any = buildSubOption(bars, bundle, geom, { ...input, linkedBands: ['step'] }, 800)
+    const label = (t: string) => opt.graphic.find((x: any) => x.type === 'text' && String(x.style.text).endsWith(t))
+    expect(label('step').style.fontWeight).toBe('bold')
+    expect(label('plateau').style.fontWeight).toBe('normal')
   })
   it('buildSubOption 读 input.bandExtras(按 band 名)', () => {
     const bundle = computeEventData(bars, [ev('plateau', 1, 4), ev('step', 2, 2)], [], input)
@@ -205,16 +219,15 @@ describe('合进的主视图副图', () => {
     expect(opt.graphic.filter((x: any) => x.type === 'text').map((x: any) => x.style.text))
       .toContain('{n|plateau}  {biz|站上新平台}')
   })
-  it('compare 下 hit 行接在 user 行下面(appBracketTop),hits 表头跟着下移', () => {
-    const geom = computeSubGeometry({ bracketLaneCount: 1, bandLaneCounts: [1, 1], userBracketH: 30,
-                                      slots: [{ kind: 'band', band: 0 }, { kind: 'band', band: 1 }], laneHeights: [] })
+  it('compare 下 hit 行接在用户区下面(appBracketTop),hits 表头跟着下移', () => {
+    const geom = computeSubGeometry({ bracketLaneCount: 1, bandLaneCounts: [1, 1], userBracketH: 30 })
     const r = makeRenderBracket([{ hit_id: 'h', kind: 'mark' }], null, new Set(), 1, false, geom.appBracketTop)
     const out: any = r({ dataIndex: 0 }, { ...api([2, 4, 0, 1]), coord: ([i]: number[]) => [i * 10] })
     expect(out.children[0].shape.y).toBe(30)
     const bundle = computeEventData(bars, [ev('plateau', 1, 4)],
       [{ hit_id: 'h', start_idx: 1, end_idx: 4, node_index: { plateau: 'plateau@1-4' } } as unknown as HitDict], input)
     const opt: any = buildSubOption(bars, bundle, geom, input, 800)
-    expect(opt.graphic.find((x: any) => x.type === 'text' && x.style.text === 'hits').top).toBe(30)
+    expect(opt.graphic.find((x: any) => x.type === 'text' && x.style.text === 'hits').top).toBe(33)   // user 行底 30 处有粗深线,表头再下移 3 像素
     expect(BAND_TOP_PAD + BAND_LANE_H).toBeGreaterThan(0)
   })
 })

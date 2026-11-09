@@ -12,10 +12,6 @@ import {
   SUB_CANVAS_MIN_H,
   HL_EXPAND_H,
   HL_EXPAND_OFFSET,
-  SUB_DIVIDER_COLOR,
-  SUB_DIVIDER_H,
-  BAND_INNER_LINE_COLOR,
-  BAND_INNER_LINE_H,
   MIN_SUB_H,
   SUB_GRID_LEFT,
   SUB_GRID_RIGHT,
@@ -33,15 +29,12 @@ describe('computeSubGeometry (Task 2)', () => {
     expect(g.bracketH).toBe(0)
     expect(g.bandGeom).toEqual([])
     expect(g.subCanvasH).toBe(120)
-    // divider y = bracketH + 2
-    expect(g.dividerY).toBe(2)
   })
 
   it('bracketLaneCount=1: bracketH=17(4+9+4), one band', () => {
     // 新公式:BAND_TOP_PAD(4) + 1*BAND_LANE_H(9) + BAND_BOT_PAD(4) = 17
     const g = computeSubGeometry({ bracketLaneCount: 1, bandLaneCounts: [1] })
     expect(g.bracketH).toBe(17)
-    expect(g.dividerY).toBe(17 + 2)   // 19
     // band_0: BAND_MIN_H=20 vs (1*9 + 4 + 4)=17 → clamp to 20
     expect(g.bandGeom.length).toBe(1)
     expect(g.bandGeom[0].h).toBe(20)
@@ -62,7 +55,6 @@ describe('computeSubGeometry (Task 2)', () => {
     const g = computeSubGeometry({ bracketLaneCount: 3, bandLaneCounts: [1, 2, 5] })
     // bracketH = 4 + 3*9 + 4 = 35
     expect(g.bracketH).toBe(35)
-    expect(g.dividerY).toBe(35 + 2)   // 37
     // band_0: max(20, 1*9+8) = 20 / band_1: 26 / band_2: 53
     expect(g.bandGeom.map(b => b.h)).toEqual([20, 26, 53])
     expect(g.bandGeom[0].top).toBe(35 + 4)          // 39
@@ -82,27 +74,14 @@ describe('computeSubGeometry (Task 2)', () => {
     expect(g.bandGeom.every(b => b.h === 188)).toBe(true)
   })
 
-  it('bracketLaneCount=0 with bands: divider still rendered', () => {
+  it('bracketLaneCount=0 with bands: band 区照样从 DIVIDER_GAP 起', () => {
     const g = computeSubGeometry({ bracketLaneCount: 0, bandLaneCounts: [3] })
     expect(g.bracketH).toBe(0)
-    expect(g.dividerY).toBe(2)
     expect(g.bandGeom[0].top).toBe(0 + 4)   // 4
   })
 })
 
 describe('subGeometry — Task 2 new constants', () => {
-  it('SUB_DIVIDER_COLOR is slate-400 hex', () => {
-    expect(SUB_DIVIDER_COLOR).toBe('#94a3b8')
-  })
-  it('SUB_DIVIDER_H is 2 px', () => {
-    expect(SUB_DIVIDER_H).toBe(2)
-  })
-  it('BAND_INNER_LINE_COLOR stays visible on the band stripe', () => {
-    expect(BAND_INNER_LINE_COLOR).toBe('#d1d5db')
-  })
-  it('BAND_INNER_LINE_H is 1 px', () => {
-    expect(BAND_INNER_LINE_H).toBe(1)
-  })
   it('MIN_SUB_H is 60 px (below SUB_CANVAS_MIN_H=120 by design)', () => {
     expect(MIN_SUB_H).toBe(60)
     expect(MIN_SUB_H).toBeLessThan(SUB_CANVAS_MIN_H)
@@ -117,7 +96,6 @@ describe('subGeometry — Task 2 new constants', () => {
     expect(g).toHaveProperty('bracketH')
     expect(g).toHaveProperty('bandGeom')
     expect(g).toHaveProperty('subCanvasH')
-    expect(g).toHaveProperty('dividerY')
     expect(g.bandGeom.length).toBe(2)
     expect(g.bandGeom[0]).toHaveProperty('top')
     expect(g.bandGeom[0]).toHaveProperty('h')
@@ -180,8 +158,7 @@ describe('subGeometry — zoom factor & 新常量', () => {
     // 空 bracket 情况保 0(与 zoomFactor 无关)
     const gZero = computeSubGeometry({ bracketLaneCount: 0, bandLaneCounts: [3] }, 2.0)
     expect(gZero.bracketH).toBe(0)
-    // dividerY 与首 band top 按缩放后 bracketH 派生
-    expect(g.dividerY).toBe(g.bracketH + Math.floor(DIVIDER_GAP / 2))
+    // 首 band top 按缩放后 bracketH 派生
     expect(g.bandGeom[0].top).toBe(g.bracketH + DIVIDER_GAP)
   })
 })
@@ -232,33 +209,27 @@ describe('composeEffectiveSubH(spec 2026-07-03-subchart-boundary-model §1)', ()
   })
 })
 
-describe('compare 的合并几何(slots:用户轨插在 band 之间,bracket 上面让出 user 行)', () => {
+describe('compare 的合并几何(两区:顶上让出用户区,下面和主视图一样)', () => {
   const base = { bracketLaneCount: 2, bandLaneCounts: [3, 1] }
-  it('不传 slots 时与原来逐项相同', () => {
+  it('不传 userBracketH 时与主视图相同:hit 行从顶 pad 起,没有分界线', () => {
     const a = computeSubGeometry(base, 1.5)
-    const b = computeSubGeometry({ ...base, slots: undefined }, 1.5)
-    expect(b).toEqual(a)
     expect(a.appBracketTop).toBe(BAND_TOP_PAD)
-    expect(a.laneGeom).toEqual([])
+    expect(a.userAppEdges).toEqual([])
   })
-  it('按 slots 的先后堆叠:用户轨与 band 各占自己的高;band 的下标不变', () => {
-    const g = computeSubGeometry({
-      ...base, laneHeights: [26, 44], userBracketH: 21,
-      slots: [{ kind: 'lane', lane: 1 }, { kind: 'band', band: 1 }, { kind: 'lane', lane: 0 }, { kind: 'band', band: 0 }],
-    })
-    expect(g.appBracketTop).toBe(21)
-    expect(g.bracketH).toBe(21 + 2 * BAND_LANE_H + BAND_BOT_PAD)
-    const top0 = g.bracketH + DIVIDER_GAP
-    expect(g.laneGeom[1]).toEqual({ top: top0, h: 44 })
-    expect(g.bandGeom[1].top).toBe(top0 + 44)
-    expect(g.laneGeom[0].top).toBe(g.bandGeom[1].top + g.bandGeom[1].h)
-    expect(g.bandGeom[0].top).toBe(g.laneGeom[0].top + 26)
-    expect(g.subCanvasH).toBe(g.bandGeom[0].top + g.bandGeom[0].h)
+  it('hit 行接在用户区下面;band 照原来的先后接在 hits 下面,各自的高与主视图相同;分界线在用户区底', () => {
+    const app = computeSubGeometry(base)
+    const g = computeSubGeometry({ ...base, userBracketH: 70 })
+    expect(g.appBracketTop).toBe(70)
+    expect(g.bracketH).toBe(70 + 2 * BAND_LANE_H + BAND_BOT_PAD)
+    expect(g.bandGeom[0].top).toBe(g.bracketH + DIVIDER_GAP)
+    expect(g.bandGeom.map(x => x.h)).toEqual(app.bandGeom.map(x => x.h))
+    expect(g.bandGeom[1].top).toBe(g.bandGeom[0].top + g.bandGeom[0].h)
+    expect(g.userAppEdges).toEqual([70])
   })
-  it('没有 hit 也给 user 行留位', () => {
-    const g = computeSubGeometry({ bracketLaneCount: 0, bandLaneCounts: [1], userBracketH: 21,
-                                   slots: [{ kind: 'band', band: 0 }], laneHeights: [] })
+  it('没有 hit 也给用户区留位', () => {
+    const g = computeSubGeometry({ bracketLaneCount: 0, bandLaneCounts: [1], userBracketH: 21 })
     expect(g.bracketH).toBe(21 + BAND_BOT_PAD)
+    expect(g.userAppEdges).toEqual([21])
   })
 })
 

@@ -52,13 +52,13 @@
       </label>
     </div>
     <div v-if="annotating" class="grp" data-testid="tool-group">
-      <span class="key" title="what dragging on the chart does">tool</span>
+      <span class="key" title="what dragging on the chart does; none on: drag pans, click selects">tool</span>
       <button type="button" :class="['entry', { on: ann.tool === 'box' }]" data-testid="tool-box"
-              title="drag on the chart to draw a box; drag a box edge on its lane to change it; click to select"
-              @click="ann.tool = 'box'">box</button>
+              title="on: drag on the chart to draw a box, or drag a box edge on its lane to change it; off after one use. Shift+B toggles, Esc turns off"
+              @click="ann.toggleTool('box')">box</button>
       <button type="button" :class="['entry', { on: ann.tool === 'point' }]" data-testid="tool-point"
-              title="click a bar to place a sample there (current pattern, pos); switches back to box"
-              @click="ann.tool = 'point'">point</button>
+              title="on: click a bar to place a sample there (current pattern, pos); off after one use. Esc turns off"
+              @click="ann.toggleTool('point')">point</button>
     </div>
     <div v-if="annotating" class="grp" data-testid="pattern-group">
       <span class="key" title="the current pattern: new samples go to it">pattern</span>
@@ -94,7 +94,8 @@
  *   (训练段副本里有的股票)核一遍,不在列表里就报 not_found、不动当前的图。输入框平时显示当前打开的股票。
  * - rally:展开 / 收起大涨段清单(RallyList),点一行打开那段涨之前的图,落在 annotate。
  * - random:从股票池 × 训练段随机给一段图,落在 annotate,图停在那一段上。
- * - tool(annotate 下):box = 在图上拖出框;point = 点一根 K 线放样本,放完自动回到 box。
+ * - tool(annotate、compare 下):默认都不亮,图上拖动是平移;box = 点亮后在图上拖出一个框或改一次框的起止;
+ *   point = 点亮后点一根 K 线放样本。点亮一个只用一次,用完自动熄灭;再点一下、Esc 也熄灭;Shift+B 点亮 / 熄灭 box。
  * - pattern(annotate 下):当前 pattern,新放的样本归它;下拉里有 unsorted · n 和 + new。
  * - ref:参照层,目前只有 peaks(stores/refLayers.ts)。只在 annotate / compare 下可用,别的模式下变灰;默认关,换股票自动关。
  * 看过什么一律不记。

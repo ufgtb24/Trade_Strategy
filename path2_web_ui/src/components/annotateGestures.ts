@@ -1,15 +1,17 @@
 /**
- * annotate 下图上的鼠标手势:
- * - tool = box:
- *   - K 线区(主图上半)拖动 → 画一个新框(还没起名);点一下样本的三角 → 选中样本;点别处 → 什么都不选;
- *   - 副图:特征轨上拖动 → 画一个带这个特征的新框(bracket 轨上拖出的还没起名);按在框的左右边拖 → 改它的起止;
- *     点一下框 → 选中它;点 bracket 轨上样本的跨度 → 选中样本;点框右侧的 ◂ → 把这个画了没收的框收进选中的样本;
- * - tool = point:点 K 线区某一根 → 在那天放样本(或选中当前 pattern 那天已有的样本),之后工具自动回到 box;
- * - 成交量带拖动 → 左右平移图窗(K 线区的拖动留给画框;滚轮照常缩放)。两种工具都可以。
+ * annotate / compare 下图上的鼠标手势。顶栏的工具(tool)默认都不亮,点亮一个只用一次:
+ * - 不亮:K 线区、副图上拖动 → 左右平移图窗;点一下照常:K 线区点样本的三角 → 选中样本,点别处 → 什么都不选;
+ *   副图上点框 → 选中它,点 bracket 轨上样本的跨度 → 选中样本,点画了没收的框右侧的 ◂ → 把它收进选中的样本。
+ *   框的左右边拖不动(改起止要先点亮 box)。
+ * - box:K 线区拖动 → 画一个新框(还没起名);副图特征轨上拖动 → 画一个带这个特征的新框(bracket 轨上拖出的还没起名);
+ *   按在框的左右边拖 → 改它的起止;点一下和不亮时一样,工具不熄。画完一个框或改完一次起止,工具熄灭(toolDone)。
+ * - point:点 K 线区某一根 → 在那天放样本(或选中当前 pattern 那天已有的样本),之后工具熄灭(store 的 placeSample);
+ *   副图上和不亮时一样。
+ * - 成交量带拖动 → 平移,工具亮不亮都一样;compare 下副图 app 区(hit 行、band)拖动也是平移,点一下留给图表自己的点击。
  * 改起止时,框是某些样本的成员框的,终点停在其中最早的样本日(不越过样本日),停住时在鼠标旁写它是哪个样本的
  * 成员框:改共用的框时不悄悄改掉旧样本的依据。
- * 拖动超过 DRAG_PX 才算拖动(annotate/boxGeometry.ts)。拖的过程中的样子(新框、改了起止的框)交给调用方去画,
- * 松手时才保存。
+ * 移动超过 DRAG_PX 才算拖动(annotate/boxGeometry.ts),否则算点一下。拖的过程中的样子(新框、改了起止的框)交给
+ * 调用方去画,松手时才保存。鼠标样式(cursorAt):工具亮着时图上是十字,能点的地方是手,box 下框的左右边是左右拖。
  */
 import type { ECharts } from 'echarts'
 import type { AnnBox, Lane } from '../annotate/model'
@@ -22,6 +24,7 @@ import {
   SIDE_MARK_X, boxRects, bracketPick, bracketRects, laneAt, type Draft, type LaneGeom, type PlacedBracket,
 } from '../render/annotateLanes'
 import { MAIN_GRID_LEFT, MAIN_GRID_RIGHT } from '../render/chart'
+import { SUB_GRID_LEFT, SUB_GRID_RIGHT } from '../render/subGeometry'
 
 export interface GestureDeps {
   main: () => ECharts | null
@@ -29,7 +32,10 @@ export interface GestureDeps {
   mainEl: () => HTMLElement | null
   subEl: () => HTMLElement | null
   active: () => boolean                     // annotate 且有 K 线、标注已读到
-  tool: () => 'box' | 'point'
+  /** 亮着的工具;null = 都不亮 */
+  tool: () => 'box' | 'point' | null
+  /** box 用完一次(画了一个框、改了一次起止):熄灭工具 */
+  toolDone: () => void
   dates: () => readonly string[]
   lanes: () => readonly Lane[]
   geom: () => readonly LaneGeom[]
@@ -64,7 +70,9 @@ type Gesture =
       feature: string | null; hit: string | null; sample: string | null; take: string | null; moved: boolean }
   | { kind: 'resize'; x0: number; y0: number; box: AnnBox; side: 'l' | 'r'; moved: boolean }
   | { kind: 'point'; x0: number; y0: number; moved: boolean }
-  | { kind: 'pan'; x0: number; start: number; end: number; width: number }
+  /** 平移;没拖动就松手时做 click(点一下的效果),null = 点一下什么都不做。x0/y0 是页面坐标 */
+  | { kind: 'pan'; x0: number; y0: number; start: number; end: number; width: number; moved: boolean;
+      click: (() => void) | null }
 
 function local(el: HTMLElement, ev: MouseEvent): [number, number] {
   const r = el.getBoundingClientRect()
@@ -117,6 +125,15 @@ export function createAnnotateGestures(deps: GestureDeps) {
     return i >= 0 ? i : deps.lanes().length
   }
 
+  /** 副图上这一 x 在不在 grid 里(左边的轨名栏、右边的留白都不算)。 */
+  const inPlot = (el: HTMLElement, x: number) => x >= SUB_GRID_LEFT && x <= el.clientWidth - SUB_GRID_RIGHT
+
+  /** 从这一下开始平移;width 是图区宽(像素)。 */
+  const panFrom = (ev: MouseEvent, width: number, click: (() => void) | null): Gesture => {
+    const z = deps.zoom() ?? { start: 0, end: 100 }
+    return { kind: 'pan', x0: ev.clientX, y0: ev.clientY, start: z.start, end: z.end, width, moved: false, click }
+  }
+
   /**
    * 按在图上开始手势时让出输入框的焦点:mousedown 上的 preventDefault 会挡住浏览器默认的失焦,
    * 写完定义、note 后直接点图上的框,焦点还留在输入框里,Delete 删框就被当成在输入框里删字。
@@ -131,31 +148,49 @@ export function createAnnotateGestures(deps: GestureDeps) {
     const main = deps.main(), el = deps.mainEl()
     if (ev.button !== 0 || !deps.active() || !main || !el) return
     const [x, y] = local(el, ev)
+    const width = el.clientWidth - MAIN_GRID_LEFT - MAIN_GRID_RIGHT
     if (main.containPixel({ gridIndex: 0 }, [x, y])) {
-      gesture = deps.tool() === 'point'
-        ? { kind: 'point', x0: x, y0: y, moved: false }
-        : { kind: 'draw', src: 'main', x0: x, y0: y, i0: indexAt(main, x), lane: unnamedLane(),
-            feature: null, hit: null, sample: deps.sampleAt(x, y), take: null, moved: false }
-      releaseFocus()
-      ev.preventDefault()
+      const tool = deps.tool()
+      if (tool === 'point') gesture = { kind: 'point', x0: x, y0: y, moved: false }
+      else if (tool === 'box') {
+        gesture = { kind: 'draw', src: 'main', x0: x, y0: y, i0: indexAt(main, x), lane: unnamedLane(),
+                    feature: null, hit: null, sample: deps.sampleAt(x, y), take: null, moved: false }
+      } else {
+        const sample = deps.sampleAt(x, y)
+        gesture = panFrom(ev, width, () => (sample ? deps.selectSample(sample) : deps.select(null)))
+      }
     } else if (main.containPixel({ gridIndex: 1 }, [x, y])) {
-      const z = deps.zoom() ?? { start: 0, end: 100 }
-      gesture = { kind: 'pan', x0: ev.clientX, start: z.start, end: z.end,
-                  width: el.clientWidth - MAIN_GRID_LEFT - MAIN_GRID_RIGHT }
-      releaseFocus()
-      ev.preventDefault()
-    }
+      gesture = panFrom(ev, width, null)
+    } else return
+    releaseFocus()
+    ev.preventDefault()
   }
 
   function onSubDown(ev: MouseEvent) {
     const sub = deps.sub(), el = deps.subEl()
-    if (ev.button !== 0 || !deps.active() || deps.tool() !== 'box' || !sub || !el) return
+    if (ev.button !== 0 || !deps.active() || !sub || !el) return
     const [x, y] = local(el, ev)
-    if (deps.claims && !deps.claims(y)) return
+    const width = el.clientWidth - SUB_GRID_LEFT - SUB_GRID_RIGHT
+    // compare 的 app 区:拖动平移;点一下是图表自己的(app 的格、条、▼),这里不抢焦点、不拦默认行为
+    if (deps.claims && !deps.claims(y)) { gesture = panFrom(ev, width, null); return }
+    // 左右两边的轨名栏:框画在 grid 里(伸出去的部分裁掉了),这里点不中框、也不画框,只平移
+    if (!inPlot(el, x)) {
+      gesture = panFrom(ev, width, null)
+      releaseFocus()
+      ev.preventDefault()
+      return
+    }
     const take = takeAt(x, y)
     const hit = take ? null : boxAt(subRects(), x, y)
     const side = hit ? edgeOf(hit, x) : null
-    if (hit && side) {
+    if (deps.tool() !== 'box') {
+      const sample = hit || take ? null : bracketAt(x, y)
+      gesture = panFrom(ev, width, () => {
+        if (take) deps.take(take)
+        else if (sample) deps.selectSample(sample)
+        else deps.select(hit?.id ?? null)
+      })
+    } else if (hit && side) {
       const box = deps.lanes().flatMap(l => l.boxes).find(lb => lb.box.id === hit.id)!.box
       gesture = { kind: 'resize', x0: x, y0: y, box, side, moved: false }
     } else {
@@ -185,8 +220,10 @@ export function createAnnotateGestures(deps: GestureDeps) {
 
   function onMove(ev: MouseEvent) {
     const g = gesture
-    if (!g) { hoverCursor(ev); return }
+    if (!g) return
     if (g.kind === 'pan') {
+      if (!g.moved && !isDrag(g.x0, g.y0, ev.clientX, ev.clientY)) return
+      g.moved = true
       const z = pannedZoom(g.start, g.end, ev.clientX - g.x0, g.width)
       deps.main()?.dispatchAction({ type: 'dataZoom', start: z.start, end: z.end })
       return
@@ -210,7 +247,11 @@ export function createAnnotateGestures(deps: GestureDeps) {
   function onUp(ev: MouseEvent) {
     const g = gesture
     gesture = null
-    if (!g || g.kind === 'pan') return
+    if (!g) return
+    if (g.kind === 'pan') {
+      if (!g.moved) g.click?.()
+      return
+    }
     const { el, chart } = surfaceOf(g)
     const dates = deps.dates()
     if (g.kind === 'point') {
@@ -228,6 +269,7 @@ export function createAnnotateGestures(deps: GestureDeps) {
       if (!el) return
       const [s, e] = spanOf(g.i0, indexAt(chart, local(el, ev)[0]))
       deps.createBox(dates[s], dates[e], g.feature)
+      deps.toolDone()
       return
     }
     deps.setPreview(null)
@@ -235,18 +277,30 @@ export function createAnnotateGestures(deps: GestureDeps) {
     if (g.moved && el) {
       const [s, e] = resizedWithin(g, indexAt(chart, local(el, ev)[0]), null)
       if (dates[s] !== g.box.start || dates[e] !== g.box.end) deps.resizeBox(g.box.id, dates[s], dates[e])
+      deps.toolDone()
     }
     deps.select(g.box.id)
   }
 
-  /** 悬停在框的左右边上时,光标换成左右拖的样子。 */
-  function hoverCursor(ev: MouseEvent) {
-    const el = deps.subEl(), sub = deps.sub()
-    if (!el || !sub || !deps.active() || deps.tool() !== 'box' || !el.contains(ev.target as Node)) return
-    const [x, y] = local(el, ev)
-    if (takeAt(x, y) || bracketAt(x, y)) { sub.getZr().setCursorStyle('pointer'); return }
+  /**
+   * 鼠标停在图上这一点(相对 which 那张图的容器)时的样式;null = 交给图表(ECharts 每次移动都会重设,
+   * 所以调用方要在图表自己的 mousemove 之后设)。拖动中不管。
+   */
+  function cursorAt(which: 'main' | 'sub', x: number, y: number): string | null {
+    if (gesture || !deps.active()) return null
+    const tool = deps.tool()
+    if (which === 'main') {
+      const main = deps.main()
+      if (!main || !main.containPixel({ gridIndex: 0 }, [x, y])) return null
+      if (tool) return 'crosshair'
+      return deps.sampleAt(x, y) ? 'pointer' : null
+    }
+    const el = deps.subEl()
+    if ((deps.claims && !deps.claims(y)) || !el || !inPlot(el, x)) return null
+    if (takeAt(x, y) || bracketAt(x, y)) return 'pointer'
+    if (tool !== 'box') return null
     const hit = boxAt(subRects(), x, y)
-    if (hit && edgeOf(hit, x)) sub.getZr().setCursorStyle('ew-resize')
+    return hit && edgeOf(hit, x) ? 'ew-resize' : 'crosshair'
   }
 
   function cancel() {
@@ -272,5 +326,6 @@ export function createAnnotateGestures(deps: GestureDeps) {
       window.removeEventListener('mouseup', onUp, true)
     },
     cancel,
+    cursorAt,
   }
 }

@@ -144,9 +144,10 @@ test.describe('compare / app 叠画(bo_only + 手写 mapping)', () => {
     // K 线主图不被副图挤掉
     expect(await page.evaluate(() => (window as any).__e2e.chartMain().getHeight())).toBeGreaterThanOrEqual(300)
 
-    // 用户轨照 annotate 的顺序;map 了的写 ⇣ node,没 map 的挂 unmapped;bracket 上面是 user 行、下面是 hits 行
+    // 上区(用户):特征轨照 annotate 的顺序,map 了的写 ⇣ node,没 map 的挂 unmapped,user 行在这一区最后;
+    // 粗深线下面是 app 区,hits 行在第一行
     const titles = await subTitles(page)
-    expect(titles).toEqual(['user', 'hits', '横盘  ⇣ pk', '缩量 ⊂ 横盘  unmapped', '突破  ⇣ bo', '派发  unmapped'])
+    expect(titles).toEqual(['横盘  ⇣ pk', '缩量 ⊂ 横盘  unmapped', '突破  ⇣ bo', '派发  unmapped', 'user', 'hits'])
     const graphic = await page.evaluate(() => JSON.stringify((window as any).__e2e.chartSub().getOption().graphic ?? []))
     for (const w of TAG_WORDS) expect(graphic).not.toContain(w)
 

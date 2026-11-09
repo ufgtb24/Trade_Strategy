@@ -155,14 +155,14 @@ test('decor graphics survive zoom in (hits / bandLabels / subDivider / zebra rem
   const elements: any[] = Array.isArray(graphic) && graphic.length > 0 && graphic[0].elements
     ? graphic[0].elements
     : (graphic as any[])
-  // 至少含 1 subDivider(#94a3b8 rect) + 至少 1 hitsLabel/bandLabel(text,fill 颜色不作断言,只查存在性)
+  // 至少含 1 个 hits 底(浅黄 rect,hits 与 band 之间不再画分隔线) + 至少 1 hitsLabel/bandLabel(text,fill 颜色不作断言,只查存在性)
   const rects = elements.filter((e: any) => e.type === 'rect')
   const texts = elements.filter((e: any) => e.type === 'text')
   expect(rects.length).toBeGreaterThanOrEqual(1)
   expect(texts.length).toBeGreaterThanOrEqual(1)
-  // subDivider: fill = SUB_DIVIDER_COLOR(#94a3b8)
-  const dividers = rects.filter((r: any) => r.style?.fill === '#94a3b8')
-  expect(dividers.length).toBeGreaterThanOrEqual(1)
+  // hits 底:fill = HITS_FILL(#fffbdb);旧的分隔线(#94a3b8)不再画
+  expect(rects.filter((r: any) => r.style?.fill === '#fffbdb').length).toBeGreaterThanOrEqual(1)
+  expect(rects.filter((r: any) => r.style?.fill === '#94a3b8')).toHaveLength(0)
 })
 
 test('candidate banner sits outside sub-outer and stays put when scrolling', async ({ page }) => {

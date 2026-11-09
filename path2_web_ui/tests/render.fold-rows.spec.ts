@@ -122,14 +122,25 @@ describe('族底线与当前日竖线的渲染', () => {
     expect(lone.children).toHaveLength(1)
   })
 
+  it('族底线含族起点的那一段在起点画竖头(和底线同色、比底线高);跨过扫描末日的后一段不画', () => {
+    const head = makeRenderFamilyLine([{ multi: true, head: true }], geom as any)({ dataIndex: 0 }, api) as any
+    const [, line, tick] = head.children
+    expect(tick.style.fill).toBe(line.style.fill)
+    expect(tick.shape.x).toBe(line.shape.x)
+    expect(tick.shape.height).toBeGreaterThan(line.shape.height)
+    expect(tick.shape.y + tick.shape.height).toBe(line.shape.y + line.shape.height)
+    const tail = makeRenderFamilyLine([{ multi: true, head: false }], geom as any)({ dataIndex: 0 }, api) as any
+    expect(tail.children).toHaveLength(2)
+  })
+
   it('bracket 族底线:每一族都画中性底线(只有一次 hit 也画,bracket 一律梳子);当家行加粗;行尾不再写族序号', () => {
     const api = { value: (i: number) => [2, 6, 0, 2][i] ?? 0, coord: ([x]: number[]) => [x * 10, 0], size: () => [10, 0] }
     const g = makeRenderBracketLine([{ multi: true, active: true }])({ dataIndex: 0 }, api) as any
-    expect(g.children.filter((c: any) => c.type === 'rect')).toHaveLength(2)
+    expect(g.children.filter((c: any) => c.type === 'rect')).toHaveLength(3)   // 底线 + 起点竖头 + 当家粗线
     expect(g.children.some((c: any) => c.type === 'text')).toBe(false)
     const lone = makeRenderBracketLine([{ multi: false, active: false }])({ dataIndex: 0 }, api) as any
-    expect(lone.children).toHaveLength(1)
-    expect(lone.children[0].style.fill).toBe('#6b7280')
+    expect(lone.children).toHaveLength(2)
+    expect(lone.children.every((c: any) => c.style.fill === '#6b7280')).toBe(true)
   })
 
   it('当前日竖线:白边在下、深色细线在上,贯穿 grid 全高', () => {

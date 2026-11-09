@@ -14,13 +14,14 @@
  * 轨标题里的特征名是用户写的内容,用正常字体加浅灰底(--chip-bg 同值),「⊂」、unnamed、bracket 与字母是程序
  * 固定文字,用等宽字体。
  *
- * compare 下这一层(annotateLayer 的 graphics + series)合进主视图那张副图(render/chart.ts 的 buildSubOption):
- * 用户轨插在 app 的 band 之间(轨序 render/compareLayout.ts,几何 render/subGeometry.ts 的 slots),bracket 轨的
- * 样本跨度占最上面的 user 行,app 的 hit 行接在下面。这一层在 compare 下多画(LaneDraw.compare):
- * - 轨标题:map 了的轨在特征名后写 `⇣ <node>`,没 map 的挂会话蓝 `unmapped`;map 了的轨与它拉来的 band 组
- *   左边一道竖线框住;
+ * compare 下这一层(annotateLayer 的 graphics + series)合进主视图那张副图(render/chart.ts 的 buildSubOption),
+ * 副图分两区(见 render/compareLayout.ts):上区是用户的,特征轨照 annotate 的顺序在上,样本跨度那一行(user)在
+ * 这一区最后一行;下区是 app 的,和主视图那张副图一样(hits 第一行,band 在下)。这一层在 compare 下多画(LaneDraw.compare):
+ * - 轨标题:map 了的轨在特征名后写 `⇣ <node>`,没 map 的挂会话蓝 `unmapped`;
  * - bracket 的 user 行:▲ 字母后挂 app 与用户判断一致与否的记号 `✓` / `✗`(✗ 朱红底),matched / unmatched 在悬停;
- *   当家行是样本时(←/→ 在样本间走)user 行头与底线加粗;
+ *   当家行是样本时(←/→ 在样本间走)user 行头加粗;
+ * - 两区之间一道粗深线(位置由 subGeometry 的 userAppEdges 给):线上是用户画的、线下是 app 认的,
+ *   user 行与 hits 隔着这道线正好上下对照;
  * - 框终点那天它对的 node 一个 event 都没有:框右端挂琥珀 `missing`;map 了的框悬停写 `start not compared`
  *   (框的左端不和 app 比,见 stores/compare.ts)。
  * app 的东西一律不画进用户轨:用户轨只有用户画的框。
@@ -30,7 +31,9 @@ import type { AnnBox, Lane } from '../annotate/model'
 import { triOf, type BoxMark } from '../annotate/samples'
 import { CROSSES_SAMPLE_DATE, UNCLAIMED } from '../annotate/membership'
 import { endIndex, startIndex, type BoxPx } from '../annotate/boxGeometry'
-import { SUB_CANVAS_MIN_H, SUB_GRID_LEFT, SUB_GRID_RIGHT } from './subGeometry'
+import {
+  SUB_CANVAS_MIN_H, SUB_GRID_LEFT, SUB_GRID_RIGHT, SUB_ROW_LEFT, SUB_TITLE_LEFT, USER_APP_EDGE_COLOR, USER_APP_EDGE_H,
+} from './subGeometry'
 import { MONO } from './fonts'
 
 export const LANE_ROW_H = 18          // 轨里一行的高度
@@ -64,8 +67,6 @@ export const UNMAPPED_EDGE = '#0072B2' // 蓝:compare 下没 map 的轨挂的 un
 export const MISSING_EDGE = '#E69F00'  // 橙:compare 下框右端 missing 的描边
 const TAG_BOX = { backgroundColor: '#ffffff', borderWidth: 1.5, padding: [1, 3], borderRadius: 2 }
 export const VERMILION = '#D55E00'    // 朱红:只表示「app 的判断和你相反」(▲ 字母后的 ✗ 底色)
-export const GROUP_LINE = '#6b7280'   // compare:map 了的轨与它拉来的 band 组左边的竖线(同族底线的中性灰)
-export const GROUP_LINE_X = SUB_GRID_LEFT - 5
 export { MONO }
 /** 悬停文字:等宽、黑字。MONO 里有双引号,属性值用单引号括,否则 style 在字体名那里就断了。 */
 const monoTip = (html: string) => `<span style='font-family:${MONO};color:${INK}'>${html}</span>`
@@ -133,9 +134,10 @@ export function packBrackets(items: readonly BracketItem[], dates: readonly stri
   return { rows: Math.max(1, ends.length), placed }
 }
 
-/** bracket 轨的位置与高度(在最上面;没有样本时也留一行)。rowH:一行的高(compare 的 user 行放大)。 */
-export function bracketGeometry(rows: number, rowH: number = BRACKET_ROW_H): LaneGeom {
-  return { top: LANES_TOP, h: LANE_PAD * 2 + Math.max(1, rows) * rowH, rowH }
+/** bracket 轨的位置与高度(没有样本时也留一行)。rowH:一行的高(compare 的 user 行放大);
+ *  top:annotate 在最上面,compare 在用户区最后一行(特征轨下面)。 */
+export function bracketGeometry(rows: number, rowH: number = BRACKET_ROW_H, top: number = LANES_TOP): LaneGeom {
+  return { top, h: LANE_PAD * 2 + Math.max(1, rows) * rowH, rowH }
 }
 
 /** bracket 轨里一行的竖直范围(条高 = 行高减去上下各 2 像素的空)。 */
@@ -214,14 +216,14 @@ export interface CompareMarks {
   laneNode: ReadonlyMap<number, string>
   /** 没 map 的特征轨(下标):标题挂 unmapped */
   unmapped: ReadonlySet<number>
-  /** 组左边竖线的竖直范围(像素) */
-  groups: readonly { top: number; bottom: number }[]
   /** 框终点那天它对的 node 一个 event 都没有的框:右端挂 missing */
   missing: ReadonlySet<string>
   /** map 了的框(悬停写 start not compared) */
   compared: ReadonlySet<string>
-  /** 当家行是样本(←/→ 在样本间走):user 行头与底线加粗 */
+  /** 当家行是样本(←/→ 在样本间走):user 行头加粗 */
   userActive: boolean
+  /** 用户的框与 app 的轨上下相邻处的 y(像素):画粗深线 */
+  edges?: readonly number[]
 }
 
 /**
@@ -298,33 +300,28 @@ export function annotateDataZoom(zoom: { start: number; end: number } | null): R
 export function annotateLayer(bars: Bar[], d: LaneDraw): { graphics: any[]; series: any[] } {
   const dates = bars.map(b => b.date)
   const graphics: any[] = []
-  const w = d.width - SUB_GRID_LEFT - SUB_GRID_RIGHT
+  const w = d.width - SUB_ROW_LEFT - SUB_GRID_RIGHT   // 分隔线从容器最左起,轨名写在左边的轨名栏里
   const cmp = d.compare ?? null
   if (d.bracket) {
     const g = d.bracket.geom
-    graphics.push({ type: 'rect', left: SUB_GRID_LEFT, top: g.top + g.h - 0.5, shape: { width: w, height: 1 },
+    graphics.push({ type: 'rect', left: SUB_ROW_LEFT, top: g.top + g.h - 0.5, shape: { width: w, height: 1 },
                     style: { fill: LANE_LINE }, z: 1, silent: true })
-    if (cmp?.userActive) {
-      graphics.push({ type: 'rect', left: SUB_GRID_LEFT, top: g.top + g.h - 3.5, shape: { width: w, height: 2 },
-                      style: { fill: INK }, z: 2, silent: true })
-    }
-    graphics.push({ type: 'text', left: SUB_GRID_LEFT + 2, top: g.top + LANE_PAD - 1, z: 30, silent: true,
+    graphics.push({ type: 'text', left: SUB_TITLE_LEFT, top: g.top + LANE_PAD - 1, z: 30, silent: true,
                     style: { text: cmp ? 'user' : 'bracket', fontFamily: MONO, fontSize: 12, fill: INK,
                              fontWeight: cmp?.userActive ? 'bold' : 'normal', backgroundColor: TITLE_BG,
                              padding: [0, 2] } })
   }
   d.geom.forEach((g, i) => {
     if (!g) return
-    graphics.push({ type: 'rect', left: SUB_GRID_LEFT, top: g.top + g.h - 0.5, shape: { width: w, height: 1 },
+    graphics.push({ type: 'rect', left: SUB_ROW_LEFT, top: g.top + g.h - 0.5, shape: { width: w, height: 1 },
                     style: { fill: LANE_LINE }, z: 1, silent: true })
     const t = laneTitle(d.lanes[i], d.nameOf, { node: cmp?.laneNode.get(i) ?? null, unmapped: cmp?.unmapped.has(i) })
-    graphics.push({ type: 'text', left: SUB_GRID_LEFT + 2, top: g.top + LANE_PAD, z: 30, silent: true,
+    graphics.push({ type: 'text', left: SUB_TITLE_LEFT, top: g.top + LANE_PAD, z: 30, silent: true,
                     style: { ...t, fill: INK, fontSize: 12, backgroundColor: TITLE_BG, padding: [0, 2] } })
   })
-  for (const gr of cmp?.groups ?? []) {
-    graphics.push({ type: 'rect', left: GROUP_LINE_X, top: gr.top + 2,
-                    shape: { width: 2, height: Math.max(2, gr.bottom - gr.top - 4) },
-                    style: { fill: GROUP_LINE }, z: 2, silent: true })
+  for (const y of cmp?.edges ?? []) {
+    graphics.push({ type: 'rect', left: SUB_ROW_LEFT, top: y - USER_APP_EDGE_H / 2, shape: { width: w, height: USER_APP_EDGE_H },
+                    style: { fill: USER_APP_EDGE_COLOR }, z: 3, silent: true })
   }
 
   // 每个框一行数据:[起点下标, 终点下标, 顶, 底, 选中, 拖出中, 编号];画法(boxLook)按行号另存

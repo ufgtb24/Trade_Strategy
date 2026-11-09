@@ -13,7 +13,7 @@
  *
  * 样本与成员框(成员框的规则见 annotate/membership.ts):
  * - point 工具点一根 K 线放样本,归当前 pattern、默认 pos,成员框按推断;同一 pattern 同一天已有样本就是选中它;
- *   放完自动回到 box 工具。
+ *   放完工具熄灭(工具默认都不亮,点亮一个只用一次)。
  * - 当前样本:这张图上最后一次放下或选中的样本。画框、选中框都不换掉它;选中另一个样本换成它;点空白处、Esc、
  *   换图清掉。它是当前样本期间新画的框(含画完又改了起止的),推断会收的就并进它(只加不踢);换掉时它的成员框
  *   就此冻结,以后补画的框不会并进去。
@@ -131,7 +131,8 @@ export const useAnnotationStore = defineStore('annotation', () => {
   const currentPattern = ref<string | null>(loadPattern())           // 顶栏的当前 pattern;null = unsorted
   const openCount = ref<string | null>(null)                         // pattern 页上点开的计数(grouping.ts 的 countId)
   const tab = ref<SidebarTab>('selection')
-  const tool = ref<Tool>('box')
+  // 顶栏的工具:默认都不亮(图上拖动是平移),点亮一个只用一次,见 components/annotateGestures.ts
+  const tool = ref<Tool | null>(null)
   const renaming = ref(false)                      // 选中框的 feature 一行处在「换特征」状态
   const nameFocus = ref(0)                         // 每加一次,侧栏把光标放进起名框
   const pendingMerge = ref<{ from: string; into: string } | null>(null)
@@ -351,10 +352,10 @@ export const useAnnotationStore = defineStore('annotation', () => {
 
   /**
    * point 工具点在某天:同一张图上当前 pattern 这天已有样本就选中它,否则放一个新样本(pos,成员框按推断)。
-   * 两种都会让它成为当前样本,并把工具切回 box。返回样本编号。
+   * 两种都会让它成为当前样本,并熄灭工具(point 只用一次)。返回样本编号。
    */
   function placeSample(symbol: string, date: string): string | null {
-    tool.value = 'box'
+    tool.value = null
     if (!machine.value || !state.value) return null
     const pattern = currentPattern.value
     const same = chartOf(state.value, symbol)?.samples.find(x => x.date === date && x.pattern === pattern)
@@ -574,6 +575,11 @@ export const useAnnotationStore = defineStore('annotation', () => {
     saveAck(next)
   }
 
+  /** 点工具按钮(或按快捷键):亮着就熄,没亮就点亮它(另一个随之熄灭)。 */
+  function toggleTool(t: Tool): void {
+    tool.value = tool.value === t ? null : t
+  }
+
   function setDays(symbol: string, days: string[]): void {
     daysBySymbol.value = { ...daysBySymbol.value, [symbol]: days }
   }
@@ -581,7 +587,7 @@ export const useAnnotationStore = defineStore('annotation', () => {
   return {
     server, view, state, status, loadError, saveError, saving, machine, membership, match,
     selectedBoxId, selectedBox, selectedSampleId, selectedSample, currentSampleId, currentSample, currentPattern, openCount,
-    tab, tool, renaming, nameFocus, merges, pendingMerge, daysBySymbol,
+    tab, tool, toggleTool, renaming, nameFocus, merges, pendingMerge, daysBySymbol,
     newConflicts, fingerprint, featureById, nameOf, definitionOf,
     load, commit, flushed, createBox, resizeBox, deleteBox, setBoxFeature, setBoxNote, setAttr, addAttr,
     toggleBoxParent, setDefinition, renameFeature, previewMerge, applyMerge, unmerge, selectBox,

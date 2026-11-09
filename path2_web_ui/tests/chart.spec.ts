@@ -520,12 +520,12 @@ import { buildSubDecorGraphics } from '../src/render/chart'
 import {
   BAND_TOP_PAD,
   BAND_LANE_H,
-  SUB_DIVIDER_COLOR,
-  SUB_DIVIDER_H,
-  BAND_INNER_LINE_COLOR,
-  BAND_INNER_LINE_H,
-  SUB_GRID_LEFT,
+  HITS_FILL,
+  DIVIDER_GAP,
   SUB_GRID_RIGHT,
+  SUB_ROW_LEFT,
+  SUB_TITLE_LEFT,
+  SUB_TITLE_Z,
 } from '../src/render/subGeometry'
 
 describe('buildSubDecorGraphics — Task 3', () => {
@@ -534,32 +534,39 @@ describe('buildSubDecorGraphics — Task 3', () => {
     { top: 22, h: 21, laneCount: 1 },      // band 0: no inner splitLine (laneCount=1)
     { top: 43, h: 35, laneCount: 3 },      // band 1: 2 inner splitLines (between 3 lanes)
   ]
-  const dividerY = 20
   const bracketH = 6
   const bandLabelTexts = ['bo', 'burst']
   const hitsLabelVisible = true
   const chartSubWidth = 800
-  const expectedRectWidth = chartSubWidth - SUB_GRID_LEFT - SUB_GRID_RIGHT  // 728
+  const expectedRectWidth = chartSubWidth - SUB_ROW_LEFT - SUB_GRID_RIGHT  // 784:行从容器最左起,盖住左边的轨名栏
 
   it('returns non-empty array of graphic elements', () => {
-    const g = buildSubDecorGraphics(bandGeom, dividerY, bracketH, bandLabelTexts, hitsLabelVisible, chartSubWidth)
+    const g = buildSubDecorGraphics(bandGeom, bracketH, bandLabelTexts, hitsLabelVisible, chartSubWidth)
     expect(Array.isArray(g)).toBe(true)
     expect(g.length).toBeGreaterThan(0)
   })
 
-  it('contains exactly 1 subDivider rect', () => {
-    const g = buildSubDecorGraphics(bandGeom, dividerY, bracketH, bandLabelTexts, hitsLabelVisible, chartSubWidth)
-    const dividers = g.filter((e: any) => e.type === 'rect' && e.style?.fill === SUB_DIVIDER_COLOR)
-    expect(dividers.length).toBe(1)
-    expect(dividers[0].top).toBe(dividerY - SUB_DIVIDER_H / 2)
-    expect(dividers[0].left).toBe(SUB_GRID_LEFT)
-    expect(dividers[0].shape.width).toBe(expectedRectWidth)
-    expect(dividers[0].shape.height).toBe(SUB_DIVIDER_H)
-    expect(dividers[0].z).toBe(2)
+  it('hits 区垫浅黄底、一直铺到第一条 band 的顶;hits 与 band 之间不画分隔线', () => {
+    const g = buildSubDecorGraphics(bandGeom, bracketH, bandLabelTexts, hitsLabelVisible, chartSubWidth)
+    const bg = g.filter((e: any) => e.type === 'rect' && e.style?.fill === HITS_FILL)
+    expect(bg.length).toBe(1)
+    expect(bg[0].top).toBe(0)
+    expect(bg[0].left).toBe(SUB_ROW_LEFT)
+    expect(bg[0].shape.width).toBe(expectedRectWidth)
+    expect(bg[0].shape.height).toBe(bracketH + DIVIDER_GAP)
+    expect(bg[0].z).toBe(1)
+    expect(g.filter((e: any) => e.type === 'rect' && e.style?.fill === '#94a3b8')).toHaveLength(0)
+    // 没有 hit 时不垫
+    const none = buildSubDecorGraphics(bandGeom, bracketH, bandLabelTexts, false, chartSubWidth)
+    expect(none.filter((e: any) => e.type === 'rect' && e.style?.fill === HITS_FILL)).toHaveLength(0)
+    // compare:hits 区顶是用户区底(粗深线),底从那里起
+    const cmp = buildSubDecorGraphics(bandGeom, 60, bandLabelTexts, true, chartSubWidth, 1, {}, [], 40)
+    const cbg = cmp.find((e: any) => e.type === 'rect' && e.style?.fill === HITS_FILL)
+    expect([cbg.top, cbg.shape.height]).toEqual([40, 60 + DIVIDER_GAP - 40])
   })
 
   it('contains 2 zebra rects (one per band)', () => {
-    const g = buildSubDecorGraphics(bandGeom, dividerY, bracketH, bandLabelTexts, hitsLabelVisible, chartSubWidth)
+    const g = buildSubDecorGraphics(bandGeom, bracketH, bandLabelTexts, hitsLabelVisible, chartSubWidth)
     const zebras = g.filter((e: any) => e.type === 'rect' && (e.style?.fill === 'rgba(0,0,0,0.08)' || e.style?.fill === 'rgba(0,0,0,0)'))
     expect(zebras.length).toBe(2)
     // band 0 (bi=0): fill 'rgba(0,0,0,0.08)'
@@ -574,89 +581,79 @@ describe('buildSubDecorGraphics — Task 3', () => {
     expect(band1Zebra!.style.fill).toBe('rgba(0,0,0,0)')
   })
 
-  it('contains 2 band-inner splitLines (band 1 has 3 lanes → 2 gaps; band 0 has 1 lane → 0 lines)', () => {
-    const g = buildSubDecorGraphics(bandGeom, dividerY, bracketH, bandLabelTexts, hitsLabelVisible, chartSubWidth)
-    const splitLines = g.filter((e: any) => e.type === 'rect' && e.style?.fill === BAND_INNER_LINE_COLOR && e.shape?.height === BAND_INNER_LINE_H)
-    expect(splitLines.length).toBe(2)
-    // 位于 band 1 内 lane 之间: top = bandGeom[1].top + BAND_TOP_PAD + (lane+1) * BAND_LANE_H - 0.5
-    const expectedTopBase = bandGeom[1].top + BAND_TOP_PAD
-    const line1Top = expectedTopBase + 1 * BAND_LANE_H - BAND_INNER_LINE_H / 2
-    const line2Top = expectedTopBase + 2 * BAND_LANE_H - BAND_INNER_LINE_H / 2
-    const tops = splitLines.map((e: any) => e.top).sort((a: number, b: number) => a - b)
-    expect(tops[0]).toBe(line1Top)
-    expect(tops[1]).toBe(line2Top)
-    splitLines.forEach((line: any) => {
-      expect(line.z).toBe(2)
-      expect(line.left).toBe(SUB_GRID_LEFT)
-      expect(line.shape.width).toBe(expectedRectWidth)
-    })
+  it('band 里行与行之间不画线:除 zebra 与 hits 底外没有全宽 rect', () => {
+    const g = buildSubDecorGraphics(bandGeom, bracketH, bandLabelTexts, hitsLabelVisible, chartSubWidth)
+    const fullWidth = g.filter((e: any) => e.type === 'rect' && e.shape?.width === expectedRectWidth)
+    expect(fullWidth.length).toBe(bandGeom.length + 1)
+  })
+
+  it('子 node 的轨名缩进、挂 ├ / └;根不挂', () => {
+    const geom3 = [{ top: 22, h: 21, laneCount: 1 }, { top: 43, h: 21, laneCount: 1 }, { top: 64, h: 21, laneCount: 1 }]
+    const g = buildSubDecorGraphics(geom3, bracketH, ['plateau', 'step', 'today'], false, chartSubWidth, 1, {}, [],
+                                    BAND_TOP_PAD, [{ depth: 0, last: false }, { depth: 1, last: false }, { depth: 1, last: true }])
+    const texts = g.filter((e: any) => e.type === 'text').map((e: any) => [e.style.text, e.left])
+    expect(texts.map((t: any) => t[0])).toEqual(['plateau', '├ step', '└ today'])
+    expect(texts[1][1]).toBeGreaterThan(texts[0][1])
+    expect(texts[2][1]).toBe(texts[1][1])
   })
 
   it('contains 2 bandLabel texts, one per band, aligned to band top (top pad)', () => {
-    const g = buildSubDecorGraphics(bandGeom, dividerY, bracketH, bandLabelTexts, hitsLabelVisible, chartSubWidth)
+    const g = buildSubDecorGraphics(bandGeom, bracketH, bandLabelTexts, hitsLabelVisible, chartSubWidth)
     const labels = g.filter((e: any) => e.type === 'text' && ['bo', 'burst'].includes(e.style?.text))
     expect(labels.length).toBe(2)
     const boLabel = labels.find((e: any) => e.style.text === 'bo')
     // top = band 顶 + BAND_TOP_PAD;verticalAlign:'top' → label 顶部锚点在 band 顶部内边距
     // 单/多 lane 视觉统一(不再随 band 高度浮到中间/下半)。
     expect(boLabel!.top).toBe(bandGeom[0].top + BAND_TOP_PAD)
-    expect(boLabel!.left).toBe(SUB_GRID_LEFT + 2)
+    expect(boLabel!.left).toBe(SUB_TITLE_LEFT)        // 轨名写在左边的轨名栏里,不留白
     expect(boLabel!.style.fontSize).toBe(13)
     // ⚠ textAlign/textVerticalAlign 必须在元素顶层(不是 style 内)——style 是 zrender TextStyle,
     // 键名是 align/verticalAlign,写 textVerticalAlign 会被无视。
     expect(boLabel!.textVerticalAlign).toBe('top')
     expect(boLabel!.textAlign).toBe('left')
-    expect(boLabel!.z).toBe(5)
+    expect(boLabel!.z).toBe(SUB_TITLE_Z)              // 压在记号上面,垫这一行的底色
+    expect(boLabel!.style.backgroundColor).toBe('#ebebeb')
     const burstLabel = labels.find((e: any) => e.style.text === 'burst')
     expect(burstLabel!.top).toBe(bandGeom[1].top + BAND_TOP_PAD)
   })
 
   it('contains 1 hitsLabel when hitsLabelVisible=true', () => {
-    const g = buildSubDecorGraphics(bandGeom, dividerY, bracketH, bandLabelTexts, hitsLabelVisible, chartSubWidth)
+    const g = buildSubDecorGraphics(bandGeom, bracketH, bandLabelTexts, hitsLabelVisible, chartSubWidth)
     const hits = g.filter((e: any) => e.type === 'text' && e.style?.text === 'hits')
     expect(hits.length).toBe(1)
     // hits label 靠 bracket 区上边(BAND_TOP_PAD,与 bandLabels 顶 pad 对称),同款 verticalAlign:'top'
     expect(hits[0].top).toBe(BAND_TOP_PAD)
-    expect(hits[0].left).toBe(SUB_GRID_LEFT + 2)
+    expect(hits[0].left).toBe(SUB_TITLE_LEFT)
     expect(hits[0].style.fontSize).toBe(13)
     expect(hits[0].textVerticalAlign).toBe('top')
     expect(hits[0].textAlign).toBe('left')
-    expect(hits[0].z).toBe(5)
+    expect(hits[0].z).toBe(SUB_TITLE_Z)
   })
 
   it('omits hitsLabel when hitsLabelVisible=false', () => {
-    const g = buildSubDecorGraphics(bandGeom, dividerY, bracketH, bandLabelTexts, false, chartSubWidth)
+    const g = buildSubDecorGraphics(bandGeom, bracketH, bandLabelTexts, false, chartSubWidth)
     const hits = g.filter((e: any) => e.type === 'text' && e.style?.text === 'hits')
     expect(hits.length).toBe(0)
   })
 
   it('handles empty bandGeom (0 bands) gracefully', () => {
-    const g = buildSubDecorGraphics([], dividerY, bracketH, [], hitsLabelVisible, chartSubWidth)
+    const g = buildSubDecorGraphics([], bracketH, [], hitsLabelVisible, chartSubWidth)
     // 空 bandGeom → 无 zebra、无 bandLabel、无 band-inner splitLine
     expect(g.filter((e: any) => e.type === 'rect' && (e.style?.fill === 'rgba(0,0,0,0.08)' || e.style?.fill === 'rgba(0,0,0,0)')).length).toBe(0)
     expect(g.filter((e: any) => e.type === 'text' && e.style?.text === 'hits').length).toBe(1)
-    expect(g.filter((e: any) => e.type === 'rect' && e.style?.fill === SUB_DIVIDER_COLOR).length).toBe(1)
+    expect(g.filter((e: any) => e.type === 'rect' && e.style?.fill === HITS_FILL).length).toBe(1)
   })
 
   it('all elements marked silent to avoid stealing hover events from data series', () => {
-    const g = buildSubDecorGraphics(bandGeom, dividerY, bracketH, bandLabelTexts, hitsLabelVisible, chartSubWidth)
+    const g = buildSubDecorGraphics(bandGeom, bracketH, bandLabelTexts, hitsLabelVisible, chartSubWidth)
     g.forEach((e: any) => {
       expect(e.silent).toBe(true)
     })
   })
 
-  it('lane 分隔线 y 乘 zoomFactor(z=2 错位修复)+ hitsLabel 顶 pad', () => {
-    // 2-lane band:分隔线应落在 lane0/lane1 之间 gap 末端 = top + 4 + 1*9*z
+  it('hitsLabel 顶 pad', () => {
     const bandGeom = [{ top: 50, h: 60, laneCount: 2 }]
-    const g2 = buildSubDecorGraphics(bandGeom, 30, 26, ['burst'], true, 800, 2)
-    const line2 = g2.find((el: any) => el.style?.fill === '#d1d5db')
-    expect(line2).toBeTruthy()
-    // z=2:topY = 50 + 4 + 1*9*2 = 72;元素 top = topY − 0.5(BAND_INNER_LINE_H/2)
-    expect(line2.top).toBe(72 - 0.5)
-    // 单参 backward-compat(z 缺省 = 1):topY = 50+4+9 = 63
-    const g1 = buildSubDecorGraphics(bandGeom, 30, 26, ['burst'], true, 800)
-    const line1 = g1.find((el: any) => el.style?.fill === '#d1d5db')
-    expect(line1.top).toBe(63 - 0.5)
+    const g2 = buildSubDecorGraphics(bandGeom, 26, ['burst'], true, 800, 2)
     // hitsLabel 顶 pad:top = BAND_TOP_PAD(4) = 4
     const label = g2.find((el: any) => el.style?.text === 'hits')
     expect(label.top).toBe(4)
@@ -751,6 +748,15 @@ describe('buildSubOption — Task 4 graphic switch', () => {
     const opt = buildSubOption(bars, bundle, subGeom, baseParams as any, chartSubWidth) as any
     expect(opt.grid[0].left).toBe(56)   // SUB_GRID_LEFT
     expect(opt.grid[0].right).toBe(16)  // SUB_GRID_RIGHT
+  })
+
+  it('记号都裁在 grid 里:伸出图窗的格、条、底线、hit 行不画进左边的轨名栏', () => {
+    const bundle = computeEventData(bars, events, hits, baseParams as any)
+    const subGeom = computeSubGeometry({ bracketLaneCount: 1, bandLaneCounts: [1, 1] })
+    const opt = buildSubOption(bars, bundle, subGeom, baseParams as any, chartSubWidth) as any
+    const custom = opt.series.filter((x: any) => x.type === 'custom')
+    expect(custom.length).toBeGreaterThan(0)
+    for (const x of custom) expect([x.name, x.clip]).toEqual([x.name, true])
   })
 })
 

@@ -2,7 +2,7 @@ import { test, expect, type Page } from '@playwright/test'
 import { readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import {
-  annState, barCount, boxesOf, drag, drawOnKline, klineY, laneY, name, openSymbol, routeTo, settled, startBackend,
+  annState, barCount, boxOn, boxesOf, drag, drawOnKline, klineY, laneY, name, openSymbol, routeTo, settled, startBackend,
   stopBackend, xOf, type Backend,
 } from './annotateHelpers'
 
@@ -43,7 +43,8 @@ async function placeAt(page: Page, i: number) {
   await page.getByTestId('tool-point').click()
   await page.mouse.click(await xOf(page, i), await klineY(page))
   await expect(page.getByTestId('sample-panel')).toBeVisible()
-  await expect(page.getByTestId('tool-box')).toHaveClass(/on/)            // 放完自动回到 box
+  await expect(page.getByTestId('tool-point')).not.toHaveClass(/\bon\b/)   // 放完工具熄灭
+  await expect(page.getByTestId('tool-box')).not.toHaveClass(/\bon\b/)
 }
 
 async function newPattern(page: Page, text: string) {
@@ -129,6 +130,7 @@ test.describe('放样本与成员框', () => {
 
     // ── 拖「突破」的右边越过样本日:停在样本日,鼠标旁写它是哪个样本的成员框 ──
     const yBreak = await laneY(page, '突破')
+    await boxOn(page)
     await page.mouse.move(await rightEdgeX(page, n - 45), yBreak)
     await page.mouse.down()
     await page.mouse.move(await xOf(page, n - 35, 'sub'), yBreak, { steps: 4 })
@@ -140,6 +142,7 @@ test.describe('放样本与成员框', () => {
     await settled(page)
     expect(boxesOf(await annState(page), A).find((b: any) => b.id === b2).end).toBe(dates[n - 30])
     // 不越界地改起止照常保存
+    await boxOn(page)
     await drag(page, await rightEdgeX(page, n - 30), yBreak, await xOf(page, n - 40, 'sub'), yBreak)
     await settled(page)
     expect(boxesOf(await annState(page), A).find((b: any) => b.id === b2).end).toBe(dates[n - 40])
@@ -251,6 +254,7 @@ test.describe('保存被拒', () => {
 
     // 本页把 by 的右边拖过样本日(本页以为它不是成员框,不拦)→ 后端拒绝
     const yLane = await laneY(page, '回踩')
+    await boxOn(page)
     await drag(page, await rightEdgeX(page, n - 40), yLane, await xOf(page, n - 20, 'sub'), yLane)
     await settled(page)
     const notice = page.getByTestId('notice-save')
@@ -268,6 +272,7 @@ test.describe('保存被拒', () => {
     // 提示点 ok 收起;再拖就停在样本日
     await notice.getByRole('button', { name: 'ok' }).click()
     await expect(notice).toHaveCount(0)
+    await boxOn(page)
     await page.mouse.move(await rightEdgeX(page, n - 40), yLane)
     await page.mouse.down()
     await page.mouse.move(await xOf(page, n - 20, 'sub'), yLane, { steps: 6 })

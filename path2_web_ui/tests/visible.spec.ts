@@ -3,7 +3,7 @@ import { inHitIds, resolveTooltipData, buildRefRows } from '../src/render/visibl
 import {
   bandKeyOf, deriveTagMap, isolatedNodeIds, isQualifiedRow,
   qualifiedIdsOf, eventTierOf, nodeOfEventByBand, isBandVisible,
-  renderGridOf, subBandTagList,
+  renderGridOf, subBandTagList, subBandTree,
 } from '../src/render/visible'
 import type { TopoNode, TopoEdge, EventDict, HitDict, AttrRow, Diagnostics, Bar } from '../src/types'
 import { ANALYSIS } from './fixtures'
@@ -605,5 +605,23 @@ describe('buildRefRows', () => {
     const rows = buildRefRows('bo:2#0', events, bars, pkLabel)   // bo 突破了 pk1,但没人引用 bo
     expect(rows.filter((r) => r.dir === 'in')).toEqual([])
     expect(rows.map((r) => r.dir)).toEqual(['out'])
+  })
+})
+
+describe('subBandTagList / subBandTree — 子轨紧跟父轨', () => {
+  const topo = (nodes: { node_id: string; produced_by?: string | null; render_grid?: 'price' | 'time' }[]) =>
+    ({ nodes: nodes.map(n => ({ where_rules: [], ...n })), edges: [] }) as any
+  it('子 node 不论拓扑里排在哪,都挪到父的后面;同级按原序;价格轨剔除', () => {
+    const t = topo([{ node_id: 'bo', render_grid: 'price' }, { node_id: 'seg', produced_by: 'tb' },
+                    { node_id: 'burst' }, { node_id: 'tb' }, { node_id: 'seg2', produced_by: 'tb' }])
+    const tags = subBandTagList(['bo', 'seg', 'burst', 'tb', 'seg2'], t)
+    expect(tags).toEqual(['burst', 'tb', 'seg', 'seg2'])
+    expect(subBandTree(tags, t)).toEqual([
+      { depth: 0, last: false }, { depth: 0, last: false }, { depth: 1, last: false }, { depth: 1, last: true },
+    ])
+  })
+  it('父不在副图上(主图价格轨)的子 node 当根', () => {
+    const t = topo([{ node_id: 'p', render_grid: 'price' }, { node_id: 'c', produced_by: 'p' }])
+    expect(subBandTree(subBandTagList(['p', 'c'], t), t)).toEqual([{ depth: 0, last: false }])
   })
 })

@@ -2,8 +2,8 @@ import { test, expect } from '@playwright/test'
 import { copyFileSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import {
-  FIXTURE, OTHER_FINGERPRINT, TRAIN_END, annState, barCount, boxesOf, drag, drawOnKline, featureId, laneY, name,
-  openSymbol, routeTo, settled, startBackend, stopBackend, xOf, type Backend,
+  FIXTURE, OTHER_FINGERPRINT, TRAIN_END, annState, barCount, boxOn, boxesOf, drag, drawOnKline, featureId, klineY, laneY,
+  name, openSymbol, routeTo, settled, startBackend, stopBackend, xOf, type Backend,
 } from './annotateHelpers'
 
 /**
@@ -11,6 +11,8 @@ import {
  * 1. 按代码打开 → 在 K 线区拖框 → 起名 → 刷新,框和名字都还在;在特征轨上拖出的框直接带这个名字;
  *    拖框边改起止;属性 true → 再点一下 → null(存下的是「没有这个键」);框套框的子框轨与 ⊂;
  *    改名后所有用到这个名字的框处处跟着变(两只股票);合并先显示会波及几个框,刷新后照样能拆回,拆回后恢复原样。
+ * 1b. 工具默认都不亮:K 线区、副图上拖动是平移、不画框,拖框边不改起止;Shift+B 点亮 box,画完一个框就熄;
+ *    亮着时 Esc 只熄灭工具,选中的框还在。
  * 2. 用标注存储的例子文件(tests/path2_web/fixtures/annotation_store_v1)造出冲突与指纹不符:
  *    两种提示各出现一次,图照常显示;冲突点 ok 后刷新不再出现。
  *
@@ -59,6 +61,7 @@ test.describe('画框、起名与词表', () => {
     await expect(page.getByTestId('definition-text')).toHaveText('窄幅震荡、量缩')
 
     // ── 在特征轨上拖 → 新框直接带这个名字 ──
+    await boxOn(page)
     await drag(page, await xOf(page, n - 30, 'sub'), yLane, await xOf(page, n - 20, 'sub'), yLane)
     await expect(page.getByTestId('box-feature')).toHaveText('横盘')
     await settled(page)
@@ -67,6 +70,7 @@ test.describe('画框、起名与词表', () => {
     // ── 拖框的右边改终点 ──
     const dates: string[] = await page.evaluate(() => (window as any).__e2e.chartMain().getOption().xAxis[0].data)
     const halfBar = ((await xOf(page, n - 39, 'sub')) - (await xOf(page, n - 40, 'sub'))) / 2
+    await boxOn(page)
     await drag(page, (await xOf(page, n - 40, 'sub')) + halfBar, yLane, await xOf(page, n - 50, 'sub'), yLane)
     await settled(page)
     expect(boxesOf(await annState(page), A).find((b: any) => b.id === b1).end).toBe(dates[n - 50])
@@ -147,6 +151,61 @@ test.describe('画框、起名与词表', () => {
 
     // 全部图止于训练段末日
     for (const c of (await annState(page)).charts) for (const b of c.boxes) expect(b.end <= TRAIN_END).toBe(true)
+  })
+
+  test('工具默认不亮:拖动是平移;Shift+B 点亮,画完一个就熄;Esc 只熄工具不清选中;框边不亮时拖不动', async ({ page }) => {
+    await routeTo(page, backend!)
+    const symbols: string[] = await (await fetch(`${backend!.base}/symbols`)).json()
+    const D = symbols[Math.floor(symbols.length / 2) + 3]
+    await page.goto('/')
+    await openSymbol(page, D)
+    const n = await barCount(page)
+    await expect(page.getByTestId('tool-box')).not.toHaveClass(/\bon\b/)
+    await expect(page.getByTestId('tool-point')).not.toHaveClass(/\bon\b/)
+    const zoomStart = () => page.evaluate(() => (window as any).__e2e.chartMain().getOption().dataZoom[0].start as number)
+
+    // 不亮:K 线区往右拖 = 看更早的 K 线,不画框
+    const z0 = await zoomStart()
+    await drag(page, await xOf(page, n - 80), await klineY(page), await xOf(page, n - 40), await klineY(page))
+    await expect.poll(zoomStart).toBeLessThan(z0)
+    await settled(page)
+    expect(boxesOf(await annState(page), D)).toHaveLength(0)
+
+    // Shift+B 点亮,画完一个框就熄(上面往右拖了 40 根,画在图窗中间)
+    await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur())
+    await page.keyboard.press('Shift+B')
+    await expect(page.getByTestId('tool-box')).toHaveClass(/\bon\b/)
+    const cursor = () => page.evaluate(() => (window as any).__e2e.chartMain().getZr().handler.proxy.dom.style.cursor)
+    await page.mouse.move(await xOf(page, n - 100), await klineY(page))
+    await page.mouse.move(await xOf(page, n - 99), await klineY(page))
+    await expect.poll(cursor).toBe('crosshair')                               // 亮着:K 线区是十字
+    const b = await drawOnKline(page, n - 120, n - 110)
+    await name(page, '工具')
+    await expect(page.getByTestId('tool-box')).not.toHaveClass(/\bon\b/)
+    await page.mouse.move(await xOf(page, n - 100), await klineY(page))
+    await page.mouse.move(await xOf(page, n - 99), await klineY(page))
+    await expect.poll(cursor).not.toBe('crosshair')
+
+    // 亮着时 Esc 只熄工具,框还选着;不亮时 Esc 才清选中
+    await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur())
+    await page.keyboard.press('Shift+B')
+    await expect(page.getByTestId('tool-box')).toHaveClass(/\bon\b/)
+    await page.keyboard.press('Escape')
+    await expect(page.getByTestId('tool-box')).not.toHaveClass(/\bon\b/)
+    expect(await page.evaluate(() => (window as any).__e2e.ann().selectedBoxId)).toBe(b)
+
+    // 不亮:按在框的右边拖,框不变(图窗平移)
+    const yLane = await laneY(page, '工具')
+    const halfBar = ((await xOf(page, n - 109, 'sub')) - (await xOf(page, n - 110, 'sub'))) / 2
+    const z1 = await zoomStart()
+    await drag(page, (await xOf(page, n - 110, 'sub')) + halfBar, yLane, await xOf(page, n - 100, 'sub'), yLane)
+    await settled(page)
+    const [box] = boxesOf(await annState(page), D)
+    const dates: string[] = await page.evaluate(() => (window as any).__e2e.chartMain().getOption().xAxis[0].data)
+    expect(box.end).toBe(dates[n - 110])
+    await expect.poll(zoomStart).toBeLessThan(z1)
+    await page.keyboard.press('Escape')
+    expect(await page.evaluate(() => (window as any).__e2e.ann().selectedBoxId)).toBeNull()
   })
 
   test('选中框按 Delete 删框;焦点在输入框里时不删', async ({ page }) => {

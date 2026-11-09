@@ -338,8 +338,45 @@ export function renderGridOf(
 
 /** 副图分轨 tag 列表:剔除 render_grid==='price' 的 tag(其 marker 钉主图,不占副图轨道)。
  *  node 查找规则与 renderGridOf 一致(按 node_id 查找,缺省 'time'),
- *  保证路由与分轨判定永远一致:timeAnchored event 的 tag 必在返回列表中。 */
+ *  保证路由与分轨判定永远一致:timeAnchored event 的 tag 必在返回列表中。
+ *  顺序:子 node(拓扑 produced_by 指向的父也在副图上)一律紧跟在父的后面(深度优先,同级按 tagList 原序),
+ *  轨名的树形缩进(subBandTree)靠这个顺序。 */
 export function subBandTagList(tagList: string[], topology: Topology): string[] {
-  return tagList.filter((tag) =>
+  const tags = tagList.filter((tag) =>
     (topology.nodes.find((n) => n.node_id === tag)?.render_grid ?? 'time') !== 'price')
+  return bandForest(tags, topology).map((x) => x.tag)
+}
+
+/** 副图每条轨在父子树里的位置(与 subBandTagList 的结果一一对应):depth 0 = 根(父不在副图上或没有父),
+ *  last = 它是父的最后一个子 node(轨名前挂 └,否则 ├)。 */
+export function subBandTree(bandTags: readonly string[], topology: Topology): { depth: number; last: boolean }[] {
+  const byTag = new Map(bandForest(bandTags, topology).map((x) => [x.tag, x]))
+  return bandTags.map((t) => ({ depth: byTag.get(t)?.depth ?? 0, last: byTag.get(t)?.last ?? false }))
+}
+
+function bandForest(tags: readonly string[], topology: Topology): { tag: string; depth: number; last: boolean }[] {
+  const inSub = new Set(tags)
+  const parentOf = (t: string): string | null => {
+    const p = topology.nodes.find((n) => n.node_id === t)?.produced_by ?? null
+    return p && p !== t && inSub.has(p) ? p : null
+  }
+  const kids = new Map<string, string[]>()
+  const roots: string[] = []
+  for (const t of tags) {
+    const p = parentOf(t)
+    if (p) (kids.get(p) ?? kids.set(p, []).get(p)!).push(t)
+    else roots.push(t)
+  }
+  const out: { tag: string; depth: number; last: boolean }[] = []
+  const seen = new Set<string>()
+  const walk = (t: string, depth: number, last: boolean) => {
+    if (seen.has(t)) return
+    seen.add(t)
+    out.push({ tag: t, depth, last })
+    const ks = kids.get(t) ?? []
+    ks.forEach((k, i) => walk(k, depth + 1, i === ks.length - 1))
+  }
+  roots.forEach((r) => walk(r, 0, false))
+  for (const t of tags) if (!seen.has(t)) walk(t, 0, false)   // 父子成环之类的坏拓扑:照原序兜底,不丢轨
+  return out
 }

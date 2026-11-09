@@ -239,12 +239,23 @@ describe('样本与成员框', () => {
   }
   const sampleOps = () => fake.batches.flat().filter((o: any) => o.kind === 'sample')
 
-  it('放样本:归当前 pattern、默认 pos,成员框按推断(跨过样本日的不收);工具切回 box,它成为选中的当前样本', async () => {
+  it('工具默认都不亮;点一下亮、再点一下熄,点亮一个另一个就熄', async () => {
     const s = await withChart()
-    s.tool = 'point'
+    expect(s.tool).toBe(null)
+    s.toggleTool('box')
+    expect(s.tool).toBe('box')
+    s.toggleTool('point')
+    expect(s.tool).toBe('point')
+    s.toggleTool('point')
+    expect(s.tool).toBe(null)
+  })
+
+  it('放样本:归当前 pattern、默认 pos,成员框按推断(跨过样本日的不收);工具熄灭,它成为选中的当前样本', async () => {
+    const s = await withChart()
+    s.toggleTool('point')
     const id = s.placeSample('AAA', '2025-02-28')
     expect(id).toBe('s-pc-10')
-    expect(s.tool).toBe('box')
+    expect(s.tool).toBe(null)
     expect(s.selectedSampleId).toBe(id)
     expect(s.currentSampleId).toBe(id)
     await s.flushed()

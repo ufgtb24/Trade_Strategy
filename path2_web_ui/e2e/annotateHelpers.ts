@@ -143,8 +143,16 @@ export async function barCount(page: Page): Promise<number> {
   return page.evaluate(() => (window as any).__e2e.chartMain().getOption().xAxis[0].data.length)
 }
 
-/** 在 K 线区从下标 i0 拖到 i1,画一个还没起名的框,返回它的编号。 */
+/** 点亮 box 工具(工具默认都不亮,用一次就熄;已经亮着就不动)。 */
+export async function boxOn(page: Page) {
+  const btn = page.getByTestId('tool-box')
+  if (!/\bon\b/.test((await btn.getAttribute('class')) ?? '')) await btn.click()
+  await expect(btn).toHaveClass(/\bon\b/)
+}
+
+/** 点亮 box,在 K 线区从下标 i0 拖到 i1,画一个还没起名的框,返回它的编号。 */
 export async function drawOnKline(page: Page, i0: number, i1: number): Promise<string> {
+  await boxOn(page)
   const before = await page.evaluate(() => (window as any).__e2e.ann().selectedBoxId)
   await drag(page, await xOf(page, i0), await klineY(page), await xOf(page, i1), await klineY(page))
   await expect.poll(() => page.evaluate(() => (window as any).__e2e.ann().selectedBoxId)).not.toBe(before)
