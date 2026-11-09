@@ -10,10 +10,12 @@ import { describe, it, expect } from 'vitest'
 import {
   COMPARE_BRACKET_ROW_H, INK, LANE_PAD, MISSING_EDGE, UNMAPPED_EDGE, VERMILION, annotateLayer, bracketGeometry,
   buildAnnotateSubOption,
-  bracketPick, bracketRects, laneGeometry, packBrackets, type BracketItem, type CompareMarks,
+  bracketContentBottom, bracketPick, bracketRects, laneGeometry, packBrackets, type BracketItem, type CompareMarks,
 } from '../src/render/annotateLanes'
 import { buildSubDecorGraphics, buildSubOption, computeEventData, makeRenderBracket } from '../src/render/chart'
-import { computeSubGeometry, BAND_TOP_PAD, BAND_LANE_H, USER_APP_EDGE_COLOR, USER_APP_EDGE_H } from '../src/render/subGeometry'
+import {
+  computeSubGeometry, BAND_TOP_PAD, BAND_LANE_H, HITS_FILL, USER_APP_EDGE_COLOR, USER_APP_EDGE_H, USER_APP_GAP,
+} from '../src/render/subGeometry'
 import { buyDaysOf } from '../src/render/fold'
 import type { Lane } from '../src/annotate/model'
 import type { EventDict, HitDict } from '../src/types'
@@ -117,7 +119,7 @@ describe('compare 的标注层', () => {
     const l = layer({ ...CMP, userActive: true })
     expect(l.graphics.find(g => g.type === 'text' && g.style.text === 'user').style.fontWeight).toBe('bold')
   })
-  it('用户的框与 app 的轨相邻处:每个给定的 y 一道全宽粗深线', () => {
+  it('用户的框与 app 的轨相邻处:每个给定的 y 一道全宽分界线', () => {
     const l = layer({ ...CMP, edges: [40, 120] })
     const lines = l.graphics.filter(g => g.type === 'rect' && g.style.fill === USER_APP_EDGE_COLOR)
     expect(lines.map(g => g.top + g.shape.height / 2)).toEqual([40, 120])
@@ -219,15 +221,23 @@ describe('合进的主视图副图', () => {
     expect(opt.graphic.filter((x: any) => x.type === 'text').map((x: any) => x.style.text))
       .toContain('{n|plateau}  {biz|站上新平台}')
   })
-  it('compare 下 hit 行接在用户区下面(appBracketTop),hits 表头跟着下移', () => {
-    const geom = computeSubGeometry({ bracketLaneCount: 1, bandLaneCounts: [1, 1], userBracketH: 30 })
+  it('user 行最后一行样本跨度的下沿:行底往上让出轨的内边距与条外的空', () => {
+    const g = bracketGeometry(1, 18, 50)                       // h = 4*2 + 18 = 26,条高 18-(13-9) = 14
+    expect(bracketContentBottom(g)).toBe(50 + 4 + 2 + 14)
+    expect(bracketContentBottom(bracketGeometry(2, 18, 50))).toBe(50 + 4 + 18 + 2 + 14)
+  })
+
+  it('compare 下 hit 行接在用户区下面(分界线到上面跨度下沿、到下面 hit 行上沿一样远),hits 表头跟着下移', () => {
+    const geom = computeSubGeometry({ bracketLaneCount: 1, bandLaneCounts: [1, 1], userContentBottom: 30 })
     const r = makeRenderBracket([{ hit_id: 'h', kind: 'mark' }], null, new Set(), 1, false, geom.appBracketTop)
     const out: any = r({ dataIndex: 0 }, { ...api([2, 4, 0, 1]), coord: ([i]: number[]) => [i * 10] })
-    expect(out.children[0].shape.y).toBe(30)
+    expect(out.children[0].shape.y).toBe(30 + 2 * USER_APP_GAP)
     const bundle = computeEventData(bars, [ev('plateau', 1, 4)],
       [{ hit_id: 'h', start_idx: 1, end_idx: 4, node_index: { plateau: 'plateau@1-4' } } as unknown as HitDict], input)
     const opt: any = buildSubOption(bars, bundle, geom, input, 800)
-    expect(opt.graphic.find((x: any) => x.type === 'text' && x.style.text === 'hits').top).toBe(33)   // user 行底 30 处有粗深线,表头再下移 3 像素
+    expect(opt.graphic.find((x: any) => x.type === 'text' && x.style.text === 'hits').top).toBe(30 + 2 * USER_APP_GAP)
+    // 浅黄底从分界线起
+    expect(opt.graphic.find((x: any) => x.type === 'rect' && x.style.fill === HITS_FILL).top).toBe(30 + USER_APP_GAP)
     expect(BAND_TOP_PAD + BAND_LANE_H).toBeGreaterThan(0)
   })
 })

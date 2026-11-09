@@ -559,8 +559,8 @@ describe('buildSubDecorGraphics — Task 3', () => {
     // 没有 hit 时不垫
     const none = buildSubDecorGraphics(bandGeom, bracketH, bandLabelTexts, false, chartSubWidth)
     expect(none.filter((e: any) => e.type === 'rect' && e.style?.fill === HITS_FILL)).toHaveLength(0)
-    // compare:hits 区顶是用户区底(粗深线),底从那里起
-    const cmp = buildSubDecorGraphics(bandGeom, 60, bandLabelTexts, true, chartSubWidth, 1, {}, [], 40)
+    // compare:hits 区顶是两区之间的分界线,底从那里起
+    const cmp = buildSubDecorGraphics(bandGeom, 60, bandLabelTexts, true, chartSubWidth, 1, {}, [], 46, [], 40)
     const cbg = cmp.find((e: any) => e.type === 'rect' && e.style?.fill === HITS_FILL)
     expect([cbg.top, cbg.shape.height]).toEqual([40, 60 + DIVIDER_GAP - 40])
   })

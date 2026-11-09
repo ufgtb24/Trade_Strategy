@@ -21,6 +21,7 @@ import {
   BAND_ZOOM_STEP_BUTTON,
   BAND_ZOOM_STEP_WHEEL,
   LS_KEY_BAND_ZOOM,
+  USER_APP_GAP,
 } from '../src/render/subGeometry'
 
 describe('computeSubGeometry (Task 2)', () => {
@@ -211,25 +212,27 @@ describe('composeEffectiveSubH(spec 2026-07-03-subchart-boundary-model §1)', ()
 
 describe('compare 的合并几何(两区:顶上让出用户区,下面和主视图一样)', () => {
   const base = { bracketLaneCount: 2, bandLaneCounts: [3, 1] }
-  it('不传 userBracketH 时与主视图相同:hit 行从顶 pad 起,没有分界线', () => {
+  it('不传 userContentBottom 时与主视图相同:hit 行从顶 pad 起,没有分界线', () => {
     const a = computeSubGeometry(base, 1.5)
     expect(a.appBracketTop).toBe(BAND_TOP_PAD)
+    expect(a.hitsAreaTop).toBe(0)
     expect(a.userAppEdges).toEqual([])
   })
-  it('hit 行接在用户区下面;band 照原来的先后接在 hits 下面,各自的高与主视图相同;分界线在用户区底', () => {
+  it('hit 行接在用户区下面;band 照原来的先后接在 hits 下面,各自的高与主视图相同;分界线在用户区底下,上下各空一段', () => {
     const app = computeSubGeometry(base)
-    const g = computeSubGeometry({ ...base, userBracketH: 70 })
-    expect(g.appBracketTop).toBe(70)
-    expect(g.bracketH).toBe(70 + 2 * BAND_LANE_H + BAND_BOT_PAD)
+    const g = computeSubGeometry({ ...base, userContentBottom: 70 })
+    expect(g.appBracketTop).toBe(70 + 2 * USER_APP_GAP)
+    expect(g.hitsAreaTop).toBe(70 + USER_APP_GAP)
+    expect(g.bracketH).toBe(70 + 2 * USER_APP_GAP + 2 * BAND_LANE_H + BAND_BOT_PAD)
     expect(g.bandGeom[0].top).toBe(g.bracketH + DIVIDER_GAP)
     expect(g.bandGeom.map(x => x.h)).toEqual(app.bandGeom.map(x => x.h))
     expect(g.bandGeom[1].top).toBe(g.bandGeom[0].top + g.bandGeom[0].h)
-    expect(g.userAppEdges).toEqual([70])
+    expect(g.userAppEdges).toEqual([70 + USER_APP_GAP])
   })
   it('没有 hit 也给用户区留位', () => {
-    const g = computeSubGeometry({ bracketLaneCount: 0, bandLaneCounts: [1], userBracketH: 21 })
-    expect(g.bracketH).toBe(21 + BAND_BOT_PAD)
-    expect(g.userAppEdges).toEqual([21])
+    const g = computeSubGeometry({ bracketLaneCount: 0, bandLaneCounts: [1], userContentBottom: 21 })
+    expect(g.bracketH).toBe(21 + 2 * USER_APP_GAP + BAND_BOT_PAD)
+    expect(g.userAppEdges).toEqual([21 + USER_APP_GAP])
   })
 })
 

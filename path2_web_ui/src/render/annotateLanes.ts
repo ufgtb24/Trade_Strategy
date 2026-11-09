@@ -20,7 +20,7 @@
  * - 轨标题:map 了的轨在特征名后写 `⇣ <node>`,没 map 的挂会话蓝 `unmapped`;
  * - bracket 的 user 行:▲ 字母后挂 app 与用户判断一致与否的记号 `✓` / `✗`(✗ 朱红底),matched / unmatched 在悬停;
  *   当家行是样本时(←/→ 在样本间走)user 行头加粗;
- * - 两区之间一道粗深线(位置由 subGeometry 的 userAppEdges 给):线上是用户画的、线下是 app 认的,
+ * - 两区之间一道分界线(位置由 subGeometry 的 userAppEdges 给):线上是用户画的、线下是 app 认的,
  *   user 行与 hits 隔着这道线正好上下对照;
  * - 框终点那天它对的 node 一个 event 都没有:框右端挂琥珀 `missing`;map 了的框悬停写 `start not compared`
  *   (框的左端不和 app 比,见 stores/compare.ts)。
@@ -148,6 +148,12 @@ function bracketYRange(g: LaneGeom, row: number): { top: number; bottom: number 
   return { top, bottom: top + barH }
 }
 
+/** bracket 轨最后一行样本跨度的下沿(compare 下两区分界线到它、到 hit 行上沿的距离相等,见 subGeometry 的 USER_APP_GAP)。 */
+export function bracketContentBottom(g: LaneGeom): number {
+  const rows = Math.max(1, Math.round((g.h - LANE_PAD * 2) / (g.rowH ?? BRACKET_ROW_H)))
+  return bracketYRange(g, rows - 1).bottom
+}
+
 /** bracket 轨上各样本跨度的像素范围(点选样本用),toPx、bw 同 boxRects。 */
 export function bracketRects(placed: readonly PlacedBracket[], g: LaneGeom, dates: readonly string[],
                              toPx: (i: number) => number, bw: number): BoxPx[] {
@@ -222,7 +228,7 @@ export interface CompareMarks {
   compared: ReadonlySet<string>
   /** 当家行是样本(←/→ 在样本间走):user 行头加粗 */
   userActive: boolean
-  /** 用户的框与 app 的轨上下相邻处的 y(像素):画粗深线 */
+  /** 用户的框与 app 的轨上下相邻处的 y(像素):画分界线 */
   edges?: readonly number[]
 }
 

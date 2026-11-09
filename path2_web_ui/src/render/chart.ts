@@ -666,8 +666,9 @@ export function buildSubDecorGraphics(
   zoomFactor: number = 1.0,
   active: { band?: number; hits?: boolean; linked?: readonly number[] } = {},   // 当家行所在那条 band / bracket、选中框对的 band 的表头加粗
   extras: readonly (BandLabelExtra | null)[] = [],  // 表头 node 名后跟的用户特征名 / app_only(按 band 下标)
-  hitsTop: number = BAND_TOP_PAD,                    // hits 表头的顶(compare 下让出上面的 user 行)
+  hitsTop: number = BAND_TOP_PAD,                    // hits 表头的顶 = hit 第 0 行的顶(compare 下在分界线下面)
   tree: readonly ({ depth: number; last: boolean } | null)[] = [],  // 轨在父子树里的位置(subBandTree),子轨名缩进挂 ├ / └
+  hitsAreaTop: number = 0,                           // hits 区的顶,浅黄底从这里铺起(compare 下是那道分界线)
 ): any[] {
   const graphics: any[] = []
   // 行的底色、分隔线从容器最左起(盖住左边的轨名栏),轨名写在轨名栏里
@@ -687,10 +688,10 @@ export function buildSubDecorGraphics(
     })
   })
 
-  // 2. hits 区的底:浅黄,从 hits 区顶(compare 下是用户区底的那道粗深线)铺到第一条 band 的顶;
+  // 2. hits 区的底:浅黄,从 hits 区顶(compare 下是用户区底的那道分界线)铺到第一条 band 的顶;
   //    和 band 之间不画分隔线,靠底色分开
   if (hitsLabelVisible) {
-    const top = hitsTop > BAND_TOP_PAD ? hitsTop : 0
+    const top = hitsAreaTop
     graphics.push({
       type: 'rect',
       left: SUB_ROW_LEFT,
@@ -751,8 +752,8 @@ export function buildSubDecorGraphics(
     graphics.push({
       type: 'text',
       left: SUB_TITLE_LEFT,
-      // 与 bandLabels 的 pad 锚定语义对称(unify 顶 pad);compare 下 hits 顶上是 user 行底的粗深线,下移 3 像素免得压字
-      top: hitsTop + (hitsTop > BAND_TOP_PAD ? 3 : 0),
+      // 与 bandLabels 的 pad 锚定语义对称(unify 顶 pad);compare 下 hit 第 0 行已在分界线下空了一段
+      top: hitsTop,
       textAlign: 'left',
       textVerticalAlign: 'top',
       style: {
@@ -815,6 +816,7 @@ export function buildSubOption(
     bandLabelTexts.map((b) => input.bandExtras?.[b] ?? null),
     bracketTop,
     subBandTree(bandLabelTexts, input.topology),
+    subGeom.hitsAreaTop ?? 0,
   )
 
   return {

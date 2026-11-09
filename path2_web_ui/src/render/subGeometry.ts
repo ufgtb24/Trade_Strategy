@@ -38,9 +38,13 @@ export const ACTIVE_LINE_H = 2.5               // 当家行的底线
 // 族底线起点的竖头:读作「这一族从这天开始」,和全宽的分隔线区分开(高度按行高的比例,待验证)
 export const FAMILY_HEAD_RATIO = 0.6
 export const FAMILY_HEAD_W = 1.5
-// compare:用户的框轨与 app 的轨(含 hits)相邻处的粗深线
-export const USER_APP_EDGE_COLOR = '#1f2937'
+// compare:用户区与 app 区(含 hits)之间的分界线:高饱和的蓝(L* 约 43),比 app 轨的天蓝格(L* 约 61)深一截,
+// 上面是白、下面是 hits 的浅黄,冷暖、深浅都拉开
+export const USER_APP_EDGE_COLOR = '#0050ff'
 export const USER_APP_EDGE_H = 2.5
+// 分界线到上面 user 行样本跨度的下沿、到下面 hit 行的上沿,距离相同(上下对称);hit 行选中时外扩的框
+// (上移 1.5、描边 2.5)也碰不到线(待验证)
+export const USER_APP_GAP = 12
 export const CURSOR_COLOR = '#1e293b'          // 当前日竖线:与选中框同一种深色
 export const CURSOR_HALO = '#ffffff'           // 两侧白边,压在任何色块上都拉开深浅
 export const HL_EXPAND_H = 3         // 高度增量(乘 z),比例恒 (7+3)/7
@@ -86,9 +90,11 @@ export interface SubGeometry {
   bracketH: number      // bracket 区总高(空 hits 时 = 0)
   bandGeom: BandGeom[]  // 每 band 的 top/h/laneCount,顺序与输入 bandLaneCounts 一致
   subCanvasH: number    // 副图 canvas 需要的总高
-  /** bracket 区里 hit 第 0 行的顶(lane_i 的 y = appBracketTop + i*9·z);不传 userBracketH 时 = BAND_TOP_PAD */
+  /** bracket 区里 hit 第 0 行的顶(lane_i 的 y = appBracketTop + i*9·z);不传 userContentBottom 时 = BAND_TOP_PAD */
   appBracketTop: number
-  /** compare:上区(用户)与下区(app)的分界 y,画一道粗深线;不传 userBracketH 时为空 */
+  /** hits 区的顶(浅黄底从这里铺起):app 模式 0;compare 是两区之间那道分界线 */
+  hitsAreaTop: number
+  /** compare:上区(用户)与下区(app)的分界 y,画一道分界线;不传 userContentBottom 时为空 */
   userAppEdges: number[]
 }
 
@@ -96,9 +102,9 @@ export interface SubGeometryInput {
   bracketLaneCount: number     // bracket 轨 hit 族分行后的 max lane + 1(即 lane 数)
   bandLaneCounts: number[]     // 每 band 的 lane 数(顺序按 tagList 排)
   // ── compare(主视图副图 + 标注层,两区见 render/compareLayout.ts)才传;不传时与 app 模式逐项相同 ──
-  /** 副图顶上让给用户区(特征轨 + 样本跨度那一行 user,标注层 annotateLanes 的几何,不随 band zoom 变)的像素高;
-   *  hit 的行排在它下面 */
-  userBracketH?: number
+  /** 用户区(特征轨 + 样本跨度那一行 user,标注层 annotateLanes 的几何,不随 band zoom 变)里最低那条样本跨度的下沿
+   *  (annotateLanes 的 bracketContentBottom);分界线画在它下面 USER_APP_GAP,hit 的行再往下 USER_APP_GAP */
+  userContentBottom?: number
 }
 
 export function computeSubGeometry(
@@ -107,9 +113,10 @@ export function computeSubGeometry(
 ): SubGeometry {
   // bracket 区与 band 同一套几何:顶/底呼吸 pad(不乘 z)+ laneCount * BAND_LANE_H * z
   // (spec 2026-07-03-bracket-band-unify §3.2;顶 pad 为本次新增,原区顶紧贴 banner)
-  // compare:区顶先让出用户区(userBracketH,自带上下空),hit 的行接在下面
-  const userH = input.userBracketH ?? 0
-  const appBracketTop = userH > 0 ? userH : BAND_TOP_PAD
+  // compare:用户区最低的样本跨度下沿往下空 USER_APP_GAP 画分界线,线下再空 USER_APP_GAP 才是 hit 的行(上下对称)
+  const userH = input.userContentBottom ?? 0
+  const edgeY = userH + USER_APP_GAP
+  const appBracketTop = userH > 0 ? edgeY + USER_APP_GAP : BAND_TOP_PAD
   const bracketH = input.bracketLaneCount > 0 || userH > 0
     ? appBracketTop + input.bracketLaneCount * BAND_LANE_H * zoomFactor + BAND_BOT_PAD
     : 0
@@ -132,9 +139,10 @@ export function computeSubGeometry(
   const isEmpty = bracketH === 0 && input.bandLaneCounts.length === 0
   const subCanvasH = isEmpty ? SUB_CANVAS_MIN_H : naturalCanvasH
 
-  // compare:上下两区的分界就是用户区的底
-  const userAppEdges = userH > 0 ? [userH] : []
-  return { bracketH, bandGeom, subCanvasH, appBracketTop, userAppEdges }
+  // compare:上下两区的分界在用户区底下 USER_APP_GAP 处
+  const userAppEdges = userH > 0 ? [edgeY] : []
+  const hitsAreaTop = userH > 0 ? edgeY : 0
+  return { bracketH, bandGeom, subCanvasH, appBracketTop, hitsAreaTop, userAppEdges }
 }
 
 /**

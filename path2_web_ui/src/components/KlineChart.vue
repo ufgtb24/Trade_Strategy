@@ -113,7 +113,7 @@ import { emptySlots } from '../annotate/membership'
 import { boxMarks, resizeLimit, sampleLetters, sampleRange, sampleTag } from '../annotate/samples'
 import { featureOrder, patternSamples } from '../annotate/grouping'
 import {
-  afterDimSeries, annotateDataZoom, annotateLayer, bracketGeometry, buildAnnotateSubOption, laneGeometry,
+  afterDimSeries, annotateDataZoom, annotateLayer, bracketContentBottom, bracketGeometry, buildAnnotateSubOption, laneGeometry,
   mainMarksSeries, mainSamplesSeries, packBrackets, triangleRect, BRACKET_ROW_H, COMPARE_BRACKET_ROW_H, LANES_TOP,
   type BracketItem, type Draft, type LaneGeom, type SampleMark,
 } from '../render/annotateLanes'
@@ -134,7 +134,7 @@ const { symbol, effectiveAnalysis, nodeColors, nodeVisible, level, tagMap, isola
         comparing, linkedView, endNode, currentDay, activeFamilyKey } = storeToRefs(view)
 // annotating(annotate、compare):画 K 线、成交量和用户的标注,不给框选诊断、driver 菜单。
 // annotate 不画任何 app 产物;compare 的副图就是主视图那张(app 的族行、bracket 的 hit 行、档位、缩放、选中与当前日),
-// 顶上让出用户区:特征轨在上、样本跨度那一行 user 在用户区最后,一道粗深线下面就是 app 区(标注层,render/annotateLanes.ts
+// 顶上让出用户区:特征轨在上、样本跨度那一行 user 在用户区最后,一道分界线下面就是 app 区(标注层,render/annotateLanes.ts
 // 的 annotateLayer;两区的对应 render/compareLayout.ts);K 线区是 annotate 的标注层加上 app 模式 K 线区画的东西。
 // wholeChart:图是这只股票截到训练段末日的全部 K 线(annotate、compare、现算的 app);扫描结果的 app 只画扫描窗口
 const wholeChart = computed(() => mode.value !== 'app' || linkedView.value)
@@ -748,7 +748,7 @@ function renderAnnotateLayers() {
 }
 
 // compare 的副图:主视图那张副图(buildSubOption,app 的 hit 行与族行,顶上让出用户区),
-// 再合进标注层(annotateLayer:用户区的特征轨与 user 行、⇣ / unmapped / ✓ ✗ / missing、两区分界的粗深线)
+// 再合进标注层(annotateLayer:用户区的特征轨与 user 行、⇣ / unmapped / ✓ ✗ / missing、两区分界的分界线)
 function renderCompareSub() {
   const lay = cmpLayout.value
   if (!chartSub || !lay || !effectiveAnalysis.value) return
@@ -758,7 +758,8 @@ function renderCompareSub() {
   const params = { ...buildRenderInput(), zoomOverride: zoom, zoomFactor: bandZoomFactor.value,
                    linkedBands: cmpLinkedBands.value }
   const bg = annBracket.value.geom
-  const subGeom = computeSubGeometry({ ...laneCountsOf(bundle), userBracketH: bg.top + bg.h }, bandZoomFactor.value)
+  const subGeom = computeSubGeometry({ ...laneCountsOf(bundle), userContentBottom: bracketContentBottom(bg) },
+                                     bandZoomFactor.value)
   subCanvasH.value = subGeom.subCanvasH
   cmpGeom.value = { height: subGeom.subCanvasH }
   const opt: any = buildSubOption(bars.value, bundle, subGeom, params, chartSub.getWidth(),
