@@ -1,1 +1,0 @@
-../../../../.scratch/annotation-path2/prototypes/01-annotation/data.js
