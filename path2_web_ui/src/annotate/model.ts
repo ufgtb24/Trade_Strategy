@@ -6,14 +6,19 @@
  *   {state: {machine, data_fingerprint, features, patterns, charts}, conflicts, unsynced, violations,
  *    fingerprint, merges, revs, next_seq, ignored_files, membership}
  * membership 是成员框推断的默认值 {gap, near},和会话用的参照实现读同一处设定。
- * 一条操作把一个对象改成新值 {kind, id, base, value};value 为 null 表示删除;框和样本的 value 带 symbol。
+ * 一条操作把一个对象改成新值 {kind, id, base, value};value 为 null 表示删除;框、样本、反馈的 value 带 symbol。
+ * 读结果的 machines 是 {机器名: {through: n}}(这台机器从 1 起连续到齐的批次序号,会话定格用,界面不读)。
+ *
+ * 反馈(feedback,spec 6.13):用户在 compare 里对 app 已经买了的地方挑刺,一条落成一段日期 [start, end],
+ * 挂在各自股票下(charts[i].feedback),与 boxes、samples 并列;这只股票没有反馈时不出 feedback 键。
+ * 字段与校验见后端 path2_web/annotation/store.py 模块说明「反馈」;界面侧的取法与保存条件在 annotate/feedback.ts。
  *
  * 属性三态:attrs 是特征编号 → true / false,键不在就是 null(没看过)。null 不算「没有」:
  * 后加的属性在旧框上是没看过,不能被当成 false 算进「没有」里。
  */
 import { canAttach, parents, rankOf, type NestBox } from './membership'
 
-export type AnnKind = 'feature' | 'pattern' | 'box' | 'sample'
+export type AnnKind = 'feature' | 'pattern' | 'box' | 'sample' | 'feedback'
 
 export interface AnnFeature { id: string; name: string; definition?: string }
 export interface AnnBox {
@@ -36,7 +41,32 @@ export interface AnnSample {
   note?: string
 }
 export interface AnnPattern { name: string; definition?: string; flags?: { feature: string; mapping_row: number }[] }
-export interface AnnChart { symbol: string; boxes: AnnBox[]; samples: AnnSample[] }
+/** 反馈落成的那段日期从哪来:point 一个买点日、family 一族 hit、range 拖出来的一段。 */
+export type FeedbackTarget = 'point' | 'family' | 'range'
+/** picked 是用户自己挑的(反馈恒为它);其余是盲看标记的来源(和反馈共用这个 kind,创建后不可改)。 */
+export type FeedbackSource = 'picked' | 'random' | 'added' | 'removed' | 'tuned_added' | 'tuned_removed'
+/** 反馈的答案只取 neg / off_pattern;pos 只出现在盲看标记里。 */
+export type FeedbackAnswer = 'neg' | 'off_pattern'
+/**
+ * 一条反馈(状态里的,不带 symbol;存进文件时带上,见 feedbackValue)。
+ * pattern 是标注里的 pattern 名,app_id 是 app 模块名,app_ver 是记录时 app 的版本指纹(只记出处);
+ * family_start 只在 target 为 family 时有(这一族 hit 的起点日期);segments 是 off_pattern 点出的 node_id。
+ */
+export interface AnnFeedback {
+  id: string
+  pattern: string
+  app_id: string
+  app_ver: string
+  start: string
+  end: string
+  target: FeedbackTarget
+  source: FeedbackSource
+  answer: FeedbackAnswer | 'pos'
+  note?: string
+  segments?: string[]
+  family_start?: string
+}
+export interface AnnChart { symbol: string; boxes: AnnBox[]; samples: AnnSample[]; feedback?: AnnFeedback[] }
 export interface AnnState {
   machine: string
   data_fingerprint: string | null
@@ -70,10 +100,14 @@ export interface AnnRead {
   membership: MembershipDefaults
   /** match 的容差(根数):后端 path2_web/annotation/match.py 唯一设定,判 match 时读它(annotate/compareRead.ts) */
   match: MatchTolerance
+  /** 每台机器从 1 起连续到齐的批次序号(会话定格用;界面不读) */
+  machines?: Record<string, { through: number }>
 }
 export interface AnnOp { kind: AnnKind; id: string; base: string | null; value: any }
 /** 存进文件的框:状态里的框再带上它所在的股票。 */
 export type StoredBox = AnnBox & { symbol: string }
+/** 存进文件的反馈:状态里的反馈再带上它所在的股票。 */
+export type StoredFeedback = AnnFeedback & { symbol: string }
 /** 读结果里一条还能拆回的合并:被删的词(删之前的值)、并进的词、那些框在合并那一批改前改后的值。 */
 export interface AnnMerge {
   ref: string
@@ -84,8 +118,8 @@ export interface AnnMerge {
   boxes: { id: string; before: StoredBox; after: StoredBox }[]
 }
 
-/** 带机器名的新编号:词 w、框 b、样本 s。 */
-export function newId(letter: 'w' | 'b' | 's', machine: string, seq: number): string {
+/** 带机器名的新编号:词 w、框 b、样本 s、反馈 f。 */
+export function newId(letter: 'w' | 'b' | 's' | 'f', machine: string, seq: number): string {
   return `${letter}-${machine}-${seq}`
 }
 
@@ -114,6 +148,21 @@ export function sampleValue(symbol: string, smp: AnnSample): Record<string, unkn
   return v
 }
 
+/**
+ * 反馈存进操作的值:带 symbol;空的 note、空的 segments 不写;family_start 只在 target 为 family 时写
+ * (后端只许 family 带它)。其余字段照抄。
+ */
+export function feedbackValue(symbol: string, fb: AnnFeedback): Record<string, unknown> {
+  const v: Record<string, unknown> = {
+    id: fb.id, symbol, pattern: fb.pattern, app_id: fb.app_id, app_ver: fb.app_ver,
+    start: fb.start, end: fb.end, target: fb.target, source: fb.source, answer: fb.answer,
+  }
+  if (fb.note) v.note = fb.note
+  if (fb.segments?.length) v.segments = [...fb.segments]
+  if (fb.target === 'family' && fb.family_start) v.family_start = fb.family_start
+  return v
+}
+
 /** 词存进操作的值:定义为空就不写。 */
 export function featureValue(f: AnnFeature): Record<string, unknown> {
   return f.definition ? { id: f.id, name: f.name, definition: f.definition } : { id: f.id, name: f.name }
@@ -135,11 +184,19 @@ export function findSample(s: AnnState, id: string): { chart: AnnChart; sample: 
   return null
 }
 
+export function findFeedback(s: AnnState, id: string): { chart: AnnChart; feedback: AnnFeedback } | null {
+  for (const chart of s.charts) {
+    const feedback = chart.feedback?.find(x => x.id === id)
+    if (feedback) return { chart, feedback }
+  }
+  return null
+}
+
 export function chartOf(s: AnnState, symbol: string | null): AnnChart | null {
   return symbol ? s.charts.find(c => c.symbol === symbol) ?? null : null
 }
 
-const ID_SEQ = /^[wbs]-[A-Za-z0-9_]+-([1-9]\d*)$/
+const ID_SEQ = /^[wbsf]-[A-Za-z0-9_]+-([1-9]\d*)$/
 
 function stripSymbol(v: any): any {
   const { symbol: _s, ...rest } = v
@@ -151,17 +208,27 @@ const boxOrder = (a: AnnBox, b: AnnBox) =>
 /** 样本的先后:样本日早的在前,再按编号。 */
 export const sampleOrder = (a: AnnSample, b: AnnSample) =>
   a.date < b.date ? -1 : a.date > b.date ? 1 : a.id < b.id ? -1 : 1
+/** 反馈的先后:同后端,按(start、end、编号)。 */
+const feedbackOrder = (a: AnnFeedback, b: AnnFeedback) =>
+  a.start < b.start ? -1 : a.start > b.start ? 1 : a.end < b.end ? -1 : a.end > b.end ? 1 : a.id < b.id ? -1 : 1
 
 /**
  * 把一批操作套到读结果上,返回新的读结果(不改入参):界面保存时先这样显示,后端回来的结果再整个换上。
  * next_seq 接到用过的最大号之后;revs、冲突等不动(真正保存时 base 取后端回来的 revs)。
+ * 按 kind 分桶:框进 boxes、样本进 samples、反馈进 feedback(同后端);一只股票的反馈删光了就不出 feedback 键,
+ * 框、样本、反馈都没有的股票从 charts 里拿掉。
  */
 export function applyOps(r: AnnRead, ops: readonly AnnOp[]): AnnRead {
   const s: AnnState = {
     ...r.state,
     features: [...r.state.features],
     patterns: [...r.state.patterns],
-    charts: r.state.charts.map(c => ({ ...c, boxes: [...c.boxes], samples: [...c.samples] })),
+    // 每张图的三个数组都拷一份(feedback 有才拷):下面的 splice / push 不能改到入参
+    charts: r.state.charts.map(c => {
+      const out: AnnChart = { ...c, boxes: [...c.boxes], samples: [...c.samples] }
+      if (c.feedback) out.feedback = [...c.feedback]
+      return out
+    }),
   }
   let seq = r.next_seq
   const chartFor = (symbol: string): AnnChart => {
@@ -185,18 +252,21 @@ export function applyOps(r: AnnRead, ops: readonly AnnOp[]): AnnRead {
       else list.push({ ...op.value })
       continue
     }
-    const field = op.kind === 'box' ? 'boxes' : 'samples'
+    const field = op.kind === 'box' ? 'boxes' : op.kind === 'feedback' ? 'feedback' : 'samples'
     for (const c of s.charts) {
-      const i = (c[field] as any[]).findIndex(x => x.id === op.id)
-      if (i >= 0) c[field].splice(i, 1)
+      const list = c[field] as { id: string }[] | undefined
+      const i = list ? list.findIndex(x => x.id === op.id) : -1
+      if (i >= 0) list!.splice(i, 1)
     }
     if (op.value !== null) {
       const c = chartFor(op.value.symbol)
       if (op.kind === 'box') { c.boxes.push(stripSymbol(op.value)); c.boxes.sort(boxOrder) }
+      else if (op.kind === 'feedback') { c.feedback = [...(c.feedback ?? []), stripSymbol(op.value)]; c.feedback.sort(feedbackOrder) }
       else { c.samples.push(stripSymbol(op.value)); c.samples.sort(sampleOrder) }
     }
   }
-  s.charts = s.charts.filter(c => c.boxes.length || c.samples.length)
+  for (const c of s.charts) if (c.feedback && !c.feedback.length) delete c.feedback
+  s.charts = s.charts.filter(c => c.boxes.length || c.samples.length || c.feedback?.length)
   return { ...r, state: s, next_seq: seq }
 }
 

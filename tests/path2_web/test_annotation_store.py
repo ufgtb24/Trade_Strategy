@@ -12,7 +12,13 @@
 - 指纹对不上(或本机读不到指纹)时,读结果标出不符,状态照常返回;状态里的 data_fingerprint 是标注所依据的
   指纹(各批一致时),不是本机的;
 - 旧文件读出来逐条不变:fixtures/annotation_store_v1 是一组固定的批次文件,重放结果必须与同目录
-  expected.json 逐条一致。以后改格式时这组文件和期望都不许改,新版要原样读出它们(spec 4.5)。
+  expected.json 逐条一致。以后改格式时这组文件和期望都不许改,新版要原样读出它们(spec 4.5);
+- 反馈(kind feedback):三种 target 写进去、重放出来原样;每条取值规则各有一例被拒;没有反馈的股票不出
+  feedback 键,只有反馈的股票照样在 charts 里;
+- 盲看标记(source 不是 picked 的反馈)保存时改不了、删不掉,别的操作照常;绕过保存(同步来的)删改,读结果
+  的 violations 列出来、数据不改;
+- 会话定格:machines.through 是每台机器从 1 起连续到齐的序号,缺号时停在缺口前;as_of 截出的状态等于
+  「只重放到截止序号的批次」,没缺口时就是当时的状态。
 """
 from __future__ import annotations
 
@@ -76,6 +82,25 @@ def _box(oid, start, end, feature=None, symbol="AAPL", base=None, **extra):
 def _sample(oid, date, members, symbol="AAPL", pattern="W底", judgment="pos", base=None, **extra):
     return _op("sample", oid, {"id": oid, "symbol": symbol, "date": date, "pattern": pattern, "judgment": judgment,
                                "members": members, **extra}, base)
+
+
+def _feedback(oid, start, end=None, target="point", source="picked", answer="neg", note="不该买", symbol="AAPL",
+              base=None, **extra):
+    """一条反馈;缺省是合法的 point / picked / neg。note=None 表示不带 note;extra 可覆盖任何字段。"""
+    v = {"id": oid, "symbol": symbol, "pattern": "new_step", "app_id": "new_step", "app_ver": "0123456789abcdef",
+         "start": start, "end": end or start, "target": target, "source": source, "answer": answer}
+    if note is not None:
+        v["note"] = note
+    return _op("feedback", oid, {**v, **extra}, base)
+
+
+def _write_raw(adir: Path, machine: str, ts: str, seq: int, ops: list[dict]) -> str:
+    """绕过保存校验直接写一个批次文件(模拟同步来的、没经过本机校验的修改),返回文件名。"""
+    name = f"{machine}-{ts}-{seq}.json"
+    doc = {"schema": store.SCHEMA, "data_fingerprint": None,
+           "ops": [{"ts": ts, "machine": machine, **op} for op in ops]}
+    (adir / name).write_text(json.dumps(doc, ensure_ascii=False), encoding="utf-8")
+    return name
 
 
 def _delete(kind, oid, base):
@@ -501,3 +526,228 @@ def test_plain_delete_is_not_a_merge(tmp_path):
                              _delete("box", "b-pc-3", r["revs"]["box"]["b-pc-3"]),
                              _delete("feature", "w-pc-1", r["revs"]["feature"]["w-pc-1"])], now=_at(9, 5))
     assert store.read_annotations(cfg)["merges"] == []
+
+
+# ---------------------------------------------------------------- 反馈
+
+def _value(op) -> dict:
+    """状态里的样子:值去掉 symbol(状态里按它分到 charts)。"""
+    return {k: x for k, x in op["value"].items() if k != "symbol"}
+
+
+def test_feedback_round_trips_and_is_bucketed_per_chart(tmp_path):
+    """三种 target 和几种边界上合法的写法写进去、重放出来原样;按(start、end、编号)排;
+    没有反馈的股票不出 feedback 键,只有反馈的股票照样在 charts 里。"""
+    cfg = _cfg(_adir(tmp_path), "pc")
+    fbs = [
+        _feedback("f-pc-1", "2024-03-08"),                                                      # point
+        _feedback("f-pc-2", "2024-03-06", "2024-03-12", target="family", family_start="2024-02-20",
+                  answer="off_pattern", note=None, segments=["plateau", "new_step"]),           # family,只有分段
+        _feedback("f-pc-3", "2024-03-06", "2024-03-08", target="range", answer="off_pattern",
+                  note="整体都不像"),                                                             # range,只有 note
+        _feedback("f-pc-4", "2024-03-06", "2024-03-08", target="family", family_start="2024-03-06",
+                  segments=["plateau"]),                                                        # neg 带分段也行
+        _feedback("f-pc-5", "2025-12-31", source="random", answer="pos", note=None),             # 盲看标记 pos 不用 note
+        _feedback("f-pc-6", "2023-05-22", symbol="MSFT", source="removed", answer="off_pattern", note="不像"),
+    ]
+    store.append_batch(cfg, [*fbs, _box("b-pc-7", "2024-03-01", "2024-03-05"),
+                             _box("b-pc-8", "2024-01-02", "2024-01-05", symbol="NVDA")])
+    result = store.read_annotations(cfg)
+    charts = {c["symbol"]: c for c in result["state"]["charts"]}
+    assert list(charts) == ["AAPL", "MSFT", "NVDA"]
+    by_id = {op["id"]: op for op in fbs}
+    assert charts["AAPL"]["feedback"] == [_value(by_id[i]) for i in ("f-pc-3", "f-pc-4", "f-pc-2", "f-pc-1", "f-pc-5")]
+    assert [b["id"] for b in charts["AAPL"]["boxes"]] == ["b-pc-7"]
+    assert charts["MSFT"] == {"symbol": "MSFT", "boxes": [], "samples": [], "feedback": [_value(by_id["f-pc-6"])]}
+    assert "feedback" not in charts["NVDA"]
+    assert list(charts["AAPL"]) == ["symbol", "boxes", "samples", "feedback"]
+    assert list(charts["AAPL"]["feedback"][1]) == ["id", "pattern", "app_id", "app_ver", "start", "end", "target",
+                                                   "source", "answer", "note", "segments", "family_start"]
+    assert sorted(result["revs"]["feedback"]) == [f"f-pc-{n}" for n in range(1, 7)]
+    assert result["next_seq"] == 9                              # 反馈和词、框、样本共用一个编号序列
+    assert result["violations"] == []
+
+
+def _bare(**drop) -> dict:
+    """缺一个必填键的反馈。"""
+    op = _feedback("f-pc-1", "2024-03-08")
+    for k in drop:
+        del op["value"][k]
+    return op
+
+
+@pytest.mark.parametrize("op, fragment", [
+    (_feedback("f-pc-1", "2024-03-08", symbol="../x"), "非法代码"),
+    (_feedback("f-pc-1", "2024-03-08", pattern=""), "pattern"),
+    (_feedback("f-pc-1", "2024-03-08", app_id=""), "app_id"),
+    (_feedback("f-pc-1", "2024-03-08", app_ver=None), "app_ver"),
+    (_feedback("f-pc-1", "2024-03-12", "2024-03-08", target="range"), "晚于 end"),
+    (_feedback("f-pc-1", "2025-12-29", "2026-01-05", target="range"), "2025-12-31"),       # 晚于训练段末日
+    (_feedback("f-pc-1", "2024-02-30", "2024-03-08", target="range"), "不是真实日期"),
+    (_feedback("f-pc-1", "2024-03-08", target="week"), "target"),
+    (_feedback("f-pc-1", "2024-03-08", source="guess"), "source"),
+    (_feedback("f-pc-1", "2024-03-08", answer="pos"), "answer"),                              # 反馈没有 pos
+    (_feedback("f-pc-1", "2024-03-08", "2024-03-12"), "point"),                               # point 不是一天
+    (_feedback("f-pc-1", "2024-03-08", "2024-03-12", target="family"), "family_start"),
+    (_feedback("f-pc-1", "2024-03-08", "2024-03-12", target="family", family_start="2024-03-09"), "family_start"),
+    (_feedback("f-pc-1", "2024-03-08", "2024-03-12", target="family", family_start="2024-02-30"), "family_start"),
+    (_feedback("f-pc-1", "2024-03-08", "2024-03-12", target="range", family_start="2024-03-01"), "family_start"),
+    (_feedback("f-pc-1", "2024-03-08", note=None), "note"),                                   # neg 必须写理由
+    (_feedback("f-pc-1", "2024-03-08", note=""), "note"),
+    (_feedback("f-pc-1", "2024-03-08", answer="off_pattern", note=None, segments=[]), "至少一样"),
+    (_feedback("f-pc-1", "2024-03-08", answer="off_pattern", segments=["plateau", "plateau"]), "segments"),
+    (_feedback("f-pc-1", "2024-03-08", answer="off_pattern", segments=[""]), "segments"),
+    (_feedback("f-pc-1", "2024-03-08", answer="off_pattern", segments="plateau"), "segments"),
+    (_feedback("f-pc-1", "2024-03-08", "2024-03-12", target="family", family_start="2024-03-01", source="random",
+               answer="pos"), "盲看标记的 target"),
+    (_feedback("f-pc-1", "2024-03-08", "2024-03-12", target="range", source="added", answer="pos"),
+     "盲看标记的 target"),
+    (_feedback("f-pc-1", "2024-03-08", source="random", answer="maybe"), "盲看标记的 answer"),
+    (_feedback("f-pc-1", "2024-03-08", source="random", note=None), "note"),                  # 盲看 neg 必须写理由
+    (_feedback("f-pc-1", "2024-03-08", source="tuned_added", answer="off_pattern", note=None, segments=["plateau"]),
+     "note"),
+    (_feedback("f-pc-1", "2024-03-08", color="red"), "多出"),
+    (_bare(app_ver=None), "缺少"),
+    (_feedback("s-pc-1", "2024-03-08"), "f-<机器名>-<序号>"),                                # 编号字母与种类不符
+])
+def test_rejects_malformed_feedback(tmp_path, op, fragment):
+    """每条取值规则各一例:只违反这一条,整批拒收、一个文件都不写。"""
+    adir = _adir(tmp_path)
+    with pytest.raises(store.BatchRejected) as e:
+        store.append_batch(_cfg(adir, "pc"), [op])
+    [reason] = e.value.reasons
+    assert reason["code"] == "bad_op" and fragment in reason["message"]
+    assert list(adir.iterdir()) == []
+
+
+def test_blind_marks_cannot_be_changed_or_deleted(tmp_path):
+    """盲看标记改 answer、改 note、改成 picked、删掉都被拒;改、删 picked 的反馈和别的操作照常放行。"""
+    adir = _adir(tmp_path)
+    cfg = _cfg(adir, "pc")
+    blind = _feedback("f-pc-1", "2024-03-08", source="random", answer="pos", note=None)
+    store.append_batch(cfg, [blind, _feedback("f-pc-2", "2024-03-11")])
+    v, base = blind["value"], _rev(cfg, "feedback", "f-pc-1")
+    for value in ({**v, "answer": "neg", "note": "看着不像"},
+                  {**v, "note": "补一句"},
+                  {**v, "source": "picked", "answer": "neg", "note": "先改成 picked"},
+                  None):
+        before = _hashes(adir)
+        with pytest.raises(store.BatchRejected) as e:
+            store.append_batch(cfg, [_op("feedback", "f-pc-1", value, base),
+                                     _box("b-pc-3", "2024-03-01", "2024-03-05")])
+        assert [(r["code"], r["feedback"]) for r in e.value.reasons] == [("blind_immutable", "f-pc-1")]
+        assert _hashes(adir) == before
+
+    store.append_batch(cfg, [_feedback("f-pc-2", "2024-03-11", answer="off_pattern", note=None, segments=["plateau"],
+                                       base=_rev(cfg, "feedback", "f-pc-2")),
+                             _box("b-pc-3", "2024-03-01", "2024-03-05")])
+    store.append_batch(cfg, [_delete("feedback", "f-pc-2", _rev(cfg, "feedback", "f-pc-2"))])
+    result = store.read_annotations(cfg)
+    assert result["violations"] == []
+    assert result["state"]["charts"][0]["feedback"] == [_value(blind)]
+
+
+def test_blind_mark_changed_by_sync_is_listed_not_changed(tmp_path):
+    """同步来的批次不经保存校验:改了或删了盲看标记,读结果在 violations 里列出来,数据照原样;
+    这之后保存时只许把它改回原样。"""
+    adir = _adir(tmp_path)
+    pc = _cfg(adir, "pc")
+    blind = _feedback("f-upc-1", "2024-03-08", source="random", answer="pos", note=None)
+    v = blind["value"]
+    store.append_batch(_cfg(adir, "upc"), [blind], now=_at(9))
+    _write_raw(adir, "upc", "20261103T091000.000Z", 2,
+               [_op("feedback", "f-upc-1", {**v, "answer": "neg", "note": "改了"}, _rev(pc, "feedback", "f-upc-1"))])
+    result = store.read_annotations(pc)
+    [viol] = result["violations"]
+    assert (viol["code"], viol["feedback"]) == ("blind_immutable", "f-upc-1")
+    assert "answer" in viol["message"] and "note" in viol["message"]
+    assert result["state"]["charts"][0]["feedback"][0]["answer"] == "neg"
+
+    with pytest.raises(store.BatchRejected) as e:              # 接着改:拒
+        store.append_batch(pc, [_op("feedback", "f-upc-1", {**v, "answer": "off_pattern", "note": "再改"},
+                                    _rev(pc, "feedback", "f-upc-1"))], now=_at(9, 20))
+    assert [r["code"] for r in e.value.reasons] == ["blind_immutable"]
+    store.append_batch(pc, [_op("feedback", "f-upc-1", v, _rev(pc, "feedback", "f-upc-1"))], now=_at(9, 20))
+    assert store.read_annotations(pc)["violations"] == []      # 改回原样:放行,不再列
+
+    _write_raw(adir, "upc", "20261103T093000.000Z", 3, [_delete("feedback", "f-upc-1", _rev(pc, "feedback", "f-upc-1"))])
+    result = store.read_annotations(pc)
+    [viol] = result["violations"]
+    assert (viol["code"], viol["feedback"]) == ("blind_immutable", "f-upc-1") and "删" in viol["message"]
+    assert result["state"]["charts"] == []
+
+
+# ---------------------------------------------------------------- 会话定格:machines 与 as_of
+
+def test_schema_unchanged_and_golden_v1_machines():
+    assert store.SCHEMA == "path2_web.annotation/1"
+    got = store.read_annotations(_cfg(FIXTURE / "batches", "pc"))
+    assert got["machines"] == {"pc": {"through": 3}, "upc": {"through": 2}}
+    assert all("feedback" not in c for c in got["state"]["charts"])
+
+
+def test_machines_through_counts_only_contiguous_seqs(tmp_path):
+    """序号从 1 起连续到哪算到哪:pc 有 1、1、2、4(同号两个文件不影响)→ 2;upc 缺 1 号 → 0。"""
+    adir = _adir(tmp_path)
+    for n, (machine, ts, seq) in enumerate([("pc", "20261103T090000.000Z", 1), ("pc", "20261103T090500.000Z", 1),
+                                            ("pc", "20261103T091000.000Z", 2), ("pc", "20261103T092000.000Z", 4),
+                                            ("upc", "20261103T091500.000Z", 2)], start=1):
+        _write_raw(adir, machine, ts, seq, [_box(f"b-{machine}-{n}", "2024-03-01", "2024-03-05")])
+    assert store.read_annotations(_cfg(adir, "pc"))["machines"] == {"pc": {"through": 2}, "upc": {"through": 0}}
+
+
+def test_as_of_without_gap_reads_back_the_state_at_that_time(tmp_path):
+    """两台交错写同一个目录:定格时记下 {机器: through},之后再怎么改,按它截出来的状态都等于当时读到的。"""
+    adir = _adir(tmp_path)
+    pc, upc = _cfg(adir, "pc"), _cfg(adir, "upc")
+    store.append_batch(pc, [_box("b-pc-1", "2024-03-01", "2024-03-05")], now=_at(9))
+    store.append_batch(upc, [_feedback("f-upc-2", "2024-03-08")], now=_at(9, 5))
+    store.append_batch(pc, [_box("b-pc-1", "2024-03-01", "2024-03-04", base=_rev(pc, "box", "b-pc-1"))],
+                       now=_at(9, 10))
+    then = store.read_annotations(pc)
+    assert then["machines"] == {"pc": {"through": 2}, "upc": {"through": 1}}
+    frozen = {m: x["through"] for m, x in then["machines"].items()}
+
+    store.append_batch(upc, [_box("b-pc-1", "2024-03-01", "2024-03-03", base=_rev(upc, "box", "b-pc-1")),
+                             _delete("feedback", "f-upc-2", _rev(upc, "feedback", "f-upc-2"))], now=_at(9, 20))
+    store.append_batch(pc, [_feedback("f-pc-3", "2024-03-12")], now=_at(9, 30))
+    now = store.read_annotations(pc)
+    assert now["machines"] == {"pc": {"through": 3}, "upc": {"through": 2}}
+    assert now["state"] != then["state"]
+
+    past = store.read_annotations(pc, as_of=frozen)
+    assert past["state"] == then["state"]
+    assert past["conflicts"] == [] and past["unsynced"] == []
+    assert past["machines"] == now["machines"]                  # machines 照全部文件算,不受 as_of 影响
+
+
+def test_as_of_with_gap_replays_only_batches_up_to_the_cut(tmp_path):
+    """upc 的 2 号还没同步到、3 号先到了:through 停在 1;按它截出的状态等于只重放 pc 1 号与 upc 1 号,
+    3 号被截掉(下一轮会被当成新的再报一次)。as_of 里没有的机器整台截掉。"""
+    pc_dir, upc_dir, want_dir = _adir(tmp_path, "pc"), _adir(tmp_path, "upc"), _adir(tmp_path, "want")
+    pc, upc = _cfg(pc_dir, "pc"), _cfg(upc_dir, "upc")
+    p1 = store.append_batch(pc, [_box("b-pc-1", "2024-03-01", "2024-03-05")], now=_at(9))
+    u1 = store.append_batch(upc, [_box("b-upc-1", "2023-05-01", "2023-05-20", symbol="MSFT")], now=_at(9, 5))
+    u2 = store.append_batch(upc, [_box("b-upc-1", "2023-05-01", "2023-05-19", symbol="MSFT",
+                                       base=_rev(upc, "box", "b-upc-1"))], now=_at(9, 10))
+    u3 = store.append_batch(upc, [_feedback("f-upc-2", "2023-05-22", symbol="MSFT")], now=_at(9, 15))
+    for name in (u1, u3):
+        shutil.copy2(upc_dir / name, pc_dir / name)
+    shutil.copy2(pc_dir / p1, want_dir / p1)
+    shutil.copy2(upc_dir / u1, want_dir / u1)
+
+    full = store.read_annotations(pc)
+    assert full["machines"] == {"pc": {"through": 1}, "upc": {"through": 1}}
+    assert "feedback" in full["state"]["charts"][1]           # 3 号已到,不截时照常重放
+    frozen = {m: x["through"] for m, x in full["machines"].items()}
+    cut = store.read_annotations(pc, as_of=frozen)
+    assert cut["state"] == store.read_annotations(_cfg(want_dir, "pc"))["state"]
+    assert "feedback" not in cut["state"]["charts"][1]
+
+    only_pc = store.read_annotations(pc, as_of={"pc": 1})
+    assert [c["symbol"] for c in only_pc["state"]["charts"]] == ["AAPL"]
+
+    shutil.copy2(upc_dir / u2, pc_dir / u2)                     # 缺的 2 号到了:through 接到 3
+    full = store.read_annotations(pc)
+    assert full["machines"] == {"pc": {"through": 1}, "upc": {"through": 3}}
+    assert store.read_annotations(pc, as_of={"pc": 1, "upc": 3})["state"] == full["state"]

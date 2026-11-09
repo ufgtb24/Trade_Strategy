@@ -22,6 +22,7 @@ import { useViewStore } from '../stores/view'
 import { useAnnotationStore } from '../stores/annotation'
 import { useDirectLinkStore } from '../stores/directLinks'
 import { useAppLinkStore } from '../stores/appLink'
+import { useFeedbackStore } from '../stores/feedback'
 
 // 启动即加载 config,使 loadScanFile 能读到持久化的 last_selected_pattern
 onMounted(() => { void useConfigStore().load() })
@@ -29,6 +30,9 @@ onMounted(() => { void useConfigStore().load() })
 onMounted(() => { void useAnnotationStore().load() })
 // 当前 pattern 的 app(mapping 文件):启动即读一遍,之后窗口重新拿到焦点再读(stores/appLink.ts)
 onMounted(() => { void useAppLinkStore().load() })
+// 反馈的状态(stores/feedback.ts):store 一建起来就接好重取的时机(进 compare、换 pattern、存删反馈后、app 重跑、
+// 窗口重新拿到焦点),不等图上或侧栏第一次用到它
+useFeedbackStore()
 // 直达链接(格式见 annotate/directLinks.ts):页面带着链接打开时跟一次,地址的 # 部分变了再跟
 const _links = useDirectLinkStore()
 const _follow = () => { void _links.follow(location.hash) }

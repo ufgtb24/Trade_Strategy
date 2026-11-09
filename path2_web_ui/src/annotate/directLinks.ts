@@ -4,9 +4,14 @@
  *
  *   <前端地址>/#symbol=<代码>&date=<YYYY-MM-DD>   股票 + 日期:打开那只股票,图窗停在那天附近,落在 annotate
  *   <前端地址>/#sample=<样本编号>                  样本编号:打开样本所在的那张图,并选中它
+ *   <前端地址>/#symbol=<代码>&date=<YYYY-MM-DD>&pattern=<pattern 名>&mode=compare
+ *                                                  落在 compare 的股票 + 日期:当前 pattern 换成链接里的那个,
+ *                                                  打开那只股票、图窗停在那天附近、当前日竖线停在那天;compare
+ *                                                  用不了时照「股票 + 日期」落在 annotate 并说明原因(会话的改版报告给的就是这种)
  *
  * 前端地址是 http://localhost:<configs/path2_web.yaml 的 frontend_port>。代码照顶栏输入的规则去空白、转大写;
- * 样本编号就是标注文件里样本的 id(如 s-pc-12)。
+ * 样本编号就是标注文件里样本的 id(如 s-pc-12);pattern 名是标注里的名字,按查询串编码(中文、空格照样能写),
+ * 解析时解码、去首尾空白。mode 目前只认 compare。
  *
  * 日期晚于训练段末日 TRAIN_END 的,一律截到 TRAIN_END(数据墙,spec 4.1)。图窗按日历日取:那天往前约半年、
  * 往后约两个月(往前多留,是因为样本的依据都在样本日之前)。
@@ -25,6 +30,7 @@ const LINK_DAYS_AFTER = 60
 
 export type DirectLink =
   | { kind: 'chart'; symbol: string; date: string }
+  | { kind: 'compare'; symbol: string; date: string; pattern: string }
   | { kind: 'sample'; id: string }
   | { kind: 'bad'; raw: string }
 
@@ -39,17 +45,22 @@ function isDate(s: string): boolean {
 
 /**
  * 页面地址的 # 部分 → 链接。没有 # 或 # 后面是空的 → null(不是链接);认不出的写法 → bad。
- * 认得的写法:恰好 symbol 与 date 两个键,或恰好 sample 一个键,值都不能为空。
+ * 认得的写法:恰好 symbol 与 date 两个键;恰好 symbol、date、pattern、mode 四个键且 mode 为 compare;
+ * 或恰好 sample 一个键。值都不能为空(键不能重复)。
  */
 export function parseLink(hash: string): DirectLink | null {
   const raw = hash.startsWith('#') ? hash.slice(1) : hash
   if (!raw.trim()) return null
   const p = new URLSearchParams(raw)
   const keys = [...p.keys()].sort().join(',')
-  if (keys === 'date,symbol') {
+  if (keys === 'date,symbol' || keys === 'date,mode,pattern,symbol') {
     const sym = resolveSymbolInput(p.get('symbol')!, null)
     const date = p.get('date')!.trim()
-    if (sym.kind === 'ok' && isDate(date)) return { kind: 'chart', symbol: sym.symbol, date }
+    if (sym.kind === 'ok' && isDate(date)) {
+      if (keys === 'date,symbol') return { kind: 'chart', symbol: sym.symbol, date }
+      const pattern = p.get('pattern')!.trim()
+      if (pattern && p.get('mode')!.trim() === 'compare') return { kind: 'compare', symbol: sym.symbol, date, pattern }
+    }
   } else if (keys === 'sample') {
     const id = p.get('sample')!.trim()
     if (id) return { kind: 'sample', id }
@@ -61,4 +72,10 @@ export function parseLink(hash: string): DirectLink | null {
 export function chartLinkWindow(date: string): ViewWindow {
   const d = date > TRAIN_END ? TRAIN_END : date
   return { start: shiftDays(d, -LINK_DAYS_BEFORE), end: shiftDays(d, LINK_DAYS_AFTER) }
+}
+
+/** 包住一段日期 [start, end] 的图窗(侧栏 feedback 页点一行):起点照 chartLinkWindow(start) 往前留,
+ *  终点照 chartLinkWindow(end) 往后留(同样先截到 TRAIN_END)。 */
+export function rangeLinkWindow(start: string, end: string): ViewWindow {
+  return { start: chartLinkWindow(start).start, end: chartLinkWindow(end).end }
 }

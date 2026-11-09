@@ -1,4 +1,5 @@
-"""标注的两个路由:GET /annotations(重放出的当前状态)、POST /annotations/batch(追加一批操作)。
+"""标注的两个路由:GET /annotations(重放出的当前状态)、POST /annotations/batch(追加一批操作);
+以及反馈状态 GET /feedback/status、自上次以来的变化 GET /annotations/changes(文件末尾一节)。
 
 钉住的要求:
 - 沿用现有路由风格,不带 /api 前缀;
@@ -63,6 +64,13 @@ def _sample(oid, date, members, base=None):
                       "members": members}}
 
 
+def _feedback(oid, start, end, base=None, **extra):
+    return {"kind": "feedback", "id": oid, "base": base,
+            "value": {"id": oid, "symbol": "AAA", "pattern": "new_step", "app_id": "new_step",
+                      "app_ver": "0123456789abcdef", "start": start, "end": end, "target": "range",
+                      "source": "picked", "answer": "off_pattern", "segments": ["plateau"], **extra}}
+
+
 def _dates(obj) -> list[str]:
     return [m.group(0) for m in _DATE.finditer(json.dumps(obj))]
 
@@ -108,6 +116,24 @@ def test_reads_carry_the_match_tolerance_set_in_one_place(snapshot, adir):
     assert client.get("/annotations").json()["match"] == want
     r = client.post("/annotations/batch", json={"ops": [_box("b-pc-1", "2025-12-01", "2025-12-05")]})
     assert r.json()["match"] == want
+
+
+def test_feedback_round_trip_and_machines(snapshot, adir):
+    """反馈经保存路由写进去、读路由读出来挂在这只股票下;读结果带 machines;范围晚于训练段末日被拒。"""
+    client = _client(snapshot, adir)
+    fb = _feedback("f-pc-1", "2025-12-01", "2025-12-05")
+    r = client.post("/annotations/batch", json={"ops": [fb]})
+    assert r.status_code == 200, r.text
+    want = {k: v for k, v in fb["value"].items() if k != "symbol"}
+    for body in (r.json(), client.get("/annotations").json()):
+        assert body["state"]["charts"] == [{"symbol": "AAA", "boxes": [], "samples": [], "feedback": [want]}]
+        assert body["machines"] == {"pc": {"through": 1}}
+        assert "f-pc-1" in body["revs"]["feedback"]
+    files = sorted(p.name for p in adir.iterdir())
+    r = client.post("/annotations/batch", json={"ops": [_feedback("f-pc-2", "2025-12-29", "2026-01-05")]})
+    assert r.status_code == 400
+    assert r.json()["detail"]["reasons"][0]["code"] == "bad_op" and "2025-12-31" in r.text
+    assert sorted(p.name for p in adir.iterdir()) == files
 
 
 def test_append_violation_is_rejected_with_reasons(snapshot, adir):
@@ -163,7 +189,7 @@ def test_routes_never_read_market_data_nor_return_2026(snapshot, adir, monkeypat
 
     monkeypatch.setattr(pd, "read_pickle", _forbidden)
     monkeypatch.setattr("path2_web.data.read_bars", _forbidden)
-    monkeypatch.setattr("path2_web.api.read_bars", _forbidden)
+    monkeypatch.setattr("path2_web.api.load_bars", _forbidden)
     client = _client(snapshot, adir)
 
     r = client.post("/annotations/batch", json={"ops": [_box("b-pc-1", "2025-12-29", "2026-01-05")]})
@@ -174,3 +200,189 @@ def test_routes_never_read_market_data_nor_return_2026(snapshot, adir, monkeypat
     for body in (r.json(), client.get("/annotations").json()):
         dates = _dates(body)
         assert dates and max(dates) <= TRAIN_END
+
+
+# ───────────── 反馈状态 GET /feedback/status、自上次以来的变化 GET /annotations/changes ─────────────
+# mapping 文件改从临时目录读(<tmp>/mappings/<app>.yaml),不往 path2_apps/ 里写。
+
+@pytest.fixture
+def mapping_file(tmp_path, monkeypatch):
+    """返回写 mapping 的函数 write(app, text);没写的 app 没有 mapping。"""
+    from path2_web import mapping
+
+    mdir = tmp_path / "mappings"
+    mdir.mkdir()
+    monkeypatch.setattr(mapping, "mapping_path", lambda mod: mdir / f"{mod.__name__.split('.')[-2]}.yaml")
+
+    def write(app: str, text: str):
+        (mdir / f"{app}.yaml").write_text(text, encoding="utf-8")
+    return write
+
+
+def _fb(oid, symbol, start, end, target="range", pattern="p", **extra):
+    return {"kind": "feedback", "id": oid, "base": None,
+            "value": {"id": oid, "symbol": symbol, "pattern": pattern, "app_id": "bo_only",
+                      "app_ver": "0123456789abcdef", "start": start, "end": end, "target": target,
+                      "source": "picked", "answer": "off_pattern", "segments": ["bo"], **extra}}
+
+
+@pytest.fixture
+def fake_app(monkeypatch):
+    """把状态接口跑 app 的两步换成合成买点:AAA 上有两族,NOPE 读不到行情。返回每次跑 app 的参数记录。"""
+    from path2_web.app_run import AppBuys, NoSymbol
+
+    buys = {"AAA": AppBuys(families={"2025-11-10": (), "2025-12-01": ("2025-12-03", "2025-12-04")},
+                           event_starts=("2025-11-10", "2025-12-01"), dates=())}
+    calls: list = []
+
+    def run_app(mod, cfg, symbol, start, end, params, label_horizon=20):
+        calls.append((mod.__name__, symbol, start, end, label_horizon))
+        if symbol not in buys:
+            raise NoSymbol(f"pkl not found: {symbol}")
+        return symbol, None, {"end_node": "bo"}
+
+    monkeypatch.setattr("path2_web.api.run_app", run_app)
+    monkeypatch.setattr("path2_web.api.app_buys", lambda res, win, end_node: buys[res])
+    return calls
+
+
+def test_feedback_status_three_states_tags_and_order(snapshot, adir, mapping_file, fake_app):
+    """三态各一例(point / range / family 的 matched、unmatched、lost),挂「定义改过」的 matched 不算朱红,
+    读不到行情的股票那一条 status 为 null、其余照常;别的 pattern 的反馈不在内;按朱红、lost、其余排。
+    跑 app 的区间是全历史到训练段末日、label_horizon 20(与 compare 的图一致)。"""
+    mapping_file("bo_only", "pattern: p\nfeatures: {w-pc-1: bo}\n"
+                            "session: {tags: {f-pc-5: redefined, f-pc-3: for_tuning}}\n")
+    store.append_batch({"annotation_dir": str(adir), "machine": "pc"}, [
+        _fb("f-pc-1", "AAA", "2025-12-03", "2025-12-03", target="point"),           # 当天有买点 → matched
+        _fb("f-pc-2", "AAA", "2025-12-08", "2025-12-10"),                            # 范围里没有 → unmatched
+        _fb("f-pc-3", "AAA", "2025-12-10", "2025-12-12", target="family",
+            family_start="2025-11-20"),                                              # 起点认不出 → lost
+        _fb("f-pc-4", "AAA", "2025-12-15", "2025-12-16", target="family",
+            family_start="2025-11-10"),                                              # 起点还在、不买 → unmatched
+        _fb("f-pc-5", "AAA", "2025-12-04", "2025-12-04", target="point"),           # matched,但定义改过
+        _fb("f-pc-6", "NOPE", "2025-12-04", "2025-12-04", target="point"),          # 读不到行情
+        _fb("f-pc-7", "AAA", "2025-12-20", "2025-12-22", target="family",
+            family_start="2025-12-01"),                                              # 同起点的族还在买 → matched
+        _fb("f-pc-8", "AAA", "2025-12-03", "2025-12-03", target="point", pattern="q"),   # 别的 pattern
+    ])
+    from path2_web.app_version import app_ver
+    import path2_apps.bo_only.dag_spec as bo_only
+
+    body = _client(snapshot, adir).get("/feedback/status", params={"pattern": "p"}).json()
+    assert (body["app"], body["app_ver"], body["reason"]) == ("bo_only", app_ver(bo_only), None)
+    got = [(i["id"], i["status"], i["tag"], i["red"]) for i in body["items"]]
+    assert got == [("f-pc-1", "matched", None, True), ("f-pc-7", "matched", None, True),
+                   ("f-pc-3", "lost", "for_tuning", False),
+                   ("f-pc-5", "matched", "redefined", False), ("f-pc-2", "unmatched", None, False),
+                   ("f-pc-4", "unmatched", None, False), ("f-pc-6", None, None, False)]
+    reasons = {i["id"]: i["reason"] for i in body["items"]}
+    assert "NOPE" in reasons.pop("f-pc-6") and set(reasons.values()) == {None}
+    assert sorted(set(fake_app)) == [("path2_apps.bo_only.dag_spec", s, "1900-01-01", TRAIN_END, 20)
+                                     for s in ("AAA", "NOPE")]
+
+
+def test_feedback_status_cache_by_app_version(snapshot, adir, mapping_file, fake_app, monkeypatch):
+    """同一版 app 再问一次不再跑 app;app 换了版本(app_ver 变)重跑。读不到行情的股票不进缓存。"""
+    mapping_file("bo_only", "pattern: p\nfeatures: {w-pc-1: bo}\n")
+    store.append_batch({"annotation_dir": str(adir), "machine": "pc"}, [
+        _fb("f-pc-1", "AAA", "2025-12-03", "2025-12-03", target="point"),
+        _fb("f-pc-2", "AAA", "2025-12-08", "2025-12-10")])
+    client = _client(snapshot, adir)
+    first = client.get("/feedback/status", params={"pattern": "p"}).json()
+    assert len(fake_app) == 1
+    assert client.get("/feedback/status", params={"pattern": "p"}).json() == first
+    assert len(fake_app) == 1
+    monkeypatch.setattr("path2_web.api.app_ver", lambda mod: "ffffffffffffffff")
+    body = client.get("/feedback/status", params={"pattern": "p"}).json()
+    assert len(fake_app) == 2 and body["app_ver"] == "ffffffffffffffff"
+
+
+def test_feedback_status_without_usable_mapping(snapshot, adir, mapping_file, fake_app):
+    """没有 mapping、mapping 有问题、两个 app 写了同一个 pattern:app 为 null、没有条目、写明原因,不跑 app。"""
+    store.append_batch({"annotation_dir": str(adir), "machine": "pc"},
+                       [_fb("f-pc-1", "AAA", "2025-12-03", "2025-12-03", target="point")])
+    client = _client(snapshot, adir)
+
+    def ask():
+        return client.get("/feedback/status", params={"pattern": "p"}).json()
+    body = ask()
+    assert (body["app"], body["app_ver"], body["items"]) == (None, None, []) and "p" in body["reason"]
+    mapping_file("bo_only", "pattern: p\nfeatures: {w-pc-1: nope}\n")
+    assert ask()["app"] is None and "node not in app" in ask()["reason"]
+    mapping_file("bo_only", "pattern: p\nfeatures: {w-pc-1: bo}\n")
+    mapping_file("new_step", "pattern: p\nfeatures: {w-pc-1: plateau}\n")
+    assert ask()["app"] is None and "several apps" in ask()["reason"]
+    assert fake_app == []
+
+
+def test_preview_and_status_carry_the_same_app_ver(snapshot, adir, mapping_file):
+    """单股预览的 scan 元信息带 app_ver(前端存反馈时记进记录),与状态接口给的是同一个值;真跑 bo_only。"""
+    from path2_web.app_version import app_ver
+    import path2_apps.bo_only.dag_spec as bo_only
+
+    mapping_file("bo_only", "pattern: p\nfeatures: {w-pc-1: bo}\n")
+    store.append_batch({"annotation_dir": str(adir), "machine": "pc"},
+                       [_fb("f-pc-1", "AAA", "2025-12-03", "2025-12-03", target="point")])
+    client = _client(snapshot, adir)
+    r = client.get("/preview", params={"pattern_id": "bo_only", "symbol": "AAA", "start": "1900-01-01",
+                                       "end": TRAIN_END, "label_horizon": 20})
+    assert r.status_code == 200, r.text
+    assert r.json()["scan"]["app_ver"] == app_ver(bo_only)
+    body = client.get("/feedback/status", params={"pattern": "p"}).json()
+    assert body["app_ver"] == app_ver(bo_only)
+    [item] = body["items"]
+    assert item["status"] in ("matched", "unmatched") and item["reason"] is None
+
+
+def _pos(oid, date, members=(), pattern="p", judgment="pos", base=None):
+    return {"kind": "sample", "id": oid, "base": base,
+            "value": {"id": oid, "symbol": "AAA", "date": date, "pattern": pattern, "judgment": judgment,
+                      "members": list(members)}}
+
+
+def test_changes_since_session_snapshot(snapshot, adir, mapping_file):
+    """定格 {pc: 1} 之后的修改:改判、新增样本、成员框挪边、pattern 定义改动都报出来;since 是定格的 seen。"""
+    pc = {"annotation_dir": str(adir), "machine": "pc"}
+    store.append_batch(pc, [{"kind": "pattern", "id": "p", "base": None, "value": {"name": "p", "definition": "旧"}},
+                            _box("b-pc-1", "2025-12-01", "2025-12-05"),
+                            _pos("s-pc-2", "2025-12-08", ["b-pc-1"])])
+    revs = store.read_annotations(pc)["revs"]
+    store.append_batch(pc, [
+        {"kind": "pattern", "id": "p", "base": revs["pattern"]["p"], "value": {"name": "p", "definition": "新"}},
+        _box("b-pc-1", "2025-12-02", "2025-12-05", base=revs["box"]["b-pc-1"]),
+        _pos("s-pc-2", "2025-12-08", ["b-pc-1"], judgment="neg", base=revs["sample"]["s-pc-2"]),
+        _pos("s-pc-3", "2025-12-10")])
+    mapping_file("bo_only", "pattern: p\nfeatures: {w-pc-1: bo}\n"
+                            "session: {snapshot: {seen: {pc: 1}, samples: [s-pc-2]}}\n")
+    body = _client(snapshot, adir).get("/annotations/changes", params={"pattern": "p"}).json()
+    assert body["since"] == {"pc": 1} and body["reason"] is None
+    assert [(c["kind"], c["id"], c["change"]) for c in body["changes"]] == [
+        ("pattern", "p", "definition"), ("sample", "s-pc-2", "judgment"), ("sample", "s-pc-3", "added"),
+        ("box", "b-pc-1", "start")]
+
+
+def test_changes_without_snapshot(snapshot, adir, mapping_file):
+    """没有定格时 since 为 null、没有变化、写明原因:没有 mapping、没有会话段、会话段写坏了、会话段里没有 snapshot。
+    mapping 自身的问题(node 不在 app 里)不妨碍读定格。"""
+    client = _client(snapshot, adir)
+
+    def ask():
+        return client.get("/annotations/changes", params={"pattern": "p"}).json()
+    body = ask()
+    assert body["since"] is None and body["changes"] == [] and "no app" in body["reason"]
+    for text, why in (("", "no session snapshot"), ("session: {tags: {f-pc-1: accepted}}\n", "no session snapshot"),
+                      ("session: {snapshot: {seen: {pc: -1}, samples: []}}\n", "session.snapshot.seen")):
+        mapping_file("bo_only", "pattern: p\nfeatures: {w-pc-1: bo}\n" + text)
+        body = ask()
+        assert body["since"] is None and body["changes"] == [] and why in body["reason"]
+    mapping_file("bo_only", "pattern: p\nfeatures: {w-pc-1: nope}\nsession: {snapshot: {seen: {pc: 0}, samples: []}}\n")
+    assert ask() == {"since": {"pc": 0}, "changes": [], "reason": None}
+
+
+def test_feedback_status_missing_data_dir_is_503(adir, mapping_file, tmp_path):
+    """行情目录整个不在:整体 503(同单股预览),不是逐条 status null;真跑 bo_only,不换替身。"""
+    mapping_file("bo_only", "pattern: p\nfeatures: {w-pc-1: bo}\n")
+    store.append_batch({"annotation_dir": str(adir), "machine": "pc"},
+                       [_fb("f-pc-1", "AAA", "2025-12-03", "2025-12-03", target="point")])
+    r = _client(tmp_path / "no_such_dir", adir).get("/feedback/status", params={"pattern": "p"})
+    assert r.status_code == 503 and "no_such_dir" in r.json()["detail"]

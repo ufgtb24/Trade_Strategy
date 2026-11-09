@@ -50,6 +50,13 @@
     <!-- annotate:改起止停在样本日时,鼠标旁写它是哪个样本的成员框 -->
     <div v-if="resizeStop" class="resize-stop" data-testid="resize-stop"
          :style="{ left: `${resizeStop.x + 12}px`, top: `${resizeStop.y + 12}px` }">{{ resizeStop.text }}</div>
+    <!-- compare 的 feedback 工具:拖动中贯穿主副图的竖带;拖出的范围里没有买点时,在松开处浮 2 秒 no buy in range -->
+    <div v-if="rangeBand" class="feedback-range-band" data-testid="feedback-range-band"
+         :style="{ left: `${rangeBand.left}px`, width: `${rangeBand.width}px` }" />
+    <div v-if="noBuyHint" class="resize-stop" data-testid="feedback-no-buy"
+         :style="{ left: `${noBuyHint.x + 12}px`, top: `${noBuyHint.y + 12}px` }">no buy in range</div>
+    <!-- compare 的反馈作答面板(浮在点击处,状态在 stores/feedback.ts) -->
+    <FeedbackPanel v-if="comparing && fb.panel" :feature-of="featureOfNode" @hover-segment="onHoverSegment" />
     <div v-if="contextMenuVisible" ref="driverMenuEl" class="driver-menu"
          :style="{ left: contextMenuPos.x + 'px', top: contextMenuPos.y + 'px' }">
       <!-- 复制 instance_id · marker 右键即显示(contextMenuInstanceId 非 null)、空白右键隐藏 -->
@@ -90,7 +97,7 @@ import { getAllOhlc, getOhlc } from '../api'
 import { zoomForWindow } from '../annotate/viewWindow'
 import {
   computeEventData, buildMainOption, buildSubOption, buildVolumeSeriesAndYAxis,
-  emptyEventBundle, mainGridLayout, type BandLabelExtra, type EventBundle,
+  emptyEventBundle, mainGridLayout, MAIN_GRID_LEFT, MAIN_GRID_RIGHT, type BandLabelExtra, type EventBundle,
 } from '../render/chart'
 import {
   computeSubGeometry, composeEffectiveSubH, SUB_CANVAS_MIN_H, MIN_SUB_H,
@@ -102,11 +109,13 @@ import { bandKeyOf, nodeOfEventByBand, resolveTooltipData, windowOf, formatForwa
 import { peakIdIndex } from '../render/peakState'
 import type { Bar } from '../types'
 import type { Lane } from '../annotate/model'
-import { handleChartClick, handleShiftClick, MARKER_SERIES } from './KlineChart'
+import { handleAppClick, handleChartClick, handleShiftClick, MARKER_SERIES } from './KlineChart'
 import CandidateStatusBar from './CandidateStatusBar.vue'
 import ShiftPairBanner from './ShiftPairBanner.vue'
 import ResizableDivider from './ResizableDivider.vue'
 import CrosshairOverlay from './CrosshairOverlay.vue'
+import FeedbackPanel from './FeedbackPanel.vue'
+import { rangeBandPx } from './feedbackPanel'
 import { useAnnotationStore } from '../stores/annotation'
 import { chartOf, computeLanes, type AnnBox } from '../annotate/model'
 import { emptySlots } from '../annotate/membership'
@@ -124,6 +133,10 @@ import { useAppLinkStore } from '../stores/appLink'
 import { compareLinks } from '../render/compareLayout'
 import { useCompareStore, SAMPLES_ROW } from '../stores/compare'
 import { defaultFocus } from '../annotate/compareRead'
+import { useFeedbackStore } from '../stores/feedback'
+import { useLandingStore } from '../stores/landing'
+import { buyDatesIn, posSamplesInside } from '../annotate/feedback'
+import { feedbackMarks, feedbackRowCount, feedbackTip } from '../render/feedbackStrip'
 
 const view = useViewStore()
 const { symbol, effectiveAnalysis, nodeColors, nodeVisible, level, tagMap, isolated,
@@ -171,6 +184,7 @@ const baseLanes = computed(() => {
   return chart ? computeLanes(chart.boxes, (f) => ann.nameOf(f) ?? f, annDates.value, annOrder.value) : []
 })
 const cmp = useCompareStore()
+const landing = useLandingStore()
 // compare:app 跑完、当前 pattern 有 mapping 时,副图是主视图那张副图 + 标注层;还没跑完时照 annotate 只画标注
 const compareReady = computed(() => comparing.value && !!effectiveAnalysis.value && !!effectivePattern.value
                                     && !!appLink.mapping && tagMap.value.tagList.length > 0)
@@ -196,6 +210,67 @@ const cmpLayout = computed(() => {
   return { bands, ...compareLinks(annLanes.value, bands, pat.topology, appLink.mapping.features,
                                   (fid) => ann.featureById.has(fid)) }
 })
+// compare 的反馈(spec 6.13):hits 行底下的反馈带画这只股票、当前 pattern、用户自己挑的反馈;配色照后端给的状态,
+// 选中的那条(侧栏点行、点记号时设)描边加粗。app 模式不画(只在 renderCompareSub 里用)
+const fb = useFeedbackStore()
+const cmpFeedbackList = computed(() => (compareReady.value ? ann.feedbackOf(symbol.value) : []))
+const cmpFeedbackMarks = computed(() =>
+  feedbackMarks(cmpFeedbackList.value, annDates.value, fb.statusById, fb.selectedId))
+/** 反馈带记号的悬停文字:悬停时现算(范围里有没有当前 pattern 的正样本) */
+function feedbackTipOf(id: string): string {
+  const f = cmpFeedbackList.value.find(x => x.id === id)
+  if (!f) return ''
+  const inside = posSamplesInside(annChart.value, ann.currentPattern, f.start, f.end).length > 0
+  return feedbackTip(f, fb.statusById[id], inside)
+}
+// 作答面板的分段按钮(node):文字同 band 表头(node 名 + 对到它的用户特征名);悬停时那条 band 加亮
+// (hoverBand,副图装饰层在那一行垫一条浅蓝底、描蓝边,离开即消失;面板关了也消失)
+const hoverBand = ref<string | null>(null)
+/** node 所在的 band(副图里的一行);band 键就是 node 名,或这一行合并了几个 node 时含它的那一行 */
+function bandOfNode(node: string): string | null {
+  const lay = cmpLayout.value
+  if (!lay) return null
+  if (lay.bands.includes(node)) return node
+  return lay.bands.find(b => (tagMap.value.tagToNodes[b] ?? [b]).includes(node)) ?? null
+}
+function featureOfNode(node: string): string | null {
+  const b = bandOfNode(node)
+  return b ? bandExtras.value[b]?.feature ?? null : null
+}
+function onHoverSegment(node: string | null) { hoverBand.value = node ? bandOfNode(node) : null }
+watch(() => fb.panel, (p) => { if (!p) hoverBand.value = null })
+// feedback 工具拖选中的竖带(相对 kline-wrap 的像素)与「范围里没有买点」的提示(视口坐标)
+const rangeBand = ref<{ left: number; width: number } | null>(null)
+const noBuyHint = ref<{ x: number; y: number } | null>(null)
+const NO_BUY_HINT_MS = 2000
+let noBuyTimer: ReturnType<typeof setTimeout> | null = null
+function showNoBuy(at: { x: number; y: number }) {
+  noBuyHint.value = at
+  if (noBuyTimer) clearTimeout(noBuyTimer)
+  noBuyTimer = setTimeout(() => { noBuyHint.value = null; noBuyTimer = null }, NO_BUY_HINT_MS)
+}
+/** 拖选范围 → 竖带:整根 K 线对齐主图的 x 轴(副图的 x 轴与它左右对齐),裁到图区内 */
+function setRangeBand(r: { start: string; end: string } | null) {
+  const el = mainEl.value
+  if (!r || !chartMain || !el) { rangeBand.value = null; return }
+  const dates = annDates.value
+  const i0 = dates.indexOf(r.start), i1 = dates.indexOf(r.end)
+  if (i0 < 0 || i1 < 0) { rangeBand.value = null; return }
+  const main = chartMain
+  const px = rangeBandPx(i0, i1, (i) => Number(main.convertToPixel({ xAxisIndex: 0 }, i)),
+                         MAIN_GRID_LEFT, el.clientWidth - MAIN_GRID_RIGHT)
+  rangeBand.value = px ? { left: px.left + mainCanvasOffsetX.value, width: px.width } : null
+}
+/** 拖完一段(工具已熄):范围里有 app 的买点日就在松开处打开 range 面板(redraw 带来的答案由 store 预填),
+ *  没有就放弃 redraw 带来的东西、在松开处提示 no buy in range */
+function onRangeDone(start: string, end: string, at: { x: number; y: number }) {
+  const a = effectiveAnalysis.value
+  const sym = symbol.value
+  const days = compareReady.value && a && sym
+    ? buyDatesIn(a.hits, a.events, endNode.value, annDates.value, start, end) : []
+  if (!sym || !days.length) { fb.clearCarry(); showNoBuy(at); return }
+  fb.open(at, { symbol: sym, start, end, target: 'range' })
+}
 // compare 的用户区:特征轨从顶上排起(不随 band zoom 变),user 行接在它们下面
 const cmpUserLanes = computed(() => laneGeometry(annLanes.value, LANES_TOP))
 // compare 副图的总高(画的时候算出来)
@@ -567,6 +642,7 @@ function laneCountsOf(bundle: EventBundle): { bracketLaneCount: number; bandLane
 // factorCap(spec §6.1):naturalSubH_at_1(bandZoomFactor=1 时的副图 canvas 高)决定 zoom 上限。
 // 若 wrap 剩余空间(containerH - MAIN_MIN_H)不足容纳 naturalSubH_at_1 → factorCap = 1.0(zoom 不可用)。
 // 封顶对象维持内容高度口径(boundary-model spec §4:不随 offset 放宽)。
+// 它不计 compare 的用户区和反馈行(口径与 deriveSubGeometry 一致):compare 下估矮了,最多让副图出滚动条。
 const factorCap = computed<number>(() => {
   const wrapH = containerH.value
   if (wrapH <= 0) return BAND_ZOOM_MAX    // 未 mount 时给最大;mount 后由 RO 更新收紧
@@ -621,6 +697,8 @@ function mainWheelCapture(e: WheelEvent) {
   e.preventDefault()
   e.stopPropagation()               // 同上,拦截 ECharts 消费
 }
+
+function onSubScroll() { fb.close() }
 
 // Ctrl+wheel:右锚定 x 缩放(不动点=当前视图最右侧 K 线;不按 Ctrl 保持 ECharts 鼠标中心缩放)。
 // preventDefault 必须:浏览器默认 Ctrl+wheel = 页面缩放。主/副图容器上滚都单入口 dispatch 到
@@ -755,11 +833,13 @@ function renderCompareSub() {
   const bundle = cmpBundle ?? (cmpBundle = computeEventData(bars.value, effectiveAnalysis.value.events,
                                                             effectiveAnalysis.value.hits, buildRenderInput()))
   const zoom = readZoomOverride()
+  const marks = cmpFeedbackMarks.value
   const params = { ...buildRenderInput(), zoomOverride: zoom, zoomFactor: bandZoomFactor.value,
-                   linkedBands: cmpLinkedBands.value }
+                   linkedBands: cmpLinkedBands.value, feedback: { marks, tip: feedbackTipOf },
+                   hoverBand: hoverBand.value }
   const bg = annBracket.value.geom
-  const subGeom = computeSubGeometry({ ...laneCountsOf(bundle), userContentBottom: bracketContentBottom(bg) },
-                                     bandZoomFactor.value)
+  const subGeom = computeSubGeometry({ ...laneCountsOf(bundle), userContentBottom: bracketContentBottom(bg),
+                                       feedbackRowCount: feedbackRowCount(marks) }, bandZoomFactor.value)
   subCanvasH.value = subGeom.subCanvasH
   cmpGeom.value = { height: subGeom.subCanvasH }
   const opt: any = buildSubOption(bars.value, bundle, subGeom, params, chartSub.getWidth(),
@@ -858,6 +938,13 @@ function onKeyDown(e: KeyboardEvent) {
     e.preventDefault()
     return
   }
+  // Shift+F(compare 下):点亮 / 熄灭 feedback 工具(同 Shift+B 的写法)
+  if (comparing.value && e.code === 'KeyF' && e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey && !e.isComposing) {
+    annGestures.cancel()
+    ann.toggleTool('feedback')
+    e.preventDefault()
+    return
+  }
   if (isBrushToggleKey(e)) {
     if (annotating.value) return
     toggleBrush()
@@ -875,9 +962,11 @@ function onKeyDown(e: KeyboardEvent) {
   if (e.key !== 'Escape') return
   if (contextMenuVisible.value) { contextMenuVisible.value = false; return }
   // 工具亮着时 Esc 只熄灭工具,选中的框、样本和当前样本都留着(画到一半退出,接着画的框照样并进当前样本)
+  // (反馈面板开着时 Esc 先归面板:FeedbackPanel 在捕获阶段截下,只关面板,走不到这里)
   if (annotating.value && ann.tool) {
     annGestures.cancel()
     ann.tool = null
+    fb.clearCarry()                                   // redraw 带过来的答案不留到以后的拖选
     ;(document.activeElement as HTMLElement | null)?.blur()
     return
   }
@@ -944,6 +1033,8 @@ const annGestures = createAnnotateGestures({
     return { date: smp.date, text: `member box of ${sampleTag(smp, letter)}` }
   },
   setDraft: (d) => { draft.value = d },
+  setRange: setRangeBand,
+  rangeDone: onRangeDone,
   setPreview: (b) => { preview.value = b },
   setStop: (st) => { resizeStop.value = st },
   createBox: (start, end, feature) => { if (symbol.value) ann.createBox(symbol.value, start, end, feature) },
@@ -995,9 +1086,12 @@ onMounted(() => {
 
   // click 分流:主/副 chart 各一套,handleChartClick 按 seriesName 天然分流;
   // shift+click 先被 handleMaybeShiftClick 拦截(入口 D),消费后不再回退到候选四分支。
-  // compare 下点中 app 的东西(格、条、▼)时取消标注框的选中:否则框仍选中,按 Delete 会删掉标注
+  // compare 下点中 app 的东西时取消标注框的选中、点 ▼ / 有 ▼ 的格 / 有 ▼ 的族 / 反馈记号时打开反馈面板:见 handleAppClick
   const onAppClick = (p: any) => {
-    if (handleChartClick(p, effectiveAnalysis.value?.hits ?? [], view) && comparing.value) ann.selectBox(null)
+    handleAppClick(p, effectiveAnalysis.value?.hits ?? [], view, {
+      comparing: comparing.value, compareReady: compareReady.value, dates: annDates.value, symbol: symbol.value,
+      selectBox: (id) => ann.selectBox(id), feedback: fb,
+    })
   }
   chartMain.on('click', (p: any) => {
     if (handleMaybeShiftClick(p, 'main')) return
@@ -1078,11 +1172,13 @@ onMounted(() => {
   const subOuter = subOuterEl.value
   const main = mainEl.value
   if (subOuter) subOuter.addEventListener('wheel', subWheelCapture, { capture: true, passive: false })
+  // 副图上下滚动收起反馈面板,不存
+  if (subOuter) subOuter.addEventListener('scroll', onSubScroll, { passive: true })
   if (main) main.addEventListener('wheel', mainWheelCapture, { capture: true, passive: false })
 
   // dev-only e2e hook
   if ((import.meta as any).env?.DEV) {
-    ;(window as any).__e2e = { view, ann: () => ann, chartMain: () => chartMain, chartSub: () => chartSub }
+    ;(window as any).__e2e = { view, ann: () => ann, fb: () => fb, chartMain: () => chartMain, chartSub: () => chartSub }
   }
 
   // Ctrl 切换(只作用于主图,副图无价格轴)
@@ -1158,6 +1254,9 @@ onMounted(() => {
   }
   chartMain.on('datazoom', relayZoom(chartSub))
   chartSub.on('datazoom', relayZoom(chartMain))
+  // 平移、缩放(主副图的 dataZoom 都是用户操作发起的)收起反馈面板,不存
+  chartMain.on('datazoom', () => fb.close())
+  chartSub.on('datazoom', () => fb.close())
 
   // updateAxisPointer 锁 close 横线(主图专属)
   chartMain.on('updateAxisPointer', (e: any) => {
@@ -1192,6 +1291,8 @@ onBeforeUnmount(() => {
   window.removeEventListener('keydown', onKeyDown)
   document.removeEventListener('click', handleDocumentClick)
   subOuterEl.value?.removeEventListener('wheel', subWheelCapture, { capture: true })
+  subOuterEl.value?.removeEventListener('scroll', onSubScroll)
+  if (noBuyTimer) clearTimeout(noBuyTimer)
   mainEl.value?.removeEventListener('wheel', mainWheelCapture, { capture: true })
   unsubCtrl?.()
   chartMain?.getZr().off('click')
@@ -1241,17 +1342,25 @@ watch([effectiveAnalysis, nodeVisible, level, nodeColors, focusedInstanceRef, di
 // annotate:框、词表、选中、拖动中的样子变了 → 只重画标注的两层;compare 下轨序、✓ / ✗、missing 变了也一样
 watch(() => [ann.view, ann.selectedBoxId, ann.selectedSampleId, ann.currentSampleId, ann.currentPattern,
              draft.value, preview.value, cmpLayout.value, cmp.sampleReads, cmp.boxReads], () => renderAnnotateLayers())
+// compare:反馈带(反馈的增删改、后端给的状态、选中的那条)变了 → 只重画标注层(含主视图那张副图)
+// (按画出来的样子比:别的标注改动已由上面那条 watch 重画;悬停文字悬停时现算,不必为理由、分段改动重画)
+watch(() => cmpFeedbackMarks.value.map(m => [m.id, m.start, m.end, m.lane, m.label, m.tone, m.selected].join(':')).join('|'),
+      () => renderAnnotateLayers())
+// compare:作答面板的分段按钮悬停 → 对应 band 加亮 / 取消
+watch(hoverBand, () => renderAnnotateLayers())
 // app 模式:band 表头的特征名(mapping、词表)变了
 watch(bandExtras, () => { if (!annotating.value) render(false) })
 
 // compare:选中样本 → 当前日落在样本日、选中配对的那个;选中框 → 落在框终点(stores/compare.ts)
 watch(() => ann.selectedSampleId, (id) => { if (id && compareReady.value) cmp.focusSample(id) })
 watch(() => ann.selectedBoxId, (id) => { if (id && compareReady.value) cmp.focusBox(id) })
-// 进 compare、换股票后 app 跑完:有选中的样本 / 框就聚焦它,否则默认聚焦离图窗中心最近的样本
+// 进 compare、换股票后 app 跑完:侧栏点行 / 落在 compare 的链接有待落的那天就落那天(stores/landing.ts,
+// 消费掉);否则有选中的样本 / 框就聚焦它,再否则默认聚焦离图窗中心最近的样本
 // (只设当前日与 app 的选中,不动标注的选中,侧栏不翻页)
 watch(() => [compareReady.value, effectiveAnalysis.value, view.barDates] as const, async ([ready]) => {
   if (!ready) return
   await nextTick()
+  if (landing.claim()) return
   const sel = ann.selectedSampleId
   if (sel && cmp.focusSample(sel)) return
   if (ann.selectedBoxId && cmp.focusBox(ann.selectedBoxId)) return
@@ -1285,6 +1394,10 @@ watch(activeDetailCard, (v, prev) => {
   position: fixed; z-index: 70; pointer-events: none; padding: 1px 6px;
   font-family: var(--mono); font-size: 12px; color: var(--ink);
   background: #fff; border: 1px solid var(--ink); border-radius: 3px;
+}
+.feedback-range-band {
+  position: absolute; top: 0; bottom: 0; z-index: 6; pointer-events: none;
+  background: rgba(0, 0, 0, 0.16); border-left: 1.5px dashed #555; border-right: 1.5px dashed #555;
 }
 .kline-wrap-v2 {
   display: flex;

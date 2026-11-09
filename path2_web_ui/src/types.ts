@@ -149,10 +149,36 @@ export interface RandomWindow { symbol: string; start: string; end: string }
 export interface PeakLine { date: string; price: number; end: string }
 /** compare 用的 mapping 文件(path2_apps/<app>/mapping.yaml,GET /mappings):标注里的 pattern 用哪个 app,
  *  特征编号 → 认它的 node_id。problem 非 null(文件读不懂、node 不在 app 里、两个 app 写了同一个 pattern)时不能用。 */
-/** /mappings 的一项:notes 是可选的用户原话附注(键 node 或 node.where,值一句话;后端校验过键存在)。 */
+/** /mappings 的一项:notes 是可选的用户原话附注(键 node 或 node.where,值一句话;后端校验过键存在)。
+ *  session 是会话段(会话的账本,形状见 path2_web/mapping.py 文件说明),后端原样带出;没写或写坏了为 null。
+ *  session_problem 是会话段的形状问题(一句英文),没有为 null;它不进 problem,不影响 compare 用这个 mapping。 */
 export interface AppMapping {
   app: string; pattern: string | null; features: Record<string, string>; notes?: Record<string, string>
   problem: string | null
+  session?: MappingSession | null
+  session_problem?: string | null
+}
+/** mapping 的会话段:每轮开头的定格、由反馈等推出的条件、红着或 lost 的反馈的原因标签(反馈编号 → 标签)。 */
+export interface MappingSession {
+  snapshot?: { seen: Record<string, number>; samples: string[]; at?: string }
+  conditions?: { where: string; from: string[]; state: string }[]
+  tags?: Record<string, string>
+}
+/** 反馈在当前 app 下的状态(GET /feedback/status 的一条):status 读不到行情时为 null,原因在 reason;
+ *  tag 是会话段里这条的原因标签(没有为 null);red 是画不画朱红(后端判一次,前端照着画、照着排)。 */
+export interface FeedbackStatusItem {
+  id: string
+  status: 'matched' | 'unmatched' | 'lost' | null
+  tag: string | null
+  red: boolean
+  reason: string | null
+}
+/** GET /feedback/status:app 是当前 pattern 的 app(找不到为 null,原因在 reason);items 已按侧栏顺序排好。 */
+export interface FeedbackStatusResp {
+  app: string | null
+  app_ver: string | null
+  items: FeedbackStatusItem[]
+  reason: string | null
 }
 
 export interface AttrRow {

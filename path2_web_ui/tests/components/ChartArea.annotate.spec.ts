@@ -1,4 +1,5 @@
 // annotate 模式的外壳:不显示 app 相关的控件,右侧是 selection / features / pattern 三页
+// (compare 下多一页 feedback,见 tests/components.feedback-page.spec.ts)
 import { describe, it, expect, beforeEach } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { setActivePinia, createPinia } from 'pinia'
@@ -26,10 +27,11 @@ describe('ChartArea · annotate', () => {
     expect(w.findComponent({ name: 'DetailSidebar' }).exists()).toBe(false)
   })
 
-  it('右侧栏三页 selection / features / pattern,没有 json 页;点页签切页', async () => {
+  it('右侧栏三页 selection / features / pattern,没有 json 页,annotate 下没有 feedback 页;点页签切页', async () => {
     const w = mountIt()
     const tabs = w.findAll('[role="tab"]')
     expect(tabs.map(t => t.text())).toEqual(['selection', 'features', 'pattern'])
+    expect(w.find('[data-testid="annotation-tab-feedback"]').exists()).toBe(false)
     expect(w.find('[data-testid="annotation-page-selection"]').exists()).toBe(true)
     await w.get('[data-testid="annotation-tab-features"]').trigger('click')
     expect(w.find('[data-testid="annotation-page-features"]').exists()).toBe(true)

@@ -3,7 +3,7 @@
 import { describe, it, expect } from 'vitest'
 import { weekdaysCovering, type AnnBox, type AnnChart, type AnnSample } from '../src/annotate/model'
 import {
-  boxMarks, memberChain, memberOfRows, othersOf, resizeLimit, sampleLetters, sampleRange, unsortedCount,
+  boxMarks, boxesOnlyFor, memberChain, memberOfRows, othersOf, resizeLimit, sampleLetters, sampleRange, unsortedCount,
 } from '../src/annotate/samples'
 import { emptySlots } from '../src/annotate/membership'
 
@@ -93,6 +93,22 @@ describe('选中框时', () => {
   it('改起止的上限:存下的成员框里有它的样本中最早的样本日', () => {
     expect(resizeLimit('b1', c)?.id).toBe('s1')
     expect(resizeLimit('b9', c)).toBeNull()
+  })
+})
+
+describe('删样本时只服务它的框', () => {
+  it('它的当前成员框里,不是任何别的样本(含别的 pattern)当前成员的那些;别的样本只存着、没算进当前成员的不挡', () => {
+    const c: AnnChart = { symbol: 'AAA', boxes: [
+      box('b1', 'w1', '2025-01-06', '2025-01-10'), box('b2', 'w1', '2025-01-13', '2025-01-17'),
+      box('b3', 'w2', '2025-01-21', '2025-01-24'), box('b4', 'w2', '2025-02-03', '2025-02-07'),
+    ], samples: [
+      smp('s1', '2025-02-10', 'P', ['b1', 'b2', 'b3', 'b9']),   // b9 不在图上,不算
+      smp('s2', '2025-02-12', 'Q', ['b3']),                     // 别的 pattern 也算
+      smp('s3', '2025-01-15', 'P', ['b2', 'b4']),               // b2 跨过 s3 的样本日、b4 在它之后:都不是 s3 的当前成员
+    ] }
+    expect(boxesOnlyFor(c.samples[0], c).map(b => b.id)).toEqual(['b1', 'b2'])
+    expect(boxesOnlyFor(c.samples[1], c)).toEqual([])
+    expect(boxesOnlyFor(smp('s4', '2025-03-03', 'P', []), c)).toEqual([])
   })
 })
 

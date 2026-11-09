@@ -151,7 +151,7 @@ function pick(id: string): void {
 <style scoped>
 .sample-diagnose { margin-top: 10px; }
 .mark { font-weight: 700; padding: 0 3px; border-radius: 2px; }
-.mark.off { background: #D55E00; }   /* 朱红:只表示「app 的判断和你相反」(spec 5.8);字照规范用黑 */
+.mark.off { background: #E8875A; }   /* 朱红:只表示「app 的判断和你相反」(spec 5.8);字照规范用黑 */
 .diag-table { width: 100%; border-collapse: collapse; margin-top: 4px; }
 .diag-table th { font-family: var(--mono); font-size: 11px; font-weight: 400; text-align: left; color: var(--ink); cursor: help; padding: 1px 4px; }
 .diag-table td { padding: 2px 4px; vertical-align: top; white-space: nowrap; }

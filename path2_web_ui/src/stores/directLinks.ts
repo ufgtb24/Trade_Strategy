@@ -2,9 +2,15 @@
  * 跟着直达链接走(spec 5.3「链接」;链接格式见 annotate/directLinks.ts)。
  *
  * follow(hash):跟着页面地址 # 后面的链接走。页面打开时和地址的 # 部分变了时(App.vue)各跟一次;跟完把
- * # 部分从地址里去掉,同一个链接在这一页再点一次照样会跟,刷新也不会把图拉回链接那里。链接一律落在 annotate。
+ * # 部分从地址里去掉,同一个链接在这一页再点一次照样会跟,刷新也不会把图拉回链接那里。
+ * 带 mode=compare 的链接能落在 compare 就落在 compare,其余一律落在 annotate(没跟成的也落在 annotate)。
  * - 股票 + 日期:代码先对股票列表(训练段副本里有的股票)核一遍,在就打开那只股票,图窗停在那天附近;
  *   不在就记下 not_found、不动当前的图。股票列表没拿到时不拦,交给后端判(同顶栏 symbol 输入)。
+ * - 落在 compare 的股票 + 日期(会话改版报告里的链接):代码照上一条核;再等标注读完,链接里的 pattern 不在
+ *   标注里 → 记下 not_found(不新建这个 pattern);在就把当前 pattern 换成它,再等 mapping 读到(页面刚打开时
+ *   还没读到),这个 pattern 有能用的 app 就打开那只股票、图窗停在那天附近、落在 compare,当前日竖线停在那天
+ *   (stores/landing.ts);没有能用的 app(没写 mapping、mapping 有问题、mapping 读不到)就照「股票 + 日期」
+ *   落在 annotate,记下 compare_unavailable 和原因。标注读不到时不拦 pattern,照样换上、照样看 app。
  * - 样本编号:等标注读完,按编号打开样本所在的图并选中它(标注 store 的 openSample);编号不存在 → 记下 not_found。
  *   标注读不到时不记:提示条已经写了标注的状态。
  * - 认不出的写法 → 记下 bad_url。
@@ -13,15 +19,21 @@
 import { defineStore } from 'pinia'
 import { ref, watch } from 'vue'
 import { getSymbols } from '../api'
-import { chartLinkWindow, parseLink, type DirectLink } from '../annotate/directLinks'
+import { TRAIN_END, chartLinkWindow, parseLink, type DirectLink } from '../annotate/directLinks'
 import { resolveSymbolInput } from '../annotate/symbolInput'
 import { useAnnotationStore } from './annotation'
+import { useAppLinkStore } from './appLink'
+import { useLandingStore } from './landing'
 import { useViewStore } from './view'
 
-/** 链接没跟成的原因:股票代码或样本编号不存在,或认不出的写法(raw 是 # 后面的原文)。 */
+/** 链接没跟成的原因:股票代码、样本编号或 pattern 不存在;认不出的写法(raw 是 # 后面的原文);
+ *  要落在 compare 却用不了(pattern 是链接里的那个,reason 是给悬停看的一句英文)。 */
 export type LinkProblem =
-  | { code: 'not_found'; kind: 'symbol' | 'sample'; id: string }
+  | { code: 'not_found'; kind: 'symbol' | 'sample' | 'pattern'; id: string }
   | { code: 'bad_url'; raw: string }
+  | { code: 'compare_unavailable'; pattern: string; reason: string }
+
+type CompareLink = Extract<DirectLink, { kind: 'compare' }>
 
 /** 股票列表;拿不到为 null。 */
 async function symbolSet(): Promise<ReadonlySet<string> | null> {
@@ -45,9 +57,35 @@ export const useDirectLinkStore = defineStore('directLinks', () => {
     })
   }
 
+  /** 落在 compare 的链接:能落就落在 compare(返回 null),否则打开图落在 annotate 并返回原因(见模块说明)。 */
+  async function openCompare(link: CompareLink): Promise<LinkProblem | null> {
+    const view = useViewStore()
+    const win = chartLinkWindow(link.date)
+    const r = resolveSymbolInput(link.symbol, await symbolSet())
+    if (r.kind !== 'ok') return { code: 'not_found', kind: 'symbol', id: link.symbol }
+    await annotationsSettled()
+    const ann = useAnnotationStore()
+    if (ann.state && !ann.state.patterns.some(p => p.name === link.pattern)) {
+      view.openSymbol(r.symbol, win)
+      return { code: 'not_found', kind: 'pattern', id: link.pattern }
+    }
+    ann.setCurrentPattern(link.pattern)
+    const appLink = useAppLinkStore()
+    await appLink.loaded()
+    if (!appLink.mapping) {
+      view.openSymbol(r.symbol, win)
+      const reason = appLink.mappings === null ? 'mappings could not be read'
+        : appLink.problem ?? 'no app is mapped to this pattern'
+      return { code: 'compare_unavailable', pattern: link.pattern, reason }
+    }
+    if (useLandingStore().land(r.symbol, win, link.date > TRAIN_END ? TRAIN_END : link.date)) return null
+    return { code: 'compare_unavailable', pattern: link.pattern, reason: 'compare could not be entered' }
+  }
+
   /** 跟着链接打开图;没跟成返回原因(标注读不到时为 null,见模块说明)。 */
   async function open(link: DirectLink): Promise<LinkProblem | null> {
     if (link.kind === 'bad') return { code: 'bad_url', raw: link.raw }
+    if (link.kind === 'compare') return openCompare(link)
     if (link.kind === 'chart') {
       const r = resolveSymbolInput(link.symbol, await symbolSet())
       if (r.kind !== 'ok') return { code: 'not_found', kind: 'symbol', id: link.symbol }
@@ -66,7 +104,9 @@ export const useDirectLinkStore = defineStore('directLinks', () => {
     history.replaceState(null, '', location.pathname + location.search)
     problem.value = null
     problem.value = await open(link)
-    useViewStore().enterAnnotate()      // 跟成时打开图已经落在 annotate;没跟成也落在这里,提示条在 annotate 下
+    // 落在 compare 的链接跟成时已经在 compare;其余跟成时打开图已经落在 annotate;没跟成也落在这里,提示条在 annotate 下
+    if (link.kind === 'compare' && !problem.value) return
+    useViewStore().enterAnnotate()
   }
 
   return { problem, follow }

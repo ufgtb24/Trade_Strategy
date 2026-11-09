@@ -30,6 +30,26 @@ mapping 随 app 进 git,不进标注文件:标注文件只由工具写,会话不
   键是 node_id(说这个 node),或 `node_id.where 名`(说这个 node 上的一条 where;where 名即 NodeSpec.where
   的 clause_id,同名 where 挂在几个 node 上时各写各的)。不写数字(实测值、门槛),说明里只给类别。
 
+会话段(可选,顶层键 session):会话的账本,由会话写,后端原样带给前端(纯投影,同 notes)。
+
+    session:
+      snapshot:                 # 每轮开头定格
+        seen: {pc: 171, upc: 0} # 每台机器从 1 起连续到齐的最大批次序号(读标注结果的 machines[机器].through)
+        samples: [s-pc-3, s-pc-9]   # 这个 pattern 当时的样本编号
+        at: "2026-11-10"        # 可选:定格那天(现实日期,不是行情日期;不加引号也行,带出时转成字符串)
+      conditions:               # 由反馈、负样本 note、盲看理由推出的条件
+        - {where: plateau.no_chase, from: [f-pc-1], state: unmeasured}   # state 是自由文字
+      tags:                     # 还红着或 lost 的反馈的原因标签
+        f-pc-1: for_tuning
+
+- 三个子键都可省;snapshot 写了就必须有 seen({机器名: 非负整数})和 samples(编号数组);conditions 每项恰好
+  where(非空字符串)、from(编号数组)、state(字符串)三个键;tags 是 {反馈编号: 标签},标签取 SESSION_TAGS
+  之一:unhandled 还没处理 / for_tuning 留给调参 / not_worth 量过不值得加 / invisible 当天看不出 /
+  accepted 用户说过接受 / redefined 定义改过(挂了它的反馈不再算朱红,见 path2_web/annotation/match.py 的 is_red);
+- 形状问题只记进 session_problem(一句英文),不进 problem:会话段写坏了不影响 compare 用这个 mapping;
+  这时 session 为 None。没写会话段时 session、session_problem 都是 None;
+- 反馈编号、样本编号在不在标注里由前端核对(后端不读标注);where 不对着 dag 查(推出的条件可能还没写进 app)。
+
 compare 怎么用它(前端):当前 pattern 恰好有一个没有问题的 mapping 时,`compare` / `app` 两档可用;
 compare 把 map 了的特征轨放在它对的 node 那组 band(这个 node 及其子 node)正上方,轨标题写 `⇣ node`;
 样本、框和 app 怎么对、认没认出,按样本日 / 框终点那天配对那一格读(path2_web_ui/src/stores/compare.ts)。
@@ -46,11 +66,20 @@ app 要在注册表里(path2_web.discovery):后端启动之后新写的 app,重�
 """
 from __future__ import annotations
 
+import datetime as dt
 from pathlib import Path
 
 import yaml
 
 MAPPING_FILE = "mapping.yaml"
+
+# 会话段 tags 的原因标签(暂名,待用户认):还没处理 / 留给调参 / 量过不值得加 / 当天看不出 / 用户说过接受 /
+# 定义改过。TAG_REDEFINED 由反馈的朱红判法读(path2_web/annotation/match.py 的 is_red),只在这里写一处。
+TAG_REDEFINED = "redefined"
+SESSION_TAGS = ("unhandled", "for_tuning", "not_worth", "invisible", "accepted", TAG_REDEFINED)
+_SESSION_KEYS = {"snapshot", "conditions", "tags"}
+_SNAPSHOT_KEYS = {"seen", "samples", "at"}
+_CONDITION_KEYS = {"where", "from", "state"}
 
 
 def mapping_path(mod) -> Path:
@@ -77,17 +106,66 @@ def _note_key_ok(key: str, dag: dict[str, set[str]]) -> bool:
     return bool(sep) and node in dag and where in dag[node]
 
 
+def _str_list(v) -> bool:
+    """非空字符串组成的数组(可以是空数组)。"""
+    return isinstance(v, list) and all(isinstance(x, str) and x for x in v)
+
+
+def _session_problem(session) -> str | None:
+    """会话段的形状问题(一句英文);形状对时返回 None。规则见模块说明「会话段」。"""
+    if not isinstance(session, dict) or not set(session) <= _SESSION_KEYS:
+        return "session must be a mapping with keys snapshot / conditions / tags"
+    snap = session.get("snapshot")
+    if snap is not None:
+        if not isinstance(snap, dict) or not {"seen", "samples"} <= set(snap) <= _SNAPSHOT_KEYS:
+            return "session.snapshot must have seen and samples (and optionally at)"
+        seen = snap["seen"]
+        if not isinstance(seen, dict) or not all(
+                isinstance(k, str) and k and type(v) is int and v >= 0 for k, v in seen.items()):
+            return "session.snapshot.seen must map machine names to batch numbers >= 0"
+        if not _str_list(snap["samples"]):
+            return "session.snapshot.samples must be a list of sample ids"
+        if "at" in snap and not isinstance(snap["at"], (str, dt.date)):
+            return "session.snapshot.at must be a date or a string"
+    conds = session.get("conditions")
+    if conds is not None:
+        if not isinstance(conds, list) or not all(
+                isinstance(c, dict) and set(c) == _CONDITION_KEYS and isinstance(c["where"], str)
+                and c["where"].strip() and _str_list(c["from"]) and isinstance(c["state"], str) for c in conds):
+            return "session.conditions must be a list of {where, from, state}"
+    tags = session.get("tags")
+    if tags is not None:
+        if not isinstance(tags, dict) or not all(isinstance(k, str) and k for k in tags):
+            return "session.tags must map feedback ids to tags"
+        bad = sorted({str(v) for v in tags.values() if v not in SESSION_TAGS})
+        if bad:
+            return f"session.tags has unknown tags: {', '.join(bad)}"
+    return None
+
+
 def _read_one(app: str, mod) -> dict | None:
-    """读一个 app 的 mapping 文件;没有文件返回 None。"""
+    """读一个 app 的 mapping 文件;没有文件返回 None。
+
+    返回 {app, pattern, features, notes, problem, session, session_problem}。会话段在任何别的检查之前读:
+    pattern、features 等写坏了(problem 非空)也照样带出会话段;会话段的问题只进 session_problem。"""
     path = mapping_path(mod)
     if not path.is_file():
         return None
-    out = {"app": app, "pattern": None, "features": {}, "notes": {}, "problem": None}
+    out = {"app": app, "pattern": None, "features": {}, "notes": {}, "problem": None,
+           "session": None, "session_problem": None}
     try:
         raw = yaml.safe_load(path.read_text(encoding="utf-8"))
     except (OSError, yaml.YAMLError) as e:
         out["problem"] = f"{MAPPING_FILE} cannot be read: {type(e).__name__}"
         return out
+    session = raw.get("session") if isinstance(raw, dict) else None
+    if session is not None:
+        out["session_problem"] = _session_problem(session)
+        if out["session_problem"] is None:
+            at = (session.get("snapshot") or {}).get("at")
+            if isinstance(at, dt.date):   # 不加引号的 at: 2026-11-10 被 YAML 读成日期,转回字符串带出
+                session = {**session, "snapshot": {**session["snapshot"], "at": at.isoformat()}}
+            out["session"] = session
     pattern = raw.get("pattern") if isinstance(raw, dict) else None
     if not isinstance(pattern, str) or not pattern.strip():
         out["problem"] = "pattern must be a non-empty string"
@@ -117,8 +195,9 @@ def _read_one(app: str, mod) -> dict | None:
 
 
 def read_mappings(registry) -> list[dict]:
-    """全部已注册 app 的 mapping 文件,按 app 名排:[{app, pattern, features, notes, problem}]。
-    problem 为 None 才能用;两个 app 写了同一个 pattern 时,两边都记上问题。"""
+    """全部已注册 app 的 mapping 文件,按 app 名排:[{app, pattern, features, notes, problem, session,
+    session_problem}]。problem 为 None 才能用;两个 app 写了同一个 pattern 时,两边都记上问题。
+    session / session_problem 见模块说明「会话段」,与 problem 互不影响。"""
     out = [m for app in registry.ids() if (m := _read_one(app, registry.get(app))) is not None]
     by_pattern: dict[str, list[str]] = {}
     for m in out:

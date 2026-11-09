@@ -5,11 +5,13 @@
 - 配置的目录误指到带 2026 年行情的数据,K 线、网页扫描的 worker 也读不到 2026 年的 bar;
 - 单股预览与扫描的区间终点截到 TRAIN_END,起点晚于它 → 400;
 - 网页扫描(cap_at_train_end=True)落盘 data_until;研究脚本照旧读完整行情、不带 data_until;
-  没有它(或晚于 TRAIN_END)的扫描打不开(409),列表里不给成绩。
+  没有它(或晚于 TRAIN_END)的扫描打不开(409),列表里不给成绩;
+- 反馈状态接口跑 app 读到、切出的 K 线不晚于 TRAIN_END;自上次以来的变化接口不读行情。
 """
 from __future__ import annotations
 
 import json
+import re
 import threading
 from concurrent.futures import ThreadPoolExecutor
 
@@ -293,3 +295,87 @@ def test_scan_beyond_data_wall_refused_and_numbers_hidden(tmp_path, full_dir, sc
     assert row["per_pattern"]["bo_only"] | {"params_consistent": None} == \
         {"hits": None, "median": None, "fp": None, "params_consistent": None}
     assert c.delete("/scans/old").status_code == 200                # 删照常能删
+
+
+def _feedback_client(tmp_path, ddir, monkeypatch, mapping_text: str) -> TestClient:
+    """带临时标注目录、mapping 改从临时目录读(bo_only 写 mapping_text)的客户端。"""
+    from path2_web import mapping
+
+    mdir = tmp_path / "mappings"
+    mdir.mkdir()
+    (mdir / "bo_only.yaml").write_text(mapping_text, encoding="utf-8")
+    monkeypatch.setattr(mapping, "mapping_path", lambda mod: mdir / f"{mod.__name__.split('.')[-2]}.yaml")
+    adir = tmp_path / "annotations"
+    adir.mkdir()
+    cfg = {**data_cfg(ddir), "annotation_dir": str(adir), "machine": "pc"}
+    return TestClient(create_app(config_override=cfg, outputs_root=str(tmp_path / "outputs"),
+                                 use_thread_pool=True))
+
+
+def _feedback_op(oid, symbol, start, end):
+    return {"kind": "feedback", "id": oid, "base": None,
+            "value": {"id": oid, "symbol": symbol, "pattern": "p", "app_id": "bo_only", "app_ver": "0" * 16,
+                      "start": start, "end": end, "target": "range", "source": "picked", "answer": "neg",
+                      "note": "x"}}
+
+
+def test_feedback_status_reads_bars_only_until_train_end(tmp_path, full_dir, monkeypatch):
+    """反馈状态接口跑 app:配置的目录误指到带 2026 年行情的数据,app 读到、跑到的 K 线也不晚于 2025-12-31;
+    返回里没有晚于训练段末日的日期。几种参数(有反馈的 pattern、没有 mapping 的 pattern、怪名字)都一样。"""
+    import path2_web.app_run as app_run
+
+    _write_oscillating_pkl(full_dir, "BBB")
+    c = _feedback_client(tmp_path, full_dir, monkeypatch, "pattern: p\nfeatures: {w-pc-1: bo}\n")
+    r = c.post("/annotations/batch", json={"ops": [_feedback_op("f-pc-1", "BBB", "2025-12-01", TRAIN_END),
+                                                    _feedback_op("f-pc-2", "AAA", "2025-06-02", "2025-12-30")]})
+    assert r.status_code == 200, r.text
+
+    seen: list = []
+    real_read, real_slice = data_mod.read_bars, app_run.slice_window
+
+    def spy_read(d, symbol):
+        df = real_read(d, symbol)
+        seen.append(df.index.max())
+        return df
+
+    def spy_slice(df, start, end):
+        out = real_slice(df, start, end)
+        seen.append(pd.Timestamp(out["date"].max()))
+        return out
+    monkeypatch.setattr(data_mod, "read_bars", spy_read)
+    monkeypatch.setattr(app_run, "slice_window", spy_slice)
+
+    for pattern in ("p", "no_such_pattern", "../p", "2026-03-31"):
+        r = c.get("/feedback/status", params={"pattern": pattern})
+        assert r.status_code == 200, r.text
+        body = r.json()
+        if pattern == "p":
+            assert [i["status"] is not None for i in body["items"]] == [True, True]
+        # reason 会照抄请求里的 pattern 名(参数,不是行情日期),不算
+        dates = re.findall(r"\d{4}-\d{2}-\d{2}", json.dumps({k: v for k, v in body.items() if k != "reason"}))
+        assert all(d <= TRAIN_END for d in dates)
+    assert len(seen) == 4 and max(seen) <= pd.Timestamp(TRAIN_END)   # 两只股票各读一次、切一次(之后走缓存)
+
+
+def test_annotation_changes_never_reads_bars(tmp_path, full_dir, monkeypatch):
+    """GET /annotations/changes 只读标注与 mapping,不读行情(读行情的函数一调就让测试失败)。"""
+    c = _feedback_client(tmp_path, full_dir, monkeypatch,
+                         "pattern: p\nfeatures: {w-pc-1: bo}\nsession: {snapshot: {seen: {pc: 1}, samples: []}}\n")
+    for ops in ([_feedback_op("f-pc-1", "AAA", "2025-12-01", "2025-12-05")],
+                [{"kind": "sample", "id": "s-pc-2", "base": None,
+                  "value": {"id": "s-pc-2", "symbol": "AAA", "date": "2025-12-08", "pattern": "p",
+                            "judgment": "pos", "members": []}}]):
+        assert c.post("/annotations/batch", json={"ops": ops}).status_code == 200
+
+    def _forbidden(*a, **k):
+        raise AssertionError("变化接口读了行情")
+    monkeypatch.setattr(pd, "read_pickle", _forbidden)
+    monkeypatch.setattr(data_mod, "read_bars", _forbidden)
+    monkeypatch.setattr("path2_web.app_run.load_bars", _forbidden)
+    monkeypatch.setattr("path2_web.api.load_bars", _forbidden)
+    monkeypatch.setattr("path2_web.api.run_app", _forbidden)
+    for pattern in ("p", "q", "2026-03-31"):
+        r = c.get("/annotations/changes", params={"pattern": pattern})
+        assert r.status_code == 200, r.text
+    assert c.get("/annotations/changes", params={"pattern": "p"}).json() == {
+        "since": {"pc": 1}, "changes": [{"kind": "sample", "id": "s-pc-2", "change": "added"}], "reason": None}

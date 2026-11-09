@@ -66,7 +66,7 @@ export const COMPARE_BRACKET_ROW_H = 18   // compare 的 user 行:行高放大,�
 export const UNMAPPED_EDGE = '#0072B2' // 蓝:compare 下没 map 的轨挂的 unmapped 的描边
 export const MISSING_EDGE = '#E69F00'  // 橙:compare 下框右端 missing 的描边
 const TAG_BOX = { backgroundColor: '#ffffff', borderWidth: 1.5, padding: [1, 3], borderRadius: 2 }
-export const VERMILION = '#D55E00'    // 朱红:只表示「app 的判断和你相反」(▲ 字母后的 ✗ 底色)
+export const VERMILION = '#E8875A'    // 朱红(配黑字,所以取浅一档):只表示「app 的判断和你相反」(▲ 字母后的 ✗ 底色)
 export { MONO }
 /** 悬停文字:等宽、黑字。MONO 里有双引号,属性值用单引号括,否则 style 在字体名那里就断了。 */
 const monoTip = (html: string) => `<span style='font-family:${MONO};color:${INK}'>${html}</span>`

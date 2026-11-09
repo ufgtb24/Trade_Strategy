@@ -206,6 +206,18 @@ describe('合进的主视图副图', () => {
     const plain = buildSubDecorGraphics(geom.bandGeom, geom.bracketH, ['plateau', 'step'], false, 800)
     expect(plain.filter(x => x.type === 'text').map(x => x.style.text)).toEqual(['plateau', 'step'])
   })
+  it('buildSubOption 读 input.hoverBand(反馈面板悬停的分段):那一行垫浅蓝底、描中蓝边;不给不画', () => {
+    const bundle = computeEventData(bars, [ev('plateau', 1, 4), ev('step', 2, 2)], [], input)
+    const geom = computeSubGeometry({ bracketLaneCount: 0, bandLaneCounts: [1, 1] })
+    const lit = (o: any) => o.graphic.filter((x: any) => x.type === 'rect' && x.style.stroke === 'rgb(26, 128, 186)')
+    const opt: any = buildSubOption(bars, bundle, geom, { ...input, hoverBand: 'step' }, 800)
+    const r = lit(opt)
+    expect(r).toHaveLength(1)
+    expect(r[0].top).toBe(geom.bandGeom[1].top + 1)
+    expect(r[0].shape.height).toBe(geom.bandGeom[1].h - 2)
+    expect(lit(buildSubOption(bars, bundle, geom, input, 800))).toEqual([])
+    expect(lit(buildSubOption(bars, bundle, geom, { ...input, hoverBand: 'nope' }, 800))).toEqual([])
+  })
   it('buildSubOption 读 input.linkedBands:选中框对的 band 表头加粗,其余照常', () => {
     const bundle = computeEventData(bars, [ev('plateau', 1, 4), ev('step', 2, 2)], [], input)
     const geom = computeSubGeometry({ bracketLaneCount: 0, bandLaneCounts: [1, 1] })

@@ -14,7 +14,9 @@
  * - match(spec 6.2):正样本:有一次 hit 的买点日离样本日不超过 tol.pos 根;负样本不超过 tol.neg 根。容差不在
  *   这里设:调用方传 GET /annotations 带出的 match(后端 path2_web/annotation/match.py 唯一设定,spec 第 10 节)。
  *   买点日按 eval_meta 的买点 node 取(buyDaysOf),所以「样本日落在买点 node 那段事件里」已包含在内。
- *   这是 match 判法的唯一实现:以后由后端按 app 版本存 match 结果时,界面改成读那份结果,不另写一套判法。
+ *   样本 match 有两份实现:这里(画图用)和后端 path2_web/annotation/match.py 的 sample_match(给会话的改版报告用),
+ *   两份逐例通过同一份例子文件 tests/path2_web/fixtures/match_examples.json,改判法时两边连同例子一起改。
+ *   反馈(feedback)的状态不在这里算:唯一实现在 match.py,界面照后端状态接口给的结果画。
  * - diagnose 的行只给类别:档位、没过的 where 名,不给实测值与门槛(spec 1.4)。
  */
 import type { Diagnostics, EventDict, HitDict, Tier } from '../types'

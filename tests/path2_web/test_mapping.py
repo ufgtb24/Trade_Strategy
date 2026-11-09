@@ -64,7 +64,8 @@ def test_reads_valid_mapping_and_skips_apps_without_file(files):
     files("x", "pattern: 放量突破\nfeatures:\n  w-pc-3: a\n  w-pc-7: b\n")
     reg = _Registry({"x": _fake("x"), "y": _fake("y")})
     assert mapping_mod.read_mappings(reg) == [
-        {"app": "x", "pattern": "放量突破", "features": {"w-pc-3": "a", "w-pc-7": "b"}, "notes": {}, "problem": None}]
+        {"app": "x", "pattern": "放量突破", "features": {"w-pc-3": "a", "w-pc-7": "b"}, "notes": {}, "problem": None,
+         "session": None, "session_problem": None}]
 
 
 def test_real_app_nodes_checked(files):
@@ -104,7 +105,8 @@ def test_route_rereads_files_each_request(tmp_path, files):
     assert c.get("/mappings").json() == []
     files("bo_only", "pattern: p\nfeatures: {w-pc-1: bo}\n")
     assert c.get("/mappings").json() == [
-        {"app": "bo_only", "pattern": "p", "features": {"w-pc-1": "bo"}, "notes": {}, "problem": None}]
+        {"app": "bo_only", "pattern": "p", "features": {"w-pc-1": "bo"}, "notes": {}, "problem": None,
+         "session": None, "session_problem": None}]
 
 
 def test_notes_for_nodes_and_wheres(files):
@@ -135,3 +137,92 @@ def test_new_step_mapping_file_is_readable_and_explains_every_where():
     spec = new_step.build_pattern(new_step.load_params())
     plateau = next(n for n in spec.nodes if n.node_id == "plateau")
     assert {f"plateau.{cid}" for cid, _ in plateau.where} <= set(m["notes"])
+
+
+# ───────────────────────── 会话段(session)─────────────────────────
+_SESSION = """session:
+  snapshot: {seen: {pc: 171, upc: 0}, samples: [s-pc-3, s-pc-9], at: "2026-11-10"}
+  conditions:
+    - {where: plateau.no_chase, from: [f-pc-1], state: unmeasured}
+  tags: {f-pc-1: for_tuning, f-pc-2: redefined}
+"""
+
+
+def test_session_passes_through_as_written(files):
+    """会话段形状对时原样带出;where 不对着 dag 查(推出的条件可能还没写进 app);problem 不受影响。"""
+    files("x", "pattern: p\nfeatures: {w-pc-1: a}\n" + _SESSION)
+    [m] = mapping_mod.read_mappings(_Registry({"x": _fake("x")}))
+    assert m["problem"] is None and m["session_problem"] is None
+    assert m["session"] == {
+        "snapshot": {"seen": {"pc": 171, "upc": 0}, "samples": ["s-pc-3", "s-pc-9"], "at": "2026-11-10"},
+        "conditions": [{"where": "plateau.no_chase", "from": ["f-pc-1"], "state": "unmeasured"}],
+        "tags": {"f-pc-1": "for_tuning", "f-pc-2": "redefined"}}
+    files("x", "pattern: p\nfeatures: {w-pc-1: a}\nsession: {tags: {f-pc-1: accepted}}\n")   # 子键都可省
+    [m] = mapping_mod.read_mappings(_Registry({"x": _fake("x")}))
+    assert m["session"] == {"tags": {"f-pc-1": "accepted"}} and m["session_problem"] is None
+
+
+@pytest.mark.parametrize("session, problem", [
+    ("[a]", "session must be a mapping"),
+    ("{notes: {}}", "session must be a mapping"),
+    ("{snapshot: {seen: {pc: 1}}}", "session.snapshot must have seen and samples"),
+    ("{snapshot: {seen: {pc: 1}, samples: [], when: x}}", "session.snapshot must have seen and samples"),
+    ("{snapshot: {seen: {pc: -1}, samples: []}}", "session.snapshot.seen must map"),
+    ("{snapshot: {seen: {pc: true}, samples: []}}", "session.snapshot.seen must map"),
+    ("{snapshot: {seen: {pc: 1.5}, samples: []}}", "session.snapshot.seen must map"),
+    ("{snapshot: {seen: [pc], samples: []}}", "session.snapshot.seen must map"),
+    ("{snapshot: {seen: {pc: 1}, samples: [s-pc-1, 3]}}", "session.snapshot.samples must be"),
+    ("{snapshot: {seen: {pc: 1}, samples: [], at: 20261110}}", "session.snapshot.at must be"),
+    ("{conditions: {where: a}}", "session.conditions must be"),
+    ("{conditions: [{where: '', from: [], state: x}]}", "session.conditions must be"),
+    ("{conditions: [{where: a.b, form: [], state: x}]}", "session.conditions must be"),
+    ("{conditions: [{where: a.b, from: f-pc-1, state: x}]}", "session.conditions must be"),
+    ("{conditions: [{where: a.b, from: [], state: 3}]}", "session.conditions must be"),
+    ("{tags: [f-pc-1]}", "session.tags must map"),
+    ("{tags: {f-pc-1: later, f-pc-2: unhandled}}", "session.tags has unknown tags: later"),
+])
+def test_bad_session_only_goes_to_session_problem(files, session, problem):
+    """会话段写坏了:原因只进 session_problem,session 为 None;problem 仍为 None,compare 照常能用这个 mapping。"""
+    files("x", f"pattern: p\nfeatures: {{w-pc-1: a}}\nnotes: {{a: 旧平台}}\nsession: {session}\n")
+    [m] = mapping_mod.read_mappings(_Registry({"x": _fake("x")}))
+    assert m["session_problem"].startswith(problem) and m["session"] is None
+    assert m["problem"] is None and m["features"] == {"w-pc-1": "a"} and m["notes"] == {"a": "旧平台"}
+
+
+def test_session_read_before_any_other_check(files):
+    """pattern、features 写坏了(提前结束检查)也照样带出会话段;整个文件读不懂时两个新键都是 None。"""
+    files("x", "features: [a]\nsession: {tags: {f-pc-1: unhandled}}\n")
+    [m] = mapping_mod.read_mappings(_Registry({"x": _fake("x")}))
+    assert m["problem"] == "pattern must be a non-empty string"
+    assert m["session"] == {"tags": {"f-pc-1": "unhandled"}} and m["session_problem"] is None
+    files("x", "pattern: p\nfeatures: {w-pc-1: nope}\nsession: {tags: {f-pc-1: x}}\n")
+    [m] = mapping_mod.read_mappings(_Registry({"x": _fake("x")}))
+    assert m["problem"].startswith("node not in app") and m["session_problem"].startswith("session.tags")
+    files("x", "pattern: [unclosed\nsession: {tags: {}}\n")
+    [m] = mapping_mod.read_mappings(_Registry({"x": _fake("x")}))
+    assert m["problem"].startswith("mapping.yaml cannot be read") and m["session"] is None \
+        and m["session_problem"] is None
+
+
+def test_empty_session_key_counts_as_absent(files):
+    files("x", "pattern: p\nfeatures: {w-pc-1: a}\nsession:\n")
+    [m] = mapping_mod.read_mappings(_Registry({"x": _fake("x")}))
+    assert m["session"] is None and m["session_problem"] is None and m["problem"] is None
+
+
+def test_session_tags_are_one_vocabulary():
+    """六个原因标签只在 mapping.py 写一处;反馈朱红判法读的「定义改过」就是其中那一个常量。"""
+    from path2_web.annotation import match
+
+    assert mapping_mod.SESSION_TAGS == ("unhandled", "for_tuning", "not_worth", "invisible", "accepted", "redefined")
+    assert match.TAG_REDEFINED is mapping_mod.TAG_REDEFINED and mapping_mod.TAG_REDEFINED in mapping_mod.SESSION_TAGS
+
+
+def test_unquoted_snapshot_at_is_read_as_text(files):
+    """at 不加引号时 YAML 读成日期:照样算形状对,带出时转成 YYYY-MM-DD 字符串,tags 不跟着丢。"""
+    files("x", "pattern: p\nfeatures: {w-pc-1: a}\n"
+               "session: {snapshot: {seen: {pc: 3}, samples: [], at: 2026-11-10}, tags: {f-pc-1: unhandled}}\n")
+    [m] = mapping_mod.read_mappings(_Registry({"x": _fake("x")}))
+    assert m["session_problem"] is None
+    assert m["session"] == {"snapshot": {"seen": {"pc": 3}, "samples": [], "at": "2026-11-10"},
+                            "tags": {"f-pc-1": "unhandled"}}

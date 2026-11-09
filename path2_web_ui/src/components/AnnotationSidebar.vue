@@ -13,6 +13,7 @@
       <FocusedSamplePanel v-else-if="ann.tab === 'selection' && cmp.focusedSample" />
       <FeaturesPanel v-else-if="ann.tab === 'features' && ann.state" />
       <PatternPanel v-else-if="ann.tab === 'pattern' && ann.state" />
+      <FeedbackPage v-else-if="ann.tab === 'feedback' && view.comparing" />
       <span v-else class="empty">empty</span>
     </section>
   </aside>
@@ -20,22 +21,31 @@
 
 <script setup lang="ts">
 /**
- * annotate 模式的右侧栏,三页:selection(选中的框或样本)、features(词表)、pattern(当前 pattern 总览;
- * 当前 pattern 是 unsorted 时是 unsorted 页)。
- * 页签由标注 store 管:在图上选中框或样本时自动翻到 selection。
+ * annotate / compare 的右侧栏。三页:selection(选中的框或样本)、features(词表)、pattern(当前 pattern 总览;
+ * 当前 pattern 是 unsorted 时是 unsorted 页);compare 下多一页 feedback(当前 pattern 的全部反馈,FeedbackPage)。
+ * 页签由标注 store 管:在图上选中框或样本时自动翻到 selection;离开 compare 时停在 feedback 页就退回 selection
+ * (侧栏挂上时也核一次:从 compare 切到 app 再回 annotate,侧栏是重新挂上的)。
  * compare 下 selection 页什么都没选中时,显示进 compare 时默认聚焦的那个样本(FocusedSamplePanel,只读)。
  */
-import { useAnnotationStore } from '../stores/annotation'
+import { computed, watch } from 'vue'
+import { useAnnotationStore, type SidebarTab } from '../stores/annotation'
 import { useCompareStore } from '../stores/compare'
+import { useViewStore } from '../stores/view'
 import BoxPanel from './BoxPanel.vue'
 import FeaturesPanel from './FeaturesPanel.vue'
+import FeedbackPage from './FeedbackPage.vue'
 import FocusedSamplePanel from './FocusedSamplePanel.vue'
 import PatternPanel from './PatternPanel.vue'
 import SamplePanel from './SamplePanel.vue'
 
-const TABS = ['selection', 'features', 'pattern'] as const
 const ann = useAnnotationStore()
 const cmp = useCompareStore()
+const view = useViewStore()
+const TABS = computed<SidebarTab[]>(() => (view.comparing
+  ? ['selection', 'features', 'pattern', 'feedback'] : ['selection', 'features', 'pattern']))
+watch(() => [view.comparing, ann.tab] as const, ([on, tab]) => {
+  if (!on && tab === 'feedback') ann.tab = 'selection'
+}, { immediate: true })
 </script>
 
 <style scoped>

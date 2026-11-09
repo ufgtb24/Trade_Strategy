@@ -125,6 +125,16 @@ export function memberOfRows(box: AnnBox, chart: AnnChart, pattern: string | nul
 }
 
 /**
+ * 只服务这个样本的框:它的当前成员框里,不是这张图上任何别的样本(不论哪个 pattern)当前成员的那些,按成员顺序。
+ * 删样本时问要不要一并删:留着它们,会在剩下样本的成员链上冒成「画了没收」的空槽。
+ */
+export function boxesOnlyFor(smp: AnnSample, chart: AnnChart): AnnBox[] {
+  const others = new Set<string>()
+  for (const s of chart.samples) if (s.id !== smp.id) for (const id of memberIds(s, chart)) others.add(id)
+  return currentMemberBoxes(smp, chart.boxes).filter(b => !others.has(b.id))
+}
+
+/**
  * 改起止时框终点最多到哪天:存下的成员框里有它的样本中,样本日最早的那个(没有为 null)。
  * 按存下的成员框算(不管眼下是否越界):保存时后端对「以它为成员的样本」逐个查,越过任何一个都会被拒。
  */

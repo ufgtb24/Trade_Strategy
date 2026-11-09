@@ -26,8 +26,11 @@ from sse_starlette.sse import EventSourceResponse
 from path2.dag import diagnose as _dag_diagnose
 from path2.dag.engine import analyze as _dag_analyze_engine
 from path2_web import scan as scan_mod
+from path2_web.app_run import (BarsUnavailable, NoDataDir, NoSymbol, app_buys, load_bars,
+                               require_eval_meta, run_app)
+from path2_web.app_version import app_ver
 from path2_web.config import finder_settings, train_segment
-from path2_web.data import TRAIN_END, list_symbols, read_bars, serialize_ohlc, slice_window
+from path2_web.data import TRAIN_END, list_symbols, serialize_ohlc, slice_window
 from path2_web.diagnose import diagnose_symbol, derive_response, Query
 from path2_web.finder import Finder, random_window
 from path2_web.peaks import peak_lines
@@ -38,6 +41,7 @@ from path2_web.serialize import serialize_pattern
 from path2_web.annotation import membership as annotation_membership
 from path2_web.annotation import match as annotation_match
 from path2_web.annotation import store as annotation_store
+from path2_web.annotation.changes import pattern_changes
 from path2_web.config import view_dataset_dir
 
 _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
@@ -81,14 +85,19 @@ def _data_dir(cfg: dict) -> Path:
     return d
 
 
+def _bars_http_error(e: BarsUnavailable) -> HTTPException:
+    """读不到行情 → HTTP:行情目录不存在 503,没有这只股票 404,代码名不合格 400(文字取 app_run 的原文)。"""
+    code = 503 if isinstance(e, NoDataDir) else 404 if isinstance(e, NoSymbol) else 400
+    return HTTPException(code, str(e))
+
+
 def _bars(cfg: dict, symbol: str) -> pd.DataFrame:
-    """读一只股票(data.read_bars:截到训练段末日)。代码名不合格 → 400;没有这只股票 → 404。"""
+    """读一只股票(app_run.load_bars → data.read_bars:截到训练段末日)。代码名不合格 → 400;
+    没有这只股票 → 404;行情目录不存在 → 503。"""
     try:
-        return read_bars(_data_dir(cfg), symbol)
-    except FileNotFoundError:
-        raise HTTPException(404, f"pkl not found: {symbol}") from None
-    except ValueError as e:
-        raise HTTPException(400, str(e)) from None
+        return load_bars(cfg, symbol)
+    except BarsUnavailable as e:
+        raise _bars_http_error(e) from None
 
 
 def _all_bars(cfg: dict, symbol: str) -> pd.DataFrame:
@@ -186,24 +195,6 @@ class ScanRequest(BaseModel):
 
 class RenameRequest(BaseModel):
     name: str
-
-
-def require_eval_meta(mod, params=None) -> dict:
-    """读 app 模块 eval_meta() 协议。params 显式传入时用之(override 场景 head_buffer
-    必须按 override 参数算,否则缓冲不足导致漏检伪装成"参数没起效");否则回退 load_params()
-    (现状行为)。铁律下 discovery 已闸过滤,api 调到此处不可能 None。
-    若仍 None / 字段不全 → ValueError(防御性,非业务路径)。
-    """
-    fn = getattr(mod, "eval_meta", None)
-    if not callable(fn):
-        raise ValueError("eval_meta missing or non-callable (discovery gate failed)")
-    if params is None:
-        load_params = getattr(mod, "load_params", None)
-        params = load_params() if callable(load_params) else None
-    meta = fn(params) if params is not None else fn()
-    if not isinstance(meta, dict) or "end_node" not in meta or "head_buffer_trading_days" not in meta:
-        raise ValueError(f"eval_meta returned invalid dict: {meta!r}")
-    return meta
 
 
 class ScanManager:
@@ -314,7 +305,8 @@ def build_router(*, registry, config_path, get_config, set_config,
     @router.get("/mappings")
     def get_mappings():
         """compare 用的 mapping 文件(path2_apps/<app>/mapping.yaml,格式见 path2_web/mapping.py):
-        [{app, pattern, features: {特征编号: node_id}, problem}],problem 为 null 才能用。每次请求都重读文件。"""
+        [{app, pattern, features: {特征编号: node_id}, notes, problem, session, session_problem}],problem 为 null
+        才能用;session 是会话段(原样带出,写坏了为 null、原因在 session_problem,不影响 problem)。每次请求都重读文件。"""
         return read_mappings(registry)
 
     @router.get("/config")
@@ -471,36 +463,26 @@ def build_router(*, registry, config_path, get_config, set_config,
             else:
                 _load = getattr(mod, "load_params", None)
                 p = _load() if callable(_load) else None
-            meta = require_eval_meta(mod, params=p)
-            end_node = meta["end_node"]
-            head_buf = meta["head_buffer_trading_days"]
-            start_ts, end_ts = pd.to_datetime(start), pd.to_datetime(end)
-            buf_start = str((start_ts - pd.Timedelta(days=round(head_buf * scan_mod.TRADING_TO_CALENDAR_RATIO))).date())
-            buf_end   = str((end_ts   + pd.Timedelta(days=round(label_horizon * scan_mod.TRADING_TO_CALENDAR_RATIO))).date())
-            buf_end = min(buf_end, TRAIN_END)   # 行情本来就只读到训练段末日;回给前端的窗口也不越过它
-
-            # 复刻 worker 单 pattern 调用(含样本消费窗截取,口径与 scan worker 一致)
-            win = slice_window(_bars(cfg, symbol), buf_start, buf_end)
-            res = mod.analyze(win, p)
+            # 跑 app(缓冲窗、读行情、analyze)与反馈状态接口、会话改版报告共用 path2_web/app_run.py 的 run_app
+            res, win, scan_meta = run_app(mod, cfg, symbol, start, end, p, label_horizon)
             from path2_web.serialize import serialize_per_pattern_result
+            start_ts, end_ts = pd.to_datetime(start), pd.to_datetime(end)
             lo = int(win["date"].searchsorted(start_ts, "left"))
             hi = int(win["date"].searchsorted(end_ts, "right")) - 1
             out = serialize_per_pattern_result(
-                res, end_node=end_node, label_horizon=label_horizon,
+                res, end_node=scan_meta["end_node"], label_horizon=label_horizon,
                 win=win, start_ts=start_ts, end_ts=end_ts,
                 sample_window=(lo, hi))
             pattern_spec = serialize_pattern(mod.build_pattern(p if p is not None else mod.load_params()))
-            scan_meta = {
-                "start_date": start, "end_date": end,
-                "win_start": buf_start, "win_end": buf_end,
-                "label_horizon": label_horizon, "end_node": end_node,
-            }
         except HTTPException:
             raise
+        except BarsUnavailable as e:    # 读不到行情:同 _bars 的 503 / 404 / 400
+            raise _bars_http_error(e) from None
         except Exception as e:
             raise HTTPException(500, f"{type(e).__name__}: {e}") from e
+        # app_ver:这一版 app 的指纹(path2_web/app_version.py),前端存反馈时记进记录
         return {"analysis": out["analysis"], "summary": out["summary"],
-                "pattern_spec": pattern_spec, "scan": scan_meta}
+                "pattern_spec": pattern_spec, "scan": {**scan_meta, "app_ver": app_ver(mod)}}
 
     # ── 参数文件层:app 目录多 yaml(dev 式 File 层) ─────────────────────────
     def _params_dir(mod) -> Path:
@@ -852,6 +834,118 @@ def build_router(*, registry, config_path, get_config, set_config,
             return {"file": name, **_annotation_read(cfg)}
         except (OSError, ValueError) as e:
             raise _annotation_failure(e) from None
+
+    # ---- 反馈状态、自上次以来的变化(spec 6.13「状态判法」、6.14 第 2 条)----
+    # 两个都是只读路由:状态接口跑 app(行情只经 app_run.load_bars,截到训练段末日),变化接口不读行情。
+
+    def _mappings_of(pattern: str) -> tuple[list[dict], Optional[str]]:
+        """写了这个 pattern 的 mapping(path2_web/mapping.py 的 read_mappings,每次重读文件)。
+        返回 (这些 mapping, 原因);恰好一个时原因为 None,否则是一句英文。"""
+        ms = [m for m in read_mappings(registry) if m["pattern"] == pattern]
+        if not ms:
+            return ms, f"no app is mapped to pattern {pattern}"
+        if len(ms) > 1:
+            return ms, f"pattern {pattern} is mapped by several apps: {', '.join(m['app'] for m in ms)}"
+        return ms, None
+
+    # 反馈状态接口的买点缓存:{app: (app_ver, {股票: AppBuys})},即按 (app, app_ver, 股票) 存;
+    # app 换了版本(改了 .py 或默认参数文件)就整个丢掉旧版本的条目,不让旧版本越攒越多。
+    buys_cache: dict[str, tuple[str, dict]] = {}
+
+    def _buys_of(app: str, ver: str, mod, cfg: dict, symbol: str, params):
+        """这只股票在当前 app 下的买点(AppBuys),有缓存用缓存。区间与 compare 的图一致:全历史
+        (1900-01-01)到训练段末日,label_horizon 20(前端 stores/appLink.ts 调单股预览就是这么调的;
+        app_buys 不按区间筛 hit,区间不同买点就可能不同)。读不到行情抛 BarsUnavailable。"""
+        entry = buys_cache.get(app)
+        if entry is None or entry[0] != ver:
+            entry = (ver, {})
+            buys_cache[app] = entry
+        by_symbol = entry[1]
+        if symbol not in by_symbol:
+            res, win, meta = run_app(mod, cfg, symbol, "1900-01-01", TRAIN_END, params, 20)
+            by_symbol[symbol] = app_buys(res, win, meta["end_node"])
+        return by_symbol[symbol]
+
+    @router.get("/feedback/status")
+    def get_feedback_status(pattern: str):
+        """这个 pattern 的全部反馈(source 为 picked 的;盲看标记不在内)在当前 app 下的状态。
+
+        当前 app = 写了这个 pattern、没有问题的那个 mapping 的 app;找不到(没有、几个 app 都写了、mapping 有问题)
+        → {app: null, app_ver: null, items: [], reason: 原因}。
+        返回 {app, app_ver, items: [{id, status, tag, red, reason}], reason: null}:
+        - status:'matched' / 'unmatched' / 'lost'(path2_web/annotation/match.py 的 feedback_status);这只股票
+          读不到行情(没有这只股票、代码名不合格)时为 null,原因写在这一条的 reason 里,其余条照常;
+        - tag:mapping 会话段 tags 里这条的原因标签,没有为 null(会话段写坏了也当没有);
+        - red:画不画朱红(match.is_red,只在这里判一次,前端照着画、照着排);
+        - items 已按侧栏的顺序排好:朱红在前,lost 其次,其余在后;同档按股票、start、end、编号。
+        行情目录不存在 → 503(同单股预览);app 自身出错(声明漂移等)→ 500;标注目录不存在 → 503。"""
+        cfg = get_config()
+        ms, reason = _mappings_of(pattern)
+        if reason is None and ms[0]["problem"] is not None:
+            reason = f"mapping of app {ms[0]['app']} has a problem: {ms[0]['problem']}"
+        if reason is not None:
+            return {"app": None, "app_ver": None, "items": [], "reason": reason}
+        m = ms[0]
+        app, mod = m["app"], registry.get(m["app"])
+        tags = (m["session"] or {}).get("tags") or {}
+        try:
+            state = annotation_store.read_annotations(cfg)["state"]
+        except (OSError, ValueError) as e:
+            raise _annotation_failure(e) from None
+        fbs = [(c["symbol"], fb) for c in state["charts"] for fb in c.get("feedback", [])
+               if fb["pattern"] == pattern and fb["source"] == "picked"]
+        ver = app_ver(mod)
+        _load = getattr(mod, "load_params", None)
+        params = _load() if callable(_load) and fbs else None
+        rows = []
+        try:
+            for symbol, fb in fbs:
+                try:
+                    buys = _buys_of(app, ver, mod, cfg, symbol, params)
+                except NoDataDir:
+                    raise                     # 行情目录整个不在:整体 503,同单股预览
+                except BarsUnavailable as e:  # 只是这只股票读不到(没有 / 代码名不合格):记在这一条上
+                    status, why = None, f"{symbol}: {e}"
+                else:
+                    status, why = annotation_match.feedback_status(fb, buys), None
+                tag = tags.get(fb["id"])
+                red = annotation_match.is_red(status, tag)
+                rank = 0 if red else 1 if status == "lost" else 2
+                rows.append(((rank, symbol, fb["start"], fb["end"], fb["id"]),
+                             {"id": fb["id"], "status": status, "tag": tag, "red": red, "reason": why}))
+        except NoDataDir as e:
+            raise _bars_http_error(e) from None
+        except Exception as e:
+            raise HTTPException(500, f"{type(e).__name__}: {e}") from e
+        return {"app": app, "app_ver": ver, "items": [r for _, r in sorted(rows, key=lambda r: r[0])],
+                "reason": None}
+
+    @router.get("/annotations/changes")
+    def annotations_changes(pattern: str):
+        """这个 pattern 的标注自会话上次定格以来改了什么(path2_web/annotation/changes.py 的 pattern_changes)。
+
+        定格取写了这个 pattern 的那个 mapping 的会话段 snapshot.seen(mapping 有别的问题不影响:定格与 app 无关);
+        按它截批次重放出当时的状态,和现在的比。
+        返回 {since, changes: [{kind, id, change}], reason}:since 是定格的 seen({机器名: 批次序号});
+        没有定格(没有 / 几个 mapping 写了这个 pattern、没有会话段、会话段写坏了、没有 snapshot)→
+        since 为 null、changes 为空、reason 写原因。不读行情;标注目录不存在 → 503。"""
+        cfg = get_config()
+        ms, reason = _mappings_of(pattern)
+        if reason is None:
+            m = ms[0]
+            if m["session_problem"] is not None:
+                reason = f"session of app {m['app']} has a problem: {m['session_problem']}"
+            elif not (m["session"] or {}).get("snapshot"):
+                reason = f"no session snapshot in the mapping of app {m['app']}"
+        if reason is not None:
+            return {"since": None, "changes": [], "reason": reason}
+        seen = ms[0]["session"]["snapshot"]["seen"]
+        try:
+            old = annotation_store.read_annotations(cfg, as_of=seen)["state"]
+            new = annotation_store.read_annotations(cfg)["state"]
+        except (OSError, ValueError) as e:
+            raise _annotation_failure(e) from None
+        return {"since": seen, "changes": pattern_changes(old, new, pattern), "reason": None}
 
     # ── 找图:股票池 /pool、大涨段清单 /rally、随机给一段图 /random(path2_web/finder.py)──
     # 只读,看过什么一律不记。整池算一遍(首次约半分钟)的结果缓存在 <outputs_root>/finder/,

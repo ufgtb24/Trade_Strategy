@@ -2,6 +2,7 @@ import type {
   SerializedPattern, MultiScanResultFile, Ohlc, Diagnostics, AppConfig,
   ScanProgress, ScanDone, ScanHistoryEntry, Analysis, ScanMeta, NodesScopeResponse,
   TimeScopeResponse, PairScopeResponse, ParamsDiffResp, RallyItem, RandomWindow, PeakLine, AppMapping,
+  FeedbackStatusResp,
 } from './types'
 import type { AnnOp, AnnRead } from './annotate/model'
 // Task 10 · ParamsChip(及 Task 11 抽屉)按 `from '../api'` 消费 diff 响应类型,故随 getParamsDiff 一并重导出。
@@ -54,6 +55,11 @@ export function getPeaks(symbol: string): Promise<PeakLine[]> {
 /** compare 用的 mapping 文件:每个有 mapping.yaml 的 app 一项(后端每次都重读文件)。 */
 export function getMappings(): Promise<AppMapping[]> {
   return getJson('/mappings')
+}
+/** 一个 pattern 的全部反馈(source 为 picked 的)在当前 app 下的状态(GET /feedback/status);
+ *  行情目录不在时 503(抛 HttpError)。 */
+export function getFeedbackStatus(pattern: string): Promise<FeedbackStatusResp> {
+  return getJson(`/feedback/status?pattern=${encodeURIComponent(pattern)}`)
 }
 /** 当前标注:全部批次文件重放出的状态,连同冲突、指纹比对、revs、next_seq(GET /annotations)。 */
 export function getAnnotations(): Promise<AnnRead> {
@@ -214,8 +220,8 @@ export interface PreviewResp {
   analysis: Analysis
   summary: Record<string, number>
   pattern_spec: SerializedPattern
-  // 后端还回 end_node(eval_meta 的买点 node)
-  scan: ScanMeta & { end_node?: string }
+  // 后端还回 end_node(eval_meta 的买点 node)与 app_ver(这一版 app 的指纹,存反馈时记进记录)
+  scan: ScanMeta & { end_node?: string; app_ver?: string }
 }
 
 export function getPreview(

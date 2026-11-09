@@ -1,13 +1,17 @@
 // 跟着直达链接走(stores/directLinks.ts)与按编号打开样本(标注 store 的 openSample):
 // 股票 + 日期先对股票列表核代码,在就打开、图窗停在那天附近、落在 annotate,不在就记下 not_found、不动当前的图;
 // 样本编号等标注读完再找,打开它所在的图并选中,不换当前 pattern;编号不存在、写法认不出时记下原因并落在 annotate;
-// 跟完把 # 部分从地址里去掉。后端换成假实现:标注读结果、股票列表由测试给,标注读的时机由测试放行。
+// 跟完把 # 部分从地址里去掉。落在 compare 的链接:换上链接里的 pattern,等标注与 mapping 都读到(mapping 晚到也一样),
+// 有能用的 app 就落在 compare;否则照「股票 + 日期」落在 annotate 并记下原因。落进 compare 后当前日竖线停在那天,
+// 走的是图的默认聚焦,在 tests/components/KlineChart.landing.spec.ts 里挂上图测。
+// 后端换成假实现:标注读结果、股票列表、mapping 由测试给,标注与 mapping 读的时机由测试放行。
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
 import type { AnnRead, AnnState } from '../src/annotate/model'
 
 const fake = vi.hoisted(() => ({
   read: null as any, gate: null as Promise<void> | null, symbols: null as string[] | null,
+  mappings: null as any[] | null, mappingGate: null as Promise<void> | null, mappingCalls: 0,
 }))
 
 vi.mock('../src/api', async () => {
@@ -22,19 +26,29 @@ vi.mock('../src/api', async () => {
       if (!fake.symbols) throw new Error('symbols unavailable')
       return [...fake.symbols]
     },
+    getMappings: async () => {
+      fake.mappingCalls++
+      if (fake.mappingGate) await fake.mappingGate
+      if (!fake.mappings) throw new Error('mappings unavailable')
+      return structuredClone(fake.mappings)
+    },
+    getPreview: () => new Promise(() => {}),         // 跑 app 挂起:现算结果由测试直接放进 view
+    getFeedbackStatus: () => new Promise(() => {}),
   }
 })
 
 import { useAnnotationStore } from '../src/stores/annotation'
+import { useAppLinkStore } from '../src/stores/appLink'
 import { useDirectLinkStore } from '../src/stores/directLinks'
 import { useViewStore } from '../src/stores/view'
+import { chartLinkWindow } from '../src/annotate/directLinks'
 
 function read(state: Partial<AnnState> = {}): AnnRead {
   return {
     state: { machine: 'pc', data_fingerprint: null, features: [], patterns: [], charts: [], ...state },
     conflicts: [], unsynced: [], violations: [],
     fingerprint: { local: 'fp', local_error: null, recorded: [], consistent: true }, merges: [],
-    revs: { feature: {}, pattern: {}, box: {}, sample: {} }, next_seq: 1, ignored_files: [],
+    revs: { feature: {}, pattern: {}, box: {}, sample: {}, feedback: {} }, next_seq: 1, ignored_files: [],
     membership: { gap: 20, near: 40 },
     match: { pos: 3, neg: 1, sub: 2 },
   }
@@ -54,6 +68,9 @@ beforeEach(() => {
   fake.read = read()
   fake.gate = null
   fake.symbols = ['AAPL', 'MSFT']
+  fake.mappings = []
+  fake.mappingGate = null
+  fake.mappingCalls = 0
   localStorage.clear()
   history.replaceState(null, '', '/')
 })
@@ -164,5 +181,110 @@ describe('认不出的写法', () => {
     expect(useViewStore().symbol).toBeNull()
     expect(useViewStore().mode).toBe('app')
     expect(useDirectLinkStore().problem).toBeNull()
+  })
+})
+
+describe('落在 compare 的股票 + 日期', () => {
+  const WITH_PATTERNS = read({ patterns: [{ name: '平台' }, { name: 'W底' }, { name: '坏的' }] })
+  const MAPPINGS = [
+    { app: 'app1', pattern: '平台', features: {}, problem: null, session: null, session_problem: null },
+    { app: 'bad', pattern: '坏的', features: {}, problem: 'node not in app bad: x', session: null, session_problem: null },
+  ]
+  const LINK = '#symbol=aapl&date=2024-05-10&pattern=%E5%B9%B3%E5%8F%B0&mode=compare'
+  const settle = async () => { for (let i = 0; i < 5; i++) await new Promise(r => setTimeout(r, 0)) }
+
+  it('页面刚打开、mapping 晚到:等它读到再判,有 app 就落在 compare;当前 pattern 换成链接里的;# 部分去掉', async () => {
+    fake.read = WITH_PATTERNS
+    fake.mappings = MAPPINGS
+    let release!: () => void
+    fake.mappingGate = new Promise(r => { release = r })
+    const ann = useAnnotationStore()
+    await ann.load()
+    const appLink = useAppLinkStore()
+    void appLink.load()                                  // 页面启动时那一次(App.vue),还没回来
+    const view = useViewStore()
+    history.replaceState(null, '', `/${LINK}`)
+    const followed = useDirectLinkStore().follow(location.hash)
+    await settle()
+    expect(appLink.mappings).toBeNull()
+    expect(view.mode).toBe('annotate')                   // mapping 没到,先不判
+    expect(view.symbol).toBeNull()
+    release()
+    await followed
+    expect(fake.mappingCalls).toBe(1)                    // 等的是正在读的那一次
+    expect(ann.currentPattern).toBe('平台')
+    expect(view.mode).toBe('compare')
+    expect(view.symbol).toBe('AAPL')
+    expect(view.viewWindow).toEqual(chartLinkWindow('2024-05-10'))
+    expect(location.hash).toBe('')
+    expect(useDirectLinkStore().problem).toBeNull()
+  })
+
+  it('页面打开时还没人读 mapping:自己读一次;标注晚到也等它', async () => {
+    fake.read = WITH_PATTERNS
+    fake.mappings = MAPPINGS
+    let open!: () => void
+    fake.gate = new Promise(r => { open = r })
+    const ann = useAnnotationStore()
+    const loading = ann.load()
+    const followed = useDirectLinkStore().follow(LINK)
+    await settle()
+    expect(useViewStore().symbol).toBeNull()
+    open()
+    await loading
+    await followed
+    expect(fake.mappingCalls).toBe(1)
+    expect(useViewStore().mode).toBe('compare')
+  })
+
+  it('pattern 不在标注里:不新建它,照「股票 + 日期」落在 annotate,记下 not_found pattern', async () => {
+    fake.read = WITH_PATTERNS
+    fake.mappings = MAPPINGS
+    const ann = useAnnotationStore()
+    await ann.load()
+    ann.setCurrentPattern('W底')
+    await useDirectLinkStore().follow('#symbol=AAPL&date=2024-05-10&pattern=nope&mode=compare')
+    const view = useViewStore()
+    expect(view.mode).toBe('annotate')
+    expect(view.symbol).toBe('AAPL')
+    expect(view.viewWindow).toEqual(chartLinkWindow('2024-05-10'))
+    expect(ann.currentPattern).toBe('W底')
+    expect(ann.state!.patterns.map(p => p.name)).not.toContain('nope')
+    expect(useDirectLinkStore().problem).toEqual({ code: 'not_found', kind: 'pattern', id: 'nope' })
+  })
+
+  it('pattern 没有能用的 app(没写 mapping / mapping 有问题 / mapping 读不到):落在 annotate,记下原因', async () => {
+    fake.read = WITH_PATTERNS
+    fake.mappings = MAPPINGS
+    const ann = useAnnotationStore()
+    await ann.load()
+    const links = useDirectLinkStore()
+    const view = useViewStore()
+    await links.follow('#symbol=AAPL&date=2024-05-10&pattern=W%E5%BA%95&mode=compare')
+    expect([view.mode, view.symbol, ann.currentPattern]).toEqual(['annotate', 'AAPL', 'W底'])
+    expect(links.problem).toEqual({ code: 'compare_unavailable', pattern: 'W底', reason: 'no app is mapped to this pattern' })
+    await links.follow('#symbol=MSFT&date=2024-05-10&pattern=%E5%9D%8F%E7%9A%84&mode=compare')
+    expect([view.mode, view.symbol]).toEqual(['annotate', 'MSFT'])
+    expect(links.problem).toEqual({ code: 'compare_unavailable', pattern: '坏的', reason: 'bad: node not in app bad: x' })
+
+    setActivePinia(createPinia())
+    fake.mappings = null
+    await useAnnotationStore().load()
+    await useDirectLinkStore().follow(LINK)
+    expect(useViewStore().mode).toBe('annotate')
+    expect(useDirectLinkStore().problem).toEqual(
+      { code: 'compare_unavailable', pattern: '平台', reason: 'mappings could not be read' })
+  })
+
+  it('代码不在股票列表里:不动当前的图、不换 pattern,记下 not_found symbol', async () => {
+    fake.read = WITH_PATTERNS
+    fake.mappings = MAPPINGS
+    const ann = useAnnotationStore()
+    await ann.load()
+    await useDirectLinkStore().follow('#symbol=ZZZZ&date=2024-05-10&pattern=%E5%B9%B3%E5%8F%B0&mode=compare')
+    expect(useViewStore().symbol).toBeNull()
+    expect(useViewStore().mode).toBe('annotate')
+    expect(ann.currentPattern).toBeNull()
+    expect(useDirectLinkStore().problem).toEqual({ code: 'not_found', kind: 'symbol', id: 'ZZZZ' })
   })
 })

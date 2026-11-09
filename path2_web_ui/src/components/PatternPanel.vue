@@ -9,9 +9,9 @@
 
     <div class="ann-kv">
       <template v-if="!unsorted">
-        <span class="ann-k" title="one sentence: what this pattern should catch">definition</span>
+        <span class="ann-k" :title="DEFINITION_TIP">definition</span>
         <textarea :key="ann.currentPattern ?? ''" class="ann-area" data-testid="pattern-definition" rows="2"
-                  :value="definition" @keydown.enter.exact.prevent="($event.target as HTMLTextAreaElement).blur()"
+                  :title="DEFINITION_TIP" :value="definition" @keydown.enter.exact.prevent="($event.target as HTMLTextAreaElement).blur()"
                   @blur="ann.setPatternDefinition(ann.currentPattern!, ($event.target as HTMLTextAreaElement).value)" />
       </template>
       <span class="ann-k" :title="unsorted ? 'samples not yet in a pattern' : 'all samples of this pattern'">samples</span>
@@ -119,6 +119,8 @@ const JUDGMENTS = ['pos', 'neg'] as const
 const POS: CountKey = { kind: 'samples', judgment: 'pos' }
 const NEG: CountKey = { kind: 'samples', judgment: 'neg' }
 const JUDGMENT_TIP = 'pos: should buy on the sample date; neg: looks like it but should not'
+// 改了会怎样写在改的地方(spec 6.14 G4):定级照这句定义定
+const DEFINITION_TIP = 'one sentence: what this pattern should catch; grading follows this sentence'
 const ORDER_TIP = 'order: the one above comes first'
 
 const ann = useAnnotationStore()

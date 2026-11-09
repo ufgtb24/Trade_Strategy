@@ -3,7 +3,8 @@
  *
  * - 哪个 app、哪个 node 认哪个特征:读后端 /mappings(path2_apps/<app>/mapping.yaml,由会话为 V-S1 手工写,
  *   格式见 path2_web/mapping.py)。顶栏当前 pattern 恰好有一个没有问题的 mapping,就算「有 app」(mapping)。
- *   页面启动时读一次,之后每次窗口重新拿到焦点再读一次(会话写完 mapping、用户切回浏览器就生效);
+ *   页面启动时读一次,之后每次窗口重新拿到焦点再读一次(会话写完 mapping、用户切回浏览器就生效);正在读时
+ *   再要读就等这一次读完。loaded():等 mapping 读到(页面刚打开时还是 null;直达链接要落在 compare 时先等它);
  * - compare / app 两档只在有 app、且已经打开了一只股票时可用(available);切到这两档走 view.enterLinked;
  * - 跑 app:在 compare 或从顶栏切到的 app 下,对当前股票走 /preview,区间是这只股票截到训练段末日的全部 K 线
  *   (起点 WHOLE_HISTORY_START 早于任何行情、终点 TRAIN_END;后端读行情截到训练段末日,数据墙见 spec 4.1)。
@@ -33,8 +34,21 @@ export const useAppLinkStore = defineStore('appLink', () => {
   const mappings = shallowRef<AppMapping[] | null>(null)   // null:还没读到
   const runStatus = ref<RunStatus | null>(null)
 
-  async function load(): Promise<void> {
-    try { mappings.value = await getMappings() } catch { /* 读不到就留着上次的 */ }
+  let inflight: Promise<void> | null = null
+  function load(): Promise<void> {
+    if (!inflight) {
+      const p = (async () => {
+        try { mappings.value = await getMappings() } catch { /* 读不到就留着上次的 */ }
+      })()
+      inflight = p
+      void p.finally(() => { if (inflight === p) inflight = null })
+    }
+    return inflight
+  }
+
+  /** 等 mapping 读到:还没读到就读一次(正在读就等它读完);读不到时 mappings 仍为 null。 */
+  async function loaded(): Promise<void> {
+    if (mappings.value === null) await load()
   }
 
   /** 写了当前 pattern 的 mapping(可能不止一个,也可能有问题)。 */
@@ -84,5 +98,5 @@ export const useAppLinkStore = defineStore('appLink', () => {
   function onFocus() { void load() }
   window.addEventListener('focus', onFocus)
 
-  return { mappings, entries, mapping, problem, available, runStatus, load, setMode }
+  return { mappings, entries, mapping, problem, available, runStatus, load, loaded, setMode }
 })

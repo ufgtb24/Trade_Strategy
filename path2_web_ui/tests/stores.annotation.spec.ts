@@ -36,13 +36,14 @@ vi.mock('../src/api', async () => {
 })
 
 import { useAnnotationStore } from '../src/stores/annotation'
+import { useViewStore } from '../src/stores/view'
 
 function emptyRead(state: Partial<AnnState> = {}): AnnRead {
   return {
     state: { machine: 'pc', data_fingerprint: null, features: [], patterns: [], charts: [], ...state },
     conflicts: [], unsynced: [], violations: [],
     fingerprint: { local: 'fp', local_error: null, recorded: [], consistent: true }, merges: [],
-    revs: { feature: {}, pattern: {}, box: {}, sample: {} }, next_seq: 1, ignored_files: [],
+    revs: { feature: {}, pattern: {}, box: {}, sample: {}, feedback: {} }, next_seq: 1, ignored_files: [],
     membership: { gap: 20, near: 40 },
     match: { pos: 3, neg: 1, sub: 2 },
   }
@@ -174,7 +175,7 @@ describe('词表', () => {
     const r = base()
     r.state.features = [{ id: 'w-pc-1', name: '放量' }]
     r.state.charts[0].boxes[0] = { ...r.state.charts[0].boxes[0], feature: 'w-pc-1' }
-    r.revs = { feature: { 'w-pc-1': 'b0#0', 'w-pc-2': 'b1#1' }, pattern: {}, box: { 'b-pc-3': 'b1#0' }, sample: {} }
+    r.revs = { feature: { 'w-pc-1': 'b0#0', 'w-pc-2': 'b1#1' }, pattern: {}, box: { 'b-pc-3': 'b1#0' }, sample: {}, feedback: {} }
     r.merges = [{ ref: 'b1#1', machine: 'pc', ts: 't', feature: { id: 'w-pc-2', name: '量大', definition: '比前一段量大' },
       into: 'w-pc-1', boxes: [{ id: 'b-pc-3',
         before: { ...before.state.charts[0].boxes[0], symbol: 'AAA' }, after: { ...r.state.charts[0].boxes[0], symbol: 'AAA' } }] }]
@@ -460,6 +461,117 @@ describe('归组与 pattern 页', () => {
   })
 })
 
+describe('反馈', () => {
+  const fbRec = (id: string, extra: Record<string, unknown> = {}) => ({
+    id, pattern: 'p', app_id: 'app1', app_ver: 'v0', start: '2025-01-06', end: '2025-01-10', target: 'family',
+    source: 'picked', answer: 'neg', note: '追高', family_start: '2025-01-02', ...extra }) as any
+
+  /** compare 下 AAA 的现算结果(app_ver 是单股预览带回的指纹)。 */
+  function inCompare(symbol = 'AAA', appVer: string | null = 'v1') {
+    const view = useViewStore()
+    view.symbol = symbol
+    view.mode = 'compare'
+    view.setLinkedRun({ symbol, app: 'app1', analysis: { events: [], hits: [] },
+                        pattern_spec: {} as any, scan: { end_node: 'plateau.today', app_ver: appVer ?? undefined } as any })
+    return view
+  }
+
+  it('新建:编号字母 f、带机器名;pattern 取当前 pattern,app 与版本取现算结果;source 为 picked', async () => {
+    const s = await ready()
+    s.setCurrentPattern('p')
+    inCompare()
+    const id = s.saveFeedback({ symbol: 'AAA', start: '2025-01-06', end: '2025-01-10', target: 'family',
+                                family_start: '2025-01-02', answer: 'neg', note: ' 追高 ', segments: ['step'] })
+    expect(id).toBe('f-pc-1')
+    expect(s.feedbackOf('AAA').map(f => f.id)).toEqual(['f-pc-1'])          // 还没存完就显示
+    await s.flushed()
+    expect(fake.batches.at(-1)).toEqual([{ kind: 'feedback', id: 'f-pc-1', base: null, value: {
+      id: 'f-pc-1', symbol: 'AAA', pattern: 'p', app_id: 'app1', app_ver: 'v1', start: '2025-01-06', end: '2025-01-10',
+      target: 'family', source: 'picked', answer: 'neg', note: '追高', family_start: '2025-01-02' } }])
+    expect(fake.read.state.charts[0].feedback).toHaveLength(1)
+    expect(fake.read.state.charts[0].samples).toEqual([])
+  })
+
+  it('改:同编号整条重写,base 取最新,app_ver 刷新为当前值;redraw 成 range 去掉 family_start;别的 pattern 的不改', async () => {
+    const r = emptyRead({ patterns: [{ name: 'p' }, { name: 'q' }],
+      charts: [{ symbol: 'AAA', boxes: [], samples: [], feedback: [fbRec('f-pc-1')] }] })
+    r.revs.feedback = { 'f-pc-1': 'pc-batch-0#0' }
+    r.next_seq = 2
+    const s = await ready(r)
+    s.setCurrentPattern('q')
+    inCompare()
+    const draft = { id: 'f-pc-1', symbol: 'AAA', start: '2025-01-07', end: '2025-01-09', target: 'range' as const,
+                    answer: 'off_pattern' as const, note: '', segments: ['step', 'today'] }
+    expect(s.saveFeedback(draft)).toBeNull()             // 当前 pattern 是 q,这条是 p 的:不改(出处会混)
+    s.setCurrentPattern('p')
+    const id = s.saveFeedback(draft)
+    expect(id).toBe('f-pc-1')
+    await s.flushed()
+    expect(fake.batches).toEqual([[{ kind: 'feedback', id: 'f-pc-1', base: 'pc-batch-0#0', value: {
+      id: 'f-pc-1', symbol: 'AAA', pattern: 'p', app_id: 'app1', app_ver: 'v1', start: '2025-01-07', end: '2025-01-09',
+      target: 'range', source: 'picked', answer: 'off_pattern', segments: ['step', 'today'] } }]])
+  })
+
+  it('不存:保存条件不满足、这只股票没有现算结果或没带版本、要改的是盲看标记;和原来一模一样时不写', async () => {
+    const r = emptyRead({ patterns: [{ name: 'p' }], charts: [{ symbol: 'AAA', boxes: [], samples: [], feedback: [
+      fbRec('f-pc-1', { app_ver: 'v1' }),
+      fbRec('f-pc-2', { source: 'random', target: 'point', start: '2025-01-13', end: '2025-01-13', family_start: undefined }),
+    ] }] })
+    const s = await ready(r)
+    s.setCurrentPattern('p')
+    const range = { symbol: 'AAA', start: '2025-01-06', end: '2025-01-10', target: 'range' as const }
+    expect(s.saveFeedback({ ...range, answer: 'neg', note: 'x' })).toBeNull()              // 还没进 compare
+    inCompare()
+    useViewStore().mode = 'app'
+    expect(s.saveFeedback({ ...range, answer: 'neg', note: 'x' })).toBeNull()              // app 模式(现算的)不存
+    inCompare('BBB')
+    expect(s.saveFeedback({ ...range, answer: 'neg', note: 'x' })).toBeNull()              // 现算的是别的股票
+    inCompare('AAA', null)
+    expect(s.saveFeedback({ ...range, answer: 'neg', note: 'x' })).toBeNull()              // 预览没带版本
+    inCompare()
+    expect(s.saveFeedback({ ...range, answer: 'neg', note: ' ' })).toBeNull()              // neg 没写理由
+    expect(s.saveFeedback({ ...range, answer: 'off_pattern' })).toBeNull()                // 分段、理由都没有
+    expect(s.saveFeedback({ ...range, id: 'f-pc-2', target: 'point', start: '2025-01-13', end: '2025-01-13',
+                            answer: 'neg', note: 'x' })).toBeNull()                        // 盲看标记不可改
+    expect(s.saveFeedback({ ...range, id: 'f-pc-1', target: 'family', family_start: '2025-01-02',
+                            answer: 'neg', note: '追高' })).toBe('f-pc-1')                 // 一模一样
+    await s.flushed()
+    expect(fake.batches).toEqual([])
+  })
+
+  it('删:一条删除操作,base 取最新;删光了这只股票不出 feedback 键;盲看标记删不得', async () => {
+    const r = emptyRead({ patterns: [{ name: 'p' }], charts: [
+      { symbol: 'AAA', boxes: [], samples: [], feedback: [fbRec('f-pc-1')] },
+      { symbol: 'BBB', boxes: [{ id: 'b-pc-3', feature: null, start: '2025-01-02', end: '2025-01-03' }], samples: [],
+        feedback: [fbRec('f-pc-2', { source: 'random', target: 'point', start: '2025-01-13', end: '2025-01-13',
+                                     family_start: undefined })] },
+    ] })
+    r.revs.feedback = { 'f-pc-1': 'pc-batch-0#0', 'f-pc-2': 'pc-batch-0#1' }
+    const s = await ready(r)
+    s.deleteFeedback('f-pc-2')
+    s.deleteFeedback('f-pc-1')
+    await s.flushed()
+    expect(fake.batches).toEqual([[{ kind: 'feedback', id: 'f-pc-1', base: 'pc-batch-0#0', value: null }]])
+    expect(s.state!.charts.map(c => c.symbol)).toEqual(['BBB'])
+    expect(s.state!.charts[0].feedback!.map(f => f.id)).toEqual(['f-pc-2'])
+  })
+
+  it('取反馈:这只股票、跨股票,都只取当前 pattern(或给定的 pattern)的', async () => {
+    const r = emptyRead({ patterns: [{ name: 'p' }, { name: 'q' }], charts: [
+      { symbol: 'AAA', boxes: [], samples: [], feedback: [fbRec('f-pc-1'), fbRec('f-pc-2', { pattern: 'q' })] },
+      { symbol: 'BBB', boxes: [], samples: [], feedback: [fbRec('f-pc-3')] },
+    ] })
+    const s = await ready(r)
+    s.setCurrentPattern('p')
+    expect(s.feedbackOf('AAA').map(f => f.id)).toEqual(['f-pc-1'])
+    expect(s.feedbackOf('AAA', 'q').map(f => f.id)).toEqual(['f-pc-2'])
+    expect(s.feedbackOf('CCC')).toEqual([])
+    expect(s.feedbackOfPattern().map(x => [x.symbol, x.feedback.id])).toEqual([['AAA', 'f-pc-1'], ['BBB', 'f-pc-3']])
+    s.setCurrentPattern(null)
+    expect(s.feedbackOfPattern()).toEqual([])
+  })
+})
+
 describe('冲突提示一次', () => {
   it('看过的冲突记下来,再读也不再算新的', async () => {
     const r = emptyRead()
@@ -472,6 +584,130 @@ describe('冲突提示一次', () => {
     setActivePinia(createPinia())
     s = await ready(r)
     expect(s.newConflicts).toHaveLength(0)
+  })
+})
+
+describe('删样本带框与撤销删除', () => {
+  const keys = (ops: AnnOp[]) => ops.map(o => `${o.kind}:${o.id}`)
+  // AAA:s-pc-5 的成员 b1、b2、b3;b3 也是 s-pc-6 的成员;b2、b4 挂在 b1 上;s-pc-7 存着 b2 但 b2 跨过它的样本日
+  function chartWithSamples() {
+    const r = emptyRead({ patterns: [{ name: 'p' }], charts: [{ symbol: 'AAA',
+      boxes: [{ id: 'b-pc-1', feature: null, start: '2025-01-06', end: '2025-01-10' },
+              { id: 'b-pc-2', feature: null, start: '2025-01-07', end: '2025-01-09', attach: 'b-pc-1' },
+              { id: 'b-pc-3', feature: null, start: '2025-01-13', end: '2025-01-17' },
+              { id: 'b-pc-4', feature: null, start: '2025-01-08', end: '2025-01-10', attach: 'b-pc-1' }],
+      samples: [{ id: 's-pc-7', date: '2025-01-08', pattern: 'p', judgment: 'pos', members: ['b-pc-2'] },
+                { id: 's-pc-5', date: '2025-02-10', pattern: 'p', judgment: 'pos', members: ['b-pc-1', 'b-pc-2', 'b-pc-3'] },
+                { id: 's-pc-6', date: '2025-02-12', pattern: 'p', judgment: 'pos', members: ['b-pc-3', 'b-pc-4'] }] }] })
+    r.revs.box = { 'b-pc-1': 'x#1', 'b-pc-2': 'x#2', 'b-pc-3': 'x#3', 'b-pc-4': 'x#4' }
+    r.revs.sample = { 's-pc-5': 'x#5', 's-pc-6': 'x#6', 's-pc-7': 'x#7' }
+    r.next_seq = 8
+    return r
+  }
+
+  it('删样本带只服务它的框:一批里删样本和这些框;一起删的两个框之间不清 attach(否则同一个框既删又改)', async () => {
+    const s = await ready(chartWithSamples())
+    s.selectBox('b-pc-2')
+    s.deleteSample('s-pc-5', ['b-pc-1', 'b-pc-2'])
+    expect(s.selectedBoxId).toBeNull()                      // 选中的框被一并删了
+    await s.flushed()
+    expect(fake.batches).toHaveLength(1)
+    const ops = fake.batches[0]
+    expect(keys(ops)).toEqual(['sample:s-pc-5', 'box:b-pc-1', 'box:b-pc-2', 'sample:s-pc-7', 'box:b-pc-4'])
+    expect(new Set(keys(ops)).size).toBe(ops.length)        // 同一对象只出现一次(后端 duplicate_op)
+    expect(ops.slice(0, 3).map((o: AnnOp) => [o.base, o.value])).toEqual([['x#5', null], ['x#1', null], ['x#2', null]])
+    expect(ops[3].value.members).toEqual([])               // 别的样本存着的被删框照删框的规矩拿掉
+    expect(ops[4].value).not.toHaveProperty('attach')       // 本批不删的框:挂在被删框上的 attach 拿掉
+    expect(s.state!.charts[0].boxes.map(b => b.id)).toEqual(['b-pc-4', 'b-pc-3'])
+    expect(s.lastDeletion!.removed.map(x => `${x.kind}:${x.id}`)).toEqual(['sample:s-pc-5', 'box:b-pc-1', 'box:b-pc-2'])
+  })
+
+  it('删样本不带框:只删样本,框都留在图上;记下的删除只有这个样本', async () => {
+    const s = await ready(chartWithSamples())
+    s.deleteSample('s-pc-5')
+    await s.flushed()
+    expect(fake.batches).toEqual([[{ kind: 'sample', id: 's-pc-5', base: 'x#5', value: null }]])
+    expect(s.state!.charts[0].boxes).toHaveLength(4)
+    expect(s.lastDeletion!.removed.map(x => x.id)).toEqual(['s-pc-5'])
+  })
+
+  it('撤销删框:框用原编号写回(base 取删除那次);成员与 attach 只加回当前值,删后改的 judgment 不被冲掉', async () => {
+    const s = await ready(emptyRead({ charts: [{ symbol: 'AAA',
+      boxes: [{ id: 'b-pc-1', feature: null, start: '2025-01-06', end: '2025-01-10' },
+              { id: 'b-pc-2', feature: null, start: '2025-01-09', end: '2025-01-14', attach: 'b-pc-1' }],
+      samples: [{ id: 's-pc-3', date: '2025-01-15', pattern: null, judgment: 'pos', members: ['b-pc-1', 'b-pc-2'] }] }] }))
+    const before: AnnState = structuredClone(fake.read.state)
+    s.deleteBox('b-pc-1')
+    await s.flushed()
+    s.setJudgment('s-pc-3', 'neg')
+    await s.flushed()
+    expect(s.lastDeletion).not.toBeNull()                   // 别的修改不清掉可撤的删除
+    s.undoDeletion()
+    expect(s.lastDeletion).toBeNull()
+    await s.flushed()
+    expect(fake.batches).toHaveLength(3)
+    expect(fake.batches[2]).toEqual([
+      { kind: 'box', id: 'b-pc-1', base: 'pc-batch-1#0',
+        value: { id: 'b-pc-1', symbol: 'AAA', feature: null, start: '2025-01-06', end: '2025-01-10' } },
+      { kind: 'sample', id: 's-pc-3', base: 'pc-batch-2#0',
+        value: { id: 's-pc-3', symbol: 'AAA', date: '2025-01-15', pattern: null, judgment: 'neg', members: ['b-pc-1', 'b-pc-2'] } },
+      { kind: 'box', id: 'b-pc-2', base: 'pc-batch-1#2',
+        value: { id: 'b-pc-2', symbol: 'AAA', feature: null, start: '2025-01-09', end: '2025-01-14', attach: 'b-pc-1' } },
+    ])
+    expect(s.state!.charts[0].boxes).toEqual(before.charts[0].boxes)
+    expect(s.state!.charts[0].samples[0]).toMatchObject({ judgment: 'neg', members: ['b-pc-1', 'b-pc-2'] })
+    s.undoDeletion()                                        // 撤过就不能再撤
+    await s.flushed()
+    expect(fake.batches).toHaveLength(3)
+  })
+
+  it('撤销删样本(连同框):样本与框写回原值;删后改过的框保留改动,只把 attach 加回;越过样本日的存着的成员不加回', async () => {
+    const s = await ready(chartWithSamples())
+    const before: AnnState = structuredClone(fake.read.state)
+    s.deleteSample('s-pc-5', ['b-pc-1', 'b-pc-2'])
+    await s.flushed()
+    s.setBoxNote('b-pc-4', '后加的')
+    await s.flushed()
+    s.undoDeletion()
+    await s.flushed()
+    const ops = fake.batches[2]
+    expect(keys(ops)).toEqual(['sample:s-pc-5', 'box:b-pc-1', 'box:b-pc-2', 'box:b-pc-4'])
+    expect(ops.slice(0, 3).map((o: AnnOp) => o.base)).toEqual(['pc-batch-1#0', 'pc-batch-1#1', 'pc-batch-1#2'])
+    expect(ops[3]).toMatchObject({ base: 'pc-batch-2#0', value: { note: '后加的', attach: 'b-pc-1' } })
+    const st = s.state!.charts[0]
+    expect(st.samples).toEqual(before.charts[0].samples.map(x => (x.id === 's-pc-7' ? { ...x, members: [] } : x)))
+    expect(st.boxes.find(b => b.id === 'b-pc-2')).toEqual(before.charts[0].boxes.find(b => b.id === 'b-pc-2'))
+  })
+
+  it('撤销删反馈:用原编号写回原值,base 取删除那次', async () => {
+    const fb = { id: 'f-pc-1', pattern: 'p', app_id: 'app1', app_ver: 'v0', start: '2025-01-06', end: '2025-01-10',
+                 target: 'range', source: 'picked', answer: 'neg', note: '追高' } as any
+    const r = emptyRead({ patterns: [{ name: 'p' }], charts: [{ symbol: 'AAA', boxes: [], samples: [], feedback: [fb] }] })
+    r.revs.feedback = { 'f-pc-1': 'x#0' }
+    const s = await ready(r)
+    s.deleteFeedback('f-pc-1')
+    await s.flushed()
+    expect(s.state!.charts).toEqual([])
+    s.undoDeletion()
+    await s.flushed()
+    expect(fake.batches[1]).toEqual([{ kind: 'feedback', id: 'f-pc-1', base: 'pc-batch-1#0', value: { ...fb, symbol: 'AAA' } }])
+    expect(s.state!.charts[0].feedback).toEqual([fb])
+  })
+
+  it('再删一次换成新的;删除没保存成(被拒)不留可撤的记录;显示的状态里没什么可删时不换', async () => {
+    const s = await ready(chartWithSamples())
+    s.deleteBox('b-pc-3')
+    s.deleteBox('b-pc-4')
+    expect(s.lastDeletion!.removed[0].id).toBe('b-pc-4')
+    s.deleteBox('b-pc-4')                                    // 已经删了:不换记录
+    expect(s.lastDeletion!.removed[0].id).toBe('b-pc-4')
+    await s.flushed()
+    expect(s.lastDeletion!.removed[0].id).toBe('b-pc-4')
+    fake.reject = [{ code: 'member_missing', message: 'x' }]
+    s.deleteSample('s-pc-6')
+    expect(s.lastDeletion!.removed[0].id).toBe('s-pc-6')
+    await s.flushed()
+    expect(s.lastDeletion).toBeNull()
   })
 })
 

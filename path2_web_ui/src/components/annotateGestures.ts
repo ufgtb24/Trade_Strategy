@@ -7,6 +7,12 @@
  *   按在框的左右边拖 → 改它的起止;点一下和不亮时一样,工具不熄。画完一个框或改完一次起止,工具熄灭(toolDone)。
  * - point:点 K 线区某一根 → 在那天放样本(或选中当前 pattern 那天已有的样本),之后工具熄灭(store 的 placeSample);
  *   副图上和不亮时一样。
+ * - feedback(只在 compare,spec 6.13):K 线区与整张副图(含 app 区,左右轨名栏除外)上拖动 → 拖出一段日期(range):
+ *   拖动中把首尾两根 K 线交给调用方画竖带预览(setRange),松手时工具熄灭(toolDone)、再把范围与松开处交给调用方
+ *   (rangeDone:范围里有买点就弹面板,没有就在松开处提示)。点一下不拖和不亮时一样,工具不熄:用户区照常选中,
+ *   app 区留给图表自己的点击(点 ▼ / 格 / 族照样弹反馈面板)。拖出去又回到按下处 4 像素以内松手,也算点一下——
+ *   和 ECharts 判不判 click 的口径一致(zrender 的 Handler:按下与松开相距超过 4 像素不派 click),
+ *   这样一次操作不会既弹 range 面板、又被图表的点击弹出 point 面板。成交量带上拖动照旧平移。
  * - 成交量带拖动 → 平移,工具亮不亮都一样;compare 下副图 app 区(hit 行、band)拖动也是平移,点一下留给图表自己的点击。
  * 改起止时,框是某些样本的成员框的,终点停在其中最早的样本日(不越过样本日),停住时在鼠标旁写它是哪个样本的
  * 成员框:改共用的框时不悄悄改掉旧样本的依据。
@@ -33,8 +39,8 @@ export interface GestureDeps {
   subEl: () => HTMLElement | null
   active: () => boolean                     // annotate 且有 K 线、标注已读到
   /** 亮着的工具;null = 都不亮 */
-  tool: () => 'box' | 'point' | null
-  /** box 用完一次(画了一个框、改了一次起止):熄灭工具 */
+  tool: () => 'box' | 'point' | 'feedback' | null
+  /** box / feedback 用完一次(画了一个框、改了一次起止、拖出一段):熄灭工具 */
   toolDone: () => void
   dates: () => readonly string[]
   lanes: () => readonly Lane[]
@@ -47,6 +53,10 @@ export interface GestureDeps {
   /** 改起止时框终点的上限:收了它的样本里最早的样本日,以及停住时鼠标旁写的话;没有为 null */
   limitOf: (boxId: string) => { date: string; text: string } | null
   setDraft: (d: Draft | null) => void
+  /** feedback 拖选中的范围(首尾两根 K 线的日期,start ≤ end),画竖带预览;null 收起 */
+  setRange: (r: { start: string; end: string } | null) => void
+  /** feedback 拖完一段:范围(首尾两根 K 线的日期)与松开处(视口坐标,同 clientX / clientY);此前工具已熄灭 */
+  rangeDone: (start: string, end: string, at: { x: number; y: number }) => void
   setPreview: (b: AnnBox | null) => void
   /** 改起止停在样本日时鼠标旁的提示(页面坐标);null 收起 */
   setStop: (s: { x: number; y: number; text: string } | null) => void
@@ -70,6 +80,9 @@ type Gesture =
       feature: string | null; hit: string | null; sample: string | null; take: string | null; moved: boolean }
   | { kind: 'resize'; x0: number; y0: number; box: AnnBox; side: 'l' | 'r'; moved: boolean }
   | { kind: 'point'; x0: number; y0: number; moved: boolean }
+  /** feedback 拖一段;没拖动就松手时做 click(点一下的效果),null = 留给图表自己的点击 */
+  | { kind: 'range'; src: 'main' | 'sub'; x0: number; y0: number; i0: number; moved: boolean;
+      click: (() => void) | null }
   /** 平移;没拖动就松手时做 click(点一下的效果),null = 点一下什么都不做。x0/y0 是页面坐标 */
   | { kind: 'pan'; x0: number; y0: number; start: number; end: number; width: number; moved: boolean;
       click: (() => void) | null }
@@ -84,7 +97,7 @@ export function createAnnotateGestures(deps: GestureDeps) {
 
   /** 手势落在哪张图上:主图上拖出新框、放样本在 K 线区,其余(轨上拖框、改起止)在副图。 */
   const surfaceOf = (g: Gesture): { el: HTMLElement | null; chart: ECharts | null } =>
-    (g.kind === 'draw' && g.src === 'main') || g.kind === 'point'
+    ((g.kind === 'draw' || g.kind === 'range') && g.src === 'main') || g.kind === 'point'
       ? { el: deps.mainEl(), chart: deps.main() } : { el: deps.subEl(), chart: deps.sub() }
 
   const indexAt = (chart: ECharts | null, x: number): number => {
@@ -128,6 +141,19 @@ export function createAnnotateGestures(deps: GestureDeps) {
   /** 副图上这一 x 在不在 grid 里(左边的轨名栏、右边的留白都不算)。 */
   const inPlot = (el: HTMLElement, x: number) => x >= SUB_GRID_LEFT && x <= el.clientWidth - SUB_GRID_RIGHT
 
+  /** 副图用户区(特征轨、bracket 的 user 行)上点一下的效果:点 ◂ 收进选中的样本,点样本跨度选中样本,
+   *  点框选中框,点空白什么都不选。按下时就定好(之后的重画不影响这一下点的是什么)。 */
+  const userClick = (x: number, y: number): (() => void) => {
+    const take = takeAt(x, y)
+    const hit = take ? null : boxAt(subRects(), x, y)
+    const sample = hit || take ? null : bracketAt(x, y)
+    return () => {
+      if (take) deps.take(take)
+      else if (sample) deps.selectSample(sample)
+      else deps.select(hit?.id ?? null)
+    }
+  }
+
   /** 从这一下开始平移;width 是图区宽(像素)。 */
   const panFrom = (ev: MouseEvent, width: number, click: (() => void) | null): Gesture => {
     const z = deps.zoom() ?? { start: 0, end: 100 }
@@ -152,7 +178,11 @@ export function createAnnotateGestures(deps: GestureDeps) {
     if (main.containPixel({ gridIndex: 0 }, [x, y])) {
       const tool = deps.tool()
       if (tool === 'point') gesture = { kind: 'point', x0: x, y0: y, moved: false }
-      else if (tool === 'box') {
+      else if (tool === 'feedback') {
+        const sample = deps.sampleAt(x, y)
+        gesture = { kind: 'range', src: 'main', x0: x, y0: y, i0: indexAt(main, x), moved: false,
+                    click: () => (sample ? deps.selectSample(sample) : deps.select(null)) }
+      } else if (tool === 'box') {
         gesture = { kind: 'draw', src: 'main', x0: x, y0: y, i0: indexAt(main, x), lane: unnamedLane(),
                     feature: null, hit: null, sample: deps.sampleAt(x, y), take: null, moved: false }
       } else {
@@ -171,6 +201,15 @@ export function createAnnotateGestures(deps: GestureDeps) {
     if (ev.button !== 0 || !deps.active() || !sub || !el) return
     const [x, y] = local(el, ev)
     const width = el.clientWidth - SUB_GRID_LEFT - SUB_GRID_RIGHT
+    // feedback 亮着:整张副图(含 app 区)的拖动归它;点一下在用户区照常选中,在 app 区留给图表自己的点击
+    if (deps.tool() === 'feedback' && inPlot(el, x)) {
+      const userArea = !deps.claims || deps.claims(y)
+      gesture = { kind: 'range', src: 'sub', x0: x, y0: y, i0: indexAt(sub, x), moved: false,
+                  click: userArea ? userClick(x, y) : null }
+      releaseFocus()
+      ev.preventDefault()
+      return
+    }
     // compare 的 app 区:拖动平移;点一下是图表自己的(app 的格、条、▼),这里不抢焦点、不拦默认行为
     if (deps.claims && !deps.claims(y)) { gesture = panFrom(ev, width, null); return }
     // 左右两边的轨名栏:框画在 grid 里(伸出去的部分裁掉了),这里点不中框、也不画框,只平移
@@ -184,12 +223,7 @@ export function createAnnotateGestures(deps: GestureDeps) {
     const hit = take ? null : boxAt(subRects(), x, y)
     const side = hit ? edgeOf(hit, x) : null
     if (deps.tool() !== 'box') {
-      const sample = hit || take ? null : bracketAt(x, y)
-      gesture = panFrom(ev, width, () => {
-        if (take) deps.take(take)
-        else if (sample) deps.selectSample(sample)
-        else deps.select(hit?.id ?? null)
-      })
+      gesture = panFrom(ev, width, userClick(x, y))
     } else if (hit && side) {
       const box = deps.lanes().flatMap(l => l.boxes).find(lb => lb.box.id === hit.id)!.box
       gesture = { kind: 'resize', x0: x, y0: y, box, side, moved: false }
@@ -235,6 +269,11 @@ export function createAnnotateGestures(deps: GestureDeps) {
     g.moved = true
     const dates = deps.dates(), i = indexAt(chart, x)
     if (g.kind === 'point') return
+    if (g.kind === 'range') {
+      const [s, e] = spanOf(g.i0, i)
+      deps.setRange({ start: dates[s], end: dates[e] })
+      return
+    }
     if (g.kind === 'draw') {
       const [s, e] = spanOf(g.i0, i)
       deps.setDraft({ start: dates[s], end: dates[e], lane: g.lane })
@@ -256,6 +295,16 @@ export function createAnnotateGestures(deps: GestureDeps) {
     const dates = deps.dates()
     if (g.kind === 'point') {
       if (!g.moved && el) deps.placeSample(dates[indexAt(chart, local(el, ev)[0])])
+      return
+    }
+    if (g.kind === 'range') {
+      deps.setRange(null)
+      const at = el ? local(el, ev) : null
+      // 拖出去又回到按下处附近松手:算点一下(图表这时也会派 click,见文件头)
+      if (!g.moved || !at || !isDrag(g.x0, g.y0, at[0], at[1])) { g.click?.(); return }
+      const [s, e] = spanOf(g.i0, indexAt(chart, at[0]))
+      deps.toolDone()
+      deps.rangeDone(dates[s], dates[e], { x: ev.clientX, y: ev.clientY })
       return
     }
     if (g.kind === 'draw') {
@@ -296,6 +345,7 @@ export function createAnnotateGestures(deps: GestureDeps) {
       return deps.sampleAt(x, y) ? 'pointer' : null
     }
     const el = deps.subEl()
+    if (tool === 'feedback') return el && inPlot(el, x) ? 'crosshair' : null
     if ((deps.claims && !deps.claims(y)) || !el || !inPlot(el, x)) return null
     if (takeAt(x, y) || bracketAt(x, y)) return 'pointer'
     if (tool !== 'box') return null
@@ -307,6 +357,7 @@ export function createAnnotateGestures(deps: GestureDeps) {
     if (!gesture) return
     gesture = null
     deps.setDraft(null)
+    deps.setRange(null)
     deps.setPreview(null)
     deps.setStop(null)
   }

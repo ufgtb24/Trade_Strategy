@@ -26,6 +26,9 @@
   - 开发分两段：第一段先造标注工具，用户用它标 3～5 张，cc 手工翻成 app、叠回图上对照，确认标注格式装得下用户的意思后，第二段再造其余部分。这一段取代人机协作方案（`docs/research/2026-11-01_human-cc-collab-workflow/方案.md` 4.1 节）里的「第 0 步在对话里手工走一遍」。
   - 回到标准流程：决策 → spec → 实施票 → 实施。拍板层不写进本地图，作为 `spec.md` 开头一节交用户过目；不用该方案 4.3 节的「一份自包含计划」代替实施票。
   - 同日用户批准 spec：`.scratch/annotation-path2/spec.md`（第 1 节拍板层；采用表 `research/spec-adoption.md`）。此后有效规则以 spec 为准，改拍板层要先问用户。
+- 2026-11-04～11-09 进展（详情见 spec 1.6 与 `.scratch/annotation-path2-implementation/v-s1-notes.md` 进度节）：
+  - V-S1 第一版没通过（11-05）；照特征重写的 new_step 第二版已实现，用户 11-09 看图认为大体对、差在细节条件。V-S1 仍未通过，第二段其余部分照旧等它。
+  - 11-09 用户定：反馈（spec 1.11、1.12、6.13、6.14）插队先造，在界面上对 app 挑刺，做好后再给第二轮反馈；实施计划与进度在 `.scratch/annotation-path2-implementation/feedback-plan.md`（由会话出计划、逐项派子代理写和审，不拆票）。
 - 研究票顺手量到的副产品，先写进答案、等用户批准后再登记进 `docs/feature_candidates.md`（2026-10-24 用户定；项目的登记规则和决策票「共享文件等批准后才改」在这里会撞，以后按这个顺序）。
 
 ## Decisions so far

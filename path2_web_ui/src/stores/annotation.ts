@@ -30,18 +30,38 @@
  * 合并与拆回:合并是一批操作(改写涉及的框、删掉被并的词)。还能拆回的合并由后端从标注文件里认出来
  * (读结果的 merges),刷新、换机器后照样能拆回;拆回再写一批,把词用原编号放回、把框改回去。
  *
+ * 反馈(spec 6.13,只在 compare 用;面板状态、状态接口在 stores/feedback.ts):
+ * - saveFeedback:新建或改一条反馈(都写整条记录)。pattern 取当前 pattern;app_id、app_ver 取这只股票在
+ *   compare 下现算的结果(view.linkedRun,app_ver 是单股预览带回的指纹),改的时候也刷新成当前值;
+ *   source 恒为 picked。不在 compare、保存条件不满足(annotate/feedback.ts 的 saveProblems)、这只股票还没有
+ *   现算结果、要改的那条不是用户自己挑的(盲看标记不可改)或不属于当前 pattern(否则 pattern 与 app 出处会混)
+ *   时不存,返回 null;
+ * - deleteFeedback:删一条;盲看标记删不得,什么都不做;
+ * - feedbackOf / feedbackOfPattern:取当前显示的(含还没存完的)反馈,图上与侧栏用。
+ *
+ * 删样本与撤销删除(spec 6.14 G4):
+ * - deleteSample 可以带上几个框一起删(样本页先问「只服务它的框」要不要一并删,见 annotate/samples.ts 的
+ *   boxesOnlyFor);框的删法同 deleteBox,但同一批一起删的框之间不清 attach(对同一个框既删又改,后端按
+ *   duplicate_op 整批拒收);
+ * - 删框、删样本、删反馈后记下「最近一次删除」(lastDeletion:删前的值,以及这一批顺带从样本成员里拿掉的框、
+ *   顺带拿掉的 attach),界面上一行 deleted … undo。undoDeletion 另写一批:被删的对象用原编号写回原值(base 取
+ *   当前 rev,同拆回合并);顺带改过的对象只把拿掉的那一项加回它的当前值,不整值覆盖(删之后的修改不被冲掉)。
+ *   再删一次就换成新的;撤过、这次删除没保存成(被拒或保存时已没什么可删)或刷新后消失。
+ *
  * 冲突提示一次:读结果里每条冲突以 later.ref 为准,看过的记在浏览器里,之后不再弹出。
  */
 import { defineStore } from 'pinia'
 import { computed, nextTick, ref, shallowRef } from 'vue'
 import { AnnotationSaveError, getAnnotations, postAnnotationBatch } from '../api'
 import {
-  applyOps, baseOf, boxValue, chartOf, featureByName, featureValue, findBox, findSample, mergePlan, mergeRecords,
-  newId, sampleValue, toggleAttr, toggleParent, unmergedBox, type AnnBox, type AnnConflict, type AnnFeature,
-  type AnnOp, type AnnRead, type AnnSample, type MergePlan, type MergeRecord, type ParentRow,
+  applyOps, baseOf, boxValue, chartOf, featureByName, featureValue, feedbackValue, findBox, findFeedback, findSample,
+  mergePlan, mergeRecords, newId, sampleValue, toggleAttr, toggleParent, unmergedBox, type AnnBox, type AnnConflict,
+  type AnnFeature, type AnnFeedback, type AnnKind, type AnnOp, type AnnRead, type AnnSample, type AnnState,
+  type MergePlan, type MergeRecord, type ParentRow,
 } from '../annotate/model'
+import { draftToFeedback, saveProblems, type FeedbackDraft } from '../annotate/feedback'
 import { sampleMembers } from '../annotate/membership'
-import { memberIds } from '../annotate/samples'
+import { memberIds, precedence } from '../annotate/samples'
 import { sampleWindow } from '../annotate/grouping'
 import { useViewStore } from './view'
 
@@ -49,8 +69,10 @@ import { useViewStore } from './view'
 export type Intent = (r: AnnRead) => AnnOp[]
 
 export type LoadStatus = 'idle' | 'loading' | 'ready' | 'unavailable' | 'load_failed'
-export type SidebarTab = 'selection' | 'features' | 'pattern'
-export type Tool = 'box' | 'point'
+/** 侧栏页签;feedback 只在 compare 下有(components/AnnotationSidebar.vue)。 */
+export type SidebarTab = 'selection' | 'features' | 'pattern' | 'feedback'
+/** 顶栏的工具;feedback 只在 compare 出现(拖一段日期,对这段里 app 的买点作答,spec 6.13)。 */
+export type Tool = 'box' | 'point' | 'feedback'
 /** 一条保存被拒的原因:code、后端的原话,以及涉及的样本、框编号(有就带)。 */
 export interface SaveProblem { code: string; message: string; sample?: string; box?: string }
 
@@ -115,6 +137,123 @@ function boxIntent(id: string, change: (b: AnnBox) => AnnBox): Intent {
   }
 }
 
+// ── 删除与撤销 ──
+
+/**
+ * 删一个样本和 / 或几个框的那一批操作(在 r 上算;找不到的对象跳过):
+ * - 样本(给了的话):删掉;它自己的成员不用清;
+ * - 框:删掉;别的样本存下的成员里有它们的,每个样本一条拿掉它们;挂在它们上面、本批不删的框拿掉 attach。
+ *   本批一起删的框之间不清 attach:否则对同一个框既删又改,后端按 duplicate_op 整批拒收。
+ * 顺序:样本、被删的框、改成员的样本、拿掉 attach 的框。
+ */
+function deletionOps(r: AnnRead, sampleId: string | null, boxIds: readonly string[]): AnnOp[] {
+  const ops: AnnOp[] = []
+  if (sampleId && findSample(r.state, sampleId)) {
+    ops.push({ kind: 'sample', id: sampleId, base: baseOf(r, 'sample', sampleId), value: null })
+  }
+  const gone = new Set(boxIds.filter(id => findBox(r.state, id)))
+  if (!gone.size) return ops
+  for (const c of r.state.charts) {
+    if (!c.boxes.some(b => gone.has(b.id))) continue
+    for (const b of c.boxes) if (gone.has(b.id)) ops.push({ kind: 'box', id: b.id, base: baseOf(r, 'box', b.id), value: null })
+    for (const smp of c.samples) if (smp.id !== sampleId && smp.members.some(m => gone.has(m))) {
+      ops.push({ kind: 'sample', id: smp.id, base: baseOf(r, 'sample', smp.id),
+                 value: sampleValue(c.symbol, { ...smp, members: smp.members.filter(m => !gone.has(m)) }) })
+    }
+    for (const o of c.boxes) if (!gone.has(o.id) && o.attach && gone.has(o.attach)) {
+      const { attach: _a, ...rest } = o
+      ops.push({ kind: 'box', id: o.id, base: baseOf(r, 'box', o.id), value: boxValue(c.symbol, rest) })
+    }
+  }
+  return ops
+}
+
+/** 一个框、样本或反馈眼下存进文件的值(带 symbol);不在(已删、从没有过)为 null。 */
+function storedValue(s: AnnState, kind: AnnKind, id: string): Record<string, unknown> | null {
+  if (kind === 'box') { const h = findBox(s, id); return h ? boxValue(h.chart.symbol, h.box) : null }
+  if (kind === 'sample') { const h = findSample(s, id); return h ? sampleValue(h.chart.symbol, h.sample) : null }
+  if (kind === 'feedback') { const h = findFeedback(s, id); return h ? feedbackValue(h.chart.symbol, h.feedback) : null }
+  return null
+}
+
+/**
+ * 最近一次删除(界面上一行 deleted … undo):
+ * - removed:被删对象删前的值(带 symbol),第一个是用户点删的那个(样本、框或反馈),其后是一并删的框;
+ * - members:这一批顺带从别的样本成员里拿掉的框;attach:顺带拿掉 attach 的框和它原来挂的框;
+ * - intent:这次删除的动作本身(保存没成时据它把记录撤掉)。
+ */
+export interface LastDeletion {
+  removed: { kind: AnnKind; id: string; value: Record<string, any> }[]
+  members: { sample: string; box: string }[]
+  attach: { box: string; parent: string }[]
+  intent: Intent
+}
+
+/** 由删除那一批操作(在 r 上算出的)和删前的状态,记下删前的值与顺带拿掉的那几项;什么都没删为 null。 */
+function deletionRecord(r: AnnRead, ops: readonly AnnOp[], intent: Intent): LastDeletion | null {
+  const rec: LastDeletion = { removed: [], members: [], attach: [], intent }
+  for (const op of ops) {
+    if (op.value === null) {
+      const before = storedValue(r.state, op.kind, op.id)
+      if (before) rec.removed.push({ kind: op.kind, id: op.id, value: before })
+    } else if (op.kind === 'sample') {
+      const hit = findSample(r.state, op.id)
+      for (const m of hit?.sample.members ?? []) if (!op.value.members.includes(m)) rec.members.push({ sample: op.id, box: m })
+    } else if (op.kind === 'box') {
+      const hit = findBox(r.state, op.id)
+      if (hit?.box.attach && !op.value.attach) rec.attach.push({ box: op.id, parent: hit.box.attach })
+    }
+  }
+  return rec.removed.length ? rec : null
+}
+
+/**
+ * 撤销一次删除的那一批操作(在 r 上算):
+ * - 被删的对象眼下不在就用原编号写回原值,base 取当前 rev(还在的不动:删除没保存成,或别处已放回);
+ *   写回的样本,成员里眼下已不在这只股票上或越过样本日的框不收回(否则后端拒收整批);
+ * - 顺带拿掉的成员:样本和框都还在、框没越过样本日、眼下不是成员时,加回样本的当前值(一个样本一条,
+ *   成员按框的先后排);
+ * - 顺带拿掉的 attach:框和原来挂的框都还在、这个框眼下既没 attach 也没 detach 时,加回框的当前值。
+ * 删之后对这些对象的别的修改都留着。
+ */
+function undoOps(r: AnnRead, rec: LastDeletion): AnnOp[] {
+  const back: AnnOp[] = rec.removed.filter(x => !storedValue(r.state, x.kind, x.id))
+    .map(x => ({ kind: x.kind, id: x.id, base: baseOf(r, x.kind, x.id), value: structuredClone(x.value) }))
+  const after = applyOps(r, back).state
+  const boxOn = (symbol: string, id: string) => chartOf(after, symbol)?.boxes.find(b => b.id === id) ?? null
+  for (const op of back) if (op.kind === 'sample') {
+    op.value.members = op.value.members.filter((m: string) => {
+      const b = boxOn(op.value.symbol, m)
+      return b && b.end <= op.value.date
+    })
+  }
+  const ops = [...back]
+  const adds = new Map<string, string[]>()
+  for (const { sample, box } of rec.members) adds.set(sample, [...(adds.get(sample) ?? []), box])
+  for (const [sid, ids] of adds) {
+    const hit = findSample(after, sid)
+    if (!hit) continue
+    const put = ids.filter((id, i) => ids.indexOf(id) === i && !hit.sample.members.includes(id)
+      && (boxOn(hit.chart.symbol, id)?.end ?? '￿') <= hit.sample.date)
+    if (put.length) {
+      // 存下的成员按框的先后排(同 sampleMembers):加回的插回它原来的位置
+      const byId = new Map(hit.chart.boxes.map(b => [b.id, b]))
+      const members = [...hit.sample.members, ...put].sort((a, b) => {
+        const x = byId.get(a), y = byId.get(b)
+        return x && y ? precedence(x, y) : x ? -1 : y ? 1 : 0
+      })
+      ops.push({ kind: 'sample', id: sid, base: baseOf(r, 'sample', sid),
+                 value: sampleValue(hit.chart.symbol, { ...hit.sample, members }) })
+    }
+  }
+  for (const { box, parent } of rec.attach) {
+    const hit = findBox(after, box)
+    if (!hit || hit.box.attach || hit.box.detach || !boxOn(hit.chart.symbol, parent)) continue
+    ops.push({ kind: 'box', id: box, base: baseOf(r, 'box', box), value: boxValue(hit.chart.symbol, { ...hit.box, attach: parent }) })
+  }
+  return ops
+}
+
 export const useAnnotationStore = defineStore('annotation', () => {
   const server = shallowRef<AnnRead | null>(null)
   const queue = shallowRef<Intent[]>([])
@@ -138,6 +277,7 @@ export const useAnnotationStore = defineStore('annotation', () => {
   const pendingMerge = ref<{ from: string; into: string } | null>(null)
   const daysBySymbol = shallowRef<Record<string, string[]>>({})   // 打开过的图的交易日(算框套框的长短)
   const ack = ref<Set<string>>(loadAck())
+  const lastDeletion = shallowRef<LastDeletion | null>(null)       // 最近一次删除(可撤),见模块说明
 
   /** 当前显示的读结果:后端的读结果,再套上还没保存完的动作。 */
   const view = computed<AnnRead | null>(() => {
@@ -195,10 +335,14 @@ export const useAnnotationStore = defineStore('annotation', () => {
     saving.value = true
     try {
       while (queue.value.length && server.value) {
-        const ops = queue.value[0](server.value)
+        const it = queue.value[0]
+        const ops = it(server.value)
+        // 这次删除保存时已没什么可删(别处已删掉):不留可撤的记录
+        if (!ops.length && lastDeletion.value?.intent === it) lastDeletion.value = null
         try {
           if (ops.length) server.value = await postAnnotationBatch(ops)
         } catch (e: any) {
+          if (lastDeletion.value?.intent === it) lastDeletion.value = null     // 删除没保存成:没什么可撤
           saveError.value = e instanceof AnnotationSaveError ? e.reasons
             : [{ code: 'save_failed', message: String(e?.message ?? e) }]
           if (e?.status === 503) status.value = 'unavailable'
@@ -294,22 +438,9 @@ export const useAnnotationStore = defineStore('annotation', () => {
     commit(withCurrent(boxIntent(id, b => ({ ...b, start, end })), cur))
   }
 
-  /** 删框:同一批把它从样本的成员里拿掉,把挂在它上面的 attach 也拿掉(后端不许成员框指向不存在的框)。 */
+  /** 删框:同一批把它从样本的成员里拿掉,把挂在它上面的 attach 也拿掉(后端不许成员框指向不存在的框)。可撤。 */
   function deleteBox(id: string): void {
-    commit((r) => {
-      const hit = findBox(r.state, id)
-      if (!hit) return []
-      const ops: AnnOp[] = [{ kind: 'box', id, base: baseOf(r, 'box', id), value: null }]
-      for (const smp of hit.chart.samples) if (smp.members.includes(id)) {
-        ops.push({ kind: 'sample', id: smp.id, base: baseOf(r, 'sample', smp.id),
-                   value: { ...smp, symbol: hit.chart.symbol, members: smp.members.filter(m => m !== id) } })
-      }
-      for (const o of hit.chart.boxes) if (o.attach === id) {
-        const { attach: _a, ...rest } = o
-        ops.push({ kind: 'box', id: o.id, base: baseOf(r, 'box', o.id), value: boxValue(hit.chart.symbol, rest) })
-      }
-      return ops
-    })
+    commitDeletion((r) => deletionOps(r, null, [id]))
     if (selectedBoxId.value === id) selectBox(null)
   }
 
@@ -437,9 +568,14 @@ export const useAnnotationStore = defineStore('annotation', () => {
     })
   }
 
-  /** 删样本;框留在图上。 */
-  function deleteSample(sampleId: string): void {
-    commit((r) => (findSample(r.state, sampleId) ? [{ kind: 'sample', id: sampleId, base: baseOf(r, 'sample', sampleId), value: null }] : []))
+  /**
+   * 删样本;boxIds 给了就同一批把这几个框也删掉(样本页问过「只服务它的框」要不要一并删),删法同 deleteBox,
+   * 一起删的框之间不清 attach。没给的框留在图上。可撤。
+   */
+  function deleteSample(sampleId: string, boxIds: readonly string[] = []): void {
+    const ids = [...boxIds]
+    commitDeletion((r) => deletionOps(r, sampleId, ids))
+    if (selectedBoxId.value && ids.includes(selectedBoxId.value)) selectBox(null)
     if (selectedSampleId.value === sampleId) selectedSampleId.value = null
     if (currentSampleId.value === sampleId) makeCurrent(null)
   }
@@ -452,6 +588,83 @@ export const useAnnotationStore = defineStore('annotation', () => {
     if (currentPattern.value !== p) openCount.value = null
     currentPattern.value = p
     savePattern(p)
+  }
+
+  // ── 反馈 ──
+
+  /**
+   * 存一条反馈:draft.id 给了是改那一条(整条重写,同编号),没给是新建(编号此刻取定)。返回编号;不存时返回 null
+   * (不在 compare、保存条件不满足、这只股票还没有现算结果、要改的那条找不到 / 不是用户自己挑的 / 不属于当前
+   * pattern、还没有当前 pattern)。
+   * 改 redraw 出来的范围时 draft 的 target 是 range、不带 family_start,整条重写后原来的 family_start 随之拿掉。
+   * 记录和原来一模一样(连 app_ver 也没变)时不写。
+   */
+  function saveFeedback(draft: FeedbackDraft & { id?: string }): string | null {
+    if (!machine.value || !state.value || saveProblems(draft).length) return null
+    const v = useViewStore()
+    const run = v.comparing && v.symbol === draft.symbol && v.linkedRun?.symbol === draft.symbol ? v.linkedRun : null
+    const appVer = run?.scan.app_ver
+    if (!run || !appVer) return null
+    let id = draft.id ?? null
+    const pattern = currentPattern.value
+    if (pattern === null) return null
+    if (id) {
+      const old = findFeedback(state.value, id)
+      if (!old || old.chart.symbol !== draft.symbol || old.feedback.source !== 'picked'
+          || old.feedback.pattern !== pattern) return null
+    }
+    if (!id) id = newId('f', machine.value, takeSeqs(1)[0])
+    const fid = id
+    const fb = draftToFeedback(draft, { id: fid, pattern, app_id: run.app, app_ver: appVer })
+    const value = feedbackValue(draft.symbol, fb)
+    const editing = !!draft.id
+    commit((r) => {
+      const hit = findFeedback(r.state, fid)
+      if (editing && (!hit || hit.feedback.source !== 'picked')) return []      // 保存前已被删(或换成了盲看标记)
+      if (hit && JSON.stringify(feedbackValue(hit.chart.symbol, hit.feedback)) === JSON.stringify(value)) return []
+      return [{ kind: 'feedback', id: fid, base: baseOf(r, 'feedback', fid), value }]
+    })
+    return fid
+  }
+
+  /** 删一条反馈;盲看标记(source 不是 picked)删不得,什么都不做。可撤。 */
+  function deleteFeedback(id: string): void {
+    commitDeletion((r) => {
+      const hit = findFeedback(r.state, id)
+      return hit && hit.feedback.source === 'picked'
+        ? [{ kind: 'feedback', id, base: baseOf(r, 'feedback', id), value: null }] : []
+    })
+  }
+
+  // ── 删除的撤销 ──
+
+  /** 记下一次删除:按当前显示的状态记下删前的值(换掉上一次的记录),再照常保存。显示的状态里没什么可删就不记。 */
+  function commitDeletion(it: Intent): void {
+    const r = view.value
+    if (!r) return
+    lastDeletion.value = deletionRecord(r, it(r), it) ?? lastDeletion.value
+    commit(it)
+  }
+
+  /** 撤销最近一次删除(规则见 undoOps);撤过就不能再撤。 */
+  function undoDeletion(): void {
+    const rec = lastDeletion.value
+    if (!rec) return
+    lastDeletion.value = null
+    commit((r) => undoOps(r, rec))
+  }
+
+  /** 这只股票上某个 pattern(缺省为当前 pattern)的反馈,按(start、end、编号);含盲看标记,看 source 分。 */
+  function feedbackOf(symbol: string | null, pattern: string | null = currentPattern.value): AnnFeedback[] {
+    if (!state.value || pattern === null) return []
+    return (chartOf(state.value, symbol)?.feedback ?? []).filter(f => f.pattern === pattern)
+  }
+
+  /** 某个 pattern(缺省为当前 pattern)跨股票的全部反馈,按股票、再按(start、end、编号);含盲看标记。 */
+  function feedbackOfPattern(pattern: string | null = currentPattern.value): { symbol: string; feedback: AnnFeedback }[] {
+    if (!state.value || pattern === null) return []
+    return state.value.charts.flatMap(c => (c.feedback ?? []).filter(f => f.pattern === pattern)
+      .map(feedback => ({ symbol: c.symbol, feedback })))
   }
 
   // ── 词表 ──
@@ -592,7 +805,7 @@ export const useAnnotationStore = defineStore('annotation', () => {
     load, commit, flushed, createBox, resizeBox, deleteBox, setBoxFeature, setBoxNote, setAttr, addAttr,
     toggleBoxParent, setDefinition, renameFeature, previewMerge, applyMerge, unmerge, selectBox,
     placeSample, toggleMember, setJudgment, setSampleNote, setSamplePattern, moveSamples, setPatternDefinition,
-    deleteSample, setCurrentPattern,
-    selectSample, openSample, clearSelection, ackConflicts, setDays,
+    deleteSample, setCurrentPattern, saveFeedback, deleteFeedback, feedbackOf, feedbackOfPattern,
+    lastDeletion, undoDeletion, selectSample, openSample, clearSelection, ackConflicts, setDays,
   }
 })

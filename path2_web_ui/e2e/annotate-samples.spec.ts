@@ -11,7 +11,7 @@ import {
  * 1. 放样本,它自动收进之前离得近的一串框,刷新后成员框不变;跨过样本日的框收不进,在 others 里变灰、成员链上
  *    留一个注明原因的空槽;拖框边停在样本日,鼠标旁写它是哪个样本的成员框;当前样本期间新画的框并进它,
  *    换掉当前样本以后再补画的框不并进旧样本;手动点进点出(样本页、框页的 member_of);别的 pattern 的样本在
- *    member_of 里只读;不越界地改起止、删样本照常保存。
+ *    member_of 里只读;不越界地改起止、删样本照常保存(有只服务它的框时先问一并删不删,选 no 只删样本)。
  * 2. 后端拒绝保存(另一台机器同步来的修改让一个框成了样本的成员框,本页不知道就把它拖过了样本日):
  *    界面写出原因、涉及的框与样本,并重读出后端眼下的状态;框还在,再拖就停在样本日。
  *
@@ -208,10 +208,15 @@ test.describe('放样本与成员框', () => {
     await settled(page)
     await pickPattern(page, null)                         // 当前 pattern 换成 unsorted:空心三角不画淡,实心的画淡
     await page.screenshot({ path: testInfo.outputPath('05-neg-sample.png'), fullPage: true })
+    // 它自动收进的框里有只服务它的:删之前先问要不要一并删(spec 6.14 G4);选 no,只删样本、框留在图上
+    const boxesBefore = boxesOf(await annState(page), A).map((b: any) => b.id).sort()
     await page.getByTestId('sample-delete').click()
+    await expect(page.getByTestId('sample-delete-ask')).toBeVisible()
+    await page.getByTestId('sample-delete-no').click()
     await settled(page)
     st = await annState(page)
     expect(samplesOf(st, A).map((s: any) => s.id)).toEqual([sid])
+    expect(boxesOf(st, A).map((b: any) => b.id).sort()).toEqual(boxesBefore)
     expect(await e2e(page, 'saveError')).toBeNull()
   })
 })

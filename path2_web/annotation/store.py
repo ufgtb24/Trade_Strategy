@@ -23,10 +23,10 @@
 
 每条操作(op)把一个对象改成新值:
 - ts、machine:同文件名里的时间戳与机器名(每条操作自带,单拿出来也说得清是谁、什么时候改的);
-- kind:feature(词)/ pattern / box(框)/ sample(样本);
-- id:对象编号。词、框、样本的编号是 `w-<机器名>-<n>`、`b-<机器名>-<n>`、`s-<机器名>-<n>`。n 取自计数器:
-  三种对象、两台机器共用一个序列,接在全部文件里用过的最大号之后,删掉的对象的号也不再用;编号带机器名,
-  两台在同步前各自取号也不会撞。pattern 没有编号,用名字;
+- kind:feature(词)/ pattern / box(框)/ sample(样本)/ feedback(反馈);
+- id:对象编号。词、框、样本、反馈的编号是 `w-<机器名>-<n>`、`b-<机器名>-<n>`、`s-<机器名>-<n>`、
+  `f-<机器名>-<n>`。n 取自计数器:四种对象、两台机器共用一个序列,接在全部文件里用过的最大号之后,删掉的
+  对象的号也不再用;编号带机器名,两台在同步前各自取号也不会撞。pattern 没有编号,用名字;
 - base:写这条操作时看到的这个对象的最后一次修改,写成 `<那个文件名去掉 .json>#<第几条,从 0 起>`;新建为 null;
 - value:改完后的整个对象;null 表示删除。
 
@@ -51,7 +51,9 @@ base 指向的修改本机还没有(那个文件还没同步到)时,不算冲突
      patterns: [{name, definition?, flags?}],
      charts:   [{symbol,
                  boxes:   [{id, feature, start, end, attrs?, note?, detach?, attach?}],
-                 samples: [{id, date, pattern, judgment, members[], members_edited?, note?}]}]}
+                 samples: [{id, date, pattern, judgment, members[], members_edited?, note?}],
+                 feedback?: [{id, pattern, app_id, app_ver, start, end, target, source, answer,
+                              note?, segments?, family_start?}]}]}
 
 - machine 是读的这台机器;data_fingerprint 是标注所依据的训练段副本指纹:全部批次记的都是同一个时取它,
   批次之间不一致或还没有批次时为 null。拿它和本机副本的指纹比,就知道标注和眼下读的 K 线是不是同一份;
@@ -59,24 +61,43 @@ base 指向的修改本机还没有(那个文件还没同步到)时,不算冲突
 - feature 是特征编号,框还没起名时为 null;attrs 是特征编号 → true / false,键不在就是 null(没看过);
 - pattern 为 null 表示 unsorted;members 是冻结后的成员框编号,读的人不用重算推断;
 - patterns[].flags 的形状是 [{feature, mapping_row}],本模块只校验形状、不解释它;
-- 词、pattern 按第一次出现的先后排;charts 按代码排,框按(起点、终点、编号),样本按(样本日、编号)。
+- 这只股票没有反馈时不出 feedback 键(旧标注重放出的状态逐键不变);只有反馈、没有框和样本的股票照样在
+  charts 里出一项(boxes、samples 为空数组);
+- 词、pattern 按第一次出现的先后排;charts 按代码排,框按(起点、终点、编号),样本按(样本日、编号),
+  反馈按(start、end、编号)。
+
+反馈
+----
+用户在 compare 里对 app 已经买了的地方挑刺,一条反馈落成一段日期 [start, end]:
+- pattern 是标注里的 pattern 名;app_id 是 app 模块名;app_ver 是记录时 app 的版本指纹,只记出处,本模块不解释;
+- target:point(一天,start == end)/ family(一族 hit,另存这一族的起点 family_start ≤ start)/
+  range(拖出来的一段);只有 family 带 family_start;
+- source:picked(用户自己挑的,反馈恒为它)或盲看标记的来源 random / added / removed / tuned_added /
+  tuned_removed(盲看标记和反馈共用这个 kind,现在只为「创建后不可改」能测);
+- answer:picked 只取 neg / off_pattern;盲看标记取 pos / neg / off_pattern,且 target 只能是 point;
+- note:neg 必须写;off_pattern 的 segments(node_id 数组,不重复)与 note 至少一样非空;盲看标记的 neg、
+  off_pattern 必须写 note;
+- 盲看标记(source 不是 picked)创建后不能删、不能改:每条都和它第一次以盲看标记出现时的值比。
 
 保存时的校验
 ------------
 一批操作整体通过才写文件,否则一条也不写,BatchRejected.reasons 列出全部原因(code、message,以及涉及的
 op 序号或样本、框编号):
 - bad_op:形状不对。每种对象的必填键、可选键、取值类型;日期必须是真实日期且不晚于训练段末日 TRAIN_END;
-  删除或基于一个从没出现过的对象;
+  反馈的取值规则(上一节);删除或基于一个从没出现过的对象;
 - duplicate_op:一批里同一个对象出现了两次(多次修改要合成最后的值再送,否则后一条会和前一条记成冲突);
-- bad_new_id:没出现过的词、框、样本编号不带本机机器名;
-- id_taken:出现过的(含已删的)词、框、样本编号被当成新建(base 为 null)再用;
+- bad_new_id:没出现过的词、框、样本、反馈编号不带本机机器名;
+- id_taken:出现过的(含已删的)词、框、样本、反馈编号被当成新建(base 为 null)再用;
 - 因果(防依据里混进样本日当天还看不到的东西):
   - member_crosses_sample_date:本批动到的样本,有成员框的终点晚于样本日;
   - box_crosses_sample_date:本批动到的框,改完后终点晚于以它为成员的某个样本的样本日;
   - member_missing:样本的成员框不在这只股票上(不存在或已删)。删掉仍是成员的框,要在同一批里把它从
     那个样本的成员里拿掉。
   不越界地改框起止、删样本、改词名、合并都照常放行。
-两台机器各自合规的修改,合起来也可能让某个成员框越过样本日;读的时候把这种情况列在 violations 里,不改数据。
+- blind_immutable:本批删掉了一条盲看标记,或把它改得和第一次出现时不一样(连 source 也算,防先改成 picked
+  再改)。将来盲看定义了专有字段时,只放行补那些字段。
+两台机器各自合规的修改,合起来也可能让某个成员框越过样本日;同步来的修改也不经保存校验,可能删改了盲看标记。
+读的时候把这两种情况列在 violations 里,不改数据。
 
 数据指纹
 --------
@@ -87,8 +108,14 @@ op 序号或样本、框编号):
 怎么用
 ------
 - 读(会话、GET /annotations 用的是同一个函数):`read_annotations(cfg)`,cfg 是 path2_web.config.load_config()
-  的结果。返回 {state, conflicts, unsynced, violations, fingerprint, merges, revs, next_seq, ignored_files};
-  会话只要状态时取 `read_annotations(load_config())["state"]`。会话不写标注文件。
+  的结果。返回 {state, conflicts, unsynced, violations, fingerprint, merges, revs, next_seq, ignored_files,
+  machines};会话只要状态时取 `read_annotations(load_config())["state"]`。会话不写标注文件。
+- 会话定格:machines 是 {机器名: {through: n}},n 是这台机器从 1 起连续到齐的最大批次序号(Syncthing 不按
+  顺序拉文件,中间缺号时停在缺口前)。会话每轮开头记下 {机器名: n},下一轮用
+  `read_annotations(cfg, as_of={机器名: n})` 读出当时的状态,和现在的求差。as_of 按机器 + 序号截批次(不按
+  文件名、不按时刻):只重放序号 ≤ as_of.get(机器名, 0) 的批次。缺口之后已经到了的批次会被截掉,下一轮当成
+  新的再报一次:只多报、不漏报。例外:同一台机器同一序号的两个文件(两个后端进程同时写同一目录时才会出现)
+  若先后到达,定格之后才到的那个序号不超过定格值,会被 as_of 包进去,下一轮不报。
 - 写(POST /annotations/batch 调它):`append_batch(cfg, ops)`,ops 是 [{kind, id, base, value}]。
   base 取读结果的 revs[kind][id](没有就是 null);新对象的编号用读结果的 next_seq 依次往上取。
 - 标注目录不存在时读写都报 AnnotationDirMissing,不自动创建:worktree 里少了指向主目录的软链时,
@@ -112,8 +139,12 @@ from path2_web.data import TRAIN_END, check_symbol
 from path2_web.snapshot_fingerprint import read_fingerprint
 
 SCHEMA = "path2_web.annotation/1"
-KINDS = ("feature", "pattern", "box", "sample")
+KINDS = ("feature", "pattern", "box", "sample", "feedback")
 JUDGMENTS = ("pos", "neg")
+FEEDBACK_TARGETS = ("point", "family", "range")
+FEEDBACK_SOURCES = ("picked", "random", "added", "removed", "tuned_added", "tuned_removed")
+FEEDBACK_ANSWERS = ("neg", "off_pattern")              # source = picked(反馈)
+BLIND_ANSWERS = ("pos", "neg", "off_pattern")          # 其余 source(盲看标记)
 
 # 每种对象:(必填键, 可选键);两者连起来就是状态里的键序(symbol 只在文件里,状态里按它分到 charts)
 _VALUE_KEYS = {
@@ -121,9 +152,12 @@ _VALUE_KEYS = {
     "pattern": (("name",), ("definition", "flags")),
     "box": (("id", "symbol", "feature", "start", "end"), ("attrs", "note", "detach", "attach")),
     "sample": (("id", "symbol", "date", "pattern", "judgment", "members"), ("members_edited", "note")),
+    "feedback": (("id", "symbol", "pattern", "app_id", "app_ver", "start", "end", "target", "source", "answer"),
+                 ("note", "segments", "family_start")),
 }
-_ID_LETTER = {"feature": "w", "box": "b", "sample": "s"}       # 带机器名编号的三种对象
-_ID_RE = re.compile(rf"([wbs])-({MACHINE_PATTERN})-([1-9]\d*)")
+_ID_LETTER = {"feature": "w", "box": "b", "sample": "s", "feedback": "f"}   # 带机器名编号的四种对象
+_ID_RE = re.compile(rf"([wbsf])-({MACHINE_PATTERN})-([1-9]\d*)")           # 字母与 _ID_LETTER 一致
+_CHART_KEY = {"box": "boxes", "sample": "samples", "feedback": "feedback"}  # 挂在 charts 下的对象 → 所在的键
 _FILE_RE = re.compile(rf"({MACHINE_PATTERN})-(\d{{8}}T\d{{6}}\.\d{{3}}Z)-([1-9]\d*)\.json")
 _DATE_RE = re.compile(r"\d{4}-\d{2}-\d{2}")
 _OP_KEYS = ("kind", "id", "base", "value")                     # 界面送来的一条操作
@@ -169,20 +203,26 @@ class _Replay:
     unsynced: list = field(default_factory=list)
     merges: list = field(default_factory=list)          # 认出的合并,按重放先后(read_annotations 再筛还能拆回的)
     last_merge: dict = field(default_factory=dict)      # 词编号 → 最后一次合并掉它的那条
+    blind: dict = field(default_factory=dict)           # 盲看标记编号 → 它第一次以盲看标记(source 不是 picked)出现时的值
 
 
 # ---------------------------------------------------------------- 读
 
-def read_annotations(cfg: dict) -> dict:
+def read_annotations(cfg: dict, *, as_of: dict[str, int] | None = None) -> dict:
     """重放标注目录里的全部批次文件,返回当前标注。会话和 GET /annotations 都经这一个函数读。
 
-    返回 {state, conflicts, unsynced, violations, fingerprint, merges, revs, next_seq, ignored_files}:
+    as_of:{机器名: 序号},给了就只重放「这台机器的序号 ≤ as_of.get(机器名, 0)」的批次,读出会话定格那时的
+    状态(模块说明「怎么用」);指向被截批次的 base 记进 unsynced,状态不受影响。conflicts、unsynced、
+    violations、fingerprint、merges、revs、next_seq 都只反映截出的那部分(这时的 revs、next_seq 不能拿来写);
+    ignored_files、machines 照全部文件算。
+
+    返回 {state, conflicts, unsynced, violations, fingerprint, merges, revs, next_seq, ignored_files, machines}:
     - state:模块说明「状态的形状」;
     - conflicts:[{kind, id, base, later: {ref, machine, ts}, earlier: {ref, machine, ts}}],
       later 是没看到 earlier 就改了同一对象的那次修改(它生效);
     - unsynced:[{kind, id, base, ref}],ref 这条修改依据的 base 本机还没有(那个文件还没同步到);
-    - violations:当前状态里越过样本日、或不在这只股票上的成员框(两台机器的修改合起来造成的),格式同
-      BatchRejected.reasons;
+    - violations:当前状态里越过样本日、或不在这只股票上的成员框(两台机器的修改合起来造成的),以及创建后
+      被删或被改的盲看标记(同步来的修改不经保存校验),格式同 BatchRejected.reasons;
     - fingerprint:{local, local_error, recorded: [{fingerprint, batches}], consistent}。local 是本机副本的
       指纹(读不到为 null,原因在 local_error);recorded 是各批记下的指纹及批数;有任何一批与本机不同,
       或本机读不到,consistent 为 false;
@@ -191,12 +231,16 @@ def read_annotations(cfg: dict) -> dict:
       改后的值(带 symbol),按重放先后排;
     - revs:{kind: {id: 最后一次修改的引用}},含已删的对象,写操作时取作 base;
     - next_seq:下一个可用的编号序号;
-    - ignored_files:文件名不合格、没参与重放的非隐藏文件。
+    - ignored_files:文件名不合格、没参与重放的非隐藏文件;
+    - machines:{机器名: {through: n}},按机器名排,n 是这台机器从 1 起连续到齐的最大批次序号(_machines)。
 
     标注目录不存在 → AnnotationDirMissing;批次文件读不懂 → AnnotationFileError;机器名不合格 → ValueError。
     """
     machine = machine_name(cfg)
     batches, ignored = _load_batches(annotation_dir(cfg))
+    machines = _machines(batches)
+    if as_of is not None:
+        batches = [b for b in batches if b.seq <= as_of.get(b.machine, 0)]
     r = _replay(batches)
     local, local_error = _local_fingerprint(cfg)
     counts: dict = {}
@@ -210,7 +254,7 @@ def read_annotations(cfg: dict) -> dict:
         "state": _state(r.values, machine, recorded),
         "conflicts": r.conflicts,
         "unsynced": r.unsynced,
-        "violations": _causality(r.values, touched=None),
+        "violations": _causality(r.values, touched=None) + _blind_changes(r.blind, r.values, touched=None),
         "fingerprint": {
             "local": local,
             "local_error": local_error,
@@ -223,7 +267,26 @@ def read_annotations(cfg: dict) -> dict:
         "revs": revs,
         "next_seq": _max_seq(r.values) + 1,
         "ignored_files": ignored,
+        "machines": machines,
     }
+
+
+def _machines(batches: list[_Batch]) -> dict:
+    """{机器名: {"through": n}}:n 是这台机器的批次序号从 1 起连续到齐的最大值(缺 1 号时为 0),按机器名排。
+
+    Syncthing 默认不按顺序拉文件,已到的最大序号之前可能还缺号,所以不取最大序号;同一台机器同一序号有两个
+    文件(时间戳不同,两个后端进程同时写同一目录时才会出现)不影响连续判定。例外:这样的两个文件若先后到达,
+    定格之后才到的那个序号不超过定格值,会被 as_of 包进去,下一轮不报。"""
+    seqs: dict = {}
+    for b in batches:
+        seqs.setdefault(b.machine, set()).add(b.seq)
+    out = {}
+    for m in sorted(seqs):
+        n = 0
+        while n + 1 in seqs[m]:
+            n += 1
+        out[m] = {"through": n}
+    return out
 
 
 def _load_batches(adir: Path) -> tuple[list[_Batch], list[str]]:
@@ -283,7 +346,7 @@ def _replay(batches: list[_Batch]) -> _Replay:
     否则 base 不是当时的最后一次修改 → 记冲突。
 
     base 若在本机,一定已经重放过:写它的那台机器当时有 base 所在的文件,时间戳排在那个文件之后。
-    每一批重放完,顺带认出其中的合并(_note_merges)。"""
+    每一批重放完,顺带认出其中的合并(_note_merges);盲看标记第一次出现时的值记进 blind。"""
     r = _Replay()
     present = {f"{b.stem}#{i}" for b in batches for i in range(len(b.ops))}
     for b in batches:
@@ -299,6 +362,8 @@ def _replay(batches: list[_Batch]) -> _Replay:
                                     "later": this, "earlier": prev})
             r.values[key] = op["value"]
             r.last[key] = this
+            if key[0] == "feedback" and op["value"] is not None and op["value"]["source"] != "picked":
+                r.blind.setdefault(key[1], op["value"])
         _note_merges(r, b, before)
     return r
 
@@ -332,7 +397,8 @@ def _note_merges(r: _Replay, b: _Batch, before: dict) -> None:
 
 
 def _state(values: dict, machine: str, data_fingerprint: str | None) -> dict:
-    """把重放出的对象排成「状态的形状」(模块说明)。"""
+    """把重放出的对象排成「状态的形状」(模块说明)。框、样本、反馈按 kind 分到各自的键;
+    feedback 键只在这只股票有反馈时才加。"""
     features, patterns, charts = [], [], {}
     for (kind, _), v in values.items():
         if v is None:
@@ -343,10 +409,12 @@ def _state(values: dict, machine: str, data_fingerprint: str | None) -> dict:
             patterns.append(_ordered(kind, v))
         else:
             chart = charts.setdefault(v["symbol"], {"symbol": v["symbol"], "boxes": [], "samples": []})
-            chart["boxes" if kind == "box" else "samples"].append(_ordered(kind, v))
+            chart.setdefault(_CHART_KEY[kind], []).append(_ordered(kind, v))
     for chart in charts.values():
         chart["boxes"].sort(key=lambda b: (b["start"], b["end"], b["id"]))
         chart["samples"].sort(key=lambda s: (s["date"], s["id"]))
+        if "feedback" in chart:
+            chart["feedback"].sort(key=lambda f: (f["start"], f["end"], f["id"]))
     return {"machine": machine, "data_fingerprint": data_fingerprint,
             "features": features, "patterns": patterns, "charts": [charts[s] for s in sorted(charts)]}
 
@@ -425,7 +493,7 @@ def _envelope_reasons(ops) -> list[dict]:
 
 
 def _batch_reasons(r: _Replay, ops: list[dict], machine: str) -> list[dict]:
-    """对照现有标注查的:编号、删除与 base 的对象是否存在,以及改完以后的因果。"""
+    """对照现有标注查的:编号、删除与 base 的对象是否存在,改完以后的因果,以及盲看标记有没有被删改。"""
     out = []
     for i, op in enumerate(ops):
         kind, oid = op["kind"], op["id"]
@@ -437,7 +505,30 @@ def _batch_reasons(r: _Replay, ops: list[dict], machine: str) -> list[dict]:
         elif kind in _ID_LETTER and _ID_RE.fullmatch(oid).group(2) != machine:
             out.append(_reason("bad_new_id", f"第 {i} 条: 新建的 {oid} 不带本机机器名 {machine}", op=i))
     after = {**r.values, **{(op["kind"], op["id"]): op["value"] for op in ops}}
-    return out + _causality(after, touched={(op["kind"], op["id"]) for op in ops})
+    return out + _causality(after, touched={(op["kind"], op["id"]) for op in ops}) \
+        + _blind_changes(r.blind, after, touched={op["id"] for op in ops if op["kind"] == "feedback"})
+
+
+def _blind_changes(first: dict, values: dict, touched: set | None) -> list[dict]:
+    """盲看标记创建后不能删、不能改:和它第一次以盲看标记出现时的值(first,_Replay.blind)比,
+    被删或任何字段不同(含 source、多出或少了键)都算。
+
+    和第一次出现时比、不和当前值比:同步来的修改已经改过它时,只许改回原样,不能接着改(也堵住先改成 picked
+    再改)。将来盲看定义了专有字段时,在这里放行只补那些字段的修改。
+    touched 为 None 时查全部(读的时候报 violations);否则只查本批动到的反馈编号。"""
+    out = []
+    for fid, was in first.items():
+        if touched is not None and fid not in touched:
+            continue
+        now = values.get(("feedback", fid))
+        where = f"盲看标记 {fid}({was['symbol']} {was['start']})"
+        if now is None:
+            out.append(_reason("blind_immutable", f"{where}创建后不能删,这里被删了", feedback=fid))
+        elif now != was:
+            changed = sorted(k for k in set(was) | set(now) if k not in was or k not in now or was[k] != now[k])
+            out.append(_reason("blind_immutable", f"{where}创建后不能改,这里改了 {', '.join(changed)}",
+                               feedback=fid))
+    return out
 
 
 def _causality(values: dict, touched: set | None) -> list[dict]:
@@ -560,6 +651,8 @@ def _value_problems(kind: str, oid: str, v: dict) -> list[str]:
             bad("attach 应为另一个框的编号")
         if "detach" in v and "attach" in v:
             bad("detach 与 attach 互斥")
+    elif kind == "feedback":
+        _feedback_problems(v, bad)
     else:  # sample
         _check_symbol(v["symbol"], bad)
         _check_date("date", v["date"], bad)
@@ -574,6 +667,52 @@ def _value_problems(kind: str, oid: str, v: dict) -> list[str]:
         if "members_edited" in v and not isinstance(v["members_edited"], bool):
             bad("members_edited 应为 true / false")
     return out
+
+
+def _feedback_problems(v: dict, bad) -> None:
+    """反馈(和盲看标记)的字段取值(模块说明「反馈」),不合格经 bad 报问题。只看这一条记录本身。"""
+    _check_symbol(v["symbol"], bad)
+    for key in ("pattern", "app_id", "app_ver"):
+        if not _nonempty(v[key]):
+            bad(f"{key} 应为非空字符串")
+    start_ok = _check_date("start", v["start"], bad)
+    end_ok = _check_date("end", v["end"], bad)
+    span_ok = start_ok and end_ok
+    if span_ok and v["start"] > v["end"]:
+        bad(f"start {v['start']} 晚于 end {v['end']}")
+    target, source, answer = v["target"], v["source"], v["answer"]
+    if target not in FEEDBACK_TARGETS:
+        bad(f"target 应为 {' / '.join(FEEDBACK_TARGETS)} 之一,实为 {target!r}")
+    if source not in FEEDBACK_SOURCES:
+        bad(f"source 应为 {' / '.join(FEEDBACK_SOURCES)} 之一,实为 {source!r}")
+    if target == "point" and span_ok and v["start"] != v["end"]:
+        bad("target 为 point 时 start 与 end 应是同一天")
+    if target == "family":
+        if "family_start" not in v:
+            bad("target 为 family 时必有 family_start")
+        elif _check_date("family_start", v["family_start"], bad) and start_ok and v["family_start"] > v["start"]:
+            bad(f"family_start {v['family_start']} 晚于 start {v['start']}")
+    elif "family_start" in v:
+        bad("只有 target 为 family 时才有 family_start")
+    segments = v.get("segments", [])
+    if not isinstance(segments, list) or not all(_nonempty(s) for s in segments) \
+            or len(set(segments)) != len(segments):
+        bad("segments 应为不重复的 node_id 数组")
+    has_note = _nonempty(v.get("note"))
+    if source == "picked":
+        if answer not in FEEDBACK_ANSWERS:
+            bad(f"反馈的 answer 应为 {' / '.join(FEEDBACK_ANSWERS)} 之一,实为 {answer!r}")
+        elif answer == "neg" and not has_note:
+            bad("answer 为 neg 时 note 不能为空")
+        elif answer == "off_pattern" and not has_note and not (isinstance(segments, list) and segments):
+            bad("answer 为 off_pattern 时 segments 与 note 至少一样非空")
+    elif source in FEEDBACK_SOURCES:        # 盲看标记
+        if target != "point":
+            bad("盲看标记的 target 只能是 point")
+        if answer not in BLIND_ANSWERS:
+            bad(f"盲看标记的 answer 应为 {' / '.join(BLIND_ANSWERS)} 之一,实为 {answer!r}")
+        elif answer != "pos" and not has_note:
+            bad(f"盲看标记 answer 为 {answer} 时 note 不能为空")
 
 
 def _nonempty(x) -> bool:

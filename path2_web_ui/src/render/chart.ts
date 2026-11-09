@@ -9,6 +9,10 @@ import { ctrlState } from './ctrlState'
 import { derivePeakStates, peakIdIndex } from './peakState'
 import { MONO } from './fonts'
 import {
+  FEEDBACK_MARK_PAD, FEEDBACK_SELECTED_STROKE_W, FEEDBACK_SERIES, FEEDBACK_STROKE_W, FEEDBACK_TEXT_PAD,
+  FEEDBACK_FONT_PX, FEEDBACK_TONE, feedbackLabelFits, type FeedbackMark,
+} from './feedbackStrip'
+import {
   BAND_TOP_PAD,
   BAND_BOT_PAD,
   BAND_LANE_H,
@@ -37,6 +41,7 @@ import {
   BAND_STRIPE_FILL,
   FAMILY_HEAD_RATIO,
   FAMILY_HEAD_W,
+  FEEDBACK_ROW_H,
 } from './subGeometry'
 
 // ─── 新签名 ──────────────────────────────────────────────────────────────────
@@ -130,6 +135,17 @@ export interface BandRenderInput {
   bandExtras?: Readonly<Record<string, BandLabelExtra>>
   // ── compare:选中的框对的 node 及其子孙 node 的 band,表头加粗(用户区与 app 区不相邻,靠它配对) ──
   linkedBands?: readonly string[]
+  // ── compare 才传(spec 6.13 反馈):hits 行的一族可点(族底线那一行垫透明命中区)、hit 行底下画反馈带。
+  //    不传(app 模式)时副图的外观与点击行为和原来逐项相同 ──
+  feedback?: FeedbackStripInput | null
+  // ── compare 才传:作答面板里鼠标停在某个分段按钮上时,它所在的 band 加亮(那一行垫浅蓝底、描蓝边);缺省不画 ──
+  hoverBand?: string | null
+}
+
+/** compare 的反馈带:记号(已错行,render/feedbackStrip.ts 的 feedbackMarks)与悬停文字(悬停时现算,如 pos sample inside)。 */
+export interface FeedbackStripInput {
+  marks: readonly FeedbackMark[]
+  tip: (id: string) => string
 }
 
 /** band 表头 node 名后面跟的东西:用户特征名(浅灰底)、程序标记(如 app_only,等宽)。 */
@@ -147,7 +163,8 @@ export interface EventBundle {
   // ── spec 2026-07-11: shift+click 累积器命中 marker 的白蒙+黑线 overlay 数据 ──
   veilData: any[]         // 副图 point + interval
   veilPriceData: any[]    // 主图 pricePoint
-  // bracket 每族一行的底线:{ value: [start, end, lane, ordinal], family_key, multi, active }(ordinal 只是族的先后,不画)
+  // bracket 每族一行的底线:{ value: [start, end, lane, ordinal], family_key, multi, active, family_start, buy_days }
+  // (ordinal 只是族的先后,不画;family_start 是族起点、buy_days 是这一族全部买入日,都是 K 线下标,compare 点族发起反馈用)
   bracketLineData: any[]
   // 副图每族一条底线:{ value: [start, end, lane, band, nBands], family_key, multi, active, afterWindow, summary }
   familyLineData: any[]
@@ -339,15 +356,20 @@ export function computeEventData(
   const packedHits = packLanes(hitFamilies.map((f, i) => ({ start_idx: f.start, end_idx: f.end, f, ordinal: i + 1 })))
   for (const { f, lane, ordinal } of packedHits) {
     for (const id of f.hitIds) hitFamilyOf.set(id, { family: f, lane, ordinal })
+    // 范围字段(族起点、买入日、格那一列的买入日)都是 K 线下标,存反馈前由调用方经 dates 换成日期
     bracketLineData.push({ value: [f.start, f.end, lane, ordinal], family_key: f.key, multi: f.multi,
-                           active: activeFamily === f.key })
+                           active: activeFamily === f.key, family_start: f.start, buy_days: f.buys.map((b) => b.day) })
     for (const mark of f.marks) {
       const rec: { value: number[]; kind: 'mark'; mark_kind: string; hit_id: string; hit_ids: string[];
-                   family_key: string; family_start: number; hit_labels?: string[]; instance_id?: string } = {
+                   family_key: string; family_start: number; hit_labels?: string[]; instance_id?: string;
+                   buy_day?: number } = {
         value: [mark.start, mark.end, lane, ordinal], kind: 'mark', mark_kind: mark.kind,
         hit_id: mark.hitIds[0], hit_ids: mark.hitIds, family_key: f.key, family_start: f.start,
         hit_labels: hitLabelTexts(mark.hitIds),
       }
+      // 格那一列(同一行)上有 ▼:记下那天(compare 点格发起 point 反馈;没有就不带)
+      const colBuy = f.buys.find((b) => b.day >= mark.start && b.day <= mark.end)
+      if (colBuy) rec.buy_day = colBuy.day
       if (endNode) {
         const v = hitsById.get(mark.hitIds[0])?.node_index?.[endNode]
         if (v) rec.instance_id = v
@@ -656,6 +678,8 @@ export function buildMainOption(
 // 每一行靠自己的族底线(起点带竖头)和格读,全宽的线只留给分区(bracket 与 band、compare 下用户轨与 app 轨)。
 // 用于 buildSubOption 的 option.graphic 字段;所有元素 silent=true 避免抢 hover 事件。
 const TREE_INDENT = 14   // 子轨名每深一层往右缩进的像素(待验证)
+const HOVER_BAND_FILL = 'rgba(26, 128, 186, 0.16)'   // 悬停分段所在 band 的底(待验证:截图过目)
+const HOVER_BAND_STROKE = 'rgb(26, 128, 186)'        // 它的边:中蓝
 
 export function buildSubDecorGraphics(
   bandGeom: BandGeom[],
@@ -664,7 +688,7 @@ export function buildSubDecorGraphics(
   hitsLabelVisible: boolean,
   chartSubWidth: number,
   zoomFactor: number = 1.0,
-  active: { band?: number; hits?: boolean; linked?: readonly number[] } = {},   // 当家行所在那条 band / bracket、选中框对的 band 的表头加粗
+  active: { band?: number; hits?: boolean; linked?: readonly number[]; hover?: number } = {},   // 当家行所在那条 band / bracket、选中框对的 band 的表头加粗;hover:反馈面板悬停的分段所在 band 加亮
   extras: readonly (BandLabelExtra | null)[] = [],  // 表头 node 名后跟的用户特征名 / app_only(按 band 下标)
   hitsTop: number = BAND_TOP_PAD,                    // hits 表头的顶 = hit 第 0 行的顶(compare 下在分界线下面)
   tree: readonly ({ depth: number; last: boolean } | null)[] = [],  // 轨在父子树里的位置(subBandTree),子轨名缩进挂 ├ / └
@@ -687,6 +711,20 @@ export function buildSubDecorGraphics(
       silent: true,
     })
   })
+
+  // 1b. 反馈面板悬停的分段所在的 band:整行垫浅蓝底、描中蓝边(色盲配色:冷色、深浅和底色拉开,边线不靠底色也认得出)
+  const hg = active.hover !== undefined && active.hover >= 0 ? bandGeom[active.hover] : null
+  if (hg) {
+    graphics.push({
+      type: 'rect',
+      left: SUB_ROW_LEFT + 1,
+      top: hg.top + 1,
+      shape: { width: rectWidth - 2, height: Math.max(0, hg.h - 2) },
+      style: { fill: HOVER_BAND_FILL, stroke: HOVER_BAND_STROKE, lineWidth: 2 },
+      z: 1,
+      silent: true,
+    })
+  }
 
   // 2. hits 区的底:浅黄,从 hits 区顶(compare 下是用户区底的那道分界线)铺到第一条 band 的顶;
   //    和 band 之间不画分隔线,靠底色分开
@@ -800,7 +838,9 @@ export function buildSubOption(
 
   // 装饰几何(zebra/hits 底/bandLabels/hitsLabel)改走 option.graphic,不再挂 series
   const bandLabelTexts = subBandTagList(input.tagList, input.topology)
-  const hitsLabelVisible = bracketData.length > 0
+  const fbIn = input.feedback ?? null
+  // compare 下 app 在这只股票上一个 hit 都没有、但有反馈(如改好了的):hits 区照样铺底、写表头,反馈带画在里面
+  const hitsLabelVisible = bracketData.length > 0 || (fbIn?.marks.length ?? 0) > 0
   // 当家行所在那条 band(或 bracket)的表头名字加粗
   const activeKey = input.activeFamily ?? null
   const activeBand = activeKey ? bandLabelTexts.indexOf(activeKey.slice(0, activeKey.lastIndexOf('@'))) : -1
@@ -812,7 +852,8 @@ export function buildSubOption(
     chartSubWidth,
     z,
     { band: activeBand, hits: !!activeKey && activeKey.startsWith(`${HIT_FAMILY_PREFIX}@`),
-      linked: (input.linkedBands ?? []).map((b) => bandLabelTexts.indexOf(b)).filter((i) => i >= 0) },
+      linked: (input.linkedBands ?? []).map((b) => bandLabelTexts.indexOf(b)).filter((i) => i >= 0),
+      hover: input.hoverBand ? bandLabelTexts.indexOf(input.hoverBand) : undefined },
     bandLabelTexts.map((b) => input.bandExtras?.[b] ?? null),
     bracketTop,
     subBandTree(bandLabelTexts, input.topology),
@@ -856,11 +897,12 @@ export function buildSubOption(
         data: pointData,
         renderItem: (p: any, api: any) => renderPointWithGeom(p, api, subGeom.bandGeom, z),
         encode: { x: 0 }, z: 10, tooltip: markerTooltip },
-      // bracket 族底线(z:10)
+      // bracket 族底线(z:10)。compare(传了 feedback)下有买入日的族垫一整行高的透明命中区,点它发起 family 反馈;
+      // 压在格与 ▼(brackets,z:11)下面,点格、点 ▼ 不受影响。app 模式整层不响应鼠标(和原来一样)
       { type: 'custom', name: 'bracket-lines', xAxisIndex: 0, yAxisIndex: 0, clip: true,
-        data: bundle.bracketLineData, silent: true,
-        renderItem: makeRenderBracketLine(bundle.bracketLineData, z, bracketTop),
-        encode: { x: [0, 1] }, z: 10 },
+        data: bundle.bracketLineData, silent: !fbIn,
+        renderItem: makeRenderBracketLine(bundle.bracketLineData, z, bracketTop, !!fbIn),
+        encode: { x: [0, 1] }, z: 10, emphasis: { disabled: true } },
       // brackets (z:11):hit 的记号与买入日 ▼。focus 信号:selectedHitId 存在且无实例焦点 ⟺ bracket
       // 本身是被点者(KlineChart.ts bracket 分支走 focusHit 不设实例;marker 分支必设)
       { type: 'custom', name: 'brackets', xAxisIndex: 0, yAxisIndex: 0, clip: true,
@@ -869,6 +911,14 @@ export function buildSubOption(
           (selectedHitId ?? null) !== null && (input.selectedInstanceId ?? null) === null, bracketTop),
         encode: { x: [0, 1] }, z: 11, tooltip: markerTooltip,
         emphasis: { disabled: true } },
+      // 反馈带(z:12,compare 才有):hit 行底下,每条反馈一个横跨 [start, end] 的记号;悬停写全,点它打开那条
+      ...(fbIn ? [{
+        type: 'custom', name: FEEDBACK_SERIES, xAxisIndex: 0, yAxisIndex: 0, clip: true,
+        data: fbIn.marks.map((m) => ({ value: [m.start, m.end, m.lane], feedback_id: m.id })),
+        renderItem: makeRenderFeedbackMark(fbIn.marks, subGeom.feedbackTop),
+        encode: { x: [0, 1] }, z: 12, emphasis: { disabled: true },
+        tooltip: { show: true, formatter: (p: any) => fbIn.tip(fbIn.marks[p.dataIndex]?.id ?? '') },
+      }] : []),
       // highlight (z:20)。animation:true 为 series 级显式开关:keyframeAnimation(pending 闪烁)
       // 被 isAnimationEnabled() 闸住,继承顶层 animation:false 会整体跳过动画。
       { type: 'custom', name: 'highlight', xAxisIndex: 0, yAxisIndex: 0, clip: true,
@@ -1225,11 +1275,18 @@ export function makeRenderFamilyLine(
   }
 }
 
-/** bracket 族底线(每一族都画,bracket 一律是梳子;起点带竖头)、当家行粗底线。 */
+/**
+ * bracket 族底线(每一族都画,bracket 一律是梳子;起点带竖头)、当家行粗底线。
+ * clickable(compare):有买入日的族先垫一整行高(含行间空隙)的透明命中区,线与竖头不响应鼠标;点它发起这一族的
+ * family 反馈(spec 6.13)。代价:格与格之间的空白原来点了是清选中(落空白),现在点到的是这一族;new_step 的族底线
+ * 从旧平台起点画起,能点出一族的地方比买点那段长。没有买入日的族不垫,点那里仍是空白。
+ * 不 clickable(app 模式)时整组不响应鼠标,和原来一样。
+ */
 export function makeRenderBracketLine(
-  items: Array<{ multi?: boolean; active?: boolean }>,
+  items: Array<{ multi?: boolean; active?: boolean; buy_days?: number[] }>,
   zoomFactor: number = 1.0,
   bracketTop: number = BAND_TOP_PAD,   // hit 第 0 行的顶(compare 下让出上面的 user 行,见 subGeometry 的 appBracketTop)
+  clickable: boolean = false,
 ) {
   return function renderBracketLine(params: any, api: any) {
     const item = items[params.dataIndex]
@@ -1239,18 +1296,54 @@ export function makeRenderBracketLine(
     const rectH = BAND_MARKER_H * zoomFactor
     const width = Math.max(2, x1 - x0)
     const hh = rectH * FAMILY_HEAD_RATIO
+    const hitArea = clickable && (item.buy_days?.length ?? 0) > 0
+    const line = hitArea ? { silent: true } : {}
     const children: any[] = [
-      { type: 'rect', shape: { x: x0, y: top + rectH - FAMILY_LINE_H, width, height: FAMILY_LINE_H },
+      { type: 'rect', ...line, shape: { x: x0, y: top + rectH - FAMILY_LINE_H, width, height: FAMILY_LINE_H },
         style: { fill: FAMILY_LINE_COLOR } },
       // 起点竖头:和 band 的族底线同一种读法
-      { type: 'rect', shape: { x: x0, y: top + rectH - hh, width: FAMILY_HEAD_W, height: hh },
+      { type: 'rect', ...line, shape: { x: x0, y: top + rectH - hh, width: FAMILY_HEAD_W, height: hh },
         style: { fill: FAMILY_LINE_COLOR } },
     ]
     if (item.active) {
-      children.push({ type: 'rect', shape: { x: x0, y: top + rectH - 1, width, height: ACTIVE_LINE_H },
+      children.push({ type: 'rect', ...line, shape: { x: x0, y: top + rectH - 1, width, height: ACTIVE_LINE_H },
                       style: { fill: HL_FOCUS_EDGE } })
     }
+    if (hitArea) {
+      // fill 用近乎透明的 rgba 而非 transparent:保证 zrender 命中检测不被跳过(同 makeRenderFamilyLine)
+      children.unshift({ type: 'rect', shape: { x: x0, y: top, width, height: BAND_LANE_H * zoomFactor },
+                         style: { fill: 'rgba(0,0,0,0.001)' } })
+      return { type: 'group', children }
+    }
     return { type: 'group', silent: true, children }
+  }
+}
+
+/**
+ * 反馈带的记号(compare,spec 6.13):第 lane 行(y = feedbackTop + lane·FEEDBACK_ROW_H,行高固定、不随缩放)
+ * 横跨 [start, end] 的一块,配色按档(render/feedbackStrip.ts 的 FEEDBACK_TONE),选中的描边加粗;宽度放得下才写
+ * neg / off_pattern(黑字、等宽),放不下只画记号。
+ */
+export function makeRenderFeedbackMark(marks: readonly FeedbackMark[], feedbackTop: number) {
+  return function renderFeedbackMark(params: any, api: any) {
+    const m = marks[params.dataIndex]
+    if (!m) return { type: 'group', children: [] }
+    const { x0, x1 } = markXRange(api, m.start, m.end)
+    const width = Math.max(4, x1 - x0)
+    const y = feedbackTop + m.lane * FEEDBACK_ROW_H + FEEDBACK_MARK_PAD
+    const h = FEEDBACK_ROW_H - 2 * FEEDBACK_MARK_PAD
+    const tone = FEEDBACK_TONE[m.tone]
+    const children: any[] = [{
+      type: 'rect', shape: { x: x0, y, width, height: h, r: 2 },
+      style: { fill: tone.fill, stroke: tone.stroke,
+               lineWidth: m.selected ? FEEDBACK_SELECTED_STROKE_W : FEEDBACK_STROKE_W },
+    }]
+    if (feedbackLabelFits(m.label, width)) {
+      children.push({ type: 'text', silent: true,
+                      style: { text: m.label, x: x0 + FEEDBACK_TEXT_PAD, y: y + h / 2, align: 'left',
+                               verticalAlign: 'middle', font: `${FEEDBACK_FONT_PX}px ${MONO}`, fill: '#000000' } })
+    }
+    return { type: 'group', children }
   }
 }
 

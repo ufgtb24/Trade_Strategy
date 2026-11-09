@@ -184,3 +184,19 @@ def test_preview_pattern_spec_reflects_current_yaml(tmp_path, monkeypatch):
                          if r["clause_id"] == "first_drought"), None)
     assert drought_rule is not None, "burst 节点缺 first_drought where_rule"
     assert drought_rule["threshold"] == 999
+
+
+def test_preview_bad_symbol_400_and_missing_data_dir_503(tmp_path):
+    """跑 app 抽进 path2_web/app_run.py 后,读不到行情的三种情形仍照原来的状态码:代码不合格 400、
+    行情目录不存在 503(股票缺 404 见上)。"""
+    c = _client(tmp_path)
+    r = c.get("/preview", params={"pattern_id": "bottom_burst", "symbol": "../AAA",
+                                   "start": "2025-01-01", "end": "2025-12-31", "label_horizon": 20})
+    assert r.status_code == 400
+    cfg = {**data_cfg(tmp_path / "no_such_dir"), "last_selected_pattern": "bottom_burst",
+           "scan": {"start_date": "2025-01-01", "end_date": "2025-12-31", "workers": 1, "ticker_regex": None}}
+    c2 = TestClient(create_app(config_override=cfg, outputs_root=str(tmp_path / "outputs2"),
+                               use_thread_pool=True))
+    r = c2.get("/preview", params={"pattern_id": "bottom_burst", "symbol": "AAA",
+                                    "start": "2025-01-01", "end": "2025-12-31", "label_horizon": 20})
+    assert r.status_code == 503, r.text

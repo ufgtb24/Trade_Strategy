@@ -59,6 +59,10 @@
       <button type="button" :class="['entry', { on: ann.tool === 'point' }]" data-testid="tool-point"
               title="on: click a bar to place a sample there (current pattern, pos); off after one use. Esc turns off"
               @click="ann.toggleTool('point')">point</button>
+      <button v-if="mode === 'compare'" type="button" :class="['entry', { on: ann.tool === 'feedback' }]"
+              data-testid="tool-feedback"
+              title="on: drag across the chart to give feedback on the app's buys in that range; off after one use. Shift+F toggles, Esc turns off"
+              @click="ann.toggleTool('feedback')">feedback</button>
     </div>
     <div v-if="annotating" class="grp" data-testid="pattern-group">
       <span class="key" title="the current pattern: new samples go to it">pattern</span>
@@ -95,7 +99,8 @@
  * - rally:展开 / 收起大涨段清单(RallyList),点一行打开那段涨之前的图,落在 annotate。
  * - random:从股票池 × 训练段随机给一段图,落在 annotate,图停在那一段上。
  * - tool(annotate、compare 下):默认都不亮,图上拖动是平移;box = 点亮后在图上拖出一个框或改一次框的起止;
- *   point = 点亮后点一根 K 线放样本。点亮一个只用一次,用完自动熄灭;再点一下、Esc 也熄灭;Shift+B 点亮 / 熄灭 box。
+ *   point = 点亮后点一根 K 线放样本;feedback(只在 compare 出现)= 点亮后在图上拖一段,对这段里 app 的买点作答
+ *   (spec 6.13)。点亮一个只用一次,用完自动熄灭;再点一下、Esc 也熄灭;Shift+B 点亮 / 熄灭 box,Shift+F 点亮 / 熄灭 feedback。
  * - pattern(annotate 下):当前 pattern,新放的样本归它;下拉里有 unsorted · n 和 + new。
  * - ref:参照层,目前只有 peaks(stores/refLayers.ts)。只在 annotate / compare 下可用,别的模式下变灰;默认关,换股票自动关。
  * 看过什么一律不记。

@@ -6,7 +6,8 @@
  * spec: docs/superpowers/specs/2026-07-03-subchart-boundary-model-design.md
  *
  * 约定 canvas 局部坐标 y=0 是 canvas 顶,自上而下:
- *   [0, bracketH)                        — bracket 区(lane_i 的 rect y = 4 + i*9·z, h = 7·z)
+ *   [0, bracketH)                        — bracket 区(lane_i 的 rect y = 4 + i*9·z, h = 7·z);compare 下 hit 行底下
+ *                                          还有反馈带(feedbackRowCount 行,每行 FEEDBACK_ROW_H,不随缩放)
  *   [bracketH, bracketH + DIVIDER_GAP)   — hits 区与第一条 band 之间的空隙,和 hits 区同底色(HITS_FILL),不画分隔线
  *   [bracketH + DIVIDER_GAP, subCanvasH) — band 区,band_i 累积堆叠
  *
@@ -50,6 +51,8 @@ export const CURSOR_HALO = '#ffffff'           // 两侧白边,压在任何色�
 export const HL_EXPAND_H = 3         // 高度增量(乘 z),比例恒 (7+3)/7
 export const HL_EXPAND_OFFSET = 1.5  // y 上移(乘 z),保居中外扩
 export const DIVIDER_GAP = 4
+// compare 的反馈带(spec 6.13):hit 行底下每条反馈占一行,行高固定、不乘 band zoom(待截图过目)
+export const FEEDBACK_ROW_H = 14
 
 // Task 2 新增常量: 装饰几何视觉参数 + sub-outer 最小可压缩高度 + chartSub grid 左右内边距
 // spec: docs/superpowers/specs/2026-07-01-path2-web-subchart-fixed-decor-design.md
@@ -96,6 +99,8 @@ export interface SubGeometry {
   hitsAreaTop: number
   /** compare:上区(用户)与下区(app)的分界 y,画一道分界线;不传 userContentBottom 时为空 */
   userAppEdges: number[]
+  /** 反馈带第 0 行的顶(第 i 行 y = feedbackTop + i*FEEDBACK_ROW_H):紧接在最后一行 hit 下面;没有反馈行时也给出 */
+  feedbackTop: number
 }
 
 export interface SubGeometryInput {
@@ -105,6 +110,9 @@ export interface SubGeometryInput {
   /** 用户区(特征轨 + 样本跨度那一行 user,标注层 annotateLanes 的几何,不随 band zoom 变)里最低那条样本跨度的下沿
    *  (annotateLanes 的 bracketContentBottom);分界线画在它下面 USER_APP_GAP,hit 的行再往下 USER_APP_GAP */
   userContentBottom?: number
+  /** compare 才传:hit 行底下反馈带的行数(交叠的反馈错行后的行数);每行 FEEDBACK_ROW_H,不乘缩放,计入 hits 区高度,
+   *  band 整体往下顺移;分界线位置不受影响(只加在 hit 行下面)。缺省 0 */
+  feedbackRowCount?: number
 }
 
 export function computeSubGeometry(
@@ -117,8 +125,10 @@ export function computeSubGeometry(
   const userH = input.userContentBottom ?? 0
   const edgeY = userH + USER_APP_GAP
   const appBracketTop = userH > 0 ? edgeY + USER_APP_GAP : BAND_TOP_PAD
-  const bracketH = input.bracketLaneCount > 0 || userH > 0
-    ? appBracketTop + input.bracketLaneCount * BAND_LANE_H * zoomFactor + BAND_BOT_PAD
+  const fbRows = Math.max(0, input.feedbackRowCount ?? 0)
+  const feedbackTop = appBracketTop + input.bracketLaneCount * BAND_LANE_H * zoomFactor
+  const bracketH = input.bracketLaneCount > 0 || userH > 0 || fbRows > 0
+    ? feedbackTop + fbRows * FEEDBACK_ROW_H + BAND_BOT_PAD
     : 0
   const bandAreaTop = bracketH + DIVIDER_GAP
 
@@ -142,7 +152,7 @@ export function computeSubGeometry(
   // compare:上下两区的分界在用户区底下 USER_APP_GAP 处
   const userAppEdges = userH > 0 ? [edgeY] : []
   const hitsAreaTop = userH > 0 ? edgeY : 0
-  return { bracketH, bandGeom, subCanvasH, appBracketTop, hitsAreaTop, userAppEdges }
+  return { bracketH, bandGeom, subCanvasH, appBracketTop, hitsAreaTop, userAppEdges, feedbackTop }
 }
 
 /**

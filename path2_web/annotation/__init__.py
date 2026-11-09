@@ -6,4 +6,7 @@
 - membership:框套框归属、成员框推断、骨架、dup、成员链空槽的参照实现(纯计算)。任何另写的实现都要逐例通过
   同一组带答案的例子 tests/path2_web/fixtures/membership_examples.json;GAP、NEAR 的默认值只在这里设定。
 - match:sample 与 hit 比较(match)的容差,只在这里设定;界面经 GET /annotations 读同一对值。
+- changes:一个 pattern 的样本、成员框、定义在两份重放状态之间改了什么(会话求差与 GET /annotations/changes 共用)。
+- revision:会话侧每轮的定格(start_round)与改版报告(revision_report),会话用 uv run python -c 调;
+  一轮的顺序与禁忌写在它的模块说明里。
 """

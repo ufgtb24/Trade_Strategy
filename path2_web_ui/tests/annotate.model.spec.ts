@@ -2,9 +2,9 @@
 // 特征轨的排法与子框轨、合并与拆回、parent 一行的 detach / attach。
 import { describe, it, expect } from 'vitest'
 import {
-  applyOps, attrCounts, attrState, attrWordsOf, boxValue, computeLanes, featureUsage, kidWordsOf,
-  mergePlan, mergeRecords, parentRows, rankSuggestions, toggleAttr, toggleParent, unmergedBox, weekdaysCovering,
-  type AnnBox, type AnnRead, type AnnState,
+  applyOps, attrCounts, attrState, attrWordsOf, boxValue, computeLanes, featureUsage, feedbackValue, findFeedback,
+  kidWordsOf, mergePlan, mergeRecords, newId, parentRows, rankSuggestions, toggleAttr, toggleParent, unmergedBox,
+  weekdaysCovering, type AnnBox, type AnnFeedback, type AnnRead, type AnnState,
 } from '../src/annotate/model'
 
 // 2025 年 1 月的交易日(1-01、1-20 休市)
@@ -15,7 +15,7 @@ function read(state: Partial<AnnState>): AnnRead {
     state: { machine: 'pc', data_fingerprint: null, features: [], patterns: [], charts: [], ...state },
     conflicts: [], unsynced: [], violations: [],
     fingerprint: { local: 'x', local_error: null, recorded: [], consistent: true }, merges: [],
-    revs: { feature: {}, pattern: {}, box: {}, sample: {} }, next_seq: 1, ignored_files: [],
+    revs: { feature: {}, pattern: {}, box: {}, sample: {}, feedback: {} }, next_seq: 1, ignored_files: [],
     membership: { gap: 20, near: 40 },
     match: { pos: 3, neg: 1, sub: 2 },
   }
@@ -43,6 +43,75 @@ describe('applyOps', () => {
     ])
     expect(r.state.features).toEqual([{ id: 'w-pc-1', name: '盘整' }])
     expect(r.state.charts).toEqual([])
+  })
+})
+
+describe('applyOps · 反馈', () => {
+  const fb = (id: string, start: string, end: string, extra: Partial<AnnFeedback> = {}): AnnFeedback => ({
+    id, pattern: 'p', app_id: 'app1', app_ver: 'v1', start, end, target: 'range', source: 'picked', answer: 'neg',
+    note: '太晚', ...extra })
+  const stored = (symbol: string, f: AnnFeedback) => feedbackValue(symbol, f)
+
+  it('反馈进 feedback 桶,不进 samples;按(start、end、编号)排;只有反馈的股票照样出一项', () => {
+    const r = applyOps(read({}), [
+      { kind: 'feedback', id: 'f-pc-3', base: null, value: stored('AAA', fb('f-pc-3', '2025-01-10', '2025-01-14')) },
+      { kind: 'feedback', id: 'f-pc-2', base: null, value: stored('AAA', fb('f-pc-2', '2025-01-10', '2025-01-13')) },
+      { kind: 'feedback', id: 'f-pc-1', base: null, value: stored('AAA', fb('f-pc-1', '2025-01-06', '2025-01-20')) },
+    ])
+    expect(r.next_seq).toBe(4)
+    expect(r.state.charts).toHaveLength(1)
+    const c = r.state.charts[0]
+    expect(c.boxes).toEqual([])
+    expect(c.samples).toEqual([])
+    expect(c.feedback!.map(f => f.id)).toEqual(['f-pc-1', 'f-pc-2', 'f-pc-3'])
+    expect(c.feedback![0]).not.toHaveProperty('symbol')
+    expect(findFeedback(r.state, 'f-pc-2')!.chart.symbol).toBe('AAA')
+  })
+
+  it('删光了反馈就不出 feedback 键;框、样本、反馈都没有的股票拿掉', () => {
+    const base = read({ charts: [
+      { symbol: 'AAA', boxes: [box('b-pc-1', null, '2025-01-02', '2025-01-03')], samples: [],
+        feedback: [fb('f-pc-2', '2025-01-06', '2025-01-06', { target: 'point' })] },
+      { symbol: 'BBB', boxes: [], samples: [], feedback: [fb('f-pc-3', '2025-01-06', '2025-01-07')] },
+    ] })
+    const r = applyOps(base, [
+      { kind: 'feedback', id: 'f-pc-2', base: 'x', value: null },
+      { kind: 'feedback', id: 'f-pc-3', base: 'x', value: null },
+    ])
+    expect(r.state.charts.map(c => c.symbol)).toEqual(['AAA'])
+    expect(r.state.charts[0]).not.toHaveProperty('feedback')
+    expect(r.state.charts[0].boxes).toHaveLength(1)
+  })
+
+  it('改一条反馈是整条换掉;不改入参(读结果里的 feedback 数组原样)', () => {
+    const base = read({ charts: [{ symbol: 'AAA', boxes: [], samples: [],
+      feedback: [fb('f-pc-1', '2025-01-06', '2025-01-08'), fb('f-pc-2', '2025-01-09', '2025-01-10')] }] })
+    const snapshot = structuredClone(base)
+    const r = applyOps(base, [{ kind: 'feedback', id: 'f-pc-1', base: 'x',
+      value: stored('AAA', fb('f-pc-1', '2025-01-06', '2025-01-08', { answer: 'off_pattern', note: undefined, segments: ['step'] })) }])
+    expect(base).toEqual(snapshot)
+    expect(r.state.charts[0].feedback![0]).toEqual(
+      { id: 'f-pc-1', pattern: 'p', app_id: 'app1', app_ver: 'v1', start: '2025-01-06', end: '2025-01-08',
+        target: 'range', source: 'picked', answer: 'off_pattern', segments: ['step'] })
+    expect(r.state.charts[0].feedback).not.toBe(base.state.charts[0].feedback)
+    expect(base.state.charts[0].feedback).toHaveLength(2)
+  })
+
+  it('没有反馈的股票照旧不出 feedback 键(加框、加样本不带出空数组)', () => {
+    const r = applyOps(read({}), [
+      { kind: 'box', id: 'b-pc-1', base: null, value: { id: 'b-pc-1', symbol: 'AAA', feature: null, start: '2025-01-02', end: '2025-01-03' } },
+    ])
+    expect(r.state.charts[0]).not.toHaveProperty('feedback')
+  })
+
+  it('存储值:带 symbol;空的 note、segments 不写;family_start 只在 family 时写;编号字母 f', () => {
+    expect(newId('f', 'pc', 7)).toBe('f-pc-7')
+    expect(feedbackValue('AAA', fb('f-pc-1', '2025-01-06', '2025-01-06',
+      { target: 'point', note: '', segments: [], family_start: '2025-01-02' }))).toEqual(
+      { id: 'f-pc-1', symbol: 'AAA', pattern: 'p', app_id: 'app1', app_ver: 'v1', start: '2025-01-06', end: '2025-01-06',
+        target: 'point', source: 'picked', answer: 'neg' })
+    expect(feedbackValue('AAA', fb('f-pc-1', '2025-01-06', '2025-01-08', { target: 'family', family_start: '2025-01-02' })))
+      .toMatchObject({ family_start: '2025-01-02', note: '太晚' })
   })
 })
 

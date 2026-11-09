@@ -36,7 +36,7 @@ describe('峰线系列', () => {
   })
 
   it('深灰,不是配色规范里有意义的颜色,也不是框和文字的黑', () => {
-    const taken = ['#47b262', '#eb5454', '#93c5fd', '#f2c25c', '#d55e00', '#9ca3af', '#d1d5db', '#b4bac2', INK.toLowerCase()]
+    const taken = ['#47b262', '#eb5454', '#93c5fd', '#f2c25c', '#e8875a', '#9ca3af', '#d1d5db', '#b4bac2', INK.toLowerCase()]
     expect(taken).not.toContain(PEAK_LINE.toLowerCase())
   })
 })
