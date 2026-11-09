@@ -64,9 +64,14 @@ pattern 的 DAG 图，同时是 node 的控制器：点节点切显隐，双击�
 ### 标注工具
 
 **off_pattern / 不像**：
-= a blind-review answer given when the hit does not have the shape of the pattern at all.
-盲看作答的三个取值之一；另两个 `pos`、`neg` 与样本的 judgment 同义（是这个 pattern、当天会买 / 像这个 pattern、当天看得出不该买）。`off_pattern` 说 app 认出的东西连样子都不对，毛病在翻译：dag 缺一样 `must`，或 where 太松；`neg` 说样子对、pattern 缺一条 `must_not`。两者指向相反的改法，所以分开。盲看随机部分里判 `off_pattern` 的张数是忠实度计数，只说明 app 有没有走样，不说明赚不赚钱。
+= a blind-review or feedback answer given when the hit does not have the shape of the pattern at all.
+盲看作答的三个取值之一，也是 feedback 的两个答案之一；另两个 `pos`、`neg` 与样本的 judgment 同义（是这个 pattern、当天会买 / 像这个 pattern、当天看得出不该买）。`off_pattern` 说 app 认出的东西连样子都不对，毛病在翻译：dag 缺一样 `must`，或 where 太松；`neg` 说样子对、pattern 缺一条 `must_not`。两者指向相反的改法，所以分开。盲看随机部分里判 `off_pattern` 的张数是忠实度计数，只说明 app 有没有走样，不说明赚不赚钱。
 _Avoid_: 不是 —— 分不出是 `off_pattern` 还是 `neg`。
+
+**feedback / 反馈**：
+= a judgment the user gives on the app's buy points within a date range, while the whole chart is visible.
+用户在图上对 app 已经买了的地方挑刺：选一个买点、一族（hits 行里起点相同、并成一串的那些 hit）或拖一段日期，答 `neg`（样子对、这时不该买，写一句理由）或 `off_pattern`（样子不对，点出认错的段）。只挑刺，不评 `pos`；漏检照旧放正样本。和盲看作答共用一种记录，来源记 `picked`；作答时看得见后续走势，所以不进任何比例，只给会话当线索、给每次改版当核对：反馈的那段日期里 app 还有买点，就显示朱红。没反馈的买点不是认可，只是还没评。
+_Avoid_: review —— 已是复核的名字；pos 反馈 —— 反馈没有 `pos`，该买的日子放正样本。
 
 **review / 复核**：
 = the `next` value shown while an app that passed the final check is in provisional use and waits for enough new data to be checked again.
