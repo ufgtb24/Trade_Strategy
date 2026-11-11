@@ -6,6 +6,7 @@
   "框的 feature 是特征编号,这里直接用词当编号,方便读;编号按字符串比。",
   "cases:每例有 name、covers(覆盖哪条要求)、why(为什么是这个答案)、fn、参数,以及 expect(期望结果)或 expect_error(期望报错的 code)。",
   "fn = parents:参数 boxes;expect 是 框编号 → 所属框编号或 null。对应 parents(boxes, days)。",
+  "fn = chart_parents:参数 boxes、samples(状态里 charts[].samples 的形状);expect 是 框编号 → 所属框编号或 null。对应 chart_parents(boxes, samples, days):一张图上显示用的框套框,被样本收着的框只在和它同被一个样本收着的框里找。",
   "fn = members:参数 date、boxes,可选 stored(存下的成员框;没有表示新放的样本)、new_boxes(它是当前样本期间新画的框)、manual(框编号 → true 收进 / false 拿掉);expect 是成员框编号,按框的先后排。对应 sample_members(date, boxes, days, stored=, new_boxes=, manual=, gap=)。",
   "fn = tree:参数 members、boxes;expect 是 {tree: [{box, kids}], skeleton: [特征编号或 null], dup: [特征编号]}。对应 member_tree、skeleton、dup_features(members, boxes, days)。",
   "fn = slots:参数 charts(状态里的 charts 形状)、symbol、sample;expect 是 [{box, feature, reason}],按框的先后排。对应 empty_slots(charts, symbol, sample, days, near=)。",
@@ -359,6 +360,85 @@
    "symbol": "AAA",
    "sample": "u1",
    "expect": [{"box": "b2", "feature": "横盘", "reason": "unclaimed"}]
+  },
+  {
+   "name": "chart_scope_one_box_per_sample",
+   "covers": ["chart_scope"],
+   "fn": "chart_parents",
+   "why": "两个样本各有一个「新平台」框:s1 收短的 b2,s2 收长的 b3,b3 在日期上包住 b2。b2 被样本收着,只在和它同被一个样本收着的框(b1、b2、b4)里找,b3 不在其中,所以 b2 不属于 b3。b4 两个样本都收,b2、b3、b1 都在它的范围里,属于最短的 b2。b5 只被 s2 收,范围是 b1、b3、b4、b5:b2 虽然更短也包住它,但不在范围里,所以属于 b3。",
+   "boxes": [
+    {"id": "b1", "feature": "底部", "start": 0, "end": 60},
+    {"id": "b2", "feature": "新平台", "start": 55, "end": 70},
+    {"id": "b3", "feature": "新平台", "start": 52, "end": 80},
+    {"id": "b4", "feature": "阶跃", "start": 56, "end": 58},
+    {"id": "b5", "feature": "放量", "start": 60, "end": 65}
+   ],
+   "samples": [
+    {"id": "s1", "date": 70, "pattern": "P", "judgment": "pos", "members": ["b1", "b2", "b4"]},
+    {"id": "s2", "date": 80, "pattern": "P", "judgment": "pos", "members": ["b1", "b3", "b4", "b5"]}
+   ],
+   "expect": {"b1": null, "b2": null, "b3": null, "b4": "b2", "b5": "b3"}
+  },
+  {
+   "name": "chart_scope_unheld_looks_chart_wide",
+   "covers": ["chart_scope"],
+   "fn": "chart_parents",
+   "why": "b2、b3 没被任何样本收着,在整张图的框里找:b2 属于包住它的框里最短的 b3,b3 属于 b1(b1 被 s1 收着也照样算)。",
+   "boxes": [
+    {"id": "b1", "feature": "横盘", "start": 0, "end": 40},
+    {"id": "b2", "feature": "缩量", "start": 10, "end": 20},
+    {"id": "b3", "feature": "小阴", "start": 5, "end": 30}
+   ],
+   "samples": [
+    {"id": "s1", "date": 45, "pattern": "P", "judgment": "pos", "members": ["b1"]}
+   ],
+   "expect": {"b1": null, "b2": "b3", "b3": "b1"}
+  },
+  {
+   "name": "chart_scope_held_ignores_unheld",
+   "covers": ["chart_scope"],
+   "fn": "chart_parents",
+   "why": "b1 被 s1 收着,只在同被 s1 收着的框里找;b2 更长、包住它,但没被任何样本收着(终点在样本日之后,收不进),不在范围里,所以 b1 不属于 b2。",
+   "boxes": [
+    {"id": "b1", "feature": "新平台", "start": 50, "end": 60},
+    {"id": "b2", "feature": "新平台", "start": 45, "end": 90}
+   ],
+   "samples": [
+    {"id": "s1", "date": 60, "pattern": "P", "judgment": "pos", "members": ["b1"]}
+   ],
+   "expect": {"b1": null, "b2": null}
+  },
+  {
+   "name": "chart_scope_attach_out_of_scope_void",
+   "covers": ["chart_scope"],
+   "fn": "chart_parents",
+   "why": "b1 被 s1 收着,手动 attach 到 b3;b3 只被 s2 收着,不在 b1 的范围里,这条 attach 不算数,照默认属于同在 s1 里、包住它的 b2。",
+   "boxes": [
+    {"id": "b1", "feature": "缩量", "start": 10, "end": 30, "attach": "b3"},
+    {"id": "b2", "feature": "横盘", "start": 5, "end": 32},
+    {"id": "b3", "feature": "回踩", "start": 20, "end": 50}
+   ],
+   "samples": [
+    {"id": "s1", "date": 35, "pattern": "P", "judgment": "pos", "members": ["b1", "b2"]},
+    {"id": "s2", "date": 55, "pattern": "P", "judgment": "pos", "members": ["b3"]}
+   ],
+   "expect": {"b1": "b2", "b2": null, "b3": null}
+  },
+  {
+   "name": "chart_scope_crossing_member_not_held",
+   "covers": ["chart_scope"],
+   "fn": "chart_parents",
+   "why": "s1 存下的成员框里有 b1,但 b1 的终点已经越过样本日,不算被 s1 收着。于是 b1 当作没被收着的框,在整张图里找,属于包住它的 b3;b2 被 s1 收着,范围里只有它自己(b1 不算、b3 属于 s2),不属于任何框。",
+   "boxes": [
+    {"id": "b1", "feature": "横盘", "start": 10, "end": 45},
+    {"id": "b2", "feature": "缩量", "start": 20, "end": 30},
+    {"id": "b3", "feature": "底部", "start": 5, "end": 60}
+   ],
+   "samples": [
+    {"id": "s1", "date": 40, "pattern": "P", "judgment": "pos", "members": ["b1", "b2"]},
+    {"id": "s2", "date": 60, "pattern": "P", "judgment": "pos", "members": ["b3"]}
+   ],
+   "expect": {"b1": "b3", "b2": null, "b3": null}
   }
  ]
 }

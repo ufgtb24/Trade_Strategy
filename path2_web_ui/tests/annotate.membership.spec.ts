@@ -4,7 +4,7 @@ import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import {
-  dupFeatures, emptySlots, memberTree, parents, sampleMembers, skeleton, MembershipInputError,
+  chartParents, dupFeatures, emptySlots, memberTree, parents, sampleMembers, skeleton, MembershipInputError,
 } from '../src/annotate/membership'
 
 const FILE = resolve(__dirname, '../../tests/path2_web/fixtures/membership_examples.json')
@@ -26,6 +26,7 @@ function run(c: any): unknown {
   const d = dated(c)
   switch (c.fn) {
     case 'parents': return parents(d.boxes, days)
+    case 'chart_parents': return chartParents(d.boxes, d.samples, days)
     case 'members': return sampleMembers(d.date, d.boxes, days,
       { stored: d.stored ?? null, newBoxes: d.new_boxes ?? [], manual: d.manual ?? null, gap })
     case 'tree': return { tree: memberTree(d.members, d.boxes, days), skeleton: skeleton(d.members, d.boxes, days),
@@ -37,7 +38,8 @@ function run(c: any): unknown {
 
 describe('membership_examples.json 的全部例子', () => {
   const cases = doc.cases as any[]
-  it('四种例子都有', () => expect(new Set(cases.map(c => c.fn))).toEqual(new Set(['parents', 'members', 'tree', 'slots'])))
+  it('五种例子都有', () => expect(new Set(cases.map(c => c.fn)))
+    .toEqual(new Set(['parents', 'chart_parents', 'members', 'tree', 'slots'])))
   for (const c of cases) {
     it(`${c.fn}: ${c.name}`, () => {
       if (c.expect_error) {

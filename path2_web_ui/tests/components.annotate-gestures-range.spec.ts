@@ -182,3 +182,25 @@ describe('feedback 亮着时的光标', () => {
     expect(s.g.cursorAt('sub', SUB_GRID_LEFT - 20, 250)).toBeNull()
   })
 })
+
+// 三角画在当天最低价下方,价格贴着 K 线区底边时三角伸进成交量带:点中三角仍按 K 线区处理(选中样本、手形光标)
+describe('样本三角伸出 K 线区', () => {
+  it('不亮工具:点在成交量带里的三角上 → 选中样本;没点中三角 → 照旧只平移', () => {
+    const s = cur = setup(() => null)
+    s.deps.sampleAt = (_x, y) => (y >= 300 && y < 320 ? 's-1' : null)
+    down(s.mainEl, px(3), 310)
+    up(px(3), 310)
+    expect(s.deps.selectSample).toHaveBeenCalledWith('s-1')
+    down(s.mainEl, px(3), 350)
+    up(px(3), 350)
+    expect(s.deps.selectSample).toHaveBeenCalledTimes(1)
+    expect(s.deps.select).not.toHaveBeenCalled()
+  })
+
+  it('光标:成交量带里的三角上是手,别处不管', () => {
+    const s = cur = setup(() => null)
+    s.deps.sampleAt = (_x, y) => (y >= 300 && y < 320 ? 's-1' : null)
+    expect(s.g.cursorAt('main', px(3), 310)).toBe('pointer')
+    expect(s.g.cursorAt('main', px(3), 350)).toBeNull()
+  })
+})

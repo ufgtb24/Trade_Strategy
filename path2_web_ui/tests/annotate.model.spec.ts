@@ -218,7 +218,7 @@ describe('特征轨', () => {
       box('b6', null, '2025-01-27', '2025-01-28'),
       box('b7', 'w3', '2025-01-02', '2025-01-06'),      // 和 b1 交叠
     ]
-    const lanes = computeLanes(boxes, name, DAYS)
+    const lanes = computeLanes(boxes, [], name, DAYS)
     expect(lanes.map(l => [l.key, l.parent])).toEqual([
       ['w3', null], ['w1', null], ['w2', 'w1'], ['w4', null], [null, null]])
     const fang = lanes[0]
@@ -228,11 +228,11 @@ describe('特征轨', () => {
   it('一个特征的框不全属于同一个特征的框,就不是子框轨', () => {
     const boxes = [box('b1', 'w1', '2025-01-02', '2025-01-24'), box('b2', 'w2', '2025-01-06', '2025-01-08'),
                    box('b3', 'w2', '2025-01-27', '2025-01-29')]
-    expect(computeLanes(boxes, name, DAYS).map(l => [l.key, l.parent])).toEqual([['w1', null], ['w2', null]])
+    expect(computeLanes(boxes, [], name, DAYS).map(l => [l.key, l.parent])).toEqual([['w1', null], ['w2', null]])
   })
   it('detach 掉的框不算子框', () => {
     const boxes = [box('b1', 'w1', '2025-01-02', '2025-01-24'), box('b2', 'w2', '2025-01-06', '2025-01-08', { detach: true })]
-    expect(computeLanes(boxes, name, DAYS).map(l => l.parent)).toEqual([null, null])
+    expect(computeLanes(boxes, [], name, DAYS).map(l => l.parent)).toEqual([null, null])
   })
 })
 
@@ -269,34 +269,61 @@ describe('parent 一行(框套框的 detach / attach)', () => {
   const outer = box('b1', 'w1', '2025-01-02', '2025-01-24')
   it('被包住:默认属于它,点掉 = detach;再点 = 拿掉 detach', () => {
     const inner = box('b2', 'w2', '2025-01-06', '2025-01-08')
-    const [row] = parentRows(inner, [outer, inner], DAYS)
-    expect([row.other.id, row.on, row.via]).toEqual(['b1', true, 'default'])
+    const [row] = parentRows(inner, [outer, inner], [], DAYS)
+    expect([row.other.id, row.on, row.via, row.rel]).toEqual(['b1', true, 'default', 'contains'])
     const detached = toggleParent(inner, row)
     expect(detached.detach).toBe(true)
-    const [row2] = parentRows(detached, [outer, detached], DAYS)
-    expect([row2.other.id, row2.on, row2.via]).toEqual(['b1', false, 'detached'])
+    const [row2] = parentRows(detached, [outer, detached], [], DAYS)
+    expect([row2.other.id, row2.on, row2.via, row2.rel]).toEqual(['b1', false, 'detached', 'contains'])
     expect(toggleParent(detached, row2)).toEqual(inner)
   })
   it('没被包住、和更长的框交叠:点上 = attach;再点 = 拿掉 attach', () => {
     const edge = box('b3', 'w3', '2025-01-22', '2025-01-28')
-    const [row] = parentRows(edge, [outer, edge], DAYS)
-    expect([row.other.id, row.on, row.via]).toEqual(['b1', false, 'candidate'])
+    const [row] = parentRows(edge, [outer, edge], [], DAYS)
+    expect([row.other.id, row.on, row.via, row.rel]).toEqual(['b1', false, 'candidate', 'overlaps'])
     const attached = toggleParent(edge, row)
     expect(attached.attach).toBe('b1')
-    const [row2] = parentRows(attached, [outer, attached], DAYS)
-    expect([row2.on, row2.via]).toEqual([true, 'attach'])
+    const [row2] = parentRows(attached, [outer, attached], [], DAYS)
+    expect([row2.on, row2.via, row2.rel]).toEqual([true, 'attach', 'overlaps'])
     expect(toggleParent(attached, row2)).toEqual(edge)
   })
   it('能挂上的框都列出来,按长短排;被包住的框也能改挂到别的交叠、更长的框上', () => {
     const inner = box('b2', 'w2', '2025-01-06', '2025-01-08')
     const long = box('b4', 'w4', '2025-01-07', '2025-01-31')
     const mid = box('b5', 'w5', '2025-01-08', '2025-01-28')
-    const rows = parentRows(inner, [outer, inner, long, mid], DAYS)
+    const rows = parentRows(inner, [outer, inner, long, mid], [], DAYS)
     expect(rows.map(r => [r.other.id, r.via])).toEqual([['b1', 'default'], ['b5', 'candidate'], ['b4', 'candidate']])
     expect(toggleParent(inner, rows[1]).attach).toBe('b5')
+    expect(rows.map(r => r.rel)).toEqual(['contains', 'overlaps', 'overlaps'])
+  })
+  it('按样本分范围:被样本收着的框只列同被一个样本收着的框;没被收着的列整张图上的', () => {
+    // 两个样本各画一个同特征的框:a 收短的,b 收长的(日期上包住短的);底部两个样本都收,和短的只交叠
+    const base = box('b10', 'w9', '2025-01-02', '2025-01-13')
+    const short = box('b11', 'w1', '2025-01-10', '2025-01-17')
+    const longer = box('b12', 'w1', '2025-01-07', '2025-01-28')
+    const loose = box('b13', 'w2', '2025-01-14', '2025-01-15')   // 谁也没收
+    const all = [base, short, longer, loose]
+    const smp = (id: string, date: string, members: string[]) => ({ id, date, pattern: 'P', judgment: 'pos' as const, members })
+    const samples = [smp('a', '2025-01-17', ['b10', 'b11']), smp('b', '2025-01-28', ['b10', 'b12'])]
+    // 短的:长的不在它的范围里,不列;底部同在样本 a 里,列成 overlaps 的备选
+    expect(parentRows(short, all, samples, DAYS).map(r => [r.other.id, r.via, r.rel])).toEqual([['b10', 'candidate', 'overlaps']])
+    // 不传样本(谁也没被收着)时照整张图找:短的默认属于长的
+    expect(parentRows(short, all, [], DAYS).map(r => [r.other.id, r.via])).toEqual([['b12', 'default'], ['b10', 'candidate']])
+    // 没被收着的小框:整张图里找,属于包住它的框里最短的那个,另一个也列出来
+    expect(parentRows(loose, all, samples, DAYS).map(r => [r.other.id, r.via, r.rel]))
+      .toEqual([['b11', 'default', 'contains'], ['b12', 'candidate', 'contains']])
+    // 副图的轨:两个同特征的框不成子框轨
+    expect(computeLanes([short, longer], samples, f => f, DAYS).map(l => [l.key, l.parent])).toEqual([['w1', null]])
+  })
+  it('被两个框包住:默认属于短的那个,长的那个列成可挂的,关系仍是 contains', () => {
+    const inner = box('b2', 'w2', '2025-01-06', '2025-01-08')
+    const wider = box('b6', 'w6', '2025-01-02', '2025-01-31')
+    const rows = parentRows(inner, [outer, inner, wider], [], DAYS)
+    expect(rows.map(r => [r.other.id, r.via, r.rel]))
+      .toEqual([['b1', 'default', 'contains'], ['b6', 'candidate', 'contains']])
   })
   it('没有包住、也没有交叠的更长框:没有这一行', () => {
-    expect(parentRows(outer, [outer], DAYS)).toEqual([])
+    expect(parentRows(outer, [outer], [], DAYS)).toEqual([])
   })
 })
 

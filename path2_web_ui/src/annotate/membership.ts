@@ -14,6 +14,9 @@
  *   2. 有 attach,且那个框在这组里、比它长、和它交叠:属于那个框(否则这条 attach 不算数,照第 3 条);
  *   3. 否则属于包住它的框里最短的那个;一样短取起点早的,再一样取编号小的。
  *   「o 包住 b」= b 的起止都落在 o 里且 o 更长;detach 和 attach 同时出现报 attach_and_detach。
+ * - 一张图上的框套框(chartParents,显示用):被样本收着的框只在和它至少同被一个样本收着的框里找,没被任何
+ *   样本收着的框在整张图的框里找;「被样本收着」同 currentMemberBoxes。两个样本各画一个同特征的框时,短的
+ *   不会因为日期上被长的包住就算属于它。
  * - 成员框(sampleMembers):新放的样本 = 推断(候选只取样本日当天或之前结束的框,从样本日往前,终点离边界
  *   gap 根以内就并进来,边界更新为成员框里最早的起点,直到没有新增);已有成员框的样本,存下的就是冻结的那份,
  *   它是当前样本期间新画的框里推断会收的并进来(只加不踢);手动点进点出最后生效;最后只留在样本日当天或之前
@@ -101,6 +104,13 @@ export function parents(boxes: readonly NestBox[], days: readonly string[]): Rec
   return out
 }
 
+/** o 把 b 整个包住(o 的起止盖住 b 的起止,且 o 更长):b 默认属于包住它的框里最短的那个。 */
+export function encloses(o: NestBox, b: NestBox, days: readonly string[]): boolean {
+  if (b.id === o.id) return false
+  const p = pool([{ ...b, detach: false, attach: null }, { ...o, detach: false, attach: null }], days)
+  return contains(p.get(o.id)!, p.get(b.id)!)
+}
+
 /** b 和 o 交叠且 o 比 b 长:o 是 b 可以手动挂上(attach)的框。 */
 export function canAttach(b: NestBox, o: NestBox, days: readonly string[]): boolean {
   if (b.id === o.id) return false
@@ -160,6 +170,45 @@ export function sampleMembers(date: string, boxes: readonly NestBox[], days: rea
 }
 
 export interface TreeNode { box: string; kids: TreeNode[] }
+
+/**
+ * 一张图上按样本分的范围:返回 inScope(b, o) = 给框 b 找所属的框时,o 在不在它的范围里。
+ * 被样本收着的框(在某个样本存下的成员框里、还在图上、在那个样本日当天或之前结束)只看和它至少同被一个样本
+ * 收着的框;没被任何样本收着的框看整张图的全部框。
+ */
+export function chartScope(boxes: readonly NestBox[], samples: readonly MemberSample[]): (b: string, o: string) => boolean {
+  const held = new Map<string, Set<number>>()
+  samples.forEach((s, i) => {
+    for (const b of currentMemberBoxes(s, boxes)) {
+      if (!held.has(b.id)) held.set(b.id, new Set())
+      held.get(b.id)!.add(i)
+    }
+  })
+  return (b, o) => {
+    const mine = held.get(b)
+    if (!mine || b === o) return true
+    const theirs = held.get(o)
+    if (!theirs) return false
+    for (const i of mine) if (theirs.has(i)) return true
+    return false
+  }
+}
+
+/**
+ * 一张图上显示用的框套框(框编号 → 所属框编号或 null):每个框在它的范围(chartScope)里照框套框的三条找;
+ * attach 的框不在范围里,这条 attach 不算数。选中框时的 parent 一行、子框轨标题、compare 里子框对子段都用它。
+ */
+export function chartParents(boxes: readonly NestBox[], samples: readonly MemberSample[],
+                             days: readonly string[]): Record<string, string | null> {
+  const p = pool(boxes, days)
+  const inScope = chartScope(boxes, samples)
+  const out: Record<string, string | null> = {}
+  for (const [id, b] of p) {
+    const scope = new Map([...p].filter(([oid]) => inScope(id, oid)))
+    out[id] = parentIn(b, scope)
+  }
+  return out
+}
 
 /** 成员框按框套框排成树,顶层和每层子框都按框的先后排;归属只在成员框之间找,不在 boxes 里的编号不计。 */
 export function memberTree(members: Iterable<string>, boxes: readonly NestBox[], days: readonly string[]): TreeNode[] {

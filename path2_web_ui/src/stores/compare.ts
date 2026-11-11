@@ -1,7 +1,7 @@
 /**
  * compare 的读数(store):把 annotate/compareRead.ts 的纯函数接到当前图、当前 pattern 的 app 产物与标注上。
- * 图上 ▲ 旁的 ✓ / ✗、框右端的 missing、样本与框 → 当前日(KlineChart.vue),selection 页的 diagnose
- * (SampleDiagnose.vue)与框的 level 行(BoxPanel.vue)读的都是这一份,不各算各的。
+ * 图上 ▲ 旁的 ✓ / ✗、样本与框 → 当前日(KlineChart.vue),selection 页的 diagnose(SampleDiagnose.vue)
+ * 与框的 node 行(BoxPanel.vue)读的都是这一份,不各算各的。
  *
  * - 配对在哪个 node 上:样本按 app 的买点 node 所在的那个 node(eval_meta 的 end_node 点号前那段,如
  *   plateau.today → plateau);框按 mapping 里它的特征对的 node。都不认具体事件类型;
@@ -42,8 +42,6 @@ export interface BoxRead {
   node: string
   day: number
   pairing: Pairing
-  /** 框终点那天配对那一格的档位;那天这个 node 一个 event 都没有为 missing */
-  level: Tier | 'missing'
 }
 
 export const useCompareStore = defineStore('compare', () => {
@@ -113,14 +111,14 @@ export const useCompareStore = defineStore('compare', () => {
     const out = new Map<string, BoxRead>()
     const c = chart.value
     if (!ready.value || !c) return out
-    const par = chartParents(c.boxes, view.barDates)
+    const par = chartParents(c.boxes, c.samples, view.barDates)
     for (const b of c.boxes) {
       const node = nodeOfFeature(b.feature)
       const day = dayIdx.value.get(b.end)
       if (!node || day === undefined) continue
       const kids = c.boxes.filter(k => par[k.id] === b.id)
       const pairing = pairOn(day, node, events.value, hits.value, tierOf, { subBox: subBoxOf(node, kids) })
-      out.set(b.id, { node, day, pairing, level: pairing.event ? tierOf(pairing.event) : 'missing' })
+      out.set(b.id, { node, day, pairing })
     }
     return out
   })

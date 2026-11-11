@@ -6,6 +6,7 @@
 - 例子至少覆盖这些情形:默认归属到包住它的框里最短的那个;detach 和 attach 互斥;按 GAP 链式扩展到不再新增;
   被成员框包住的框、attach 到成员框上的框都带进来;跨过样本日的框收不进成员框,空槽的两种原因分得清;
   手动点进点出覆盖自动推断;骨架只取顶层框的特征的先后,子框和属性不进;顶层有两段同一特征时标 dup;
+  一张图上显示用的框套框,被样本收着的框只在和它同被一个样本收着的框里找;
 - 会话读标注时,把存储重放出的状态原样交给参照实现,就能算出骨架与空槽。
 """
 from __future__ import annotations
@@ -34,6 +35,7 @@ REQUIRED_COVERS = {
     "manual_overrides",             # 手动点进点出覆盖自动推断
     "skeleton_top_level_only",      # 骨架只取顶层框的特征的先后,子框和属性不进骨架
     "dup",                          # 顶层有两段同一特征时标出 dup
+    "chart_scope",                  # 一张图上的框套框:被样本收着的框只在同被一个样本收着的框里找
 }
 _DATE_KEYS = ("start", "end", "date")
 
@@ -57,6 +59,8 @@ def _run(case: dict):
     c = _dated(case)
     if c["fn"] == "parents":
         return m.parents(c["boxes"], DAYS)
+    if c["fn"] == "chart_parents":
+        return m.chart_parents(c["boxes"], c["samples"], DAYS)
     if c["fn"] == "members":
         return m.sample_members(c["date"], c["boxes"], DAYS, stored=c.get("stored"),
                                 new_boxes=c.get("new_boxes", ()), manual=c.get("manual"), gap=GAP)

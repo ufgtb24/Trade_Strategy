@@ -16,7 +16,7 @@
  * 属性三态:attrs 是特征编号 → true / false,键不在就是 null(没看过)。null 不算「没有」:
  * 后加的属性在旧框上是没看过,不能被当成 false 算进「没有」里。
  */
-import { canAttach, parents, rankOf, type NestBox } from './membership'
+import { canAttach, chartParents as scopedParents, chartScope, encloses, rankOf, type NestBox } from './membership'
 
 export type AnnKind = 'feature' | 'pattern' | 'box' | 'sample' | 'feedback'
 
@@ -391,9 +391,13 @@ export function daysFor(boxes: readonly AnnBox[], days?: readonly string[] | nul
   return days && days.length ? days : weekdaysCovering(boxes)
 }
 
-/** 一张图上框套框的结果(框编号 → 所属框编号);days 缺省或为空时用周一到周五代替。 */
-export function chartParents(boxes: readonly AnnBox[], days?: readonly string[] | null): Record<string, string | null> {
-  return parents(boxes.map(nestOf), daysFor(boxes, days))
+/**
+ * 一张图上框套框的结果(框编号 → 所属框编号);days 缺省或为空时用周一到周五代替。
+ * 按样本分范围(membership.ts 的 chartParents):被样本收着的框只在和它同被一个样本收着的框里找。
+ */
+export function chartParents(boxes: readonly AnnBox[], samples: readonly AnnSample[],
+                             days?: readonly string[] | null): Record<string, string | null> {
+  return scopedParents(boxes.map(nestOf), samples, daysFor(boxes, days))
 }
 
 /**
@@ -405,7 +409,7 @@ export function kidWordsOf(fid: string, charts: readonly AnnChart[],
   const out: string[] = []
   for (const c of charts) {
     if (!c.boxes.some(b => b.feature === fid)) continue
-    const par = chartParents(c.boxes, daysOf(c.symbol))
+    const par = chartParents(c.boxes, c.samples, daysOf(c.symbol))
     const byId = new Map(c.boxes.map(b => [b.id, b]))
     for (const b of c.boxes) {
       const p = par[b.id]
@@ -423,25 +427,40 @@ export function kidWordsOf(fid: string, charts: readonly AnnChart[],
  * - attach:手动挂在这个交叠、更长的框上(⊂ 亮);点掉 = 拿掉 attach,回到默认;
  * - detached:被这个框包住、但点掉过(⊂ 灭);再点 = 拿掉 detach;
  * - candidate:和它交叠、比它长、可以手动挂上的框(⊂ 灭);点上 = attach 到它。
+ * 只列它范围里的框(membership.ts 的 chartScope):它被样本收着时,只列和它同被一个样本收着的框;
+ * 没被任何样本收着时,列整张图上的。
  * 第一行是它现在属于(或点掉前属于)的框,其后是其余能挂上的框,按长短排。都没有为空数组。
  * detach 与 attach 互斥:改其中一个时另一个一并拿掉。
+ *
+ * rel 是两个框在日期上的关系(只看起止,不看点没点 ⊂),界面照它在每行写一个词:
+ * - contains:那个框把它整个包住。只有这种才会默认属于(包住它的框里最短的那个);
+ * - overlaps:只有一部分日子重合,那个框更长。不会默认属于,要用户手动点上。
  */
-export interface ParentRow { other: AnnBox; on: boolean; via: 'default' | 'attach' | 'detached' | 'candidate' }
+export interface ParentRow {
+  other: AnnBox; on: boolean; via: 'default' | 'attach' | 'detached' | 'candidate'
+  rel: 'contains' | 'overlaps'
+}
 
-export function parentRows(b: AnnBox, boxes: readonly AnnBox[], days: readonly string[]): ParentRow[] {
+export function parentRows(b: AnnBox, boxes: readonly AnnBox[], samples: readonly AnnSample[],
+                           days: readonly string[]): ParentRow[] {
   const d = daysFor(boxes, days)
+  const inScope = chartScope(boxes, samples)
   const byId = new Map(boxes.map(x => [x.id, x]))
   const rows: ParentRow[] = []
-  const eff = chartParents(boxes, d)[b.id]
-  if (eff) rows.push({ other: byId.get(eff)!, on: true, via: b.attach === eff ? 'attach' : 'default' })
-  else if (b.detach) {
-    const plain = chartParents(boxes.map(x => (x.id === b.id ? { ...x, detach: undefined } : x)), d)[b.id]
-    if (plain) rows.push({ other: byId.get(plain)!, on: false, via: 'detached' })
+  const relTo = (o: AnnBox): ParentRow['rel'] => (encloses(nestOf(o), nestOf(b), d) ? 'contains' : 'overlaps')
+  const eff = chartParents(boxes, samples, d)[b.id]
+  if (eff) {
+    const other = byId.get(eff)!
+    rows.push({ other, on: true, via: b.attach === eff ? 'attach' : 'default', rel: relTo(other) })
+  } else if (b.detach) {
+    const plain = chartParents(boxes.map(x => (x.id === b.id ? { ...x, detach: undefined } : x)), samples, d)[b.id]
+    if (plain) rows.push({ other: byId.get(plain)!, on: false, via: 'detached', rel: 'contains' })
   }
   const length = (x: AnnBox) => rankOf(d, x.end) - rankOf(d, x.start)
-  const cands = boxes.filter(o => !rows.some(r => r.other.id === o.id) && canAttach(nestOf(b), nestOf(o), d))
+  const cands = boxes.filter(o => !rows.some(r => r.other.id === o.id) && inScope(b.id, o.id)
+                                  && canAttach(nestOf(b), nestOf(o), d))
     .sort((p, q) => length(p) - length(q) || (p.start < q.start ? -1 : p.start > q.start ? 1 : p.id < q.id ? -1 : 1))
-  return [...rows, ...cands.map(o => ({ other: o, on: false, via: 'candidate' as const }))]
+  return [...rows, ...cands.map(o => ({ other: o, on: false, via: 'candidate' as const, rel: relTo(o) }))]
 }
 
 /** 点一下 parent 某一行的 ⊂ 之后的框(规则见 parentRows)。 */
@@ -472,11 +491,11 @@ export interface Lane {
  *   「缩量 ⊂ 横盘」;
  * - 还没起名的框单独一条轨,放最后;
  * - 同一条轨里交叠的框分行,一行里不交叠。
- * days 是这张图的交易日(算框套框的长短用)。
+ * days 是这张图的交易日(算框套框的长短用);samples 是这张图的样本(框套框按样本分范围,见 chartParents)。
  */
-export function computeLanes(boxes: readonly AnnBox[], nameOf: (fid: string) => string,
+export function computeLanes(boxes: readonly AnnBox[], samples: readonly AnnSample[], nameOf: (fid: string) => string,
                              days: readonly string[], rankOfFeature?: ReadonlyMap<string, number> | null): Lane[] {
-  const par = chartParents(boxes, days)
+  const par = chartParents(boxes, samples, days)
   const byId = new Map(boxes.map(b => [b.id, b]))
   const groups = new Map<string | null, AnnBox[]>()
   for (const b of boxes) {

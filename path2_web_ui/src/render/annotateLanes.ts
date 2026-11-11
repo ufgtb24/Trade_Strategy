@@ -22,8 +22,8 @@
  *   当家行是样本时(←/→ 在样本间走)user 行头加粗;
  * - 两区之间一道分界线(位置由 subGeometry 的 userAppEdges 给):线上是用户画的、线下是 app 认的,
  *   user 行与 hits 隔着这道线正好上下对照;
- * - 框终点那天它对的 node 一个 event 都没有:框右端挂琥珀 `missing`;map 了的框悬停写 `start not compared`
- *   (框的左端不和 app 比,见 stores/compare.ts)。
+ * - map 了的框悬停写 `start not compared`(框的左端不和 app 比,见 stores/compare.ts)。框旁不挂 app 把它
+ *   认到哪一档(连「一个 event 都没有」也不挂):那是找 app 错在哪一步用的,归会话看,用户只看买没买。
  * app 的东西一律不画进用户轨:用户轨只有用户画的框。
  */
 import type { Bar } from '../types'
@@ -62,9 +62,9 @@ export const BRACKET_BAR_H = 9        // bracket 轨里一条样本跨度的高�
 export const COMPARE_BRACKET_ROW_H = 18   // compare 的 user 行:行高放大,▲ 与字母、✓ / ✗ 第一屏读得出(待验证)
 // compare 的两个小标签不铺浅色底(浅蓝、浅琥珀底在白图上和底色深浅相近,色盲下看不出):白底 + 中等深度
 // 描边 + 黑字。描边色取用户确认过的安全色板(1 蓝、2 橙),两者冷暖相反:unmapped 是冷(会话这一侧的事),
-// missing 是暖(app 那一侧缺东西)。
+// 橙是暖(app 那一侧缺东西)。
 export const UNMAPPED_EDGE = '#0072B2' // 蓝:compare 下没 map 的轨挂的 unmapped 的描边
-export const MISSING_EDGE = '#E69F00'  // 橙:compare 下框右端 missing 的描边
+export const MISSING_EDGE = '#E69F00'  // 橙:反馈状态 lost 的描边(render/feedbackStrip.ts、FeedbackPage.vue)
 const TAG_BOX = { backgroundColor: '#ffffff', borderWidth: 1.5, padding: [1, 3], borderRadius: 2 }
 export const VERMILION = '#E8875A'    // 朱红(配黑字,所以取浅一档):只表示「app 的判断和你相反」(▲ 字母后的 ✗ 底色)
 export { MONO }
@@ -222,8 +222,6 @@ export interface CompareMarks {
   laneNode: ReadonlyMap<number, string>
   /** 没 map 的特征轨(下标):标题挂 unmapped */
   unmapped: ReadonlySet<number>
-  /** 框终点那天它对的 node 一个 event 都没有的框:右端挂 missing */
-  missing: ReadonlySet<string>
   /** map 了的框(悬停写 start not compared) */
   compared: ReadonlySet<string>
   /** 当家行是样本(←/→ 在样本间走):user 行头加粗 */
@@ -344,7 +342,6 @@ export function annotateLayer(bars: Bar[], d: LaneDraw): { graphics: any[]; seri
       mark?.focus === UNCLAIMED ? 'maybe drawn but not added; click ◂ to add' : '',
       mark?.focus === CROSSES_SAMPLE_DATE ? 'crosses sample date: cannot be a member box of the selected sample' : '',
       mark?.away ? 'member box of samples of another pattern only' : '',
-      cmp?.missing.has(b.id) ? 'missing: no app event of its node on its end date' : '',
       cmp?.compared.has(b.id) ? 'start not compared' : '',
     ].filter(Boolean).join('<br>'))
   }
@@ -371,8 +368,6 @@ export function annotateLayer(bars: Bar[], d: LaneDraw): { graphics: any[]; seri
       bItems.push(item)
     }
   }
-
-  const missing = rows.map(r => (cmp?.missing.has(r[6]) ? 1 : 0))
 
   const series: any[] = [{
     type: 'custom', name: 'annotation-boxes', xAxisIndex: 0, yAxisIndex: 0, clip: true,
@@ -404,11 +399,6 @@ export function annotateLayer(bars: Bar[], d: LaneDraw): { graphics: any[]; seri
       if (look.side) {
         children.push({ type: 'text', style: { text: look.side, x: x1 + (SIDE_MARK_X[0] + SIDE_MARK_X[1]) / 2, y: mid,
                                                align: 'center', verticalAlign: 'middle', font: `bold 14px ${MONO}`, fill: INK } })
-      }
-      if (missing[p.dataIndex]) {
-        children.push({ type: 'text', style: { text: 'missing', x: x1 + (look.side ? SIDE_MARK_X[1] + 4 : 4), y: mid,
-                                               align: 'left', verticalAlign: 'middle', font: `10.5px ${MONO}`, fill: INK,
-                                               ...TAG_BOX, borderColor: MISSING_EDGE } })
       }
       return { type: 'group', children }
     },

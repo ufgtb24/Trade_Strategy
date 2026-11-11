@@ -8,7 +8,7 @@
 // 第二段的 link tag、diff tag、chance_high 与档位小字(detected_only / qualified_only)仍一个都不许出现。
 import { describe, it, expect } from 'vitest'
 import {
-  COMPARE_BRACKET_ROW_H, INK, LANE_PAD, MISSING_EDGE, UNMAPPED_EDGE, VERMILION, annotateLayer, bracketGeometry,
+  COMPARE_BRACKET_ROW_H, INK, LANE_PAD, UNMAPPED_EDGE, VERMILION, annotateLayer, bracketGeometry,
   buildAnnotateSubOption,
   bracketContentBottom, bracketPick, bracketRects, laneGeometry, packBrackets, type BracketItem, type CompareMarks,
 } from '../src/render/annotateLanes'
@@ -39,7 +39,7 @@ const items: BracketItem[] = [
 ]
 const CMP: CompareMarks = {
   laneNode: new Map([[0, 'plateau']]), unmapped: new Set([1]),
-  missing: new Set(['b1']), compared: new Set(['b1']), userActive: false,
+  compared: new Set(['b1']), userActive: false,
 }
 
 function layer(cmp: CompareMarks | null) {
@@ -104,16 +104,13 @@ describe('compare 的标注层', () => {
     expect(txt.font).toContain('11.5px')
     expect(s.data[0][3] - s.data[0][2]).toBe(COMPARE_BRACKET_ROW_H - 4)
   })
-  it('框终点那天没有 event 的框右端挂 missing(白底中琥珀描边黑字);map 了的框悬停写 start not compared', () => {
+  it('框旁不挂 app 把它认到哪一档(missing 也不挂);map 了的框悬停写 start not compared', () => {
     const s = layer(CMP).series.find(x => x.name === 'annotation-boxes')
     const k = s.data.findIndex((r: any[]) => r[6] === 'b1')
-    const miss = s.renderItem({ dataIndex: k }, api(s.data[k])).children.find((c: any) => c.style?.text === 'missing')
-    expect(miss.style.backgroundColor).toBe('#ffffff')
-    expect(miss.style.borderColor).toBe(MISSING_EDGE)
-    expect(miss.style.fill).toBe(INK)
-    expect(s.tooltip.formatter({ dataIndex: k, value: s.data[k] })).toContain('start not compared')
-    const other = s.data.findIndex((r: any[]) => r[6] === 'b2')
-    expect(JSON.stringify(s.renderItem({ dataIndex: other }, api(s.data[other])).children)).not.toContain('missing')
+    expect(JSON.stringify(s.renderItem({ dataIndex: k }, api(s.data[k])).children)).not.toContain('missing')
+    const tip = s.tooltip.formatter({ dataIndex: k, value: s.data[k] })
+    expect(tip).toContain('start not compared')
+    expect(tip).not.toContain('missing')
   })
   it('当家行是样本时 user 行头加粗', () => {
     const l = layer({ ...CMP, userActive: true })

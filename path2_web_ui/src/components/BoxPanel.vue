@@ -36,10 +36,8 @@
       <DefinitionField v-if="feature && !picking" :feature="feature" />
 
       <template v-if="read">
-        <span class="ann-k" title="compare: app's level on the box end date for the node this feature maps to; start not compared">level</span>
-        <div class="ann-row">
-          <span class="ann-sym" data-testid="box-level" :data-level="read.level"
-                :title="`${read.node} @ ${dates[read.day] ?? read.day}; start not compared`">{{ read.level }}</span>
+        <span class="ann-k" title="compare: the part of the app that recognizes this feature (from the mapping)">node</span>
+        <div class="ann-row" data-testid="box-node">
           <span class="ann-sym">⇣ {{ read.node }}</span>
           <span v-if="cmp.notes[read.node]" class="ann-biz">{{ cmp.notes[read.node] }}</span>
         </div>
@@ -58,11 +56,12 @@
       </div>
 
       <template v-if="pRows.length">
-        <span class="ann-k" title="the box it belongs to (⊂ on), or boxes it could belong to (⊂ off)">parent</span>
+        <span class="ann-k" :title="PARENT_RULE">parent</span>
         <div class="parents" data-testid="box-parent">
           <div v-for="r in pRows" :key="r.other.id" class="ann-row">
             <button type="button" :class="['ann-btn', { on: r.on }]" data-testid="parent-toggle"
-                    :title="PARENT_TIP[r.via]" @click="ann.toggleBoxParent(sel.box.id, r)">⊂</button>
+                    :title="parentTip(r)" @click="ann.toggleBoxParent(sel.box.id, r)">⊂</button>
+            <span class="ann-sym" data-testid="parent-rel" :title="REL_TIP[r.rel]">{{ r.rel }}</span>
             <span :class="{ 'ann-off': !r.on }">
               <span v-if="r.other.feature" class="ann-biz">{{ ann.nameOf(r.other.feature) }}</span>
               <span v-else class="ann-sym">unnamed</span>
@@ -120,9 +119,13 @@
  * - 起名:词表里和输入有共同字的已有词排最前、加粗;回车用输入的名字(有同名的词就用它,没有就新起);
  * - 定义:这个词还没有定义时留一格写,写下就不再改(意思变了另起一个词);
  * - parent:它现在属于的框(⊂ 亮,点掉 = detach 或拿掉 attach),以及能手动挂上的交叠、更长的框(⊂ 灭,点上 = attach);
+ *   每行 ⊂ 后面写一个词说明两个框在日期上的关系:contains(那个框把它整个包住,只有这种才默认属于)、
+ *   overlaps(只重合一部分,要手动点上才属于);规则全文在 parent 这个键的悬停里。只列它范围里的框:
+ *   它被样本收着时,只列和它同被一个样本收着的框(别的样本各自的框不列);没被收着时列整张图上的;
  * - 属性:列出同一特征的框用过的属性(全部图),默认 null;再点一下已按下的那个回到 null(这一行留着);
  *   在这个特征下画成过子框的词写成「⊂ 词」,不给 true 按钮(有就在框里画,画了这一行写 true);
- * - compare 下特征 map 到 app 的某个 node 时多一行 level:框终点那天配对那一格的档位,那天一个都没有为 missing
+ * - compare 下特征 map 到 app 的某个 node 时多一行 node:app 用哪一部分认这个特征(⇣ node 名 + mapping 里的说明)。
+ *   不写 app 把这个框认到哪一档:那是找 app 错在哪一步用的,归会话看
  *   (stores/compare.ts 的 boxReads;框的左端不比)。
  */
 import { computed, nextTick, ref, watch } from 'vue'
@@ -136,11 +139,26 @@ import { memberOfRows, sampleLetters, sampleTag } from '../annotate/samples'
 import DefinitionField from './DefinitionField.vue'
 import MemberChain from './MemberChain.vue'
 
+// parent 一行的规则(键的悬停)、每行那个词的意思、⊂ 点下去会怎样
+const PARENT_RULE = 'which box this one belongs to (⊂ on = belongs, off = does not). '
+  + 'scope: a box held by samples (member_of) only looks among boxes held by one of the same samples; a box held by no sample looks among all boxes on the chart. '
+  + 'contains: the other box covers it entirely; it belongs to the shortest such box by default, click ⊂ off to say it just happens to lie inside. '
+  + 'overlaps: the other box is longer and shares only some days with it; never automatic, click ⊂ on to attach by hand.'
+const REL_TIP: Record<ParentRow['rel'], string> = {
+  contains: 'this box lies entirely inside that one; belongs by default to the shortest box that contains it',
+  overlaps: 'that box is longer and shares only some days with this one; belongs only if you click ⊂ on',
+}
 const PARENT_TIP: Record<ParentRow['via'], string> = {
-  default: 'enclosed by this box, so it belongs to it by default; click off = it just happens to lie inside',
-  attach: 'attached by hand to this longer overlapping box; click off = back to the default',
-  detached: 'enclosed by this box but marked as not belonging; click on = belongs again',
-  candidate: 'longer box overlapping it; click on = it belongs to this box',
+  default: 'belongs by default (contained); click off = it just happens to lie inside',
+  attach: 'attached by hand; click off = back to the default',
+  detached: 'contained, but marked as not belonging; click on = belongs again',
+  candidate: 'not attached; click on = it belongs to this box',
+}
+function parentTip(r: ParentRow): string {
+  // 被两个以上的框包住时,默认只属于最短的那个,其余的也列成可挂的
+  return r.via === 'candidate' && r.rel === 'contains'
+    ? 'also contains it, but the default is the shortest containing box; click on = it belongs to this box instead'
+    : PARENT_TIP[r.via]
 }
 
 const MEMBER_OF_TIP = {
@@ -155,7 +173,6 @@ const sel = computed(() => ann.selectedBox)
 const cmp = useCompareStore()
 const view = useViewStore()
 const read = computed(() => (sel.value ? cmp.boxReads.get(sel.value.box.id) ?? null : null))
-const dates = computed(() => view.barDates)
 // 这张图上的当前样本:画框时顶上一条它的成员链,看得见新画的框收没收进去
 const cur = computed(() => (ann.currentSample && sel.value && ann.currentSample.chart.symbol === sel.value.chart.symbol
   ? ann.currentSample : null))
@@ -173,8 +190,10 @@ const attrDraft = ref('')
 const suggestions = computed(() => (ann.state
   ? rankSuggestions(query.value, ann.state.features, featureUsage(ann.state)) : []))
 
-const pRows = computed(() => (sel.value ? parentRows(sel.value.box, sel.value.chart.boxes, days.value) : []))
-const parentsHere = computed(() => (sel.value ? chartParents(sel.value.chart.boxes, days.value) : {}))
+const pRows = computed(() => (sel.value
+  ? parentRows(sel.value.box, sel.value.chart.boxes, sel.value.chart.samples, days.value) : []))
+const parentsHere = computed(() => (sel.value
+  ? chartParents(sel.value.chart.boxes, sel.value.chart.samples, days.value) : {}))
 const kidWords = computed(() => (feature.value && ann.state
   ? kidWordsOf(feature.value.id, ann.state.charts, s => ann.daysBySymbol[s] ?? null) : []))
 

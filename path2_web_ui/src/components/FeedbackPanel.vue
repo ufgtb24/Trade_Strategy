@@ -15,6 +15,13 @@
                 @mousedown.prevent @click="fb.remove(p.editingId!)">delete</button>
       </template>
     </div>
+    <div v-if="p.editingId" class="fb-line" data-testid="feedback-status-line">
+      <span class="ann-k" title="does the current app still buy in this range">status</span>
+      <span :class="status ? 'ann-sym' : 'ann-nil'" data-testid="feedback-status"
+            :title="statusTip">{{ status?.status ?? 'null' }}</span>
+      <span v-if="tag" class="ann-k fb-tag" data-testid="feedback-tag"
+            title="reason the session gave for this feedback">{{ tag }}</span>
+    </div>
     <div v-if="fb.panelPosInside" class="fb-line">
       <span class="ann-sym" data-testid="feedback-pos-inside"
             title="a pos sample of the current pattern on this symbol falls in this range; saving is still allowed">pos sample inside</span>
@@ -86,6 +93,9 @@
  * (拖选时是松开处),越出视口就翻边。挂在 KlineChart.vue,状态全在 stores/feedback.ts 的 panel(这里只是它的样子)。
  *
  * - 页头:股票、日期范围、target(point / family / range);改一条已有的反馈时多 redraw、delete;
+ * - 改一条已有的反馈时页头下多一行 status:当前 app 在这段里还买不买(matched / unmatched / lost,还没取到写灰字
+ *   null,悬停写取不到的原因),状态是 matched 或 lost 时后面挂会话写的原因标签(同侧栏 feedback 页)。悬停提示
+ *   有的内容面板里都有了,所以面板开着时副图不弹悬停提示(KlineChart.vue);
  * - 范围里有当前 pattern 的正样本时多一行 pos sample inside(不拦);
  * - 一打开就是完整的面板,没有「先选答案」这一步。键值几行从上到下:
  *   · issues:当前 pattern 已有的 issue(几处反馈共享的同一份内容:note 与点出的 node;跨股票),最近用过的在前,
@@ -119,6 +129,7 @@ import { useViewStore } from '../stores/view'
 import { useAppLinkStore } from '../stores/appLink'
 import type { FeedbackTarget } from '../annotate/model'
 import type { FeedbackProblem, IssueChoice } from '../annotate/feedback'
+import { UNMAPPED_EDGE } from '../render/annotateLanes'
 import { NOTE_MAX_H, noteHeight, panelKeyAction, placePanel, type Anchor, type Pt } from './feedbackPanel'
 
 defineProps<{
@@ -170,6 +181,14 @@ const REASON_HINT: Record<Reason, string> = {
 }
 
 const p = computed(() => fb.panel)
+/** 正在改的这条反馈在当前 app 下的状态(新拖的还没存,没有) */
+const status = computed(() => (p.value?.editingId ? fb.statusById[p.value.editingId] ?? null : null))
+const statusTip = computed(() => (status.value ? status.value.reason ?? 'status under the current app' : 'status not read yet'))
+/** 会话原因标签:同侧栏,只挂在 matched 或 lost 上 */
+const tag = computed(() => {
+  const s = status.value
+  return s?.status === 'matched' || s?.status === 'lost' ? s.tag ?? null : null
+})
 const picked = computed(() => p.value?.nodes ?? [])
 const spanText = computed(() => (p.value ? (p.value.start === p.value.end ? p.value.start
                                                                           : `${p.value.start} – ${p.value.end}`) : ''))
@@ -297,14 +316,17 @@ onBeforeUnmount(() => {
 <style src="./annotationPanel.css"></style>
 
 <style scoped>
+/* z-index 压过图上的悬停提示(ECharts 的 tooltip 挂在 body 上,z-index 9999999):点记号打开面板时鼠标还停在
+   记号上,提示不压下去就盖住面板 */
 .fb-panel {
-  position: fixed; z-index: 1000; min-width: 260px; max-width: 460px; padding: 8px 10px;
+  position: fixed; z-index: 10000000; min-width: 260px; max-width: 460px; padding: 8px 10px;
   background: #fff; border: 1px solid var(--line-strong); border-radius: 4px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18); color: var(--ink);
 }
 .fb-kv { grid-template-columns: 64px 1fr; }
 .fb-line { display: flex; align-items: center; gap: 6px; margin: 0 0 6px; }
 .fb-foot { margin: 6px 0 0; }
+.fb-tag { padding: 0 4px; border: 1.5px solid v-bind(UNMAPPED_EDGE); border-radius: 3px; background: #fff; cursor: help; }
 .fb-node { display: inline-flex; align-items: center; gap: 4px; }
 .fb-node.gone { border-style: dashed; }
 /* 可挑的 issue:一条一行,多了在框里滚动;连着的那条黑边加左侧黑条(同按下的按钮:靠黑边认,不靠颜色) */

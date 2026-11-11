@@ -92,7 +92,7 @@ describe('pattern 里各段的先后', () => {
   it('annotate 的轨序按当前 pattern 的先后,不在其中的特征按这张图上首次出现排在后面;子框轨仍紧跟父轨', () => {
     const msft = st.charts.find(c => c.symbol === 'MSFT')!
     const lanes = (order?: Map<string, number>) =>
-      computeLanes(msft.boxes, f => nameOf(f)!, [], order).map(l => (l.parent ? `${nameOf(l.key)} ⊂ ${nameOf(l.parent)}` : nameOf(l.key)))
+      computeLanes(msft.boxes, msft.samples, f => nameOf(f)!, [], order).map(l => (l.parent ? `${nameOf(l.key)} ⊂ ${nameOf(l.parent)}` : nameOf(l.key)))
     expect(lanes()).toEqual(['派发', '横盘', '缩量 ⊂ 横盘', '突破', '回踩'])
     expect(lanes(featureOrder(patternSamples(st, 'W底')))).toEqual(['横盘', '缩量 ⊂ 横盘', '突破', '派发', '回踩'])
     expect(lanes(featureOrder(patternSamples(st, null)))).toEqual(['横盘', '缩量 ⊂ 横盘', '回踩', '突破', '派发'])

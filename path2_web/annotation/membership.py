@@ -26,7 +26,7 @@
 
 框套框(归属)
 --------------
-在一组框里给每个框找它属于谁(一张图上的全部框,或一个样本的成员框):
+在一组框里给每个框找它属于谁(一个样本的成员框;一张图上显示用的归属,组怎么取见「一张图上的框套框」):
 1. 有 detach:不属于任何框;
 2. 有 attach,且那个框在这组里、比它长、和它交叠(至少共用一根 K 线):属于那个框。
    attach 的框不在这组里,或拖框以后已经不比它长、不再交叠,这条 attach 不算数,照第 3 条;
@@ -34,6 +34,20 @@
 「o 包住 b」= b 的起止都落在 o 里,且 o 比 b 长(没有容差,一样长的两个框互不包住)。
 detach 和 attach 互斥,同一个框两个都有时报 MembershipInputError(code 为 attach_and_detach)。
 所属的框一定更长,所以不会绕成环。
+
+一张图上的框套框(chart_parents)
+--------------------------------
+界面上选中框时的 parent 一行、副图的子框轨标题、compare 里子框对子段,用的是整张图上的归属。它不是把全部
+框当一组来找,而是按样本分范围:
+- 一个框「被样本收着」= 它在某个样本存下的成员框里、还在这张图上、且在那个样本的样本日当天或之前结束
+  (与读存下的成员框是同一条);
+- 被样本收着的框:只在和它至少同被一个样本收着的框里找(照「框套框」的三条;attach 的框不在这个范围里,
+  这条 attach 不算数);
+- 没被任何样本收着的框:在整张图的全部框里找。
+理由:同一张图上常有两个样本各画一个同特征的框(晚的那个样本需要更长的一段,另画一个到它的样本日为止),
+短的在日期上必然被长的包住,但它们是两个样本各自的依据,不是「小的属于大的」。这样分范围,显示出来的归属
+与成员框树(只在一个样本的成员框之间找)一致。被收着的框不到没被收着的框里找,是因为长的那个框在第二个
+样本放下之前就已经画好了(待验证:用下来不顺再调)。
 
 成员框推断(放下样本时的默认成员框)
 ------------------------------------
@@ -132,6 +146,22 @@ def parents(boxes: Sequence[dict], days: Sequence[str]) -> dict[str, str | None]
     """框套框:每个框属于这组框里的哪个框(框编号 → 所属框编号,不属于任何框为 None)。规则见模块说明「框套框」。"""
     pool = _pool(boxes, days)
     return {bid: _parent(b, pool) for bid, b in pool.items()}
+
+
+def chart_parents(boxes: Sequence[dict], samples: Sequence[dict], days: Sequence[str]) -> dict[str, str | None]:
+    """一张图上显示用的框套框(框编号 → 所属框编号或 None):被样本收着的框只在和它同被一个样本收着的框里找,
+    没被任何样本收着的框在整张图的框里找。规则见模块说明「一张图上的框套框」。"""
+    pool = _pool(boxes, days)
+    held: dict[str, set[int]] = {}
+    for i, s in enumerate(samples):
+        for b in _current_member_boxes(s, boxes):
+            held.setdefault(b["id"], set()).add(i)
+    out: dict[str, str | None] = {}
+    for bid, b in pool.items():
+        mine = held.get(bid)
+        scope = pool if not mine else {oid: o for oid, o in pool.items() if oid == bid or held.get(oid, set()) & mine}
+        out[bid] = _parent(b, scope)
+    return out
 
 
 def sample_members(date: str, boxes: Sequence[dict], days: Sequence[str], *,

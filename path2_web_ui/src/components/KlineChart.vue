@@ -186,7 +186,7 @@ const annChart = computed(() => (ann.state ? chartOf(ann.state, symbol.value) : 
 const annOrder = computed(() => featureOrder(ann.state ? patternSamples(ann.state, ann.currentPattern) : []))
 const baseLanes = computed(() => {
   const chart = annChart.value
-  return chart ? computeLanes(chart.boxes, (f) => ann.nameOf(f) ?? f, annDates.value, annOrder.value) : []
+  return chart ? computeLanes(chart.boxes, chart.samples, (f) => ann.nameOf(f) ?? f, annDates.value, annOrder.value) : []
 })
 const cmp = useCompareStore()
 const landing = useLandingStore()
@@ -468,6 +468,21 @@ function handleMaybeShiftClick(p: any, source: 'main' | 'sub'): boolean {
 // Task 22 scan-top-miss.py 的真实接线方式;非 brief 原始伪代码里不存在的 scan_one_symbol)。
 // 纯前端 UX,不动 backend。
 const contextMenuVisible = ref(false)
+// 悬停提示什么时候不弹:右键菜单开着时两张图都不弹;反馈作答面板开着时副图也不弹——面板里已有悬停提示的
+// 全部内容,而点记号打开面板时鼠标正停在记号上,提示不收会一直挂着。主图的 K 线数值提示照常,写 note 时还能对着看。
+const mainTipOff = computed(() => contextMenuVisible.value)
+const subTipOff = computed(() => contextMenuVisible.value || !!fb.panel)
+/** 把「弹不弹」套到一张图上;不弹时顺手收起已经挂着的提示 */
+function applyTipOff(chart: any, off: boolean): void {
+  if (!chart) return
+  chart.setOption({ tooltip: { triggerOn: off ? 'none' : 'mousemove|click' } } as any, { lazyUpdate: true } as any)
+  if (off) chart.dispatchAction({ type: 'hideTip' })
+}
+/** 全量替换(notMerge)重画后 triggerOn 回到默认,要重新套上 */
+function reapplyTipOff(): void {
+  if (mainTipOff.value) applyTipOff(chartMain, true)
+  if (subTipOff.value) applyTipOff(chartSub, true)
+}
 const contextMenuPos = ref({ x: 0, y: 0 })
 const driverMenuEl = ref<HTMLElement | null>(null)
 
@@ -854,6 +869,7 @@ function renderBarsOnly(forceResetZoom: boolean) {
   mainOpt.series.push(mainMarksSeries(annDates.value, null, null), mainSamplesSeries(bars.value, []),
                       afterDimSeries(annDates.value, null), peaksSeries(annDates.value, shownPeaks.value))
   chartMain.setOption(mainOpt, true)
+  reapplyTipOff()
   lastMarkLineKey = null
   renderAnnotateLayers()
 }
@@ -874,6 +890,7 @@ function renderAnnotateLayers() {
       preview: preview.value, draft: draft.value, zoom: readZoomOverride(), width: chartSub.getWidth(),
       bracket: annBracket.value, marks: annMarks.value,
     }) as any, true)
+    reapplyTipOff()
   }
   const sel = ann.selectedBox?.box ?? null
   const shownSel = sel && preview.value?.id === sel.id ? preview.value : sel
@@ -885,7 +902,7 @@ function renderAnnotateLayers() {
 }
 
 // compare 的副图:主视图那张副图(buildSubOption,app 的 hit 行与族行,顶上让出用户区),
-// 再合进标注层(annotateLayer:用户区的特征轨与 user 行、⇣ / unmapped / ✓ ✗ / missing、两区分界的分界线)
+// 再合进标注层(annotateLayer:用户区的特征轨与 user 行、⇣ / unmapped / ✓ ✗、两区分界的分界线)
 function renderCompareSub() {
   const lay = cmpLayout.value
   if (!chartSub || !lay || !effectiveAnalysis.value) return
@@ -903,19 +920,18 @@ function renderCompareSub() {
   cmpGeom.value = { height: subGeom.subCanvasH, feedbackTop: subGeom.feedbackTop }
   const opt: any = buildSubOption(bars.value, bundle, subGeom, params, chartSub.getWidth(),
                                   { getChartEl: () => subInnerEl.value })
-  const missing = new Set<string>()
-  for (const [id, r] of cmp.boxReads) if (r.level === 'missing') missing.add(id)
   const layer = annotateLayer(bars.value, {
     lanes: annLanes.value, geom: cmpUserLanes.value.geom, nameOf: ann.nameOf, selectedId: ann.selectedBoxId,
     preview: preview.value, draft: draft.value, zoom, width: chartSub.getWidth(),
     bracket: annBracket.value, marks: annMarks.value,
-    compare: { laneNode: lay.laneNode, unmapped: lay.unmapped, missing, compared: new Set(cmp.boxReads.keys()),
+    compare: { laneNode: lay.laneNode, unmapped: lay.unmapped, compared: new Set(cmp.boxReads.keys()),
                userActive: activeFamilyKey.value === SAMPLES_ROW, edges: subGeom.userAppEdges },
   })
   opt.graphic.push(...layer.graphics)
   opt.series.push(...layer.series)
   opt.dataZoom = [annotateDataZoom(zoom)]
   chartSub.setOption(opt, true)
+  reapplyTipOff()
 }
 
 // 参照层开关或峰变了:只重画峰线这一个系列
@@ -981,6 +997,7 @@ function render(forceResetZoom = false) {
   // mainOpt 走 notMerge:true 全量替换,不含 brush 组件声明 → 每帧渲染后需合并模式补挂回来
   // (chart.ts::buildMainOption 不在本任务改动范围,brush 只是 KlineChart.vue 自己的交互层)。
   chartMain.setOption({ brush: BRUSH_OPTION })
+  reapplyTipOff()
   lastMarkLineKey = null
 }
 
@@ -1180,18 +1197,16 @@ onMounted(() => {
   // (a) setOption tooltip.triggerOn='none' 让 ECharts 不响应 hover(彻底防 tooltip 渲染)
   // (b) showTip listener 兜底任何主动 dispatchAction showTip 场景(便宜的双保险)
   // 关闭菜单后 triggerOn 恢复 'mousemove|click'(ECharts 默认)。
-  watch(contextMenuVisible, (visible) => {
-    const opt = { tooltip: { triggerOn: visible ? 'none' : 'mousemove|click' } }
-    chartMain?.setOption(opt as any, { lazyUpdate: true } as any)
-    chartSub?.setOption(opt as any, { lazyUpdate: true } as any)
-  })
-  const suppressTipDuringMenu = (chart: any) => {
+  // 反馈作答面板开着时副图同样不弹(判据与套用见 subTipOff / applyTipOff)。
+  watch(mainTipOff, (off) => applyTipOff(chartMain, off))
+  watch(subTipOff, (off) => applyTipOff(chartSub, off))
+  const suppressTip = (chart: any, off: () => boolean) => {
     chart.on('showTip', () => {
-      if (contextMenuVisible.value) chart.dispatchAction({ type: 'hideTip' })
+      if (off()) chart.dispatchAction({ type: 'hideTip' })
     })
   }
-  suppressTipDuringMenu(chartMain)
-  suppressTipDuringMenu(chartSub)
+  suppressTip(chartMain, () => mainTipOff.value)
+  suppressTip(chartSub, () => subTipOff.value)
   // 入口 A:主图 brush 完成一次框选 → 换算 bar 索引区间 → scope=time 查询
   // 双事件模式(见 ./klineBrushHandler · docs/superpowers/specs/2026-07-18-brush-double-request-fix-design.md):
   //   brushselected 每次拖动触发 → 只更新缓存(不发 request)· brushEnd mouseup 触发一次 → 发 1 次 request。
@@ -1402,7 +1417,7 @@ watch([effectiveAnalysis, nodeVisible, level, nodeColors, focusedInstanceRef, di
        compositionGroupIds, currentDay, activeFamilyKey],
       () => render(false), { deep: true })
 
-// annotate:框、词表、选中、拖动中的样子变了 → 只重画标注的两层;compare 下轨序、✓ / ✗、missing 变了也一样
+// annotate:框、词表、选中、拖动中的样子变了 → 只重画标注的两层;compare 下轨序、✓ / ✗ 变了也一样
 watch(() => [ann.view, ann.selectedBoxId, ann.selectedSampleId, ann.currentSampleId, ann.currentPattern,
              draft.value, preview.value, cmpLayout.value, cmp.sampleReads, cmp.boxReads], () => renderAnnotateLayers())
 // compare:反馈带(反馈的增删改、后端给的状态、选中的那条)变了 → 只重画标注层(含主视图那张副图)

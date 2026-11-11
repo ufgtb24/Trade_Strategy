@@ -442,6 +442,20 @@ test.describe('反馈(new_step + 手写 mapping,CRNC)', () => {
     await expect(tip.first()).toContainText('status: matched')
     await expect(tip.first()).toContainText('note: 追在阶跃之后太远')
     await expect(tip.first()).not.toContainText(/answer|nodes:|undefined/)
+    // 就地点它打开面板:悬停提示收起、开着期间不再弹(鼠标仍停在记号上);状态与会话标签改在面板里看
+    await page.mouse.click(red.x + red.w / 2, red.y + red.h / 2)
+    await expect(panel(page)).toHaveAttribute('data-editing', RED)
+    await expect(tip.first()).toBeHidden()
+    await page.mouse.move(red.x + red.w / 2 + 1, red.y + red.h / 2)
+    await expect(tip.first()).toBeHidden()
+    await expect(page.getByTestId('feedback-status')).toHaveText('matched')
+    await expect(page.getByTestId('feedback-tag')).toHaveText('for_tuning')
+    await page.keyboard.press('Escape')
+    await expect(panel(page)).toHaveCount(0)
+    // 面板关了,悬停照常
+    await page.mouse.move(10, 10)
+    await page.mouse.move(red.x + red.w / 2, red.y + red.h / 2)
+    await expect(tip.first()).toBeVisible()
     await page.mouse.move(10, 10)
     // 悬停 lost 那条(以前存下的 off_pattern + dag + note):没点 node 就没有 nodes 行,dag 不写
     const lostMark = strip.find(b => b.d.feedback_id === LOST)!

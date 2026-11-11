@@ -80,6 +80,7 @@ test.describe('画框、起名与词表', () => {
     await drawOnKline(page, n - 70, n - 60)
     await name(page, '缩量')
     await expect(page.getByTestId('parent-toggle').first()).toHaveClass(/on/)
+    await expect(page.getByTestId('parent-rel').first()).toHaveText('contains')
     await laneY(page, '缩量 ⊂ 横盘')
     await page.screenshot({ path: testInfo.outputPath('02-child-lane.png'), fullPage: true })
     await page.getByTestId('parent-toggle').first().click()

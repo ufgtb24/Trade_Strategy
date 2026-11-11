@@ -1,6 +1,7 @@
 /**
  * annotate / compare 下图上的鼠标手势。顶栏的工具(tool)默认都不亮,点亮一个只用一次:
- * - 不亮:K 线区、副图上拖动 → 左右平移图窗;点一下照常:K 线区点样本的三角 → 选中样本,点别处 → 什么都不选;
+ * - 不亮:K 线区、副图上拖动 → 左右平移图窗;点一下照常:K 线区点样本的三角 → 选中样本(三角伸出 K 线区、
+ *   落在空隙或成交量带里的部分同样算 K 线区),点别处 → 什么都不选;
  *   副图上点框 → 选中它,点 bracket 轨上样本的跨度 → 选中样本,点画了没收的框右侧的 ◂ → 把它收进选中的样本。
  *   框的左右边拖不动(改起止要先点亮 box)。
  * - box:K 线区拖动 → 画一个新框(还没起名);副图特征轨上拖动 → 画一个带这个特征的新框(bracket 轨上拖出的还没起名);
@@ -175,18 +176,18 @@ export function createAnnotateGestures(deps: GestureDeps) {
     if (ev.button !== 0 || !deps.active() || !main || !el) return
     const [x, y] = local(el, ev)
     const width = el.clientWidth - MAIN_GRID_LEFT - MAIN_GRID_RIGHT
-    if (main.containPixel({ gridIndex: 0 }, [x, y])) {
+    // 三角画在当天最低价下方,价格贴着 K 线区底边时会伸进下面的空隙或成交量带:点中三角一律按 K 线区处理
+    const sample = deps.sampleAt(x, y)
+    if (sample || main.containPixel({ gridIndex: 0 }, [x, y])) {
       const tool = deps.tool()
       if (tool === 'point') gesture = { kind: 'point', x0: x, y0: y, moved: false }
       else if (tool === 'feedback') {
-        const sample = deps.sampleAt(x, y)
         gesture = { kind: 'range', src: 'main', x0: x, y0: y, i0: indexAt(main, x), moved: false,
                     click: () => (sample ? deps.selectSample(sample) : deps.select(null)) }
       } else if (tool === 'box') {
         gesture = { kind: 'draw', src: 'main', x0: x, y0: y, i0: indexAt(main, x), lane: unnamedLane(),
-                    feature: null, hit: null, sample: deps.sampleAt(x, y), take: null, moved: false }
+                    feature: null, hit: null, sample, take: null, moved: false }
       } else {
-        const sample = deps.sampleAt(x, y)
         gesture = panFrom(ev, width, () => (sample ? deps.selectSample(sample) : deps.select(null)))
       }
     } else if (main.containPixel({ gridIndex: 1 }, [x, y])) {
@@ -340,9 +341,10 @@ export function createAnnotateGestures(deps: GestureDeps) {
     const tool = deps.tool()
     if (which === 'main') {
       const main = deps.main()
-      if (!main || !main.containPixel({ gridIndex: 0 }, [x, y])) return null
+      const sample = main ? deps.sampleAt(x, y) : null
+      if (!main || !(sample || main.containPixel({ gridIndex: 0 }, [x, y]))) return null
       if (tool) return 'crosshair'
-      return deps.sampleAt(x, y) ? 'pointer' : null
+      return sample ? 'pointer' : null
     }
     const el = deps.subEl()
     if (tool === 'feedback') return el && inPlot(el, x) ? 'crosshair' : null
