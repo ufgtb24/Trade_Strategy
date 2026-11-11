@@ -1,7 +1,7 @@
 // 侧栏 feedback 页(components/FeedbackPage.vue)与页签(AnnotationSidebar.vue):
 // - 页签 feedback 只在 compare 有;离开 compare 时停在这页就退回 selection;
-// - 当前 pattern 的全部反馈跨股票列出,按接口给的 red 排前、lost 其次、再按股票日期;行的颜色档、状态、
-//   答案 / node / 理由;只列用户自己挑的(盲看标记不列);会话原因标签挂在 matched 或 lost 的行上(含不红的
+// - 当前 pattern 的全部反馈跨股票列出,按接口给的 red 排前、不买了却挂着标签的其次、再按股票日期;行的颜色档、状态、
+//   答案 / node / 理由;只列用户自己挑的(盲看标记不列);会话原因标签照接口给的挂(含不红的
 //   redefined);会话段有问题时页头一行;loading;
 // - 点一行:compare 里打开那只股票,图窗包住那段日期,选中那条(当前日竖线停在范围起点走图的默认聚焦,
 //   挂上图在 tests/components/KlineChart.landing.spec.ts 里测);
@@ -115,8 +115,8 @@ beforeEach(() => {
   fake.read = annRead()
   fake.batches = []
   fake.answer = { app: 'app1', app_ver: 'v1', reason: null, items: [
-    item('f-pc-1', 'unmatched', false, 'for_tuning'),     // 常色:标签不挂
-    item('f-pc-2', 'lost', false, 'unhandled'),
+    item('f-pc-1', 'unmatched', false),                   // 常色:不买了,接口不给标签
+    item('f-pc-2', 'unmatched', false, 'unhandled'),      // 不买了,但会话说毛病还在(起点认不出、认法变了):接口照给标签
     item('f-pc-3', 'matched', true, 'not_worth'),
     item('f-pc-5', null, false),
     item('f-pc-7', 'matched', false, 'redefined'),        // 定义改过:matched 也不红,标签照挂
@@ -157,15 +157,14 @@ describe('页签', () => {
 })
 
 describe('页内容', () => {
-  it('当前 pattern 用户挑的跨股票全列;朱红、lost、其余排序;颜色档、状态、node / 理由;标签挂 matched 或 lost 的行', async () => {
+  it('当前 pattern 用户挑的跨股票全列;朱红、不买了却挂着标签的、其余排序;颜色档、状态、node / 理由;接口给了标签的行照挂', async () => {
     await setup()
     const w = mount(FeedbackPage)
     await settle()
     const rows = w.findAll('[data-testid="feedback-row"]')
     expect(rows.map(r => r.attributes('data-id'))).toEqual(['f-pc-3', 'f-pc-2', 'f-pc-7', 'f-pc-5', 'f-pc-1'])
-    expect(rows.map(r => r.attributes('data-tone'))).toEqual(['red', 'lost', 'plain', 'plain', 'plain'])
+    expect(rows.map(r => r.attributes('data-tone'))).toEqual(['red', 'plain', 'plain', 'plain', 'plain'])
     expect(rows[0].classes()).toContain('red')
-    expect(rows[1].classes()).toContain('lost')
     // 都不和谁共享:一处一组,结构相同(组头写 node 与理由,下面一行写这一处)
     const groups = w.findAll('[data-testid="feedback-group"]')
     expect(groups.map(g => [g.attributes('data-key'), g.attributes('data-places')]))
@@ -189,14 +188,18 @@ describe('页内容', () => {
     expect(txt(rows[0], 'feedback-row-tag')).toEqual(['not_worth'])
     expect(txt(rows[0], 'feedback-row-note')).toEqual([])                         // 内容写在组头,不在每处那一行
     expect(txt(rows[1], 'feedback-row-range')).toEqual(['2025-01-02'])            // point:一天
+    expect(txt(rows[1], 'feedback-row-status')).toEqual(['unmatched'])
     expect(txt(rows[1], 'feedback-row-tag')).toEqual(['unhandled'])
+    // 标签的悬停逐个取值写意思
+    expect(rows[1].get('[data-testid="feedback-row-tag"]').attributes('title')).toBe('the session has not dealt with this feedback yet')
+    expect(rows[0].get('[data-testid="feedback-row-tag"]').attributes('title')).toContain('not be worth adding')
     // 定义改过:matched 了也是常色,标签说明为什么不红
     expect(txt(rows[2], 'feedback-row-status')).toEqual(['matched'])
     expect(txt(rows[2], 'feedback-row-tag')).toEqual(['redefined'])
     expect(txt(rows[3], 'feedback-row-status')).toEqual(['null'])                 // 读不到行情
     expect(rows[3].get('[data-testid="feedback-row-status"]').attributes('title')).toBe('no bars')
     expect(txt(rows[4], 'feedback-row-status')).toEqual(['unmatched'])
-    expect(txt(rows[4], 'feedback-row-tag')).toEqual([])                          // unmatched 的行不挂标签
+    expect(txt(rows[4], 'feedback-row-tag')).toEqual([])                          // 接口没给标签的行不挂
     expect(rows.every(r => r.find('[data-testid="feedback-row-delete"]').exists())).toBe(true)
     expect(w.find('[data-testid="feedback-session-problem"]').exists()).toBe(false)
     // 以前存下的记录上的 answer 不留痕:没有答案的 testid,整页没有这几个字
@@ -205,7 +208,7 @@ describe('页内容', () => {
     w.unmount()
   })
 
-  it('按 issue 分组:共享的几处在一组(跨股票),组头写处数与其中 app 还在买的处数;有朱红的组在前、其次有 lost 的', async () => {
+  it('按 issue 分组:共享的几处在一组(跨股票),组头写处数与其中 app 还在买的处数;有朱红的组在前、其次有不买了却挂着标签的', async () => {
     const charts = fake.read.state.charts
     // f-pc-1(BBB,unmatched)与 f-pc-5(AAA,状态读不到)、再加一条 f-pc-8(AAA,matched、朱红)共享 i-pc-1
     charts[0].feedback[0] = { ...charts[0].feedback[0], note: '共用的理由', issue: 'i-pc-1' }
@@ -216,7 +219,7 @@ describe('页内容', () => {
     const w = mount(FeedbackPage)
     await settle()
     const groups = w.findAll('[data-testid="feedback-group"]')
-    // 朱红的组(f-pc-3 单独;i-pc-1 里有 f-pc-8)在前,同档按组里排第一的那处(AAA 2025-01-03 先于 AAA 2025-01-08);再 lost;其余
+    // 朱红的组(f-pc-3 单独;i-pc-1 里有 f-pc-8)在前,同档按组里排第一的那处(AAA 2025-01-03 先于 AAA 2025-01-08);再不买了却挂着标签的;其余
     expect(groups.map(g => [g.attributes('data-key'), g.attributes('data-places')]))
       .toEqual([['f-pc-3', '1'], ['i-pc-1', '3'], ['f-pc-2', '1'], ['f-pc-7', '1']])
     const g = groups[1]

@@ -158,7 +158,7 @@ export interface AppMapping {
   session?: MappingSession | null
   session_problem?: string | null
 }
-/** mapping 的会话段:每轮开头的定格、由反馈等推出的条件、红着或 lost 的反馈的原因标签(反馈编号 → 标签)。 */
+/** mapping 的会话段:每轮开头的定格、由反馈等推出的条件、还没改好的反馈的原因标签(反馈编号 → 标签)。 */
 export interface MappingSession {
   snapshot?: { seen: Record<string, number>; samples: string[]; at?: string }
   conditions?: { where: string; from: string[]; state: string }[]
@@ -168,7 +168,7 @@ export interface MappingSession {
  *  tag 是会话段里这条的原因标签(没有为 null);red 是画不画朱红(后端判一次,前端照着画、照着排)。 */
 export interface FeedbackStatusItem {
   id: string
-  status: 'matched' | 'unmatched' | 'lost' | null
+  status: 'matched' | 'unmatched' | null
   tag: string | null
   red: boolean
   reason: string | null

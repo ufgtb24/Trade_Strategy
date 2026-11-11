@@ -247,3 +247,21 @@ describe('composeEffectiveSubH 的上限(三种模式都设:内容再高,K 线�
     expect(composeEffectiveSubH(900, null, -300)).toBe(MIN_SUB_H)
   })
 })
+
+// ---------- hit 行上面的个数行:有并了几次 hit 的买入日的那一行才加,行高固定不随缩放 ----------
+describe('computeSubGeometry · 个数行(bracketCountLanes)', () => {
+  it('不传时各行等距、与原来逐项相同;传了的那一行上面多 HIT_COUNT_ROW_H,它自己和后面的行、反馈带、band 顺移', () => {
+    const base = computeSubGeometry({ bracketLaneCount: 3, bandLaneCounts: [1] }, 2)
+    expect(base.bracketLaneTops).toEqual([4, 4 + 18, 4 + 36])
+    expect(base.feedbackTop).toBe(4 + 54)
+    const g = computeSubGeometry({ bracketLaneCount: 3, bandLaneCounts: [1], bracketCountLanes: [0, 2] }, 2)
+    expect(g.bracketLaneTops).toEqual([4 + 10, 4 + 18 + 10, 4 + 36 + 20])
+    expect(g.feedbackTop).toBe(base.feedbackTop + 20)
+    expect(g.bracketH).toBe(base.bracketH + 20)
+    expect(g.bandGeom[0].top).toBe(base.bandGeom[0].top + 20)
+    expect(g.subCanvasH).toBe(base.subCanvasH + 20)
+    // 不随缩放:1.0× 下同样是 10
+    const g1 = computeSubGeometry({ bracketLaneCount: 2, bandLaneCounts: [], bracketCountLanes: [0] }, 1)
+    expect(g1.bracketLaneTops).toEqual([4 + 10, 4 + 10 + 9])
+  })
+})

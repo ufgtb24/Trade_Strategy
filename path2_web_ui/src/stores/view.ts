@@ -274,8 +274,6 @@ export const useViewStore = defineStore('view', () => {
   const comparing = computed(() => mode.value === 'compare')
   const linkedView = computed(() => mode.value === 'compare' || (mode.value === 'app' && appSource.value === 'linked'))
   const linkedRun = shallowRef<LinkedRun | null>(null)
-  // tiers:event 灰条右端 qualified_only / detected_only 两种 tier tag 的开关(app、compare 下),默认开,不记在浏览器里
-  const tiers = ref(true)
   const symbol = ref<string | null>(null)
   // annotate 下打开时图停在哪段(rally / random 进来时给);null = 按默认缩放(整只股票)。
   // 每次 openSymbol 都换一个新对象:同一只股票换一段也能触发重画
@@ -741,7 +739,6 @@ export const useViewStore = defineStore('view', () => {
     resetChartState()
   }
   function setLinkedRun(run: LinkedRun | null) { linkedRun.value = run }
-  function setTiers(on: boolean) { tiers.value = on }
   function setActivePattern(pid: string) {
     activePatternId.value = pid
     useConfigStore().saveLastPattern(pid)
@@ -870,6 +867,27 @@ export const useViewStore = defineStore('view', () => {
     }
     return true
   }
+
+  /**
+   * 选中的那次 hit 和它同一天的几次 hit(同一族、买入日完全一样,只差切法):{ ids: 按族内先后, index: 选中的排第几 };
+   * 没有选中、或同一天只有它一次时为 null。图上这几次并成同一个 ▼、同一格,加粗框只标选中的那一次,
+   * 所以提示条(CandidateStatusBar)照它写「hit k/n」,免得看不出还有别的。
+   */
+  const sameDayHits = computed<{ ids: string[]; index: number } | null>(() => {
+    const id = focusedHitId.value
+    if (!id) return null
+    const hits = effectiveAnalysis.value?.hits ?? []
+    const events = effectiveAnalysis.value?.events ?? []
+    const fam = foldHits(hits, events, endNode.value).find(f => f.hitIds.includes(id))
+    if (!fam) return null
+    const byId = new Map(events.map(e => [e.instance_id, e]))
+    const byHit = new Map(hits.map(h => [h.hit_id, h]))
+    const sigOf = (hid: string) => { const m = byHit.get(hid); return m ? buyDaysOf(m, byId, endNode.value).join(',') : '' }
+    const sig = sigOf(id)
+    if (!sig) return null
+    const ids = fam.hitIds.filter(h => sigOf(h) === sig)
+    return ids.length >= 2 ? { ids, index: ids.indexOf(id) } : null
+  })
 
   // 点击统一规则(band 的格或整条、bracket 的格、买入日 ▼ 三处共用):先取点到的 hit 集合,
   //   0 次 → 只聚焦成员;1 次 → 直选;≥2 次且买入日完全一样 → 直选第一次,←/→ 换同一天的下一次;
@@ -1379,9 +1397,9 @@ export const useViewStore = defineStore('view', () => {
     visiblePatterns, visibleFields, symbolQuery,
     effectivePattern, effectiveAnalysis, effectiveScan,
     unionRows, sortedRows, filteredSortedRows, previewListRow, patternHitStocks,
-    nodeColors, selectedHitId, selectedHit, tagMap, isolated, inHitIds, inHitEventIds, qualifiedIds,
-    mode, annotating, comparing, appSource, linkedView, linkedRun, tiers, appId, endNode, appWindowOf,
-    openSymbol, enterAnnotate, enterLinked, setLinkedRun, setTiers, viewWindow,
+    nodeColors, selectedHitId, selectedHit, sameDayHits, tagMap, isolated, inHitIds, inHitEventIds, qualifiedIds,
+    mode, annotating, comparing, appSource, linkedView, linkedRun, appId, endNode, appWindowOf,
+    openSymbol, enterAnnotate, enterLinked, setLinkedRun, viewWindow,
     loadScanFile, clearScanFile, setCurrentScanName, currentScanName, selectSymbol, setActivePattern, setSort,
     toggleNode, toggleExpandedNode,
     focusHit, focusEvent, clearFocus,

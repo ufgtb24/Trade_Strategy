@@ -4,7 +4,7 @@
          .header-row 包一层让 banner 挂在 chip 行下方,同时对 grid 只占单一自动行——
          不新增显式行号,不改动 topology-row/kline/sidebar 既有的 auto-placement,避免二者同时出现时抢行。 -->
     <!-- annotate 不显示 app 相关的控件;compare 的副图就是主视图那张,档位按钮、拓扑面板与主视图共用同一份状态
-         (诊断侧栏只在 app 模式:compare 右栏是标注侧栏,样本的 diagnose 在 selection 页) -->
+         (诊断侧栏只在 app 模式:compare 右栏是标注侧栏) -->
     <div v-if="mode !== 'annotate'" class="header-row">
       <div class="level-bar" data-testid="level-control">
         <button

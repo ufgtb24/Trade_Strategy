@@ -214,7 +214,7 @@ def test_session_tags_are_one_vocabulary():
     """六个原因标签只在 mapping.py 写一处;反馈朱红判法读的「定义改过」就是其中那一个常量。"""
     from path2_web.annotation import match
 
-    assert mapping_mod.SESSION_TAGS == ("unhandled", "for_tuning", "not_worth", "invisible", "accepted", "redefined")
+    assert mapping_mod.SESSION_TAGS == ("unhandled", "for_tuning", "not_worth", "hindsight", "accepted", "redefined")
     assert match.TAG_REDEFINED is mapping_mod.TAG_REDEFINED and mapping_mod.TAG_REDEFINED in mapping_mod.SESSION_TAGS
 
 

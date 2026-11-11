@@ -64,6 +64,18 @@ describe('view store · 当前日、当家行与 ←/→', () => {
     expect(view.activeFamilyKey).toBe('hits@0')
   })
 
+  it('sameDayHits:选中的 hit 和别的几次买在同一天时给出这几次与当前第几次;只有一次、没选中时为 null', () => {
+    const view = setup()
+    expect(view.sameDayHits).toBeNull()
+    view.focusHit('h0')
+    expect(view.sameDayHits).toEqual({ ids: ['h0', 'h1'], index: 0 })
+    view.stepFocus(1)
+    expect(view.sameDayHits).toEqual({ ids: ['h0', 'h1'], index: 1 })
+    view.stepFocus(1)                                    // h2 那天只有它一次
+    expect(view.focusedHitId).toBe('h2')
+    expect(view.sameDayHits).toBeNull()
+  })
+
   it('bracket 族内按终点走(同终点按原顺序),到头停住', () => {
     const view = setup()
     view.focusHit('h0')

@@ -381,7 +381,7 @@ def _fb_status(fb: Optional[Mapping], buys: Mapping) -> str:
 
 
 def _status_text(s: str) -> str:
-    return {"absent": "（没有这条）", "na": "（读不到行情）"}.get(s, f"`{s}`")
+    return {"absent": "（没有这条）", "na": "（读不到行情）", "lost": "起点认不出"}.get(s, f"`{s}`")
 
 
 def _lost_lines(ctx: _Ctx, now: Mapping) -> list[str]:
@@ -389,7 +389,7 @@ def _lost_lines(ctx: _Ctx, now: Mapping) -> list[str]:
     lost = [fid for fid, s in now.items() if s == "lost"]
     if not lost:
         return []
-    return ["`lost` 的反馈（起点认不出），每条请交代一句是改好了、还是认法变了：",
+    return ["起点认不出的反馈（页面上显示成 `unmatched`），每条请交代一句是改好了、还是认法变了：",
             *[f"- {_fb_label(ctx, ctx.f_new[fid])}：（待填：改好了 / 认法变了）" for fid in lost], ""]
 
 
@@ -427,7 +427,7 @@ def _issue_lines(ctx: _Ctx, now: Mapping, changed: set) -> list[str]:
             quiet += 1
             continue
         text = f"- `{name}`{_fb_content(ctx.f_new[ids[0]])}：{len(ids)} 处，还在买 {still} 处"
-        text += (f"，`lost` {lost} 处" if lost else "") + (f"，这一版变了 {moved} 处" if moved else "")
+        text += (f"，起点认不出 {lost} 处" if lost else "") + (f"，这一版变了 {moved} 处" if moved else "")
         rows.append((_issue_rank(statuses), name, text))
     if not rows and not quiet:
         return []
@@ -462,7 +462,7 @@ def _now_summary(ctx: _Ctx, now: Mapping) -> str:
     """现在各状态几条(朱红按会话的原因标签判,见 match.is_red)。"""
     red = sum(match.is_red(s, ctx.tags.get(i)) for i, s in now.items())
     n = {k: sum(s == k for s in now.values()) for k in ("lost", "unmatched", "na")}
-    text = f"现在 {len(now)} 条反馈：朱红 {red} 条、`lost` {n['lost']} 条、`unmatched` {n['unmatched']} 条"
+    text = f"现在 {len(now)} 条反馈：朱红 {red} 条、起点认不出 {n['lost']} 条、`unmatched` {n['unmatched']} 条"
     return text + (f"、读不到行情 {n['na']} 条。" if n["na"] else "。")
 
 
@@ -958,7 +958,7 @@ def _digest_issues(ctx_link, picked: Mapping, f_prev: Optional[Mapping], samples
     groups = sorted(_issue_groups(picked), key=lambda g: (_issue_rank([now[i] for i in g[1]]), g[0]))
     n_still, n_lost = sum(s == "matched" for s in now.values()), sum(s == "lost" for s in now.values())
     lines.append(f"共 {len(groups)} 个 issue、{len(picked)} 处；" +
-                 (f"还在买 {n_still} 处、`lost` {n_lost} 处。" if has_app else "还没有 app，状态没比。"))
+                 (f"还在买 {n_still} 处、起点认不出 {n_lost} 处。" if has_app else "还没有 app，状态没比。"))
     lines.append("")
     for name, ids in groups:
         first = picked[ids[0]]

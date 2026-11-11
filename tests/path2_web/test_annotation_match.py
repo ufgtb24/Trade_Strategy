@@ -119,6 +119,10 @@ def test_is_red():
     assert not m.is_red("matched", m.TAG_REDEFINED)
     assert not m.is_red("unmatched", None)
     assert not m.is_red("lost", None)
+    # 页面上显示的:lost 并进 unmatched;标签只在 matched 或 lost 时挂
+    assert [m.shown_status(x) for x in ("matched", "unmatched", "lost", None)] == ["matched", "unmatched", "unmatched", None]
+    assert [m.shown_tag(x, "for_tuning") for x in ("matched", "lost", "unmatched", None)] == ["for_tuning", "for_tuning", None, None]
+    assert m.shown_tag("lost", None) is None
     assert not m.is_red(None, None)       # 行情读不到的股票
 
 

@@ -873,11 +873,13 @@ def build_router(*, registry, config_path, get_config, set_config,
         当前 app = 写了这个 pattern、没有问题的那个 mapping 的 app;找不到(没有、几个 app 都写了、mapping 有问题)
         → {app: null, app_ver: null, items: [], reason: 原因}。
         返回 {app, app_ver, items: [{id, status, tag, red, reason}], reason: null}:
-        - status:'matched' / 'unmatched' / 'lost'(path2_web/annotation/match.py 的 feedback_status);这只股票
-          读不到行情(没有这只股票、代码名不合格)时为 null,原因写在这一条的 reason 里,其余条照常;
-        - tag:mapping 会话段 tags 里这条的原因标签,没有为 null(会话段写坏了也当没有);
+        - status:页面上显示的状态 'matched' / 'unmatched'(path2_web/annotation/match.py 的 feedback_status
+          经 shown_status:起点认不出的 lost 并进 unmatched);这只股票读不到行情(没有这只股票、代码名不合格)
+          时为 null,原因写在这一条的 reason 里,其余条照常;
+        - tag:页面上要挂的原因标签(match.shown_tag):mapping 会话段 tags 里这条的标签,只在 app 还在买、或
+          起点认不出而会话挂了标签(认法变了、毛病还在)时给,其余为 null(会话段写坏了也当没有);
         - red:画不画朱红(match.is_red,只在这里判一次,前端照着画、照着排);
-        - items 已按侧栏的顺序排好:朱红在前,lost 其次,其余在后;同档按股票、start、end、编号。
+        - items 已按侧栏的顺序排好:朱红在前,不买了却还挂着原因标签的其次,其余在后;同档按股票、start、end、编号。
         行情目录不存在 → 503(同单股预览);app 自身出错(声明漂移等)→ 500;标注目录不存在 → 503。"""
         cfg = get_config()
         ms, reason = _mappings_of(pattern)
@@ -908,11 +910,12 @@ def build_router(*, registry, config_path, get_config, set_config,
                     status, why = None, f"{symbol}: {e}"
                 else:
                     status, why = annotation_match.feedback_status(fb, buys), None
-                tag = tags.get(fb["id"])
-                red = annotation_match.is_red(status, tag)
-                rank = 0 if red else 1 if status == "lost" else 2
+                red = annotation_match.is_red(status, tags.get(fb["id"]))
+                shown = annotation_match.shown_status(status)
+                tag = annotation_match.shown_tag(status, tags.get(fb["id"]))
+                rank = 0 if red else 1 if shown == "unmatched" and tag else 2
                 rows.append(((rank, symbol, fb["start"], fb["end"], fb["id"]),
-                             {"id": fb["id"], "status": status, "tag": tag, "red": red, "reason": why}))
+                             {"id": fb["id"], "status": shown, "tag": tag, "red": red, "reason": why}))
         except NoDataDir as e:
             raise _bars_http_error(e) from None
         except Exception as e:

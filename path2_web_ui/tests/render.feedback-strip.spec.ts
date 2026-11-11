@@ -146,10 +146,10 @@ describe('反馈带的记号', () => {
       fb('blind', DATES[1], DATES[2], { source: 'random', answer: 'pos' }),
     ]
     const st = { a: { status: 'matched', tag: null, red: true, reason: null },
-                 b: { status: 'lost', tag: null, red: false, reason: null } } as any
+                 b: { status: 'unmatched', tag: 'unhandled', red: false, reason: null } } as any
     const marks = feedbackMarks(list, DATES, st, 'c')
     expect(marks.map(m => [m.id, m.start, m.end, m.lane, m.tone, m.selected]))
-      .toEqual([['a', 1, 4, 0, 'red', false], ['b', 3, 6, 1, 'lost', false], ['c', 5, 8, 0, 'plain', true]])
+      .toEqual([['a', 1, 4, 0, 'red', false], ['b', 3, 6, 1, 'plain', false], ['c', 5, 8, 0, 'plain', true]])
     expect(marks.map(m => m.nodes)).toEqual([['plateau', 'today'], ['plateau'], []])
     for (const m of marks) expect(Object.keys(m).sort()).toEqual(['end', 'id', 'lane', 'nodes', 'selected', 'start', 'tone'])
     expect(feedbackRowCount(marks)).toBe(2)
@@ -159,7 +159,7 @@ describe('反馈带的记号', () => {
   })
 
   it('选中的记号:不论哪一档都描黑色粗边(比平常粗一倍以上),底色照旧;没选中的照配色档', () => {
-    for (const tone of ['plain', 'red', 'lost'] as const) {
+    for (const tone of ['plain', 'red'] as const) {
       expect(feedbackMarkStyle({ tone, selected: true }))
         .toEqual({ fill: FEEDBACK_TONE[tone].fill, stroke: '#000000', lineWidth: FEEDBACK_SELECTED_STROKE_W })
       expect(feedbackMarkStyle({ tone, selected: false }))
@@ -179,11 +179,11 @@ describe('反馈带的记号', () => {
     expect(feedbackLabelFits('off_pattern', 40)).toBe(false)
   })
 
-  it('画法:行高固定;朱红底 / 橙描边 / 常色深灰描边,字一律黑;选中描黑色粗边、压在别的记号上面;字是 node 名,放得下才写', () => {
+  it('画法:行高固定;朱红底 / 常色深灰描边,字一律黑;选中描黑色粗边、压在别的记号上面;字是 node 名,放得下才写', () => {
     const api = { coord: ([x]: number[]) => [x * 10, 0], size: () => [10, 0] }
     const marks = [
       { id: 'a', start: 0, end: 9, lane: 1, nodes: ['step', 'plateau'], tone: 'red', selected: true },
-      { id: 'b', start: 2, end: 2, lane: 0, nodes: ['step'], tone: 'lost', selected: false },
+      { id: 'b', start: 2, end: 2, lane: 0, nodes: ['step'], tone: 'plain', selected: false },
       { id: 'c', start: 3, end: 6, lane: 0, nodes: ['ab', 'cdefgh'], tone: 'plain', selected: false },
       { id: 'd', start: 0, end: 9, lane: 2, nodes: [], tone: 'plain', selected: false },
     ] as const
@@ -199,7 +199,7 @@ describe('反馈带的记号', () => {
     expect(a.children[0].z2).toBeGreaterThan(c.children[0].z2)
     expect(a.children[1].style.text).toBe('step, plateau')
     expect(a.children[1].style.fill).toBe('#000000')
-    expect(b2.children[0].style).toMatchObject({ fill: '#ffffff', stroke: '#E69F00', lineWidth: 1.5 })
+    expect(b2.children[0].style).toMatchObject({ fill: '#ffffff', stroke: '#555555', lineWidth: 1.5 })
     expect(b2.children).toHaveLength(1)                       // 一根 K 线宽放不下 node 名:只画记号
     expect(c.children[0].style).toMatchObject({ fill: '#ffffff', stroke: '#555555' })
     expect(c.children[1].style.text).toBe('ab+1')             // 整串放不下:第一个 node 名加 +n
@@ -214,8 +214,9 @@ describe('反馈带的记号', () => {
                      'pos sample inside', `family_start: ${DATES[0]}`, 'a&lt;b &amp; &quot;c&quot;']) {
       expect(html).toContain(s)
     }
-    // 各行的先后:id、target、range、family_start、shared、nodes、note、status、tag、pos sample inside
-    const order = ['id: ', 'target: ', 'range: ', 'family_start: ', 'shared: ', 'nodes: ', 'note: ', 'status: ', 'tag: ',
+    // 各行的先后:target、range、family_start、shared、nodes、note、status、tag、pos sample inside;不写内部编号
+    expect(html).not.toContain('id: ')
+    const order = ['target: ', 'range: ', 'family_start: ', 'shared: ', 'nodes: ', 'note: ', 'status: ', 'tag: ',
                    'pos sample inside'].map(k => html.indexOf(k))
     expect(order.every(i => i >= 0)).toBe(true)
     expect([...order].sort((x, y) => x - y)).toEqual(order)

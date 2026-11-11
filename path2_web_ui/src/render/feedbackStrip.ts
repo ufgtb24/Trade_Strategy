@@ -4,8 +4,9 @@
  * 悬停文字、字放不放得下;画法在 render/chart.ts(makeRenderFeedbackMark),行高与带的顶在 render/subGeometry.ts。
  *
  * - 只画用户自己挑的(source = picked):盲看标记(6.5)不在这里画,也打不开面板(stores/feedback.ts 的 openRecord);
- * - 配色档只照后端状态接口给的 red / status(朱红与否只在后端判一次):red → 朱红底黑字;lost → 白底橙描边黑字
- *   (同 missing);其余(含状态还没取到)→ 常色,白底深灰描边黑字。hits 区底色是浅黄,常色靠描边认,不靠白底;
+ * - 配色档只照后端状态接口给的 red(朱红与否只在后端判一次):red → 朱红底黑字;其余(含状态还没取到)→ 常色,
+ *   白底深灰描边黑字。hits 区底色是浅黄,常色靠描边认,不靠白底。页面上的状态只有 matched / unmatched
+ *   (「起点认不出」在后端已并进 unmatched,见 path2_web/annotation/match.py 的 shown_status);
  * - 选中的那条(feedbackMarkStyle):描边换成黑色并明显加粗(加粗的部分画在记号外侧,不挤字),压在别的记号上面;图上另有一条贯穿主副图的竖带
  *   标出它的日期范围(components/KlineChart.vue);
  * - 记号上的字(feedbackLabelText)是点出的 node 名,逗号连起来;整串放不下时退成「第一个 node 名加 +n」
@@ -17,14 +18,14 @@ import type { AnnFeedback } from '../annotate/model'
 import type { FeedbackStatusOf } from '../annotate/feedback'
 import { endIndex, startIndex } from '../annotate/boxGeometry'
 import { packLanes } from './geometry'
-import { MISSING_EDGE, VERMILION } from './annotateLanes'
+import { VERMILION } from './annotateLanes'
 import { MONO } from './fonts'
 
 /** 反馈带系列名(副图点击按它分流;e2e 也按它找) */
 export const FEEDBACK_SERIES = 'feedback-strip'
 
-/** 配色档:常色 / 朱红(app 和你相反)/ lost(起点认不出) */
-export type FeedbackTone = 'plain' | 'red' | 'lost'
+/** 配色档:常色 / 朱红(app 和你相反) */
+export type FeedbackTone = 'plain' | 'red'
 
 /** 反馈带上的一个记号:K 线下标范围、错行后的行号、点出的 node(记号上的字由它来)、配色档、选没选中。 */
 export interface FeedbackMark {
@@ -42,7 +43,6 @@ export const FEEDBACK_EDGE = '#555555'
 export const FEEDBACK_TONE: Record<FeedbackTone, { fill: string; stroke: string }> = {
   plain: { fill: '#ffffff', stroke: FEEDBACK_EDGE },
   red: { fill: VERMILION, stroke: FEEDBACK_EDGE },
-  lost: { fill: '#ffffff', stroke: MISSING_EDGE },
 }
 export const FEEDBACK_STROKE_W = 1.5
 /** 选中的记号:黑色粗边(不论哪一档),比平常的描边粗一倍多 */
@@ -64,9 +64,9 @@ export function feedbackMarkStyle(m: Pick<FeedbackMark, 'tone' | 'selected'>): {
     : { fill: tone.fill, stroke: tone.stroke, lineWidth: FEEDBACK_STROKE_W }
 }
 
-/** 配色档:只照后端给的 red / status;没取到状态按常色。 */
+/** 配色档:只照后端给的 red;没取到状态按常色。 */
 export function feedbackTone(st: FeedbackStatusOf | null | undefined): FeedbackTone {
-  return st?.red ? 'red' : st?.status === 'lost' ? 'lost' : 'plain'
+  return st?.red ? 'red' : 'plain'
 }
 
 /** 日期范围 → K 线下标范围(起点取当天或之后第一根,终点取当天或之前最后一根);整段落在 K 线外时为 null。 */
@@ -122,7 +122,7 @@ export function feedbackLabelText(nodes: readonly string[], widthPx: number): st
 const esc = (t: string) => t.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!))
 
 /**
- * 悬停文字(HTML,键值排),依次:编号、target、日期范围、family 的起点(一族才有)、`shared: n places`(这条所在的
+ * 悬停文字(HTML,键值排),依次:target、日期范围、family 的起点(一族才有)、`shared: n places`(这条所在的
  * issue 有两处以上才有;places = 几处反馈共享同一份内容)、nodes(点了才有)、note、status、会话写的原因标签、
  * 状态取不到的原因、范围里有正样本时一行 `pos sample inside`。键与程序给的值等宽;
  * note 是用户写的,正常字体加浅灰底。字一律黑。记录上以前存下的 answer、dag 不写。
@@ -130,7 +130,7 @@ const esc = (t: string) => t.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&
 export function feedbackTip(fb: AnnFeedback, st: FeedbackStatusOf | null | undefined, posInside: boolean,
                             places = 1): string {
   const range = fb.start === fb.end ? fb.start : `${fb.start} … ${fb.end}`
-  const rows = [`id: ${esc(fb.id)}`, `target: ${esc(fb.target)}`, `range: ${esc(range)}`]
+  const rows = [`target: ${esc(fb.target)}`, `range: ${esc(range)}`]
   if (fb.target === 'family' && fb.family_start) rows.push(`family_start: ${esc(fb.family_start)}`)
   if (places >= 2) rows.push(`shared: ${places} places`)
   if (fb.nodes?.length) rows.push(`nodes: ${fb.nodes.map(esc).join(', ')}`)

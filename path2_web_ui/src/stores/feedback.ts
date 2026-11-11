@@ -2,7 +2,7 @@
  * 反馈(feedback,spec 6.13)在 compare 下的状态与作答面板。记录的读写走 stores/annotation.ts(saveFeedback /
  * deleteFeedback,标注的追加写法);取法与保存条件是 annotate/feedback.ts 的纯函数。
  *
- * 状态(statusById):当前 pattern 的全部反馈在当前 app 下是 matched / unmatched / lost,连同会话写的原因标签
+ * 状态(statusById):当前 pattern 的全部反馈在当前 app 下是 matched / unmatched,连同会话写的原因标签
  * tag 与画不画朱红 red,都照后端 GET /feedback/status 给的(朱红与否只在后端判一次)。只在 compare 下去取;
  * 重取的时机:
  * - 进入 compare、换当前 pattern;
@@ -244,7 +244,9 @@ export const useFeedbackStore = defineStore('feedback', () => {
     return ann.saveFeedback(draft) ? 'saved' : null
   }
 
-  function select(id: string | null): void { selectedId.value = id }
+  /** 每点一次记号加一(同一条再点一次也加):selectedId 点了别的东西也不清,要靠它分出「最后点的是不是反馈」 */
+  const pickSeq = ref(0)
+  function select(id: string | null): void { selectedId.value = id; if (id) pickSeq.value += 1 }
 
   /** 侧栏卡片的 edit:请图表在那条记号旁打开面板(图表落定后才提,见 components/FeedbackPage.vue)。 */
   function requestEdit(id: string): void { editRequest.value = id }
@@ -316,7 +318,7 @@ export const useFeedbackStore = defineStore('feedback', () => {
 
   return {
     statusById, loading, error, app, appVer, reason, refresh,
-    panel, opens, selectedId, editRequest, problems, panelPosInside, panelNodes,
+    panel, opens, selectedId, pickSeq, editRequest, problems, panelPosInside, panelNodes,
     panelIssues, panelIssue, panelNeedsChoice, panelPlaces, placesById,
     open, switchTo: open, close, setNote, toggleNode, pickIssue, save, remove, resize, select,
     requestEdit, takeEditRequest,

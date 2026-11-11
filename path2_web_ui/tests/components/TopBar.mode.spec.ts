@@ -1,5 +1,5 @@
 // 顶栏 mode:annotate / compare / app 三档,当前 pattern 没有 app(或还没打开股票)时 compare、app 变灰;
-// compare、现算的 app 下旁边写 app 的名字,悬停列出 mapping 的每一行。tiers:app、compare 下可用,默认开。
+// compare、现算的 app 下旁边写 app 的名字,悬停列出 mapping 的每一行。
 // compare 下用代码输入、random 换图留在 compare;从扫描结果的 app 出发落在 annotate。
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
@@ -38,10 +38,10 @@ async function mountIt(pattern: string | null) {
 }
 const btn = (w: any, m: string) => w.get(`[data-testid="mode-${m}"]`)
 
-describe('TopBar · mode 与 tiers', () => {
+describe('TopBar · mode', () => {
   beforeEach(() => { setActivePinia(createPinia()); localStorage.clear() })
 
-  it('annotate 下:annotate 按下;没有 app 时 compare、app 变灰,悬停说明原因;tiers 变灰', async () => {
+  it('annotate 下:annotate 按下;没有 app 时 compare、app 变灰,悬停说明原因', async () => {
     const { w, view } = await mountIt('NONE')
     view.openSymbol('AAPL')
     await flushPromises()
@@ -51,8 +51,7 @@ describe('TopBar · mode 与 tiers', () => {
       expect(btn(w, m).classes()).toContain('off')
       expect(btn(w, m).attributes('title')).toContain('the current pattern has no app')
     }
-    expect(w.get('[data-testid="tiers"]').attributes('disabled')).toBeDefined()
-    expect((w.get('[data-testid="tiers"]').element as HTMLInputElement).checked).toBe(true)
+    expect(w.find('[data-testid="tiers"]').exists()).toBe(false)   // tiers 勾选框已去掉(不控制任何东西)
   })
 
   it('mapping 有问题:变灰,悬停写出问题', async () => {
@@ -76,11 +75,8 @@ describe('TopBar · mode 与 tiers', () => {
     const id = w.get('[data-testid="linked-app"]')
     expect(id.text()).toBe('bo_only')
     expect(id.attributes('title')).not.toContain('w-pc-1')            // 不显示 mapping
-    expect(w.get('[data-testid="tiers"]').attributes('disabled')).toBeUndefined()
     await btn(w, 'app').trigger('click')
     expect([view.mode, view.appSource]).toEqual(['app', 'linked'])
-    await w.get('[data-testid="tiers"]').setValue(false)
-    expect(view.tiers).toBe(false)
     await btn(w, 'annotate').trigger('click')
     expect(view.mode).toBe('annotate')
     expect(w.find('[data-testid="linked-app"]').exists()).toBe(false)

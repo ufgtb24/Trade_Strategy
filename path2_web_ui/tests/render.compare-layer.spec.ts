@@ -39,7 +39,7 @@ const items: BracketItem[] = [
 ]
 const CMP: CompareMarks = {
   laneNode: new Map([[0, 'plateau']]), unmapped: new Set([1]),
-  compared: new Set(['b1']), userActive: false,
+  userActive: false,
 }
 
 function layer(cmp: CompareMarks | null) {
@@ -104,13 +104,12 @@ describe('compare 的标注层', () => {
     expect(txt.font).toContain('11.5px')
     expect(s.data[0][3] - s.data[0][2]).toBe(COMPARE_BRACKET_ROW_H - 4)
   })
-  it('框旁不挂 app 把它认到哪一档(missing 也不挂);map 了的框悬停写 start not compared', () => {
+  it('框旁和框的悬停里都不写 app 把它认成什么样(missing、start not compared 都没有)', () => {
     const s = layer(CMP).series.find(x => x.name === 'annotation-boxes')
     const k = s.data.findIndex((r: any[]) => r[6] === 'b1')
     expect(JSON.stringify(s.renderItem({ dataIndex: k }, api(s.data[k])).children)).not.toContain('missing')
     const tip = s.tooltip.formatter({ dataIndex: k, value: s.data[k] })
-    expect(tip).toContain('start not compared')
-    expect(tip).not.toContain('missing')
+    expect(tip).not.toMatch(/missing|start not compared/)
   })
   it('当家行是样本时 user 行头加粗', () => {
     const l = layer({ ...CMP, userActive: true })
@@ -212,13 +211,18 @@ describe('合进的主视图副图', () => {
   it('band 表头:node 名后跟用户特征名(正常字体、浅灰底)与 app_only(等宽);不给就只有 node 名', () => {
     const geom = computeSubGeometry({ bracketLaneCount: 0, bandLaneCounts: [1, 1] })
     const g = buildSubDecorGraphics(geom.bandGeom, geom.bracketH, ['plateau', 'step'], false, 800, 1, {},
-                                    [{ feature: '站上新平台' }, { tag: 'app_only' }])
+                                    [{ feature: '站上新平台' }, { tag: 'app_only', tagTip: 'why app_only' }])
     const t = g.filter(x => x.type === 'text').map(x => x.style)
     expect(t[0].text).toBe('{n|plateau}  {biz|站上新平台}')
     expect(t[0].rich.biz.backgroundColor).toBe('#f4f4f5')
     expect(t[0].rich.biz.fontFamily).toBeUndefined()
     expect(t[1].text).toBe('{n|step}  {tag|app_only}')
     expect(t[1].rich.tag.fontFamily).toMatch(/mono/i)
+    // 挂了 app_only 的表头接鼠标、悬停弹说明;别的表头照旧不接鼠标(点击落到底下的格上)
+    const titles = g.filter(x => x.type === 'text')
+    expect([titles[0].silent, titles[0].tooltip]).toEqual([true, undefined])
+    expect(titles[1].silent).toBe(false)
+    expect(titles[1].tooltip.formatter).toContain('why app_only')
     const plain = buildSubDecorGraphics(geom.bandGeom, geom.bracketH, ['plateau', 'step'], false, 800)
     expect(plain.filter(x => x.type === 'text').map(x => x.style.text)).toEqual(['plateau', 'step'])
   })

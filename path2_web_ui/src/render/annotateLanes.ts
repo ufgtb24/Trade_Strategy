@@ -25,8 +25,8 @@
  * - user 行垫和 hits 区同一种浅黄底(HITS_FILL),从特征轨下沿铺到分界线:两边各自的总账(你的样本、app 的买点)
  *   用同一种底强调,和上面白底的特征轨分开;浅黄在这里只表示「强调这一行」,不表示来源。user 行下沿不再画
  *   轨分隔线(底色与分界线已经分开它),行头垫同一种浅黄;
- * - map 了的框悬停写 `start not compared`(框的左端不和 app 比,见 stores/compare.ts)。框旁不挂 app 把它
- *   认到哪一档(连「一个 event 都没有」也不挂):那是找 app 错在哪一步用的,归会话看,用户只看买没买。
+ * - 框旁、框的悬停里都不写 app 把它认成什么样(认到哪一档、有没有 event、起点比不比):那是找 app 错在哪一步
+ *   用的,归会话看,用户只看买没买。
  * app 的东西一律不画进用户轨:用户轨只有用户画的框。
  */
 import type { Bar } from '../types'
@@ -65,10 +65,8 @@ export const BRACKET_ROW_H = 13       // bracket 轨里一行的高度
 export const BRACKET_BAR_H = 9        // bracket 轨里一条样本跨度的高度
 export const COMPARE_BRACKET_ROW_H = 18   // compare 的 user 行:行高放大,▲ 与字母、✓ / ✗ 第一屏读得出(待验证)
 // compare 的两个小标签不铺浅色底(浅蓝、浅琥珀底在白图上和底色深浅相近,色盲下看不出):白底 + 中等深度
-// 描边 + 黑字。描边色取用户确认过的安全色板(1 蓝、2 橙),两者冷暖相反:unmapped 是冷(会话这一侧的事),
-// 橙是暖(app 那一侧缺东西)。
+// 描边 + 黑字。描边色取用户确认过的安全色板(1 蓝、2 橙),取其中的蓝(会话这一侧的事)。
 export const UNMAPPED_EDGE = '#0072B2' // 蓝:compare 下没 map 的轨挂的 unmapped 的描边
-export const MISSING_EDGE = '#E69F00'  // 橙:反馈状态 lost 的描边(render/feedbackStrip.ts、FeedbackPage.vue)
 const TAG_BOX = { backgroundColor: '#ffffff', borderWidth: 1.5, padding: [1, 3], borderRadius: 2 }
 export const VERMILION = '#E8875A'    // 朱红(配黑字,所以取浅一档):只表示「app 的判断和你相反」(▲ 字母后的 ✗ 底色)
 export { MONO }
@@ -226,8 +224,6 @@ export interface CompareMarks {
   laneNode: ReadonlyMap<number, string>
   /** 没 map 的特征轨(下标):标题挂 unmapped */
   unmapped: ReadonlySet<number>
-  /** map 了的框(悬停写 start not compared) */
-  compared: ReadonlySet<string>
   /** 当家行是样本(←/→ 在样本间走):user 行头加粗 */
   userActive: boolean
   /** 用户的框与 app 的轨上下相邻处的 y(像素):画分界线 */
@@ -353,7 +349,6 @@ export function annotateLayer(bars: Bar[], d: LaneDraw): { graphics: any[]; seri
       mark?.focus === UNCLAIMED ? 'maybe drawn but not added; click ◂ to add' : '',
       mark?.focus === CROSSES_SAMPLE_DATE ? 'crosses sample date: cannot be a member box of the selected sample' : '',
       mark?.away ? 'member box of samples of another pattern only' : '',
-      cmp?.compared.has(b.id) ? 'start not compared' : '',
     ].filter(Boolean).join('<br>'))
   }
   d.lanes.forEach((l, i) => {
