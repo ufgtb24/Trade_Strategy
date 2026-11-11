@@ -465,6 +465,11 @@ describe('反馈', () => {
   const fbRec = (id: string, extra: Record<string, unknown> = {}) => ({
     id, pattern: 'p', app_id: 'app1', app_ver: 'v0', start: '2025-01-06', end: '2025-01-10', target: 'family',
     source: 'picked', answer: 'neg', note: '追高', family_start: '2025-01-02', ...extra }) as any
+  /** 同 fbRec,但不带 answer(界面现在写出的形状);fbRec 是以前存下的带 answer 的形状。 */
+  const plainRec = (id: string, extra: Record<string, unknown> = {}) => {
+    const { answer: _a, ...rest } = fbRec(id, extra)
+    return rest as any
+  }
 
   /** compare 下 AAA 的现算结果(app_ver 是单股预览带回的指纹)。 */
   function inCompare(symbol = 'AAA', appVer: string | null = 'v1') {
@@ -476,32 +481,34 @@ describe('反馈', () => {
     return view
   }
 
-  it('新建:编号字母 f、带机器名;pattern 取当前 pattern,app 与版本取现算结果;source 为 picked', async () => {
+  it('新建:编号字母 f、带机器名;pattern 取当前 pattern,app 与版本取现算结果;source 为 picked;不带 answer', async () => {
     const s = await ready()
     s.setCurrentPattern('p')
     inCompare()
     const id = s.saveFeedback({ symbol: 'AAA', start: '2025-01-06', end: '2025-01-10', target: 'family',
-                                family_start: '2025-01-02', answer: 'neg', note: ' 追高 ', segments: ['step'] })
+                                family_start: '2025-01-02', note: ' 追高 ', nodes: ['step'] })
     expect(id).toBe('f-pc-1')
     expect(s.feedbackOf('AAA').map(f => f.id)).toEqual(['f-pc-1'])          // 还没存完就显示
     await s.flushed()
     expect(fake.batches.at(-1)).toEqual([{ kind: 'feedback', id: 'f-pc-1', base: null, value: {
       id: 'f-pc-1', symbol: 'AAA', pattern: 'p', app_id: 'app1', app_ver: 'v1', start: '2025-01-06', end: '2025-01-10',
-      target: 'family', source: 'picked', answer: 'neg', note: '追高', family_start: '2025-01-02' } }])
+      target: 'family', source: 'picked', note: '追高', nodes: ['step'], family_start: '2025-01-02' } }])
+    expect(Object.keys(fake.batches.at(-1)![0].value)).toEqual(
+      ['id', 'symbol', 'pattern', 'app_id', 'app_ver', 'start', 'end', 'target', 'source', 'note', 'nodes', 'family_start'])
     expect(fake.read.state.charts[0].feedback).toHaveLength(1)
     expect(fake.read.state.charts[0].samples).toEqual([])
   })
 
-  it('改:同编号整条重写,base 取最新,app_ver 刷新为当前值;redraw 成 range 去掉 family_start;别的 pattern 的不改', async () => {
+  it('改:同编号整条重写,base 取最新,app_ver 刷新为当前值;redraw 成 range 去掉 family_start;以前存下的 answer 拿掉;别的 pattern 的不改', async () => {
     const r = emptyRead({ patterns: [{ name: 'p' }, { name: 'q' }],
-      charts: [{ symbol: 'AAA', boxes: [], samples: [], feedback: [fbRec('f-pc-1')] }] })
+      charts: [{ symbol: 'AAA', boxes: [], samples: [], feedback: [fbRec('f-pc-1', { answer: 'off_pattern', dag: true })] }] })
     r.revs.feedback = { 'f-pc-1': 'pc-batch-0#0' }
     r.next_seq = 2
     const s = await ready(r)
     s.setCurrentPattern('q')
     inCompare()
     const draft = { id: 'f-pc-1', symbol: 'AAA', start: '2025-01-07', end: '2025-01-09', target: 'range' as const,
-                    answer: 'off_pattern' as const, note: '', segments: ['step', 'today'] }
+                    note: '不像', nodes: ['step', 'today'] }
     expect(s.saveFeedback(draft)).toBeNull()             // 当前 pattern 是 q,这条是 p 的:不改(出处会混)
     s.setCurrentPattern('p')
     const id = s.saveFeedback(draft)
@@ -509,34 +516,73 @@ describe('反馈', () => {
     await s.flushed()
     expect(fake.batches).toEqual([[{ kind: 'feedback', id: 'f-pc-1', base: 'pc-batch-0#0', value: {
       id: 'f-pc-1', symbol: 'AAA', pattern: 'p', app_id: 'app1', app_ver: 'v1', start: '2025-01-07', end: '2025-01-09',
-      target: 'range', source: 'picked', answer: 'off_pattern', segments: ['step', 'today'] } }]])
+      target: 'range', source: 'picked', note: '不像', nodes: ['step', 'today'] } }]])
   })
 
   it('不存:保存条件不满足、这只股票没有现算结果或没带版本、要改的是盲看标记;和原来一模一样时不写', async () => {
     const r = emptyRead({ patterns: [{ name: 'p' }], charts: [{ symbol: 'AAA', boxes: [], samples: [], feedback: [
-      fbRec('f-pc-1', { app_ver: 'v1' }),
+      plainRec('f-pc-1', { app_ver: 'v1' }),
       fbRec('f-pc-2', { source: 'random', target: 'point', start: '2025-01-13', end: '2025-01-13', family_start: undefined }),
     ] }] })
     const s = await ready(r)
     s.setCurrentPattern('p')
     const range = { symbol: 'AAA', start: '2025-01-06', end: '2025-01-10', target: 'range' as const }
-    expect(s.saveFeedback({ ...range, answer: 'neg', note: 'x' })).toBeNull()              // 还没进 compare
+    expect(s.saveFeedback({ ...range, note: 'x' })).toBeNull()                             // 还没进 compare
     inCompare()
     useViewStore().mode = 'app'
-    expect(s.saveFeedback({ ...range, answer: 'neg', note: 'x' })).toBeNull()              // app 模式(现算的)不存
+    expect(s.saveFeedback({ ...range, note: 'x' })).toBeNull()                             // app 模式(现算的)不存
     inCompare('BBB')
-    expect(s.saveFeedback({ ...range, answer: 'neg', note: 'x' })).toBeNull()              // 现算的是别的股票
+    expect(s.saveFeedback({ ...range, note: 'x' })).toBeNull()                             // 现算的是别的股票
     inCompare('AAA', null)
-    expect(s.saveFeedback({ ...range, answer: 'neg', note: 'x' })).toBeNull()              // 预览没带版本
+    expect(s.saveFeedback({ ...range, note: 'x' })).toBeNull()                             // 预览没带版本
     inCompare()
-    expect(s.saveFeedback({ ...range, answer: 'neg', note: ' ' })).toBeNull()              // neg 没写理由
-    expect(s.saveFeedback({ ...range, answer: 'off_pattern' })).toBeNull()                // 分段、理由都没有
+    expect(s.saveFeedback({ ...range, note: ' ' })).toBeNull()                             // 没写理由
+    expect(s.saveFeedback({ ...range, nodes: ['step'] })).toBeNull()                       // 只点 node 不写理由
+    expect(s.saveFeedback({ ...range })).toBeNull()                                        // node、理由都没有
     expect(s.saveFeedback({ ...range, id: 'f-pc-2', target: 'point', start: '2025-01-13', end: '2025-01-13',
-                            answer: 'neg', note: 'x' })).toBeNull()                        // 盲看标记不可改
+                            note: 'x' })).toBeNull()                                       // 盲看标记不可改
     expect(s.saveFeedback({ ...range, id: 'f-pc-1', target: 'family', family_start: '2025-01-02',
-                            answer: 'neg', note: '追高' })).toBe('f-pc-1')                 // 一模一样
+                            note: '追高' })).toBe('f-pc-1')                                // 一模一样
     await s.flushed()
     expect(fake.batches).toEqual([])
+  })
+
+  it('以前存下的带 answer 的记录,内容没改再存一次:也写一条(值变了:少了 answer)', async () => {
+    const r = emptyRead({ patterns: [{ name: 'p' }], charts: [{ symbol: 'AAA', boxes: [], samples: [], feedback: [
+      fbRec('f-pc-1', { app_ver: 'v1' })] }] })
+    r.revs.feedback = { 'f-pc-1': 'pc-batch-0#0' }
+    const s = await ready(r)
+    s.setCurrentPattern('p')
+    inCompare()
+    expect(s.saveFeedback({ id: 'f-pc-1', symbol: 'AAA', start: '2025-01-06', end: '2025-01-10', target: 'family',
+                            family_start: '2025-01-02', note: '追高' })).toBe('f-pc-1')
+    await s.flushed()
+    expect(fake.batches).toEqual([[{ kind: 'feedback', id: 'f-pc-1', base: 'pc-batch-0#0',
+                                     value: { ...plainRec('f-pc-1', { app_ver: 'v1' }), symbol: 'AAA' } }]])
+  })
+
+  it('同一批里改写别的处:note、nodes、issue 换成这一处的,以前存下的 answer、dag 拿掉,日期与 app_ver 各留各的', async () => {
+    const shared = { issue: 'i-pc-1' }
+    const r = emptyRead({ patterns: [{ name: 'p' }], charts: [
+      { symbol: 'AAA', boxes: [], samples: [], feedback: [plainRec('f-pc-1', { ...shared, note: 'x', nodes: ['step'] })] },
+      { symbol: 'BBB', boxes: [], samples: [], feedback: [
+        fbRec('f-pc-2', { ...shared, answer: 'off_pattern', note: 'x', nodes: ['step'], dag: true, start: '2025-01-07' })] },
+      { symbol: 'CCC', boxes: [], samples: [], feedback: [
+        fbRec('f-pc-3', { source: 'random', answer: 'pos', note: undefined, family_start: undefined, target: 'point',
+                          start: '2025-01-08', end: '2025-01-08' })] },
+    ] })
+    r.revs.feedback = { 'f-pc-1': 'r1', 'f-pc-2': 'r2', 'f-pc-3': 'r3' }
+    const s = await ready(r)
+    s.setCurrentPattern('p')
+    inCompare()
+    s.saveFeedback({ id: 'f-pc-1', symbol: 'AAA', start: '2025-01-06', end: '2025-01-10', target: 'family',
+                     family_start: '2025-01-02', note: '说准一点', nodes: ['today'], ...shared }, ['f-pc-2', 'f-pc-3', 'f-none'])
+    await s.flushed()
+    expect(fake.batches).toHaveLength(1)
+    expect(fake.batches[0].map((o: any) => [o.id, o.base])).toEqual([['f-pc-1', 'r1'], ['f-pc-2', 'r2']])   // 盲看标记、不在的跳过
+    expect(fake.batches[0][1].value).toEqual({ id: 'f-pc-2', symbol: 'BBB', pattern: 'p', app_id: 'app1', app_ver: 'v0',
+      start: '2025-01-07', end: '2025-01-10', target: 'family', source: 'picked', note: '说准一点', nodes: ['today'],
+      issue: 'i-pc-1', family_start: '2025-01-02' })
   })
 
   it('删:一条删除操作,base 取最新;删光了这只股票不出 feedback 键;盲看标记删不得', async () => {
@@ -554,6 +600,66 @@ describe('反馈', () => {
     expect(fake.batches).toEqual([[{ kind: 'feedback', id: 'f-pc-1', base: 'pc-batch-0#0', value: null }]])
     expect(s.state!.charts.map(c => c.symbol)).toEqual(['BBB'])
     expect(s.state!.charts[0].feedback!.map(f => f.id)).toEqual(['f-pc-2'])
+  })
+
+  it('撤销删除:被删的那处属于某个 issue、其余各处之后被一起改过时,写回的照各处现在的(answer 也跟着没了)', async () => {
+    const shared = { issue: 'i-pc-1' }
+    const r = emptyRead({ patterns: [{ name: 'p' }], charts: [
+      { symbol: 'AAA', boxes: [], samples: [], feedback: [fbRec('f-pc-1', { ...shared, app_ver: 'v1' })] },
+      { symbol: 'BBB', boxes: [], samples: [], feedback: [fbRec('f-pc-2', shared)] },
+      { symbol: 'CCC', boxes: [], samples: [], feedback: [fbRec('f-pc-3', shared)] },
+    ] })
+    r.revs.feedback = { 'f-pc-1': 'pc-batch-0#0', 'f-pc-2': 'pc-batch-0#1', 'f-pc-3': 'pc-batch-0#2' }
+    r.next_seq = 4
+    const s = await ready(r)
+    s.setCurrentPattern('p')
+    inCompare()
+    s.deleteFeedback('f-pc-3')
+    await s.flushed()
+    s.saveFeedback({ id: 'f-pc-1', symbol: 'AAA', start: '2025-01-06', end: '2025-01-10', target: 'family',
+                     family_start: '2025-01-02', note: '说准一点', nodes: ['step'], ...shared }, ['f-pc-2'])
+    await s.flushed()
+    s.undoDeletion()
+    await s.flushed()
+    // 删的时候那条带 answer、没有 nodes;各处现在不带 answer、带 nodes:写回的四个键(answer、note、nodes、dag)整个照它们
+    expect(fake.batches.at(-1)).toEqual([{ kind: 'feedback', id: 'f-pc-3', base: 'pc-batch-1#0', value: {
+      ...plainRec('f-pc-3', shared), symbol: 'CCC', note: '说准一点', nodes: ['step'] } }])
+  })
+
+  it('撤销删除:别的处是以前存下的「off_pattern + node、没写 note」时,写回的也照它带着 answer(不会成没有 answer 又没有 note)', async () => {
+    const old = { issue: 'i-pc-1', answer: 'off_pattern', note: undefined, nodes: ['step'] }
+    const r = emptyRead({ patterns: [{ name: 'p' }], charts: [
+      { symbol: 'BBB', boxes: [], samples: [], feedback: [fbRec('f-pc-2', old)] },
+      { symbol: 'CCC', boxes: [], samples: [], feedback: [fbRec('f-pc-3', { ...old, dag: undefined })] },
+    ] })
+    r.revs.feedback = { 'f-pc-2': 'pc-batch-0#1', 'f-pc-3': 'pc-batch-0#2' }
+    const s = await ready(r)
+    s.deleteFeedback('f-pc-3')
+    await s.flushed()
+    s.undoDeletion()
+    await s.flushed()
+    const v = fake.batches.at(-1)![0].value
+    expect(fake.batches.at(-1)![0]).toMatchObject({ kind: 'feedback', id: 'f-pc-3', base: 'pc-batch-1#0' })
+    expect(v).toMatchObject({ symbol: 'CCC', answer: 'off_pattern', nodes: ['step'], issue: 'i-pc-1' })
+    expect('note' in v).toBe(false)
+    expect('dag' in v).toBe(false)
+  })
+
+  it('撤销删除:别的处是以前存下的带 dag 的,被删的那条写回时四个键照它(连 dag)', async () => {
+    const base = { issue: 'i-pc-1', note: '关系不对', nodes: ['step'] }
+    const r = emptyRead({ patterns: [{ name: 'p' }], charts: [
+      { symbol: 'BBB', boxes: [], samples: [], feedback: [fbRec('f-pc-2', { ...base, answer: 'off_pattern', dag: true })] },
+      { symbol: 'CCC', boxes: [], samples: [], feedback: [plainRec('f-pc-3', base)] },   // 被删的这条不带 answer
+    ] })
+    r.revs.feedback = { 'f-pc-2': 'pc-batch-0#1', 'f-pc-3': 'pc-batch-0#2' }
+    const s = await ready(r)
+    s.deleteFeedback('f-pc-3')
+    await s.flushed()
+    s.undoDeletion()
+    await s.flushed()
+    // 状态里先找到的是 BBB 那处(带 answer、dag):写回的和它形状一致
+    expect(fake.batches.at(-1)![0].value).toMatchObject({ id: 'f-pc-3', answer: 'off_pattern', dag: true, note: '关系不对',
+                                                          nodes: ['step'] })
   })
 
   it('取反馈:这只股票、跨股票,都只取当前 pattern(或给定的 pattern)的', async () => {

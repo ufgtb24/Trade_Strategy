@@ -6,8 +6,12 @@
  * - 只画用户自己挑的(source = picked):盲看标记(6.5)不在这里画,也打不开面板(stores/feedback.ts 的 openRecord);
  * - 配色档只照后端状态接口给的 red / status(朱红与否只在后端判一次):red → 朱红底黑字;lost → 白底橙描边黑字
  *   (同 missing);其余(含状态还没取到)→ 常色,白底深灰描边黑字。hits 区底色是浅黄,常色靠描边认,不靠白底;
- * - 字(neg / off_pattern)放得下才写,放不下只画记号,悬停写全;
- * - 悬停文字不写任何「旧版本 / 过期」提示(反馈不过期,1.11);segments 里当前拓扑已没有的 node 原样显示。
+ * - 选中的那条(feedbackMarkStyle):描边换成黑色并明显加粗(加粗的部分画在记号外侧,不挤字),压在别的记号上面;图上另有一条贯穿主副图的竖带
+ *   标出它的日期范围(components/KlineChart.vue);
+ * - 记号上的字(feedbackLabelText)是点出的 node 名,逗号连起来;整串放不下时退成「第一个 node 名加 +n」
+ *   (n 是没写出来的个数),再放不下或一个 node 都没点就只画记号,内容靠悬停看;
+ * - 悬停文字不写任何「旧版本 / 过期」提示(反馈不过期,1.11);nodes 里当前拓扑已没有的 node 原样显示;
+ * - 以前存下的记录上的 answer、dag 不上记号、不进悬停。
  */
 import type { AnnFeedback } from '../annotate/model'
 import type { FeedbackStatusOf } from '../annotate/feedback'
@@ -22,18 +26,18 @@ export const FEEDBACK_SERIES = 'feedback-strip'
 /** 配色档:常色 / 朱红(app 和你相反)/ lost(起点认不出) */
 export type FeedbackTone = 'plain' | 'red' | 'lost'
 
-/** 反馈带上的一个记号:K 线下标范围、错行后的行号、写在上面的字、配色档、选没选中。 */
+/** 反馈带上的一个记号:K 线下标范围、错行后的行号、点出的 node(记号上的字由它来)、配色档、选没选中。 */
 export interface FeedbackMark {
   id: string
   start: number
   end: number
   lane: number
-  label: string
+  nodes: string[]
   tone: FeedbackTone
   selected: boolean
 }
 
-/** 记号的底色与描边(字一律黑)。常色描边是中等深度的深灰;朱红底也描同一种深灰,选中加粗时看得出 */
+/** 记号的底色与描边(字一律黑)。常色描边是中等深度的深灰;朱红底也描同一种深灰 */
 export const FEEDBACK_EDGE = '#555555'
 export const FEEDBACK_TONE: Record<FeedbackTone, { fill: string; stroke: string }> = {
   plain: { fill: '#ffffff', stroke: FEEDBACK_EDGE },
@@ -41,12 +45,24 @@ export const FEEDBACK_TONE: Record<FeedbackTone, { fill: string; stroke: string 
   lost: { fill: '#ffffff', stroke: MISSING_EDGE },
 }
 export const FEEDBACK_STROKE_W = 1.5
-export const FEEDBACK_SELECTED_STROKE_W = 3
+/** 选中的记号:黑色粗边(不论哪一档),比平常的描边粗一倍多 */
+export const FEEDBACK_SELECTED_EDGE = '#000000'
+export const FEEDBACK_SELECTED_STROKE_W = 3.5
+/** 选中的记号向外扩的量:粗边多出来的部分全画在记号外侧,里面留给字的地方和没选中时一样 */
+export const FEEDBACK_SELECTED_OUTSET = (FEEDBACK_SELECTED_STROKE_W - FEEDBACK_STROKE_W) / 2
 /** 记号在一行里上下各留的空(行高 FEEDBACK_ROW_H 减两倍即记号高) */
 export const FEEDBACK_MARK_PAD = 1.5
 export const FEEDBACK_FONT_PX = 10
 /** 字距记号左边的空 */
 export const FEEDBACK_TEXT_PAD = 3
+
+/** 记号的画法:底色照配色档;描边平常照配色档、细,选中时一律黑色粗边。 */
+export function feedbackMarkStyle(m: Pick<FeedbackMark, 'tone' | 'selected'>): { fill: string; stroke: string; lineWidth: number } {
+  const tone = FEEDBACK_TONE[m.tone]
+  return m.selected
+    ? { fill: tone.fill, stroke: FEEDBACK_SELECTED_EDGE, lineWidth: FEEDBACK_SELECTED_STROKE_W }
+    : { fill: tone.fill, stroke: tone.stroke, lineWidth: FEEDBACK_STROKE_W }
+}
 
 /** 配色档:只照后端给的 red / status;没取到状态按常色。 */
 export function feedbackTone(st: FeedbackStatusOf | null | undefined): FeedbackTone {
@@ -75,7 +91,7 @@ export function feedbackMarks(list: readonly AnnFeedback[], dates: readonly stri
     if (span) spans.push({ start_idx: span[0], end_idx: span[1], fb })
   }
   return packLanes(spans).map(({ start_idx, end_idx, lane, fb }) => ({
-    id: fb.id, start: start_idx, end: end_idx, lane, label: fb.answer,
+    id: fb.id, start: start_idx, end: end_idx, lane, nodes: [...(fb.nodes ?? [])],
     tone: feedbackTone(statusById[fb.id]), selected: fb.id === selectedId,
   }))
 }
@@ -90,23 +106,38 @@ export function feedbackLabelFits(label: string, widthPx: number): boolean {
   return label.length * FEEDBACK_FONT_PX * 0.62 + 2 * FEEDBACK_TEXT_PAD <= widthPx
 }
 
+/**
+ * 宽 widthPx 的记号上写什么字:点出的 node 名用逗号连起来;整串放不下时退成「第一个 node 名加 +n」
+ * (n 是没写出来的个数);再放不下、或一个 node 都没点,返回空串(不画字,只画记号)。
+ */
+export function feedbackLabelText(nodes: readonly string[], widthPx: number): string {
+  if (!nodes.length) return ''
+  const full = nodes.join(', ')
+  if (feedbackLabelFits(full, widthPx)) return full
+  if (nodes.length < 2) return ''
+  const short = `${nodes[0]}+${nodes.length - 1}`
+  return feedbackLabelFits(short, widthPx) ? short : ''
+}
+
 const esc = (t: string) => t.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!))
 
 /**
- * 悬停文字(HTML,键值排):编号、target 与日期范围(family 另写起点)、answer、note、segments、status、
- * 会话写的原因标签、状态取不到的原因、范围里有正样本时一行 `pos sample inside`。键与程序给的值等宽;
- * note 是用户写的,正常字体加浅灰底。字一律黑。
+ * 悬停文字(HTML,键值排),依次:编号、target、日期范围、family 的起点(一族才有)、`shared: n places`(这条所在的
+ * issue 有两处以上才有;places = 几处反馈共享同一份内容)、nodes(点了才有)、note、status、会话写的原因标签、
+ * 状态取不到的原因、范围里有正样本时一行 `pos sample inside`。键与程序给的值等宽;
+ * note 是用户写的,正常字体加浅灰底。字一律黑。记录上以前存下的 answer、dag 不写。
  */
-export function feedbackTip(fb: AnnFeedback, st: FeedbackStatusOf | null | undefined, posInside: boolean): string {
+export function feedbackTip(fb: AnnFeedback, st: FeedbackStatusOf | null | undefined, posInside: boolean,
+                            places = 1): string {
   const range = fb.start === fb.end ? fb.start : `${fb.start} … ${fb.end}`
   const rows = [`id: ${esc(fb.id)}`, `target: ${esc(fb.target)}`, `range: ${esc(range)}`]
   if (fb.target === 'family' && fb.family_start) rows.push(`family_start: ${esc(fb.family_start)}`)
-  rows.push(`answer: ${esc(fb.answer)}`)
+  if (places >= 2) rows.push(`shared: ${places} places`)
+  if (fb.nodes?.length) rows.push(`nodes: ${fb.nodes.map(esc).join(', ')}`)
   if (fb.note) {
     rows.push(`note: <span style='font-family:sans-serif;background:#f4f4f5;padding:0 4px;border-radius:3px'>`
               + `${esc(fb.note)}</span>`)
   }
-  if (fb.segments?.length) rows.push(`segments: ${fb.segments.map(esc).join(', ')}`)
   rows.push(`status: ${esc(st?.status ?? 'null')}`)
   if (st?.tag) rows.push(`tag: ${esc(st.tag)}`)
   if (st?.reason) rows.push(`reason: ${esc(st.reason)}`)

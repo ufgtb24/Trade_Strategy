@@ -18,6 +18,7 @@ V-S1 是第一段实施票 01～11 全部合回后，用户和会话一起手工
 - 界面改动暂停：全仓 match→hit 改名（`.scratch/match-hit-rename-implementation/`）正在实施，期间不加新的前端改动，下面待定的界面改进等改名做完再统一改。
 - 2026-11-05 new_step 第二版（站上新平台复合识别器）已实现。2026-11-09 用户看图：大体是心目中的走势，compare 里与标注大体吻合，差异在细节条件；10 个正样本 app 全买，差异全在 app 多买的日子（约 98 天，按段分四类列给用户认），待用户补 neg。同日用户定：这轮反馈改在界面上做，先造反馈功能（spec 1.11、6.13），做好后再反馈。
 - 2026-11-09 反馈功能（spec 6.13 及 6.14 随反馈部分）已实现，待用户用；计划与进度见 [feedback-plan.md](feedback-plan.md)。接下来用户在界面上反馈第二轮，V-S1 仍未通过。
+- 2026-11-10 反馈去掉 neg / off_pattern 二分类和 `dag` 按钮（面板 = 可选 node + 必写 note），几处反馈可共用一个 issue；会话侧循环技能 `annotation-round` 已写（定格到改版报告、记账），还没在真实一轮里用过；`authoring-path2-app` 已删，`authoring-path2-detector` 改造并改名 `write-detector`。全部改动未提交。下一步：用户在 compare 里给 new_step 写第二轮反馈，再说「处理一下反馈」走第一次真实的一轮；V-S1 仍未通过。
 
 ## 界面改进
 

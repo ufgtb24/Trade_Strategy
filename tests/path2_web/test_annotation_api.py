@@ -68,7 +68,7 @@ def _feedback(oid, start, end, base=None, **extra):
     return {"kind": "feedback", "id": oid, "base": base,
             "value": {"id": oid, "symbol": "AAA", "pattern": "new_step", "app_id": "new_step",
                       "app_ver": "0123456789abcdef", "start": start, "end": end, "target": "range",
-                      "source": "picked", "answer": "off_pattern", "segments": ["plateau"], **extra}}
+                      "source": "picked", "answer": "off_pattern", "nodes": ["plateau"], **extra}}
 
 
 def _dates(obj) -> list[str]:
@@ -134,6 +134,35 @@ def test_feedback_round_trip_and_machines(snapshot, adir):
     assert r.status_code == 400
     assert r.json()["detail"]["reasons"][0]["code"] == "bad_op" and "2025-12-31" in r.text
     assert sorted(p.name for p in adir.iterdir()) == files
+
+
+def test_feedback_without_answer_saves_through_the_route(snapshot, adir):
+    """不带 answer 的反馈(note 必写)经保存路由存得进、读出来没有 answer 键;没写 note 的被拒、不写文件;
+    带 answer 的那种随后照样存得进,并能被改写成不带的。"""
+    client = _client(snapshot, adir)
+    plain = _feedback("f-pc-1", "2025-12-01", "2025-12-05", note="追高了")
+    del plain["value"]["answer"]
+    r = client.post("/annotations/batch", json={"ops": [plain]})
+    assert r.status_code == 200, r.text
+    [got] = r.json()["state"]["charts"][0]["feedback"]
+    assert got == {k: v for k, v in plain["value"].items() if k != "symbol"} and "answer" not in got
+
+    files = sorted(p.name for p in adir.iterdir())
+    bare = _feedback("f-pc-2", "2025-12-08", "2025-12-09")
+    del bare["value"]["answer"]
+    r = client.post("/annotations/batch", json={"ops": [bare]})
+    assert r.status_code == 400
+    [reason] = r.json()["detail"]["reasons"]
+    assert reason["code"] == "bad_op" and "note" in reason["message"]
+    assert sorted(p.name for p in adir.iterdir()) == files
+
+    r = client.post("/annotations/batch", json={"ops": [_feedback("f-pc-2", "2025-12-08", "2025-12-09")]})
+    assert r.status_code == 200, r.text
+    rewritten = _feedback("f-pc-2", "2025-12-08", "2025-12-09", base=r.json()["revs"]["feedback"]["f-pc-2"], note="补一句")
+    del rewritten["value"]["answer"]
+    r = client.post("/annotations/batch", json={"ops": [rewritten]})
+    assert r.status_code == 200, r.text
+    assert all("answer" not in f for f in r.json()["state"]["charts"][0]["feedback"])
 
 
 def test_append_violation_is_rejected_with_reasons(snapshot, adir):
@@ -223,7 +252,7 @@ def _fb(oid, symbol, start, end, target="range", pattern="p", **extra):
     return {"kind": "feedback", "id": oid, "base": None,
             "value": {"id": oid, "symbol": symbol, "pattern": pattern, "app_id": "bo_only",
                       "app_ver": "0123456789abcdef", "start": start, "end": end, "target": target,
-                      "source": "picked", "answer": "off_pattern", "segments": ["bo"], **extra}}
+                      "source": "picked", "answer": "off_pattern", "nodes": ["bo"], **extra}}
 
 
 @pytest.fixture

@@ -206,7 +206,7 @@ describe('合进的主视图副图', () => {
     const plain = buildSubDecorGraphics(geom.bandGeom, geom.bracketH, ['plateau', 'step'], false, 800)
     expect(plain.filter(x => x.type === 'text').map(x => x.style.text)).toEqual(['plateau', 'step'])
   })
-  it('buildSubOption 读 input.hoverBand(反馈面板悬停的分段):那一行垫浅蓝底、描中蓝边;不给不画', () => {
+  it('buildSubOption 读 input.hoverBand(反馈面板悬停的 node):那一行垫浅蓝底、描中蓝边;不给不画', () => {
     const bundle = computeEventData(bars, [ev('plateau', 1, 4), ev('step', 2, 2)], [], input)
     const geom = computeSubGeometry({ bracketLaneCount: 0, bandLaneCounts: [1, 1] })
     const lit = (o: any) => o.graphic.filter((x: any) => x.type === 'rect' && x.style.stroke === 'rgb(26, 128, 186)')

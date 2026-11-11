@@ -1,6 +1,6 @@
 # node 语义契约 · tb(bottom_burst · throwback_v4 三态价格行为状态机)
 
-> 本文由 **authoring-path2-detector** 在创建/修改本 detector 时同步维护——诊断"为什么"的语义依据,与代码必须一致;不一致时以代码为准(代码是 SSoT)。
+> 本文由 **write-detector** 在创建/修改本 detector 时同步维护——诊断"为什么"的语义依据,与代码必须一致;不一致时以代码为准(代码是 SSoT)。
 > 首次沉淀:2026-08-16 tb v4 落地(subagent-driven 实施,spec `docs/superpowers/specs/2026-08-16-tb-v4-state-machine-design.md` 定稿)。
 
 模块:`path2/atoms/throwback_v4.py` · 消费者:bottom_burst 的 `tb` node(node id `tb`、子结构 node `tb_seg`、`eval_meta.end_node = 'tb.segments'`)

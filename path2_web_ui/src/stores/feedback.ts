@@ -13,47 +13,61 @@
  *
  * 作答面板(panel,同时只开一个,浮在 x、y 处;组件在 components/FeedbackPanel.vue):
  * - open(at, 范围):点 ▼ / 点一族 / 拖选松手时打开。这只股票、当前 pattern 已有范围完全相同的反馈时直接打开
- *   那条(防重复);否则若有 redraw 带过来的答案(carry)且这次是拖出来的 range,用它预填、保存时覆盖原记录
+ *   那条(防重复);否则若有 redraw 带过来的内容(carry)且这次是拖出来的 range,用它预填、保存时覆盖原记录
  *   (拖出的范围恰好和 redraw 的那条原来一样时也走 carry;拖选一次就用掉 carry,落在别的已有反馈上时打开那条);
  *   open(at, {id}):点已有的记号,打开那条(预填,editingId 为它的编号)。盲看标记、不属于当前 pattern 的不打开。
  *   面板开着时再 open 就是关旧开新(switchTo 是它的别名),不存;
- * - setAnswer / setNote / toggleSegment 改草稿;切到 neg 时清掉已选分段;
- * - save():保存条件满足才存(存了就关面板),返回存没存;problems 是还缺什么(面板里标出来);
- * - startRedraw():把正在改的那条的答案、理由、分段记进 carry 并关面板,由调用方点亮 feedback 工具;下一次拖选
+ * - 面板没有「先选答案」这一步:一打开就能点 node、写 note。setNote / toggleNode 改草稿;
+ *   打开一条以前存下的带 answer(可能还带 dag)的记录时只预填它的 note 与 nodes,保存后那条就改写成不带这两个键的形状;
+ * - issue(几处反馈共享同一份内容,规则见 annotate/feedback.ts):草稿的 link 记着这一处连着哪个 issue(组键)——
+ *   打开已有的一处时是它自己的那个,新标一处时没有,pickIssue(key) 从列表里挑一条就连过去并把 note、nodes
+ *   填成它的(再点已连着的那条 = 不连了,内容留着);panelIssue 是 link 指的那一组。
+ *   panelIssues 是面板里可挑的(当前 pattern 的全部 issue,一打开就有);panelNeedsChoice 为真表示连着的 issue
+ *   还有别的处、内容又改了,得先问 all / only_this;
+ * - save(choice):保存条件满足才存(存了就关面板),返回存没存;problems 是还缺什么(面板里标出来)。
+ *   要问 all / only_this 而 choice 没给时不存。all 把那个 issue 的各处在同一批里一起改;
+ * - startRedraw():把正在改的那条的理由、node、连着的 issue 记进 carry 并关面板,由调用方点亮 feedback 工具;下一次拖选
  *   打开的 range 面板用它预填,存的时候同编号覆盖(target 改为 range、去掉 family_start);clearCarry() 放弃;
  * - close():关掉不存。换股票、换模式、app 重跑时自动关(carry 在换股票、换模式时也放弃);点面板外、平移缩放、
  *   副图滚动由界面调 close()。
  * - opens:每打开一次(含关旧开新)加一。面板组件据此重挂「点面板外就关」的监听、清掉上一次的保存提示。
  * carry 只在 feedback 工具亮着时留着:工具以任何方式熄灭(Esc、再点按钮、换成别的工具、拖完一次)都放弃它。
  * 拖完一次时先熄工具、再在同一段同步代码里 open 用掉 carry,下面的 watch 晚一步才跑,不会抢在 open 之前清掉。
- * selectedId:选中的那条反馈(图上加粗描边;侧栏点行时设);删掉它时清掉。
- * 面板派生量:panelPosInside(范围里有没有当前 pattern 的正样本)、panelSegments(off_pattern 的分段按钮)。
+ * selectedId:选中的那条反馈(图上记号描黑粗边、另有一条贯穿主副图的竖带;侧栏点行、点记号时设);删掉它时清掉。
+ * editRequest:侧栏卡片的 edit 在落到那段日期之后提的「在那条记号旁打开面板」(requestEdit);面板的锚点是记号在
+ *   图上的像素位置,只有图表组件算得出,所以由 components/KlineChart.vue 接下、打开面板后 takeEditRequest() 消费掉。
+ *   换股票、换模式时作废。
+ * 面板派生量:panelPosInside(范围里有没有当前 pattern 的正样本)、panelNodes(node 按钮)。
+ * placesById:当前 pattern 里每条用户自己挑的反馈所在的 issue 有几处(图上记号的悬停用)。
  */
 import { defineStore } from 'pinia'
 import { computed, onScopeDispose, ref, shallowRef, watch } from 'vue'
 import { getFeedbackStatus } from '../api'
-import { chartOf, findFeedback, type FeedbackAnswer } from '../annotate/model'
+import { chartOf, findFeedback } from '../annotate/model'
 import {
-  findSameRange, hitsBuyingIn, posSamplesInside, saveProblems, segmentChoices,
-  type FeedbackProblem, type FeedbackRange, type FeedbackStatusOf,
+  findSameRange, hitsBuyingIn, issueChoices, issueGroups, issueKey, needsIssueChoice, nextIssueValue, planIssueSave,
+  posSamplesInside, saveProblems, nodeChoices,
+  type FeedbackProblem, type FeedbackRange, type FeedbackStatusOf, type IssueChoice, type IssueGroup,
 } from '../annotate/feedback'
 import { useAnnotationStore } from './annotation'
 import { useViewStore } from './view'
 
-/** 面板浮在哪(视口坐标,同点击事件的 clientX / clientY)。 */
-export interface PanelAt { x: number; y: number }
+/** 面板浮在哪(视口坐标,同点击事件的 clientX / clientY);yUp 只在锚的是一条记号时给(记号的顶,
+ *  下边放不下时面板翻到它上方,见 components/feedbackPanel.ts 的 placePanel)。 */
+export interface PanelAt { x: number; y: number; yUp?: number }
 
-/** 作答面板的状态:范围、答案、理由、分段;editingId 是正在改的那条(新建时没有);carry 为真表示是 redraw 拖出来的。 */
+/** 作答面板的状态:范围、理由、点出的 node;editingId 是正在改的那条(新建时没有);carry 为真表示是
+ *  redraw 拖出来的;link 是连着的 issue 的组键(没连着就没有这个键)。 */
 export interface FeedbackPanel extends FeedbackRange, PanelAt {
   editingId?: string
-  answer?: FeedbackAnswer
   note?: string
-  segments?: string[]
+  nodes?: string[]
   carry?: boolean
+  link?: string
 }
 
-/** redraw 带进下一次拖选的东西:改的是哪条、答案、理由、分段。 */
-export interface FeedbackCarry { editingId: string; answer?: FeedbackAnswer; note?: string; segments?: string[] }
+/** redraw 带进下一次拖选的东西:改的是哪条、理由、点出的 node、连着的 issue。 */
+export interface FeedbackCarry { editingId: string; note?: string; nodes?: string[]; link?: string }
 
 export const useFeedbackStore = defineStore('feedback', () => {
   const view = useViewStore()
@@ -72,6 +86,7 @@ export const useFeedbackStore = defineStore('feedback', () => {
   const opens = ref(0)
   const carry = ref<FeedbackCarry | null>(null)
   const selectedId = ref<string | null>(null)
+  const editRequest = ref<string | null>(null)
 
   // ── 状态 ──
 
@@ -137,25 +152,25 @@ export const useFeedbackStore = defineStore('feedback', () => {
     const base: FeedbackPanel = { x: at.x, y: at.y, symbol: what.symbol, start: what.start, end: what.end, target: what.target }
     if (what.target === 'family' && what.family_start) base.family_start = what.family_start
     if (c) {
-      panel.value = { ...base, editingId: c.editingId, answer: c.answer, note: c.note ?? '',
-                      segments: [...(c.segments ?? [])], carry: true }
+      panel.value = { ...base, editingId: c.editingId, note: c.note ?? '', nodes: [...(c.nodes ?? [])],
+                      ...(c.link ? { link: c.link } : {}), carry: true }
     } else {
-      panel.value = { ...base, note: '', segments: [] }
+      panel.value = { ...base, note: '', nodes: [] }
     }
     opens.value++
     return true
   }
 
-  /** 打开一条已有的反馈:盲看标记、不属于当前 pattern 的不开(存不进去,见 annotation.saveFeedback)。 */
+  /** 打开一条已有的反馈:盲看标记、不属于当前 pattern 的不开(存不进去,见 annotation.saveFeedback)。
+   *  只预填 note 与 nodes:记录上以前存下的 answer、dag 不进面板(保存后那条就不再带它们)。 */
   function openRecord(at: PanelAt, id: string): boolean {
     const hit = ann.state ? findFeedback(ann.state, id) : null
     if (!hit || hit.feedback.source !== 'picked' || hit.feedback.pattern !== ann.currentPattern) return false
     const fb = hit.feedback
     const p: FeedbackPanel = {
-      x: at.x, y: at.y, symbol: hit.chart.symbol, start: fb.start, end: fb.end, target: fb.target,
-      editingId: fb.id, note: fb.note ?? '', segments: [...(fb.segments ?? [])],
+      x: at.x, y: at.y, ...(at.yUp !== undefined ? { yUp: at.yUp } : {}), symbol: hit.chart.symbol, start: fb.start, end: fb.end, target: fb.target,
+      editingId: fb.id, note: fb.note ?? '', nodes: [...(fb.nodes ?? [])], link: issueKey(fb),
     }
-    if (fb.answer === 'neg' || fb.answer === 'off_pattern') p.answer = fb.answer
     if (fb.target === 'family' && fb.family_start) p.family_start = fb.family_start
     panel.value = p
     opens.value++
@@ -165,33 +180,44 @@ export const useFeedbackStore = defineStore('feedback', () => {
   /** 关掉面板,不存。 */
   function close(): void { panel.value = null }
 
-  function setAnswer(a: FeedbackAnswer): void {
-    if (!panel.value) return
-    panel.value = { ...panel.value, answer: a, ...(a === 'neg' ? { segments: [] } : {}) }
+  /** 从列表里挑一条 issue:连过去,note、nodes 填成它的;再点已连着的那条 = 不连了(内容留着)。 */
+  function pickIssue(key: string): void {
+    const p = panel.value
+    const g = groupByKey.value.get(key)
+    if (!p || !g) return
+    const { link, ...rest } = p
+    panel.value = link === key ? rest : { ...rest, note: g.note, nodes: [...g.nodes], link: key }
   }
 
   function setNote(note: string): void {
     if (panel.value) panel.value = { ...panel.value, note }
   }
 
-  /** 点一个分段按钮:没选上就选上,选上了就拿掉(可多选)。 */
-  function toggleSegment(node: string): void {
+  /** 点一个 node 按钮:没选上就选上,选上了就拿掉(可多选)。 */
+  function toggleNode(node: string): void {
     if (!panel.value) return
-    const cur = panel.value.segments ?? []
-    panel.value = { ...panel.value, segments: cur.includes(node) ? cur.filter(x => x !== node) : [...cur, node] }
+    const cur = panel.value.nodes ?? []
+    panel.value = { ...panel.value, nodes: cur.includes(node) ? cur.filter(x => x !== node) : [...cur, node] }
   }
 
   /** 保存条件还缺什么(面板里标出来);没开面板为空。 */
   const problems = computed<FeedbackProblem[]>(() => (panel.value ? saveProblems(panel.value) : []))
 
-  /** 存面板里的这条:条件满足、存得下才关面板;返回存没存。 */
-  function save(): boolean {
+  /**
+   * 存面板里的这条:条件满足、存得下才关面板;返回存没存。连着的 issue 还有别的处、内容又改了时要 choice
+   * (all 各处一起改 / only_this 只这一处),没给就不存。
+   */
+  function save(choice: IssueChoice | null = null): boolean {
     const p = panel.value
-    if (!p || saveProblems(p).length) return false
+    if (!p || !ann.state || saveProblems(p).length) return false
+    const st = ann.state
+    const plan = planIssueSave(p, panelIssue.value, p.editingId ?? null, choice, () =>
+      nextIssueValue(st.charts.flatMap(c => (c.feedback ?? []).map(f => f.issue)), st.machine))
+    if (plan.ask) return false
     const id = ann.saveFeedback({
       id: p.editingId, symbol: p.symbol, start: p.start, end: p.end, target: p.target,
-      family_start: p.family_start, answer: p.answer, note: p.note, segments: p.segments,
-    })
+      family_start: p.family_start, note: p.note, nodes: p.nodes, issue: plan.issue,
+    }, plan.others)
     if (!id) return false
     panel.value = null
     return true
@@ -204,12 +230,13 @@ export const useFeedbackStore = defineStore('feedback', () => {
     if (selectedId.value === id) selectedId.value = null
   }
 
-  /** redraw:把正在改的那条的答案、理由、分段记进 carry 并关面板;返回成没成(面板没开着一条已有的不成)。
+  /** redraw:把正在改的那条的理由、node、连着的 issue 记进 carry 并关面板;返回成没成(面板没开着一条已有的不成)。
    *  点亮 feedback 工具由调用方做。 */
   function startRedraw(): boolean {
     const p = panel.value
     if (!p?.editingId) return false
-    carry.value = { editingId: p.editingId, answer: p.answer, note: p.note ?? '', segments: [...(p.segments ?? [])] }
+    carry.value = { editingId: p.editingId, note: p.note ?? '', nodes: [...(p.nodes ?? [])],
+                    ...(p.link ? { link: p.link } : {}) }
     panel.value = null
     return true
   }
@@ -218,11 +245,54 @@ export const useFeedbackStore = defineStore('feedback', () => {
 
   function select(id: string | null): void { selectedId.value = id }
 
-  // 换股票、换模式:关面板、放弃 redraw;app 重跑(含开始重跑时清掉旧结果):关面板
-  watch([() => view.symbol, () => view.mode], () => { panel.value = null; carry.value = null })
+  /** 侧栏卡片的 edit:请图表在那条记号旁打开面板(图表落定后才提,见 components/FeedbackPage.vue)。 */
+  function requestEdit(id: string): void { editRequest.value = id }
+  /** 图表接下 edit 的请求:给出编号并消费掉;没有为 null。 */
+  function takeEditRequest(): string | null {
+    const id = editRequest.value
+    editRequest.value = null
+    return id
+  }
+
+  // 换股票、换模式:关面板、放弃 redraw、作废还没接下的 edit;app 重跑(含开始重跑时清掉旧结果):关面板
+  watch([() => view.symbol, () => view.mode], () => { panel.value = null; carry.value = null; editRequest.value = null })
   watch(() => view.linkedRun, () => { panel.value = null })
   // feedback 工具熄了(不论怎么熄的):redraw 带过来的东西作废,免得留到以后哪次拖选、悄悄覆盖原记录
   watch(() => ann.tool, (t) => { if (t !== 'feedback') carry.value = null })
+
+  // ── issue ──
+
+  /** 当前 pattern 里用户自己挑的全部反馈(跨股票,含还没存完的)。 */
+  const pickedRows = computed(() => ann.feedbackOfPattern().filter(r => r.feedback.source === 'picked'))
+  /** 它们按 issue 分的组,按组键查。 */
+  const groupByKey = computed(() => new Map(issueGroups(pickedRows.value).map(g => [g.key, g] as const)))
+  /** 每条反馈所在的 issue 有几处。 */
+  const placesById = computed(() => {
+    const out: Record<string, number> = {}
+    for (const g of groupByKey.value.values()) for (const r of g.rows) out[r.feedback.id] = g.rows.length
+    return out
+  })
+
+  /** 面板里可挑的 issue:当前 pattern 的全部(只有正在改的这一处自己的那个除外),最近用过的在前。 */
+  const panelIssues = computed<IssueGroup[]>(() => {
+    const p = panel.value
+    return p ? issueChoices(pickedRows.value, p.editingId ?? null) : []
+  })
+  /** 这一处眼下连着的 issue:草稿的 link 指的那一组;没有为 null。 */
+  const panelIssue = computed<IssueGroup | null>(() => {
+    const link = panel.value?.link
+    return (link ? groupByKey.value.get(link) : undefined) ?? null
+  })
+  /** 保存前得先问 all / only_this:连着的 issue 还有别的处,内容又和它不一样。 */
+  const panelNeedsChoice = computed(() => {
+    const p = panel.value
+    return !!p && needsIssueChoice(p, panelIssue.value, p.editingId ?? null)
+  })
+  /** 连着的 issue 连同这一处一共几处(没连着为 0)。 */
+  const panelPlaces = computed(() => {
+    const p = panel.value, g = panelIssue.value
+    return p && g ? g.rows.filter(r => r.feedback.id !== p.editingId).length + 1 : 0
+  })
 
   // ── 面板派生量 ──
 
@@ -233,21 +303,24 @@ export const useFeedbackStore = defineStore('feedback', () => {
       && posSamplesInside(chartOf(ann.state, p.symbol), ann.currentPattern, p.start, p.end).length > 0
   })
 
-  /** off_pattern 的分段按钮(node_id,按拓扑顺序):范围里买的那些 hit 绑定的 node 及其子 node;
-   *  已选上、当前拓扑里已没有的分段排在最后。面板的股票不是图上这只时只有已选的。 */
-  const panelSegments = computed<string[]>(() => {
+  /** node 按钮(node_id,按拓扑顺序):范围里买的那些 hit 绑定的 node 及其子 node;
+   *  已选上、当前拓扑里已没有的 node 排在最后。面板的股票不是图上这只时只有已选的。 */
+  const panelNodes = computed<string[]>(() => {
     const p = panel.value
     if (!p) return []
-    const keep = p.segments ?? []
+    const keep = p.nodes ?? []
     const a = view.effectiveAnalysis
-    if (!a || view.symbol !== p.symbol) return segmentChoices([], null, keep)
+    if (!a || view.symbol !== p.symbol) return nodeChoices([], null, keep)
     const hits = hitsBuyingIn(a.hits, a.events, view.endNode, view.barDates, p.start, p.end)
-    return segmentChoices(hits, view.effectivePattern?.topology, keep)
+    return nodeChoices(hits, view.effectivePattern?.topology, keep)
   })
 
   return {
     statusById, loading, error, app, appVer, reason, refresh,
-    panel, opens, carry, selectedId, problems, panelPosInside, panelSegments,
-    open, switchTo: open, close, setAnswer, setNote, toggleSegment, save, remove, startRedraw, clearCarry, select,
+    panel, opens, carry, selectedId, editRequest, problems, panelPosInside, panelNodes,
+    panelIssues, panelIssue, panelNeedsChoice, panelPlaces, placesById,
+    open, switchTo: open, close, setNote, toggleNode, pickIssue, save, remove, startRedraw,
+    clearCarry, select,
+    requestEdit, takeEditRequest,
   }
 })

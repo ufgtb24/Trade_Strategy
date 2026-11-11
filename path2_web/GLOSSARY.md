@@ -64,14 +64,19 @@ pattern 的 DAG 图，同时是 node 的控制器：点节点切显隐，双击�
 ### 标注工具
 
 **off_pattern / 不像**：
-= a blind-review or feedback answer given when the hit does not have the shape of the pattern at all.
-盲看作答的三个取值之一，也是 feedback 的两个答案之一；另两个 `pos`、`neg` 与样本的 judgment 同义（是这个 pattern、当天会买 / 像这个 pattern、当天看得出不该买）。`off_pattern` 说 app 认出的东西连样子都不对，毛病在翻译：dag 缺一样 `must`，或 where 太松；`neg` 说样子对、pattern 缺一条 `must_not`。两者指向相反的改法，所以分开。盲看随机部分里判 `off_pattern` 的张数是忠实度计数，只说明 app 有没有走样，不说明赚不赚钱。
+= a blind-review answer given when the hit does not have the shape of the pattern at all.
+盲看作答的三个取值之一；另两个 `pos`、`neg` 与样本的 judgment 同义（是这个 pattern、当天会买 / 像这个 pattern、当天看得出不该买）。`off_pattern` 说 app 认出的东西连样子都不对，毛病在翻译：dag 缺一样 `must`，或 where 太松；`neg` 说样子对、pattern 缺一条 `must_not`。两者指向相反的改法，所以分开。盲看随机部分里判 `off_pattern` 的张数是忠实度计数，只说明 app 有没有走样，不说明赚不赚钱。只有盲看这样答；feedback 不分 `neg` 和 `off_pattern`。
 _Avoid_: 不是 —— 分不出是 `off_pattern` 还是 `neg`。
 
 **feedback / 反馈**：
-= a judgment the user gives on the app's buy points within a date range, while the whole chart is visible.
-用户在图上对 app 已经买了的地方挑刺：选一个买点、一族（hits 行里起点相同、并成一串的那些 hit）或拖一段日期，答 `neg`（样子对、这时不该买，写一句理由）或 `off_pattern`（样子不对，点出认错的段）。只挑刺，不评 `pos`；漏检照旧放正样本。和盲看作答共用一种记录，来源记 `picked`；作答时看得见后续走势，所以不进任何比例，只给会话当线索、给每次改版当核对：反馈的那段日期里 app 还有买点，就显示朱红。没反馈的买点不是认可，只是还没评。
-_Avoid_: review —— 已是复核的名字；pos 反馈 —— 反馈没有 `pos`，该买的日子放正样本。
+= a note the user writes on the app's buy points within a date range, optionally pinned to nodes, while the whole chart is visible.
+用户在图上对 app 已经买了的地方挑刺：选一个买点、一族（hits 行里起点相同、并成一串的那些 hit）或拖一段日期，写一句 note 说这里买有什么不对（必写），可以再点出问题落在哪几个 node 上（可多选；一个都不点，表示不在某一个 node 上或说不清）。只从股票本身说问题：是 app 认得比定义松，还是定义里缺这一条，由会话对照用户的定义判断，用户不用分。只挑刺，不评 `pos`；漏检照旧放正样本。和盲看作答共用一种记录，来源记 `picked`；作答时看得见后续走势，所以不进任何比例，只给会话当线索、给每次改版当核对：反馈的那段日期里 app 还有买点，就显示朱红。没反馈的买点不是认可，只是还没评。一条 feedback 是一处（某只股票的一段日期）；几处 feedback 可以指向同一个 issue。
+_Avoid_: review —— 已是复核的名字；pos 反馈 —— 反馈没有 `pos`，该买的日子放正样本；neg 反馈、off_pattern 反馈 —— 反馈不分这两种，它们是盲看作答的取值。
+
+**issue / 问题**：
+= the note and nodes that one or more feedback share.
+用户对 app 挑出的一个毛病：一句 note，加上点出的 node（可以没有）。可以标在好几处（不同股票、不同日期范围），各处是各自的 feedback，共享同一份内容。改内容时，各处一起改（把同一个 issue 说得更准），或只改一处（这一处另立成新 issue）。侧栏 `feedback` 页按 issue 分组，组头写标了几处、其中几处 app 还在买；会话每轮按 issue 给处理建议。只标了一处的也是一个 issue。
+_Avoid_: 理由 —— 理由只是 issue 里的 note，issue 还包括点出的 node；原因 —— 已是会话原因标签的说法（那一处为什么还红着）。
 
 **review / 复核**：
 = the `next` value shown while an app that passed the final check is in provisional use and waits for enough new data to be checked again.

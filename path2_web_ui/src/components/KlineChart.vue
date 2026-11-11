@@ -53,10 +53,15 @@
     <!-- compare 的 feedback 工具:拖动中贯穿主副图的竖带;拖出的范围里没有买点时,在松开处浮 2 秒 no buy in range -->
     <div v-if="rangeBand" class="feedback-range-band" data-testid="feedback-range-band"
          :style="{ left: `${rangeBand.left}px`, width: `${rangeBand.width}px` }" />
+    <!-- compare:选中的那条反馈(侧栏点卡片、点记号)的日期范围,贯穿主副图的竖带:很淡的底 + 两侧深色实线边
+         (拖选草稿是虚线边);范围伸出图窗的那一侧不画边 -->
+    <div v-if="selectedBand" class="feedback-selected-band" data-testid="feedback-selected-band"
+         :class="{ 'cut-left': selectedBand.cutLeft, 'cut-right': selectedBand.cutRight }"
+         :style="{ left: `${selectedBand.left}px`, width: `${selectedBand.width}px` }" />
     <div v-if="noBuyHint" class="resize-stop" data-testid="feedback-no-buy"
          :style="{ left: `${noBuyHint.x + 12}px`, top: `${noBuyHint.y + 12}px` }">no buy in range</div>
     <!-- compare 的反馈作答面板(浮在点击处,状态在 stores/feedback.ts) -->
-    <FeedbackPanel v-if="comparing && fb.panel" :feature-of="featureOfNode" @hover-segment="onHoverSegment" />
+    <FeedbackPanel v-if="comparing && fb.panel" :feature-of="featureOfNode" @hover-node="onHoverNode" />
     <div v-if="contextMenuVisible" ref="driverMenuEl" class="driver-menu"
          :style="{ left: contextMenuPos.x + 'px', top: contextMenuPos.y + 'px' }">
       <!-- 复制 instance_id · marker 右键即显示(contextMenuInstanceId 非 null)、空白右键隐藏 -->
@@ -102,7 +107,7 @@ import {
 import {
   computeSubGeometry, composeEffectiveSubH, SUB_CANVAS_MIN_H, MIN_SUB_H,
   MAIN_MIN_H, BAND_ZOOM_MIN, BAND_ZOOM_MAX, LS_KEY_BAND_ZOOM,
-  BAND_ZOOM_STEP_BUTTON, BAND_ZOOM_STEP_WHEEL,
+  BAND_ZOOM_STEP_BUTTON, BAND_ZOOM_STEP_WHEEL, FEEDBACK_ROW_H,
 } from '../render/subGeometry'
 import { ctrlState } from '../render/ctrlState'
 import { bandKeyOf, nodeOfEventByBand, resolveTooltipData, windowOf, formatForwardReturn, subBandTagList } from '../render/visible'
@@ -115,7 +120,7 @@ import ShiftPairBanner from './ShiftPairBanner.vue'
 import ResizableDivider from './ResizableDivider.vue'
 import CrosshairOverlay from './CrosshairOverlay.vue'
 import FeedbackPanel from './FeedbackPanel.vue'
-import { rangeBandPx } from './feedbackPanel'
+import { markAnchor, rangeBandPx, selectedBandPx } from './feedbackPanel'
 import { useAnnotationStore } from '../stores/annotation'
 import { chartOf, computeLanes, type AnnBox } from '../annotate/model'
 import { emptySlots } from '../annotate/membership'
@@ -136,7 +141,7 @@ import { defaultFocus } from '../annotate/compareRead'
 import { useFeedbackStore } from '../stores/feedback'
 import { useLandingStore } from '../stores/landing'
 import { buyDatesIn, posSamplesInside } from '../annotate/feedback'
-import { feedbackMarks, feedbackRowCount, feedbackTip } from '../render/feedbackStrip'
+import { dateSpanToIdx, feedbackMarks, feedbackRowCount, feedbackTip } from '../render/feedbackStrip'
 
 const view = useViewStore()
 const { symbol, effectiveAnalysis, nodeColors, nodeVisible, level, tagMap, isolated,
@@ -221,9 +226,9 @@ function feedbackTipOf(id: string): string {
   const f = cmpFeedbackList.value.find(x => x.id === id)
   if (!f) return ''
   const inside = posSamplesInside(annChart.value, ann.currentPattern, f.start, f.end).length > 0
-  return feedbackTip(f, fb.statusById[id], inside)
+  return feedbackTip(f, fb.statusById[id], inside, fb.placesById[id] ?? 1)
 }
-// 作答面板的分段按钮(node):文字同 band 表头(node 名 + 对到它的用户特征名);悬停时那条 band 加亮
+// 作答面板的 node 按钮:文字同 band 表头(node 名 + 对到它的用户特征名);悬停时那条 band 加亮
 // (hoverBand,副图装饰层在那一行垫一条浅蓝底、描蓝边,离开即消失;面板关了也消失)
 const hoverBand = ref<string | null>(null)
 /** node 所在的 band(副图里的一行);band 键就是 node 名,或这一行合并了几个 node 时含它的那一行 */
@@ -237,7 +242,7 @@ function featureOfNode(node: string): string | null {
   const b = bandOfNode(node)
   return b ? bandExtras.value[b]?.feature ?? null : null
 }
-function onHoverSegment(node: string | null) { hoverBand.value = node ? bandOfNode(node) : null }
+function onHoverNode(node: string | null) { hoverBand.value = node ? bandOfNode(node) : null }
 watch(() => fb.panel, (p) => { if (!p) hoverBand.value = null })
 // feedback 工具拖选中的竖带(相对 kline-wrap 的像素)与「范围里没有买点」的提示(视口坐标)
 const rangeBand = ref<{ left: number; width: number } | null>(null)
@@ -261,7 +266,7 @@ function setRangeBand(r: { start: string; end: string } | null) {
                          MAIN_GRID_LEFT, el.clientWidth - MAIN_GRID_RIGHT)
   rangeBand.value = px ? { left: px.left + mainCanvasOffsetX.value, width: px.width } : null
 }
-/** 拖完一段(工具已熄):范围里有 app 的买点日就在松开处打开 range 面板(redraw 带来的答案由 store 预填),
+/** 拖完一段(工具已熄):范围里有 app 的买点日就在松开处打开 range 面板(redraw 带来的内容由 store 预填),
  *  没有就放弃 redraw 带来的东西、在松开处提示 no buy in range */
 function onRangeDone(start: string, end: string, at: { x: number; y: number }) {
   const a = effectiveAnalysis.value
@@ -271,10 +276,64 @@ function onRangeDone(start: string, end: string, at: { x: number; y: number }) {
   if (!sym || !days.length) { fb.clearCarry(); showNoBuy(at); return }
   fb.open(at, { symbol: sym, start, end, target: 'range' })
 }
+// 选中的那条反馈的竖带(相对 kline-wrap 的像素):这只股票、当前 pattern、用户自己挑的那条才有(同反馈带上画的);
+// 落点同拖选的竖带(整根 K 线对齐主图的 x 轴)。主图每画完一帧(平移、缩放、重画、改尺寸)重算一次,值没变不动
+const selectedSpan = computed(() => {
+  const id = fb.selectedId
+  const f = id ? cmpFeedbackList.value.find(x => x.id === id && x.source === 'picked') : null
+  return f ? dateSpanToIdx(annDates.value, f.start, f.end) : null
+})
+const selectedBand = ref<{ left: number; width: number; cutLeft: boolean; cutRight: boolean } | null>(null)
+function syncSelectedBand() {
+  const span = selectedSpan.value
+  const el = mainEl.value
+  const main = chartMain
+  const px = span && main && el
+    ? selectedBandPx(span[0], span[1], (i) => Number(main.convertToPixel({ xAxisIndex: 0 }, i)),
+                     MAIN_GRID_LEFT, el.clientWidth - MAIN_GRID_RIGHT)
+    : null
+  const next = px ? { ...px, left: px.left + mainCanvasOffsetX.value } : null
+  const cur = selectedBand.value
+  if (cur?.left === next?.left && cur?.width === next?.width
+      && cur?.cutLeft === next?.cutLeft && cur?.cutRight === next?.cutRight) return
+  selectedBand.value = next
+}
 // compare 的用户区:特征轨从顶上排起(不随 band zoom 变),user 行接在它们下面
 const cmpUserLanes = computed(() => laneGeometry(annLanes.value, LANES_TOP))
-// compare 副图的总高(画的时候算出来)
-const cmpGeom = shallowRef<{ height: number } | null>(null)
+// compare 副图的总高、反馈带第 0 行的顶(画的时候算出来)
+const cmpGeom = shallowRef<{ height: number; feedbackTop: number } | null>(null)
+/** 反馈带上一条记号在视口里的矩形(侧栏卡片的 edit 拿它当面板的锚点);图上没有这条记号时为 null */
+function feedbackMarkBox(id: string): { left: number; top: number; right: number; bottom: number } | null {
+  const m = cmpFeedbackMarks.value.find(x => x.id === id)
+  const el = subInnerEl.value
+  const g = cmpGeom.value
+  if (!m || !chartSub || !el || !g) return null
+  const sub = chartSub
+  const x = (i: number) => Number(sub.convertToPixel({ xAxisIndex: 0 }, i))
+  const half = Math.abs(x(m.start + 1) - x(m.start)) / 2
+  const r = el.getBoundingClientRect()
+  const top = r.top + g.feedbackTop + m.lane * FEEDBACK_ROW_H
+  const box = { left: r.left + x(m.start) - half, right: r.left + x(m.end) + half, top, bottom: top + FEEDBACK_ROW_H }
+  return Number.isFinite(box.left) && Number.isFinite(box.right) ? box : null
+}
+/**
+ * 侧栏卡片的 edit(stores/feedback.ts 的 editRequest,落到那段日期之后才提):等落下那天引起的重画做完,
+ * 在那条记号旁打开面板并预填,等同在图上点了那条记号。锚点是记号露在副图可见区里那一段的左下角;
+ * 图上没有这条记号(app 没跑成、已被删)时不开。
+ */
+watch(() => fb.editRequest, async (id) => {
+  if (!id) return
+  await nextTick()
+  if (fb.editRequest !== id) return
+  fb.takeEditRequest()
+  const box = feedbackMarkBox(id)
+  const outer = subOuterEl.value?.getBoundingClientRect()
+  const inner = subInnerEl.value?.getBoundingClientRect()
+  if (!box || !outer || !inner) return
+  fb.select(id)
+  fb.open(markAnchor(box, { left: inner.left + MAIN_GRID_LEFT, right: inner.right - MAIN_GRID_RIGHT,
+                            top: outer.top, bottom: outer.bottom }), { id })
+})
 // compare:选中的框所在特征轨对的 node(及子孙)的 band,表头加粗
 const cmpLinkedBands = computed<string[]>(() => {
   const lay = cmpLayout.value
@@ -841,7 +900,7 @@ function renderCompareSub() {
   const subGeom = computeSubGeometry({ ...laneCountsOf(bundle), userContentBottom: bracketContentBottom(bg),
                                        feedbackRowCount: feedbackRowCount(marks) }, bandZoomFactor.value)
   subCanvasH.value = subGeom.subCanvasH
-  cmpGeom.value = { height: subGeom.subCanvasH }
+  cmpGeom.value = { height: subGeom.subCanvasH, feedbackTop: subGeom.feedbackTop }
   const opt: any = buildSubOption(bars.value, bundle, subGeom, params, chartSub.getWidth(),
                                   { getChartEl: () => subInnerEl.value })
   const missing = new Set<string>()
@@ -966,11 +1025,12 @@ function onKeyDown(e: KeyboardEvent) {
   if (annotating.value && ann.tool) {
     annGestures.cancel()
     ann.tool = null
-    fb.clearCarry()                                   // redraw 带过来的答案不留到以后的拖选
+    fb.clearCarry()                                   // redraw 带过来的内容不留到以后的拖选
     ;(document.activeElement as HTMLElement | null)?.blur()
     return
   }
   if (annotating.value) { annGestures.cancel(); ann.clearSelection() }
+  fb.select(null)                                     // 选中的反馈(粗边与竖带)也一并取消
   view.clearFocus()
   // Esc 也退出 brush 光标态(sync Vue state 与 ECharts 内部,防"点两下按钮才能重开")。
   // blur:Esc 本身是键盘事件 · 浏览器会把当前 focus 元素的 :focus-visible 判为 true,
@@ -1144,11 +1204,12 @@ onMounted(() => {
   chartMain.on('brushselected', brushH.onBrushSelected)
   chartMain.on('brushEnd', brushH.onBrushEnd)
   // ZRender blank click:两 chart 各一套
+  // 点空白同时取消选中的反馈(粗边与竖带消失);竖带本身不接事件,点在带里的空白也算空白
   chartMain.getZr().on('click', (e: any) => {
-    if (!e.target) handleChartClick(null, effectiveAnalysis.value?.hits ?? [], view)
+    if (!e.target) { fb.select(null); handleChartClick(null, effectiveAnalysis.value?.hits ?? [], view) }
   })
   chartSub.getZr().on('click', (e: any) => {
-    if (!e.target) handleChartClick(null, effectiveAnalysis.value?.hits ?? [], view)
+    if (!e.target) { fb.select(null); handleChartClick(null, effectiveAnalysis.value?.hits ?? [], view) }
   })
 
   // ResizeObserver 观测两 chart 容器
@@ -1254,6 +1315,8 @@ onMounted(() => {
   }
   chartMain.on('datazoom', relayZoom(chartSub))
   chartSub.on('datazoom', relayZoom(chartMain))
+  // 选中的反馈的竖带跟着主图走:每画完一帧重算(平移、缩放、重画、改尺寸都会画)
+  chartMain.on('rendered', syncSelectedBand)
   // 平移、缩放(主副图的 dataZoom 都是用户操作发起的)收起反馈面板,不存
   chartMain.on('datazoom', () => fb.close())
   chartSub.on('datazoom', () => fb.close())
@@ -1343,10 +1406,12 @@ watch([effectiveAnalysis, nodeVisible, level, nodeColors, focusedInstanceRef, di
 watch(() => [ann.view, ann.selectedBoxId, ann.selectedSampleId, ann.currentSampleId, ann.currentPattern,
              draft.value, preview.value, cmpLayout.value, cmp.sampleReads, cmp.boxReads], () => renderAnnotateLayers())
 // compare:反馈带(反馈的增删改、后端给的状态、选中的那条)变了 → 只重画标注层(含主视图那张副图)
-// (按画出来的样子比:别的标注改动已由上面那条 watch 重画;悬停文字悬停时现算,不必为理由、分段改动重画)
-watch(() => cmpFeedbackMarks.value.map(m => [m.id, m.start, m.end, m.lane, m.label, m.tone, m.selected].join(':')).join('|'),
+// (按画出来的样子比:别的标注改动已由上面那条 watch 重画;悬停文字悬停时现算,不必为理由、node 改动重画)
+watch(() => cmpFeedbackMarks.value.map(m => [m.id, m.start, m.end, m.lane, m.nodes.join(','), m.tone, m.selected].join(':')).join('|'),
       () => renderAnnotateLayers())
-// compare:作答面板的分段按钮悬停 → 对应 band 加亮 / 取消
+// compare:选中的反馈换了(或它的范围、图的左右偏移变了)→ 竖带重算(主图没重画时也要跟上)
+watch([selectedSpan, mainCanvasOffsetX], () => syncSelectedBand())
+// compare:作答面板的 node 按钮悬停 → 对应 band 加亮 / 取消
 watch(hoverBand, () => renderAnnotateLayers())
 // app 模式:band 表头的特征名(mapping、词表)变了
 watch(bandExtras, () => { if (!annotating.value) render(false) })
@@ -1399,6 +1464,13 @@ watch(activeDetailCard, (v, prev) => {
   position: absolute; top: 0; bottom: 0; z-index: 6; pointer-events: none;
   background: rgba(0, 0, 0, 0.16); border-left: 1.5px dashed #555; border-right: 1.5px dashed #555;
 }
+/* 选中的反馈:底很淡(不压 K 线),靠两侧深色实线边认;边线画在范围外侧(一根 K 线宽的范围也看得见里面) */
+.feedback-selected-band {
+  position: absolute; top: 0; bottom: 0; z-index: 5; pointer-events: none; box-sizing: content-box;
+  margin-left: -2px; background: rgba(0, 0, 0, 0.06); border-left: 2px solid #111; border-right: 2px solid #111;
+}
+.feedback-selected-band.cut-left { border-left-color: transparent; }
+.feedback-selected-band.cut-right { border-right-color: transparent; }
 .kline-wrap-v2 {
   display: flex;
   flex-direction: column;

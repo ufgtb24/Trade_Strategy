@@ -250,7 +250,7 @@ class BODetector:
     合一:活跃峰直接是 PeakEvent(登记时即 yield ("pk", ev) 出流)。frozen 的演化
     (elevation 改 price、supersede 锚 original_price)一律用 object.__setattr__,
     detect 结束定稿后不再改。事件 yield 即定稿是通例;本 detector 的 elevation
-    抬价(price / original_price)是现存例外,见 authoring-path2-detector
+    抬价(price / original_price)是现存例外,见 write-detector
     reference §2。
 
     detect 主循环:逐 bar 先登记峰(产 pk 流,可能 0..N 个),再突破检测(产 bo 流,

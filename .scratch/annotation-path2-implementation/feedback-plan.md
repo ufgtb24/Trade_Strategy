@@ -54,11 +54,11 @@
 
 现状要点（行号为写计划时）：`KINDS` :115、`_VALUE_KEYS` :119-124、`_ID_LETTER` :125、`_ID_RE` 写死 `[wbs]` :126、`_state` 除 feature/pattern 外一律归 `samples` :344-346、`_batch_reasons` :427-440、`_causality` :443-470、`_value_problems` 兜底 `else: # sample` :563、`_check_date` 卡训练段末日 :602-604、序号 `append_batch` :395、重放排序 :244。
 
-1. 加 kind `feedback`、编号字母 `f`（`_ID_LETTER`、`_ID_RE` 一起改）。**`SCHEMA`（:114）不变**（spec 6.13：不改 schema 号）。`_VALUE_KEYS["feedback"] = (("id","symbol","pattern","app_id","app_ver","start","end","target","source","answer"), ("note","segments","family_start"))`。
+1. 加 kind `feedback`、编号字母 `f`（`_ID_LETTER`、`_ID_RE` 一起改）。**`SCHEMA`（:114）不变**（spec 6.13：不改 schema 号）。`_VALUE_KEYS["feedback"] = (("id","symbol","pattern","app_id","app_ver","start","end","target","source","answer"), ("note","nodes","family_start"))`。
 2. `_value_problems` 加 `feedback` 分支（**别落进 sample 的兜底 else**）：
    - `symbol` 走 `_check_symbol`；`pattern`、`app_id`、`app_ver` 非空字符串；`start`、`end`、`family_start` 走 `_check_date`（含 ≤ 训练段末日）且 `start ≤ end`；
    - `target ∈ {point, family, range}`；`source ∈ {picked, random, added, removed, tuned_added, tuned_removed}`；
-   - `source = picked`：`answer ∈ {neg, off_pattern}`；`point` 时 `start == end`；`family` 时必有 `family_start` 且 `family_start ≤ start`，非 `family` 不得有 `family_start`；`neg` 的 `note` 非空（带不带 `segments` 不管，前端切到 `neg` 时清掉分段）；`off_pattern` 的 `segments`、`note` 至少一样非空；`segments` 为不重复的非空字符串数组；
+   - `source = picked`：`answer ∈ {neg, off_pattern}`；`point` 时 `start == end`；`family` 时必有 `family_start` 且 `family_start ≤ start`，非 `family` 不得有 `family_start`；`neg` 的 `note` 非空（带不带 `nodes` 不管，前端切到 `neg` 时清掉已选的 node）；`off_pattern` 的 `nodes`、`note` 至少一样非空；`nodes` 为不重复的非空字符串数组；
    - 非 `picked`（盲看标记，现在只为「不可改」能测）：`target = point`、`start == end`、`answer ∈ {pos, neg, off_pattern}`，后两者 `note` 非空。
 3. `_batch_reasons`：已存在且 `source ≠ picked` 的反馈，本批把它删掉、或改了**任何**已有字段（含 `source`，防「先改成 picked 再改」绕过）→ 拒收（新原因码 `blind_immutable`）；只许新增现在还没定义的盲看专有字段——眼下没有，所以实际是一律不可改。
 4. 读时违规：`_replay` 记下每个非 `picked` 反馈第一次出现时的值；`read_annotations` 的 `violations` 追加「后来被删或任何已有字段被改」的条目（与第 3 条同口径）（同成员框越界的做法，同步来的修改不经保存校验）。
@@ -105,9 +105,9 @@
 1. `path2_web_ui/src/annotate/model.ts`：`AnnKind` 加 `'feedback'`；类型 `AnnFeedback`；`AnnChart.feedback?: AnnFeedback[]`；`newId` 收 `'f'`、`ID_SEQ` 改 `[wbsf]`；`applyOps` 按 kind 分桶（:188 现在把非 box 一律当样本）；**:164 浅拷贝时 `feedback` 数组有就一起拷**（否则 splice 会改到后端读结果），空的 `feedback` 不出键，过滤 :199 改为「有框、样本或反馈」；`feedbackValue(...)` 生成带 symbol 的存储值；`AnnRead` 加 `machines?`。修好写死 `revs: {feature, pattern, box, sample}` 的测试夹具（`tests/annotate.model.spec.ts`、`annotate.grouping.spec.ts`、`stores.direct-links.spec.ts`、`stores.annotation.spec.ts`）。
 2. `src/types.ts`：`AppMapping` 加 `session?`、`session_problem?`；预览 `scan` 类型加 `app_ver?`。`src/api.ts` 加 `getFeedbackStatus(pattern)`。
 3. `src/stores/annotation.ts`：`saveFeedback(draft)`（新建或改，改时 `app_ver` 刷新为当前 `view` 里预览带回的值）、`deleteFeedback(id)`，都走现有 `commit` 队列；`feedbackOf(symbol)`、`feedbackOfPattern(pattern)` 取 `view` 里的记录。`AnnotationNotices.vue:113-117` 冲突标签补 `feedback`。
-4. 新 store `src/stores/feedback.ts`：`statusById`、`loading`、`refresh()`（读当前 pattern 全部反馈的状态）；触发时机：进入 compare、换 pattern、保存 / 删除反馈落盘后（`ann.flushed()` 之后）、`view.setLinkedRun` 之后（app 重跑）、窗口重新拿到焦点（同 `appLink` 重读 mapping 的时机）。`statusById` 存接口给的 `{status, tag, red}`。面板状态也放这里：`panel: {x, y, symbol, start, end, target, family_start?, editingId?, answer?, note?, segments?, carry?} | null` 与 `open / close / switchTo`；另有 `selectedId`（选中的那条反馈，图上加粗、侧栏点行时设）。
-5. 纯函数文件 `src/annotate/feedback.ts`（T5、T6、T7 共用，在这里建）：同范围查重、范围里的当前 pattern 正样本（`pos sample inside`）、保存条件、`off_pattern` 分段取法、侧栏排序。
-6. 单测：`feedback.ts` 各函数（分段取法用含孙 node 的合成拓扑）；`applyOps` 反馈分桶、过滤、不改入参；`stores.annotation.spec.ts` 加保存 / 改 / 删反馈的批次断言（照 :196-210 的写法）；`feedback` store 在保存后重取。
+4. 新 store `src/stores/feedback.ts`：`statusById`、`loading`、`refresh()`（读当前 pattern 全部反馈的状态）；触发时机：进入 compare、换 pattern、保存 / 删除反馈落盘后（`ann.flushed()` 之后）、`view.setLinkedRun` 之后（app 重跑）、窗口重新拿到焦点（同 `appLink` 重读 mapping 的时机）。`statusById` 存接口给的 `{status, tag, red}`。面板状态也放这里：`panel: {x, y, symbol, start, end, target, family_start?, editingId?, answer?, note?, nodes?, carry?} | null` 与 `open / close / switchTo`；另有 `selectedId`（选中的那条反馈，图上加粗、侧栏点行时设）。
+5. 纯函数文件 `src/annotate/feedback.ts`（T5、T6、T7 共用，在这里建）：同范围查重、范围里的当前 pattern 正样本（`pos sample inside`）、保存条件、`off_pattern` 的 node 按钮取法、侧栏排序。
+6. 单测：`feedback.ts` 各函数（node 按钮取法用含孙 node 的合成拓扑）；`applyOps` 反馈分桶、过滤、不改入参；`stores.annotation.spec.ts` 加保存 / 改 / 删反馈的批次断言（照 :196-210 的写法）；`feedback` store 在保存后重取。
 
 ## T5 图上：点 ▼ / 格 / 族，反馈带
 
@@ -117,7 +117,7 @@
 2. 族命中区：`bracket-lines` 改成「一整行高的透明 rect（可点）+ silent 底线与竖头」，压在格与 ▼ 下面（z 低于 `brackets`）；数据项带族的全部买点日。点它：族里有买点日时打开 `family` 面板（`start`/`end` = 这一族全部 ▼ 的最早 / 最晚，`family_start` = 族起点**日期**——图数据里 `family_start` 是 K 线下标（`chart.ts:351`），要经 dates 换成日期再存，否则存储会拒），没有买点日不弹。`handleChartClick`（`KlineChart.ts:79-96`）加一个 `bracket-lines` 分支并**返回 true**，这样 `onAppClick` 会照旧 `ann.selectBox(null)`（否则先选框再点族、按 Delete 会删掉那个框，`e2e/annotate-compare.spec.ts:16`、`:111` 守的就是这条）；分支里只设 `activeFamily`（或不动焦点），**不要用 `focusHits`**（几个 hit 买点日不同时它会进待选）。代价照 spec 6.13 写进代码注释：原来点格间空白是清选中。
 （面板组件在 T6 写；本任务只调 T4 的 `feedback.open(...)`，单测断言 store 里的 `panel` 状态。）
 3. 点 ▼：照旧 `focusBuyDay`，同时打开 `point` 面板（`start = end =` 那天）；点格：照旧 `focusHits`，这一格那天有买点就同样打开 `point` 面板，没有不弹。同范围已有反馈时打开那条（面板逻辑在 T6）。
-4. 反馈带：`computeSubGeometry` 输入加 `feedbackRowCount`，在 hit 行下面加 `feedbackRowCount × 14px`（固定，不乘缩放）计入 hits 区高度（`bracketH`），band 整体顺移；compare 分界线位置不受影响（只加在 hit 行下面）。几条反馈范围交叠时用 `src/render/geometry.ts:8` `packLanes` 错行。每条一个横跨 `[start, end]` 的记号：宽度放得下才写 `neg` / `off_pattern`，否则只画记号；悬停写全（答案、理由或分段、`status`、原因标签、`pos sample inside`（悬停时现算）、`segments` 里当前拓扑已没有的 node 原样显示）；颜色按接口给的 `red` / `status`（朱红 = `red`；`lost` 白底橙描边；其余常色），状态未取到时按常色。点记号打开同一面板（预填、带 `delete`）。选中的那条加粗描边。
+4. 反馈带：`computeSubGeometry` 输入加 `feedbackRowCount`，在 hit 行下面加 `feedbackRowCount × 14px`（固定，不乘缩放）计入 hits 区高度（`bracketH`），band 整体顺移；compare 分界线位置不受影响（只加在 hit 行下面）。几条反馈范围交叠时用 `src/render/geometry.ts:8` `packLanes` 错行。每条一个横跨 `[start, end]` 的记号：宽度放得下才写 `neg` / `off_pattern`，否则只画记号；悬停写全（答案、理由或点出的 node、`status`、原因标签、`pos sample inside`（悬停时现算）、`nodes` 里当前拓扑已没有的 node 原样显示）；颜色按接口给的 `red` / `status`（朱红 = `red`；`lost` 白底橙描边；其余常色），状态未取到时按常色。点记号打开同一面板（预填、带 `delete`）。选中的那条加粗描边。
 5. 单测：`computeSubGeometry` 加反馈行后的高度与 band 起点；hits 行数据里族命中区、▼、格各带的范围字段。`app` 模式的现有单测与快照不变。
 
 ## T6 `feedback` 工具与作答面板
@@ -125,22 +125,22 @@
 1. 工具：`src/stores/annotation.ts:53` `Tool` 加 `'feedback'`。`src/components/TopBar.vue:54-61` 工具组里 `box`、`point` 旁加 `feedback` 按钮，**只在 compare 出现**；title 照 box 写法（`Shift+F toggles, Esc turns off`）。快捷键 Shift+F 照 `KlineChart.vue:855-860` Shift+B 写，条件改为 compare。熄灭规则沿用：用一次熄（`toolDone`）、Esc（:878-883）、换股换模式（:971）。
 2. 手势（`src/components/annotateGestures.ts`）：`tool()` 可返回 `'feedback'`；亮着时 `claims(y)`（`KlineChart.vue:963-967`）对整张副图（含 app 区）与主图都返回真；新增手势 `range`：按下记起点，移动超过 4 像素（`src/annotate/boxGeometry.ts:10`）才算拖，拖动中 `setDraft` 一个新草稿类型 `{range: [start, end]}`，由标注层画一条贯穿主图与副图的竖带（主图可照 `src/render/annotateLanes.ts:479-500` `mainMarksSeries` 的整高 rect，副图另画一层；浅灰半透明填充 + 深灰虚线边）；松手：工具熄灭，按首尾两根 K 线日期取范围，范围里有买点日（用当前 hits 的买点日）就在松开处打开 `range` 面板，没有就在松开处浮一个 2 秒的提示 `no buy in range`（不是底部 toast）；点一下不拖：当普通点击、工具不熄。（拖动超过 4 像素时 zrender 不派 click，`node_modules/zrender/lib/Handler.js:241-245`，所以拖完落在 ▼ 上不会再开 `point` 面板；但**浏览器在 mouseup 后照样派原生 click 冒泡到 document**，会把刚在 `onUp` 里开的 range 面板当「点面板外」关掉——见下条的处理。）光标 `cursorAt`（:289-304）在工具亮时副图 app 区也返回 `crosshair`。
 3. 面板组件 `src/components/FeedbackPanel.vue`（挂在 `KlineChart.vue`，定位照右键菜单 `openContextMenuAt` :363-382 的「越界就翻边」）：
-   - 页头：股票、日期范围、`target`；初始只有 `neg` / `off_pattern` 两个按钮；点 `neg` 展开一行 `note` 输入并把光标放进去；点 `off_pattern` 展开分段按钮和可选的 `note`；
+   - 页头：股票、日期范围、`target`；初始只有 `neg` / `off_pattern` 两个按钮；点 `neg` 展开一行 `note` 输入并把光标放进去；点 `off_pattern` 展开 node 按钮和可选的 `note`；
    - **不抢焦点**：打开时不 focus 任何东西；按钮 `@mousedown.prevent` 防止点按钮抢焦点；
    - 关闭不存：点面板外（参照 `handleDocumentClick` :443-448；**「点外面就关」的 document 监听要在面板打开后 `setTimeout(0)` 再挂上**，这样打开它的那次图表点击、拖选松手后的原生 click 都不会把它关掉）、平移缩放（dataZoom）、副图滚动、换股、换模式、app 重跑；点到另一个 ▼ / 族 / 记号时关旧开新；
    - 按键：面板开着时在 window 捕获阶段截下 Enter（保存，焦点在按钮上也一样）与 Esc（第一下只关面板，不清选中、不熄工具），截下后 `preventDefault` + `stopPropagation`；**输入法守卫**：`e.isComposing` 或 `e.keyCode === 229` 时一律不截（中文理由组字时 Enter 是上屏、Esc 是取消组字），这个判定写成纯函数并单测；←/→ 不截，照旧在族里走；
-   - 保存条件同 T1 校验（`neg` 要 `note`；`off_pattern` 分段或 `note` 至少一样），不满足时 Enter 不存、在面板里标出缺什么；切到 `neg` 时清掉已选分段；
+   - 保存条件同 T1 校验（`neg` 要 `note`；`off_pattern` 点出的 node 或 `note` 至少一样），不满足时 Enter 不存、在面板里标出缺什么；切到 `neg` 时清掉已选的 node；
    - 防重复：打开时若这只股票、这个 pattern 已有 `start`、`end` 完全相同的反馈，直接打开那条；
-   - 已有记录：预填，多 `delete` 与 `redraw`；`redraw` = 关面板、点亮 `feedback` 工具并把答案、理由、分段带进下一次拖动，拖完开面板（预填），保存时覆盖原记录（同编号，`target` 改 `range`，去掉 `family_start`）；
+   - 已有记录：预填，多 `delete` 与 `redraw`；`redraw` = 关面板、点亮 `feedback` 工具并把答案、理由、点出的 node 带进下一次拖动，拖完开面板（预填），保存时覆盖原记录（同编号，`target` 改 `range`，去掉 `family_start`）；
    - 范围里有当前 pattern 的正样本（这只股票）：页头下一行 `pos sample inside`，不拦；
    - 保存的值：`symbol`、`pattern` = 当前 pattern、`app_id` = 当前 mapping 的 app、`app_ver` = 预览带回的、`source = picked`，其余照面板。
-4. 分段按钮：取范围里买的那些 hit 的 `node_index` 键，加它们在拓扑里的子 node（递归：子 node 由 `TopoNode.parent_refs` 认父，`src/types.ts:16-17`），按拓扑顺序，根 node 保留，可多选；按钮文字与 band 表头相同（node 名 + `bandExtras` 给的特征名，`KlineChart.vue:217-232`，特征名用浅灰底）；悬停 title = mapping `notes[node]` 原话；悬停时对应 band 加亮（新 reactive 状态，副图装饰层在那条 band 表头后画一条浅底，离开即消失）。
+4. node 按钮：取范围里买的那些 hit 的 `node_index` 键，加它们在拓扑里的子 node（递归：子 node 由 `TopoNode.parent_refs` 认父，`src/types.ts:16-17`），按拓扑顺序，根 node 保留，可多选；按钮文字与 band 表头相同（node 名 + `bandExtras` 给的特征名，`KlineChart.vue:217-232`，特征名用浅灰底）；悬停 title = mapping `notes[node]` 原话；悬停时对应 band 加亮（新 reactive 状态，副图装饰层在那条 band 表头后画一条浅底，离开即消失）。
 5. 单测：按键截获判定（含输入法组字）；手势的 range 起止换算。纯函数在 T4 的 `feedback.ts` 里已测。
 
 ## T7 侧栏 `feedback` 页与落在 compare 的链接
 
 1. `src/stores/annotation.ts:52` `SidebarTab` 加 `'feedback'`；`src/components/AnnotationSidebar.vue:36` 的 `TABS` 在 compare 下多一个 `feedback`（annotate 下不出，切回 annotate 时若停在这页就退回 `selection`）；v-if 链 :11-16 加新组件 `src/components/FeedbackPage.vue`；`tests/components/ChartArea.annotate.spec.ts:31` 断言同步改。
-2. 页内容：当前 pattern 的全部反馈（跨股票，来自标注 `view`）；`loading` 态；每行：股票（`.ann-sym`）、日期范围、答案、理由（`.ann-biz`）或分段、`status`；按接口给的 `red` 排前，`lost` 其次，再按股票、日期（排序函数在 `feedback.ts`）；红或 `lost` 的行挂接口给的会话原因标签 `tag`（白底蓝描边）；`session_problem` 非空时页头一行 `session ledger: <原因>`（悬停写全）；行上 `delete`。
+2. 页内容：当前 pattern 的全部反馈（跨股票，来自标注 `view`）；`loading` 态；每行：股票（`.ann-sym`）、日期范围、答案、理由（`.ann-biz`）或点出的 node、`status`；按接口给的 `red` 排前，`lost` 其次，再按股票、日期（排序函数在 `feedback.ts`）；红或 `lost` 的行挂接口给的会话原因标签 `tag`（白底蓝描边）；`session_problem` 非空时页头一行 `session ledger: <原因>`（悬停写全）；行上 `delete`。
 3. 点一行：在 compare 里打开那只股票（`view.openSymbol` 在 compare 下保留模式），视窗移到包住那段日期（可借 `src/annotate/directLinks.ts:61-64` `chartLinkWindow` 的窗口算法），当前日竖线停在 `start`，设 `feedback.selectedId`（记号加粗）。
 4. 链接：`src/annotate/directLinks.ts` `parseLink`（:44-58 现在只认 `date,symbol` 与 `sample`）加「定下的实现默认」里那种带 `pattern` 与 `mode=compare` 的写法；`src/stores/directLinks.ts` 的 `follow`（末尾现在无条件 `enterAnnotate`，:69）对这种链接：先把当前 pattern 设为链接里的 pattern，**等 mappings（页面刚打开时是 null，`appLink.ts:33`）和标注都读完**，这只股票的 compare 可用就落在 compare，否则照旧落在 annotate 并说明原因（文件头说明同步改）。会话改版报告的链接用它。
 5. 单测：`parseLink` 三种写法与坏写法；`follow` 在 mappings 晚到时仍落在 compare；组件挂载断言页签。
@@ -172,7 +172,7 @@
 
 ## T10 端到端（`path2_web_ui/e2e/feedback.spec.ts`）与修现有 e2e
 
-照 `e2e/annotate-compare.spec.ts` 的隔离写法：`startBackend(fill, mappings)` 起 `e2e/annotationBackend.py`（临时标注目录 + 手写 mapping 目录），`routeTo(page, backend)` 把请求转过去；`--workers=1`。playwright 的 webServer 会复用正在 5171 上的前端（只连不动）。覆盖 spec 6.13「检查·界面」：点 ▼、点琥珀格弹面板，保存后记号出现；点族的命中区得到 `family` 范围与起点；工具拖选、用一次熄灭、Esc 熄灭、范围里没有 ▼ 不弹并出 `no buy in range`；面板不抢焦点、点别处关、Esc 先关面板、焦点在按钮上 Enter 也是保存、**拖选松手后面板还在**；先选中一个框再点族，框的选中被取消；`redraw`；同范围不重复；改、删；侧栏排序与点行跳到 compare；`app` 模式不出现反馈。另加：删样本提示与撤销。顺手把 T8 改动弄坏的现有 e2e 修好。截两张图（反馈带三种状态、面板展开分段按钮）存 scratchpad，`scale: 'device'`、不改视口以外的尺寸，交付时给用户过目。
+照 `e2e/annotate-compare.spec.ts` 的隔离写法：`startBackend(fill, mappings)` 起 `e2e/annotationBackend.py`（临时标注目录 + 手写 mapping 目录），`routeTo(page, backend)` 把请求转过去；`--workers=1`。playwright 的 webServer 会复用正在 5171 上的前端（只连不动）。覆盖 spec 6.13「检查·界面」：点 ▼、点琥珀格弹面板，保存后记号出现；点族的命中区得到 `family` 范围与起点；工具拖选、用一次熄灭、Esc 熄灭、范围里没有 ▼ 不弹并出 `no buy in range`；面板不抢焦点、点别处关、Esc 先关面板、焦点在按钮上 Enter 也是保存、**拖选松手后面板还在**；先选中一个框再点族，框的选中被取消；`redraw`；同范围不重复；改、删；侧栏排序与点行跳到 compare；`app` 模式不出现反馈。另加：删样本提示与撤销。顺手把 T8 改动弄坏的现有 e2e 修好。截两张图（反馈带三种状态、面板展开 node 按钮）存 scratchpad，`scale: 'device'`、不改视口以外的尺寸，交付时给用户过目。
 
 ## T11 文档
 
@@ -214,6 +214,10 @@
 | T9 会话侧改版报告 | 完成（审查通过，2026-11-09） |
 | T10 端到端 | 完成（feedback 5/5；4 条环境类旧失败，见交付说明，2026-11-09） |
 | T11 文档 | 完成（主会话核过，2026-11-09） |
+| 改名：反馈里点出认错的那一块从「分段」/ `segments` 改叫 node / `nodes` | 完成（2026-11-09 用户定：node 是 path2 规范词，原叫法是自造词；用户标注里还没有反馈记录，直接改名、不兼容旧字段。存储字段 `segments` → `nodes`，保存条件的问题码 `segments_or_note` / `segments` → `nodes_or_note` / `nodes`，前端 `segmentChoices` / `toggleSegment` / `panelSegments` → `nodeChoices` / `toggleNode` / `panelNodes`，面板标签与 testid 同改） |
+| 打磨（2026-11-09 用户定）：`off_pattern` 加固定按钮 `dag`（毛病不在某个 node 上，必须写 note；nodes 与 dag 至少点一样，只写 note 不再能存；记录多可选键 `dag: true`）；顶层 node 不排除；note 改多行自动长高；feedback 页卡片加 `edit`；选中的反馈加粗边与贯穿主副图的竖带 | 完成（2026-11-09，主会话核过：pytest、vitest、vue-tsc、e2e feedback 6/6） |
+| issue 复用（2026-11-10 用户定）：一份作答（answer、nodes、dag、note）叫一个 issue，几处反馈可共享；面板点了答案后列出同答案的已有 issue 供挑；所属 issue 还有别处且内容改了才问 `all` / `only this`；换答案是这一处离开原 issue；侧栏按 issue 分组、组头写处数与还在买的处数。存法：作答仍写在每条反馈里，共享的几处带同一个可选键 `issue`，保存时校验各处作答相同（原因码 `issue_diverged`）；撤销删除时写回的作答照 issue 现有各处 | 完成（2026-11-10，主会话核过：pytest、vitest、vue-tsc、e2e feedback 7/7） |
+| 反馈不分答案、会话一轮写成 skill（2026-11-10 用户定）：面板拿掉 `neg` / `off_pattern` 与 `dag` 按钮，作答 = 必写的 note + 可选的 node（意思统一为「问题落在这一块上」）；issue = pattern + note + nodes，挑选列表不再按答案过滤。记录：反馈不带 `answer`、`dag`；带 `answer` 的记录（已有文件里的、没更新的页面存的）规则不变、一直收，读出来原样，界面与报告不显示，改一条时去掉；issue 一致性只比 pattern、note、nodes。会话侧：改版报告一条反馈写「（落在 node）「理由」」、「各 issue 现在」逐个 issue 一行；新增 `round_digest`（这一轮的输入摘要）；`start_round` 在还没有 app 时也能定格；round 文件放 `outputs/annotation_rounds/<pattern 名>/`；会话每轮按 issue 给处理清单（直接改 / 要你定 / 这一轮不改），流程写成 skill `annotation-round`；账本 `conditions.state` 约定五个开头词 | 后端与文档完成（2026-11-10：`uv run pytest tests/path2_web -q` 652 过，1 条与本任务无关的旧失败 `test_serialize_tbseg`）；前端、skill 见各自的完成记录 |
 
 基线里已有的失败（2026-11-09 实施前跑，与反馈无关，作对照）：
 

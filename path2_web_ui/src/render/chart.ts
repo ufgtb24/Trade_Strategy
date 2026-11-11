@@ -9,8 +9,8 @@ import { ctrlState } from './ctrlState'
 import { derivePeakStates, peakIdIndex } from './peakState'
 import { MONO } from './fonts'
 import {
-  FEEDBACK_MARK_PAD, FEEDBACK_SELECTED_STROKE_W, FEEDBACK_SERIES, FEEDBACK_STROKE_W, FEEDBACK_TEXT_PAD,
-  FEEDBACK_FONT_PX, FEEDBACK_TONE, feedbackLabelFits, type FeedbackMark,
+  FEEDBACK_MARK_PAD, FEEDBACK_SELECTED_OUTSET, FEEDBACK_SERIES, FEEDBACK_TEXT_PAD,
+  FEEDBACK_FONT_PX, feedbackLabelText, feedbackMarkStyle, type FeedbackMark,
 } from './feedbackStrip'
 import {
   BAND_TOP_PAD,
@@ -138,7 +138,7 @@ export interface BandRenderInput {
   // ── compare 才传(spec 6.13 反馈):hits 行的一族可点(族底线那一行垫透明命中区)、hit 行底下画反馈带。
   //    不传(app 模式)时副图的外观与点击行为和原来逐项相同 ──
   feedback?: FeedbackStripInput | null
-  // ── compare 才传:作答面板里鼠标停在某个分段按钮上时,它所在的 band 加亮(那一行垫浅蓝底、描蓝边);缺省不画 ──
+  // ── compare 才传:作答面板里鼠标停在某个 node 按钮上时,它所在的 band 加亮(那一行垫浅蓝底、描蓝边);缺省不画 ──
   hoverBand?: string | null
 }
 
@@ -678,7 +678,7 @@ export function buildMainOption(
 // 每一行靠自己的族底线(起点带竖头)和格读,全宽的线只留给分区(bracket 与 band、compare 下用户轨与 app 轨)。
 // 用于 buildSubOption 的 option.graphic 字段;所有元素 silent=true 避免抢 hover 事件。
 const TREE_INDENT = 14   // 子轨名每深一层往右缩进的像素(待验证)
-const HOVER_BAND_FILL = 'rgba(26, 128, 186, 0.16)'   // 悬停分段所在 band 的底(待验证:截图过目)
+const HOVER_BAND_FILL = 'rgba(26, 128, 186, 0.16)'   // 悬停的 node 所在 band 的底(待验证:截图过目)
 const HOVER_BAND_STROKE = 'rgb(26, 128, 186)'        // 它的边:中蓝
 
 export function buildSubDecorGraphics(
@@ -688,7 +688,7 @@ export function buildSubDecorGraphics(
   hitsLabelVisible: boolean,
   chartSubWidth: number,
   zoomFactor: number = 1.0,
-  active: { band?: number; hits?: boolean; linked?: readonly number[]; hover?: number } = {},   // 当家行所在那条 band / bracket、选中框对的 band 的表头加粗;hover:反馈面板悬停的分段所在 band 加亮
+  active: { band?: number; hits?: boolean; linked?: readonly number[]; hover?: number } = {},   // 当家行所在那条 band / bracket、选中框对的 band 的表头加粗;hover:反馈面板悬停的 node 所在 band 加亮
   extras: readonly (BandLabelExtra | null)[] = [],  // 表头 node 名后跟的用户特征名 / app_only(按 band 下标)
   hitsTop: number = BAND_TOP_PAD,                    // hits 表头的顶 = hit 第 0 行的顶(compare 下在分界线下面)
   tree: readonly ({ depth: number; last: boolean } | null)[] = [],  // 轨在父子树里的位置(subBandTree),子轨名缩进挂 ├ / └
@@ -712,7 +712,7 @@ export function buildSubDecorGraphics(
     })
   })
 
-  // 1b. 反馈面板悬停的分段所在的 band:整行垫浅蓝底、描中蓝边(色盲配色:冷色、深浅和底色拉开,边线不靠底色也认得出)
+  // 1b. 反馈面板悬停的 node 所在的 band:整行垫浅蓝底、描中蓝边(色盲配色:冷色、深浅和底色拉开,边线不靠底色也认得出)
   const hg = active.hover !== undefined && active.hover >= 0 ? bandGeom[active.hover] : null
   if (hg) {
     graphics.push({
@@ -1321,8 +1321,9 @@ export function makeRenderBracketLine(
 
 /**
  * 反馈带的记号(compare,spec 6.13):第 lane 行(y = feedbackTop + lane·FEEDBACK_ROW_H,行高固定、不随缩放)
- * 横跨 [start, end] 的一块,配色按档(render/feedbackStrip.ts 的 FEEDBACK_TONE),选中的描边加粗;宽度放得下才写
- * neg / off_pattern(黑字、等宽),放不下只画记号。
+ * 横跨 [start, end] 的一块,画法照 render/feedbackStrip.ts 的 feedbackMarkStyle(配色按档;选中的描黑色粗边、
+ * 粗出来的部分画在外侧、压在别的记号上面);记号上的字是点出的 node 名(黑字、等宽;写什么、放不放得下见
+ * feedbackLabelText),放不下或没点 node 只画记号。
  */
 export function makeRenderFeedbackMark(marks: readonly FeedbackMark[], feedbackTop: number) {
   return function renderFeedbackMark(params: any, api: any) {
@@ -1332,15 +1333,16 @@ export function makeRenderFeedbackMark(marks: readonly FeedbackMark[], feedbackT
     const width = Math.max(4, x1 - x0)
     const y = feedbackTop + m.lane * FEEDBACK_ROW_H + FEEDBACK_MARK_PAD
     const h = FEEDBACK_ROW_H - 2 * FEEDBACK_MARK_PAD
-    const tone = FEEDBACK_TONE[m.tone]
+    const z2 = m.selected ? 2 : 0                  // 选中的压在别的记号上面(粗边不被邻行盖住)
+    const out = m.selected ? FEEDBACK_SELECTED_OUTSET : 0   // 选中的粗边向外扩,里面的地方不变
     const children: any[] = [{
-      type: 'rect', shape: { x: x0, y, width, height: h, r: 2 },
-      style: { fill: tone.fill, stroke: tone.stroke,
-               lineWidth: m.selected ? FEEDBACK_SELECTED_STROKE_W : FEEDBACK_STROKE_W },
+      type: 'rect', z2, shape: { x: x0 - out, y: y - out, width: width + 2 * out, height: h + 2 * out, r: 2 },
+      style: feedbackMarkStyle(m),
     }]
-    if (feedbackLabelFits(m.label, width)) {
-      children.push({ type: 'text', silent: true,
-                      style: { text: m.label, x: x0 + FEEDBACK_TEXT_PAD, y: y + h / 2, align: 'left',
+    const text = feedbackLabelText(m.nodes, width)
+    if (text) {
+      children.push({ type: 'text', silent: true, z2: z2 + 1,
+                      style: { text, x: x0 + FEEDBACK_TEXT_PAD, y: y + h / 2, align: 'left',
                                verticalAlign: 'middle', font: `${FEEDBACK_FONT_PX}px ${MONO}`, fill: '#000000' } })
     }
     return { type: 'group', children }

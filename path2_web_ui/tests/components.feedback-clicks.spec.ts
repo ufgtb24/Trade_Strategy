@@ -184,7 +184,8 @@ describe('compare 下的点击:焦点照旧,面板交给 feedback store', () => 
                   target: 'point', source: 'picked', answer: 'neg', note: 'late' }
     const { view, fb } = await setup(annRead({ charts: [{ symbol: 'AAA', boxes: [], samples: [], feedback: [rec as any] }] }))
     compareClick(click('brackets', buyRec(5)), view, fb)
-    expect(fb.panel).toMatchObject({ editingId: 'f-pc-1', answer: 'neg', note: 'late' })
+    expect(fb.panel).toMatchObject({ editingId: 'f-pc-1', note: 'late' })
+    expect('answer' in fb.panel!).toBe(false)             // 以前存下的 answer 不进面板
     fb.close()
     expect(compareClick(click(FEEDBACK_SERIES, { value: [5, 5, 0], feedback_id: 'f-pc-1' }), view, fb)).toBe(true)
     expect(fb.selectedId).toBe('f-pc-1')

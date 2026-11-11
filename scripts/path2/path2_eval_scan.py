@@ -1,4 +1,4 @@
-"""参数化扫描评估入口(authoring-path2-app skill 的评估器,final_report §8.9)。
+"""参数化扫描评估入口(手动跑 path2_web/eval_runner.py 三个 mode 的脚本)。
 
 三 mode 共享 path2_web/eval_runner.py 骨架:
   eval        全宇宙命中 + 多 horizon forward_return 统计(判据 2)

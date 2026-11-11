@@ -1,5 +1,7 @@
 // feedback store:状态的重取时机(进 compare、换 pattern、存删反馈后、app 重跑、窗口拿到焦点;只认最后一次)
-// 与作答面板(查重、打开已有的、草稿、保存、redraw、自动关)、面板派生量(pos sample inside、分段按钮)。
+// 与作答面板(查重、打开已有的、草稿、保存、redraw、自动关)、面板派生量(pos sample inside、node 按钮)。
+// 面板没有「先选答案」:只点 node / 写 note;存出去的值不带 answer、不带 dag。以前存下的带这两个键的记录
+// (fbRec 默认就是这种:off_pattern + node、没写 note)照样打得开、能被挑去共享,保存后改写成不带这两个键的形状。
 // 后端换成内存里的假实现(同 stores.annotation.spec.ts);别的读请求一律挂起。
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { nextTick } from 'vue'
@@ -74,7 +76,7 @@ const run = (symbol = 'AAA') => ({
 
 const fbRec = (id: string, extra: Record<string, unknown> = {}) => ({
   id, pattern: 'p', app_id: 'app1', app_ver: 'v0', start: '2025-01-08', end: '2025-01-09', target: 'family',
-  source: 'picked', answer: 'off_pattern', segments: ['step'], family_start: '2025-01-02', ...extra }) as any
+  source: 'picked', answer: 'off_pattern', nodes: ['step'], family_start: '2025-01-02', ...extra }) as any
 
 function annRead(state: Partial<AnnState> = {}): AnnRead {
   return {
@@ -207,14 +209,14 @@ describe('状态的重取时机', () => {
     await enterCompare(view)
     let n = fake.calls.length
     expect(fb.open(AT, { symbol: 'AAA', start: '2025-01-08', end: '2025-01-08', target: 'point' })).toBe(true)
-    fb.setAnswer('neg')
     fb.setNote('太晚')
     expect(fb.save()).toBe(true)
     expect(fb.panel).toBeNull()
     await ann.flushed()
     await vi.waitFor(() => expect(fake.calls.length).toBe(n + 1))
-    expect(fake.batches.at(-1)[0]).toMatchObject({ kind: 'feedback', id: 'f-pc-10', base: null,
-      value: { symbol: 'AAA', pattern: 'p', app_id: 'app1', app_ver: 'v1', target: 'point', answer: 'neg', note: '太晚' } })
+    expect(fake.batches.at(-1)[0]).toEqual({ kind: 'feedback', id: 'f-pc-10', base: null,
+      value: { id: 'f-pc-10', symbol: 'AAA', pattern: 'p', app_id: 'app1', app_ver: 'v1', start: '2025-01-08',
+               end: '2025-01-08', target: 'point', source: 'picked', note: '太晚' } })
     n = fake.calls.length
     fb.select('f-pc-10')
     fb.remove('f-pc-10')
@@ -231,7 +233,7 @@ describe('作答面板', () => {
   ], feedback: [
     fbRec('f-pc-1'),
     fbRec('f-pc-2', { source: 'random', target: 'point', start: '2025-01-10', end: '2025-01-10', answer: 'pos',
-                      segments: undefined, family_start: undefined }),
+                      nodes: undefined, family_start: undefined }),
   ] }] })
 
   it('不在 compare 不开;新范围开空白草稿,family 带起点', async () => {
@@ -240,8 +242,9 @@ describe('作答面板', () => {
     await enterCompare(view)
     expect(fb.open(AT, { symbol: 'AAA', start: '2025-01-08', end: '2025-01-10', target: 'family', family_start: '2025-01-02' })).toBe(true)
     expect(fb.panel).toEqual({ x: 100, y: 200, symbol: 'AAA', start: '2025-01-08', end: '2025-01-10', target: 'family',
-                               family_start: '2025-01-02', note: '', segments: [] })
-    expect(fb.problems).toEqual(['answer'])
+                               family_start: '2025-01-02', note: '', nodes: [] })
+    expect(fb.problems).toEqual(['note'])
+    expect(fb.panelIssues).toEqual([])                  // 还没有别的反馈:没有可挑的
   })
 
   it('同范围已有反馈:直接打开那条(预填);点记号按编号打开;盲看标记、别的 pattern 的不开', async () => {
@@ -249,7 +252,7 @@ describe('作答面板', () => {
     await enterCompare(view)
     expect(fb.open(AT, { symbol: 'AAA', start: '2025-01-08', end: '2025-01-09', target: 'range' })).toBe(true)
     expect(fb.panel).toEqual({ x: 100, y: 200, symbol: 'AAA', start: '2025-01-08', end: '2025-01-09', target: 'family',
-      family_start: '2025-01-02', editingId: 'f-pc-1', answer: 'off_pattern', note: '', segments: ['step'] })
+      family_start: '2025-01-02', editingId: 'f-pc-1', note: '', nodes: ['step'], link: 'f-pc-1' })
     fb.close()
     expect(fb.open({ x: 1, y: 2 }, { id: 'f-pc-1' })).toBe(true)
     expect(fb.panel?.editingId).toBe('f-pc-1')
@@ -262,26 +265,134 @@ describe('作答面板', () => {
     expect(fb.panel).toBeNull()
   })
 
-  it('草稿:切到 neg 清掉分段;分段可多选、再点拿掉;保存条件没满足时不存', async () => {
-    const { view, fb } = await setup()
+  it('草稿:一打开就能点 node、写 note;node 可多选、再点拿掉;只点 node 不写 note 存不了;只写 note 就能存', async () => {
+    const { ann, view, fb } = await setup()
     await enterCompare(view)
     fb.open(AT, { symbol: 'AAA', start: '2025-01-08', end: '2025-01-09', target: 'range' })
-    fb.setAnswer('off_pattern')
-    expect(fb.problems).toEqual(['segments_or_note'])
-    expect(fb.save()).toBe(false)
-    fb.toggleSegment('step')
-    fb.toggleSegment('today')
-    fb.toggleSegment('step')
-    expect(fb.panel?.segments).toEqual(['today'])
-    expect(fb.problems).toEqual([])
-    fb.setAnswer('neg')
-    expect(fb.panel?.segments).toEqual([])
     expect(fb.problems).toEqual(['note'])
     expect(fb.save()).toBe(false)
+    fb.toggleNode('step')
+    fb.toggleNode('today')
+    fb.toggleNode('step')
+    expect(fb.panel?.nodes).toEqual(['today'])
+    expect(fb.problems).toEqual(['note'])               // 只点 node 不够
+    expect(fb.save()).toBe(false)
     expect(fb.panel).not.toBeNull()
+    expect(fake.batches).toEqual([])
+    fb.setNote('   ')
+    expect(fb.problems).toEqual(['note'])
+    fb.toggleNode('today')                              // 一个 node 都不点
+    fb.setNote(' 不像 ')
+    expect(fb.problems).toEqual([])
+    expect(fb.save()).toBe(true)
+    await ann.flushed()
+    expect(fake.batches).toEqual([[{ kind: 'feedback', id: 'f-pc-10', base: null, value: {
+      id: 'f-pc-10', symbol: 'AAA', pattern: 'p', app_id: 'app1', app_ver: 'v1', start: '2025-01-08', end: '2025-01-09',
+      target: 'range', source: 'picked', note: '不像' } }]])
+    // 点了 node 再写 note:值里带 nodes,照旧没有 answer、dag
+    fb.open(AT, { symbol: 'AAA', start: '2025-01-09', end: '2025-01-10', target: 'range' })
+    fb.toggleNode('step')
+    fb.toggleNode('plateau')
+    fb.setNote('阶跃太小')
+    expect(fb.save()).toBe(true)
+    await ann.flushed()
+    expect(fake.batches[1][0].value).toMatchObject({ note: '阶跃太小', nodes: ['step', 'plateau'] })
+    expect(Object.keys(fake.batches[1][0].value)).toEqual(
+      ['id', 'symbol', 'pattern', 'app_id', 'app_ver', 'start', 'end', 'target', 'source', 'note', 'nodes'])
   })
 
-  it('redraw:答案、理由、分段带进下一次拖选;保存时同编号覆盖,target 改 range、去掉 family_start', async () => {
+  describe('以前存下的带 answer 的记录', () => {
+    // f-pc-1:neg + note;f-pc-2:off_pattern + node、没写 note;f-pc-3:off_pattern + node + dag + note
+    const olds = () => {
+      const r = annRead({ charts: [{ symbol: 'AAA', boxes: [], samples: [], feedback: [
+        fbRec('f-pc-1', { target: 'point', start: '2025-01-08', end: '2025-01-08', answer: 'neg', note: '追高',
+                          nodes: undefined, family_start: undefined }),
+        fbRec('f-pc-2', { target: 'point', start: '2025-01-09', end: '2025-01-09', family_start: undefined }),
+        fbRec('f-pc-3', { target: 'point', start: '2025-01-10', end: '2025-01-10', family_start: undefined,
+                          note: '关系不对', dag: true }),
+      ] }] })
+      r.revs.feedback = { 'f-pc-1': 'r1', 'f-pc-2': 'r2', 'f-pc-3': 'r3' }
+      return r
+    }
+    const KEYS = ['id', 'symbol', 'pattern', 'app_id', 'app_ver', 'start', 'end', 'target', 'source']
+
+    it('neg + note:预填理由;什么都没改按保存也写一条,值里没有 answer', async () => {
+      const { ann, view, fb } = await setup(olds())
+      await enterCompare(view)
+      expect(fb.open(AT, { id: 'f-pc-1' })).toBe(true)
+      expect(fb.panel).toEqual({ x: 100, y: 200, symbol: 'AAA', start: '2025-01-08', end: '2025-01-08', target: 'point',
+                                 editingId: 'f-pc-1', note: '追高', nodes: [], link: 'f-pc-1' })
+      expect(fb.problems).toEqual([])
+      expect(fb.save()).toBe(true)
+      await ann.flushed()
+      expect(fake.batches).toEqual([[{ kind: 'feedback', id: 'f-pc-1', base: 'r1', value: {
+        id: 'f-pc-1', symbol: 'AAA', pattern: 'p', app_id: 'app1', app_ver: 'v1', start: '2025-01-08', end: '2025-01-08',
+        target: 'point', source: 'picked', note: '追高' } }]])
+    })
+
+    it('off_pattern + node、没写 note:预填 node;不补 note 存不了,补了才存,值里没有 answer', async () => {
+      const { ann, view, fb } = await setup(olds())
+      await enterCompare(view)
+      fb.open(AT, { id: 'f-pc-2' })
+      expect(fb.panel).toMatchObject({ editingId: 'f-pc-2', note: '', nodes: ['step'] })
+      expect(fb.problems).toEqual(['note'])
+      expect(fb.save()).toBe(false)
+      expect(fake.batches).toEqual([])
+      fb.setNote('阶跃不算数')
+      expect(fb.save()).toBe(true)
+      await ann.flushed()
+      expect(fake.batches[0][0].value).toMatchObject({ id: 'f-pc-2', note: '阶跃不算数', nodes: ['step'] })
+      expect(Object.keys(fake.batches[0][0].value)).toEqual([...KEYS, 'note', 'nodes'])
+    })
+
+    it('off_pattern + node + dag + note:预填 node 与理由,面板上没有 dag;保存后值里没有 answer、没有 dag', async () => {
+      const { ann, view, fb } = await setup(olds())
+      await enterCompare(view)
+      fb.open(AT, { id: 'f-pc-3' })
+      expect(fb.panel).toMatchObject({ editingId: 'f-pc-3', note: '关系不对', nodes: ['step'] })
+      expect(fb.panel).not.toHaveProperty('dag')
+      expect(fb.panel).not.toHaveProperty('answer')
+      expect(fb.save()).toBe(true)
+      await ann.flushed()
+      expect(fake.batches[0][0].value).toEqual({ id: 'f-pc-3', symbol: 'AAA', pattern: 'p', app_id: 'app1', app_ver: 'v1',
+        start: '2025-01-10', end: '2025-01-10', target: 'point', source: 'picked', note: '关系不对', nodes: ['step'] })
+      // 存完再打开:读回来的那条已经没有这两个键
+      const back = ann.state!.charts[0].feedback!.find(f => f.id === 'f-pc-3')!
+      expect('answer' in back).toBe(false)
+      expect('dag' in back).toBe(false)
+    })
+
+    it('redraw:只带理由、node、连着的 issue(不带 answer、dag);拖出新范围保存后同编号覆盖成不带这两个键的', async () => {
+      const { ann, view, fb } = await setup(olds())
+      await enterCompare(view)
+      fb.open(AT, { id: 'f-pc-3' })
+      expect(fb.startRedraw()).toBe(true)
+      expect(fb.carry).toEqual({ editingId: 'f-pc-3', note: '关系不对', nodes: ['step'], link: 'f-pc-3' })
+      fb.open({ x: 5, y: 6 }, { symbol: 'AAA', start: '2025-01-07', end: '2025-01-10', target: 'range' })
+      expect(fb.panel).toEqual({ x: 5, y: 6, symbol: 'AAA', start: '2025-01-07', end: '2025-01-10', target: 'range',
+                                 editingId: 'f-pc-3', note: '关系不对', nodes: ['step'], link: 'f-pc-3', carry: true })
+      expect(fb.save()).toBe(true)
+      await ann.flushed()
+      expect(fake.batches[0][0]).toMatchObject({ id: 'f-pc-3', base: 'r3' })
+      expect(Object.keys(fake.batches[0][0].value)).toEqual([...KEYS, 'note', 'nodes'])
+    })
+  })
+
+  it('edit 的请求:提了由图表接下并消费掉;换股票作废', async () => {
+    const { view, fb } = await setup(twoRecords())
+    await enterCompare(view)
+    expect(fb.takeEditRequest()).toBeNull()
+    fb.requestEdit('f-pc-1')
+    expect(fb.editRequest).toBe('f-pc-1')
+    expect(fb.takeEditRequest()).toBe('f-pc-1')
+    expect(fb.editRequest).toBeNull()
+    fb.requestEdit('f-pc-1')
+    view.symbol = 'BBB'
+    await nextTick()
+    expect(fb.editRequest).toBeNull()
+  })
+
+  it('redraw:理由、node 带进下一次拖选;保存时同编号覆盖,target 改 range、去掉 family_start', async () => {
     const r = twoRecords()
     r.revs.feedback = { 'f-pc-1': 'pc-batch-0#0' }
     const { ann, view, fb } = await setup(r)
@@ -290,21 +401,21 @@ describe('作答面板', () => {
     fb.setNote('不像')
     expect(fb.startRedraw()).toBe(true)
     expect(fb.panel).toBeNull()
-    expect(fb.carry).toEqual({ editingId: 'f-pc-1', answer: 'off_pattern', note: '不像', segments: ['step'] })
+    expect(fb.carry).toEqual({ editingId: 'f-pc-1', note: '不像', nodes: ['step'], link: 'f-pc-1' })
     // 拖选之前点 ▼ 开的面板不用 carry
     fb.open(AT, { symbol: 'AAA', start: '2025-01-08', end: '2025-01-08', target: 'point' })
     expect(fb.panel?.editingId).toBeUndefined()
     expect(fb.carry).not.toBeNull()
     fb.open({ x: 5, y: 6 }, { symbol: 'AAA', start: '2025-01-07', end: '2025-01-10', target: 'range' })
     expect(fb.carry).toBeNull()
-    expect(fb.panel).toMatchObject({ x: 5, y: 6, target: 'range', editingId: 'f-pc-1', answer: 'off_pattern',
-                                     note: '不像', segments: ['step'], carry: true })
+    expect(fb.panel).toMatchObject({ x: 5, y: 6, target: 'range', editingId: 'f-pc-1',
+                                     note: '不像', nodes: ['step'], carry: true })
     expect(fb.panel).not.toHaveProperty('family_start')
     expect(fb.save()).toBe(true)
     await ann.flushed()
     expect(fake.batches).toEqual([[{ kind: 'feedback', id: 'f-pc-1', base: 'pc-batch-0#0', value: {
       id: 'f-pc-1', symbol: 'AAA', pattern: 'p', app_id: 'app1', app_ver: 'v1', start: '2025-01-07', end: '2025-01-10',
-      target: 'range', source: 'picked', answer: 'off_pattern', note: '不像', segments: ['step'] } }]])
+      target: 'range', source: 'picked', note: '不像', nodes: ['step'] } }]])
   })
 
   it('换股票、换模式关面板并放弃 redraw;app 重跑关面板', async () => {
@@ -366,17 +477,259 @@ describe('作答面板', () => {
     expect(fb.opens).toBe(n + 3)
   })
 
-  it('派生量:范围里的正样本;分段按钮取范围里买的 hit 绑定的 node 及子孙 node,已选的旧 node 留在最后', async () => {
+  it('派生量:范围里的正样本;node 按钮取范围里买的 hit 绑定的 node 及子孙 node,已选的旧 node 留在最后', async () => {
     const { view, fb } = await setup(twoRecords())
     await enterCompare(view)
     fb.open(AT, { symbol: 'AAA', start: '2025-01-08', end: '2025-01-08', target: 'point' })
     expect(fb.panelPosInside).toBe(false)
-    expect(fb.panelSegments).toEqual(['plateau', 'step', 'step_seg', 'today'])
+    expect(fb.panelNodes).toEqual(['plateau', 'step', 'step_seg', 'today'])
     fb.open(AT, { symbol: 'AAA', start: '2025-01-09', end: '2025-01-10', target: 'range' })
     expect(fb.panelPosInside).toBe(true)
-    fb.toggleSegment('gone')
-    expect(fb.panelSegments).toEqual(['plateau', 'step', 'step_seg', 'today', 'gone'])
+    fb.toggleNode('gone')
+    expect(fb.panelNodes).toEqual(['plateau', 'step', 'step_seg', 'today', 'gone'])
     fb.open(AT, { symbol: 'AAA', start: '2025-01-02', end: '2025-01-07', target: 'range' })
-    expect(fb.panelSegments).toEqual([])
+    expect(fb.panelNodes).toEqual([])
+  })
+})
+
+describe('issue:几处反馈共享同一份内容', () => {
+  // 全是以前存下的带 answer 的记录:AAA 上两条(f-pc-1 off_pattern [step]、没写 note;f-pc-3 neg「太晚」),
+  // BBB 上两条共享 i-pc-4 的 neg(f-pc-5、f-pc-6「追高」),CCC 上一条别的 pattern 的带 i-pc-9
+  const shared = () => {
+    const r = annRead({ charts: [
+      { symbol: 'AAA', boxes: [], samples: [], feedback: [
+        fbRec('f-pc-1'),
+        fbRec('f-pc-3', { target: 'point', start: '2025-01-07', end: '2025-01-07', answer: 'neg', note: '太晚',
+                          nodes: undefined, family_start: undefined }),
+      ] },
+      { symbol: 'BBB', boxes: [], samples: [], feedback: [
+        fbRec('f-pc-5', { target: 'point', start: '2025-01-06', end: '2025-01-06', answer: 'neg', note: '追高',
+                          nodes: undefined, family_start: undefined, issue: 'i-pc-4' }),
+        fbRec('f-pc-6', { target: 'point', start: '2025-01-08', end: '2025-01-08', answer: 'neg', note: '追高',
+                          nodes: undefined, family_start: undefined, issue: 'i-pc-4' }),
+      ] },
+      { symbol: 'CCC', boxes: [], samples: [], feedback: [
+        fbRec('f-pc-7', { pattern: 'q', target: 'point', start: '2025-01-06', end: '2025-01-06', answer: 'neg', note: 'x',
+                          nodes: undefined, family_start: undefined, issue: 'i-pc-9' }),
+      ] },
+    ] })
+    r.revs.feedback = { 'f-pc-1': 'r1', 'f-pc-3': 'r3', 'f-pc-5': 'r5', 'f-pc-6': 'r6', 'f-pc-7': 'r7' }
+    return r
+  }
+  const POINT = { symbol: 'AAA', start: '2025-01-10', end: '2025-01-10', target: 'point' as const }
+  const ops = () => fake.batches.at(-1)!.map((o: any) => [o.id, o.base, o.value?.issue ?? null, o.value?.note ?? null])
+
+  it('列表:一打开就有;当前 pattern 的各组不按答案筛,最近用过的在前;处数照组里的', async () => {
+    const { view, fb } = await setup(shared())
+    await enterCompare(view)
+    fb.open(AT, POINT)
+    expect(fb.panelIssues.map(g => [g.key, g.issue, g.note, g.nodes, g.rows.length]))
+      .toEqual([['i-pc-4', 'i-pc-4', '追高', [], 2], ['f-pc-3', null, '太晚', [], 1], ['f-pc-1', null, '', ['step'], 1]])
+    expect(fb.panelIssue).toBeNull()                    // 新标一处:不连任何 issue
+    expect(fb.placesById).toEqual({ 'f-pc-1': 1, 'f-pc-3': 1, 'f-pc-5': 2, 'f-pc-6': 2 })
+  })
+
+  it('新标一处挑一条已有 issue:内容填好,保存就带同一个 issue 值,别的处不动', async () => {
+    const { ann, view, fb } = await setup(shared())
+    await enterCompare(view)
+    fb.open(AT, POINT)
+    fb.pickIssue('i-pc-4')
+    expect(fb.panel).toMatchObject({ note: '追高', nodes: [], link: 'i-pc-4' })
+    expect(fb.panelIssue?.key).toBe('i-pc-4')
+    expect([fb.panelNeedsChoice, fb.panelPlaces]).toEqual([false, 3])
+    expect(fb.save()).toBe(true)
+    await ann.flushed()
+    expect(fake.batches).toHaveLength(1)
+    expect(ops()).toEqual([['f-pc-10', null, 'i-pc-4', '追高']])
+    expect(fake.batches[0][0].value).not.toHaveProperty('answer')            // 挑的是以前存下的 issue,存的这一处照样不带 answer
+  })
+
+  it('头一回共享一条还不带 issue 值的:现取一个值(同机器名最大序号加一,别的 pattern 的也算),同一批给原来那条补上', async () => {
+    const { ann, view, fb } = await setup(shared())
+    await enterCompare(view)
+    fb.open(AT, POINT)
+    fb.pickIssue('f-pc-3')
+    expect(fb.save()).toBe(true)
+    await ann.flushed()
+    expect(fake.batches).toHaveLength(1)
+    expect(ops()).toEqual([['f-pc-10', null, 'i-pc-10', '太晚'], ['f-pc-3', 'r3', 'i-pc-10', '太晚']])
+    // 原来那条多了 issue、拿掉了以前存下的 answer(同一批里改写的每一条都不带 answer),其余原样
+    expect(fake.batches[0][1].value).toEqual({ id: 'f-pc-3', symbol: 'AAA', pattern: 'p', app_id: 'app1', app_ver: 'v0',
+      start: '2025-01-07', end: '2025-01-07', target: 'point', source: 'picked', note: '太晚', issue: 'i-pc-10' })
+  })
+
+  it('挑了又改字:要先问;没选不存;all 各处一批改完(各用各的 base、别的字段不动)', async () => {
+    const { ann, view, fb } = await setup(shared())
+    await enterCompare(view)
+    fb.open(AT, POINT)
+    fb.pickIssue('i-pc-4')
+    fb.setNote('追高,量也不够')
+    expect(fb.panelNeedsChoice).toBe(true)
+    expect(fb.problems).toEqual([])
+    expect(fb.save()).toBe(false)
+    expect(fb.panel).not.toBeNull()
+    expect(fake.batches).toEqual([])
+    expect(fb.save('all')).toBe(true)
+    await ann.flushed()
+    expect(fake.batches).toHaveLength(1)
+    expect(ops()).toEqual([['f-pc-10', null, 'i-pc-4', '追高,量也不够'], ['f-pc-5', 'r5', 'i-pc-4', '追高,量也不够'],
+                           ['f-pc-6', 'r6', 'i-pc-4', '追高,量也不够']])
+    expect(fake.batches[0][1].value).toMatchObject({ symbol: 'BBB', app_ver: 'v0', start: '2025-01-06' })
+    // all:别的处是以前存下的带 answer 的,这一批里都改写成不带 answer 的
+    for (const op of fake.batches[0]) expect(op.value).not.toHaveProperty('answer')
+  })
+
+  it('挑了又改字选 only_this:这一处不带 issue 值,别的处不动', async () => {
+    const { ann, view, fb } = await setup(shared())
+    await enterCompare(view)
+    fb.open(AT, POINT)
+    fb.pickIssue('i-pc-4')
+    fb.setNote('这次是别的原因')
+    expect(fb.save('only_this')).toBe(true)
+    await ann.flushed()
+    expect(ops()).toEqual([['f-pc-10', null, null, '这次是别的原因']])
+    expect(fake.batches[0][0].value).not.toHaveProperty('issue')
+  })
+
+  it('打开已有的一处:连着自己的 issue;内容没变直接存;改了才问;只有这一处的改了不问', async () => {
+    const { ann, view, fb } = await setup(shared())
+    view.symbol = 'BBB'
+    await nextTick()
+    view.mode = 'compare'
+    await nextTick()
+    view.setLinkedRun(run('BBB'))
+    await settle()
+    fb.open(AT, { id: 'f-pc-5' })
+    expect(fb.panel?.link).toBe('i-pc-4')
+    expect(fb.panelIssues.map(g => g.key)).toEqual(['i-pc-4', 'f-pc-3', 'f-pc-1'])     // 自己那组还有别的处:列着
+    expect([fb.panelNeedsChoice, fb.panelPlaces]).toEqual([false, 2])
+    expect(fb.save()).toBe(true)                                             // 没改:直接存(刷新 app_ver、拿掉 answer)
+    await ann.flushed()
+    expect(ops()).toEqual([['f-pc-5', 'r5', 'i-pc-4', '追高']])                // 同组的 f-pc-6 还带着 answer:不动,不算内容不同
+    expect(fake.batches[0][0].value).not.toHaveProperty('answer')
+    fb.open(AT, { id: 'f-pc-5' })
+    fb.setNote('追高了')
+    expect(fb.panelNeedsChoice).toBe(true)
+    expect(fb.save()).toBe(false)
+    expect(fb.save('all')).toBe(true)
+    await ann.flushed()
+    expect(ops().map((o: any[]) => [o[0], o[2], o[3]])).toEqual([['f-pc-5', 'i-pc-4', '追高了'], ['f-pc-6', 'i-pc-4', '追高了']])
+  })
+
+  it('只有这一处的 issue:不在列表里,改了不问,照旧不带 issue 值', async () => {
+    const { ann, view, fb } = await setup(shared())
+    await enterCompare(view)
+    fb.open(AT, { id: 'f-pc-3' })
+    expect(fb.panel?.link).toBe('f-pc-3')
+    expect(fb.panelIssues.map(g => g.key)).toEqual(['i-pc-4', 'f-pc-1'])
+    fb.setNote('太晚了')
+    expect(fb.panelNeedsChoice).toBe(false)
+    expect(fb.save()).toBe(true)
+    await ann.flushed()
+    expect(ops()).toEqual([['f-pc-3', 'r3', null, '太晚了']])
+  })
+
+  it('挑一个以前存下的、没写 note 的 issue:不补存不了;补了以后问 all / only this', async () => {
+    const { ann, view, fb } = await setup(shared())
+    await enterCompare(view)
+    fb.open(AT, POINT)
+    fb.pickIssue('f-pc-1')
+    expect(fb.panel).toMatchObject({ note: '', nodes: ['step'], link: 'f-pc-1' })
+    expect(fb.problems).toEqual(['note'])
+    expect(fb.panelNeedsChoice).toBe(false)                                  // 内容还和它一样(都没 note):先缺的是 note
+    expect(fb.save()).toBe(false)
+    expect(fb.save('all')).toBe(false)                                       // 没写 note:选了 all 也不存
+    expect(fake.batches).toEqual([])
+    fb.setNote('阶跃不算数')
+    expect(fb.problems).toEqual([])
+    expect([fb.panelNeedsChoice, fb.panelPlaces]).toEqual([true, 2])         // 补了 note 就和原来那处不同了:要问
+    expect(fb.save()).toBe(false)
+    expect(fb.save('all')).toBe(true)
+    await ann.flushed()
+    // all:原来那处也补上 note、带上现取的 issue 值,并改写成不带 answer 的
+    expect(fake.batches).toHaveLength(1)
+    expect(ops()).toEqual([['f-pc-10', null, 'i-pc-10', '阶跃不算数'], ['f-pc-1', 'r1', 'i-pc-10', '阶跃不算数']])
+    expect(fake.batches[0][1].value).toEqual({ id: 'f-pc-1', symbol: 'AAA', pattern: 'p', app_id: 'app1', app_ver: 'v0',
+      start: '2025-01-08', end: '2025-01-09', target: 'family', source: 'picked', note: '阶跃不算数', nodes: ['step'],
+      issue: 'i-pc-10', family_start: '2025-01-02' })
+  })
+
+  it('挑一个以前存下的、没写 note 的 issue,补了 note 选 only this:这一处另立,原来那处原样(仍带 answer)', async () => {
+    const { ann, view, fb } = await setup(shared())
+    await enterCompare(view)
+    fb.open(AT, POINT)
+    fb.pickIssue('f-pc-1')
+    fb.setNote('阶跃不算数')
+    expect(fb.save('only_this')).toBe(true)
+    await ann.flushed()
+    expect(ops()).toEqual([['f-pc-10', null, null, '阶跃不算数']])
+    expect(fake.batches[0][0].value).toMatchObject({ nodes: ['step'] })
+    expect(ann.state!.charts[0].feedback!.find(f => f.id === 'f-pc-1')).toMatchObject({ answer: 'off_pattern' })
+  })
+
+  it('改指:已有的一处从列表挑另一条,内容变成那条的,保存后带那条的 issue 值;原来那组别的处不动', async () => {
+    const { ann, view, fb } = await setup(shared())
+    await enterCompare(view)
+    fb.open(AT, { id: 'f-pc-3' })
+    fb.pickIssue('i-pc-4')
+    expect(fb.panel).toMatchObject({ note: '追高', link: 'i-pc-4' })
+    expect(fb.panelNeedsChoice).toBe(false)
+    expect(fb.save()).toBe(true)
+    await ann.flushed()
+    expect(ops()).toEqual([['f-pc-3', 'r3', 'i-pc-4', '追高']])
+  })
+
+  it('再点已连着的那条 = 不再共享:内容留着,保存不带 issue 值', async () => {
+    const { ann, view, fb } = await setup(shared())
+    await enterCompare(view)
+    fb.open(AT, POINT)
+    fb.pickIssue('i-pc-4')
+    fb.pickIssue('i-pc-4')
+    expect(fb.panel).not.toHaveProperty('link')
+    expect(fb.panel?.note).toBe('追高')
+    expect(fb.save()).toBe(true)
+    await ann.flushed()
+    expect(ops()).toEqual([['f-pc-10', null, null, '追高']])
+  })
+
+  it('以前存下的带 dag 的 issue 也能挑:只填 node 与 note;保存后两处都不带 answer、dag;redraw 保留连着的 issue', async () => {
+    const r = shared()
+    r.state.charts[0].feedback![0] = { ...r.state.charts[0].feedback![0], note: '关系不对', dag: true }
+    const { ann, view, fb } = await setup(r)
+    await enterCompare(view)
+    fb.open(AT, POINT)
+    fb.pickIssue('f-pc-1')
+    expect(fb.panel).toMatchObject({ note: '关系不对', nodes: ['step'], link: 'f-pc-1' })
+    expect(fb.panel).not.toHaveProperty('dag')
+    expect(fb.panelNeedsChoice).toBe(false)                                  // dag 不算内容:没改,不问
+    expect(fb.save()).toBe(true)
+    await ann.flushed()
+    expect(fake.batches[0].map((o: any) => [o.id, o.value.issue, o.value.nodes, 'dag' in o.value, 'answer' in o.value]))
+      .toEqual([['f-pc-10', 'i-pc-10', ['step'], false, false], ['f-pc-1', 'i-pc-10', ['step'], false, false]])
+    // redraw 那条新的:拖出新范围,连着的 issue 带过去,保存后 issue 值还在
+    fb.open(AT, { id: 'f-pc-10' })
+    expect(fb.startRedraw()).toBe(true)
+    expect(fb.carry?.link).toBe('i-pc-10')
+    fb.open(AT, { symbol: 'AAA', start: '2025-01-09', end: '2025-01-10', target: 'range' })
+    expect(fb.panel).toMatchObject({ editingId: 'f-pc-10', link: 'i-pc-10', carry: true })
+    expect(fb.save()).toBe(true)
+    await ann.flushed()
+    expect(fake.batches).toHaveLength(2)
+    expect(fake.batches[1].map((o: any) => [o.id, o.value.issue, o.value.start, o.value.target]))
+      .toEqual([['f-pc-10', 'i-pc-10', '2025-01-09', 'range']])
+  })
+
+  it('新旧混在一个 issue 里:一处已改写成不带 answer,另一处还带着;内容相同直接存,不问', async () => {
+    const r = shared()
+    const { answer: _a, ...plain } = r.state.charts[1].feedback![0] as any          // f-pc-5 已是不带 answer 的
+    r.state.charts[1].feedback![0] = plain
+    const { ann, view, fb } = await setup(r)
+    await enterCompare(view)
+    fb.open(AT, POINT)
+    fb.pickIssue('i-pc-4')
+    expect([fb.panelNeedsChoice, fb.panelPlaces]).toEqual([false, 3])
+    expect(fb.save()).toBe(true)
+    await ann.flushed()
+    expect(ops()).toEqual([['f-pc-10', null, 'i-pc-4', '追高']])
   })
 })

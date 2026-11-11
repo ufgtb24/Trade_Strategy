@@ -3,7 +3,7 @@
 承 spec §2.4.1 · failure_event_window 语义 = attempt 判据评估的实测轨迹。
 """
 # on_gate 编写指南(四条: attempt 边界 / failure_event_window / evaluation_lookback /
-# measured.kind)已迁入 .claude/skills/authoring-path2-detector/reference.md §4。
+# measured.kind)已迁入 .claude/skills/write-detector/reference.md §4。
 import os
 import sys
 from dataclasses import dataclass

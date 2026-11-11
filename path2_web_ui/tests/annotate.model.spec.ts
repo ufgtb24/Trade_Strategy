@@ -48,7 +48,7 @@ describe('applyOps', () => {
 
 describe('applyOps · 反馈', () => {
   const fb = (id: string, start: string, end: string, extra: Partial<AnnFeedback> = {}): AnnFeedback => ({
-    id, pattern: 'p', app_id: 'app1', app_ver: 'v1', start, end, target: 'range', source: 'picked', answer: 'neg',
+    id, pattern: 'p', app_id: 'app1', app_ver: 'v1', start, end, target: 'range', source: 'picked',
     note: '太晚', ...extra })
   const stored = (symbol: string, f: AnnFeedback) => feedbackValue(symbol, f)
 
@@ -88,11 +88,13 @@ describe('applyOps · 反馈', () => {
       feedback: [fb('f-pc-1', '2025-01-06', '2025-01-08'), fb('f-pc-2', '2025-01-09', '2025-01-10')] }] })
     const snapshot = structuredClone(base)
     const r = applyOps(base, [{ kind: 'feedback', id: 'f-pc-1', base: 'x',
-      value: stored('AAA', fb('f-pc-1', '2025-01-06', '2025-01-08', { answer: 'off_pattern', note: undefined, segments: ['step'] })) }])
+      value: stored('AAA', fb('f-pc-1', '2025-01-06', '2025-01-08', { answer: 'off_pattern', note: undefined, nodes: ['step'] })) }])
+    expect(Object.keys(r.state.charts[0].feedback![0])).toEqual(
+      ['id', 'pattern', 'app_id', 'app_ver', 'start', 'end', 'target', 'source', 'answer', 'nodes'])
     expect(base).toEqual(snapshot)
     expect(r.state.charts[0].feedback![0]).toEqual(
       { id: 'f-pc-1', pattern: 'p', app_id: 'app1', app_ver: 'v1', start: '2025-01-06', end: '2025-01-08',
-        target: 'range', source: 'picked', answer: 'off_pattern', segments: ['step'] })
+        target: 'range', source: 'picked', answer: 'off_pattern', nodes: ['step'] })
     expect(r.state.charts[0].feedback).not.toBe(base.state.charts[0].feedback)
     expect(base.state.charts[0].feedback).toHaveLength(2)
   })
@@ -104,14 +106,46 @@ describe('applyOps · 反馈', () => {
     expect(r.state.charts[0]).not.toHaveProperty('feedback')
   })
 
-  it('存储值:带 symbol;空的 note、segments 不写;family_start 只在 family 时写;编号字母 f', () => {
+  it('存储值:带 symbol;没有 answer 就不写这个键;空的 note、nodes 不写;family_start 只在 family 时写;编号字母 f', () => {
     expect(newId('f', 'pc', 7)).toBe('f-pc-7')
-    expect(feedbackValue('AAA', fb('f-pc-1', '2025-01-06', '2025-01-06',
-      { target: 'point', note: '', segments: [], family_start: '2025-01-02' }))).toEqual(
+    const bare = feedbackValue('AAA', fb('f-pc-1', '2025-01-06', '2025-01-06',
+      { target: 'point', note: '', nodes: [], family_start: '2025-01-02' }))
+    expect(bare).toEqual(
       { id: 'f-pc-1', symbol: 'AAA', pattern: 'p', app_id: 'app1', app_ver: 'v1', start: '2025-01-06', end: '2025-01-06',
-        target: 'point', source: 'picked', answer: 'neg' })
+        target: 'point', source: 'picked' })
+    expect('answer' in bare).toBe(false)
     expect(feedbackValue('AAA', fb('f-pc-1', '2025-01-06', '2025-01-08', { target: 'family', family_start: '2025-01-02' })))
       .toMatchObject({ family_start: '2025-01-02', note: '太晚' })
+    // 不带 answer 的一条:键的先后同后端重放出来的
+    expect(Object.keys(feedbackValue('AAA', fb('f-pc-1', '2025-01-06', '2025-01-08',
+      { target: 'family', family_start: '2025-01-02', nodes: ['step'], issue: 'i-pc-1' })))).toEqual(
+      ['id', 'symbol', 'pattern', 'app_id', 'app_ver', 'start', 'end', 'target', 'source', 'note', 'nodes', 'issue',
+       'family_start'])
+  })
+
+  it('存储值:记录上带着的 answer、dag 原样照抄(以前存下的记录、盲看标记);键序里 answer 紧跟 source', () => {
+    const old = feedbackValue('AAA', fb('f-pc-1', '2025-01-06', '2025-01-08', { answer: 'off_pattern', dag: true }))
+    expect(old.answer).toBe('off_pattern')
+    expect(old.dag).toBe(true)
+    expect('nodes' in old).toBe(false)
+    expect(Object.keys(old)).toEqual(
+      ['id', 'symbol', 'pattern', 'app_id', 'app_ver', 'start', 'end', 'target', 'source', 'answer', 'note', 'dag'])
+    expect('dag' in feedbackValue('AAA', fb('f-pc-1', '2025-01-06', '2025-01-08', { answer: 'off_pattern', nodes: ['a'] })))
+      .toBe(false)
+    expect(feedbackValue('AAA', fb('f-pc-9', '2025-01-06', '2025-01-06',
+      { target: 'point', source: 'random', answer: 'pos', note: undefined })).answer).toBe('pos')
+    // issue 有才写;读回来原样留着
+    const shared = feedbackValue('AAA', fb('f-pc-2', '2025-01-06', '2025-01-08', { issue: 'i-pc-1' }))
+    expect(shared.issue).toBe('i-pc-1')
+    expect('issue' in old).toBe(false)
+    expect(applyOps(read({}), [{ kind: 'feedback', id: 'f-pc-2', base: null, value: shared }]).state.charts[0].feedback![0].issue)
+      .toBe('i-pc-1')
+    // 读回来的记录原样留着 answer、dag;不带 answer 的读回来也没有这个键
+    const r = applyOps(read({}), [{ kind: 'feedback', id: 'f-pc-1', base: null, value: old },
+                                  { kind: 'feedback', id: 'f-pc-2', base: null, value: shared }])
+    const back = r.state.charts[0].feedback!
+    expect(back.find(f => f.id === 'f-pc-1')).toMatchObject({ answer: 'off_pattern', dag: true })
+    expect('answer' in back.find(f => f.id === 'f-pc-2')!).toBe(false)
   })
 })
 

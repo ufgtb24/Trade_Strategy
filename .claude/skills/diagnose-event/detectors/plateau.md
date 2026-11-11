@@ -1,6 +1,6 @@
 # node 语义契约 · plateau(new_step · PlateauDetector 站上新平台复合识别器)
 
-> 本文由 **authoring-path2-detector** 在创建/修改本 detector 时同步维护——诊断"为什么"的语义依据,与代码必须一致;不一致时以代码为准(代码是 SSoT)。
+> 本文由 **write-detector** 在创建/修改本 detector 时同步维护——诊断"为什么"的语义依据,与代码必须一致;不一致时以代码为准(代码是 SSoT)。
 > 首次沉淀:2026-11-05 new_step 第二版落地(设计 `docs/superpowers/specs/2026-11-05-new_step-design.md`)。
 
 模块:`path2_apps/new_step/plateau.py`(app 内 detector,不在 `path2/atoms`) · 消费者:new_step 的 `plateau` node(唯一有 detector 的 node;子结构 node `old_plat` / `step` / `new_plat` / `today`;零边;`eval_meta.end_node = 'plateau.today'`)

@@ -46,15 +46,16 @@
 - **hits**:命中,含 `node_index:{node: instance_id}` + `predicate_trace.where_results`(各 where clause 的 satisfied/measured/threshold)。
 - **burst 的 last_bo**:`burst.end_idx == last_bo.end_idx`(bo 是点事件 start==end)。`tb.anchor_bo_id` 恒为 instance_id 形态(`bo_<idx>#<instance_idx>`,点事件塌缩只消 end、`#idx` 恒在),提取 idx 时先按 '#' 剥后缀(见骨架 A),再用 `burst.end_idx == idx` 找能配的 burst。
 
-## detector 语义契约索引(per-detector 语义,由 authoring 维护)
+## detector 语义契约索引(per-detector 语义,由 write-detector 维护)
 
-"为什么"的深水区(状态机判据顺序 / gate 名表 / anchor 口径 / 骨架 B 变体 / 典型失效模式)按 detector 分文件,由 **authoring-path2-detector** 在创建/修改 detector 时同步维护,诊断时按 scan 的 pattern 对号:
+"为什么"的深水区(状态机判据顺序 / gate 名表 / anchor 口径 / 骨架 B 变体 / 典型失效模式)按 detector 分文件,由 **write-detector** 在创建/修改 detector 时同步维护,诊断时按 scan 的 pattern 对号:
 
-- `detectors/throwback.md` — 方案 C(bottom_burst,`path2/atoms/throwback.py`):enumerate_stabilization_segments、anchor_break_terminate/no_stabilization、骨架 B 变体、where 判定示例
+- `detectors/throwback_v4.md` — V4 三态状态机(`path2/atoms/throwback_v4.py`,bottom_burst):一 burst 一台机器一个容器、segments 槽、整机死法 break / budget
+- `detectors/throwback.md` — 方案 C(`path2/atoms/throwback.py`;现在没有 app 在用,bottom_burst 已换成 V4,文中的 gate 名以代码为准):enumerate_stabilization_segments、anchor_break_terminate/no_stabilization、骨架 B 变体、where 判定示例
 - `detectors/throwback_v1.md` — V1 首段即停状态机(`path2/atoms/throwback_v1.py`,bb_v1):run_first_segment、三 gate(break_no_stable / budget_no_stable / break_truncate)、rise/weak/timeout 不 emit、day_drop 走 where
 - `detectors/plateau.md` — new_step 站上新平台复合识别器(`path2_apps/new_step/plateau.py`,app 内 detector):开段 / 并入 / 逐前缀逐天判据顺序、唯一 gate step_not_above_old、族尾(跌回旧平台 / 到 max_days / 窗口末 / 坏数据)不 emit、对象共用与 node 诊断不去重、骨架 B 变体(直接跑 detect + where 逐条判 + 逐根 r/σ dump);环境探测脚本对 new_step 的 params 声明是错的,见该文件
 
-没有契约文件的 detector:先读它的模块 docstring + 源码(代码是 SSoT),顺手按模板建契约文件(或告知 authoring 补)。
+没有契约文件的 detector:先读它的模块 docstring + 源码(代码是 SSoT),顺手按模板建契约文件(或转 write-detector 补)。
 
 ## 协议层 API(通用,与 pattern 无关)
 

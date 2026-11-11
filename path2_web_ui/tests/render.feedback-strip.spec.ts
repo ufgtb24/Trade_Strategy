@@ -4,8 +4,8 @@ import { describe, it, expect } from 'vitest'
 import { buildSubOption, computeEventData, makeRenderBracketLine, makeRenderFeedbackMark } from '../src/render/chart'
 import { computeSubGeometry, BAND_LANE_H, BAND_BOT_PAD, DIVIDER_GAP, FEEDBACK_ROW_H, USER_APP_GAP } from '../src/render/subGeometry'
 import {
-  FEEDBACK_SERIES, FEEDBACK_TONE, dateSpanToIdx, feedbackLabelFits, feedbackMarks, feedbackRowCount, feedbackTip,
-  feedbackTone,
+  FEEDBACK_SELECTED_EDGE, FEEDBACK_SELECTED_OUTSET, FEEDBACK_SELECTED_STROKE_W, FEEDBACK_SERIES, FEEDBACK_STROKE_W, FEEDBACK_TONE, dateSpanToIdx,
+  feedbackLabelFits, feedbackLabelText, feedbackMarkStyle, feedbackMarks, feedbackRowCount, feedbackTip, feedbackTone,
 } from '../src/render/feedbackStrip'
 import type { EventDict, HitDict } from '../src/types'
 import type { AnnFeedback } from '../src/annotate/model'
@@ -37,7 +37,7 @@ function input(extra: any = {}): any {
 }
 
 const fb = (id: string, start: string, end: string, extra: Partial<AnnFeedback> = {}): AnnFeedback => ({
-  id, pattern: 'p', app_id: 'app1', app_ver: 'v0', start, end, target: 'range', source: 'picked', answer: 'neg',
+  id, pattern: 'p', app_id: 'app1', app_ver: 'v0', start, end, target: 'range', source: 'picked',
   note: 'x', ...extra })
 
 describe('hits 行数据带的范围字段(K 线下标)', () => {
@@ -140,7 +140,9 @@ describe('反馈带的记号', () => {
 
   it('只画用户挑的;范围交叠的错行;配色档照 red / status;选中的那条标出', () => {
     const list = [
-      fb('a', DATES[1], DATES[4]), fb('b', DATES[3], DATES[6]), fb('c', DATES[5], DATES[8]),
+      fb('a', DATES[1], DATES[4], { nodes: ['plateau', 'today'] }),
+      fb('b', DATES[3], DATES[6], { answer: 'off_pattern', nodes: ['plateau'], dag: true }),   // 以前存下的:记号上不留 answer、dag
+      fb('c', DATES[5], DATES[8], { answer: 'neg' }),
       fb('blind', DATES[1], DATES[2], { source: 'random', answer: 'pos' }),
     ]
     const st = { a: { status: 'matched', tag: null, red: true, reason: null },
@@ -148,46 +150,104 @@ describe('反馈带的记号', () => {
     const marks = feedbackMarks(list, DATES, st, 'c')
     expect(marks.map(m => [m.id, m.start, m.end, m.lane, m.tone, m.selected]))
       .toEqual([['a', 1, 4, 0, 'red', false], ['b', 3, 6, 1, 'lost', false], ['c', 5, 8, 0, 'plain', true]])
+    expect(marks.map(m => m.nodes)).toEqual([['plateau', 'today'], ['plateau'], []])
+    for (const m of marks) expect(Object.keys(m).sort()).toEqual(['end', 'id', 'lane', 'nodes', 'selected', 'start', 'tone'])
     expect(feedbackRowCount(marks)).toBe(2)
     expect(feedbackRowCount([])).toBe(0)
     expect(feedbackTone(undefined)).toBe('plain')
     expect(feedbackTone({ status: 'unmatched', tag: 'for_tuning', red: false, reason: null })).toBe('plain')
   })
 
-  it('画法:行高固定;朱红底 / 橙描边 / 常色深灰描边,字一律黑;选中描边加粗;放得下才写字', () => {
-    const api = { coord: ([x]: number[]) => [x * 10, 0], size: () => [10, 0] }
-    const marks = [
-      { id: 'a', start: 0, end: 9, lane: 1, label: 'off_pattern', tone: 'red', selected: true },
-      { id: 'b', start: 2, end: 2, lane: 0, label: 'neg', tone: 'lost', selected: false },
-      { id: 'c', start: 3, end: 6, lane: 0, label: 'neg', tone: 'plain', selected: false },
-    ] as const
-    const render = makeRenderFeedbackMark(marks as any, 50)
-    const [a, b2, c] = [0, 1, 2].map(i => render({ dataIndex: i }, api) as any)
-    expect(a.children[0].shape.y).toBe(50 + FEEDBACK_ROW_H + 1.5)
-    expect(a.children[0].style.fill).toBe(FEEDBACK_TONE.red.fill)
-    expect(a.children[0].style.lineWidth).toBe(3)
-    expect(a.children[1].style.text).toBe('off_pattern')
-    expect(a.children[1].style.fill).toBe('#000000')
-    expect(b2.children[0].style).toMatchObject({ fill: '#ffffff', stroke: '#E69F00', lineWidth: 1.5 })
-    expect(b2.children).toHaveLength(1)                       // 一根 K 线宽放不下 neg:只画记号
-    expect(c.children[0].style).toMatchObject({ fill: '#ffffff', stroke: '#555555' })
-    expect(c.children[1].style.text).toBe('neg')
+  it('选中的记号:不论哪一档都描黑色粗边(比平常粗一倍以上),底色照旧;没选中的照配色档', () => {
+    for (const tone of ['plain', 'red', 'lost'] as const) {
+      expect(feedbackMarkStyle({ tone, selected: true }))
+        .toEqual({ fill: FEEDBACK_TONE[tone].fill, stroke: '#000000', lineWidth: FEEDBACK_SELECTED_STROKE_W })
+      expect(feedbackMarkStyle({ tone, selected: false }))
+        .toEqual({ fill: FEEDBACK_TONE[tone].fill, stroke: FEEDBACK_TONE[tone].stroke, lineWidth: FEEDBACK_STROKE_W })
+    }
+    expect(FEEDBACK_SELECTED_EDGE).toBe('#000000')
+    expect(FEEDBACK_SELECTED_STROKE_W).toBeGreaterThanOrEqual(2 * FEEDBACK_STROKE_W)
+  })
+
+  it('记号上的字:node 名逗号连起来;整串放不下退成第一个加 +n;再放不下或没点 node 为空', () => {
+    expect(feedbackLabelText(['step', 'plateau'], 200)).toBe('step, plateau')
+    expect(feedbackLabelText(['step'], 200)).toBe('step')
+    expect(feedbackLabelText(['step', 'plateau', 'today'], 50)).toBe('step+2')     // 整串放不下:第一个加没写出来的个数
+    expect(feedbackLabelText(['step', 'plateau'], 20)).toBe('')                   // 连 step+1 也放不下
+    expect(feedbackLabelText(['plateau'], 20)).toBe('')                           // 只有一个、放不下:不写(不写 plateau+0)
+    expect(feedbackLabelText([], 500)).toBe('')                                   // 没点 node:不写字
     expect(feedbackLabelFits('off_pattern', 40)).toBe(false)
   })
 
-  it('悬停写全:答案、理由(转义)、分段(拓扑里没有的原样)、状态、原因标签、pos sample inside;不提旧版本 / 过期', () => {
-    const f = fb('f-pc-1', DATES[1], DATES[4], { target: 'family', family_start: DATES[0], answer: 'off_pattern',
-                                              note: 'a<b & "c"', segments: ['plateau', 'gone_node'] })
-    const html = feedbackTip(f, { status: 'matched', tag: 'for_tuning', red: true, reason: null }, true)
-    for (const s of ['answer: off_pattern', 'segments: plateau, gone_node', 'status: matched', 'tag: for_tuning',
+  it('画法:行高固定;朱红底 / 橙描边 / 常色深灰描边,字一律黑;选中描黑色粗边、压在别的记号上面;字是 node 名,放得下才写', () => {
+    const api = { coord: ([x]: number[]) => [x * 10, 0], size: () => [10, 0] }
+    const marks = [
+      { id: 'a', start: 0, end: 9, lane: 1, nodes: ['step', 'plateau'], tone: 'red', selected: true },
+      { id: 'b', start: 2, end: 2, lane: 0, nodes: ['step'], tone: 'lost', selected: false },
+      { id: 'c', start: 3, end: 6, lane: 0, nodes: ['ab', 'cdefgh'], tone: 'plain', selected: false },
+      { id: 'd', start: 0, end: 9, lane: 2, nodes: [], tone: 'plain', selected: false },
+    ] as const
+    const render = makeRenderFeedbackMark(marks as any, 50)
+    const [a, b2, c, d] = [0, 1, 2, 3].map(i => render({ dataIndex: i }, api) as any)
+    // 选中的:粗边多出来的部分画在外侧(矩形四边各外扩 FEEDBACK_SELECTED_OUTSET),字的位置不变
+    expect(a.children[0].shape).toMatchObject({ x: -4 - FEEDBACK_SELECTED_OUTSET, y: 50 + FEEDBACK_ROW_H + 1.5 - FEEDBACK_SELECTED_OUTSET,
+                                                height: FEEDBACK_ROW_H - 3 + 2 * FEEDBACK_SELECTED_OUTSET })
+    expect(a.children[1].style.y).toBe(50 + FEEDBACK_ROW_H + 1.5 + (FEEDBACK_ROW_H - 3) / 2)
+    expect(c.children[0].shape.y).toBe(50 + 1.5)
+    expect(a.children[0].style.fill).toBe(FEEDBACK_TONE.red.fill)
+    expect(a.children[0].style).toMatchObject({ stroke: '#000000', lineWidth: FEEDBACK_SELECTED_STROKE_W })
+    expect(a.children[0].z2).toBeGreaterThan(c.children[0].z2)
+    expect(a.children[1].style.text).toBe('step, plateau')
+    expect(a.children[1].style.fill).toBe('#000000')
+    expect(b2.children[0].style).toMatchObject({ fill: '#ffffff', stroke: '#E69F00', lineWidth: 1.5 })
+    expect(b2.children).toHaveLength(1)                       // 一根 K 线宽放不下 node 名:只画记号
+    expect(c.children[0].style).toMatchObject({ fill: '#ffffff', stroke: '#555555' })
+    expect(c.children[1].style.text).toBe('ab+1')             // 整串放不下:第一个 node 名加 +n
+    expect(d.children).toHaveLength(1)                        // 没点 node:再宽也不画字(不画一段空文字)
+  })
+
+  it('悬停写全:点出的 node(拓扑里没有的原样)、理由(转义)、状态、原因标签、pos sample inside;不提旧版本 / 过期', () => {
+    const f = fb('f-pc-1', DATES[1], DATES[4], { target: 'family', family_start: DATES[0],
+                                              note: 'a<b & "c"', nodes: ['plateau', 'gone_node'] })
+    const html = feedbackTip(f, { status: 'matched', tag: 'for_tuning', red: true, reason: null }, true, 2)
+    for (const s of ['nodes: plateau, gone_node', 'status: matched', 'tag: for_tuning',
                      'pos sample inside', `family_start: ${DATES[0]}`, 'a&lt;b &amp; &quot;c&quot;']) {
       expect(html).toContain(s)
     }
+    // 各行的先后:id、target、range、family_start、shared、nodes、note、status、tag、pos sample inside
+    const order = ['id: ', 'target: ', 'range: ', 'family_start: ', 'shared: ', 'nodes: ', 'note: ', 'status: ', 'tag: ',
+                   'pos sample inside'].map(k => html.indexOf(k))
+    expect(order.every(i => i >= 0)).toBe(true)
+    expect([...order].sort((x, y) => x - y)).toEqual(order)
     expect(html).not.toMatch(/stale|outdated|old version|过期|旧版/)
     const bare = feedbackTip(fb('x', DATES[1], DATES[1], { note: undefined }), undefined, false)
     expect(bare).toContain('status: null')
     expect(bare).toContain(`range: ${DATES[1]}<br/>`)
     expect(bare).not.toContain('pos sample inside')
     expect(bare).not.toContain('note:')
+    expect(bare).not.toContain('nodes:')
+  })
+
+  it('悬停:以前存下的记录上的 answer、dag 不写,也不出 undefined', () => {
+    const olds = [
+      fb('f-pc-1', DATES[1], DATES[4], { answer: 'neg', note: '追高' }),
+      fb('f-pc-2', DATES[1], DATES[4], { answer: 'off_pattern', note: undefined, nodes: ['plateau'] }),
+      fb('f-pc-3', DATES[1], DATES[4], { answer: 'off_pattern', note: '关系不对', nodes: ['plateau'], dag: true }),
+      fb('f-pc-4', DATES[1], DATES[4], { answer: 'off_pattern', note: '缺一段', dag: true }),
+    ]
+    for (const f of olds) {
+      const html = feedbackTip(f, undefined, false)
+      expect(html).not.toMatch(/answer|off_pattern|\bneg\b|dag|undefined/)
+    }
+    expect(feedbackTip(olds[2], undefined, false)).toContain('nodes: plateau<br/>')
+    expect(feedbackTip(olds[3], undefined, false)).not.toContain('nodes:')
+    expect(feedbackTip(fb('f-pc-5', DATES[1], DATES[4]), undefined, false)).not.toMatch(/answer|undefined/)
+  })
+
+  it('悬停:所在的 issue 有两处以上时多一行 shared: n places;只有一处不写', () => {
+    const f = fb('f-pc-1', DATES[1], DATES[4], { note: 'x', issue: 'i-pc-1' })
+    expect(feedbackTip(f, undefined, false, 3)).toContain(`range: ${DATES[1]} … ${DATES[4]}<br/>shared: 3 places<br/>`)
+    expect(feedbackTip(f, undefined, false, 1)).not.toContain('shared')
+    expect(feedbackTip(f, undefined, false)).not.toContain('shared')
   })
 })

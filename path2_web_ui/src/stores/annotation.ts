@@ -211,6 +211,7 @@ function deletionRecord(r: AnnRead, ops: readonly AnnOp[], intent: Intent): Last
  * 撤销一次删除的那一批操作(在 r 上算):
  * - 被删的对象眼下不在就用原编号写回原值,base 取当前 rev(还在的不动:删除没保存成,或别处已放回);
  *   写回的样本,成员里眼下已不在这只股票上或越过样本日的框不收回(否则后端拒收整批);
+ *   写回的反馈属于某个 issue 且这个 issue 眼下还有别的处时,内容照那些处现在的写;
  * - 顺带拿掉的成员:样本和框都还在、框没越过样本日、眼下不是成员时,加回样本的当前值(一个样本一条,
  *   成员按框的先后排);
  * - 顺带拿掉的 attach:框和原来挂的框都还在、这个框眼下既没 attach 也没 detach 时,加回框的当前值。
@@ -219,8 +220,21 @@ function deletionRecord(r: AnnRead, ops: readonly AnnOp[], intent: Intent): Last
 function undoOps(r: AnnRead, rec: LastDeletion): AnnOp[] {
   const back: AnnOp[] = rec.removed.filter(x => !storedValue(r.state, x.kind, x.id))
     .map(x => ({ kind: x.kind, id: x.id, base: baseOf(r, x.kind, x.id), value: structuredClone(x.value) }))
+  // 写回的反馈若属于某个 issue:这个 issue 眼下还有别的处时,内容照它们现在的写(删之后可能被 all 改过,
+  // 照原值写回会和各处不一致、后端拒收整批);没有别的处就照原值。
+  // 四个键(answer、note、nodes、dag)整个照抄、那一处没有的键就删掉:它们正是「带不带 answer」两种形状各自的
+  // 规则管的全部键,所以写回的那条和照抄的那处形状一致,那处合规写回的就合规。只抄 note、nodes 不行:
+  // 那一处若是以前存下的「带 answer、点了 node、没写 note」,写回的会成「不带 answer 又没有 note」而被拒。
+  for (const op of back) if (op.kind === 'feedback' && op.value.issue) {
+    const now = r.state.charts.flatMap(c => c.feedback ?? []).find(f => f.issue === op.value.issue)
+    if (!now) continue
+    for (const k of ['answer', 'note', 'nodes', 'dag'] as const) {
+      if (now[k] === undefined) delete op.value[k]
+      else op.value[k] = structuredClone(now[k])
+    }
+  }
   const after = applyOps(r, back).state
-  const boxOn = (symbol: string, id: string) => chartOf(after, symbol)?.boxes.find(b => b.id === id) ?? null
+  const boxOn =(symbol: string, id: string) => chartOf(after, symbol)?.boxes.find(b => b.id === id) ?? null
   for (const op of back) if (op.kind === 'sample') {
     op.value.members = op.value.members.filter((m: string) => {
       const b = boxOn(op.value.symbol, m)
@@ -598,8 +612,13 @@ export const useAnnotationStore = defineStore('annotation', () => {
    * pattern、还没有当前 pattern)。
    * 改 redraw 出来的范围时 draft 的 target 是 range、不带 family_start,整条重写后原来的 family_start 随之拿掉。
    * 记录和原来一模一样(连 app_ver 也没变)时不写。
+   * draft.issue 是这一处要带的 issue 值(没有即不带)。others 是同一批里一起改的别的处(同一个 issue 的其余成员,
+   * 可在别的股票上):它们的 note、nodes、issue 换成这一处的,记录上以前存下的 answer、dag 一并拿掉(和这一处
+   * 一样改写成不带这两个键的形状),其余字段(日期、app_ver 等)保持原值,各用各的
+   * 修改记录作 base。后端要求带同一个 issue 值的各处内容相同,所以必须和这一处放在同一批里;保存时已不在、
+   * 不是用户自己挑的、不属于当前 pattern 的成员跳过。
    */
-  function saveFeedback(draft: FeedbackDraft & { id?: string }): string | null {
+  function saveFeedback(draft: FeedbackDraft & { id?: string }, others: readonly string[] = []): string | null {
     if (!machine.value || !state.value || saveProblems(draft).length) return null
     const v = useViewStore()
     const run = v.comparing && v.symbol === draft.symbol && v.linkedRun?.symbol === draft.symbol ? v.linkedRun : null
@@ -621,8 +640,24 @@ export const useAnnotationStore = defineStore('annotation', () => {
     commit((r) => {
       const hit = findFeedback(r.state, fid)
       if (editing && (!hit || hit.feedback.source !== 'picked')) return []      // 保存前已被删(或换成了盲看标记)
-      if (hit && JSON.stringify(feedbackValue(hit.chart.symbol, hit.feedback)) === JSON.stringify(value)) return []
-      return [{ kind: 'feedback', id: fid, base: baseOf(r, 'feedback', fid), value }]
+      const ops: AnnOp[] = []
+      if (!hit || JSON.stringify(feedbackValue(hit.chart.symbol, hit.feedback)) !== JSON.stringify(value)) {
+        ops.push({ kind: 'feedback', id: fid, base: baseOf(r, 'feedback', fid), value })
+      }
+      for (const oid of others) {
+        const o = oid === fid ? null : findFeedback(r.state, oid)
+        if (!o || o.feedback.source !== 'picked' || o.feedback.pattern !== pattern) continue
+        const { note: _n, nodes: _s, dag: _d, issue: _i, answer: _a, ...rest } = o.feedback
+        const next: AnnFeedback = { ...rest }
+        if (fb.note) next.note = fb.note
+        if (fb.nodes?.length) next.nodes = [...fb.nodes]
+        if (fb.issue) next.issue = fb.issue
+        const v2 = feedbackValue(o.chart.symbol, next)
+        if (JSON.stringify(feedbackValue(o.chart.symbol, o.feedback)) !== JSON.stringify(v2)) {
+          ops.push({ kind: 'feedback', id: oid, base: baseOf(r, 'feedback', oid), value: v2 })
+        }
+      }
+      return ops
     })
     return fid
   }

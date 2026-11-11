@@ -15,6 +15,8 @@
   expected.json 逐条一致。以后改格式时这组文件和期望都不许改,新版要原样读出它们(spec 4.5);
 - 反馈(kind feedback):三种 target 写进去、重放出来原样;每条取值规则各有一例被拒;没有反馈的股票不出
   feedback 键,只有反馈的股票照样在 charts 里;
+- 反馈的两种形状都一直能存、能读:不带 answer 的(note 必写、不许带 dag)和带 answer 的(规则不变);带 answer 的
+  记录能被改写成不带的;同一个 issue 的各处只要 pattern、note、nodes 相同就行,answer、dag 不同、形状混着都放行;
 - 盲看标记(source 不是 picked 的反馈)保存时改不了、删不掉,别的操作照常;绕过保存(同步来的)删改,读结果
   的 violations 列出来、数据不改;
 - 会话定格:machines.through 是每台机器从 1 起连续到齐的序号,缺号时停在缺口前;as_of 截出的状态等于
@@ -92,6 +94,13 @@ def _feedback(oid, start, end=None, target="point", source="picked", answer="neg
     if note is not None:
         v["note"] = note
     return _op("feedback", oid, {**v, **extra}, base)
+
+
+def _plain(oid, start, end=None, note="不该买", **extra):
+    """一条不带 answer 的反馈(界面写出的形状);缺省是合法的 point / picked。其余参数同 _feedback。"""
+    op = _feedback(oid, start, end, note=note, **extra)
+    del op["value"]["answer"]
+    return op
 
 
 def _write_raw(adir: Path, machine: str, ts: str, seq: int, ops: list[dict]) -> str:
@@ -542,11 +551,11 @@ def test_feedback_round_trips_and_is_bucketed_per_chart(tmp_path):
     fbs = [
         _feedback("f-pc-1", "2024-03-08"),                                                      # point
         _feedback("f-pc-2", "2024-03-06", "2024-03-12", target="family", family_start="2024-02-20",
-                  answer="off_pattern", note=None, segments=["plateau", "new_step"]),           # family,只有分段
+                  answer="off_pattern", note=None, nodes=["plateau", "new_step"]),           # family,只有 node
         _feedback("f-pc-3", "2024-03-06", "2024-03-08", target="range", answer="off_pattern",
-                  note="整体都不像"),                                                             # range,只有 note
+                  note="整体都不像", dag=True),                                                   # range,点 dag 写一句
         _feedback("f-pc-4", "2024-03-06", "2024-03-08", target="family", family_start="2024-03-06",
-                  segments=["plateau"]),                                                        # neg 带分段也行
+                  nodes=["plateau"]),                                                        # neg 带 node 也行
         _feedback("f-pc-5", "2025-12-31", source="random", answer="pos", note=None),             # 盲看标记 pos 不用 note
         _feedback("f-pc-6", "2023-05-22", symbol="MSFT", source="removed", answer="off_pattern", note="不像"),
     ]
@@ -562,15 +571,15 @@ def test_feedback_round_trips_and_is_bucketed_per_chart(tmp_path):
     assert "feedback" not in charts["NVDA"]
     assert list(charts["AAPL"]) == ["symbol", "boxes", "samples", "feedback"]
     assert list(charts["AAPL"]["feedback"][1]) == ["id", "pattern", "app_id", "app_ver", "start", "end", "target",
-                                                   "source", "answer", "note", "segments", "family_start"]
+                                                   "source", "answer", "note", "nodes", "family_start"]
     assert sorted(result["revs"]["feedback"]) == [f"f-pc-{n}" for n in range(1, 7)]
     assert result["next_seq"] == 9                              # 反馈和词、框、样本共用一个编号序列
     assert result["violations"] == []
 
 
-def _bare(**drop) -> dict:
-    """缺一个必填键的反馈。"""
-    op = _feedback("f-pc-1", "2024-03-08")
+def _bare(*, source="picked", **drop) -> dict:
+    """缺一个键的反馈(缺省 picked;source 可换成盲看标记的来源)。"""
+    op = _feedback("f-pc-1", "2024-03-08", source=source)
     for k in drop:
         del op["value"][k]
     return op
@@ -594,20 +603,32 @@ def _bare(**drop) -> dict:
     (_feedback("f-pc-1", "2024-03-08", "2024-03-12", target="range", family_start="2024-03-01"), "family_start"),
     (_feedback("f-pc-1", "2024-03-08", note=None), "note"),                                   # neg 必须写理由
     (_feedback("f-pc-1", "2024-03-08", note=""), "note"),
-    (_feedback("f-pc-1", "2024-03-08", answer="off_pattern", note=None, segments=[]), "至少一样"),
-    (_feedback("f-pc-1", "2024-03-08", answer="off_pattern", segments=["plateau", "plateau"]), "segments"),
-    (_feedback("f-pc-1", "2024-03-08", answer="off_pattern", segments=[""]), "segments"),
-    (_feedback("f-pc-1", "2024-03-08", answer="off_pattern", segments="plateau"), "segments"),
+    (_feedback("f-pc-1", "2024-03-08", answer="off_pattern", note=None, nodes=[]), "至少点一样"),
+    (_feedback("f-pc-1", "2024-03-08", answer="off_pattern", note="不像"), "至少点一样"),        # 只写理由不够
+    (_feedback("f-pc-1", "2024-03-08", answer="off_pattern", note=None, dag=True), "note"),     # 点 dag 必须写理由
+    (_feedback("f-pc-1", "2024-03-08", answer="off_pattern", note="不像", nodes=["plateau"], dag=False), "dag"),   # dag 只存 true
+    (_feedback("f-pc-1", "2024-03-08", answer="off_pattern", note="不像", nodes=["plateau"], dag="yes"), "dag"),
+    (_feedback("f-pc-1", "2024-03-08", answer="off_pattern", nodes=["plateau", "plateau"]), "nodes"),
+    (_feedback("f-pc-1", "2024-03-08", answer="off_pattern", nodes=[""]), "nodes"),
+    (_feedback("f-pc-1", "2024-03-08", answer="off_pattern", nodes="plateau", dag=True), "nodes"),
     (_feedback("f-pc-1", "2024-03-08", "2024-03-12", target="family", family_start="2024-03-01", source="random",
                answer="pos"), "盲看标记的 target"),
     (_feedback("f-pc-1", "2024-03-08", "2024-03-12", target="range", source="added", answer="pos"),
      "盲看标记的 target"),
     (_feedback("f-pc-1", "2024-03-08", source="random", answer="maybe"), "盲看标记的 answer"),
     (_feedback("f-pc-1", "2024-03-08", source="random", note=None), "note"),                  # 盲看 neg 必须写理由
-    (_feedback("f-pc-1", "2024-03-08", source="tuned_added", answer="off_pattern", note=None, segments=["plateau"]),
+    (_feedback("f-pc-1", "2024-03-08", source="tuned_added", answer="off_pattern", note=None, nodes=["plateau"]),
      "note"),
+    (_feedback("f-pc-1", "2024-03-08", issue=""), "issue"),                                  # 不共享就不带这个键
+    (_feedback("f-pc-1", "2024-03-08", source="random", issue="i-pc-1"), "issue"),           # 盲看标记不能共享
     (_feedback("f-pc-1", "2024-03-08", color="red"), "多出"),
     (_bare(app_ver=None), "缺少"),
+    (_plain("f-pc-1", "2024-03-08", note=None), "note"),                                      # 不带 answer:note 必写
+    (_plain("f-pc-1", "2024-03-08", note=""), "note"),
+    (_plain("f-pc-1", "2024-03-08", note=None, nodes=["plateau"]), "note"),                   # 点了 node 也要写
+    (_plain("f-pc-1", "2024-03-08", dag=True), "dag"),                                        # 不带 answer 不许带 dag
+    (_plain("f-pc-1", "2024-03-08", nodes=["plateau", "plateau"]), "nodes"),
+    (_bare(source="random", answer=None), "盲看标记必有 answer"),
     (_feedback("s-pc-1", "2024-03-08"), "f-<机器名>-<序号>"),                                # 编号字母与种类不符
 ])
 def test_rejects_malformed_feedback(tmp_path, op, fragment):
@@ -618,6 +639,153 @@ def test_rejects_malformed_feedback(tmp_path, op, fragment):
     [reason] = e.value.reasons
     assert reason["code"] == "bad_op" and fragment in reason["message"]
     assert list(adir.iterdir()) == []
+
+
+def test_issue_members_must_share_one_content(tmp_path):
+    """带同一个 issue 值的各处内容(pattern、note、nodes,nodes 不论顺序)必须相同:新加一处不一样的、只改其中
+    一处都被拒;各处一起改、一处去掉 issue 另写、不带 issue 的各写各的,照常放行。"""
+    adir = _adir(tmp_path)
+    cfg = _cfg(adir, "pc")
+    off = dict(answer="off_pattern", note="阶跃太缓", nodes=["step", "plateau"], issue="i-pc-1")
+    store.append_batch(cfg, [_feedback("f-pc-1", "2024-03-08", **off),
+                             _feedback("f-pc-2", "2023-05-22", symbol="MSFT", **{**off, "nodes": ["plateau", "step"]}),
+                             _feedback("f-pc-3", "2024-03-11", note="各写各的"),
+                             _feedback("f-pc-4", "2024-03-12", note="不带 issue 的不查")])
+
+    def rejected(ops):
+        before = _hashes(adir)
+        with pytest.raises(store.BatchRejected) as e:
+            store.append_batch(cfg, ops)
+        assert [(r["code"], r["issue"]) for r in e.value.reasons] == [("issue_diverged", "i-pc-1")]
+        assert _hashes(adir) == before
+
+    rejected([_feedback("f-pc-5", "2024-03-13", **{**off, "note": "另一句"})])               # 新加一处,理由不同
+    rejected([_feedback("f-pc-5", "2024-03-13", **{**off, "nodes": ["step"]})])               # 点的 node 不同
+    rejected([_feedback("f-pc-5", "2024-03-13", **{**off, "pattern": "别的 pattern"})])        # 不是同一个 pattern
+    rejected([_plain("f-pc-5", "2024-03-13", note="另一句", nodes=["step", "plateau"], issue="i-pc-1")])
+    rejected([_plain("f-pc-5", "2024-03-13", note="阶跃太缓", issue="i-pc-1")])               # 一个 node 都没点
+    rejected([_feedback("f-pc-1", "2024-03-08", **{**off, "note": "只改这一处"},
+                        base=_rev(cfg, "feedback", "f-pc-1"))])
+
+    store.append_batch(cfg, [                                                                  # 各处一起改
+        _feedback("f-pc-1", "2024-03-08", **{**off, "note": "说准一点"}, base=_rev(cfg, "feedback", "f-pc-1")),
+        _feedback("f-pc-2", "2023-05-22", symbol="MSFT", **{**off, "note": "说准一点"},
+                  base=_rev(cfg, "feedback", "f-pc-2"))])
+    store.append_batch(cfg, [                                                                  # 这一处另立:去掉 issue
+        _feedback("f-pc-2", "2023-05-22", symbol="MSFT", note="其实是另一回事",
+                  base=_rev(cfg, "feedback", "f-pc-2")),
+        _feedback("f-pc-5", "2024-03-13", **{**off, "note": "说准一点"})])                    # 复用:和现有的一样
+    charts = {c["symbol"]: c for c in store.read_annotations(cfg)["state"]["charts"]}
+    assert [(f["id"], f.get("issue")) for f in charts["AAPL"]["feedback"]] == [
+        ("f-pc-1", "i-pc-1"), ("f-pc-3", None), ("f-pc-4", None), ("f-pc-5", "i-pc-1")]
+    assert "issue" not in charts["MSFT"]["feedback"][0]
+    assert list(charts["AAPL"]["feedback"][0]) == ["id", "pattern", "app_id", "app_ver", "start", "end", "target",
+                                                   "source", "answer", "note", "nodes", "issue"]
+
+
+def test_issue_ignores_answer_and_dag_and_mixes_shapes(tmp_path):
+    """answer、dag 不属于 issue 内容:同一个 issue 的各处这两个键不同、带不带 answer 混着,只要 pattern、note、
+    nodes 相同就放行;其中一处被单独改写成不带 answer 的(内容没变)也放行。"""
+    adir = _adir(tmp_path)
+    cfg = _cfg(adir, "pc")
+    same = dict(note="阶跃太缓", nodes=["step", "plateau"], issue="i-pc-1")
+    store.append_batch(cfg, [_feedback("f-pc-1", "2024-03-08", answer="off_pattern", **same)])
+    store.append_batch(cfg, [
+        _feedback("f-pc-2", "2024-03-11", answer="off_pattern", dag=True, **same),            # 多点了 dag
+        _feedback("f-pc-3", "2024-03-12", answer="neg", **same),                              # 答案不同
+        _plain("f-pc-4", "2024-03-13", **{**same, "nodes": ["plateau", "step"]})])            # 不带 answer
+    store.append_batch(cfg, [_plain("f-pc-1", "2024-03-08", base=_rev(cfg, "feedback", "f-pc-1"), **same)])
+    fbs = {f["id"]: f for f in store.read_annotations(cfg)["state"]["charts"][0]["feedback"]}
+    assert {i: (f.get("answer"), f.get("dag"), f["issue"]) for i, f in fbs.items()} == {
+        "f-pc-1": (None, None, "i-pc-1"), "f-pc-2": ("off_pattern", True, "i-pc-1"),
+        "f-pc-3": ("neg", None, "i-pc-1"), "f-pc-4": (None, None, "i-pc-1")}
+
+    with pytest.raises(store.BatchRejected) as e:              # 混着形状的 issue 照样查内容
+        store.append_batch(cfg, [_plain("f-pc-4", "2024-03-13", base=_rev(cfg, "feedback", "f-pc-4"),
+                                        **{**same, "note": "只改这一处"})])
+    [reason] = e.value.reasons
+    assert (reason["code"], reason["issue"]) == ("issue_diverged", "i-pc-1")
+    assert "pattern、note、nodes" in reason["message"]
+
+
+def test_plain_feedback_round_trips_without_answer_key(tmp_path):
+    """不带 answer 的反馈:三种 target、点没点 node 都收,重放出来原样、没有 answer 键;键序里 answer 的位置
+    (source 之后、note 之前)留给带 answer 的记录,两种形状并存时各自原样。"""
+    cfg = _cfg(_adir(tmp_path), "pc")
+    fbs = [
+        _plain("f-pc-1", "2024-03-08"),                                                         # 只写一句
+        _plain("f-pc-2", "2024-03-06", "2024-03-12", target="family", family_start="2024-02-20",
+               note="阶跃太缓", nodes=["plateau", "new_step"]),
+        _plain("f-pc-3", "2024-03-06", "2024-03-08", target="range", note="整体都不像", issue="i-pc-1"),
+        _feedback("f-pc-4", "2024-03-11", answer="off_pattern", note="整体都不像", dag=True),     # 带 answer 的并存
+    ]
+    store.append_batch(cfg, fbs)
+    got = {f["id"]: f for f in store.read_annotations(cfg)["state"]["charts"][0]["feedback"]}
+    assert got == {op["id"]: _value(op) for op in fbs}
+    assert all("answer" not in got[i] and "dag" not in got[i] for i in ("f-pc-1", "f-pc-2", "f-pc-3"))
+    assert list(got["f-pc-2"]) == ["id", "pattern", "app_id", "app_ver", "start", "end", "target", "source",
+                                   "note", "nodes", "family_start"]
+    assert list(got["f-pc-3"]) == ["id", "pattern", "app_id", "app_ver", "start", "end", "target", "source",
+                                   "note", "issue"]
+    assert list(got["f-pc-4"]) == ["id", "pattern", "app_id", "app_ver", "start", "end", "target", "source",
+                                   "answer", "note", "dag"]
+
+
+def test_feedback_with_answer_can_be_rewritten_without_it(tmp_path):
+    """带 answer、带 issue 的一条 range 反馈(picked / neg / 有 note)先存进去,再用同一个编号改成不带 answer 的:
+    收,重放出新值;之后还能照旧形状再存别的反馈(旧页面发来的保存一直收)。"""
+    adir = _adir(tmp_path)
+    cfg = _cfg(adir, "pc")
+    old = _feedback("f-pc-1", "2024-03-06", "2024-03-12", target="range", note="这一段不该买", issue="i-pc-1")
+    store.append_batch(cfg, [old])
+    new = _plain("f-pc-1", "2024-03-06", "2024-03-12", target="range", note="这一段不该买", nodes=["plateau"],
+                 issue="i-pc-1", base=_rev(cfg, "feedback", "f-pc-1"))
+    store.append_batch(cfg, [new])
+    result = store.read_annotations(cfg)
+    assert result["state"]["charts"][0]["feedback"] == [_value(new)]
+    assert "answer" not in result["state"]["charts"][0]["feedback"][0]
+    assert result["conflicts"] == [] and result["violations"] == []
+
+    store.append_batch(cfg, [_feedback("f-pc-2", "2024-03-13", answer="off_pattern", note=None, nodes=["plateau"])])
+    assert len(store.read_annotations(cfg)["state"]["charts"][0]["feedback"]) == 2
+
+
+def test_files_with_every_old_feedback_shape_still_replay_and_can_be_edited(tmp_path):
+    """读文件和保存用的是同一套取值规则:文件里带 answer 的各种写法(neg + note、off_pattern 只点 node、
+    off_pattern + dag + note、三样都有并共享 issue、neg 带 node)原样读得出;每一条都能作为修改的基础,
+    改写成不带 answer 的(没写 note 的那条补上一句),重放出改后的值。"""
+    adir = _adir(tmp_path)
+    cfg = _cfg(adir, "pc")
+    olds = [
+        _feedback("f-pc-1", "2024-03-08"),
+        _feedback("f-pc-2", "2024-03-11", answer="off_pattern", note=None, nodes=["plateau"]),
+        _feedback("f-pc-3", "2024-03-12", answer="off_pattern", note="整体都不像", dag=True),
+        _feedback("f-pc-4", "2024-03-13", answer="off_pattern", note="阶跃太缓", nodes=["step"], dag=True,
+                  issue="i-pc-1"),
+        _feedback("f-pc-5", "2024-03-14", answer="off_pattern", note="阶跃太缓", nodes=["step"], dag=True,
+                  issue="i-pc-1"),
+        _feedback("f-pc-6", "2024-03-06", "2024-03-07", target="family", family_start="2024-02-20",
+                  nodes=["plateau"]),
+    ]
+    _write_raw(adir, "pc", "20261103T090000.000Z", 1, olds)        # 直接写文件:只经过读文件时的校验
+    result = store.read_annotations(cfg)
+    assert {f["id"]: f for f in result["state"]["charts"][0]["feedback"]} == {op["id"]: _value(op) for op in olds}
+    assert result["violations"] == []
+
+    def plain_of(op, **changes):
+        v = {k: x for k, x in op["value"].items() if k not in ("answer", "dag")}
+        return _op("feedback", op["id"], {**v, **changes}, _rev(cfg, "feedback", op["id"]))
+
+    with pytest.raises(store.BatchRejected) as e:                  # 没写 note 的那条:不补一句存不成不带 answer 的
+        store.append_batch(cfg, [plain_of(olds[1])])
+    assert "note" in e.value.reasons[0]["message"]
+    news = [plain_of(olds[0]), plain_of(olds[1], note="补一句"), plain_of(olds[2]),
+            plain_of(olds[3]),                                     # 只改写共享 issue 的其中一处:内容没变,放行
+            plain_of(olds[5])]
+    store.append_batch(cfg, news)
+    got = {f["id"]: f for f in store.read_annotations(cfg)["state"]["charts"][0]["feedback"]}
+    assert got == {**{op["id"]: _value(op) for op in news}, "f-pc-5": _value(olds[4])}
+    assert [i for i, f in got.items() if "answer" in f] == ["f-pc-5"]
 
 
 def test_blind_marks_cannot_be_changed_or_deleted(tmp_path):
@@ -638,7 +806,7 @@ def test_blind_marks_cannot_be_changed_or_deleted(tmp_path):
         assert [(r["code"], r["feedback"]) for r in e.value.reasons] == [("blind_immutable", "f-pc-1")]
         assert _hashes(adir) == before
 
-    store.append_batch(cfg, [_feedback("f-pc-2", "2024-03-11", answer="off_pattern", note=None, segments=["plateau"],
+    store.append_batch(cfg, [_feedback("f-pc-2", "2024-03-11", answer="off_pattern", note=None, nodes=["plateau"],
                                        base=_rev(cfg, "feedback", "f-pc-2")),
                              _box("b-pc-3", "2024-03-01", "2024-03-05")])
     store.append_batch(cfg, [_delete("feedback", "f-pc-2", _rev(cfg, "feedback", "f-pc-2"))])

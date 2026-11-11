@@ -1,6 +1,6 @@
 # node 语义契约 · tb(bb_v1 · throwback_v1 首段即停状态机)
 
-> 本文由 **authoring-path2-detector** 在创建/修改本 detector 时同步维护——诊断"为什么"的语义依据,与代码必须一致;不一致时以代码为准(代码是 SSoT)。
+> 本文由 **write-detector** 在创建/修改本 detector 时同步维护——诊断"为什么"的语义依据,与代码必须一致;不一致时以代码为准(代码是 SSoT)。
 > 首次沉淀:2026-08-25 tb_v1 重写(spec `docs/superpowers/specs/2026-08-25-tb-v1-first-segment-design.md`)。
 
 模块:`path2/atoms/throwback_v1.py` · 消费者:bb_v1 的 `tb` node(扁平事件,`eval_meta.end_node = 'tb'`)、try_conplex_where(沙盒)

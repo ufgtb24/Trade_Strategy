@@ -1,8 +1,8 @@
-# authoring-path2-detector 参考手册
+# write-detector 参考手册
 
-> 给 SKILL.md 主流程在判据设计 / 实现 / 诊断接线时查阅。定位是「detector / event
-> 实现该知道什么」，与 app 设计流互补：选型分诊（约束降到哪层）归 app 设计流，
-> 本手册管「怎么写」。
+> 给 SKILL.md 的各步查阅：detector 与事件类「怎么写」该知道什么。该用哪个 detector、
+> 一条约束放在 node / where / 边的哪一层，归 `annotation-round` 的
+> `references/writing-app.md`，不在这里。
 
 ## §0 红线（先读）
 - 凡涉及具体参数值 / 判据阈值 / 字段名，一律现场读代码（`path2/atoms/*.py` /
@@ -29,8 +29,8 @@
   1. 窗口首部不足（`window_start < 0`）：序列开头的 `total_window` 根 bar 内永远不产（来源 `breakout.py::_detect_peak_in_window`）；
   2. peak 在窗口边缘：最高点在前 `min_side_bars` 或后 `min_side_bars` 范围内时不认定为 peak，则突破该位置不产事件（来源同上）；
   3. 相对高度不足：peak 候选的相对高度 `(peak_price - window_min_low) / window_min_low < min_relative_height` 时不产 peak，后续突破无依据（来源同上）；
-  4. 突破幅度不足：当前 bar 价格未超 `exceed_price = peak_price × (1 + exceed_threshold)` 时不产（来源 `breakout.py::emit`）；
-  5. vol_ratio 热身不完整：序列前 `vol_baseline_period` 根内 `vol_ratio` 为 `None`，early burst 的 `max_vol_ratio` 字段为 0，导致 `vol_ratio` 相关 where 条件静默不满足（来源 `breakout.py::detect` 调 `calculate_vol_ratio`）。
+  4. 突破幅度不足：当前 bar 价格未超 `exceed_price = peak_price × (1 + exceed_threshold)` 时不产（来源 `breakout.py::BODetector._check_breakout`）；
+  5. vol_ratio 热身不完整：序列前 `vol_baseline_period` 根内 `BOEvent.vol_ratio` 为 `None`，读它的 where 条件静默不满足（来源 `breakout.py::detect` 调 `calculate_vol_ratio`）。
 - **常见误配**：用 `vol_ratio` where 做量能门时忘记序列前段热身缺失导致误杀；`peak_measure` 与 `breakout_measure` 含义不同（前者定峰位，后者定突破比较），混用参数名是典型配置错误。
 
 ---
@@ -40,7 +40,7 @@
 - **静默不产的情形**（失效边界，设计时最重要）：
   1. bo 流为空或 bo 总数 < `min_bos`：整条序列无任何前缀满足长度门，不产（来源 `breakout.py::BurstDetector.detect`）；
   2. 相邻 bo 间距全 > `gap_max`：每个 bo 各自成孤立簇、簇长永远为 1，不满足 `min_bos ≥ 2` 则不产（来源同上）；
-  3. `vol_ratio` 热身不完整：上游 BOEvent 的 `vol_ratio` 为 None 时 `max_vol_ratio` 聚合为 0，`max_vol_ratio` where 门静默不满足（来源 `breakout.py::_make_burst`）；
+  3. 量比热身不完整：`max_bar_vol_ratio` 不从上游 bo 聚合，是 BurstDetector 用自己的 `vol_baseline_period` 算整列量比、取 burst 跨度内所有 bar（含非 bo 根）的最大值；跨度整段落在热身期内时它为 0，读它的 where 门静默不满足（来源 `breakout.py::BurstDetector`）；
   4. `first_drought` 过小：`first_drought` 取簇首 bo 的 `drought_floor`（本趟扫描可确证的沉寂下界）。簇首是扫描窗口内第一根 bo 时下界 = `start_idx - total_window`，若它就贴在热身期结束处则下界接近 0，超过门槛的 `where W.attr("first_drought")` 静默拦截（来源同上）。想救这类样本靠加长 `head_buffer`，不是调闸。
 - **常见误配**：把 `gap_max` 理解为「窗口跨度」——实际只看相邻两个 bo 间距，跨度可以任意长；把窗口首根 bo 的 `first_drought` 当精确值读——它是下界（真实沉寂只会更长），`>=` 闸判过必是真过、判不过可能是缓冲不够。
 
@@ -80,14 +80,7 @@
 ---
 
 ### ThrowbackDetector（path2/atoms/throwback.py）
-- **检测什么子结构**：以 BO 为锚点推断的「可买入区间」宽事件——回踩成功时产出 `[止跌点, 大涨前一根/timeout]` 区间，破位则不产（start_idx=止跌点，end_idx=大涨前一根或 timeout）
-- **静默不产的情形**（失效边界，设计时最重要）：
-  1. `bo_idx < 1` 或 ATR ≤ 0：序列起始第一根 bo 或历史不足时 ATR 为 0，直接返回 None（来源 `throwback.py::evaluate_throwback`）；
-  2. 破位（`support_measure < anchor`）：BO 后 `[bo+1, end]` 区间内任意一根低于 anchor，事件不产——这是最常见的静默原因（来源 `throwback.py::_find_start_idx` 和 `_find_end_idx`）；
-  3. 止跌确认区窗口过短：回踩止跌的两根连续「不创新低」确认未在 `max_start_gap` 范围内出现，超窗口不产（来源 `throwback.py::_find_start_idx`）；
-  4. 回落深度不足：BO 后价格几乎不回踩（横走），peak_high - trough_low < `pullback_min_atr` × atr，直接 None（来源同上）；
-  5. 多 BO 可能映射到同一 span：多个 BO 触发的 ThrowbackEvent 若 `[start, end]` 相同则去重只保一个（来源 `throwback.py::ThrowbackDetector.detect` 末段去重）；下游 where 用 `anchor_bo_id` 精确锁定特定 BO 时，不同 BO 映射到同一 tb 的场景需注意。
-- **常见误配**：边锚点选择——TB 以 BO 为触发源，若 dag 边从 burst 到 tb，锚应落在 `Child(burst, "last_bo")` 而非 burst 整段 end；`anchor_measure` 与 `support_measure` 语义不同（前者定锚价，后者定破位比较维度），配置时需同时检查两个参数。
+- **现状**：无现役 app 引用（bottom_burst 用 V4，bb_v1 用 V1）。一个 bo 一个容器、内嵌多个企稳段（`enumerate_stabilization_segments`），消费 bo 流；low 跌破动态锚点后整个 bo 终止、已产的段保留；gate 是 `oversold` / `distribute` / `no_stabilization`；`support_measure` 在这版里不起作用（破位一律用 low）。更早的单段实现在 `throwback_v0.py`。新 app 不要选它，要用先现场读代码。
 
 ### ThrowbackDetectorV1（path2/atoms/throwback_v1.py）
 - **检测什么**：一句话定位——post-burst 首段即停状态机：UP/DOWN/STABLE 三态，DOWN 找底（K 根不刷新入段）、STABLE 为唯一买点窗，rise / weak / break / timeout 任一收口即终止；一 burst 至多一个扁平事件（无容器、无 re-entry）。诊断契约：`diagnose-event/detectors/throwback_v1.md`
@@ -101,13 +94,13 @@
 
 ### ThrowbackDetectorV4（path2/atoms/throwback_v4.py）
 - **检测什么**：一句话定位——post-burst 回踩跟踪状态机：DOWN 找底、STABLE 产企稳买点段、UP 等下一轮回踩；一 burst 一机一容器（segments 槽），`machine_outcome ∈ ('break','budget')` 独立表达整机死法（B1）。修复 t1 的 rise-before-confirm 召回杀手（rise 不再终止机器）且 re-entry 为原生属性（weak 出段自然回 DOWN 重滚）。诊断契约全文：`diagnose-event/detectors/throwback_v4.md`
-- **静默不产的情形**（失效边界，spec §6）：
+- **静默不产的情形**（失效边界）：
   1. `bo < 1` / `bo >= len(df)`：前置边界不启动机器（不 emit gate）；vol 热身 NaN 仅该 bar rise 臂降级、不整机终止；
   2. 全程 UP 无回踩：一路阳线收涨，预算尽 0 段（bo_only 语义，正确静默）；
   3. 持续阴跌不破 global_bottom：每根刷新 trough、count 恒清零，陪跑满 max_span 0 段（max_span 不能过大的原因之一）；
   4. V 反弹：DOWN→UP 直接转 UP 不产段（机器存活非失效；rise 臂优先于计数）；
   5. 预算内 0 段：整机不产事件（emit `budget_no_stable` gate）；
-  6. 前缀族多实例：同 cluster 多 burst → 多容器 span 重叠各带单来源 anchor_bo_id（有意不去重；统计伪复制由 eval 层 dedup_daily (symbol,date) 去重处理）。
+  6. 前缀族多实例：同 cluster 多 burst → 多容器 span 重叠各带单来源 anchor_bo_id（有意不去重；统计伪复制由 `path2_web/eval_runner.py::_dedup_daily_stats` 按 (symbol,date) 去重处理）。
 - **常见误配**：① 参数名换代——`max_start_gap/atr_window/anchor_measure/trend_lookback/k_exit` 已不存在，现为六参数 `max_rise_k/stop_confirm_bars/vol_window/anchor_mode/max_span/measure`（vol 是 median TR 非 Wilder ATR）；② 消费流——本 detector 是多源 L2+，`detect(burst_stream, df)` 吃 **BurstEvent 流**（consumes_stream='burst'），喂 bo 流不产；③ edge `max_gap` 与 detector `max_span` 共用同一 SSoT（params.tb.max_span），改预算要两处同查；④ `eval_meta.end_node` = `'tb.segments'`（node id `tb` + 槽名，误用类名/旧词 KeyError）；⑤ 阴线臂恒 close/open，不随 measure 变。
 
 ### PlateauDetector（path2_apps/new_step/plateau.py）
@@ -127,15 +120,15 @@
 - 必须 `@dataclass(frozen=True)`；自定义 `__post_init__` 必须调用 `super().__post_init__()`
 - frozen 容器字段一律 tuple（list 可 in-place mutate，会从内部突破 frozen 语义）
 - 身份轴 = node_id（所属 node，物化注入）+ instance_id（实例组合键），无第三维度；
-  instance_id 由引擎物化时注入（`{node_id}_{start}[_{end}]}#{instance_idx}`，点事件
-  start==end 塌缩为 `{node_id}_{start}`），detector 构造阶段为 None、物化后恒非
+  instance_id 由引擎物化时注入（`{node_id}_{start}[_{end}]#{instance_idx}`，点事件
+  start==end 只省掉 `_{end}`、`#idx` 恒在，如 `bo_7#0`），detector 构造阶段为 None、物化后恒非
   None——契约唯一出处 = `engine.annotate_stream`，禁止各处自行构造
   （`path2/core.py::Event` docstring）
 
 ### 因果封闭与引用
 - **字段值须在 confirm_idx 时刻可知**：事件之间的关系（谁突破谁、谁吃掉谁）用
   `ref_slots()` 表达、由消费侧按引用关系合成（如三态 alive/broken/eaten 由消费侧
-  查 `BOEvent.ref_ids.broken` / `PeakEvent.ref_ids.superseded` 反查得到），不写成
+  用 `BOEvent.ref_ids_of("broken")` / `PeakEvent.ref_ids_of("superseded")` 反查得到），不写成
   被引用方身上的结果字段（state / outcome 类）——**不存在“显示专用豁免”**，判定
   逻辑该在哪层就在哪层，渲染需要的字段照样只能靠消费侧合成，不能为了“方便前端”
   破例塞进被引用方
@@ -172,7 +165,7 @@ detector 的每个门槛 / 旋钮先问一句：**它改变「哪些 K 线属于
 |---|---|---|---|
 | **资格型 → where** | 事件几何已定，阈值只决定该事件是否合格（最短根数、确认名次、年龄下限、以及**不参与扩展 / 断链判断**的量比 / 振幅上限…） | **零**：宽进扫一次，事后按字段切任意档 | 原始量算好落字段（如 `bar_count` / `tail_rank` / `vol_ratio_mean`），阈值在 app `dag_spec` 的 `W.attr(...)` 里；detector 构造函数**不收**这个阈值 |
 | **过滤型（几何参数中的特例）** | 只在 emit 处把关、不改产物几何（如 BurstDetector 的 `min_bos`：链怎么切与它无关，只决定短链是否 emit） | 零（事后按 count 过滤精确等价） | 允许进构造函数，但 docstring 要标「emit 过滤型」、对应计数字段必须落事件 |
-| **结构型** | 改事件几何，但所有档位可从一次遍历导出（如 `gap_max` 的链划分、`stop_confirm_bars` / `big_rise_k` 的确认点） | 中：一次多值 detect 精确出全部档位（需专门实现），否则每档重跑本级、上游可复用 | 进构造函数；spec 里写明「多值可导出」及依据 |
+| **结构型** | 改事件几何，但所有档位可从一次遍历导出（如 `gap_max` 的链划分、`stop_confirm_bars` / `max_rise_k` 的确认点） | 中：一次多值 detect 精确出全部档位（需专门实现），否则每档重跑本级、上游可复用 | 进构造函数；docstring 里写明「多值可导出」及依据 |
 | **状态机型** | 改上游状态（峰登记、supersede、drought 累计…），严档不是松档子集（如 `min_relative_height` / `exceed_threshold`） | 高：每档重跑本级及其下游 | 进构造函数；尽量少、档位精 |
 
 设计次序：先把能表达成资格的都表达成资格（右扩类 detector 的「最短长度」「段末确认」
@@ -185,8 +178,8 @@ detector 的每个门槛 / 旋钮先问一句：**它改变「哪些 K 线属于
 里的是资格 / 过滤型；不确定时两档真扫对拍，严档事件集 ⊂ 松档事件集且几何逐字段相等
 → 过滤型，否则几何型。「与既有 detector 惯例一致」不是归位理由。
 
-依据：`docs/research/2026-08-24_region-search-budget/final_report.md`（bb_v1 六个构造
-参数的可扫性实测：四个可一次多值、两个状态机；where 阈值零成本是同一研究的前提）。
+依据（实测结论）：bb_v1 的六个构造参数里四个可一次多值导出、两个是状态机型；where
+阈值事后切档零成本。
 
 ### is_point
 点事件（start_idx == end_idx）才可 `render_grid='price'`（钉 K 线主图价格轴）；
@@ -201,7 +194,8 @@ span 事件（burst/trend/tb 等）一律 `'time'`（默认，副图 band × lan
 - **slot 名 = 父内家庭身份**（声明于父 NodeSpec 的 children key，如 `{"segments": "tb_seg"}`）；
   node_id 是全局身份（跨图身份）——两者不同层，别混
 - 与 children 声明配合：父 `children={"segments": "tb_seg"}` + 子结构 node 一行
-  `NodeSpec("tb_seg")`（归一化回填 event_cls/produced_by，只写 node_id）
+  `NodeSpec("tb_seg", event_cls=子事件类)`（`event_cls` 必须显式写，漏写构造期报错；
+  `produced_by` 由归一化回填，别手写）
 - 运行期 C1/C2/C3 核对声明-物化一致：child_slots 结构改了忘改声明即报错（漂移显式化）
 
 ### child(name)（端点选择器契约）
@@ -211,8 +205,9 @@ span 事件（burst/trend/tb 等）一律 `'time'`（默认，副图 band × lan
 
 ### 物化注意
 - child 是 detector 物化对象、**不进求解图**（子结构 node 无候选池、detector 必须 None）
-- 子结构 node 的 where/consumes_stream/render_grid 是死字段（`_validate_substructure`
-  编译期拒非默认值）
+- 子结构 node 的 consumes_stream / render_grid 是死字段（`_validate_substructure`
+  构造期拒非默认值）；where 可以挂，但只影响页面上这一段显示到哪一档、不进求解，
+  决定买不买的仍是父 node 的 where
 - **投影层行为契约**：子事件自动独立 band——`path2_web_ui/src/render/visible.ts::bandKeyOf`
   按 `event.node_id` 分组（node 维度蕴含类型维度），子结构 node 的事件随其 node_id
   归独立轨道 → 副图独立 band + 点击拓扑子 node 独立显隐，作者零声明；独立 node
@@ -224,33 +219,38 @@ span 事件（burst/trend/tb 等）一律 `'time'`（默认，副图 band × lan
 
 detector 在判据函数内埋 `debug_break` 时，前端 `path2_web_ui/src/stores/view.ts::anchorsOf`
 必须同 PR 加对应 node_id 条目——右键调试菜单的白名单 = `Object.keys(anchorsOf)`
-（node_id 不在表 → 降级 driver 菜单，只剩 driver 脚本项）。五条硬约束:
+（node_id 不在表 → 降级 driver 菜单，只剩 driver 脚本项）。后端另有一条：埋了
+`debug_break` 的文件里，Detector 类必须标 `has_debug_hooks = True`（没埋的标 False；
+`tests/path2/test_debug_break_class_contract.py` 强制，序列化据此下发可调试 node 清单）。
+前后端五条硬约束:
 
 1. **项数守恒**:UI 暴露的每个锚点 key（node_id），该 node 的 detector 内部必须有
    ≥1 个 `(anchor_kind, bar)` 匹配的 `debug_break`——否则"菜单显示但不 hit"无声失败
 2. **参数对齐**:`anchor.bar` 必须与 `debug_break` 第一参 `i` 严格相等
    （`DEBUG_BAR_RANGE` 严格 ∈ 匹配，偏 1 不 fire）
 3. **node 归属**:`debug_break` 的归属 node = 埋点所在 detector 实例被挂载的 node
-   （诊断 attach 时 per-node wrapper 挂 debug）——埋点自身不传 node 参数
+   ——埋点自身不传 node 参数
    （`debug_ctx.py` 无 node gate，三门合取 = `_DEBUG_MODE ∧ bar∈range ∧ anchor_kind 匹配`）；
    多 node 共用的 helper（如 `_emit_tb_gate`）由调用方实例决定归属，无身份维度
 4. **dead-code 保护**:`debug_break` 在 `_DEBUG_MODE=False` 第一行 return，纯加埋点
    不改判定逻辑，生产零成本
 5. **前端过滤选项动态化(入口 A 卡片)**:`FailedAttemptsCard` 的 node 下拉选项**必须**
    动态化，**禁止硬编码** `burst/bo/tb` 之类固定词——node 名随重构漂移(如
-   tb → tb_v1/tb_seg)后，硬编码词与真实 node_id 不匹配，后端按 node 严格过滤
-   返回 0 结果 = 诊断卡片"无声缺失该类型条目"。
+   tb → tb_v1/tb_seg)后，硬编码词与真实 node_id 不匹配，按 node 过滤
+   恒得 0 结果 = 诊断卡片"无声缺失该类型条目"。
    语义:**选项 = 后端下发的全集 + 实际失败集**(`payload.all_nodes` ∪
    `failed_attempts` 的 node_id，去重排序)——pattern 全集由后端 `TimePayload.all_nodes`
-   从 spec.nodes 提取（过滤契约面是 `gf.node_id`，gate_collector per-node wrapper
+   从 spec.nodes 提取（过滤契约面是 `gf.node_id`，gate_collector 按（detector，流）路由
    注入），**本区间无 gate 失败的 node 置灰 disabled 可见但不可选**，用户能区分
    "该 node 存在、只是没失败"与"该 node 不存在"。
    配套:选中的 node 不在当前**失败集**时自动回退"全部"(watch(failedNodes,
    immediate) emit '')——切股/切区间后 failedNodes 必变、all_nodes 可能不变，
    残留保护必须 watch 失败集而非选项全集，防残留过滤态静默空卡片
 
-`anchor_kind` 词汇 = `entry / start / end / gate`（gate 不进 per-event 菜单，仅入口 A
-触发）。锚点档位体系（confirm 并入端点档,不再单独出现）——**分两层,维度不同**:
+`anchor_kind` 词汇：新写的 detector 用 `entry / start / end / gate`（gate 不进 per-event
+菜单，仅入口 A 触发），confirm 并入端点档。`throwback_v1.py` 与 `throwback.py` 仍埋
+`confirm`、前端锚点表里对应的条目也还是 `confirm`，未迁移——`debug_break` 不校验词汇、
+只做字符串匹配，前后端两边的词对得上即可。锚点档位体系——**分两层,维度不同**:
 
 **事件层档位（start/end,所有事件,confirm 落其一）**:
 - 确认型(confirm==start):start 档 = 确认点(bar=start_idx)。如 tb/tb_seg。
@@ -265,10 +265,10 @@ detector 在判据函数内埋 `debug_break` 时，前端 `path2_web_ui/src/stor
 - 次级产物/子结构段(无独立 attempt,如 tb_seg):无 entry → 仅 start+end。
 
 **约定**:容器/子段端点重合由子段承担,容器不独立埋(同 bar 双份 = 噪声,弃)。
-嵌套容器:**声明了 children 的子段由引擎命名表直标结构 node_id**（tb.segments→
-`tb_seg`），anchorsOf 直挂该 node_id 键（断点落在 produced_by detector 的埋点）；
-未声明 app 的子段与容器共用 node_id 'tb'、走 `view.ts::tbAnchorProfile` 按
-child_refs 细分（容器/子段/V1 三档）；埋点不双身份共享（同一根 bar 两份
+嵌套容器:**子段由引擎按 children 声明直标结构 node_id**（tb.segments→
+`tb_seg`；槽没声明直接报错，没有「继承容器 node_id」的兜底），anchorsOf 直挂该
+node_id 键（断点落在 produced_by detector 的埋点）；node_id 同为 `tb` 的容器版与
+V1 叶子版由 `view.ts::tbAnchorProfile` 区分；埋点不双身份共享（同一根 bar 两份
 debug_break 靠 env 过滤 = 噪声，弃）。代码定位:`view.ts` 顶部注释 +
 `debug_ctx.py::debug_break`。
 
@@ -302,8 +302,8 @@ _find_confirm_idx）/版本号/IDE 操作（F10/F11 下潜）/pydevd。原因：
    - 簇事件（变长片段）：一个簇 = 一次 attempt（如 BurstDetector 每个 cluster 的
      chain_break + 尾部收束合计两类失败点）
    - 触发式事件（外部条件触发一次判据评估）：一次触发 = 一次 attempt（如
-     ThrowbackDetector 每个 evaluate_throwback 调用，phase1/phase2 共用同一 attempt、
-     因此共用同一 failure_event_window）
+     `ThrowbackDetectorV1` / `V4`：一个 burst 起一台状态机 = 一次 attempt，机器里
+     各短路点共用同一 failure_event_window 起点）
 2. **failure_event_window**：attempt 从起点到 gate 触发的实测轨迹——不是「若成功会
    覆盖的窗口」、不是「detector 内部 lookback」。点事件恒 (i, i)；跨度事件 =
    (attempt_start, gate_idx)，若成功此 window 就是 event 的 [start_idx, end_idx]。
@@ -318,7 +318,7 @@ _find_confirm_idx）/版本号/IDE 操作（F10/F11 下潜）/pydevd。原因：
 **参考实现**（现成样板，按事件形态对号）：
 - `path2/atoms/breakout.py::BODetector`：点事件逐 bar 短路
 - `path2/atoms/breakout.py::BurstDetector`：簇事件双失败点
-- `path2/atoms/throwback.py::_emit_gate`：触发式 helper
+- `path2/atoms/throwback_v1.py::_emit_tb_gate`：触发式 helper（带 debug 埋点）
 
 **挂载**：Detector 类里声明 `on_gate = None` 类属性（生产路径无开销），诊断层挂
 collector 时在实例上覆盖。
@@ -326,7 +326,7 @@ collector 时在实例上覆盖。
 **流绑定规则**：同一条流不可被 ≥2 个 node 绑定——`gate_collector.attach_and_collect`
 按 (detector, produces_stream) 建路由，同一条流绑多 node 时首条 gate failure 到达即
 raise（gf.node_id 归属在共享下无真值）。同一 detector 的**不同**流各绑一个 node 是
-合法且标准的多流用法（`BODetector` 的 bo/pk 即例，见 SKILL.md「多流场景」节）；不 emit
+合法且标准的多流用法（`BODetector` 的 bo/pk 即例，见 §8）；不 emit
 gf 的 detector 共享同一流仍合法（雷永不动，零误杀）。
 
 **gf 归属**：多流场景下，gf 归**本该诞生的那个事件所在的流**，不是归 detector 本身
@@ -338,16 +338,40 @@ gf 的 detector 共享同一流仍合法（雷永不动，零误杀）。
 
 埋点只需 `debug_break(bar, anchor_kind=...)`，无 class 维度。
 
+## §5 docstring 合同 + 公共库纪律
+
+### docstring 合同（设计记录就是它）
+detector 与事件类的 docstring 必须覆盖三要素，并与最终代码一致：
+1. 核心判据（算法机制、判据顺序）
+2. 输出字段（Event dataclass 字段含义，也可放 Event 类 docstring）；构造参数逐个标
+   归位类型（过滤型 / 结构型 / 状态机型，见 §2）
+3. 一句话定位（供 §1 速查引用）
+
+失效边界 + 常见误配写进 §1 速查条目（选型期决策依据，非使用期参考）。
+
+### 公共库纪律（改 path2/atoms/ 的影响面）
+- 公共 atom 的新建与修改（增补字段 / 改判据 / 改语义）影响**所有引用它的 app**：
+  必须先用 AskUserQuestion 问过用户
+- 改前：grep 找出引用该 detector 的全部 app，逐个存改前基线（`run_eval` 落盘）
+- 改后：对每个受影响 app 跑 `run_regress(baseline_path=...)` 对拍——
+  「不改变现有行为」是假设，零 DIFF 才是证据；纯增补字段也要跑。非零逐条归类：
+  意图内（接受）/ 意外（必修）
+- `run_eval` / `run_regress` / `run_healthcheck`（`path2_web/eval_runner.py`）的
+  `data_dir` 缺省是完整行情：一律显式传 `data_dir='datasets/pkls_until_20251231'`，
+  `end` 不晚于 2025-12-31。`run_regress` 的窗口沿用基线文件里记的，`data_dir` 仍要再传一次
+- 改了输出字段 / 语义 → where 引用复查（app 侧 dag_spec）
+- 带走势特异的形状偏见 → **不进公共库**，app 包内自定义（app 直接 import）
+
 ## §6 诊断契约同步(diagnose-event 依赖)
 
 > 定位:diagnose-event 的"语义深水区"——状态机判据顺序 / gate 名表 / anchor 口径 /
-> 骨架 B 变体 / 典型失效模式——由本 skill 在**创建/修改 detector 时**同步维护,诊断时
+> 骨架 B 变体 / 典型失效模式——由本 skill(write-detector)在**创建/修改 detector 时**同步维护,诊断时
 > 无需逆向工程。文件:`diagnose-event/detectors/<模块名>.md`(如 `throwback_v4.md`),
 > 正文按 node_id 组织(如"tb node 的 gate")。
 > 代码是 SSoT:契约与代码冲突时以代码为准,发现契约 stale 顺手更新。
 
 **何时写**:新建 detector / 修改判据、gate、签名、事件结构后,实现完成时(签名与
-gate 以实际代码为准,不是 spec 草案)。轻量修改(不动签名/gate/判据)→ 核对既有
+gate 以实际代码为准,不是动手前的设想)。轻量修改(不动签名/gate/判据)→ 核对既有
 契约文件是否仍准确,不准确才更新。
 
 **契约文件内容清单**(模板见 `diagnose-event/detectors/throwback_v4.md`,完整样例):
@@ -364,31 +388,8 @@ gate 以实际代码为准,不是 spec 草案)。轻量修改(不动签名/gate/
 - 契约层(上表 1-7)= 本 skill 维护——作者知识,产出时最全
 - 协议层(切窗 / 读 scan schema / 骨架 A / 红线)= diagnose-event 自持,本 skill 不碰
 - 实战沉淀层(如"confirm 被推到窗口末端""孤立 bo 无 burst""救召回方向")=
-  diagnose-event 自持——真实数据下才暴露的行为模式,authoring 时不可预知
+  diagnose-event 自持——真实数据下才暴露的行为模式,写 detector 时不可预知
 - 绕过本 skill 手改 detector 导致契约 stale = 已知风险,诊断时发现不一致就顺手补
-
-## §5 docstring 合同 + 公共库纪律
-
-### docstring 合同（新 detector 交付物之一，spec 中产出、实现必须落地）
-新 detector 的 docstring 必须覆盖三要素：
-1. 核心判据（算法机制）
-2. 输出字段（Event dataclass 字段含义，也可放 Event 类 docstring）
-3. 一句话定位（供 reference §1 速查引用）
-
-docstring 草稿在 spec 中产出、作为交付物之一交给实施计划——不能假定
-实现者会主动写，合同必须写明。失效边界 + 常见误配写进 reference §1 速查条目
-（选型期决策依据，非使用期参考）。
-
-### 公共库纪律（改 path2/atoms/ 的影响面）
-- 公共 atom 修改（增补字段 / 改判据 / 改语义）影响**所有引用它的 app**：
-  必须先 AskUserQuestion 停下确认（公共库 gate）
-- 改前：grep 找出引用该 detector 的全部 app，逐个存改前基线（`run_eval` 落盘）
-- 改后：对每个受影响 app 跑 `run_regress(baseline_path=...)` 对拍——
-  「不改变现有行为」是假设，零 DIFF 才是证据；纯增补字段也要跑
-- 改了输出字段 / 语义 → where 引用复查（app 侧 dag_spec）
-- 带走势特异的形状偏见 → **不进公共库**，app 包内自定义（app 直接 import）
-
----
 
 ## §7 引擎侧契约与负知识（写 detector 前必须知道的引擎行为）
 
@@ -399,7 +400,7 @@ event 类型退回 Python 类型系统（`isinstance` 判别），**不进任何
 过滤、分组、显示、debug 门都不按「类型」分：
 
 - **node_id**（拓扑主键，作者命名）：一身多角就多起一个。子事件按父的 `children` 声明命名表取名
-  （声明了槽位映射的段直标子结构 node_id，未声明的 child 继承父容器 node_id 兜底）。
+  （子段直标声明的子结构 node_id；槽没声明直接报错）。
 - **instance_id**（实例唯一性）：引擎逐流标注注入，形如 `{node_id}_{start}[_{end}]#{idx}`，
   点事件塌缩、桶内流序从 0 起。**契约唯一出处 = `core.py::Event` docstring + `engine.annotate_stream`，
   禁止各处自行构造。**
@@ -441,7 +442,8 @@ event 类型退回 Python 类型系统（`isinstance` 判别），**不进任何
 
 - **frozen 容器字段一律用 tuple**：list 可以 in-place mutate，会从内部突破 frozen 语义。
 - **「Row 落地 = 字段完成」**：单事件不变式（区间合法、禁 NaN）在构造点校验；跨事件不变式
-  （end_idx 升序、instance_id 单 run 唯一）只在驱动入口 `run()` 校验。两者别混放。
+  （end_idx 升序、不得有全字段相等的重复对象；同一 instance_id 多实例合法）在驱动
+  入口逐流校验（`path2/runner.py` 的 `run()` / `run_bundle()` → `_check_stream`）。两者别混放。
 - **`Detector` 协议里 `on_gate` 的声明必须留在 `TYPE_CHECKING` 守卫内**：`runtime_checkable` 的
   isinstance 结构检查会把 Protocol 中任何已声明属性（哪怕带默认值）都纳入必须项，正常声明会让
   所有未显式带 `on_gate` 的现有 detector 突然判定为不合规。
@@ -450,7 +452,7 @@ event 类型退回 Python 类型系统（`isinstance` 判别），**不进任何
   ≥2 node 绑定时 gf 的 node 归属无真值。**同一 detector 的不同流各绑一个 node 完全合法、且是标准
   多流用法**（`BODetector` 的 bo/pk 就是）。不产 gf 的同流共享零影响。
 - **共享 detector 合法但只物化一次**：`run_streams` 按 `(id(detector), consumes_stream)` 去重，
-  共享的多个 node 指向同一个事件 list，instance_id 按拓扑序首个消费 node 命名。
+  共享的多个 node 指向同一个事件 list，事件按 `spec.nodes` 声明顺序里第一个认领该流的 node 命名。
 - **两个 C1 别混**：求解剪枝的 C1（等-end 塌缩，`_solve.py`，漏命中风险源，**改它必须先跑
   多候选 fuzz** —— 真漏命中 bug 曾两次逃过平凡场景的单测试）与运行期校验的 C1（声明⊆实例，
   `engine.py`，漂移检测）是同名不同机制。
@@ -467,3 +469,105 @@ event 类型退回 Python 类型系统（`isinstance` 判别），**不进任何
   轨道；漏声明不再静默继承容器 node_id。**`child_slots()` 必须无条件返回声明的槽名**（成员
   为空也给空 tuple）——别学 `ref_slots()`「空则返回 `{}`」的写法（如 `path2/atoms/breakout.py`
   的两处 `ref_slots`），否则容器为空的实例会在出口撞上 C1「声明 children 未物化」。
+
+## §8 多流 detector（同一趟 detect 产第二条流）
+
+个别副产物**有独立生命周期、且无法脱离主事件的计算过程单独算出来**:主事件不发生
+它依然存在(排除 children 嵌套),又写不出只吃 df 的纯函数单独算它(排除独立
+detector)——它落 detector 副产物四格分类的 **4b 格**,用多流表达:同一趟 detect
+内 yield 多条命名流。四格判据(可判定,逐问):
+
+1. 是"没能成为事件的失败尝试"?→ **GateFailure**;是纯标量派生量?→ **事件字段**
+2. 生命周期被某个主事件包含(主事件不发生它就不存在)?→ **children 嵌套**
+3. 生命周期独立 → 问"能不能被一个独立 detector 单独算出来?":
+   - 能(不需要主事件计算过程的中间状态)→ **拆独立 detector + consumes_stream**
+     (格 4a),不要多流
+   - 不能(需要主事件计算过程的中间状态)→ **多流**(格 4b)
+
+唯一灰区:同一结构的不同侧面落在不同格 → 取最严格的那格;有任一必需侧面落 4b,
+整体就走 4b。**负面裁定:性能理由不足以进 4b**——能被独立算、只是重算贵,老老实实
+拆两个 detector,多流不是为省 CPU 存在的。
+
+**多流写法**:
+- 类级声明 `produces = {"流名": event_cls}`(Detector Protocol 的 produces,
+  ClassVar);单流 detector 不写 produces、detect 直接 yield 裸 Event。**多流
+  detector 不写 `event_cls`**(`stream_schema` 只认 `produces`,写了 `event_cls`
+  也会被忽略,只留误导)。
+- detect 内 `yield (流名, event)` 按流产出。
+- **多流 detector 单流入口 `run()` 会拒绝(raise ValueError),用
+  `run_bundle(detector, *source)`**——返回 `{流名: [Event]}`(声明驱动,空流也存在)。
+- 事件类引用槽位 `ref_slots()`:返回 `{"槽名": self.xxx_refs} if self.xxx_refs else {}`
+  (单/组引用统一;默认空)。引擎在全部流标注完统一翻译进 `Event.ref_ids`
+  (`Tuple[(槽名, ids)]`,按槽名字典序排列,真 instance_id;`ref_ids_of(槽名)` 按槽名
+  取值,缺槽返回 `()`);引用事件池外对象(instance_id 仍 None)视为 detect bug,
+  报错。引用槽字段本身(如 `broken_refs`)不进 payload,下游只拿 `ref_ids` 里的 id。
+
+示例(骨架可运行;真实多流 API 同 `tests/path2/dogfood_multistream.py` 的
+RangeNoteDetector):
+
+```python
+from dataclasses import dataclass
+from typing import Iterator, Tuple
+
+import pandas as pd
+
+from path2.core import Event
+from path2.runner import run_bundle        # 多流入口(run() 会拒绝)
+
+@dataclass(frozen=True)
+class RangeEvent(Event):
+    start_idx: int = 0
+    end_idx: int = 0
+    confirm_idx: int = 0
+
+@dataclass(frozen=True)
+class NoteEvent(Event):
+    start_idx: int = 0
+    end_idx: int = 0
+    confirm_idx: int = 0
+    anchor_refs: Tuple[Event, ...] = ()
+
+    def ref_slots(self):
+        return {"anchor": self.anchor_refs} if self.anchor_refs else {}
+
+class RangeNoteDetector:
+    """每 span 根产一个 range(该窗 high 最高点),随后 1 根内产 note 引用它。"""
+    produces = {"range": RangeEvent, "note": NoteEvent}   # ★ 多流声明
+
+    def __init__(self, span: int = 3, min_bars: int = 5):
+        self.span, self.min_bars = span, min_bars
+        self.on_gate = None
+
+    def detect(self, df: pd.DataFrame) -> Iterator[Tuple[str, Event]]:
+        highs = df["high"].to_numpy()
+        for i in range(len(df)):
+            if i < self.min_bars:
+                continue
+            if i % self.span == 0:
+                lo = max(0, i - self.span)
+                j = int(highs[lo:i + 1].argmax()) + lo
+                rng = RangeEvent(start_idx=lo, end_idx=i, confirm_idx=i)
+                yield ("range", rng)
+                if i + 1 < len(df):
+                    yield ("note", NoteEvent(
+                        start_idx=i + 1, end_idx=i + 1, confirm_idx=i + 1,
+                        anchor_refs=(rng,)))
+
+det = RangeNoteDetector()
+streams = run_bundle(det, df)                  # {"range": [...], "note": [...]}(声明驱动,空流也存在)
+
+# ref_slots 翻译在引擎层(run_streams/analyze),不是 run_bundle:
+from path2.dag.engine import analyze
+from path2.dag.nodes import NodeSpec
+from path2.dag.spec import PatternSpec
+spec = PatternSpec("p", edges=(), nodes=[
+    NodeSpec("range", det, produces_stream="range"),
+    NodeSpec("note", det, produces_stream="note", solve=False),
+])
+res = analyze(spec, df)
+# 统一翻译后 note 的 ref_slots → Event.ref_ids 里的一个槽:
+# res.events 中 note.ref_ids_of("anchor") == (对应 range 的 instance_id,)
+```
+
+**多流 on_gate**:产 gate 的多流 detector emit GateFailure 时填 `stream=流名`(单流
+恒 None),gate_collector 按流路由归属(规则见 §4「流绑定规则」「gf 归属」)。

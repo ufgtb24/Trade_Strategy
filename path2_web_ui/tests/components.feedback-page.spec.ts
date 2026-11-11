@@ -1,7 +1,7 @@
 // 侧栏 feedback 页(components/FeedbackPage.vue)与页签(AnnotationSidebar.vue):
 // - 页签 feedback 只在 compare 有;离开 compare 时停在这页就退回 selection;
 // - 当前 pattern 的全部反馈跨股票列出,按接口给的 red 排前、lost 其次、再按股票日期;行的颜色档、状态、
-//   答案 / 分段 / 理由;只列用户自己挑的(盲看标记不列);会话原因标签挂在 matched 或 lost 的行上(含不红的
+//   答案 / node / 理由;只列用户自己挑的(盲看标记不列);会话原因标签挂在 matched 或 lost 的行上(含不红的
 //   redefined);会话段有问题时页头一行;loading;
 // - 点一行:compare 里打开那只股票,图窗包住那段日期,选中那条(当前日竖线停在范围起点走图的默认聚焦,
 //   挂上图在 tests/components/KlineChart.landing.spec.ts 里测);
@@ -48,12 +48,16 @@ import FeedbackPage from '../src/components/FeedbackPage.vue'
 import { useAnnotationStore } from '../src/stores/annotation'
 import { useAppLinkStore } from '../src/stores/appLink'
 import { useFeedbackStore } from '../src/stores/feedback'
+import { useLandingStore } from '../src/stores/landing'
 import { useViewStore } from '../src/stores/view'
 import { rangeLinkWindow } from '../src/annotate/directLinks'
 
-const fbRec = (id: string, start: string, end: string, extra: Record<string, unknown> = {}) => ({
-  id, pattern: 'p', app_id: 'app1', app_ver: 'v0', start, end, target: 'range', source: 'picked',
-  answer: 'neg', note: `why ${id}`, ...extra }) as any
+// 默认是以前存下的带 answer 的形状(侧栏不显示 answer);f-pc-1、f-pc-5 是界面现在写出的不带 answer 的形状
+const fbRec = (id: string, start: string, end: string, extra: Record<string, unknown> = {}) => {
+  const { answer, ...rest } = { id, pattern: 'p', app_id: 'app1', app_ver: 'v0', start, end, target: 'range',
+                                source: 'picked', answer: 'neg', note: `why ${id}`, ...extra } as any
+  return (answer === undefined ? rest : { ...rest, answer }) as any
+}
 
 function annRead(): AnnRead {
   return {
@@ -61,16 +65,16 @@ function annRead(): AnnRead {
       machine: 'pc', data_fingerprint: null, features: [], patterns: [{ name: 'p' }, { name: 'q' }],
       charts: [
         { symbol: 'BBB', boxes: [], samples: [], feedback: [
-          fbRec('f-pc-1', '2025-01-06', '2025-01-08'),
+          fbRec('f-pc-1', '2025-01-06', '2025-01-08', { answer: undefined }),
           fbRec('f-pc-2', '2025-01-02', '2025-01-02', { target: 'point', answer: 'off_pattern', note: undefined,
-                                                       segments: ['plateau', 'step'] }),
+                                                       nodes: ['plateau', 'step'] }),
         ] },
         { symbol: 'AAA', boxes: [], samples: [], feedback: [
           fbRec('f-pc-3', '2025-01-03', '2025-01-07'),
           fbRec('f-pc-4', '2025-01-09', '2025-01-10', { pattern: 'q' }),
-          fbRec('f-pc-5', '2025-01-09', '2025-01-09', { target: 'point' }),
+          fbRec('f-pc-5', '2025-01-09', '2025-01-09', { target: 'point', answer: undefined }),
           fbRec('f-pc-6', '2025-01-10', '2025-01-10', { target: 'point', source: 'random' }),   // 盲看标记:不列
-          fbRec('f-pc-7', '2025-01-02', '2025-01-03', { answer: 'off_pattern', segments: ['step'], note: undefined }),
+          fbRec('f-pc-7', '2025-01-02', '2025-01-03', { answer: 'off_pattern', nodes: ['step'], note: undefined }),
         ] },
       ],
     },
@@ -153,7 +157,7 @@ describe('页签', () => {
 })
 
 describe('页内容', () => {
-  it('当前 pattern 用户挑的跨股票全列;朱红、lost、其余排序;颜色档、状态、答案 / 分段 / 理由;标签挂 matched 或 lost 的行', async () => {
+  it('当前 pattern 用户挑的跨股票全列;朱红、lost、其余排序;颜色档、状态、node / 理由;标签挂 matched 或 lost 的行', async () => {
     await setup()
     const w = mount(FeedbackPage)
     await settle()
@@ -162,18 +166,30 @@ describe('页内容', () => {
     expect(rows.map(r => r.attributes('data-tone'))).toEqual(['red', 'lost', 'plain', 'plain', 'plain'])
     expect(rows[0].classes()).toContain('red')
     expect(rows[1].classes()).toContain('lost')
+    // 都不和谁共享:一处一组,结构相同(组头写 node 与理由,下面一行写这一处)
+    const groups = w.findAll('[data-testid="feedback-group"]')
+    expect(groups.map(g => [g.attributes('data-key'), g.attributes('data-places')]))
+      .toEqual([['f-pc-3', '1'], ['f-pc-2', '1'], ['f-pc-7', '1'], ['f-pc-5', '1'], ['f-pc-1', '1']])
+    const head = (i: number, id: string) => groups[i].findAll(`[data-testid="${id}"]`).map(x => x.text())
+    expect(head(0, 'feedback-row-node')).toEqual([])
+    expect(head(0, 'feedback-row-nodes-none')).toEqual(['none'])                  // 一个 node 都没点:灰字 none
+    expect(groups[0].get('[data-testid="feedback-row-nodes-none"]').classes()).toContain('ann-nil')
+    expect(groups[0].get('[data-testid="feedback-row-nodes-none"]').attributes('title')).toBe('not on any one node, or not said')
+    expect(head(0, 'feedback-row-note')).toEqual(['why f-pc-3'])
+    expect(head(0, 'feedback-group-places')).toEqual(['places 1'])
+    expect(head(0, 'feedback-group-matched')).toEqual(['matched 1'])
+    expect(head(1, 'feedback-row-node')).toEqual(['plateau', 'step'])
+    expect(head(1, 'feedback-row-nodes-none')).toEqual([])
+    expect(head(1, 'feedback-row-note')).toEqual([])
+    expect(head(1, 'feedback-group-matched')).toEqual(['matched 0'])
     const txt = (r: (typeof rows)[number], id: string) => r.findAll(`[data-testid="${id}"]`).map(x => x.text())
     expect(txt(rows[0], 'feedback-row-symbol')).toEqual(['AAA'])
     expect(txt(rows[0], 'feedback-row-range')).toEqual(['2025-01-03 – 2025-01-07'])
     expect(txt(rows[0], 'feedback-row-status')).toEqual(['matched'])
     expect(txt(rows[0], 'feedback-row-tag')).toEqual(['not_worth'])
-    expect(txt(rows[0], 'feedback-row-answer')).toEqual(['neg'])
-    expect(txt(rows[0], 'feedback-row-note')).toEqual(['why f-pc-3'])
+    expect(txt(rows[0], 'feedback-row-note')).toEqual([])                         // 内容写在组头,不在每处那一行
     expect(txt(rows[1], 'feedback-row-range')).toEqual(['2025-01-02'])            // point:一天
     expect(txt(rows[1], 'feedback-row-tag')).toEqual(['unhandled'])
-    expect(txt(rows[1], 'feedback-row-answer')).toEqual(['off_pattern'])
-    expect(txt(rows[1], 'feedback-row-segment')).toEqual(['plateau', 'step'])
-    expect(txt(rows[1], 'feedback-row-note')).toEqual([])
     // 定义改过:matched 了也是常色,标签说明为什么不红
     expect(txt(rows[2], 'feedback-row-status')).toEqual(['matched'])
     expect(txt(rows[2], 'feedback-row-tag')).toEqual(['redefined'])
@@ -183,6 +199,47 @@ describe('页内容', () => {
     expect(txt(rows[4], 'feedback-row-tag')).toEqual([])                          // unmatched 的行不挂标签
     expect(rows.every(r => r.find('[data-testid="feedback-row-delete"]').exists())).toBe(true)
     expect(w.find('[data-testid="feedback-session-problem"]').exists()).toBe(false)
+    // 以前存下的记录上的 answer 不留痕:没有答案的 testid,整页没有这几个字
+    expect(w.find('[data-testid="feedback-row-answer"]').exists()).toBe(false)
+    expect(w.text()).not.toMatch(/off_pattern|\bneg\b|answer|dag|undefined/)
+    w.unmount()
+  })
+
+  it('按 issue 分组:共享的几处在一组(跨股票),组头写处数与其中 app 还在买的处数;有朱红的组在前、其次有 lost 的', async () => {
+    const charts = fake.read.state.charts
+    // f-pc-1(BBB,unmatched)与 f-pc-5(AAA,状态读不到)、再加一条 f-pc-8(AAA,matched、朱红)共享 i-pc-1
+    charts[0].feedback[0] = { ...charts[0].feedback[0], note: '共用的理由', issue: 'i-pc-1' }
+    charts[1].feedback[2] = { ...charts[1].feedback[2], note: '共用的理由', issue: 'i-pc-1' }
+    charts[1].feedback.push(fbRec('f-pc-8', '2025-01-08', '2025-01-08', { target: 'point', note: '共用的理由', issue: 'i-pc-1' }))
+    fake.answer.items.push(item('f-pc-8', 'matched', true))
+    const { fb } = await setup()
+    const w = mount(FeedbackPage)
+    await settle()
+    const groups = w.findAll('[data-testid="feedback-group"]')
+    // 朱红的组(f-pc-3 单独;i-pc-1 里有 f-pc-8)在前,同档按组里排第一的那处(AAA 2025-01-03 先于 AAA 2025-01-08);再 lost;其余
+    expect(groups.map(g => [g.attributes('data-key'), g.attributes('data-places')]))
+      .toEqual([['f-pc-3', '1'], ['i-pc-1', '3'], ['f-pc-2', '1'], ['f-pc-7', '1']])
+    const g = groups[1]
+    expect(g.findAll('[data-testid="feedback-row"]').map(r => [r.attributes('data-id'), r.attributes('data-tone')]))
+      .toEqual([['f-pc-8', 'red'], ['f-pc-5', 'plain'], ['f-pc-1', 'plain']])   // 组内:朱红在前,其余按股票、日期
+    expect(g.findAll('[data-testid="feedback-row-symbol"]').map(x => x.text())).toEqual(['AAA', 'AAA', 'BBB'])
+    expect(g.findAll('[data-testid="feedback-row-note"]').map(x => x.text())).toEqual(['共用的理由'])   // 内容只写一次
+    expect(g.get('[data-testid="feedback-group-places"]').attributes('title')).toBe('places sharing this issue (same note and nodes)')
+    expect(g.get('[data-testid="feedback-group-places"]').text()).toBe('places 3')
+    expect(g.get('[data-testid="feedback-group-matched"]').text()).toBe('matched 1')
+    expect(g.findAll('[data-testid="feedback-row-edit"]')).toHaveLength(3)
+    // 行上 delete 只删这一处:组还在,少一处
+    await g.get('[data-testid="feedback-row"][data-id="f-pc-5"] [data-testid="feedback-row-delete"]').trigger('click')
+    await settle()
+    expect(fake.batches).toEqual([[{ kind: 'feedback', id: 'f-pc-5', base: null, value: null }]])
+    const g2 = w.get('[data-testid="feedback-group"][data-key="i-pc-1"]')
+    expect(g2.attributes('data-places')).toBe('2')
+    expect(g2.findAll('[data-testid="feedback-row"]').map(r => r.attributes('data-id'))).toEqual(['f-pc-8', 'f-pc-1'])
+    // 点组里的一处:照旧跳过去并选中那一处(只那一行加框)
+    await g2.get('[data-testid="feedback-row"][data-id="f-pc-1"]').trigger('click')
+    expect(fb.selectedId).toBe('f-pc-1')
+    await nextTick()
+    expect(w.findAll('[data-testid="feedback-row"].on').map(r => r.attributes('data-id'))).toEqual(['f-pc-1'])
     w.unmount()
   })
 
@@ -231,6 +288,70 @@ describe('点一行与删除', () => {
     await w.get('[data-testid="feedback-row"][data-id="f-pc-3"]').trigger('click')
     expect([view.mode, view.symbol]).toEqual(['compare', 'AAA'])
     expect(view.viewWindow).toEqual(rangeLinkWindow('2025-01-03', '2025-01-07'))
+    w.unmount()
+  })
+
+  it('行上 edit(在 delete 左边):同点一行落过去并选中;落下之后才请图表在那条记号旁打开面板', async () => {
+    const { view, fb } = await setup()
+    const w = mount(FeedbackPage)
+    await settle()
+    const row = w.get('[data-testid="feedback-row"][data-id="f-pc-1"]')
+    const btns = row.findAll('button')
+    expect(btns.map(b => b.attributes('data-testid'))).toEqual(['feedback-row-edit', 'feedback-row-delete'])
+    expect(btns[0].text()).toBe('edit')
+    expect(btns[0].attributes('title')).toBe("open this feedback's panel on the chart")
+    await btns[0].trigger('click')
+    expect([view.mode, view.symbol]).toEqual(['compare', 'BBB'])
+    expect(view.viewWindow).toEqual(rangeLinkWindow('2025-01-06', '2025-01-08'))
+    expect(fb.selectedId).toBe('f-pc-1')
+    await settle()
+    expect(fb.editRequest).toBeNull()                       // 图还没落定:不提
+    // 这张图的 K 线重读完、默认聚焦来问:落下那天,这时才提
+    view.barDates = ['2025-01-02', '2025-01-03', '2025-01-06', '2025-01-07', '2025-01-08']
+    expect(useLandingStore().claim()).toBe(true)
+    expect(fb.editRequest).toBe('f-pc-1')
+    expect(fb.selectedId).toBe('f-pc-1')
+    expect(fake.batches).toEqual([])
+    w.unmount()
+  })
+
+  it('点一行不提 edit 的请求(只跳过去并选中)', async () => {
+    const { view, fb } = await setup()
+    const w = mount(FeedbackPage)
+    await settle()
+    await w.get('[data-testid="feedback-row"][data-id="f-pc-1"]').trigger('click')
+    view.barDates = ['2025-01-02', '2025-01-03', '2025-01-06', '2025-01-07', '2025-01-08']
+    expect(useLandingStore().claim()).toBe(true)
+    expect(fb.editRequest).toBeNull()
+    w.unmount()
+  })
+
+  it('组头的排法:第一行 node 小标签(没点写 none)与处数,第二行理由;以前存下的 answer、dag 不留痕', async () => {
+    const charts = fake.read.state.charts
+    charts[0].feedback[1] = { ...charts[0].feedback[1], note: '缺一段回踩', dag: true }      // f-pc-2:off_pattern、plateau、step + dag
+    charts[1].feedback[0] = { ...charts[1].feedback[0], answer: 'off_pattern', dag: true }  // f-pc-3:off_pattern、只有 dag
+    await setup()
+    const w = mount(FeedbackPage)
+    await settle()
+    const row = (id: string) => w.get(`[data-testid="feedback-group"][data-key="${id}"]`)
+    const head = (id: string) => row(id).findAll('.fb-ghead span[data-testid]').map(x => [x.attributes('data-testid'), x.text()])
+    expect(head('f-pc-2')).toEqual([
+      ['feedback-row-node', 'plateau'], ['feedback-row-node', 'step'],
+      ['feedback-group-places', 'places 1'], ['feedback-group-matched', 'matched 0'],
+      ['feedback-row-note', '缺一段回踩']])
+    expect(head('f-pc-3')).toEqual([
+      ['feedback-row-nodes-none', 'none'], ['feedback-group-places', 'places 1'], ['feedback-group-matched', 'matched 1'],
+      ['feedback-row-note', 'why f-pc-3']])
+    // 以前存下的「点了 node、没写理由」:只有第一行
+    expect(head('f-pc-7')).toEqual([
+      ['feedback-row-node', 'step'], ['feedback-group-places', 'places 1'], ['feedback-group-matched', 'matched 1']])
+    // 界面现在写出的不带 answer 的一条:同一种排法
+    expect(head('f-pc-1')).toEqual([
+      ['feedback-row-nodes-none', 'none'], ['feedback-group-places', 'places 1'], ['feedback-group-matched', 'matched 0'],
+      ['feedback-row-note', 'why f-pc-1']])
+    expect(w.find('[data-testid="feedback-row-dag"]').exists()).toBe(false)
+    expect(w.find('[data-testid="feedback-row-answer"]').exists()).toBe(false)
+    expect(w.text()).not.toMatch(/off_pattern|\bneg\b|answer|dag|undefined/)
     w.unmount()
   })
 

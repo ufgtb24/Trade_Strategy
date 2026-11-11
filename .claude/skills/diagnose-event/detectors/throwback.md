@@ -1,9 +1,9 @@
 # node 语义契约 · tb(bottom_burst · throwback 方案 C 状态机,一 bo 可产 0..N 段)
 
-> 本文由 **authoring-path2-detector** 在创建/修改本 detector 时同步维护——诊断"为什么"的语义依据,与代码必须一致;不一致时以代码为准(代码是 SSoT)。
+> 本文由 **write-detector** 在创建/修改本 detector 时同步维护——诊断"为什么"的语义依据,与代码必须一致;不一致时以代码为准(代码是 SSoT)。
 > 迁移自 diagnose-event reference.md(2026-08-12 分层重构),沉淀自 DVLT(tb_257_258)、ALT(bo_182) 实战。
 
-模块:`path2/atoms/throwback.py` · 消费者:`path2_apps/bottom_burst/`(方案 C)
+模块:`path2/atoms/throwback.py` · 消费者:现在没有 app 在用(bottom_burst 已换成 V4,见 `throwback_v4.md`);下文沉淀自 bottom_burst 还用方案 C 的时期,gate 名与判据以代码为准
 
 ## API 签名
 

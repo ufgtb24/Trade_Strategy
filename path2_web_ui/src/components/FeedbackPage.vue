@@ -14,11 +14,30 @@
     </div>
     <span v-if="!rows.length" class="ann-nil" data-testid="feedback-empty">empty</span>
     <ul v-else class="fb-list">
-      <li v-for="r in rows" :key="r.feedback.id"
-          :class="['fb-row', toneOf(r), { on: fb.selectedId === r.feedback.id }]"
-          data-testid="feedback-row" :data-id="r.feedback.id" :data-tone="toneOf(r)"
-          title="open this range in compare" @click="jump(r)">
-        <div class="ann-row">
+      <li v-for="g in groups" :key="g.key" class="fb-group" data-testid="feedback-group"
+          :data-key="g.key" :data-places="g.rows.length">
+        <div class="fb-ghead">
+          <div class="ann-row">
+            <span v-for="n in g.nodes" :key="n" class="ann-sym fb-node"
+                  data-testid="feedback-row-node">{{ n }}</span>
+            <span v-if="!g.nodes.length" class="ann-nil" data-testid="feedback-row-nodes-none"
+                  title="not on any one node, or not said">none</span>
+            <span class="ann-grow" />
+            <span class="fb-counts">
+              <span class="ann-k" data-testid="feedback-group-places"
+                    title="places sharing this issue (same note and nodes)">places {{ g.rows.length }}</span>
+              <span class="ann-k" data-testid="feedback-group-matched"
+                    title="of them, places the app still buys (status matched)">matched {{ matchedOf(g) }}</span>
+            </span>
+          </div>
+          <div v-if="g.note" class="ann-row">
+            <span class="ann-biz" data-testid="feedback-row-note">{{ g.note }}</span>
+          </div>
+        </div>
+        <div v-for="r in g.rows" :key="r.feedback.id"
+             :class="['fb-row', 'ann-row', toneOf(r), { on: fb.selectedId === r.feedback.id }]"
+             data-testid="feedback-row" :data-id="r.feedback.id" :data-tone="toneOf(r)"
+             title="open this range in compare" @click="jump(r)">
           <span class="ann-sym" data-testid="feedback-row-symbol">{{ r.symbol }}</span>
           <span class="ann-sym" data-testid="feedback-row-range">{{ rangeText(r.feedback) }}</span>
           <span class="ann-grow" />
@@ -27,14 +46,11 @@
           <span v-if="tagOf(r)" class="ann-k fb-tag" data-testid="feedback-row-tag"
                 title="reason the session gave for this feedback">{{ tagOf(r) }}</span>
           <button type="button" class="ann-btn"
-                  data-testid="feedback-row-delete" title="delete this feedback"
+                  data-testid="feedback-row-edit" title="open this feedback's panel on the chart"
+                  @click.stop="edit(r)">edit</button>
+          <button type="button" class="ann-btn"
+                  data-testid="feedback-row-delete" title="delete this place; the other places of the issue stay"
                   @click.stop="fb.remove(r.feedback.id)">delete</button>
-        </div>
-        <div class="ann-row">
-          <span class="ann-k" data-testid="feedback-row-answer">{{ r.feedback.answer }}</span>
-          <span v-for="seg in r.feedback.segments ?? []" :key="seg" class="ann-sym fb-seg"
-                data-testid="feedback-row-segment">{{ seg }}</span>
-          <span v-if="r.feedback.note" class="ann-biz" data-testid="feedback-row-note">{{ r.feedback.note }}</span>
         </div>
       </li>
     </ul>
@@ -46,21 +62,28 @@
  * 侧栏 feedback 页(spec 6.13,只在 compare 下有):当前 pattern 里用户自己挑的反馈(source = picked),跨股票,
  * 取自标注(含还没存完的)。盲看标记状态接口不算,不列(以后盲看进这一页时按来源分组另列)。
  *
- * - 排序:朱红在前、lost 其次、其余在后,同档按股票、日期(annotate/feedback.ts 的 sortFeedbackRows);
- * - 每行:股票、日期范围、状态(后端状态接口给的 matched / unmatched / lost;还没取到或读不到行情为 null,
- *   悬停写原因)、答案、分段、理由;颜色照接口给的 red 与 status:朱红底黑字 / lost 白底橙描边 / 其余常色;
+ * - 按 issue 分组(几处反馈共享的同一份内容:note 与点出的 node;不和谁共享的一处也是一组,结构相同):
+ *   组头第一行写点出的 node(一个都没点写灰字 none)、处数 places n、其中 app 还在买的处数 matched k
+ *   (状态为 matched 的),第二行写理由(没写的没有这一行);组里每处一行。
+ *   以前存下的记录上的 answer、dag 不显示;
+ * - 排序(annotate/feedback.ts 的 sortIssueGroups):有朱红的组在前、其次有 lost 的,其余在后;同档的组、组内各处
+ *   都按朱红、lost、其余,再按股票、日期;
+ * - 每处一行:股票、日期范围、状态(后端状态接口给的 matched / unmatched / lost;还没取到或读不到行情为 null,
+ *   悬停写原因);颜色照接口给的 red 与 status:朱红底黑字 / lost 白底橙描边 / 其余常色;
  *   状态是 matched 或 lost 的行挂接口给的会话原因标签 tag(白底蓝描边,同 unmapped)——含 redefined:
  *   定义改过的那条 matched 了也不红,标签说明为什么不红;
  * - 页头:mapping 会话段有形状问题时一行 session ledger: <原因>(悬停写全);状态正在取时 loading;
- * - 点一行:在 compare 里打开那只股票,图窗包住那段日期,当前日竖线停在范围起点,选中那条(图上记号加粗;
- *   落点见 stores/landing.ts);行上 delete 删掉它。
+ * - 点一行:在 compare 里打开那只股票,图窗包住那段日期,当前日竖线停在范围起点,选中那条(图上记号描黑粗边、
+ *   另有一条贯穿主副图的竖带;落点见 stores/landing.ts);行上 edit 同样落过去,落下后在那条记号旁打开作答面板
+ *   并预填(等同在图上点了那条记号:面板的锚点要图表算,所以落下后向 stores/feedback.ts 提 requestEdit,
+ *   由 KlineChart.vue 接下);行上 delete 只删这一处,同一个 issue 的别的处不动。
  */
 import { computed } from 'vue'
 import { useAnnotationStore } from '../stores/annotation'
 import { useAppLinkStore } from '../stores/appLink'
 import { useFeedbackStore } from '../stores/feedback'
 import { useLandingStore } from '../stores/landing'
-import { sortFeedbackRows, type FeedbackRow } from '../annotate/feedback'
+import { sortIssueGroups, type FeedbackRow, type IssueGroup } from '../annotate/feedback'
 import { rangeLinkWindow } from '../annotate/directLinks'
 import type { AnnFeedback } from '../annotate/model'
 import { MISSING_EDGE, UNMAPPED_EDGE, VERMILION } from '../render/annotateLanes'
@@ -75,8 +98,10 @@ const RED_BG = VERMILION
 const LOST_EDGE = MISSING_EDGE
 const TAG_EDGE = UNMAPPED_EDGE
 
-const rows = computed(() => sortFeedbackRows(ann.feedbackOfPattern().filter(r => r.feedback.source === 'picked'),
-                                             fb.statusById))
+const rows = computed(() => ann.feedbackOfPattern().filter(r => r.feedback.source === 'picked'))
+const groups = computed(() => sortIssueGroups(rows.value, fb.statusById))
+/** 这个 issue 的各处里 app 还在买的有几处(状态为 matched)。 */
+const matchedOf = (g: IssueGroup) => g.rows.filter(r => st(r)?.status === 'matched').length
 const sessionProblem = computed(() => appLink.mapping?.session_problem ?? null)
 
 const st = (r: FeedbackRow) => fb.statusById[r.feedback.id]
@@ -103,6 +128,13 @@ function jump(r: FeedbackRow): void {
   fb.select(f.id)
   landing.land(r.symbol, rangeLinkWindow(f.start, f.end), f.start, () => fb.select(f.id))
 }
+
+/** edit:同 jump 落过去,落下后请图表在那条记号旁打开面板。 */
+function edit(r: FeedbackRow): void {
+  const f = r.feedback
+  fb.select(f.id)
+  landing.land(r.symbol, rangeLinkWindow(f.start, f.end), f.start, () => { fb.select(f.id); fb.requestEdit(f.id) })
+}
 </script>
 
 <style src="./annotationPanel.css"></style>
@@ -110,13 +142,20 @@ function jump(r: FeedbackRow): void {
 /* 字体与色值见 App.vue 的 :root 变量;文字一律黑,颜色只在行底、描边与标签描边上 */
 .fb-head { margin: 0 0 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: help; }
 .fb-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+/* 一组 = 一个 issue:深色细框圈住,组头在上(白底)、各处一行在下 */
+.fb-group {
+  display: flex; flex-direction: column; gap: 3px; padding: 4px;
+  border: 1px solid var(--line-strong); border-radius: 5px; background: #fff;
+}
+.fb-ghead { display: flex; flex-direction: column; gap: 2px; padding: 0 2px 2px; }
+.fb-counts { display: inline-flex; gap: 8px; white-space: nowrap; }
 .fb-row {
-  display: flex; flex-direction: column; gap: 2px; padding: 3px 6px; cursor: pointer;
+  padding: 2px 6px; cursor: pointer;
   border: 1px solid var(--line); border-radius: 4px; background: #fff; color: var(--ink);
 }
 .fb-row.red { background: v-bind(RED_BG); border-color: v-bind(RED_BG); }
 .fb-row.lost { border: 3px solid v-bind(LOST_EDGE); }
 .fb-row.on { outline: 2px solid var(--ink); outline-offset: -1px; }
 .fb-tag { padding: 0 4px; border: 1.5px solid v-bind(TAG_EDGE); border-radius: 3px; background: #fff; cursor: help; }
-.fb-seg { padding: 0 3px; border: 1px solid var(--line-strong); border-radius: 3px; background: #fff; }
+.fb-node { padding: 0 3px; border: 1px solid var(--line-strong); border-radius: 3px; background: #fff; }
 </style>

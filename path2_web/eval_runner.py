@@ -1,6 +1,6 @@
 """通用 app 评估器:全宇宙扫描 + forward_return 统计 / 回归对拍 / 体检(三 mode 共享骨架)。
 
-服务 authoring-path2-app skill 的下游评估(final_report §8.9):
+三个 mode(写、改 detector 后的体检与对拍照 write-detector skill 用):
   run_eval        命中数 + 多 horizon forward_return 分布(判据 2)
   run_regress     与改前 baseline(一次 eval 的结果 JSON)按 (symbol, buy_date) 对拍
   run_healthcheck 新建/改动 detector 后的数量级体检 + 目标票命中确认

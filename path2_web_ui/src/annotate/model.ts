@@ -45,12 +45,21 @@ export interface AnnPattern { name: string; definition?: string; flags?: { featu
 export type FeedbackTarget = 'point' | 'family' | 'range'
 /** picked 是用户自己挑的(反馈恒为它);其余是盲看标记的来源(和反馈共用这个 kind,创建后不可改)。 */
 export type FeedbackSource = 'picked' | 'random' | 'added' | 'removed' | 'tuned_added' | 'tuned_removed'
-/** 反馈的答案只取 neg / off_pattern;pos 只出现在盲看标记里。 */
-export type FeedbackAnswer = 'neg' | 'off_pattern'
+/** 带答案的记录里答案的取值:盲看标记三选一(pos / neg / off_pattern);用户自己挑的反馈只有旧记录才带(neg / off_pattern)。 */
+export type FeedbackAnswer = 'neg' | 'off_pattern' | 'pos'
 /**
  * 一条反馈(状态里的,不带 symbol;存进文件时带上,见 feedbackValue)。
  * pattern 是标注里的 pattern 名,app_id 是 app 模块名,app_ver 是记录时 app 的版本指纹(只记出处);
- * family_start 只在 target 为 family 时有(这一族 hit 的起点日期);segments 是 off_pattern 点出的 node_id。
+ * family_start 只在 target 为 family 时有(这一族 hit 的起点日期);
+ * note 是用户写的理由;nodes 是点出的 node(node_id),意思是「问题落在这一块上」,可以一个都不点;
+ * issue 把共享同一份内容(note、nodes)的几处连起来:内容仍写在每一处上,带同一个 issue 值的各处内容相同
+ * (后端保存时校验);不带的自成一个只有一处的 issue。只有用户自己挑的(source = picked)能带。
+ *
+ * 用户自己挑的反馈有两种形状,靠有没有 answer 键分:
+ * - 新形状(界面写出的每一条):没有 answer、没有 dag,note 必有;
+ * - 旧形状(以前存下的):带 answer(neg / off_pattern),可能带 dag(只存 true)、可能没写 note。照样读、照样
+ *   显示 note 与 nodes(answer 与 dag 界面上不显示),经面板保存后改写成新形状。
+ * 盲看标记(source 不是 picked)恒带 answer。
  */
 export interface AnnFeedback {
   id: string
@@ -61,9 +70,13 @@ export interface AnnFeedback {
   end: string
   target: FeedbackTarget
   source: FeedbackSource
-  answer: FeedbackAnswer | 'pos'
+  /** 盲看标记恒有;用户自己挑的只有旧形状的记录才有 */
+  answer?: FeedbackAnswer
   note?: string
-  segments?: string[]
+  nodes?: string[]
+  /** 只在读旧形状的记录时会遇到;界面不显示、不再写出 */
+  dag?: true
+  issue?: string
   family_start?: string
 }
 export interface AnnChart { symbol: string; boxes: AnnBox[]; samples: AnnSample[]; feedback?: AnnFeedback[] }
@@ -149,16 +162,20 @@ export function sampleValue(symbol: string, smp: AnnSample): Record<string, unkn
 }
 
 /**
- * 反馈存进操作的值:带 symbol;空的 note、空的 segments 不写;family_start 只在 target 为 family 时写
- * (后端只许 family 带它)。其余字段照抄。
+ * 反馈存进操作的值:带 symbol;answer、dag 记录上有才写(原样照抄:盲看标记与撤销删除写回旧形状的记录时用,
+ * 面板保存的新形状本来就没有这两个键);空的 note、空的 nodes 不写;issue 有才写;family_start 只在 target 为
+ * family 时写(后端只许 family 带它)。其余字段照抄。键的先后同后端重放出来的(answer 在 source 之后)。
  */
 export function feedbackValue(symbol: string, fb: AnnFeedback): Record<string, unknown> {
   const v: Record<string, unknown> = {
     id: fb.id, symbol, pattern: fb.pattern, app_id: fb.app_id, app_ver: fb.app_ver,
-    start: fb.start, end: fb.end, target: fb.target, source: fb.source, answer: fb.answer,
+    start: fb.start, end: fb.end, target: fb.target, source: fb.source,
   }
+  if (fb.answer !== undefined) v.answer = fb.answer
   if (fb.note) v.note = fb.note
-  if (fb.segments?.length) v.segments = [...fb.segments]
+  if (fb.nodes?.length) v.nodes = [...fb.nodes]
+  if (fb.dag) v.dag = true
+  if (fb.issue) v.issue = fb.issue
   if (fb.target === 'family' && fb.family_start) v.family_start = fb.family_start
   return v
 }

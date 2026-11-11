@@ -52,8 +52,8 @@ base 指向的修改本机还没有(那个文件还没同步到)时,不算冲突
      charts:   [{symbol,
                  boxes:   [{id, feature, start, end, attrs?, note?, detach?, attach?}],
                  samples: [{id, date, pattern, judgment, members[], members_edited?, note?}],
-                 feedback?: [{id, pattern, app_id, app_ver, start, end, target, source, answer,
-                              note?, segments?, family_start?}]}]}
+                 feedback?: [{id, pattern, app_id, app_ver, start, end, target, source, answer?,
+                              note?, nodes?, dag?, issue?, family_start?}]}]}
 
 - machine 是读的这台机器;data_fingerprint 是标注所依据的训练段副本指纹:全部批次记的都是同一个时取它,
   批次之间不一致或还没有批次时为 null。拿它和本机副本的指纹比,就知道标注和眼下读的 K 线是不是同一份;
@@ -74,9 +74,20 @@ base 指向的修改本机还没有(那个文件还没同步到)时,不算冲突
   range(拖出来的一段);只有 family 带 family_start;
 - source:picked(用户自己挑的,反馈恒为它)或盲看标记的来源 random / added / removed / tuned_added /
   tuned_removed(盲看标记和反馈共用这个 kind,现在只为「创建后不可改」能测);
-- answer:picked 只取 neg / off_pattern;盲看标记取 pos / neg / off_pattern,且 target 只能是 point;
-- note:neg 必须写;off_pattern 的 segments(node_id 数组,不重复)与 note 至少一样非空;盲看标记的 neg、
-  off_pattern 必须写 note;
+- 反馈(picked)的内容是 note 加 nodes:note 是用户写的一句(这里买有什么不对),必须非空;nodes(node_id 数组,
+  不重复,可以不带)说「问题落在这几个 node 上」,一个都不点表示不在某一个 node 上或说不清。不带 answer、
+  不带 dag;
+- 带 answer 的反馈(picked)是另一种合格的形状:answer 取 neg / off_pattern,可另带 dag(只存 true)。已有的
+  批次文件里有这种记录,没更新的页面也这样存。它自己的规则——neg 必须写 note;off_pattern 必须点出 nodes 或
+  dag 至少一样;带 dag 的必须写 note——读出来原样带着这两个键。
+  answer、dag 在反馈上不表示任何意思:读的人不拿它们分类,界面改一条时去掉它们。
+  **这套规则不能收紧**:读文件和保存用的是同一个取值校验,哪天把它判成不合格,含这种记录的批次文件就整个
+  读不出;
+- 盲看标记:answer 必有,取 pos / neg / off_pattern;target 只能是 point;neg、off_pattern 必须写 note(作答时
+  看不见结构,不要求 nodes / dag);
+- issue(可选,非空字符串,只有 picked 能带):几处反馈共享同一份内容(pattern、note、nodes)时带同一个 issue 值;
+  不带的自成一个只有一处的 issue。本模块不解释这个值的写法,只保证带同一个值的各处内容相同(保存时查,
+  见 issue_diverged;answer、dag 不属于内容,各处不同、带不带 answer 混着都不算);要改就在一批里把各处一起改;
 - 盲看标记(source 不是 picked)创建后不能删、不能改:每条都和它第一次以盲看标记出现时的值比。
 
 保存时的校验
@@ -94,6 +105,8 @@ op 序号或样本、框编号):
   - member_missing:样本的成员框不在这只股票上(不存在或已删)。删掉仍是成员的框,要在同一批里把它从
     那个样本的成员里拿掉。
   不越界地改框起止、删样本、改词名、合并都照常放行。
+- issue_diverged:本批动到的反馈带 issue 时,改完后带同一个 issue 值的各处,pattern、note、nodes(不论顺序)
+  有不一样的;
 - blind_immutable:本批删掉了一条盲看标记,或把它改得和第一次出现时不一样(连 source 也算,防先改成 picked
   再改)。将来盲看定义了专有字段时,只放行补那些字段。
 两台机器各自合规的修改,合起来也可能让某个成员框越过样本日;同步来的修改也不经保存校验,可能删改了盲看标记。
@@ -143,7 +156,7 @@ KINDS = ("feature", "pattern", "box", "sample", "feedback")
 JUDGMENTS = ("pos", "neg")
 FEEDBACK_TARGETS = ("point", "family", "range")
 FEEDBACK_SOURCES = ("picked", "random", "added", "removed", "tuned_added", "tuned_removed")
-FEEDBACK_ANSWERS = ("neg", "off_pattern")              # source = picked(反馈)
+FEEDBACK_ANSWERS = ("neg", "off_pattern")              # source = picked 且带 answer 的反馈(模块说明「反馈」)
 BLIND_ANSWERS = ("pos", "neg", "off_pattern")          # 其余 source(盲看标记)
 
 # 每种对象:(必填键, 可选键);两者连起来就是状态里的键序(symbol 只在文件里,状态里按它分到 charts)
@@ -152,8 +165,9 @@ _VALUE_KEYS = {
     "pattern": (("name",), ("definition", "flags")),
     "box": (("id", "symbol", "feature", "start", "end"), ("attrs", "note", "detach", "attach")),
     "sample": (("id", "symbol", "date", "pattern", "judgment", "members"), ("members_edited", "note")),
-    "feedback": (("id", "symbol", "pattern", "app_id", "app_ver", "start", "end", "target", "source", "answer"),
-                 ("note", "segments", "family_start")),
+    # answer 排在可选键的第一个:带 answer 的记录重放出来键序不变
+    "feedback": (("id", "symbol", "pattern", "app_id", "app_ver", "start", "end", "target", "source"),
+                 ("answer", "note", "nodes", "dag", "issue", "family_start")),
 }
 _ID_LETTER = {"feature": "w", "box": "b", "sample": "s", "feedback": "f"}   # 带机器名编号的四种对象
 _ID_RE = re.compile(rf"([wbsf])-({MACHINE_PATTERN})-([1-9]\d*)")           # 字母与 _ID_LETTER 一致
@@ -505,8 +519,35 @@ def _batch_reasons(r: _Replay, ops: list[dict], machine: str) -> list[dict]:
         elif kind in _ID_LETTER and _ID_RE.fullmatch(oid).group(2) != machine:
             out.append(_reason("bad_new_id", f"第 {i} 条: 新建的 {oid} 不带本机机器名 {machine}", op=i))
     after = {**r.values, **{(op["kind"], op["id"]): op["value"] for op in ops}}
+    fb_touched = {op["id"] for op in ops if op["kind"] == "feedback"}
     return out + _causality(after, touched={(op["kind"], op["id"]) for op in ops}) \
-        + _blind_changes(r.blind, after, touched={op["id"] for op in ops if op["kind"] == "feedback"})
+        + _issue_diverged(after, fb_touched) + _blind_changes(r.blind, after, touched=fb_touched)
+
+
+def _issue_content(v: dict) -> tuple:
+    """一条反馈里属于 issue 的内容(pattern、note、nodes):带同一个 issue 值的各处,这个元组必须相同。
+    nodes 不论顺序;answer、dag 不属于 issue 内容,各处不同也不算。"""
+    nodes = v.get("nodes", [])
+    return (v.get("pattern"), v.get("note"),
+            tuple(sorted(map(str, nodes))) if isinstance(nodes, list) else repr(nodes))
+
+
+def _issue_diverged(values: dict, touched: set) -> list[dict]:
+    """带同一个 issue 值的各处反馈内容必须相同:只查本批动到的反馈所带的 issue,每个 issue 至多报一条。"""
+    issues = {v["issue"] for (kind, oid), v in values.items()
+              if kind == "feedback" and oid in touched and isinstance(v, dict) and _nonempty(v.get("issue"))}
+    out = []
+    for issue in sorted(issues):
+        members = sorted((oid, v) for (kind, oid), v in values.items()
+                         if kind == "feedback" and isinstance(v, dict) and v.get("issue") == issue)
+        first_id, first = members[0]
+        differ = [oid for oid, v in members[1:] if _issue_content(v) != _issue_content(first)]
+        if differ:
+            out.append(_reason("issue_diverged",
+                               f"issue {issue} 的各处内容应相同(pattern、note、nodes):"
+                               f"{', '.join(differ)} 与 {first_id} 不一样",
+                               issue=issue))
+    return out
 
 
 def _blind_changes(first: dict, values: dict, touched: set | None) -> list[dict]:
@@ -680,7 +721,8 @@ def _feedback_problems(v: dict, bad) -> None:
     span_ok = start_ok and end_ok
     if span_ok and v["start"] > v["end"]:
         bad(f"start {v['start']} 晚于 end {v['end']}")
-    target, source, answer = v["target"], v["source"], v["answer"]
+    target, source, answer = v["target"], v["source"], v.get("answer")
+    plain = source == "picked" and "answer" not in v        # 不带 answer 的反馈(界面写出的形状)
     if target not in FEEDBACK_TARGETS:
         bad(f"target 应为 {' / '.join(FEEDBACK_TARGETS)} 之一,实为 {target!r}")
     if source not in FEEDBACK_SOURCES:
@@ -694,22 +736,39 @@ def _feedback_problems(v: dict, bad) -> None:
             bad(f"family_start {v['family_start']} 晚于 start {v['start']}")
     elif "family_start" in v:
         bad("只有 target 为 family 时才有 family_start")
-    segments = v.get("segments", [])
-    if not isinstance(segments, list) or not all(_nonempty(s) for s in segments) \
-            or len(set(segments)) != len(segments):
-        bad("segments 应为不重复的 node_id 数组")
+    nodes = v.get("nodes", [])
+    if not isinstance(nodes, list) or not all(_nonempty(s) for s in nodes) \
+            or len(set(nodes)) != len(nodes):
+        bad("nodes 应为不重复的 node_id 数组")
     has_note = _nonempty(v.get("note"))
-    if source == "picked":
+    if plain:
+        if "dag" in v:
+            bad("不带 answer 的反馈不该有 dag(问题不在某个 node 上就不点 node,由 note 说)")
+    elif "dag" in v and v["dag"] is not True:
+        bad("dag 只存 true,没点就不带这个键")
+    elif v.get("dag") is True and not has_note:
+        bad("带 dag 时 note 不能为空")
+    if "issue" in v:
+        if not _nonempty(v["issue"]):
+            bad("issue 应为非空字符串,不共享就不带这个键")
+        elif source != "picked":
+            bad("盲看标记不能带 issue")
+    if plain:
+        if not has_note:
+            bad("反馈的 note 不能为空")
+    elif source == "picked":                # 带 answer 的反馈(旧形状):规则不变
         if answer not in FEEDBACK_ANSWERS:
             bad(f"反馈的 answer 应为 {' / '.join(FEEDBACK_ANSWERS)} 之一,实为 {answer!r}")
         elif answer == "neg" and not has_note:
             bad("answer 为 neg 时 note 不能为空")
-        elif answer == "off_pattern" and not has_note and not (isinstance(segments, list) and segments):
-            bad("answer 为 off_pattern 时 segments 与 note 至少一样非空")
+        elif answer == "off_pattern" and v.get("dag") is not True and not (isinstance(nodes, list) and nodes):
+            bad("answer 为 off_pattern 时 nodes 与 dag 至少点一样")
     elif source in FEEDBACK_SOURCES:        # 盲看标记
         if target != "point":
             bad("盲看标记的 target 只能是 point")
-        if answer not in BLIND_ANSWERS:
+        if "answer" not in v:
+            bad("盲看标记必有 answer")
+        elif answer not in BLIND_ANSWERS:
             bad(f"盲看标记的 answer 应为 {' / '.join(BLIND_ANSWERS)} 之一,实为 {answer!r}")
         elif answer != "pos" and not has_note:
             bad(f"盲看标记 answer 为 {answer} 时 note 不能为空")
