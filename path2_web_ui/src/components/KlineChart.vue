@@ -138,6 +138,7 @@ import { useAppLinkStore } from '../stores/appLink'
 import { compareLinks } from '../render/compareLayout'
 import { useCompareStore, SAMPLES_ROW } from '../stores/compare'
 import { defaultFocus } from '../annotate/compareRead'
+import { useCopyRefStore } from '../stores/copyRef'
 import { useFeedbackStore } from '../stores/feedback'
 import { useLandingStore } from '../stores/landing'
 import { buyDatesIn, posSamplesInside } from '../annotate/feedback'
@@ -218,6 +219,7 @@ const cmpLayout = computed(() => {
 // compare 的反馈(spec 6.13):hits 行底下的反馈带画这只股票、当前 pattern、用户自己挑的反馈;配色照后端给的状态,
 // 选中的那条(侧栏点行、点记号时设)描边加粗。app 模式不画(只在 renderCompareSub 里用)
 const fb = useFeedbackStore()
+const copyRef = useCopyRefStore()   // 「复制指代」:Shift+C 复制当前选中的东西;点轨名选中一个 node
 const cmpFeedbackList = computed(() => (compareReady.value ? ann.feedbackOf(symbol.value) : []))
 const cmpFeedbackMarks = computed(() =>
   feedbackMarks(cmpFeedbackList.value, annDates.value, fb.statusById, fb.selectedId))
@@ -697,7 +699,7 @@ function deriveSubGeometry(zoomOverride?: number) {
 }
 
 // bracket 区 hit 的行数、每条 band 的行数(由 computeEventData 排好的 lane 号读出)
-function laneCountsOf(bundle: EventBundle): { bracketLaneCount: number; bandLaneCounts: number[] } {
+function laneCountsOf(bundle: EventBundle): { bracketLaneCount: number; bandLaneCounts: number[]; bracketCountLanes: number[] } {
   const bracketLaneCount = bundle.bracketData.length === 0
     ? 0
     : (Math.max(0, ...bundle.bracketData.map((d: any) => d.value[2])) + 1)
@@ -711,7 +713,10 @@ function laneCountsOf(bundle: EventBundle): { bracketLaneCount: number; bandLane
     }
     return maxLane + 1
   })
-  return { bracketLaneCount, bandLaneCounts }
+  // 带个数行的 hit 行:这一行里有哪天并了几次 hit(买入日 ▼ 的 hit_ids 不止一个)
+  const bracketCountLanes = [...new Set(bundle.bracketData
+    .filter((d: any) => d.kind === 'buy' && (d.hit_ids?.length ?? 0) >= 2).map((d: any) => d.value[2] as number))]
+  return { bracketLaneCount, bandLaneCounts, bracketCountLanes }
 }
 
 // factorCap(spec §6.1):naturalSubH_at_1(bandZoomFactor=1 时的副图 canvas 高)决定 zoom 上限。
@@ -828,6 +833,8 @@ function buildRenderInput() {
     currentDay: currentDay.value,
     activeFamily: activeFamilyKey.value,
     bandExtras: bandExtras.value,
+    selectedBand: copyRef.selectedNode,
+    onBandLabelClick: (band: string) => copyRef.selectNode(band),
   }
 }
 
@@ -1022,6 +1029,13 @@ function onKeyDown(e: KeyboardEvent) {
     e.preventDefault()
     return
   }
+  // Shift+C:把当前选中的东西(没选中时是当前日)写成一行复制出去,连按逐层放大(见 stores/copyRef.ts)。
+  // 单个字母会被左侧列表的「敲字母搜股票」抢走,所以带 Shift(同 Shift+B)
+  if (e.code === 'KeyC' && e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey && !e.isComposing) {
+    copyRef.copy()
+    e.preventDefault()
+    return
+  }
   if (isBrushToggleKey(e)) {
     if (annotating.value) return
     toggleBrush()
@@ -1049,6 +1063,7 @@ function onKeyDown(e: KeyboardEvent) {
   }
   if (annotating.value) { annGestures.cancel(); ann.clearSelection() }
   fb.select(null)                                     // 选中的反馈(粗边与竖带)也一并取消
+  copyRef.selectNode(null)                            // 选中的轨名也取消
   view.clearFocus()
   // Esc 也退出 brush 光标态(sync Vue state 与 ECharts 内部,防"点两下按钮才能重开")。
   // blur:Esc 本身是键盘事件 · 浏览器会把当前 focus 元素的 :focus-visible 判为 true,
@@ -1222,10 +1237,10 @@ onMounted(() => {
   // ZRender blank click:两 chart 各一套
   // 点空白同时取消选中的反馈(粗边与竖带消失);竖带本身不接事件,点在带里的空白也算空白
   chartMain.getZr().on('click', (e: any) => {
-    if (!e.target) { fb.select(null); handleChartClick(null, effectiveAnalysis.value?.hits ?? [], view) }
+    if (!e.target) { fb.select(null); copyRef.selectNode(null); handleChartClick(null, effectiveAnalysis.value?.hits ?? [], view) }
   })
   chartSub.getZr().on('click', (e: any) => {
-    if (!e.target) { fb.select(null); handleChartClick(null, effectiveAnalysis.value?.hits ?? [], view) }
+    if (!e.target) { fb.select(null); copyRef.selectNode(null); handleChartClick(null, effectiveAnalysis.value?.hits ?? [], view) }
   })
 
   // ResizeObserver 观测两 chart 容器
@@ -1255,7 +1270,7 @@ onMounted(() => {
 
   // dev-only e2e hook
   if ((import.meta as any).env?.DEV) {
-    ;(window as any).__e2e = { view, ann: () => ann, fb: () => fb, chartMain: () => chartMain, chartSub: () => chartSub }
+    ;(window as any).__e2e = { view, ann: () => ann, fb: () => fb, copyRef: () => copyRef, chartMain: () => chartMain, chartSub: () => chartSub }
   }
 
   // Ctrl 切换(只作用于主图,副图无价格轴)
@@ -1415,7 +1430,7 @@ watch([scanFile, effectiveScan], () => {
 watch([effectiveAnalysis, nodeVisible, level, nodeColors, focusedInstanceRef, diag, showSlider,
        selectedHitId, candidateHitIds, highlightedEventIds, pendingDisambigInstanceId,
        shiftSelectedEventIds, bandZoomFactor, focusedInstanceId, selectedInstanceId,
-       compositionGroupIds, currentDay, activeFamilyKey],
+       compositionGroupIds, currentDay, activeFamilyKey, () => copyRef.selectedNode],
       () => render(false), { deep: true })
 
 // annotate:框、词表、选中、拖动中的样子变了 → 只重画标注的两层;compare 下轨序、✓ / ✗ 变了也一样

@@ -163,13 +163,12 @@ test.describe('compare / app 叠画(bo_only + 手写 mapping)', () => {
     await expect(page.getByTestId('sample-diagnose')).toBeVisible()
     await expect(page.getByTestId('diagnose-node')).toHaveText('bo')
     await expect(page.getByTestId('diagnose-date')).toHaveText(selDate)
-    // events 一行:总数加三档各几个;每个 event 一块,键值排
-    await expect(page.getByTestId('diagnose-count')).toContainText(/^\d+/)
-    const nRows = await page.getByTestId('diagnose-row').count()
-    if (nRows) {   // 那天有 event 才有分档计数和 event 块
-      await expect(page.getByTestId('diagnose-count')).toContainText(/in_hit \d+/)
-      await expect(page.getByTestId('diagnose-row').first().getByTestId('diagnose-level')).toHaveText(/^(in_hit|qualified|detected)$/)
-    }
+    // 两组,组头各带个数:hits(进了 hit 的,一块一次,不写档位)、not_in_hit(在场但没进 hit 的 event,写档位)
+    await expect(page.getByTestId('diagnose-group-hits').getByTestId('diagnose-count')).toHaveText(/^\d+$/)
+    await expect(page.getByTestId('diagnose-group-not_in_hit').getByTestId('diagnose-count')).toHaveText(/^\d+$/)
+    await expect(page.locator('[data-testid="diagnose-row"][data-group="hits"] [data-testid="diagnose-level"]')).toHaveCount(0)
+    const low = page.locator('[data-testid="diagnose-row"][data-group="not_in_hit"]')
+    if (await low.count()) await expect(low.first().getByTestId('diagnose-level')).toHaveText(/^(qualified|detected)$/)
     await expect(page.getByTestId('diagnose-mark')).toHaveText(/^[✓✗]$/)
     // → 走到样本日更晚的下一个样本(当前 pattern 的,这张图上)
     const order = [...smp.list].sort((a: string[], b: string[]) => (a[1] < b[1] ? -1 : 1)).map((x: string[]) => x[0])
@@ -243,6 +242,19 @@ test.describe('compare / app 叠画(bo_only + 手写 mapping)', () => {
     expect(await view(page, 'activeFamilyKey')).toBe('samples')
     await page.keyboard.press('Escape')
     await expect(page.getByTestId('focused-sample')).toHaveCount(0)
+
+    // 复制指代:Shift+C 把当前指的东西写成一行,底部提示条把它显示几秒。什么都没选中 → 股票与 pattern;
+    // 选中轨名 → 那个 node;Esc 取消轨名的选中
+    const copied = () => page.evaluate(() => (window as any).__e2e.copyRef().lastText)
+    await page.keyboard.press('Shift+C')
+    await expect.poll(copied).toMatch(/^AAPL \S+$/)
+    await expect(page.locator('.toast')).toContainText('AAPL')
+    await page.evaluate(() => (window as any).__e2e.copyRef().selectNode('bo'))
+    await page.keyboard.press('Shift+C')
+    await expect.poll(copied).toMatch(/^AAPL \S+ node bo$/)
+    await expect(page.locator('.toast')).toContainText('node bo')
+    await page.keyboard.press('Escape')
+    expect(await page.evaluate(() => (window as any).__e2e.copyRef().selectedNode)).toBeNull()
 
     // 参照层 peaks 在 compare 下可用:勾上画出峰线(同 /peaks)
     const box = page.getByTestId('ref-peaks')

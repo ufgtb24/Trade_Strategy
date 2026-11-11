@@ -1,6 +1,6 @@
 <template>
   <div v-if="d" class="sample-diagnose" data-testid="sample-diagnose">
-    <!-- 头:键值四行 —— 买没买、看的是哪个 node、哪一天、那天在场几个 event(按档位分) -->
+    <!-- 头:键值三行 —— 买没买、看的是哪个 node、哪一天 -->
     <div class="ann-kv">
       <span class="ann-k" :title="MATCH_TIP">match</span>
       <div class="ann-row">
@@ -16,67 +16,77 @@
       </div>
       <span class="ann-k" title="the sample date: events present on this day are listed">date</span>
       <span class="ann-sym" data-testid="diagnose-date">{{ dates[d.read.day] }}</span>
-      <span class="ann-k" :title="EVENTS_TIP">events</span>
-      <div class="ann-row" data-testid="diagnose-count">
-        <span class="ann-sym">{{ d.rows.length }}</span>
-        <template v-if="d.rows.length">
-          <span v-for="t in TIERS" :key="t" class="ann-sym tier-n" :title="TIER_TIP[t]">· {{ t }} {{ count[t] }}</span>
-        </template>
-      </div>
     </div>
 
-    <!-- 每个 event 一块:块头是它是谁(配对的那个标 paired),块里键值排 start / member / level / failed -->
-    <div v-for="r in shown" :key="r.instanceId" data-testid="diagnose-row"
-         :class="['ev', { cur: r.instanceId === currentId }]"
-         :data-instance="r.instanceId" :data-paired="r.paired ? 1 : 0"
-         title="click to select this event on the chart" @click="pick(r.instanceId)">
-      <div class="ann-kv ev-kv">
-        <span class="ann-k" title="start of the event: different starts are different families">start</span>
-        <div class="ann-row">
-          <span class="ann-sym">{{ dates[r.start] }}</span>
-          <span class="ann-grow" />
-          <span v-if="r.paired" class="ann-sym paired" data-testid="diagnose-paired" :title="PAIRED_TIP">paired</span>
-        </div>
-        <template v-if="r.member">
-          <span class="ann-k" :title="FIRST_DIFF_TIP">first_diff</span>
-          <span class="ann-sym">{{ r.member }}</span>
-        </template>
-        <span class="ann-k" title="how far this event got: in_hit / qualified / detected">level</span>
-        <div class="ann-row">
-          <span class="ann-sym" data-testid="diagnose-level" :title="TIER_TIP[r.level]">{{ r.level }}</span>
-          <span v-if="belowLevel(r.level)" class="ann-nil" data-testid="diagnose-hidden"
-                :title="`not drawn at level ${view.level}; switch the level buttons to see it`">hidden</span>
-        </div>
-        <template v-if="r.failed.length">
-          <span class="ann-k" title="where clauses this event failed (names only, no values)">failed</span>
-          <div class="failed">
-            <template v-for="w in r.failed" :key="w">
-              <span class="ann-sym" data-testid="diagnose-failed" :data-where="w">{{ w }}</span>
-              <span v-if="noteOf(w)" class="ann-biz note" data-testid="diagnose-note">{{ noteOf(w) }}</span>
-              <span v-else />
-            </template>
-          </div>
+    <!-- 两组,组头各带个数:hits —— 样本日在场、进了 hit 的(一块一次 hit);not_in_hit —— 在场但没进 hit 的 event -->
+    <template v-for="g in groups" :key="g.key">
+      <div class="grp" :data-testid="`diagnose-group-${g.key}`">
+        <span class="ann-k" :title="g.tip">{{ g.key }}</span>
+        <span class="ann-sym" data-testid="diagnose-count">{{ g.count }}</span>
+        <template v-if="g.key === 'not_in_hit' && g.count">
+          <span v-for="t in LOW_TIERS" :key="t" class="ann-sym tier-n" :title="TIER_TIP[t]">· {{ t }} {{ count[t] }}</span>
         </template>
       </div>
-    </div>
-    <button v-if="hidden > 0" type="button" class="ann-btn more" data-testid="diagnose-more"
-            title="list them one by one" @click="expanded = true">+ {{ hidden }} detected</button>
+      <div v-for="r in g.rows" :key="r.instanceId" data-testid="diagnose-row"
+           :class="['ev', { cur: r.instanceId === currentId }]"
+           :data-instance="r.instanceId" :data-paired="r.paired ? 1 : 0" :data-group="g.key"
+           :title="g.key === 'hits' ? 'click to select this hit on the chart' : 'click to select this event on the chart'"
+           @click="pick(r.instanceId)">
+        <div class="ann-kv ev-kv">
+          <span class="ann-k" :title="g.key === 'hits' ? 'start of the hit: different starts are different families'
+                                                       : 'start of the event: different starts are different families'">start</span>
+          <div class="ann-row">
+            <span class="ann-sym">{{ dates[r.start] }}</span>
+            <span v-if="hitCount(r.instanceId) >= 2" class="ann-sym" data-testid="diagnose-shared"
+                  title="this many hits share this event (they differ in other nodes)">× {{ hitCount(r.instanceId) }}</span>
+            <span class="ann-grow" />
+            <span v-if="r.paired" class="ann-sym paired" data-testid="diagnose-paired" :title="PAIRED_TIP">paired</span>
+          </div>
+          <template v-if="r.member">
+            <span class="ann-k" :title="g.key === 'hits' ? FIRST_DIFF_HIT_TIP : FIRST_DIFF_TIP">first_diff</span>
+            <span class="ann-sym">{{ r.member }}</span>
+          </template>
+          <template v-if="g.key === 'not_in_hit'">
+            <span class="ann-k" title="how far this event got: qualified / detected">level</span>
+            <div class="ann-row">
+              <span class="ann-sym" data-testid="diagnose-level" :title="TIER_TIP[r.level]">{{ r.level }}</span>
+              <span v-if="belowLevel(r.level)" class="ann-nil" data-testid="diagnose-hidden"
+                    :title="`not drawn at level ${view.level}; switch the level buttons to see it`">hidden</span>
+            </div>
+          </template>
+          <template v-if="r.failed.length">
+            <span class="ann-k" title="where clauses this event failed (names only, no values)">failed</span>
+            <div class="failed">
+              <template v-for="w in r.failed" :key="w">
+                <span class="ann-sym" data-testid="diagnose-failed" :data-where="w">{{ w }}</span>
+                <span v-if="noteOf(w)" class="ann-biz note" data-testid="diagnose-note">{{ noteOf(w) }}</span>
+                <span v-else />
+              </template>
+            </div>
+          </template>
+        </div>
+      </div>
+      <button v-if="g.key === 'not_in_hit' && hidden > 0" type="button" class="ann-btn more" data-testid="diagnose-more"
+              title="list them one by one" @click="expanded = true">+ {{ hidden }} detected</button>
+    </template>
   </div>
 </template>
 
 <script setup lang="ts">
 /**
- * selection 页样本下面的 diagnose 块(只在 compare、当前 pattern 有 app 时出)。两层,都是键值排:
- * - 头(四行):match —— app 的买点离样本日在容差内算 matched(stores/compare.ts → annotate/compareRead.ts 的
+ * selection 页样本下面的 diagnose 块(只在 compare、当前 pattern 有 app 时出)。都是键值排:
+ * - 头(三行):match —— app 的买点离样本日在容差内算 matched(stores/compare.ts → annotate/compareRead.ts 的
  *   matchOf),后面的 ✓ / ✗ 是「app 和这个样本的判断一致与否」,和图上 ▲ 字母后的记号同一个;node —— 下面列的是
- *   哪个 node 的 event(买点 node 所在的那个),后跟 mapping notes 里它的用户原话;date —— 样本日;events ——
- *   那天这个 node 在场的 event 几个,按档位各几个;
- * - 每个 event 一块(配对的在最前,块头右侧标 paired):start 起点、first_diff(同起点同跨度有几个 event 时才有:
- *   它们内部第一处不一样的子段、以及这个 event 里那一段的终点,如 `step → 2024-11-21`;不是事件的类型)、
- *   level 档位、failed 没过的 where(一行一条:where 名 + mapping notes 里的用户原话)。只给类别,不给实测值与
- *   门槛(spec 1.4);
- * - 配对那块和档位不低于 qualified 的照列,其余 detected 折成「+ n detected」,点开逐块;
- * - 当前选中的 event(图上或这里点的、←/→ 走到的)那一块描黑粗边;点一块 = 选中它,当前日仍在样本日;
+ *   哪个 node 的 event(买点 node 所在的那个),后跟 mapping notes 里它的用户原话;date —— 样本日;
+ * - 下面按「进没进 hit」分两组,组头各带个数(图上一个买入日 ▼ 可能并了几次 hit,这里一次一块地分开):
+ *   - hits n:样本日在场的 hit,一块一次(块的身份仍是它在这个 node 上的 event;同一个 event 被几次 hit 共用时
+ *     块头写 × k,个数照 hit 数算)。块里:start 起点、first_diff(同起点同跨度有几块时才有:它们内部第一处
+ *     不一样的子段、以及这一块里那一段的终点,如 `step → 2024-11-21`;不是类型)。配对的在最前(块头右侧标
+ *     paired),其余按 hit 的先后,和图上 ←/→ 走的先后一致;
+ *   - not_in_hit n:在场但没进 hit 的 event,组头另写 qualified / detected 各几个。块里多 level 档位、failed
+ *     没过的 where(一行一条:where 名 + mapping notes 里的用户原话;只给类别,不给实测值与门槛,spec 1.4)。
+ *     配对那块和 qualified 的照列,其余 detected 折成「+ n detected」,点开逐块;
+ * - 当前选中的那一块(图上或这里点的、←/→ 走到的)描黑粗边;点一块 = 选中它,当前日仍在样本日;
  * - 聚焦样本不动档位按钮:那一块的档位低于当前档位、图上画不出来时,档位后写灰字 hidden(悬停说明);
  * - 读的是聚焦的样本:选中的,没选中时是进 compare 时默认聚焦的那个(FocusedSamplePanel 里显示)。
  */
@@ -84,18 +94,22 @@ import { computed, ref, watch } from 'vue'
 import { useCompareStore } from '../stores/compare'
 import { useViewStore } from '../stores/view'
 import { useAnnotationStore } from '../stores/annotation'
+import { useCopyRefStore } from '../stores/copyRef'
 import type { Tier } from '../types'
 
 const cmp = useCompareStore()
 const view = useViewStore()
 const ann = useAnnotationStore()
-const TIERS: readonly Tier[] = ['in_hit', 'qualified', 'detected']
+const copyRef = useCopyRefStore()
+const LOW_TIERS: readonly Tier[] = ['qualified', 'detected']
 const TIER_TIP: Record<Tier, string> = {
   in_hit: 'in_hit: the event is part of a hit (the app buys with it)',
   qualified: 'qualified: passed every where clause of its node, but is in no hit',
   detected: 'detected: found by the detector, but failed a where clause of its node',
 }
-const EVENTS_TIP = 'events of this node present on the sample date (their span covers the day and they are confirmed by then), counted by level'
+const HITS_TIP = 'hits present on the sample date (the event of this node in each hit covers the day and is confirmed by then); one card per hit'
+const NOT_IN_HIT_TIP = 'events of this node present on the sample date that are in no hit, counted by level'
+const FIRST_DIFF_HIT_TIP = 'these hits have the same start and end; this is the first part inside them that differs, and where that part ends in this hit (it is not a type)'
 const FIRST_DIFF_TIP = 'these events have the same start and end; this is the first part inside them that differs, and where that part ends in this event (it is not the event\'s type)'
 const PAIRED_TIP = 'the event matched to this sample: the one in a hit that day; if none, the one that got furthest, then the latest start'
 /** 容差只读后端标注路由带回的那一份(path2_web/annotation/match.py),这里不另写数。 */
@@ -140,12 +154,40 @@ const currentId = computed<string | null>(() => {
   return null
 })
 
-const shown = computed(() => {
-  const rows = d.value?.rows ?? []
-  if (expanded.value) return rows
-  return rows.filter(r => r.paired || r.level !== 'detected' || r.instanceId === currentId.value)
+/** 这个 node 的 event → 用到它的 hit(按 hit 在结果里的先后,即图上 ←/→ 走的先后)。 */
+const hitsOfEvent = computed(() => {
+  const out = new Map<string, string[]>()
+  for (const h of view.effectiveAnalysis?.hits ?? []) {
+    const inst = h.node_index?.[node.value]
+    if (typeof inst !== 'string') continue
+    const ids = out.get(inst)
+    if (ids) ids.push(h.hit_id)
+    else out.set(inst, [h.hit_id])
+  }
+  return out
 })
-const hidden = computed(() => (d.value?.rows.length ?? 0) - shown.value.length)
+function hitCount(instanceId: string): number { return hitsOfEvent.value.get(instanceId)?.length ?? 0 }
+
+/** 进了 hit 的:配对的在最前,其余按 hit 的先后(和图上 ←/→ 一致)。 */
+const hitRows = computed(() => {
+  const order = new Map<string, number>()
+  let k = 0
+  for (const id of hitsOfEvent.value.keys()) order.set(id, k++)
+  return (d.value?.rows ?? []).filter(r => r.level === 'in_hit')
+    .sort((a, b) => Number(b.paired) - Number(a.paired)
+      || (order.get(a.instanceId) ?? Infinity) - (order.get(b.instanceId) ?? Infinity))
+})
+const lowRows = computed(() => (d.value?.rows ?? []).filter(r => r.level !== 'in_hit'))
+const lowShown = computed(() => expanded.value
+  ? lowRows.value
+  : lowRows.value.filter(r => r.paired || r.level !== 'detected' || r.instanceId === currentId.value))
+const hidden = computed(() => lowRows.value.length - lowShown.value.length)
+
+const groups = computed(() => [
+  { key: 'hits' as const, tip: HITS_TIP, rows: hitRows.value,
+    count: hitRows.value.reduce((n, r) => n + Math.max(1, hitCount(r.instanceId)), 0) },
+  { key: 'not_in_hit' as const, tip: NOT_IN_HIT_TIP, rows: lowShown.value, count: lowRows.value.length },
+])
 
 const RANK: Record<string, number> = { detected: 0, qualified: 1, in_hit: 2 }
 /** 这一档在当前档位下画不出来(档位按钮不因聚焦样本自动改)。 */
@@ -158,6 +200,7 @@ function noteOf(where: string): string | null {
 function pick(id: string): void {
   const r = d.value?.read
   if (!r) return
+  copyRef.pickCard(id)   // 之后 Shift+C 复制的是这张卡片的 hit / event,不是样本
   view.focusEvent(id, { day: r.day, family: cmp.samplesRow })
 }
 </script>
@@ -170,6 +213,8 @@ function pick(id: string): void {
 .tier-n { cursor: help; white-space: nowrap; }   /* 只是计数,不描边:描了边会被当成按钮 */
 .note { font-size: 12px; }
 /* 一个 event 一块:细边;当前选中的那块黑粗边(靠黑边认,不靠颜色) */
+/* 组头:一行,键 + 个数;和上面隔开一点 */
+.grp { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; margin-top: 10px; }
 .ev { margin-top: 6px; padding: 5px 7px; border: 1px solid var(--line-strong); border-radius: 4px; background: #fff; cursor: pointer; }
 .ev.cur { border: 2px solid var(--ink); padding: 4px 6px; }
 .ev-kv { gap: 3px 8px; }

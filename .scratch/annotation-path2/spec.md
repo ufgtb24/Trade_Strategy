@@ -211,6 +211,17 @@
 - **没买到的正样本**：页面上不写原因，会话每轮的处理清单里每张一行，用你的词说卡在哪。
 
 
+### 1.14 复制指代：把图上的东西一键指给会话（11-11 定）
+
+- **要解决的**：和会话说「这一处」要打股票、日期、是哪种东西，hit 又大量重叠，口述指不准。
+- **做法**：先点中，按 `Shift+C`，剪贴板里是一行自带上下文的话（股票、pattern、种类、日期，末尾方括号是内部编号），底部提示条把这行字显示几秒。会话只靠这行字定位（主要靠日期，编号备用），会话侧不配脚本、不改流程文件。三种模式都能用。
+- **能指的东西**：框、样本、一次 hit、band 上的一格（event）、一条 band（node）、反馈；什么都没点中时是股票、pattern 与当前日。
+- **连按逐层放大**：hit 三层——这一次 → 这一天并在一起的几次 → 起点相同的整族；event 两层——这一个 → 同起点的一族。相邻两层指同一组东西时合并；到头回第一层；换了东西从第一层起。一次只复制一样。
+- **一条 band 怎么选**：轨名可点，选中的名字描黑粗边；再点一次、Esc、点空白、点了别的东西、换股票或 pattern 都取消。选轨名时别的选中一并取消。
+- **「当前指的是哪样」的判法**（选框、选样本会顺带点亮配对的 hit，不能只看谁非空）：最后点的是反馈或轨名 → 它；最后点的是 `diagnose` 里的卡片 → `hits` 组的是那次 hit、`not_in_hit` 组的是那个 event；待选中 → 点下去的那个 event；否则看当家行（band → event，hits 行 → hit，样本行 → 样本，compare 下只是聚焦的样本也算）；没有当家行时框 → 样本 → event → hit；都没有 → 当前日。实现在 `path2_web_ui/src/annotate/copyRef.ts`（纯函数）与 `stores/copyRef.ts`。
+- **会话默认、待验证**：键位 `Shift+C`（裸字母会被「敲字母搜股票」接走）；连按放大这个做法；行里的固定词；待选状态下复制点下去的 event；连按的层级不随时间归零（同一样东西隔很久再按，会接着上次往上走一层）。
+- 原来右键 event 的「复制 instance_id」保留。
+
 ---
 
 ## 2. 问题与方案
@@ -482,7 +493,8 @@
   - 点样本（或进 `compare` 时默认聚焦的样本：已选中的，否则离图窗中心最近的）：当前日竖线落在样本日，只给「配对那一格」加粗框（那天在场的几个 event 里，按 6.2 的配对规则挑出来跟这个样本对照的那一个）；点框：当前日落在框终点；
   - 默认聚焦的样本不选中它（选中会让它成为当前样本、之后画的框默认并进它）；`selection` 页什么都没选中时显示它的 `diagnose`（只读，`select` 才选中）。聚焦不改档位按钮（档位只由用户点）：配对的 event 在当前档位下画不出来时，当前日竖线照样落在那天，`diagnose` 里那一块的档位后写灰字 `hidden`；
   - 副图的竖直缩放 compare 单独一份、默认 2.0×（待验证），app 模式仍是 1.0×；
-  - `selection` 页：样本下多一块 `diagnose`，键值排（2026-11-11 重排）：头四行 `match` / `node` / `date` / `events`（那天在场的 event 总数与三档各几个）；每个 event 一块，配对的在前、标 `paired`，块里 `start` / `first_diff`（同起点同跨度的几个 event 之间第一处不一样的子段及其终点）/ `level` / `failed`（没过的 where 一行一条：where 名 + mapping `notes` 给的用户原话）；非配对的 detected 折成 `+ n detected`；当前选中的那块黑粗边。框下多一行 `node`（app 用哪一部分认这个特征：`⇣ node` 与 mapping `notes` 的原话；不写认到哪一档）；
+  - `selection` 页：样本下多一块 `diagnose`，键值排（2026-11-11 重排）：头三行 `match` / `node` / `date`；下面按进没进 hit 分两组、组头各带个数（2026-11-11 同日再改：原来一个 `events` 标题下并列列出，看不出卡片分辨的是同一天的几次 hit）：`hits n` 是样本日在场的 hit，一块一次（同一个 event 被几次 hit 共用时块头写 `× k`），块里 `start` / `first_diff`（同起点同跨度的几块之间第一处不一样的子段及其终点），配对的在前、标 `paired`，其余按 hit 的先后（和图上 ←/→ 一致）；`not_in_hit n` 是在场但没进 hit 的 event，组头另写 `qualified` / `detected` 各几个，块里多 `level` / `failed`（没过的 where 一行一条：where 名 + mapping `notes` 给的用户原话），非配对的 detected 折成 `+ n detected`；当前选中的那块黑粗边。框下多一行 `node`（app 用哪一部分认这个特征：`⇣ node` 与 mapping `notes` 的原话；不写认到哪一档）；
+  - 同一天的几次 hit（2026-11-11 定）：同一族里买在同一天、只差内部切法的几次 hit，图上并成一格、一个 ▼。三处把它说清：格子正上方的个数行写个数（下面留给反馈带）（只在这行 hit 里有这种日子时才留这一行，行高固定不随缩放；K 线太密时不写）；选中其中一次时提示条写 `hit k/n`，当家行是 `hits` 行时 ←/→ 在这几次间换；`diagnose` 的 `hits` 组一次一块。
   - 框旁不挂 app 把它认到哪一档，一个 event 都没有时也不挂 `missing`（2026-11-11 定：框被 app 认到哪一档是找 app 错在哪一步用的，归会话看；用户只看买没买）；没买到的正样本进会话每轮的处理清单，由会话用一句业务话说明原因；
   - 仍留在第二段的：`diff tag`、`chance_high`、pattern 页按 mapping 分层的计数与 samples 表、属性与 where 的逐条对照；
   - 只给类别、不给数字（1.4）：node 名、where 名、档位，不写实测值、门槛、差几根；
@@ -607,7 +619,7 @@
   - 子框对子段：交叠，且子段终点落在子框终点前后 `TOL` 根内（默认 2，待验证；同 match 容差只在 `path2_web/annotation/match.py` 设定一处，界面经 `GET /annotations` 的 `match.sub` 读）。用户没画子框时不核对位置，父框悬停写明。
 - **`tier tag`**：
   - 图上不再挂 `qualified_only` / `detected_only`（档位由格子的高低与深浅表达）；
-  - `selection` 页：选中样本时 `diagnose` 里写 `in_hit` / `qualified` / `detected`；选中框时不写档位（只写由哪个 node 认）；
+  - `selection` 页：选中样本时 `diagnose` 的 `not_in_hit` 组里写 `qualified` / `detected`（进了 hit 的那组不写档位）；选中框时不写档位（只写由哪个 node 认）；
   - 框旁的会话 tag 写 `unmapped` / `excluded` / `optional` / `must_not`；
   - 图上这两类小标签不铺浅色底（浅蓝、浅琥珀底在白图上看不出）：白底 + 中等深度描边 + 黑字，`unmapped` 与反馈的会话原因标签蓝描边 `#0072B2`（取自安全色板）。
 - **`link tag`**：不做（2026-11-11 定，1.13）。相邻两段连没连上是找 app 错在哪一步用的，会话调 app 自己的边逐对查，不做成界面标签；下面两条只作会话自查时的口径：
@@ -1132,6 +1144,7 @@
 | 反馈的 node 按钮 | 范围里 hit 绑定的 node 及其子 node（递归），顶层 node 不排除，按拓扑顺序，可多选、可不点；点一个 = 问题落在这一块上；文字同 band 表头，悬停 notes 原话 | detail | 检查（真界面上看） | 6.13 |
 | 反馈的保存条件 | `note` 必写；node 可点可不点 | detail | 用户 | 6.13 |
 | 反馈工具快捷键 | Shift+F | detail | 用户（用起来） | 6.13 |
+| 复制指代快捷键 | Shift+C | detail | 用户（用起来） | 1.14 |
 | 作答面板的规矩 | 不抢焦点；点别处 / 平移 / 缩放即收；Esc 先关面板；打开不自动进理由框，点了 node 按钮才进；Enter 在面板根上截下；`redraw`；同范围不重复 | detail | 用户（用起来） | 6.13 |
 | 反馈的改与删 | 点记号开同一面板；侧栏行上可删 | detail | 用户 | 6.13 |
 | 范围里有正样本 | 提示 `pos sample inside`（面板与悬停），不拦 | detail | 用户 | 6.13 |
@@ -1156,7 +1169,7 @@
 | U7 | 定级按「处」数还是按样本个数（改 1.4「计数一律数样本」、票 15 的 V-15-1）。按处：同一张图上共用至少一个成员框、或成员框之间有用户手动挂的框套框的正样本算一处（会话默认划法，待验证）；没有成员框的正样本不计。实测「底部平稳」按样本 3/10，只在 CRNC 补 7 个一键正样本就 10/17 过半；按处 1/7，补全部 23 个也只 2/7 | 方向（会悄悄改定级） | 挡第二段定级的实施 |
 | U8 | 送检过的 pattern，改出来、拆出来、替它上场的共用一本检查次数的账；没送检过的各自从 0 起（改 1.4「按单个 pattern 记」、说明书 ⑧「不跨 pattern 合起来数」） | 方向（撤不回的计数） | 挡第一次最后检查 |
 | U9 | 特征定义的锁何时放开：现在照旧写下即锁、写之前提示（6.14 G3，不改规矩）；会话读得出「上一轮以来改了什么」之后是否放开改字（要同步改词条 `path2/GLOSSARY.md:141`、说明书设计 3） | 方向 | 不挡；6.14 第 2 步做好之后再问 |
-| U10 | 反馈相关的新界面名：`no buy in range`、`redraw`、`pos sample inside`、朱红原因标签的六个取值、`edited n`、共享 issue 改内容时的 `all` / `only this`、面板的 `issues` / `nodes` 两个键与没点 node 时的 `none`；选中框时 `parent` 一行的 `contains` / `overlaps`、`node` 这个键；`diagnose` 里的 `first_diff`、`paired`；原因标签 `hindsight`（原 `invisible`，当天看不出）；会话账本 `conditions` 的 `state` 五个开头词（`from_definition` / `unmeasured` / `declined` / `for_tuning` / `not_worth`）；循环技能的名字 `annotation-round` | owned（用户要认的词） | 实施时会话照 `GLOSSARY-MAP.md` 起名，列给用户认 |
+| U10 | 反馈相关的新界面名：`no buy in range`、`redraw`、`pos sample inside`、朱红原因标签的六个取值、`edited n`、共享 issue 改内容时的 `all` / `only this`、面板的 `issues` / `nodes` 两个键与没点 node 时的 `none`；选中框时 `parent` 一行的 `contains` / `overlaps`、`node` 这个键；`diagnose` 里的 `first_diff`、`paired`、组头 `hits` / `not_in_hit`、共用标 `× k`；同一天几次 hit 时提示条的 `hit k/n`；复制指代那一行里的固定词 `hit` / `hits buy` / `hit_family` / `event` / `event_family` / `node` / `box` / `sample` / `feedback` / `day` 与提示条的 `copied`；原因标签 `hindsight`（原 `invisible`，当天看不出）；会话账本 `conditions` 的 `state` 五个开头词（`from_definition` / `unmeasured` / `declined` / `for_tuning` / `not_worth`）；循环技能的名字 `annotation-round` | owned（用户要认的词） | 实施时会话照 `GLOSSARY-MAP.md` 起名，列给用户认 |
 
 ---
 

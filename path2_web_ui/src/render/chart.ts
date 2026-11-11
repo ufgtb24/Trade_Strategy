@@ -133,6 +133,10 @@ export interface BandRenderInput {
   activeFamily?: string | null
   // ── band 表头:node 名后跟用户的特征名(mapping 对到它的特征)、compare 下所在组没有 node 被 map 的挂 app_only;键是 band ──
   bandExtras?: Readonly<Record<string, BandLabelExtra>>
+  /** 选中的轨名(band 键):名字描黑粗边 */
+  selectedBand?: string | null
+  /** 给了,轨名就接鼠标:点它 = 选中这条 band(一个 node) */
+  onBandLabelClick?: (band: string) => void
   // ── compare:选中的框对的 node 及其子孙 node 的 band,表头加粗(用户区与 app 区不相邻,靠它配对) ──
   linkedBands?: readonly string[]
   // ── compare 才传(spec 6.13 反馈):hits 行的一族可点(族底线那一行垫透明命中区)、hit 行底下画反馈带。
@@ -689,11 +693,12 @@ export function buildSubDecorGraphics(
   hitsLabelVisible: boolean,
   chartSubWidth: number,
   zoomFactor: number = 1.0,
-  active: { band?: number; hits?: boolean; linked?: readonly number[]; hover?: number } = {},   // 当家行所在那条 band / bracket、选中框对的 band 的表头加粗;hover:反馈面板悬停的 node 所在 band 加亮
+  active: { band?: number; hits?: boolean; linked?: readonly number[]; hover?: number; selected?: number } = {},   // 当家行所在那条 band / bracket、选中框对的 band 的表头加粗;hover:反馈面板悬停的 node 所在 band 加亮
   extras: readonly (BandLabelExtra | null)[] = [],  // 表头 node 名后跟的用户特征名 / app_only(按 band 下标)
   hitsTop: number = BAND_TOP_PAD,                    // hits 表头的顶 = hit 第 0 行的顶(compare 下在分界线下面)
   tree: readonly ({ depth: number; last: boolean } | null)[] = [],  // 轨在父子树里的位置(subBandTree),子轨名缩进挂 ├ / └
   hitsAreaTop: number = 0,                           // hits 区的顶,浅黄底从这里铺起(compare 下是那道分界线)
+  onLabelClick?: (bandIndex: number) => void,        // 给了,轨名接鼠标:点它选中这条 band(复制指代用)
 ): any[] {
   const graphics: any[] = []
   // 行的底色、分隔线从容器最左起(盖住左边的轨名栏),轨名写在轨名栏里
@@ -762,6 +767,8 @@ export function buildSubDecorGraphics(
       : null
     // 垫一块和这一行同色的底,压在记号上面(轨名伸进 grid 时不被格、条盖住)
     const bg = { backgroundColor: bi % 2 === 0 ? BAND_STRIPE_OPAQUE : '#ffffff', padding: [0, 2] }
+    // 选中的轨名:node 名描黑粗边(靠黑边认,不靠颜色)
+    const picked = active.selected === bi ? { borderColor: '#000000', borderWidth: 2, borderRadius: 2, padding: [1, 3] } : {}
     graphics.push({
       type: 'text',
       left: SUB_TITLE_LEFT + TREE_INDENT * Math.max(0, depth - 1) + (depth > 0 ? TREE_INDENT / 2 : 0),
@@ -770,7 +777,7 @@ export function buildSubDecorGraphics(
       textVerticalAlign: 'top',
       style: rich
         ? { text: rich, ...bg, rich: {
-            n: { fill: '#000000', fontSize: 13, fontWeight: weight },
+            n: { fill: '#000000', fontSize: 13, fontWeight: weight, ...picked },
             biz: { fill: '#000000', fontSize: 12, backgroundColor: '#f4f4f5', padding: [1, 4], borderRadius: 3 },
             tag: { fill: '#000000', fontSize: 11, fontFamily: MONO },
           } }
@@ -780,11 +787,14 @@ export function buildSubDecorGraphics(
             fontSize: 13,
             fontWeight: weight,
             ...bg,
+            ...picked,
           },
       z: SUB_TITLE_Z,
+      // 接不接鼠标:给了 onLabelClick 就接(点轨名选中这条 band);带 tagTip 的另有悬停说明;都没有照旧不接
       ...(ex?.tag && ex.tagTip
         ? { silent: false, tooltip: { show: true, formatter: `<span style='font-family:${MONO};color:#000000'>${ex.tagTip}</span>` } }
-        : { silent: true }),
+        : { silent: !onLabelClick }),
+      ...(onLabelClick ? { cursor: 'pointer', onclick: () => onLabelClick(bi) } : {}),
     })
   })
 
@@ -856,11 +866,13 @@ export function buildSubOption(
     z,
     { band: activeBand, hits: !!activeKey && activeKey.startsWith(`${HIT_FAMILY_PREFIX}@`),
       linked: (input.linkedBands ?? []).map((b) => bandLabelTexts.indexOf(b)).filter((i) => i >= 0),
-      hover: input.hoverBand ? bandLabelTexts.indexOf(input.hoverBand) : undefined },
+      hover: input.hoverBand ? bandLabelTexts.indexOf(input.hoverBand) : undefined,
+      selected: input.selectedBand ? bandLabelTexts.indexOf(input.selectedBand) : undefined },
     bandLabelTexts.map((b) => input.bandExtras?.[b] ?? null),
     bracketTop,
     subBandTree(bandLabelTexts, input.topology),
     subGeom.hitsAreaTop ?? 0,
+    input.onBandLabelClick ? (bi) => input.onBandLabelClick!(bandLabelTexts[bi]) : undefined,
   )
 
   return {
@@ -904,14 +916,15 @@ export function buildSubOption(
       // 压在格与 ▼(brackets,z:11)下面,点格、点 ▼ 不受影响。app 模式整层不响应鼠标(和原来一样)
       { type: 'custom', name: 'bracket-lines', xAxisIndex: 0, yAxisIndex: 0, clip: true,
         data: bundle.bracketLineData, silent: !fbIn,
-        renderItem: makeRenderBracketLine(bundle.bracketLineData, z, bracketTop, !!fbIn),
+        renderItem: makeRenderBracketLine(bundle.bracketLineData, z, bracketTop, !!fbIn, subGeom.bracketLaneTops),
         encode: { x: [0, 1] }, z: 10, emphasis: { disabled: true } },
       // brackets (z:11):hit 的记号与买入日 ▼。focus 信号:selectedHitId 存在且无实例焦点 ⟺ bracket
       // 本身是被点者(KlineChart.ts bracket 分支走 focusHit 不设实例;marker 分支必设)
       { type: 'custom', name: 'brackets', xAxisIndex: 0, yAxisIndex: 0, clip: true,
         data: bracketData,
         renderItem: makeRenderBracket(bracketData, selectedHitId ?? null, candidateHitIds ?? new Set(), z,
-          (selectedHitId ?? null) !== null && (input.selectedInstanceId ?? null) === null, bracketTop),
+          (selectedHitId ?? null) !== null && (input.selectedInstanceId ?? null) === null, bracketTop,
+          subGeom.bracketLaneTops),
         encode: { x: [0, 1] }, z: 11, tooltip: markerTooltip,
         emphasis: { disabled: true } },
       // 反馈带(z:12,compare 才有):hit 行底下,每条反馈一个横跨 [start, end] 的记号;悬停写全,点它打开那条
@@ -966,6 +979,10 @@ function renderHitSpanner(params: any, api: any) {
 // 选中词汇(2026-07-08 改):三档皆保 node/tier 分色(in_hit=node本色,qualified/detected=灰),
 // group=细深边, focus=粗深边;琥珀不再代表选中。AMBER_FILL 仅剩 bracket 默认底(bracket 无 tier 语义)。
 const AMBER_FILL = '#fbbf24'      // bracket 默认底(琥珀,非选中语义)
+// 买入日格子上面个数行里的数字:字号固定(个数行高固定、不随缩放);等宽字一个数字的宽 ≈ 字号 × 0.6
+const BUY_COUNT_FONT_PX = 9
+const BUY_COUNT_CHAR_RATIO = 0.6
+const BUY_COUNT_GAP = 1   // 数字下沿离格子顶(选中时的加粗框往外扩 1~2px,别压上)
 const HL_FOCUS_EDGE = '#1e293b'   // slate-800(group/focus 深边、BO 文本、bracket 序号)
 const HL_STROKE = '#fbbf24'       // 收窄:仅 pendingDisambig 白底垫层的琥珀边消费
 const HL_FOCUS_STROKE_WIDTH = 2.5
@@ -1290,12 +1307,13 @@ export function makeRenderBracketLine(
   zoomFactor: number = 1.0,
   bracketTop: number = BAND_TOP_PAD,   // hit 第 0 行的顶(compare 下让出上面的 user 行,见 subGeometry 的 appBracketTop)
   clickable: boolean = false,
+  laneTops?: readonly number[],        // hit 各行的顶(有个数行时行距不等,见 subGeometry 的 bracketLaneTops)
 ) {
   return function renderBracketLine(params: any, api: any) {
     const item = items[params.dataIndex]
     if (!item) return { type: 'group', children: [] }
     const { x0, x1 } = markXRange(api, api.value(0), api.value(1))
-    const top = bracketTop + (api.value(2) || 0) * BAND_LANE_H * zoomFactor
+    const top = laneTops?.[api.value(2) || 0] ?? bracketTop + (api.value(2) || 0) * BAND_LANE_H * zoomFactor
     const rectH = BAND_MARKER_H * zoomFactor
     const width = Math.max(2, x1 - x0)
     const hh = rectH * FAMILY_HEAD_RATIO
@@ -1500,7 +1518,7 @@ export function makeRenderShiftVeilPrice(
 
 // bracket:副图独立坐标(canvas 局部 y=0 起,见 subGeometry.ts 几何约定)。一族 hit(同起点)一行,一律画梳子:
 //   kind='mark':hit 的记号——每个 hit 一格立在它的终点(琥珀、满高),只有一次 hit 的族也是(不画整条);
-//   kind='buy' :买入日 ▼(黑),叠在上面。
+//   kind='buy' :买入日 ▼(黑),叠在上面;这一天并了几次 hit 时,格子外正上方的个数行里写个数。
 // 选中 hit:它的完整跨度 [族起点, hit 终点] 空心细框 + 它那一格深边框(点的是 bracket 本身用粗边,点组内 marker 用细边);
 // 候选 hit:它那一格细实线框(不用虚线:虚线只表示用户画的;不闪)。族底线在 bracket-lines 系列。
 export function makeRenderBracket(
@@ -1510,19 +1528,32 @@ export function makeRenderBracket(
   zoomFactor: number = 1.0,
   focusOnBracket: boolean = false,
   bracketTop: number = BAND_TOP_PAD,   // hit 第 0 行的顶(同 makeRenderBracketLine)
+  laneTops?: readonly number[],        // hit 各行的顶(subGeometry 的 bracketLaneTops);给了才写买入日上面的个数
 ) {
   return function renderBracket(params: any, api: any) {
     const item = items[params.dataIndex]
     const lane = api.value(2) || 0
-    const top = bracketTop + lane * BAND_LANE_H * zoomFactor
+    const top = laneTops?.[lane] ?? bracketTop + lane * BAND_LANE_H * zoomFactor
     const rectH = BAND_MARKER_H * zoomFactor
     const ids = item?.hit_ids ?? (item?.hit_id ? [item.hit_id] : [])
     if (item?.kind === 'buy') {
       const x = api.coord([api.value(0), 0])[0]
       const w = Math.max(3, Math.min(6, api.size([1, 0])[0] * 0.32))
-      return { type: 'polygon',
-               shape: { points: [[x - w, top + 0.5], [x + w, top + 0.5], [x, top + rectH * 0.65]] },
-               style: { fill: '#111111' } }
+      const tri = { type: 'polygon',
+                    shape: { points: [[x - w, top + 0.5], [x + w, top + 0.5], [x, top + rectH * 0.65]] },
+                    style: { fill: '#111111' } }
+      // 这一天并了几次 hit(同一族里买在这天的,只差切法):个数写在格子外、正上方的个数行里(subGeometry 的
+      // HIT_COUNT_ROW_H,这一行 hit 有这种日子才留出),▼ 与格子不动。没给 laneTops(没留个数行)不写;K 线密到
+      // 一根比数字还窄时也不写(相邻两天的数字会叠在一起),个数仍在悬停的 `hits: n` 与提示条的 `hit k/n` 里。
+      const n = ids.length
+      const digitsW = String(n).length * BUY_COUNT_FONT_PX * BUY_COUNT_CHAR_RATIO
+      if (n < 2 || !laneTops || api.size([1, 0])[0] < digitsW - 1) return tri
+      return { type: 'group', children: [
+        tri,
+        { type: 'text', silent: true,
+          style: { text: String(n), x, y: top - BUY_COUNT_GAP, align: 'center', verticalAlign: 'bottom',
+                   font: `bold ${BUY_COUNT_FONT_PX}px ${MONO}`, fill: '#111111' } },
+      ] }
     }
     const { x0, x1 } = markXRange(api, api.value(0), api.value(1))
     const children: any[] = [

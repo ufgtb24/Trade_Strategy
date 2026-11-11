@@ -243,7 +243,9 @@ export const useFeedbackStore = defineStore('feedback', () => {
 
   function clearCarry(): void { carry.value = null }
 
-  function select(id: string | null): void { selectedId.value = id }
+  /** 每点一次记号加一(同一条再点一次也加):selectedId 点了别的东西也不清,要靠它分出「最后点的是不是反馈」 */
+  const pickSeq = ref(0)
+  function select(id: string | null): void { selectedId.value = id; if (id) pickSeq.value += 1 }
 
   /** 侧栏卡片的 edit:请图表在那条记号旁打开面板(图表落定后才提,见 components/FeedbackPage.vue)。 */
   function requestEdit(id: string): void { editRequest.value = id }
@@ -317,7 +319,7 @@ export const useFeedbackStore = defineStore('feedback', () => {
 
   return {
     statusById, loading, error, app, appVer, reason, refresh,
-    panel, opens, carry, selectedId, editRequest, problems, panelPosInside, panelNodes,
+    panel, opens, carry, selectedId, pickSeq, editRequest, problems, panelPosInside, panelNodes,
     panelIssues, panelIssue, panelNeedsChoice, panelPlaces, placesById,
     open, switchTo: open, close, setNote, toggleNode, pickIssue, save, remove, startRedraw,
     clearCarry, select,

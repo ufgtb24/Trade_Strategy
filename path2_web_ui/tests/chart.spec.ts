@@ -546,6 +546,22 @@ describe('buildSubDecorGraphics — Task 3', () => {
     expect(g.length).toBeGreaterThan(0)
   })
 
+  it('轨名:不给点击回调照旧不接鼠标;给了就接、点它报出是第几条 band;选中的那条描黑粗边', () => {
+    const labels = (g: any[]) => g.filter((e) => e.type === 'text' && ['bo', 'burst'].includes(e.style.text))
+    const plain = labels(buildSubDecorGraphics(bandGeom, bracketH, bandLabelTexts, hitsLabelVisible, chartSubWidth))
+    expect(plain.map((e) => e.silent)).toEqual([true, true])
+    expect(plain.every((e) => e.onclick === undefined && e.style.borderWidth === undefined)).toBe(true)
+    const picked: number[] = []
+    const on = labels(buildSubDecorGraphics(bandGeom, bracketH, bandLabelTexts, hitsLabelVisible, chartSubWidth, 1,
+      { selected: 1 }, [], undefined, [], 0, (bi) => picked.push(bi)))
+    expect(on.map((e) => e.silent)).toEqual([false, false])
+    on[1].onclick()
+    expect(picked).toEqual([1])
+    expect(on[0].style.borderWidth).toBeUndefined()
+    expect(on[1].style.borderWidth).toBe(2)
+    expect(on[1].style.borderColor).toBe('#000000')
+  })
+
   it('hits 区垫浅黄底、一直铺到第一条 band 的顶;hits 与 band 之间不画分隔线', () => {
     const g = buildSubDecorGraphics(bandGeom, bracketH, bandLabelTexts, hitsLabelVisible, chartSubWidth)
     const bg = g.filter((e: any) => e.type === 'rect' && e.style?.fill === HITS_FILL)
@@ -898,6 +914,28 @@ describe('makeRenderBracket — 记号、选中、候选、买入日', () => {
     const buy = mk({ hit_id: 'm1', hit_ids: ['m1'], kind: 'buy' }, null)
     expect(buy.type).toBe('polygon')
     expect(buy.style.fill).toBe('#111111')
+  })
+
+  it('买入日并了几次 hit:▼ 不动,个数写在格子外正上方;没留个数行、K 线太密或只有一次时只画 ▼', () => {
+    const buy2 = { hit_id: 'm1', hit_ids: ['m1', 'm2'], kind: 'buy' as const }
+    const at = (item: any, z: number, laneTops?: number[], api = fakeApi) =>
+      makeRenderBracket([item], null, new Set(), z, false, 4, laneTops)({ dataIndex: 0 }, api) as any
+    const plain = at({ ...buy2, hit_ids: ['m1'] }, 1, [4])
+    expect(plain.type).toBe('polygon')
+    const g = at(buy2, 1, [4])
+    expect(g.type).toBe('group')
+    const [tri, num] = g.children
+    expect(tri.shape).toEqual(plain.shape)                 // ▼ 和只有一次时一模一样
+    expect(num.style.text).toBe('2')
+    expect(num.style.x).toBe(100)
+    expect(num.style.y).toBe(4 - 1)                        // 格子顶之上
+    expect(num.style.verticalAlign).toBe('bottom')
+    expect(num.style.fill).toBe('#111111')
+    expect(at(buy2, 1).type).toBe('polygon')               // 没给 laneTops = 没留个数行
+    expect(at(buy2, 1, [4], { ...fakeApi, size: () => [3, 0] }).type).toBe('polygon')   // 一根 3px,比数字窄
+    // 行的顶照 laneTops 取(有个数行时行距不等)
+    const lane1 = { ...fakeApi, value: (i: number) => [10, 20, 1, 1][i] ?? 0 }
+    expect(at(buy2, 1, [4, 30], lane1).children[1].style.y).toBe(30 - 1)
   })
 
   it('zoomFactor:top = 4 + lane·9z,高 7z;不传 z 与 z=1 相同', () => {

@@ -53,6 +53,10 @@ export const HL_EXPAND_OFFSET = 1.5  // y 上移(乘 z),保居中外扩
 export const DIVIDER_GAP = 4
 // compare 的反馈带(spec 6.13):hit 行底下每条反馈占一行,行高固定、不乘 band zoom(待截图过目)
 export const FEEDBACK_ROW_H = 14
+// hit 行上面的「个数行」:这一行 hit 里有哪天并了几次 hit(同一族、买在同一天、只差切法)时才有,写在那天格子的正上方
+// (下面留给反馈带);
+// 行高固定、不随缩放(同反馈带),所以 1.0× 下也读得出。没有这种日子的 hit 行不加这一行。
+export const HIT_COUNT_ROW_H = 10
 
 // Task 2 新增常量: 装饰几何视觉参数 + sub-outer 最小可压缩高度 + chartSub grid 左右内边距
 // spec: docs/superpowers/specs/2026-07-01-path2-web-subchart-fixed-decor-design.md
@@ -101,11 +105,15 @@ export interface SubGeometry {
   userAppEdges: number[]
   /** 反馈带第 0 行的顶(第 i 行 y = feedbackTop + i*FEEDBACK_ROW_H):紧接在最后一行 hit 下面;没有反馈行时也给出 */
   feedbackTop: number
+  /** hit 各行格子的顶:第 i 行 = appBracketTop + i*9·z + 它自己和它上面几行的个数行(每行 HIT_COUNT_ROW_H;个数行在格子上面) */
+  bracketLaneTops: number[]
 }
 
 export interface SubGeometryInput {
   bracketLaneCount: number     // bracket 轨 hit 族分行后的 max lane + 1(即 lane 数)
   bandLaneCounts: number[]     // 每 band 的 lane 数(顺序按 tagList 排)
+  /** 带个数行的 hit 行号(这一行里有哪天并了几次 hit);缺省没有 */
+  bracketCountLanes?: readonly number[]
   // ── compare(主视图副图 + 标注层,两区见 render/compareLayout.ts)才传;不传时与 app 模式逐项相同 ──
   /** 用户区(特征轨 + 样本跨度那一行 user,标注层 annotateLanes 的几何,不随 band zoom 变)里最低那条样本跨度的下沿
    *  (annotateLanes 的 bracketContentBottom);分界线画在它下面 USER_APP_GAP,hit 的行再往下 USER_APP_GAP */
@@ -126,7 +134,15 @@ export function computeSubGeometry(
   const edgeY = userH + USER_APP_GAP
   const appBracketTop = userH > 0 ? edgeY + USER_APP_GAP : BAND_TOP_PAD
   const fbRows = Math.max(0, input.feedbackRowCount ?? 0)
-  const feedbackTop = appBracketTop + input.bracketLaneCount * BAND_LANE_H * zoomFactor
+  const countLanes = new Set(input.bracketCountLanes ?? [])
+  const bracketLaneTops: number[] = []
+  let laneCursor = appBracketTop
+  for (let i = 0; i < input.bracketLaneCount; i++) {
+    if (countLanes.has(i)) laneCursor += HIT_COUNT_ROW_H
+    bracketLaneTops.push(laneCursor)
+    laneCursor += BAND_LANE_H * zoomFactor
+  }
+  const feedbackTop = laneCursor
   const bracketH = input.bracketLaneCount > 0 || userH > 0 || fbRows > 0
     ? feedbackTop + fbRows * FEEDBACK_ROW_H + BAND_BOT_PAD
     : 0
@@ -152,7 +168,7 @@ export function computeSubGeometry(
   // compare:上下两区的分界在用户区底下 USER_APP_GAP 处
   const userAppEdges = userH > 0 ? [edgeY] : []
   const hitsAreaTop = userH > 0 ? edgeY : 0
-  return { bracketH, bandGeom, subCanvasH, appBracketTop, hitsAreaTop, userAppEdges, feedbackTop }
+  return { bracketH, bandGeom, subCanvasH, appBracketTop, hitsAreaTop, userAppEdges, feedbackTop, bracketLaneTops }
 }
 
 /**

@@ -868,6 +868,27 @@ export const useViewStore = defineStore('view', () => {
     return true
   }
 
+  /**
+   * 选中的那次 hit 和它同一天的几次 hit(同一族、买入日完全一样,只差切法):{ ids: 按族内先后, index: 选中的排第几 };
+   * 没有选中、或同一天只有它一次时为 null。图上这几次并成同一个 ▼、同一格,加粗框只标选中的那一次,
+   * 所以提示条(CandidateStatusBar)照它写「hit k/n」,免得看不出还有别的。
+   */
+  const sameDayHits = computed<{ ids: string[]; index: number } | null>(() => {
+    const id = focusedHitId.value
+    if (!id) return null
+    const hits = effectiveAnalysis.value?.hits ?? []
+    const events = effectiveAnalysis.value?.events ?? []
+    const fam = foldHits(hits, events, endNode.value).find(f => f.hitIds.includes(id))
+    if (!fam) return null
+    const byId = new Map(events.map(e => [e.instance_id, e]))
+    const byHit = new Map(hits.map(h => [h.hit_id, h]))
+    const sigOf = (hid: string) => { const m = byHit.get(hid); return m ? buyDaysOf(m, byId, endNode.value).join(',') : '' }
+    const sig = sigOf(id)
+    if (!sig) return null
+    const ids = fam.hitIds.filter(h => sigOf(h) === sig)
+    return ids.length >= 2 ? { ids, index: ids.indexOf(id) } : null
+  })
+
   // 点击统一规则(band 的格或整条、bracket 的格、买入日 ▼ 三处共用):先取点到的 hit 集合,
   //   0 次 → 只聚焦成员;1 次 → 直选;≥2 次且买入日完全一样 → 直选第一次,←/→ 换同一天的下一次;
   //   ≥2 次且买入日不全一样(如被几十天共用的旧平台、阶跃)→ 进待选(候选在 bracket 上加框)。
@@ -1376,7 +1397,7 @@ export const useViewStore = defineStore('view', () => {
     visiblePatterns, visibleFields, symbolQuery,
     effectivePattern, effectiveAnalysis, effectiveScan,
     unionRows, sortedRows, filteredSortedRows, previewListRow, patternHitStocks,
-    nodeColors, selectedHitId, selectedHit, tagMap, isolated, inHitIds, inHitEventIds, qualifiedIds,
+    nodeColors, selectedHitId, selectedHit, sameDayHits, tagMap, isolated, inHitIds, inHitEventIds, qualifiedIds,
     mode, annotating, comparing, appSource, linkedView, linkedRun, appId, endNode, appWindowOf,
     openSymbol, enterAnnotate, enterLinked, setLinkedRun, viewWindow,
     loadScanFile, clearScanFile, setCurrentScanName, currentScanName, selectSymbol, setActivePattern, setSort,
