@@ -1,7 +1,7 @@
 // 反馈作答面板(FeedbackPanel.vue):一打开就是完整的面板(没有「先选答案」)——issues(有可挑的才出)、nodes
 // (node 按钮,文字同 band 表头、悬停写 mapping 原话并通知父组件加亮;点任一个后光标进 note)、note(多行文本区,必填);
 // 以前存下的带 answer / dag 的记录照样打得开,面板上不出这两样;
-// 已有记录多 delete / redraw、pos sample inside、app 还在跑时写 app running;
+// 已有记录多 delete、日期范围的悬停写怎么改起止,pos sample inside、app 还在跑时写 app running;
 // 按键(Enter 保存、Shift+Enter 不截、Esc 只关面板、输入法组字不截、焦点在按钮上 Enter 也是保存);
 // 点面板外就关(每次打开后隔一轮才挂上)、不抢焦点。后端换成内存里的假实现(同 stores.feedback.spec.ts)。
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
@@ -150,9 +150,12 @@ describe('FeedbackPanel · 样子', () => {
     expect(w!.findAll('.fb-kv > .ann-k').map(k => k.text())).toEqual(['nodes', 'note'])       // 没有可挑的 issue:不出 issues 行
     for (const t of ['feedback-note', 'feedback-nodes', 'feedback-save']) expect(has(t)).toBe(true)
     for (const t of ['feedback-answer-neg', 'feedback-answer-off_pattern', 'feedback-dag', 'feedback-issues',
-                     'feedback-delete', 'feedback-redraw', 'feedback-pos-inside', 'feedback-blocked',
+                     'feedback-delete', 'feedback-pos-inside', 'feedback-blocked',
                      'feedback-problems', 'feedback-share']) expect(has(t)).toBe(false)
     expect(w!.text()).not.toMatch(/answer|off_pattern|\bneg\b|dag/)
+    // 新拖的还没存:日期范围的悬停不写「怎么改起止」
+    expect(w!.get('[data-testid="feedback-span"]').attributes('title'))
+      .toBe("start – end: the app's buys in this range are what this feedback is about")
     expect(document.activeElement).toBe(document.body)                       // 打开时不抢焦点,光标也不进 note
     // 按钮按下不夺焦点
     const btn = w!.findAll('[data-testid="feedback-node"]')[0].element
@@ -280,25 +283,21 @@ describe('FeedbackPanel · 样子', () => {
     expect(has('feedback-blocked')).toBe(false)
   })
 
-  it('已有记录(以前存下的 neg + note):预填理由,多 delete 与 redraw;范围里有正样本时写 pos sample inside;面板上没有答案', async () => {
-    const { fb, ann } = await setup(withRecord())
+  it('已有记录(以前存下的 neg + note):预填理由,多 delete,日期范围悬停写怎么改起止;范围里有正样本时写 pos sample inside;面板上没有答案', async () => {
+    const { fb } = await setup(withRecord())
     fb.open(AT, { id: 'f-pc-1' })
     await mountPanel()
     expect(has('feedback-delete')).toBe(true)
-    expect(has('feedback-redraw')).toBe(true)
+    expect(w!.findAll('.ann-hdr:not(.fb-foot) button').map(b => b.text())).toEqual(['delete'])   // 页头只有 delete
     expect(has('feedback-pos-inside')).toBe(true)
     expect(has('feedback-answer-neg')).toBe(false)
     expect(w!.text()).not.toMatch(/answer|\bneg\b|undefined/)
     expect((w!.get('[data-testid="feedback-note"]').element as HTMLTextAreaElement).value).toBe('太高了')
     expect(w!.findAll('[data-testid="feedback-node"].on')).toHaveLength(0)
     expect(document.activeElement).toBe(document.body)
-    expect(w!.get('[data-testid="feedback-redraw"]').attributes('title'))
-      .toBe("drag a new range on the chart; the note and nodes come along and replace this feedback's range")
-    // redraw:关面板、点亮 feedback 工具,理由带进下一次拖选
-    await w!.get('[data-testid="feedback-redraw"]').trigger('click')
-    expect(fb.panel).toBeNull()
-    expect(ann.tool).toBe('feedback')
-    expect(fb.carry).toEqual({ editingId: 'f-pc-1', note: '太高了', nodes: [], link: 'f-pc-1' })
+    expect(w!.get('[data-testid="feedback-span"]').attributes('title')).toBe(
+      "start – end: the app's buys in this range are what this feedback is about. To change it: turn on feedback "
+      + "(Shift+F), then drag the left or right edge of this feedback's band")
   })
 
   it('以前存下的 off_pattern + node、没写 note:node 预填点上;不补 note 存不了,补了就存成不带 answer 的', async () => {

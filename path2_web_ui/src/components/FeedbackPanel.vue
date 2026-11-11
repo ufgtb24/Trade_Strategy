@@ -3,17 +3,11 @@
        :data-editing="p.editingId ?? ''" :style="{ left: `${pos.x}px`, top: `${pos.y}px` }">
     <div class="ann-hdr">
       <span class="ann-biz" data-testid="feedback-symbol" title="symbol">{{ p.symbol }}</span>
-      <span class="ann-sym" data-testid="feedback-span"
-            title="start – end: the app's buys in this range are what this feedback is about">{{ spanText }}</span>
+      <span class="ann-sym" data-testid="feedback-span" :title="SPAN_HINT">{{ spanText }}</span>
       <span class="ann-sym" data-testid="feedback-target" :title="TARGET_HINT[p.target]">{{ p.target }}</span>
       <span class="ann-grow" />
-      <template v-if="p.editingId">
-        <button type="button" class="ann-btn" data-testid="feedback-redraw"
-                title="drag a new range on the chart; the note and nodes come along and replace this feedback's range"
-                @mousedown.prevent @click="redraw">redraw</button>
-        <button type="button" class="ann-btn" data-testid="feedback-delete" title="delete this feedback now"
-                @mousedown.prevent @click="fb.remove(p.editingId!)">delete</button>
-      </template>
+      <button v-if="p.editingId" type="button" class="ann-btn" data-testid="feedback-delete" title="delete this feedback now"
+              @mousedown.prevent @click="fb.remove(p.editingId!)">delete</button>
     </div>
     <div v-if="p.editingId" class="fb-line" data-testid="feedback-status-line">
       <span class="ann-k" title="does the current app still buy in this range">status</span>
@@ -92,7 +86,8 @@
  * 反馈(spec 6.13)的作答面板:compare 下点 ▼ / 点一族 / 点反馈记号 / 用 feedback 工具拖一段后,浮在点击处
  * (拖选时是松开处),越出视口就翻边。挂在 KlineChart.vue,状态全在 stores/feedback.ts 的 panel(这里只是它的样子)。
  *
- * - 页头:股票、日期范围、target(point / family / range);改一条已有的反馈时多 redraw、delete;
+ * - 页头:股票、日期范围、target(point / family / range);改一条已有的反馈时多 delete。改起止不在面板里:
+ *   点亮 feedback 工具、拖选中那条竖带的左右边(日期范围的悬停写着这句;stores/feedback.ts 的 resize);
  * - 改一条已有的反馈时页头下多一行 status:当前 app 在这段里还买不买(matched / unmatched / lost,还没取到写灰字
  *   null,悬停写取不到的原因),状态是 matched 或 lost 时后面挂会话写的原因标签(同侧栏 feedback 页)。悬停提示
  *   有的内容面板里都有了,所以面板开着时副图不弹悬停提示(KlineChart.vue);
@@ -181,6 +176,11 @@ const REASON_HINT: Record<Reason, string> = {
 }
 
 const p = computed(() => fb.panel)
+/** 日期范围的悬停:范围管什么、改起止怎么改(改已有的那条时才有后半句) */
+const SPAN_HINT_BASE = "start – end: the app's buys in this range are what this feedback is about"
+const SPAN_HINT = computed(() => (p.value?.editingId
+  ? `${SPAN_HINT_BASE}. To change it: turn on feedback (Shift+F), then drag the left or right edge of this feedback's band`
+  : SPAN_HINT_BASE))
 /** 正在改的这条反馈在当前 app 下的状态(新拖的还没存,没有) */
 const status = computed(() => (p.value?.editingId ? fb.statusById[p.value.editingId] ?? null : null))
 const statusTip = computed(() => (status.value ? status.value.reason ?? 'status under the current app' : 'status not read yet'))
@@ -229,9 +229,6 @@ function trySave(choice: IssueChoice | null = null) {
   failed.value = !fb.save(choice) && !waiting
 }
 
-function redraw() {
-  if (fb.startRedraw()) ann.tool = 'feedback'
-}
 
 // ── 位置:浮在点击处,越出视口就翻边 ──
 const root = ref<HTMLElement | null>(null)

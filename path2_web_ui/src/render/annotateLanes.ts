@@ -22,6 +22,9 @@
  *   当家行是样本时(←/→ 在样本间走)user 行头加粗;
  * - 两区之间一道分界线(位置由 subGeometry 的 userAppEdges 给):线上是用户画的、线下是 app 认的,
  *   user 行与 hits 隔着这道线正好上下对照;
+ * - user 行垫和 hits 区同一种浅黄底(HITS_FILL),从特征轨下沿铺到分界线:两边各自的总账(你的样本、app 的买点)
+ *   用同一种底强调,和上面白底的特征轨分开;浅黄在这里只表示「强调这一行」,不表示来源。user 行下沿不再画
+ *   轨分隔线(底色与分界线已经分开它),行头垫同一种浅黄;
  * - map 了的框悬停写 `start not compared`(框的左端不和 app 比,见 stores/compare.ts)。框旁不挂 app 把它
  *   认到哪一档(连「一个 event 都没有」也不挂):那是找 app 错在哪一步用的,归会话看,用户只看买没买。
  * app 的东西一律不画进用户轨:用户轨只有用户画的框。
@@ -32,7 +35,8 @@ import { triOf, type BoxMark } from '../annotate/samples'
 import { CROSSES_SAMPLE_DATE, UNCLAIMED } from '../annotate/membership'
 import { endIndex, startIndex, type BoxPx } from '../annotate/boxGeometry'
 import {
-  SUB_CANVAS_MIN_H, SUB_GRID_LEFT, SUB_GRID_RIGHT, SUB_ROW_LEFT, SUB_TITLE_LEFT, USER_APP_EDGE_COLOR, USER_APP_EDGE_H,
+  HITS_FILL, SUB_CANVAS_MIN_H, SUB_GRID_LEFT, SUB_GRID_RIGHT, SUB_ROW_LEFT, SUB_TITLE_LEFT, USER_APP_EDGE_COLOR,
+  USER_APP_EDGE_H,
 } from './subGeometry'
 import { MONO } from './fonts'
 
@@ -308,11 +312,18 @@ export function annotateLayer(bars: Bar[], d: LaneDraw): { graphics: any[]; seri
   const cmp = d.compare ?? null
   if (d.bracket) {
     const g = d.bracket.geom
-    graphics.push({ type: 'rect', left: SUB_ROW_LEFT, top: g.top + g.h - 0.5, shape: { width: w, height: 1 },
-                    style: { fill: LANE_LINE }, z: 1, silent: true })
+    // compare 的 user 行:浅黄底从行顶铺到分界线(同 hits 区从分界线铺起);没有分界线时铺到行底
+    const userFill = cmp ? (cmp.edges?.[0] ?? g.top + g.h) - g.top : 0
+    if (userFill > 0) {
+      graphics.push({ type: 'rect', left: SUB_ROW_LEFT, top: g.top, shape: { width: w, height: userFill },
+                      style: { fill: HITS_FILL }, z: 1, silent: true })
+    } else {
+      graphics.push({ type: 'rect', left: SUB_ROW_LEFT, top: g.top + g.h - 0.5, shape: { width: w, height: 1 },
+                      style: { fill: LANE_LINE }, z: 1, silent: true })
+    }
     graphics.push({ type: 'text', left: SUB_TITLE_LEFT, top: g.top + LANE_PAD - 1, z: 30, silent: true,
                     style: { text: cmp ? 'user' : 'bracket', fontFamily: MONO, fontSize: 12, fill: INK,
-                             fontWeight: cmp?.userActive ? 'bold' : 'normal', backgroundColor: TITLE_BG,
+                             fontWeight: cmp?.userActive ? 'bold' : 'normal', backgroundColor: cmp ? HITS_FILL : TITLE_BG,
                              padding: [0, 2] } })
   }
   d.geom.forEach((g, i) => {

@@ -499,7 +499,7 @@ describe('反馈', () => {
     expect(fake.read.state.charts[0].samples).toEqual([])
   })
 
-  it('改:同编号整条重写,base 取最新,app_ver 刷新为当前值;redraw 成 range 去掉 family_start;以前存下的 answer 拿掉;别的 pattern 的不改', async () => {
+  it('改:同编号整条重写,base 取最新,app_ver 刷新为当前值;改成 range 去掉 family_start;以前存下的 answer 拿掉;别的 pattern 的不改', async () => {
     const r = emptyRead({ patterns: [{ name: 'p' }, { name: 'q' }],
       charts: [{ symbol: 'AAA', boxes: [], samples: [], feedback: [fbRec('f-pc-1', { answer: 'off_pattern', dag: true })] }] })
     r.revs.feedback = { 'f-pc-1': 'pc-batch-0#0' }

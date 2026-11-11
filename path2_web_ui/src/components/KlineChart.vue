@@ -58,8 +58,8 @@
     <div v-if="selectedBand" class="feedback-selected-band" data-testid="feedback-selected-band"
          :class="{ 'cut-left': selectedBand.cutLeft, 'cut-right': selectedBand.cutRight }"
          :style="{ left: `${selectedBand.left}px`, width: `${selectedBand.width}px` }" />
-    <div v-if="noBuyHint" class="resize-stop" data-testid="feedback-no-buy"
-         :style="{ left: `${noBuyHint.x + 12}px`, top: `${noBuyHint.y + 12}px` }">no buy in range</div>
+    <div v-if="fbHint" class="resize-stop" :data-testid="FB_HINT[fbHint.kind].testid"
+         :style="{ left: `${fbHint.x + 12}px`, top: `${fbHint.y + 12}px` }">{{ FB_HINT[fbHint.kind].text }}</div>
     <!-- compare 的反馈作答面板(浮在点击处,状态在 stores/feedback.ts) -->
     <FeedbackPanel v-if="comparing && fb.panel" :feature-of="featureOfNode" @hover-node="onHoverNode" />
     <div v-if="contextMenuVisible" ref="driverMenuEl" class="driver-menu"
@@ -244,15 +244,21 @@ function featureOfNode(node: string): string | null {
 }
 function onHoverNode(node: string | null) { hoverBand.value = node ? bandOfNode(node) : null }
 watch(() => fb.panel, (p) => { if (!p) hoverBand.value = null })
-// feedback 工具拖选中的竖带(相对 kline-wrap 的像素)与「范围里没有买点」的提示(视口坐标)
+// feedback 工具拖选中的竖带(相对 kline-wrap 的像素)与松开处的提示(视口坐标):范围里没有买点(拖出一段、
+// 拖边改起止都会碰到),或拖边改出的范围和另一条反馈完全相同(防重复,不存)
 const rangeBand = ref<{ left: number; width: number } | null>(null)
-const noBuyHint = ref<{ x: number; y: number } | null>(null)
-const NO_BUY_HINT_MS = 2000
-let noBuyTimer: ReturnType<typeof setTimeout> | null = null
-function showNoBuy(at: { x: number; y: number }) {
-  noBuyHint.value = at
-  if (noBuyTimer) clearTimeout(noBuyTimer)
-  noBuyTimer = setTimeout(() => { noBuyHint.value = null; noBuyTimer = null }, NO_BUY_HINT_MS)
+type FbHintKind = 'no_buy' | 'same_range'
+const FB_HINT: Record<FbHintKind, { text: string; testid: string }> = {
+  no_buy: { text: 'no buy in range', testid: 'feedback-no-buy' },
+  same_range: { text: 'same range as another feedback', testid: 'feedback-same-range' },
+}
+const fbHint = ref<{ x: number; y: number; kind: FbHintKind } | null>(null)
+const FB_HINT_MS = 2000
+let fbHintTimer: ReturnType<typeof setTimeout> | null = null
+function showFbHint(at: { x: number; y: number }, kind: FbHintKind) {
+  fbHint.value = { ...at, kind }
+  if (fbHintTimer) clearTimeout(fbHintTimer)
+  fbHintTimer = setTimeout(() => { fbHint.value = null; fbHintTimer = null }, FB_HINT_MS)
 }
 /** 拖选范围 → 竖带:整根 K 线对齐主图的 x 轴(副图的 x 轴与它左右对齐),裁到图区内 */
 function setRangeBand(r: { start: string; end: string } | null) {
@@ -266,15 +272,29 @@ function setRangeBand(r: { start: string; end: string } | null) {
                          MAIN_GRID_LEFT, el.clientWidth - MAIN_GRID_RIGHT)
   rangeBand.value = px ? { left: px.left + mainCanvasOffsetX.value, width: px.width } : null
 }
-/** 拖完一段(工具已熄):范围里有 app 的买点日就在松开处打开 range 面板(redraw 带来的内容由 store 预填),
- *  没有就放弃 redraw 带来的东西、在松开处提示 no buy in range */
-function onRangeDone(start: string, end: string, at: { x: number; y: number }) {
+/** 这只股票、[start, end] 里有没有 app 的买点日(compare 且有现算结果时才算) */
+function hasBuyIn(start: string, end: string): boolean {
   const a = effectiveAnalysis.value
+  return !!(compareReady.value && a && symbol.value
+    && buyDatesIn(a.hits, a.events, endNode.value, annDates.value, start, end).length)
+}
+/** 拖完一段(工具已熄):范围里有 app 的买点日就在松开处打开 range 面板,没有就在松开处提示 no buy in range */
+function onRangeDone(start: string, end: string, at: { x: number; y: number }) {
   const sym = symbol.value
-  const days = compareReady.value && a && sym
-    ? buyDatesIn(a.hits, a.events, endNode.value, annDates.value, start, end) : []
-  if (!sym || !days.length) { fb.clearCarry(); showNoBuy(at); return }
+  if (!sym || !hasBuyIn(start, end)) { showFbHint(at, 'no_buy'); return }
   fb.open(at, { symbol: sym, start, end, target: 'range' })
+}
+/** 拖完选中那条反馈竖带的一条边(工具已熄):新范围里没有买点就不改、提示 no buy in range;
+ *  否则交给 store 直接存(和另一条同范围时不存、提示;以前存下的没写 note 的,store 打开它的面板补 note) */
+function onFeedbackResized(id: string, start: string, end: string, at: { x: number; y: number }) {
+  if (!hasBuyIn(start, end)) { showFbHint(at, 'no_buy'); return }
+  if (fb.resize(id, start, end, at) === 'same') showFbHint(at, 'same_range')
+}
+/** 选中的那条反馈(用户自己挑的、这只股票、当前 pattern;竖带画的就是它):拖它竖带的边改起止 */
+function selectedFeedbackRange(): { id: string; start: string; end: string } | null {
+  const id = fb.selectedId
+  const f = id ? cmpFeedbackList.value.find(x => x.id === id && x.source === 'picked') : null
+  return f ? { id: f.id, start: f.start, end: f.end } : null
 }
 // 选中的那条反馈的竖带(相对 kline-wrap 的像素):这只股票、当前 pattern、用户自己挑的那条才有(同反馈带上画的);
 // 落点同拖选的竖带(整根 K 线对齐主图的 x 轴)。主图每画完一帧(平移、缩放、重画、改尺寸)重算一次,值没变不动
@@ -1042,7 +1062,6 @@ function onKeyDown(e: KeyboardEvent) {
   if (annotating.value && ann.tool) {
     annGestures.cancel()
     ann.tool = null
-    fb.clearCarry()                                   // redraw 带过来的内容不留到以后的拖选
     ;(document.activeElement as HTMLElement | null)?.blur()
     return
   }
@@ -1112,6 +1131,8 @@ const annGestures = createAnnotateGestures({
   setDraft: (d) => { draft.value = d },
   setRange: setRangeBand,
   rangeDone: onRangeDone,
+  selectedFeedback: selectedFeedbackRange,
+  resizeFeedback: onFeedbackResized,
   setPreview: (b) => { preview.value = b },
   setStop: (st) => { resizeStop.value = st },
   createBox: (start, end, feature) => { if (symbol.value) ann.createBox(symbol.value, start, end, feature) },
@@ -1370,7 +1391,7 @@ onBeforeUnmount(() => {
   document.removeEventListener('click', handleDocumentClick)
   subOuterEl.value?.removeEventListener('wheel', subWheelCapture, { capture: true })
   subOuterEl.value?.removeEventListener('scroll', onSubScroll)
-  if (noBuyTimer) clearTimeout(noBuyTimer)
+  if (fbHintTimer) clearTimeout(fbHintTimer)
   mainEl.value?.removeEventListener('wheel', mainWheelCapture, { capture: true })
   unsubCtrl?.()
   chartMain?.getZr().off('click')

@@ -14,6 +14,9 @@
  *   app 区留给图表自己的点击(点 ▼ / 格 / 族照样弹反馈面板)。拖出去又回到按下处 4 像素以内松手,也算点一下——
  *   和 ECharts 判不判 click 的口径一致(zrender 的 Handler:按下与松开相距超过 4 像素不派 click),
  *   这样一次操作不会既弹 range 面板、又被图表的点击弹出 point 面板。成交量带上拖动照旧平移。
+ *   按在选中那条反馈的竖带左右边 EDGE_PX 以内(K 线区或副图)拖 → 改那条反馈的起止(同 box 下拖框边):拖动中
+ *   同样交给 setRange 画预览,松手时工具熄灭(toolDone),起止变了才交给调用方(resizeFeedback)去存;
+ *   拖左边起点跟着走、不越过终点,拖右边同理。没拖动就松手和点一下一样。
  * - 成交量带拖动 → 平移,工具亮不亮都一样;compare 下副图 app 区(hit 行、band)拖动也是平移,点一下留给图表自己的点击。
  * 改起止时,框是某些样本的成员框的,终点停在其中最早的样本日(不越过样本日),停住时在鼠标旁写它是哪个样本的
  * 成员框:改共用的框时不悄悄改掉旧样本的依据。
@@ -27,6 +30,7 @@ import { UNCLAIMED } from '../annotate/membership'
 import {
   boxAt, edgeOf, endIndex, isDrag, pannedZoom, resized, spanOf, startIndex, type BoxPx,
 } from '../annotate/boxGeometry'
+import { dateSpanToIdx } from '../render/feedbackStrip'
 import {
   SIDE_MARK_X, boxRects, bracketPick, bracketRects, laneAt, type Draft, type LaneGeom, type PlacedBracket,
 } from '../render/annotateLanes'
@@ -58,6 +62,10 @@ export interface GestureDeps {
   setRange: (r: { start: string; end: string } | null) => void
   /** feedback 拖完一段:范围(首尾两根 K 线的日期)与松开处(视口坐标,同 clientX / clientY);此前工具已熄灭 */
   rangeDone: (start: string, end: string, at: { x: number; y: number }) => void
+  /** compare 下选中的那条反馈(贯穿主副图的竖带画的就是它);没有为 null。不给 = 没有可拖边的反馈 */
+  selectedFeedback?: () => { id: string; start: string; end: string } | null
+  /** 拖完那条反馈竖带的一条边、起止变了:新的起止(首尾两根 K 线的日期)与松开处(视口坐标);此前工具已熄灭 */
+  resizeFeedback?: (id: string, start: string, end: string, at: { x: number; y: number }) => void
   setPreview: (b: AnnBox | null) => void
   /** 改起止停在样本日时鼠标旁的提示(页面坐标);null 收起 */
   setStop: (s: { x: number; y: number; text: string } | null) => void
@@ -84,6 +92,9 @@ type Gesture =
   /** feedback 拖一段;没拖动就松手时做 click(点一下的效果),null = 留给图表自己的点击 */
   | { kind: 'range'; src: 'main' | 'sub'; x0: number; y0: number; i0: number; moved: boolean;
       click: (() => void) | null }
+  /** feedback 拖选中那条反馈竖带的一条边;s、e 是它原来的首尾下标;没拖动就松手时做 click,同 range */
+  | { kind: 'fbresize'; src: 'main' | 'sub'; x0: number; y0: number; id: string; s: number; e: number;
+      side: 'l' | 'r'; moved: boolean; click: (() => void) | null }
   /** 平移;没拖动就松手时做 click(点一下的效果),null = 点一下什么都不做。x0/y0 是页面坐标 */
   | { kind: 'pan'; x0: number; y0: number; start: number; end: number; width: number; moved: boolean;
       click: (() => void) | null }
@@ -98,7 +109,7 @@ export function createAnnotateGestures(deps: GestureDeps) {
 
   /** 手势落在哪张图上:主图上拖出新框、放样本在 K 线区,其余(轨上拖框、改起止)在副图。 */
   const surfaceOf = (g: Gesture): { el: HTMLElement | null; chart: ECharts | null } =>
-    ((g.kind === 'draw' || g.kind === 'range') && g.src === 'main') || g.kind === 'point'
+    ((g.kind === 'draw' || g.kind === 'range' || g.kind === 'fbresize') && g.src === 'main') || g.kind === 'point'
       ? { el: deps.mainEl(), chart: deps.main() } : { el: deps.subEl(), chart: deps.sub() }
 
   const indexAt = (chart: ECharts | null, x: number): number => {
@@ -137,6 +148,23 @@ export function createAnnotateGestures(deps: GestureDeps) {
   const unnamedLane = () => {
     const i = deps.lanes().findIndex(l => l.key === null)
     return i >= 0 ? i : deps.lanes().length
+  }
+
+  /**
+   * feedback 亮着时,这一点(相对 chart 的容器的 x)离选中那条反馈竖带的哪条边在 EDGE_PX 以内;不在为 null。
+   * 竖带两边在首尾两根 K 线的外沿(同 components/feedbackPanel.ts 的 rangeBandPx)。
+   */
+  const fbEdgeAt = (chart: ECharts | null, x: number) => {
+    const f = deps.selectedFeedback?.() ?? null
+    if (!f || !chart || deps.tool() !== 'feedback') return null
+    const span = dateSpanToIdx(deps.dates(), f.start, f.end)
+    if (!span) return null
+    const toPx = (i: number) => Number(chart.convertToPixel({ xAxisIndex: 0 }, i))
+    const half = Math.abs(toPx(span[0] + 1) - toPx(span[0])) / 2
+    const left = toPx(span[0]) - half, right = toPx(span[1]) + half
+    if (!Number.isFinite(left) || !Number.isFinite(right)) return null
+    const side = edgeOf({ id: f.id, left, right, top: 0, bottom: 0 }, x)
+    return side ? { id: f.id, s: span[0], e: span[1], side } : null
   }
 
   /** 副图上这一 x 在不在 grid 里(左边的轨名栏、右边的留白都不算)。 */
@@ -182,8 +210,11 @@ export function createAnnotateGestures(deps: GestureDeps) {
       const tool = deps.tool()
       if (tool === 'point') gesture = { kind: 'point', x0: x, y0: y, moved: false }
       else if (tool === 'feedback') {
-        gesture = { kind: 'range', src: 'main', x0: x, y0: y, i0: indexAt(main, x), moved: false,
-                    click: () => (sample ? deps.selectSample(sample) : deps.select(null)) }
+        const click = () => (sample ? deps.selectSample(sample) : deps.select(null))
+        const edge = fbEdgeAt(main, x)
+        gesture = edge
+          ? { kind: 'fbresize', src: 'main', x0: x, y0: y, ...edge, moved: false, click }
+          : { kind: 'range', src: 'main', x0: x, y0: y, i0: indexAt(main, x), moved: false, click }
       } else if (tool === 'box') {
         gesture = { kind: 'draw', src: 'main', x0: x, y0: y, i0: indexAt(main, x), lane: unnamedLane(),
                     feature: null, hit: null, sample, take: null, moved: false }
@@ -205,8 +236,11 @@ export function createAnnotateGestures(deps: GestureDeps) {
     // feedback 亮着:整张副图(含 app 区)的拖动归它;点一下在用户区照常选中,在 app 区留给图表自己的点击
     if (deps.tool() === 'feedback' && inPlot(el, x)) {
       const userArea = !deps.claims || deps.claims(y)
-      gesture = { kind: 'range', src: 'sub', x0: x, y0: y, i0: indexAt(sub, x), moved: false,
-                  click: userArea ? userClick(x, y) : null }
+      const click = userArea ? userClick(x, y) : null
+      const edge = fbEdgeAt(sub, x)
+      gesture = edge
+        ? { kind: 'fbresize', src: 'sub', x0: x, y0: y, ...edge, moved: false, click }
+        : { kind: 'range', src: 'sub', x0: x, y0: y, i0: indexAt(sub, x), moved: false, click }
       releaseFocus()
       ev.preventDefault()
       return
@@ -275,6 +309,11 @@ export function createAnnotateGestures(deps: GestureDeps) {
       deps.setRange({ start: dates[s], end: dates[e] })
       return
     }
+    if (g.kind === 'fbresize') {
+      const [s, e] = resized(g.s, g.e, g.side, i)
+      deps.setRange({ start: dates[s], end: dates[e] })
+      return
+    }
     if (g.kind === 'draw') {
       const [s, e] = spanOf(g.i0, i)
       deps.setDraft({ start: dates[s], end: dates[e], lane: g.lane })
@@ -306,6 +345,15 @@ export function createAnnotateGestures(deps: GestureDeps) {
       const [s, e] = spanOf(g.i0, indexAt(chart, at[0]))
       deps.toolDone()
       deps.rangeDone(dates[s], dates[e], { x: ev.clientX, y: ev.clientY })
+      return
+    }
+    if (g.kind === 'fbresize') {
+      deps.setRange(null)
+      const at = el ? local(el, ev) : null
+      if (!g.moved || !at || !isDrag(g.x0, g.y0, at[0], at[1])) { g.click?.(); return }
+      const [s, e] = resized(g.s, g.e, g.side, indexAt(chart, at[0]))
+      deps.toolDone()
+      if (s !== g.s || e !== g.e) deps.resizeFeedback?.(g.id, dates[s], dates[e], { x: ev.clientX, y: ev.clientY })
       return
     }
     if (g.kind === 'draw') {
@@ -343,11 +391,15 @@ export function createAnnotateGestures(deps: GestureDeps) {
       const main = deps.main()
       const sample = main ? deps.sampleAt(x, y) : null
       if (!main || !(sample || main.containPixel({ gridIndex: 0 }, [x, y]))) return null
+      if (tool === 'feedback' && fbEdgeAt(main, x)) return 'ew-resize'
       if (tool) return 'crosshair'
       return sample ? 'pointer' : null
     }
     const el = deps.subEl()
-    if (tool === 'feedback') return el && inPlot(el, x) ? 'crosshair' : null
+    if (tool === 'feedback') {
+      if (!el || !inPlot(el, x)) return null
+      return fbEdgeAt(deps.sub(), x) ? 'ew-resize' : 'crosshair'
+    }
     if ((deps.claims && !deps.claims(y)) || !el || !inPlot(el, x)) return null
     if (takeAt(x, y) || bracketAt(x, y)) return 'pointer'
     if (tool !== 'box') return null

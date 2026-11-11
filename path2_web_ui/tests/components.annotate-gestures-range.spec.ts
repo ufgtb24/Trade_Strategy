@@ -1,6 +1,7 @@
 // feedback 工具的拖选手势(components/annotateGestures.ts 的 range):起止换算成首尾两根 K 线的日期(左小右大)、
 // 拖动中给竖带预览、松手先熄工具再交出范围与松开处;点一下不拖当普通点击、工具不熄;拖出去又回到按下处 4 像素
 // 以内松手也算点一下;副图 app 区与用户区都归它,轨名栏、成交量带照旧平移;光标十字。
+// 按在选中那条反馈竖带的左右边拖(fbresize):改那条反馈的起止。
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { createAnnotateGestures, type GestureDeps } from '../src/components/annotateGestures'
 import { SUB_GRID_LEFT } from '../src/render/subGeometry'
@@ -180,6 +181,92 @@ describe('feedback 亮着时的光标', () => {
     expect(s.g.cursorAt('sub', px(3), 50)).toBe('crosshair')
     expect(s.g.cursorAt('sub', px(3), 250)).toBe('crosshair')
     expect(s.g.cursorAt('sub', SUB_GRID_LEFT - 20, 250)).toBeNull()
+  })
+})
+
+// 选中那条反馈的竖带:feedback 亮着时按它左右边 5 像素以内拖 = 改那条反馈的起止(同 box 下拖框边)。
+// 竖带两边在首尾两根 K 线的外沿:DATES[5]..DATES[10] 的左边 px(5) - 5,右边 px(10) + 5
+describe('feedback 拖竖带的边改起止', () => {
+  const SEL = { id: 'f-pc-1', start: DATES[5], end: DATES[10] }
+  const L = px(5) - 5, R = px(10) + 5
+  function withSel(tool: GestureDeps['tool'] = () => 'feedback') {
+    const s = setup(tool)
+    s.deps.selectedFeedback = () => SEL
+    s.deps.resizeFeedback = vi.fn(() => s.calls.push('resizeFeedback'))
+    return s
+  }
+
+  it('主图按左边往右拖:拖动中给新范围的竖带,松手先熄工具、再交出新起止与松开处;不拖选新的一段', () => {
+    const s = cur = withSel()
+    down(s.mainEl, L + 2, 50)
+    move(px(7), 52)
+    expect(s.deps.setRange).toHaveBeenLastCalledWith({ start: DATES[7], end: DATES[10] })
+    up(px(7), 52)
+    expect(s.deps.setRange).toHaveBeenLastCalledWith(null)
+    expect(s.calls).toEqual(['toolDone', 'resizeFeedback'])
+    expect(s.deps.resizeFeedback).toHaveBeenCalledWith('f-pc-1', DATES[7], DATES[10], { x: px(7), y: 52 })
+    expect(s.deps.rangeDone).not.toHaveBeenCalled()
+  })
+
+  it('副图(app 区也行)按右边往右拖;拖左边越过终点时停在终点那根', () => {
+    const s = cur = withSel()
+    down(s.subEl, R - 3, 250)
+    move(px(14), 250)
+    up(px(14), 250)
+    expect(s.deps.resizeFeedback).toHaveBeenCalledWith('f-pc-1', DATES[5], DATES[14], expect.anything())
+    down(s.subEl, L, 50)
+    move(px(20), 50)
+    up(px(20), 50)
+    expect(s.deps.resizeFeedback).toHaveBeenLastCalledWith('f-pc-1', DATES[10], DATES[10], expect.anything())
+  })
+
+  it('拖了但起止没变:工具照样熄,不交出;点一下不拖:当普通点击,工具不熄', () => {
+    const s = cur = withSel()
+    down(s.mainEl, L, 50)
+    move(L + 6, 50)                                    // 还在第 5 根上
+    up(L + 6, 50)
+    expect(s.calls).toEqual(['toolDone'])
+    expect(s.deps.resizeFeedback).not.toHaveBeenCalled()
+    s.calls.length = 0
+    down(s.mainEl, R, 50)
+    up(R + 1, 50)
+    expect(s.calls).toEqual([])
+    expect(s.deps.select).toHaveBeenCalledWith(null)
+  })
+
+  it('离两边超过 5 像素(竖带中间)按下:照旧拖出新的一段;没选中反馈时边上也是拖新的一段', () => {
+    const s = cur = withSel()
+    down(s.mainEl, px(8), 50)
+    move(px(12), 50)
+    up(px(12), 50)
+    expect(s.deps.rangeDone).toHaveBeenCalledWith(DATES[8], DATES[12], expect.anything())
+    s.deps.selectedFeedback = () => null
+    down(s.mainEl, L, 50)
+    move(px(2), 50)
+    up(px(2), 50)
+    expect(s.deps.rangeDone).toHaveBeenLastCalledWith(DATES[2], DATES[5], expect.anything())
+    expect(s.deps.resizeFeedback).not.toHaveBeenCalled()
+  })
+
+  it('feedback 不亮:按在边上拖照旧平移', () => {
+    const s = cur = withSel(() => null)
+    down(s.mainEl, L, 50)
+    move(px(8), 50)
+    up(px(8), 50)
+    expect(s.deps.resizeFeedback).not.toHaveBeenCalled()
+    expect(s.deps.setRange).not.toHaveBeenCalled()
+    expect(s.main.dispatchAction).toHaveBeenCalled()
+  })
+
+  it('光标:feedback 亮着时两条边上是左右拖,别处十字;不亮时不管', () => {
+    const s = cur = withSel()
+    expect(s.g.cursorAt('main', L + 1, 50)).toBe('ew-resize')
+    expect(s.g.cursorAt('sub', R - 2, 250)).toBe('ew-resize')
+    expect(s.g.cursorAt('main', px(8), 50)).toBe('crosshair')
+    expect(s.g.cursorAt('sub', px(8), 50)).toBe('crosshair')
+    const t = withSel(() => null)
+    expect(t.g.cursorAt('main', L + 1, 50)).toBeNull()
+    t.g.detach()
   })
 })
 

@@ -61,7 +61,7 @@
               @click="ann.toggleTool('point')">point</button>
       <button v-if="mode === 'compare'" type="button" :class="['entry', { on: ann.tool === 'feedback' }]"
               data-testid="tool-feedback"
-              title="on: drag across the chart to give feedback on the app's buys in that range; off after one use. Shift+F toggles, Esc turns off"
+              title="on: drag across the chart to give feedback on the app's buys in that range, or drag an edge of the selected feedback's band to change its range; off after one use. Shift+F toggles, Esc turns off"
               @click="ann.toggleTool('feedback')">feedback</button>
     </div>
     <div v-if="annotating" class="grp" data-testid="pattern-group">
