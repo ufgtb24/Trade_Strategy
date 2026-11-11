@@ -8,7 +8,7 @@
 // 第二段的 link tag、diff tag、chance_high 与档位小字(detected_only / qualified_only)仍一个都不许出现。
 import { describe, it, expect } from 'vitest'
 import {
-  COMPARE_BRACKET_ROW_H, INK, LANE_PAD, UNMAPPED_EDGE, VERMILION, annotateLayer, bracketGeometry,
+  COMPARE_BRACKET_ROW_H, INK, LANE_LINE, LANE_PAD, TITLE_BG, UNMAPPED_EDGE, VERMILION, annotateLayer, bracketGeometry,
   buildAnnotateSubOption,
   bracketContentBottom, bracketPick, bracketRects, laneGeometry, packBrackets, type BracketItem, type CompareMarks,
 } from '../src/render/annotateLanes'
@@ -114,6 +114,25 @@ describe('compare 的标注层', () => {
   it('当家行是样本时 user 行头加粗', () => {
     const l = layer({ ...CMP, userActive: true })
     expect(l.graphics.find(g => g.type === 'text' && g.style.text === 'user').style.fontWeight).toBe('bold')
+  })
+  it('user 行垫 hits 那种浅黄底:从行顶铺到分界线,不再画下沿的轨线,行头也垫浅黄;annotate 的 bracket 照旧', () => {
+    const bg = bracketGeometry(1)
+    const edge = bg.top + bg.h + 6
+    const l = layer({ ...CMP, edges: [edge] })
+    const fills = l.graphics.filter(g => g.type === 'rect' && g.style.fill === HITS_FILL)
+    expect(fills.map(g => [g.top, g.shape.height])).toEqual([[bg.top, edge - bg.top]])
+    expect(l.graphics.some(g => g.type === 'rect' && g.style.fill === LANE_LINE && g.top === bg.top + bg.h - 0.5))
+      .toBe(false)
+    expect(l.graphics.find(g => g.type === 'text' && g.style.text === 'user').style.backgroundColor).toBe(HITS_FILL)
+    // 没有分界线时(compare 但没给):铺满这一行
+    expect(layer(CMP).graphics.filter(g => g.type === 'rect' && g.style.fill === HITS_FILL).map(g => g.shape.height))
+      .toEqual([bg.h])
+    // annotate:不铺底,下沿一道轨线,行头垫白
+    const a = layer(null)
+    expect(a.graphics.some(g => g.type === 'rect' && g.style.fill === HITS_FILL)).toBe(false)
+    expect(a.graphics.some(g => g.type === 'rect' && g.style.fill === LANE_LINE && g.top === bg.top + bg.h - 0.5))
+      .toBe(true)
+    expect(a.graphics.find(g => g.type === 'text' && g.style.text === 'bracket').style.backgroundColor).toBe(TITLE_BG)
   })
   it('用户的框与 app 的轨相邻处:每个给定的 y 一道全宽分界线', () => {
     const l = layer({ ...CMP, edges: [40, 120] })

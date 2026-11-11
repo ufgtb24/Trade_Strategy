@@ -32,8 +32,8 @@ import {
  *    只点 node 不写 note 存不了,点 node 后光标进 note;只写 note 就能存;同范围打开那条、改、删与撤销;
  *    先选中框再点族,框的选中取消;node 按钮悬停时 band 加亮。截图 ②(鼠标停在一个 node 按钮上)。
  * 3. feedback 工具:Shift+F / 按钮点亮、Esc 熄灭、点一下不熄;拖出没有买点的范围不弹、提示 no buy in range;
- *    拖出有买点的范围,松手后面板还在、用一次熄灭;redraw 把以前存下的 family 反馈(带 dag)改成拖出的 range
- *    (同编号、去掉 family_start,保存后不带 answer、dag)。
+ *    拖出有买点的范围,松手后面板还在、用一次熄灭;拖选中那条反馈竖带的边改起止:新范围里没有买点不改、提示
+ *    no buy in range;有就直接存,以前存下的 family 反馈(带 dag)改成同编号的 range(去掉 family_start,不带 answer、dag)。
  * 4. 侧栏点行跳到 compare(竖线停在范围起点、选中那条);落在 compare 的链接;落不成时提示;行上 delete。
  * 5. 删样本:有只服务它的框时先问(yes / no / cancel),删除可撤最近一次。
  * 6. 长 note 与 node、记号上的字、卡片的 edit、选中的竖带:note 是多行文本区,长文字换行长高、面板不变宽,
@@ -616,13 +616,13 @@ test.describe('反馈(new_step + 手写 mapping,CRNC)', () => {
     await expect.poll(async () => (await stripMarks(page)).map(m => m.id)).toContain(pid)
     await expect.poll(async () => (await fbOf(page, 'statusById'))?.[pid]?.status).toBe('matched')
 
-    // ── 同范围不重复:再点那个 ▼ 打开这一条(预填、多 delete / redraw);焦点在按钮上按 Enter 也是保存 ──
+    // ── 同范围不重复:再点那个 ▼ 打开这一条(预填、多 delete、没有 redraw);焦点在按钮上按 Enter 也是保存 ──
     await clickBuy(page, g0)
     await expect(panel(page)).toHaveAttribute('data-editing', pid)
     await expect(page.getByTestId('feedback-note')).toHaveValue('放量不够')
     await expect(page.locator('[data-testid="feedback-node"].on')).toHaveCount(0)
     await expect(page.getByTestId('feedback-delete')).toBeVisible()
-    await expect(page.getByTestId('feedback-redraw')).toBeVisible()
+    await expect(page.getByTestId('feedback-redraw')).toHaveCount(0)
     expect(await focusInPanel(page)).toBe(false)                             // 打开已有的一条也不抢焦点
     await page.getByTestId('feedback-note').fill('放量不够,而且离阶跃太远')
     await page.getByTestId('feedback-node').first().focus()
@@ -718,7 +718,7 @@ test.describe('反馈(new_step + 手写 mapping,CRNC)', () => {
     await page.unrouteAll({ behavior: 'ignoreErrors' })
   })
 
-  test('feedback 工具:点亮与熄灭;没有买点的范围不弹、提示 no buy in range;拖完松手面板还在;redraw 把以前存下的带 dag 的那条改成拖出的 range', async ({ page }) => {
+  test('feedback 工具:点亮与熄灭;没有买点的范围不弹、提示 no buy in range;拖完松手面板还在;拖竖带的边把以前存下的带 dag 的那条改成 range', async ({ page }) => {
     const { dates, K } = plan
     await openCompare(page, plan.lost.start)
     const tool = page.getByTestId('tool-feedback')
@@ -784,34 +784,49 @@ test.describe('反馈(new_step + 手写 mapping,CRNC)', () => {
     expect(rg.map(f => [f.start, f.end, f.note, f.nodes, 'dag' in f, 'answer' in f]))
       .toEqual([[dates[b0 - 1], dates[b0 + 1], '阶跃那根太弱', [picked], false, false]])
 
-    // redraw:点 lost 那条(family;以前存下的 off_pattern + dag + note)的记号 → redraw → 工具亮;拖出新范围,
-    // 面板带着原来的 note;Enter 存成同编号的 range,存下的不再带 answer、dag
-    await zoomTo(page, li - 6, le + 6)
+    // 改起止:点 lost 那条(family;以前存下的 off_pattern + dag + note)的记号 → 打开它、选中它(贯穿主副图的竖带);
+    // 面板上没有 redraw,日期范围的悬停写怎么改。点亮 feedback(点按钮 = 点在面板外,面板关上、选中留着),拖竖带的边
+    const nb = Math.min(...[...plan.F.buys, ...plan.G.buys, ...K.buys].filter(b => b > le))   // lost 之后最近的买点日
+    await zoomTo(page, li - 6, nb + 4)
     await clickStrip(page, LOST)
     await expect(panel(page)).toHaveAttribute('data-editing', LOST)
     await expect(panel(page)).toHaveAttribute('data-target', 'family')
     await expect(page.getByTestId('feedback-note')).toHaveValue('这一段不是平台')   // 以前存下的那条:预填理由
     await expect(page.getByTestId('feedback-dag')).toHaveCount(0)                   // 面板上没有 dag、没有答案
     await expect(panel(page)).not.toContainText(/answer|off_pattern|dag|undefined/)
-    await page.getByTestId('feedback-redraw').click()
+    await expect(page.getByTestId('feedback-redraw')).toHaveCount(0)
+    await expect(page.getByTestId('feedback-span')).toHaveAttribute('title', /drag the left or right edge/)
+    await expect(page.getByTestId('feedback-selected-band')).toBeVisible()
+    await feedbackOn(page)
     await expect(panel(page)).toHaveCount(0)
-    await expect.poll(() => annOf(page, 'tool')).toBe('feedback')
-    await zoomTo(page, b0 - 25, b0 + 15)
-    await page.mouse.move(await xOf(page, b0 - 3), y)
+    await expect(page.getByTestId('feedback-selected-band')).toBeVisible()
+    const half = ((await xOf(page, li + 1)) - (await xOf(page, li))) / 2
+    const edgeL = (await xOf(page, li)) - half, edgeR = (await xOf(page, le)) + half
+    // 左边往里拖到第 3 天:新范围里没有买点 → 不改,在松开处提示 no buy in range,工具熄灭
+    await page.mouse.move(edgeL + 1, y)
     await page.mouse.down()
-    await page.mouse.move(await xOf(page, b0), y, { steps: 4 })
-    await page.mouse.move(await xOf(page, b0 + 3), y, { steps: 4 })
+    await page.mouse.move(await xOf(page, li + 1), y, { steps: 4 })
+    await page.mouse.move(await xOf(page, li + 3), y, { steps: 4 })
+    await expect(page.getByTestId('feedback-range-band')).toBeVisible()             // 拖动中:新范围的虚线竖带
     await page.mouse.up()
-    await expect(panel(page)).toHaveAttribute('data-editing', LOST)
-    await expect(panel(page)).toHaveAttribute('data-target', 'range')
-    await expect(page.getByTestId('feedback-note')).toHaveValue('这一段不是平台')
-    await expect(page.locator('[data-testid="feedback-node"].on')).toHaveCount(0)
-    await page.keyboard.press('Enter')
+    await expect(page.getByTestId('feedback-no-buy')).toHaveText('no buy in range')
+    expect(await annOf(page, 'tool')).toBeNull()
+    await settled(page)
+    expect(feedbackOf(await annState(page)).find(f => f.id === LOST)).toMatchObject({ start: dates[li], end: dates[le],
+                                                                                    target: 'family' })
+    // 右边往外拖到 lost 之后最近的买点日:直接存成同编号的 range,不弹面板;存下的不带 family_start、answer、dag
+    await feedbackOn(page)
+    await page.mouse.move(edgeR - 1, y)
+    await page.mouse.down()
+    await page.mouse.move(await xOf(page, le + 1), y, { steps: 4 })
+    await page.mouse.move(await xOf(page, nb), y, { steps: 4 })
+    await page.mouse.up()
+    expect(await annOf(page, 'tool')).toBeNull()
     await expect(panel(page)).toHaveCount(0)
     await settled(page)
     const re = feedbackOf(await annState(page)).find(f => f.id === LOST)
-    expect(re).toEqual({ id: LOST, pattern: PATTERN, app_id: APP, app_ver: plan.appVer, start: dates[b0 - 3],
-                         end: dates[b0 + 3], target: 'range', source: 'picked', note: '这一段不是平台' })
+    expect(re).toEqual({ id: LOST, pattern: PATTERN, app_id: APP, app_ver: plan.appVer, start: dates[li],
+                         end: dates[nb], target: 'range', source: 'picked', note: '这一段不是平台' })
     await expect.poll(async () => (await fbOf(page, 'statusById'))?.[LOST]?.status).toBe('matched')
     await page.unrouteAll({ behavior: 'ignoreErrors' })
   })
