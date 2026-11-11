@@ -276,16 +276,18 @@ def fake_app(monkeypatch):
 
 
 def test_feedback_status_three_states_tags_and_order(snapshot, adir, mapping_file, fake_app):
-    """三态各一例(point / range / family 的 matched、unmatched、lost),挂「定义改过」的 matched 不算朱红,
-    读不到行情的股票那一条 status 为 null、其余照常;别的 pattern 的反馈不在内;按朱红、lost、其余排。
+    """三态各一例(point / range / family 的 matched、unmatched、起点认不出),挂「定义改过」的 matched 不算朱红,
+    读不到行情的股票那一条 status 为 null、其余照常;别的 pattern 的反馈不在内。页面上只给 matched / unmatched:
+    起点认不出的并进 unmatched,会话给它挂了标签的照样带标签(毛病还在);已经不买的(f-pc-2)即使会话段里
+    留着标签也不带。按朱红、不买了却挂着标签的、其余排。
     跑 app 的区间是全历史到训练段末日、label_horizon 20(与 compare 的图一致)。"""
     mapping_file("bo_only", "pattern: p\nfeatures: {w-pc-1: bo}\n"
-                            "session: {tags: {f-pc-5: redefined, f-pc-3: for_tuning}}\n")
+                            "session: {tags: {f-pc-5: redefined, f-pc-3: for_tuning, f-pc-2: unhandled}}\n")
     store.append_batch({"annotation_dir": str(adir), "machine": "pc"}, [
         _fb("f-pc-1", "AAA", "2025-12-03", "2025-12-03", target="point"),           # 当天有买点 → matched
         _fb("f-pc-2", "AAA", "2025-12-08", "2025-12-10"),                            # 范围里没有 → unmatched
         _fb("f-pc-3", "AAA", "2025-12-10", "2025-12-12", target="family",
-            family_start="2025-11-20"),                                              # 起点认不出 → lost
+            family_start="2025-11-20"),                                              # 起点认不出 → 显示 unmatched
         _fb("f-pc-4", "AAA", "2025-12-15", "2025-12-16", target="family",
             family_start="2025-11-10"),                                              # 起点还在、不买 → unmatched
         _fb("f-pc-5", "AAA", "2025-12-04", "2025-12-04", target="point"),           # matched,但定义改过
@@ -301,7 +303,7 @@ def test_feedback_status_three_states_tags_and_order(snapshot, adir, mapping_fil
     assert (body["app"], body["app_ver"], body["reason"]) == ("bo_only", app_ver(bo_only), None)
     got = [(i["id"], i["status"], i["tag"], i["red"]) for i in body["items"]]
     assert got == [("f-pc-1", "matched", None, True), ("f-pc-7", "matched", None, True),
-                   ("f-pc-3", "lost", "for_tuning", False),
+                   ("f-pc-3", "unmatched", "for_tuning", False),
                    ("f-pc-5", "matched", "redefined", False), ("f-pc-2", "unmatched", None, False),
                    ("f-pc-4", "unmatched", None, False), ("f-pc-6", None, None, False)]
     reasons = {i["id"]: i["reason"] for i in body["items"]}

@@ -44,7 +44,7 @@
           <span :class="statusOf(r) ? 'ann-k' : 'ann-nil'" data-testid="feedback-row-status"
                 :title="statusTip(r)">{{ statusOf(r) ?? 'null' }}</span>
           <span v-if="tagOf(r)" class="ann-k fb-tag" data-testid="feedback-row-tag"
-                title="reason the session gave for this feedback">{{ tagOf(r) }}</span>
+                :title="tagHint(tagOf(r)!)">{{ tagOf(r) }}</span>
           <button type="button" class="ann-btn"
                   data-testid="feedback-row-edit" title="open this feedback's panel on the chart"
                   @click.stop="edit(r)">edit</button>
@@ -66,12 +66,13 @@
  *   组头第一行写点出的 node(一个都没点写灰字 none)、处数 places n、其中 app 还在买的处数 matched k
  *   (状态为 matched 的),第二行写理由(没写的没有这一行);组里每处一行。
  *   以前存下的记录上的 answer、dag 不显示;
- * - 排序(annotate/feedback.ts 的 sortIssueGroups):有朱红的组在前、其次有 lost 的,其余在后;同档的组、组内各处
- *   都按朱红、lost、其余,再按股票、日期;
- * - 每处一行:股票、日期范围、状态(后端状态接口给的 matched / unmatched / lost;还没取到或读不到行情为 null,
- *   悬停写原因);颜色照接口给的 red 与 status:朱红底黑字 / lost 白底橙描边 / 其余常色;
- *   状态是 matched 或 lost 的行挂接口给的会话原因标签 tag(白底蓝描边,同 unmapped)——含 redefined:
- *   定义改过的那条 matched 了也不红,标签说明为什么不红;
+ * - 排序(annotate/feedback.ts 的 sortIssueGroups):有朱红的组在前、其次有不买了却还挂着原因标签的,其余在后;
+ *   同档的组、组内各处都按这三档,再按股票、日期;
+ * - 每处一行:股票、日期范围、状态(后端状态接口给的 matched / unmatched;还没取到或读不到行情为 null,
+ *   悬停写原因);颜色照接口给的 red:朱红底黑字 / 其余常色;
+ *   接口给了会话原因标签 tag 的行照着挂(白底蓝描边,同 unmapped;挂不挂由后端判,悬停逐个取值写意思)——
+ *   含 redefined:定义改过的那条 matched 了也不红,标签说明为什么不红;unmatched 而挂着标签的,是那一处
+ *   不买了、但会话说原来的毛病还在;
  * - 页头:mapping 会话段有形状问题时一行 session ledger: <原因>(悬停写全);状态正在取时 loading;
  * - 点一行:在 compare 里打开那只股票,图窗包住那段日期,当前日竖线停在范围起点,选中那条(图上记号描黑粗边、
  *   另有一条贯穿主副图的竖带;落点见 stores/landing.ts);行上 edit 同样落过去,落下后在那条记号旁打开作答面板
@@ -83,10 +84,10 @@ import { useAnnotationStore } from '../stores/annotation'
 import { useAppLinkStore } from '../stores/appLink'
 import { useFeedbackStore } from '../stores/feedback'
 import { useLandingStore } from '../stores/landing'
-import { sortIssueGroups, type FeedbackRow, type IssueGroup } from '../annotate/feedback'
+import { sortIssueGroups, tagHint, type FeedbackRow, type IssueGroup } from '../annotate/feedback'
 import { rangeLinkWindow } from '../annotate/directLinks'
 import type { AnnFeedback } from '../annotate/model'
-import { MISSING_EDGE, UNMAPPED_EDGE, VERMILION } from '../render/annotateLanes'
+import { UNMAPPED_EDGE, VERMILION } from '../render/annotateLanes'
 
 const ann = useAnnotationStore()
 const appLink = useAppLinkStore()
@@ -95,7 +96,6 @@ const landing = useLandingStore()
 
 // 样式里用的颜色(scoped style 的 v-bind)
 const RED_BG = VERMILION
-const LOST_EDGE = MISSING_EDGE
 const TAG_EDGE = UNMAPPED_EDGE
 
 const rows = computed(() => ann.feedbackOfPattern().filter(r => r.feedback.source === 'picked'))
@@ -105,10 +105,9 @@ const matchedOf = (g: IssueGroup) => g.rows.filter(r => st(r)?.status === 'match
 const sessionProblem = computed(() => appLink.mapping?.session_problem ?? null)
 
 const st = (r: FeedbackRow) => fb.statusById[r.feedback.id]
-/** 行的颜色档:red 朱红、lost 白底橙描边、plain 常色(状态还没取到的按常色)。 */
-function toneOf(r: FeedbackRow): 'red' | 'lost' | 'plain' {
-  const s = st(r)
-  return s?.red ? 'red' : s?.status === 'lost' ? 'lost' : 'plain'
+/** 行的颜色档:red 朱红、plain 常色(状态还没取到的按常色)。 */
+function toneOf(r: FeedbackRow): 'red' | 'plain' {
+  return st(r)?.red ? 'red' : 'plain'
 }
 const statusOf = (r: FeedbackRow) => st(r)?.status ?? null
 function statusTip(r: FeedbackRow): string {
@@ -116,11 +115,8 @@ function statusTip(r: FeedbackRow): string {
   if (!s) return 'status not read yet'
   return s.reason ?? 'status under the current app'
 }
-/** 会话原因标签:只挂在状态是 matched 或 lost 的行上(不看 red:挂了 redefined 的 matched 不红,照样挂)。 */
-function tagOf(r: FeedbackRow): string | null {
-  const s = st(r)
-  return s?.status === 'matched' || s?.status === 'lost' ? s.tag ?? null : null
-}
+/** 会话原因标签:接口给了就挂(挂不挂后端已判过)。 */
+const tagOf = (r: FeedbackRow): string | null => st(r)?.tag ?? null
 const rangeText = (f: AnnFeedback) => (f.start === f.end ? f.start : `${f.start} – ${f.end}`)
 
 function jump(r: FeedbackRow): void {
@@ -154,7 +150,6 @@ function edit(r: FeedbackRow): void {
   border: 1px solid var(--line); border-radius: 4px; background: #fff; color: var(--ink);
 }
 .fb-row.red { background: v-bind(RED_BG); border-color: v-bind(RED_BG); }
-.fb-row.lost { border: 3px solid v-bind(LOST_EDGE); }
 .fb-row.on { outline: 2px solid var(--ink); outline-offset: -1px; }
 .fb-tag { padding: 0 4px; border: 1.5px solid v-bind(TAG_EDGE); border-radius: 3px; background: #fff; cursor: help; }
 .fb-node { padding: 0 3px; border: 1px solid var(--line-strong); border-radius: 3px; background: #fff; }

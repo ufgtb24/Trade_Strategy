@@ -19,8 +19,7 @@
       <span class="ann-k" title="does the current app still buy in this range">status</span>
       <span :class="status ? 'ann-sym' : 'ann-nil'" data-testid="feedback-status"
             :title="statusTip">{{ status?.status ?? 'null' }}</span>
-      <span v-if="tag" class="ann-k fb-tag" data-testid="feedback-tag"
-            title="reason the session gave for this feedback">{{ tag }}</span>
+      <span v-if="tag" class="ann-k fb-tag" data-testid="feedback-tag" :title="tagHint(tag)">{{ tag }}</span>
     </div>
     <div v-if="fb.panelPosInside" class="fb-line">
       <span class="ann-sym" data-testid="feedback-pos-inside"
@@ -93,8 +92,8 @@
  * (拖选时是松开处),越出视口就翻边。挂在 KlineChart.vue,状态全在 stores/feedback.ts 的 panel(这里只是它的样子)。
  *
  * - 页头:股票、日期范围、target(point / family / range);改一条已有的反馈时多 redraw、delete;
- * - 改一条已有的反馈时页头下多一行 status:当前 app 在这段里还买不买(matched / unmatched / lost,还没取到写灰字
- *   null,悬停写取不到的原因),状态是 matched 或 lost 时后面挂会话写的原因标签(同侧栏 feedback 页)。悬停提示
+ * - 改一条已有的反馈时页头下多一行 status:当前 app 在这段里还买不买(matched / unmatched,还没取到写灰字
+ *   null,悬停写取不到的原因),接口给了会话原因标签的后面照着挂(同侧栏 feedback 页,悬停写这个取值的意思)。悬停提示
  *   有的内容面板里都有了,所以面板开着时副图不弹悬停提示(KlineChart.vue);
  * - 范围里有当前 pattern 的正样本时多一行 pos sample inside(不拦);
  * - 一打开就是完整的面板,没有「先选答案」这一步。键值几行从上到下:
@@ -128,7 +127,7 @@ import { useAnnotationStore } from '../stores/annotation'
 import { useViewStore } from '../stores/view'
 import { useAppLinkStore } from '../stores/appLink'
 import type { FeedbackTarget } from '../annotate/model'
-import type { FeedbackProblem, IssueChoice } from '../annotate/feedback'
+import { tagHint, type FeedbackProblem, type IssueChoice } from '../annotate/feedback'
 import { UNMAPPED_EDGE } from '../render/annotateLanes'
 import { NOTE_MAX_H, noteHeight, panelKeyAction, placePanel, type Anchor, type Pt } from './feedbackPanel'
 
@@ -184,11 +183,8 @@ const p = computed(() => fb.panel)
 /** 正在改的这条反馈在当前 app 下的状态(新拖的还没存,没有) */
 const status = computed(() => (p.value?.editingId ? fb.statusById[p.value.editingId] ?? null : null))
 const statusTip = computed(() => (status.value ? status.value.reason ?? 'status under the current app' : 'status not read yet'))
-/** 会话原因标签:同侧栏,只挂在 matched 或 lost 上 */
-const tag = computed(() => {
-  const s = status.value
-  return s?.status === 'matched' || s?.status === 'lost' ? s.tag ?? null : null
-})
+/** 会话原因标签:接口给了就挂(挂不挂后端已判过) */
+const tag = computed(() => status.value?.tag ?? null)
 const picked = computed(() => p.value?.nodes ?? [])
 const spanText = computed(() => (p.value ? (p.value.start === p.value.end ? p.value.start
                                                                           : `${p.value.start} – ${p.value.end}`) : ''))

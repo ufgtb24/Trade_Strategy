@@ -274,8 +274,6 @@ export const useViewStore = defineStore('view', () => {
   const comparing = computed(() => mode.value === 'compare')
   const linkedView = computed(() => mode.value === 'compare' || (mode.value === 'app' && appSource.value === 'linked'))
   const linkedRun = shallowRef<LinkedRun | null>(null)
-  // tiers:event 灰条右端 qualified_only / detected_only 两种 tier tag 的开关(app、compare 下),默认开,不记在浏览器里
-  const tiers = ref(true)
   const symbol = ref<string | null>(null)
   // annotate 下打开时图停在哪段(rally / random 进来时给);null = 按默认缩放(整只股票)。
   // 每次 openSymbol 都换一个新对象:同一只股票换一段也能触发重画
@@ -741,7 +739,6 @@ export const useViewStore = defineStore('view', () => {
     resetChartState()
   }
   function setLinkedRun(run: LinkedRun | null) { linkedRun.value = run }
-  function setTiers(on: boolean) { tiers.value = on }
   function setActivePattern(pid: string) {
     activePatternId.value = pid
     useConfigStore().saveLastPattern(pid)
@@ -1380,8 +1377,8 @@ export const useViewStore = defineStore('view', () => {
     effectivePattern, effectiveAnalysis, effectiveScan,
     unionRows, sortedRows, filteredSortedRows, previewListRow, patternHitStocks,
     nodeColors, selectedHitId, selectedHit, tagMap, isolated, inHitIds, inHitEventIds, qualifiedIds,
-    mode, annotating, comparing, appSource, linkedView, linkedRun, tiers, appId, endNode, appWindowOf,
-    openSymbol, enterAnnotate, enterLinked, setLinkedRun, setTiers, viewWindow,
+    mode, annotating, comparing, appSource, linkedView, linkedRun, appId, endNode, appWindowOf,
+    openSymbol, enterAnnotate, enterLinked, setLinkedRun, viewWindow,
     loadScanFile, clearScanFile, setCurrentScanName, currentScanName, selectSymbol, setActivePattern, setSort,
     toggleNode, toggleExpandedNode,
     focusHit, focusEvent, clearFocus,

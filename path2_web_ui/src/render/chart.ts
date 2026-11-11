@@ -148,8 +148,9 @@ export interface FeedbackStripInput {
   tip: (id: string) => string
 }
 
-/** band 表头 node 名后面跟的东西:用户特征名(浅灰底)、程序标记(如 app_only,等宽)。 */
-export interface BandLabelExtra { feature?: string | null; tag?: string | null }
+/** band 表头 node 名后面跟的东西:用户特征名(浅灰底)、程序标记(如 app_only,等宽)及它的悬停说明
+ *  (给了 tagTip,这条表头就接鼠标、悬停弹说明;没给的表头照旧不接鼠标,点击落到底下的格上)。 */
+export interface BandLabelExtra { feature?: string | null; tag?: string | null; tagTip?: string | null }
 
 // ─── Task 5: 共享 event 数据抽取(供 buildMainOption/buildSubOption 消费) ──────
 
@@ -781,7 +782,9 @@ export function buildSubDecorGraphics(
             ...bg,
           },
       z: SUB_TITLE_Z,
-      silent: true,
+      ...(ex?.tag && ex.tagTip
+        ? { silent: false, tooltip: { show: true, formatter: `<span style='font-family:${MONO};color:#000000'>${ex.tagTip}</span>` } }
+        : { silent: true }),
     })
   })
 

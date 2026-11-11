@@ -151,7 +151,7 @@ uv run python -c "from path2_web.annotation.revision import revision_report; pri
 
 它用现在的 app 重跑这一轮涉及的全部股票（app 出错会原样抛出——抛了回第 5 步修），和 `<R>` 求差。报告开头若有「mapping.yaml 里的定格不是这一轮开头那份」或「会话段读不到」，那是给你的提醒：先照做修好（把 `<R>` 里的快照写进会话段 / 修 `session` 段），重出报告；交给用户的那份里不应再有这两句。然后：
 
-1. 报告里每条 `lost` 留了一行「待填」，逐条填上是改好了还是认法变了（如改了某段的长度，所有起点平移）。
+1. 报告里「起点认不出的反馈」那一段，每条留了一行「待填」，逐条填上是改好了还是认法变了（如改了某段的长度，所有起点平移）。
 2. 在报告后面补一段，条目与 `.plan.md` 的清单一一对应：
 
    ```
@@ -169,7 +169,7 @@ uv run python -c "from path2_web.annotation.revision import revision_report; pri
 
 ### 8. 记账
 
-**先读 [references/ledger.md](references/ledger.md)**，照它把这一轮记进 `mapping.yaml` 的会话段：每条条件一行（`state` 以 `from_definition` / `unmeasured` / `declined` / `for_tuning` / `not_worth` 之一开头）；改完还在买的每一处反馈一个原因标签；`lost` 的，你交代为「认法变了」、原来的毛病还在的按原因挂，交代为「改好了」的不挂；已经不买的去掉标签。
+**先读 [references/ledger.md](references/ledger.md)**，照它把这一轮记进 `mapping.yaml` 的会话段：每条条件一行（`state` 以 `from_definition` / `unmeasured` / `declined` / `for_tuning` / `not_worth` 之一开头）；改完还在买的每一处反馈一个原因标签；起点认不出的，你交代为「认法变了」、原来的毛病还在的按原因挂，交代为「改好了」的不挂；已经不买的去掉标签。
 
 做完的标志：`.plan.md` 里每一条都能在账本里找到去处（一行条件，或各处的标签），且 `round_state.py <R>` 打印「快照已写进会话段: True」，且「mapping 问题」「会话段问题」都是 None（三样缺一不可：整份文件被写坏时「会话段问题」什么也不报）。
 
@@ -221,4 +221,4 @@ uv run python -c "from path2_web.annotation.revision import revision_report; pri
 | 反馈编号、样本编号 | 用理由原话、「股票 + 日期」指代 |
 | where 名、node 名 | 用它对到的用户的词；必须提英文名时带上用户的词 |
 
-页面上看得见的固定词可以说，带上中文意思：`matched`（app 还在买）、`lost`（起点认不出了）、`for_tuning`（留给调参）等。项目词照 `path2/GLOSSARY.md`、`path2_web/GLOSSARY.md` 的规范词用，先 `grep -n` 查到再用，第一次出现时附 `文件:行号`。
+页面上看得见的固定词可以说，带上中文意思：`matched`（app 还在买）、`unmatched`（不买了）、`for_tuning`（留给调参）等。页面上没有的词不说：起点认不出的反馈，页面上显示成 `unmatched`，对用户说「这一段不买了，但这一族的起点认不出了」，不说 `lost`。项目词照 `path2/GLOSSARY.md`、`path2_web/GLOSSARY.md` 的规范词用，先 `grep -n` 查到再用，第一次出现时附 `文件:行号`。

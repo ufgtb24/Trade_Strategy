@@ -2,7 +2,7 @@
  * 反馈(feedback,spec 6.13)在 compare 下的状态与作答面板。记录的读写走 stores/annotation.ts(saveFeedback /
  * deleteFeedback,标注的追加写法);取法与保存条件是 annotate/feedback.ts 的纯函数。
  *
- * 状态(statusById):当前 pattern 的全部反馈在当前 app 下是 matched / unmatched / lost,连同会话写的原因标签
+ * 状态(statusById):当前 pattern 的全部反馈在当前 app 下是 matched / unmatched,连同会话写的原因标签
  * tag 与画不画朱红 red,都照后端 GET /feedback/status 给的(朱红与否只在后端判一次)。只在 compare 下去取;
  * 重取的时机:
  * - 进入 compare、换当前 pattern;

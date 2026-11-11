@@ -7,7 +7,8 @@
 (GET /annotations 的 match)。
 
 反馈状态(feedback_status、is_red):唯一实现在这里。后端的反馈状态接口与会话的改版报告都调它,界面只照接口给的
-状态与朱红与否画、排,不另写一套判法。
+状态与朱红与否画、排,不另写一套判法。页面上只显示 matched / unmatched 两种(shown_status 把 lost 并进
+unmatched),原因标签挂不挂由 shown_tag 判;三态只留给会话。
 
 样本 match(sample_match):有两份实现——前端 compareRead.ts 的 matchOf(画图用)和这里(给会话的改版报告用),
 两份逐例通过同一份例子文件 `tests/path2_web/fixtures/match_examples.json`,答案只写在那份文件里。
@@ -60,6 +61,20 @@ def feedback_status(fb: Mapping, buys: "AppBuys") -> str:
     if buys.families.get(fs):
         return "matched"
     return "unmatched" if fs in buys.event_starts else "lost"
+
+
+def shown_status(status: Optional[str]) -> Optional[str]:
+    """页面上显示的反馈状态:只有 matched(app 还在这里买)/ unmatched(不买了)/ None(读不到行情)。
+    lost 并进 unmatched:「起点认不出」要懂机制才看得懂,对用户来说就是不买了;它是真改好了还是认法变了,
+    由会话在改版报告里逐条交代。会话这边(改版报告、摘要)照旧用 feedback_status 的三态。"""
+    return "unmatched" if status == "lost" else status
+
+
+def shown_tag(status: Optional[str], tag: Optional[str]) -> Optional[str]:
+    """页面上这条反馈挂不挂会话写的原因标签:状态是 matched 或 lost 才挂(status 是 feedback_status 的三态,
+    不是 shown_status 的结果)。lost 而会话挂了标签的,是「认法变了、原来的毛病还在」:页面上显示成 unmatched
+    加原因标签,看得出还没改好。挂不挂只在这里判一次,页面三处(面板、侧栏、图上记号的悬停)照着写。"""
+    return tag if status in ("matched", "lost") else None
 
 
 def is_red(status: Optional[str], tag: Optional[str]) -> bool:

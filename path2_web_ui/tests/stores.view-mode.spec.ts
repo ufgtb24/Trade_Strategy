@@ -111,12 +111,6 @@ describe('view store · mode', () => {
     expect(v.effectiveAnalysis?.events.length).toBeGreaterThan(0)
   })
 
-  it('tiers 默认开', () => {
-    const v = useViewStore()
-    expect(v.tiers).toBe(true)
-    v.setTiers(false)
-    expect(v.tiers).toBe(false)
-  })
 
   it('app 下删掉当前扫描:清空图并回到 annotate', () => {
     const v = useViewStore()

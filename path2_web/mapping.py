@@ -44,7 +44,7 @@ mapping 随 app 进 git,不进标注文件:标注文件只由工具写,会话不
 
 - 三个子键都可省;snapshot 写了就必须有 seen({机器名: 非负整数})和 samples(编号数组);conditions 每项恰好
   where(非空字符串)、from(编号数组)、state(字符串)三个键;tags 是 {反馈编号: 标签},标签取 SESSION_TAGS
-  之一:unhandled 还没处理 / for_tuning 留给调参 / not_worth 量过不值得加 / invisible 当天看不出 /
+  之一:unhandled 还没处理 / for_tuning 留给调参 / not_worth 量过不值得加 / hindsight 当天看不出(事后才看得出) /
   accepted 用户说过接受 / redefined 定义改过(挂了它的反馈不再算朱红,见 path2_web/annotation/match.py 的 is_red);
 - 形状问题只记进 session_problem(一句英文),不进 problem:会话段写坏了不影响 compare 用这个 mapping;
   这时 session 为 None。没写会话段时 session、session_problem 都是 None;
@@ -76,7 +76,7 @@ MAPPING_FILE = "mapping.yaml"
 # 会话段 tags 的原因标签(暂名,待用户认):还没处理 / 留给调参 / 量过不值得加 / 当天看不出 / 用户说过接受 /
 # 定义改过。TAG_REDEFINED 由反馈的朱红判法读(path2_web/annotation/match.py 的 is_red),只在这里写一处。
 TAG_REDEFINED = "redefined"
-SESSION_TAGS = ("unhandled", "for_tuning", "not_worth", "invisible", "accepted", TAG_REDEFINED)
+SESSION_TAGS = ("unhandled", "for_tuning", "not_worth", "hindsight", "accepted", TAG_REDEFINED)
 _SESSION_KEYS = {"snapshot", "conditions", "tags"}
 _SNAPSHOT_KEYS = {"seen", "samples", "at"}
 _CONDITION_KEYS = {"where", "from", "state"}

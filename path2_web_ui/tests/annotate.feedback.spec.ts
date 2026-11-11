@@ -183,7 +183,7 @@ describe('草稿转记录', () => {
 describe('侧栏排序', () => {
   const row = (symbol: string, id: string, start: string, end = start): FeedbackRow => ({ symbol, feedback: fb(id, start, end) })
 
-  it('朱红在前、lost 其次、其余(含状态还没取到的)在后;同档按股票、start、end、编号;不改入参', () => {
+  it('朱红在前、不买了却还挂着原因标签的其次、其余(含状态还没取到的)在后;同档按股票、start、end、编号;不改入参', () => {
     const rows = [
       row('BBB', 'f-pc-1', '2025-01-06'),
       row('AAA', 'f-pc-2', '2025-01-08'),
@@ -195,7 +195,7 @@ describe('侧栏排序', () => {
     const st = {
       'f-pc-1': { status: 'matched' as const, tag: null, red: true, reason: null },
       'f-pc-2': { status: 'matched' as const, tag: 'redefined', red: false, reason: null },
-      'f-pc-5': { status: 'lost' as const, tag: null, red: false, reason: null },
+      'f-pc-5': { status: 'unmatched' as const, tag: 'unhandled', red: false, reason: null },
       'f-pc-6': { status: 'unmatched' as const, tag: null, red: false, reason: null },
     }
     const before = rows.map(r => r.feedback.id)
@@ -288,17 +288,17 @@ describe('issue:几处反馈共享同一份内容', () => {
     expect(planIssueSave({ note: '追高了' }, shared, 'f-pc-9', 'only_this', fresh)).toEqual({ ask: false, issue: null, others: [] })
   })
 
-  it('侧栏分组的次序:有朱红的组在前、其次有 lost 的,其余在后;同档的组、组内各处照侧栏排序;不改入参', () => {
+  it('侧栏分组的次序:有朱红的组在前、其次有不买了却还挂着原因标签的,其余在后;同档的组、组内各处照侧栏排序;不改入参', () => {
     const st = {
       'f-pc-9': { status: 'matched' as const, tag: null, red: true, reason: null },
-      'f-pc-7': { status: 'lost' as const, tag: null, red: false, reason: null },
+      'f-pc-7': { status: 'unmatched' as const, tag: 'for_tuning', red: false, reason: null },
     }
     const picked = ROWS.slice(0, 4)
     const before = picked.map(r => r.feedback.id)
     const gs = sortIssueGroups(picked, st)
     expect(gs.map(g => [g.key, g.rows.map(r => r.feedback.id)])).toEqual([
       ['i-pc-1', ['f-pc-9', 'f-pc-2']],        // 组里有一处朱红:整组在前,朱红那处排组内第一
-      ['f-pc-7', ['f-pc-7']],                  // lost
+      ['f-pc-7', ['f-pc-7']],                  // 不买了、还挂着原因标签
       ['f-pc-5', ['f-pc-5']]])
     expect(picked.map(r => r.feedback.id)).toEqual(before)
     expect(sortIssueGroups(picked, {}).map(g => g.key)).toEqual(['i-pc-1', 'f-pc-5', 'f-pc-7'])   // 都没状态:按股票、日期、编号

@@ -192,7 +192,7 @@ describe('状态的重取时机', () => {
 
     let release!: () => void
     fake.gate = new Promise<void>(r => { release = r })
-    fake.answer = { app: 'app1', app_ver: 'v1', reason: null, items: [{ id: 'old', status: 'lost', tag: null, red: false, reason: null }] }
+    fake.answer = { app: 'app1', app_ver: 'v1', reason: null, items: [{ id: 'old', status: 'unmatched', tag: null, red: false, reason: null }] }
     const first = fb.refresh()
     fake.gate = null
     fake.answer = { app: 'app1', app_ver: 'v2', reason: null, items: [{ id: 'new', status: 'unmatched', tag: null, red: false, reason: null }] }

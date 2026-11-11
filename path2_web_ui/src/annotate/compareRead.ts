@@ -10,7 +10,7 @@
  *      当没给子框,照第 2、3 条在全部在场的 event 里挑;
  *   2. 那天有 hit:取那次 hit 绑定的 event;一天几个 hit 时按 hit 在结果里的先后取第一个;
  *   3. 没有 hit:取档位最深的,同档取起点最晚的(最近那一族),再同取结果里在前的;
- *   4. 一个都没有:null(框写 missing,样本的 diagnose 写 none)。
+ *   4. 一个都没有:null(样本的 diagnose 里 events 写 0)。
  * - match(spec 6.2):正样本:有一次 hit 的买点日离样本日不超过 tol.pos 根;负样本不超过 tol.neg 根。容差不在
  *   这里设:调用方传 GET /annotations 带出的 match(后端 path2_web/annotation/match.py 唯一设定,spec 第 10 节)。
  *   买点日按 eval_meta 的买点 node 取(buyDaysOf),所以「样本日落在买点 node 那段事件里」已包含在内。

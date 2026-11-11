@@ -342,6 +342,7 @@ const cmpLinkedBands = computed<string[]>(() => {
   const li = annLanes.value.findIndex(l => l.boxes.some(b => b.box.id === id))
   return (lay.linkedBands.get(li) ?? []).map(b => lay.bands[b])
 })
+const APP_ONLY_TIP = 'app_only: none of your features is mapped to this part of the app; the app checks something you did not annotate'
 // band 表头:node 名后跟用户的特征名(mapping 对到它的特征;app 模式与 compare 都写);compare 下所在组没有 node 被 map 的挂 app_only
 const shownMapping = computed(() => {
   if (comparing.value) return appLink.mapping
@@ -361,7 +362,7 @@ const bandExtras = computed<Record<string, BandLabelExtra>>(() => {
     }
   }
   const lay = cmpLayout.value
-  if (lay) for (const b of lay.appOnly) out[lay.bands[b]] = { ...out[lay.bands[b]], tag: 'app_only' }
+  if (lay) for (const b of lay.appOnly) out[lay.bands[b]] = { ...out[lay.bands[b]], tag: 'app_only', tagTip: APP_ONLY_TIP }
   return out
 })
 // 样本:字母(当前 pattern)、选中的样本(在这张图上)、它的空槽、框旁的标记、bracket 轨
@@ -924,7 +925,7 @@ function renderCompareSub() {
     lanes: annLanes.value, geom: cmpUserLanes.value.geom, nameOf: ann.nameOf, selectedId: ann.selectedBoxId,
     preview: preview.value, draft: draft.value, zoom, width: chartSub.getWidth(),
     bracket: annBracket.value, marks: annMarks.value,
-    compare: { laneNode: lay.laneNode, unmapped: lay.unmapped, compared: new Set(cmp.boxReads.keys()),
+    compare: { laneNode: lay.laneNode, unmapped: lay.unmapped,
                userActive: activeFamilyKey.value === SAMPLES_ROW, edges: subGeom.userAppEdges },
   })
   opt.graphic.push(...layer.graphics)

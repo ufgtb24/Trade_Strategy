@@ -78,7 +78,6 @@ const MAPPING = [
   '',
 ].join('\n')
 const VERMILION = '#E8875A'
-const ORANGE = '#E69F00'
 const EDGE = '#555555'
 const SELECTED_EDGE = '#000000'       // 选中的记号:黑色粗边
 const SELECTED_W = 3.5
@@ -409,19 +408,20 @@ test.describe('反馈(new_step + 手写 mapping,CRNC)', () => {
 
     await enterCompare(page)
     await expect(page.getByTestId('tool-feedback')).toBeVisible()
-    // 状态接口真跑 app:三条各是 matched(朱红)、unmatched、lost;会话标签照 mapping 的会话段
+    // 状态接口真跑 app:三条各是 matched(朱红)、unmatched、起点认不出(页面上并进 unmatched,会话给它挂了标签,
+    // 说明毛病还在,所以标签照带);会话标签照 mapping 的会话段
     await expect.poll(async () => {
       const s = await fbOf(page, 'statusById')
       return [RED, PLAIN, LOST].map(id => `${s?.[id]?.status}:${s?.[id]?.red}:${s?.[id]?.tag}`)
-    }, { timeout: 60_000 }).toEqual(['matched:true:for_tuning', 'unmatched:false:null', 'lost:false:unhandled'])
+    }, { timeout: 60_000 }).toEqual(['matched:true:for_tuning', 'unmatched:false:null', 'unmatched:false:unhandled'])
 
-    // 反馈带:每条一个记号,朱红 / 白底橙描边 / 白底深灰描边
+    // 反馈带:每条一个记号,朱红 / 白底深灰描边(起点认不出的那条也是常色)
     const li = dates.indexOf(plan.lost.start)
     await zoomTo(page, li - 6, F.buys[F.buys.length - 1] + 6)
     await expect.poll(async () => (await stripMarks(page)).map(m => m.id).sort()).toEqual([RED, PLAIN, LOST].sort())
     const marks = Object.fromEntries((await stripMarks(page)).map(m => [m.id, m]))
     expect([marks[RED].fill.toUpperCase(), marks[RED].stroke.toUpperCase()]).toEqual([VERMILION, EDGE.toUpperCase()])
-    expect([marks[LOST].fill.toLowerCase(), marks[LOST].stroke.toUpperCase()]).toEqual(['#ffffff', ORANGE])
+    expect([marks[LOST].fill.toLowerCase(), marks[LOST].stroke.toLowerCase()]).toEqual(['#ffffff', EDGE])
     expect([marks[PLAIN].fill.toLowerCase(), marks[PLAIN].stroke.toLowerCase()]).toEqual(['#ffffff', EDGE])
     // 反馈带在 hit 行下面
     const strip = await itemBoxes(page, 'feedback-strip', 0)
@@ -460,34 +460,35 @@ test.describe('反馈(new_step + 手写 mapping,CRNC)', () => {
     // 悬停 lost 那条(以前存下的 off_pattern + dag + note):没点 node 就没有 nodes 行,dag 不写
     const lostMark = strip.find(b => b.d.feedback_id === LOST)!
     await page.mouse.move(lostMark.x + lostMark.w / 2, lostMark.y + lostMark.h / 2)
-    const tipLost = page.locator('body > div').filter({ hasText: `id: ${LOST}` })
+    const tipLost = page.locator('body > div').filter({ hasText: 'tag: unhandled' })
     await expect(tipLost.first()).toBeVisible()
-    await expect(tipLost.first()).toContainText('status: lost')
+    await expect(tipLost.first()).toContainText('status: unmatched')
+    await expect(tipLost.first()).not.toContainText('id:')
     await expect(tipLost.first()).toContainText('note: 这一段不是平台')
     await expect(tipLost.first()).not.toContainText(/answer|off_pattern|nodes:|dag|undefined/)
     await page.mouse.move(10, 10)
     // 悬停常色那条(以前存下的 off_pattern + node、没写 note):有 nodes 行,没有 note 行
     const plainMark = strip.find(b => b.d.feedback_id === PLAIN)!
     await page.mouse.move(plainMark.x + plainMark.w / 2, plainMark.y + plainMark.h / 2)
-    const tipPlain = page.locator('body > div').filter({ hasText: `id: ${PLAIN}` })
+    const tipPlain = page.locator('body > div').filter({ hasText: 'nodes: plateau' })
     await expect(tipPlain.first()).toBeVisible()
     await expect(tipPlain.first()).toContainText('nodes: plateau')
     await expect(tipPlain.first()).not.toContainText(/answer|off_pattern|note:|undefined/)
     await page.mouse.move(10, 10)
 
-    // 侧栏 feedback 页:朱红在前、lost 其次、常色在后;朱红与 lost 挂会话标签,常色不挂
+    // 侧栏 feedback 页:朱红在前、不买了却挂着标签的其次、其余在后;接口给了标签的行照挂
     await page.getByTestId('annotation-tab-feedback').click()
     await expect(page.getByTestId('feedback-page')).toBeVisible()
     await expect(page.getByTestId('feedback-loading')).toHaveCount(0)
     const rows = page.getByTestId('feedback-row')
     await expect(rows).toHaveCount(3)
     expect(await rows.evaluateAll(els => els.map(e => [e.getAttribute('data-id'), e.getAttribute('data-tone')])))
-      .toEqual([[RED, 'red'], [LOST, 'lost'], [PLAIN, 'plain']])
+      .toEqual([[RED, 'red'], [LOST, 'plain'], [PLAIN, 'plain']])
     await expect(page.locator(`[data-testid="feedback-row"][data-id="${RED}"] [data-testid="feedback-row-tag"]`)).toHaveText('for_tuning')
     await expect(page.locator(`[data-testid="feedback-row"][data-id="${LOST}"] [data-testid="feedback-row-tag"]`)).toHaveText('unhandled')
     await expect(page.locator(`[data-testid="feedback-row"][data-id="${PLAIN}"] [data-testid="feedback-row-tag"]`)).toHaveCount(0)
     await expect(page.locator(`[data-testid="feedback-row"][data-id="${RED}"] [data-testid="feedback-row-status"]`)).toHaveText('matched')
-    await expect(page.locator(`[data-testid="feedback-row"][data-id="${LOST}"] [data-testid="feedback-row-status"]`)).toHaveText('lost')
+    await expect(page.locator(`[data-testid="feedback-row"][data-id="${LOST}"] [data-testid="feedback-row-status"]`)).toHaveText('unmatched')
     await expect(page.locator(`[data-testid="feedback-row"][data-id="${PLAIN}"] [data-testid="feedback-row-status"]`)).toHaveText('unmatched')
     // 组头:点出的 node 小标签,一个都没点的写灰字 none;理由在第二行;以前存下的 answer、dag 不留痕
     await expect(groupOf(page, LOST).getByTestId('feedback-row-nodes-none')).toHaveText('none')
@@ -1021,7 +1022,7 @@ test.describe('反馈(new_step + 手写 mapping,CRNC)', () => {
     await expect.poll(async () => (await stripMarks(page)).map(m => m.id)).toContain(id)
     const mark = await findItem(page, 'feedback-strip', x => x.d?.feedback_id === id, 0)
     await page.mouse.move(mark.x + mark.w / 2, mark.y + mark.h / 2)
-    const tipSaved = page.locator('body > div').filter({ hasText: `id: ${id}` })
+    const tipSaved = page.locator('body > div').filter({ hasText: 'target: ' })
     await expect(tipSaved.first()).toContainText(`nodes: ${nodeName}, ${nodeName2}`)
     await expect(tipSaved.first()).not.toContainText(/answer|dag|undefined/)
     await page.mouse.move(10, 10)
@@ -1318,7 +1319,7 @@ test.describe('反馈(new_step + 手写 mapping,CRNC)', () => {
     await page.mouse.move(10, 10)
     const m2 = await findItem(page, 'feedback-strip', x => x.d?.feedback_id === p2.id, 0)
     await page.mouse.move(m2.x + m2.w / 2, m2.y + m2.h / 2)
-    const tip2 = page.locator('body > div').filter({ hasText: `id: ${p2.id}` })
+    const tip2 = page.locator('body > div').filter({ hasText: 'target: ' })
     await expect(tip2.first()).toBeVisible()
     await expect(tip2.first()).not.toContainText('shared:')
     await page.mouse.move(10, 10)

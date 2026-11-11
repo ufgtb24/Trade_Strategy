@@ -26,9 +26,9 @@
  *     最大序号加一。不走对象编号的序列(那个序列只按对象编号推进,issue 值不是对象编号);
  *   · 一次保存要动哪些记录(planIssueSave):这一处带不带 issue 值、同一批里还要改哪些别的处。后端要求带同一个
  *     issue 值的各处内容相同,所以改共享内容必须一批改完;
- *   · 侧栏分组的次序(sortIssueGroups):有朱红的组在前、其次有 lost 的,其余在后;同档按组里排第一的那一处
+ *   · 侧栏分组的次序(sortIssueGroups):有朱红的组在前、其次有不买了却还挂着原因标签的,其余在后;同档按组里排第一的那一处
  *     (sortFeedbackRows 的次序),组内各处也按它排。
- * - 侧栏排序(sortFeedbackRows):朱红在前、lost 其次、其余在后,同档按股票、start、end、编号(同后端状态接口)。
+ * - 侧栏排序(sortFeedbackRows):朱红在前、不买了却还挂着原因标签的其次、其余在后,同档按股票、start、end、编号(同后端状态接口)。
  *   朱红与否只照后端给的 red,前端不自己判。
  */
 import type { EventDict, FeedbackStatusItem, HitDict, Topology } from '../types'
@@ -170,12 +170,28 @@ export function draftToFeedback(d: FeedbackDraft, origin: { id: string; pattern:
   return fb
 }
 
-/** 侧栏里的档:0 朱红、1 lost、2 其余(状态还没取到的算其余)。 */
+/** 侧栏里的档:0 朱红、1 不买了却还挂着会话原因标签(认法变了、毛病还在)、2 其余(状态还没取到的算其余)。 */
 export function feedbackRank(st: FeedbackStatusOf | null | undefined): 0 | 1 | 2 {
-  return st?.red ? 0 : st?.status === 'lost' ? 1 : 2
+  return st?.red ? 0 : st?.status === 'unmatched' && st.tag ? 1 : 2
 }
 
-/** 侧栏排序:朱红在前、lost 其次、其余在后;同档按股票、start、end、编号。不改入参。 */
+/**
+ * 会话原因标签各个取值的悬停说明(取值在后端 path2_web/mapping.py 的 SESSION_TAGS;这里没列的照样显示,
+ * 悬停写通用的一句)。标签挂不挂由后端判(match.py 的 shown_tag),页面三处照接口给的写。
+ */
+const TAG_HINT: Record<string, string> = {
+  unhandled: 'the session has not dealt with this feedback yet',
+  for_tuning: 'the condition is already there, only its threshold is off; left for parameter tuning',
+  not_worth: 'measured: a condition for it would not be worth adding',
+  hindsight: 'the reason cannot be seen on the buy day, only afterwards, so no condition can catch it',
+  accepted: 'you said buys like this are fine',
+  redefined: 'you changed the pattern definition; this buy fits the new wording, so it is not counted against the app',
+}
+export function tagHint(tag: string): string {
+  return TAG_HINT[tag] ?? 'reason the session gave for this feedback'
+}
+
+/** 侧栏排序:朱红在前、不买了却还挂着原因标签的其次、其余在后;同档按股票、start、end、编号。不改入参。 */
 export function sortFeedbackRows(rows: readonly FeedbackRow[],
                                  statusById: Readonly<Record<string, FeedbackStatusOf | undefined>>): FeedbackRow[] {
   const cmp = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0)
@@ -299,7 +315,7 @@ export function needsIssueChoice(draft: IssueContent, group: IssueGroup | null, 
 
 /**
  * 侧栏的分组与次序:rows 先按 sortFeedbackRows 排(组内各处、同档的组都照它),再按 issue 分组;
- * 有朱红的组在前、其次有 lost 的,其余在后。不改入参。
+ * 有朱红的组在前、其次有「不买了却还挂着原因标签」的,其余在后。不改入参。
  */
 export function sortIssueGroups(rows: readonly FeedbackRow[],
                                 statusById: Readonly<Record<string, FeedbackStatusOf | undefined>>): IssueGroup[] {

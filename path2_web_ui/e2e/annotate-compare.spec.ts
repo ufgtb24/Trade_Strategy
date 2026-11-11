@@ -161,7 +161,15 @@ test.describe('compare / app 叠画(bo_only + 手写 mapping)', () => {
     await expect.poll(() => view(page, 'currentDay')).toBe(dates.indexOf(selDate))
     expect(await view(page, 'activeFamilyKey')).toBe('samples')
     await expect(page.getByTestId('sample-diagnose')).toBeVisible()
-    await expect(page.getByTestId('diagnose-head')).toHaveText(`bo @ ${selDate}`)
+    await expect(page.getByTestId('diagnose-node')).toHaveText('bo')
+    await expect(page.getByTestId('diagnose-date')).toHaveText(selDate)
+    // events 一行:总数加三档各几个;每个 event 一块,键值排
+    await expect(page.getByTestId('diagnose-count')).toContainText(/^\d+/)
+    const nRows = await page.getByTestId('diagnose-row').count()
+    if (nRows) {   // 那天有 event 才有分档计数和 event 块
+      await expect(page.getByTestId('diagnose-count')).toContainText(/in_hit \d+/)
+      await expect(page.getByTestId('diagnose-row').first().getByTestId('diagnose-level')).toHaveText(/^(in_hit|qualified|detected)$/)
+    }
     await expect(page.getByTestId('diagnose-mark')).toHaveText(/^[✓✗]$/)
     // → 走到样本日更晚的下一个样本(当前 pattern 的,这张图上)
     const order = [...smp.list].sort((a: string[], b: string[]) => (a[1] < b[1] ? -1 : 1)).map((x: string[]) => x[0])

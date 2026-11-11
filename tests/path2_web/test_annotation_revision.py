@@ -151,7 +151,7 @@ def _fb_parts(sec: str) -> tuple[list[str], list[str], list[str]]:
     for line in sec.splitlines():
         if line.startswith("各 issue 现在"):
             cur = "issues"
-        elif line.startswith("`lost` 的反馈"):
+        elif line.startswith("起点认不出的反馈"):
             cur = "lost"
         elif line.startswith("- "):
             parts[cur].append(line)
@@ -237,15 +237,15 @@ def test_feedback_status_changes_lost_and_in_range_count(env):
     rows, issues, lost = _fb_parts(sec)
     assert len(rows) == 2 and len(lost) == 1   # 两条变了的 + 一条 lost 待填
     assert "「不该买」（f-pc-1）：`matched` → `unmatched`" in rows[0]
-    assert "（f-pc-2）：`matched` → `lost`" in rows[1]
+    assert "（f-pc-2）：`matched` → 起点认不出" in rows[1]
     assert "（f-pc-2）：（待填：改好了 / 认法变了）" in lost[0]
     assert issues == ["- `f-pc-4`「不该买」：1 处，还在买 1 处",                      # 还在买的在前
                       "- `f-pc-5`「不该买」：1 处，还在买 1 处",
-                      "- `f-pc-2`「不该买」：1 处，还在买 0 处，`lost` 1 处，这一版变了 1 处",   # lost 其次
+                      "- `f-pc-2`「不该买」：1 处，还在买 0 处，起点认不出 1 处，这一版变了 1 处",   # lost 其次
                       "- `f-pc-1`「不该买」：1 处，还在买 0 处，这一版变了 1 处"]
     assert "另有 1 个 issue 各处都不买了、这一版没变。" in sec        # f-pc-3
     assert "其余 3 条没变" in sec
-    assert "现在 5 条反馈：朱红 1 条、`lost` 1 条、`unmatched` 2 条。" in sec
+    assert "现在 5 条反馈：朱红 1 条、起点认不出 1 条、`unmatched` 2 条。" in sec
     assert "共 3 天。" in _section(_report(env), "② ")
     assert "没有。" in _section(_report(env), "③ ")
 
@@ -290,7 +290,7 @@ def test_feedback_added_and_deleted_and_family_grows(env):
                                                   "「不该买」（f-pc-3）：（没有这条） → `matched`"]
     assert issues == ["- `f-pc-3`「不该买」：1 处，还在买 1 处，这一版变了 1 处"]   # 新标的算变了;删掉的不进这里
     assert "另有 1 个 issue 各处都不买了、这一版没变。" in sec                     # f-pc-2
-    assert "其余 1 条没变。" in sec and "现在 2 条反馈：朱红 1 条、`lost` 0 条、`unmatched` 1 条。" in sec
+    assert "其余 1 条没变。" in sec and "现在 2 条反馈：朱红 1 条、起点认不出 0 条、`unmatched` 1 条。" in sec
     up = _section(report, "④ ")
     assert "共 3 天、1 族。" in up
     assert f"- [AAA {D[100]} 起的一族]({_link(D[103])})：2 天变 5 天" in up
@@ -487,7 +487,7 @@ def test_report_and_digest_take_feedback_with_and_without_answer(env):
     assert "「整体不像」（f-pc-3，issue i-pc-1）：`matched` → `unmatched`" in "\n".join(rows)
     assert "- `i-pc-1`「整体不像」：2 处，还在买 0 处，这一版变了 2 处" in issues
     sec = _section(digest, "issue")
-    assert "共 4 个 issue、5 处；还在买 5 处、`lost` 0 处。" in sec
+    assert "共 4 个 issue、5 处；还在买 5 处、起点认不出 0 处。" in sec
     assert "### `i-pc-1`（2 处，还在买 2 处）" in sec and "### `f-pc-2`（1 处，还在买 1 处）" in sec
     assert "- 落在：bo" in sec and "- 落在：没点 node" in sec and "  > （没写）" in sec
 
@@ -638,7 +638,7 @@ def test_round_digest_reads_everything_for_the_round(env, capsys):
     assert "- sample `s-pc-6`（AAA " + D[100] + "）：`judgment`" in _section(digest, "上一轮以来的变化")
 
     sec = _section(digest, "issue")
-    assert "共 2 个 issue、3 处；还在买 2 处、`lost` 0 处。" in sec
+    assert "共 2 个 issue、3 处；还在买 2 处、起点认不出 0 处。" in sec
     assert sec.index("### `f-pc-8`") < sec.index("### `i-pc-1`")       # 同是还在买的,按名字
     assert "### `i-pc-1`（2 处，还在买 1 处）\n- 落在：bo\n- note：\n  > 追高了\n- 账本：还没有条件" in sec
     assert (f"  - [AAA {D[9]}～{D[12]}]({_link(D[9])}) `family`（起点 {D[9]}） `matched`；范围里在买 2 天：{D[10]}、{D[11]}；"
