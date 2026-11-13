@@ -26,3 +26,6 @@ node_modules/
 # 蒙特卡洛模拟的逐次原始结果与中间汇总（脚本可重生成，勿入库）
 docs/research/**/repro/results/rows_*.parquet
 docs/research/**/repro/results/summary_*.csv
+
+# 显示栏静态样张的整页截图（单张超 1MB；在浏览器里打开同目录 repro/walkbar_mock.html 整页截图即可重生成，_top.png 裁图已入库）
+docs/research/2026-11-11_selection-business-entities/repro/screenshots/sk_1[4-7]_*_full.png

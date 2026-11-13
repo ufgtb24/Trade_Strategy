@@ -1,0 +1,218 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>显示栏样张</title>
+<style>
+  /* 静态样张（研究用，不是正式代码）：design.md 第 5 节的两种形态（第三稿）。
+     字一律黑色。选中块：白底细黑边；条：浅灰底；用户起的名字：正常字体加浅底。
+     不靠色相区分：只用深浅（白 / 浅灰 / 中灰）和边框粗细。 */
+  :root { --bar: #eef0f3; --ink: #111111; --rule: #9aa1ab; --chip: #ffffff; --user: #dfe3e8; --sub: #f6f7f9; --line: #333333; --cell: #8a8f96; }
+  * { box-sizing: border-box; }
+  body { margin: 16px; background: #ffffff; color: var(--ink); font-family: system-ui, sans-serif; font-size: 13px; }
+  h1 { font-size: 16px; margin: 0 0 8px; }
+  h2 { font-size: 14px; margin: 22px 0 6px; }
+  h3 { font-size: 13px; margin: 14px 0 4px; font-weight: 600; }
+  p { margin: 2px 0 6px; max-width: 1000px; line-height: 1.5; }
+  .mono { font: 12px ui-monospace, "JetBrains Mono", "DejaVu Sans Mono", Consolas, monospace; }
+  .bar { position: relative; display: flex; align-items: center; height: 18px; line-height: 18px; padding: 0 8px;
+         background: var(--bar); border-radius: 3px; white-space: nowrap; overflow: hidden; width: 100%; max-width: 1180px; }
+  .cell { flex: 0 0 auto; padding: 0 8px; border-left: 1px solid var(--rule); }
+  .cell:first-child { border-left: none; padding-left: 0; }
+  .shrink { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  .gap { flex: 1 1 auto; }
+  .slot { flex: 0 0 auto; width: 150px; padding: 0 8px; border-left: 1px solid var(--rule); }
+  .esc { flex: 0 0 auto; padding-left: 8px; border-left: 1px solid var(--rule); }
+  .sel { background: var(--chip); border: 2px solid var(--ink); border-radius: 3px; padding: 0 5px; line-height: 12px; display: inline-block; font-weight: 700; }
+  .selshrink { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  .user { font-family: system-ui, sans-serif; background: var(--user); border-radius: 2px; padding: 0 3px; }
+  kbd { font-family: inherit; font-size: 11px; line-height: 13px; padding: 0 3px; border: 1px solid var(--rule); border-radius: 3px; background: #ffffff; }
+  .narrow { max-width: 760px; }
+
+  /* 形态 B */
+  .stage { display: flex; gap: 12px; align-items: flex-start; width: 1540px; }
+  .stage .bar { max-width: none; }
+  .chartcol { flex: 1 1 auto; min-width: 0; position: relative; }
+  .tag { position: absolute; top: 1px; height: 16px; line-height: 14px; padding: 0 4px; background: var(--chip);
+         border: 1px solid var(--ink); border-radius: 3px; white-space: nowrap; z-index: 2; }
+  .tag b { font-weight: 600; }
+  .sub { position: relative; height: 92px; background: var(--sub); border: 1px solid #d5d9df; border-top: none; }
+  .row { position: absolute; left: 0; right: 0; height: 22px; border-bottom: 1px solid #e3e6ea; }
+  .row .name { position: absolute; left: 6px; top: 3px; }
+  .tri { position: absolute; top: 3px; width: 14px; text-align: center; }
+  .tri.on { outline: 2px solid var(--ink); outline-offset: 1px; background: #ffffff; }
+  .tri.thin { outline: 1px solid var(--ink); outline-offset: 1px; }
+  .cellbox { position: absolute; top: 5px; height: 12px; width: 12px; background: var(--cell); }
+  .cellbox.on { outline: 2px solid var(--ink); outline-offset: 1px; }
+  .cellbox.thin { outline: 1px solid var(--ink); outline-offset: 1px; }
+  .dayline { position: absolute; top: -18px; bottom: 0; width: 0; border-left: 1px solid var(--line); z-index: 1; }
+  .card { flex: 0 0 320px; border: 1px solid #c8cdd3; border-radius: 4px; padding: 6px 8px; background: #ffffff; }
+  .card .hd { font-family: system-ui, sans-serif; font-size: 12px; margin-bottom: 4px; }
+  .card table { border-collapse: collapse; width: 100%; }
+  .card td { vertical-align: top; padding: 1px 4px 1px 0; }
+  .card td.k { width: 64px; }
+  .note { font-size: 12px; }
+
+  /* 形态 C：九格固定宽度的格栅 + 十一行固定的选中卡 */
+  .grid { display: flex; align-items: center; height: 20px; line-height: 20px; padding: 0 8px; background: var(--bar);
+          border-radius: 3px; white-space: nowrap; overflow: hidden; width: 1580px; }
+  .g { flex: 0 0 auto; overflow: hidden; text-overflow: ellipsis; padding: 0 6px; border-left: 1px solid var(--rule); }
+  .g:first-child { border-left: none; padding-left: 0; }
+  .g .lb { margin-right: 4px; }
+  .g.kind { width: calc(18ch + 12px); } .g.node { width: calc(15ch + 12px); } .g.date { width: calc(28ch + 12px); } .g.name { width: calc(17ch + 12px); } .g.diff { width: calc(24ch + 12px); }
+  .g.in { flex: 1 1 auto; min-width: calc(20ch + 12px); } .g.k1 { width: calc(21ch + 12px); } .g.k2 { width: calc(22ch + 12px); } .g.esc { width: calc(7ch + 12px); flex: none; overflow: visible; }
+  .kchip { background: var(--chip); border: 2px solid var(--ink); border-radius: 3px; padding: 0 4px; font-weight: 700; line-height: 14px; display: inline-block; }
+  .na { color: #6b7078; }
+  kbd.na { color: #6b7078; border-color: #a9afb7; }
+  .ccard { width: 330px; border: 1px solid #c8cdd3; border-radius: 4px; padding: 6px 8px; background: #ffffff; margin-top: 8px; }
+  .ccard table { border-collapse: collapse; width: 100%; }
+  .ccard td { vertical-align: top; padding: 1px 6px 1px 0; overflow-wrap: normal; word-break: keep-all; }
+  .ccard td.k { width: 64px; }
+  .nb { white-space: nowrap; }
+  .crow { display: flex; gap: 16px; align-items: flex-start; }
+</style>
+</head>
+<body>
+<h1>显示栏形态（design.md 第 5 节，第五稿）</h1>
+<p>同一个现场，两种放法写的字完全一样：选中块写的就是 Shift+C 会复制的那行（去掉股票、pattern 和编号）；两个键槽写 ← / → 和 Shift+← / → 各会去哪，没用时留空位。CRNC new_step，起点 2024-10-31 那一族；日期取自上一轮研究与 skeptic 现场，部分为示意；<span class="mono">n</span> 是没数过的 event 个数。</p>
+
+<h2>形态 C（本稿推荐）：维度格栅 + 选中卡</h2>
+<p class="note">栏九格，从左到右固定：<span class="mono">kind node date name diff in ←/→ ⇧←/→ Esc</span>。不适用一律灰 <span class="mono">—</span> 占格、键帽画灰；适用但空写 <span class="mono">none</span>。卡十一行，行序固定。栏宽按用户屏幕 1580 px 左右画。</p>
+<h3>点 11-27 的 ▼（选中这一天）</h3><div class="grid mono"><span class="g kind"><span class="lb">kind</span><span class="kchip">buy</span></span><span class="g node"><span class="lb">node</span><span class="na">—</span></span><span class="g date"><span class="lb">date</span>2024-11-27</span><span class="g name"><span class="lb">name</span><span class="na">—</span></span><span class="g diff"><span class="lb">diff</span><span class="na">—</span></span><span class="g in"><span class="lb">in</span>hit_family 2024-10-31</span><span class="g k1"><kbd>←/→</kbd> buys 1/11</span><span class="g k2"><kbd>⇧←/→</kbd> into hits ×2</span><span class="g esc"><kbd>Esc</kbd></span></div><div class="ccard mono"><table><tr><td class="k">buys</td><td><span class="na">—</span></td></tr><tr><td class="k">hits</td><td>×2<br><span class="nb">step→2024-11-21</span><br><span class="nb">step→2024-11-22</span></td></tr><tr><td class="k">nodes</td><td><span class="na">—</span></td></tr><tr><td class="k">family</td><td><span class="nb">2024-10-31</span></td></tr><tr><td class="k">feedback</td><td>none</td></tr><tr><td class="k">sample</td><td>容差内的样本（示意）</td></tr><tr><td class="k">paired</td><td><span class="na">—</span></td></tr><tr><td class="k">level</td><td><span class="na">—</span></td></tr><tr><td class="k">failed</td><td><span class="na">—</span></td></tr><tr><td class="k">id</td><td><span class="na">—</span></td></tr><tr><td class="k">copy</td><td>CRNC new_step buy <span class="nb">2024-11-27</span> hits ×2</td></tr></table></div><h3>再按 Shift+→（进到第 1 次）</h3><div class="grid mono"><span class="g kind"><span class="lb">kind</span><span class="kchip">hit</span></span><span class="g node"><span class="lb">node</span><span class="na">—</span></span><span class="g date"><span class="lb">date</span>2024-10-31→2024-11-27</span><span class="g name"><span class="lb">name</span><span class="na">—</span></span><span class="g diff"><span class="lb">diff</span>step→2024-11-21</span><span class="g in"><span class="lb">in</span>hit_family 2024-10-31 › buy 2024-11-27</span><span class="g k1"><kbd>←/→</kbd> buys 1/11</span><span class="g k2"><kbd>⇧←/→</kbd> hits 1/2</span><span class="g esc"><kbd>Esc</kbd></span></div><div class="ccard mono"><table><tr><td class="k">buys</td><td><span class="nb">2024-11-27 ×1</span></td></tr><tr><td class="k">hits</td><td><span class="na">—</span></td></tr><tr><td class="k">nodes</td><td>old_plat <span class="nb">2024-10-31→2024-11-20</span><br>step <span class="nb">2024-11-21</span><br>new_plat <span class="nb">2024-11-22→2024-11-26</span><br>plateau <span class="nb">2024-10-31→2024-11-27</span><br>today <span class="nb">2024-11-27</span></td></tr><tr><td class="k">family</td><td><span class="nb">2024-10-31</span></td></tr><tr><td class="k">feedback</td><td>none</td></tr><tr><td class="k">sample</td><td>容差内的样本（示意）</td></tr><tr><td class="k">paired</td><td>none</td></tr><tr><td class="k">level</td><td><span class="na">—</span></td></tr><tr><td class="k">failed</td><td><span class="na">—</span></td></tr><tr><td class="k">id</td><td>[hit 编号]</td></tr><tr><td class="k">copy</td><td>CRNC new_step hit <span class="nb">2024-10-31→2024-11-27</span> <span class="nb">step→2024-11-21</span> buys <span class="nb">2024-11-27 ×1</span> [hit 编号]</td></tr></table></div><h3>点 step 一根阶跃那格</h3><div class="grid mono"><span class="g kind"><span class="lb">kind</span><span class="kchip">event</span></span><span class="g node"><span class="lb">node</span>step</span><span class="g date"><span class="lb">date</span>2024-11-21</span><span class="g name"><span class="lb">name</span><span class="na">—</span></span><span class="g diff"><span class="lb">diff</span><span class="na">—</span></span><span class="g in"><span class="lb">in</span>node step</span><span class="g k1"><kbd>←/→</kbd> into buys ×11</span><span class="g k2"><kbd class="na">⇧←/→</kbd> <span class="na">—</span></span><span class="g esc"><kbd>Esc</kbd></span></div><div class="ccard mono"><table><tr><td class="k">buys</td><td><span class="nb">2024-11-27…2024-12-26 ×11</span></td></tr><tr><td class="k">hits</td><td>×11</td></tr><tr><td class="k">nodes</td><td><span class="na">—</span></td></tr><tr><td class="k">family</td><td><span class="na">—</span></td></tr><tr><td class="k">feedback</td><td><span class="na">—</span></td></tr><tr><td class="k">sample</td><td><span class="na">—</span></td></tr><tr><td class="k">paired</td><td>none</td></tr><tr><td class="k">level</td><td>in_hit</td></tr><tr><td class="k">failed</td><td>none</td></tr><tr><td class="k">id</td><td>[event 编号]</td></tr><tr><td class="k">copy</td><td>CRNC new_step event step <span class="nb">2024-11-21</span> buys <span class="nb">2024-11-27…2024-12-26 ×11</span> hits ×11 [event 编号]</td></tr></table></div><h3>点 step 后按 →（落进用到它的买点日）</h3><div class="grid mono"><span class="g kind"><span class="lb">kind</span><span class="kchip">buy</span></span><span class="g node"><span class="lb">node</span><span class="na">—</span></span><span class="g date"><span class="lb">date</span>2024-11-27</span><span class="g name"><span class="lb">name</span><span class="na">—</span></span><span class="g diff"><span class="lb">diff</span><span class="na">—</span></span><span class="g in"><span class="lb">in</span>node step › event step 2024-11-21</span><span class="g k1"><kbd>←/→</kbd> buys 1/11</span><span class="g k2"><kbd>⇧←/→</kbd> into hits ×2</span><span class="g esc"><kbd>Esc</kbd></span></div><h3>点 new_plat 起于 11-22 的第一格（同一天另有一个 new_plat 结束：⇧ 槽 events 1/2，diff 写两者区别，示意）</h3><div class="grid mono"><span class="g kind"><span class="lb">kind</span><span class="kchip">event</span></span><span class="g node"><span class="lb">node</span>new_plat</span><span class="g date"><span class="lb">date</span>2024-11-22→2024-11-26</span><span class="g name"><span class="lb">name</span><span class="na">—</span></span><span class="g diff"><span class="lb">diff</span>〈区别〉</span><span class="g in"><span class="lb">in</span>node new_plat</span><span class="g k1"><kbd>←/→</kbd> into buys ×1</span><span class="g k2"><kbd>⇧←/→</kbd> events 1/2</span><span class="g esc"><kbd>Esc</kbd></span></div><h3>点 hits 行族底线（整族）</h3><div class="grid mono"><span class="g kind"><span class="lb">kind</span><span class="kchip">hit_family</span></span><span class="g node"><span class="lb">node</span><span class="na">—</span></span><span class="g date"><span class="lb">date</span>2024-10-31</span><span class="g name"><span class="lb">name</span><span class="na">—</span></span><span class="g diff"><span class="lb">diff</span><span class="na">—</span></span><span class="g in"><span class="lb">in</span><span class="na">—</span></span><span class="g k1"><kbd>←/→</kbd> into buys ×11</span><span class="g k2"><kbd class="na">⇧←/→</kbd> <span class="na">—</span></span><span class="g esc"><kbd>Esc</kbd></span></div><h3>点 plateau 的轨名（node）</h3><div class="grid mono"><span class="g kind"><span class="lb">kind</span><span class="kchip">node</span></span><span class="g node"><span class="lb">node</span>plateau</span><span class="g date"><span class="lb">date</span><span class="na">—</span></span><span class="g name"><span class="lb">name</span><span class="user">站上新平台</span></span><span class="g diff"><span class="lb">diff</span><span class="na">—</span></span><span class="g in"><span class="lb">in</span><span class="na">—</span></span><span class="g k1"><kbd>←/→</kbd> into events ×n</span><span class="g k2"><kbd class="na">⇧←/→</kbd> <span class="na">—</span></span><span class="g esc"><kbd>Esc</kbd></span></div><h3>样本 a</h3><div class="grid mono"><span class="g kind"><span class="lb">kind</span><span class="kchip">sample</span></span><span class="g node"><span class="lb">node</span><span class="na">—</span></span><span class="g date"><span class="lb">date</span>2024-11-29</span><span class="g name"><span class="lb">name</span>a pos</span><span class="g diff"><span class="lb">diff</span><span class="na">—</span></span><span class="g in"><span class="lb">in</span><span class="na">—</span></span><span class="g k1"><kbd>←/→</kbd> samples 1/3</span><span class="g k2"><kbd>⇧←/→</kbd> into hits ×2</span><span class="g esc"><kbd>Esc</kbd></span></div><h3>框（站上新平台，示意）</h3><div class="grid mono"><span class="g kind"><span class="lb">kind</span><span class="kchip">box</span></span><span class="g node"><span class="lb">node</span>plateau</span><span class="g date"><span class="lb">date</span>2024-10-31→2024-11-27</span><span class="g name"><span class="lb">name</span><span class="user">站上新平台</span></span><span class="g diff"><span class="lb">diff</span><span class="na">—</span></span><span class="g in"><span class="lb">in</span><span class="na">—</span></span><span class="g k1"><kbd class="na">←/→</kbd> <span class="na">—</span></span><span class="g k2"><kbd>⇧←/→</kbd> into hits ×2</span><span class="g esc"><kbd>Esc</kbd></span></div><h3>什么都没选：九格照摆，全是灰 —</h3><div class="grid mono"><span class="g kind"><span class="lb">kind</span><span class="na">—</span></span><span class="g node"><span class="lb">node</span><span class="na">—</span></span><span class="g date"><span class="lb">date</span><span class="na">—</span></span><span class="g name"><span class="lb">name</span><span class="na">—</span></span><span class="g diff"><span class="lb">diff</span><span class="na">—</span></span><span class="g in"><span class="lb">in</span><span class="na">—</span></span><span class="g k1"><kbd class="na">←/→</kbd> <span class="na">—</span></span><span class="g k2"><kbd class="na">⇧←/→</kbd> <span class="na">—</span></span><span class="g esc"><kbd class="na">Esc</kbd></span></div>
+<h2 style="margin-top:28px">对照：第二～四稿的形态 A、B（本稿不再推荐）</h2>
+<h2>形态 A：保留单行条，只改内容</h2>
+<p class="note">左：选中块、属于（in 路径）。右：两个键槽靠右、位置固定，然后 Esc。</p>
+
+<h3>点 11-27 的 ▼（选中这一天）</h3>
+<div class="bar mono"><span class="cell"><span class="sel">buy 2024-11-27</span></span><span class="cell shrink">in hit_family 2024-10-31</span><span class="gap"></span><span class="slot"><kbd>←/→</kbd> buys 1/11</span><span class="slot"><kbd>⇧←/→</kbd> into hits 2</span><span class="esc"><kbd>Esc</kbd></span></div>
+
+<h3>再按 Shift+→（进到第 1 次）</h3>
+<div class="bar mono"><span class="cell selshrink"><span class="sel">hit 2024-10-31→2024-11-27 step→2024-11-21</span></span><span class="cell shrink">in hit_family 2024-10-31 › buy 2024-11-27</span><span class="gap"></span><span class="slot"><kbd>←/→</kbd> buys 1/11</span><span class="slot"><kbd>⇧←/→</kbd> hits 1/2</span><span class="esc"><kbd>Esc</kbd></span></div>
+
+<h3>点 step 一根阶跃那格</h3>
+<div class="bar mono"><span class="cell selshrink"><span class="sel">event step 2024-11-21 used_by 11 buys 2024-11-27…2024-12-26</span></span><span class="cell shrink">in node step</span><span class="gap"></span><span class="slot"><kbd>←/→</kbd> into buys 11</span><span class="slot"><kbd>⇧←/→</kbd></span><span class="esc"><kbd>Esc</kbd></span></div>
+
+<h3>点 step 后按 →（落进用到它的买点日：上一轮要的 1/11、2/11）</h3>
+<div class="bar mono"><span class="cell"><span class="sel">buy 2024-11-27</span></span><span class="cell shrink">in node step › event step 2024-11-21</span><span class="gap"></span><span class="slot"><kbd>←/→</kbd> buys 1/11</span><span class="slot"><kbd>⇧←/→</kbd> into hits 2</span><span class="esc"><kbd>Esc</kbd></span></div>
+<h3>再按 Shift+→（用到一根阶跃的那次排第一）</h3>
+<div class="bar mono"><span class="cell selshrink"><span class="sel">hit 2024-10-31→2024-11-27 step→2024-11-21</span></span><span class="cell shrink">in node step › event step 2024-11-21 › buy 2024-11-27</span><span class="gap"></span><span class="slot"><kbd>←/→</kbd> buys 1/11</span><span class="slot"><kbd>⇧←/→</kbd> hits 1/2</span><span class="esc"><kbd>Esc</kbd></span></div>
+
+<h3>点 new_plat 起于 11-22 的第一格</h3>
+<div class="bar mono"><span class="cell selshrink"><span class="sel">event new_plat 2024-11-22→2024-11-26 used_by 1 buys 2024-11-27</span></span><span class="cell shrink">in node new_plat</span><span class="gap"></span><span class="slot"><kbd>←/→</kbd> into buys 1</span><span class="slot"><kbd>⇧←/→</kbd></span><span class="esc"><kbd>Esc</kbd></span></div>
+
+<h3>点 hits 行族底线（整族）</h3>
+<div class="bar mono"><span class="cell selshrink"><span class="sel">hit_family start 2024-10-31 buys 2024-11-27…2024-12-26 ×22</span></span><span class="gap"></span><span class="slot"><kbd>←/→</kbd> into buys 11</span><span class="slot"><kbd>⇧←/→</kbd></span><span class="esc"><kbd>Esc</kbd></span></div>
+
+<h3>样本（进去以后 ← / → 换样本仍停在「次」这一层）</h3>
+<div class="bar mono"><span class="cell"><span class="sel">sample a pos 2024-11-29</span></span><span class="gap"></span><span class="slot"><kbd>←/→</kbd> sample 1/3</span><span class="slot"><kbd>⇧←/→</kbd> into hits 2</span><span class="esc"><kbd>Esc</kbd></span></div>
+<div class="bar mono" style="margin-top:4px"><span class="cell selshrink"><span class="sel">hit 2024-10-31→2024-11-29 step→2024-11-21</span></span><span class="cell shrink">in sample a</span><span class="gap"></span><span class="slot"><kbd>←/→</kbd> sample 1/3</span><span class="slot"><kbd>⇧←/→</kbd> hits 1/2 paired</span><span class="esc"><kbd>Esc</kbd></span></div>
+
+<h3>框（特征名是用户起的名字：正常字体加浅底）</h3>
+<div class="bar mono"><span class="cell"><span class="sel">box <span class="user">阶跃</span> 2024-11-14→2024-11-21</span></span><span class="gap"></span><span class="slot"><kbd>←/→</kbd></span><span class="slot"><kbd>⇧←/→</kbd> into hits 2</span><span class="esc"><kbd>Esc</kbd></span></div>
+
+<h3>窄窗口：先省路径，再省选中块的附注；键槽与 Esc 不省</h3>
+<div class="bar mono narrow"><span class="cell selshrink"><span class="sel">hit 2024-10-31→2025-01-08 step→2024-12-30</span></span><span class="cell shrink">in feedback 2025-01-07→2025-01-30 › buy 2025-01-08</span><span class="gap"></span><span class="slot"><kbd>←/→</kbd> buys 1/7</span><span class="slot"><kbd>⇧←/→</kbd> hits 1/2</span><span class="esc"><kbd>Esc</kbd></span></div>
+
+<h2>形态 B：按维度拆三处</h2>
+<p class="note">① 「是什么、键往哪走」写成一枚标签，贴着当前日竖线（正好在选中物正上方），标签里键槽顺序固定；② 「属于什么」在条的左端，Esc 在最右；③ 「买得对不对」与细节进右侧栏 <span class="mono">selection</span> 页顶上的卡片。下面的副图只是示意：hits 行一族 11 个 ▼，竖线停在 11-27。</p>
+
+<h3>点 11-27 的 ▼（选中这一天）：这天两次 hit 的组成在 band 上细框</h3>
+<div class="stage">
+  <div class="chartcol mono">
+    <div class="bar"><span class="cell shrink">in hit_family 2024-10-31</span><span class="gap"></span><span class="esc"><kbd>Esc</kbd></span>
+      <span class="tag" style="left: 352px"><b>buy 2024-11-27</b> &nbsp;<kbd>←/→</kbd> buys 1/11 · <kbd>⇧←/→</kbd> into hits 2</span></div>
+    <div class="sub">
+      <div class="row" style="top:0"><span class="name">hits</span>
+        <span class="tri on" style="left:343px">▼</span><span class="tri" style="left:383px">▼</span><span class="tri" style="left:423px">▼</span><span class="tri" style="left:503px">▼</span><span class="tri" style="left:543px">▼</span><span class="tri" style="left:643px">▼</span><span class="tri" style="left:683px">▼</span><span class="tri" style="left:783px">▼</span><span class="tri" style="left:823px">▼</span><span class="tri" style="left:863px">▼</span><span class="tri" style="left:903px">▼</span></div>
+      <div class="row" style="top:22px"><span class="name">step</span><span class="cellbox thin" style="left:262px"></span><span class="cellbox thin" style="left:282px"></span></div>
+      <div class="row" style="top:44px"><span class="name">new_plat</span><span class="cellbox thin" style="left:330px"></span><span class="cellbox thin" style="left:344px"></span></div>
+      <div class="dayline" style="left:350px"></div>
+    </div>
+  </div>
+  <div class="card mono">
+    <div class="hd">selection</div>
+    <table>
+      <tr><td class="k">kind</td><td>buy</td></tr>
+      <tr><td class="k">date</td><td>2024-11-27</td></tr>
+      <tr><td class="k">family</td><td>2024-10-31</td></tr>
+      <tr><td class="k">hits</td><td>step→2024-11-21<br>step→2024-11-22</td></tr>
+      <tr><td class="k">feedback</td><td>none</td></tr>
+      <tr><td class="k">sample</td><td>a pos 2024-11-29 ✓</td></tr>
+      <tr><td class="k">copy</td><td>CRNC new_step buy 2024-11-27</td></tr>
+    </table>
+  </div>
+</div>
+
+<h3>再按 Shift+→（进到第 1 次）：这一次的组成加粗</h3>
+<div class="stage">
+  <div class="chartcol mono">
+    <div class="bar"><span class="cell shrink">in hit_family 2024-10-31 › buy 2024-11-27</span><span class="gap"></span><span class="esc"><kbd>Esc</kbd></span>
+      <span class="tag" style="left: 352px"><b>hit 2024-10-31→2024-11-27 step→2024-11-21</b> &nbsp;<kbd>←/→</kbd> buys 1/11 · <kbd>⇧←/→</kbd> hits 1/2</span></div>
+    <div class="sub">
+      <div class="row" style="top:0"><span class="name">hits</span>
+        <span class="tri on" style="left:343px">▼</span><span class="tri" style="left:383px">▼</span><span class="tri" style="left:423px">▼</span><span class="tri" style="left:503px">▼</span><span class="tri" style="left:543px">▼</span><span class="tri" style="left:643px">▼</span><span class="tri" style="left:683px">▼</span><span class="tri" style="left:783px">▼</span><span class="tri" style="left:823px">▼</span><span class="tri" style="left:863px">▼</span><span class="tri" style="left:903px">▼</span></div>
+      <div class="row" style="top:22px"><span class="name">step</span><span class="cellbox on" style="left:262px"></span><span class="cellbox" style="left:282px"></span></div>
+      <div class="row" style="top:44px"><span class="name">new_plat</span><span class="cellbox on" style="left:330px"></span><span class="cellbox" style="left:344px"></span></div>
+      <div class="dayline" style="left:350px"></div>
+    </div>
+  </div>
+  <div class="card mono">
+    <div class="hd">selection</div>
+    <table>
+      <tr><td class="k">kind</td><td>hit</td></tr>
+      <tr><td class="k">span</td><td>2024-10-31→2024-11-27</td></tr>
+      <tr><td class="k">diff</td><td>step→2024-11-21</td></tr>
+      <tr><td class="k">path</td><td>hit_family 2024-10-31 › buy 2024-11-27</td></tr>
+      <tr><td class="k">nodes</td><td>old_plat 2024-10-31→2024-11-20<br>step 2024-11-21<br>new_plat 2024-11-22→2024-11-26<br>plateau 2024-10-31→2024-11-27<br>today 2024-11-27</td></tr>
+      <tr><td class="k">feedback</td><td>none</td></tr>
+      <tr><td class="k">id</td><td>[hit 编号]</td></tr>
+      <tr><td class="k">copy</td><td>CRNC new_step hit 2024-10-31→2024-11-27 step→2024-11-21 […]</td></tr>
+    </table>
+  </div>
+</div>
+
+<h3>点 step 一根阶跃那格：竖线落在它的终点 11-21，用到它的 11 个 ▼ 细框</h3>
+<div class="stage">
+  <div class="chartcol mono">
+    <div class="bar"><span class="cell shrink">in node step</span><span class="gap"></span><span class="esc"><kbd>Esc</kbd></span>
+      <span class="tag" style="left: 270px"><b>event step 2024-11-21 used_by 11 buys 2024-11-27…2024-12-26</b> &nbsp;<kbd>←/→</kbd> into buys 11</span></div>
+    <div class="sub">
+      <div class="row" style="top:0"><span class="name">hits</span>
+        <span class="tri thin" style="left:343px">▼</span><span class="tri thin" style="left:383px">▼</span><span class="tri thin" style="left:423px">▼</span><span class="tri thin" style="left:503px">▼</span><span class="tri thin" style="left:543px">▼</span><span class="tri thin" style="left:643px">▼</span><span class="tri thin" style="left:683px">▼</span><span class="tri thin" style="left:783px">▼</span><span class="tri thin" style="left:823px">▼</span><span class="tri thin" style="left:863px">▼</span><span class="tri thin" style="left:903px">▼</span></div>
+      <div class="row" style="top:22px"><span class="name">step</span><span class="cellbox on" style="left:262px"></span><span class="cellbox" style="left:282px"></span></div>
+      <div class="row" style="top:44px"><span class="name">new_plat</span><span class="cellbox" style="left:330px"></span><span class="cellbox" style="left:344px"></span></div>
+      <div class="dayline" style="left:268px"></div>
+    </div>
+  </div>
+  <div class="card mono">
+    <div class="hd">selection</div>
+    <table>
+      <tr><td class="k">kind</td><td>event</td></tr>
+      <tr><td class="k">node</td><td>step</td></tr>
+      <tr><td class="k">span</td><td>2024-11-21</td></tr>
+      <tr><td class="k">level</td><td>in_hit</td></tr>
+      <tr><td class="k">used_by</td><td>11 hits · buys 2024-11-27…2024-12-26</td></tr>
+      <tr><td class="k">id</td><td>[event 编号]</td></tr>
+      <tr><td class="k">copy</td><td>CRNC new_step event step 2024-11-21 used_by 11 buys 2024-11-27…2024-12-26 […]</td></tr>
+    </table>
+  </div>
+</div>
+
+<h3>标签按实际宽度定方向：竖线右边放不下标签加 Esc 时往左展开（这里把副图收窄到竖线离右端不远，停在 12-26）</h3>
+<div class="stage" style="width:1100px">
+  <div class="chartcol mono">
+    <div class="bar"><span class="cell shrink">in hit_family 2024-10-31</span><span class="gap"></span><span class="esc"><kbd>Esc</kbd></span>
+      <span class="tag" style="right: calc(100% - 909px)"><b>buy 2024-12-26</b> &nbsp;<kbd>←/→</kbd> buy 11/11 · <kbd>⇧←/→</kbd> into hits 2</span></div>
+    <div class="sub" style="height:24px">
+      <div class="row" style="top:0"><span class="name">hits</span>
+        <span class="tri" style="left:343px">▼</span><span class="tri" style="left:383px">▼</span><span class="tri" style="left:423px">▼</span><span class="tri" style="left:503px">▼</span><span class="tri" style="left:543px">▼</span><span class="tri" style="left:643px">▼</span><span class="tri" style="left:683px">▼</span><span class="tri" style="left:783px">▼</span><span class="tri" style="left:823px">▼</span><span class="tri" style="left:863px">▼</span><span class="tri on" style="left:903px">▼</span></div>
+      <div class="dayline" style="left:910px"></div>
+    </div>
+  </div>
+</div>
+
+<h3>不停在某一天上的（整族）：标签放条的最左</h3>
+<div class="bar mono"><span class="tag" style="position:static"><b>hit_family start 2024-10-31 buys 2024-11-27…2024-12-26 ×22</b> &nbsp;<kbd>←/→</kbd> into buys 11</span><span class="gap"></span><span class="esc"><kbd>Esc</kbd></span></div>
+</body>
+</html>
