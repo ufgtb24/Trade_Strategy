@@ -47,12 +47,11 @@ describe('view store · focusHit / focusEvent(单入口)/ clearFocus', () => {
     setActivePinia(createPinia())
   })
 
-  it('focusHit("m1"):focusedHitId=m1 · 实例焦点清 · manual=null · candidates 清 · showTrace=true', () => {
+  it('focusHit("m1"):focusedHitId=m1 · 实例焦点清 · manual=null · 细框清 · showTrace=true', () => {
     const view = useViewStore()
     view.loadScanFile(makeFixture())
     view.toggleExpandedNode('bo')                  // 先 manual = {bo}
     view.toggleExpandedNode('ta')                  // 再加 ta → {bo, ta}(多展开)
-    view.setCandidateHits(['m1', 'm2'])
     view.focusHit('m1')
     expect(view.focusedHitId).toBe('m1')
     expect(view.selectedInstanceId).toBeNull()
@@ -62,14 +61,16 @@ describe('view store · focusHit / focusEvent(单入口)/ clearFocus', () => {
     expect(view.showTrace).toBe(true)
   })
 
-  it('focusEvent 单入口:按 instance_id 直选(1 归属)→ focusedHitId + focusedInstanceId', () => {
+  it('focusEvent 单入口:按 instance_id 只选中这个 event;用到它的那次 hit 画细框,不算选中', () => {
     const view = useViewStore()
     view.loadScanFile(makeFixture())
     view.focusEvent('ta_12_15#0')
-    expect(view.focusedHitId).toBe('m1')
-    expect(view.focusedInstanceId).toBe('ta_12_15#0')
-    expect(view.selectedInstanceId).toBeNull()
-    expect(view.candidateHitIds.size).toBe(0)
+    // 点 event 选中的就是它;用到它的 hit 在它里面,要按键进去才选中
+    expect(view.selPath).toEqual([{ kind: 'node', band: 'ta' }, { kind: 'event', instanceId: 'ta_12_15#0' }])
+    expect(view.selectedInstanceId).toBe('ta_12_15#0')
+    expect(view.focusedHitId).toBeNull()
+    expect(view.focusedInstanceId).toBeNull()
+    expect([...view.candidateHitIds]).toEqual(['m1'])
     expect(view.pendingDisambigInstanceId).toBeNull()
     expect(view.showTrace).toBe(false)
   })
@@ -89,7 +90,7 @@ describe('view store · focusHit / focusEvent(单入口)/ clearFocus', () => {
     const view = useViewStore()
     view.loadScanFile(makeFixture())
     // 归属判定只按 hit.node_index 精确引用;bo_10#0 是 anchor(仅经 anchor_field 反查、
-    // 不在 node_index 中)→ 0 归属 → 只聚焦实例,不再弹待选择
+    // 不在 node_index 中)→ 没有 hit 用到它 → 只聚焦实例
     view.focusEvent('bo_10#0')
     expect(view.focusedHitId).toBeNull()
     expect(view.selectedInstanceId).toBe('bo_10#0')
@@ -149,8 +150,8 @@ describe('view store · focusHit / focusEvent(单入口)/ clearFocus', () => {
 })
 
 // ── Task 8(marker 实例绑定):focusEvent 单入口分级语义 ──────────────────────────
-// 归属 = hit.node_index 值(instance_id 字符串)精确引用计数 0/1/≥2
-//   0 → 只聚焦实例;1 → 直选 hit;≥2 → pendingDisambig(真共享实例)
+// 点 event 一律只选中这个 event;用到它的 hit = hit.node_index 值(instance_id 字符串)精确引用它的那些,画细框。
+// 被几次 hit 共用的实例:走进它的买点日、停在整天上时,它还在用(pendingDisambig),再往里才选中其中一次
 function makeDualEntryFixture(events: EventDict[], hits: HitDict[]): MultiScanResultFile {
   const pattern: SerializedPattern = {
     pattern_id: 'p1',
@@ -178,7 +179,7 @@ describe('view store · focusEvent 单入口(Task 8 实例绑定)', () => {
     setActivePinia(createPinia())
   })
 
-  it('focusEvent 按 instance_id 直选分属实例(不再待选择)', () => {
+  it('focusEvent 按 instance_id 认实例:同一跨度的两个实例各牵出自己那一次 hit', () => {
     // APCX 形态:两 hit 的 node_index 分别引用 tb_v1_293#0/#1(各属一个 hit)
     const m0 = { hit_id: 'bb@0-3#burst:burst_0_2|tb:tb_v1_293', start_idx: 0, end_idx: 3,
                  node_index: { burst: 'burst_0_2#0', tb: 'tb_v1_293#0' },
@@ -194,14 +195,16 @@ describe('view store · focusEvent 单入口(Task 8 实例绑定)', () => {
     const view = useViewStore()
     view.loadScanFile(makeDualEntryFixture(events, [m0, m1]))
     view.focusEvent('tb_v1_293#0')
-    expect(view.focusedHitId).toBe(m0.hit_id)          // 直选 hit A
-    expect(view.focusedInstanceId).toBe('tb_v1_293#0')
-    expect(view.pendingDisambigInstanceId).toBeNull()       // 不再弹待选择
+    expect(view.selectedInstanceId).toBe('tb_v1_293#0')
+    expect([...view.candidateHitIds]).toEqual([m0.hit_id])  // 用到 #0 的是 hit A
+    expect(view.focusedHitId).toBeNull()
+    expect(view.pendingDisambigInstanceId).toBeNull()
     view.focusEvent('tb_v1_293#1')
-    expect(view.focusedHitId).toBe(m1.hit_id)          // 直选 hit B
+    expect(view.selectedInstanceId).toBe('tb_v1_293#1')
+    expect([...view.candidateHitIds]).toEqual([m1.hit_id])  // 用到 #1 的是 hit B
   })
 
-  it('focusEvent 真共享:同一 instance_id 被两 hit 引用 → 待选择', () => {
+  it('focusEvent 真共享:同一 instance_id 被两 hit 引用 → 两次都画细框、都不选中;走进它的买点日后那天叠着这两次', () => {
     const m0 = { hit_id: 'bb@0-3a', start_idx: 0, end_idx: 3,
                  node_index: { tb: 'tb_s#0' }, children: ['tb_s#0'], predicate_trace: null } as HitDict
     const m1 = { hit_id: 'bb@0-3b', start_idx: 0, end_idx: 3,
@@ -212,8 +215,17 @@ describe('view store · focusEvent 单入口(Task 8 实例绑定)', () => {
     const view = useViewStore()
     view.loadScanFile(makeDualEntryFixture(events, [m0, m1]))
     view.focusEvent('tb_s#0')
-    expect(view.pendingDisambigInstanceId).toBe('tb_s#0')
+    expect(view.selectedInstanceId).toBe('tb_s#0')
     expect(view.candidateHitIds.size).toBe(2)
     expect(view.focusedHitId).toBeNull()
+    // 这条 band 上只有它、只牵出一天:→ 进那一天;那天叠着两次,停在整天上,这个实例还在用
+    view.stepPos(1)
+    expect(view.selLast).toEqual({ kind: 'buy', day: 3 })
+    expect(view.focusedHitId).toBeNull()
+    expect(view.pendingDisambigInstanceId).toBe('tb_s#0')
+    expect(view.selDayHitIds).toEqual(['bb@0-3a', 'bb@0-3b'])
+    view.stepStack(1)
+    expect([view.focusedHitId, view.focusedInstanceId]).toEqual(['bb@0-3a', 'tb_s#0'])
+    expect(view.pendingDisambigInstanceId).toBeNull()
   })
 })

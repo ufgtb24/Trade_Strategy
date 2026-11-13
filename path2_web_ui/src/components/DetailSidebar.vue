@@ -1,6 +1,7 @@
 <template>
   <div ref="sidebarEl" class="sidebar">
     <div class="panel-name">DetailSidebar</div>
+    <SelectionCard />
 
     <!-- 入口 A(brush 时段查询)/ 入口 D(shift+click pair 查询):query 结果卡片,叠在其余
          内容之上、互斥展示(activeDetailCard 单值)。caveats 顶部条挂在各自 response 上。 -->
@@ -131,12 +132,13 @@
 
     <!-- hit 列表:analysis 就绪时常驻;点行 → 选中 hit 展开 trace + 图上高亮 -->
     <template v-if="effectivePattern && effectiveAnalysis && effectiveAnalysis.hits.length">
-      <h3 class="section-title section-title--sym" title="这只股票、这个 pattern 的每一次 hit;点行 = 点图上的 bracket">hits</h3>
+      <h3 class="section-title section-title--sym"
+          title="这只股票、这个 pattern 的每一次 hit,按第一个买入日排;点行 = 点图上的 bracket。左边蓝条:选中的那一个牵出的 hit;黑粗边:当前那次;同一天几行时日期下面写区别,顺序和 ↑ / ↓ 一致">hits</h3>
       <div
         v-for="m in hitRows" :key="m.hit_id"
         class="hit-row"
-        :class="{ 'hit-row--selected': markedHitIds.has(m.hit_id) }"
-        :title="hitSpanTitle(m)"
+        :class="{ 'hit-row--batch': batchHitIds.has(m.hit_id), 'hit-row--current': m.hit_id === focusedHitId }"
+        :title="hitSpanTitle(m) + (rowLabels.get(m.hit_id) ? `  ${rowLabels.get(m.hit_id)}` : '')"
         @click="selectHitRow(m.hit_id)"
       >
         <span class="hit-span">{{ hitDayLabel(m) }}</span>
@@ -152,6 +154,7 @@
           <span v-if="view.isExploring" class="ret-live"
                 title="探索态现算值(Working Copy 口径),与左侧列表的 scan 冻结 d 口径不同">†</span>
         </span>
+        <span v-if="rowLabels.get(m.hit_id)" class="hit-diff" data-testid="hit-row-diff">{{ shortLabel(m.hit_id) }}</span>
       </div>
     </template>
 
@@ -208,8 +211,10 @@ import RelBadge from '../shared/RelBadge.vue'
 import { fmt, fmtValue } from '../shared/formatters'
 import FailedAttemptsCard from './FailedAttemptsCard.vue'
 import PairDetailCard from './PairDetailCard.vue'
+import SelectionCard from './SelectionCard.vue'
 import type { TopoNode, AttrRow, ClauseWitness, PairPayload, HitDict } from '../types'
 import { buyDaysOf } from '../render/fold'
+import { hitOrderOf, stackLabelTexts } from '../render/walk'
 
 const view = useViewStore()
 const {
@@ -222,9 +227,9 @@ const {
   barDates, endNode,
 } = storeToRefs(view)
 
-// hit 列表:按买入日(没有买入日取终点)排、标日期。bracket 折叠后一行有几十次 hit,圈号会重号,改用日期;
-// 同一天几次 hit 各占一行,选中哪行有底色。
-// hit 列表按第一个买入日排、行上写这一天的日期(取代按起点排的圈号)
+// hit 列表:按第一个买入日(没有买入日取终点)排、行上写这一天的日期(bracket 折叠后一行有几十次 hit,圈号会重号)。
+// 同一天的几行按 hit 的先后(和图上 ↑ / ↓ 换同一天的几次同一顺序),行尾写和显示栏 diff 格同一个区别标签;
+// 选中的那一个牵出的 hit(stores/view.ts 的 markedHitIds)的行一直标着,当前那行黑粗边;选中整天时这天几行都标、不画当前行。
 const hitDays = computed<Map<string, number>>(() => {
   const byId = new Map((effectiveAnalysis.value?.events ?? []).map(e => [e.instance_id, e]))
   return new Map((effectiveAnalysis.value?.hits ?? [])
@@ -233,9 +238,62 @@ const hitDays = computed<Map<string, number>>(() => {
 const hitRows = computed<HitDict[]>(() => {
   const hits = effectiveAnalysis.value?.hits ?? []
   const days = hitDays.value
-  return hits.map((m, i) => ({ m, i, d: days.get(m.hit_id) ?? m.end_idx }))
-    .sort((a, b) => a.d - b.d || a.i - b.i).map(x => x.m)
+  const order = hitOrderOf(hits)
+  const rank = (id: string) => order.get(id) ?? Number.MAX_SAFE_INTEGER
+  return hits.map(m => ({ m, d: days.get(m.hit_id) ?? m.end_idx }))
+    .sort((a, b) => a.d - b.d || rank(a.m.hit_id) - rank(b.m.hit_id)).map(x => x.m)
 })
+/** 同一天几行时各行的区别标签(和显示栏 diff 格同一套写法);分不出的不写 */
+const rowLabels = computed<Map<string, string>>(() => {
+  const out = new Map<string, string>()
+  const hits = effectiveAnalysis.value?.hits ?? []
+  const events = effectiveAnalysis.value?.events ?? []
+  const byId = new Map(events.map(e => [e.instance_id, e]))
+  const hitsById = new Map(hits.map(m => [m.hit_id, m]))
+  const topo = effectivePattern.value?.topology
+  const nodeOrder = (topo?.nodes ?? []).map(n => n.node_id)
+  const anchorFields = [...new Set((topo?.edges ?? []).map(e => e.anchor_field).filter((f): f is string => !!f))]
+  const groups = new Map<number, string[]>()
+  for (const m of hitRows.value) {
+    const d = hitDays.value.get(m.hit_id) ?? m.end_idx
+    const g = groups.get(d)
+    if (g) g.push(m.hit_id)
+    else groups.set(d, [m.hit_id])
+  }
+  for (const ids of groups.values()) {
+    if (ids.length < 2) continue
+    const ls = stackLabelTexts(ids.map(hitId => ({ hitId, instanceId: null })), hitsById, byId, nodeOrder,
+                               anchorFields, barDates.value)
+    ids.forEach((id, i) => { if (ls[i]) out.set(id, ls[i]) })
+  }
+  return out
+})
+/**
+ * 侧栏里的区别写短日期(`step→11-21`):侧栏窄,全写会把能分开几行的日期截掉。同一天的几行日子都在同一年时去掉年份,
+ * 跨年才写全;全文(和显示栏一样的写法)在行的悬停里。
+ */
+const shortLabels = computed<Map<string, string>>(() => {
+  const out = new Map<string, string>()
+  const groups = new Map<number, string[]>()
+  for (const [id] of rowLabels.value) {
+    const m = (effectiveAnalysis.value?.hits ?? []).find(h => h.hit_id === id)
+    const d = m ? hitDays.value.get(id) ?? m.end_idx : -1
+    const g = groups.get(d)
+    if (g) g.push(id)
+    else groups.set(d, [id])
+  }
+  const DATE = /\b(\d{4})-(\d{2}-\d{2})\b/g
+  for (const ids of groups.values()) {
+    const years = new Set(ids.flatMap(id => [...rowLabels.value.get(id)!.matchAll(DATE)].map(x => x[1])))
+    for (const id of ids) {
+      const full = rowLabels.value.get(id)!
+      out.set(id, years.size <= 1 ? full.replace(DATE, '$2') : full)
+    }
+  }
+  return out
+})
+function shortLabel(hitId: string): string { return shortLabels.value.get(hitId) ?? rowLabels.value.get(hitId) ?? '' }
+const batchHitIds = computed<ReadonlySet<string>>(() => view.markedHitIds)
 // 悬停给这次 hit 的起止日期(不给 K 线下标)
 function hitSpanTitle(m: HitDict): string {
   const d = (i: number) => barDates.value[i] ?? String(i)
@@ -255,10 +313,10 @@ function toggleExpand(nodeId: string) {
   view.toggleExpandedNode(nodeId)
 }
 
-// 选中的 hit 行、标出的候选表行变了 → 滚到看得见(同一天走到第 2 次 hit、一族几十个成员时靠它)
-watch([markedHitIds, markedEventIds], () => {
+// 当前那次 hit、标出的候选表行变了 → 滚到看得见(按键在一族几十次 hit 里走时靠它)
+watch([focusedHitId, markedHitIds, markedEventIds], () => {
   nextTick(() => {
-    for (const sel of ['.hit-row--selected', '.attr-row--selected']) {
+    for (const sel of ['.hit-row--current', '.attr-row--selected']) {
       const el = sidebarEl.value?.querySelector(sel) as HTMLElement | null
       if (el && typeof el.scrollIntoView === 'function') el.scrollIntoView({ block: 'nearest' })
     }
@@ -480,12 +538,18 @@ function undoSwap() {
 .cell-clause em { color: #94a3b8; font-style: normal; }
 
 .hit-row {
-  display: flex; align-items: center; gap: 8px; padding: 4px 6px;
+  display: flex; flex-wrap: wrap; align-items: center; column-gap: 8px; row-gap: 0; padding: 4px 6px;
   border-radius: 4px; cursor: pointer; border: 1px solid transparent; margin-bottom: 2px;
 }
 .hit-row:hover { background: #f1f5f9; }
-.hit-row--selected { background: #fef9c3; border-color: #fbbf24; }
-.hit-span { font-size: 11px; color: #475569; flex: 1; }
+.hit-row--batch { box-shadow: inset 3px 0 0 #1a80ba; }      /* 选中牵出的 hit:左边中蓝竖条(浅底上看得见) */
+.hit-row--current { box-shadow: inset 0 0 0 2px #111111; }  /* 当前那次:黑粗边 */
+.hit-row--batch.hit-row--current { box-shadow: inset 3px 0 0 #1a80ba, inset 0 0 0 2px #111111; }
+/* 日期、ret、d 一行;区别另起一行、占满整行宽(不和 ret / d 抢宽度),不折行;整行都放不下时才截断,全文在行的悬停里 */
+.hit-span { font-size: 11px; color: #475569; white-space: nowrap; flex: 1; }
+.hit-diff { flex-basis: 100%; min-width: 0; font-size: 11px; color: #111111;
+            font-family: ui-monospace, "JetBrains Mono", "DejaVu Sans Mono", Consolas, monospace;
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .hit-ret { font-weight: 700; font-size: 12px; }
 .ret-pos { color: #16a34a; }
 .ret-neg { color: #dc2626; }

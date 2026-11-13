@@ -2,11 +2,11 @@
 // 数据源:tests/fixtures/apcx-instance-id-acceptance.json —— 新后端(instance_id 契约)
 // 对 APCX 单股重算的快照(与历史 scan 20260813T005540 同窗同参;旧 -instanced 文件为
 // 新契约前产物含 event_id/source_tag/class_id/instance_key,不兼容,故重算单存新文件)。
-// 断言(数据级 + 实例级入口 + 真共享待选择):
+// 断言(数据级 + 实例级入口 + 真共享):
 //   ① 数据级:事件行无 event_id/source_tag/class_id/instance_key 字段;instance_id 恒带 #idx;
 //      tb_293#0/#1 两实例(node_id='tb')各被一个 hit 的 node_index 精确引用
-//   ② 实例级入口:focusEvent('tb_293#0') → 直选 hit A;focusEvent('tb_293#1') → 直选 hit B;无待选择
-//   ③ 真共享 fixture:同一 instance_id 被两 hit 引用、买入日相同 → 直选第一次
+//   ② 实例级入口:focusEvent('tb_293#0') → 选中 #0,细框是 hit A;focusEvent('tb_293#1') → 选中 #1,细框是 hit B
+//   ③ 真共享 fixture:同一 instance_id 被两 hit 引用 → 选中这个实例,两次 hit 都画细框
 import { describe, it, expect, beforeEach } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
 import fs from 'node:fs'
@@ -86,32 +86,32 @@ describe('instance-id 真实数据验收(APCX · bb_v1)', () => {
     }
   })
 
-  it('② 实例级入口:focusEvent 分别直选对应 hit,不弹待选择', () => {
+  it('② 实例级入口:focusEvent 按实例认——选中的是点的那个实例,用到它的那次 hit 画细框(两个实例各对各的)', () => {
     const view = useViewStore()
     view.loadScanFile(scanJson)
     const m0 = hitsReferencing('tb_293#0')[0]
     const m1 = hitsReferencing('tb_293#1')[0]
 
     view.focusEvent('tb_293#0')
-    expect(view.focusedHitId).toBe(m0.hit_id)          // 直选 hit A(引用 #0)
-    expect(view.focusedInstanceId).toBe('tb_293#0')
-    expect(view.pendingDisambigInstanceId).toBeNull()       // 不再弹待选择
+    expect(view.selectedInstanceId).toBe('tb_293#0')
+    expect([...view.candidateHitIds]).toEqual([m0.hit_id])  // 用到 #0 的是 hit A
+    expect(view.focusedHitId).toBeNull()                    // 点 event 只选中 event
+    expect(view.pendingDisambigInstanceId).toBeNull()
 
     view.focusEvent('tb_293#1')
-    expect(view.focusedHitId).toBe(m1.hit_id)          // 直选 hit B(引用 #1)
-    expect(view.focusedInstanceId).toBe('tb_293#1')
+    expect(view.selectedInstanceId).toBe('tb_293#1')
+    expect([...view.candidateHitIds]).toEqual([m1.hit_id])  // 用到 #1 的是 hit B
     expect(view.pendingDisambigInstanceId).toBeNull()
   })
 
-  it('③ 真共享 fixture:同一 instance_id 被两 hit 引用;共享的就是买点(买入日相同)→ 直选第一次,不待选', () => {
-    // 点击统一规则:几次 hit 买入日完全一样 → 直选第一次、←/→ 换下一次;买入日不一样才待选
-    // (待选分支见 stores.step-focus.spec.ts「被几次 hit 共用的子段」)。
+  it('③ 真共享 fixture:同一 instance_id 被两 hit 引用;共享的就是买点(买入日相同)→ 选中这个实例,两次都画细框', () => {
     const view = useViewStore()
     view.loadScanFile(makeSharedFixture())
     view.focusEvent('tb_293#0')                             // 实例级入口,实例真共享,且就是 end_node(tb)
-    expect(view.pendingDisambigInstanceId).toBeNull()
-    expect(view.candidateHitIds.size).toBe(0)
-    expect(view.focusedHitId).toBe('m-shared-a')
-    expect(view.focusedInstanceId).toBe('tb_293#0')
+    expect(view.selectedInstanceId).toBe('tb_293#0')
+    expect([...view.candidateHitIds]).toEqual(['m-shared-a', 'm-shared-b'])
+    expect(view.focusedHitId).toBeNull()
+    expect(view.selInfo!.buys).toBe('293 ×1')               // 两次买在同一天(没有交易日表时写下标)
+    expect(view.selInfo!.hits!.head).toBe('×2')
   })
 })

@@ -1,5 +1,5 @@
 // compare 的反馈(spec 6.13「三种对象落成一段日期」「图上」):hits 行数据带的范围字段、族那一行的透明命中区、
-// 反馈带的几何 / 错行 / 配色 / 悬停文字;app 模式(不传 feedback)副图与原来逐项相同。
+// 反馈带的几何 / 错行 / 配色 / 悬停文字;app 模式(不传 feedback)没有反馈带,族那一行同样可点。
 import { describe, it, expect } from 'vitest'
 import { buildSubOption, computeEventData, makeRenderBracketLine, makeRenderFeedbackMark } from '../src/render/chart'
 import { computeSubGeometry, BAND_LANE_H, BAND_BOT_PAD, DIVIDER_GAP, FEEDBACK_ROW_H, USER_APP_GAP } from '../src/render/subGeometry'
@@ -91,14 +91,17 @@ describe('buildSubOption · 只在 compare 生成族命中区与反馈带', () =
   const geom = computeSubGeometry({ bracketLaneCount: 2, bandLaneCounts: [], feedbackRowCount: 1 })
   const api = { value: (i: number) => [0, 8, 0, 1][i] ?? 0, coord: ([x]: number[]) => [x * 10, 0], size: () => [10, 0] }
 
-  it('app 模式(不传 feedback):族底线整层不响应鼠标、没有反馈带系列', () => {
+  // 一族在 app 模式下也是能选中的东西:有买点的族同样垫命中区,点它选中这一族
+  it('app 模式(不传 feedback):有买点的族照样垫透明命中区、可点,没有买点的族不垫;没有反馈带系列', () => {
     const sub: any = buildSubOption(bars as any, b, geom, input(), 800)
     const lines = sub.series.find((s: any) => s.name === 'bracket-lines')
-    expect(lines.silent).toBe(true)
+    expect(lines.silent).toBe(false)
     expect(sub.series.some((s: any) => s.name === FEEDBACK_SERIES)).toBe(false)
     const g = lines.renderItem({ dataIndex: 0 }, api)
-    expect(g.silent).toBe(true)
-    expect(g.children.some((c: any) => c.style.fill === 'rgba(0,0,0,0.001)')).toBe(false)
+    expect(g.silent).toBeUndefined()
+    expect(g.children[0].style.fill).toBe('rgba(0,0,0,0.001)')
+    expect(g.children.slice(1).every((c: any) => c.silent === true)).toBe(true)
+    expect(lines.renderItem({ dataIndex: 1 }, api).silent).toBe(true)
   })
 
   it('compare:有买点的族垫一整行高的透明命中区(在格与 ▼ 下面),线不响应鼠标;没有买点的族不垫', () => {

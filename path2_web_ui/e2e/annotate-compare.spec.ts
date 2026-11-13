@@ -244,15 +244,15 @@ test.describe('compare / app 叠画(bo_only + 手写 mapping)', () => {
     await expect(page.getByTestId('focused-sample')).toHaveCount(0)
 
     // 复制指代:Shift+C 把当前指的东西写成一行,底部提示条把它显示几秒。什么都没选中 → 股票与 pattern;
-    // 选中轨名 → 那个 node;Esc 取消轨名的选中
+    // 选中轨名 → 那个 node 与它对到的特征名;Esc 取消轨名的选中
     const copied = () => page.evaluate(() => (window as any).__e2e.copyRef().lastText)
     await page.keyboard.press('Shift+C')
     await expect.poll(copied).toMatch(/^AAPL \S+$/)
     await expect(page.locator('.toast')).toContainText('AAPL')
     await page.evaluate(() => (window as any).__e2e.copyRef().selectNode('bo'))
     await page.keyboard.press('Shift+C')
-    await expect.poll(copied).toMatch(/^AAPL \S+ node bo$/)
-    await expect(page.locator('.toast')).toContainText('node bo')
+    await expect.poll(copied).toMatch(/^AAPL \S+ node bo 突破$/)
+    await expect(page.locator('.toast')).toContainText('node bo 突破')
     await page.keyboard.press('Escape')
     expect(await page.evaluate(() => (window as any).__e2e.copyRef().selectedNode)).toBeNull()
 

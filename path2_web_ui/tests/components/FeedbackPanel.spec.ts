@@ -3,7 +3,9 @@
 // 以前存下的带 answer / dag 的记录照样打得开,面板上不出这两样;
 // 已有记录多 delete、日期范围的悬停写怎么改起止,pos sample inside、app 还在跑时写 app running;
 // 按键(Enter 保存、Shift+Enter 不截、Esc 只关面板、输入法组字不截、焦点在按钮上 Enter 也是保存);
-// 点面板外就关(每次打开后隔一轮才挂上)、不抢焦点。后端换成内存里的假实现(同 stores.feedback.spec.ts)。
+// 点面板外就关(每次打开后隔一轮才挂上;显示栏的 feedback 按钮除外)、不抢焦点;
+// 位置(默认靠在竖带旁、底边贴住显示栏上沿;按住页头拖动、整块留在视口里;重新打开回默认位置;没拖过时跟着 anchor 走)。
+// 后端换成内存里的假实现(同 stores.feedback.spec.ts)。
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { mount, flushPromises, type VueWrapper } from '@vue/test-utils'
 import { setActivePinia, createPinia } from 'pinia'
@@ -63,6 +65,7 @@ vi.mock('../../src/api', async (orig) => {
 })
 
 import FeedbackPanel from '../../src/components/FeedbackPanel.vue'
+import { PANEL_BAR_GAP, PANEL_GAP, type PanelAnchor } from '../../src/components/feedbackPanel'
 import { useAnnotationStore } from '../../src/stores/annotation'
 import { useViewStore } from '../../src/stores/view'
 import { useFeedbackStore } from '../../src/stores/feedback'
@@ -108,13 +111,12 @@ async function setup(read: AnnRead = annRead()) {
   return { ann, view, fb, appLink }
 }
 
-const AT = { x: 100, y: 200 }
 const RANGE = { symbol: 'AAA', start: '2025-01-08', end: '2025-01-10', target: 'range' as const }
 const featureOf = (n: string) => (n === 'step' ? '一步' : null)
 
 let w: VueWrapper<any> | null = null
-async function mountPanel() {
-  w = mount(FeedbackPanel, { props: { featureOf }, attachTo: document.body })
+async function mountPanel(anchor: PanelAnchor | null = null) {
+  w = mount(FeedbackPanel, { props: { featureOf, anchor }, attachTo: document.body })
   await flushPromises()
   return w
 }
@@ -141,7 +143,7 @@ afterEach(() => {
 describe('FeedbackPanel · 样子', () => {
   it('新范围:页头写股票、范围、target;一打开就有 nodes 与 note 两行和 save,没有答案按钮、没有 dag;不抢焦点', async () => {
     const { fb } = await setup()
-    fb.open(AT, RANGE)
+    fb.open(RANGE)
     await mountPanel()
     expect(w!.get('[data-testid="feedback-symbol"]').text()).toBe('AAA')
     expect(w!.get('[data-testid="feedback-span"]').text()).toBe('2025-01-08 – 2025-01-10')
@@ -166,7 +168,7 @@ describe('FeedbackPanel · 样子', () => {
 
   it('固定文字的悬停:nodes 说点它是什么意思,note 说必填', async () => {
     const { fb } = await setup()
-    fb.open(AT, RANGE)
+    fb.open(RANGE)
     await mountPanel()
     const keys = w!.findAll('.fb-kv > .ann-k')
     expect(keys[0].attributes('title')).toBe("where the problem sits: nodes the app's buys here are bound to, and their "
@@ -177,7 +179,7 @@ describe('FeedbackPanel · 样子', () => {
 
   it('node 按钮:范围里买的 hit 绑定的 node 及子 node,文字 = node 名 + 特征名,悬停写 mapping 原话;可多选;点上或点掉后光标进 note', async () => {
     const { fb } = await setup()
-    fb.open(AT, RANGE)
+    fb.open(RANGE)
     await mountPanel()
     const btns = () => w!.findAll('[data-testid="feedback-node"]')
     expect(btns().map(s => s.attributes('data-node'))).toEqual(['plateau', 'step', 'today'])
@@ -205,7 +207,7 @@ describe('FeedbackPanel · 样子', () => {
 
   it('只点 node 不写 note:存不了,标出缺 note;写了就能存,值里没有 answer、dag', async () => {
     const { fb } = await setup()
-    fb.open(AT, RANGE)
+    fb.open(RANGE)
     await mountPanel()
     await w!.findAll('[data-testid="feedback-node"]')[1].trigger('click')
     await w!.get('[data-testid="feedback-save"]').trigger('click')
@@ -226,7 +228,7 @@ describe('FeedbackPanel · 样子', () => {
 
   it('一个 node 都不点、只写 note:能存,值里没有 nodes', async () => {
     const { fb } = await setup()
-    fb.open(AT, RANGE)
+    fb.open(RANGE)
     await mountPanel()
     await w!.get('[data-testid="feedback-note"]').setValue('整体不像')
     await w!.get('[data-testid="feedback-save"]').trigger('click')
@@ -240,7 +242,7 @@ describe('FeedbackPanel · 样子', () => {
     const r = withRecord()
     r.state.charts[0].feedback![0] = { ...r.state.charts[0].feedback![0], start: '2025-01-02', end: '2025-01-03' } as any
     const { fb } = await setup(r)
-    fb.open(AT, { id: 'f-pc-1' })
+    fb.open({ id: 'f-pc-1' })
     await mountPanel()
     expect(w!.findAll('[data-testid="feedback-node"]')).toHaveLength(0)
     const row = w!.get('[data-testid="feedback-nodes"]')
@@ -250,7 +252,7 @@ describe('FeedbackPanel · 样子', () => {
 
   it('note 是多行文本区(长文字换行),testid 不变', async () => {
     const { fb } = await setup()
-    fb.open(AT, RANGE)
+    fb.open(RANGE)
     await mountPanel()
     const note = w!.get('[data-testid="feedback-note"]')
     expect(note.element.tagName).toBe('TEXTAREA')
@@ -261,7 +263,7 @@ describe('FeedbackPanel · 样子', () => {
 
   it('条件都满足却没存成:兜底写 not saved;草稿一改就撤掉', async () => {
     const { fb, ann } = await setup()
-    fb.open(AT, RANGE)
+    fb.open(RANGE)
     await mountPanel()
     await w!.get('[data-testid="feedback-note"]').setValue('还在跌')
     const spy = vi.spyOn(ann, 'saveFeedback').mockReturnValue(null)
@@ -274,7 +276,7 @@ describe('FeedbackPanel · 样子', () => {
 
   it('补齐缺的东西之后不挂 not saved', async () => {
     const { fb } = await setup()
-    fb.open(AT, RANGE)
+    fb.open(RANGE)
     await mountPanel()
     await w!.get('[data-testid="feedback-save"]').trigger('click')            // 缺 note:没存
     expect(has('feedback-problems')).toBe(true)
@@ -285,7 +287,7 @@ describe('FeedbackPanel · 样子', () => {
 
   it('已有记录(以前存下的 neg + note):预填理由,多 delete,日期范围悬停写怎么改起止;范围里有正样本时写 pos sample inside;面板上没有答案', async () => {
     const { fb } = await setup(withRecord())
-    fb.open(AT, { id: 'f-pc-1' })
+    fb.open({ id: 'f-pc-1' })
     await mountPanel()
     expect(has('feedback-delete')).toBe(true)
     expect(w!.findAll('.ann-hdr:not(.fb-foot) button').map(b => b.text())).toEqual(['delete'])   // 页头只有 delete
@@ -306,7 +308,7 @@ describe('FeedbackPanel · 样子', () => {
                                        nodes: ['step', 'gone_node'] } as any
     r.revs.feedback = { 'f-pc-1': 'r1' }
     const { fb } = await setup(r)
-    fb.open(AT, { id: 'f-pc-1' })
+    fb.open({ id: 'f-pc-1' })
     await mountPanel()
     const btns = w!.findAll('[data-testid="feedback-node"]')
     expect(btns.map(b => [b.attributes('data-node'), b.classes().includes('on'), b.classes().includes('gone')]))
@@ -334,7 +336,7 @@ describe('FeedbackPanel · 样子', () => {
                                        nodes: ['step'], dag: true } as any
     r.revs.feedback = { 'f-pc-1': 'r1' }
     const { fb } = await setup(r)
-    fb.open(AT, { id: 'f-pc-1' })
+    fb.open({ id: 'f-pc-1' })
     await mountPanel()
     expect(has('feedback-dag')).toBe(false)
     expect(w!.text()).not.toMatch(/answer|off_pattern|dag|undefined/)
@@ -350,7 +352,7 @@ describe('FeedbackPanel · 样子', () => {
 
   it('delete:删掉那条并关面板', async () => {
     const { fb } = await setup(withRecord())
-    fb.open(AT, { id: 'f-pc-1' })
+    fb.open({ id: 'f-pc-1' })
     await mountPanel()
     await w!.get('[data-testid="feedback-delete"]').trigger('click')
     await settle()
@@ -364,7 +366,7 @@ describe('FeedbackPanel · 样子', () => {
     const { fb, view, appLink } = await setup(withRecord())
     expect(view.linkedRun).toBeNull()
     expect(appLink.runStatus).toBe('loading')
-    fb.open(AT, { id: 'f-pc-1' })
+    fb.open({ id: 'f-pc-1' })
     await mountPanel()
     expect(w!.get('[data-testid="feedback-blocked"]').text()).toBe('app running')
     key('Enter')
@@ -383,7 +385,7 @@ describe('FeedbackPanel · issue', () => {
 
   it('一打开就列出已有的 issue(排在 nodes 之上);点一条:note 填好、那条加黑边,不夺焦点、不动焦点;再点不再共享', async () => {
     const { fb } = await setup(withRecord())
-    fb.open(AT, RANGE2)
+    fb.open(RANGE2)
     await mountPanel()
     expect(w!.findAll('.fb-kv > .ann-k').map(k => k.text())).toEqual(['issues', 'nodes', 'note'])
     expect(w!.findAll('.fb-kv > .ann-k')[0].attributes('title')).toBe('issues already written under this pattern, '
@@ -415,7 +417,7 @@ describe('FeedbackPanel · issue', () => {
       end: '2025-01-07', target: 'point', source: 'picked', answer: 'off_pattern', note: '关系不对',
       nodes: ['step', 'today'], dag: true } as any)
     const { fb } = await setup(r)
-    fb.open(AT, RANGE2)
+    fb.open(RANGE2)
     await mountPanel()
     expect(issues().map(b => b.attributes('data-key'))).toEqual(['f-pc-2', 'f-pc-1'])      // 最近用过的在前
     expect(issues()[0].findAll('.fb-chip').map(c => c.text())).toEqual(['step', 'today'])
@@ -427,7 +429,7 @@ describe('FeedbackPanel · issue', () => {
 
   it('挑一条后直接 Enter:两处带同一个 issue 值(原来那条同批补上,并改写成不带 answer 的)', async () => {
     const { fb } = await setup(withRecord())
-    fb.open(AT, RANGE2)
+    fb.open(RANGE2)
     await mountPanel()
     await issues()[0].trigger('click')
     expect(key('Enter')).toBe(false)
@@ -440,7 +442,7 @@ describe('FeedbackPanel · issue', () => {
 
   it('挑了又改字:save 换成 shared by n places + all / only this;Enter 不存、提示要选;only this 只存这一处', async () => {
     const { fb } = await setup(withRecord())
-    fb.open(AT, RANGE2)
+    fb.open(RANGE2)
     await mountPanel()
     await issues()[0].trigger('click')
     await w!.get('[data-testid="feedback-note"]').setValue('太高了,量也不够')
@@ -470,7 +472,7 @@ describe('FeedbackPanel · issue', () => {
 
   it('挑了又改 node(note 没动):也要问', async () => {
     const { fb } = await setup(withRecord())
-    fb.open(AT, RANGE2)
+    fb.open(RANGE2)
     await mountPanel()
     await issues()[0].trigger('click')
     expect(has('feedback-share')).toBe(false)
@@ -482,7 +484,7 @@ describe('FeedbackPanel · issue', () => {
 
   it('all:各处同一批改掉(以前存下的那处一并改写成不带 answer 的);改回原样后那一行消失、save 回来', async () => {
     const { fb } = await setup(withRecord())
-    fb.open(AT, RANGE2)
+    fb.open(RANGE2)
     await mountPanel()
     await issues()[0].trigger('click')
     const note = w!.get('[data-testid="feedback-note"]')
@@ -502,7 +504,7 @@ describe('FeedbackPanel · issue', () => {
 
   it('缺东西时点 all 也不存,照常标出缺什么', async () => {
     const { fb } = await setup(withRecord())
-    fb.open(AT, RANGE2)
+    fb.open(RANGE2)
     await mountPanel()
     await issues()[0].trigger('click')
     await w!.findAll('[data-testid="feedback-node"]')[0].trigger('click')    // 改了 node:要问
@@ -521,7 +523,7 @@ describe('FeedbackPanel · issue', () => {
                                        nodes: ['step'] } as any
     r.revs.feedback = { 'f-pc-1': 'r1' }
     const { fb } = await setup(r)
-    fb.open(AT, RANGE2)
+    fb.open(RANGE2)
     await mountPanel()
     expect(issues()[0].text()).toBe('stepplaces 1')               // 没写理由:只有 node 与处数
     await issues()[0].trigger('click')
@@ -547,7 +549,7 @@ describe('FeedbackPanel · issue', () => {
 describe('FeedbackPanel · 按键', () => {
   it('Enter 保存(写一条 range 反馈)并关面板;输入法组字中的 Enter 不截', async () => {
     const { fb, ann } = await setup()
-    fb.open(AT, RANGE)
+    fb.open(RANGE)
     await mountPanel()
     const note = w!.get('[data-testid="feedback-note"]')
     await note.setValue('还在跌')
@@ -563,9 +565,28 @@ describe('FeedbackPanel · 按键', () => {
     expect(ann.tool).toBeNull()
   })
 
+  it('按住 Enter 的自动重复:截下(不往下传)但不保存,面板留着;松开再按一下才保存', async () => {
+    const { fb } = await setup(withRecord())                // 已有的一条,理由写着:按一下 Enter 就能存
+    fb.open({ id: 'f-pc-1' })
+    await mountPanel()
+    const bubbled = vi.fn()
+    window.addEventListener('keydown', bubbled)
+    for (let i = 0; i < 3; i++) expect(key('Enter', { repeat: true })).toBe(false)     // 被 preventDefault
+    window.removeEventListener('keydown', bubbled)
+    expect(bubbled).not.toHaveBeenCalled()
+    await settle()
+    expect(fb.panel).not.toBeNull()
+    expect(fake.batches).toEqual([])
+    expect(has('feedback-problems')).toBe(false)            // 不算「试过保存」
+    expect(key('Enter')).toBe(false)
+    await settle()
+    expect(fb.panel).toBeNull()
+    expect(fake.batches).toHaveLength(1)
+  })
+
   it('Shift+Enter 不截(在 note 里换行),不保存;Enter 才保存', async () => {
     const { fb } = await setup()
-    fb.open(AT, RANGE)
+    fb.open(RANGE)
     await mountPanel()
     const note = w!.get('[data-testid="feedback-note"]')
     await note.setValue('还在跌')
@@ -580,7 +601,7 @@ describe('FeedbackPanel · 按键', () => {
 
   it('焦点在面板的按钮上时 Enter 也是保存(浏览器默认的「点按钮」被截下)', async () => {
     const { fb } = await setup()
-    fb.open(AT, RANGE)
+    fb.open(RANGE)
     await mountPanel()
     await w!.get('[data-testid="feedback-note"]').setValue('整体不像')
     await w!.findAll('[data-testid="feedback-node"]')[0].trigger('click')
@@ -599,7 +620,7 @@ describe('FeedbackPanel · 按键', () => {
   it('Esc 第一下只关面板:不熄工具、不往下传;组字中的 Esc 不截', async () => {
     const { fb, ann } = await setup()
     ann.tool = 'feedback'
-    fb.open(AT, RANGE)
+    fb.open(RANGE)
     await mountPanel()
     expect(key('Escape', { isComposing: true })).toBe(true)
     expect(fb.panel).not.toBeNull()
@@ -614,7 +635,7 @@ describe('FeedbackPanel · 按键', () => {
 
   it('←/→ 不截;焦点在面板外的输入框里时 Enter 不截', async () => {
     const { fb } = await setup()
-    fb.open(AT, RANGE)
+    fb.open(RANGE)
     await mountPanel()
     expect(key('ArrowLeft')).toBe(true)
     const outside = document.createElement('input')
@@ -624,31 +645,233 @@ describe('FeedbackPanel · 按键', () => {
   })
 })
 
+// 点面板外是延后关:按下派发完(下一轮定时器)才关,图上的手势接这一下时面板还开着
+const tick = () => new Promise(r => setTimeout(r, 0))
+
 describe('FeedbackPanel · 点面板外就关', () => {
   it('打开后同一轮里的按下(打开它的那次点击、拖选松手后的 click)不关;之后点面板外关、点面板里不关', async () => {
     const { fb } = await setup()
-    fb.open(AT, RANGE)
-    w = mount(FeedbackPanel, { props: { featureOf }, attachTo: document.body })   // 不等:同一轮里接着按下
+    fb.open(RANGE)
+    w = mount(FeedbackPanel, { props: { featureOf, anchor: null }, attachTo: document.body })   // 不等:同一轮里接着按下
     press(document.body)
     press(document.body, 'click')
+    await tick()
     expect(fb.panel).not.toBeNull()
-    await new Promise(r => setTimeout(r, 0))
     press(w!.get('[data-testid="feedback-note"]').element)
+    await tick()
     expect(fb.panel).not.toBeNull()
     press(document.body)
+    await tick()
     expect(fb.panel).toBeNull()
+  })
+
+  it('按下面板外是延后关:按下那一刻面板还开着,下一轮才关', async () => {
+    const { fb } = await setup()
+    fb.open(RANGE)
+    await mountPanel()
+    await tick()
+    let during: unknown = 'unset'
+    const probe = () => { during = fb.panel }                // 冒泡阶段(在面板的捕获监听之后)看一眼
+    document.body.addEventListener('mousedown', probe)
+    press(document.body)
+    document.body.removeEventListener('mousedown', probe)
+    expect(during).not.toBeNull()
+    expect(fb.panel).not.toBeNull()
+    await tick()
+    expect(fb.panel).toBeNull()
+  })
+
+  it('按下面板外之后、关之前又开了新面板(opens 变了):新面板不被关', async () => {
+    const { fb } = await setup()
+    fb.open(RANGE)
+    await mountPanel()
+    await tick()
+    press(document.body)
+    fb.open({ symbol: 'AAA', start: '2025-01-09', end: '2025-01-09', target: 'point' })
+    await tick()
+    await tick()
+    expect(fb.panel).toMatchObject({ target: 'point', start: '2025-01-09' })
   })
 
   it('关旧开新(组件不卸载):新开的那一下同样不被外部点击关掉,之后照常', async () => {
     const { fb } = await setup()
-    fb.open(AT, RANGE)
+    fb.open(RANGE)
+    await mountPanel()
+    await tick()
+    fb.open({ symbol: 'AAA', start: '2025-01-09', end: '2025-01-09', target: 'point' })
+    press(document.body)
+    await tick()
+    expect(fb.panel?.target).toBe('point')
+    press(document.body)
+    await tick()
+    expect(fb.panel).toBeNull()
+  })
+})
+
+describe('FeedbackPanel · 点外面就关的例外', () => {
+  it('按下显示栏的 feedback 按钮(带 data-feedback-opener)不关:开关由按钮自己管', async () => {
+    const { fb } = await setup()
+    fb.open(RANGE)
     await mountPanel()
     await new Promise(r => setTimeout(r, 0))
-    fb.open({ x: 300, y: 300 }, { symbol: 'AAA', start: '2025-01-09', end: '2025-01-09', target: 'point' })
+    const opener = document.createElement('button')
+    opener.setAttribute('data-feedback-opener', '')
+    const inner = document.createElement('span')
+    opener.appendChild(inner)
+    document.body.appendChild(opener)
+    press(opener)
+    press(inner)                                        // 按在按钮里面的字上也一样
+    await tick()
+    expect(fb.panel).not.toBeNull()
     press(document.body)
-    expect(fb.panel?.target).toBe('point')
-    await new Promise(r => setTimeout(r, 0))
-    press(document.body)
+    await tick()
     expect(fb.panel).toBeNull()
+  })
+})
+
+describe('FeedbackPanel · 位置与拖动', () => {
+  // jsdom 不排版:面板量出来的尺寸由这里给(300×200);视口是 jsdom 默认的 1024×768
+  const SIZE = { w: 300, h: 200 }
+  const VW = window.innerWidth
+  const VH = window.innerHeight
+  const ANCHOR: PanelAnchor = { band: { left: 400, right: 420 }, bottom: 600, left: 100, right: 1000 }
+  const DEFAULT = { x: 420 + PANEL_GAP, y: 600 - PANEL_BAR_GAP - SIZE.h }
+  let rectSpy: ReturnType<typeof vi.spyOn> | null = null
+  beforeEach(() => {
+    const orig = HTMLElement.prototype.getBoundingClientRect
+    rectSpy = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
+      if (!this.classList.contains('fb-panel')) return orig.call(this)
+      const x = parseFloat(this.style.left) || 0
+      const y = parseFloat(this.style.top) || 0
+      return { x, y, left: x, top: y, right: x + SIZE.w, bottom: y + SIZE.h, width: SIZE.w, height: SIZE.h,
+               toJSON: () => ({}) } as DOMRect
+    })
+  })
+  afterEach(() => { rectSpy?.mockRestore(); rectSpy = null })
+
+  const posOf = () => {
+    const el = w!.get('[data-testid="feedback-panel"]').element as HTMLElement
+    return { x: parseFloat(el.style.left), y: parseFloat(el.style.top) }
+  }
+  const hdr = () => w!.get('[data-testid="feedback-drag"]').element
+  const mouse = (target: EventTarget, type: string, x: number, y: number, button = 0) => {
+    const e = new MouseEvent(type, { bubbles: true, cancelable: true, clientX: x, clientY: y, button })
+    target.dispatchEvent(e)
+    return e
+  }
+  /** 按住页头从 (x0, y0) 拖到 (x1, y1) 再松开 */
+  async function drag(x0: number, y0: number, x1: number, y1: number) {
+    const down = mouse(hdr(), 'mousedown', x0, y0)
+    mouse(window, 'mousemove', x1, y1)
+    mouse(window, 'mouseup', x1, y1)
+    await flushPromises()
+    return down
+  }
+
+  it('默认落点:靠在竖带右边、底边贴住显示栏上沿', async () => {
+    const { fb } = await setup()
+    fb.open(RANGE)
+    await mountPanel(ANCHOR)
+    await flushPromises()
+    expect(posOf()).toEqual(DEFAULT)
+  })
+
+  it('量不出落点(anchor 为 null):落在视口底部正中', async () => {
+    const { fb } = await setup()
+    fb.open(RANGE)
+    await mountPanel(null)
+    await flushPromises()
+    expect(posOf()).toEqual({ x: (VW - SIZE.w) / 2, y: VH - PANEL_BAR_GAP - SIZE.h })
+  })
+
+  it('按住页头拖:面板跟着走、不关、不夺焦点(按下被 preventDefault);松开后再动鼠标不跟', async () => {
+    const { fb } = await setup()
+    fb.open(RANGE)
+    await mountPanel(ANCHOR)
+    await flushPromises()
+    await new Promise(r => setTimeout(r, 0))            // 点外面就关的监听已挂上
+    const down = await drag(DEFAULT.x + 10, DEFAULT.y + 5, DEFAULT.x + 10 - 150, DEFAULT.y + 5 - 100)
+    expect(down.defaultPrevented).toBe(true)
+    expect(posOf()).toEqual({ x: DEFAULT.x - 150, y: DEFAULT.y - 100 })
+    expect(fb.panel).not.toBeNull()
+    expect(document.activeElement).toBe(document.body)
+    mouse(window, 'mousemove', 10, 10)
+    await flushPromises()
+    expect(posOf()).toEqual({ x: DEFAULT.x - 150, y: DEFAULT.y - 100 })
+  })
+
+  it('拖动时整块留在视口里', async () => {
+    const { fb } = await setup()
+    fb.open(RANGE)
+    await mountPanel(ANCHOR)
+    await flushPromises()
+    await drag(DEFAULT.x, DEFAULT.y, DEFAULT.x - 5000, DEFAULT.y - 5000)
+    expect(posOf()).toEqual({ x: 0, y: 0 })
+    await drag(0, 0, 5000, 5000)
+    expect(posOf()).toEqual({ x: VW - SIZE.w, y: VH - SIZE.h })
+  })
+
+  it('按在页头的 delete 上、或用右键按下:不拖', async () => {
+    const { fb } = await setup(withRecord())
+    fb.open({ id: 'f-pc-1' })
+    await mountPanel(ANCHOR)
+    await flushPromises()
+    const del = w!.get('[data-testid="feedback-delete"]').element
+    mouse(del, 'mousedown', DEFAULT.x + 280, DEFAULT.y + 5)
+    mouse(window, 'mousemove', DEFAULT.x + 100, DEFAULT.y - 100)
+    mouse(window, 'mouseup', DEFAULT.x + 100, DEFAULT.y - 100)
+    await flushPromises()
+    expect(posOf()).toEqual(DEFAULT)
+    const right = mouse(hdr(), 'mousedown', DEFAULT.x + 10, DEFAULT.y + 5, 2)
+    mouse(window, 'mousemove', DEFAULT.x - 100, DEFAULT.y - 100)
+    mouse(window, 'mouseup', DEFAULT.x - 100, DEFAULT.y - 100)
+    await flushPromises()
+    expect(right.defaultPrevented).toBe(false)
+    expect(posOf()).toEqual(DEFAULT)
+    expect(fb.panel).not.toBeNull()
+  })
+
+  it('拖到哪只管这一次:重新打开(关旧开新)回到默认位置', async () => {
+    const { fb } = await setup()
+    fb.open(RANGE)
+    await mountPanel(ANCHOR)
+    await flushPromises()
+    await drag(DEFAULT.x, DEFAULT.y, DEFAULT.x - 200, DEFAULT.y - 200)
+    expect(posOf()).not.toEqual(DEFAULT)
+    fb.open({ symbol: 'AAA', start: '2025-01-09', end: '2025-01-09', target: 'point' })
+    await flushPromises()
+    expect(posOf()).toEqual(DEFAULT)
+  })
+
+  it('重新打开时正拖着:拖动作废,之后动鼠标不跟', async () => {
+    const { fb } = await setup()
+    fb.open(RANGE)
+    await mountPanel(ANCHOR)
+    await flushPromises()
+    mouse(hdr(), 'mousedown', DEFAULT.x, DEFAULT.y)
+    mouse(window, 'mousemove', DEFAULT.x - 50, DEFAULT.y - 50)
+    fb.open({ symbol: 'AAA', start: '2025-01-09', end: '2025-01-09', target: 'point' })
+    await flushPromises()
+    mouse(window, 'mousemove', DEFAULT.x - 300, DEFAULT.y - 300)
+    await flushPromises()
+    expect(posOf()).toEqual(DEFAULT)
+  })
+
+  it('没拖过:anchor 变了(竖带、显示栏挪了)跟着回到新的默认位置;拖过就不跟', async () => {
+    const { fb } = await setup()
+    fb.open(RANGE)
+    await mountPanel(ANCHOR)
+    await flushPromises()
+    const moved: PanelAnchor = { ...ANCHOR, band: { left: 500, right: 540 }, bottom: 650 }
+    await w!.setProps({ anchor: moved })
+    await flushPromises()
+    expect(posOf()).toEqual({ x: 540 + PANEL_GAP, y: 650 - PANEL_BAR_GAP - SIZE.h })
+    const from = posOf()
+    await drag(from.x, from.y + 10, from.x - 200, from.y - 90)     // 往左上拖 (200, 100)
+    const at = posOf()
+    expect(at).toEqual({ x: from.x - 200, y: from.y - 100 })
+    await w!.setProps({ anchor: ANCHOR })
+    await flushPromises()
+    expect(posOf()).toEqual(at)
   })
 })

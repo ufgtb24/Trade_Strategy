@@ -243,7 +243,8 @@ describe('SidebarResultList · symbol search UI', () => {
     w.unmount()
   })
 
-  it('ArrowDown while search input focused still cycles selected symbol', async () => {
+  // 切股票的键是 PageDown / PageUp(搜索框聚焦时也是);↑ / ↓ 归图上同一天那根轴,这里不接
+  it('PageDown / PageUp while search input focused still cycles selected symbol; ArrowDown does not', async () => {
     const view = useViewStore()
     view.loadScanFile(makeMultiFile(['AA', 'AAPL', 'BAA']))
     view.selectSymbol('AA')
@@ -253,7 +254,43 @@ describe('SidebarResultList · symbol search UI', () => {
     input.focus()
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }))
     await flushPromises()
+    expect(view.symbol).toBe('AA')
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'PageDown', bubbles: true }))
+    await flushPromises()
     expect(view.symbol).toBe('AAPL')
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'PageUp', bubbles: true }))
+    await flushPromises()
+    expect(view.symbol).toBe('AA')
+    w.unmount()
+  })
+
+  // 多行输入框(反馈的 note)里 PageUp / PageDown 是翻它自己的字、下拉框里是翻它的选项:不切股票;单行的搜索框里照样切
+  it('焦点在多行输入框或下拉框里按 PageDown / PageUp 不切股票;在单行搜索框里照样切', async () => {
+    const view = useViewStore()
+    view.loadScanFile(makeMultiFile(['AA', 'AAPL', 'BAA']))
+    view.selectSymbol('AAPL')
+    const w = mount(SidebarResultList, { attachTo: document.body })
+    await flushPromises()
+    const note = document.createElement('textarea')
+    const pick = document.createElement('select')
+    document.body.append(note, pick)
+    for (const el of [note, pick]) {
+      el.focus()
+      for (const key of ['PageDown', 'PageUp']) {
+        const e = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true })
+        el.dispatchEvent(e)
+        await flushPromises()
+        expect(view.symbol).toBe('AAPL')
+        expect(e.defaultPrevented).toBe(false)       // 键留给它自己翻
+      }
+    }
+    const input = w.get('[data-testid="symbol-search"]').element as HTMLInputElement
+    input.focus()
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'PageDown', bubbles: true, cancelable: true }))
+    await flushPromises()
+    expect(view.symbol).toBe('BAA')
+    note.remove()
+    pick.remove()
     w.unmount()
   })
 })

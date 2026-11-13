@@ -1,7 +1,7 @@
 <template>
   <div v-if="p" ref="root" class="fb-panel" data-testid="feedback-panel" :data-target="p.target"
        :data-editing="p.editingId ?? ''" :style="{ left: `${pos.x}px`, top: `${pos.y}px` }">
-    <div class="ann-hdr">
+    <div class="ann-hdr fb-drag" data-testid="feedback-drag" title="drag to move the panel" @mousedown="onHdrDown">
       <span class="ann-biz" data-testid="feedback-symbol" title="symbol">{{ p.symbol }}</span>
       <span class="ann-sym" data-testid="feedback-span" :title="SPAN_HINT">{{ spanText }}</span>
       <span class="ann-sym" data-testid="feedback-target" :title="TARGET_HINT[p.target]">{{ p.target }}</span>
@@ -82,9 +82,13 @@
 
 <script setup lang="ts">
 /**
- * 反馈(spec 6.13)的作答面板:compare 下点 ▼ / 点一族 / 点反馈记号 / 用 feedback 工具拖一段后,浮在点击处
- * (拖选时是松开处),越出视口就翻边。挂在 KlineChart.vue,状态全在 stores/feedback.ts 的 panel(这里只是它的样子)。
+ * 反馈(spec 6.13)的作答面板:compare 下对选中的那一个按 Enter 或点显示栏的 feedback、用 feedback 工具拖一段、
+ * 侧栏卡片点 edit 后打开。挂在 KlineChart.vue,状态全在 stores/feedback.ts 的 panel(这里只是它的样子)。
  *
+ * - 位置:默认横向靠在它管的那段日期的竖带旁边(不压竖带)、底边贴住副图上方显示栏的上沿,显示栏和副图都露着
+ *   (落点要用的竖带、显示栏的像素由 KlineChart.vue 量好给 anchor,算法见 ./feedbackPanel.ts 的 placePanel);
+ *   面板变高时往上长。按住页头空白处可以把面板拖走(看被它盖住的成交量等),整块留在视口里;拖到哪只管这一次打开,
+ *   下次打开回到默认位置。拖动不关面板、不夺焦点;
  * - 页头:股票、日期范围、target(point / family / range);改一条已有的反馈时多 delete。改起止不在面板里:
  *   点亮 feedback 工具、拖选中那条竖带的左右边(日期范围的悬停写着这句;stores/feedback.ts 的 resize);
  * - 改一条已有的反馈时页头下多一行 status:当前 app 在这段里还买不买(matched / unmatched,还没取到写灰字
@@ -110,8 +114,10 @@
  * - 按键:开着时在 window 捕获阶段截下 Enter(保存;焦点在面板按钮上、在 note 里也是保存)与 Esc(只关面板:
  *   不清选中、不熄工具),截下后不再往下传;Shift+Enter 不截(在 note 里换行);输入法组字中不截
  *   (判定见 ./feedbackPanel.ts 的 panelKeyAction);
- * - 点面板外就关(不存):document 上按下鼠标即关。监听在每次打开后 setTimeout(0) 才挂上,打开它的那次点击、
- *   拖选松手后浏览器补派的 click 都碰不到它;点到另一个 ▼ / 族 / 记号时先关旧的、图表的点击再开新的;
+ * - 点面板外就关(不存):document 上按下鼠标即关——等这次按下派发完才关,图上的手势接这一下时面板还算开着
+ *   (点图上别的东西也是关:点只选中,不开新的)。监听在每次打开后
+ *   setTimeout(0) 才挂上,打开它的那次点击、拖选松手后浏览器补派的 click 都碰不到它;显示栏的 feedback 按钮
+ *   (data-feedback-opener)除外,它自己管开关;
  * - 保存不了时标出缺什么(试过保存之后才标);app 还在跑(这只股票的现算结果还没回来)、没跑成等存不进去的原因
  *   随时写在面板里,免得按了 Enter 看不出为什么没存。条件都满足却没存成时兜底写 not saved,草稿一改就撤掉
  *   (否则补齐缺的东西之后它会一直挂着)。
@@ -124,11 +130,15 @@ import { useAppLinkStore } from '../stores/appLink'
 import type { FeedbackTarget } from '../annotate/model'
 import { tagHint, type FeedbackProblem, type IssueChoice } from '../annotate/feedback'
 import { UNMAPPED_EDGE } from '../render/annotateLanes'
-import { NOTE_MAX_H, noteHeight, panelKeyAction, placePanel, type Anchor, type Pt } from './feedbackPanel'
+import {
+  clampToViewport, NOTE_MAX_H, noteHeight, panelKeyAction, placePanel, type PanelAnchor, type Pt, type Size,
+} from './feedbackPanel'
 
-defineProps<{
+const props = defineProps<{
   /** node 对到的用户特征名(同 band 表头里写的);没有为 null */
   featureOf: (node: string) => string | null
+  /** 默认落点要用的竖带与显示栏(视口坐标);量不出来时为 null,面板落在视口底部正中 */
+  anchor: PanelAnchor | null
 }>()
 const emit = defineEmits<{
   /** 鼠标移到某个 node 按钮上(给出 node),或移开(null):父组件把对应 band 加亮 */
@@ -226,16 +236,41 @@ function trySave(choice: IssueChoice | null = null) {
 }
 
 
-// ── 位置:浮在点击处,越出视口就翻边 ──
+// ── 位置:默认靠在竖带旁、贴住显示栏上沿;拖过就停在拖到的地方 ──
 const root = ref<HTMLElement | null>(null)
 const noteEl = ref<HTMLTextAreaElement | null>(null)
-const at = (): Anchor => ({ x: p.value?.x ?? 0, y: p.value?.y ?? 0, yUp: p.value?.yUp })
-const viewport = () => ({ w: window.innerWidth, h: window.innerHeight })
-const pos = ref<Pt>(placePanel(at(), { w: 0, h: 0 }, viewport()))
+const viewport = (): Size => ({ w: window.innerWidth, h: window.innerHeight })
+const anchorOr = (): PanelAnchor => props.anchor ?? { band: null, bottom: window.innerHeight, left: 0, right: window.innerWidth }
+function size(): Size {
+  const r = root.value?.getBoundingClientRect()
+  return { w: r?.width ?? 0, h: r?.height ?? 0 }
+}
+/** 这一次打开里用户拖到的左上角;没拖过为 null(跟着默认位置走) */
+const dragged = ref<Pt | null>(null)
+const pos = ref<Pt>(placePanel(anchorOr(), { w: 0, h: 0 }))
 function place() {
-  const el = root.value
-  const r = el?.getBoundingClientRect()
-  pos.value = placePanel(at(), { w: r?.width ?? 0, h: r?.height ?? 0 }, viewport())
+  pos.value = dragged.value ? clampToViewport(dragged.value, size(), viewport()) : placePanel(anchorOr(), size())
+}
+
+// 按住页头拖动:页头里的按钮(delete)照常点;按下时 preventDefault,不选中文字、不夺焦点(方向键照旧走)
+let grab: { dx: number; dy: number } | null = null
+function onHdrDown(e: MouseEvent) {
+  if (e.button !== 0) return
+  if (e.target instanceof Element && e.target.closest('button')) return
+  e.preventDefault()
+  grab = { dx: e.clientX - pos.value.x, dy: e.clientY - pos.value.y }
+  window.addEventListener('mousemove', onDragMove)
+  window.addEventListener('mouseup', endDrag)
+}
+function onDragMove(e: MouseEvent) {
+  if (!grab) return
+  dragged.value = clampToViewport({ x: e.clientX - grab.dx, y: e.clientY - grab.dy }, size(), viewport())
+  pos.value = dragged.value
+}
+function endDrag() {
+  grab = null
+  window.removeEventListener('mousemove', onDragMove)
+  window.removeEventListener('mouseup', endDrag)
 }
 /** note 文本区随内容长高(到上限为止,再多在框里滚动);量不出内容高(还没排版)时不动 */
 function growNote() {
@@ -244,7 +279,7 @@ function growNote() {
   el.style.height = 'auto'
   if (el.scrollHeight > 0) el.style.height = `${noteHeight(el.scrollHeight, el.offsetHeight - el.clientHeight)}px`
 }
-/** 面板里的东西变了:note 先长到位,再看要不要翻边 */
+/** 面板里的东西变了:note 先长到位,再重新定位(默认位置是底边贴住显示栏,变高就往上长) */
 function fit() { growNote(); place() }
 
 // ── 点面板外就关:每次打开后隔一轮才挂上 ──
@@ -252,7 +287,11 @@ let armTimer: ReturnType<typeof setTimeout> | null = null
 function onDocDown(e: MouseEvent) {
   const t = e.target as Node | null
   if (root.value && t && root.value.contains(t)) return
-  fb.close()
+  if (t instanceof Element && t.closest('[data-feedback-opener]')) return
+  // 等这次按下派发完再关:图上的手势(改起止要认选中反馈的边)在元素上接这一下时,看到的还是面板开着、
+  // 竖带画着面板的范围,和按下那一刻屏幕上的一致。期间又开了别的面板就不关
+  const n = fb.opens
+  setTimeout(() => { if (fb.opens === n) fb.close() }, 0)
 }
 function disarm() {
   if (armTimer) { clearTimeout(armTimer); armTimer = null }
@@ -277,30 +316,43 @@ function onKey(e: KeyboardEvent) {
   e.preventDefault()
   e.stopPropagation()
   if (act === 'close') fb.close()
-  else trySave(null)
+  else if (act === 'save') trySave(null)
 }
 
-// 关旧开新(组件不卸载)时同步重挂外部点击的监听、清掉保存提示、重新定位
+// 关旧开新(组件不卸载)时同步重挂外部点击的监听、清掉保存提示、回到默认位置
 watch(() => fb.opens, () => {
   tried.value = false
   failed.value = false
   arm()
-  pos.value = placePanel(at(), { w: 0, h: 0 }, viewport())
+  endDrag()
+  dragged.value = null
   void nextTick(fit)
 }, { flush: 'sync' })
+// 竖带、显示栏挪了(按键走动带出的平移、改尺寸):没拖过的面板跟着回到默认位置
+watch(() => props.anchor, () => place(), { deep: true })
 // 草稿改过了:上一次「试过保存没存成」的兜底提示(not saved)不再作数,等下一次保存再说
 watch(() => [p.value?.note, p.value?.nodes, p.value?.link], () => { failed.value = false })
-// node 按钮、issues 的条数变了,或 note 换行长高了,面板变高:重新看要不要翻边
+// node 按钮、issues 的条数变了,或 note 换行长高了,面板变高:重新定位
 watch(() => [fb.panelNodes.length, p.value?.note, fb.panelIssues.length, fb.panelNeedsChoice],
       () => { void nextTick(fit) })
 
+// 面板的尺寸不管因为什么变了(变宽、变高、字体加载),都重新定位:默认位置要按真实宽高贴住竖带与显示栏。
+// 推到下一帧再摆:摆位改了 left,靠近视口右边时宽度会跟着变,同一帧里摆会触发 ResizeObserver 的循环警告
+let ro: ResizeObserver | null = null
 onMounted(() => {
   arm()
   fit()
   window.addEventListener('keydown', onKey, true)
+  if (root.value && typeof ResizeObserver !== 'undefined') {
+    ro = new ResizeObserver(() => requestAnimationFrame(() => { if (root.value) place() }))
+    ro.observe(root.value)
+  }
 })
 onBeforeUnmount(() => {
+  ro?.disconnect()
+  ro = null
   disarm()
+  endDrag()
   window.removeEventListener('keydown', onKey, true)
   emit('hover-node', null)
 })
@@ -316,6 +368,8 @@ onBeforeUnmount(() => {
   background: #fff; border: 1px solid var(--line-strong); border-radius: 4px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18); color: var(--ink);
 }
+.fb-drag { cursor: move; }
+.fb-drag button { cursor: pointer; }
 .fb-kv { grid-template-columns: 64px 1fr; }
 .fb-line { display: flex; align-items: center; gap: 6px; margin: 0 0 6px; }
 .fb-foot { margin: 6px 0 0; }

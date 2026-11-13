@@ -36,9 +36,11 @@ describe('computeEventData · 族行', () => {
     ])
     // 两个族起点不同、跨度重叠 → 不同 lane
     expect(b.familyLineData[0].value[2]).not.toBe(b.familyLineData[1].value[2])
-    expect(b.intervalData[1].member_labels).toHaveLength(2)
-    expect(b.intervalData[1].member_k).toEqual([2, 3])
-    expect(b.intervalData[1].family_n).toBe(4)
+    // 悬停:两个成员的格逐行 events j/m;一个成员的格不写
+    expect(b.intervalData[1].stack).toHaveLength(2)
+    expect(b.intervalData[1].stack[0]).toMatch(/^events 1\/2\b/)
+    expect(b.intervalData[1].stack[1]).toMatch(/^events 2\/2\b/)
+    expect(b.intervalData[0].stack).toBeUndefined()
   })
 
   it('档位开到 in_hit:族只剩一个成员,画成整条 [族起点, 它的终点],被筛掉的成员不留空格', () => {

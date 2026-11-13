@@ -299,11 +299,14 @@ function scrollRowIntoView(index: number) {
   }
 }
 function onArrowKey(e: KeyboardEvent) {
-  if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return
+  if (e.key !== 'PageUp' && e.key !== 'PageDown') return
   if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return
   if (e.isComposing) return
   if (fieldsMenu.open) return
-  // 搜索框 focus 时 ArrowUp/Down 仍切股(input 内光标已在末尾无意义)
+  // 多行输入框(反馈的 note 等)、下拉框里 PageUp / PageDown 归它们自己,不切股票(切了面板会关、没存的字会丢)
+  const t = e.target as HTMLElement | null
+  if (t?.tagName === 'TEXTAREA' || t?.tagName === 'SELECT' || t?.isContentEditable) return
+  // 切股票用 PageUp / PageDown(↑ / ↓ 归图上的按键走动);搜索框 focus 时照样切股
   // 只保留 IME 守卫(顶部已有 e.isComposing)
   const rows = filteredSortedRows.value
   if (rows.length === 0) return
@@ -313,7 +316,7 @@ function onArrowKey(e: KeyboardEvent) {
   const cur = rows.findIndex(r => r.symbol === symbol.value)
   const next = cur < 0
     ? 0
-    : e.key === 'ArrowDown'
+    : e.key === 'PageDown'
       ? Math.min(cur + 1, rows.length - 1)
       : Math.max(cur - 1, 0)
   if (rows[next].symbol === symbol.value) return

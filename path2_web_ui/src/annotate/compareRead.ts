@@ -138,15 +138,6 @@ export function diagnoseRows(
   return rows.sort((a, b) => Number(b.paired) - Number(a.paired) || RANK[b.level] - RANK[a.level] || b.start - a.start)
 }
 
-/** ←/→ 在样本间走:这张图上当前 pattern 的样本,按样本日;到头不动。 */
-export function stepSample(sampleIds: readonly { id: string; day: number }[], current: string | null, dir: -1 | 1): string | null {
-  const sorted = [...sampleIds].sort((a, b) => a.day - b.day || (a.id < b.id ? -1 : 1))
-  if (!sorted.length) return null
-  const k = sorted.findIndex(s => s.id === current)
-  if (k < 0) return sorted[dir > 0 ? 0 : sorted.length - 1].id
-  return sorted[Math.min(sorted.length - 1, Math.max(0, k + dir))].id
-}
-
 /** 进 compare 时默认聚焦的样本:已有选中的就用它,否则取样本日离图窗中心最近的。 */
 export function defaultFocus(samples: readonly { id: string; day: number }[], selected: string | null,
                              viewCenter: number): string | null {

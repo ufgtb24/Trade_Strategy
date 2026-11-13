@@ -86,11 +86,11 @@ function makeDualEntryFixture(events: EventDict[], hits: HitDict[]): MultiScanRe
 describe('KlineChart click handler (Task 9 实例化)', () => {
   beforeEach(() => { setActivePinia(createPinia()) })
 
-  it('marker 点击按 instance_id 直选(无解析)', async () => {
+  it('marker 点击按 instance_id 选中那个实例(无解析);用到它的那次 hit 画细框', async () => {
     const view = useViewStore()
     const { handleChartClick } = await import('../src/components/KlineChart')
     // APCX 形态(Task 5 同款):两 hit 的 node_index 分别引用 tb_v1_293 #0/#1(各属一个 hit)。
-    // marker data 恒带 instance_id(含 #idx),点击直接 focusEvent(instance_id) 精确直选。
+    // marker data 恒带 instance_id(含 #idx),点击选中的就是这个实例;用到它的 hit 只画细框、不算选中。
     const m0 = { hit_id: 'bb@0-3#burst:burst_0_2|tb:tb_v1_293', start_idx: 0, end_idx: 3,
                  node_index: { burst: 'burst_0_2#0', tb: 'tb_v1_293#0' },
                  children: ['burst_0_2#0', 'tb_v1_293#0'], predicate_trace: null } as HitDict
@@ -109,15 +109,17 @@ describe('KlineChart click handler (Task 9 实例化)', () => {
       { seriesName: 'points', data: { instance_id: 'tb_v1_293#0' } },
       [], view,
     )
-    expect(view.focusedHitId).toBe(m0.hit_id)   // 直选引用 #0 的 hit
-    expect(view.focusedInstanceId).toBe('tb_v1_293#0')
-    expect(view.pendingDisambigInstanceId).toBeNull()  // 不再弹待选择
-    // 点 #1 实例 → 直选引用 #1 的 hit(验证 instance_id 不是写死 0)
+    expect(view.selectedInstanceId).toBe('tb_v1_293#0')
+    expect([...view.candidateHitIds]).toEqual([m0.hit_id])   // 用到 #0 的那次
+    expect(view.focusedHitId).toBeNull()
+    expect(view.pendingDisambigInstanceId).toBeNull()
+    // 点 #1 实例 → 细框换成用到 #1 的那次(验证 instance_id 不是写死 0)
     handleChartClick(
       { seriesName: 'points', data: { instance_id: 'tb_v1_293#1' } },
       [], view,
     )
-    expect(view.focusedHitId).toBe(m1.hit_id)
+    expect(view.selectedInstanceId).toBe('tb_v1_293#1')
+    expect([...view.candidateHitIds]).toEqual([m1.hit_id])
     expect(view.pendingDisambigInstanceId).toBeNull()
   })
 
@@ -131,9 +133,7 @@ describe('KlineChart click handler (Task 9 实例化)', () => {
     expect(view.candidateHitIds.size).toBe(0)
   })
 
-  // 没进 hit 的 marker(qualified/detected)与已选中 group 互斥:
-  // 三条 marker 归属分支(===0 / ===1 / >1)都必须先清旧 group 再按新归属重设——
-  // 此前 ms.length===0 漏清,导致点灰色 marker 后旧 group 高亮残留、与新 focus 共存。
+  // 没进 hit 的 marker(qualified/detected)与已选中 group 互斥:点它之后旧 group 的高亮不能残留、与新 focus 共存。
   it('marker click with ms.length === 0 顺手清旧 group(与已选 group 互斥)', async () => {
     const view = useViewStore()
     const { handleChartClick } = await import('../src/components/KlineChart')
@@ -142,7 +142,6 @@ describe('KlineChart click handler (Task 9 实例化)', () => {
       node_index: { n0: 'eA#0', n1: 'eB#0' }, predicate_trace: null }]
     seedHits(view, hits)   // 落地真实 hit 数据,让 focusHit 真正派生非空 highlightedEventIds(而非 tautological 0)
     view.focusHit('m1')
-    view.focusEvent('eA#0')
     expect(view.highlightedEventIds.size).toBeGreaterThan(0)   // arrange 阶段显式确认"旧 group"确实非空
     handleChartClick({ seriesName: 'points', data: { instance_id: 'e_orphan#0' } }, hits, view)
     expect(view.focusedInstanceRef).toBe('e_orphan#0')
@@ -151,21 +150,26 @@ describe('KlineChart click handler (Task 9 实例化)', () => {
     expect(view.candidateHitIds.size).toBe(0)
   })
 
-  it('marker click with ms.length === 1 → 直选 hit + 精确聚焦实例', async () => {
+  it('marker click with ms.length === 1 → 选中这个 event、那次 hit 画细框;→ 走进去才选中 hit + 精确聚焦实例', async () => {
     const view = useViewStore()
     const { handleChartClick } = await import('../src/components/KlineChart')
     const hits = [{ hit_id: 'm1', children: ['eA#0', 'eB#0', 'eC#0'], start_idx: 0, end_idx: 1,
       node_index: { n0: 'eA#0', n1: 'eB#0', n2: 'eC#0' }, predicate_trace: null }]
     seedHits(view, hits)
     handleChartClick({ seriesName: 'intervals', data: { instance_id: 'eA#0' } }, hits, view)
+    // 点 event 选中的是它;用到它的 hit 在它里面
+    expect(view.selectedInstanceId).toBe('eA#0')
+    expect(view.selectedHitId).toBeNull()
+    expect([...view.candidateHitIds]).toEqual(['m1'])
+    expect(view.highlightedEventIds.size).toBe(0)
+    view.stepPos(1)                                  // 只牵出一天、那天只有这一次:进去就是那次 hit
     expect(view.selectedHitId).toBe('m1')
     expect(view.highlightedEventIds.size).toBe(3)
     expect(view.focusedInstanceId).toBe('eA#0')
     expect(view.focusedInstanceRef).toBe('eA#0')
-    expect(view.candidateHitIds.size).toBe(0)
   })
 
-  it('marker click with ms.length > 1 → candidate + pendingDisambigInstanceId (no selected)', async () => {
+  it('marker click with ms.length > 1 → 几次 hit 都画细框 (no selected);走进那一天后停在整天上,这个 event 还在用', async () => {
     const view = useViewStore()
     const { handleChartClick } = await import('../src/components/KlineChart')
     const hits = [
@@ -182,10 +186,15 @@ describe('KlineChart click handler (Task 9 实例化)', () => {
     expect(view.candidateHitIds.has('m1')).toBe(true)
     expect(view.candidateHitIds.has('m3')).toBe(true)
     expect(view.candidateHitIds.has('m5')).toBe(true)
-    expect(view.pendingDisambigInstanceId).toBe('eShared#0')
     expect(view.selectedHitId).toBeNull()
-    expect(view.focusedInstanceRef).toBeNull()
+    expect(view.focusedInstanceRef).toBe('eShared#0')   // 选中的就是点的这个 event
     expect(view.highlightedEventIds.size).toBe(0)
+    view.stepPos(1)                                      // 三次买在同一天:进到那一天整体,哪一次都不算选中
+    expect(view.selLast?.kind).toBe('buy')
+    expect(view.selectedHitId).toBeNull()
+    expect(view.pendingDisambigInstanceId).toBe('eShared#0')
+    expect(view.selDayHitIds).toEqual(['m1', 'm3', 'm5'])
+    expect(view.candidateHitIds.size).toBe(3)
   })
 
   it('idempotent: click same multi-hit event twice keeps candidate', async () => {
@@ -202,10 +211,10 @@ describe('KlineChart click handler (Task 9 实例化)', () => {
     const sizeBefore = view.candidateHitIds.size
     handleChartClick({ seriesName: 'points', data: { instance_id: 'eShared#0' } }, hits, view)
     expect(view.candidateHitIds.size).toBe(sizeBefore)
-    expect(view.pendingDisambigInstanceId).toBe('eShared#0')
+    expect(view.selectedInstanceId).toBe('eShared#0')
   })
 
-  it('bracket click on candidate hit → finalize: setHighlighted + selectHit + clearCandidates', async () => {
+  it('选中一个被几次 hit 用到的 event 之后点 bracket 上其中一次:选中换成那一族里的它,细框清掉', async () => {
     const view = useViewStore()
     const { handleChartClick } = await import('../src/components/KlineChart')
     const hits = [
@@ -215,7 +224,7 @@ describe('KlineChart click handler (Task 9 实例化)', () => {
         node_index: { n0: 'eA#0', n1: 'eC#0' }, predicate_trace: null },
     ]
     seedHits(view, hits)
-    // 先进 candidate
+    // 先选中 event:用到它的两次画细框
     handleChartClick({ seriesName: 'points', data: { instance_id: 'eA#0' } }, hits, view)
     expect(view.candidateHitIds.size).toBe(2)
     // 再 click 候选中的 bracket m3
@@ -229,7 +238,7 @@ describe('KlineChart click handler (Task 9 实例化)', () => {
   })
 
   // 同一时刻只允许一个 marker 处于「当前被选中」:bracket 琥珀填充 与 event 琥珀边缘 不共存。
-  // 场景:先点单归属 event marker(ms.length===1 分支 focusedInstanceId='eA#0') → 再点另一 bracket m2 →
+  // 场景:先点 event marker、从它走进用到它的那次 hit(focusedInstanceId='eA#0') → 再点另一 bracket m2 →
   // 期望实例焦点被清,否则原 marker 的 focus 琥珀边留守,与新 bracket 的琥珀填充并存。
   it('bracket click 清实例焦点(防前次 marker focus 琥珀边遗留)', async () => {
     const view = useViewStore()
@@ -241,8 +250,13 @@ describe('KlineChart click handler (Task 9 实例化)', () => {
         node_index: { n0: 'eC#0', n1: 'eD#0' }, predicate_trace: null },
     ]
     seedHits(view, hits)   // focusEvent 内部改读 view.effectiveAnalysis(Task 3),不再直读传入的 hits 参数
-    // 步骤 1:点 eA(单归属 m1),此时 focusedInstanceRef='eA#0' + selectedHitId='m1'
+    // 步骤 1:点 eA(只被 m1 用到),→ 进到那一天(同一族那天还有 m2,停在整天上),↓ 进到用到它的那次:
+    // 此时 focusedInstanceRef='eA#0' + selectedHitId='m1'
     handleChartClick({ seriesName: 'points', data: { instance_id: 'eA#0' } }, hits, view)
+    expect(view.focusedInstanceRef).toBe('eA#0')
+    expect(view.selectedHitId).toBeNull()
+    view.stepPos(1)
+    view.stepStack(1)
     expect(view.focusedInstanceRef).toBe('eA#0')
     expect(view.selectedHitId).toBe('m1')
     // 步骤 2:切换点 bracket m2,期望焦点整体切换 —— selectedHitId → 'm2' 且实例焦点 → null
@@ -342,7 +356,7 @@ describe('KlineChart shift+click accumulator (Task 18)', () => {
 describe('handleChartClick × highlightedEventIds 协议派生', () => {
   beforeEach(() => setActivePinia(createPinia()))
 
-  it('选中一条 hit(marker 单归属分支)后 highlightedEventIds 沿 child_refs 展开、含 BO id', async () => {
+  it('选中一条 hit(从点中的 marker 走进去)后 highlightedEventIds 沿 child_refs 展开、含 BO id', async () => {
     const view = useViewStore()
     const { handleChartClick } = await import('../src/components/KlineChart')
     // 造最小 scanFile:一个 burst-tb hit,burst.child_refs.members=[bo_5]
@@ -378,9 +392,12 @@ describe('handleChartClick × highlightedEventIds 协议派生', () => {
     } as any)
     view.symbol = 'X'
     view.activePatternId = 'bottom_burst'
-    // 触发 marker 单归属分支:点 burst_1(唯一归属 hit_1)
+    // 点 burst_1(只被 hit_1 用到):选中的是这个 event;→ 进到它的买点日,那天只有这一次,就是 hit_1
     handleChartClick(
       { seriesName: 'intervals', data: { instance_id: 'burst_1#0' } }, hits, view)
+    expect(view.selectedHitId).toBeNull()
+    expect([...view.candidateHitIds]).toEqual(['hit_1'])
+    view.stepPos(1)
     // ★ 核心断言:highlightedEventIds 沿协议展开,含 BO(修复 UI bug 的 essence)
     expect(view.highlightedEventIds.has('burst_1#0')).toBe(true)
     expect(view.highlightedEventIds.has('tb_1#0')).toBe(true)
@@ -426,12 +443,12 @@ describe('handleChartClick × marker filter inHitIdsOf 协议展开(Task 4)', ()
     view.activePatternId = activePatternId
   }
 
-  it('marker click × 多归属:同一实例被 2+ hit 的 node_index 引用 → candidate 分支', async () => {
+  it('marker click × 多归属:同一实例被 2+ hit 的 node_index 引用 → 都画细框;← / → 进到它们各自的买点日', async () => {
     const view = useViewStore()
     const { handleChartClick } = await import('../src/components/KlineChart')
     // Task 5 契约变更:归属只按 hit.node_index 精确引用(删除 children/anchor 身份
     // 展开)。多归属 = 同一 instance_id 被 2+ hit 引用(真共享实例)。
-    // 两次 hit 的买点(tb)在不同的日子 → 进待选;买入日完全一样时直选第一次,见 stores.step-focus.spec.ts。
+    // 两次 hit 的买点(tb)在不同的日子:这个实例牵出两个买点日。
     const events = [
       { instance_id: 'bo_shared#0', node_id: 'bo', start_idx: 5, end_idx: 5, child_refs: {} },
       { instance_id: 'tb_a#0', node_id: 'tb', start_idx: 10, end_idx: 10, child_refs: {} },
@@ -457,12 +474,17 @@ describe('handleChartClick × marker filter inHitIdsOf 协议展开(Task 4)', ()
     handleChartClick(
       { seriesName: 'price-points', data: { instance_id: 'bo_shared#0' } }, hits, view)
     expect([...view.candidateHitIds].sort()).toEqual(['hit_A', 'hit_B'])
-    expect(view.pendingDisambigInstanceId).toBe('bo_shared#0')
-    expect(view.selectedHitId).toBeNull()          // candidate 与 selected 互斥
+    expect(view.selectedInstanceId).toBe('bo_shared#0')
+    expect(view.selectedHitId).toBeNull()          // 点 event 不替用户选其中哪一次
     expect(view.highlightedEventIds.size).toBe(0)    // selectedHit=null → computed 空集
+    view.stepPos(1)                                 // 第一个买点日只有 hit_A
+    expect([view.selectedHitId, view.focusedInstanceId, view.currentDay]).toEqual(['hit_A', 'bo_shared#0', 10])
+    view.stepPos(1)
+    expect([view.selectedHitId, view.currentDay]).toEqual(['hit_B', 12])
+    expect([...view.candidateHitIds].sort()).toEqual(['hit_A', 'hit_B'])
   })
 
-  it('marker click × 单归属:实例只被 1 条 hit 的 node_index 引用 → selectHit + highlight 沿 child_refs 展开', async () => {
+  it('marker click × 单归属:实例只被 1 条 hit 的 node_index 引用 → 那次画细框;走进去后 selectHit + highlight 沿 child_refs 展开', async () => {
     const view = useViewStore()
     const { handleChartClick } = await import('../src/components/KlineChart')
     const events = [
@@ -484,13 +506,17 @@ describe('handleChartClick × marker filter inHitIdsOf 协议展开(Task 4)', ()
       edges: [{ src: 'burst', dst: 'tb', kind: 'temporal', rule: '', anchor_field: 'anchor_bo_id' }],
     }
     seedFullFixture(view, { events, hits, topology })
-    // 实例级入口(带 instance_id):tb_A#0 单实例被 hit_A 的 node_index 精确引用 → 直选
+    // 实例级入口(带 instance_id):tb_A#0 单实例被 hit_A 的 node_index 精确引用
     handleChartClick(
       { seriesName: 'price-points', data: { instance_id: 'tb_A#0' } }, hits, view)
+    expect(view.selectedInstanceId).toBe('tb_A#0')
+    expect(view.selectedHitId).toBeNull()
+    expect([...view.candidateHitIds]).toEqual(['hit_A'])
+    view.stepPos(1)                                 // 这条 band 上只有它、只牵出一天:进去就是 hit_A
     expect(view.selectedHitId).toBe('hit_A')
     expect(view.highlightedEventIds.has('bo_5#0')).toBe(true)   // 协议展开
     expect(view.focusedInstanceRef).toBe('tb_A#0')
-    expect(view.candidateHitIds.size).toBe(0)
+    expect([...view.candidateHitIds]).toEqual(['hit_A'])        // 还在这个 event 里面:细框不消失
   })
 
   it('marker click × 真无归属:qualified/detected tier bo → fallback,只选实例', async () => {
@@ -552,16 +578,16 @@ function makeFixture(): MultiScanResultFile {
 describe('handleChartClick · 焦点意图迁移(Task 3)', () => {
   beforeEach(() => setActivePinia(createPinia()))
 
-  it('空白 click → clearFocus:focusedHitId/实例焦点 都清 · candidates 清', async () => {
+  it('空白 click → clearFocus:focusedHitId/实例焦点 都清 · 选中与细框清', async () => {
     const view = useViewStore()
     const { handleChartClick } = await import('../src/components/KlineChart')
     view.loadScanFile(makeFixture())              // 复用现有 fixture 或此文件顶部的 makeFixture
-    view.setCandidateHits(['m1', 'm2'])
     view.focusHit('m1')
     handleChartClick(null, [], view)
     expect(view.focusedHitId).toBeNull()
     expect(view.focusedInstanceRef).toBeNull()
     expect(view.candidateHitIds.size).toBe(0)
+    expect(view.selPath).toEqual([])
   })
 
   it('bracket click → focusHit:focusedHitId=hitId · 实例焦点=null · manual 清空 · showTrace=true', async () => {
@@ -581,7 +607,7 @@ describe('handleChartClick · 焦点意图迁移(Task 3)', () => {
     expect(view.showTrace).toBe(true)
   })
 
-  it('marker click 唯一归属 → focusEvent:焦点两非空 · showTrace=false', async () => {
+  it('marker click 唯一归属 → focusEvent:选中这个 event、那次 hit 画细框 · showTrace=false', async () => {
     const view = useViewStore()
     const { handleChartClick } = await import('../src/components/KlineChart')
     view.loadScanFile(makeFixture())
@@ -590,8 +616,9 @@ describe('handleChartClick · 焦点意图迁移(Task 3)', () => {
       { seriesName: 'points', data: { instance_id: 'e_ta_1#0' } },
       hits, view
     )
-    expect(view.focusedHitId).toBe('m1')
+    expect(view.focusedHitId).toBeNull()
     expect(view.focusedInstanceRef).toBe('e_ta_1#0')
+    expect([...view.candidateHitIds]).toEqual(['m1'])
     expect(view.showTrace).toBe(false)
   })
 })

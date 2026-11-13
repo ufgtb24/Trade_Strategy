@@ -8,13 +8,14 @@
               @click="ann.tab = t">{{ t }}</button>
     </nav>
     <section class="body" :data-testid="`annotation-page-${ann.tab}`">
+      <SelectionCard v-if="ann.tab === 'selection' && view.comparing && view.selInfo" />
       <BoxPanel v-if="ann.tab === 'selection' && ann.selectedBox" />
       <SamplePanel v-else-if="ann.tab === 'selection' && ann.selectedSample" />
       <FocusedSamplePanel v-else-if="ann.tab === 'selection' && cmp.focusedSample" />
       <FeaturesPanel v-else-if="ann.tab === 'features' && ann.state" />
       <PatternPanel v-else-if="ann.tab === 'pattern' && ann.state" />
       <FeedbackPage v-else-if="ann.tab === 'feedback' && view.comparing" />
-      <span v-else class="empty">empty</span>
+      <span v-else-if="!(ann.tab === 'selection' && view.comparing && view.selInfo)" class="empty">empty</span>
     </section>
   </aside>
 </template>
@@ -37,6 +38,7 @@ import FeedbackPage from './FeedbackPage.vue'
 import FocusedSamplePanel from './FocusedSamplePanel.vue'
 import PatternPanel from './PatternPanel.vue'
 import SamplePanel from './SamplePanel.vue'
+import SelectionCard from './SelectionCard.vue'
 
 const ann = useAnnotationStore()
 const cmp = useCompareStore()

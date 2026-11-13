@@ -22,7 +22,7 @@ import { baseURL } from './ports'
 
 const SCAN_TS = '2026-07-11 15:39:23'
 const TICKER = 'BTMWW'
-const BANNER_TEXT = '入口 D · 已选 1/2 — 再 shift+click 一个 event / Esc 取消'
+const BANNER_TEXT = 'pair 1/2'
 
 async function setupChart(page: import('@playwright/test').Page) {
   await page.goto(baseURL + '/')
@@ -122,7 +122,7 @@ test.describe('入口 D shift+click 沉默期反馈', () => {
     await zoomAroundBar(page, m!.startIdx)
     await shiftClickMarker(page, m!.event_id)
 
-    await expect(page.locator('.shift-pair-banner')).toHaveText(BANNER_TEXT)
+    await expect(page.getByTestId('walk-pair')).toHaveText(BANNER_TEXT)
     // shift-veil 数据(spec 2026-07-11):副图 shift-veil / 主图 shift-veil-price series
     // 之一含此 event_id;不再断言本体 marker itemStyle.borderColor(Task 4 mutate 路径已回滚)。
     const veilHit = await page.evaluate((eid) => {
@@ -144,10 +144,10 @@ test.describe('入口 D shift+click 沉默期反馈', () => {
     expect(m).not.toBeNull()
     await zoomAroundBar(page, m!.startIdx)
     await shiftClickMarker(page, m!.event_id)
-    await expect(page.locator('.shift-pair-banner')).toBeVisible()
+    await expect(page.getByTestId('walk-pair')).toBeVisible()
 
     await page.keyboard.press('Escape')
-    await expect(page.locator('.shift-pair-banner')).not.toBeVisible()
+    await expect(page.getByTestId('walk-pair')).not.toBeVisible()
     const len = await page.evaluate(() => (window as any).__e2e.view.shiftSelectedEvents.length)
     expect(len).toBe(0)
   })
@@ -158,14 +158,14 @@ test.describe('入口 D shift+click 沉默期反馈', () => {
     expect(m).not.toBeNull()
     await zoomAroundBar(page, m!.startIdx)
     await shiftClickMarker(page, m!.event_id)
-    await expect(page.locator('.shift-pair-banner')).toBeVisible()
+    await expect(page.getByTestId('walk-pair')).toBeVisible()
 
     // 空白 click:主图左上角(grid.left=56/grid.top=40 之外,保证脱靶任何 series)
     const mainBox = await page.locator('.main-chart canvas').first().boundingBox()
     if (!mainBox) throw new Error('main-chart canvas not found')
     await page.mouse.click(mainBox.x + 20, mainBox.y + 20)
 
-    await expect(page.locator('.shift-pair-banner')).not.toBeVisible()
+    await expect(page.getByTestId('walk-pair')).not.toBeVisible()
     const len = await page.evaluate(() => (window as any).__e2e.view.shiftSelectedEvents.length)
     expect(len).toBe(0)
   })
@@ -181,12 +181,12 @@ test.describe('入口 D shift+click 沉默期反馈', () => {
 
     await zoomAroundBar(page, m1!.startIdx)
     await shiftClickMarker(page, m1!.event_id)
-    await expect(page.locator('.shift-pair-banner')).toBeVisible()
+    await expect(page.getByTestId('walk-pair')).toBeVisible()
 
     await zoomAroundBar(page, m2!.startIdx)
     await shiftClickMarker(page, m2!.event_id)
 
-    await expect(page.locator('.shift-pair-banner')).not.toBeVisible()
+    await expect(page.getByTestId('walk-pair')).not.toBeVisible()
     const len = await page.evaluate(() => (window as any).__e2e.view.shiftSelectedEvents.length)
     expect(len).toBe(2)
   })
@@ -205,11 +205,11 @@ test.describe('入口 D shift+click 沉默期反馈', () => {
         { event_id: 'fake2', class_id: 'BO', source: 'main' },
       ])
     })
-    await expect(page.locator('.shift-pair-banner')).not.toBeVisible()
+    await expect(page.getByTestId('walk-pair')).not.toBeVisible()
 
     // 第 3 击:handleShiftClick 累积器 length===2 分支 → 重置为 [新点击 event]
     await shiftClickMarker(page, m1!.event_id)
-    await expect(page.locator('.shift-pair-banner')).toBeVisible()
+    await expect(page.getByTestId('walk-pair')).toBeVisible()
     const len = await page.evaluate(() => (window as any).__e2e.view.shiftSelectedEvents.length)
     expect(len).toBe(1)
   })

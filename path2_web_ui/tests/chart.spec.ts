@@ -1253,3 +1253,36 @@ describe('computeEventData — 子结构段经引擎命名表 node_id 直落结�
     expect(segRec.itemStyle.color).toBe('#D60000')
   })
 })
+
+describe('computeEventData — band 格的悬停数据:并在这一格里的几个 event', () => {
+  const bars = ['2025-01-01', '2025-01-02', '2025-01-03', '2025-01-06'].map(date =>
+    ({ date, o: 1, c: 1, h: 1, l: 1, v: 1, rv: 0 }))
+  // 同起点的一族:终点 2 一格(一个成员),终点 3 一格(两个成员,各被一次 hit 用到)
+  const events = [
+    { instance_id: 'S2#0', node_id: 'st', start_idx: 0, end_idx: 2, child_refs: {} },
+    { instance_id: 'S3a#0', node_id: 'st', start_idx: 0, end_idx: 3, child_refs: {} },
+    { instance_id: 'S3b#0', node_id: 'st', start_idx: 0, end_idx: 3, child_refs: {} },
+  ] as any[]
+  const hits = [
+    { hit_id: 'h1', start_idx: 0, end_idx: 3, node_index: { st: 'S3a#0' }, children: ['S3a#0'], predicate_trace: null },
+    { hit_id: 'h2', start_idx: 0, end_idx: 3, node_index: { st: 'S3b#0' }, children: ['S3b#0'], predicate_trace: null },
+  ] as any[]
+  const params = {
+    topology: { nodes: [{ node_id: 'st' }], edges: [] }, isolatedNodeIds: new Set<string>(), tagList: ['st'],
+    level: 'detected' as const, nodeColors: {}, eventTier: () => 'in_hit' as const,
+    nodeOfEventByBand: (e: any) => e.node_id, bandKeyOf: (e: any) => e.node_id, nodeVisible: {},
+    tagToNodes: { st: ['st'] },
+  }
+
+  it('两个成员的格逐行写 events j/m(只数 event,不按用到它的 hit 拆);一个成员的格不写;格上不带「这一族的第几个位置」', () => {
+    for (const p of [{ ...params, endNode: 'st' }, params]) {     // 解析得到、解析不到买入日都一样
+      const b = computeEventData(bars as any, events, hits, p as any)
+      const recs = [...b.intervalData, ...b.pointData]
+      const one = recs.find((d: any) => d.member_ids.includes('S2#0'))
+      const two = recs.find((d: any) => d.member_ids.includes('S3a#0'))
+      expect(one.stack).toBeUndefined()
+      expect(two.stack).toEqual(['events 1/2', 'events 2/2'])
+      expect([one.cell_k, one.cell_n, two.cell_k, two.cell_n]).toEqual([undefined, undefined, undefined, undefined])
+    }
+  })
+})

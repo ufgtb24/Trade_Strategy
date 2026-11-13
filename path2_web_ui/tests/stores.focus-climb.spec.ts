@@ -1,8 +1,8 @@
-// stores.focus-climb.spec.ts — focusEvent 子结构爬升契约(2026-08-16)
+// stores.focus-climb.spec.ts — focusEvent 子结构爬升契约
 // 背景:hit 成员 = 各 node 绑定实例(node_index 只含 burst/tb 容器),bo/tb_seg
-// 子事件经容器 child_refs 挂靠、不是 hit 成员——直接按 node_index 解析恒 0 归属,
-// 点段/点 bo 只亮单点。爬升 = 经 child_refs 逆索引用父容器 instance_id 再解析,
-// 0/1/≥2 三分支照走(≥2 前缀族消歧);邻居段高亮由 inHitIds 的 child_refs 闭包内建。
+// 子事件经容器 child_refs 挂靠、不是 hit 成员——直接按 node_index 解析恒 0 归属。
+// 爬升 = 经 child_refs 逆索引用父容器 instance_id 再解析「用到它的 hit」:点段 / 点 bo 选中的是这个 event,
+// 用到它的 hit 画细框;从它走进买点日、选中其中一次 hit 后,邻居段高亮由 inHitIds 的 child_refs 闭包内建。
 import { describe, it, expect, beforeEach } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
 import fs from 'node:fs'
@@ -68,10 +68,16 @@ function makeClimbFixture(): MultiScanResultFile {
 describe('view store — focusEvent 子结构爬升', () => {
   beforeEach(() => { setActivePinia(createPinia()) })
 
-  it('点 tb_seg → 爬升到容器所在 hit 直选;邻居段/成员经 child_refs 闭包进 group 高亮集', () => {
+  it('点 tb_seg → 选中这一段,爬升认出容器所在的 hit(细框);走进去选中那次 hit 后,邻居段/成员经 child_refs 闭包进 group 高亮集', () => {
     const view = useViewStore()
     view.loadScanFile(makeClimbFixture())
     view.focusEvent('tb_seg_15_18#0')
+    // 点段选中的是这一段;用到它的 hit 经容器认出来,只画细框
+    expect(view.selectedInstanceId).toBe('tb_seg_15_18#0')
+    expect(view.focusedHitId).toBeNull()
+    expect([...view.candidateHitIds]).toEqual(['m-full'])
+    // → 进到它的买点日(竖线在段的终点 18,那天就是买点日,只有这一次):选中这次 hit,这一段是实例焦点
+    view.stepPos(1)
     expect(view.focusedHitId).toBe('m-full')
     expect(view.focusedInstanceId).toBe('tb_seg_15_18#0')
     expect(view.selectedInstanceId).toBeNull()
@@ -86,22 +92,27 @@ describe('view store — focusEvent 子结构爬升', () => {
     }
   })
 
-  it('点唯一归属的 bo → 爬升 bo→burst 直选所在 hit', () => {
+  it('点唯一归属的 bo → 爬升 bo→burst 认出所在 hit(细框);走进去选中的就是它', () => {
     const view = useViewStore()
     view.loadScanFile(makeClimbFixture())
     view.focusEvent('bo_6#0')   // 只被 burst_4_6 引用 → m-full
+    expect(view.selectedInstanceId).toBe('bo_6#0')
+    expect(view.focusedHitId).toBeNull()
+    expect([...view.candidateHitIds]).toEqual(['m-full'])
+    view.stepPos(1)
     expect(view.focusedHitId).toBe('m-full')
     expect(view.focusedInstanceId).toBe('bo_6#0')
     expect(view.pendingDisambigInstanceId).toBeNull()
   })
 
-  it('点前缀族共享 bo(两父 burst 各有 hit)→ ≥2 归属弹候选消歧,不自动选', () => {
+  it('点前缀族共享 bo(两父 burst 各有 hit)→ 两次 hit 都画细框,不自动选', () => {
     const view = useViewStore()
     view.loadScanFile(makeClimbFixture())
     view.focusEvent('bo_4#0')   // burst_4_6(m-full) 与 burst_4_5(m-prefix) 共享
     expect(view.focusedHitId).toBeNull()
     expect(view.focusedInstanceId).toBeNull()
-    expect(view.pendingDisambigInstanceId).toBe('bo_4#0')
+    expect(view.selectedInstanceId).toBe('bo_4#0')
+    expect(view.candidateHitIds.size).toBe(2)
     expect(view.candidateHitIds.has('m-full')).toBe(true)
     expect(view.candidateHitIds.has('m-prefix')).toBe(true)
   })
@@ -139,10 +150,12 @@ describe('view store — focusEvent 子结构爬升', () => {
     expect(view.compositionGroupIds.has('tb_seg_50#0')).toBe(true)
   })
 
-  it('hit 组点段 → compositionGroupIds 空,由 hit 闭包覆盖(一选全选不叠加)', () => {
+  it('从 hit 组的段走进去、选中那次 hit → compositionGroupIds 空,由 hit 闭包覆盖(一选全选不叠加)', () => {
     const view = useViewStore()
     view.loadScanFile(makeClimbFixture())
-    view.focusEvent('tb_seg_15_18#0')   // m-full 直选(1 归属)
+    view.focusEvent('tb_seg_15_18#0')
+    view.stepPos(1)                     // 选中 m-full
+    expect(view.focusedHitId).toBe('m-full')
     expect(view.selectedInstanceId).toBeNull()
     expect(view.compositionGroupIds.size).toBe(0)
     expect(view.highlightedEventIds.has('tb_seg_11#0')).toBe(true)   // hit 闭包管组员

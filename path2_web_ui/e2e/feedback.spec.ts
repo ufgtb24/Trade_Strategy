@@ -26,8 +26,13 @@ import {
  *
  * 覆盖:
  * 1. 反馈带三种颜色、会话标签(侧栏与悬停)、侧栏排序;以前存下的三种形状在记号悬停、侧栏组头里都不出 answer / dag;
+ *    点记号只选中,按住 Enter 打开那条、自动重复不保存;
  *    annotate、app 模式下没有反馈带、工具与侧栏页,Shift+F 只在 compare 生效。截图 ①(三种状态连同 hits 行)。
- * 2. 点 ▼、点琥珀格弹 point 面板,点族的命中区得到 family 范围与起点;面板一打开就是 issues / nodes / note 三行
+ * 2. 点 ▼、点琥珀格、点族、点记号都只选中、不弹面板;选中后按 Enter 或点显示栏的 feedback 按钮才弹:▼ / 琥珀格得
+ *    point 面板,族的命中区得 family 范围与起点;焦点停在别处的按钮上时 Enter 照样开、不「点」那个按钮;
+ *    面板开着时它管的那段日期有贯穿主副图的竖带,面板默认靠在竖带旁、
+ *    底边贴住显示栏上沿,按住页头能拖走;面板开着时点另一个 ▼:面板关掉、选中换过去、不开新的;
+ *    面板一打开就是 issues / nodes / note 三行
  *    (没有答案按钮、没有 dag);不抢焦点、←/→ 仍走 hit、Esc 先关面板、点别处关、焦点在按钮上按 Enter 也是保存;
  *    只点 node 不写 note 存不了,点 node 后光标进 note;只写 note 就能存;同范围打开那条、改、删与撤销;
  *    先选中框再点族,框的选中取消;node 按钮悬停时 band 加亮。截图 ②(鼠标停在一个 node 按钮上)。
@@ -37,9 +42,9 @@ import {
  * 4. 侧栏点行跳到 compare(竖线停在范围起点、选中那条);落在 compare 的链接;落不成时提示;行上 delete。
  * 5. 删样本:有只服务它的框时先问(yes / no / cancel),删除可撤最近一次。
  * 6. 长 note 与 node、记号上的字、卡片的 edit、选中的竖带:note 是多行文本区,长文字换行长高、面板不变宽,
- *    Shift+Enter 换行;记号够宽时写点出的 node 名、窄了不写;卡片的 edit 落过去后在记号旁打开预填的面板;
+ *    Shift+Enter 换行;记号够宽时写点出的 node 名、窄了不写;卡片的 edit 落过去后打开预填的面板(落点同上);
  *    选中卡片后记号描黑粗边、图上一条贯穿主副图的实线边竖带,删掉后消失。截图 panel-long-note.png、selected-band.png。
- * 7. issue 复用(几处反馈共享同一份内容:note 与 node):第二只股票(现找一只 new_step 有一族三个以上买点的)上点 ▼ →
+ * 7. issue 复用(几处反馈共享同一份内容:note 与 node):第二只股票(现找一只 new_step 有一族三个以上买点的)上点 ▼、按 Enter →
  *    列表一打开就有(不用先选答案,以前存下的也在)→ 挑 CRNC 上的一条 → Enter,两处带同一个 issue 值(原来不带的
  *    那条同批补上,并改写成不带 answer 的);挑了又改字出现 shared by n places 与 all / only this,Enter 不存,
  *    all 后各处一起变、only this 后这一处不带 issue 值、别处不变;以前存下的带 dag 的也能复用;挑一个以前存下的、
@@ -277,6 +282,39 @@ async function clickStrip(page: Page, id: string) {
   await page.mouse.click(b.x + b.w / 2, b.y + b.h / 2)
 }
 
+/** 对选中的那一个打开作答面板:按 Enter。点图上的东西只选中,所以先确认点击本身没有弹面板。 */
+async function openFb(page: Page) {
+  await expect(panel(page)).toHaveCount(0)
+  await page.keyboard.press('Enter')
+  await expect(panel(page)).toBeVisible()
+}
+
+/** 对选中的那一个打开作答面板:点显示栏最右的 feedback 按钮。 */
+async function openFbByButton(page: Page) {
+  await expect(panel(page)).toHaveCount(0)
+  await page.getByTestId('sel-feedback').click()
+  await expect(panel(page)).toBeVisible()
+}
+
+/**
+ * 面板在默认落点:底边贴住显示栏上沿(留 4 像素;主图太矮时贴住视口上沿,底边仍在显示栏之上),左右不出图表区;
+ * 竖带旁边放得下时不压竖带。
+ */
+async function expectDefaultPlace(page: Page) {
+  const pb = (await panel(page).boundingBox())!
+  const bar = (await page.getByTestId('walk-bar').boundingBox())!
+  const wrap = (await page.locator('.kline-wrap-v2').boundingBox())!
+  expect(pb.y + pb.height).toBeLessThanOrEqual(bar.y + 0.5)
+  if (pb.y > 0.5) expect(Math.abs(pb.y + pb.height - (bar.y - 4))).toBeLessThan(1.5)
+  expect(pb.x).toBeGreaterThanOrEqual(wrap.x - 0.5)
+  expect(pb.x + pb.width).toBeLessThanOrEqual(wrap.x + wrap.width + 0.5)
+  const band = await page.getByTestId('feedback-selected-band').boundingBox()
+  if (band && (wrap.x + wrap.width - (band.x + band.width) >= pb.width + 10 || band.x - wrap.x >= pb.width + 10)) {
+    expect(pb.x >= band.x + band.width - 0.5 || pb.x + pb.width <= band.x + 0.5,
+           `面板 ${JSON.stringify(pb)} 不该压住竖带 ${JSON.stringify(band)}`).toBe(true)
+  }
+}
+
 /** 焦点在不在反馈面板里。 */
 const focusInPanel = (page: Page) => page.evaluate(() =>
   !!document.querySelector('[data-testid="feedback-panel"]')?.contains(document.activeElement))
@@ -442,9 +480,16 @@ test.describe('反馈(new_step + 手写 mapping,CRNC)', () => {
     await expect(tip.first()).toContainText('status: matched')
     await expect(tip.first()).toContainText('note: 追在阶跃之后太远')
     await expect(tip.first()).not.toContainText(/answer|nodes:|undefined/)
-    // 就地点它打开面板:悬停提示收起、开着期间不再弹(鼠标仍停在记号上);状态与会话标签改在面板里看
+    // 就地点它只选中那条;按住 Enter 打开面板(第一下开,后面的自动重复不会顺手把它存了——它的理由写着,按一下就能存):
+    // 悬停提示收起、开着期间不再弹(鼠标仍停在记号上);状态与会话标签改在面板里看
     await page.mouse.click(red.x + red.w / 2, red.y + red.h / 2)
+    await expect.poll(() => fbOf(page, 'selectedId')).toBe(RED)
+    await expect(panel(page)).toHaveCount(0)
+    for (let i = 0; i < 5; i++) await page.keyboard.down('Enter')
+    await page.keyboard.up('Enter')
     await expect(panel(page)).toHaveAttribute('data-editing', RED)
+    await settled(page)
+    expect(feedbackOf(await annState(page)).find(f => f.id === RED)).toHaveProperty('answer')   // 没存:还是预置的样子
     await expect(tip.first()).toBeHidden()
     await page.mouse.move(red.x + red.w / 2 + 1, red.y + red.h / 2)
     await expect(tip.first()).toBeHidden()
@@ -518,7 +563,7 @@ test.describe('反馈(new_step + 手写 mapping,CRNC)', () => {
     await page.keyboard.press('Shift+F')
     await expect.poll(() => annOf(page, 'tool')).toBeNull()
 
-    // app 模式:不画反馈带,族那一行不可点,没有 feedback 工具与侧栏页,Shift+F 不点亮
+    // app 模式:不画反馈带,没有 feedback 工具与侧栏页,Shift+F 不点亮;族那一行照样可点(点它选中这一族)
     await page.getByTestId('mode-app').click()
     await expect.poll(() => view(page, 'mode')).toBe('app')
     await expect.poll(() => page.evaluate(() =>
@@ -526,7 +571,7 @@ test.describe('反馈(new_step + 手写 mapping,CRNC)', () => {
     const series = await page.evaluate(() => ((window as any).__e2e.chartSub().getOption().series ?? [])
       .map((s: any) => ({ name: s.name, silent: !!s.silent })))
     expect(series.map(s => s.name)).not.toContain('feedback-strip')
-    expect(series.find(s => s.name === 'bracket-lines')!.silent).toBe(true)
+    expect(series.find(s => s.name === 'bracket-lines')!.silent).toBe(false)
     await expect(page.getByTestId('tool-feedback')).toHaveCount(0)
     await expect(page.getByTestId('annotation-tab-feedback')).toHaveCount(0)
     await expect(page.getByTestId('feedback-page')).toHaveCount(0)
@@ -537,15 +582,50 @@ test.describe('反馈(new_step + 手写 mapping,CRNC)', () => {
     await page.unrouteAll({ behavior: 'ignoreErrors' })
   })
 
-  test('点 ▼ / 格 / 族弹面板(一打开就是 issues / nodes / note);不抢焦点、Esc 先关面板、点别处关、按钮上 Enter 也保存;只点 node 不写 note 存不了;同范围打开那条、改、删与撤销;选中的框被取消;node 按钮悬停 band 加亮', async ({ page }, testInfo) => {
+  test('点 ▼ / 格 / 族 / 记号只选中,Enter 或显示栏 feedback 弹面板(竖带、默认落点、拖页头;一打开就是 issues / nodes / note);不抢焦点、Esc 先关面板、点别处关、按钮上 Enter 也保存;只点 node 不写 note 存不了;同范围打开那条、改、删与撤销;选中的框被取消;node 按钮悬停 band 加亮', async ({ page }, testInfo) => {
     const { dates, F, G } = plan
     await openCompare(page, plan.pos)
     await zoomTo(page, Math.min(F.start, G.start) - 3, Math.max(F.buys.at(-1)!, G.buys.at(-1)!) + 4)
     const g0 = G.buys[0], g0Date = dates[g0]
 
-    // ── 点 ▼:point 面板,范围是那一天;不抢焦点 ──
+    // ── 点 ▼ 只选中:不弹面板,显示栏的 feedback 按钮亮起来;按 Enter 才弹 point 面板,范围是那一天;不抢焦点 ──
+    await expect(page.getByTestId('sel-feedback')).toBeDisabled()               // 还没选中:不能作答
     await clickBuy(page, g0)
+    await page.waitForTimeout(300)
+    await expect(panel(page)).toHaveCount(0)
+    await expect.poll(() => page.evaluate(() => (window as any).__e2e.view.selPath.map((x: any) => x.kind)))
+      .toEqual(['hit_family', 'buy'])
+    await expect(page.getByTestId('sel-feedback')).toBeEnabled()
+    await expect(page.getByTestId('feedback-selected-band')).toHaveCount(0)    // 没开面板、没选中反馈:没有竖带
+    await openFb(page)
+    await expect(page.getByTestId('sel-feedback')).toHaveAttribute('aria-pressed', 'true')
+    // 面板开着:它管的那一天画成贯穿主副图的竖带;面板靠在竖带旁、底边贴住显示栏上沿,显示栏露着
+    const selBand = page.getByTestId('feedback-selected-band')
+    await expect(selBand).toBeVisible()
+    await expect.poll(async () => {
+      const bb = (await selBand.boundingBox())!
+      const bw = (await xOf(page, g0 + 1)) - (await xOf(page, g0))
+      return Math.abs(bb.x + bb.width / 2 - (await xOf(page, g0))) < bw
+    }).toBe(true)
+    await expect.poll(async () => {
+      const pb = (await panel(page).boundingBox())!, bar = (await page.getByTestId('walk-bar').boundingBox())!
+      return pb.y + pb.height <= bar.y + 0.5
+    }).toBe(true)
+    await expectDefaultPlace(page)
+    await expect(page.getByTestId('walk-bar')).toBeVisible()
+    // 按住页头拖走:面板跟着挪、不关、不夺焦点;拖到哪只管这一次
+    const at0 = (await panel(page).boundingBox())!
+    const hdr = (await page.getByTestId('feedback-drag').boundingBox())!
+    const hx = hdr.x + Math.min(30, hdr.width / 4), hy = hdr.y + hdr.height / 2
+    await page.mouse.move(hx, hy)
+    await page.mouse.down()
+    await page.mouse.move(hx - 120, hy - 60, { steps: 5 })
+    await page.mouse.up()
+    const at1 = (await panel(page).boundingBox())!
+    expect(Math.abs(at1.x - (at0.x - 120))).toBeLessThan(2)
+    expect(Math.abs(at1.y - (at0.y - 60))).toBeLessThan(2)
     await expect(panel(page)).toBeVisible()
+    expect(await focusInPanel(page)).toBe(false)
     await expect(panel(page)).toHaveAttribute('data-target', 'point')
     await expect(panel(page)).toHaveAttribute('data-editing', '')
     await expect(page.getByTestId('feedback-symbol')).toHaveText(SYMBOL)
@@ -563,15 +643,49 @@ test.describe('反馈(new_step + 手写 mapping,CRNC)', () => {
     await expect(page.getByTestId('feedback-pos-inside')).toHaveCount(0)
     expect(await focusInPanel(page)).toBe(false)
     expect(await view(page, 'currentDay')).toBe(g0)
-    // ←/→ 照旧在族里走(按键不归面板)
-    const hit0 = await view(page, 'selectedHitId')
-    expect(hit0).not.toBeNull()
+    // 点 ▼ 选中的是这一天整体(这天只有一次 hit 时就是那次 hit)。按键不归面板:↑ / ↓ 进到这天叠着的几次、
+    // 在它们之间换,竖线不动,point 面板留着;← / → 竖线挪到这一族的下一个买入日,走出了面板的那一天,面板关掉(没存)
+    expect(await page.evaluate(() => (window as any).__e2e.view.selPath.map((x: any) => x.kind))).toEqual(['hit_family', 'buy'])
+    const dayHits: string[] = await page.evaluate(() => [...(window as any).__e2e.view.selDayHitIds])
+    if (dayHits.length >= 2) {
+      expect(await view(page, 'selectedHitId')).toBeNull()
+      await page.keyboard.press('ArrowDown')
+      await expect.poll(() => view(page, 'selectedHitId')).toBe(dayHits[0])
+      await page.keyboard.press('ArrowDown')
+      await expect.poll(() => view(page, 'selectedHitId')).toBe(dayHits[1])
+      expect(await view(page, 'currentDay')).toBe(g0)
+      await expect(panel(page)).toBeVisible()
+    } else {
+      expect(await view(page, 'selectedHitId')).not.toBeNull()
+    }
     await page.keyboard.press('ArrowRight')
-    await expect.poll(() => view(page, 'selectedHitId')).not.toBe(hit0)
+    await expect.poll(() => view(page, 'currentDay')).toBe(G.buys[1])
+    await expect(panel(page)).toHaveCount(0)
+
+    // ── 显示栏的 feedback 按钮:点了打开(拖过的位置不留,回到默认落点),再点关掉、不存 ──
+    await openFbByButton(page)
+    await expect(page.getByTestId('feedback-span')).toHaveText(dates[G.buys[1]])
+    await expectDefaultPlace(page)
+    await page.getByTestId('sel-feedback').click()
+    await expect(panel(page)).toHaveCount(0)
+    // ── 面板开着时点另一个 ▼:面板关掉、选中换过去,不开新的 ──
+    await openFb(page)
+    await clickBuy(page, g0)
+    await page.waitForTimeout(300)
+    await expect(panel(page)).toHaveCount(0)
+    expect(await view(page, 'currentDay')).toBe(g0)
+
+    // ── 焦点停在别处的按钮上(像刚用鼠标点过它):能作答时 Enter 照样开面板,不「点」那个按钮,焦点放掉 ──
+    await page.getByTestId('tool-box').focus()
+    await page.keyboard.press('Enter')
+    await expect(panel(page)).toBeVisible()
+    expect(await annOf(page, 'tool')).toBeNull()                             // box 工具没被点亮
+    expect(await page.evaluate(() => document.activeElement?.getAttribute('data-testid') ?? null)).not.toBe('tool-box')
+    await page.keyboard.press('Escape')
+    await expect(panel(page)).toHaveCount(0)
 
     // ── Esc 第一下只关面板:当前日、当家行都不动 ──
-    await clickBuy(page, g0)
-    await expect(panel(page)).toBeVisible()
+    await openFb(page)
     const before = [await view(page, 'currentDay'), await view(page, 'activeFamilyKey')]
     expect(before[1]).not.toBeNull()
     await page.keyboard.press('Escape')
@@ -580,7 +694,7 @@ test.describe('反馈(new_step + 手写 mapping,CRNC)', () => {
 
     // ── 点别处(主图 K 线区)关,不存 ──
     await clickBuy(page, g0)
-    await expect(panel(page)).toBeVisible()
+    await openFb(page)
     await page.getByTestId('feedback-note').fill('写了一半')
     await page.mouse.click(await xOf(page, g0 - 2), await klineY(page))
     await expect(panel(page)).toHaveCount(0)
@@ -589,6 +703,7 @@ test.describe('反馈(new_step + 手写 mapping,CRNC)', () => {
 
     // ── 只点 node、不写 note:存不了(点 node 后光标进 note);点掉 node、只写 note:Enter 保存,记号出现 ──
     await clickBuy(page, g0)
+    await openFb(page)
     const firstNode = page.getByTestId('feedback-node').first()
     await firstNode.click()
     await expect(firstNode).toHaveClass(/\bon\b/)
@@ -616,8 +731,9 @@ test.describe('反馈(new_step + 手写 mapping,CRNC)', () => {
     await expect.poll(async () => (await stripMarks(page)).map(m => m.id)).toContain(pid)
     await expect.poll(async () => (await fbOf(page, 'statusById'))?.[pid]?.status).toBe('matched')
 
-    // ── 同范围不重复:再点那个 ▼ 打开这一条(预填、多 delete、没有 redraw);焦点在按钮上按 Enter 也是保存 ──
+    // ── 同范围不重复:再选中那个 ▼、按 Enter 打开这一条(预填、多 delete、没有 redraw);焦点在按钮上按 Enter 也是保存 ──
     await clickBuy(page, g0)
+    await openFb(page)
     await expect(panel(page)).toHaveAttribute('data-editing', pid)
     await expect(page.getByTestId('feedback-note')).toHaveValue('放量不够')
     await expect(page.locator('[data-testid="feedback-node"].on')).toHaveCount(0)
@@ -634,6 +750,7 @@ test.describe('反馈(new_step + 手写 mapping,CRNC)', () => {
 
     // ── 缺东西时 Enter 不存,标出缺什么 ──
     await clickBuy(page, plan.dates.indexOf(plan.pos))
+    await openFb(page)
     await expect(page.getByTestId('feedback-pos-inside')).toBeVisible()      // 那天放着当前 pattern 的正样本
     await page.getByTestId('feedback-note').click()
     await page.keyboard.press('Enter')
@@ -642,20 +759,24 @@ test.describe('反馈(new_step + 手写 mapping,CRNC)', () => {
     await page.keyboard.press('Escape')                                      // 焦点在 note 里也是先关面板
     await expect(panel(page)).toHaveCount(0)
 
-    // ── 点格(那一列有 ▼ 的琥珀格):point 面板,范围是那一列的买点日 ──
+    // ── 点格(那一列有 ▼ 的琥珀格)只选中;按 Enter:point 面板,范围是那一列的买点日 ──
     const redI = dates.indexOf(plan.red)
     const day = await clickMark(page, d => d.family_start === F.start && d.buy_day !== redI)
+    await openFb(page)
     await expect(panel(page)).toHaveAttribute('data-target', 'point')
     await expect(page.getByTestId('feedback-span')).toHaveText(dates[day])
     await page.keyboard.press('Escape')
     await expect(panel(page)).toHaveCount(0)
 
-    // ── 先选中一个框,再点族的命中区:框的选中取消、Delete 删不到它;family 面板,范围 = 全部 ▼ 的最早到最晚 ──
+    // ── 先选中一个框,再点族的命中区:框的选中取消、Delete 删不到它;选中整族,按 Enter:family 面板,
+    //    范围 = 全部 ▼ 的最早到最晚 ──
     await page.evaluate(id => (window as any).__e2e.ann().selectBox(id), BOX)
     await expect.poll(() => annOf(page, 'selectedBoxId')).toBe(BOX)
     await clickFamily(page, G.start)
-    await expect(panel(page)).toBeVisible()
     await expect.poll(() => annOf(page, 'selectedBoxId')).toBeNull()
+    await expect.poll(() => page.evaluate(() => (window as any).__e2e.view.selPath.map((x: any) => x.kind)))
+      .toEqual(['hit_family'])
+    await openFb(page)
     await expect(panel(page)).toHaveAttribute('data-target', 'family')
     await expect(page.getByTestId('feedback-span')).toHaveText(`${dates[G.buys[0]]} – ${dates[G.buys.at(-1)!]}`)
     await expect(page.getByTestId('feedback-pos-inside')).toBeVisible()
@@ -694,8 +815,9 @@ test.describe('反馈(new_step + 手写 mapping,CRNC)', () => {
     expect(fam.map(f => [f.start, f.end, f.nodes, f.note, 'answer' in f, 'dag' in f]))
       .toEqual([[dates[G.buys[0]], dates[G.buys.at(-1)!], [lit], '这一族的平台太窄', false, false]])
 
-    // ── 点记号打开那条、选中它(描边加粗);delete 删掉,提示条 undo 放回 ──
+    // ── 点记号选中它(描边加粗),按 Enter 打开那条;delete 删掉,提示条 undo 放回 ──
     await clickStrip(page, pid)
+    await openFb(page)
     await expect(panel(page)).toHaveAttribute('data-editing', pid)
     await expect.poll(() => fbOf(page, 'selectedId')).toBe(pid)
     await expect.poll(async () => {
@@ -784,11 +906,12 @@ test.describe('反馈(new_step + 手写 mapping,CRNC)', () => {
     expect(rg.map(f => [f.start, f.end, f.note, f.nodes, 'dag' in f, 'answer' in f]))
       .toEqual([[dates[b0 - 1], dates[b0 + 1], '阶跃那根太弱', [picked], false, false]])
 
-    // 改起止:点 lost 那条(family;以前存下的 off_pattern + dag + note)的记号 → 打开它、选中它(贯穿主副图的竖带);
+    // 改起止:点 lost 那条(family;以前存下的 off_pattern + dag + note)的记号选中它、按 Enter 打开(贯穿主副图的竖带);
     // 面板上没有 redraw,日期范围的悬停写怎么改。点亮 feedback(点按钮 = 点在面板外,面板关上、选中留着),拖竖带的边
     const nb = Math.min(...[...plan.F.buys, ...plan.G.buys, ...K.buys].filter(b => b > le))   // lost 之后最近的买点日
     await zoomTo(page, li - 6, nb + 4)
     await clickStrip(page, LOST)
+    await openFb(page)
     await expect(panel(page)).toHaveAttribute('data-editing', LOST)
     await expect(panel(page)).toHaveAttribute('data-target', 'family')
     await expect(page.getByTestId('feedback-note')).toHaveValue('这一段不是平台')   // 以前存下的那条:预填理由
@@ -967,8 +1090,9 @@ test.describe('反馈(new_step + 手写 mapping,CRNC)', () => {
     await openCompare(page, dates[f0])
     await zoomTo(page, F.start - 6, f1 + 8)
 
-    // ── 点 F 这一族:family 面板;nodes 一行只有 node 按钮(没有 dag),note 必填 ──
+    // ── 选中 F 这一族、按 Enter:family 面板;nodes 一行只有 node 按钮(没有 dag),note 必填 ──
     await clickFamily(page, F.start)
+    await openFb(page)
     await expect(panel(page)).toHaveAttribute('data-target', 'family')
     await expect(panel(page)).toHaveAttribute('data-editing', '')
     const rowBtns = await page.getByTestId('feedback-nodes').locator('button')
@@ -1016,10 +1140,11 @@ test.describe('反馈(new_step + 手写 mapping,CRNC)', () => {
     await expect(note).toHaveValue(`${LONG}\nsecond line`)
     await expect(panel(page)).toBeVisible()
     await expect.poll(async () => (await note.boundingBox())!.height).toBeGreaterThan(box1.height + 8)
-    // 面板长高后仍整个在视口里(放不下就翻边)
+    // 面板长高后往上长:底边仍贴住显示栏上沿,整个在视口里
     const pb = (await panel(page).boundingBox())!
     expect(pb.y).toBeGreaterThanOrEqual(0)
     expect(pb.y + pb.height).toBeLessThanOrEqual(page.viewportSize()!.height)
+    await expectDefaultPlace(page)
     await expect(page.getByTestId('feedback-problems')).toHaveCount(0)       // 缺的都补齐了
     await expect(page.getByTestId('feedback-blocked')).toHaveCount(0)        // 也不挂 not saved
     await shot(page, testInfo, 'panel-long-note.png')
@@ -1098,7 +1223,7 @@ test.describe('反馈(new_step + 手写 mapping,CRNC)', () => {
     await expect.poll(async () => Math.abs((await got()).left - (await want()).left)).toBeLessThan(1.5)
     expect(Math.abs((await got()).right - (await want()).right)).toBeLessThan(1.5)
 
-    // ── 卡片的 edit:从别处落过去,落定后在那条记号旁打开面板并预填(等同点了记号) ──
+    // ── 卡片的 edit:从别处落过去,落定后打开那条的面板并预填(等同选中记号再按 Enter) ──
     await zoomTo(page, G.start - 4, G.buys.at(-1)! + 4)
     await card.getByTestId('feedback-row-edit').click()
     await expect(panel(page)).toBeVisible()
@@ -1114,14 +1239,10 @@ test.describe('反馈(new_step + 手写 mapping,CRNC)', () => {
     await expect.poll(() => view(page, 'currentDay')).toBe(f0)
     await page.waitForTimeout(400)
     await expect(panel(page)).toBeVisible()                                  // 落定后的重画不把它关掉
-    // 面板挨着那条记号(在它下方或上方,不压住它),整个在视口里
-    const m2 = (await itemBoxes(page, 'feedback-strip', 0)).find(b => b.d.feedback_id === id)!
-    const p2 = (await panel(page).boundingBox())!
-    const below = Math.abs(p2.y - (m2.y + m2.h)) < 14, above = Math.abs(p2.y + p2.height - m2.y) < 14
-    expect(below || above, `面板 ${JSON.stringify(p2)} 应挨着记号 ${JSON.stringify(m2)}`).toBe(true)
-    expect(p2.y + p2.height).toBeLessThanOrEqual(page.viewportSize()!.height)
-    expect(p2.x).toBeGreaterThanOrEqual(m2.x - 2)
-    expect(p2.x).toBeLessThan(m2.x + m2.w + 40)
+    // 面板在默认落点:靠在那条的竖带旁、底边贴住显示栏上沿,整个在视口里
+    await expect(band).toBeVisible()
+    await expectDefaultPlace(page)
+    expect((await panel(page).boundingBox())!.y).toBeGreaterThanOrEqual(0)
     await shot(page, testInfo, 'card-edit-panel.png')
     // 在面板里把两个 node 都点掉、保存:记录不再带 nodes,卡片的组头写灰字 none
     await page.locator(`[data-testid="feedback-node"][data-node="${nodeName}"]`).click()
@@ -1136,7 +1257,7 @@ test.describe('反馈(new_step + 手写 mapping,CRNC)', () => {
     await expect(groupOf(page, id).getByTestId('feedback-row-node')).toHaveCount(0)
     await expect(groupOf(page, id).getByTestId('feedback-row-nodes-none')).toHaveText('none')
 
-    // ── 从别的股票点卡片的 edit:换到 CRNC、app 重跑,落定后同样在记号旁打开那条 ──
+    // ── 从别的股票点卡片的 edit:换到 CRNC、app 重跑,落定后同样打开那条(默认落点) ──
     await page.evaluate(() => (window as any).__e2e.view.openSymbol('AAPL'))
     await waitChart(page, 'AAPL')
     await expect.poll(() => runSymbol(page), { timeout: 60_000 }).toBe('AAPL')
@@ -1149,10 +1270,7 @@ test.describe('反馈(new_step + 手写 mapping,CRNC)', () => {
     await expect.poll(() => view(page, 'currentDay')).toBe(f0)
     await page.waitForTimeout(600)
     await expect(panel(page)).toBeVisible()
-    const m3 = (await itemBoxes(page, 'feedback-strip', 0)).find(b => b.d.feedback_id === id)!
-    const p3 = (await panel(page).boundingBox())!
-    expect(Math.abs(p3.y - (m3.y + m3.h)) < 14 || Math.abs(p3.y + p3.height - m3.y) < 14,
-           `面板 ${JSON.stringify(p3)} 应挨着记号 ${JSON.stringify(m3)}`).toBe(true)
+    await expectDefaultPlace(page)
     await page.keyboard.press('Escape')
     await expect(panel(page)).toHaveCount(0)
 
@@ -1217,8 +1335,9 @@ test.describe('反馈(new_step + 手写 mapping,CRNC)', () => {
     const issueItem = (note: string) => page.locator('[data-testid="feedback-issue"]', { hasText: note })
     const bareItem = page.locator(`[data-testid="feedback-issue"][data-key="${ISS_BARE}"]`)
 
-    // ── 第二只股票上点 ▼:issues 一打开就列出来(不用先选答案;跨股票,以前存下的两种答案都在) ──
+    // ── 第二只股票上点 ▼、按 Enter:issues 一打开就列出来(不用先选答案;跨股票,以前存下的两种答案都在) ──
     await clickBuy(page, b0)
+    await openFb(page)
     await expect(panel(page)).toHaveAttribute('data-target', 'point')
     await expect(page.getByTestId('feedback-symbol')).toHaveText(S2)
     await expect(page.getByTestId('feedback-issues')).toBeVisible()
@@ -1249,6 +1368,7 @@ test.describe('反馈(new_step + 手写 mapping,CRNC)', () => {
 
     // ── 再标一处,挑同一条又改了字:save 换成 shared by n places + all / only this;Enter 不存 ──
     await clickBuy(page, b1)
+    await openFbByButton(page)
     await expect(issueItem(NOTE)).toHaveAttribute('data-key', V)
     await expect(issueItem(NOTE)).toHaveAttribute('data-places', '2')
     await issueItem(NOTE).click()
@@ -1277,6 +1397,7 @@ test.describe('反馈(new_step + 手写 mapping,CRNC)', () => {
 
     // ── 第三处,挑同一条又改字,选 only this:这一处不带 issue 值、另立;别的处不变 ──
     await clickBuy(page, b2)
+    await openFb(page)
     await expect(issueItem(NOTE_ALL)).toHaveAttribute('data-places', '3')
     await issueItem(NOTE_ALL).click()
     await page.getByTestId('feedback-note').fill(NOTE_ONLY)
@@ -1412,6 +1533,7 @@ test.describe('反馈(new_step + 手写 mapping,CRNC)', () => {
 
     // ── 再点一次已连着的那条 = 不再共享:不问 all / only this;内容留着,这一处不再带 issue 值,其余各处不动 ──
     await clickBuy(page, b0)
+    await openFb(page)
     await expect(panel(page)).toHaveAttribute('data-editing', p0.id)
     await expect(issueItem(NOTE_ALL)).toHaveClass(/\bon\b/)                   // 打开已有的一处:连着的那条标着
     await issueItem(NOTE_ALL).click()

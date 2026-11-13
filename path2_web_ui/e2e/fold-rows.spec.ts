@@ -5,9 +5,10 @@ import { deleteSmallScan, openSmallScan, runSmallScan, smallScanName } from './s
  * 副图族行(真浏览器):
  * 1. 副图按族画:有族底线系列、没有 tier tag 系列;族行数不超过事件数;
  * 2. 选中一次 hit → K 线主图(价格区、成交量区)与副图都出现当前日竖线,bracket 上它那一族是当家行;
- * 3. → 在这一族里走到下一次 hit(按终点),到头停住;Esc 清掉当前日与当家行;
- * 4. 经副图的 click 事件点一格:成员所在族行上画选中框、当前日落在格的终点、这一行成当家行;
- *    点被买入日不同的几次 hit 共用的阶跃格:进待选,bracket 上候选是实线框、不闪,提示条写 candidates;
+ * 3. → 在这一族的买入日之间走(竖线挪到下一个买入日),到头停住;Esc 一层层往外退,退到头再按才清掉当前日与当家行;
+ * 4. 经副图的 click 事件点一格:选中的是格里的那个 event,成员所在族行上画选中框、当前日落在格的终点,用到它的 hit 画细框;
+ *    点被买入日不同的几次 hit 共用的阶跃格:选中的是这个 event(显示栏 ← / → 键槽写 into buys ×n),哪一次 hit 都不算选中,
+ *    竖线落在它的终点,bracket 上用到它的几次是实线细框、不闪;
  * 5. 副图竖直放大:副图变高、主图变矮、读数跟着走;族行数不变,每一行按倍数变高。
  *
  * 夹具:new_step 小扫描(./smallScan.ts),整个文件共用一次,结束删掉。
@@ -84,17 +85,55 @@ test('族行、当前日竖线、←/→ 与 Esc', async ({ page }) => {
   const activeLines = ((await seriesData(page, 'chartSub', 'bracket-lines')) as any[]).filter((d) => d.active)
   expect(activeLines).toHaveLength(1)
 
-  // 3. → 走到这一族的下一次 hit;走到头停住
-  await page.keyboard.press('ArrowRight')
-  await page.waitForTimeout(200)
-  expect(await page.evaluate(() => (window as any).__e2e.view.focusedHitId)).toBe(famHits[1])
-  for (let i = 0; i < famHits.length + 1; i++) await page.keyboard.press('ArrowRight')
-  await page.waitForTimeout(200)
-  expect(await page.evaluate(() => (window as any).__e2e.view.focusedHitId)).toBe(famHits[famHits.length - 1])
+  // 3. → 竖线挪到这一族的下一个买入日(选中那天买的、和刚才最像的一次);走到头停住。按键一直在这一族里走
+  const walkAt = () => page.evaluate(() => {
+    const v = (window as any).__e2e.view
+    const fam = v.selPath[0]
+    const slot = v.selInfo.day                          // ← / → 键槽:这一族的第几个买点日
+    return { k: slot.k as number | null, n: slot.n as number, noun: slot.noun as string,
+             days: v.world.inside([fam], 'day').map((x: any) => x.day) as number[],
+             day: v.currentDay, hit: v.focusedHitId, outer: fam.kind as string }
+  })
+  const w0 = await walkAt()
+  expect(w0.outer).toBe('hit_family')
+  expect(w0.days).toContain(w0.day)
+  const walkable = w0.days.length >= 2                  // 这一族只有一个买点日时 ← / → 是换到旁边一族,不在这里验
+  if (walkable) {
+    expect(w0.noun).toBe('buys')
+    expect(w0.n).toBe(w0.days.length)
+    expect(w0.day).toBe(w0.days[w0.k! - 1])
+    await page.keyboard.press('ArrowRight')
+    await page.waitForTimeout(200)
+    const w1 = await walkAt()
+    if (w0.k! < w0.n) {
+      expect(w1.k).toBe(w0.k! + 1)
+      expect(w1.day).toBe(w0.days[w0.k!])
+      expect(famHits).toContain(w1.hit)
+    }
+    for (let i = 0; i < w0.n + 1; i++) await page.keyboard.press('ArrowRight')
+    await page.waitForTimeout(200)
+    const w2 = await walkAt()
+    expect(w2.k).toBe(w2.n)
+    expect(w2.day).toBe(w2.days[w2.n - 1])
+    expect(w2.outer).toBe('hit_family')
+    expect(famHits).toContain(w2.hit)
+  }
 
-  // Esc 清当前日与当家行
+  // Esc 往外退一层:选中的还在这一族里,当前日与当家行都留着;退到头再按才清掉
+  const depth = () => page.evaluate(() => (window as any).__e2e.view.selPath.length as number)
+  const dayBefore = await page.evaluate(() => (window as any).__e2e.view.currentDay)
+  const d0 = await depth()
+  expect(d0).toBeGreaterThanOrEqual(2)
   await page.keyboard.press('Escape')
   await page.waitForTimeout(200)
+  const d1 = await depth()
+  expect(d1).toBeGreaterThan(0)
+  expect(d1).toBeLessThan(d0)
+  expect(await page.evaluate(() => (window as any).__e2e.view.currentDay)).toBe(dayBefore)
+  expect(((await seriesData(page, 'chartSub', 'bracket-lines')) as any[]).filter((d) => d.active)).toHaveLength(1)
+  for (let i = d1; i > 0; i--) await page.keyboard.press('Escape')
+  await page.waitForTimeout(200)
+  expect(await depth()).toBe(0)
   expect(await page.evaluate(() => (window as any).__e2e.view.currentDay)).toBeNull()
   expect(await seriesData(page, 'chartSub', 'current-day')).toEqual([])
   expect(((await seriesData(page, 'chartSub', 'bracket-lines')) as any[]).some((d) => d.active)).toBe(false)
@@ -118,7 +157,7 @@ const renderOf = (page: Page, seriesName: string, pick: (d: any) => boolean) =>
     return out
   }, [seriesName, pick.toString()] as const)
 
-test('点一格:选中框、当前日、当家行;点共用的阶跃格:待选与候选实线框', async ({ page }) => {
+test('点一格:选中那个 event、选中框、当前日;点共用的阶跃格:选中的是这个 event、用到它的几次画实线细框', async ({ page }) => {
   test.setTimeout(300_000)
   test.skip(!(await openScan(page)), '这次小扫描里没有「同起点多次 hit」的股票')
 
@@ -136,14 +175,18 @@ test('点一格:选中框、当前日、当家行;点共用的阶跃格:待选�
   await page.waitForTimeout(300)
   const st = await page.evaluate(() => {
     const v = (window as any).__e2e.view
-    return { hit: v.focusedHitId, inst: v.focusedInstanceId, day: v.currentDay, fam: v.activeFamilyKey }
+    return { hit: v.focusedHitId, inst: v.selectedInstanceId, day: v.currentDay, fam: v.activeFamilyKey,
+             kinds: v.selPath.map((x: any) => x.kind), framed: [...v.candidateHitIds] }
   })
-  expect(st.hit).not.toBeNull()
+  // 点格选中的是格里的那个 event(它属于它那条 band);用到它的那一次 hit 不算选中,只画细框
+  expect(st.kinds).toEqual(['node', 'event'])
+  expect(st.hit).toBeNull()
   expect(st.inst).toBe(one.member_ids[0])
+  expect(st.framed).toHaveLength(1)
   expect(st.day).toBe(one.value[1])
-  expect(st.fam).toBe(one.family_key)
-  expect(((await seriesData(page, 'chartSub', 'family-lines')) as any[])
-    .filter((d) => d.active).map((d) => d.family_key)).toContain(one.family_key)
+  // 选中 event 时哪一行的族底线都不加粗
+  expect(st.fam).toBeNull()
+  expect(((await seriesData(page, 'chartSub', 'family-lines')) as any[]).filter((d) => d.active)).toEqual([])
   const focusMarks = await renderOf(page, 'highlight',
     ((d: any) => d.kind === 'focus' && d.shape === 'mark') as any)
   expect(focusMarks.length).toBe(1)
@@ -152,20 +195,37 @@ test('点一格:选中框、当前日、当家行;点共用的阶跃格:待选�
   expect(box.style.fill).toBe('none')
   expect(box.style.stroke).toBe('#1e293b')
 
-  // 被买入日不同的几次 hit 共用的阶跃格 → 待选
+  // 被买入日不同的几次 hit 共用的阶跃格 → 选中的是这个 event,它牵出好几个买点日。先清掉选中(竖线也清掉),逐格点到这样的一格
   const steps: any[] = ((await seriesData(page, 'chartSub', 'intervals')) as any[])
     .filter((d) => d.family_key.startsWith('step@'))
   let cand: string[] = []
+  let shared: any = null
   for (const rec of steps) {
+    await page.evaluate(() => (window as any).__e2e.view.clearFocus())
     await clickSub(page, 'intervals', rec)
     cand = await page.evaluate(() => [...(window as any).__e2e.view.candidateHitIds] as string[])
-    if (cand.length >= 2) break
+    const slot = await page.evaluate(() => (window as any).__e2e.view.selInfo.day)
+    if (cand.length >= 2 && slot.mode === 'into' && slot.n >= 2) { shared = rec; break }
   }
   expect(cand.length).toBeGreaterThanOrEqual(2)
+  expect(shared).not.toBeNull()
   await page.waitForTimeout(300)
+  // 选中的是这个 event:用到它的哪一次 hit 都不算选中;竖线落在它的终点;显示栏写它是什么、← / → 会进到几个买点日
+  const cellVal = (id: string) => page.getByTestId(id).locator(':scope > :last-child')
+  expect(await page.evaluate(() => (window as any).__e2e.view.selPath.map((x: any) => x.kind))).toEqual(['node', 'event'])
   expect(await page.evaluate(() => (window as any).__e2e.view.focusedHitId)).toBeNull()
-  expect(await page.evaluate(() => (window as any).__e2e.view.currentDay)).toBeNull()
-  await expect(page.locator('.candidate-banner')).toContainText(`candidates ${cand.length}`)
+  expect(await page.evaluate(() => (window as any).__e2e.view.currentDay)).toBe(shared.value[1])
+  await expect(cellVal('sel-kind')).toHaveText('event')
+  await expect(cellVal('sel-node')).toHaveText('step')
+  await expect(cellVal('sel-day')).toHaveText(/^into buys ×\d+$/)
+  // 竖线在别的日子上时点它:竖线照样落到它的终点,仍然哪一次 hit 都不选
+  const off = shared.value[1] + 1
+  await page.evaluate((d) => (window as any).__e2e.view.setCurrentDay(d), off)
+  await clickSub(page, 'intervals', shared)
+  await page.waitForTimeout(200)
+  expect(await page.evaluate(() => (window as any).__e2e.view.currentDay)).toBe(shared.value[1])
+  expect(await page.evaluate(() => (window as any).__e2e.view.focusedHitId)).toBeNull()
+  await expect(cellVal('sel-day')).toHaveText(/^into buys ×\d+$/)
   const candMarks = await renderOf(page, 'brackets',
     ((d: any) => d.kind === 'mark') as any)
   const candBoxes = candMarks.filter((x: any) => x.d.hit_ids.some((id: string) => cand.includes(id)))

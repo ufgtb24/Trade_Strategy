@@ -25,17 +25,17 @@ import type { BandRenderInput } from '../src/render/chart'
 import { computeSubGeometry } from '../src/render/subGeometry'
 import type { Bar, HitDict, Topology } from '../src/types'
 
-describe('buildMarkerTooltipFormatter — ordinal consistency with packBrackets (Task 9 fix)', () => {
-  it('marker 归属节只报个数(bracket 折叠后一行几十次 hit,逐个圈号已无意义)', () => {
+describe('buildMarkerTooltipFormatter — 被几次 hit 用到只报个数', () => {
+  it('marker 的悬停写 hits ×n(bracket 折叠后一行几十次 hit,逐个列已无意义)', () => {
     const hits: HitDict[] = [
       // 故意乱序(非 start_idx 升序):
-      { hit_id: 'm_late',  start_idx: 50, end_idx: 60, node_index: {}, children: ['eShared#0'], predicate_trace: null },
-      { hit_id: 'm_early', start_idx: 10, end_idx: 20, node_index: {}, children: ['eShared#0'], predicate_trace: null },
-      { hit_id: 'm_mid',   start_idx: 30, end_idx: 40, node_index: {}, children: ['eShared#0'], predicate_trace: null },
+      { hit_id: 'm_late',  start_idx: 50, end_idx: 60, node_index: { a: 'eShared#0' }, children: ['eShared#0'], predicate_trace: null },
+      { hit_id: 'm_early', start_idx: 10, end_idx: 20, node_index: { a: 'eShared#0' }, children: ['eShared#0'], predicate_trace: null },
+      { hit_id: 'm_mid',   start_idx: 30, end_idx: 40, node_index: { a: 'eShared#0' }, children: ['eShared#0'], predicate_trace: null },
     ]
-    const fmt = buildMarkerTooltipFormatter(undefined, undefined, { hits, candidateHitIds: new Set() })
+    const fmt = buildMarkerTooltipFormatter(undefined, undefined, { hits })
     const out = fmt({ data: { instance_id: 'eShared#0' } })
-    expect(out).toContain('in_hits: 3')
+    expect(out).toContain('hits ×3')
   })
 })
 

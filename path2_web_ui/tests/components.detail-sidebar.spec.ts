@@ -85,19 +85,19 @@ describe('DetailSidebar · Task 4 视图分化', () => {
     expect(wrapper.find('.candidate-table-wrap').exists()).toBe(false)
   })
 
-  it('event-focus 唯一归属:showTrace=false → 无 trace · 候选表在 event 所在 node 下方渲染', async () => {
+  it('event-focus 唯一归属:showTrace=false → 无 trace · 候选表在 event 所在 node 下方渲染 · 用到它的 hit 的行标着、不画当前行', async () => {
     const view = useViewStore()
     view.loadScanFile(makeFixture())
     await flushPromises()                         // diag 落地
-    view.focusEvent('e_ta_1#0')                  // 唯一归属 m1;expandedNodeIds={ta}
+    view.focusEvent('e_ta_1#0')                  // 只被 m1 用到;expandedNodeIds={ta}
     const wrapper = mount(DetailSidebar)
     expect(wrapper.find('.hit-trace').exists()).toBe(false)
     // 候选表存在
     expect(wrapper.find('.candidate-table-wrap').exists()).toBe(true)
-    // hit 列表单行黄底(markedHitIds={m1})
+    // hit 列表:选中的是这个 event,用到它的 m1 那一行标着;m1 不算选中,不画当前行
     const rows = wrapper.findAll('.hit-row')
-    const selectedRows = rows.filter(r => r.classes().includes('hit-row--selected'))
-    expect(selectedRows.length).toBe(1)
+    expect(rows.filter(r => r.classes().includes('hit-row--current')).length).toBe(0)
+    expect(rows.filter(r => r.classes().includes('hit-row--batch')).length).toBe(1)
   })
 
   it('聚焦不改档位:level=in_hit 时点一个不在 hit 里的候选,档位不动,选中的那一行写 hidden', async () => {
@@ -125,7 +125,7 @@ describe('DetailSidebar · Task 4 视图分化', () => {
     expect(wrapper.findAll('[data-testid="candidate-hidden"]').length).toBe(0)
   })
 
-  it('多归属 pending:候选表在 pending event 所在 node 下方展开 · hit 列表多行同亮', async () => {
+  it('被几次 hit 共用:选中的是这个 event;候选表照样展开 · hit 列表里用到它的行都标着、哪一行都不是当前行', async () => {
     const view = useViewStore()
     // Task 5 契约变更:多归属 = 同一实例被 2+ hit 的 node_index 引用(真共享,
     // 删除 anchor_field 反查展开);构造 e_ta_1#0 被 m1/m2 同时引用
@@ -139,10 +139,10 @@ describe('DetailSidebar · Task 4 视图分化', () => {
     view.focusEvent('e_ta_1#0')                  // 单实例被两 hit 共享 → 多归属
     const wrapper = mount(DetailSidebar)
     expect(wrapper.find('.hit-trace').exists()).toBe(false)
-    expect(wrapper.find('.candidate-table-wrap').exists()).toBe(true)     // pending 兜底展开 ta
+    expect(wrapper.find('.candidate-table-wrap').exists()).toBe(true)     // 选中 event 时展开它的 node
     const rows = wrapper.findAll('.hit-row')
-    const selectedRows = rows.filter(r => r.classes().includes('hit-row--selected'))
-    expect(selectedRows.length).toBe(2)          // 信息层如实反映
+    expect(rows.filter(r => r.classes().includes('hit-row--batch')).length).toBe(2)
+    expect(rows.filter(r => r.classes().includes('hit-row--current')).length).toBe(0)   // 哪一次都不算选中
   })
 
   it('sidebar hit 行 click:等价 bracket click 走 focusHit → showTrace=true', async () => {
@@ -191,7 +191,7 @@ describe('DetailSidebar · hit 列表写买入日期', () => {
     expect(wrapper.findAll('.hit-row').map(r => r.attributes('title'))).toEqual(['2024-02-11 – 2024-02-16', '2024-02-13 – 2024-02-23'])
   })
 
-  it('选中的 hit 行滚到看得见', async () => {
+  it('当前那次的行滚到看得见', async () => {
     const view = useViewStore()
     view.loadScanFile(fixtureWithBuyNode())
     const scrolled: string[] = []
@@ -201,9 +201,75 @@ describe('DetailSidebar · hit 列表写买入日期', () => {
       mount(DetailSidebar)
       view.focusHit('m2')
       await flushPromises()
-      expect(scrolled.some(c => c.includes('hit-row--selected'))).toBe(true)
+      expect(scrolled.some(c => c.includes('hit-row--current'))).toBe(true)
     } finally {
       ;(Element.prototype as any).scrollIntoView = orig
     }
+  })
+})
+
+describe('DetailSidebar · hit 列表与显示栏同一套:同一天的顺序、区别、常标的行与当前那次', () => {
+  beforeEach(() => setActivePinia(createPinia()))
+
+  // 两次 hit 起点相同、都买在 bo 那天(下标 10),只差 ta 的子段终点(13 / 14);第三次另一天
+  function sameDayFixture(): MultiScanResultFile {
+    const f: any = makeFixture()
+    f.per_pattern.p1.end_node = 'bo'
+    const a = f.results[0].per_pattern.p1.analysis
+    a.events.push(
+      { node_id: 'ta', instance_id: 'e_ta_1b#0', instance_idx: 1, start_idx: 12, end_idx: 15,
+        anchor_bo_id: 'e_bo_1#0', child_refs: { seg: ['s14#0'] } },
+      { node_id: 'seg', instance_id: 's13#0', instance_idx: 0, start_idx: 12, end_idx: 13, child_refs: {} },
+      { node_id: 'seg', instance_id: 's14#0', instance_idx: 0, start_idx: 12, end_idx: 14, child_refs: {} },
+    )
+    a.events.find((e: any) => e.instance_id === 'e_ta_1#0').child_refs = { seg: ['s13#0'] }
+    a.hits = [
+      { hit_id: 'late', start_idx: 10, end_idx: 15, node_index: { bo: 'e_bo_1#0', ta: 'e_ta_1b#0' }, children: [] },
+      { hit_id: 'early', start_idx: 10, end_idx: 14, node_index: { bo: 'e_bo_1#0', ta: 'e_ta_1#0' }, children: [] },
+      { hit_id: 'other', start_idx: 20, end_idx: 22, node_index: { ta: 'e_ta_2#0' }, children: [] },
+    ]
+    return f
+  }
+
+  it('同一天的几行按族内先后排(和 ↑ / ↓ 一致),行尾写区别;选中牵出的行标着,当前那次黑粗边;选中整天时这天几行都标、不画当前行', async () => {
+    const view = useViewStore()
+    view.loadScanFile(sameDayFixture())
+    view.setBarDates(Array.from({ length: 30 }, (_, i) => `2024-02-${String(i + 1).padStart(2, '0')}`))
+    const wrapper = mount(DetailSidebar)
+    // 族内先后 = (起点, 终点):early(终点 14)在 late(终点 15)前,不按结果里的原顺序
+    const ids = () => wrapper.findAll('.hit-row').map(r => r.attributes('title')!.split('  ')[0])
+    expect(ids()).toEqual(['2024-02-11 – 2024-02-15', '2024-02-11 – 2024-02-16', '2024-02-21 – 2024-02-23'])
+    const diffs = wrapper.findAll('.hit-row').map(r => r.find('[data-testid="hit-row-diff"]'))
+    // 侧栏里写短日期(同一天几行的日子都在同一年,去掉年份),全文在行的悬停里
+    expect(diffs[0].text()).toBe('seg→02-14')
+    expect(diffs[1].text()).toBe('seg→02-15')
+    expect(diffs[2].exists()).toBe(false)
+    // 行的悬停里是全文(和显示栏同一写法);日期那一格只有日期
+    expect(wrapper.findAll('.hit-row')[0].attributes('title')).toBe('2024-02-11 – 2024-02-15  seg→2024-02-14')
+    expect(wrapper.findAll('.hit-row .hit-span').map(r => r.text())).toEqual(['2024-02-11', '2024-02-11', '2024-02-23'])
+    // 点 early:它那一族(early、late)的行标着,当前那次是 early;↓ 换到 late,侧栏跟着
+    view.focusHit('early')
+    await flushPromises()
+    const cls = () => wrapper.findAll('.hit-row').map(r =>
+      [r.classes().includes('hit-row--batch'), r.classes().includes('hit-row--current')])
+    expect(cls()).toEqual([[true, true], [true, false], [false, false]])
+    view.stepStack(1)
+    await flushPromises()
+    expect(cls()).toEqual([[true, false], [true, true], [false, false]])
+    // 点 ▼ 选中这一天整体:这天的两行都标着(顺序和侧栏一样),哪一行都不是当前行
+    view.clickBuyDay('hits@10', 10)
+    await flushPromises()
+    expect(view.selDayHitIds).toEqual(['early', 'late'])
+    expect(cls()).toEqual([[true, false], [true, false], [false, false]])
+  })
+  it('同一天几行的区别跨年时,侧栏写全日期', () => {
+    const view = useViewStore()
+    view.loadScanFile(sameDayFixture())
+    // 下标 13 落在 2024 年末、14 落在 2025 年初
+    view.setBarDates(Array.from({ length: 30 }, (_, i) => (i <= 13 ? `2024-12-${String(i + 10).padStart(2, '0')}`
+                                                                    : `2025-01-${String(i - 12).padStart(2, '0')}`)))
+    const wrapper = mount(DetailSidebar)
+    const diffs = wrapper.findAll('[data-testid="hit-row-diff"]').map(r => r.text())
+    expect(diffs).toEqual(['seg→2024-12-23', 'seg→2025-01-02'])
   })
 })

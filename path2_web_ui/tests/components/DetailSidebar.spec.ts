@@ -197,7 +197,7 @@ describe('DetailSidebar (5-node: pattern nodes + stream-source)', () => {
   })
 
   // ── 断言 4: 双向高亮 — 点候选表行 → focusEvent ─────────────────────────
-  it('点候选表行 → focusedInstanceId 更新', async () => {
+  it('点候选表行 → 选中那个 event', async () => {
     const v = setupStore()
     const w = mount(DetailSidebar)
     await flushPromises()
@@ -213,8 +213,9 @@ describe('DetailSidebar (5-node: pattern nodes + stream-source)', () => {
     expect(down1Row).toBeTruthy()
     await down1Row!.trigger('click')
 
-    // focusEvent('down1#0') 唯一归属 m1 → focusedHitId='m1' + focusedInstanceId='down1#0'
-    expect(v.focusedInstanceId).toBe('down1#0')
+    // 点候选表行等于点 band 上的它:选中的是这个 event(用到它的 m1 不算选中)
+    expect(v.selectedInstanceId).toBe('down1#0')
+    expect(v.focusedHitId).toBeNull()
   })
 
   // ── 断言 5: 双向高亮 — focusedInstanceId 反映到高亮 class ─────────────────
@@ -406,12 +407,14 @@ describe('DetailSidebar (5-node: pattern nodes + stream-source)', () => {
     expect(w.find('.hit-trace').exists()).toBe(true)
   })
 
-  // ── 断言 11b: 候选表行 click 清空 M' candidate state(互斥,final review fix) ──
-  it('候选表行 click 先 clearCandidates 再 selectEvent(spec §2.2 互斥)', async () => {
+  // ── 断言 11b: 候选表行 click 把先前的选中整个换掉(互斥) ──
+  it('候选表行 click 换掉先前的选中(先前选中的 hit、实例焦点都清)再选中它', async () => {
     const v = setupStore()
-    // 注入 M' 候选状态
-    v.setCandidateHits(['m1'])
-    v.setPendingDisambig('down1#0')
+    // 先从 tb 走进用到它的那次 hit:选中 m1,实例焦点在 tb14
+    v.focusEvent('tb14#0')
+    v.stepPos(1)
+    expect([v.focusedHitId, v.focusedInstanceId]).toEqual(['m1', 'tb14#0'])
+    expect(v.candidateHitIds.size).toBe(1)
     const w = mount(DetailSidebar)
     await flushPromises()
 
@@ -425,15 +428,15 @@ describe('DetailSidebar (5-node: pattern nodes + stream-source)', () => {
     const down1Row = attrRows.find(r => r.text().includes('1-6'))!
     await down1Row.trigger('click')
 
-    // M' 候选状态已清
-    expect(v.candidateHitIds.size).toBe(0)
+    // 点了就是点的那个:先前的 hit 选中与实例焦点都清,选中的只有 down1#0
+    expect(v.selPath).toEqual([{ kind: 'node', band: 'down' }, { kind: 'event', instanceId: 'down1#0' }])
+    expect([v.focusedHitId, v.focusedInstanceId]).toEqual([null, null])
     expect(v.pendingDisambigInstanceId).toBeNull()
-    // selectEvent 已设:down1#0 唯一归属 m1 → focusedInstanceId
-    expect(v.focusedInstanceId).toBe('down1#0')
+    expect(v.selectedInstanceId).toBe('down1#0')
   })
 
-  // ── 断言 11: 点 hit 行 → selectHit + setHighlightedEvents(children) + clearCandidates ──
-  it('点 hit 行 → selected=hit + 组高亮 + 候选清空', async () => {
+  // ── 断言 11: 点 hit 行 → 选中它 + 组高亮 + 它属于它那一族(不是从某个 event 走进来的) ──
+  it('点 hit 行 → selected=hit + 组高亮 + 它属于它那一族', async () => {
     const v = setupStore()
     const w = mount(DetailSidebar)
     await flushPromises()
@@ -446,8 +449,9 @@ describe('DetailSidebar (5-node: pattern nodes + stream-source)', () => {
     expect((v.selected as any)?.hitId).toBe('m1')
     // 组高亮:children of m1 = instance_id 列表
     expect([...v.highlightedEventIds]).toEqual(expect.arrayContaining(['down1#0', 'side1#0']))
-    // 候选清空:clearCandidates → candidateHitIds = empty Set
+    // 它属于它那一族:一族靠粗底线认,没有细框
     expect(v.candidateHitIds.size).toBe(0)
+    expect(v.selPath[0]).toEqual({ kind: 'hit_family', familyKey: 'hits@1' })
     // 实例焦点不改动(保持 null)
     expect(v.focusedInstanceId).toBeNull()
   })

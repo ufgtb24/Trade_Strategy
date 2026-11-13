@@ -101,6 +101,21 @@ export function hitsBuyingIn(hits: readonly HitDict[], events: readonly EventDic
   return hits.filter(h => hitBuyDates(h, byId, endNode, dates).some(d => start <= d && d <= end))
 }
 
+/**
+ * 一条反馈收进来的 hit(选中这条反馈时它牵出的 hit,stores/view.ts):和后端判它朱红同一个口径
+ * (path2_web/annotation/match.py)——买点日落在 [start, end] 里的 hit,不论哪一族;一族反馈另加起于
+ * family_start 的那一族的全部 hit(买点日不论在哪:同一次阶跃里买点只是往后挪了,也算没改好)。按结果里的先后。
+ */
+export function feedbackHits(hits: readonly HitDict[], events: readonly EventDict[], endNode: string | null | undefined,
+                             dates: readonly string[], fb: { start: string; end: string; family_start?: string | null }): HitDict[] {
+  const byId = new Map(events.map(e => [e.instance_id, e]))
+  const fs = fb.family_start ?? null
+  return hits.filter(h => {
+    const days = hitBuyDates(h, byId, endNode, dates)
+    return days.some(d => fb.start <= d && d <= fb.end) || (fs !== null && dates[h.start_idx] === fs && days.length > 0)
+  })
+}
+
 /** [start, end] 里 app 的买点日(日期,升序去重);没有为空数组(拖选范围里没有 ▼ 时不弹面板)。 */
 export function buyDatesIn(hits: readonly HitDict[], events: readonly EventDict[], endNode: string | null | undefined,
                            dates: readonly string[], start: string, end: string): string[] {

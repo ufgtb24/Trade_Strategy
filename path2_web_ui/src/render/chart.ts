@@ -2,9 +2,10 @@
 import type { Bar, EventDict, HitDict, Level, Tier, Topology } from '../types'
 import { colorOf } from './colors'
 import { packLanes } from './geometry'
-import { foldBand, foldHits, formatMemberLabel, hitLabels, memberLabels, HIT_FAMILY_PREFIX,
+import { foldBand, foldHits, HIT_FAMILY_PREFIX,
          type Family, type FoldMark, type HitFamily } from './fold'
 import { isBandVisible, renderGridOf, splitIntervalAtScanEnd, subBandTagList, subBandTree } from './visible'
+import { stackLabelTexts, usingIndex, type WalkEntry } from './walk'
 import { ctrlState } from './ctrlState'
 import { derivePeakStates, peakIdIndex } from './peakState'
 import { MONO } from './fonts'
@@ -126,6 +127,7 @@ export interface BandRenderInput {
   // ── spec 2026-07-10: 入口 D shift+click 已选中 marker 描边高亮 ────────────
   shiftSelectedEventIds?: ReadonlySet<string>
   hits?: HitDict[]  // buildSubOption 的 markerTooltip formatter 用（自 KlineChart.vue 透传）
+  events?: EventDict[]  // 同上:悬停的 `hits ×n`(沿 child_refs 找父容器)要全部 event
   // ── 副图 band 竖直 zoom(spec 2026-07-03):由 KlineChart 传入,default 1.0 ──────
   zoomFactor?: number
   // ── 当前日(竖线落点,bar 索引)与当家行(←/→ 在其中走的那一族的 family_key);缺省都不画 ──
@@ -286,6 +288,14 @@ export function computeEventData(
   const byId = new Map(events.map((e) => [e.instance_id, e]))
   const anchorFields = [...new Set((topology?.edges ?? []).map((ed) => ed.anchor_field)
     .filter((f): f is string => !!f))]
+  // 叠着的几个与它们的区别标签:和显示栏的 diff 格同一套算法(render/walk.ts 的 stackLabelTexts)
+  const hitsById = new Map(hits.map((m) => [m.hit_id, m]))
+  const nodeOrder = (topology?.nodes ?? []).map((n) => n.node_id)
+  const stackLines = (entries: WalkEntry[], noun: string): string[] | undefined => {
+    if (entries.length < 2) return undefined
+    const labels = stackLabelTexts(entries, hitsById, byId, nodeOrder, anchorFields, dates)
+    return entries.map((_, i) => [`${noun} ${i + 1}/${entries.length}`, labels[i]].filter(Boolean).join(' '))
+  }
   const pointNodes = new Set((topology?.nodes ?? []).filter((n) => n.is_point === true).map((n) => n.node_id))
   const activeFamily = input.activeFamily ?? null
   const intervalData: any[] = []
@@ -314,13 +324,11 @@ export function computeEventData(
       for (const mark of f.marks) {
         const color = colorOf(mark.tier, node, nodeColors)
         const after = colorOf('detected', node, nodeColors)
+        // 悬停:格里并着的几个 event 逐行 `events j/m 区别`(只数 event,不按用到它的 hit 拆)
         const base = {
           instance_id: mark.memberIds[0], member_ids: mark.memberIds,
-          member_labels: mark.memberIds.length >= 2
-            ? memberLabels(mark.memberIds, byId, anchorFields).map((l) => formatMemberLabel(l, dates))
-            : undefined,
-          member_k: mark.memberIds.map((id) => f.memberIds.indexOf(id) + 1),
-          family_n: f.memberIds.length, family_key: f.key, family_start: f.start,
+          stack: stackLines(mark.memberIds.map((id) => ({ hitId: null, instanceId: id })), 'events'),
+          family_key: f.key, family_start: f.start,
           mark_kind: mark.kind, tier: mark.tier,
         }
         const H = TIER_H[mark.tier]
@@ -349,10 +357,8 @@ export function computeEventData(
   })
 
   // ── bracket 轨:hit 按同起点折;每族一行,记号是 hit 的终点(整条 / 格),买入日 ▼ 叠在上面 ──
-  const hitsById = new Map(hits.map((m) => [m.hit_id, m]))
-  const nodeOrder = (topology?.nodes ?? []).map((n) => n.node_id)
   const hitLabelTexts = (ids: string[]): string[] | undefined => ids.length >= 2
-    ? hitLabels(ids, hitsById, byId, nodeOrder, anchorFields).map((l) => formatMemberLabel(l, dates))
+    ? stackLabelTexts(ids.map((hitId) => ({ hitId, instanceId: null })), hitsById, byId, nodeOrder, anchorFields, dates)
     : undefined
   const bracketData: any[] = []
   const bracketLineData: any[] = []
@@ -483,7 +489,7 @@ function familySummary(f: Family, byId: ReadonlyMap<string, EventDict>, tierOf: 
 /** buildMainOption 用到的那部分渲染入参(annotate 模式只给 sliderShow / zoomOverride)。 */
 export type MainOptionInput = Pick<BandRenderInput,
   'strictWindow' | 'sliderShow' | 'zoomOverride' | 'tooltipResolver' | 'hitLabel'
-  | 'candidateHitIds' | 'hits'>
+  | 'candidateHitIds' | 'hits' | 'events' | 'selectedHitId'>
 
 /** 没有任何 app 产物的 EventBundle:annotate 模式只画 K 线和成交量。 */
 export function emptyEventBundle(bars: Bar[]): EventBundle {
@@ -535,7 +541,7 @@ export function buildMainOption(
   opts?: { getChartEl?: () => HTMLElement | null; height?: number },
 ): unknown {
   const { strictWindow, sliderShow, zoomOverride,
-          tooltipResolver, hitLabel, candidateHitIds } = input
+          tooltipResolver, hitLabel } = input
   const { dates, candle, pricePointData, highlightPriceData, veilPriceData } = bundle
 
   const N = bars.length
@@ -580,7 +586,7 @@ export function buildMainOption(
         position: opts?.getChartEl ? makeViewportAwarePosition(opts.getChartEl) : viewportAwareTooltipPosition,
         extraCssText: 'max-height: calc(100vh - 16px); overflow-y: auto;',
         formatter: buildMarkerTooltipFormatter(tooltipResolver, hitLabel,
-          { hits: input.hits ?? [], candidateHitIds: candidateHitIds ?? new Set() }) }
+          { hits: input.hits ?? [], events: input.events ?? [], selectedHitId: input.selectedHitId ?? null }) }
     : undefined
 
   return {
@@ -846,7 +852,7 @@ export function buildSubOption(
         position: opts?.getChartEl ? makeViewportAwarePosition(opts.getChartEl) : viewportAwareTooltipPosition,
         extraCssText: 'max-height: calc(100vh - 16px); overflow-y: auto;',
         formatter: buildMarkerTooltipFormatter(tooltipResolver, hitLabel,
-          { hits: input.hits ?? [], candidateHitIds: candidateHitIds ?? new Set() }) }
+          { hits: input.hits ?? [], events: input.events ?? [], selectedHitId: input.selectedHitId ?? null }) }
     : undefined
 
   // 装饰几何(zebra/hits 底/bandLabels/hitsLabel)改走 option.graphic,不再挂 series
@@ -912,11 +918,11 @@ export function buildSubOption(
         data: pointData,
         renderItem: (p: any, api: any) => renderPointWithGeom(p, api, subGeom.bandGeom, z),
         encode: { x: 0 }, z: 10, tooltip: markerTooltip },
-      // bracket 族底线(z:10)。compare(传了 feedback)下有买入日的族垫一整行高的透明命中区,点它发起 family 反馈;
-      // 压在格与 ▼(brackets,z:11)下面,点格、点 ▼ 不受影响。app 模式整层不响应鼠标(和原来一样)
+      // bracket 族底线(z:10)。有买入日的族垫一整行高的透明命中区,点它选中这一族(compare 下另发起 family 反馈);
+      // 压在格与 ▼(brackets,z:11)下面,点格、点 ▼ 不受影响。app 模式同样可点
       { type: 'custom', name: 'bracket-lines', xAxisIndex: 0, yAxisIndex: 0, clip: true,
-        data: bundle.bracketLineData, silent: !fbIn,
-        renderItem: makeRenderBracketLine(bundle.bracketLineData, z, bracketTop, !!fbIn, subGeom.bracketLaneTops),
+        data: bundle.bracketLineData, silent: false,
+        renderItem: makeRenderBracketLine(bundle.bracketLineData, z, bracketTop, true, subGeom.bracketLaneTops),
         encode: { x: [0, 1] }, z: 10, emphasis: { disabled: true } },
       // brackets (z:11):hit 的记号与买入日 ▼。focus 信号:selectedHitId 存在且无实例焦点 ⟺ bracket
       // 本身是被点者(KlineChart.ts bracket 分支走 focusHit 不设实例;marker 分支必设)
@@ -1297,10 +1303,10 @@ export function makeRenderFamilyLine(
 
 /**
  * bracket 族底线(每一族都画,bracket 一律是梳子;起点带竖头)、当家行粗底线。
- * clickable(compare):有买入日的族先垫一整行高(含行间空隙)的透明命中区,线与竖头不响应鼠标;点它发起这一族的
- * family 反馈(spec 6.13)。代价:格与格之间的空白原来点了是清选中(落空白),现在点到的是这一族;new_step 的族底线
+ * clickable(副图里一律传 true):有买入日的族先垫一整行高(含行间空隙)的透明命中区,线与竖头不响应鼠标;点它选中这一族,
+ * compare 下另发起这一族的 family 反馈(spec 6.13)。代价:格与格之间的空白点到的是这一族,不是空白;new_step 的族底线
  * 从旧平台起点画起,能点出一族的地方比买点那段长。没有买入日的族不垫,点那里仍是空白。
- * 不 clickable(app 模式)时整组不响应鼠标,和原来一样。
+ * 不 clickable 时整组不响应鼠标。
  */
 export function makeRenderBracketLine(
   items: Array<{ multi?: boolean; active?: boolean; buy_days?: number[] }>,
@@ -1544,7 +1550,7 @@ export function makeRenderBracket(
                     style: { fill: '#111111' } }
       // 这一天并了几次 hit(同一族里买在这天的,只差切法):个数写在格子外、正上方的个数行里(subGeometry 的
       // HIT_COUNT_ROW_H,这一行 hit 有这种日子才留出),▼ 与格子不动。没给 laneTops(没留个数行)不写;K 线密到
-      // 一根比数字还窄时也不写(相邻两天的数字会叠在一起),个数仍在悬停的 `hits: n` 与提示条的 `hit k/n` 里。
+      // 一根比数字还窄时也不写(相邻两天的数字会叠在一起),个数仍在悬停的 `hits ×n` 与显示栏 ↑ / ↓ 键槽的 `into hits ×n` 里。
       const n = ids.length
       const digitsW = String(n).length * BUY_COUNT_FONT_PX * BUY_COUNT_CHAR_RATIO
       if (n < 2 || !laneTops || api.size([1, 0])[0] < digitsW - 1) return tri
@@ -1944,8 +1950,11 @@ const fixedLine = (s: string) => `<span style='font-family:${MONO}'>${s}</span>`
 
 /**
  * Marker tooltip formatter (series-level item-trigger)。
- * 三段结构 + 可选 hit 顶行：
- *   - 顶行 (仅 params.data.hit_id 命中)：hit: {hitLabel(id)}
+ * 三段结构 + 可选的顶上几行：
+ *   - hits 格 / ▼ (params.data.hit_id 命中):`hits ×m`(这格画着的几次)与逐次的 `hits j/m 区别`,
+ *     `hit: {hitLabel}` 与 `组成` 只写当前那次(选中的那次在这格里就是它,否则第一次),几次时写明是第几次;
+ *   - band 的格 / 点 (无 hit_id):格里并着的几个 event 逐行 `events j/m 区别`、`hits ×n`(被几次 hit 用到,
+ *     沿 child_refs 找父容器,和选中它时卡片的 hits 行同一口径);
  *   - 段 1 Identity：node / time / id
  *   - 段 2 Clauses：失败 ✗ 置顶 + 加粗；多 node 同 cid 行末加 (in: <node>)
  *   - 段 3 Attributes：raw（已去重）
@@ -1960,63 +1969,52 @@ const fixedLine = (s: string) => `<span style='font-family:${MONO}'>${s}</span>`
 export function buildMarkerTooltipFormatter(
   tooltipResolver: ((instanceId: string) => TooltipPayload) | undefined,
   hitLabel: ((hitId: string) => string | null) | undefined,
-  ctx: { hits: HitDict[]; candidateHitIds: ReadonlySet<string> } = { hits: [], candidateHitIds: new Set() },
+  ctx: { hits: HitDict[]; events?: EventDict[]; selectedHitId?: string | null }
+    = { hits: [] },
 ) {
+  let using: ((id: string) => HitDict[]) | null = null   // 第一次悬停时才建表
   return (params: { data?: { instance_id?: string; hit_id?: string; [key: string]: unknown } } | null): string => {
     const data = params?.data
     if (!data) return ''
     const lines: string[] = []
 
-    // ── bracket 段：候选首行 + 买入日 + 同一记号上的几次 hit + hitLabel + 组成段 ────────
+    // ── hits 格 / ▼:这格画着的几次、当前那次的 hitLabel 与组成 ────────
     const hitId = data.hit_id as string | undefined
     if (hitId) {
       const hitIds = (data.hit_ids as string[] | undefined) ?? [hitId]
-      if (hitIds.some((id) => ctx.candidateHitIds.has(id))) lines.push(fixedLine('candidate'))
+      const m = hitIds.length
       if (data.kind === 'buy') lines.push(fixedLine(`buy: ${data.buy_date as string}`))
-      const hitLabelTexts = data.hit_labels as string[] | undefined
-      if (hitIds.length >= 2) {
-        lines.push(fixedLine(`hits: ${hitIds.length}`))
-        if (hitLabelTexts) for (const t of hitLabelTexts) lines.push(fixedLine(`  ${t}`))
+      if (m >= 2) {
+        lines.push(fixedLine(`hits ×${m}`))
+        const texts = (data.hit_labels as string[] | undefined) ?? []
+        hitIds.forEach((_id, i) => lines.push(fixedLine(`  ${[`hits ${i + 1}/${m}`, texts[i]].filter(Boolean).join(' ')}`)))
       }
-      // 既有 hitLabel
+      // 当前那次:选中的那次在这格里就是它,否则第一次
+      const ci = Math.max(0, hitIds.indexOf(ctx.selectedHitId ?? ''))
+      const cur = hitIds[ci]
       if (hitLabel) {
-        const label = hitLabel(hitId)
+        const label = hitLabel(cur)
         if (label) lines.push(fixedLine(`hit: ${label}`))
       }
-      // 组成段 (M #15)
-      const hit = ctx.hits.find((m) => m.hit_id === hitId)
+      const hit = ctx.hits.find((x) => x.hit_id === cur)
       if (hit) {
-        lines.push(`组成 (${hit.children.length} events):`)
+        lines.push(`组成${m >= 2 ? ` ${fixedLine(`hits ${ci + 1}/${m}`)}` : ''} (${hit.children.length} events):`)
         for (const [nodeKey, instanceId] of Object.entries(hit.node_index)) {
           lines.push(`  ${nodeKey}: ${instanceId}`)
         }
       }
     }
 
-    // ── 多确认段:该买点(实例)被几个 hit 共享 ────────────────────────────
-    // 实例化契约:marker 的 data.instance_id 即买点锚 leaf(instance_id);共享计数按
-    // hit.leaf(实例级,serialize 注入)匹配,同 leaf 被 >=2 hit 共享时输出确认行。
+    // ── band 的格 / 点:格里并着的几个 event、被几次 hit 用到 ─────────────
     const instanceId = data.instance_id as string | undefined
-    if (instanceId && ctx.hits.length > 0) {
-      const sharedBy = ctx.hits.filter(
-        (m) => m.leaf === instanceId || m.children.includes(instanceId),
-      ).length
-      if (sharedBy >= 2) {
-        lines.push(fixedLine(`shared_by_hits: ${sharedBy}`))
-      }
-    }
-
-    // ── 族成员段:这个记号在族里第几个;同一格几个成员时逐个列出区分标签 ─────────────
     const memberIds = data.member_ids as string[] | undefined
-    if (!hitId && memberIds) {
-      const ks = (data.member_k as number[] | undefined) ?? []
-      const n = data.family_n as number | undefined
-      if (memberIds.length >= 2) {
-        lines.push(fixedLine(`members: ${memberIds.length}`))
-        const labels = (data.member_labels as string[] | undefined) ?? memberIds
-        labels.forEach((t, i) => lines.push(fixedLine(`  ${ks[i] ?? '?'}/${n ?? '?'} ${t}`)))
-      } else if (n != null && n >= 2) {
-        lines.push(fixedLine(`member: ${ks[0] ?? '?'}/${n}`))
+    if (!hitId) {
+      for (const t of (data.stack as string[] | undefined) ?? []) lines.push(fixedLine(`  ${t}`))
+      if (instanceId && ctx.hits.length > 0) {
+        using ??= usingIndex(ctx.hits, ctx.events ?? [])
+        const ids = new Set<string>()
+        for (const id of memberIds ?? [instanceId]) for (const x of using(id)) ids.add(x.hit_id)
+        if (ids.size > 0) lines.push(fixedLine(`hits ×${ids.size}`))
       }
     }
 
@@ -2096,13 +2094,6 @@ export function buildMarkerTooltipFormatter(
           }
         }
       }
-    }
-
-    // ── marker 归属节 (M #16, 仅非 bracket marker: 无 hit_id) ──────────
-    // bracket 折叠后一行有几十次 hit,逐个圈号已无意义,只报个数
-    if (!hitId && instanceId && ctx.hits.length > 0) {
-      const owned = ctx.hits.filter((m) => m.children.includes(instanceId)).length
-      if (owned > 0) lines.push(fixedLine(`in_hits: ${owned}`))
     }
 
     return lines.join('<br/>')

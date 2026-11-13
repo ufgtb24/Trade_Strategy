@@ -1,4 +1,4 @@
-// 副图族行上的点击:bracket 记号 / 买入日 ▼ / band 格各走哪个入口,带上当前日与当家行。
+// 副图族行上的点击:bracket 记号 / 买入日 ▼ / band 格各选中什么,带上当前日与当家行。
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 
 vi.mock('../src/api', () => ({ saveWcMirror: async () => ({ ok: true } as any), clearWcMirror: async () => ({ ok: true } as any),
@@ -64,7 +64,19 @@ describe('handleChartClick · 族行', () => {
     return view
   }
 
-  it('bracket 上一格背后同一天的两次 hit → 直选第一次,当前日 = 它的买入日,当家行 = 这一族', () => {
+  it('bracket 上一格、这一列有 ▼(这天两次 hit)→ 和点 ▼ 一样选中这一天整体,哪一次都不算选中', () => {
+    const view = setup()
+    const handled = handleChartClick({ seriesName: 'brackets',
+      data: { kind: 'mark', hit_id: 'h0', hit_ids: ['h0', 'h1'], buy_day: 13, family_key: 'hits@0', value: [13, 13, 0, 1] } }, [], view)
+    expect(handled).toBe(true)
+    expect(view.selPath).toEqual([{ kind: 'hit_family', familyKey: 'hits@0' }, { kind: 'buy', day: 13 }])
+    expect(view.focusedHitId).toBeNull()
+    expect(view.selDayHitIds).toEqual(['h0', 'h1'])
+    expect(view.currentDay).toBe(13)
+    expect(view.activeFamilyKey).toBe('hits@0')
+  })
+
+  it('bracket 上一格、这一列没有 ▼(格里两次 hit)→ 选中其中第一次,当前日 = 它的买入日,当家行 = 这一族', () => {
     const view = setup()
     const handled = handleChartClick({ seriesName: 'brackets',
       data: { kind: 'mark', hit_id: 'h0', hit_ids: ['h0', 'h1'], family_key: 'hits@0', value: [13, 13, 0, 1] } }, [], view)
@@ -75,15 +87,15 @@ describe('handleChartClick · 族行', () => {
     expect(view.activeFamilyKey).toBe('hits@0')
   })
 
-  it('bracket 上几次 hit 买入日不一样 → 待选,不画当前日', () => {
+  it('bracket 上一格(没有 ▼ 的那一列)几次 hit 买入日不一样 → 选中第一次,竖线落在它的买入日,别的几次在这一族里按日子走', () => {
     const view = setup()
     handleChartClick({ seriesName: 'brackets',
       data: { kind: 'mark', hit_id: 'h0', hit_ids: ['h0', 'h2'], family_key: 'hits@0', value: [13, 14, 0, 1] } }, [], view)
-    expect([...view.candidateHitIds].sort()).toEqual(['h0', 'h2'])
-    expect(view.currentDay).toBeNull()
+    expect(view.candidateHitIds.size).toBe(0)
+    expect([view.focusedHitId, view.currentDay, view.activeFamilyKey]).toEqual(['h0', 13, 'hits@0'])
   })
 
-  it('bracket 买入日 ▼ → 买在这天的 hit;一次就直选,当前日 = 买入日', () => {
+  it('bracket 买入日 ▼ → 选中这一天;这天只有一次 hit 时就是那次 hit,当前日 = 买入日', () => {
     const view = setup()
     handleChartClick({ seriesName: 'brackets',
       data: { kind: 'buy', hit_id: 'h2', hit_ids: ['h2'], buy_day: 14, family_key: 'hits@0', value: [14, 14, 0, 1] } }, [], view)
@@ -91,20 +103,21 @@ describe('handleChartClick · 族行', () => {
     expect(view.currentDay).toBe(14)
   })
 
-  it('band 一格(几个成员)→ 成员的 hit 合起来,同一天就直选第一次;一个成员一次 hit 也直选;当家行 = 这一族', () => {
+  it('band 一格(几个成员)→ 选中其中第一个 event,用到它的 hit 画细框、不算选中;一个成员的格选中它;竖线落在它的终点', () => {
     const view = setup()
     handleChartClick({ seriesName: 'intervals',
       data: { instance_id: P0.instance_id, member_ids: [P0.instance_id, P1.instance_id], family_key: 'plateau@0',
               value: [13, 13, 0, 0, 3, 1] } }, [], view)
-    expect(view.focusedHitId).toBe('h0')
-    expect(view.candidateHitIds.size).toBe(0)
+    expect(view.selPath).toEqual([{ kind: 'node', band: 'plateau' }, { kind: 'event', instanceId: P0.instance_id }])
+    expect([view.selectedInstanceId, view.focusedHitId]).toEqual([P0.instance_id, null])
+    expect([...view.candidateHitIds]).toEqual(['h0'])
     handleChartClick({ seriesName: 'intervals',
       data: { instance_id: P2.instance_id, member_ids: [P2.instance_id], family_key: 'plateau@0',
               value: [14, 14, 0, 0, 3, 1] } }, [], view)
-    expect(view.focusedHitId).toBe('h2')
-    expect(view.focusedInstanceId).toBe(P2.instance_id)
+    expect([view.selectedInstanceId, view.focusedHitId]).toEqual([P2.instance_id, null])
+    expect([...view.candidateHitIds]).toEqual(['h2'])
     expect(view.currentDay).toBe(14)
-    expect(view.activeFamilyKey).toBe('plateau@0')
+    expect(view.activeFamilyKey).toBeNull()             // 选中 event 时,band 的族底线(plateau@0)不加粗
   })
 
   it('点空白 → 清焦点,返回 false', () => {

@@ -30,7 +30,7 @@
       <div v-for="r in g.rows" :key="r.instanceId" data-testid="diagnose-row"
            :class="['ev', { cur: r.instanceId === currentId }]"
            :data-instance="r.instanceId" :data-paired="r.paired ? 1 : 0" :data-group="g.key"
-           :title="g.key === 'hits' ? 'click to select this hit on the chart' : 'click to select this event on the chart'"
+           :title="g.key === 'hits' ? 'click to select this hit on the chart; ↑/↓ walks the hits of this group in this order' : 'click to select this event on the chart'"
            @click="pick(r.instanceId)">
         <div class="ann-kv ev-kv">
           <span class="ann-k" :title="g.key === 'hits' ? 'start of the hit: different starts are different families'
@@ -82,11 +82,12 @@
  *   - hits n:样本日在场的 hit,一块一次(块的身份仍是它在这个 node 上的 event;同一个 event 被几次 hit 共用时
  *     块头写 × k,个数照 hit 数算)。块里:start 起点、first_diff(同起点同跨度有几块时才有:它们内部第一处
  *     不一样的子段、以及这一块里那一段的终点,如 `step → 2024-11-21`;不是类型)。配对的在最前(块头右侧标
- *     paired),其余按 hit 的先后,和图上 ←/→ 走的先后一致;
+ *     paired),其余按块里最早那次 hit 的先后——和 ↑ / ↓ 在样本日在场的 hit 间走的先后一致(同一份排序,
+ *     stores/compare.ts 的 stackCards);
  *   - not_in_hit n:在场但没进 hit 的 event,组头另写 qualified / detected 各几个。块里多 level 档位、failed
  *     没过的 where(一行一条:where 名 + mapping notes 里的用户原话;只给类别,不给实测值与门槛,spec 1.4)。
  *     配对那块和 qualified 的照列,其余 detected 折成「+ n detected」,点开逐块;
- * - 当前选中的那一块(图上或这里点的、←/→ 走到的)描黑粗边;点一块 = 选中它,当前日仍在样本日;
+ * - 当前选中的那一块(图上或这里点的、↑ / ↓ 走到的)描黑粗边;点一块 = 选中它,当前日仍在样本日;
  * - 聚焦样本不动档位按钮:那一块的档位低于当前档位、图上画不出来时,档位后写灰字 hidden(悬停说明);
  * - 读的是聚焦的样本:选中的,没选中时是进 compare 时默认聚焦的那个(FocusedSamplePanel 里显示)。
  */
@@ -94,13 +95,11 @@ import { computed, ref, watch } from 'vue'
 import { useCompareStore } from '../stores/compare'
 import { useViewStore } from '../stores/view'
 import { useAnnotationStore } from '../stores/annotation'
-import { useCopyRefStore } from '../stores/copyRef'
 import type { Tier } from '../types'
 
 const cmp = useCompareStore()
 const view = useViewStore()
 const ann = useAnnotationStore()
-const copyRef = useCopyRefStore()
 const LOW_TIERS: readonly Tier[] = ['qualified', 'detected']
 const TIER_TIP: Record<Tier, string> = {
   in_hit: 'in_hit: the event is part of a hit (the app buys with it)',
@@ -168,14 +167,13 @@ const hitsOfEvent = computed(() => {
 })
 function hitCount(instanceId: string): number { return hitsOfEvent.value.get(instanceId)?.length ?? 0 }
 
-/** 进了 hit 的:配对的在最前,其余按 hit 的先后(和图上 ←/→ 一致)。 */
+/** 进了 hit 的:和 ↑ / ↓ 走的先后同一份(配对的在最前,其余按块里最早那次 hit 的先后)。 */
 const hitRows = computed(() => {
+  const read = d.value?.read
   const order = new Map<string, number>()
-  let k = 0
-  for (const id of hitsOfEvent.value.keys()) order.set(id, k++)
+  if (read && cmp.pairNode) cmp.stackCards(read.pairing, cmp.pairNode).forEach((c, k) => order.set(c.instanceId, k))
   return (d.value?.rows ?? []).filter(r => r.level === 'in_hit')
-    .sort((a, b) => Number(b.paired) - Number(a.paired)
-      || (order.get(a.instanceId) ?? Infinity) - (order.get(b.instanceId) ?? Infinity))
+    .sort((a, b) => (order.get(a.instanceId) ?? Infinity) - (order.get(b.instanceId) ?? Infinity))
 })
 const lowRows = computed(() => (d.value?.rows ?? []).filter(r => r.level !== 'in_hit'))
 const lowShown = computed(() => expanded.value
@@ -197,11 +195,10 @@ function noteOf(where: string): string | null {
   return cmp.notes[`${node.value}.${where}`] ?? null
 }
 
+/** 点一块:选中的仍在这个样本下面,hits 组的跳到它的第一次(× k 的随后用 ↑ / ↓ 走过它那 k 次),not_in_hit 组的只选中那个 event。 */
 function pick(id: string): void {
   const r = d.value?.read
-  if (!r) return
-  copyRef.pickCard(id)   // 之后 Shift+C 复制的是这张卡片的 hit / event,不是样本
-  view.focusEvent(id, { day: r.day, family: cmp.samplesRow })
+  if (r) cmp.pickCard(r.id, id)
 }
 </script>
 

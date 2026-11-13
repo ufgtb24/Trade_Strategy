@@ -2,7 +2,7 @@
 // diagnose 的行(只给档位与没过的 where 名)、←/→ 在样本间走、进 compare 时默认聚焦哪个样本。夹具是小合成数据。
 import { describe, it, expect } from 'vitest'
 import {
-  dayEvents, defaultFocus, diagnoseRows, matchMark, matchOf, pairOn, stepSample,
+  dayEvents, defaultFocus, diagnoseRows, matchMark, matchOf, pairOn,
 } from '../src/annotate/compareRead'
 import type { Diagnostics, EventDict, HitDict, Tier } from '../src/types'
 
@@ -107,16 +107,8 @@ describe('diagnose 的行', () => {
   })
 })
 
-describe('样本之间走、默认聚焦', () => {
+describe('默认聚焦', () => {
   const S = [{ id: 'c', day: 30 }, { id: 'a', day: 10 }, { id: 'b', day: 20 }]
-  it('←/→ 按样本日走,到头不动;当前不在列表里时从头或尾开始', () => {
-    expect(stepSample(S, 'a', 1)).toBe('b')
-    expect(stepSample(S, 'c', 1)).toBe('c')
-    expect(stepSample(S, 'b', -1)).toBe('a')
-    expect(stepSample(S, null, 1)).toBe('a')
-    expect(stepSample(S, null, -1)).toBe('c')
-    expect(stepSample([], null, 1)).toBeNull()
-  })
   it('进 compare:已有选中的样本就用它,否则取离图窗中心最近的', () => {
     expect(defaultFocus(S, 'c', 11)).toBe('c')
     expect(defaultFocus(S, 'zz', 18)).toBe('b')

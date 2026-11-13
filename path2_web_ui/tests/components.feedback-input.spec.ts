@@ -1,7 +1,9 @@
-// 反馈作答面板与 feedback 工具的纯函数:面板开着时按键归不归面板(含输入法组字)、面板翻边、拖选竖带的左右。
+// 反馈作答面板与 feedback 工具的纯函数:面板开着时按键归不归面板(含输入法组字)、面板默认落点与拖动时留在视口里、
+// 拖选竖带的左右。
 import { describe, it, expect } from 'vitest'
 import {
-  NOTE_MAX_H, PANEL_GAP, isComposingKey, markAnchor, noteHeight, panelKeyAction, placePanel, rangeBandPx, selectedBandPx,
+  NOTE_MAX_H, PANEL_BAR_GAP, PANEL_GAP, clampToViewport, isComposingKey, noteHeight, panelKeyAction, placePanel,
+  rangeBandPx, selectedBandPx, type PanelAnchor,
 } from '../src/components/feedbackPanel'
 
 describe('panelKeyAction', () => {
@@ -12,6 +14,16 @@ describe('panelKeyAction', () => {
   it('Shift+Enter 不截(note 里是换行);Shift+Esc 照关', () => {
     expect(panelKeyAction({ key: 'Enter', shiftKey: true })).toBeNull()
     expect(panelKeyAction({ key: 'Escape', shiftKey: true })).toBe('close')
+  })
+
+  it('按住 Enter 的自动重复:截下不做事(ignore),不保存;Shift+Enter 的重复照旧不截;Esc 的重复照关', () => {
+    expect(panelKeyAction({ key: 'Enter', repeat: true })).toBe('ignore')
+    expect(panelKeyAction({ key: 'Enter', repeat: false })).toBe('save')
+    expect(panelKeyAction({ key: 'Enter', repeat: true, shiftKey: true })).toBeNull()
+    expect(panelKeyAction({ key: 'Escape', repeat: true })).toBe('close')
+    expect(panelKeyAction({ key: 'Enter', repeat: true, isComposing: true })).toBeNull()
+    expect(panelKeyAction({ key: 'Enter', repeat: true, ctrlKey: true })).toBeNull()
+    expect(panelKeyAction({ key: 'Enter', repeat: true }, true)).toBeNull()      // 焦点在面板外的输入框里
   })
 
   it('输入法组字中一律不截:isComposing,或 keyCode 229(Enter 是上屏、Esc 是取消组字)', () => {
@@ -40,16 +52,55 @@ describe('panelKeyAction', () => {
 })
 
 describe('placePanel', () => {
+  // 图表区左右 200..1200,显示栏上沿 600;面板 300×200
+  const SIZE = { w: 300, h: 200 }
+  const a = (band: PanelAnchor['band'], extra: Partial<PanelAnchor> = {}): PanelAnchor =>
+    ({ band, bottom: 600, left: 200, right: 1200, ...extra })
+  const Y = 600 - PANEL_BAR_GAP - 200
+
+  it('横向:靠在竖带右边,不压竖带;纵向:底边贴住显示栏上沿(留一点空)', () => {
+    const p = placePanel(a({ left: 400, right: 420 }), SIZE)
+    expect(p).toEqual({ x: 420 + PANEL_GAP, y: Y })
+    expect(p.y + SIZE.h).toBe(600 - PANEL_BAR_GAP)
+  })
+  it('右边刚好放得下仍放右边;差一点就翻到竖带左边', () => {
+    expect(placePanel(a({ left: 880, right: 892 }), SIZE)).toEqual({ x: 892 + PANEL_GAP, y: Y })      // 900 + 300 = 1200
+    expect(placePanel(a({ left: 880, right: 893 }), SIZE)).toEqual({ x: 880 - PANEL_GAP - 300, y: Y })
+  })
+  it('左边也放不下(竖带太宽):贴住图表区右边,这时压住竖带的一部分', () => {
+    expect(placePanel(a({ left: 300, right: 1000 }), SIZE)).toEqual({ x: 1200 - 300, y: Y })
+    // 左边刚好放得下:翻到左边
+    expect(placePanel(a({ left: 508, right: 1000 }), SIZE)).toEqual({ x: 200, y: Y })
+  })
+  it('竖带不在图窗里(null):放在左右范围的正中', () => {
+    expect(placePanel(a(null), SIZE)).toEqual({ x: (200 + 1200 - 300) / 2, y: Y })
+  })
+  it('图表区比面板还窄:贴住左边界,不越出左边', () => {
+    expect(placePanel(a(null, { left: 200, right: 400 }), SIZE)).toEqual({ x: 200, y: Y })
+    expect(placePanel(a({ left: 250, right: 260 }, { left: 200, right: 400 }), SIZE)).toEqual({ x: 200, y: Y })
+  })
+  it('上边放不下(主图太矮):贴住视口上沿', () => {
+    expect(placePanel(a(null, { bottom: 150 }), SIZE).y).toBe(0)
+  })
+  it('gap 可另给', () => {
+    expect(placePanel(a({ left: 400, right: 420 }), SIZE, 20).x).toBe(440)
+    expect(placePanel(a({ left: 880, right: 900 }), SIZE, 20).x).toBe(880 - 20 - 300)
+  })
+})
+
+describe('clampToViewport', () => {
   const VP = { w: 1000, h: 800 }
-  it('放得下:点击处右下', () => {
-    expect(placePanel({ x: 100, y: 200 }, { w: 300, h: 200 }, VP)).toEqual({ x: 100 + PANEL_GAP, y: 200 + PANEL_GAP })
+  const SIZE = { w: 300, h: 200 }
+  it('整块在视口里:原样', () => {
+    expect(clampToViewport({ x: 100, y: 50 }, SIZE, VP)).toEqual({ x: 100, y: 50 })
+    expect(clampToViewport({ x: 700, y: 600 }, SIZE, VP)).toEqual({ x: 700, y: 600 })
   })
-  it('右边放不下翻到左边,下边放不下翻到上边', () => {
-    expect(placePanel({ x: 900, y: 700 }, { w: 300, h: 200 }, VP)).toEqual({ x: 900 - PANEL_GAP - 300, y: 700 - PANEL_GAP - 200 })
-    expect(placePanel({ x: 900, y: 100 }, { w: 300, h: 200 }, VP)).toEqual({ x: 900 - PANEL_GAP - 300, y: 100 + PANEL_GAP })
+  it('越出哪边就贴住哪边', () => {
+    expect(clampToViewport({ x: -40, y: -10 }, SIZE, VP)).toEqual({ x: 0, y: 0 })
+    expect(clampToViewport({ x: 900, y: 750 }, SIZE, VP)).toEqual({ x: 700, y: 600 })
   })
-  it('翻过去仍放不下时贴住视口边', () => {
-    expect(placePanel({ x: 50, y: 50 }, { w: 2000, h: 2000 }, VP)).toEqual({ x: 0, y: 0 })
+  it('面板比视口还大:贴住左上', () => {
+    expect(clampToViewport({ x: 300, y: 300 }, { w: 2000, h: 2000 }, VP)).toEqual({ x: 0, y: 0 })
   })
 })
 
@@ -78,26 +129,6 @@ describe('selectedBandPx', () => {
     expect(selectedBandPx(0, 9, toPx, 120, 140)).toEqual({ left: 120, width: 20, cutLeft: true, cutRight: true })
     expect(selectedBandPx(0, 2, toPx, 200, 900)).toBeNull()
     expect(selectedBandPx(0, 2, () => NaN, 56, 900)).toBeNull()        // 图还没有 x 轴:换不出像素
-  })
-})
-
-describe('markAnchor', () => {
-  const clip = { left: 56, top: 400, right: 900, bottom: 700 }
-  it('记号露在可见区里:左下角,连同记号的顶(翻到上边时用)', () => {
-    expect(markAnchor({ left: 200, top: 500, right: 260, bottom: 514 }, clip)).toEqual({ x: 200, y: 514, yUp: 500 })
-  })
-  it('面板按这个锚点放:放得下在记号下方,放不下翻到记号上方,都不压住记号', () => {
-    const a = markAnchor({ left: 200, top: 500, right: 260, bottom: 514 }, clip)
-    expect(placePanel(a, { w: 300, h: 100 }, { w: 1000, h: 800 })).toEqual({ x: 208, y: 522 })
-    expect(placePanel(a, { w: 300, h: 100 }, { w: 1000, h: 600 })).toEqual({ x: 208, y: 500 - PANEL_GAP - 100 })
-    // 没给 yUp(点击处):翻到上边按点击处算
-    expect(placePanel({ x: 200, y: 514 }, { w: 300, h: 100 }, { w: 1000, h: 600 })).toEqual({ x: 208, y: 514 - PANEL_GAP - 100 })
-  })
-  it('左端在图区外:贴住图区左边;整条在右边之外:贴住右边;上下滚出可见区:贴住上下边', () => {
-    expect(markAnchor({ left: 10, top: 500, right: 260, bottom: 514 }, clip)).toEqual({ x: 56, y: 514, yUp: 500 })
-    expect(markAnchor({ left: 950, top: 500, right: 990, bottom: 514 }, clip)).toEqual({ x: 900, y: 514, yUp: 500 })
-    expect(markAnchor({ left: 200, top: 300, right: 260, bottom: 314 }, clip)).toEqual({ x: 200, y: 400, yUp: 400 })
-    expect(markAnchor({ left: 200, top: 800, right: 260, bottom: 814 }, clip)).toEqual({ x: 200, y: 700, yUp: 700 })
   })
 })
 

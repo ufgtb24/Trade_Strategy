@@ -90,10 +90,18 @@ describe('view store · 派生 computed 一致性', () => {
     expect(view.markedEventIds.has('bo_10#0')).toBe(true)
   })
 
-  it('focusEvent("ta_12_15#0") 唯一归属:同时驱动 hit + 实例焦点 + add {ta}', () => {
+  it('focusEvent("ta_12_15#0") 唯一归属:选中这个 event、常标用到它的 hit、add {ta};走进去后同时驱动 hit + 实例焦点', () => {
     const view = useViewStore()
     view.loadScanFile(makeFixture())
     view.focusEvent('ta_12_15#0')
+    // 点 event 选中的是它;用到它的那次 hit 在侧栏常标,不算选中
+    expect(view.selectedInstanceId).toBe('ta_12_15#0')
+    expect(view.selectedHitId).toBeNull()
+    expect(view.showTrace).toBe(false)
+    expect(view.markedHitIds.has('m1')).toBe(true)
+    expect(view.markedEventIds.has('ta_12_15#0')).toBe(true)
+    expect(view.expandedNodeIds.has('ta')).toBe(true)
+    view.stepPos(1)                            // 这条 band 上只有它、只牵出一天:→ 进那一天,就是那次 hit
     expect(view.selectedHitId).toBe('m1')
     expect(view.focusedInstanceId).toBe('ta_12_15#0')
     expect(view.showTrace).toBe(false)         // 实例焦点存在 → 不展 trace
@@ -102,21 +110,19 @@ describe('view store · 派生 computed 一致性', () => {
     expect(view.expandedNodeIds.has('ta')).toBe(true)
   })
 
-  it('setPendingDisambig 单独调不自动 push manualExpandedNodes(白盒 · 外部不应直调)', () => {
+  it('选中一族(不是其中哪一次):侧栏 hits 列表常标这一族的 hit,不选中、不展开、不亮 group', () => {
     const view = useViewStore()
     view.loadScanFile(makeFixture())
-    view.setCandidateHits(['m1', 'm2'])
-    view.setPendingDisambig('ta_12_15#0')
+    view.clickFamilyLine('hits@10')
+    expect([...view.markedHitIds]).toEqual(['m1'])   // 这一族的 hit 常标
     expect(view.selectedHitId).toBeNull()
-    expect(view.selectedInstanceId).toBeNull()
-    expect(view.focusedInstanceId).toBeNull()
-    expect(view.markedHitIds.size).toBe(2)   // 信息层如实反映所有归属
-    expect(view.markedHitIds.has('m1')).toBe(true)
-    expect(view.markedHitIds.has('m2')).toBe(true)
-    expect(view.markedEventIds.has('ta_12_15#0')).toBe(true)
-    expect(view.expandedNodeIds.size).toBe(0)  // manual 未设 → 空集(pending 单独调不 push,
-                                                //   多归属场景经 focusEvent 会 push,见 focus-actions.spec.ts)
-    expect(view.highlightedEventIds.size).toBe(0)  // 视觉层:多归属不亮 group
+    expect(view.expandedNodeIds.size).toBe(0)
+    expect(view.highlightedEventIds.size).toBe(0)
+    view.clearFocus()
+    expect(view.selectedHitId).toBeNull()
+    expect(view.markedHitIds.size).toBe(0)
+    expect(view.expandedNodeIds.size).toBe(0)
+    expect(view.highlightedEventIds.size).toBe(0)
   })
 
   it('toggleExpandedNode("bo"):add 到 manualExpandedNodes → expandedNodeIds 含 bo', () => {

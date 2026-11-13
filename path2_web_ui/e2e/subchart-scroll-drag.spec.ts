@@ -165,7 +165,7 @@ test('decor graphics survive zoom in (hits / bandLabels / subDivider / zebra rem
   expect(rects.filter((r: any) => r.style?.fill === '#94a3b8')).toHaveLength(0)
 })
 
-test('candidate banner sits outside sub-outer and stays put when scrolling', async ({ page }) => {
+test('walk bar sits outside sub-outer and stays put when scrolling', async ({ page }) => {
   // 先下压副图制造滚动空间(fit 态无滚动可言;banner 已移出滚动容器)
   const divider = page.locator('.resizable-divider')
   const box = await divider.boundingBox()
@@ -176,23 +176,20 @@ test('candidate banner sits outside sub-outer and stays put when scrolling', asy
   await page.mouse.up()
   await page.waitForTimeout(200)
 
-  // 就绪守卫:等 active pattern 的 analysis.hits 填充(≥2)后再置 candidate 态,
-  // 消除 effectiveAnalysis 异步就绪与固定 timeout 的竞态(banner 依赖 hits.length>=2)。
+  // 就绪守卫:等 active pattern 的 analysis.hits 填充(≥2)后再选中一次 hit(显示栏写出选中的是什么),
+  // 消除 effectiveAnalysis 异步就绪与固定 timeout 的竞态。
   await page.waitForFunction(() => ((window as any).__e2e?.view?.effectiveAnalysis?.hits ?? []).length >= 2)
   await page.evaluate(() => {
     const view = (window as any).__e2e?.view
     const hits = view?.effectiveAnalysis?.hits ?? []
-    if (hits.length >= 2) {
-      view.setCandidateHits(hits.slice(0, 2).map((m: any) => m.event_id))
-      view.setPendingDisambig(hits[0].children?.[0] ?? 'x')
-    }
+    if (hits.length >= 2) view.focusHit(hits[0].hit_id)
   })
   await page.waitForTimeout(200)
-  const banner = page.locator('.candidate-banner')
+  const banner = page.getByTestId('walk-bar')
   await expect(banner).toBeVisible()
 
   // 结构断言:banner 不在滚动容器内
-  const insideSubOuter = await page.evaluate(() => !!document.querySelector('.sub-outer .candidate-banner'))
+  const insideSubOuter = await page.evaluate(() => !!document.querySelector('.sub-outer [data-testid="walk-bar"]'))
   expect(insideSubOuter).toBe(false)
 
   // banner 位于 sub-outer 上方;滚动 sub-outer 不改变 banner 位置
@@ -209,7 +206,7 @@ test('candidate banner sits outside sub-outer and stays put when scrolling', asy
   expect(bannerY1).toBeCloseTo(bannerY0, 0)
 })
 
-test('fit 态无滚动条:常态与 candidate 态 scrollHeight === clientHeight', async ({ page }) => {
+test('fit 态无滚动条:常态与选中后(显示栏写出选中的是什么)scrollHeight === clientHeight', async ({ page }) => {
   const probe = () => page.locator('.sub-outer').evaluate((el) => {
     const e = el as HTMLElement
     return { client: e.clientHeight, scroll: e.scrollHeight }
@@ -217,19 +214,16 @@ test('fit 态无滚动条:常态与 candidate 态 scrollHeight === clientHeight'
   const normal = await probe()
   expect(normal.scroll).toBe(normal.client)
 
-  // candidate 态:banner 出现在滚动容器外,不产生滚动(spec 验收 #1)
-  // 就绪守卫:等 hits 填充(≥2)后再置 candidate 态,消除 effectiveAnalysis 异步就绪竞态。
+  // 选中后:显示栏在滚动容器外,不产生滚动
+  // 就绪守卫:等 hits 填充(≥2)后再选中,消除 effectiveAnalysis 异步就绪竞态。
   await page.waitForFunction(() => ((window as any).__e2e?.view?.effectiveAnalysis?.hits ?? []).length >= 2)
   await page.evaluate(() => {
     const view = (window as any).__e2e?.view
     const hits = view?.effectiveAnalysis?.hits ?? []
-    if (hits.length >= 2) {
-      view.setCandidateHits(hits.slice(0, 2).map((m: any) => m.event_id))
-      view.setPendingDisambig(hits[0].children?.[0] ?? 'x')
-    }
+    if (hits.length >= 2) view.focusHit(hits[0].hit_id)
   })
   await page.waitForTimeout(200)
-  await expect(page.locator('.candidate-banner')).toBeVisible()
+  await expect(page.getByTestId('sel-kind').locator(':scope > :last-child')).toHaveText('hit')
   const withBanner = await probe()
   expect(withBanner.scroll).toBe(withBanner.client)
 })

@@ -1,7 +1,10 @@
-// 当前日、当家行与 ←/→ 步进:bracket 族内逐次 hit、band 族内逐个成员、待选时在候选间走、外部行自带步进。
+// 当前日与选中的边角:档位筛掉的成员不在 band 上、低于当前档位的 event、样本(由 compare 登记进来)、clearFocus。
+// 主路径(▼、格、band、step、today、族底线、反馈)见 stores.walk.spec.ts。
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
 import { useViewStore } from '../src/stores/view'
+import { slotText } from '../src/render/selSnapshot'
+import type { Sel } from '../src/render/select'
 import type { EventDict, HitDict, MultiScanResultFile } from '../src/types'
 
 const ev = (node: string, s: number, e: number, idx = 0, child_refs: Record<string, string[]> = {}): EventDict =>
@@ -45,7 +48,11 @@ function makeFixture(): MultiScanResultFile {
   } as any
 }
 
-describe('view store · 当前日、当家行与 ←/→', () => {
+const node = (band: string): Sel => ({ kind: 'node', band })
+const e = (x: EventDict): Sel => ({ kind: 'event', instanceId: x.instance_id })
+const sample = (id: string): Sel => ({ kind: 'sample', sampleId: id })
+
+describe('view store · 当前日与选中的边角', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
   })
@@ -56,165 +63,120 @@ describe('view store · 当前日、当家行与 ←/→', () => {
     view.setLevel('detected')
     return view
   }
+  const slots = (view: ReturnType<typeof useViewStore>) =>
+    [slotText(view.selInfo!.day), slotText(view.selInfo!.stack)]
 
-  it('focusHit:当前日缺省取第一个买入日,当家行缺省是它所在的 bracket 族', () => {
-    const view = setup()
-    view.focusHit('h2')
-    expect(view.currentDay).toBe(14)
-    expect(view.activeFamilyKey).toBe('hits@0')
-  })
-
-  it('sameDayHits:选中的 hit 和别的几次买在同一天时给出这几次与当前第几次;只有一次、没选中时为 null', () => {
-    const view = setup()
-    expect(view.sameDayHits).toBeNull()
-    view.focusHit('h0')
-    expect(view.sameDayHits).toEqual({ ids: ['h0', 'h1'], index: 0 })
-    view.stepFocus(1)
-    expect(view.sameDayHits).toEqual({ ids: ['h0', 'h1'], index: 1 })
-    view.stepFocus(1)                                    // h2 那天只有它一次
-    expect(view.focusedHitId).toBe('h2')
-    expect(view.sameDayHits).toBeNull()
-  })
-
-  it('bracket 族内按终点走(同终点按原顺序),到头停住', () => {
-    const view = setup()
-    view.focusHit('h0')
-    view.stepFocus(1)
-    expect(view.focusedHitId).toBe('h1')
-    view.stepFocus(1)
-    expect(view.focusedHitId).toBe('h2')
-    expect(view.currentDay).toBe(14)
-    view.stepFocus(1)
-    expect(view.focusedHitId).toBe('h2')
-    view.stepFocus(-1)
-    expect(view.focusedHitId).toBe('h1')
-    expect(view.activeFamilyKey).toBe('hits@0')
-  })
-
-  it('band 族内按成员顺序走(含同一天两个成员),走到没成 hit 的成员只选它;档位筛掉的不走', () => {
+  it('沿 band 按格走:选中的一直是 event,走到没成 hit 的成员照样选它;档位筛掉的成员不在这条 band 上', () => {
     const view = setup()
     view.focusEvent(P0.instance_id)
-    expect(view.focusedHitId).toBe('h0')
-    expect(view.activeFamilyKey).toBe('plateau@0')
-    expect(view.currentDay).toBe(13)
-    view.stepFocus(1)
-    expect(view.focusedHitId).toBe('h1')                 // 同一天的另一个成员
-    view.stepFocus(1)
-    expect(view.focusedHitId).toBe('h2')
-    view.stepFocus(1)
-    expect(view.focusedHitId).toBeNull()
-    expect(view.selectedInstanceId).toBe(P3.instance_id)
-    expect(view.currentDay).toBe(15)
-    view.stepFocus(1)
+    // 点 band 上的东西只选中这个 event,不替用户选中用到它的那次 hit
+    expect(view.selPath).toEqual([node('plateau'), e(P0)])
+    expect([view.focusedHitId, view.selectedInstanceId, view.currentDay]).toEqual([null, P0.instance_id, 13])
+    view.stepStack(1)
+    expect(view.selectedInstanceId).toBe(P1.instance_id)  // 同一格的另一个成员
+    view.stepPos(1)
+    expect(view.selectedInstanceId).toBe(P2.instance_id)
+    view.stepPos(1)
+    expect([view.focusedHitId, view.selectedInstanceId, view.currentDay]).toEqual([null, P3.instance_id, 15])
+    view.stepPos(1)
     expect(view.selectedInstanceId).toBe(P3.instance_id)  // 到头停住
-    expect(view.activeFamilyKey).toBe('plateau@0')
 
     view.focusEvent(P2.instance_id)
     view.setLevel('in_hit')
-    view.stepFocus(1)
-    expect(view.focusedHitId).toBe('h2')                 // P3 只到 detected,in_hit 档下不在这一族里
+    view.stepPos(1)
+    expect(view.selectedInstanceId).toBe(P2.instance_id)  // P3 只到 detected,in_hit 档下不在这条 band 上
   })
 
-  it('点被几次 hit 共用的子段:待选、当前日为空、当家行在 bracket;←/→ 在候选间走,选中后仍在候选间走', () => {
-    const view = setup()
-    view.focusEvent(S10.instance_id, { family: 'step@10' })
-    expect([...view.candidateHitIds].sort()).toEqual(['h0', 'h2'])
-    expect(view.currentDay).toBeNull()
-    expect(view.activeFamilyKey).toBe('hits@0')
-    view.stepFocus(1)
-    expect(view.focusedHitId).toBe('h0')
-    expect(view.currentDay).toBe(13)
-    view.stepFocus(1)
-    expect(view.focusedHitId).toBe('h2')                 // 跳过不在候选里的 h1
-    view.stepFocus(1)
-    expect(view.focusedHitId).toBe('h2')
-    view.stepFocus(-1)
-    expect(view.focusedHitId).toBe('h0')
-    expect(view.activeFamilyKey).toBe('hits@0')
-  })
-
-  it('聚焦一个低于当前档位的 event 不改档位:只选中它、当前日落在它的终点', () => {
+  it('聚焦一个低于当前档位的 event 不改档位:只选中它、当前日落在它的终点;它在图上画不出来,两组键都没有可去的地方', () => {
     const view = setup()
     view.setLevel('in_hit')
     view.focusEvent(P3.instance_id)                                 // P3 只到 detected
     expect(view.level).toBe('in_hit')
     expect(view.selectedInstanceId).toBe(P3.instance_id)
     expect(view.currentDay).toBe(15)
+    expect(slots(view)).toEqual([null, null])
   })
 
-  it('待选时 ← 从最后一个候选开始', () => {
+  it('样本(由 compare 登记进来):选中样本只是样本,竖线落样本日;↓ 进到在场的几次,← / → 带着这一次换到旁边的样本并通知登记方', () => {
     const view = setup()
-    view.focusEvent(S10.instance_id)
-    view.stepFocus(-1)
-    expect(view.focusedHitId).toBe('h2')
-  })
-
-  it('点击统一规则 · band 格:成员的 hit 合起来;同一天的两次 hit 直选第一次(深档、原顺序),→ 换同一天的下一次', () => {
-    const view = setup()
-    view.focusMark([P0.instance_id, P1.instance_id], { day: 13, family: 'plateau@0' })
-    expect(view.candidateHitIds.size).toBe(0)
+    const onAnchor = vi.fn()
+    view.setSelSources({
+      samples: () => [{ id: 'a', day: 13, hitIds: ['h0', 'h1'], pairedHitId: 'h0' }, { id: 'b', day: 14, hitIds: ['h2'], pairedHitId: 'h2' }],
+      onAnchor,
+    })
+    view.setPath([sample('a')])
+    // 在场的哪一次都不算选中,要按 ↓ 进去才是
+    expect([view.focusedHitId, view.currentDay, view.activeFamilyKey]).toEqual([null, 13, 'samples'])
+    expect(slots(view)).toEqual(['samples 1/2', 'into hits ×2'])
+    view.stepStack(1)
     expect(view.focusedHitId).toBe('h0')
-    expect(view.focusedInstanceId).toBe(P0.instance_id)
-    expect(view.currentDay).toBe(13)
-    expect(view.activeFamilyKey).toBe('plateau@0')
-    view.stepFocus(1)
-    expect(view.focusedHitId).toBe('h1')
+    view.stepStack(1)
+    expect([view.focusedHitId, view.currentDay]).toEqual(['h1', 13])
+    expect(onAnchor).not.toHaveBeenCalled()              // 还在同一个样本里
+    view.stepPos(1)
+    expect(view.selPath).toEqual([sample('b'), { kind: 'hit', hitId: 'h2', day: 14 }])
+    expect([view.focusedHitId, view.currentDay]).toEqual(['h2', 14])
+    expect(onAnchor).toHaveBeenCalledWith(sample('b'))
+    // 挂在样本下面的 event(从样本的 diagnose 点进来):只选中它,没有可走的邻居
+    view.setPath([sample('a'), e(P3)])
+    expect([view.focusedHitId, view.selectedInstanceId, view.activeFamilyKey]).toEqual([null, P3.instance_id, 'samples'])
+    expect(slots(view)).toEqual([null, null])
   })
 
-  it('点击统一规则 · 一个成员被同一天两次 hit 共用(today):直选第一次,当家行仍是这一行,→ 在这两次间走', () => {
+  it('换档位:显示栏的 events k/n 跟着当前档位画出来的格数走,→ 只走画出来的格', () => {
+    const view = setup()                                            // detected 档:plateau 那条 band 上三格(13、14、15)
+    view.focusEvent(P0.instance_id)
+    expect(slotText(view.selInfo!.day)).toBe('events 1/3')
+    view.setLevel('in_hit')                                         // 第 15 天那格只有没成 hit 的 P3:这一档不画
+    expect(view.selectedInstanceId).toBe(P0.instance_id)
+    expect(slotText(view.selInfo!.day)).toBe('events 1/2')
+    view.stepPos(1)
+    expect([view.selectedInstanceId, slotText(view.selInfo!.day)]).toEqual([P2.instance_id, 'events 2/2'])
+    view.stepPos(1)                                                 // 画出来的最后一格:到头,不会走到没画的 P3
+    expect([view.selectedInstanceId, view.currentDay]).toEqual([P2.instance_id, 14])
+    view.setLevel('detected')                                       // 换回来:三格都在,→ 又能走到 P3
+    expect(slotText(view.selInfo!.day)).toBe('events 2/3')
+    view.stepPos(1)
+    expect(view.selectedInstanceId).toBe(P3.instance_id)
+  })
+
+  it('样本 / 框的细框与亮起的组成只跟配对的那一次:没有配对时那天在场别的 hit 也不画细框、不亮组成,↓ 仍能进去', () => {
     const view = setup()
-    view.focusEvent(T13.instance_id, { day: 13, family: 'today@13' })
-    expect(view.candidateHitIds.size).toBe(0)
-    expect(view.focusedHitId).toBe('h0')
-    expect(view.currentDay).toBe(13)
-    expect(view.activeFamilyKey).toBe('today@13')
-    view.stepFocus(1)
-    expect(view.focusedHitId).toBe('h1')
-    expect(view.activeFamilyKey).toBe('today@13')
-    view.stepFocus(1)
-    expect(view.focusedHitId).toBe('h1')                 // 到头停住
-    view.stepFocus(-1)
-    expect(view.focusedHitId).toBe('h0')
+    const present = ['h0', 'h1']                                    // 第 13 天在场的两次
+    let paired: string | null = null
+    view.setSelSources({
+      samples: () => [{ id: 'a', day: 13, hitIds: present, pairedHitId: paired }],
+      boxes: () => [{ id: 'x', day: 13, hitIds: present, pairedHitId: paired }],
+    })
+    for (const sel of [sample('a'), { kind: 'box', boxId: 'x' } as Sel]) {
+      view.setPath([sel])
+      expect([view.candidateHitIds.size, view.highlightedEventIds.size]).toEqual([0, 0])
+      expect(slotText(view.selInfo!.stack)).toBe('into hits ×2')
+      view.stepStack(1)
+      expect(view.selPath).toEqual([sel, { kind: 'hit', hitId: 'h0', day: 13 }])
+    }
+    paired = 'h1'
+    view.setSelSources({
+      samples: () => [{ id: 'a', day: 13, hitIds: present, pairedHitId: paired }],
+      boxes: () => [{ id: 'x', day: 13, hitIds: present, pairedHitId: paired }],
+    })
+    for (const sel of [sample('a'), { kind: 'box', boxId: 'x' } as Sel]) {
+      view.setPath([sel])
+      expect([...view.candidateHitIds]).toEqual(['h1'])
+      expect([...view.highlightedEventIds].sort()).toEqual([P1.instance_id, S11.instance_id, T13.instance_id].sort())
+    }
   })
 
-  it('点击统一规则 · ▼ 与 bracket 格:买入日完全一样直选第一次,不一样进待选', () => {
-    const view = setup()
-    view.focusBuyDay(13, ['h0', 'h1'], 'hits@0')
-    expect(view.candidateHitIds.size).toBe(0)
-    expect(view.focusedHitId).toBe('h0')
-    expect(view.currentDay).toBe(13)
-    expect(view.activeFamilyKey).toBe('hits@0')
-    view.stepFocus(1)
-    expect(view.focusedHitId).toBe('h1')
-    view.focusBuyDay(14, ['h2'], 'hits@0')
-    expect(view.focusedHitId).toBe('h2')
-    expect(view.currentDay).toBe(14)
-    view.focusHits(['h0', 'h2'], { family: 'hits@0' })
-    expect([...view.candidateHitIds].sort()).toEqual(['h0', 'h2'])
-    expect(view.focusedHitId).toBeNull()
-    expect(view.currentDay).toBeNull()
-  })
-
-  it('外部行:←/→ 调它自己的 step;待选时调用方带的外部行不被 bracket 顶掉', () => {
-    const view = setup()
-    const step = vi.fn()
-    view.focusEvent(S10.instance_id, { family: { kind: 'external', key: 'samples', step } })
-    expect(view.candidateHitIds.size).toBe(2)
-    expect(view.activeFamilyKey).toBe('samples')
-    view.stepFocus(1)
-    expect(step).toHaveBeenCalledWith(1)
-    view.setActiveFamily(null)
-    view.setCurrentDay(7)
-    expect(view.currentDay).toBe(7)
-  })
-
-  it('clearFocus 清当前日与当家行', () => {
+  it('clearFocus 清当前日与选中;之后按键不接', () => {
     const view = setup()
     view.focusHit('h0')
     view.clearFocus()
     expect(view.currentDay).toBeNull()
-    expect(view.activeFamily).toBeNull()
-    view.stepFocus(1)                                     // 没有当家行:什么都不做
+    expect(view.selPath).toEqual([])
+    expect(view.selInfo).toBeNull()
+    expect(view.stepPos(1)).toBe(false)
     expect(view.focusedHitId).toBeNull()
+    view.setCurrentDay(7)
+    expect(view.currentDay).toBe(7)
   })
 })

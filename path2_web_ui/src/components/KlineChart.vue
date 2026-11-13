@@ -2,8 +2,7 @@
   <div class="kline-wrap-v2" ref="wrapEl">
     <div ref="mainEl" class="main-chart" style="flex: 1" @contextmenu="handleContextMenu" />
     <ResizableDivider @drag="onDrag" @dragend="onDragEnd" @dblclick="onDblclick" />
-    <CandidateStatusBar :hits="effectiveAnalysis?.hits ?? []" />
-    <ShiftPairBanner />
+    <WalkStatusBar v-if="mode !== 'annotate'" ref="walkBarRef" :feedback="walkFeedback" @feedback="toggleFeedbackPanel" />
     <div class="sub-outer" :style="{ height: effectiveSubH + 'px' }" ref="subOuterEl">
       <!-- 副图竖直缩放挪到顶栏(ChartArea 的 #band-zoom-slot):浮在副图右上角会盖住最右边的 ▲ 与 ✓ / ✗、hit 的 ▼
            (训练段末日附近的样本正落在那里);顶栏和这个控件同在 annotate 以外的模式出现 -->
@@ -53,15 +52,15 @@
     <!-- compare 的 feedback 工具:拖动中贯穿主副图的竖带;拖出的范围里没有买点时,在松开处浮 2 秒 no buy in range -->
     <div v-if="rangeBand" class="feedback-range-band" data-testid="feedback-range-band"
          :style="{ left: `${rangeBand.left}px`, width: `${rangeBand.width}px` }" />
-    <!-- compare:选中的那条反馈(侧栏点卡片、点记号)的日期范围,贯穿主副图的竖带:很淡的底 + 两侧深色实线边
-         (拖选草稿是虚线边);范围伸出图窗的那一侧不画边 -->
+    <!-- compare:作答面板管的那段日期(面板开着时),或选中的那条反馈(侧栏点卡片、点记号)的日期范围,贯穿主副图的
+         竖带:很淡的底 + 两侧深色实线边(拖选草稿是虚线边);范围伸出图窗的那一侧不画边 -->
     <div v-if="selectedBand" class="feedback-selected-band" data-testid="feedback-selected-band"
          :class="{ 'cut-left': selectedBand.cutLeft, 'cut-right': selectedBand.cutRight }"
          :style="{ left: `${selectedBand.left}px`, width: `${selectedBand.width}px` }" />
     <div v-if="fbHint" class="resize-stop" :data-testid="FB_HINT[fbHint.kind].testid"
          :style="{ left: `${fbHint.x + 12}px`, top: `${fbHint.y + 12}px` }">{{ FB_HINT[fbHint.kind].text }}</div>
-    <!-- compare 的反馈作答面板(浮在点击处,状态在 stores/feedback.ts) -->
-    <FeedbackPanel v-if="comparing && fb.panel" :feature-of="featureOfNode" @hover-node="onHoverNode" />
+    <!-- compare 的反馈作答面板(默认靠在竖带旁、贴住显示栏上沿,可拖走;状态在 stores/feedback.ts) -->
+    <FeedbackPanel v-if="comparing && fb.panel" :feature-of="featureOfNode" :anchor="panelAnchor" @hover-node="onHoverNode" />
     <div v-if="contextMenuVisible" ref="driverMenuEl" class="driver-menu"
          :style="{ left: contextMenuPos.x + 'px', top: contextMenuPos.y + 'px' }">
       <!-- 复制 instance_id · marker 右键即显示(contextMenuInstanceId 非 null)、空白右键隐藏 -->
@@ -92,6 +91,7 @@
 import { onMounted, onBeforeUnmount, ref, shallowRef, watch, computed, nextTick } from 'vue'
 import * as echarts from 'echarts'
 import { isBrushToggleKey } from './klineBrushKey'
+import { isFeedbackOpenKey, walkKeyOf, type WalkFeedbackState } from './walkKey'
 import { createBrushRequestHandler } from './klineBrushHandler'
 import { computeRightAnchoredZoom } from './klineCtrlZoom'
 import { storeToRefs } from 'pinia'
@@ -107,7 +107,7 @@ import {
 import {
   computeSubGeometry, composeEffectiveSubH, SUB_CANVAS_MIN_H, MIN_SUB_H,
   MAIN_MIN_H, BAND_ZOOM_MIN, BAND_ZOOM_MAX, LS_KEY_BAND_ZOOM,
-  BAND_ZOOM_STEP_BUTTON, BAND_ZOOM_STEP_WHEEL, FEEDBACK_ROW_H,
+  BAND_ZOOM_STEP_BUTTON, BAND_ZOOM_STEP_WHEEL,
 } from '../render/subGeometry'
 import { ctrlState } from '../render/ctrlState'
 import { bandKeyOf, nodeOfEventByBand, resolveTooltipData, windowOf, formatForwardReturn, subBandTagList } from '../render/visible'
@@ -115,12 +115,11 @@ import { peakIdIndex } from '../render/peakState'
 import type { Bar } from '../types'
 import type { Lane } from '../annotate/model'
 import { handleAppClick, handleChartClick, handleShiftClick, MARKER_SERIES } from './KlineChart'
-import CandidateStatusBar from './CandidateStatusBar.vue'
-import ShiftPairBanner from './ShiftPairBanner.vue'
+import WalkStatusBar from './WalkStatusBar.vue'
 import ResizableDivider from './ResizableDivider.vue'
 import CrosshairOverlay from './CrosshairOverlay.vue'
 import FeedbackPanel from './FeedbackPanel.vue'
-import { markAnchor, rangeBandPx, selectedBandPx } from './feedbackPanel'
+import { rangeBandPx, selectedBandPx, type PanelAnchor } from './feedbackPanel'
 import { useAnnotationStore } from '../stores/annotation'
 import { chartOf, computeLanes, type AnnBox } from '../annotate/model'
 import { emptySlots } from '../annotate/membership'
@@ -284,23 +283,28 @@ function hasBuyIn(start: string, end: string): boolean {
 function onRangeDone(start: string, end: string, at: { x: number; y: number }) {
   const sym = symbol.value
   if (!sym || !hasBuyIn(start, end)) { showFbHint(at, 'no_buy'); return }
-  fb.open(at, { symbol: sym, start, end, target: 'range' })
+  fb.open({ symbol: sym, start, end, target: 'range' })
 }
 /** 拖完选中那条反馈竖带的一条边(工具已熄):新范围里没有买点就不改、提示 no buy in range;
  *  否则交给 store 直接存(和另一条同范围时不存、提示;以前存下的没写 note 的,store 打开它的面板补 note) */
 function onFeedbackResized(id: string, start: string, end: string, at: { x: number; y: number }) {
   if (!hasBuyIn(start, end)) { showFbHint(at, 'no_buy'); return }
-  if (fb.resize(id, start, end, at) === 'same') showFbHint(at, 'same_range')
+  if (fb.resize(id, start, end) === 'same') showFbHint(at, 'same_range')
 }
-/** 选中的那条反馈(用户自己挑的、这只股票、当前 pattern;竖带画的就是它):拖它竖带的边改起止 */
+/** 选中的那条反馈(用户自己挑的、这只股票、当前 pattern;竖带画的就是它):拖它竖带的边改起止。
+ *  作答面板开着、对着的不是它时,竖带画的是面板的范围,这时不认它的边(免得悬停在看不见的边上出改起止的光标) */
 function selectedFeedbackRange(): { id: string; start: string; end: string } | null {
+  if (fb.panel && fb.panel.editingId !== fb.selectedId) return null
   const id = fb.selectedId
   const f = id ? cmpFeedbackList.value.find(x => x.id === id && x.source === 'picked') : null
   return f ? { id: f.id, start: f.start, end: f.end } : null
 }
-// 选中的那条反馈的竖带(相对 kline-wrap 的像素):这只股票、当前 pattern、用户自己挑的那条才有(同反馈带上画的);
+// 作答面板管的那段日期(面板开着时),或选中的那条反馈的竖带(相对 kline-wrap 的像素):反馈是这只股票、当前 pattern、
+// 用户自己挑的那条才有(同反馈带上画的)。面板开着时画面板的范围,面板放哪都能在图上看出它对着什么。
 // 落点同拖选的竖带(整根 K 线对齐主图的 x 轴)。主图每画完一帧(平移、缩放、重画、改尺寸)重算一次,值没变不动
 const selectedSpan = computed(() => {
+  const p = fb.panel
+  if (p && p.symbol === symbol.value) return dateSpanToIdx(annDates.value, p.start, p.end)
   const id = fb.selectedId
   const f = id ? cmpFeedbackList.value.find(x => x.id === id && x.source === 'picked') : null
   return f ? dateSpanToIdx(annDates.value, f.start, f.end) : null
@@ -322,40 +326,60 @@ function syncSelectedBand() {
 }
 // compare 的用户区:特征轨从顶上排起(不随 band zoom 变),user 行接在它们下面
 const cmpUserLanes = computed(() => laneGeometry(annLanes.value, LANES_TOP))
-// compare 副图的总高、反馈带第 0 行的顶(画的时候算出来)
-const cmpGeom = shallowRef<{ height: number; feedbackTop: number } | null>(null)
-/** 反馈带上一条记号在视口里的矩形(侧栏卡片的 edit 拿它当面板的锚点);图上没有这条记号时为 null */
-function feedbackMarkBox(id: string): { left: number; top: number; right: number; bottom: number } | null {
-  const m = cmpFeedbackMarks.value.find(x => x.id === id)
-  const el = subInnerEl.value
-  const g = cmpGeom.value
-  if (!m || !chartSub || !el || !g) return null
-  const sub = chartSub
-  const x = (i: number) => Number(sub.convertToPixel({ xAxisIndex: 0 }, i))
-  const half = Math.abs(x(m.start + 1) - x(m.start)) / 2
-  const r = el.getBoundingClientRect()
-  const top = r.top + g.feedbackTop + m.lane * FEEDBACK_ROW_H
-  const box = { left: r.left + x(m.start) - half, right: r.left + x(m.end) + half, top, bottom: top + FEEDBACK_ROW_H }
-  return Number.isFinite(box.left) && Number.isFinite(box.right) ? box : null
-}
+// compare 副图的总高(画的时候算出来)
+const cmpGeom = shallowRef<{ height: number } | null>(null)
 /**
  * 侧栏卡片的 edit(stores/feedback.ts 的 editRequest,落到那段日期之后才提):等落下那天引起的重画做完,
- * 在那条记号旁打开面板并预填,等同在图上点了那条记号。锚点是记号露在副图可见区里那一段的左下角;
- * 图上没有这条记号(app 没跑成、已被删)时不开。
+ * 选中那条并打开它的面板(预填),等同选中它再按 Enter。图上没有这条记号(app 没跑成、已被删)时不开。
  */
 watch(() => fb.editRequest, async (id) => {
   if (!id) return
   await nextTick()
   if (fb.editRequest !== id) return
   fb.takeEditRequest()
-  const box = feedbackMarkBox(id)
-  const outer = subOuterEl.value?.getBoundingClientRect()
-  const inner = subInnerEl.value?.getBoundingClientRect()
-  if (!box || !outer || !inner) return
+  if (!cmpFeedbackMarks.value.some(m => m.id === id)) return
   fb.select(id)
-  fb.open(markAnchor(box, { left: inner.left + MAIN_GRID_LEFT, right: inner.right - MAIN_GRID_RIGHT,
-                            top: outer.top, bottom: outer.bottom }), { id })
+  fb.open({ id })
 })
+
+// ── 反馈面板:对选中的那一个打开(Enter、显示栏的 feedback 按钮);默认落点 ──
+/** 焦点在这些容器里时 Enter 归它们,不开反馈面板:对话框(扫描配置、停止扫描等的 .backdrop)、pattern 选择框、右键菜单 */
+const ENTER_KEEPS = '.backdrop, [role="dialog"], dialog, .pattern-picker, .driver-menu'
+/** 显示栏 feedback 按钮的样子:不在 compare 没有按钮;面板开着 open;能作答(app 跑完、选中的是买点日 / 它上面的
+ *  一次 hit / 一族 / 一条反馈)on;否则 off */
+const walkFeedback = computed<WalkFeedbackState | undefined>(() => {
+  if (!comparing.value) return undefined
+  if (fb.panel) return 'open'
+  return compareReady.value && fb.selTarget ? 'on' : 'off'
+})
+/** 对选中的那一个打开面板;返回开没开 */
+function openSelectedFeedback(): boolean {
+  return compareReady.value && fb.openSelected()
+}
+/** 显示栏的 feedback 按钮:面板开着就关(不存),没开就对选中的那一个打开 */
+function toggleFeedbackPanel() {
+  if (fb.panel) fb.close()
+  else openSelectedFeedback()
+}
+const walkBarRef = ref<InstanceType<typeof WalkStatusBar> | null>(null)
+/** 面板默认落点要用的几样(视口坐标):竖带露在图区里的左右、显示栏的上沿、图表区的左右。面板开着时,
+ *  主图每画完一帧、竖带重算之后量一次,值没变不动 */
+const panelAnchor = shallowRef<PanelAnchor | null>(null)
+function syncPanelAnchor() {
+  const wrap = wrapEl.value
+  const bar = walkBarRef.value?.$el as HTMLElement | undefined
+  if (!fb.panel || !wrap || !bar) { if (panelAnchor.value) panelAnchor.value = null; return }
+  const w = wrap.getBoundingClientRect()
+  const b = selectedBand.value
+  const next: PanelAnchor = {
+    band: b ? { left: w.left + b.left, right: w.left + b.left + b.width } : null,
+    bottom: bar.getBoundingClientRect().top, left: w.left, right: w.right,
+  }
+  const cur = panelAnchor.value
+  if (cur && cur.bottom === next.bottom && cur.left === next.left && cur.right === next.right
+      && cur.band?.left === next.band?.left && cur.band?.right === next.band?.right) return
+  panelAnchor.value = next
+}
 // compare:选中的框所在特征轨对的 node(及子孙)的 band,表头加粗
 const cmpLinkedBands = computed<string[]>(() => {
   const lay = cmpLayout.value
@@ -814,6 +838,29 @@ function ctrlWheelZoom(e: WheelEvent) {
   chartMain?.dispatchAction({ type: 'dataZoom', start: next.start, end: next.end })
 }
 
+// 按键走动(← / →、↑ / ↓、Esc 退一层)把当前日带出了视窗:平移到让它进来,两边留几根 K 线,视窗宽度不变。
+// 这种平移不是用户拖出来的,不关反馈面板(walkPanning 期间 datazoom 的监听跳过)。
+const WALK_PAN_MARGIN = 5
+let walkPanning = false
+function panToCurrentDay() {
+  const day = view.currentDay
+  const n = bars.value.length
+  const cur = readZoomOverride()
+  if (day === null || n < 2 || !cur || !chartMain) return
+  const from = (cur.start / 100) * (n - 1)
+  const to = (cur.end / 100) * (n - 1)
+  const width = to - from
+  const margin = Math.min(WALK_PAN_MARGIN, Math.max(0, width / 2 - 1))
+  let nf = from
+  if (day < from + margin) nf = day - margin
+  else if (day > to - margin) nf = day + margin - width
+  else return
+  nf = Math.max(0, Math.min(nf, n - 1 - width))
+  walkPanning = true
+  chartMain.dispatchAction({ type: 'dataZoom', start: (nf / (n - 1)) * 100, end: ((nf + width) / (n - 1)) * 100 })
+  walkPanning = false
+}
+
 function buildRenderInput() {
   const tagList = tagMap.value.tagList
   return {
@@ -850,6 +897,7 @@ function buildRenderInput() {
     pendingDisambigInstanceId: pendingDisambigInstanceId.value,
     shiftSelectedEventIds: shiftSelectedEventIds.value,
     hits: effectiveAnalysis.value?.hits ?? [],
+    events: effectiveAnalysis.value?.events ?? [],
     currentDay: currentDay.value,
     activeFamily: activeFamilyKey.value,
     bandExtras: bandExtras.value,
@@ -945,7 +993,7 @@ function renderCompareSub() {
   const subGeom = computeSubGeometry({ ...laneCountsOf(bundle), userContentBottom: bracketContentBottom(bg),
                                        feedbackRowCount: feedbackRowCount(marks) }, bandZoomFactor.value)
   subCanvasH.value = subGeom.subCanvasH
-  cmpGeom.value = { height: subGeom.subCanvasH, feedbackTop: subGeom.feedbackTop }
+  cmpGeom.value = { height: subGeom.subCanvasH }
   const opt: any = buildSubOption(bars.value, bundle, subGeom, params, chartSub.getWidth(),
                                   { getChartEl: () => subInnerEl.value })
   const layer = annotateLayer(bars.value, {
@@ -1049,11 +1097,23 @@ function onKeyDown(e: KeyboardEvent) {
     e.preventDefault()
     return
   }
-  // Shift+C:把当前选中的东西(没选中时是当前日)写成一行复制出去,连按逐层放大(见 stores/copyRef.ts)。
+  // Shift+C:把选中的那一个(没选中时是当前日)写成一行复制出去(见 stores/copyRef.ts)。
   // 单个字母会被左侧列表的「敲字母搜股票」抢走,所以带 Shift(同 Shift+B)
   if (e.code === 'KeyC' && e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey && !e.isComposing) {
     copyRef.copy()
     e.preventDefault()
+    return
+  }
+  // Enter(compare 下):选中的那一个能作答时,对它打开反馈面板(stores/feedback.ts 的 selTarget)。
+  // 面板开着时 Enter 归面板(保存),在捕获阶段就被截下,走不到这里。焦点停在别处的按钮、链接上(多半是刚用鼠标
+  // 点过的:图上按下鼠标不夺焦点)也照样开面板,并截下浏览器默认的「Enter 点按钮」、放掉那个焦点;
+  // 不能作答时不接,按钮照常吃 Enter。下拉框里的 Enter 归下拉框(输入框、文本区开头已整体放行);对话框、
+  // pattern 选择框、右键菜单里的按钮也归它们自己(多半是用 Tab 走过去的,Enter 就是要点它)
+  if (comparing.value && isFeedbackOpenKey(e) && t?.tagName !== 'SELECT' && !t?.closest?.(ENTER_KEEPS)) {
+    if (fb.panel || !compareReady.value || !fb.selTarget) return
+    e.preventDefault()
+    if (t && t !== document.body) t.blur()
+    openSelectedFeedback()
     return
   }
   if (isBrushToggleKey(e)) {
@@ -1062,12 +1122,16 @@ function onKeyDown(e: KeyboardEvent) {
     e.preventDefault()
     return
   }
-  // ←/→:在当家行里走到上 / 下一个(↑/↓ 已被左侧列表切股占用);带修饰键、输入法组字中不响应
-  if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && !e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey
-      && !e.isComposing && t?.tagName !== 'SELECT') {
-    if (!view.activeFamily && view.candidateHitIds.size === 0) return
-    view.stepFocus(e.key === 'ArrowLeft' ? -1 : 1)
-    e.preventDefault()
+  // 按键走动(键的判定与显示栏上的键名同在 walkKey.ts):← / → 跨天(竖线会动),↑ / ↓ 留在同一天(竖线不动);
+  // 进去还是换到旁边由 stores/view.ts 照同一个判断定。没有选中时不接:← / → 照常归别处,↑ / ↓ 在页面上什么都不做
+  // (不滚动;切股票是 PageUp / PageDown)
+  const wk = walkKeyOf(e)
+  if (wk && t?.tagName !== 'SELECT') {
+    const lineBefore = view.currentDay
+    const taken = wk.kind === 'stack' ? view.stepStack(wk.dir) : view.stepPos(wk.dir)
+    // 只有这一下把竖线带到了别的日子才平移(到头、换到旁边一族、进到同一天的某一次都不动视窗)
+    if (taken) { e.preventDefault(); if (view.currentDay !== lineBefore) panToCurrentDay() }
+    else if (wk.kind === 'stack' && (!t || t === document.body)) e.preventDefault()
     return
   }
   if (e.key !== 'Escape') return
@@ -1077,6 +1141,20 @@ function onKeyDown(e: KeyboardEvent) {
   if (annotating.value && ann.tool) {
     annGestures.cancel()
     ann.tool = null
+    ;(document.activeElement as HTMLElement | null)?.blur()
+    return
+  }
+  // Esc 一下退一件,先退最后开始的:反馈面板(面板自己截下)→ 亮着的工具(上面)→ 进行到一半的 Shift 配对
+  // → 选中的东西往外退一层 → 退到最外一层后再按才全清
+  if (view.shiftPairPending) {
+    view.clearShiftSelection()
+    ;(document.activeElement as HTMLElement | null)?.blur()
+    return
+  }
+  if (view.selPath.length > 1) {
+    const lineBefore = view.currentDay
+    view.stepUp()
+    if (view.currentDay !== lineBefore) panToCurrentDay()   // 竖线没动(退到一族、一条反馈)就不动视窗
     ;(document.activeElement as HTMLElement | null)?.blur()
     return
   }
@@ -1156,11 +1234,11 @@ const annGestures = createAnnotateGestures({
   select: (id) => {
     if (!id) { ann.clearSelection(); return }
     ann.selectBox(id)
-    if (compareReady.value) cmp.focusBox(id)          // 再点同一个框也重新聚焦(点过 app 的格之后)
+    if (compareReady.value) cmp.focusBox(id, { reset: true })   // 再点同一个框也回到只选中它(点过 app 的格、按键进去之后)
   },
   selectSample: (id) => {
     ann.selectSample(id)
-    if (compareReady.value) cmp.focusSample(id)
+    if (compareReady.value && id) cmp.focusSample(id, { reset: true })
   },
   placeSample: (date) => { if (symbol.value && date) ann.placeSample(symbol.value, date) },
   take: (boxId) => { if (annSelSample.value) ann.toggleMember(annSelSample.value.id, boxId) },
@@ -1200,10 +1278,10 @@ onMounted(() => {
 
   // click 分流:主/副 chart 各一套,handleChartClick 按 seriesName 天然分流;
   // shift+click 先被 handleMaybeShiftClick 拦截(入口 D),消费后不再回退到候选四分支。
-  // compare 下点中 app 的东西时取消标注框的选中、点 ▼ / 有 ▼ 的格 / 有 ▼ 的族 / 反馈记号时打开反馈面板:见 handleAppClick
+  // compare 下点中 app 的东西时取消标注框的选中、点反馈记号时选中那条反馈(点只选中,不开反馈面板):见 handleAppClick
   const onAppClick = (p: any) => {
     handleAppClick(p, effectiveAnalysis.value?.hits ?? [], view, {
-      comparing: comparing.value, compareReady: compareReady.value, dates: annDates.value, symbol: symbol.value,
+      comparing: comparing.value, compareReady: compareReady.value,
       selectBox: (id) => ann.selectBox(id), feedback: fb,
     })
   }
@@ -1367,11 +1445,11 @@ onMounted(() => {
   }
   chartMain.on('datazoom', relayZoom(chartSub))
   chartSub.on('datazoom', relayZoom(chartMain))
-  // 选中的反馈的竖带跟着主图走:每画完一帧重算(平移、缩放、重画、改尺寸都会画)
-  chartMain.on('rendered', syncSelectedBand)
-  // 平移、缩放(主副图的 dataZoom 都是用户操作发起的)收起反馈面板,不存
-  chartMain.on('datazoom', () => fb.close())
-  chartSub.on('datazoom', () => fb.close())
+  // 选中的反馈的竖带(连同面板的默认落点)跟着主图走:每画完一帧重算(平移、缩放、重画、改尺寸都会画)
+  chartMain.on('rendered', () => { syncSelectedBand(); syncPanelAnchor() })
+  // 用户自己平移、缩放时收起反馈面板,不存;按键走动带出的平移不算(见 panToCurrentDay)
+  chartMain.on('datazoom', () => { if (!walkPanning) fb.close() })
+  chartSub.on('datazoom', () => { if (!walkPanning) fb.close() })
 
   // updateAxisPointer 锁 close 横线(主图专属)
   chartMain.on('updateAxisPointer', (e: any) => {
@@ -1451,7 +1529,7 @@ watch([scanFile, effectiveScan], () => {
 watch([effectiveAnalysis, nodeVisible, level, nodeColors, focusedInstanceRef, diag, showSlider,
        selectedHitId, candidateHitIds, highlightedEventIds, pendingDisambigInstanceId,
        shiftSelectedEventIds, bandZoomFactor, focusedInstanceId, selectedInstanceId,
-       compositionGroupIds, currentDay, activeFamilyKey, () => copyRef.selectedNode],
+       compositionGroupIds, currentDay, activeFamilyKey, () => copyRef.selectedNode, () => view.selPath],
       () => render(false), { deep: true })
 
 // annotate:框、词表、选中、拖动中的样子变了 → 只重画标注的两层;compare 下轨序、✓ / ✗ 变了也一样
@@ -1461,8 +1539,8 @@ watch(() => [ann.view, ann.selectedBoxId, ann.selectedSampleId, ann.currentSampl
 // (按画出来的样子比:别的标注改动已由上面那条 watch 重画;悬停文字悬停时现算,不必为理由、node 改动重画)
 watch(() => cmpFeedbackMarks.value.map(m => [m.id, m.start, m.end, m.lane, m.nodes.join(','), m.tone, m.selected].join(':')).join('|'),
       () => renderAnnotateLayers())
-// compare:选中的反馈换了(或它的范围、图的左右偏移变了)→ 竖带重算(主图没重画时也要跟上)
-watch([selectedSpan, mainCanvasOffsetX], () => syncSelectedBand())
+// compare:选中的反馈换了(或它的范围、图的左右偏移变了)、面板开了 / 关了 → 竖带与面板落点重算(主图没重画时也要跟上)
+watch([selectedSpan, mainCanvasOffsetX, () => fb.opens, () => !!fb.panel], () => { syncSelectedBand(); syncPanelAnchor() })
 // compare:作答面板的 node 按钮悬停 → 对应 band 加亮 / 取消
 watch(hoverBand, () => renderAnnotateLayers())
 // app 模式:band 表头的特征名(mapping、词表)变了

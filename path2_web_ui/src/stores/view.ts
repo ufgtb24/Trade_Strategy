@@ -12,17 +12,6 @@ import { defineStore, acceptHMRUpdate } from 'pinia'
 // - 前后端同 PR(#6): 后端 debug_break 与前端 anchorsOf 映射同 PR
 // ─────────────────────────────────────────────────────────────────
 
-/** 当家行:←/→ 在其中走的那一行(见 stepFocus)。key 是族键(band@起点 / hits@起点);external 是外部注册的行。 */
-export type ActiveFamily =
-  | { kind: 'band' | 'bracket'; key: string }
-  | { kind: 'external'; key: string; step: (dir: -1 | 1) => void }
-
-/**
- * 焦点 action 的可选参数:当前日(竖线落点)与当家行(族键或现成的当家行)。
- * 聚焦一律不改档位按钮(档位只由用户点):聚焦的 event 档位低于当前档位、图上画不出来时,只有当前日竖线落在
- * 那天,侧栏(主视图的候选表、compare 的 diagnose)照样列出它。
- */
-export interface FocusOpts { day?: number; family?: string | ActiveFamily | null }
 
 export type DebugAnchor = {
   key: 'entry' | 'start' | 'end' | 'confirm'
@@ -175,7 +164,7 @@ export const anchorsOf: Record<string, (e: any, events: readonly any[]) => Debug
 // 埋点在其 produced_by detector(段锚断点即容器 detector 的埋点)。
 export const DEBUG_ENABLED_NODES = Object.keys(anchorsOf).filter(k => k !== '_default')
 
-import { computed, ref, shallowRef, watch } from 'vue'
+import { computed, ref, shallowRef, watch, type ComputedRef } from 'vue'
 import type {
   MultiScanResultFile, StockResult, PerPatternResult,
   HitDict, EventDict, Tier, Diagnostics, Level, SerializedPattern, Analysis, ScanMeta,
@@ -187,7 +176,14 @@ import {
   qualifiedIdsOf, inHitIds as inHitIdsOf,
   bandKeyOf, eventTierOf, windowOf, nodeOfEventByBand, isBandVisible,
 } from '../render/visible'
-import { buyDaysOf, familyKeyOf, foldBand, foldHits, HIT_FAMILY_PREFIX } from '../render/fold'
+import {
+  familyKeyOf, foldBand, HIT_FAMILY_PREFIX, type Family,
+} from '../render/fold'
+import { boundEvents, hitDays, hitOrderOf, landIndex, usingIndex } from '../render/walk'
+import { mergedHit, sameSel, step, up, type Axis, type Sel, type SelPath } from '../render/select'
+import { bandCells, lineDayOf, makeWorld, type AnchorRow, type WorldCtx } from '../render/selWorld'
+import { snapshotOf as selSnapshotOf, type SnapCtx, type Snapshot } from '../render/selSnapshot'
+import { feedbackHits } from '../annotate/feedback'
 import { getDiagnose, getPreview, getTimeDiagnose, getPairDiagnose, saveWcMirror, clearWcMirror, type PreviewResp } from '../api'
 import { useConfigStore } from './config'
 
@@ -201,6 +197,9 @@ export type ShiftSelectedEvent = { instance_id: string; node_id: string; source:
  *  - app:按 node 分轨画 app 的产物。两种来源(appSource):scan = 扫描结果(加载扫描、从扫描列表选股时进入);
  *    linked = 当前 pattern 的 app 在这只股票上现算的输出(顶栏切过来时)。 */
 export type ViewMode = 'annotate' | 'compare' | 'app'
+
+/** user 行(样本那一行)的行键:选中样本时它是当家行。 */
+export const SAMPLES_ROW_KEY = 'samples'
 /** app 产物从哪来:scan = 扫描结果文件;linked = 当前 pattern 的 app 在这只股票上现算(compare 恒为 linked)。 */
 export type AppSource = 'scan' | 'linked'
 /** 当前 pattern 的 app 在一只股票上现算的输出(/preview,区间是这只股票截到训练段末日的全部 K 线)。 */
@@ -286,11 +285,11 @@ export const useViewStore = defineStore('view', () => {
   const symbolQuery = ref<string>('')
 
   const nodeVisible = ref<Record<string, boolean>>({})
-  // 焦点意图(实例级单入口,spec §3.1):focusedHitId 非空 & 无实例焦点 → bracket-focus,
-  // 展 trace;selectedInstanceId/focusedInstanceId 任一非空 → 实例-focus,不展 trace(可能
-  // 同时有 focusedHitId=唯一归属 m);两者都空 & candidateHitIds 非空 → 多归属 pending。
-  //   0 归属(只聚焦实例) → selectedInstanceId 非空
-  //   1 归属(直选 hit)  → focusedHitId + focusedInstanceId 非空
+  // 选中(由选中的那条路径统一写入,见下文 applyPath):focusedHitId 非空 & 无实例焦点 → 只选 hit,展 trace;
+  // selectedInstanceId/focusedInstanceId 任一非空 → 实例焦点,不展 trace:
+  //   选中一个 event                → selectedInstanceId 非空
+  //   从一个 event 走进它的某次 hit → focusedHitId + focusedInstanceId 非空
+  // 聚焦一律不改档位按钮(档位只由用户点)。
   const focusedHitId = ref<string | null>(null)
   const selectedInstanceId = ref<string | null>(null)
   const focusedInstanceId = ref<string | null>(null)
@@ -302,14 +301,10 @@ export const useViewStore = defineStore('view', () => {
   //   4 处初始化(切数据源)= 清空
   const manualExpandedNodes = ref<Set<string>>(new Set())
   const level = ref<Level>(loadLevelFromLS())
-  const candidateHitIds = ref<ReadonlySet<string>>(new Set())
-  const pendingDisambigInstanceId = ref<string | null>(null)
   const hoveredEventId = ref<string | null>(null)
   const diag = ref<Diagnostics | null>(null)
-  // 当前日(竖线落点,bar 索引)与当家行(←/→ 在其中走的那一行)。当家行三种:band 的一族、bracket 的一族 hit、
-  // 外部注册的行(compare 的用户样本行:被点时把自己设成当家行并带上自己的上一个 / 下一个)。
+  // 当前日(竖线落点,bar 索引)
   const currentDay = ref<number | null>(null)
-  const activeFamily = ref<ActiveFamily | null>(null)
   // 图上 K 线的日期(KlineChart 载入 K 线后写入),给侧栏把 bar 下标换成日期
   const barDates = ref<string[]>([])
 
@@ -657,8 +652,6 @@ export const useViewStore = defineStore('view', () => {
     const last = cfg.config?.last_selected_pattern
     activePatternId.value = (last && f.pattern_ids.includes(last))
       ? last : (f.pattern_ids[0] ?? null)
-    candidateHitIds.value = new Set()
-    pendingDisambigInstanceId.value = null
     clearDetailCard()
     symbolQuery.value = ''
     initVisiblePatterns(f.pattern_ids)
@@ -682,8 +675,6 @@ export const useViewStore = defineStore('view', () => {
     hoveredEventId.value = null
     preview.value = null
     previewError.value = null
-    candidateHitIds.value = new Set()
-    pendingDisambigInstanceId.value = null
     visiblePatterns.value = new Set()
     symbolQuery.value = ''
     clearDetailCard()
@@ -701,8 +692,6 @@ export const useViewStore = defineStore('view', () => {
     hoveredEventId.value = null
     preview.value = null
     previewError.value = null
-    candidateHitIds.value = new Set()
-    pendingDisambigInstanceId.value = null
     clearDetailCard()
   }
   function selectSymbol(s: string) {
@@ -744,8 +733,6 @@ export const useViewStore = defineStore('view', () => {
     useConfigStore().saveLastPattern(pid)
     clearFocus()
     manualExpandedNodes.value = new Set()   // 切数据源清空展开集
-    candidateHitIds.value = new Set()
-    pendingDisambigInstanceId.value = null
     clearDetailCard()
     if (previewEnabled.value) void runPreview()
     symbolQuery.value = ''
@@ -803,293 +790,340 @@ export const useViewStore = defineStore('view', () => {
     manualExpandedNodes.value = s
   }
 
-  // ── Task 2 高层 action(spec §3.3)· 消费点已统一到单入口 focusEvent/focusHit ──
-  // 一个实例被哪些 hit 用到:先看 hit.node_index 的精确引用;没有就沿 child_refs 爬到父容器再看
-  // (bo/tb_seg 等子事件不在 node_index 里,经容器 child_refs 挂靠;多父时汇总)。
-  function hitsOfInstance(instanceId: string): HitDict[] {
-    const hits = effectiveAnalysis.value?.hits ?? []
-    const events = effectiveAnalysis.value?.events ?? []
-    let ms = hits.filter(m => Object.values(m.node_index).includes(instanceId))
-    if (ms.length === 0) {
-      const parents = new Set<string>()
-      for (const e of events) {
-        for (const ids of Object.values(e.child_refs ?? {})) {
-          if (Array.isArray(ids) && ids.includes(instanceId)) parents.add(e.instance_id)
-        }
-      }
-      if (parents.size > 0) {
-        ms = hits.filter(m => Object.values(m.node_index).some(id => parents.has(id)))
-      }
-    }
-    return ms
-  }
-
-  function firstBuyDayOf(m: HitDict): number {
-    const byId = new Map((effectiveAnalysis.value?.events ?? []).map(e => [e.instance_id, e]))
-    return buyDaysOf(m, byId, endNode.value)[0] ?? m.end_idx
-  }
-
-  function bracketFamilyOf(m: HitDict): ActiveFamily {
-    return { kind: 'bracket', key: familyKeyOf(HIT_FAMILY_PREFIX, m.start_idx) }
-  }
-
-  function toActiveFamily(f: FocusOpts['family'], fallback: ActiveFamily | null): ActiveFamily | null {
-    if (f === undefined) return fallback
-    if (f === null || typeof f !== 'string') return f
-    return f.startsWith(`${HIT_FAMILY_PREFIX}@`) ? { kind: 'bracket', key: f } : { kind: 'band', key: f }
-  }
-
-  // ── Task 2 高层 action(spec §3.3)· 消费点已统一到单入口 focusEvent/focusHit ──
-  // opts.day:当前日(缺省取这次 hit 的第一个买入日);opts.family:当家行(缺省取它所在的 bracket 族)。
-  function focusHit(hitId: string, opts: FocusOpts = {}): void {
-    focusedHitId.value = hitId
-    selectedInstanceId.value = null
-    focusedInstanceId.value = null
-    manualExpandedNodes.value = new Set()  // collapse all · trace 独占视野
-    clearCandidates()
-    const m = (effectiveAnalysis.value?.hits ?? []).find(h => h.hit_id === hitId)
-    currentDay.value = opts.day ?? (m ? firstBuyDayOf(m) : null)
-    activeFamily.value = toActiveFamily(opts.family, m ? bracketFamilyOf(m) : null)
-  }
-
-  // 这几次 hit 的买入日是否完全一样:每一次都解析得到买入日、且日子集合相同。
-  // 同一天的几次 hit 只差切法(如阶跃算一根还是两根),直接选中第一次;解析不到买入日的不算一样。
-  function sameBuyDays(ms: readonly HitDict[]): boolean {
-    if (ms.length < 2) return false
-    const byId = new Map((effectiveAnalysis.value?.events ?? []).map(e => [e.instance_id, e]))
-    let sig: string | null = null
-    for (const m of ms) {
-      const days = buyDaysOf(m, byId, endNode.value)
-      if (days.length === 0) return false
-      const s = days.join(',')
-      if (sig === null) sig = s
-      else if (s !== sig) return false
-    }
-    return true
-  }
-
-  /**
-   * 选中的那次 hit 和它同一天的几次 hit(同一族、买入日完全一样,只差切法):{ ids: 按族内先后, index: 选中的排第几 };
-   * 没有选中、或同一天只有它一次时为 null。图上这几次并成同一个 ▼、同一格,加粗框只标选中的那一次,
-   * 所以提示条(CandidateStatusBar)照它写「hit k/n」,免得看不出还有别的。
-   */
-  const sameDayHits = computed<{ ids: string[]; index: number } | null>(() => {
-    const id = focusedHitId.value
-    if (!id) return null
-    const hits = effectiveAnalysis.value?.hits ?? []
-    const events = effectiveAnalysis.value?.events ?? []
-    const fam = foldHits(hits, events, endNode.value).find(f => f.hitIds.includes(id))
-    if (!fam) return null
-    const byId = new Map(events.map(e => [e.instance_id, e]))
-    const byHit = new Map(hits.map(h => [h.hit_id, h]))
-    const sigOf = (hid: string) => { const m = byHit.get(hid); return m ? buyDaysOf(m, byId, endNode.value).join(',') : '' }
-    const sig = sigOf(id)
-    if (!sig) return null
-    const ids = fam.hitIds.filter(h => sigOf(h) === sig)
-    return ids.length >= 2 ? { ids, index: ids.indexOf(id) } : null
+  // ── 选中要用的几样查表(spec 5.8「同一天的几次 hit」与显示栏) ─────────────────────────────
+  // event / hit 按编号查、hit 的先后、一次 hit 绑定的全部 event、一个 event 被哪些 hit 用到(render/walk.ts)。
+  // 选中的 hit / event、当前日放在 focusedHitId / focusedInstanceId / selectedInstanceId / currentDay,
+  // 由下文的 applyPath 统一写入,渲染层读它们。
+  const byIdMap = computed(() => new Map((effectiveAnalysis.value?.events ?? []).map(e => [e.instance_id, e])))
+  const hitsById = computed(() => new Map((effectiveAnalysis.value?.hits ?? []).map(h => [h.hit_id, h])))
+  const hitOrder = computed(() => hitOrderOf(effectiveAnalysis.value?.hits ?? []))
+  // 每次 hit 绑定的全部 event(落点规则比「像不像」用),按需算、跟着结果换
+  const boundCache = computed(() => {
+    void hitsById.value
+    void byIdMap.value
+    return new Map<string, ReadonlySet<string>>()
   })
-
-  // 点击统一规则(band 的格或整条、bracket 的格、买入日 ▼ 三处共用):先取点到的 hit 集合,
-  //   0 次 → 只聚焦成员;1 次 → 直选;≥2 次且买入日完全一样 → 直选第一次,←/→ 换同一天的下一次;
-  //   ≥2 次且买入日不全一样(如被几十天共用的旧平台、阶跃)→ 进待选(候选在 bracket 上加框)。
-  // bracket 的格、▼ 走这里;band 记号走 focusInstances(先把成员的 hit 合起来,再按同一规则分)。
-  function focusHits(hitIds: string[], opts: FocusOpts = {}): void {
-    if (hitIds.length === 0) return
-    const all = effectiveAnalysis.value?.hits ?? []
-    const ms = hitIds.map(id => all.find(h => h.hit_id === id)).filter((m): m is HitDict => !!m)
-    if (hitIds.length === 1 || sameBuyDays(ms)) { focusHit(hitIds[0], opts); return }
-    focusedHitId.value = null
-    selectedInstanceId.value = null
-    focusedInstanceId.value = null
-    setCandidateHits(hitIds)
-    pendingDisambigInstanceId.value = null
-    const m = (effectiveAnalysis.value?.hits ?? []).find(h => h.hit_id === hitIds[0])
-    currentDay.value = opts.day ?? null
-    activeFamily.value = toActiveFamily(opts.family, m ? bracketFamilyOf(m) : null)
+  function bound(hitId: string): ReadonlySet<string> {
+    const cache = boundCache.value
+    let b = cache.get(hitId)
+    if (!b) {
+      const m = hitsById.value.get(hitId)
+      b = m ? boundEvents(m, byIdMap.value) : new Set<string>()
+      cache.set(hitId, b)
+    }
+    return b
   }
 
-  /** 点 bracket 上的买入日 ▼:买在这天的 hit。 */
-  function focusBuyDay(day: number, hitIds: string[], family?: string): void {
-    focusHits(hitIds, { day, family })
-  }
+  const usingOf = computed(() => usingIndex(effectiveAnalysis.value?.hits ?? [], effectiveAnalysis.value?.events ?? []))
 
-  // 单入口实例级焦点(spec §5):focusEvent(instanceId)。所有调用点(marker 点击、
-  // 侧栏实例行、候选表行)都持有 instance_id;身份级入口已消灭。
-  // 归属 = hit.node_index 值(instance_id 字符串)精确引用,没有就沿 child_refs 找父容器;按 hit 个数分:
-  //   0 → 只聚焦实例(selectedInstanceId=instanceId,不设 hit)
-  //   1,或 ≥2 且买入日完全一样 → 直选第一次(focusedHitId + focusedInstanceId=它的成员)
-  //   ≥2 且买入日不全一样 → 多归属 pending(candidateHitIds + pendingDisambigInstanceId=instanceId)
-  function focusEvent(instanceId: string, opts: FocusOpts = {}): void {
-    focusInstances([instanceId], opts)
+  // ── 选中:一条路径(render/select.ts),最外一节 → 当前那一节 ──────────────────────────────
+  // 样本、框、反馈在别的 store 里,由它们登记进来(循环依赖,view 不能反过来 import):
+  // - samples / boxes:这张图上的样本、框,带那天在场的 hit(配对的排第一);
+  // - feedbacks:这张图上当前 pattern 的反馈(已排好序);
+  // - onAnchor:按键走到另一个样本 / 框时要做的事(等于点它)。
+  interface SelSources {
+    samples?: () => AnchorRow[]
+    boxes?: () => AnchorRow[]
+    feedbacks?: () => { id: string; start: string; end: string; family_start?: string | null }[]
+    onAnchor?: (s: Sel) => void
+    /** 显示栏 / 选中卡 / 复制行要的名字:band 对到的特征名、反馈、样本、框 */
+    featureOfBand?: SnapCtx['featureOfBand']
+    feedbackOf?: SnapCtx['feedbackOf']
+    sampleOf?: SnapCtx['sampleOf']
+    boxOf?: SnapCtx['boxOf']
   }
+  const selSources = shallowRef<SelSources>({})
+  function setSelSources(part: SelSources): void { selSources.value = { ...selSources.value, ...part } }
 
-  /** 点副图族行上的一个记号:几个成员各自归属的 hit 合起来再走 0/1/≥2 三分支。 */
-  function focusMark(memberIds: string[], opts: FocusOpts = {}): void {
-    if (memberIds.length > 0) focusInstances(memberIds, opts)
-  }
+  const selPath = shallowRef<SelPath>([])
+  /** 每走一步(← / →、↑ / ↓)加一:反馈面板据此判断要不要关(stores/feedback.ts) */
+  const moveSeq = ref(0)
 
-  function focusInstances(ids: string[], opts: FocusOpts): void {
+  /** 一条 band 上画出来的族:和图上同一套显隐、档位筛选。 */
+  function bandFamiliesOf(band: string): Family[] {
     const events = effectiveAnalysis.value?.events ?? []
-    const head = ids[0]
-
-    // 焦点意图:add 焦点所在 node 到展开集(不折叠其他 node);node 无解则不动集合。
-    const ev = events.find(e => e.instance_id === head)
-    if (ev) {
-      const node = nodeOfEventByBand(ev, tagMap.value.tagToNodes, tagMap.value.tagList)
-      if (node && !manualExpandedNodes.value.has(node)) {
-        const s = new Set(manualExpandedNodes.value)
-        s.add(node)
-        manualExpandedNodes.value = s
-      }
-    }
-
-    const ms: HitDict[] = []
-    const owner = new Map<string, string>()   // hit_id → 记号里第一个属于它的成员
-    for (const id of ids) {
-      for (const m of hitsOfInstance(id)) {
-        if (!owner.has(m.hit_id)) { owner.set(m.hit_id, id); ms.push(m) }
-      }
-    }
-
-    const bandFamily: ActiveFamily | null = ev ? { kind: 'band', key: familyKeyOf(bandKeyOf(ev), ev.start_idx) } : null
-    const sameDay = sameBuyDays(ms)
-    const pending = ms.length >= 2 && !sameDay
-    if (ms.length === 0) {
-      focusedHitId.value = null
-      selectedInstanceId.value = head
-      focusedInstanceId.value = null
-      clearCandidates()
-    } else if (!pending) {
-      // ms 按成员顺序(格里深档在前)、同一成员内按原顺序,取第一次
-      focusedHitId.value = ms[0].hit_id
-      selectedInstanceId.value = null
-      focusedInstanceId.value = owner.get(ms[0].hit_id) ?? head
-      clearCandidates()
-    } else {
-      // 多归属:信息层(markedHitIds=candidates)+ 视觉层(不亮 group,等 disambig)
-      focusedHitId.value = null
-      selectedInstanceId.value = null
-      focusedInstanceId.value = null
-      setCandidateHits(ms.map(m => m.hit_id))
-      pendingDisambigInstanceId.value = head
-    }
-    // 当前日:几个 hit 共用的单个对象(如旧平台)待选时还没定哪一天,不画竖线;其余取记号的终点
-    currentDay.value = pending && ids.length === 1 ? null : (opts.day ?? ev?.end_idx ?? null)
-    // 当家行:点进来的那一行;待选时在 bracket(←/→ 在候选间走),除非调用方带了自己的外部行
-    const external = opts.family != null && typeof opts.family !== 'string'
-    if (external || opts.family === null) {
-      activeFamily.value = toActiveFamily(opts.family, null)
-    } else if (pending) {
-      activeFamily.value = bracketFamilyOf(ms[0])
-    } else {
-      const rowFamily = toActiveFamily(opts.family, bandFamily)
-      // 一个成员被同一天几次 hit 共用(如 today):成员间走不出第二次,当家行仍是这一行,←/→ 在这几次 hit 间走
-      activeFamily.value = sameDay && ids.length === 1 && rowFamily
-        ? hitListFamily(ms.map(m => m.hit_id), rowFamily.key)
-        : rowFamily
-    }
-  }
-
-  // 一串 hit 当作一行来走(外部行):每走一步直选那一次,当家行的键不变(加粗的仍是点进来的那一行)。
-  function hitListFamily(order: readonly string[], key: string): ActiveFamily {
-    return {
-      kind: 'external', key,
-      step: (d) => {
-        const j = stepIndex(order, focusedHitId.value, d)
-        if (j === null) return
-        focusHit(order[j])
-        activeFamily.value = hitListFamily(order, key)
-      },
-    }
-  }
-
-  // ← / →:在当家行里走到上 / 下一个,到两头停住。每走一步等于点一次。
-  //   外部行 → 调它自己的 step;
-  //   待选(当家行是 bracket 或未设)→ 在候选 hit 之间按终点走;
-  //   bracket 族 → 在这一族的 hit 里按终点走;
-  //   band 族 → 按族内成员顺序走(和画出来的一致:同一套显隐、档位筛选)。
-  function stepFocus(dir: -1 | 1): void {
-    const a = activeFamily.value
-    if (a?.kind === 'external') { a.step(dir); return }
-    const hits = effectiveAnalysis.value?.hits ?? []
-    const events = effectiveAnalysis.value?.events ?? []
-    if (candidateHitIds.value.size > 0 && (a === null || a.kind === 'bracket')) {
-      const order = hits.map((m, i) => ({ m, i })).filter(x => candidateHitIds.value.has(x.m.hit_id))
-        .sort((x, y) => x.m.end_idx - y.m.end_idx || x.i - y.i).map(x => x.m.hit_id)
-      stepCandidates(order, null, dir)
-      return
-    }
-    if (!a) return
-    if (a.kind === 'bracket') {
-      const fam = foldHits(hits, events, endNode.value).find(f => f.key === a.key)
-      if (!fam) return
-      const j = stepIndex(fam.hitIds, focusedHitId.value, dir)
-      if (j !== null) focusHit(fam.hitIds[j], { family: a.key })
-      return
-    }
-    const at = a.key.lastIndexOf('@')
-    const band = a.key.slice(0, at)
-    const start = Number(a.key.slice(at + 1))
     const topoNodes = effectivePattern.value?.topology.nodes ?? []
     const node = tagMap.value.tagToNodes[band]?.[0] ?? band
     const spec = topoNodes.find(n => n.node_id === node)
-    const inFamily = events.filter(e => bandKeyOf(e) === band && e.start_idx === start &&
-      isBandVisible(band, nodeVisible.value, tagMap.value.tagToNodes))
-    const fam = foldBand(inFamily, { band, isPoint: spec?.is_point === true, tierOf: eventTier, level: level.value,
-                                     levelImmune: spec?.solve === false })[0]
-    if (!fam) return
-    const cur = focusedInstanceRef.value ?? pendingDisambigInstanceId.value
-    const j = stepIndex(fam.memberIds, cur, dir)
-    if (j !== null) focusEvent(fam.memberIds[j], { family: a.key })
+    if (!isBandVisible(band, nodeVisible.value, tagMap.value.tagToNodes)) return []
+    return foldBand(events.filter(e => bandKeyOf(e) === band),
+      { band, isPoint: spec?.is_point === true, tierOf: eventTier, level: level.value, levelImmune: spec?.solve === false })
   }
 
-  // 从待选进入后,选中一个就不再是待选;记住候选顺序,之后的 ←/→ 仍在这几次 hit 之间走
-  // (候选可能跨几个 bracket 族,所以挂成外部行;加粗的是当前 hit 所在的那一族)。
-  function stepCandidates(order: readonly string[], cur: string | null, dir: -1 | 1): void {
-    const j = stepIndex(order, cur, dir)
-    if (j === null) return
-    focusHit(order[j])
-    const m = (effectiveAnalysis.value?.hits ?? []).find(h => h.hit_id === order[j])
-    activeFamily.value = {
-      kind: 'external', key: m ? bracketFamilyOf(m).key : `${HIT_FAMILY_PREFIX}@`,
-      step: (d) => stepCandidates(order, focusedHitId.value, d),
+  // 一条 band 一个 computed:换档位、显隐、结果变了各自失效(放进 worldCtx 里的普通缓存不会跟着失效)
+  const bandFamilyCache = new Map<string, ComputedRef<Family[]>>()
+  function bandFamiliesCached(band: string): Family[] {
+    let c = bandFamilyCache.get(band)
+    if (!c) { c = computed(() => bandFamiliesOf(band)); bandFamilyCache.set(band, c) }
+    return c.value
+  }
+
+  const worldCtx = computed<WorldCtx>(() => {
+    const hits = effectiveAnalysis.value?.hits ?? []
+    const events = effectiveAnalysis.value?.events ?? []
+    const src = selSources.value
+    return {
+      hits, hitsById: hitsById.value, byId: byIdMap.value, endNode: endNode.value, hitOrder: hitOrder.value,
+      using: usingOf.value, bound, bandOf: bandKeyOf,
+      bandFamilies: bandFamiliesCached,
+      feedbacks: (src.feedbacks?.() ?? []).map(f => ({
+        id: f.id, hitIds: feedbackHits(hits, events, endNode.value, barDates.value, f).map(m => m.hit_id) })),
+      samples: src.samples?.() ?? [],
+      boxes: src.boxes?.() ?? [],
+      lineDay: currentDay.value,
+    }
+  })
+  const world = computed(() => makeWorld(worldCtx.value))
+
+  function expandNodeOf(instanceId: string): void {
+    const ev = byIdMap.value.get(instanceId)
+    if (!ev) return
+    const node = nodeOfEventByBand(ev, tagMap.value.tagToNodes, tagMap.value.tagList)
+    if (node && !manualExpandedNodes.value.has(node)) {
+      const s = new Set(manualExpandedNodes.value)
+      s.add(node)
+      manualExpandedNodes.value = s
     }
   }
 
-  function stepIndex(order: readonly string[], cur: string | null, dir: -1 | 1): number | null {
-    if (order.length === 0) return null
-    const i = cur ? order.indexOf(cur) : -1
-    const j = i < 0 ? (dir > 0 ? 0 : order.length - 1) : i + dir
-    return j < 0 || j >= order.length || j === i ? null : j
+  /**
+   * 换成这条路径,并把它落到渲染层读的那几个量上:
+   * - 最后一节是一次 hit(或只有一次 hit 的买点日)→ 选中这次 hit;路径上有 event 时它是实例焦点(不展 trace);
+   * - 最后一节是 event → 只选中这个 event;
+   * - 其余(一族、买点日、node、反馈、样本、框)→ 不选中任何 hit / event(图上靠路径画「在用」与细框)。
+   * 当前日竖线落在最后一节自己的日子上;它不带日子(一族、反馈、node)时竖线不动。
+   */
+  function applyPath(path: SelPath): void {
+    selPath.value = path
+    const last = path[path.length - 1]
+    const merged = last ? mergedHit(path, world.value) : null
+    const hitSel = last?.kind === 'hit' ? last : merged?.sel.kind === 'hit' ? merged.sel : null
+    if (hitSel) {
+      const anc = [...path].reverse().find((s): s is Extract<Sel, { kind: 'event' }> => s.kind === 'event')
+      focusedHitId.value = hitSel.hitId
+      selectedInstanceId.value = null
+      focusedInstanceId.value = anc?.instanceId ?? null
+      if (anc) expandNodeOf(anc.instanceId)
+      else manualExpandedNodes.value = new Set()   // 只选 hit:trace 独占视野
+    } else {
+      focusedHitId.value = null
+      focusedInstanceId.value = null
+      selectedInstanceId.value = last?.kind === 'event' ? last.instanceId : null
+      if (last?.kind === 'event') expandNodeOf(last.instanceId)
+    }
+    const day = last ? lineDayOf(last, worldCtx.value) : null
+    if (day !== null) currentDay.value = day
   }
 
+  /** 外面直接给一条路径(compare 的样本、框、diagnose 的卡片;轨名)。 */
+  function setPath(path: SelPath): void { applyPath(path) }
+
+  const familySel = (familyKey: string): Sel => ({ kind: 'hit_family', familyKey })
+
+  /** 点 hits 行的 ▼:选中这一天整体(那一族的这个买点日);这天只有一次 hit 时就是那次 hit。 */
+  function clickBuyDay(familyKey: string, day: number): void {
+    applyPath([familySel(familyKey), { kind: 'buy', day }])
+    currentDay.value = day
+  }
+
+  /**
+   * 点 hits 行的格:这一列有 ▼(buyDay)时和点 ▼ 一样,选中这一天;没有 ▼(hit 的终点不是买点日)时
+   * 选中格里的一次 hit(当前那次在格里就是它,否则和它最像的),竖线落在它的第一个买入日。
+   */
+  function clickHitCell(familyKey: string, hitIds: readonly string[], buyDay?: number): void {
+    if (buyDay !== undefined) { clickBuyDay(familyKey, buyDay); return }
+    if (hitIds.length === 0) return
+    const cur = focusedHitId.value
+    const cands = hitIds.map(id => ({ hitId: id, instanceId: null }))
+    const pick = cands[landIndex(cands, cur ? { hitId: cur, instanceId: null } : null, bound)].hitId
+    const m = hitsById.value.get(pick)
+    if (!m) return
+    const day = hitDays(m, byIdMap.value, endNode.value)[0]
+    applyPath([familySel(familyKey), { kind: 'buy', day }, { kind: 'hit', hitId: pick, day }])
+  }
+
+  /** 点 hits 行的族底线:选中整族(不选其中哪一天、哪一次),竖线留在原处。选着这一族里的东西时点它就退回整族。 */
+  function clickFamilyLine(familyKey: string): void {
+    applyPath([familySel(familyKey)])
+  }
+
+  /**
+   * 点 band 上的东西(格、整条、点;记号上可能并着几个成员),侧栏的 trace 行、候选表行也走这里:选中其中一个 event
+   * (当前选中的就在里面时不换,否则第一个),它属于它那条 band;竖线落在它的终点。
+   */
+  function focusMark(memberIds: string[]): void {
+    if (memberIds.length === 0) return
+    const last = selPath.value[selPath.value.length - 1]
+    const keep = last?.kind === 'event' && memberIds.includes(last.instanceId) ? last.instanceId : null
+    const id = keep ?? memberIds[0]
+    const ev = byIdMap.value.get(id)
+    applyPath(ev ? [{ kind: 'node', band: bandKeyOf(ev) }, { kind: 'event', instanceId: id }]
+      : [{ kind: 'event', instanceId: id }])
+  }
+
+  /** 一个实例(侧栏 trace 行、候选表行):同点 band 上的它。 */
+  function focusEvent(instanceId: string): void {
+    focusMark([instanceId])
+  }
+
+  /** 选中一次 hit(app 侧栏 hits 列表点行):它属于它那一族的一个买点日;竖线落在第一个买入日(给了 day 且它那天也买就落 day)。 */
+  function focusHit(hitId: string, opts: { day?: number } = {}): void {
+    const m = hitsById.value.get(hitId)
+    if (!m) {   // 结果里没有这次 hit(结果还没到):只记下选中
+      applyPath([])
+      focusedHitId.value = hitId
+      currentDay.value = opts.day ?? null
+      return
+    }
+    const days = hitDays(m, byIdMap.value, endNode.value)
+    const day = opts.day !== undefined && days.includes(opts.day) ? opts.day : days[0]
+    applyPath([familySel(familyKeyOf(HIT_FAMILY_PREFIX, m.start_idx)), { kind: 'buy', day }, { kind: 'hit', hitId, day }])
+  }
+
+  /** 点反馈记号:选中这条反馈(它收进来的 hit 画细框),竖线不动。 */
+  function clickFeedback(fb: { id: string }): void {
+    applyPath([{ kind: 'feedback', id: fb.id }])
+  }
+
+  /** 点轨名:选中这条 band(一个 node)。 */
+  function selectNode(band: string): void {
+    applyPath([{ kind: 'node', band }])
+  }
+
+  /**
+   * 按一下 ← / →(axis = day)或 ↑ / ↓(axis = stack),照 render/select.ts 的那一个判断走。
+   * 走到另一个样本 / 框时通知登记进来的 onAnchor(等于点它)。返回这一下算不算被接下(有选中就算,到头也算)。
+   */
+  function stepAxis(axis: Axis, dir: -1 | 1): boolean {
+    const path = selPath.value
+    if (path.length === 0) return false
+    const r = step(path, axis, dir, world.value)
+    if (!r.moved) return true
+    const anchorOf = (p: SelPath) => p.find(s => s.kind === 'sample' || s.kind === 'box') ?? null
+    const before = anchorOf(path)
+    applyPath(r.path)
+    const after = anchorOf(r.path)
+    if (after && !sameSel(before, after)) selSources.value.onAnchor?.(after)
+    moveSeq.value++
+    return true
+  }
+  function stepPos(dir: -1 | 1): boolean { return stepAxis('day', dir) }
+  function stepStack(dir: -1 | 1): boolean { return stepAxis('stack', dir) }
+
+  /** Esc 退一层;退到头清空。没有选中时返回 false(这一下不归它)。 */
+  function stepUp(): boolean {
+    if (selPath.value.length === 0) return false
+    const p = up(selPath.value, world.value)
+    if (p.length) applyPath(p)
+    else clearFocus()
+    return true
+  }
+
+  // 结果换了(重跑、换参数):路径上的 hit / event / 一族 / 买点日已经不在新结果里时,从那一节起去掉
+  // (不然显示栏写着一个不存在的东西,Shift+C 也会把它复制出去)。结果还没到(null)时不动。
+  watch(() => effectiveAnalysis.value, (a) => {
+    const path = selPath.value
+    if (!a || path.length === 0) return
+    const gone = (s: Sel, i: number): boolean =>
+      s.kind === 'hit' ? !hitsById.value.has(s.hitId)
+        : s.kind === 'event' ? !byIdMap.value.has(s.instanceId)
+        : s.kind === 'hit_family' ? world.value.inside(path.slice(0, i + 1), 'day').length === 0
+        : s.kind === 'buy' ? world.value.members(path.slice(0, i + 1)).length === 0
+        : false
+    const i = path.findIndex(gone)
+    if (i < 0) return
+    if (i === 0) clearFocus()
+    else applyPath(path.slice(0, i))
+  })
+
   function setCurrentDay(day: number | null): void { currentDay.value = day }
-  function setActiveFamily(f: ActiveFamily | null): void { activeFamily.value = f }
   function setBarDates(d: string[]): void { barDates.value = d }
 
   function clearFocus(): void {
+    selPath.value = []
     focusedHitId.value = null
     selectedInstanceId.value = null
     focusedInstanceId.value = null
     currentDay.value = null
-    activeFamily.value = null
-    clearCandidates()
     clearShiftSelection()
   }
 
+  /** 选中的那一节(路径的最后一节);没有为 null。 */
+  const selLast = computed<Sel | null>(() => selPath.value[selPath.value.length - 1] ?? null)
+
+  /** 样本 / 框配对的那一次 hit;配对的 event 没进 hit(或没配上)为 null。 */
+  function pairedHitOf(s: Sel): string | null {
+    if (s.kind === 'sample') return worldCtx.value.samples.find(r => r.id === s.sampleId)?.pairedHitId ?? null
+    if (s.kind === 'box') return worldCtx.value.boxes.find(r => r.id === s.boxId)?.pairedHitId ?? null
+    return null
+  }
+
+  /** 路径上最外面那一节「牵出的 hit」:一族的、用到那个 event 的、反馈收进来的、样本 / 框配对的那一次(细框、侧栏常标用)。 */
+  const selHits = computed<{ ids: ReadonlySet<string>; thin: boolean }>(() => {
+    const path = selPath.value
+    const none = { ids: new Set<string>(), thin: false }
+    for (let i = 0; i < path.length; i++) {
+      const s = path[i]
+      const sub = path.slice(0, i + 1)
+      if (s.kind === 'hit_family') {
+        const ids = new Set<string>()
+        for (const b of world.value.inside(sub, 'day')) {
+          for (const m of world.value.members([...sub, b.sel])) if (m.sel.kind === 'hit') ids.add(m.sel.hitId)
+        }
+        return { ids, thin: false }
+      }
+      // event、反馈:只算它们自己牵出的(那个 ▼ 上顺带的别的切法不算)
+      if (s.kind === 'event') return { ids: new Set(usingOf.value(s.instanceId).map(m => m.hit_id)), thin: true }
+      if (s.kind === 'feedback') {
+        return { ids: new Set(worldCtx.value.feedbacks.find(f => f.id === s.id)?.hitIds ?? []), thin: true }
+      }
+      if (s.kind === 'sample' || s.kind === 'box') {
+        // 样本、框:只框配对的那一次(配对的 event 没进 hit 时不框);在场的别的几次要 ↓ 进去才看
+        const paired = pairedHitOf(s)
+        return { ids: new Set(paired ? [paired] : []), thin: true }
+      }
+    }
+    return none
+  })
+
+  /** 选中的是一整天(买点日,且这天不止一次)时,这天叠着的几次 hit;否则为空。 */
+  const selDayHitIds = computed<string[]>(() => {
+    const last = selLast.value
+    if (last?.kind !== 'buy') return []
+    return world.value.inside(selPath.value, 'stack').map(m => (m.sel.kind === 'hit' ? m.sel.hitId : ''))
+  })
+
+  /** 这个 event 在当前档位、显隐下画没画在它那条 band 上(选中卡的 level 行据此写 hidden)。 */
+  function isEventDrawn(instanceId: string): boolean {
+    const ev = byIdMap.value.get(instanceId)
+    if (!ev) return false
+    return bandCells(bandFamiliesCached(bandKeyOf(ev))).some(c => c.members.some(m => m.id === instanceId))
+  }
+  /** 一次 hit 的全部买点日(结果里没有它为空)。 */
+  function buyDaysOfHit(hitId: string): number[] {
+    const m = hitsById.value.get(hitId)
+    return m ? hitDays(m, byIdMap.value, endNode.value) : []
+  }
+
+  /** 显示栏、选中卡、Shift+C 复制共用的那一份(render/selSnapshot.ts);什么都没选为 null。 */
+  const selInfo = computed<Snapshot | null>(() => {
+    const path = selPath.value
+    if (path.length === 0) return null
+    const topo = effectivePattern.value?.topology
+    const src = selSources.value
+    return selSnapshotOf(path, {
+      dates: barDates.value, wctx: worldCtx.value, world: world.value,
+      nodeOrder: (topo?.nodes ?? []).map(n => n.node_id),
+      anchorFields: [...new Set((topo?.edges ?? []).map(e => e.anchor_field).filter((f): f is string => !!f))],
+      featureOfBand: src.featureOfBand ?? (() => null),
+      feedbackOf: src.feedbackOf ?? (() => null),
+      sampleOf: src.sampleOf ?? (() => null),
+      boxOf: src.boxOf ?? (() => null),
+    })
+  })
+
   function setLevel(l: Level) { level.value = l; saveLevelToLS(l) }
   function hoverEvent(id: string | null) { hoveredEventId.value = id }
-  function setCandidateHits(ids: string[]) {
-    candidateHitIds.value = new Set(ids)
-    if (ids.length === 0) pendingDisambigInstanceId.value = null
-  }
-  function clearCandidates() {
-    candidateHitIds.value = new Set()
-    pendingDisambigInstanceId.value = null
-  }
-  function setPendingDisambig(iid: string | null) {
-    pendingDisambigInstanceId.value = iid
-  }
 
   // ── 入口 A(brush)+ 入口 D(shift+click)query actions(Task 18) ──────────────
   function setShiftSelectedEvents(next: ShiftSelectedEvent[]) {
@@ -1272,13 +1306,20 @@ export const useViewStore = defineStore('view', () => {
     return effectiveAnalysis.value.hits.find(m => m.hit_id === focusedHitId.value) ?? null
   })
 
-  // 视觉层(spec §3.1 分层):focusedHitId 存在 → 亮 group 展开集;多归属 pending 时不亮
-  // (candidateHitIds 副轴驱动候选 bracket 虚线闪烁,不进 highlightedEventIds)。
+  // 视觉层:选中一次 hit → 它绑定的 event 亮成一组。选中的不是某一次 hit 时,和它有关的那几次的组成也亮出来
+  // (它们不算选中,要进到那一次才是):选中一整天 → 这天叠着的几次;选中样本 / 框 → 配对的那一次。
+  // event、反馈牵出的 hit 由 candidateHitIds 画细实线框,不进这里。
   const highlightedEventIds = computed<ReadonlySet<string>>(() => {
     const m = selectedHit.value
-    if (!m) return new Set<string>()
+    const last = selLast.value
+    const related = m ? [m]
+      : last?.kind === 'buy' ? selDayHitIds.value.map(id => hitsById.value.get(id)).filter((x): x is HitDict => !!x)
+      : last?.kind === 'sample' || last?.kind === 'box'
+        ? [hitsById.value.get(pairedHitOf(last) ?? '')].filter((x): x is HitDict => !!x)
+        : []
+    if (related.length === 0) return new Set<string>()
     return inHitIdsOf(
-      [m],
+      related,
       effectiveAnalysis.value?.events ?? [],
       effectivePattern.value?.topology.edges ?? [],
       { expandAnchor: false },
@@ -1289,11 +1330,10 @@ export const useViewStore = defineStore('view', () => {
   const showTrace = computed<boolean>(() =>
     focusedHitId.value !== null && selectedInstanceId.value === null && focusedInstanceId.value === null)
 
-  // 组成型组「一选全选」(2026-08-17):0 归属(非 hit)时,点组成型容器或其任一段 →
-  // 整组(容器+全部段)进视觉选中集,与 hit 组高亮同款 group 边框(点击者仍由 focus
-  // 条目独家表达,chart group 分支按 focusedInstanceRef 排除)。1/≥2 归属时
-  // selectedInstanceId=null → 空集,由 hit 的 inHitIds 闭包覆盖——本机制只
-  // 服务「无 hit 的灰色组」。组成型判别 = topology.nodes[].produced_by 非空
+  // 组成型组「一选全选」:选中的是一个 event(不是某一次 hit)时,它若是组成型容器或其任一段 →
+  // 整组(容器+全部段)进视觉选中集,与 hit 组高亮同款 group 边框(选中的那个仍由 focus
+  // 条目独家表达,chart group 分支按 focusedInstanceRef 排除)。选中一次 hit 时
+  // selectedInstanceId=null → 空集,由 hit 的 inHitIds 闭包覆盖。组成型判别 = topology.nodes[].produced_by 非空
   // (bo→burst 是引用型,公共资源,不在此列)。
   const compositionGroupIds = computed<ReadonlySet<string>>(() => {
     const iid = selectedInstanceId.value
@@ -1333,19 +1373,27 @@ export const useViewStore = defineStore('view', () => {
   //   focusHit (bracket click) = 清空(trace 独占)
   const expandedNodeIds = computed<ReadonlySet<string>>(() => manualExpandedNodes.value)
 
-  // sidebar hit 列表"选中"样式判据(spec §3.1 信息层):
-  //   bracket-focus / disambig 后 → 单值 {focusedHitId}
-  //   多归属 pending → candidateHitIds(如实反映所有归属)
-  //   0 焦点 → 空集
+  // 图上的细框:路径上最外一节是 event、反馈、样本或框时,它牵出的每次 hit 的格加细框(一族靠粗底线认,不加框)。
+  const candidateHitIds = computed<ReadonlySet<string>>(() => (selHits.value.thin ? selHits.value.ids : new Set<string>()))
+
+  // 从一个 event 走进它的买点日、停在整天上时:那个 event 不是选中的那一个,但还在用,单独描边
+  const pendingDisambigInstanceId = computed<string | null>(() => {
+    if (focusedHitId.value || selLast.value?.kind !== 'buy') return null
+    const anc = selPath.value.find((x): x is Extract<Sel, { kind: 'event' }> => x.kind === 'event')
+    return anc?.instanceId ?? null
+  })
+
+  // 侧栏 hits 列表常标的行:路径上最外一节牵出的 hit,加上选中的那次、选中那一天的几次
   const markedHitIds = computed<ReadonlySet<string>>(() => {
-    if (focusedHitId.value) return new Set([focusedHitId.value])
-    if (candidateHitIds.value.size > 0) return candidateHitIds.value
-    return new Set()
+    const out = new Set<string>(selHits.value.ids)
+    for (const id of selDayHitIds.value) out.add(id)
+    if (focusedHitId.value) out.add(focusedHitId.value)
+    return out
   })
 
   // sidebar 候选表"选中"样式判据(spec §3.1 信息层):
   //   实例 focus → {selectedInstanceId ?? focusedInstanceId}
-  //   多归属 pending → {pendingDisambigInstanceId}
+  //   停在整天上、是从一个 event 走进来的 → {它}
   //   都空 → 空集
   const markedEventIds = computed<ReadonlySet<string>>(() => {
     const iid = selectedInstanceId.value ?? focusedInstanceId.value
@@ -1371,8 +1419,14 @@ export const useViewStore = defineStore('view', () => {
 
   const qualifiedIds = computed<Set<string>>(() => qualifiedIdsOf(diag.value))
 
-  // 给渲染层的当家行族键(族行底线加粗、表头加粗)
-  const activeFamilyKey = computed<string | null>(() => activeFamily.value?.key ?? null)
+  // 给渲染层的当家行键(族行底线加粗):路径上有 hit 的一族时是那一族;最外一节是样本时是样本那一行。
+  // event、反馈、框不对应现成的一行,不加粗任何一行(它们牵出的 hit 靠细框认)。
+  const activeFamilyKey = computed<string | null>(() => {
+    const path = selPath.value
+    const fam = path.find((x): x is Extract<Sel, { kind: 'hit_family' }> => x.kind === 'hit_family')
+    if (fam) return fam.familyKey
+    return path[0]?.kind === 'sample' ? SAMPLES_ROW_KEY : null
+  })
 
   function bandKey(e: EventDict): string { return bandKeyOf(e) }
   function eventTier(e: EventDict): Tier { return eventTierOf(e, inHitIds.value, qualifiedIds.value) }
@@ -1397,16 +1451,17 @@ export const useViewStore = defineStore('view', () => {
     visiblePatterns, visibleFields, symbolQuery,
     effectivePattern, effectiveAnalysis, effectiveScan,
     unionRows, sortedRows, filteredSortedRows, previewListRow, patternHitStocks,
-    nodeColors, selectedHitId, selectedHit, sameDayHits, tagMap, isolated, inHitIds, inHitEventIds, qualifiedIds,
+    nodeColors, selectedHitId, selectedHit, tagMap, isolated, inHitIds, inHitEventIds, qualifiedIds,
     mode, annotating, comparing, appSource, linkedView, linkedRun, appId, endNode, appWindowOf,
     openSymbol, enterAnnotate, enterLinked, setLinkedRun, viewWindow,
     loadScanFile, clearScanFile, setCurrentScanName, currentScanName, selectSymbol, setActivePattern, setSort,
     toggleNode, toggleExpandedNode,
     focusHit, focusEvent, clearFocus,
-    focusMark, focusHits, focusBuyDay, stepFocus, setCurrentDay, setActiveFamily, setBarDates,
-    currentDay, activeFamily, activeFamilyKey, barDates,
+    focusMark, clickBuyDay, clickHitCell, clickFamilyLine, clickFeedback, selectNode, setPath, setSelSources,
+    stepPos, stepStack, stepUp, setCurrentDay, setBarDates,
+    currentDay, activeFamilyKey, barDates, selPath, selLast, selInfo, selHits, selDayHitIds, world, moveSeq,
+    isEventDrawn, buyDaysOfHit,
     setLevel, hoverEvent,
-    setCandidateHits, clearCandidates, setPendingDisambig,
     setShiftSelectedEvents, clearShiftSelection, clearDetailCard, triggerTimeQuery, triggerPairQuery,
     // v2 event-debug(2026-07-15)
     debugPending, debugTarget, debugError, triggerEventDebug, cancelDebug,
