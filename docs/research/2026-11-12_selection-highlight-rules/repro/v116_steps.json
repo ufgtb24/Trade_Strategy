@@ -1,0 +1,13 @@
+[
+{"eval": "e2e.chartMain().dispatchAction({type:'dataZoom',startValue:770,endValue:815}); 1", "after": 1200},
+{"eval": "v.focusMark(['step_789_790#0']); JSON.stringify(v.selPath)", "after": 900, "as": "a_path"},
+{"shot": "v116_01_event_step", "sel": ".sub-outer", "jpg": true},
+{"eval": "v.stepPos(1); JSON.stringify({path:v.selPath, under:[...v.highlight.under.events]})", "after": 900, "as": "b_path"},
+{"shot": "v116_02_step_right_buy", "sel": ".sub-outer", "jpg": true},
+{"eval": "v.focusMark(['new_plat_790_793#0']); JSON.stringify(v.selPath)", "after": 900, "as": "c_path"},
+{"shot": "v116_03_new_plat", "sel": ".sub-outer", "jpg": true},
+{"eval": "v.setPath([{kind:'hit_family',familyKey:'hits@774'},{kind:'buy',day:795}]); 1", "after": 900},
+{"shot": "v116_04_buy_795", "sel": ".sub-outer", "jpg": true},
+{"eval": "v.setPath([{kind:'hit_family',familyKey:'hits@774'}]); 1", "after": 900},
+{"shot": "v116_05_family", "sel": ".sub-outer", "jpg": true}
+]

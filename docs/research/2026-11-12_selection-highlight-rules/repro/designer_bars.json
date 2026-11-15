@@ -1,0 +1,448 @@
+{
+ "s1": {
+  "path": [
+   {
+    "kind": "node",
+    "band": "today"
+   },
+   {
+    "kind": "event",
+    "instanceId": "today_795#0"
+   }
+  ],
+  "kind": "event",
+  "node": "today",
+  "date": "2024-12-02",
+  "name": null,
+  "diff": null,
+  "in": [
+   "node today"
+  ],
+  "day": {
+   "mode": "pos",
+   "noun": "events",
+   "k": 5,
+   "n": 22
+  },
+  "stack": {
+   "mode": "none",
+   "noun": "",
+   "k": null,
+   "n": 0
+  },
+  "buys": "2024-12-02 ×1",
+  "hits": {
+   "head": "×2",
+   "lines": []
+  },
+  "nodes": null,
+  "copy": "event today 2024-12-02 buys 2024-12-02 ×1 hits ×2 [today_795#0]",
+  "cur": 795
+ },
+ "s2": {
+  "path": [
+   {
+    "kind": "hit_family",
+    "familyKey": "hits@774"
+   },
+   {
+    "kind": "buy",
+    "day": 795
+   }
+  ],
+  "kind": "buy",
+  "node": null,
+  "date": "2024-12-02",
+  "name": null,
+  "diff": null,
+  "in": [
+   "hit_family 2024-10-31"
+  ],
+  "day": {
+   "mode": "pos",
+   "noun": "buys",
+   "k": 3,
+   "n": 11
+  },
+  "stack": {
+   "mode": "into",
+   "noun": "hits",
+   "k": null,
+   "n": 2
+  },
+  "buys": null,
+  "hits": {
+   "head": "×2",
+   "lines": [
+    "step→2024-11-21",
+    "step→2024-11-22"
+   ]
+  },
+  "nodes": null,
+  "copy": "buy 2024-12-02 hits ×2",
+  "cur": 795
+ },
+ "s3": {
+  "path": [
+   {
+    "kind": "node",
+    "band": "step"
+   },
+   {
+    "kind": "event",
+    "instanceId": "step_789_790#0"
+   }
+  ],
+  "kind": "event",
+  "node": "step",
+  "date": "2024-11-21→2024-11-22",
+  "name": null,
+  "diff": null,
+  "in": [
+   "node step"
+  ],
+  "day": {
+   "mode": "into",
+   "noun": "buys",
+   "k": null,
+   "n": 11
+  },
+  "stack": {
+   "mode": "none",
+   "noun": "",
+   "k": null,
+   "n": 0
+  },
+  "buys": "2024-11-27…2024-12-26 ×11",
+  "hits": {
+   "head": "×11",
+   "lines": []
+  },
+  "nodes": null,
+  "copy": "event step 2024-11-21→2024-11-22 buys 2024-11-27…2024-12-26 ×11 hits ×11 [step_789_790#0]",
+  "cur": 790
+ },
+ "s4": {
+  "path": [
+   {
+    "kind": "hit_family",
+    "familyKey": "hits@774"
+   },
+   {
+    "kind": "buy",
+    "day": 795
+   },
+   {
+    "kind": "hit",
+    "hitId": "new_step@774-795#plateau:plateau_774_795#0",
+    "day": 795
+   }
+  ],
+  "kind": "hit",
+  "node": null,
+  "date": "2024-10-31→2024-12-02",
+  "name": null,
+  "diff": "step→2024-11-21",
+  "in": [
+   "hit_family 2024-10-31",
+   "buy 2024-12-02"
+  ],
+  "day": {
+   "mode": "pos",
+   "noun": "buys",
+   "k": 3,
+   "n": 11
+  },
+  "stack": {
+   "mode": "pos",
+   "noun": "hits",
+   "k": 1,
+   "n": 2
+  },
+  "buys": "2024-12-02 ×1",
+  "hits": null,
+  "nodes": [
+   "plateau 2024-10-31→2024-12-02",
+   "old_plat 2024-10-31→2024-11-20",
+   "step 2024-11-21",
+   "new_plat 2024-11-22→2024-11-29",
+   "today 2024-12-02"
+  ],
+  "copy": "hit 2024-10-31→2024-12-02 step→2024-11-21 buys 2024-12-02 ×1 [new_step@774-795#plateau:plateau_774_795#0]",
+  "cur": 795
+ },
+ "s5": {
+  "path": [
+   {
+    "kind": "sample",
+    "sampleId": "s-pc-44"
+   }
+  ],
+  "kind": "sample",
+  "node": null,
+  "date": "2024-11-29",
+  "name": "a pos",
+  "diff": null,
+  "in": [],
+  "day": {
+   "mode": "pos",
+   "noun": "samples",
+   "k": 1,
+   "n": 3
+  },
+  "stack": {
+   "mode": "into",
+   "noun": "hits",
+   "k": null,
+   "n": 2
+  },
+  "buys": null,
+  "hits": {
+   "head": "×2",
+   "lines": [
+    "step→2024-11-21",
+    "step→2024-11-22"
+   ]
+  },
+  "nodes": null,
+  "copy": "sample 2024-11-29 a pos hits ×2 [s-pc-44]",
+  "cur": 794
+ },
+ "s6": {
+  "path": [
+   {
+    "kind": "node",
+    "band": "step"
+   },
+   {
+    "kind": "event",
+    "instanceId": "step_789_790#0"
+   },
+   {
+    "kind": "buy",
+    "day": 793
+   }
+  ],
+  "kind": "buy",
+  "node": null,
+  "date": "2024-11-27",
+  "name": null,
+  "diff": null,
+  "in": [
+   "node step",
+   "event step 2024-11-21→2024-11-22"
+  ],
+  "day": {
+   "mode": "pos",
+   "noun": "buys",
+   "k": 1,
+   "n": 11
+  },
+  "stack": {
+   "mode": "into",
+   "noun": "hits",
+   "k": null,
+   "n": 2
+  },
+  "buys": null,
+  "hits": {
+   "head": "×2",
+   "lines": [
+    "step→2024-11-22",
+    "step→2024-11-21"
+   ]
+  },
+  "nodes": null,
+  "copy": "buy 2024-11-27 hits ×2",
+  "cur": 793
+ },
+ "s7": {
+  "path": [
+   {
+    "kind": "hit_family",
+    "familyKey": "hits@774"
+   }
+  ],
+  "kind": "hit_family",
+  "node": null,
+  "date": "2024-10-31",
+  "name": null,
+  "diff": null,
+  "in": [],
+  "day": {
+   "mode": "into",
+   "noun": "buys",
+   "k": null,
+   "n": 11
+  },
+  "stack": {
+   "mode": "none",
+   "noun": "",
+   "k": null,
+   "n": 0
+  },
+  "buys": "2024-11-27…2024-12-26 ×11",
+  "hits": {
+   "head": "×22",
+   "lines": []
+  },
+  "nodes": null,
+  "copy": "hit_family 2024-10-31 buys 2024-11-27…2024-12-26 ×11 hits ×22",
+  "cur": null
+ },
+ "s8": {
+  "path": [
+   {
+    "kind": "node",
+    "band": "step"
+   }
+  ],
+  "kind": "node",
+  "node": "step",
+  "date": null,
+  "name": null,
+  "diff": null,
+  "in": [],
+  "day": {
+   "mode": "into",
+   "noun": "events",
+   "k": null,
+   "n": 5
+  },
+  "stack": {
+   "mode": "none",
+   "noun": "",
+   "k": null,
+   "n": 0
+  },
+  "buys": null,
+  "hits": null,
+  "nodes": null,
+  "copy": "node step",
+  "cur": null
+ },
+ "s9": {
+  "path": [
+   {
+    "kind": "node",
+    "band": "old_plat"
+   },
+   {
+    "kind": "event",
+    "instanceId": "old_plat_774_788#0"
+   }
+  ],
+  "kind": "event",
+  "node": "old_plat",
+  "date": "2024-10-31→2024-11-20",
+  "name": null,
+  "diff": null,
+  "in": [
+   "node old_plat"
+  ],
+  "day": {
+   "mode": "into",
+   "noun": "buys",
+   "k": null,
+   "n": 11
+  },
+  "stack": {
+   "mode": "none",
+   "noun": "",
+   "k": null,
+   "n": 0
+  },
+  "buys": "2024-11-27…2024-12-26 ×11",
+  "hits": {
+   "head": "×22",
+   "lines": []
+  },
+  "nodes": null,
+  "copy": "event old_plat 2024-10-31→2024-11-20 buys 2024-11-27…2024-12-26 ×11 hits ×22 [old_plat_774_788#0]",
+  "cur": 788
+ },
+ "s10": {
+  "path": [
+   {
+    "kind": "node",
+    "band": "plateau"
+   },
+   {
+    "kind": "event",
+    "instanceId": "plateau_774_795#0"
+   }
+  ],
+  "kind": "event",
+  "node": "plateau",
+  "date": "2024-10-31→2024-12-02",
+  "name": null,
+  "diff": "step→2024-11-21",
+  "in": [
+   "node plateau 站上新平台"
+  ],
+  "day": {
+   "mode": "pos",
+   "noun": "events",
+   "k": 5,
+   "n": 22
+  },
+  "stack": {
+   "mode": "pos",
+   "noun": "events",
+   "k": 1,
+   "n": 2
+  },
+  "buys": "2024-12-02 ×1",
+  "hits": {
+   "head": "×1",
+   "lines": []
+  },
+  "nodes": null,
+  "copy": "event plateau 2024-10-31→2024-12-02 step→2024-11-21 buys 2024-12-02 ×1 hits ×1 [plateau_774_795#0]",
+  "cur": 795
+ },
+ "s11": {
+  "path": [
+   {
+    "kind": "sample",
+    "sampleId": "s-pc-44"
+   },
+   {
+    "kind": "hit",
+    "hitId": "new_step@774-794#plateau:plateau_774_794#0",
+    "day": 794
+   }
+  ],
+  "kind": "hit",
+  "node": null,
+  "date": "2024-10-31→2024-11-29",
+  "name": null,
+  "diff": "step→2024-11-21",
+  "in": [
+   "sample 2024-11-29 a pos"
+  ],
+  "day": {
+   "mode": "pos",
+   "noun": "samples",
+   "k": 1,
+   "n": 3
+  },
+  "stack": {
+   "mode": "pos",
+   "noun": "hits",
+   "k": 1,
+   "n": 2
+  },
+  "buys": "2024-11-29 ×1",
+  "hits": null,
+  "nodes": [
+   "plateau 2024-10-31→2024-11-29",
+   "old_plat 2024-10-31→2024-11-20",
+   "step 2024-11-21",
+   "new_plat 2024-11-22→2024-11-27",
+   "today 2024-11-29"
+  ],
+  "copy": "hit 2024-10-31→2024-11-29 step→2024-11-21 buys 2024-11-29 ×1 [new_step@774-794#plateau:plateau_774_794#0]",
+  "cur": 794
+ }
+}

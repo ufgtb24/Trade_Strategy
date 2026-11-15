@@ -1,0 +1,463 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>选中显示样张</title>
+<style>
+  :root {
+    --ink: #000000; --muted: #6b7280; --bg: #ffffff; --stripe: #ebebeb; --hits-bg: #fffbdb;
+    --amber: #fbbf24; --divider: #0050ff; --cursor: #1e293b; --vermilion: #E8875A;
+    --mono: ui-monospace, "JetBrains Mono", "DejaVu Sans Mono", Menlo, monospace;
+  }
+  body { margin: 0; padding: 16px; background: var(--bg); color: var(--ink); font: 14px/1.55 system-ui, sans-serif; }
+  h1 { font-size: 20px; margin: 0 0 8px; }
+  h2 { font-size: 16px; margin: 0 0 4px; }
+  .law { border: 2px solid var(--ink); padding: 10px 14px; max-width: 1180px; margin: 8px 0 16px; font-size: 15px; }
+  .scene { margin: 0 0 28px; padding: 12px; border: 1px solid #d1d5db; max-width: 1236px; background: #fff; }
+  .scene p { margin: 2px 0 8px; max-width: 1180px; }
+  .tag { font: 12px var(--mono); border: 1px solid #555; padding: 0 4px; margin-right: 6px; }
+  .now img { width: 1230px; max-width: 100%; display: block; border: 1px solid #d1d5db; }
+  .cap { font: 12px var(--mono); margin: 6px 0 2px; }
+  .bar { display: grid; grid-template-columns: 112px 110px 230px 140px 150px 1fr 150px 140px 40px; background: #f1f2f4;
+         font: 12.5px var(--mono); border-bottom: 1px solid #d1d5db; width: 1230px; }
+  .bar > div { padding: 3px 6px; border-right: 1px solid #d1d5db; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .bar .na { color: #6b7080; }
+  .bar .kindbox { background: #fff; border: 2px solid #000; font-weight: 700; padding: 0 4px; }
+  .bar .key { border: 1px solid #555; padding: 0 3px; margin-right: 4px; font-size: 11px; }
+  .bar .key.na { border-color: #b0b4bb; }
+  .row2 { display: flex; gap: 16px; align-items: flex-start; }
+  .list { font: 12px var(--mono); border: 1px solid #d1d5db; width: 230px; }
+  .list .h { padding: 3px 6px; font-weight: 700; border-bottom: 1px solid #d1d5db; }
+  .list .r { padding: 2px 8px; border-bottom: 1px solid #f0f0f0; }
+  .list .r.rel { box-shadow: inset 3px 0 0 #1a80ba; }
+  .list .r.cur { box-shadow: inset 0 0 0 2px #111111; }
+  .list .r.rel.cur { box-shadow: inset 3px 0 0 #1a80ba, inset 0 0 0 2px #111111; }
+  svg text { font-family: var(--mono); }
+  .legend td { padding: 2px 10px 2px 0; vertical-align: middle; }
+</style>
+</head>
+<body>
+<h1>选中显示样张（designer，静态，按 CRNC / new_step / compare 的真数据画）</h1>
+<div class="law" id="law"></div>
+<div id="legend"></div>
+<div id="scenes"></div>
+<script src="designer_mockdata.js"></script>
+<script>
+const M = window.MOCK
+const W0 = M.W0, W1 = M.W1
+window.DIM_DEFAULT = 0.5             // 画淡的不透明度：天蓝下「淡后对隔行底」和「照常对淡后」两头相等、都约 1.6（designer_contrast.py），待验证
+window.COL0 = { plateau: M.colors.plateau, old_plat: M.colors.old_plat, step: M.colors.step, new_plat: M.colors.new_plat, today: M.colors.today }
+const DIM = window.DIM_DEFAULT, COL = window.COL0
+const TIER_H = { in_hit: 1, qualified: 0.65, detected: 0.4 }
+const GRAY = { qualified: '#9ca3af', detected: '#b4bac2' }
+const BANDS = [['plateau', 'plateau  站上新平台', 0], ['old_plat', '├ old_plat', 1], ['step', '├ step', 1], ['new_plat', '├ new_plat', 1], ['today', '└ today', 1]]
+const LAW = '总规律：<b>粗框只框选中的那一个，它外面那几层（显示栏 <code>in</code> 的各节）各在自己下面画一道粗底线。选中那一个的组成、它牵出的 hit 和这些 hit 的组成落在哪一边（app 的记号、用户的记号），那一边其余的记号就画淡，只留路径上每一节的同一层（← / → 在它们之间换的那些）照常。</b>'
+document.getElementById('law').innerHTML = LAW
+const d2 = (i) => (M.dates[i] || '').slice(5)
+const date = (i) => M.dates[i] || ''
+const ev = M.events
+
+// ── 规律本身：输入选中路径，输出「选中 / 外层 / 照常」三样（各现场只换输入，不手调）──
+function famByKey(k) { return M.hitFams.find(f => f.key === k) }
+function hitsOfDay(day) { const out = []; for (const f of M.hitFams) for (const b of f.buys) if (b.day === day) out.push(...b.hitIds); return out }
+function bandEvents(band, level) { const s = new Set(); for (const f of M.bands[level][band] || []) for (const id of f.memberIds) s.add(id); return [...s] }
+function sampleDay(id) { return M.sampleDays.find(s => s.id === id)?.day }
+function boxDay(id) { const b = M.boxes.find(x => x.id === id); return dayOf(b.end) }
+function dayOf(ds) { for (const k in M.dates) if (M.dates[k] === ds) return +k; return null }
+function fbHits(id) {
+  const f = M.feedback.find(x => x.id === id); const s = dayOf(f.start), e = dayOf(f.end); const fs = dayOf(f.family_start)
+  const out = new Set()
+  for (const fam of M.hitFams) for (const b of fam.buys) if (b.day >= s && b.day <= e) b.hitIds.forEach(h => out.add(h))
+  if (f.target === 'family') for (const fam of M.hitFams) if (fam.start === fs) fam.hitIds.forEach(h => out.add(h))
+  return [...out]
+}
+/** 牵出的 hit（= 选中卡 `hits` 行数到的那几次） */
+function hitsOf(s, level) {
+  switch (s.kind) {
+    case 'hit_family': return famByKey(s.key).hitIds
+    case 'buy': return famByKey(s.fam).buys.find(b => b.day === s.day).hitIds
+    case 'hit': return [s.id]
+    case 'event': return M.using[s.id] || []
+    case 'sample': return hitsOfDay(sampleDay(s.id))
+    case 'box': return hitsOfDay(boxDay(s.id))
+    case 'feedback': return fbHits(s.id)
+    default: return []
+  }
+}
+/** 它自己的组成：一个 event 的子段（往下，沿 child_refs）；一个 node 的组成是它那条 band 上画着的 event */
+function compOf(s, level) {
+  if (s.kind === 'event') return [s.id, ...(ev[s.id]?.desc || [])]
+  if (s.kind === 'node') return bandEvents(s.band, level)
+  return []
+}
+/** 外层装着的那一串（规格 5.8「装着」）：只亮记号本身，不带它们的组成 */
+function chainOf(o, level) {
+  switch (o.kind) {
+    case 'hit_family': return { hits: famByKey(o.key).hitIds, evs: [] }
+    case 'buy': return { hits: famByKey(o.fam).buys.find(b => b.day === o.day).hitIds, evs: [] }
+    case 'event': return { hits: M.using[o.id] || [], evs: [] }
+    case 'feedback': return { hits: fbHits(o.id), evs: [] }
+    case 'sample': return { hits: hitsOfDay(sampleDay(o.id)), evs: [] }
+    case 'box': return { hits: hitsOfDay(boxDay(o.id)), evs: [] }
+    case 'node': return { hits: [], evs: bandEvents(o.band, level) }
+    default: return { hits: [], evs: [] }
+  }
+}
+function roles(path, level) {
+  if (!path.length) return null
+  const sel = path[path.length - 1]
+  const outer = path.slice(0, -1)
+  const litHits = new Set(hitsOf(sel, level))          // 牵出的 hit（连组成）
+  const litEv = new Set(compOf(sel, level))            // 它自己的组成（event 含它自己，画时它是粗框）
+  for (const h of litHits) for (const e of (M.bound[h] || [])) litEv.add(e)
+  const rangeHits = new Set(), rangeEv = new Set()     // 外层装着的那一串（只记号本身）
+  for (const o of outer) { const c = chainOf(o, level); c.hits.forEach(h => rangeHits.add(h)); c.evs.forEach(e => rangeEv.add(e)) }
+  // 最外一节的同一层：图上和它同种的东西（规格 5.8「同一层」：没有上一节就是这张图上的同种东西）
+  const top = path[0]
+  if (top.kind === 'hit_family') for (const f of M.hitFams) f.hitIds.forEach(h => rangeHits.add(h))
+  const userPeerSamples = new Set(top.kind === 'sample' ? M.samples.map(x => x.id) : [])
+  const selfOnly = sel.kind === 'event' && litEv.size === 1
+  // 画淡只由「组成、牵出」触发；路径上各节的同一层只是留着不淡
+  const appDim = litHits.size > 0 || (litEv.size > 0 && !selfOnly)
+  // 用户那一边：只有样本有组成（它的成员框）
+  const userLitBoxes = new Set(sel.kind === 'sample' ? (M.samples.find(x => x.id === sel.id)?.members || []) : [])
+  const userDim = userLitBoxes.size > 0
+  return { sel, outer, litHits, litEv, rangeHits, rangeEv, appDim, userDim, userLitBoxes, userPeerSamples }
+}
+
+// ── 画 ──
+function el(tag, attrs, parent) { const e = document.createElementNS('http://www.w3.org/2000/svg', tag); for (const k in attrs) e.setAttribute(k, attrs[k]); if (parent) parent.appendChild(e); return e }
+function frame(g, x, y, w, h) {   // 粗框：深色 2.5px、外扩 1.5px（现在 focus 粗框的尺寸），不带阴影、不带白圈
+  el('rect', { x: x - 1.5, y: y - 1.5, width: w + 3, height: h + 3, fill: 'none', stroke: '#111', 'stroke-width': 2.5 }, g)
+}
+// 外层底线：2.5px，压在那一行的底线上（底边下沿 -1 起），横跨那个东西自己的起止（现在「那一族的行粗底线」的画法）
+function underline(g, x, yBottom, w) { el('rect', { x, y: yBottom - 1, width: w, height: 2.5, fill: '#111' }, g) }
+
+function draw(container, sc, opt = {}) {
+  const level = sc.level || 'in_hit'
+  const DIM = sc.dim ?? window.DIM_DEFAULT
+  const COL = sc.blue ? Object.fromEntries(Object.entries(window.COL0).map(([k, v]) => [k, v === '#1e9be0' ? sc.blue : v])) : window.COL0
+  const R = roles(sc.path, level)
+  const LABEL_W = opt.labelW ?? 132, PLOT_W = opt.plotW ?? 1080, X0 = LABEL_W + 4
+  const N = W1 - W0 + 1, unit = PLOT_W / N
+  const W = X0 + PLOT_W + 14
+  const xc = (d) => X0 + (d - W0 + 0.5) * unit
+  const half = Math.max(1, 0.4 * unit)
+  const xl = (d) => xc(d) - half, xr = (d) => xc(d) + half
+  const LANE_H = 14, GAP = 4, PAD = 5
+  const lanesOf = (band) => Math.max(1, ...((M.bands[level][band] || []).map(f => f.lane + 1)))
+  // 竖向布局
+  let y = 0
+  const rows = {}
+  rows.feat1 = [y, 26]; y += 26
+  rows.feat2 = [y, 26]; y += 26
+  rows.user = [y, 34]; y += 34
+  rows.divider = y + 3; y += 8
+  rows.hits = [y, 12 + 2 * (LANE_H + GAP) + 18 + 6]
+  const hitsLaneTop = (l) => rows.hits[0] + 14 + l * (LANE_H + GAP)
+  const fbTop = rows.hits[0] + 14 + 2 * (LANE_H + GAP) + 2
+  y += rows.hits[1]
+  for (const [band] of BANDS) { const h = PAD * 2 + lanesOf(band) * LANE_H + (lanesOf(band) - 1) * GAP; rows[band] = [y, h]; y += h }
+  const axisY = y; y += 20
+  const H = y
+  const svg = el('svg', { width: W, height: H, viewBox: `0 0 ${W} ${H}` }, container)
+  // 底色
+  el('rect', { x: 0, y: rows.user[0], width: W, height: rows.user[1], fill: '#fffbdb' }, svg)
+  el('rect', { x: 0, y: rows.hits[0], width: W, height: rows.hits[1], fill: '#fffbdb' }, svg)
+  BANDS.forEach(([band], i) => { if (i % 2 === 0) el('rect', { x: 0, y: rows[band][0], width: W, height: rows[band][1], fill: '#ebebeb' }, svg) })
+  el('rect', { x: 0, y: rows.divider - 1.25, width: W, height: 2.5, fill: '#0050ff' }, svg)
+  const DOT = opt.mode === 'dot'
+  const layerDim = el('g', { opacity: R && !DOT ? DIM : 1 }, svg)   // 画淡的（备选 dot：不画淡）
+  const layerOn = el('g', {}, svg)                          // 照常的
+  const layerCursor = el('g', {}, svg)                      // 当前日竖线：压在记号上（现状 z:30，窄格连成一片时不被盖住），但在粗框、底线之下
+  const layerTop = el('g', {}, svg)                         // 选中框、外层底线、竖线
+  const pick = (lit) => (R && R.appDim && !lit ? layerDim : layerOn)
+  const pickU = (lit) => (R && R.userDim && !lit ? layerDim : layerOn)
+  const dot = (lit, cx, cy) => { if (DOT && R && lit) { el('circle', { cx, cy, r: 3.6, fill: '#fff' }, layerTop); el('circle', { cx, cy, r: 2.4, fill: '#000' }, layerTop) } }
+  const isOuter = (pred) => R && R.outer.some(pred)
+  const selIs = (pred) => R && pred(R.sel)
+  // 轨名
+  const label = (text, yy, opts = {}) => {
+    const t = el('text', { x: 6 + (opts.indent || 0), y: yy, 'font-size': 13, fill: '#000' }, svg); t.textContent = text
+    return { x: 6 + (opts.indent || 0), w: [...text].reduce((n, ch) => n + (ch.charCodeAt(0) > 0x2e80 ? 13 : 7.8), 0) }
+  }
+  const tagLabel = (text, yy) => { const w = text.length * 13 + 6; el('rect', { x: 4, y: yy - 13, width: w, height: 17, fill: '#ebebeb' }, svg); const t = el('text', { x: 7, y: yy, 'font-size': 13 }, svg); t.textContent = text }
+  tagLabel('底部平稳', rows.feat1[0] + 18); tagLabel('站上新平台', rows.feat2[0] + 18)
+  { const t = el('text', { x: 78, y: rows.feat2[0] + 18, 'font-size': 12 }, svg); t.textContent = '⇣ plateau' }
+  label('user', rows.user[0] + 15)
+  { const t = el('text', { x: 6, y: rows.hits[0] + 22, 'font-size': 13, 'font-weight': 700 }, svg); t.textContent = 'hits' }
+  const bandLabelBox = {}
+  for (const [band, text] of BANDS) bandLabelBox[band] = label(text, rows[band][0] + 17, { indent: band === 'plateau' ? 0 : 6 })
+  // 用户这边：两条特征轨的框（虚线）、user 行的样本跨度与 ▲（用户的东西不画淡）
+  const featRow = { 'w-pc-8': rows.feat1, 'w-pc-11': rows.feat2 }
+  for (const b of M.boxes) {
+    const r = featRow[b.feature]; if (!r) continue
+    const s = Math.max(W0, dayOf(b.start) ?? W0), e = dayOf(b.end)
+    const x0 = s === W0 && dayOf(b.start) === null ? X0 - 2 : xl(s) - 0.1 * unit, x1 = xr(e) + 0.1 * unit
+    const boxSel = selIs(s2 => s2.kind === 'box' && s2.id === b.id)
+    const gb = boxSel || isOuter(q => q.kind === 'box' && q.id === b.id) ? layerOn : pickU(R && R.userLitBoxes.has(b.id))
+    el('rect', { x: Math.max(X0 - 2, x0), y: r[0] + 6, width: x1 - Math.max(X0 - 2, x0), height: 14, fill: boxSel ? 'rgba(0,0,0,0.10)' : 'none', stroke: '#000', 'stroke-width': boxSel ? 2.5 : 1.3, 'stroke-dasharray': '5 3' }, gb)
+    if (isOuter(q => q.kind === 'box' && q.id === b.id)) underline(layerTop, Math.max(X0 - 2, x0), r[0] + 21, x1 - Math.max(X0 - 2, x0))
+  }
+  const uTop = rows.user[0] + 8, uBot = rows.user[0] + 26
+  for (const s of M.samples) {
+    const day = sampleDay(s.id); if (day == null) continue
+    const x = xc(day)
+    const on = selIs(q => q.kind === 'sample' && q.id === s.id) || isOuter(q => q.kind === 'sample' && q.id === s.id)
+    const sel2 = selIs(q => q.kind === 'sample' && q.id === s.id)   // 选中的样本跨度：现有画法，2.5px 虚线 + 浅灰填充
+    el('rect', { x: X0 - 2, y: uTop, width: x - X0 + 2, height: uBot - uTop, fill: sel2 ? 'rgba(0,0,0,0.10)' : 'none', stroke: '#000', 'stroke-width': sel2 ? 2.5 : 1.3, 'stroke-dasharray': '5 3' }, on ? layerOn : pickU(R && R.userPeerSamples.has(s.id)))
+  }
+  M.samples.forEach((s, i) => {
+    const day = sampleDay(s.id); if (day == null) return
+    const x = xc(day)
+    const sSel = selIs(q => q.kind === 'sample' && q.id === s.id)
+    const gs = sSel || isOuter(q => q.kind === 'sample' && q.id === s.id) ? layerOn : pickU(R && R.userPeerSamples.has(s.id))
+    el('polygon', { points: `${x},${uTop + 1} ${x - 8},${uBot} ${x + 8},${uBot}`, fill: '#000', stroke: '#000', 'stroke-width': sSel ? 3 : 1.5 }, gs)
+    const t = el('text', { x: x + 11, y: uBot - 3, 'font-size': 12, 'font-weight': 700 }, gs); t.textContent = 'abc'[i] + ' ✓'
+    if (isOuter(q => q.kind === 'sample' && q.id === s.id)) underline(layerTop, X0 - 2, uBot + 1, x - X0 + 2)
+  })
+  // 反馈带（hits 区里，hit 各行之下）
+  for (const f of M.feedback) {
+    const s = dayOf(f.start), e = dayOf(f.end); if (s == null || e == null) continue
+    const x0 = xl(s), x1 = Math.min(xr(e), X0 + PLOT_W)
+    el('rect', { x: x0, y: fbTop, width: x1 - x0, height: 13, rx: 2, fill: '#E8875A', stroke: '#555', 'stroke-width': 1.5 }, svg)
+    const t = el('text', { x: x0 + 3, y: fbTop + 10, 'font-size': 10 }, svg); t.textContent = f.nodes.join(' ')
+    if (selIs(q => q.kind === 'feedback' && q.id === f.id)) {
+      frame(layerTop, x0, fbTop, x1 - x0, 13)
+      // 选中反馈的竖带：很淡的底 + 两侧深色实线边（现有画法，不改）
+      el('rect', { x: x0, y: 0, width: x1 - x0, height: axisY, fill: 'rgba(0,0,0,0.05)' }, layerTop)
+      el('rect', { x: x0 - 0.75, y: 0, width: 1.5, height: axisY, fill: '#333' }, layerTop)
+      el('rect', { x: x1 - 0.75, y: 0, width: 1.5, height: axisY, fill: '#333' }, layerTop)
+    }
+    if (isOuter(q => q.kind === 'feedback' && q.id === f.id)) underline(layerTop, x0, fbTop + 14, x1 - x0)
+  }
+  // hits 行
+  const anyBuyCount = new Map()
+  for (const f of M.hitFams) {
+    const top = hitsLaneTop(f.lane), x0 = Math.max(X0, xl(f.start)), x1 = Math.min(X0 + PLOT_W, xr(f.end))
+    const famLit = !R || f.hitIds.some(h => R.litHits.has(h) || R.rangeHits.has(h))
+    const g = pick(famLit)
+    el('rect', { x: x0, y: top + LANE_H - 1, width: x1 - x0, height: 1, fill: '#6b7280' }, g)
+    if (f.start >= W0) el('rect', { x: xl(f.start), y: top + LANE_H * 0.4, width: 1.5, height: LANE_H * 0.6, fill: '#6b7280' }, g)
+    if (isOuter(q => q.kind === 'hit_family' && q.key === f.key)) underline(layerTop, x0, top + LANE_H, x1 - x0)
+    if (selIs(q => q.kind === 'hit_family' && q.key === f.key)) frame(layerTop, x0, top, x1 - x0, LANE_H + 2)
+    for (const m of f.marks) {
+      if (m.end < W0 || m.end > W1) continue
+      const lit = !R || m.hitIds.some(h => R.litHits.has(h) || R.rangeHits.has(h))
+      const gg = pick(lit)
+      el('rect', { x: xl(m.start), y: top, width: xr(m.end) - xl(m.start), height: LANE_H, fill: '#fbbf24' }, gg)
+      dot(lit, xc(m.end), top + LANE_H + 4)
+      const isSel = selIs(q => (q.kind === 'buy' && q.fam === f.key && q.day === m.end) || (q.kind === 'hit' && m.hitIds.includes(q.id)))
+      if (isSel) frame(layerTop, xl(m.start), top, xr(m.end) - xl(m.start), LANE_H)
+    }
+    for (const b of f.buys) {
+      if (b.day < W0 || b.day > W1) continue
+      const lit = !R || b.hitIds.some(h => R.litHits.has(h) || R.rangeHits.has(h))
+      const gg = pick(lit)
+      const x = xc(b.day), w = Math.max(3, Math.min(6, unit * 0.32))
+      el('polygon', { points: `${x - w},${top + 0.5} ${x + w},${top + 0.5} ${x},${top + LANE_H * 0.65}`, fill: '#111' }, gg)
+      if (b.hitIds.length >= 2 && unit >= 8) { const t = el('text', { x, y: top - 3, 'font-size': 10, 'font-weight': 700, 'text-anchor': 'middle' }, gg); t.textContent = String(b.hitIds.length) }
+    }
+  }
+  // band
+  for (const [band] of BANDS) {
+    const [btop] = rows[band]
+    const laneTop = (l) => btop + PAD + l * (LANE_H + GAP)
+    if (isOuter(q => q.kind === 'node' && q.band === band)) underline(layerTop, bandLabelBox[band].x, btop + 23, bandLabelBox[band].w)
+    // 选中的 event 在这一档画不出来：轨名旁挂 hidden，粗框框它（它的替身）
+    if (R && R.sel.kind === 'event' && ev[R.sel.id]?.node === band && !(M.bands[level][band] || []).some(f => f.memberIds.includes(R.sel.id))) {
+      const tx = bandLabelBox[band].x + bandLabelBox[band].w + 10, ty = btop + 5
+      el('rect', { x: tx, y: ty, width: 52, height: 16, fill: '#fff', stroke: '#555', 'stroke-width': 1 }, svg)
+      const t = el('text', { x: tx + 4, y: ty + 12, 'font-size': 11.5 }, svg); t.textContent = 'hidden'
+      frame(layerTop, tx, ty, 52, 16)
+    }
+    if (selIs(q => q.kind === 'node' && q.band === band)) frame(layerTop, bandLabelBox[band].x - 2, btop + 4, bandLabelBox[band].w + 4, 17)
+    for (const f of M.bands[level][band] || []) {
+      const top = laneTop(f.lane)
+      const famLit = !R || f.memberIds.some(id => R.litEv.has(id) || R.rangeEv.has(id))
+      if (f.multi) {
+        const g = pick(famLit)
+        const x0 = Math.max(X0, xl(f.start)), x1 = Math.min(X0 + PLOT_W, xr(f.end))
+        el('rect', { x: x0, y: top + LANE_H - 1, width: x1 - x0, height: 1, fill: '#6b7280' }, g)
+        if (f.start >= W0) el('rect', { x: xl(f.start), y: top + LANE_H * 0.4, width: 1.5, height: LANE_H * 0.6, fill: '#6b7280' }, g)
+      }
+      for (const m of f.marks) {
+        if (m.end < W0 || m.start > W1) continue
+        const lit = !R || m.memberIds.some(id => R.litEv.has(id) || R.rangeEv.has(id))
+        const g = pick(lit)
+        const color = m.tier === 'in_hit' ? COL[band] : GRAY[m.tier]
+        const h = LANE_H * TIER_H[m.tier]
+        let bx, by, bw, bh
+        if (m.kind === 'point') {
+          const x = xc(m.start), w = Math.max(5, Math.min(9, unit * 0.35)) * (0.6 + 0.4 * TIER_H[m.tier]), cy = top + LANE_H / 2
+          el('polygon', { points: `${x},${cy + 7 * TIER_H[m.tier]} ${x - w},${cy - 6 * TIER_H[m.tier]} ${x + w},${cy - 6 * TIER_H[m.tier]}`, fill: color }, g)
+          bx = x - w; by = cy - 6; bw = 2 * w; bh = 13
+        } else {
+          const x0 = Math.max(X0, xl(m.start)), x1 = Math.min(X0 + PLOT_W, xr(m.end))
+          el('rect', { x: x0, y: top + LANE_H - h, width: Math.max(2, x1 - x0), height: h, fill: color }, g)
+          bx = x0; by = top + LANE_H - h; bw = Math.max(2, x1 - x0); bh = h
+        }
+        if (!selIs(q => q.kind === 'event' && m.memberIds.includes(q.id))) dot(lit, bx + bw - Math.min(bw, 2 * half) / 2, by + bh / 2)
+        if (selIs(q => q.kind === 'event' && m.memberIds.includes(q.id))) frame(layerTop, bx, by, bw, bh)
+        if (isOuter(q => q.kind === 'event' && m.memberIds.includes(q.id))) {
+          const s0 = Math.max(X0, xl(f.start)), s1 = m.kind === 'point' ? bx + bw : Math.min(X0 + PLOT_W, xr(m.end))
+          underline(layerTop, m.kind === 'point' ? bx : s0, top + LANE_H, s1 - (m.kind === 'point' ? bx : s0))
+        }
+      }
+    }
+  }
+  // 日期轴
+  for (let d = W0; d <= W1; d++) {
+    if ((d - W0) % Math.max(1, Math.round(60 / unit)) !== 0) continue
+    const t = el('text', { x: xc(d), y: axisY + 14, 'font-size': 10.5, 'text-anchor': 'middle', fill: '#000' }, svg); t.textContent = d2(d)
+  }
+  // 当前日竖线
+  if (sc.cursor != null) {
+    el('line', { x1: xc(sc.cursor), x2: xc(sc.cursor), y1: 0, y2: axisY, stroke: '#fff', 'stroke-width': 3 }, layerCursor)
+    el('line', { x1: xc(sc.cursor), x2: xc(sc.cursor), y1: 0, y2: axisY, stroke: '#1e293b', 'stroke-width': 1 }, layerCursor)
+  }
+  return svg
+}
+
+function slot(s) { if (!s || s.mode === 'none') return null; return s.mode === 'into' ? `into ${s.noun} ×${s.n}` : `${s.noun} ${s.k}/${s.n}` }
+function bar(container, b) {
+  const div = document.createElement('div'); div.className = 'bar'
+  const cell = (k, v) => { const c = document.createElement('div'); c.innerHTML = v == null || v === '' ? `${k} <span class="na">—</span>` : `${k} ${v}`; div.appendChild(c) }
+  const kc = document.createElement('div'); kc.innerHTML = b ? `kind <span class="kindbox">${b.kind}</span>` : 'kind <span class="na">—</span>'; div.appendChild(kc)
+  cell('node', b?.node); cell('date', b?.date); cell('name', b?.name); cell('diff', b?.diff)
+  cell('in', b?.in?.length ? b.in.join(' › ') : null)
+  const k1 = slot(b?.day), k2 = slot(b?.stack)
+  const s1 = document.createElement('div'); s1.innerHTML = `<span class="key ${k1 ? '' : 'na'}">←/→</span>${k1 ?? '<span class="na">—</span>'}`; div.appendChild(s1)
+  const s2 = document.createElement('div'); s2.innerHTML = `<span class="key ${k2 ? '' : 'na'}">↑/↓</span>${k2 ?? '<span class="na">—</span>'}`; div.appendChild(s2)
+  const e = document.createElement('div'); e.innerHTML = '<span class="key">Esc</span>'; div.appendChild(e)
+  container.appendChild(div)
+}
+function hitList(container, path, title) {
+  const R = roles(path, 'in_hit')
+  const sel = R.sel
+  const rows = []
+  for (const f of M.hitFams) for (const b of f.buys) for (const h of b.hitIds) rows.push({ day: b.day, h, f: f.key })
+  rows.sort((a, b) => a.day - b.day)
+  const box = document.createElement('div'); box.className = 'list'
+  box.innerHTML = `<div class="h">${title}</div>`
+  for (const r of rows.slice(0, 18)) {
+    const cut = (M.bound[r.h] || []).includes('step_789#0') ? 'step→11-21' : (M.bound[r.h] || []).includes('step_789_790#0') ? 'step→11-22' : ''
+    // 列表：选中的那一个由哪几次 hit 组成（一次 hit / 买点日 / 一族），那几行黑粗边；它牵出的 hit 左蓝条；同一层不标
+    const own = sel.kind === 'hit' ? [sel.id] : sel.kind === 'buy' ? famByKey(sel.fam).buys.find(b => b.day === sel.day).hitIds
+      : sel.kind === 'hit_family' ? famByKey(sel.key).hitIds : []
+    const d = document.createElement('div'); d.className = 'r' + (R.litHits.has(r.h) ? ' rel' : '') + (own.includes(r.h) ? ' cur' : '')
+    d.textContent = `${d2(r.day)}  ${cut}`
+    box.appendChild(d)
+  }
+  const more = document.createElement('div'); more.className = 'r'; more.textContent = `… 共 ${rows.length} 行`; box.appendChild(more)
+  container.appendChild(box)
+}
+
+const B = M.bars
+const FAM = 'hits@774'
+const SC = [
+  { id: 'cmp1', title: '现场 1：选中 event today 12-02', now: 'screenshots/designer_now_1_event_today_1202.jpg', bar: B.s1, cursor: 795,
+    path: [{ kind: 'node', band: 'today' }, { kind: 'event', id: 'today_795#0' }],
+    note: '粗框在 today 行 12-02 那个 ▼ 上（全图唯一）；它牵出的 2 次 hit（hits 行 12-02 那格）和这 2 次的组成照常；外层 node today：轨名下一道底线，它装着的这一条 band 照常（← / → 沿它走）；其余 app 记号画淡。现在的毛病：hits 行那格的细框看着像选中。' },
+  { id: 'cmp2', title: '现场 2：选中买点日 12-02（这天叠着 2 次 hit）', now: 'screenshots/designer_now_2_buy_1202.jpg', bar: B.s2, cursor: 795,
+    path: [{ kind: 'hit_family', key: FAM }, { kind: 'buy', fam: FAM, day: 795 }],
+    note: '粗框在 hits 行 12-02 那格（▼ 所在的那一格）；外层是一族：那一行底线；这一族的买点日（← / → 在这一行里走）和各族（一族的同一层）照常；band 上这天 2 次的组成照常，其余画淡。step、new_plat 各亮两个、都没有框——读成「这天有两种切法」，不再像「选中了两个」。和现场 1 比：牵出的部分（这 2 次和组成）一样，差别只来自路径。' },
+  { id: 'cmp3', title: '现场 3：选中 event step 11-21→11-22（11 次 hit 用到它）', now: 'screenshots/designer_now_3_event_step_1121_1122.jpg', bar: B.s3, cursor: 790,
+    path: [{ kind: 'node', band: 'step' }, { kind: 'event', id: 'step_789_790#0' }],
+    note: '粗框在 step 11-22 那格；牵出的 11 次 hit 照常，这 11 次的 plateau、old_plat、new_plat（起于 11-25 那一行）、today 全部照常——用户问的「new_plat 没被选中」由这一条接住；起于 11-22 那一行 new_plat 属于另一种切法、起于 12-11 那一族，画淡。外层 node step 装着的 step 这条 band 照常、轨名下底线。' },
+  { id: 'cmp4', title: '加一张：选中一次 hit（774-795#0，12-02 两种切法里的第 1 种）', now: 'screenshots/designer_now_4_hit_774_795_0.jpg', bar: B.s4, cursor: 795,
+    path: [{ kind: 'hit_family', key: FAM }, { kind: 'buy', fam: FAM, day: 795 }, { kind: 'hit', id: 'new_step@774-795#plateau:plateau_774_795#0' }],
+    note: '粗框仍在 hits 行 12-02 那格（买点日和这天的一次 hit 画在同一格）；和现场 2 的差别：band 上只剩这一次的组成照常（step 11-21、起于 11-22 的 new_plat），另一种切法画淡。外层一族那一行底线；hits 行照常（这一族的买点日、各族）；外层买点日的底线落在同一格下，被一族那道包住。' },
+  { id: 'cmp5', title: '路径上有外层：从 event step 按 → 落进它的第 1 个买点日 11-27', now: 'screenshots/designer_now_6_event_step_then_buy.jpg', bar: B.s6, cursor: 793,
+    path: [{ kind: 'node', band: 'step' }, { kind: 'event', id: 'step_789_790#0' }, { kind: 'buy', fam: FAM, day: 793 }],
+    note: '选中的是 11-27 这一天（hits 行那格粗框）；外层 event step：它那一行底线上从 11-21 到 11-22 一道粗底线，它装着的 11 个买点日的 ▼ 照常（← / → 在这 11 个里走，U1 要看的「用到它的那些 hit 各买在哪天」）；外层 node step：轨名底线、step 这条 band 照常。band 上只有 11-27 这天 2 次的组成照常（外层装着的只亮记号本身，不带组成）。取代现在白底琥珀闪烁 / 粗框落在 event 上。' },
+  { id: 'cmp6', title: '选中样本 a（11-29）', now: 'screenshots/designer_now_5_sample_a.jpg', bar: B.s5, cursor: 794,
+    path: [{ kind: 'sample', id: 's-pc-44' }],
+    note: '▲a 照用户那边现有的选中画法（▲ 加粗、跨度 2.5px 虚线加浅灰填充）；牵出的是样本日在场的 2 次 hit，它们和组成照常，其余 app 记号画淡；用户那边：它的组成是成员框（这里两个框都是），照常；样本 b、c 是它的同一层，照常（← / → 换去的就是它们）。现在只亮配对那一次。' },
+  { id: 'cmp7', title: '样本 a ↓ 进到配对那次 hit', now: 'screenshots/designer_now_7_sample_a_down_hit.jpg', bar: B.s11, cursor: 794,
+    path: [{ kind: 'sample', id: 's-pc-44' }, { kind: 'hit', id: 'new_step@774-794#plateau:plateau_774_794#0' }],
+    note: '粗框移到 hits 行 11-29 那格；外层样本：user 行它的跨度下一道底线，它装着的在场 2 次（同一格）照常；只这一次的组成照常。选中的是 app 的东西了，用户那边没有和它有关的，照旧不淡。' },
+  { id: 'cmp8', title: '选中一族 hit（起于 10-31）', now: 'screenshots/designer_now_8_hit_family.jpg', bar: B.s7, cursor: null,
+    path: [{ kind: 'hit_family', key: FAM }],
+    note: '粗框框住整行（这一族本身）；它的 22 次 hit 的组成照常；hits 行各族是它的同一层，照常（← / → 换族）；起于 12-11 那一族的组成画淡。' },
+  { id: 'cmp9', title: '选中 node step（点轨名）', now: 'screenshots/designer_now_9_node_step.jpg', bar: B.s8, cursor: null,
+    path: [{ kind: 'node', band: 'step' }],
+    note: '粗框框住轨名 step；它的组成 = 这条 band 上画着的 event，照常；别的 band 和 hits 行画淡。node 不牵出 hit（卡片 hits 行是 —）。' },
+  { id: 'cmp10', title: '选中反馈 f-pc-74（2025-01-07→01-30，一族反馈）', now: 'screenshots/designer_now_10_feedback.jpg', cursor: null,
+    bar: { kind: 'feedback', node: 'new_plat', date: '2025-01-07→2025-01-30', in: [], day: { mode: 'into', noun: 'buys', n: 7 }, stack: { mode: 'none' } },
+    path: [{ kind: 'feedback', id: 'f-pc-74' }],
+    note: '粗框在反馈记号上（现在的黑色粗边就是它）、竖带照旧；它收进来的 7 次 hit（起于 12-11 那一族）及其组成照常，其余画淡。显示栏为示意。' },
+  { id: 'cmp11', title: '选中框 b-pc-43（站上新平台，终点 11-29）', now: 'screenshots/designer_now_11_box.jpg', cursor: 794,
+    bar: { kind: 'box', node: 'plateau', date: '2024-09-17→2024-11-29', name: '站上新平台', in: [], day: { mode: 'pos', noun: 'boxes', k: 2, n: 2 }, stack: { mode: 'into', noun: 'hits', n: 2 } },
+    path: [{ kind: 'box', id: 'b-pc-43' }],
+    note: '框照用户那边现有的选中画法（2.5px 虚线加浅灰填充）；牵出的是框终点在场的 2 次 hit，照常；其余 app 记号画淡；框没有组成，用户那边照旧。显示栏为示意。' },
+  { id: 'cmp12', title: '没进 hit 的上层 event：detected 档下的 plateau 10-31→12-03（plateau_774_796#1）', now: null, cursor: 796, level: 'detected',
+    bar: { kind: 'event', node: 'plateau', date: '2024-10-31→2024-12-03', in: ['node plateau 站上新平台'], day: { mode: 'pos', noun: 'events', k: 'k', n: 'n' }, stack: { mode: 'none' } },
+    path: [{ kind: 'node', band: 'plateau' }, { kind: 'event', id: 'plateau_774_796#1' }],
+    note: '它不牵出任何 hit；照常的是它自己的组成（往下）：old_plat 10-31→11-20、step 11-21→11-22、new_plat 11-25→12-02（qualified）、today 12-03（detected）。这取代现在的「组成型一选全选」——那条规则从子段往上找一个上层 event，被 39 个上层共用时随手挑一个；往下只有一条路，不会挑错。显示栏为示意。' },
+  { id: 'cmp16', title: '换到 qualified 档：选中 event step 11-21→11-22（检查画淡会不会被读成降档）', now: null, cursor: 790, level: 'qualified', bar: B.s3,
+    path: [{ kind: 'node', band: 'step' }, { kind: 'event', id: 'step_789_790#0' }],
+    note: 'qualified 档多出一批灰色、0.65 高的 event。画淡后的天蓝 in_hit 格和照常的灰格亮度接近，靠格高分（满高 vs 0.65 / 0.4）；淡下去的灰格比照常的更浅、高度不变。' },
+  { id: 'cmp17', title: '方向题 5 的对照：node 兜底调色板的天蓝换成中蓝 RGB(26,128,186)，画淡 0.5（现场 3）', now: null, cursor: 790, bar: B.s3, blue: '#1a80ba', dim: 0.5,
+    path: [{ kind: 'node', band: 'step' }, { kind: 'event', id: 'step_789_790#0' }],
+    note: '和现场 3 同一选中，只把天蓝 #1e9be0 换成用户配色规则里推荐的中蓝，画淡同为 0.5。蓝格上照常和画淡一眼分得开，淡下去的也看得见（淡后对隔行底约 1.85、照常对淡后约 1.97）；对照现场 3 的天蓝：两样都只有约 1.6。' },
+  { id: 'cmp18', title: '没有组成、也没牵出 hit 的选中：qualified 档下选中 new_plat 11-25→12-02（没进 hit、没有子事件）', now: null, cursor: 795, level: 'qualified',
+    bar: { kind: 'event', node: 'new_plat', date: '2024-11-25→2024-12-02', in: ['node new_plat'], day: { mode: 'pos', noun: 'events', k: 'k', n: 'n' }, stack: { mode: 'pos', noun: 'events', k: 'j', n: 'm' } },
+    path: [{ kind: 'node', band: 'new_plat' }, { kind: 'event', id: 'new_plat_791_795#0' }],
+    note: '它没有组成、也没牵出任何 hit，按规律 app 那边没有可依据的「有关」，整边不淡：图上只有粗框（new_plat 12-02 那个灰格）和轨名下的底线。「选中了整张图却不变淡」本身就在说：没有任何 hit 用到它。显示栏为示意。' },
+  { id: 'cmp15', title: '选中的 event 在这一档画不出来：从样本 a 的 diagnose 点 not_in_hit 卡（plateau 09-16→11-29，detected，档位 in_hit）', now: 'screenshots/designer_now_12_hidden_event.jpg', cursor: 794,
+    bar: { kind: 'event', node: 'plateau', date: '2024-09-16→2024-11-29', in: ['sample 2024-11-29 a pos'], day: { mode: 'pos', noun: 'samples', k: 1, n: 3 }, stack: { mode: 'none' } },
+    path: [{ kind: 'sample', id: 's-pc-44' }, { kind: 'event', id: 'plateau_741_794#0' }],
+    note: '现在：选中的 plateau 本身不画，today 11-29 被当作「一起亮出」画成放大复本，那一列上唯一亮着的是 today，看着像选中了 today（inventory 核实）。新规则：选中的画不出来时，它那条轨名旁挂 hidden，粗框框它（tag 和轨名旁的 unmapped、app_only 同一种）；它的组成里画得出的照常、没有框；外层样本 a：跨度下底线，它装着的在场 2 次（11-29 那格）照常。显示栏为示意。' },
+]
+
+// 图例
+{
+  const lg = document.getElementById('legend')
+  lg.innerHTML = '<table class="legend"><tr><td id="lg1"></td><td>选中的那一个：深色粗框，全图只有一处</td><td id="lg2"></td><td>外层（显示栏 in 里那几节）：压在它那一行底线上的粗底线</td><td id="lg3"></td><td>牵出的 hit 与组成：照常</td><td id="lg4"></td><td>其余 app 记号：画淡</td></tr></table>'
+  const mk = (id, fn) => { const s = el('svg', { width: 54, height: 30 }, document.getElementById(id)); fn(s) }
+  mk('lg1', s => { el('rect', { x: 18, y: 8, width: 14, height: 14, fill: COL.step }, s); frame(s, 18, 8, 14, 14) })
+  mk('lg2', s => { el('rect', { x: 18, y: 6, width: 14, height: 14, fill: COL.step }, s); underline(s, 18, 20, 14) })
+  mk('lg3', s => { el('rect', { x: 10, y: 8, width: 14, height: 14, fill: COL.new_plat }, s); el('rect', { x: 30, y: 8, width: 14, height: 14, fill: COL.step }, s) })
+  mk('lg4', s => { const g = el('g', { opacity: DIM }, s); el('rect', { x: 10, y: 8, width: 14, height: 14, fill: COL.new_plat }, g); el('rect', { x: 30, y: 8, width: 14, height: 14, fill: COL.step }, g) })
+}
+
+const root = document.getElementById('scenes')
+for (const sc of SC) {
+  const sec = document.createElement('section'); sec.className = 'scene'; sec.id = sc.id
+  sec.innerHTML = `<h2>${sc.title}</h2><p>${sc.note}</p>`
+  if (sc.now) { const n = document.createElement('div'); n.className = 'now'; n.innerHTML = `<div class="cap">现在（真页面，${sc.now.split('/').pop()}）</div><img src="${sc.now}">`; sec.appendChild(n) }
+  const cap = document.createElement('div'); cap.className = 'cap'; cap.textContent = '新规则（样张）'; sec.appendChild(cap)
+  bar(sec, sc.bar)
+  draw(sec, sc)
+  root.appendChild(sec)
+}
+// 备选方向：不画淡，有关的加黑点（只给用户比较方向用）
+{
+  const sec = document.createElement('section'); sec.className = 'scene'; sec.id = 'alt3'
+  sec.innerHTML = '<h2>备选方向「加记号不画淡」：现场 3 换成给有关的记号加黑点</h2><p>别的都不动，只有「有关」的画法从「其余画淡」换成「有关的加一个黑点」。好处：画面上什么都不变暗，进 compare 默认聚焦样本时也不暗；代价：有关的一多（这里 60 多个）满屏是点，窄格下点和格挤在一起，点本身也很小，色盲下靠深浅能认，但一眼看「哪些有关」要逐个找点。</p>'
+  bar(sec, SC[2].bar)
+  draw(sec, SC[2], { mode: 'dot' })
+  root.appendChild(sec)
+}
+// 窄格：现场 3 在默认宽视窗下（一格约 4.6 像素）
+{
+  const sec = document.createElement('section'); sec.className = 'scene'; sec.id = 'cmp13'
+  sec.innerHTML = '<h2>窄格：现场 3 缩到一格约 4.6 像素宽（接近默认整段视窗的密度）</h2><p>粗框比格子大一圈，窄到一两像素时仍是一个黑块；画淡不靠格子宽窄，窄格下照常 / 画淡照样分得开。细框在这种密度下会和格子糊成一片（现状的毛病之一）。</p>'
+  draw(sec, SC[2], { plotW: 300, labelW: 132 })
+  root.appendChild(sec)
+}
+// app 侧栏 hits 列表（app 模式）
+{
+  const sec = document.createElement('section'); sec.className = 'scene'; sec.id = 'cmp14'
+  sec.innerHTML = '<h2>app 侧栏 hits 列表：同一条规律在列表里的样子</h2><p>列表不画淡（界面规范里灰字只给空和不适用），所以只用两样：选中的那一个由哪几次 hit 组成（一次 hit 一行；买点日是这天那几行；一族是它的各行），那几行黑粗边；它牵出的 hit 左侧中蓝竖条。同一层不标——列表本身就是全部 hit 排成一串，图上靠「不画淡」表示的同一层，在列表里本来就都看得见。左：选中 event step（11 行蓝条）；中：选中买点日 12-02（这天两行黑粗边，认得出是哪两行）；右：选中其中一次（一行黑粗边）。样张里买点日两行是各框各的；会话默认是相邻的几行合一个外框（design.md 第 8 节），这里没重画。</p>'
+  const row = document.createElement('div'); row.className = 'row2'
+  hitList(row, SC[2].path, 'event step 11-21→11-22')
+  hitList(row, SC[1].path, 'buy 12-02')
+  hitList(row, SC[3].path, 'hit 774-795#0')
+  sec.appendChild(row); root.appendChild(sec)
+}
+</script>
+</body>
+</html>

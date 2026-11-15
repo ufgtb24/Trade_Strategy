@@ -1,0 +1,20 @@
+[
+ {"eval":"v.focusMark(['step_789_790#0']); 1","after":1200},
+ {"shot":"sk_now6_wide_event_step","sel":".sub-outer"},
+ {"eval":"e2e.chartMain().dispatchAction({type:'dataZoom',startValue:745,endValue:850}); 1","after":1500},
+ {"eval":"v.setPath([{kind:'hit_family',familyKey:'hits@774'}]); JSON.stringify(v.selPath)","as":"pf"},
+ {"eval":"({hl:[...v.highlightedEventIds],comp:[...v.compositionGroupIds],cand:[...v.candidateHitIds],pend:v.pendingDisambigInstanceId,fam:v.activeFamilyKey})","as":"sf"},
+ {"shot":"sk_now7_family","sel":".sub-outer"},
+ {"eval":"v.clickFeedback ? (v.setPath([{kind:'feedback',id:'f-pc-74'}]), JSON.stringify(v.selPath)) : 'no'","as":"pfb"},
+ {"eval":"({hl:[...v.highlightedEventIds],comp:[...v.compositionGroupIds],cand:[...v.candidateHitIds],pend:v.pendingDisambigInstanceId,fam:v.activeFamilyKey})","as":"sfb"},
+ {"shot":"sk_now8_feedback","sel":".sub-outer"},
+ {"eval":"v.setPath([{kind:'box',boxId:'b-pc-43'}]); JSON.stringify(v.selPath)","as":"pbox"},
+ {"eval":"({hl:[...v.highlightedEventIds],comp:[...v.compositionGroupIds],cand:[...v.candidateHitIds],pend:v.pendingDisambigInstanceId,fam:v.activeFamilyKey})","as":"sbox"},
+ {"shot":"sk_now9_box","sel":".sub-outer"},
+ {"eval":"v.selectNode('new_plat'); JSON.stringify(v.selPath)","as":"pnode"},
+ {"eval":"({hl:[...v.highlightedEventIds],comp:[...v.compositionGroupIds],cand:[...v.candidateHitIds],pend:v.pendingDisambigInstanceId,fam:v.activeFamilyKey})","as":"snode"},
+ {"shot":"sk_now10_node","sel":".sub-outer"},
+ {"eval":"v.setPath([{kind:'sample',sampleId:'s-pc-44'}]); JSON.stringify(v.selPath)","as":"ps"},
+ {"eval":"({hl:[...v.highlightedEventIds],comp:[...v.compositionGroupIds],cand:[...v.candidateHitIds],pend:v.pendingDisambigInstanceId,fam:v.activeFamilyKey})","as":"ss"},
+ {"shot":"sk_now11_sample","sel":".sub-outer"}
+]

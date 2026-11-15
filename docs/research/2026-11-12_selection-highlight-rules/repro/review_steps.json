@@ -1,0 +1,188 @@
+[
+{
+"eval": "e2e.chartMain().dispatchAction({type:'dataZoom',startValue:745,endValue:830}); 1",
+"after": 1200
+},
+{
+"eval": "(()=>{const S=Object.fromEntries(e2e.chartSub().getOption().series.map(x=>[x.name,x]));\nconst isDim=d=>!!((d.itemStyle&&d.itemStyle.opacity<1)||d.dim);\nconst dc=n=>(S[n]?.data||[]).filter(isDim).length+'/'+(S[n]?.data||[]).length;\nconst sel=(S.selection?.data||[]).filter(d=>d.kind!=='count').map(d=>d.kind+':'+d.target+':'+(d.value||[]).slice(0,4).join(','));\nconst lit=(S.intervals?.data||[]).concat(S.points?.data||[]).filter(d=>!isDim(d)&&d.value[1]>=785&&d.value[1]<=800).map(d=>(d.member_ids||[d.instance_id]).join('+'));\nconst hl=v.highlight;\nconst band=document.querySelector('[data-testid=feedback-selected-band]');\nreturn {path:JSON.stringify(v.selPath), frames:sel, dim:{iv:dc('intervals'),pt:dc('points'),br:dc('brackets'),fl:dc('family-lines'),bl:dc('bracket-lines'),fb:dc('feedback-strip')}, lit785_800:lit, led:[...hl.ledHits], frameHits:[...hl.frameHits], dimApp:hl.dimApp, dimUser:hl.dimUser, hidden:hl.hiddenBand, fbSel:e2e.fb().selectedId, fbBand:!!band, under:{fam:[...hl.under.families],slots:hl.under.slots,ev:[...hl.under.events],bands:[...hl.under.bands],fb:[...hl.under.feedbacks],smp:[...hl.under.samples]}}})()",
+"as": "01_default_sample",
+"max": 6000
+},
+{
+"shot": "review_01_default_sample",
+"sel": ".sub-outer",
+"jpg": true
+},
+{
+"eval": "v.focusMark(['today_795#0']); 1",
+"after": 900
+},
+{
+"eval": "(()=>{const S=Object.fromEntries(e2e.chartSub().getOption().series.map(x=>[x.name,x]));\nconst isDim=d=>!!((d.itemStyle&&d.itemStyle.opacity<1)||d.dim);\nconst dc=n=>(S[n]?.data||[]).filter(isDim).length+'/'+(S[n]?.data||[]).length;\nconst sel=(S.selection?.data||[]).filter(d=>d.kind!=='count').map(d=>d.kind+':'+d.target+':'+(d.value||[]).slice(0,4).join(','));\nconst lit=(S.intervals?.data||[]).concat(S.points?.data||[]).filter(d=>!isDim(d)&&d.value[1]>=785&&d.value[1]<=800).map(d=>(d.member_ids||[d.instance_id]).join('+'));\nconst hl=v.highlight;\nconst band=document.querySelector('[data-testid=feedback-selected-band]');\nreturn {path:JSON.stringify(v.selPath), frames:sel, dim:{iv:dc('intervals'),pt:dc('points'),br:dc('brackets'),fl:dc('family-lines'),bl:dc('bracket-lines'),fb:dc('feedback-strip')}, lit785_800:lit, led:[...hl.ledHits], frameHits:[...hl.frameHits], dimApp:hl.dimApp, dimUser:hl.dimUser, hidden:hl.hiddenBand, fbSel:e2e.fb().selectedId, fbBand:!!band, under:{fam:[...hl.under.families],slots:hl.under.slots,ev:[...hl.under.events],bands:[...hl.under.bands],fb:[...hl.under.feedbacks],smp:[...hl.under.samples]}}})()",
+"as": "02_event_today_1202",
+"max": 6000
+},
+{
+"shot": "review_02_event_today_1202",
+"sel": ".sub-outer",
+"jpg": true
+},
+{
+"eval": "v.setPath([{kind:'hit_family',familyKey:'hits@774'},{kind:'buy',day:795}]); 1",
+"after": 900
+},
+{
+"eval": "(()=>{const S=Object.fromEntries(e2e.chartSub().getOption().series.map(x=>[x.name,x]));\nconst isDim=d=>!!((d.itemStyle&&d.itemStyle.opacity<1)||d.dim);\nconst dc=n=>(S[n]?.data||[]).filter(isDim).length+'/'+(S[n]?.data||[]).length;\nconst sel=(S.selection?.data||[]).filter(d=>d.kind!=='count').map(d=>d.kind+':'+d.target+':'+(d.value||[]).slice(0,4).join(','));\nconst lit=(S.intervals?.data||[]).concat(S.points?.data||[]).filter(d=>!isDim(d)&&d.value[1]>=785&&d.value[1]<=800).map(d=>(d.member_ids||[d.instance_id]).join('+'));\nconst hl=v.highlight;\nconst band=document.querySelector('[data-testid=feedback-selected-band]');\nreturn {path:JSON.stringify(v.selPath), frames:sel, dim:{iv:dc('intervals'),pt:dc('points'),br:dc('brackets'),fl:dc('family-lines'),bl:dc('bracket-lines'),fb:dc('feedback-strip')}, lit785_800:lit, led:[...hl.ledHits], frameHits:[...hl.frameHits], dimApp:hl.dimApp, dimUser:hl.dimUser, hidden:hl.hiddenBand, fbSel:e2e.fb().selectedId, fbBand:!!band, under:{fam:[...hl.under.families],slots:hl.under.slots,ev:[...hl.under.events],bands:[...hl.under.bands],fb:[...hl.under.feedbacks],smp:[...hl.under.samples]}}})()",
+"as": "03_buy_1202",
+"max": 6000
+},
+{
+"shot": "review_03_buy_1202",
+"sel": ".sub-outer",
+"jpg": true
+},
+{
+"eval": "v.focusMark(['step_789_790#0']); 1",
+"after": 900
+},
+{
+"eval": "(()=>{const S=Object.fromEntries(e2e.chartSub().getOption().series.map(x=>[x.name,x]));\nconst isDim=d=>!!((d.itemStyle&&d.itemStyle.opacity<1)||d.dim);\nconst dc=n=>(S[n]?.data||[]).filter(isDim).length+'/'+(S[n]?.data||[]).length;\nconst sel=(S.selection?.data||[]).filter(d=>d.kind!=='count').map(d=>d.kind+':'+d.target+':'+(d.value||[]).slice(0,4).join(','));\nconst lit=(S.intervals?.data||[]).concat(S.points?.data||[]).filter(d=>!isDim(d)&&d.value[1]>=785&&d.value[1]<=800).map(d=>(d.member_ids||[d.instance_id]).join('+'));\nconst hl=v.highlight;\nconst band=document.querySelector('[data-testid=feedback-selected-band]');\nreturn {path:JSON.stringify(v.selPath), frames:sel, dim:{iv:dc('intervals'),pt:dc('points'),br:dc('brackets'),fl:dc('family-lines'),bl:dc('bracket-lines'),fb:dc('feedback-strip')}, lit785_800:lit, led:[...hl.ledHits], frameHits:[...hl.frameHits], dimApp:hl.dimApp, dimUser:hl.dimUser, hidden:hl.hiddenBand, fbSel:e2e.fb().selectedId, fbBand:!!band, under:{fam:[...hl.under.families],slots:hl.under.slots,ev:[...hl.under.events],bands:[...hl.under.bands],fb:[...hl.under.feedbacks],smp:[...hl.under.samples]}}})()",
+"as": "04_event_step_1121_1122",
+"max": 6000
+},
+{
+"shot": "review_04_event_step_1121_1122",
+"sel": ".sub-outer",
+"jpg": true
+},
+{
+"eval": "v.focusHit('new_step@774-795#plateau:plateau_774_795#0',{day:795}); 1",
+"after": 900
+},
+{
+"eval": "(()=>{const S=Object.fromEntries(e2e.chartSub().getOption().series.map(x=>[x.name,x]));\nconst isDim=d=>!!((d.itemStyle&&d.itemStyle.opacity<1)||d.dim);\nconst dc=n=>(S[n]?.data||[]).filter(isDim).length+'/'+(S[n]?.data||[]).length;\nconst sel=(S.selection?.data||[]).filter(d=>d.kind!=='count').map(d=>d.kind+':'+d.target+':'+(d.value||[]).slice(0,4).join(','));\nconst lit=(S.intervals?.data||[]).concat(S.points?.data||[]).filter(d=>!isDim(d)&&d.value[1]>=785&&d.value[1]<=800).map(d=>(d.member_ids||[d.instance_id]).join('+'));\nconst hl=v.highlight;\nconst band=document.querySelector('[data-testid=feedback-selected-band]');\nreturn {path:JSON.stringify(v.selPath), frames:sel, dim:{iv:dc('intervals'),pt:dc('points'),br:dc('brackets'),fl:dc('family-lines'),bl:dc('bracket-lines'),fb:dc('feedback-strip')}, lit785_800:lit, led:[...hl.ledHits], frameHits:[...hl.frameHits], dimApp:hl.dimApp, dimUser:hl.dimUser, hidden:hl.hiddenBand, fbSel:e2e.fb().selectedId, fbBand:!!band, under:{fam:[...hl.under.families],slots:hl.under.slots,ev:[...hl.under.events],bands:[...hl.under.bands],fb:[...hl.under.feedbacks],smp:[...hl.under.samples]}}})()",
+"as": "05_hit_774_795_0",
+"max": 6000
+},
+{
+"shot": "review_05_hit_774_795_0",
+"sel": ".sub-outer",
+"jpg": true
+},
+{
+"eval": "v.setPath([{kind:'node',band:'step'},{kind:'event',instanceId:'step_789_790#0'},{kind:'buy',day:795}]); 1",
+"after": 900
+},
+{
+"eval": "(()=>{const S=Object.fromEntries(e2e.chartSub().getOption().series.map(x=>[x.name,x]));\nconst isDim=d=>!!((d.itemStyle&&d.itemStyle.opacity<1)||d.dim);\nconst dc=n=>(S[n]?.data||[]).filter(isDim).length+'/'+(S[n]?.data||[]).length;\nconst sel=(S.selection?.data||[]).filter(d=>d.kind!=='count').map(d=>d.kind+':'+d.target+':'+(d.value||[]).slice(0,4).join(','));\nconst lit=(S.intervals?.data||[]).concat(S.points?.data||[]).filter(d=>!isDim(d)&&d.value[1]>=785&&d.value[1]<=800).map(d=>(d.member_ids||[d.instance_id]).join('+'));\nconst hl=v.highlight;\nconst band=document.querySelector('[data-testid=feedback-selected-band]');\nreturn {path:JSON.stringify(v.selPath), frames:sel, dim:{iv:dc('intervals'),pt:dc('points'),br:dc('brackets'),fl:dc('family-lines'),bl:dc('bracket-lines'),fb:dc('feedback-strip')}, lit785_800:lit, led:[...hl.ledHits], frameHits:[...hl.frameHits], dimApp:hl.dimApp, dimUser:hl.dimUser, hidden:hl.hiddenBand, fbSel:e2e.fb().selectedId, fbBand:!!band, under:{fam:[...hl.under.families],slots:hl.under.slots,ev:[...hl.under.events],bands:[...hl.under.bands],fb:[...hl.under.feedbacks],smp:[...hl.under.samples]}}})()",
+"as": "06_event_step_into_buy_1202",
+"max": 6000
+},
+{
+"shot": "review_06_event_step_into_buy_1202",
+"sel": ".sub-outer",
+"jpg": true
+},
+{
+"eval": "v.setPath([{kind:'hit_family',familyKey:'hits@774'}]); 1",
+"after": 900
+},
+{
+"eval": "(()=>{const S=Object.fromEntries(e2e.chartSub().getOption().series.map(x=>[x.name,x]));\nconst isDim=d=>!!((d.itemStyle&&d.itemStyle.opacity<1)||d.dim);\nconst dc=n=>(S[n]?.data||[]).filter(isDim).length+'/'+(S[n]?.data||[]).length;\nconst sel=(S.selection?.data||[]).filter(d=>d.kind!=='count').map(d=>d.kind+':'+d.target+':'+(d.value||[]).slice(0,4).join(','));\nconst lit=(S.intervals?.data||[]).concat(S.points?.data||[]).filter(d=>!isDim(d)&&d.value[1]>=785&&d.value[1]<=800).map(d=>(d.member_ids||[d.instance_id]).join('+'));\nconst hl=v.highlight;\nconst band=document.querySelector('[data-testid=feedback-selected-band]');\nreturn {path:JSON.stringify(v.selPath), frames:sel, dim:{iv:dc('intervals'),pt:dc('points'),br:dc('brackets'),fl:dc('family-lines'),bl:dc('bracket-lines'),fb:dc('feedback-strip')}, lit785_800:lit, led:[...hl.ledHits], frameHits:[...hl.frameHits], dimApp:hl.dimApp, dimUser:hl.dimUser, hidden:hl.hiddenBand, fbSel:e2e.fb().selectedId, fbBand:!!band, under:{fam:[...hl.under.families],slots:hl.under.slots,ev:[...hl.under.events],bands:[...hl.under.bands],fb:[...hl.under.feedbacks],smp:[...hl.under.samples]}}})()",
+"as": "07_family",
+"max": 6000
+},
+{
+"shot": "review_07_family",
+"sel": ".sub-outer",
+"jpg": true
+},
+{
+"eval": "v.selectNode('step'); JSON.stringify(v.selPath)",
+"after": 900
+},
+{
+"eval": "(()=>{const S=Object.fromEntries(e2e.chartSub().getOption().series.map(x=>[x.name,x]));\nconst isDim=d=>!!((d.itemStyle&&d.itemStyle.opacity<1)||d.dim);\nconst dc=n=>(S[n]?.data||[]).filter(isDim).length+'/'+(S[n]?.data||[]).length;\nconst sel=(S.selection?.data||[]).filter(d=>d.kind!=='count').map(d=>d.kind+':'+d.target+':'+(d.value||[]).slice(0,4).join(','));\nconst lit=(S.intervals?.data||[]).concat(S.points?.data||[]).filter(d=>!isDim(d)&&d.value[1]>=785&&d.value[1]<=800).map(d=>(d.member_ids||[d.instance_id]).join('+'));\nconst hl=v.highlight;\nconst band=document.querySelector('[data-testid=feedback-selected-band]');\nreturn {path:JSON.stringify(v.selPath), frames:sel, dim:{iv:dc('intervals'),pt:dc('points'),br:dc('brackets'),fl:dc('family-lines'),bl:dc('bracket-lines'),fb:dc('feedback-strip')}, lit785_800:lit, led:[...hl.ledHits], frameHits:[...hl.frameHits], dimApp:hl.dimApp, dimUser:hl.dimUser, hidden:hl.hiddenBand, fbSel:e2e.fb().selectedId, fbBand:!!band, under:{fam:[...hl.under.families],slots:hl.under.slots,ev:[...hl.under.events],bands:[...hl.under.bands],fb:[...hl.under.feedbacks],smp:[...hl.under.samples]}}})()",
+"as": "08_node_step",
+"max": 6000
+},
+{
+"shot": "review_08_node_step",
+"sel": ".sub-outer",
+"jpg": true
+},
+{
+"eval": "v.setPath([{kind:'sample',sampleId:'s-pc-44'}]); 1",
+"after": 900
+},
+{
+"eval": "(()=>{const S=Object.fromEntries(e2e.chartSub().getOption().series.map(x=>[x.name,x]));\nconst isDim=d=>!!((d.itemStyle&&d.itemStyle.opacity<1)||d.dim);\nconst dc=n=>(S[n]?.data||[]).filter(isDim).length+'/'+(S[n]?.data||[]).length;\nconst sel=(S.selection?.data||[]).filter(d=>d.kind!=='count').map(d=>d.kind+':'+d.target+':'+(d.value||[]).slice(0,4).join(','));\nconst lit=(S.intervals?.data||[]).concat(S.points?.data||[]).filter(d=>!isDim(d)&&d.value[1]>=785&&d.value[1]<=800).map(d=>(d.member_ids||[d.instance_id]).join('+'));\nconst hl=v.highlight;\nconst band=document.querySelector('[data-testid=feedback-selected-band]');\nreturn {path:JSON.stringify(v.selPath), frames:sel, dim:{iv:dc('intervals'),pt:dc('points'),br:dc('brackets'),fl:dc('family-lines'),bl:dc('bracket-lines'),fb:dc('feedback-strip')}, lit785_800:lit, led:[...hl.ledHits], frameHits:[...hl.frameHits], dimApp:hl.dimApp, dimUser:hl.dimUser, hidden:hl.hiddenBand, fbSel:e2e.fb().selectedId, fbBand:!!band, under:{fam:[...hl.under.families],slots:hl.under.slots,ev:[...hl.under.events],bands:[...hl.under.bands],fb:[...hl.under.feedbacks],smp:[...hl.under.samples]}}})()",
+"as": "09_sample_a",
+"max": 6000
+},
+{
+"shot": "review_09_sample_a",
+"sel": ".sub-outer",
+"jpg": true
+},
+{
+"eval": "v.stepStack(1); JSON.stringify(v.selPath)",
+"after": 900
+},
+{
+"eval": "(()=>{const S=Object.fromEntries(e2e.chartSub().getOption().series.map(x=>[x.name,x]));\nconst isDim=d=>!!((d.itemStyle&&d.itemStyle.opacity<1)||d.dim);\nconst dc=n=>(S[n]?.data||[]).filter(isDim).length+'/'+(S[n]?.data||[]).length;\nconst sel=(S.selection?.data||[]).filter(d=>d.kind!=='count').map(d=>d.kind+':'+d.target+':'+(d.value||[]).slice(0,4).join(','));\nconst lit=(S.intervals?.data||[]).concat(S.points?.data||[]).filter(d=>!isDim(d)&&d.value[1]>=785&&d.value[1]<=800).map(d=>(d.member_ids||[d.instance_id]).join('+'));\nconst hl=v.highlight;\nconst band=document.querySelector('[data-testid=feedback-selected-band]');\nreturn {path:JSON.stringify(v.selPath), frames:sel, dim:{iv:dc('intervals'),pt:dc('points'),br:dc('brackets'),fl:dc('family-lines'),bl:dc('bracket-lines'),fb:dc('feedback-strip')}, lit785_800:lit, led:[...hl.ledHits], frameHits:[...hl.frameHits], dimApp:hl.dimApp, dimUser:hl.dimUser, hidden:hl.hiddenBand, fbSel:e2e.fb().selectedId, fbBand:!!band, under:{fam:[...hl.under.families],slots:hl.under.slots,ev:[...hl.under.events],bands:[...hl.under.bands],fb:[...hl.under.feedbacks],smp:[...hl.under.samples]}}})()",
+"as": "10_sample_a_down",
+"max": 6000
+},
+{
+"shot": "review_10_sample_a_down",
+"sel": ".sub-outer",
+"jpg": true
+},
+{
+"eval": "v.setPath([{kind:'box',boxId:'b-pc-43'}]); 1",
+"after": 900
+},
+{
+"eval": "(()=>{const S=Object.fromEntries(e2e.chartSub().getOption().series.map(x=>[x.name,x]));\nconst isDim=d=>!!((d.itemStyle&&d.itemStyle.opacity<1)||d.dim);\nconst dc=n=>(S[n]?.data||[]).filter(isDim).length+'/'+(S[n]?.data||[]).length;\nconst sel=(S.selection?.data||[]).filter(d=>d.kind!=='count').map(d=>d.kind+':'+d.target+':'+(d.value||[]).slice(0,4).join(','));\nconst lit=(S.intervals?.data||[]).concat(S.points?.data||[]).filter(d=>!isDim(d)&&d.value[1]>=785&&d.value[1]<=800).map(d=>(d.member_ids||[d.instance_id]).join('+'));\nconst hl=v.highlight;\nconst band=document.querySelector('[data-testid=feedback-selected-band]');\nreturn {path:JSON.stringify(v.selPath), frames:sel, dim:{iv:dc('intervals'),pt:dc('points'),br:dc('brackets'),fl:dc('family-lines'),bl:dc('bracket-lines'),fb:dc('feedback-strip')}, lit785_800:lit, led:[...hl.ledHits], frameHits:[...hl.frameHits], dimApp:hl.dimApp, dimUser:hl.dimUser, hidden:hl.hiddenBand, fbSel:e2e.fb().selectedId, fbBand:!!band, under:{fam:[...hl.under.families],slots:hl.under.slots,ev:[...hl.under.events],bands:[...hl.under.bands],fb:[...hl.under.feedbacks],smp:[...hl.under.samples]}}})()",
+"as": "11_box",
+"max": 6000
+},
+{
+"shot": "review_11_box",
+"sel": ".sub-outer",
+"jpg": true
+},
+{
+"eval": "e2e.chartMain().dispatchAction({type:'dataZoom',startValue:795,endValue:845}); 1",
+"after": 1200
+},
+{
+"eval": "v.setPath([{kind:'feedback',id:'f-pc-74'}]); 1",
+"after": 900
+},
+{
+"eval": "(()=>{const S=Object.fromEntries(e2e.chartSub().getOption().series.map(x=>[x.name,x]));\nconst isDim=d=>!!((d.itemStyle&&d.itemStyle.opacity<1)||d.dim);\nconst dc=n=>(S[n]?.data||[]).filter(isDim).length+'/'+(S[n]?.data||[]).length;\nconst sel=(S.selection?.data||[]).filter(d=>d.kind!=='count').map(d=>d.kind+':'+d.target+':'+(d.value||[]).slice(0,4).join(','));\nconst lit=(S.intervals?.data||[]).concat(S.points?.data||[]).filter(d=>!isDim(d)&&d.value[1]>=785&&d.value[1]<=800).map(d=>(d.member_ids||[d.instance_id]).join('+'));\nconst hl=v.highlight;\nconst band=document.querySelector('[data-testid=feedback-selected-band]');\nreturn {path:JSON.stringify(v.selPath), frames:sel, dim:{iv:dc('intervals'),pt:dc('points'),br:dc('brackets'),fl:dc('family-lines'),bl:dc('bracket-lines'),fb:dc('feedback-strip')}, lit785_800:lit, led:[...hl.ledHits], frameHits:[...hl.frameHits], dimApp:hl.dimApp, dimUser:hl.dimUser, hidden:hl.hiddenBand, fbSel:e2e.fb().selectedId, fbBand:!!band, under:{fam:[...hl.under.families],slots:hl.under.slots,ev:[...hl.under.events],bands:[...hl.under.bands],fb:[...hl.under.feedbacks],smp:[...hl.under.samples]}}})()",
+"as": "12_feedback",
+"max": 6000
+},
+{
+"shot": "review_12_feedback",
+"sel": ".sub-outer",
+"jpg": true
+},
+{
+"eval": "v.stepPos(1); JSON.stringify(v.selPath)",
+"after": 900
+},
+{
+"eval": "(()=>{const S=Object.fromEntries(e2e.chartSub().getOption().series.map(x=>[x.name,x]));\nconst isDim=d=>!!((d.itemStyle&&d.itemStyle.opacity<1)||d.dim);\nconst dc=n=>(S[n]?.data||[]).filter(isDim).length+'/'+(S[n]?.data||[]).length;\nconst sel=(S.selection?.data||[]).filter(d=>d.kind!=='count').map(d=>d.kind+':'+d.target+':'+(d.value||[]).slice(0,4).join(','));\nconst lit=(S.intervals?.data||[]).concat(S.points?.data||[]).filter(d=>!isDim(d)&&d.value[1]>=785&&d.value[1]<=800).map(d=>(d.member_ids||[d.instance_id]).join('+'));\nconst hl=v.highlight;\nconst band=document.querySelector('[data-testid=feedback-selected-band]');\nreturn {path:JSON.stringify(v.selPath), frames:sel, dim:{iv:dc('intervals'),pt:dc('points'),br:dc('brackets'),fl:dc('family-lines'),bl:dc('bracket-lines'),fb:dc('feedback-strip')}, lit785_800:lit, led:[...hl.ledHits], frameHits:[...hl.frameHits], dimApp:hl.dimApp, dimUser:hl.dimUser, hidden:hl.hiddenBand, fbSel:e2e.fb().selectedId, fbBand:!!band, under:{fam:[...hl.under.families],slots:hl.under.slots,ev:[...hl.under.events],bands:[...hl.under.bands],fb:[...hl.under.feedbacks],smp:[...hl.under.samples]}}})()",
+"as": "13_feedback_into_buy",
+"max": 6000
+},
+{
+"shot": "review_13_feedback_into_buy",
+"sel": ".sub-outer",
+"jpg": true
+}
+]

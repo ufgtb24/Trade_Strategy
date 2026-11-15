@@ -1,0 +1,4 @@
+[
+{"eval": "v.focusMark(['step_789_790#0']); 1", "after": 900},
+{"eval": "JSON.stringify({sub:e2e.chartSub().getOption().series.map(s=>[s.name,s.z,s.zlevel]), main:e2e.chartMain().getOption().series.map(s=>[s.name,s.z,s.zlevel]), dom:[...document.querySelectorAll('.sub-outer *, .kline-wrap-v2 > *')].filter(el=>{const cs=getComputedStyle(el);return (cs.position==='absolute')&&el.offsetWidth<=4&&el.offsetHeight>50}).map(el=>el.className)})", "as": "z", "max": 4000}
+]

@@ -1,0 +1,3 @@
+[
+{"eval": "(()=>{const a=e2e.ann();const st=a.state;const cs=st?.charts??st?.byChart??null;const arr=Array.isArray(cs)?cs:Object.values(cs||{});return JSON.stringify({keys:Object.keys(st||{}),n:arr.length,pat:a.currentPattern,out:arr.filter(c=>(c.feedback||[]).some(f=>f.source==='picked'&&f.pattern===a.currentPattern)).map(c=>({sym:c.symbol,fb:(c.feedback||[]).filter(f=>f.source==='picked'&&f.pattern===a.currentPattern).map(f=>f.id+'@'+f.start),smp:(c.samples||[]).filter(s=>s.pattern===a.currentPattern).length})).slice(0,40)})})()", "max": 4000}
+]

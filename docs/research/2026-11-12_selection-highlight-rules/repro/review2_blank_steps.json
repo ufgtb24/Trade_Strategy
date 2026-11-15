@@ -1,0 +1,7 @@
+[
+{"eval": "e2e.chartMain().dispatchAction({type:'dataZoom',startValue:795,endValue:845}); 1", "after": 1000},
+{"eval": "v.setPath([{kind:'feedback',id:'f-pc-74'}]); 1", "after": 900},
+{"eval": "(()=>{const r=document.querySelector('.main-chart').getBoundingClientRect();const pts=[[200,40],[300,120]];return JSON.stringify(pts.map(([x,y])=>{const e=document.elementFromPoint(r.x+x,r.y+y);return {x,y,tag:e&&e.tagName,cls:e&&String(e.className).slice(0,60),inMain:!!(e&&e.closest('.main-chart'))}}))})()"},
+{"mouse": {"sel": ".main-chart", "x": 300, "y": 120}, "after": 900},
+{"eval": "JSON.stringify({path:v.selPath.map(x=>x.kind),fbSel:e2e.fb().selectedId,band:!!document.querySelector('[data-testid=feedback-selected-band]')})", "as": "C3_click_main_blank_300_120"}
+]

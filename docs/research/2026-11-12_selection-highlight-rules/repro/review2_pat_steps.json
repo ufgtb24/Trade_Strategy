@@ -1,0 +1,51 @@
+[
+{
+"eval": "JSON.stringify({pats:(e2e.ann().state.patterns||[]).map(x=>x.name)})",
+"after": 200
+},
+{
+"eval": "e2e.chartMain().dispatchAction({type:'dataZoom',startValue:795,endValue:845}); 1",
+"after": 1000
+},
+{
+"eval": "v.setPath([{kind:'feedback',id:'f-pc-74'}]); 1",
+"after": 900
+},
+{
+"eval": "(()=>{const fb=e2e.fb();const h=v.highlight;return JSON.stringify({pat:e2e.ann().currentPattern,mode:v.mode,cmp:v.comparing,path:v.selPath.map(x=>x.kind+':'+(x.id??x.day??x.sampleId??x.instanceId??'')),fbSel:fb.selectedId,band:!!document.querySelector('[data-testid=feedback-selected-band]'),focus:h.focus?h.focus.kind:null})})()",
+"as": "P1",
+"after": 200
+},
+{
+"eval": "(()=>{e2e.ann().setCurrentPattern(null);return 'null'})()",
+"after": 3000
+},
+{
+"eval": "(()=>{const fb=e2e.fb();const h=v.highlight;return JSON.stringify({pat:e2e.ann().currentPattern,mode:v.mode,cmp:v.comparing,path:v.selPath.map(x=>x.kind+':'+(x.id??x.day??x.sampleId??x.instanceId??'')),fbSel:fb.selectedId,band:!!document.querySelector('[data-testid=feedback-selected-band]'),focus:h.focus?h.focus.kind:null})})()",
+"as": "P2_other_pattern",
+"after": 200
+},
+{
+"eval": "(()=>{const a=e2e.ann();if(!(a.state.patterns||[]).some(x=>x.name==='new_step'))return 'missing';a.setCurrentPattern('new_step');return 1})()",
+"after": 4000
+},
+{
+"eval": "(()=>{const fb=e2e.fb();const h=v.highlight;return JSON.stringify({pat:e2e.ann().currentPattern,mode:v.mode,cmp:v.comparing,path:v.selPath.map(x=>x.kind+':'+(x.id??x.day??x.sampleId??x.instanceId??'')),fbSel:fb.selectedId,band:!!document.querySelector('[data-testid=feedback-selected-band]'),focus:h.focus?h.focus.kind:null})})()",
+"as": "P3_back",
+"after": 200
+},
+{
+"eval": "(()=>{const b=document.querySelector('[data-testid=mode-compare]');const was=v.comparing;if(!was&&b)b.click();return 'was:'+was+' btn:'+!!b+' disabled:'+(b&&b.disabled)})()",
+"after": 5000
+},
+{
+"eval": "(()=>{const fb=e2e.fb();const h=v.highlight;return JSON.stringify({pat:e2e.ann().currentPattern,mode:v.mode,cmp:v.comparing,path:v.selPath.map(x=>x.kind+':'+(x.id??x.day??x.sampleId??x.instanceId??'')),fbSel:fb.selectedId,band:!!document.querySelector('[data-testid=feedback-selected-band]'),focus:h.focus?h.focus.kind:null})})()",
+"as": "P4_after_compare_again",
+"after": 200
+},
+{
+"shot": "review2_03_pattern_roundtrip",
+"sel": ".kline-wrap-v2",
+"jpg": true
+}
+]

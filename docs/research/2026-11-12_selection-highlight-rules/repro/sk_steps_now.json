@@ -1,0 +1,19 @@
+[
+ {"eval":"e2e.chartMain().dispatchAction({type:'dataZoom',startValue:740,endValue:830}); 1","after":1500},
+ {"shot":"sk_now0_sample_default","sel":".sub-outer"},
+ {"eval":"v.focusMark(['today_795#0']); JSON.stringify(v.selPath)","as":"p1"},
+ {"eval":"({hl:[...v.highlightedEventIds],comp:[...v.compositionGroupIds],cand:[...v.candidateHitIds],pend:v.pendingDisambigInstanceId,fam:v.activeFamilyKey})","as":"s1"},
+ {"shot":"sk_now1_event_today","sel":".sub-outer"},
+ {"eval":"v.setPath([{kind:'hit_family',familyKey:'hits@774'},{kind:'buy',day:795}]); JSON.stringify(v.selPath)","as":"p2"},
+ {"eval":"({hl:[...v.highlightedEventIds],comp:[...v.compositionGroupIds],cand:[...v.candidateHitIds],pend:v.pendingDisambigInstanceId,fam:v.activeFamilyKey})","as":"s2"},
+ {"shot":"sk_now2_buyday","sel":".sub-outer"},
+ {"eval":"v.focusMark(['step_789_790#0']); JSON.stringify(v.selPath)","as":"p3"},
+ {"eval":"({hl:[...v.highlightedEventIds],comp:[...v.compositionGroupIds],cand:[...v.candidateHitIds],pend:v.pendingDisambigInstanceId,fam:v.activeFamilyKey})","as":"s3"},
+ {"shot":"sk_now3_event_step","sel":".sub-outer"},
+ {"eval":"v.setPath([{kind:'event',instanceId:'step_789_790#0'},{kind:'buy',day:795}]); JSON.stringify(v.selPath)","as":"p5"},
+ {"eval":"({hl:[...v.highlightedEventIds],comp:[...v.compositionGroupIds],cand:[...v.candidateHitIds],pend:v.pendingDisambigInstanceId,fam:v.activeFamilyKey})","as":"s5"},
+ {"shot":"sk_now5_event_into_buy","sel":".sub-outer"},
+ {"eval":"v.focusHit('new_step@774-795#plateau:plateau_774_795#0',{day:795}); JSON.stringify(v.selPath)","as":"p4"},
+ {"eval":"({hl:[...v.highlightedEventIds],comp:[...v.compositionGroupIds],cand:[...v.candidateHitIds],pend:v.pendingDisambigInstanceId,fam:v.activeFamilyKey})","as":"s4"},
+ {"shot":"sk_now4_hit","sel":".sub-outer"}
+]

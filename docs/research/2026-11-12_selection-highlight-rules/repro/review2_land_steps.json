@@ -1,0 +1,43 @@
+[
+{
+"eval": "v.setPath([{kind:'feedback',id:'f-pc-74'}]); 1",
+"after": 900
+},
+{
+"eval": "(()=>{const fb=e2e.fb();const h=v.highlight;return JSON.stringify({sym:v.symbol,mode:v.mode,path:v.selPath.map(x=>x.kind+':'+(x.id??x.day??x.sampleId??x.instanceId??'')),fbSel:fb.selectedId,band:!!document.querySelector('[data-testid=feedback-selected-band]'),focus:h.focus?h.focus.kind:null,day:v.currentDay})})()",
+"as": "L1_fb_selected",
+"after": 200
+},
+{
+"eval": "location.hash='#symbol=CRNC&date=2024-12-02&pattern=new_step&mode=compare'; 1",
+"after": 6000
+},
+{
+"eval": "(()=>{const fb=e2e.fb();const h=v.highlight;return JSON.stringify({sym:v.symbol,mode:v.mode,path:v.selPath.map(x=>x.kind+':'+(x.id??x.day??x.sampleId??x.instanceId??'')),fbSel:fb.selectedId,band:!!document.querySelector('[data-testid=feedback-selected-band]'),focus:h.focus?h.focus.kind:null,day:v.currentDay})})()",
+"as": "L2_direct_link_same_chart",
+"after": 200
+},
+{
+"shot": "review2_04_direct_link_same_chart",
+"sel": ".kline-wrap-v2",
+"jpg": true
+},
+{
+"eval": "(()=>{const t=document.querySelector('[data-testid=annotation-tab-feedback]');if(t)t.click();return !!t})()",
+"after": 1500
+},
+{
+"eval": "(()=>{const r=document.querySelector('[data-testid=feedback-row][data-id=\"f-pc-72\"]');if(r)r.click();return !!r})()",
+"after": 9000
+},
+{
+"eval": "(()=>{const fb=e2e.fb();const h=v.highlight;return JSON.stringify({sym:v.symbol,mode:v.mode,path:v.selPath.map(x=>x.kind+':'+(x.id??x.day??x.sampleId??x.instanceId??'')),fbSel:fb.selectedId,band:!!document.querySelector('[data-testid=feedback-selected-band]'),focus:h.focus?h.focus.kind:null,day:v.currentDay})})()",
+"as": "J1_jump_to_INDO",
+"after": 200
+},
+{
+"shot": "review2_05_sidebar_jump_INDO",
+"sel": ".kline-wrap-v2",
+"jpg": true
+}
+]

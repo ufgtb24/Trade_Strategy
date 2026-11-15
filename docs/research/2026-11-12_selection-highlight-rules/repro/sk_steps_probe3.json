@@ -1,0 +1,4 @@
+[
+ {"eval":"(()=>{const c=e2e.ann().state.charts; return {isArr:Array.isArray(c), n:c.length, first:JSON.stringify(c[0]).slice(0,300)}})()","as":"c"},
+ {"eval":"(()=>{const c=e2e.ann().state.charts.find(x=>JSON.stringify(x).includes('CRNC')); return JSON.stringify(c).slice(0,3000)})()","as":"crnc","max":3000}
+]

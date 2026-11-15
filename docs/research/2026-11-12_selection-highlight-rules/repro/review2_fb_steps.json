@@ -1,0 +1,152 @@
+[
+{
+"eval": "e2e.chartMain().dispatchAction({type:'dataZoom',startValue:795,endValue:845}); 1",
+"after": 1200
+},
+{
+"eval": "v.setPath([{kind:'feedback',id:'f-pc-74'}]); 1",
+"after": 900
+},
+{
+"eval": "(()=>{const fb=e2e.fb();const h=v.highlight;return JSON.stringify({path:v.selPath.map(x=>x.kind+':'+(x.id??x.day??x.hitId??x.instanceId??'')),fbSel:fb.selectedId,band:!!document.querySelector('[data-testid=feedback-selected-band]'),focus:h.focus?h.focus.kind+':'+(h.focus.id??''):null,underFb:[...h.under.feedbacks],panel:!!fb.panel})})()",
+"as": "A1_feedback",
+"after": 200
+},
+{
+"key": "ArrowRight",
+"after": 900
+},
+{
+"eval": "(()=>{const fb=e2e.fb();const h=v.highlight;return JSON.stringify({path:v.selPath.map(x=>x.kind+':'+(x.id??x.day??x.hitId??x.instanceId??'')),fbSel:fb.selectedId,band:!!document.querySelector('[data-testid=feedback-selected-band]'),focus:h.focus?h.focus.kind+':'+(h.focus.id??''):null,underFb:[...h.under.feedbacks],panel:!!fb.panel})})()",
+"as": "A2_right_into_buy",
+"after": 200
+},
+{
+"shot": "review2_01_fb_outer_no_band",
+"sel": ".kline-wrap-v2",
+"jpg": true
+},
+{
+"key": "Escape",
+"after": 900
+},
+{
+"eval": "(()=>{const fb=e2e.fb();const h=v.highlight;return JSON.stringify({path:v.selPath.map(x=>x.kind+':'+(x.id??x.day??x.hitId??x.instanceId??'')),fbSel:fb.selectedId,band:!!document.querySelector('[data-testid=feedback-selected-band]'),focus:h.focus?h.focus.kind+':'+(h.focus.id??''):null,underFb:[...h.under.feedbacks],panel:!!fb.panel})})()",
+"as": "A3_esc_back_to_fb",
+"after": 200
+},
+{
+"key": "Escape",
+"after": 900
+},
+{
+"eval": "(()=>{const fb=e2e.fb();const h=v.highlight;return JSON.stringify({path:v.selPath.map(x=>x.kind+':'+(x.id??x.day??x.hitId??x.instanceId??'')),fbSel:fb.selectedId,band:!!document.querySelector('[data-testid=feedback-selected-band]'),focus:h.focus?h.focus.kind+':'+(h.focus.id??''):null,underFb:[...h.under.feedbacks],panel:!!fb.panel})})()",
+"as": "A4_esc_to_empty",
+"after": 200
+},
+{
+"eval": "v.setPath([{kind:'feedback',id:'f-pc-74'}]); 1",
+"after": 900
+},
+{
+"eval": "(()=>{const fb=e2e.fb();const h=v.highlight;return JSON.stringify({path:v.selPath.map(x=>x.kind+':'+(x.id??x.day??x.hitId??x.instanceId??'')),fbSel:fb.selectedId,band:!!document.querySelector('[data-testid=feedback-selected-band]'),focus:h.focus?h.focus.kind+':'+(h.focus.id??''):null,underFb:[...h.under.feedbacks],panel:!!fb.panel})})()",
+"as": "B1_feedback",
+"after": 200
+},
+{
+"mouse": {
+"sel": ".sub-outer",
+"x": 590,
+"y": 222
+},
+"after": 900
+},
+{
+"eval": "(()=>{const fb=e2e.fb();const h=v.highlight;return JSON.stringify({path:v.selPath.map(x=>x.kind+':'+(x.id??x.day??x.hitId??x.instanceId??'')),fbSel:fb.selectedId,band:!!document.querySelector('[data-testid=feedback-selected-band]'),focus:h.focus?h.focus.kind+':'+(h.focus.id??''):null,underFb:[...h.under.feedbacks],panel:!!fb.panel})})()",
+"as": "B2_click_sub_blank",
+"after": 200
+},
+{
+"eval": "v.setPath([{kind:'feedback',id:'f-pc-74'}]); 1",
+"after": 900
+},
+{
+"mouse": {
+"sel": ".main-chart",
+"x": 200,
+"y": 40
+},
+"after": 900
+},
+{
+"eval": "(()=>{const fb=e2e.fb();const h=v.highlight;return JSON.stringify({path:v.selPath.map(x=>x.kind+':'+(x.id??x.day??x.hitId??x.instanceId??'')),fbSel:fb.selectedId,band:!!document.querySelector('[data-testid=feedback-selected-band]'),focus:h.focus?h.focus.kind+':'+(h.focus.id??''):null,underFb:[...h.under.feedbacks],panel:!!fb.panel})})()",
+"as": "C2_click_main_blank",
+"after": 200
+},
+{
+"eval": "v.setPath([{kind:'feedback',id:'f-pc-74'}]); 1",
+"after": 900
+},
+{
+"key": "ArrowRight",
+"after": 900
+},
+{
+"mouse": {
+"sel": ".sub-outer",
+"x": 590,
+"y": 222
+},
+"after": 900
+},
+{
+"eval": "(()=>{const fb=e2e.fb();const h=v.highlight;return JSON.stringify({path:v.selPath.map(x=>x.kind+':'+(x.id??x.day??x.hitId??x.instanceId??'')),fbSel:fb.selectedId,band:!!document.querySelector('[data-testid=feedback-selected-band]'),focus:h.focus?h.focus.kind+':'+(h.focus.id??''):null,underFb:[...h.under.feedbacks],panel:!!fb.panel})})()",
+"as": "D2_inner_click_sub_blank",
+"after": 200
+},
+{
+"eval": "e2e.fb().select('f-pc-74'); 1",
+"after": 900
+},
+{
+"eval": "(()=>{const fb=e2e.fb();const h=v.highlight;return JSON.stringify({path:v.selPath.map(x=>x.kind+':'+(x.id??x.day??x.hitId??x.instanceId??'')),fbSel:fb.selectedId,band:!!document.querySelector('[data-testid=feedback-selected-band]'),focus:h.focus?h.focus.kind+':'+(h.focus.id??''):null,underFb:[...h.under.feedbacks],panel:!!fb.panel})})()",
+"as": "E1_fb_select",
+"after": 200
+},
+{
+"symbol": "AA",
+"after": 4000
+},
+{
+"eval": "(()=>{const fb=e2e.fb();const h=v.highlight;return JSON.stringify({path:v.selPath.map(x=>x.kind+':'+(x.id??x.day??x.hitId??x.instanceId??'')),fbSel:fb.selectedId,band:!!document.querySelector('[data-testid=feedback-selected-band]'),focus:h.focus?h.focus.kind+':'+(h.focus.id??''):null,underFb:[...h.under.feedbacks],panel:!!fb.panel})})()",
+"as": "E2_other_symbol",
+"after": 200
+},
+{
+"symbol": "CRNC",
+"after": 5000
+},
+{
+"eval": "(()=>{const fb=e2e.fb();const h=v.highlight;return JSON.stringify({path:v.selPath.map(x=>x.kind+':'+(x.id??x.day??x.hitId??x.instanceId??'')),fbSel:fb.selectedId,band:!!document.querySelector('[data-testid=feedback-selected-band]'),focus:h.focus?h.focus.kind+':'+(h.focus.id??''):null,underFb:[...h.under.feedbacks],panel:!!fb.panel})})()",
+"as": "E3_back_to_crnc",
+"after": 200
+},
+{
+"eval": "e2e.chartMain().dispatchAction({type:'dataZoom',startValue:795,endValue:845}); 1",
+"after": 1200
+},
+{
+"shot": "review2_02_back_to_crnc",
+"sel": ".kline-wrap-v2",
+"jpg": true
+},
+{
+"key": "Escape",
+"after": 900
+},
+{
+"eval": "(()=>{const fb=e2e.fb();const h=v.highlight;return JSON.stringify({path:v.selPath.map(x=>x.kind+':'+(x.id??x.day??x.hitId??x.instanceId??'')),fbSel:fb.selectedId,band:!!document.querySelector('[data-testid=feedback-selected-band]'),focus:h.focus?h.focus.kind+':'+(h.focus.id??''):null,underFb:[...h.under.feedbacks],panel:!!fb.panel})})()",
+"as": "E4_esc",
+"after": 200
+}
+]

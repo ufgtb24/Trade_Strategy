@@ -1,0 +1,596 @@
+[
+  {
+    "path": [
+      {
+        "kind": "sample",
+        "sampleId": "s-pc-44"
+      },
+      {
+        "kind": "event",
+        "instanceId": "plateau_741_794#0"
+      }
+    ],
+    "currentDay": "2024-11-29",
+    "store": {
+      "focusedHitId": null,
+      "selectedInstanceId": "plateau_741_794#0",
+      "focusedInstanceId": null,
+      "pendingDisambig": null,
+      "highlightedEventIds": [],
+      "compositionGroupIds": [
+        "plateau 2024-09-16→2024-11-29 detected [plateau_741_794#0]",
+        "old_plat 2024-09-16→2024-10-04 in_hit [old_plat_741_755#0]",
+        "step 2024-10-07→2024-10-07 in_hit [step_756#0]",
+        "new_plat 2024-10-08→2024-11-27 qualified [new_plat_757_793#0]",
+        "today 2024-11-29→2024-11-29 in_hit [today_794#0]"
+      ],
+      "candidateHitIds": [
+        "774-794 774_794#0"
+      ],
+      "selDayHitIds": [],
+      "activeFamilyKey": "samples",
+      "markedHitCount": 1,
+      "markedEventIds": [
+        "plateau_741_794#0"
+      ],
+      "fbSelected": null,
+      "annSelSample": null,
+      "annSelBox": null,
+      "cmpFocusedSample": "s-pc-44",
+      "tab": "selection"
+    },
+    "chart": {
+      "highlight": [
+        "group/mark old_plat 2024-09-16→2024-10-04 in_hit [old_plat_741_755#0]",
+        "group/mark step 2024-10-07→2024-10-07 in_hit [step_756#0]",
+        "group/point today 2024-11-29→2024-11-29 in_hit [today_794#0]"
+      ],
+      "bracketBoxes": [
+        "candidate-cell thin1.5 @2024-11-29"
+      ],
+      "activeHitsFamilyLine": [],
+      "activeBandFamilyLine": [],
+      "cursor": [
+        "2024-11-29"
+      ],
+      "feedbackSelectedBand": false
+    },
+    "column": [
+      "plateau lane0 cell members=2",
+      "new_plat lane0 cell members=1",
+      "new_plat lane1 cell members=1",
+      "today lane0 point members=1 BOXED:group/point",
+      "hits mark/cell hits@774 hits=2 BOXED:CANDIDATE",
+      "hits buy hits@774 hits=2 BOXED:CANDIDATE (▼ never boxed)"
+    ],
+    "walk": [
+      "kindevent",
+      "nodeplateau",
+      "date2024-09-16→2024-11-29",
+      "name—",
+      "diff—",
+      "insample 2024-11-29 a pos",
+      "←/→—",
+      "↑/↓—",
+      "Esc",
+      "feedback"
+    ],
+    "card": [
+      "buys none",
+      "hits none",
+      "nodes —",
+      "family —",
+      "feedback —",
+      "sample a pos 2024-11-29 ✓",
+      "paired none",
+      "level detected hidden",
+      "failed new_hold new_calm",
+      "id plateau_741_794#0",
+      "copy CRNC new_step event plateau 2024-09-16→2024-11-29 [plateau_741_794#0]"
+    ],
+    "diagCur": [
+      "start 2024-09-16 level detected hidden failed new_hold 守在新平台最低点之上 new_calm 波动小"
+    ],
+    "label": "21 sample s-pc-44 › not_in_hit card plateau_741_794#0 (pickCard)",
+    "shot": "screenshots/21.jpeg"
+  },
+  {
+    "path": [
+      {
+        "kind": "feedback",
+        "id": "f-pc-74"
+      }
+    ],
+    "currentDay": "2024-11-29",
+    "store": {
+      "focusedHitId": null,
+      "selectedInstanceId": null,
+      "focusedInstanceId": null,
+      "pendingDisambig": null,
+      "highlightedEventIds": [],
+      "compositionGroupIds": [],
+      "candidateHitIds": [
+        "802-819 802_819#0",
+        "802-824 802_824#0",
+        "802-827 802_827#0",
+        "802-828 802_828#0",
+        "802-832 802_832#0",
+        "802-833 802_833#0",
+        "802-834 802_834#0"
+      ],
+      "selDayHitIds": [],
+      "activeFamilyKey": null,
+      "markedHitCount": 7,
+      "markedEventIds": [],
+      "fbSelected": "f-pc-74",
+      "annSelSample": null,
+      "annSelBox": null,
+      "cmpFocusedSample": null,
+      "tab": "selection"
+    },
+    "chart": {
+      "highlight": [],
+      "bracketBoxes": [
+        "candidate-cell thin1.5 @2025-01-07",
+        "candidate-cell thin1.5 @2025-01-15",
+        "candidate-cell thin1.5 @2025-01-21",
+        "candidate-cell thin1.5 @2025-01-22",
+        "candidate-cell thin1.5 @2025-01-28",
+        "candidate-cell thin1.5 @2025-01-29",
+        "candidate-cell thin1.5 @2025-01-30"
+      ],
+      "activeHitsFamilyLine": [],
+      "activeBandFamilyLine": [],
+      "cursor": [
+        "2024-11-29"
+      ],
+      "feedbackSelectedBand": true
+    },
+    "column": [
+      "plateau lane0 cell members=2",
+      "new_plat lane0 cell members=1",
+      "new_plat lane1 cell members=1",
+      "today lane0 point members=1",
+      "hits mark/cell hits@774 hits=2",
+      "hits buy hits@774 hits=2 (▼ never boxed)"
+    ],
+    "walk": [
+      "kindfeedback",
+      "nodenew_plat",
+      "date2025-01-07→2025-01-30",
+      "name—",
+      "diff—",
+      "in—",
+      "←/→into buys ×7",
+      "↑/↓—",
+      "Esc",
+      "feedback"
+    ],
+    "card": [
+      "buys 2025-01-07…2025-01-30 ×7",
+      "hits ×7",
+      "nodes —",
+      "family 2024-12-11",
+      "feedback 2025-01-07→2025-01-30 matched",
+      "sample none",
+      "paired —",
+      "level —",
+      "failed —",
+      "id f-pc-74",
+      "copy CRNC new_step feedback new_plat 2025-01-07→2025-01-30 buys 2025-01-07…2025-01-30 ×7 hits ×7 [f-pc-74]"
+    ],
+    "diagCur": [],
+    "label": "19 feedback f-pc-74 (zoom 2024-12..2025-02)",
+    "shot": "screenshots/19.jpeg"
+  },
+  {
+    "path": [
+      {
+        "kind": "feedback",
+        "id": "f-pc-74"
+      },
+      {
+        "kind": "buy",
+        "day": 819
+      }
+    ],
+    "currentDay": "2025-01-07",
+    "store": {
+      "focusedHitId": "802-819 802_819#0",
+      "selectedInstanceId": null,
+      "focusedInstanceId": null,
+      "pendingDisambig": null,
+      "highlightedEventIds": [
+        "plateau 2024-12-11→2025-01-07 in_hit [plateau_802_819#0]",
+        "old_plat 2024-12-11→2025-01-02 in_hit [old_plat_802_816#0]",
+        "step 2025-01-03→2025-01-03 in_hit [step_817#0]",
+        "new_plat 2025-01-06→2025-01-06 in_hit [new_plat_818#0]",
+        "today 2025-01-07→2025-01-07 in_hit [today_819#0]"
+      ],
+      "compositionGroupIds": [],
+      "candidateHitIds": [
+        "802-819 802_819#0",
+        "802-824 802_824#0",
+        "802-827 802_827#0",
+        "802-828 802_828#0",
+        "802-832 802_832#0",
+        "802-833 802_833#0",
+        "802-834 802_834#0"
+      ],
+      "selDayHitIds": [],
+      "activeFamilyKey": null,
+      "markedHitCount": 7,
+      "markedEventIds": [],
+      "fbSelected": "f-pc-74",
+      "annSelSample": null,
+      "annSelBox": null,
+      "cmpFocusedSample": null,
+      "tab": "selection"
+    },
+    "chart": {
+      "highlight": [
+        "group/extent plateau 2024-12-11→2025-01-07 in_hit [plateau_802_819#0]",
+        "group/mark plateau 2024-12-11→2025-01-07 in_hit [plateau_802_819#0]",
+        "group/mark old_plat 2024-12-11→2025-01-02 in_hit [old_plat_802_816#0]",
+        "group/mark step 2025-01-03→2025-01-03 in_hit [step_817#0]",
+        "group/extent new_plat 2025-01-06→2025-01-06 in_hit [new_plat_818#0]",
+        "group/mark new_plat 2025-01-06→2025-01-06 in_hit [new_plat_818#0]",
+        "group/point today 2025-01-07→2025-01-07 in_hit [today_819#0]"
+      ],
+      "bracketBoxes": [
+        "selected-cell thick2.5+shadow @2025-01-07 (+ span box from 2024-12-11)",
+        "candidate-cell thin1.5 @2025-01-15",
+        "candidate-cell thin1.5 @2025-01-21",
+        "candidate-cell thin1.5 @2025-01-22",
+        "candidate-cell thin1.5 @2025-01-28",
+        "candidate-cell thin1.5 @2025-01-29",
+        "candidate-cell thin1.5 @2025-01-30"
+      ],
+      "activeHitsFamilyLine": [],
+      "activeBandFamilyLine": [],
+      "cursor": [
+        "2025-01-07"
+      ],
+      "feedbackSelectedBand": true
+    },
+    "column": [
+      "plateau lane1 cell members=1 BOXED:group/extent+group/mark",
+      "today lane0 point members=1 BOXED:group/point",
+      "hits mark/cell hits@802 hits=1 BOXED:SELECTED",
+      "hits buy hits@802 hits=1 BOXED:SELECTED (▼ never boxed)"
+    ],
+    "walk": [
+      "kindhit",
+      "node—",
+      "date2024-12-11→2025-01-07",
+      "name—",
+      "diff—",
+      "in…› buy 2025-01-07",
+      "←/→buys 1/7",
+      "↑/↓—",
+      "Esc",
+      "feedback"
+    ],
+    "card": [
+      "buys 2025-01-07 ×1",
+      "hits —",
+      "nodes plateau 2024-12-11→2025-01-07 old_plat 2024-12-11→2025-01-02 step 2025-01-03 new_plat 2025-01-06 today 2025-01-07",
+      "family 2024-12-11",
+      "feedback 2025-01-07→2025-01-30 matched",
+      "sample none",
+      "paired none",
+      "level —",
+      "failed —",
+      "id new_step@802-819#plateau:plateau_802_819#0",
+      "copy CRNC new_step hit 2024-12-11→2025-01-07 buys 2025-01-07 ×1 [new_step@802-819#plateau:plateau_802_819#0]"
+    ],
+    "diagCur": [],
+    "label": "20 feedback › first buy (zoom 2024-12..2025-02)",
+    "shot": "screenshots/20.jpeg"
+  },
+  {
+    "path": [
+      {
+        "kind": "hit_family",
+        "familyKey": "hits@774"
+      },
+      {
+        "kind": "buy",
+        "day": 795
+      }
+    ],
+    "currentDay": "2024-12-02",
+    "store": {
+      "focusedHitId": null,
+      "selectedInstanceId": null,
+      "focusedInstanceId": null,
+      "pendingDisambig": null,
+      "highlightedEventIds": [
+        "plateau 2024-10-31→2024-12-02 in_hit [plateau_774_795#0]",
+        "plateau 2024-10-31→2024-12-02 in_hit [plateau_774_795#1]",
+        "old_plat 2024-10-31→2024-11-20 in_hit [old_plat_774_788#0]",
+        "step 2024-11-21→2024-11-22 in_hit [step_789_790#0]",
+        "new_plat 2024-11-25→2024-11-29 in_hit [new_plat_791_794#0]",
+        "today 2024-12-02→2024-12-02 in_hit [today_795#0]",
+        "step 2024-11-21→2024-11-21 in_hit [step_789#0]",
+        "new_plat 2024-11-22→2024-11-29 in_hit [new_plat_790_794#0]"
+      ],
+      "compositionGroupIds": [],
+      "candidateHitIds": [],
+      "selDayHitIds": [
+        "774-795 774_795#0",
+        "774-795 774_795#1"
+      ],
+      "activeFamilyKey": "hits@774",
+      "markedHitCount": 22,
+      "markedEventIds": [],
+      "fbSelected": null,
+      "annSelSample": null,
+      "annSelBox": null,
+      "cmpFocusedSample": null,
+      "tab": "selection"
+    },
+    "chart": {
+      "highlight": [
+        "group/extent plateau 2024-10-31→2024-12-02 in_hit [plateau_774_795#0]",
+        "group/mark plateau 2024-10-31→2024-12-02 in_hit [plateau_774_795#0]",
+        "group/mark old_plat 2024-10-31→2024-11-20 in_hit [old_plat_774_788#0]",
+        "group/extent step 2024-11-21→2024-11-22 in_hit [step_789_790#0]",
+        "group/mark step 2024-11-21→2024-11-22 in_hit [step_789_790#0]",
+        "group/extent new_plat 2024-11-25→2024-11-29 in_hit [new_plat_791_794#0]",
+        "group/mark new_plat 2024-11-25→2024-11-29 in_hit [new_plat_791_794#0]",
+        "group/point today 2024-12-02→2024-12-02 in_hit [today_795#0]",
+        "group/extent step 2024-11-21→2024-11-21 in_hit [step_789#0]",
+        "group/mark step 2024-11-21→2024-11-21 in_hit [step_789#0]",
+        "group/extent new_plat 2024-11-22→2024-11-29 in_hit [new_plat_790_794#0]",
+        "group/mark new_plat 2024-11-22→2024-11-29 in_hit [new_plat_790_794#0]"
+      ],
+      "bracketBoxes": [],
+      "activeHitsFamilyLine": [
+        "hits@774"
+      ],
+      "activeBandFamilyLine": [],
+      "cursor": [
+        "2024-12-02"
+      ],
+      "feedbackSelectedBand": false
+    },
+    "column": [
+      "plateau lane0 cell members=2 BOXED:group/extent+group/mark",
+      "today lane0 point members=1 BOXED:group/point",
+      "hits mark/cell hits@774 hits=2",
+      "hits buy hits@774 hits=2 (▼ never boxed)"
+    ],
+    "walk": [
+      "kindbuy",
+      "node—",
+      "date2024-12-02",
+      "name—",
+      "diff—",
+      "inhit_family 2024-10-31",
+      "←/→buys 3/11",
+      "↑/↓into hits ×2",
+      "Esc",
+      "feedback"
+    ],
+    "card": [
+      "buys —",
+      "hits ×2 step→2024-11-21 step→2024-11-22",
+      "nodes —",
+      "family 2024-10-31",
+      "feedback none",
+      "sample none",
+      "paired —",
+      "level —",
+      "failed —",
+      "id —",
+      "copy CRNC new_step buy 2024-12-02 hits ×2"
+    ],
+    "diagCur": [],
+    "label": "22 buy x2 12-02 at user default zoom",
+    "shot": "screenshots/22.jpeg"
+  },
+  {
+    "path": [
+      {
+        "kind": "node",
+        "band": "step"
+      },
+      {
+        "kind": "event",
+        "instanceId": "step_789_790#0"
+      }
+    ],
+    "currentDay": "2024-11-22",
+    "store": {
+      "focusedHitId": null,
+      "selectedInstanceId": "step_789_790#0",
+      "focusedInstanceId": null,
+      "pendingDisambig": null,
+      "highlightedEventIds": [],
+      "compositionGroupIds": [
+        "plateau 2024-10-31→2024-11-26 detected [plateau_774_792#1]",
+        "old_plat 2024-10-31→2024-11-20 in_hit [old_plat_774_788#0]",
+        "step 2024-11-21→2024-11-22 in_hit [step_789_790#0]",
+        "new_plat 2024-11-25→2024-11-25 qualified [new_plat_791#0]",
+        "today 2024-11-26→2024-11-26 detected [today_792#0]"
+      ],
+      "candidateHitIds": [
+        "774-793 774_793#1",
+        "774-794 774_794#1",
+        "774-795 774_795#1",
+        "774-798 774_798#1",
+        "774-799 774_799#1",
+        "774-804 774_804#1",
+        "774-805 774_805#1",
+        "774-809 774_809#1",
+        "774-810 774_810#1",
+        "774-811 774_811#1",
+        "774-812 774_812#1"
+      ],
+      "selDayHitIds": [],
+      "activeFamilyKey": null,
+      "markedHitCount": 11,
+      "markedEventIds": [
+        "step_789_790#0"
+      ],
+      "fbSelected": null,
+      "annSelSample": null,
+      "annSelBox": null,
+      "cmpFocusedSample": null,
+      "tab": "selection"
+    },
+    "chart": {
+      "highlight": [
+        "group/mark old_plat 2024-10-31→2024-11-20 in_hit [old_plat_774_788#0]",
+        "group/extent step 2024-11-21→2024-11-22 in_hit [step_789_790#0]",
+        "group/mark step 2024-11-21→2024-11-22 in_hit [step_789_790#0]",
+        "focus/extent step 2024-11-21→2024-11-22 in_hit [step_789_790#0]",
+        "focus/mark step 2024-11-21→2024-11-22 in_hit [step_789_790#0]"
+      ],
+      "bracketBoxes": [
+        "candidate-cell thin1.5 @2024-11-27",
+        "candidate-cell thin1.5 @2024-11-29",
+        "candidate-cell thin1.5 @2024-12-02",
+        "candidate-cell thin1.5 @2024-12-05",
+        "candidate-cell thin1.5 @2024-12-06",
+        "candidate-cell thin1.5 @2024-12-13",
+        "candidate-cell thin1.5 @2024-12-16",
+        "candidate-cell thin1.5 @2024-12-20",
+        "candidate-cell thin1.5 @2024-12-23",
+        "candidate-cell thin1.5 @2024-12-24",
+        "candidate-cell thin1.5 @2024-12-26"
+      ],
+      "activeHitsFamilyLine": [],
+      "activeBandFamilyLine": [],
+      "cursor": [
+        "2024-11-22"
+      ],
+      "feedbackSelectedBand": false
+    },
+    "column": [
+      "step lane0 cell members=1 BOXED:group/extent+group/mark+focus/extent+focus/mark"
+    ],
+    "walk": [
+      "kindevent",
+      "nodestep",
+      "date2024-11-21→2024-11-22",
+      "name—",
+      "diff—",
+      "innode step",
+      "←/→into buys ×11",
+      "↑/↓—",
+      "Esc",
+      "feedback"
+    ],
+    "card": [
+      "buys 2024-11-27…2024-12-26 ×11",
+      "hits ×11",
+      "nodes —",
+      "family —",
+      "feedback —",
+      "sample a pos 2024-11-29 ✓ b pos 2024-12-05 ✓ c pos 2024-12-13 ✓",
+      "paired none",
+      "level in_hit",
+      "failed none",
+      "id step_789_790#0",
+      "copy CRNC new_step event step 2024-11-21→2024-11-22 buys 2024-11-27…2024-12-26 ×11 hits ×11 [step_789_790#0]"
+    ],
+    "diagCur": [],
+    "label": "23 event step 11-21→11-22 at user default zoom",
+    "shot": "screenshots/23.jpeg"
+  },
+  {
+    "path": [
+      {
+        "kind": "node",
+        "band": "today"
+      },
+      {
+        "kind": "event",
+        "instanceId": "today_795#0"
+      }
+    ],
+    "currentDay": "2024-12-02",
+    "store": {
+      "focusedHitId": null,
+      "selectedInstanceId": "today_795#0",
+      "focusedInstanceId": null,
+      "pendingDisambig": null,
+      "highlightedEventIds": [],
+      "compositionGroupIds": [
+        "plateau 2024-09-16→2024-12-02 detected [plateau_741_795#0]",
+        "old_plat 2024-09-16→2024-10-04 in_hit [old_plat_741_755#0]",
+        "step 2024-10-07→2024-10-07 in_hit [step_756#0]",
+        "new_plat 2024-10-08→2024-11-29 qualified [new_plat_757_794#0]",
+        "today 2024-12-02→2024-12-02 in_hit [today_795#0]"
+      ],
+      "candidateHitIds": [
+        "774-795 774_795#0",
+        "774-795 774_795#1"
+      ],
+      "selDayHitIds": [],
+      "activeFamilyKey": null,
+      "markedHitCount": 2,
+      "markedEventIds": [
+        "today_795#0"
+      ],
+      "fbSelected": null,
+      "annSelSample": null,
+      "annSelBox": null,
+      "cmpFocusedSample": null,
+      "tab": "selection"
+    },
+    "chart": {
+      "highlight": [
+        "group/mark old_plat 2024-09-16→2024-10-04 in_hit [old_plat_741_755#0]",
+        "group/mark step 2024-10-07→2024-10-07 in_hit [step_756#0]",
+        "group/point today 2024-12-02→2024-12-02 in_hit [today_795#0]",
+        "focus/point today 2024-12-02→2024-12-02 in_hit [today_795#0]"
+      ],
+      "bracketBoxes": [
+        "candidate-cell thin1.5 @2024-12-02"
+      ],
+      "activeHitsFamilyLine": [],
+      "activeBandFamilyLine": [],
+      "cursor": [
+        "2024-12-02"
+      ],
+      "feedbackSelectedBand": false
+    },
+    "column": [
+      "plateau lane0 cell members=2",
+      "today lane0 point members=1 BOXED:group/point+focus/point",
+      "hits mark/cell hits@774 hits=2 BOXED:CANDIDATE",
+      "hits buy hits@774 hits=2 BOXED:CANDIDATE (▼ never boxed)"
+    ],
+    "walk": [
+      "kindevent",
+      "nodetoday",
+      "date2024-12-02",
+      "name—",
+      "diff—",
+      "innode today",
+      "←/→events 5/22",
+      "↑/↓—",
+      "Esc",
+      "feedback"
+    ],
+    "card": [
+      "buys 2024-12-02 ×1",
+      "hits ×2",
+      "nodes —",
+      "family —",
+      "feedback —",
+      "sample none",
+      "paired none",
+      "level in_hit",
+      "failed none",
+      "id today_795#0",
+      "copy CRNC new_step event today 2024-12-02 buys 2024-12-02 ×1 hits ×2 [today_795#0]"
+    ],
+    "diagCur": [],
+    "label": "24 event today 12-02 at user default zoom",
+    "shot": "screenshots/24.jpeg"
+  }
+]

@@ -1,0 +1,8 @@
+[
+ {"eval":"Object.keys(e2e.ann().state||{})","as":"annKeys"},
+ {"eval":"(e2e.ann().state.samples||[]).filter(s=>s.symbol==='CRNC').map(s=>({id:s.id,day:s.date||s.day,p:s.pattern,j:s.judgment}))","as":"samples"},
+ {"eval":"(e2e.ann().state.boxes||[]).filter(b=>b.symbol==='CRNC').map(b=>({id:b.id,f:b.feature,s:b.start,e:b.end}))","as":"boxes"},
+ {"eval":"(e2e.ann().state.feedbacks||e2e.ann().state.feedback||[]).filter(f=>f.symbol==='CRNC').map(f=>JSON.stringify(f).slice(0,200))","as":"fbs"},
+ {"eval":"v.effectiveAnalysis.hits.length","as":"nhits"},
+ {"eval":"v.effectiveAnalysis.events.length","as":"nev"}
+]

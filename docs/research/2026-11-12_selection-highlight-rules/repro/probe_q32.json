@@ -1,0 +1,6 @@
+[
+{"eval": "e2e.chartMain().dispatchAction({type:'dataZoom',startValue:745,endValue:830}); 1", "after": 1200},
+{"eval": "(()=>{const S=Object.fromEntries(e2e.chartSub().getOption().series.map(x=>[x.name,x]));return (S.intervals?.data||[]).filter(d=>d.value[1]>=780&&d.value[0]<=800).map(d=>({m:(d.member_ids||[d.instance_id]).join('+'),v:d.value}))})()", "as": "cells_all", "max": 8000},
+{"eval": "v.focusHit('new_step@774-795#plateau:plateau_774_795#0',{day:794}); JSON.stringify(v.selPath)", "after": 900},
+{"eval": "(()=>{const S=Object.fromEntries(e2e.chartSub().getOption().series.map(x=>[x.name,x]));const hl=v.highlight;return {path:v.selPath, steps:(S.intervals?.data||[]).filter(d=>(d.member_ids||[]).some(x=>x.startsWith('step'))).filter(d=>d.value[1]>=780&&d.value[0]<=800).map(d=>({m:d.member_ids.join('+'),v:d.value,op:d.itemStyle&&d.itemStyle.opacity})), rel:[...hl.appRelated].filter(x=>x.startsWith('step')), ev:[...hl.appEvents].filter(x=>x.startsWith('step')), led:[...hl.ledHits], under:[...hl.under.events], bands:[...hl.under.bands]}})()", "as": "D_hit794", "max": 4000}
+]

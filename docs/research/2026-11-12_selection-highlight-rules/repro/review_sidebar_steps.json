@@ -1,0 +1,10 @@
+[
+{"eval": "e2e.chartMain().dispatchAction({type:'dataZoom',startValue:745,endValue:830}); 1", "after": 800},
+{"eval": "(()=>{const b=document.querySelector('[data-testid=mode-app]'); if(b) b.click(); return 'modeBtn:'+!!b})()", "after": 2500},
+{"eval": "(()=>{const t=document.querySelector('[data-testid=panel-toggle-sidebar]'); if(t&&!t.classList.contains('active')) t.click(); return JSON.stringify({toggle:!!t})})()", "after": 1500},
+{"eval": "JSON.stringify({sidebar:!!document.querySelector('.sidebar'), hitsRows:document.querySelectorAll('.sidebar [data-hit-id], .sidebar .hit-row').length, path:v.selPath})", "after": 200},
+{"eval": "v.setPath([{kind:'hit_family',familyKey:'hits@774'},{kind:'buy',day:795}]); 1", "after": 1200},
+{"shot": "review_14_app_sidebar_buy_1202", "sel": ".chart-area", "jpg": true},
+{"eval": "v.setPath([{kind:'node',band:'step'},{kind:'event',instanceId:'step_789_790#0'}]); 1", "after": 1200},
+{"shot": "review_15_app_sidebar_event_step", "sel": ".chart-area", "jpg": true}
+]

@@ -1,0 +1,7 @@
+[
+ {"eval":"e2e.chartMain().dispatchAction({type:'dataZoom',startValue:745,endValue:830}); 1","after":1500},
+ {"eval":"JSON.stringify(v.selPath)","as":"path0"},
+ {"eval":"e2e.chartSub().getOption().series.map(x=>x.name+':'+(x.data||[]).length+':z'+x.z).join(' | ')","as":"series","max":3000},
+ {"eval":"(()=>{const s=e2e.chartSub().getOption().series.find(x=>x.name==='selection'); return (s?.data||[]).map(d=>[d.kind,d.target,(d.value||[]).slice(0,3).join(','),d.n??''].join(':'))})()","as":"sel0","max":3000},
+ {"eval":"Object.keys(e2e.chartSub().getOption().series.find(x=>x.name==='intervals')?.data?.[0]||{}).join(',')","as":"ivKeys"}
+]

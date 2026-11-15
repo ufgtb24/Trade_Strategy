@@ -1,0 +1,5 @@
+[
+{"eval": "e2e.chartMain().dispatchAction({type:'dataZoom',startValue:745,endValue:830}); 1", "after": 1200},
+{"eval": "v.focusMark(['new_plat_790_793#0']); 1", "after": 900},
+{"eval": "JSON.stringify({path:v.selPath, led:[...v.highlight.ledHits], rel:[...v.highlight.appRelated].sort(), lit:[...v.highlight.appEvents].filter(x=>!v.highlight.appRelated.has(x)).sort()})", "as": "np", "max": 5000}
+]

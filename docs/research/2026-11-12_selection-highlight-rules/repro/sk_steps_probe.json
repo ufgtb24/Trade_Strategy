@@ -1,0 +1,8 @@
+[
+ {"eval":"e2e.chartMain().getOption().xAxis[0].data.length","as":"n"},
+ {"eval":"[790,795,800].map(i=>e2e.chartMain().getOption().xAxis[0].data[i])","as":"dates"},
+ {"eval":"JSON.stringify(v.selPath)","as":"selPath0"},
+ {"eval":"Object.keys(v).filter(k=>!k.startsWith('$')&&!k.startsWith('_')).join(',')","as":"keys","max":4000},
+ {"eval":"v.level","as":"level"},
+ {"shot":"sk_probe_full"}
+]
