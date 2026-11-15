@@ -182,6 +182,7 @@ import {
 import { boundEvents, hitDays, hitOrderOf, landIndex, usingIndex } from '../render/walk'
 import { mergedHit, sameSel, step, up, type Axis, type Sel, type SelPath } from '../render/select'
 import { bandCells, lineDayOf, makeWorld, type AnchorRow, type WorldCtx } from '../render/selWorld'
+import { highlightOf, type Highlight } from '../render/selHighlight'
 import { snapshotOf as selSnapshotOf, type SnapCtx, type Snapshot } from '../render/selSnapshot'
 import { feedbackHits } from '../annotate/feedback'
 import { getDiagnose, getPreview, getTimeDiagnose, getPairDiagnose, saveWcMirror, clearWcMirror, type PreviewResp } from '../api'
@@ -198,8 +199,6 @@ export type ShiftSelectedEvent = { instance_id: string; node_id: string; source:
  *    linked = 当前 pattern 的 app 在这只股票上现算的输出(顶栏切过来时)。 */
 export type ViewMode = 'annotate' | 'compare' | 'app'
 
-/** user 行(样本那一行)的行键:选中样本时它是当家行。 */
-export const SAMPLES_ROW_KEY = 'samples'
 /** app 产物从哪来:scan = 扫描结果文件;linked = 当前 pattern 的 app 在这只股票上现算(compare 恒为 linked)。 */
 export type AppSource = 'scan' | 'linked'
 /** 当前 pattern 的 app 在一只股票上现算的输出(/preview,区间是这只股票截到训练段末日的全部 K 线)。 */
@@ -293,7 +292,7 @@ export const useViewStore = defineStore('view', () => {
   const focusedHitId = ref<string | null>(null)
   const selectedInstanceId = ref<string | null>(null)
   const focusedInstanceId = ref<string | null>(null)
-  // sidebar 漏斗手动 toggle 兜底:仅在无实例焦点/pending 时生效
+  // sidebar 漏斗手动 toggle 兜底:仅在无实例焦点时生效
   // sidebar 漏斗手动展开集合(多 node 可同时展开)。语义分层:
   //   手动入口(sidebar 漏斗行 / TopologyControl dblclick)= toggleExpandedNode (add/remove,不折叠其他)
   //   自动入口(focusEvent · marker/candidate/trace node click)= add 焦点 node(不折叠其他)
@@ -309,7 +308,7 @@ export const useViewStore = defineStore('view', () => {
   const barDates = ref<string[]>([])
 
   // ── 入口 A/D(Task 18):KlineChart brush(scope=time)+ shift+click 跨图(scope=pair) ──
-  // shiftSelectedEvents 是唯一跨组件状态载体(同 focusedInstanceRef/candidateHitIds 既有模式;
+  // shiftSelectedEvents 是唯一跨组件状态载体(同 focusedInstanceRef 既有模式;
   // KlineChart 本身零 props/零 emit,靠 store 与 DetailSidebar 通信),故放这里而非组件内 ref。
   const shiftSelectedEvents = ref<ShiftSelectedEvent[]>([])
   const activeDetailCard = ref<'time' | 'pair' | 'debug' | null>(null)
@@ -820,14 +819,16 @@ export const useViewStore = defineStore('view', () => {
   // 样本、框、反馈在别的 store 里,由它们登记进来(循环依赖,view 不能反过来 import):
   // - samples / boxes:这张图上的样本、框,带那天在场的 hit(配对的排第一);
   // - feedbacks:这张图上当前 pattern 的反馈(已排好序);
-  // - onAnchor:按键走到另一个样本 / 框时要做的事(等于点它)。
+  // - onAnchor:按键走到另一个样本 / 框时要做的事(等于点它);
+  // - memberBoxes:样本的成员框(选中样本时它们是样本的组成)。
   interface SelSources {
     samples?: () => AnchorRow[]
     boxes?: () => AnchorRow[]
     feedbacks?: () => { id: string; start: string; end: string; family_start?: string | null }[]
     onAnchor?: (s: Sel) => void
-    /** 显示栏 / 选中卡 / 复制行要的名字:band 对到的特征名、反馈、样本、框 */
-    featureOfBand?: SnapCtx['featureOfBand']
+    /** 样本的成员框(图上「选中样本时成员框照常、其余框画淡」用) */
+    memberBoxes?: (sampleId: string) => readonly string[]
+    /** 显示栏 / 选中卡 / 复制行要的名字:反馈、样本、框 */
     feedbackOf?: SnapCtx['feedbackOf']
     sampleOf?: SnapCtx['sampleOf']
     boxOf?: SnapCtx['boxOf']
@@ -890,7 +891,7 @@ export const useViewStore = defineStore('view', () => {
    * 换成这条路径,并把它落到渲染层读的那几个量上:
    * - 最后一节是一次 hit(或只有一次 hit 的买点日)→ 选中这次 hit;路径上有 event 时它是实例焦点(不展 trace);
    * - 最后一节是 event → 只选中这个 event;
-   * - 其余(一族、买点日、node、反馈、样本、框)→ 不选中任何 hit / event(图上靠路径画「在用」与细框)。
+   * - 其余(一族、买点日、node、反馈、样本、框)→ 不选中任何 hit / event(图上怎么画由 highlight 从路径现算)。
    * 当前日竖线落在最后一节自己的日子上;它不带日子(一族、反馈、node)时竖线不动。
    */
   function applyPath(path: SelPath): void {
@@ -949,16 +950,13 @@ export const useViewStore = defineStore('view', () => {
 
   /**
    * 点 band 上的东西(格、整条、点;记号上可能并着几个成员),侧栏的 trace 行、候选表行也走这里:选中其中一个 event
-   * (当前选中的就在里面时不换,否则第一个),它属于它那条 band;竖线落在它的终点。
+   * (当前选中的就在里面时不换,否则第一个),路径就它一节(不属于它那条 band:node 不能选中);竖线落在它的终点。
    */
   function focusMark(memberIds: string[]): void {
     if (memberIds.length === 0) return
     const last = selPath.value[selPath.value.length - 1]
     const keep = last?.kind === 'event' && memberIds.includes(last.instanceId) ? last.instanceId : null
-    const id = keep ?? memberIds[0]
-    const ev = byIdMap.value.get(id)
-    applyPath(ev ? [{ kind: 'node', band: bandKeyOf(ev) }, { kind: 'event', instanceId: id }]
-      : [{ kind: 'event', instanceId: id }])
+    applyPath([{ kind: 'event', instanceId: keep ?? memberIds[0] }])
   }
 
   /** 一个实例(侧栏 trace 行、候选表行):同点 band 上的它。 */
@@ -980,14 +978,9 @@ export const useViewStore = defineStore('view', () => {
     applyPath([familySel(familyKeyOf(HIT_FAMILY_PREFIX, m.start_idx)), { kind: 'buy', day }, { kind: 'hit', hitId, day }])
   }
 
-  /** 点反馈记号:选中这条反馈(它收进来的 hit 画细框),竖线不动。 */
+  /** 点反馈记号:选中这条反馈(它牵出的 hit 图上照常),竖线不动。 */
   function clickFeedback(fb: { id: string }): void {
     applyPath([{ kind: 'feedback', id: fb.id }])
-  }
-
-  /** 点轨名:选中这条 band(一个 node)。 */
-  function selectNode(band: string): void {
-    applyPath([{ kind: 'node', band }])
   }
 
   /**
@@ -1058,10 +1051,10 @@ export const useViewStore = defineStore('view', () => {
     return null
   }
 
-  /** 路径上最外面那一节「牵出的 hit」:一族的、用到那个 event 的、反馈收进来的、样本 / 框配对的那一次(细框、侧栏常标用)。 */
-  const selHits = computed<{ ids: ReadonlySet<string>; thin: boolean }>(() => {
+  /** 路径上最外面那一节「牵出的 hit」:一族的、用到那个 event 的、反馈收进来的、样本 / 框配对的那一次(选中卡的 feedback 行用)。 */
+  const selHits = computed<{ ids: ReadonlySet<string> }>(() => {
     const path = selPath.value
-    const none = { ids: new Set<string>(), thin: false }
+    const none = { ids: new Set<string>() }
     for (let i = 0; i < path.length; i++) {
       const s = path[i]
       const sub = path.slice(0, i + 1)
@@ -1070,17 +1063,17 @@ export const useViewStore = defineStore('view', () => {
         for (const b of world.value.inside(sub, 'day')) {
           for (const m of world.value.members([...sub, b.sel])) if (m.sel.kind === 'hit') ids.add(m.sel.hitId)
         }
-        return { ids, thin: false }
+        return { ids }
       }
       // event、反馈:只算它们自己牵出的(那个 ▼ 上顺带的别的切法不算)
-      if (s.kind === 'event') return { ids: new Set(usingOf.value(s.instanceId).map(m => m.hit_id)), thin: true }
+      if (s.kind === 'event') return { ids: new Set(usingOf.value(s.instanceId).map(m => m.hit_id)) }
       if (s.kind === 'feedback') {
-        return { ids: new Set(worldCtx.value.feedbacks.find(f => f.id === s.id)?.hitIds ?? []), thin: true }
+        return { ids: new Set(worldCtx.value.feedbacks.find(f => f.id === s.id)?.hitIds ?? []) }
       }
       if (s.kind === 'sample' || s.kind === 'box') {
-        // 样本、框:只框配对的那一次(配对的 event 没进 hit 时不框);在场的别的几次要 ↓ 进去才看
+        // 样本、框:配对的那一次(配对的 event 没进 hit 时没有)
         const paired = pairedHitOf(s)
-        return { ids: new Set(paired ? [paired] : []), thin: true }
+        return { ids: new Set(paired ? [paired] : []) }
       }
     }
     return none
@@ -1115,7 +1108,6 @@ export const useViewStore = defineStore('view', () => {
       dates: barDates.value, wctx: worldCtx.value, world: world.value,
       nodeOrder: (topo?.nodes ?? []).map(n => n.node_id),
       anchorFields: [...new Set((topo?.edges ?? []).map(e => e.anchor_field).filter((f): f is string => !!f))],
-      featureOfBand: src.featureOfBand ?? (() => null),
       feedbackOf: src.feedbackOf ?? (() => null),
       sampleOf: src.sampleOf ?? (() => null),
       boxOf: src.boxOf ?? (() => null),
@@ -1306,66 +1298,9 @@ export const useViewStore = defineStore('view', () => {
     return effectiveAnalysis.value.hits.find(m => m.hit_id === focusedHitId.value) ?? null
   })
 
-  // 视觉层:选中一次 hit → 它绑定的 event 亮成一组。选中的不是某一次 hit 时,和它有关的那几次的组成也亮出来
-  // (它们不算选中,要进到那一次才是):选中一整天 → 这天叠着的几次;选中样本 / 框 → 配对的那一次。
-  // event、反馈牵出的 hit 由 candidateHitIds 画细实线框,不进这里。
-  const highlightedEventIds = computed<ReadonlySet<string>>(() => {
-    const m = selectedHit.value
-    const last = selLast.value
-    const related = m ? [m]
-      : last?.kind === 'buy' ? selDayHitIds.value.map(id => hitsById.value.get(id)).filter((x): x is HitDict => !!x)
-      : last?.kind === 'sample' || last?.kind === 'box'
-        ? [hitsById.value.get(pairedHitOf(last) ?? '')].filter((x): x is HitDict => !!x)
-        : []
-    if (related.length === 0) return new Set<string>()
-    return inHitIdsOf(
-      related,
-      effectiveAnalysis.value?.events ?? [],
-      effectivePattern.value?.topology.edges ?? [],
-      { expandAnchor: false },
-    )
-  })
-
   // hit trace 展开的唯一判据(spec §3.1):有 hit 且无实例焦点(任一实例 ref 为空)才展 trace
   const showTrace = computed<boolean>(() =>
     focusedHitId.value !== null && selectedInstanceId.value === null && focusedInstanceId.value === null)
-
-  // 组成型组「一选全选」:选中的是一个 event(不是某一次 hit)时,它若是组成型容器或其任一段 →
-  // 整组(容器+全部段)进视觉选中集,与 hit 组高亮同款 group 边框(选中的那个仍由 focus
-  // 条目独家表达,chart group 分支按 focusedInstanceRef 排除)。选中一次 hit 时
-  // selectedInstanceId=null → 空集,由 hit 的 inHitIds 闭包覆盖。组成型判别 = topology.nodes[].produced_by 非空
-  // (bo→burst 是引用型,公共资源,不在此列)。
-  const compositionGroupIds = computed<ReadonlySet<string>>(() => {
-    const iid = selectedInstanceId.value
-    if (!iid) return new Set()
-    const topoNodes = effectivePattern.value?.topology.nodes ?? []
-    const structural = topoNodes.filter(n => n.produced_by != null)
-    if (structural.length === 0) return new Set()
-    const structuralNodes = new Set(structural.map(n => n.node_id))
-    const events = effectiveAnalysis.value?.events ?? []
-    const ev = events.find(e => e.instance_id === iid)
-    if (!ev) return new Set()
-    // 组代表容器:点段 → 经 child_refs 逆索引爬到容器(组成段专属单容器);
-    // 点容器 → 须持有组成型子槽(某 structural node 的 parent_refs 引用它),
-    // 否则(孤立 bo/burst 等引用型/无关 node)空集,维持单点聚焦不变。
-    let container = ev
-    if (structuralNodes.has(ev.node_id)) {
-      const parent = events.find(e =>
-        Object.values(e.child_refs ?? {}).some(ids =>
-          Array.isArray(ids) && ids.includes(iid)))
-      if (!parent) return new Set([iid])   // 孤段(组成型不应出现,防御回落单点)
-      container = parent
-    } else {
-      const hasCompSlot = structural.some(n =>
-        (n.parent_refs ?? []).some(([p]) => p === ev.node_id))
-      if (!hasCompSlot) return new Set()
-    }
-    const out = new Set<string>([container.instance_id])
-    for (const ids of Object.values(container.child_refs ?? {})) {
-      if (Array.isArray(ids)) for (const id of ids) out.add(id)
-    }
-    return out
-  })
 
   // 漏斗展开集合:单 source = manualExpandedNodes。手动/自动分层写入:
   //   toggleExpandedNode (sidebar 漏斗行 / topology dblclick) = add/remove(不折叠其他)
@@ -1373,33 +1308,19 @@ export const useViewStore = defineStore('view', () => {
   //   focusHit (bracket click) = 清空(trace 独占)
   const expandedNodeIds = computed<ReadonlySet<string>>(() => manualExpandedNodes.value)
 
-  // 图上的细框:路径上最外一节是 event、反馈、样本或框时,它牵出的每次 hit 的格加细框(一族靠粗底线认,不加框)。
-  const candidateHitIds = computed<ReadonlySet<string>>(() => (selHits.value.thin ? selHits.value.ids : new Set<string>()))
+  /**
+   * 选中后图上怎么画(render/selHighlight.ts):粗框、外层底线、照常 / 画淡、侧栏 hits 列表的黑粗边与左蓝条都读这一份。
+   * 什么都没选中时是 NO_HIGHLIGHT(什么都不淡)。
+   */
+  const highlight = computed<Highlight>(() => highlightOf(selPath.value, {
+    world: world.value, wctx: worldCtx.value, memberBoxes: selSources.value.memberBoxes,
+  }))
 
-  // 从一个 event 走进它的买点日、停在整天上时:那个 event 不是选中的那一个,但还在用,单独描边
-  const pendingDisambigInstanceId = computed<string | null>(() => {
-    if (focusedHitId.value || selLast.value?.kind !== 'buy') return null
-    const anc = selPath.value.find((x): x is Extract<Sel, { kind: 'event' }> => x.kind === 'event')
-    return anc?.instanceId ?? null
-  })
-
-  // 侧栏 hits 列表常标的行:路径上最外一节牵出的 hit,加上选中的那次、选中那一天的几次
-  const markedHitIds = computed<ReadonlySet<string>>(() => {
-    const out = new Set<string>(selHits.value.ids)
-    for (const id of selDayHitIds.value) out.add(id)
-    if (focusedHitId.value) out.add(focusedHitId.value)
-    return out
-  })
-
-  // sidebar 候选表"选中"样式判据(spec §3.1 信息层):
-  //   实例 focus → {selectedInstanceId ?? focusedInstanceId}
-  //   停在整天上、是从一个 event 走进来的 → {它}
-  //   都空 → 空集
+  // 侧栏候选表选中的那一行(黑粗边,同图上的粗框):只在选中的那一个就是这个 event 时;它退到外层(走进了它的买点日、
+  // 一次 hit)时不标
   const markedEventIds = computed<ReadonlySet<string>>(() => {
-    const iid = selectedInstanceId.value ?? focusedInstanceId.value
-    if (iid) return new Set([iid])
-    if (pendingDisambigInstanceId.value) return new Set([pendingDisambigInstanceId.value])
-    return new Set()
+    const f = highlight.value.focus
+    return f?.kind === 'event' ? new Set([f.instanceId]) : new Set()
   })
 
   const tagMap = computed(() => effectivePattern.value
@@ -1419,15 +1340,6 @@ export const useViewStore = defineStore('view', () => {
 
   const qualifiedIds = computed<Set<string>>(() => qualifiedIdsOf(diag.value))
 
-  // 给渲染层的当家行键(族行底线加粗):路径上有 hit 的一族时是那一族;最外一节是样本时是样本那一行。
-  // event、反馈、框不对应现成的一行,不加粗任何一行(它们牵出的 hit 靠细框认)。
-  const activeFamilyKey = computed<string | null>(() => {
-    const path = selPath.value
-    const fam = path.find((x): x is Extract<Sel, { kind: 'hit_family' }> => x.kind === 'hit_family')
-    if (fam) return fam.familyKey
-    return path[0]?.kind === 'sample' ? SAMPLES_ROW_KEY : null
-  })
-
   function bandKey(e: EventDict): string { return bandKeyOf(e) }
   function eventTier(e: EventDict): Tier { return eventTierOf(e, inHitIds.value, qualifiedIds.value) }
 
@@ -1435,9 +1347,8 @@ export const useViewStore = defineStore('view', () => {
     scanFile, symbol, activePatternId, sortByPid, sortDesc,
     nodeVisible, selected,
     focusedHitId, selectedInstanceId, focusedInstanceId, manualExpandedNodes,  // 内部 ref(export 便于 whitebox 单元测)
-    level, focusedInstanceRef, highlightedEventIds, candidateHitIds, pendingDisambigInstanceId, hoveredEventId, diag,
-    showTrace, expandedNodeIds, markedHitIds, markedEventIds, // 派生 computed export
-    compositionGroupIds,   // 组成型组「一选全选」(0 归属非 hit 组)
+    level, focusedInstanceRef, highlight, hoveredEventId, diag,
+    showTrace, expandedNodeIds, markedEventIds, // 派生 computed export
     shiftSelectedEvents, activeDetailCard, timeScopeResponse, pairScopeResponse,
     shiftPairPending, shiftSelectedEventIds,
     previewEnabled, preview, previewLoading, previewError,
@@ -1457,9 +1368,9 @@ export const useViewStore = defineStore('view', () => {
     loadScanFile, clearScanFile, setCurrentScanName, currentScanName, selectSymbol, setActivePattern, setSort,
     toggleNode, toggleExpandedNode,
     focusHit, focusEvent, clearFocus,
-    focusMark, clickBuyDay, clickHitCell, clickFamilyLine, clickFeedback, selectNode, setPath, setSelSources,
+    focusMark, clickBuyDay, clickHitCell, clickFamilyLine, clickFeedback, setPath, setSelSources,
     stepPos, stepStack, stepUp, setCurrentDay, setBarDates,
-    currentDay, activeFamilyKey, barDates, selPath, selLast, selInfo, selHits, selDayHitIds, world, moveSeq,
+    currentDay, barDates, selPath, selLast, selInfo, selHits, selDayHitIds, world, moveSeq,
     isEventDrawn, buyDaysOfHit,
     setLevel, hoverEvent,
     setShiftSelectedEvents, clearShiftSelection, clearDetailCard, triggerTimeQuery, triggerPairQuery,

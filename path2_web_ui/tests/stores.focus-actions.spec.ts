@@ -47,7 +47,7 @@ describe('view store · focusHit / focusEvent(单入口)/ clearFocus', () => {
     setActivePinia(createPinia())
   })
 
-  it('focusHit("m1"):focusedHitId=m1 · 实例焦点清 · manual=null · 细框清 · showTrace=true', () => {
+  it('focusHit("m1"):focusedHitId=m1 · 实例焦点清 · manual=null · 只牵出它自己 · showTrace=true', () => {
     const view = useViewStore()
     view.loadScanFile(makeFixture())
     view.toggleExpandedNode('bo')                  // 先 manual = {bo}
@@ -57,21 +57,21 @@ describe('view store · focusHit / focusEvent(单入口)/ clearFocus', () => {
     expect(view.selectedInstanceId).toBeNull()
     expect(view.focusedInstanceId).toBeNull()
     expect(view.manualExpandedNodes.size).toBe(0)  // focusHit → collapse all(trace 独占)
-    expect(view.candidateHitIds.size).toBe(0)
+    expect([...view.highlight.ledHits]).toEqual(['m1'])
     expect(view.showTrace).toBe(true)
   })
 
-  it('focusEvent 单入口:按 instance_id 只选中这个 event;用到它的那次 hit 画细框,不算选中', () => {
+  it('focusEvent 单入口:按 instance_id 只选中这个 event;用到它的那次 hit 是牵出的(照常),不算选中', () => {
     const view = useViewStore()
     view.loadScanFile(makeFixture())
     view.focusEvent('ta_12_15#0')
     // 点 event 选中的就是它;用到它的 hit 在它里面,要按键进去才选中
-    expect(view.selPath).toEqual([{ kind: 'node', band: 'ta' }, { kind: 'event', instanceId: 'ta_12_15#0' }])
+    expect(view.selPath).toEqual([{ kind: 'event', instanceId: 'ta_12_15#0' }])
     expect(view.selectedInstanceId).toBe('ta_12_15#0')
     expect(view.focusedHitId).toBeNull()
     expect(view.focusedInstanceId).toBeNull()
-    expect([...view.candidateHitIds]).toEqual(['m1'])
-    expect(view.pendingDisambigInstanceId).toBeNull()
+    expect([...view.highlight.ledHits]).toEqual(['m1'])
+    expect(view.highlight.frameHits.size).toBe(0)
     expect(view.showTrace).toBe(false)
   })
 
@@ -82,7 +82,7 @@ describe('view store · focusHit / focusEvent(单入口)/ clearFocus', () => {
     expect(view.focusedHitId).toBeNull()
     expect(view.selectedInstanceId).toBe('ta_30_32#0')
     expect(view.focusedInstanceId).toBeNull()
-    expect(view.candidateHitIds.size).toBe(0)
+    expect(view.highlight.ledHits.size).toBe(0)
     expect(view.markedEventIds.has('ta_30_32#0')).toBe(true)
   })
 
@@ -94,13 +94,12 @@ describe('view store · focusHit / focusEvent(单入口)/ clearFocus', () => {
     view.focusEvent('bo_10#0')
     expect(view.focusedHitId).toBeNull()
     expect(view.selectedInstanceId).toBe('bo_10#0')
-    expect(view.candidateHitIds.size).toBe(0)
-    expect(view.pendingDisambigInstanceId).toBeNull()
+    expect(view.highlight.ledHits.size).toBe(0)
     expect(view.markedEventIds.has('bo_10#0')).toBe(true) // 信息层聚焦实例
     expect(view.expandedNodeIds.has('bo')).toBe(true)    // focusEvent add → 含 bo
   })
 
-  it('clearFocus:双清 + candidates 清', () => {
+  it('clearFocus:双清 + 图上的照常清', () => {
     const view = useViewStore()
     view.loadScanFile(makeFixture())
     view.focusHit('m1')
@@ -108,7 +107,7 @@ describe('view store · focusHit / focusEvent(单入口)/ clearFocus', () => {
     expect(view.focusedHitId).toBeNull()
     expect(view.selectedInstanceId).toBeNull()
     expect(view.focusedInstanceId).toBeNull()
-    expect(view.candidateHitIds.size).toBe(0)
+    expect(view.highlight.ledHits.size).toBe(0)
     expect(view.showTrace).toBe(false)
   })
 
@@ -150,8 +149,8 @@ describe('view store · focusHit / focusEvent(单入口)/ clearFocus', () => {
 })
 
 // ── Task 8(marker 实例绑定):focusEvent 单入口分级语义 ──────────────────────────
-// 点 event 一律只选中这个 event;用到它的 hit = hit.node_index 值(instance_id 字符串)精确引用它的那些,画细框。
-// 被几次 hit 共用的实例:走进它的买点日、停在整天上时,它还在用(pendingDisambig),再往里才选中其中一次
+// 点 event 一律只选中这个 event;用到它的 hit = hit.node_index 值(instance_id 字符串)精确引用它的那些,是它牵出的。
+// 被几次 hit 共用的实例:走进它的买点日、停在整天上时,它在外层(侧栏候选表仍标它),再往里才选中其中一次
 function makeDualEntryFixture(events: EventDict[], hits: HitDict[]): MultiScanResultFile {
   const pattern: SerializedPattern = {
     pattern_id: 'p1',
@@ -196,15 +195,14 @@ describe('view store · focusEvent 单入口(Task 8 实例绑定)', () => {
     view.loadScanFile(makeDualEntryFixture(events, [m0, m1]))
     view.focusEvent('tb_v1_293#0')
     expect(view.selectedInstanceId).toBe('tb_v1_293#0')
-    expect([...view.candidateHitIds]).toEqual([m0.hit_id])  // 用到 #0 的是 hit A
+    expect([...view.highlight.ledHits]).toEqual([m0.hit_id])  // 用到 #0 的是 hit A
     expect(view.focusedHitId).toBeNull()
-    expect(view.pendingDisambigInstanceId).toBeNull()
     view.focusEvent('tb_v1_293#1')
     expect(view.selectedInstanceId).toBe('tb_v1_293#1')
-    expect([...view.candidateHitIds]).toEqual([m1.hit_id])  // 用到 #1 的是 hit B
+    expect([...view.highlight.ledHits]).toEqual([m1.hit_id])  // 用到 #1 的是 hit B
   })
 
-  it('focusEvent 真共享:同一 instance_id 被两 hit 引用 → 两次都画细框、都不选中;走进它的买点日后那天叠着这两次', () => {
+  it('focusEvent 真共享:同一 instance_id 被同一天两次 hit 引用 → 只亮 ↓ 第一个、都不选中;走进它的买点日后那天叠着这两次', () => {
     const m0 = { hit_id: 'bb@0-3a', start_idx: 0, end_idx: 3,
                  node_index: { tb: 'tb_s#0' }, children: ['tb_s#0'], predicate_trace: null } as HitDict
     const m1 = { hit_id: 'bb@0-3b', start_idx: 0, end_idx: 3,
@@ -216,16 +214,18 @@ describe('view store · focusEvent 单入口(Task 8 实例绑定)', () => {
     view.loadScanFile(makeDualEntryFixture(events, [m0, m1]))
     view.focusEvent('tb_s#0')
     expect(view.selectedInstanceId).toBe('tb_s#0')
-    expect(view.candidateHitIds.size).toBe(2)
+    expect([...view.highlight.ledHits]).toEqual(['bb@0-3a'])   // 同一天只算一次:↓ 第一个
     expect(view.focusedHitId).toBeNull()
     // 这条 band 上只有它、只牵出一天:→ 进那一天;那天叠着两次,停在整天上,这个实例还在用
     view.stepPos(1)
     expect(view.selLast).toEqual({ kind: 'buy', day: 3 })
     expect(view.focusedHitId).toBeNull()
-    expect(view.pendingDisambigInstanceId).toBe('tb_s#0')
+    expect([...view.highlight.under.events]).toEqual(['tb_s#0'])   // 它在外层:画底线
+    expect(view.markedEventIds.size).toBe(0)                       // 候选表不再当它是选中的(黑粗边只给选中的那一个)
     expect(view.selDayHitIds).toEqual(['bb@0-3a', 'bb@0-3b'])
+    expect([...view.highlight.frameHits]).toEqual(['bb@0-3a', 'bb@0-3b'])
     view.stepStack(1)
     expect([view.focusedHitId, view.focusedInstanceId]).toEqual(['bb@0-3a', 'tb_s#0'])
-    expect(view.pendingDisambigInstanceId).toBeNull()
+    expect([...view.highlight.frameHits]).toEqual(['bb@0-3a'])
   })
 })

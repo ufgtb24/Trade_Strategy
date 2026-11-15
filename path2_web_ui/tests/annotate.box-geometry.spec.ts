@@ -5,7 +5,7 @@ import {
   DRAG_PX, EDGE_PX, boxAt, edgeOf, endIndex, isDrag, pannedZoom, resized, spanOf, startIndex,
 } from '../src/annotate/boxGeometry'
 import {
-  AWAY_OPACITY, BOX_DASH, UNCLAIMED_DASH, DIM_OPACITY, LANE_PAD, LANE_ROW_H, LANES_TOP, MEMBER_DASH, NEG_FILL, POS_FILL,
+  AWAY_OPACITY, BOX_DASH, UNCLAIMED_DASH, DIM_OPACITY, LANE_PAD, LANE_ROW_H, LANES_TOP, NEG_FILL, POS_FILL,
   TRI_GAP, TRI_H, afterDimSeries, bracketGeometry, bracketRects, buildAnnotateSubOption, laneAt, laneGeometry,
   mainMarksSeries, mainSamplesSeries, packBrackets, triangleRect, type BracketItem,
 } from '../src/render/annotateLanes'
@@ -81,7 +81,7 @@ describe('特征轨', () => {
     expect(el.shape.width).toBe(30)
     expect(el.style.lineDash).toEqual(BOX_DASH)      // 用户画的:虚线
   })
-  it('框的标记:选中样本时成员框加粗长虚线、画了没收的短虚线挂 ◂、跨过样本日的画淡挂 ⇥;框左侧写收了它的样本字母', () => {
+  it('框的标记:选中样本时成员框照常(不加粗、不换线型)、画了没收的短虚线挂 ◂、跨过样本日的画淡挂 ⇥;框左侧写收了它的样本字母', () => {
     const { geom } = laneGeometry(lanes)
     const marks = new Map<string, BoxMark>([
       ['b1', { owners: ['a', 'b'], away: false, focus: 'member' }],
@@ -95,7 +95,7 @@ describe('特征轨', () => {
     const draw = (i: number) => opt.series[0].renderItem({ dataIndex: i },
       { size: () => [10], coord: ([k]: number[]) => [k * 10 + 5], value: (k: number) => rows[i][k] }).children
     const [r1, owners] = draw(0)
-    expect([r1.style.lineWidth, r1.style.lineDash, r1.style.opacity]).toEqual([2.5, MEMBER_DASH, 1])
+    expect([r1.style.lineWidth, r1.style.lineDash, r1.style.opacity]).toEqual([1.5, BOX_DASH, 1])
     expect([owners.style.text, owners.style.align]).toEqual(['a b', 'right'])
     const [r2, take] = draw(1)
     expect([r2.style.lineDash, take.style.text]).toEqual([UNCLAIMED_DASH, '◂'])

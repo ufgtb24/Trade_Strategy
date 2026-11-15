@@ -44,7 +44,7 @@ async function selectSomething(page: any): Promise<string> {
       view.focusMark([e.instance_id])
       const s = view.selInfo
       if (s?.kind === 'event' && s.day.mode === 'into' && s.day.noun === 'buys' && s.day.n >= 2
-          && view.candidateHitIds.size >= 2) return 'event'
+          && view.highlight.ledHits.size >= 2) return 'event'
     }
     view.clearFocus()
     view.focusHit(view.effectiveAnalysis.hits[0].hit_id)
@@ -70,10 +70,10 @@ test('选中一个东西 → 显示栏写它是什么;选中的是共用的 even
   await expect(page.getByTestId('sel-esc')).toBeVisible()
 
   if (kind === 'event') {
-    // 选中的是这个 event:用到它的哪一次 hit 都不算选中,只画细框;← / → 会进到它牵出的买点日
+    // 选中的是这个 event:用到它的哪一次 hit 都不算选中,是它牵出的(图上照常);← / → 会进到它牵出的买点日
     await expect(cellVal(page, 'sel-day')).toHaveText(/^into buys ×\d+$/)
     expect(await page.evaluate(() => (window as any).__e2e.view.focusedHitId)).toBeNull()
-    expect(await page.evaluate(() => (window as any).__e2e.view.candidateHitIds.size)).toBeGreaterThanOrEqual(2)
+    expect(await page.evaluate(() => (window as any).__e2e.view.highlight.ledHits.size)).toBeGreaterThanOrEqual(2)
     const line0: number = await page.evaluate(() => (window as any).__e2e.view.currentDay)
     await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur())
     await page.keyboard.press('ArrowRight')
@@ -82,16 +82,16 @@ test('选中一个东西 → 显示栏写它是什么;选中的是共用的 even
     const st = await page.evaluate(() => {
       const v = (window as any).__e2e.view
       const path = v.selPath
-      return { kinds: path.map((x: any) => x.kind), buy: path[2]?.day, day: v.currentDay, hit: v.focusedHitId,
-               days: v.world.inside(path.slice(0, 2), 'day').map((x: any) => x.day),
-               framed: v.focusedHitId ? v.candidateHitIds.has(v.focusedHitId) : null }
+      return { kinds: path.map((x: any) => x.kind), buy: path[1]?.day, day: v.currentDay, hit: v.focusedHitId,
+               days: v.world.inside(path.slice(0, 1), 'day').map((x: any) => x.day),
+               led: v.focusedHitId ? v.highlight.ledHits.has(v.focusedHitId) : null }
     })
-    expect(st.kinds.slice(0, 3)).toEqual(['node', 'event', 'buy'])
+    expect(st.kinds.slice(0, 2)).toEqual(['event', 'buy'])   // 路径从 event 起(node 不能选中)
     const want = st.days.includes(line0) ? line0
       : (st.days.find((d: number) => d > line0) ?? [...st.days].reverse().find((d: number) => d < line0))
     expect(st.day).toBe(want)
     expect(st.buy).toBe(st.day)
-    if (st.hit !== null) expect(st.framed).toBe(true)     // 那天只有一次时就是那次 hit,它是用到这个 event 的
+    if (st.hit !== null) expect(st.led).toBe(true)        // 那天只有一次时就是那次 hit,它是用到这个 event 的
   }
 })
 
@@ -103,6 +103,8 @@ test('Esc 往外退一层,退到头再按才清空:显示栏九格写回 —,条
   await selectSomething(page)
   await expect(cellVal(page, 'sel-kind')).not.toHaveText('—')
   const depth = () => page.evaluate(() => (window as any).__e2e.view.selPath.length as number)
+  // 点 band 选中的 event 路径就它一节:先 → 走进它的一个买点日,才有一层可退
+  if (await depth() < 2) await page.evaluate(() => (window as any).__e2e.view.stepPos(1))
   const d0 = await depth()
   expect(d0).toBeGreaterThanOrEqual(2)
   await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur())

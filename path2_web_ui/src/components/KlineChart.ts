@@ -121,7 +121,7 @@ export interface AppClickCtx {
 /**
  * 主图、副图的一次系列点击(KlineChart.vue 的 onAppClick 就是它):焦点照旧走 handleChartClick;
  * compare 下点中 app 的东西(格、条、▼、族那一行、反馈记号)时取消标注框的选中(否则框仍选中,按 Delete 会删掉标注);
- * app 跑完可对照时,点反馈记号选中那条反馈(换掉原来选中的;它收进来的 hit 画细框)。
+ * app 跑完可对照时,点反馈记号选中那条反馈(换掉原来选中的;它牵出的 hit 图上照常)。
  * 点只选中,不开反馈面板:面板由 Enter 或显示栏的 feedback 按钮对选中的那一个打开(stores/feedback.ts 的 openSelected)。
  * 返回 handleChartClick 的结果。
  */

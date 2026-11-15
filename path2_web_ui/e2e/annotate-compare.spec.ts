@@ -151,7 +151,7 @@ test.describe('compare / app 叠画(bo_only + 手写 mapping)', () => {
     const graphic = await page.evaluate(() => JSON.stringify((window as any).__e2e.chartSub().getOption().graphic ?? []))
     for (const w of TAG_WORDS) expect(graphic).not.toContain(w)
 
-    // 选中的样本:当前日落在样本日,当家行是样本;selection 页出 diagnose(配对 node 是 eval_meta 的买点 node)
+    // 选中的样本:当前日落在样本日,选中路径从样本起;selection 页出 diagnose(配对 node 是 eval_meta 的买点 node)
     const smp = await page.evaluate(() => {
       const a = (window as any).__e2e.ann()
       const c = a.state.charts.find((x: any) => x.symbol === 'AAPL')
@@ -159,7 +159,7 @@ test.describe('compare / app 叠画(bo_only + 手写 mapping)', () => {
     })
     const selDate = smp.list.find(([id]: string[]) => id === smp.sel)![1]
     await expect.poll(() => view(page, 'currentDay')).toBe(dates.indexOf(selDate))
-    expect(await view(page, 'activeFamilyKey')).toBe('samples')
+    expect((await view(page, 'selPath'))[0]?.kind).toBe('sample')
     await expect(page.getByTestId('sample-diagnose')).toBeVisible()
     await expect(page.getByTestId('diagnose-node')).toHaveText('bo')
     await expect(page.getByTestId('diagnose-date')).toHaveText(selDate)
@@ -239,22 +239,27 @@ test.describe('compare / app 叠画(bo_only + 手写 mapping)', () => {
     await expect(page.getByTestId('focused-sample')).toBeVisible()
     await expect(page.getByTestId('focused-sample').getByTestId('sample-diagnose')).toBeVisible()
     expect(await page.evaluate(() => (window as any).__e2e.ann().selectedSampleId)).toBeNull()
-    expect(await view(page, 'activeFamilyKey')).toBe('samples')
+    expect((await view(page, 'selPath'))[0]?.kind).toBe('sample')   // 默认聚焦的样本算选中
     await page.keyboard.press('Escape')
     await expect(page.getByTestId('focused-sample')).toHaveCount(0)
 
     // 复制指代:Shift+C 把当前指的东西写成一行,底部提示条把它显示几秒。什么都没选中 → 股票与 pattern;
-    // 选中轨名 → 那个 node 与它对到的特征名;Esc 取消轨名的选中
+    // 选中 bo 这条 band 上的一个 event → 那一行带着它的 node 名(node 本身不能选中);Esc 一下清空(路径就它一节)
     const copied = () => page.evaluate(() => (window as any).__e2e.copyRef().lastText)
     await page.keyboard.press('Shift+C')
     await expect.poll(copied).toMatch(/^AAPL \S+$/)
     await expect(page.locator('.toast')).toContainText('AAPL')
-    await page.evaluate(() => (window as any).__e2e.copyRef().selectNode('bo'))
+    const boId = await page.evaluate(() => {
+      const events: any[] = (window as any).__e2e.view.effectiveAnalysis?.events ?? []
+      return events.find(e => e.node_id === 'bo')?.instance_id ?? null
+    })
+    expect(boId).not.toBeNull()
+    await page.evaluate(id => (window as any).__e2e.view.focusMark([id]), boId)
+    expect(await view(page, 'selPath')).toEqual([{ kind: 'event', instanceId: boId }])
     await page.keyboard.press('Shift+C')
-    await expect.poll(copied).toMatch(/^AAPL \S+ node bo 突破$/)
-    await expect(page.locator('.toast')).toContainText('node bo 突破')
+    await expect.poll(copied).toMatch(/^AAPL \S+ event bo /)
     await page.keyboard.press('Escape')
-    expect(await page.evaluate(() => (window as any).__e2e.copyRef().selectedNode)).toBeNull()
+    expect(await view(page, 'selPath')).toEqual([])
 
     // 参照层 peaks 在 compare 下可用:勾上画出峰线(同 /peaks)
     const box = page.getByTestId('ref-peaks')

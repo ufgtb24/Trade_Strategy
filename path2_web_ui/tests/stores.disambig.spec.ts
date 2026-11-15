@@ -20,12 +20,13 @@ vi.mock('../src/stores/config', () => ({
 }))
 
 describe('view store — Task 1 (M base)', () => {
-  describe('highlightedEventIds', () => {
+  describe('highlight', () => {
     beforeEach(() => { setActivePinia(createPinia()) })
 
     it('starts empty', () => {
       const view = useViewStore()
-      expect(view.highlightedEventIds.size).toBe(0)
+      expect(view.highlight.focus).toBeNull()
+      expect(view.highlight.dimApp).toBe(false)
     })
   })
 
@@ -59,7 +60,7 @@ describe('view store — Task 1 (M base)', () => {
   })
 })
 
-// event A 被两次 hit 用到(各买在 2、3 两天):选中它时这两次画细框
+// event A 被两次 hit 用到(各买在 2、3 两天):选中它时这两次都是牵出的(每个买点日各一次)
 const A = { instance_id: 'a_0_1#0', node_id: 'a', instance_idx: 0, start_idx: 0, end_idx: 1, child_refs: {} }
 const B2 = { instance_id: 'b_2_2#0', node_id: 'b', instance_idx: 0, start_idx: 2, end_idx: 2, child_refs: {} }
 const B3 = { instance_id: 'b_3_3#0', node_id: 'b', instance_idx: 0, start_idx: 3, end_idx: 3, child_refs: {} }
@@ -84,26 +85,27 @@ function loadFixture(view: ReturnType<typeof useViewStore>): void {
   } as any)
 }
 
-describe('view store — 细框(由选中的那条路径派生)', () => {
+describe('view store — 图上的照常 / 外层底线(由选中的那条路径派生)', () => {
   beforeEach(() => { setActivePinia(createPinia()) })
 
   it('starts empty', () => {
     const view = useViewStore()
-    expect(view.candidateHitIds.size).toBe(0)
-    expect(view.pendingDisambigInstanceId).toBeNull()
+    expect(view.highlight.ledHits.size).toBe(0)
+    expect(view.highlight.under.events.size).toBe(0)
   })
 
-  it('选中一个 event:用到它的 hit 加细框;走进其中一次之后细框仍在;clearFocus 清掉', () => {
+  it('选中一个 event:用到它的两次(两个买点日)都照常;走进其中一次之后只剩这一次,event 退到外层画底线;clearFocus 清掉', () => {
     const view = useViewStore()
     loadFixture(view)
     view.focusMark([A.instance_id])
-    expect([...view.candidateHitIds]).toEqual(['m1', 'm2'])
+    expect([...view.highlight.ledHits]).toEqual(['m1', 'm2'])
     expect(view.focusedHitId).toBeNull()                 // 只选中了 event,用到它的哪一次都不算选中
     view.stepPos(1)                                      // 进到第一个买点日;那天只有一次,就是那次 hit
     expect(view.focusedHitId).toBe('m1')
-    expect([...view.candidateHitIds]).toEqual(['m1', 'm2'])
+    expect([...view.highlight.ledHits]).toEqual(['m1'])
+    expect([...view.highlight.under.events]).toEqual([A.instance_id])
     view.clearFocus()
-    expect(view.candidateHitIds.size).toBe(0)
+    expect(view.highlight.ledHits.size).toBe(0)
   })
 })
 
@@ -114,17 +116,17 @@ describe('view store — Task 7 (cross-context cleanup)', () => {
     loadFixture(view)
     view.focusMark([A.instance_id])
     view.stepPos(1)
-    expect(view.selPath.length).toBe(3)
-    expect(view.candidateHitIds.size).toBe(2)
+    expect(view.selPath.length).toBe(2)   // event › 那一天(只有一次就是那次 hit)
+    expect(view.highlight.ledHits.size).toBe(1)
     view.focusedInstanceId = 'inst_1#0'
   }
   function expectCleared(view: ReturnType<typeof useViewStore>) {
-    expect(view.candidateHitIds.size).toBe(0)
-    expect(view.highlightedEventIds.size).toBe(0)
+    expect(view.highlight.ledHits.size).toBe(0)
+    expect(view.highlight.focus).toBeNull()
     expect(view.selectedHitId).toBeNull()
     expect(view.selectedInstanceId).toBeNull()
     expect(view.focusedInstanceId).toBeNull()
-    expect(view.pendingDisambigInstanceId).toBeNull()
+    expect(view.markedEventIds.size).toBe(0)
     expect(view.selPath).toEqual([])
     expect(view.selInfo).toBeNull()
   }

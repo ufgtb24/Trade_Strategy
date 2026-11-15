@@ -2,12 +2,14 @@
 import type { Bar, EventDict, HitDict, Level, Tier, Topology } from '../types'
 import { colorOf } from './colors'
 import { packLanes } from './geometry'
-import { foldBand, foldHits, HIT_FAMILY_PREFIX,
+import { foldBand, foldHits,
          type Family, type FoldMark, type HitFamily } from './fold'
 import { isBandVisible, renderGridOf, splitIntervalAtScanEnd, subBandTagList, subBandTree } from './visible'
 import { stackLabelTexts, usingIndex, type WalkEntry } from './walk'
 import { ctrlState } from './ctrlState'
 import { derivePeakStates, peakIdIndex } from './peakState'
+import { NO_HIGHLIGHT, dimOpacity, eventMarkDim, familyLineDim, hitMarkDim, hitMarkGrows, isRelatedMark, markScaleY, relatedEdgeRect,
+         type Highlight } from './selHighlight'
 import { MONO } from './fonts'
 import {
   FEEDBACK_MARK_PAD, FEEDBACK_SELECTED_OUTSET, FEEDBACK_SERIES, FEEDBACK_TEXT_PAD,
@@ -19,8 +21,6 @@ import {
   BAND_LANE_H,
   BAND_MARKER_H,
   BAND_LANE_GAP,
-  HL_EXPAND_H,
-  HL_EXPAND_OFFSET,
   HITS_FILL,
   DIVIDER_GAP,
   SUB_GRID_LEFT,
@@ -34,7 +34,8 @@ import {
   FAMILY_LINE_COLOR,
   FAMILY_LINE_AFTER_WINDOW,
   FAMILY_LINE_H,
-  ACTIVE_LINE_H,
+  UNDER_LINE_H,
+  SEL_EDGE_COLOR,
   CURSOR_COLOR,
   CURSOR_HALO,
   type BandGeom,
@@ -43,6 +44,7 @@ import {
   FAMILY_HEAD_RATIO,
   FAMILY_HEAD_W,
   FEEDBACK_ROW_H,
+  MARK_GROW,
 } from './subGeometry'
 
 // ─── 新签名 ──────────────────────────────────────────────────────────────────
@@ -98,13 +100,6 @@ export interface BandRenderInput {
   nodeVisible?: Record<string, boolean>
   // tagToNodes: bandKey → nodeId[],用于 nodeVisible 联查 ──────────────────────
   tagToNodes?: Record<string, string[]>
-  // ── D2 可选扩展 ─────────────────────────────────────────────────────────────
-  // 当前聚焦实例 instance_id(selectedInstanceId ?? focusedInstanceId 合并);用于
-  // bracket 是否本身被点的判定(marker 分支必设, bracket 分支为 null)。
-  selectedInstanceId?: string | null
-  // ── Task 5 实例绑定:焦点实例(实例级)── marker 点击的精确实例(1 归属直选时非空)。
-  // group 条目精确排除被点那一个实例(同身份兄弟实例不误伤)。
-  focusedInstanceId?: string | null
   tooltipResolver?: (instanceId: string) => TooltipPayload
   // ── 缓冲窗/label 扩展(均可选,旧调用零改动) ──────────────────────────────────
   strictWindow?: { startIdx: number; endIdx: number } | null   // 严格窗边界(bar 索引);缺省不画
@@ -118,27 +113,20 @@ export interface BandRenderInput {
   // §7-4 整治：bracket marker 同时承载 hit_id + 端点 instance_id,让 buildMarkerTooltipFormatter
   // 的 event 三段分支也能触发。endNode 来自 eval_meta(铁律必有);缺省=不注入 instance_id(向后兼容)
   endNode?: string
-  // ── M #3 / M' #19: bracket 三态 fill ────────────────────────────────────────
+  // 选中的那次 hit:悬停文字里标出它
   selectedHitId?: string | null
-  candidateHitIds?: ReadonlySet<string>
-  // ── Task 5: highlight 三分支(group / focus / pendingDisambig) ───────────────
-  highlightedEventIds?: ReadonlySet<string>
-  pendingDisambigInstanceId?: string | null
+  // ── 选中后图上怎么画(render/selHighlight.ts):粗框、外层底线、照常 / 画淡;缺省什么都不画、什么都不淡 ──
+  highlight?: Highlight | null
   // ── spec 2026-07-10: 入口 D shift+click 已选中 marker 描边高亮 ────────────
   shiftSelectedEventIds?: ReadonlySet<string>
   hits?: HitDict[]  // buildSubOption 的 markerTooltip formatter 用（自 KlineChart.vue 透传）
   events?: EventDict[]  // 同上:悬停的 `hits ×n`(沿 child_refs 找父容器)要全部 event
   // ── 副图 band 竖直 zoom(spec 2026-07-03):由 KlineChart 传入,default 1.0 ──────
   zoomFactor?: number
-  // ── 当前日(竖线落点,bar 索引)与当家行(←/→ 在其中走的那一族的 family_key);缺省都不画 ──
+  // ── 当前日(竖线落点,bar 索引);缺省不画 ──
   currentDay?: number | null
-  activeFamily?: string | null
   // ── band 表头:node 名后跟用户的特征名(mapping 对到它的特征)、compare 下所在组没有 node 被 map 的挂 app_only;键是 band ──
   bandExtras?: Readonly<Record<string, BandLabelExtra>>
-  /** 选中的轨名(band 键):名字描黑粗边 */
-  selectedBand?: string | null
-  /** 给了,轨名就接鼠标:点它 = 选中这条 band(一个 node) */
-  onBandLabelClick?: (band: string) => void
   // ── compare:选中的框对的 node 及其子孙 node 的 band,表头加粗(用户区与 app 区不相邻,靠它配对) ──
   linkedBands?: readonly string[]
   // ── compare 才传(spec 6.13 反馈):hits 行的一族可点(族底线那一行垫透明命中区)、hit 行底下画反馈带。
@@ -165,15 +153,19 @@ export interface EventBundle {
   intervalData: any[]
   pricePointData: any[]
   bracketData: any[]
-  highlightData: any[]
-  highlightPriceData: any[]
+  // 选中后的粗框、外层底线与 hits 行的个数(副图,压在当前日竖线上面),见 makeRenderSelection:
+  // { kind: 'frame' | 'under' | 'count', target: 'hits' | 'band', value: [起, 止, lane, band?, nBands?, 高?], shape?, n?, dim?,
+  //   被框 / 画底线的是谁:family_key(+ buy_day,格位)或 instance_id }
+  frameData: any[]
+  // 主图价格区 node 的粗框、外层底线:price-points 的一条记录加 { kind: 'frame' | 'under' }
+  framePriceData: any[]
   // ── spec 2026-07-11: shift+click 累积器命中 marker 的白蒙+黑线 overlay 数据 ──
   veilData: any[]         // 副图 point + interval
   veilPriceData: any[]    // 主图 pricePoint
-  // bracket 每族一行的底线:{ value: [start, end, lane, ordinal], family_key, multi, active, family_start, buy_days }
+  // bracket 每族一行的底线:{ value: [start, end, lane, ordinal], family_key, multi, dim, family_start, buy_days }
   // (ordinal 只是族的先后,不画;family_start 是族起点、buy_days 是这一族全部买入日,都是 K 线下标,compare 点族发起反馈用)
   bracketLineData: any[]
-  // 副图每族一条底线:{ value: [start, end, lane, band, nBands], family_key, multi, active, afterWindow, summary }
+  // 副图每族一条底线:{ value: [start, end, lane, band, nBands], family_key, multi, dim, afterWindow, summary }
   familyLineData: any[]
   // 当前日竖线:[{ value: [barIdx] }] 或空
   cursorData: any[]
@@ -187,15 +179,13 @@ export function computeEventData(
   input: BandRenderInput,
 ): EventBundle {
   const { topology, tagList, level, nodeColors, eventTier, nodeOfEventByBand, bandKeyOf,
-          nodeVisible, tagToNodes, selectedInstanceId, endNode, strictWindow,
-          highlightedEventIds: _highlightedEventIds,
-          pendingDisambigInstanceId: _pendingDisambigInstanceId,
-          shiftSelectedEventIds: _shiftSelectedEventIds,
-          focusedInstanceId: _focusedInstanceId } = input
-  const highlightedEventIds = _highlightedEventIds ?? new Set<string>()
-  const pendingDisambigInstanceId = _pendingDisambigInstanceId ?? null
+          nodeVisible, tagToNodes, endNode, strictWindow,
+          shiftSelectedEventIds: _shiftSelectedEventIds } = input
   const shiftSelectedEventIds = _shiftSelectedEventIds ?? new Set<string>()
-  const focusedInstanceId = _focusedInstanceId ?? null
+  // 选中后的照常 / 画淡、粗框、外层底线(render/selHighlight.ts);没选中时什么都不淡
+  const hl = input.highlight ?? NO_HIGHLIGHT
+  /** app 那边一个记号的 itemStyle:画淡的只多一个不透明度(画淡只经 dimOpacity 施加) */
+  const appStyle = (color: string, dim: boolean) => (dim ? { color, opacity: dimOpacity('app', true) } : { color })
   // 副图分轨只含 time 轴 tag;render_grid='price' 的 tag(bo)不占轨道
   const subTags = subBandTagList(tagList, topology)
 
@@ -272,6 +262,8 @@ export function computeEventData(
       instance_id: e.instance_id,
       tier: eventTier(e),
       itemStyle: { color: eColor(e) },
+      dim: eventMarkDim(hl, [e.instance_id]),
+      sy: markScaleY(hl, [e.instance_id], 'point', level),   // 有关的竖直放大(▽ 的高、bo 盒的高)
       anchorY, text,
       // pk marker 渲染元数据(renderer 按 state 存在性分派三角形/盒)。state 由
       // pkStates(derivePeakStates,契约 C4)合成,不再读事件自带字段。
@@ -282,6 +274,8 @@ export function computeEventData(
       pkLift: isPk && boAnchorIdx.has(renderIdx) ? PK_LIFT_OVER_BO : 0,
     }
   })
+  // 主图价格区 node 上的粗框与外层底线(price-points 记录的副本,压在记号上面)
+  const framePriceData: any[] = []
 
   // ── 副图:每条 band 折叠(render/fold.ts)→ 以族为单位分行 → 每个记号(整条 / 格 / 点)一条记录 ──
   // 点还是条按拓扑 node 的 is_point 声明分,不按单个实例碰巧只占一根 K 线。
@@ -297,11 +291,10 @@ export function computeEventData(
     return entries.map((_, i) => [`${noun} ${i + 1}/${entries.length}`, labels[i]].filter(Boolean).join(' '))
   }
   const pointNodes = new Set((topology?.nodes ?? []).filter((n) => n.is_point === true).map((n) => n.node_id))
-  const activeFamily = input.activeFamily ?? null
   const intervalData: any[] = []
   const pointData: any[] = []
   const familyLineData: any[] = []
-  // instance_id → 它在图上的位置:高亮、消歧、shift-veil 都经它反查
+  // instance_id → 它在图上的位置:粗框、外层底线经它反查
   const placeOf = new Map<string, { family: Family; mark: FoldMark; lane: number; band: number; rec: any }>()
   const nBands = subTags.length
   const lineParts = (start: number, end: number) =>
@@ -317,7 +310,7 @@ export function computeEventData(
       for (const part of lineParts(f.start, f.end)) {
         familyLineData.push({
           value: [part.start, part.end, lane, band, nBands], family_key: f.key, multi: f.multi,
-          active: activeFamily === f.key, afterWindow: part.afterWindow, head: part.start === f.start,
+          dim: eventMarkDim(hl, f.memberIds), afterWindow: part.afterWindow, head: part.start === f.start,
           summary: familySummary(f, byId, eventTier, dates),
         })
       }
@@ -325,6 +318,7 @@ export function computeEventData(
         const color = colorOf(mark.tier, node, nodeColors)
         const after = colorOf('detected', node, nodeColors)
         // 悬停:格里并着的几个 event 逐行 `events j/m 区别`(只数 event,不按用到它的 hit 拆)
+        const dim = eventMarkDim(hl, mark.memberIds)
         const base = {
           instance_id: mark.memberIds[0], member_ids: mark.memberIds,
           stack: stackLines(mark.memberIds.map((id) => ({ hitId: null, instanceId: id })), 'events'),
@@ -332,21 +326,25 @@ export function computeEventData(
           mark_kind: mark.kind, tier: mark.tier,
         }
         const H = TIER_H[mark.tier]
+        // value[7]:有关的方块加细边(格、条;任何档都加,点不加)
+        const edge = isRelatedMark(hl, mark.memberIds) ? 1 : 0
         let first: any = null
         if (mark.kind === 'point') {
-          first = { ...base, value: [mark.start, mark.end, lane, band, nBands, H], itemStyle: { color } }
+          // value[6]:竖直放大倍数(有关的放大高、不放大宽)
+          first = { ...base, value: [mark.start, mark.end, lane, band, nBands, H, markScaleY(hl, mark.memberIds, 'point', level)],
+                    itemStyle: appStyle(color, dim) }
           pointData.push(first)
         } else if (mark.kind === 'cell' || scanEndIdx === null) {
           // 格整格判在扫描窗前还是后
           const isAfter = scanEndIdx !== null && mark.start > scanEndIdx
-          first = { ...base, value: [mark.start, mark.end, lane, band, nBands, H],
-                    itemStyle: { color: isAfter ? after : color } }
+          first = { ...base, value: [mark.start, mark.end, lane, band, nBands, H, markScaleY(hl, mark.memberIds, 'mark', level), edge],
+                    itemStyle: appStyle(isAfter ? after : color, dim) }
           intervalData.push(first)
         } else {
           // 整条跨过扫描末日:拆窗内 / 窗后两段,共享成员与族
           for (const part of splitIntervalAtScanEnd({ start: mark.start, end: mark.end }, scanEndIdx)) {
-            const rec = { ...base, value: [part.start, part.end, lane, band, nBands, H],
-                          itemStyle: { color: part.afterWindow ? after : color } }
+            const rec = { ...base, value: [part.start, part.end, lane, band, nBands, H, markScaleY(hl, mark.memberIds, 'mark', level), edge],
+                          itemStyle: appStyle(part.afterWindow ? after : color, dim) }
             intervalData.push(rec)
             first ??= rec
           }
@@ -365,22 +363,32 @@ export function computeEventData(
   const hitFamilies = foldHits(hits, events, endNode)
   const hitFamilyOf = new Map<string, { family: HitFamily; lane: number; ordinal: number }>()
   const packedHits = packLanes(hitFamilies.map((f, i) => ({ start_idx: f.start, end_idx: f.end, f, ordinal: i + 1 })))
+  const frameData: any[] = []
+  const hitLaneOf = new Map<string, { f: HitFamily; lane: number }>()
   for (const { f, lane, ordinal } of packedHits) {
     for (const id of f.hitIds) hitFamilyOf.set(id, { family: f, lane, ordinal })
+    hitLaneOf.set(f.key, { f, lane })
     // 范围字段(族起点、买入日、格那一列的买入日)都是 K 线下标,存反馈前由调用方经 dates 换成日期
     bracketLineData.push({ value: [f.start, f.end, lane, ordinal], family_key: f.key, multi: f.multi,
-                           active: activeFamily === f.key, family_start: f.start, buy_days: f.buys.map((b) => b.day) })
+                           dim: familyLineDim(hl, f.key, f.hitIds, f.buys.map((b) => b.day)),
+                           family_start: f.start, buy_days: f.buys.map((b) => b.day) })
     for (const mark of f.marks) {
       const rec: { value: number[]; kind: 'mark'; mark_kind: string; hit_id: string; hit_ids: string[];
                    family_key: string; family_start: number; hit_labels?: string[]; instance_id?: string;
-                   buy_day?: number } = {
+                   buy_day?: number; dim: boolean; grow: boolean } = {
         value: [mark.start, mark.end, lane, ordinal], kind: 'mark', mark_kind: mark.kind,
         hit_id: mark.hitIds[0], hit_ids: mark.hitIds, family_key: f.key, family_start: f.start,
-        hit_labels: hitLabelTexts(mark.hitIds),
+        hit_labels: hitLabelTexts(mark.hitIds), dim: false,
+        // 并着牵出的 hit:往上长、加细边(任何档)
+        grow: hitMarkGrows(hl, mark.hitIds),
       }
       // 格那一列(同一行)上有 ▼:记下那天(compare 点格发起 point 反馈;没有就不带)
       const colBuy = f.buys.find((b) => b.day >= mark.start && b.day <= mark.end)
       if (colBuy) rec.buy_day = colBuy.day
+      // 这一格借它那一列 ▼ 的格位照常,只在格与 ▼ 并着同一次 hit 时(买点日就是终点的 app 里格就是那个格位);
+      // 终点不是买点日的 app 里,恰好落在别的买点日那一列的终点格不跟着那个 ▼ 照常
+      const sameSlot = colBuy && colBuy.hitIds.some((id) => mark.hitIds.includes(id))
+      rec.dim = hitMarkDim(hl, f.key, mark.hitIds, sameSlot ? [colBuy.day] : [])
       if (endNode) {
         const v = hitsById.get(mark.hitIds[0])?.node_index?.[endNode]
         if (v) rec.instance_id = v
@@ -388,58 +396,66 @@ export function computeEventData(
       bracketData.push(rec)
     }
     for (const buy of f.buys) {
+      const dim = hitMarkDim(hl, f.key, buy.hitIds, [buy.day])
+      // 那一格往上长时,▼ 跟着格顶上移,个数跟着上移、仍贴在格顶上方
+      const grow = hitMarkGrows(hl, buy.hitIds)
       bracketData.push({ value: [buy.day, buy.day, lane, ordinal], kind: 'buy', buy_day: buy.day,
                          buy_date: dates[buy.day] ?? String(buy.day),
                          hit_id: buy.hitIds[0], hit_ids: buy.hitIds, family_key: f.key, family_start: f.start,
-                         hit_labels: hitLabelTexts(buy.hitIds) })
-    }
-  }
-
-  // ── 高亮:成员所在族行上画空心跨度框([族起点, 成员终点])+ 它那一格粗框;点记号照旧画放大实心版 ──
-  // group 条目跳过焦点实例(被点者由 focus 条目独家表达);同一个记号只画一次。
-  type HlKind = 'group' | 'focus' | 'pendingDisambig'
-  const highlightData: any[] = []
-  const highlightPriceData: any[] = []
-  const drawn = new Set<string>()
-  const pushHl = (id: string, kind: HlKind): boolean => {
-    const at = placeOf.get(id)
-    if (!at) return false
-    const ev = byId.get(id)
-    const tag = `${kind}|${at.family.key}|${at.mark.start}`
-    if (drawn.has(tag)) return true
-    drawn.add(tag)
-    const color = at.rec?.itemStyle?.color
-    if (at.mark.kind === 'point') {
-      highlightData.push({ ...at.rec, kind, shape: 'point' })
-      return true
-    }
-    if (at.mark.kind === 'cell' && ev) {
-      highlightData.push({ value: [at.family.start, ev.end_idx, at.lane, at.band, nBands], instance_id: id,
-                           kind, shape: 'extent', itemStyle: { color } })
-    }
-    highlightData.push({ value: [at.mark.start, at.mark.end, at.lane, at.band, nBands, TIER_H[at.mark.tier]],
-                         instance_id: id, kind, shape: 'mark', itemStyle: { color } })
-    return true
-  }
-  if (highlightedEventIds.size > 0) {
-    for (const id of highlightedEventIds) {
-      if (id === focusedInstanceId) continue
-      if (!pushHl(id, 'group')) {
-        const pp = pricePointData.find((d) => d.instance_id === id)
-        if (pp) highlightPriceData.push({ ...pp, kind: 'group' as HlKind })
+                         hit_labels: hitLabelTexts(buy.hitIds), dim, grow })
+      // 这一天并了几次 hit:个数写在格子外正上方的个数行里,压在当前日竖线上面(makeRenderSelection)
+      if (buy.hitIds.length >= 2) {
+        frameData.push({ kind: 'count', target: 'hits', value: [buy.day, buy.day, lane], n: buy.hitIds.length, dim, grow })
       }
     }
   }
-  if (pendingDisambigInstanceId && !pushHl(pendingDisambigInstanceId, 'pendingDisambig')) {
-    const pp = pricePointData.find((d) => d.instance_id === pendingDisambigInstanceId)
-    if (pp) highlightPriceData.push({ ...pp, kind: 'pendingDisambig' as HlKind })
+
+  // ── 选中后的粗框与外层底线(render/selHighlight.ts):hits 行的一族 / 格位、band 上的 event、主图价格区 node ──
+  const fam = (key: string) => hitLaneOf.get(key) ?? null
+  const focus = hl.focus
+  if (focus?.kind === 'hit_family') {
+    const at = fam(focus.familyKey)
+    if (at) frameData.push({ kind: 'frame', target: 'hits', value: [at.f.start, at.f.end, at.lane], family_key: at.f.key,
+                             grow: hitMarkGrows(hl, at.f.hitIds) })
   }
-  // focus 条目按当前聚焦实例 —— selectedInstanceId 是合并 ref(= store selectedInstanceId ?? focusedInstanceId),
-  // 覆盖 0 归属与 1 归属(直选 hit)
-  if (selectedInstanceId && !pushHl(selectedInstanceId, 'focus')) {
-    const pp = pricePointData.find((d) => d.instance_id === selectedInstanceId)
-    if (pp) highlightPriceData.push({ ...pp, kind: 'focus' as HlKind })
+  if (hl.focusSlot) {
+    const at = fam(hl.focusSlot.familyKey)
+    const day = hl.focusSlot.day
+    // 那个格位(这一列的 ▼ 与格)有一样变高了,粗框就跟着变高后的格走
+    const slotHits = at ? [...(at.f.buys.find((b) => b.day === day)?.hitIds ?? []),
+                           ...at.f.marks.filter((m) => m.start <= day && day <= m.end).flatMap((m) => m.hitIds)] : []
+    if (at) frameData.push({ kind: 'frame', target: 'hits', value: [day, day, at.lane],
+                             family_key: at.f.key, buy_day: day, grow: hitMarkGrows(hl, slotHits) })
   }
+  for (const key of hl.under.families) {
+    const at = fam(key)
+    if (at) frameData.push({ kind: 'under', target: 'hits', value: [at.f.start, at.f.end, at.lane], family_key: at.f.key })
+  }
+  for (const sl of hl.under.slots) {
+    const at = fam(sl.familyKey)
+    if (at) frameData.push({ kind: 'under', target: 'hits', value: [sl.day, sl.day, at.lane], family_key: at.f.key,
+                             buy_day: sl.day })
+  }
+  const pushEventMark = (id: string, kind: 'frame' | 'under'): void => {
+    const at = placeOf.get(id)
+    if (at) {
+      if (kind === 'frame') {
+        frameData.push({ kind, target: 'band', shape: at.mark.kind === 'point' ? 'point' : 'mark',
+                         value: [at.mark.start, at.mark.end, at.lane, at.band, nBands, TIER_H[at.mark.tier],
+                                 markScaleY(hl, at.mark.memberIds, at.mark.kind === 'point' ? 'point' : 'mark', level)],
+                         instance_id: id })
+      } else {
+        // 外层的 event:它自己的记号(格 / 整条 / 点)底下,和粗框同一个范围;不按它的起止横跨(格只画在终点那天,
+        // 横跨起止会伸到同一条 band 上别的格下面)
+        frameData.push({ kind, target: 'band', value: [at.mark.start, at.mark.end, at.lane, at.band, nBands], instance_id: id })
+      }
+      return
+    }
+    const pp = pricePointData.find((d) => d.instance_id === id)
+    if (pp) framePriceData.push({ ...pp, kind })
+  }
+  if (focus?.kind === 'event') pushEventMark(focus.instanceId, 'frame')
+  for (const id of hl.under.events) pushEventMark(id, 'under')
 
   // ── shift-veil overlay(z2:22 独立层,fill 白蒙 + 黑横线):记号里任一成员被 shift 选中就盖 ──
   const veilData: any[] = []
@@ -460,7 +476,7 @@ export function computeEventData(
   return {
     pointData, intervalData, pricePointData,
     bracketData, bracketLineData, familyLineData, cursorData,
-    highlightData, highlightPriceData,
+    frameData, framePriceData,
     veilData, veilPriceData,
     candle, volume, dates,
   }
@@ -489,14 +505,14 @@ function familySummary(f: Family, byId: ReadonlyMap<string, EventDict>, tierOf: 
 /** buildMainOption 用到的那部分渲染入参(annotate 模式只给 sliderShow / zoomOverride)。 */
 export type MainOptionInput = Pick<BandRenderInput,
   'strictWindow' | 'sliderShow' | 'zoomOverride' | 'tooltipResolver' | 'hitLabel'
-  | 'candidateHitIds' | 'hits' | 'events' | 'selectedHitId'>
+  | 'hits' | 'events' | 'selectedHitId'>
 
 /** 没有任何 app 产物的 EventBundle:annotate 模式只画 K 线和成交量。 */
 export function emptyEventBundle(bars: Bar[]): EventBundle {
   return {
     pointData: [], intervalData: [], pricePointData: [],
     bracketData: [], bracketLineData: [], familyLineData: [], cursorData: [],
-    highlightData: [], highlightPriceData: [],
+    frameData: [], framePriceData: [],
     veilData: [], veilPriceData: [],
     candle: bars.map((b) => [b.o, b.c, b.l, b.h]),
     volume: bars.map((b) => b.v),
@@ -542,7 +558,7 @@ export function buildMainOption(
 ): unknown {
   const { strictWindow, sliderShow, zoomOverride,
           tooltipResolver, hitLabel } = input
-  const { dates, candle, pricePointData, highlightPriceData, veilPriceData } = bundle
+  const { dates, candle, pricePointData, framePriceData, veilPriceData } = bundle
 
   const N = bars.length
   const sw = strictWindow ?? null
@@ -661,24 +677,23 @@ export function buildMainOption(
       { type: 'custom', name: 'price-points', xAxisIndex: 0, yAxisIndex: 0,
         data: pricePointData, renderItem: makeRenderPricePoint(pricePointData),
         encode: { x: 0, y: 1 }, z: 12, clip: false, tooltip: markerTooltip },
-      // animation:true 同副图 highlight 系列:series 级显式开关放行 keyframeAnimation(pending 闪烁)
-      { type: 'custom', name: 'highlight-price', xAxisIndex: 0, yAxisIndex: 0,
-        data: highlightPriceData, animation: true,
-        renderItem: makeRenderPricePointHighlight(highlightPriceData),
-        encode: { x: 0, y: 1 }, z: 21, clip: false, tooltip: markerTooltip },
+      // 选中的价格区 node 的粗框、外层的底线:压在记号上面,不接鼠标(悬停、点击落到下面的记号上)
+      { type: 'custom', name: 'selection-price', xAxisIndex: 0, yAxisIndex: 0,
+        data: framePriceData, silent: true,
+        renderItem: makeRenderPriceFrame(framePriceData),
+        encode: { x: 0, y: 1 }, z: 21, clip: false },
       { type: 'custom', name: 'shift-veil-price', xAxisIndex: 0, yAxisIndex: 0,
         data: veilPriceData, animation: false, silent: true,
         renderItem: makeRenderShiftVeilPrice(veilPriceData),
         z: 22 },
-      // 当前日竖线(K 线区与成交量带各一条,z:10):压在 K 线柱子与成交量柱上层,鼠标移开后照样看得见
-      // (画在下层时会被当天那根 K 线与上下影线整段盖住);两侧白边压在任何柱色上都拉开深浅。
-      // 低于价格标记(z:12)与高亮(z:21),▲▼ 仍压在竖线上面。
+      // 当前日竖线(K 线区与成交量带各一条,z:0,最下层;2026-11-13 用户定):不遮挡任何东西,当天那根 K 线、
+      // 成交量柱、价格标记都压在它上面
       { type: 'custom', name: 'current-day', xAxisIndex: 0, yAxisIndex: 0,
         data: bundle.cursorData, silent: true, animation: false,
-        renderItem: renderCursor, encode: { x: 0 }, z: 10 },
+        renderItem: renderCursor, encode: { x: 0 }, z: 0 },
       { type: 'custom', name: 'current-day-volume', xAxisIndex: 1, yAxisIndex: 1,
         data: bundle.cursorData, silent: true, animation: false,
-        renderItem: renderCursor, encode: { x: 0 }, z: 10 },
+        renderItem: renderCursor, encode: { x: 0 }, z: 0 },
     ],
   }
 }
@@ -699,12 +714,13 @@ export function buildSubDecorGraphics(
   hitsLabelVisible: boolean,
   chartSubWidth: number,
   zoomFactor: number = 1.0,
-  active: { band?: number; hits?: boolean; linked?: readonly number[]; hover?: number; selected?: number } = {},   // 当家行所在那条 band / bracket、选中框对的 band 的表头加粗;hover:反馈面板悬停的 node 所在 band 加亮
+  // linked:选中框对的 band 表头加粗;hover:反馈面板悬停的 node 所在 band 加亮;
+  // hidden:选中的 event 画不出来,它那条轨名旁挂 hidden 并框住(轨名不能选中、不接鼠标)
+  active: { linked?: readonly number[]; hover?: number; hidden?: number } = {},
   extras: readonly (BandLabelExtra | null)[] = [],  // 表头 node 名后跟的用户特征名 / app_only(按 band 下标)
   hitsTop: number = BAND_TOP_PAD,                    // hits 表头的顶 = hit 第 0 行的顶(compare 下在分界线下面)
   tree: readonly ({ depth: number; last: boolean } | null)[] = [],  // 轨在父子树里的位置(subBandTree),子轨名缩进挂 ├ / └
   hitsAreaTop: number = 0,                           // hits 区的顶,浅黄底从这里铺起(compare 下是那道分界线)
-  onLabelClick?: (bandIndex: number) => void,        // 给了,轨名接鼠标:点它选中这条 band(复制指代用)
 ): any[] {
   const graphics: any[] = []
   // 行的底色、分隔线从容器最左起(盖住左边的轨名栏),轨名写在轨名栏里
@@ -765,16 +781,16 @@ export function buildSubDecorGraphics(
     const depth = tr?.depth ?? 0
     const text = (depth > 0 ? `${tr!.last ? '└' : '├'} ` : '') + (bandLabelTexts[bi] ?? '')
     const ex = extras[bi] ?? null
-    const weight = active.band === bi || active.linked?.includes(bi) ? 'bold' : 'normal'
-    // 特征名是用户写的内容:正常字体、浅灰底;app_only 是程序固定文字:等宽
+    const weight = active.linked?.includes(bi) ? 'bold' : 'normal'
+    const hidden = active.hidden === bi
+    // 特征名是用户写的内容:正常字体、浅灰底;app_only、hidden 是程序固定文字:等宽
     const esc = (t: string) => t.replace(/[{}|]/g, ' ')
-    const rich = ex && (ex.feature || ex.tag)
-      ? `{n|${esc(text)}}${ex.feature ? `  {biz|${esc(ex.feature)}}` : ''}${ex.tag ? `  {tag|${esc(ex.tag)}}` : ''}`
+    const rich = (ex && (ex.feature || ex.tag)) || hidden
+      ? `{n|${esc(text)}}${ex?.feature ? `  {biz|${esc(ex.feature)}}` : ''}${ex?.tag ? `  {tag|${esc(ex.tag)}}` : ''}`
+        + (hidden ? '  {hid|hidden}' : '')
       : null
     // 垫一块和这一行同色的底,压在记号上面(轨名伸进 grid 时不被格、条盖住)
     const bg = { backgroundColor: bi % 2 === 0 ? BAND_STRIPE_OPAQUE : '#ffffff', padding: [0, 2] }
-    // 选中的轨名:node 名描黑粗边(靠黑边认,不靠颜色)
-    const picked = active.selected === bi ? { borderColor: '#000000', borderWidth: 2, borderRadius: 2, padding: [1, 3] } : {}
     graphics.push({
       type: 'text',
       left: SUB_TITLE_LEFT + TREE_INDENT * Math.max(0, depth - 1) + (depth > 0 ? TREE_INDENT / 2 : 0),
@@ -783,9 +799,12 @@ export function buildSubDecorGraphics(
       textVerticalAlign: 'top',
       style: rich
         ? { text: rich, ...bg, rich: {
-            n: { fill: '#000000', fontSize: 13, fontWeight: weight, ...picked },
+            n: { fill: '#000000', fontSize: 13, fontWeight: weight },
             biz: { fill: '#000000', fontSize: 12, backgroundColor: '#f4f4f5', padding: [1, 4], borderRadius: 3 },
             tag: { fill: '#000000', fontSize: 11, fontFamily: MONO },
+            // 选中的 event 画不出来时的替身:粗框框住它(全图唯一的粗框仍指着选中的那一个)
+            hid: { fill: '#000000', fontSize: 11, fontFamily: MONO, borderColor: FRAME_EDGE, borderWidth: FRAME_W,
+                   borderRadius: 2, padding: [1, 3] },
           } }
         : {
             text,
@@ -793,14 +812,12 @@ export function buildSubDecorGraphics(
             fontSize: 13,
             fontWeight: weight,
             ...bg,
-            ...picked,
           },
       z: SUB_TITLE_Z,
-      // 接不接鼠标:给了 onLabelClick 就接(点轨名选中这条 band);带 tagTip 的另有悬停说明;都没有照旧不接
+      // 接不接鼠标:带 tagTip 的接(悬停说明);其余不接(轨名不能选中)
       ...(ex?.tag && ex.tagTip
         ? { silent: false, tooltip: { show: true, formatter: `<span style='font-family:${MONO};color:#000000'>${ex.tagTip}</span>` } }
-        : { silent: !onLabelClick }),
-      ...(onLabelClick ? { cursor: 'pointer', onclick: () => onLabelClick(bi) } : {}),
+        : { silent: true }),
     })
   })
 
@@ -818,7 +835,6 @@ export function buildSubDecorGraphics(
         fill: '#000000',
         fontSize: 13,
         fontFamily: MONO,
-        fontWeight: active.hits ? 'bold' : 'normal',
         backgroundColor: HITS_FILL,
         padding: [0, 2],
       },
@@ -835,9 +851,9 @@ export function buildSubOption(
   chartSubWidth: number,
   opts?: { getChartEl?: () => HTMLElement | null },
 ): unknown {
-  const { tooltipResolver, hitLabel, zoomOverride, strictWindow,
-          selectedHitId, candidateHitIds } = input
-  const { dates, pointData, intervalData, bracketData, highlightData, veilData } = bundle
+  const { tooltipResolver, hitLabel, zoomOverride, strictWindow } = input
+  const { dates, pointData, intervalData, bracketData, frameData, veilData } = bundle
+  const hl = input.highlight ?? NO_HIGHLIGHT
   const z = input.zoomFactor ?? 1.0   // 副图 band 竖直 zoom(spec 2026-07-03)
   const bracketTop = subGeom.appBracketTop ?? BAND_TOP_PAD
 
@@ -860,9 +876,13 @@ export function buildSubOption(
   const fbIn = input.feedback ?? null
   // compare 下 app 在这只股票上一个 hit 都没有、但有反馈(如改好了的):hits 区照样铺底、写表头,反馈带画在里面
   const hitsLabelVisible = bracketData.length > 0 || (fbIn?.marks.length ?? 0) > 0
-  // 当家行所在那条 band(或 bracket)的表头名字加粗
-  const activeKey = input.activeFamily ?? null
-  const activeBand = activeKey ? bandLabelTexts.indexOf(activeKey.slice(0, activeKey.lastIndexOf('@'))) : -1
+  const bandIdx = (b: string) => bandLabelTexts.indexOf(b)
+  // 粗框、底线在前,个数在后(数字压在粗框上面);外层的反馈在反馈带上那一块下面画底线
+  const selData = [
+    ...frameData.filter((d) => d.kind !== 'count'),
+    ...(fbIn?.marks ?? []).filter((m) => m.under).map((m) => ({ kind: 'under', target: 'feedback', value: [m.start, m.end, m.lane] })),
+    ...frameData.filter((d) => d.kind === 'count'),
+  ]
   const decorGraphics = buildSubDecorGraphics(
     subGeom.bandGeom,
     subGeom.bracketH,
@@ -870,15 +890,14 @@ export function buildSubOption(
     hitsLabelVisible,
     chartSubWidth,
     z,
-    { band: activeBand, hits: !!activeKey && activeKey.startsWith(`${HIT_FAMILY_PREFIX}@`),
-      linked: (input.linkedBands ?? []).map((b) => bandLabelTexts.indexOf(b)).filter((i) => i >= 0),
-      hover: input.hoverBand ? bandLabelTexts.indexOf(input.hoverBand) : undefined,
-      selected: input.selectedBand ? bandLabelTexts.indexOf(input.selectedBand) : undefined },
+    { linked: (input.linkedBands ?? []).map(bandIdx).filter((i) => i >= 0),
+      hover: input.hoverBand ? bandIdx(input.hoverBand) : undefined,
+      // 选中的 event 画不出来:它那条轨名旁挂 hidden 并框住
+      hidden: hl.hiddenBand ? bandIdx(hl.hiddenBand) : undefined },
     bandLabelTexts.map((b) => input.bandExtras?.[b] ?? null),
     bracketTop,
     subBandTree(bandLabelTexts, input.topology),
     subGeom.hitsAreaTop ?? 0,
-    input.onBandLabelClick ? (bi) => input.onBandLabelClick!(bandLabelTexts[bi]) : undefined,
   )
 
   return {
@@ -924,13 +943,10 @@ export function buildSubOption(
         data: bundle.bracketLineData, silent: false,
         renderItem: makeRenderBracketLine(bundle.bracketLineData, z, bracketTop, true, subGeom.bracketLaneTops),
         encode: { x: [0, 1] }, z: 10, emphasis: { disabled: true } },
-      // brackets (z:11):hit 的记号与买入日 ▼。focus 信号:selectedHitId 存在且无实例焦点 ⟺ bracket
-      // 本身是被点者(KlineChart.ts bracket 分支走 focusHit 不设实例;marker 分支必设)
+      // brackets (z:11):hit 的记号与买入日 ▼(个数在 selection 系列里,压在竖线上面)
       { type: 'custom', name: 'brackets', xAxisIndex: 0, yAxisIndex: 0, clip: true,
         data: bracketData,
-        renderItem: makeRenderBracket(bracketData, selectedHitId ?? null, candidateHitIds ?? new Set(), z,
-          (selectedHitId ?? null) !== null && (input.selectedInstanceId ?? null) === null, bracketTop,
-          subGeom.bracketLaneTops),
+        renderItem: makeRenderBracket(bracketData, z, bracketTop, subGeom.bracketLaneTops),
         encode: { x: [0, 1] }, z: 11, tooltip: markerTooltip,
         emphasis: { disabled: true } },
       // 反馈带(z:12,compare 才有):hit 行底下,每条反馈一个横跨 [start, end] 的记号;悬停写全,点它打开那条
@@ -941,21 +957,22 @@ export function buildSubOption(
         encode: { x: [0, 1] }, z: 12, emphasis: { disabled: true },
         tooltip: { show: true, formatter: (p: any) => fbIn.tip(fbIn.marks[p.dataIndex]?.id ?? '') },
       }] : []),
-      // highlight (z:20)。animation:true 为 series 级显式开关:keyframeAnimation(pending 闪烁)
-      // 被 isAnimationEnabled() 闸住,继承顶层 animation:false 会整体跳过动画。
-      { type: 'custom', name: 'highlight', xAxisIndex: 0, yAxisIndex: 0, clip: true,
-        data: highlightData, animation: true,
-        renderItem: makeRenderHighlightWithGeom(highlightData, subGeom.bandGeom, z),
-        encode: { x: 0 }, z: 20, tooltip: markerTooltip },
-      // shift-veil (z:22 高于 highlight,spec 2026-07-11):fill 白蒙 + 黑横线,与 highlight 三分支正交
+      // shift-veil (z:22,spec 2026-07-11):fill 白蒙 + 黑横线
       { type: 'custom', name: 'shift-veil', xAxisIndex: 0, yAxisIndex: 0, clip: true,
         data: veilData, animation: false, silent: true,
         renderItem: makeRenderShiftVeil(veilData, subGeom.bandGeom, z),
         z: 22 },
-      // 当前日竖线(z:30,最上层):缩小后连成一片的格会把下层的线整段盖住;两侧白边压在任何色块上都拉开深浅
+      // 当前日竖线(z:2,最下层;2026-11-13 用户定):只压在行底色(z:1)上面,不遮挡任何记号、分界线(z:3)、粗框与个数;
+      // 缩小后连成一片的格会把它整段盖住,这时靠粗框认当前那一天
       { type: 'custom', name: 'current-day', xAxisIndex: 0, yAxisIndex: 0, clip: true,
         data: bundle.cursorData, silent: true, animation: false,
-        renderItem: renderCursor, encode: { x: 0 }, z: 30 },
+        renderItem: renderCursor, encode: { x: 0 }, z: 2 },
+      // 选中的粗框、外层底线、hits 行的个数(z:31,压在记号上面、轨名下面);不接鼠标
+      { type: 'custom', name: SELECTION_SERIES, xAxisIndex: 0, yAxisIndex: 0, clip: true,
+        data: selData, silent: true, animation: false,
+        renderItem: makeRenderSelection(selData, subGeom.bandGeom, z, bracketTop, subGeom.bracketLaneTops,
+                                        subGeom.feedbackTop),
+        encode: { x: [0, 1] }, z: 31 },
     ],
   }
 }
@@ -982,157 +999,76 @@ function renderHitSpanner(params: any, api: any) {
   }
 }
 
-// 选中词汇(2026-07-08 改):三档皆保 node/tier 分色(in_hit=node本色,qualified/detected=灰),
-// group=细深边, focus=粗深边;琥珀不再代表选中。AMBER_FILL 仅剩 bracket 默认底(bracket 无 tier 语义)。
+// 选中的画法(render/selHighlight.ts 定谁照常、谁画淡、粗框框谁、底线画在谁下面;这里只管画成什么样):
+// - 粗框:只在选中的那一个上,全图只有一个。app 的记号上是深色 2.5px、外扩 1.5px、不填色、无阴影、无白圈;
+// - 外层底线:路径上选中的那一个外面的每一节,在它自己的记号所在那一行底下画一道 2.5px 深色粗线,横跨它的起止;
+// - 画淡:只降不透明度(selHighlight.ts 的 dimOpacity),颜色、形状不变;
+// - 粗框、底线与 hits 行的个数压在当前日竖线上面(副图 selection 系列 z:31;竖线本身在两张图的最下层)。
 const AMBER_FILL = '#fbbf24'      // bracket 默认底(琥珀,非选中语义)
 // 买入日格子上面个数行里的数字:字号固定(个数行高固定、不随缩放);等宽字一个数字的宽 ≈ 字号 × 0.6
 const BUY_COUNT_FONT_PX = 9
 const BUY_COUNT_CHAR_RATIO = 0.6
-const BUY_COUNT_GAP = 1   // 数字下沿离格子顶(选中时的加粗框往外扩 1~2px,别压上)
-const HL_FOCUS_EDGE = '#1e293b'   // slate-800(group/focus 深边、BO 文本、bracket 序号)
-const HL_STROKE = '#fbbf24'       // 收窄:仅 pendingDisambig 白底垫层的琥珀边消费
+const BUY_COUNT_GAP = 1   // 数字下沿离格子顶
+const BUY_COUNT_HALO = 3  // 数字描一圈白边:压在当前日竖线上时竖线在数字处断开(待验证)
+const HL_FOCUS_EDGE = SEL_EDGE_COLOR   // 粗框、外层底线、BO 文本
 const HL_FOCUS_STROKE_WIDTH = 2.5
-const HL_GROUP_STROKE_WIDTH = 1.5
-const HL_SHADOW = { shadowBlur: 6, shadowColor: 'rgba(15,23,42,0.4)', shadowOffsetY: 2 } as const
+/** 粗框:深色、线宽、向外扩的量(待验证:会不会碰到 hits 格上方的个数) */
+export const FRAME_EDGE = HL_FOCUS_EDGE
+export const FRAME_W = HL_FOCUS_STROKE_WIDTH
+export const FRAME_OUT = 1.5
+/** 外层底线的粗细(待验证) */
+export const UNDER_H = UNDER_LINE_H
+/** 副图上粗框、底线、个数那一层的系列名(压在当前日竖线上面) */
+export const SELECTION_SERIES = 'selection'
 
-// 闪烁关键帧(每次调用新建对象——zrender 内部状态会污染共享常量)。
-// ⚠ keyframeAnimation 受 series 级 isAnimationEnabled() 闸控(实测):顶层 animation:false
-// 会连带跳过它,highlight / highlight-price 系列必须显式 animation:true。
-export function pendingBlinkAnimation() {
-  return {
-    duration: 1200,
-    loop: true,
-    keyframes: [
-      { percent: 0, style: { opacity: 1 } },
-      { percent: 0.5, style: { opacity: 0.45 } },
-      { percent: 1, style: { opacity: 1 } },
-    ],
-  }
+/** 一组图形一起画淡:group 没有 style,不透明度要逐个子图形施加。 */
+function withOpacity(children: any[], opacity: number): any[] {
+  if (opacity >= 1) return children
+  return children.map((c) => ({ ...c, style: { ...(c.style ?? {}), opacity: (c.style?.opacity ?? 1) * opacity } }))
 }
 
-// 按三态装配放大版图形(2026-07-08 改):group/focus 都保 node/tier 分色,
-// 靠边框粗细区分——group=细深边(1.5)、focus=粗深边(2.5),琥珀不再代表选中。
-// color 由 itemStyle.color 传入,已按 colorOf 三档分:in_hit=node本色 / qualified=中灰 / detected=浅灰。
-// 放大实心版盖住下层本体 marker → 一律 silent:true 让 hover/click 穿透到本体系列。
-// pending 分层固定:白底垫层(阴影+琥珀边恒定)+ 本色 fill 层(单独闪)。
-// 禁止本色静态垫层——fill 闪暗时露出同色垫层 = 视觉不闪(c94baf7 同构陷阱)。
-function buildHlShape(
-  base: { type: string; shape: Record<string, unknown> },
-  kind: 'group' | 'focus' | 'pendingDisambig',
-  color: string,
-  z2: number,
-): Record<string, unknown> {
-  if (kind === 'group') {
-    return {
-      ...base,
-      style: { fill: color, stroke: HL_FOCUS_EDGE, lineWidth: HL_GROUP_STROKE_WIDTH, ...HL_SHADOW },
-      silent: true, z2,
-    }
-  }
-  if (kind === 'focus') {
-    return {
-      ...base,
-      style: { fill: color, stroke: HL_FOCUS_EDGE, lineWidth: HL_FOCUS_STROKE_WIDTH, ...HL_SHADOW },
-      silent: true, z2,
-    }
-  }
-  return {
-    type: 'group',
-    silent: true, z2,
-    children: [
-      { ...base, style: { fill: '#ffffff', stroke: HL_STROKE, lineWidth: HL_FOCUS_STROKE_WIDTH, ...HL_SHADOW } },
-      { ...base, style: { fill: color }, keyframeAnimation: pendingBlinkAnimation() },
-    ],
-  }
-}
-
-// 主图 price-anchored bo 盒放大版(grid0 价格轴)。实心放大版遮住本体文字 →
-// 重画盒+文本(字号不变)。stackOffset 与 renderPricePoint 同步(BO_STACK_PT)。
-// 2026-07-08 改:同 buildHlShape,group/focus 保 tier 分色(in_hit=橙/灰) + 细/粗深边;
-// 文字色全 tier 统一 HL_FOCUS_EDGE(灰底可读,橙底可读);pending 白底+闪烁分层不动。
-// ⚠ closure factory:ECharts customSeries 不在 params 中传 data item,必须按 dataIndex 反查。
-export function makeRenderPricePointHighlight(
-  data: Array<{ value: number[]; instance_id: string; anchorY: number; text: string;
-                 itemStyle: { color: string };
-                 kind: 'group' | 'focus' | 'pendingDisambig';
-                 state?: string; pkLift?: number }>,
+/**
+ * 主图价格区 node 的粗框与外层底线(数据是 price-points 记录加 kind):bo 盒外扩一圈描深边;pk ▽ 外扩描深边;
+ * 外层的画在记号下面一道粗线。几何与 makeRenderPricePoint 同一套。
+ */
+export function makeRenderPriceFrame(
+  data: Array<{ value: number[]; anchorY: number; text: string; kind: 'frame' | 'under';
+                 state?: string; pkLift?: number; sy?: number }>,
 ) {
-  return function renderPricePointHighlight(params: any, api: any) {
+  return function renderPriceFrame(params: any, api: any) {
     const item = data[params.dataIndex] ?? null
-    const hlKind = item?.kind ?? 'focus'
-    const anchorY = item?.anchorY ?? api.value(1)
-    const text = item?.text ?? ''
-    const color = item?.itemStyle?.color ?? '#888888'
-    const [cx, anchorPx] = api.coord([api.value(0), anchorY])
-
-    // pk 事件(state 存在)→ 放大 ▽(×1.4)+ id 标签,与 makeRenderPricePoint 同一分派。
-    // 三态形状编码(pkTriStyle:实心/空心/浅灰虚线)在高亮层原样保留,选中只加粗描边 + shadow
-    // (group 细边 / focus 粗边,与 bo 盒同一词汇)。空心态放大版给白底:盖住下层本体 ▽,
-    // 免得两层轮廓套叠成「双三角」(实心态本就不透)。
-    if (item?.state) {
-      const lift = item.pkLift ?? 0        // 与本体 renderer 同步的同锚避让量
-      const triCy = anchorPx - TRIANGLE_STACK_PT - lift
-      const tw = PK_TRIANGLE_HALF_WIDTH * 1.4
-      const th = PK_TRIANGLE_HEIGHT * 1.4
-      const idCy = anchorPx - PEAK_ID_STACK_PT - lift
-      const tri = pkTriStyle(item.state)
-      const hlFill = tri.fill === 'none' ? '#ffffff' : tri.fill
-      const hlWidth = hlKind === 'group' ? HL_GROUP_STROKE_WIDTH : HL_FOCUS_STROKE_WIDTH
-      const triShape = {
-        points: [[cx - tw, triCy - th / 2], [cx + tw, triCy - th / 2], [cx, triCy + th / 2]],
-      }
-      const textEl = {
-        type: 'text',
-        style: { text, x: cx, y: idCy, fill: tri.stroke, fontSize: MARKER_FONT_SIZE,
-                 fontWeight: 'bold', align: 'center', verticalAlign: 'middle' },
-      }
-      const children: any[] = hlKind === 'pendingDisambig'
-        ? [
-            { type: 'polygon', shape: triShape,
-              style: { fill: '#ffffff', stroke: HL_STROKE, lineWidth: HL_FOCUS_STROKE_WIDTH, ...HL_SHADOW } },
-            { type: 'polygon', shape: triShape,
-              style: { ...tri, fill: hlFill, lineWidth: HL_FOCUS_STROKE_WIDTH },
-              keyframeAnimation: pendingBlinkAnimation() },
-            textEl,
-          ]
-        : [
-            { type: 'polygon', shape: triShape,
-              style: { ...tri, fill: hlFill, lineWidth: hlWidth, ...HL_SHADOW } },
-            textEl,
-          ]
-      return { type: 'group', silent: true, z2: 21, children }
+    if (!item) return { type: 'group', children: [] }
+    const [cx, anchorPx] = api.coord([api.value(0), item.anchorY ?? api.value(1)])
+    const sy = item.sy ?? 1   // 同本体的竖直放大
+    let box: { x: number; y: number; width: number; height: number }
+    if (item.state) {
+      const triCy = anchorPx - TRIANGLE_STACK_PT - (item.pkLift ?? 0)
+      const th = PK_TRIANGLE_HEIGHT * sy
+      box = { x: cx - PK_TRIANGLE_HALF_WIDTH, y: triCy - th / 2,
+              width: PK_TRIANGLE_HALF_WIDTH * 2, height: th }
+    } else {
+      const { w, h: h0 } = boBoxDims(item.text ?? '')
+      const h = h0 * sy
+      const cy = anchorPx - BO_STACK_PT
+      box = { x: cx - w / 2, y: cy - h / 2, width: w, height: h }
     }
-
-    // bo 事件:圆角矩形盒 + [broken_peak_ids] 文本(原逻辑不变)
-    const stackOffset = BO_STACK_PT
-    const cy = anchorPx - stackOffset
-    const { w, h } = boBoxDims(text)
-    const pad = 3
-    const boxShape = {
-      x: cx - w / 2 - pad, y: cy - h / 2 - pad,
-      width: w + 2 * pad, height: h + 2 * pad, r: BO_BOX_RADIUS + pad,
+    if (item.kind === 'under') {
+      return { type: 'rect', silent: true,
+               shape: { x: box.x, y: box.y + box.height + 1, width: box.width, height: UNDER_H },
+               style: { fill: FRAME_EDGE } }
     }
-    const textEl = {
-      type: 'text',
-      style: { text, x: cx, y: cy, fill: HL_FOCUS_EDGE, fontSize: MARKER_FONT_SIZE,
-               fontWeight: 'bold', align: 'center', verticalAlign: 'middle' },
+    if (item.state) {
+      // ▽ 的三个顶点各往外推 FRAME_OUT
+      const o = FRAME_OUT
+      return { type: 'polygon', silent: true,
+               shape: { points: [[box.x - 2 * o, box.y - o], [box.x + box.width + 2 * o, box.y - o],
+                                 [cx, box.y + box.height + 2 * o]] },
+               style: { fill: 'none', stroke: FRAME_EDGE, lineWidth: FRAME_W } }
     }
-    const children: any[] = hlKind === 'pendingDisambig'
-      ? [
-          { type: 'rect', shape: boxShape,
-            style: { fill: '#ffffff', stroke: HL_STROKE, lineWidth: HL_FOCUS_STROKE_WIDTH, ...HL_SHADOW } },
-          { type: 'rect', shape: boxShape, style: { fill: color },
-            keyframeAnimation: pendingBlinkAnimation() },
-          textEl,
-        ]
-      : [
-          { type: 'rect', shape: boxShape,
-            style: hlKind === 'group'
-              ? { fill: color, stroke: HL_FOCUS_EDGE, lineWidth: HL_GROUP_STROKE_WIDTH, ...HL_SHADOW }
-              : { fill: color, stroke: HL_FOCUS_EDGE, lineWidth: HL_FOCUS_STROKE_WIDTH, ...HL_SHADOW } },
-          textEl,
-        ]
-    return { type: 'group', silent: true, z2: 21, children }
+    return { type: 'rect', silent: true,
+             shape: { x: box.x - FRAME_OUT, y: box.y - FRAME_OUT, width: box.width + 2 * FRAME_OUT,
+                      height: box.height + 2 * FRAME_OUT, r: BO_BOX_RADIUS + FRAME_OUT },
+             style: { fill: 'none', stroke: FRAME_EDGE, lineWidth: FRAME_W } }
   }
 }
 
@@ -1153,13 +1089,13 @@ export function renderIntervalWithGeom(
   if (!g) return { type: 'group', children: [] }
   const { x0, x1 } = markXRange(api, api.value(0), api.value(1))
   const { y, laneH } = laneBox(g, lane, zoomFactor)
-  // 档位按高度分三档、底对齐(value[5] = 高度比例;缺省满高)
-  const h = laneH * (api.value(5) || 1)
-  return {
-    type: 'rect',
-    shape: { x: x0, y: y + laneH - h, width: Math.max(2, x1 - x0), height: h },
-    style: api.style(),
-  }
+  // 档位按高度分三档、底对齐(value[5] = 高度比例;缺省满高);有关的再往上长(value[6],只在 in_hit 档)
+  const h = laneH * (api.value(5) || 1) * (api.value(6) || 1)
+  // 有关的方块加一圈贴边细边(value[7];render/selHighlight.ts 的 relatedEdgeRect)
+  const style = api.style()
+  const { shape, stroke } = relatedEdgeRect({ x: x0, y: y + laneH - h, width: Math.max(2, x1 - x0), height: h },
+                                            style?.fill, !!api.value(7))
+  return { type: 'rect', shape, style: { ...style, ...stroke } }
 }
 
 /** lane 在 band 里的竖直范围:自顶向下堆叠,lane0 贴 band 顶 pad(与 bracket 区方向一致)。 */
@@ -1198,75 +1134,19 @@ export function renderPointWithGeom(
   // 档位按大小分三档(value[5] = 高度比例;缺省满尺寸)
   const k = 0.6 + 0.4 * (api.value(5) || 1)
   const w = Math.max(5, Math.min(20, unitW * 0.35)) * k
+  const sy = api.value(6) || 1   // 有关的竖直放大:只放大高,宽不变(窄格下不和相邻的挤在一起)
   return {
     type: 'polygon',
-    shape: { points: [[x, centerY + 4 * zoomFactor * k], [x - w, centerY - 3 * zoomFactor * k],
-                      [x + w, centerY - 3 * zoomFactor * k]] },
+    shape: { points: [[x, centerY + 4 * zoomFactor * k * sy], [x - w, centerY - 3 * zoomFactor * k * sy],
+                      [x + w, centerY - 3 * zoomFactor * k * sy]] },
     style: api.style(),
   }
 }
 
-// makeRenderHighlightWithGeom:三种形状——
-//   point :点记号的放大实心版(group/focus 单图形,pending 白底+闪烁双层,见 buildHlShape);
-//   extent:成员的完整跨度 [族起点, 成员终点],空心细框,不填色(实心复本会盖住族行里后面的格子);
-//   mark  :成员所在的那一格(或整条),空心粗框;pending 时框闪烁。
-// 线宽:group 细、focus / pending 粗。一律 silent:true 让 hover/click 穿透到本体系列。
-export function makeRenderHighlightWithGeom(
-  items: Array<{ value: number[]; instance_id: string; itemStyle?: { color?: string };
-                 kind: 'group' | 'focus' | 'pendingDisambig'; shape?: 'point' | 'extent' | 'mark' }>,
-  bandGeom: BandGeom[],
-  zoomFactor: number = 1.0,   // 副图 band 竖直 zoom(spec 2026-07-03)
-) {
-  return function renderHighlight(params: any, api: any) {
-    const item = items[params.dataIndex]
-    const hlKind = item?.kind ?? 'focus'
-    const color = item?.itemStyle?.color ?? '#888888'
-    const lane = (item?.value?.[2] as number) || 0
-    const band = (item?.value?.[3] as number) || 0
-    const g = bandGeom[band]
-    if (!item || !g) return { type: 'group', children: [] }
-    const lw = hlKind === 'group' ? HL_GROUP_STROKE_WIDTH : HL_FOCUS_STROKE_WIDTH
-    if (item.shape === 'point') {
-      const x = api.coord([api.value(0), 0])[0]
-      const laneH = BAND_MARKER_H * zoomFactor
-      const gap = BAND_LANE_GAP * zoomFactor
-      const centerY = g.top + BAND_TOP_PAD + lane * (laneH + gap) + laneH / 2
-      const unitW = api.size([1, 0])[0]
-      // 本体三角(renderPointWithGeom):高 7(+4/−3)、半宽 ≤20;放大版:高 10(+6/−4)、半宽 ×1.4
-      const w = Math.max(7, Math.min(28, unitW * 0.35 * 1.4))
-      const base = {
-        type: 'polygon',
-        shape: { points: [[x, centerY + 6 * zoomFactor], [x - w, centerY - 4 * zoomFactor], [x + w, centerY - 4 * zoomFactor]] },
-      }
-      return buildHlShape(base, hlKind, color, 20)
-    }
-    const { y, laneH } = laneBox(g, lane, zoomFactor)
-    if (item.shape === 'extent') {
-      const { x0, x1 } = markXRange(api, item.value[0], item.value[1], 1)
-      return {
-        type: 'rect', silent: true, z2: 20,
-        shape: { x: x0, y: y - HL_EXPAND_OFFSET * zoomFactor, width: Math.max(2, x1 - x0),
-                 height: laneH + HL_EXPAND_H * zoomFactor },
-        style: { fill: 'none', stroke: HL_FOCUS_EDGE, lineWidth: HL_GROUP_STROKE_WIDTH },
-      }
-    }
-    // mark:框住那一格(高度跟格的档位走)
-    const { x0, x1 } = markXRange(api, item.value[0], item.value[1], 1.5)
-    const h = laneH * (item.value[5] || 1)
-    const el: Record<string, unknown> = {
-      type: 'rect', silent: true, z2: 21,
-      shape: { x: x0, y: y + laneH - h - 1.5, width: Math.max(3, x1 - x0), height: h + 3 },
-      style: { fill: 'none', stroke: HL_FOCUS_EDGE, lineWidth: lw, ...HL_SHADOW },
-    }
-    if (hlKind === 'pendingDisambig') el.keyframeAnimation = pendingBlinkAnimation()
-    return el
-  }
-}
-
 /** 族底线(起点那天带一个竖头,读作「这一族从这天开始」)+ 透明命中区(悬停整行给族摘要;格在上层,
- *  点格不受影响)+ 当家行的粗底线。 */
+ *  点格不受影响)。这一族一个照常的成员都没有时画淡。 */
 export function makeRenderFamilyLine(
-  items: Array<{ multi?: boolean; active?: boolean; afterWindow?: boolean; head?: boolean }>,
+  items: Array<{ multi?: boolean; dim?: boolean; afterWindow?: boolean; head?: boolean }>,
   bandGeom: BandGeom[],
   zoomFactor: number = 1.0,
 ) {
@@ -1278,38 +1158,34 @@ export function makeRenderFamilyLine(
     const { y, laneH } = laneBox(g, api.value(2) || 0, zoomFactor)
     const width = Math.max(2, x1 - x0)
     const bottom = y + laneH
-    const children: any[] = [
-      { type: 'rect', shape: { x: x0, y, width, height: laneH }, style: { fill: 'rgba(0,0,0,0.001)' } },
-    ]
+    const lines: any[] = []
     if (item.multi) {
       const fill = item.afterWindow ? FAMILY_LINE_AFTER_WINDOW : FAMILY_LINE_COLOR
-      children.push({ type: 'rect', silent: true,
-                      shape: { x: x0, y: bottom - FAMILY_LINE_H, width, height: FAMILY_LINE_H },
-                      style: { fill } })
+      lines.push({ type: 'rect', silent: true,
+                   shape: { x: x0, y: bottom - FAMILY_LINE_H, width, height: FAMILY_LINE_H },
+                   style: { fill } })
       if (item.head) {
         const hh = laneH * FAMILY_HEAD_RATIO
-        children.push({ type: 'rect', silent: true,
-                        shape: { x: x0, y: bottom - hh, width: FAMILY_HEAD_W, height: hh }, style: { fill } })
+        lines.push({ type: 'rect', silent: true,
+                     shape: { x: x0, y: bottom - hh, width: FAMILY_HEAD_W, height: hh }, style: { fill } })
       }
     }
-    if (item.active) {
-      children.push({ type: 'rect', silent: true,
-                      shape: { x: x0, y: bottom - 1, width, height: ACTIVE_LINE_H },
-                      style: { fill: HL_FOCUS_EDGE } })
-    }
-    return { type: 'group', children }
+    return { type: 'group', children: [
+      { type: 'rect', shape: { x: x0, y, width, height: laneH }, style: { fill: 'rgba(0,0,0,0.001)' } },
+      ...withOpacity(lines, dimOpacity('app', !!item.dim)),
+    ] }
   }
 }
 
 /**
- * bracket 族底线(每一族都画,bracket 一律是梳子;起点带竖头)、当家行粗底线。
+ * bracket 族底线(每一族都画,bracket 一律是梳子;起点带竖头)。这一族一个照常的格都没有时画淡。
  * clickable(副图里一律传 true):有买入日的族先垫一整行高(含行间空隙)的透明命中区,线与竖头不响应鼠标;点它选中这一族,
  * compare 下另发起这一族的 family 反馈(spec 6.13)。代价:格与格之间的空白点到的是这一族,不是空白;new_step 的族底线
  * 从旧平台起点画起,能点出一族的地方比买点那段长。没有买入日的族不垫,点那里仍是空白。
  * 不 clickable 时整组不响应鼠标。
  */
 export function makeRenderBracketLine(
-  items: Array<{ multi?: boolean; active?: boolean; buy_days?: number[] }>,
+  items: Array<{ multi?: boolean; dim?: boolean; buy_days?: number[] }>,
   zoomFactor: number = 1.0,
   bracketTop: number = BAND_TOP_PAD,   // hit 第 0 行的顶(compare 下让出上面的 user 行,见 subGeometry 的 appBracketTop)
   clickable: boolean = false,
@@ -1325,17 +1201,13 @@ export function makeRenderBracketLine(
     const hh = rectH * FAMILY_HEAD_RATIO
     const hitArea = clickable && (item.buy_days?.length ?? 0) > 0
     const line = hitArea ? { silent: true } : {}
-    const children: any[] = [
+    const children: any[] = withOpacity([
       { type: 'rect', ...line, shape: { x: x0, y: top + rectH - FAMILY_LINE_H, width, height: FAMILY_LINE_H },
         style: { fill: FAMILY_LINE_COLOR } },
       // 起点竖头:和 band 的族底线同一种读法
       { type: 'rect', ...line, shape: { x: x0, y: top + rectH - hh, width: FAMILY_HEAD_W, height: hh },
         style: { fill: FAMILY_LINE_COLOR } },
-    ]
-    if (item.active) {
-      children.push({ type: 'rect', ...line, shape: { x: x0, y: top + rectH - 1, width, height: ACTIVE_LINE_H },
-                      style: { fill: HL_FOCUS_EDGE } })
-    }
+    ], dimOpacity('app', !!item.dim))
     if (hitArea) {
       // fill 用近乎透明的 rgba 而非 transparent:保证 zrender 命中检测不被跳过(同 makeRenderFamilyLine)
       children.unshift({ type: 'rect', shape: { x: x0, y: top, width, height: BAND_LANE_H * zoomFactor },
@@ -1350,7 +1222,7 @@ export function makeRenderBracketLine(
  * 反馈带的记号(compare,spec 6.13):第 lane 行(y = feedbackTop + lane·FEEDBACK_ROW_H,行高固定、不随缩放)
  * 横跨 [start, end] 的一块,画法照 render/feedbackStrip.ts 的 feedbackMarkStyle(配色按档;选中的描黑色粗边、
  * 粗出来的部分画在外侧、压在别的记号上面);记号上的字是点出的 node 名(黑字、等宽;写什么、放不放得下见
- * feedbackLabelText),放不下或没点 node 只画记号。
+ * feedbackLabelText),放不下或没点 node 只画记号。反馈记号属用户那一边:选中样本、它有成员框时其余的画淡。
  */
 export function makeRenderFeedbackMark(marks: readonly FeedbackMark[], feedbackTop: number) {
   return function renderFeedbackMark(params: any, api: any) {
@@ -1372,7 +1244,94 @@ export function makeRenderFeedbackMark(marks: readonly FeedbackMark[], feedbackT
                       style: { text, x: x0 + FEEDBACK_TEXT_PAD, y: y + h / 2, align: 'left',
                                verticalAlign: 'middle', font: `${FEEDBACK_FONT_PX}px ${MONO}`, fill: '#000000' } })
     }
-    return { type: 'group', children }
+    return { type: 'group', children: withOpacity(children, dimOpacity('user', !!m.dim)) }
+  }
+}
+
+/**
+ * 副图上选中的粗框、外层底线与 hits 行的个数(SELECTION_SERIES,z:31,压在当前日竖线上面)。数据见 EventBundle.frameData:
+ * - target 'hits':value [起, 止, lane];frame 框住这一段(一族整行,或一个格位),under 在这一行底下画底线,
+ *   count 在这一列格子外正上方的个数行里写个数(没留个数行、K 线密到一根比数字还窄时不写);
+ * - target 'band':value [起, 止, lane, band, nBands, 高];frame 框住那一格 / 整条(高随档位、底对齐)或那个点,
+ *   under 在它那一行底下横跨它的起止;
+ * - target 'feedback':value [起, 止, lane];under 在反馈带上那一块下沿画底线。
+ */
+export function makeRenderSelection(
+  items: Array<{ kind: 'frame' | 'under' | 'count'; target: 'hits' | 'band' | 'feedback'; value: number[];
+                 shape?: 'mark' | 'point'; n?: number; dim?: boolean; grow?: boolean }>,
+  bandGeom: BandGeom[],
+  zoomFactor: number = 1.0,
+  bracketTop: number = BAND_TOP_PAD,
+  laneTops?: readonly number[],
+  feedbackTop: number = 0,
+) {
+  const frameStyle = { fill: 'none', stroke: FRAME_EDGE, lineWidth: FRAME_W }
+  return function renderSelection(params: any, api: any) {
+    const it = items[params.dataIndex]
+    if (!it) return { type: 'group', children: [] }
+    const [s, e] = [it.value[0], it.value[1]]
+    if (it.target === 'hits') {
+      const lane = it.value[2] || 0
+      const top = laneTops?.[lane] ?? bracketTop + lane * BAND_LANE_H * zoomFactor
+      const rectH = BAND_MARKER_H * zoomFactor
+      // 那一格往上长了(并着牵出的 hit):个数跟着上移、粗框跟着变高后的格走;底线在格底,不动
+      const grow = it.grow ? MARK_GROW * zoomFactor : 0
+      if (it.kind === 'count') {
+        const n = it.n ?? 0
+        const digitsW = String(n).length * BUY_COUNT_FONT_PX * BUY_COUNT_CHAR_RATIO
+        if (n < 2 || !laneTops || api.size([1, 0])[0] < digitsW - 1) return { type: 'group', children: [] }
+        // 画淡只淡数字本身:白边保持不透明,竖线不从淡了的数字里透出来
+        const op = dimOpacity('app', !!it.dim)
+        return { type: 'text', silent: true,
+                 style: { text: String(n), x: api.coord([s, 0])[0], y: top - grow - BUY_COUNT_GAP, align: 'center',
+                          verticalAlign: 'bottom', font: `bold ${BUY_COUNT_FONT_PX}px ${MONO}`,
+                          fill: op < 1 ? `rgba(17, 17, 17, ${op})` : '#111111',
+                          stroke: '#ffffff', lineWidth: BUY_COUNT_HALO } }
+      }
+      if (it.kind === 'under') {
+        const { x0, x1 } = markXRange(api, s, e)
+        return { type: 'rect', silent: true, shape: { x: x0, y: top + rectH - 1, width: Math.max(2, x1 - x0), height: UNDER_H },
+                 style: { fill: FRAME_EDGE } }
+      }
+      const { x0, x1 } = markXRange(api, s, e, FRAME_OUT)
+      return { type: 'rect', silent: true,
+               shape: { x: x0, y: top - grow - FRAME_OUT, width: Math.max(3, x1 - x0), height: rectH + grow + 2 * FRAME_OUT },
+               style: frameStyle }
+    }
+    if (it.target === 'feedback') {
+      const { x0, x1 } = markXRange(api, s, e)
+      const y = feedbackTop + (it.value[2] || 0) * FEEDBACK_ROW_H + FEEDBACK_ROW_H - FEEDBACK_MARK_PAD - 1
+      return { type: 'rect', silent: true, shape: { x: x0, y, width: Math.max(4, x1 - x0), height: UNDER_H },
+               style: { fill: FRAME_EDGE } }
+    }
+    const g = bandGeom[it.value[3] || 0]
+    if (!g) return { type: 'group', children: [] }
+    const lane = it.value[2] || 0
+    const { y, laneH } = laneBox(g, lane, zoomFactor)
+    if (it.kind === 'under') {
+      const { x0, x1 } = markXRange(api, s, e)
+      return { type: 'rect', silent: true, shape: { x: x0, y: y + laneH - 1, width: Math.max(2, x1 - x0), height: UNDER_H },
+               style: { fill: FRAME_EDGE } }
+    }
+    const k = it.value[5] || 1
+    if (it.shape === 'point') {
+      // 同 renderPointWithGeom 的三角,三个顶点各往外推 FRAME_OUT
+      const x = api.coord([s, 0])[0]
+      const centerY = g.top + BAND_TOP_PAD + lane * (laneH + BAND_LANE_GAP * zoomFactor) + laneH / 2
+      const kk = 0.6 + 0.4 * k
+      const sy = it.value[6] || 1   // 同本体的竖直放大
+      const w = Math.max(5, Math.min(20, api.size([1, 0])[0] * 0.35)) * kk
+      const o = FRAME_OUT
+      return { type: 'polygon', silent: true,
+               shape: { points: [[x, centerY + 4 * zoomFactor * kk * sy + 2 * o], [x - w - 2 * o, centerY - 3 * zoomFactor * kk * sy - o],
+                                 [x + w + 2 * o, centerY - 3 * zoomFactor * kk * sy - o]] },
+               style: frameStyle }
+    }
+    const { x0, x1 } = markXRange(api, s, e, FRAME_OUT)
+    const h = laneH * k * (it.value[6] || 1)   // 同本体的竖直放大
+    return { type: 'rect', silent: true,
+             shape: { x: x0, y: y + laneH - h - FRAME_OUT, width: Math.max(3, x1 - x0), height: h + 2 * FRAME_OUT },
+             style: frameStyle }
   }
 }
 
@@ -1524,72 +1483,38 @@ export function makeRenderShiftVeilPrice(
 
 // bracket:副图独立坐标(canvas 局部 y=0 起,见 subGeometry.ts 几何约定)。一族 hit(同起点)一行,一律画梳子:
 //   kind='mark':hit 的记号——每个 hit 一格立在它的终点(琥珀、满高),只有一次 hit 的族也是(不画整条);
-//   kind='buy' :买入日 ▼(黑),叠在上面;这一天并了几次 hit 时,格子外正上方的个数行里写个数。
-// 选中 hit:它的完整跨度 [族起点, hit 终点] 空心细框 + 它那一格深边框(点的是 bracket 本身用粗边,点组内 marker 用细边);
-// 候选 hit:它那一格细实线框(不用虚线:虚线只表示用户画的;不闪)。族底线在 bracket-lines 系列。
+//   kind='buy' :买入日 ▼(黑),叠在上面;这一天并了几次 hit 时,个数写在格子外正上方的个数行里(画在 selection 系列,
+//   压在当前日竖线上面,见 makeRenderSelection)。
+// 选中的粗框、外层底线也在 selection 系列里;这里只按 dim 画淡(同一天几次共用一格,有一次照常这格就照常)。
 export function makeRenderBracket(
-  items: Array<{ hit_id: string; hit_ids?: string[]; kind?: 'mark' | 'buy'; family_start?: number }>,
-  selectedHitId: string | null,
-  candidateHitIds: ReadonlySet<string>,
+  items: Array<{ hit_id: string; hit_ids?: string[]; kind?: 'mark' | 'buy'; dim?: boolean; grow?: boolean }>,
   zoomFactor: number = 1.0,
-  focusOnBracket: boolean = false,
   bracketTop: number = BAND_TOP_PAD,   // hit 第 0 行的顶(同 makeRenderBracketLine)
-  laneTops?: readonly number[],        // hit 各行的顶(subGeometry 的 bracketLaneTops);给了才写买入日上面的个数
+  laneTops?: readonly number[],        // hit 各行的顶(subGeometry 的 bracketLaneTops)
 ) {
   return function renderBracket(params: any, api: any) {
     const item = items[params.dataIndex]
     const lane = api.value(2) || 0
     const top = laneTops?.[lane] ?? bracketTop + lane * BAND_LANE_H * zoomFactor
     const rectH = BAND_MARKER_H * zoomFactor
-    const ids = item?.hit_ids ?? (item?.hit_id ? [item.hit_id] : [])
+    const opacity = dimOpacity('app', !!item?.dim)
+    // 并着牵出的 hit:底不动、往上长 MARK_GROW(同 band 上有关的格),▼ 跟着格顶上移
+    const grow = item?.grow ? MARK_GROW * zoomFactor : 0
     if (item?.kind === 'buy') {
       const x = api.coord([api.value(0), 0])[0]
       const w = Math.max(3, Math.min(6, api.size([1, 0])[0] * 0.32))
-      const tri = { type: 'polygon',
-                    shape: { points: [[x - w, top + 0.5], [x + w, top + 0.5], [x, top + rectH * 0.65]] },
-                    style: { fill: '#111111' } }
-      // 这一天并了几次 hit(同一族里买在这天的,只差切法):个数写在格子外、正上方的个数行里(subGeometry 的
-      // HIT_COUNT_ROW_H,这一行 hit 有这种日子才留出),▼ 与格子不动。没给 laneTops(没留个数行)不写;K 线密到
-      // 一根比数字还窄时也不写(相邻两天的数字会叠在一起),个数仍在悬停的 `hits ×n` 与显示栏 ↑ / ↓ 键槽的 `into hits ×n` 里。
-      const n = ids.length
-      const digitsW = String(n).length * BUY_COUNT_FONT_PX * BUY_COUNT_CHAR_RATIO
-      if (n < 2 || !laneTops || api.size([1, 0])[0] < digitsW - 1) return tri
-      return { type: 'group', children: [
-        tri,
-        { type: 'text', silent: true,
-          style: { text: String(n), x, y: top - BUY_COUNT_GAP, align: 'center', verticalAlign: 'bottom',
-                   font: `bold ${BUY_COUNT_FONT_PX}px ${MONO}`, fill: '#111111' } },
-      ] }
+      const t = top - grow
+      return { type: 'polygon',
+               shape: { points: [[x - w, t + 0.5], [x + w, t + 0.5], [x, t + rectH * 0.65]] },
+               style: opacity < 1 ? { fill: '#111111', opacity } : { fill: '#111111' } }
     }
     const { x0, x1 } = markXRange(api, api.value(0), api.value(1))
-    const children: any[] = [
-      { type: 'rect', shape: { x: x0, y: top, width: Math.max(2, x1 - x0), height: rectH }, style: { fill: AMBER_FILL } },
-    ]
-    const isSelected = !!selectedHitId && ids.includes(selectedHitId)
-    const isCandidate = !isSelected && ids.some((id) => candidateHitIds.has(id))
-    if (isSelected) {
-      const fs = item?.family_start ?? api.value(0)
-      if (fs < api.value(0)) {
-        const ext = markXRange(api, fs, api.value(1), 1)
-        children.push({ type: 'rect',
-                        shape: { x: ext.x0, y: top - HL_EXPAND_OFFSET * zoomFactor, width: ext.x1 - ext.x0,
-                                 height: rectH + HL_EXPAND_H * zoomFactor },
-                        style: { fill: 'none', stroke: HL_FOCUS_EDGE, lineWidth: HL_GROUP_STROKE_WIDTH } })
-      }
-      const box = markXRange(api, api.value(0), api.value(1), 1.5)
-      children.push({ type: 'rect',
-                      shape: { x: box.x0, y: top - HL_EXPAND_OFFSET * zoomFactor, width: box.x1 - box.x0,
-                               height: rectH + HL_EXPAND_H * zoomFactor },
-                      style: { fill: 'none', stroke: HL_FOCUS_EDGE,
-                               lineWidth: focusOnBracket ? HL_FOCUS_STROKE_WIDTH : HL_GROUP_STROKE_WIDTH,
-                               ...HL_SHADOW } })
-    } else if (isCandidate) {
-      const box = markXRange(api, api.value(0), api.value(1), 1.5)
-      children.push({ type: 'rect',
-                      shape: { x: box.x0, y: top - 1, width: box.x1 - box.x0, height: rectH + 2 },
-                      style: { fill: 'none', stroke: HL_FOCUS_EDGE, lineWidth: HL_GROUP_STROKE_WIDTH } })
-    }
-    return { type: 'group', children }
+    // 有关的方块加一圈贴边细边(render/selHighlight.ts 的 relatedEdgeRect)
+    const { shape, stroke } = relatedEdgeRect({ x: x0, y: top - grow, width: Math.max(2, x1 - x0), height: rectH + grow },
+                                              AMBER_FILL, !!item?.grow)
+    return { type: 'group', children: withOpacity([
+      { type: 'rect', shape, style: { fill: AMBER_FILL, ...stroke } },
+    ], opacity) }
   }
 }
 
@@ -1650,10 +1575,15 @@ function boBoxDims(text: string): { w: number; h: number } {
 //   过去用 (params.data as any).text 实测=undefined → text 为空字符串 → ZRText 被创建但无文字渲染。
 function makeRenderPricePoint(
   data: Array<{ value: number[]; instance_id: string; anchorY: number; text: string;
-                 tier: Tier; itemStyle: { color: string };
+                 tier: Tier; itemStyle: { color: string }; dim?: boolean; sy?: number;
                  state?: string; pkId?: number; pkLift?: number }>,
 ) {
   return function renderPricePoint(params: any, api: any) {
+    const el = drawPricePoint(params, api)
+    const opacity = dimOpacity('app', !!data[params.dataIndex]?.dim)
+    return opacity < 1 ? { ...el, children: withOpacity(el.children, opacity) } : el
+  }
+  function drawPricePoint(params: any, api: any): { type: 'group'; children: any[] } {
     const item = data[params.dataIndex] ?? null
     const anchorY = item?.anchorY ?? api.value(1)
     const text = item?.text ?? ''
@@ -1665,7 +1595,7 @@ function makeRenderPricePoint(
       const lift = item.pkLift ?? 0        // 同锚 bo 时整组上移,避让盒体
       const triCy = anchorPx - TRIANGLE_STACK_PT - lift
       const tw = PK_TRIANGLE_HALF_WIDTH
-      const th = PK_TRIANGLE_HEIGHT
+      const th = PK_TRIANGLE_HEIGHT * (item.sy ?? 1)   // 有关的竖直放大,宽不变
       const idCy = anchorPx - PEAK_ID_STACK_PT - lift
       const tri = pkTriStyle(item.state)
       const children: any[] = [
@@ -1698,7 +1628,8 @@ function makeRenderPricePoint(
 
     // ── bo 事件:圆角矩形盒 + [broken_peak_ids] 文本 ──
     const cy = anchorPx - BO_STACK_PT
-    const { w, h } = boBoxDims(text)
+    const { w, h: h0 } = boBoxDims(text)
+    const h = h0 * (item?.sy ?? 1)   // 有关的竖直放大,宽与字号不变
     return {
       type: 'group',
       children: [

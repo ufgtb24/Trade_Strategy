@@ -136,27 +136,15 @@ describe('WalkStatusBar', () => {
     expect(cell(w, 'sel-esc').attributes('title')).toBe('Esc: up: hit_family 2024-11-01')
   })
 
-  it('event:写它的 node 与起止,in 写它那条 band;牵出几个买点日时 ← / → 会进去', async () => {
+  it('event:写它的 node 与起止,路径就它一节(in 不适用,node 不能选中);牵出几个买点日时 ← / → 会进去', async () => {
     const { view, w } = setup()
     view.focusMark([S10.instance_id])
     await nextTick()
-    expect(vals(w)).toEqual(['event', 'step', '2024-11-11', '—', '—', 'node step', 'into buys ×3', '—'])
+    expect(vals(w)).toEqual(['event', 'step', '2024-11-11', '—', '—', '—', 'into buys ×3', '—'])
     view.focusMark([P13a.instance_id, P13b.instance_id])    // 同一格叠着两个:diff 写区别,↑ / ↓ 在这一格里换
     await nextTick()
     expect(vals(w)).toEqual(['event', 'plateau', '2024-11-01→2024-11-14', '—', 'step→2024-11-11',
-                             'node plateau', 'events 1/3', 'events 1/2'])
-  })
-
-  it('node:name 写它对到的特征名(用户起的名字,按用户内容的样子写);没对到特征时写 —', async () => {
-    const { view, w } = setup()
-    view.setSelSources({ featureOfBand: band => (band === 'step' ? '阶跃' : null) })
-    view.selectNode('step')
-    await nextTick()
-    expect(vals(w)).toEqual(['node', 'step', '—', '阶跃', '—', '—', 'into events ×2', '—'])
-    expect((cell(w, 'sel-name').element.lastElementChild as HTMLElement).classList.contains('user')).toBe(true)
-    view.selectNode('today')
-    await nextTick()
-    expect(val(w, 'sel-name')).toBe('—')
+                             '—', 'events 1/3', 'events 1/2'])
   })
 
   it('样本:date 写样本日,name 写字母与判断(程序固定词);← / → 换样本,↑ / ↓ 会进到在场的几次', async () => {

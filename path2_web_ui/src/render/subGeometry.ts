@@ -35,11 +35,14 @@ export const MARK_HALF_W = 0.4
 export const FAMILY_LINE_COLOR = '#6b7280'     // 比 detected 浅灰格深,浅底上不会消失
 export const FAMILY_LINE_AFTER_WINDOW = '#d1d5db'  // 跨过扫描末日的那段:窗后灰
 export const FAMILY_LINE_H = 1
-export const ACTIVE_LINE_H = 2.5               // 当家行的底线
+// 选中后的粗框与外层底线:深色(slate-800),外层底线的粗细(待验证)。app 那边(render/chart.ts)与用户那边
+// (render/annotateLanes.ts)共用这一份
+export const SEL_EDGE_COLOR = '#1e293b'
+export const UNDER_LINE_H = 2.5
 // 族底线起点的竖头:读作「这一族从这天开始」,和全宽的分隔线区分开(高度按行高的比例,待验证)
 export const FAMILY_HEAD_RATIO = 0.6
 export const FAMILY_HEAD_W = 1.5
-// compare:用户区与 app 区(含 hits)之间的分界线:高饱和的蓝(L* 约 43),比 app 轨的天蓝格(L* 约 61)深一截,
+// compare:用户区与 app 区(含 hits)之间的分界线:高饱和的蓝(L* 约 43),比 app 轨的中蓝格(L* 约 51)深一截,
 // 上面是白、下面是 hits 的浅黄,冷暖、深浅都拉开
 export const USER_APP_EDGE_COLOR = '#0050ff'
 export const USER_APP_EDGE_H = 2.5
@@ -57,6 +60,10 @@ export const FEEDBACK_ROW_H = 14
 // (下面留给反馈带);
 // 行高固定、不随缩放(同反馈带),所以 1.0× 下也读得出。没有这种日子的 hit 行不加这一行。
 export const HIT_COUNT_ROW_H = 10
+// 有关的格、条往上长多少(乘缩放):行与行之间空隙的四分之三,留一道缝,不和上一行的格连成一块(会话默认,待验证)。
+// band 上的格、条(render/selHighlight.ts 的 MARK_ENLARGE_Y)与 hits 行牵出的 hit 那一格长同样的量;hits 行那一格上方的
+// 个数跟着上移,所以个数行另加高同样的量(不论这一次有没有变高,免得选中一换版面就跳)
+export const MARK_GROW = BAND_LANE_GAP * 0.75
 
 // Task 2 新增常量: 装饰几何视觉参数 + sub-outer 最小可压缩高度 + chartSub grid 左右内边距
 // spec: docs/superpowers/specs/2026-07-01-path2-web-subchart-fixed-decor-design.md
@@ -64,7 +71,7 @@ export const HIT_COUNT_ROW_H = 10
 // 和下面第一条 band 的隔行灰底(#ebebeb)深浅差约 5,再加一点黄与灰分开(待验证)
 export const HITS_FILL = '#fffbdb'
 // 副图隔行底:偶数下标的 band 垫一层 8% 黑(白底上 ≈ #ebebeb,和白底的明度差 L* 约 7,看图的用户才分得开相邻两条轨);
-// 再深就压近 detected 浅灰(对它现在 1.64)和天蓝(2.58),见 render/colors.ts 与 path2_web/serialize.py 的 _PALETTE
+// 再深就压近 detected 浅灰(对它现在 1.64),见 render/colors.ts 与 path2_web/serialize.py 的 _PALETTE
 export const BAND_STRIPE_FILL = 'rgba(0,0,0,0.08)'
 export const BAND_INNER_LINE_H = 1            // band 内 lane 分隔线粗细(px)
 export const MIN_SUB_H = 60                   // sub-outer 可压缩到的最小像素高度(120 仅为空数据兜底,60 为容器可视下界;内容更矮时退让到内容高)
@@ -105,7 +112,7 @@ export interface SubGeometry {
   userAppEdges: number[]
   /** 反馈带第 0 行的顶(第 i 行 y = feedbackTop + i*FEEDBACK_ROW_H):紧接在最后一行 hit 下面;没有反馈行时也给出 */
   feedbackTop: number
-  /** hit 各行格子的顶:第 i 行 = appBracketTop + i*9·z + 它自己和它上面几行的个数行(每行 HIT_COUNT_ROW_H;个数行在格子上面) */
+  /** hit 各行格子的顶:第 i 行 = appBracketTop + i*9·z + 它自己和它上面几行的个数行(每行 HIT_COUNT_ROW_H + MARK_GROW·z;个数行在格子上面) */
   bracketLaneTops: number[]
 }
 
@@ -138,7 +145,7 @@ export function computeSubGeometry(
   const bracketLaneTops: number[] = []
   let laneCursor = appBracketTop
   for (let i = 0; i < input.bracketLaneCount; i++) {
-    if (countLanes.has(i)) laneCursor += HIT_COUNT_ROW_H
+    if (countLanes.has(i)) laneCursor += HIT_COUNT_ROW_H + MARK_GROW * zoomFactor
     bracketLaneTops.push(laneCursor)
     laneCursor += BAND_LANE_H * zoomFactor
   }

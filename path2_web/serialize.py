@@ -218,19 +218,20 @@ def summarize(res) -> dict:
 # ── pattern 静态层(拓扑面板数据源,§7.1) ──
 # event_styles 兜底调色板:PATTERN_DAG.event_styles 默认空,按 topology.nodes 里 node_id
 # 首次出现顺序 setdefault(见 _event_styles),索引 i 就是"第 i 个新 node_id",i % 2 循环。
-# 两色天蓝 / 大红交替(用户 2026-11-06 定;看图的用户是色盲,靠冷暖与深浅分色,不靠色相):
-#   - 相邻两个 node(副图上是相邻两条轨)一冷一暖、一浅一深:天蓝 L* 约 61、大红 L* 约 45。
+# 两色中蓝 / 大红交替(两色交替用户 2026-11-06 定,2026-11-13 天蓝换成中蓝;看图的用户是色盲,靠冷暖与深浅分色,
+# 不靠色相;用户的规则是相邻两色「冷暖相反,或深浅明显拉开」,满足一条即可):
+#   - 相邻两个 node(副图上是相邻两条轨)一冷一暖:中蓝 L* 约 51、大红 L* 约 45,深浅接近,靠冷暖分开。
 #     冷暖按 CIELAB 的 b*(黄-蓝轴,红绿色盲也保留这条轴)判:b* ≤ -20 冷、≥ +20 暖。
-#   - 两色都离浅底够远:对副图隔行底 #ebebeb 对比度天蓝 2.6、大红 4.5;天蓝再浅就和底色、
-#     qualified 深灰 #9ca3af(L* 约 67)一样深了。天蓝和 qualified 灰深浅接近,靠冷暖与格高分开
-#     (两档灰见前端 render/colors.ts)。
+#   - 两色都离浅底够远:对副图隔行底 #ebebeb 对比度中蓝 3.6、大红 4.5。选中后不相关的那些会画淡,
+#     中蓝比原来的天蓝深一档,淡了以后仍看得出、和没淡的也分得清;它比 qualified 深灰 #9ca3af(L* 约 67)
+#     深一截,另有冷暖与格高分开(两档灰见前端 render/colors.ts)。
 #   - 隔一条轨的两个 node 同色,靠表头与位置分;前端不再为同色 node 散开明度。
 # 当前拓扑落位(apps 均无显式 event_styles 声明,全走兜底;主图的 price 轨都排在最前,
 # 所以副图的轨从头到尾都是交替的,tests/path2_web/test_serialize.py 对每个已注册 app 断言):
-#   new_step      plateau 天蓝 / old_plat 大红 / step 天蓝 / new_plat 大红 / today 天蓝
-#   bottom_burst  bo(主图)天蓝 / pk(主图,solve=False 恒灰)/ burst 天蓝 / tb 大红 / tb_seg 天蓝
+#   new_step      plateau 中蓝 / old_plat 大红 / step 中蓝 / new_plat 大红 / today 中蓝
+#   bottom_burst  bo(主图)中蓝 / pk(主图,solve=False 恒灰)/ burst 中蓝 / tb 大红 / tb_seg 中蓝
 #   bb_v1、bo_only、try_complex_where 同上前缀
-_PALETTE = ["#1e9be0", "#d7000f"]
+_PALETTE = ["#1a80ba", "#d7000f"]
 
 def _rule_from_meta(meta: dict) -> dict:
     """meta 树 → rule 树。and/or/not 递归 children;child/children 保持扁平(§3.1);

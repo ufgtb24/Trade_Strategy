@@ -12,12 +12,13 @@
  * 以后落下。
  * 落到别的股票、离开 compare、或者又落一次时,没落下的作废。
  *
- * 落下时先清掉 app 的焦点(样本与它配对的 hit),图上只剩那根竖线;onLanded 在落下后调(侧栏点行用它选中那条反馈)。
+ * 落下时先清掉选中(app 的焦点、选着的那条反馈),图上只剩那根竖线;onLanded 在落下后调(侧栏点行用它选中那条反馈)。
  */
 import { defineStore } from 'pinia'
 import { watch } from 'vue'
 import type { ViewWindow } from '../types'
 import { useAppLinkStore } from './appLink'
+import { useFeedbackStore } from './feedback'
 import { useViewStore } from './view'
 
 /** day 在交易日里的下标;那天不是交易日取它之后的第一根,比最后一根还晚为 null。 */
@@ -48,10 +49,12 @@ export const useLandingStore = defineStore('landing', () => {
   /** 落到别的股票或离开了 compare。 */
   const off = (p: Pending) => view.symbol !== p.symbol || !view.comparing
 
-  /** 落下:当前日竖线停在那天,消费掉。 */
+  /** 落下:当前日竖线停在那天,消费掉。原来的选中一并清掉,连同选着的那条反馈(否则显示栏全空、那条反馈却还挂着
+   *  粗边与竖带);侧栏点行跳过来的,由 onLanded 再选上那一条。 */
   function apply(p: Pending): void {
     cancel()
     view.clearFocus()
+    useFeedbackStore().select(null)
     view.setCurrentDay(dayIndexOnOrAfter(view.barDates, p.day))
     p.onLanded?.()
   }

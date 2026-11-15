@@ -218,18 +218,15 @@ describe('DetailSidebar (5-node: pattern nodes + stream-source)', () => {
     expect(v.focusedHitId).toBeNull()
   })
 
-  // ── 断言 5: 双向高亮 — focusedInstanceId 反映到高亮 class ─────────────────
-  it('设 focusedInstanceId 后对应行有 attr-row--selected class', async () => {
+  // ── 断言 5: 双向 — 选中的那一个是 event 时反映到候选表的选中行(黑粗边;它退到外层时不标,见 stores 测试)──
+  it('选中的那一个是 event 时对应行有 attr-row--selected class', async () => {
     const v = setupStore()
-    v.focusedInstanceId = 'down1#0'   // 直写:纯测 markedEventIds 呈现,避开 focusEvent 归属判定副作用
+    v.setPath([{ kind: 'event', instanceId: 'down1#0' }])   // 纯测 markedEventIds 呈现
     const w = mount(DetailSidebar)
     await flushPromises()
 
-    // 展开 down 候选表才能看到行
-    const funnelRows = w.findAll('.funnel-row')
-    const downRow = funnelRows.find(r => r.text().includes('down'))!
-    await downRow.trigger('click')
-
+    // 选中 event 时它所在的 node 候选表自动展开
+    expect(v.expandedNodeIds.has('down')).toBe(true)
     const attrRows = w.findAll('.attr-row')
     const down1Row = attrRows.find(r => r.text().includes('1-6'))
     expect(down1Row).toBeTruthy()
@@ -414,7 +411,7 @@ describe('DetailSidebar (5-node: pattern nodes + stream-source)', () => {
     v.focusEvent('tb14#0')
     v.stepPos(1)
     expect([v.focusedHitId, v.focusedInstanceId]).toEqual(['m1', 'tb14#0'])
-    expect(v.candidateHitIds.size).toBe(1)
+    expect(v.highlight.under.events.has('tb14#0')).toBe(true)
     const w = mount(DetailSidebar)
     await flushPromises()
 
@@ -429,14 +426,14 @@ describe('DetailSidebar (5-node: pattern nodes + stream-source)', () => {
     await down1Row.trigger('click')
 
     // 点了就是点的那个:先前的 hit 选中与实例焦点都清,选中的只有 down1#0
-    expect(v.selPath).toEqual([{ kind: 'node', band: 'down' }, { kind: 'event', instanceId: 'down1#0' }])
+    expect(v.selPath).toEqual([{ kind: 'event', instanceId: 'down1#0' }])
     expect([v.focusedHitId, v.focusedInstanceId]).toEqual([null, null])
-    expect(v.pendingDisambigInstanceId).toBeNull()
+    expect(v.highlight.under.events.size).toBe(0)
     expect(v.selectedInstanceId).toBe('down1#0')
   })
 
-  // ── 断言 11: 点 hit 行 → 选中它 + 组高亮 + 它属于它那一族(不是从某个 event 走进来的) ──
-  it('点 hit 行 → selected=hit + 组高亮 + 它属于它那一族', async () => {
+  // ── 断言 11: 点 hit 行 → 选中它 + 它的组成照常 + 它属于它那一族(不是从某个 event 走进来的) ──
+  it('点 hit 行 → selected=hit + 组成照常 + 它属于它那一族', async () => {
     const v = setupStore()
     const w = mount(DetailSidebar)
     await flushPromises()
@@ -447,10 +444,11 @@ describe('DetailSidebar (5-node: pattern nodes + stream-source)', () => {
 
     expect(v.selected?.kind).toBe('hit')
     expect((v.selected as any)?.hitId).toBe('m1')
-    // 组高亮:children of m1 = instance_id 列表
-    expect([...v.highlightedEventIds]).toEqual(expect.arrayContaining(['down1#0', 'side1#0']))
-    // 它属于它那一族:一族靠粗底线认,没有细框
-    expect(v.candidateHitIds.size).toBe(0)
+    // 组成照常:children of m1 = instance_id 列表
+    expect([...v.highlight.appEvents]).toEqual(expect.arrayContaining(['down1#0', 'side1#0']))
+    // 它属于它那一族:那一行画外层底线;侧栏只这一行黑粗边
+    expect([...v.highlight.under.families]).toEqual(['hits@1'])
+    expect([...v.highlight.frameHits]).toEqual(['m1'])
     expect(v.selPath[0]).toEqual({ kind: 'hit_family', familyKey: 'hits@1' })
     // 实例焦点不改动(保持 null)
     expect(v.focusedInstanceId).toBeNull()

@@ -684,13 +684,13 @@ test.describe('反馈(new_step + 手写 mapping,CRNC)', () => {
     await page.keyboard.press('Escape')
     await expect(panel(page)).toHaveCount(0)
 
-    // ── Esc 第一下只关面板:当前日、当家行都不动 ──
+    // ── Esc 第一下只关面板:当前日、选中都不动 ──
     await openFb(page)
-    const before = [await view(page, 'currentDay'), await view(page, 'activeFamilyKey')]
-    expect(before[1]).not.toBeNull()
+    const before = [await view(page, 'currentDay'), await view(page, 'selPath')]
+    expect(before[1]).not.toEqual([])
     await page.keyboard.press('Escape')
     await expect(panel(page)).toHaveCount(0)
-    expect([await view(page, 'currentDay'), await view(page, 'activeFamilyKey')]).toEqual(before)
+    expect([await view(page, 'currentDay'), await view(page, 'selPath')]).toEqual(before)
 
     // ── 点别处(主图 K 线区)关,不存 ──
     await clickBuy(page, g0)
@@ -814,6 +814,36 @@ test.describe('反馈(new_step + 手写 mapping,CRNC)', () => {
     const fam = feedbackOf(await annState(page)).filter(f => f.target === 'family' && f.family_start === dates[G.start])
     expect(fam.map(f => [f.start, f.end, f.nodes, f.note, 'answer' in f, 'dag' in f]))
       .toEqual([[dates[G.buys[0]], dates[G.buys.at(-1)!], [lit], '这一族的平台太窄', false, false]])
+
+    // ── 竖带只给选中的那条反馈:从它按 → 走进它收进的买点日(它退到外层,记号下画底线),竖带收起、它的边不能拖;
+    //    Esc 退回这条反馈,竖带与可拖的边回来 ──
+    const famId: string = fam[0].id
+    const band = page.getByTestId('feedback-selected-band')
+    const kinds = () => page.evaluate(() => (window as any).__e2e.view.selPath.map((x: any) => x.kind))
+    const yk = await klineY(page)
+    const halfK = ((await xOf(page, G.buys[0] + 1)) - (await xOf(page, G.buys[0]))) / 2
+    const edgeX = (await xOf(page, G.buys[0])) - halfK + 1                   // 竖带左边往里 1 像素
+    const cursorAt = async (x: number) => {
+      await page.mouse.move(x, yk)
+      return page.evaluate(() => (window as any).__e2e.chartMain().getZr().painter.getViewportRoot().style.cursor as string)
+    }
+    await clickStrip(page, famId)
+    await expect.poll(kinds).toEqual(['feedback'])
+    await expect(band).toBeVisible()
+    await feedbackOn(page)
+    expect(await cursorAt(edgeX)).toBe('ew-resize')                         // 选中的就是它:边能拖
+    await blur(page)
+    await page.keyboard.press('ArrowRight')
+    await expect.poll(kinds).toEqual(['feedback', 'buy'])
+    await expect(band).toHaveCount(0)
+    expect(await cursorAt(edgeX)).not.toBe('ew-resize')                     // 它在外层:边不认
+    await page.keyboard.press('Escape')                                      // 先熄灭工具
+    await page.keyboard.press('Escape')                                      // 再退回这条反馈
+    await expect.poll(kinds).toEqual(['feedback'])
+    await expect(band).toBeVisible()
+    await feedbackOn(page)
+    expect(await cursorAt(edgeX)).toBe('ew-resize')
+    await page.keyboard.press('Escape')                                      // 熄灭工具,选中留着
 
     // ── 点记号选中它(描边加粗),按 Enter 打开那条;delete 删掉,提示条 undo 放回 ──
     await clickStrip(page, pid)

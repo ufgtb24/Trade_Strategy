@@ -130,12 +130,14 @@ import {
   mainMarksSeries, mainSamplesSeries, packBrackets, triangleRect, BRACKET_ROW_H, COMPARE_BRACKET_ROW_H, LANES_TOP,
   type BracketItem, type Draft, type LaneGeom, type SampleMark,
 } from '../render/annotateLanes'
+import { isFocus, userMarkDim, type Highlight } from '../render/selHighlight'
+import type { SelPath } from '../render/select'
 import { createAnnotateGestures } from './annotateGestures'
 import { useRefLayerStore } from '../stores/refLayers'
 import { peaksSeries } from '../render/refLayers'
 import { useAppLinkStore } from '../stores/appLink'
 import { compareLinks } from '../render/compareLayout'
-import { useCompareStore, SAMPLES_ROW } from '../stores/compare'
+import { useCompareStore } from '../stores/compare'
 import { defaultFocus } from '../annotate/compareRead'
 import { useCopyRefStore } from '../stores/copyRef'
 import { useFeedbackStore } from '../stores/feedback'
@@ -146,10 +148,9 @@ import { dateSpanToIdx, feedbackMarks, feedbackRowCount, feedbackTip } from '../
 const view = useViewStore()
 const { symbol, effectiveAnalysis, nodeColors, nodeVisible, level, tagMap, isolated,
         effectivePattern, effectiveScan, scanFile, focusedInstanceRef, diag,
-        activePatternId, activeDetailCard, selectedHitId, candidateHitIds,
-        highlightedEventIds, pendingDisambigInstanceId, shiftSelectedEventIds,
-        focusedInstanceId, selectedInstanceId, compositionGroupIds, mode, annotating, viewWindow,
-        comparing, linkedView, endNode, currentDay, activeFamilyKey } = storeToRefs(view)
+        activePatternId, activeDetailCard, selectedHitId, shiftSelectedEventIds,
+        focusedInstanceId, selectedInstanceId, mode, annotating, viewWindow,
+        comparing, linkedView, endNode, currentDay, highlight } = storeToRefs(view)
 // annotating(annotate、compare):画 K 线、成交量和用户的标注,不给框选诊断、driver 菜单。
 // annotate 不画任何 app 产物;compare 的副图就是主视图那张(app 的族行、bracket 的 hit 行、档位、缩放、选中与当前日),
 // 顶上让出用户区:特征轨在上、样本跨度那一行 user 在用户区最后,一道分界线下面就是 app 区(标注层,render/annotateLanes.ts
@@ -218,10 +219,21 @@ const cmpLayout = computed(() => {
 // compare 的反馈(spec 6.13):hits 行底下的反馈带画这只股票、当前 pattern、用户自己挑的反馈;配色照后端给的状态,
 // 选中的那条(侧栏点行、点记号时设)描边加粗。app 模式不画(只在 renderCompareSub 里用)
 const fb = useFeedbackStore()
-const copyRef = useCopyRefStore()   // 「复制指代」:Shift+C 复制当前选中的东西;点轨名选中一个 node
+const copyRef = useCopyRefStore()   // 「复制指代」:Shift+C 复制当前选中的东西
 const cmpFeedbackList = computed(() => (compareReady.value ? ann.feedbackOf(symbol.value) : []))
-const cmpFeedbackMarks = computed(() =>
-  feedbackMarks(cmpFeedbackList.value, annDates.value, fb.statusById, fb.selectedId))
+// 选中的那一个就是哪条反馈:图上选中的是它;或路径清空而反馈还选着(侧栏点行后换图的那一下)。
+// 记号的粗边、竖带、拖竖带的边改起止都只认它——反馈退到外层(从它走进买点日)时只在记号下沿画底线,不画竖带、不能拖边
+const focusedFeedbackId = computed<string | null>(() => {
+  const f = highlight.value.focus
+  if (f?.kind === 'feedback') return f.id
+  return view.selPath.length === 0 ? fb.selectedId : null
+})
+// 粗边只给选中的那一条;选中的东西在它里面(它是外层)时记号下沿画底线;选中样本、它有成员框时其余反馈画淡
+const cmpFeedbackMarks = computed(() => {
+  const hl = highlight.value
+  return feedbackMarks(cmpFeedbackList.value, annDates.value, fb.statusById, focusedFeedbackId.value,
+                       (id) => ({ dim: userMarkDim(hl, 'feedback', id), under: hl.under.feedbacks.has(id) }))
+})
 /** 反馈带记号的悬停文字:悬停时现算(范围里有没有当前 pattern 的正样本) */
 function feedbackTipOf(id: string): string {
   const f = cmpFeedbackList.value.find(x => x.id === id)
@@ -291,11 +303,12 @@ function onFeedbackResized(id: string, start: string, end: string, at: { x: numb
   if (!hasBuyIn(start, end)) { showFbHint(at, 'no_buy'); return }
   if (fb.resize(id, start, end) === 'same') showFbHint(at, 'same_range')
 }
-/** 选中的那条反馈(用户自己挑的、这只股票、当前 pattern;竖带画的就是它):拖它竖带的边改起止。
- *  作答面板开着、对着的不是它时,竖带画的是面板的范围,这时不认它的边(免得悬停在看不见的边上出改起止的光标) */
+/** 选中的那条反馈(图上选中的就是它,见 focusedFeedbackId;用户自己挑的、这只股票、当前 pattern;竖带画的就是它):
+ *  拖它竖带的边改起止。作答面板开着、对着的不是它时,竖带画的是面板的范围,这时不认它的边;反馈退到外层时没有竖带,
+ *  也不认(免得悬停在看不见的边上出改起止的光标) */
 function selectedFeedbackRange(): { id: string; start: string; end: string } | null {
-  if (fb.panel && fb.panel.editingId !== fb.selectedId) return null
-  const id = fb.selectedId
+  const id = focusedFeedbackId.value
+  if (fb.panel && fb.panel.editingId !== id) return null
   const f = id ? cmpFeedbackList.value.find(x => x.id === id && x.source === 'picked') : null
   return f ? { id: f.id, start: f.start, end: f.end } : null
 }
@@ -305,7 +318,7 @@ function selectedFeedbackRange(): { id: string; start: string; end: string } | n
 const selectedSpan = computed(() => {
   const p = fb.panel
   if (p && p.symbol === symbol.value) return dateSpanToIdx(annDates.value, p.start, p.end)
-  const id = fb.selectedId
+  const id = focusedFeedbackId.value
   const f = id ? cmpFeedbackList.value.find(x => x.id === id && x.source === 'picked') : null
   return f ? dateSpanToIdx(annDates.value, f.start, f.end) : null
 })
@@ -418,6 +431,17 @@ const annSelSample = computed(() =>
 const annSlots = computed(() => (annSelSample.value && ann.state && ann.membership && symbol.value
   ? emptySlots(ann.state.charts, symbol.value, annSelSample.value.id, annDates.value, ann.membership.near) : []))
 const annMarks = computed(() => boxMarks(annChart.value, ann.currentPattern, annSelSample.value, annSlots.value))
+// compare:样本的选中画法(▲ 加粗、跨度描粗虚线并填浅灰)跟着图上的选中走——选中的是它才画(默认聚焦的样本也算),
+// 它在路径外层(按 ↓ 进到它在场的一次 hit)时回到普通、跨度下画底线;标注的当前样本不在路径上时照旧描粗。
+// annotate 下照标注上选中的样本、当前样本画
+const cmpHighlight = computed<Highlight | null>(() => (compareReady.value ? highlight.value : null))
+function sampleEmphasis(id: string): 0 | 1 | 2 {
+  const hl = cmpHighlight.value
+  if (!hl) return id === ann.selectedSampleId ? 2 : id === ann.currentSampleId ? 1 : 0
+  if (isFocus(hl, 'sample', id)) return 2
+  if (hl.under.samples.has(id)) return 0
+  return id === ann.currentSampleId ? 1 : 0
+}
 const annBracket = computed(() => {
   const chart = annChart.value
   const reads = compareReady.value ? cmp.sampleReads : null
@@ -427,7 +451,7 @@ const annBracket = computed(() => {
     return {
       id: smp.id, ...sampleRange(smp, chart!), pos: smp.judgment === 'pos', letter: annLetters.value.get(smp.id) ?? null,
       faded: smp.pattern !== ann.currentPattern,
-      emphasis: smp.id === ann.selectedSampleId ? 2 : smp.id === ann.currentSampleId ? 1 : 0,
+      emphasis: sampleEmphasis(smp.id),
       // compare:▲ 字母后的 ✓ / ✗(app 与这个样本的判断一致与否),matched / unmatched 与买点差几根在悬停
       mark: r ? { sign: r.mark, tip: `${r.match.state}${off != null ? ` · buy ${off >= 0 ? '+' : ''}${off}` : ''}` } : null,
     }
@@ -442,7 +466,8 @@ const annBracket = computed(() => {
   return { geom: bracketGeometry(rows, BRACKET_ROW_H), placed }
 })
 const annSampleMarks = computed<SampleMark[]>(() => (annChart.value?.samples ?? []).map(smp => ({
-  id: smp.id, date: smp.date, pos: smp.judgment === 'pos', selected: smp.id === ann.selectedSampleId,
+  id: smp.id, date: smp.date, pos: smp.judgment === 'pos',
+  selected: cmpHighlight.value ? isFocus(cmpHighlight.value, 'sample', smp.id) : smp.id === ann.selectedSampleId,
   faded: smp.pattern !== ann.currentPattern, letter: annLetters.value.get(smp.id) ?? null,
 })))
 const annGeom = computed(() => (compareReady.value
@@ -874,11 +899,6 @@ function buildRenderInput() {
     bandKeyOf: (e: any) => bandKeyOf(e),
     nodeVisible: nodeVisible.value,
     tagToNodes: tagMap.value.tagToNodes,
-    // 当前聚焦实例(合并):selectedInstanceId(0 归属)与 focusedInstanceId(1 归属)互斥,
-    // 合并即「当前聚焦实例」,供 bracket 是否本身被点的判定(marker 分支必设)。
-    selectedInstanceId: focusedInstanceRef.value,
-    // 精确实例(1 归属直选时非空):chart 的 focus 条目按它精确到实例(点 #0 只亮 #0)。
-    focusedInstanceId: focusedInstanceId.value,
     // 实例级签名:formatter 直接把 data.instance_id 传给 resolver,展示【所悬停实例】的判定。
     tooltipResolver: (id: string) =>
       resolveTooltipData(id, diag.value, effectiveAnalysis.value?.events ?? [], bars.value,
@@ -889,20 +909,13 @@ function buildRenderInput() {
     zoomOverride: readZoomOverride(),
     endNode: endNode.value ?? undefined,
     selectedHitId: selectedHitId.value,
-    candidateHitIds: candidateHitIds.value,
-    // 组成型组「一选全选」:0 归属非 hit 组的选中集并入 group 高亮
-    // (chart group 分支按 focusedInstanceRef 排除点击者 → 点击者 focus 框独家,
-    // 组员 group 框;hit 组时本集为空,由 inHitIds 闭包独占)。
-    highlightedEventIds: new Set([...highlightedEventIds.value, ...compositionGroupIds.value]),
-    pendingDisambigInstanceId: pendingDisambigInstanceId.value,
+    // 选中后图上怎么画:粗框、外层底线、照常 / 画淡(stores/view.ts 的 highlight)
+    highlight: highlight.value,
     shiftSelectedEventIds: shiftSelectedEventIds.value,
     hits: effectiveAnalysis.value?.hits ?? [],
     events: effectiveAnalysis.value?.events ?? [],
     currentDay: currentDay.value,
-    activeFamily: activeFamilyKey.value,
     bandExtras: bandExtras.value,
-    selectedBand: copyRef.selectedNode,
-    onBandLabelClick: (band: string) => copyRef.selectNode(band),
   }
 }
 
@@ -996,12 +1009,14 @@ function renderCompareSub() {
   cmpGeom.value = { height: subGeom.subCanvasH }
   const opt: any = buildSubOption(bars.value, bundle, subGeom, params, chartSub.getWidth(),
                                   { getChartEl: () => subInnerEl.value })
+  // 用户区的粗框(选中的框)、画淡、外层底线跟着图上的选中走(selHighlight);框的编辑(Delete、改起止)仍认标注上选中的框
+  const hl = highlight.value
   const layer = annotateLayer(bars.value, {
-    lanes: annLanes.value, geom: cmpUserLanes.value.geom, nameOf: ann.nameOf, selectedId: ann.selectedBoxId,
+    lanes: annLanes.value, geom: cmpUserLanes.value.geom, nameOf: ann.nameOf,
+    selectedId: hl.focus?.kind === 'box' ? hl.focus.boxId : null,
     preview: preview.value, draft: draft.value, zoom, width: chartSub.getWidth(),
     bracket: annBracket.value, marks: annMarks.value,
-    compare: { laneNode: lay.laneNode, unmapped: lay.unmapped,
-               userActive: activeFamilyKey.value === SAMPLES_ROW, edges: subGeom.userAppEdges },
+    compare: { laneNode: lay.laneNode, unmapped: lay.unmapped, edges: subGeom.userAppEdges, highlight: hl },
   })
   opt.graphic.push(...layer.graphics)
   opt.series.push(...layer.series)
@@ -1160,7 +1175,6 @@ function onKeyDown(e: KeyboardEvent) {
   }
   if (annotating.value) { annGestures.cancel(); ann.clearSelection() }
   fb.select(null)                                     // 选中的反馈(粗边与竖带)也一并取消
-  copyRef.selectNode(null)                            // 选中的轨名也取消
   view.clearFocus()
   // Esc 也退出 brush 光标态(sync Vue state 与 ECharts 内部,防"点两下按钮才能重开")。
   // blur:Esc 本身是键盘事件 · 浏览器会把当前 focus 元素的 :focus-visible 判为 true,
@@ -1206,6 +1220,14 @@ const updateMainCanvasOffset = () => {
 }
 
 // ── annotate 下的画框手势 ──────────────────────────────────────────────
+/** 点空白一下全清(规格「点空白一下全清」):app 的选中、选着的那条反馈。 */
+function clearAllOnBlank(): void {
+  fb.select(null)
+  handleChartClick(null, effectiveAnalysis.value?.hits ?? [], view)
+}
+/** 主图上点到它们算点空白:K 线本身与铺满整列的透明命中区(K 线区、成交量带),只用来悬停出 K 线读数 */
+const KLINE_BLANK_SERIES: readonly string[] = ['kline', 'kline-hit-spanner', 'volume-hit-spanner']
+
 const annGestures = createAnnotateGestures({
   main: () => chartMain, sub: () => chartSub, mainEl: () => mainEl.value, subEl: () => subInnerEl.value,
   active: () => annotating.value && bars.value.length > 0 && ann.status === 'ready',
@@ -1232,7 +1254,8 @@ const annGestures = createAnnotateGestures({
   createBox: (start, end, feature) => { if (symbol.value) ann.createBox(symbol.value, start, end, feature) },
   resizeBox: (id, start, end) => ann.resizeBox(id, start, end),
   select: (id) => {
-    if (!id) { ann.clearSelection(); return }
+    // 点空白(K 线区、用户区上没点中东西):一下全清——标注的选中,连同 app 的选中、选着的反馈、选中的轨名
+    if (!id) { ann.clearSelection(); clearAllOnBlank(); return }
     ann.selectBox(id)
     if (compareReady.value) cmp.focusBox(id, { reset: true })   // 再点同一个框也回到只选中它(点过 app 的格、按键进去之后)
   },
@@ -1280,6 +1303,7 @@ onMounted(() => {
   // shift+click 先被 handleMaybeShiftClick 拦截(入口 D),消费后不再回退到候选四分支。
   // compare 下点中 app 的东西时取消标注框的选中、点反馈记号时选中那条反馈(点只选中,不开反馈面板):见 handleAppClick
   const onAppClick = (p: any) => {
+    if (!annotating.value && KLINE_BLANK_SERIES.includes(p?.seriesName)) { clearAllOnBlank(); return }
     handleAppClick(p, effectiveAnalysis.value?.hits ?? [], view, {
       comparing: comparing.value, compareReady: compareReady.value,
       selectBox: (id) => ann.selectBox(id), feedback: fb,
@@ -1334,13 +1358,11 @@ onMounted(() => {
   chartMain.on('brushselected', brushH.onBrushSelected)
   chartMain.on('brushEnd', brushH.onBrushEnd)
   // ZRender blank click:两 chart 各一套
-  // 点空白同时取消选中的反馈(粗边与竖带消失);竖带本身不接事件,点在带里的空白也算空白
-  chartMain.getZr().on('click', (e: any) => {
-    if (!e.target) { fb.select(null); copyRef.selectNode(null); handleChartClick(null, effectiveAnalysis.value?.hits ?? [], view) }
-  })
-  chartSub.getZr().on('click', (e: any) => {
-    if (!e.target) { fb.select(null); copyRef.selectNode(null); handleChartClick(null, effectiveAnalysis.value?.hits ?? [], view) }
-  })
+  // 点空白同时取消选中的反馈(粗边与竖带消失);竖带本身不接事件,点在带里的空白也算空白。
+  // 主图 K 线区铺满了 K 线的透明命中区(悬停出 K 线读数用),点那里图表认作点中了东西:annotate / compare 下由
+  // 画框手势的「点空白」清(见 annGestures 的 select),app 模式下在 onAppClick 里按空白处理
+  chartMain.getZr().on('click', (e: any) => { if (!e.target) clearAllOnBlank() })
+  chartSub.getZr().on('click', (e: any) => { if (!e.target) clearAllOnBlank() })
 
   // ResizeObserver 观测两 chart 容器
   roMain = new ResizeObserver(() => { chartMain?.resize(); relayoutMainGrid(); updateMainCanvasOffset() })
@@ -1527,10 +1549,22 @@ watch([scanFile, effectiveScan], () => {
   void reloadBars().then(() => render(false))
 })
 watch([effectiveAnalysis, nodeVisible, level, nodeColors, focusedInstanceRef, diag, showSlider,
-       selectedHitId, candidateHitIds, highlightedEventIds, pendingDisambigInstanceId,
-       shiftSelectedEventIds, bandZoomFactor, focusedInstanceId, selectedInstanceId,
-       compositionGroupIds, currentDay, activeFamilyKey, () => copyRef.selectedNode, () => view.selPath],
+       selectedHitId, highlight, shiftSelectedEventIds, bandZoomFactor, focusedInstanceId, selectedInstanceId,
+       currentDay, () => view.selPath],
       () => render(false), { deep: true })
+
+// 选中换了(点侧栏、卡片、显示栏,不只是按键)而当前日竖线因此落到视窗外:同按键走动一样平移过去(两边留几根 K 线、
+// 不关反馈面板)。竖线没动、或连股票一起换了(新图自己定视窗)时不动;竖线还在视窗里(哪怕贴着边,如点图上靠边的东西)也不动;
+// 进 compare、换股票后默认聚焦的样本不是用户换的选中,也不动(图窗留在打开时的样子)
+let quietSelPath: SelPath | null = null
+watch([() => view.selPath, currentDay, symbol] as const, ([path, day, sym], [prevPath, prevDay, prevSym]) => {
+  if (path === prevPath || sym !== prevSym || day === prevDay || day === null || path === quietSelPath) return
+  const n = bars.value.length
+  const cur = readZoomOverride()
+  if (n < 2 || !cur) return
+  if (day >= (cur.start / 100) * (n - 1) && day <= (cur.end / 100) * (n - 1)) return
+  panToCurrentDay()
+}, { flush: 'post' })
 
 // annotate:框、词表、选中、拖动中的样子变了 → 只重画标注的两层;compare 下轨序、✓ / ✗ 变了也一样
 watch(() => [ann.view, ann.selectedBoxId, ann.selectedSampleId, ann.currentSampleId, ann.currentPattern,
@@ -1562,7 +1596,7 @@ watch(() => [compareReady.value, effectiveAnalysis.value, view.barDates] as cons
   const z = readZoomOverride() ?? { start: 0, end: 100 }
   const center = ((z.start + z.end) / 200) * bars.value.length
   const id = defaultFocus(cmp.sampleDays, null, center)
-  if (id) cmp.focusSample(id)
+  if (id && cmp.focusSample(id)) quietSelPath = view.selPath
 })
 watch(shownPeaks, () => renderRefLayers())
 // 换图:拖到一半的手势作废,选中的框或样本(在原来那张图上)清掉,当前样本也清掉(冻结)

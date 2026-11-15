@@ -2,14 +2,13 @@
  * 从分析结果现算「里面装着什么、同一层是谁」(render/select.ts 的 World;纯函数,类型无关)。
  *
  * 装着(只有这些):
- * - 跨天:一族 → 它的买点日;反馈 → 它收进来的 hit 的买点日;event → 用到它的 hit 的买点日;
- *   node → 它那条 band 上画出来的格(按终点日,一格可能并着几个 event)。
+ * - 跨天:一族 → 它的买点日;反馈 → 它收进来的 hit 的买点日;event → 用到它的 hit 的买点日。
  * - 同一天:买点日 → 这天那个 ▼ 上的几次 hit(只有一次时这天就是那次 hit,算没有);样本、框 → 那天在场的几次 hit。
  * 一次 hit 绑定的 event 不算:它们散在不同的 band 上,不是一行里的一串。
  *
  * 同一层:路径上一节里面的同种东西;没有上一节就是整张图上的同种东西(族、反馈、样本、框)。
- * event 的同一层是它那条 band 上的格,每格取和它同一个起点的那个(没有取第一个);挂在样本下面的 event
- * (从样本的 diagnose 点进来)在样本里没有沿日子排开的邻居。
+ * event 的同一层是它那条 band 上的格(按终点日,一格可能并着几个 event),每格取和它同一个起点的那个(没有取第一个);
+ * 挂在样本下面的 event(从样本的 diagnose 点进来)在样本里没有沿日子排开的邻居。
  *
  * 只读 hit 的 hit_id / start_idx / node_index、event 的 instance_id / start_idx / end_idx 与买入日,不认具体事件类型。
  */
@@ -146,9 +145,6 @@ export function makeWorld(ctx: WorldCtx): World {
     }
     const own = ownHits(last)
     if (own) return buyItems(own)
-    if (last.kind === 'node') {
-      return cellsOf(last.band).map(c => ({ sel: { kind: 'event', instanceId: c.members[0].id }, day: c.day }))
-    }
     return []
   }
 
@@ -158,7 +154,7 @@ export function makeWorld(ctx: WorldCtx): World {
     const parent = path.length >= 2 ? path[path.length - 2] : null
     if (last.kind === 'event') {
       const ev = ctx.byId.get(last.instanceId)
-      if (!ev || (parent && parent.kind !== 'node')) return [self(last)]
+      if (!ev || parent) return [self(last)]
       const cells = cellsOf(ctx.bandOf(ev))
       const mine = cells.find(c => c.members.some(m => m.id === last.instanceId))
       if (!mine) return [self(last)]
@@ -189,7 +185,7 @@ export function makeWorld(ctx: WorldCtx): World {
   return { inside, members, peers, similar, lineDay: () => ctx.lineDay }
 }
 
-/** 这一节的当前日竖线该落在哪根 K 线上;族、反馈、node 不带日子(竖线不动)为 null。 */
+/** 这一节的当前日竖线该落在哪根 K 线上;族、反馈不带日子(竖线不动)为 null。 */
 export function lineDayOf(s: Sel, ctx: Pick<WorldCtx, 'byId' | 'samples' | 'boxes'>): number | null {
   if (s.kind === 'buy' || s.kind === 'hit') return s.day
   if (s.kind === 'event') return ctx.byId.get(s.instanceId)?.end_idx ?? null

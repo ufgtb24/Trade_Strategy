@@ -55,7 +55,6 @@ function snapCtx(over: Partial<WorldCtx> = {}): SnapCtx {
   return {
     dates: DATES, wctx, world: makeWorld(wctx),
     nodeOrder: ['plateau', 'old_plat', 'step', 'today', 'solo'], anchorFields: [],
-    featureOfBand: band => (band === 'step' ? '阶跃' : null),
     feedbackOf: id => (id === 'f1' ? { start: '2024-01-14', end: '2024-01-15', nodes: ['step', 'today'], familyStart: null }
       : id === 'f2' ? { start: '2024-01-16', end: '2024-02-05', nodes: [], familyStart: '2024-01-01' }
       : id === 'f3' ? { start: '2024-01-20', end: '2024-01-20', nodes: [], familyStart: null } : null),
@@ -70,7 +69,6 @@ const FAM0: Sel = { kind: 'hit_family', familyKey: 'hits@0' }
 const buy = (day: number): Sel => ({ kind: 'buy', day })
 const h = (hitId: string, day: number): Sel => ({ kind: 'hit', hitId, day })
 const e = (x: EventDict): Sel => ({ kind: 'event', instanceId: x.instance_id })
-const node = (band: string): Sel => ({ kind: 'node', band })
 const sample = (id: string): Sel => ({ kind: 'sample', sampleId: id })
 const box = (id: string): Sel => ({ kind: 'box', boxId: id })
 const fbk = (id: string): Sel => ({ kind: 'feedback', id })
@@ -166,10 +164,10 @@ describe('一次 hit', () => {
 
 describe('event', () => {
   it('牵出好几天:← / → 会进到这些买点日;卡写首尾与个数', () => {
-    const path = [node('step'), e(S10)]
+    const path = [e(S10)]
     expect(bar(path)).toEqual({
-      kind: 'event', node: 'step', date: '2024-01-11', name: null, diff: null, in: ['node step 阶跃'],
-      day: 'into buys ×3', stack: null, esc: 'up: node step 阶跃',
+      kind: 'event', node: 'step', date: '2024-01-11', name: null, diff: null, in: [],
+      day: 'into buys ×3', stack: null, esc: 'clear',
     })
     expect(card(path)).toEqual({
       buys: '2024-01-14…2024-01-16 ×3', hits: { head: '×3', lines: [] }, nodes: null, family: null, id: S10.instance_id,
@@ -179,10 +177,10 @@ describe('event', () => {
   })
 
   it('只牵出一天:← / → 是沿 band 换到旁边那格,键槽写它是这条 band 上的第几格', () => {
-    const path = [node('today'), e(T13)]
+    const path = [e(T13)]
     expect(bar(path)).toEqual({
-      kind: 'event', node: 'today', date: '2024-01-14', name: null, diff: null, in: ['node today'],
-      day: 'events 1/5', stack: null, esc: 'up: node today',
+      kind: 'event', node: 'today', date: '2024-01-14', name: null, diff: null, in: [],
+      day: 'events 1/5', stack: null, esc: 'clear',
     })
     expect(card(path)).toEqual({
       buys: '2024-01-14 ×1', hits: { head: '×2', lines: [] }, nodes: null, family: null, id: T13.instance_id,
@@ -190,29 +188,14 @@ describe('event', () => {
   })
 
   it('同一格叠着另一个:diff 写它们哪里不一样,↑ / ↓ 在这一格里换', () => {
-    const s = bar([node('plateau'), e(P13b)])
+    const s = bar([e(P13b)])
     expect([s.date, s.diff, s.day, s.stack]).toEqual(['2024-01-01→2024-01-14', 'step→2024-01-12', 'events 1/4', 'events 2/2'])
   })
 
   it('没被任何 hit 用到:buys、hits 适用但是空,写 none;复制行不带这两段', () => {
-    const path = [node('today'), e(T16)]
+    const path = [e(T16)]
     expect(card(path)).toMatchObject({ buys: 'none', hits: { head: 'none', lines: [] } })
     expect(snap(path).copyTail).toBe(`event today 2024-01-17 [${T16.instance_id}]`)
-  })
-})
-
-describe('node', () => {
-  it('只有 node 与它对到的特征名;← / → 会进到 band 上的格;卡上都不适用', () => {
-    expect(bar([node('step')])).toEqual({
-      kind: 'node', node: 'step', date: null, name: '阶跃', diff: null, in: [],
-      day: 'into events ×2', stack: null, esc: 'clear',
-    })
-    expect(card([node('step')])).toEqual({ buys: null, hits: null, nodes: null, family: null, id: null })
-    expect(snap([node('step')]).copyTail).toBe('node step 阶跃')
-  })
-  it('没有对到特征的 node:name 不适用', () => {
-    expect(bar([node('today')]).name).toBeNull()
-    expect(snap([node('today')]).copyTail).toBe('node today')
   })
 })
 
@@ -311,7 +294,6 @@ describe('键槽与身份的写法', () => {
   it('身份:种类、node、日期、叫法依次写,不适用的跳过', () => {
     expect(identityText({ kind: 'event', node: 'step', date: '2024-01-11', name: null })).toBe('event step 2024-01-11')
     expect(identityText({ kind: 'sample', node: null, date: '2024-01-14', name: 'a pos' })).toBe('sample 2024-01-14 a pos')
-    expect(identityText({ kind: 'node', node: 'step', date: null, name: null })).toBe('node step')
     expect(identityText({ kind: 'feedback', node: 'none', date: '2024-01-20', name: null })).toBe('feedback 2024-01-20')
   })
 })

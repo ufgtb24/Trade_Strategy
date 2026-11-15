@@ -231,7 +231,7 @@ describe('DetailSidebar · hit 列表与显示栏同一套:同一天的顺序、
     return f
   }
 
-  it('同一天的几行按族内先后排(和 ↑ / ↓ 一致),行尾写区别;选中牵出的行标着,当前那次黑粗边;选中整天时这天几行都标、不画当前行', async () => {
+  it('同一天的几行按族内先后排(和 ↑ / ↓ 一致),行尾写区别;选中一次 hit 只它自己黑粗边带蓝条;选中整天时这天几行黑粗边、蓝条只挂 ↓ 第一个', async () => {
     const view = useViewStore()
     view.loadScanFile(sameDayFixture())
     view.setBarDates(Array.from({ length: 30 }, (_, i) => `2024-02-${String(i + 1).padStart(2, '0')}`))
@@ -247,20 +247,21 @@ describe('DetailSidebar · hit 列表与显示栏同一套:同一天的顺序、
     // 行的悬停里是全文(和显示栏同一写法);日期那一格只有日期
     expect(wrapper.findAll('.hit-row')[0].attributes('title')).toBe('2024-02-11 – 2024-02-15  seg→2024-02-14')
     expect(wrapper.findAll('.hit-row .hit-span').map(r => r.text())).toEqual(['2024-02-11', '2024-02-11', '2024-02-23'])
-    // 点 early:它那一族(early、late)的行标着,当前那次是 early;↓ 换到 late,侧栏跟着
+    // 点 early:选中的就是这一次,黑粗边 + 蓝条(牵出的就是它自己);同一层的 late 不标;↓ 换到 late,侧栏跟着
     view.focusHit('early')
     await flushPromises()
     const cls = () => wrapper.findAll('.hit-row').map(r =>
       [r.classes().includes('hit-row--batch'), r.classes().includes('hit-row--current')])
-    expect(cls()).toEqual([[true, true], [true, false], [false, false]])
+    expect(cls()).toEqual([[true, true], [false, false], [false, false]])
     view.stepStack(1)
     await flushPromises()
-    expect(cls()).toEqual([[true, false], [true, true], [false, false]])
-    // 点 ▼ 选中这一天整体:这天的两行都标着(顺序和侧栏一样),哪一行都不是当前行
+    expect(cls()).toEqual([[false, false], [true, true], [false, false]])
+    // 点 ▼ 选中这一天整体:这天的两行黑粗边(相邻,连成一块);牵出的同一天只算 ↓ 第一个,蓝条只挂 early
     view.clickBuyDay('hits@10', 10)
     await flushPromises()
     expect(view.selDayHitIds).toEqual(['early', 'late'])
-    expect(cls()).toEqual([[true, false], [true, false], [false, false]])
+    expect(cls()).toEqual([[true, true], [false, true], [false, false]])
+    expect(wrapper.findAll('.hit-row').map(r => r.classes().includes('hit-row--joined'))).toEqual([true, false, false])
   })
   it('同一天几行的区别跨年时,侧栏写全日期', () => {
     const view = useViewStore()

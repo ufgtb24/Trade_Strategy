@@ -133,11 +133,13 @@
     <!-- hit 列表:analysis 就绪时常驻;点行 → 选中 hit 展开 trace + 图上高亮 -->
     <template v-if="effectivePattern && effectiveAnalysis && effectiveAnalysis.hits.length">
       <h3 class="section-title section-title--sym"
-          title="这只股票、这个 pattern 的每一次 hit,按第一个买入日排;点行 = 点图上的 bracket。左边蓝条:选中的那一个牵出的 hit;黑粗边:当前那次;同一天几行时日期下面写区别,顺序和 ↑ / ↓ 一致">hits</h3>
+          title="这只股票、这个 pattern 的每一次 hit,按第一个买入日排;点行 = 点图上的 bracket。黑粗边:选中的那一个由这几次 hit 组成(相邻的连成一块);左边蓝条:它牵出的、图上照常的 hit(同一天只算一次);同一天几行时日期下面写区别,顺序和 ↑ / ↓ 一致">hits</h3>
       <div
-        v-for="m in hitRows" :key="m.hit_id"
-        class="hit-row"
-        :class="{ 'hit-row--batch': batchHitIds.has(m.hit_id), 'hit-row--current': m.hit_id === focusedHitId }"
+        v-for="(m, i) in hitRows" :key="m.hit_id"
+        class="hit-row" :data-hit-id="m.hit_id"
+        :class="{ 'hit-row--batch': rowLooks[i].led, 'hit-row--current': rowLooks[i].framed,
+                  'hit-row--joined': rowLooks[i].joinNext }"
+        :style="rowLooks[i].style"
         :title="hitSpanTitle(m) + (rowLabels.get(m.hit_id) ? `  ${rowLabels.get(m.hit_id)}` : '')"
         @click="selectHitRow(m.hit_id)"
       >
@@ -222,14 +224,16 @@ const {
   diag, isolated, inHitIds, inHitEventIds, qualifiedIds, nodeColors, focusedInstanceRef, scanFile, effectiveScan,
   activeDetailCard, timeScopeResponse, pairScopeResponse,
   debugPending, debugTarget, debugError,
-  showTrace, expandedNodeIds, markedHitIds, markedEventIds,   // Task 4 新增(集合版)
+  showTrace, expandedNodeIds, markedEventIds,   // Task 4 新增(集合版)
   focusedHitId,   // watch 滚动 trace 用
   barDates, endNode,
 } = storeToRefs(view)
 
 // hit 列表:按第一个买入日(没有买入日取终点)排、行上写这一天的日期(bracket 折叠后一行有几十次 hit,圈号会重号)。
-// 同一天的几行按 hit 的先后(和图上 ↑ / ↓ 换同一天的几次同一顺序),行尾写和显示栏 diff 格同一个区别标签;
-// 选中的那一个牵出的 hit(stores/view.ts 的 markedHitIds)的行一直标着,当前那行黑粗边;选中整天时这天几行都标、不画当前行。
+// 同一天的几行按 hit 的先后(和图上 ↑ / ↓ 换同一天的几次同一顺序),行尾写和显示栏 diff 格同一个区别标签。
+// 标法跟着图上的选中走(stores/view.ts 的 highlight):选中的那一个由哪几次 hit 组成,那几行黑粗边(一次 hit → 它自己;
+// 买点日 → 那个 ▼ 上的几次;一族 → 全族;相邻的连成一块框,不相邻的分段框);它牵出的、图上照常的 hit(同一天只算一次)
+// 行左挂中蓝竖条;同一层不标。
 const hitDays = computed<Map<string, number>>(() => {
   const byId = new Map((effectiveAnalysis.value?.events ?? []).map(e => [e.instance_id, e]))
   return new Map((effectiveAnalysis.value?.hits ?? [])
@@ -293,7 +297,25 @@ const shortLabels = computed<Map<string, string>>(() => {
   return out
 })
 function shortLabel(hitId: string): string { return shortLabels.value.get(hitId) ?? rowLabels.value.get(hitId) ?? '' }
-const batchHitIds = computed<ReadonlySet<string>>(() => view.markedHitIds)
+const FRAME_EDGE = '#111111'
+const BLUE_BAR = 'inset 3px 0 0 #1a80ba'   // 牵出的 hit:左边中蓝竖条(浅底上看得见)
+/** 每一行的标法:蓝条、黑粗边;黑粗边相邻的几行连成一块(块内的行与行之间不画边、不留空) */
+const rowLooks = computed(() => {
+  const hl = view.highlight
+  const rows = hitRows.value
+  const framed = (i: number) => i >= 0 && i < rows.length && hl.frameHits.has(rows[i].hit_id)
+  return rows.map((m, i) => {
+    const led = hl.ledHits.has(m.hit_id)
+    const f = framed(i)
+    const shadows: string[] = led ? [BLUE_BAR] : []
+    if (f) {
+      shadows.push(`inset 2px 0 0 ${FRAME_EDGE}`, `inset -2px 0 0 ${FRAME_EDGE}`)
+      if (!framed(i - 1)) shadows.push(`inset 0 2px 0 ${FRAME_EDGE}`)
+      if (!framed(i + 1)) shadows.push(`inset 0 -2px 0 ${FRAME_EDGE}`)
+    }
+    return { led, framed: f, joinNext: f && framed(i + 1), style: shadows.length ? { boxShadow: shadows.join(', ') } : {} }
+  })
+})
 // 悬停给这次 hit 的起止日期(不给 K 线下标)
 function hitSpanTitle(m: HitDict): string {
   const d = (i: number) => barDates.value[i] ?? String(i)
@@ -314,7 +336,7 @@ function toggleExpand(nodeId: string) {
 }
 
 // 当前那次 hit、标出的候选表行变了 → 滚到看得见(按键在一族几十次 hit 里走时靠它)
-watch([focusedHitId, markedHitIds, markedEventIds], () => {
+watch([focusedHitId, () => view.highlight, markedEventIds], () => {
   nextTick(() => {
     for (const sel of ['.hit-row--current', '.attr-row--selected']) {
       const el = sidebarEl.value?.querySelector(sel) as HTMLElement | null
@@ -528,11 +550,10 @@ function undoSwap() {
 .candidate-table th { text-align: left; padding: 2px 6px; color: #64748b; border-bottom: 1px solid #e2e8f0; }
 .attr-row { cursor: pointer; }
 .attr-row:hover { background: #f1f5f9; }
-.attr-row--selected { background: #fef9c3 !important; }
 .row-hidden { font-family: ui-monospace, monospace; cursor: help; }
-.attr-row--selected td { border-top: 1px solid #fbbf24; border-bottom: 1px solid #fbbf24; }
-.attr-row--selected td:first-child { border-left: 1px solid #fbbf24; }
-.attr-row--selected td:last-child { border-right: 1px solid #fbbf24; }
+/* 选中的那一行:黑粗边(和 hits 列表、diagnose 卡片的选中同一个样子;不靠底色)。用 outline 画在行上,
+   不占 td 的边(第一格左边是档位色条,用的是行内 border-left) */
+.attr-row--selected { outline: 2px solid #111111; outline-offset: -2px; }
 .cell-id { padding: 2px 6px; color: #475569; white-space: nowrap; }
 .cell-clause { padding: 2px 6px; }
 .cell-clause em { color: #94a3b8; font-style: normal; }
@@ -542,9 +563,9 @@ function undoSwap() {
   border-radius: 4px; cursor: pointer; border: 1px solid transparent; margin-bottom: 2px;
 }
 .hit-row:hover { background: #f1f5f9; }
-.hit-row--batch { box-shadow: inset 3px 0 0 #1a80ba; }      /* 选中牵出的 hit:左边中蓝竖条(浅底上看得见) */
-.hit-row--current { box-shadow: inset 0 0 0 2px #111111; }  /* 当前那次:黑粗边 */
-.hit-row--batch.hit-row--current { box-shadow: inset 3px 0 0 #1a80ba, inset 0 0 0 2px #111111; }
+/* 蓝条、黑粗边画在行内(box-shadow,见 rowLooks);黑粗边连成一块的几行之间不留空、不画圆角 */
+.hit-row--current { border-radius: 0; }
+.hit-row--joined { margin-bottom: 0; padding-bottom: 6px; }
 /* 日期、ret、d 一行;区别另起一行、占满整行宽(不和 ret / d 抢宽度),不折行;整行都放不下时才截断,全文在行的悬停里 */
 .hit-span { font-size: 11px; color: #475569; white-space: nowrap; flex: 1; }
 .hit-diff { flex-basis: 100%; min-width: 0; font-size: 11px; color: #111111;

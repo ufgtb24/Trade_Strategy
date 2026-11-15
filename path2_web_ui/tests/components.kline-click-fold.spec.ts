@@ -73,26 +73,28 @@ describe('handleChartClick · 族行', () => {
     expect(view.focusedHitId).toBeNull()
     expect(view.selDayHitIds).toEqual(['h0', 'h1'])
     expect(view.currentDay).toBe(13)
-    expect(view.activeFamilyKey).toBe('hits@0')
+    expect([...view.highlight.under.families]).toEqual(['hits@0'])   // 外层一族:那一行底线
+    expect(view.highlight.focusSlot).toEqual({ familyKey: 'hits@0', day: 13 })   // 粗框在这天的 ▼ 上
   })
 
-  it('bracket 上一格、这一列没有 ▼(格里两次 hit)→ 选中其中第一次,当前日 = 它的买入日,当家行 = 这一族', () => {
+  it('bracket 上一格、这一列没有 ▼(格里两次 hit)→ 选中其中第一次,当前日 = 它的买入日,外层是这一族', () => {
     const view = setup()
     const handled = handleChartClick({ seriesName: 'brackets',
       data: { kind: 'mark', hit_id: 'h0', hit_ids: ['h0', 'h1'], family_key: 'hits@0', value: [13, 13, 0, 1] } }, [], view)
     expect(handled).toBe(true)
-    expect(view.candidateHitIds.size).toBe(0)
+    expect([...view.highlight.ledHits]).toEqual(['h0'])
     expect(view.focusedHitId).toBe('h0')
     expect(view.currentDay).toBe(13)
-    expect(view.activeFamilyKey).toBe('hits@0')
+    expect([...view.highlight.under.families]).toEqual(['hits@0'])
   })
 
   it('bracket 上一格(没有 ▼ 的那一列)几次 hit 买入日不一样 → 选中第一次,竖线落在它的买入日,别的几次在这一族里按日子走', () => {
     const view = setup()
     handleChartClick({ seriesName: 'brackets',
       data: { kind: 'mark', hit_id: 'h0', hit_ids: ['h0', 'h2'], family_key: 'hits@0', value: [13, 14, 0, 1] } }, [], view)
-    expect(view.candidateHitIds.size).toBe(0)
-    expect([view.focusedHitId, view.currentDay, view.activeFamilyKey]).toEqual(['h0', 13, 'hits@0'])
+    expect([...view.highlight.ledHits]).toEqual(['h0'])
+    expect([view.focusedHitId, view.currentDay]).toEqual(['h0', 13])
+    expect([...view.highlight.under.families]).toEqual(['hits@0'])
   })
 
   it('bracket 买入日 ▼ → 选中这一天;这天只有一次 hit 时就是那次 hit,当前日 = 买入日', () => {
@@ -103,21 +105,22 @@ describe('handleChartClick · 族行', () => {
     expect(view.currentDay).toBe(14)
   })
 
-  it('band 一格(几个成员)→ 选中其中第一个 event,用到它的 hit 画细框、不算选中;一个成员的格选中它;竖线落在它的终点', () => {
+  it('band 一格(几个成员)→ 选中其中第一个 event,用到它的 hit 照常、不算选中;一个成员的格选中它;竖线落在它的终点', () => {
     const view = setup()
     handleChartClick({ seriesName: 'intervals',
       data: { instance_id: P0.instance_id, member_ids: [P0.instance_id, P1.instance_id], family_key: 'plateau@0',
               value: [13, 13, 0, 0, 3, 1] } }, [], view)
-    expect(view.selPath).toEqual([{ kind: 'node', band: 'plateau' }, { kind: 'event', instanceId: P0.instance_id }])
+    expect(view.selPath).toEqual([{ kind: 'event', instanceId: P0.instance_id }])   // 路径就它一节
     expect([view.selectedInstanceId, view.focusedHitId]).toEqual([P0.instance_id, null])
-    expect([...view.candidateHitIds]).toEqual(['h0'])
+    expect([...view.highlight.ledHits]).toEqual(['h0'])
     handleChartClick({ seriesName: 'intervals',
       data: { instance_id: P2.instance_id, member_ids: [P2.instance_id], family_key: 'plateau@0',
               value: [14, 14, 0, 0, 3, 1] } }, [], view)
     expect([view.selectedInstanceId, view.focusedHitId]).toEqual([P2.instance_id, null])
-    expect([...view.candidateHitIds]).toEqual(['h2'])
+    expect([...view.highlight.ledHits]).toEqual(['h2'])
     expect(view.currentDay).toBe(14)
-    expect(view.activeFamilyKey).toBeNull()             // 选中 event 时,band 的族底线(plateau@0)不加粗
+    expect(view.highlight.under.families.size).toBe(0)  // 选中 event 时没有外层:哪儿都不画底线
+    expect(view.highlight.under.events.size).toBe(0)
   })
 
   it('点空白 → 清焦点,返回 false', () => {

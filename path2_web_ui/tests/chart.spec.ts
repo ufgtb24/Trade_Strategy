@@ -6,13 +6,21 @@ import {
   computeEventData,
   buildMainOption,
   buildSubOption,
-  makeRenderHighlightWithGeom,
-  makeRenderPricePointHighlight,
+  makeRenderSelection,
+  makeRenderPriceFrame,
   makeRenderBracket,
+  SELECTION_SERIES,
   renderIntervalWithGeom,
   renderPointWithGeom,
 } from '../src/render/chart'
 import type { BandRenderInput } from '../src/render/chart'
+import { MARK_ENLARGE_Y, NO_HIGHLIGHT, POINT_ENLARGE_Y, RELATED_EDGE_DARKEN, RELATED_EDGE_W, highlightOf,
+         type Highlight } from '../src/render/selHighlight'
+import { BAND_LANE_GAP, MARK_GROW } from '../src/render/subGeometry'
+import { darken } from '../src/render/colors'
+import { foldBand } from '../src/render/fold'
+import { boundEvents, hitOrderOf, usingIndex } from '../src/render/walk'
+import { makeWorld, type WorldCtx } from '../src/render/selWorld'
 import { computeSubGeometry, type BandGeom } from '../src/render/subGeometry'
 import {
   deriveTagMap, isolatedNodeIds, eventTierOf, nodeOfEventByBand, bandKeyOf, inHitIds,
@@ -52,7 +60,6 @@ describe('chart.ts — computeEventData / buildMainOption / buildSubOption', () 
     bandKeyOf: (e: any) => e.node_id,
     nodeVisible: {},
     tagToNodes: { burst: ['burst'], tb: ['tb'] },
-    selectedInstanceId: null,
     tooltipResolver: undefined,
     strictWindow: null,
     hitLabel: () => null,
@@ -60,9 +67,6 @@ describe('chart.ts — computeEventData / buildMainOption / buildSubOption', () 
     zoomOverride: null,
     endNode: undefined,
     selectedHitId: null,
-    candidateHitIds: new Set<string>(),
-    highlightedEventIds: new Set<string>(),
-    pendingDisambigInstanceId: null,
   }
 
   it('computeEventData bundles points/intervals/brackets/priceAnchored(satellites 已删)', () => {
@@ -87,7 +91,7 @@ describe('chart.ts — computeEventData / buildMainOption / buildSubOption', () 
     // price-anchored 主 marker 保留在主图;卫星 pk 通道已删(Task 7)
     expect(seriesNames).toContain('price-points')
     expect(seriesNames).not.toContain('satellites')
-    expect(seriesNames).toContain('highlight-price')
+    expect(seriesNames).toContain('selection-price')
     // 主图两个 grid:K 线区 + 下方成交量带
     expect(opt.grid.length).toBe(2)
     // tooltip trigger=item(G2),不是 axis
@@ -113,8 +117,8 @@ describe('chart.ts — computeEventData / buildMainOption / buildSubOption', () 
 })
 
 // ─── 恢复 Task 6 review 认定被误删的覆盖(4 组,详见 .superpowers/sdd/task-6-report.md) ──
-// 旧 buildKlineOption 已删,这些行为现活在 computeEventData / buildMainOption / buildSubOption /
-// makeRenderHighlightWithGeom 里;fixture 复刻自 95f5554 版 chart.spec.ts 的 5-node 拓扑
+// 旧 buildKlineOption 已删,这些行为现活在 computeEventData / buildMainOption / buildSubOption 里;
+// fixture 复刻自 95f5554 版 chart.spec.ts 的 5-node 拓扑
 // (down/side 独立趋势 + bo price-anchored 孤立节点 + burst + tb),适配新签名重写断言。
 describe('chart.ts — restored coverage (Task 6 review fix)', () => {
   const topology: Topology = {
@@ -176,7 +180,6 @@ describe('chart.ts — restored coverage (Task 6 review fix)', () => {
       bandKeyOf: (e) => bandKeyOf(e),
       nodeVisible: {},
       tagToNodes,
-      selectedInstanceId: null,
       ...overrides,
     }
   }
@@ -250,229 +253,170 @@ describe('chart.ts — restored coverage (Task 6 review fix)', () => {
     })
   })
 
-  // ── 3. highlight 三分支 + z-order (chart.ts:214-253, 354-363) ──
-  describe('3. highlight three-branch + z-order', () => {
-    // 放大+阴影悬浮三态(2026-07-08 改):group/focus 都保 node/tier 分色(itemStyle.color),
-    // 靠边框粗细区分——group=细深边(1.5)、focus=粗深边(2.5);琥珀不再代表选中。
-    // pending=白底垫层+本色闪烁层。全部 silent:true(实心版盖住本体,交互须穿透到下层)。
-    it('makeRenderHighlightWithGeom: 三态 — group/focus node 分色, group 细深边 / focus 粗深边, pending 白底+本色闪烁分层', () => {
-      const bandGeom: BandGeom[] = [{ top: 20, h: 20, laneCount: 1 }]
-      const fakeApi: any = { value: () => 0, coord: () => [100, 200], size: () => [10, 0] }
-      // pointData 新 shape(spec 2026-07-13):[start, start, lane, band, nBands];lane=0, band=0
-      const mk = (kind: 'group' | 'focus' | 'pendingDisambig') =>
-        makeRenderHighlightWithGeom(
-          [{ value: [0, 0, 0, 0, 1], instance_id: 'e1', itemStyle: { color: '#22c55e' }, kind, shape: 'point' as const }],
-          bandGeom,
-        )({ dataIndex: 0 }, fakeApi) as any
+  // ── 3. 选中后的粗框、外层底线、照常 / 画淡 + z-order ──
+  describe('3. selection frame / underline / dim + z-order', () => {
+    const hlOf = (over: Partial<Highlight>): Highlight => ({ ...NO_HIGHLIGHT, ...over })
+    const sel = (instanceId: string): Highlight['focus'] => ({ kind: 'event', instanceId })
 
-      const group = mk('group')
-      expect(group.type).toBe('polygon')
-      // lane0 centerY = top(20) + BAND_TOP_PAD(4) + 0*(7+2) + 7/2 = 27.5;半宽 = max(7, min(28, 10*0.35*1.4)) = 7
-      expect(group.shape.points).toEqual([[100, 33.5], [93, 23.5], [107, 23.5]])
-      // group = node/tier 本色 + 细深边(1.5)
-      expect(group.style.fill).toBe('#22c55e')
-      expect(group.style.stroke).toBe('#1e293b')
-      expect(group.style.lineWidth).toBe(1.5)
-      expect(group.style.shadowBlur).toBe(6)
-      expect(group.style.shadowOffsetY).toBe(2)
-      expect(group.silent).toBe(true)
-      expect(group.keyframeAnimation).toBeUndefined()
-
-      const focus = mk('focus')
-      expect(focus.type).toBe('polygon')
-      // focus = node/tier 本色 + 粗深边(2.5,被点者标记)
-      expect(focus.style.fill).toBe('#22c55e')
-      expect(focus.style.stroke).toBe('#1e293b')
-      expect(focus.style.lineWidth).toBe(2.5)
-      expect(focus.style.shadowBlur).toBe(6)
-      expect(focus.silent).toBe(true)
-      expect(focus.keyframeAnimation).toBeUndefined()
-
-      const pending = mk('pendingDisambig')
-      expect(pending.type).toBe('group')
-      expect(pending.silent).toBe(true)
-      // pending 逐字不动:白底垫层(阴影+琥珀边恒定)+ 本色 fill 层单独闪
-      expect(pending.children[0].style.fill).toBe('#ffffff')
-      expect(pending.children[0].style.stroke).toBe('#fbbf24')
-      expect(pending.children[0].style.shadowBlur).toBe(6)
-      expect(pending.children[0].keyframeAnimation).toBeUndefined()
-      expect(pending.children[1].style.fill).toBe('#22c55e')
-      expect(pending.children[1].keyframeAnimation).toMatchObject({ duration: 1200, loop: true })
-      expect(pending.children[1].keyframeAnimation.keyframes).toEqual([
-        { percent: 0, style: { opacity: 1 } },
-        { percent: 0.5, style: { opacity: 0.45 } },
-        { percent: 1, style: { opacity: 1 } },
-      ])
-      // 动画对象每次新建(zrender 会污染共享常量)
-      expect(mk('pendingDisambig').children[1].keyframeAnimation)
-        .not.toBe(pending.children[1].keyframeAnimation)
-    })
-
-    it('makeRenderHighlightWithGeom: extent 空心细框(族起点→成员终点,不填色);mark 框住那一格(高随档位、底对齐)', () => {
+    it('makeRenderSelection:band 上的点外扩描深边(2.5、不填色、无阴影);格框高随档位、底对齐;外层底线压在行底', () => {
       const bandGeom: BandGeom[] = [{ top: 20, h: 40, laneCount: 1 }]
-      const fakeApi: any = {
-        value: (i: number) => [10, 20][i] ?? 0,
-        coord: ([v]: [number, number]) => [v === 10 ? 100 : 200, 0],
-        size: () => [10, 0],
-      }
-      const ext = makeRenderHighlightWithGeom(
-        [{ value: [10, 20, 0, 0, 1], instance_id: 'e1', itemStyle: { color: '#3b82f6' }, kind: 'focus', shape: 'extent' }],
-        bandGeom,
-      )({ dataIndex: 0 }, fakeApi) as any
-      expect(ext.type).toBe('rect')
-      // 横向:起点中心 −0.4 根 −1 到终点中心 +0.4 根 +1(unitW=10);竖向:lane 顶 24 −1.5、高 7+3
-      expect(ext.shape).toEqual({ x: 95, y: 22.5, width: 110, height: 10 })
-      expect(ext.style.fill).toBe('none')          // 空心:实心复本会盖住族行里后面的格子
-      expect(ext.style.stroke).toBe('#1e293b')
-      expect(ext.style.lineWidth).toBe(1.5)
-      expect(ext.silent).toBe(true)
+      const api: any = { value: () => 0, coord: ([v]: [number, number]) => [v === 10 ? 100 : 200, 0], size: () => [10, 0] }
+      const render = (it: any) => makeRenderSelection([it], bandGeom)({ dataIndex: 0 }, api) as any
+      const pt = render({ kind: 'frame', target: 'band', shape: 'point', value: [10, 10, 0, 0, 1, 1] })
+      expect(pt.type).toBe('polygon')
+      expect(pt.style).toEqual({ fill: 'none', stroke: '#1e293b', lineWidth: 2.5 })
+      expect(pt.style.shadowBlur).toBeUndefined()
+      expect(pt.silent).toBe(true)
+      // lane0 centerY = 20 + 4 + 3.5 = 27.5;半宽 = max(5, min(20, 10*0.35)) = 5;各顶点外推 1.5(横向 3)
+      expect(pt.shape.points).toEqual([[100, 27.5 + 4 + 3], [100 - 5 - 3, 27.5 - 3 - 1.5], [100 + 5 + 3, 27.5 - 3 - 1.5]])
 
-      const mark = makeRenderHighlightWithGeom(
-        [{ value: [20, 20, 0, 0, 1, 0.4], instance_id: 'e1', itemStyle: { color: '#d1d5db' }, kind: 'focus', shape: 'mark' }],
-        bandGeom,
-      )({ dataIndex: 0 }, { ...fakeApi, value: (i: number) => [20, 20][i] ?? 0 }) as any
+      const mark = render({ kind: 'frame', target: 'band', shape: 'mark', value: [20, 20, 0, 0, 1, 0.4] })
       // 格高 = 7*0.4 = 2.8,底对齐 lane 底(24+7=31);框外扩 1.5
       expect(mark.shape.y).toBeCloseTo(31 - 2.8 - 1.5)
       expect(mark.shape.height).toBeCloseTo(2.8 + 3)
-      expect(mark.style.fill).toBe('none')
-      expect(mark.style.lineWidth).toBe(2.5)
-      expect(mark.keyframeAnimation).toBeUndefined()
-      const pend = makeRenderHighlightWithGeom(
-        [{ value: [20, 20, 0, 0, 1, 1], instance_id: 'e1', kind: 'pendingDisambig', shape: 'mark' }],
-        bandGeom,
-      )({ dataIndex: 0 }, { ...fakeApi, value: (i: number) => [20, 20][i] ?? 0 }) as any
-      expect(pend.keyframeAnimation).toMatchObject({ duration: 1200, loop: true })
+      expect(mark.style).toEqual({ fill: 'none', stroke: '#1e293b', lineWidth: 2.5 })
+
+      const under = render({ kind: 'under', target: 'band', value: [10, 20, 0, 0, 1] })
+      // 横跨起点中心 −0.4 根到终点中心 +0.4 根;压在 lane 底(31)上,高 2.5
+      expect(under.shape).toEqual({ x: 96, y: 30, width: 108, height: 2.5 })
+      expect(under.style.fill).toBe('#1e293b')
     })
 
-    // 主图 bo 盒放大版:实心版会遮住本体文字 → 必须重画盒+文本(字号不变)。
-    // 2026-07-08 改:group/focus 保 node/tier 分色(itemStyle.color) + 细/粗深边、shadow;
-    // 文字统一深灰蓝(橙/灰底皆可读);pending 白底+闪烁分层用 color 而非 tier bg,文字统一深灰蓝。
-    it('makeRenderPricePointHighlight: 放大盒+text 重画 — group node色+细深边, focus node色+粗深边, pending 白底+闪', () => {
-      const fakeApi: any = { value: () => 0, coord: () => [100, 200] }
-      const mk = (kind: 'group' | 'focus' | 'pendingDisambig') =>
-        makeRenderPricePointHighlight([
-          { value: [0, 0], instance_id: 'e1', anchorY: 1, text: '[1]',
-            itemStyle: { color: '#f97316' }, kind },
-        ])({ dataIndex: 0 }, fakeApi) as any
-
-      const group = mk('group')
-      expect(group.type).toBe('group')
-      expect(group.silent).toBe(true)
-      // children[0] = 放大盒:node 本色 + 细深边(1.5)+ shadow
-      const gBox = group.children[0]
-      expect(gBox.type).toBe('rect')
-      expect(gBox.shape.r).toBe(7)          // BO_BOX_RADIUS(4) + pad(3)
-      expect(gBox.style.fill).toBe('#f97316')
-      expect(gBox.style.stroke).toBe('#1e293b')
-      expect(gBox.style.lineWidth).toBe(1.5)
-      expect(gBox.style.shadowBlur).toBe(6)
-      // children[1] = text:文字保留、字号不变、深灰蓝(全 tier 统一)
-      const gText = group.children[1]
-      expect(gText.type).toBe('text')
-      expect(gText.style.text).toBe('[1]')
-      expect(gText.style.fontSize).toBe(16)  // MARKER_FONT_SIZE
-      expect(gText.style.fill).toBe('#1e293b')
-
-      const focus = mk('focus')
-      expect(focus.children[0].style.fill).toBe('#f97316')
-      expect(focus.children[0].style.stroke).toBe('#1e293b')
-      expect(focus.children[0].style.lineWidth).toBe(2.5)
-      expect(focus.children[0].style.shadowBlur).toBe(6)
-      expect(focus.children[1].type).toBe('text')
-      expect(focus.children[1].style.fill).toBe('#1e293b')
-
-      const pending = mk('pendingDisambig')
-      expect(pending.children).toHaveLength(3)
-      expect(pending.children[0].style.fill).toBe('#ffffff')       // 白底垫层(阴影+琥珀边)不动
-      expect(pending.children[0].style.stroke).toBe('#fbbf24')
-      expect(pending.children[0].style.shadowBlur).toBe(6)
-      expect(pending.children[1].style.fill).toBe('#f97316')       // 闪烁本色改用 color 参数
-      expect(pending.children[1].keyframeAnimation).toMatchObject({ duration: 1200, loop: true })
-      expect(pending.children[2].type).toBe('text')                 // 文字最上层不闪
-      expect(pending.children[2].style.fill).toBe('#1e293b')        // 全 tier 统一深灰蓝
-      expect(pending.children[2].keyframeAnimation).toBeUndefined()
+    it('makeRenderSelection:hits 行的格位粗框、一族底线;个数压在竖线上面、描白边;只有一次、没留个数行、K 线比数字窄时不写', () => {
+      const api: any = { value: () => 0, coord: ([v]: [number, number]) => [v === 10 ? 100 : 200, 0], size: () => [10, 0] }
+      const tops = [30]
+      const render = (it: any, laneTops?: number[]) =>
+        makeRenderSelection([it], [], 1, 4, laneTops)({ dataIndex: 0 }, api) as any
+      const frame = render({ kind: 'frame', target: 'hits', value: [10, 10, 0] }, tops)
+      expect(frame.shape).toEqual({ x: 94.5, y: 28.5, width: 11, height: 10 })
+      expect(frame.style).toEqual({ fill: 'none', stroke: '#1e293b', lineWidth: 2.5 })
+      const under = render({ kind: 'under', target: 'hits', value: [10, 20, 0] }, tops)
+      expect(under.shape).toEqual({ x: 96, y: 36, width: 108, height: 2.5 })
+      const count = render({ kind: 'count', target: 'hits', value: [10, 10, 0], n: 2, dim: false }, tops)
+      expect(count.type).toBe('text')
+      expect(count.style).toMatchObject({ text: '2', x: 100, y: 29, verticalAlign: 'bottom', fill: '#111111', stroke: '#ffffff' })
+      expect(count.style.opacity).toBeUndefined()
+      // 画淡只淡数字:白边不透明(竖线不从淡了的数字里透出来)
+      const dimmed = render({ kind: 'count', target: 'hits', value: [10, 10, 0], n: 2, dim: true }, tops).style
+      expect([dimmed.fill, dimmed.stroke, dimmed.opacity]).toEqual(['rgba(17, 17, 17, 0.5)', '#ffffff', undefined])
+      expect(render({ kind: 'count', target: 'hits', value: [10, 10, 0], n: 2 }).children).toEqual([])   // 没留个数行
+      expect(render({ kind: 'count', target: 'hits', value: [10, 10, 0], n: 1 }, tops).children).toEqual([])   // 只有一次
+      const narrow = makeRenderSelection([{ kind: 'count', target: 'hits', value: [10, 10, 0], n: 2 }], [], 1, 4, tops)(
+        { dataIndex: 0 }, { ...api, size: () => [3, 0] }) as any
+      expect(narrow.children).toEqual([])                                                     // 一根 3px,比数字窄
+      // 行的顶照 laneTops 取(有个数行时行距不等):第二行顶在 30,数字下沿在 30 − 1
+      expect(render({ kind: 'count', target: 'hits', value: [10, 10, 1], n: 2 }, [4, 30]).style.y).toBe(30 - 1)
+      expect(render({ kind: 'count', target: 'hits', value: [10, 10, 0], n: 2 }, [4, 30]).style.y).toBe(4 - 1)
     })
 
-    it('push order: highlightData 先 group 再 pendingDisambig 再 focus(chart.ts:219-253 三分支顺序)', () => {
-      const stub: EventDict[] = [
-        { instance_id: 'eGroup#0',   node_id: 'tb', start_idx: 1, end_idx: 1 },
-        { instance_id: 'ePending#0', node_id: 'tb', start_idx: 2, end_idx: 2 },
-        { instance_id: 'eFocus#0',   node_id: 'tb', start_idx: 3, end_idx: 3 },
-      ] as any[]
+    it('makeRenderPriceFrame:bo 盒外扩描深边、不填色;外层底线画在盒下', () => {
+      const api: any = { value: () => 0, coord: () => [100, 200] }
+      const mk = (kind: 'frame' | 'under') => makeRenderPriceFrame([
+        { value: [0, 0], anchorY: 1, text: '[1]', kind },
+      ])({ dataIndex: 0 }, api) as any
+      const f = mk('frame')
+      expect(f.type).toBe('rect')
+      expect(f.style).toEqual({ fill: 'none', stroke: '#1e293b', lineWidth: 2.5 })
+      expect(f.shape.r).toBe(5.5)            // BO_BOX_RADIUS(4) + 外扩 1.5
+      const u = mk('under')
+      expect(u.shape.y).toBeGreaterThan(f.shape.y + f.shape.height - 1.5)
+      expect(u.style.fill).toBe('#1e293b')
+    })
+
+    it('computeEventData:选中的 event 出一条粗框;外层 event 出底线;价格区 node 走主图那一份', () => {
       const input = makeInput('detected', {
-        // 实例流:highlightedEventIds 集合元素为 instance_id 字符串(marker 的 instance_id 匹配)
-        highlightedEventIds: new Set(['eGroup#0']),
-        pendingDisambigInstanceId: 'ePending#0',
-        // 1 归属:合并 ref(selectedInstanceId)= focusedInstanceId;focus 响应当前聚焦实例
-        selectedInstanceId: 'eFocus#0',
-        focusedInstanceId: 'eFocus#0',
+        highlight: hlOf({ focus: sel('tb16#0'), under: { ...NO_HIGHLIGHT.under, events: new Set(['burst1#0', 'bo9#0']) } }),
       })
-      const bundle = computeEventData(bars, stub, [], input)
-      expect(bundle.highlightData.map((d: any) => d.kind)).toEqual(['group', 'pendingDisambig', 'focus'])
-      expect(bundle.highlightData.map((d: any) => d.instance_id)).toEqual(['eGroup#0', 'ePending#0', 'eFocus#0'])
+      const bundle = computeEventData(bars, events, hits, input)
+      const frames = bundle.frameData.filter((d: any) => d.kind !== 'count')
+      expect(frames).toEqual([
+        { kind: 'frame', target: 'band', shape: 'point', value: [16, 16, 0, 3, 4, 1, 1], instance_id: 'tb16#0' },
+        { kind: 'under', target: 'band', value: [10, 15, 0, 2, 4], instance_id: 'burst1#0' },
+      ])
+      expect(bundle.framePriceData.map((d: any) => [d.instance_id, d.kind])).toEqual([['bo9#0', 'under']])
     })
 
-    // 被点 marker 同属 highlight 集合(点击链路必然如此):若同时出 group + focus
-    // 两层同坐标实心放大版,阴影叠加会让被点者投影明显深于组员。
-    // 故 group 条目跳过焦点实例,被点 marker 由 focus 条目独家表达。
-    it('焦点实例 ∈ highlightedEventIds 时只出 focus 条目,不出 group 条目', () => {
-      const stub: EventDict[] = [
-        { instance_id: 'eSel#0',   node_id: 'tb', start_idx: 1, end_idx: 1 },
-        { instance_id: 'eOther#0', node_id: 'tb', start_idx: 2, end_idx: 2 },
-      ] as any[]
+    it('computeEventData:有关的三角、格、条竖直放大(value[6]),粗框跟着同一倍数;无关的、两个灰档里都不放大', () => {
+      const related = hlOf({ focus: sel('tb16#0'), appRelated: new Set(['tb16#0', 'burst1#0', 'bo9#0']) })
+      const b = computeEventData(bars, events, hits, makeInput('in_hit', { highlight: related }))
+      const v6 = (arr: any[], id: string) => arr.find((d: any) => d.instance_id === id).value[6]
+      expect(v6(b.pointData, 'tb16#0')).toBe(POINT_ENLARGE_Y)
+      expect(v6(b.intervalData, 'burst1#0')).toBe(MARK_ENLARGE_Y)
+      expect(v6(b.intervalData, 'down1#0')).toBe(1)                     // 无关的
+      expect(b.frameData.find((d: any) => d.kind === 'frame').value[6]).toBe(POINT_ENLARGE_Y)
+      // 灰档:格高、三角大小表示档位,有关的也不放大
+      const g = computeEventData(bars, events, hits, makeInput('detected', { highlight: related }))
+      expect(v6(g.pointData, 'tb16#0')).toBe(1)
+      expect(v6(g.intervalData, 'burst1#0')).toBe(1)
+      expect(g.pricePointData.find((d: any) => d.instance_id === 'bo9#0').sy).toBe(1)
+    })
+
+    it('renderIntervalWithGeom:格放大后往上长,底不动、长进行间空隙但留一道缝', () => {
+      const geom = [{ top: 0, h: 60 }] as any
+      const mk = (sy: number) => renderIntervalWithGeom({}, {
+        coord: ([x]: number[]) => [x * 10, 0], size: () => [10, 0], style: () => ({}),
+        value: (i: number) => [5, 5, 1, 0, 1, 1, sy][i],
+      }, geom, 1) as any
+      const [a, b] = [mk(1).shape, mk(MARK_ENLARGE_Y).shape]
+      expect(b.y + b.height).toBeCloseTo(a.y + a.height)                 // 底对齐不动
+      expect(b.height - a.height).toBeGreaterThan(0)
+      expect(b.height - a.height).toBeLessThan(BAND_LANE_GAP)            // 不长满空隙,和上一行之间留缝
+    })
+
+    it('renderPointWithGeom:放大只改高、不改宽', () => {
+      const geom = [{ top: 0, height: 40 }] as any
+      const mk = (sy: number) => renderPointWithGeom({}, {
+        coord: () => [100, 0], size: () => [10, 0], style: () => ({}),
+        value: (i: number) => [5, 5, 0, 0, 1, 1, sy][i],
+      }, geom, 1) as any
+      const [a, b] = [mk(1).shape.points, mk(POINT_ENLARGE_Y).shape.points]
+      expect(b[2][0] - b[1][0]).toBeCloseTo(a[2][0] - a[1][0])            // 宽不变
+      expect(b[0][1] - b[1][1]).toBeCloseTo((a[0][1] - a[1][1]) * POINT_ENLARGE_Y)   // 高 ×1.4
+    })
+
+    it('computeEventData:有关的照常,app 那一边其余的画淡(不透明度 0.5);没选中时一个都不淡', () => {
+      const plain = computeEventData(bars, events, hits, makeInput('detected'))
+      expect([...plain.intervalData, ...plain.pointData].every((d: any) => d.itemStyle.opacity === undefined)).toBe(true)
+      expect(plain.pricePointData.every((d: any) => d.dim === false)).toBe(true)
+
       const input = makeInput('detected', {
-        // 实例流:instance_id 集合;1 归属合并 ref(selectedInstanceId)= focusedInstanceId;
-        // group 排除仍按 focusedInstanceId 精确(同值)
-        highlightedEventIds: new Set(['eSel#0', 'eOther#0']),
-        selectedInstanceId: 'eSel#0',
-        focusedInstanceId: 'eSel#0',
+        highlight: hlOf({ focus: sel('tb16#0'), dimApp: true, appEvents: new Set(['tb16#0', 'burst1#0']) }),
       })
-      const bundle = computeEventData(bars, stub, [], input)
-      const ofSel = bundle.highlightData.filter((d: any) => d.instance_id === 'eSel#0')
-      expect(ofSel.map((d: any) => d.kind)).toEqual(['focus'])
-      const ofOther = bundle.highlightData.filter((d: any) => d.instance_id === 'eOther#0')
-      expect(ofOther.map((d: any) => d.kind)).toEqual(['group'])
+      const bundle = computeEventData(bars, events, hits, input)
+      const op = (id: string) => [...bundle.intervalData, ...bundle.pointData].find((d: any) => d.instance_id === id).itemStyle.opacity
+      expect(op('burst1#0')).toBeUndefined()
+      expect(op('tb16#0')).toBeUndefined()
+      expect(op('down1#0')).toBe(0.5)
+      expect(bundle.pricePointData.find((d: any) => d.instance_id === 'bo9#0').dim).toBe(true)
+      expect(bundle.familyLineData.find((d: any) => d.family_key.startsWith('down@')).dim).toBe(true)
+      // hits 行:这一次没被牵出,也不在同一层 → 画淡
+      expect(bundle.bracketData.every((d: any) => d.dim === true)).toBe(true)
+      expect(bundle.bracketLineData.every((d: any) => d.dim === true)).toBe(true)
     })
 
-    // 0 归属(detected/qualified marker click,不在任何 hit)也须画 focus 黑框:
-    // focusEvent 走 0 归属分支设 selectedInstanceId、focusedInstanceId=null;chart 的
-    // selectedInstanceId 参数=合并 ref(=该实例),focus 分支须响应它,否则点击不出黑框。
-    it('0 归属(selectedInstanceId 非空 / focusedInstanceId null)marker 也画 focus 黑框', () => {
-      const stub: EventDict[] = [
-        { instance_id: 'eSel#0', node_id: 'tb', start_idx: 1, end_idx: 1 },
-      ] as any[]
-      const input = makeInput('detected', {
-        selectedInstanceId: 'eSel#0',
-        focusedInstanceId: null,
-      })
-      const bundle = computeEventData(bars, stub, [], input)
-      expect(bundle.highlightData.filter((d: any) => d.instance_id === 'eSel#0').map((d: any) => d.kind)).toEqual(['focus'])
-    })
-
-    it('buildMainOption: highlight-price z(21) > price-points z(12);satellites 系列已删(Task 7)', () => {
+    it('buildMainOption:价格区粗框 selection-price z(21) > price-points z(12),不接鼠标;旧的放大复本系列已删', () => {
       const input = makeInput('detected')
       const bundle = computeEventData(bars, events, hits, input)
       const opt = buildMainOption(bars, bundle, input) as any
       const S = (name: string) => opt.series.find((s: any) => s.name === name)
-      expect(S('highlight-price').z).toBe(21)
+      expect(S('selection-price').z).toBe(21)
+      expect(S('selection-price').silent).toBe(true)
       expect(S('price-points').z).toBe(12)
+      expect(S('highlight-price')).toBeUndefined()
       expect(S('satellites')).toBeUndefined()
-      expect(S('highlight-price').z).toBeGreaterThan(S('price-points').z)
     })
 
-    // keyframeAnimation 受 series 级 isAnimationEnabled() 闸控(实测):
-    // 顶层 animation:false 会连带跳过闪烁 → 两 highlight 系列必须显式 animation:true。
-    it('highlight 系列显式 animation:true(顶层 animation:false 下 keyframeAnimation 才生效)', () => {
+    it('buildSubOption:粗框、底线、个数那一层压在当前日竖线(最下层)上面、轨名下面;不再有闪烁动画', () => {
       const input = makeInput('detected')
       const bundle = computeEventData(bars, events, hits, input)
-      const mainOpt = buildMainOption(bars, bundle, input) as any
-      expect(mainOpt.animation).toBe(false)
-      expect(mainOpt.series.find((s: any) => s.name === 'highlight-price').animation).toBe(true)
-
       const subGeom = computeSubGeometry({ bracketLaneCount: 1, bandLaneCounts: [1, 1, 1, 1] })
       const subOpt = buildSubOption(bars, bundle, subGeom, input, 800) as any
-      expect(subOpt.animation).toBe(false)
-      expect(subOpt.series.find((s: any) => s.name === 'highlight').animation).toBe(true)
+      const S = (name: string) => subOpt.series.find((s: any) => s.name === name)
+      expect(S('highlight')).toBeUndefined()
+      expect(S(SELECTION_SERIES).z).toBe(31)
+      expect(S(SELECTION_SERIES).z).toBeGreaterThan(S('current-day').z)
+      expect(S(SELECTION_SERIES).silent).toBe(true)
+      expect(subOpt.series.every((s: any) => s.animation !== true)).toBe(true)
     })
   })
 
@@ -546,20 +490,11 @@ describe('buildSubDecorGraphics — Task 3', () => {
     expect(g.length).toBeGreaterThan(0)
   })
 
-  it('轨名:不给点击回调照旧不接鼠标;给了就接、点它报出是第几条 band;选中的那条描黑粗边', () => {
+  it('轨名不接鼠标、不描边(node 不能选中)', () => {
     const labels = (g: any[]) => g.filter((e) => e.type === 'text' && ['bo', 'burst'].includes(e.style.text))
     const plain = labels(buildSubDecorGraphics(bandGeom, bracketH, bandLabelTexts, hitsLabelVisible, chartSubWidth))
     expect(plain.map((e) => e.silent)).toEqual([true, true])
     expect(plain.every((e) => e.onclick === undefined && e.style.borderWidth === undefined)).toBe(true)
-    const picked: number[] = []
-    const on = labels(buildSubDecorGraphics(bandGeom, bracketH, bandLabelTexts, hitsLabelVisible, chartSubWidth, 1,
-      { selected: 1 }, [], undefined, [], 0, (bi) => picked.push(bi)))
-    expect(on.map((e) => e.silent)).toEqual([false, false])
-    on[1].onclick()
-    expect(picked).toEqual([1])
-    expect(on[0].style.borderWidth).toBeUndefined()
-    expect(on[1].style.borderWidth).toBe(2)
-    expect(on[1].style.borderColor).toBe('#000000')
   })
 
   it('hits 区垫浅黄底、一直铺到第一条 band 的顶;hits 与 band 之间不画分隔线', () => {
@@ -711,7 +646,6 @@ describe('buildSubOption — Task 4 graphic switch', () => {
     bandKeyOf: (e: any) => e.node_id,
     nodeVisible: {},
     tagToNodes: { burst: ['burst'], tb: ['tb'] },
-    selectedInstanceId: null,
     tooltipResolver: undefined,
     strictWindow: null,
     hitLabel: () => null,
@@ -719,9 +653,6 @@ describe('buildSubOption — Task 4 graphic switch', () => {
     zoomOverride: null,
     endNode: undefined,
     selectedHitId: null,
-    candidateHitIds: new Set<string>(),
-    highlightedEventIds: new Set<string>(),
-    pendingDisambigInstanceId: null,
   }
   const chartSubWidth = 800
 
@@ -746,16 +677,16 @@ describe('buildSubOption — Task 4 graphic switch', () => {
     expect(seriesNames).not.toContain('bandLabels')
   })
 
-  it('option.series still contains data-driven decor consumers (brackets / points / intervals / highlight)', () => {
+  it('option.series still contains data-driven decor consumers (brackets / points / intervals / selection)', () => {
     const bundle = computeEventData(bars, events, hits, baseParams as any)
     const subGeom = computeSubGeometry({ bracketLaneCount: 1, bandLaneCounts: [1, 1] })
     const opt = buildSubOption(bars, bundle, subGeom, baseParams as any, chartSubWidth) as any
     const seriesNames = opt.series.map((s: any) => s.name)
-    // brackets / points / intervals / highlight 保留（真数据驱动）
+    // brackets / points / intervals / selection 保留（真数据驱动）
     expect(seriesNames).toContain('brackets')
     expect(seriesNames).toContain('points')
     expect(seriesNames).toContain('intervals')
-    expect(seriesNames).toContain('highlight')
+    expect(seriesNames).toContain(SELECTION_SERIES)
   })
 
   it('grid[0].left / right consume SUB_GRID_LEFT / SUB_GRID_RIGHT constants', () => {
@@ -806,7 +737,7 @@ describe('副图空轨移除 — price tag 不参与分轨', () => {
       eventTier: () => 'detected' as Tier,
       nodeOfEventByBand: (e) => nodeOfEventByBand(e, tagToNodes, tagList),
       bandKeyOf: (e) => bandKeyOf(e),
-      nodeVisible: {}, tagToNodes, selectedInstanceId: null,
+      nodeVisible: {}, tagToNodes,
     }
   }
 
@@ -850,7 +781,7 @@ describe('副图空轨移除 — price tag 不参与分轨', () => {
       eventTier: () => 'detected' as Tier,
       nodeOfEventByBand: (e) => nodeOfEventByBand(e, tagToNodes, tagList),
       bandKeyOf: (e) => bandKeyOf(e),
-      nodeVisible: {}, tagToNodes, selectedInstanceId: null,
+      nodeVisible: {}, tagToNodes,
     }
     const boEvents = [{ instance_id: 'bo9#0', node_id: 'bo', start_idx: 9, end_idx: 9 }] as any[]
     const bundle = computeEventData(bars, boEvents, [], input)
@@ -864,87 +795,50 @@ describe('副图空轨移除 — price tag 不参与分轨', () => {
   })
 })
 
-// ---------- bracket:一族 hit 一行;记号琥珀满高,选中 = 跨度空心框 + 记号深边框,候选 = 细实线框 ----------
-describe('makeRenderBracket — 记号、选中、候选、买入日', () => {
+// ---------- bracket:一族 hit 一行;记号琥珀满高,▼ 黑;选中的粗框、个数在 selection 系列(见上面第 3 节) ----------
+describe('makeRenderBracket — 记号、买入日、画淡', () => {
   const fakeApi: any = {
     value: (i: number) => [10, 20, 0, 1][i] ?? 0,
     coord: ([v]: [number, number]) => [v === 10 ? 100 : v === 5 ? 50 : 200, 0],
     size: () => [10, 0],
   }
-  const mk = (item: any, selected: string | null, candidates = new Set<string>(), focus = false, api = fakeApi) =>
-    makeRenderBracket([item], selected, candidates, 1.0, focus)({ dataIndex: 0 }, api) as any
-  const mark = { hit_id: 'm1', hit_ids: ['m1'], kind: 'mark' as const, family_start: 10 }
+  const mk = (item: any, api = fakeApi) => makeRenderBracket([item], 1.0)({ dataIndex: 0 }, api) as any
+  const mark = { hit_id: 'm1', hit_ids: ['m1'], kind: 'mark' as const }
 
-  it('普通:琥珀满高,横向起点中心 −0.4 根到终点中心 +0.4 根,无描边', () => {
-    const g = mk(mark, null)
+  it('普通:琥珀满高,横向起点中心 −0.4 根到终点中心 +0.4 根,无描边、不加任何框', () => {
+    const g = mk(mark)
     expect(g.children).toHaveLength(1)
     expect(g.children[0].shape).toEqual({ x: 96, y: 4, width: 108, height: 7 })
     expect(g.children[0].style.fill).toBe('#fbbf24')
     expect(g.children[0].style.stroke).toBeUndefined()
+    expect(g.children[0].style.opacity).toBeUndefined()
   })
 
-  it('选中:记号深边框(点 bracket 本身粗 2.5、点组内 marker 细 1.5)+ 阴影;族起点早于记号时另画跨度空心框', () => {
-    const member = mk(mark, 'm1')
-    const box = member.children[member.children.length - 1]
-    expect(box.style.fill).toBe('none')
-    expect(box.style.stroke).toBe('#1e293b')
-    expect(box.style.lineWidth).toBe(1.5)
-    expect(box.style.shadowBlur).toBe(6)
-    expect(mk(mark, 'm1', new Set(), true).children.at(-1).style.lineWidth).toBe(2.5)
-    // family_start == 记号起点:不画跨度框(和记号重合)
-    expect(member.children).toHaveLength(2)
-    const inFamily = mk({ ...mark, family_start: 5 }, 'm1')
-    expect(inFamily.children).toHaveLength(3)
-    const ext = inFamily.children[1]
-    expect(ext.style.fill).toBe('none')
-    expect(ext.style.lineWidth).toBe(1.5)
-    expect(ext.shape.x).toBe(50 - 4 - 1)
+  it('画淡:格与 ▼ 只降不透明度(0.5),颜色不变', () => {
+    expect(mk({ ...mark, dim: true }).children[0].style).toMatchObject({ fill: '#fbbf24', opacity: 0.5 })
+    expect(mk({ hit_id: 'm1', hit_ids: ['m1'], kind: 'buy', dim: true }).style).toEqual({ fill: '#111111', opacity: 0.5 })
   })
 
-  it('候选:细实线框,不用虚线(虚线只表示用户画的),不闪', () => {
-    const cand = mk(mark, null, new Set(['m1']))
-    const box = cand.children[1]
-    expect(box.style.stroke).toBe('#1e293b')
-    expect(box.style.lineWidth).toBe(1.5)
-    expect(box.style.lineDash).toBeUndefined()
-    expect(cand.keyframeAnimation).toBeUndefined()
-  })
-
-  it('买入日 ▼:黑色三角', () => {
-    const buy = mk({ hit_id: 'm1', hit_ids: ['m1'], kind: 'buy' }, null)
+  it('买入日 ▼:黑色三角;并了几次 hit 时 ▼ 也不变(个数画在 selection 系列里)', () => {
+    const buy = mk({ hit_id: 'm1', hit_ids: ['m1'], kind: 'buy' })
     expect(buy.type).toBe('polygon')
     expect(buy.style.fill).toBe('#111111')
+    expect(mk({ hit_id: 'm1', hit_ids: ['m1', 'm2'], kind: 'buy' }).shape).toEqual(buy.shape)
   })
 
-  it('买入日并了几次 hit:▼ 不动,个数写在格子外正上方;没留个数行、K 线太密或只有一次时只画 ▼', () => {
-    const buy2 = { hit_id: 'm1', hit_ids: ['m1', 'm2'], kind: 'buy' as const }
-    const at = (item: any, z: number, laneTops?: number[], api = fakeApi) =>
-      makeRenderBracket([item], null, new Set(), z, false, 4, laneTops)({ dataIndex: 0 }, api) as any
-    const plain = at({ ...buy2, hit_ids: ['m1'] }, 1, [4])
-    expect(plain.type).toBe('polygon')
-    const g = at(buy2, 1, [4])
-    expect(g.type).toBe('group')
-    const [tri, num] = g.children
-    expect(tri.shape).toEqual(plain.shape)                 // ▼ 和只有一次时一模一样
-    expect(num.style.text).toBe('2')
-    expect(num.style.x).toBe(100)
-    expect(num.style.y).toBe(4 - 1)                        // 格子顶之上
-    expect(num.style.verticalAlign).toBe('bottom')
-    expect(num.style.fill).toBe('#111111')
-    expect(at(buy2, 1).type).toBe('polygon')               // 没给 laneTops = 没留个数行
-    expect(at(buy2, 1, [4], { ...fakeApi, size: () => [3, 0] }).type).toBe('polygon')   // 一根 3px,比数字窄
-    // 行的顶照 laneTops 取(有个数行时行距不等)
+  it('行的顶照 laneTops 取(有个数行时行距不等)', () => {
     const lane1 = { ...fakeApi, value: (i: number) => [10, 20, 1, 1][i] ?? 0 }
-    expect(at(buy2, 1, [4, 30], lane1).children[1].style.y).toBe(30 - 1)
+    const g = makeRenderBracket([mark], 1, 4, [4, 30])({ dataIndex: 0 }, lane1) as any
+    expect(g.children[0].shape.y).toBe(30)
   })
 
   it('zoomFactor:top = 4 + lane·9z,高 7z;不传 z 与 z=1 相同', () => {
     const api = { ...fakeApi, value: (i: number) => [10, 20, 1, 1][i] ?? 0 }
-    const g2 = makeRenderBracket([mark], null, new Set(), 2)({ dataIndex: 0 }, api) as any
+    const g2 = makeRenderBracket([mark], 2)({ dataIndex: 0 }, api) as any
     expect(g2.children[0].shape.y).toBe(4 + 1 * 9 * 2)
     expect(g2.children[0].shape.height).toBe(14)
-    const g0 = makeRenderBracket([mark], null, new Set())({ dataIndex: 0 }, api) as any
-    const g1 = makeRenderBracket([mark], null, new Set(), 1.0)({ dataIndex: 0 }, api) as any
+    const g0 = makeRenderBracket([mark])({ dataIndex: 0 }, api) as any
+    const g1 = makeRenderBracket([mark], 1.0)({ dataIndex: 0 }, api) as any
     expect(g0.children[0].shape).toEqual(g1.children[0].shape)
   })
 })
@@ -1018,45 +912,38 @@ describe('chart.ts — renderer zoomFactor 传播(spec 2026-07-03)', () => {
     expect(shape.shape.points[1][1]).toBe(45.5 - 3)   // 42.5
   })
 
-  it('makeRenderHighlightWithGeom(items, bandGeom, 2) point 分支:放大版高 +6/-4 按 factor;lane 决定 centerY', () => {
+  it('makeRenderSelection(items, bandGeom, 2) 点的粗框:三角偏移 +4/-3 按 factor,各顶点外推 1.5;lane 决定 centerY', () => {
     const fakeApi: any = { value: () => 0, coord: () => [100, 200], size: () => [10, 0] }
-    // pointData 新 shape:[start, start, lane, band, nBands]
-    // band top=20 h=20 → lane0 centerY = 20 + 4 + 0*(7*z+2*z) + 7*z/2 = 24 + 3.5*z
-    // z=2 → centerY = 24 + 7 = 31;offsets +6*2 / -4*2
-    const items = [{ value: [0, 0, 0, 0, 1], instance_id: 'e1', itemStyle: { color: '#22c55e' }, kind: 'group' as const,
-                     shape: 'point' as const }]
-    const shape = makeRenderHighlightWithGeom(items, [{ top: 20, h: 20, laneCount: 1 }], 2)({ dataIndex: 0 }, fakeApi) as any
-    expect(shape.shape.points[0][1]).toBe(31 + 12)   // 43
-    expect(shape.shape.points[1][1]).toBe(31 - 8)    // 23
-    expect(shape.shape.points[2][1]).toBe(31 - 8)    // 23
-    // 单参 backward-compat(z=1):centerY = 24 + 3.5 = 27.5
-    const shape1 = makeRenderHighlightWithGeom(items, [{ top: 20, h: 20, laneCount: 1 }])({ dataIndex: 0 }, fakeApi) as any
-    expect(shape1.shape.points[0][1]).toBe(27.5 + 6)   // 33.5
-    expect(shape1.shape.points[1][1]).toBe(27.5 - 4)   // 23.5
+    // band top=20 h=20 → lane0 centerY = 20 + 4 + 7*z/2;z=2 → 31
+    const items = [{ kind: 'frame' as const, target: 'band' as const, shape: 'point' as const, value: [0, 0, 0, 0, 1, 1] }]
+    const shape = makeRenderSelection(items, [{ top: 20, h: 20, laneCount: 1 }], 2)({ dataIndex: 0 }, fakeApi) as any
+    expect(shape.shape.points[0][1]).toBe(31 + 8 + 3)   // 42
+    expect(shape.shape.points[1][1]).toBe(31 - 6 - 1.5) // 23.5
+    // 不传 z(=1):centerY = 24 + 3.5 = 27.5
+    const shape1 = makeRenderSelection(items, [{ top: 20, h: 20, laneCount: 1 }])({ dataIndex: 0 }, fakeApi) as any
+    expect(shape1.shape.points[0][1]).toBe(27.5 + 4 + 3)
+    expect(shape1.shape.points[1][1]).toBe(27.5 - 3 - 1.5)
   })
 
-  it('makeRenderHighlightWithGeom(items, bandGeom, 2) interval 分支:自顶向下 + HL_EXPAND 常量', () => {
+  it('makeRenderSelection(items, bandGeom, 2) 格的粗框与外层底线:自顶向下,高按 z', () => {
     const bg = [{ top: 20, h: 40, laneCount: 1 }]
     const fakeApi: any = {
       value: (i: number) => [10, 20, 0, 0, 1][i] ?? 0,
       coord: ([v]: [number, number]) => [v === 10 ? 100 : 200, 0],
       size: () => [10, 0],
     }
-    // extent,z=2:laneH=14, rawY=20+4+0=24, y=24−1.5*2=21, height=14+3*2=20
-    const items = [{ value: [10, 20, 0, 0, 1], instance_id: 'e1', itemStyle: { color: '#3b82f6' }, kind: 'focus' as const,
-                     shape: 'extent' as const }]
-    const shape = makeRenderHighlightWithGeom(items, bg, 2)({ dataIndex: 0 }, fakeApi) as any
-    expect(shape.type).toBe('rect')
-    expect(shape.shape.y).toBe(21)
-    expect(shape.shape.height).toBe(20)
-    // mark,z=2,满高:y = 24+14−14−1.5 = 22.5, height = 14+3
-    const markItems = [{ value: [10, 20, 0, 0, 1, 1], instance_id: 'e1', kind: 'focus' as const, shape: 'mark' as const }]
-    const m = makeRenderHighlightWithGeom(markItems, bg, 2)({ dataIndex: 0 }, fakeApi) as any
+    // 格,z=2,满高:laneH=14,y = 24+14−14−1.5 = 22.5,height = 14+3
+    const m = makeRenderSelection([{ kind: 'frame', target: 'band', shape: 'mark', value: [10, 20, 0, 0, 1, 1] }], bg, 2)(
+      { dataIndex: 0 }, fakeApi) as any
     expect(m.shape.y).toBe(22.5)
     expect(m.shape.height).toBe(17)
+    // 底线,z=2:压在 lane 底(24+14)上
+    const u = makeRenderSelection([{ kind: 'under', target: 'band', value: [10, 20, 0, 0, 1] }], bg, 2)(
+      { dataIndex: 0 }, fakeApi) as any
+    expect(u.shape.y).toBe(24 + 14 - 1)
   })
 
-  it('buildSubOption 从 input.zoomFactor 消费并透传:与 makeRenderHighlightWithGeom(., ., 2) 等价', () => {
+  it('buildSubOption 从 input.zoomFactor 消费并透传:selection 系列在', () => {
     // 本 describe 块在文件末尾追加,前面各 describe 块内的 bars/events/hits/makeInput 均为
     // 块级作用域、不可跨块复用;此处按「chart.ts — restored coverage」块(tests/chart.spec.ts:117-177)
     // 同款 fixture 形状自包含内联,保持语义等价(topology/events/hits/makeInput(level, overrides))。
@@ -1091,7 +978,6 @@ describe('chart.ts — renderer zoomFactor 传播(spec 2026-07-03)', () => {
         bandKeyOf: (e) => bandKeyOf(e),
         nodeVisible: {},
         tagToNodes,
-        selectedInstanceId: null,
         ...overrides,
       }
     }
@@ -1100,18 +986,15 @@ describe('chart.ts — renderer zoomFactor 传播(spec 2026-07-03)', () => {
     const bundle = computeEventData(bars, events, hits, input)
     const subGeom = computeSubGeometry({ bracketLaneCount: 1, bandLaneCounts: [1, 1, 1, 1] }, 2)
     const opt = buildSubOption(bars, bundle, subGeom, input, 800) as any
-    // highlight 系列必须存在 + animation:true(既有约束)
-    const hl = opt.series.find((s: any) => s.name === 'highlight')
-    expect(hl).toBeTruthy()
-    expect(hl.animation).toBe(true)
+    expect(opt.series.find((s: any) => s.name === SELECTION_SERIES)).toBeTruthy()
     // 无法直接断 zoomFactor 值(renderItem 是闭包);
     // 但 sub option 顶层 subCanvasH 应按 factor=2 涨:与 subGeom.subCanvasH 一致(通过 subGeom 已注入)
     expect(subGeom.subCanvasH).toBeGreaterThan(20)
   })
 })
 
-// ---------- bracket focus 装配(spec 2026-07-03-group-amber-focus-edge) ----------
-describe('buildSubOption — bracket focus 信号装配', () => {
+// ---------- hits 行的选中装配:粗框在 selection 系列的那一格位上,牵出的照常、其余画淡 ----------
+describe('buildSubOption — hits 行的选中装配', () => {
   const topology: Topology = { nodes: [
     { node_id: 'burst', where_rules: [] },
     { node_id: 'tb',    is_point: true, where_rules: [] },
@@ -1143,7 +1026,6 @@ describe('buildSubOption — bracket focus 信号装配', () => {
       bandKeyOf: (e) => bandKeyOf(e),
       nodeVisible: {},
       tagToNodes,
-      selectedInstanceId: null,
       ...overrides,
     }
   }
@@ -1160,18 +1042,89 @@ describe('buildSubOption — bracket focus 信号装配', () => {
     return s.renderItem({ dataIndex: 0 }, bracketFakeApi) as any
   }
 
-  it('selectedHitId 有 + selectedInstanceId 空(点了 bracket 本身)→ focus:琥珀记号 + 粗深边框', () => {
-    const g = bracketGroup(makeInput({ selectedHitId: 'm@0-1', selectedInstanceId: null }))
-    expect(g.children[0].style.fill).toBe('#fbbf24')
-    expect(g.children.at(-1).style.stroke).toBe('#1e293b')
-    expect(g.children.at(-1).style.lineWidth).toBe(2.5)
+  it('选中这次 hit:粗框出在 selection 系列它那一格位上;格本身不加框、照常', () => {
+    const highlight: Highlight = { ...NO_HIGHLIGHT, focus: { kind: 'hit', hitId: 'm@0-1', day: 1 },
+      focusSlot: { familyKey: 'hits@0', day: 1 }, appHits: new Set(['m@0-1']), dimApp: true }
+    const g = bracketGroup(makeInput({ selectedHitId: 'm@0-1', highlight }))
+    expect(g.children).toHaveLength(1)
+    expect(g.children[0].style).toEqual({ fill: '#fbbf24' })
+    const bundle = computeEventData(bars, events, hits, makeInput({ highlight }))
+    expect(bundle.frameData).toEqual([{ kind: 'frame', target: 'hits', value: [1, 1, 0], family_key: 'hits@0', buy_day: 1,
+                                        grow: false }])
   })
 
-  it('selectedHitId 有 + selectedInstanceId 有(点了组内 marker)→ 成员:琥珀记号 + 细深边框', () => {
-    const g = bracketGroup(makeInput({ selectedHitId: 'm@0-1', selectedInstanceId: 'burst_0_1#0' }))
-    expect(g.children[0].style.fill).toBe('#fbbf24')
-    expect(g.children.at(-1).style.stroke).toBe('#1e293b')
-    expect(g.children.at(-1).style.lineWidth).toBe(1.5)
+  it('牵出的 hit:那一格底不动、往上长 MARK_GROW,加一圈贴边细边(琥珀深一档);粗框跟着变高后的格', () => {
+    const highlight: Highlight = { ...NO_HIGHLIGHT, focus: { kind: 'hit', hitId: 'm@0-1', day: 1 },
+      focusSlot: { familyKey: 'hits@0', day: 1 }, appHits: new Set(['m@0-1']), ledHits: new Set(['m@0-1']), dimApp: true }
+    const plain = bracketGroup(makeInput({})).children[0]
+    const g = bracketGroup(makeInput({ selectedHitId: 'm@0-1', highlight })).children[0]
+    // 外沿:顶上移 MARK_GROW、底不动;细边往里收半个边宽
+    expect(g.shape.y + g.shape.height + RELATED_EDGE_W / 2).toBeCloseTo(plain.shape.y + plain.shape.height)
+    expect(g.shape.y - RELATED_EDGE_W / 2).toBeCloseTo(plain.shape.y - MARK_GROW)
+    expect(g.style).toEqual({ fill: '#fbbf24', stroke: darken('#fbbf24', RELATED_EDGE_DARKEN), lineWidth: RELATED_EDGE_W })
+    const bundle = computeEventData(bars, events, hits, makeInput({ highlight }))
+    expect(bundle.frameData[0].grow).toBe(true)
+  })
+
+  it('选中的东西没牵出这次 hit、app 那边又有有关的:这一格画淡', () => {
+    const highlight: Highlight = { ...NO_HIGHLIGHT, focus: { kind: 'event', instanceId: 'burst_0_1#0' },
+      appEvents: new Set(['burst_0_1#0']), dimApp: true }
+    const g = bracketGroup(makeInput({ highlight }))
+    expect(g.children[0].style).toEqual({ fill: '#fbbf24', opacity: 0.5 })
+  })
+})
+
+// ---------- 一次 hit 买好几天、终点不是买点日:hits 行的终点格只跟并着同一次 hit 的 ▼ 照常 ----------
+// 三次 hit 同起点 0、都用到 base;买点 node 是 tb(跨的每一天都是买入日):hh 买 5~10、终点 10;g 买 7~8、终点 8;
+// k 只买 8、终点 9。从 base 按 → 进到买点日 8:这天 g、k、hh 叠着,只算 g;同一层是 base 牵出的各买点日(5~10)。
+describe('computeEventData — 一次 hit 买好几天时 hits 行的终点格', () => {
+  const ev = (node: string, st: number, en: number): EventDict =>
+    ({ instance_id: `${node}_${st}_${en}#0`, node_id: node, instance_idx: 0, start_idx: st, end_idx: en, child_refs: {} }) as any
+  const B = ev('base', 0, 4), TBH = ev('tb', 5, 10), TBG = ev('tb', 7, 8), TBK = ev('tb', 8, 8)
+  const mk = (hid: string, end: number, tb: EventDict): HitDict => ({
+    hit_id: hid, start_idx: 0, end_idx: end, node_index: { base: B.instance_id, tb: tb.instance_id },
+    children: [B.instance_id, tb.instance_id] }) as any
+  const hits = [mk('hh', 10, TBH), mk('g', 8, TBG), mk('k', 9, TBK)]
+  const events = [B, TBH, TBG, TBK]
+  const bars: Bar[] = Array.from({ length: 12 }, (_, i) => ({
+    date: `2025-01-${String(i + 1).padStart(2, '0')}`, o: 10, c: 11, h: 12, l: 9, v: 1000, rv: 0 }))
+  const topology: Topology = { nodes: [
+    { node_id: 'base', where_rules: [] }, { node_id: 'tb', where_rules: [] },
+  ], edges: [] } as any
+
+  it('没算上的那次:终点格落在别的买点日那一列时也画淡;那一列的 ▼ 照常;算上的与只并着自己那天 ▼ 的终点格照常', () => {
+    const byId = new Map(events.map((x) => [x.instance_id, x]))
+    const hitsById = new Map(hits.map((x) => [x.hit_id, x]))
+    const wctx: WorldCtx = {
+      hits, hitsById, byId, endNode: 'tb', hitOrder: hitOrderOf(hits), using: usingIndex(hits, events),
+      bound: (hid) => boundEvents(hitsById.get(hid)!, byId), bandOf: (x) => x.node_id,
+      bandFamilies: (band) => foldBand(events.filter((x) => x.node_id === band),
+        { band, isPoint: false, tierOf: () => 'in_hit', level: 'detected' }),
+      feedbacks: [], samples: [], boxes: [], lineDay: null,
+    }
+    const highlight = highlightOf(
+      [{ kind: 'event', instanceId: B.instance_id }, { kind: 'buy', day: 8 }],
+      { world: makeWorld(wctx), wctx })
+    expect([...highlight.ledHits]).toEqual(['g'])
+    const { tagToNodes, tagList } = deriveTagMap(topology.nodes)
+    const mIds = inHitIds(hits, events, topology.edges)
+    const input: BandRenderInput = {
+      topology, isolatedNodeIds: isolatedNodeIds(topology), tagList, level: 'detected' as Level,
+      nodeColors: {}, eventTier: (e) => eventTierOf(e, mIds, new Set()),
+      nodeOfEventByBand: (e) => nodeOfEventByBand(e, tagToNodes, tagList), bandKeyOf: (e) => bandKeyOf(e),
+      nodeVisible: {}, tagToNodes, endNode: 'tb', highlight,
+    }
+    const bundle = computeEventData(bars, events, hits, input)
+    const cell = (hid: string) => bundle.bracketData.find((d: any) => d.kind === 'mark' && d.hit_ids.includes(hid))
+    const buyAt = (day: number) => bundle.bracketData.find((d: any) => d.kind === 'buy' && d.buy_day === day)
+    expect(cell('g').dim).toBe(false)          // 算上的那次
+    expect(cell('k').dim).toBe(true)           // 没算上;终点 9 那一列的 ▼ 是 hh 的,不借
+    expect(buyAt(9).dim).toBe(true)            // 9 是同一层的买点日:不另外照常,画淡
+    expect(buyAt(8).dim).toBe(false)           // 选中的那天,▼ 共用、照常
+    expect(cell('hh').dim).toBe(true)          // 终点 10 那一列的 ▼ 是同一层的格位:不另外照常
+    expect([cell('g').grow, cell('k').grow, buyAt(8).grow, buyAt(9).grow]).toEqual([true, false, true, false])
+    expect(bundle.frameData.filter((d: any) => d.kind === 'frame'))
+      .toEqual([{ kind: 'frame', target: 'hits', value: [8, 8, 0], family_key: 'hits@0', buy_day: 8, grow: true }])
   })
 })
 
@@ -1203,7 +1156,6 @@ describe('computeEventData — 子结构段经引擎命名表 node_id 直落结�
     bandKeyOf: (e: any) => e.node_id,                  // 段自带 node_id='tb_seg',直连即分轨
     nodeVisible: {},
     tagToNodes: { tb: ['tb'], tb_seg: ['tb_seg'] },
-    selectedInstanceId: null,
     tooltipResolver: undefined,
     strictWindow: null,
     hitLabel: () => null,
@@ -1211,9 +1163,6 @@ describe('computeEventData — 子结构段经引擎命名表 node_id 直落结�
     zoomOverride: null,
     endNode: undefined,
     selectedHitId: null,
-    candidateHitIds: new Set<string>(),
-    highlightedEventIds: new Set<string>(),
-    pendingDisambigInstanceId: null,
   }
 
   it('段事件落 tb_seg 泳道(band=1)且用 tb_seg 的色;容器留 tb 泳道(band=0)用 tb 色', () => {

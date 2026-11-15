@@ -1,6 +1,9 @@
 // 副图族行:computeEventData 产的族底线 / 记号 / 高亮 / 当前日,以及族底线与当前日竖线的渲染。
 import { describe, it, expect } from 'vitest'
-import { buildMainOption, buildSubOption, computeEventData, makeRenderBracketLine, makeRenderFamilyLine, renderCursor } from '../src/render/chart'
+import {
+  buildMainOption, buildSubOption, computeEventData, makeRenderBracketLine, makeRenderFamilyLine, renderCursor, SELECTION_SERIES,
+} from '../src/render/chart'
+import { NO_HIGHLIGHT, type Highlight } from '../src/render/selHighlight'
 import { computeSubGeometry, TIER_H } from '../src/render/subGeometry'
 import type { EventDict, HitDict, Tier } from '../src/types'
 
@@ -56,27 +59,35 @@ describe('computeEventData · 族行', () => {
     expect(last.itemStyle.color).toBe('#b4bac2')
   })
 
-  it('当家行:族键对上的那一行 active;当前日在 K 线范围内才出竖线', () => {
-    const b = computeEventData(bars, [...fam, single], [], input(TIERS, { activeFamily: 'p@5', currentDay: 6 }))
-    expect(b.familyLineData.map((d: any) => d.active)).toEqual([false, true])
+  it('画淡:族行里一个照常的成员都没有时族底线淡;当前日在 K 线范围内才出竖线', () => {
+    const highlight: Highlight = { ...NO_HIGHLIGHT, dimApp: true, appEvents: new Set(['p@5-6#0']) }
+    const b = computeEventData(bars, [...fam, single], [], input(TIERS, { highlight, currentDay: 6 }))
+    expect(b.familyLineData.map((d: any) => d.dim)).toEqual([true, false])
     expect(b.cursorData).toEqual([{ value: [6] }])
     expect(computeEventData(bars, fam, [], input(TIERS, { currentDay: 99 })).cursorData).toEqual([])
     expect(computeEventData(bars, fam, [], input(TIERS)).cursorData).toEqual([])
   })
 
-  it('选中一个成员:族行上画空心跨度框 [族起点, 成员终点] + 它那一格的框', () => {
-    const b = computeEventData(bars, fam, [], input(TIERS, { selectedInstanceId: 'p@0-4#1' }))
-    expect(b.highlightData.map((d: any) => [d.shape, d.value[0], d.value[1], d.kind]))
-      .toEqual([['extent', 0, 4, 'focus'], ['mark', 4, 4, 'focus']])
+  it('选中一个成员:只框它那一格(粗框;不再画跨度空心框);外层的成员只在它自己那一格底下画底线(不横跨起止)', () => {
+    const focus: Highlight = { ...NO_HIGHLIGHT, focus: { kind: 'event', instanceId: 'p@0-4#1' } }
+    const b = computeEventData(bars, fam, [], input(TIERS, { highlight: focus }))
+    expect(b.frameData.map((d: any) => [d.kind, d.shape, d.value[0], d.value[1]])).toEqual([['frame', 'mark', 4, 4]])
+    const outer: Highlight = { ...NO_HIGHLIGHT, under: { ...NO_HIGHLIGHT.under, events: new Set(['p@0-7#0']) } }
+    const c = computeEventData(bars, fam, [], input(TIERS, { highlight: outer }))
+    // 格只画在终点那天:底线和粗框同一个范围,不伸到同一行别的格下面
+    expect(c.frameData.map((d: any) => [d.kind, d.value[0], d.value[1]])).toEqual([['under', 7, 7]])
   })
 
-  it('bracket:同起点的 hit 折成一族,每个终点一格;当家行对上 hits@起点', () => {
+  it('bracket:同起点的 hit 折成一族,每个终点一格;外层的一族在 selection 数据里出整行底线', () => {
     const hits: HitDict[] = [
       { hit_id: 'h0', start_idx: 0, end_idx: 4, node_index: { p: 'p@0-4#1' }, children: ['p@0-4#1'] },
       { hit_id: 'h1', start_idx: 0, end_idx: 7, node_index: { p: 'p@0-7#0' }, children: ['p@0-7#0'] },
     ]
-    const b = computeEventData(bars, fam, hits, input(TIERS, { activeFamily: 'hits@0', endNode: 'p' }))
-    expect(b.bracketLineData.map((d: any) => [d.family_key, d.multi, d.active])).toEqual([['hits@0', true, true]])
+    const highlight: Highlight = { ...NO_HIGHLIGHT, under: { ...NO_HIGHLIGHT.under, families: new Set(['hits@0']) } }
+    const b = computeEventData(bars, fam, hits, input(TIERS, { highlight, endNode: 'p' }))
+    expect(b.bracketLineData.map((d: any) => [d.family_key, d.multi, d.dim])).toEqual([['hits@0', true, false]])
+    expect(b.frameData.filter((d: any) => d.kind === 'under').map((d: any) => [d.target, d.value]))
+      .toEqual([['hits', [0, 7, 0]]])
     expect(b.bracketData.filter((d: any) => d.kind === 'mark').map((d: any) => [d.value[0], d.hit_ids]))
       .toEqual([[4, ['h0']], [7, ['h1']]])
     // 买点 node 是 p 本身:它跨度里的每一根都是买入日,每个 ▼ 带买在这天的 hit
@@ -95,8 +106,11 @@ describe('computeEventData · 族行', () => {
     expect(names).not.toContain('tier-tags')
     expect(names).toEqual(expect.arrayContaining(['family-lines', 'intervals', 'current-day']))
     const zOf = (n: string) => sub.series.find((s: any) => s.name === n).z
-    expect(zOf('current-day')).toBeGreaterThan(zOf('highlight'))
+    expect(zOf(SELECTION_SERIES)).toBeGreaterThan(zOf('current-day'))   // 粗框、底线、个数压在竖线上面
     expect(zOf('family-lines')).toBeLessThan(zOf('intervals'))
+    // 当前日竖线在最下层:任何一个记号系列都压在它上面,它只在行底色(graphic z:1)上面
+    expect(sub.series.filter((s: any) => s.name !== 'current-day').every((s: any) => (s.z ?? 2) > zOf('current-day'))).toBe(true)
+    expect(zOf('current-day')).toBeGreaterThan(1)
     // 界面固定文字一律黑色:band 表头
     const texts = (sub.graphic?.[0]?.elements ?? sub.graphic ?? []).filter((e: any) => e.type === 'text')
     expect(texts.length).toBeGreaterThan(0)
@@ -104,6 +118,10 @@ describe('computeEventData · 族行', () => {
     const main: any = buildMainOption(bars, b, inp)
     expect(main.series.filter((s: any) => String(s.name).startsWith('current-day')).map((s: any) => s.data))
       .toEqual([[{ value: [4] }], [{ value: [4] }]])
+    // 主图的竖线也在最下层:K 线、成交量柱、价格标记都压在它上面
+    const mainZ = (n: string) => main.series.find((s: any) => s.name === n)?.z ?? 2
+    for (const n of ['kline', 'price-points']) expect(mainZ(n)).toBeGreaterThan(mainZ('current-day'))
+    expect(mainZ('current-day')).toBe(0)
   })
 })
 
@@ -115,12 +133,15 @@ describe('族底线与当前日竖线的渲染', () => {
   }
   const geom = [{ top: 20, h: 40, laneCount: 1 }]
 
-  it('多成员族画中性底线;当家行再加一根粗深线;单成员不当家时只有透明的悬停区', () => {
-    const one = makeRenderFamilyLine([{ multi: true, active: true }], geom as any)({ dataIndex: 0 }, api) as any
-    expect(one.children).toHaveLength(3)
+  it('多成员族画中性底线;画淡时只降不透明度;单成员只有透明的悬停区(外层底线在 selection 系列)', () => {
+    const one = makeRenderFamilyLine([{ multi: true }], geom as any)({ dataIndex: 0 }, api) as any
+    expect(one.children).toHaveLength(2)
     expect(one.children[1].style.fill).toBe('#6b7280')
-    expect(one.children[2].shape.height).toBe(2.5)
-    const lone = makeRenderFamilyLine([{ multi: false, active: false }], geom as any)({ dataIndex: 0 }, api) as any
+    expect(one.children[1].style.opacity).toBeUndefined()
+    const dim = makeRenderFamilyLine([{ multi: true, dim: true }], geom as any)({ dataIndex: 0 }, api) as any
+    expect(dim.children[1].style).toMatchObject({ fill: '#6b7280', opacity: 0.5 })
+    expect(dim.children[0].style.opacity).toBeUndefined()   // 悬停区不淡
+    const lone = makeRenderFamilyLine([{ multi: false }], geom as any)({ dataIndex: 0 }, api) as any
     expect(lone.children).toHaveLength(1)
   })
 
@@ -135,12 +156,14 @@ describe('族底线与当前日竖线的渲染', () => {
     expect(tail.children).toHaveLength(2)
   })
 
-  it('bracket 族底线:每一族都画中性底线(只有一次 hit 也画,bracket 一律梳子);当家行加粗;行尾不再写族序号', () => {
+  it('bracket 族底线:每一族都画中性底线(只有一次 hit 也画,bracket 一律梳子);画淡只降不透明度;行尾不写族序号', () => {
     const api = { value: (i: number) => [2, 6, 0, 2][i] ?? 0, coord: ([x]: number[]) => [x * 10, 0], size: () => [10, 0] }
-    const g = makeRenderBracketLine([{ multi: true, active: true }])({ dataIndex: 0 }, api) as any
-    expect(g.children.filter((c: any) => c.type === 'rect')).toHaveLength(3)   // 底线 + 起点竖头 + 当家粗线
+    const g = makeRenderBracketLine([{ multi: true }])({ dataIndex: 0 }, api) as any
+    expect(g.children.filter((c: any) => c.type === 'rect')).toHaveLength(2)   // 底线 + 起点竖头
     expect(g.children.some((c: any) => c.type === 'text')).toBe(false)
-    const lone = makeRenderBracketLine([{ multi: false, active: false }])({ dataIndex: 0 }, api) as any
+    const dim = makeRenderBracketLine([{ multi: true, dim: true }])({ dataIndex: 0 }, api) as any
+    expect(dim.children.every((c: any) => c.style.opacity === 0.5)).toBe(true)
+    const lone = makeRenderBracketLine([{ multi: false }])({ dataIndex: 0 }, api) as any
     expect(lone.children).toHaveLength(2)
     expect(lone.children.every((c: any) => c.style.fill === '#6b7280')).toBe(true)
   })

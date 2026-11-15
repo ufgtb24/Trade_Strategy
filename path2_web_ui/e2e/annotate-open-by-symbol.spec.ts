@@ -71,11 +71,11 @@ test.describe('按代码打开 · annotate', () => {
     expect(opt.dates.at(-1) <= TRAIN_END).toBe(true)
     await page.screenshot({ path: test.info().outputPath('annotate-open-by-symbol.png'), fullPage: true })
 
-    // 只有 K 线和成交量:app 的系列(价格点、高亮、遮罩)全空,副图没有 app 的系列
+    // 只有 K 线和成交量:app 的系列(价格点、选中的粗框、遮罩)全空,副图没有 app 的系列
     const byName = Object.fromEntries(opt.series.map((s: any) => [s.name, s]))
     expect(byName.kline.n).toBe(opt.dates.length)
     expect(byName.volume.n).toBe(opt.dates.length)
-    for (const n of ['price-points', 'highlight-price', 'shift-veil-price']) expect(byName[n].n).toBe(0)
+    for (const n of ['price-points', 'selection-price', 'shift-veil-price']) expect(byName[n].n).toBe(0)
     expect(await subSeriesCount(page)).toBe(0)
     // 成交量带在 K 线区下方
     expect(byName.volume.xAxisIndex).toBe(1)

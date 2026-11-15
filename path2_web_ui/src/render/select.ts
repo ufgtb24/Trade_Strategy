@@ -2,7 +2,7 @@
  * 选中与按键走动(纯函数,类型无关)。
  *
  * 选中的是一条路径:最外一节 → 当前那一节(`SelPath`)。最后一节是「选中的那一个」,前面几节是它属于谁
- * (也就是 Esc 一层层退到的地方)。能被选中的只有八种东西:hit 的一族、买点日、一次 hit、event、node、反馈、样本、框。
+ * (也就是 Esc 一层层退到的地方)。能被选中的只有七种东西:hit 的一族、买点日、一次 hit、event、反馈、样本、框(node 不能选中:选中是为了看时间上的关联,一条 band 的 event 全选等于没选)。
  *
  * 两根轴、一个判断:
  * - 跨天(`day`,← / →,当前日竖线会动);同一天(`stack`,↑ / ↓,竖线不动)。
@@ -26,7 +26,6 @@ export type Sel =
   | { kind: 'buy'; day: number }
   | { kind: 'hit'; hitId: string; day: number }
   | { kind: 'event'; instanceId: string }
-  | { kind: 'node'; band: string }
   | { kind: 'feedback'; id: string }
   | { kind: 'sample'; sampleId: string }
   | { kind: 'box'; boxId: string }
@@ -34,7 +33,7 @@ export type Sel =
 export type SelKind = Sel['kind']
 export type SelPath = readonly Sel[]
 
-/** 一个可以走到的东西:那一节,和当前日竖线该落的那根 K 线(不带日子的为 null:族、反馈、node)。 */
+/** 一个可以走到的东西:那一节,和当前日竖线该落的那根 K 线(不带日子的为 null:族、反馈)。 */
 export interface Item { sel: Sel; day: number | null }
 
 /**
@@ -58,7 +57,7 @@ export interface World {
 
 /** 键槽里被走的那一组的名字(复数名词)。界面名集中在这里,改名只改这一处。 */
 export const SLOT_NOUN: Record<SelKind, string> = {
-  hit_family: 'hit_families', buy: 'buys', hit: 'hits', event: 'events', node: 'nodes',
+  hit_family: 'hit_families', buy: 'buys', hit: 'hits', event: 'events',
   feedback: 'feedbacks', sample: 'samples', box: 'boxes',
 }
 
@@ -68,7 +67,6 @@ export function selKey(s: Sel): string {
     case 'buy': return `buy:${s.day}`
     case 'hit': return `hit:${s.hitId}@${s.day}`
     case 'event': return `event:${s.instanceId}`
-    case 'node': return `node:${s.band}`
     case 'feedback': return `feedback:${s.id}`
     case 'sample': return `sample:${s.sampleId}`
     case 'box': return `box:${s.boxId}`
@@ -90,9 +88,13 @@ function sameMember(a: Sel, b: Sel): boolean {
 }
 
 /** 这一节在这根轴上的同一层:items 含它自己,index 是它排第几;lifted 时 items 是上一节的同一层。 */
-interface Level { items: Item[]; index: number; lifted: boolean }
+export interface Level { items: Item[]; index: number; lifted: boolean }
 
-function levelOf(path: SelPath, axis: Axis, world: World): Level {
+/**
+ * 路径最后一节在这根轴上的同一层(← / → 或 ↑ / ↓ 在它们之间换)。走动(step、slot)和图上「同一层照常」
+ * (render/selHighlight.ts)都用这一份。
+ */
+export function levelOf(path: SelPath, axis: Axis, world: World): Level {
   const cur = path[path.length - 1]
   const parentPath = path.slice(0, -1)
   const sibs = parentPath.length ? world.members(parentPath) : []

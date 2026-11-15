@@ -26,8 +26,6 @@ export interface SnapCtx {
   /** 拓扑里 node 的先后、边上的锚点字段(区别标签用) */
   nodeOrder: readonly string[]
   anchorFields: readonly string[]
-  /** 一条 band 对到的用户特征名;没有为 null */
-  featureOfBand: (band: string) => string | null
   feedbackOf: (id: string) => { start: string; end: string; nodes: readonly string[]; familyStart: string | null } | null
   sampleOf: (id: string) => { letter: string | null; judgment: string; date: string } | null
   boxOf: (id: string) => { feature: string | null; start: string; end: string; node: string | null } | null
@@ -95,7 +93,6 @@ export function snapshotOf(path: SelPath, c: SnapCtx): Snapshot | null {
       const e = evOf(s.instanceId)
       return { ...base, node: e?.node_id ?? null, date: e ? span(e.start_idx, e.end_idx) : null }
     }
-    if (s.kind === 'node') return { ...base, node: s.band, name: c.featureOfBand(s.band) }
     if (s.kind === 'feedback') {
       const f = c.feedbackOf(s.id)
       return { ...base, node: f ? (f.nodes.length ? f.nodes.join(',') : SEL_NONE) : null,

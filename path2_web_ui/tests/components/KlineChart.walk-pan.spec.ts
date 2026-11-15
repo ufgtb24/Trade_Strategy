@@ -1,5 +1,6 @@
 // 按键走动与视窗:只有这一下把当前日竖线带到了别的日子、而且出了视窗(两边各留 5 根)才平移,视窗宽度不变;
 // 竖线没动的按键(到头、进到同一天的某一次、Esc 退回同一天)不动视窗——用户自己平移开去看别处时不被拉回来。
+// 不经按键换了选中(点侧栏、卡片)时同一条:竖线因此出了视窗才平移。
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import { setActivePinia, createPinia } from 'pinia'
@@ -166,15 +167,60 @@ describe('KlineChart · 按键走动带出的平移', () => {
     view.focusEvent(S11.instance_id)                     // 竖线落在阶跃的终点第 11 根
     lookAt(0, 30)
     press('ArrowRight')                                  // 进到它牵出的买点日
-    expect(view.selPath.map(s => s.kind)).toEqual(['node', 'event', 'buy'])
+    expect(view.selPath.map(s => s.kind)).toEqual(['event', 'buy'])
     expect(view.currentDay).toBe(13)
     expect(pans).toEqual([])
     lookAt(40, 70)
     press('Escape')                                      // 退回这个 event:竖线回到第 11 根
-    expect(view.selPath.map(s => s.kind)).toEqual(['node', 'event'])
+    expect(view.selPath.map(s => s.kind)).toEqual(['event'])
     expect(view.currentDay).toBe(11)
     expect(pans).toHaveLength(1)
     expect(windowNow()).toEqual([6, 36])
+    w.unmount()
+  })
+})
+
+describe('KlineChart · 选中换了带出的平移(不只按键)', () => {
+  beforeEach(() => { setActivePinia(createPinia()); pans.length = 0; lookAt(0, N - 1) })
+
+  async function setup() {
+    const view = useViewStore()
+    view.loadScanFile(makeFixture())
+    view.setLevel('detected')
+    const w = mount(KlineChart)
+    await flushPromises()
+    pans.length = 0
+    return { view, w }
+  }
+
+  it('从侧栏选中一次 hit、竖线落到视窗外:平移过去,宽度不变、离边 5 根', async () => {
+    const { view, w } = await setup()
+    lookAt(40, 70)
+    view.focusHit('a13')                                 // 侧栏 hits 列表点行:竖线落在第 13 根
+    await flushPromises()
+    expect(view.currentDay).toBe(13)
+    expect(pans).toHaveLength(1)
+    expect(windowNow()).toEqual([8, 38])
+    w.unmount()
+  })
+
+  it('选中换了但竖线没动、或竖线仍在视窗里(哪怕贴着边):不平移', async () => {
+    const { view, w } = await setup()
+    lookAt(10, 40)
+    view.clickBuyDay('hits@0', 13)
+    await flushPromises()
+    expect(pans).toEqual([])                             // 第 13 根离左边只有 3 根,但在视窗里(点图上靠边的东西)
+    lookAt(0, 30)
+    view.clickBuyDay('hits@0', 14)
+    await flushPromises()
+    expect(pans).toEqual([])                             // 第 14 根在视窗里
+    lookAt(40, 70)                                       // 用户自己平移开了
+    view.stepStack(1)                                    // 进到这天的某一次:竖线不动
+    await flushPromises()
+    expect(view.selPath.map(s => s.kind)).toEqual(['hit_family', 'buy', 'hit'])
+    expect(view.currentDay).toBe(14)
+    expect(pans).toEqual([])
+    expect(windowNow()).toEqual([40, 70])
     w.unmount()
   })
 })

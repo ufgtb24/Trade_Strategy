@@ -92,10 +92,12 @@ function makeFakeChart() {
 }
 vi.mock('echarts', () => ({ init: vi.fn(() => makeFakeChart()) }))
 
+import * as echarts from 'echarts'
 import KlineChart from '../../src/components/KlineChart.vue'
 import FeedbackPanel from '../../src/components/FeedbackPanel.vue'
 import { useAnnotationStore } from '../../src/stores/annotation'
 import { useAppLinkStore } from '../../src/stores/appLink'
+import { useDirectLinkStore } from '../../src/stores/directLinks'
 import { useFeedbackStore } from '../../src/stores/feedback'
 import { useViewStore } from '../../src/stores/view'
 
@@ -250,7 +252,7 @@ describe('KlineChart · 对选中的那一个打开反馈面板', () => {
     expect(fb.panel).toMatchObject({ editingId: 'f-pc-1' })
   })
 
-  it('不能作答(没选中、选中的是 event / node):Enter 不开、不吞键,按钮灰', async () => {
+  it('不能作答(没选中、选中的是 event):Enter 不开、不吞键,按钮灰', async () => {
     const { view, fb } = await setup()
     expect(btn().attributes('disabled')).toBeDefined()
     expect(btn().classes()).toContain('off')
@@ -260,9 +262,6 @@ describe('KlineChart · 对选中的那一个打开反馈面板', () => {
     await settle()
     expect(view.selLast?.kind).toBe('event')
     expect(btn().attributes('disabled')).toBeDefined()
-    expect(enter().defaultPrevented).toBe(false)
-    view.selectNode('today')
-    await settle()
     expect(enter().defaultPrevented).toBe(false)
     expect(fb.panel).toBeNull()
   })
@@ -503,21 +502,87 @@ describe('KlineChart · 改起止只认画出来的那条竖带', () => {
     expect(cursorAt(LEFT_EDGE)).toBe('ew-resize')
   })
 
-  it('路径 [f-pc-1 › 第 8 根],面板打开的是那天的 f-pc-2(同范围防重复):f-pc-1 的边不能拖', async () => {
+  it('路径 [f-pc-1 › 第 8 根](f-pc-1 退到外层):没有它的竖带、它的边不能拖;面板打开那天的 f-pc-2 时竖带是面板那一天;Esc 退回 f-pc-1 后竖带与边回来', async () => {
     const { ann, view, fb } = await setup()
     fake.containMain = true
     view.setPath([{ kind: 'feedback', id: 'f-pc-1' }, { kind: 'buy', day: 8 }])
     await settle()
-    expect(fb.selectedId).toBe('f-pc-1')
+    expect(fb.selectedId).toBe('f-pc-1')                 // 作答仍认它(store 不动),图上不再当它是选中的
     ann.tool = 'feedback'
     await settle()
-    expect(cursorAt(LEFT_EDGE)).toBe('ew-resize')        // 面板没开:选中那条的边能拖
+    expect(band().exists()).toBe(false)                  // 它在外层:只画记号下的底线,不画竖带
+    expect(cursorAt(LEFT_EDGE)).toBe('crosshair')        // 看不见的边不能拖
     enter()
     await settle()
     expect(fb.panel).toMatchObject({ editingId: 'f-pc-2', start: DATES[8], end: DATES[8] })
     expect(fb.selectedId).toBe('f-pc-1')
     expect(bandPx()).toEqual(spanPx(8, 8))               // 画出来的竖带是面板那一天
     expect(cursorAt(LEFT_EDGE)).toBe('crosshair')
+    fb.close()
+    await settle()
+    view.stepUp()                                        // Esc 退回 f-pc-1:选中的又是它
+    await settle()
+    expect(view.selPath).toEqual([{ kind: 'feedback', id: 'f-pc-1' }])
+    expect(bandPx()).toEqual(spanPx(7, 9))
+    expect(cursorAt(LEFT_EDGE)).toBe('ew-resize')
+  })
+})
+
+describe('KlineChart · 直达链接落在同一张图', () => {
+  it('选着一条反馈时跟一个落在这张图的链接:落下后选中清空,那条反馈的竖带撤掉、边不能拖', async () => {
+    const { ann, view, fb } = await setup()
+    fake.containMain = true
+    view.clickFeedback({ id: 'f-pc-1' })
+    await settle()
+    expect(bandPx()).toEqual(spanPx(7, 9))
+    await useDirectLinkStore().follow('#symbol=aaa&date=2025-01-20&pattern=p&mode=compare')
+    await settle()
+    expect([view.mode, view.symbol, view.currentDay]).toEqual(['compare', 'AAA', 19])
+    expect(view.selPath).toEqual([])
+    expect(fb.selectedId).toBeNull()
+    expect(band().exists()).toBe(false)
+    ann.tool = 'feedback'
+    await settle()
+    const main = fake.charts[0]
+    const n = main.cursor.length
+    for (const h of main.zr.mousemove ?? []) h({ offsetX: X0 + BW * 7 - BW / 2, offsetY: 50 })   // 原竖带的左边
+    expect(main.cursor.slice(n)).toEqual(['crosshair'])
+  })
+})
+
+describe('KlineChart · 点主图 K 线区的空白一下全清', () => {
+  it('compare:选着一条反馈时在 K 线区按下松开(没拖):选中清空、竖带撤掉', async () => {
+    const { view, fb } = await setup()
+    fake.containMain = true
+    view.clickFeedback({ id: 'f-pc-1' })
+    await settle()
+    expect(band().exists()).toBe(true)
+    const main = w!.find('.main-chart').element
+    main.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0, clientX: 600, clientY: 200 }))
+    window.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, button: 0, clientX: 600, clientY: 200 }))
+    await settle()
+    expect(view.selPath).toEqual([])
+    expect(fb.selectedId).toBeNull()
+    expect(band().exists()).toBe(false)
+  })
+
+  it('app:点到 K 线或铺满整列的透明命中区算点空白,选中清空', async () => {
+    const { view } = await setup('app')
+    const onClick = () => {
+      const all = (echarts.init as any).mock.results
+      const chart = all[all.length - fake.charts.length].value            // 这一回挂上的主图(先主图后副图)
+      return chart.on.mock.calls.find((c: any[]) => c[0] === 'click')[1] as (p: any) => void
+    }
+    view.clickBuyDay('hits@0', 4)
+    await settle()
+    expect(view.selPath.length).toBeGreaterThan(0)
+    onClick()({ seriesName: 'kline-hit-spanner', data: { value: [4] }, event: { event: new MouseEvent('click') } })
+    await settle()
+    expect(view.selPath).toEqual([])
+    view.clickBuyDay('hits@0', 4)
+    await settle()
+    onClick()({ seriesName: 'kline', data: [10, 10, 9, 11], event: { event: new MouseEvent('click') } })
+    expect(view.selPath).toEqual([])
   })
 })
 

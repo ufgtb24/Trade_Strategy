@@ -57,7 +57,6 @@ const FAM: Sel = { kind: 'hit_family', familyKey: 'hits@0' }
 const buy = (day: number): Sel => ({ kind: 'buy', day })
 const h = (hitId: string, day: number): Sel => ({ kind: 'hit', hitId, day })
 const e = (x: EventDict): Sel => ({ kind: 'event', instanceId: x.instance_id })
-const node = (band: string): Sel => ({ kind: 'node', band })
 
 describe('view store · 选中与 ← / →、↑ / ↓、Esc', () => {
   beforeEach(() => { setActivePinia(createPinia()) })
@@ -82,7 +81,8 @@ describe('view store · 选中与 ← / →、↑ / ↓、Esc', () => {
     expect(view.focusedHitId).toBeNull()                // 这天叠着两次:哪一次都不算选中
     expect(view.selDayHitIds).toEqual(['a13', 'b13'])
     expect(view.currentDay).toBe(13)
-    expect(view.activeFamilyKey).toBe('hits@0')
+    expect([...view.highlight.under.families]).toEqual(['hits@0'])   // 外层一族:那一行底线
+    expect(view.highlight.focusSlot).toEqual({ familyKey: 'hits@0', day: 13 })   // 粗框在这天的 ▼ 上
     view.stepStack(1)
     expect([view.focusedHitId, view.currentDay, slotText(view.selInfo!.stack)]).toEqual(['a13', 13, 'hits 1/2'])
     view.stepStack(1)
@@ -118,40 +118,41 @@ describe('view store · 选中与 ← / →、↑ / ↓、Esc', () => {
     expect(view.focusedHitId).toBeNull()
   })
 
-  it('点 band 上被几天共用的 step:选中的是这个 event,竖线落它的终点,用到它的 hit 画细框;→ 进到最近的买点日(整天),↓ 再进到用到它的那次', () => {
+  it('点 band 上被几天共用的 step:选中的是这个 event,竖线落它的终点,用到它的 hit 照常(每个买点日一次);→ 进到最近的买点日(整天),↓ 再进到用到它的那次', () => {
     const view = setup()
     view.focusMark([S10.instance_id])
-    expect(view.selPath).toEqual([node('step'), e(S10)])
+    expect(view.selPath).toEqual([e(S10)])   // 路径就它一节:node 不能选中
     expect([view.selectedInstanceId, view.focusedHitId, view.currentDay]).toEqual([S10.instance_id, null, 10])
     expect([view.selInfo!.kind, view.selInfo!.node, view.selInfo!.date]).toEqual(['event', 'step', '2024-11-11'])
     expect(slots(view)).toEqual(['into buys ×3', null])
     expect(view.selInfo!.hits!.head).toBe('×3')
-    expect([...view.candidateHitIds].sort()).toEqual(['a13', 'a14', 'a15'])
-    view.stepPos(1)                                     // 停在 13 这一天整体:这个 event 不再是选中的那一个,但还在用
-    expect(view.selPath).toEqual([node('step'), e(S10), buy(13)])
+    expect([...view.highlight.ledHits].sort()).toEqual(['a13', 'a14', 'a15'])
+    view.stepPos(1)                                     // 停在 13 这一天整体:这个 event 不再是选中的那一个,退到外层
+    expect(view.selPath).toEqual([e(S10), buy(13)])
     expect([view.focusedHitId, view.selectedInstanceId, view.currentDay]).toEqual([null, null, 13])
-    expect(view.pendingDisambigInstanceId).toBe(S10.instance_id)
+    expect([...view.highlight.under.events]).toEqual([S10.instance_id])   // 外层的 event:它那一行底线
     expect(view.selDayHitIds).toEqual(['a13', 'b13'])   // 这个 ▼ 上的两次都在,用到它的排第一
+    expect([...view.highlight.ledHits]).toEqual(['a13'])   // 同一天只亮 ↓ 第一个
     view.stepStack(1)
     expect([view.focusedHitId, view.focusedInstanceId, view.currentDay]).toEqual(['a13', S10.instance_id, 13])
-    expect(view.pendingDisambigInstanceId).toBeNull()
-    expect([...view.candidateHitIds].sort()).toEqual(['a13', 'a14', 'a15'])    // 进到某一次之后细框不消失
+    // 进到某一次之后:同一层(这个 event 装着的别的买点日)不另外照常,只有外层的这一天
+    expect([...view.highlight.appSlots].sort()).toEqual(['hits@0|13'])
     view.stepPos(1)
     expect([view.focusedHitId, view.currentDay, slotText(view.selInfo!.day)]).toEqual(['a14', 14, 'buys 2/3'])
-    expect(view.activeFamilyKey).toBeNull()             // 选中的不在 hits 的哪一族下面:不加粗哪一行的底线,靠细框和显示栏认
+    expect(view.highlight.under.families.size).toBe(0)  // 路径里没有一族:hits 行哪一行都不画底线
   })
 
   it('点了就是点的那个:从 event 走进某一天后点 ▼,选中换成那一族的这一天;再点回 event,选中的就是这个 event', () => {
     const view = setup()
     view.focusMark([S10.instance_id])
     view.stepPos(1); view.stepPos(1)                    // 14 那一天
-    expect(view.selPath).toEqual([node('step'), e(S10), buy(14)])
+    expect(view.selPath).toEqual([e(S10), buy(14)])
     view.clickBuyDay('hits@0', 14)
     expect(view.selPath).toEqual([FAM, buy(14)])
     view.stepStack(1); view.stepStack(1)
     expect(view.focusedHitId).toBe('b14')
     view.focusMark([S10.instance_id])
-    expect(view.selPath).toEqual([node('step'), e(S10)])
+    expect(view.selPath).toEqual([e(S10)])
     expect([view.focusedHitId, view.selectedInstanceId, view.currentDay]).toEqual([null, S10.instance_id, 10])
   })
 
@@ -195,21 +196,21 @@ describe('view store · 选中与 ← / →、↑ / ↓、Esc', () => {
   it('点 today 那种点(只牵出一天):选中的是这个 event;← / → 沿这条 band 换到旁边那格,↑ / ↓ 不适用', () => {
     const view = setup()
     view.focusMark([T13.instance_id])
-    expect(view.selPath).toEqual([node('today'), e(T13)])
+    expect(view.selPath).toEqual([e(T13)])
     expect([view.focusedHitId, view.selectedInstanceId]).toEqual([null, T13.instance_id])
     expect([view.selInfo!.buys, view.selInfo!.hits!.head]).toEqual(['2024-11-14 ×1', '×2'])
     expect(slots(view)).toEqual(['events 1/4', null])
     expect(view.stepPos(1)).toBe(true)
     expect([view.selectedInstanceId, view.currentDay]).toEqual([T14.instance_id, 14])
     expect(view.stepStack(1)).toBe(true)                // 有选中就接下,但不动
-    expect(view.selPath).toEqual([node('today'), e(T14)])
+    expect(view.selPath).toEqual([e(T14)])
   })
 
   it('点 plateau 那一格(两个成员):选中其中一个 event,↑ / ↓ 在这一格里换;← / → 沿 band 按格走,落同一个起点的;没进 hit 的格照样走得到', () => {
     const view = setup()
     view.focusMark([P13a.instance_id, P13b.instance_id])
-    expect(view.selPath).toEqual([node('plateau'), e(P13a)])
-    expect(view.activeFamilyKey).toBeNull()             // 选中 event 时,它那条 band 的族底线不加粗
+    expect(view.selPath).toEqual([e(P13a)])
+    expect(view.highlight.under.events.size).toBe(0)   // 没有外层:哪儿都不画底线
     expect(slots(view)).toEqual(['events 1/4', 'events 1/2'])
     expect(view.selInfo!.diff).toBe('step→2024-11-11')
     view.stepStack(1)
@@ -220,7 +221,7 @@ describe('view store · 选中与 ← / →、↑ / ↓、Esc', () => {
     expect([view.selectedInstanceId, view.currentDay]).toEqual([P14a.instance_id, 14])
     view.stepPos(1); view.stepPos(1)
     expect([view.focusedHitId, view.selectedInstanceId, view.currentDay]).toEqual([null, P16a.instance_id, 16])
-    expect(view.selPath[0]).toEqual(node('plateau'))
+    expect(view.selPath).toEqual([e(P16a)])
   })
 
   it('点族底线:一律退回整族(不选其中哪一天、哪一次),竖线不动;按键先落竖线那天', () => {
@@ -269,7 +270,7 @@ describe('view store · 选中与 ← / →、↑ / ↓、Esc', () => {
     expect(view.selPath).toEqual([{ kind: 'feedback', id: 'f1' }])
     expect([view.focusedHitId, view.currentDay]).toEqual([null, 12])
     expect([...view.selHits.ids]).toEqual(['a15'])
-    expect([...view.candidateHitIds]).toEqual(['a15'])                                   // 收进来的 hit 画细框
+    expect([...view.highlight.ledHits]).toEqual(['a15'])                                 // 收进来的 hit 照常
     expect([view.selInfo!.kind, view.selInfo!.buys, view.selInfo!.hits!.head]).toEqual(['feedback', '2024-11-16 ×1', '×1'])
     view.clickFeedback({ id: 'f2' })
     expect([...view.selHits.ids].sort()).toEqual(['a13', 'a14', 'a15', 'b13', 'b14'])
@@ -295,17 +296,14 @@ describe('view store · 选中与 ← / →、↑ / ↓、Esc', () => {
     view.focusHit('b14')
     expect(view.selPath).toEqual([FAM, buy(14), h('b14', 14)])
     expect([view.focusedHitId, view.currentDay, slotText(view.selInfo!.stack)]).toEqual(['b14', 14, 'hits 2/2'])
-    expect(view.activeFamilyKey).toBe('hits@0')
+    expect([...view.highlight.under.families]).toEqual(['hits@0'])
   })
 
-  it('点轨名:选中这条 band(一个 node),不选中任何 hit / event;← / → 进到 band 上的格', () => {
+  it('Esc 从点 band 选中的 event 上退:路径就它一节,一下清空(不再先退到整条 band)', () => {
     const view = setup()
-    view.selectNode('step')
-    expect(view.selPath).toEqual([node('step')])
-    expect([view.focusedHitId, view.selectedInstanceId, view.currentDay]).toEqual([null, null, null])
-    expect(slots(view)).toEqual(['into events ×2', null])
-    view.stepPos(1)
-    expect(view.selPath).toEqual([node('step'), e(S10)])
+    view.focusMark([S10.instance_id])
+    view.stepUp()
+    expect(view.selPath).toEqual([])
   })
 
   it('Esc 往外退一层:一次 hit → 这一天 → 一族 → 清空;没有选中时这一下不归它', () => {

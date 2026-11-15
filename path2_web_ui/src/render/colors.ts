@@ -1,5 +1,5 @@
 // node 色(spec §8.3):event_styles 是 node_id 粒度,每个 node 直接用它的原色。
-// 后端兜底调色板是天蓝 / 大红两色交替(path2_web/serialize.py 的 _PALETTE),隔一条轨同色是有意的,
+// 后端兜底调色板是中蓝 / 大红两色交替(path2_web/serialize.py 的 _PALETTE),隔一条轨同色是有意的,
 // 这里不为同色 node 散开明度。
 import type { Topology, Tier } from '../types'
 
@@ -27,4 +27,16 @@ export function deriveNodeColors(topology: Topology, eventStyles: Record<string,
   const out: Record<string, string> = {}
   for (const n of topology.nodes) out[n.node_id] = eventStyles[n.node_id] ?? NEUTRAL
   return out
+}
+
+/**
+ * 同一个颜色深一档:各通道朝黑色收 k(0..1)。有关的方块的细边用它(render/selHighlight.ts 的 relatedEdgeColor),
+ * 靠深浅和方块本色拉开、色相不变;认不出的写法(非 #rgb / #rrggbb)原样返回。
+ */
+export function darken(hex: string, k: number): string {
+  const m = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(hex.trim())
+  if (!m) return hex
+  const h = m[1].length === 3 ? [...m[1]].map(c => c + c).join('') : m[1]
+  const ch = [0, 2, 4].map(i => Math.round(parseInt(h.slice(i, i + 2), 16) * (1 - k)))
+  return `#${ch.map(v => v.toString(16).padStart(2, '0')).join('')}`
 }

@@ -6,8 +6,8 @@
  * 「选中的框」「正在拖的框」的范围、样本的三角、选中样本时样本日之后暗一档。
  *
  * 配色:框、三角和文字一律黑(#111),选中的框填浅灰;不引入新色相。区分靠线宽、线型和深浅:
- * - 选中样本时,它的成员框线加粗、虚线拉长;画了没收的框换短虚线、右侧挂 ◂;跨过样本日收不进的空槽画淡、
- *   右侧挂 ⇥;其余画淡;
+ * - 选中样本时,它的成员框照常(不加粗、不换线型:跟它有关的不加任何框);画了没收的框换短虚线、右侧挂 ◂;
+ *   跨过样本日收不进的空槽画淡、右侧挂 ⇥;其余画淡;
  * - 只被别的 pattern 的样本收进的框、别的 pattern 的样本(三角、bracket)画淡;
  * - 正样本实心 ▲、负样本空心 △(白底黑边);
  * - 暗一档:样本日之后的 K 线区盖一层 7% 的黑,K 线的形状仍看得清。
@@ -19,7 +19,9 @@
  * 这一区最后一行;下区是 app 的,和主视图那张副图一样(hits 第一行,band 在下)。这一层在 compare 下多画(LaneDraw.compare):
  * - 轨标题:map 了的轨在特征名后写 `⇣ <node>`,没 map 的挂会话蓝 `unmapped`;
  * - bracket 的 user 行:▲ 字母后挂 app 与用户判断一致与否的记号 `✓` / `✗`(✗ 朱红底),matched / unmatched 在悬停;
- *   当家行是样本时(←/→ 在样本间走)user 行头加粗;
+ * - 选中后怎么画跟着图上的选中走(render/selHighlight.ts,CompareMarks.highlight):粗框(选中的框、样本的现有选中画法)
+ *   只给选中的那一个;路径外层的框、样本在它的记号下面画一道底线(压在当前日竖线上面);选中样本、它有成员框时,
+ *   不是成员的框画淡。annotate 下没有这一套,照标注上选中的样本、框画;
  * - 两区之间一道分界线(位置由 subGeometry 的 userAppEdges 给):线上是用户画的、线下是 app 认的,
  *   user 行与 hits 隔着这道线正好上下对照;
  * - user 行垫和 hits 区同一种浅黄底(HITS_FILL),从特征轨下沿铺到分界线:两边各自的总账(你的样本、app 的买点)
@@ -35,10 +37,11 @@ import { triOf, type BoxMark } from '../annotate/samples'
 import { CROSSES_SAMPLE_DATE, UNCLAIMED } from '../annotate/membership'
 import { endIndex, startIndex, type BoxPx } from '../annotate/boxGeometry'
 import {
-  HITS_FILL, SUB_CANVAS_MIN_H, SUB_GRID_LEFT, SUB_GRID_RIGHT, SUB_ROW_LEFT, SUB_TITLE_LEFT, USER_APP_EDGE_COLOR,
-  USER_APP_EDGE_H,
+  HITS_FILL, SEL_EDGE_COLOR, SUB_CANVAS_MIN_H, SUB_GRID_LEFT, SUB_GRID_RIGHT, SUB_ROW_LEFT, SUB_TITLE_LEFT, UNDER_LINE_H,
+  USER_APP_EDGE_COLOR, USER_APP_EDGE_H,
 } from './subGeometry'
 import { MONO } from './fonts'
+import { DIM_USER_OPACITY, userMarkDim, type Highlight } from './selHighlight'
 
 export const LANE_ROW_H = 18          // 轨里一行的高度
 export const LANE_BOX_H = 13          // 框的高度(行高减去上下空隙)
@@ -54,9 +57,8 @@ export const NO_FILL = 'rgba(255,255,255,0)'
 export const TITLE_BG = 'rgba(255,255,255,0.85)'  // 轨标题垫白,压在框上也读得出
 export const BOX_DASH = [5, 3]        // 用户的框:虚线
 export const DRAFT_DASH = [2, 2]      // 正在拖出的框:短虚线
-export const MEMBER_DASH = [7, 2]     // 选中样本时它的成员框:长虚线、线加粗
 export const UNCLAIMED_DASH = [2, 2]  // 画了没收的框:短虚线(右侧挂 ◂)
-export const DIM_OPACITY = 0.28       // 选中样本时不相干的框、跨过样本日的空槽:画淡
+export const DIM_OPACITY = DIM_USER_OPACITY   // 选中样本时不相干的框、跨过样本日的空槽:画淡(用户那一边只此一个值)
 export const AWAY_OPACITY = 0.4       // 只属于别的 pattern 的样本的框、别的 pattern 的样本:画淡
 export const POS_FILL = INK           // 正样本:实心三角
 export const NEG_FILL = '#ffffff'     // 负样本:空心三角(白底黑边)
@@ -68,6 +70,8 @@ export const COMPARE_BRACKET_ROW_H = 18   // compare 的 user 行:行高放大,�
 // 描边 + 黑字。描边色取用户确认过的安全色板(1 蓝、2 橙),取其中的蓝(会话这一侧的事)。
 export const UNMAPPED_EDGE = '#0072B2' // 蓝:compare 下没 map 的轨挂的 unmapped 的描边
 const TAG_BOX = { backgroundColor: '#ffffff', borderWidth: 1.5, padding: [1, 3], borderRadius: 2 }
+/** compare 下外层的框、样本跨度的底线(粗细、颜色与 app 那边的外层底线同一份,见 subGeometry.ts) */
+export const ANNOTATION_UNDER_SERIES = 'annotation-under'
 export const VERMILION = '#E8875A'    // 朱红(配黑字,所以取浅一档):只表示「app 的判断和你相反」(▲ 字母后的 ✗ 底色)
 export { MONO }
 /** 悬停文字:等宽、黑字。MONO 里有双引号,属性值用单引号括,否则 style 在字体名那里就断了。 */
@@ -224,8 +228,8 @@ export interface CompareMarks {
   laneNode: ReadonlyMap<number, string>
   /** 没 map 的特征轨(下标):标题挂 unmapped */
   unmapped: ReadonlySet<number>
-  /** 当家行是样本(←/→ 在样本间走):user 行头加粗 */
-  userActive: boolean
+  /** 图上的选中(render/selHighlight.ts):框的粗框、画淡与外层底线、样本跨度的外层底线跟着它走;不给照标注的选中画 */
+  highlight?: Highlight | null
   /** 用户的框与 app 的轨上下相邻处的 y(像素):画分界线 */
   edges?: readonly number[]
 }
@@ -250,14 +254,18 @@ function laneTitle(l: Lane, nameOf: LaneDraw['nameOf'], cmp: { node?: string | n
   return { text, rich }
 }
 
-/** 一个框的画法:线宽、线型、深浅,以及框左侧的字母、右侧的 ◂ / ⇥。 */
-function boxLook(mark: BoxMark | undefined, sel: boolean, draft: boolean) {
+/**
+ * 一个框的画法:线宽、线型、深浅,以及框左侧的字母、右侧的 ◂ / ⇥。
+ * modelDim:compare 下由图上的选中定淡不淡(selHighlight 的 userMarkDim);annotate 下为 null,照标注上选中的样本定。
+ */
+function boxLook(mark: BoxMark | undefined, sel: boolean, draft: boolean, modelDim: boolean | null = null) {
   const f = mark?.focus ?? null
-  const opacity = sel || draft ? 1 : f === 'dim' || f === CROSSES_SAMPLE_DATE ? DIM_OPACITY
+  const dim = modelDim ?? (f === 'dim' || f === CROSSES_SAMPLE_DATE)
+  const opacity = sel || draft ? 1 : dim ? DIM_OPACITY
     : mark?.away && f !== 'member' && f !== UNCLAIMED ? AWAY_OPACITY : 1
   return {
-    lineWidth: sel || f === 'member' ? 2.5 : 1.5,
-    lineDash: draft ? DRAFT_DASH : f === 'member' ? MEMBER_DASH : f === UNCLAIMED ? UNCLAIMED_DASH : BOX_DASH,
+    lineWidth: sel ? 2.5 : 1.5,
+    lineDash: draft ? DRAFT_DASH : f === UNCLAIMED ? UNCLAIMED_DASH : BOX_DASH,
     opacity,
     owners: mark?.owners.join(' ') ?? '',
     side: f === UNCLAIMED ? '◂' : f === CROSSES_SAMPLE_DATE ? '⇥' : '',
@@ -319,8 +327,7 @@ export function annotateLayer(bars: Bar[], d: LaneDraw): { graphics: any[]; seri
     }
     graphics.push({ type: 'text', left: SUB_TITLE_LEFT, top: g.top + LANE_PAD - 1, z: 30, silent: true,
                     style: { text: cmp ? 'user' : 'bracket', fontFamily: MONO, fontSize: 12, fill: INK,
-                             fontWeight: cmp?.userActive ? 'bold' : 'normal', backgroundColor: cmp ? HITS_FILL : TITLE_BG,
-                             padding: [0, 2] } })
+                             backgroundColor: cmp ? HITS_FILL : TITLE_BG, padding: [0, 2] } })
   }
   d.geom.forEach((g, i) => {
     if (!g) return
@@ -338,12 +345,16 @@ export function annotateLayer(bars: Bar[], d: LaneDraw): { graphics: any[]; seri
   // 每个框一行数据:[起点下标, 终点下标, 顶, 底, 选中, 拖出中, 编号];画法(boxLook)按行号另存
   const rows: any[] = []
   const looks: ReturnType<typeof boxLook>[] = []
+  // compare:选中后的画淡与外层底线跟着图上的选中走;底线 [起点下标, 终点下标, 记号下沿 y]
+  const hl = cmp?.highlight ?? null
+  const unders: number[][] = []
   const tips: string[] = []
   const push = (b: { id: string; start: string; end: string }, top: number, bottom: number, sel: boolean, draft: boolean) => {
     if (!dates.length) return
     const mark = draft ? undefined : d.marks?.get(b.id)
     rows.push([startIndex(dates, b.start), endIndex(dates, b.end), top, bottom, sel ? 1 : 0, draft ? 1 : 0, b.id])
-    looks.push(boxLook(mark, sel, draft))
+    looks.push(boxLook(mark, sel, draft, hl && !draft ? userMarkDim(hl, 'box', b.id) : null))
+    if (hl?.under.boxes.has(b.id)) unders.push([startIndex(dates, b.start), endIndex(dates, b.end), bottom])
     tips.push([
       mark?.owners.length ? `member box of sample ${mark.owners.join(', ')}` : '',
       mark?.focus === UNCLAIMED ? 'maybe drawn but not added; click ◂ to add' : '',
@@ -371,6 +382,7 @@ export function annotateLayer(bars: Bar[], d: LaneDraw): { graphics: any[]; seri
     for (const { item, row } of d.bracket.placed) {
       const { top, bottom } = bracketYRange(d.bracket.geom, row)
       bRows.push([startIndex(dates, item.start), endIndex(dates, item.end), top, bottom])
+      if (hl?.under.samples.has(item.id)) unders.push([startIndex(dates, item.start), endIndex(dates, item.end), bottom])
       bItems.push(item)
     }
   }
@@ -448,6 +460,19 @@ export function annotateLayer(bars: Bar[], d: LaneDraw): { graphics: any[]; seri
       return { type: 'group', children }
     },
   }]
+  if (unders.length) {
+    // 外层的框、样本跨度:记号下沿一道深色粗线,压在当前日竖线上面(同 app 那边的外层底线,render/chart.ts 的 UNDER_H)
+    series.push({
+      type: 'custom', name: ANNOTATION_UNDER_SERIES, xAxisIndex: 0, yAxisIndex: 0, clip: true, silent: true,
+      data: unders, encode: { x: [0, 1] }, z: 31, tooltip: { show: false },
+      renderItem: (_p: any, api: any) => {
+        const [x0, x1] = spanPx(api)
+        return { type: 'rect', silent: true,
+                 shape: { x: x0, y: api.value(2) - 1, width: Math.max(3, x1 - x0), height: UNDER_LINE_H },
+                 style: { fill: SEL_EDGE_COLOR } }
+      },
+    })
+  }
   return { graphics, series }
 }
 

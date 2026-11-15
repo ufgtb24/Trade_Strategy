@@ -50,7 +50,7 @@ describe('KlineChart · annotate', () => {
     const byName = Object.fromEntries(opt.series.map((s: any) => [s.name, s]))
     expect(byName.kline.data).toHaveLength(BARS.length)
     expect(byName.volume.data).toHaveLength(BARS.length)
-    for (const n of ['price-points', 'highlight-price', 'shift-veil-price']) expect(byName[n].data).toEqual([])
+    for (const n of ['price-points', 'selection-price', 'shift-veil-price']) expect(byName[n].data).toEqual([])
     expect(opt.grid).toHaveLength(2)
     expect(sub.clear).toHaveBeenCalled()
     // app 的交互入口不出现

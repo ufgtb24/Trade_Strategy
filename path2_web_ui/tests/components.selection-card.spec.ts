@@ -98,7 +98,7 @@ describe('SelectionCard · app 模式', () => {
     await nextTick()
     expect(w.findAll('.row .lb').map(l => l.text())).toEqual(ROWS)
     expect(w.findAll('.row').map(r => r.attributes('data-testid'))).toEqual(ROWS.map(n => `sel-card-${n}`))
-    view.selectNode('step')
+    view.focusMark([S10.instance_id])
     await nextTick()
     expect(w.findAll('.row .lb').map(l => l.text())).toEqual(ROWS)
   })
@@ -184,16 +184,6 @@ describe('SelectionCard · app 模式', () => {
     view.focusEvent(P13c.instance_id)
     await nextTick()
     expect(rows(w).level).toEqual(['detected'])
-  })
-
-  it('node:卡上各行都不适用,只有 copy', async () => {
-    const { view, w } = setup()
-    view.selectNode('step')
-    await nextTick()
-    expect(rows(w)).toEqual({
-      buys: NA, hits: NA, nodes: NA, family: NA, feedback: NA, sample: NA, paired: NA, level: NA, failed: NA, id: NA,
-      copy: ['AAA p1 node step'],
-    })
   })
 })
 

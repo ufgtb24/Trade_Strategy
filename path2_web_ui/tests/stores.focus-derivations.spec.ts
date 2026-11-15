@@ -54,13 +54,14 @@ describe('view store · 派生 computed 一致性', () => {
     expect(view.selectedHit).toBeNull()
     expect(view.selectedInstanceId).toBeNull()
     expect(view.focusedInstanceId).toBeNull()
-    expect(view.highlightedEventIds.size).toBe(0)
+    expect(view.highlight.focus).toBeNull()
+    expect([view.highlight.dimApp, view.highlight.dimUser]).toEqual([false, false])
     expect(view.showTrace).toBe(false)
-    expect(view.markedHitIds.size).toBe(0)
+    expect(view.highlight.ledHits.size).toBe(0)
     expect(view.markedEventIds.size).toBe(0)
   })
 
-  it('focusedHitId="m1"(直写):selected/selectedHit/selectedHitId 派生 + showTrace=true + highlightedEventIds 含 members', () => {
+  it('focusedHitId="m1"(直写):selected/selectedHit/selectedHitId 派生 + showTrace=true;图上的照常跟着选中路径走', () => {
     const view = useViewStore()
     view.loadScanFile(makeFixture())
     view.focusedHitId = 'm1'
@@ -70,11 +71,13 @@ describe('view store · 派生 computed 一致性', () => {
     expect(view.selectedInstanceId).toBeNull()
     expect(view.focusedInstanceId).toBeNull()
     expect(view.showTrace).toBe(true)
-    // highlightedEventIds 含 ta_12_15#0(node_index 引用);bo_10#0 经 anchor_field 反查,
-    // 但高亮用 expandAnchor=false(避免共享 leaf 反向污染),故 bo_10#0 不进高亮集
-    expect(view.highlightedEventIds.has('ta_12_15#0')).toBe(true)
-    expect(view.highlightedEventIds.has('bo_10#0')).toBe(false)
-    expect(view.markedHitIds.has('m1')).toBe(true)
+    // 直写底层 ref 不改选中路径:图上什么都不画
+    expect(view.highlight.focus).toBeNull()
+    // 经选中路径选中这次 hit:它绑定的 event 照常(选中卡 nodes 行同一份),侧栏这一行黑粗边、挂蓝条
+    view.focusHit('m1')
+    expect(view.highlight.appEvents.has('ta_12_15#0')).toBe(true)
+    expect([...view.highlight.frameHits]).toEqual(['m1'])
+    expect([...view.highlight.ledHits]).toEqual(['m1'])
   })
 
   it('focusEvent("bo_10#0") 0 归属(anchor 不在 node_index):selectedInstanceId 派生 + hit 不设 + expandedNodeIds 含 bo', () => {
@@ -90,39 +93,39 @@ describe('view store · 派生 computed 一致性', () => {
     expect(view.markedEventIds.has('bo_10#0')).toBe(true)
   })
 
-  it('focusEvent("ta_12_15#0") 唯一归属:选中这个 event、常标用到它的 hit、add {ta};走进去后同时驱动 hit + 实例焦点', () => {
+  it('focusEvent("ta_12_15#0") 唯一归属:选中这个 event、常标用到它的 hit、add {ta};走进去后同时驱动 hit + 实例焦点,候选表那一行不再标', () => {
     const view = useViewStore()
     view.loadScanFile(makeFixture())
     view.focusEvent('ta_12_15#0')
-    // 点 event 选中的是它;用到它的那次 hit 在侧栏常标,不算选中
+    // 点 event 选中的是它;用到它的那次 hit 是它牵出的(侧栏挂蓝条),不算选中(没有黑粗边)
     expect(view.selectedInstanceId).toBe('ta_12_15#0')
     expect(view.selectedHitId).toBeNull()
     expect(view.showTrace).toBe(false)
-    expect(view.markedHitIds.has('m1')).toBe(true)
+    expect(view.highlight.ledHits.has('m1')).toBe(true)
+    expect(view.highlight.frameHits.size).toBe(0)
     expect(view.markedEventIds.has('ta_12_15#0')).toBe(true)
     expect(view.expandedNodeIds.has('ta')).toBe(true)
     view.stepPos(1)                            // 这条 band 上只有它、只牵出一天:→ 进那一天,就是那次 hit
     expect(view.selectedHitId).toBe('m1')
     expect(view.focusedInstanceId).toBe('ta_12_15#0')
     expect(view.showTrace).toBe(false)         // 实例焦点存在 → 不展 trace
-    expect(view.markedHitIds.has('m1')).toBe(true)
-    expect(view.markedEventIds.has('ta_12_15#0')).toBe(true)
+    expect(view.highlight.frameHits.has('m1')).toBe(true)
+    expect(view.markedEventIds.size).toBe(0)   // 它退到外层:候选表那一行不再描黑粗边
     expect(view.expandedNodeIds.has('ta')).toBe(true)
   })
 
-  it('选中一族(不是其中哪一次):侧栏 hits 列表常标这一族的 hit,不选中、不展开、不亮 group', () => {
+  it('选中一族(不是其中哪一次):侧栏这一族的 hit 黑粗边,不选中哪一次、不展开;清掉后什么都不标', () => {
     const view = useViewStore()
     view.loadScanFile(makeFixture())
     view.clickFamilyLine('hits@10')
-    expect([...view.markedHitIds]).toEqual(['m1'])   // 这一族的 hit 常标
+    expect([...view.highlight.frameHits]).toEqual(['m1'])   // 一族由这几次组成
     expect(view.selectedHitId).toBeNull()
     expect(view.expandedNodeIds.size).toBe(0)
-    expect(view.highlightedEventIds.size).toBe(0)
     view.clearFocus()
     expect(view.selectedHitId).toBeNull()
-    expect(view.markedHitIds.size).toBe(0)
+    expect(view.highlight.frameHits.size).toBe(0)
+    expect(view.highlight.dimApp).toBe(false)
     expect(view.expandedNodeIds.size).toBe(0)
-    expect(view.highlightedEventIds.size).toBe(0)
   })
 
   it('toggleExpandedNode("bo"):add 到 manualExpandedNodes → expandedNodeIds 含 bo', () => {

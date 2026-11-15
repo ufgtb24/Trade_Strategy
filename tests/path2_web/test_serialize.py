@@ -176,12 +176,12 @@ def _lab(hexcolor: str) -> tuple:
 
 _BAND_BG = "#ebebeb"      # 副图隔行底(path2_web_ui/src/render/subGeometry.ts 的 BAND_STRIPE_FILL 叠在白底上)
 _B_COOL, _B_WARM = -20.0, 20.0   # b* 冷暖界线(待验证);两线之间的颜色不分冷暖,判不合格
-_MIN_DL = 12.0            # 相邻两色的明度差下限(待验证)
+_MIN_DL = 12.0            # 相邻两色同冷暖时的明度差下限(待验证)
 
 
 def _palette_problems(pal) -> list:
     """按用户的配色规则检查一组循环使用的调色板,返回问题列表(空 = 合格)。
-    用户靠冷暖与深浅分色:相邻两色(含循环回头那一对)冷暖相反、深浅拉开;每色离副图浅底够远。
+    用户靠冷暖与深浅分色:相邻两色(含循环回头那一对)冷暖相反,或深浅明显拉开,满足一条即可;每色离副图浅底够远。
     冷暖看 CIELAB b*(黄-蓝轴,红绿色盲也保留):绿的 b* 为正、算暖,所以橘-绿相邻会被抓出来。"""
     out = []
     labs = [_lab(c) for c in pal]
@@ -201,29 +201,29 @@ def _palette_problems(pal) -> list:
     n = len(pal)
     for i in range(n if n > 2 else n - 1):
         j = (i + 1) % n
-        if temp[i] is not None and temp[i] == temp[j]:
-            out.append(f"{pal[i]} 与 {pal[j]} 相邻却同为 {temp[i]}")
-        if abs(labs[i][0] - labs[j][0]) < _MIN_DL:
-            out.append(f"{pal[i]} 与 {pal[j]} 相邻、明度差 {abs(labs[i][0] - labs[j][0]):.1f} < {_MIN_DL}")
+        opposite = temp[i] is not None and temp[j] is not None and temp[i] != temp[j]
+        dl = abs(labs[i][0] - labs[j][0])
+        if not opposite and dl < _MIN_DL:
+            out.append(f"{pal[i]} 与 {pal[j]} 相邻却同为 {temp[i]}、明度差 {dl:.1f} < {_MIN_DL}")
     return out
 
 
 def test_palette_is_colorblind_safe():
-    """现用的兜底调色板通过配色检查:天蓝 / 大红两色,冷暖相反、深浅拉开。"""
+    """现用的兜底调色板通过配色检查:中蓝 / 大红两色,冷暖相反。"""
     assert len(serialize._PALETTE) == 2
     assert _palette_problems(serialize._PALETTE) == []
 
 
 def test_palette_check_rejects_known_bad_palettes():
     """负面对照:检查本身要能抓出坏色板,否则它坏了也看不出来。
-    - 橘与正绿相邻(用户点名分不清的一对;旧判据「蓝分量 > 红分量」会把绿判成冷色而放过);
-    - 中蓝与大红一样深(只剩冷暖、没有深浅);
+    - 橘与正绿相邻(用户点名分不清的一对,同为暖、一样深;旧判据「蓝分量 > 红分量」会把绿判成冷色而放过);
+    - 中蓝与蓝相邻(同为冷、深浅接近);
     - 标准天蓝 #87ceeb 太浅,浅灰底上看不出;
     - 换色前的旧色板(亮绿 #16f943 在白底上几乎看不见,红 #FF1500 与绿 #14b24e 相邻)。"""
     probs = _palette_problems(["#d97706", "#00a829"])
     assert any("#d97706 与 #00a829 相邻却同为 warm" in p for p in probs), probs
-    probs = _palette_problems(["#1a80ba", "#e60012"])
-    assert any("明度差" in p for p in probs), probs
+    probs = _palette_problems(["#1a80ba", "#2563eb"])
+    assert any("#1a80ba 与 #2563eb 相邻却同为 cool" in p for p in probs), probs
     probs = _palette_problems(["#87ceeb", "#d7000f"])
     assert any(p.startswith("#87ceeb: 对副图浅灰底对比度") for p in probs), probs
     old = ["#16f943", "#2563eb", "#FF1500", "#14b24e", "#7c3aed", "#0891b2", "#ca8a04"]
@@ -247,7 +247,7 @@ def test_registered_apps_sub_lanes_alternate():
 
 
 def test_palette_assigns_new_step_nodes_in_topology_order():
-    """new_step 五个 node 按拓扑首现序天蓝、大红交替。"""
+    """new_step 五个 node 按拓扑首现序中蓝、大红交替。"""
     from path2_apps.new_step.dag_spec import PATTERN_DAG as NS
     styles = serialize.serialize_pattern(NS)["event_styles"]
     blue, red = serialize._PALETTE

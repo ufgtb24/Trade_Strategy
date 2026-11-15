@@ -48,7 +48,6 @@ function makeFixture(): MultiScanResultFile {
   } as any
 }
 
-const node = (band: string): Sel => ({ kind: 'node', band })
 const e = (x: EventDict): Sel => ({ kind: 'event', instanceId: x.instance_id })
 const sample = (id: string): Sel => ({ kind: 'sample', sampleId: id })
 
@@ -70,7 +69,7 @@ describe('view store · 当前日与选中的边角', () => {
     const view = setup()
     view.focusEvent(P0.instance_id)
     // 点 band 上的东西只选中这个 event,不替用户选中用到它的那次 hit
-    expect(view.selPath).toEqual([node('plateau'), e(P0)])
+    expect(view.selPath).toEqual([e(P0)])
     expect([view.focusedHitId, view.selectedInstanceId, view.currentDay]).toEqual([null, P0.instance_id, 13])
     view.stepStack(1)
     expect(view.selectedInstanceId).toBe(P1.instance_id)  // 同一格的另一个成员
@@ -106,7 +105,9 @@ describe('view store · 当前日与选中的边角', () => {
     })
     view.setPath([sample('a')])
     // 在场的哪一次都不算选中,要按 ↓ 进去才是
-    expect([view.focusedHitId, view.currentDay, view.activeFamilyKey]).toEqual([null, 13, 'samples'])
+    expect([view.focusedHitId, view.currentDay]).toEqual([null, 13])
+    expect(view.highlight.focus).toEqual(sample('a'))           // 粗框在样本上
+    expect([...view.highlight.ledHits]).toEqual(['h0'])         // 在场的两次只亮 ↓ 第一个(配对那次)
     expect(slots(view)).toEqual(['samples 1/2', 'into hits ×2'])
     view.stepStack(1)
     expect(view.focusedHitId).toBe('h0')
@@ -119,7 +120,8 @@ describe('view store · 当前日与选中的边角', () => {
     expect(onAnchor).toHaveBeenCalledWith(sample('b'))
     // 挂在样本下面的 event(从样本的 diagnose 点进来):只选中它,没有可走的邻居
     view.setPath([sample('a'), e(P3)])
-    expect([view.focusedHitId, view.selectedInstanceId, view.activeFamilyKey]).toEqual([null, P3.instance_id, 'samples'])
+    expect([view.focusedHitId, view.selectedInstanceId]).toEqual([null, P3.instance_id])
+    expect([...view.highlight.under.samples]).toEqual(['a'])    // 样本在外层:跨度下底线
     expect(slots(view)).toEqual([null, null])
   })
 
@@ -140,7 +142,7 @@ describe('view store · 当前日与选中的边角', () => {
     expect(view.selectedInstanceId).toBe(P3.instance_id)
   })
 
-  it('样本 / 框的细框与亮起的组成只跟配对的那一次:没有配对时那天在场别的 hit 也不画细框、不亮组成,↓ 仍能进去', () => {
+  it('样本 / 框照常的只有 ↓ 第一个那次:配对那次排第一;配对的 event 没进 hit 时就是在场的第一次;↓ 仍能进去', () => {
     const view = setup()
     const present = ['h0', 'h1']                                    // 第 13 天在场的两次
     let paired: string | null = null
@@ -150,20 +152,24 @@ describe('view store · 当前日与选中的边角', () => {
     })
     for (const sel of [sample('a'), { kind: 'box', boxId: 'x' } as Sel]) {
       view.setPath([sel])
-      expect([view.candidateHitIds.size, view.highlightedEventIds.size]).toEqual([0, 0])
+      expect([...view.highlight.ledHits]).toEqual(['h0'])
+      expect(view.highlight.appEvents.has(S10.instance_id)).toBe(true)
+      expect(view.highlight.appEvents.has(S11.instance_id)).toBe(false)
       expect(slotText(view.selInfo!.stack)).toBe('into hits ×2')
       view.stepStack(1)
       expect(view.selPath).toEqual([sel, { kind: 'hit', hitId: 'h0', day: 13 }])
     }
     paired = 'h1'
+    const pairedFirst = ['h1', 'h0']                                // 在场的几次:配对的排第一(compare 给的顺序)
     view.setSelSources({
-      samples: () => [{ id: 'a', day: 13, hitIds: present, pairedHitId: paired }],
-      boxes: () => [{ id: 'x', day: 13, hitIds: present, pairedHitId: paired }],
+      samples: () => [{ id: 'a', day: 13, hitIds: pairedFirst, pairedHitId: paired }],
+      boxes: () => [{ id: 'x', day: 13, hitIds: pairedFirst, pairedHitId: paired }],
     })
     for (const sel of [sample('a'), { kind: 'box', boxId: 'x' } as Sel]) {
       view.setPath([sel])
-      expect([...view.candidateHitIds]).toEqual(['h1'])
-      expect([...view.highlightedEventIds].sort()).toEqual([P1.instance_id, S11.instance_id, T13.instance_id].sort())
+      expect([...view.highlight.ledHits]).toEqual(['h1'])
+      for (const id of [P1.instance_id, S11.instance_id, T13.instance_id]) expect(view.highlight.appEvents.has(id), id).toBe(true)
+      expect(view.highlight.appEvents.has(S10.instance_id)).toBe(false)
     }
   })
 

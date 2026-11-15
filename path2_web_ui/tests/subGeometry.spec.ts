@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest'
 import {
   computeSubGeometry,
+  HIT_COUNT_ROW_H,
+  MARK_GROW,
   composeEffectiveSubH,
   DIVIDER_GAP,
   BAND_MARKER_H,
@@ -250,18 +252,19 @@ describe('composeEffectiveSubH 的上限(三种模式都设:内容再高,K 线�
 
 // ---------- hit 行上面的个数行:有并了几次 hit 的买入日的那一行才加,行高固定不随缩放 ----------
 describe('computeSubGeometry · 个数行(bracketCountLanes)', () => {
-  it('不传时各行等距、与原来逐项相同;传了的那一行上面多 HIT_COUNT_ROW_H,它自己和后面的行、反馈带、band 顺移', () => {
+  it('不传时各行等距、与原来逐项相同;传了的那一行上面多一个个数行(HIT_COUNT_ROW_H + 有关的格往上长的 MARK_GROW·z),它自己和后面的行、反馈带、band 顺移', () => {
     const base = computeSubGeometry({ bracketLaneCount: 3, bandLaneCounts: [1] }, 2)
     expect(base.bracketLaneTops).toEqual([4, 4 + 18, 4 + 36])
     expect(base.feedbackTop).toBe(4 + 54)
+    const row = HIT_COUNT_ROW_H + MARK_GROW * 2   // 格往上长时个数跟着上移,个数行加高同样的量
     const g = computeSubGeometry({ bracketLaneCount: 3, bandLaneCounts: [1], bracketCountLanes: [0, 2] }, 2)
-    expect(g.bracketLaneTops).toEqual([4 + 10, 4 + 18 + 10, 4 + 36 + 20])
-    expect(g.feedbackTop).toBe(base.feedbackTop + 20)
-    expect(g.bracketH).toBe(base.bracketH + 20)
-    expect(g.bandGeom[0].top).toBe(base.bandGeom[0].top + 20)
-    expect(g.subCanvasH).toBe(base.subCanvasH + 20)
-    // 不随缩放:1.0× 下同样是 10
+    expect(g.bracketLaneTops).toEqual([4 + row, 4 + 18 + row, 4 + 36 + 2 * row])
+    expect(g.feedbackTop).toBe(base.feedbackTop + 2 * row)
+    expect(g.bracketH).toBe(base.bracketH + 2 * row)
+    expect(g.bandGeom[0].top).toBe(base.bandGeom[0].top + 2 * row)
+    expect(g.subCanvasH).toBe(base.subCanvasH + 2 * row)
+    // 字的那一段(HIT_COUNT_ROW_H)不随缩放,只有让给变高的那一段随缩放
     const g1 = computeSubGeometry({ bracketLaneCount: 2, bandLaneCounts: [], bracketCountLanes: [0] }, 1)
-    expect(g1.bracketLaneTops).toEqual([4 + 10, 4 + 10 + 9])
+    expect(g1.bracketLaneTops).toEqual([4 + 10 + MARK_GROW, 4 + 10 + MARK_GROW + 9])
   })
 })

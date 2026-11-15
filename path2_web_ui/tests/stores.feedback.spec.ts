@@ -571,14 +571,11 @@ describe('选中的那一个能不能作答(selTarget)与对它打开(openSelect
     expect(fb.selTarget).toBeNull()
   })
 
-  it('event、node、样本、框:null', async () => {
+  it('event、样本、框:null', async () => {
     const { view, fb } = await setup(withRecords())
     await enterCompare(view)
     view.focusMark([T4.instance_id])
     expect(view.selLast?.kind).toBe('event')
-    expect(fb.selTarget).toBeNull()
-    view.selectNode('today')
-    expect(view.selLast?.kind).toBe('node')
     expect(fb.selTarget).toBeNull()
     view.setPath([{ kind: 'sample', sampleId: 's-pc-1' }])
     expect(fb.selTarget).toBeNull()

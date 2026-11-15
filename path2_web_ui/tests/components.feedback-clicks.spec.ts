@@ -131,7 +131,7 @@ describe('compare 下的点击只选中、不开面板;选中之后对它打开�
     expect(compareClick(click('brackets', buyRec(5)), view, fb)).toBe(true)
     expect(view.selPath).toEqual([{ kind: 'hit_family', familyKey: 'hits@0' }, { kind: 'buy', day: 5 }])
     expect(view.currentDay).toBe(5)
-    expect(view.activeFamilyKey).toBe('hits@0')
+    expect([...view.highlight.under.families]).toEqual(['hits@0'])
     expect(fb.panel).toBeNull()
     expect(fb.opens).toBe(n)
     expect(fb.selTarget).toEqual({ symbol: 'AAA', start: DATES[5], end: DATES[5], target: 'point' })
@@ -158,11 +158,11 @@ describe('compare 下的点击只选中、不开面板;选中之后对它打开�
     view.focusHit('h6')
     const day = view.currentDay
     expect(compareClick(click('bracket-lines', bundle.bracketLineData[0]), view, fb)).toBe(true)
-    expect(view.activeFamilyKey).toBe('hits@0')
+    expect(view.highlight.focus).toEqual({ kind: 'hit_family', familyKey: 'hits@0' })   // 粗框框这一族整行
     expect(view.selectedHitId).toBeNull()
     expect(view.selPath).toEqual([{ kind: 'hit_family', familyKey: 'hits@0' }])
     expect(view.currentDay).toBe(day)
-    expect(view.candidateHitIds.size).toBe(0)
+    expect(view.highlight.under.families.size).toBe(0)
     expect(fb.panel).toBeNull()
     expect(fb.openSelected()).toBe(true)
     expect(fb.panel).toMatchObject({ start: DATES[4], end: DATES[7], target: 'family', family_start: DATES[0] })

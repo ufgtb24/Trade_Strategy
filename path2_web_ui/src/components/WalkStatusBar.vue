@@ -58,8 +58,8 @@ const ann = useAnnotationStore()
 const fb = useFeedbackStore()
 
 const info = computed(() => view.selInfo)
-/** name 那格是用户起的名字(框、node 的特征名)时,按「用户内容」的样子写;样本的字母与判断、空值 none 是程序固定词 */
-const userNamed = computed(() => (info.value?.kind === 'box' || info.value?.kind === 'node') && info.value.name !== NONE)
+/** name 那格是用户起的名字(框的特征名)时,按「用户内容」的样子写;样本的字母与判断、空值 none 是程序固定词 */
+const userNamed = computed(() => info.value?.kind === 'box' && info.value.name !== NONE)
 const dayText = computed(() => (info.value ? slotText(info.value.day) : null))
 const stackText = computed(() => (info.value ? slotText(info.value.stack) : null))
 

@@ -127,7 +127,7 @@ describe('buildSubOption · 只在 compare 生成族命中区与反馈带', () =
   })
 
   it('makeRenderBracketLine 不传 clickable 时与原来一样', () => {
-    const g = makeRenderBracketLine([{ multi: true, active: false, buy_days: [1] }])({ dataIndex: 0 }, api) as any
+    const g = makeRenderBracketLine([{ multi: true, buy_days: [1] }])({ dataIndex: 0 }, api) as any
     expect(g.silent).toBe(true)
     expect(g.children).toHaveLength(2)
   })
@@ -207,6 +207,17 @@ describe('反馈带的记号', () => {
     expect(c.children[0].style).toMatchObject({ fill: '#ffffff', stroke: '#555555' })
     expect(c.children[1].style.text).toBe('ab+1')             // 整串放不下:第一个 node 名加 +n
     expect(d.children).toHaveLength(1)                        // 没点 node:再宽也不画字(不画一段空文字)
+  })
+
+  it('图上的选中给的 look:画淡的记号与它的字只降不透明度(用户那一边 0.28);外层的标出 under(底线画在 selection 系列)', () => {
+    const list = [fb('a', DATES[1], DATES[4]), fb('b', DATES[5], DATES[8])]
+    const marks = feedbackMarks(list, DATES, {}, null, (id) => ({ dim: id === 'b', under: id === 'a' }))
+    expect(marks.map(m => [m.id, m.dim, m.under])).toEqual([['a', false, true], ['b', true, false]])
+    const api = { coord: ([x]: number[]) => [x * 10, 0], size: () => [10, 0] }
+    const render = makeRenderFeedbackMark([{ id: 'b', start: 0, end: 9, lane: 0, nodes: ['step'], tone: 'red', selected: false, dim: true }], 50)
+    const g = render({ dataIndex: 0 }, api) as any
+    expect(g.children[0].style).toMatchObject({ fill: FEEDBACK_TONE.red.fill, opacity: 0.28 })
+    expect(g.children[1].style.opacity).toBe(0.28)
   })
 
   it('悬停写全:点出的 node(拓扑里没有的原样)、理由(转义)、状态、原因标签、pos sample inside;不提旧版本 / 过期', () => {

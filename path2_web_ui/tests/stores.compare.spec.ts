@@ -16,7 +16,7 @@ vi.mock('../src/api', async (orig) => {
 import { useViewStore, type LinkedRun } from '../src/stores/view'
 import { useAnnotationStore } from '../src/stores/annotation'
 import { useAppLinkStore } from '../src/stores/appLink'
-import { useCompareStore, SAMPLES_ROW } from '../src/stores/compare'
+import { useCompareStore } from '../src/stores/compare'
 import type { AnnRead } from '../src/annotate/model'
 import { slotText } from '../src/render/selSnapshot'
 import type { EventDict, HitDict } from '../src/types'
@@ -117,7 +117,7 @@ describe('compare store · 聚焦与配对', () => {
     expect(view.selPath).toEqual([{ kind: 'sample', sampleId: 'sC' }])
     expect([view.selectedInstanceId, view.focusedHitId]).toEqual([null, null])
     expect(view.currentDay).toBe(15)
-    expect(view.activeFamilyKey).toBe(SAMPLES_ROW)
+    expect(view.highlight.focus).toEqual({ kind: 'sample', sampleId: 'sC' })   // 默认聚焦的样本也算选中:粗框在它上面
   })
 
   it('聚焦样本不选中它:selection 页照样拿到它的 diagnose', async () => {
@@ -169,17 +169,21 @@ describe('compare store · 聚焦与配对', () => {
     expect(slots(view)).toEqual([null, null])
   })
 
-  it('聚焦样本:画细框的只有配对的那一次,亮出来的是它的组成;在场的别的几次要 ↓ 进去才看', async () => {
+  it('聚焦样本:照常的只有配对的那一次和它的组成,同一天另一次的组成画淡;在场的别的几次要 ↓ 进去才看', async () => {
     const { view, cmp } = await setup()
     cmp.focusSample('sA')                                // 配对的是 h1(子框阶跃到 11)
-    expect([...view.candidateHitIds]).toEqual(['h1'])
-    expect([...view.highlightedEventIds].sort()).toEqual([P1.instance_id, S11.instance_id, T13.instance_id].sort())
-    expect(view.focusedHitId).toBeNull()                 // 细框不等于选中
+    const on = (ids: string[]) => ids.map(id => view.highlight.appEvents.has(id))
+    expect([...view.highlight.ledHits]).toEqual(['h1'])
+    expect(on([P1.instance_id, S11.instance_id, T13.instance_id])).toEqual([true, true, true])
+    expect(on([P0.instance_id, S10.instance_id])).toEqual([false, false])
+    expect(view.highlight.dimApp).toBe(true)
+    expect(view.focusedHitId).toBeNull()                 // 照常不等于选中
     cmp.focusSample('sB')                                // 同一天的另一个样本配对的是 h0
-    expect([...view.candidateHitIds]).toEqual(['h0'])
-    expect([...view.highlightedEventIds].sort()).toEqual([P0.instance_id, S10.instance_id, T13.instance_id].sort())
-    cmp.focusSample('sC')                                // 样本日没有在场的 hit:没有细框,也没有亮着的组成
-    expect([view.candidateHitIds.size, view.highlightedEventIds.size]).toEqual([0, 0])
+    expect([...view.highlight.ledHits]).toEqual(['h0'])
+    expect(on([P0.instance_id, S10.instance_id, T13.instance_id])).toEqual([true, true, true])
+    expect(on([P1.instance_id, S11.instance_id])).toEqual([false, false])
+    cmp.focusSample('sC')                                // 样本日没有在场的 hit:没牵出,app 那边不淡
+    expect([view.highlight.ledHits.size, view.highlight.dimApp]).toEqual([0, false])
   })
 
   it('点框:选中的是这个框,当前日落在框终点;← / → 换到旁边的框,标注那边选中的框一并换成它', async () => {
@@ -364,16 +368,16 @@ describe('view store · 结果换了(重跑)', () => {
     expect([view.focusedHitId, view.currentDay]).toEqual([null, null])
   })
 
-  it('选中的 event 没了:退到它那条 band;还在的不动', async () => {
+  it('选中的 event 没了:选中清空(路径就它一节);还在的不动', async () => {
     const view = await at(full())
     view.setLevel('detected')
     view.focusEvent(S11.instance_id)
-    const path = [{ kind: 'node', band: 'step' }, { kind: 'event', instanceId: S11.instance_id }]
+    const path = [{ kind: 'event', instanceId: S11.instance_id }]
     expect(view.selPath).toEqual(path)
     await rerun(view, runOf([P0], [P3, T15]))                 // 别的东西变了,S11 还在
     expect(view.selPath).toEqual(path)
     await rerun(view, runOf([P0], [S11, P1]))
-    expect(view.selPath).toEqual([{ kind: 'node', band: 'step' }])
+    expect(view.selPath).toEqual([])
     expect(view.selectedInstanceId).toBeNull()
   })
 

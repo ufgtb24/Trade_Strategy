@@ -11,11 +11,11 @@
  *   和 app 的下标逐根对齐,见 stores/appLink.ts);
  * - 聚焦样本:点 ▲(选中样本)或进 compare 时的默认样本(没有选中的就取离图窗中心最近的,不动标注的选中、
  *   侧栏不翻页)。聚焦 = 选中的就是这个样本、当前日落在样本日(见 focusSample;配对的那次 hit 按 ↓ 进去才算选中);
- *   ← / → 在样本间走(当家行 samples)。
+ *   ← / → 在样本间走。
  */
 import { defineStore } from 'pinia'
 import { computed, ref, watch } from 'vue'
-import { useViewStore, SAMPLES_ROW_KEY } from './view'
+import { useViewStore } from './view'
 import { useAnnotationStore } from './annotation'
 import { useAppLinkStore } from './appLink'
 import { chartOf, chartParents, type AnnBox, type AnnSample } from '../annotate/model'
@@ -25,12 +25,9 @@ import {
 } from '../annotate/compareRead'
 import { hitOrderOf } from '../render/walk'
 import type { AnchorRow } from '../render/selWorld'
-import { sampleLetters } from '../annotate/samples'
+import { memberIds, sampleLetters } from '../annotate/samples'
 import { buyDaysOf, formatMemberLabel, memberLabels } from '../render/fold'
 import type { EventDict, HitDict, Tier } from '../types'
-
-/** 选中样本(或它里面的东西)时的当家行键(副图里没有叫这个的族,user 那一行由 KlineChart 自己加粗)。 */
-export const SAMPLES_ROW = SAMPLES_ROW_KEY
 
 export interface SampleRead {
   id: string
@@ -219,13 +216,14 @@ export const useCompareStore = defineStore('compare', () => {
   view.setSelSources({
     samples: () => sampleRows.value,
     boxes: () => boxRows.value,
+    memberBoxes: (id) => {
+      const c = chart.value
+      const s = c?.samples.find(x => x.id === id)
+      return s && c ? [...memberIds(s, c)] : []
+    },
     onAnchor: (s) => {
       if (s.kind === 'sample') { focusedSampleId.value = s.sampleId; ann.selectSample(s.sampleId) }
       else if (s.kind === 'box') ann.selectBox(s.boxId)
-    },
-    featureOfBand: (band) => {
-      const fid = Object.entries(features.value).find(([, node]) => node === band)?.[0] ?? null
-      return fid ? ann.nameOf(fid) ?? null : null
     },
     sampleOf: (id) => {
       const s = chart.value?.samples.find(x => x.id === id)
@@ -241,7 +239,7 @@ export const useCompareStore = defineStore('compare', () => {
   // 换图、离开 compare:聚焦的样本作废;选中的不再是样本或它里面的东西(Esc 清掉、点了 app 的格或框)时也作废,
   // 免得 selection 页还写着「focus a」而竖线已经不在它的样本日上
   watch(() => [view.symbol, view.comparing] as const, () => { focusedSampleId.value = null })
-  watch(() => view.activeFamilyKey, (k) => { if (k !== SAMPLES_ROW) focusedSampleId.value = null })
+  watch(() => view.selPath[0], (s) => { if (s?.kind !== 'sample') focusedSampleId.value = null })
   // 换了标注的当前 pattern:样本、框的对照、反馈都是按 pattern 的,原来选中的那一个不再属于这张图
   watch(() => ann.currentPattern, () => {
     const k = view.selPath[0]?.kind

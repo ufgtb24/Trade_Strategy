@@ -5,8 +5,8 @@
 // 断言(数据级 + 实例级入口 + 真共享):
 //   ① 数据级:事件行无 event_id/source_tag/class_id/instance_key 字段;instance_id 恒带 #idx;
 //      tb_293#0/#1 两实例(node_id='tb')各被一个 hit 的 node_index 精确引用
-//   ② 实例级入口:focusEvent('tb_293#0') → 选中 #0,细框是 hit A;focusEvent('tb_293#1') → 选中 #1,细框是 hit B
-//   ③ 真共享 fixture:同一 instance_id 被两 hit 引用 → 选中这个实例,两次 hit 都画细框
+//   ② 实例级入口:focusEvent('tb_293#0') → 选中 #0,牵出 hit A;focusEvent('tb_293#1') → 选中 #1,牵出 hit B
+//   ③ 真共享 fixture:同一 instance_id 被两 hit 引用 → 选中这个实例,两次 hit 都是牵出的
 import { describe, it, expect, beforeEach } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
 import fs from 'node:fs'
@@ -86,7 +86,7 @@ describe('instance-id 真实数据验收(APCX · bb_v1)', () => {
     }
   })
 
-  it('② 实例级入口:focusEvent 按实例认——选中的是点的那个实例,用到它的那次 hit 画细框(两个实例各对各的)', () => {
+  it('② 实例级入口:focusEvent 按实例认——选中的是点的那个实例,用到它的那次 hit 是它牵出的(两个实例各对各的)', () => {
     const view = useViewStore()
     view.loadScanFile(scanJson)
     const m0 = hitsReferencing('tb_293#0')[0]
@@ -94,22 +94,20 @@ describe('instance-id 真实数据验收(APCX · bb_v1)', () => {
 
     view.focusEvent('tb_293#0')
     expect(view.selectedInstanceId).toBe('tb_293#0')
-    expect([...view.candidateHitIds]).toEqual([m0.hit_id])  // 用到 #0 的是 hit A
+    expect([...view.highlight.ledHits]).toEqual([m0.hit_id])  // 用到 #0 的是 hit A
     expect(view.focusedHitId).toBeNull()                    // 点 event 只选中 event
-    expect(view.pendingDisambigInstanceId).toBeNull()
 
     view.focusEvent('tb_293#1')
     expect(view.selectedInstanceId).toBe('tb_293#1')
-    expect([...view.candidateHitIds]).toEqual([m1.hit_id])  // 用到 #1 的是 hit B
-    expect(view.pendingDisambigInstanceId).toBeNull()
+    expect([...view.highlight.ledHits]).toEqual([m1.hit_id])  // 用到 #1 的是 hit B
   })
 
-  it('③ 真共享 fixture:同一 instance_id 被两 hit 引用;共享的就是买点(买入日相同)→ 选中这个实例,两次都画细框', () => {
+  it('③ 真共享 fixture:同一 instance_id 被两 hit 引用;共享的就是买点(买入日相同)→ 选中这个实例,同一天只亮 ↓ 第一个', () => {
     const view = useViewStore()
     view.loadScanFile(makeSharedFixture())
     view.focusEvent('tb_293#0')                             // 实例级入口,实例真共享,且就是 end_node(tb)
     expect(view.selectedInstanceId).toBe('tb_293#0')
-    expect([...view.candidateHitIds]).toEqual(['m-shared-a', 'm-shared-b'])
+    expect([...view.highlight.ledHits]).toEqual(['m-shared-a'])
     expect(view.focusedHitId).toBeNull()
     expect(view.selInfo!.buys).toBe('293 ×1')               // 两次买在同一天(没有交易日表时写下标)
     expect(view.selInfo!.hits!.head).toBe('×2')

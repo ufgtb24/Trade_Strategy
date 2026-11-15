@@ -8,7 +8,7 @@
  *   白底深灰描边黑字。hits 区底色是浅黄,常色靠描边认,不靠白底。页面上的状态只有 matched / unmatched
  *   (「起点认不出」在后端已并进 unmatched,见 path2_web/annotation/match.py 的 shown_status);
  * - 选中的那条(feedbackMarkStyle):描边换成黑色并明显加粗(加粗的部分画在记号外侧,不挤字),压在别的记号上面;图上另有一条贯穿主副图的竖带
- *   标出它的日期范围(components/KlineChart.vue);
+ *   标出它的日期范围(components/KlineChart.vue);选中的东西在它里面时(它是外层)不描粗边,记号下沿画一道底线;
  * - 记号上的字(feedbackLabelText)是点出的 node 名,逗号连起来;整串放不下时退成「第一个 node 名加 +n」
  *   (n 是没写出来的个数),再放不下或一个 node 都没点就只画记号,内容靠悬停看;
  * - 悬停文字不写任何「旧版本 / 过期」提示(反馈不过期,1.11);nodes 里当前拓扑已没有的 node 原样显示;
@@ -36,6 +36,10 @@ export interface FeedbackMark {
   nodes: string[]
   tone: FeedbackTone
   selected: boolean
+  /** 画淡(用户那一边有选中样本的成员框时,其余的反馈记号画淡;render/selHighlight.ts) */
+  dim?: boolean
+  /** 外层:选中的东西在这条反馈里面(如从它走进的一次 hit),记号下沿画一道底线 */
+  under?: boolean
 }
 
 /** 记号的底色与描边(字一律黑)。常色描边是中等深度的深灰;朱红底也描同一种深灰 */
@@ -80,10 +84,12 @@ export function dateSpanToIdx(dates: readonly string[], start: string, end: stri
 /**
  * 这只股票当前 pattern 的反馈 → 反馈带上的记号(已错行)。只取用户自己挑的;落不到 K 线上的丢掉。
  * 错行:按起点先后贪心放进第一条放得下的行(范围交叠的不同行)。
+ * look:每条画淡与否、是不是外层(图上的选中给;不给时都不淡、都不是外层)。
  */
 export function feedbackMarks(list: readonly AnnFeedback[], dates: readonly string[],
                               statusById: Readonly<Record<string, FeedbackStatusOf | undefined>>,
-                              selectedId: string | null): FeedbackMark[] {
+                              selectedId: string | null,
+                              look?: (id: string) => { dim: boolean; under: boolean }): FeedbackMark[] {
   const spans: { start_idx: number; end_idx: number; fb: AnnFeedback }[] = []
   for (const fb of list) {
     if (fb.source !== 'picked') continue
@@ -93,6 +99,7 @@ export function feedbackMarks(list: readonly AnnFeedback[], dates: readonly stri
   return packLanes(spans).map(({ start_idx, end_idx, lane, fb }) => ({
     id: fb.id, start: start_idx, end: end_idx, lane, nodes: [...(fb.nodes ?? [])],
     tone: feedbackTone(statusById[fb.id]), selected: fb.id === selectedId,
+    ...(look ? look(fb.id) : {}),
   }))
 }
 

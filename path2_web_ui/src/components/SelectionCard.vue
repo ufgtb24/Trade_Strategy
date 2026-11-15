@@ -60,7 +60,7 @@ const ownDates = computed<Set<string>>(() => {
 
 const feedbackLines = computed<string[] | null>(() => {
   const i = info.value
-  if (!i || !view.comparing || i.kind === 'node' || i.kind === 'sample' || i.kind === 'box' || i.kind === 'event') return null
+  if (!i || !view.comparing || i.kind === 'sample' || i.kind === 'box' || i.kind === 'event') return null
   const all = (chart.value?.feedback ?? []).filter(f => f.source === 'picked' && f.pattern === ann.currentPattern)
   const mine = i.kind === 'feedback' ? all.filter(f => f.id === i.id)
     : all.filter(f => [...ownDates.value].some(x => f.start <= x && x <= f.end)
@@ -76,7 +76,7 @@ function sampleLine(id: string): string | null {
 }
 const sampleLines = computed<string[] | null>(() => {
   const i = info.value
-  if (!i || !view.comparing || i.kind === 'node') return null
+  if (!i || !view.comparing) return null
   if (i.kind === 'sample') return listOrNone([sampleLine(i.id ?? '')].filter((x): x is string => !!x))
   if (i.kind === 'box') {
     return listOrNone(cmp.samples.filter(s => s.members.includes(i.id ?? '')).map(s => sampleLine(s.id))

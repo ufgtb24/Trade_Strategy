@@ -48,7 +48,6 @@ const FAM30: Sel = { kind: 'hit_family', familyKey: 'hits@30' }
 const buy = (day: number): Sel => ({ kind: 'buy', day })
 const h = (hitId: string, day: number): Sel => ({ kind: 'hit', hitId, day })
 const e = (x: EventDict): Sel => ({ kind: 'event', instanceId: x.instance_id })
-const node = (band: string): Sel => ({ kind: 'node', band })
 
 /** 键槽写成字:`into buys ×3`、`buys 1/3`、`—` */
 function slotText(path: SelPath, axis: Axis, ctx: WorldCtx): string {
@@ -57,7 +56,7 @@ function slotText(path: SelPath, axis: Axis, ctx: WorldCtx): string {
 }
 const go = (path: SelPath, axis: Axis, dir: -1 | 1, ctx: WorldCtx) => step(path, axis, dir, makeWorld(ctx)).path
 
-describe('键槽:八种东西 × 两根轴', () => {
+describe('键槽:七种东西 × 两根轴', () => {
   const SAMPLES = [{ id: 's1', day: 13, hitIds: ['b13', 'a13'], pairedHitId: 'b13' }, { id: 's2', day: 15, hitIds: ['a15'], pairedHitId: 'a15' }, { id: 's3', day: 17, hitIds: [], pairedHitId: null }]
   const FEEDBACKS = [{ id: 'f1', hitIds: ['a13', 'b13', 'a14', 'b14'] }, { id: 'f2', hitIds: ['c35'] }]
   const ctx = ctxOf({ samples: SAMPLES, boxes: SAMPLES.map(s => ({ ...s, id: s.id.replace('s', 'x') })), feedbacks: FEEDBACKS })
@@ -66,14 +65,11 @@ describe('键槽:八种东西 × 两根轴', () => {
     ['一族,只有 1 个买点日、图上另有一族', [FAM30], 'hit_families 2/2', '—'],
     ['反馈,收进 2 个买点日', [{ kind: 'feedback', id: 'f1' }], 'into buys ×2', '—'],
     ['反馈,只收进 1 个买点日', [{ kind: 'feedback', id: 'f2' }], 'feedbacks 2/2', '—'],
-    ['event,用到它的买点日 3 个', [node('step'), e(S10)], 'into buys ×3', '—'],
-    ['event,只牵出 1 个买点日', [node('today'), e(T13)], 'events 1/5', '—'],
-    ['event,没被 hit 用到', [node('today'), e(T16)], 'events 4/5', '—'],
-    ['event,band 上只有它且牵出 1 天', [node('solo'), e(X)], 'into buys ×1', '—'],
-    ['event,同一格叠着另一个', [node('plateau'), e(P13a)], 'events 1/4', 'events 1/2'],
-    ['node,band 上 2 格', [node('step')], 'into events ×2', '—'],
-    ['node,band 上 1 格', [node('solo')], 'into events ×1', '—'],
-    ['node,band 上没有东西', [node('nothing')], '—', '—'],
+    ['event,用到它的买点日 3 个', [e(S10)], 'into buys ×3', '—'],
+    ['event,只牵出 1 个买点日', [e(T13)], 'events 1/5', '—'],
+    ['event,没被 hit 用到', [e(T16)], 'events 4/5', '—'],
+    ['event,band 上只有它且牵出 1 天', [e(X)], 'into buys ×1', '—'],
+    ['event,同一格叠着另一个', [e(P13a)], 'events 1/4', 'events 1/2'],
     ['买点日,这天 2 次', [FAM0, buy(13)], 'buys 1/3', 'into hits ×2'],
     ['买点日,这天只有 1 次(合并)', [FAM0, buy(15)], 'buys 3/3', '—'],
     ['一次 hit', [FAM0, buy(13), h('b13', 13)], 'buys 1/3', 'hits 2/2'],
@@ -144,39 +140,34 @@ describe('按一下去哪', () => {
   it('event 牵出两个以上买点日:← / → 进去;那天的几次里用到它的排第一;Esc 一层层退回', () => {
     const ctx = ctxOf()
     const w = makeWorld(ctx)
-    let p = go([node('step'), e(S11)], 'day', 1, ctx)
-    expect(p).toEqual([node('step'), e(S11), buy(13)])
+    let p = go([e(S11)], 'day', 1, ctx)
+    expect(p).toEqual([e(S11), buy(13)])
     p = go(p, 'stack', 1, ctx)
-    expect(p).toEqual([node('step'), e(S11), buy(13), h('b13', 13)])      // b13 用到 S11,排在 a13 前面
+    expect(p).toEqual([e(S11), buy(13), h('b13', 13)])      // b13 用到 S11,排在 a13 前面
     expect(slotText(p, 'stack', ctx)).toBe('hits 1/2')
     p = go(p, 'day', 1, ctx)
-    expect(p).toEqual([node('step'), e(S11), buy(14), h('b14', 14)])
-    expect(up(up(up(p, w), w), w)).toEqual([node('step')])
+    expect(p).toEqual([e(S11), buy(14), h('b14', 14)])
+    expect(up(up(p, w), w)).toEqual([e(S11)])   // 最外一节就是这个 event(node 不能选中)
   })
 
   it('event 只牵出一个买点日或没被用到:← / → 沿 band 换到旁边那格,不进那一天', () => {
     const ctx = ctxOf()
-    let p = go([node('today'), e(T13)], 'day', 1, ctx)
-    expect(p).toEqual([node('today'), e(T14)])
+    let p = go([e(T13)], 'day', 1, ctx)
+    expect(p).toEqual([e(T14)])
     p = go(go(p, 'day', 1, ctx), 'day', 1, ctx)
-    expect(p).toEqual([node('today'), e(T16)])            // 没成 hit 的那格照样走得到
-    expect(go(p, 'day', -1, ctx)).toEqual([node('today'), e(T15)])
+    expect(p).toEqual([e(T16)])            // 没成 hit 的那格照样走得到
+    expect(go(p, 'day', -1, ctx)).toEqual([e(T15)])
   })
 
   it('沿 band 换时每格落同一个起点的那个;同一格叠着的 ↑ / ↓ 换', () => {
     const ctx = ctxOf()
-    expect(go([node('plateau'), e(P13b)], 'day', 1, ctx)).toEqual([node('plateau'), e(P14a)])   // 14 那格同起点的第一个
-    expect(go([node('plateau'), e(P13a)], 'stack', 1, ctx)).toEqual([node('plateau'), e(P13b)])
-    expect(go([node('plateau'), e(P15a)], 'day', 1, ctx)).toEqual([node('plateau'), e(P35)])     // 这一串到头,换到另一个起点
+    expect(go([e(P13b)], 'day', 1, ctx)).toEqual([e(P14a)])   // 14 那格同起点的第一个
+    expect(go([e(P13a)], 'stack', 1, ctx)).toEqual([e(P13b)])
+    expect(go([e(P15a)], 'day', 1, ctx)).toEqual([e(P35)])     // 这一串到头,换到另一个起点
   })
 
   it('band 上只有它一个、只牵出一天:← / → 进那一天', () => {
-    expect(go([node('solo'), e(X)], 'day', 1, ctxOf())).toEqual([node('solo'), e(X), buy(35)])
-  })
-
-  it('node:← / → 进到 band 上离竖线最近的那格', () => {
-    expect(go([node('step')], 'day', 1, ctxOf({ lineDay: 11 }))).toEqual([node('step'), e(S11)])
-    expect(go([node('today')], 'day', -1, ctxOf({ lineDay: 15 }))).toEqual([node('today'), e(T15)])
+    expect(go([e(X)], 'day', 1, ctxOf())).toEqual([e(X), buy(35)])
   })
 
   it('样本:← / → 换样本;↓ 进到在场的第 1 次(配对的排第一);停在 hit 上换样本落那边最像的,那边没有就落样本本身', () => {
@@ -225,11 +216,11 @@ describe('band 上的格、竖线落哪', () => {
     expect(cells.map(c => [c.day, c.members.length])).toEqual([[13, 2], [14, 2], [15, 1], [35, 1]])
   })
 
-  it('竖线:买点日、hit 落那一天;event 落终点;样本 / 框落样本日 / 框终点;族、反馈、node 不带日子', () => {
+  it('竖线:买点日、hit 落那一天;event 落终点;样本 / 框落样本日 / 框终点;族、反馈不带日子', () => {
     const ctx = ctxOf({ samples: [{ id: 's1', day: 13, hitIds: [], pairedHitId: null }], boxes: [{ id: 'x1', day: 9, hitIds: [], pairedHitId: null }] })
     const d = (s: Sel) => lineDayOf(s, ctx)
     expect([d(buy(14)), d(h('a14', 14)), d(e(S11)), d({ kind: 'sample', sampleId: 's1' }), d({ kind: 'box', boxId: 'x1' })])
       .toEqual([14, 14, 11, 13, 9])
-    expect([d(FAM0), d({ kind: 'feedback', id: 'f1' }), d(node('step'))]).toEqual([null, null, null])
+    expect([d(FAM0), d({ kind: 'feedback', id: 'f1' })]).toEqual([null, null])
   })
 })

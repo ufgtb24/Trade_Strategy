@@ -37,6 +37,8 @@ const fake = vi.hoisted(() => ({
   barsGate: null as Promise<void> | null,
   previewGate: null as Promise<void> | null,
   previewFails: false,
+  zoom: null as { start: number; end: number } | null,     // 给了就是图窗(百分比);平移动作照它挪
+  pans: [] as { start: number; end: number }[],
 }))
 
 vi.mock('../../src/api', async (orig) => {
@@ -67,8 +69,13 @@ function makeFakeChart() {
   const zr = { on: vi.fn(), off: vi.fn() }
   return {
     setOption: vi.fn(), resize: vi.fn(), dispose: vi.fn(), clear: vi.fn(),
-    on: vi.fn(), off: vi.fn(), getZr: () => zr, getOption: () => ({}),
-    dispatchAction: vi.fn(), convertToPixel: () => [0, 0], convertFromPixel: () => [0, 0],
+    on: vi.fn(), off: vi.fn(), getZr: () => zr, getOption: () => (fake.zoom ? { dataZoom: [{ ...fake.zoom }] } : {}),
+    dispatchAction: vi.fn((a: any) => {
+      if (a?.type !== 'dataZoom' || !fake.zoom) return
+      fake.pans.push({ start: a.start, end: a.end })
+      fake.zoom = { start: a.start, end: a.end }
+    }),
+    convertToPixel: () => [0, 0], convertFromPixel: () => [0, 0],
     getWidth: () => 800, getHeight: () => 600, containPixel: () => false,
   }
 }
@@ -135,6 +142,8 @@ beforeEach(() => {
   fake.barsGate = null
   fake.previewGate = null
   fake.previewFails = false
+  fake.zoom = null
+  fake.pans = []
   localStorage.clear()
   history.replaceState(null, '', '/')
 })
@@ -156,6 +165,22 @@ describe('默认聚焦本身(对照)', () => {
     expect(view.mode).toBe('compare')
     expect(cmp.focusedSampleId).toBe('s-AAA')
     expect(view.currentDay).toBe(SAMPLE_DAY)
+    w.unmount()
+  })
+
+  it('默认聚焦的样本在图窗外:竖线落过去,图窗不动(不是用户换的选中,不平移)', async () => {
+    fake.zoom = { start: 70, end: 100 }                 // 图窗在第 20 ~ 29 根,样本在第 4 根
+    const { view, cmp, w } = await setup('AAA')
+    expect(cmp.focusedSampleId).toBe('s-AAA')
+    expect(view.currentDay).toBe(SAMPLE_DAY)
+    expect(fake.pans).toEqual([])
+    // 之后用户换的选中照样平移:选中这次 hit(竖线仍在第 4 根)不动;退空再选回来,竖线出了图窗就平移
+    view.clearFocus()
+    await settle()
+    view.focusHit('h4')
+    await settle()
+    expect(view.currentDay).toBe(SAMPLE_DAY)
+    expect(fake.pans).toHaveLength(1)
     w.unmount()
   })
 })

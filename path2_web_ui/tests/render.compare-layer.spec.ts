@@ -8,8 +8,8 @@
 // 第二段的 link tag、diff tag、chance_high 与档位小字(detected_only / qualified_only)仍一个都不许出现。
 import { describe, it, expect } from 'vitest'
 import {
-  COMPARE_BRACKET_ROW_H, INK, LANE_LINE, LANE_PAD, TITLE_BG, UNMAPPED_EDGE, VERMILION, annotateLayer, bracketGeometry,
-  buildAnnotateSubOption,
+  ANNOTATION_UNDER_SERIES, COMPARE_BRACKET_ROW_H, DIM_OPACITY, INK, LANE_LINE, LANE_PAD, TITLE_BG, UNMAPPED_EDGE, VERMILION,
+  annotateLayer, bracketGeometry, buildAnnotateSubOption,
   bracketContentBottom, bracketPick, bracketRects, laneGeometry, packBrackets, type BracketItem, type CompareMarks,
 } from '../src/render/annotateLanes'
 import { buildSubDecorGraphics, buildSubOption, computeEventData, makeRenderBracket } from '../src/render/chart'
@@ -17,6 +17,7 @@ import {
   computeSubGeometry, BAND_TOP_PAD, BAND_LANE_H, HITS_FILL, USER_APP_EDGE_COLOR, USER_APP_EDGE_H, USER_APP_GAP,
 } from '../src/render/subGeometry'
 import { buyDaysOf } from '../src/render/fold'
+import { NO_HIGHLIGHT, type Highlight } from '../src/render/selHighlight'
 import type { Lane } from '../src/annotate/model'
 import type { EventDict, HitDict } from '../src/types'
 
@@ -39,7 +40,6 @@ const items: BracketItem[] = [
 ]
 const CMP: CompareMarks = {
   laneNode: new Map([[0, 'plateau']]), unmapped: new Set([1]),
-  userActive: false,
 }
 
 function layer(cmp: CompareMarks | null) {
@@ -111,9 +111,28 @@ describe('compare 的标注层', () => {
     const tip = s.tooltip.formatter({ dataIndex: k, value: s.data[k] })
     expect(tip).not.toMatch(/missing|start not compared/)
   })
-  it('当家行是样本时 user 行头加粗', () => {
-    const l = layer({ ...CMP, userActive: true })
-    expect(l.graphics.find(g => g.type === 'text' && g.style.text === 'user').style.fontWeight).toBe('bold')
+  it('user 行头不再加粗;图上的选中:外层的样本跨度、框下各画一道底线(压在当前日竖线上面),选中样本有成员框时非成员框画淡', () => {
+    const none = layer(CMP)
+    expect(none.graphics.find(g => g.type === 'text' && g.style.text === 'user').style.fontWeight).toBeUndefined()
+    expect(none.series.find(x => x.name === ANNOTATION_UNDER_SERIES)).toBeUndefined()
+    const outer: Highlight = { ...NO_HIGHLIGHT, under: { ...NO_HIGHLIGHT.under, samples: new Set(['s1']), boxes: new Set(['b1']) } }
+    const l = layer({ ...CMP, highlight: outer })
+    const u = l.series.find(x => x.name === ANNOTATION_UNDER_SERIES)
+    expect(u.z).toBe(31)
+    expect(u.data).toHaveLength(2)
+    const bar = u.renderItem({ dataIndex: 0 }, api(u.data[0]))
+    expect([bar.shape.height, bar.style.fill]).toEqual([2.5, '#1e293b'])
+    // 选中样本 s1、它的成员框是 b1:b1 照常,别的框画淡(用户那边只此一个值)
+    const sel: Highlight = { ...NO_HIGHLIGHT, focus: { kind: 'sample', sampleId: 's1' }, dimUser: true,
+                             userBoxes: new Set(['b1']), userSamples: new Set(['s1', 's2']) }
+    const boxes = layer({ ...CMP, highlight: sel }).series.find(x => x.name === 'annotation-boxes')
+    const look = (id: string) => {
+      const k = boxes.data.findIndex((r: any[]) => r[6] === id)
+      return boxes.renderItem({ dataIndex: k }, api(boxes.data[k])).children[0].style
+    }
+    expect([look('b1').opacity, look('b1').lineWidth]).toEqual([1, 1.5])
+    expect(boxes.data.filter((r: any[]) => r[6] !== 'b1').every((r: any[]) =>
+      boxes.renderItem({ dataIndex: boxes.data.indexOf(r) }, api(r)).children[0].style.opacity === DIM_OPACITY)).toBe(true)
   })
   it('user 行垫 hits 那种浅黄底:从行顶铺到分界线,不再画下沿的轨线,行头也垫浅黄;annotate 的 bracket 照旧', () => {
     const bg = bracketGeometry(1)
@@ -261,7 +280,7 @@ describe('合进的主视图副图', () => {
 
   it('compare 下 hit 行接在用户区下面(分界线到上面跨度下沿、到下面 hit 行上沿一样远),hits 表头跟着下移', () => {
     const geom = computeSubGeometry({ bracketLaneCount: 1, bandLaneCounts: [1, 1], userContentBottom: 30 })
-    const r = makeRenderBracket([{ hit_id: 'h', kind: 'mark' }], null, new Set(), 1, false, geom.appBracketTop)
+    const r = makeRenderBracket([{ hit_id: 'h', kind: 'mark' }], 1, geom.appBracketTop)
     const out: any = r({ dataIndex: 0 }, { ...api([2, 4, 0, 1]), coord: ([i]: number[]) => [i * 10] })
     expect(out.children[0].shape.y).toBe(30 + 2 * USER_APP_GAP)
     const bundle = computeEventData(bars, [ev('plateau', 1, 4)],

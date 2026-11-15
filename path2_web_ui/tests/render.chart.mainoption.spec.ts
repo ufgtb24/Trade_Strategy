@@ -4,7 +4,7 @@
 //  故本文件不再叫 "slider",改名反映新调用对象。)
 import { describe, it, expect } from 'vitest'
 import {
-  computeEventData, buildMainOption, buildSubOption, makeRenderPricePointHighlight, pkTriStyle,
+  computeEventData, buildMainOption, buildSubOption, makeRenderPriceFrame, pkTriStyle,
   emptyEventBundle, mainGridLayout, VOLUME_HEIGHT_RATIO, CANDLE_UP, CANDLE_DOWN,
 } from '../src/render/chart'
 import type { BandRenderInput } from '../src/render/chart'
@@ -101,8 +101,8 @@ describe('buildMainOption — 成交量带画在 K 线区下方(spec M7、4.4)',
 describe('emptyEventBundle — annotate 模式只画 K 线和成交量', () => {
   it('没有任何 app 产物,只有 K 线与成交量数据', () => {
     const b = emptyEventBundle(bars)
-    for (const k of ['pointData', 'intervalData', 'pricePointData', 'bracketData', 'highlightData',
-                     'highlightPriceData', 'veilData', 'veilPriceData'] as const) {
+    for (const k of ['pointData', 'intervalData', 'pricePointData', 'bracketData', 'frameData',
+                     'framePriceData', 'veilData', 'veilPriceData'] as const) {
       expect(b[k]).toEqual([])
     }
     expect(b.dates).toEqual(bars.map((x) => x.date))
@@ -111,7 +111,7 @@ describe('emptyEventBundle — annotate 模式只画 K 线和成交量', () => {
 
   it('buildMainOption 只要 sliderShow / zoomOverride 即可出图,app 的系列都是空的', () => {
     const opt: any = buildMainOption(bars, emptyEventBundle(bars), { sliderShow: false })
-    for (const name of ['price-points', 'highlight-price', 'shift-veil-price']) {
+    for (const name of ['price-points', 'selection-price', 'shift-veil-price']) {
       expect(opt.series.find((s: any) => s.name === name).data).toEqual([])
     }
   })
@@ -445,35 +445,24 @@ describe('solve=False node 免疫 level 门控 + pk marker 三态色/peak_idx', 
     expect(names).not.toContain('satellites')
   })
 
-  it('pk 高亮层保留三态形状编码:空心态白底盖本体、eaten 仍虚线、alive 仍实心', () => {
+  it('pk 被选中:本体三态形状不动,外面另描一圈深色粗框(不填色、不盖本体);画淡只降不透明度、形状不变', () => {
     const fakeApi: any = { value: () => 0, coord: () => [100, 200] }
-    const mk = (state: string, kind: 'group' | 'focus' | 'pendingDisambig') =>
-      makeRenderPricePointHighlight([
-        { value: [0, 0], instance_id: 'e1', anchorY: 1, text: '3',
-          itemStyle: { color: '#d1d5db' }, kind, state },
-      ])({ dataIndex: 0 }, fakeApi) as any
+    const frame = makeRenderPriceFrame([{ value: [0, 0], anchorY: 1, text: '3', kind: 'frame', state: 'broken' }])(
+      { dataIndex: 0 }, fakeApi) as any
+    expect(frame.type).toBe('polygon')
+    expect(frame.style).toEqual({ fill: 'none', stroke: '#1e293b', lineWidth: 2.5 })
+    expect(frame.silent).toBe(true)
 
-    const brokenFocus = mk('broken', 'focus')
-    expect(brokenFocus.children[0].style.fill).toBe('#ffffff')       // 空心态放大版白底盖住本体
-    expect(brokenFocus.children[0].style.stroke).toBe('#000000')
-    expect(brokenFocus.children[0].style.lineWidth).toBe(2.5)         // focus 粗边
-    expect(brokenFocus.children[0].style.shadowBlur).toBe(6)
-    expect(brokenFocus.children[1].style.text).toBe('3')
-    expect(brokenFocus.children).toHaveLength(2)
-
-    const eatenGroup = mk('eaten', 'group')
-    expect(eatenGroup.children[0].style.lineDash).toEqual([2.5, 2])
-    expect(eatenGroup.children[0].style.stroke).toBe('#9ca3af')
-    expect(eatenGroup.children[0].style.lineWidth).toBe(1.5)          // group 细边
-
-    const aliveFocus = mk('alive', 'focus')
-    expect(aliveFocus.children[0].style.fill).toBe('#000000')         // 实心不变
-
-    const pending = mk('broken', 'pendingDisambig')
-    expect(pending.children).toHaveLength(3)
-    expect(pending.children[0].style.stroke).toBe('#fbbf24')          // 白底垫层琥珀边不动
-    expect(pending.children[1].keyframeAnimation).toMatchObject({ duration: 1200, loop: true })
-    expect(pending.children[1].style.fill).toBe('#ffffff')            // 闪烁层保持空心态(白底)
-    expect(pending.children[1].style.stroke).toBe('#000000')
+    const pp = (state: string, dim: boolean) => ({ value: [0, 0], instance_id: 'e1', anchorY: 1, text: '3', tier: 'detected',
+      itemStyle: { color: '#d1d5db' }, state, dim })
+    const opt: any = buildMainOption(bars, { ...emptyEventBundle(bars), pricePointData: [pp('eaten', false), pp('eaten', true)] },
+                                     { sliderShow: false })
+    const s = opt.series.find((x: any) => x.name === 'price-points')
+    const plain = s.renderItem({ dataIndex: 0 }, fakeApi)
+    const dimmed = s.renderItem({ dataIndex: 1 }, fakeApi)
+    expect(plain.children[0].style.lineDash).toEqual([2.5, 2])        // eaten 仍虚线
+    expect(plain.children[0].style.opacity).toBeUndefined()
+    expect(dimmed.children[0].style).toMatchObject({ lineDash: [2.5, 2], stroke: '#9ca3af', opacity: 0.5 })
+    expect(dimmed.children[1].style.opacity).toBe(0.5)
   })
 })
