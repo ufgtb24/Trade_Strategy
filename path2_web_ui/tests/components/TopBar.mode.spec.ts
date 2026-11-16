@@ -124,13 +124,14 @@ describe('TopBar · mode', () => {
     expect(w.find('[data-testid="tool-feedback"]').exists()).toBe(false)
   })
 
-  it('扫描结果的 app(从扫描列表选股):app 按下;点它不换来源', async () => {
+  it('扫描结果(从扫描列表选股):scan 按下、app 不按下;没有 app 时 app 灰;再点 scan 不换来源', async () => {
     const { w, view } = await mountIt('NONE')
     view.selectSymbol('AAPL')
     await flushPromises()
-    expect(btn(w, 'app').classes()).toContain('on')
-    expect(btn(w, 'app').attributes('disabled')).toBeUndefined()
-    await btn(w, 'app').trigger('click')
+    expect(btn(w, 'scan').classes()).toContain('on')
+    expect(btn(w, 'app').classes()).not.toContain('on')
+    expect(btn(w, 'app').attributes('disabled')).toBeDefined()
+    await btn(w, 'scan').trigger('click')
     expect([view.mode, view.appSource]).toEqual(['app', 'scan'])
   })
 })

@@ -113,8 +113,8 @@ describe('SidebarResultList · hover tooltip', () => {
     expect(w.find('.stats-first-passage').exists()).toBe(true)
     const txt = w.find('.stats-first-passage').text()
     expect(txt).toContain('k=2')
-    expect(txt).toContain('75%')     // ratio
-    expect(txt).toContain('51%')     // random_ratio
+    expect(txt).toContain('75.0%')   // ratio(PatternStatsTooltip 的 fmtRatio 保留一位小数)
+    expect(txt).toContain('51.1%')   // random_ratio
     w.unmount()
   })
 

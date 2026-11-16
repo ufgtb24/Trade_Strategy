@@ -112,11 +112,11 @@ describe('view store · mode', () => {
   })
 
 
-  it('app 下删掉当前扫描:清空图并回到 annotate', () => {
+  it('scan 档里删掉当前扫描:留在 scan 档(no_scan),图清空', () => {
     const v = useViewStore()
     v.loadScanFile(SCAN_FILE)
     v.clearScanFile()
-    expect(v.mode).toBe('annotate')
+    expect([v.mode, v.appSource, v.scanView, v.noScan]).toEqual(['app', 'scan', true, true])
     expect(v.symbol).toBeNull()
   })
 })

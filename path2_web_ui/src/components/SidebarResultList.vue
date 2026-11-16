@@ -269,8 +269,10 @@ function onDocKey(e: KeyboardEvent) {
 
 const CHAR_RE = /^[a-zA-Z0-9.\-]$/
 
+// 敲字母搜股票、PageUp / PageDown 切股是扫描列表的按键,只在 scan 档起作用:前三档里字母留给标注(Delete、Shift+B 等
+// 要焦点不在输入框里),PageUp / PageDown 不能把人踢进 scan 档。在前三档点列表的行照旧进到 scan 档看那只。
 function onGlobalCharKey(e: KeyboardEvent) {
-  if (!scanFile.value) return
+  if (!scanFile.value || !view.scanView) return
   if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return
   if (e.isComposing) return
   const ae = document.activeElement as HTMLElement | null
@@ -299,6 +301,7 @@ function scrollRowIntoView(index: number) {
   }
 }
 function onArrowKey(e: KeyboardEvent) {
+  if (!view.scanView) return
   if (e.key !== 'PageUp' && e.key !== 'PageDown') return
   if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return
   if (e.isComposing) return

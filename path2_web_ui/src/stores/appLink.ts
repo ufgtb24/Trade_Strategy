@@ -5,7 +5,8 @@
  *   格式见 path2_web/mapping.py)。顶栏当前 pattern 恰好有一个没有问题的 mapping,就算「有 app」(mapping)。
  *   页面启动时读一次,之后每次窗口重新拿到焦点再读一次(会话写完 mapping、用户切回浏览器就生效);正在读时
  *   再要读就等这一次读完。loaded():等 mapping 读到(页面刚打开时还是 null;直达链接要落在 compare 时先等它);
- * - compare / app 两档只在有 app、且已经打开了一只股票时可用(available);切到这两档走 view.enterLinked;
+ * - compare / app 两档只在有 app、且切过去时落的那只股票不为空时可用(available;scan 档里按回前三档时落的那只,
+ *   view.frontTierSymbol);切到这两档走 view.enterLinked;
  * - 跑 app:在 compare 或从顶栏切到的 app 下,对当前股票走 /preview,区间是这只股票截到训练段末日的全部 K 线
  *   (起点 WHOLE_HISTORY_START 早于任何行情、终点 TRAIN_END;后端读行情截到训练段末日,数据墙见 spec 4.1)。
  *   每次切进这两档、换股票、换 app 都重跑(参数文件改了,切一下就看到新结果);compare 与 app 之间互切不重跑。
@@ -62,7 +63,7 @@ export const useAppLinkStore = defineStore('appLink', () => {
     if (!es.length || mapping.value) return null
     return es.map(m => `${m.app}: ${m.problem}`).join('\n')
   })
-  const available = computed(() => mapping.value !== null && view.symbol !== null)
+  const available = computed(() => mapping.value !== null && view.frontTierSymbol !== null)
 
   /** 顶栏 mode:annotate 随时可切;compare / app 要 available。 */
   function setMode(m: ViewMode): void {
