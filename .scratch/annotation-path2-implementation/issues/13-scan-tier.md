@@ -1,7 +1,8 @@
 # `scan` 档：把扫描结果从 `app` 按钮里拆出来，扫描专用的按键只在 `scan` 起作用
 
 Status: ready-for-agent
-Progress: not-started
+Progress: in-progress
+Claimed: 2026-11-15 parallel-tickets ticket-13 @ worktree impl/13-scan-tier
 Blocked by: none
 
 ## Purpose
