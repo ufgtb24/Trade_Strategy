@@ -21,3 +21,9 @@ notes:
   step.vs_left: 比左侧的波动率高
   step.step_vol: 平台交界放量
   today.bull_close: 收阳线
+session:
+  snapshot:
+    seen: {pc: 299}
+    samples: [s-pc-105, s-pc-33, s-pc-35, s-pc-38, s-pc-44, s-pc-45, s-pc-46, s-pc-47,
+      s-pc-55, s-pc-57, s-pc-59, s-pc-75, s-pc-80, s-pc-82, s-pc-86, s-pc-96]
+    at: '2026-11-16'

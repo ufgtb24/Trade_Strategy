@@ -22,6 +22,10 @@
 
 连条件都翻不出来的（纯「当天看不出」）不记行，只挂标签，理由已在改版报告里。
 
+出局核对（[checklist.md](checklist.md)「出局核对」）里用户选了 invalidation 或 setback 的，也记一行：`where` 写那条 where（detector 的截断写 node 名加一个自起的短名，如 `plateau.fall_back_end`，同一 node 的几处截断各写各的），`from` 写空数组 `[]`（这一处是你查出来的，没有反馈编号；空数组合法），`state` 以 `from_definition` 开头（用户在题里的选择就是他的定义，定为 setback 的也一样），接日期、「出局核对：用户定为 invalidation / setback」和改法；定为 invalidation 的，再写建议的措辞是否已由用户贴进定义。下一轮核对见到这一行就照它办，不再问。选了「先放着」的不记行。
+
+  例：`- {where: plateau.new_hold, from: [], state: "from_definition 2026-11-20 出局核对：用户定为 invalidation；建议措辞待用户贴进定义"}`
+
 ## `tags`：还红着的每一处一个原因标签
 
 按**改完之后**的状态：各处现在的状态 = 摘要里那一处的状态，改版报告 ① 逐条列出「变了」的以报告为准。只给用户自己挑的反馈挂（摘要 issue 一节里的那些编号）。

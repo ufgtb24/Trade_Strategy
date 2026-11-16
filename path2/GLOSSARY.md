@@ -188,3 +188,13 @@ _Avoid_: `app:buy`、`app:no_buy` —— 已退役的取值；shifted —— 没
 **matching**：
 = the process of comparing the hits of a pattern's app with that pattern's samples.
 match 这个比较过程。求解出 hit 的是 solve，不叫 matching。
+
+**invalidation / 出局 / 出局条件**：
+= a reason after which one occurrence of a pattern is over: none of its later days is bought, and it is not judged again.
+这一次（如一次阶跃和它之后的那些天）从这天起作废，之后走势再好也不买。只来自用户在 pattern 定义里明说的「这样就算这次失败」，说的是形态被破坏、从此不再像这个 pattern（如收盘跌回旧平台价位）；没明说的理由一律按 setback 理解。app 里凡是一旦不满足、这一次之后各天就都不满足的写法，都等于一条 invalidation，只能用在用户明说的地方。和级（must / must_not）是两回事：级说一个特征要不要有，invalidation / setback 说不满足之后还能不能回来。
+_Avoid_: exit —— 会读成卖出离场。
+
+**setback / 暂时利空 / 当前利空**：
+= a reason that rules out buying only on the days it holds; once it no longer holds, the same occurrence of the pattern can be bought again.
+默认的那一种：用户的定义、negative sample 的理由、反馈的 note，没明说是 invalidation 的都按它理解。每天只按当天及以前看得到的走势重新判断，前面的 setback 不拖累后面：阶跃刚完、幅度太大，当天不买；之后站稳了，同一次阶跃照样能买。
+_Avoid_: negative —— 会和 negative sample 混：setback 是一条不该买的理由，negative sample 是对某一天下的判断；利空 —— 单说会读成消息面的坏消息（新闻、财报），这里说的是走势上的。
