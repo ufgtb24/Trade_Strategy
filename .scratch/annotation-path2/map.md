@@ -48,10 +48,11 @@
 - [现有技能改成以标注为输入](issues/11-skills-take-annotations.md): cc 定（spec 6.10）
 - [只在 negative sample 上出现的特征：定级时别被一半门槛吞掉](issues/12-nobuy-only-feature-level.md): 负判断里出现过、正样本里不到一半的特征一定问用户；TVGN「派发」作检查例子（spec 6.1）
 - [`diff tag` 不看属性：属性对不上时仍显示 =](issues/13-diff-tag-attributes.md): `must` 判 `false`、`must_not` 判 `true` 算对不上，`null` 不算；WHLRP 2024-03-21 应显示对不上（spec 6.2）
+- [整族反馈按基准 node 认「同一次形状」](issues/16-reference-node.md): 接了标注的 app 在 `mapping.yaml` 声明基准 node（new_step 是阶跃），整族反馈存下当时的基准 event 起止；新版有 hit 的基准 event 与它共用一根 K 线还在买即朱红，一根都不共用 / 基准换了 / 没存起止交给会话（`lost`，「基准 node 对不上」）；已有 4 条补存进标注目录（实施票 17、18，spec 1.11、1.13、6.13、V16-1）
 
 ## Not yet specified
 
-- [整族反馈按基准 node 认「同一次形状」](issues/16-reference-node.md)：open，方向已谈、Answer 待批准；宜在 new_step 第 3 轮之前做
+（暂无）
 
 ## Out of scope
 

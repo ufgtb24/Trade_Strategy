@@ -241,3 +241,29 @@
 ### 第四批已发布的票
 
 - [16 主图上按住 Shift 复制一天或一段](issues/16-shift-copy-day-range.md)
+
+## 第五批（2026-11-16）：整族反馈按基准 node 认同一次形状（spec 1.11「核对」、1.13 `lost`、6.13；决策 [票 16](../annotation-path2/issues/16-reference-node.md)）
+
+状态：**已发布**（2026-11-16）。票 16 的 Answer 里起草了这两张票和人审规划，用户批准时选「批准，发票后接着实施」。
+
+- **范围**：票 16 批准后就地改写的 spec 各处（1.11、1.13、5.8、6.7、6.13、第 10 节），以及已有 4 条整族反馈的一次性补存。V16-1 不由这批收口，由 new_step 第 3 轮的会话收口。
+- **共用执行边界**：同第二批（第 1～10 条照旧，第 11 条截图照用户现行规则）。
+- **时机**：赶在 new_step 第 3 轮之前做完（第 3 轮多半还要动阶跃起点）。
+
+| 票 | 角色 | Blocked by | 独立可验证的交付 |
+| --- | --- | --- | --- |
+| 17 整族反馈按基准 node 认同一次形状 | `ready-for-agent` | none | `mapping.yaml` 必有 `reference`；新建整族反馈存基准 event 起止；页面状态与改版报告同一份新判法；skill 与说明书改说法 |
+| 18 已有 4 条整族反馈补存基准 event 起止 | `ready-for-agent` | 17 | 用写反馈那一版 new_step 算出 4 条的阶跃起止，用户点头后经 `append_batch` 补进标注目录 |
+
+- **依赖**：18 要等 17 的存储校验认得 `reference`、判法会用它。
+- **人审规划**（照 `docs/agents/review-planning.md`）：
+  - 17：不设人审闸。判法全部有自动检查，剩下只有「基准 node 对不上」这几个字；new_step 第 3 轮只读状态，措辞错了下一轮就能改，没有 build-on point。人审行：`未安排人审：「基准 node 对不上」这几个字在改版报告里读着顺不顺；原因：……没有 build-on point`。
+  - 18：人审闸（停在写入标注目录之前），来自用户在票 16 的回答，照原样写入。
+  - 往上游查：17 没有前置；18 只通过接口读 17 的判法，不是 17 的 build-on point。
+- **验证责任**：不收口 spec 第 7 节的任何一项（V16-1 由第 3 轮会话收口）。
+- **说明书**：`.scratch/annotation-path2/manual.md` 随 17 改，不提前改。
+
+### 第五批已发布的票
+
+- [17 整族反馈按基准 node 认同一次形状](issues/17-reference-node-family-status.md)
+- [18 已有 4 条整族反馈补存基准 event 起止](issues/18-backfill-family-reference.md)
