@@ -325,7 +325,7 @@ def test_feedback_status_reads_bars_only_until_train_end(tmp_path, full_dir, mon
     import path2_web.app_run as app_run
 
     _write_oscillating_pkl(full_dir, "BBB")
-    c = _feedback_client(tmp_path, full_dir, monkeypatch, "pattern: p\nfeatures: {w-pc-1: bo}\n")
+    c = _feedback_client(tmp_path, full_dir, monkeypatch, "pattern: p\nreference: bo\nfeatures: {w-pc-1: bo}\n")
     r = c.post("/annotations/batch", json={"ops": [_feedback_op("f-pc-1", "BBB", "2025-12-01", TRAIN_END),
                                                     _feedback_op("f-pc-2", "AAA", "2025-06-02", "2025-12-30")]})
     assert r.status_code == 200, r.text
