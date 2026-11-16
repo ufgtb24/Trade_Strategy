@@ -1425,7 +1425,8 @@ onMounted(() => {
 
   // dev-only e2e hook
   if ((import.meta as any).env?.DEV) {
-    ;(window as any).__e2e = { view, ann: () => ann, fb: () => fb, copyRef: () => copyRef, chartMain: () => chartMain, chartSub: () => chartSub }
+    ;(window as any).__e2e = { view, ann: () => ann, fb: () => fb, copyRef: () => copyRef, chartMain: () => chartMain, chartSub: () => chartSub,
+                               hoverMarker: () => hoverMarker }
   }
 
   // Ctrl 切换(只作用于主图,副图无价格轴)
