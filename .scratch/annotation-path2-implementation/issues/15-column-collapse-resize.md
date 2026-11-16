@@ -1,7 +1,8 @@
 # 左右栏的收起与拖宽
 
 Status: ready-for-agent
-Progress: not-started
+Progress: in-progress
+Claimed: 2026-11-16 parallel-tickets ticket-15 @ worktree impl/15-column-collapse-resize
 Blocked by: none
 
 ## Purpose
