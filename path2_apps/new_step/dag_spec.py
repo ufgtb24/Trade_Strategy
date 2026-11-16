@@ -1,17 +1,19 @@
 # path2_apps/new_step/dag_spec.py
-"""new_step dag 声明:旧平台 → 一两根放量大阳线的阶跃 → 站上新平台,新平台上逐日买。
+"""new_step dag 声明:旧平台 → 一串放量大涨、最高价连续抬高的阶跃 → 站上新平台,新平台上逐日买。
 
 pattern 的意思(取自标注里 new_step 的定义与样本):像跃迁函数——一根或几根大幅上涨、放量的强势 K 线,
 比左右两侧的波动都高,把股价从旧平台抬到一个更高的新平台;右侧企稳后站上新平台,新平台相对阶跃
-明显缩量。买入理由:没追涨、波动小、守住新平台、收阳线、企稳。除「旧平台平 / 大涨幅 / 比两侧强 /
-平台交界放量」四条形态条件(读已定型的段,决定这一次算不算)外,其余都只读当天或最近一段,
-不满足的日子不买、之后满足了同一次阶跃照样买(setback)。
+明显缩量。阶跃是一串 K 线:最高价还在抬高就没结束,回落那天完成;停顿后又够猛地创新高算续上;
+抬高了多少按收盘算(用户第 1 轮交报告后谈定)。买入理由:没追涨、波动小、守住新平台、收阳线、企稳。
+除「旧平台平 / 大涨幅 / 比两侧强 / 平台交界放量」四条形态条件(读已定型的段,决定这一次算不算)与
+「高位派发作废」(用户明说:冲高后几天之内把阶跃涨幅吃掉大半,这一次就失败)外,其余都只读当天或
+最近一段,不满足的日子不买、之后满足了同一次阶跃照样买(setback)。
 
 拓扑:
   节点: plateau(唯一有 detector 的 node:PlateauDetector,只吃 K 线;复合事件,一天一个实例)
         └ 子结构 node(由 plateau 物化,不求解,children 声明槽 → node):
             old   → old_plat   旧平台段 [s-L, s-1]
-            step  → step       阶跃段 [s, e](一段阶跃的每个前缀各一个)
+            step  → step       阶跃段 [s, e](一次阶跃只有一个起点;停顿后续上时换成更长的版本)
             new   → new_plat   新平台段 [e+1, t-1]
             today → today      当天 [t, t](点事件,买点)
   边:   无(零边 pattern:全部有 detector 的 node 都求解,只有 plateau 有 detector,故每个通过
@@ -19,7 +21,8 @@ pattern 的意思(取自标注里 new_step 的定义与样本):像跃迁函数�
   买点: plateau.today(eval_meta 的 end_node)
 
 约束归宿(用户的词 → where 名 / 读的字段;阈值全在 params 的 plateau section):
-  旧平台 / 阶跃 / 新平台 / 当天怎么切     -> PlateauDetector(old_window, strong_k, max_step_bars, max_days)
+  旧平台 / 阶跃 / 新平台 / 当天怎么切     -> PlateauDetector(old_window, strong_k, max_step_bars, max_pause,
+                                            max_days;字段窗口 overhead_window / calm_window / dump_window)
   旧平台平                               -> where old_flat   : plateau.old_flat_ratio <= old_flat_max
   大涨幅                                 -> where step_big   : step.rise >= step_rise_min
   阶跃比两侧(左右)的波动都强             -> where step_strong: step.vs_left >= vs_left_min
@@ -33,10 +36,13 @@ pattern 的意思(取自标注里 new_step 的定义与样本):像跃迁函数�
   近期没有冲高回落(上方没有阶跃前三个月   -> where no_overhead: plateau.overhead <= overhead_max
     内的前高压着;越过前高或前高过了窗口
     照样买)
-  新平台相对阶跃明显缩量                 -> where new_shrink : plateau.vol_shrink <= shrink_max
+  新平台相对阶跃明显缩量(对阶跃里量     -> where new_shrink : plateau.vol_shrink <= shrink_max
+    最大那天)
   企稳(新平台最近几天没再创新低)         -> where settled    : not (plateau.low_age < settle_bars)
                                                               (low_age 为 None = 没创过新低,判满足)
   阶跃涨幅过大的,先在新平台站稳几天       -> where big_wait   : step.rise < big_rise 或 days >= big_wait
+  高位派发作废(阶跃涨幅几天之内被吃掉   -> where no_dump    : not (plateau.dump_ratio >= dump_max)
+    大半,这一次之后不再买;invalidation)                       (dump_ratio 为 None = 没有快速回落,判满足)
 
 where 全挂在 plateau(决定能否命中);子结构 node step / today 另挂诊断层 where(只影响带子档位显示,
 不进求解),与父 where 共用同一谓词对象:step 挂 step_big / vs_left(step_strong 的左侧那半)/ step_vol,
@@ -82,6 +88,7 @@ def build_pattern(params: Params) -> PatternSpec:
                      ("settled",     W.not_(W.attr("low_age", "<", p.settle_bars))),
                      ("big_wait",    W.any(W.child("step", W.attr("rise", "<", p.big_rise)),
                                            W.attr("days", ">=", p.big_wait))),
+                     ("no_dump",     W.not_(W.attr("dump_ratio", ">=", p.dump_max))),
                  ),
                  children={"old": "old_plat", "step": "step", "new": "new_plat", "today": "today"}),
         NodeSpec("old_plat", event_cls=OldPlatform),

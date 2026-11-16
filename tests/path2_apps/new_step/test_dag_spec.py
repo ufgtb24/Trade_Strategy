@@ -9,7 +9,7 @@ from path2_web import mapping as mapping_mod
 
 PARENT_WHERE = ["old_flat", "step_big", "step_strong", "step_vol",
                 "new_hold", "new_calm", "no_chase", "bull_close",
-                "no_overhead", "new_shrink", "settled", "big_wait"]
+                "no_overhead", "new_shrink", "settled", "big_wait", "no_dump"]
 
 
 def _by():
@@ -37,15 +37,16 @@ def test_nodes_and_children():
 
 
 def test_detector_built_from_params():
-    """PlateauDetector 的六个构造参数取自 plateau section。"""
+    """PlateauDetector 的八个构造参数取自 plateau section。"""
     p = Params.default()
     det = _by()["plateau"].detector
-    assert (det.old_window, det.strong_k, det.max_step_bars, det.max_days,
-            det.overhead_window, det.calm_window) == (
-        p.plateau.old_window, p.plateau.strong_k, p.plateau.max_step_bars, p.plateau.max_days,
-        p.plateau.overhead_window, p.plateau.calm_window)
-    assert p.plateau_kwargs() == {"old_window": 15, "strong_k": 3.0, "max_step_bars": 5, "max_days": 40,
-                                  "overhead_window": 60, "calm_window": 10}
+    assert (det.old_window, det.strong_k, det.max_step_bars, det.max_pause, det.max_days,
+            det.overhead_window, det.calm_window, det.dump_window) == (
+        p.plateau.old_window, p.plateau.strong_k, p.plateau.max_step_bars, p.plateau.max_pause,
+        p.plateau.max_days, p.plateau.overhead_window, p.plateau.calm_window, p.plateau.dump_window)
+    assert p.plateau_kwargs() == {"old_window": 15, "strong_k": 3.0, "max_step_bars": 30, "max_pause": 1,
+                                  "max_days": 40, "overhead_window": 60, "calm_window": 10,
+                                  "dump_window": 10}
 
 
 def test_zero_edges():
@@ -58,7 +59,7 @@ def test_zero_edges():
 
 
 def test_parent_where_names_and_thresholds():
-    """plateau 挂十二条 where(clause 名 = 用户词的英文标识),阈值取自 params。"""
+    """plateau 挂十三条 where(clause 名 = 用户词的英文标识),阈值取自 params。"""
     p = Params.default().plateau
     where = _by()["plateau"].where
     assert [cid for cid, _ in where] == PARENT_WHERE
@@ -83,6 +84,9 @@ def test_parent_where_names_and_thresholds():
                                     "threshold": p.shrink_max}
     assert w["settled"].meta["kind"] == "not"
     assert w["big_wait"].meta["kind"] == "or"
+    assert w["no_dump"].meta["kind"] == "not"
+    assert w["no_dump"].meta["children"][0] == {"kind": "attr", "field": "dump_ratio", "op": ">=",
+                                          "threshold": p.dump_max}
 
 
 def test_substructure_where_shares_predicates_with_parent():

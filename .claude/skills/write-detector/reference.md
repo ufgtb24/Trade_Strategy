@@ -104,15 +104,15 @@
 - **常见误配**：① 参数名换代——`max_start_gap/atr_window/anchor_measure/trend_lookback/k_exit` 已不存在，现为六参数 `max_rise_k/stop_confirm_bars/vol_window/anchor_mode/max_span/measure`（vol 是 median TR 非 Wilder ATR）；② 消费流——本 detector 是多源 L2+，`detect(burst_stream, df)` 吃 **BurstEvent 流**（consumes_stream='burst'），喂 bo 流不产；③ edge `max_gap` 与 detector `max_span` 共用同一 SSoT（params.tb.max_span），改预算要两处同查；④ `eval_meta.end_node` = `'tb.segments'`（node id `tb` + 槽名，误用类名/旧词 KeyError）；⑤ 阴线臂恒 close/open，不随 measure 变。
 
 ### PlateauDetector（path2_apps/new_step/plateau.py）
-- **检测什么**：一句话定位——new_step 专用：从 K 线直接找「旧平台 → 一两根大阳线的阶跃 → 新平台」，在新平台上每天产一个截到当天的复合事件（四个单事件槽 old / step / new / today），买点是它的 today 段；只切段、算字段，够不够格全交 where。诊断契约：`diagnose-event/detectors/plateau.md`
+- **检测什么**：一句话定位——new_step 专用：从 K 线直接找「旧平台 → 一串最高价连续抬高的阶跃 → 新平台」，在新平台上每天产一个截到当天的复合事件（四个单事件槽 old / step / new / today），买点是它的 today 段。阶跃在哪天结束看最高价（回落即完成），抬了多少看收盘；起点从开段那根沿「最高价抬高」往前找；停顿 ≤ max_pause 根后又够猛地创新高算同一次阶跃续上（换成更长的版本，只往后覆盖）。只切段、算字段，够不够格全交 where。诊断契约：`diagnose-event/detectors/plateau.md`
 - **静默不产的情形**（失效边界）：
   1. 数据开头不足 L+1 根（L = old_window）不产；
-  2. 旧平台收盘一根都没动过（|r| 中位数、平均数都为 0）不开段（中位数为 0 而平均数 > 0 时改取平均数照常开段）；回看窗里有坏根（价格非正 / NaN、量 NaN / 负）的那根不开段；
-  3. 中间夹小阳线、分几天爬上去的阶跃被切成几级，每级各带自己的旧平台——后一级的旧平台把前一级算进去、前一级的新平台又含后一级，常常哪一级都过不了 where；阶跃根数超过 `max_step_bars` 被截断时同理；
-  4. 旧平台窗里含更早一级小阶跃时 `old_flat_ratio` 偏大（旧平台固定取 L 根、不往回找起点）；
+  2. 旧平台收盘一根都没动过（|r| 中位数、平均数都为 0）不开段，往前找也停在它之前；回看窗里有坏根（价格非正 / NaN、量 NaN / 负）的那根不开段；
+  3. 一次大涨中间停顿超过 max_pause、或续上那根不够猛 / 没创新高，会被切成几次阶跃，后一次的旧平台含前一次，常常过不了 where；
+  4. 往前找会把猛涨前最高价略高的小 K 线吸进阶跃（实测约三分之一的阶跃多吸 1 根以上），阶跃根数、平均量随之变；旧平台窗里含更早一次阶跃时 `old_flat_ratio` 偏大；
   5. 旧平台成交量全 0 时 `vol_ratio` 为 None，平台交界放量判不成立；
-  6. 阶跃后第一天永远不产（新平台至少 1 根）；族只在 max_days、窗口末、坏数据处结束，收盘跌回旧平台价位照产（keep_ratio ≤ 0 交 where）；唯一 gate 是前缀收盘没高过旧平台的 `step_not_above_old`。
-- **常见误配**：① 别拿它去做别的 pattern——旧平台固定取阶跃前 L 根、按旧平台波动的倍数开段、一天一个实例，这些形状偏见只属于 new_step；它是 app 内 detector、不在 `path2/atoms`，别的 app 要类似结构另写，要提成公共 atom 须重新设计；② 这里的旧平台 / 新平台不是 `PlatformDetector` 的平台段（后者是窄幅震荡的非重叠贪心扫窗），字段与口径都不通用；③ 构造参数六个（四个切段参数 + overhead_window / calm_window 两个字段窗口，经 `Params.plateau_kwargs()` 传），where 阈值只进 where，传给 detector 会 TypeError；⑥ `low_age` 为 None 表示新平台没创过新低，where 要写成 `W.not_(W.attr("low_age", "<", n))` 才让它判满足；④ 想调「多强才算阶跃」调 where 的 `vs_left_min` / `vs_right_min`，不是 `strong_k`——后者是开段机制值，调大只会让阶跃切级更碎；且开段条件保证 `vs_left` 恒 ≥ `strong_k`，`vs_left_min` 不大于它时左半条判据形同虚设；⑤ `eval_meta.end_node = 'plateau.today'`（node id + 槽名）；一天一个 hit，同一天被几个前缀 / 几次阶跃同时认出时有几个 hit，统计按日去重。
+  6. 阶跃完成那天（最高价回落那天）永远不产（新平台至少 1 根）；族只在 max_days、窗口末、换版本、坏数据处结束，收盘跌回旧平台价位照产（keep_ratio ≤ 0 交 where）；停顿窗里够猛却没创新高的根既不算续上也不另开阶跃；gate 两个：版本最高收盘没高过旧平台的 `step_not_above_old`、第一个版本就超过 max_step_bars 的 `step_too_long`（续上后才超的，这次阶跃从续上那天起不再产，不 emit）。
+- **常见误配**：① 别拿它去做别的 pattern——旧平台固定取阶跃前 L 根、按旧平台波动的倍数开段、一天一个实例，这些形状偏见只属于 new_step；它是 app 内 detector、不在 `path2/atoms`，别的 app 要类似结构另写，要提成公共 atom 须重新设计；② 这里的旧平台 / 新平台不是 `PlatformDetector` 的平台段（后者是窄幅震荡的非重叠贪心扫窗），字段与口径都不通用；③ 构造参数八个（old_window / strong_k / max_step_bars / max_pause / max_days 五个切段参数 + overhead_window / calm_window / dump_window 三个字段窗口，经 `Params.plateau_kwargs()` 传），where 阈值只进 where，传给 detector 会 TypeError；④ 想调「多强才算阶跃」调 where 的 `vs_left_min` / `vs_right_min`，不是 `strong_k`——后者是开段与续上的机制值；起点往前找后旧平台随之前移，`vs_left` 不再保证 ≥ `strong_k`；⑤ `eval_meta.end_node = 'plateau.today'`（node id + 槽名）；同一次阶跃同一天只有一个版本在产，同一天被几次阶跃同时认出时有几个 hit，统计按日去重；⑥ `low_age` 为 None 表示新平台没创过新低、`dump_ratio` 为 None 表示没有快速回落，where 要写成 `W.not_(W.attr(…))` 才让它们判满足；`dump_ratio` 只增不减，读它的 where 是 invalidation，只能用在用户明说的地方；⑦ 缩量读 `vol_shrink` = 新平台均量 / 阶跃里**最大**量（往前找会稀释阶跃平均量，别改回平均量）。
 
 ## §2 事件类编写规范
 
