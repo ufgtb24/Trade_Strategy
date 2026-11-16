@@ -867,6 +867,35 @@ test.describe('反馈(new_step + 手写 mapping,CRNC)', () => {
     expect(feedbackOf(await annState(page)).find(f => f.id === pid)).toEqual(
       { id: pid, pattern: PATTERN, app_id: APP, app_ver: plan.appVer, start: g0Date, end: g0Date, target: 'point',
         source: 'picked', note: '放量不够,而且离阶跃太远' })
+
+    // ── 在副图里点记号选中它(不开面板),按 Delete 直接删掉(同面板的 delete,可撤);undo 放回 ──
+    await clickStrip(page, pid)
+    await expect.poll(() => fbOf(page, 'selectedId')).toBe(pid)
+    await expect(panel(page)).toHaveCount(0)
+    await page.keyboard.press('Delete')
+    await expect(page.getByTestId('feedback-selected-band')).toHaveCount(0)
+    await settled(page)
+    expect(feedbackOf(await annState(page)).map(f => f.id)).not.toContain(pid)
+    expect((await stripMarks(page)).map(m => m.id)).not.toContain(pid)
+    await expect(page.getByTestId('notice-undo')).toHaveAttribute('data-kind', 'feedback')
+    await page.getByTestId('notice-undo-btn').click()
+    await settled(page)
+    expect(feedbackOf(await annState(page)).map(f => f.id)).toContain(pid)
+
+    // ── 点记号选中反馈后又选中框:按 Delete 删的是框,反馈留着;undo 放回框 ──
+    await clickStrip(page, pid)
+    await expect.poll(() => fbOf(page, 'selectedId')).toBe(pid)
+    await page.evaluate(id => (window as any).__e2e.ann().selectBox(id), BOX)
+    await expect.poll(() => annOf(page, 'selectedBoxId')).toBe(BOX)
+    await page.keyboard.press('Delete')
+    await settled(page)
+    const after = (await annState(page)).charts.find((c: any) => c.symbol === SYMBOL)
+    expect(after.boxes.map((b: any) => b.id)).not.toContain(BOX)
+    expect(feedbackOf(await annState(page)).map(f => f.id)).toContain(pid)
+    await expect(page.getByTestId('notice-undo')).toHaveAttribute('data-kind', 'box')
+    await page.getByTestId('notice-undo-btn').click()
+    await settled(page)
+    expect((await annState(page)).charts.find((c: any) => c.symbol === SYMBOL).boxes.map((b: any) => b.id)).toContain(BOX)
     await page.unrouteAll({ behavior: 'ignoreErrors' })
   })
 

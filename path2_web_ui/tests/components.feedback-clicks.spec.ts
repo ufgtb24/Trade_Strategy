@@ -4,6 +4,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { nextTick } from 'vue'
 import { setActivePinia, createPinia } from 'pinia'
+import { mount } from '@vue/test-utils'
 import type { AnnOp, AnnRead, AnnState } from '../src/annotate/model'
 import type { EventDict, HitDict } from '../src/types'
 
@@ -33,6 +34,7 @@ import { useCompareStore } from '../src/stores/compare'
 import { feedbackMarkOf, handleAppClick } from '../src/components/KlineChart'
 import { computeEventData } from '../src/render/chart'
 import { FEEDBACK_SERIES } from '../src/render/feedbackStrip'
+import ChartArea from '../src/components/ChartArea.vue'
 
 const DATES = ['2025-01-02', '2025-01-03', '2025-01-06', '2025-01-07', '2025-01-08', '2025-01-09', '2025-01-10',
                '2025-01-13', '2025-01-14']
@@ -382,5 +384,90 @@ describe('选着样本时存了别的东西', () => {
     await nextTick()
     expect(fake.read.state.charts[0].boxes).toHaveLength(1)
     expect([view.selPath, cmp.focusedSampleId]).toEqual([s1, 's1'])
+  })
+})
+
+describe('按 Delete 删选中的反馈(ChartArea 的 Delete 键;与面板、侧栏行上的 delete 同一动作)', () => {
+  const rec = (id: string, s: number, e: number) => ({ id, pattern: 'p', app_id: 'app1', app_ver: 'v0',
+    start: DATES[s], end: DATES[e], target: s === e ? 'point' : 'range', source: 'picked', note: 'x' })
+  const box = { id: 'b-pc-1', feature: null, start: DATES[1], end: DATES[3] }
+  const read = () => annRead({ charts: [{ symbol: 'AAA', boxes: [box as any], samples: [],
+    feedback: [rec('f-a', 5, 6) as any, rec('f-b', 7, 7) as any] }] })
+  let w: ReturnType<typeof mount> | null = null
+  afterEach(() => { w?.unmount(); w = null; document.body.innerHTML = '' })
+
+  async function mountArea() {
+    w = mount(ChartArea, { attachTo: document.body, global: { stubs: {
+      KlineChart: true, DetailSidebar: true, TopologyControl: true, AnnotationSidebar: true, AnnotationNotices: true,
+    } } })
+    await nextTick()
+  }
+  async function pressDelete() {
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Delete', bubbles: true, cancelable: true }))
+    await settle()
+  }
+  const feedbackIds = () => (useAnnotationStore().state?.charts.find(c => c.symbol === 'AAA')?.feedback ?? []).map(f => f.id)
+  const boxIds = () => (useAnnotationStore().state?.charts.find(c => c.symbol === 'AAA')?.boxes ?? []).map(b => b.id)
+
+  it('点记号选中一条反馈后按 Delete:删掉它、选中清空;框不动', async () => {
+    const { view, fb } = await setup(read())
+    await mountArea()
+    compareClick(click(FEEDBACK_SERIES, { feedback_id: 'f-a' }), view, fb)
+    await pressDelete()
+    expect(feedbackIds()).toEqual(['f-b'])
+    expect(boxIds()).toEqual(['b-pc-1'])
+    expect([view.selPath, fb.selectedId]).toEqual([[], null])
+  })
+
+  it('走进它收进来的买点日后(反馈成了外层)按 Delete:不删', async () => {
+    const { view, fb } = await setup(read())
+    await mountArea()
+    compareClick(click(FEEDBACK_SERIES, { feedback_id: 'f-a' }), view, fb)
+    view.stepPos(1)
+    expect(view.selPath).toEqual([{ kind: 'feedback', id: 'f-a' }, { kind: 'buy', day: 5 }])
+    await pressDelete()
+    expect(feedbackIds()).toEqual(['f-a', 'f-b'])
+  })
+
+  it('焦点在输入框里(写 note)时按 Delete 只删字,不删反馈', async () => {
+    const { view, fb } = await setup(read())
+    await mountArea()
+    compareClick(click(FEEDBACK_SERIES, { feedback_id: 'f-a' }), view, fb)
+    const ta = document.createElement('textarea')
+    document.body.appendChild(ta)
+    ta.focus()
+    await pressDelete()
+    expect(feedbackIds()).toEqual(['f-a', 'f-b'])
+  })
+
+  it('选着框时侧栏点一条反馈(fb.select):框的选中取消;按 Delete 删反馈,再按一下不删框', async () => {
+    const { ann, fb } = await setup(read())
+    await mountArea()
+    ann.selectBox('b-pc-1')
+    fb.select('f-b')
+    expect(ann.selectedBoxId).toBeNull()
+    await pressDelete()
+    expect(feedbackIds()).toEqual(['f-a'])
+    await pressDelete()
+    expect(boxIds()).toEqual(['b-pc-1'])
+  })
+
+  it('先点记号选中反馈、再选框时按 Delete:删框,反馈留着', async () => {
+    const { ann, view, fb } = await setup(read())
+    await mountArea()
+    compareClick(click(FEEDBACK_SERIES, { feedback_id: 'f-a' }), view, fb)
+    ann.selectBox('b-pc-1')
+    await pressDelete()
+    expect(boxIds()).toEqual([])
+    expect(feedbackIds()).toEqual(['f-a', 'f-b'])
+  })
+
+  it('没选中反馈、选着框时按 Delete:照旧删框', async () => {
+    const { ann } = await setup(read())
+    await mountArea()
+    ann.selectBox('b-pc-1')
+    await pressDelete()
+    expect(boxIds()).toEqual([])
+    expect(feedbackIds()).toEqual(['f-a', 'f-b'])
   })
 })
