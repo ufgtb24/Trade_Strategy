@@ -12,6 +12,7 @@ mapping 随 app 进 git,不进标注文件:标注文件只由工具写,会话不
 
     # compare 用的 mapping(暂行)
     pattern: 放量突破          # 标注里的 pattern 名,和顶栏 pattern 下拉里的一字不差
+    reference: bo             # 基准 node:这个 pattern 的「这一次」以哪一段为准(必有)
     features:                 # 特征编号: 认它的 node(app 的 node_id)
       w-pc-3: bo
       w-pc-7: tb_seg
@@ -19,6 +20,11 @@ mapping 随 app 进 git,不进标注文件:标注文件只由工具写,会话不
       bo: 放量突破那一根
       bo.vol_big: 放量
 
+- reference(必有)是这个 app 的基准 node(path2/GLOSSARY.md 的 reference node):node_id,判据是依赖关系——它挪了,
+  其余各段都得跟着挪;可以是不参与求解的子 node(new_step 的 step 是 plateau 的子段),但只能是独立 node 或
+  独立 node 的直接子结构 node(单股预览的序列化只挖一级子段,页面看不到更深的,前后端取基准 event 都只到这一级)。
+  整族反馈写下时存这一族基准 event 的起止,判状态时比当前 app 的基准 event 和它有没有共用 K 线
+  (path2_web/annotation/match.py 的 feedback_status)。后端只比日期,不认它是哪种走势;
 - 特征编号是词表里的编号(`w-<机器名>-<n>`),不是特征名:用户改特征名不影响 mapping。会话从
   `path2_web.annotation.store.read_annotations(load_config())["state"]["features"]` 查编号;
 - 一个特征只对一个 node;几个特征可以对同一个 node;
@@ -55,8 +61,9 @@ compare 把 map 了的特征轨放在它对的 node 那组 band(这个 node 及�
 样本、框和 app 怎么对、认没认出,按样本日 / 框终点那天配对那一格读(path2_web_ui/src/stores/compare.ts)。
 app 模式与 compare 的 band 表头都在 node 名后写对到它的特征名。
 
-读的时候查出来的问题(problem,一句话;有问题的 mapping 不能用):
+读的时候查出来的问题(problem,一句话;有问题的 mapping 不能用:compare 叠加与反馈状态都停用):
 - 文件读不懂、pattern 不是非空字符串、features 不是「字符串 → 字符串」;
+- 没写 reference、reference 不是非空字符串,或它指的 node 不在这个 app 的 dag 里(含指向子结构 node 的子 node);
 - features 里的 node 不在这个 app 的 dag 里;
 - notes 不是「非空字符串 → 非空字符串」,或键指向 dag 里没有的 node / 那个 node 上没有的 where;
 - 两个 app 的 mapping 写了同一个 pattern(哪个都不能用,删掉一个)。
@@ -87,15 +94,38 @@ def mapping_path(mod) -> Path:
     return Path(mod.__file__).parent / MAPPING_FILE
 
 
-def _dag_index(mod) -> dict[str, set[str]]:
-    """app 的 dag:全部 node_id(含子结构 node)→ 这个 node 上 where 的名字,按当前参数文件建 dag。"""
+def _spec(mod):
+    """按当前参数文件建这个 app 的 pattern 声明。"""
     load = getattr(mod, "load_params", None)
-    spec = mod.build_pattern(load()) if callable(load) else mod.PATTERN_DAG
+    return mod.build_pattern(load()) if callable(load) else mod.PATTERN_DAG
+
+
+def _dag_index(spec) -> dict[str, set[str]]:
+    """app 的 dag:全部 node_id(含子结构 node)→ 这个 node 上 where 的名字。"""
     out: dict[str, set[str]] = {n.node_id: set() for n in spec.to_topology().nodes}
     for n in getattr(spec, "nodes", ()):
         if n.node_id in out:
             out[n.node_id] = {cid for cid, _ in getattr(n, "where", ())}
     return out
+
+
+def _reference_nodes(spec) -> set[str]:
+    """能当基准 node 的:独立 node(没有 produced_by),以及独立 node 的直接子结构 node(模块说明「reference」)。"""
+    by_id = {n.node_id: n for n in getattr(spec, "nodes", ())}
+
+    def independent(nid) -> bool:
+        return nid in by_id and getattr(by_id[nid], "produced_by", None) is None
+    return {nid for nid, n in by_id.items() if independent(nid) or independent(getattr(n, "produced_by", None))}
+
+
+def _reference(app: str, raw, spec) -> tuple[str | None, str | None]:
+    """mapping 的 reference:(合格时的 node_id,否则 None;问题一句英文,合格时 None)。"""
+    ref = raw.get("reference") if isinstance(raw, dict) else None
+    if not isinstance(ref, str) or not ref.strip():
+        return None, "reference must name the reference node of the app (a node_id)"
+    if ref not in _reference_nodes(spec):
+        return None, f"reference node not in app {app} (or nested too deep): {ref}"
+    return ref, None
 
 
 def _note_key_ok(key: str, dag: dict[str, set[str]]) -> bool:
@@ -146,12 +176,14 @@ def _session_problem(session) -> str | None:
 def _read_one(app: str, mod) -> dict | None:
     """读一个 app 的 mapping 文件;没有文件返回 None。
 
-    返回 {app, pattern, features, notes, problem, session, session_problem}。会话段在任何别的检查之前读:
-    pattern、features 等写坏了(problem 非空)也照样带出会话段;会话段的问题只进 session_problem。"""
+    返回 {app, pattern, reference, features, notes, problem, session, session_problem}。会话段和 reference 在
+    任何别的检查之前读:pattern、features 等写坏了(problem 非空)也照样带出会话段与合格的 reference(会话的
+    改版报告不拦 problem,要靠它判整族反馈);会话段的问题只进 session_problem,reference 的问题进 problem
+    (别的检查没先报问题时)。reference 不合格时为 None。"""
     path = mapping_path(mod)
     if not path.is_file():
         return None
-    out = {"app": app, "pattern": None, "features": {}, "notes": {}, "problem": None,
+    out = {"app": app, "pattern": None, "reference": None, "features": {}, "notes": {}, "problem": None,
            "session": None, "session_problem": None}
     try:
         raw = yaml.safe_load(path.read_text(encoding="utf-8"))
@@ -166,6 +198,8 @@ def _read_one(app: str, mod) -> dict | None:
             if isinstance(at, dt.date):   # 不加引号的 at: 2026-11-10 被 YAML 读成日期,转回字符串带出
                 session = {**session, "snapshot": {**session["snapshot"], "at": at.isoformat()}}
             out["session"] = session
+    spec = _spec(mod)
+    out["reference"], ref_problem = _reference(app, raw, spec)
     pattern = raw.get("pattern") if isinstance(raw, dict) else None
     if not isinstance(pattern, str) or not pattern.strip():
         out["problem"] = "pattern must be a non-empty string"
@@ -183,7 +217,10 @@ def _read_one(app: str, mod) -> dict | None:
         out["problem"] = "notes must map node ids or node.where names to non-empty text"
         return out
     out["notes"] = dict(notes or {})
-    dag = _dag_index(mod)
+    if ref_problem is not None:
+        out["problem"] = ref_problem
+        return out
+    dag = _dag_index(spec)
     unknown = sorted(set(feats.values()) - set(dag))
     if unknown:
         out["problem"] = f"node not in app {app}: {', '.join(unknown)}"
@@ -195,7 +232,7 @@ def _read_one(app: str, mod) -> dict | None:
 
 
 def read_mappings(registry) -> list[dict]:
-    """全部已注册 app 的 mapping 文件,按 app 名排:[{app, pattern, features, notes, problem, session,
+    """全部已注册 app 的 mapping 文件,按 app 名排:[{app, pattern, reference, features, notes, problem, session,
     session_problem}]。problem 为 None 才能用;两个 app 写了同一个 pattern 时,两边都记上问题。
     session / session_problem 见模块说明「会话段」,与 problem 互不影响。"""
     out = [m for app in registry.ids() if (m := _read_one(app, registry.get(app))) is not None]

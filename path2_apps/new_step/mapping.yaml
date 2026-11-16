@@ -1,5 +1,6 @@
 # compare 用的 mapping(暂行,格式见 path2_web/mapping.py):标注里的 pattern 用哪个 app、app 的哪个 node 认用户的哪个特征。
 pattern: new_step
+reference: step    # 基准 node:阶跃。它挪了,旧平台、新平台都跟着挪;整族反馈按它认「同一次形状」
 features:
   w-pc-11: plateau    # 站上新平台 ← 旧平台→阶跃→新平台的复合事件(截到当天);买点是它的 today 段
   w-pc-26: step       # 平台交界放量(框上的属性) ← 阶跃段,带 step_vol
