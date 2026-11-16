@@ -1,10 +1,9 @@
 {
  "commit": "739a2cf1c3757b303d7c335dca68dc13045b4e4b",
  "worktree_dirty": "",
- "code_root": "/home/yu/PycharmProjects/Trade_Strategy-18-old-739a2cf",
  "app_ver": "1afa716bc5248d4b",
  "train_end": "2025-12-31",
- "view_dataset_dir": "/home/yu/PycharmProjects/Trade_Strategy-18-old-739a2cf/datasets/pkls_until_20251231",
+ "view_dataset_dir": "datasets/pkls_until_20251231",
  "data_fingerprint": "40508e77199b91e351ea09182fe7d3b87aadb2f50c6d82f4ddb30d578cbcf559",
  "reference_node": "step",
  "feedback": [
