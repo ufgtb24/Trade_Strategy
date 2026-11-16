@@ -8,7 +8,9 @@
   ∪ 这一轮里这个 pattern 有样本或反馈的股票;全历史区间、label_horizon 20 跑 app;打印的 YAML 写进 mapping 后
   会话段形状合格;round 文件已存在时拒绝覆盖;
 - 第一轮(没有上一轮定格)且 app 没改:报告写「无变化」;mapping 没写新快照时开头提醒;
-- 反馈状态的新旧对照(含上一轮之后新加、删掉的反馈),lost 留一行待会话交代,反馈范围里砍掉的买点只给个数;
+- 反馈状态的新旧对照(含上一轮之后新加、删掉的反馈),lost(基准 node 对不上)留一行待会话交代,反馈范围里砍掉的
+  买点只给个数;跑 app 时把 mapping 声明的基准 node 交给取数、存进 round 文件;mapping 没声明基准 node 时
+  start_round 照常定格并提醒,改版报告拒绝出;摘要里整族反馈写存下的基准 event 起止和同一次形状在范围外还买的日子;
   会话段写坏时开头说明、原因标签当作没有,不误报「定格没写」;
 - 一条反馈写成「（落在 node）「理由」（编号，issue 值）」,不写 answer、dag;「各 issue 现在」列出有一处还在买、
   有一处 lost、或这一版变了的 issue(只有一处的用反馈编号当名字),其余给个数;带 answer 和不带 answer 的反馈
@@ -27,6 +29,7 @@
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from types import SimpleNamespace
 from urllib.parse import parse_qs, urlsplit
 
@@ -37,16 +40,24 @@ import yaml
 import path2_apps.bo_only.dag_spec as bo_only
 from path2_web import mapping
 from path2_web.annotation import revision, store
-from path2_web.app_run import AppBuys, NoSymbol
+from path2_web.app_run import AppBuys, HitBuys, NoSymbol
 
 TRAIN_END = "2025-12-31"
 D = pd.bdate_range("2024-01-01", "2025-12-31").strftime("%Y-%m-%d").tolist()   # 合成的交易日
 
 
-def _buys(families: dict, starts=None) -> AppBuys:
-    """合成的买点:{族起点: [买点日]};参与求解的事件起点缺省就是各族起点。"""
-    return AppBuys(families={k: tuple(sorted(v)) for k, v in sorted(families.items())},
-                   event_starts=tuple(sorted(starts if starts is not None else families)), dates=tuple(D))
+def _buys(families: dict, refs=()) -> AppBuys:
+    """合成的买点:{族起点: [买点日]}。每族一个 hit,它的基准 event 是族起点那一根;全部基准 event = 各族的
+    加上 refs(没进 hit 的那几天,每天一段)。基准 node 由假 app_buys 照接口交来的填上。"""
+    fams = {k: tuple(sorted(v)) for k, v in sorted(families.items())}
+    return AppBuys(families=fams, dates=tuple(D),
+                   hits=tuple(HitBuys(spans=((k, k),), buy_days=v) for k, v in fams.items()),
+                   ref_events=tuple(sorted({(k, k) for k in (*fams, *refs)})))
+
+
+def _ref(*days):
+    """整族反馈存下的基准 event 起止(基准 node bo,每天一段)。"""
+    return {"node": "bo", "spans": [[d, d] for d in days]}
 
 
 @pytest.fixture
@@ -69,11 +80,14 @@ def env(tmp_path, monkeypatch):
         return symbol, None, {"end_node": "bo"}
 
     monkeypatch.setattr(revision, "run_app", run_app)
-    monkeypatch.setattr(revision, "app_buys", lambda res, win, end_node: app.buys[res])
+    monkeypatch.setattr(revision, "app_buys",
+                        lambda res, win, end_node, reference=None: replace(app.buys[res], reference=reference))
     monkeypatch.setattr(revision, "app_ver", lambda mod: app.ver)
 
-    def write_mapping(pattern="p", session=None, notes=None):
+    def write_mapping(pattern="p", session=None, notes=None, reference="bo"):
         doc = {"pattern": pattern, "features": {"w-pc-1": "bo"}}
+        if reference is not None:
+            doc["reference"] = reference
         if session is not None:
             doc["session"] = session
         if notes is not None:
@@ -151,7 +165,7 @@ def _fb_parts(sec: str) -> tuple[list[str], list[str], list[str]]:
     for line in sec.splitlines():
         if line.startswith("各 issue 现在"):
             cur = "issues"
-        elif line.startswith("起点认不出的反馈"):
+        elif line.startswith("基准 node 对不上的反馈"):
             cur = "lost"
         elif line.startswith("- "):
             parts[cur].append(line)
@@ -184,7 +198,7 @@ def test_start_round_snapshot_symbols_and_yaml(env, capsys):
     assert sorted(env.app.calls) == [(s, "1900-01-01", TRAIN_END, 20) for s in ("AAA", "BBB", "CCC")]
     assert set(rnd["buys"]) == {"AAA", "BBB"} and set(rnd["unavailable"]) == {"CCC"}
     assert json.loads(env.round().read_text(encoding="utf-8")) == rnd
-    assert AppBuys.from_dict(rnd["buys"]["AAA"]) == env.app.buys["AAA"]
+    assert AppBuys.from_dict(rnd["buys"]["AAA"]) == replace(env.app.buys["AAA"], reference="bo")   # 带基准 event
 
     session = _printed_session(capsys.readouterr().out)
     assert session == {"snapshot": rnd["snapshot"]}
@@ -224,28 +238,29 @@ def test_feedback_status_changes_lost_and_in_range_count(env):
     """反馈状态新旧对照只列变了的;lost 留一行待会话交代;朱红按原因标签判;反馈范围里砍掉的买点只给个数。"""
     _save(env,
           _fb("f-pc-1", "AAA", D[10]),                                                    # matched → unmatched
-          _fb("f-pc-2", "AAA", D[35], D[36], target="family", family_start=D[30]),         # matched → lost
+          _fb("f-pc-2", "AAA", D[35], D[36], target="family", family_start=D[30],
+              reference=_ref(D[30])),                                                     # matched → lost
           _fb("f-pc-3", "AAA", D[60], D[62], target="range"),                              # unmatched,没变
           _fb("f-pc-4", "AAA", D[70]),                                                    # matched,定义改过
           _fb("f-pc-5", "AAA", D[72]))                                                    # matched,朱红
     env.write_mapping(session={"tags": {"f-pc-4": "redefined", "f-pc-2": "unhandled"}})
     env.app.buys = {"AAA": _buys({D[9]: [D[10]], D[30]: [D[35], D[36]], D[68]: [D[70], D[72]]})}
     _start(env)
-    env.app.buys = {"AAA": _buys({D[68]: [D[70], D[72]]})}   # 改 app:前两族没了,起点也认不出
+    env.app.buys = {"AAA": _buys({D[68]: [D[70], D[72]]})}   # 改 app:前两族没了,基准 event 也对不上
 
     sec = _section(_report(env), "① ")
     rows, issues, lost = _fb_parts(sec)
     assert len(rows) == 2 and len(lost) == 1   # 两条变了的 + 一条 lost 待填
     assert "「不该买」（f-pc-1）：`matched` → `unmatched`" in rows[0]
-    assert "（f-pc-2）：`matched` → 起点认不出" in rows[1]
+    assert "（f-pc-2）：`matched` → 基准 node 对不上" in rows[1]
     assert "（f-pc-2）：（待填：改好了 / 认法变了）" in lost[0]
     assert issues == ["- `f-pc-4`「不该买」：1 处，还在买 1 处",                      # 还在买的在前
                       "- `f-pc-5`「不该买」：1 处，还在买 1 处",
-                      "- `f-pc-2`「不该买」：1 处，还在买 0 处，起点认不出 1 处，这一版变了 1 处",   # lost 其次
+                      "- `f-pc-2`「不该买」：1 处，还在买 0 处，基准 node 对不上 1 处，这一版变了 1 处",   # lost 其次
                       "- `f-pc-1`「不该买」：1 处，还在买 0 处，这一版变了 1 处"]
     assert "另有 1 个 issue 各处都不买了、这一版没变。" in sec        # f-pc-3
     assert "其余 3 条没变" in sec
-    assert "现在 5 条反馈：朱红 1 条、起点认不出 1 条、`unmatched` 2 条。" in sec
+    assert "现在 5 条反馈：朱红 1 条、基准 node 对不上 1 条、`unmatched` 2 条。" in sec
     assert "共 3 天。" in _section(_report(env), "② ")
     assert "没有。" in _section(_report(env), "③ ")
 
@@ -290,7 +305,7 @@ def test_feedback_added_and_deleted_and_family_grows(env):
                                                   "「不该买」（f-pc-3）：（没有这条） → `matched`"]
     assert issues == ["- `f-pc-3`「不该买」：1 处，还在买 1 处，这一版变了 1 处"]   # 新标的算变了;删掉的不进这里
     assert "另有 1 个 issue 各处都不买了、这一版没变。" in sec                     # f-pc-2
-    assert "其余 1 条没变。" in sec and "现在 2 条反馈：朱红 1 条、起点认不出 0 条、`unmatched` 1 条。" in sec
+    assert "其余 1 条没变。" in sec and "现在 2 条反馈：朱红 1 条、基准 node 对不上 0 条、`unmatched` 1 条。" in sec
     up = _section(report, "④ ")
     assert "共 3 天、1 族。" in up
     assert f"- [AAA {D[100]} 起的一族]({_link(D[103])})：2 天变 5 天" in up
@@ -487,7 +502,7 @@ def test_report_and_digest_take_feedback_with_and_without_answer(env):
     assert "「整体不像」（f-pc-3，issue i-pc-1）：`matched` → `unmatched`" in "\n".join(rows)
     assert "- `i-pc-1`「整体不像」：2 处，还在买 0 处，这一版变了 2 处" in issues
     sec = _section(digest, "issue")
-    assert "共 4 个 issue、5 处；还在买 5 处、起点认不出 0 处。" in sec
+    assert "共 4 个 issue、5 处；还在买 5 处、基准 node 对不上 0 处。" in sec
     assert "### `i-pc-1`（2 处，还在买 2 处）" in sec and "### `f-pc-2`（1 处，还在买 1 处）" in sec
     assert "- 落在：bo" in sec and "- 落在：没点 node" in sec and "  > （没写）" in sec
 
@@ -618,7 +633,7 @@ def test_round_digest_reads_everything_for_the_round(env, capsys):
     _save(env,
           {**_fb("f-pc-8", "AAA", D[40], note="前一天放量长阴"), "base": _rev(env, "feedback", "f-pc-8")},
           _fb("f-pc-9", "AAA", D[9], D[12], target="family", family_start=D[9], note="追高了", nodes=["bo"],
-              issue="i-pc-1"),
+              issue="i-pc-1", reference=_ref(D[9])),
           _fb("f-pc-10", "BBB", D[20], D[22], target="range", note="追高了", nodes=["bo"], issue="i-pc-1"),
           _edit_sample(env, "s-pc-6", judgment="neg"))
     env.app.buys["BBB"] = _buys({})
@@ -638,10 +653,11 @@ def test_round_digest_reads_everything_for_the_round(env, capsys):
     assert "- sample `s-pc-6`（AAA " + D[100] + "）：`judgment`" in _section(digest, "上一轮以来的变化")
 
     sec = _section(digest, "issue")
-    assert "共 2 个 issue、3 处；还在买 2 处、起点认不出 0 处。" in sec
+    assert "共 2 个 issue、3 处；还在买 2 处、基准 node 对不上 0 处。" in sec
     assert sec.index("### `f-pc-8`") < sec.index("### `i-pc-1`")       # 同是还在买的,按名字
     assert "### `i-pc-1`（2 处，还在买 1 处）\n- 落在：bo\n- note：\n  > 追高了\n- 账本：还没有条件" in sec
-    assert (f"  - [AAA {D[9]}～{D[12]}]({_link(D[9])}) `family`（起点 {D[9]}） `matched`；范围里在买 2 天：{D[10]}、{D[11]}；"
+    assert (f"  - [AAA {D[9]}～{D[12]}]({_link(D[9])}) `family`（起点 {D[9]}，基准 bo：{D[9]}） `matched`；"
+            f"范围里在买 2 天：{D[10]}、{D[11]}；"
             f"范围里你的正样本：{D[10]}（s-pc-5）（f-pc-9，上一轮之后新标的）") in sec
     assert (f"  - [BBB {D[20]}～{D[22]}]({_link(D[20], 'BBB')}) `range` `unmatched`；范围里在买 0 天"
             "（f-pc-10，上一轮之后新标的）") in sec
@@ -677,3 +693,48 @@ def test_round_digest_puts_samples_against_the_app_first(env):
     assert rows[1].startswith(f"- **相反** [AAA {D[100]}]") and "正样本，`unmatched`（s-pc-2）" in rows[1]
     assert rows[2].startswith(f"- 一致 [AAA {D[10]}]")
     assert "这个 pattern 还没有反馈。" in _section(_digest(env), "issue")
+
+
+# ───────────────────────── 基准 node ─────────────────────────
+
+def test_family_judged_by_reference_and_shape_bought_outside_range(env):
+    """整族反馈按基准 event 认同一次形状:改 app 后族起点挪了(D[30] → D[29]),只要基准 event 还与存下的共用 K 线、
+    这个 hit 还在买,就仍是 matched(错误买点只是挪了位置);摘要写存下的基准 event 起止和同一次形状在范围外还买的
+    日子。两条存下的基准 event 一条对得上、一条对不上:对不上的那条记「基准 node 对不上」。"""
+    _save(env,
+          _fb("f-pc-1", "AAA", D[31], D[32], target="family", family_start=D[29], reference=_ref(D[30])),
+          _fb("f-pc-2", "AAA", D[61], D[62], target="family", family_start=D[59], reference=_ref(D[60])))
+    env.write_mapping()
+    env.app.buys = {"AAA": _buys({D[30]: [D[31], D[32]], D[60]: [D[61]]})}
+    _start(env)
+    #  改 app:第一族的基准 event 变成 D[29]～D[31],买点挪到 D[40];第二族的变成 D[63],挪开了
+    env.app.buys = {"AAA": replace(_buys({D[29]: [D[40]], D[63]: [D[64]]}),
+                                   hits=(HitBuys(spans=((D[29], D[31]),), buy_days=(D[40],)),
+                                         HitBuys(spans=((D[63], D[63]),), buy_days=(D[64],))),
+                                   ref_events=((D[29], D[31]), (D[63], D[63])))}
+    sec = _section(_report(env), "① ")
+    rows, _, lost = _fb_parts(sec)
+    assert rows == [f"- [AAA {D[61]}～{D[62]}]({_link(D[61])}) 「不该买」（f-pc-2）：`matched` → 基准 node 对不上"]
+    assert len(lost) == 1 and "（f-pc-2）：（待填" in lost[0]
+    assert "其余 1 条没变" in sec                                  # f-pc-1 仍是 matched
+
+    _finish(env)
+    _start(env, name="r2.json")
+    sec = _section(_digest(env, name="r2.json"), "issue")
+    assert (f"`family`（起点 {D[29]}，基准 bo：{D[30]}） `matched`；范围里在买 0 天；"
+            f"同一次形状在范围外还买 1 天：{D[40]}（f-pc-1") in sec
+    assert f"`family`（起点 {D[59]}，基准 bo：{D[60]}） `lost`；范围里在买 0 天（f-pc-2" in sec
+
+
+def test_missing_reference_round_starts_but_report_refused(env, capsys):
+    """mapping 没写基准 node:start_round 照常定格并提醒(这时整族反馈都判不了),改版报告拒绝出;补上之后照出。"""
+    _save(env, _fb("f-pc-1", "AAA", D[10]))
+    env.write_mapping(reference=None)
+    env.app.buys = {"AAA": _buys({D[9]: [D[10]]})}
+    rnd = _start(env)
+    assert "没写基准 node" in capsys.readouterr().out
+    assert rnd["buys"]["AAA"]["reference"] is None                 # 取数时没交基准 node(没声明时取不到基准 event)
+    with pytest.raises(ValueError, match="没写基准 node"):
+        _report(env)
+    env.write_mapping()
+    assert "**无变化**" in _report(env)
