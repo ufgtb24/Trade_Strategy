@@ -105,6 +105,11 @@ export function handleChartClick(
 }
 
 
+/** 点中 / 停着的是 event 的记号(MARKER_SERIES)时它的 instance_id;不是为 null。Shift+点记号的配对查询认它。 */
+export function markerIdOf(p: ChartClickPayload): string | null {
+  return p?.seriesName && MARKER_SERIES.includes(p.seriesName) && p.data?.instance_id ? String(p.data.instance_id) : null
+}
+
 /** compare 下点中的反馈带记号是哪一条(它的编号);点的不是记号时为 null。 */
 export function feedbackMarkOf(p: ChartClickPayload): string | null {
   return p?.seriesName === FEEDBACK_SERIES && p.data?.feedback_id ? p.data.feedback_id : null

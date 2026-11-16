@@ -2,7 +2,7 @@
 // 按一下复制一行:图上选中了东西就是它(后半行由选中快照给,见 render.sel-snapshot.spec.ts);
 // annotate 下没有 app 的东西,选中的框、样本照同一拼法在这里写。
 import { describe, it, expect } from 'vitest'
-import { copyLine, resolveTarget, type CopyContext, type PickState } from '../src/annotate/copyRef'
+import { copyLine, dateLine, resolveTarget, type CopyContext, type PickState } from '../src/annotate/copyRef'
 
 const none: PickState = { tail: null, boxId: null, sampleId: null, feedbackId: null }
 const pick = (o: Partial<PickState>) => resolveTarget({ ...none, ...o })
@@ -72,5 +72,22 @@ describe('copyLine · 一行:股票、pattern,接种类、node、日期、叫法
     expect(copyLine({ kind: 'box', id: 'gone' }, ctx)).toBe('AAA p1 day 2024-01-03')
     expect(copyLine({ kind: 'sample', id: 'gone' }, ctx)).toBe('AAA p1 day 2024-01-03')
     expect(copyLine({ kind: 'feedback', id: 'gone' }, ctx)).toBe('AAA p1 day 2024-01-03')
+  })
+})
+
+describe('dateLine · 主图上按住 Shift 点一根 / 拖一段:一天写 day,一段写 range 起→止', () => {
+  it('同一根 → day', () => {
+    expect(dateLine(ctx, 1, 1)).toBe('AAA p1 day 2024-01-02')
+  })
+  it('一段 → range,左小右大;从右往左拖一样', () => {
+    expect(dateLine(ctx, 1, 3)).toBe('AAA p1 range 2024-01-02→2024-01-04')
+    expect(dateLine(ctx, 3, 1)).toBe('AAA p1 range 2024-01-02→2024-01-04')
+  })
+  it('没归组(pattern 为 null)时行里没有 pattern,同当前日那一行', () => {
+    expect(dateLine({ ...ctx, pattern: null }, 0, 4)).toBe('AAA range 2024-01-01→2024-01-05')
+    expect(dateLine({ ...ctx, pattern: null }, 2, 2)).toBe('AAA day 2024-01-03')
+  })
+  it('下标越界时夹到首尾', () => {
+    expect(dateLine(ctx, -3, 99)).toBe('AAA p1 range 2024-01-01→2024-01-05')
   })
 })

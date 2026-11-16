@@ -49,6 +49,9 @@
     <!-- annotate:改起止停在样本日时,鼠标旁写它是哪个样本的成员框 -->
     <div v-if="resizeStop" class="resize-stop" data-testid="resize-stop"
          :style="{ left: `${resizeStop.x + 12}px`, top: `${resizeStop.y + 12}px` }">{{ resizeStop.text }}</div>
+    <!-- 主图上按住 Shift 拖一段(复制这一段):拖动中只画在主图上的竖带预览,松手即收 -->
+    <div v-if="copyBand" class="copy-range-band" data-testid="copy-range-band"
+         :style="{ left: `${copyBand.left}px`, width: `${copyBand.width}px`, height: `${copyBand.height}px` }" />
     <!-- compare 的 feedback 工具:拖动中贯穿主副图的竖带;拖出的范围里没有买点时,在松开处浮 2 秒 no buy in range -->
     <div v-if="rangeBand" class="feedback-range-band" data-testid="feedback-range-band"
          :style="{ left: `${rangeBand.left}px`, width: `${rangeBand.width}px` }" />
@@ -114,7 +117,7 @@ import { bandKeyOf, nodeOfEventByBand, resolveTooltipData, windowOf, formatForwa
 import { peakIdIndex } from '../render/peakState'
 import type { Bar } from '../types'
 import type { Lane } from '../annotate/model'
-import { handleAppClick, handleChartClick, handleShiftClick, MARKER_SERIES } from './KlineChart'
+import { handleAppClick, handleChartClick, handleShiftClick, markerIdOf, MARKER_SERIES } from './KlineChart'
 import WalkStatusBar from './WalkStatusBar.vue'
 import ResizableDivider from './ResizableDivider.vue'
 import CrosshairOverlay from './CrosshairOverlay.vue'
@@ -133,6 +136,7 @@ import {
 import { isFocus, userMarkDim, type Highlight } from '../render/selHighlight'
 import type { SelPath } from '../render/select'
 import { createAnnotateGestures } from './annotateGestures'
+import { createShiftCopyGesture } from './shiftCopyGesture'
 import { useRefLayerStore } from '../stores/refLayers'
 import { peaksSeries } from '../render/refLayers'
 import { useAppLinkStore } from '../stores/appLink'
@@ -280,10 +284,15 @@ function setRangeBand(r: { start: string; end: string } | null) {
   const dates = annDates.value
   const i0 = dates.indexOf(r.start), i1 = dates.indexOf(r.end)
   if (i0 < 0 || i1 < 0) { rangeBand.value = null; return }
-  const main = chartMain
+  rangeBand.value = mainBandPx(i0, i1)
+}
+/** 下标 i0…i1 的竖带左右(相对 kline-wrap 的像素):整根 K 线对齐主图的 x 轴,裁到图区内;画不出为 null */
+function mainBandPx(i0: number, i1: number): { left: number; width: number } | null {
+  const el = mainEl.value, main = chartMain
+  if (!el || !main) return null
   const px = rangeBandPx(i0, i1, (i) => Number(main.convertToPixel({ xAxisIndex: 0 }, i)),
                          MAIN_GRID_LEFT, el.clientWidth - MAIN_GRID_RIGHT)
-  rangeBand.value = px ? { left: px.left + mainCanvasOffsetX.value, width: px.width } : null
+  return px ? { left: px.left + mainCanvasOffsetX.value, width: px.width } : null
 }
 /** 这只股票、[start, end] 里有没有 app 的买点日(compare 且有现算结果时才算) */
 function hasBuyIn(start: string, end: string): boolean {
@@ -523,15 +532,18 @@ function clearBrushAreas() {
 // ── 入口 D(Task 18):marker shift+click 跨图累积 → scope=pair 查询 ───────────
 // MARKER_SERIES 上落 shift 时不进 handleChartClick 的四分支 candidate 流,转给
 // view.shiftSelectedEvents 累积器(KlineChart.ts::handleShiftClick)。返回 true = 已消费。
+// 主图上的 Shift+点记号不走这里:按住 Shift 的按下被 shiftCopy 截下(复制一天、一段),记号上的点由它转给 pairPick。
 function handleMaybeShiftClick(p: any, source: 'main' | 'sub'): boolean {
   const native = p?.event?.event as MouseEvent | undefined
-  if (!native?.shiftKey || !p?.seriesName || !MARKER_SERIES.includes(p.seriesName) || !p.data?.instance_id) {
-    return false
-  }
-  const instanceId = p.data.instance_id as string
+  const instanceId = markerIdOf(p)
+  if (!native?.shiftKey || !instanceId) return false
+  pairPick(instanceId, source)
+  return true
+}
+/** Shift+点一个 event 记号:交给跨图配对的累积器(KlineChart.ts 的 handleShiftClick);source 是点在主图还是副图 */
+function pairPick(instanceId: string, source: 'main' | 'sub'): void {
   const nodeId = effectiveAnalysis.value?.events.find((e) => e.instance_id === instanceId)?.node_id ?? 'unknown'
   handleShiftClick(instanceId, nodeId, source, view)
-  return true
 }
 
 // ── Task 23:主图右键复制 driver 脚本(V1 D0)──────────────────────────
@@ -1277,8 +1289,34 @@ const annGestures = createAnnotateGestures({
   },
 })
 
-// 换股票、换模式时熄灭工具:亮着的工具只对眼前这张图用一次
-watch([symbol, mode], () => { ann.tool = null })
+// ── 主图上按住 Shift 复制一天、一段(四档,spec 1.14;见 ./shiftCopyGesture)────────────
+/** 主图上鼠标停着的 event 记号(instance_id),跟图表的 mouseover / mouseout */
+let hoverMarker: string | null = null
+/** 按住 Shift 拖一段时的竖带预览(相对 kline-wrap 的像素,只盖主图) */
+const copyBand = ref<{ left: number; width: number; height: number } | null>(null)
+const shiftCopy = createShiftCopyGesture({
+  main: () => chartMain, mainEl: () => mainEl.value,
+  count: () => bars.value.length,
+  plot: () => ({ left: MAIN_GRID_LEFT, right: (mainEl.value?.clientWidth ?? 0) - MAIN_GRID_RIGHT }),
+  // K 线区与成交量带;annotate 下样本三角伸出 K 线区的部分也算(同画框手势)
+  onChart: (x, y) => !!chartMain && (chartMain.containPixel({ gridIndex: 0 }, [x, y])
+    || chartMain.containPixel({ gridIndex: 1 }, [x, y]) || (annotating.value && sampleAtMain(x, y) !== null)),
+  markerAt: () => hoverMarker,
+  pick: (instanceId) => pairPick(instanceId, 'main'),
+  setPreview: (span) => {
+    const el = mainEl.value, main = chartMain
+    const px = span ? mainBandPx(span[0], span[1]) : null
+    if (!px || !el || !main) { copyBand.value = null; return }
+    // 竖带盖到成交量带底边为止(下面的日期刻度与滑块不盖)
+    const vol = (main.getOption() as any).grid?.[1]
+    const height = vol ? Number(vol.top) + Number(vol.height) : el.clientHeight
+    copyBand.value = { ...px, height }
+  },
+  copy: (i0, i1) => { copyRef.copyDates(i0, i1) },
+})
+
+// 换股票、换模式时熄灭工具:亮着的工具只对眼前这张图用一次;停着的记号也作废(图换了,鼠标没动也不再算停在它上面)
+watch([symbol, mode], () => { ann.tool = null; hoverMarker = null })
 
 // 副图竖直缩放控件的落点:顶栏里的 #band-zoom-slot(ChartArea,annotate 以外的模式才有)。
 // 每次换模式等 DOM 更新完再找;找不到(单独挂载本组件时)就不画控件。
@@ -1395,7 +1433,8 @@ onMounted(() => {
 
   // dev-only e2e hook
   if ((import.meta as any).env?.DEV) {
-    ;(window as any).__e2e = { view, ann: () => ann, fb: () => fb, copyRef: () => copyRef, chartMain: () => chartMain, chartSub: () => chartSub }
+    ;(window as any).__e2e = { view, ann: () => ann, fb: () => fb, copyRef: () => copyRef, chartMain: () => chartMain, chartSub: () => chartSub,
+                               hoverMarker: () => hoverMarker }
   }
 
   // Ctrl 切换(只作用于主图,副图无价格轴)
@@ -1445,6 +1484,11 @@ onMounted(() => {
   }
   chartMain.on('updateAxisPointer', relay(chartSub))
   chartSub.on('updateAxisPointer', relay(chartMain))
+
+  // —— 主图上鼠标停着的 event 记号(Shift+点它照旧是配对查询,见 shiftCopy)
+  chartMain.on('mouseover', (p: any) => { hoverMarker = markerIdOf(p) })
+  chartMain.on('mouseout', () => { hoverMarker = null })
+  chartMain.getZr().on('globalout', () => { hoverMarker = null })
 
   // —— 出图外双向清对方 axisPointer(dispatchAction 幂等)
   chartMain.getZr().on('mouseout', () => {
@@ -1502,11 +1546,13 @@ onMounted(() => {
   })
 
   annGestures.attach()
+  shiftCopy.attach()
   void reloadBars().then(() => render(true))
 })
 
 onBeforeUnmount(() => {
   annGestures.detach()
+  shiftCopy.detach()
   window.removeEventListener('keydown', onKeyDown)
   document.removeEventListener('click', handleDocumentClick)
   subOuterEl.value?.removeEventListener('wheel', subWheelCapture, { capture: true })
@@ -1604,7 +1650,7 @@ watch(() => [compareReady.value, effectiveAnalysis.value, view.barDates] as cons
 })
 watch(shownPeaks, () => renderRefLayers())
 // 换图:拖到一半的手势作废,选中的框或样本(在原来那张图上)清掉,当前样本也清掉(冻结)
-watch(symbol, () => { annGestures.cancel(); ann.clearSelection() })
+watch(symbol, () => { annGestures.cancel(); shiftCopy.cancel(); hoverMarker = null; ann.clearSelection() })
 
 // subHeightOffset / subCanvasH 变化 → chart.resize()(RO 会自动触发,这里手动兜底)
 watch([subHeightOffset, subCanvasH], () => {
@@ -1627,6 +1673,12 @@ watch(activeDetailCard, (v, prev) => {
   position: fixed; z-index: 70; pointer-events: none; padding: 1px 6px;
   font-family: var(--mono); font-size: 12px; color: var(--ink);
   background: #fff; border: 1px solid var(--ink); border-radius: 3px;
+}
+/* 按住 Shift 拖一段的预览:中蓝(冷色,和红绿 K 线、浅底都拉得开),只盖主图 */
+.copy-range-band {
+  position: absolute; top: 0; z-index: 6; pointer-events: none;
+  background: rgba(26, 128, 186, 0.16); border-left: 1.5px dashed rgb(26, 128, 186);
+  border-right: 1.5px dashed rgb(26, 128, 186);
 }
 .feedback-range-band {
   position: absolute; top: 0; bottom: 0; z-index: 6; pointer-events: none;

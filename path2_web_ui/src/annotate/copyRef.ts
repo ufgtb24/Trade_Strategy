@@ -13,6 +13,9 @@
  *   SYM pattern sample DATE 字母 pos|neg hits ×m [sample id]          用户的样本
  *   SYM pattern box NODE START→END 特征名 hits ×m [box id]            用户的框
  *   SYM pattern day DATE                                              什么都没选中:当前日
+ *   SYM pattern day DATE / SYM pattern range START→END               主图上按住 Shift 点一根 / 拖一段(dateLine)
+ *
+ * 按住 Shift 点 / 拖复制的一天、一段不是选中的东西:不进显示栏、不改选中与当前日,松手直接复制(spec 1.14)。
  *
  * 图上选中了东西(compare / app 下,stores/view.ts 的 selInfo)时,那一行的后半段由 render/selSnapshot.ts 算好
  * (`copyTail`),这里只接上股票与 pattern;annotate 下没有 app 的东西,选中的框、样本照同一拼法在这里写。
@@ -59,6 +62,18 @@ export interface CopyContext {
 const UNSORTED = 'unsorted'
 const join = (...parts: (string | null | undefined | false)[]): string => parts.filter(Boolean).join(' ')
 const span = (a: string, b: string): string => (a === b ? a : `${a}→${b}`)
+
+/**
+ * 主图上按住 Shift 点 / 拖出的那一天、那一段 → 复制的那一行:首尾下标同一根是 `day 日期`,否则
+ * `range 起→止`(左小右大,从右往左拖一样);下标夹到 [0, 根数-1]。股票、pattern 的接法同其他行。
+ */
+export function dateLine(c: Pick<CopyContext, 'symbol' | 'pattern' | 'dates'>, i0: number, i1: number): string {
+  const last = c.dates.length - 1
+  const at = (i: number): string => c.dates[Math.max(0, Math.min(last, i))]
+  const [s, e] = i0 <= i1 ? [i0, i1] : [i1, i0]
+  const a = at(s), b = at(e)
+  return join(c.symbol, c.pattern, a === b ? `day ${a}` : `range ${a}→${b}`)
+}
 
 /** 那样东西 → 复制的那一行;对象已经不在(换了图、被删)时退成当前日那一行。 */
 export function copyLine(t: CopyTarget, c: CopyContext): string {
