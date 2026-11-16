@@ -7,7 +7,7 @@
 - `Params.from_yaml`/`load_params`:web 入口统一加载入口,逐 section 校验未知 key。
 
 设计:整个 pattern 只有一个有 detector 的 node `plateau`,它的 section 同时装
-PlateauDetector 的四个构造参数与 plateau where 的九个阈值(step / today 两个子结构 node
+PlateauDetector 的六个构造参数与 plateau where 的阈值(step / today 两个子结构 node
 的诊断层 where 与父 where 共用同一批阈值,不另设 section)。零边,edges 子 dataclass 留空作格式
 契约/未来扩展占位。
 """
@@ -23,25 +23,32 @@ DEFAULT_YAML_PATH = Path(__file__).parent / "params.yaml"
 
 @dataclass(frozen=True)
 class PlateauParams:
-    """PlateauDetector 构造参数(前四个) + plateau where 阈值(其余九个)。
+    """PlateauDetector 构造参数(前六个) + plateau where 阈值(其余)。
 
-    阈值待验证:初值从用户 10 个正样本量出、留余量。
+    阈值待验证:初值从用户正样本量出、留余量;由反馈推出的按用户原话的字面意思取。
     """
     # ---- PlateauDetector 构造参数 ----
     old_window: int = 15          # 旧平台根数,也是开段时回看波动的窗(待验证:初值从用户 10 个正样本量出、留余量)
     strong_k: float = 3.0         # 开段 / 并入阶跃的倍数(待验证:初值从用户 10 个正样本量出、留余量)
     max_step_bars: int = 5        # 一段阶跃最多几根(待验证:初值从用户 10 个正样本量出、留余量)
     max_days: int = 40            # 当天距阶跃末根最多几根(待验证:初值从用户 10 个正样本量出、留余量)
+    overhead_window: int = 60     # 前高压力:从当天往前看多少根找阶跃前的前高(约三个月,待验证)
+    calm_window: int = 10         # 波动小:只看新平台最后多少根(待验证)
     # ---- where 阈值 ----
     old_flat_max: float = 1.2     # 旧平台平:旧平台振幅 / 阶跃高度 上限(待验证:初值从用户 10 个正样本量出、留余量)
     step_rise_min: float = 0.4    # 大涨幅:阶跃累计涨幅下限(待验证:初值从用户 10 个正样本量出、留余量)
     vs_left_min: float = 4.0      # 阶跃比左侧强:阶跃最大单根涨幅 / 旧平台波动 下限(待验证:初值从用户 10 个正样本量出、留余量)
     vs_right_min: float = 2.5     # 阶跃比右侧强:阶跃最大单根涨幅 / 新平台波动 下限(待验证:初值从用户 10 个正样本量出、留余量)
     step_vol_min: float = 3.0     # 平台交界放量:阶跃最大成交量 / 旧平台平均量 下限(待验证:初值从用户 10 个正样本量出、留余量)
-    keep_min: float = 0.3         # 新平台守住:新平台最低收盘守住阶跃高度的几成 下限(待验证:初值从用户 10 个正样本量出、留余量)
-    calm_max: float = 0.6         # 波动小:新平台振幅 / 阶跃高度 上限(待验证:初值从用户 10 个正样本量出、留余量)
+    keep_min: float = 0.3         # 新平台守住:当天收盘守住阶跃高度的几成 下限(待验证:初值从用户 10 个正样本量出、留余量)
+    calm_max: float = 0.6         # 波动小:新平台最近一段振幅 / 阶跃高度 上限(待验证:初值从用户 10 个正样本量出、留余量)
     vs_high_max: float = 1.0      # 没追涨:当天收盘 / 阶跃以来最高价 上限(严格小于)(待验证:初值从用户 10 个正样本量出、留余量)
     body_min: float = 0.0         # 收阳:当天收盘 / 开盘 - 1 下限(严格大于)(待验证:初值从用户 10 个正样本量出、留余量)
+    overhead_max: float = 1.0     # 前高压力:阶跃前近期前高 / 当天收盘 上限(字面:前高不高过当天收盘,待验证)
+    shrink_max: float = 0.75      # 新平台缩量:新平台均量 / 阶跃均量 上限(正样本最大约 0.62 留余量,待验证)
+    settle_bars: int = 1          # 企稳:新平台最近一次创新低至少过去几根(当天创新低为 0;正样本 KULR 2024-04-01 只容得下 1,待验证)
+    big_rise: float = 3.0         # 涨幅过大:阶跃累计涨幅达到它算「特别猛」(涨到原来四倍,待验证)
+    big_wait: int = 5             # 涨幅过大:特别猛的阶跃之后至少站几天才买(days 下限,待验证)
 
 
 @dataclass(frozen=True)
@@ -59,12 +66,14 @@ class Params(ParamsBase):
     edges: EdgesParams = field(default_factory=EdgesParams)
 
     def plateau_kwargs(self) -> dict:
-        """PlateauDetector 构造参数(四个结构参数)。阈值走 where,不传给 detector。"""
+        """PlateauDetector 构造参数(四个切段参数 + 两个字段窗口)。阈值走 where,不传给 detector。"""
         return {
             'old_window': self.plateau.old_window,
             'strong_k': self.plateau.strong_k,
             'max_step_bars': self.plateau.max_step_bars,
             'max_days': self.plateau.max_days,
+            'overhead_window': self.plateau.overhead_window,
+            'calm_window': self.plateau.calm_window,
         }
 
 

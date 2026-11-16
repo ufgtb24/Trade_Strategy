@@ -107,12 +107,12 @@
 - **检测什么**：一句话定位——new_step 专用：从 K 线直接找「旧平台 → 一两根大阳线的阶跃 → 新平台」，在新平台上每天产一个截到当天的复合事件（四个单事件槽 old / step / new / today），买点是它的 today 段；只切段、算字段，够不够格全交 where。诊断契约：`diagnose-event/detectors/plateau.md`
 - **静默不产的情形**（失效边界）：
   1. 数据开头不足 L+1 根（L = old_window）不产；
-  2. 旧平台收盘几乎不动（|r| 中位数为 0，低流动性股常见）不开段；回看窗里有坏根（价格非正 / NaN、量 NaN / 负）的那根不开段；
+  2. 旧平台收盘一根都没动过（|r| 中位数、平均数都为 0）不开段（中位数为 0 而平均数 > 0 时改取平均数照常开段）；回看窗里有坏根（价格非正 / NaN、量 NaN / 负）的那根不开段；
   3. 中间夹小阳线、分几天爬上去的阶跃被切成几级，每级各带自己的旧平台——后一级的旧平台把前一级算进去、前一级的新平台又含后一级，常常哪一级都过不了 where；阶跃根数超过 `max_step_bars` 被截断时同理；
   4. 旧平台窗里含更早一级小阶跃时 `old_flat_ratio` 偏大（旧平台固定取 L 根、不往回找起点）；
   5. 旧平台成交量全 0 时 `vol_ratio` 为 None，平台交界放量判不成立；
-  6. 阶跃后第一天永远不产（新平台至少 1 根）；收盘跌回旧平台价位即该族结束（不 emit gate，唯一 gate 是前缀收盘没高过旧平台的 `step_not_above_old`）。
-- **常见误配**：① 别拿它去做别的 pattern——旧平台固定取阶跃前 L 根、按旧平台波动的倍数开段、跌回旧平台价位收族、一天一个实例，这些形状偏见只属于 new_step；它是 app 内 detector、不在 `path2/atoms`，别的 app 要类似结构另写，要提成公共 atom 须重新设计；② 这里的旧平台 / 新平台不是 `PlatformDetector` 的平台段（后者是窄幅震荡的非重叠贪心扫窗），字段与口径都不通用；③ 构造参数只有四个（经 `Params.plateau_kwargs()` 传），九个 where 阈值只进 where，传给 detector 会 TypeError；④ 想调「多强才算阶跃」调 where 的 `vs_left_min` / `vs_right_min`，不是 `strong_k`——后者是开段机制值，调大只会让阶跃切级更碎；且开段条件保证 `vs_left` 恒 ≥ `strong_k`，`vs_left_min` 不大于它时左半条判据形同虚设；⑤ `eval_meta.end_node = 'plateau.today'`（node id + 槽名）；一天一个 hit，同一天被几个前缀 / 几次阶跃同时认出时有几个 hit，统计按日去重。
+  6. 阶跃后第一天永远不产（新平台至少 1 根）；族只在 max_days、窗口末、坏数据处结束，收盘跌回旧平台价位照产（keep_ratio ≤ 0 交 where）；唯一 gate 是前缀收盘没高过旧平台的 `step_not_above_old`。
+- **常见误配**：① 别拿它去做别的 pattern——旧平台固定取阶跃前 L 根、按旧平台波动的倍数开段、一天一个实例，这些形状偏见只属于 new_step；它是 app 内 detector、不在 `path2/atoms`，别的 app 要类似结构另写，要提成公共 atom 须重新设计；② 这里的旧平台 / 新平台不是 `PlatformDetector` 的平台段（后者是窄幅震荡的非重叠贪心扫窗），字段与口径都不通用；③ 构造参数六个（四个切段参数 + overhead_window / calm_window 两个字段窗口，经 `Params.plateau_kwargs()` 传），where 阈值只进 where，传给 detector 会 TypeError；⑥ `low_age` 为 None 表示新平台没创过新低，where 要写成 `W.not_(W.attr("low_age", "<", n))` 才让它判满足；④ 想调「多强才算阶跃」调 where 的 `vs_left_min` / `vs_right_min`，不是 `strong_k`——后者是开段机制值，调大只会让阶跃切级更碎；且开段条件保证 `vs_left` 恒 ≥ `strong_k`，`vs_left_min` 不大于它时左半条判据形同虚设；⑤ `eval_meta.end_node = 'plateau.today'`（node id + 槽名）；一天一个 hit，同一天被几个前缀 / 几次阶跃同时认出时有几个 hit，统计按日去重。
 
 ## §2 事件类编写规范
 

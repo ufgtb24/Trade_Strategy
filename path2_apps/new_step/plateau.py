@@ -39,7 +39,8 @@ class OldPlatform(Event):
     输出字段：
     - level:    本段收盘价中位数（「旧平台的价位」，height / keep_ratio / 跌回判据都以它为基准）
     - range:    ln(本段最高收盘 / 本段最低收盘)
-    - sigma:    median(|r|) over 本段，r_i = ln(close_i / close_{i-1})；与开段时的 σ_s 同窗同值
+    - sigma:    波动 over 本段 |r|，r_i = ln(close_i / close_{i-1})：取中位数，中位数为 0 时（价格卡在
+                固定档位、过半根收盘一分不动）改取平均数；与开段时的 σ_s 同窗同口径同值，恒 > 0
     - vol_mean: 本段平均成交量（Step.vol_ratio 的分母）
     """
     level: float
@@ -61,12 +62,14 @@ class Step(Event):
     - vs_left:   max_ret / old.sigma（阶跃比左侧旧平台强多少倍；old.sigma 恒 > 0）
     - vol_ratio: 段内最大成交量 / old.vol_mean；旧平台平均成交量 ≤ 0（如全 0）时为 None，
                  where 遇 None 判不满足，即「平台交界放量」不成立
+    - vol_mean:  段内平均成交量（段内的根量都是好的，开段 / 并入时已查）
     """
     bars: int
     rise: float
     max_ret: float
     vs_left: float
     vol_ratio: Optional[float]
+    vol_mean: float
 
 
 @dataclass(frozen=True)
@@ -76,15 +79,21 @@ class NewPlatform(Event):
     confirm_idx = end_idx = t-1。逐 (前缀, t) 新造，同一前缀的各天互相嵌套。
 
     输出字段：
-    - bars:  本段根数 t - 1 - e
-    - low:   本段最低收盘
-    - range: ln(本段最高收盘 / 本段最低收盘)；只有 1 根时为 0
-    - sigma: median(|r|) over 本段（含 r_{e+1}，即阶跃末根到新平台首根那一跳）
+    - bars:         本段根数 t - 1 - e
+    - low:          本段最低收盘
+    - range:        ln(本段最高收盘 / 本段最低收盘)；只有 1 根时为 0（从新平台第一天累计，只作诊断）
+    - recent_range: ln(最高收盘 / 最低收盘) over 本段最后 min(calm_window, bars) 根（「波动小」读它，
+                    只看最近一段，早期晃过一次之后站稳了还能过）
+    - sigma:        波动 over 本段 |r|（含 r_{e+1}，即阶跃末根到新平台首根那一跳）；口径同旧平台：
+                    中位数，中位数为 0 时改取平均数
+    - vol_mean:     本段量好的根的平均成交量；一根量好的都没有时为 None
     """
     bars: int
     low: float
     range: float
+    recent_range: float
     sigma: float
+    vol_mean: Optional[float]
 
 
 @dataclass(frozen=True)
@@ -115,10 +124,20 @@ class PlateauEvent(Event):
     - vs_right:       step.max_ret / new.sigma（阶跃比右侧新平台强多少倍）；new.sigma = 0 时
                       为 None，where 遇 None 判不满足，即「阶跃比右侧强」不成立（不用 inf：
                       JSON 序列化不了）
-    - calm_ratio:     new.range / height（新平台振幅相对阶跃高度）
-    - keep_ratio:     ln(min close over [e+1, t] / old.level) / height（新平台连同当天的最低
-                      收盘守住了阶跃高度的几成；1 = 一点没吐，0 = 吐回旧平台价位）
+    - calm_ratio:     new.recent_range / height（新平台最近一段的振幅相对阶跃高度）
+    - keep_ratio:     ln(close_t / old.level) / height（当天收盘守住了阶跃高度的几成；1 = 一点没吐，
+                      0 = 回到旧平台价位，< 0 = 跌破旧平台价位）。只读当天，吐回去之后再站回来还能过
     - vs_high:        close_t / max high over [s, t-1]（当天收盘相对阶跃以来最高价；< 1 即没追涨）
+    - overhead:       阶跃之前的前高 / close_t：前高 = max high over [lo, s-1] 中价格好的根，
+                      lo = min(max(0, t - overhead_window), s-1)（窗口随当天往后挪，前高过了
+                      overhead_window 根就移出去；窗口至少含 s-1）。> 1 即当天收盘上方压着近期前高。
+                      新平台自己的高点不算：新平台冲过阶跃顶再回落是台阶式上行里的常态（正样本
+                      QBTS 2024-11、KULR 2024-12 都是），算进来会把它们一起挡掉
+    - vol_shrink:     new.vol_mean / step.vol_mean（新平台平均量相对阶跃平均量）；任一为 None
+                      或阶跃平均量 ≤ 0 时为 None（where 判不满足）
+    - low_age:        距新平台最近一次「创新低」的根数 t - j：j 取 [e+2, t] 里收盘严格低于
+                      [e+1, j-1] 全部收盘的最后一根（新平台第一天本身不算创新低；含当天，当天
+                      创新低时为 0）；新平台从没创过新低时为 None
 
     子段槽（child_slots 无条件返回四槽，槽值是单事件、永不为 None；字段名与槽名同名）：
     - old:   OldPlatform（node old_plat）
@@ -133,6 +152,9 @@ class PlateauEvent(Event):
     calm_ratio: float
     keep_ratio: float
     vs_high: float
+    overhead: float
+    vol_shrink: Optional[float]
+    low_age: Optional[int]
     old: OldPlatform
     step: Step
     new: NewPlatform
@@ -153,6 +175,13 @@ class PlateauEvent(Event):
         raise KeyError(name)
 
 
+def _sigma(abs_r: np.ndarray) -> float:
+    """一段 |r| 的波动:中位数;中位数为 0(价格卡在固定档位、过半根收盘一分不动)时改取平均数。
+    开段的 σ_i、OldPlatform.sigma、NewPlatform.sigma 共用这一个算法。"""
+    m = float(np.median(abs_r))
+    return m if m != 0 else float(np.mean(abs_r))
+
+
 class PlateauDetector:
     """new_step 专用——从 K 线直接找「旧平台 → 一两根大阳线的阶跃 → 新平台」，在新平台上
     每天产一个截到当天的复合事件，买点是它的 today 段。
@@ -162,7 +191,8 @@ class PlateauDetector:
     `path2_apps/new_step/dag_spec.py` 的 where。
 
     记 r_i = ln(close_i / close_{i-1})，L = old_window。核心判据：
-      1. 阶跃：i 从 L+1 起逐根扫。i 不在阶跃里时算 σ_i = median(|r|) over [i-L, i-1]；
+      1. 阶跃：i 从 L+1 起逐根扫。i 不在阶跃里时算 σ_i = median(|r|) over [i-L, i-1]，
+         中位数为 0（价格卡在固定档位、过半根收盘不动）时改取 mean(|r|) over 同一窗；
          σ_i > 0 且 r_i ≥ strong_k·σ_i 即开段，起点 s、记 σ_s。之后的根 r ≥ strong_k·σ_s
          且段长 < max_step_bars 就并入；第一根不满足即收段，段尾 e'。扫描从 e'+1 继续
          （e'+1 不并入本段，但可以开下一段）。
@@ -170,10 +200,10 @@ class PlateauDetector:
       3. 旧平台 = 固定 [s-L, s-1]（不往回找起点）。
       4. 每个前缀：height = ln(close_e / old.level)；height ≤ 0 时 emit gate
          `step_not_above_old` 并跳过这个前缀。否则当天 t 从 e+2 到 min(e+max_days, n-1)：
-         先判 close_t ≤ old.level 则这一族结束（不产 t 及以后）；否则产一个实例：
-         新平台 = [e+1, t-1]，当天 = [t, t]，plateau 跨度 [s-L, t]。阶跃后第一天（e+1）
-         不产（新平台至少 1 根）。当天 t 自己是大阳线（甚至开了下一段阶跃）也照样是这个
-         前缀的新平台上的一天。
+         每天产一个实例：新平台 = [e+1, t-1]，当天 = [t, t]，plateau 跨度 [s-L, t]。阶跃后
+         第一天（e+1）不产（新平台至少 1 根）。当天 t 自己是大阳线（甚至开了下一段阶跃）也照样
+         是这个前缀的新平台上的一天；收盘跌回旧平台价位也照样产（keep_ratio ≤ 0，由 where 判，
+         之后站回来的日子照样能过）。
       5. 对象共用：同一 s 的 OldPlatform、同一前缀的 Step、同一根 K 线的 Today 各只造
          一个对象，跨实例共用（引擎按对象只标注一次，带子不随天数叠层）；NewPlatform 与
          PlateauEvent 逐 (前缀, t) 新造。
@@ -183,42 +213,53 @@ class PlateauDetector:
          - 开段时回看窗 [i-L-1, i] 价格须全好、[i-L, i] 量须全好，否则这根不开段；
          - 并入的根价格、量都须好，否则收段；
          - e+1 价格坏则该前缀不产；当天 t 价格坏则这一族到此为止（之后的实例都要读它）。
-         新平台与当天的成交量不参与任何字段，量坏不影响它们。
+         新平台的量只进 vol_mean（跳过量坏的根）；当天的量不参与任何字段。
+         overhead 的前高只取价格好的根（窗口恒含 s-1，开段时已查它是好的）。
 
     输出字段（height 统一为 ln(close_e / old.level)；逐项口径见各事件类 docstring）：
 
       类（node）             跨度 / confirm     字段
       OldPlatform(old_plat)  [s-L, s-1] / end   level 收盘中位数；range = ln(最高收盘/最低收盘)；
-                                                sigma = median(|r|)；vol_mean 平均成交量
+                                                sigma = median(|r|)（为 0 时取 mean）；vol_mean 平均成交量
       Step(step)             [s, e] / end       bars；rise = close_e/close_{s-1} − 1；max_ret 段内最大 r；
                                                 vs_left = max_ret / old.sigma；
-                                                vol_ratio = 段内最大成交量 / old.vol_mean（≤0 时 None）
+                                                vol_ratio = 段内最大成交量 / old.vol_mean（≤0 时 None）；
+                                                vol_mean 段内平均成交量
       NewPlatform(new_plat)  [e+1, t-1] / end   bars；low 最低收盘；range = ln(最高收盘/最低收盘)；
-                                                sigma = median(|r|)
+                                                recent_range = 最后 calm_window 根的 ln(最高收盘/最低收盘)；
+                                                sigma = median(|r|)（为 0 时取 mean）；vol_mean（无好量时 None）
       Today(today，点事件)   [t, t] / start     body = close_t/open_t − 1
       PlateauEvent(plateau)  [s-L, t] / end     days = t − e；height；old_flat_ratio = old.range / height；
                                                 vs_right = step.max_ret / new.sigma（new.sigma = 0 时 None）；
-                                                calm_ratio = new.range / height；
-                                                keep_ratio = ln(min close over [e+1, t] / old.level) / height；
-                                                vs_high = close_t / max high over [s, t-1]
+                                                calm_ratio = new.recent_range / height；
+                                                keep_ratio = ln(close_t / old.level) / height；
+                                                vs_high = close_t / max high over [s, t-1]；
+                                                overhead = 阶跃前前高 / close_t（窗口 overhead_window）；
+                                                vol_shrink = new.vol_mean / step.vol_mean；
+                                                low_age = 距新平台最近一次严格创新低的根数（没创过为 None）
 
-    None 的语义：Step.vol_ratio、PlateauEvent.vs_right 为 None 时 where 判不满足（不用 inf，
-    JSON 序列化不了）。
+    None 的语义：Step.vol_ratio、PlateauEvent.vs_right、vol_shrink 为 None 时 where 判不满足（不用
+    inf，JSON 序列化不了）；low_age 为 None 表示「新平台没创过新低」，where 要用 W.not_(低于门槛)
+    才能让它判满足。
 
     on_gate（attempt = 每个阶跃前缀）：唯一 gate `step_not_above_old`——前缀收盘没高过
-    旧平台价位（height ≤ 0）。族尾（跌回旧平台、到 max_days、坏数据截断）是正常结束，不 emit。
+    旧平台价位（height ≤ 0）。族尾（到 max_days、坏数据截断）是正常结束，不 emit。
 
     失效边界：
     - 数据开头不足 L+1 根不产（最早的阶跃起点是第 L+1 根）。
     - 旧平台成交量全 0 时 vol_ratio 为 None，平台交界放量判不成立。
+    - 旧平台 |r| 全为 0（收盘一根都没动过）时 σ 中位数、平均数都是 0，不开段。
     - 中间夹小阳线、分几天爬上去的阶跃会被切成几级（每级各自一段、各自一个旧平台）。
     - 旧平台窗里含更早一级小阶跃时 old_flat_ratio 偏大。
 
-    构造参数（全部结构型，除 max_days 为过滤型）：
-    - old_window:    L，旧平台根数，也是 σ_i 的回看窗
-    - strong_k:      开段 / 并入的倍数（取机制值，强度交给 where）
-    - max_step_bars: 一段阶跃最多几根
-    - max_days:      当天距阶跃末根最多几根（t ≤ e + max_days）
+    构造参数（前三个结构型，max_days 过滤型，后两个是字段窗口：只改字段值、不改事件集，
+    改它要重扫但事件一个不差）：
+    - old_window:      L，旧平台根数，也是 σ_i 的回看窗
+    - strong_k:        开段 / 并入的倍数（取机制值，强度交给 where）
+    - max_step_bars:   一段阶跃最多几根
+    - max_days:        当天距阶跃末根最多几根（t ≤ e + max_days）
+    - overhead_window: overhead 的前高从当天往前看多少根（窗口截到阶跃前一根为止）
+    - calm_window:     recent_range 看新平台最后多少根
     """
     has_debug_hooks: ClassVar[bool] = False
     event_cls = PlateauEvent
@@ -230,15 +271,22 @@ class PlateauDetector:
     # 不参与切段、跌回判据与 gate,故成立。on_gate 诊断侧信道同样不受 max_days 影响。
     filter_params: ClassVar[dict[str, tuple[str, str]]] = {"max_days": ("days", "<=")}
 
-    def __init__(self, old_window: int, strong_k: float, max_step_bars: int, max_days: int):
+    def __init__(self, old_window: int, strong_k: float, max_step_bars: int, max_days: int,
+                 overhead_window: int, calm_window: int):
         if old_window < 1:
             raise ValueError(f"old_window 须 ≥ 1,得到 {old_window}")
         if max_step_bars < 1:
             raise ValueError(f"max_step_bars 须 ≥ 1,得到 {max_step_bars}")
+        if overhead_window < 1:
+            raise ValueError(f"overhead_window 须 ≥ 1,得到 {overhead_window}")
+        if calm_window < 1:
+            raise ValueError(f"calm_window 须 ≥ 1,得到 {calm_window}")
         self.old_window = old_window
         self.strong_k = strong_k
         self.max_step_bars = max_step_bars
         self.max_days = max_days
+        self.overhead_window = overhead_window
+        self.calm_window = calm_window
 
     def detect(self, df: pd.DataFrame) -> Iterator[PlateauEvent]:
         close = df["close"].to_numpy(dtype=float)
@@ -275,6 +323,8 @@ class PlateauDetector:
                 i += 1
                 continue
             sigma_s = float(win_med[i - L])
+            if sigma_s == 0:   # 价格卡档位:中位数为 0 时取同窗平均(与 OldPlatform.sigma 同一算法)
+                sigma_s = _sigma(abs_r[i - L:i])
             if not (sigma_s > 0 and r[i] >= k * sigma_s):
                 i += 1
                 continue
@@ -302,9 +352,11 @@ class PlateauDetector:
             start_idx=lo, end_idx=s - 1, confirm_idx=s - 1,
             level=float(np.median(oc)),
             range=float(np.log(oc.max() / oc.min())),
-            sigma=float(np.median(abs_r[lo:s])),
+            sigma=_sigma(abs_r[lo:s]),
             vol_mean=float(vol[lo:s].mean()),
         )
+        # overhead 的前高只取价格好的根(坏根记 -inf,不参与取最大)
+        high_ok = np.where(price_ok, high, -np.inf)
         for e in range(s, seg_end + 1):
             height = float(np.log(close[e] / old.level))
             if height <= 0:
@@ -335,25 +387,34 @@ class PlateauDetector:
                 max_ret=max_ret,
                 vs_left=max_ret / old.sigma,
                 vol_ratio=(vmax / old.vol_mean) if old.vol_mean > 0 else None,
+                vol_mean=float(vol[s:e + 1].mean()),
             )
             if e + 1 >= n or not price_ok[e + 1]:
                 continue
-            # 滚动量:新平台 [e+1, t-1] 的最低/最高收盘、[s, t-1] 的最高价;产完 t 再把 t 并进来
+            # 滚动量:新平台 [e+1, t-1] 的最低/最高收盘、[s, t-1] 的最高价、[e+2, t-1] 里最近一次
+            # 严格创新低的那根;产完 t 再把 t 并进来
             new_min = new_max = float(close[e + 1])
             high_max = float(high[s:e + 2].max())
+            last_low: Optional[int] = None
             for t in range(e + 2, min(e + self.max_days, n - 1) + 1):
                 if not price_ok[t]:
                     break   # 坏数据截断:之后的实例都要读这根
                 ct = float(close[t])
-                if ct <= old.level:
-                    break   # 整级台阶吐回旧平台价位,这一族到此为止
+                nc = close[e + 1:t]
+                recent = nc[-self.calm_window:]
+                nv = vol[e + 1:t]
+                nv = nv[np.isfinite(nv) & (nv >= 0)]
                 new = NewPlatform(
                     start_idx=e + 1, end_idx=t - 1, confirm_idx=t - 1,
                     bars=t - 1 - e,
                     low=new_min,
                     range=float(np.log(new_max / new_min)),
-                    sigma=float(np.median(abs_r[e + 1:t])),
+                    recent_range=float(np.log(recent.max() / recent.min())),
+                    sigma=_sigma(abs_r[e + 1:t]),
+                    vol_mean=float(nv.mean()) if nv.size else None,
                 )
+                low_at = t if ct < new_min else last_low
+                prior_high = float(high_ok[min(max(0, t - self.overhead_window), s - 1):s].max())
                 today = today_cache.get(t)
                 if today is None:
                     today = Today(start_idx=t, end_idx=t, confirm_idx=t,
@@ -365,11 +426,16 @@ class PlateauDetector:
                     height=height,
                     old_flat_ratio=old.range / height,
                     vs_right=(max_ret / new.sigma) if new.sigma > 0 else None,
-                    calm_ratio=new.range / height,
-                    keep_ratio=float(np.log(min(new_min, ct) / old.level)) / height,
+                    calm_ratio=new.recent_range / height,
+                    keep_ratio=float(np.log(ct / old.level)) / height,
                     vs_high=ct / high_max,
+                    overhead=prior_high / ct,
+                    vol_shrink=(new.vol_mean / step.vol_mean
+                                if new.vol_mean is not None and step.vol_mean > 0 else None),
+                    low_age=(t - low_at) if low_at is not None else None,
                     old=old, step=step, new=new, today=today,
                 ))
+                last_low = low_at
                 new_min = min(new_min, ct)
                 new_max = max(new_max, ct)
                 high_max = max(high_max, float(high[t]))

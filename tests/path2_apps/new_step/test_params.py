@@ -23,6 +23,8 @@ def test_default_plateau_defaults():
     assert pl.strong_k == 3.0
     assert pl.max_step_bars == 5
     assert pl.max_days == 40
+    assert pl.overhead_window == 60
+    assert pl.calm_window == 10
     # where 阈值
     assert pl.old_flat_max == 1.2
     assert pl.step_rise_min == 0.4
@@ -33,6 +35,11 @@ def test_default_plateau_defaults():
     assert pl.calm_max == 0.6
     assert pl.vs_high_max == 1.0
     assert pl.body_min == 0.0
+    assert pl.overhead_max == 1.0
+    assert pl.shrink_max == 0.75
+    assert pl.settle_bars == 1
+    assert pl.big_rise == 3.0
+    assert pl.big_wait == 5
 
 
 def test_params_frozen_top_and_nested():
@@ -47,7 +54,8 @@ def test_plateau_kwargs_match_detector_signature():
     """plateau_kwargs 与 PlateauDetector.__init__ 一一对应;阈值走 where,不进 detector。"""
     kw = Params.default().plateau_kwargs()
     sig = set(inspect.signature(PlateauDetector.__init__).parameters) - {"self"}
-    assert set(kw) == sig == {"old_window", "strong_k", "max_step_bars", "max_days"}
+    assert set(kw) == sig == {"old_window", "strong_k", "max_step_bars", "max_days",
+                              "overhead_window", "calm_window"}
     PlateauDetector(**kw)
 
 

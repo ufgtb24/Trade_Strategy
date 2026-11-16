@@ -1,9 +1,11 @@
 # path2_apps/new_step/dag_spec.py
-"""new_step dag 声明(第二版):旧平台 → 一两根放量大阳线的阶跃 → 站上新平台,新平台上逐日买。
+"""new_step dag 声明:旧平台 → 一两根放量大阳线的阶跃 → 站上新平台,新平台上逐日买。
 
 pattern 的意思(取自标注里 new_step 的定义与样本):像跃迁函数——一根或几根大幅上涨、放量的强势 K 线,
-比左右两侧的波动都高,把股价从旧平台抬到一个更高的新平台;右侧企稳后站上新平台。买入理由:没追涨、
-波动小、守在新平台最低点之上、收阳线。
+比左右两侧的波动都高,把股价从旧平台抬到一个更高的新平台;右侧企稳后站上新平台,新平台相对阶跃
+明显缩量。买入理由:没追涨、波动小、守住新平台、收阳线、企稳。除「旧平台平 / 大涨幅 / 比两侧强 /
+平台交界放量」四条形态条件(读已定型的段,决定这一次算不算)外,其余都只读当天或最近一段,
+不满足的日子不买、之后满足了同一次阶跃照样买(setback)。
 
 拓扑:
   节点: plateau(唯一有 detector 的 node:PlateauDetector,只吃 K 线;复合事件,一天一个实例)
@@ -23,11 +25,18 @@ pattern 的意思(取自标注里 new_step 的定义与样本):像跃迁函数�
   阶跃比两侧(左右)的波动都强             -> where step_strong: step.vs_left >= vs_left_min
                                                               且 plateau.vs_right >= vs_right_min
   平台交界放量                           -> where step_vol   : step.vol_ratio >= step_vol_min
-  守在新平台最低点之上(新平台守住)       -> where new_hold   : plateau.keep_ratio >= keep_min
-  波动小                                 -> where new_calm   : plateau.calm_ratio <= calm_max
+  新平台守住(当天收盘没吐回阶跃的大半;   -> where new_hold   : plateau.keep_ratio >= keep_min
+    跌回旧平台价位也在此判,站回来照样买)
+  波动小(只看新平台最近一段)             -> where new_calm   : plateau.calm_ratio <= calm_max
   没追涨(当天收盘在阶跃以来最高价之下)   -> where no_chase   : plateau.vs_high < vs_high_max
   收阳线                                 -> where bull_close : today.body > body_min
-  站上新平台(收盘没跌回旧平台价位)       -> PlateauDetector 族尾:收盘 <= 旧平台价位即这一族结束
+  近期没有冲高回落(上方没有阶跃前三个月   -> where no_overhead: plateau.overhead <= overhead_max
+    内的前高压着;越过前高或前高过了窗口
+    照样买)
+  新平台相对阶跃明显缩量                 -> where new_shrink : plateau.vol_shrink <= shrink_max
+  企稳(新平台最近几天没再创新低)         -> where settled    : not (plateau.low_age < settle_bars)
+                                                              (low_age 为 None = 没创过新低,判满足)
+  阶跃涨幅过大的,先在新平台站稳几天       -> where big_wait   : step.rise < big_rise 或 days >= big_wait
 
 where 全挂在 plateau(决定能否命中);子结构 node step / today 另挂诊断层 where(只影响带子档位显示,
 不进求解),与父 where 共用同一谓词对象:step 挂 step_big / vs_left(step_strong 的左侧那半)/ step_vol,
@@ -68,6 +77,11 @@ def build_pattern(params: Params) -> PatternSpec:
                      ("new_calm",    W.attr("calm_ratio", "<=", p.calm_max)),
                      ("no_chase",    W.attr("vs_high", "<", p.vs_high_max)),
                      ("bull_close",  W.child("today", body_ok)),
+                     ("no_overhead", W.attr("overhead", "<=", p.overhead_max)),
+                     ("new_shrink",  W.attr("vol_shrink", "<=", p.shrink_max)),
+                     ("settled",     W.not_(W.attr("low_age", "<", p.settle_bars))),
+                     ("big_wait",    W.any(W.child("step", W.attr("rise", "<", p.big_rise)),
+                                           W.attr("days", ">=", p.big_wait))),
                  ),
                  children={"old": "old_plat", "step": "step", "new": "new_plat", "today": "today"}),
         NodeSpec("old_plat", event_cls=OldPlatform),
@@ -85,11 +99,14 @@ analyze, has_hit, PATTERN_DAG = make_app(default_params=Params.default, build_pa
 
 def eval_meta(params: Optional[Params] = None) -> dict:
     """评估元数据(path2_web 协议):买点 = plateau 容器 today 槽的当天;
-    首部缓冲 = 实例当天 t 最远回看的根数:plateau 跨度起点 s - L(L = old_window),开段时
-    还要读 r_{s-L} 即 close_{s-L-1};t ≤ e + max_days、e ≤ s + max_step_bars - 1,故从 s-L-1
-    到 t 含两端最多 max_days + max_step_bars + old_window + 1 根。"""
+    首部缓冲 = 实例当天 t 最远回看的根数,取两者较大:
+    - plateau 跨度起点 s - L(L = old_window),开段时还要读 r_{s-L} 即 close_{s-L-1};
+      t ≤ e + max_days、e ≤ s + max_step_bars - 1,故从 s-L-1 到 t 含两端最多
+      max_days + max_step_bars + old_window + 1 根;
+    - overhead 的前高从 t - overhead_window 起看,到 t 含两端 overhead_window + 1 根。"""
     p = (params or Params.default()).plateau
     return {
         "end_node": "plateau.today",
-        "head_buffer_trading_days": p.max_days + p.max_step_bars + p.old_window + 1,
+        "head_buffer_trading_days": max(p.max_days + p.max_step_bars + p.old_window + 1,
+                                        p.overhead_window + 1),
     }

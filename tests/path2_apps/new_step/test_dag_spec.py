@@ -8,7 +8,8 @@ from path2_apps.new_step.plateau import (
 from path2_web import mapping as mapping_mod
 
 PARENT_WHERE = ["old_flat", "step_big", "step_strong", "step_vol",
-                "new_hold", "new_calm", "no_chase", "bull_close"]
+                "new_hold", "new_calm", "no_chase", "bull_close",
+                "no_overhead", "new_shrink", "settled", "big_wait"]
 
 
 def _by():
@@ -36,12 +37,15 @@ def test_nodes_and_children():
 
 
 def test_detector_built_from_params():
-    """PlateauDetector 的四个构造参数取自 plateau section。"""
+    """PlateauDetector 的六个构造参数取自 plateau section。"""
     p = Params.default()
     det = _by()["plateau"].detector
-    assert (det.old_window, det.strong_k, det.max_step_bars, det.max_days) == (
-        p.plateau.old_window, p.plateau.strong_k, p.plateau.max_step_bars, p.plateau.max_days)
-    assert p.plateau_kwargs() == {"old_window": 15, "strong_k": 3.0, "max_step_bars": 5, "max_days": 40}
+    assert (det.old_window, det.strong_k, det.max_step_bars, det.max_days,
+            det.overhead_window, det.calm_window) == (
+        p.plateau.old_window, p.plateau.strong_k, p.plateau.max_step_bars, p.plateau.max_days,
+        p.plateau.overhead_window, p.plateau.calm_window)
+    assert p.plateau_kwargs() == {"old_window": 15, "strong_k": 3.0, "max_step_bars": 5, "max_days": 40,
+                                  "overhead_window": 60, "calm_window": 10}
 
 
 def test_zero_edges():
@@ -54,7 +58,7 @@ def test_zero_edges():
 
 
 def test_parent_where_names_and_thresholds():
-    """plateau 挂八条 where(clause 名 = 用户词的英文标识),阈值取自 params。"""
+    """plateau 挂十二条 where(clause 名 = 用户词的英文标识),阈值取自 params。"""
     p = Params.default().plateau
     where = _by()["plateau"].where
     assert [cid for cid, _ in where] == PARENT_WHERE
@@ -73,6 +77,12 @@ def test_parent_where_names_and_thresholds():
     assert (w["no_chase"].meta["field"], w["no_chase"].meta["op"]) == ("vs_high", "<")
     assert w["bull_close"].meta["key"] == "today"
     assert (w["bull_close"].meta["inner"]["field"], w["bull_close"].meta["inner"]["op"]) == ("body", ">")
+    assert w["no_overhead"].meta == {"kind": "attr", "field": "overhead", "op": "<=",
+                                     "threshold": p.overhead_max}
+    assert w["new_shrink"].meta == {"kind": "attr", "field": "vol_shrink", "op": "<=",
+                                    "threshold": p.shrink_max}
+    assert w["settled"].meta["kind"] == "not"
+    assert w["big_wait"].meta["kind"] == "or"
 
 
 def test_substructure_where_shares_predicates_with_parent():
@@ -122,4 +132,4 @@ def test_mapping_has_no_problem():
     [m] = mapping_mod.read_mappings(_Registry({"new_step": dag_spec}))
     assert m["problem"] is None
     assert m["pattern"] == "new_step"
-    assert m["features"] == {"w-pc-11": "plateau"}
+    assert m["features"] == {"w-pc-11": "plateau", "w-pc-26": "step"}

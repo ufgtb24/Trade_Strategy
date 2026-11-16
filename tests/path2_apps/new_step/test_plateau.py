@@ -17,7 +17,10 @@ from path2_apps.new_step.plateau import (
 )
 
 L = 15
-KW = dict(old_window=L, strong_k=3.0, max_step_bars=5, max_days=40)
+OVERHEAD_W = 60
+CALM_W = 10
+KW = dict(old_window=L, strong_k=3.0, max_step_bars=5, max_days=40,
+          overhead_window=OVERHEAD_W, calm_window=CALM_W)
 
 
 def make_df(closes, highs=None, lows=None, opens=None, vols=None):
@@ -67,32 +70,60 @@ def key(ev):
     return (ev.step.start_idx, ev.step.end_idx, ev.today.start_idx)
 
 
+def ref_sigma(xs):
+    """波动:中位数,为 0 时取平均数。"""
+    xs = list(xs)
+    m = statistics.median(xs)
+    return m if m != 0 else sum(xs) / len(xs)
+
+
+def ref_low_age(c, e, t):
+    """距 [e+2, t] 里最近一次严格创新低(低于 [e+1, j-1] 全部收盘)的根数;没有为 None。"""
+    last = None
+    for j in range(e + 2, t + 1):
+        if c[j] < min(c[e + 1:j]):
+            last = j
+    return None if last is None else t - last
+
+
 def ref_fields(bars, s, e, t):
     """按计划字段定义独立重算一个实例的全部字段。"""
     c, o, h, v = bars["closes"], bars["opens"], bars["highs"], bars["vols"]
     r = lambda j: math.log(c[j] / c[j - 1])
     old_c = c[s - L:s]
     level = statistics.median(old_c)
-    old_sigma = statistics.median(abs(r(j)) for j in range(s - L, s))
+    old_sigma = ref_sigma(abs(r(j)) for j in range(s - L, s))
     vol_mean = sum(v[s - L:s]) / L
     height = math.log(c[e] / level)
     max_ret = max(r(j) for j in range(s, e + 1))
     new_c = c[e + 1:t]
-    new_sigma = statistics.median(abs(r(j)) for j in range(e + 1, t))
+    new_sigma = ref_sigma(abs(r(j)) for j in range(e + 1, t))
     new_range = math.log(max(new_c) / min(new_c))
+    recent = new_c[-CALM_W:]
+    recent_range = math.log(max(recent) / min(recent))
+    new_vols = [x for x in v[e + 1:t] if math.isfinite(x) and x >= 0]
+    new_vol_mean = sum(new_vols) / len(new_vols) if new_vols else None
+    step_vol_mean = sum(v[s:e + 1]) / (e - s + 1)
     old_range = math.log(max(old_c) / min(old_c))
+    lo = min(max(0, t - OVERHEAD_W), s - 1)
     return {
         "old": dict(level=level, range=old_range, sigma=old_sigma, vol_mean=vol_mean),
         "step": dict(bars=e - s + 1, rise=c[e] / c[s - 1] - 1, max_ret=max_ret,
                      vs_left=max_ret / old_sigma,
-                     vol_ratio=max(v[s:e + 1]) / vol_mean if vol_mean > 0 else None),
-        "new": dict(bars=t - 1 - e, low=min(new_c), range=new_range, sigma=new_sigma),
+                     vol_ratio=max(v[s:e + 1]) / vol_mean if vol_mean > 0 else None,
+                     vol_mean=step_vol_mean),
+        "new": dict(bars=t - 1 - e, low=min(new_c), range=new_range, recent_range=recent_range,
+                    sigma=new_sigma, vol_mean=new_vol_mean),
         "today": dict(body=c[t] / o[t] - 1),
         "plateau": dict(days=t - e, height=height, old_flat_ratio=old_range / height,
                         vs_right=max_ret / new_sigma if new_sigma > 0 else None,
-                        calm_ratio=new_range / height,
-                        keep_ratio=math.log(min(c[e + 1:t + 1]) / level) / height,
-                        vs_high=c[t] / max(h[s:t])),
+                        calm_ratio=recent_range / height,
+                        keep_ratio=math.log(c[t] / level) / height,
+                        vs_high=c[t] / max(h[s:t]),
+                        overhead=max(h[lo:s]) / c[t],
+                        vol_shrink=(new_vol_mean / step_vol_mean
+                                    if new_vol_mean is not None and step_vol_mean > 0 else None),
+                        low_age=ref_low_age(c, e, t)),
     }
 
 
@@ -109,7 +140,8 @@ def assert_fields(obj, expected):
 
 def test_two_prefixes_each_form_a_family():
     evs = detect(base_bars())
-    want = {(20, 20, t) for t in range(22, 35)} | {(20, 21, t) for t in range(23, 35)}
+    # 35 那天跌回旧平台价位不收族:两族都一直产到数据末根 41
+    want = {(20, 20, t) for t in range(22, 42)} | {(20, 21, t) for t in range(23, 42)}
     assert {key(ev) for ev in evs} == want
     assert len(evs) == len(want)
     assert all(type(ev) is PlateauEvent for ev in evs)
@@ -122,12 +154,15 @@ def test_first_day_after_step_not_produced():
     assert min(ev.days for ev in evs) == 2
 
 
-def test_family_ends_after_falling_back_to_old_level():
+def test_falling_back_to_old_level_does_not_end_family():
+    """35 那天收盘跌回旧平台价位:照样产(keep_ratio < 0,由 where 判不买);36..41 站回来后照样产。"""
     bars = base_bars()
     evs = detect(bars)
-    # 36..41 收盘又站回旧平台价位之上,但 35 那天已跌回,两族都到 34 为止
     assert all(c > 10.05 for c in bars["closes"][36:])
-    assert max(ev.today.start_idx for ev in evs) == 34
+    by_t = {ev.today.start_idx: ev for ev in evs if ev.step.end_idx == 21}
+    assert by_t[35].keep_ratio < 0
+    assert all(by_t[t].keep_ratio > 0 for t in range(36, 42))
+    assert max(ev.today.start_idx for ev in evs) == 41
 
 
 def test_spans_and_confirm():
@@ -376,10 +411,17 @@ def test_nan_volume_in_old_platform_skips_step():
     assert detect(bars) == []
 
 
-def test_nan_volume_on_new_platform_does_not_matter():
+def test_nan_volume_on_new_platform_only_skips_that_bar_in_vol_mean():
+    """新平台上一根量坏:实例一个不差,新平台平均量跳过这根,其余字段不变。"""
     bars = base_bars()
     bars["vols"][28] = float("nan")
-    assert detect(bars) == detect(base_bars())
+    got, ref = detect(bars), detect(base_bars())
+    assert [key(ev) for ev in got] == [key(ev) for ev in ref]
+    for a, b in zip(got, ref):
+        if a.step.end_idx == 21 and a.new.start_idx <= 28 <= a.new.end_idx:
+            assert a.new.vol_mean == pytest.approx(2000.0)   # 新平台 22.. 剩下的根都是 2000
+        assert_fields(a, ref_fields(bars, *key(a))["plateau"])
+        assert (a.days, a.keep_ratio, a.calm_ratio) == (b.days, b.keep_ratio, b.calm_ratio)
 
 
 def test_bad_price_on_new_platform_truncates_family():
@@ -504,15 +546,13 @@ def test_first_prefix_below_old_second_above():
     assert {ev.today.start_idx for ev in evs} == set(range(23, 30))
 
 
-def test_close_equal_to_old_level_ends_family():
+def test_close_equal_to_old_level_keeps_family_with_zero_keep():
     bars = base_bars()
     bars["closes"][30] = 10.05            # 恰好等于旧平台价位(收盘中位数 10.05)
-    evs = [ev for ev in detect(bars) if ev.step.start_idx == 20]
-    assert evs and max(ev.today.start_idx for ev in evs) == 29
-    bars["closes"][30] = 10.05 + 1e-9     # 略高一点就不收族
-    evs = [ev for ev in detect(bars) if ev.step.start_idx == 20]
-    assert 30 in {ev.today.start_idx for ev in evs}
-    assert max(ev.today.start_idx for ev in evs) == 34
+    evs = {ev.today.start_idx: ev for ev in detect(bars) if ev.step.end_idx == 21}
+    assert evs[30].keep_ratio == pytest.approx(0.0, abs=1e-12)
+    assert evs[31].keep_ratio > 0          # 第二天站回来,能过
+    assert max(evs) == 41
 
 
 def merge_bars():
@@ -541,3 +581,93 @@ def test_bad_price_on_first_day_after_step_skips_prefix():
     bars["opens"][23] = 0.0
     evs = detect(bars)
     assert {key(ev) for ev in evs} == {(20, 20, 22)}
+
+
+# ── 旧平台波动为 0 时兜底、前高压力、创新低、最近一段振幅 ──
+
+def tick_stuck_bars(bumps=(6, 12)):
+    """旧平台收盘卡在 10.0,只在 bumps 那几根冒到 10.5 再回来:回看窗 [5, 19] 里 |r| 过半为 0,
+    中位数 0、平均数 > 0。20、21 两根大阳线 12.0、14.0;22..34 新平台 13.9 / 14.0 交替。"""
+    closes = [10.5 if j in bumps else 10.0 for j in range(20)] + [12.0, 14.0]
+    closes += [13.9 if j % 2 == 0 else 14.0 for j in range(22, 35)]
+    opens = list(closes)
+    for j in range(22, 35):
+        opens[j] = 13.95
+    vols = [1000.0] * 20 + [5000.0, 8000.0] + [2000.0] * 13
+    return dict(closes=closes, opens=opens, highs=[c + 0.1 for c in closes], vols=vols)
+
+
+def test_zero_median_sigma_falls_back_to_mean():
+    bars = tick_stuck_bars()
+    absr = [abs(math.log(bars["closes"][j] / bars["closes"][j - 1])) for j in range(5, 20)]
+    assert statistics.median(absr) == 0 < sum(absr) / len(absr)
+    evs = detect(bars)
+    assert {(ev.step.start_idx, ev.step.end_idx) for ev in evs} == {(20, 20), (20, 21)}
+    ev = evs[0]
+    assert ev.old.sigma == pytest.approx(sum(absr) / len(absr), rel=1e-12)
+    assert ev.step.vs_left == pytest.approx(ev.step.max_ret / ev.old.sigma, rel=1e-12)
+    for ev in evs:
+        assert_fields(ev, ref_fields(bars, *key(ev))["plateau"])
+
+
+def test_all_zero_old_platform_does_not_open():
+    """回看窗 [5, 19] 收盘一根都没动:中位数、平均数都是 0,第 20 根不开段。(第 21 根的回看窗
+    已含第 20 根那一跳,平均数 > 0,照常可以开段。)"""
+    evs = detect(tick_stuck_bars(bumps=()))
+    assert not any(ev.step.start_idx == 20 for ev in evs)
+    assert {ev.step.start_idx for ev in evs} == {21}
+
+
+def overhead_bars():
+    """0..39 旧平台 10.0 / 10.05 交替,第 15 根上影线冲到 30(收盘不变,只抬最高价);40、41 阶跃
+    12.0、14.0;42..85 新平台 13.9 / 14.0 交替。"""
+    closes = [10.0 if j % 2 == 0 else 10.05 for j in range(40)] + [12.0, 14.0]
+    closes += [13.9 if j % 2 == 0 else 14.0 for j in range(42, 86)]
+    opens = list(closes)
+    for j in range(42, 86):
+        opens[j] = 13.95
+    highs = [c + 0.1 for c in closes]
+    highs[15] = 30.0
+    vols = [1000.0] * 40 + [5000.0, 8000.0] + [2000.0] * 44
+    return dict(closes=closes, opens=opens, highs=highs, vols=vols)
+
+
+def test_overhead_sees_prior_high_until_it_leaves_the_window():
+    """前高在第 15 根:当天 t 往前 60 根还够得着它时 overhead > 1,t ≥ 76 窗口起点越过 15 后 < 1。"""
+    bars = overhead_bars()
+    by_t = {ev.today.start_idx: ev for ev in detect(bars) if (ev.step.start_idx, ev.step.end_idx) == (40, 41)}
+    assert set(by_t) == set(range(43, 82))              # t ≤ e + max_days = 81
+    for t, ev in by_t.items():
+        assert_fields(ev, ref_fields(bars, 40, 41, t)["plateau"])
+        if t - OVERHEAD_W <= 15:
+            assert ev.overhead == pytest.approx(30.0 / bars["closes"][t])
+        else:
+            assert ev.overhead < 1
+    assert by_t[75].overhead > 1 and by_t[76].overhead < 1
+
+
+def test_low_age_counts_strict_new_lows_only():
+    """新平台第一天不算创新低;收盘等于之前最低不算;严格更低才算,之后逐日累加。"""
+    bars = base_bars()
+    bars["closes"][27] = 13.9               # 本来就是 13.9:等于新平台最低,不算
+    bars["closes"][29] = 13.8               # 严格新低
+    by_t = {ev.today.start_idx: ev for ev in detect(bars) if ev.step.end_idx == 21}
+    assert all(by_t[t].low_age is None for t in range(23, 29))
+    assert by_t[29].low_age == 0
+    assert [by_t[t].low_age for t in range(30, 35)] == [1, 2, 3, 4, 5]
+    assert by_t[35].low_age == 0            # 跌回 10.0,又一次严格新低
+
+
+def test_calm_ratio_reads_only_recent_window():
+    """新平台头几天晃一下(23 冲到 15.5):累计振幅一直带着它,最近 calm_window 根移过去之后就看不到了。"""
+    bars = base_bars()
+    bars["closes"][23] = 15.5
+    by_t = {ev.today.start_idx: ev for ev in detect(bars) if ev.step.end_idx == 21}
+    wobble = math.log(15.5 / 13.9)
+    quiet = math.log(14.0 / 13.9)
+    for t in range(24, 35):
+        ev = by_t[t]
+        assert ev.new.range == pytest.approx(wobble)
+        want = wobble if t - CALM_W <= 23 else quiet
+        assert ev.new.recent_range == pytest.approx(want)
+        assert ev.calm_ratio == pytest.approx(want / ev.height)
