@@ -1,0 +1,3 @@
+# vitest 基线（提交 ca2366e，票 worktree，npx vitest run）
+ Test Files  130 passed (130)
+      Tests  1671 passed (1671)
