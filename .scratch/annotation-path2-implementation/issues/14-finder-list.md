@@ -1,7 +1,8 @@
 # 标注三档的左栏：找图清单 `rally` / `random` / `charts`
 
 Status: ready-for-agent
-Progress: not-started
+Progress: in-progress
+Claimed: 2026-11-15 parallel-tickets ticket-14 @ worktree impl/14-finder-list
 Blocked by: 13
 
 ## Purpose
