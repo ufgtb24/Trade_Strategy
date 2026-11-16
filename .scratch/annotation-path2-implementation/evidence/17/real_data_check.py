@@ -37,7 +37,7 @@ def main():
         shape = [{"spans": [list(s) for s in buys.hits[i].spans], "buy_days": list(buys.hits[i].buy_days)}
                  for i in match.feedback_hits(fb, buys)
                  if not any(start <= d <= end for d in buys.hits[i].buy_days)]
-        overl = [list(e) for e in buys.ref_events if any(e[0] <= b[1] and b[0] <= e[1] for b in spans)]
+        overl = [list(e) for e in buys.ref_spans if any(e[0] <= b[1] and b[0] <= e[1] for b in spans)]
         got = match.feedback_status(fb, buys)
         shape_only = match.feedback_status({**fb, "start": "1900-01-02", "end": "1900-01-02"}, buys)
         out["rows"].append({"feedback": fid, "symbol": sym, "range": [start, end], "stored": spans,

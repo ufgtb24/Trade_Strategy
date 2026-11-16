@@ -52,7 +52,7 @@ def _buys(families: dict, refs=()) -> AppBuys:
     fams = {k: tuple(sorted(v)) for k, v in sorted(families.items())}
     return AppBuys(families=fams, dates=tuple(D),
                    hits=tuple(HitBuys(spans=((k, k),), buy_days=v) for k, v in fams.items()),
-                   ref_events=tuple(sorted({(k, k) for k in (*fams, *refs)})))
+                   ref_spans=tuple(sorted({(k, k) for k in (*fams, *refs)})))
 
 
 def _ref(*days):
@@ -700,18 +700,21 @@ def test_round_digest_puts_samples_against_the_app_first(env):
 def test_family_judged_by_reference_and_shape_bought_outside_range(env):
     """整族反馈按基准 event 认同一次形状:改 app 后族起点挪了(D[30] → D[29]),只要基准 event 还与存下的共用 K 线、
     这个 hit 还在买,就仍是 matched(错误买点只是挪了位置);摘要写存下的基准 event 起止和同一次形状在范围外还买的
-    日子。两条存下的基准 event 一条对得上、一条对不上:对不上的那条记「基准 node 对不上」。"""
+    日子(只算同一次形状上的 hit:另一族在范围里也买、范围外也买的那几天不算进去)。两条存下的基准 event 一条对得上、
+    一条对不上:对不上的那条记「基准 node 对不上」。"""
     _save(env,
           _fb("f-pc-1", "AAA", D[31], D[32], target="family", family_start=D[29], reference=_ref(D[30])),
           _fb("f-pc-2", "AAA", D[61], D[62], target="family", family_start=D[59], reference=_ref(D[60])))
     env.write_mapping()
     env.app.buys = {"AAA": _buys({D[30]: [D[31], D[32]], D[60]: [D[61]]})}
     _start(env)
-    #  改 app:第一族的基准 event 变成 D[29]～D[31],买点挪到 D[40];第二族的变成 D[63],挪开了
-    env.app.buys = {"AAA": replace(_buys({D[29]: [D[40]], D[63]: [D[64]]}),
+    #  改 app:第一族的基准 event 变成 D[29]～D[31],买点挪到 D[40];第二族的变成 D[63],挪开了;另长出一族
+    #  (基准 event D[33]),在 f-pc-1 的范围里买 D[32]、范围外买 D[50]
+    env.app.buys = {"AAA": replace(_buys({D[29]: [D[40]], D[63]: [D[64]], D[33]: [D[32], D[50]]}),
                                    hits=(HitBuys(spans=((D[29], D[31]),), buy_days=(D[40],)),
-                                         HitBuys(spans=((D[63], D[63]),), buy_days=(D[64],))),
-                                   ref_events=((D[29], D[31]), (D[63], D[63])))}
+                                         HitBuys(spans=((D[63], D[63]),), buy_days=(D[64],)),
+                                         HitBuys(spans=((D[33], D[33]),), buy_days=(D[32], D[50]))),
+                                   ref_spans=((D[29], D[31]), (D[33], D[33]), (D[63], D[63])))}
     sec = _section(_report(env), "① ")
     rows, _, lost = _fb_parts(sec)
     assert rows == [f"- [AAA {D[61]}～{D[62]}]({_link(D[61])}) 「不该买」（f-pc-2）：`matched` → 基准 node 对不上"]
@@ -721,7 +724,7 @@ def test_family_judged_by_reference_and_shape_bought_outside_range(env):
     _finish(env)
     _start(env, name="r2.json")
     sec = _section(_digest(env, name="r2.json"), "issue")
-    assert (f"`family`（起点 {D[29]}，基准 bo：{D[30]}） `matched`；范围里在买 0 天；"
+    assert (f"`family`（起点 {D[29]}，基准 bo：{D[30]}） `matched`；范围里在买 1 天：{D[32]}；"
             f"同一次形状在范围外还买 1 天：{D[40]}（f-pc-1") in sec
     assert f"`family`（起点 {D[59]}，基准 bo：{D[60]}） `lost`；范围里在买 0 天（f-pc-2" in sec
 

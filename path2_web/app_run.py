@@ -117,7 +117,7 @@ def run_app(mod, cfg: dict, symbol: str, start: str, end: str, params, label_hor
 class HitBuys:
     """一个 hit 的基准 event 起止与买点日(按 res.hits 的先后排在 AppBuys.hits 里)。
 
-    - spans:这个 hit 的基准 event 的起止 ((start, end), …),升序去重;取法见 app_buys;
+    - spans:这个 hit 的基准 event 的起止 ((start, end), …),升序去重;取法见 app_buys;没声明基准 node 时为空;
     - buy_days:这个 hit 的买点日,升序去重;不买的 hit 为空元组。
     """
     spans: tuple
@@ -130,17 +130,18 @@ class AppBuys:
 
     - families:族起点日期(hit 的起点)→ 这一族全部 hit 的买点日(升序去重);一族的 hit 都没有买点日时为空元组;
     - dates:窗口内全部交易日(升序),按 K 线根数算距离用;
-    - reference:取下面两样时用的基准 node(mapping 声明的 reference);没声明时为 None,下面两样为空;
+    - reference:取基准 event 时用的基准 node(mapping 声明的 reference);没声明时为 None,这时各 hit 的
+      spans 与 ref_spans 都为空;
     - hits:每个 hit 的基准 event 起止与买点日(HitBuys,按 res.hits 的先后);
-    - ref_events:全部基准 event(不论档位、不论在不在 hit 里)的起止 ((start, end), …),升序去重。
-    后三样判整族反馈用(path2_web/annotation/match.py 的 feedback_status)。改版报告的 round 文件就存这个对象;
-    旧 round 文件里没有后三样,读出来按没声明基准 node 算(不补)。
+    - ref_spans:全部基准 event(不论档位、不论在不在 hit 里)的起止 ((start, end), …),升序去重。
+    后三样判整族反馈、算一条反馈收进来的 hit 用(path2_web/annotation/match.py)。改版报告的 round 文件就存这个
+    对象;旧 round 文件里没有后三样,读出来按没声明基准 node、没有 hits 算(不补)。
     """
     families: Mapping[str, tuple]
     dates: tuple
     reference: Optional[str] = None
     hits: tuple = ()
-    ref_events: tuple = ()
+    ref_spans: tuple = ()
 
     @property
     def buy_days(self) -> tuple:
@@ -151,7 +152,7 @@ class AppBuys:
         return {"families": {k: list(v) for k, v in self.families.items()}, "dates": list(self.dates),
                 "reference": self.reference,
                 "hits": [{"spans": [list(sp) for sp in h.spans], "buy_days": list(h.buy_days)} for h in self.hits],
-                "ref_events": [list(sp) for sp in self.ref_events]}
+                "ref_spans": [list(sp) for sp in self.ref_spans]}
 
     @classmethod
     def from_dict(cls, d: Mapping) -> "AppBuys":
@@ -159,7 +160,7 @@ class AppBuys:
                    reference=d.get("reference"),
                    hits=tuple(HitBuys(spans=tuple(tuple(sp) for sp in h["spans"]), buy_days=tuple(h["buy_days"]))
                               for h in d.get("hits", ())),
-                   ref_events=tuple(tuple(sp) for sp in d.get("ref_events", ())))
+                   ref_spans=tuple(tuple(sp) for sp in d.get("ref_spans", ())))
 
 
 def solving_nodes(spec) -> frozenset:
@@ -200,13 +201,13 @@ def app_buys(res, win: pd.DataFrame, end_node: str, reference: Optional[str] = N
     """从 run_app 的结果取买点。
 
     参数:res、win 来自 run_app;end_node 是 eval_meta 声明的买点 node('node' 或 'node.slot');reference 是
-    mapping 声明的基准 node(没声明为 None:只取买点与族,基准 event 两样为空)。
+    mapping 声明的基准 node(没声明为 None:各 hit 的基准 event 起止与全部基准 event 都为空)。
 
     - 买点日:每个 hit 经 path2.eval 的 _resolve_end_events(与评估、序列化同一个函数)取到买点事件,事件跨度里
       的每一根都是买点日——与前端 render/fold.ts 的 buyDaysOf 同口径(不是序列化里的 buy_date 那一天);
       hit 里解析不到买点 node 时照 _resolve_end_events 抛错(app 声明漂移要响亮);
     - 族:按 hit 的起点分组,值是组内全部 hit 买点日的并集;
-    - 每个 hit 的基准 event:hit 绑定的事件(node_index)经 reference_events 取,起止换成日期;
+    - 每个 hit 的买点日与基准 event:后者是 hit 绑定的事件(node_index)经 reference_events 取,起止换成日期;
     - 全部基准 event:res.events(各条流的全部事件,不论档位)经 reference_events 取;
     - 交易日:win 的全部日期。
 
@@ -224,9 +225,8 @@ def app_buys(res, win: pd.DataFrame, end_node: str, reference: Optional[str] = N
     for h in res.hits:
         mine = {d for ev in _resolve_end_events(h, end_node) for d in day[ev.start_idx:ev.end_idx + 1]}
         families.setdefault(day[h.start_idx], set()).update(mine)
-        if reference is not None:
-            hits.append(HitBuys(spans=spans(reference_events(h.node_index.values(), reference)),
-                                buy_days=tuple(sorted(mine))))
+        refs = reference_events(h.node_index.values(), reference) if reference is not None else ()
+        hits.append(HitBuys(spans=spans(refs), buy_days=tuple(sorted(mine))))
     return AppBuys(families={k: tuple(sorted(families[k])) for k in sorted(families)}, dates=tuple(day),
                    reference=reference, hits=tuple(hits),
-                   ref_events=spans(reference_events(res.events, reference)) if reference is not None else ())
+                   ref_spans=spans(reference_events(res.events, reference)) if reference is not None else ())

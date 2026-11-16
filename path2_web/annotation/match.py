@@ -55,19 +55,23 @@ def _stored_spans(fb: Mapping, buys: "AppBuys") -> Optional[list]:
     return list(ref.get("spans") or ())
 
 
+def same_shape_hits(fb: Mapping, buys: "AppBuys") -> list[int]:
+    """整族反馈的同一次形状上还在买的 hit(buys.hits 里的下标):基准 event 与存下的某一段共用 K 线、而且在买
+    (买点日不论在哪)。逐个 hit 判,不按族合并起止;认不了存下的起止时(_stored_spans 为 None)为空。"""
+    spans = _stored_spans(fb, buys)
+    if not spans:
+        return []
+    return [i for i, h in enumerate(buys.hits)
+            if h.buy_days and any(_overlaps(a, b) for a in h.spans for b in spans)]
+
+
 def feedback_hits(fb: Mapping, buys: "AppBuys") -> list[int]:
     """一条反馈收进来的 hit(buys.hits 里的下标,即 res.hits 的先后;选中这条反馈时它牵出的 hit):
-    买点日落在 [start, end] 里的 hit,不论哪一族;整族反馈另加基准 event 与存下的某一段共用 K 线、而且在买
-    (买点日不论在哪)的 hit。认不了存下的起止时(_stored_spans 为 None)只有前一样。
-    buys 没取基准 event(没声明基准 node)时 buys.hits 为空,结果也为空。"""
+    买点日落在 [start, end] 里的 hit,不论哪一族;整族反馈另加同一次形状上还在买的 hit(same_shape_hits)。
+    旧 round 文件读出的 buys 没有 hits,结果为空。"""
     start, end = fb["start"], fb["end"]
-    spans = _stored_spans(fb, buys)
-    out = []
-    for i, h in enumerate(buys.hits):
-        if any(start <= d <= end for d in h.buy_days) or (
-                spans and h.buy_days and any(_overlaps(a, b) for a in h.spans for b in spans)):
-            out.append(i)
-    return out
+    shape = set(same_shape_hits(fb, buys))
+    return [i for i, h in enumerate(buys.hits) if i in shape or any(start <= d <= end for d in h.buy_days)]
 
 
 def feedback_status(fb: Mapping, buys: "AppBuys") -> str:
@@ -98,9 +102,9 @@ def feedback_status(fb: Mapping, buys: "AppBuys") -> str:
     spans = _stored_spans(fb, buys)
     if not spans:
         return "lost"
-    if feedback_hits(fb, buys):
+    if same_shape_hits(fb, buys):
         return "matched"
-    if any(_overlaps(a, b) for a in buys.ref_events for b in spans):
+    if any(_overlaps(a, b) for a in buys.ref_spans for b in spans):
         return "unmatched"
     return "lost"
 

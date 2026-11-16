@@ -56,7 +56,7 @@ path2_web.discovery.PatternRegistry()。两者都可传入(测试用)。
 - 反馈只看用户自己挑的(来源 picked);盲看标记的回归等盲看实施时再加。一条反馈的内容是 note 加 nodes;
   记录里若还带着 answer、dag(store 模块说明「反馈」),报告和摘要都不输出、不拿来分类。
 - issue:带同一个 issue 值的几处反馈是一个 issue,不带的各自一个(用反馈编号当名字)。
-- 判法全部复用 path2_web/annotation/match.py:反馈状态 feedback_status、一条反馈收进来的 hit feedback_hits、
+- 判法全部复用 path2_web/annotation/match.py:反馈状态 feedback_status、同一次形状上还在买的 hit same_shape_hits、
   朱红 is_red、样本 match 用 sample_match(按 K 线根数算距离);样本级的改动用 path2_web/annotation/changes.py
   的 pattern_changes 取(与 GET /annotations/changes 同一个函数)。
 - 基准 node:跑 app 时把 mapping 声明的基准 node(reference)交给 app_buys,每只股票的买点连同每个 hit 的基准
@@ -936,7 +936,7 @@ def _digest_changes(state_prev: Optional[Mapping], state: Mapping, pattern: str)
     return lines + [""]
 
 
-def _family_target(fb: Mapping) -> str:
+def _family_target_text(fb: Mapping) -> str:
     """整族反馈的起点与存下的基准 event 起止(没存的注明)。"""
     ref = fb.get("reference")
     stored = (f"基准 {ref['node']}：{'、'.join(_span(a, b) for a, b in ref['spans'])}" if ref
@@ -947,9 +947,8 @@ def _family_target(fb: Mapping) -> str:
 def _digest_place(fb: Mapping, link: str, status: str, tag: Optional[str], buys: Optional["AppBuys"],
                   pos_samples: list, since: Optional[str]) -> str:
     """issue 里的一处:链接、target、状态、标签、范围里在买的日子、范围里用户的正样本、编号与相对上一轮的变化。
-    整族反馈另写存下的基准 event 起止,以及同一次形状(基准 event 共用 K 线的 hit,match.feedback_hits)在范围外
-    还买的日子。"""
-    target = f"`{fb['target']}`" + (_family_target(fb) if fb["target"] == "family" else "")
+    整族反馈另写存下的基准 event 起止,以及同一次形状上还在买的 hit(match.same_shape_hits)在范围外买的日子。"""
+    target = f"`{fb['target']}`" + (_family_target_text(fb) if fb["target"] == "family" else "")
     parts = [f"[{fb['symbol']} {_span(fb['start'], fb['end'])}]({link}) {target} {status}"]
     if tag is not None:
         parts[0] += f"，标签 `{tag}`" + ("（挂了它不算朱红）" if tag == mapping_mod.TAG_REDEFINED else "")
@@ -957,7 +956,7 @@ def _digest_place(fb: Mapping, link: str, status: str, tag: Optional[str], buys:
         inside = [d for d in buys.buy_days if fb["start"] <= d <= fb["end"]]
         parts.append(f"范围里在买 {len(inside)} 天" + (f"：{'、'.join(inside)}" if inside else ""))
         if fb["target"] == "family":
-            outside = sorted({d for i in match.feedback_hits(fb, buys) for d in buys.hits[i].buy_days
+            outside = sorted({d for i in match.same_shape_hits(fb, buys) for d in buys.hits[i].buy_days
                               if not fb["start"] <= d <= fb["end"]})
             if outside:
                 parts.append(f"同一次形状在范围外还买 {len(outside)} 天：{'、'.join(outside)}")

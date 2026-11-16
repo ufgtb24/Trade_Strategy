@@ -268,14 +268,20 @@ def test_app_buys_slot_path_families_and_reference_events():
     assert b.dates == tuple(D[:15]) and b.reference == "step"
     assert [(h.spans, h.buy_days) for h in b.hits] == [
         (((D[1], D[2]),), (D[5],)), (((D[1], D[3]),), (D[6], D[8], D[9])), (((D[4], D[4]),), ())]
-    assert b.ref_events == ((D[1], D[2]), (D[1], D[3]), (D[4], D[4]), (D[12], D[12]))   # deep 不算
+    assert b.ref_spans == ((D[1], D[2]), (D[1], D[3]), (D[4], D[4]), (D[12], D[12]))   # deep 不算
 
     again = AppBuys.from_dict(json.loads(json.dumps(b.to_dict())))
     assert again == b
 
-    plain = app_buys(res, win, "plat.today")              # 没声明基准 node:只取买点与族
-    assert plain.reference is None and plain.hits == () and plain.ref_events == ()
+    plain = app_buys(res, win, "plat.today")              # 没声明基准 node:各 hit 照样有买点日,基准 event 为空
+    assert plain.reference is None and plain.ref_spans == ()
+    assert [(h.spans, h.buy_days) for h in plain.hits] == [((), (D[5],)), ((), (D[6], D[8], D[9])), ((), ())]
     assert plain.families == b.families
+    # 没声明时一条反馈收进来的仍是范围里买的 hit(与前端 feedbackHits 在没有基准 node 时同口径)
+    assert m.feedback_hits({"target": "family", "start": D[6], "end": D[6], "reference": {"node": "step", "spans": [[D[1], D[1]]]}},
+                           plain) == [1]
+    assert m.same_shape_hits({"target": "family", "start": D[6], "end": D[6],
+                              "reference": {"node": "step", "spans": [[D[1], D[1]]]}}, plain) == []
 
     with pytest.raises(KeyError):                        # hit 里没有买点 node:响亮失败
         app_buys(res, win, "nope")
@@ -285,7 +291,7 @@ def test_old_round_file_buys_still_read():
     """旧 round 文件里的买点(有 event_starts、没有基准 event 两样)读得出,按没声明基准 node 算。"""
     old = {"families": {D[0]: [D[5]]}, "event_starts": [D[0]], "dates": D[:10]}
     b = AppBuys.from_dict(old)
-    assert b.families == {D[0]: (D[5],)} and b.reference is None and b.hits == () and b.ref_events == ()
+    assert b.families == {D[0]: (D[5],)} and b.reference is None and b.hits == () and b.ref_spans == ()
 
 
 def test_solving_nodes_excludes_display_only_and_keeps_shared_stream():
@@ -355,7 +361,7 @@ def test_run_app_and_app_buys_match_front_end_reading(tmp_path):
     # 基准 event(bo):全部的 = 序列化结果里 node 是 bo 的那些(只显示的 pk 不进);每个 hit 的 = 它绑定的 bo
     spans = {n: {(b.dates[e["start_idx"]], b.dates[e["end_idx"]]) for e in ser["events"] if e["node_id"] == n}
              for n in ("bo", "pk")}
-    assert set(b.ref_events) == spans["bo"] and spans["pk"] - spans["bo"]
+    assert set(b.ref_spans) == spans["bo"] and spans["pk"] - spans["bo"]
     assert len(b.hits) == len(ser["hits"])
     for hb, h in zip(b.hits, ser["hits"]):
         e = by_id[h["node_index"]["bo"]]

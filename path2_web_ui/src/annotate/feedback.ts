@@ -39,7 +39,7 @@
 import type { EventDict, FeedbackStatusItem, HitDict, Topology } from '../types'
 import { buyDaysOf } from '../render/fold'
 import { TRAIN_END } from './directLinks'
-import type { AnnChart, AnnFeedback, AnnSample, FeedbackReference, FeedbackTarget } from './model'
+import { copyReference, type AnnChart, type AnnFeedback, type AnnSample, type FeedbackReference, type FeedbackTarget } from './model'
 
 /** 反馈落成的那段日期(还没作答):股票、起止、从哪来;family 另带这一族的起点日期与基准 event 起止
  *  (新建时现取;改已有的一条时是它存下的,没存过就没有)。 */
@@ -248,9 +248,7 @@ export function draftToFeedback(d: FeedbackDraft, origin: { id: string; pattern:
   if (d.nodes?.length) fb.nodes = [...d.nodes]
   if (d.issue) fb.issue = d.issue
   if (d.target === 'family' && d.family_start) fb.family_start = d.family_start
-  if (d.target === 'family' && d.reference) {
-    fb.reference = { node: d.reference.node, spans: d.reference.spans.map(([a, b]) => [a, b]) }
-  }
+  if (d.target === 'family' && d.reference) fb.reference = copyReference(d.reference)
   return fb
 }
 

@@ -65,6 +65,10 @@ export type FeedbackAnswer = 'neg' | 'off_pattern' | 'pos'
  */
 /** 整族反馈存下的基准 event 起止:node 是基准 node,spans 是 [start, end] 日期对(去重、按起止排序,不合并)。 */
 export interface FeedbackReference { node: string; spans: [string, string][] }
+/** 基准 event 起止的一份拷贝(存进记录时用,不和草稿、状态共用数组)。 */
+export function copyReference(r: FeedbackReference): FeedbackReference {
+  return { node: r.node, spans: r.spans.map(([a, b]) => [a, b]) }
+}
 export interface AnnFeedback {
   id: string
   pattern: string
@@ -182,9 +186,7 @@ export function feedbackValue(symbol: string, fb: AnnFeedback): Record<string, u
   if (fb.dag) v.dag = true
   if (fb.issue) v.issue = fb.issue
   if (fb.target === 'family' && fb.family_start) v.family_start = fb.family_start
-  if (fb.target === 'family' && fb.reference) {
-    v.reference = { node: fb.reference.node, spans: fb.reference.spans.map(([a, b]) => [a, b]) }
-  }
+  if (fb.target === 'family' && fb.reference) v.reference = copyReference(fb.reference)
   return v
 }
 

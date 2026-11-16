@@ -67,8 +67,6 @@ export type ResizeResult = 'saved' | 'same' | 'panel'
 export const useFeedbackStore = defineStore('feedback', () => {
   const view = useViewStore()
   const ann = useAnnotationStore()
-  /** 当前 pattern 的 app 在 mapping 里声明的基准 node(stores/appLink.ts 登记进 view;没有能用的 mapping 时为 null) */
-  const referenceNode = computed<string | null>(() => view.referenceNode)
 
   const statusById = shallowRef<Record<string, FeedbackStatusOf>>({})
   const loading = ref(false)
@@ -340,7 +338,7 @@ export const useFeedbackStore = defineStore('feedback', () => {
       const familyStart = date(st)
       if (!start || !end || !familyStart) return null
       const out: FeedbackRange = { symbol: sym, start, end, target: 'family', family_start: familyStart }
-      const node = referenceNode.value
+      const node = view.referenceNode          // mapping 声明的基准 node(stores/appLink.ts 登记进 view)
       if (node !== null) {
         out.reference = { node, spans: referenceSpans(fam, view.effectiveAnalysis?.events ?? [], node, view.barDates) }
       }
