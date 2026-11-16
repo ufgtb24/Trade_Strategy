@@ -1,20 +1,14 @@
 <template>
   <div class="app">
     <TopBar class="top" />
-    <aside class="left">
-      <SidebarPatternPanel />
-      <SidebarScanPanel />
-      <SidebarResultList />
-    </aside>
+    <LeftPanel class="left" />
     <main class="right"><ChartArea /></main>
   </div>
 </template>
 
 <script setup lang="ts">
 import { onMounted, onBeforeUnmount } from 'vue'
-import SidebarPatternPanel from './SidebarPatternPanel.vue'
-import SidebarScanPanel from './SidebarScanPanel.vue'
-import SidebarResultList from './SidebarResultList.vue'
+import LeftPanel from './LeftPanel.vue'
 import ChartArea from './ChartArea.vue'
 import TopBar from './TopBar.vue'
 import { useConfigStore } from '../stores/config'

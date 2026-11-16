@@ -19,9 +19,6 @@
       </datalist>
     </label>
     <div class="grp">
-      <button type="button" :class="['entry', { on: rallyOpen }]" data-testid="rally-button"
-              :aria-expanded="rallyOpen" title="训练段里的大涨段清单,点一行打开那段涨之前的图"
-              @click="rallyOpen = !rallyOpen">rally</button>
       <button type="button" class="entry" data-testid="random-button"
               title="从股票池 × 训练段随机给一段图" :disabled="randomStatus === 'loading'"
               @click="onRandom">random</button>
@@ -77,8 +74,6 @@
     </div>
     <span v-if="status" class="status" data-testid="symbol-status"
           title="训练段副本里没有这只股票(2026 年才上市的不在列表里)">{{ status }}</span>
-    <!-- v-show:关上再打开时,清单、排序与滚动位置都还在 -->
-    <RallyList v-if="rallyMounted" v-show="rallyOpen" class="rally-pop" @close="rallyOpen = false" />
   </header>
 </template>
 
@@ -89,10 +84,10 @@
  *   compare、app 只在当前 pattern 有 app(有一个能用的 mapping,stores/appLink.ts)且切过去时有一只股票时可用,
  *   否则变灰。compare、app 下旁边写 app 的名字(不显示 mapping)。scan 是扫描文件里的结果(加载扫描、从扫描列表
  *   选股时也落在这里),随时能点,没加载扫描时是 no_scan;进出 scan 时股票怎么带见 stores/view.ts 的 enterScan / leaveScan。
- * - symbol:输入代码回车,不经扫描直接打开那只股票的图,落在 annotate(compare 下留在 compare,rally、random 同)。代码先对股票列表
+ * - symbol:输入代码回车,不经扫描直接打开那只股票的图,落在 annotate(compare 下留在 compare,random 同)。代码先对股票列表
  *   (训练段副本里有的股票)核一遍,不在列表里就报 not_found、不动当前的图。输入框平时显示当前打开的股票。
- * - rally:展开 / 收起大涨段清单(RallyList),点一行打开那段涨之前的图,落在 annotate。
- * - random:从股票池 × 训练段随机给一段图,落在 annotate,图停在那一段上。
+ * - random:从股票池 × 训练段随机给一段图,落在 annotate,图停在那一段上;抽到的这张记进左栏 random 页
+ *   (stores/finder.ts,只在页面内存里)。大涨段清单在左栏 rally 页(FinderList)。
  * - tool(annotate、compare 下):默认都不亮,图上拖动是平移;box = 点亮后在图上拖出一个框或改一次框的起止;
  *   point = 点亮后点一根 K 线放样本;feedback(只在 compare 出现)= 点亮后在图上拖一段,对这段里 app 的买点作答
  *   (spec 6.13)。点亮一个只用一次,用完自动熄灭;再点一下、Esc 也熄灭;Shift+B 点亮 / 熄灭 box,Shift+F 点亮 / 熄灭 feedback。
@@ -100,15 +95,15 @@
  * - ref:参照层,目前只有 peaks(stores/refLayers.ts)。只在 annotate / compare 下可用,别的模式下变灰;默认关,换股票自动关。
  * 看过什么一律不记。
  */
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import { getRandom, getSymbols } from '../api'
 import { useViewStore } from '../stores/view'
 import { useAnnotationStore } from '../stores/annotation'
 import { useRefLayerStore, type PeaksStatus } from '../stores/refLayers'
 import { useAppLinkStore, type RunStatus } from '../stores/appLink'
+import { useFinderStore } from '../stores/finder'
 import { resolveSymbolInput } from '../annotate/symbolInput'
-import RallyList from './RallyList.vue'
 import PatternPicker from './PatternPicker.vue'
 
 const view = useViewStore()
@@ -116,6 +111,7 @@ const { symbol, annotating, mode, linkedView, scanView } = storeToRefs(view)
 const ann = useAnnotationStore()
 const refs = useRefLayerStore()
 const appLink = useAppLinkStore()
+const finder = useFinderStore()
 const RUN_HINT: Record<RunStatus, string> = {
   loading: 'running the app of the current pattern on this symbol',
   load_failed: 'could not run the app of the current pattern on this symbol',
@@ -152,21 +148,12 @@ const symbolSet = computed(() => symbols.value ? new Set(symbols.value) : null)
 const draft = ref(symbol.value ?? '')
 const status = ref<'not_found' | null>(null)          // symbol 输入框的状态
 const randomStatus = ref<RandomStatus | null>(null)
-const rallyOpen = ref(false)
-const rallyMounted = ref(false)                   // 第一次展开才向后端要清单
 
 watch(symbol, (s) => { draft.value = s ?? ''; status.value = null; randomStatus.value = null })
-watch(rallyOpen, (v) => { if (v) rallyMounted.value = true })
-
-function onKeyDown(e: KeyboardEvent) {
-  if (e.key === 'Escape' && rallyOpen.value) rallyOpen.value = false
-}
 
 onMounted(async () => {
-  window.addEventListener('keydown', onKeyDown)
   try { symbols.value = await getSymbols() } catch { symbols.value = null }
 })
-onBeforeUnmount(() => window.removeEventListener('keydown', onKeyDown))
 
 function onEnter() {
   const r = resolveSymbolInput(draft.value, symbolSet.value)
@@ -178,11 +165,11 @@ function onEnter() {
 }
 
 async function onRandom() {
-  rallyOpen.value = false
   randomStatus.value = 'loading'
   try {
     const w = await getRandom()
     randomStatus.value = null
+    finder.addDraw(w)
     view.openSymbol(w.symbol, { start: w.start, end: w.end })
   } catch (e: any) {
     randomStatus.value = e?.status === 404 ? 'empty' : 'load_failed'
@@ -193,7 +180,6 @@ async function onRandom() {
 <style scoped>
 /* 字体与色值见 App.vue 的 :root 变量 */
 .top-bar {
-  position: relative;
   display: flex; align-items: center; gap: 6px 16px; flex-wrap: wrap;
   padding: 4px 10px; background: var(--bar-bg); border-bottom: 1px solid var(--line); color: var(--ink);
 }
@@ -215,5 +201,4 @@ async function onRandom() {
 .chk { display: flex; align-items: center; gap: 3px; font-family: var(--mono); font-size: 12px; color: var(--ink); cursor: pointer; }
 .chk input { margin: 0; accent-color: var(--ink); }   /* 勾上是黑的:浏览器默认的蓝会被读成会话蓝 */
 .chk.off { color: var(--ink-off); cursor: default; }
-.rally-pop { position: absolute; top: 100%; left: 10px; z-index: 50; margin-top: 2px; }
 </style>

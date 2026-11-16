@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os'
 import { dirname, resolve, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { baseURL } from './ports'
+import { gotoScanTier } from './scanTier'
 
 // path2 漏检调查工具(docs/superpowers/specs/2026-07-07-path2-miss-detection-tools-design.md)
 // 5 入口端到端走查(Task 24 · Sprint 3 收尾)。
@@ -40,7 +41,7 @@ test.beforeAll(() => {
 //     面板 + 切到 detected 档(两支 fixture 股均 0 hit,in_hit/qualified 档下不渲染任何
 //     event)。每 test 独立 page(默认全新 context,localStorage 面板显隐状态天然复位) ──
 async function setupFixtureChart(page: Page): Promise<void> {
-  await page.goto(baseURL + '/')
+  await gotoScanTier(page, baseURL + '/')
   await page.getByRole('button', { name: /打开历史/ }).click()
   await expect(page.locator('.file-list tbody tr').first()).toBeVisible({ timeout: 10_000 })
   await page.locator('.file-list tbody tr').first().click()

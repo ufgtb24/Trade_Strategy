@@ -1,5 +1,6 @@
 import { expect, type Page } from '@playwright/test'
 import { apiBase, baseURL } from './ports'
+import { gotoScanTier } from './scanTier'
 
 /**
  * e2e 夹具:对在线后端发起一次 new_step 小扫描(RGTI、CRNC 两只股票,2024-01 ~ 2025-06),扫完在界面上打开。
@@ -29,9 +30,9 @@ export async function deleteSmallScan(name: string): Promise<void> {
   await fetch(`${apiBase}/scans/${encodeURIComponent(name)}`, { method: 'DELETE' }).catch(() => {})
 }
 
-/** 首页 → 打开历史 → 选这个扫描 → Open,等扫描文件进 store。 */
+/** 首页 → scan 档 → 打开历史 → 选这个扫描 → Open,等扫描文件进 store。 */
 export async function openSmallScan(page: Page, name: string): Promise<void> {
-  await page.goto(baseURL + '/')
+  await gotoScanTier(page, baseURL + '/')
   await page.getByRole('button', { name: /打开历史/ }).click()
   await page.locator(`.file-list tbody tr:has-text("${name}")`).click()
   await page.getByRole('button', { name: /^Open$/ }).click()

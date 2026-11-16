@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test'
 import { baseURL } from './ports'
+import { enterScanTier } from './scanTier'
 
 // 副图 band 竖直 zoom 交互 e2e (spec 2026-07-03-subchart-band-zoom):
 // 前置 = 后端在线 + 前端 dev server 在线 + BTMWW fixture 存在(playwright.config.ts
@@ -25,6 +26,7 @@ async function setupChart(page: import('@playwright/test').Page) {
     try { localStorage.removeItem(key) } catch { /* noop */ }
   }, LS_KEY_BAND_ZOOM)
   await page.reload()
+  await enterScanTier(page)
   await page.getByRole('button', { name: '打开历史' }).click()
   await page.locator(`tr:has-text("${SCAN_TS}")`).click()
   await page.getByRole('button', { name: 'Open' }).click()

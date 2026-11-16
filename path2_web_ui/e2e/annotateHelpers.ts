@@ -73,8 +73,14 @@ export async function routeTo(page: Page, b: Backend) {
   const machine = (await (await fetch(`${b.base}/annotations`)).json()).state.machine
   expect(machine).toBe(MACHINE)
   await page.route(u => u.href.startsWith(`${apiBase}/`), async route => {
-    const resp = await route.fetch({ url: route.request().url().replace(apiBase, b.base) })
-    await route.fulfill({ response: resp })
+    try {
+      const resp = await route.fetch({ url: route.request().url().replace(apiBase, b.base) })
+      await route.fulfill({ response: resp })
+    } catch (e) {
+      // 测试结束、页面已关时还在路上的请求(如左栏 rally 页一打开就要的大涨段清单,新起的后端首次要整池算约半分钟)
+      // 不算测试失败;页面还开着时的错照常抛出
+      if (!page.isClosed() && !/has been closed/.test(String(e))) throw e
+    }
   })
 }
 

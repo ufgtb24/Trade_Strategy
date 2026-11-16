@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test'
 import { baseURL } from './ports'
+import { enterScanTier } from './scanTier'
 
 // 回归 e2e:水平 zoom-in 后触发全量 render(false)(点副图空白 / Esc 清选中)不得让主图
 // y 轴范围回跳到「全窗价格」——那会把可见段 K 线压到底部、上方留大片留白。
@@ -21,6 +22,7 @@ async function setupChart(page: import('@playwright/test').Page) {
     try { localStorage.removeItem(key) } catch { /* noop */ }
   }, LS_KEY_BAND_ZOOM)
   await page.reload()
+  await enterScanTier(page)
   await page.getByRole('button', { name: '打开历史' }).click()
   await page.locator(`tr:has-text("${SCAN_TS}")`).click()
   await page.getByRole('button', { name: 'Open' }).click()

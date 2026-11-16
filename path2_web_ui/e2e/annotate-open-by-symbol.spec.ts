@@ -1,5 +1,6 @@
 import { test, expect, type APIRequestContext, type Page } from '@playwright/test'
 import { apiBase } from './ports'
+import { gotoScanTier } from './scanTier'
 
 /**
  * 按代码打开:不经扫描,在顶栏 symbol 输入代码回车,打开训练段副本里的任一只股票,落在 annotate。
@@ -84,7 +85,7 @@ test.describe('按代码打开 · annotate', () => {
     // 外壳:没有档位控件、诊断侧栏、框选;右侧是三页
     await expect(page.getByTestId('level-control')).toHaveCount(0)
     await expect(page.locator('.brush-toggle-wrap')).toHaveCount(0)
-    await expect(page.getByRole('tab')).toHaveText(['selection', 'features', 'pattern'])
+    await expect(page.getByTestId('annotation-sidebar').getByRole('tab')).toHaveText(['selection', 'features', 'pattern'])
 
     // 副本里没有的代码:not_found,图不动
     await openSymbol(page, ABSENT)
@@ -92,11 +93,12 @@ test.describe('按代码打开 · annotate', () => {
     await expect(page.locator(`.symbol-title-bar [data-symbol="${code}"]`)).toBeVisible()
   })
 
-  test('现有扫描入口照旧能用:扫描结果是 app 视图;按代码打开切到 annotate;再从扫描列表选股回到 app', async ({ page, request }, testInfo) => {
+  test('现有扫描入口照旧能用:在 scan 档打开扫描;按代码打开切到 annotate;点 scan 回到扫描视图、从扫描列表选股', async ({ page, request }, testInfo) => {
     test.setTimeout(300_000)
     await ensureScan(request)
 
-    await page.goto('/')
+    // 扫描面板与扫描列表只在 scan 档的左栏
+    await gotoScanTier(page)
     await page.getByRole('button', { name: /打开历史/ }).click()
     await expect(page.locator('.file-list tbody tr').first()).toBeVisible({ timeout: 15_000 })
     await page.locator('.file-list tbody tr').first().click()
@@ -105,7 +107,7 @@ test.describe('按代码打开 · annotate', () => {
     await expect(firstRow).toBeVisible({ timeout: 30_000 })
     const scanSym = await firstRow.getAttribute('data-symbol')
 
-    // app:档位控件在,副图画出 app 的产物
+    // scan 档:档位控件在,副图画出扫描的产物
     await expect(page.getByTestId('level-control')).toBeVisible()
     await expect.poll(() => subSeriesCount(page)).toBeGreaterThan(0)
 
@@ -120,10 +122,17 @@ test.describe('按代码打开 · annotate', () => {
     }).toBe(0)
     await page.screenshot({ path: testInfo.outputPath('annotate-after-scan.png'), fullPage: true })
 
-    // 从扫描列表选股 → 回到 app
-    await firstRow.click()
+    // annotate 的左栏是找图清单,扫描列表藏着;点 scan:这只在扫描文件里,回到扫描视图还是它
+    await expect(firstRow).toBeHidden()
+    await expect(page.getByTestId('finder-list')).toBeVisible()
+    await page.getByTestId('mode-scan').click()
     await expect(page.getByTestId('level-control')).toBeVisible()
+    await expect(page.locator(`.symbol-title-bar [data-symbol="${scanSym}"]`)).toBeVisible()
     await expect.poll(() => subSeriesCount(page)).toBeGreaterThan(0)
+    // 从扫描列表选股:留在扫描视图
+    await firstRow.click()
+    await expect(page.getByTestId('mode-scan')).toHaveClass(/\bon\b/)
+    await expect(page.getByTestId('level-control')).toBeVisible()
   })
 
   test('后端:非法代码 400,不存在 404', async ({ request }) => {
