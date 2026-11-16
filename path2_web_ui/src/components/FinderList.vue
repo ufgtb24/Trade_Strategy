@@ -10,7 +10,8 @@
          切页签时图不跟着变宽变窄。切页签、切到 scan 档都只藏不拆:滚动位置、rally 的排序都留着 -->
     <div class="pages">
       <div :style="shown('rally')" ref="rallyEl" class="page" data-testid="finder-page-rally">
-        <span v-if="finder.rallyStatus !== 'ready'" class="status" data-testid="rally-status"
+        <span v-if="finder.rallyStatus !== 'ready'" :class="['status', { empty: finder.rallyStatus === 'empty' }]"
+              data-testid="rally-status"
               :title="RALLY_HINT[finder.rallyStatus]">{{ rallyStatusText }}</span>
         <table v-else>
           <thead>
@@ -27,14 +28,12 @@
           <tbody>
             <tr v-for="(r, i) in rallyRows" :key="`${r.item.symbol}@${r.item.date}`"
                 :class="{ current: i === rallyCur }" data-testid="rally-row"
-                :data-symbol="r.item.symbol" :data-date="r.item.date" @click="openRally(r.item)">
+                :data-symbol="r.item.symbol" :data-date="r.item.date" @click="view.openFromFinder(r.item.symbol, r.win)">
               <td><span class="chip">{{ r.item.symbol }}</span></td>
               <td class="num" :title="`peak_date ${r.item.peak_date} · rel ${r.item.rel.toFixed(2)}`">{{ r.item.date }}</td>
               <td class="num">{{ formatRise(r.item.rise) }}</td>
               <td class="pats" data-testid="row-patterns" @mouseenter="showSamples($event, r.marks)" @mouseleave="hideSamples">
-                <template v-for="p in r.marks.patterns" :key="p ?? ''">
-                  <span v-if="p !== null" class="chip">{{ p }}</span><span v-else class="key">unsorted</span>
-                </template>
+                <PatternNames :patterns="r.marks.patterns" />
               </td>
               <td class="num" data-testid="row-boxes">{{ r.marks.boxes || '' }}</td>
             </tr>
@@ -43,11 +42,11 @@
       </div>
 
       <div :style="shown('random')" ref="randomEl" class="page" data-testid="finder-page-random">
-        <span v-if="!randomRows.length" class="status empty" data-testid="random-status" :title="RANDOM_EMPTY_HINT">empty</span>
+        <span v-if="!randomRows.length" class="status empty" data-testid="random-page-status"
+              :title="RANDOM_EMPTY_HINT">empty</span>
         <table v-else>
           <thead>
             <tr>
-              <th title="抽的先后">#</th>
               <th title="股票代码">symbol</th>
               <th title="抽到的这段图从哪天起">start</th>
               <th title="抽到的这段图到哪天止">end</th>
@@ -58,14 +57,11 @@
           <tbody>
             <tr v-for="(r, i) in randomRows" :key="i" :class="{ current: i === randomCur }" data-testid="random-row"
                 :data-symbol="r.draw.symbol" :data-start="r.draw.start" :data-end="r.draw.end" @click="openRandom(r.draw)">
-              <td class="num">{{ i + 1 }}</td>
               <td><span class="chip">{{ r.draw.symbol }}</span></td>
               <td class="num">{{ r.draw.start }}</td>
               <td class="num">{{ r.draw.end }}</td>
               <td class="pats" data-testid="row-patterns" @mouseenter="showSamples($event, r.marks)" @mouseleave="hideSamples">
-                <template v-for="p in r.marks.patterns" :key="p ?? ''">
-                  <span v-if="p !== null" class="chip">{{ p }}</span><span v-else class="key">unsorted</span>
-                </template>
+                <PatternNames :patterns="r.marks.patterns" />
               </td>
               <td class="num" data-testid="row-boxes">{{ r.marks.boxes || '' }}</td>
             </tr>
@@ -92,9 +88,7 @@
                 :data-symbol="r.symbol" @click="view.openFromFinder(r.symbol)">
               <td><span class="chip">{{ r.symbol }}</span></td>
               <td class="pats" data-testid="row-patterns" @mouseenter="showSamples($event, r)" @mouseleave="hideSamples">
-                <template v-for="p in r.patterns" :key="p ?? ''">
-                  <span v-if="p !== null" class="chip">{{ p }}</span><span v-else class="key">unsorted</span>
-                </template>
+                <PatternNames :patterns="r.patterns" />
               </td>
               <td class="num" data-testid="row-pos">{{ r.pos || '' }}</td>
               <td class="num" data-testid="row-neg">{{ r.neg || '' }}</td>
@@ -112,7 +106,7 @@
         <tr v-for="s in hovered.samples" :key="s.id" data-testid="finder-sample">
           <td class="num">{{ s.date }}</td>
           <td class="key">{{ s.judgment }}</td>
-          <td><span v-if="s.pattern !== null" class="chip">{{ s.pattern }}</span><span v-else class="key">unsorted</span></td>
+          <td><PatternNames :patterns="[s.pattern]" /></td>
         </tr>
       </table>
     </div>
@@ -128,8 +122,8 @@
  * - random:这次用顶栏 random 抽过的图,按抽的先后;每行同样写标过什么;
  * - charts:全部标过的股票,一只一行,写 pattern 名、正负样本数、框数。
  * 点一行,或在当前页签上按 PageUp / PageDown 挨个翻,换到那张图;换图不换档(view.openFromFinder)。
- * 焦点在任何输入框(单行、多行)、下拉框里时翻页键不切(守卫同 Delete 删框);scan 档里左栏换成扫描列表,
- * 这里的翻页键不接。不带「敲字母搜股票」,搜股票用顶栏 symbol。
+ * 焦点在任何输入框(单行、多行)、下拉框里时翻页键不切(守卫同 Delete 删框,另加自绘下拉的菜单开着时);
+ * scan 档里左栏换成扫描列表,这里的翻页键不接。不带「敲字母搜股票」,搜股票用顶栏 symbol。
  * 只把当前打开的那一行标出来,看过哪几行不记。
  */
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
@@ -138,7 +132,8 @@ import { useAnnotationStore } from '../stores/annotation'
 import { FINDER_TABS, useFinderStore, type FinderTab, type RallyStatus } from '../stores/finder'
 import { chartsBySymbol, chartsRows, marksInWindow, stepIndex, type Marks } from '../annotate/finderList'
 import { RALLY_SORT_KEYS, formatRise, sortRally, type RallySortKey } from '../annotate/rallyList'
-import type { RallyItem, RandomWindow, ViewWindow } from '../types'
+import PatternNames from './PatternNames.vue'
+import type { RandomWindow, ViewWindow } from '../types'
 
 const view = useViewStore()
 const ann = useAnnotationStore()
@@ -177,9 +172,11 @@ const rallyStatusText = computed(() => (finder.rallyStatus === 'idle' ? 'loading
 const byChart = computed(() => chartsBySymbol(ann.state))
 const sortKey = ref<RallySortKey>('rise')
 const desc = ref(true)
-const rallyRows = computed(() => sortRally(finder.rally, sortKey.value, desc.value).map(item => ({
-  item, marks: marksInWindow(byChart.value.get(item.symbol), { start: item.view_start, end: item.view_end }),
-})))
+/** rally 的一行:清单项、打开时的图窗(停在那段涨之前、看得见那段涨)、图窗里标过什么。 */
+const rallyRows = computed(() => sortRally(finder.rally, sortKey.value, desc.value).map(item => {
+  const win: ViewWindow = { start: item.view_start, end: item.view_end }
+  return { item, win, marks: marksInWindow(byChart.value.get(item.symbol), win) }
+}))
 const randomRows = computed(() => finder.draws.map(draw => ({
   draw, marks: marksInWindow(byChart.value.get(draw.symbol), draw),
 })))
@@ -194,12 +191,10 @@ function sortBy(k: RallySortKey) {
 function isOpen(symbol: string, win: ViewWindow): boolean {
   return view.symbol === symbol && view.viewWindow?.start === win.start && view.viewWindow?.end === win.end
 }
-const rallyCur = computed(() => rallyRows.value.findIndex(r =>
-  isOpen(r.item.symbol, { start: r.item.view_start, end: r.item.view_end })))
+const rallyCur = computed(() => rallyRows.value.findIndex(r => isOpen(r.item.symbol, r.win)))
 const randomCur = computed(() => randomRows.value.findIndex(r => isOpen(r.draw.symbol, r.draw)))
 const chartsCur = computed(() => chartRows.value.findIndex(r => r.symbol === view.symbol))
 
-function openRally(it: RallyItem) { view.openFromFinder(it.symbol, { start: it.view_start, end: it.view_end }) }
 function openRandom(d: RandomWindow) { view.openFromFinder(d.symbol, d) }
 
 // ── 悬停列出样本 ──
@@ -222,7 +217,7 @@ const chartsEl = ref<HTMLElement | null>(null)
 function currentPage(): { n: number; cur: number; open: (i: number) => void; el: HTMLElement | null } {
   if (finder.tab === 'rally') {
     return { n: finder.rallyStatus === 'ready' ? rallyRows.value.length : 0, cur: rallyCur.value,
-             open: i => openRally(rallyRows.value[i].item), el: rallyEl.value }
+             open: i => view.openFromFinder(rallyRows.value[i].item.symbol, rallyRows.value[i].win), el: rallyEl.value }
   }
   if (finder.tab === 'random') {
     return { n: randomRows.value.length, cur: randomCur.value, open: i => openRandom(randomRows.value[i].draw),
@@ -250,6 +245,8 @@ function onPageKey(e: KeyboardEvent) {
   if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey || e.isComposing) return
   const ae = document.activeElement as HTMLElement | null
   if (ae && ae.closest(EDITABLE)) return
+  // 自绘的下拉(PatternPicker:顶栏 pattern、样本页的 pattern 一格)菜单开着时也算在下拉框里
+  if (document.querySelector('[aria-expanded="true"]')) return
   const page = currentPage()
   if (!page.n) return
   e.preventDefault()
@@ -285,16 +282,15 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onPageKey))
 .page { grid-area: 1 / 1; min-height: 0; overflow: auto; }
 .status { display: block; padding: 8px 12px; font-family: var(--mono); font-size: 12px; }
 .status.empty { color: var(--ink-empty); }
-table { border-collapse: collapse; font-size: 13px; }
+table { border-collapse: collapse; font-size: 12px; }
 th {
-  position: sticky; top: 0; padding: 4px 8px; background: var(--bar-bg); border-bottom: 1px solid var(--line);
+  position: sticky; top: 0; padding: 4px 6px; background: var(--bar-bg); border-bottom: 1px solid var(--line);
   font-family: var(--mono); font-size: 12px; font-weight: normal; text-align: left; white-space: nowrap;
 }
 th.sortable { cursor: pointer; user-select: none; }
 .arrow { display: inline-block; width: 1em; margin-left: 2px; }
-td { padding: 2px 8px; white-space: nowrap; }
+td { padding: 2px 6px; white-space: nowrap; }
 td.num { font-variant-numeric: tabular-nums; }
-td.pats > * + * { margin-left: 4px; }
 tbody tr { cursor: pointer; }
 tbody tr:hover { background: var(--line-soft); }
 tbody tr.current { outline: 2px solid var(--ink); outline-offset: -2px; }
@@ -303,7 +299,7 @@ tbody tr.current { outline: 2px solid var(--ink); outline-offset: -2px; }
 .samples-pop {
   position: fixed; z-index: 60; padding: 4px 6px; background: #fff; color: var(--ink);
   border: 1px solid var(--line-strong); border-radius: 3px; box-shadow: 0 2px 8px rgb(0 0 0 / 12%);
-  font-size: 13px; pointer-events: none;
+  font-size: 12px; pointer-events: none;
 }
 .samples-pop td { padding: 1px 6px; }
 </style>

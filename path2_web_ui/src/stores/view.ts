@@ -5,7 +5,7 @@ import { defineStore, acceptHMRUpdate } from 'pinia'
 // ─────────────────────────────────────────────────────────────────
 // v2 event-debug-multi-anchor(2026-07-15) · anchorsOf 表 + findBoBar helper
 //
-// 契约(见 docs/research/2026-07-15_event-debug-dual-emit-multi-anchor/final_report.md):
+// 契约:
 // - 项数守恒(#3): UI 菜单项数 ≤ 后端埋点数(允许后端多处合并到 UI 单项)
 // - 参数对齐(#4): anchor.bar 必须与后端 debug_break 参数值一致
 // - dead-code 保护(#5): _DEBUG_MODE=False 时后端零成本
@@ -340,7 +340,7 @@ export const useViewStore = defineStore('view', () => {
   const currentDiagnoseNode = ref<string>('')
   const pairScopeResponse = ref<PairScopeResponse | null>(null)
 
-  // ── Working Copy(2026-07-20 params-consistency,spec=docs/research/2026-07-20_params-profiles-dev-modes)──
+  // ── Working Copy(2026-07-20 params-consistency)──
   // 浏览态:全 UI 锚 scan file snapshot;探索态:锚 WC dict。localStorage 休眠恢复(不自动激活)。
   const workingCopy = ref<Record<string, WorkingCopySlot | undefined>>({})
   const dormantDrafts = ref<{ pid: string; savedAt: number }[]>([])
@@ -1245,7 +1245,6 @@ export const useViewStore = defineStore('view', () => {
   }
 
   // v2 event-debug(2026-07-15) · marker 右键 → 精准断点触发
-  // spec: docs/research/2026-07-15_event-debug-dual-emit-multi-anchor/final_report.md
   async function triggerEventDebug(
     instanceId: string, anchorKey: 'entry' | 'start' | 'end' | 'confirm'
   ): Promise<void> {

@@ -179,7 +179,7 @@ describe('FinderList · 三页的内容', () => {
     expect(again.finder.tab).toBe('rally')
     await again.w.get('[data-testid="finder-tab-random"]').trigger('click')
     expect(rows(again.w, 'random')).toHaveLength(0)
-    expect(again.w.get('[data-testid="random-status"]').text()).toBe('empty')
+    expect(again.w.get('[data-testid="random-page-status"]').text()).toBe('empty')
   })
 })
 
@@ -226,6 +226,20 @@ describe('FinderList · 按法', () => {
     expect(fireKey('PageDown', { shiftKey: true }).defaultPrevented).toBe(false)
     expect(fireKey('PageDown', { ctrlKey: true }).defaultPrevented).toBe(false)
     expect(view.symbol).toBeNull()
+  })
+
+  it('自绘下拉(顶栏 pattern)的菜单开着时不切;关上后照常翻', async () => {
+    const { view } = await mountFinder()
+    view.openFromFinder('MSFT', { start: '2023-09-12', end: '2024-04-26' })
+    const menu = document.createElement('button')
+    menu.setAttribute('aria-expanded', 'true')
+    document.body.appendChild(menu)
+    menu.focus()
+    expect(fireKey('PageDown').defaultPrevented).toBe(false)
+    expect(view.symbol).toBe('MSFT')
+    menu.setAttribute('aria-expanded', 'false')
+    fireKey('PageDown')
+    expect(view.symbol).toBe('NVDA')
   })
 
   it.each([

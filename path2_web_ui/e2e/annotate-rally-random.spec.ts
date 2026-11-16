@@ -16,7 +16,7 @@ import { gotoScanTier } from './scanTier'
  * - 看过什么一律不记、random 页不落盘:清单与缓存先备好,之后连点几行、翻页、几次 random,
  *   仓库的 git status --porcelain --ignored(含被忽略的文件,逐个列出)、标注目录、浏览器存储都不变;刷新后 random 页为空、
  *   回到 rally 页;
- * - 切到 scan 档再切回来,找图清单的页签和滚动位置都还在。
+ * - 切到 scan 档再切回来,找图清单的页签和滚动位置都还在;反过来从前三档回 scan 档,扫描列表的滚动位置也还在。
  *
  * 前提:后端已按 configs/path2_web.yaml 的 backend_port 启动,读真实的训练段副本(只读)。
  * 大涨段清单第一次要整池算一遍(约半分钟)。还没有扫描结果时,先对少数几只股票跑一次小扫描。
@@ -228,7 +228,7 @@ test.describe('找图 · 左栏 rally / random 与顶栏 random', () => {
     await expect(page.getByTestId('finder-tab-rally')).toHaveAttribute('aria-selected', 'true')
     await page.getByTestId('finder-tab-random').click()
     await expect(page.getByTestId('random-row')).toHaveCount(0)
-    await expect(page.getByTestId('random-status')).toHaveText('empty')
+    await expect(page.getByTestId('random-page-status')).toHaveText('empty')
   })
 
   test('切到 scan 档再切回来:找图清单的页签和滚动位置都还在', async ({ page }) => {
@@ -257,5 +257,21 @@ test.describe('找图 · 左栏 rally / random 与顶栏 random', () => {
     await expect(page.getByTestId('finder-page-charts')).toBeVisible()
     await page.getByTestId('finder-tab-rally').click()
     expect(await scrollTop()).toBe(y)
+  })
+  test('切到前三档再回 scan 档:扫描列表的滚动位置还在', async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 340 })        // 矮一些,几行扫描结果也要滚动
+    await enterScanView(page)
+    const wrap = page.getByTestId('scan-side').locator('.table-wrap')
+    await expect.poll(() => wrap.evaluate(el => el.scrollHeight - el.clientHeight)).toBeGreaterThan(0)
+    await wrap.evaluate(el => { el.scrollTop = el.scrollHeight })
+    const y = await wrap.evaluate(el => el.scrollTop)
+    expect(y).toBeGreaterThan(0)
+
+    await page.getByTestId('mode-annotate').click()
+    await expect(page.getByTestId('finder-list')).toBeVisible()
+    await expect(wrap).toBeHidden()
+    await page.getByTestId('mode-scan').click()
+    await expect(wrap).toBeVisible()
+    expect(await wrap.evaluate(el => el.scrollTop)).toBe(y)
   })
 })
