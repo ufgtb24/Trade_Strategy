@@ -1,0 +1,7 @@
+# 前端单测基线（开工前，同上提交；票 worktree 里 npx vitest run）
+
+ Test Files  135 passed (135)
+      Tests  1764 passed (1764)
+   Start at  11:18:25
+   Duration  9.37s (transform 19.76s, setup 0ms, collect 87.11s, tests 22.21s, environment 78.33s, prepare 13.94s)
+

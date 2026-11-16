@@ -1,0 +1,8 @@
+tests/path2_web tests/scripts
+--ignore=tests/scripts/test_data_download.py
+--ignore=tests/path2_web/test_serialize_hit_fp.py
+--deselect=tests/path2_web/test_serialize_tbseg.py::test_serialize_tbseg_walked_from_container
+--deselect=tests/path2_web/test_serialize_multi.py::test_per_pattern_result_schema
+--deselect=tests/path2_web/test_serialize_multi.py::test_per_pattern_events_full_set_kept
+--deselect=tests/path2_web/test_serialize_multi.py::test_max_forward_return_null_when_hits_empty
+--deselect=tests/path2_web/test_serialize_multi.py::test_summary_hits_key_reflects_window
