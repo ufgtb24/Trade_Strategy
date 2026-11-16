@@ -18,8 +18,8 @@ export const LEFT_MIN = 70
 
 /** 右栏的宽度范围:没拖过时的宽度与最窄(最宽统一是半屏)。 */
 export interface RightSize { dflt: number; min: number }
-/** 标注侧栏:最窄时字段名一列加值一列不挤坏(在真浏览器里看过四个页签)。 */
-export const ANN_SIZE: RightSize = { dflt: 320, min: 260 }
+/** 标注侧栏:最窄时 compare 下四个页签一行排得下,字段名一列加值一列不挤坏。 */
+export const ANN_SIZE: RightSize = { dflt: 320, min: 300 }
 /** 诊断侧栏。 */
 export const DETAIL_SIZE: RightSize = { dflt: 280, min: 220 }
 

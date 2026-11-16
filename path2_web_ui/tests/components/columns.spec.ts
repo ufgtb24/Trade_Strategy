@@ -242,6 +242,21 @@ describe('右栏 · 收起与拖宽', () => {
     })
   }
 
+  it('只藏不拆:标注侧栏收起再打开是同一个节点,页签、正在填的输入框都还在', async () => {
+    const w = mountChart()
+    await w.get('[data-testid="annotation-tab-pattern"]').trigger('click')
+    const side = w.get('[data-testid="annotation-sidebar"]').element
+    const input = document.createElement('input')
+    side.appendChild(input)                                                  // 代表侧栏里正在填的一格
+    input.value = 'half wri'
+    await w.get('[data-testid="ann-edge-toggle"]').trigger('click')
+    await w.get('[data-testid="ann-edge"]').trigger('click')
+    expect(w.get('[data-testid="annotation-sidebar"]').element).toBe(side)
+    expect(side.contains(input)).toBe(true)
+    expect(input.value).toBe('half wri')
+    expect(w.get('[data-testid="annotation-tab-pattern"]').attributes('aria-selected')).toBe('true')
+  })
+
   for (const t of ['app', 'scan'] as Tier[]) {
     it(`${t}:诊断侧栏有拖边、没有小箭头;显隐照旧归 Sidebar 按钮`, async () => {
       setTier(t)
