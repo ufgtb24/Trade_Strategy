@@ -1,4 +1,9 @@
 {
+ "code": {
+  "commit": "3a5c585493e37b8dc43b8a16af8ddb977da12516",
+  "tracked_changes": "D  .scratch/annotation-path2-implementation/evidence/18/dry-run/plan.json\nD  .scratch/annotation-path2-implementation/evidence/18/dry-run/status_after.json\nD  .scratch/annotation-path2-implementation/evidence/18/dry-run/status_before.json\nD  .scratch/annotation-path2-implementation/evidence/18/dry-run/write_result.json",
+  "script_blob": "79841023621529e909c0b23eba7894b2e96ca250"
+ },
  "app_ver": "32dd64edf923d266",
  "reason": null,
  "rows": {
@@ -34,5 +39,12 @@
    "shown": "matched",
    "red": true
   }
- }
+ },
+ "expected_after": {
+  "f-pc-92": "matched",
+  "f-pc-90": "unmatched",
+  "f-pc-74": "matched",
+  "f-pc-95": "matched"
+ },
+ "expected_after_ok": true
 }

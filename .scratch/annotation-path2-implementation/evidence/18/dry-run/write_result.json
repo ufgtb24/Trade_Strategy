@@ -1,8 +1,13 @@
 {
+ "code": {
+  "commit": "3a5c585493e37b8dc43b8a16af8ddb977da12516",
+  "tracked_changes": "D  .scratch/annotation-path2-implementation/evidence/18/dry-run/plan.json\nD  .scratch/annotation-path2-implementation/evidence/18/dry-run/status_after.json\nD  .scratch/annotation-path2-implementation/evidence/18/dry-run/status_before.json\nD  .scratch/annotation-path2-implementation/evidence/18/dry-run/write_result.json",
+  "script_blob": "79841023621529e909c0b23eba7894b2e96ca250"
+ },
  "annotation_dir_is_real": false,
  "approved": null,
- "batch_file": "pc-20261116T181809.937Z-300.json",
- "batch_sha256": "5eede3e9256af4127dcc63119cbee2b2c20dea53ed2436c16f366c74c3b0b2b0",
+ "batch_file": "pc-20261116T182945.994Z-300.json",
+ "batch_sha256": "22e311edf464d7f86195ebfb9b15f6d6446f9688b2f0ae30580d3e3b1a4ef251",
  "ops_sha256": "1a3b9e8563676b7c3f48239e8179419aa8f54a5bb0df9480e988c4428d07300a",
  "rows": [
   {
