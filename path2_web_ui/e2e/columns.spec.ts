@@ -186,33 +186,42 @@ test.describe('左右栏的收起与拖宽', () => {
     await openSymbol(page, 'AAPL')
     await page.getByTestId('annotation-tab-features').click()
     const def = page.getByTestId('annotation-page-features').locator('[data-testid="definition-text"]', { hasText: '成交量比前一段' })
-    await dragEdge(page, 'ann-edge', -300)                                     // 先拉宽:定义一行写得下
-    const wide = await rect(page, 'annotation-sidebar')
-    expect(wide.width).toBeGreaterThan(560)
-    const h1 = (await def.boundingBox())!.height
+    await dragEdge(page, 'ann-edge', -300)                                     // 先拉宽
+    expect((await rect(page, 'annotation-sidebar')).width).toBeGreaterThan(560)
+    const defWide = (await def.boundingBox())!.width
     await dragEdge(page, 'ann-edge', 2000)                                     // 拖过最窄
-    const narrow = await rect(page, 'annotation-sidebar')
-    expect(narrow.width).toBe(300)
-    expect((await def.boundingBox())!.height).toBeGreaterThan(h1 * 1.5)        // 换行了
-    // 字段名(definition、box×n 这些固定词)都完整可见:没被截、没伸出栏外
-    const cut = await page.getByTestId('annotation-sidebar').evaluate(side => {
+    expect((await rect(page, 'annotation-sidebar')).width).toBe(300)
+    expect((await def.boundingBox())!.width).toBeLessThan(defWide - 200)       // 值的那一格跟着变窄
+    // 字段名(definition、box×n 这些固定词)都完整可见:没被截、没伸出栏外;栏内没有横向溢出
+    const cutKeys = () => page.getByTestId('annotation-sidebar').evaluate(side => {
       const r = side.getBoundingClientRect()
-      return [...side.querySelectorAll('.ann-k')].filter(k => {
+      return [...side.querySelectorAll('.ann-k, .sel-card .row > :first-child')].filter(k => {
         const b = k.getBoundingClientRect()
         return b.width > 0 && (k.scrollWidth > k.clientWidth + 1 || b.right > r.right || b.left < r.left)
       }).map(k => k.textContent)
     })
-    expect(cut).toEqual([])
-    expect(await page.getByTestId('annotation-sidebar').evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true)
+    const overflows = () => page.getByTestId('annotation-sidebar').evaluate(el => el.scrollWidth > el.clientWidth)
+    expect(await cutKeys()).toEqual([])
+    expect(await overflows()).toBe(false)
 
-    // compare 下多一页 feedback:最窄时四个页签一行排得下,栏内没有横向溢出
+    // compare:选中样本,selection 页的 copy 一行在宽时一行写得下,拖窄后换行;多一页 feedback 时四个页签一行排得下
     await page.getByTestId('top-pattern-button').click()
     await page.locator('[data-testid="top-pattern-option"][data-name="W底"]').click()
     await page.getByTestId('mode-compare').click()
     await expect.poll(() => view(page, 'mode')).toBe('compare')
-    await page.getByTestId('annotation-tab-feedback').click()
+    await page.evaluate(() => (window as any).__e2e.ann().selectSample('s-pc-11'))
+    await page.getByTestId('annotation-tab-selection').click()
+    const copyRow = page.getByTestId('sel-card-copy')
+    await expect(copyRow).toBeVisible()
+    await dragEdge(page, 'ann-edge', -320)
+    const h1 = (await copyRow.boundingBox())!.height
+    await dragEdge(page, 'ann-edge', 2000)
     expect((await rect(page, 'annotation-sidebar')).width).toBe(300)
-    expect(await page.getByTestId('annotation-sidebar').evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true)
+    expect((await copyRow.boundingBox())!.height).toBeGreaterThan(h1 * 1.5)   // 换行了
+    expect(await cutKeys()).toEqual([])
+    expect(await overflows()).toBe(false)
+    await page.getByTestId('annotation-tab-feedback').click()
+    expect(await overflows()).toBe(false)
     const tabsRight = await page.getByTestId('annotation-tab-feedback').evaluate(el => el.getBoundingClientRect().right)
     expect(tabsRight).toBeLessThanOrEqual((await rect(page, 'annotation-sidebar')).right)
 
