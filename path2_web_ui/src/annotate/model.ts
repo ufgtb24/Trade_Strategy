@@ -51,6 +51,8 @@ export type FeedbackAnswer = 'neg' | 'off_pattern' | 'pos'
  * 一条反馈(状态里的,不带 symbol;存进文件时带上,见 feedbackValue)。
  * pattern 是标注里的 pattern 名,app_id 是 app 模块名,app_ver 是记录时 app 的版本指纹(只记出处);
  * family_start 只在 target 为 family 时有(这一族 hit 的起点日期);
+ * reference 也只在 family 上有:写这条反馈时这一族各 hit 的基准 event 起止(node 是 mapping 声明的基准 node),
+ * 新建的整族反馈必带,之后改 note、nodes、issue 原样带着、不按当前版 app 重算;以前存下的可能没有;
  * note 是用户写的理由;nodes 是点出的 node(node_id),意思是「问题落在这一块上」,可以一个都不点;
  * issue 把共享同一份内容(note、nodes)的几处连起来:内容仍写在每一处上,带同一个 issue 值的各处内容相同
  * (后端保存时校验);不带的自成一个只有一处的 issue。只有用户自己挑的(source = picked)能带。
@@ -61,6 +63,8 @@ export type FeedbackAnswer = 'neg' | 'off_pattern' | 'pos'
  *   显示 note 与 nodes(answer 与 dag 界面上不显示),经面板保存后改写成新形状。
  * 盲看标记(source 不是 picked)恒带 answer。
  */
+/** 整族反馈存下的基准 event 起止:node 是基准 node,spans 是 [start, end] 日期对(去重、按起止排序,不合并)。 */
+export interface FeedbackReference { node: string; spans: [string, string][] }
 export interface AnnFeedback {
   id: string
   pattern: string
@@ -78,6 +82,7 @@ export interface AnnFeedback {
   dag?: true
   issue?: string
   family_start?: string
+  reference?: FeedbackReference
 }
 export interface AnnChart { symbol: string; boxes: AnnBox[]; samples: AnnSample[]; feedback?: AnnFeedback[] }
 export interface AnnState {
@@ -163,8 +168,8 @@ export function sampleValue(symbol: string, smp: AnnSample): Record<string, unkn
 
 /**
  * 反馈存进操作的值:带 symbol;answer、dag 记录上有才写(原样照抄:盲看标记与撤销删除写回旧形状的记录时用,
- * 面板保存的新形状本来就没有这两个键);空的 note、空的 nodes 不写;issue 有才写;family_start 只在 target 为
- * family 时写(后端只许 family 带它)。其余字段照抄。键的先后同后端重放出来的(answer 在 source 之后)。
+ * 面板保存的新形状本来就没有这两个键);空的 note、空的 nodes 不写;issue 有才写;family_start、reference 只在
+ * target 为 family 时写(后端只许 family 带它们)。其余字段照抄。键的先后同后端重放出来的(answer 在 source 之后)。
  */
 export function feedbackValue(symbol: string, fb: AnnFeedback): Record<string, unknown> {
   const v: Record<string, unknown> = {
@@ -177,6 +182,9 @@ export function feedbackValue(symbol: string, fb: AnnFeedback): Record<string, u
   if (fb.dag) v.dag = true
   if (fb.issue) v.issue = fb.issue
   if (fb.target === 'family' && fb.family_start) v.family_start = fb.family_start
+  if (fb.target === 'family' && fb.reference) {
+    v.reference = { node: fb.reference.node, spans: fb.reference.spans.map(([a, b]) => [a, b]) }
+  }
   return v
 }
 

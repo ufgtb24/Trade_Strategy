@@ -144,12 +144,27 @@ describe('保存条件', () => {
     expect(saveProblems(d({ note: 'x', target: 'point', start: '2025-01-10' }))).toEqual([])
   })
 
+  const REF = { node: 'step', spans: [['2025-01-02', '2025-01-03']] as [string, string][] }
+
   it('family 必有起点且不晚于 start;别的 target 不带起点', () => {
-    expect(saveProblems(d({ note: 'x', target: 'family' }))).toEqual(['family_start'])
-    expect(saveProblems(d({ note: 'x', target: 'family', family_start: '2025-01-07' }))).toEqual(['family_start'])
-    expect(saveProblems(d({ note: 'x', target: 'family', family_start: '2025-01-06' }))).toEqual([])
-    expect(saveProblems(d({ note: 'x', target: 'family', family_start: '2024-12-02' }))).toEqual([])
+    expect(saveProblems(d({ note: 'x', target: 'family', reference: REF }))).toEqual(['family_start'])
+    expect(saveProblems(d({ note: 'x', target: 'family', family_start: '2025-01-07', reference: REF }))).toEqual(['family_start'])
+    expect(saveProblems(d({ note: 'x', target: 'family', family_start: '2025-01-06', reference: REF }))).toEqual([])
+    expect(saveProblems(d({ note: 'x', target: 'family', family_start: '2024-12-02', reference: REF }))).toEqual([])
     expect(saveProblems(d({ note: 'x', family_start: '2025-01-02' }))).toEqual(['family_start'])
+  })
+
+  it('reference:新建的 family 必带(改已有的可以没有);形状同后端;别的 target 不带', () => {
+    const fam = (extra: Partial<FeedbackDraft>) => d({ note: 'x', target: 'family', family_start: '2025-01-02', ...extra })
+    expect(saveProblems(fam({}))).toEqual(['reference'])                                    // 新建:这一族取不出基准 event
+    expect(saveProblems(fam({}), true)).toEqual([])                                         // 改一条以前存下的、没有它的
+    expect(saveProblems(fam({ reference: { node: 'step', spans: [] } }))).toEqual(['reference'])
+    expect(saveProblems(fam({ reference: { node: '', spans: REF.spans } }))).toEqual(['reference'])
+    expect(saveProblems(fam({ reference: { node: 'step', spans: [['2025-01-03', '2025-01-02']] } }))).toEqual(['reference'])
+    expect(saveProblems(fam({ reference: { node: 'step', spans: [['2025-12-31', '2026-01-02']] } }))).toEqual(['reference'])
+    expect(saveProblems(fam({ reference: { node: 'step', spans: [['2025-12-31', '2025-12-31']] } }))).toEqual([])
+    expect(saveProblems(fam({ reference: { node: 'step', spans: [['2025-12-31', '2025-12-31']] } }), true)).toEqual([])
+    expect(saveProblems(d({ note: 'x', reference: REF }))).toEqual(['reference'])
   })
 })
 
@@ -165,10 +180,14 @@ describe('草稿转记录', () => {
     expect(Object.keys(plain)).not.toContain('dag')
     expect(Object.keys(plain)).not.toContain('nodes')
     expect(draftToFeedback({ symbol: 'AAA', start: '2025-01-06', end: '2025-01-10', target: 'family',
-                             family_start: '2025-01-02', note: '不像', nodes: ['step'], issue: 'i-pc-3' }, origin))
+                             family_start: '2025-01-02', note: '不像', nodes: ['step'], issue: 'i-pc-3',
+                             reference: { node: 'step', spans: [['2025-01-03', '2025-01-03']] } }, origin))
       .toEqual({ id: 'f-pc-9', pattern: 'p', app_id: 'app1', app_ver: 'v2', start: '2025-01-06', end: '2025-01-10',
                  target: 'family', source: 'picked', note: '不像', nodes: ['step'], issue: 'i-pc-3',
-                 family_start: '2025-01-02' })
+                 family_start: '2025-01-02', reference: { node: 'step', spans: [['2025-01-03', '2025-01-03']] } })
+    expect(draftToFeedback({ symbol: 'AAA', start: '2025-01-06', end: '2025-01-10', target: 'range', note: '不像',
+                             reference: { node: 'step', spans: [['2025-01-03', '2025-01-03']] } }, origin))
+      .not.toHaveProperty('reference')                                                          // 只在 family 时带
   })
 
   it('草稿上多出来的 answer、dag(类型之外,旧代码传来的)也不写进记录', () => {

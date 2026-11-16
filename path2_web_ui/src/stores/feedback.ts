@@ -44,7 +44,7 @@ import { getFeedbackStatus } from '../api'
 import { chartOf, findFeedback } from '../annotate/model'
 import {
   findSameRange, hitsBuyingIn, issueChoices, issueGroups, issueKey, needsIssueChoice, nextIssueValue, planIssueSave,
-  posSamplesInside, saveProblems, nodeChoices,
+  posSamplesInside, referenceSpans, saveProblems, nodeChoices,
   type FeedbackProblem, type FeedbackRange, type FeedbackStatusOf, type IssueChoice, type IssueGroup,
 } from '../annotate/feedback'
 import { buyDaysOf } from '../render/fold'
@@ -67,6 +67,8 @@ export type ResizeResult = 'saved' | 'same' | 'panel'
 export const useFeedbackStore = defineStore('feedback', () => {
   const view = useViewStore()
   const ann = useAnnotationStore()
+  /** 当前 pattern 的 app 在 mapping 里声明的基准 node(stores/appLink.ts 登记进 view;没有能用的 mapping 时为 null) */
+  const referenceNode = computed<string | null>(() => view.referenceNode)
 
   const statusById = shallowRef<Record<string, FeedbackStatusOf>>({})
   const loading = ref(false)
@@ -157,13 +159,15 @@ export const useFeedbackStore = defineStore('feedback', () => {
     if (same) return openRecord(same.id)
     const base: FeedbackPanel = { symbol: what.symbol, start: what.start, end: what.end, target: what.target }
     if (what.target === 'family' && what.family_start) base.family_start = what.family_start
+    if (what.target === 'family' && what.reference) base.reference = what.reference
     panel.value = { ...base, note: '', nodes: [] }
     opens.value++
     return true
   }
 
   /** 打开一条已有的反馈:盲看标记、不属于当前 pattern 的不开(存不进去,见 annotation.saveFeedback)。
-   *  只预填 note 与 nodes:记录上以前存下的 answer、dag 不进面板(保存后那条就不再带它们)。 */
+   *  只预填 note 与 nodes:记录上以前存下的 answer、dag 不进面板(保存后那条就不再带它们);整族反馈存下的
+   *  family_start、reference 原样带着(不按当前版 app 重算,没存过的不补)。 */
   function openRecord(id: string): boolean {
     openedFrom = null
     const hit = ann.state ? findFeedback(ann.state, id) : null
@@ -174,6 +178,7 @@ export const useFeedbackStore = defineStore('feedback', () => {
       editingId: fb.id, note: fb.note ?? '', nodes: [...(fb.nodes ?? [])], link: issueKey(fb),
     }
     if (fb.target === 'family' && fb.family_start) p.family_start = fb.family_start
+    if (fb.target === 'family' && fb.reference) p.reference = fb.reference
     panel.value = p
     opens.value++
     return true
@@ -203,7 +208,7 @@ export const useFeedbackStore = defineStore('feedback', () => {
   }
 
   /** 保存条件还缺什么(面板里标出来);没开面板为空。 */
-  const problems = computed<FeedbackProblem[]>(() => (panel.value ? saveProblems(panel.value) : []))
+  const problems = computed<FeedbackProblem[]>(() => (panel.value ? saveProblems(panel.value, !!panel.value.editingId) : []))
 
   /**
    * 存面板里的这条:条件满足、存得下才关面板;返回存没存。连着的 issue 还有别的处、内容又改了时要 choice
@@ -211,14 +216,14 @@ export const useFeedbackStore = defineStore('feedback', () => {
    */
   function save(choice: IssueChoice | null = null): boolean {
     const p = panel.value
-    if (!p || !ann.state || saveProblems(p).length) return false
+    if (!p || !ann.state || saveProblems(p, !!p.editingId).length) return false
     const st = ann.state
     const plan = planIssueSave(p, panelIssue.value, p.editingId ?? null, choice, () =>
       nextIssueValue(st.charts.flatMap(c => (c.feedback ?? []).map(f => f.issue)), st.machine))
     if (plan.ask) return false
     const id = ann.saveFeedback({
       id: p.editingId, symbol: p.symbol, start: p.start, end: p.end, target: p.target,
-      family_start: p.family_start, note: p.note, nodes: p.nodes, issue: plan.issue,
+      family_start: p.family_start, reference: p.reference, note: p.note, nodes: p.nodes, issue: plan.issue,
     }, plan.others)
     if (!id) return false
     panel.value = null
@@ -235,7 +240,7 @@ export const useFeedbackStore = defineStore('feedback', () => {
   }
 
   /**
-   * 改一条已有反馈的起止:note、node、所属的 issue 都不变,target 改为 range、去掉 family_start(点或一族拖过边
+   * 改一条已有反馈的起止:note、node、所属的 issue 都不变,target 改为 range、去掉 family_start 与 reference(点或一族拖过边
    * 就成了一段日期),app_ver 刷新为当前值(同在面板里改)。不经面板,直接存。返回:
    * - 'saved':存了;
    * - 'same':这只股票、当前 pattern 已有另一条范围完全相同的反馈,不存(防重复,同 open);
@@ -254,7 +259,7 @@ export const useFeedbackStore = defineStore('feedback', () => {
                     note: f.note, nodes: f.nodes, issue: f.issue }
     if (saveProblems(draft).includes('note')) {
       if (!openRecord(id)) return null
-      const { family_start: _f, ...rest } = panel.value!
+      const { family_start: _f, reference: _r, ...rest } = panel.value!
       panel.value = { ...rest, start, end, target: 'range' }
       return 'panel'
     }
@@ -281,7 +286,7 @@ export const useFeedbackStore = defineStore('feedback', () => {
   })
   view.setSelSources({
     feedbacks: () => chartFeedback.value.map(f => ({
-      id: f.id, start: f.start, end: f.end, family_start: f.target === 'family' ? f.family_start ?? null : null })),
+      id: f.id, start: f.start, end: f.end, target: f.target, reference: f.target === 'family' ? f.reference ?? null : null })),
     feedbackOf: (id) => {
       const f = chartFeedback.value.find(x => x.id === id)
       return f ? { start: f.start, end: f.end, nodes: f.nodes ?? [],
@@ -300,7 +305,9 @@ export const useFeedbackStore = defineStore('feedback', () => {
    * 选中的那一个能作答的对象(只看路径最里面那一节):
    * - 买点日 → 那一天(point);它里面的一次 hit → 那一天,那天得是这次 hit 的买点日(从样本、框走进去的那次
    *   不在那天买时不能作答);
-   * - 一族 → 整族(family):范围是这一族全部买点日的最早到最晚,另存族起点 family_start;一个买点日都没有的族为 null;
+   * - 一族 → 整族(family):范围是这一族全部买点日的最早到最晚,另存族起点 family_start,以及这一族各 hit 的基准
+   *   event 起止 reference(mapping 声明的基准 node;取不出时 spans 为空、面板标出 reference 存不了);
+   *   一个买点日都没有的族为 null;
    * - 一条反馈 → 那条({id},打开来改);
    * - event、node、样本、框,或没选中:null。
    * 买点日和图上画 ▼ 同一口径(render/fold.ts 的 buyDaysOf,解析不到不退到终点),所以能作答的日子上一定有 ▼。
@@ -326,11 +333,18 @@ export const useFeedbackStore = defineStore('feedback', () => {
     }
     if (last.kind === 'hit_family') {
       const st = Number(last.familyKey.slice(last.familyKey.lastIndexOf('@') + 1))
-      const days = hits.filter(m => m.start_idx === st).flatMap(buysOf)
+      const fam = hits.filter(m => m.start_idx === st)
+      const days = fam.flatMap(buysOf)
       const start = days.length ? date(Math.min(...days)) : null
       const end = days.length ? date(Math.max(...days)) : null
       const familyStart = date(st)
-      return start && end && familyStart ? { symbol: sym, start, end, target: 'family', family_start: familyStart } : null
+      if (!start || !end || !familyStart) return null
+      const out: FeedbackRange = { symbol: sym, start, end, target: 'family', family_start: familyStart }
+      const node = referenceNode.value
+      if (node !== null) {
+        out.reference = { node, spans: referenceSpans(fam, view.effectiveAnalysis?.events ?? [], node, view.barDates) }
+      }
+      return out
     }
     return null
   })

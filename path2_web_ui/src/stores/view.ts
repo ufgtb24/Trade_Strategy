@@ -185,6 +185,7 @@ import { bandCells, lineDayOf, makeWorld, type AnchorRow, type WorldCtx } from '
 import { highlightOf, type Highlight } from '../render/selHighlight'
 import { snapshotOf as selSnapshotOf, type SnapCtx, type Snapshot } from '../render/selSnapshot'
 import { feedbackHits } from '../annotate/feedback'
+import type { FeedbackReference, FeedbackTarget } from '../annotate/model'
 import { getDiagnose, getPreview, getTimeDiagnose, getPairDiagnose, saveWcMirror, clearWcMirror, type PreviewResp } from '../api'
 import { useConfigStore } from './config'
 
@@ -898,7 +899,10 @@ export const useViewStore = defineStore('view', () => {
   interface SelSources {
     samples?: () => AnchorRow[]
     boxes?: () => AnchorRow[]
-    feedbacks?: () => { id: string; start: string; end: string; family_start?: string | null }[]
+    feedbacks?: () => { id: string; start: string; end: string; target?: FeedbackTarget
+                        reference?: FeedbackReference | null }[]
+    /** mapping 声明的基准 node(整族反馈收进来的 hit 按它认,annotate/feedback.ts 的 feedbackHits) */
+    referenceNode?: () => string | null
     onAnchor?: (s: Sel) => void
     /** 样本的成员框(图上「选中样本时成员框照常、其余框画淡」用) */
     memberBoxes?: (sampleId: string) => readonly string[]
@@ -909,6 +913,8 @@ export const useViewStore = defineStore('view', () => {
   }
   const selSources = shallowRef<SelSources>({})
   function setSelSources(part: SelSources): void { selSources.value = { ...selSources.value, ...part } }
+  /** 当前 pattern 的 app 在 mapping 里声明的基准 node(stores/appLink.ts 登记;没登记或没有能用的 mapping 为 null) */
+  const referenceNode = computed<string | null>(() => selSources.value.referenceNode?.() ?? null)
 
   const selPath = shallowRef<SelPath>([])
   /** 每走一步(← / →、↑ / ↓)加一:反馈面板据此判断要不要关(stores/feedback.ts) */
@@ -942,13 +948,20 @@ export const useViewStore = defineStore('view', () => {
       using: usingOf.value, bound, bandOf: bandKeyOf,
       bandFamilies: bandFamiliesCached,
       feedbacks: (src.feedbacks?.() ?? []).map(f => ({
-        id: f.id, hitIds: feedbackHits(hits, events, endNode.value, barDates.value, f).map(m => m.hit_id) })),
+        id: f.id,
+        hitIds: feedbackHits(hits, events, endNode.value, barDates.value, f, referenceNode.value)
+          .map(m => m.hit_id) })),
       samples: src.samples?.() ?? [],
       boxes: src.boxes?.() ?? [],
       lineDay: currentDay.value,
     }
   })
   const world = computed(() => makeWorld(worldCtx.value))
+  /** 这张图上一条反馈收进来的 hit 编号(annotate/feedback.ts 的 feedbackHits,和后端判朱红同一口径);
+   *  不在这张图上的为空 */
+  function feedbackHitIdsOf(id: string): readonly string[] {
+    return worldCtx.value.feedbacks.find(f => f.id === id)?.hitIds ?? []
+  }
 
   function expandNodeOf(instanceId: string): void {
     const ev = byIdMap.value.get(instanceId)
@@ -1445,7 +1458,7 @@ export const useViewStore = defineStore('view', () => {
     focusMark, clickBuyDay, clickHitCell, clickFamilyLine, clickFeedback, setPath, setSelSources,
     stepPos, stepStack, stepUp, setCurrentDay, setBarDates,
     currentDay, barDates, selPath, selLast, selInfo, selHits, selDayHitIds, world, moveSeq,
-    isEventDrawn, buyDaysOfHit,
+    isEventDrawn, buyDaysOfHit, feedbackHitIdsOf, referenceNode,
     setLevel, hoverEvent,
     setShiftSelectedEvents, clearShiftSelection, clearDetailCard, triggerTimeQuery, triggerPairQuery,
     // v2 event-debug(2026-07-15)

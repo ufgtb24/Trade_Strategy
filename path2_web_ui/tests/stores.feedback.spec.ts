@@ -234,15 +234,49 @@ describe('作答面板', () => {
                       nodes: undefined, family_start: undefined }),
   ] }] })
 
-  it('不在 compare 不开;新范围开空白草稿,family 带起点', async () => {
+  it('不在 compare 不开;新范围开空白草稿,family 带起点与基准 event 起止', async () => {
     const { view, fb } = await setup()
     expect(fb.open({ symbol: 'AAA', start: '2025-01-08', end: '2025-01-08', target: 'point' })).toBe(false)
     await enterCompare(view)
-    expect(fb.open({ symbol: 'AAA', start: '2025-01-08', end: '2025-01-10', target: 'family', family_start: '2025-01-02' })).toBe(true)
+    const reference = { node: 'step', spans: [['2025-01-06', '2025-01-06']] as [string, string][] }
+    expect(fb.open({ symbol: 'AAA', start: '2025-01-08', end: '2025-01-10', target: 'family', family_start: '2025-01-02',
+                     reference })).toBe(true)
     expect(fb.panel).toEqual({ symbol: 'AAA', start: '2025-01-08', end: '2025-01-10', target: 'family',
-                               family_start: '2025-01-02', note: '', nodes: [] })
+                               family_start: '2025-01-02', reference, note: '', nodes: [] })
     expect(fb.problems).toEqual(['note'])
     expect(fb.panelIssues).toEqual([])                  // 还没有别的反馈:没有可挑的
+    // 新建的整族反馈取不出基准 event:标出 reference,存不了
+    expect(fb.open({ symbol: 'AAA', start: '2025-01-08', end: '2025-01-10', target: 'family', family_start: '2025-01-02' })).toBe(true)
+    fb.setNote('追高')
+    expect(fb.problems).toEqual(['reference'])
+    expect(fb.save()).toBe(false)
+  })
+
+  it('整族反馈存下的 reference:改 note、node 原样带着(不按当前 app 重算);拖边改成 range 时去掉;以前存下的没有它照样改得了', async () => {
+    const stored = { node: 'step', spans: [['2025-01-03', '2025-01-03']] as [string, string][] }
+    const r = annRead({ charts: [{ symbol: 'AAA', boxes: [], samples: [], feedback: [
+      fbRec('f-pc-1', { answer: undefined, note: '追高', reference: stored }),
+      fbRec('f-pc-3', { answer: undefined, note: '旧的', start: '2025-01-09', end: '2025-01-10' }),   // 以前存下的,没有它
+    ] }] })
+    r.revs.feedback = { 'f-pc-1': 'pc-batch-0#0', 'f-pc-3': 'pc-batch-0#1' }
+    const { ann, view, fb } = await setup(r)
+    view.setSelSources({ referenceNode: () => 'step' })
+    await enterCompare(view)
+    expect(fb.open({ id: 'f-pc-1' })).toBe(true)
+    expect(fb.panel?.reference).toEqual(stored)
+    fb.setNote('追高了')
+    expect(fb.save()).toBe(true)
+    expect(fb.open({ id: 'f-pc-3' })).toBe(true)
+    expect(fb.panel).not.toHaveProperty('reference')                     // 不补
+    fb.setNote('旧的,补一句')
+    expect(fb.problems).toEqual([])
+    expect(fb.save()).toBe(true)
+    await ann.flushed()
+    expect(fake.batches.map(b => [b[0].id, b[0].value.reference ?? null])).toEqual([['f-pc-1', stored], ['f-pc-3', null]])
+    expect(fb.resize('f-pc-1', '2025-01-07', '2025-01-10')).toBe('saved')
+    await ann.flushed()
+    const v = fake.batches.at(-1)![0].value
+    expect([v.target, 'reference' in v, 'family_start' in v]).toEqual(['range', false, false])
   })
 
   it('同范围已有反馈:直接打开那条(预填);点记号按编号打开;盲看标记、别的 pattern 的不开', async () => {
@@ -527,15 +561,20 @@ describe('选中的那一个能不能作答(selTarget)与对它打开(openSelect
     expect(fb.selTarget).toEqual({ symbol: 'AAA', start: '2025-01-08', end: '2025-01-08', target: 'point' })
   })
 
-  it('一族 → family:范围是全部买点日的最早到最晚,另带族起点', async () => {
+  it('一族 → family:范围是全部买点日的最早到最晚,另带族起点与这一族的基准 event 起止(去重)', async () => {
     const { view, fb } = await setup(withRecords())
+    view.setSelSources({ referenceNode: () => 'step' })
     await enterCompare(view)
     view.clickFamilyLine(FAM)
+    const reference = { node: 'step', spans: [['2025-01-06', '2025-01-06']] }   // 两次 hit 共用阶跃 S2
     expect(fb.selTarget).toEqual({ symbol: 'AAA', start: '2025-01-08', end: '2025-01-10', target: 'family',
-                                   family_start: '2025-01-02' })
+                                   family_start: '2025-01-02', reference })
     expect(fb.openSelected()).toBe(true)
-    expect(fb.panel).toMatchObject({ start: '2025-01-08', end: '2025-01-10', target: 'family', family_start: '2025-01-02' })
+    expect(fb.panel).toMatchObject({ start: '2025-01-08', end: '2025-01-10', target: 'family', family_start: '2025-01-02',
+                                     reference })
     expect(fb.panel?.editingId).toBeUndefined()
+    view.setSelSources({ referenceNode: () => 'other' })               // 声明的基准 node 不在这一族的 hit 里
+    expect(fb.selTarget).toMatchObject({ reference: { node: 'other', spans: [] } })
   })
 
   it('一族的范围和已有的一条相同:openSelected 打开那条(防重复)', async () => {

@@ -8,9 +8,14 @@
  *   面板与记号悬停提示 `pos sample inside`,不拦;
  * - 买点日(buyDatesIn / hitsBuyingIn):hit 的买点日按 eval_meta 的买点 node 取(render/fold.ts 的 buyDaysOf,
  *   与图上 ▼、后端判反馈状态同一口径),K 线下标经这只股票的交易日换成日期;
+ * - 基准 event 起止(referenceSpans):新建整族反馈时,从这一族的 hit 里取 mapping 声明的基准 node 的 event 起止,
+ *   存进记录的 reference(spec 6.13;后端 path2_web/app_run.py 的 reference_events 同口径:hit 绑定的事件及其直接
+ *   子段);一条反馈收进来的 hit(feedbackHits)照后端判法(path2_web/annotation/match.py 的 feedback_hits)写。
+ *   两者与后端逐例通过同一份例子文件 tests/path2_web/fixtures/reference_examples.json;
  * - 保存条件(saveProblems):与后端对不带 answer 的反馈的校验一致(path2_web/annotation/store.py 模块说明
  *   「反馈」),不满足的不送:note 必须写(去掉首尾空白后判空,比后端略严:全是空格的理由不算写了);
- *   node 可点可不点(一个都不点 = 问题不在某一块上或说不清,由 note 说);
+ *   node 可点可不点(一个都不点 = 问题不在某一块上或说不清,由 note 说);新建的整族反馈必须带 reference
+ *   (这一族取不出基准 event 时存不了),改已有的原样带着(原来没有的不补);
  * - 面板写出的反馈一律是不带 answer、不带 dag 的形状(draftToFeedback)。以前存下的带 answer(可能还带 dag)的
  *   记录照样读得出、打得开,经面板保存后就改写成这种形状;
  * - node 按钮(nodeChoices):范围里买的那些 hit 绑定的 node(hit 的 node_index 的键),加它们在
@@ -34,15 +39,17 @@
 import type { EventDict, FeedbackStatusItem, HitDict, Topology } from '../types'
 import { buyDaysOf } from '../render/fold'
 import { TRAIN_END } from './directLinks'
-import type { AnnChart, AnnFeedback, AnnSample, FeedbackTarget } from './model'
+import type { AnnChart, AnnFeedback, AnnSample, FeedbackReference, FeedbackTarget } from './model'
 
-/** 反馈落成的那段日期(还没作答):股票、起止、从哪来;family 另带这一族的起点日期。 */
+/** 反馈落成的那段日期(还没作答):股票、起止、从哪来;family 另带这一族的起点日期与基准 event 起止
+ *  (新建时现取;改已有的一条时是它存下的,没存过就没有)。 */
 export interface FeedbackRange {
   symbol: string
   start: string
   end: string
   target: FeedbackTarget
   family_start?: string
+  reference?: FeedbackReference
 }
 
 /** 面板里正在写的一条反馈:范围加理由、点出的 node(都可能还没填);issue 是这一处要带的
@@ -65,11 +72,14 @@ export interface FeedbackRow { symbol: string; feedback: AnnFeedback }
  * - nodes:点出的 node 有重复或空的;
  * - range:日期写法不对或 start 晚于 end;after_train_end:end 晚于训练段末日;
  * - point:point 的 start 与 end 不是同一天;
- * - family_start:family 没有起点或起点晚于 start,或不是 family 却带了起点。
- * 后四种由图上取范围的代码保证,正常不会出现;列出来是为了和后端校验逐条对上。
+ * - family_start:family 没有起点或起点晚于 start,或不是 family 却带了起点;
+ * - reference:新建的 family 没有基准 event 起止(这一族取不出基准 node 的 event),或它的形状不对,或不是 family
+ *   却带了它。
+ * 后五种由图上取范围的代码保证,正常不会出现(reference 只在 app 的 hit 里没有声明的基准 node 时出现);列出来是为了
+ * 和后端校验逐条对上。
  */
 export type FeedbackProblem =
-  | 'note' | 'nodes' | 'range' | 'after_train_end' | 'point' | 'family_start'
+  | 'note' | 'nodes' | 'range' | 'after_train_end' | 'point' | 'family_start' | 'reference'
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/
 
@@ -101,18 +111,64 @@ export function hitsBuyingIn(hits: readonly HitDict[], events: readonly EventDic
   return hits.filter(h => hitBuyDates(h, byId, endNode, dates).some(d => start <= d && d <= end))
 }
 
+/** 一次 hit 的基准 event:它绑定的事件(node_index)和它们的直接子段(child_refs,只下一级)里,node 是 refNode 的;
+ *  按编号去重,先后照遍历顺序。只下一级:单股预览的序列化只挖一级子段,后端 reference_events 同口径。 */
+function hitReferenceEvents(h: HitDict, byId: ReadonlyMap<string, EventDict>, refNode: string): EventDict[] {
+  const out = new Map<string, EventDict>()
+  for (const iid of Object.values(h.node_index ?? {})) {
+    const e = byId.get(iid)
+    if (!e) continue
+    if (e.node_id === refNode) out.set(e.instance_id, e)
+    for (const ids of Object.values(e.child_refs ?? {})) for (const cid of ids) {
+      const c = byId.get(cid)
+      if (c && c.node_id === refNode) out.set(c.instance_id, c)
+    }
+  }
+  return [...out.values()]
+}
+
+/** 事件的起止换成日期对,去重、按起止排序(不合并);下标超出交易日的丢掉。 */
+function spansOf(events: readonly EventDict[], dates: readonly string[]): [string, string][] {
+  const seen = new Map<string, [string, string]>()
+  for (const e of events) {
+    const a = dates[e.start_idx], b = dates[e.end_idx]
+    if (a !== undefined && b !== undefined) seen.set(`${a}|${b}`, [a, b])
+  }
+  return [...seen.values()].sort((x, y) => (x[0] < y[0] ? -1 : x[0] > y[0] ? 1 : x[1] < y[1] ? -1 : x[1] > y[1] ? 1 : 0))
+}
+
+/**
+ * 新建整族反馈时要存的基准 event 起止:这一族各 hit(hits,调用方按族起点挑好)的基准 node 的 event 起止,
+ * 去重、按起止排序,不合并(同一族里起点相同、终点不同的几个阶跃各是一段)。没有一个时为空数组。
+ */
+export function referenceSpans(hits: readonly HitDict[], events: readonly EventDict[], refNode: string,
+                               dates: readonly string[]): [string, string][] {
+  const byId = new Map(events.map(e => [e.instance_id, e]))
+  return spansOf(hits.flatMap(h => hitReferenceEvents(h, byId, refNode)), dates)
+}
+
+/** 两段日期有没有共用的 K 线(两端都含;日期都是交易日)。 */
+const overlaps = (a: readonly [string, string], b: readonly [string, string]): boolean => a[0] <= b[1] && b[0] <= a[1]
+
 /**
  * 一条反馈收进来的 hit(选中这条反馈时它牵出的 hit,stores/view.ts):和后端判它朱红同一个口径
- * (path2_web/annotation/match.py)——买点日落在 [start, end] 里的 hit,不论哪一族;一族反馈另加起于
- * family_start 的那一族的全部 hit(买点日不论在哪:同一次阶跃里买点只是往后挪了,也算没改好)。按结果里的先后。
+ * (path2_web/annotation/match.py 的 feedback_hits)——买点日落在 [start, end] 里的 hit,不论哪一族;整族反馈另加
+ * 基准 event 与它存下的某一段共用 K 线、而且在买的 hit(买点日不论在哪:错误买点只是挪了位置,也算没改好),
+ * 逐个 hit 判、不按族合并起止。存下的基准 node 不是 refNode(mapping 现在声明的)、或没存时只有前一样,
+ * 不退回按 family_start 对。按结果里的先后。
  */
 export function feedbackHits(hits: readonly HitDict[], events: readonly EventDict[], endNode: string | null | undefined,
-                             dates: readonly string[], fb: { start: string; end: string; family_start?: string | null }): HitDict[] {
+                             dates: readonly string[],
+                             fb: { start: string; end: string; target?: FeedbackTarget; reference?: FeedbackReference | null },
+                             refNode: string | null): HitDict[] {
   const byId = new Map(events.map(e => [e.instance_id, e]))
-  const fs = fb.family_start ?? null
+  const ref = fb.target === 'family' && fb.reference && refNode !== null && fb.reference.node === refNode
+    ? fb.reference.spans : null
   return hits.filter(h => {
     const days = hitBuyDates(h, byId, endNode, dates)
-    return days.some(d => fb.start <= d && d <= fb.end) || (fs !== null && dates[h.start_idx] === fs && days.length > 0)
+    if (days.some(d => fb.start <= d && d <= fb.end)) return true
+    if (!ref || !days.length) return false
+    return spansOf(hitReferenceEvents(h, byId, refNode!), dates).some(a => ref.some(b => overlaps(a, b)))
   })
 }
 
@@ -152,8 +208,16 @@ export function nodeChoices(hits: readonly Pick<HitDict, 'node_index'>[], topolo
   return [...ordered, ...keep.filter((id, i) => !known.has(id) && keep.indexOf(id) === i)]
 }
 
-/** 保存条件(同后端校验):返回没满足的地方,空数组即可以存。 */
-export function saveProblems(d: FeedbackDraft): FeedbackProblem[] {
+/** 基准 event 起止的形状(同后端校验):node 非空,spans 非空,每段 start ≤ end ≤ 训练段末日。 */
+function referenceOk(r: FeedbackReference): boolean {
+  return typeof r.node === 'string' && r.node !== '' && Array.isArray(r.spans) && r.spans.length > 0
+    && r.spans.every(sp => Array.isArray(sp) && sp.length === 2 && DATE_RE.test(sp[0]) && DATE_RE.test(sp[1])
+                           && sp[0] <= sp[1] && sp[1] <= TRAIN_END)
+}
+
+/** 保存条件(同后端校验):返回没满足的地方,空数组即可以存。editing 为真表示改一条已有的反馈(以前存下的整族
+ *  反馈可能没有 reference,改的时候照样存得进)。 */
+export function saveProblems(d: FeedbackDraft, editing = false): FeedbackProblem[] {
   const out: FeedbackProblem[] = []
   const picked = d.nodes ?? []
   if (!(d.note ?? '').trim()) out.push('note')
@@ -164,12 +228,14 @@ export function saveProblems(d: FeedbackDraft): FeedbackProblem[] {
   if (d.target === 'point' && d.start !== d.end) out.push('point')
   const fs = d.family_start ?? null
   if (d.target === 'family' ? !fs || !DATE_RE.test(fs) || fs > d.start : fs !== null) out.push('family_start')
+  const ref = d.reference ?? null
+  if (d.target === 'family' ? (ref ? !referenceOk(ref) : !editing) : ref !== null) out.push('reference')
   return out
 }
 
 /**
  * 面板里的草稿 → 要存的反馈(保存条件已满足时调用):不带 answer、不带 dag;理由去掉首尾空白(保存条件保证
- * 非空);nodes 点了才带;issue 有才带;family_start 只在 family 时带;source 恒为 picked。
+ * 非空);nodes 点了才带;issue 有才带;family_start、reference 只在 family 时带(reference 有才带);source 恒为 picked。
  * 记录的出处(编号、pattern、app、app 版本)由调用方给。
  */
 export function draftToFeedback(d: FeedbackDraft, origin: { id: string; pattern: string; app_id: string; app_ver: string }): AnnFeedback {
@@ -182,6 +248,9 @@ export function draftToFeedback(d: FeedbackDraft, origin: { id: string; pattern:
   if (d.nodes?.length) fb.nodes = [...d.nodes]
   if (d.issue) fb.issue = d.issue
   if (d.target === 'family' && d.family_start) fb.family_start = d.family_start
+  if (d.target === 'family' && d.reference) {
+    fb.reference = { node: d.reference.node, spans: d.reference.spans.map(([a, b]) => [a, b]) }
+  }
   return fb
 }
 

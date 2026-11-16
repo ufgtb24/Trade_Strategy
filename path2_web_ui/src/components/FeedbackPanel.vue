@@ -165,7 +165,7 @@ const TARGET_HINT: Record<FeedbackTarget, string> = {
 }
 const PROBLEM_TEXT: Record<FeedbackProblem, string> = {
   note: 'note', nodes: 'nodes',
-  range: 'range', after_train_end: 'range', point: 'range', family_start: 'family_start',
+  range: 'range', after_train_end: 'range', point: 'range', family_start: 'family_start', reference: 'reference',
 }
 const PROBLEM_HINT: Record<FeedbackProblem, string> = {
   note: 'write a note first',
@@ -174,6 +174,7 @@ const PROBLEM_HINT: Record<FeedbackProblem, string> = {
   after_train_end: 'end must not be after the end of the training range',
   point: 'a point is a single day',
   family_start: 'a family needs its start date',
+  reference: "a family needs the spans of its reference node's events; none found in these hits",
 }
 type Reason = 'app running' | 'app failed' | 'no app_ver' | 'no pattern' | 'not saved'
 const REASON_HINT: Record<Reason, string> = {
