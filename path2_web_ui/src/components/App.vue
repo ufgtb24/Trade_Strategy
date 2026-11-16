@@ -17,6 +17,8 @@ import { useAnnotationStore } from '../stores/annotation'
 import { useDirectLinkStore } from '../stores/directLinks'
 import { useAppLinkStore } from '../stores/appLink'
 import { useFeedbackStore } from '../stores/feedback'
+import { usePanelsStore } from '../stores/panels'
+import { focusBlocksKeys } from './keyGuard'
 
 // 启动即加载 config,使 loadScanFile 能读到持久化的 last_selected_pattern
 onMounted(() => { void useConfigStore().load() })
@@ -42,6 +44,23 @@ function _guard(e: BeforeUnloadEvent) {
 }
 onMounted(() => window.addEventListener('beforeunload', _guard))
 onBeforeUnmount(() => window.removeEventListener('beforeunload', _guard))
+
+// 左右栏的收起快捷键(状态在 stores/panels.ts,箭头在 ColumnEdge.vue):Shift+L 左栏(四档)、
+// Shift+R 标注侧栏(只在 annotate、compare;app、scan 的诊断侧栏照旧用 Sidebar 按钮)。左右各管各。
+// 焦点在任何输入框、下拉框里不响应(keyGuard.ts,同找图清单的翻页键):在 note 里打大写 L、R 是在写字。
+// 单个字母会被 scan 档扫描列表的「敲字母搜股票」接走,所以带 Shift(同 Shift+B)
+const _panels = usePanelsStore()
+function _columnKey(e: KeyboardEvent) {
+  if (!e.shiftKey || e.ctrlKey || e.metaKey || e.altKey || e.isComposing || e.repeat) return
+  if (e.code !== 'KeyL' && e.code !== 'KeyR') return
+  if (e.code === 'KeyR' && !_view.annotating) return
+  if (focusBlocksKeys()) return
+  e.preventDefault()
+  if (e.code === 'KeyL') _panels.leftCollapsed = !_panels.leftCollapsed
+  else _panels.annCollapsed = !_panels.annCollapsed
+}
+onMounted(() => window.addEventListener('keydown', _columnKey))
+onBeforeUnmount(() => window.removeEventListener('keydown', _columnKey))
 </script>
 
 <style>
@@ -65,8 +84,9 @@ onBeforeUnmount(() => window.removeEventListener('beforeunload', _guard))
 }
 * { box-sizing: border-box; }
 body { margin: 0; font-family: system-ui, sans-serif; color: #0f172a; }
-.app { display: grid; grid-template-columns: minmax(220px, max-content) 1fr; grid-template-rows: auto 1fr; height: 100vh; }
+/* 左栏的宽度由它自己定(抽屉露出多少 + 靠图一侧的那条边,见 LeftPanel.vue),图区占其余 */
+.app { display: grid; grid-template-columns: auto minmax(0, 1fr); grid-template-rows: auto 1fr; height: 100vh; }
 .app > .top { grid-column: 1 / -1; }
-.left { border-right: 1px solid #e5e7eb; display: flex; flex-direction: column; overflow: hidden; max-width: 50vw; min-height: 0; }
-.right { display: flex; flex-direction: column; min-height: 0; min-width: 0; overflow: auto; }
+.left { grid-column: 1; grid-row: 2; min-height: 0; }
+.right { grid-column: 2; grid-row: 2; display: flex; flex-direction: column; min-height: 0; min-width: 0; overflow: auto; }
 </style>
