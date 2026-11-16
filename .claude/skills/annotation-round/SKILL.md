@@ -60,7 +60,7 @@ uv run python .claude/skills/annotation-round/scripts/round_state.py
 10. 已注册的每个 app 的 mapping 都读得出，其中没有一个写这个 pattern，「磁盘上有 mapping」那几行里也没有，上面几条都对不上 → 还没有 app，照下面「还没有 app 时」的表走。
 11. 其余 → 新开一轮，做第 1 步。
 
-另记两件事留到后面，都不拦定格：「mapping 问题」里别的内容（特征或说明指向了不存在的 node / where）留到第 5 步和 app 一起修；冲突、越界不是 0，或数据指纹不一致，写进第 3 步清单的第一行。
+另记两件事留到后面，都不拦定格：「mapping 问题」里别的内容（特征或说明指向了不存在的 node / where；没写基准 node `reference`，或它指向不存在的 node）留到第 5 步和 app 一起修——没写好 `reference` 的，改版报告出不来；冲突、越界不是 0，或数据指纹不一致，写进第 3 步清单的第一行。
 
 ### 1. 定格
 
@@ -164,7 +164,7 @@ uv run python -c "from path2_web.annotation.revision import revision_report; pri
 
 它用现在的 app 重跑这一轮涉及的全部股票（app 出错会原样抛出——抛了回第 5 步修），和 `<R>` 求差。报告开头若有「mapping.yaml 里的定格不是这一轮开头那份」或「会话段读不到」，那是给你的提醒：先照做修好（把 `<R>` 里的快照写进会话段 / 修 `session` 段），重出报告；交给用户的那份里不应再有这两句。然后：
 
-1. 报告里「起点认不出的反馈」那一段，每条留了一行「待填」，逐条填上是改好了还是认法变了（如改了某段的长度，所有起点平移）。
+1. 报告里「基准 node 对不上的反馈」那一段，每条留了一行「待填」：新一版里没有一个基准 event 和这条反馈存下的共用 K 线（或基准 node 换了、或这条没存起止），自动结论不信。逐条对着图填上是改好了，还是认法变了（如同一次阶跃挪远了一两根、还在买），判据见 [references/checklist.md](references/checklist.md)「一条反馈怎样才算改好」。
 2. 在报告后面补一段，条目与 `.plan.md` 的清单一一对应：
 
    ```
@@ -187,7 +187,7 @@ uv run python -c "from path2_web.annotation.revision import revision_report; pri
 
 ### 8. 记账
 
-**先读 [references/ledger.md](references/ledger.md)**，照它把这一轮记进 `mapping.yaml` 的会话段：每条条件一行（`state` 以 `from_definition` / `unmeasured` / `declined` / `for_tuning` / `not_worth` / `pending` 之一开头；这一轮实施了的 `pending` 行改成现在的开头词）；改完还在买的每一处反馈一个原因标签；起点认不出的，你交代为「认法变了」、原来的毛病还在的按原因挂，交代为「改好了」的不挂；已经不买的去掉标签。
+**先读 [references/ledger.md](references/ledger.md)**，照它把这一轮记进 `mapping.yaml` 的会话段：每条条件一行（`state` 以 `from_definition` / `unmeasured` / `declined` / `for_tuning` / `not_worth` / `pending` 之一开头；这一轮实施了的 `pending` 行改成现在的开头词）；改完还在买的每一处反馈一个原因标签；基准 node 对不上的，你交代为「认法变了」、原来的毛病还在的按原因挂，交代为「改好了」的不挂；已经不买的去掉标签。
 
 做完的标志：`.plan.md` 里每一条都能在账本里找到去处（一行条件，或各处的标签），且 `round_state.py <R>` 打印「快照已写进会话段: True」，且「mapping 问题」「会话段问题」都是 None（三样缺一不可：整份文件被写坏时「会话段问题」什么也不报）。
 
@@ -208,7 +208,7 @@ uv run python -c "from path2_web.annotation.revision import revision_report; pri
 | 1 | 定格命令带上 `no_app=True`：`start_round('<P>', '<R>', no_app=True)`（没有 app 可跑，round 文件里没有买点）。它是你对「真的还没有 app」的一次确认，不是遇到报错就加上的开关：只有第 0 步逐条对下来、停在「还没有 app」那一条时才传。打印的快照先留着，它也存在 `<R>` 里；没有 `mapping.yaml` 可比，不做 `diff`。这时「快照已写进会话段」是 False，属正常 |
 | 2 | 摘要只有定义、样本；没有 issue、没有状态。逐张样本、逐个框看 K 线，认清每个特征在图上是什么：`look.py` 的 app 那一格写 `-`，不跑 app、只出 K 线——`uv run python .claude/skills/annotation-round/scripts/look.py - <股票> <起> <止> --before 30` |
 | 3、4 | 清单只有「照标注怎么做」的条目；只问方向题（两种读法会做出不同的 app 时），不问拓扑、选型、门槛。出局核对只核对你拟写的条件：默认写成能回来的，拟写成回不来的要对上用户明说的那一条，拿不准就问 |
-| 5 | 新建 `path2_apps/<app>/`（app 名自己起：英文短标签，它会直接显示在页面上）、它的测试和 `mapping.yaml`，并把第 1 步的快照写进会话段（之后「快照已写进会话段」应为 True） |
+| 5 | 新建 `path2_apps/<app>/`（app 名自己起：英文短标签，它会直接显示在页面上）、它的测试和 `mapping.yaml`（必有 `reference`，见 checklist.md「一条反馈怎样才算改好」），并把第 1 步的快照写进会话段（之后「快照已写进会话段」应为 True） |
 | 7 | 同一条命令：没有旧版可比，报告只列第一版 app 下各样本的结论；补的那一段、invalidation 一节照写 |
 | 8 | 没有反馈可挂标签；`conditions` 可以为空；报告照样在这一步末尾存下 |
 
@@ -241,4 +241,4 @@ uv run python -c "from path2_web.annotation.revision import revision_report; pri
 | 反馈编号、样本编号 | 用理由原话、「股票 + 日期」指代 |
 | where 名、node 名 | 用它对到的用户的词；必须提英文名时带上用户的词 |
 
-页面上看得见的固定词可以说，带上中文意思：`matched`（app 还在买）、`unmatched`（不买了）、`for_tuning`（留给调参）等。页面上没有的词不说：起点认不出的反馈，页面上显示成 `unmatched`，对用户说「这一段不买了，但这一族的起点认不出了」，不说 `lost`。项目词照 `path2/GLOSSARY.md`、`path2_web/GLOSSARY.md` 的规范词用，先 `grep -n` 查到再用，第一次出现时附 `文件:行号`。
+页面上看得见的固定词可以说，带上中文意思：`matched`（app 还在买）、`unmatched`（不买了）、`for_tuning`（留给调参）等。页面上没有的词不说：基准 node 对不上的反馈，页面上显示成 `unmatched`，对用户说「这一段不买了，但新一版里认不出它是不是同一次形状（基准 node 对不上）」，不说 `lost`。项目词照 `path2/GLOSSARY.md`、`path2_web/GLOSSARY.md` 的规范词用，先 `grep -n` 查到再用，第一次出现时附 `文件:行号`。
