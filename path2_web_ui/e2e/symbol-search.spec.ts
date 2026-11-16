@@ -29,7 +29,7 @@ async function ensureScanLoaded(page: any) {
   }
   await page.locator('.file-list tbody tr').first().click()
   await page.getByRole('button', { name: /^Open$/ }).click()
-  await expect(page.locator('[data-symbol]').first()).toBeVisible({ timeout: 30_000 })
+  await expect(page.getByTestId('scan-side').locator('[data-symbol]').first()).toBeVisible({ timeout: 30_000 })
 }
 
 test.describe('symbol search e2e', () => {
@@ -49,7 +49,7 @@ test.describe('symbol search e2e', () => {
     await expect(search).toBeVisible({ timeout: 10_000 })
 
     // 记录初始行数
-    const initialCount = await page.locator('[data-symbol]').count()
+    const initialCount = await page.getByTestId('scan-side').locator('[data-symbol]').count()
     expect(initialCount).toBeGreaterThan(0)
 
     // 全局字符转发:body 焦点下按字符 'a',应自动 focus 搜索框且值为 'a'
@@ -59,7 +59,7 @@ test.describe('symbol search e2e', () => {
     await expect(search).toHaveValue('a')
 
     // 列表数量下降或相等(过滤后 ≤ 初始)
-    const afterCount = await page.locator('[data-symbol]').count()
+    const afterCount = await page.getByTestId('scan-side').locator('[data-symbol]').count()
     expect(afterCount).toBeLessThanOrEqual(initialCount)
 
     // 数量提示可见

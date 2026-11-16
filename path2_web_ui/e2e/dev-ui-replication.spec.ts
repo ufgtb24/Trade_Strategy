@@ -45,6 +45,9 @@ async function ensureScanLoaded(page: Page): Promise<string | null> {
   await gotoScanTier(page)
 
   await page.getByRole('button', { name: /打开历史/ }).click()
+  // 历史列表异步加载:先等 Loading 态清空,再读 rowCount(同 symbol-search.spec.ts);
+  // 读到过渡态的 0 行会误判成没有扫描,去整池现扫一遍(每条要跑好几分钟)
+  await expect(page.locator('.state', { hasText: 'Loading' })).toHaveCount(0, { timeout: 15_000 })
   await expect(page.locator('.file-list, .state')).toBeVisible({ timeout: 5_000 })
   const rowCount = await page.locator('.file-list tbody tr').count()
   if (rowCount === 0) {
@@ -59,8 +62,8 @@ async function ensureScanLoaded(page: Page): Promise<string | null> {
   await page.locator('.file-list tbody tr').first().click()
   await page.getByRole('button', { name: /^Open$/ }).click()
 
-  await expect(page.locator('[data-symbol]').first()).toBeVisible({ timeout: 30_000 })
-  const firstSym = page.locator('[data-symbol]').first()
+  await expect(page.getByTestId('scan-side').locator('[data-symbol]').first()).toBeVisible({ timeout: 30_000 })
+  const firstSym = page.getByTestId('scan-side').locator('[data-symbol]').first()
   const symbol = await firstSym.getAttribute('data-symbol')
   await firstSym.click()
   return symbol
