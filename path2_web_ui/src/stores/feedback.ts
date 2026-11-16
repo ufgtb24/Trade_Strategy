@@ -265,6 +265,9 @@ export const useFeedbackStore = defineStore('feedback', () => {
   function select(id: string | null): void {
     selectedId.value = id
     if (!id) return
+    // 选中只有一个:框的选中取消(同图上点记号,components/KlineChart.ts 的 handleAppClick);侧栏点行也走这里,
+    // 不取消的话按 Delete 删掉这条之后再按一下,会删到那个还选着的框
+    ann.selectBox(null)
     // 选中一条反馈 = 图上的选中换成它(显示栏写 feedback、Shift+C 复制它);已经在它里面走着就不动
     if (view.comparing && !view.selPath.some(x => x.kind === 'feedback' && x.id === id)) view.clickFeedback({ id })
   }

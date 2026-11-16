@@ -75,6 +75,7 @@ import AnnotationNotices from './AnnotationNotices.vue'
 import { useViewStore } from '../stores/view'
 import { usePanelsStore, type PanelKey } from '../stores/panels'
 import { useAnnotationStore } from '../stores/annotation'
+import { useFeedbackStore } from '../stores/feedback'
 import type { Level } from '../types'
 
 const view = useViewStore()
@@ -101,18 +102,27 @@ function onKey(e: KeyboardEvent) {
 onMounted(() => window.addEventListener('keydown', onKey))
 onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
 
-// Delete 删掉选中的框(与 selection 页的 delete 按钮同一动作:成员关系与挂在它上面的 attach 一并拿掉)。
+// Delete 删掉选中的东西:
+// - 有选中的框就删框(与 selection 页的 delete 按钮同一动作:成员关系与挂在它上面的 attach 一并拿掉)。
+//   选中一条反馈时框的选中已取消(点记号、侧栏点行都会),两者同时在只会是反馈之后又选了框,删框;
+// - 否则 compare 下选中的最里面一节是一条反馈(点记号、侧栏点行、←/→ 换到旁边一条;就是 Enter 会打开的那条)时删它,
+//   与面板、侧栏行上的 delete 同一动作(stores/feedback.ts 的 remove,可撤);从它走进收进来的买点日后它成了外层,不删。
 // 只认 Delete、不认 Backspace(后者在别处常用,误触代价是删掉用户的标注);
-// 焦点在可编辑元素时放行,写特征名、属性、定义时按 Delete 只删字。
+// 焦点在可编辑元素时放行,写特征名、属性、定义、反馈的 note 时按 Delete 只删字。
 const ann = useAnnotationStore()
+const fb = useFeedbackStore()
 function onDeleteKey(e: KeyboardEvent) {
   if (e.key !== 'Delete' || e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return
-  const id = ann.selectedBoxId
-  if (!annotating.value || !id) return
+  if (!annotating.value) return
+  const t = fb.selTarget
+  const feedbackId = t && 'id' in t ? t.id : null
+  const boxId = ann.selectedBoxId
+  if (!feedbackId && !boxId) return
   const ae = document.activeElement as HTMLElement | null
   if (ae && ae.closest('input, textarea, select, [contenteditable=""], [contenteditable="true"]')) return
   e.preventDefault()
-  ann.deleteBox(id)
+  if (boxId) ann.deleteBox(boxId)
+  else fb.remove(feedbackId!)
 }
 onMounted(() => window.addEventListener('keydown', onDeleteKey))
 onBeforeUnmount(() => window.removeEventListener('keydown', onDeleteKey))

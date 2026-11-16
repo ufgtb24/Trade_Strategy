@@ -6,7 +6,7 @@
       <span class="ann-sym" data-testid="feedback-span" :title="SPAN_HINT">{{ spanText }}</span>
       <span class="ann-sym" data-testid="feedback-target" :title="TARGET_HINT[p.target]">{{ p.target }}</span>
       <span class="ann-grow" />
-      <button v-if="p.editingId" type="button" class="ann-btn" data-testid="feedback-delete" title="delete this feedback now"
+      <button v-if="p.editingId" type="button" class="ann-btn" data-testid="feedback-delete" title="delete this feedback now (key: Delete)"
               @mousedown.prevent @click="fb.remove(p.editingId!)">delete</button>
     </div>
     <div v-if="p.editingId" class="fb-line" data-testid="feedback-status-line">
