@@ -1,0 +1,5 @@
+# vitest 基线（开工前，提交 8f90019 = annotation-path2 19d8f3b + 本票认领提交，只改了票文件）
+# 命令：cd path2_web_ui && npx vitest run
+ Test Files  132 passed (132)
+      Tests  1701 passed (1701)
+## 失败：无

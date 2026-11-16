@@ -54,7 +54,7 @@ watch(() => [view.comparing, ann.tab] as const, ([on, tab]) => {
 /* 字体与色值见 App.vue 的 :root 变量 */
 .annotation-sidebar {
   display: flex; flex-direction: column; min-height: 0; overflow: auto;
-  border-left: 1px solid var(--line); background: #fff; color: var(--ink);
+  background: #fff; color: var(--ink);   /* 和图之间的分隔线由 ColumnEdge 画 */
 }
 .tabs {
   position: sticky; top: 0; z-index: 1; display: flex; gap: 12px; padding: 6px 8px 0;

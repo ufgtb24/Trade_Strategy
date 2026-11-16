@@ -6,10 +6,10 @@
               :data-testid="`finder-tab-${t}`" :title="TAB_HINT[t]" @click="finder.setTab(t)">{{ t }}</button>
     </nav>
 
-    <!-- 三页叠在同一格里,各是一个滚动区;没选上的只是看不见(visibility),照样撑宽度:左栏宽度按最宽的一页定,
-         切页签时图不跟着变宽变窄。切页签、切到 scan 档都只藏不拆:滚动位置、rally 的排序都留着 -->
+    <!-- 三页各是一个滚动区,只显示当前页:左栏的内容全宽按当前页定(左栏抽屉见 LeftPanel.vue,换到内容更窄的页
+         露出宽度跟着缩)。切页签、切到 scan 档、收起左栏都只藏不拆:滚动位置、rally 的排序都留着 -->
     <div class="pages">
-      <div :style="shown('rally')" ref="rallyEl" class="page" data-testid="finder-page-rally">
+      <div v-show="finder.tab === 'rally'" ref="rallyEl" class="page" data-testid="finder-page-rally">
         <span v-if="finder.rallyStatus !== 'ready'" :class="['status', { empty: finder.rallyStatus === 'empty' }]"
               data-testid="rally-status"
               :title="RALLY_HINT[finder.rallyStatus]">{{ rallyStatusText }}</span>
@@ -41,7 +41,7 @@
         </table>
       </div>
 
-      <div :style="shown('random')" ref="randomEl" class="page" data-testid="finder-page-random">
+      <div v-show="finder.tab === 'random'" ref="randomEl" class="page" data-testid="finder-page-random">
         <span v-if="!randomRows.length" class="status empty" data-testid="random-page-status"
               :title="RANDOM_EMPTY_HINT">empty</span>
         <table v-else>
@@ -69,7 +69,7 @@
         </table>
       </div>
 
-      <div :style="shown('charts')" ref="chartsEl" class="page" data-testid="finder-page-charts">
+      <div v-show="finder.tab === 'charts'" ref="chartsEl" class="page" data-testid="finder-page-charts">
         <span v-if="!ann.state" class="status" data-testid="charts-status">{{ ann.status }}</span>
         <span v-else-if="!chartRows.length" class="status empty" data-testid="charts-status"
               title="还没有标过的股票(画了框或放了样本的才算)">empty</span>
@@ -133,6 +133,7 @@ import { FINDER_TABS, useFinderStore, type FinderTab, type RallyStatus } from '.
 import { chartsBySymbol, chartsRows, marksInWindow, stepIndex, type Marks } from '../annotate/finderList'
 import { RALLY_SORT_KEYS, formatRise, sortRally, type RallySortKey } from '../annotate/rallyList'
 import PatternNames from './PatternNames.vue'
+import { focusBlocksKeys } from './keyGuard'
 import type { RandomWindow, ViewWindow } from '../types'
 
 const view = useViewStore()
@@ -161,11 +162,6 @@ const MARK_HINT = {
   boxes: '和这张图窗有重叠的框数',
 } as const
 const RANDOM_EMPTY_HINT = '这次还没抽过图:按顶栏 random 抽一张(只记在本页,刷新就清空)'
-
-/** 没选上的页:看不见、不接鼠标,但照样占位撑宽度。 */
-function shown(t: FinderTab) {
-  return finder.tab === t ? undefined : { visibility: 'hidden' as const }
-}
 
 const rallyStatusText = computed(() => (finder.rallyStatus === 'idle' ? 'loading' : finder.rallyStatus))
 
@@ -238,15 +234,11 @@ function revealRow(page: HTMLElement | null, i: number) {
   else if (rr.bottom > pr.bottom) page.scrollTop += rr.bottom - pr.bottom
 }
 
-const EDITABLE = 'input, textarea, select, [contenteditable=""], [contenteditable="true"]'
 function onPageKey(e: KeyboardEvent) {
   if (view.scanView) return
   if (e.key !== 'PageUp' && e.key !== 'PageDown') return
   if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey || e.isComposing) return
-  const ae = document.activeElement as HTMLElement | null
-  if (ae && ae.closest(EDITABLE)) return
-  // 自绘的下拉(PatternPicker:顶栏 pattern、样本页的 pattern 一格)菜单开着时也算在下拉框里
-  if (document.querySelector('[aria-expanded="true"]')) return
+  if (focusBlocksKeys()) return
   const page = currentPage()
   if (!page.n) return
   e.preventDefault()
