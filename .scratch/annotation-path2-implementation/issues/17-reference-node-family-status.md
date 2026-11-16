@@ -1,6 +1,8 @@
 # 整族反馈按基准 node 认同一次形状
 
 Status: ready-for-agent
+Progress: in-progress
+Claimed: 2026-11-16 parallel-tickets session-17 @ worktree impl/17-reference-node-family-status
 Blocked by: none
 
 ## Purpose
