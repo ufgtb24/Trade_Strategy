@@ -1,7 +1,8 @@
 # 主图上按住 Shift 复制一天或一段
 
 Status: ready-for-agent
-Progress: not-started
+Progress: in-progress
+Claimed: 2026-11-16 parallel-tickets session-16 @ worktree impl/16-shift-copy-day-range
 Blocked by: none
 
 ## Purpose
