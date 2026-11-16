@@ -3,7 +3,7 @@
 //   默认全隐(首次访问 / key 缺失 / JSON 解析失败均回落 false);subHeightOffset 默认 null(fit)。
 //   spec: docs/superpowers/specs/2026-07-03-subchart-boundary-model-design.md §1
 // - 左右栏的收起与拖宽(几何见 components/columnLayout.ts):左栏、标注侧栏的收起;左栏、标注侧栏、诊断侧栏
-//   各一份拖出的宽度(null = 没拖过:左栏按内容全开,右栏用原来的宽度)。换股、切档都保持,刷新后记得。
+//   各一份拖出的宽度(null = 没拖过:左栏按内容全开,右栏用各自的默认宽度)。换股、切档都保持,刷新后记得。
 //   诊断侧栏的显隐仍是上面的 sidebar(图上方的 Sidebar 按钮),不另加收起。
 import { defineStore } from 'pinia'
 import { ref, watch } from 'vue'

@@ -1,5 +1,5 @@
 <template>
-  <div ref="rootEl" class="chart-area" :class="{ 'no-sidebar': !annotating && !showSidebar, annotating }">
+  <div class="chart-area" :class="{ 'no-sidebar': !annotating && !showSidebar, annotating }">
     <!-- row0: 全局 level 控件 + 三 panel toggle chip + 休眠草稿 banner。
          .header-row 包一层让 banner 挂在 chip 行下方,同时对 grid 只占单一自动行——
          不新增显式行号,不改动 topology-row/kline/sidebar 既有的 auto-placement,避免二者同时出现时抢行。 -->
@@ -48,16 +48,16 @@
     <div v-if="mode !== 'annotate' && showTopology" class="topology-row">
       <TopologyControl @hover-node="onHoverNode" />
     </div>
-    <!-- row2: K线 + 右栏(annotate / compare 是标注侧栏,app / scan 是诊断侧栏)。右栏靠图一侧有一条边,拖它改宽度;
-         标注侧栏另有小箭头和 Shift+L / Shift+R 里的 Shift+R 收起,收起时只藏不拆(页签、正在填的内容都留着),
+    <!-- row2: K线 + 右栏(annotate / compare 是标注侧栏,app / scan 是诊断侧栏)。右栏靠图一侧有栏边,拖它改宽度;
+         标注侧栏另可用栏边的小箭头或 Shift+R 收起,收起时只藏不拆(页签、正在填的内容都留着),
          收着时选中、画框都不自动打开;诊断侧栏的显隐照旧用 Sidebar 按钮,没有小箭头 -->
     <KlineChart />
     <ColumnEdge v-if="annotating || showSidebar" class="edge" side="right" :tid="annotating ? 'ann-edge' : 'detail-edge'"
                 :collapsible="annotating" :collapsed="annotating && annCollapsed"
-                close-tip="收起右栏(Shift+R)" open-tip="打开右栏(Shift+R)"
+                close-tip="收起标注侧栏(Shift+R)" open-tip="打开标注侧栏(Shift+R)"
                 @toggle="annCollapsed = !annCollapsed" @dragstart="onRightDragStart" @drag="onRightDrag" />
-    <AnnotationSidebar v-if="annotating" v-show="!annCollapsed" class="sidebar" :style="annStyle" />
-    <DetailSidebar v-else-if="showSidebar" :style="detailStyle" />
+    <AnnotationSidebar v-if="annotating" v-show="!annCollapsed" ref="rightEl" class="sidebar" :style="annStyle" />
+    <DetailSidebar v-else-if="showSidebar" ref="rightEl" :style="detailStyle" />
     <!-- scan 档没加载扫描(no_scan):图区空着,只写 no_scan;左栏照旧是扫描面板与空列表 -->
     <div v-if="noScan" class="no-scan" data-testid="no-scan"
          title="no scan loaded; open or run one in the left panel">no_scan</div>
@@ -79,7 +79,7 @@ import DormantDraftBanner from './DormantDraftBanner.vue'
 import AnnotationSidebar from './AnnotationSidebar.vue'
 import AnnotationNotices from './AnnotationNotices.vue'
 import ColumnEdge from './ColumnEdge.vue'
-import { ANN_DEFAULT, ANN_MIN, DETAIL_DEFAULT, DETAIL_MIN, rightDragged, rightStyle } from './columnLayout'
+import { ANN_SIZE, DETAIL_SIZE, rightDragged, rightStyle } from './columnLayout'
 import { useViewStore } from '../stores/view'
 import { usePanelsStore, type PanelKey } from '../stores/panels'
 import { useAnnotationStore } from '../stores/annotation'
@@ -92,17 +92,17 @@ const panels = usePanelsStore()
 const { showTopology, showSidebar, annCollapsed, annWidth, detailWidth } = storeToRefs(panels)
 
 // 右栏的宽度(几何见 columnLayout.ts;标注侧栏、诊断侧栏各记一份,stores/panels.ts)
-const rootEl = ref<HTMLElement | null>(null)
-const annStyle = computed(() => rightStyle(annWidth.value, ANN_DEFAULT, ANN_MIN))
-const detailStyle = computed(() => rightStyle(detailWidth.value, DETAIL_DEFAULT, DETAIL_MIN))
+const rightEl = ref<{ $el: HTMLElement } | null>(null)   // 当前显示的那个右栏
+const annStyle = computed(() => rightStyle(annWidth.value, ANN_SIZE))
+const detailStyle = computed(() => rightStyle(detailWidth.value, DETAIL_SIZE))
 let rightStart = 0
 function onRightDragStart() {
-  rightStart = rootEl.value?.querySelector(':scope > .sidebar')?.getBoundingClientRect().width ?? 0
+  rightStart = rightEl.value?.$el.getBoundingClientRect().width ?? 0
 }
 function onRightDrag(dx: number) {
-  const w = rightStart - dx   // 边在栏的左侧:往左拖变宽
-  if (annotating.value) annWidth.value = rightDragged(w, ANN_MIN, window.innerWidth)
-  else detailWidth.value = rightDragged(w, DETAIL_MIN, window.innerWidth)
+  const w = rightStart - dx   // 栏边在右栏的左侧:往左拖变宽
+  if (annotating.value) annWidth.value = rightDragged(w, ANN_SIZE, window.innerWidth)
+  else detailWidth.value = rightDragged(w, DETAIL_SIZE, window.innerWidth)
 }
 // 抽屉开关 ref 由 ChartArea 持有,ParamsChip 只 emit toggle-drawer;WorkingCopyDrawer(Task 11)在此渲染
 const drawerOpen = ref(false)

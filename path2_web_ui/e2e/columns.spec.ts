@@ -137,7 +137,7 @@ test.describe('左右栏的收起与拖宽', () => {
     await expect(page.getByTestId('rally-row').first()).toBeVisible({ timeout: 300_000 })
     const th = (name: string) => page.getByTestId('finder-page-rally').locator('th', { hasText: name }).first()
       .evaluate(el => { const r = el.getBoundingClientRect(); return { left: r.left, right: r.right } })
-    const full = (await rect(page, 'left-drawer')).width
+    const full = (await rect(page, 'left-content')).width
     expect((await rect(page, 'left-clip')).width).toBeCloseTo(full, 0)        // 没拖过:全开
     expect(await horizontalScrollers(page)).toEqual([])
 
@@ -170,6 +170,11 @@ test.describe('左右栏的收起与拖宽', () => {
     expect((await rect(page, 'left-clip')).width).toBeCloseTo(290, 0)
     await page.getByTestId('finder-tab-random').click()
     expect((await rect(page, 'left-clip')).width).toBeCloseTo(220, 0)
+    await page.getByTestId('finder-tab-rally').click()
+    expect((await rect(page, 'left-clip')).width).toBeCloseTo(290, 0)
+    // 在 random 页上往外拖(栏边已在最外面、拖不动):拖出的 290 不变,换回 rally 照旧
+    await page.getByTestId('finder-tab-random').click()
+    await dragEdge(page, 'left-edge', 60)
     await page.getByTestId('finder-tab-rally').click()
     expect((await rect(page, 'left-clip')).width).toBeCloseTo(290, 0)
     await page.unrouteAll({ behavior: 'ignoreErrors' })
@@ -416,6 +421,13 @@ test('左栏收着时,scan 档扫描列表的 PageUp / PageDown 照样换图', a
   expect(syms.length).toBeGreaterThan(1)
   await rows.first().click()
   await expect.poll(() => view(page, 'symbol')).toBe(syms[0])
+  // 拖到最窄:扫描面板与扫描列表一起从右边遮,symbol 列还在
+  await dragEdge(page, 'left-edge', -2000)
+  const clip = await rect(page, 'left-clip')
+  expect(clip.width).toBe(70)
+  const symRight = await page.getByTestId('scan-side').locator('th.sym').first().evaluate(el => el.getBoundingClientRect().right)
+  expect(symRight).toBeLessThanOrEqual(clip.right)
+  expect(await horizontalScrollers(page)).toEqual([])
   await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur())
   await page.keyboard.press('Shift+L')
   await expect(page.getByTestId('scan-side')).toBeHidden()

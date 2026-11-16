@@ -14,7 +14,8 @@ import ColumnEdge from '../../src/components/ColumnEdge.vue'
 import LeftPanel from '../../src/components/LeftPanel.vue'
 import ChartArea from '../../src/components/ChartArea.vue'
 import { onColumnKey } from '../../src/components/columnKeys'
-import { ANN_DEFAULT, ANN_MIN, DETAIL_DEFAULT, DETAIL_MIN, LEFT_MIN } from '../../src/components/columnLayout'
+import { ANN_SIZE, DETAIL_SIZE, LEFT_MIN } from '../../src/components/columnLayout'
+const [ANN_DEFAULT, ANN_MIN, DETAIL_DEFAULT, DETAIL_MIN] = [ANN_SIZE.dflt, ANN_SIZE.min, DETAIL_SIZE.dflt, DETAIL_SIZE.min]
 import { useViewStore } from '../../src/stores/view'
 import { usePanelsStore } from '../../src/stores/panels'
 import { useAnnotationStore } from '../../src/stores/annotation'
@@ -120,13 +121,14 @@ describe('ColumnEdge', () => {
     expect(w.emitted('dragstart')).toBeUndefined()
   })
 
-  it('开着时拖:发 dragstart、相对按下处的位移、dragend;右栏箭头方向反过来;不能收起的边没有箭头', async () => {
+  it('开着时拖:发 dragstart、相对按下处的位移,松开后再动不发;右栏箭头方向反过来;不能收起的边没有箭头', async () => {
     const w = keep(mount(ColumnEdge, { props: { side: 'right', tid: 'e', collapsible: true } }))
     expect(w.get('[data-testid="e-toggle"]').text()).toBe('›')
     await dragEdge(w.get('[data-testid="e"]').element, -60)
     expect(w.emitted('dragstart')).toHaveLength(1)
     expect(w.emitted('drag')!.map(a => a[0])).toEqual([-30, -60])
-    expect(w.emitted('dragend')).toHaveLength(1)
+    w.get('[data-testid="e"]').element.dispatchEvent(pointer('pointermove', 900))
+    expect(w.emitted('drag')).toHaveLength(2)
     const plain = keep(mount(ColumnEdge, { props: { side: 'right', tid: 'p' } }))
     expect(plain.find('[data-testid="p-toggle"]').exists()).toBe(false)
   })
@@ -166,7 +168,7 @@ describe('左栏 · 抽屉(注入量出来的宽度)', () => {
   /** 量到的:露出 exposed、内容全宽 full。 */
   function measured(w: VueWrapper, exposed: number, full: number) {
     fakeWidth(w.get('[data-testid="left-clip"]').element, exposed)
-    fakeWidth(w.get('[data-testid="left-drawer"]').element, full)
+    fakeWidth(w.get('[data-testid="left-content"]').element, full)
   }
   const maxWidth = (w: VueWrapper) => (w.get('[data-testid="left-clip"]').element as HTMLElement).style.maxWidth
 
@@ -195,6 +197,19 @@ describe('左栏 · 抽屉(注入量出来的宽度)', () => {
     await dragEdge(w.get('[data-testid="left-edge"]').element, 400)
     expect(usePanelsStore().leftWidth).toBeNull()
     expect(maxWidth(w)).toBe('')
+  })
+
+  it('在内容窄的页上往外拖(栏边已在最外面、拖不动):先前拖出的宽度不变,换回内容宽的页照旧', async () => {
+    const w = mountLeft()
+    measured(w, 348, 348)
+    await dragEdge(w.get('[data-testid="left-edge"]').element, -58)          // rally:拖到 290
+    expect(usePanelsStore().leftWidth).toBe(290)
+    await w.get('[data-testid="finder-tab-random"]').trigger('click')
+    measured(w, 220, 220)                                                    // random 页内容全宽 220
+    await dragEdge(w.get('[data-testid="left-edge"]').element, 30)
+    expect(usePanelsStore().leftWidth).toBe(290)
+    await dragEdge(w.get('[data-testid="left-edge"]').element, -100)         // 往里拖是真的改了
+    expect(usePanelsStore().leftWidth).toBe(120)
   })
 
   it('三页、四档共用一个数:换页签、切到 scan 档,截的宽度不变;同一时刻只显示当前页(内容全宽按当前页定)', async () => {

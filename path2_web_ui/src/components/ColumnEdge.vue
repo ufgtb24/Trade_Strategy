@@ -1,5 +1,5 @@
 <template>
-  <!-- 栏和图之间的那条边:开着时拖它改宽度;能收起的栏另有一个小箭头。收起后栏缩成这条窄边,点窄边或箭头打开 -->
+  <!-- 栏和图之间的栏边:开着时拖它改宽度;能收起的栏另有一个小箭头。收起后栏缩成这条栏边,点栏边或箭头打开 -->
   <div class="column-edge" :class="[side, { collapsed, dragging }]" :data-testid="tid"
        :title="collapsed ? openTip : DRAG_TIP"
        @pointerdown="onPointerDown" @pointermove="onPointerMove" @pointerup="onPointerUp"
@@ -13,11 +13,12 @@
 
 <script setup lang="ts">
 /**
- * 左栏、右栏靠图一侧的边(components/LeftPanel.vue、components/ChartArea.vue 用)。
- * - 开着:按住拖动改宽度,发 dragstart / drag(相对按下处的横向位移,CSS 像素)/ dragend;宽度怎么夹由用的一方
+ * 左栏、右栏靠图一侧的栏边(components/LeftPanel.vue、components/ChartArea.vue 用)。
+ * - 开着:按住拖动改宽度,发 dragstart、drag(相对按下处的横向位移,CSS 像素);宽度怎么夹由用的一方
  *   按 columnLayout.ts 算。拖动用指针捕获,不经过图,所以不会平移图、不会画框、不会熄掉点亮的工具。
- * - collapsible:另有一个小箭头,点它发 toggle;收起后整条窄边都可点,点了发 toggle。收起时不能拖。
- * 箭头和窄边不是可聚焦的按钮:点它们和点空白处一样,焦点回到页面,之后的快捷键照常。
+ * - collapsible:另有一个小箭头,点它发 toggle;收起后整条栏边都可点,点了发 toggle。收起时不能拖。
+ * 箭头和栏边不是可聚焦的按钮:点它们和点空白处一样,焦点回到页面,之后的快捷键照常。
+ * tid:data-testid 的前缀(栏边本身是 tid,箭头是 `${tid}-toggle`;同 PatternPicker 的写法)。
  */
 import { computed, ref } from 'vue'
 
@@ -34,7 +35,6 @@ const emit = defineEmits<{
   (e: 'toggle'): void
   (e: 'dragstart'): void
   (e: 'drag', dx: number): void
-  (e: 'dragend'): void
 }>()
 
 const DRAG_TIP = '拖动改宽度'
@@ -69,7 +69,6 @@ function onPointerUp(e: PointerEvent) {
   pointerId = -1
   document.body.style.cursor = ''
   document.body.style.userSelect = ''
-  emit('dragend')
 }
 
 function onStripClick() {
@@ -78,16 +77,18 @@ function onStripClick() {
 </script>
 
 <style scoped>
-/* 窄边是浅灰底(--bar-bg)两侧各一道分隔线,和两边的白底靠分隔线与深浅分开;悬停、拖动时深一档(--line-soft、--line)。
+/* 栏边是浅灰底两侧各一道分隔线,和两边的白底靠深浅分开(不靠色相):开着时 --chip-bg,悬停深一档 --line-soft,
+   拖动时再深一档 --line;收着时整条用 --line-soft,比开着时深,一眼看得出这里收着一栏,悬停 --line。
    箭头是程序固定符号,黑色、等宽。灰都取自 App.vue 的 :root 变量(用户确认过的安全色板) */
 .column-edge {
   flex: none; position: relative; width: 10px; min-height: 0;
   border-left: 1px solid var(--line); border-right: 1px solid var(--line);
-  background: var(--bar-bg); cursor: col-resize; user-select: none; touch-action: none;
+  background: var(--chip-bg); cursor: col-resize; user-select: none; touch-action: none;
 }
 .column-edge:hover { background: var(--line-soft); }
 .column-edge.dragging { background: var(--line); }
-.column-edge.collapsed { cursor: pointer; }
+.column-edge.collapsed { cursor: pointer; background: var(--line-soft); }
+.column-edge.collapsed:hover { background: var(--line); }
 .arrow {
   position: absolute; top: 4px; left: 0; right: 0; height: 22px;
   display: flex; align-items: center; justify-content: center;
