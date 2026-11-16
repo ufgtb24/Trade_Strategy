@@ -3,7 +3,7 @@
 // - random 页按抽的先后列出这次用顶栏 random 抽过的图,只在页面内存里(刷新即新的 store,为空;不写浏览器存储);
 // - charts 页列出全部标过的股票;
 // - 点一行、PageUp / PageDown 换图不换档(annotate、compare、现算的 app 各一条);
-// - 焦点在单行、多行输入框、下拉框里时翻页键不切;scan 档里这里的翻页键不接;
+// - 焦点在单行、多行输入框、下拉框里时翻页键不切,自绘下拉(顶栏 pattern)菜单开着时也不切;scan 档里这里的翻页键不接;
 // - compare 下左栏没有 app 的任何结果(扫描列表的命中、收益列都不出现);切到 scan 档、再切回来,页签还在。
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { mount, flushPromises, type VueWrapper } from '@vue/test-utils'
@@ -11,6 +11,7 @@ import { setActivePinia, createPinia } from 'pinia'
 import FinderList from '../../src/components/FinderList.vue'
 import LeftPanel from '../../src/components/LeftPanel.vue'
 import TopBar from '../../src/components/TopBar.vue'
+import PatternPicker from '../../src/components/PatternPicker.vue'
 import { useViewStore } from '../../src/stores/view'
 import { useAnnotationStore } from '../../src/stores/annotation'
 import { useFinderStore } from '../../src/stores/finder'
@@ -228,16 +229,20 @@ describe('FinderList · 按法', () => {
     expect(view.symbol).toBeNull()
   })
 
-  it('自绘下拉(顶栏 pattern)的菜单开着时不切;关上后照常翻', async () => {
+  it('自绘下拉(顶栏 pattern 的 PatternPicker)菜单开着时不切;点别处关上后照常翻', async () => {
     const { view } = await mountFinder()
     view.openFromFinder('MSFT', { start: '2023-09-12', end: '2024-04-26' })
-    const menu = document.createElement('button')
-    menu.setAttribute('aria-expanded', 'true')
-    document.body.appendChild(menu)
-    menu.focus()
+    const picker = keep(mount(PatternPicker, { attachTo: document.body,
+                                               props: { value: 'W底', tid: 'top-pattern', title: 'pattern' } }))
+    await picker.get('[data-testid="top-pattern-button"]').trigger('click')
+    expect(picker.find('[data-testid="top-pattern-menu"]').exists()).toBe(true)
     expect(fireKey('PageDown').defaultPrevented).toBe(false)
     expect(view.symbol).toBe('MSFT')
-    menu.setAttribute('aria-expanded', 'false')
+    // 点菜单外面:菜单关上,翻页键照常翻
+    document.body.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }))
+    await flushPromises()
+    expect(picker.find('[data-testid="top-pattern-menu"]').exists()).toBe(false)
+    ;(document.activeElement as HTMLElement | null)?.blur()
     fireKey('PageDown')
     expect(view.symbol).toBe('NVDA')
   })
