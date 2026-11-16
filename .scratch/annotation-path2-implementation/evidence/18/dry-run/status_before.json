@@ -1,0 +1,38 @@
+{
+ "app_ver": "32dd64edf923d266",
+ "reason": null,
+ "rows": {
+  "f-pc-74": {
+   "symbol": "CRNC",
+   "has_reference": false,
+   "raw": "matched",
+   "raw_without_range_buys": "lost",
+   "shown": "matched",
+   "red": true
+  },
+  "f-pc-90": {
+   "symbol": "IXHL",
+   "has_reference": false,
+   "raw": "lost",
+   "raw_without_range_buys": "lost",
+   "shown": "unmatched",
+   "red": false
+  },
+  "f-pc-95": {
+   "symbol": "LUMN",
+   "has_reference": false,
+   "raw": "matched",
+   "raw_without_range_buys": "lost",
+   "shown": "matched",
+   "red": true
+  },
+  "f-pc-92": {
+   "symbol": "QBTS",
+   "has_reference": false,
+   "raw": "lost",
+   "raw_without_range_buys": "lost",
+   "shown": "unmatched",
+   "red": false
+  }
+ }
+}
