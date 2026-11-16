@@ -155,9 +155,11 @@ function onActivePatternChange(e: Event) {
 .header-row, .level-bar, .chart-area > .topology-row, .chart-area > .notices-row { grid-column: 1 / -1; }
 .chart-area > .notices-row { grid-row: 2; }
 .chart-area > .kline-wrap-v2, .chart-area > .sidebar { grid-row: 3; }
-/* scan 档没加载扫描:盖住图区(图本身也是空的),只写 no_scan */
+/* scan 档没加载扫描:盖住图区(图本身也是空的,压在图上的框选按钮等 z-index 10 的也盖住),只写 no_scan。K 线显式放第一列,和它叠在同一格,
+   否则显式放置的 no_scan 先占了第一列,K 线被自动放到新开的第二列 */
+.chart-area > .kline-wrap-v2 { grid-column: 1; }
 .chart-area > .no-scan {
-  grid-row: 3; grid-column: 1; z-index: 5; display: flex; align-items: center; justify-content: center;
+  grid-row: 3; grid-column: 1; z-index: 20; display: flex; align-items: center; justify-content: center;
   background: #fff; font-family: var(--mono); font-size: 13px; color: var(--ink-empty);
 }
 /* annotate / compare:顶栏行(compare 才有)、拓扑(compare 才有)、标注提示条、K 线各占一行 */
