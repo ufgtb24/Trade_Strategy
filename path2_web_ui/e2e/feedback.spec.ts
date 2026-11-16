@@ -1,8 +1,9 @@
 import { test, expect, type Browser, type Locator, type Page, type TestInfo } from '@playwright/test'
+import { execFileSync } from 'node:child_process'
 import { copyFileSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import {
-  REPO, annState, klineY, routeTo, settled, startBackend, stopBackend, xOf, type Backend,
+  HERE, REPO, annState, klineY, routeTo, settled, startBackend, stopBackend, xOf, type Backend,
 } from './annotateHelpers'
 
 /**
@@ -16,7 +17,8 @@ import {
  *   F = 买点最多的一族,G = 次多的一族,K = 拖选用的一族(F、G 以外的,没有就用 G);
  *   red   = F 的第二个买点日上一条 point 反馈 → matched、朱红,会话标签 for_tuning;
  *   plain = F 范围里一个不是买点、但前后一天有买点的日子上一条 point 反馈 → unmatched、常色;
- *   lost  = F 之前一段没有买点的日子上一条 family 反馈,起点那天没有任何事件起步 → lost,会话标签 unhandled;
+ *   lost  = F 之前一段没有买点的日子上一条 family 反馈,存下的基准 event(阶跃)是那段的第一天,当前没有一个阶跃
+ *           与它共用 K 线 → lost(基准 node 对不上),会话标签 unhandled;
  *   另放一个 W底 的正样本在 G 的第二个买点日(pos sample inside),一个框在 lost 那段上(先选中框再点族)。
  * 这几条经后端的批次接口写进临时标注目录(同界面的保存,过同一套校验)。
  *
@@ -29,7 +31,8 @@ import {
  *    点记号只选中,按住 Enter 打开那条、自动重复不保存;
  *    annotate、app 模式下没有反馈带、工具与侧栏页,Shift+F 只在 compare 生效。截图 ①(三种状态连同 hits 行)。
  * 2. 点 ▼、点琥珀格、点族、点记号都只选中、不弹面板;选中后按 Enter 或点显示栏的 feedback 按钮才弹:▼ / 琥珀格得
- *    point 面板,族的命中区得 family 范围与起点;焦点停在别处的按钮上时 Enter 照样开、不「点」那个按钮;
+ *    point 面板,族的命中区得 family 范围、起点和基准 event 起止;存下的基准 event 起止与后端从同一族 hit 取出的
+ *    逐段相同,选中它时牵出的 hit 与后端判法收进来的是同一批(后端那一头由 e2e/referenceOf.py 现算);焦点停在别处的按钮上时 Enter 照样开、不「点」那个按钮;
  *    面板开着时它管的那段日期有贯穿主副图的竖带,面板默认靠在竖带旁、
  *    底边贴住显示栏上沿,按住页头能拖走;面板开着时点另一个 ▼:面板关掉、选中换过去、不开新的;
  *    面板一打开就是 issues / nodes / note 三行
@@ -68,6 +71,7 @@ const POS_SAMPLE = 's-e2e-900'
 const BOX = 'b-e2e-899'
 const MAPPING = [
   `pattern: ${PATTERN}`,
+  'reference: step',
   'features:',
   '  w-pc-3: plateau',
   'notes:',
@@ -339,6 +343,21 @@ async function shot(page: Page, testInfo: TestInfo, name: string, around?: Locat
   }
 }
 
+// ───────────────────────── 后端那一头的基准 event ─────────────────────────
+
+/** 后端对同一批 hit 取出的:族起点为 familyStart 的那一族的基准 event 起止,与反馈 fb 收进来的 hit(e2e/referenceOf.py,
+ *  训练段副本上真跑 app)。 */
+function backendReference(familyStart: string, fb: Record<string, unknown>): { family_spans: string[][]; feedback_hits: string[] } {
+  const py = process.env.PATH2_E2E_PYTHON ? [process.env.PATH2_E2E_PYTHON] : ['uv', 'run', 'python']
+  const out = execFileSync(py[0], [...py.slice(1), join(HERE, 'referenceOf.py'), APP, SYMBOL, 'step', familyStart,
+                                   JSON.stringify(fb)], { cwd: REPO, encoding: 'utf8' })
+  return JSON.parse(out.trim().split('\n').at(-1)!)
+}
+
+/** 页面选中一条反馈时牵出的 hit(view 的选中模型里这条反馈收进来的,annotate/feedback.ts 的 feedbackHits)。 */
+const pageFeedbackHits = (page: Page, id: string): Promise<string[]> =>
+  page.evaluate(x => [...(window as any).__e2e.view.feedbackHitIdsOf(x)], id)
+
 // ───────────────────────── 准备:临时后端、现挑日子、写进几条反馈 ─────────────────────────
 
 async function putFixture(b: Backend) {
@@ -364,8 +383,9 @@ async function makePlan(browser: Browser): Promise<Plan> {
     const e2e = (window as any).__e2e
     const fams = (e2e.chartSub().getOption().series.find((s: any) => s.name === 'bracket-lines')?.data ?? [])
       .map((d: any) => ({ start: d.family_start as number, buys: [...(d.buy_days ?? [])].sort((a: number, b: number) => a - b) }))
-    const starts = (e2e.view.effectiveAnalysis?.events ?? []).map((e: any) => e.start_idx as number)
-    return { fams, starts, dates: e2e.chartMain().getOption().xAxis[0].data as string[],
+    const steps = (e2e.view.effectiveAnalysis?.events ?? []).filter((e: any) => e.node_id === 'step')
+      .map((e: any) => [e.start_idx as number, e.end_idx as number])
+    return { fams, steps, dates: e2e.chartMain().getOption().xAxis[0].data as string[],
              appVer: e2e.view.linkedRun?.scan?.app_ver ?? null }
   })
   await page.close()
@@ -378,17 +398,17 @@ async function makePlan(browser: Browser): Promise<Plan> {
   expect(G.buys.length, '次多的一族至少 2 天').toBeGreaterThanOrEqual(2)
   const K = fams.slice(2).sort((a, b) => b.start - a.start)[0] ?? G
   const buys = new Set(fams.flatMap(f => f.buys))
-  const starts = new Set<number>(got.starts)
+  const steps = got.steps as [number, number][]
   // plain:F 范围里不是买点、前后一天有买点的日子
   let p = -1
   for (let i = F.buys[0] + 1; i < F.buys[F.buys.length - 1]; i++) {
     if (!buys.has(i) && (buys.has(i - 1) || buys.has(i + 1))) { p = i; break }
   }
   expect(p, 'F 的范围里要有一天不是买点').toBeGreaterThan(0)
-  // lost:F 之前一段 6 天,没有买点、起点那天没有任何事件起步
+  // lost:F 之前一段 6 天,没有买点;存下的基准 event 是它的第一天,没有一个阶跃(不论档位)盖住那天
   let d = -1
   for (let i = F.buys[0] - 8; i > 10; i--) {
-    let ok = !starts.has(i)
+    let ok = !steps.some(([a, b]) => a <= i && i <= b)
     for (let j = i; j <= i + 5 && ok; j++) ok = !buys.has(j)
     if (ok) { d = i; break }
   }
@@ -411,7 +431,8 @@ async function seed(b: Backend, pl: Plan) {
     fb(RED, { start: pl.red, end: pl.red, target: 'point', answer: 'neg', note: '追在阶跃之后太远' }),
     fb(PLAIN, { start: pl.plain, end: pl.plain, target: 'point', answer: 'off_pattern', nodes: ['plateau'] }),
     fb(LOST, { start: pl.lost.start, end: pl.lost.end, target: 'family', family_start: pl.lost.start,
-               answer: 'off_pattern', note: '这一段不是平台', dag: true }),
+               answer: 'off_pattern', note: '这一段不是平台', dag: true,
+               reference: { node: 'step', spans: [[pl.lost.start, pl.lost.start]] } }),
   ])
 }
 
@@ -446,14 +467,14 @@ test.describe('反馈(new_step + 手写 mapping,CRNC)', () => {
 
     await enterCompare(page)
     await expect(page.getByTestId('tool-feedback')).toBeVisible()
-    // 状态接口真跑 app:三条各是 matched(朱红)、unmatched、起点认不出(页面上并进 unmatched,会话给它挂了标签,
+    // 状态接口真跑 app:三条各是 matched(朱红)、unmatched、基准 node 对不上(页面上并进 unmatched,会话给它挂了标签,
     // 说明毛病还在,所以标签照带);会话标签照 mapping 的会话段
     await expect.poll(async () => {
       const s = await fbOf(page, 'statusById')
       return [RED, PLAIN, LOST].map(id => `${s?.[id]?.status}:${s?.[id]?.red}:${s?.[id]?.tag}`)
     }, { timeout: 60_000 }).toEqual(['matched:true:for_tuning', 'unmatched:false:null', 'unmatched:false:unhandled'])
 
-    // 反馈带:每条一个记号,朱红 / 白底深灰描边(起点认不出的那条也是常色)
+    // 反馈带:每条一个记号,朱红 / 白底深灰描边(基准 node 对不上的那条也是常色)
     const li = dates.indexOf(plan.lost.start)
     await zoomTo(page, li - 6, F.buys[F.buys.length - 1] + 6)
     await expect.poll(async () => (await stripMarks(page)).map(m => m.id).sort()).toEqual([RED, PLAIN, LOST].sort())
@@ -779,6 +800,11 @@ test.describe('反馈(new_step + 手写 mapping,CRNC)', () => {
     await openFb(page)
     await expect(panel(page)).toHaveAttribute('data-target', 'family')
     await expect(page.getByTestId('feedback-span')).toHaveText(`${dates[G.buys[0]]} – ${dates[G.buys.at(-1)!]}`)
+    // 面板带着这一族的起点与基准 event 起止(页面从这一族的 hit 里取),和后端从同一族 hit 取出的逐段相同
+    const gRef = backendReference(dates[G.start], {})
+    expect(gRef.family_spans.length, `${SYMBOL} 起于 ${dates[G.start]} 的那一族要有阶跃`).toBeGreaterThan(0)
+    expect(await fbOf(page, 'panel')).toMatchObject({ family_start: dates[G.start],
+                                                      reference: { node: 'step', spans: gRef.family_spans } })
     await expect(page.getByTestId('feedback-pos-inside')).toBeVisible()
     await page.keyboard.press('Delete')
     await settled(page)
@@ -814,6 +840,14 @@ test.describe('反馈(new_step + 手写 mapping,CRNC)', () => {
     const fam = feedbackOf(await annState(page)).filter(f => f.target === 'family' && f.family_start === dates[G.start])
     expect(fam.map(f => [f.start, f.end, f.nodes, f.note, 'answer' in f, 'dag' in f]))
       .toEqual([[dates[G.buys[0]], dates[G.buys.at(-1)!], [lit], '这一族的平台太窄', false, false]])
+    // 写入这一头:存进标注的基准 event 起止 = 后端从同一族 hit 取出的(逐段相同);选中它时页面牵出的 hit 与后端
+    // 判法收进来的是同一批(含与存下的阶跃共用 K 线、在范围外买的 hit);别的几条也一样
+    expect(fam[0].reference).toEqual({ node: 'step', spans: gRef.family_spans })
+    for (const f of feedbackOf(await annState(page)).filter(x => x.source === 'picked')) {
+      const back = backendReference(dates[G.start], f)
+      expect(await pageFeedbackHits(page, f.id), `${f.id} 收进来的 hit`).toEqual(back.feedback_hits)
+    }
+    expect(await pageFeedbackHits(page, LOST)).toEqual([])
 
     // ── 竖带只给选中的那条反馈:从它按 → 走进它收进的买点日(它退到外层,记号下画底线),竖带收起、它的边不能拖;
     //    Esc 退回这条反馈,竖带与可拖的边回来 ──
@@ -996,7 +1030,7 @@ test.describe('反馈(new_step + 手写 mapping,CRNC)', () => {
     await settled(page)
     expect(feedbackOf(await annState(page)).find(f => f.id === LOST)).toMatchObject({ start: dates[li], end: dates[le],
                                                                                     target: 'family' })
-    // 右边往外拖到 lost 之后最近的买点日:直接存成同编号的 range,不弹面板;存下的不带 family_start、answer、dag
+    // 右边往外拖到 lost 之后最近的买点日:直接存成同编号的 range,不弹面板;存下的不带 family_start、reference、answer、dag
     await feedbackOn(page)
     await page.mouse.move(edgeR - 1, y)
     await page.mouse.down()
@@ -1217,7 +1251,8 @@ test.describe('反馈(new_step + 手写 mapping,CRNC)', () => {
     const id: string = saved[0].id
     expect(saved[0]).toEqual({ id, pattern: PATTERN, app_id: APP, app_ver: plan.appVer, start: dates[f0], end: dates[f1],
                                target: 'family', family_start: dates[F.start], source: 'picked',
-                               note: `${LONG}\nsecond line`, nodes: [nodeName, nodeName2] })
+                               note: `${LONG}\nsecond line`, nodes: [nodeName, nodeName2],
+                               reference: { node: 'step', spans: backendReference(dates[F.start], {}).family_spans } })
     await expect.poll(async () => (await stripMarks(page)).map(m => m.id)).toContain(id)
     const mark = await findItem(page, 'feedback-strip', x => x.d?.feedback_id === id, 0)
     await page.mouse.move(mark.x + mark.w / 2, mark.y + mark.h / 2)

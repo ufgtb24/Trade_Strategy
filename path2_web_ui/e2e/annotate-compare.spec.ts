@@ -26,7 +26,7 @@ import { REPO, TRAIN_END, lanes, routeTo, startBackend, stopBackend, type Backen
  */
 
 const GROUPING = join(REPO, 'tests/path2_web/fixtures/annotation_grouping_v1/batches')
-const MAPPING = 'pattern: W底\nfeatures:\n  w-pc-3: bo\n  w-pc-1: pk\n'
+const MAPPING = 'pattern: W底\nreference: bo\nfeatures:\n  w-pc-3: bo\n  w-pc-1: pk\n'
 const LANE_OF: Record<string, string> = { bo: '突破', pk: '横盘' }
 // 第二段才有的对照 tag 与已退役的档位小字:compare 图上一个都不许出现
 const TAG_WORDS = ['connected', 'disconnected', 'not_qualified', 'excluded', 'optional', 'must_not', 'chance_high',
