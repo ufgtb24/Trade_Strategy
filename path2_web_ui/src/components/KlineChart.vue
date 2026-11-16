@@ -1063,8 +1063,9 @@ function render(forceResetZoom = false) {
   }
   if (!chartMain || !chartSub) return
   if (!effectiveAnalysis.value || !effectivePattern.value) {
-    // 现算的 app 还没跑完(或没跑成):先只画 K 线,副图清空
+    // 现算的 app 还没跑完(或没跑成):先只画 K 线,副图清空;scan 档没有股票(no_scan)时上一只的图清掉
     if (linkedView.value) { renderBarsOnly(forceResetZoom); chartSub.clear() }
+    else if (!symbol.value) { chartMain.clear(); chartSub.clear() }
     return
   }
   const params = { ...buildRenderInput(), zoomOverride: forceResetZoom ? null : readZoomOverride() }

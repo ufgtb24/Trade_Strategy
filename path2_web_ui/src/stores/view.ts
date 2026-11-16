@@ -191,12 +191,12 @@ import { useConfigStore } from './config'
 // shift+click 累积器条目(入口 D · KlineChart.ts::handleShiftClick 消费/写入)。
 // 实例化契约:instance_id/node_id(取代旧的复合身份字段)。
 export type ShiftSelectedEvent = { instance_id: string; node_id: string; source: 'main' | 'sub' }
-/** 主视图模式(顶栏 mode)。
+/** 图表状态里的模式。顶栏 mode 有四档 annotate / compare / app │ scan,后两档在这里是同一个 app 加两种来源:
  *  - annotate:按代码打开的图,只画 K 线、成交量和用户的框与样本,不画任何 app 产物(effectiveAnalysis 恒为 null);
  *  - compare:标注照旧(能接着标),再把当前 pattern 的 app 在这张图上的输出叠上去:event 画在用户框所在的特征轨上,
  *    hit 画在 bracket 轨上(stores/appLink.ts 跑 app、给 mapping);
- *  - app:按 node 分轨画 app 的产物。两种来源(appSource):scan = 扫描结果(加载扫描、从扫描列表选股时进入);
- *    linked = 当前 pattern 的 app 在这只股票上现算的输出(顶栏切过来时)。 */
+ *  - app:按 node 分轨画 app 的产物。两种来源(appSource):linked = 当前 pattern 的 app 在这只股票上现算的输出
+ *    (顶栏 app 档);scan = 扫描文件里的结果(顶栏 scan 档,即 scanView:加载扫描、从扫描列表选股、点顶栏 scan 时进入)。 */
 export type ViewMode = 'annotate' | 'compare' | 'app'
 
 /** app 产物从哪来:scan = 扫描结果文件;linked = 当前 pattern 的 app 在这只股票上现算(compare 恒为 linked)。 */
@@ -271,8 +271,22 @@ export const useViewStore = defineStore('view', () => {
   const annotating = computed(() => mode.value === 'annotate' || mode.value === 'compare')
   const comparing = computed(() => mode.value === 'compare')
   const linkedView = computed(() => mode.value === 'compare' || (mode.value === 'app' && appSource.value === 'linked'))
+  // scanView:顶栏的 scan 档(扫描文件里的结果);noScan:scan 档但没加载扫描,图区空着、写 no_scan
+  const scanView = computed(() => mode.value === 'app' && appSource.value === 'scan')
+  const noScan = computed(() => scanView.value && !scanFile.value)
   const linkedRun = shallowRef<LinkedRun | null>(null)
   const symbol = ref<string | null>(null)
+  // 进出 scan 档时股票怎么带(enterScan / leaveScan):
+  //   scanStop   扫描列表上次停的那只(scan 档里最后看的那只;加载扫描时是落下的那只,删掉扫描时清空)
+  //   scanReturn 从前三档进 scan 前开着的那只(没开着为 null;只在 scan 档里有意义)
+  //   scanPicked 这次在 scan 档里从扫描列表选过股(点行、PageUp / PageDown)
+  const scanStop = ref<string | null>(null)
+  const scanReturn = ref<string | null>(null)
+  const scanPicked = ref(false)
+  /** 从 scan 档回到前三档时落在哪只:选过扫描列表的行就是现在这只,否则是进 scan 前那只(进 scan 前没开着
+   *  股票时留着现在这只);不在 scan 档就是现在这只。顶栏 compare / app 能不能点也按它判(stores/appLink.ts)。 */
+  const frontSymbol = computed<string | null>(() =>
+    !scanView.value || scanPicked.value || scanReturn.value === null ? symbol.value : scanReturn.value)
   // annotate 下打开时图停在哪段(rally / random 进来时给);null = 按默认缩放(整只股票)。
   // 每次 openSymbol 都换一个新对象:同一只股票换一段也能触发重画
   const viewWindow = ref<ViewWindow | null>(null)
@@ -632,7 +646,20 @@ export const useViewStore = defineStore('view', () => {
     effectivePattern.value ? deriveNodeColors(effectivePattern.value.topology, effectivePattern.value.event_styles) : {})
 
   // ── actions ──────────────────────────────────────────────────────
+  /** 从前三档进 scan 档时记下回去落在哪只、这次还没选过行;已在 scan 档就什么都不做。 */
+  function noteScanEntry() {
+    if (scanView.value) return
+    scanReturn.value = symbol.value
+    scanPicked.value = false
+  }
+  const inScanFile = (f: MultiScanResultFile | null, s: string | null) =>
+    !!f && s !== null && f.results.some(r => r.symbol === s)
+
+  /** 加载扫描后落在 scan 档。从前三档加载、当前股票在这份扫描里就留着它,否则落在扫描列表第一行;
+   *  已在 scan 档时换一份扫描也落在第一行(这只不是在新列表里选的)。 */
   function loadScanFile(f: MultiScanResultFile) {
+    const keep = !scanView.value && inScanFile(f, symbol.value)
+    noteScanEntry()
     scanFile.value = f
     currentScanName.value = f?.scan?.name ?? f?.scan?.scan_ts ?? null
     mode.value = 'app'
@@ -643,7 +670,9 @@ export const useViewStore = defineStore('view', () => {
     hoveredEventId.value = null
     sortByPid.value = null
     sortDesc.value = true
-    symbol.value = f.results[0]?.symbol ?? null
+    symbol.value = keep ? symbol.value : f.results[0]?.symbol ?? null
+    scanStop.value = symbol.value
+    scanPicked.value = false
     preview.value = null
     previewError.value = null
     // active 默认值:优先 config.last_selected_pattern 若在 pattern_ids 中
@@ -658,13 +687,15 @@ export const useViewStore = defineStore('view', () => {
     workingCopy.value = {}
     _scanDormantDrafts()
   }
+  /** 删掉当前扫描。在 scan 档里:留在 scan 档的 no_scan,图清空,回前三档时落在进 scan 前那只;
+   *  annotate、compare 和现算的 app 下打开的图与扫描无关,不跟着清。 */
   function clearScanFile() {
     scanFile.value = null
     currentScanName.value = null
-    // annotate、compare 和现算的 app 下打开的图与扫描无关,不跟着清
-    if (mode.value === 'app' && appSource.value === 'scan') {
+    scanStop.value = null
+    if (scanView.value) {
       symbol.value = null
-      mode.value = 'annotate'
+      scanPicked.value = false
     }
     activePatternId.value = null
     sortByPid.value = null
@@ -693,35 +724,67 @@ export const useViewStore = defineStore('view', () => {
     previewError.value = null
     clearDetailCard()
   }
+  /** 从扫描列表选股(点行、PageUp / PageDown):看这只股票的扫描结果,在前三档点的也进到 scan 档。
+   *  锚-active 解耦:只切股、不动 activePatternId。打开时给定的图窗是别的股票的,一并清掉。
+   *  记作在扫描列表选过股:回前三档时带着这只。 */
   function selectSymbol(s: string) {
-    // 锚-active 解耦:只切股、不动 activePatternId
-    // 从扫描列表选股 = 看这只股票的扫描结果
+    noteScanEntry()
     mode.value = 'app'
     appSource.value = 'scan'
     symbol.value = s
+    scanStop.value = s
+    scanPicked.value = true
+    viewWindow.value = null
     resetChartState()
     if (previewEnabled.value) void runPreview()
   }
+  /** 顶栏切到 scan 档:当前股票在扫描文件里就留着,不在就回到扫描列表上次停的那只;没加载扫描时是 no_scan,
+   *  股票不带过去(图清空)。已在 scan 档就什么都不做。 */
+  function enterScan() {
+    if (scanView.value) return
+    const f = scanFile.value
+    const s = !f ? null : inScanFile(f, symbol.value) ? symbol.value : scanStop.value
+    noteScanEntry()
+    mode.value = 'app'
+    appSource.value = 'scan'
+    symbol.value = s
+    if (s !== null) scanStop.value = s
+    resetChartState()
+    if (previewEnabled.value) void runPreview()
+  }
+  /** 从 scan 档回到前三档前,把股票换成回去该落的那只(frontSymbol);不在 scan 档就什么都不做。 */
+  function leaveScan() {
+    if (!scanView.value) return
+    symbol.value = frontSymbol.value
+    scanReturn.value = null
+    scanPicked.value = false
+  }
   /** 按代码打开(顶栏 symbol、rally、random,pattern 页的样本卡,链接):不动扫描与 activePatternId。
-   *  落点:在 compare 下换图留在 compare(决策票 01:换图不退出 compare),别的模式落在 annotate;
+   *  落点:在 compare 下换图留在 compare(决策票 01:换图不退出 compare),别的模式(含 scan 档)落在 annotate;
    *  链接跟完一律回到 annotate(stores/directLinks.ts)。
    *  win 给了就让图停在那段上,不给按默认缩放。代码是否存在由调用方先核过。 */
   function openSymbol(s: string, win: ViewWindow | null = null) {
     if (mode.value !== 'compare') mode.value = 'annotate'
     symbol.value = s
+    scanReturn.value = null
+    scanPicked.value = false
     viewWindow.value = win ? { start: win.start, end: win.end } : null
     resetChartState()
   }
-  /** 切到 annotate、图不换(直达链接没跟成时落在这里,提示条在 annotate 下);已在 annotate 就什么都不做。 */
+  /** 切到 annotate(直达链接没跟成时也落在这里,提示条在 annotate 下);已在 annotate 就什么都不做。
+   *  前三档之间切图不换;从 scan 档过来时股票照 leaveScan 换回。 */
   function enterAnnotate() {
     if (mode.value === 'annotate') return
+    leaveScan()
     mode.value = 'annotate'
     resetChartState()
   }
-  /** 顶栏切到 compare 或 app:图不换,app 产物取当前 pattern 的 app 现算的输出(linkedRun,stores/appLink.ts 负责跑)。
-   *  能不能切由调用方先核过(当前 pattern 有能用的 mapping、已经打开了一只股票)。 */
+  /** 顶栏切到 compare 或 app:app 产物取当前 pattern 的 app 现算的输出(linkedRun,stores/appLink.ts 负责跑)。
+   *  前三档之间切图不换;从 scan 档过来时股票照 leaveScan 换回。
+   *  能不能切由调用方先核过(当前 pattern 有能用的 mapping、回去落的那只股票不为空)。 */
   function enterLinked(m: 'compare' | 'app') {
     if (mode.value === m && appSource.value === 'linked') return
+    leaveScan()
     mode.value = m
     appSource.value = 'linked'
     resetChartState()
@@ -1364,7 +1427,8 @@ export const useViewStore = defineStore('view', () => {
     unionRows, sortedRows, filteredSortedRows, previewListRow, patternHitStocks,
     nodeColors, selectedHitId, selectedHit, tagMap, isolated, inHitIds, inHitEventIds, qualifiedIds,
     mode, annotating, comparing, appSource, linkedView, linkedRun, appId, endNode, appWindowOf,
-    openSymbol, enterAnnotate, enterLinked, setLinkedRun, viewWindow,
+    scanView, noScan, frontSymbol,
+    openSymbol, enterAnnotate, enterLinked, enterScan, setLinkedRun, viewWindow,
     loadScanFile, clearScanFile, setCurrentScanName, currentScanName, selectSymbol, setActivePattern, setSort,
     toggleNode, toggleExpandedNode,
     focusHit, focusEvent, clearFocus,

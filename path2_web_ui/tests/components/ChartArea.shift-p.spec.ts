@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import { setActivePinia, createPinia } from 'pinia'
 import ChartArea from '../../src/components/ChartArea.vue'
+import { useViewStore } from '../../src/stores/view'
 
 // 声明 open 为 prop,确保 stub 能被 .props('open') 读到 drawerOpen 的真值。
 const DrawerStub = {
@@ -11,6 +12,7 @@ const DrawerStub = {
 }
 
 function mountIt() {
+  useViewStore().mode = 'app'   // 参数抽屉属于扫描结果视图(scan 档)
   return mount(ChartArea, {
     global: {
       stubs: {

@@ -35,13 +35,16 @@
       <button type="button" :class="['entry', { on: mode === 'compare', off: !appLink.available }]"
               data-testid="mode-compare" :disabled="!appLink.available" :title="modeTitle('compare')"
               @click="appLink.setMode('compare')">compare</button>
-      <button type="button" :class="['entry', { on: mode === 'app', off: !appLink.available && mode !== 'app' }]"
-              data-testid="mode-app" :disabled="!appLink.available && mode !== 'app'" :title="modeTitle('app')"
-              @click="mode !== 'app' && appLink.setMode('app')">app</button>
+      <button type="button" :class="['entry', { on: mode === 'app' && !scanView, off: !appLink.available }]"
+              data-testid="mode-app" :disabled="!appLink.available" :title="modeTitle('app')"
+              @click="appLink.setMode('app')">app</button>
       <span v-if="linkedView && appLink.mapping" class="app-id" data-testid="linked-app"
             title="the app of the current pattern">{{ appLink.mapping.app }}</span>
       <span v-if="linkedView && appLink.runStatus" class="status" data-testid="app-status"
             :title="RUN_HINT[appLink.runStatus]">{{ appLink.runStatus }}</span>
+      <span class="mode-sep" data-testid="mode-sep" aria-hidden="true" />
+      <button type="button" :class="['entry', { on: scanView }]" data-testid="mode-scan"
+              :title="scanTitle" @click="view.enterScan()">scan</button>
     </div>
     <div v-if="annotating" class="grp" data-testid="tool-group">
       <span class="key" title="what dragging on the chart does; none on: drag pans, click selects">tool</span>
@@ -82,9 +85,10 @@
 <script setup lang="ts">
 /**
  * 主视图顶栏:
- * - mode:annotate / compare / app。compare、app 只在当前 pattern 有 app(有一个能用的 mapping,stores/appLink.ts)
- *   且已经打开一只股票时可用,否则变灰;从扫描列表选股时是 app(扫描结果)。compare、现算的 app 下旁边写 app 的名字
- *   (不显示 mapping)。
+ * - mode:annotate / compare / app │ scan。前三档看这只股票:app 是当前 pattern 的 app 在这只股票上现算的输出;
+ *   compare、app 只在当前 pattern 有 app(有一个能用的 mapping,stores/appLink.ts)且切过去时有一只股票时可用,
+ *   否则变灰。compare、app 下旁边写 app 的名字(不显示 mapping)。scan 是扫描文件里的结果(加载扫描、从扫描列表
+ *   选股时也落在这里),随时能点,没加载扫描时是 no_scan;进出 scan 时股票怎么带见 stores/view.ts 的 enterScan / leaveScan。
  * - symbol:输入代码回车,不经扫描直接打开那只股票的图,落在 annotate(compare 下留在 compare,rally、random 同)。代码先对股票列表
  *   (训练段副本里有的股票)核一遍,不在列表里就报 not_found、不动当前的图。输入框平时显示当前打开的股票。
  * - rally:展开 / 收起大涨段清单(RallyList),点一行打开那段涨之前的图,落在 annotate。
@@ -108,7 +112,7 @@ import RallyList from './RallyList.vue'
 import PatternPicker from './PatternPicker.vue'
 
 const view = useViewStore()
-const { symbol, annotating, mode, linkedView } = storeToRefs(view)
+const { symbol, annotating, mode, linkedView, scanView } = storeToRefs(view)
 const ann = useAnnotationStore()
 const refs = useRefLayerStore()
 const appLink = useAppLinkStore()
@@ -120,13 +124,16 @@ const RUN_HINT: Record<RunStatus, string> = {
 function modeTitle(m: 'compare' | 'app'): string {
   if (appLink.available) {
     return m === 'compare' ? `annotation with the output of app ${appLink.mapping!.app} overlaid; still editable`
-      : `output of app ${appLink.mapping!.app} only, lanes by node`
+      : `output of app ${appLink.mapping!.app} run now on this symbol (not the scan file), lanes by node`
   }
-  if (m === 'app' && mode.value === 'app') return 'scan results'
   if (appLink.problem) return `the mapping of the current pattern cannot be used:\n${appLink.problem}`
   if (!appLink.mapping) return 'the current pattern has no app (no path2_apps/<app>/mapping.yaml names it)'
   return 'open a symbol first'
 }
+/** scan 按钮的悬停:扫描文件里的结果;没加载扫描时说怎么加载。 */
+const scanTitle = computed(() => view.scanFile
+  ? `results saved in the scan file ${view.currentScanName ?? ''}: scan window, active pattern of the scan, lanes by node`
+  : 'scan results; no scan loaded (open or run one in the left panel)')
 const PEAKS_HINT: Record<PeaksStatus, string> = {
   loading: 'loading the peaks of this symbol',
   load_failed: 'could not load the peaks',
@@ -204,6 +211,7 @@ async function onRandom() {
 .entry:disabled { cursor: progress; }
 .entry.off { color: var(--ink-off); cursor: default; }   /* 变灰 = 现在用不了 */
 .app-id { font-family: var(--mono); font-size: 12px; color: var(--ink); padding: 0 4px; }
+.mode-sep { align-self: stretch; width: 0; margin: 2px 2px; border-left: 1px solid var(--line-strong); }   /* 前三档 │ scan */
 .chk { display: flex; align-items: center; gap: 3px; font-family: var(--mono); font-size: 12px; color: var(--ink); cursor: pointer; }
 .chk input { margin: 0; accent-color: var(--ink); }   /* 勾上是黑的:浏览器默认的蓝会被读成会话蓝 */
 .chk.off { color: var(--ink-off); cursor: default; }

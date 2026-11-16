@@ -3,8 +3,8 @@
     <!-- row0: 全局 level 控件 + 三 panel toggle chip + 休眠草稿 banner。
          .header-row 包一层让 banner 挂在 chip 行下方,同时对 grid 只占单一自动行——
          不新增显式行号,不改动 topology-row/kline/sidebar 既有的 auto-placement,避免二者同时出现时抢行。 -->
-    <!-- annotate 不显示 app 相关的控件;compare 的副图就是主视图那张,档位按钮、拓扑面板与主视图共用同一份状态
-         (诊断侧栏只在 app 模式:compare 右栏是标注侧栏) -->
+    <!-- annotate 不显示 app 相关的控件;compare 的副图就是 app / scan 档那张,档位按钮、拓扑面板共用同一份状态
+         (诊断侧栏只在 app、scan 档:compare 右栏是标注侧栏) -->
     <div v-if="mode !== 'annotate'" class="header-row">
       <div class="level-bar" data-testid="level-control">
         <button
@@ -39,7 +39,8 @@
           @click="panels.toggle(t.key)"
         >{{ t.label }}</button>
       </div>
-      <DormantDraftBanner />
+      <!-- 扫描的休眠草稿只在 scan 档提示 -->
+      <DormantDraftBanner v-if="scanView" />
     </div>
     <!-- annotate:标注的提示条(指纹不符、冲突、保存被拒),占 row1 -->
     <AnnotationNotices v-if="annotating" class="notices-row" />
@@ -51,6 +52,9 @@
     <KlineChart />
     <AnnotationSidebar v-if="annotating" class="sidebar" />
     <DetailSidebar v-else-if="showSidebar" />
+    <!-- scan 档没加载扫描(no_scan):图区空着,只写 no_scan;左栏照旧是扫描面板与空列表 -->
+    <div v-if="noScan" class="no-scan" data-testid="no-scan"
+         title="no scan loaded: open one with 打开历史 or run one with 扫描 in the left panel">no_scan</div>
     <WorkingCopyDrawer :open="drawerOpen" @close="drawerOpen = false" />
     <!-- Task 12 · 全局一次性提示(如 scan 完成自动固化 WC) -->
     <div v-if="view.toastMsg" class="toast">{{ view.toastMsg }}</div>
@@ -58,7 +62,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, onMounted, onBeforeUnmount } from 'vue'
+import { computed, ref, watch, onMounted, onBeforeUnmount } from 'vue'
 import { storeToRefs } from 'pinia'
 import TopologyControl from './TopologyControl.vue'
 import KlineChart from './KlineChart.vue'
@@ -74,16 +78,20 @@ import { useAnnotationStore } from '../stores/annotation'
 import type { Level } from '../types'
 
 const view = useViewStore()
-const { level, annotating, linkedView, mode } = storeToRefs(view)
+const { level, annotating, linkedView, mode, scanView, noScan } = storeToRefs(view)
 const panels = usePanelsStore()
 const { showTopology, showSidebar } = storeToRefs(panels)
 // 抽屉开关 ref 由 ChartArea 持有,ParamsChip 只 emit toggle-drawer;WorkingCopyDrawer(Task 11)在此渲染
 const drawerOpen = ref(false)
 
-// Shift+P 切换参数抽屉(与 ParamsChip 的 ✎ 按钮同一 toggle)。
+// 参数抽屉是扫描的(Working Copy):离开 scan 档就关掉(未存盘的编辑留在共享 model 里,重开不丢)
+watch(scanView, (v) => { if (!v) drawerOpen.value = false })
+
+// Shift+P 切换参数抽屉(与 ParamsChip 的 ✎ 按钮同一 toggle),只在 scan 档起作用。
 // window bubble 阶段;capture 阶段 onGlobalCharKey 已对 shift 整体让出不抢序。
 // 焦点在可编辑元素时放行 → 浏览器默认输入大写 P,不误关抽屉(防误触优先)。
 function onKey(e: KeyboardEvent) {
+  if (!scanView.value) return
   if (!(e.key === 'P' && e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey)) return
   const ae = document.activeElement as HTMLElement | null
   if (ae && ae.closest('input, textarea, select, [contenteditable=""], [contenteditable="true"]')) return
@@ -147,6 +155,11 @@ function onActivePatternChange(e: Event) {
 .header-row, .level-bar, .chart-area > .topology-row, .chart-area > .notices-row { grid-column: 1 / -1; }
 .chart-area > .notices-row { grid-row: 2; }
 .chart-area > .kline-wrap-v2, .chart-area > .sidebar { grid-row: 3; }
+/* scan 档没加载扫描:盖住图区(图本身也是空的),只写 no_scan */
+.chart-area > .no-scan {
+  grid-row: 3; grid-column: 1; z-index: 5; display: flex; align-items: center; justify-content: center;
+  background: #fff; font-family: var(--mono); font-size: 13px; color: var(--ink-empty);
+}
 /* annotate / compare:顶栏行(compare 才有)、拓扑(compare 才有)、标注提示条、K 线各占一行 */
 .chart-area.annotating > .header-row { grid-row: 1; }
 .chart-area.annotating > .topology-row { grid-row: 2; }
