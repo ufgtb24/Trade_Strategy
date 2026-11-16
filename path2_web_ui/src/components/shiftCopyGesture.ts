@@ -3,9 +3,10 @@
  * - 按住 Shift 在主图上按下:拖开 → 拖动中给竖带预览,松手复制这一段;没拖开 → 复制这一天。
  *   移动超过 DRAG_PX 才算拖开(同画框、反馈拖选的口径,也是图表判不判点击的口径);按下时按着 Shift 就算,
  *   途中松开 Shift 不影响;拖出图区按图窗里的首尾 K 线截住。
- * - 只复制,不改图上的状态:按下就在捕获阶段截下,图表(平移、框选、点击)、标注手势(平移、画框、放样本、
- *   反馈拖选)都收不到这一下;松手后跟着来的那次 click 也截下,所以不会被当成「点空白」清掉选中。
- *   不让出输入框的焦点、不改当前日、不平移,工具亮着也不熄。
+ * - 只复制,不改图上的状态:按下就在 window 的捕获阶段截下(事件最早经过的一站),图表(平移、框选、点击)、
+ *   标注手势(平移、画框、放样本、反馈拖选)、作答面板「点外面就关」都收不到这一下;松手后跟着来的那次 click
+ *   也截下,所以不会被当成「点空白」清掉选中。不让出输入框的焦点、不改当前日、不平移,工具亮着也不熄,
+ *   开着的作答面板(连同没存的 note)也不关。
  * - 唯一例外:在 event 的记号上 Shift+点(没拖开),照旧是跨图配对查询:按下时记下鼠标停着的记号(markerAt),
  *   松手时交给 pick(KlineChart.ts 的 handleShiftClick)。按下一样截下——图表收不到按下就不会派这次点击,
  *   所以由这里补上;从记号上拖开仍是复制一段。
@@ -38,6 +39,11 @@ function local(el: HTMLElement, ev: MouseEvent): [number, number] {
   return [ev.clientX - r.left, ev.clientY - r.top]
 }
 
+/**
+ * 建一个主图上的「按住 Shift 复制一天、一段」手势;attach 挂上监听,detach 摘掉,cancel 收起拖到一半的
+ * (换股票时用)。按下时记下按在哪根 K 线、停着哪个记号,拖动超过 DRAG_PX 才给预览,松手时按上面的规矩
+ * 交给 copy 或 pick。
+ */
 export function createShiftCopyGesture(deps: ShiftCopyDeps) {
   let gesture: { x0: number; y0: number; i0: number; marker: string | null; moved: boolean } | null = null
   /** 刚松手:跟着来的那次 click 截下(不让图表当成点空白清掉选中) */
@@ -57,10 +63,11 @@ export function createShiftCopyGesture(deps: ShiftCopyDeps) {
     swallowClick = false
     const el = deps.mainEl()
     if (ev.button !== 0 || !ev.shiftKey || !el || !deps.main() || deps.count() === 0) return
+    if (!(ev.target instanceof Node) || !el.contains(ev.target)) return
     const [x, y] = local(el, ev)
     if (!deps.onChart(x, y)) return
     gesture = { x0: x, y0: y, i0: indexAt(x), marker: deps.markerAt(), moved: false }
-    // 截下:图表与标注手势都收不到这一下;preventDefault 挡住浏览器 Shift+按下时扩展文字选区
+    // 截下:图表、标注手势、面板「点外面就关」都收不到这一下;preventDefault 挡住浏览器 Shift+按下时扩展文字选区
     ev.preventDefault()
     ev.stopImmediatePropagation()
   }
@@ -108,16 +115,16 @@ export function createShiftCopyGesture(deps: ShiftCopyDeps) {
 
   return {
     attach() {
-      // 捕获阶段挂在主图容器上:先于图表(挂在容器里面的画布层)与标注手势(冒泡阶段)
-      deps.mainEl()?.addEventListener('mousedown', onDown, true)
-      deps.mainEl()?.addEventListener('click', onClick, true)
-      // 捕获阶段挂在 window 上:拖到图外、图表拦下冒泡的 mousemove 时也收得到
+      // 都挂在 window 的捕获阶段:按下先于一切别的监听(document 上的「点外面就关」、图表、标注手势);
+      // 松手处不在主图上时那次 click 落在外层元素上,也截得到;拖到图外、图表拦下冒泡的 mousemove 时也收得到
+      window.addEventListener('mousedown', onDown, true)
+      window.addEventListener('click', onClick, true)
       window.addEventListener('mousemove', onMove, true)
       window.addEventListener('mouseup', onUp, true)
     },
     detach() {
-      deps.mainEl()?.removeEventListener('mousedown', onDown, true)
-      deps.mainEl()?.removeEventListener('click', onClick, true)
+      window.removeEventListener('mousedown', onDown, true)
+      window.removeEventListener('click', onClick, true)
       window.removeEventListener('mousemove', onMove, true)
       window.removeEventListener('mouseup', onUp, true)
     },

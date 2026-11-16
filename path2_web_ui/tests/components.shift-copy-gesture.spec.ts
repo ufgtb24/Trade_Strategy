@@ -27,13 +27,16 @@ function setup(opts: { marker?: string | null; onChart?: (x: number, y: number) 
     copy: vi.fn(),
   }
   // 图表与标注手势的替身:挂在画布层上 / 主图容器的冒泡阶段
-  const chartDown = vi.fn(), chartClick = vi.fn(), gestureDown = vi.fn()
+  // 作答面板「点外面就关」的替身:挂在 document 的捕获阶段
+  const chartDown = vi.fn(), chartClick = vi.fn(), gestureDown = vi.fn(), docDown = vi.fn()
   inner.addEventListener('mousedown', chartDown)
   inner.addEventListener('click', chartClick)
   mainEl.addEventListener('mousedown', gestureDown)
+  document.addEventListener('mousedown', docDown, true)
   const g = createShiftCopyGesture(deps)
   g.attach()
-  return { g, deps, mainEl, inner, chartDown, chartClick, gestureDown }
+  const detach = () => { g.detach(); document.removeEventListener('mousedown', docDown, true) }
+  return { g, detach, deps, mainEl, inner, chartDown, chartClick, gestureDown, docDown }
 }
 
 const down = (t: HTMLElement, x: number, y: number, shiftKey = true, button = 0) => {
@@ -50,23 +53,29 @@ const click = (t: HTMLElement, x: number, y: number) =>
 
 let cur: ReturnType<typeof setup> | null = null
 beforeEach(() => { document.body.innerHTML = ''; vi.useRealTimers() })
-afterEach(() => { cur?.g.detach(); cur = null })
+afterEach(() => { cur?.detach(); cur = null })
 
 describe('Shift+点:复制按下那一天', () => {
-  it('没拖开 → 复制这一天;按下截下(图表、标注手势都收不到),挡住浏览器扩展文字选区', () => {
+  it('没拖开 → 复制这一天;按下截下(图表、标注手势、面板「点外面就关」都收不到),挡住浏览器扩展文字选区', () => {
     const s = cur = setup()
     const ev = down(s.inner, px(7), 50)
     expect(ev.defaultPrevented).toBe(true)
     expect(s.chartDown).not.toHaveBeenCalled()
     expect(s.gestureDown).not.toHaveBeenCalled()
+    expect(s.docDown).not.toHaveBeenCalled()
     up(px(7) + 2, 51)
     expect(s.deps.copy).toHaveBeenCalledWith(7, 7)
     expect(s.deps.setPreview).toHaveBeenLastCalledWith(null)
   })
-  it('松手后跟着来的 click 截下(不被图表当成点空白清掉选中);之后真正的点击照常', async () => {
+  it('松手后跟着来的 click 截下(不被图表当成点空白清掉选中;松手在主图外时落在外层元素上也截);之后真正的点击照常', async () => {
     const s = cur = setup()
     down(s.inner, px(7), 50); up(px(7), 50); click(s.inner, px(7), 50)
     expect(s.chartClick).not.toHaveBeenCalled()
+    const outer = vi.fn()
+    document.body.addEventListener('click', outer)
+    down(s.inner, px(7), 50); move(px(12), 50); up(900, 50); click(document.body, 900, 50)
+    expect(outer).not.toHaveBeenCalled()
+    document.body.removeEventListener('click', outer)
     await new Promise(r => setTimeout(r, 0))
     click(s.inner, px(9), 50)
     expect(s.chartClick).toHaveBeenCalledTimes(1)
@@ -139,6 +148,7 @@ describe('放过:不是这个手势的按下照旧交给图表与标注手势', 
     expect(ev.defaultPrevented).toBe(false)
     expect(s.chartDown).toHaveBeenCalled()
     expect(s.gestureDown).toHaveBeenCalled()
+    expect(s.docDown).toHaveBeenCalled()
     expect(s.deps.copy).not.toHaveBeenCalled()
   })
   it('不在主图的 K 线区、成交量带上(onChart 不接)', () => {
@@ -146,6 +156,16 @@ describe('放过:不是这个手势的按下照旧交给图表与标注手势', 
     down(s.inner, px(5), 350)
     up(px(5), 350)
     expect(s.chartDown).toHaveBeenCalled()
+    expect(s.deps.copy).not.toHaveBeenCalled()
+  })
+  it('按在主图外面(别的元素上)', () => {
+    const s = cur = setup()
+    const other = document.createElement('div')
+    document.body.appendChild(other)
+    const ev = down(other, px(5), 50)
+    up(px(5), 50)
+    expect(ev.defaultPrevented).toBe(false)
+    expect(s.docDown).toHaveBeenCalled()
     expect(s.deps.copy).not.toHaveBeenCalled()
   })
   it('不是左键', () => {

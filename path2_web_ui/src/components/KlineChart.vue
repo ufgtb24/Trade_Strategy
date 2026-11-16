@@ -284,10 +284,15 @@ function setRangeBand(r: { start: string; end: string } | null) {
   const dates = annDates.value
   const i0 = dates.indexOf(r.start), i1 = dates.indexOf(r.end)
   if (i0 < 0 || i1 < 0) { rangeBand.value = null; return }
-  const main = chartMain
+  rangeBand.value = mainBandPx(i0, i1)
+}
+/** 下标 i0…i1 的竖带左右(相对 kline-wrap 的像素):整根 K 线对齐主图的 x 轴,裁到图区内;画不出为 null */
+function mainBandPx(i0: number, i1: number): { left: number; width: number } | null {
+  const el = mainEl.value, main = chartMain
+  if (!el || !main) return null
   const px = rangeBandPx(i0, i1, (i) => Number(main.convertToPixel({ xAxisIndex: 0 }, i)),
                          MAIN_GRID_LEFT, el.clientWidth - MAIN_GRID_RIGHT)
-  rangeBand.value = px ? { left: px.left + mainCanvasOffsetX.value, width: px.width } : null
+  return px ? { left: px.left + mainCanvasOffsetX.value, width: px.width } : null
 }
 /** 这只股票、[start, end] 里有没有 app 的买点日(compare 且有现算结果时才算) */
 function hasBuyIn(start: string, end: string): boolean {
@@ -535,6 +540,7 @@ function handleMaybeShiftClick(p: any, source: 'main' | 'sub'): boolean {
   pairPick(instanceId, source)
   return true
 }
+/** Shift+点一个 event 记号:交给跨图配对的累积器(KlineChart.ts 的 handleShiftClick);source 是点在主图还是副图 */
 function pairPick(instanceId: string, source: 'main' | 'sub'): void {
   const nodeId = effectiveAnalysis.value?.events.find((e) => e.instance_id === instanceId)?.node_id ?? 'unknown'
   handleShiftClick(instanceId, nodeId, source, view)
@@ -1299,19 +1305,18 @@ const shiftCopy = createShiftCopyGesture({
   pick: (instanceId) => pairPick(instanceId, 'main'),
   setPreview: (span) => {
     const el = mainEl.value, main = chartMain
-    if (!span || !el || !main) { copyBand.value = null; return }
-    const px = rangeBandPx(span[0], span[1], (i) => Number(main.convertToPixel({ xAxisIndex: 0 }, i)),
-                           MAIN_GRID_LEFT, el.clientWidth - MAIN_GRID_RIGHT)
+    const px = span ? mainBandPx(span[0], span[1]) : null
+    if (!px || !el || !main) { copyBand.value = null; return }
     // 竖带盖到成交量带底边为止(下面的日期刻度与滑块不盖)
     const vol = (main.getOption() as any).grid?.[1]
     const height = vol ? Number(vol.top) + Number(vol.height) : el.clientHeight
-    copyBand.value = px ? { left: px.left + mainCanvasOffsetX.value, width: px.width, height } : null
+    copyBand.value = { ...px, height }
   },
   copy: (i0, i1) => { copyRef.copyDates(i0, i1) },
 })
 
-// 换股票、换模式时熄灭工具:亮着的工具只对眼前这张图用一次
-watch([symbol, mode], () => { ann.tool = null })
+// 换股票、换模式时熄灭工具:亮着的工具只对眼前这张图用一次;停着的记号也作废(图换了,鼠标没动也不再算停在它上面)
+watch([symbol, mode], () => { ann.tool = null; hoverMarker = null })
 
 // 副图竖直缩放控件的落点:顶栏里的 #band-zoom-slot(ChartArea,annotate 以外的模式才有)。
 // 每次换模式等 DOM 更新完再找;找不到(单独挂载本组件时)就不画控件。
@@ -1645,7 +1650,7 @@ watch(() => [compareReady.value, effectiveAnalysis.value, view.barDates] as cons
 })
 watch(shownPeaks, () => renderRefLayers())
 // 换图:拖到一半的手势作废,选中的框或样本(在原来那张图上)清掉,当前样本也清掉(冻结)
-watch(symbol, () => { annGestures.cancel(); shiftCopy.cancel(); ann.clearSelection() })
+watch(symbol, () => { annGestures.cancel(); shiftCopy.cancel(); hoverMarker = null; ann.clearSelection() })
 
 // subHeightOffset / subCanvasH 变化 → chart.resize()(RO 会自动触发,这里手动兜底)
 watch([subHeightOffset, subCanvasH], () => {

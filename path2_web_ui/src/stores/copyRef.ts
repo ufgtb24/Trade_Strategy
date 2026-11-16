@@ -30,9 +30,10 @@ export const useCopyRefStore = defineStore('copyRef', () => {
     })
   }
 
-  /** annotate / compare 的 pattern 是顶栏的当前 pattern(compare 的 app 就是它对上的那个);app、scan 两档是图上跑的那个
-   *  app(appId:app 档现算的那个、scan 档扫描里选的那个) */
-  const pattern = (): string | null => (view.annotating ? ann.currentPattern : view.appId)
+  /** annotate、compare 与从顶栏切进的 app 档(现算)是顶栏的当前 pattern(app 就是它对上的那个);scan 档是扫描里选的
+   *  那个 pattern。app 档现算时主视图不设 activePatternId,照它取会写成换档前扫描的 pattern 或空着 */
+  const pattern = (): string | null =>
+    (view.annotating || view.linkedView ? ann.currentPattern : view.activePatternId)
 
   /** 选中的那一个的那一行;没有打开股票时为 null。 */
   function line(): string | null {
@@ -49,7 +50,7 @@ export const useCopyRefStore = defineStore('copyRef', () => {
   }
 
   /** 把这一行放进剪贴板,并用底部提示条显示它 */
-  function put(text: string): void {
+  function toClipboard(text: string): void {
     lastText.value = text
     const done = (): void => view.showToast(`copied  ${text}`)
     const p = navigator.clipboard?.writeText(text)
@@ -61,7 +62,7 @@ export const useCopyRefStore = defineStore('copyRef', () => {
   function copy(): string | null {
     const text = line()
     if (!text) return null
-    put(text)
+    toClipboard(text)
     return text
   }
 
@@ -70,7 +71,7 @@ export const useCopyRefStore = defineStore('copyRef', () => {
     const symbol = view.symbol
     if (!symbol || !view.barDates.length) return null
     const text = dateLine({ symbol, pattern: pattern(), dates: view.barDates }, i0, i1)
-    put(text)
+    toClipboard(text)
     return text
   }
 

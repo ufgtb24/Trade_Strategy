@@ -10,10 +10,12 @@ import { enterScanTier } from './scanTier'
  * 1. 四档(annotate、compare、app、scan)各一次 Shift+点、一次 Shift+拖:复制出的行对(`股票 pattern day 日期` /
  *    `股票 pattern range 起→止`,剪贴板里也是它);之后选中的路径、当前日、标注上的选中、视窗的起止都和之前一样。
  *    Shift+拖在成交量带上、从右往左拖。
- * 2. 工具亮着照样复制:annotate 的 box 工具亮着时 Shift+拖不画框、工具仍亮;compare 的 feedback 工具亮着时
- *    不弹反馈面板、工具仍亮;app 的「框选」亮着时不发框选查询。
- * 3. app 档 Shift+点主图上的 event 记号:照旧是跨图配对查询,复制出的行没变。
- * 4. 回归:不按 Shift 时拖动照旧平移、点 K 线照旧取消选中。
+ * 2. 工具亮着照样复制:annotate 的 box 工具亮着时 Shift+拖不画框、point 工具亮着时 Shift+点不放样本,工具都仍亮;
+ *    compare 的 feedback 工具亮着时不弹反馈面板、工具仍亮,作答面板开着时不关它;app、scan 的「框选」亮着时
+ *    不发框选查询(不按 Shift 拖照常发,作对照)。
+ * 3. app 档 Shift+点主图上的 event 记号:照旧是跨图配对查询,两击后发出 scope=pair 查询,复制出的行没变。
+ *    从顶栏切进的 app 档(现算)行里的 pattern 是顶栏的当前 pattern,Shift+C 复制选中的东西也是。
+ * 4. 回归:不按 Shift 时拖动照旧平移,点 K 线照旧取消选中(annotate 走标注手势,app 走图表的点击)。
  * 截图(元素级)挂在测试结果里:Shift+拖途中的竖带预览(copy-band.png)、复制后的提示条(copy-toast.png)。
  *
  * 后端是 e2e/annotationBackend.py 起的测试后端(标注在临时目录,用 tests/path2_web/fixtures/annotation_grouping_v1 的
@@ -132,7 +134,7 @@ async function waitChart(page: Page, symbol: string) {
  * 主图上一个 event 记号(price-points)的页面坐标:记号画在锚点上方、位置随种类变,所以沿它那根 K 线的竖线
  * 往上逐点移过去,停到鼠标停着的记号就是它为止。返回记号的 instance_id 与坐标。
  */
-async function findMainMarker(page: Page): Promise<{ id: string; x: number; y: number } | null> {
+async function findMainMarker(page: Page, exclude: string | null = null): Promise<{ id: string; x: number; y: number } | null> {
   const cands = await page.evaluate(() => {
     const main = (window as any).__e2e.chartMain()
     const opt = main.getOption()
@@ -146,7 +148,7 @@ async function findMainMarker(page: Page): Promise<{ id: string; x: number; y: n
         return { id: String(d.instance_id), x: rect.left + x, y: rect.top + y }
       })
   })
-  for (const c of cands.slice(0, 6)) {
+  for (const c of cands.filter((x: { id: string }) => x.id !== exclude).slice(0, 6)) {
     for (let dy = 12; dy >= -60; dy -= 3) {
       await page.mouse.move(c.x, c.y + dy)
       const hit = await page.evaluate(() => (window as any).__e2e.hoverMarker())
@@ -208,6 +210,17 @@ test.describe('主图上按住 Shift 复制一天、一段(四档)', () => {
     await page.keyboard.press('Escape')
     await expect(page.getByTestId('tool-box')).not.toHaveClass(/\bon\b/)
 
+    // point 工具亮着:Shift+点复制这一天,不放样本,工具仍亮
+    const samples = (await annState(page)).charts.find((c: any) => c.symbol === 'AAPL').samples.length
+    await page.getByTestId('tool-point').click()
+    await expect(page.getByTestId('tool-point')).toHaveClass(/\bon\b/)
+    await shiftClick(page, await xOf(page, n - 33), await klineY(page))
+    await expect.poll(() => lastText(page)).toBe(`AAPL W底 day ${ds[n - 33]}`)
+    await expect(page.getByTestId('tool-point')).toHaveClass(/\bon\b/)
+    expect((await annState(page)).charts.find((c: any) => c.symbol === 'AAPL').samples.length).toBe(samples)
+    await page.keyboard.press('Escape')
+    await expect(page.getByTestId('tool-point')).not.toHaveClass(/\bon\b/)
+
     // compare:Shift+点 / 拖照样复制,选中与视窗不变
     await page.getByTestId('mode-compare').click()
     await expect.poll(() => view(page, 'mode')).toBe('compare')
@@ -223,6 +236,19 @@ test.describe('主图上按住 Shift 复制一天、一段(四档)', () => {
     expect(await page.evaluate(() => (window as any).__e2e.fb().panel)).toBeNull()
     await expect(page.getByTestId('tool-feedback')).toHaveClass(/\bon\b/)
     await page.keyboard.press('Escape')
+
+    // 作答面板开着(普通点别处会关):Shift+点、Shift+拖照样复制,面板不关
+    await page.evaluate(([a, b]) => (window as any).__e2e.fb().open({ symbol: 'AAPL', start: a, end: b, target: 'range' }),
+                        [ds[n - 40], ds[n - 20]])
+    await expect.poll(() => page.evaluate(() => !!(window as any).__e2e.fb().panel)).toBe(true)
+    await shiftClick(page, await xOf(page, n - 150), await klineY(page))
+    await expect.poll(() => lastText(page)).toBe(`AAPL W底 day ${ds[n - 150]}`)
+    await shiftDrag(page, await xOf(page, n - 160), await klineY(page), await xOf(page, n - 140), await klineY(page))
+    await expect.poll(() => lastText(page)).toBe(`AAPL W底 range ${ds[n - 160]}→${ds[n - 140]}`)
+    await page.waitForTimeout(200)
+    expect(await page.evaluate(() => !!(window as any).__e2e.fb().panel)).toBe(true)
+    await page.keyboard.press('Escape')
+    await expect.poll(() => page.evaluate(() => !!(window as any).__e2e.fb().panel)).toBe(false)
 
     // 回到 annotate:不按 Shift 时拖动照旧平移,点 K 线照旧取消选中(样本不再选着)
     await page.getByTestId('mode-annotate').click()
@@ -251,7 +277,7 @@ test.describe('主图上按住 Shift 复制一天、一段(四档)', () => {
     await expect.poll(() => view(page, 'mode')).toBe('app')
     await expect.poll(() => page.evaluate(() => (window as any).__e2e.view.linkedRun?.symbol ?? null), { timeout: 60_000 }).toBe('AAPL')
     await zoomLast200(page)
-    // app 档行里的 pattern 是这张图上跑的 app
+    // 从顶栏切进的 app 档(现算):行里的 pattern 同 compare,是顶栏的当前 pattern(app 是它对上的 bo_only)
     expect(await view(page, 'appId')).toBe('bo_only')
 
     // 先选中一个 event(选中与当前日都有),再复制
@@ -263,7 +289,10 @@ test.describe('主图上按住 Shift 复制一天、一段(四档)', () => {
     expect(ev).not.toBeNull()
     await page.evaluate((id) => (window as any).__e2e.view.setPath([{ kind: 'event', instanceId: id }]), ev)
     await expect.poll(() => view(page, 'currentDay')).not.toBeNull()
-    await checkCopy(page, 'AAPL bo_only')
+    await checkCopy(page, 'AAPL W底')
+    // Shift+C 复制选中的 event,行首同样是顶栏的 pattern(以前这里取不到 pattern)
+    await page.keyboard.press('Shift+C')
+    await expect.poll(() => lastText(page)).toMatch(/^AAPL W底 event /)
 
     // 「框选」亮着:Shift+拖照样复制,不发框选(scope=time)查询
     let timeQueries = 0
@@ -272,27 +301,47 @@ test.describe('主图上按住 Shift 复制一天、一段(四档)', () => {
     await expect(page.getByRole('button', { name: '框选' })).toHaveClass(/active/)
     const ds = await datesOf(page), n = ds.length
     await shiftDrag(page, await xOf(page, n - 50), await klineY(page), await xOf(page, n - 35), await klineY(page))
-    await expect.poll(() => lastText(page)).toBe(`AAPL bo_only range ${ds[n - 50]}→${ds[n - 35]}`)
+    await expect.poll(() => lastText(page)).toBe(`AAPL W底 range ${ds[n - 50]}→${ds[n - 35]}`)
     await page.waitForTimeout(500)
     expect(timeQueries).toBe(0)
+    // 对照:不按 Shift 拖,框选照常发查询(证明上面的计数接得到)
+    await drag(page, await xOf(page, n - 50), await klineY(page), await xOf(page, n - 35), await klineY(page))
+    await expect.poll(() => timeQueries).toBeGreaterThan(0)
     await page.getByRole('button', { name: '框选' }).click()
     await expect(page.getByRole('button', { name: '框选' })).not.toHaveClass(/active/)
 
-    // Shift+点主图上的 event 记号:照旧是配对查询的第一击,复制出的行没变
+    // Shift+点主图上的 event 记号:照旧是配对查询——两击后发出 scope=pair 查询;复制出的行没变
     await page.keyboard.press('Escape')
     await page.keyboard.press('Escape')
-    const marker = await findMainMarker(page)
-    expect(marker).not.toBeNull()
+    let pairQueries = 0
+    page.on('request', r => { if (r.url().includes('scope=pair')) pairQueries += 1 })
     const before = await lastText(page)
-    await page.keyboard.down('Shift')
-    await page.mouse.down()
-    await page.mouse.up()
-    await page.keyboard.up('Shift')
+    const m1 = await findMainMarker(page)
+    expect(m1).not.toBeNull()
+    await shiftClick(page, m1!.x, m1!.y)
     await expect.poll(() => page.evaluate(() => (window as any).__e2e.view.shiftSelectedEvents.length)).toBe(1)
     expect(await page.evaluate(() => (window as any).__e2e.view.shiftSelectedEvents[0]))
-      .toMatchObject({ instance_id: marker!.id, source: 'main' })
+      .toMatchObject({ instance_id: m1!.id, source: 'main' })
+    const m2 = await findMainMarker(page, m1!.id)
+    expect(m2).not.toBeNull()
+    await shiftClick(page, m2!.x, m2!.y)
+    await expect.poll(() => page.evaluate(() => (window as any).__e2e.view.shiftSelectedEvents.length)).toBe(2)
+    await expect.poll(() => pairQueries).toBeGreaterThan(0)
     expect(await lastText(page)).toBe(before)
     await page.keyboard.press('Escape')
+    await page.keyboard.press('Escape')
+
+    // 回归:不按 Shift 点一根没有记号的 K 线,照旧取消选中
+    await page.evaluate((id) => (window as any).__e2e.view.setPath([{ kind: 'event', instanceId: id }]), ev)
+    await expect.poll(() => view(page, 'selPath').then((p: any[]) => p.length)).toBeGreaterThan(0)
+    let k = n - 120
+    for (;; k -= 3) {
+      await page.mouse.move(await xOf(page, k), await klineY(page))
+      if (!(await page.evaluate(() => (window as any).__e2e.hoverMarker()))) break
+    }
+    await page.mouse.click(await xOf(page, k), await klineY(page))
+    await expect.poll(() => view(page, 'selPath').then((p: any[]) => p.length)).toBe(0)
+    expect(await lastText(page)).toBe(before)
 
     // scan:加载扫描后落在 scan 档,Shift+点 / 拖照样复制
     await enterScanTier(page)
@@ -306,5 +355,14 @@ test.describe('主图上按住 Shift 复制一天、一段(四档)', () => {
     await zoomLast200(page)
     expect(await view(page, 'appId')).toBe('bo_only')
     await checkCopy(page, 'AAPL bo_only')
+    // scan 档的「框选」亮着:Shift+拖照样复制,不发框选查询
+    const tq = timeQueries
+    await page.getByRole('button', { name: '框选' }).click()
+    await expect(page.getByRole('button', { name: '框选' })).toHaveClass(/active/)
+    const ds2 = await datesOf(page), n2 = ds2.length
+    await shiftDrag(page, await xOf(page, n2 - 50), await klineY(page), await xOf(page, n2 - 35), await klineY(page))
+    await expect.poll(() => lastText(page)).toBe(`AAPL bo_only range ${ds2[n2 - 50]}→${ds2[n2 - 35]}`)
+    await page.waitForTimeout(500)
+    expect(timeQueries).toBe(tq)
   })
 })
