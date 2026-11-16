@@ -551,11 +551,12 @@ def test_feedback_round_trips_and_is_bucketed_per_chart(tmp_path):
     fbs = [
         _feedback("f-pc-1", "2024-03-08"),                                                      # point
         _feedback("f-pc-2", "2024-03-06", "2024-03-12", target="family", family_start="2024-02-20",
-                  answer="off_pattern", note=None, nodes=["plateau", "new_step"]),           # family,只有 node
+                  answer="off_pattern", note=None, nodes=["plateau", "new_step"],
+                  reference=REF_ONE),                                                          # family,只有 node
         _feedback("f-pc-3", "2024-03-06", "2024-03-08", target="range", answer="off_pattern",
                   note="整体都不像", dag=True),                                                   # range,点 dag 写一句
         _feedback("f-pc-4", "2024-03-06", "2024-03-08", target="family", family_start="2024-03-06",
-                  nodes=["plateau"]),                                                        # neg 带 node 也行
+                  nodes=["plateau"], reference=REF_TWO),                                     # neg 带 node 也行
         _feedback("f-pc-5", "2025-12-31", source="random", answer="pos", note=None),             # 盲看标记 pos 不用 note
         _feedback("f-pc-6", "2023-05-22", symbol="MSFT", source="removed", answer="off_pattern", note="不像"),
     ]
@@ -571,10 +572,23 @@ def test_feedback_round_trips_and_is_bucketed_per_chart(tmp_path):
     assert "feedback" not in charts["NVDA"]
     assert list(charts["AAPL"]) == ["symbol", "boxes", "samples", "feedback"]
     assert list(charts["AAPL"]["feedback"][1]) == ["id", "pattern", "app_id", "app_ver", "start", "end", "target",
-                                                   "source", "answer", "note", "nodes", "family_start"]
+                                                   "source", "answer", "note", "nodes", "family_start", "reference"]
     assert sorted(result["revs"]["feedback"]) == [f"f-pc-{n}" for n in range(1, 7)]
     assert result["next_seq"] == 9                              # 反馈和词、框、样本共用一个编号序列
     assert result["violations"] == []
+
+
+# 整族反馈存下的基准 event 起止(reference):一段、两段(同一族起点相同、终点不同的两个阶跃)
+REF_ONE = {"node": "step", "spans": [["2024-02-26", "2024-02-27"]]}
+REF_TWO = {"node": "step", "spans": [["2024-03-04", "2024-03-04"], ["2024-03-04", "2024-03-05"]]}
+
+
+def _family(oid, reference=REF_ONE, base=None, **extra):
+    """一条不带 answer 的整族反馈(界面写出的形状);reference=None 表示不带。"""
+    v = {"target": "family", "family_start": "2024-02-20", "note": "阶跃太缓", **extra}
+    if reference is not None:
+        v["reference"] = reference
+    return _plain(oid, "2024-03-06", "2024-03-12", base=base, **v)
 
 
 def _bare(*, source="picked", **drop) -> dict:
@@ -601,6 +615,18 @@ def _bare(*, source="picked", **drop) -> dict:
     (_feedback("f-pc-1", "2024-03-08", "2024-03-12", target="family", family_start="2024-03-09"), "family_start"),
     (_feedback("f-pc-1", "2024-03-08", "2024-03-12", target="family", family_start="2024-02-30"), "family_start"),
     (_feedback("f-pc-1", "2024-03-08", "2024-03-12", target="range", family_start="2024-03-01"), "family_start"),
+    (_feedback("f-pc-1", "2024-03-08", "2024-03-12", target="range", reference=REF_ONE), "只有 target 为 family"),
+    (_family("f-pc-1", reference={"node": "step"}), "reference 应为 {node, spans}"),
+    (_family("f-pc-1", reference={**REF_ONE, "x": 1}), "reference 应为 {node, spans}"),
+    (_family("f-pc-1", reference=["step"]), "reference 应为 {node, spans}"),
+    (_family("f-pc-1", reference={**REF_ONE, "node": ""}), "reference.node"),
+    (_family("f-pc-1", reference={"node": "step", "spans": []}), "reference.spans 应为非空数组"),
+    (_family("f-pc-1", reference={"node": "step", "spans": ["2024-02-26"]}), "每一段应为 [start, end]"),
+    (_family("f-pc-1", reference={"node": "step", "spans": [["2024-02-26"]]}), "每一段应为 [start, end]"),
+    (_family("f-pc-1", reference={"node": "step", "spans": [["2024-02-27", "2024-02-26"]]}), "晚于 end"),
+    (_family("f-pc-1", reference={"node": "step", "spans": [["2025-12-30", "2026-01-02"]]}), "2025-12-31"),
+    (_family("f-pc-1", reference={"node": "step", "spans": [["2024-02-30", "2024-03-01"]]}), "不是真实日期"),
+    (_family("f-pc-1", reference=None), "必须带 reference"),                                 # 新建的整族反馈
     (_feedback("f-pc-1", "2024-03-08", note=None), "note"),                                   # neg 必须写理由
     (_feedback("f-pc-1", "2024-03-08", note=""), "note"),
     (_feedback("f-pc-1", "2024-03-08", answer="off_pattern", note=None, nodes=[]), "至少点一样"),
@@ -715,7 +741,7 @@ def test_plain_feedback_round_trips_without_answer_key(tmp_path):
     fbs = [
         _plain("f-pc-1", "2024-03-08"),                                                         # 只写一句
         _plain("f-pc-2", "2024-03-06", "2024-03-12", target="family", family_start="2024-02-20",
-               note="阶跃太缓", nodes=["plateau", "new_step"]),
+               note="阶跃太缓", nodes=["plateau", "new_step"], reference=REF_TWO),
         _plain("f-pc-3", "2024-03-06", "2024-03-08", target="range", note="整体都不像", issue="i-pc-1"),
         _feedback("f-pc-4", "2024-03-11", answer="off_pattern", note="整体都不像", dag=True),     # 带 answer 的并存
     ]
@@ -724,7 +750,7 @@ def test_plain_feedback_round_trips_without_answer_key(tmp_path):
     assert got == {op["id"]: _value(op) for op in fbs}
     assert all("answer" not in got[i] and "dag" not in got[i] for i in ("f-pc-1", "f-pc-2", "f-pc-3"))
     assert list(got["f-pc-2"]) == ["id", "pattern", "app_id", "app_ver", "start", "end", "target", "source",
-                                   "note", "nodes", "family_start"]
+                                   "note", "nodes", "family_start", "reference"]
     assert list(got["f-pc-3"]) == ["id", "pattern", "app_id", "app_ver", "start", "end", "target", "source",
                                    "note", "issue"]
     assert list(got["f-pc-4"]) == ["id", "pattern", "app_id", "app_ver", "start", "end", "target", "source",
@@ -919,3 +945,41 @@ def test_as_of_with_gap_replays_only_batches_up_to_the_cut(tmp_path):
     full = store.read_annotations(pc)
     assert full["machines"] == {"pc": {"through": 1}, "upc": {"through": 3}}
     assert store.read_annotations(pc, as_of={"pc": 1, "upc": 3})["state"] == full["state"]
+
+
+def test_family_reference_kept_once_written(tmp_path):
+    """整族反馈的 reference(spec 6.13 记录字段,第 10 节「整族反馈存基准 event 的记录形状」):
+    - 新建的必须带(见 test_rejects_malformed_feedback 最后一例);
+    - 没带它的旧整族反馈(直接写文件,模拟票 18 补存之前的那 4 条)读得出,改 note 照样存得进,也能补上;
+    - 带着它的,改 note、nodes 时原样带着就收;改了、去掉了都拒;改起止成 range 时跟着去掉就收;
+    - 删掉再按原值写回(撤销删除:base 是删除那次修改,不算新建)照收。"""
+    adir = _adir(tmp_path)
+    cfg = _cfg(adir, "pc")
+    _write_raw(adir, "pc", "20261103T090000.000Z", 1, [_family("f-pc-1", reference=None)])
+    assert "reference" not in store.read_annotations(cfg)["state"]["charts"][0]["feedback"][0]
+
+    def rejected(op, fragment):
+        before = _hashes(adir)
+        with pytest.raises(store.BatchRejected) as e:
+            store.append_batch(cfg, [op])
+        [reason] = e.value.reasons
+        assert reason["code"] == "bad_op" and fragment in reason["message"]
+        assert _hashes(adir) == before
+
+    store.append_batch(cfg, [_family("f-pc-1", reference=None, note="改一句", base=_rev(cfg, "feedback", "f-pc-1"))])
+    store.append_batch(cfg, [_family("f-pc-1", note="改一句", base=_rev(cfg, "feedback", "f-pc-1"))])      # 补上
+    store.append_batch(cfg, [_family("f-pc-1", note="再改", nodes=["step"], base=_rev(cfg, "feedback", "f-pc-1"))])
+    [fb] = store.read_annotations(cfg)["state"]["charts"][0]["feedback"]
+    assert fb["reference"] == REF_ONE and fb["note"] == "再改"
+
+    rejected(_family("f-pc-1", reference=REF_TWO, base=_rev(cfg, "feedback", "f-pc-1")), "写下后不能改")
+    rejected(_family("f-pc-1", reference=None, base=_rev(cfg, "feedback", "f-pc-1")), "写下后不能改")
+
+    store.append_batch(cfg, [_delete("feedback", "f-pc-1", _rev(cfg, "feedback", "f-pc-1"))])
+    store.append_batch(cfg, [_family("f-pc-1", note="再改", nodes=["step"], base=_rev(cfg, "feedback", "f-pc-1"))])
+    assert store.read_annotations(cfg)["state"]["charts"][0]["feedback"][0]["reference"] == REF_ONE
+
+    store.append_batch(cfg, [_plain("f-pc-1", "2024-03-06", "2024-03-14", target="range", note="再改",
+                                    nodes=["step"], base=_rev(cfg, "feedback", "f-pc-1"))])
+    [fb] = store.read_annotations(cfg)["state"]["charts"][0]["feedback"]
+    assert fb["target"] == "range" and "reference" not in fb and "family_start" not in fb
