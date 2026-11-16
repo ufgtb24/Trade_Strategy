@@ -374,10 +374,13 @@ export function computeEventData(
                            family_start: f.start, buy_days: f.buys.map((b) => b.day) })
     for (const mark of f.marks) {
       const rec: { value: number[]; kind: 'mark'; mark_kind: string; hit_id: string; hit_ids: string[];
-                   family_key: string; family_start: number; hit_labels?: string[]; instance_id?: string;
-                   buy_day?: number; dim: boolean; grow: boolean } = {
+                   family_key: string; family_start: number; date_span: string; hit_labels?: string[];
+                   instance_id?: string; buy_day?: number; dim: boolean; grow: boolean } = {
         value: [mark.start, mark.end, lane, ordinal], kind: 'mark', mark_kind: mark.kind,
         hit_id: mark.hitIds[0], hit_ids: mark.hitIds, family_key: f.key, family_start: f.start,
+        // 悬停的 date:这格里几次 hit 共同的起止(族起点 → 这格那天),写法同显示栏选中一次 hit 时的 date
+        date_span: f.start === mark.end ? (dates[f.start] ?? String(f.start))
+          : `${dates[f.start] ?? String(f.start)}→${dates[mark.end] ?? String(mark.end)}`,
         hit_labels: hitLabelTexts(mark.hitIds), dim: false,
         // 并着牵出的 hit:往上长、加细边(任何档)
         grow: hitMarkGrows(hl, mark.hitIds),
@@ -1882,7 +1885,8 @@ const fixedLine = (s: string) => `<span style='font-family:${MONO}'>${s}</span>`
 /**
  * Marker tooltip formatter (series-level item-trigger)。
  * 三段结构 + 可选的顶上几行：
- *   - hits 格 / ▼ (params.data.hit_id 命中):`hits ×m`(这格画着的几次)与逐次的 `hits j/m 区别`,
+ *   - hits 格 / ▼ (params.data.hit_id 命中):▼ 先写 `buy: 买点日`,格先写 `date: 族起点→这格那天`(这格里几次
+ *     hit 共同的起止;终点不一定是买点日,所以不写成 buy);再写 `hits ×m`(这格画着的几次)与逐次的 `hits j/m 区别`,
  *     `hit: {hitLabel}` 与 `组成` 只写当前那次(选中的那次在这格里就是它,否则第一次),几次时写明是第几次;
  *   - band 的格 / 点 (无 hit_id):格里并着的几个 event 逐行 `events j/m 区别`、`hits ×n`(被几次 hit 用到,
  *     沿 child_refs 找父容器,和选中它时卡片的 hits 行同一口径);
@@ -1915,6 +1919,7 @@ export function buildMarkerTooltipFormatter(
       const hitIds = (data.hit_ids as string[] | undefined) ?? [hitId]
       const m = hitIds.length
       if (data.kind === 'buy') lines.push(fixedLine(`buy: ${data.buy_date as string}`))
+      if (typeof data.date_span === 'string') lines.push(fixedLine(`date: ${data.date_span}`))
       if (m >= 2) {
         lines.push(fixedLine(`hits ×${m}`))
         const texts = (data.hit_labels as string[] | undefined) ?? []

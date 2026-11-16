@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { buildMarkerTooltipFormatter } from '../src/render/chart'
+import { buildMarkerTooltipFormatter, computeEventData } from '../src/render/chart'
 import type { EventDict, HitDict } from '../src/types'
 
 describe('buildMarkerTooltipFormatter:被几次 hit 用到(hits ×n)', () => {
@@ -86,6 +86,52 @@ describe('buildMarkerTooltipFormatter:hits 格写这一格的几次,组成只写
     expect(html).not.toContain('hits ×')
     expect(html).not.toContain('hits 1/')
     expect(html).toContain('组成 (1 events):')
+  })
+
+  it('格写 date: 族起点→这格那天,排在 hits ×m 前面;不写 buy', () => {
+    const f = buildMarkerTooltipFormatter(undefined, undefined, { hits })
+    const html = f({ data: { hit_id: 'a', hit_ids: ['a', 'b'], kind: 'mark', date_span: '2024-10-31→2024-11-27' } } as never)
+    expect(html).toContain('date: 2024-10-31→2024-11-27')
+    expect(html).not.toContain('buy:')
+    expect(html.indexOf('date: ')).toBeLessThan(html.indexOf('hits ×2'))
+  })
+
+  it('▼ 照旧只写 buy,不写 date', () => {
+    const f = buildMarkerTooltipFormatter(undefined, undefined, { hits })
+    const html = f({ data: cell } as never)
+    expect(html).not.toContain('date: ')
+  })
+})
+
+describe('hits 行格的 date_span:这格里几次 hit 共同的起止', () => {
+  const DATES = ['2025-01-02', '2025-01-03', '2025-01-06', '2025-01-07', '2025-01-08', '2025-01-09', '2025-01-10']
+  const bars = DATES.map(date => ({ date, o: 1, h: 1, l: 1, c: 1, v: 1, rv: 1 }))
+  const ev = (node: string, s: number, e: number, idx = 0): EventDict =>
+    ({ instance_id: `${node}_${s}_${e}#${idx}`, node_id: node, instance_idx: idx, start_idx: s, end_idx: e, child_refs: {} }) as EventDict
+  // 一族 @0:a、b 终点都在 4,并成一格;c 终点 5 自成一格。另一族 @6:d 起止同一天
+  const A = ev('plateau', 0, 4, 0), B = ev('plateau', 0, 4, 1), C = ev('plateau', 0, 5), D = ev('plateau', 6, 6)
+  const hit = (id: string, p: EventDict): HitDict =>
+    ({ hit_id: id, start_idx: p.start_idx, end_idx: p.end_idx, node_index: { plateau: p.instance_id }, children: [] }) as unknown as HitDict
+  const EVENTS = [A, B, C, D]
+  const HITS = [hit('a', A), hit('b', B), hit('c', C), hit('d', D)]
+  const bundle = computeEventData(bars as never, EVENTS, HITS, {
+    topology: { edges: [], nodes: [{ node_id: 'plateau', where_rules: [] }] }, isolatedNodeIds: new Set(), tagList: [],
+    level: 'detected', nodeColors: {}, eventTier: () => 'in_hit', nodeOfEventByBand: (e: EventDict) => e.node_id,
+    bandKeyOf: (e: EventDict) => e.node_id, tagToNodes: {}, endNode: 'plateau',
+  } as never)
+  const cellAt = (end: number) => bundle.bracketData.find((d: any) => d.kind === 'mark' && d.value[0] === end)
+
+  it('并了几次的格:族起点→这格那天', () => {
+    expect(cellAt(4)).toMatchObject({ hit_ids: ['a', 'b'], date_span: '2025-01-02→2025-01-08' })
+  })
+  it('同一族里终点不同的格各写各的终点,起点相同', () => {
+    expect(cellAt(5)).toMatchObject({ hit_ids: ['c'], date_span: '2025-01-02→2025-01-09' })
+  })
+  it('起止同一天:只写一个日期', () => {
+    expect(cellAt(6)).toMatchObject({ hit_ids: ['d'], date_span: '2025-01-10' })
+  })
+  it('▼ 的记录不带 date_span', () => {
+    expect(bundle.bracketData.filter((d: any) => d.kind === 'buy').every((d: any) => !('date_span' in d))).toBe(true)
   })
 })
 
