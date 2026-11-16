@@ -1,0 +1,8 @@
+# 前端单测完工后（提交 b179a09），跑法同 vitest-baseline.txt
+ Test Files  136 passed (136)
+      Tests  1788 passed (1788)
+   Start at  12:42:48
+   Duration  7.40s (transform 15.06s, setup 0ms, collect 64.82s, tests 19.88s, environment 63.51s, prepare 11.10s)
+
+# vue-tsc --noEmit
+vue-tsc exit 0
