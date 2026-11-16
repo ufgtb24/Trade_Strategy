@@ -1,0 +1,778 @@
+{
+ "about": [
+  "整族反馈按基准 node 认「同一次形状」的带答案例子(spec 6.13「状态判法」,票 16「拦什么、放什么」表)。后端 path2_web/annotation/match.py(feedback_status、feedback_hits,经 path2_web/app_run.py 的 app_buys 取数)和前端 path2_web_ui/src/annotate/feedback.ts(feedbackHits、referenceSpans)都要逐例通过;答案手写在这里,测试从这里读,不另抄。",
+  "days:K 线下标 → 日期(交易日)。analysis 是单股预览序列化的形状(path2_web/serialize.py):events 先列各条流的事件(top 里的编号,后端当 res.events),再列它们 child 槽里的子段;hits 的 node_index 是 node → 事件编号。",
+  "买点 node 是 end_node(plat.today:plat 事件 today 槽里的每个子段,跨度里每一根都是买点日);基准 node 是各例的 declared(mapping 声明的 reference)。",
+  "cases:feedback 是一条反馈(日期);expect.status 是后端判的三态,expect.hits 是这条反馈收进来的 hit(选中它时牵出的,前后端都要给出这一批)。row 对应票 16 表里的哪一行。",
+  "families:新建整族反馈时,从起点为 start 的那一族 hit 里取出的基准 event 起止(去重、按起止排序,不合并):前端存进 reference.spans 的就是它,后端各 hit 的基准 event 起止合起来也必须是它。"
+ ],
+ "days": [
+  "2025-01-02",
+  "2025-01-03",
+  "2025-01-06",
+  "2025-01-07",
+  "2025-01-08",
+  "2025-01-09",
+  "2025-01-10",
+  "2025-01-13",
+  "2025-01-14",
+  "2025-01-15",
+  "2025-01-16",
+  "2025-01-17",
+  "2025-01-20",
+  "2025-01-21",
+  "2025-01-22",
+  "2025-01-23",
+  "2025-01-24",
+  "2025-01-27",
+  "2025-01-28",
+  "2025-01-29",
+  "2025-01-30",
+  "2025-01-31",
+  "2025-02-03",
+  "2025-02-04",
+  "2025-02-05",
+  "2025-02-06",
+  "2025-02-07",
+  "2025-02-10",
+  "2025-02-11",
+  "2025-02-12",
+  "2025-02-13",
+  "2025-02-14",
+  "2025-02-17",
+  "2025-02-18",
+  "2025-02-19",
+  "2025-02-20",
+  "2025-02-21",
+  "2025-02-24",
+  "2025-02-25",
+  "2025-02-26",
+  "2025-02-27",
+  "2025-02-28",
+  "2025-03-03",
+  "2025-03-04",
+  "2025-03-05",
+  "2025-03-06",
+  "2025-03-07",
+  "2025-03-10",
+  "2025-03-11",
+  "2025-03-12",
+  "2025-03-13",
+  "2025-03-14",
+  "2025-03-17",
+  "2025-03-18",
+  "2025-03-19",
+  "2025-03-20",
+  "2025-03-21",
+  "2025-03-24",
+  "2025-03-25",
+  "2025-03-26"
+ ],
+ "end_node": "plat.today",
+ "reference": "step",
+ "analysis": {
+  "events": [
+   {
+    "instance_id": "plat_0_21#0",
+    "node_id": "plat",
+    "start_idx": 0,
+    "end_idx": 21,
+    "child_refs": {
+     "step": [
+      "step_2_4#0"
+     ],
+     "today": [
+      "today_20#0",
+      "today_21#0"
+     ]
+    }
+   },
+   {
+    "instance_id": "plat_23_30#0",
+    "node_id": "plat",
+    "start_idx": 23,
+    "end_idx": 30,
+    "child_refs": {
+     "step": [
+      "step_24_25#0"
+     ],
+     "today": []
+    }
+   },
+   {
+    "instance_id": "plat_23_31#0",
+    "node_id": "plat",
+    "start_idx": 23,
+    "end_idx": 31,
+    "child_refs": {
+     "step": [
+      "step_24_27#0"
+     ],
+     "today": [
+      "today_31#0"
+     ]
+    }
+   },
+   {
+    "instance_id": "plat_33_38#0",
+    "node_id": "plat",
+    "start_idx": 33,
+    "end_idx": 38,
+    "child_refs": {
+     "step": [
+      "step_34_35#0"
+     ],
+     "today": []
+    }
+   },
+   {
+    "instance_id": "plat_40_44#0",
+    "node_id": "plat",
+    "start_idx": 40,
+    "end_idx": 44,
+    "child_refs": {
+     "step": [
+      "step_41_42#0"
+     ],
+     "today": []
+    }
+   },
+   {
+    "instance_id": "plat_43_47#0",
+    "node_id": "plat",
+    "start_idx": 43,
+    "end_idx": 47,
+    "child_refs": {
+     "step": [
+      "step_44_45#0"
+     ],
+     "today": [
+      "today_47#0"
+     ]
+    }
+   },
+   {
+    "instance_id": "plat_49_55#0",
+    "node_id": "plat",
+    "start_idx": 49,
+    "end_idx": 55,
+    "child_refs": {
+     "step": [
+      "step_52_53#0"
+     ],
+     "today": [
+      "today_55#0"
+     ]
+    }
+   },
+   {
+    "instance_id": "plat_56_58#0",
+    "node_id": "plat",
+    "start_idx": 56,
+    "end_idx": 58,
+    "child_refs": {
+     "step": [
+      "step_57#0"
+     ],
+     "today": []
+    }
+   },
+   {
+    "instance_id": "step_2_4#0",
+    "node_id": "step",
+    "start_idx": 2,
+    "end_idx": 4
+   },
+   {
+    "instance_id": "today_20#0",
+    "node_id": "today",
+    "start_idx": 20,
+    "end_idx": 20
+   },
+   {
+    "instance_id": "today_21#0",
+    "node_id": "today",
+    "start_idx": 21,
+    "end_idx": 21
+   },
+   {
+    "instance_id": "step_24_25#0",
+    "node_id": "step",
+    "start_idx": 24,
+    "end_idx": 25
+   },
+   {
+    "instance_id": "step_24_27#0",
+    "node_id": "step",
+    "start_idx": 24,
+    "end_idx": 27
+   },
+   {
+    "instance_id": "today_31#0",
+    "node_id": "today",
+    "start_idx": 31,
+    "end_idx": 31
+   },
+   {
+    "instance_id": "step_34_35#0",
+    "node_id": "step",
+    "start_idx": 34,
+    "end_idx": 35
+   },
+   {
+    "instance_id": "step_41_42#0",
+    "node_id": "step",
+    "start_idx": 41,
+    "end_idx": 42
+   },
+   {
+    "instance_id": "step_44_45#0",
+    "node_id": "step",
+    "start_idx": 44,
+    "end_idx": 45
+   },
+   {
+    "instance_id": "today_47#0",
+    "node_id": "today",
+    "start_idx": 47,
+    "end_idx": 47
+   },
+   {
+    "instance_id": "step_52_53#0",
+    "node_id": "step",
+    "start_idx": 52,
+    "end_idx": 53
+   },
+   {
+    "instance_id": "today_55#0",
+    "node_id": "today",
+    "start_idx": 55,
+    "end_idx": 55
+   },
+   {
+    "instance_id": "step_57#0",
+    "node_id": "step",
+    "start_idx": 57,
+    "end_idx": 57
+   }
+  ],
+  "top": [
+   "plat_0_21#0",
+   "plat_23_30#0",
+   "plat_23_31#0",
+   "plat_33_38#0",
+   "plat_40_44#0",
+   "plat_43_47#0",
+   "plat_49_55#0",
+   "plat_56_58#0"
+  ],
+  "hits": [
+   {
+    "hit_id": "hA",
+    "start_idx": 0,
+    "end_idx": 21,
+    "node_index": {
+     "plat": "plat_0_21#0"
+    },
+    "children": [
+     "plat_0_21#0"
+    ]
+   },
+   {
+    "hit_id": "hG1",
+    "start_idx": 23,
+    "end_idx": 30,
+    "node_index": {
+     "plat": "plat_23_30#0"
+    },
+    "children": [
+     "plat_23_30#0"
+    ]
+   },
+   {
+    "hit_id": "hG2",
+    "start_idx": 23,
+    "end_idx": 31,
+    "node_index": {
+     "plat": "plat_23_31#0"
+    },
+    "children": [
+     "plat_23_31#0"
+    ]
+   },
+   {
+    "hit_id": "hB",
+    "start_idx": 33,
+    "end_idx": 38,
+    "node_index": {
+     "plat": "plat_33_38#0"
+    },
+    "children": [
+     "plat_33_38#0"
+    ]
+   },
+   {
+    "hit_id": "hJ1",
+    "start_idx": 40,
+    "end_idx": 44,
+    "node_index": {
+     "plat": "plat_40_44#0"
+    },
+    "children": [
+     "plat_40_44#0"
+    ]
+   },
+   {
+    "hit_id": "hJ2",
+    "start_idx": 43,
+    "end_idx": 47,
+    "node_index": {
+     "plat": "plat_43_47#0"
+    },
+    "children": [
+     "plat_43_47#0"
+    ]
+   },
+   {
+    "hit_id": "hD",
+    "start_idx": 49,
+    "end_idx": 55,
+    "node_index": {
+     "plat": "plat_49_55#0"
+    },
+    "children": [
+     "plat_49_55#0"
+    ]
+   }
+  ]
+ },
+ "cases": [
+  {
+   "name": "平移:范围外共用 K 线的 hit 还在买",
+   "row": "QBTS f-pc-92",
+   "declared": "step",
+   "feedback": {
+    "target": "family",
+    "start": "2025-01-10",
+    "end": "2025-01-15",
+    "family_start": "2025-01-02",
+    "reference": {
+     "node": "step",
+     "spans": [
+      [
+       "2025-01-07",
+       "2025-01-07"
+      ]
+     ]
+    }
+   },
+   "expect": {
+    "status": "matched",
+    "hits": [
+     "hA"
+    ]
+   },
+   "why": "范围里没买点;存下的阶跃 3 与当前阶跃 2～4 共用 K 线,这个 hit 还在 20、21 买:错误买点只是挪了位置"
+  },
+  {
+   "name": "真改好了:共用 K 线的基准 event 还在,不买",
+   "row": "IXHL f-pc-90",
+   "declared": "step",
+   "feedback": {
+    "target": "family",
+    "start": "2025-02-24",
+    "end": "2025-02-25",
+    "family_start": "2025-02-18",
+    "reference": {
+     "node": "step",
+     "spans": [
+      [
+       "2025-02-20",
+       "2025-02-21"
+      ]
+     ]
+    }
+   },
+   "expect": {
+    "status": "unmatched",
+    "hits": []
+   },
+   "why": "阶跃 34～35 与存下的 35～36 共用 K 线,这个 hit 一天不买"
+  },
+  {
+   "name": "范围里还在买",
+   "row": "CRNC f-pc-74、LUMN f-pc-95 / 现行规则不变",
+   "declared": "step",
+   "feedback": {
+    "target": "family",
+    "start": "2025-01-30",
+    "end": "2025-01-31",
+    "family_start": "2025-01-02",
+    "reference": {
+     "node": "step",
+     "spans": [
+      [
+       "2025-01-07",
+       "2025-01-07"
+      ]
+     ]
+    }
+   },
+   "expect": {
+    "status": "matched",
+    "hits": [
+     "hA"
+    ]
+   },
+   "why": "范围里有买点 20、21,照旧 matched,不看基准"
+  },
+  {
+   "name": "无关的阶跃起点碰巧同一天:不算同一次形状",
+   "row": "起点碰巧同一天",
+   "declared": "step",
+   "feedback": {
+    "target": "family",
+    "start": "2025-03-13",
+    "end": "2025-03-14",
+    "family_start": "2025-03-12",
+    "reference": {
+     "node": "step",
+     "spans": [
+      [
+       "2025-03-13",
+       "2025-03-13"
+      ]
+     ]
+    }
+   },
+   "expect": {
+    "status": "lost",
+    "hits": []
+   },
+   "why": "起于 49 的那一族还在买 55,但它的阶跃 52～53 与存下的 50 一根都不共用;范围里也没买点:lost,不显示假朱红"
+  },
+  {
+   "name": "只有一根的阶跃挪开一根:lost",
+   "row": "单根阶跃挪开",
+   "declared": "step",
+   "feedback": {
+    "target": "family",
+    "start": "2025-03-13",
+    "end": "2025-03-13",
+    "family_start": "2025-03-12",
+    "reference": {
+     "node": "step",
+     "spans": [
+      [
+       "2025-03-14",
+       "2025-03-14"
+      ]
+     ]
+    }
+   },
+   "expect": {
+    "status": "lost",
+    "hits": []
+   },
+   "why": "存下的阶跃只有 51 一根,当前阶跃 52～53 挪开了;那次阶跃之后还在买 55,交给会话判断"
+  },
+  {
+   "name": "mapping 的基准 node 换了:lost",
+   "row": "reference 从 step 改成别的",
+   "declared": "other",
+   "feedback": {
+    "target": "family",
+    "start": "2025-01-10",
+    "end": "2025-01-15",
+    "family_start": "2025-01-02",
+    "reference": {
+     "node": "step",
+     "spans": [
+      [
+       "2025-01-07",
+       "2025-01-07"
+      ]
+     ]
+    }
+   },
+   "expect": {
+    "status": "lost",
+    "hits": []
+   },
+   "why": "存下的是 step,mapping 现在声明 other:自动结论不信"
+  },
+  {
+   "name": "基准 node 换了但范围里还在买:matched",
+   "row": "范围里还在买(优先)",
+   "declared": "other",
+   "feedback": {
+    "target": "family",
+    "start": "2025-01-30",
+    "end": "2025-01-31",
+    "family_start": "2025-01-02",
+    "reference": {
+     "node": "step",
+     "spans": [
+      [
+       "2025-01-07",
+       "2025-01-07"
+      ]
+     ]
+    }
+   },
+   "expect": {
+    "status": "matched",
+    "hits": [
+     "hA"
+    ]
+   },
+   "why": "范围里有买点先判 matched,不看基准"
+  },
+  {
+   "name": "没存 reference 的整族反馈:lost",
+   "row": "票 18 补存之前的那 4 条",
+   "declared": "step",
+   "feedback": {
+    "target": "family",
+    "start": "2025-01-10",
+    "end": "2025-01-15",
+    "family_start": "2025-01-02"
+   },
+   "expect": {
+    "status": "lost",
+    "hits": []
+   },
+   "why": "没有存下的起止;不报错,不退回按 family_start 对(按起点对的话起于 0 的那一族还在买,会判 matched)"
+  },
+  {
+   "name": "存了两段,只一段认得出而且不买:unmatched",
+   "row": "存了两段",
+   "declared": "step",
+   "feedback": {
+    "target": "family",
+    "start": "2025-02-24",
+    "end": "2025-02-25",
+    "family_start": "2025-02-18",
+    "reference": {
+     "node": "step",
+     "spans": [
+      [
+       "2025-02-20",
+       "2025-02-21"
+      ],
+      [
+       "2025-03-26",
+       "2025-03-26"
+      ]
+     ]
+    }
+   },
+   "expect": {
+    "status": "unmatched",
+    "hits": []
+   },
+   "why": "35～36 认得出(阶跃 34～35)、不买;59 那段一个基准 event 都没有:有一段认得出就不算 lost"
+  },
+  {
+   "name": "阶跃切成两段:前段共用不买、后段不共用在买,规则放过",
+   "row": "切成两段(V16-1 兜底)",
+   "declared": "step",
+   "feedback": {
+    "target": "family",
+    "start": "2025-03-07",
+    "end": "2025-03-07",
+    "family_start": "2025-02-27",
+    "reference": {
+     "node": "step",
+     "spans": [
+      [
+       "2025-02-28",
+       "2025-03-04"
+      ]
+     ]
+    }
+   },
+   "expect": {
+    "status": "unmatched",
+    "hits": []
+   },
+   "why": "前段 41～42 与存下的 41～43 共用 K 线但不买;后段 44～45 一根都不共用,在买 47:规则判 unmatched,放过一次平移"
+  },
+  {
+   "name": "同一族起点相同、终点不同:逐个 hit 判,不按族合并",
+   "row": "同起点不同终点",
+   "declared": "step",
+   "feedback": {
+    "target": "family",
+    "start": "2025-02-11",
+    "end": "2025-02-12",
+    "family_start": "2025-02-04",
+    "reference": {
+     "node": "step",
+     "spans": [
+      [
+       "2025-02-07",
+       "2025-02-10"
+      ]
+     ]
+    }
+   },
+   "expect": {
+    "status": "matched",
+    "hits": [
+     "hG2"
+    ]
+   },
+   "why": "只有阶跃 24～27 的那个 hit 与 26～27 共用 K 线(它在买 31);24～25 那个不共用,不收进来(按族合并起止会把它也连上)"
+  },
+  {
+   "name": "只与没进 hit 的基准 event 共用:unmatched",
+   "row": "不论档位、不论在不在 hit 里",
+   "declared": "step",
+   "feedback": {
+    "target": "family",
+    "start": "2025-03-25",
+    "end": "2025-03-25",
+    "family_start": "2025-03-21",
+    "reference": {
+     "node": "step",
+     "spans": [
+      [
+       "2025-03-24",
+       "2025-03-24"
+      ]
+     ]
+    }
+   },
+   "expect": {
+    "status": "unmatched",
+    "hits": []
+   },
+   "why": "57 那个阶跃没进任何 hit,照样算认得出"
+  },
+  {
+   "name": "point 当天有买点",
+   "row": "point",
+   "declared": "step",
+   "feedback": {
+    "target": "point",
+    "start": "2025-01-30",
+    "end": "2025-01-30"
+   },
+   "expect": {
+    "status": "matched",
+    "hits": [
+     "hA"
+    ]
+   },
+   "why": "买点日 20"
+  },
+  {
+   "name": "point 前一天:unmatched",
+   "row": "point",
+   "declared": "step",
+   "feedback": {
+    "target": "point",
+    "start": "2025-01-29",
+    "end": "2025-01-29"
+   },
+   "expect": {
+    "status": "unmatched",
+    "hits": []
+   },
+   "why": "只有后一天 20 是买点"
+  },
+  {
+   "name": "range 收进范围里买的 hit",
+   "row": "range",
+   "declared": "step",
+   "feedback": {
+    "target": "range",
+    "start": "2025-03-07",
+    "end": "2025-03-10"
+   },
+   "expect": {
+    "status": "matched",
+    "hits": [
+     "hJ2"
+    ]
+   },
+   "why": "47 是 hJ2 的买点"
+  },
+  {
+   "name": "range 不看基准",
+   "row": "range",
+   "declared": "step",
+   "feedback": {
+    "target": "range",
+    "start": "2025-01-10",
+    "end": "2025-01-15"
+   },
+   "expect": {
+    "status": "unmatched",
+    "hits": []
+   },
+   "why": "range 不认基准:范围外同一次形状还在买也不收"
+  }
+ ],
+ "families": [
+  {
+   "start": 0,
+   "spans": [
+    [
+     "2025-01-06",
+     "2025-01-08"
+    ]
+   ]
+  },
+  {
+   "start": 23,
+   "spans": [
+    [
+     "2025-02-05",
+     "2025-02-06"
+    ],
+    [
+     "2025-02-05",
+     "2025-02-10"
+    ]
+   ]
+  },
+  {
+   "start": 33,
+   "spans": [
+    [
+     "2025-02-19",
+     "2025-02-20"
+    ]
+   ]
+  },
+  {
+   "start": 40,
+   "spans": [
+    [
+     "2025-02-28",
+     "2025-03-03"
+    ]
+   ]
+  },
+  {
+   "start": 43,
+   "spans": [
+    [
+     "2025-03-05",
+     "2025-03-06"
+    ]
+   ]
+  },
+  {
+   "start": 49,
+   "spans": [
+    [
+     "2025-03-17",
+     "2025-03-18"
+    ]
+   ]
+  }
+ ]
+}

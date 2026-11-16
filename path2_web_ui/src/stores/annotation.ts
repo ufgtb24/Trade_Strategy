@@ -610,8 +610,8 @@ export const useAnnotationStore = defineStore('annotation', () => {
    * 存一条反馈:draft.id 给了是改那一条(整条重写,同编号),没给是新建(编号此刻取定)。返回编号;不存时返回 null
    * (不在 compare、保存条件不满足、这只股票还没有现算结果、要改的那条找不到 / 不是用户自己挑的 / 不属于当前
    * pattern、还没有当前 pattern)。
-   * 拖竖带的边改起止时(stores/feedback.ts 的 resize)draft 的 target 是 range、不带 family_start,整条重写后原来的
-   * family_start 随之拿掉。
+   * 拖竖带的边改起止时(stores/feedback.ts 的 resize)draft 的 target 是 range、不带 family_start 与 reference,整条重写
+   * 后原来的这两样随之拿掉。改整族反馈的 note、nodes、issue 时 draft 带着它存下的 reference(原样,不重算)。
    * 记录和原来一模一样(连 app_ver 也没变)时不写。
    * draft.issue 是这一处要带的 issue 值(没有即不带)。others 是同一批里一起改的别的处(同一个 issue 的其余成员,
    * 可在别的股票上):它们的 note、nodes、issue 换成这一处的,记录上以前存下的 answer、dag 一并拿掉(和这一处
@@ -620,7 +620,7 @@ export const useAnnotationStore = defineStore('annotation', () => {
    * 不是用户自己挑的、不属于当前 pattern 的成员跳过。
    */
   function saveFeedback(draft: FeedbackDraft & { id?: string }, others: readonly string[] = []): string | null {
-    if (!machine.value || !state.value || saveProblems(draft).length) return null
+    if (!machine.value || !state.value || saveProblems(draft, !!draft.id).length) return null
     const v = useViewStore()
     const run = v.comparing && v.symbol === draft.symbol && v.linkedRun?.symbol === draft.symbol ? v.linkedRun : null
     const appVer = run?.scan.app_ver

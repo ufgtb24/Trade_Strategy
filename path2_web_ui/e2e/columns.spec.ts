@@ -23,7 +23,7 @@ import { gotoScanTier } from './scanTier'
  */
 
 const GROUPING = join(REPO, 'tests/path2_web/fixtures/annotation_grouping_v1/batches')
-const MAPPING = 'pattern: W底\nfeatures:\n  w-pc-3: bo\n  w-pc-1: pk\n'
+const MAPPING = 'pattern: W底\nreference: bo\nfeatures:\n  w-pc-3: bo\n  w-pc-1: pk\n'
 const STORE_KEY = 'path2_web_ui.panels.v1'
 
 /** 夹具,再加一批:60 只股票各画一个没起名的框(charts 页要够长才能滚到中间)。 */

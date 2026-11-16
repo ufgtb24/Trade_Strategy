@@ -257,11 +257,17 @@ def _fb(oid, symbol, start, end, target="range", pattern="p", **extra):
 
 @pytest.fixture
 def fake_app(monkeypatch):
-    """把状态接口跑 app 的两步换成合成买点:AAA 上有两族,NOPE 读不到行情。返回每次跑 app 的参数记录。"""
-    from path2_web.app_run import AppBuys, NoSymbol
+    """把状态接口跑 app 的两步换成合成买点:AAA 上有两族(各一个 hit,基准 event 是 bo),另有一个没进 hit 的 bo,
+    NOPE 读不到行情。合成买点带上接口交来的基准 node。返回每次跑 app 的参数记录(含基准 node)。"""
+    from dataclasses import replace
 
-    buys = {"AAA": AppBuys(families={"2025-11-10": (), "2025-12-01": ("2025-12-03", "2025-12-04")},
-                           event_starts=("2025-11-10", "2025-12-01"), dates=())}
+    from path2_web.app_run import AppBuys, HitBuys, NoSymbol
+
+    buys = {"AAA": AppBuys(families={"2025-11-10": (), "2025-12-01": ("2025-12-03", "2025-12-04")}, dates=(),
+                           hits=(HitBuys(spans=(("2025-11-12", "2025-11-12"),), buy_days=()),
+                                 HitBuys(spans=(("2025-12-02", "2025-12-02"),), buy_days=("2025-12-03", "2025-12-04"))),
+                           ref_spans=(("2025-11-12", "2025-11-12"), ("2025-11-24", "2025-11-24"),
+                                       ("2025-12-02", "2025-12-02")))}
     calls: list = []
 
     def run_app(mod, cfg, symbol, start, end, params, label_horizon=20):
@@ -270,30 +276,44 @@ def fake_app(monkeypatch):
             raise NoSymbol(f"pkl not found: {symbol}")
         return symbol, None, {"end_node": "bo"}
 
+    def app_buys(res, win, end_node, reference=None):
+        calls.append(("reference", reference))
+        return replace(buys[res], reference=reference)
+
     monkeypatch.setattr("path2_web.api.run_app", run_app)
-    monkeypatch.setattr("path2_web.api.app_buys", lambda res, win, end_node: buys[res])
+    monkeypatch.setattr("path2_web.api.app_buys", app_buys)
     return calls
 
 
+def _ran(calls: list) -> list:
+    """fake_app 记下的跑 app 的那几次(不含基准 node 的记录)。"""
+    return [c for c in calls if c[0] != "reference"]
+
+
+def _ref(*days):
+    """整族反馈存下的基准 event 起止(基准 node bo,每天一段)。"""
+    return {"node": "bo", "spans": [[d, d] for d in days]}
+
+
 def test_feedback_status_three_states_tags_and_order(snapshot, adir, mapping_file, fake_app):
-    """三态各一例(point / range / family 的 matched、unmatched、起点认不出),挂「定义改过」的 matched 不算朱红,
-    读不到行情的股票那一条 status 为 null、其余照常;别的 pattern 的反馈不在内。页面上只给 matched / unmatched:
-    起点认不出的并进 unmatched,会话给它挂了标签的照样带标签(毛病还在);已经不买的(f-pc-2)即使会话段里
+    """三态各一例(point / range / family 的 matched、unmatched、基准 node 对不上),挂「定义改过」的 matched 不算
+    朱红,读不到行情的股票那一条 status 为 null、其余照常;别的 pattern 的反馈不在内。页面上只给 matched / unmatched:
+    基准 node 对不上的并进 unmatched,会话给它挂了标签的照样带标签(毛病还在);已经不买的(f-pc-2)即使会话段里
     留着标签也不带。按朱红、不买了却挂着标签的、其余排。
-    跑 app 的区间是全历史到训练段末日、label_horizon 20(与 compare 的图一致)。"""
-    mapping_file("bo_only", "pattern: p\nfeatures: {w-pc-1: bo}\n"
+    跑 app 的区间是全历史到训练段末日、label_horizon 20(与 compare 的图一致);基准 node 照 mapping 声明的交给取数。"""
+    mapping_file("bo_only", "pattern: p\nreference: bo\nfeatures: {w-pc-1: bo}\n"
                             "session: {tags: {f-pc-5: redefined, f-pc-3: for_tuning, f-pc-2: unhandled}}\n")
     store.append_batch({"annotation_dir": str(adir), "machine": "pc"}, [
         _fb("f-pc-1", "AAA", "2025-12-03", "2025-12-03", target="point"),           # 当天有买点 → matched
         _fb("f-pc-2", "AAA", "2025-12-08", "2025-12-10"),                            # 范围里没有 → unmatched
         _fb("f-pc-3", "AAA", "2025-12-10", "2025-12-12", target="family",
-            family_start="2025-11-20"),                                              # 起点认不出 → 显示 unmatched
+            family_start="2025-11-20", reference=_ref("2025-11-20")),               # 基准 node 对不上 → 显示 unmatched
         _fb("f-pc-4", "AAA", "2025-12-15", "2025-12-16", target="family",
-            family_start="2025-11-10"),                                              # 起点还在、不买 → unmatched
+            family_start="2025-11-10", reference=_ref("2025-11-12")),               # 同一次形状还在、不买 → unmatched
         _fb("f-pc-5", "AAA", "2025-12-04", "2025-12-04", target="point"),           # matched,但定义改过
         _fb("f-pc-6", "NOPE", "2025-12-04", "2025-12-04", target="point"),          # 读不到行情
         _fb("f-pc-7", "AAA", "2025-12-20", "2025-12-22", target="family",
-            family_start="2025-12-01"),                                              # 同起点的族还在买 → matched
+            family_start="2025-12-01", reference=_ref("2025-12-02")),               # 同一次形状还在买 → matched
         _fb("f-pc-8", "AAA", "2025-12-03", "2025-12-03", target="point", pattern="q"),   # 别的 pattern
     ])
     from path2_web.app_version import app_ver
@@ -308,24 +328,36 @@ def test_feedback_status_three_states_tags_and_order(snapshot, adir, mapping_fil
                    ("f-pc-4", "unmatched", None, False), ("f-pc-6", None, None, False)]
     reasons = {i["id"]: i["reason"] for i in body["items"]}
     assert "NOPE" in reasons.pop("f-pc-6") and set(reasons.values()) == {None}
-    assert sorted(set(fake_app)) == [("path2_apps.bo_only.dag_spec", s, "1900-01-01", TRAIN_END, 20)
-                                     for s in ("AAA", "NOPE")]
+    assert sorted(set(_ran(fake_app))) == [("path2_apps.bo_only.dag_spec", s, "1900-01-01", TRAIN_END, 20)
+                                           for s in ("AAA", "NOPE")]
+    assert ("reference", "bo") in fake_app
 
 
 def test_feedback_status_cache_by_app_version(snapshot, adir, mapping_file, fake_app, monkeypatch):
-    """同一版 app 再问一次不再跑 app;app 换了版本(app_ver 变)重跑。读不到行情的股票不进缓存。"""
-    mapping_file("bo_only", "pattern: p\nfeatures: {w-pc-1: bo}\n")
+    """同一版 app 再问一次不再跑 app;app 换了版本(app_ver 变)重跑;mapping 换了基准 node(不进 app_ver)也重跑,
+    存的是别的基准 node 的整族反馈随之记 lost(页面上 unmatched)。读不到行情的股票不进缓存。"""
+    mapping_file("bo_only", "pattern: p\nreference: bo\nfeatures: {w-pc-1: bo}\n")
     store.append_batch({"annotation_dir": str(adir), "machine": "pc"}, [
         _fb("f-pc-1", "AAA", "2025-12-03", "2025-12-03", target="point"),
-        _fb("f-pc-2", "AAA", "2025-12-08", "2025-12-10")])
+        _fb("f-pc-2", "AAA", "2025-12-08", "2025-12-10"),
+        _fb("f-pc-3", "AAA", "2025-12-20", "2025-12-22", target="family", family_start="2025-12-01",
+            reference=_ref("2025-12-02"))])
     client = _client(snapshot, adir)
-    first = client.get("/feedback/status", params={"pattern": "p"}).json()
-    assert len(fake_app) == 1
-    assert client.get("/feedback/status", params={"pattern": "p"}).json() == first
-    assert len(fake_app) == 1
+
+    def status():
+        body = client.get("/feedback/status", params={"pattern": "p"}).json()
+        return body, {i["id"]: i["status"] for i in body["items"]}
+    first, st = status()
+    assert len(_ran(fake_app)) == 1 and st["f-pc-3"] == "matched"
+    assert status()[0] == first
+    assert len(_ran(fake_app)) == 1
     monkeypatch.setattr("path2_web.api.app_ver", lambda mod: "ffffffffffffffff")
-    body = client.get("/feedback/status", params={"pattern": "p"}).json()
-    assert len(fake_app) == 2 and body["app_ver"] == "ffffffffffffffff"
+    body, _ = status()
+    assert len(_ran(fake_app)) == 2 and body["app_ver"] == "ffffffffffffffff"
+    mapping_file("bo_only", "pattern: p\nreference: pk\nfeatures: {w-pc-1: bo}\n")
+    _, st = status()
+    assert len(_ran(fake_app)) == 3 and fake_app[-1] == ("reference", "pk")
+    assert st == {"f-pc-1": "matched", "f-pc-2": "unmatched", "f-pc-3": "unmatched"}
 
 
 def test_feedback_status_without_usable_mapping(snapshot, adir, mapping_file, fake_app):
@@ -338,10 +370,14 @@ def test_feedback_status_without_usable_mapping(snapshot, adir, mapping_file, fa
         return client.get("/feedback/status", params={"pattern": "p"}).json()
     body = ask()
     assert (body["app"], body["app_ver"], body["items"]) == (None, None, []) and "p" in body["reason"]
-    mapping_file("bo_only", "pattern: p\nfeatures: {w-pc-1: nope}\n")
+    mapping_file("bo_only", "pattern: p\nreference: bo\nfeatures: {w-pc-1: nope}\n")
     assert ask()["app"] is None and "node not in app" in ask()["reason"]
-    mapping_file("bo_only", "pattern: p\nfeatures: {w-pc-1: bo}\n")
-    mapping_file("new_step", "pattern: p\nfeatures: {w-pc-1: plateau}\n")
+    mapping_file("bo_only", "pattern: p\nfeatures: {w-pc-1: bo}\n")                       # 没写基准 node
+    assert ask()["app"] is None and "reference must name" in ask()["reason"]
+    mapping_file("bo_only", "pattern: p\nreference: nope\nfeatures: {w-pc-1: bo}\n")     # 指向不存在的 node
+    assert ask()["app"] is None and "reference node not in app" in ask()["reason"]
+    mapping_file("bo_only", "pattern: p\nreference: bo\nfeatures: {w-pc-1: bo}\n")
+    mapping_file("new_step", "pattern: p\nreference: step\nfeatures: {w-pc-1: plateau}\n")
     assert ask()["app"] is None and "several apps" in ask()["reason"]
     assert fake_app == []
 
@@ -351,7 +387,7 @@ def test_preview_and_status_carry_the_same_app_ver(snapshot, adir, mapping_file)
     from path2_web.app_version import app_ver
     import path2_apps.bo_only.dag_spec as bo_only
 
-    mapping_file("bo_only", "pattern: p\nfeatures: {w-pc-1: bo}\n")
+    mapping_file("bo_only", "pattern: p\nreference: bo\nfeatures: {w-pc-1: bo}\n")
     store.append_batch({"annotation_dir": str(adir), "machine": "pc"},
                        [_fb("f-pc-1", "AAA", "2025-12-03", "2025-12-03", target="point")])
     client = _client(snapshot, adir)
@@ -412,7 +448,7 @@ def test_changes_without_snapshot(snapshot, adir, mapping_file):
 
 def test_feedback_status_missing_data_dir_is_503(adir, mapping_file, tmp_path):
     """行情目录整个不在:整体 503(同单股预览),不是逐条 status null;真跑 bo_only,不换替身。"""
-    mapping_file("bo_only", "pattern: p\nfeatures: {w-pc-1: bo}\n")
+    mapping_file("bo_only", "pattern: p\nreference: bo\nfeatures: {w-pc-1: bo}\n")
     store.append_batch({"annotation_dir": str(adir), "machine": "pc"},
                        [_fb("f-pc-1", "AAA", "2025-12-03", "2025-12-03", target="point")])
     r = _client(tmp_path / "no_such_dir", adir).get("/feedback/status", params={"pattern": "p"})

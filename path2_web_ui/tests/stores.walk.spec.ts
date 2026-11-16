@@ -258,12 +258,18 @@ describe('view store · 选中与 ← / →、↑ / ↓、Esc', () => {
     expect(view.focusedHitId).toBe('b14')
   })
 
-  it('点反馈记号:选中这条反馈,竖线不动;它收进来的是段里有买点的 hit,一族反馈另加起于它那个起点的整族', () => {
+  it('点反馈记号:选中这条反馈,竖线不动;它收进来的是段里有买点的 hit,一族反馈另加基准 event 与存下的共用 K 线的', () => {
     const view = setup()
-    view.setSelSources({ feedbacks: () => [
+    const ref = (node: string, ...spans: [string, string][]) => ({ node, spans })
+    view.setSelSources({ referenceNode: () => 'step', feedbacks: () => [
       { id: 'f1', start: '2024-11-16', end: '2024-11-17' },                              // 下标 15、16:只有 a15 买在段里
-      { id: 'f2', start: '2024-11-19', end: '2024-11-20', family_start: '2024-11-01' },
+      { id: 'f2', start: '2024-11-19', end: '2024-11-20', target: 'family',              // 存下的阶跃 10:两种切法都共用
+        reference: ref('step', ['2024-11-11', '2024-11-11']) },
       { id: 'f3', start: '2024-11-19', end: '2024-11-20' },                              // 段里 app 不买
+      { id: 'f4', start: '2024-11-19', end: '2024-11-20', target: 'family',              // 存下的阶跃 11:只有两根那种
+        reference: ref('step', ['2024-11-12', '2024-11-12']) },
+      { id: 'f5', start: '2024-11-19', end: '2024-11-20', target: 'family',              // 存的不是声明的基准 node
+        reference: ref('old_plat', ['2024-11-01', '2024-11-10']) },
     ] })
     view.setCurrentDay(12)
     view.clickFeedback({ id: 'f1' })
@@ -278,6 +284,10 @@ describe('view store · 选中与 ← / →、↑ / ↓、Esc', () => {
     view.clickFeedback({ id: 'f3' })
     expect(view.selHits.ids.size).toBe(0)
     expect([view.selInfo!.buys, view.selInfo!.hits!.head]).toEqual(['none', 'none'])
+    view.clickFeedback({ id: 'f4' })                                                     // 逐个 hit 判,不按族合并
+    expect([...view.selHits.ids].sort()).toEqual(['b13', 'b14'])
+    view.clickFeedback({ id: 'f5' })
+    expect(view.selHits.ids.size).toBe(0)
   })
 
   it('反馈收进两个以上买点日:← / → 进到其中一天,Esc 退回这条反馈', () => {

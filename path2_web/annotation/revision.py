@@ -56,9 +56,13 @@ path2_web.discovery.PatternRegistry()。两者都可传入(测试用)。
 - 反馈只看用户自己挑的(来源 picked);盲看标记的回归等盲看实施时再加。一条反馈的内容是 note 加 nodes;
   记录里若还带着 answer、dag(store 模块说明「反馈」),报告和摘要都不输出、不拿来分类。
 - issue:带同一个 issue 值的几处反馈是一个 issue,不带的各自一个(用反馈编号当名字)。
-- 判法全部复用 path2_web/annotation/match.py:反馈状态 feedback_status、朱红 is_red、样本 match 用
-  sample_match(按 K 线根数算距离);样本级的改动用 path2_web/annotation/changes.py 的 pattern_changes 取
-  (与 GET /annotations/changes 同一个函数)。
+- 判法全部复用 path2_web/annotation/match.py:反馈状态 feedback_status、同一次形状上还在买的 hit same_shape_hits、
+  朱红 is_red、样本 match 用 sample_match(按 K 线根数算距离);样本级的改动用 path2_web/annotation/changes.py
+  的 pattern_changes 取(与 GET /annotations/changes 同一个函数)。
+- 基准 node:跑 app 时把 mapping 声明的基准 node(reference)交给 app_buys,每只股票的买点连同每个 hit 的基准
+  event 起止、全部基准 event 的起止存进 round 文件,整族反馈按它判。mapping 没写 reference(或它指向不存在的
+  node)时 start_round 照常定格(这时旧版的整族反馈都判不了、记 lost,会打印一句提醒),改版报告拒绝出:改 app
+  那一步一并补上。旧 round 文件里没有基准 event,读出来按没声明算(不补)。
 
 报告的六节
 ----------
@@ -67,8 +71,8 @@ path2_web.discovery.PatternRegistry()。两者都可传入(测试用)。
 ① 各条反馈的状态新旧对照(只列变了的;一条写成「链接（落在 node）「理由前几个字」（编号，issue 值）」,没点
    node、没写理由的那一段就没有);随后「各 issue 现在」:有一处还在买、有一处 lost、或这一版有一处状态变了的
    issue 各一行(标了几处、还在买几处、lost 几处、这一版变了几处),其余只给个数。「变了」= 旧状态 ≠ 新状态,
-   上一轮没有、这一轮新标的那处也算;这一轮删掉的反馈不属于任何 issue,只在逐条那一段出现。每条现在是 lost 的
-   留一行待会话交代「改好了 / 认法变了」;
+   上一轮没有、这一轮新标的那处也算;这一轮删掉的反馈不属于任何 issue,只在逐条那一段出现。每条现在是 lost
+   (报告里写「基准 node 对不上」)的留一行待会话交代「改好了 / 认法变了」;
 ② 反馈范围里砍掉的买点日:只给个数;
 ③ 反馈范围外砍掉的、④ 新长出来的买点日:按族(hit 起点日期)折叠,每族一行「X 天剩 Y 天」「X 天变 Y 天」和一个
    落在 compare 的链接(链接日期取这一族第一个变了的买点日);两节合起来细看以 FOLD_LIMIT 族为限,按变化
@@ -218,8 +222,16 @@ def _symbols(*groups: Mapping) -> set:
     return {o["symbol"] for g in groups for o in g.values()}
 
 
-def _run_all(mod, cfg: dict, symbols) -> tuple[dict, dict]:
-    """当前 app 逐只跑一遍:({股票: AppBuys}, {读不到行情的股票: 原因})。区间与 compare 的图一致。"""
+def _require_reference(m: Mapping) -> None:
+    """出改版报告前 mapping 必须声明了合格的基准 node(reference):没有就判不了整族反馈,不出报告。"""
+    if m["reference"] is None:
+        raise ValueError(f"app {m['app']} 的 mapping.yaml 没写基准 node(reference),或它指向不存在的 node"
+                         f"({m['problem']}):整族反馈判不了,先在 mapping.yaml 写上 reference 再出报告")
+
+
+def _run_all(mod, cfg: dict, symbols, reference: Optional[str]) -> tuple[dict, dict]:
+    """当前 app 逐只跑一遍:({股票: AppBuys}, {读不到行情的股票: 原因})。区间与 compare 的图一致;reference 是
+    mapping 声明的基准 node(没声明为 None),交给 app_buys 取基准 event。"""
     load = getattr(mod, "load_params", None)
     params = load() if callable(load) and symbols else None
     buys, missing = {}, {}
@@ -229,7 +241,7 @@ def _run_all(mod, cfg: dict, symbols) -> tuple[dict, dict]:
         except BarsUnavailable as e:
             missing[sym] = str(e)
             continue
-        buys[sym] = app_buys(res, win, meta["end_node"])
+        buys[sym] = app_buys(res, win, meta["end_node"], reference=reference)
     return buys, missing
 
 
@@ -302,7 +314,7 @@ def start_round(pattern: str, out_path, *, no_app: bool = False, cfg: Optional[d
         symbols |= _symbols(*_pattern_objects(read_annotations(cfg, as_of=prev["seen"])["state"], pattern))
     snapshot = {"seen": seen, "samples": sorted(samples), "at": dt.date.today().isoformat()}
 
-    buys, missing = _run_all(mod, cfg, symbols) if m is not None else ({}, {})
+    buys, missing = _run_all(mod, cfg, symbols, m["reference"]) if m is not None else ({}, {})
     rnd = {"format": ROUND_FORMAT, "pattern": pattern, "app_id": m["app"] if m is not None else None,
            "app_ver": app_ver(mod) if m is not None else None, "prev": prev, "snapshot": snapshot,
            "buys": {s: b.to_dict() for s, b in buys.items()}, "unavailable": missing}
@@ -315,6 +327,9 @@ def start_round(pattern: str, out_path, *, no_app: bool = False, cfg: Optional[d
         print("# 建好 app 和 mapping.yaml 之后,把下面这段写进它的会话段")
     else:
         print(f"# round 文件: {out}(股票 {len(symbols)} 只,读不到行情 {len(missing)} 只)")
+        if m["reference"] is None:
+            print("# 注意: mapping.yaml 没写基准 node(reference)或写错,这一版的整族反馈都记「基准 node 对不上」;"
+                  "改 app 那一步一并补上,不补出不了改版报告")
         print(f"# 立刻写进 {mapping_mod.mapping_path(mod)}:只替换 session 下的 snapshot,conditions、tags 原样保留")
     print(yaml.safe_dump({"session": {"snapshot": snapshot}}, allow_unicode=True, sort_keys=False,
                          default_flow_style=None), end="")
@@ -381,7 +396,7 @@ def _fb_status(fb: Optional[Mapping], buys: Mapping) -> str:
 
 
 def _status_text(s: str) -> str:
-    return {"absent": "（没有这条）", "na": "（读不到行情）", "lost": "起点认不出"}.get(s, f"`{s}`")
+    return {"absent": "（没有这条）", "na": "（读不到行情）", "lost": "基准 node 对不上"}.get(s, f"`{s}`")
 
 
 def _lost_lines(ctx: _Ctx, now: Mapping) -> list[str]:
@@ -389,7 +404,7 @@ def _lost_lines(ctx: _Ctx, now: Mapping) -> list[str]:
     lost = [fid for fid, s in now.items() if s == "lost"]
     if not lost:
         return []
-    return ["起点认不出的反馈（页面上显示成 `unmatched`），每条请交代一句是改好了、还是认法变了：",
+    return ["基准 node 对不上的反馈（页面上显示成 `unmatched`），每条请交代一句是改好了、还是认法变了：",
             *[f"- {_fb_label(ctx, ctx.f_new[fid])}：（待填：改好了 / 认法变了）" for fid in lost], ""]
 
 
@@ -427,7 +442,7 @@ def _issue_lines(ctx: _Ctx, now: Mapping, changed: set) -> list[str]:
             quiet += 1
             continue
         text = f"- `{name}`{_fb_content(ctx.f_new[ids[0]])}：{len(ids)} 处，还在买 {still} 处"
-        text += (f"，起点认不出 {lost} 处" if lost else "") + (f"，这一版变了 {moved} 处" if moved else "")
+        text += (f"，基准 node 对不上 {lost} 处" if lost else "") + (f"，这一版变了 {moved} 处" if moved else "")
         rows.append((_issue_rank(statuses), name, text))
     if not rows and not quiet:
         return []
@@ -462,7 +477,7 @@ def _now_summary(ctx: _Ctx, now: Mapping) -> str:
     """现在各状态几条(朱红按会话的原因标签判,见 match.is_red)。"""
     red = sum(match.is_red(s, ctx.tags.get(i)) for i, s in now.items())
     n = {k: sum(s == k for s in now.values()) for k in ("lost", "unmatched", "na")}
-    text = f"现在 {len(now)} 条反馈：朱红 {red} 条、起点认不出 {n['lost']} 条、`unmatched` {n['unmatched']} 条"
+    text = f"现在 {len(now)} 条反馈：朱红 {red} 条、基准 node 对不上 {n['lost']} 条、`unmatched` {n['unmatched']} 条"
     return text + (f"、读不到行情 {n['na']} 条。" if n["na"] else "。")
 
 
@@ -696,9 +711,10 @@ def _first_report(pattern: str, rnd: Mapping, link_base: str, cfg: dict, registr
         raise ValueError(f"pattern {pattern!r} 这一轮定格时还没有 app,现在也没有哪个 app 的 mapping.yaml 写它:"
                          "没有 app 可跑,先建好 app 和 mapping 再出报告")
     m, mod = found
+    _require_reference(m)
     snap = rnd["snapshot"]
     samples, _ = _pattern_objects(read_annotations(cfg, as_of=snap["seen"])["state"], pattern)
-    buys, missing = _run_all(mod, cfg, _symbols(samples))
+    buys, missing = _run_all(mod, cfg, _symbols(samples), m["reference"])
     verdicts = {sid: _verdict(s, buys) for sid, s in samples.items()}
     order = sorted(samples, key=lambda i: (samples[i]["symbol"], samples[i]["date"], i))
     groups = {False: [i for i in order if verdicts[i] is not None and not verdicts[i][1]],
@@ -750,6 +766,7 @@ def revision_report(pattern: str, round_path, link_base: Optional[str] = None, *
     if rnd["app_id"] is None:
         return _first_report(pattern, rnd, link_base, cfg, registry)
     m, mod = _mapping_of(pattern, registry)
+    _require_reference(m)
     prev, snap = rnd["prev"], rnd["snapshot"]
 
     state_new = read_annotations(cfg, as_of=snap["seen"])["state"]
@@ -759,7 +776,7 @@ def revision_report(pattern: str, round_path, link_base: Optional[str] = None, *
     old_buys = {s: AppBuys.from_dict(d) for s, d in rnd["buys"].items()}
     ran_before = set(old_buys) | set(rnd["unavailable"])
     symbols = ran_before | _symbols(s_old, f_old, s_new, f_new)
-    new_buys, new_missing = _run_all(mod, cfg, symbols)
+    new_buys, new_missing = _run_all(mod, cfg, symbols, m["reference"])
 
     changes: dict = {}
     for c in pattern_changes(state_old, state_new, pattern):
@@ -919,10 +936,19 @@ def _digest_changes(state_prev: Optional[Mapping], state: Mapping, pattern: str)
     return lines + [""]
 
 
+def _family_target_text(fb: Mapping) -> str:
+    """整族反馈的起点与存下的基准 event 起止(没存的注明)。"""
+    ref = fb.get("reference")
+    stored = (f"基准 {ref['node']}：{'、'.join(_span(a, b) for a, b in ref['spans'])}" if ref
+              else "没存基准 event 起止")
+    return f"（起点 {fb['family_start']}，{stored}）"
+
+
 def _digest_place(fb: Mapping, link: str, status: str, tag: Optional[str], buys: Optional["AppBuys"],
                   pos_samples: list, since: Optional[str]) -> str:
-    """issue 里的一处:链接、target、状态、标签、范围里在买的日子、范围里用户的正样本、编号与相对上一轮的变化。"""
-    target = f"`{fb['target']}`" + (f"（起点 {fb['family_start']}）" if fb["target"] == "family" else "")
+    """issue 里的一处:链接、target、状态、标签、范围里在买的日子、范围里用户的正样本、编号与相对上一轮的变化。
+    整族反馈另写存下的基准 event 起止,以及同一次形状上还在买的 hit(match.same_shape_hits)在范围外买的日子。"""
+    target = f"`{fb['target']}`" + (_family_target_text(fb) if fb["target"] == "family" else "")
     parts = [f"[{fb['symbol']} {_span(fb['start'], fb['end'])}]({link}) {target} {status}"]
     if tag is not None:
         parts[0] += f"，标签 `{tag}`" + ("（挂了它不算朱红）" if tag == mapping_mod.TAG_REDEFINED else "")
@@ -930,9 +956,10 @@ def _digest_place(fb: Mapping, link: str, status: str, tag: Optional[str], buys:
         inside = [d for d in buys.buy_days if fb["start"] <= d <= fb["end"]]
         parts.append(f"范围里在买 {len(inside)} 天" + (f"：{'、'.join(inside)}" if inside else ""))
         if fb["target"] == "family":
-            outside = [d for d in buys.families.get(fb["family_start"], ()) if not fb["start"] <= d <= fb["end"]]
+            outside = sorted({d for i in match.same_shape_hits(fb, buys) for d in buys.hits[i].buy_days
+                              if not fb["start"] <= d <= fb["end"]})
             if outside:
-                parts.append(f"同一族在范围外还买 {len(outside)} 天：{'、'.join(outside)}")
+                parts.append(f"同一次形状在范围外还买 {len(outside)} 天：{'、'.join(outside)}")
     if pos_samples:
         parts.append("范围里你的正样本：" + "、".join(f"{s['date']}（{s['id']}）" for s in pos_samples))
     return "  - " + "；".join(parts) + f"（{fb['id']}{'，' + since if since else ''}）"
@@ -958,7 +985,7 @@ def _digest_issues(ctx_link, picked: Mapping, f_prev: Optional[Mapping], samples
     groups = sorted(_issue_groups(picked), key=lambda g: (_issue_rank([now[i] for i in g[1]]), g[0]))
     n_still, n_lost = sum(s == "matched" for s in now.values()), sum(s == "lost" for s in now.values())
     lines.append(f"共 {len(groups)} 个 issue、{len(picked)} 处；" +
-                 (f"还在买 {n_still} 处、起点认不出 {n_lost} 处。" if has_app else "还没有 app，状态没比。"))
+                 (f"还在买 {n_still} 处、基准 node 对不上 {n_lost} 处。" if has_app else "还没有 app，状态没比。"))
     lines.append("")
     for name, ids in groups:
         first = picked[ids[0]]

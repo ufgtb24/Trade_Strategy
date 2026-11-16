@@ -154,6 +154,9 @@ export interface PeakLine { date: string; price: number; end: string }
  *  session_problem 是会话段的形状问题(一句英文),没有为 null;它不进 problem,不影响 compare 用这个 mapping。 */
 export interface AppMapping {
   app: string; pattern: string | null; features: Record<string, string>; notes?: Record<string, string>
+  /** 基准 node(path2/GLOSSARY.md 的 reference node):整族反馈按它认「同一次形状」;没写或写错时为 null,
+   *  这时 problem 非 null(mapping 不能用) */
+  reference?: string | null
   problem: string | null
   session?: MappingSession | null
   session_problem?: string | null

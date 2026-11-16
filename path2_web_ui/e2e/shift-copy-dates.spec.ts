@@ -23,7 +23,7 @@ import { enterScanTier } from './scanTier'
  */
 
 const GROUPING = join(REPO, 'tests/path2_web/fixtures/annotation_grouping_v1/batches')
-const MAPPING = 'pattern: W底\nfeatures:\n  w-pc-3: bo\n  w-pc-1: pk\n'
+const MAPPING = 'pattern: W底\nreference: bo\nfeatures:\n  w-pc-3: bo\n  w-pc-1: pk\n'
 
 async function putFixture(b: Backend) {
   const local = (await (await fetch(`${b.base}/annotations`)).json()).fingerprint.local

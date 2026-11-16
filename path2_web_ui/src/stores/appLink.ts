@@ -64,6 +64,9 @@ export const useAppLinkStore = defineStore('appLink', () => {
     return es.map(m => `${m.app}: ${m.problem}`).join('\n')
   })
   const available = computed(() => mapping.value !== null && view.frontTierSymbol !== null)
+  // 当前 pattern 的基准 node 登记进 view:整族反馈收进来的 hit(view 的选中模型)、新建整族反馈存的基准 event
+  // 起止(stores/feedback.ts)都按它认;view、反馈 store 不反过来 import 本 store
+  view.setSelSources({ referenceNode: () => mapping.value?.reference ?? null })
 
   /** 顶栏 mode:annotate 随时可切;compare / app 要 available。 */
   function setMode(m: ViewMode): void {

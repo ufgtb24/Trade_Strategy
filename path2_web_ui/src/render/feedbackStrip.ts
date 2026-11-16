@@ -6,7 +6,7 @@
  * - 只画用户自己挑的(source = picked):盲看标记(6.5)不在这里画,也打不开面板(stores/feedback.ts 的 openRecord);
  * - 配色档只照后端状态接口给的 red(朱红与否只在后端判一次):red → 朱红底黑字;其余(含状态还没取到)→ 常色,
  *   白底深灰描边黑字。hits 区底色是浅黄,常色靠描边认,不靠白底。页面上的状态只有 matched / unmatched
- *   (「起点认不出」在后端已并进 unmatched,见 path2_web/annotation/match.py 的 shown_status);
+ *   (「基准 node 对不上」在后端已并进 unmatched,见 path2_web/annotation/match.py 的 shown_status);
  * - 选中的那条(feedbackMarkStyle):描边换成黑色并明显加粗(加粗的部分画在记号外侧,不挤字),压在别的记号上面;图上另有一条贯穿主副图的竖带
  *   标出它的日期范围(components/KlineChart.vue);选中的东西在它里面时(它是外层)不描粗边,记号下沿画一道底线;
  * - 记号上的字(feedbackLabelText)是点出的 node 名,逗号连起来;整串放不下时退成「第一个 node 名加 +n」

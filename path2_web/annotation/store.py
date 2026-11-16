@@ -53,7 +53,7 @@ base 指向的修改本机还没有(那个文件还没同步到)时,不算冲突
                  boxes:   [{id, feature, start, end, attrs?, note?, detach?, attach?}],
                  samples: [{id, date, pattern, judgment, members[], members_edited?, note?}],
                  feedback?: [{id, pattern, app_id, app_ver, start, end, target, source, answer?,
-                              note?, nodes?, dag?, issue?, family_start?}]}]}
+                              note?, nodes?, dag?, issue?, family_start?, reference?}]}]}
 
 - machine 是读的这台机器;data_fingerprint 是标注所依据的训练段副本指纹:全部批次记的都是同一个时取它,
   批次之间不一致或还没有批次时为 null。拿它和本机副本的指纹比,就知道标注和眼下读的 K 线是不是同一份;
@@ -72,6 +72,12 @@ base 指向的修改本机还没有(那个文件还没同步到)时,不算冲突
 - pattern 是标注里的 pattern 名;app_id 是 app 模块名;app_ver 是记录时 app 的版本指纹,只记出处,本模块不解释;
 - target:point(一天,start == end)/ family(一族 hit,另存这一族的起点 family_start ≤ start)/
   range(拖出来的一段);只有 family 带 family_start;
+- reference(只许 family 带):{node, spans},node 是写反馈时 mapping 声明的基准 node(非空字符串),spans 是这一族
+  各 hit 的基准 event 起止 [[start, end], …](非空;每段 start ≤ end ≤ 训练段末日)。起止由页面算,本模块只查形状。
+  判状态时拿当前 app 的基准 event 和它比有没有共用 K 线(path2_web/annotation/match.py)。保存时另有两条要看
+  现有标注才查得了(只在保存时查,读文件时不查——旧的整族反馈没有它,读文件要照样读得出):编号从没出现过的
+  (新建的)整族反馈必须带;原来带着它的整族反馈,改完仍是整族的,必须原样带着(之后改 note、nodes、issue
+  不按当前版 app 重算,平移才认得出来)。原来没有的,改的时候照样存得进,也可以补上;
 - source:picked(用户自己挑的,反馈恒为它)或盲看标记的来源 random / added / removed / tuned_added /
   tuned_removed(盲看标记和反馈共用这个 kind,现在只为「创建后不可改」能测);
 - 反馈(picked)的内容是 note 加 nodes:note 是用户写的一句(这里买有什么不对),必须非空;nodes(node_id 数组,
@@ -95,7 +101,7 @@ base 指向的修改本机还没有(那个文件还没同步到)时,不算冲突
 一批操作整体通过才写文件,否则一条也不写,BatchRejected.reasons 列出全部原因(code、message,以及涉及的
 op 序号或样本、框编号):
 - bad_op:形状不对。每种对象的必填键、可选键、取值类型;日期必须是真实日期且不晚于训练段末日 TRAIN_END;
-  反馈的取值规则(上一节);删除或基于一个从没出现过的对象;
+  反馈的取值规则(上一节,含 reference 的两条保存规则);删除或基于一个从没出现过的对象;
 - duplicate_op:一批里同一个对象出现了两次(多次修改要合成最后的值再送,否则后一条会和前一条记成冲突);
 - bad_new_id:没出现过的词、框、样本、反馈编号不带本机机器名;
 - id_taken:出现过的(含已删的)词、框、样本、反馈编号被当成新建(base 为 null)再用;
@@ -168,7 +174,7 @@ _VALUE_KEYS = {
     "sample": (("id", "symbol", "date", "pattern", "judgment", "members"), ("members_edited", "note")),
     # answer 排在可选键的第一个:带 answer 的记录重放出来键序不变
     "feedback": (("id", "symbol", "pattern", "app_id", "app_ver", "start", "end", "target", "source"),
-                 ("answer", "note", "nodes", "dag", "issue", "family_start")),
+                 ("answer", "note", "nodes", "dag", "issue", "family_start", "reference")),
 }
 _ID_LETTER = {"feature": "w", "box": "b", "sample": "s", "feedback": "f"}   # 带机器名编号的四种对象
 _ID_RE = re.compile(rf"([wbsf])-({MACHINE_PATTERN})-([1-9]\d*)")           # 字母与 _ID_LETTER 一致
@@ -521,8 +527,29 @@ def _batch_reasons(r: _Replay, ops: list[dict], machine: str) -> list[dict]:
             out.append(_reason("bad_new_id", f"第 {i} 条: 新建的 {oid} 不带本机机器名 {machine}", op=i))
     after = {**r.values, **{(op["kind"], op["id"]): op["value"] for op in ops}}
     fb_touched = {op["id"] for op in ops if op["kind"] == "feedback"}
-    return out + _causality(after, touched={(op["kind"], op["id"]) for op in ops}) \
+    return out + _reference_kept(r, ops) + _causality(after, touched={(op["kind"], op["id"]) for op in ops}) \
         + _issue_diverged(after, fb_touched) + _blind_changes(r.blind, after, touched=fb_touched)
+
+
+def _reference_kept(r: _Replay, ops: list[dict]) -> list[dict]:
+    """整族反馈的 reference 两条保存规则(模块说明「反馈」):新建(编号从没出现过)的必须带;原来带着的、改完仍是
+    整族的,必须原样带着。原来没有的照样存得进。"""
+    out = []
+    for i, op in enumerate(ops):
+        v = op["value"]
+        if op["kind"] != "feedback" or not isinstance(v, dict) or v.get("target") != "family":
+            continue
+        key = ("feedback", op["id"])
+        if key not in r.values:
+            if "reference" not in v:
+                out.append(_reason("bad_op", f"第 {i} 条: 新建的整族反馈 {op['id']} 必须带 reference"
+                                             "(这一族基准 event 的起止)", op=i))
+            continue
+        old = r.values[key]
+        if isinstance(old, dict) and "reference" in old and v.get("reference") != old["reference"]:
+            out.append(_reason("bad_op", f"第 {i} 条: 整族反馈 {op['id']} 的 reference 写下后不能改、不能去掉"
+                                         "(要换成另一段日期就拖竖带的边,改成 range)", op=i))
+    return out
 
 
 def _issue_content(v: dict) -> tuple:
@@ -737,6 +764,11 @@ def _feedback_problems(v: dict, bad) -> None:
             bad(f"family_start {v['family_start']} 晚于 start {v['start']}")
     elif "family_start" in v:
         bad("只有 target 为 family 时才有 family_start")
+    if "reference" in v:
+        if target != "family":
+            bad("只有 target 为 family 时才有 reference")
+        else:
+            _reference_problems(v["reference"], bad)
     nodes = v.get("nodes", [])
     if not isinstance(nodes, list) or not all(_nonempty(s) for s in nodes) \
             or len(set(nodes)) != len(nodes):
@@ -773,6 +805,27 @@ def _feedback_problems(v: dict, bad) -> None:
             bad(f"盲看标记的 answer 应为 {' / '.join(BLIND_ANSWERS)} 之一,实为 {answer!r}")
         elif answer != "pos" and not has_note:
             bad(f"盲看标记 answer 为 {answer} 时 note 不能为空")
+
+
+def _reference_problems(ref, bad) -> None:
+    """整族反馈的 reference 的形状:{node: 非空字符串, spans: 非空的 [[start, end], …],每段 start ≤ end ≤ 训练段末日}。"""
+    if not isinstance(ref, dict) or set(ref) != {"node", "spans"}:
+        bad("reference 应为 {node, spans}")
+        return
+    if not _nonempty(ref["node"]):
+        bad("reference.node 应为非空字符串(基准 node 的 node_id)")
+    spans = ref["spans"]
+    if not isinstance(spans, list) or not spans:
+        bad("reference.spans 应为非空数组 [[start, end], …]")
+        return
+    for sp in spans:
+        if not isinstance(sp, list) or len(sp) != 2:
+            bad(f"reference.spans 的每一段应为 [start, end],实为 {sp!r}")
+            continue
+        start_ok = _check_date("reference.spans", sp[0], bad)
+        end_ok = _check_date("reference.spans", sp[1], bad)
+        if start_ok and end_ok and sp[0] > sp[1]:
+            bad(f"reference.spans 的一段 start {sp[0]} 晚于 end {sp[1]}")
 
 
 def _nonempty(x) -> bool:

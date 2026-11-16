@@ -848,36 +848,38 @@ def build_router(*, registry, config_path, get_config, set_config,
             return ms, f"pattern {pattern} is mapped by several apps: {', '.join(m['app'] for m in ms)}"
         return ms, None
 
-    # 反馈状态接口的买点缓存:{app: (app_ver, {股票: AppBuys})},即按 (app, app_ver, 股票) 存;
-    # app 换了版本(改了 .py 或默认参数文件)就整个丢掉旧版本的条目,不让旧版本越攒越多。
-    buys_cache: dict[str, tuple[str, dict]] = {}
+    # 反馈状态接口的买点缓存:{app: ((app_ver, 基准 node), {股票: AppBuys})},即按 (app, app_ver, 基准 node, 股票)
+    # 存:基准 node 写在 mapping.yaml 里,不进 app_ver,会话改了它也要重取。app 换了版本(改了 .py 或默认参数文件)
+    # 或换了基准 node 就整个丢掉旧的条目,不让旧版本越攒越多。
+    buys_cache: dict[str, tuple[tuple, dict]] = {}
 
-    def _buys_of(app: str, ver: str, mod, cfg: dict, symbol: str, params):
-        """这只股票在当前 app 下的买点(AppBuys),有缓存用缓存。区间与 compare 的图一致:全历史
-        (1900-01-01)到训练段末日,label_horizon 20(前端 stores/appLink.ts 调单股预览就是这么调的;
-        app_buys 不按区间筛 hit,区间不同买点就可能不同)。读不到行情抛 BarsUnavailable。"""
+    def _buys_of(app: str, ver: str, reference: str, mod, cfg: dict, symbol: str, params):
+        """这只股票在当前 app 下的买点(AppBuys,带 mapping 声明的基准 node 的 event),有缓存用缓存。区间与
+        compare 的图一致:全历史(1900-01-01)到训练段末日,label_horizon 20(前端 stores/appLink.ts 调单股预览
+        就是这么调的;app_buys 不按区间筛 hit,区间不同买点就可能不同)。读不到行情抛 BarsUnavailable。"""
         entry = buys_cache.get(app)
-        if entry is None or entry[0] != ver:
-            entry = (ver, {})
+        if entry is None or entry[0] != (ver, reference):
+            entry = ((ver, reference), {})
             buys_cache[app] = entry
         by_symbol = entry[1]
         if symbol not in by_symbol:
             res, win, meta = run_app(mod, cfg, symbol, "1900-01-01", TRAIN_END, params, 20)
-            by_symbol[symbol] = app_buys(res, win, meta["end_node"])
+            by_symbol[symbol] = app_buys(res, win, meta["end_node"], reference=reference)
         return by_symbol[symbol]
 
     @router.get("/feedback/status")
     def get_feedback_status(pattern: str):
         """这个 pattern 的全部反馈(source 为 picked 的;盲看标记不在内)在当前 app 下的状态。
 
-        当前 app = 写了这个 pattern、没有问题的那个 mapping 的 app;找不到(没有、几个 app 都写了、mapping 有问题)
-        → {app: null, app_ver: null, items: [], reason: 原因}。
+        当前 app = 写了这个 pattern、没有问题的那个 mapping 的 app;找不到(没有、几个 app 都写了、mapping 有问题,
+        含没写基准 node reference、或它指向不存在的 node)→ {app: null, app_ver: null, items: [], reason: 原因}。
+        整族反馈按 mapping 声明的基准 node 判(交给 app_buys 取基准 event,判法见 match.feedback_status)。
         返回 {app, app_ver, items: [{id, status, tag, red, reason}], reason: null}:
         - status:页面上显示的状态 'matched' / 'unmatched'(path2_web/annotation/match.py 的 feedback_status
-          经 shown_status:起点认不出的 lost 并进 unmatched);这只股票读不到行情(没有这只股票、代码名不合格)
+          经 shown_status:基准 node 对不上的 lost 并进 unmatched);这只股票读不到行情(没有这只股票、代码名不合格)
           时为 null,原因写在这一条的 reason 里,其余条照常;
         - tag:页面上要挂的原因标签(match.shown_tag):mapping 会话段 tags 里这条的标签,只在 app 还在买、或
-          起点认不出而会话挂了标签(认法变了、毛病还在)时给,其余为 null(会话段写坏了也当没有);
+          基准 node 对不上而会话挂了标签(认法变了、毛病还在)时给,其余为 null(会话段写坏了也当没有);
         - red:画不画朱红(match.is_red,只在这里判一次,前端照着画、照着排);
         - items 已按侧栏的顺序排好:朱红在前,不买了却还挂着原因标签的其次,其余在后;同档按股票、start、end、编号。
         行情目录不存在 → 503(同单股预览);app 自身出错(声明漂移等)→ 500;标注目录不存在 → 503。"""
@@ -903,7 +905,7 @@ def build_router(*, registry, config_path, get_config, set_config,
         try:
             for symbol, fb in fbs:
                 try:
-                    buys = _buys_of(app, ver, mod, cfg, symbol, params)
+                    buys = _buys_of(app, ver, m["reference"], mod, cfg, symbol, params)
                 except NoDataDir:
                     raise                     # 行情目录整个不在:整体 503,同单股预览
                 except BarsUnavailable as e:  # 只是这只股票读不到(没有 / 代码名不合格):记在这一条上

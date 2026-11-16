@@ -485,16 +485,20 @@ describe('反馈', () => {
     const s = await ready()
     s.setCurrentPattern('p')
     inCompare()
+    const reference = { node: 'step', spans: [['2025-01-03', '2025-01-03'], ['2025-01-03', '2025-01-06']] as [string, string][] }
+    expect(s.saveFeedback({ symbol: 'AAA', start: '2025-01-06', end: '2025-01-10', target: 'family',
+                            family_start: '2025-01-02', note: '追高' })).toBeNull()     // 新建的整族反馈必须带 reference
     const id = s.saveFeedback({ symbol: 'AAA', start: '2025-01-06', end: '2025-01-10', target: 'family',
-                                family_start: '2025-01-02', note: ' 追高 ', nodes: ['step'] })
+                                family_start: '2025-01-02', reference, note: ' 追高 ', nodes: ['step'] })
     expect(id).toBe('f-pc-1')
     expect(s.feedbackOf('AAA').map(f => f.id)).toEqual(['f-pc-1'])          // 还没存完就显示
     await s.flushed()
     expect(fake.batches.at(-1)).toEqual([{ kind: 'feedback', id: 'f-pc-1', base: null, value: {
       id: 'f-pc-1', symbol: 'AAA', pattern: 'p', app_id: 'app1', app_ver: 'v1', start: '2025-01-06', end: '2025-01-10',
-      target: 'family', source: 'picked', note: '追高', nodes: ['step'], family_start: '2025-01-02' } }])
+      target: 'family', source: 'picked', note: '追高', nodes: ['step'], family_start: '2025-01-02', reference } }])
     expect(Object.keys(fake.batches.at(-1)![0].value)).toEqual(
-      ['id', 'symbol', 'pattern', 'app_id', 'app_ver', 'start', 'end', 'target', 'source', 'note', 'nodes', 'family_start'])
+      ['id', 'symbol', 'pattern', 'app_id', 'app_ver', 'start', 'end', 'target', 'source', 'note', 'nodes', 'family_start',
+       'reference'])
     expect(fake.read.state.charts[0].feedback).toHaveLength(1)
     expect(fake.read.state.charts[0].samples).toEqual([])
   })

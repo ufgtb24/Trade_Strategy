@@ -64,7 +64,7 @@ const feedbackLines = computed<string[] | null>(() => {
   const all = (chart.value?.feedback ?? []).filter(f => f.source === 'picked' && f.pattern === ann.currentPattern)
   const mine = i.kind === 'feedback' ? all.filter(f => f.id === i.id)
     : all.filter(f => [...ownDates.value].some(x => f.start <= x && x <= f.end)
-        || (f.target === 'family' && !!f.family_start && f.family_start === (i.kind === 'hit_family' ? i.date : i.family)))
+        || (f.target === 'family' && view.feedbackHitIdsOf(f.id).some(h => ownHitIds.value.has(h))))
   return listOrNone(mine.map(f => [span(f.start, f.end), fb.statusById[f.id]?.status ?? null].filter(Boolean).join(' ')))
 })
 

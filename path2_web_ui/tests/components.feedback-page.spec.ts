@@ -116,7 +116,7 @@ beforeEach(() => {
   fake.batches = []
   fake.answer = { app: 'app1', app_ver: 'v1', reason: null, items: [
     item('f-pc-1', 'unmatched', false),                   // 常色:不买了,接口不给标签
-    item('f-pc-2', 'unmatched', false, 'unhandled'),      // 不买了,但会话说毛病还在(起点认不出、认法变了):接口照给标签
+    item('f-pc-2', 'unmatched', false, 'unhandled'),      // 不买了,但会话说毛病还在(基准 node 对不上、认法变了):接口照给标签
     item('f-pc-3', 'matched', true, 'not_worth'),
     item('f-pc-5', null, false),
     item('f-pc-7', 'matched', false, 'redefined'),        // 定义改过:matched 也不红,标签照挂

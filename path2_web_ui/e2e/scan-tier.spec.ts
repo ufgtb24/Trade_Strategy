@@ -18,7 +18,7 @@ import { enterScanTier } from './scanTier'
  */
 
 const GROUPING = join(REPO, 'tests/path2_web/fixtures/annotation_grouping_v1/batches')
-const MAPPING = 'pattern: W底\nfeatures:\n  w-pc-3: bo\n'
+const MAPPING = 'pattern: W底\nreference: bo\nfeatures:\n  w-pc-3: bo\n'
 const OUTSIDE = 'KO'
 
 async function putFixture(b: Backend) {

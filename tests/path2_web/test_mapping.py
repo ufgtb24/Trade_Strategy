@@ -4,7 +4,9 @@
 - 读得懂的照原样给出(没写 notes 时 notes 为空字典);没有文件的 app 不出现;
 - 读不懂、pattern 或 features 形状不对、node 不在 app 的 dag 里、notes 形状不对或键指向 dag 里没有的 node / where、
   两个 app 写了同一个 pattern:problem 写明原因;
-- 真 app new_step 的 mapping 文件本身读得懂,plateau 上每条 where 都有 notes;
+- reference(基准 node)必有:缺了、不是非空字符串、指向 dag 里没有的 node、或指向子结构 node 的子 node 都进 problem;
+  可以指不参与求解的子结构 node;别的检查提前结束时,合格的 reference 照样带出;
+- 真 app new_step 的 mapping 文件本身读得懂(reference 是 step),plateau 上每条 where 都有 notes;
 - 路由每次请求都重读文件(会话在后端开着时写 mapping,前端再要一次就拿到)。
 测试不往 path2_apps/ 里写文件:mapping_path 换成临时目录里的文件。
 """
@@ -46,10 +48,12 @@ def files(tmp_path, monkeypatch):
     return write
 
 
-def _fake(app: str, nodes=("a", "b"), wheres: dict | None = None):
-    """只有 build_pattern 的假 app 模块:dag 里的 node 是 nodes,wheres 给每个 node 上 where 的名字。"""
+def _fake(app: str, nodes=("a", "b"), wheres: dict | None = None, produced_by: dict | None = None):
+    """只有 build_pattern 的假 app 模块:dag 里的 node 是 nodes,wheres 给每个 node 上 where 的名字,
+    produced_by 给子结构 node 的物化来源父 node(没给的是独立 node)。"""
     topo = SimpleNamespace(nodes=[SimpleNamespace(node_id=n) for n in nodes])
-    specs = [SimpleNamespace(node_id=n, where=tuple((w, None) for w in (wheres or {}).get(n, ()))) for n in nodes]
+    specs = [SimpleNamespace(node_id=n, where=tuple((w, None) for w in (wheres or {}).get(n, ())),
+                             produced_by=(produced_by or {}).get(n)) for n in nodes]
     return SimpleNamespace(__name__=f"path2_apps.{app}.dag_spec", load_params=lambda: None,
                            build_pattern=lambda p: SimpleNamespace(to_topology=lambda: topo, nodes=specs))
 
@@ -61,18 +65,18 @@ def test_mapping_file_sits_next_to_dag_spec():
 
 
 def test_reads_valid_mapping_and_skips_apps_without_file(files):
-    files("x", "pattern: 放量突破\nfeatures:\n  w-pc-3: a\n  w-pc-7: b\n")
+    files("x", "pattern: 放量突破\nreference: a\nfeatures:\n  w-pc-3: a\n  w-pc-7: b\n")
     reg = _Registry({"x": _fake("x"), "y": _fake("y")})
     assert mapping_mod.read_mappings(reg) == [
-        {"app": "x", "pattern": "放量突破", "features": {"w-pc-3": "a", "w-pc-7": "b"}, "notes": {}, "problem": None,
-         "session": None, "session_problem": None}]
+        {"app": "x", "pattern": "放量突破", "reference": "a", "features": {"w-pc-3": "a", "w-pc-7": "b"}, "notes": {},
+         "problem": None, "session": None, "session_problem": None}]
 
 
 def test_real_app_nodes_checked(files):
-    files("bo_only", "pattern: p\nfeatures:\n  w-pc-1: bo\n  w-pc-2: nope\n")
+    files("bo_only", "pattern: p\nreference: bo\nfeatures:\n  w-pc-1: bo\n  w-pc-2: nope\n")
     [m] = mapping_mod.read_mappings(_Registry({"bo_only": bo_only}))
     assert m["problem"] == "node not in app bo_only: nope"
-    files("bo_only", "pattern: p\nfeatures:\n  w-pc-1: bo\n")
+    files("bo_only", "pattern: p\nreference: bo\nfeatures:\n  w-pc-1: bo\n")
     [m] = mapping_mod.read_mappings(_Registry({"bo_only": bo_only}))
     assert m["problem"] is None and m["features"] == {"w-pc-1": "bo"}
 
@@ -81,9 +85,13 @@ def test_real_app_nodes_checked(files):
     ("pattern: [unclosed\n", "mapping.yaml cannot be read: "),
     ("- a\n- b\n", "pattern must be a non-empty string"),
     ("pattern: '  '\nfeatures: {w-pc-1: a}\n", "pattern must be a non-empty string"),
-    ("pattern: p\n", "features must map feature ids to node ids"),
-    ("pattern: p\nfeatures: [a]\n", "features must map feature ids to node ids"),
-    ("pattern: p\nfeatures: {w-pc-1: 3}\n", "features must map feature ids to node ids"),
+    ("pattern: p\nreference: a\n", "features must map feature ids to node ids"),
+    ("pattern: p\nreference: a\nfeatures: [a]\n", "features must map feature ids to node ids"),
+    ("pattern: p\nreference: a\nfeatures: {w-pc-1: 3}\n", "features must map feature ids to node ids"),
+    ("pattern: p\nfeatures: {w-pc-1: a}\n", "reference must name the reference node of the app"),
+    ("pattern: p\nreference: ''\nfeatures: {w-pc-1: a}\n", "reference must name the reference node of the app"),
+    ("pattern: p\nreference: [a]\nfeatures: {w-pc-1: a}\n", "reference must name the reference node of the app"),
+    ("pattern: p\nreference: nope\nfeatures: {w-pc-1: a}\n", "reference node not in app x (or nested too deep): nope"),
 ])
 def test_bad_files_report_problem(files, text, problem):
     files("x", text)
@@ -92,9 +100,9 @@ def test_bad_files_report_problem(files, text, problem):
 
 
 def test_same_pattern_in_two_apps_blocks_both(files):
-    files("x", "pattern: p\nfeatures: {w-pc-1: a}\n")
-    files("y", "pattern: p\nfeatures: {w-pc-1: b}\n")
-    files("z", "pattern: q\nfeatures: {w-pc-1: b}\n")
+    files("x", "pattern: p\nreference: a\nfeatures: {w-pc-1: a}\n")
+    files("y", "pattern: p\nreference: a\nfeatures: {w-pc-1: b}\n")
+    files("z", "pattern: q\nreference: a\nfeatures: {w-pc-1: b}\n")
     ms = mapping_mod.read_mappings(_Registry({a: _fake(a) for a in "xyz"}))
     assert [(m["app"], m["problem"]) for m in ms] == [
         ("x", "pattern also mapped by app y"), ("y", "pattern also mapped by app x"), ("z", None)]
@@ -103,14 +111,14 @@ def test_same_pattern_in_two_apps_blocks_both(files):
 def test_route_rereads_files_each_request(tmp_path, files):
     c = TestClient(create_app(config_override=data_cfg(tmp_path), outputs_root=str(tmp_path / "outputs")))
     assert c.get("/mappings").json() == []
-    files("bo_only", "pattern: p\nfeatures: {w-pc-1: bo}\n")
+    files("bo_only", "pattern: p\nreference: bo\nfeatures: {w-pc-1: bo}\n")
     assert c.get("/mappings").json() == [
-        {"app": "bo_only", "pattern": "p", "features": {"w-pc-1": "bo"}, "notes": {}, "problem": None,
-         "session": None, "session_problem": None}]
+        {"app": "bo_only", "pattern": "p", "reference": "bo", "features": {"w-pc-1": "bo"}, "notes": {},
+         "problem": None, "session": None, "session_problem": None}]
 
 
 def test_notes_for_nodes_and_wheres(files):
-    files("x", "pattern: p\nfeatures: {w-pc-1: a}\nnotes:\n  a: 旧平台\n  a.flat: 旧平台平\n  b.flat: 另一条\n")
+    files("x", "pattern: p\nreference: a\nfeatures: {w-pc-1: a}\nnotes:\n  a: 旧平台\n  a.flat: 旧平台平\n  b.flat: 另一条\n")
     [m] = mapping_mod.read_mappings(_Registry({"x": _fake("x", wheres={"a": ["flat"], "b": ["flat"]})}))
     assert m["problem"] is None
     assert m["notes"] == {"a": "旧平台", "a.flat": "旧平台平", "b.flat": "另一条"}
@@ -125,7 +133,7 @@ def test_notes_for_nodes_and_wheres(files):
     ("{b.flat: 说明}", "notes refer to nothing in app x: b.flat"),
 ])
 def test_bad_notes_report_problem(files, notes, problem):
-    files("x", f"pattern: p\nfeatures: {{w-pc-1: a}}\nnotes: {notes}\n")
+    files("x", f"pattern: p\nreference: a\nfeatures: {{w-pc-1: a}}\nnotes: {notes}\n")
     [m] = mapping_mod.read_mappings(_Registry({"x": _fake("x", wheres={"a": ["flat"]})}))
     assert m["problem"] == problem
 
@@ -133,7 +141,7 @@ def test_bad_notes_report_problem(files, notes, problem):
 def test_new_step_mapping_file_is_readable_and_explains_every_where():
     """真文件(path2_apps/new_step/mapping.yaml):读得懂;plateau 上每条 where 都有一句 notes,界面上不会只剩英文名。"""
     [m] = mapping_mod.read_mappings(_Registry({"new_step": new_step}))
-    assert m["problem"] is None and m["pattern"] == "new_step"
+    assert m["problem"] is None and m["pattern"] == "new_step" and m["reference"] == "step"
     spec = new_step.build_pattern(new_step.load_params())
     plateau = next(n for n in spec.nodes if n.node_id == "plateau")
     assert {f"plateau.{cid}" for cid, _ in plateau.where} <= set(m["notes"])
@@ -150,14 +158,14 @@ _SESSION = """session:
 
 def test_session_passes_through_as_written(files):
     """会话段形状对时原样带出;where 不对着 dag 查(推出的条件可能还没写进 app);problem 不受影响。"""
-    files("x", "pattern: p\nfeatures: {w-pc-1: a}\n" + _SESSION)
+    files("x", "pattern: p\nreference: a\nfeatures: {w-pc-1: a}\n" + _SESSION)
     [m] = mapping_mod.read_mappings(_Registry({"x": _fake("x")}))
     assert m["problem"] is None and m["session_problem"] is None
     assert m["session"] == {
         "snapshot": {"seen": {"pc": 171, "upc": 0}, "samples": ["s-pc-3", "s-pc-9"], "at": "2026-11-10"},
         "conditions": [{"where": "plateau.no_chase", "from": ["f-pc-1"], "state": "unmeasured"}],
         "tags": {"f-pc-1": "for_tuning", "f-pc-2": "redefined"}}
-    files("x", "pattern: p\nfeatures: {w-pc-1: a}\nsession: {tags: {f-pc-1: accepted}}\n")   # 子键都可省
+    files("x", "pattern: p\nreference: a\nfeatures: {w-pc-1: a}\nsession: {tags: {f-pc-1: accepted}}\n")   # 子键都可省
     [m] = mapping_mod.read_mappings(_Registry({"x": _fake("x")}))
     assert m["session"] == {"tags": {"f-pc-1": "accepted"}} and m["session_problem"] is None
 
@@ -183,7 +191,7 @@ def test_session_passes_through_as_written(files):
 ])
 def test_bad_session_only_goes_to_session_problem(files, session, problem):
     """会话段写坏了:原因只进 session_problem,session 为 None;problem 仍为 None,compare 照常能用这个 mapping。"""
-    files("x", f"pattern: p\nfeatures: {{w-pc-1: a}}\nnotes: {{a: 旧平台}}\nsession: {session}\n")
+    files("x", f"pattern: p\nreference: a\nfeatures: {{w-pc-1: a}}\nnotes: {{a: 旧平台}}\nsession: {session}\n")
     [m] = mapping_mod.read_mappings(_Registry({"x": _fake("x")}))
     assert m["session_problem"].startswith(problem) and m["session"] is None
     assert m["problem"] is None and m["features"] == {"w-pc-1": "a"} and m["notes"] == {"a": "旧平台"}
@@ -195,7 +203,7 @@ def test_session_read_before_any_other_check(files):
     [m] = mapping_mod.read_mappings(_Registry({"x": _fake("x")}))
     assert m["problem"] == "pattern must be a non-empty string"
     assert m["session"] == {"tags": {"f-pc-1": "unhandled"}} and m["session_problem"] is None
-    files("x", "pattern: p\nfeatures: {w-pc-1: nope}\nsession: {tags: {f-pc-1: x}}\n")
+    files("x", "pattern: p\nreference: a\nfeatures: {w-pc-1: nope}\nsession: {tags: {f-pc-1: x}}\n")
     [m] = mapping_mod.read_mappings(_Registry({"x": _fake("x")}))
     assert m["problem"].startswith("node not in app") and m["session_problem"].startswith("session.tags")
     files("x", "pattern: [unclosed\nsession: {tags: {}}\n")
@@ -205,7 +213,7 @@ def test_session_read_before_any_other_check(files):
 
 
 def test_empty_session_key_counts_as_absent(files):
-    files("x", "pattern: p\nfeatures: {w-pc-1: a}\nsession:\n")
+    files("x", "pattern: p\nreference: a\nfeatures: {w-pc-1: a}\nsession:\n")
     [m] = mapping_mod.read_mappings(_Registry({"x": _fake("x")}))
     assert m["session"] is None and m["session_problem"] is None and m["problem"] is None
 
@@ -220,9 +228,39 @@ def test_session_tags_are_one_vocabulary():
 
 def test_unquoted_snapshot_at_is_read_as_text(files):
     """at 不加引号时 YAML 读成日期:照样算形状对,带出时转成 YYYY-MM-DD 字符串,tags 不跟着丢。"""
-    files("x", "pattern: p\nfeatures: {w-pc-1: a}\n"
+    files("x", "pattern: p\nreference: a\nfeatures: {w-pc-1: a}\n"
                "session: {snapshot: {seen: {pc: 3}, samples: [], at: 2026-11-10}, tags: {f-pc-1: unhandled}}\n")
     [m] = mapping_mod.read_mappings(_Registry({"x": _fake("x")}))
     assert m["session_problem"] is None
     assert m["session"] == {"snapshot": {"seen": {"pc": 3}, "samples": [], "at": "2026-11-10"},
                             "tags": {"f-pc-1": "unhandled"}}
+
+
+# ───────────────────────── 基准 node(reference)─────────────────────────
+def test_reference_may_be_a_direct_sub_structure_node_but_not_deeper(files):
+    """reference 可以指独立 node 的直接子结构 node(不参与求解);子结构 node 的子 node 页面看不到,进 problem。"""
+    mod = _fake("x", nodes=("a", "b", "c"), produced_by={"b": "a", "c": "b"})
+    files("x", "pattern: p\nreference: b\nfeatures: {w-pc-1: a}\n")
+    [m] = mapping_mod.read_mappings(_Registry({"x": mod}))
+    assert m["problem"] is None and m["reference"] == "b"
+    files("x", "pattern: p\nreference: c\nfeatures: {w-pc-1: a}\n")
+    [m] = mapping_mod.read_mappings(_Registry({"x": mod}))
+    assert m["problem"] == "reference node not in app x (or nested too deep): c" and m["reference"] is None
+
+
+def test_reference_read_before_other_checks(files):
+    """features 写坏了(提前结束检查)也照样带出合格的 reference:会话的改版报告不拦 problem,要靠它判整族反馈。"""
+    files("x", "pattern: p\nreference: a\nfeatures: [a]\n")
+    [m] = mapping_mod.read_mappings(_Registry({"x": _fake("x")}))
+    assert m["problem"] == "features must map feature ids to node ids" and m["reference"] == "a"
+    files("x", "pattern: p\nreference: a\nfeatures: {w-pc-1: nope}\n")
+    [m] = mapping_mod.read_mappings(_Registry({"x": _fake("x")}))
+    assert m["problem"] == "node not in app x: nope" and m["reference"] == "a"
+
+
+def test_real_sub_structure_node_is_accepted():
+    """真 app new_step:step 是 plateau 的子结构 node(不参与求解),能当基准 node;不存在的 node 不行。"""
+    spec = new_step.build_pattern(new_step.load_params())
+    assert mapping_mod._reference("new_step", {"reference": "step"}, spec) == ("step", None)
+    assert mapping_mod._reference("new_step", {"reference": "plateau"}, spec) == ("plateau", None)
+    assert mapping_mod._reference("new_step", {}, spec)[1] == "reference must name the reference node of the app (a node_id)"
