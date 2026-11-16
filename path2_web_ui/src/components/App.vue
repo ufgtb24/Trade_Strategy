@@ -17,6 +17,7 @@ import { useAnnotationStore } from '../stores/annotation'
 import { useDirectLinkStore } from '../stores/directLinks'
 import { useAppLinkStore } from '../stores/appLink'
 import { useFeedbackStore } from '../stores/feedback'
+import { onColumnKey } from './columnKeys'
 
 // 启动即加载 config,使 loadScanFile 能读到持久化的 last_selected_pattern
 onMounted(() => { void useConfigStore().load() })
@@ -42,6 +43,10 @@ function _guard(e: BeforeUnloadEvent) {
 }
 onMounted(() => window.addEventListener('beforeunload', _guard))
 onBeforeUnmount(() => window.removeEventListener('beforeunload', _guard))
+
+// 左右栏的收起快捷键 Shift+L / Shift+R(columnKeys.ts)
+onMounted(() => window.addEventListener('keydown', onColumnKey))
+onBeforeUnmount(() => window.removeEventListener('keydown', onColumnKey))
 </script>
 
 <style>
@@ -65,8 +70,9 @@ onBeforeUnmount(() => window.removeEventListener('beforeunload', _guard))
 }
 * { box-sizing: border-box; }
 body { margin: 0; font-family: system-ui, sans-serif; color: #0f172a; }
-.app { display: grid; grid-template-columns: minmax(220px, max-content) 1fr; grid-template-rows: auto 1fr; height: 100vh; }
+/* 左栏的宽度由它自己定(抽屉露出多少 + 靠图一侧的那条边,见 LeftPanel.vue),图区占其余 */
+.app { display: grid; grid-template-columns: auto minmax(0, 1fr); grid-template-rows: auto 1fr; height: 100vh; }
 .app > .top { grid-column: 1 / -1; }
-.left { border-right: 1px solid #e5e7eb; display: flex; flex-direction: column; overflow: hidden; max-width: 50vw; min-height: 0; }
-.right { display: flex; flex-direction: column; min-height: 0; min-width: 0; overflow: auto; }
+.left { grid-column: 1; grid-row: 2; min-height: 0; }
+.right { grid-column: 2; grid-row: 2; display: flex; flex-direction: column; min-height: 0; min-width: 0; overflow: auto; }
 </style>

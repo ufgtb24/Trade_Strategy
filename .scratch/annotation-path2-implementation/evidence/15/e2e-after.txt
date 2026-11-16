@@ -1,0 +1,58 @@
+# e2e 完工后（提交 8e18155；独立审查后的修改都在内）
+# 跑法同基线（e2e-baseline.txt）：evidence/13/e2e_run.sh，分离的干净 checkout，端口 8155 / 5155，新的空临时目录，解释器借票 worktree 的 .venv。
+# 主体：
+  10 failed
+  52 passed (4.7m)
+## 失败（10 条，与基线逐条相同：dev-ui-replication 第 4 条红在已退役的 class_id / event_id 字段上，flow 4 条、scan-dialog 5 条红在开头等「底部反转突破爆发」下拉那一步）
+e2e/dev-ui-replication.spec.ts:313:1 › 4. hover price-point marker shows marker tooltip; path2 event fields present
+e2e/flow.spec.ts:138:1 › bidirectional highlight: sidebar candidate row click → selected class + chart screenshot
+e2e/flow.spec.ts:184:1 › funnel overview: 4 pattern-node rows + 1 bo badge row + expand shows clause table
+e2e/flow.spec.ts:53:1 › scan → load → 5-node topology → sidebar funnel visible
+e2e/flow.spec.ts:97:1 › level control: detected → qualified → in_hit active class + screenshot
+e2e/scan-dialog.spec.ts:100:1 › 5. Start scan → 按钮变红「停止扫描」→ click → cancel + 「扫描 ⚙」enabled
+e2e/scan-dialog.spec.ts:30:1 › 1. open dialog → rows visible (列 Time/Hits/Size 都渲染)
+e2e/scan-dialog.spec.ts:40:1 › 2. row click + Open → main view loads scanFile
+e2e/scan-dialog.spec.ts:50:1 › 3. multi-select 2 rows + Delete → confirm → 行消失
+e2e/scan-dialog.spec.ts:75:1 › 4. select currentScanTs + Delete → 红字提示 + 删后主视图清空
+## 多出的 7 条是新增的 e2e/columns.spec.ts，都过：
+✓ e2e/columns.spec.ts:133:3 › 左右栏的收起与拖宽 › 左栏抽屉:拖窄从靠图一侧遮列、代码列最后遮,拖到最窄停住不收起,没有横向滚动条;换到窄页跟着缩、换回来恢复
+✓ e2e/columns.spec.ts:183:3 › 左右栏的收起与拖宽 › 右栏拖宽:标注侧栏、诊断侧栏拖窄后内容换行、字段名完整,拖到最窄就停
+✓ e2e/columns.spec.ts:235:3 › 左右栏的收起与拖宽 › 右栏收着时选中框、画新框都不打开,焦点不掉进看不见的起名框;Shift+R 打开后停在 selection 页、显示那个新框
+✓ e2e/columns.spec.ts:271:3 › 左右栏的收起与拖宽 › 只藏不拆:charts 页的滚动位置、note 打了一半的字都留着;左栏收着时 PageUp / PageDown 照样换图
+✓ e2e/columns.spec.ts:315:3 › 左右栏的收起与拖宽 › 记忆:收起状态和三份宽度在换股、切档、刷新后都还在,三份宽度互不影响
+✓ e2e/columns.spec.ts:365:3 › 左右栏的收起与拖宽 › 图:收起左右栏前后日期范围不变、框和三角仍对着 K 线;拖边不平移、不画框,点亮的 box 还亮着
+✓ e2e/columns.spec.ts:410:1 › 左栏收着时,scan 档扫描列表的 PageUp / PageDown 照样换图
+
+# 依赖旧扫描的 6 个 spec，单条超时 30 秒：
+  27 failed
+  4 did not run
+## 失败清单与基线逐条相同（都是点不到历史里那份扫描而超时）
+e2e/kline-ctrl-wheel-right-anchor.spec.ts:102:1 › E3: 放大后缩小 → start 精确还原(0.85 与 1/0.85 互逆)
+e2e/kline-ctrl-wheel-right-anchor.spec.ts:112:1 › E4: 真实 Ctrl+wheel → 缩放生效、页面未被浏览器缩放、band zoom 未误触
+e2e/kline-ctrl-wheel-right-anchor.spec.ts:76:1 › E1: 主图 Ctrl+wheel 放大 → end 不变、start 按 0.85 公式增大、主副同步
+e2e/kline-ctrl-wheel-right-anchor.spec.ts:90:1 › E2: 副图容器 Ctrl+wheel → 同 E1(副图 → chartMain 单入口链路)
+e2e/shift-pair-feedback.spec.ts:119:3 › 入口 D shift+click 沉默期反馈 › 场景 1: 第 1 击 → banner + marker 描边
+e2e/subchart-band-zoom.spec.ts:106:1 › C3: Shift+wheel over sub-outer → factor × 1.1(相对步进)
+e2e/subchart-band-zoom.spec.ts:130:1 › C4: 主图区 Shift+wheel = noop(readout 不变、页面不滚动)
+e2e/subchart-band-zoom.spec.ts:146:1 › C5: 持久化 → factor=1.4 set → reload → 保留
+e2e/subchart-band-zoom.spec.ts:70:1 › C1: 点 + 按钮 → sub-inner height 涨、主图 flex 缩、readout 显示因子
+e2e/subchart-band-zoom.spec.ts:93:1 › C2: 点 ↺ 按钮 → factor 回 1.0×、sub-inner height 回初始、↺ disabled
+e2e/subchart-blankclick-yaxis.spec.ts:108:1 › zoom-in 后 Esc 清选中触发全量 render → 主图 y 轴不回跳全窗(波及面同因)
+e2e/subchart-blankclick-yaxis.spec.ts:73:1 › zoom-in 后点副图空白触发全量 render → 主图 y 轴不回跳全窗(无留白)
+e2e/subchart-scroll-drag.spec.ts:116:1 › double-click divider restores auto-fit
+e2e/subchart-scroll-drag.spec.ts:140:1 › decor graphics survive zoom in (hits / bandLabels / subDivider / zebra remain in option.graphic)
+e2e/subchart-scroll-drag.spec.ts:169:1 › walk bar sits outside sub-outer and stays put when scrolling
+e2e/subchart-scroll-drag.spec.ts:210:1 › fit 态无滚动条:常态与选中后(显示栏写出选中的是什么)scrollHeight === clientHeight
+e2e/subchart-scroll-drag.spec.ts:232:1 › drag 后 shift+wheel:分界线随 zoom 移动、隐藏量守恒;dblclick 回 fit 且 zoom 不变
+e2e/subchart-scroll-drag.spec.ts:40:1 › main-chart + sub-chart canvases both mount
+e2e/subchart-scroll-drag.spec.ts:46:1 › initial sub-outer height equals subCanvasH (auto-fit)
+e2e/subchart-scroll-drag.spec.ts:60:1 › drag divider down compresses sub-outer + shows scrollbar
+e2e/subchart-scroll-drag.spec.ts:87:1 › drag divider up cannot expand sub-outer beyond subCanvasH (hard cap)
+e2e/subchart-tooltip-crosshair.spec.ts:142:3 › S2 单 tooltip(无跨图错位) › dispatchAction showTip on chartSub → DOM 仅 1 个可见 tooltip
+e2e/subchart-tooltip-crosshair.spec.ts:164:3 › S3 overlay 贯穿 › hover chartMain 中部 → overlay 可见 + 高度覆盖 kline-wrap-v2
+e2e/subchart-tooltip-crosshair.spec.ts:189:3 › S3 overlay 贯穿 › hover chartSub 中部 → overlay 对称可见
+e2e/subchart-tooltip-crosshair.spec.ts:206:3 › S3 overlay 贯穿 › 鼠标移出图 → overlay 消失
+e2e/subchart-tooltip-crosshair.spec.ts:62:3 › S1 sub-outer 不再溢出 + tooltip 挂 body › hover 副图 marker → subOuter scrollHeight ≡ clientHeight + tooltip parent = body
+e2e/subchart-tooltip-crosshair.spec.ts:92:3 › S1 sub-outer 不再溢出 + tooltip 挂 body › zoom in 后 hover 副图 marker → tooltip flip 到 marker 上方,完全在 viewport 内
+
+# 中间一版 acd2cb9（审查前）也跑过全套：主体 62 条 52 过 10 红、旧扫描组 27 红 4 没跑，失败清单都与基线相同。
