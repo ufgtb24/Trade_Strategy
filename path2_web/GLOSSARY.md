@@ -9,7 +9,7 @@ path2 的调试可视化工具：把分析结果投影成 JSON、再渲染成可
 ### 数据与流程
 
 **扫描 / scan**：
-对全宇宙股票逐只跑一遍选定的 app，把命中与统计落盘成一个结果文件。
+对全宇宙股票逐只跑一遍选定的 app，把命中与统计落盘成一个结果文件。顶栏 `mode` 的第四档也叫 `scan`，是看扫描结果的那个视图：画扫描文件里的产物和扫描窗口的 K 线，左栏是扫描面板与扫描结果列表，右栏是诊断侧栏；它和 `app` 档同一套画法，区别只在来源——`app` 档是当前 pattern 的 app 在这只股票上现算。没加载扫描时 `scan` 档的图区写 `no_scan`。
 
 **临时计算**：
 用当前 yaml 参数即时重算一只选中的股票，不落盘、不进扫描结果，专给「改完参数立刻看效果」的调参循环用。
@@ -62,6 +62,10 @@ pattern 的 DAG 图，同时是 node 的控制器：点节点切显隐，双击�
 回答「为什么这个事件或这条关系没命中」的几个固定查询口径——按时段查失败的 attempt、按 node 看 miss 分布、指定两个事件问它们为什么没连上。
 
 ### 标注工具
+
+**rally、random、charts**：
+= the three pages of the left-column list in the annotate, compare and app tiers, used to pick the next chart.
+标注三档左栏「找图清单」的三页（`scan` 档的左栏是扫描结果列表）。`rally` 是训练段里的大涨段清单，每行带标过的 pattern 名和框数，按这一行的图窗算；`random` 是这次抽过的图，顶栏 `random` 每抽一张加一行，只留在页面里，刷新就清空；`charts` 是全部标过的股票，一只一行，写 pattern 名、正负样本数、框数，只画了框的也列。三页只列用户自己存下的东西和这次抽到的图，不出现 app 的任何结果，也不记「看过」。点一行或按 PageUp / PageDown 换图，换图不换档。
 
 **off_pattern / 不像**：
 = a blind-review answer given when the hit does not have the shape of the pattern at all.
