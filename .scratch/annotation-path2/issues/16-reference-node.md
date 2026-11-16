@@ -54,6 +54,18 @@ Status: open
 - 要跟着改写的现行文字：spec 1.11「核对」、1.13 里反馈状态 `lost` 那一条；项目 CLAUDE.md 后端边界红线里的「反馈状态只做 app 买点日与日期范围的比对」，改成同时比基准 node 的 event 有没有共用 K 线（声明来自 app，后端仍不含走势语义）；annotation-round 的报告与账本里关于「起点认不出」的说法。
 - 时机：赶在 new_step 第 3 轮之前做。第 3 轮多半还要动阶跃起点（「往前找起点要不要加限定」那道题），不做的话整族反馈会再次大批落进「起点认不出」。
 
+### 代码落点（2026-11-16 在提交 72ec173 上查的，实施时以现场代码为准，先 grep 再读）
+
+- **判反馈状态（唯一一份判法）**：`path2_web/annotation/match.py` 的 `feedback_status`（family 分支：范围内有买点 → 同 `family_start` 的族有买点 → `event_starts` 里没有这个起点记 `lost`）；同文件 `shown_status`（`lost` 并进 `unmatched`）、`shown_tag`。测试 `tests/path2_web/test_annotation_match.py`。
+- **每只股票的买点**：`path2_web/app_run.py` 的 `AppBuys`（`families` 族起点 → 买点日、`event_starts`、`dates`，带 `to_dict` / `from_dict`，round 文件里就存它）与 `app_buys(res, win, end_node, spec)`（`event_starts` 只取参与求解的 node，见同文件 `solving_nodes`）。要新增每一族基准 node 的 event 起止；new_step 的 `step` 不参与求解，是 `plateau` 的子段，要沿事件的 child 槽取（`child_slots()` / `child()`，`path2/core.py`）。
+- **页面的状态接口**：`path2_web/api.py` 的 `GET /feedback/status`（`get_feedback_status`，内有按 (app, app_ver, 股票) 的 `AppBuys` 缓存）。
+- **前端同口径的一份**：`path2_web_ui/src/annotate/feedback.ts` 的 `feedbackHits`（选中一条反馈时牵出哪些 hit，注释写明和后端判朱红同一口径），改判法时这里要一起改；整族反馈的建立与校验在同文件和 `components/FeedbackPanel.vue`（`family_start` 的校验提示）；hit 与事件的投影在 `path2_web/serialize.py`（`child_refs` 承载子段）。
+- **反馈记录的存储**：`path2_web/annotation/store.py` 的 `_VALUE_KEYS["feedback"]`（可选键现有 `family_start`），校验在 `_feedback_problems`（`family_start` 只许 family 带、不晚于 start）；新增存基准 node 起止的键要同样加校验。模块开头的「状态的形状」说明一并改。测试 `tests/path2_web/test_annotation_store.py`。
+- **基准 node 的声明**：`path2_web/mapping.py` 的 `_read_one`（读 `pattern`、`features`、`notes`、`session`，问题记进 `problem`）；声明的 node 不存在时应报进 `problem`（`round_state.py` 的「mapping 问题」就读它）。测试 `tests/path2_web/test_mapping.py`。
+- **每轮的定格与报告**：`path2_web/annotation/revision.py` 的 `start_round`（round 文件存 `buys: {股票: AppBuys}`）、`_run_all`、`_status_text`（`lost` → 「起点认不出」）、`_lost_lines`（报告里逐条「待填」）、反馈详情里按 `family_start` 取族外买点的那段（grep `family_start`）。测试 `tests/path2_web/test_annotation_revision.py`。
+- **已有整族反馈的补存**：每条反馈记着写它时的 `app_ver`（`path2_web/app_version.py` 的 `app_ver(mod)`）。在 git 历史里找指纹对得上的那个提交（参考：new_step 第 1 轮改版后的版本在 9b2a5e6，第 2 轮改版后的在 e0a6c9c；第 1 轮之前写的反馈对应 9b2a5e6 之前的提交），用 `git worktree` 检出那一版跑出基准 node 的起止，再经 `append_batch` 写回；不切主目录的分支、不用 `git stash`。改反馈记录要用户同意（属于用户的标注）。
+- **skill 与文字**：`.claude/skills/annotation-round/references/checklist.md`「一条反馈怎样才算改好」那张表与「起点认不出」一段、`references/ledger.md` 里起点认不出的挂标签规则、SKILL.md 第 7 步第 1 条；spec 1.11「核对」、1.13 反馈状态 `lost` 一条；项目 CLAUDE.md「path2_web/ + path2_web_ui/」边界红线里「反馈状态只做 app 买点日与日期范围的比对」。
+
 ## Comments
 
 - 2026-11-16 讨论经过：用户问「起点认不出」的意思 → 会话解释它在所有 pattern 上都可能出现，而且它本身不衡量改善，只标出「这条没法自动核对」；整族那一层核对就是防「错误买点没消失、只是平移」 → 用户问拓扑大改后这层核对还有没有意义；会话答：按起点日期对确实失效，但防平移本身仍有意义 → 用户提议给每个 pattern 指定一个「先决 node」作基准；会话用这一轮数据实测（上表）支持该方向，并把判据从「最先检测」改为依赖关系 → 用户问要不要改 path2 强制所有 app 声明；会话建议只要求接了标注的 app、写在 `mapping.yaml` → 用户要求建文档记下，并把名字定为「基准 node」。
