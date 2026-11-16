@@ -88,3 +88,4 @@ none
 ## Comments
 
 - 2026-11-15 拆票：人审行按 `docs/agents/review-planning.md` 由会话推荐写入；同日拆票那一轮，用户选「照列的发布」确认（两张票都是 `ready-for-agent`，不设人审闸）。
+- 暂停 2026-11-15（parallel-tickets，等用户）：实现、测试、独立审查、截图都已完成（分支 impl/13-scan-tier 尖 449aace，测试与审查所在提交 105d280；单测 1665 条全过，e2e 与基线比无新增失败），合回被主目录未提交的改动挡住——`.scratch/annotation-path2/manual.md`、`path2_web_ui/src/components/ChartArea.vue` 两边都改了（同批还有 spec.md、FeedbackPanel.vue、stores/feedback.ts 等，看着是「Delete 删反馈」的开发），git 拒绝合并，本票不碰别人的改动；见 [Q01](../questions/Q01-main-dir-blocks-merge.md)。恢复：那批改动提交后说「继续 13」——先把调度分支合进票分支（ChartArea.vue 预计要手解），重核票 13 引用的 spec 条款，重跑单测、在分离 checkout 里照 evidence/13/e2e_run.sh 重跑 e2e，在 scan / app 档打开 Sidebar 与 Topology 看一眼布局，删掉 evidence/13/completion-draft.md、按它改提交号与数字写完成记录，再 --no-ff 合回。
