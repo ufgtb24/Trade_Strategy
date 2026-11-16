@@ -1,6 +1,8 @@
 # 已有 4 条整族反馈补存基准 event 起止
 
 Status: ready-for-agent
+Progress: in-progress
+Claimed: 2026-11-16 parallel-tickets session-18 @ worktree impl/18-backfill-family-reference
 Blocked by: 17
 
 ## Purpose
