@@ -58,6 +58,9 @@ pattern 的 DAG 图，同时是 node 的控制器：点节点切显隐，双击�
 **诊断侧栏**：
 右侧的漏斗总览与逐次命中留痕：每个 node 一行三档计数，展开看候选逐条卡在哪。
 
+**标注侧栏 / annotation sidebar**：
+`annotate`、`compare` 两档的右栏，页签 `selection`、`features`、`pattern`（`compare` 多一页 `feedback`）；`app`、`scan` 两档的右栏是诊断侧栏。能用栏边的小箭头或 `Shift+R` 收起，收着时选中、画框都不自动打开。
+
 **漏检入口**：
 回答「为什么这个事件或这条关系没命中」的几个固定查询口径——按时段查失败的 attempt、按 node 看 miss 分布、指定两个事件问它们为什么没连上。
 
