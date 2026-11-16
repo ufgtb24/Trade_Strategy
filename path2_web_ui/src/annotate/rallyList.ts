@@ -1,5 +1,5 @@
 /**
- * 大涨段清单(顶栏 rally)的排序与显示格式。按 symbol / date / rise 三列排,
+ * 大涨段清单(左栏找图清单的 rally 页)的排序与显示格式。按 symbol / date / rise 三列排,
  * 同值时按 date、symbol 定序,保证每次排出来一样。
  */
 import type { RallyItem } from '../types'

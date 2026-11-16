@@ -288,8 +288,8 @@ export const useViewStore = defineStore('view', () => {
    *  股票时留着现在这只);不在 scan 档就是现在这只。顶栏 compare / app 能不能点也按它判(stores/appLink.ts)。 */
   const frontTierSymbol = computed<string | null>(() =>
     !scanView.value || scanPicked.value || preScanSymbol.value === null ? symbol.value : preScanSymbol.value)
-  // annotate 下打开时图停在哪段(rally / random 进来时给);null = 按默认缩放(整只股票)。
-  // 每次 openSymbol 都换一个新对象:同一只股票换一段也能触发重画
+  // 前三档打开时图停在哪段(左栏 rally / random 的行、顶栏 random 进来时给);null = 按默认缩放(整只股票)。
+  // 每次换图都换一个新对象:同一只股票换一段也能触发重画
   const viewWindow = ref<ViewWindow | null>(null)
   const activePatternId = ref<string | null>(null)
   const sortByPid = ref<string | null>(null)
@@ -760,12 +760,22 @@ export const useViewStore = defineStore('view', () => {
     preScanSymbol.value = null
     scanPicked.value = false
   }
-  /** 按代码打开(顶栏 symbol、rally、random,pattern 页的样本卡,链接):不动扫描与 activePatternId。
+  /** 按代码打开(顶栏 symbol、random,pattern 页的样本卡,链接):不动扫描与 activePatternId。
    *  落点:在 compare 下换图留在 compare(决策票 01:换图不退出 compare),别的模式(含 scan 档)落在 annotate;
    *  链接跟完一律回到 annotate(stores/directLinks.ts)。
    *  win 给了就让图停在那段上,不给按默认缩放。代码是否存在由调用方先核过。 */
   function openSymbol(s: string, win: ViewWindow | null = null) {
     if (mode.value !== 'compare') mode.value = 'annotate'
+    showChart(s, win)
+  }
+  /** 从左栏找图清单换图(点一行、PageUp / PageDown):换图不换档,annotate、compare、现算的 app 都留在原档
+   *  (app 对新股票重跑,stores/appLink.ts)。清单只在前三档出现,scan 档里什么都不做。 */
+  function openFromFinder(s: string, win: ViewWindow | null = null) {
+    if (scanView.value) return
+    showChart(s, win)
+  }
+  /** 换上这只股票的图(不动模式):win 给了就停在那段上,不给按默认缩放;进 scan 前的记账清零。 */
+  function showChart(s: string, win: ViewWindow | null) {
     symbol.value = s
     preScanSymbol.value = null
     scanPicked.value = false
@@ -1429,7 +1439,7 @@ export const useViewStore = defineStore('view', () => {
     nodeColors, selectedHitId, selectedHit, tagMap, isolated, inHitIds, inHitEventIds, qualifiedIds,
     mode, annotating, comparing, appSource, linkedView, linkedRun, appId, endNode, appWindowOf,
     scanView, noScan, frontTierSymbol,
-    openSymbol, enterAnnotate, enterLinked, enterScan, setLinkedRun, viewWindow,
+    openSymbol, openFromFinder, enterAnnotate, enterLinked, enterScan, setLinkedRun, viewWindow,
     loadScanFile, clearScanFile, setCurrentScanName, currentScanName, selectSymbol, setActivePattern, setSort,
     toggleNode, toggleExpandedNode,
     focusHit, focusEvent, clearFocus,

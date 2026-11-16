@@ -1068,7 +1068,10 @@ function render(forceResetZoom = false) {
     else if (!symbol.value) { chartMain.clear(); chartSub.clear() }
     return
   }
-  const params = { ...buildRenderInput(), zoomOverride: forceResetZoom ? null : readZoomOverride() }
+  // 现算的 app 换图(左栏找图清单换图不换档)时也停在打开时给的图窗上;scan 档按扫描窗口的默认缩放
+  const resetZoom = linkedView.value && viewWindow.value
+    ? zoomForWindow(bars.value.map(b => b.date), viewWindow.value) : null
+  const params = { ...buildRenderInput(), zoomOverride: forceResetZoom ? resetZoom : readZoomOverride() }
   const bundle = computeEventData(bars.value, effectiveAnalysis.value.events, effectiveAnalysis.value.hits, params)
   const subGeom = deriveSubGeometry()
 
