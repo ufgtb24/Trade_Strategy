@@ -1,6 +1,6 @@
 # 票 14 合不回去：主目录里有别处改了、还没提交的文件
 
-Status: open
+Status: resolved
 Blocks: 14
 Raised: 2026-11-16 ticket-14
 Recommended: 等那边提交后再合回
