@@ -1,7 +1,7 @@
 # 主图上按住 Shift 复制一天或一段
 
 Status: ready-for-agent
-Progress: in-progress
+Progress: done
 Claimed: 2026-11-16 parallel-tickets session-16 @ worktree impl/16-shift-copy-day-range
 Blocked by: none
 
@@ -63,6 +63,34 @@ none
 - 截图存进 `evidence/16/`：`Shift+拖` 途中竖带预览一张元素截图；复制后提示条一张元素截图。
 - 改动的文件里 grep `docs/research` 结果为空。
 - `未安排人审：按住 Shift 点 / 拖的手势、竖带预览的样子、range 这个词顺不顺手；原因：只决定怎么把日期复制给会话，不改存下的标注，也不进任何成绩，没有 build-on point；用起来不顺就改 spec 第 10 节的默认`
+
+## 完成记录
+
+- **合回**：`92032ed`（`--no-ff` 合回 annotation-path2）；票分支最后一次提交 `79d10ef`（已合进 3b4c3ca 的票 15）。
+- **做出的行为**（spec 1.14「复制一天、一段」）：
+  - 四档主图（K 线区、成交量带；annotate 下样本三角伸出 K 线区的部分也算）按住 Shift 按下：没拖开复制 `股票 pattern day 日期`，拖开时只在主图上画中蓝竖带预览（盖到成交量带底边），松手复制 `股票 pattern range 起→止`；从右往左一样，途中松开 Shift 不影响，拖出图区按图窗首尾 K 线截住。底部提示条照常显示 `copied  …`，剪贴板里是同一行。
+  - 只复制：按下在 window 的捕获阶段截下，跟着的 click 也截下；选中、当前日、视窗、亮着的 `box` / `point` / `feedback` 工具、「框选」都不受影响，开着的作答面板也不关。
+  - 在 event 记号上 Shift+点：仍是跨图配对查询（由手势按下时记下停着的记号、松手转交 `handleShiftClick`）；从记号上拖开仍是复制一段。
+  - 代码：`path2_web_ui/src/components/shiftCopyGesture.ts`（新）、`annotate/copyRef.ts` 加 `dateLine`、`stores/copyRef.ts` 加 `copyDates`、`KlineChart.vue` 接线与竖带、`KlineChart.ts` 加 `markerIdOf`；说明书「六、贯穿全程的几样」加一段。
+- **改了的共享机制与先前结论**：
+  1. `stores/copyRef.ts` 的 pattern 取法：从顶栏切进的 app 档（现算）里改取顶栏的当前 pattern（同 compare）。以前那里取 `activePatternId`，现算时主视图不设它，`Shift+C` 与选中卡的 `copy` 行会写成换档前扫描的 pattern 或空着。scan 档不变。这一条越出了票面「不改 `Shift+C` 和它复制的内容」：本票的行必须带 pattern，不修就同样写错，所以一起修了（顺手修，用户定过不限制）。
+  2. 主图上的 Shift+点记号不再走图表的点击，改由本手势转交配对；副图照旧。停着的记号靠图表的 mouseover / mouseout 记下，换股、换模式时清掉。
+  3. `KlineChart.vue` 的反馈拖选竖带与本票的预览竖带共用 `mainBandPx`；dev 的 e2e 钩子多一个 `hoverMarker`。
+  - 未开始的票里没有用到这些机制的（只剩 12「两台机器」，不碰前端），无条文要改。
+- **与票面、默认值的出入**（都是实现层，不改 spec）：
+  - 拖开了但首尾落在同一根 K 线上时写 `day`，不写 `range X→X`（一根就是一天）。
+  - 点、拖的分法沿用 `annotate/boxGeometry.ts` 的 `DRAG_PX`（4 像素，同画框与反馈拖选）。
+  - 竖带配色：底 rgba(26,128,186,0.16)、两侧中蓝虚线，同反馈拖选草稿的虚线边写法。
+- **命令与结果**：
+  - 单测：开工前 `npx vitest run` 1701 全过（`evidence/16/vitest-baseline.txt`）；合进票 15 后 1758 全过（含本票新增 18 条：`tests/components.shift-copy-gesture.spec.ts` 14 条、`tests/annotate.copy-ref.spec.ts` 新增的 `dateLine` 4 条）；`vue-tsc -p tsconfig.json --noEmit` 0。
+  - e2e：开工前基线见 `evidence/16/e2e-baseline.txt`（主体 10 红 45 过、旧扫描组 27 红 4 没跑，与票 15 基线逐条相同）；完工后对照见 `evidence/16/e2e-after.txt`。新增 `e2e/shift-copy-dates.spec.ts` 2 条全过。没有改写或重拍现有用例。
+  - 票 worktree 里跑全套时 `annotate-rally-random.spec.ts:198` 报 `spawnSync /bin/sh ENOBUFS`：它对整个 checkout 跑 `git status --ignored`，worktree 自己的 `.venv` 让输出到 3.4 MB、超过 execSync 的缓冲；干净 checkout（不建 `.venv`、借解释器）只有 0.57 MB。所以完工对照照基线的跑法在分离的干净 checkout 里跑。
+- **独立审查**（`evidence/16/review-standards.md`、`review-spec.md`）：
+  - 改了：按下改挂 window 捕获阶段（作答面板不再被 Shift+点关掉）；换股、换模式清掉停着的记号；pattern 取法改为顶栏 pattern（app 档与 compare 一致）；补 `createShiftCopyGesture`、`pairPick` 的函数说明；`put` 改名 `toClipboard`；竖带共用 `mainBandPx`；e2e 补 point 工具、作答面板开着、两击配对发出 scope=pair、框选的正向对照、scan 档框选、app 档普通点击回归，配对两击改用 `shiftClick`。
+  - 没改（坏味道，判断级）：`local()` 三行与 `annotateGestures.ts` 重复——两个手势模块互不依赖，为三行引一条依赖不划算；`.copy-range-band` 的色值写 CSS 字面量——同 `.feedback-range-band` 的写法；e2e 的 `putFixture` / `pickPattern` / `waitChart` 各 spec 一份是现有惯例，不在本票收拢；成交量带底边读渲染后的 `getOption().grid`——读的是实际布局，比按参数重算更不容易错；下标对在预览里用元组、在复制里拆开——各自调用处自然的写法。
+- **证据**（`evidence/16/`）：`vitest-baseline.txt`、`e2e-baseline.txt`、`e2e-after.txt`、`review-standards.md`、`review-spec.md`、`copy-band.png`（Shift+拖途中的竖带，元素截图）、`copy-toast.png`（复制后的提示条）。截图拍于 171c752（合进票 15 之前；票 15 只改左右栏，不影响这两处的样子）。
+- **未安排人审**：票面那一行照旧（按住 Shift 点 / 拖的手势、竖带的样子、`range` 这个词顺不顺手；没有 build-on point）。另：app 档现算时复制行写顶栏 pattern（`W底`）而不是 app 名（`bo_only`），与 compare 一致；这是本票定的，用起来觉得该写 app 名再改。
+- **改动文件里 grep `docs/research`**：代码、测试、说明书为空；只有两份审查报告里提到「grep docs/research 为空」这句话本身。
 
 ## Comments
 
