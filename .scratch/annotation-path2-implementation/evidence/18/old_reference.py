@@ -1,7 +1,7 @@
 """票 18:用写反馈那一版 new_step(app_ver 1afa716bc5248d4b)算 4 条整族反馈当时那一族的基准 event 起止。
 
 必须在旧版的临时 worktree 里、用那个 worktree 自己的 .venv 运行(本脚本只 import 那一版的代码):
-    cd <旧版 worktree> && .venv/bin/python <本票 worktree>/evidence/18/old_reference.py <输出 json>
+    cd <旧版 worktree> && .venv/bin/python <本票 worktree>/.scratch/annotation-path2-implementation/evidence/18/old_reference.py <输出 json>
 
 做法(与当前页面新建整族反馈时存 reference 同口径,只是 app 换成旧版):
 - 跑 app:那一版 path2_web/app_run.py 的 run_app,全历史区间("1900-01-01" 到 TRAIN_END)、label_horizon 20、
@@ -32,6 +32,8 @@ from path2_web.data import TRAIN_END
 from path2_web.snapshot_fingerprint import read_fingerprint
 
 REFERENCE = "step"     # 当前 path2_apps/new_step/mapping.yaml 声明的基准 node
+FIRST_DAY = "1900-01-01"   # 全历史区间的起点,同 /feedback/status 与 compare 的单股预览
+LABEL_HORIZON = 20        # 区间终点后多带的交易日数,同上
 # 4 条整族反馈:股票、反馈编号、family_start(经当前代码的 read_annotations 读出,写入前会再核一次)
 FEEDBACK = [
     ("CRNC", "f-pc-74", "2024-12-11"),
@@ -55,19 +57,23 @@ def reference_events(events, node: str) -> list:
 
 
 def main(out_path: str) -> None:
+    """跑 4 只股票、取各条反馈那一族的基准 event 起止,写成 out_path(JSON)并打印。
+
+    输出记下代码身份(旧版提交号、工作区有没有改动、app_ver)与数据身份(训练段副本的配置路径与指纹),
+    不记临时 worktree 的绝对路径。"""
     repo = Path(path2_web.__file__).resolve().parents[1]
     commit = subprocess.run(["git", "-C", str(repo), "rev-parse", "HEAD"], capture_output=True, text=True,
                             check=True).stdout.strip()
     dirty = subprocess.run(["git", "-C", str(repo), "status", "--porcelain", "--untracked-files=no"],
                            capture_output=True, text=True, check=True).stdout.strip()
     cfg = load_config()
-    out = {"commit": commit, "worktree_dirty": dirty, "code_root": str(repo), "app_ver": app_ver(mod),
-           "train_end": TRAIN_END, "view_dataset_dir": str(view_dataset_dir(cfg)),
+    out = {"commit": commit, "worktree_dirty": dirty, "app_ver": app_ver(mod),
+           "train_end": TRAIN_END, "view_dataset_dir": cfg["view_dataset_dir"],
            "data_fingerprint": read_fingerprint(view_dataset_dir(cfg)), "reference_node": REFERENCE,
            "feedback": []}
     params = mod.load_params()
     for symbol, fid, family_start in FEEDBACK:
-        res, win, meta = run_app(mod, cfg, symbol, "1900-01-01", TRAIN_END, params, 20)
+        res, win, meta = run_app(mod, cfg, symbol, FIRST_DAY, TRAIN_END, params, LABEL_HORIZON)
         day = pd.to_datetime(win["date"]).dt.strftime("%Y-%m-%d").tolist()
         fam = [h for h in res.hits if day[h.start_idx] == family_start]
         hits, spans, buys = [], set(), set()
