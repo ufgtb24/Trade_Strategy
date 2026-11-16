@@ -88,3 +88,4 @@ Blocked by: 13
 ## Comments
 
 - 2026-11-15 拆票：人审行按 `docs/agents/review-planning.md` 由会话推荐写入；同日拆票那一轮，用户选「照列的发布」确认（两张票都是 `ready-for-agent`，不设人审闸）。
+- 暂停 2026-11-16（parallel-tickets，等用户）：实现、测试、独立审查、截图都已完成（分支 impl/14-finder-list 尖 84b21e8；单测 1701 条全过，e2e 全套在 9d20e13 上与基线比无新增失败），合回被主目录未提交的改动挡住——`.scratch/annotation-path2/manual.md` 两边都改了（同批还有 spec.md、CLAUDE.md、path2/GLOSSARY.md、annotation-round 技能文件、path2_apps/new_step/mapping.yaml，看着是 annotation-round 的出局核对改动），本票不碰别人的改动；见 [Q02](../questions/Q02-main-dir-blocks-merge-14.md)。恢复：那批改动提交后说「继续 14」——把调度分支合进票分支，重核票 14 引用的 spec 条款（那边改了 spec.md），重跑单测（合并后的树在 path2_web_ui/ 下与 9d20e13 不同时再照 evidence/13/e2e_run.sh 在分离 checkout 里重跑 e2e），按 evidence/14/completion-draft.md 写完成记录、删掉草稿，再 --no-ff 合回。
