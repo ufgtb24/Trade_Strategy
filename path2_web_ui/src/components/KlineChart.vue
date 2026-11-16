@@ -1302,7 +1302,10 @@ const shiftCopy = createShiftCopyGesture({
     if (!span || !el || !main) { copyBand.value = null; return }
     const px = rangeBandPx(span[0], span[1], (i) => Number(main.convertToPixel({ xAxisIndex: 0 }, i)),
                            MAIN_GRID_LEFT, el.clientWidth - MAIN_GRID_RIGHT)
-    copyBand.value = px ? { left: px.left + mainCanvasOffsetX.value, width: px.width, height: el.clientHeight } : null
+    // 竖带盖到成交量带底边为止(下面的日期刻度与滑块不盖)
+    const vol = (main.getOption() as any).grid?.[1]
+    const height = vol ? Number(vol.top) + Number(vol.height) : el.clientHeight
+    copyBand.value = px ? { left: px.left + mainCanvasOffsetX.value, width: px.width, height } : null
   },
   copy: (i0, i1) => { copyRef.copyDates(i0, i1) },
 })

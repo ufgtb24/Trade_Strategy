@@ -30,8 +30,9 @@ export const useCopyRefStore = defineStore('copyRef', () => {
     })
   }
 
-  /** annotate / compare 的 pattern 是顶栏的当前 pattern(compare 的 app 就是它对上的那个);app 模式是主视图选的 */
-  const pattern = (): string | null => (view.annotating ? ann.currentPattern : view.activePatternId)
+  /** annotate / compare 的 pattern 是顶栏的当前 pattern(compare 的 app 就是它对上的那个);app、scan 两档是图上跑的那个
+   *  app(appId:app 档现算的那个、scan 档扫描里选的那个) */
+  const pattern = (): string | null => (view.annotating ? ann.currentPattern : view.appId)
 
   /** 选中的那一个的那一行;没有打开股票时为 null。 */
   function line(): string | null {

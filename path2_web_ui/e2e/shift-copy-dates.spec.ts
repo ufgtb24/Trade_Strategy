@@ -116,6 +116,12 @@ async function zoomLast200(page: Page) {
   })
 }
 
+async function pickPattern(page: Page, text: string) {
+  await page.getByTestId('top-pattern-button').click()
+  await page.locator(`[data-testid="top-pattern-option"][data-name="${text}"]`).click()
+  await expect.poll(() => page.evaluate(() => (window as any).__e2e.ann().currentPattern)).toBe(text)
+}
+
 async function waitChart(page: Page, symbol: string) {
   await expect(page.locator(`.symbol-title-bar [data-symbol="${symbol}"]`)).toBeVisible()
   await expect.poll(() => page.evaluate(() =>
@@ -169,10 +175,10 @@ test.describe('主图上按住 Shift 复制一天、一段(四档)', () => {
     await page.goto('/#sample=s-pc-11')
     await waitChart(page, 'AAPL')
     await expect(page.getByTestId('mode-annotate')).toHaveClass(/\bon\b/)
+    await pickPattern(page, 'W底')
+    await page.evaluate(() => (window as any).__e2e.ann().selectSample('s-pc-11'))
     await expect.poll(() => page.evaluate(() => (window as any).__e2e.ann().selectedSampleId)).toBe('s-pc-11')
     await zoomLast200(page)
-    const pattern = await page.evaluate(() => (window as any).__e2e.ann().currentPattern)
-    expect(pattern).toBe('W底')
 
     // annotate:选着样本时复制,样本仍选着
     await checkCopy(page, 'AAPL W底')
@@ -206,6 +212,7 @@ test.describe('主图上按住 Shift 复制一天、一段(四档)', () => {
     await page.getByTestId('mode-compare').click()
     await expect.poll(() => view(page, 'mode')).toBe('compare')
     await expect.poll(() => page.evaluate(() => (window as any).__e2e.view.linkedRun?.symbol ?? null), { timeout: 60_000 }).toBe('AAPL')
+    await zoomLast200(page)
     await checkCopy(page, 'AAPL W底')
 
     // feedback 工具亮着:Shift+拖复制一段,不弹反馈面板,工具仍亮
@@ -225,7 +232,12 @@ test.describe('主图上按住 Shift 复制一天、一段(四档)', () => {
     await drag(page, await xOf(page, n - 60), await klineY(page), await xOf(page, n - 30), await klineY(page))
     await expect.poll(() => zoomOf(page)).not.toEqual(zoom)
     const before = await lastText(page)
-    await page.mouse.click(await xOf(page, n - 10), await klineY(page))
+    // 平移后图窗往前挪了约 30 根:点一根看得见、离样本三角远的 K 线
+    const smpIdx: number[] = (await annState(page)).charts
+      .find((c: any) => c.symbol === 'AAPL').samples.map((x: any) => ds.indexOf(x.date))
+    let k = n - 120
+    while (smpIdx.some((j: number) => Math.abs(j - k) <= 3)) k -= 5
+    await page.mouse.click(await xOf(page, k), await klineY(page))
     await expect.poll(() => page.evaluate(() => (window as any).__e2e.ann().selectedSampleId)).toBeNull()
     expect(await lastText(page)).toBe(before)
   })
@@ -234,12 +246,13 @@ test.describe('主图上按住 Shift 复制一天、一段(四档)', () => {
     await routeTo(page, backend!)
     await page.goto('/#sample=s-pc-11')
     await waitChart(page, 'AAPL')
+    await pickPattern(page, 'W底')
     await page.getByTestId('mode-app').click()
     await expect.poll(() => view(page, 'mode')).toBe('app')
     await expect.poll(() => page.evaluate(() => (window as any).__e2e.view.linkedRun?.symbol ?? null), { timeout: 60_000 }).toBe('AAPL')
     await zoomLast200(page)
-    const app = await view(page, 'activePatternId')
-    expect(app).toBe('bo_only')
+    // app 档行里的 pattern 是这张图上跑的 app
+    expect(await view(page, 'appId')).toBe('bo_only')
 
     // 先选中一个 event(选中与当前日都有),再复制
     const ev = await page.evaluate(() => {
@@ -291,6 +304,7 @@ test.describe('主图上按住 Shift 复制一天、一段(四档)', () => {
     await expect(page.getByTestId('mode-scan')).toHaveClass(/\bon\b/)
     await waitChart(page, 'AAPL')
     await zoomLast200(page)
-    await checkCopy(page, `AAPL ${await view(page, 'activePatternId')}`)
+    expect(await view(page, 'appId')).toBe('bo_only')
+    await checkCopy(page, 'AAPL bo_only')
   })
 })
