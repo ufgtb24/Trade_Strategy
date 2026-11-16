@@ -8,23 +8,24 @@
 
 - `where`：改动落在 app 的哪里——`node.where 名`、边；detector 或拓扑层面的改动写 node 名；没进 app 的候选条件写拟用的名字。
 - `from`：这个 issue **各处的反馈编号**（摘要里每一处行尾括号里的 `f-…`；由样本推出的写样本编号 `s-…`），不是 issue 标题上的那个名字。写成 issue 名不报错，但下一轮摘要里这个 issue 会显示「还没有条件」，等于没记。
-- `state`：以下面五个词之一开头，后面跟日期和一句理由。整句用双引号括起来（里面有冒号、逗号时不括会把这一行写坏）。
+- `state`：以下面六个词之一开头，后面跟日期和一句理由。整句用双引号括起来（里面有冒号、逗号时不括会把这一行写坏）。
 
   | 开头词 | 意思 | 条件在不在 app 里 |
   |---|---|---|
   | `from_definition` | 照用户定义里已有的话改的 | 在 |
-  | `unmeasured` | 用户同意新加的条件，还没量；写明用户哪天同意、定义文字是否已由用户更新 | 在 |
-  | `declined` | 用户说不写进定义 | 不在 |
+  | `unmeasured` | 用户同意新加的条件，还没量；写明用户哪天同意 | 在 |
+  | `declined` | 用户说不加 | 不在 |
   | `for_tuning` | 条件已有，只差门槛，留给调参 | 在 |
   | `not_worth` | 量过，不值得加 | 不在 |
+  | `pending` | 两轮之间用户定下、待下一轮实施（[between-rounds.md](between-rounds.md)）；这一轮实施了就把开头词改成现在的去向，接着写「第 N 轮实施」 | 不在 |
 
-  例：`- {where: plateau.not_stale, from: [f-pc-9, f-pc-10], state: "unmeasured 2026-11-10 用户同意写进定义；定义文字待用户更新"}`
+  例：`- {where: plateau.not_stale, from: [f-pc-9, f-pc-10], state: "unmeasured 2026-11-10 用户同意新加"}`
 
 连条件都翻不出来的（纯「当天看不出」）不记行，只挂标签，理由已在改版报告里。
 
-出局核对（[checklist.md](checklist.md)「出局核对」）里用户选了 invalidation 或 setback 的，也记一行：`where` 写那条 where（detector 的截断写 node 名加一个自起的短名，如 `plateau.fall_back_end`，同一 node 的几处截断各写各的），`from` 写空数组 `[]`（这一处是你查出来的，没有反馈编号；空数组合法），`state` 以 `from_definition` 开头（用户在题里的选择就是他的定义，定为 setback 的也一样），接日期、「出局核对：用户定为 invalidation / setback」和改法；定为 invalidation 的，再写建议的措辞是否已由用户贴进定义。下一轮核对见到这一行就照它办，不再问。选了「先放着」的不记行。
+出局核对（[checklist.md](checklist.md)「出局核对」）里用户选了 invalidation 或 setback 的，也记一行：`where` 写那条 where（detector 的截断写 node 名加一个自起的短名，如 `plateau.fall_back_end`，同一 node 的几处截断各写各的），`from` 写空数组 `[]`（这一处是你查出来的，没有反馈编号；空数组合法），`state` 以 `from_definition` 开头（用户在题里的选择就是他的定义，定为 setback 的也一样），接日期、「出局核对：用户定为 invalidation / setback」和改法。下一轮核对见到这一行就照它办，不再问。选了「先放着」的不记行。
 
-  例：`- {where: plateau.new_hold, from: [], state: "from_definition 2026-11-20 出局核对：用户定为 invalidation；建议措辞待用户贴进定义"}`
+  例：`- {where: plateau.new_hold, from: [], state: "from_definition 2026-11-20 出局核对：用户定为 invalidation"}`
 
 切法题（[checklist.md](checklist.md)「先怀疑切法」）用户选了「改切法」或「现在的切法对」的，同样记一行：`where` 写切出那一段的 node 名加短名 `cut`（如 `plateau.cut`），`from` 写引出它的反馈编号（全由样本引出时写 `[]`），`state` 以 `from_definition` 开头，接日期、「切法题：用户定为改切法 / 现在的切法对」和涉及的那几次形状（股票 + 日期）。和出局核对不同，这一行不免问：同一次形状上又出现新的、不同的较劲时照样再问。选了「先放着」的不记行。
 
@@ -56,8 +57,9 @@ session:
     samples: [s-pc-3, s-pc-9]
     at: '2026-11-10'
   conditions:
-    - {where: plateau.not_stale, from: [f-pc-9, f-pc-10], state: "unmeasured 2026-11-10 用户同意写进定义；定义文字待用户更新"}
+    - {where: plateau.not_stale, from: [f-pc-9, f-pc-10], state: "unmeasured 2026-11-10 用户同意新加"}
     - {where: no_gap_up, from: [f-pc-12], state: "declined 2026-11-10 用户说这种可以买"}
+    - {where: plateau.cut, from: [], state: "pending 2026-11-12 两轮之间用户定：「冲高那根也算阶跃」；图：QBTS 2024-11-25；待下一轮实施；2026-11-12 已写进定义"}
   tags:
     f-pc-10: for_tuning
     f-pc-12: accepted

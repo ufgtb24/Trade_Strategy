@@ -122,7 +122,8 @@ op 序号或样本、框编号):
 ------
 - 读(会话、GET /annotations 用的是同一个函数):`read_annotations(cfg)`,cfg 是 path2_web.config.load_config()
   的结果。返回 {state, conflicts, unsynced, violations, fingerprint, merges, revs, next_seq, ignored_files,
-  machines};会话只要状态时取 `read_annotations(load_config())["state"]`。会话不写标注文件。
+  machines};会话只要状态时取 `read_annotations(load_config())["state"]`。会话不写标注文件，唯一例外是 annotation-round
+  两轮之间、用户逐次同意后经 append_batch 写 pattern 定义（该 skill 的 scripts/write_definition.py）。
 - 会话定格:machines 是 {机器名: {through: n}},n 是这台机器从 1 起连续到齐的最大批次序号(Syncthing 不按
   顺序拉文件,中间缺号时停在缺口前)。会话每轮开头记下 {机器名: n},下一轮用
   `read_annotations(cfg, as_of={机器名: n})` 读出当时的状态,和现在的求差。as_of 按机器 + 序号截批次(不按

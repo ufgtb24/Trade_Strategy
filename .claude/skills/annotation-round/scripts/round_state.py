@@ -205,6 +205,9 @@ def one_round(round_path: Path, cfg: dict, apps_pkg: str) -> str:
     return "\n".join(out) + "\n"
 
 
+REREAD = "规则：上下文压缩过或记不清时，重读 .claude/skills/annotation-round/SKILL.md 与当前这一步标着「先读」的 reference"
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description="一轮走到哪了(只读)")
     ap.add_argument("round", nargs="?", help="round 文件;不给就出总览")
@@ -224,6 +227,7 @@ def main(argv=None) -> int:
     else:
         rounds = Path(a.rounds_dir) if a.rounds_dir else root / "outputs" / "annotation_rounds"
         print(overview(cfg, a.apps_pkg, rounds), end="")
+    print(REREAD)   # 压缩后最近的工具输出里仍有这句指针(SKILL.md「上下文被压缩」)
     return 0
 
 

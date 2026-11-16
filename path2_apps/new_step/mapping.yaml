@@ -34,17 +34,17 @@ session:
       s-pc-55, s-pc-57, s-pc-59, s-pc-75, s-pc-80, s-pc-82, s-pc-86, s-pc-96]
     at: '2026-11-16'
   conditions:
-    - {where: plateau.no_overhead, from: [f-pc-90], state: "unmeasured 2026-11-16 用户同意新加价格版：阶跃前约三个月内有高过当天收盘的前高就先不买，越过前高或前高移出三个月后照买；定义文字待用户更新"}
+    - {where: plateau.no_overhead, from: [f-pc-90], state: "unmeasured 2026-11-16 用户同意新加价格版：阶跃前约三个月内有高过当天收盘的前高就先不买，越过前高或前高移出三个月后照买；定义文字待用户更新；2026-11-16 起不再请用户往定义里贴话，这句作废"}
     - {where: plateau.new_shrink, from: [f-pc-92], state: "from_definition 2026-11-16 定义「新平台要相对于阶跃阶段出现明显的成交量缩小迹象」；门槛从正样本量出、留余量；2026-11-16 第 2 轮改口径：比阶跃里量最大那天（往前找起点稀释了阶跃平均量），门槛 0.41 由正样本 RGTI 2024-11（0.345）定"}
     - {where: plateau.new_calm, from: [s-pc-80], state: "from_definition 2026-11-16 出局核对：波动小原来从阶跃后第一天累计振幅、回不来，改成只看新平台最近一段；2026-11-16 第 2 轮保留：加了派发作废后它单独挡掉 14 天（反馈范围里 4 天、正样本前后 0 天），下一轮问去留"}
     - {where: plateau, from: [s-pc-86, s-pc-82], state: "from_definition 2026-11-16 旧平台波动中位数为 0（价格卡档位）时改取平均数，阶跃照常开段"}
     - {where: plateau.settled, from: [f-pc-74, f-pc-72, f-pc-89], state: "from_definition 2026-11-16 定义「企稳」：当天不创新平台以来的收盘新低；门槛受正样本 KULR 2024-04-01 限制只能看当天，挡得少"}
-    - {where: plateau.big_wait, from: [f-pc-104], state: "unmeasured 2026-11-16 用户同意按 setback 新加：阶跃涨得特别猛的，阶跃后先在新平台站几天再买；定义文字待用户更新"}
+    - {where: plateau.big_wait, from: [f-pc-104], state: "unmeasured 2026-11-16 用户同意按 setback 新加：阶跃涨得特别猛的，阶跃后先在新平台站几天再买；定义文字待用户更新；2026-11-16 起不再请用户往定义里贴话，这句作废"}
     - {where: plateau.new_hold, from: [], state: "from_definition 2026-11-16 出局核对：用户定为 setback；守住改成只读当天收盘，跌回去站回来照样买"}
     - {where: plateau.fall_back_end, from: [], state: "from_definition 2026-11-16 出局核对：用户定为 setback；去掉收盘跌回旧平台价位即收族的截断"}
-    - {where: plateau.no_chase, from: [s-pc-75], state: "from_definition 2026-11-16 用户在题里定：当天大涨冲过阶跃以来最高价的日子不算买点，保留没追涨；建议措辞待用户贴进定义"}
+    - {where: plateau.no_chase, from: [s-pc-75], state: "from_definition 2026-11-16 用户在题里定：当天大涨冲过阶跃以来最高价的日子不算买点，保留没追涨；建议措辞待用户贴进定义；2026-11-16 起不再请用户往定义里贴话，这句作废"}
     - {where: plateau.cut, from: [f-pc-90], state: "from_definition 2026-11-16 切法题：用户定为改切法（第 1 轮交报告后谈定）：阶跃是一串 K 线、最高价回落即完成、同一起点只留一个、停顿后够猛创新高算续上、抬高按收盘、起点沿最高价抬高往前找；涉及 QBTS 2024-11、IXHL 2025-07、KULR 2024-03、KULR 2024-11；第 2 轮实施，KULR 2024-11 起点落在 11-20（用户说 11-22），往前找要不要加限定待问"}
-    - {where: plateau.no_dump, from: [f-pc-90, f-pc-94, f-pc-93], state: "from_definition 2026-11-16 用户定为 invalidation（第 1 轮交报告后提出）：最近 10 天内的下跌吃掉阶跃涨幅大半就作废、之后不再买；门槛 0.7 待验证（正样本最高 INDO 2022-02-04 0.565）；TNXP 2024-12-30 0.52 分不开，待问；建议措辞待用户贴进定义"}
+    - {where: plateau.no_dump, from: [f-pc-90, f-pc-94, f-pc-93], state: "from_definition 2026-11-16 用户定为 invalidation（第 1 轮交报告后提出）：最近 10 天内的下跌吃掉阶跃涨幅大半就作废、之后不再买；门槛 0.7 待验证（正样本最高 INDO 2022-02-04 0.565）；TNXP 2024-12-30 0.52 分不开，待问；建议措辞待用户贴进定义；2026-11-16 起不再请用户往定义里贴话，这句作废"}
     - {where: plateau.step_short, from: [f-pc-95], state: "not_worth 2026-11-16 量过：新认法下 LUMN 2024-07～08 切成 6、4、2 根三次短阶跃，正样本阶跃最长 8 根（KULR 2024-11），「阶跃不能拉得太长」分不开，不加；只否了阶跃太长这一种翻法，「前期已经连续放量太久」那半句还没处理"}
     - {where: plateau.step_big, from: [s-pc-55, s-pc-57], state: "from_definition 2026-11-16 第 2 轮按新切法重定门槛 0.4→0.8（保持原余量比例），由正样本 QBTS 2024-11 定（软计数，见 2026-11-16-2.plan.md 末尾）；范围外砍掉的 58 天大半由它砍（GEVO 2025-07 族 21 天、QBTS 2025-04 族、CRNC 2025-07 族），待验证"}
     - {where: plateau.step_strong, from: [s-pc-59], state: "from_definition 2026-11-16 第 2 轮按新切法重定比左侧门槛 4→4.8，由正样本 GEVO 2024-09 定；比右侧不变，由 DXYZ 2024-11 定，待验证"}
