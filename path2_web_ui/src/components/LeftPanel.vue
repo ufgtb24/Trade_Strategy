@@ -3,7 +3,7 @@
     <!-- 抽屉:drawer 按内容排成自己的宽度(最少 220px、最多半屏),clip 只决定露出多少、把靠图一侧遮掉,
          内容不重排、不出横向滚动条。收起时 clip 藏起来(只藏不拆:页签、滚动位置、列表位置都留着) -->
     <div v-show="!panels.leftCollapsed" ref="clipEl" class="clip" data-testid="left-clip" :style="clipStyle">
-      <div ref="drawerEl" class="drawer" data-testid="left-drawer">
+      <div ref="drawerEl" class="drawer" data-testid="left-drawer" :style="{ minWidth: `${LEFT_FLOOR}px` }">
         <!-- 前三档:找图清单;scan 档:扫描面板与扫描结果列表。两份切档时只藏不拆,滚动位置与列表位置都留着 -->
         <FinderList v-show="!scanView" />
         <div v-show="scanView" class="scan-side" data-testid="scan-side">
@@ -42,7 +42,7 @@ import SidebarResultList from './SidebarResultList.vue'
 import ColumnEdge from './ColumnEdge.vue'
 import { useViewStore } from '../stores/view'
 import { usePanelsStore } from '../stores/panels'
-import { leftDragged } from './columnLayout'
+import { LEFT_FLOOR, leftDragged } from './columnLayout'
 
 const { scanView } = storeToRefs(useViewStore())
 const panels = usePanelsStore()
@@ -66,10 +66,12 @@ function onDrag(dx: number) {
 
 <style scoped>
 .left-panel { display: flex; min-height: 0; }
-.clip { flex: none; width: max-content; min-height: 0; overflow: hidden; }
+/* overflow: clip 而不是 hidden:hidden 的盒子仍能被程序滚动(聚焦搜索框、把一行滚进视野时浏览器会横向滚它),
+   抽屉里的内容就整体左移、代码列被遮;clip 不让任何滚动 */
+.clip { flex: none; width: max-content; min-height: 0; overflow: clip; }
 .drawer {
   display: flex; flex-direction: column; height: 100%;
-  width: max-content; min-width: 220px; max-width: 50vw;
+  width: max-content; max-width: 50vw;   /* 最少 LEFT_FLOOR(style 里给) */
 }
 .scan-side { display: flex; flex-direction: column; flex: 1; min-height: 0; overflow: hidden; }
 </style>

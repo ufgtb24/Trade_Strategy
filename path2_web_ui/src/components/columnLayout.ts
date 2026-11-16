@@ -14,10 +14,10 @@
 /** 左栏内容全宽的下限:内容不足这么宽时按这么宽算(沿用原来左栏「最少 220px」)。 */
 export const LEFT_FLOOR = 220
 /** 左栏拖到最窄的固定宽度:刚好露出代码列(找图清单三页、扫描列表的 symbol 列都在最左)。 */
-export const LEFT_MIN = 76
+export const LEFT_MIN = 70
 /** 标注侧栏:没拖过时的宽度(原来的固定宽度)与最窄(字段名一列 + 值一列不挤坏)。 */
 export const ANN_DEFAULT = 320
-export const ANN_MIN = 240
+export const ANN_MIN = 260
 /** 诊断侧栏:没拖过时的宽度(原来的固定宽度)与最窄。 */
 export const DETAIL_DEFAULT = 280
 export const DETAIL_MIN = 220
