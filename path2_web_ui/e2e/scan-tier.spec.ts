@@ -2,6 +2,7 @@ import { test, expect, type Page } from '@playwright/test'
 import { readFileSync, readdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { REPO, TRAIN_END, openSymbol, routeTo, startBackend, stopBackend, type Backend } from './annotateHelpers'
+import { enterScanTier } from './scanTier'
 
 /**
  * 顶栏 mode 四档 annotate / compare / app │ scan(spec 5.2、第 9 节「端到端」最后两条):
@@ -47,8 +48,9 @@ async function runScan(b: Backend): Promise<{ name: string; ts: string }> {
   return { name, ts }
 }
 
-/** 打开历史 → 选这个扫描 → Open,等扫描文件进 store。 */
+/** 进 scan 档(扫描面板只在 scan 档的左栏)→ 打开历史 → 选这个扫描 → Open,等扫描文件进 store。 */
 async function openScan(page: Page, name: string) {
+  await enterScanTier(page)
   await page.getByRole('button', { name: /打开历史/ }).click()
   await page.locator(`.file-list tbody tr:has-text("${name}")`).click()
   await page.getByRole('button', { name: /^Open$/ }).click()
@@ -165,9 +167,11 @@ test.describe('顶栏 mode 四档与 scan 档', () => {
     await page.keyboard.press('Shift+P')
     await expect(page.getByTestId('wc-drawer')).toHaveCount(0)
 
-    // annotate:敲字母不进搜索框,PageUp / PageDown 不切股、不离开 annotate,Shift+P 不开抽屉
+    // annotate:敲字母不进搜索框,PageUp / PageDown 不切扫描股、不离开 annotate,Shift+P 不开抽屉。
+    // 前三档的翻页键归左栏找图清单:切到这次还空着的 random 页,清单没有行可翻,扫描列表也不接,图不换
     await openSymbol(page, OUTSIDE)
     await pickPattern(page, 'W底')
+    await page.getByTestId('finder-tab-random').click()
     await blur(page)
     await page.keyboard.press('x')
     await expect(search).toHaveValue('')

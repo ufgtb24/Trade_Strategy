@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test'
 import { baseURL } from './ports'
+import { gotoScanTier } from './scanTier'
 
 // Ctrl+wheel 右锚定 x 缩放 e2e:
 // 前置 = 后端在线(uv run python scripts/path2/run_path2_web.py)+ 前端 dev server
@@ -13,7 +14,7 @@ const SCAN_TS = '2026-06-30 17:52:56'
 const TICKER = 'BTMWW'
 
 async function setupChart(page: import('@playwright/test').Page) {
-  await page.goto(baseURL + '/')
+  await gotoScanTier(page, baseURL + '/')
   await page.getByRole('button', { name: '打开历史' }).click()
   await page.locator(`tr:has-text("${SCAN_TS}")`).click()
   await page.getByRole('button', { name: 'Open' }).click()

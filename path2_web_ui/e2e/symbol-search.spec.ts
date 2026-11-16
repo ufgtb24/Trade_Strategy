@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test'
+import { gotoScanTier } from './scanTier'
 
 // 前提:后端在 localhost:8000 在线;已有一次命中扫描(或本测试触发扫描)。
 // 复用 flow.spec.ts 的 ensureScanLoaded 辅助模式(e2e 允许小重复)。
@@ -10,8 +11,7 @@ async function openScanDialogAndSelectAll(page: any) {
 }
 
 async function ensureScanLoaded(page: any) {
-  await page.goto('/')
-  await expect(page.getByRole('button', { name: /打开历史/ })).toBeVisible()
+  await gotoScanTier(page)
   await page.getByRole('button', { name: /打开历史/ }).click()
   // 历史列表异步加载:先等 Loading 态清空,再读 rowCount,避免读到过渡态误判 0 行
   await expect(page.locator('.state', { hasText: 'Loading' })).toHaveCount(0, { timeout: 15_000 })

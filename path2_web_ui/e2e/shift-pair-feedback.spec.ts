@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test'
 import { baseURL } from './ports'
+import { gotoScanTier } from './scanTier'
 
 /**
  * 入口 D shift+click 沉默期反馈 e2e(spec 2026-07-10-shift-pair-feedback-design)。
@@ -25,7 +26,7 @@ const TICKER = 'BTMWW'
 const BANNER_TEXT = 'pair 1/2'
 
 async function setupChart(page: import('@playwright/test').Page) {
-  await page.goto(baseURL + '/')
+  await gotoScanTier(page, baseURL + '/')
   await page.getByRole('button', { name: '打开历史' }).click()
   await page.locator(`tr:has-text("${SCAN_TS}")`).click()
   await page.getByRole('button', { name: 'Open' }).click()

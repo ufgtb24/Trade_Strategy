@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test'
 import type { Page } from '@playwright/test'
+import { gotoScanTier } from './scanTier'
 
 /**
  * Dev UI 复刻 E2E（参照 flow.spec.ts 的 ensureScanLoaded 启动 server + 扫描出命中）。
@@ -41,8 +42,7 @@ async function openScanDialogAndSelectAll(page: Page) {
  * 逻辑与 flow.spec.ts:ensureScanLoaded 一致。
  */
 async function ensureScanLoaded(page: Page): Promise<string | null> {
-  await page.goto('/')
-  await expect(page.locator('select')).toContainText('底部反转突破爆发')
+  await gotoScanTier(page)
 
   await page.getByRole('button', { name: /打开历史/ }).click()
   await expect(page.locator('.file-list, .state')).toBeVisible({ timeout: 5_000 })

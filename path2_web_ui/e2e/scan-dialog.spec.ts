@@ -1,10 +1,11 @@
 import { test, expect } from '@playwright/test'
 import { apiBase as API_BASE } from './ports'
+import { gotoScanTier } from './scanTier'
 
 // 前提:后端可达(端口由 configs/path2_web.yaml 决定);outputs 至少有 1 次扫描历史 (本测试自带触发)
 
 async function gotoApp(page: any) {
-  await page.goto('/')
+  await gotoScanTier(page)
   await expect(page.locator('select')).toContainText('底部反转突破爆发')
 }
 

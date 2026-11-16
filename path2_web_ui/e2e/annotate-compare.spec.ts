@@ -17,8 +17,8 @@ import { REPO, TRAIN_END, lanes, routeTo, startBackend, stopBackend, type Backen
  *    选中框后点 ▲ 选中样本,Delete 既不删样本、也删不到之前选中的框;
  *    app 的全部输出都落在截到 2025-12-31 的 K 线里;参照层 peaks 在 compare 下照样能开。
  *    再切到 app:按 node 分轨的主视图画法,参照层自动关。
- * 2. compare 下换股票不退出 compare:pattern 页的样本卡、代码输入、random、rally 都留在 compare,app 对新股票重跑;
- *    链接一律落在 annotate。从扫描结果的 app 出发用 rally、random 落在 annotate,由 e2e/annotate-rally-random.spec.ts 验。
+ * 2. compare 下换股票不退出 compare:pattern 页的样本卡、代码输入、random、左栏 rally 页的一行都留在 compare,app 对新股票重跑;
+ *    链接一律落在 annotate。从 scan 档用 random 落在 annotate、左栏找图清单换图不换档,由 e2e/annotate-rally-random.spec.ts 验。
  *
  * 标注用 tests/path2_web/fixtures/annotation_grouping_v1 的例子批次(指纹换成测试后端本机副本的),写在临时目录里。
  * 整页截图挂在测试结果里(compare-*.png、app-*.png)。
@@ -290,7 +290,7 @@ test.describe('compare / app 叠画(bo_only + 手写 mapping)', () => {
     await page.unrouteAll({ behavior: 'ignoreErrors' })
   })
 
-  test('compare 下用样本卡、代码输入、random、rally 换股票不退出 compare;链接进来落在 annotate', async ({ page }, testInfo) => {
+  test('compare 下用样本卡、代码输入、random、左栏 rally 换股票不退出 compare;链接进来落在 annotate', async ({ page }, testInfo) => {
     await routeTo(page, backend!)
     await page.goto('/#sample=s-pc-11')
     await waitChart(page, 'AAPL')
@@ -318,7 +318,8 @@ test.describe('compare / app 叠画(bo_only + 手写 mapping)', () => {
     await expect.poll(() => view(page, 'symbol'), { timeout: 120_000 }).not.toBe('NVDA')
     expect(await view(page, 'mode')).toBe('compare')
     await expect.poll(async () => runSymbol(page), { timeout: 60_000 }).toBe(await view(page, 'symbol'))
-    await page.getByTestId('rally-button').click()
+    // 左栏 rally 页(打开时就落在这一页)点一行
+    await page.getByTestId('finder-tab-rally').click()
     await expect(page.getByTestId('rally-row').first()).toBeVisible({ timeout: 300_000 })
     const before = await view(page, 'symbol')
     const row = page.locator(`[data-testid="rally-row"]:not([data-symbol="${before}"])`).first()

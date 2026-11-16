@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test'
+import { gotoScanTier } from './scanTier'
 
 // 前提:B 在 localhost:8000 在线;已有一次命中扫描(或本测试触发扫描)。
 
@@ -15,7 +16,7 @@ async function openScanDialogAndSelectAll(page: any) {
  * 若已有历史记录则直接复用首条,否则触发新扫描。
  */
 async function ensureScanLoaded(page: any) {
-  await page.goto('/')
+  await gotoScanTier(page)
   // pattern 已自动加载
   await expect(page.locator('select')).toContainText('底部反转突破爆发')
 

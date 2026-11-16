@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test'
 import { baseURL } from './ports'
+import { gotoScanTier } from './scanTier'
 
 // 前提:后端 + 前端 dev server 在线(playwright.config.ts 的 webServer 自动启动前端;
 //        后端须外部启动 uv run python scripts/path2/run_path2_web.py)。
@@ -11,7 +12,7 @@ const SCAN_TS = '2026-06-30 17:52:56'
 const TICKER = 'BTMWW'
 
 test.beforeEach(async ({ page }) => {
-  await page.goto(baseURL + '/')
+  await gotoScanTier(page, baseURL + '/')
   await page.getByRole('button', { name: '打开历史' }).click()
   await page.locator(`tr:has-text("${SCAN_TS}")`).click()
   await page.getByRole('button', { name: 'Open' }).click()
