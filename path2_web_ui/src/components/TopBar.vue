@@ -133,7 +133,7 @@ function modeTitle(m: 'compare' | 'app'): string {
 /** scan 按钮的悬停:扫描文件里的结果;没加载扫描时说怎么加载。 */
 const scanTitle = computed(() => view.scanFile
   ? `results saved in the scan file ${view.currentScanName ?? ''}: scan window, active pattern of the scan, lanes by node`
-  : 'scan results; no scan loaded (open or run one in the left panel)')
+  : 'scan results; no scan loaded; open or run one in the left panel')
 const PEAKS_HINT: Record<PeaksStatus, string> = {
   loading: 'loading the peaks of this symbol',
   load_failed: 'could not load the peaks',

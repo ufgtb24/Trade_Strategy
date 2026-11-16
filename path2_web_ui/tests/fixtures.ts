@@ -86,6 +86,11 @@ export const SCAN_FILE: MultiScanResultFile = {
   ],
 }
 
+/** SCAN_FILE 的结果换成这几只股票(顺序即扫描文件里的顺序,加载时落在第一只)。 */
+export function scanOf(symbols: string[]): MultiScanResultFile {
+  return { ...SCAN_FILE, results: symbols.map(s => ({ ...SCAN_FILE.results[0], symbol: s })) }
+}
+
 export const DIAG: Diagnostics = {
   symbol: 'AAPL', pattern_id: 'bottom_burst',
   nodes: {

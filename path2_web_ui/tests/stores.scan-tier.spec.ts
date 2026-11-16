@@ -3,13 +3,8 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
 import { useViewStore } from '../src/stores/view'
-import type { MultiScanResultFile } from '../src/types'
-import { SCAN_FILE } from './fixtures'
+import { scanOf } from './fixtures'
 
-/** SCAN_FILE 的结果换成这几只股票(顺序即扫描列表的默认顺序)。 */
-function scanOf(symbols: string[]): MultiScanResultFile {
-  return { ...SCAN_FILE, results: symbols.map(s => ({ ...SCAN_FILE.results[0], symbol: s })) }
-}
 const WIN = { start: '2024-01-02', end: '2024-06-28' }
 
 describe('view store · scan 档', () => {
@@ -160,13 +155,13 @@ describe('view store · scan 档', () => {
       expect(v.symbol).toBe('NVDA')
     })
 
-    it('回去落的那只股票(frontSymbol):no_scan 里是进 scan 前那只', () => {
+    it('回去落的那只股票(frontTierSymbol):no_scan 里是进 scan 前那只', () => {
       const v = useViewStore()
       v.openSymbol('TSLA')
       v.enterScan()
-      expect(v.frontSymbol).toBe('TSLA')
+      expect(v.frontTierSymbol).toBe('TSLA')
       v.enterAnnotate()
-      expect(v.frontSymbol).toBe('TSLA')
+      expect(v.frontTierSymbol).toBe('TSLA')
     })
   })
 

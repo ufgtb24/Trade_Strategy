@@ -277,16 +277,17 @@ export const useViewStore = defineStore('view', () => {
   const linkedRun = shallowRef<LinkedRun | null>(null)
   const symbol = ref<string | null>(null)
   // 进出 scan 档时股票怎么带(enterScan / leaveScan):
-  //   scanStop   扫描列表上次停的那只(scan 档里最后看的那只;加载扫描时是落下的那只,删掉扫描时清空)
-  //   scanReturn 从前三档进 scan 前开着的那只(没开着为 null;只在 scan 档里有意义)
-  //   scanPicked 这次在 scan 档里从扫描列表选过股(点行、PageUp / PageDown)
-  const scanStop = ref<string | null>(null)
-  const scanReturn = ref<string | null>(null)
+  //   scanListSymbol 扫描列表上次停的那只(scan 档里最后看的那只;加载扫描时是落下的那只,删掉扫描时清空)
+  //   preScanSymbol  从前三档进 scan 前开着的那只(没开着为 null;只在 scan 档里有意义)
+  //   scanPicked     这次进 scan 以来从扫描列表选过股(点行、PageUp / PageDown;在前三档点行进来的也算)
+  // frontTierSymbol:回前三档(annotate / compare / app)时落在哪只
+  const scanListSymbol = ref<string | null>(null)
+  const preScanSymbol = ref<string | null>(null)
   const scanPicked = ref(false)
   /** 从 scan 档回到前三档时落在哪只:选过扫描列表的行就是现在这只,否则是进 scan 前那只(进 scan 前没开着
    *  股票时留着现在这只);不在 scan 档就是现在这只。顶栏 compare / app 能不能点也按它判(stores/appLink.ts)。 */
-  const frontSymbol = computed<string | null>(() =>
-    !scanView.value || scanPicked.value || scanReturn.value === null ? symbol.value : scanReturn.value)
+  const frontTierSymbol = computed<string | null>(() =>
+    !scanView.value || scanPicked.value || preScanSymbol.value === null ? symbol.value : preScanSymbol.value)
   // annotate 下打开时图停在哪段(rally / random 进来时给);null = 按默认缩放(整只股票)。
   // 每次 openSymbol 都换一个新对象:同一只股票换一段也能触发重画
   const viewWindow = ref<ViewWindow | null>(null)
@@ -649,7 +650,7 @@ export const useViewStore = defineStore('view', () => {
   /** 从前三档进 scan 档时记下回去落在哪只、这次还没选过行;已在 scan 档就什么都不做。 */
   function noteScanEntry() {
     if (scanView.value) return
-    scanReturn.value = symbol.value
+    preScanSymbol.value = symbol.value
     scanPicked.value = false
   }
   const inScanFile = (f: MultiScanResultFile | null, s: string | null) =>
@@ -671,7 +672,7 @@ export const useViewStore = defineStore('view', () => {
     sortByPid.value = null
     sortDesc.value = true
     symbol.value = keep ? symbol.value : f.results[0]?.symbol ?? null
-    scanStop.value = symbol.value
+    scanListSymbol.value = symbol.value
     scanPicked.value = false
     preview.value = null
     previewError.value = null
@@ -692,7 +693,7 @@ export const useViewStore = defineStore('view', () => {
   function clearScanFile() {
     scanFile.value = null
     currentScanName.value = null
-    scanStop.value = null
+    scanListSymbol.value = null
     if (scanView.value) {
       symbol.value = null
       scanPicked.value = false
@@ -732,7 +733,7 @@ export const useViewStore = defineStore('view', () => {
     mode.value = 'app'
     appSource.value = 'scan'
     symbol.value = s
-    scanStop.value = s
+    scanListSymbol.value = s
     scanPicked.value = true
     viewWindow.value = null
     resetChartState()
@@ -743,20 +744,20 @@ export const useViewStore = defineStore('view', () => {
   function enterScan() {
     if (scanView.value) return
     const f = scanFile.value
-    const s = !f ? null : inScanFile(f, symbol.value) ? symbol.value : scanStop.value
+    const s = !f ? null : inScanFile(f, symbol.value) ? symbol.value : scanListSymbol.value
     noteScanEntry()
     mode.value = 'app'
     appSource.value = 'scan'
     symbol.value = s
-    if (s !== null) scanStop.value = s
+    if (s !== null) scanListSymbol.value = s
     resetChartState()
     if (previewEnabled.value) void runPreview()
   }
-  /** 从 scan 档回到前三档前,把股票换成回去该落的那只(frontSymbol);不在 scan 档就什么都不做。 */
+  /** 从 scan 档回到前三档前,把股票换成回去该落的那只(frontTierSymbol);不在 scan 档就什么都不做。 */
   function leaveScan() {
     if (!scanView.value) return
-    symbol.value = frontSymbol.value
-    scanReturn.value = null
+    symbol.value = frontTierSymbol.value
+    preScanSymbol.value = null
     scanPicked.value = false
   }
   /** 按代码打开(顶栏 symbol、rally、random,pattern 页的样本卡,链接):不动扫描与 activePatternId。
@@ -766,7 +767,7 @@ export const useViewStore = defineStore('view', () => {
   function openSymbol(s: string, win: ViewWindow | null = null) {
     if (mode.value !== 'compare') mode.value = 'annotate'
     symbol.value = s
-    scanReturn.value = null
+    preScanSymbol.value = null
     scanPicked.value = false
     viewWindow.value = win ? { start: win.start, end: win.end } : null
     resetChartState()
@@ -1427,7 +1428,7 @@ export const useViewStore = defineStore('view', () => {
     unionRows, sortedRows, filteredSortedRows, previewListRow, patternHitStocks,
     nodeColors, selectedHitId, selectedHit, tagMap, isolated, inHitIds, inHitEventIds, qualifiedIds,
     mode, annotating, comparing, appSource, linkedView, linkedRun, appId, endNode, appWindowOf,
-    scanView, noScan, frontSymbol,
+    scanView, noScan, frontTierSymbol,
     openSymbol, enterAnnotate, enterLinked, enterScan, setLinkedRun, viewWindow,
     loadScanFile, clearScanFile, setCurrentScanName, currentScanName, selectSymbol, setActivePattern, setSort,
     toggleNode, toggleExpandedNode,

@@ -155,7 +155,7 @@ const { symbol, effectiveAnalysis, nodeColors, nodeVisible, level, tagMap, isola
 // annotate 不画任何 app 产物;compare 的副图就是主视图那张(app 的族行、bracket 的 hit 行、档位、缩放、选中与当前日),
 // 顶上让出用户区:特征轨在上、样本跨度那一行 user 在用户区最后,一道分界线下面就是 app 区(标注层,render/annotateLanes.ts
 // 的 annotateLayer;两区的对应 render/compareLayout.ts);K 线区是 annotate 的标注层加上 app 模式 K 线区画的东西。
-// wholeChart:图是这只股票截到训练段末日的全部 K 线(annotate、compare、现算的 app);扫描结果的 app 只画扫描窗口
+// wholeChart:图是这只股票截到训练段末日的全部 K 线(annotate、compare、app);scan 档(扫描结果)只画扫描窗口
 const wholeChart = computed(() => mode.value !== 'app' || linkedView.value)
 const appLink = useAppLinkStore()
 const panels = usePanelsStore()
@@ -1063,7 +1063,7 @@ function render(forceResetZoom = false) {
   }
   if (!chartMain || !chartSub) return
   if (!effectiveAnalysis.value || !effectivePattern.value) {
-    // 现算的 app 还没跑完(或没跑成):先只画 K 线,副图清空;scan 档没有股票(no_scan)时上一只的图清掉
+    // 现算的 app 还没跑完(或没跑成):先只画 K 线,副图清空;scan 档里没有股票(如 no_scan)时上一只的图清掉
     if (linkedView.value) { renderBarsOnly(forceResetZoom); chartSub.clear() }
     else if (!symbol.value) { chartMain.clear(); chartSub.clear() }
     return

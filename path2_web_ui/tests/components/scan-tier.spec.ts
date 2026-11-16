@@ -12,7 +12,7 @@ import { useViewStore } from '../../src/stores/view'
 import { useAnnotationStore } from '../../src/stores/annotation'
 import { useAppLinkStore } from '../../src/stores/appLink'
 import type { MultiScanResultFile } from '../../src/types'
-import { SCAN_FILE } from '../fixtures'
+import { scanOf } from '../fixtures'
 
 vi.mock('../../src/api', () => ({
   getSymbols: vi.fn(() => Promise.resolve(['AAPL', 'MSFT', 'NVDA', 'TSLA'])),
@@ -37,10 +37,6 @@ const DrawerStub = { name: 'WorkingCopyDrawer', template: '<div></div>', props: 
 const STUBS = { KlineChart: true, DetailSidebar: true, TopologyControl: true, AnnotationSidebar: true,
                 AnnotationNotices: true, WorkingCopyDrawer: DrawerStub }
 
-/** SCAN_FILE 的结果换成这几只股票(顺序即扫描列表的默认顺序)。 */
-function scanOf(symbols: string[]): MultiScanResultFile {
-  return { ...SCAN_FILE, results: symbols.map(s => ({ ...SCAN_FILE.results[0], symbol: s })) }
-}
 
 const mounted: VueWrapper[] = []
 function keep<T extends VueWrapper>(w: T): T { mounted.push(w); return w }

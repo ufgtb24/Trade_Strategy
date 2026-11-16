@@ -54,7 +54,7 @@
     <DetailSidebar v-else-if="showSidebar" />
     <!-- scan 档没加载扫描(no_scan):图区空着,只写 no_scan;左栏照旧是扫描面板与空列表 -->
     <div v-if="noScan" class="no-scan" data-testid="no-scan"
-         title="no scan loaded: open one with 打开历史 or run one with 扫描 in the left panel">no_scan</div>
+         title="no scan loaded; open or run one in the left panel">no_scan</div>
     <WorkingCopyDrawer :open="drawerOpen" @close="drawerOpen = false" />
     <!-- Task 12 · 全局一次性提示(如 scan 完成自动固化 WC) -->
     <div v-if="view.toastMsg" class="toast">{{ view.toastMsg }}</div>
