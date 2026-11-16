@@ -149,6 +149,11 @@ _Avoid_: 对应表 —— 已改称 mapping；翻译 —— 自造的说法，�
 = mapped pattern; the declaration that an app writes for a pattern.
 app 对一个 pattern 的声明：一组 node 加一组边，引擎照着它求解；代码里是 `PatternSpec`。同一个 pattern 可以先后由几个 app、几个版本声明，各有各的 dag。
 
+**reference node / 基准 node**：
+= the node an app declares as the position of one occurrence of its pattern; a node whose event every other segment of a hit is placed relative to.
+判据是依赖关系：它挪了，其余各段都得跟着挪；其余各段挪不动它。new_step 的 reference node 是 `step`：旧平台、新平台、当天都从阶跃定位，旧平台挪不动阶跃。它可以是不参与求解的子 node。用途：app 改了切法或拓扑之后，判断整族反馈说的「这一次」还在不在买——两版的 reference node 的 event 共用至少一根 K 线，就算同一次形状；用起点日期是否相同来认，会把只是挪了位置的错误买点显示成改好了。只要求接了标注的 app 声明。规则与理由见 `.scratch/annotation-path2/issues/16-reference-node.md`。
+_Avoid_: 先决 node —— 会读成「最先检测的 node」，检测顺序是写法上的选择，多个 detector 时没有先后；基准段 —— 自造的说法，声明的是 node、比较的是它的 event；anchor、锚 node —— 锚已是一种边关系的名字。
+
 **sample / 样本 / annotated pattern**：
 = annotated pattern; a judgment that the user makes on one chart under one pattern, together with its evidence.
 一个 sample date、一个 judgment（positive 或 negative）、所属 pattern，以及作为依据的 member box。judgment 只按 sample date 当天及以前看得到的信息下，不是后来涨没涨，也不是评估里的 label。每个 sample 只属于一个 pattern（或暂为 unsorted）；同一天对两个 pattern 下判断就是两个 sample。允许的状态词：positive / negative（judgment）、matched / unmatched（与 hit 比较的结果）。

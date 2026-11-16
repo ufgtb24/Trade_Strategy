@@ -51,7 +51,7 @@
 
 ## Not yet specified
 
-- 暂无。
+- [整族反馈按基准 node 认「同一次形状」](issues/16-reference-node.md)：open，方向已谈、Answer 待批准；宜在 new_step 第 3 轮之前做
 
 ## Out of scope
 
