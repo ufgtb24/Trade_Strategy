@@ -4,11 +4,15 @@
 钉住的要求:
 - 样本 match:sample_match 逐例给出 fixtures/match_examples.json 里写好的答案(前端 compareRead.ts 的 matchOf
   过同一份文件,见 path2_web_ui/tests/annotate.match-examples.spec.ts);距离按 K 线根数算,样本日不是交易日 → unmatched;
-- 反馈状态:point 当天有买点 matched、只有前后一天有 unmatched;range 边界内外;family 范围外同起点 hit 还在买
-  matched、起点认不出 lost、起点事件还在但不买 unmatched;朱红 = matched 且没挂「定义改过」;
+- 反馈状态:point 当天有买点 matched、只有前后一天有 unmatched;range 边界内外;family 按基准 node 认同一次形状:
+  票 16「拦什么、放什么」表逐行一例,连同一条反馈收进来的 hit(feedback_hits)和新建整族反馈要存的基准 event 起止,
+  都照 fixtures/reference_examples.json 写好的答案(前端 annotate/feedback.ts 过同一份文件,见
+  path2_web_ui/tests/annotate.reference-examples.spec.ts);朱红 = matched 且没挂「定义改过」;
 - app_ver:改 `.py`、改默认参数文件、增删 `.py` 会变;改 mapping.yaml、另存的参数文件、增删 __pycache__ 不变;
 - app_buys:买点日 = 每个 hit 的买点事件跨度里的每一根(与前端 buyDaysOf 同口径,含 'node.slot' 的写法),
-  族按 hit 起点分;事件起点只取参与求解的 node(含与它共用一条流、记在兄弟名下的事件);能 JSON 往返;
+  族按 hit 起点分;每个 hit 的基准 event 取 hit 绑定的事件及其直接子段里基准 node 的,全部基准 event 不论档位、
+  不论在不在 hit 里(与前端读序列化结果取到的一致);没声明基准 node 时这两样为空;能 JSON 往返,旧 round 文件
+  (没有这两样)读得出;参与求解的 node(solving_nodes)含与它共用一条流、记在兄弟名下的;
 - run_app:读的行情不晚于训练段末日;读不到行情时抛的异常分得清目录缺、股票缺、代码不合格。
 """
 from __future__ import annotations
@@ -70,7 +74,6 @@ D = pd.bdate_range("2025-01-02", periods=30).strftime("%Y-%m-%d").tolist()
 #                 族起点   → 买点日
 BUYS = AppBuys(families={D[0]: (D[6], D[7]),          # 一族在买:第 6、7 根
                          D[12]: ()},                   # 一族有 hit、但一天都不买
-               event_starts=(D[0], D[12], D[20]),      # 第 20 根起的事件没进任何 hit
                dates=tuple(D))
 
 
@@ -94,23 +97,74 @@ def test_range_boundaries():
     assert m.feedback_status(_fb("range", D[1], D[5]), BUYS) == "unmatched"   # 紧挨着买点之前
 
 
-def test_family_states():
-    # 范围外,但起点相同的那一族还在买 → matched
-    assert m.feedback_status(_fb("family", D[9], D[11], family_start=D[0]), BUYS) == "matched"
-    # 起点认不出(参与求解的 node 没有一个事件起于这天)→ lost
-    assert m.feedback_status(_fb("family", D[25], D[27], family_start=D[24]), BUYS) == "lost"
-    # 起点那一族还在、但不买 → unmatched;起点事件还在、没有 hit → unmatched
-    assert m.feedback_status(_fb("family", D[13], D[15], family_start=D[12]), BUYS) == "unmatched"
-    assert m.feedback_status(_fb("family", D[21], D[23], family_start=D[20]), BUYS) == "unmatched"
-    # 只看日期:范围里有买点就 matched,不管是不是这一族的、起点认不认得出
+def test_family_in_range_and_without_reference():
+    # 只看日期:范围里有买点就 matched,不管是不是这一族的、存没存基准 event 起止
     assert m.feedback_status(_fb("family", D[4], D[6], family_start=D[3]), BUYS) == "matched"
+    # 范围外起点相同的那一族还在买,但这条没存基准 event 起止(BUYS 也没取基准 event)→ lost,不退回按起点对
+    assert m.feedback_status(_fb("family", D[9], D[11], family_start=D[0]), BUYS) == "lost"
 
 
 def test_feedback_status_bad_input():
     with pytest.raises(ValueError):
         m.feedback_status(_fb("week", D[1], D[2]), BUYS)
-    with pytest.raises(ValueError):
-        m.feedback_status(_fb("family", D[9], D[11]), BUYS)   # family 缺 family_start
+
+
+# ───────────────────────── 整族反馈按基准 node:例子文件 ─────────────────────────
+REF = json.loads((FIXTURES / "reference_examples.json").read_text(encoding="utf-8"))
+
+
+class _Ev:
+    """假事件:起止下标、node_id,和按槽名给 child 的 child_slots()(_resolve_end_events、reference_events 只用这些)。"""
+
+    def __init__(self, node_id, s, e, slots=None):
+        self.node_id, self.start_idx, self.end_idx = node_id, s, e
+        self._slots = slots or {}
+
+    def child_slots(self):
+        return self._slots
+
+
+def _ref_run():
+    """把例子文件里序列化形状的结果还原成 app_buys 认的假结果:(res, win)。top 里的是各条流的事件(res.events),
+    child_refs 还原成 child_slots。"""
+    a = REF["analysis"]
+    evs = {e["instance_id"]: _Ev(e["node_id"], e["start_idx"], e["end_idx"]) for e in a["events"]}
+    for e in a["events"]:
+        evs[e["instance_id"]]._slots = {k: tuple(evs[i] for i in ids) for k, ids in (e.get("child_refs") or {}).items()}
+    hits = [SimpleNamespace(start_idx=h["start_idx"], node_index={k: evs[i] for k, i in h["node_index"].items()})
+            for h in a["hits"]]
+    res = SimpleNamespace(hits=hits, events=tuple(evs[i] for i in a["top"]))
+    return res, pd.DataFrame({"date": pd.to_datetime(REF["days"])})
+
+
+@pytest.mark.parametrize("case", REF["cases"], ids=[c["name"] for c in REF["cases"]])
+def test_reference_examples(case):
+    res, win = _ref_run()
+    buys = app_buys(res, win, REF["end_node"], reference=case["declared"])
+    fb = {"id": "f-pc-1", **case["feedback"]}
+    assert m.feedback_status(fb, buys) == case["expect"]["status"], case["why"]
+    ids = [h["hit_id"] for h in REF["analysis"]["hits"]]
+    assert [ids[i] for i in m.feedback_hits(fb, buys)] == case["expect"]["hits"], case["why"]
+
+
+@pytest.mark.parametrize("fam", REF["families"], ids=[str(f["start"]) for f in REF["families"]])
+def test_reference_spans_of_a_family(fam):
+    """后端各 hit 的基准 event 起止,按族合起来(去重、不合并)= 前端新建整族反馈时存下的。"""
+    res, win = _ref_run()
+    buys = app_buys(res, win, REF["end_node"], reference=REF["reference"])
+    starts = [h["start_idx"] for h in REF["analysis"]["hits"]]
+    got = sorted({tuple(sp) for h, st in zip(buys.hits, starts) if st == fam["start"] for sp in h.spans})
+    assert [list(sp) for sp in got] == fam["spans"]
+
+
+def test_reference_examples_cover_the_table():
+    """票 16「拦什么、放什么」表里判法管的每一行都有例子;三态都有,收进来的 hit 有空有不空。"""
+    rows = {c["row"] for c in REF["cases"]}
+    assert {"QBTS f-pc-92", "IXHL f-pc-90", "CRNC f-pc-74、LUMN f-pc-95 / 现行规则不变", "起点碰巧同一天",
+            "单根阶跃挪开", "reference 从 step 改成别的", "票 18 补存之前的那 4 条", "存了两段",
+            "切成两段(V16-1 兜底)", "同起点不同终点"} <= rows
+    assert {c["expect"]["status"] for c in REF["cases"]} == {"matched", "unmatched", "lost"}
+    assert len({c["name"] for c in REF["cases"]}) == len(REF["cases"])
 
 
 def test_is_red():
@@ -193,42 +247,45 @@ def test_app_ver_of_real_app_is_stable():
     assert re.fullmatch(r"[0-9a-f]{16}", v) and app_ver(bo_only) == v
 
 
-# ───────────────────────── app_buys(假结果:'node.slot' 买点、族、事件起点) ─────────────────────────
-class _Ev:
-    """假事件:起止下标、node_id,和按槽名给 child 的 child_slots()(_resolve_end_events 只用这些)。"""
-
-    def __init__(self, node_id, s, e, slots=None):
-        self.node_id, self.start_idx, self.end_idx = node_id, s, e
-        self._slots = slots or {}
-
-    def child_slots(self):
-        return self._slots
-
-
-def test_app_buys_slot_path_families_and_event_starts(monkeypatch):
+# ───────────────────────── app_buys(假结果:'node.slot' 买点、族、基准 event) ─────────────────────────
+def test_app_buys_slot_path_families_and_reference_events():
     win = pd.DataFrame({"date": pd.to_datetime(D[:15])})
-    p1 = _Ev("plat", 0, 7, {"today": (_Ev("today", 5, 5),)})
-    p1b = _Ev("plat", 0, 8, {"today": (_Ev("today", 6, 6), _Ev("today", 8, 9))})   # 同一族另一次 hit
-    p2 = _Ev("plat", 3, 10, {"today": ()})                                           # 一天都不买
-    lone = _Ev("plat", 11, 13, {"today": ()})                                        # 没进 hit 的事件
-    other = _Ev("other", 2, 4)                                                       # 不参与求解的 node
+    p1 = _Ev("plat", 0, 7, {"step": _Ev("step", 1, 2), "today": (_Ev("today", 5, 5),)})
+    p1b = _Ev("plat", 0, 8, {"step": _Ev("step", 1, 3),                                # 同一族另一次 hit
+                             "today": (_Ev("today", 6, 6), _Ev("today", 8, 9))})
+    p2 = _Ev("plat", 3, 10, {"step": _Ev("step", 4, 4), "today": ()})                  # 一天都不买
+    lone = _Ev("plat", 11, 13, {"step": _Ev("step", 12, 12), "today": ()})             # 没进 hit 的事件
+    deep = _Ev("step", 13, 14)                                                          # 子段的子段:不下这一级
+    other = _Ev("other", 2, 4, {"inner": (_Ev("wrap", 2, 3, {"x": deep}),)})
     hits = [SimpleNamespace(start_idx=0, node_index={"plat": p1}),
             SimpleNamespace(start_idx=0, node_index={"plat": p1b}),
             SimpleNamespace(start_idx=3, node_index={"plat": p2})]
-    res = SimpleNamespace(hits=hits, events=(p1, p1b, p2, lone, other), spec=None)
-    monkeypatch.setattr(app_run, "solving_nodes", lambda spec: frozenset({"plat"}))
+    res = SimpleNamespace(hits=hits, events=(p1, p1b, p2, lone, other))
 
-    b = app_buys(res, win, "plat.today")
+    b = app_buys(res, win, "plat.today", reference="step")
     assert b.families == {D[0]: (D[5], D[6], D[8], D[9]), D[3]: ()}
     assert b.buy_days == (D[5], D[6], D[8], D[9])
-    assert b.event_starts == (D[0], D[3], D[11])        # other 起于 D[2],不算
-    assert b.dates == tuple(D[:15])
+    assert b.dates == tuple(D[:15]) and b.reference == "step"
+    assert [(h.spans, h.buy_days) for h in b.hits] == [
+        (((D[1], D[2]),), (D[5],)), (((D[1], D[3]),), (D[6], D[8], D[9])), (((D[4], D[4]),), ())]
+    assert b.ref_events == ((D[1], D[2]), (D[1], D[3]), (D[4], D[4]), (D[12], D[12]))   # deep 不算
 
     again = AppBuys.from_dict(json.loads(json.dumps(b.to_dict())))
     assert again == b
 
+    plain = app_buys(res, win, "plat.today")              # 没声明基准 node:只取买点与族
+    assert plain.reference is None and plain.hits == () and plain.ref_events == ()
+    assert plain.families == b.families
+
     with pytest.raises(KeyError):                        # hit 里没有买点 node:响亮失败
         app_buys(res, win, "nope")
+
+
+def test_old_round_file_buys_still_read():
+    """旧 round 文件里的买点(有 event_starts、没有基准 event 两样)读得出,按没声明基准 node 算。"""
+    old = {"families": {D[0]: [D[5]]}, "event_starts": [D[0]], "dates": D[:10]}
+    b = AppBuys.from_dict(old)
+    assert b.families == {D[0]: (D[5],)} and b.reference is None and b.hits == () and b.ref_events == ()
 
 
 def test_solving_nodes_excludes_display_only_and_keeps_shared_stream():
@@ -247,13 +304,6 @@ def test_solving_nodes_excludes_display_only_and_keeps_shared_stream():
         NodeSpec("b", det, produces_stream="bo"),
         NodeSpec("pk", det, produces_stream="pk", solve=False)))
     assert solving_nodes(spec) == {"a", "b"}
-    df = _oscillating_bars().loc[:TRAIN_END].reset_index()
-    from path2.dag.engine import analyze
-    res = analyze(spec, df, p)
-    assert res.hits and {e.node_id for e in res.events} == {"a", "pk"}
-    b = app_buys(res, df, "b", spec)
-    bo_days = {df["date"].iat[e.start_idx].strftime("%Y-%m-%d") for e in res.events if e.node_id == "a"}
-    assert set(b.event_starts) == bo_days
 
 
 # ───────────────────────── run_app + app_buys(真 app,合成行情) ─────────────────────────
@@ -289,7 +339,7 @@ def test_run_app_and_app_buys_match_front_end_reading(tmp_path):
     assert set(meta) == {"start_date", "end_date", "win_start", "win_end", "label_horizon", "end_node"}
     assert win["date"].max() <= pd.Timestamp(TRAIN_END)
 
-    b = app_buys(res, win, meta["end_node"])
+    b = app_buys(res, win, meta["end_node"], reference="bo")
     assert b.dates == tuple(win["date"].dt.strftime("%Y-%m-%d"))
     assert max(b.dates) <= TRAIN_END and b.buy_days
 
@@ -302,11 +352,14 @@ def test_run_app_and_app_buys_match_front_end_reading(tmp_path):
             b.dates[i] for i in _front_buy_days(h, by_id, meta["end_node"]))
     assert b.families == {k: tuple(sorted(v)) for k, v in fam.items()}
 
-    # 事件起点只有参与求解的 bo,只显示的 pk 不进
-    starts = {n: {b.dates[e["start_idx"]] for e in ser["events"] if e["node_id"] == n} for n in ("bo", "pk")}
-    assert set(b.event_starts) == starts["bo"]
-    assert starts["pk"] - starts["bo"]                     # pk 有 bo 没有的起点,确实被排除了
-    assert not (starts["pk"] - starts["bo"]) & set(b.event_starts)
+    # 基准 event(bo):全部的 = 序列化结果里 node 是 bo 的那些(只显示的 pk 不进);每个 hit 的 = 它绑定的 bo
+    spans = {n: {(b.dates[e["start_idx"]], b.dates[e["end_idx"]]) for e in ser["events"] if e["node_id"] == n}
+             for n in ("bo", "pk")}
+    assert set(b.ref_events) == spans["bo"] and spans["pk"] - spans["bo"]
+    assert len(b.hits) == len(ser["hits"])
+    for hb, h in zip(b.hits, ser["hits"]):
+        e = by_id[h["node_index"]["bo"]]
+        assert hb.spans == ((b.dates[e["start_idx"]], b.dates[e["end_idx"]]),)
 
 
 def test_run_app_bars_unavailable(tmp_path):

@@ -5,15 +5,16 @@
 
 - require_eval_meta:读 app 的 eval_meta()(买点 node、首部缓冲交易日数);
 - run_app:按 eval_meta 拉宽缓冲窗、切 K 线、跑 app.analyze,返回 (结果, 切好的 K 线, 元信息);
-- app_buys:从跑出的结果里取买点日、按起点分的族、参与求解的 node 的事件起点、窗口内全部交易日,
-  打包成 AppBuys(全是日期字符串,能 JSON 往返,会话的改版报告要存盘);
+- app_buys:从跑出的结果里取买点日、按起点分的族、每个 hit 的基准 event 起止与买点日、全部基准 event 的起止、
+  窗口内全部交易日,打包成 AppBuys(全是日期字符串,能 JSON 往返,会话的改版报告要存盘);
+- solving_nodes:参与求解的 node(会话的 look 工具列「没成买点的候选」用);
 - 读不到行情时抛 BarsUnavailable 的三个子类(同时是 FileNotFoundError / ValueError),由调用方映射:
   单股预览照原来的 503 / 404 / 400,反馈状态接口把那只股票记成读不到、不整体失败。
 """
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Mapping
+from typing import Iterable, Mapping, Optional
 
 import pandas as pd
 
@@ -113,16 +114,33 @@ def run_app(mod, cfg: dict, symbol: str, start: str, end: str, params, label_hor
 
 # ───────────────────────── 取买点日 ─────────────────────────
 @dataclass(frozen=True)
+class HitBuys:
+    """一个 hit 的基准 event 起止与买点日(按 res.hits 的先后排在 AppBuys.hits 里)。
+
+    - spans:这个 hit 的基准 event 的起止 ((start, end), …),升序去重;取法见 app_buys;
+    - buy_days:这个 hit 的买点日,升序去重;不买的 hit 为空元组。
+    """
+    spans: tuple
+    buy_days: tuple
+
+
+@dataclass(frozen=True)
 class AppBuys:
     """一只股票上 app 的买点(全部是 YYYY-MM-DD 字符串,能 JSON 往返)。
 
     - families:族起点日期(hit 的起点)→ 这一族全部 hit 的买点日(升序去重);一族的 hit 都没有买点日时为空元组;
-    - event_starts:参与求解的 node 的全部事件(不论档位)的起点日期(升序去重),判 family 反馈的 lost 用;
-    - dates:窗口内全部交易日(升序),按 K 线根数算距离用。
+    - dates:窗口内全部交易日(升序),按 K 线根数算距离用;
+    - reference:取下面两样时用的基准 node(mapping 声明的 reference);没声明时为 None,下面两样为空;
+    - hits:每个 hit 的基准 event 起止与买点日(HitBuys,按 res.hits 的先后);
+    - ref_events:全部基准 event(不论档位、不论在不在 hit 里)的起止 ((start, end), …),升序去重。
+    后三样判整族反馈用(path2_web/annotation/match.py 的 feedback_status)。改版报告的 round 文件就存这个对象;
+    旧 round 文件里没有后三样,读出来按没声明基准 node 算(不补)。
     """
     families: Mapping[str, tuple]
-    event_starts: tuple
     dates: tuple
+    reference: Optional[str] = None
+    hits: tuple = ()
+    ref_events: tuple = ()
 
     @property
     def buy_days(self) -> tuple:
@@ -130,13 +148,18 @@ class AppBuys:
         return tuple(sorted({d for days in self.families.values() for d in days}))
 
     def to_dict(self) -> dict:
-        return {"families": {k: list(v) for k, v in self.families.items()},
-                "event_starts": list(self.event_starts), "dates": list(self.dates)}
+        return {"families": {k: list(v) for k, v in self.families.items()}, "dates": list(self.dates),
+                "reference": self.reference,
+                "hits": [{"spans": [list(sp) for sp in h.spans], "buy_days": list(h.buy_days)} for h in self.hits],
+                "ref_events": [list(sp) for sp in self.ref_events]}
 
     @classmethod
     def from_dict(cls, d: Mapping) -> "AppBuys":
-        return cls(families={str(k): tuple(v) for k, v in d["families"].items()},
-                   event_starts=tuple(d["event_starts"]), dates=tuple(d["dates"]))
+        return cls(families={str(k): tuple(v) for k, v in d["families"].items()}, dates=tuple(d["dates"]),
+                   reference=d.get("reference"),
+                   hits=tuple(HitBuys(spans=tuple(tuple(sp) for sp in h["spans"]), buy_days=tuple(h["buy_days"]))
+                              for h in d.get("hits", ())),
+                   ref_events=tuple(tuple(sp) for sp in d.get("ref_events", ())))
 
 
 def solving_nodes(spec) -> frozenset:
@@ -155,32 +178,55 @@ def solving_nodes(spec) -> frozenset:
                      if n.node_id in bound or (n.detector is not None and stream_key(n) in keys))
 
 
-def app_buys(res, win: pd.DataFrame, end_node: str, spec=None) -> AppBuys:
+def reference_events(events: Iterable, node: str) -> list:
+    """一组事件里基准 node 的 event:这些事件本身,和它们 child 槽里的直接子段(只下一级),node_id 是 node 的;
+    按对象身份去重,先后照遍历顺序。
+
+    只下一级,与单股预览的序列化(path2_web/serialize.py 的 serialize_analysis 只挖一级子段)、前端
+    annotate/feedback.ts 的 referenceSpans 同口径;mapping 只许基准 node 是独立 node 或它的直接子结构 node
+    (path2_web/mapping.py)。"""
+    seen: dict = {}
+    for e in events:
+        if e.node_id == node:
+            seen.setdefault(id(e), e)
+        for slot in e.child_slots().values():
+            for c in (slot if isinstance(slot, tuple) else (slot,)):
+                if c.node_id == node:
+                    seen.setdefault(id(c), c)
+    return list(seen.values())
+
+
+def app_buys(res, win: pd.DataFrame, end_node: str, reference: Optional[str] = None) -> AppBuys:
     """从 run_app 的结果取买点。
 
-    参数:res、win 来自 run_app;end_node 是 eval_meta 声明的买点 node('node' 或 'node.slot');spec 是这次
-    跑的 pattern 声明,省略时用 res.spec。
+    参数:res、win 来自 run_app;end_node 是 eval_meta 声明的买点 node('node' 或 'node.slot');reference 是
+    mapping 声明的基准 node(没声明为 None:只取买点与族,基准 event 两样为空)。
 
     - 买点日:每个 hit 经 path2.eval 的 _resolve_end_events(与评估、序列化同一个函数)取到买点事件,事件跨度里
       的每一根都是买点日——与前端 render/fold.ts 的 buyDaysOf 同口径(不是序列化里的 buy_date 那一天);
       hit 里解析不到买点 node 时照 _resolve_end_events 抛错(app 声明漂移要响亮);
     - 族:按 hit 的起点分组,值是组内全部 hit 买点日的并集;
-    - 事件起点:参与求解的 node(solving_nodes)的全部事件,不论档位;
+    - 每个 hit 的基准 event:hit 绑定的事件(node_index)经 reference_events 取,起止换成日期;
+    - 全部基准 event:res.events(各条流的全部事件,不论档位)经 reference_events 取;
     - 交易日:win 的全部日期。
 
     它不按区间筛 hit:缓冲窗里跑出的 hit 全都算。与 compare 图上的买点一致的前提是用全历史区间跑 app
     (run_app 的 start 给 "1900-01-01"、end 给 TRAIN_END、label_horizon 20,同前端 stores/appLink.ts 调单股
     预览的参数)——反馈状态接口(path2_web/api.py 的 /feedback/status)、会话的改版报告都必须这么调。
     """
-    if spec is None:
-        spec = res.spec
     day = pd.to_datetime(win["date"]).dt.strftime("%Y-%m-%d").tolist() if len(win) else []
+
+    def spans(events) -> tuple:
+        return tuple(sorted({(day[e.start_idx], day[e.end_idx]) for e in events}))
+
     families: dict = {}
+    hits = []
     for h in res.hits:
-        days = families.setdefault(day[h.start_idx], set())
-        for ev in _resolve_end_events(h, end_node):
-            days.update(day[ev.start_idx:ev.end_idx + 1])
-    nodes = solving_nodes(spec)
-    starts = {day[e.start_idx] for e in res.events if e.node_id in nodes}
-    return AppBuys(families={k: tuple(sorted(families[k])) for k in sorted(families)},
-                   event_starts=tuple(sorted(starts)), dates=tuple(day))
+        mine = {d for ev in _resolve_end_events(h, end_node) for d in day[ev.start_idx:ev.end_idx + 1]}
+        families.setdefault(day[h.start_idx], set()).update(mine)
+        if reference is not None:
+            hits.append(HitBuys(spans=spans(reference_events(h.node_index.values(), reference)),
+                                buy_days=tuple(sorted(mine))))
+    return AppBuys(families={k: tuple(sorted(families[k])) for k in sorted(families)}, dates=tuple(day),
+                   reference=reference, hits=tuple(hits),
+                   ref_events=spans(reference_events(res.events, reference)) if reference is not None else ())

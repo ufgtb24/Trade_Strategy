@@ -8,7 +8,13 @@
 
 反馈状态(feedback_status、is_red):唯一实现在这里。后端的反馈状态接口与会话的改版报告都调它,界面只照接口给的
 状态与朱红与否画、排,不另写一套判法。页面上只显示 matched / unmatched 两种(shown_status 把 lost 并进
-unmatched),原因标签挂不挂由 shown_tag 判;三态只留给会话。
+unmatched),原因标签挂不挂由 shown_tag 判;三态只留给会话。一条反馈收进来的 hit(feedback_hits)和记号变朱红
+同一口径;前端选中一条反馈时牵出的 hit(path2_web_ui/src/annotate/feedback.ts 的 feedbackHits)照它写,两边逐例
+通过同一份例子文件 `tests/path2_web/fixtures/reference_examples.json`。
+
+整族反馈按基准 node 认「同一次形状」(spec 6.13「状态判法」;词条见 path2/GLOSSARY.md 的 reference node):
+反馈记录的 reference = {node, spans} 是写反馈时这一族各 hit 的基准 event 起止;当前 app 的基准 event 与其中一段
+共用至少一根 K 线,就是同一次形状。日期都是交易日,两段日期有交集即共用 K 线。只比日期,不认是哪种走势。
 
 样本 match(sample_match):有两份实现——前端 compareRead.ts 的 matchOf(画图用)和这里(给会话的改版报告用),
 两份逐例通过同一份例子文件 `tests/path2_web/fixtures/match_examples.json`,答案只写在那份文件里。
@@ -35,17 +41,51 @@ SUB_TOL = 2   # 暂定值,同上:子框终点与子段终点相差几根以内�
 FEEDBACK_TARGETS = ("point", "family", "range")
 
 
+def _overlaps(a: Sequence, b: Sequence) -> bool:
+    """两段日期 (start, end) 有没有共用的 K 线(两端都含;日期都是交易日)。"""
+    return a[0] <= b[1] and b[0] <= a[1]
+
+
+def _stored_spans(fb: Mapping, buys: "AppBuys") -> Optional[list]:
+    """整族反馈存下的基准 event 起止;认不了时为 None:不是 family、没存 reference、或它存的基准 node 不是
+    取 buys 时用的那个(mapping 现在声明的;没声明时 buys.reference 为 None,一样认不了)。"""
+    ref = fb.get("reference") if fb.get("target") == "family" else None
+    if not ref or buys.reference is None or ref.get("node") != buys.reference:
+        return None
+    return list(ref.get("spans") or ())
+
+
+def feedback_hits(fb: Mapping, buys: "AppBuys") -> list[int]:
+    """一条反馈收进来的 hit(buys.hits 里的下标,即 res.hits 的先后;选中这条反馈时它牵出的 hit):
+    买点日落在 [start, end] 里的 hit,不论哪一族;整族反馈另加基准 event 与存下的某一段共用 K 线、而且在买
+    (买点日不论在哪)的 hit。认不了存下的起止时(_stored_spans 为 None)只有前一样。
+    buys 没取基准 event(没声明基准 node)时 buys.hits 为空,结果也为空。"""
+    start, end = fb["start"], fb["end"]
+    spans = _stored_spans(fb, buys)
+    out = []
+    for i, h in enumerate(buys.hits):
+        if any(start <= d <= end for d in h.buy_days) or (
+                spans and h.buy_days and any(_overlaps(a, b) for a in h.spans for b in spans)):
+            out.append(i)
+    return out
+
+
 def feedback_status(fb: Mapping, buys: "AppBuys") -> str:
     """一条反馈在当前 app 下的状态:'matched'(app 仍在买,朱红)/ 'unmatched'(常色)/ 'lost'(第三态)。
 
-    参数:fb 是重放出的反馈记录(用到 target、start、end,family 另用 family_start);buys 是这只股票上
-    当前 app 的买点(path2_web/app_run.py 的 AppBuys)。
+    参数:fb 是重放出的反馈记录(用到 target、start、end,family 另用 reference);buys 是这只股票上
+    当前 app 的买点(path2_web/app_run.py 的 AppBuys,带着取它时 mapping 声明的基准 node)。
 
     - point / range:[start, end] 内有买点日 → matched,否则 unmatched;
-    - family:[start, end] 内有买点日,或起于 family_start 的那一族 hit 还有买点日(买点日不论在哪)→ matched;
-      两样都没有、而且参与求解的 node 连一个起于 family_start 的事件(不论档位)都没有 → lost(起点认不出:
-      改好了,或认法变了,由会话逐条交代);其余 unmatched。
-    只看日期,不看是哪一族的买点。target 不认得、family 缺 family_start → ValueError。
+    - family(逐个 hit 判,不按族合并起止):
+      1. [start, end] 内有买点日 → matched(不看基准);
+      2. 认不了存下的起止(没存 reference、或存的基准 node 不是 mapping 现在声明的)→ lost;
+      3. 有 hit 的基准 event 与存下的某一段共用 K 线、而且这个 hit 在买(买点日不论在哪)→ matched;
+      4. 存下的至少一段,当前 app 有与它共用 K 线的基准 event(不论档位、不论在不在 hit 里)→ unmatched;
+      5. 其余(每一段都没有共用 K 线的基准 event)→ lost。
+      lost = 基准 node 对不上:可能真改好了,也可能同一次形状挪远了还在买,由会话在改版报告里逐条交代;
+      不退回按 family_start 对。
+    target 不认得 → ValueError。
     """
     target = fb["target"]
     if target not in FEEDBACK_TARGETS:
@@ -55,17 +95,19 @@ def feedback_status(fb: Mapping, buys: "AppBuys") -> str:
         return "matched"
     if target != "family":
         return "unmatched"
-    fs = fb.get("family_start")
-    if not fs:
-        raise ValueError(f"family 反馈缺 family_start: {fb.get('id')!r}")
-    if buys.families.get(fs):
+    spans = _stored_spans(fb, buys)
+    if not spans:
+        return "lost"
+    if feedback_hits(fb, buys):
         return "matched"
-    return "unmatched" if fs in buys.event_starts else "lost"
+    if any(_overlaps(a, b) for a in buys.ref_events for b in spans):
+        return "unmatched"
+    return "lost"
 
 
 def shown_status(status: Optional[str]) -> Optional[str]:
     """页面上显示的反馈状态:只有 matched(app 还在这里买)/ unmatched(不买了)/ None(读不到行情)。
-    lost 并进 unmatched:「起点认不出」要懂机制才看得懂,对用户来说就是不买了;它是真改好了还是认法变了,
+    lost 并进 unmatched:「基准 node 对不上」要懂机制才看得懂,对用户来说就是不买了;它是真改好了还是认法变了,
     由会话在改版报告里逐条交代。会话这边(改版报告、摘要)照旧用 feedback_status 的三态。"""
     return "unmatched" if status == "lost" else status
 
