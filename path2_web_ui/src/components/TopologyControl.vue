@@ -14,11 +14,11 @@
           v-for="(e, i) in layout.edges" :key="i" class="edge-line" :d="e.d"
           fill="none" stroke="#94a3b8" stroke-width="1.6" marker-end="url(#topo-arrow)"
         />
-        <!-- 父子虚线边:子结构 node → 物化来源父(方向 child → parent,箭头指向父) -->
+        <!-- 父子虚线:挂靠的画成父下面的缩进树(├ └,不带箭头,方向看缩进);回退的水平虚线带箭头指向父 -->
         <path
-          v-for="(p, i) in layout.parentEdges" :key="'p' + i" class="parent-edge" :d="p.d"
-          fill="none" stroke="#cbd5e1" stroke-width="1.2" stroke-dasharray="4 3"
-          marker-end="url(#topo-arrow)"
+          v-for="(p, i) in layout.parentEdges" :key="'p' + i" class="parent-edge" :class="{ tree: p.tree }" :d="p.d"
+          fill="none" :stroke="p.tree ? '#94a3b8' : '#cbd5e1'" stroke-width="1.2" stroke-dasharray="4 3"
+          :marker-end="p.tree ? undefined : 'url(#topo-arrow)'"
         />
       </svg>
 
@@ -55,9 +55,10 @@
         <span class="rule">{{ e.edge.rule }}</span>
       </div>
 
-      <!-- 父子边槽名 label:纯展示(无入口 B 业务),不拦点击 -->
+      <!-- 位置名(子在父里的槽名):缩进树里写在树杈上(白底把虚线断开);纯展示,不拦点击 -->
       <div
         v-for="(p, i) in layout.parentEdges" :key="'pl' + i" class="pelabel"
+        :data-slot-of="p.child.node_id"
         :style="{ left: p.label.x + 'px', top: p.label.y + 'px' }"
       >
         {{ p.slot }}
@@ -208,8 +209,9 @@ function closeNodes() {
 .elabel .rule { color: #0f172a; }
 .pelabel {
   position: absolute; z-index: 2; transform: translate(0, -50%);   /* 左对齐:label.x 即文字左缘 */
-  background: rgba(255, 255, 255, 0.92); padding: 0 4px; border-radius: 4px;
-  font-size: 10px; line-height: 1.3; color: #94a3b8; white-space: nowrap;
+  background: #ffffff; padding: 0 4px; border-radius: 4px;           /* 白底:写在树杈上时把虚线断开 */
+  font-size: 10px; line-height: 1.3; color: #000000; white-space: nowrap;   /* 程序固定词:黑色等宽 */
+  font-family: ui-monospace, "JetBrains Mono", "DejaVu Sans Mono", Consolas, monospace;   /* 同 render/fonts.ts 的 MONO */
   pointer-events: none;
 }
 .hint { margin-top: 4px; font-size: 10px; color: #94a3b8; }

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { layoutTopology, SUB_GAP } from '../src/render/topology'
+import { BRANCH_LEAD, BRANCH_TAIL, TREE_ROW_GAP, TRUNK_DX, layoutTopology, slotWidth } from '../src/render/topology'
 import type { TopoLayout } from '../src/render/topology'
 import type { TopoNode, TopoEdge } from '../src/types'
 
@@ -184,36 +184,72 @@ describe('layoutTopology — adaptive column gap fits edge labels', () => {
     expect(gapBetween(cjk, 'a', 'b')).toBeGreaterThan(gapBetween(ascii, 'a', 'b'))  // CJK 12px > ASCII 7px/字
   })
 
-  it('anchors a sub-structure node below its parent (same column)', () => {
+  it('anchors a sub-structure node in an indented tree below its parent', () => {
     const L = layoutTopology(
       [node('bo'), node('tb'), node('tb_seg', 'tb', 'segments')],
       [ed('bo', 'tb', 'gap=1')],
     )
-    expect(xOf(L.nodes, 'tb_seg')).toBe(xOf(L.nodes, 'tb'))       // 子结构挂父正下方(同列)
-    expect(yOf(L.nodes, 'tb_seg')).toBeGreaterThan(yOf(L.nodes, 'tb'))
-    expect(yOf(L.nodes, 'tb_seg')).toBe(yOf(L.nodes, 'tb') + 30 + SUB_GAP)  // NODE_H(30) + SUB_GAP
-    expect(xOf(L.nodes, 'tb')).toBeGreaterThan(xOf(L.nodes, 'bo'))      // 业务边分层不受影响
-  })
-
-  it('emits a vertical parent edge from child top up to parent bottom, carrying the slot name', () => {
-    const L = layoutTopology(
-      [node('tb'), node('tb_seg', 'tb', 'segments')],
-      [],
-    )
-    expect(L.parentEdges).toHaveLength(1)
-    const pe = L.parentEdges[0]
-    expect(pe.child.node_id).toBe('tb_seg')
-    expect(pe.parent_id).toBe('tb')
-    expect(pe.slot).toBe('segments')
     const c = L.nodes.find((b) => b.node.node_id === 'tb_seg')!
     const p = L.nodes.find((b) => b.node.node_id === 'tb')!
-    expect(c.x).toBe(p.x)                                             // 同列挂靠
-    expect(c.y).toBeGreaterThan(p.y)                                  // 子在父下方
-    expect(pe.d.startsWith(`M ${c.x + c.w / 2},${c.y}`)).toBe(true)   // 起点 = 子顶缘中点
-    expect(pe.d.endsWith(`${c.x + c.w / 2},${p.y + p.h}`)).toBe(true) // 终点 = 同 x 的父底缘(垂直直线,箭头扎进父底)
-    expect(pe.d.includes('L ')).toBe(true)                            // 垂直直线(非曲线)
-    expect(pe.label.x).toBe(c.x + c.w / 2 + 8)                        // 槽名 label 放虚线右侧
-    expect(pe.label.y).toBe((c.y + p.y + p.h) / 2)                    // 垂直居中于虚线
+    expect(c.x).toBe(p.x + TRUNK_DX + BRANCH_LEAD + slotWidth('segments') + BRANCH_TAIL)   // 缩进:主干 + 树杈 + 位置名
+    expect(c.y).toBe(p.y + p.h + TREE_ROW_GAP)                       // 紧接在父下面
+    expect(xOf(L.nodes, 'tb')).toBeGreaterThan(xOf(L.nodes, 'bo'))  // 业务边分层不受影响
+  })
+
+  it('draws a tree edge: trunk down from the parent bottom, branch across to the child, slot name on the branch, no arrow', () => {
+    const L = layoutTopology([node('tb'), node('tb_seg', 'tb', 'segments')], [])
+    expect(L.parentEdges).toHaveLength(1)
+    const pe = L.parentEdges[0]
+    expect([pe.child.node_id, pe.parent_id, pe.slot, pe.tree]).toEqual(['tb_seg', 'tb', 'segments', true])
+    const c = L.nodes.find((b) => b.node.node_id === 'tb_seg')!
+    const p = L.nodes.find((b) => b.node.node_id === 'tb')!
+    const tx = p.x + TRUNK_DX, cy = c.y + c.h / 2
+    expect(pe.d).toBe(`M ${tx},${p.y + p.h} L ${tx},${cy} L ${c.x},${cy}`)
+    expect(pe.label).toEqual({ x: tx + BRANCH_LEAD, y: cy })       // 位置名在树杈上,左缘离主干 BRANCH_LEAD
+    expect(pe.label.x + slotWidth('segments')).toBeLessThanOrEqual(c.x)   // 不压到子 node 上
+  })
+
+  it('new_step: four children of one parent each get their own row and branch; nothing overlaps', () => {
+    const kids = [['old_plat', 'old'], ['step', 'step'], ['new_plat', 'new'], ['today', 'today']] as const
+    const L = layoutTopology([node('plateau'), ...kids.map(([id, slot]) => node(id, 'plateau', slot))], [])
+    const p = L.nodes.find((b) => b.node.node_id === 'plateau')!
+    const rows = kids.map(([id]) => L.nodes.find((b) => b.node.node_id === id)!)
+    // 按 nodes 的先后(同副图轨名)一行一个,上下不重叠
+    for (let i = 1; i < rows.length; i++) expect(rows[i].y).toBe(rows[i - 1].y + rows[i - 1].h + TREE_ROW_GAP)
+    // 每条树杈的横线各在自己那一行的中线上(不再有两条线重合);主干接上一个兄弟的中线
+    const edges = kids.map(([id]) => L.parentEdges.find((e) => e.child.node_id === id)!)
+    const tx = p.x + TRUNK_DX
+    edges.forEach((e, i) => {
+      const cy = rows[i].y + rows[i].h / 2
+      const prevY = i === 0 ? p.y + p.h : rows[i - 1].y + rows[i - 1].h / 2
+      expect(e.d).toBe(`M ${tx},${prevY} L ${tx},${cy} L ${rows[i].x},${cy}`)
+      expect(e.label.y).toBe(cy)
+    })
+    expect(new Set(edges.map((e) => e.d)).size).toBe(4)
+    // 位置名不压到任何 node 框上
+    for (const e of edges) {
+      const [x0, x1] = [e.label.x, e.label.x + slotWidth(e.slot)]
+      for (const b of L.nodes) {
+        const overlapX = x0 < b.x + b.w && x1 > b.x
+        const overlapY = e.label.y > b.y && e.label.y < b.y + b.h
+        expect(overlapX && overlapY).toBe(false)
+      }
+    }
+  })
+
+  it('a child of a child is indented one level further', () => {
+    const L = layoutTopology([node('a'), node('b', 'a', 's'), node('c', 'b', 't')], [])
+    const [a, b, c] = ['a', 'b', 'c'].map((id) => L.nodes.find((x) => x.node.node_id === id)!)
+    expect(b.x).toBeGreaterThan(a.x)
+    expect(c.x).toBeGreaterThan(b.x)
+    expect(c.y).toBe(b.y + b.h + TREE_ROW_GAP)
+    expect(L.parentEdges.every((e) => e.tree)).toBe(true)
+  })
+
+  it('a parent cycle falls back to the flow (no infinite tree)', () => {
+    const L = layoutTopology([node('a', undefined, undefined, [['b', 's']]), node('b', undefined, undefined, [['a', 't']])], [])
+    expect(L.nodes).toHaveLength(2)
+    expect(L.parentEdges.every((e) => !e.tree)).toBe(true)
   })
 
   it('emits no parent edge for ordinary nodes', () => {
@@ -230,12 +266,11 @@ describe('layoutTopology — adaptive column gap fits edge labels', () => {
     const pe = L.parentEdges.find((p) => p.child.node_id === 'bo')
     expect(pe?.parent_id).toBe('burst')
     expect(pe?.slot).toBe('members')
-    expect(xOf(L.nodes, 'bo')).toBe(xOf(L.nodes, 'burst'))      // 独立 node 也挂父正下方
-    expect(yOf(L.nodes, 'bo')).toBeGreaterThan(yOf(L.nodes, 'burst'))
+    expect(pe?.tree).toBe(true)                                  // 独立 node 也挂在父下面的缩进树里
     const c = L.nodes.find((b) => b.node.node_id === 'bo')!
     const p = L.nodes.find((b) => b.node.node_id === 'burst')!
-    expect(pe!.d.startsWith(`M ${c.x + c.w / 2},${c.y}`)).toBe(true)
-    expect(pe!.d.endsWith(`${c.x + c.w / 2},${p.y + p.h}`)).toBe(true)  // 垂直直线(同一 x)
+    expect(c.x).toBe(p.x + TRUNK_DX + BRANCH_LEAD + slotWidth('members') + BRANCH_TAIL)
+    expect(c.y).toBe(p.y + p.h + TREE_ROW_GAP)
   })
 
   it('keeps a referenced business-edge endpoint in the flow with a horizontal parent edge (fallback)', () => {
@@ -252,19 +287,20 @@ describe('layoutTopology — adaptive column gap fits edge labels', () => {
     const p = L.nodes.find((b) => b.node.node_id === 'burst')!
     expect(pe!.d.startsWith(`M ${c.x},${c.y + c.h / 2}`)).toBe(true)     // 水平画法:子左缘中点
     expect(pe!.d.endsWith(`${p.x + p.w},${p.y + p.h / 2}`)).toBe(true)   // 父右缘中点
+    expect(pe!.tree).toBe(false)
   })
 
-  it('demotes an anchor whose parent is not the last node of its layer (fallback guard)', () => {
-    // 防御:a 同层非末位 → x 降级回水平流(a 后列),虚线水平画法
+  it('a parent that is not the last node of its layer keeps its tree; the next node in that layer stacks below the tree', () => {
     const L = layoutTopology(
       [node('a'), node('c'), node('b'), node('x', undefined, undefined, [['a', 's']])],
       [ed('a', 'b', 'x'), ed('c', 'b', 'x')],
     )
-    expect(xOf(L.nodes, 'x')).toBeGreaterThan(xOf(L.nodes, 'a'))     // 降级:在 a 后列而非 a 正下方
-    const pe = L.parentEdges.find((p) => p.child.node_id === 'x')
-    const c = L.nodes.find((b) => b.node.node_id === 'x')!
-    const p = L.nodes.find((b) => b.node.node_id === 'a')!
-    expect(pe!.d.startsWith(`M ${c.x},${c.y + c.h / 2}`)).toBe(true)
-    expect(pe!.d.endsWith(`${p.x + p.w},${p.y + p.h / 2}`)).toBe(true)
+    const [a, c, x] = ['a', 'c', 'x'].map((id) => L.nodes.find((n) => n.node.node_id === id)!)
+    expect(x.x).toBeGreaterThan(a.x)                       // x 缩进挂在 a 下面
+    expect(x.y).toBe(a.y + a.h + TREE_ROW_GAP)
+    expect(c.x).toBe(a.x)                                  // c 和 a 同一列
+    expect(c.y).toBeGreaterThan(x.y + x.h)                 // 排在 a 那一整块下面,不压树
+    expect(L.parentEdges.find((p) => p.child.node_id === 'x')!.tree).toBe(true)
   })
+
 })
