@@ -1,0 +1,121 @@
+== 16 张样本 ==
+  KULR 2024-03-27 一致=False 没有候选
+  KULR 2024-04-01 一致=False hit=0 step=2024-03-26..2024-03-26 new=2024-03-27..2024-03-28 t=2024-04-01 新认法step=2024-03-25..2024-03-26 框起-旧平台起=16根 底部平稳框止→阶跃起=9根 →新认法起=8根
+      信号: ['S2_close', 'S2_prev_up', 'true_start']
+  KULR 2024-11-29 一致=False hit=0 step=2024-11-25..2024-11-25 new=2024-11-26..2024-11-27 t=2024-11-29 新认法step=2024-11-20..2024-11-26 框起-旧平台起=5根 底部平稳框止→阶跃起=9根 →新认法起=6根
+      信号: ['S1_top10', 'S1_first_high_up', 'S2_prev_up', 'true_end', 'true_end_material', 'true_start']
+  KULR 2024-12-16 一致=False hit=0 step=2024-11-29..2024-11-29 new=2024-12-02..2024-12-13 t=2024-12-16 新认法step=2024-11-29..2024-12-02 框起-旧平台起=12根 底部平稳框止→阶跃起=12根 →新认法起=12根
+      信号: ['S1_top10', 'S1_first_high_up', 'S2_close', 'true_end', 'true_end_material']
+  CAPR 2025-12-19 一致=True hit=1 step=2025-12-03..2025-12-03 new=2025-12-04..2025-12-18 t=2025-12-19 新认法step=2025-12-03..2025-12-03
+      信号: []
+  CRNC 2024-11-29 一致=True hit=1 step=2024-11-21..2024-11-22 new=2024-11-25..2024-11-27 t=2024-11-29 新认法step=2024-11-20..2024-11-25 框起-旧平台起=32根 底部平稳框止→阶跃起=2根 →新认法起=1根
+      信号: ['S1_first_high_up', 'true_end', 'true_start']
+  CRNC 2024-12-05 一致=True hit=1 step=2024-11-21..2024-11-22 new=2024-11-25..2024-12-04 t=2024-12-05 新认法step=2024-11-20..2024-11-25 框起-旧平台起=32根 底部平稳框止→阶跃起=2根 →新认法起=1根
+      信号: ['S1_top10', 'S1_first_high_up', 'true_end', 'true_start']
+  CRNC 2024-12-13 一致=True hit=1 step=2024-11-21..2024-11-22 new=2024-11-25..2024-12-12 t=2024-12-13 新认法step=2024-11-20..2024-11-25 框起-旧平台起=32根 底部平稳框止→阶跃起=2根 →新认法起=1根
+      信号: ['S1_top10', 'S1_first_high_up', 'true_end', 'true_start']
+  DXYZ 2024-11-15 一致=True hit=1 step=2024-11-06..2024-11-11 new=2024-11-12..2024-11-14 t=2024-11-15 新认法step=2024-11-04..2024-11-11
+      信号: ['S2_prev_up', 'true_start']
+  GEVO 2024-09-23 一致=True hit=1 step=2024-09-12..2024-09-17 new=2024-09-18..2024-09-20 t=2024-09-23 新认法step=2024-09-11..2024-09-17 框起-旧平台起=21根
+      信号: ['S2_prev_up', 'true_start']
+  INDO 2022-02-04 一致=True hit=1 step=2022-01-27..2022-01-27 new=2022-01-28..2022-02-03 t=2022-02-04 新认法step=2022-01-27..2022-01-27 框起-旧平台起=7根
+      信号: []
+  QBTS 2024-11-29 一致=True hit=1 step=2024-11-22..2024-11-22 new=2024-11-25..2024-11-27 t=2024-11-29 新认法step=2024-11-20..2024-11-25 框起-旧平台起=7根
+      信号: ['S1_top10', 'S1_first_high_up', 'S2_prev_up', 'true_end', 'true_end_material', 'true_start']
+  QBTS 2024-12-03 一致=True hit=1 step=2024-11-22..2024-11-22 new=2024-11-25..2024-12-02 t=2024-12-03 新认法step=2024-11-20..2024-11-25 框起-旧平台起=7根
+      信号: ['S1_top10', 'S1_first_high_up', 'S2_prev_up', 'true_end', 'true_end_material', 'true_start']
+  RGTI 2024-11-29 一致=True hit=1 step=2024-11-25..2024-11-25 new=2024-11-26..2024-11-27 t=2024-11-29 新认法step=2024-11-20..2024-11-25 框起-旧平台起=-1根
+      信号: ['S2_prev_up', 'true_start']
+  RGTI 2024-12-04 一致=True hit=1 step=2024-11-25..2024-11-25 new=2024-11-26..2024-12-03 t=2024-12-04 新认法step=2024-11-20..2024-11-25 框起-旧平台起=-2根
+      信号: ['S2_prev_up', 'true_start']
+  SMX 2025-12-02 一致=True hit=1 step=2025-11-26..2025-11-28 new=2025-12-01..2025-12-01 t=2025-12-02 新认法step=2025-11-24..2025-11-28 框起-旧平台起=3根
+      信号: ['S2_close', 'S2_prev_up', 'true_start']
+== 10 处反馈 ==
+  f-pc-90(f-pc-90) IXHL 2025-08-29..2025-09-26 family: hit 13；阶跃 [('2025-08-22', '2025-08-25', ('2025-08-20', '2025-08-26'))]
+      信号计数: {'S1_close': 0, 'S1_high': 0, 'S1_top10': 13, 'S1_first_high_up': 13, 'S2_close': 13, 'S2_prev_up': 13, 'keep_gt1': 0, 'true_end': 13, 'true_end_material': 13, 'true_start': 13, 'buy_inside_new_step': 0}
+  f-pc-92(f-pc-92) QBTS 2025-03-18..2025-03-25 family: hit 3；阶跃 [('2025-03-14', '2025-03-14', ('2025-03-11', '2025-03-17'))]
+      信号计数: {'S1_close': 0, 'S1_high': 0, 'S1_top10': 3, 'S1_first_high_up': 3, 'S2_close': 0, 'S2_prev_up': 3, 'keep_gt1': 1, 'true_end': 3, 'true_end_material': 3, 'true_start': 3, 'buy_inside_new_step': 0}
+  f-pc-74(i-pc-1) CRNC 2025-01-07..2025-01-30 family: hit 7；阶跃 [('2025-01-03', '2025-01-03', ('2025-01-03', '2025-01-06'))]
+      信号计数: {'S1_close': 0, 'S1_high': 0, 'S1_top10': 7, 'S1_first_high_up': 7, 'S2_close': 0, 'S2_prev_up': 0, 'keep_gt1': 0, 'true_end': 7, 'true_end_material': 7, 'true_start': 0, 'buy_inside_new_step': 0}
+  f-pc-72(i-pc-1) INDO 2022-03-08..2022-05-03 range: hit 27；阶跃 [('2022-03-02', '2022-03-04', ('2022-03-02', '2022-03-07')), ('2022-03-02', '2022-03-07', ('2022-03-02', '2022-03-07'))]
+      信号计数: {'S1_close': 0, 'S1_high': 9, 'S1_top10': 9, 'S1_first_high_up': 9, 'S2_close': 0, 'S2_prev_up': 0, 'keep_gt1': 0, 'true_end': 9, 'true_end_material': 9, 'true_start': 0, 'buy_inside_new_step': 0}
+  f-pc-89(i-pc-1) KULR 2024-04-12..2024-05-20 range: hit 7；阶跃 [('2024-04-02', '2024-04-02', ('2024-04-02', '2024-04-03'))]
+      信号计数: {'S1_close': 0, 'S1_high': 0, 'S1_top10': 7, 'S1_first_high_up': 7, 'S2_close': 0, 'S2_prev_up': 0, 'keep_gt1': 0, 'true_end': 7, 'true_end_material': 7, 'true_start': 0, 'buy_inside_new_step': 0}
+  f-pc-94(i-pc-2) IXHL 2025-07-25..2025-07-25 point: hit 1；阶跃 [('2025-07-18', '2025-07-21', ('2025-07-18', '2025-07-24'))]
+      信号计数: {'S1_close': 0, 'S1_high': 0, 'S1_top10': 1, 'S1_first_high_up': 1, 'S2_close': 0, 'S2_prev_up': 0, 'keep_gt1': 1, 'true_end': 1, 'true_end_material': 1, 'true_start': 0, 'buy_inside_new_step': 0}
+  f-pc-95(i-pc-2) LUMN 2024-08-09..2024-10-02 family: hit 42；阶跃 [('2024-08-06', '2024-08-06', ('2024-08-06', '2024-08-07')), ('2024-08-06', '2024-08-07', ('2024-08-06', '2024-08-07'))]
+      信号计数: {'S1_close': 0, 'S1_high': 0, 'S1_top10': 21, 'S1_first_high_up': 21, 'S2_close': 0, 'S2_prev_up': 0, 'keep_gt1': 1, 'true_end': 21, 'true_end_material': 21, 'true_start': 0, 'buy_inside_new_step': 0}
+  f-pc-104(i-pc-3) CAPR 2025-12-05..2025-12-05 point: hit 1；阶跃 [('2025-12-03', '2025-12-03', ('2025-12-03', '2025-12-03'))]
+      信号计数: {'S1_close': 0, 'S1_high': 0, 'S1_top10': 0, 'S1_first_high_up': 0, 'S2_close': 0, 'S2_prev_up': 0, 'keep_gt1': 0, 'true_end': 0, 'true_end_material': 0, 'true_start': 0, 'buy_inside_new_step': 0}
+  f-pc-101(i-pc-3) IZM 2024-04-16..2024-04-16 point: hit 2；阶跃 [('2024-04-08', '2024-04-09', ('2024-03-28', '2024-04-16')), ('2024-04-08', '2024-04-10', ('2024-03-28', '2024-04-16'))]
+      信号计数: {'S1_close': 0, 'S1_high': 0, 'S1_top10': 2, 'S1_first_high_up': 2, 'S2_close': 0, 'S2_prev_up': 2, 'keep_gt1': 2, 'true_end': 2, 'true_end_material': 2, 'true_start': 2, 'buy_inside_new_step': 2}
+  f-pc-93(i-pc-3) TNXP 2024-12-30..2024-12-30 point: hit 1；阶跃 [('2024-12-19', '2024-12-19', ('2024-12-19', '2024-12-19'))]
+      信号计数: {'S1_close': 0, 'S1_high': 0, 'S1_top10': 0, 'S1_first_high_up': 0, 'S2_close': 1, 'S2_prev_up': 0, 'keep_gt1': 0, 'true_end': 0, 'true_end_material': 0, 'true_start': 0, 'buy_inside_new_step': 0}
+== 全部买点 hit（13 只股票）==
+hit 数 254
+  S1_close: 5
+  S1_high: 25
+  S1_top10: 115
+  S1_first_high_up: 140
+  S2_close: 24
+  S2_prev_up: 85
+  keep_gt1: 28
+  true_end: 140
+  true_end_material: 102
+  true_start: 107
+  buy_inside_new_step: 4
+  ('S1_first_high_up', 'true_end'): 140
+  ('S1_first_high_up', 'true_end_material'): 102
+  ('S2_prev_up', 'true_start'): 85
+  ('S1_close', 'true_end'): 3
+  ('S1_close', 'true_end_material'): 1
+  ('S1_high', 'true_end'): 23
+  ('S1_high', 'true_end_material'): 21
+  ('S1_top10', 'true_end'): 112
+  ('S1_top10', 'true_end_material'): 101
+  ('keep_gt1', 'true_end'): 28
+  ('keep_gt1', 'true_end_material'): 25
+  ('S2_close', 'true_start'): 17
+== S3/S4 前缀成族 ==
+  买点日 192，其中同一段阶跃的 ≥2 个前缀同天都买的 57
+  hit 254，其中用的是短前缀（新平台里夹着同段阶跃剩下的根）的 64
+    ('CRNC', '2024-11-27', 2)
+    ('CRNC', '2024-11-29', 2)
+    ('CRNC', '2024-12-02', 2)
+    ('CRNC', '2024-12-05', 2)
+    ('CRNC', '2024-12-06', 2)
+    ('CRNC', '2024-12-13', 2)
+    ('CRNC', '2024-12-16', 2)
+    ('CRNC', '2024-12-20', 2)
+    ('CRNC', '2024-12-23', 2)
+    ('CRNC', '2024-12-24', 2)
+    ('CRNC', '2024-12-26', 2)
+    ('INDO', '2022-03-15', 2)
+    ('INDO', '2022-03-16', 2)
+    ('INDO', '2022-03-17', 2)
+    ('INDO', '2022-03-28', 2)
+    ('INDO', '2022-03-29', 2)
+    ('INDO', '2022-03-30', 2)
+    ('INDO', '2022-04-04', 2)
+    ('INDO', '2022-04-07', 2)
+    ('INDO', '2022-04-08', 2)
+    ('LUMN', '2024-08-09', 2)
+    ('LUMN', '2024-08-13', 2)
+    ('LUMN', '2024-08-14', 2)
+    ('LUMN', '2024-08-16', 2)
+    ('LUMN', '2024-08-20', 2)
+    ('LUMN', '2024-08-23', 2)
+    ('LUMN', '2024-08-28', 2)
+    ('LUMN', '2024-08-30', 2)
+    ('LUMN', '2024-09-04', 2)
+    ('LUMN', '2024-09-05', 2)
+    ('LUMN', '2024-09-06', 2)
+    ('LUMN', '2024-09-11', 2)
+    ('LUMN', '2024-09-12', 2)
+    ('LUMN', '2024-09-16', 2)
+    ('LUMN', '2024-09-18', 2)
+    ('LUMN', '2024-09-19', 2)
+    ('LUMN', '2024-09-20', 2)
+    ('LUMN', '2024-09-23', 2)
+    ('LUMN', '2024-09-25', 2)
+    ('LUMN', '2024-09-27', 2)

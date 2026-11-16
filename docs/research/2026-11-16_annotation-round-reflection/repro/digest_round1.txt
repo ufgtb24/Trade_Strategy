@@ -1,0 +1,178 @@
+# new_step 这一轮的输入
+
+- 口径：这一轮定格时的标注（定格于 2026-11-16）配改 app 之前的买点；定格之后用户再改的标注、改完 app 之后的买点都不在这里
+- app：`new_step`
+- 上一轮：没有（第一轮）
+
+## 定义
+
+pattern 定义：
+> 类似于跃迁函数走势，一根或者几根大幅上涨的强势K线比左右两侧的波动率都高，右侧在企稳后站上新平台。构成跃迁函数的竖线相比于两侧非常强势，大涨幅，放量。
+> 注意新平台要相对于阶跃阶段出现明显的成交量缩小迹象
+
+对到 node 的特征：
+- `w-pc-11` 站上新平台 → node `plateau`
+  > 股价呈现明显的两段台阶走势
+  > 稳定到一个比之前稳定价位更高的价位
+- `w-pc-26` 平台交界放量 → node `step`
+  > 阶跃发生时，伴随放量
+
+还没对到 node 的特征：
+- `w-pc-8` 底部平稳
+  > - 股票跌倒长期相对低位
+  > - 波动率相对于前期明显变小
+  > - 相对于之前的下跌趋势，股价基本保持水平不变。
+- `w-pc-40` 触底放量
+  > 在一路下跌后，放量，然后下跌趋势不再延续，似乎是通过放量来支撑住下跌
+- `w-pc-88` 新平台有很长下影线
+  > （没写）
+
+## mapping
+
+- app：`new_step`
+- notes：
+  - `plateau`：站上新平台(旧平台 → 阶跃 → 新平台,新平台上每天截到当天)
+  - `old_plat`：旧平台(阶跃前固定长度的一段,不找旧平台起点)
+  - `step`：阶跃(一根或几根大幅上涨的强势K线)
+  - `new_plat`：新平台(阶跃之后到前一天)
+  - `today`：当天(买点)
+  - `plateau.old_flat`：旧平台平
+  - `plateau.step_big`：大涨幅
+  - `plateau.step_strong`：比左右两侧的波动率都高
+  - `plateau.step_vol`：平台交界放量
+  - `plateau.new_hold`：守住新平台(当天收盘没吐回阶跃的大半,跌回去站回来照样买)
+  - `plateau.new_calm`：波动小(只看新平台最近一段)
+  - `plateau.no_chase`：没追涨
+  - `plateau.bull_close`：收阳线
+  - `plateau.no_overhead`：近期没有冲高回落(上方没有阶跃前三个月内的前高压着)
+  - `plateau.new_shrink`：新平台相对于阶跃阶段出现明显的成交量缩小
+  - `plateau.settled`：企稳(当天没创新平台以来的新低)
+  - `plateau.big_wait`：阶跃阶段涨幅过大的,先在新平台站稳几天
+  - `step.step_big`：大涨幅
+  - `step.vs_left`：比左侧的波动率高
+  - `step.step_vol`：平台交界放量
+  - `today.bull_close`：收阳线
+
+## 账本
+
+conditions（9 行）：
+- `plateau.no_overhead` ← f-pc-90：unmeasured 2026-11-16 用户同意新加价格版：阶跃前约三个月内有高过当天收盘的前高就先不买，越过前高或前高移出三个月后照买；定义文字待用户更新
+- `plateau.new_shrink` ← f-pc-92：from_definition 2026-11-16 定义「新平台要相对于阶跃阶段出现明显的成交量缩小迹象」；门槛从正样本量出、留余量
+- `plateau.new_calm` ← s-pc-80：from_definition 2026-11-16 出局核对：波动小原来从阶跃后第一天累计振幅、回不来，改成只看新平台最近一段
+- `plateau` ← s-pc-86、s-pc-82：from_definition 2026-11-16 旧平台波动中位数为 0（价格卡档位）时改取平均数，阶跃照常开段
+- `plateau.settled` ← f-pc-74、f-pc-72、f-pc-89：from_definition 2026-11-16 定义「企稳」：当天不创新平台以来的收盘新低；门槛受正样本 KULR 2024-04-01 限制只能看当天，挡得少
+- `plateau.big_wait` ← f-pc-104：unmeasured 2026-11-16 用户同意按 setback 新加：阶跃涨得特别猛的，阶跃后先在新平台站几天再买；定义文字待用户更新
+- `plateau.new_hold` ← （没写来源）：from_definition 2026-11-16 出局核对：用户定为 setback；守住改成只读当天收盘，跌回去站回来照样买
+- `plateau.fall_back_end` ← （没写来源）：from_definition 2026-11-16 出局核对：用户定为 setback；去掉收盘跌回旧平台价位即收族的截断
+- `plateau.no_chase` ← s-pc-75：from_definition 2026-11-16 用户在题里定：当天大涨冲过阶跃以来最高价的日子不算买点，保留没追涨；建议措辞待用户贴进定义
+tags（7 条）：
+- f-pc-90 `unhandled`
+- f-pc-92 `unhandled`
+- f-pc-74 `unhandled`
+- f-pc-72 `unhandled`
+- f-pc-89 `unhandled`
+- f-pc-95 `unhandled`
+- f-pc-93 `unhandled`
+
+## 上一轮以来的变化
+
+没有上一轮的定格（第一轮），不比。
+
+## issue
+
+共 5 个 issue、10 处；还在买 10 处、起点认不出 0 处。
+
+### `f-pc-90`（1 处，还在买 1 处）
+- 落在：plateau、old_plat
+- note：
+  > 之前近期有较大的波动，甚至已经有大幅冲高回落的机构盈利走势，那么短期内不会再有能量去二次爆发。
+- 账本：`plateau.no_overhead`（unmeasured 2026-11-16 用户同意新加价格版：阶跃前约三个月内有高过当天收盘的前高就先不买，越过前高或前高移出三个月后照买；定义文字待用户更新）
+- 各处：
+  - [IXHL 2025-08-29～2025-09-26](http://localhost:5171/#symbol=IXHL&date=2025-08-29&pattern=new_step&mode=compare) `family`（起点 2025-08-01） `matched`，标签 `unhandled`；范围里在买 13 天：2025-08-29、2025-09-03、2025-09-08、2025-09-09、2025-09-11、2025-09-16、2025-09-17、2025-09-18、2025-09-22、2025-09-23、2025-09-24、2025-09-25、2025-09-26（f-pc-90）
+
+### `f-pc-92`（1 处，还在买 1 处）
+- 落在：step
+- note：
+  > 相对成交量不够大
+- 账本：`plateau.new_shrink`（from_definition 2026-11-16 定义「新平台要相对于阶跃阶段出现明显的成交量缩小迹象」；门槛从正样本量出、留余量）
+- 各处：
+  - [QBTS 2025-03-18～2025-03-25](http://localhost:5171/#symbol=QBTS&date=2025-03-18&pattern=new_step&mode=compare) `family`（起点 2025-02-21） `matched`，标签 `unhandled`；范围里在买 3 天：2025-03-18、2025-03-21、2025-03-25（f-pc-92）
+
+### `i-pc-1`（3 处，还在买 3 处）
+- 落在：new_plat
+- note：
+  > 较长时间的阴跌，没有一个强势支撑。我觉得应该添加正负性的判断，如果长期阴跌或者下跌K线很强势等，偏负性，如果支撑很强势，那么则是正性。然后比较正负性。
+- 账本：`plateau.settled`（from_definition 2026-11-16 定义「企稳」：当天不创新平台以来的收盘新低；门槛受正样本 KULR 2024-04-01 限制只能看当天，挡得少）
+- 各处：
+  - [CRNC 2025-01-07～2025-01-30](http://localhost:5171/#symbol=CRNC&date=2025-01-07&pattern=new_step&mode=compare) `family`（起点 2024-12-11） `matched`，标签 `unhandled`；范围里在买 7 天：2025-01-07、2025-01-15、2025-01-21、2025-01-22、2025-01-28、2025-01-29、2025-01-30（f-pc-74）
+  - [INDO 2022-03-08～2022-05-03](http://localhost:5171/#symbol=INDO&date=2022-03-08&pattern=new_step&mode=compare) `range` `matched`，标签 `unhandled`；范围里在买 18 天：2022-03-15、2022-03-16、2022-03-17、2022-03-28、2022-03-29、2022-03-30、2022-04-04、2022-04-07、2022-04-08、2022-04-13、2022-04-14、2022-04-18、2022-04-19、2022-04-20、2022-04-22、2022-04-25、2022-04-28、2022-05-03（f-pc-72）
+  - [KULR 2024-04-12～2024-05-20](http://localhost:5171/#symbol=KULR&date=2024-04-12&pattern=new_step&mode=compare) `range` `matched`，标签 `unhandled`；范围里在买 7 天：2024-04-19、2024-04-23、2024-05-02、2024-05-09、2024-05-14、2024-05-15、2024-05-16（f-pc-89）
+
+### `i-pc-2`（2 处，还在买 2 处）
+- 落在：step、new_plat
+- note：
+  > 阶跃阶段涨幅过大，机构已经派发获利。前期已经连续放量太久了，剩余能量匮乏，而不是代表走势初期的短促脉冲型的阶跃
+- 账本：还没有条件
+- 各处：
+  - [IXHL 2025-07-25](http://localhost:5171/#symbol=IXHL&date=2025-07-25&pattern=new_step&mode=compare) `point` `matched`；范围里在买 1 天：2025-07-25（f-pc-94）
+  - [LUMN 2024-08-09～2024-10-02](http://localhost:5171/#symbol=LUMN&date=2024-08-09&pattern=new_step&mode=compare) `family`（起点 2024-07-16） `matched`，标签 `unhandled`；范围里在买 21 天：2024-08-09、2024-08-13、2024-08-14、2024-08-16、2024-08-20、2024-08-23、2024-08-28、2024-08-30、2024-09-04、2024-09-05、2024-09-06、2024-09-11、2024-09-12、2024-09-16、2024-09-18、2024-09-19、2024-09-20、2024-09-23、2024-09-25、2024-09-27、2024-10-02（f-pc-95）
+
+### `i-pc-3`（3 处，还在买 3 处）
+- 落在：step、new_plat
+- note：
+  > 阶跃阶段涨幅过大，机构已经派发获利
+- 账本：`plateau.big_wait`（unmeasured 2026-11-16 用户同意按 setback 新加：阶跃涨得特别猛的，阶跃后先在新平台站几天再买；定义文字待用户更新）
+- 各处：
+  - [CAPR 2025-12-05](http://localhost:5171/#symbol=CAPR&date=2025-12-05&pattern=new_step&mode=compare) `point` `matched`；范围里在买 1 天：2025-12-05（f-pc-104）
+  - [IZM 2024-04-16](http://localhost:5171/#symbol=IZM&date=2024-04-16&pattern=new_step&mode=compare) `point` `matched`；范围里在买 1 天：2024-04-16（f-pc-101）
+  - [TNXP 2024-12-30](http://localhost:5171/#symbol=TNXP&date=2024-12-30&pattern=new_step&mode=compare) `point` `matched`，标签 `unhandled`；范围里在买 1 天：2024-12-30（f-pc-93）
+
+## 样本
+
+共 16 张：一致 12、相反 4、没比 0。
+
+- **相反** [KULR 2024-03-27](http://localhost:5171/#symbol=KULR&date=2024-03-27&pattern=new_step&mode=compare) 正样本，`unmatched`（s-pc-86）
+  - 框 `b-pc-85` 底部平稳 2023-12-06～2024-03-13；属性：触底放量 否
+  - 框 `b-pc-87` 站上新平台 2024-02-09～2024-03-27；属性：平台交界放量 是、新平台有很长下影线 是
+- **相反** [KULR 2024-04-01](http://localhost:5171/#symbol=KULR&date=2024-04-01&pattern=new_step&mode=compare) 正样本，`unmatched`（s-pc-82）
+  - 框 `b-pc-85` 底部平稳 2023-12-06～2024-03-13；属性：触底放量 否
+  - 框 `b-pc-83` 站上新平台 2024-02-09～2024-04-01；属性：平台交界放量 是
+- **相反** [KULR 2024-11-29](http://localhost:5171/#symbol=KULR&date=2024-11-29&pattern=new_step&mode=compare) 正样本，`unmatched`（s-pc-75）
+  - 框 `b-pc-79` 底部平稳 2024-04-11～2024-11-12；属性：触底放量 否
+  - 框 `b-pc-76` 站上新平台 2024-10-28～2024-11-29；属性：平台交界放量 是
+- **相反** [KULR 2024-12-16](http://localhost:5171/#symbol=KULR&date=2024-12-16&pattern=new_step&mode=compare) 正样本，`unmatched`（s-pc-80）
+  - 框 `b-pc-79` 底部平稳 2024-04-11～2024-11-12；属性：触底放量 否
+  - 框 `b-pc-81` 站上新平台 2024-10-22～2024-12-16
+- 一致 [CAPR 2025-12-19](http://localhost:5171/#symbol=CAPR&date=2025-12-19&pattern=new_step&mode=compare) 正样本，`matched`（s-pc-105）
+  - note：稳定住了，应该是一个马尔柯夫过程
+  - （没收框）
+- 一致 [CRNC 2024-11-29](http://localhost:5171/#symbol=CRNC&date=2024-11-29&pattern=new_step&mode=compare) 正样本，`matched`（s-pc-44）
+  - 框 `b-pc-42` 底部平稳 2024-05-08～2024-11-19；属性：触底放量 否
+  - 框 `b-pc-43` 站上新平台 2024-09-17～2024-11-29；属性：平台交界放量 是
+- 一致 [CRNC 2024-12-05](http://localhost:5171/#symbol=CRNC&date=2024-12-05&pattern=new_step&mode=compare) 正样本，`matched`（s-pc-45）
+  - 框 `b-pc-42` 底部平稳 2024-05-08～2024-11-19；属性：触底放量 否
+  - 框 `b-pc-43` 站上新平台 2024-09-17～2024-11-29；属性：平台交界放量 是
+- 一致 [CRNC 2024-12-13](http://localhost:5171/#symbol=CRNC&date=2024-12-13&pattern=new_step&mode=compare) 正样本，`matched`（s-pc-46）
+  - 框 `b-pc-42` 底部平稳 2024-05-08～2024-11-19；属性：触底放量 否
+  - 框 `b-pc-43` 站上新平台 2024-09-17～2024-11-29；属性：平台交界放量 是
+- 一致 [DXYZ 2024-11-15](http://localhost:5171/#symbol=DXYZ&date=2024-11-15&pattern=new_step&mode=compare) 正样本，`matched`（s-pc-96）
+  - （没收框）
+- 一致 [GEVO 2024-09-23](http://localhost:5171/#symbol=GEVO&date=2024-09-23&pattern=new_step&mode=compare) 正样本，`matched`（s-pc-59）
+  - 框 `b-pc-60` 站上新平台 2024-07-23～2024-09-23；属性：平台交界放量 是
+- 一致 [INDO 2022-02-04](http://localhost:5171/#symbol=INDO&date=2022-02-04&pattern=new_step&mode=compare) 正样本，`matched`（s-pc-35）
+  - 框 `b-pc-34` 站上新平台 2021-12-27～2022-02-04；属性：平台交界放量 是
+- 一致 [QBTS 2024-11-29](http://localhost:5171/#symbol=QBTS&date=2024-11-29&pattern=new_step&mode=compare) 正样本，`matched`（s-pc-55）
+  - 框 `b-pc-56` 站上新平台 2024-10-23～2024-11-29；属性：平台交界放量 是
+- 一致 [QBTS 2024-12-03](http://localhost:5171/#symbol=QBTS&date=2024-12-03&pattern=new_step&mode=compare) 正样本，`matched`（s-pc-57）
+  - 框 `b-pc-58` 站上新平台 2024-10-23～2024-12-03
+- 一致 [RGTI 2024-11-29](http://localhost:5171/#symbol=RGTI&date=2024-11-29&pattern=new_step&mode=compare) 正样本，`matched`（s-pc-38）
+  - 框 `b-pc-51` 站上新平台 2024-11-05～2024-11-29；属性：平台交界放量 是
+- 一致 [RGTI 2024-12-04](http://localhost:5171/#symbol=RGTI&date=2024-12-04&pattern=new_step&mode=compare) 正样本，`matched`（s-pc-47）
+  - note：稳定了
+  - 框 `b-pc-50` 站上新平台 2024-11-06～2024-12-04；属性：平台交界放量 否
+- 一致 [SMX 2025-12-02](http://localhost:5171/#symbol=SMX&date=2025-12-02&pattern=new_step&mode=compare) 正样本，`matched`（s-pc-33）
+  - 框 `b-pc-32` 站上新平台 2025-10-31～2025-12-02；属性：平台交界放量 是
+
+## 没比的
+
+没有读不到行情的股票。
