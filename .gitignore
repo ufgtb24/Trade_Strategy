@@ -10,6 +10,8 @@ feature_library
 __pycache__/
 prompt_template/
 .worktrees/
+# playwright MCP 的截图、快照、控制台日志缓存:用完即清,不进 git
+.playwright-mcp/
 configs/api_keys.yaml
 cache/
 .contexts/
