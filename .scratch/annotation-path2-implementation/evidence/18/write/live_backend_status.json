@@ -1,0 +1,36 @@
+{
+ "source": "GET http://127.0.0.1:8001/feedback/status?pattern=new_step（用户开着的页面后端，只读请求，2026-11-17 写入之后）",
+ "app": "new_step",
+ "app_ver": "32dd64edf923d266",
+ "reason": null,
+ "items": [
+  {
+   "id": "f-pc-74",
+   "status": "matched",
+   "tag": "unhandled",
+   "red": true,
+   "reason": null
+  },
+  {
+   "id": "f-pc-95",
+   "status": "matched",
+   "tag": "unhandled",
+   "red": true,
+   "reason": null
+  },
+  {
+   "id": "f-pc-92",
+   "status": "matched",
+   "tag": "unhandled",
+   "red": true,
+   "reason": null
+  },
+  {
+   "id": "f-pc-90",
+   "status": "unmatched",
+   "tag": null,
+   "red": false,
+   "reason": null
+  }
+ ]
+}
