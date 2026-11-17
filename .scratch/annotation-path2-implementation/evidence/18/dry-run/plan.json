@@ -1,0 +1,116 @@
+{
+ "code": {
+  "commit": "3a5c585493e37b8dc43b8a16af8ddb977da12516",
+  "tracked_changes": "D  .scratch/annotation-path2-implementation/evidence/18/dry-run/plan.json\nD  .scratch/annotation-path2-implementation/evidence/18/dry-run/status_after.json\nD  .scratch/annotation-path2-implementation/evidence/18/dry-run/status_before.json\nD  .scratch/annotation-path2-implementation/evidence/18/dry-run/write_result.json",
+  "script_blob": "79841023621529e909c0b23eba7894b2e96ca250"
+ },
+ "annotation_dir_is_real": false,
+ "ops_sha256": "1a3b9e8563676b7c3f48239e8179419aa8f54a5bb0df9480e988c4428d07300a",
+ "n_ops": 4,
+ "batch_counts": {
+  "pc": {
+   "through": 299
+  }
+ },
+ "conflicts": 0,
+ "unsynced": 0,
+ "violations": 0,
+ "ignored_files": [],
+ "fingerprint": {
+  "local": "40508e77199b91e351ea09182fe7d3b87aadb2f50c6d82f4ddb30d578cbcf559",
+  "local_error": null,
+  "recorded": [
+   {
+    "fingerprint": "40508e77199b91e351ea09182fe7d3b87aadb2f50c6d82f4ddb30d578cbcf559",
+    "batches": 299
+   }
+  ],
+  "consistent": true
+ },
+ "rows": [
+  {
+   "id": "f-pc-74",
+   "symbol": "CRNC",
+   "base": "pc-20261111T063129.213Z-181#0",
+   "family_start": "2024-12-11",
+   "range": [
+    "2025-01-07",
+    "2025-01-30"
+   ],
+   "reference": {
+    "node": "step",
+    "spans": [
+     [
+      "2025-01-03",
+      "2025-01-03"
+     ]
+    ]
+   },
+   "record_sha256_before": "14d5eda0958da9158c9bd988b979a0e0121408a6d4a9c3e5e5537256b12a39d5"
+  },
+  {
+   "id": "f-pc-90",
+   "symbol": "IXHL",
+   "base": "pc-20261116T021546.911Z-243#0",
+   "family_start": "2025-08-01",
+   "range": [
+    "2025-08-29",
+    "2025-09-26"
+   ],
+   "reference": {
+    "node": "step",
+    "spans": [
+     [
+      "2025-08-22",
+      "2025-08-25"
+     ]
+    ]
+   },
+   "record_sha256_before": "6c2b1c9c96b068aa2bebf34c6a9e8fa29ab7af7564f2c3319eb6376a0c9ada8f"
+  },
+  {
+   "id": "f-pc-95",
+   "symbol": "LUMN",
+   "base": "pc-20261116T030404.253Z-270#0",
+   "family_start": "2024-07-16",
+   "range": [
+    "2024-08-09",
+    "2024-10-02"
+   ],
+   "reference": {
+    "node": "step",
+    "spans": [
+     [
+      "2024-08-06",
+      "2024-08-06"
+     ],
+     [
+      "2024-08-06",
+      "2024-08-07"
+     ]
+    ]
+   },
+   "record_sha256_before": "4e12d771e15c0eb3ffa51d6778d182347c9086a5618f01c6fabf9610a3593154"
+  },
+  {
+   "id": "f-pc-92",
+   "symbol": "QBTS",
+   "base": "pc-20261116T025228.972Z-265#0",
+   "family_start": "2025-02-21",
+   "range": [
+    "2025-03-18",
+    "2025-03-25"
+   ],
+   "reference": {
+    "node": "step",
+    "spans": [
+     [
+      "2025-03-14",
+      "2025-03-14"
+     ]
+    ]
+   },
+   "record_sha256_before": "5171e5587b34dbd619a486cf0df165cfb40b2aa5e0bba4093df2f5fff2968505"
+  }
+ ]
+}
