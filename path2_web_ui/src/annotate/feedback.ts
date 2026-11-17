@@ -258,6 +258,18 @@ export function feedbackRank(st: FeedbackStatusOf | null | undefined): 0 | 1 | 2
 }
 
 /**
+ * 侧栏 feedback 页一行的颜色档,只由接口给的 red / status / tag 推出(朱红与否仍只看 red):
+ * - red:朱红,app 还在你说不该买的地方买;
+ * - fixed:浅蓝,改好了——不买了且会话没挂原因标签,或还在买但定义改过(接口不算红的 matched);
+ * - unsure:浅黄,说不准——不买了却挂着会话原因标签(认法变了、毛病还在),或状态还没取到、读不到行情。
+ */
+export function feedbackTone(st: FeedbackStatusOf | null | undefined): 'red' | 'fixed' | 'unsure' {
+  if (!st || st.status === null) return 'unsure'
+  if (st.red) return 'red'
+  return feedbackRank(st) === 1 ? 'unsure' : 'fixed'
+}
+
+/**
  * 会话原因标签各个取值的悬停说明(取值在后端 path2_web/mapping.py 的 SESSION_TAGS;这里没列的照样显示,
  * 悬停写通用的一句)。标签挂不挂由后端判(match.py 的 shown_tag),页面三处照接口给的写。
  */

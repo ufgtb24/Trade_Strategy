@@ -1,6 +1,6 @@
 // 侧栏 feedback 页(components/FeedbackPage.vue)与页签(AnnotationSidebar.vue):
 // - 页签 feedback 只在 compare 有;离开 compare 时停在这页就退回 selection;
-// - 当前 pattern 的全部反馈跨股票列出,按接口给的 red 排前、不买了却挂着标签的其次、再按股票日期;行的颜色档、状态、
+// - 当前 pattern 的全部反馈跨股票列出,按接口给的 red 排前、不买了却挂着标签的其次、再按股票日期;行的颜色档(朱红 / 浅蓝 / 浅黄)、状态、
 //   答案 / node / 理由;只列用户自己挑的(盲看标记不列);会话原因标签照接口给的挂(含不红的
 //   redefined);会话段有问题时页头一行;loading;
 // - 点一行:compare 里打开那只股票,图窗包住那段日期,选中那条(当前日竖线停在范围起点走图的默认聚焦,
@@ -163,8 +163,11 @@ describe('页内容', () => {
     await settle()
     const rows = w.findAll('[data-testid="feedback-row"]')
     expect(rows.map(r => r.attributes('data-id'))).toEqual(['f-pc-3', 'f-pc-2', 'f-pc-7', 'f-pc-5', 'f-pc-1'])
-    expect(rows.map(r => r.attributes('data-tone'))).toEqual(['red', 'plain', 'plain', 'plain', 'plain'])
+    // 三档:朱红 = 还在买;浅蓝 = 改好了(不买了没挂标签、定义改过);浅黄 = 说不准(不买了却挂着标签、状态读不到)
+    expect(rows.map(r => r.attributes('data-tone'))).toEqual(['red', 'unsure', 'fixed', 'unsure', 'fixed'])
     expect(rows[0].classes()).toContain('red')
+    expect(rows[2].classes()).toContain('fixed')
+    expect(rows[1].classes()).toContain('unsure')
     // 都不和谁共享:一处一组,结构相同(组头写 node 与理由,下面一行写这一处)
     const groups = w.findAll('[data-testid="feedback-group"]')
     expect(groups.map(g => [g.attributes('data-key'), g.attributes('data-places')]))
@@ -193,7 +196,7 @@ describe('页内容', () => {
     // 标签的悬停逐个取值写意思
     expect(rows[1].get('[data-testid="feedback-row-tag"]').attributes('title')).toBe('the session has not dealt with this feedback yet')
     expect(rows[0].get('[data-testid="feedback-row-tag"]').attributes('title')).toContain('not be worth adding')
-    // 定义改过:matched 了也是常色,标签说明为什么不红
+    // 定义改过:matched 了也不红、算改好了(浅蓝),标签说明为什么不红
     expect(txt(rows[2], 'feedback-row-status')).toEqual(['matched'])
     expect(txt(rows[2], 'feedback-row-tag')).toEqual(['redefined'])
     expect(txt(rows[3], 'feedback-row-status')).toEqual(['null'])                 // 读不到行情
@@ -224,7 +227,7 @@ describe('页内容', () => {
       .toEqual([['f-pc-3', '1'], ['i-pc-1', '3'], ['f-pc-2', '1'], ['f-pc-7', '1']])
     const g = groups[1]
     expect(g.findAll('[data-testid="feedback-row"]').map(r => [r.attributes('data-id'), r.attributes('data-tone')]))
-      .toEqual([['f-pc-8', 'red'], ['f-pc-5', 'plain'], ['f-pc-1', 'plain']])   // 组内:朱红在前,其余按股票、日期
+      .toEqual([['f-pc-8', 'red'], ['f-pc-5', 'unsure'], ['f-pc-1', 'fixed']])   // 组内:朱红在前,其余按股票、日期
     expect(g.findAll('[data-testid="feedback-row-symbol"]').map(x => x.text())).toEqual(['AAA', 'AAA', 'BBB'])
     expect(g.findAll('[data-testid="feedback-row-note"]').map(x => x.text())).toEqual(['共用的理由'])   // 内容只写一次
     expect(g.get('[data-testid="feedback-group-places"]').attributes('title')).toBe('places sharing this issue (same note and nodes)')

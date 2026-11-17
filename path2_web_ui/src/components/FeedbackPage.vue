@@ -69,7 +69,8 @@
  * - 排序(annotate/feedback.ts 的 sortIssueGroups):有朱红的组在前、其次有不买了却还挂着原因标签的,其余在后;
  *   同档的组、组内各处都按这三档,再按股票、日期;
  * - 每处一行:股票、日期范围、状态(后端状态接口给的 matched / unmatched;还没取到或读不到行情为 null,
- *   悬停写原因);颜色照接口给的 red:朱红底黑字 / 其余常色;
+ *   悬停写原因);行底分三档(annotate/feedback.ts 的 feedbackTone):朱红 = app 还在买(接口给的 red)、
+ *   浅蓝 = 改好了(不买了且没挂原因标签,或定义改过)、浅黄 = 说不准(不买了却挂着原因标签、状态没取到),一律黑字;
  *   接口给了会话原因标签 tag 的行照着挂(白底蓝描边,同 unmapped;挂不挂由后端判,悬停逐个取值写意思)——
  *   含 redefined:定义改过的那条 matched 了也不红,标签说明为什么不红;unmatched 而挂着标签的,是那一处
  *   不买了、但会话说原来的毛病还在;
@@ -84,7 +85,7 @@ import { useAnnotationStore } from '../stores/annotation'
 import { useAppLinkStore } from '../stores/appLink'
 import { useFeedbackStore } from '../stores/feedback'
 import { useLandingStore } from '../stores/landing'
-import { sortIssueGroups, tagHint, type FeedbackRow, type IssueGroup } from '../annotate/feedback'
+import { feedbackTone, sortIssueGroups, tagHint, type FeedbackRow, type IssueGroup } from '../annotate/feedback'
 import { rangeLinkWindow } from '../annotate/directLinks'
 import type { AnnFeedback } from '../annotate/model'
 import { UNMAPPED_EDGE, VERMILION } from '../render/annotateLanes'
@@ -96,6 +97,11 @@ const landing = useLandingStore()
 
 // 样式里用的颜色(scoped style 的 v-bind)
 const RED_BG = VERMILION
+// 改好了的行底:冷色,和朱红冷暖相反;比白底深一档,和组头、理由的白 / 浅灰分得开,仍能放黑字(色值待验证)
+const FIXED_BG = '#9DC8E8'
+// 说不准的行底:中等深度的黄,和朱红同是暖色但亮得多,和浅蓝冷暖相反;不取更淡的奶油黄,那种和理由的浅灰底
+// 深浅相近、分不出来(色值待验证)
+const UNSURE_BG = '#F5D76E'
 const TAG_EDGE = UNMAPPED_EDGE
 
 const rows = computed(() => ann.feedbackOfPattern().filter(r => r.feedback.source === 'picked'))
@@ -105,10 +111,8 @@ const matchedOf = (g: IssueGroup) => g.rows.filter(r => st(r)?.status === 'match
 const sessionProblem = computed(() => appLink.mapping?.session_problem ?? null)
 
 const st = (r: FeedbackRow) => fb.statusById[r.feedback.id]
-/** 行的颜色档:red 朱红、plain 常色(状态还没取到的按常色)。 */
-function toneOf(r: FeedbackRow): 'red' | 'plain' {
-  return st(r)?.red ? 'red' : 'plain'
-}
+/** 行的颜色档:red 朱红、fixed 浅蓝、unsure 浅黄(见 feedbackTone)。 */
+const toneOf = (r: FeedbackRow) => feedbackTone(st(r))
 const statusOf = (r: FeedbackRow) => st(r)?.status ?? null
 function statusTip(r: FeedbackRow): string {
   const s = st(r)
@@ -150,6 +154,8 @@ function edit(r: FeedbackRow): void {
   border: 1px solid var(--line); border-radius: 4px; background: #fff; color: var(--ink);
 }
 .fb-row.red { background: v-bind(RED_BG); border-color: v-bind(RED_BG); }
+.fb-row.fixed { background: v-bind(FIXED_BG); border-color: v-bind(FIXED_BG); }
+.fb-row.unsure { background: v-bind(UNSURE_BG); border-color: v-bind(UNSURE_BG); }
 .fb-row.on { outline: 2px solid var(--ink); outline-offset: -1px; }
 .fb-tag { padding: 0 4px; border: 1.5px solid v-bind(TAG_EDGE); border-radius: 3px; background: #fff; cursor: help; }
 .fb-node { padding: 0 3px; border: 1px solid var(--line-strong); border-radius: 3px; background: #fff; }

@@ -3,7 +3,7 @@
 // 一次保存的安排、侧栏分组的次序)。面板写出的反馈不带 answer、不带 dag;以前存下的带这两个键的记录照样分组、能挑。
 import { describe, it, expect } from 'vitest'
 import {
-  buyDatesIn, draftToFeedback, feedbackRank, findSameRange, hitsBuyingIn, issueChoices, issueGroups, issueKey,
+  buyDatesIn, draftToFeedback, feedbackRank, feedbackTone, findSameRange, hitsBuyingIn, issueChoices, issueGroups, issueKey,
   needsIssueChoice, nextIssueValue, planIssueSave, posSamplesInside, sameContent, saveProblems,
   nodeChoices, sortFeedbackRows, sortIssueGroups, type FeedbackDraft, type FeedbackRow,
 } from '../src/annotate/feedback'
@@ -222,6 +222,17 @@ describe('侧栏排序', () => {
       .toEqual(['f-pc-1', 'f-pc-5', 'f-pc-6', 'f-pc-4', 'f-pc-3', 'f-pc-2'])
     expect(rows.map(r => r.feedback.id)).toEqual(before)
     expect(feedbackRank(undefined)).toBe(2)
+  })
+
+  it('feedbackTone:朱红 = 接口给的 red;浅蓝 = 不买了没挂标签、或定义改过;浅黄 = 不买了却挂着标签、状态没取到或读不到', () => {
+    const s = (status: 'matched' | 'unmatched' | null, tag: string | null, red: boolean) => ({ status, tag, red, reason: null })
+    expect(feedbackTone(s('matched', null, true))).toBe('red')
+    expect(feedbackTone(s('matched', 'for_tuning', true))).toBe('red')         // 会话挂了原因、app 还在买:仍是朱红
+    expect(feedbackTone(s('matched', 'redefined', false))).toBe('fixed')
+    expect(feedbackTone(s('unmatched', null, false))).toBe('fixed')
+    expect(feedbackTone(s('unmatched', 'unhandled', false))).toBe('unsure')     // 认法变了、毛病还在
+    expect(feedbackTone(s(null, null, false))).toBe('unsure')
+    expect(feedbackTone(undefined)).toBe('unsure')
   })
 })
 

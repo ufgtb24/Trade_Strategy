@@ -16,7 +16,7 @@ import {
  * 股票 CRNC。日期不写死:开始前在 compare 里读一遍图上 hits 行的族(族底线那一行带族起点与全部买点日),现挑——
  *   F = 买点最多的一族,G = 次多的一族,K = 拖选用的一族(F、G 以外的,没有就用 G);
  *   red   = F 的第二个买点日上一条 point 反馈 → matched、朱红,会话标签 for_tuning;
- *   plain = F 范围里一个不是买点、但前后一天有买点的日子上一条 point 反馈 → unmatched、常色;
+ *   plain = F 范围里一个不是买点、但前后一天有买点的日子上一条 point 反馈 → unmatched、常色(侧栏行算改好了,浅蓝);
  *   lost  = F 之前一段没有买点的日子上一条 family 反馈,存下的基准 event(阶跃)是那段的第一天,当前没有一个阶跃
  *           与它共用 K 线 → lost(基准 node 对不上),会话标签 unhandled;
  *   另放一个 W底 的正样本在 G 的第二个买点日(pos sample inside),一个框在 lost 那段上(先选中框再点族)。
@@ -549,7 +549,7 @@ test.describe('反馈(new_step + 手写 mapping,CRNC)', () => {
     const rows = page.getByTestId('feedback-row')
     await expect(rows).toHaveCount(3)
     expect(await rows.evaluateAll(els => els.map(e => [e.getAttribute('data-id'), e.getAttribute('data-tone')])))
-      .toEqual([[RED, 'red'], [LOST, 'plain'], [PLAIN, 'plain']])
+      .toEqual([[RED, 'red'], [LOST, 'unsure'], [PLAIN, 'fixed']])
     await expect(page.locator(`[data-testid="feedback-row"][data-id="${RED}"] [data-testid="feedback-row-tag"]`)).toHaveText('for_tuning')
     await expect(page.locator(`[data-testid="feedback-row"][data-id="${LOST}"] [data-testid="feedback-row-tag"]`)).toHaveText('unhandled')
     await expect(page.locator(`[data-testid="feedback-row"][data-id="${PLAIN}"] [data-testid="feedback-row-tag"]`)).toHaveCount(0)
