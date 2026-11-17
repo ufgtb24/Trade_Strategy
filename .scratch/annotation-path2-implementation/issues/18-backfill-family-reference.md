@@ -52,3 +52,5 @@ Blocked by: 17
 ## Comments
 
 - 2026-11-16 由票 16 的 Answer 起草，用户批准时选「批准，发票后接着实施」；人审闸来自用户在票 16 的回答（「真写之前列出来，你点头再写」），照原样写入。
+- 暂停 2026-11-16（parallel-tickets，等用户）：人审闸 [Q03](../questions/Q03-backfill-reference-review.md)，4 条要补存的起止已算好、与「实测」表对上，在标注目录字节拷贝上试写通过，独立审查已修（票分支 impl/18-backfill-family-reference 3882ef0）；真写尚未做。恢复：只有调度会话转告「用户已批准写入 Q03」才写——在票 worktree 根目录跑 `.venv/bin/python .scratch/annotation-path2-implementation/evidence/18/backfill_reference.py write --annotation-dir annotations --out-dir .scratch/annotation-path2-implementation/evidence/18/write --expect-ops-sha256 1a3b9e8563676b7c3f48239e8179419aa8f54a5bb0df9480e988c4428d07300a --approved Q03`，再跑 status --expect-backfilled，之后合回、写完成记录、删两个 worktree（票的与旧版 /home/yu/PycharmProjects/Trade_Strategy-18-old-739a2cf）。
+- 恢复 2026-11-16（parallel-tickets）：session-18 继续（调度会话转告「用户已批准写入 Q03」，Q03 已 resolved，主目录 651c449）
