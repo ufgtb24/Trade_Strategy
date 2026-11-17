@@ -13,7 +13,7 @@
  *
  * 作答面板(panel,同时只开一个;组件在 components/FeedbackPanel.vue,落在哪由它和图表组件定,这里不管):
  * - 点图上的东西只选中,不开面板。selTarget 是选中的那一个能作答的对象(买点日或它里面的一次 hit → 那一天;
- *   一族 → 整族;一条反馈 → 那条;别的为 null);openSelected() 对它打开面板(Enter、显示栏的 feedback 按钮);
+ *   一族 → 整族;一条反馈 → 那条;别的为 null);openSelected() 对它打开面板(Enter、双击它、显示栏的 feedback 按钮);
  * - open(范围):拖选松手、openSelected 时打开。这只股票、当前 pattern 已有范围完全相同的反馈时直接打开
  *   那条(防重复);open({id}):打开已有的那条(预填,editingId 为它的编号)。盲看标记、不属于当前 pattern 的不打开。
  *   面板开着时再 open 就是关旧开新(switchTo 是它的别名),不存;

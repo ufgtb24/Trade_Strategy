@@ -35,7 +35,7 @@
 //   kind(选中的是什么)、node、date、name、diff(是哪一个)、in(属于什么,最后一节就是 Esc 退到的地方)、
 //   ← / → 与 ↑ / ↓ 两个键槽(按了会去哪:`into buys ×11` 是进去,`buys 1/11` 是在同一层的第几个)、Esc。
 // 不适用的格照占位置,写灰色 `—`,键帽画灰;进行到一半的 Shift 配对另占一格 `pair 1/2`。
-// compare 下最右多一个 feedback 按钮:对选中的那一个打开反馈面板(同 Enter),面板开着时再点是关;
+// compare 下最右多一个 feedback 按钮:对选中的那一个打开反馈面板(同 Enter、同在图上双击它),面板开着时再点是关;
 // 选中的东西不能作答(或没选中、app 没跑完)时灰、点不了。开关由图表组件(KlineChart.vue)接。
 // 在 compare / app 下常驻(不常驻的话每点一下主图伸缩一次)。窄的时候先省 in 最外面的几节(悬停看全)。
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
@@ -48,7 +48,7 @@ import { BAR_LABELS as L, PATH_SEP, SEL_NA as NA, SEL_NONE as NONE, slotText } f
 defineProps<{ feedback?: WalkFeedbackState }>()
 const emit = defineEmits<{ (e: 'feedback'): void }>()
 const FB_TIP: Record<WalkFeedbackState, string> = {
-  on: 'give feedback on what is selected (Enter)',
+  on: 'give feedback on what is selected (Enter, or double-click it on the chart)',
   off: 'select a buy day, a hit on it, a family of hits, or a feedback to give feedback on it',
   open: 'close the feedback panel (Esc)',
 }

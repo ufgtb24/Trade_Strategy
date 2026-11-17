@@ -31,7 +31,7 @@ import { useViewStore } from '../src/stores/view'
 import { useFeedbackStore } from '../src/stores/feedback'
 import { useAppLinkStore } from '../src/stores/appLink'
 import { useCompareStore } from '../src/stores/compare'
-import { feedbackMarkOf, handleAppClick } from '../src/components/KlineChart'
+import { feedbackMarkOf, handleAppClick, handleAppDblClick } from '../src/components/KlineChart'
 import { computeEventData } from '../src/render/chart'
 import { FEEDBACK_SERIES } from '../src/render/feedbackStrip'
 import ChartArea from '../src/components/ChartArea.vue'
@@ -217,6 +217,86 @@ describe('compare 下的点击只选中、不开面板;选中之后对它打开�
     expect(fb.panel).toMatchObject({ start: DATES[5], end: DATES[5] })
     expect(view.selPath).toEqual([{ kind: 'hit_family', familyKey: 'hits@0' }, { kind: 'buy', day: 4 }])
     expect(fb.selTarget).toMatchObject({ start: DATES[4], end: DATES[4] })
+  })
+})
+
+/** KlineChart.vue 两张图的 dblclick:浏览器先派两下 click(各走一次 compareClick),再派 dblclick。 */
+function compareDblClick(p: any, view: ReturnType<typeof useViewStore>, fb: ReturnType<typeof useFeedbackStore>,
+                         compareReady = true) {
+  compareClick(p, view, fb, compareReady)
+  compareClick(p, view, fb, compareReady)
+  return handleAppDblClick(p, { comparing: view.comparing, compareReady, reselect: () => compareClick(p, view, fb, compareReady),
+                                openSelected: () => fb.openSelected() })
+}
+const withKeys = (p: any, keys: Partial<MouseEvent>) => ({ ...p, event: { event: keys } })
+
+describe('双击 = 点一下选中、再按 Enter:对双击的那一个打开面板', () => {
+  it('双击 ▼ 打开那天的 point;双击琥珀格同;双击族打开 family', async () => {
+    const { view, fb } = await setup()
+    expect(compareDblClick(click('brackets', buyRec(5)), view, fb)).toBe(true)
+    expect(fb.panel).toEqual({ symbol: 'AAA', start: DATES[5], end: DATES[5], target: 'point', note: '', nodes: [] })
+    fb.close()
+    expect(compareDblClick(click('brackets', cellRec(8)), view, fb)).toBe(true)
+    expect(fb.panel).toMatchObject({ start: DATES[7], end: DATES[7], target: 'point' })
+    fb.close()
+    expect(compareDblClick(click('bracket-lines', bundle.bracketLineData[0]), view, fb)).toBe(true)
+    expect(fb.panel).toMatchObject({ start: DATES[4], end: DATES[7], target: 'family', family_start: DATES[0] })
+  })
+
+  it('双击反馈记号打开那条(预填)', async () => {
+    const rec = { id: 'f-pc-1', pattern: 'p', app_id: 'app1', app_ver: 'v0', start: DATES[5], end: DATES[5],
+                  target: 'point', source: 'picked', note: 'late' }
+    const { view, fb } = await setup(annRead({ charts: [{ symbol: 'AAA', boxes: [], samples: [], feedback: [rec as any] }] }))
+    expect(compareDblClick(click(FEEDBACK_SERIES, { value: [5, 5, 0], feedback_id: 'f-pc-1' }), view, fb)).toBe(true)
+    expect(fb.panel).toMatchObject({ editingId: 'f-pc-1', start: DATES[5], note: 'late' })
+  })
+
+  it('只接 ▼ / 格 / 族 / 反馈记号:先选中一个 ▼,再双击 event 记号、K 线、反馈带上没有编号的地方都不开', async () => {
+    const { view, fb } = await setup()
+    for (const p of [click('points', { instance_id: T4.instance_id }), click('kline', { value: [5, 1, 1, 1, 1] }),
+                     click('kline-hit-spanner', {}), click(FEEDBACK_SERIES, {}), click('brackets', {})]) {
+      compareClick(click('brackets', buyRec(5)), view, fb)
+      expect(fb.selTarget).not.toBeNull()
+      expect(handleAppDblClick(p, { comparing: true, compareReady: true, reselect: () => { throw new Error('不该再选') },
+                                    openSelected: () => fb.openSelected() })).toBe(false)
+      expect(fb.panel).toBeNull()
+    }
+  })
+
+  it('两下 click 没选中它(被别的手势接走)时,双击仍对双击的那一个打开,不对着之前选中的', async () => {
+    const { view, fb } = await setup()
+    compareClick(click('brackets', buyRec(4)), view, fb)
+    const p = click('brackets', buyRec(5))
+    expect(handleAppDblClick(p, { comparing: true, compareReady: true, reselect: () => compareClick(p, view, fb),
+                                  openSelected: () => fb.openSelected() })).toBe(true)
+    expect(fb.panel).toMatchObject({ start: DATES[5], end: DATES[5], target: 'point' })
+  })
+
+  it('app 还没跑完、带修饰键时不接', async () => {
+    const { view, fb } = await setup()
+    expect(compareDblClick(click('brackets', buyRec(5)), view, fb, false)).toBe(false)
+    expect(fb.panel).toBeNull()
+    for (const k of ['shiftKey', 'ctrlKey', 'altKey', 'metaKey'] as const) {
+      expect(compareDblClick(withKeys(click('brackets', buyRec(5)), { [k]: true }), view, fb)).toBe(false)
+    }
+    expect(fb.panel).toBeNull()
+  })
+
+  it('面板开着时双击另一个 ▼:关旧开新(不存),面板换成那一天的', async () => {
+    const { view, fb } = await setup()
+    compareDblClick(click('brackets', buyRec(5)), view, fb)
+    fb.setNote('draft')
+    const n = fb.opens
+    expect(compareDblClick(click('brackets', buyRec(4)), view, fb)).toBe(true)
+    expect(fb.opens).toBe(n + 1)
+    expect(fb.panel).toEqual({ symbol: 'AAA', start: DATES[4], end: DATES[4], target: 'point', note: '', nodes: [] })
+  })
+
+  it('不在 compare 时不接', () => {
+    let called = false
+    expect(handleAppDblClick(click('brackets', buyRec(5)), { comparing: false, compareReady: true, reselect: () => {},
+                                                            openSelected: () => (called = true) })).toBe(false)
+    expect(called).toBe(false)
   })
 })
 

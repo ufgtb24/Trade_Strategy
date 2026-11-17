@@ -243,7 +243,7 @@ describe('WalkStatusBar', () => {
       expect(b.classes()).not.toContain('on')
       expect(b.attributes('aria-pressed')).toBe('false')
       expect(b.attributes('data-feedback-opener')).toBeDefined()
-      expect(b.attributes('title')).toBe('give feedback on what is selected (Enter)')
+      expect(b.attributes('title')).toBe('give feedback on what is selected (Enter, or double-click it on the chart)')
       const md = new MouseEvent('mousedown', { bubbles: true, cancelable: true })
       b.element.dispatchEvent(md)
       expect(md.defaultPrevented).toBe(true)

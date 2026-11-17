@@ -21,6 +21,8 @@ export type ChartClickPayload = {
     // 族底线(bracket-lines)那一行:族起点与这一族全部买入日(K 线下标);反馈带(feedback-strip)的记号:反馈编号
     family_start?: number; buy_days?: number[]; feedback_id?: string
   }
+  // ECharts 包的那次鼠标事件:event.event 是浏览器原生的(读修饰键用)
+  event?: { event?: MouseEvent }
 } | null
 
 /** marker 分支覆盖的三种 series(点/区间/价格点;卫星 pk 通道已删,Task 7);
@@ -127,7 +129,8 @@ export interface AppClickCtx {
  * 主图、副图的一次系列点击(KlineChart.vue 的 onAppClick 就是它):焦点照旧走 handleChartClick;
  * compare 下点中 app 的东西(格、条、▼、族那一行、反馈记号)时取消标注框的选中(否则框仍选中,按 Delete 会删掉标注);
  * app 跑完可对照时,点反馈记号选中那条反馈(换掉原来选中的;它牵出的 hit 图上照常)。
- * 点只选中,不开反馈面板:面板由 Enter 或显示栏的 feedback 按钮对选中的那一个打开(stores/feedback.ts 的 openSelected)。
+ * 点只选中,不开反馈面板:面板由 Enter、双击(handleAppDblClick)或显示栏的 feedback 按钮对选中的那一个打开
+ * (stores/feedback.ts 的 openSelected)。
  * 返回 handleChartClick 的结果。
  */
 export function handleAppClick(p: ChartClickPayload, hits: HitDict[],
@@ -141,4 +144,38 @@ export function handleAppClick(p: ChartClickPayload, hits: HitDict[],
     ctx.feedback.select(id)
   }
   return hitApp
+}
+
+/** handleAppDblClick 要的上下文:是否在 compare、app 是否跑完可对照、按这次双击的 payload 再选中一次(即单击的那套,
+ *  KlineChart.vue 的 onAppClick)、对选中的那一个打开面板。 */
+export interface AppDblClickCtx {
+  comparing: boolean
+  compareReady: boolean
+  reselect: () => void
+  openSelected: () => boolean
+}
+
+/** 双击点中的是不是能作答的那几样:▼ 与它那一列的格(brackets)、族底线那一行(bracket-lines)、反馈记号。 */
+export function answerableAt(p: ChartClickPayload): boolean {
+  const d = p?.data
+  if (p?.seriesName === 'brackets') return !!d?.hit_id
+  if (p?.seriesName === 'bracket-lines') return !!d?.family_key
+  return feedbackMarkOf(p) !== null
+}
+
+/**
+ * 主图、副图的一次系列双击(KlineChart.vue 两张图的 dblclick):等于「点一下选中、再按 Enter」——对双击的那一个
+ * 打开反馈面板。只接能作答的那几样(answerableAt);双击 event、样本、框、K 线、成交量不做事,不管之前选中着什么。
+ * 打开前按 payload 再选中一次:两下 click 通常已经选中了它(同一个东西点两次,选中不变),再选一次不变;万一那两下
+ * 被别的手势接走,也不会对着之前选中的那一个打开。
+ * 面板开着时双击图上另一个(双击落在面板里的到不了图):openSelected 关旧开新、不存;第一下按下时「点面板外就关」
+ * 排下的关闭见到期间开了新面板就不关(components/FeedbackPanel.vue),所以连击再快也落在新面板上。
+ * 不接:不在 compare、app 还没跑完、按着 Shift / Ctrl / Alt / Meta(Shift+点记号是配对查询)。返回开没开。
+ */
+export function handleAppDblClick(p: ChartClickPayload, ctx: AppDblClickCtx): boolean {
+  const e = p?.event?.event
+  if (e && (e.shiftKey || e.ctrlKey || e.altKey || e.metaKey)) return false
+  if (!ctx.comparing || !ctx.compareReady || !answerableAt(p)) return false
+  ctx.reselect()
+  return ctx.openSelected()
 }

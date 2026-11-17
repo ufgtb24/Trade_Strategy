@@ -117,7 +117,7 @@ import { bandKeyOf, nodeOfEventByBand, resolveTooltipData, windowOf, formatForwa
 import { peakIdIndex } from '../render/peakState'
 import type { Bar } from '../types'
 import type { Lane } from '../annotate/model'
-import { handleAppClick, handleChartClick, handleShiftClick, markerIdOf, MARKER_SERIES } from './KlineChart'
+import { handleAppClick, handleAppDblClick, handleChartClick, handleShiftClick, markerIdOf, MARKER_SERIES } from './KlineChart'
 import WalkStatusBar from './WalkStatusBar.vue'
 import ResizableDivider from './ResizableDivider.vue'
 import CrosshairOverlay from './CrosshairOverlay.vue'
@@ -1343,7 +1343,8 @@ onMounted(() => {
 
   // click 分流:主/副 chart 各一套,handleChartClick 按 seriesName 天然分流;
   // shift+click 先被 handleMaybeShiftClick 拦截(入口 D),消费后不再回退到候选四分支。
-  // compare 下点中 app 的东西时取消标注框的选中、点反馈记号时选中那条反馈(点只选中,不开反馈面板):见 handleAppClick
+  // compare 下点中 app 的东西时取消标注框的选中、点反馈记号时选中那条反馈(点只选中,不开反馈面板):见 handleAppClick;
+  // 双击 = 点一下选中、再按 Enter,对选中的那一个打开反馈面板:见 handleAppDblClick
   const onAppClick = (p: any) => {
     if (!annotating.value && KLINE_BLANK_SERIES.includes(p?.seriesName)) { clearAllOnBlank(); return }
     handleAppClick(p, effectiveAnalysis.value?.hits ?? [], view, {
@@ -1359,6 +1360,12 @@ onMounted(() => {
     if (handleMaybeShiftClick(p, 'sub')) return
     onAppClick(p)
   })
+  const onAppDblClick = (p: any) => {
+    handleAppDblClick(p, { comparing: comparing.value, compareReady: compareReady.value,
+                           reselect: () => onAppClick(p), openSelected: () => fb.openSelected() })
+  }
+  chartMain.on('dblclick', onAppDblClick)
+  chartSub.on('dblclick', onAppDblClick)
   // v2 event-debug(2026-07-15) · marker 右键 → debug 菜单(主+副图,tb marker 主要在副图泳道)
   // ECharts element-level, 只在数据项上触发 —— 空白 K 线 / 蜡烛区由 DOM handleContextMenu 兜底,
   // 见 markerContextMenuHandled 注释。主副 chart 共享 flag。
@@ -1565,6 +1572,8 @@ onBeforeUnmount(() => {
   chartMain?.off('brushselected')
   chartMain?.off('contextmenu')
   chartSub?.off('contextmenu')
+  chartMain?.off('dblclick')
+  chartSub?.off('dblclick')
   chartMain?.off('showTip')
   chartSub?.off('showTip')
 

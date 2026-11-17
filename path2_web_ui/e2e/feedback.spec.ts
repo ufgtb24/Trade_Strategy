@@ -39,6 +39,7 @@ import {
  *    (没有答案按钮、没有 dag);不抢焦点、←/→ 仍走 hit、Esc 先关面板、点别处关、焦点在按钮上按 Enter 也是保存;
  *    只点 node 不写 note 存不了,点 node 后光标进 note;只写 note 就能存;同范围打开那条、改、删与撤销;
  *    先选中框再点族,框的选中取消;node 按钮悬停时 band 加亮。截图 ②(鼠标停在一个 node 按钮上)。
+ * 2b. 双击 ▼ / 族 / 反馈记号等于选中再按 Enter,直接弹对它的面板;面板开着时双击另一个 ▼ 换成它的;双击 event 不弹。
  * 3. feedback 工具:Shift+F / 按钮点亮、Esc 熄灭、点一下不熄;拖出没有买点的范围不弹、提示 no buy in range;
  *    拖出有买点的范围,松手后面板还在、用一次熄灭;拖选中那条反馈竖带的边改起止:新范围里没有买点不改、提示
  *    no buy in range;有就直接存,以前存下的 family 反馈(带 dag)改成同编号的 range(去掉 family_start,不带 answer、dag)。
@@ -249,9 +250,9 @@ const inside = (b: ItemBox, x: number, y: number, pad = 1) =>
   x >= b.x - pad && x <= b.x + b.w + pad && y >= b.y - pad && y <= b.y + b.h + pad
 
 /** 点 ▼(买在 day 那天)。 */
-async function clickBuy(page: Page, day: number) {
+async function clickBuy(page: Page, day: number, how: 'click' | 'dblclick' = 'click') {
   const b = await findItem(page, 'brackets', x => x.d?.kind === 'buy' && x.d.buy_day === day)
-  await page.mouse.click(b.x + b.w / 2, b.y + b.h * 0.35)
+  await page.mouse[how](b.x + b.w / 2, b.y + b.h * 0.35)
 }
 
 /** 点一个格:那一列有 ▼ 的格,点它下半截(▼ 只占格的上半截)。返回格那一列的买点日下标。 */
@@ -262,7 +263,7 @@ async function clickMark(page: Page, pred: (d: any) => boolean): Promise<number>
 }
 
 /** 点一族的透明命中区:在族底线那一行里找一个不压在格和 ▼ 上、又在图区里的点。 */
-async function clickFamily(page: Page, start: number) {
+async function clickFamily(page: Page, start: number, how: 'click' | 'dblclick' = 'click') {
   const fam = await findItem(page, 'bracket-lines', x => x.d?.family_start === start, 0)
   const marks = await itemBoxes(page, 'brackets')
   const plot = await page.evaluate(() => {
@@ -273,7 +274,7 @@ async function clickFamily(page: Page, start: number) {
   const y = fam.y + fam.h * 0.4
   for (let x = Math.max(fam.x + 2, plot.left + 2); x < Math.min(fam.x + fam.w - 2, plot.right - 2); x += 2) {
     if (!marks.some(m => inside(m, x, y, 2))) {
-      await page.mouse.click(x, y)
+      await page.mouse[how](x, y)
       return
     }
   }
@@ -281,9 +282,9 @@ async function clickFamily(page: Page, start: number) {
 }
 
 /** 点反馈带上某条反馈的记号。 */
-async function clickStrip(page: Page, id: string) {
+async function clickStrip(page: Page, id: string, how: 'click' | 'dblclick' = 'click') {
   const b = await findItem(page, 'feedback-strip', x => x.d?.feedback_id === id, 0)
-  await page.mouse.click(b.x + b.w / 2, b.y + b.h / 2)
+  await page.mouse[how](b.x + b.w / 2, b.y + b.h / 2)
 }
 
 /** 对选中的那一个打开作答面板:按 Enter。点图上的东西只选中,所以先确认点击本身没有弹面板。 */
@@ -931,6 +932,60 @@ test.describe('反馈(new_step + 手写 mapping,CRNC)', () => {
     await settled(page)
     expect((await annState(page)).charts.find((c: any) => c.symbol === SYMBOL).boxes.map((b: any) => b.id)).toContain(BOX)
     await page.unrouteAll({ behavior: 'ignoreErrors' })
+  })
+
+  test('双击 ▼ / 族 / 反馈记号 = 选中再按 Enter:直接弹对它的面板;面板开着时双击另一个 ▼ 换成它的;双击 event、K 线不弹(之前选中着 ▼ 也不弹)', async ({ page }) => {
+    const { dates, F, G } = plan
+    await openCompare(page, plan.pos)
+    await zoomTo(page, Math.min(F.start, G.start) - 3, Math.max(F.buys.at(-1)!, G.buys.at(-1)!) + 4)
+    const g0 = G.buys[0]
+
+    await clickBuy(page, g0, 'dblclick')
+    await expect(panel(page)).toBeVisible()
+    await expect(panel(page)).toHaveAttribute('data-target', 'point')
+    await expect(page.getByTestId('feedback-span')).toHaveText(dates[g0])
+    await page.keyboard.press('Escape')
+    await expect(panel(page)).toHaveCount(0)
+
+    await clickFamily(page, G.start, 'dblclick')
+    await expect(panel(page)).toBeVisible()
+    await expect(panel(page)).toHaveAttribute('data-target', 'family')
+    await expect(page.getByTestId('feedback-span')).toHaveText(`${dates[G.buys[0]]} – ${dates[G.buys.at(-1)!]}`)
+    await page.keyboard.press('Escape')
+    await expect(panel(page)).toHaveCount(0)
+
+    // 双击反馈记号打开那条;面板开着时双击另一个 ▼:第一下按下关掉旧面板,双击打开新的
+    await clickStrip(page, RED, 'dblclick')
+    await expect(panel(page)).toHaveAttribute('data-editing', RED)
+    await clickBuy(page, g0, 'dblclick')
+    await expect(panel(page)).toHaveAttribute('data-target', 'point')
+    await expect(page.getByTestId('feedback-span')).toHaveText(dates[g0])
+    await expect(panel(page)).toHaveCount(1)
+    await page.keyboard.press('Escape')
+    await expect(panel(page)).toHaveCount(0)
+
+    // 先选中一个 ▼,再双击 K 线:不能作答,不对着之前选中的那个弹
+    await clickBuy(page, g0)
+    await expect.poll(() => page.evaluate(() => (window as any).__e2e.view.selPath.map((x: any) => x.kind)))
+      .toEqual(['hit_family', 'buy'])
+    await page.mouse.dblclick(await xOf(page, g0 - 2), await klineY(page))
+    await page.waitForTimeout(300)
+    await expect(panel(page)).toHaveCount(0)
+
+    // 先选中一个 ▼,再双击 event 的区段:选中换成 event,不能作答,不弹
+    await clickBuy(page, g0)
+    const plot = await page.evaluate(() => {
+      const r = document.querySelector('.sub-inner')!.getBoundingClientRect()
+      const g = (window as any).__e2e.chartSub().getOption().grid[0]
+      return { left: r.left + g.left, right: r.right - g.right }
+    })
+    const ev = await findItem(page, 'intervals', b => !!b.d?.instance_id && b.w > 6
+      && b.x + b.w / 2 > plot.left + 4 && b.x + b.w / 2 < plot.right - 4)
+    await page.mouse.dblclick(ev.x + ev.w / 2, ev.y + ev.h / 2)
+    await expect.poll(() => page.evaluate(() => (window as any).__e2e.view.selPath.map((x: any) => x.kind)))
+      .toEqual(['event'])
+    await page.waitForTimeout(300)
+    await expect(panel(page)).toHaveCount(0)
   })
 
   test('feedback 工具:点亮与熄灭;没有买点的范围不弹、提示 no buy in range;拖完松手面板还在;拖竖带的边把以前存下的带 dag 的那条改成 range', async ({ page }) => {
